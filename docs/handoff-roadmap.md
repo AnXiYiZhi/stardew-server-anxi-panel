@@ -10,7 +10,7 @@
 
 - 基于 JunimoServer 做 Stardew Valley 专用服务器 Web 管理面板。
 - 用户通过浏览器完成管理员初始化、Steam 认证、Junimo 安装、服务器启动、邀请码展示、状态查看、存档管理、Mod 管理、控制台指令、面板用户管理。
-- 长期演进为多游戏开服总面板，但第一版只做好 Stardew + JunimoServer。
+- 长期演进为多游戏开服总面板：总面板展示所有游戏实例状态，点击某个游戏实例后进入该游戏自己的专属管理面板。第一版只做好 Stardew + JunimoServer，并默认使用 Single Game Mode，登录后直接进入 Stardew 面板，不显示总面板游戏列表。
 
 当前已有文档：
 
@@ -26,9 +26,152 @@
 - 不要把 Stardew 专属逻辑放到顶层 `saves`、`mods`、`console` 模块里。
 - 顶层只保留通用能力：`auth`、`docker`、`jobs`、`games/registry`、`storage`、`web`。
 - Stardew 相关能力放在 `games/stardew_junimo` driver 内。
+- 前端也要分层：总面板、通用游戏面板骨架、各游戏自己的 game module。不要把 Minecraft、饥荒、泰拉瑞亚等未来页面塞进 Stardew 页面里。
 - 面板后端不替代 JunimoServer，优先通过 Docker Compose、容器 `exec`、`attach-cli`、HTTP status、日志流和挂载目录与 JunimoServer 通信。
 - 所有长任务必须有状态、日志、错误信息和可恢复策略。
 - 不要把 Steam 密码、VNC 密码、session token 打到日志里。
+
+## Product Model: Single Now, Multi Later
+
+接手者必须理解：本项目最终不是“一个 Stardew 页面兼容所有游戏”，而是“一个总面板 + 多个游戏专属面板”。但首个可上线版本不要提前显示总面板，应该先使用单游戏直达体验。
+
+当前产品模式：
+
+```text
+Single Game Mode
+  -> 登录后直接进入 Stardew 面板
+  -> 不显示总面板游戏列表
+  -> 内部仍使用 instance + driver 架构
+```
+
+未来产品模式：
+
+```text
+Multi Game Mode
+  -> 登录后进入总面板
+  -> 展示多个游戏实例
+  -> 点击进入对应游戏面板
+```
+
+建议配置：
+
+```text
+PANEL_MODE=single
+DEFAULT_INSTANCE_ID=stardew
+DEFAULT_DRIVER_ID=stardew_junimo
+```
+
+推荐路由行为：
+
+```text
+if PANEL_MODE == single and only one instance:
+    / -> /instances/stardew
+
+if PANEL_MODE == multi or instances > 1:
+    / -> 总面板实例列表
+```
+
+```text
+Global Panel
+  ├─ Stardew Instance -> Stardew Panel -> stardew_junimo driver -> JunimoServer containers
+  ├─ Minecraft Instance -> Minecraft Panel -> minecraft driver -> Minecraft containers
+  ├─ DST Instance -> DST Panel -> dont_starve_together driver -> DST containers
+  ├─ Terraria Instance -> Terraria Panel -> terraria driver -> Terraria containers
+  └─ Palworld Instance -> Palworld Panel -> palworld driver -> Palworld containers
+```
+
+总面板在 Multi Game Mode 下显示，负责：
+
+- 登录、用户、权限。
+- 所有游戏实例列表。
+- 所有游戏实例的状态摘要。
+- 全局 Docker 状态。
+- 全局任务中心。
+- 审计日志和基础设置。
+
+游戏专属面板负责：
+
+- 该游戏自己的安装向导。
+- 该游戏自己的配置项。
+- 该游戏自己的控制台协议。
+- 该游戏自己的存档/世界规则。
+- 该游戏自己的 Mod/插件规则。
+- 该游戏自己的特殊 UI，例如 Stardew 的 Steam Guard / 邀请码，Minecraft 的 RCON / 白名单 / OP。
+
+当前第一版只实现 Stardew，UI 默认隐藏总面板，但代码和文档要按这个模型留边界。
+
+## Core Abstraction: GameDriver
+
+`GameDriver` 是本项目最重要的后端长期抽象。这个面板后面会支持多个游戏，所以从第一版开始就不能把 Stardew 写死在主业务、API handler、jobs 或 docker 层里。
+
+主业务只知道“当前实例使用哪个 driver”。具体游戏怎么准备、安装、启动、读取状态、管理存档、管理 Mod、执行命令，都由对应 driver 实现。`GameDriver` 不代表所有游戏共用同一套页面或命令，它只代表总面板调用各游戏后端能力的统一边界。
+
+```go
+type GameDriver interface {
+    ID() string
+    Name() string
+
+    Prepare(ctx context.Context, instance Instance) error
+    Install(ctx context.Context, req InstallRequest) (*Job, error)
+    Start(ctx context.Context, req StartRequest) (*Job, error)
+    Stop(ctx context.Context, instance Instance) error
+    Restart(ctx context.Context, instance Instance) error
+
+    Status(ctx context.Context, instance Instance) (*ServerStatus, error)
+    Logs(ctx context.Context, instance Instance) (<-chan LogLine, error)
+    ExecCommand(ctx context.Context, cmd string) (*CommandResult, error)
+
+    ListSaves(ctx context.Context, instance Instance) ([]SaveInfo, error)
+    UploadSave(ctx context.Context, file UploadedFile) error
+    SelectSave(ctx context.Context, name string) error
+    DeleteSave(ctx context.Context, name string) error
+
+    ListMods(ctx context.Context, instance Instance) ([]ModInfo, error)
+    UploadMod(ctx context.Context, file UploadedFile) error
+    DeleteMod(ctx context.Context, id string) error
+}
+```
+
+第一版 driver 是：
+
+```text
+games/stardew_junimo
+```
+
+后续可以增加：
+
+```text
+games/minecraft
+games/dont_starve_together
+games/terraria
+games/palworld
+```
+
+每个 driver 自己负责：
+
+- Compose 模板或容器模板。
+- 安装流程。
+- 配置文件。
+- 状态解析。
+- 日志读取。
+- 控制台命令。
+- 存档规则。
+- Mod 规则。
+
+`auth`、`jobs`、`docker`、`storage`、`web` 都是通用基础设施，不应该出现 Stardew 专属业务判断。API handler 应通过 `games/registry` 找到 driver，再调用 driver 方法。
+
+前端对应也应有 game module 边界：
+
+```text
+frontend/src/core
+frontend/src/games/stardew
+frontend/src/games/minecraft
+frontend/src/games/dont_starve_together
+frontend/src/games/terraria
+frontend/src/games/palworld
+```
+
+第一版可以只有 `frontend/src/games/stardew`，并在 Single Game Mode 下直接显示它；但不要把未来 Minecraft / DST / Terraria / Palworld 的页面逻辑放进 Stardew 模块。
 
 ## JunimoServer Integration Plan
 
@@ -477,56 +620,159 @@ DELETE /api/users/:id
 - `go test ./...` 通过。
 - `npm run build` 通过。
 
-## Milestone 3: Docker / Compose Control Layer
+## Milestone 3: Docker / Compose Control Layer ✅ 已完成（2026-06-22）
 
 目标：建立通用 Docker 操作层，供 GameDriver 使用。
 
-要做什么：
+已完成：
 
-- 封装工作目录。
-- 封装 `docker compose` 命令。
-- 支持执行、日志流、状态检查。
-- 所有命令必须明确工作目录和超时。
+- 新增 `backend/internal/docker` 通用 Docker / Compose CLI 控制层。
+- 封装 `docker version`、`docker compose version`、`ps`、`logs`、`pull`、`up -d`、`down`、`restart`。
+- 所有命令通过 `exec.CommandContext` 和参数数组执行，不经过 shell。
+- 所有命令明确工作目录、超时、输出大小上限。
+- 结构化返回 stdout、stderr、exit code、duration、timeout 和输出截断状态。
+- 命令参数和输出会脱敏 password、token、secret、`STEAM_PASSWORD`、`VNC_PASSWORD` 等敏感字段。
+- 新增 admin-only Docker / Compose 状态 API，供当前前端基础状态区使用。
+- Docker API 固定使用 `$PANEL_DATA_DIR/instances/stardew` 作为默认 Compose 工作目录，前端不能传入任意工作目录或任意命令。
 
-建议能力：
+后续补救说明：
+
+- 这里写死 `$PANEL_DATA_DIR/instances/stardew` 是 Milestone 3 为了本机联调 Docker 状态而保留的临时单实例入口。
+- 不需要返工 Milestone 3 的 Docker 执行层；`backend/internal/docker` 本身仍应保持通用。
+- Milestone 5 必须把 API 层从“默认 Stardew 工作目录”迁移到“根据 instance_id 找 driver，再由 driver 提供工作目录或状态实现”。
+- 目标 API 形态应逐步靠近 `GET /api/instances/:instance_id/docker/ps` 或 `GET /api/instances/:instance_id/status`，而不是永久保留只面向 Stardew 的 Docker API。
+
+已实现能力：
 
 ```text
+DockerVersion(ctx, workDir)
+ComposeVersion(ctx, workDir)
 ComposePull(ctx, dir)
 ComposeUp(ctx, dir)
 ComposeDown(ctx, dir)
 ComposeRestart(ctx, dir)
 ComposePs(ctx, dir)
-ComposeLogs(ctx, dir, service)
-ComposeExec(ctx, dir, service, args)
-ComposeRunPTY(ctx, dir, service, args)
+ComposeLogs(ctx, dir, opts)
 ```
 
-怎么做：
+已实现 API：
 
-- 第一版可以调用 docker CLI，不必直接上 Docker SDK。
-- 用结构化结果返回 stdout、stderr、exit code、duration。
-- 所有命令都经过 allowlist，不允许前端提交任意 shell。
-- 给日志做脱敏。
+```text
+GET /api/docker/status
+GET /api/docker/ps
+GET /api/docker/logs?service=&tail=100
+```
+
+API 行为说明：
+
+- Docker API 需要已完成管理员初始化，并且当前 session 用户角色必须是 `admin`。
+- 无 active admin 时，除初始化白名单外仍返回 `setup_required`。
+- 普通 `user` 访问 Docker API 返回 403。
+- `GET /api/docker/status` 返回 Docker CLI 可用性、Docker Compose 可用性，以及默认 Compose 项目目录状态。
+- `GET /api/docker/ps` 在 `$PANEL_DATA_DIR/instances/stardew` 执行 `docker compose ps --format json`，并解析服务名、service、state、status、health、exit code。
+- `GET /api/docker/ps` 如果默认工作目录或 compose 文件不存在，返回 409 `compose_project_not_ready`。
+- `GET /api/docker/logs` 返回非流式日志快照，不是 SSE/WebSocket；`tail` 默认 100，允许范围 1 到 1000。
+- `GET /api/docker/logs` 的 `service` 参数可选，只允许字母、数字、点、下划线和短横线；非法时返回 400 `invalid_service`。
+- Docker 命令失败返回 502 `docker_command_failed`，超时返回 504 `docker_command_timeout`，错误 details 中包含已脱敏的结构化命令结果。
 
 完成标准：
 
 - 后端能在指定目录执行 `docker compose ps`。
-- 命令失败时能把 exit code 和错误信息记录到 job log。
+- 命令失败时能把 exit code 和错误信息记录到结构化命令结果中，后续 jobs 可直接写入 job log。
 - 不存在前端任意命令执行入口。
+- `go test ./...` 通过。
+- `npm run build` 通过。
 
-## Milestone 4: Jobs and State Machine
+## Milestone 4: Jobs and State Machine ✅ 已完成（2026-06-22）
 
 目标：让安装、认证、启动等长任务可观察、可恢复。
 
-要做什么：
+已完成：
 
-- `jobs` 表。
-- `job_logs` 表。
-- `server_state` 或 instance state。
-- 状态机。
-- WebSocket 或 SSE 日志流。
+- 新增 `backend/migrations/003_jobs_state.sql`。
+- 新增 `jobs`、`job_logs`、`instance_state` 数据表。
+- 新增 `backend/internal/storage/jobs.go`，支持创建 job、启动、成功、失败、取消标记、查询最近 jobs、查询 logs、追加 logs、恢复中断任务。
+- 新增 `backend/internal/storage/instance_state.go`，支持默认 Stardew 单实例状态、状态查询、状态更新和保守状态转换校验。
+- 新增 `backend/internal/jobs` 通用 Job Manager，支持异步执行、context timeout、日志追加、SSE 事件发布、panic 捕获并标记 failed。
+- 后端启动时会确保默认 `stardew` instance state 存在，并把重启前遗留的 `queued/running` job 标记为 `failed`。
+- 管理员初始化成功后，默认实例状态进入 `admin_created`。
+- 新增登录后可读的 jobs/state API 和 admin-only 测试任务 API。
+- 新增 SSE 任务日志流。
+- 前端新增 Stardew 实例状态卡片、任务中心、任务详情和实时日志窗口。
+- 普通 user 不能创建测试任务；admin 可查看全部任务，普通 user 只能查看自己有权限的任务。
 
-核心状态：
+新增表：
+
+```text
+jobs
+job_logs
+instance_state
+```
+
+`jobs` 关键字段：
+
+```text
+id
+type
+status: queued / running / succeeded / failed / canceled
+target_type
+target_id
+created_by
+created_at
+started_at
+finished_at
+error_message
+updated_at
+```
+
+`job_logs` 关键字段：
+
+```text
+id
+job_id
+level: info / warn / error / debug
+message
+created_at
+sequence
+```
+
+`instance_state` 关键字段：
+
+```text
+instance_id
+driver_id
+state
+state_message
+last_job_id
+updated_at
+updated_by
+```
+
+已实现 API：
+
+```text
+GET  /api/jobs
+GET  /api/jobs/:id
+GET  /api/jobs/:id/logs?after=0&limit=200
+GET  /api/jobs/:id/stream
+POST /api/jobs/:id/cancel
+POST /api/jobs/test
+POST /api/jobs/test-fail
+GET  /api/instances/stardew/state
+```
+
+API 行为说明：
+
+- jobs 查询、详情、logs 和 SSE stream 都必须登录。
+- admin 可以查看全部 job。
+- 普通 user 只能查看 `created_by` 是自己的 job。
+- 测试 job 创建必须 admin。
+- `POST /api/jobs/:id/cancel` 当前返回 501 `not_implemented`，后续接真实任务取消。
+- `GET /api/jobs/:id/stream` 使用 SSE，按 `job_logs.sequence` 作为事件 id；job 完成时发送 `finished` 事件并结束。
+- `POST /api/jobs/test` 创建约 5 秒的模拟成功任务。
+- `POST /api/jobs/test-fail` 创建模拟失败任务，最终状态为 `failed` 并保存错误原因。
+
+核心状态仍按 architecture 文档保留：
 
 ```text
 uninitialized
@@ -545,51 +791,68 @@ stopped
 error
 ```
 
-建议 API：
+补救边界：
 
-```text
-GET /api/jobs/:id
-GET /api/jobs/:id/logs
-GET /api/jobs/:id/stream
-GET /api/instances/stardew/state
-```
+- Milestone 4 以 `/api/instances/stardew/state` 做 Stardew 单实例联调入口。
+- Milestone 5 需要新增通用形态：`GET /api/instances/:instance_id/state`。
+- jobs 是通用基础设施，不应写入 Stardew 专属业务判断。
+- 当前状态表暂时直接保存上述状态；Milestone 5 之后可逐步拆分通用 `state` 和 driver-specific `driver_phase` / `driver_payload`。
 
-怎么做：
+完成标准验证：
 
-- 每个长任务创建一条 job。
-- job log 按行写入数据库，同时推给前端。
-- 状态变化也写入 audit log。
-- 后端重启后能从数据库读出最后状态。
-
-完成标准：
-
-- 前端能实时看到任务日志。
-- 后端重启后不会丢失最后的安装/运行状态。
-- 失败任务能看到明确错误原因。
+- 管理员登录后可以点击“启动测试任务”。
+- 页面能实时看到日志追加。
+- 成功测试任务最终变为 `succeeded`。
+- 失败测试任务最终变为 `failed` 并显示错误原因。
+- jobs、job_logs、instance_state 持久化在 SQLite，后端重启后仍可查询。
+- 普通用户不能创建测试任务。
+- Job Manager 没有前端任意命令执行入口。
+- `go test ./...` 通过。
+- `npm run build` 通过。
 
 ## Milestone 5: GameDriver Registry
 
-目标：把 Stardew 逻辑放进 driver，避免后续多游戏扩展时重构。
+目标：建立实例模型和 GameDriver registry。首版仍然是 Single Game Mode，不要求显示总面板，但后端必须具备未来 Multi Game Mode 的实例/driver 边界。
+
+Milestone 5 同时是前面 0-4 的架构收口点。0-4 做出的通用能力不需要推翻，但必须在这里把临时 Stardew 单实例写死点迁移到 `instances + driver_id + GameDriver registry`。
 
 要做什么：
 
 - 定义 `GameDriver` 接口。
 - 实现 driver registry。
 - 注册 `stardew_junimo`。
+- 新增或完善 `instances` 模型，至少包含 `id`、`driver_id`、`name`、`data_dir`、`created_at`、`updated_at`。
 - API 层只调用 registry，不直接调用 Stardew 具体实现。
+- 前端预留 game module registry：第一版只注册 Stardew，但结构上允许后续注册 Minecraft、DST、Terraria、Palworld。
+- 新增配置或等价机制：`PANEL_MODE=single|multi`、`DEFAULT_INSTANCE_ID=stardew`、`DEFAULT_DRIVER_ID=stardew_junimo`。
+- 把 Milestone 3 中默认 `$PANEL_DATA_DIR/instances/stardew` 的临时路径包装进 Stardew instance，而不是继续散落在 Docker handler 中。
+- 把 Milestone 4 中 `GET /api/instances/stardew/state` 的临时 API 补成通用 `GET /api/instances/:instance_id/state`。
 
-建议接口以 `architecture.md` 为基础，可以先收敛成 MVP 版本：
+建议接口以 `architecture.md` 和本文前面的 `Core Abstraction: GameDriver` 为准。Milestone 5 可以先让部分方法返回 `not implemented`，但接口边界要一次立住，避免后续把存档、Mod、控制台等能力散落到主业务里。
 
 ```go
 type GameDriver interface {
     ID() string
     Name() string
+
     Prepare(ctx context.Context, instance Instance) error
     Install(ctx context.Context, req InstallRequest) (*Job, error)
     Start(ctx context.Context, req StartRequest) (*Job, error)
     Stop(ctx context.Context, instance Instance) error
     Restart(ctx context.Context, instance Instance) error
+
     Status(ctx context.Context, instance Instance) (*ServerStatus, error)
+    Logs(ctx context.Context, instance Instance) (<-chan LogLine, error)
+    ExecCommand(ctx context.Context, cmd string) (*CommandResult, error)
+
+    ListSaves(ctx context.Context, instance Instance) ([]SaveInfo, error)
+    UploadSave(ctx context.Context, file UploadedFile) error
+    SelectSave(ctx context.Context, name string) error
+    DeleteSave(ctx context.Context, name string) error
+
+    ListMods(ctx context.Context, instance Instance) ([]ModInfo, error)
+    UploadMod(ctx context.Context, file UploadedFile) error
+    DeleteMod(ctx context.Context, id string) error
 }
 ```
 
@@ -598,11 +861,44 @@ type GameDriver interface {
 - `games/registry` 只负责注册和查找 driver。
 - `games/stardew_junimo` 只负责 JunimoServer 具体细节。
 - instance 数据中保存 driver id。
+- API handler 不直接 import `games/stardew_junimo`，只依赖 registry 和通用接口。
+- 早期没实现的能力可以返回结构化 `not_implemented`，但不要绕过 driver 去实现到顶层模块。
+- 前端 Single Game Mode 下可以直接加载 Stardew game module；Multi Game Mode 下总面板点击 Stardew 实例后加载 Stardew game module。
+
+迁移示例：
+
+```text
+Before:
+GET /api/docker/ps
+  -> use $PANEL_DATA_DIR/instances/stardew
+
+After:
+GET /api/instances/:instance_id/status
+  -> load instance
+  -> registry.Get(instance.driver_id)
+  -> driver.Status(ctx, instance)
+```
+
+```text
+Before:
+GET /api/instances/stardew/state
+
+After:
+GET /api/instances/:instance_id/state
+```
+
+保留兼容：
+
+- 如果前端当前已经调用 `/api/docker/status`、`/api/docker/ps`、`/api/instances/stardew/state`，可以先保留这些接口作为开发调试入口。
+- 但产品主路径应改为 instance-based API。
+- README 和前端内部调用应逐渐引导使用 instance-based API。
+- 首版 UI 不需要展示总面板，只要内部已经使用 instance-based API 即可。
 
 完成标准：
 
 - API 不 import `stardew_junimo` 的内部子包。
 - 新增第二个 driver 时不需要改 auth、jobs、storage、docker 层。
+- 新增第二个游戏页面时不需要改登录、用户、全局任务中心和总面板核心布局。
 
 ## Milestone 6: Stardew Junimo Prepare and Install
 
@@ -693,12 +989,17 @@ GET  /api/games/stardew/logs/stream
 
 ## Milestone 8: Frontend MVP
 
-目标：用 React 实现 MVP 可用界面。
+目标：用 React 实现 MVP 可用界面。首版上线体验是 Stardew 单面板直达，不强制显示总面板。
+
+Milestone 8 是前端补救点：如果前面 0-4 做出的前端主界面直接等同于 Stardew 面板，这里不要强行加一个空总面板，而是调整为“Single Game Mode 直达 Stardew game module；Multi Game Mode 才显示总面板”。
 
 页面：
 
 - 初始化注册页。
 - 登录页。
+- Single Game Mode 入口：登录后直接进入 Stardew 面板。
+- Stardew 游戏面板入口：内部路由建议使用 `/instances/stardew` 或 `/instances/:instance_id`。
+- Multi Game Mode 总面板：预留但默认隐藏；等第二个游戏面板出现后再展示。
 - 安装向导页。
 - 首页/控制台页。
 - 存档选择页。
@@ -710,7 +1011,29 @@ GET  /api/games/stardew/logs/stream
 - 使用 TanStack Query 管理 API 请求。
 - 使用 Zustand 或 Context 管理当前用户和实例状态。
 - 使用 xterm.js 或轻量日志窗口展示安装输出。
+- 预留 `frontend/src/core` 和 `frontend/src/games/stardew` 分层。
 - 视觉参考 `docs/prototypes`，但先保证流程闭环，不追求一次做完全部美术。
+
+前端迁移示例：
+
+```text
+Before:
+/dashboard
+  -> 直接显示 Stardew 安装、启动、存档、Mod
+
+After:
+/
+  -> PANEL_MODE=single 时自动进入 Stardew 面板
+  -> PANEL_MODE=multi 时显示总面板实例列表
+
+/instances/:instance_id
+  -> 根据 instance.driver_id 加载对应 game module
+
+/instances/stardew
+  -> Stardew 专属安装、Steam Guard、邀请码、存档、Mod
+```
+
+第一版只有 Stardew 一个实例时，用户不应看到多余的选择游戏页面。代码结构要像多实例/多游戏，但产品体验要像一个完整的 Stardew 面板。
 
 关键交互：
 
@@ -902,6 +1225,7 @@ docker run -d \
 - 不要一开始支持多节点。
 - 不要先做大而全的 UI 组件库。
 - 不要绕过 GameDriver 直接在 API 层写 Stardew 逻辑。
+- 不要把未来 Minecraft / DST / Terraria / Palworld 的页面硬塞进 Stardew 面板。
 - 不要为了省事允许前端执行任意 shell 命令。
 
 ## Handoff Checklist

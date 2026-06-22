@@ -2,11 +2,15 @@
 
 [中文](README.md)
 
-`stardew-server-anxi-panel` is a Stardew Valley dedicated server web management panel built around [JunimoServer](https://stardew-valley-dedicated-server.github.io/server/).
+`stardew-server-anxi-panel` is currently a Stardew Valley dedicated server web management panel built around [JunimoServer](https://stardew-valley-dedicated-server.github.io/server/).
 
-The goal is to let users run one Anxi Panel Docker image, open a browser, initialize an admin account, install the Stardew server, complete Steam authentication, choose a save, start the server, view the invite code, monitor status, manage saves and mods, send server commands, and manage panel users.
+The immediate goal is to let users run one Anxi Panel Docker image, open a browser, initialize an admin account, install the Stardew server, complete Steam authentication, choose a save, start the server, view the invite code, monitor status, manage saves and mods, send server commands, and manage panel users.
 
-> Current status: **Milestone 1: Backend Foundation**. The backend now includes configuration loading, SQLite initialization with a minimal migration runner, enhanced health checks, basic structured logging, and unified JSON error responses. Docker control, user auth, Junimo installation, Steam Auth, saves, mods, and console features are planned but not implemented yet.
+The long-term goal is a multi-game server panel: a global panel shows every game server instance, and selecting one game opens that game's dedicated management panel. Stardew + JunimoServer is the first game implementation. Minecraft, Don't Starve Together, Terraria, Palworld, and other games should be added as separate game modules and drivers later.
+
+The first production-ready version should use **Single Game Mode** by default: after login, users go directly to the Stardew panel. The global game list stays hidden until a second game panel exists. Internally, the app should still use `instances + driver_id + GameDriver`.
+
+> Current status: **Milestone 4: Jobs and State Machine complete**. Milestones 0, 1, 2, 3, and 4 are complete. The backend includes configuration loading, SQLite initialization, embedded migrations, unified JSON errors, setup/admin auth, login/session, admin/user roles, admin user management, a generic Docker / Docker Compose CLI control layer, persisted jobs/job_logs, Stardew single-instance state, and SSE job log streaming. The frontend supports setup, login, a basic dashboard, user management, Docker status checks, Stardew instance state, and a jobs center. Junimo installation, Steam Auth, server lifecycle, saves, mods, and console features are still planned but not implemented yet.
 
 ## GitHub Description
 
@@ -43,7 +47,17 @@ Planned stack:
 - Game integration: GameDriver-style abstraction
 - First driver: Stardew Valley via JunimoServer
 
-High-level flow:
+Long-term product layers:
+
+```text
+Global Panel
+  -> Game Instance List
+  -> Game-specific Frontend Module
+  -> GameDriver
+  -> Game Server Containers
+```
+
+First implementation flow:
 
 ```text
 React Frontend
@@ -55,6 +69,32 @@ React Frontend
 ```
 
 The panel does not replace JunimoServer. It wraps JunimoServer's official Docker workflow in a safer, visible, browser-based management experience.
+
+Current display mode:
+
+```text
+PANEL_MODE=single
+/ -> /instances/stardew
+```
+
+Future multi-game mode:
+
+```text
+PANEL_MODE=multi
+/ -> global game instance list
+/instances/stardew -> Stardew panel
+/instances/minecraft -> Minecraft panel
+```
+
+Future games should not be added as branches inside Stardew pages. They should be added as their own frontend game module and backend driver:
+
+```text
+frontend/src/games/stardew        + backend/internal/games/stardew_junimo
+frontend/src/games/minecraft      + backend/internal/games/minecraft
+frontend/src/games/dst            + backend/internal/games/dont_starve_together
+frontend/src/games/terraria       + backend/internal/games/terraria
+frontend/src/games/palworld       + backend/internal/games/palworld
+```
 
 ## Repository Layout
 
@@ -102,6 +142,9 @@ Backend configuration:
 | `PANEL_DB_PATH` | `$PANEL_DATA_DIR/panel.db` | SQLite database path, created on startup. |
 | `PANEL_SECRET` | empty | Reserved for future auth/session features. |
 | `PANEL_VERSION` | `dev` | Version string returned by `/health`. |
+| `PANEL_MODE` | `single` | Product display mode. `single` goes directly to the default game panel; `multi` shows the global game list. |
+| `DEFAULT_INSTANCE_ID` | `stardew` | Default instance used in Single Game Mode. |
+| `DEFAULT_DRIVER_ID` | `stardew_junimo` | Driver used by the first default instance. |
 
 Health check:
 
@@ -122,6 +165,33 @@ Example response:
 }
 ```
 
+## Jobs / State API
+
+Jobs and instance state APIs require login. Creating test jobs is admin-only.
+
+Implemented endpoints:
+
+```text
+GET  /api/jobs
+GET  /api/jobs/:id
+GET  /api/jobs/:id/logs?after=0&limit=200
+GET  /api/jobs/:id/stream
+POST /api/jobs/:id/cancel
+POST /api/jobs/test
+POST /api/jobs/test-fail
+GET  /api/instances/stardew/state
+```
+
+Notes:
+
+- `jobs`, `job_logs`, and `instance_state` are persisted in SQLite.
+- Job statuses are `queued`, `running`, `succeeded`, `failed`, and `canceled`.
+- `GET /api/jobs/:id/stream` uses SSE and sends a `finished` event when the job completes.
+- `POST /api/jobs/test` creates a simulated successful job that writes logs for about 5 seconds.
+- `POST /api/jobs/test-fail` creates a simulated failing job and saves the failure message.
+- `POST /api/jobs/:id/cancel` currently returns 501 `not_implemented`.
+- Ordinary users cannot create test jobs.
+
 ## Frontend Development
 
 The frontend lives in `frontend/`.
@@ -139,9 +209,17 @@ npm run build
 npm run preview
 ```
 
-The current frontend is only a basic placeholder for Milestone 0.
+The current frontend includes setup, login, a basic dashboard, user management, Docker status checks, Stardew instance state, a jobs center, job detail, and live job logs.
 
 ## Current Milestone
+
+Milestone 0 includes:
+
+- Go backend skeleton
+- React + TypeScript + Vite frontend skeleton
+- Initial directory structure
+- Basic `/health`
+- Initial documentation
 
 Milestone 1 includes:
 
@@ -152,14 +230,37 @@ Milestone 1 includes:
 - Enhanced `/health` endpoint with version and database status
 - Basic structured logging
 - Unified JSON error responses
-- React + TypeScript + Vite frontend skeleton
-- Initial documentation
 
-Milestone 1 does **not** include:
+Milestone 2 includes:
 
-- Docker / Compose control logic
-- Admin initialization and login
-- Complete SQLite migrations
+- Auth SQLite migrations
+- Setup/admin initialization
+- Argon2id password hashing
+- HttpOnly Cookie sessions
+- Login, logout, and current user APIs
+- admin/user roles
+- admin-only user management
+
+Milestone 3 includes:
+
+- Generic Docker / Compose CLI control layer
+- Structured command results
+- Command timeout and output limits
+- Sensitive output redaction
+- admin-only Docker status APIs
+- Docker status area in the frontend
+
+Milestone 4 includes:
+
+- `jobs`, `job_logs`, and `instance_state` migrations
+- Generic Job Manager
+- Simulated long-running jobs
+- SSE job log stream
+- Stardew single-instance state API
+- Frontend jobs center
+
+Not implemented yet:
+
 - Junimo working directory preparation
 - Steam Auth interaction
 - Server start/stop/restart
@@ -167,7 +268,6 @@ Milestone 1 does **not** include:
 - Save management
 - Mod management
 - Console commands
-- Panel user management
 
 ## Documentation
 
@@ -193,6 +293,10 @@ docs/prototypes/
 All Stardew/Junimo-specific logic should live behind the `games/stardew_junimo` driver.
 
 Do not place save, mod, or console behavior in top-level generic modules. The top-level backend should provide generic infrastructure only: auth, Docker command wrapper, jobs, storage, web API, and game driver registry.
+
+The frontend should follow the same boundary: the global panel owns instance lists, login, users, jobs, and global status; Stardew-specific Steam Guard, invite code, and farm settings belong in the Stardew game module. Future Minecraft RCON, whitelist, OP, and world-management UI should belong in a Minecraft game module.
+
+Milestones 0-4 do not need to be rewritten. Any temporary Stardew single-instance paths should be folded into `instances + driver_id + GameDriver registry` in Milestone 5. Milestone 8 should not force the global panel to be visible yet; it should implement Single Game Mode by routing login directly to the Stardew game module, then enable Multi Game Mode when a second game panel exists.
 
 ## License And Third-Party Notice
 

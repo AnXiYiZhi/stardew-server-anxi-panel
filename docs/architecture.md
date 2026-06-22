@@ -4,9 +4,11 @@
 
 ## Project Goal
 
-`stardew-server-anxi-panel` 的目标是基于 JunimoServer 构建一个 Web 管理面板，让用户通过浏览器完成 Stardew Valley 专用服务器的安装、Steam 认证、启动、状态查看、存档管理、Mod 管理和面板用户管理。
+`stardew-server-anxi-panel` 的近期目标是基于 JunimoServer 构建一个 Stardew Valley 专用服务器 Web 管理面板，让用户通过浏览器完成 Stardew Valley 专用服务器的安装、Steam 认证、启动、状态查看、存档管理、Mod 管理和面板用户管理。
 
-长期目标不是只做一个 Stardew 面板，而是逐步演进成一个通用的游戏开服管理平台：用户在总面板中选择游戏，每个游戏由独立的 driver 接入对应成熟的开源服务端容器。
+长期目标不是把所有游戏塞进同一个 Stardew 页面，而是演进成一个通用的游戏开服总面板：总面板展示所有游戏服务器实例的状态，用户选择某个游戏实例后进入该游戏自己的专属管理面板。每个游戏由独立的后端 `GameDriver` 和前端 game module 接入对应成熟的开源服务端容器。
+
+首个可上线版本应使用 **Single Game Mode**：用户登录后直接进入 Stardew 面板，不显示总面板和游戏列表。代码内部仍按 `instances + driver_id + GameDriver` 设计，等第二个游戏面板开发时再开启 **Multi Game Mode** 并显示总面板。
 
 ## Selected Stack
 
@@ -61,6 +63,147 @@ Panel 镜像内应包含：
 - 必要的系统工具
 
 后端负责在 `/data` 下创建并管理游戏实例目录。
+
+## Product Model: Single Now, Multi Later
+
+本项目的长期结构分为四层：
+
+```text
+Global Panel
+  -> Game Instance List
+  -> Game Panel Frontend Module
+  -> GameDriver
+  -> Game Server Containers
+```
+
+但产品显示策略分两个阶段。
+
+### Single Game Mode
+
+当前上线版本默认使用单游戏直达模式：
+
+```text
+PANEL_MODE=single
+DEFAULT_INSTANCE_ID=stardew
+DEFAULT_DRIVER_ID=stardew_junimo
+```
+
+用户体验：
+
+```text
+打开面板
+  -> 初始化管理员 / 登录
+  -> 直接进入 Stardew 面板
+```
+
+不显示：
+
+- 总面板游戏列表。
+- 选择游戏页面。
+- 多游戏入口。
+
+内部仍创建并使用一条 instance：
+
+```text
+instances
+  id: stardew
+  driver_id: stardew_junimo
+  name: Stardew Valley
+  data_dir: /data/instances/stardew
+```
+
+前端路由可以内部保留：
+
+```text
+/                  single 模式下自动进入 Stardew 面板
+/instances/stardew Stardew 面板
+```
+
+### Multi Game Mode
+
+等开发第二个游戏面板时再开启：
+
+```text
+PANEL_MODE=multi
+```
+
+此时才显示总面板：
+
+```text
+/                    总面板游戏实例列表
+/instances/stardew   Stardew 面板
+/instances/minecraft Minecraft 面板
+```
+
+推荐规则：
+
+```text
+if PANEL_MODE == single and only one instance:
+    登录后直接进入该实例面板
+
+if PANEL_MODE == multi or instances > 1:
+    登录后进入总面板实例列表
+```
+
+### Global Panel
+
+总面板是未来 Multi Game Mode 下显示的页面，负责所有游戏都共用的能力：
+
+- 面板用户、登录、权限。
+- 所有游戏实例列表。
+- 所有游戏实例的运行状态摘要。
+- 全局任务中心和 job logs。
+- 全局 Docker / Compose 健康检查。
+- 全局审计日志、备份记录和基础设置。
+
+示例：
+
+```text
+游戏        实例名      状态      玩家       操作
+Stardew     朋友农场    running   2 / 8      进入面板
+Minecraft   生存服      stopped   0 / 20     进入面板
+DST         洞穴服      running   3 / 6      进入面板
+```
+
+### Game Panel Frontend Module
+
+进入某个游戏实例后，不同游戏可以加载不同的前端页面模块。不要强行让所有游戏共用 Stardew 的页面。
+
+建议前端结构：
+
+```text
+frontend/src/core
+frontend/src/games/stardew
+frontend/src/games/minecraft
+frontend/src/games/dont_starve_together
+frontend/src/games/terraria
+frontend/src/games/palworld
+```
+
+通用页面骨架可以复用，例如概览、任务、日志、启动/停止/重启、备份入口。但游戏专属页面必须允许差异化：
+
+- Stardew: Steam Guard、邀请码、农场设置、小屋、Junimo `attach-cli`。
+- Minecraft: `server.properties`、EULA、RCON、白名单、OP、世界管理、插件/Mod。
+- Don't Starve Together: cluster token、Master/Caves、玩家白名单。
+- Terraria: world 文件、难度、tModLoader。
+- Palworld: `PalWorldSettings.ini`、管理员密码、玩家上限。
+
+### GameDriver
+
+后端 `GameDriver` 与前端 game module 对应。总面板只通过 registry 找到当前实例的 driver，然后调用统一方法。具体命令、文件路径、容器名、配置格式和控制台协议都属于 driver 内部细节。
+
+### Current Scope
+
+当前仓库第一阶段只实现：
+
+```text
+Single Game Mode
+  + Global Panel 基础能力
+  + Stardew game panel 直接显示
+  + games/stardew_junimo driver
+```
+
+首版不要为了未来多游戏而强制用户看到总面板。后续接入 Minecraft、饥荒、泰拉瑞亚、幻兽帕鲁时，应新增对应 `frontend/src/games/<game>` 和 `backend/internal/games/<game>`，并把 `PANEL_MODE` 切到 `multi` 或根据实例数量自动显示总面板。不要把逻辑写进 Stardew 模块，也不要在 API handler 中用大量 `if game == ...` 分支堆业务。
 
 ## Suggested Directory Layout
 
@@ -471,9 +614,9 @@ docker compose run --rm -it steam-auth setup
 
 ## GameDriver Abstraction
 
-为了后续支持多个游戏，Stardew + JunimoServer 不应写死在主业务逻辑里。建议设计 `GameDriver` 抽象。
+为了后续支持多个游戏，Stardew + JunimoServer 不应写死在主业务逻辑里。`GameDriver` 是“总面板调度不同游戏”的后端边界，不是要求所有游戏使用相同页面或相同容器命令。
 
-`GameDriver` 不是让 Panel 重新实现游戏服务端能力，而是定义“面板如何控制某个游戏实例”。具体到 Stardew，`stardew_junimo` driver 应通过 JunimoServer 已暴露的能力工作：Docker Compose、容器 `exec`、`attach-cli`、HTTP status、日志流、挂载目录和配置文件。
+`GameDriver` 不是让 Panel 重新实现游戏服务端能力，而是定义“总面板如何向某个游戏实例下达通用意图”。具体到 Stardew，`stardew_junimo` driver 应通过 JunimoServer 已暴露的能力工作：Docker Compose、容器 `exec`、`attach-cli`、HTTP status、日志流、挂载目录和配置文件。具体到 Minecraft，将来可以通过 Minecraft 镜像、`server.properties`、RCON、白名单文件和世界目录完成同样的面板意图。
 
 示例接口：
 
@@ -503,7 +646,7 @@ type GameDriver interface {
 }
 ```
 
-`stardew_junimo` 是第一个 driver。
+`stardew_junimo` 是第一个 driver，也是当前唯一要做扎实的 driver。
 
 后续可以增加：
 
@@ -517,12 +660,143 @@ type GameDriver interface {
 
 其中存档、Mod、控制台等能力应尽量走该游戏服务端容器已有的通信方式。只有 JunimoServer 没有暴露、或暴露能力不足的地方，Panel 才补充自己的逻辑。
 
+前端也应遵守同样边界：总面板可以复用布局、权限、任务中心和状态卡片，但游戏专属交互应放在对应 game module 中。例如 Stardew 的 Steam Guard 和邀请码不应出现在 Minecraft 面板里；Minecraft 的 RCON、白名单和 OP 管理也不应污染 Stardew 模块。
+
+## Jobs and Instance State Baseline
+
+Milestone 4 已落地通用 jobs/state 基础能力，供后续 Junimo 安装、Steam Auth、服务器启动和日志流复用。
+
+当前持久化模型：
+
+```text
+jobs
+  id
+  type
+  status: queued / running / succeeded / failed / canceled
+  target_type
+  target_id
+  created_by
+  created_at
+  started_at
+  finished_at
+  error_message
+
+job_logs
+  id
+  job_id
+  level: info / warn / error / debug
+  message
+  created_at
+  sequence
+
+instance_state
+  instance_id
+  driver_id
+  state
+  state_message
+  last_job_id
+  updated_at
+  updated_by
+```
+
+当前流式协议选择 SSE：
+
+```text
+GET /api/jobs/:id/stream
+```
+
+事件约定：
+
+```text
+event: log       data: job log line, id = job_logs.sequence
+event: finished  data: final job payload
+event: ping      heartbeat
+```
+
+当前单实例临时入口：
+
+```text
+GET /api/instances/stardew/state
+```
+
+该入口用于 Single Game Mode 的本机联调。Milestone 5 应将它收口到通用 instance API：
+
+```text
+GET /api/instances/:instance_id/state
+```
+
+Job Manager 是通用基础设施，不应包含 Stardew/Junimo 专属业务。真实安装、Steam Auth、启动等流程应由后续 `games/stardew_junimo` driver 创建 job，并通过 job context 写入脱敏日志和更新 instance state。
+
+## Migration Notes After Milestones 0-4
+
+Milestone 0、1、2、3、4 都属于总面板基础设施，已经完成或正在进行的方向不需要推翻重做。
+
+这些能力本来就是所有游戏共享的：
+
+- 项目骨架。
+- 后端配置。
+- SQLite。
+- 用户、登录、权限。
+- Docker / Compose 通用执行层。
+- jobs、job logs、SSE/WebSocket 日志流。
+- instance state 基础能力。
+
+当前 0-4 阶段允许存在一些 Stardew 单实例临时约定，例如：
+
+```text
+$PANEL_DATA_DIR/instances/stardew
+GET /api/instances/stardew/state
+默认 Compose 项目目录指向 stardew
+```
+
+这些临时约定不是最终架构。必须在 Milestone 5 之后逐步收进实例模型和 GameDriver 边界。
+
+推荐补救迁移：
+
+```text
+临时写法:
+GET /api/docker/ps -> $PANEL_DATA_DIR/instances/stardew
+
+目标写法:
+GET /api/instances/:instance_id/docker/ps
+  -> load instance
+  -> find instance.driver_id
+  -> registry.Get(driver_id)
+  -> driver returns compose/project dir or status implementation
+  -> docker layer executes allowlisted operation
+```
+
+状态也要分层：
+
+```text
+通用状态:
+installing
+installed
+starting
+running
+stopped
+error
+
+Stardew 专属状态或阶段:
+steam_auth_running
+steam_guard_required
+steam_auth_failed
+invite_code_ready
+save_required
+```
+
+如果 Milestone 4 已经使用 `steam_auth_running`、`save_required` 等 Stardew 状态，也可以保留，但后续应把它们标记为 driver-specific phase，避免 Minecraft、DST 等游戏被迫继承 Stardew 语义。
+
+结论：0-4 不需要返工；Milestone 5 负责把临时单实例写法收进 `instances + GameDriver registry`，Milestone 8 负责把前端调整成“Single Game Mode 下直达 Stardew game module，Multi Game Mode 下显示总面板”。
+
 ## Frontend Pages
 
 MVP 推荐页面：
 
 - 初始化注册页：首次打开面板时创建管理员账号。
 - 登录页：管理员和普通用户登录。
+- Single Game Mode 入口：登录后直接进入 Stardew 专属面板。
+- Multi Game Mode 总面板：首页展示所有游戏实例的状态摘要、任务概览和入口；首版默认隐藏。
 - 安装向导页：输入 Steam/VNC 信息，展示 pull、install、Steam Guard 的实时状态。
 - 首页/控制台页：启动、停止、重启、邀请码、当前状态、玩家数量。
 - 状态页：服务器运行状态、容器状态、玩家状态、游戏内日期、运行时间。
@@ -595,6 +869,8 @@ audit_logs
 
 ### Phase 3: General Game Panel
 
+- 总面板实例列表。
+- 前端 game module registry。
 - 多游戏 driver 注册机制。
 - 多实例管理。
 - 游戏市场/模板列表。

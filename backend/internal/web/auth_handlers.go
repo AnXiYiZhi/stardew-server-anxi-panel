@@ -100,6 +100,31 @@ func (s *server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
 		return
 	}
+	if _, err := s.store.SetInstanceState(r.Context(), storage.SetInstanceStateParams{
+		InstanceID:   storage.DefaultInstanceID,
+		DriverID:     storage.DefaultDriverID,
+		State:        storage.InstanceStateAdminCreated,
+		StateMessage: "管理员已创建，等待后续 Junimo 准备流程。",
+		UpdatedBy:    user.ID,
+		AllowNoop:    true,
+	}); err != nil {
+		s.logger.Error("failed to update setup instance state", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
+	if err := s.store.CreateAuditLog(r.Context(), storage.AuditLogParams{
+		ActorUserID: &user.ID,
+		Action:      "instance_state_updated",
+		TargetType:  "instance",
+		TargetID:    storage.DefaultInstanceID,
+		Metadata:    `{"state":"admin_created"}`,
+		IPAddress:   remoteIP(r),
+		UserAgent:   userAgent(r),
+	}); err != nil {
+		s.logger.Error("failed to write instance state audit", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
 
 	http.SetCookie(w, auth.SessionCookie(token, expiresAt, isSecureRequest(r)))
 	writeJSON(w, http.StatusOK, userResponse{User: user.Public()})

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/web"
 )
@@ -40,6 +42,17 @@ func main() {
 		logger.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
+	if _, err := store.EnsureDefaultInstanceState(ctx); err != nil {
+		logger.Error("failed to ensure default instance state", "error", err)
+		os.Exit(1)
+	}
+
+	dockerClient := paneldocker.NewClient(paneldocker.Options{Logger: logger})
+	jobManager := jobs.NewManager(store, logger)
+	if err := jobManager.RecoverInterruptedJobs(ctx); err != nil {
+		logger.Error("failed to recover interrupted jobs", "error", err)
+		os.Exit(1)
+	}
 
 	server := &http.Server{
 		Addr: cfg.Addr,
@@ -47,6 +60,8 @@ func main() {
 			Config: cfg,
 			Store:  store,
 			Logger: logger,
+			Docker: dockerClient,
+			Jobs:   jobManager,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

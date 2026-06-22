@@ -1,5 +1,7 @@
 node_modules/
 dist/
 .vite/
+.gocache/
+backend/data/
 *.local
 .DS_Store

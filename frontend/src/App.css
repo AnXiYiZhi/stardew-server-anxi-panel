@@ -37,7 +37,7 @@ select {
 }
 
 .panel-card {
-  width: min(920px, 100%);
+  width: min(1100px, 100%);
   border: 8px solid #673519;
   border-radius: 24px;
   background: #ffd995;
@@ -54,7 +54,8 @@ select {
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
 }
 
@@ -72,6 +73,11 @@ h2 {
   margin: 24px 0;
   font-size: 1.1rem;
   line-height: 1.7;
+}
+
+.summary.compact {
+  margin: 12px 0;
+  font-size: 1rem;
 }
 
 .error-banner {
@@ -116,7 +122,8 @@ h2 {
 .create-user-form input:focus-visible,
 .create-user-form select:focus-visible,
 .user-row select:focus-visible,
-.button:focus-visible {
+.button:focus-visible,
+.job-row:focus-visible {
   outline: 4px solid rgba(63, 143, 61, 0.45);
   outline-offset: 3px;
 }
@@ -204,7 +211,9 @@ h2 {
 }
 
 .status-card,
-.users-section {
+.users-section,
+.docker-section,
+.jobs-section {
   border: 4px solid #673519;
   border-radius: 18px;
   background: #ffe6b6;
@@ -214,6 +223,11 @@ h2 {
 .status-card {
   display: grid;
   gap: 6px;
+}
+
+.instance-state-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 
 .status-card span,
@@ -236,6 +250,156 @@ h2 {
 
 .section-heading p {
   margin: 6px 0 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  justify-content: center;
+  width: fit-content;
+  border: 3px solid #8f5a2d;
+  border-radius: 999px;
+  background: #fff0c7;
+  color: #6f4a2d;
+  padding: 6px 10px;
+  font-weight: 900;
+}
+
+.status-badge.running {
+  border-color: #287da8;
+  background: #d6eef8;
+  color: #165779;
+}
+
+.status-badge.succeeded {
+  border-color: #3f8f3d;
+  background: #d8f2c4;
+  color: #1f5f1e;
+}
+
+.status-badge.failed {
+  border-color: #b54837;
+  background: #ffe0d6;
+  color: #681111;
+}
+
+.status-badge.canceled {
+  border-color: #6f4a2d;
+  background: #e9d2b4;
+  color: #3c2415;
+}
+
+.jobs-section {
+  display: grid;
+  gap: 16px;
+}
+
+.job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.jobs-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr);
+  gap: 14px;
+}
+
+.jobs-list,
+.job-detail {
+  border: 3px solid #8f5a2d;
+  border-radius: 14px;
+  background: #fff0c7;
+  padding: 12px;
+}
+
+.jobs-list {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 120px 150px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 2px solid #8f5a2d;
+  border-radius: 12px;
+  background: #ffe6b6;
+  color: #3c2415;
+  padding: 10px;
+  text-align: left;
+}
+
+button.job-row {
+  cursor: pointer;
+}
+
+.job-row.selected {
+  border-color: #3f8f3d;
+  background: #d8f2c4;
+}
+
+.job-row-head {
+  background: #ffd995;
+  font-weight: 900;
+}
+
+.job-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.job-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.job-detail-head p,
+.job-detail > p {
+  margin: 4px 0;
+  color: #6f4a2d;
+  overflow-wrap: anywhere;
+}
+
+.job-log-window {
+  min-height: 240px;
+  max-height: 360px;
+  overflow: auto;
+  border: 4px solid #673519;
+  border-radius: 14px;
+  background: #2a160d;
+  color: #fff2cc;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.job-log-window p {
+  margin: 0;
+}
+
+.job-log-line {
+  display: grid;
+  grid-template-columns: 42px 58px minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.job-log-line.warn {
+  color: #ffd66b;
+}
+
+.job-log-line.error {
+  color: #ffb39e;
+}
+
+.job-log-line.debug {
+  color: #b7d6ff;
 }
 
 .create-user-form {
@@ -289,6 +453,113 @@ h2 {
   gap: 8px;
 }
 
+.docker-section {
+  display: grid;
+  gap: 18px;
+}
+
+.docker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.docker-error {
+  margin-top: 0;
+}
+
+.docker-status-grid,
+.compose-output-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.docker-status-pill {
+  border: 3px solid #8f5a2d;
+  border-radius: 14px;
+  background: #fff0c7;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.docker-status-pill.ok {
+  border-color: #3f8f3d;
+  background: #d8f2c4;
+}
+
+.docker-status-pill.bad {
+  border-color: #b54837;
+  background: #ffe0d6;
+}
+
+.docker-status-pill span,
+.compose-output p {
+  color: #6f4a2d;
+}
+
+.docker-status-pill strong {
+  font-size: 1.1rem;
+}
+
+.compose-output {
+  border: 3px solid #8f5a2d;
+  border-radius: 14px;
+  background: #fff0c7;
+  padding: 14px;
+}
+
+.compose-output h3 {
+  margin: 0 0 8px;
+}
+
+.compose-output pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border: 3px solid #673519;
+  border-radius: 12px;
+  background: #2a1a12;
+  color: #ffe6b6;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+}
+
+.compose-output pre.stderr-output {
+  border-color: #b54837;
+  color: #ffd1bd;
+}
+
+.compose-table {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.compose-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  border: 2px solid #8f5a2d;
+  border-radius: 12px;
+  background: #ffe6b6;
+  padding: 10px;
+}
+
+.compose-row-head {
+  background: #ffd995;
+  font-weight: 900;
+}
+
+@media (max-width: 920px) {
+  .jobs-layout,
+  .job-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .shell {
     padding: 18px;
@@ -300,7 +571,11 @@ h2 {
 
   .section-heading,
   .create-user-form,
-  .user-row {
+  .user-row,
+  .docker-status-grid,
+  .compose-output-grid,
+  .compose-row,
+  .instance-state-card {
     grid-template-columns: 1fr;
   }
 

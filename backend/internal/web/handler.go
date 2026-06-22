@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -18,12 +21,23 @@ type Deps struct {
 	Config config.Config
 	Store  *storage.Store
 	Logger *slog.Logger
+	Docker DockerService
+	Jobs   *jobs.Manager
+}
+
+type DockerService interface {
+	DockerVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error)
+	ComposeVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error)
+	ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
+	ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
 }
 
 type server struct {
 	config config.Config
 	store  *storage.Store
 	logger *slog.Logger
+	docker DockerService
+	jobs   *jobs.Manager
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -33,10 +47,20 @@ func NewHandler(deps Deps) http.Handler {
 		logger = slog.Default()
 	}
 
+	dockerClient := deps.Docker
+	if dockerClient == nil {
+		dockerClient = paneldocker.NewClient(paneldocker.Options{Logger: logger})
+	}
+
 	s := &server{
 		config: deps.Config,
 		store:  deps.Store,
 		logger: logger,
+		docker: dockerClient,
+		jobs:   deps.Jobs,
+	}
+	if s.jobs == nil {
+		s.jobs = jobs.NewManager(deps.Store, logger)
 	}
 
 	return recoverMiddleware(logger, requestLogMiddleware(logger, s))
@@ -99,9 +123,51 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleMe(w, r)
 	case "/api/users":
 		s.handleUsers(w, r)
+	case "/api/jobs":
+		s.handleJobs(w, r)
+	case "/api/jobs/test":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleTestJob(w, r, false)
+	case "/api/jobs/test-fail":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleTestJob(w, r, true)
+	case "/api/instances/stardew/state":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleStardewState(w, r)
+	case "/api/docker/status":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleDockerStatus(w, r)
+	case "/api/docker/ps":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleDockerPs(w, r)
+	case "/api/docker/logs":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleDockerLogs(w, r)
 	default:
 		if strings.HasPrefix(r.URL.Path, "/api/users/") {
 			s.handleUserByID(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/jobs/") {
+			s.handleJobByID(w, r)
 			return
 		}
 		writeError(w, http.StatusNotFound, "not_found", "resource not found")
@@ -151,6 +217,7 @@ type errorResponse struct {
 type errorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	Details any    `json:"details,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, statusCode int, code string, message string) {
@@ -158,6 +225,16 @@ func writeError(w http.ResponseWriter, statusCode int, code string, message stri
 		Error: errorBody{
 			Code:    code,
 			Message: message,
+		},
+	})
+}
+
+func writeErrorWithDetails(w http.ResponseWriter, statusCode int, code string, message string, details any) {
+	writeJSON(w, statusCode, errorResponse{
+		Error: errorBody{
+			Code:    code,
+			Message: message,
+			Details: details,
 		},
 	})
 }
