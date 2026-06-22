@@ -27,8 +27,13 @@ This license applies to the stardew-server-anxi-panel project itself.
 
 This project directly pulls and runs JunimoServer container images to provide
 Stardew Valley dedicated server functionality. JunimoServer is an independent
-third-party project and, according to its upstream notice, its project code is
-licensed under the MIT License.
+third-party project. Its upstream repository is:
+
+https://github.com/stardew-valley-dedicated-server/server
+
+Its upstream license is the MIT License:
+
+https://github.com/stardew-valley-dedicated-server/server/blob/master/LICENSE
 
 The JunimoServer container images, their bundled components, and their
 dependencies remain governed by the upstream project and their respective

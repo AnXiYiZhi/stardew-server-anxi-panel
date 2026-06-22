@@ -203,7 +203,7 @@ docs/prototypes/
 
 本项目以 MIT License 发布，详见 [LICENSE](LICENSE)。
 
-本项目会直接拉取并运行 JunimoServer 容器镜像来提供 Stardew Valley 专用服务器能力。JunimoServer 是独立的第三方项目，据上游声明其项目代码采用 MIT License；JunimoServer 容器镜像、镜像内组件及其依赖仍由上游项目及对应第三方许可约束。本仓库不声称拥有 JunimoServer、Stardew Valley、Steam 或相关商标、游戏内容、素材和服务的所有权。
+本项目会直接拉取并运行 JunimoServer 容器镜像来提供 Stardew Valley 专用服务器能力。JunimoServer 是独立的第三方项目，其上游仓库为 [stardew-valley-dedicated-server/server](https://github.com/stardew-valley-dedicated-server/server)，上游许可证为 [MIT License](https://github.com/stardew-valley-dedicated-server/server/blob/master/LICENSE)。JunimoServer 容器镜像、镜像内组件及其依赖仍由上游项目及对应第三方许可约束。本仓库不声称拥有 JunimoServer、Stardew Valley、Steam 或相关商标、游戏内容、素材和服务的所有权。
 
 使用者需要自行确认自己拥有运行 Stardew Valley 服务器所需的合法授权，并遵守 JunimoServer、Stardew Valley、Steam 以及相关第三方组件的许可、服务条款和使用规则。
 
@@ -400,6 +400,6 @@ Do not place save, mod, or console behavior in top-level generic modules. The to
 
 This project is released under the MIT License. See [LICENSE](LICENSE).
 
-This project directly pulls and runs JunimoServer container images to provide Stardew Valley dedicated server functionality. JunimoServer is an independent third-party project and, according to its upstream notice, its project code is licensed under the MIT License. The JunimoServer container images, their bundled components, and their dependencies remain governed by the upstream project and their respective third-party licenses. This repository does not claim ownership of JunimoServer, Stardew Valley, Steam, or any related trademarks, game content, assets, or services.
+This project directly pulls and runs JunimoServer container images to provide Stardew Valley dedicated server functionality. JunimoServer is an independent third-party project. Its upstream repository is [stardew-valley-dedicated-server/server](https://github.com/stardew-valley-dedicated-server/server), and its upstream license is the [MIT License](https://github.com/stardew-valley-dedicated-server/server/blob/master/LICENSE). The JunimoServer container images, their bundled components, and their dependencies remain governed by the upstream project and their respective third-party licenses. This repository does not claim ownership of JunimoServer, Stardew Valley, Steam, or any related trademarks, game content, assets, or services.
 
 Users are responsible for ensuring that they have the legal authorization required to run a Stardew Valley server and for complying with the licenses, terms of service, and usage rules of JunimoServer, Stardew Valley, Steam, and all related third-party components.
