@@ -1,0 +1,1 @@
+package stardew_junimo

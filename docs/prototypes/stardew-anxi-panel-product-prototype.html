@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stardew Anxi Panel Product Prototype</title>
+  <style>
+    :root {
+      --soil: #3a2116;
+      --soil-2: #5c3520;
+      --wood: #86522d;
+      --wood-hi: #b36a35;
+      --paper: #f5d99a;
+      --paper-2: #f0c976;
+      --leaf: #39784b;
+      --leaf-hi: #58a95d;
+      --barn: #a64232;
+      --sky: #72b8d6;
+      --river: #3f86a8;
+      --gold: #e9a93d;
+      --ink: #2d190f;
+      --muted: #7d593a;
+      --night: #22150f;
+      --cream: #fff1bd;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      width: 1800px;
+      min-height: 2440px;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px) 0 0 / 18px 18px,
+        linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px) 0 0 / 18px 18px,
+        linear-gradient(180deg, #214b39 0%, #2c6344 28%, #926a36 28%, #926a36 31%, #315c38 31%, #315c38 100%);
+      color: var(--ink);
+      font-family: "Trebuchet MS", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    .poster {
+      padding: 42px;
+    }
+
+    .titlebar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 28px;
+      align-items: center;
+      padding: 24px 28px;
+      border: 8px solid var(--soil);
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.08), transparent 40%),
+        repeating-linear-gradient(90deg, var(--wood), var(--wood) 28px, var(--wood-hi) 28px, var(--wood-hi) 32px);
+      box-shadow: 0 10px 0 rgba(0,0,0,.24), inset 0 0 0 4px rgba(255,225,150,.28);
+      color: var(--cream);
+    }
+
+    .titlebar h1 {
+      margin: 0;
+      font-size: 40px;
+      line-height: 1.15;
+      text-shadow: 3px 3px 0 var(--soil);
+    }
+
+    .titlebar p {
+      margin: 8px 0 0;
+      font-size: 18px;
+      color: #ffe6a6;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(4, auto);
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 4px solid var(--soil);
+      background: rgba(255, 238, 178, .92);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      display: inline-block;
+      border: 3px solid var(--soil);
+      margin-right: 5px;
+      vertical-align: -2px;
+    }
+
+    .ok { background: var(--leaf-hi); }
+    .warn { background: var(--gold); }
+    .bad { background: var(--barn); }
+    .info { background: var(--river); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 34px;
+      margin-top: 34px;
+    }
+
+    .screen {
+      border: 8px solid var(--soil);
+      background: var(--wood);
+      box-shadow: 0 10px 0 rgba(0,0,0,.2);
+      min-height: 520px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .screen.wide {
+      grid-column: 1 / -1;
+      min-height: 560px;
+    }
+
+    .screen-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      border-bottom: 6px solid var(--soil);
+      background: repeating-linear-gradient(90deg, #7d4827, #7d4827 22px, #9d5c31 22px, #9d5c31 26px);
+      color: var(--cream);
+    }
+
+    .screen-head h2 {
+      margin: 0;
+      font-size: 22px;
+      text-shadow: 2px 2px 0 var(--soil);
+    }
+
+    .screen-head .tag {
+      border: 3px solid var(--soil);
+      background: var(--paper);
+      color: var(--ink);
+      padding: 6px 9px;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      min-height: 460px;
+      background: #6c944d;
+    }
+
+    .nav {
+      padding: 14px 10px;
+      border-right: 6px solid var(--soil);
+      background:
+        linear-gradient(rgba(255,255,255,.05), transparent),
+        repeating-linear-gradient(0deg, #51311f, #51311f 18px, #5f3a25 18px, #5f3a25 22px);
+      color: var(--cream);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      margin-bottom: 12px;
+      border: 3px solid #26140d;
+      background: #754526;
+      font-weight: 900;
+      font-size: 13px;
+      line-height: 1.15;
+    }
+
+    .sap-mark {
+      width: 34px;
+      height: 34px;
+      border: 3px solid var(--soil);
+      background:
+        linear-gradient(90deg, #3f7f4f 0 50%, #e6b044 50% 100%);
+      display: grid;
+      place-items: center;
+      color: var(--cream);
+      text-shadow: 1px 1px 0 var(--soil);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      margin: 7px 0;
+      padding: 7px 8px;
+      border: 3px solid transparent;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .nav-item.active {
+      border-color: var(--soil);
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    .ico {
+      width: 18px;
+      height: 18px;
+      border: 3px solid var(--soil);
+      background: var(--gold);
+      flex: 0 0 auto;
+    }
+
+    .ico.leaf { background: var(--leaf-hi); }
+    .ico.blue { background: var(--sky); }
+    .ico.red { background: var(--barn); }
+    .ico.dark { background: var(--night); }
+
+    .content {
+      padding: 18px;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(255,239,174,.38) 0 9%, transparent 10%),
+        linear-gradient(180deg, #7dad59 0%, #6e9e4d 100%);
+    }
+
+    .content.paper {
+      background: var(--paper-2);
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .step {
+      min-height: 64px;
+      border: 4px solid var(--soil);
+      background: var(--paper);
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 900;
+      position: relative;
+    }
+
+    .step small {
+      display: block;
+      color: var(--muted);
+      margin-top: 3px;
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .step.done { background: #bfde8e; }
+    .step.current { background: #ffe29a; box-shadow: inset 0 0 0 4px rgba(255,255,255,.35); }
+    .step.blocked { background: #e9a28d; }
+
+    .cols {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 14px;
+    }
+
+    .cols.three {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .panel {
+      border: 5px solid var(--soil);
+      background: var(--paper);
+      padding: 13px;
+      box-shadow: inset 0 0 0 3px rgba(255,255,255,.28);
+    }
+
+    .panel.dark {
+      background: var(--night);
+      color: #ffd884;
+      box-shadow: inset 0 0 0 3px rgba(255,216,132,.12);
+    }
+
+    .panel h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      color: var(--soil);
+    }
+
+    .panel.dark h3 { color: #ffe2a1; }
+
+    .muted { color: var(--muted); }
+    .panel.dark .muted { color: #d6a666; }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      border-bottom: 2px solid rgba(78,44,25,.24);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .row:last-child { border-bottom: 0; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      border: 3px solid var(--soil);
+      padding: 2px 7px;
+      background: var(--cream);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .badge.green { background: #b8db75; }
+    .badge.red { background: #e48370; }
+    .badge.blue { background: #8dd0e4; }
+    .badge.gold { background: #ffd266; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      border: 4px solid var(--soil);
+      background: var(--gold);
+      box-shadow: 0 4px 0 rgba(0,0,0,.28);
+      min-height: 34px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 1000;
+      color: var(--ink);
+    }
+
+    .btn.primary { background: #73b85c; }
+    .btn.danger { background: #d95c47; color: #fff4bf; }
+    .btn.secondary { background: #86c7d9; }
+    .btn.ghost { background: #ffe7ac; }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px;
+    }
+
+    .field {
+      border: 3px solid var(--soil);
+      background: #fff1bd;
+      padding: 8px;
+      min-height: 52px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .field b {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .qr {
+      width: 128px;
+      height: 128px;
+      border: 6px solid var(--soil);
+      background:
+        linear-gradient(90deg, #111 10px, transparent 10px 18px, #111 18px 28px, transparent 28px 36px) 0 0 / 36px 36px,
+        linear-gradient(#111 10px, transparent 10px 18px, #111 18px 28px, transparent 28px 36px) 0 0 / 36px 36px,
+        #fff8d9;
+      image-rendering: pixelated;
+      margin: 0 auto 10px;
+    }
+
+    .farm-map {
+      height: 154px;
+      border: 5px solid var(--soil);
+      background:
+        linear-gradient(90deg, transparent 0 42%, var(--river) 42% 50%, transparent 50% 100%),
+        repeating-linear-gradient(0deg, rgba(98,66,30,.22), rgba(98,66,30,.22) 12px, transparent 12px, transparent 24px),
+        #8fbd5f;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .farm-map::before,
+    .farm-map::after {
+      content: "";
+      position: absolute;
+      border: 4px solid var(--soil);
+      background: #b54e31;
+    }
+
+    .farm-map::before { width: 54px; height: 38px; left: 34px; top: 34px; }
+    .farm-map::after { width: 44px; height: 34px; right: 36px; bottom: 30px; background: #d4a24a; }
+
+    .slots {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .slot {
+      min-height: 42px;
+      border: 4px solid var(--soil);
+      background: #f8c678;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .stat-card {
+      border: 5px solid var(--soil);
+      background: var(--paper);
+      padding: 12px;
+      min-height: 92px;
+    }
+
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .stat-card .value {
+      margin-top: 5px;
+      font-size: 22px;
+      font-weight: 1000;
+      color: var(--soil);
+      overflow-wrap: anywhere;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-weight: 800;
+      background: #ffe7a9;
+      border: 4px solid var(--soil);
+    }
+
+    th, td {
+      border: 3px solid rgba(58,33,22,.45);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #c98743;
+      color: #fff4c5;
+      text-shadow: 1px 1px 0 var(--soil);
+    }
+
+    .log {
+      height: 180px;
+      overflow: hidden;
+      border: 4px solid #0e0906;
+      background: #1d120d;
+      color: #ffd36a;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 8px;
+    }
+
+    .time-item {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      border: 3px solid var(--soil);
+      background: #ffe6a8;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .lamp {
+      width: 20px;
+      height: 20px;
+      border: 4px solid var(--soil);
+      background: var(--gold);
+    }
+
+    .lamp.ok { background: var(--leaf-hi); }
+    .lamp.bad { background: var(--barn); }
+    .lamp.info { background: var(--sky); }
+
+    .tabs {
+      display: flex;
+      gap: 7px;
+      margin-bottom: 10px;
+    }
+
+    .tab {
+      border: 4px solid var(--soil);
+      background: #d29a4d;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 1000;
+    }
+
+    .tab.active { background: var(--paper); }
+
+    .mini-title {
+      font-size: 13px;
+      font-weight: 1000;
+      color: var(--soil);
+      margin: 0 0 8px;
+    }
+
+    .split-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="poster">
+    <header class="titlebar">
+      <div>
+        <h1>Stardew Anxi Panel 产品流程原型</h1>
+        <p>用户拉取面板镜像后，从管理员初始化到安装、Steam 认证、选存档启动、日常管理的完整路径。</p>
+      </div>
+      <div class="legend">
+        <span><i class="dot ok"></i>完成</span>
+        <span><i class="dot warn"></i>等待用户</span>
+        <span><i class="dot bad"></i>失败重试</span>
+        <span><i class="dot info"></i>后台执行</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="screen wide">
+        <div class="screen-head">
+          <h2>01 首次打开面板：自动准备 Junimo + 管理员初始化</h2>
+          <span class="tag">docker run 面板镜像后进入的第一屏</span>
+        </div>
+        <div class="app">
+          <aside class="nav">
+            <div class="brand"><span class="sap-mark">SAP</span><span>首次<br />设置</span></div>
+            <div class="nav-item active"><i class="ico leaf"></i>初始化</div>
+            <div class="nav-item"><i class="ico blue"></i>登录</div>
+            <div class="nav-item"><i class="ico"></i>主界面</div>
+            <div class="nav-item"><i class="ico red"></i>安装</div>
+            <div class="nav-item"><i class="ico dark"></i>日志</div>
+          </aside>
+          <div class="content">
+            <div class="steps">
+              <div class="step done">1 面板容器启动<small>开放 8090 端口</small></div>
+              <div class="step done">2 创建实例目录<small>/data/instances/stardew</small></div>
+              <div class="step done">3 下载 Junimo 配置<small>compose + .env</small></div>
+              <div class="step current">4 创建管理员<small>账号 + 密码</small></div>
+              <div class="step">5 登录主界面<small>HttpOnly Session</small></div>
+              <div class="step">6 等待安装<small>显示安装游戏按钮</small></div>
+            </div>
+            <div class="cols">
+              <div class="panel">
+                <h3>后台自动执行</h3>
+                <div class="row"><span>Junimo 工作目录</span><span class="badge green">已创建</span></div>
+                <div class="row"><span>docker-compose.yml</span><span class="badge green">已下载</span></div>
+                <div class="row"><span>.env</span><span class="badge green">已生成</span></div>
+                <div class="row"><span>当前状态</span><span class="badge gold">uninitialized</span></div>
+                <div class="actions">
+                  <button class="btn ghost">查看初始化日志</button>
+                  <button class="btn secondary">重新检查 Docker</button>
+                </div>
+              </div>
+              <div class="panel">
+                <h3>管理员初始化注册</h3>
+                <div class="input-grid">
+                  <div class="field"><b>管理员账号</b>owner</div>
+                  <div class="field"><b>管理员密码</b>输入并确认</div>
+                  <div class="field"><b>角色</b>管理员</div>
+                  <div class="field"><b>下一步</b>进入主界面</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">创建管理员</button>
+                  <button class="btn ghost">稍后登录</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen">
+        <div class="screen-head">
+          <h2>02 主界面：安装游戏按钮 + 启动按钮置灰</h2>
+          <span class="tag">admin_created / junimo_scaffolded</span>
+        </div>
+        <div class="app">
+          <aside class="nav">
+            <div class="brand"><span class="sap-mark">SAP</span><span>农场<br />面板</span></div>
+            <div class="nav-item active"><i class="ico blue"></i>主页</div>
+            <div class="nav-item"><i class="ico leaf"></i>状态</div>
+            <div class="nav-item"><i class="ico"></i>存档</div>
+            <div class="nav-item"><i class="ico red"></i>Mod</div>
+            <div class="nav-item"><i class="ico dark"></i>用户</div>
+          </aside>
+          <div class="content">
+            <div class="cards">
+              <div class="stat-card"><div class="label">安装状态</div><div class="value">未安装</div></div>
+              <div class="stat-card"><div class="label">启动按钮</div><div class="value">不可用</div></div>
+              <div class="stat-card"><div class="label">Junimo 配置</div><div class="value">已准备</div></div>
+              <div class="stat-card"><div class="label">下一步</div><div class="value">安装游戏</div></div>
+            </div>
+            <div class="cols">
+              <div class="panel">
+                <h3>主页操作</h3>
+                <div class="row"><span>安装游戏</span><span class="badge blue">可点击</span></div>
+                <div class="row"><span>启动服务器</span><span class="badge gold">请先安装游戏</span></div>
+                <div class="row"><span>存档选择</span><span class="badge gold">安装后出现</span></div>
+                <div class="actions">
+                  <button class="btn primary">安装游戏</button>
+                  <button class="btn ghost">启动服务器</button>
+                  <button class="btn secondary">查看环境</button>
+                </div>
+              </div>
+              <div class="panel">
+                <h3>安装弹窗输入项</h3>
+                <div class="input-grid">
+                  <div class="field"><b>Steam 账号</b>前端输入</div>
+                  <div class="field"><b>Steam 密码</b>前端输入</div>
+                  <div class="field"><b>VNC 密码</b>前端输入</div>
+                  <div class="field"><b>确认后</b>写入 .env</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">确认安装</button>
+                  <button class="btn ghost">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen">
+        <div class="screen-head">
+          <h2>03 安装流程：写入 .env、拉镜像、Steam Auth 循环</h2>
+          <span class="tag">credentials_required → steam_auth_running → game_installed</span>
+        </div>
+        <div class="app">
+          <aside class="nav">
+            <div class="brand"><span class="sap-mark">SAP</span><span>安装<br />任务</span></div>
+            <div class="nav-item"><i class="ico blue"></i>输入</div>
+            <div class="nav-item active"><i class="ico leaf"></i>认证</div>
+            <div class="nav-item"><i class="ico"></i>镜像</div>
+            <div class="nav-item"><i class="ico red"></i>错误</div>
+            <div class="nav-item"><i class="ico dark"></i>日志</div>
+          </aside>
+          <div class="content paper">
+            <div class="cols">
+              <div class="panel">
+                <h3>后台命令顺序</h3>
+                <div class="timeline">
+                  <div class="time-item"><i class="lamp ok"></i><span>写入 STEAM_USERNAME / PASSWORD / VNC_PASSWORD</span><b>.env</b></div>
+                  <div class="time-item"><i class="lamp info"></i><span>docker compose pull</span><b>拉镜像</b></div>
+                  <div class="time-item"><i class="lamp info"></i><span>docker compose run --rm -it steam-auth setup</span><b>PTY</b></div>
+                  <div class="time-item"><i class="lamp bad"></i><span>密码错误时回到输入弹窗</span><b>重试</b></div>
+                </div>
+                <div class="actions">
+                  <button class="btn secondary">查看安装日志</button>
+                  <button class="btn danger">修改密码重试</button>
+                </div>
+              </div>
+              <div class="panel">
+                <h3>Steam Guard 前端交互</h3>
+                <div class="qr"></div>
+                <div class="row"><span>二维码</span><span class="badge blue">完整展示</span></div>
+                <div class="row"><span>邮箱验证码</span><span class="badge gold">输入后写入 PTY</span></div>
+                <div class="row"><span>手机确认</span><span class="badge gold">等待用户确认</span></div>
+                <div class="actions">
+                  <button class="btn primary">提交验证码</button>
+                  <button class="btn ghost">重新获取提示</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen">
+        <div class="screen-head">
+          <h2>04 启动服务器：点击启动后先选择存档</h2>
+          <span class="tag">game_installed → save_required → running</span>
+        </div>
+        <div class="app">
+          <aside class="nav">
+            <div class="brand"><span class="sap-mark">SAP</span><span>启动<br />服务器</span></div>
+            <div class="nav-item"><i class="ico blue"></i>主页</div>
+            <div class="nav-item active"><i class="ico"></i>存档</div>
+            <div class="nav-item"><i class="ico leaf"></i>启动</div>
+            <div class="nav-item"><i class="ico red"></i>邀请码</div>
+          </aside>
+          <div class="content">
+            <div class="tabs">
+              <div class="tab active">上传存档</div>
+              <div class="tab">读取已有</div>
+              <div class="tab">新建存档</div>
+            </div>
+            <div class="cols">
+              <div class="panel">
+                <h3>启动弹窗</h3>
+                <div class="input-grid">
+                  <div class="field"><b>上传存档</b>zip / folder</div>
+                  <div class="field"><b>已有存档</b>读取挂载目录</div>
+                  <div class="field"><b>新建存档</b>Junimo 首次创建</div>
+                  <div class="field"><b>确认后</b>执行 compose up</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">确认并启动</button>
+                  <button class="btn ghost">返回主页</button>
+                </div>
+              </div>
+              <div class="panel">
+                <h3>启动后自动取邀请码</h3>
+                <div class="timeline">
+                  <div class="time-item"><i class="lamp info"></i><span>docker compose up -d</span><b>启动</b></div>
+                  <div class="time-item"><i class="lamp info"></i><span>docker compose exec server attach-cli</span><b>连接</b></div>
+                  <div class="time-item"><i class="lamp ok"></i><span>发送 invitecode / info</span><b>读取</b></div>
+                  <div class="time-item"><i class="lamp ok"></i><span>邀请码展示到主页</span><b>FARM-82</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen">
+        <div class="screen-head">
+          <h2>05 状态页：运行状态、用户状态、指令、喊话</h2>
+          <span class="tag">running 状态下的日常控制台</span>
+        </div>
+        <div class="app">
+          <aside class="nav">
+            <div class="brand"><span class="sap-mark">SAP</span><span>状态<br />控制</span></div>
+            <div class="nav-item active"><i class="ico blue"></i>状态</div>
+            <div class="nav-item"><i class="ico leaf"></i>玩家</div>
+            <div class="nav-item"><i class="ico"></i>指令</div>
+            <div class="nav-item"><i class="ico red"></i>喊话</div>
+          </aside>
+          <div class="content paper">
+            <div class="cards">
+              <div class="stat-card"><div class="label">服务器</div><div class="value">运行中</div></div>
+              <div class="stat-card"><div class="label">玩家</div><div class="value">2 / 8</div></div>
+              <div class="stat-card"><div class="label">邀请码</div><div class="value">FARM-82</div></div>
+              <div class="stat-card"><div class="label">渲染</div><div class="value">30 FPS</div></div>
+            </div>
+            <div class="cols">
+              <div class="panel">
+                <h3>服务器指令</h3>
+                <table>
+                  <thead><tr><th>按钮</th><th>发送到 Junimo</th><th>权限</th></tr></thead>
+                  <tbody>
+                    <tr><td>服务器信息</td><td>info</td><td>用户</td></tr>
+                    <tr><td>邀请码</td><td>invitecode</td><td>用户</td></tr>
+                    <tr><td>设置校验</td><td>settings validate</td><td>管理员</td></tr>
+                  </tbody>
+                </table>
+                <div class="actions"><button class="btn secondary">执行指令</button><button class="btn primary">发送喊话</button></div>
+              </div>
+              <div class="panel dark">
+                <h3>实时日志流</h3>
+                <div class="log">[12:10] server running.
+[12:11] attach-cli connected.
+[12:12] invitecode FARM-82.
+[12:13] Player Lin joined.
+[12:14] say 今晚八点集合下矿.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen wide">
+        <div class="screen-head">
+          <h2>06 管理页：存档、Mod、面板用户</h2>
+          <span class="tag">通过 Junimo 容器通信完成，不暴露任意 shell</span>
+        </div>
+        <div class="app">
+          <aside class="nav">
+            <div class="brand"><span class="sap-mark">SAP</span><span>管理<br />背包</span></div>
+            <div class="nav-item active"><i class="ico"></i>存档</div>
+            <div class="nav-item"><i class="ico red"></i>Mod</div>
+            <div class="nav-item"><i class="ico leaf"></i>用户</div>
+            <div class="nav-item"><i class="ico dark"></i>审计</div>
+          </aside>
+          <div class="content">
+            <div class="split-list">
+              <div class="panel">
+                <h3>存档 / Mod 管理</h3>
+                <table>
+                  <thead><tr><th>页面</th><th>能力</th><th>通信方式</th></tr></thead>
+                  <tbody>
+                    <tr><td>存档</td><td>上传 / 切换 / 删除</td><td>挂载目录 + saves CLI</td></tr>
+                    <tr><td>备份</td><td>导出当前存档</td><td>面板文件系统</td></tr>
+                    <tr><td>Mod</td><td>上传 / 删除 / 导出</td><td>挂载目录</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="panel">
+                <h3>面板控制权</h3>
+                <table>
+                  <thead><tr><th>用户</th><th>角色</th><th>权限</th></tr></thead>
+                  <tbody>
+                    <tr><td>owner</td><td>管理员</td><td>全部功能</td></tr>
+                    <tr><td>helper</td><td>普通用户</td><td>状态 / 邀请码</td></tr>
+                    <tr><td>maintainer</td><td>维护者</td><td>存档 / Mod</td></tr>
+                  </tbody>
+                </table>
+                <div class="actions"><button class="btn primary">新增用户</button><button class="btn ghost">查看审计日志</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
