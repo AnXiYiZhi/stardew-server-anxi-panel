@@ -4,7 +4,7 @@
 
 The goal is to let users run one Docker image, open a browser, initialize an admin account, install the Stardew server, complete Steam authentication, choose a save, start the server, view the invite code, monitor status, manage saves and mods, send server commands, and manage panel users.
 
-> Current status: **Milestone 0: Repo Skeleton**. The repository currently contains the basic backend/frontend skeleton and a backend health check. Docker control, user auth, Junimo installation, Steam Auth, saves, mods, and console features are planned but not implemented yet.
+> Current status: **Milestone 1: Backend Foundation**. The backend now includes configuration loading, SQLite initialization with a minimal migration runner, enhanced health checks, basic structured logging, and unified JSON error responses. Docker control, user auth, Junimo installation, Steam Auth, saves, mods, and console features are planned but not implemented yet.
 
 ## GitHub Description
 
@@ -97,6 +97,16 @@ Override with:
 PANEL_ADDR=:8091 go run ./cmd/panel
 ```
 
+Backend configuration:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PANEL_ADDR` | `:8090` | HTTP listen address. |
+| `PANEL_DATA_DIR` | `/data` | Panel data directory, created on startup. |
+| `PANEL_DB_PATH` | `$PANEL_DATA_DIR/panel.db` | SQLite database path, created on startup. |
+| `PANEL_SECRET` | empty | Reserved for future auth/session features. |
+| `PANEL_VERSION` | `dev` | Version string returned by `/health`. |
+
 Health check:
 
 ```text
@@ -108,7 +118,11 @@ Example response:
 ```json
 {
   "status": "ok",
-  "service": "stardew-anxi-panel"
+  "service": "stardew-anxi-panel",
+  "version": "dev",
+  "database": {
+    "status": "ok"
+  }
 }
 ```
 
@@ -133,14 +147,19 @@ The current frontend is only a basic placeholder for Milestone 0.
 
 ## Current Milestone
 
-Milestone 0 includes:
+Milestone 1 includes:
 
-- Go backend skeleton
-- `/health` endpoint
+- Go backend skeleton from Milestone 0
+- Environment-based backend configuration
+- SQLite database creation and connection
+- Minimal embedded migration runner
+- Enhanced `/health` endpoint with version and database status
+- Basic structured logging
+- Unified JSON error responses
 - React + TypeScript + Vite frontend skeleton
 - Initial documentation
 
-Milestone 0 does **not** include:
+Milestone 1 does **not** include:
 
 - Docker / Compose control logic
 - Admin initialization and login

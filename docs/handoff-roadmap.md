@@ -382,9 +382,19 @@ frontend
 - 后端 `/health` 返回健康状态。
 - README 或开发说明里写明本地启动方式。
 
-## Milestone 1: Backend Foundation
+## Milestone 1: Backend Foundation ✅ 已完成（2026-06-22）
 
 目标：搭好 Go 后端的基础能力。
+
+已完成：
+
+- HTTP API server 保持标准库 `net/http`，并保留清晰 web 层入口。
+- 已新增环境变量配置加载：`PANEL_ADDR`、`PANEL_DATA_DIR`、`PANEL_DB_PATH`、`PANEL_SECRET`、`PANEL_VERSION`。
+- 已使用标准库 `log/slog` 输出基础结构化日志。
+- 已实现统一 JSON 错误响应。
+- 已使用 `database/sql` + `modernc.org/sqlite` 连接 SQLite。
+- 已实现嵌入式 SQL 最小迁移机制。
+- 已预留静态文件服务边界，当前未接入前端构建产物。
 
 要做什么：
 
