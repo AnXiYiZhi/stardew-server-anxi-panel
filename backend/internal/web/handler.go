@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
@@ -42,6 +43,23 @@ func NewHandler(deps Deps) http.Handler {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.isSetupAllowed(r) {
+		initialized, err := s.store.AdminExists(r.Context())
+		if err != nil {
+			s.logger.Error("failed to check setup status", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			return
+		}
+		if !initialized {
+			writeError(w, http.StatusServiceUnavailable, "setup_required", "setup is required before using the panel")
+			return
+		}
+	}
+
+	s.route(w, r)
+}
+
+func (s *server) route(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/health":
 		if r.Method != http.MethodGet {
@@ -49,9 +67,49 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleHealth(w, r)
+	case "/api/setup/status":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSetupStatus(w, r)
+	case "/api/setup/admin":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSetupAdmin(w, r)
+	case "/api/auth/login":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleLogin(w, r)
+	case "/api/auth/logout":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleLogout(w, r)
+	case "/api/auth/me":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleMe(w, r)
+	case "/api/users":
+		s.handleUsers(w, r)
 	default:
+		if strings.HasPrefix(r.URL.Path, "/api/users/") {
+			s.handleUserByID(w, r)
+			return
+		}
 		writeError(w, http.StatusNotFound, "not_found", "resource not found")
 	}
+}
+
+func (s *server) isSetupAllowed(r *http.Request) bool {
+	return r.URL.Path == "/health" || r.URL.Path == "/api/setup/status" || r.URL.Path == "/api/setup/admin"
 }
 
 type healthResponse struct {

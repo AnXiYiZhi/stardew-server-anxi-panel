@@ -6,7 +6,7 @@
 
 目标是让用户只需要运行一个 Anxi Panel Docker 镜像，打开浏览器，初始化管理员账号，安装 Stardew 服务器，完成 Steam 认证，选择存档，启动服务器，查看邀请码，监控状态，管理存档和 Mod，发送服务器命令，并管理面板用户。
 
-> 当前状态：**Milestone 1: Backend Foundation**。后端已包含配置加载、SQLite 初始化、最小迁移运行器、增强健康检查、基础结构化日志和统一 JSON 错误响应。Docker 控制、用户认证、Junimo 安装、Steam Auth、存档、Mod 和控制台功能仍在计划中，尚未实现。
+> 当前状态：**Milestone 2: Storage and Auth**。后端已包含配置加载、SQLite 初始化、嵌入式迁移运行器、增强健康检查、基础结构化日志、统一 JSON 错误响应、管理员初始化、Argon2id 密码哈希、HttpOnly Cookie session、登录/登出、当前用户接口、admin/user 角色和管理员用户管理。前端已支持初始化页、登录页和基础主界面。Docker 控制、Junimo 安装、Steam Auth、存档、Mod 和控制台功能仍在计划中，尚未实现。
 
 ## GitHub 描述
 
@@ -93,15 +93,21 @@ go run ./cmd/panel
 PANEL_ADDR=:8091 go run ./cmd/panel
 ```
 
+本地开发建议显式指定 data 目录，避免写入系统 `/data`：
+
+```bash
+PANEL_DATA_DIR=./data PANEL_DB_PATH=./data/panel.db go run ./cmd/panel
+```
+
 后端配置：
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `PANEL_ADDR` | `:8090` | HTTP listen address. |
-| `PANEL_DATA_DIR` | `/data` | Panel data directory, created on startup. |
-| `PANEL_DB_PATH` | `$PANEL_DATA_DIR/panel.db` | SQLite database path, created on startup. |
-| `PANEL_SECRET` | empty | Reserved for future auth/session features. |
-| `PANEL_VERSION` | `dev` | Version string returned by `/health`. |
+| `PANEL_ADDR` | `:8090` | HTTP 监听地址。 |
+| `PANEL_DATA_DIR` | `/data` | 面板数据目录，启动时自动创建。 |
+| `PANEL_DB_PATH` | `$PANEL_DATA_DIR/panel.db` | SQLite 数据库路径，启动时自动创建。 |
+| `PANEL_SECRET` | empty | Session token hash secret。本地开发可为空；生产环境必须设置为足够随机的长 secret。 |
+| `PANEL_VERSION` | `dev` | `/health` 返回的版本字符串。 |
 
 健康检查：
 
@@ -122,6 +128,44 @@ GET /health
 }
 ```
 
+## Auth API
+
+所有错误响应使用统一 JSON 结构：
+
+```json
+{
+  "error": {
+    "code": "invalid_credentials",
+    "message": "invalid username or password"
+  }
+}
+```
+
+已实现接口：
+
+```text
+GET    /api/setup/status
+POST   /api/setup/admin
+POST   /api/auth/login
+POST   /api/auth/logout
+GET    /api/auth/me
+GET    /api/users
+POST   /api/users
+PATCH  /api/users/:id
+DELETE /api/users/:id
+```
+
+说明：
+
+- 无 active admin 时，只允许访问 `GET /health`、`GET /api/setup/status`、`POST /api/setup/admin`。
+- `POST /api/setup/admin` 会创建第一个 admin，写入 audit log，并自动建立 HttpOnly Cookie session。
+- 密码使用 Argon2id 哈希保存，不保存明文；当前最小长度为 6 位。
+- Session token 只通过 HttpOnly Cookie 返回给浏览器；数据库只保存 token hash。
+- `/api/users` 系列接口仅 admin 可访问。
+- 普通 user 可以登录、登出和读取 `/api/auth/me`，不能管理其他用户。
+- `DELETE /api/users/:id` 默认是软删除/禁用用户；`DELETE /api/users/:id?hard=true` 会真正删除用户。
+- 最后一个 active admin 不能被禁用或降级，当前登录 admin 不能禁用自己。
+
 ## 前端开发
 
 前端位于 `frontend/`。
@@ -139,7 +183,48 @@ npm run build
 npm run preview
 ```
 
-当前前端仍是 Milestone 0 的基础占位实现。
+Vite 开发服务器已配置 `/api` 和 `/health` 代理到 `http://localhost:8090`。本地联调时先启动后端，再启动前端，然后打开 Vite 输出的地址，通常是：
+
+```text
+http://localhost:5173
+```
+
+当前前端已实现：
+
+- 无管理员时展示管理员初始化注册页。
+- 有管理员但未登录时展示登录页。
+- 登录后展示基础主界面、当前用户、角色和登出按钮。
+- admin 可看到最小用户管理区域。
+- 普通 user 不显示用户管理入口。
+
+## 本机测试流程
+
+1. 启动后端：
+
+```bash
+cd backend
+PANEL_DATA_DIR=./data PANEL_DB_PATH=./data/panel.db go run ./cmd/panel
+```
+
+2. 启动前端：
+
+```bash
+cd frontend
+npm run dev
+```
+
+3. 打开 Vite 显示地址，通常是：
+
+```text
+http://localhost:5173
+```
+
+4. 首次打开应进入管理员初始化页。
+5. 输入管理员用户名、密码、确认密码，提交后会自动登录。
+6. 登录后主界面会显示当前用户和角色。
+7. 点击“登出”后进入登录页。
+8. 使用刚创建的管理员账号重新登录。
+9. 管理员可以创建普通用户；普通用户登录后不能看到用户管理区域，也不能直接访问用户管理 API。
 
 ## 当前里程碑
 
@@ -155,11 +240,21 @@ Milestone 1 已包含：
 - React + TypeScript + Vite 前端骨架
 - 初始文档
 
-Milestone 1 不包含：
+Milestone 2 已包含：
+
+- `users`、`sessions`、`audit_logs`、`panel_settings` 数据表迁移
+- 管理员初始化状态和初始化接口
+- Argon2id 密码哈希
+- HttpOnly Cookie session
+- 登录、登出、当前用户接口
+- admin/user 角色
+- admin-only 用户管理接口
+- 关键操作 audit log
+- 初始化页、登录页和基础主界面
+
+仍未实现：
 
 - Docker / Compose 控制逻辑
-- 管理员初始化和登录
-- 完整 SQLite 迁移
 - Junimo 工作目录准备
 - Steam Auth 交互
 - 服务器启动、停止、重启
@@ -167,7 +262,22 @@ Milestone 1 不包含：
 - 存档管理
 - Mod 管理
 - 控制台命令
-- 面板用户管理
+
+## 验证命令
+
+后端：
+
+```bash
+cd backend
+go test ./...
+```
+
+前端：
+
+```bash
+cd frontend
+npm run build
+```
 
 ## 文档
 

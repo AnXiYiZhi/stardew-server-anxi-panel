@@ -429,29 +429,24 @@ PANEL_SECRET=
 - 统一 JSON 错误结构。
 - 代码中有清晰的 internal 包边界。
 
-## Milestone 2: Storage and Auth
+## Milestone 2: Storage and Auth ✅ 已完成（2026-06-22）
 
 目标：实现面板自己的用户体系。
 
-要做什么：
+已完成：
 
-- 初始化注册。
-- 登录。
-- 登出。
-- 当前用户信息。
-- session。
-- 管理员/普通用户角色。
+- 新增 `users`、`sessions`、`audit_logs`、`panel_settings` 数据表迁移，迁移文件为 `backend/migrations/002_auth.sql`。
+- 新增管理员初始化状态接口和初始化管理员接口。
+- 密码使用 Argon2id 哈希保存，不保存明文密码，当前最小长度为 6 位。
+- Session 使用 HttpOnly Cookie，数据库只保存 session token hash。
+- 新增登录、登出、当前用户接口。
+- 新增 `admin` / `user` 角色。
+- 新增 admin-only 用户管理接口：列表、创建、更新、启用、禁用和真正删除。
+- 新增关键操作 audit log：初始化管理员、登录、登出、用户创建、用户更新、用户禁用。
+- 无 active admin 时，只允许访问 `GET /health`、`GET /api/setup/status`、`POST /api/setup/admin`。
+- 前端已实现管理员初始化页、登录页、基础主界面和最小用户管理区域。
 
-建议表：
-
-```text
-users
-sessions
-audit_logs
-panel_settings
-```
-
-建议 API：
+已实现 API：
 
 ```text
 GET  /api/setup/status
@@ -465,12 +460,13 @@ PATCH /api/users/:id
 DELETE /api/users/:id
 ```
 
-怎么做：
+安全和权限规则：
 
-- 首次启动如果没有 users，前端展示管理员初始化页。
-- 密码用 Argon2id 哈希。
-- session 用 HttpOnly Cookie。
-- 所有用户管理操作写入 `audit_logs`。
+- 普通用户不能访问用户管理接口。
+- 最后一个 active admin 不能被禁用或降级。
+- 当前登录 admin 不能禁用自己。
+- 不把密码、password hash、session token 或 token hash 写入日志、响应或 audit metadata。
+- 所有数据库操作使用参数化 SQL。
 
 完成标准：
 
@@ -478,6 +474,8 @@ DELETE /api/users/:id
 - 初始化后可以登录。
 - 普通用户不能管理其他用户。
 - Cookie session 可刷新页面保持登录。
+- `go test ./...` 通过。
+- `npm run build` 通过。
 
 ## Milestone 3: Docker / Compose Control Layer
 
