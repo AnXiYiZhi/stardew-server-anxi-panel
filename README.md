@@ -10,7 +10,7 @@
 
 首个可上线版本默认使用 **Single Game Mode**：用户登录后直接进入 Stardew 面板，不显示总面板和游戏列表。内部仍按 `instances + driver_id + GameDriver` 设计，等开发第二个游戏面板时再开启 **Multi Game Mode**。
 
-> 当前状态：**Milestone 4: Jobs and State Machine 已完成**。Milestone 0、1、2、3、4 已完成。后端已包含配置加载、SQLite 初始化、嵌入式迁移运行器、统一 JSON 错误响应、管理员初始化、登录/session、admin/user 角色、管理员用户管理、通用 Docker / Docker Compose CLI 控制层、持久化 jobs/job_logs、Stardew 单实例状态机和 SSE 任务日志流。前端已支持初始化页、登录页、基础主界面、用户管理、Docker 状态检查、Stardew 实例状态展示和任务中心。Junimo 安装、Steam Auth、服务器启动、存档、Mod 和控制台功能仍在计划中，尚未实现。
+> 当前状态：**Milestone 5: GameDriver Registry + Instance Model 已完成**。Milestone 0、1、2、3、4、5 已完成。后端已包含配置加载、SQLite 初始化、嵌入式迁移运行器、统一 JSON 错误响应、管理员初始化、登录/session、admin/user 角色、管理员用户管理、通用 Docker / Docker Compose CLI 控制层、持久化 jobs/job_logs、实例模型、GameDriver 接口、driver registry、Stardew Junimo driver 骨架和 SSE 任务日志流。前端已支持初始化页、登录页、Single Game Mode 直达 Stardew 主界面、用户管理、instance-based Stardew 状态展示、instance-based Compose PS 和任务中心。Junimo 安装、Steam Auth、服务器启动、存档、Mod 和控制台功能仍在计划中，尚未实现。
 
 ## GitHub 描述
 
@@ -144,7 +144,7 @@ PANEL_DATA_DIR=./data PANEL_DB_PATH=./data/panel.db go run ./cmd/panel
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `PANEL_ADDR` | `:8090` | HTTP 监听地址。 |
-| `PANEL_DATA_DIR` | `/data` | 面板数据目录，启动时自动创建。Docker API 默认检查 `$PANEL_DATA_DIR/instances/stardew`。 |
+| `PANEL_DATA_DIR` | `/data` | 面板数据目录，启动时自动创建。默认 instance 的 `data_dir` 为 `$PANEL_DATA_DIR/instances/stardew`。 |
 | `PANEL_DB_PATH` | `$PANEL_DATA_DIR/panel.db` | SQLite 数据库路径，启动时自动创建。 |
 | `PANEL_SECRET` | empty | Session token hash secret。本地开发可为空；生产环境必须设置为足够随机的长 secret。 |
 | `PANEL_VERSION` | `dev` | `/health` 返回的版本字符串。 |
@@ -211,9 +211,16 @@ DELETE /api/users/:id
 
 ## Docker / Compose API
 
-Docker API 仅管理员可访问。普通用户直接访问会返回 403。
+Docker 细节 API 仅管理员可访问。普通用户直接访问会返回 403。
 
-已实现接口：
+产品主路径已经切到 instance-based API：
+
+```text
+GET /api/instances/:instance_id/status
+GET /api/instances/:instance_id/docker/ps
+```
+
+兼容/调试接口仍保留：
 
 ```text
 GET /api/docker/status
@@ -225,21 +232,27 @@ GET /api/docker/logs?service=&tail=100
 
 - 后端通过 `exec.CommandContext` 和参数数组调用 Docker CLI，不经过 shell。
 - 前端不能传入任意命令、任意参数或任意工作目录。
-- 默认 Compose 工作目录为：`$PANEL_DATA_DIR/instances/stardew`。
-- 本阶段只检查 Docker / Compose 状态，不会自动创建 Junimo 工作目录，不会拉取 Junimo 镜像，不会启动容器。
-- `GET /api/docker/status` 返回 Docker 是否可用、Docker version、Compose version、默认 Compose 目录状态。
-- `GET /api/docker/ps` 在默认 Compose 工作目录执行 `docker compose ps --format json`；没有 compose 文件时返回明确错误。
+- Compose 工作目录来自 `instances.data_dir`，默认是 `$PANEL_DATA_DIR/instances/stardew`。
+- 本阶段只检查 Docker / Compose 状态，不会拉取 Junimo 镜像，不会执行 Steam Auth，不会启动容器。
+- `GET /api/docker/status` 返回 Docker 是否可用、Docker version、Compose version、默认 instance 的 Compose 目录状态。
+- `GET /api/instances/stardew/docker/ps` 在默认 Stardew instance 的 `data_dir` 执行 `docker compose ps --format json`；没有 compose 文件时返回明确错误。
+- `GET /api/docker/ps` 仍可用，但只作为 admin-only 兼容/调试入口。
 - `GET /api/docker/logs` 返回非流式 logs 快照，`tail` 默认 100，最大 1000。
 - Docker 命令结果包含 stdout、stderr、exit code、duration 和 timeout 状态。
 - 命令输出会脱敏 password、token、secret、`STEAM_PASSWORD`、`VNC_PASSWORD` 等敏感字段。
 
-## Jobs / State API
+## Instances / Jobs / State API
 
-Jobs 和实例状态接口需要登录；测试任务创建仅 admin 可用。
+Instances、Jobs 和状态接口需要登录；测试任务创建仅 admin 可用。
 
 已实现接口：
 
 ```text
+GET  /api/instances
+GET  /api/instances/:instance_id
+GET  /api/instances/:instance_id/state
+GET  /api/instances/:instance_id/status
+GET  /api/instances/:instance_id/docker/ps
 GET  /api/jobs
 GET  /api/jobs/:id
 GET  /api/jobs/:id/logs?after=0&limit=200
@@ -247,12 +260,15 @@ GET  /api/jobs/:id/stream
 POST /api/jobs/:id/cancel
 POST /api/jobs/test
 POST /api/jobs/test-fail
-GET  /api/instances/stardew/state
 ```
 
 说明：
 
-- `jobs`、`job_logs`、`instance_state` 由 SQLite 持久化，后端重启后仍可查询历史任务和当前实例状态。
+- 后端启动后会自动确保默认 Stardew instance 存在。
+- 默认 instance 配置为 `id=stardew`、`driver_id=stardew_junimo`、`name=Stardew Valley`、`data_dir=$PANEL_DATA_DIR/instances/stardew`。
+- `instances`、`jobs`、`job_logs` 和兼容用 `instance_state` 由 SQLite 持久化，后端重启后仍可查询历史任务和当前实例状态。
+- `GET /api/instances/stardew/status` 通过 `stardew_junimo` driver 返回基础状态；当前 driver 只实现骨架和 Compose PS 状态摘要。
+- `GET /api/instances/stardew/state` 返回通用 `state` 和 driver-specific `driver_phase`。
 - job status 枚举为 `queued`、`running`、`succeeded`、`failed`、`canceled`。
 - job log level 枚举为 `info`、`warn`、`error`、`debug`，每个 job 内使用递增 `sequence`。
 - `GET /api/jobs/:id/stream` 使用 SSE 推送历史日志和新增日志；job 完成后发送 `finished` 事件并结束。
@@ -319,14 +335,15 @@ http://localhost:5173
 
 4. 首次打开应进入管理员初始化页。
 5. 输入管理员用户名、密码、确认密码，提交后会自动登录。
-6. 登录后主界面会显示当前用户和角色，并展示 Stardew 实例当前状态。
+6. 登录后主界面会显示当前用户和角色，并展示默认 Stardew instance 当前状态、instance 名称和 driver id。
 7. 管理员可以点击“启动测试任务”。
 8. 在任务中心点击新任务，日志窗口会通过 SSE 每秒追加日志，任务完成后状态变为 `succeeded`。
 9. 管理员可以点击“启动失败测试任务”，任务最终变为 `failed`，详情区域显示错误原因。
 10. 管理员可以点击“检查 Docker”，查看 Docker 和 Compose 状态。
-11. 管理员可以点击“查看 Compose PS”。如果 `$PANEL_DATA_DIR/instances/stardew` 没有 compose 文件，会看到“Compose 工作目录尚未准备”的清晰提示。
-12. 管理员可以创建普通用户；普通用户登录后不能看到用户管理区域、Docker 控制区域或测试任务按钮。
-13. 可用普通用户 Cookie 或浏览器会话直接请求 `/api/jobs/test` 或 `/api/docker/status`，应返回 403。
+11. 管理员可以点击“查看 Compose PS”。前端会请求 `/api/instances/stardew/docker/ps`，后端使用默认 instance 的 `data_dir`。如果 `$PANEL_DATA_DIR/instances/stardew` 没有 compose 文件，会看到“Compose 工作目录尚未准备”的清晰提示。
+12. 也可以登录后直接请求 `GET /api/instances` 和 `GET /api/instances/stardew`，确认能看到默认 Stardew instance。
+13. 管理员可以创建普通用户；普通用户登录后不能看到用户管理区域、Docker 控制区域或测试任务按钮。
+14. 可用普通用户 Cookie 或浏览器会话直接请求 `/api/jobs/test`、`/api/docker/status` 或 `/api/instances/stardew/docker/ps`，应返回 403。
 
 ## 当前里程碑
 
@@ -377,9 +394,20 @@ Milestone 4 已包含：
 - 通用 Job Manager：创建、异步执行、日志追加、成功/失败标记、panic 捕获和启动恢复
 - SSE 任务日志流 `GET /api/jobs/:id/stream`
 - admin-only 测试任务 `POST /api/jobs/test` 和 `POST /api/jobs/test-fail`
-- Stardew 单实例状态接口 `GET /api/instances/stardew/state`
+- Stardew 单实例状态接口兼容入口 `GET /api/instances/stardew/state`
 - 登录后任务中心、任务详情和实时日志窗口
 - 普通用户不能创建测试任务
+
+Milestone 5 已包含：
+
+- 新增 `instances` 表和 storage 模型
+- 新增 `PANEL_MODE`、`DEFAULT_INSTANCE_ID`、`DEFAULT_DRIVER_ID` 配置
+- 后端启动自动确保默认 Stardew instance 存在
+- 新增完整 `GameDriver` 接口和 driver registry
+- 新增 `stardew_junimo` driver 骨架
+- 新增 instance-based API：`GET /api/instances`、`GET /api/instances/stardew`、`GET /api/instances/stardew/state`、`GET /api/instances/stardew/status`、`GET /api/instances/stardew/docker/ps`
+- Compose PS 使用 `instance.data_dir`，不再在产品主路径硬编码 Stardew 工作目录
+- 前端保持 Single Game Mode，不显示总面板；内部切到默认 instance API
 
 仍未实现：
 

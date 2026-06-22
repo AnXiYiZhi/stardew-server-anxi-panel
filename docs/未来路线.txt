@@ -1,0 +1,83 @@
+最好的做法是：代码按总面板架构预留，产品界面先走单游戏直达模式。
+也就是说，现在上线时用户看到的还是一个完整的 Stardew 面板，不显示“总面板/游戏列表”。但内部数据和路由不要写死到无法扩展。
+推荐策略叫：
+Single Game Mode now
+Multi Game Mode later
+现在上线怎么做
+当前版本配置里加一个模式：
+PANEL_MODE=single
+DEFAULT_INSTANCE_ID=stardew
+DEFAULT_DRIVER_ID=stardew_junimo
+当 PANEL_MODE=single 时：
+用户登录后
+  -> 直接进入 Stardew 面板
+不显示：
+游戏列表
+总面板首页
+选择游戏
+但后端内部仍然创建一条 instance：
+instances
+  id: stardew
+  driver_id: stardew_junimo
+  name: Stardew Valley
+  data_dir: /data/instances/stardew
+前端内部路由可以这样：
+/                  自动跳转到 /instances/stardew
+/instances/stardew Stardew 面板
+用户感觉上还是：
+打开面板 -> 登录 -> 进入 Stardew 管理界面
+以后开发第二个游戏时
+等你开始做 Minecraft，再改配置：
+PANEL_MODE=multi
+这时才显示总面板：
+/                  总面板游戏列表
+/instances/stardew Stardew 面板
+/instances/minecraft Minecraft 面板
+数据库里多一条：
+instances
+  id: minecraft
+  driver_id: minecraft
+  name: Minecraft
+  data_dir: /data/instances/minecraft
+这样做的好处
+现在不会影响上线体验：
+用户不会看到空荡荡的总面板
+不会觉得这里只有一个游戏还要选
+不会多一步操作
+以后又不会返工：
+后端已经有 instances
+后端已经有 driver_id
+前端已经有 /instances/:id
+只是 single 模式把首页自动跳过去
+文档里应该怎么定
+你可以把路线改成：
+当前产品模式：
+Single Game Mode
+- 默认只显示 Stardew 面板
+- 不显示总面板游戏列表
+- 内部仍使用 instance + driver 架构
+
+未来产品模式：
+Multi Game Mode
+- 显示总面板
+- 展示多个游戏实例
+- 点击进入对应游戏面板
+对 Milestone 的影响
+Milestone 5 仍然要做：
+instances
+driver_id
+GameDriver registry
+但前端不用立刻显示总面板。
+Milestone 8 改成：
+实现 Stardew 单游戏直达体验
+内部路由使用 /instances/stardew
+保留 Multi Game Mode 的总面板入口能力
+但默认隐藏总面板
+也就是说，Milestone 8 不要强制用户看到游戏列表。
+推荐最终规则
+如果 instances 数量 = 1 且 PANEL_MODE=single:
+    登录后直接进入该实例面板
+
+如果 PANEL_MODE=multi 或 instances 数量 > 1:
+    登录后进入总面板实例列表
+这是最舒服的路线。现在产品体验干净，未来扩展也不亏。

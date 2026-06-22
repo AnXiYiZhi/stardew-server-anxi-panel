@@ -249,7 +249,7 @@ function App() {
   return (
     <main className="shell">
       <section className="panel-card">
-        <p className="eyebrow">里程碑 4 · Jobs and State Machine</p>
+        <p className="eyebrow">里程碑 5 · GameDriver Registry</p>
         <h1>Stardew Anxi Panel</h1>
         {message ? <div className="error-banner">{message}</div> : null}
         {view === 'booting' ? <p className="summary">正在读取面板状态……</p> : null}
@@ -706,8 +706,9 @@ function InstanceStateCard({ state, onRefresh }: InstanceStateCardProps) {
   return (
     <div className="status-card instance-state-card">
       <div>
-        <span>Stardew 实例状态</span>
+        <span>{state?.name ?? 'Stardew Valley'} 实例状态</span>
         <strong>{state?.state ?? 'unknown'}</strong>
+        <small>{state?.driverId ? `Driver: ${state.driverId}` : 'Driver: stardew_junimo'}</small>
         <small>{state?.stateMessage ?? '尚未读取实例状态。'}</small>
       </div>
       <StatusBadge status={state?.state ?? 'unknown'} />
