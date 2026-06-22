@@ -10,6 +10,7 @@ import (
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -18,11 +19,12 @@ const serviceName = "stardew-anxi-panel"
 
 // Deps contains the dependencies required by the HTTP layer.
 type Deps struct {
-	Config config.Config
-	Store  *storage.Store
-	Logger *slog.Logger
-	Docker DockerService
-	Jobs   *jobs.Manager
+	Config   config.Config
+	Store    *storage.Store
+	Logger   *slog.Logger
+	Docker   DockerService
+	Jobs     *jobs.Manager
+	Registry *registry.Registry
 }
 
 type DockerService interface {
@@ -33,11 +35,12 @@ type DockerService interface {
 }
 
 type server struct {
-	config config.Config
-	store  *storage.Store
-	logger *slog.Logger
-	docker DockerService
-	jobs   *jobs.Manager
+	config   config.Config
+	store    *storage.Store
+	logger   *slog.Logger
+	docker   DockerService
+	jobs     *jobs.Manager
+	registry *registry.Registry
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -53,14 +56,18 @@ func NewHandler(deps Deps) http.Handler {
 	}
 
 	s := &server{
-		config: deps.Config,
-		store:  deps.Store,
-		logger: logger,
-		docker: dockerClient,
-		jobs:   deps.Jobs,
+		config:   normalizeConfig(deps.Config),
+		store:    deps.Store,
+		logger:   logger,
+		docker:   dockerClient,
+		jobs:     deps.Jobs,
+		registry: deps.Registry,
 	}
 	if s.jobs == nil {
 		s.jobs = jobs.NewManager(deps.Store, logger)
+	}
+	if s.registry == nil {
+		s.registry = registry.New()
 	}
 
 	return recoverMiddleware(logger, requestLogMiddleware(logger, s))
@@ -137,12 +144,8 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleTestJob(w, r, true)
-	case "/api/instances/stardew/state":
-		if r.Method != http.MethodGet {
-			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-			return
-		}
-		s.handleStardewState(w, r)
+	case "/api/instances":
+		s.handleInstances(w, r)
 	case "/api/docker/status":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -170,12 +173,38 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 			s.handleJobByID(w, r)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/instances/") {
+			s.handleInstanceByID(w, r)
+			return
+		}
 		writeError(w, http.StatusNotFound, "not_found", "resource not found")
 	}
 }
 
 func (s *server) isSetupAllowed(r *http.Request) bool {
 	return r.URL.Path == "/health" || r.URL.Path == "/api/setup/status" || r.URL.Path == "/api/setup/admin"
+}
+
+func normalizeConfig(cfg config.Config) config.Config {
+	if cfg.DataDir == "" {
+		cfg.DataDir = config.DefaultDataDir
+	}
+	if cfg.DBPath == "" {
+		cfg.DBPath = cfg.DataDir + "/panel.db"
+	}
+	if cfg.Version == "" {
+		cfg.Version = config.DefaultVersion
+	}
+	if cfg.PanelMode == "" {
+		cfg.PanelMode = config.DefaultPanelMode
+	}
+	if cfg.DefaultInstanceID == "" {
+		cfg.DefaultInstanceID = config.DefaultInstanceID
+	}
+	if cfg.DefaultDriverID == "" {
+		cfg.DefaultDriverID = config.DefaultDriverID
+	}
+	return cfg
 }
 
 type healthResponse struct {

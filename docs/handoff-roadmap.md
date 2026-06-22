@@ -810,95 +810,104 @@ error
 - `go test ./...` 通过。
 - `npm run build` 通过。
 
-## Milestone 5: GameDriver Registry
+## Milestone 5: GameDriver Registry ✅ 已完成（2026-06-23）
 
-目标：建立实例模型和 GameDriver registry。首版仍然是 Single Game Mode，不要求显示总面板，但后端必须具备未来 Multi Game Mode 的实例/driver 边界。
+目标：建立实例模型和 GameDriver registry。首版仍然是 Single Game Mode，不显示总面板，但后端已经具备未来 Multi Game Mode 的实例/driver 边界。
 
-Milestone 5 同时是前面 0-4 的架构收口点。0-4 做出的通用能力不需要推翻，但必须在这里把临时 Stardew 单实例写死点迁移到 `instances + driver_id + GameDriver registry`。
+已完成：
 
-要做什么：
-
-- 定义 `GameDriver` 接口。
-- 实现 driver registry。
-- 注册 `stardew_junimo`。
-- 新增或完善 `instances` 模型，至少包含 `id`、`driver_id`、`name`、`data_dir`、`created_at`、`updated_at`。
-- API 层只调用 registry，不直接调用 Stardew 具体实现。
-- 前端预留 game module registry：第一版只注册 Stardew，但结构上允许后续注册 Minecraft、DST、Terraria、Palworld。
-- 新增配置或等价机制：`PANEL_MODE=single|multi`、`DEFAULT_INSTANCE_ID=stardew`、`DEFAULT_DRIVER_ID=stardew_junimo`。
-- 把 Milestone 3 中默认 `$PANEL_DATA_DIR/instances/stardew` 的临时路径包装进 Stardew instance，而不是继续散落在 Docker handler 中。
-- 把 Milestone 4 中 `GET /api/instances/stardew/state` 的临时 API 补成通用 `GET /api/instances/:instance_id/state`。
-
-建议接口以 `architecture.md` 和本文前面的 `Core Abstraction: GameDriver` 为准。Milestone 5 可以先让部分方法返回 `not implemented`，但接口边界要一次立住，避免后续把存档、Mod、控制台等能力散落到主业务里。
-
-```go
-type GameDriver interface {
-    ID() string
-    Name() string
-
-    Prepare(ctx context.Context, instance Instance) error
-    Install(ctx context.Context, req InstallRequest) (*Job, error)
-    Start(ctx context.Context, req StartRequest) (*Job, error)
-    Stop(ctx context.Context, instance Instance) error
-    Restart(ctx context.Context, instance Instance) error
-
-    Status(ctx context.Context, instance Instance) (*ServerStatus, error)
-    Logs(ctx context.Context, instance Instance) (<-chan LogLine, error)
-    ExecCommand(ctx context.Context, cmd string) (*CommandResult, error)
-
-    ListSaves(ctx context.Context, instance Instance) ([]SaveInfo, error)
-    UploadSave(ctx context.Context, file UploadedFile) error
-    SelectSave(ctx context.Context, name string) error
-    DeleteSave(ctx context.Context, name string) error
-
-    ListMods(ctx context.Context, instance Instance) ([]ModInfo, error)
-    UploadMod(ctx context.Context, file UploadedFile) error
-    DeleteMod(ctx context.Context, id string) error
-}
-```
-
-怎么做：
-
-- `games/registry` 只负责注册和查找 driver。
-- `games/stardew_junimo` 只负责 JunimoServer 具体细节。
-- instance 数据中保存 driver id。
-- API handler 不直接 import `games/stardew_junimo`，只依赖 registry 和通用接口。
-- 早期没实现的能力可以返回结构化 `not_implemented`，但不要绕过 driver 去实现到顶层模块。
-- 前端 Single Game Mode 下可以直接加载 Stardew game module；Multi Game Mode 下总面板点击 Stardew 实例后加载 Stardew game module。
-
-迁移示例：
+- 新增配置项：`PANEL_MODE`、`DEFAULT_INSTANCE_ID`、`DEFAULT_DRIVER_ID`，默认分别为 `single`、`stardew`、`stardew_junimo`。
+- 新增 `backend/migrations/004_instances.sql`，创建 `instances` 表。
+- 新增 `backend/internal/storage/instances.go`，支持默认 instance 创建、查询、列表和状态更新。
+- 后端启动时会确保默认 Stardew instance 存在：
+  - `id = stardew`
+  - `driver_id = stardew_junimo`
+  - `name = Stardew Valley`
+  - `data_dir = $PANEL_DATA_DIR/instances/stardew`
+- 兼容旧 `instance_state` 表：新 `instances` 为空时会从旧默认状态迁移 state/state_message；旧表不删除。
+- 新增 `backend/internal/games/registry`，定义完整 `GameDriver` 接口和 MVP 类型，并实现 `Register`、`Get`、`List`。
+- 新增 `backend/internal/games/stardew_junimo` driver 骨架：
+  - `ID() = stardew_junimo`
+  - `Name() = Stardew Valley / JunimoServer`
+  - `Prepare` 仅确保实例目录存在。
+  - `Status` 通过通用 Docker Compose PS 能力返回基础 runtime 状态。
+  - 其他安装、启动、存档、Mod、命令能力返回 `not_implemented`。
+- 新增 instance-based API：
 
 ```text
-Before:
-GET /api/docker/ps
-  -> use $PANEL_DATA_DIR/instances/stardew
-
-After:
-GET /api/instances/:instance_id/status
-  -> load instance
-  -> registry.Get(instance.driver_id)
-  -> driver.Status(ctx, instance)
-```
-
-```text
-Before:
-GET /api/instances/stardew/state
-
-After:
+GET /api/instances
+GET /api/instances/:instance_id
 GET /api/instances/:instance_id/state
+GET /api/instances/:instance_id/status
+GET /api/instances/:instance_id/docker/ps
 ```
+
+- `/api/instances/:instance_id/status` 通过 `instance.driver_id -> registry.Get -> driver.Status` 获取状态。
+- `/api/instances/:instance_id/docker/ps` 使用 `instance.data_dir`，不再硬编码 `$PANEL_DATA_DIR/instances/stardew`。
+- 旧 `/api/docker/status`、`/api/docker/ps`、`/api/docker/logs` 保留为 admin-only 兼容/调试入口，其中默认 Compose 目录也改为读取默认 instance。
+- 前端仍保持 Single Game Mode：登录后直达 Stardew 当前主界面，不显示总面板/游戏列表。
+- 前端内部新增默认实例概念，状态和 Compose PS 主路径切到 `/api/instances/stardew/...`。
+- 状态卡显示当前 instance 名称和 driver id。
+
+新增表：
+
+```text
+instances
+  id
+  driver_id
+  name
+  data_dir
+  state
+  state_message
+  driver_phase
+  driver_payload
+  created_at
+  updated_at
+```
+
+权限规则：
+
+- `GET /api/instances*` 基础查询需要登录。
+- `/api/instances/:instance_id/status` 登录用户可读基础状态。
+- `/api/instances/:instance_id/docker/ps` admin-only。
+- 旧 `/api/docker/*` 仍 admin-only。
+- 前端不允许提交任意工作目录、任意 shell 或任意 compose 参数。
 
 保留兼容：
 
-- 如果前端当前已经调用 `/api/docker/status`、`/api/docker/ps`、`/api/instances/stardew/state`，可以先保留这些接口作为开发调试入口。
-- 但产品主路径应改为 instance-based API。
-- README 和前端内部调用应逐渐引导使用 instance-based API。
-- 首版 UI 不需要展示总面板，只要内部已经使用 instance-based API 即可。
+- `/api/instances/stardew/state` 仍可用，但现在由通用 `/api/instances/:instance_id/state` 路由处理。
+- `/api/docker/*` 仍可作为开发调试入口，但产品主路径应优先使用 `/api/instances/stardew/...`。
 
-完成标准：
+本阶段明确未实现：
 
-- API 不 import `stardew_junimo` 的内部子包。
-- 新增第二个 driver 时不需要改 auth、jobs、storage、docker 层。
-- 新增第二个游戏页面时不需要改登录、用户、全局任务中心和总面板核心布局。
+- Junimo prepare/install 的真实配置写入。
+- `docker compose pull`。
+- Steam Auth。
+- 服务器 start/stop/restart 真实流程。
+- 存档、Mod、控制台命令。
+- Multi Game Mode 总面板。
+
+完成标准验证：
+
+```bash
+cd backend
+go test ./...
+```
+
+本次结果：通过。
+
+```bash
+cd frontend
+npm run build
+```
+
+本次结果：通过。
+
+后续注意事项：
+
+- Milestone 6 开始做 Junimo 工作目录和 install 时，必须通过 `games/stardew_junimo` driver 创建 job，不要把 Stardew 业务写进 web/docker/jobs 顶层。
+- `Prepare` 当前只创建目录，不代表 Junimo 配置、镜像或游戏文件已经安装。
+- 真实任务写 job log 前继续脱敏 Steam 密码、VNC 密码、session token、secret。
 
 ## Milestone 6: Stardew Junimo Prepare and Install
 

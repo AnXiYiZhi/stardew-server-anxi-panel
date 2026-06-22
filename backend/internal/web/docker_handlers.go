@@ -47,7 +47,7 @@ func (s *server) handleDockerStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	workDir := s.config.DataDir
-	project := s.composeProjectStatus()
+	project := s.composeProjectStatus(r)
 
 	dockerResult, dockerErr := s.docker.DockerVersion(r.Context(), workDir)
 	composeResult, composeErr := s.docker.ComposeVersion(r.Context(), workDir)
@@ -70,7 +70,16 @@ func (s *server) handleDockerPs(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r); !ok {
 		return
 	}
-	project := s.composeProjectStatus()
+	project := s.composeProjectStatus(r)
+	if !project.Ready {
+		writeError(w, http.StatusConflict, "compose_project_not_ready", "Compose 工作目录尚未准备，请等待后续 Junimo 安装里程碑或手动准备 compose 文件")
+		return
+	}
+	s.writeComposePs(w, r, project.WorkDir)
+}
+
+func (s *server) writeComposePs(w http.ResponseWriter, r *http.Request, workDir string) {
+	project := composeProjectStatusForWorkDir(workDir)
 	if !project.Ready {
 		writeError(w, http.StatusConflict, "compose_project_not_ready", "Compose 工作目录尚未准备，请等待后续 Junimo 安装里程碑或手动准备 compose 文件")
 		return
@@ -92,7 +101,7 @@ func (s *server) handleDockerLogs(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r); !ok {
 		return
 	}
-	project := s.composeProjectStatus()
+	project := s.composeProjectStatus(r)
 	if !project.Ready {
 		writeError(w, http.StatusConflict, "compose_project_not_ready", "Compose 工作目录尚未准备，请等待后续 Junimo 安装里程碑或手动准备 compose 文件")
 		return
@@ -147,8 +156,15 @@ func (s *server) writeDockerCommandError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
 }
 
-func (s *server) composeProjectStatus() composeProjectStatus {
-	workDir := filepath.Join(s.config.DataDir, "instances", "stardew")
+func (s *server) composeProjectStatus(r *http.Request) composeProjectStatus {
+	instance, err := s.store.GetInstance(r.Context(), s.config.DefaultInstanceID)
+	if err == nil && instance.DataDir != "" {
+		return composeProjectStatusForWorkDir(instance.DataDir)
+	}
+	return composeProjectStatusForWorkDir(filepath.Join(s.config.DataDir, "instances", s.config.DefaultInstanceID))
+}
+
+func composeProjectStatusForWorkDir(workDir string) composeProjectStatus {
 	status := composeProjectStatus{WorkDir: workDir}
 	if stat, err := os.Stat(workDir); err == nil && stat.IsDir() {
 		status.WorkDirExists = true

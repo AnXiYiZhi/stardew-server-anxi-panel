@@ -2,11 +2,15 @@ import type {
   ComposeLogsResponse,
   ComposePsResponse,
   DockerStatusResponse,
+  Instance,
   InstanceState,
+  InstancesResponse,
   JobLogsResponse,
   JobResponse,
   JobsResponse,
 } from './types'
+
+export const defaultInstanceId = 'stardew'
 
 export class ApiError extends Error {
   code: string
@@ -54,8 +58,8 @@ export function getDockerStatus() {
   return request<DockerStatusResponse>('/api/docker/status')
 }
 
-export function getComposePs() {
-  return request<ComposePsResponse>('/api/docker/ps')
+export function getComposePs(instanceId = defaultInstanceId) {
+  return request<ComposePsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/docker/ps`)
 }
 
 export function getComposeLogs(service = '', tail = 100) {
@@ -65,6 +69,18 @@ export function getComposeLogs(service = '', tail = 100) {
   }
   params.set('tail', String(tail))
   return request<ComposeLogsResponse>(`/api/docker/logs?${params.toString()}`)
+}
+
+export function getInstances() {
+  return request<InstancesResponse>('/api/instances')
+}
+
+export function getInstance(instanceId = defaultInstanceId) {
+  return request<Instance>(`/api/instances/${encodeURIComponent(instanceId)}`)
+}
+
+export function getInstanceState(instanceId = defaultInstanceId) {
+  return request<InstanceState>(`/api/instances/${encodeURIComponent(instanceId)}/state`)
 }
 
 export function getJobs() {
@@ -90,7 +106,7 @@ export function startFailingTestJob() {
 }
 
 export function getStardewState() {
-  return request<InstanceState>('/api/instances/stardew/state')
+  return getInstanceState(defaultInstanceId)
 }
 
 export function createJobEventSource(id: string, after = 0) {

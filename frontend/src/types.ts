@@ -124,12 +124,28 @@ export type JobLogsResponse = {
   logs: JobLog[]
 }
 
+export type Instance = {
+  id: string
+  driverId: string
+  driverName?: string
+  name: string
+  state: string
+  stateMessage: string | null
+  driverPhase: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type InstancesResponse = {
+  instances: Instance[]
+}
+
 export type InstanceState = {
   instanceId: string
   driverId: string
+  name: string
   state: string
   stateMessage: string | null
-  lastJobId: string | null
+  driverPhase: string
   updatedAt: string
-  updatedBy: number | null
 }
