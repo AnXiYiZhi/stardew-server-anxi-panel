@@ -550,6 +550,30 @@ Stardew 专属阶段放 driver_phase / driver_payload。
 
 下面是后续 8-14 提示词应该遵守的方向。
 
+## Milestone 7 Save-Start Clarification
+
+在 2026-06-26 重新检索当前仓库后，确认当前项目里尚未实现可直接复用的“自定义新建存档”或“上传存档解析预览”业务代码：
+
+- `frontend/src/App.tsx` 可复用安装 Modal、任务日志、SSE、错误展示和按钮状态结构。
+- `frontend/src/api.ts` 尚无 saves/new-game/upload/parse/confirm API。
+- `frontend/src/types.ts` 尚无自定义新建存档表单或存档解析预览类型。
+- `backend/internal/games/registry/types.go` 的 `SaveInfo` / `UploadedFile` 仍是占位。
+- `backend/internal/games/stardew_junimo/driver.go` 的 saves 方法仍是 `not_implemented`。
+- `backend/internal/web/instance_handlers.go` 尚无 saves 相关路由。
+
+因此 Milestone 7 提示词必须明确：点击启动服务器时，如果未检测到已有存档，弹出两个按钮：
+
+```text
+新建存档
+从本机上传存档
+```
+
+`新建存档` 需要弹出自定义新建存档窗口，由面板前后端收集和保存农场名、玩家名、地图类型、初始设置等字段，并生成可被 Stardew/Junimo 读取的真实初始存档；上游 Junimo 不支持完整自定义创建，不能假设调用上游即可完成，`driver_payload` 也不能替代真实存档。
+
+`从本机上传存档` 需要先上传到临时区并解析，展示游戏时间、地图、已有玩家名称、农场/角色基础信息等；用户确认无误后再点击“上传到服务器并启动”。
+
+完整存档管理、删除、备份、切换仍放到 Milestone 9，Milestone 7 只做启动前所需的最小闭环。
+
 ### Milestone 8: Frontend MVP
 
 核心目标：

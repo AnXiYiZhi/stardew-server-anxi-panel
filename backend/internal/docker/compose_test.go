@@ -58,6 +58,41 @@ esac
 	}
 }
 
+func TestParseComposeJSON_Formats(t *testing.T) {
+	jsonArray := `[{"Service":"server","State":"running","Status":"Up 2 minutes"},{"Service":"steam-auth","State":"running","Status":"Up 3 minutes"}]`
+	jsonSingle := `{"Service":"server","State":"running","Status":"Up 2 minutes"}`
+	jsonl := "{\"Service\":\"server\",\"State\":\"running\",\"Status\":\"Up 2 minutes\"}\n{\"Service\":\"steam-auth\",\"State\":\"running\",\"Status\":\"Up 3 minutes\"}"
+
+	cases := []struct {
+		name    string
+		input   string
+		wantLen int
+		wantSvc string
+	}{
+		{"json array", jsonArray, 2, "server"},
+		{"json single", jsonSingle, 1, "server"},
+		{"jsonl", jsonl, 2, "server"},
+		{"empty", "", 0, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			items, err := parseComposeJSON(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(items) != tc.wantLen {
+				t.Fatalf("got %d items, want %d", len(items), tc.wantLen)
+			}
+			if tc.wantSvc != "" {
+				svc := firstString(items[0], "Service", "service")
+				if svc != tc.wantSvc {
+					t.Fatalf("first service = %q, want %q", svc, tc.wantSvc)
+				}
+			}
+		})
+	}
+}
+
 func TestComposeLogsValidatesInput(t *testing.T) {
 	client := NewClient(Options{DockerPath: "docker"})
 	if _, err := client.ComposeLogs(context.Background(), t.TempDir(), LogsOptions{Service: "bad/service", Tail: 100}); err != ErrInvalidService {

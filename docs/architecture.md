@@ -426,21 +426,29 @@ Steam 认证不是一次性线性流程，而是一个可重试循环。
 - 主界面 `安装游戏` 显示已完成或可重新安装。
 - `启动服务器` 按钮变为可用。
 
-### 5. Start Server Requires Save Selection
+### 5. Separate Save And Start Actions
 
-用户点击 `启动服务器` 后，不应立即执行 `docker compose up -d`。必须先弹出存档选择界面。
+存档创建/上传与普通“启动服务器”是两个独立入口。管理界面始终提供“创建存档并启动”和“上传存档并启动”；它们完成各自的存档工作后自动启动服务器。
 
-存档选择界面提供三种入口：
+普通“启动服务器”优先让 Junimo 加载上次使用的可用存档，直接执行生命周期启动。只有后端检查到实例没有任何有效存档时，才返回 `save_required`，前端滚动并引导用户使用独立存档启动面板的两条路径：
 
-- 上传存档。
-- 读取已有存档并展示。
-- 新建存档。
+- 自定义新建存档：点击后弹出自定义新建存档窗口，由面板收集农场名、玩家名、地图类型、难度/初始设置等字段，并由面板后端生成可被 Stardew/Junimo 读取的真实初始存档。不要依赖上游 Junimo 自定义创建；上游不支持完整自定义创建。`driver_payload` 只能保存策略和摘要，不能替代真实存档。
+- 从打开面板网页的本机上传存档：点击后弹出上传界面，先上传到临时区并解析，不直接写入正式服务器存档目录。解析后完整展示游戏时间、地图、已有玩家名称、农场/角色基础信息等可读数据；用户确认无误后再点击“上传到服务器并启动”。
+
+如果已经检测到服务器侧已有存档，后续 Milestone 9 可扩展“读取已有存档并选择”的完整管理流程；Milestone 7 不应把完整存档管理提前做大。
+
+#### 自定义新建与上传的参考实现边界（2026-06-26）
+
+`E:\stardew-anxi-panel` 已验证两项可迁移的设计：自定义表单使用结构化 `InitConfig`（角色、农场、宠物、外观、小屋和经济设置），上传存档使用“临时 ZIP -> 安全解析预览 -> 用户确认 -> 正式导入”的两阶段协议。新项目必须在 `games/stardew_junimo` driver 和实例路由内重新实现这些契约；旧项目的 Vue 页面、旧的顶层 API 路径和运行时目录布局不是本项目的复用目标。
+
+特别注意，旧项目真正生成原生 Stardew 存档的执行器位于 SMAPI 模组，调用 `Game1.game1.loadForNewGame(false)` 和原生保存流程。它不是写入 `server-settings.json` 的替代品，并且旧实现会在 Junimo runtime 下跳过该创建分支。因此本项目如果提供“自定义新建存档”，必须接入并验证一个与 Junimo 镜像兼容的真实存档生成执行器，然后通过 Junimo 的存档挂载目录和受控 `saves` 选择流程加载它。只保存 `driver_payload`、表单摘要或 Junimo 设置均不构成已创建存档。
+
+上传协议的安全边界：只接收有大小上限的 ZIP；解压到实例隔离的临时目录；拒绝 zip-slip、绝对路径和符号链接；校验其中确有 Stardew 主存档；解析并返回存档 ID、大小/时间、游戏年季日、地图、农场/角色信息与已有玩家名称；token 在确认或过期时删除。确认导入前不能写入 Junimo 正式 saves volume，确认后以 lifecycle job 完成导入、选择、启动和邀请码读取。
 
 用户确认后：
 
-- 如果上传存档，后端校验并写入 Junimo 使用的挂载目录。
-- 如果选择已有存档，后端记录 active save，必要时调用 Junimo `saves select <name> --confirm`。
-- 如果新建存档，后端设置新游戏策略，必要时调用 `settings newgame --confirm` 或编辑 `server-settings.json`。
+- 如果选择自定义新建存档，后端校验字段并生成真实初始存档，保存 `driver_payload.save_strategy=custom_new_game` 和自定义配置摘要；随后进入 `ready_to_start` 并启动。
+- 如果选择上传存档，后端先解析并返回预览；只有用户确认后才把存档写入 Junimo 使用的挂载目录，保存 `driver_payload.save_strategy=uploaded_save`、active save 和解析摘要；随后进入 `ready_to_start` 并启动。
 - 状态进入 `ready_to_start`。
 
 然后后端执行：
@@ -587,7 +595,7 @@ For example:
 - If panel state says `running` but `docker compose ps` shows the server stopped, set state to `stopped` or `error`.
 - If `steam-auth setup` succeeds but the server is not started yet, keep state at `game_installed` or `save_required`.
 - If the user clicks start before installation, return a structured error: `请先安装游戏`。
-- If the user clicks start before choosing save/new-game strategy, return `save_required` and route frontend to save selection.
+- If the user clicks start with no valid save, return `save_required` and route frontend to the independent create/upload-and-start panel.
 
 ## Steam Guard Interaction
 

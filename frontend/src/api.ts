@@ -1,4 +1,5 @@
 import type {
+  CatalogResponse,
   ComposeLogsResponse,
   ComposePsResponse,
   DockerStatusResponse,
@@ -7,10 +8,15 @@ import type {
   InstallOptionsResponse,
   InstanceState,
   InstancesResponse,
+  InviteCodeResult,
   JobLogsResponse,
   JobResponse,
   JobsResponse,
+  LifecycleJobResponse,
+  NewGameConfig,
   PrepareResponse,
+  PreflightResult,
+  UploadPreviewResult,
 } from './types'
 
 export const defaultInstanceId = 'stardew'
@@ -160,6 +166,76 @@ export function createJobEventSource(id: string, after = 0) {
   return new EventSource(`/api/jobs/${encodeURIComponent(id)}/stream${query ? `?${query}` : ''}`, {
     withCredentials: true,
   })
+}
+
+export function getCustomNewGameCatalog(instanceId = defaultInstanceId) {
+  return request<CatalogResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/custom-new-game/catalog`,
+  )
+}
+
+export function refreshCustomNewGameCatalog(instanceId = defaultInstanceId) {
+  return request<CatalogResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/custom-new-game/catalog`,
+    { method: 'POST' },
+  )
+}
+
+export function getSavesPreflight(instanceId = defaultInstanceId) {
+  return request<PreflightResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/preflight`)
+}
+
+export function createNewGame(config: NewGameConfig, instanceId = defaultInstanceId) {
+  return request<LifecycleJobResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/custom-new-game`,
+    { method: 'POST', body: config },
+  )
+}
+
+export function uploadSavePreview(file: File, instanceId = defaultInstanceId) {
+  const form = new FormData()
+  form.append('save', file)
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/saves/upload-preview`, {
+    method: 'POST',
+    body: form,
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    return (await res.json()) as UploadPreviewResult
+  })
+}
+
+export function uploadSaveCommitAndStart(
+  token: string,
+  cancel = false,
+  instanceId = defaultInstanceId,
+) {
+  return request<LifecycleJobResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/upload-commit-and-start`,
+    { method: 'POST', body: { token, cancel } },
+  )
+}
+
+export function startInstance(instanceId = defaultInstanceId) {
+  return request<LifecycleJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/start`, {
+    method: 'POST',
+  })
+}
+
+export function stopInstance(instanceId = defaultInstanceId) {
+  return request<{ ok: boolean }>(`/api/instances/${encodeURIComponent(instanceId)}/stop`, {
+    method: 'POST',
+  })
+}
+
+export function restartInstance(instanceId = defaultInstanceId) {
+  return request<{ ok: boolean }>(`/api/instances/${encodeURIComponent(instanceId)}/restart`, {
+    method: 'POST',
+  })
+}
+
+export function getInviteCode(instanceId = defaultInstanceId) {
+  return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`)
 }
 
 async function toApiError(response: Response): Promise<ApiError> {

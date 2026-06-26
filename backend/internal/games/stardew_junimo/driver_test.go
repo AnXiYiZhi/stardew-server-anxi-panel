@@ -82,7 +82,13 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 	}
 
 	// Sub-directories.
-	for _, sub := range []string{"saves", "mods", ".local-container", filepath.Join(".local-container", "settings")} {
+	for _, sub := range []string{
+		"saves", "mods", ".local-container",
+		filepath.Join(".local-container", "settings"),
+		filepath.Join(".local-container", "saves"),
+		filepath.Join(".local-container", "saves", "Saves"),
+		filepath.Join(".local-container", "saves-templates"),
+	} {
 		if _, err := os.Stat(filepath.Join(dataDir, sub)); err != nil {
 			t.Errorf("sub-dir %s not created: %v", sub, err)
 		}
@@ -106,7 +112,7 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 		"tty: true",
 		"steam-session:/data/steam-session",
 		"game-data:/data/game",
-		"saves:/config/xdg/config/StardewValley",
+		"./.local-container/saves:/config/xdg/config/StardewValley",
 		"./.local-container/settings:/data/settings",
 	} {
 		if !strings.Contains(composeText, want) {

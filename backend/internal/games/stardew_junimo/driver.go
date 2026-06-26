@@ -101,11 +101,24 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	// Create main directory and sub-directories. The named Docker volumes remain
 	// official Junimo storage; local saves/mods directories are panel-owned future
 	// extension points.
-	for _, sub := range []string{"", "saves", "mods", ".local-container", filepath.Join(".local-container", "settings")} {
+	for _, sub := range []string{
+		"", "saves", "mods", ".local-container",
+		filepath.Join(".local-container", "settings"),
+		filepath.Join(".local-container", "saves"),
+		filepath.Join(".local-container", "saves", "Saves"),
+		filepath.Join(".local-container", "saves-templates"),
+		filepath.Join(".local-container", "control"),
+		filepath.Join(".local-container", "control", "commands"),
+		filepath.Join(".local-container", "mods"),
+	} {
 		dir := filepath.Join(instance.DataDir, sub)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
+	}
+
+	if err := installSMAPIMod(instance.DataDir); err != nil {
+		d.logger.Warn("SMAPI mod install failed (non-fatal)", "instance", instance.ID, "error", err)
 	}
 
 	// Write docker-compose.yml only when not already present.
@@ -281,22 +294,10 @@ func (d *Driver) Status(ctx context.Context, instance registry.Instance) (*regis
 
 // ── Unimplemented methods ─────────────────────────────────────────────────────
 
-func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registry.Job, error) {
-	return nil, registry.ErrNotImplemented
-}
-func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
-	return registry.ErrNotImplemented
-}
-func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error {
-	return registry.ErrNotImplemented
-}
 func (d *Driver) Logs(ctx context.Context, instance registry.Instance) (<-chan registry.LogLine, error) {
 	return nil, registry.ErrNotImplemented
 }
 func (d *Driver) ExecCommand(ctx context.Context, cmd string) (*registry.CommandResult, error) {
-	return nil, registry.ErrNotImplemented
-}
-func (d *Driver) ListSaves(ctx context.Context, instance registry.Instance) ([]registry.SaveInfo, error) {
 	return nil, registry.ErrNotImplemented
 }
 func (d *Driver) UploadSave(ctx context.Context, file registry.UploadedFile) error {
@@ -381,15 +382,23 @@ func hasLocalInstallFiles(dataDir string) (bool, error) {
 }
 
 // updatePhase attempts a best-effort instance state update; errors are only logged.
+// Preserves the existing DriverPayload to avoid wiping stored metadata.
 func (d *Driver) updatePhase(ctx context.Context, instanceID, state, message, phase, jobID string) {
 	if d.store == nil {
 		return
 	}
+	existing := "{}"
+	if inst, err := d.store.GetInstance(ctx, instanceID); err == nil {
+		if inst.DriverPayload != "" {
+			existing = inst.DriverPayload
+		}
+	}
 	_, err := d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
-		ID:           instanceID,
-		State:        state,
-		StateMessage: message,
-		DriverPhase:  phase,
+		ID:            instanceID,
+		State:         state,
+		StateMessage:  message,
+		DriverPhase:   phase,
+		DriverPayload: existing,
 	})
 	if err != nil {
 		d.logger.Warn("failed to update instance state", "instance", instanceID, "state", state, "error", err)

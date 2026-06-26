@@ -172,3 +172,94 @@ export type ImageTagOption = {
 export type InstallOptionsResponse = {
   imageTagOptions: ImageTagOption[]
 }
+
+export type SaveInfo = {
+  name: string
+  farmerName?: string
+  farmName?: string
+  gameYear?: number
+  gameSeason?: string
+  gameDay?: number
+  farmType?: string
+  fileSizeBytes?: number
+  modifiedAt?: string
+  parseError?: string
+}
+
+export type RgbColor = {
+  r: number
+  g: number
+  b: number
+}
+
+export type NewGameConfig = {
+  farmName: string
+  farmType: string
+  startingCabins: number
+  cabinLayout: string
+  profitMargin: string  // "100"|"75"|"50"|"25"
+  petBreed: number      // 0-3 Junimo index
+  moneyMode: string     // "shared"|"separate"
+
+  // SMAPI character fields (applied by StardewAnxiPanel.Control mod)
+  farmerName?: string
+  favoriteThing?: string
+  gender?: string       // "male"|"female"
+  petType?: string      // "Cat"|"Dog"
+  petBreedId?: string   // SMAPI breed string ID
+  skin?: number
+  hair?: number
+  shirt?: string
+  pants?: string
+  accessory?: number
+  eyeColor?: RgbColor
+  hairColor?: RgbColor
+  pantsColor?: RgbColor
+}
+
+export type CatalogItem = {
+  id: string
+  label: string
+  group?: string
+  description?: string
+  image?: string  // data URL (real game asset) or SVG placeholder
+}
+
+export type CatalogStatus = 'ready' | 'generating' | 'failed' | 'unavailable'
+
+export type CatalogResponse = {
+  status: CatalogStatus
+  source?: 'smapi'           // only when status === 'ready'
+  generatedAt?: string
+  catalogVersion?: string
+  error?: string             // set when status === 'failed'
+  farmTypes: CatalogItem[]
+  petTypes: CatalogItem[]
+  petBreeds: CatalogItem[]
+  genders: CatalogItem[]
+  cabinCounts: CatalogItem[]
+  cabinLayouts: CatalogItem[]
+  profitMargins: CatalogItem[]
+  moneyModes: CatalogItem[]
+}
+
+export type PreflightResult = {
+  hasSaves: boolean
+  saves: SaveInfo[]
+  templateAvailable: boolean
+}
+
+export type UploadPreviewResult = {
+  token: string
+  preview: SaveInfo
+  saveName: string
+}
+
+export type InviteCodeResult = {
+  inviteCode: string
+}
+
+export type LifecycleJobResponse = {
+  jobId: string
+  saveName?: string
+}
