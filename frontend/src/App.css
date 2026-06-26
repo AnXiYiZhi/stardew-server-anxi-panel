@@ -553,6 +553,453 @@ button.job-row {
   font-weight: 900;
 }
 
+/* ── Install Section ─────────────────────────────────────────────────────── */
+
+.install-section {
+  border: 4px solid #673519;
+  border-radius: 18px;
+  background: #ffe6b6;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.install-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.install-state-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: #6f4a2d;
+}
+
+.install-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.install-complete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.install-complete small {
+  color: #6f4a2d;
+}
+
+/* ── Install progress (step indicator + bar) ─────────────────────────────── */
+
+.install-progress-section {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 3px solid #287da8;
+  border-radius: 14px;
+  background: #d6eef8;
+}
+
+.install-steps {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+}
+
+.install-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.install-step::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: -50%;
+  right: 50%;
+  height: 2px;
+  background: #cbd5e1;
+  z-index: 0;
+}
+.install-step:first-child::before { display: none; }
+
+.install-step.done::before { background: #22c55e; }
+.install-step.active::before { background: #93c5fd; }
+.install-step.error::before { background: #fca5a5; }
+
+.step-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #64748b;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.install-step.done .step-icon { background: #22c55e; color: #fff; }
+.install-step.active .step-icon { background: #3b82f6; color: #fff; }
+.install-step.error .step-icon { background: #ef4444; color: #fff; }
+
+.step-label {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-align: center;
+  white-space: nowrap;
+}
+.install-step.active .step-label { color: #1d4ed8; font-weight: 600; }
+.install-step.done .step-label { color: #15803d; }
+.install-step.error .step-label { color: #b91c1c; }
+
+.progress-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.progress-bar-track {
+  flex: 1;
+  height: 7px;
+  background: #cbd5e1;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  background: #3b82f6;
+}
+.progress-bar-fill.done { background: #22c55e; }
+.progress-bar-fill.error { background: #ef4444; }
+.progress-bar-fill.idle { background: #94a3b8; }
+
+.progress-bar-percent {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #374151;
+  min-width: 34px;
+  text-align: right;
+}
+
+.progress-bar-label {
+  font-size: 0.8rem;
+  color: #165779;
+  margin: 0;
+}
+
+/* ── Pull progress bar (inside job detail) ───────────────────────────────── */
+
+.pull-progress-container {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border: 3px solid #8f5a2d;
+  border-radius: 12px;
+  background: #fff8e8;
+}
+
+.pull-progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #3c2415;
+  margin-bottom: 6px;
+}
+
+.game-download-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 3px solid #256f6f;
+  border-radius: 10px;
+  background: #e7fbf7;
+  display: grid;
+  gap: 8px;
+}
+
+.game-download-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #164e52;
+  font-size: 0.92rem;
+}
+
+.game-download-detail {
+  margin: 0;
+  color: #25605f;
+  font-size: 0.82rem;
+}
+
+/* ── Pull status card (user-facing, inside InstallSection) ───────────────── */
+
+.pull-status-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 3px solid #8f5a2d;
+  border-radius: 12px;
+  background: #fff8e8;
+  display: grid;
+  gap: 10px;
+}
+
+.pull-status-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.pull-status-spinner {
+  font-size: 1.3rem;
+  animation: pull-bounce 1s ease-in-out infinite alternate;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+@keyframes pull-bounce {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(4px); opacity: 0.6; }
+}
+
+.pull-status-text strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #3c2415;
+}
+
+.pull-status-text p {
+  margin: 4px 0 0;
+  font-size: 0.83rem;
+  color: #5c3b1a;
+  line-height: 1.4;
+}
+
+.pull-images-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pull-images-bar-track {
+  flex: 1;
+  height: 10px;
+  background: #d9b97a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pull-images-bar-fill {
+  height: 100%;
+  background: #c07820;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+.pull-images-bar-fill.done {
+  background: #3f8f3d;
+}
+
+.pull-images-bar-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #5c3b1a;
+  white-space: nowrap;
+}
+
+.pull-images-waiting {
+  font-size: 0.82rem;
+  color: #7a5a30;
+  font-style: italic;
+}
+
+.pull-status-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #7a5a30;
+  border-top: 1px solid #d9b97a;
+  padding-top: 8px;
+  line-height: 1.5;
+}
+
+/* ── Steam Guard ─────────────────────────────────────────────────────────── */
+
+.steam-guard-section {
+  border: 4px solid #b57a2d;
+  border-radius: 14px;
+  background: #fff3d6;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.steam-guard-section h3 {
+  margin: 0;
+  color: #7a4a10;
+}
+
+.steam-guard-section p {
+  margin: 0;
+  color: #6f4a2d;
+}
+
+.auth-method-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.guard-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.guard-form input {
+  flex: 1 1 200px;
+  min-height: 46px;
+  border: 3px solid #673519;
+  border-radius: 14px;
+  background: #ffe6b6;
+  color: #3c2415;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.steam-qr-log {
+  margin: 0;
+  max-height: 460px;
+  overflow: auto;
+  white-space: pre;
+  border: 3px solid #673519;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: #1f130b;
+  padding: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.05;
+}
+
+.qr-modal-overlay {
+  place-items: center;
+}
+
+.steam-qr-modal-card {
+  width: min(920px, 96vw);
+  max-height: none;
+  overflow: visible;
+  padding: 18px;
+}
+
+.qr-modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.qr-modal-heading h2 {
+  margin: 0;
+}
+
+.steam-qr-modal-code {
+  margin: 0;
+  white-space: pre;
+  overflow: visible;
+  border: 3px solid #673519;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #1f130b;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1;
+}
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(60, 36, 21, 0.55);
+  z-index: 100;
+  padding: 24px;
+}
+
+.modal-card {
+  width: min(540px, 100%);
+  border: 6px solid #673519;
+  border-radius: 20px;
+  background: #ffd995;
+  box-shadow: 0 14px 0 #8f5a2d;
+  padding: 32px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-card h2 {
+  margin: 0 0 4px;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.field select {
+  min-height: 46px;
+  width: 100%;
+  border: 3px solid #673519;
+  border-radius: 14px;
+  background: #ffe6b6;
+  color: #3c2415;
+  padding: 10px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.field select:focus-visible {
+  outline: 4px solid rgba(63, 143, 61, 0.45);
+  outline-offset: 3px;
+}
+
+.version-warning {
+  margin: 4px 0 0;
+  border: 2px solid #b57a2d;
+  border-radius: 10px;
+  background: #fff3d6;
+  color: #7a4a10;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 @media (max-width: 920px) {
   .jobs-layout,
   .job-row {

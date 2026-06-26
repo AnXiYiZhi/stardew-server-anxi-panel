@@ -63,7 +63,7 @@ func main() {
 	dockerClient := paneldocker.NewClient(paneldocker.Options{Logger: logger})
 	jobManager := jobs.NewManager(store, logger)
 	driverRegistry := registry.New()
-	stardewDriver := stardew_junimo.New(dockerClient, logger)
+	stardewDriver := stardew_junimo.New(dockerClient, logger, jobManager, store)
 	if err := driverRegistry.Register(stardewDriver); err != nil {
 		logger.Error("failed to register stardew driver", "error", err)
 		os.Exit(1)

@@ -70,6 +70,52 @@ func TestJobsAPIPermissionsAndLifecycle(t *testing.T) {
 	}
 }
 
+func TestAdminCanClearJobCenterWhenNoActiveJobs(t *testing.T) {
+	handler, closeStore := newTestHandler(t)
+	defer closeStore()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	activeJob, _ := doJSON(t, handler, http.MethodPost, "/api/jobs/test", nil, adminCookie)
+	if activeJob.Code != http.StatusAccepted {
+		t.Fatalf("create active job returned %d: %s", activeJob.Code, activeJob.Body.String())
+	}
+	activeJobID := decodeJobID(t, activeJob.Body.Bytes())
+
+	blocked, _ := doJSON(t, handler, http.MethodDelete, "/api/jobs", nil, adminCookie)
+	if blocked.Code != http.StatusConflict {
+		t.Fatalf("clear with active job returned %d: %s", blocked.Code, blocked.Body.String())
+	}
+
+	waitForHTTPJobStatus(t, handler, adminCookie, activeJobID, "succeeded")
+
+	cleared, _ := doJSON(t, handler, http.MethodDelete, "/api/jobs", nil, adminCookie)
+	if cleared.Code != http.StatusOK {
+		t.Fatalf("clear jobs returned %d: %s", cleared.Code, cleared.Body.String())
+	}
+
+	list, _ := doJSON(t, handler, http.MethodGet, "/api/jobs", nil, adminCookie)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list jobs returned %d: %s", list.Code, list.Body.String())
+	}
+	var payload struct {
+		Jobs []any `json:"jobs"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode jobs list: %v", err)
+	}
+	if len(payload.Jobs) != 0 {
+		t.Fatalf("expected no jobs after clear, got %d", len(payload.Jobs))
+	}
+}
+
 func TestStardewStateRequiresLogin(t *testing.T) {
 	handler, closeStore := newTestHandler(t)
 	defer closeStore()

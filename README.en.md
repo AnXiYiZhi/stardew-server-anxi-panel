@@ -192,6 +192,17 @@ Notes:
 - `POST /api/jobs/:id/cancel` currently returns 501 `not_implemented`.
 - Ordinary users cannot create test jobs.
 
+## JunimoServer / Steam Auth Notes
+
+The panel follows JunimoServer's official Docker Compose workflow. Newly generated instance `docker-compose.yml` files should stay close to the upstream structure: service names remain `steam-auth`, `server`, and `discord-bot`; image selection uses `IMAGE_VERSION`; Steam sessions and game files live in the official Docker named volumes `steam-session` and `game-data`; server settings are mounted at `./.local-container/settings:/data/settings`.
+
+A few Steam Auth details are important:
+
+- During installation, the panel prefers `docker compose run --rm -i steam-auth download`, so Junimo uses `STEAM_USERNAME` / `STEAM_PASSWORD` from `.env` for non-interactive login and game download. This avoids the upstream `setup` username/password branch, which uses `Console.ReadKey()` for password input and fails in redirected-stdin background jobs with `Cannot read keys when either application does not have a console or when console input has been redirected`. Raw credentials are never written to job logs, backend logs, or HTTP responses.
+- If Steam asks for a second factor, the frontend continues with a Steam Guard code input or a Steam Mobile App approval prompt.
+- QR login depends on Junimo's upstream `steam-auth` SteamClient connection. If QR generation fails with `QR authentication failed: The SteamClient instance must be connected`, it is usually an upstream QR connection timing issue. Switch to username/password login and complete Steam Guard if prompted.
+- Existing local instances with older generated `docker-compose.yml` / `.env` files are not overwritten by `Prepare()`. Back up the instance directory before deleting or regenerating those config files.
+
 ## Frontend Development
 
 The frontend lives in `frontend/`.

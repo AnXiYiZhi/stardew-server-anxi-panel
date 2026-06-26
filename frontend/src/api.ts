@@ -3,11 +3,14 @@ import type {
   ComposePsResponse,
   DockerStatusResponse,
   Instance,
+  InstallJobResponse,
+  InstallOptionsResponse,
   InstanceState,
   InstancesResponse,
   JobLogsResponse,
   JobResponse,
   JobsResponse,
+  PrepareResponse,
 } from './types'
 
 export const defaultInstanceId = 'stardew'
@@ -87,6 +90,10 @@ export function getJobs() {
   return request<JobsResponse>('/api/jobs')
 }
 
+export function clearJobs() {
+  return request<{ ok: boolean; deleted: number }>('/api/jobs', { method: 'DELETE' })
+}
+
 export function getJob(id: string) {
   return request<JobResponse>(`/api/jobs/${encodeURIComponent(id)}`)
 }
@@ -107,6 +114,41 @@ export function startFailingTestJob() {
 
 export function getStardewState() {
   return getInstanceState(defaultInstanceId)
+}
+
+export function prepareInstance(instanceId = defaultInstanceId) {
+  return request<PrepareResponse>(`/api/instances/${encodeURIComponent(instanceId)}/prepare`, { method: 'POST' })
+}
+
+export function getInstallOptions(instanceId = defaultInstanceId) {
+  return request<InstallOptionsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/install-options`)
+}
+
+export function installInstance(
+  body: {
+    steamUsername?: string
+    steamPassword?: string
+    vncPassword?: string
+    imageTag?: string
+    reuseCredentials?: boolean
+  },
+  instanceId = defaultInstanceId,
+) {
+  return request<InstallJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/install`, {
+    method: 'POST',
+    body,
+  })
+}
+
+export function submitSteamGuardInput(
+  jobId: string,
+  input: string,
+  instanceId = defaultInstanceId,
+) {
+  return request<{ ok: boolean }>(`/api/instances/${encodeURIComponent(instanceId)}/steam-guard/input`, {
+    method: 'POST',
+    body: { jobId, input },
+  })
 }
 
 export function createJobEventSource(id: string, after = 0) {

@@ -83,9 +83,9 @@ V2 重点：
 - 用户拉取并运行本面板 Docker 镜像后，面板后端自动创建 Junimo 工作目录、下载/写入 `docker-compose.yml` 和 `.env`，并开放面板端口。
 - 首次访问面板时展示管理员初始化注册界面。创建管理员后进入主界面。
 - 主界面显示 `安装游戏` 按钮；`启动服务器` 按钮在安装完成前不可用，点击时提示 `请先安装游戏`。
-- 点击安装游戏后弹出 Steam 账号、Steam 密码、VNC 密码输入框。确认后后端写入 `.env`，执行 `docker compose pull`，再通过 PTY 执行 `docker compose run --rm -it steam-auth setup`。
+- 点击安装游戏后弹出 Steam 账号、Steam 密码、VNC 密码输入框。确认后后端写入 `.env`，执行 `docker compose pull`，再执行 `docker compose run --rm -i steam-auth download` 让 Junimo 使用 `.env` 中的凭据登录并下载游戏文件；不要用普通 stdin pipe 跑 `setup` 的账号密码分支。
 - 如果 Steam 密码错误，前端重新弹出修改密码界面，后端重新写入 `.env` 并再次执行 Steam Auth，直到密码正确或用户取消。
-- Steam Guard 阶段前端展示邮箱验证码输入、手机 App 等待确认或完整二维码；用户输入会被后端写入 PTY stdin。
+- Steam Guard 阶段前端展示邮箱验证码输入或手机 App 等待确认；用户输入会被后端写入 stdin。账号密码安装路径应走 Junimo `steam-auth download` 的非交互登录，使用 `.env` 中的 Steam 凭据，避免 `setup` 账号密码分支里的 `Console.ReadKey()` 在后台任务中崩溃。二维码登录如果在生成二维码前出现 `SteamClient instance must be connected`，前端应提示这是上游 QR 流程不稳定并引导改用账号密码 / Steam Guard。
 - 安装完成后启用 `启动服务器` 按钮。点击启动后先弹出存档选择界面，提供上传存档、读取已有存档、新建存档。
 - 用户确认存档策略后，后端执行 `docker compose up -d`，随后自动执行 `docker compose exec server attach-cli` 并发送 `invitecode` 或 `info`，把邀请码展示到前端。
 - 日常页面包括状态页、指令/喊话页、存档页、Mod 页、用户管理页。所有 Stardew 相关能力都通过 `games/stardew_junimo` driver 与 Junimo 容器通信。

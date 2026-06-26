@@ -3,5 +3,6 @@ dist/
 .vite/
 .gocache/
 backend/data/
+data/
 *.local
 .DS_Store

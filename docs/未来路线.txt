@@ -81,3 +81,12 @@ Milestone 8 改成：
 如果 PANEL_MODE=multi 或 instances 数量 > 1:
     登录后进入总面板实例列表
 这是最舒服的路线。现在产品体验干净，未来扩展也不亏。
+
+JunimoServer 接入补充
+当前 Stardew driver 必须尽量贴近 JunimoServer 官方 Docker Compose 工作流，不要维护缩水版 compose。
+关键约束：
+- 官方镜像版本变量是 IMAGE_VERSION，不是早期面板自定义的 JUNIMO_IMAGE_TAG。
+- 官方服务名要保留 steam-auth、server、discord-bot，后续 attach-cli 和状态检查依赖 server / steam-auth。
+- 官方核心存储包括 steam-session、game-data、saves、settings；游戏文件在 game-data Docker named volume，不在实例目录 .local-container 里。
+- steam-auth setup 出现 Choose authentication method 后，选择 Username & Password 还会继续读取 Steam 用户名和 Steam 密码；面板要由 driver 自动提交本次安装保存的凭据，不能写入日志。
+- QR 登录如果报 SteamClient instance must be connected，通常是 Junimo 上游 QR 连接时序问题；产品上要提示改用账号密码 / Steam Guard。

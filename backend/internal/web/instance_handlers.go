@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -101,6 +102,38 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceDockerPs(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "install-options" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceInstallOptions(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "prepare" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstancePrepare(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "install" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceInstall(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "steam-guard" && parts[2] == "input" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceSteamGuardInput(w, r, instanceID)
+		return
+	}
 	writeError(w, http.StatusNotFound, "not_found", "resource not found")
 }
 
@@ -112,6 +145,10 @@ func (s *server) handleInstanceDetail(w http.ResponseWriter, r *http.Request, in
 	if !ok {
 		return
 	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
 	writeJSON(w, http.StatusOK, s.makeInstanceResponse(instance))
 }
 
@@ -120,6 +157,10 @@ func (s *server) handleInstanceState(w http.ResponseWriter, r *http.Request, ins
 		return
 	}
 	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
 	if !ok {
 		return
 	}
@@ -156,6 +197,27 @@ func (s *server) handleInstanceDockerPs(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	s.writeComposePs(w, r, instance.DataDir)
+}
+
+func (s *server) reconcileInstanceState(w http.ResponseWriter, r *http.Request, instance storage.Instance) (storage.Instance, bool) {
+	type stateReconciler interface {
+		ReconcileState(ctx context.Context, instance storage.Instance) (storage.Instance, error)
+	}
+	driver, err := s.registry.Get(instance.DriverID)
+	if err != nil {
+		return instance, true
+	}
+	reconciler, ok := driver.(stateReconciler)
+	if !ok {
+		return instance, true
+	}
+	updated, err := reconciler.ReconcileState(r.Context(), instance)
+	if err != nil {
+		s.logger.Warn("failed to reconcile instance state", "instance", instance.ID, "driver", instance.DriverID, "error", err)
+		writeError(w, http.StatusInternalServerError, "state_reconcile_failed", "实例状态校验失败")
+		return storage.Instance{}, false
+	}
+	return updated, true
 }
 
 func (s *server) loadInstance(w http.ResponseWriter, r *http.Request, instanceID string) (storage.Instance, bool) {

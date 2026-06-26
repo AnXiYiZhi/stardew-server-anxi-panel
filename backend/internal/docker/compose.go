@@ -35,6 +35,10 @@ func (c *Client) ComposePull(ctx context.Context, dir string) (CommandResult, er
 	return c.run(ctx, "docker compose pull", dir, c.timeouts.Pull, "compose", "pull")
 }
 
+func (c *Client) ImageInspect(ctx context.Context, dir string, imageRef string) (CommandResult, error) {
+	return c.run(ctx, "docker image inspect", dir, c.timeouts.Ps, "image", "inspect", imageRef)
+}
+
 func (c *Client) ComposeUp(ctx context.Context, dir string) (CommandResult, error) {
 	return c.run(ctx, "docker compose up", dir, c.timeouts.Up, "compose", "up", "-d")
 }
