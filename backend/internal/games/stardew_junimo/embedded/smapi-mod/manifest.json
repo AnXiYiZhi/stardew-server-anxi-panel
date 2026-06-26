@@ -1,0 +1,10 @@
+{
+  "Name": "Stardew Anxi Panel Control",
+  "Author": "AnXiYiZhi",
+  "Version": "0.1.0",
+  "Description": "File-based control bridge for Stardew Anxi Panel.",
+  "UniqueID": "AnXiYiZhi.StardewAnxiPanel.Control",
+  "EntryDll": "StardewAnxiPanel.Control.dll",
+  "MinimumApiVersion": "4.0.0"
+}
+

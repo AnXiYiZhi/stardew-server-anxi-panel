@@ -1,0 +1,298 @@
+.ngc-root {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Status banners */
+.ngc-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ngc-status-banner.generating {
+  background: #eef6ff;
+  border: 1px solid #90c7f7;
+  color: #1a5fa8;
+}
+.ngc-status-banner.failed {
+  background: #fff5f5;
+  border: 1px solid #f5a5a5;
+  color: #c00;
+}
+.ngc-status-banner.unavailable {
+  background: #fef9e7;
+  border: 1px solid #f5c518;
+  color: #7a5c00;
+}
+.ngc-status-banner button {
+  margin-left: auto;
+  white-space: nowrap;
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ngc-status-banner button:hover {
+  background: #f5f5f5;
+}
+.ngc-status-banner button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Spinner */
+.ngc-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #90c7f7;
+  border-top-color: #1a5fa8;
+  border-radius: 50%;
+  animation: ngc-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ngc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Section */
+.ngc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ngc-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+/* Image grid for farm types */
+.ngc-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.ngc-image-card {
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f0f0f0;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.ngc-image-card:hover {
+  transform: scale(1.03);
+}
+.ngc-image-card.selected {
+  border-color: #4a7c42;
+  box-shadow: 0 0 0 2px #4a7c4244;
+}
+.ngc-image-card img,
+.ngc-image-card .ngc-img-placeholder {
+  width: 100%;
+  aspect-ratio: 240 / 132;
+  display: block;
+  object-fit: cover;
+}
+.ngc-image-card .ngc-img-placeholder {
+  background: #ddd;
+}
+.ngc-image-card-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Pet type row (larger cards) */
+.ngc-pet-type-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+  max-width: 300px;
+}
+.ngc-pet-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: border-color 0.15s;
+}
+.ngc-pet-type-card:hover {
+  border-color: #aaa;
+}
+.ngc-pet-type-card.selected {
+  border-color: #4a7c42;
+  background: #f0f8ef;
+}
+.ngc-pet-type-card img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.ngc-pet-type-card span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+}
+
+/* Pet breed grid (smaller, square) */
+.ngc-breed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+  gap: 6px;
+}
+.ngc-breed-card {
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f0f0f0;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.ngc-breed-card:hover {
+  transform: scale(1.05);
+}
+.ngc-breed-card.selected {
+  border-color: #4a7c42;
+  box-shadow: 0 0 0 2px #4a7c4244;
+}
+.ngc-breed-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  object-fit: cover;
+}
+.ngc-breed-card-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2px 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Option row (label + chips) */
+.ngc-option-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ngc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ngc-chip {
+  padding: 5px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  background: #fafafa;
+  color: #444;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ngc-chip:hover {
+  border-color: #aaa;
+}
+.ngc-chip.selected {
+  border-color: #4a7c42;
+  background: #edf7eb;
+  color: #2d5c26;
+  font-weight: 600;
+}
+
+/* Form fields */
+.ngc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ngc-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+.ngc-field input {
+  padding: 8px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ngc-field input:focus {
+  border-color: #4a7c42;
+}
+
+/* Row of fields */
+.ngc-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Skeleton loading */
+.ngc-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: ngc-shimmer 1.3s infinite;
+  border-radius: 8px;
+}
+@keyframes ngc-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Error state */
+.ngc-error {
+  padding: 16px;
+  border: 1px solid #f5a5a5;
+  background: #fff5f5;
+  border-radius: 8px;
+  color: #c00;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ngc-error button {
+  margin-left: auto;
+  padding: 5px 12px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}

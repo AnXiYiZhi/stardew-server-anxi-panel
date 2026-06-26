@@ -54,14 +54,40 @@ const junimoComposeTemplate = `services:
       SERVER_PASSWORD: "${SERVER_PASSWORD:-}"
       MAX_LOGIN_ATTEMPTS: "${MAX_LOGIN_ATTEMPTS:-3}"
       AUTH_TIMEOUT_SECONDS: "${AUTH_TIMEOUT_SECONDS:-120}"
+      SAP_CONTROL_DIR: /data/control
     volumes:
       - game-data:/data/game
-      - saves:/config/xdg/config/StardewValley
+      - ./.local-container/saves:/config/xdg/config/StardewValley
       - ./.local-container/settings:/data/settings
+      - ./.local-container/control:/data/control
+      - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
+
+  asset-exporter:
+    image: sdvd/server:${IMAGE_VERSION:-` + TestedImageTag + `}
+    profiles:
+      - catalog-export
+    stdin_open: true
+    tty: true
+    depends_on:
+      steam-auth:
+        condition: service_started
+    cap_add:
+      - SYS_TIME
+    environment:
+      STEAM_AUTH_URL: "http://steam-auth:${STEAM_AUTH_PORT:-3001}"
+      VNC_PASSWORD: "catalog-export-unused"
+      ALLOW_INSECURE_SETUP: "true"
+      SETTINGS_PATH: /data/settings/server-settings.json
+      SAP_CONTROL_DIR: /data/control
+      SAP_EXPORT_ONLY: "true"
+    volumes:
+      - game-data:/data/game
+      - ./.local-container/catalog-export-saves:/config/xdg/config/StardewValley
+      - ./.local-container/settings:/data/settings
+      - ./.local-container/control:/data/control
+      - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
 
 volumes:
   steam-session:
   game-data:
-  saves:
-  settings:
 `

@@ -99,10 +99,25 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		return fmt.Errorf("write .env: %w", err)
 	}
 	_, _ = jobCtx.Info(ctx, ".env 写入完成（密码已脱敏，不写入日志）。")
+	if changed, err := migrateAllowInsecureSetup(envPath); err != nil {
+		return fmt.Errorf("update ALLOW_INSECURE_SETUP in .env: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已将 .env 中的 ALLOW_INSECURE_SETUP 设为 true（Junimo 需要此配置才能在无 API_KEY 时启动）。")
+	}
 	if changed, err := migrateSteamAuthComposeImage(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
 		return fmt.Errorf("update steam-auth image in docker-compose.yml: %w", err)
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "已更新 docker-compose.yml 中的 steam-auth 镜像配置。")
+	}
+	if changed, err := migrateSavesVolume(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
+		return fmt.Errorf("migrate saves volume in docker-compose.yml: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已将 docker-compose.yml 中的 saves 命名卷迁移为 bind mount。")
+	}
+	if changed, err := migrateAssetExporterService(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
+		return fmt.Errorf("add asset-exporter service to docker-compose.yml: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已在 docker-compose.yml 中添加 asset-exporter 服务。")
 	}
 
 	// ── Step 2: docker compose pull ─────────────────────────────────────
@@ -141,7 +156,12 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "镜像检查完成，等待选择 Steam 登录方式...")
 
 	// ── Step 3: steam-auth setup/download ────────────────────────────────
-	return r.runSteamAuth(ctx, jobCtx)
+	if err := r.runSteamAuth(ctx, jobCtx); err != nil {
+		return err
+	}
+
+	// ── Step 4: export customization catalog ──────────────────────────────
+	return r.runCatalogExportPhase(ctx, jobCtx)
 }
 
 // missingServices returns the compose service names whose images are not present locally.
@@ -464,9 +484,49 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 }
 
 func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
+	// Leave phase as steam_auth_running (intermediate); runCatalogExportPhase
+	// will set game_installed once the export step completes.
+	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+		"游戏已安装，正在准备素材目录...", "export_catalog_queued", jobCtx.ID)
+	_, _ = jobCtx.Info(context.Background(), "Steam 认证成功，游戏和 Steam SDK 已安装，准备导出素材目录...")
+}
+
+// runCatalogExportPhase runs as the final install step.
+// It starts a temporary Junimo container, waits for the SMAPI mod to write
+// options.json, then stops the container.  Export failure is non-fatal —
+// the instance is marked game_installed regardless so the user can still
+// configure and start the server.
+func (r *installRunner) runCatalogExportPhase(ctx context.Context, jobCtx *jobs.Context) error {
+	imageRef := "sdvd/server:" + r.imageTag
+
+	// Acquire the lock so the catalog endpoint shows "generating".
+	if err := AcquireCatalogLock(r.instance.DataDir); err != nil {
+		_, _ = jobCtx.Warn(ctx, "素材目录导出锁已存在，跳过导出步骤。")
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
+			"游戏已安装。", "game_installed", jobCtx.ID)
+		_, _ = jobCtx.Info(context.Background(), "安装流程完成。")
+		return nil
+	}
+	defer ReleaseCatalogLock(r.instance.DataDir)
+
+	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
+		"正在从游戏文件导出素材目录...", "export_catalog_running", jobCtx.ID)
+	_, _ = jobCtx.Info(ctx, "正在启动素材导出容器，游戏首次启动可能需要几分钟，请耐心等待...")
+
+	logLine := func(line string) { _, _ = jobCtx.Info(context.Background(), line) }
+
+	if exportErr := ExportCatalogContent(ctx, r.instance.DataDir, imageRef, logLine); exportErr != nil {
+		_, _ = jobCtx.Warn(context.Background(), fmt.Sprintf("素材目录导出失败（非致命）：%v", exportErr))
+		WriteCatalogExportError(r.instance.DataDir, exportErr.Error())
+	} else {
+		ClearCatalogExportError(r.instance.DataDir)
+		_, _ = jobCtx.Info(context.Background(), "素材目录导出完成。")
+	}
+
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
-		"Steam 认证成功，游戏和 Steam SDK 已安装。", "steam_auth_done", jobCtx.ID)
-	_, _ = jobCtx.Info(context.Background(), "Steam 认证成功，游戏和 Steam SDK 已安装。")
+		"游戏已安装，素材目录已就绪。", "game_installed", jobCtx.ID)
+	_, _ = jobCtx.Info(context.Background(), "安装流程全部完成。")
+	return nil
 }
 
 func isSteamGuardCodePrompt(lower string) bool {
@@ -634,11 +694,119 @@ func migrateSteamAuthComposeImage(path string) (bool, error) {
 	return true, os.WriteFile(path, []byte(text), mode)
 }
 
+// migrateSavesVolume rewrites docker-compose.yml to replace the `saves` named volume
+// mount with a bind mount (./.local-container/saves) so the panel can access save files.
+// Idempotent: returns (false, nil) when no change is needed.
+func migrateSavesVolume(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	const oldMount = "- saves:/config/xdg/config/StardewValley"
+	const newMount = "- ./.local-container/saves:/config/xdg/config/StardewValley"
+	text := string(raw)
+	if !strings.Contains(text, oldMount) {
+		return false, nil
+	}
+	text = strings.ReplaceAll(text, oldMount, newMount)
+	// Remove the `saves:` entry from the top-level volumes section if present.
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "saves:" {
+			continue
+		}
+		out = append(out, l)
+	}
+	text = strings.Join(out, "\n")
+	info, statErr := os.Stat(path)
+	mode := os.FileMode(0o644)
+	if statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	return true, os.WriteFile(path, []byte(text), mode)
+}
+
 func insertLineAfter(text, marker, line string) string {
 	if !strings.Contains(text, marker) {
 		return text
 	}
 	return strings.Replace(text, marker, marker+"\n"+line, 1)
+}
+
+// migrateAssetExporterService adds the asset-exporter Compose service to an existing
+// docker-compose.yml that pre-dates the catalog export feature. Idempotent.
+func migrateAssetExporterService(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	text := string(raw)
+	if strings.Contains(text, "asset-exporter:") {
+		return false, nil
+	}
+	// Insert the service block immediately before the top-level volumes: section.
+	const marker = "\nvolumes:\n"
+	if !strings.Contains(text, marker) {
+		return false, nil
+	}
+	serviceBlock := `
+  asset-exporter:
+    image: sdvd/server:${IMAGE_VERSION:-` + TestedImageTag + `}
+    profiles:
+      - catalog-export
+    stdin_open: true
+    tty: true
+    depends_on:
+      steam-auth:
+        condition: service_started
+    cap_add:
+      - SYS_TIME
+    environment:
+      STEAM_AUTH_URL: "http://steam-auth:${STEAM_AUTH_PORT:-3001}"
+      VNC_PASSWORD: "catalog-export-unused"
+      ALLOW_INSECURE_SETUP: "true"
+      SETTINGS_PATH: /data/settings/server-settings.json
+      SAP_CONTROL_DIR: /data/control
+      SAP_EXPORT_ONLY: "true"
+    volumes:
+      - game-data:/data/game
+      - ./.local-container/catalog-export-saves:/config/xdg/config/StardewValley
+      - ./.local-container/settings:/data/settings
+      - ./.local-container/control:/data/control
+      - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
+`
+	text = strings.Replace(text, marker, serviceBlock+marker, 1)
+	info, statErr := os.Stat(path)
+	mode := os.FileMode(0o644)
+	if statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	return true, os.WriteFile(path, []byte(text), mode)
+}
+
+// migrateAllowInsecureSetup sets ALLOW_INSECURE_SETUP=true in the instance .env when
+// the server would otherwise refuse to start.  Junimo requires either API_KEY or
+// ALLOW_INSECURE_SETUP=true; new panel instances don't set an API_KEY, so the only
+// way to start is to allow insecure setup.
+// Idempotent: returns (false, nil) if the value is already "true".
+func migrateAllowInsecureSetup(envPath string) (bool, error) {
+	vals, err := sjconfig.ReadEnvFile(envPath)
+	if err != nil {
+		return false, err
+	}
+	if strings.EqualFold(vals["ALLOW_INSECURE_SETUP"], "true") {
+		return false, nil
+	}
+	return true, sjconfig.UpdateEnvFile(envPath, map[string]string{
+		"ALLOW_INSECURE_SETUP": "true",
+	})
 }
 
 // makePullLineHandler returns a stateful line handler for docker compose pull output.

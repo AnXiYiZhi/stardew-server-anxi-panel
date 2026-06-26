@@ -10,7 +10,7 @@
 
 首个可上线版本默认使用 **Single Game Mode**：用户登录后直接进入 Stardew 面板，不显示总面板和游戏列表。内部仍按 `instances + driver_id + GameDriver` 设计，等开发第二个游戏面板时再开启 **Multi Game Mode**。
 
-> 当前状态：**Milestone 5: GameDriver Registry + Instance Model 已完成**。Milestone 0、1、2、3、4、5 已完成。后端已包含配置加载、SQLite 初始化、嵌入式迁移运行器、统一 JSON 错误响应、管理员初始化、登录/session、admin/user 角色、管理员用户管理、通用 Docker / Docker Compose CLI 控制层、持久化 jobs/job_logs、实例模型、GameDriver 接口、driver registry、Stardew Junimo driver 骨架和 SSE 任务日志流。前端已支持初始化页、登录页、Single Game Mode 直达 Stardew 主界面、用户管理、instance-based Stardew 状态展示、instance-based Compose PS 和任务中心。Junimo 安装、Steam Auth、服务器启动、存档、Mod 和控制台功能仍在计划中，尚未实现。
+> 当前状态：**Milestone 6: Stardew Junimo Prepare and Install 已完成**。Milestone 0-6 已完成。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry，以及 Stardew Junimo 的工作目录准备、Steam 认证和游戏安装流程；前端已支持安装向导、Steam 登录方式选择、Steam Guard 交互、二维码展示、下载进度和任务中心。服务器生命周期、启动前存档策略、完整存档管理、Mod 和控制台仍在后续 Milestone 中实现。
 
 ## GitHub 描述
 
@@ -31,7 +31,9 @@
 7. 后端写入 `.env`，直接拉取 JunimoServer 相关容器镜像，并运行 Steam Auth。
 8. 前端显示 Steam Guard 提示，后端完成 PTY 交互。
 9. 安装完成后点击 **Start Server**。
-10. 选择存档：上传、选择已有存档或新建存档。
+10. 如果没有已有存档，选择“自定义新建存档”或“从本机上传存档”：
+    - 自定义新建存档由面板收集农场名、玩家名、地图类型和初始设置，并生成可被 Stardew/Junimo 读取的真实初始存档；上游 Junimo 不支持完整自定义创建。
+    - 上传存档先解析并展示游戏时间、地图、已有玩家名称等预览，确认后才上传到服务器。
 11. 后端运行 `docker compose up -d`。
 12. 后端通过 `attach-cli` 获取邀请码，并显示在面板中。
 13. 通过 Web UI 管理服务器状态、命令、聊天公告、存档、Mod 和面板用户。

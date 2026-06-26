@@ -120,7 +120,71 @@ type UploadedFile struct {
 }
 
 type SaveInfo struct {
-	Name string `json:"name"`
+	Name         string `json:"name"`
+	FarmerName   string `json:"farmerName,omitempty"`
+	FarmName     string `json:"farmName,omitempty"`
+	GameYear     int    `json:"gameYear,omitempty"`
+	GameSeason   string `json:"gameSeason,omitempty"`
+	GameDay      int    `json:"gameDay,omitempty"`
+	FarmType     string `json:"farmType,omitempty"`
+	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
+	ModifiedAt   string `json:"modifiedAt,omitempty"`
+	ParseError   string `json:"parseError,omitempty"`
+}
+
+// RgbColor is an RGB color for character appearance customization.
+type RgbColor struct {
+	R int `json:"r"`
+	G int `json:"g"`
+	B int `json:"b"`
+}
+
+// NewGameConfig holds parameters for creating a new game.
+// Junimo server-settings fields are always applied.
+// SMAPI character fields (Gender, PetType, PetBreedID, appearance) are written to
+// server-init.json and applied by the SMAPI mod on the SaveCreating event.
+type NewGameConfig struct {
+	FarmName       string `json:"farmName"`
+	FarmType       string `json:"farmType"`       // standard|riverland|forest|hilltop|wilderness|fourcorners|beach
+	StartingCabins int    `json:"startingCabins"` // 0-3
+	CabinLayout    string `json:"cabinLayout"`    // nearby|separate
+	ProfitMargin   string `json:"profitMargin"`   // "100"|"75"|"50"|"25"
+	PetBreed       int    `json:"petBreed"`       // 0-3 (Junimo server-settings index)
+	MoneyMode      string `json:"moneyMode"`      // shared|separate
+
+	// SMAPI character fields — require the StardewAnxiPanel.Control mod to be installed.
+	FarmerName    string    `json:"farmerName,omitempty"`
+	FavoriteThing string    `json:"favoriteThing,omitempty"`
+	Gender        string    `json:"gender,omitempty"`     // male|female
+	PetType       string    `json:"petType,omitempty"`    // Cat|Dog
+	PetBreedID    string    `json:"petBreedId,omitempty"` // SMAPI breed string ID
+	Skin          *int      `json:"skin,omitempty"`
+	Hair          *int      `json:"hair,omitempty"`
+	Shirt         string    `json:"shirt,omitempty"`
+	Pants         string    `json:"pants,omitempty"`
+	Accessory     *int      `json:"accessory,omitempty"`
+	EyeColor      *RgbColor `json:"eyeColor,omitempty"`
+	HairColor     *RgbColor `json:"hairColor,omitempty"`
+	PantsColor    *RgbColor `json:"pantsColor,omitempty"`
+}
+
+// PreflightResult is returned by GET .../saves/preflight.
+type PreflightResult struct {
+	HasSaves    bool       `json:"hasSaves"`
+	Saves       []SaveInfo `json:"saves"`
+	TemplateAvailable bool `json:"templateAvailable"`
+}
+
+// UploadPreviewResult is returned by POST .../saves/upload-preview.
+type UploadPreviewResult struct {
+	Token    string   `json:"token"`
+	Preview  SaveInfo `json:"preview"`
+	SaveName string   `json:"saveName"`
+}
+
+// InviteCodeResult is returned by GET .../invite-code.
+type InviteCodeResult struct {
+	InviteCode string `json:"inviteCode"`
 }
 
 type ModInfo struct {

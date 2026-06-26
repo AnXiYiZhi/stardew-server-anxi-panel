@@ -3,8 +3,13 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 )
 
 var serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
@@ -51,6 +56,59 @@ func (c *Client) ComposeRestart(ctx context.Context, dir string) (CommandResult,
 	return c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, "compose", "restart")
 }
 
+// ComposeExecPipe runs `docker compose exec -T <service> <args>` with stdinData piped to the
+// process stdin.  The -T flag disables pseudo-TTY allocation so stdin can be redirected.
+func (c *Client) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (CommandResult, error) {
+	execArgs := append([]string{"compose", "exec", "-T", service}, args...)
+	started := time.Now()
+	result := CommandResult{
+		WorkDir:  dir,
+		Args:     RedactArgs(append([]string{c.dockerPath}, execArgs...)),
+		ExitCode: -1,
+	}
+	if dir == "" {
+		result.DurationMS = time.Since(started).Milliseconds()
+		return result, CommandError{Op: "docker compose exec", Result: result, Err: ErrInvalidWorkDir}
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(commandCtx, c.dockerPath, execArgs...)
+	cmd.Dir = dir
+	if stdinData != "" {
+		cmd.Stdin = strings.NewReader(stdinData)
+	}
+	var stdout limitedBuffer
+	var stderr limitedBuffer
+	stdout.limit = c.maxOutputBytes
+	stderr.limit = c.maxOutputBytes
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	result.DurationMS = time.Since(started).Milliseconds()
+	result.Stdout = RedactString(stdout.String())
+	result.Stderr = RedactString(stderr.String())
+	result.StdoutTruncated = stdout.truncated
+	result.StderrTruncated = stderr.truncated
+
+	if commandCtx.Err() != nil {
+		result.TimedOut = true
+		return result, CommandError{Op: "docker compose exec", Result: result, Err: ErrCommandTimeout}
+	}
+	if err == nil {
+		result.ExitCode = 0
+		return result, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		result.ExitCode = exitErr.ExitCode()
+		return result, CommandError{Op: "docker compose exec", Result: result, Err: ErrCommandFailed}
+	}
+	result.Stderr = RedactString(err.Error())
+	return result, CommandError{Op: "docker compose exec", Result: result, Err: fmt.Errorf("start docker compose exec: %w", err)}
+}
+
 func (c *Client) ComposeLogs(ctx context.Context, dir string, opts LogsOptions) (CommandResult, error) {
 	tail := opts.Tail
 	if tail == 0 {
@@ -71,15 +129,10 @@ func (c *Client) ComposeLogs(ctx context.Context, dir string, opts LogsOptions) 
 }
 
 func parseComposeServices(stdout string) ([]ComposeService, error) {
-	var raw []map[string]any
-	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
-		var single map[string]any
-		if singleErr := json.Unmarshal([]byte(stdout), &single); singleErr != nil {
-			return nil, err
-		}
-		raw = []map[string]any{single}
+	raw, err := parseComposeJSON(stdout)
+	if err != nil {
+		return nil, err
 	}
-
 	services := make([]ComposeService, 0, len(raw))
 	for _, item := range raw {
 		services = append(services, ComposeService{
@@ -92,6 +145,41 @@ func parseComposeServices(stdout string) ([]ComposeService, error) {
 		})
 	}
 	return services, nil
+}
+
+// parseComposeJSON handles three output formats from `docker compose ps --format json`:
+//   - JSON array  (Compose v2 < 2.21)
+//   - Single JSON object (single-service project)
+//   - JSONL — one JSON object per line (Compose v2.21+ / v5+)
+func parseComposeJSON(stdout string) ([]map[string]any, error) {
+	stdout = strings.TrimSpace(stdout)
+	if stdout == "" {
+		return nil, nil
+	}
+	// JSON array.
+	var arr []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &arr); err == nil {
+		return arr, nil
+	}
+	// Single JSON object.
+	var single map[string]any
+	if err := json.Unmarshal([]byte(stdout), &single); err == nil {
+		return []map[string]any{single}, nil
+	}
+	// JSONL: one JSON object per line.
+	var result []map[string]any
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var item map[string]any
+		if err := json.Unmarshal([]byte(line), &item); err != nil {
+			return nil, fmt.Errorf("parse compose ps line %q: %w", line, err)
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func firstString(item map[string]any, keys ...string) string {

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -553,7 +553,7 @@ button.job-row {
   font-weight: 900;
 }
 
-/* ── Install Section ─────────────────────────────────────────────────────── */
+/* 鈹€鈹€ Install Section 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .install-section {
   border: 4px solid #673519;
@@ -597,7 +597,7 @@ button.job-row {
   color: #6f4a2d;
 }
 
-/* ── Install progress (step indicator + bar) ─────────────────────────────── */
+/* 鈹€鈹€ Install progress (step indicator + bar) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .install-progress-section {
   display: grid;
@@ -709,7 +709,7 @@ button.job-row {
   margin: 0;
 }
 
-/* ── Pull progress bar (inside job detail) ───────────────────────────────── */
+/* 鈹€鈹€ Pull progress bar (inside job detail) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .pull-progress-container {
   margin-bottom: 10px;
@@ -752,7 +752,7 @@ button.job-row {
   font-size: 0.82rem;
 }
 
-/* ── Pull status card (user-facing, inside InstallSection) ───────────────── */
+/* 鈹€鈹€ Pull status card (user-facing, inside InstallSection) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .pull-status-card {
   margin-top: 14px;
@@ -843,7 +843,7 @@ button.job-row {
   line-height: 1.5;
 }
 
-/* ── Steam Guard ─────────────────────────────────────────────────────────── */
+/* 鈹€鈹€ Steam Guard 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .steam-guard-section {
   border: 4px solid #b57a2d;
@@ -939,7 +939,7 @@ button.job-row {
   line-height: 1;
 }
 
-/* ── Modal ───────────────────────────────────────────────────────────────── */
+/* 鈹€鈹€ Modal 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 .modal-overlay {
   position: fixed;
@@ -1035,4 +1035,149 @@ button.job-row {
   .button {
     transition: none;
   }
+}
+
+/* ── Lifecycle Section ──────────────────────────────────────────────── */
+.lifecycle-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lifecycle-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lifecycle-state-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.lifecycle-state-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--badge-bg, #e2e8f0);
+  color: var(--badge-text, #334155);
+}
+
+.lifecycle-state-running { background: #dcfce7; color: #166534; }
+.lifecycle-state-starting { background: #fef9c3; color: #713f12; }
+.lifecycle-state-stopped { background: #fee2e2; color: #991b1b; }
+.lifecycle-state-error { background: #fee2e2; color: #991b1b; }
+
+.lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.invite-code-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.invite-code {
+  font-size: 18px;
+  letter-spacing: 2px;
+  font-family: monospace;
+  color: #166534;
+}
+
+.preflight-heading {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.save-card {
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.save-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  font-family: monospace;
+  margin-bottom: 4px;
+}
+
+.save-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.save-card-hint {
+  font-size: 12px;
+  color: #dc2626;
+}
+
+.preflight-result {
+  padding: 12px 0;
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 480px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.muted {
+  color: var(--text-muted);
 }

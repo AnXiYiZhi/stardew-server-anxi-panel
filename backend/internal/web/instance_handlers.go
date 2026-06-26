@@ -134,6 +134,81 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceSteamGuardInput(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "start" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceStart(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "stop" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceStop(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "restart" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceRestart(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "invite-code" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceInviteCode(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "preflight" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesPreflight(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "custom-new-game" && parts[2] == "catalog" {
+		switch r.Method {
+		case http.MethodGet:
+			s.handleCustomNewGameCatalog(w, r, instanceID)
+		case http.MethodPost:
+			s.handleCustomNewGameCatalogRefresh(w, r, instanceID)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+		return
+	}
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "custom-new-game" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesCustomNewGame(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "upload-preview" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesUploadPreview(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "upload-commit-and-start" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesUploadCommitAndStart(w, r, instanceID)
+		return
+	}
 	writeError(w, http.StatusNotFound, "not_found", "resource not found")
 }
 

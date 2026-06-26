@@ -167,7 +167,7 @@ func EmptyEnvTemplate() map[string]string {
 		"AUTH_TIMEOUT_SECONDS":                   "120",
 		"API_ENABLED":                            "true",
 		"API_KEY":                                "",
-		"ALLOW_INSECURE_SETUP":                   "false",
+		"ALLOW_INSECURE_SETUP":                   "true",
 		"DISCORD_BOT_TOKEN":                      "",
 		"DISCORD_BOT_NICKNAME":                   "",
 		"DISCORD_CHAT_CHANNEL_ID":                "",

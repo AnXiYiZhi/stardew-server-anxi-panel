@@ -381,9 +381,9 @@ set state = game_installed
 enable start server button
 ```
 
-### Step 7: Start Server Requires Save Selection
+### Step 7: Separate Save And Start Actions
 
-点击 `启动服务器` 后必须先弹出存档选择界面。
+界面始终提供独立的存档启动面板，包含“创建存档并启动”和“上传存档并启动”。普通 `启动服务器` 是单独动作，默认让 Junimo 加载上次使用的可用存档；仅在后端检查到零有效存档时返回 `save_required` 并引导到该面板。
 
 界面提供：
 
@@ -403,11 +403,11 @@ set state = ready_to_start
 docker compose up -d
 ```
 
-如果用户未选择存档就启动：
+如果用户在没有任何有效存档时点击普通启动：
 
 ```text
-set or return state = save_required
-show save selection modal
+return state = save_required
+scroll to create/upload-and-start panel
 ```
 
 ### Step 8: Fetch Invite Code After Start
@@ -989,14 +989,177 @@ POST /api/instances/:id/steam-guard/input
 - `go test ./...` 通过。
 - `npm run build` 通过。
 
-## Milestone 7: Server Lifecycle
+## Milestone 7: Server Lifecycle ✅ 已完成（2026-06-26）
 
 目标：完成启动、停止、重启、状态和邀请码展示。
+
+### 完成内容（2026-06-26）
+
+**后端新增/修改文件：**
+- `backend/internal/docker/compose.go`: 新增 `ComposeExecPipe`，用于向容器 stdin 管道输入（attach-cli invitecode）
+- `backend/internal/games/stardew_junimo/compose_template.go`: saves 改为 bind mount (`./.local-container/saves:/config/xdg/config/StardewValley`)，删除 named volume `saves:`
+- `backend/internal/games/stardew_junimo/installer.go`: 新增 `migrateSavesVolume`（迁移已有实例），在安装流程中自动执行
+- `backend/internal/games/stardew_junimo/driver.go`: `Prepare` 新增 `.local-container/saves/Saves` 和 `saves-templates` 目录创建；`updatePhase` 修复为保留 `DriverPayload`
+- `backend/internal/games/stardew_junimo/saves.go`: 新建，实现 `ListSaves`、`PreviewSaveZip`、`ImportSaveToVolume`、`WriteServerSettings`、`HasTemplates`；完整 ZIP 安全检查（zip-slip、绝对路径、解压大小限制）
+- `backend/internal/games/stardew_junimo/lifecycle.go`: 新建，实现 `Start`/`Stop`/`Restart`/`GetInviteCode`；`LifecycleDockerService` 接口扩展 Docker 操作；`parseInviteCode` 解析 attach-cli 输出
+- `backend/internal/games/registry/types.go`: 新增 `NewGameConfig`、`PreflightResult`、`UploadPreviewResult`、`InviteCodeResult`；扩展 `SaveInfo`（元数据字段）
+- `backend/internal/web/lifecycle_handlers.go`: 新建，包含 `pendingUploadStore`（token 绑定实例、短 TTL、一次性）；实现全部 8 个生命周期 handler
+- `backend/internal/web/handler.go`: server 新增 `pendingUploads` 字段
+- `backend/internal/web/instance_handlers.go`: 注册 8 条新路由
+
+**前端修改：**
+- `frontend/src/types.ts`: 新增 `SaveInfo`、`NewGameConfig`、`PreflightResult`、`UploadPreviewResult`、`InviteCodeResult`、`LifecycleJobResponse`
+- `frontend/src/api.ts`: 新增 `getSavesPreflight`、`createNewGame`、`uploadSavePreview`、`uploadSaveCommitAndStart`、`startInstance`、`stopInstance`、`restartInstance`、`getInviteCode`
+- `frontend/src/App.tsx`: 新增 `LifecycleSection`、`SaveCard` 组件；新建游戏 modal（farmName/farmType/小屋/利润/宠物/金钱）；上传存档 modal（两阶段：preview→confirm）；preflight 检查流程
+- `frontend/src/App.css`: 新增 lifecycle section、modal、save-card、invite-code 样式
+
+**测试：**
+- `backend/internal/games/stardew_junimo/saves_test.go`: 18 个测试（ZIP 安全、存档解析、migrateSavesVolume 幂等、ImportSaveToVolume）
+- `backend/internal/games/stardew_junimo/lifecycle_test.go`: 邀请码解析、payload merge
+- `backend/internal/games/stardew_junimo/driver_test.go`: 更新已有测试（bind mount 路径、新子目录）
+
+**阻塞点（已按需求文档记录）：**
+真正的自定义新建存档（FarmerName/FavoriteThing/外貌）需要预置 save template（`.local-container/saves-templates/<SaveDir>/`）。不支持 SMAPI `loadForNewGame(false)`，当前 M7 通过 `server-settings.json` 配置 Junimo 支持的字段（FarmName/FarmType/利润/小屋/宠物），Junimo 首次启动自动创建存档。以上限制已在前端 modal 提示用户。
+
+### Milestone 7.5: 可视化新建存档创建器 ✅ 已完成（2026-06-26）
+
+**目标：** 在 React 前端实现真实游戏素材驱动的可视化新建存档创建器；通过 SMAPI mod 机制提供农场类型、宠物品种等真实图片；角色字段（FarmerName/Gender/PetType/PetBreed/外貌）通过 server-init.json 由 SMAPI mod 在 SaveCreating 事件中应用。
+
+**后端新增/修改文件：**
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod/manifest.json`: SMAPI mod 元数据（嵌入进 Go binary）
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod/StardewAnxiPanel.Control.dll`: 预编译 SMAPI mod（14848 字节，嵌入进 Go binary）
+- `backend/internal/games/stardew_junimo/smapi_mod.go`: `//go:embed` 指令 + `installSMAPIMod()`，幂等写入 `.local-container/mods/StardewAnxiPanel.Control/`
+- `backend/internal/games/stardew_junimo/catalog.go`: `PanelOptionItem`、`CatalogResponse` 类型；`ReadCatalog()`（读 options.json，有 mtime 缓存）；`DefaultCatalog()`（SVG 占位图 fallback，source="fallback"）；`InvalidateCatalogCache()`
+- `backend/internal/games/stardew_junimo/compose_template.go`: server service 新增 `SAP_CONTROL_DIR=/data/control` 环境变量；新增两个 bind mount：`.local-container/control:/data/control`、`.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control`
+- `backend/internal/games/stardew_junimo/driver.go`: `Prepare()` 新增 `.local-container/control/`、`.local-container/control/commands/`、`.local-container/mods/` 目录创建；调用 `installSMAPIMod()`（非致命错误）
+- `backend/internal/games/stardew_junimo/saves.go`: `NewGameConfig` 扩展字段（Gender/PetType/PetBreedID/Skin/Hair/Shirt/Pants/Accessory/EyeColor/HairColor/PantsColor）；`WriteInitConfig()` 写 server-init.json；`profitMargin` 改为数字字符串 ("100"|"75"|"50"|"25")；`moneyMode` 改为 "shared"|"separate"；`WriteServerSettings()` 内部调用 `WriteInitConfig()`
+- `backend/internal/games/stardew_junimo/catalog_test.go`: 12 个测试（DefaultCatalog、ReadCatalog 解析/缓存/实例隔离/fallback、normalizeProfitMarginIDs）
+- `backend/internal/games/stardew_junimo/saves_test.go`: 更新 profitMargin/moneyMode 测试用例为新格式
+- `backend/internal/games/registry/types.go`: `RgbColor` 类型；`NewGameConfig` 扩展新角色字段
+- `backend/internal/web/lifecycle_handlers.go`: `handleCustomNewGameCatalog`（GET，需认证）、`handleCustomNewGameCatalogRefresh`（POST，需管理员）
+- `backend/internal/web/instance_handlers.go`: 注册 `GET/POST /api/instances/:id/custom-new-game/catalog` 路由
+
+**前端新增/修改文件：**
+- `frontend/src/games/stardew/NewGameCreator.tsx`: 可视化创建器（图片网格选农场/宠物品种、Chip 选性别/小屋/利润/资金、骨架屏加载、fallback banner、错误重试）
+- `frontend/src/games/stardew/NewGameCreator.css`: 创建器样式（ImageCard、BreedCard、PetTypeCard、Chips、骨架动画、fallback banner）
+- `frontend/src/types.ts`: `RgbColor`、`CatalogItem`、`CatalogResponse`；`NewGameConfig` 扩展角色字段
+- `frontend/src/api.ts`: `getCustomNewGameCatalog()`、`refreshCustomNewGameCatalog()`
+- `frontend/src/App.tsx`: `LifecycleSection` 替换旧内联 modal 为 `<NewGameCreator>`；引入 `defaultInstanceId`
+
+**SMAPI Mod 机制：**
+- SMAPI mod 安装在 `/data/Mods/StardewAnxiPanel.Control/`（bind mount 进容器）
+- 游戏启动时 SMAPI 读取 `/data/control/options.json`（mod 写入真实游戏素材 data URL）
+- 面板 Catalog API 返回 options.json 内容（四态：ready/generating/failed/unavailable）
+- server-init.json 写入 `/data/control/`，SMAPI 在 SaveCreating 事件中应用完整角色定制（在 Junimo runtime 下有效）
+
+**验证：**
+- `go test ./...` 全部通过
+- `npm run build` 通过（19 modules，无 TypeScript 错误）
+
+### Milestone 7.5 续篇：Install 阶段自动导出 catalog ✅ 已完成（2026-06-26）
+
+**目标：** Steam 安装完成后、服务器首次启动前，自动从游戏文件导出真实素材，用户打开"新建存档"应立即看到真实农场/宠物图片，无需先启动正式服务器。
+
+**核心机制：**
+- Install job 最后一步 `runCatalogExportPhase()` 启动一次性 `docker run` Junimo 容器（无端口、无 steam-auth）
+- 挂载 game-data 命名卷（只读可读）+ `.local-container/control` bind mount（写）
+- 轮询宿主侧 `control/options.json` 出现后 `docker stop`，最长等 10 分钟
+- 锁文件 `catalog_export.lock`：存在 → status=generating；options.json 存在 → status=ready；error 文件 → status=failed
+
+**新增文件：** `catalog_exporter.go`（`AcquireCatalogLock`/`ReleaseCatalogLock`/`ExportCatalogContent`/`WriteCatalogExportError`/`GetInstanceImageTag`）
+
+**修改文件：** `catalog.go`（四态 CatalogResponse）、`installer.go`（新增 export 阶段）、`lifecycle_handlers.go`（POST 触发后台 goroutine）、`catalog_test.go`（更新断言）、`types.ts`（status 字段）、`NewGameCreator.tsx`（四态 UI + 5 秒轮询）、`NewGameCreator.css`（状态横幅 + spinner）
+
+**验证：**
+- `go test ./...` 全部通过
+- `npm run build` 通过（19 modules，无 TypeScript 错误）
+
+### 素材导出器启动参数修复（2026-06-26）
+
+首次联调中，素材 exporter 仅报告 `export container exited with error: exit status 1`。修复 `backend/internal/games/stardew_junimo/catalog_exporter.go`：临时容器传入 `ALLOW_INSECURE_SETUP=true`，避免没有 `steam-auth` sidecar 时阻塞离线初始化；`SETTINGS_PATH` 修正为 Compose server 使用的 `/data/settings/server-settings.json`；同时将容器退出前未换行的 stdout/stderr 刷入 job 日志。
+
+验证已通过：
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./internal/games/stardew_junimo ./internal/web
+```
+
+尚需 Docker 联调：点击“重新生成素材”，确认没有 `steam-auth download`、没有游戏文件重新下载、没有常驻正式 server；若仍失败，优先查看任务中心末尾新增的真实容器错误，而不是只按 exit code 猜测。
+
+### 素材导出 Compose 依赖修复（2026-06-26）
+
+联调日志先后出现裸容器 `exit status 1` 与 10 分钟没有任何 Junimo/SMAPI 输出的超时。后者表明 `sdvd/server` 作为裸 `docker run` 容器没有获得 Junimo Compose 的 `steam-auth` 服务和网络依赖，不能到达 SMAPI `GameLaunched`。
+
+`catalog_exporter.go` 已改用受控的：
+
+```text
+docker compose run --name sap-catalog-export-... --rm --no-ports \
+  -v <instance>/.local-container/catalog-export-saves:/config/xdg/config/StardewValley \
+  server
+```
+
+它复用实例 Compose 的 `server`、`steam-auth`、`game-data` 和网络；不会调用 `steam-auth download`。真实 saves 挂载会被临时目录覆盖，导出结束后删除该目录并停止 sidecar。相关 Go 单测已通过；下一次联调应在任务日志看到 `[catalog-export] 通过 Compose 启动临时 server...`，若仍超时则查看 Compose/SMAPI 的实际输出。
+
+### Milestone 7 存档启动策略补充（2026-06-26）
+
+本次检索了当前仓库中“自定义新建存档”和“上传存档解析”的前后端实现状态，结论如下：
+
+- 当前代码里尚未实现可直接复用的自定义新建存档业务代码。
+- 当前前端可复用的是 `frontend/src/App.tsx` 里的安装弹窗、任务日志、错误提示、状态轮询、按钮状态和 Modal 样式。
+- 当前前端 API 层 `frontend/src/api.ts` 还没有 saves/new-game/upload/parse 相关函数。
+- 当前类型层 `frontend/src/types.ts` 还没有自定义新建存档表单、存档解析预览、上传确认响应类型。
+- 当前后端 `backend/internal/games/registry/types.go` 只有 `SaveInfo` / `UploadedFile` 占位，字段不足以表达自定义新建存档或解析后的存档数据。
+- 当前 `backend/internal/games/stardew_junimo/driver.go` 中 `ListSaves` / `UploadSave` / `SelectSave` / `DeleteSave` 仍返回 `not_implemented`。
+- 当前 `backend/internal/web/instance_handlers.go` 只有 state/status/docker/prepare/install/steam-guard 等路由，没有 saves 路由。
+- 原型文档只描述“启动前选择存档”，不是可复用代码。
+
+### 外部参考项目复用结论（2026-06-26）
+
+已检索 `E:\stardew-anxi-panel` 中已完成的自定义新建存档和上传解析实现。Milestone 7 应复用其经过验证的产品与协议设计，但必须按本仓库的 `instances + GameDriver + stardew_junimo` 架构重新落位，不能直接复制其旧的 Go/Vue 路由层。
+
+可复用的前后端设计：
+
+- `api/internal/control/control.go` 的 `InitConfig` 是自定义农场表单的完整字段基线：玩家名、农场名、喜欢的东西、性别、宠物/品种、外观、农场类型、小屋数量/布局、资金模式、利润率和跳过开场等；其 `NormalizeInitConfig`、`ValidateInitConfig`、颜色校验和限定枚举应移植为 Stardew driver 的结构化 DTO/校验。
+- `web/src/components/FarmInit.vue` 提供农场地图、性别、宠物、小屋、利润率、资金模式的成熟交互结构。新前端可按 React/现有 `App.tsx` 风格重写为启动前 Modal，不要把 Vue 组件或旧页面框架搬入本项目。
+- 旧项目上传采用可靠的两阶段协议：`POST /api/saves/upload-preview` 接收受限大小的 ZIP，解压到临时目录并验证真实 Stardew 存档；服务器返回 token 和预览；`POST /api/saves/upload-commit` 才以 token 导入并选中存档。预览元数据至少含存档 ID、大小、修改时间、游戏年/季/日、农场类型/显示名、角色/已有玩家列表。此协议应以本项目的 instance 路由和短期暂存记录实现。
+- ZIP 处理必须保留旧项目的安全原则：仅 ZIP、请求体和解压总量限制、拒绝路径穿越/绝对路径/符号链接、寻找并校验 Stardew 主存档文件、临时目录与最终存档目录均做路径边界检查；确认或过期后清理暂存文件。
+
+不能误复用的部分：
+
+- 旧项目的 `ModEntry.StartNativeCreate()` 是 SMAPI 模组内调用 Stardew 原生 `loadForNewGame(false)`/保存链路的执行器，不是普通后端写配置即可替代的能力；它在检测到 Junimo runtime 时还会跳过这条创建分支。
+- `WriteJunimoSettings()` 只能映射农场、利润率、小屋、资金等 Junimo `server-settings.json` 设置，不能单独生成完整自定义角色存档。
+- 所以 M7 若承诺“自定义新建存档并启动”，必须在 `stardew_junimo` driver 下接入一个经验证的真实存档生成执行器（移植/打包兼容的 SMAPI 原生创建能力，或等价的受控 helper），生成后再用 Junimo 的挂载存档目录和 `saves select --confirm`/既有加载路径选中。不得只写 `driver_payload`、metadata 或 `server-settings.json` 后就宣称已创建。
+
+建议把 M7 的最小 API 收口到实例路由：
+
+```text
+GET  /api/instances/:id/saves/preflight
+POST /api/instances/:id/saves/custom-new-game
+POST /api/instances/:id/saves/upload-preview
+POST /api/instances/:id/saves/upload-commit-and-start
+POST /api/instances/:id/start
+POST /api/instances/:id/stop
+POST /api/instances/:id/restart
+GET  /api/instances/:id/status
+GET  /api/instances/:id/invite-code
+```
+
+`upload-commit-and-start` 可以内部创建 lifecycle job，但确认前绝不能写正式 saves volume；自定义创建同样应由 job 记录生成、选中、启动和邀请码获取日志。`driver_payload` 只持久化 `save_strategy`、active save ID 和不敏感摘要，真实存档留在 Junimo 管理的存储中。
+
+因此 Milestone 7 不能写成“复用现成自定义新建存档实现”，而应明确新增一个最小存档启动闭环。用户点击 `启动服务器` 时：
+
+1. 后端先检测服务器侧是否已有可用存档。
+2. 如果没有检测到已有存档，前端弹出两条路径：
+   - `新建存档`：点击后打开自定义新建存档窗口。由面板前端收集农场名、玩家名、地图类型、初始设置等字段；后端校验后生成可被 Stardew/Junimo 读取的真实初始存档，并写入 `driver_payload.save_strategy=custom_new_game` 摘要。上游 Junimo 不支持完整自定义创建，所以不要把这一步写成简单调用上游 `settings newgame` 就结束，也不能只写 metadata 而不生成存档。
+   - `从本机上传存档`：点击后打开上传存档界面。上传后先进入临时解析阶段，解析并完整展示游戏时间、地图、已有玩家名称、农场/角色基础信息等；用户确认无误后再点击“上传到服务器并启动”，后端才写入正式存档位置并启动服务器。
+3. 如果已有存档，Milestone 7 可以先允许选择已有存档并启动，完整存档管理留给 Milestone 9。
 
 要做什么：
 
 - 启动前检查安装状态。
-- 启动前检查存档选择状态。
+- 启动前检查存档选择状态；没有已有存档时按“自定义新建存档 / 本机上传存档并解析确认”两条路径处理。
 - 执行 `docker compose up -d`。
 - 停止、重启。
 - 读取容器状态。

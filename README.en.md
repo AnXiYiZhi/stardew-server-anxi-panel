@@ -10,7 +10,7 @@ The long-term goal is a multi-game server panel: a global panel shows every game
 
 The first production-ready version should use **Single Game Mode** by default: after login, users go directly to the Stardew panel. The global game list stays hidden until a second game panel exists. Internally, the app should still use `instances + driver_id + GameDriver`.
 
-> Current status: **Milestone 4: Jobs and State Machine complete**. Milestones 0, 1, 2, 3, and 4 are complete. The backend includes configuration loading, SQLite initialization, embedded migrations, unified JSON errors, setup/admin auth, login/session, admin/user roles, admin user management, a generic Docker / Docker Compose CLI control layer, persisted jobs/job_logs, Stardew single-instance state, and SSE job log streaming. The frontend supports setup, login, a basic dashboard, user management, Docker status checks, Stardew instance state, and a jobs center. Junimo installation, Steam Auth, server lifecycle, saves, mods, and console features are still planned but not implemented yet.
+> Current status: **Milestone 6: Stardew Junimo Prepare and Install complete**. Milestones 0-6 are complete. The backend includes configuration, SQLite, authentication and authorization, Docker / Compose allowlists, jobs/job logs/SSE, instances, the GameDriver registry, and Stardew Junimo workspace preparation, Steam authentication, and game installation. The frontend includes an install wizard, Steam authentication-method selection, Steam Guard interaction, QR display, download progress, and a job center. Server lifecycle, start-time save strategy, full save management, mods, and console features are planned for later milestones.
 
 ## GitHub Description
 
@@ -31,7 +31,9 @@ The intended user flow is:
 7. The backend writes `.env`, directly pulls the JunimoServer-related container images, and runs Steam Auth.
 8. Steam Guard prompts are displayed in the frontend, while the backend completes the PTY interaction.
 9. Click **Start Server** after installation.
-10. Choose a save: upload, select existing, or create new.
+10. When no server-side save exists, choose either a custom new save or upload a save from the computer opening the panel:
+    - A custom new save collects farm name, player name, map type, and initial settings in the panel, then produces a real initial save readable by Stardew/Junimo; upstream Junimo does not support complete custom creation.
+    - An uploaded save is parsed first and previews game time, map, existing player names, and related metadata before the user confirms upload to the server.
 11. The backend runs `docker compose up -d`.
 12. The backend uses `attach-cli` to fetch the invite code and displays it in the panel.
 13. Manage server status, commands, chat announcements, saves, mods, and panel users from the web UI.
