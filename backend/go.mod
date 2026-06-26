@@ -2,7 +2,12 @@ module github.com/anxi-panel/stardew-server-anxi-panel/backend
 
 go 1.25.0
 
-require modernc.org/sqlite v1.29.10
+require (
+	github.com/Microsoft/go-winio v0.6.2
+	github.com/creack/pty v1.1.21
+	golang.org/x/crypto v0.53.0
+	modernc.org/sqlite v1.29.10
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -11,7 +16,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	modernc.org/gc/v3 v3.1.3 // indirect
 	modernc.org/libc v1.73.4 // indirect

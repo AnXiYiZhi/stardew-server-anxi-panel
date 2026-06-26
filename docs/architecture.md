@@ -557,8 +557,8 @@ React Frontend
 2. **Docker Compose lifecycle commands**  
    Used for `pull`, `up -d`, `down`, `restart`, `ps`, `logs`, `exec`, and `run`.
 
-3. **PTY for interactive Steam Auth**  
-   Used only for `docker compose run --rm -it steam-auth setup`. The backend owns stdin/stdout and streams output to the frontend.
+3. **TTY for Steam Auth**  
+   Used for `steam-auth setup` and `steam-auth download`. The backend owns stdin/stdout and streams output to the frontend; Windows uses Docker Engine API with `Tty:true`, while Unix-like hosts use Docker Compose through a PTY.
 
 4. **Junimo CLI through `attach-cli`**  
    Used for `info`, `invitecode`, `settings`, `saves`, `cabins`, `rendering`, `host-auto`, and `host-visibility`. The driver should keep an allowlist of commands exposed to each panel role.
@@ -611,6 +611,21 @@ docker compose run --rm -it steam-auth setup
 - 检测到密码错误、Guard 失败或超时时，状态回到 `credentials_required` 或 `steam_auth_failed`。
 
 如果 Junimo 输出二维码 URL，前端可直接生成二维码。如果输出 ASCII QR，则可原样在终端区域展示。
+
+### Junimo Steam Auth 重要实现细节
+
+后续维护者必须按 Junimo 上游行为理解 Steam Auth，而不是只按面板 UI 的两个按钮理解：
+
+- 官方 compose 使用 `IMAGE_VERSION` 控制 Junimo server 镜像版本，不使用面板早期自定义的 `JUNIMO_IMAGE_TAG`。
+- `steam-auth` sidecar 由 `STEAM_SERVICE_IMAGE` 独立控制，当前默认使用 `anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。该镜像基于 JunimoServer `tools/steam-service`，只修补 SteamClient 连接等待和认证会话重试，保留上游 HTTP API、ticket、lobby、download 等行为。
+- 新实例 `.env` 会写入 `STEAM_CLIENT_CONNECT_TIMEOUT_SECONDS=60`、`STEAM_CLIENT_CONNECT_RETRIES=5`、`STEAM_AUTH_SESSION_RETRIES=3`、`STEAM_AUTH_SESSION_RETRY_DELAY_SECONDS=5`。本地联调 fork 镜像时，可把 `STEAM_SERVICE_IMAGE` 覆盖成 `junimo-steam-service-cn:auth-retry-test`。
+- 官方关键服务名是 `steam-auth`、`server`、`discord-bot`；后续 `docker compose exec server attach-cli`、认证和状态检查都依赖这些名字。
+- 官方关键存储是 Docker named volumes：`steam-session:/data/steam-session` 保存 Steam session，`game-data:/data/game` 保存下载的游戏文件，`saves:/config/xdg/config/StardewValley` 保存 Stardew 存档；本地绑定目录 `./.local-container/settings:/data/settings` 保存 server settings。
+- `steam-auth` 和 `server` 都应保留 `stdin_open: true` 与 `tty: true`，因为上游认证和后续 CLI 都是交互式流程。
+- 面板主动提供第一层 Steam 登录方式选择：`auth_method_required` 显示“扫码登录 / 账号密码/验证码登录”。选择扫码时启动 `steam-auth setup` 并自动向上游第一层 `Choose authentication method` 输入 `2`；选择账号密码/验证码时启动 `steam-auth download`。账号密码路径触发的 `Steam Guard Authentication` 才是第二层 `steam_guard_choice_required`，面板显示“手机 App 批准 / 输入验证码”。
+- 上游 `steam-auth setup` 输出 `Choose authentication method` 后，选择 `[1] Username & Password` 并不会自动使用 `.env`；它还会继续从 stdin 读取 Steam 用户名和 Steam 密码，且密码读取使用 `Console.ReadKey()`。在面板后台任务的 stdin pipe 环境中，这会报 `Cannot read keys when either application does not have a console or when console input has been redirected`。因此面板账号密码安装路径应优先使用 `steam-auth download`，让上游通过 `EnsureLoggedInAsync(LoginConfig)` 使用 `.env` 中的账号密码完成非交互登录和游戏下载。
+- 选择 `[2] QR Code` 时，未修补的上游 QR 登录可能在生成二维码前报 `QR authentication failed: The SteamClient instance must be connected`。CN sidecar 已改为等待 `ConnectedCallback` 后再开始 QR / credentials / token 登录，并对 `TryAnotherCM`、`AsyncJobFailedException`、认证阶段断线和超时做认证会话重试。
+- 当前实现使用跨平台 TTY 跑 `steam-auth setup` 的扫码路径，使用 `steam-auth download` 处理账号密码安装路径；不要用普通 stdin 重定向去跑 `setup` 的账号密码分支。
 
 ## GameDriver Abstraction
 

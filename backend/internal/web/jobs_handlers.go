@@ -52,6 +52,10 @@ type jobLogResponse struct {
 }
 
 func (s *server) handleJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		s.handleClearJobs(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
@@ -75,6 +79,36 @@ func (s *server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		response.Jobs = append(response.Jobs, makeJobResponse(job))
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *server) handleClearJobs(w http.ResponseWriter, r *http.Request) {
+	session, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	count, err := s.jobs.Clear(r.Context())
+	if err != nil {
+		if errors.Is(err, storage.ErrActiveJobsExist) {
+			writeError(w, http.StatusConflict, "active_jobs_exist", "还有任务正在进行，不能清空任务中心")
+			return
+		}
+		s.logger.Error("failed to clear jobs", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
+	actorID := session.User.ID
+	if err := s.store.CreateAuditLog(r.Context(), storage.AuditLogParams{
+		ActorUserID: &actorID,
+		Action:      "jobs_cleared",
+		TargetType:  "jobs",
+		TargetID:    "all",
+		Metadata:    fmt.Sprintf(`{"count":%d}`, count),
+		IPAddress:   remoteIP(r),
+		UserAgent:   userAgent(r),
+	}); err != nil {
+		s.logger.Error("failed to write jobs clear audit", "error", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": count})
 }
 
 func (s *server) handleJobByID(w http.ResponseWriter, r *http.Request) {

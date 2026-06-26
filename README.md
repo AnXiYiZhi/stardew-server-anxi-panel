@@ -278,6 +278,42 @@ POST /api/jobs/test-fail
 - 普通 user 不能创建测试任务，只能查看自己有权限的任务。
 - 本阶段没有任何前端任意命令执行入口，也不会执行 Junimo 安装、Steam Auth 或 Docker lifecycle job。
 
+## JunimoServer / Steam 认证注意事项
+
+本面板遵循 JunimoServer 官方 Docker Compose 工作流。新实例生成的 `docker-compose.yml` 应尽量贴近官方结构：服务名保留 `steam-auth`、`server`、`discord-bot`，Junimo server 镜像版本使用 `IMAGE_VERSION`，Steam session 和游戏文件分别保存在官方 Docker named volumes `steam-session` 和 `game-data` 中，服务器设置绑定到 `./.local-container/settings:/data/settings`。
+
+`steam-auth` sidecar 默认使用面板维护的 CN 修补镜像：
+
+```env
+STEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2
+STEAM_CLIENT_CONNECT_TIMEOUT_SECONDS=60
+STEAM_CLIENT_CONNECT_RETRIES=5
+STEAM_AUTH_SESSION_RETRIES=3
+STEAM_AUTH_SESSION_RETRY_DELAY_SECONDS=5
+```
+
+这个镜像基于 JunimoServer `tools/steam-service`，只修补 SteamClient 连接等待和认证会话重试：QR / 账号密码 / refresh token 登录会先等 `ConnectedCallback`，遇到 `TryAnotherCM`、`AsyncJobFailedException`、认证阶段断线或超时时会重连并重试。
+
+本地联合调试还没推 Docker Hub 时，可以先在 fork 仓库构建本地镜像：
+
+```powershell
+cd E:\junimo-server-steam-service-cn
+docker build --progress=plain -f tools\steam-service\Dockerfile -t junimo-steam-service-cn:auth-retry-test .
+```
+
+然后把面板实例 `.env` 里的 `STEAM_SERVICE_IMAGE` 临时改成本地 tag：
+
+```env
+STEAM_SERVICE_IMAGE=junimo-steam-service-cn:auth-retry-test
+```
+
+Steam Auth 交互有几个容易误解的点：
+
+- 面板安装时优先运行 `docker compose run --rm -i steam-auth download`，让 Junimo 使用 `.env` 中的 `STEAM_USERNAME` / `STEAM_PASSWORD` 走非交互登录并下载游戏文件。这样可以避开上游 `setup` 的账号密码分支：该分支使用 `Console.ReadKey()` 逐字符读取密码，在后台任务的 stdin 重定向环境中会报 `Cannot read keys when either application does not have a console or when console input has been redirected`。敏感内容不会写入任务日志、后端日志或响应 JSON。
+- 如果 Steam 需要二次验证，前端会继续显示 Steam Guard 验证码输入或手机 App 确认提示。
+- QR 登录、账号密码二次验证和 refresh token 登录都依赖 `steam-auth` 连接 Steam CM。CN 修补镜像会等待连接并对 `TryAnotherCM` 等瞬时错误重试；如果仍然失败，先确认 `.env` 中的 `STEAM_SERVICE_IMAGE` 指向修补镜像，并查看任务日志里的重试信息。
+- 已经生成过旧版本 `docker-compose.yml` / `.env` 的本地实例不会被 `Prepare()` 自动覆盖。需要迁移到官方结构时，请先备份实例目录，再删除或重建这两个配置文件。
+
 ## 前端开发
 
 前端位于 `frontend/`。

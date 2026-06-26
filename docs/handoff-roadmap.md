@@ -356,6 +356,8 @@ or job timeout/error
 前端根据输出展示：
 
 ```text
+auth method choice: QR scan / username password
+Steam Guard choice: mobile app approval / enter code
 email code input
 mobile app confirmation waiting state
 QR code full display
@@ -909,54 +911,83 @@ npm run build
 - `Prepare` 当前只创建目录，不代表 Junimo 配置、镜像或游戏文件已经安装。
 - 真实任务写 job log 前继续脱敏 Steam 密码、VNC 密码、session token、secret。
 
-## Milestone 6: Stardew Junimo Prepare and Install
+## Milestone 6: Stardew Junimo Prepare and Install ✅ 已完成（2026-06-23）
 
 目标：跑通 Junimo 工作目录准备和安装流程。
 
-要做什么：
+已完成：
 
-- 创建实例目录。
-- 写入或下载 `docker-compose.yml`。
-- 写入 `.env`。
-- 执行 `docker compose pull`。
-- 执行 `steam-auth setup`。
+- 新增 `.env` 文件管理模块 `backend/internal/games/stardew_junimo/config/env.go`，支持安全读写、合并和未知字段保留，文件权限 0600。
+- 新增 `compose_template.go`，嵌入更贴近 JunimoServer 官方 `docker-compose.yml` 的模板（services: `steam-auth`、`server`、`discord-bot`；official volumes: `steam-session`、`game-data`、`saves`、`settings`；使用 `IMAGE_VERSION`；保留 `stdin_open: true` / `tty: true`）。
+- `steam-auth` sidecar 已从固定 `sdvd/steam-service:${IMAGE_VERSION}` 改为 `STEAM_SERVICE_IMAGE`，默认 `anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`；`.env` 同步写入 SteamClient 连接等待和认证会话重试参数，支持本地覆盖为 `junimo-steam-service-cn:auth-retry-test` 联调 fork 镜像。
+- `Prepare()` 创建实例目录（含 saves/mods/.local-container），首次写入 compose 和 .env，已有文件不覆盖（保留用户修改）。
+- `Install()` 校验凭据、加载 instance、创建 `installRunner`、通过 Job Manager 启动 30 分钟超时任务。
+- `installRunner.run()` 四步：检查/补齐 Junimo 工作目录（如果 `docker-compose.yml` 或 `.env` 被删会重新生成并写 job 日志）→ 写 .env（凭据写入，不记录到日志；使用 Junimo 官方 `IMAGE_VERSION`）→ 检查本地 Junimo 镜像，缺失时 `docker compose pull` → 等待面板选择 Steam 登录方式。
+- 安装 job 会在日志中输出当前实例目录和实际使用的 `docker-compose.yml` 绝对路径，避免本地开发时 `data\instances\stardew` 与 `backend\data\instances\stardew` 两套历史目录混淆。
+- Steam Auth 使用跨平台 TTY：Linux/macOS 通过 Docker Compose + PTY 运行，Windows 通过 Docker Engine API 创建 `Tty:true` 容器并 attach stdin/stdout，避免 Docker CLI 的本机终端检查。
+- Docker TTY 输出读取器已支持没有换行结尾的交互提示，例如 `Enter Steam Guard code sent to qq.com:`；账号密码/验证码分支能在上游等待验证码时立即切到前端输入阶段，而不是等 60 秒超时后才看到同一行日志。
+- `lineHandler` 检测 Steam Guard、认证方式选择、二维码提示和登录失败关键字，更新 `driver_phase`；只有看到明确登录成功关键字才进入安装完成，所有 docker 输出通过 `paneldocker.RedactString` 脱敏。
+- `SendSteamGuardInput(jobID, input)` 实现 `registry.SteamGuardSender` 接口，写入活跃 job 的 guard channel。
+- `registry.InstallRequest` 新增 `SteamUsername`、`SteamPassword`（never log）、`VNCPassword`（never log）字段。
+- `registry.SteamGuardSender` 接口用 type assertion 模式实现可选能力。
+- 新增后端路由：
+  - `POST /api/instances/:id/prepare`
+  - `POST /api/instances/:id/install`
+  - `POST /api/instances/:id/steam-guard/input`
+- 新增前端 API 函数：`prepareInstance`、`installInstance`、`submitSteamGuardInput`。
+- 任务中心支持 admin 清空已结束任务记录和日志；若存在 `queued` / `running` 任务，清空接口返回 409，避免删除进行中的安装日志。
+- 前端安装 UI 完整实现：
+  - Prepare 按钮 / 安装游戏按钮按状态显示。
+  - InstallSection 含 Modal（三个密码字段，`type=password`，不打印到控制台，不存 localStorage）。
+  - 安装期间 SSE 日志实时接入 job log viewer。
+  - Steam 登录方式选择区域（`auth_method_required`）：镜像检查完成后先让管理员选择扫码登录或账号密码/验证码登录。
+  - Steam Guard 选择/输入区域（`steam_guard_choice_required`、`steam_guard_required` 或 `steam_guard_mobile_required`）：账号密码路径触发二次验证后，再选择手机 App 批准或输入验证码。
+  - 选择扫码登录时运行 `steam-auth setup`，面板自动向上游第一层 `Choose authentication method` 输入 `2`，并展示 QR 输出。
+  - Steam QR 使用独立弹窗展示，避免管理员靠滚动日志判断二维码是否完整。
+  - 选择账号密码/验证码登录时运行 `steam-auth download`，让 Junimo 使用 `.env` 中的 `STEAM_USERNAME` / `STEAM_PASSWORD` 登录并下载游戏文件。不要用普通 stdin pipe 跑 `setup` 的账号密码分支；上游该分支使用 `Console.ReadKey()` 读取密码，在无 console / stdin 重定向时会崩溃。
+  - 游戏文件下载阶段解析 steam-auth `Progress: done/total files ... (xx.x%)` 日志，并在安装区显示独立百分比进度条；前端百分比按文件数 `done/total` 计算（例如 `100/1470 = 6.8%`），不使用上游括号里的字节百分比。Steamworks SDK app `1007` 下载会切到 `steam_sdk_downloading`，前端单独显示 SDK 下载进度和 2 阶段下载任务进度，避免游戏文件 100% 后看起来卡住。
+  - Steam 二维码展示区域（`steam_qr_required`）：从任务日志提取并用等宽文本完整显示二维码输出；若上游容器在生成二维码前报 `qr_auth_failed`，明确提示改用账号密码/Steam Guard。
+  - 安装任务失败后会清理前端活跃安装 job 标记，并把 failed job / error log / instance state message 转成安装区错误提示；`TryAnotherCM`、SteamClient/CM 连接失败、超时、凭据错误、二维码失败、下载失败不再只停留在任务日志里。
+  - 认证失败时重显凭据 Modal。
+  - 安装成功后展示"已安装"徽标和 disabled 启动按钮占位。
+  - 安装期间 2.5s 轮询实例状态；若旧安装任务已超时但 instance 状态未同步，前端会按 `install_timeout` 兜底显示重试按钮。
+- 安装状态读取时会通过 `stardew_junimo` driver 校验 `.local-container` 是否存在安装产物；若数据库误留 `game_installed` 但目录为空，会纠正为 `error/install_missing` 并显示重试。
+- `go test ./...` 通过；`npm run build` 通过。
 
-实例目录建议：
+实例目录：
 
 ```text
 /data/instances/stardew
-├─ docker-compose.yml
-├─ .env
+├─ docker-compose.yml  （首次 Prepare 写入，不覆盖）
+├─ .env                （首次 Prepare 写空模板；Install 写凭据；不覆盖用户已改字段）
 ├─ .local-container
 ├─ saves
 └─ mods
 ```
 
-建议 API：
+已实现 API：
 
 ```text
-POST /api/games/stardew/prepare
-POST /api/games/stardew/install
-POST /api/games/stardew/steam-guard/input
-GET  /api/games/stardew/install/stream
+POST /api/instances/:id/prepare
+POST /api/instances/:id/install
+POST /api/instances/:id/steam-guard/input
 ```
 
-怎么做：
+安全规则（已落实）：
 
-- `prepare` 创建目录、写 compose、创建 `.env` 模板。
-- `install` 接收 Steam 用户名、Steam 密码、VNC 密码。
-- 写 `.env` 时做安全转义和权限收紧。
-- 执行 `docker compose pull`。
-- 使用 PTY 运行 `docker compose run --rm -it steam-auth setup`。
-- 前端通过 WebSocket/SSE 展示输出。
-- 用户输入验证码时，后端写入 PTY stdin。
+- STEAM_PASSWORD、VNC_PASSWORD 不写入任何 job log、audit log、响应 JSON。
+- 前端密码框 `type=password`，不打印到 console，不存 localStorage。
+- 前端不允许传入任意 shell 命令、任意 compose 参数或任意工作目录。
+- `paneldocker.RedactString` 对所有 docker 输出脱敏。
 
-完成标准：
+完成标准验证：
 
-- 密码错误时状态进入 `steam_auth_failed` 或 `credentials_required`。
-- Steam Guard 需要输入时，前端能展示并提交。
-- 认证成功后进入 `steam_auth_done` 或 `game_installed`。
+- 密码错误时状态进入 `steam_auth_failed`；前端重显凭据 Modal。
+- Steam Guard 需要输入时，前端显示验证码输入框，后端写入 stdin channel。
+- 认证成功后状态进入 `game_installed`。
 - job log 不出现 Steam 密码和 VNC 密码。
+- `go test ./...` 通过。
+- `npm run build` 通过。
 
 ## Milestone 7: Server Lifecycle
 

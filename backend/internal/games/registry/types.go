@@ -40,8 +40,28 @@ type Instance struct {
 }
 
 type InstallRequest struct {
-	Instance Instance
-	ActorID  int64
+	Instance      Instance
+	ActorID       int64
+	SteamUsername string
+	SteamPassword string // never log this field
+	VNCPassword   string // never log this field
+	ImageTag      string // docker image tag, e.g. "latest" or a pinned version
+}
+
+// ImageTagOption describes one selectable image tag in the install UI.
+type ImageTagOption struct {
+	Tag         string `json:"tag"`
+	Label       string `json:"label"`
+	Recommended bool   `json:"recommended"`
+	Warning  string `json:"warning,omitempty"`
+	IsLatest bool   `json:"isLatest,omitempty"`
+}
+
+// SteamGuardSender is an optional capability for drivers that handle Steam
+// two-factor authentication.  The web layer type-asserts against this interface
+// when handling POST …/steam-guard/input.
+type SteamGuardSender interface {
+	SendSteamGuardInput(jobID string, input string) error
 }
 
 type StartRequest struct {

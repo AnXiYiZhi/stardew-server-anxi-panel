@@ -23,6 +23,7 @@ const (
 )
 
 var ErrInvalidJobStatus = errors.New("invalid job status")
+var ErrActiveJobsExist = errors.New("active jobs exist")
 
 type Job struct {
 	ID           string
@@ -167,6 +168,39 @@ func (s *Store) ListJobs(ctx context.Context, filter ListJobsFilter) ([]Job, err
 		return nil, fmt.Errorf("list jobs rows: %w", err)
 	}
 	return jobs, nil
+}
+
+func (s *Store) ClearJobs(ctx context.Context) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin clear jobs transaction: %w", err)
+	}
+	defer rollback(tx)
+
+	var active int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM jobs WHERE status IN (?, ?)
+	`, JobStatusQueued, JobStatusRunning).Scan(&active); err != nil {
+		return 0, fmt.Errorf("count active jobs: %w", err)
+	}
+	if active > 0 {
+		return 0, ErrActiveJobsExist
+	}
+
+	var count int64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count jobs: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM job_logs`); err != nil {
+		return 0, fmt.Errorf("delete job logs: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM jobs`); err != nil {
+		return 0, fmt.Errorf("delete jobs: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit clear jobs transaction: %w", err)
+	}
+	return count, nil
 }
 
 func (s *Store) AppendJobLog(ctx context.Context, jobID string, level string, message string) (JobLog, error) {

@@ -149,3 +149,26 @@ export type InstanceState = {
   driverPhase: string
   updatedAt: string
 }
+
+export type InstallJobResponse = {
+  jobId: string
+}
+
+export type PrepareResponse = {
+  instanceId: string
+  state: string
+  stateMessage: string | null
+  driverPhase: string
+}
+
+export type ImageTagOption = {
+  tag: string
+  label: string
+  recommended: boolean
+  warning?: string
+  isLatest?: boolean
+}
+
+export type InstallOptionsResponse = {
+  imageTagOptions: ImageTagOption[]
+}
