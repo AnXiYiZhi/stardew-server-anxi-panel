@@ -21,7 +21,7 @@ const (
 	DriverID   = "stardew_junimo"
 	DriverName = "Stardew Valley / JunimoServer"
 
-	installJobTimeout = 30 * time.Minute
+	installJobTimeout = 2 * time.Hour
 
 	// TestedImageTag is the JunimoServer image tag this panel version was validated against.
 	// Server image: sdvd/server:<tag>. The steam-auth sidecar is patched separately
@@ -181,6 +181,7 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 		password: req.SteamPassword,
 		vncPass:  req.VNCPassword,
 		imageTag: imageTag,
+		autoMode: req.AutoDownload,
 	}
 
 	job, err := d.jobs.Start(ctx, jobs.Spec{
