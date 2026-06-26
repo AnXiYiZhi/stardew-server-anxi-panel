@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,14 +21,29 @@ import (
 
 const (
 	maxUploadZipBytes    = 100 * 1024 * 1024 // 100 MB compressed
-	maxUncompressedBytes = 512 * 1024 * 1024  // 512 MB uncompressed total
-	maxSingleFileBytes   = 64 * 1024 * 1024   // 64 MB per file
+	maxUncompressedBytes = 512 * 1024 * 1024 // 512 MB uncompressed total
+	maxSingleFileBytes   = 64 * 1024 * 1024  // 64 MB per file
 )
 
 // savesDir returns the host-side path to the bind-mounted saves directory.
 // Stardew saves live at: <savesDir>/Saves/<SaveFolderName>/
 func savesDir(dataDir string) string {
 	return filepath.Join(dataDir, ".local-container", "saves")
+}
+
+// SetActiveSave writes the JunimoServer gameloader config so the given save is
+// loaded on next startup.  This does not require the server to be running.
+func SetActiveSave(dataDir, saveName string) error {
+	cfgDir := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		return fmt.Errorf("create gameloader dir: %w", err)
+	}
+	obj := map[string]string{"SaveNameToLoad": saveName}
+	data, err := marshalJSON(obj)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(cfgDir, "junimohost.gameloader.json"), data, 0o644)
 }
 
 // savesTemplatesDir returns where save templates should be placed.
@@ -38,6 +54,39 @@ func savesTemplatesDir(dataDir string) string {
 // serverSettingsPath returns where the server-settings.json lives.
 func serverSettingsPath(dataDir string) string {
 	return filepath.Join(dataDir, ".local-container", "settings", "server-settings.json")
+}
+
+// controlDir is the host-side directory shared with the panel control mod.
+func controlDir(dataDir string) string {
+	return filepath.Join(dataDir, ".local-container", "control")
+}
+
+// DeleteAllSaves removes every save folder under <savesDir>/Saves/ and the SMAPI
+// cache so JunimoServer creates a brand-new game on next start.
+func DeleteAllSaves(dataDir string) error {
+	savesPath := filepath.Join(savesDir(dataDir), "Saves")
+	entries, err := os.ReadDir(savesPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if err := os.RemoveAll(filepath.Join(savesPath, e.Name())); err != nil {
+				return fmt.Errorf("delete save %s: %w", e.Name(), err)
+			}
+		}
+	}
+	// Also clear SMAPI mod cache that remembers the last-loaded save name.
+	smaCacheDir := filepath.Join(savesDir(dataDir), ".smapi")
+	_ = os.RemoveAll(smaCacheDir)
+
+	// Clear gameloader config so JunimoServer doesn't try to load a deleted save.
+	gameloaderPath := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")
+	_ = os.Remove(gameloaderPath)
+	return nil
 }
 
 // listSaveDirs returns each save folder name found under <savesDir>/Saves/.
@@ -81,12 +130,12 @@ func readSaveInfo(saveFolder string) registry.SaveInfo {
 	}
 
 	var sg struct {
-		FarmerName  string `xml:"player>name"`
-		FarmName    string `xml:"player>farmName"`
-		Year        int    `xml:"year"`
-		Season      string `xml:"currentSeason"`
-		Day         int    `xml:"dayOfMonth"`
-		WhichFarm   int    `xml:"whichFarm"`
+		FarmerName string `xml:"player>name"`
+		FarmName   string `xml:"player>farmName"`
+		Year       int    `xml:"year"`
+		Season     string `xml:"currentSeason"`
+		Day        int    `xml:"dayOfMonth"`
+		WhichFarm  int    `xml:"whichFarm"`
 	}
 	if err := xml.Unmarshal(xmlData, &sg); err != nil {
 		info.ParseError = "SaveGameInfo 解析失败"
@@ -118,6 +167,8 @@ func farmTypeLabel(whichFarm int) string {
 		return "fourcorners"
 	case 6:
 		return "beach"
+	case 7:
+		return "meadowlands"
 	default:
 		return "unknown"
 	}
@@ -374,25 +425,33 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 
 	farmTypeID := junimoFarmTypeID(cfg.FarmType)
 	profitPercent := profitMarginPercent(cfg.ProfitMargin)
-	cabinLayout := 0
-	if cfg.CabinLayout == "separate" {
-		cabinLayout = 1
-	}
-	moneyMode := 0
-	if cfg.MoneyMode == "shared" {
-		moneyMode = 1
+	// JunimoServer uses nested PascalCase JSON: {"Game":{...}, "Server":{...}}.
+	// cabinLayout "nearby" → CabinLayoutNearby=true; moneyMode "shared" → SeparateWallets=false.
+	cabinLayoutNearby := cfg.CabinLayout == "nearby"
+	separateWallets := cfg.MoneyMode == "separate"
+	spawnMonsters := "false"
+	if cfg.SpawnMonstersOnFarm {
+		spawnMonsters = "true"
 	}
 
-	// Build minimal server-settings.json. Only fields supported by JunimoServer
-	// are written; FarmerName/FavoriteThing/Gender require a save template.
+	// Build server-settings.json matching JunimoServer's ServerSettings class structure.
+	// Game section: world creation params. Server section: runtime params.
+	// FarmerName/FavoriteThing/Gender are applied via server-init.json + SMAPI mod.
 	obj := map[string]any{
-		"farmName":        cfg.FarmName,
-		"whichFarm":       farmTypeID,
-		"startingCabins":  cfg.StartingCabins,
-		"cabinLayout":     cabinLayout,
-		"profitMargin":    profitPercent,
-		"petBreed":        cfg.PetBreed,
-		"moneyMode":       moneyMode,
+		"Game": map[string]any{
+			"FarmName":             cfg.FarmName,
+			"FarmType":             farmTypeID,
+			"StartingCabins":       cfg.StartingCabins,
+			"CabinLayoutNearby":    cabinLayoutNearby,
+			"ProfitMargin":         profitPercent,
+			"PetBreed":             cfg.PetBreed,
+			"RemixBundles":         cfg.RemixedCommunityCenter,
+			"RemixMines":           cfg.RemixedMineRewards,
+			"SpawnMonstersAtNight": spawnMonsters,
+		},
+		"Server": map[string]any{
+			"SeparateWallets": separateWallets,
+		},
 	}
 
 	settingsPath := serverSettingsPath(dataDir)
@@ -445,10 +504,10 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	}
 	validFarms := map[string]bool{
 		"standard": true, "riverland": true, "forest": true,
-		"hilltop": true, "wilderness": true, "fourcorners": true, "beach": true,
+		"hilltop": true, "wilderness": true, "fourcorners": true, "beach": true, "meadowlands": true,
 	}
 	if !validFarms[cfg.FarmType] {
-		return fmt.Errorf("farmType 必须是 standard/riverland/forest/hilltop/wilderness/fourcorners/beach 之一")
+		return fmt.Errorf("farmType 必须是 standard/riverland/forest/hilltop/wilderness/fourcorners/beach/meadowlands 之一")
 	}
 	if cfg.StartingCabins < 0 || cfg.StartingCabins > 3 {
 		return fmt.Errorf("startingCabins 必须在 0~3 之间")
@@ -460,8 +519,17 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	if !validProfit[cfg.ProfitMargin] {
 		return fmt.Errorf("profitMargin 必须是 100/75/50/25 之一")
 	}
-	if cfg.PetBreed < 0 || cfg.PetBreed > 3 {
-		return fmt.Errorf("petBreed 必须在 0~3 之间")
+	if cfg.PetBreed < 0 || cfg.PetBreed > 4 {
+		return fmt.Errorf("petBreed 必须在 0~4 之间")
+	}
+	if cfg.PetBreedID != "" {
+		id, err := strconv.Atoi(cfg.PetBreedID)
+		if err != nil || id < 0 || id > 4 {
+			return fmt.Errorf("petBreedId 必须是 0~4 的数字")
+		}
+		if id != cfg.PetBreed {
+			return fmt.Errorf("petBreed 与 petBreedId 必须对应同一品种")
+		}
 	}
 	if cfg.MoneyMode != "shared" && cfg.MoneyMode != "separate" {
 		return fmt.Errorf("moneyMode 必须是 shared 或 separate")
@@ -478,7 +546,7 @@ func validateCfg(cfg registry.NewGameConfig) error {
 func junimoFarmTypeID(farmType string) int {
 	m := map[string]int{
 		"standard": 0, "riverland": 1, "forest": 2,
-		"hilltop": 3, "wilderness": 4, "fourcorners": 5, "beach": 6,
+		"hilltop": 3, "wilderness": 4, "fourcorners": 5, "beach": 6, "meadowlands": 7,
 	}
 	if id, ok := m[farmType]; ok {
 		return id
@@ -506,27 +574,30 @@ func serverInitPath(dataDir string) string {
 
 // initConfigJSON is the structure written to server-init.json for the SMAPI mod.
 type initConfigJSON struct {
-	Mode          string     `json:"mode"`
-	FarmerName    string     `json:"farmerName"`
-	FarmName      string     `json:"farmName"`
-	FavoriteThing string     `json:"favoriteThing,omitempty"`
-	Gender        string     `json:"gender,omitempty"`
-	PetType       string     `json:"petType,omitempty"`
-	PetBreed      string     `json:"petBreed,omitempty"`
-	Skin          *int       `json:"skin,omitempty"`
-	Hair          *int       `json:"hair,omitempty"`
-	Shirt         string     `json:"shirt,omitempty"`
-	Pants         string     `json:"pants,omitempty"`
-	Accessory     *int       `json:"accessory,omitempty"`
-	EyeColor      *rgbJSON   `json:"eyeColor,omitempty"`
-	HairColor     *rgbJSON   `json:"hairColor,omitempty"`
-	PantsColor    *rgbJSON   `json:"pantsColor,omitempty"`
-	FarmType      string     `json:"farmType,omitempty"`
-	CabinCount    int        `json:"cabinCount"`
-	CabinLayout   string     `json:"cabinLayout,omitempty"`
-	MoneyMode     string     `json:"moneyMode,omitempty"`
-	ProfitMargin  int        `json:"profitMargin"`
-	SkipIntro     bool       `json:"skipIntro"`
+	Mode                 string   `json:"mode"`
+	FarmerName           string   `json:"farmerName"`
+	FarmName             string   `json:"farmName"`
+	FavoriteThing        string   `json:"favoriteThing,omitempty"`
+	Gender               string   `json:"gender,omitempty"`
+	PetType              string   `json:"petType,omitempty"`
+	PetBreed             string   `json:"petBreed,omitempty"`
+	Skin                 *int     `json:"skin,omitempty"`
+	Hair                 *int     `json:"hair,omitempty"`
+	Shirt                string   `json:"shirt,omitempty"`
+	Pants                string   `json:"pants,omitempty"`
+	Accessory            *int     `json:"accessory,omitempty"`
+	EyeColor             *rgbJSON `json:"eyeColor,omitempty"`
+	HairColor            *rgbJSON `json:"hairColor,omitempty"`
+	PantsColor           *rgbJSON `json:"pantsColor,omitempty"`
+	FarmType             string   `json:"farmType,omitempty"`
+	CabinCount           int      `json:"cabinCount"`
+	CabinLayout          string   `json:"cabinLayout,omitempty"`
+	MoneyMode            string   `json:"moneyMode,omitempty"`
+	ProfitMargin         int      `json:"profitMargin"`
+	SkipIntro            bool     `json:"skipIntro"`
+	BundlesRemix         bool     `json:"bundlesRemix"`
+	MinesRemix           bool     `json:"minesRemix"`
+	SpawnMonstersAtNight bool     `json:"spawnMonstersAtNight"`
 }
 
 type rgbJSON struct {
@@ -566,24 +637,27 @@ func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
 	}
 
 	ic := initConfigJSON{
-		Mode:          "create-or-load",
-		FarmerName:    cfg.FarmerName,
-		FarmName:      cfg.FarmName,
-		FavoriteThing: cfg.FavoriteThing,
-		Gender:        cfg.Gender,
-		PetType:       cfg.PetType,
-		PetBreed:      petBreedID,
-		Skin:          cfg.Skin,
-		Hair:          cfg.Hair,
-		Shirt:         cfg.Shirt,
-		Pants:         cfg.Pants,
-		Accessory:     cfg.Accessory,
-		FarmType:      cfg.FarmType,
-		CabinCount:    cfg.StartingCabins,
-		CabinLayout:   smapicabinLayout,
-		MoneyMode:     cfg.MoneyMode,
-		ProfitMargin:  profitInt,
-		SkipIntro:     true,
+		Mode:                 "native-create",
+		FarmerName:           cfg.FarmerName,
+		FarmName:             cfg.FarmName,
+		FavoriteThing:        cfg.FavoriteThing,
+		Gender:               cfg.Gender,
+		PetType:              cfg.PetType,
+		PetBreed:             petBreedID,
+		Skin:                 cfg.Skin,
+		Hair:                 cfg.Hair,
+		Shirt:                cfg.Shirt,
+		Pants:                cfg.Pants,
+		Accessory:            cfg.Accessory,
+		FarmType:             cfg.FarmType,
+		CabinCount:           cfg.StartingCabins,
+		CabinLayout:          smapicabinLayout,
+		MoneyMode:            cfg.MoneyMode,
+		ProfitMargin:         profitInt,
+		SkipIntro:            true,
+		BundlesRemix:         cfg.RemixedCommunityCenter,
+		MinesRemix:           cfg.RemixedMineRewards,
+		SpawnMonstersAtNight: cfg.SpawnMonstersOnFarm,
 	}
 	if cfg.EyeColor != nil {
 		ic.EyeColor = &rgbJSON{R: cfg.EyeColor.R, G: cfg.EyeColor.G, B: cfg.EyeColor.B}

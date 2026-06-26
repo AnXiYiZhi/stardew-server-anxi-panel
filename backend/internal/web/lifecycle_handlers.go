@@ -98,67 +98,6 @@ func newToken() string {
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-// handleCustomNewGameCatalog handles GET /api/instances/:id/custom-new-game/catalog.
-// Returns a status-aware catalog response (see CatalogResponse.Status).
-func (s *server) handleCustomNewGameCatalog(w http.ResponseWriter, r *http.Request, instanceID string) {
-	if _, ok := s.requireAuth(w, r); !ok {
-		return
-	}
-	instance, ok := s.loadInstance(w, r, instanceID)
-	if !ok {
-		return
-	}
-	writeJSON(w, http.StatusOK, sj.ReadCatalog(instance.DataDir))
-}
-
-// handleCustomNewGameCatalogRefresh handles POST /api/instances/:id/custom-new-game/catalog.
-// Triggers a background catalog export if one is not already running.
-// Returns the current catalog status immediately; the caller should poll GET
-// until status changes from "generating" to "ready" or "failed".
-func (s *server) handleCustomNewGameCatalogRefresh(w http.ResponseWriter, r *http.Request, instanceID string) {
-	if _, ok := s.requireAdmin(w, r); !ok {
-		return
-	}
-	instance, ok := s.loadInstance(w, r, instanceID)
-	if !ok {
-		return
-	}
-
-	// If an export is already running, just return the current status.
-	if sj.CatalogExportRunning(instance.DataDir) {
-		writeJSON(w, http.StatusOK, sj.ReadCatalog(instance.DataDir))
-		return
-	}
-
-	imageRef := "sdvd/server:" + sj.GetInstanceImageTag(instance.DataDir)
-
-	// Clear any previous error so the new run starts fresh.
-	sj.ClearCatalogExportError(instance.DataDir)
-
-	// Acquire lock before spawning the goroutine so that ReadCatalog below
-	// can immediately report "generating".
-	if err := sj.AcquireCatalogLock(instance.DataDir); err != nil {
-		// Concurrent caller already acquired the lock — return generating status.
-		writeJSON(w, http.StatusOK, sj.ReadCatalog(instance.DataDir))
-		return
-	}
-
-	go func() {
-		defer sj.ReleaseCatalogLock(instance.DataDir)
-		if err := sj.ExportCatalogContent(context.Background(), instance.DataDir, imageRef, func(line string) {
-			s.logger.Info("catalog-export: "+line, "instance", instanceID)
-		}); err != nil {
-			sj.WriteCatalogExportError(instance.DataDir, err.Error())
-			s.logger.Warn("catalog export failed", "instance", instanceID, "error", err)
-		} else {
-			sj.ClearCatalogExportError(instance.DataDir)
-		}
-	}()
-
-	// Lock is held; ReadCatalog returns "generating".
-	writeJSON(w, http.StatusOK, sj.ReadCatalog(instance.DataDir))
-}
-
 // handleSavesPreflight handles GET /api/instances/:id/saves/preflight.
 func (s *server) handleSavesPreflight(w http.ResponseWriter, r *http.Request, instanceID string) {
 	if _, ok := s.requireAuth(w, r); !ok {
@@ -219,6 +158,9 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 	job, err := driver.Start(r.Context(), registry.StartRequest{
 		Instance: makeRegistryInstance(instance),
 		ActorID:  actor.User.ID,
+		// NewGame signals the lifecycle job to send "settings newgame --confirm"
+		// via attach-cli so JunimoServer creates a fresh save with the new config.
+		NewGame: true,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "start_failed", "服务器启动失败: "+err.Error())
@@ -320,6 +262,11 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 	if err := sj.ImportSaveToVolume(instance.DataDir, entry.TempDir, entry.SaveName); err != nil {
 		writeError(w, http.StatusInternalServerError, "import_failed", "导入存档失败: "+err.Error())
 		return
+	}
+
+	// Tell JunimoServer to load the uploaded save on next start.
+	if err := sj.SetActiveSave(instance.DataDir, entry.SaveName); err != nil {
+		s.logger.Warn("set active save after upload", "instance", instanceID, "save", entry.SaveName, "error", err)
 	}
 
 	if err := s.advanceToReadyToStart(r, instance); err != nil {

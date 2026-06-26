@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,13 +13,16 @@ import (
 func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfg := registry.NewGameConfig{
-		FarmName:       "TestFarm",
-		FarmType:       "riverland",
-		StartingCabins: 2,
-		CabinLayout:    "nearby",
-		ProfitMargin:   "75",
-		PetBreed:       1,
-		MoneyMode:      "shared",
+		FarmName:               "TestFarm",
+		FarmType:               "riverland",
+		StartingCabins:         2,
+		CabinLayout:            "nearby",
+		ProfitMargin:           "75",
+		PetBreed:               1,
+		MoneyMode:              "shared",
+		RemixedCommunityCenter: true,
+		RemixedMineRewards:     true,
+		SpawnMonstersOnFarm:    true,
 	}
 	if err := WriteServerSettings(dir, cfg); err != nil {
 		t.Fatalf("WriteServerSettings: %v", err)
@@ -26,6 +30,43 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	path := serverSettingsPath(dir)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("settings file not created: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	// Verify nested structure: {"Game":{...}, "Server":{...}}
+	game, ok := settings["Game"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing or invalid 'Game' section in settings: %v", settings)
+	}
+	server, ok := settings["Server"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing or invalid 'Server' section in settings: %v", settings)
+	}
+	for _, key := range []string{"RemixBundles", "RemixMines"} {
+		if game[key] != true {
+			t.Errorf("Game.%s = %v, want true", key, game[key])
+		}
+	}
+	if game["SpawnMonstersAtNight"] != "true" {
+		t.Errorf("Game.SpawnMonstersAtNight = %v, want \"true\"", game["SpawnMonstersAtNight"])
+	}
+	if game["FarmName"] != "TestFarm" {
+		t.Errorf("Game.FarmName = %v, want TestFarm", game["FarmName"])
+	}
+	if game["FarmType"] != float64(1) { // riverland = 1
+		t.Errorf("Game.FarmType = %v, want 1", game["FarmType"])
+	}
+	if server["SeparateWallets"] != false { // shared → false
+		t.Errorf("Server.SeparateWallets = %v, want false", server["SeparateWallets"])
+	}
+	if game["CabinLayoutNearby"] != true { // nearby → true
+		t.Errorf("Game.CabinLayoutNearby = %v, want true", game["CabinLayoutNearby"])
 	}
 }
 
@@ -81,13 +122,50 @@ func TestValidateNewGameConfig_ProfitMargin(t *testing.T) {
 func TestJunimoFarmTypeID(t *testing.T) {
 	cases := map[string]int{
 		"standard": 0, "riverland": 1, "forest": 2,
-		"hilltop": 3, "wilderness": 4, "fourcorners": 5, "beach": 6,
+		"hilltop": 3, "wilderness": 4, "fourcorners": 5, "beach": 6, "meadowlands": 7,
 		"unknown": 0,
 	}
 	for name, want := range cases {
 		if got := junimoFarmTypeID(name); got != want {
 			t.Errorf("farmTypeID(%q) = %d, want %d", name, got, want)
 		}
+	}
+}
+
+func TestValidateNewGameConfig_PetPreference(t *testing.T) {
+	base := registry.NewGameConfig{
+		FarmName: "Farm", FarmType: "standard", CabinLayout: "nearby",
+		ProfitMargin: "100", MoneyMode: "shared", PetType: "Dog", PetBreed: 4, PetBreedID: "4",
+	}
+	if err := validateCfg(base); err != nil {
+		t.Fatalf("game data breed should be accepted: %v", err)
+	}
+	base.PetBreedID = "3"
+	if err := validateCfg(base); err == nil {
+		t.Fatal("mismatched petBreed/petBreedId should be rejected")
+	}
+}
+
+func TestWriteInitConfig_PreservesPetGenderAndCabinSelection(t *testing.T) {
+	dir := t.TempDir()
+	cfg := registry.NewGameConfig{
+		FarmName: "Meadow", FarmerName: "Robin", FarmType: "meadowlands",
+		Gender: "female", PetType: "Dog", PetBreed: 4, PetBreedID: "4",
+		StartingCabins: 2, CabinLayout: "separate", ProfitMargin: "75", MoneyMode: "shared",
+	}
+	if err := WriteServerSettings(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(serverInitPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var init initConfigJSON
+	if err := json.Unmarshal(data, &init); err != nil {
+		t.Fatal(err)
+	}
+	if init.Gender != "female" || init.PetType != "Dog" || init.PetBreed != "4" || init.CabinLayout != "separate" {
+		t.Fatalf("init selection changed: %#v", init)
 	}
 }
 
@@ -296,6 +374,41 @@ func TestMigrateSavesVolume_Idempotent(t *testing.T) {
 	}
 	if changed {
 		t.Fatal("expected changed=false for already-migrated compose")
+	}
+}
+
+func TestMigrateRemoveAssetExporterService(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	compose := `services:
+  server:
+    image: sdvd/server:test
+  asset-exporter:
+    image: sdvd/server:test
+    profiles:
+      - catalog-export
+volumes:
+  game-data:
+`
+	if err := os.WriteFile(path, []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := migrateRemoveAssetExporterService(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected legacy service to be removed")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(string(data), "asset-exporter:") {
+		t.Fatal("legacy asset-exporter service remains")
+	}
+	if !contains(string(data), "\nvolumes:\n") {
+		t.Fatal("volumes section was removed")
 	}
 }
 
