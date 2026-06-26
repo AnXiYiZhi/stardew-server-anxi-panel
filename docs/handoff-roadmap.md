@@ -945,7 +945,7 @@ npm run build
   - 选择扫码登录时运行 `steam-auth setup`，面板自动向上游第一层 `Choose authentication method` 输入 `2`，并展示 QR 输出。
   - Steam QR 使用独立弹窗展示，避免管理员靠滚动日志判断二维码是否完整。
   - 选择账号密码/验证码登录时运行 `steam-auth download`，让 Junimo 使用 `.env` 中的 `STEAM_USERNAME` / `STEAM_PASSWORD` 登录并下载游戏文件。不要用普通 stdin pipe 跑 `setup` 的账号密码分支；上游该分支使用 `Console.ReadKey()` 读取密码，在无 console / stdin 重定向时会崩溃。
-  - 游戏文件下载阶段解析 steam-auth `Progress: done/total files ... (xx.x%)` 日志，并在安装区显示独立百分比进度条；前端百分比按文件数 `done/total` 计算（例如 `100/1470 = 6.8%`），不使用上游括号里的字节百分比。Steamworks SDK app `1007` 下载会切到 `steam_sdk_downloading`，前端单独显示 SDK 下载进度和 2 阶段下载任务进度，避免游戏文件 100% 后看起来卡住。
+  - 游戏文件下载阶段解析 steam-auth `Progress: done/total files ... (xx.x%)` 日志，并在安装区显示独立百分比进度条；前端百分比按文件数 `done/total` 计算（例如 `100/1470 = 6.8%`），不使用上游括号里的字节百分比。Steamworks SDK app `1007` 下载会切到 `steam_sdk_downloading`，前端单独显示 SDK 下载进度和 2 阶段下载任务进度；只要日志出现 `Downloading app 1007` / `.steam-sdk` 就立刻切到 SDK 阶段，未收到 SDK `Progress` 前显示 0% 和“正在与 Steam 下载服务器建立连接中”。Stardew 安装 job 超时已延长到 2 小时，且 SDK 已安装完成时不会再被 deadline 误判为超时。下载失败/超时/CM 网络错误后的“重试安装”会复用 `.env` 凭据并直接运行 `steam-auth download`，跳过扫码/账号密码选择；已有文件由 steam-auth 校验，已存在且校验通过的文件自动跳过。
   - Steam 二维码展示区域（`steam_qr_required`）：从任务日志提取并用等宽文本完整显示二维码输出；若上游容器在生成二维码前报 `qr_auth_failed`，明确提示改用账号密码/Steam Guard。
   - 安装任务失败后会清理前端活跃安装 job 标记，并把 failed job / error log / instance state message 转成安装区错误提示；`TryAnotherCM`、SteamClient/CM 连接失败、超时、凭据错误、二维码失败、下载失败不再只停留在任务日志里。
   - 认证失败时重显凭据 Modal。

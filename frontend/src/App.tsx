@@ -722,14 +722,20 @@ function Dashboard({
   const activeInstallJobIsRunning = activeInstallJobId !== null && (!activeInstallJob || !isTerminalJobStatus(activeInstallJob.status))
   const hasFailedInstallJob = !runningInstallJobId && latestInstallJob?.status === 'failed'
   const hasTimedOutInstallJob = hasFailedInstallJob && latestInstallJob?.errorMessage?.includes('超时')
-  const staleAuthState = rawState === 'steam_auth_running' || rawPhase === 'steam_guard_mobile_required' ||
-    rawPhase === 'steam_guard_required' || rawPhase === 'steam_auth_retrying' || rawPhase === 'steam_guard_choice_required' ||
-    rawPhase === 'auth_method_required' || rawPhase === 'steam_qr_required' || rawPhase === 'game_downloading' ||
-    rawPhase === 'steam_sdk_downloading'
-  const state = hasFailedInstallJob && staleAuthState ? 'steam_auth_failed' : rawState
-  const phase = hasTimedOutInstallJob && staleAuthState ? 'install_timeout'
-    : hasFailedInstallJob && staleAuthState ? 'steam_auth_failed'
-      : rawPhase
+  const steamSdkStartedFromLogs = hasSteamSdkDownloadStarted(jobLogs, selectedJob?.type)
+  const installSucceededFromLogs = hasSteamSdkDownloadCompleted(jobLogs, selectedJob?.type)
+  const effectiveRawPhase = steamSdkStartedFromLogs && (rawPhase === 'game_downloading' || rawPhase === 'steam_auth_running')
+    ? 'steam_sdk_downloading'
+    : rawPhase
+  const staleAuthState = rawState === 'steam_auth_running' || effectiveRawPhase === 'steam_guard_mobile_required' ||
+    effectiveRawPhase === 'steam_guard_required' || effectiveRawPhase === 'steam_auth_retrying' || effectiveRawPhase === 'steam_guard_choice_required' ||
+    effectiveRawPhase === 'auth_method_required' || effectiveRawPhase === 'steam_qr_required' || effectiveRawPhase === 'game_downloading' ||
+    effectiveRawPhase === 'steam_sdk_downloading'
+  const state = installSucceededFromLogs ? 'game_installed' : hasFailedInstallJob && staleAuthState ? 'steam_auth_failed' : rawState
+  const phase = installSucceededFromLogs ? 'steam_auth_done'
+    : hasTimedOutInstallJob && staleAuthState ? 'install_timeout'
+      : hasFailedInstallJob && staleAuthState ? 'steam_auth_failed'
+        : effectiveRawPhase
 
 
   const needsInstall = state === 'admin_created' || state === 'junimo_scaffolded' ||
@@ -770,8 +776,17 @@ function Dashboard({
       phase === 'install_timeout' ||
       phase === 'steam_auth_connection_failed' ||
       phase === 'steam_auth_failed' ||
-      phase === 'qr_auth_failed'
+      phase === 'qr_auth_failed' ||
+      phase === 'download_failed'
     )
+  const displayInstanceState = instanceState && installSucceededFromLogs
+    ? {
+      ...instanceState,
+      state: 'game_installed',
+      stateMessage: 'Steam 认证成功，游戏和 Steam SDK 已安装。',
+      driverPhase: 'steam_auth_done',
+    }
+    : instanceState
 
   function currentInstallJobID() {
     if (activeInstallJobId) return activeInstallJobId
@@ -801,6 +816,27 @@ function Dashboard({
     setShowInstallModal(true)
   }
 
+  async function handleInstallClick() {
+    if (canDirectRetry) {
+      setInstallBusy(true)
+      setInstallMessage('')
+      try {
+        const recommendedTag = imageTagOptions.find((o) => o.recommended)?.tag ?? installForm.imageTag
+        const response = await installInstance({ reuseCredentials: true, imageTag: recommendedTag })
+        setActiveInstallJobId(response.jobId)
+        const jobResponse = await getJob(response.jobId)
+        setSelectedJob(jobResponse.job)
+        await refreshJobs()
+      } catch (error) {
+        setInstallMessage(errorMessage(error))
+      } finally {
+        setInstallBusy(false)
+      }
+      return
+    }
+    openInstallModal()
+  }
+
   return (
     <div className="dashboard-grid">
       <div className="status-card">
@@ -810,7 +846,7 @@ function Dashboard({
       </div>
 
       {/* Stardew 实例状态卡 */}
-      <InstanceStateCard state={instanceState} onRefresh={refreshState} />
+      <InstanceStateCard state={displayInstanceState} onRefresh={refreshState} />
 
       {/* 安装区域（仅 admin） */}
       {user.role === 'admin' ? (
@@ -842,7 +878,7 @@ function Dashboard({
           guardMessage={guardMessage}
           imageTagOptions={imageTagOptions}
           canDirectRetry={canDirectRetry}
-          onInstallClick={openInstallModal}
+          onInstallClick={handleInstallClick}
           onInstallFormChange={setInstallForm}
           onShowInstallModal={setShowInstallModal}
           onInstallSubmit={handleInstallSubmit}
@@ -1144,7 +1180,7 @@ function InstallSection({
                   <p className="game-download-detail">{steamDownloadTaskProgress.label}</p>
                 </>
               ) : (
-                <p className="game-download-detail">正在等待 steam-auth 开始下载任务...</p>
+                <p className="game-download-detail">正在校验已有文件并连接 Steam 下载服务器...</p>
               )}
             </div>
           ) : null}
@@ -1168,7 +1204,7 @@ function InstallSection({
               </div>
               <DownloadProgressBody
                 progress={steamSdkDownloadProgress}
-                waitingText="正在等待 steam-auth 输出 Steam SDK 下载百分比..."
+                waitingText="正在与 Steam 下载服务器建立连接中..."
               />
             </div>
           ) : null}
@@ -1399,7 +1435,19 @@ function InstanceStateCard({ state, onRefresh }: { state: InstanceState | null; 
 }
 
 function DownloadProgressBody({ progress, waitingText }: { progress: DownloadProgress | null; waitingText: string }) {
-  if (!progress) return <p className="game-download-detail">{waitingText}</p>
+  if (!progress) {
+    return (
+      <>
+        <div className="progress-bar-wrap">
+          <div className="progress-bar-track">
+            <div className="progress-bar-fill" style={{ width: '0%' }} />
+          </div>
+          <span className="progress-bar-percent">0%</span>
+        </div>
+        <p className="game-download-detail">{waitingText}</p>
+      </>
+    )
+  }
   return (
     <>
       <div className="progress-bar-wrap">
@@ -1704,6 +1752,22 @@ function extractSteamDownloadProgress(logs: JobLog[], jobType: string | undefine
   return latest
 }
 
+function hasSteamSdkDownloadStarted(logs: JobLog[], jobType: string | undefined) {
+  if (jobType !== 'stardew_install') return false
+  return logs.some((log) => {
+    const lower = log.message.toLowerCase()
+    return lower.includes('[steam]') && (lower.includes('downloading app 1007') || lower.includes('.steam-sdk'))
+  })
+}
+
+function hasSteamSdkDownloadCompleted(logs: JobLog[], jobType: string | undefined) {
+  if (jobType !== 'stardew_install') return false
+  return logs.some((log) => {
+    const lower = log.message.toLowerCase()
+    return lower.includes('[steam]') && lower.includes('app installed to:') && lower.includes('/data/game/.steam-sdk')
+  })
+}
+
 function fileCountPercent(done: number, total: number) {
   if (total <= 0) return 0
   return roundPercent((done / total) * 100)
@@ -1749,7 +1813,7 @@ function calcSteamDownloadTaskProgress(
     done: gameProgress?.percent === 100 ? 1 : 0,
     total: 2,
     percent: roundPercent((gameProgress?.percent ?? 0) / 2),
-    label: '正在下载 Stardew Valley 游戏文件；完成后还会继续下载 Steam SDK 运行文件。',
+    label: '正在校验/下载 Stardew Valley 游戏文件；已存在且校验通过的文件会自动跳过。',
   }
 }
 

@@ -153,6 +153,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		SteamPassword: body.SteamPassword,
 		VNCPassword:   body.VNCPassword,
 		ImageTag:      body.ImageTag,
+		AutoDownload:  body.ReuseCredentials,
 	})
 	if err != nil {
 		s.logger.Error("install failed to start", "instance", instanceID, "error", err)

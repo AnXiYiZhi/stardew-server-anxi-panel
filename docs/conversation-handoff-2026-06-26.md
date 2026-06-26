@@ -223,6 +223,105 @@ go test ./internal/games/stardew_junimo ./internal/docker
 2. 游戏文件到 100% 后，页面进入 SDK 下载阶段，不再误以为卡住。
 3. SDK 下载期间显示 Steam SDK 独立进度条；SDK 完成后才进入安装完成。
 
+### 追加修复：SDK 阶段即时切换和完成后误超时
+
+#### 问题
+
+实测日志显示游戏文件完成后会继续下载 SDK：
+
+```text
+Progress: 1470/1470 files - 150.50 MB/150.50 MB (100.0%)
+Download complete!
+App installed to: /data/game
+Downloading app 1007...
+Target directory: /data/game/.steam-sdk
+Downloading 4 files (102.91 MB)
+```
+
+前端此前依赖后端轮询到 `steam_sdk_downloading` 或 SDK `Progress` 后才切换，导致页面在 `Downloading app 1007` 到第一条 SDK `Progress` 之间仍停留在“游戏文件下载 100%”。另外 Stardew 安装 job 超时仍是 30 分钟；本次实测游戏下载约 1413 秒、SDK 下载约 823 秒，总计超过 37 分钟，导致 SDK 已经 `App installed to: /data/game/.steam-sdk` 后，任务仍被 job manager 标记为“任务超时”。
+
+#### 修复
+
+- `frontend/src/App.tsx`
+  - 新增 `hasSteamSdkDownloadStarted()`：只要任务日志出现 `Downloading app 1007` 或 `.steam-sdk`，即使后端实例状态仍是 `game_downloading` / `steam_auth_running`，前端也立即派生为 `steam_sdk_downloading`。
+  - 新增 `hasSteamSdkDownloadCompleted()`：如果日志已出现 `App installed to: /data/game/.steam-sdk`，前端可将当前安装视为完成，避免旧 failed job 的 `任务超时` 继续覆盖页面。
+  - 当旧任务日志已证明 SDK 完成时，实例状态卡也会在前端派生显示为 `game_installed/steam_auth_done`，避免安装区已完成但顶部状态仍显示 error。
+  - `DownloadProgressBody` 在还没有实际 SDK `Progress` 时也渲染 0% 进度条，并显示“正在与 Steam 下载服务器建立连接中...”。
+- `backend/internal/games/stardew_junimo/driver.go`
+  - Stardew 安装 job 超时从 30 分钟延长到 2 小时，适配国内 Steam CDN 下载游戏 + SDK 的耗时。
+- `backend/internal/games/stardew_junimo/installer.go`
+  - 记录当前下载 app：游戏 app `413150` 和 Steam SDK app `1007`。
+  - 只有 SDK 下载完成才真正标记安装成功。
+  - 如果 SDK 已完成但 context deadline 已到，优先调用 `markInstallSucceeded()`，不再写入 `install_timeout`。
+
+#### 关于重试跳过下载
+
+面板当前不会直接读取 Docker named volume `game-data` 判断文件是否完备；实际下载和校验仍交给 Junimo `steam-auth download`。上游 steam-service 会校验已存在文件/chunk，并输出类似：
+
+```text
+Skipped N existing files (already up to date)
+```
+
+因此点击“重试安装”会复用 `.env` 凭据并重新运行 `steam-auth download`；已存在且校验通过的文件会被上游跳过，缺失/损坏的 chunk 会被补齐。后续如果要做到“面板启动前主动检测 game-data 是否完备并直接标记 installed”，需要新增一个只读 Docker volume 检查/探针容器，不要直接假设宿主机实例目录里有游戏文件。
+
+#### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm run build
+
+cd E:\stardew-server-anxi-panel\backend
+go test ./internal/games/stardew_junimo ./internal/docker ./internal/web
+```
+
+均已通过。
+
+### 追加修复：下载失败/超时重试直达下载
+
+#### 问题
+
+下载阶段超时、Steam CM 网络错误、SDK 下载超时等并不代表 Steam 凭据失效。此前点击“重试安装”仍可能打开安装表单，让管理员重新输入 Steam 用户名/密码/VNC 密码，或者再次进入扫码/账号密码登录方式选择，体验不对。
+
+#### 修复
+
+- `backend/internal/games/registry/types.go`
+  - `InstallRequest` 新增 `AutoDownload`。
+- `backend/internal/web/install_handlers.go`
+  - 当前端传 `reuseCredentials=true` 时，从实例 `.env` 读取 `STEAM_USERNAME` / `STEAM_PASSWORD` / `VNC_PASSWORD`。
+  - 同时将 `AutoDownload=true` 传给 driver。
+- `backend/internal/games/stardew_junimo/driver.go`
+  - 将 `AutoDownload` 保存到 install runner。
+- `backend/internal/games/stardew_junimo/installer.go`
+  - `autoMode=true` 时跳过 `waitSteamAuthMode()`，不再进入 `auth_method_required`。
+  - 直接运行 `steam-auth download`，用于校验已有文件并继续下载缺失/损坏内容。
+  - job 日志会出现“复用已保存的 Steam 凭据，直接校验并下载游戏文件。”
+- `frontend/src/App.tsx`
+  - 对 `install_timeout`、`steam_auth_connection_failed`、`steam_auth_failed`、`qr_auth_failed`、`download_failed`、普通 `error` 等非凭据错误，点击“重试安装”会直接调用 `installInstance({ reuseCredentials: true })`。
+  - 只有 `credentials_required` 才重新显示 Steam/VNC 凭据表单。
+  - 下载等待文案改为“正在校验已有文件并连接 Steam 下载服务器...”，提示这是校验/续传流程。
+
+#### 已有文件跳过逻辑
+
+面板不直接读 Docker named volume `game-data` 做文件完备判断。重试时仍交给 Junimo `steam-auth download`：
+
+- 已存在且校验通过的文件/chunk 会跳过。
+- 缺失或损坏的 chunk 会重新下载。
+- 上游可能输出 `Skipped N existing files (already up to date)`。
+
+后续如果要“面板主动检测 game-data 完备并直接标记 installed”，应新增只读探针容器挂载 `game-data`，不要读取实例目录，因为 Junimo 官方 compose 把游戏文件放在 Docker named volume 中。
+
+#### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm run build
+
+cd E:\stardew-server-anxi-panel\backend
+go test ./...
+```
+
+均已通过。
+
 ---
 
 ## Steam Auth 两层认证菜单拆分

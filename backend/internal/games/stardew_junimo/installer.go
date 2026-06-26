@@ -39,6 +39,7 @@ type installRunner struct {
 	password string // never logged
 	vncPass  string // never logged
 	imageTag string
+	autoMode bool
 }
 
 type steamAuthMode string
@@ -174,9 +175,17 @@ func (r *installRunner) runSteamAuth(ctx context.Context, jobCtx *jobs.Context) 
 		r.driver.clearGuardChan(jobCtx.ID)
 	}()
 
-	mode, err := r.waitSteamAuthMode(ctx, jobCtx, guardCh)
-	if err != nil {
-		return err
+	mode := steamAuthModeCredentials
+	if r.autoMode {
+		_, _ = jobCtx.Info(ctx, "复用已保存的 Steam 凭据，直接校验并下载游戏文件。")
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
+			"正在复用已保存的 Steam 凭据校验已有文件并继续下载...", "game_downloading", jobCtx.ID)
+	} else {
+		selectedMode, err := r.waitSteamAuthMode(ctx, jobCtx, guardCh)
+		if err != nil {
+			return err
+		}
+		mode = selectedMode
 	}
 
 	const maxAttempts = 5
@@ -246,6 +255,8 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		mobileApproval   bool
 		downloadFailed   bool
 		guardChoiceShown bool
+		currentApp       string
+		sdkDownloaded    bool
 	)
 
 	lineHandler := func(line string) {
@@ -323,10 +334,18 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 				"请在 Steam 手机 App 上批准此次登录请求。",
 				"steam_guard_mobile_required", jobCtx.ID)
 
-		case strings.Contains(lower, "downloading app 1007") || strings.Contains(lower, ".steam-sdk"):
+		case containsAny(lower, "download complete", "app installed to"):
+			if currentApp == "sdk" {
+				sdkDownloaded = true
+				authSucceeded = true
+			}
+
+		case strings.Contains(lower, "downloading app 1007") ||
+			(strings.Contains(lower, "target directory:") && strings.Contains(lower, ".steam-sdk")):
 			// Steamworks SDK Redistributable is downloaded after the Stardew depot.
 			// Keep it as a separate phase so the frontend does not appear stuck at
 			// 100% game download while SDK files are still being fetched.
+			currentApp = "sdk"
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 				"游戏文件下载完成，正在下载 Steam SDK 运行文件...",
 				"steam_sdk_downloading", jobCtx.ID)
@@ -334,6 +353,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		case containsAny(lower, "downloading app"):
 			// Auth succeeded; game depot download is starting. Update phase so the
 			// frontend shows progress instead of the stale Steam Guard phase.
+			currentApp = "game"
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 				"Steam 认证成功，正在下载游戏文件，请耐心等待...",
 				"game_downloading", jobCtx.ID)
@@ -343,7 +363,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 			// space, etc.). Flag it so we report failure instead of false success.
 			downloadFailed = true
 
-		case containsAny(lower, "download complete", "app installed to", "logged in", "login succeeded", "auth done",
+		case containsAny(lower, "logged in", "login succeeded", "auth done",
 			"authentication complete", "successfully logged", "login successful"):
 			authSucceeded = true
 
@@ -366,6 +386,10 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	// Console.ReadKey() works for the Steam Guard method selection menu.
 	exitCode, cmdErr := r.driver.docker.RunSteamAuthTTY(ctx, r.instance.DataDir, r.buildSteamAuthOpts(mode), guardCh, lineHandler)
 	if cmdErr != nil {
+		if sdkDownloaded {
+			r.markInstallSucceeded(jobCtx)
+			return false, nil
+		}
 		if ctx.Err() != nil {
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 				"安装任务超时，Steam 认证未完成，请重试安装。", "install_timeout", jobCtx.ID)
@@ -375,6 +399,10 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	if ctx.Err() != nil {
+		if sdkDownloaded {
+			r.markInstallSucceeded(jobCtx)
+			return false, nil
+		}
 		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 			"安装任务超时，Steam 认证未完成，请重试安装。", "install_timeout", jobCtx.ID)
 		return false, fmt.Errorf("steam-auth timed out: %w", ctx.Err())
@@ -425,9 +453,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	if authSucceeded {
-		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateGameInstalled,
-			"Steam 认证成功，游戏已安装。", "steam_auth_done", jobCtx.ID)
-		_, _ = jobCtx.Info(context.Background(), "Steam 认证成功，安装完成。")
+		r.markInstallSucceeded(jobCtx)
 		return false, nil
 	}
 
@@ -435,6 +461,12 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		"Steam 认证失败，请检查日志并重试。", "credentials_required", jobCtx.ID)
 	_, _ = jobCtx.Error(context.Background(), fmt.Sprintf("steam-auth 以退出码 %d 结束。", exitCode))
 	return false, fmt.Errorf("steam-auth download exited with code %d", exitCode)
+}
+
+func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
+	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
+		"Steam 认证成功，游戏和 Steam SDK 已安装。", "steam_auth_done", jobCtx.ID)
+	_, _ = jobCtx.Info(context.Background(), "Steam 认证成功，游戏和 Steam SDK 已安装。")
 }
 
 func isSteamGuardCodePrompt(lower string) bool {
