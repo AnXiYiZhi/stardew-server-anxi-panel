@@ -50,6 +50,7 @@ type lifecycleRunner struct {
 	instance   storage.Instance
 	operation  string // "start", "stop", "restart"
 	actorID    int64
+	newGame    bool // When true, send "settings newgame --confirm" after server starts.
 }
 
 // Start implements registry.GameDriver.Start.
@@ -72,6 +73,7 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 		instance:  instance,
 		operation: "start",
 		actorID:   req.ActorID,
+		newGame:   req.NewGame,
 	}
 	job, err := d.jobs.Start(ctx, jobs.Spec{
 		Type:       "stardew_lifecycle",
@@ -191,6 +193,15 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	// Container is running; poll for invite code and SMAPI status concurrently.
 	// JunimoServer writes the invite code as soon as the lobby is created (before save load),
 	// so we must not gate invite-code polling on SMAPI save-loaded.
+
+	// If this is a new-game request, send "settings newgame --confirm" once SMAPI is ready.
+	// This creates a fresh save using the server-settings.json values without deleting old saves.
+	if r.newGame {
+		if err := r.sendNewGameCommand(ctx, jobCtx); err != nil {
+			_, _ = jobCtx.Warn(ctx, fmt.Sprintf("创建新存档失败（服务器将继续加载已有存档）：%v", err))
+		}
+	}
+
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
 		"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
 
@@ -504,6 +515,73 @@ func (d *Driver) updateDriverPayloadInviteCode(ctx context.Context, instanceID, 
 	if err != nil {
 		d.logger.Warn("update invite code: update state", "error", err)
 	}
+}
+
+// sendNewGameCommand waits for the JunimoServer HTTP API to be ready, then calls
+// POST /newgame to create a fresh save using the current server-settings.json values.
+// Existing saves are preserved; junimohost.gameloader.json is updated automatically.
+func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.Context) error {
+	_, _ = jobCtx.Info(ctx, "等待服务器 API 就绪后创建新存档...")
+
+	// Poll the HTTP API until /status responds (server is up and accepting requests).
+	apiURL := "http://localhost:8080/status"
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		result, err := r.lifecycle.ComposeExecPipe(reqCtx, r.instance.DataDir, "server",
+			"", "curl", "-sf", apiURL)
+		cancel()
+		if err == nil && result.ExitCode == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+
+	_, _ = jobCtx.Info(ctx, "服务器 API 就绪，发送创建新存档请求...")
+
+	// Call POST /newgame.  JunimoServer reads server-settings.json and creates a new save.
+	// The gameloader config is updated automatically.
+	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	result, err := r.lifecycle.ComposeExecPipe(cmdCtx, r.instance.DataDir, "server",
+		"", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}",
+		"http://localhost:8080/newgame")
+	if err != nil {
+		return fmt.Errorf("POST /newgame: %w", err)
+	}
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档创建响应：%s", strings.TrimSpace(result.Stdout)))
+
+	// Wait for the new save to appear in the Saves directory.
+	saveDeadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(saveDeadline) {
+		gameloaderPath := filepath.Join(savesDir(r.instance.DataDir), ".smapi", "mod-data",
+			"junimohost.server", "junimohost.gameloader.json")
+		data, err := os.ReadFile(gameloaderPath)
+		if err == nil {
+			var gl struct {
+				SaveNameToLoad string `json:"SaveNameToLoad"`
+			}
+			if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" {
+				saveDir := filepath.Join(savesDir(r.instance.DataDir), "Saves", gl.SaveNameToLoad)
+				if _, err := os.Stat(saveDir); err == nil {
+					_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档已创建：%s", gl.SaveNameToLoad))
+					return nil
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+
+	_, _ = jobCtx.Warn(ctx, "新存档请求已发送但未检测到新存档目录，请检查服务器日志。")
+	return nil
 }
 
 // mergeInviteCodeInPayload parses existing JSON payload and injects invite_code.

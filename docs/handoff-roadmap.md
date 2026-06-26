@@ -6,6 +6,27 @@
 
 ## Current Context
 
+### 自定义新建存档修复 ✅ completed (2026-06-26)
+
+修复了"创建存档并启动"自定义配置完全不生效的三个叠加问题：
+
+1. **`server-settings.json` 嵌套结构**：JunimoServer 的 C# 类期望 `{"Game":{...},"Server":{...}}` 嵌套 JSON，面板之前写的是扁平结构，导致全部字段回退默认值。
+2. **`docker-compose.yml` 旧版**：saves 使用 Docker named volume 而非 bind mount，宿主机看不到存档，前端永远判定"无存档"。已手动修复 compose 文件（新实例由 `Prepare()` 生成正确模板）。
+3. **创建新存档方式**：改用 JunimoServer HTTP API `POST /newgame`（替代失败的 `attach-cli settings newgame --confirm`），旧存档完全保留。
+
+**已知限制**：FarmerName/Gender/外貌等角色字段无法通过 SMAPI mod 在 Junimo runtime 中写入（`SaveCreating` 事件不被 JunimoServer 的 `/newgame` 触发）。需要预置存档模板方案，当前未实现。
+
+详见 `docs/conversation-handoff-2026-06-26.md` 最后一节。
+
+### New-game native UI and packaged assets ✅ completed (2026-06-26)
+
+- The Stardew new-game creator now mirrors the in-game three-column layout while intentionally excluding skin, hair, shirt, pants, and accessory controls.
+- `skipIntro` is always enabled. Advanced options for remixed Community Center bundles, remixed mine rewards, and farm monsters are collected in the UI and mapped to Junimo's `bundlesRemix`, `minesRemix`, and `spawnMonstersAtNight` settings.
+- Real farm and pet crops were exported once from the maintainer's local Stardew runtime through the SMAPI reflection path, then committed under `frontend/public/assets/stardew/new-game/`; Vite copies them into the published frontend build.
+- The former per-user runtime catalog exporter has been removed from the driver, install job, API, frontend polling, and Compose template. Existing instance Compose files are cleaned by `migrateRemoveAssetExporterService` on the next install run.
+- Verification completed: `go test ./...` and `npm.cmd run build`.
+- Screenshot-backed character/gender/cabin assets and the Meadowlands map were added on 2026-06-26. Pet preference is now a 10-step game-data breed cycle (five cats then five dogs), with backend validation and Junimo `create-or-load` application kept in sync.
+
 项目目标：
 
 - 基于 JunimoServer 做 Stardew Valley 专用服务器 Web 管理面板。

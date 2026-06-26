@@ -68,6 +68,7 @@ type SteamGuardSender interface {
 type StartRequest struct {
 	Instance Instance
 	ActorID  int64
+	NewGame  bool // When true, lifecycle job sends "settings newgame --confirm" after server starts.
 }
 
 type Job struct {
@@ -120,16 +121,16 @@ type UploadedFile struct {
 }
 
 type SaveInfo struct {
-	Name         string `json:"name"`
-	FarmerName   string `json:"farmerName,omitempty"`
-	FarmName     string `json:"farmName,omitempty"`
-	GameYear     int    `json:"gameYear,omitempty"`
-	GameSeason   string `json:"gameSeason,omitempty"`
-	GameDay      int    `json:"gameDay,omitempty"`
-	FarmType     string `json:"farmType,omitempty"`
+	Name          string `json:"name"`
+	FarmerName    string `json:"farmerName,omitempty"`
+	FarmName      string `json:"farmName,omitempty"`
+	GameYear      int    `json:"gameYear,omitempty"`
+	GameSeason    string `json:"gameSeason,omitempty"`
+	GameDay       int    `json:"gameDay,omitempty"`
+	FarmType      string `json:"farmType,omitempty"`
 	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
-	ModifiedAt   string `json:"modifiedAt,omitempty"`
-	ParseError   string `json:"parseError,omitempty"`
+	ModifiedAt    string `json:"modifiedAt,omitempty"`
+	ParseError    string `json:"parseError,omitempty"`
 }
 
 // RgbColor is an RGB color for character appearance customization.
@@ -149,8 +150,16 @@ type NewGameConfig struct {
 	StartingCabins int    `json:"startingCabins"` // 0-3
 	CabinLayout    string `json:"cabinLayout"`    // nearby|separate
 	ProfitMargin   string `json:"profitMargin"`   // "100"|"75"|"50"|"25"
-	PetBreed       int    `json:"petBreed"`       // 0-3 (Junimo server-settings index)
+	PetBreed       int    `json:"petBreed"`       // 0-4 (Stardew selectable breed index)
 	MoneyMode      string `json:"moneyMode"`      // shared|separate
+	// New-game advanced settings. These map directly to JunimoServer's
+	// GameCreator settings and are persisted before its first world creation.
+	RemixedCommunityCenter bool `json:"remixedCommunityCenter"`
+	RemixedMineRewards     bool `json:"remixedMineRewards"`
+	SpawnMonstersOnFarm    bool `json:"spawnMonstersOnFarm"`
+	// The panel always creates a server game without the vanilla intro.
+	// It remains explicit in the DTO so the saved creation payload is auditable.
+	SkipIntro bool `json:"skipIntro"`
 
 	// SMAPI character fields — require the StardewAnxiPanel.Control mod to be installed.
 	FarmerName    string    `json:"farmerName,omitempty"`
@@ -170,9 +179,9 @@ type NewGameConfig struct {
 
 // PreflightResult is returned by GET .../saves/preflight.
 type PreflightResult struct {
-	HasSaves    bool       `json:"hasSaves"`
-	Saves       []SaveInfo `json:"saves"`
-	TemplateAvailable bool `json:"templateAvailable"`
+	HasSaves          bool       `json:"hasSaves"`
+	Saves             []SaveInfo `json:"saves"`
+	TemplateAvailable bool       `json:"templateAvailable"`
 }
 
 // UploadPreviewResult is returned by POST .../saves/upload-preview.

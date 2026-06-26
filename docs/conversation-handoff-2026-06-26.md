@@ -1118,3 +1118,178 @@ go test ./internal/games/stardew_junimo ./internal/docker ./internal/web
 - 如果 SMAPI mod 没有正确写 `status.json`（旧 DLL、mod 加载失败、control 目录挂载错误），`waitForSMAPIReady` 会等满 20 分钟后超时；仍然尝试 `pollInviteCode`，如果那时存档已创建完毕，邀请码能取到。
 - 若想让 SMAPI 在 Junimo runtime 下也能正确写 `status.json`，确保 `.local-container/control` bind mount 存在且 SMAPI mod DLL 是 Debug build（非 CI-build）。
 - `server-init.json` 的 `mode: "create-or-load"` 与 Junimo runtime 配合时，SMAPI mod 的字符定制（`ApplyPanelCharacterCustomization`）只在 `mode=native-create` 时运行；Junimo runtime 下角色外观由 Junimo 的默认值决定，不被 SMAPI 覆盖。
+
+---
+
+## 原生新建存档界面与内置素材（2026-06-26）
+
+### 完成内容
+
+- `frontend/src/games/stardew/NewGameCreator.tsx` / `.css` 已改为接近游戏内新建存档的三栏像素界面：左侧联机小屋、布局、利润率和资金管理；中间玩家/农场/喜好/动物偏好、农场切换、固定勾选的“跳过开场动画”；右侧农场缩略图。
+- 按产品要求移除了皮肤、头发、上衣、裤子和配饰控件；保留性别、宠物类型、农场与多人设置。
+- “高级设置”已接入三个真实字段：`remixedCommunityCenter`、`remixedMineRewards`、`spawnMonstersOnFarm`。后端将它们写入 Junimo `server-settings.json` 的 `bundlesRemix`、`minesRemix`、`spawnMonstersAtNight`；同时写入 `server-init.json` 供控制链路审计。`skipIntro` 强制为 `true`。
+- 使用本机正在运行的 Junimo 游戏文件与完整 SMAPI 反射导出模组，一次性导出了真实农场与宠物图块；PNG 已提交到 `frontend/public/assets/stardew/new-game/{farms,pets}/`。Vite 构建确认会把它们复制至 `dist/assets/stardew/new-game/`，不依赖用户机器的 Steam 下载，也未被 `.gitignore` 排除。
+- 删除了运行时素材导出链路：`catalog.go`、`catalog_exporter.go`、catalog API、`asset-exporter` Compose 服务、安装阶段 exporter job 和前端轮询均已移除。安装完成会直接进入 `game_installed`。
+- 旧实例会在下次安装流程由 `migrateRemoveAssetExporterService()` 自动移除 `asset-exporter` 服务。本机开发实例的旧 exporter 服务、缓存目录和停止容器也已清理。
+
+### 影响的接口/文件
+
+- 请求 DTO：`registry.NewGameConfig` 和前端 `NewGameConfig` 新增上述三个高级布尔设置及 `skipIntro`。
+- 创建接口不变：`POST /api/instances/:id/saves/custom-new-game`。
+- 移除接口：`GET/POST /api/instances/:id/custom-new-game/catalog`。
+- 前端素材位于 `frontend/public/assets/stardew/new-game/`，应与面板镜像一同发布，不应搬回实例数据目录或用户运行时生成。
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+
+cd ..\frontend
+npm.cmd run build
+```
+
+两项均已通过；`frontend/dist/assets/stardew/new-game/` 已确认包含农场和宠物 PNG。
+
+### 下一步注意事项
+
+- 若要更新素材，必须在维护者的本地游戏/Junimo 环境一次性重新运行反射导出，再更新 `frontend/public/assets/stardew/new-game/` 并提交；禁止恢复用户侧 `asset-exporter` 或 catalog 轮询。
+- 需要真实浏览器截图回归时，可在面板可静态服务前端构建物的运行方式落定后，对新建存档 modal 做桌面和窄屏检查。
+
+---
+
+## 新建存档截图素材与草原农场补齐（2026-06-26）
+
+### 完成内容
+
+- 维护者提供的六张已裁切游戏截图已原样写入 `frontend/public/assets/stardew/new-game/`：`characters/{male-preview,female-preview}.png`、`gender/{male-icon,female-icon}.png`、`cabins/{nearby,separate}.png`。前端直接引用这些 PNG，不再使用 emoji 或重新绘制的替代图。
+- `NewGameCreator` 右侧农场列表新增 `meadowlands`（草原农场），对应既有 `farms/meadowlands.png`；后端校验与 `whichFarm=7` 映射同步补齐。
+- 删除角色区里重复的猫/狗切换。动物偏好现在只保留与原游戏一致的左右循环，并按本机导出的游戏数据顺序循环 5 个猫品种后 5 个狗品种；每步同时更新 `petType`、`petBreed`、`petBreedId`。
+- 后端允许游戏实际的 `0..4` 品种 ID，并拒绝 `petBreed` 与 `petBreedId` 不一致的请求。`server-init.json` 保留性别、宠物类型、宠物品种和小屋布局；控制模组已更新为在 Junimo 的 `create-or-load` 事件也应用这些选择，避免界面选项只停留在表单层。
+
+### 验证
+
+- `go test ./...` 通过（新增草原农场、品种映射及 init 配置断言）。
+- `npm.cmd run build` 通过。
+
+### 下一步注意事项
+
+- 新增或替换截图素材时保持与 `NewGameCreator.tsx` 的路径和 ID 一一对应；不需要恢复用户运行时素材导出流程。
+
+---
+
+## 自定义新建存档修复（2026-06-26）
+
+### 问题
+
+点击"创建存档并启动"后，面板填写的自定义配置（农场名、农场类型、利润率等）完全不生效，JunimoServer 始终使用默认值创建存档。存档重启后从前端消失。
+
+### 根因分析
+
+叠加了三个问题：
+
+**1. `server-settings.json` 使用扁平 JSON 结构，JunimoServer 期望嵌套结构**
+
+面板写的格式：
+```json
+{"FarmName": "xxx", "FarmType": 6, "StartingCabins": 0, ...}
+```
+
+JunimoServer 的 C# 类 `ServerSettings` 期望：
+```json
+{"Game": {"FarmName": "xxx", "FarmType": 6, ...}, "Server": {"SeparateWallets": false}}
+```
+
+`JsonConvert.DeserializeObject<ServerSettings>(json)` 对扁平 JSON 无法映射到 `Game`/`Server` 子对象，全部字段回退默认值。
+
+**2. `docker-compose.yml` 是旧版，saves 使用 Docker named volume**
+
+旧 compose 文件：
+```yaml
+- saves:/config/xdg/config/StardewValley  # named volume，宿主机不可见
+```
+
+正确应该是 bind mount：
+```yaml
+- ./.local-container/saves:/config/xdg/config/StardewValley
+```
+
+导致存档写入 Docker 内部 volume，宿主机 `.local-container/saves/Saves/` 永远为空，前端 `ListSaves` 永远返回零存档。
+
+**3. 缺少 control/mods bind mount 和 SAP_CONTROL_DIR 环境变量**
+
+旧 compose 没有以下配置：
+```yaml
+- ./.local-container/control:/data/control
+- ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
+```
+```yaml
+SAP_CONTROL_DIR: /data/control
+```
+
+导致 `server-init.json` 和 SMAPI mod 无法进入容器。
+
+### 修复
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/games/stardew_junimo/saves.go` | `WriteServerSettings` 改为嵌套 `Game`/`Server` 结构；字段名改为 JunimoServer 官方 PascalCase（`FarmName`、`FarmType`、`StartingCabins`、`CabinLayoutNearby`、`ProfitMargin`、`PetBreed`、`SeparateWallets`、`RemixBundles`、`RemixMines`、`SpawnMonstersAtNight`）；`SpawnMonstersAtNight` 从 bool 改为 string（`"true"/"false"`）；新增 `DeleteAllSaves`、`SetActiveSave` 函数；`server-init.json` mode 改为 `native-create` |
+| `backend/internal/games/stardew_junimo/lifecycle.go` | 新增 `sendNewGameCommand` 方法，通过 JunimoServer HTTP API `POST /newgame` 创建新存档（替代失败的 `attach-cli settings newgame --confirm`）；`doStart` 在 `newGame=true` 时调用 |
+| `backend/internal/games/registry/types.go` | `StartRequest` 新增 `NewGame bool` 字段 |
+| `backend/internal/web/lifecycle_handlers.go` | `handleSavesCustomNewGame` 不再删除旧存档，改为设置 `NewGame=true` 让 lifecycle job 通过 API 创建新存档；`handleSavesUploadCommitAndStart` 导入后调用 `SetActiveSave` 设置活跃存档 |
+| `backend/internal/games/stardew_junimo/saves_test.go` | 更新断言为嵌套结构（`Game.FarmName`、`Server.SeparateWallets` 等） |
+| 实例 `docker-compose.yml` | 手动修复：saves 改为 bind mount；新增 control/mods bind mount；新增 `SAP_CONTROL_DIR` 环境变量；移除旧 named volume `saves:`/`settings:` |
+
+### 关键发现
+
+**JunimoServer 不读 `SETTINGS_PATH` 环境变量。** 虽然官方 compose 模板设置了 `SETTINGS_PATH=/data/settings/server-settings.json`，但 JunimoServer 的 SMAPI mod 通过 `IModHelper` 读取配置，`SETTINGS_PATH` 实际被 `ServerSettingsLoader.ResolveSettingsPath()` 使用——它先检查环境变量，不存在则回退到 mod 目录下的 `server-settings.json`。所以 `SETTINGS_PATH` 是生效的，但前提是 JSON 结构必须匹配 C# 类的嵌套格式。
+
+**JunimoServer 有 HTTP API。** `POST /newgame` 可以直接创建新存档，`POST /reload` 可以重新加载配置。比 `attach-cli` 更可靠（不需要 TTY）。
+
+**JunimoServer 用 `junimohost.gameloader.json` 记住上次加载的存档。** 文件位于 `/config/xdg/config/StardewValley/.smapi/mod-data/junimohost.server/junimohost.gameloader.json`，字段 `SaveNameToLoad` 控制启动时加载哪个存档。`SetActiveSave` 函数直接修改此文件来切换存档。
+
+### 存档操作流程
+
+| 操作 | 流程 |
+|------|------|
+| 创建存档并启动 | 写 `server-settings.json` + `server-init.json` → 启动服务器 → 等待 API 就绪 → `POST /newgame` → 等待新存档出现 → 获取邀请码。旧存档保留。 |
+| 上传存档并启动 | `ImportSaveToVolume` 导入 → `SetActiveSave` 写 gameloader 配置 → 启动。旧存档保留。 |
+| 普通启动 | 直接启动，JunimoServer 加载 gameloader 记录的存档。 |
+| 切换存档 | `SetActiveSave` 修改 gameloader 配置 → 重启。 |
+
+### 已知限制
+
+农夫名字（FarmerName）、性别、外貌等角色字段**无法通过 server-init.json 写入 Junimo runtime 的存档**。SMAPI mod 的 `ApplyPanelCharacterCustomization` 只在原生 Stardew `SaveCreating` 事件中生效，JunimoServer 的 `/newgame` 走自己的存档创建路径，不触发该事件。这些字段需要预置存档模板（`saves-templates`）方案解决，当前未实现。
+
+| 字段 | 来源 | Junimo runtime 是否生效 |
+|------|------|------------------------|
+| FarmName | `server-settings.json` | ✅ |
+| FarmType | `server-settings.json` | ✅ |
+| StartingCabins | `server-settings.json` | ✅ |
+| ProfitMargin | `server-settings.json` | ✅ |
+| PetBreed | `server-settings.json` | ✅ |
+| CabinLayoutNearby | `server-settings.json` | ✅ |
+| SeparateWallets | `server-settings.json` | ✅ |
+| RemixBundles/Mines | `server-settings.json` | ✅ |
+| SpawnMonstersAtNight | `server-settings.json` | ✅ |
+| FarmerName | `server-init.json` + SMAPI mod | ❌ 需要存档模板 |
+| Gender | `server-init.json` + SMAPI mod | ❌ 需要存档模板 |
+| FavoriteThing | `server-init.json` + SMAPI mod | ❌ 需要存档模板 |
+| 外貌 | `server-init.json` + SMAPI mod | ❌ 需要存档模板 |
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+go test ./...
+```
+
+全部通过。
+
+### 下一步注意事项
+
+1. **老实例需要手动更新 docker-compose.yml**：当前实例 compose 已手动修复。新实例由 `Prepare()` 生成的模板已包含正确配置。老实例如需自动迁移，需在 `installer.go` 中新增迁移函数。
+2. **存档模板方案**：若要支持 FarmerName/外貌等角色字段，需在 `.local-container/saves-templates/` 预置真实 Stardew 存档，创建时复制并 patch XML 中的农场名等字段。参考 `E:\stardew-anxi-panel` 的 `ModEntry.StartNativeCreate()` 实现。
+3. **`POST /newgame` 会创建新存档但不会删除旧的**：用户可创建多个存档，通过 `SetActiveSave` 切换。Milestone 9 可扩展完整存档管理 UI。
+4. **`junimohost.gameloader.json` 是 JunimoServer 内部文件**：面板通过 bind mount 直接修改它。如果 JunimoServer 未来版本改变此文件格式，需要同步更新 `SetActiveSave`。
