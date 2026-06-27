@@ -184,6 +184,7 @@ export type SaveInfo = {
   fileSizeBytes?: number
   modifiedAt?: string
   parseError?: string
+  isActive?: boolean
 }
 
 export type RgbColor = {
@@ -225,6 +226,11 @@ export type PreflightResult = {
   hasSaves: boolean
   saves: SaveInfo[]
   templateAvailable: boolean
+}
+
+export type SavesListResult = {
+  saves: SaveInfo[]
+  activeSaveName: string
 }
 
 export type UploadPreviewResult = {

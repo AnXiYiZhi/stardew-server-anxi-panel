@@ -6,9 +6,9 @@
 
 ## Current Context
 
-### Frontend MVP 整理与交付化 ✅ completed (2026-06-27)
+### 存档管理与前端首页信息架构收口 ✅ completed (2026-06-27)
 
-Milestone 8 完成。原 ~2340 行单体 `App.tsx` 拆分为 14 个独立模块（`core/` 通用组件 + `games/stardew/` 游戏组件）。CSS 合并重复定义、替换未定义的 CSS 变量为 Stardew 主题色。eyebrow 更新为 "Stardew Valley 管理面板"。`go test ./...` 和 `npm run build` 通过。
+Milestone 9 完成。后端新增 4 个存档管理 API（list/select/select-and-start/delete）。前端新建 `SavesSection` 组件，Dashboard 从"长调试页"重构为分层布局（状态摘要 → 主操作区 → 折叠高级区）。测试任务按钮默认隐藏，Docker 调试区折叠。`go test ./...` 和 `npm run build` 通过。两轮 Review Fixes 已完成：路径安全、active save 校验、Farmer XML 解析兼容、保留路由名规避。
 
 详见 `docs/conversation-handoff-2026-06-27.md`。
 
@@ -1314,42 +1314,89 @@ After:
 - `frontend/src/core/` 已建立，后续 Multi Game Mode 可直接扩展 `frontend/src/games/minecraft/` 等。
 - CSS 仍为单一文件，如需模块化可拆分为各组件的 `.css` 文件。
 
-## Milestone 9: Saves
+## Milestone 9: 存档管理与前端首页信息架构收口 ✅ 已完成（2026-06-27）
 
-目标：实现存档上传、已有存档读取、选择、新建和备份。
+### 完成内容
 
-要做什么：
+**后端新增/修改：**
 
-- 列出 Junimo 挂载目录下的存档。
-- 上传存档 zip。
-- 校验存档结构。
-- 选择已有存档。
-- 新建存档策略。
-- 备份当前存档。
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/games/registry/types.go` | `SaveInfo` 新增 `IsActive` 字段；新增 `SavesListResult` 类型 |
+| `backend/internal/games/stardew_junimo/saves.go` | 新增 `GetActiveSaveName`（读取 gameloader.json）、`DeleteSave`（删除单个存档）；`ListSaves` 增加 active save 标记 |
+| `backend/internal/games/stardew_junimo/driver.go` | 无改动（`SelectSave`/`DeleteSave` 接口签名缺少 instance，handler 直接调用 `sj` 包函数） |
+| `backend/internal/web/lifecycle_handlers.go` | 新增 4 个 handler：`handleSavesList`、`handleSaveSelect`、`handleSaveSelectAndStart`、`handleSaveDelete` |
+| `backend/internal/web/instance_handlers.go` | 注册 4 条新路由 |
 
-建议 API：
+**新增 API：**
 
 ```text
-GET    /api/games/stardew/saves
-POST   /api/games/stardew/saves/upload
-POST   /api/games/stardew/saves/select
-POST   /api/games/stardew/saves/new-game
-POST   /api/games/stardew/saves/backup
-DELETE /api/games/stardew/saves/:name
+GET    /api/instances/:id/saves                — 存档列表 + activeSaveName
+POST   /api/instances/:id/saves/select         — 选择存档为下次启动存档
+POST   /api/instances/:id/saves/select-and-start — 选择并启动
+DELETE /api/instances/:id/saves/:name           — 删除存档（admin-only，运行中禁止）
 ```
 
-怎么做：
+**前端新增/修改：**
 
-- 文件上传必须限制大小。
-- 解压时防路径穿越。
-- 优先调用 Junimo `saves` 相关 CLI 能力。
-- 删除和切换前做备份提示。
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/types.ts` | `SaveInfo` 新增 `isActive`；新增 `SavesListResult` 类型 |
+| `frontend/src/api.ts` | 新增 `getSaves`、`selectSave`、`selectSaveAndStart`、`deleteSave` |
+| `frontend/src/games/stardew/SavesSection.tsx` | **新建** — 存档管理区域（列表、空状态、选择/启动/删除、创建/上传入口、上传预览确认页） |
+| `frontend/src/games/stardew/LifecycleSection.tsx` | **简化** — 移除内联 SaveCard、上传 Modal、NewGameCreator；仅保留状态标签和启动/停止/重启/邀请码 |
+| `frontend/src/games/stardew/JobsSection.tsx` | 测试任务按钮通过 `VITE_SHOW_DEV_TOOLS=true` 环境变量控制，默认隐藏 |
+| `frontend/src/App.tsx` | Dashboard 布局重构：顶部状态摘要 → 主操作区（左：生命周期+存档管理，右：任务日志） → 折叠高级区（Docker+用户管理） → 登出 |
+| `frontend/src/App.css` | 新增 `.dashboard-status-row`、`.dashboard-main`、`.saves-section`、`.save-row`、`.empty-saves`、`.collapsible-header`、`.upload-preview-detail` 等样式；移动端响应式 |
 
-完成标准：
+**布局变化：**
 
-- 前端能上传一个存档并选择为启动存档。
-- 切换存档后状态进入 `ready_to_start`。
-- 删除存档不会误删实例目录外文件。
+```text
+Before (M8):  flat grid — 所有区域平铺
+After (M9):
+  顶部状态摘要行: 用户卡 + 实例状态卡
+  安装区（未安装时显示）
+  主操作区:
+    左侧: 服务器控制 + 存档管理
+    右侧: 任务中心
+  高级设置（折叠）: Docker 调试 + 用户管理
+  登出按钮
+```
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过（34 modules，无 TypeScript 错误）
+```
+
+### 如何验证
+
+1. 无存档时：存档管理区域显示空状态，有"创建存档并启动"和"上传存档并启动"按钮
+2. 创建存档后：存档列表显示，active save 高亮标记
+3. 上传存档：预览确认页显示完整元数据（农场名、农民名、游戏时间、地图、文件大小、修改时间）
+4. 选择存档：点击"设为启动存档"后 active 标记更新
+5. 选择并启动：点击后自动启动服务器
+6. 删除存档：二次确认，运行中禁止删除
+7. 普通启动无存档：提示并自动滚动到存档管理区域
+8. 测试任务按钮：默认不显示（需 `VITE_SHOW_DEV_TOOLS=true`）
+9. Docker 调试区：默认折叠在"高级设置"中
+10. 移动端：单列堆叠，无溢出
+
+### 下一步注意事项
+
+- 备份能力（`POST .../saves/:name/backup`）未实现，删除存档前暂不做自动备份。M13 可补充。
+- `GameDriver` 接口的 `SelectSave(ctx, name)` 和 `DeleteSave(ctx, name)` 缺少 `instance` 参数，当前 handler 直接调用 `sj` 包函数。如需统一接口，后续可修改 `GameDriver` 签名为 `SelectSave(ctx, instance, name)` / `DeleteSave(ctx, instance, name)`。
+- CSS 仍为单一 `App.css` 文件，如需模块化可拆分。
+- 未引入 React Router、TanStack Query、Zustand。
+- **Review Fixes（2026-06-27）**：已修复 DeleteSave 路径穿越漏洞、选择存档前校验存在性、删除前 reconcile 真实容器状态、前端存档列表 job 完成后自动刷新、存档元数据多路径读取。详见 `docs/conversation-handoff-2026-06-27.md`。
+- **Review Fixes 第二轮（2026-06-27）**：上传/导入路径安全加固（PreviewSaveZip/ImportSaveToVolume 校验）、保留路由名冲突规避、普通启动 active save 一致性校验、readSaveInfo 兼容 Farmer XML 结构（含 seasonForSaveGame 数字映射和 whichFarm 缺失处理）、前端适配新错误码和地图未知显示。详见 `docs/conversation-handoff-2026-06-27.md`。
+- **Review Fixes 第三轮（2026-06-27）**：后端创建/上传/选择并启动接口禁止运行中操作（统一 `ensureInstanceNotRunning` helper）、ZIP 路径穿越严格化（逐段检查 `..`/`.`/空段）、存档地图类型从主存档文件补读 `whichFarm`（支持整数和字符串两种格式）。详见 `docs/conversation-handoff-2026-06-27.md`。
 
 ## Milestone 10: Mods
 

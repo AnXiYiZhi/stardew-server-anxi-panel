@@ -49,12 +49,14 @@ export function JobsSection({
         </div>
         <div className="job-actions">
           <button className="button button-small button-secondary" disabled={busy} onClick={onRefresh} type="button">刷新任务</button>
-          {user.role === 'admin' ? (
+          {user.role === 'admin' && import.meta.env.VITE_SHOW_DEV_TOOLS === 'true' ? (
             <>
               <button className="button button-small" disabled={busy} onClick={onRunTestJob} type="button">启动测试任务</button>
               <button className="button button-small button-danger" disabled={busy} onClick={onRunFailingTestJob} type="button">启动失败测试任务</button>
-              <button className="button button-small button-danger" disabled={busy || jobs.length === 0} onClick={onClearJobs} type="button">清空任务中心</button>
             </>
+          ) : null}
+          {user.role === 'admin' ? (
+            <button className="button button-small button-danger" disabled={busy || jobs.length === 0} onClick={onClearJobs} type="button">清空任务中心</button>
           ) : null}
         </div>
       </div>

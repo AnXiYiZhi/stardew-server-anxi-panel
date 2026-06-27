@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,9 @@ func savesDir(dataDir string) string {
 // SetActiveSave writes the JunimoServer gameloader config so the given save is
 // loaded on next startup.  This does not require the server to be running.
 func SetActiveSave(dataDir, saveName string) error {
+	if err := validateSaveName(saveName); err != nil {
+		return fmt.Errorf("存档名称不合法: %w", err)
+	}
 	cfgDir := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		return fmt.Errorf("create gameloader dir: %w", err)
@@ -110,6 +114,9 @@ func listSaveDirs(dataDir string) ([]string, error) {
 
 // readSaveInfo reads metadata from a single save folder and returns a SaveInfo.
 // On XML parse error, ParseError is set and other fields are best-effort.
+// Supports two XML structures:
+//   - <SaveGame> with nested <player> (full save file)
+//   - <Farmer> with direct fields (Junimo/SaveGameInfo format)
 func readSaveInfo(saveFolder string) registry.SaveInfo {
 	name := filepath.Base(saveFolder)
 	info := registry.SaveInfo{Name: name}
@@ -121,34 +128,117 @@ func readSaveInfo(saveFolder string) registry.SaveInfo {
 		info.ModifiedAt = stat.ModTime().UTC().Format(time.RFC3339)
 	}
 
-	// Try to parse the SaveGame XML.
-	saveXML := filepath.Join(saveFolder, "SaveGameInfo")
-	xmlData, err := os.ReadFile(saveXML)
-	if err != nil {
+	// Try to parse the SaveGame XML.  Stardew saves may use different file names:
+	// - "SaveGameInfo" (1.5 standard)
+	// - "SaveGameInfo.xml" (some versions)
+	// - The main save file itself (<saveName>) as a fallback
+	var xmlData []byte
+	var err error
+	for _, candidate := range []string{
+		filepath.Join(saveFolder, "SaveGameInfo"),
+		filepath.Join(saveFolder, "SaveGameInfo.xml"),
+		mainFile,
+	} {
+		xmlData, err = os.ReadFile(candidate)
+		if err == nil && len(xmlData) > 0 {
+			break
+		}
+	}
+	if err != nil || len(xmlData) == 0 {
 		info.ParseError = "未找到 SaveGameInfo 文件"
 		return info
 	}
 
-	var sg struct {
-		FarmerName string `xml:"player>name"`
-		FarmName   string `xml:"player>farmName"`
-		Year       int    `xml:"year"`
-		Season     string `xml:"currentSeason"`
-		Day        int    `xml:"dayOfMonth"`
-		WhichFarm  int    `xml:"whichFarm"`
+	// Try to parse as <SaveGame> structure (full save file).
+	// whichFarm can be an int (0-7) or a string (e.g. "MeadowlandsFarm").
+	type saveGameXML struct {
+		XMLName xml.Name `xml:"SaveGame"`
+		Player  struct {
+			Name     string `xml:"name"`
+			FarmName string `xml:"farmName"`
+		} `xml:"player"`
+		Year      int    `xml:"year"`
+		Season    string `xml:"currentSeason"`
+		Day       int    `xml:"dayOfMonth"`
+		WhichFarm string `xml:"whichFarm"` // string: handles both "0" and "MeadowlandsFarm"
 	}
-	if err := xml.Unmarshal(xmlData, &sg); err != nil {
-		info.ParseError = "SaveGameInfo 解析失败"
+	var sg saveGameXML
+	if err := xml.Unmarshal(xmlData, &sg); err == nil && sg.XMLName.Local == "SaveGame" {
+		info.FarmerName = sg.Player.Name
+		info.FarmName = sg.Player.FarmName
+		info.GameYear = sg.Year
+		info.GameSeason = sg.Season
+		info.GameDay = sg.Day
+		if sg.WhichFarm != "" {
+			info.FarmType = farmTypeLabelFromString(sg.WhichFarm)
+		}
 		return info
 	}
 
-	info.FarmerName = sg.FarmerName
-	info.FarmName = sg.FarmName
-	info.GameYear = sg.Year
-	info.GameSeason = sg.Season
-	info.GameDay = sg.Day
-	info.FarmType = farmTypeLabel(sg.WhichFarm)
+	// Try to parse as <Farmer> structure (Junimo SaveGameInfo format).
+	type farmerXML struct {
+		XMLName           xml.Name `xml:"Farmer"`
+		Name              string   `xml:"name"`
+		FarmName          string   `xml:"farmName"`
+		DayOfMonthForSave int      `xml:"dayOfMonthForSaveGame"`
+		SeasonForSave     *int     `xml:"seasonForSaveGame"` // pointer: 0=spring is valid
+		YearForSave       int      `xml:"yearForSaveGame"`
+	}
+	var fm farmerXML
+	if err := xml.Unmarshal(xmlData, &fm); err == nil && fm.XMLName.Local == "Farmer" {
+		info.FarmerName = fm.Name
+		info.FarmName = fm.FarmName
+		info.GameYear = fm.YearForSave
+		info.GameDay = fm.DayOfMonthForSave
+		if fm.SeasonForSave != nil {
+			info.GameSeason = seasonFromInt(*fm.SeasonForSave)
+		}
+		// <Farmer> does not contain whichFarm — try reading it from the main save file.
+		if info.FarmType == "" {
+			info.FarmType = readWhichFarmFromMainFile(saveFolder, name)
+		}
+		return info
+	}
+
+	info.ParseError = "SaveGameInfo 解析失败"
 	return info
+}
+
+// whichFarmRe matches <whichFarm>...</whichFarm> in the main save file.
+var whichFarmRe = regexp.MustCompile(`<whichFarm>([^<]+)</whichFarm>`)
+
+// readWhichFarmFromMainFile reads whichFarm from the main save file
+// (Saves/<saveName>/<saveName>) which is a full <SaveGame> XML.
+// Returns the farm type label, or empty string if not found.
+func readWhichFarmFromMainFile(saveFolder, saveName string) string {
+	mainFile := filepath.Join(saveFolder, saveName)
+	data, err := os.ReadFile(mainFile)
+	if err != nil {
+		return ""
+	}
+	// Use a limited reader approach: search for whichFarm in the raw data.
+	// The main save file can be very large (10+ MB), but whichFarm appears early.
+	matches := whichFarmRe.FindSubmatch(data)
+	if len(matches) < 2 {
+		return ""
+	}
+	return farmTypeLabelFromString(string(matches[1]))
+}
+
+// seasonFromInt maps Junimo's seasonForSaveGame integer to a season string.
+func seasonFromInt(v int) string {
+	switch v {
+	case 0:
+		return "spring"
+	case 1:
+		return "summer"
+	case 2:
+		return "fall"
+	case 3:
+		return "winter"
+	default:
+		return fmt.Sprintf("unknown(%d)", v)
+	}
 }
 
 func farmTypeLabel(whichFarm int) string {
@@ -174,16 +264,51 @@ func farmTypeLabel(whichFarm int) string {
 	}
 }
 
+// farmTypeLabelFromString converts a whichFarm string value to a farm type label.
+// whichFarm can be an integer ("0"-"7") or a string name like "MeadowlandsFarm".
+func farmTypeLabelFromString(whichFarm string) string {
+	whichFarm = strings.TrimSpace(whichFarm)
+	// Try integer first.
+	if id, err := strconv.Atoi(whichFarm); err == nil {
+		return farmTypeLabel(id)
+	}
+	// Map known string names.
+	switch strings.ToLower(whichFarm) {
+	case "standardfarm":
+		return "standard"
+	case "riverlandfarm":
+		return "riverland"
+	case "forestfarm":
+		return "forest"
+	case "hilltopfarm":
+		return "hilltop"
+	case "wildernessfarm":
+		return "wilderness"
+	case "fourcornersfarm":
+		return "fourcorners"
+	case "beachfarm":
+		return "beach"
+	case "meadowlandsfarm":
+		return "meadowlands"
+	default:
+		return ""
+	}
+}
+
 // ListSaves scans the bind-mounted saves directory and returns parsed metadata for each save.
 func (d *Driver) ListSaves(ctx context.Context, instance registry.Instance) ([]registry.SaveInfo, error) {
 	names, err := listSaveDirs(instance.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("list saves: %w", err)
 	}
+	activeName := GetActiveSaveName(instance.DataDir)
 	savesPath := filepath.Join(savesDir(instance.DataDir), "Saves")
 	result := make([]registry.SaveInfo, 0, len(names))
 	for _, name := range names {
 		info := readSaveInfo(filepath.Join(savesPath, name))
+		if name == activeName {
+			info.IsActive = true
+		}
 		result = append(result, info)
 	}
 	return result, nil
@@ -217,9 +342,22 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 		if filepath.IsAbs(name) || strings.HasPrefix(name, "/") {
 			return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 包含绝对路径 %q", f.Name)
 		}
-		cleaned := filepath.Clean(name)
-		if strings.HasPrefix(cleaned, "..") {
-			return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 尝试目录穿越", f.Name)
+		// Reject path traversal at the segment level.
+		// filepath.Clean normalizes "foo/../bar" to "bar", so we must check
+		// the raw segments before cleaning.
+		// Trim trailing "/" so directory entries like "FarmerName_12345/"
+		// don't produce a trailing empty segment.
+		trimmed := strings.TrimSuffix(name, "/")
+		for _, seg := range strings.Split(trimmed, "/") {
+			if seg == ".." {
+				return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 包含目录穿越 (..)", f.Name)
+			}
+			if seg == "." {
+				return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 包含无效的当前目录引用 (.)", f.Name)
+			}
+			if seg == "" {
+				return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 包含空路径段", f.Name)
+			}
 		}
 		totalUncompressed += f.UncompressedSize64
 		if f.UncompressedSize64 > maxSingleFileBytes {
@@ -234,6 +372,11 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 	detectedSaveName, err := detectSaveFolderName(zr)
 	if err != nil {
 		return "", registry.SaveInfo{}, "", err
+	}
+
+	// Validate the detected save name for safety (path traversal, reserved names, etc).
+	if err := validateSaveName(detectedSaveName); err != nil {
+		return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 存档目录名不合法: %w", err)
 	}
 
 	// Extract to temp dir.
@@ -357,8 +500,12 @@ func findSaveDir(tempDir, saveName string) (string, error) {
 // ImportSaveToVolume moves the save from tempDir into the bind-mounted saves directory.
 // saveName is the expected folder name.
 func ImportSaveToVolume(dataDir, tempDir, saveName string) error {
-	savesPath := filepath.Join(savesDir(dataDir), "Saves")
-	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+	if err := validateSaveName(saveName); err != nil {
+		return fmt.Errorf("存档名称不合法: %w", err)
+	}
+
+	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
+	if err := os.MkdirAll(savesRoot, 0o755); err != nil {
 		return fmt.Errorf("create saves dir: %w", err)
 	}
 
@@ -367,7 +514,16 @@ func ImportSaveToVolume(dataDir, tempDir, saveName string) error {
 		return err
 	}
 
-	dest := filepath.Join(savesPath, saveName)
+	dest := resolveSavePath(savesRoot, saveName)
+	if dest == "" {
+		return fmt.Errorf("存档目标路径不合法: %q", saveName)
+	}
+	// Reject if target resolves to the Saves root itself.
+	absRoot, _ := filepath.Abs(savesRoot)
+	if dest == absRoot {
+		return fmt.Errorf("存档目标路径不能是 Saves 根目录")
+	}
+
 	// Remove dest if it already exists (replace).
 	if _, err := os.Stat(dest); err == nil {
 		if err := os.RemoveAll(dest); err != nil {
@@ -689,6 +845,138 @@ func marshalJSON(v any) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// GetActiveSaveName reads the JunimoServer gameloader config and returns
+// the save name that will be loaded on next startup.  Returns empty string
+// if no save is configured.
+func GetActiveSaveName(dataDir string) string {
+	gameloaderPath := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")
+	data, err := os.ReadFile(gameloaderPath)
+	if err != nil {
+		return ""
+	}
+	var cfg struct {
+		SaveNameToLoad string `json:"SaveNameToLoad"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return ""
+	}
+	return cfg.SaveNameToLoad
+}
+
+// reservedSaveNames are route path segments that would conflict with
+// DELETE /api/instances/:id/saves/:name routing.
+var reservedSaveNames = map[string]bool{
+	"preflight":              true,
+	"custom-new-game":        true,
+	"upload-preview":         true,
+	"upload-commit-and-start": true,
+	"select":                 true,
+	"select-and-start":       true,
+	"delete":                 true,
+}
+
+// validateSaveName rejects dangerous save names before any path construction.
+func validateSaveName(saveName string) error {
+	if saveName == "" {
+		return fmt.Errorf("save name 不能为空")
+	}
+	if saveName == "." || saveName == ".." {
+		return fmt.Errorf("save name 不能是 %q", saveName)
+	}
+	if strings.ContainsAny(saveName, `/\`) {
+		return fmt.Errorf("save name 不能包含路径分隔符")
+	}
+	if filepath.IsAbs(saveName) {
+		return fmt.Errorf("save name 不能是绝对路径")
+	}
+	cleaned := filepath.Clean(saveName)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("save name 尝试目录穿越")
+	}
+	if reservedSaveNames[saveName] {
+		return fmt.Errorf("save name %q 与系统路由冲突，请使用其他名称", saveName)
+	}
+	return nil
+}
+
+// resolveSavePath returns the absolute path of a save directory if it is
+// contained within savesRoot.  Returns empty string if the path escapes.
+func resolveSavePath(savesRoot, saveName string) string {
+	absRoot, err := filepath.Abs(savesRoot)
+	if err != nil {
+		return ""
+	}
+	target := filepath.Join(absRoot, saveName)
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(absRoot, absTarget)
+	if err != nil {
+		return ""
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return absTarget
+}
+
+// ValidateSaveExists checks that a save folder with the given name exists
+// and is a directory under the instance's Saves directory.
+func ValidateSaveExists(dataDir, saveName string) error {
+	if err := validateSaveName(saveName); err != nil {
+		return err
+	}
+	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
+	targetPath := resolveSavePath(savesRoot, saveName)
+	if targetPath == "" {
+		return fmt.Errorf("存档路径不合法: %q", saveName)
+	}
+	info, err := os.Stat(targetPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("存档 %q 不存在", saveName)
+	}
+	if err != nil {
+		return fmt.Errorf("检查存档 %q 失败: %w", saveName, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("存档 %q 不是目录", saveName)
+	}
+	return nil
+}
+
+// DeleteSave removes a single save folder from the bind-mounted saves directory.
+func DeleteSave(dataDir, saveName string) error {
+	if err := validateSaveName(saveName); err != nil {
+		return err
+	}
+	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
+	targetPath := resolveSavePath(savesRoot, saveName)
+	if targetPath == "" {
+		return fmt.Errorf("存档路径不合法: %q", saveName)
+	}
+	info, err := os.Stat(targetPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("存档 %q 不存在", saveName)
+	}
+	if err != nil {
+		return fmt.Errorf("检查存档 %q 失败: %w", saveName, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("存档 %q 不是目录", saveName)
+	}
+	if err := os.RemoveAll(targetPath); err != nil {
+		return fmt.Errorf("删除存档 %q 失败: %w", saveName, err)
+	}
+	// If this was the active save, clear the gameloader config.
+	active := GetActiveSaveName(dataDir)
+	if active == saveName {
+		gameloaderPath := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")
+		_ = os.Remove(gameloaderPath)
+	}
+	return nil
 }
 
 // HasTemplates returns true if at least one save template directory exists.

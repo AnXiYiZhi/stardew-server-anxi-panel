@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"archive/zip"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -423,4 +424,657 @@ func containsStr(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestDeleteSave_RejectsDotDot(t *testing.T) {
+	dir := t.TempDir()
+	savesPath := filepath.Join(dir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := DeleteSave(dir, "..")
+	if err == nil {
+		t.Fatal("expected error for .. save name")
+	}
+}
+
+func TestDeleteSave_RejectsPathSeparator(t *testing.T) {
+	dir := t.TempDir()
+	savesPath := filepath.Join(dir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"../evil", "foo/bar", `foo\bar`, "/absolute"} {
+		err := DeleteSave(dir, name)
+		if err == nil {
+			t.Fatalf("expected error for save name %q", name)
+		}
+	}
+}
+
+func TestDeleteSave_CannotDeleteSavesRoot(t *testing.T) {
+	dir := t.TempDir()
+	savesPath := filepath.Join(dir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := DeleteSave(dir, ".")
+	if err == nil {
+		t.Fatal("expected error for . save name")
+	}
+	if _, err := os.Stat(savesPath); os.IsNotExist(err) {
+		t.Fatal("Saves root was deleted")
+	}
+}
+
+func TestDeleteSave_ActiveSaveCleanup(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetActiveSave(dir, "TestSave"); err != nil {
+		t.Fatal(err)
+	}
+	if got := GetActiveSaveName(dir); got != "TestSave" {
+		t.Fatalf("active save = %q, want TestSave", got)
+	}
+	if err := DeleteSave(dir, "TestSave"); err != nil {
+		t.Fatal(err)
+	}
+	if got := GetActiveSaveName(dir); got != "" {
+		t.Fatalf("active save = %q after delete, want empty", got)
+	}
+}
+
+func TestValidateSaveExists(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, ".local-container", "saves", "Saves", "RealSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSaveExists(dir, "RealSave"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := ValidateSaveExists(dir, "FakeSave"); err == nil {
+		t.Fatal("expected error for non-existing save")
+	}
+	if err := ValidateSaveExists(dir, "../evil"); err == nil {
+		t.Fatal("expected error for path traversal name")
+	}
+}
+
+func TestValidateSaveExists_RejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	savesPath := filepath.Join(dir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"..", ".", "../etc", `..\windows`, "/abs"} {
+		if err := ValidateSaveExists(dir, name); err == nil {
+			t.Fatalf("expected error for %q", name)
+		}
+	}
+}
+
+func TestReadSaveInfo_FallbackPaths(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave_12345")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Write SaveGameInfo.xml (alternative name).
+	xmlContent := `<SaveGame><player><name>Farmer</name><farmName>MyFarm</farmName></player><year>2</year><currentSeason>summer</currentSeason><dayOfMonth>15</dayOfMonth><whichFarm>3</whichFarm></SaveGame>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo.xml"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.ParseError != "" {
+		t.Fatalf("unexpected parse error: %s", info.ParseError)
+	}
+	if info.FarmerName != "Farmer" {
+		t.Errorf("FarmerName = %q, want Farmer", info.FarmerName)
+	}
+	if info.FarmName != "MyFarm" {
+		t.Errorf("FarmName = %q, want MyFarm", info.FarmName)
+	}
+	if info.FarmType != "hilltop" {
+		t.Errorf("FarmType = %q, want hilltop", info.FarmType)
+	}
+}
+
+// ── Farmer XML structure tests ──────────────────────────────────────────────
+
+func TestReadSaveInfo_FarmerStructure(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "1111_442155312")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Minimal <Farmer> XML matching Junimo's SaveGameInfo format.
+	xmlContent := `<?xml version="1.0" encoding="utf-8"?>
+<Farmer>
+  <name>Server</name>
+  <farmName>1111</farmName>
+  <dayOfMonthForSaveGame>1</dayOfMonthForSaveGame>
+  <seasonForSaveGame>0</seasonForSaveGame>
+  <yearForSaveGame>1</yearForSaveGame>
+</Farmer>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.ParseError != "" {
+		t.Fatalf("unexpected parse error: %s", info.ParseError)
+	}
+	if info.FarmerName != "Server" {
+		t.Errorf("FarmerName = %q, want Server", info.FarmerName)
+	}
+	if info.FarmName != "1111" {
+		t.Errorf("FarmName = %q, want 1111", info.FarmName)
+	}
+	if info.GameYear != 1 {
+		t.Errorf("GameYear = %d, want 1", info.GameYear)
+	}
+	if info.GameSeason != "spring" {
+		t.Errorf("GameSeason = %q, want spring", info.GameSeason)
+	}
+	if info.GameDay != 1 {
+		t.Errorf("GameDay = %d, want 1", info.GameDay)
+	}
+	if info.FarmType != "" {
+		t.Errorf("FarmType = %q, want empty (no whichFarm in Farmer)", info.FarmType)
+	}
+}
+
+func TestReadSaveInfo_FarmerSeasonMapping(t *testing.T) {
+	cases := []struct {
+		seasonInt int
+		want      string
+	}{
+		{0, "spring"},
+		{1, "summer"},
+		{2, "fall"},
+		{3, "winter"},
+	}
+	for _, tc := range cases {
+		dir := t.TempDir()
+		savePath := filepath.Join(dir, "TestSave")
+		if err := os.MkdirAll(savePath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		xmlContent := fmt.Sprintf(`<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>%d</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`, tc.seasonInt)
+		if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		info := readSaveInfo(savePath)
+		if info.ParseError != "" {
+			t.Fatalf("season %d: unexpected parse error: %s", tc.seasonInt, info.ParseError)
+		}
+		if info.GameSeason != tc.want {
+			t.Errorf("season %d: GameSeason = %q, want %q", tc.seasonInt, info.GameSeason, tc.want)
+		}
+	}
+}
+
+func TestReadSaveInfo_FarmerMissingFarmType(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	xmlContent := `<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.FarmType != "" {
+		t.Errorf("FarmType = %q, want empty — Farmer XML has no whichFarm", info.FarmType)
+	}
+}
+
+func TestReadSaveInfo_SaveGameWhichFarmZero(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// whichFarm=0 means standard farm in the full SaveGame format.
+	xmlContent := `<SaveGame><player><name>F</name><farmName>Farm</farmName></player><year>1</year><currentSeason>spring</currentSeason><dayOfMonth>1</dayOfMonth><whichFarm>0</whichFarm></SaveGame>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.FarmType != "standard" {
+		t.Errorf("FarmType = %q, want standard (whichFarm=0)", info.FarmType)
+	}
+}
+
+func TestReadSaveInfo_InvalidXML(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte("not xml at all"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.ParseError == "" {
+		t.Fatal("expected parse error for invalid XML")
+	}
+}
+
+func TestReadSaveInfo_NoSaveGameInfo(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.ParseError == "" {
+		t.Fatal("expected parse error when no SaveGameInfo file exists")
+	}
+}
+
+func TestReadSaveInfo_FarmerReadsWhichFarmFromMainFile(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave_123")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// SaveGameInfo is Farmer format (no whichFarm).
+	farmerXML := `<Farmer><name>Server</name><farmName>MyFarm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(farmerXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Main save file has <whichFarm>3</whichFarm> (hilltop).
+	mainSaveXML := `<SaveGame><whichFarm>3</whichFarm><player><name>Server</name></player></SaveGame>`
+	if err := os.WriteFile(filepath.Join(savePath, "TestSave_123"), []byte(mainSaveXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := readSaveInfo(savePath)
+	if info.ParseError != "" {
+		t.Fatalf("unexpected parse error: %s", info.ParseError)
+	}
+	if info.FarmType != "hilltop" {
+		t.Errorf("FarmType = %q, want hilltop (from main save file whichFarm=3)", info.FarmType)
+	}
+}
+
+func TestReadSaveInfo_FarmerReadsStringWhichFarm(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "MeadowSave_456")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// SaveGameInfo is Farmer format.
+	farmerXML := `<Farmer><name>Server</name><farmName>Meadow</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(farmerXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Main save file has <whichFarm>MeadowlandsFarm</whichFarm> (string).
+	mainSaveXML := `<SaveGame><whichFarm>MeadowlandsFarm</whichFarm><player><name>Server</name></player></SaveGame>`
+	if err := os.WriteFile(filepath.Join(savePath, "MeadowSave_456"), []byte(mainSaveXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := readSaveInfo(savePath)
+	if info.ParseError != "" {
+		t.Fatalf("unexpected parse error: %s", info.ParseError)
+	}
+	if info.FarmType != "meadowlands" {
+		t.Errorf("FarmType = %q, want meadowlands (from main save file whichFarm=MeadowlandsFarm)", info.FarmType)
+	}
+}
+
+func TestReadSaveInfo_FarmerNoMainFile(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "NoMainSave_789")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// SaveGameInfo is Farmer format, but no main save file exists.
+	farmerXML := `<Farmer><name>Server</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(farmerXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := readSaveInfo(savePath)
+	if info.ParseError != "" {
+		t.Fatalf("unexpected parse error: %s", info.ParseError)
+	}
+	if info.FarmType != "" {
+		t.Errorf("FarmType = %q, want empty (no main save file)", info.FarmType)
+	}
+	if info.FarmerName != "Server" {
+		t.Errorf("FarmerName = %q, want Server", info.FarmerName)
+	}
+}
+
+func TestReadSaveInfo_SaveGameStringWhichFarm(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "TestSave")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// SaveGame format with string whichFarm.
+	xmlContent := `<SaveGame><player><name>F</name><farmName>Farm</farmName></player><year>1</year><currentSeason>spring</currentSeason><dayOfMonth>1</dayOfMonth><whichFarm>MeadowlandsFarm</whichFarm></SaveGame>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info := readSaveInfo(savePath)
+	if info.FarmType != "meadowlands" {
+		t.Errorf("FarmType = %q, want meadowlands (string whichFarm)", info.FarmType)
+	}
+}
+
+func TestFarmTypeLabelFromString(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"0", "standard"},
+		{"1", "riverland"},
+		{"2", "forest"},
+		{"3", "hilltop"},
+		{"4", "wilderness"},
+		{"5", "fourcorners"},
+		{"6", "beach"},
+		{"7", "meadowlands"},
+		{"MeadowlandsFarm", "meadowlands"},
+		{"StandardFarm", "standard"},
+		{"BeachFarm", "beach"},
+		{"unknown_farm", ""},
+		{"", ""},
+		// Whitespace-wrapped values from XML like <whichFarm> 6 </whichFarm>.
+		{" 6 ", "beach"},
+		{"\t3\n", "hilltop"},
+		{" MeadowlandsFarm ", "meadowlands"},
+	}
+	for _, tc := range cases {
+		got := farmTypeLabelFromString(tc.input)
+		if got != tc.want {
+			t.Errorf("farmTypeLabelFromString(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// ── PreviewSaveZip: dangerous save name tests ──────────────────────────────
+
+func createZipWithTopDir(t *testing.T, topDir string) string {
+	t.Helper()
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "test.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	fw, _ := w.Create(topDir + "/SaveGameInfo")
+	_, _ = fw.Write([]byte(`<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`))
+	_ = w.Close()
+	_ = zf.Close()
+	return zipPath
+}
+
+func TestPreviewSaveZip_RejectsDotDir(t *testing.T) {
+	zipPath := createZipWithTopDir(t, ".")
+	_, _, _, err := PreviewSaveZip(zipPath, "test.zip")
+	if err == nil {
+		t.Fatal("expected error for . top-level dir")
+	}
+}
+
+func TestPreviewSaveZip_RejectsDotDotDir(t *testing.T) {
+	zipPath := createZipWithTopDir(t, "..")
+	_, _, _, err := PreviewSaveZip(zipPath, "test.zip")
+	if err == nil {
+		t.Fatal("expected error for .. top-level dir")
+	}
+}
+
+func TestPreviewSaveZip_RejectsPathTraversalDir(t *testing.T) {
+	// "foo/bar" has two top-level segments; detectSaveFolderName will see "foo" and "bar".
+	// The zip entry "foo/bar/SaveGameInfo" produces topDirs={"foo":{}, "bar":{}}, which is rejected
+	// as "multiple top-level dirs". Also test reserved names.
+	zipPath := createZipWithTopDir(t, "select")
+	_, _, _, err := PreviewSaveZip(zipPath, "test.zip")
+	if err == nil {
+		t.Fatal("expected error for reserved name 'select'")
+	}
+}
+
+func TestPreviewSaveZip_RejectsReservedNames(t *testing.T) {
+	for _, name := range []string{"preflight", "custom-new-game", "upload-preview", "select-and-start", "delete"} {
+		zipPath := createZipWithTopDir(t, name)
+		_, _, _, err := PreviewSaveZip(zipPath, "test.zip")
+		if err == nil {
+			t.Fatalf("expected error for reserved name %q", name)
+		}
+	}
+}
+
+func TestPreviewSaveZip_RejectsDotDotInMiddle(t *testing.T) {
+	// "foo/../bar/SaveGameInfo" should be rejected because it contains ".." segment.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "traversal.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	_, _ = w.Create("foo/../bar/SaveGameInfo")
+	_ = w.Close()
+	_ = zf.Close()
+
+	_, _, _, err = PreviewSaveZip(zipPath, "traversal.zip")
+	if err == nil {
+		t.Fatal("expected error for foo/../bar path")
+	}
+}
+
+func TestPreviewSaveZip_RejectsDotSlash(t *testing.T) {
+	// "./SaveGameInfo" should be rejected because it contains "." segment.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "dot.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	_, _ = w.Create("./SaveGameInfo")
+	_ = w.Close()
+	_ = zf.Close()
+
+	_, _, _, err = PreviewSaveZip(zipPath, "dot.zip")
+	if err == nil {
+		t.Fatal("expected error for ./ path")
+	}
+}
+
+func TestPreviewSaveZip_RejectsDoubleSlash(t *testing.T) {
+	// "foo//SaveGameInfo" should be rejected because it contains empty segment.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "doubleslash.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	_, _ = w.Create("foo//SaveGameInfo")
+	_ = w.Close()
+	_ = zf.Close()
+
+	_, _, _, err = PreviewSaveZip(zipPath, "doubleslash.zip")
+	if err == nil {
+		t.Fatal("expected error for foo// path")
+	}
+}
+
+func TestPreviewSaveZip_AcceptsValidPath(t *testing.T) {
+	// "FarmerName_12345/SaveGameInfo" is a normal valid path.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "valid.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	fw, _ := w.Create("FarmerName_12345/SaveGameInfo")
+	_, _ = fw.Write([]byte(`<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`))
+	_ = w.Close()
+	_ = zf.Close()
+
+	saveName, _, tempDir, err := PreviewSaveZip(zipPath, "valid.zip")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+	if saveName != "FarmerName_12345" {
+		t.Fatalf("expected saveName=FarmerName_12345, got %q", saveName)
+	}
+}
+
+func TestPreviewSaveZip_AcceptsDirectoryEntry(t *testing.T) {
+	// Common ZIP tools emit explicit directory entries like "FarmerName_12345/".
+	// The trailing "/" must not be rejected as an empty segment.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "direntry.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	// Explicit directory entry.
+	_, _ = w.Create("FarmerName_12345/")
+	fw, _ := w.Create("FarmerName_12345/SaveGameInfo")
+	_, _ = fw.Write([]byte(`<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`))
+	_ = w.Close()
+	_ = zf.Close()
+
+	saveName, _, tempDir, err := PreviewSaveZip(zipPath, "direntry.zip")
+	if err != nil {
+		t.Fatalf("unexpected error for ZIP with directory entry: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+	if saveName != "FarmerName_12345" {
+		t.Fatalf("expected saveName=FarmerName_12345, got %q", saveName)
+	}
+}
+
+// ── ImportSaveToVolume: validation tests ────────────────────────────────────
+
+func TestImportSaveToVolume_RejectsDot(t *testing.T) {
+	dataDir := t.TempDir()
+	savesPath := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := ImportSaveToVolume(dataDir, t.TempDir(), ".")
+	if err == nil {
+		t.Fatal("expected error for . saveName")
+	}
+}
+
+func TestImportSaveToVolume_RejectsDotDot(t *testing.T) {
+	dataDir := t.TempDir()
+	savesPath := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := ImportSaveToVolume(dataDir, t.TempDir(), "..")
+	if err == nil {
+		t.Fatal("expected error for .. saveName")
+	}
+}
+
+func TestImportSaveToVolume_RejectsPathSeparators(t *testing.T) {
+	dataDir := t.TempDir()
+	savesPath := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"foo/bar", `foo\bar`, "/absolute"} {
+		err := ImportSaveToVolume(dataDir, t.TempDir(), name)
+		if err == nil {
+			t.Fatalf("expected error for saveName %q", name)
+		}
+	}
+}
+
+func TestImportSaveToVolume_CannotDeleteSavesRoot(t *testing.T) {
+	dataDir := t.TempDir()
+	savesPath := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// This should be rejected by validateSaveName (.) or resolveSavePath guard.
+	err := ImportSaveToVolume(dataDir, t.TempDir(), ".")
+	if err == nil {
+		t.Fatal("expected error for . saveName")
+	}
+	// Verify Saves root still exists.
+	if _, err := os.Stat(savesPath); os.IsNotExist(err) {
+		t.Fatal("Saves root was deleted")
+	}
+}
+
+func TestImportSaveToVolume_NormalImport(t *testing.T) {
+	dataDir := t.TempDir()
+	tempDir := t.TempDir()
+
+	saveDir := filepath.Join(tempDir, "FarmerName_12345")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<Farmer><name>F</name></Farmer>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	savesPath := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ImportSaveToVolume(dataDir, tempDir, "FarmerName_12345"); err != nil {
+		t.Fatalf("ImportSaveToVolume: %v", err)
+	}
+	dest := filepath.Join(savesPath, "FarmerName_12345", "SaveGameInfo")
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("imported file not found: %v", err)
+	}
+}
+
+func TestImportSaveToVolume_RejectsReservedNames(t *testing.T) {
+	dataDir := t.TempDir()
+	savesPath := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(savesPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"preflight", "select", "select-and-start", "delete"} {
+		err := ImportSaveToVolume(dataDir, t.TempDir(), name)
+		if err == nil {
+			t.Fatalf("expected error for reserved name %q", name)
+		}
+	}
+}
+
+// ── validateSaveName: reserved names ────────────────────────────────────────
+
+func TestValidateSaveName_ReservedNames(t *testing.T) {
+	for _, name := range []string{"preflight", "custom-new-game", "upload-preview", "upload-commit-and-start", "select", "select-and-start", "delete"} {
+		if err := validateSaveName(name); err == nil {
+			t.Fatalf("expected error for reserved name %q", name)
+		}
+	}
+}
+
+func TestValidateSaveName_ValidNames(t *testing.T) {
+	for _, name := range []string{"FarmerName_12345", "TEST_PANEL_CUSTOM_442153826", "1111_442155312", "MySave"} {
+		if err := validateSaveName(name); err != nil {
+			t.Fatalf("unexpected error for valid name %q: %v", name, err)
+		}
+	}
 }
