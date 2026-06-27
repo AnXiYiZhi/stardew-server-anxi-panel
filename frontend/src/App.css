@@ -1039,10 +1039,10 @@ button.job-row {
 
 /* ── Lifecycle Section ──────────────────────────────────────────────── */
 .lifecycle-section {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 24px;
+  border: 4px solid #673519;
+  border-radius: 18px;
+  background: #ffe6b6;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1056,7 +1056,7 @@ button.job-row {
 
 .lifecycle-state-label {
   font-size: 13px;
-  color: var(--text-muted);
+  color: #6f4a2d;
 }
 
 .lifecycle-state-badge {
@@ -1064,14 +1064,17 @@ button.job-row {
   font-weight: 600;
   padding: 2px 10px;
   border-radius: 999px;
-  background: var(--badge-bg, #e2e8f0);
-  color: var(--badge-text, #334155);
+  background: #e2e8f0;
+  color: #334155;
 }
 
-.lifecycle-state-running { background: #dcfce7; color: #166534; }
+.lifecycle-state-running { background: #d8f2c4; color: #1f5f1e; }
 .lifecycle-state-starting { background: #fef9c3; color: #713f12; }
-.lifecycle-state-stopped { background: #fee2e2; color: #991b1b; }
-.lifecycle-state-error { background: #fee2e2; color: #991b1b; }
+.lifecycle-state-game_installed { background: #d8f2c4; color: #1f5f1e; }
+.lifecycle-state-save_required { background: #fff3d6; color: #7a4a10; }
+.lifecycle-state-ready_to_start { background: #d6eef8; color: #165779; }
+.lifecycle-state-stopped { background: #ffe0d6; color: #681111; }
+.lifecycle-state-error { background: #ffe0d6; color: #681111; }
 
 .lifecycle-actions {
   display: flex;
@@ -1085,9 +1088,9 @@ button.job-row {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
+  background: #d8f2c4;
+  border: 3px solid #3f8f3d;
+  border-radius: 14px;
   font-size: 14px;
 }
 
@@ -1095,34 +1098,29 @@ button.job-row {
   font-size: 18px;
   letter-spacing: 2px;
   font-family: monospace;
-  color: #166534;
+  color: #1f5f1e;
 }
 
 .preflight-heading {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 800;
   margin: 0 0 10px;
-}
-
-.save-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  color: #3c2415;
 }
 
 .save-card {
   padding: 10px 14px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: #fff0c7;
+  border: 3px solid #8f5a2d;
+  border-radius: 14px;
 }
 
 .save-card-name {
-  font-weight: 600;
+  font-weight: 800;
   font-size: 14px;
   font-family: monospace;
   margin-bottom: 4px;
+  color: #3c2415;
 }
 
 .save-card-meta {
@@ -1130,54 +1128,18 @@ button.job-row {
   flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-muted);
+  color: #6f4a2d;
 }
 
 .save-card-hint {
   font-size: 12px;
-  color: #dc2626;
+  color: #681111;
 }
 
 .preflight-result {
   padding: 12px 0;
 }
 
-/* Modals */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 28px;
-  max-width: 480px;
-  width: 90%;
-  max-height: 90vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.modal-card h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
-}
-
 .muted {
-  color: var(--text-muted);
+  color: #6f4a2d;
 }

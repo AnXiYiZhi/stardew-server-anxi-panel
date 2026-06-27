@@ -174,17 +174,6 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleSavesPreflight(w, r, instanceID)
 		return
 	}
-	if len(parts) == 3 && parts[1] == "custom-new-game" && parts[2] == "catalog" {
-		switch r.Method {
-		case http.MethodGet:
-			s.handleCustomNewGameCatalog(w, r, instanceID)
-		case http.MethodPost:
-			s.handleCustomNewGameCatalogRefresh(w, r, instanceID)
-		default:
-			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-		}
-		return
-	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "custom-new-game" {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
