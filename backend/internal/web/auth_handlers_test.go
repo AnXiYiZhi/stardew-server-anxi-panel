@@ -154,6 +154,13 @@ func TestAdminCanEnableAndHardDeleteUser(t *testing.T) {
 
 func newTestHandler(t *testing.T) (http.Handler, func()) {
 	t.Helper()
+	handler, store, cleanup := newTestHandlerWithStore(t)
+	_ = store
+	return handler, cleanup
+}
+
+func newTestHandlerWithStore(t *testing.T) (http.Handler, *storage.Store, func()) {
+	t.Helper()
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
 		Addr:    ":0",
@@ -171,7 +178,7 @@ func newTestHandler(t *testing.T) (http.Handler, func()) {
 	}
 
 	handler := NewHandler(Deps{Config: config.Config{Secret: "test-secret", Version: "test"}, Store: store})
-	return handler, func() {
+	return handler, store, func() {
 		if err := store.Close(); err != nil {
 			t.Fatalf("close storage: %v", err)
 		}

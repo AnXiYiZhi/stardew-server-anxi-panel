@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
@@ -1075,6 +1076,330 @@ func TestValidateSaveName_ValidNames(t *testing.T) {
 	for _, name := range []string{"FarmerName_12345", "TEST_PANEL_CUSTOM_442153826", "1111_442155312", "MySave"} {
 		if err := validateSaveName(name); err != nil {
 			t.Fatalf("unexpected error for valid name %q: %v", name, err)
+		}
+	}
+}
+
+// ── ExportSaveZip tests ───────────────────────────────────────────────────────
+
+func TestExportSaveZip_Valid(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave_123")
+	if err := os.MkdirAll(savePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	xmlContent := `<SaveGame><player><name>Farmer</name><farmName>MyFarm</farmName></player><year>2</year><currentSeason>summer</currentSeason><dayOfMonth>15</dayOfMonth><whichFarm>3</whichFarm></SaveGame>`
+	if err := os.WriteFile(filepath.Join(savePath, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath, err := ExportSaveZip(dir, "TestSave_123")
+	if err != nil {
+		t.Fatalf("ExportSaveZip: %v", err)
+	}
+	defer func() { _ = os.Remove(zipPath) }()
+
+	// Verify filename contains save name and game time.
+	name := filepath.Base(zipPath)
+	if !strings.Contains(name, "TestSave_123") {
+		t.Errorf("filename %q should contain save name", name)
+	}
+	if !strings.Contains(name, "2年") {
+		t.Errorf("filename %q should contain year", name)
+	}
+	if !strings.Contains(name, "夏") {
+		t.Errorf("filename %q should contain season", name)
+	}
+	if !strings.Contains(name, "15日") {
+		t.Errorf("filename %q should contain day", name)
+	}
+
+	// Verify ZIP contains the save files.
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open exported zip: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	found := false
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, "SaveGameInfo") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("exported ZIP missing SaveGameInfo")
+	}
+}
+
+func TestExportSaveZip_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	_, err := ExportSaveZip(dir, "NonExistent")
+	if err == nil {
+		t.Fatal("expected error for non-existent save")
+	}
+}
+
+func TestExportSaveZip_RejectsDotDot(t *testing.T) {
+	dir := t.TempDir()
+	_, err := ExportSaveZip(dir, "..")
+	if err == nil {
+		t.Fatal("expected error for .. save name")
+	}
+}
+
+func TestBuildSaveZipName_WithGameTime(t *testing.T) {
+	info := registry.SaveInfo{GameYear: 3, GameSeason: "winter", GameDay: 28}
+	name := buildSaveZipName("FarmerName_12345", info)
+	if name != "FarmerName_12345_3年_冬_28日.zip" {
+		t.Errorf("buildSaveZipName = %q, want FarmerName_12345_3年_冬_28日.zip", name)
+	}
+}
+
+func TestBuildSaveZipName_NoGameTime(t *testing.T) {
+	info := registry.SaveInfo{}
+	name := buildSaveZipName("MySave", info)
+	if name != "MySave.zip" {
+		t.Errorf("buildSaveZipName = %q, want MySave.zip", name)
+	}
+}
+
+func TestBuildSaveZipName_WithSpaces(t *testing.T) {
+	info := registry.SaveInfo{GameYear: 1, GameSeason: "spring", GameDay: 1}
+	name := buildSaveZipName("My Save File", info)
+	if name != "My_Save_File_1年_春_1日.zip" {
+		t.Errorf("buildSaveZipName = %q, want My_Save_File_1年_春_1日.zip", name)
+	}
+}
+
+// ── Backup / Restore Tests ────────────────────────────────────────────────────
+
+func TestBackupSave_CreatesBackup(t *testing.T) {
+	dir := t.TempDir()
+	// Create a save directory with some content.
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame><player><name>Farmer</name></player></SaveGame>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+	if backupPath == "" {
+		t.Fatal("expected non-empty backup path")
+	}
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("backup file not found: %v", err)
+	}
+	if !strings.HasSuffix(backupPath, ".zip") {
+		t.Errorf("backup should be a .zip file, got %q", backupPath)
+	}
+}
+
+func TestBackupSave_NonExistentSave(t *testing.T) {
+	dir := t.TempDir()
+	_, err := BackupSave(dir, "NonExistent")
+	if err == nil {
+		t.Fatal("expected error for non-existent save")
+	}
+}
+
+func TestBackupSave_InvalidName(t *testing.T) {
+	dir := t.TempDir()
+	_, err := BackupSave(dir, "../escape")
+	if err == nil {
+		t.Fatal("expected error for invalid save name")
+	}
+}
+
+func TestDeleteSaveWithBackup_CreatesBackupBeforeDelete(t *testing.T) {
+	dir := t.TempDir()
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	backupPath, err := DeleteSaveWithBackup(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("DeleteSaveWithBackup: %v", err)
+	}
+	if backupPath == "" {
+		t.Fatal("expected backup to be created")
+	}
+	// Save should be deleted.
+	if _, err := os.Stat(saveDir); !os.IsNotExist(err) {
+		t.Error("save directory should have been deleted")
+	}
+	// Backup should exist.
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Errorf("backup file should exist: %v", err)
+	}
+}
+
+func TestListBackups_ReturnsBackupInfo(t *testing.T) {
+	dir := t.TempDir()
+	// Create a save and backup it.
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+
+	backups, err := ListBackups(dir)
+	if err != nil {
+		t.Fatalf("ListBackups: %v", err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("expected 1 backup, got %d", len(backups))
+	}
+	if backups[0].SaveName != "TestSave" {
+		t.Errorf("expected saveName TestSave, got %q", backups[0].SaveName)
+	}
+}
+
+func TestListBackups_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	backups, err := ListBackups(dir)
+	if err != nil {
+		t.Fatalf("ListBackups: %v", err)
+	}
+	if len(backups) != 0 {
+		t.Errorf("expected 0 backups, got %d", len(backups))
+	}
+}
+
+func TestRestoreBackup_Success(t *testing.T) {
+	dir := t.TempDir()
+	// Create a save and backup it.
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame><player><name>Farmer</name></player></SaveGame>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+
+	// Delete the save.
+	if err := os.RemoveAll(saveDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restore.
+	backupName := filepath.Base(backupPath)
+	saveName, err := RestoreBackup(dir, backupName, false)
+	if err != nil {
+		t.Fatalf("RestoreBackup: %v", err)
+	}
+	if saveName != "TestSave" {
+		t.Errorf("expected saveName TestSave, got %q", saveName)
+	}
+	// Verify restored content.
+	restoredFile := filepath.Join(saveDir, "SaveGameInfo")
+	if _, err := os.Stat(restoredFile); err != nil {
+		t.Errorf("restored file should exist: %v", err)
+	}
+}
+
+func TestRestoreBackup_ConflictWithoutOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	// Create a save and backup it.
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+
+	// Try to restore without overwrite — should fail because save still exists.
+	backupName := filepath.Base(backupPath)
+	_, err = RestoreBackup(dir, backupName, false)
+	if err == nil {
+		t.Fatal("expected conflict error when save exists and overwrite is false")
+	}
+}
+
+func TestRestoreBackup_WithOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	// Create a save and backup it.
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame><player><name>Old</name></player></SaveGame>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+
+	// Modify the save.
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame><player><name>Modified</name></player></SaveGame>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restore with overwrite.
+	backupName := filepath.Base(backupPath)
+	saveName, err := RestoreBackup(dir, backupName, true)
+	if err != nil {
+		t.Fatalf("RestoreBackup with overwrite: %v", err)
+	}
+	if saveName != "TestSave" {
+		t.Errorf("expected saveName TestSave, got %q", saveName)
+	}
+}
+
+func TestRestoreBackup_InvalidBackupName(t *testing.T) {
+	dir := t.TempDir()
+	_, err := RestoreBackup(dir, "../escape.zip", false)
+	if err == nil {
+		t.Fatal("expected error for path traversal backup name")
+	}
+}
+
+func TestRestoreBackup_NonExistentBackup(t *testing.T) {
+	dir := t.TempDir()
+	_, err := RestoreBackup(dir, "nonexistent.zip", false)
+	if err == nil {
+		t.Fatal("expected error for non-existent backup")
+	}
+}
+
+func TestParseBackupSaveName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"TestSave_20260627-150405.zip", "TestSave"},
+		{"MyFarm_20260627-120000.zip", "MyFarm"},
+		{"SimpleSave.zip", "SimpleSave"},
+	}
+	for _, tt := range tests {
+		got := parseBackupSaveName(tt.input)
+		if got != tt.want {
+			t.Errorf("parseBackupSaveName(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

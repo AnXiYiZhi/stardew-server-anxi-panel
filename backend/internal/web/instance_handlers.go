@@ -206,6 +206,33 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleSaveDelete(w, r, instanceID, parts[2])
 		return
 	}
+	// POST /api/instances/:id/saves/:name/export
+	if len(parts) == 4 && parts[1] == "saves" && parts[3] == "export" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSaveExport(w, r, instanceID, parts[2])
+		return
+	}
+	// GET /api/instances/:id/saves/backups
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "backups" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesBackupsList(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/saves/backups/restore
+	if len(parts) == 4 && parts[1] == "saves" && parts[2] == "backups" && parts[3] == "restore" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesBackupRestore(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "custom-new-game" {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -228,6 +255,70 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleSavesUploadCommitAndStart(w, r, instanceID)
+		return
+	}
+	// GET /api/instances/:id/mods
+	if len(parts) == 2 && parts[1] == "mods" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModsList(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/mods/upload
+	if len(parts) == 3 && parts[1] == "mods" && parts[2] == "upload" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModsUpload(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/mods/export
+	if len(parts) == 3 && parts[1] == "mods" && parts[2] == "export" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModsExport(w, r, instanceID)
+		return
+	}
+	// DELETE /api/instances/:id/mods/:modId
+	if len(parts) == 3 && parts[1] == "mods" && r.Method == http.MethodDelete {
+		s.handleModDelete(w, r, instanceID, parts[2])
+		return
+	}
+	// GET /api/instances/:id/commands
+	if len(parts) == 2 && parts[1] == "commands" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleCommandsList(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/commands/run
+	if len(parts) == 3 && parts[1] == "commands" && parts[2] == "run" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleCommandRun(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/commands/say
+	if len(parts) == 3 && parts[1] == "commands" && parts[2] == "say" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleCommandSay(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/support-bundle
+	if len(parts) == 2 && parts[1] == "support-bundle" {
+		s.handleSupportBundle(w, r, instanceID)
 		return
 	}
 	writeError(w, http.StatusNotFound, "not_found", "resource not found")

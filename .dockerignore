@@ -1,0 +1,14 @@
+.git
+.gocache
+data
+frontend/node_modules
+frontend/dist
+*.log
+*.tmp
+*.bak
+.env
+.env.*
+!frontend/.env.example
+backend/data
+backend/internal/static/frontend_dist/*
+!backend/internal/static/frontend_dist/.gitkeep

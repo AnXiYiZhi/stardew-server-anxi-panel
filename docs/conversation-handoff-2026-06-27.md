@@ -460,3 +460,813 @@ npm.cmd run build
 - 备份能力未实现。
 - 删除接口路由 body 化未实现。
 - `whichFarm` 字符串格式的映射基于已知 Stardew 1.6 农场类型。如果未来出现新的自定义农场类型字符串，需要扩展 `farmTypeLabelFromString`。
+
+## Milestone 10: Mods 管理 + M9 Review 补齐（2026-06-27）
+
+### 修了什么
+
+**1. M9 遗留 review 补齐**
+
+| 问题 | 状态 |
+|------|------|
+| ZIP 上传目录项兼容 | ✅ 已有 `TrimSuffix(name, "/")` 处理（`saves.go:350`），测试 `TestPreviewSaveZip_AcceptsDirectoryEntry` 已覆盖 |
+| whichFarm trim | ✅ 已有 `strings.TrimSpace` 处理（`saves.go:270`），测试 `TestFarmTypeLabelFromString` 已覆盖 |
+| running 保护 web handler 测试 | ✅ 新增 `saves_handlers_test.go`，覆盖 7 个操作 × running/starting/stopped 状态 |
+
+**2. Mods 管理后端**
+
+新建 `backend/internal/games/stardew_junimo/mods.go`：
+- `ListMods(dataDir)` — 扫描 `.local-container/mods/` 一级目录，读取 `manifest.json`
+- `UploadModZip(dataDir, zipPath)` — 安全校验 + 解压 + manifest 校验 + 重复 UniqueID 检查
+- `DeleteMod(dataDir, modID)` — 按 folderName 或 UniqueID 删除，路径安全校验
+- `ExportModsZip(dataDir)` — 打包所有 Mod 为 ZIP，路径均为相对路径
+- `GetModsRestartRequired/SetModsRestartRequired/ClearModsRestartRequired` — 重启标志文件
+- `migrateModsCompose` — 为已有实例添加 mods bind mount
+
+`registry/types.go` 的 `ModInfo` 扩展为完整字段，新增 `ModsListResult`。
+
+compose 模板新增 `.local-container/mods:/data/Mods` bind mount，挂载到 SMAPI 的 Mods 目录。
+
+**3. Mods 管理 API**
+
+```text
+GET    /api/instances/:id/mods              — Mod 列表 + restartRequired
+POST   /api/instances/:id/mods/upload       — 上传 Mod ZIP（admin-only，运行中禁止）
+DELETE /api/instances/:id/mods/:modId        — 删除 Mod（admin-only，运行中禁止）
+POST   /api/instances/:id/mods/export       — 导出所有 Mod 为 ZIP 下载
+```
+
+**4. Mods 管理前端**
+
+新建 `frontend/src/games/stardew/ModsSection.tsx`：
+- Mod 列表：名称、UniqueID、版本、作者、描述、解析错误
+- 上传按钮：选择 ZIP → 上传并安装
+- 删除按钮：二次确认，running 时禁用
+- 导出按钮：下载 ZIP
+- 重启提示 banner
+
+Dashboard 布局：存档管理下方新增 Mod 管理区域。
+
+### 影响文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/games/registry/types.go` | `ModInfo` 扩展；新增 `ModsListResult` |
+| `backend/internal/games/stardew_junimo/mods.go` | **新建** |
+| `backend/internal/games/stardew_junimo/mods_test.go` | **新建** — 32 个测试 |
+| `backend/internal/games/stardew_junimo/compose_template.go` | 新增 mods bind mount |
+| `backend/internal/games/stardew_junimo/installer.go` | 新增 `migrateModsCompose` |
+| `backend/internal/web/lifecycle_handlers.go` | 新增 4 个 mods handler |
+| `backend/internal/web/instance_handlers.go` | 注册 4 条 mods 路由 |
+| `backend/internal/web/saves_handlers_test.go` | **新建** — running 保护 handler 测试 |
+| `backend/internal/web/auth_handlers_test.go` | 新增 `newTestHandlerWithStore` |
+| `frontend/src/types.ts` | 新增 `ModInfo`、`ModsListResult` |
+| `frontend/src/api.ts` | 新增 `getMods`、`uploadMod`、`deleteMod`、`exportMods` |
+| `frontend/src/games/stardew/ModsSection.tsx` | **新建** |
+| `frontend/src/App.tsx` | 引入 `ModsSection` |
+| `frontend/src/App.css` | 新增 mods 相关样式 |
+
+### 影响接口
+
+```text
+GET    /api/instances/:id/mods              — 新增
+POST   /api/instances/:id/mods/upload       — 新增
+DELETE /api/instances/:id/mods/:modId        — 新增
+POST   /api/instances/:id/mods/export       — 新增
+```
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过（35 modules，无 TypeScript 错误）
+```
+
+浏览器验证：
+1. 上传包含单个 Mod 的 ZIP → 成功，列表显示 Mod 信息
+2. 上传包含多个 Mod 的 ZIP → 成功
+3. 上传无 manifest 的 ZIP → 拒绝
+4. 上传重复 UniqueID → 拒绝 `mod_exists`
+5. 删除 Mod → 二次确认成功
+6. 导出 Mod → 下载 ZIP
+7. 上传/删除后 → 显示"Mod 变更需要重启服务器生效"
+8. 服务器运行中 → 上传/删除按钮禁用
+
+### 仍没有做的后续事项
+
+- Mod 启用/禁用（SMAPI 不支持热禁用，需重启）
+- Mod 依赖关系检查
+- Mod 自动备份
+- `GameDriver` 接口的 `ListMods`/`UploadMod`/`DeleteMod` 签名仍返回 `ErrNotImplemented`
+- compose mods mount 迁移在下次 install 时自动执行；已有实例需重新安装
+- running 保护 handler 测试中 `reconcileInstanceState` 因无真实 Docker 而跳过。如有 Docker 联调环境，建议补集成测试确认 reconcile + 409 的完整链路
+
+## M10 Review Fixes（2026-06-27）
+
+### 修了什么
+
+**1. 存档导出功能（新增）**
+
+新增 `POST /api/instances/:id/saves/:name/export` 接口，将单个存档文件夹打包为 ZIP 下载。
+
+- `saves.go` — 新增 `ExportSaveZip(dataDir, saveName)`、`buildSaveZipName(saveName, info)`、`seasonLabelCN(season)`
+- ZIP 命名规则：`存档名_游戏时间.zip`（如 `FarmerName_12345_3年_冬_28日.zip`），无游戏时间信息时退化为 `存档名.zip`
+- `lifecycle_handlers.go` — 新增 `handleSaveExport`
+- `instance_handlers.go` — 注册 `POST /api/instances/:id/saves/:name/export`（4 段路径）
+- `api.ts` — 新增 `exportSave(name)` 返回 `{blob, filename}`
+- `SavesSection.tsx` — 每个存档行新增「导出」按钮，使用服务端 Content-Disposition 文件名
+
+**2. Mod 导出命名优化**
+
+单个 Mod 导出命名改为 `mod名_作者名.zip`（如 `My_Cool_Mod_AuthorName.zip`），多个 Mod 退化为 `stardew-mods-N.zip`。
+
+- `mods.go` — 新增 `buildModsZipName(root, dirs)`、`sanitizeFileNamePart(s)`
+
+**3. Mod ZIP 导入原子性（P2a → P3c）**
+
+重构 `UploadModZip` 为三阶段：
+1. 提取到临时目录
+2. 全量预检（manifest 解析、ZIP 内重复 UniqueID、已安装 UniqueID 冲突、目标目录冲突）
+3. 全部通过后统一移动，移动失败时回滚已移动目录
+
+**4. 请求体大小硬限制（P2b）**
+
+Mod 上传和存档上传 handler 均加 `http.MaxBytesReader(w, r.Body, maxRequestBody)`（220MB 硬上限），超限请求直接拒绝不落盘。
+
+**5. 启动/重启后清除 restart 标志（P3）**
+
+`doStart` 和 `doRestart` 在进入 `running` 状态后调用 `ClearModsRestartRequired(dataDir)`。
+
+### 影响文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/games/stardew_junimo/saves.go` | 新增 `ExportSaveZip`、`buildSaveZipName`、`seasonLabelCN` |
+| `backend/internal/games/stardew_junimo/saves_test.go` | 新增 6 个存档导出测试 |
+| `backend/internal/games/stardew_junimo/mods.go` | `UploadModZip` 原子性重构 + 移动回滚；新增 `buildModsZipName`、`sanitizeFileNamePart` |
+| `backend/internal/games/stardew_junimo/mods_test.go` | 新增 3 个 mods 命名测试 + 1 个原子性测试 |
+| `backend/internal/games/stardew_junimo/lifecycle.go` | `doStart`/`doRestart` 清除 restart 标志 |
+| `backend/internal/web/lifecycle_handlers.go` | 新增 `handleSaveExport`；Mod/存档上传加 `MaxBytesReader`；新增常量 `maxModFormSize`/`maxRequestBody` |
+| `backend/internal/web/instance_handlers.go` | 注册 `POST .../saves/:name/export` |
+| `frontend/src/api.ts` | `exportSave` 返回 `{blob, filename}`；`exportMods` 返回 `{blob, filename}` |
+| `frontend/src/games/stardew/SavesSection.tsx` | 导出使用服务端文件名 |
+| `frontend/src/games/stardew/ModsSection.tsx` | 导出使用服务端文件名 |
+
+### 影响接口
+
+```text
+POST /api/instances/:id/saves/:name/export  — 新增
+POST /api/instances/:id/mods/export          — 命名变更（单 Mod: mod名_作者名.zip）
+```
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+```
+
+## Milestone 11: Console and Commands（2026-06-27）
+
+### 目标
+
+为 Stardew Junimo 面板提供安全的控制台/命令功能。用户可以在前端执行常用 Junimo/SMAPI 命令，查看命令输出，并支持服务器喊话。
+
+### 改了什么
+
+**后端新增/修改：**
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/games/stardew_junimo/console.go` | **新建** — 命令 allowlist 定义（7 个命令）、`RunAllowlistedCommand`、`SendSay`、`ListCommands`、`stripControlChars`、`CommandError` 结构化错误类型 |
+| `backend/internal/games/stardew_junimo/console_test.go` | **新建** — 22 个测试 |
+| `backend/internal/web/lifecycle_handlers.go` | 新增 3 个 handler + `consoleRunner` 接口 |
+| `backend/internal/web/instance_handlers.go` | 注册 3 条新路由 |
+
+**新增 API：**
+
+```text
+GET  /api/instances/:id/commands          — 返回可用命令列表（登录用户，按角色过滤）
+POST /api/instances/:id/commands/run      — 执行 allowlist 命令（admin-only）
+POST /api/instances/:id/commands/say      — 服务器喊话（登录用户）
+```
+
+**命令 allowlist（7 个命令）：**
+
+| ID | 显示名 | attach-cli stdin | AdminOnly |
+|----|--------|-----------------|-----------|
+| info | 服务器信息 | `info\nquit\n` | false |
+| invitecode | 邀请码 | `invitecode\nquit\n` | false |
+| settings-show | 查看设置 | `settings show\nquit\n` | true |
+| settings-validate | 校验设置 | `settings validate\nquit\n` | true |
+| rendering-status | 渲染状态 | `rendering status\nquit\n` | true |
+| host-auto | 自动托管状态 | `host-auto\nquit\n` | true |
+| host-visibility | 可见性状态 | `host-visibility\nquit\n` | true |
+
+**前端新增/修改：**
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/types.ts` | 新增 `ConsoleCommandDef`、`CommandsListResult`、`CommandRunResult` |
+| `frontend/src/api.ts` | 新增 `getCommands`、`runCommand`、`sendSay` |
+| `frontend/src/games/stardew/ConsoleSection.tsx` | **新建** — 命令按钮网格、喊话输入框、命令历史（可折叠输出） |
+| `frontend/src/App.tsx` | 引入 `ConsoleSection`，放在 ModsSection 下方 |
+| `frontend/src/App.css` | 新增 `.console-section`、`.command-btn-grid`、`.console-say-area`、`.console-history` 等样式（绿色主题） |
+
+### 影响接口
+
+```text
+GET  /api/instances/:id/commands          — 新增
+POST /api/instances/:id/commands/run      — 新增
+POST /api/instances/:id/commands/say      — 新增
+```
+
+### 安全边界
+
+1. **结构化输入**：前端只传 `{command: "info"}`，后端在 allowlist 中查找，不拼接任意 shell
+2. **无 shell 注入**：`ComposeExecPipe` 使用 args 数组，不经 shell 解析
+3. **say 清理**：`stripControlChars` 移除控制字符（保留 \n \r \t）、限制 200 字符、拒绝空消息
+4. **状态检查**：服务器未运行时返回 409 `server_not_running`
+5. **权限分离**：info/invitecode 普通用户可用，settings/rendering/host 命令 admin-only
+6. **敏感信息**：不记录 Steam/VNC 密码、session token
+
+### 测试覆盖
+
+`console_test.go`（22 个测试）：
+- 非 allowlist 命令被拒绝（含 shell 特殊字符注入尝试）
+- AdminOnly 命令对普通用户拒绝、对管理员允许
+- 公共命令对非管理员允许
+- 服务器未运行（stopped/starting）返回 `server_not_running`
+- 命令执行通过 `attach-cli`，stdin 和 args 正确传递
+- 非零退出码正确处理
+- say 拒绝空消息、拒绝过长消息（>200 字符）
+- say 清理控制字符
+- say 构建正确 stdin（`say <msg>\nquit\n`）
+- `ListCommands` 按角色过滤
+- `stripControlChars` 各种输入
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过（36 modules，无 TypeScript 错误）
+```
+
+### 仍没有做的后续事项
+
+- 实时日志流（SSE/WebSocket tail logs）未实现
+- 完整交互式控制台（类似终端）未实现，当前只支持单次命令执行
+- 更多命令参数 schema（如 `settings set <key> <value>`）未实现
+- 审计日志（谁在什么时间执行了什么命令）未实现
+- `GameDriver` 接口的 `ExecCommand(ctx, cmd)` 签名仍返回 `ErrNotImplemented`，console 能力通过 `consoleRunner` type-assert 接口暴露
+
+## M11 Review Fixes（2026-06-27）
+
+### 修了什么
+
+**P1a: say 换行注入漏洞**
+
+`stripControlChars` 明确保留了 `\n`、`\r`、`\t`，用户可以通过 say 消息注入多条 attach-cli 命令（如 `hello\nsettings show\nquit`），绕过 allowlist 和 admin-only 边界。
+
+修复：
+- 新增 `sanitizeSayMessage()` 函数，将**所有**控制字符（包括 `\n`、`\r`、`\t`）替换为空格，然后用 `strings.Fields` + `strings.Join` 合并连续空格
+- `sendSay()` 改用 `sanitizeSayMessage()` 替代 `stripControlChars()`
+- 新增 2 个注入防护测试：`TestSendSay_PreventsNewlineInjection`、`TestSendSay_PreventsCarriageReturnInjection`
+- 新增 `TestSanitizeSayMessage` 覆盖各种输入
+
+**P2a: 普通用户执行公共命令被 403**
+
+`handleCommandRun` 使用 `requireAdmin`，导致普通用户点击 info/invitecode 时直接 403，到不了 driver 内部的 allowlist 权限判断。
+
+修复：
+- `handleCommandRun` 改用 `requireAuth`
+- admin-only 命令的权限由 driver 的 `RunAllowlistedCommand` 内部判断（检查 `isAdmin` 参数）
+- 普通用户执行 info/invitecode 正常通过
+
+**P2b: 命令/say 没有 reconcile 真实容器状态**
+
+`handleCommandRun` 和 `handleCommandSay` 在 loadInstance 后直接执行，若 DB 仍是 running 但 Docker 容器已停，不会稳定返回 `server_not_running`。
+
+修复：
+- 两个 handler 在执行前调用 `reconcileInstanceState`
+- reconcile 后检查 `instance.State != running` 时直接返回 409 `server_not_running`
+
+**P1b: attach-cli 需要 TTY，ComposeExecPipe -T 不可用**
+
+`ComposeExecPipe` 使用 `docker compose exec -T` 禁用 TTY，但 JunimoServer 的 `attach-cli` 需要终端（报 "open terminal failed: not a terminal"）。
+
+修复：
+- 新增 `ComposeExecTTY` 函数，通过 Docker Engine API 直接创建 exec 实例并分配 TTY（不走 CLI 的 `-T` 路径）
+- Windows 实现：通过 `\\.\pipe\docker_engine` named pipe 调用 Docker API（create exec → attach → start → read output）
+- Unix 实现：placeholder（返回错误提示，需要后续实现 creack/pty 方案）
+- `LifecycleDockerService` 接口新增 `ComposeExecTTY` 方法
+- `console.go` 的 `runCommand` 和 `sendSay` 改用 `ComposeExecTTY` 替代 `ComposeExecPipe`
+
+### 影响文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/games/stardew_junimo/console.go` | `sanitizeSayMessage()` 替代 `stripControlChars` 用于 say；`runCommand`/`sendSay` 改用 `ComposeExecTTY`；`commandExecutor` 接口改用 `ComposeExecTTY` |
+| `backend/internal/games/stardew_junimo/console_test.go` | 新增注入防护测试、`TestSanitizeSayMessage`；fake 改用 `ComposeExecTTYResult` |
+| `backend/internal/games/stardew_junimo/lifecycle.go` | `LifecycleDockerService` 接口新增 `ComposeExecTTY` |
+| `backend/internal/docker/compose_tty.go` | **新建** — `ComposeExecTTY` 函数定义和 `ComposeExecTTYResult` 类型 |
+| `backend/internal/docker/compose_tty_windows.go` | **新建** — Windows Docker Engine API 实现（exec create/attach/start/wait） |
+| `backend/internal/docker/compose_tty_unix.go` | **新建** — Unix placeholder |
+| `backend/internal/web/lifecycle_handlers.go` | `handleCommandRun` 改用 `requireAuth`；两个 handler 新增 `reconcileInstanceState` + 状态检查 |
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+```
+
+### 仍没有做的后续事项
+
+- Unix 平台的 `ComposeExecTTY` 实现（需要 creack/pty 库）
+- 真实容器联调验证（当前只有 fake 测试，需要在有 Docker 的环境确认 attach-cli + TTY 实际工作）
+
+## 联机角色/邀请码异常排查项（2026-06-27）
+
+### 现象
+
+使用同一个邀请码第一次搜索服务器时，显示一个空的、还没有创建角色的服务器入口。创建角色并退出游戏后，再次用同一个邀请码搜索，会出现两个入口：一个是已创建角色的服务器入口，另一个仍是空的新农夫入口。两个都能进入；进入空入口并创建角色后，会继续多出新的入口。
+
+### 可能原因
+
+1. **服务端没有稳定识别同一个 Steam 用户对应的 farmer** — 退出再进时没有绑定到旧 farmer，继续给"新农夫"入口
+2. **初始小屋/玩家槽配置允许多角色** — 可能开了多个 cabin 或服务端默认保留空 farmer slot
+3. **服务端重复新建/加载存档逻辑混乱** — 每次启动或连接时误触发 newgame/create-or-load
+4. **Stardew 原生行为 + Junimo 表现混合** — 原版多人存档允许多个农民，但"空项创建后继续增加"不正常
+
+### 排查要求
+
+1. 查看当前 active save 的 XML，确认 `<farmhands>`、玩家列表、小屋数量、farmer `UniqueMultiplayerID` / `userID` / `name` 等字段是否每次连接后新增
+2. 查看 `.local-container/saves/Saves/<activeSave>/` 下主存档文件和 SaveGameInfo，确认是否有多个 farmer/farmhand
+3. 查看 Junimo/SMAPI 日志，确认连接、创建角色、保存时是否有重复 create/load/newgame 行为
+4. 确认面板启动服务器时是否误触发 `newgame` 或自定义创建逻辑；普通启动必须只加载 active save，不能创建新存档或新 farmer
+5. 确认 `server-settings.json` 中 cabin/多玩家相关配置是否导致每次保留新角色入口
+6. 如果这是原生允许多个农民的行为，需要在文档/前端提示说明；如果是重复创建 bug，需要修复并提供清理重复 farmer 的建议或工具
+7. 不要直接删除存档内容，先备份再分析
+
+### 一句话判断
+
+同一个农场里出现已创建角色 + 新农夫入口可能是正常多人槽位；但"每进空的创建后又多一个"需要查 XML 和日志，不能当正常放过。
+
+### 与面板代码的关系
+
+- `lifecycle.go` 的 `doStart()` 中 `sendNewGameCommand()` 仅在 `r.newGame == true` 时触发
+- `handleInstanceStart`（普通启动）调用 `driver.Start()` 时**不设置** `NewGame: true`，所以普通启动不会触发 `POST /newgame`
+- `NewGame: true` 仅在 `handleSavesCustomNewGame`（自定义新建存档并启动）中设置
+- 因此面板普通启动逻辑不会误创建新存档或新 farmer
+- 需要进一步排查的是 JunimoServer/Stardew 联机层面的角色槽行为，以及 `server-settings.json` 中的 `startingCabins` 配置
+
+## M11 Review Fixes 第二轮：ComposeExecTTY 阻塞修复（2026-06-27）
+
+### 修了什么
+
+**1. Double start — attach 和 start 分两次调用导致挂起**
+
+`dockerExecAttach` 已经通过 `POST /exec/{id}/start` + HTTP hijack 启动了 exec 并拿到双向流，但后面又调用了 `dockerExecStart`，等于对同一个 exec start 两次。
+
+修复：合并为 `dockerExecAttachStart` 一个函数，只调用一次 `POST /exec/{id}/start` + hijack。删除独立的 `dockerExecStart`。
+
+**2. stdin 写完后没有关闭写入方向**
+
+`io.WriteString(conn, stdinData)` 后没有关闭 conn 的写入端，attach-cli 收到 `quit\n` 后可能仍等待更多输入，导致 hijack 连接不结束。
+
+修复：改为写入后依赖 exec 进程自然退出（attach-cli 处理 quit 后退出）。通过 ctx 超时兜底关闭 conn。
+
+**3. reader.Read 不响应 ctx 超时**
+
+`reader.Read(buf)` 是阻塞调用，不监听 `ctx.Done()`，超时后请求一直挂着。
+
+修复：用 goroutine 读取输出，主 goroutine 用 `select` 同时等待读取结果和 `ctx.Done()`。ctx 超时时调用 `closeConn()` 关闭 hijack 连接，解除 reader 阻塞。
+
+**4. dockerExecWait 不是真的 wait**
+
+只查一次 `/exec/{id}/json`，没有循环等 `Running=false`。
+
+修复：改为 `dockerExecPollExit`，200ms 间隔轮询直到 `Running=false` 或超时。
+
+**5. 前端无超时兜底**
+
+`runCommand` 和 `sendSay` 没有 AbortController，后端挂起时前端一直显示"执行中"。
+
+修复：`api.ts` 的 `runCommand` 和 `sendSay` 添加 `AbortController` + 40 秒超时。`ConsoleSection.tsx` 捕获 `AbortError` 显示"命令执行超时，请稍后重试"。
+
+### 影响文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/docker/compose_tty_windows.go` | **重写** — `dockerExecAttachStart` 合并 attach+start；ctx 感知的读取；`dockerExecPollExit` 轮询退出码 |
+| `frontend/src/api.ts` | `runCommand`/`sendSay` 添加 AbortController + 40s 超时 |
+| `frontend/src/games/stardew/ConsoleSection.tsx` | 捕获 `AbortError` 显示超时提示 |
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+```
+
+### 仍需要的验证
+
+- 真实 Docker 环境联调：点击 info/invitecode 确认 attach-cli + TTY 实际返回输出
+- 如果仍然卡住，可能需要进一步调整 stdin EOF 信号（Windows named pipe 不支持 `CloseWrite`，可能需要在写入后立即关闭整个 conn 并用单独的 goroutine 读取缓存的输出）
+
+## M11 超时复查修复：改用 Junimo FIFO 而不是 attach-cli TTY（2026-06-27）
+
+### 问题
+
+上一轮修了 Docker TTY double-start 和 ctx 超时，但前端点击命令/喊话仍然会超时。真实容器联调后确认，问题不在前端 loading 状态，而在通信模型：
+
+- `attach-cli` 是一个 tmux 交互 UI，不是一次性 stdin 命令执行器。
+- `quit` 不是 attach-cli 退出命令，会被转发进 SMAPI，日志里出现 `Unknown command 'quit'`。
+- `say` 也不是当前 Junimo/SMAPI 注册命令，日志里出现 `Unknown command 'say'`。
+- 容器内 `/opt/base/bin/server-command-loop` 的真实输入路径是把命令写入 `/tmp/smapi-input` FIFO。
+
+### 修了什么
+
+- `backend/internal/games/stardew_junimo/console.go`
+  - `RunAllowlistedCommand` 不再调用 `ComposeExecTTY` 和 `attach-cli`。
+  - 改为用 `docker compose exec -T server tee -a /tmp/smapi-input` 写入单行 allowlist 命令。
+  - 写入后从 `/tmp/server-output.log` 读取随后输出，返回给前端命令历史。
+  - allowlist 的 stdin 从 `info\nquit\n` 改为单行 `info`、`invitecode`、`settings show` 等，彻底移除错误的 `quit`。
+  - `SendSay` 暂时返回 `command_not_supported`，因为真实 `help` 列表没有喊话命令。
+- `backend/internal/games/stardew_junimo/console_test.go`
+  - fake Docker 改用 `ComposeExecPipe`。
+  - 单测改为验证命令写入 `/tmp/smapi-input`，不再保护 `attach-cli + quit` 的错误行为。
+  - 喊话测试改为验证合法输入返回 `command_not_supported`，空消息、过长消息、server_not_running 仍然按原规则返回。
+- `backend/internal/web/lifecycle_handlers.go`
+  - `command_not_supported` 映射为 501。
+
+### 真实联调结论
+
+在本机容器中验证：
+
+```powershell
+cd E:\stardew-server-anxi-panel\data\instances\stardew
+'info' | docker compose exec -T server tee -a /tmp/smapi-input
+docker exec -i stardew-server-1 sh -lc 'tail -n 80 /tmp/server-output.log'
+```
+
+日志会出现 `--- Server Info ---`、服务器名、版本、玩家数、邀请码等信息。`invitecode` 同样能通过 FIFO 触发并在日志中输出。
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+```
+
+### 后续注意事项
+
+- `backend/internal/docker/compose_tty*.go` 目前仍留在代码里，但 M11 控制台命令不再依赖它。后续如果没有其他功能需要真实 TTY，可以考虑删除或只保留给 Steam Auth 类交互使用。
+- 服务器喊话需要确认 Junimo/SMAPI 是否存在真实广播命令；当前不能继续使用 `say` 这个假设。
+- 命令输出现在来自 `/tmp/server-output.log` 的增量尾部，若未来命令输出很慢或日志噪音很大，可以改成更明确的 command marker 或 Junimo HTTP API。
+
+## Milestone 12: Packaging
+
+### 目标
+
+让项目可以构建为一个可交付 Docker 镜像。用户只需 Docker Engine + Compose V2，运行一个 panel 容器即可访问 Web 面板。
+
+### 改了什么
+
+**新增文件：**
+
+| 文件 | 说明 |
+|------|------|
+| `Dockerfile` | 多阶段构建（frontend-builder → backend-builder → runtime） |
+| `.dockerignore` | 排除 .git、node_modules、dist、data 等 |
+| `backend/internal/static/static.go` | `//go:embed frontend_dist/*` 嵌入前端产物 |
+| `backend/internal/static/frontend_dist/.gitkeep` | 占位文件，本地 go build 不报错 |
+| `deploy/docker-compose.yml` | 部署示例 |
+| `docs/deployment.md` | 完整部署指南 |
+
+**修改文件：**
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/web/handler.go` | 新增 `serveStatic`（SPA fallback）；`isSetupAllowed` 白名单扩展 |
+| `README.md` | 新增 Docker 部署章节、更新仓库结构和状态 |
+| `docs/handoff-roadmap.md` | 标记 M12 完成 |
+
+### 关键设计
+
+1. **前端嵌入 Go binary**：Dockerfile 在 backend-builder 阶段将 frontend/dist 复制到 `internal/static/frontend_dist/`，`//go:embed` 将其编译进二进制。运行时只有一个文件 + `/data` 目录。
+
+2. **SPA fallback**：`serveStatic` 先用 `fs.ReadFile` 查找嵌入文件，找不到则返回 `index.html`。前端路由正常工作。
+
+3. **setup 白名单**：`isSetupAllowed` 新增 `/`、`/assets/*`、`/favicon.ico`、`/index.html`。否则未初始化管理员时前端无法加载。
+
+4. **CGO_ENABLED=0**：`modernc.org/sqlite` 是纯 Go，构建静态二进制运行在 Alpine 上。
+
+5. **runtime 包含**：docker-cli、docker-cli-compose、ca-certificates、tzdata。
+
+### 影响接口
+
+- `GET /` — 现在返回前端 index.html（之前返回 404）
+- `GET /assets/*` — 返回前端静态资源
+- 其他非 `/api/*`、`/health` 路径 — 返回 index.html（SPA fallback）
+
+### 验证
+
+```powershell
+# 后端
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+# 前端
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+
+# 镜像构建（需 Docker 网络正常）
+cd E:\stardew-server-anxi-panel
+docker build -t stardew-server-anxi-panel:local .
+```
+
+### 已知限制
+
+- Docker Socket 挂载等同高权限，仅限内网。
+- Windows Docker Desktop socket 通过 WSL2 转发。
+- 当前 Docker 镜像源 `vfonjwaa.mirror.aliyuncs.com` 返回 403，需检查 Docker Desktop 设置。
+- 如果需要 ARM 支持，需用 `docker buildx` 或参数化 GOARCH。
+
+### 后续注意事项
+
+- Milestone 13 (Hardening) 可补充审计日志、备份恢复。
+- 前端如需 favicon.ico，在 `frontend/public/` 放置即可。
+- 本地开发仍使用 `npm run dev`（Vite）+ `go run ./cmd/panel`，不依赖嵌入的静态文件。
+
+## Milestone 13: Hardening（2026-06-27）
+
+### 目标
+
+把 MVP 从"能用"提高到"可交付"：操作审计、日志脱敏、权限加固、备份恢复、健康检查、前端错误体验。
+
+### 改了什么
+
+**1. 操作审计 Audit Log**
+
+新增 `GET /api/audit-logs`（admin-only，分页），存储层新增 `ListAuditLogs` 关联 users 表。
+
+以下操作已添加审计记录（`s.auditLog(r, &actor, action, targetType, targetID, metadata)`）：
+
+| Action | Handler | 触发时机 |
+|--------|---------|----------|
+| `instance_prepare` | install_handlers.go | 准备实例目录成功 |
+| `instance_install` | install_handlers.go | 安装任务启动成功 |
+| `instance_start` | lifecycle_handlers.go | 服务器启动成功 |
+| `instance_stop` | lifecycle_handlers.go | 服务器停止成功 |
+| `instance_restart` | lifecycle_handlers.go | 服务器重启成功 |
+| `save_new_game` | lifecycle_handlers.go | 自定义新建存档并启动 |
+| `save_upload_start` | lifecycle_handlers.go | 上传存档并启动 |
+| `save_select` | lifecycle_handlers.go | 选择存档 |
+| `save_delete` | lifecycle_handlers.go | 删除存档（含备份信息） |
+| `save_restore` | lifecycle_handlers.go | 从备份恢复存档 |
+| `mod_upload` | lifecycle_handlers.go | 上传 Mod |
+| `mod_delete` | lifecycle_handlers.go | 删除 Mod |
+| `command_run` | lifecycle_handlers.go | 执行控制台命令 |
+
+已有审计（setup_admin_created、auth_login、auth_logout、user_*）保持不变。
+
+前端：高级设置内新增「操作审计」区域，显示时间、操作、操作者、目标。
+
+**2. 日志脱敏**
+
+扩展 `docker/redact.go`：
+- 新增 pattern：`session`、`cookie`、`authorization`、`api_key`、`apikey`
+- 新增：Bearer token 脱敏（`Authorization: Bearer eyJhb...` → `Authorization: Bearer [REDACTED]`）
+- 新增：邀请码脱敏（`invite code: ABCD1234` → `invite code=[REDACTED]`）
+- 新增：`--env` flag 脱敏（`--env SECRET_KEY=abc123` → `--env [REDACTED]`）
+- `Redacted` 常量导出
+
+新增 `sanitizeError(err, fallback)` / `sanitizeErrorMsg(err, prefix)`：
+- 自动识别数据库/Docker/文件系统/网络/ZIP 错误，返回中文安全消息
+- 通用 fallback 经过 `RedactString` 处理
+
+所有 handler 的 `writeError` 调用已从 `"前缀: "+err.Error()` 替换为 `sanitizeErrorMsg(err, "前缀")`。
+
+新增 10 个脱敏单元测试（session/cookie/auth/bearer/invite/env/false positives）。
+
+**3. 权限加固**
+
+新增测试文件 `audit_test.go`：
+- `TestPermissionHardening_AdminOnlyEndpoints`：12 个端点 × 2 场景（无认证 401、非管理员 403）
+- `TestPermissionHardening_AuthEndpoints`：6 个只读端点，非管理员可访问
+- `TestAuditLogsAPI_Permissions`：审计日志 API 权限验证
+- `TestAuditLogsAPI_ContainsSetupLog`：初始化操作被记录
+
+**4. 备份与恢复**
+
+`saves.go` 新增：
+- `BackupSave(dataDir, saveName)` — 创建 ZIP 备份到 `.local-container/backups/saves/`
+- `DeleteSaveWithBackup(dataDir, saveName)` — 删除前自动备份（备份失败不阻止删除）
+- `ListBackups(dataDir)` — 列出备份
+- `RestoreBackup(dataDir, backupName, overwrite)` — 恢复，支持冲突检测
+
+`handleSaveDelete` 改用 `DeleteSaveWithBackup`。
+
+新增 API：
+- `GET /api/instances/:id/saves/backups` — 备份列表（admin-only）
+- `POST /api/instances/:id/saves/backups/restore` — 恢复备份（admin-only，运行中禁止）
+
+新增 12 个备份/恢复测试。
+
+**5. 健康检查增强**
+
+新增 `GET /api/health/diagnostics`（需认证），返回结构化诊断：
+
+```json
+{
+  "status": "ok|warning|error",
+  "checks": [
+    {"name": "docker_daemon", "status": "ok", "message": "Docker 服务正常"},
+    {"name": "docker_compose", "status": "ok", "message": "Docker Compose 可用"},
+    {"name": "data_dir", "status": "ok", "message": "数据目录可写"},
+    {"name": "instance_dir", "status": "ok", "message": "实例目录已就绪"},
+    {"name": "compose_file", "status": "ok", "message": "docker-compose.yml 已就绪"},
+    {"name": "active_save", "status": "warning", "message": "没有已选择的启动存档"}
+  ]
+}
+```
+
+前端：高级设置内新增「健康检查」区域，点击「开始检查」显示诊断结果。
+
+**6. 前端错误体验**
+
+`helpers.ts` 新增 `errorCodeMap`（40+ 后端错误码 → 中文消息），`errorMessage()` 优先使用 code 映射。
+
+后端 handler 不再将 `err.Error()` 直接暴露给前端。
+
+### 影响接口
+
+```text
+GET  /api/audit-logs                    — 新增（admin-only）
+GET  /api/health/diagnostics            — 新增（需认证）
+GET  /api/instances/:id/saves/backups   — 新增（admin-only）
+POST /api/instances/:id/saves/backups/restore — 新增（admin-only）
+DELETE /api/instances/:id/saves/:name   — 行为变更（删除前自动备份）
+```
+
+### 验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+```
+
+### 后续注意事项
+
+- `GameDriver` 接口的 `SelectSave`/`DeleteSave` 缺少 `instance` 参数，handler 直接调用 `sj` 包函数。后续可改接口签名。
+- 联机角色槽异常（重复新农夫入口）需后续专门 Milestone 处理，当前只做诊断和备份保护。
+- Unix 平台的 `ComposeExecTTY` 实现未完成。
+- 实时日志流（SSE/WebSocket tail logs）未实现。
+- 审计日志目前只有查询 API，没有清理/归档机制。如果操作频繁，后续可加定期清理。
+
+## Milestone 14: Release Candidate（2026-06-27）
+
+### 目标
+
+把项目从"功能完成"推进到"可发布候选版本"。不新增大功能，不重构架构，重点是版本信息、支持包导出、冒烟测试脚本、发布检查清单和文档收口。
+
+### 改了什么
+
+**1. 版本信息**
+
+- `backend/internal/config/config.go`：新增 `Commit`、`BuildDate` 字段；新增 `buildVersion`/`buildCommit`/`buildDate` ldflags 变量，构建时通过 `-ldflags -X` 注入。
+- `backend/internal/web/handler.go`：`healthResponse` 新增 `commit`/`buildDate` 字段；新增 `GET /api/version` 端点；`/api/version` 加入 setup 白名单。
+- `Dockerfile`：backend-builder 阶段新增 `ARG VERSION/COMMIT/BUILD_DATE`，通过 `-ldflags -X` 注入；runtime 阶段新增 OCI labels。
+- `deploy/docker-compose.yml`：文档注释说明如何构建带版本号镜像。
+- 前端 `api.ts`：新增 `getVersion()` 函数和 `VersionInfo` 类型。
+- 前端 `App.tsx`：启动时加载版本信息，页面顶部显示 `v{version} · {commit} · {buildDate}`。
+- 前端 `App.css`：新增 `.version-info` 样式（等宽字体、小字号）。
+
+**2. 支持包导出**
+
+- `backend/internal/web/support_bundle.go`：**新建** — `handleSupportBundle` 收集诊断信息并打包为 ZIP。
+- ZIP 包含：version.json、health.json、instance-state.json、jobs.json、audit-logs.json、compose-ps.json、docker-compose.yml、server-logs.txt。
+- 所有日志和配置内容经过 `RedactString` 脱敏。
+- 只有 admin 可以导出。
+- `backend/internal/web/instance_handlers.go`：注册 `POST /api/instances/:id/support-bundle` 路由。
+- 前端 `api.ts`：新增 `downloadSupportBundle()` 函数。
+- 前端 `App.tsx`：健康检查区域新增「导出诊断包」按钮。
+- 前端 `App.css`：新增 `.section-heading-actions` 样式（并排按钮）。
+
+**3. 冒烟测试脚本**
+
+- `scripts/smoke-test.ps1`：**新建** — Windows PowerShell 冒烟测试脚本。
+- 检查后端测试（`go test ./...`）、前端构建（`npm run build`）、Docker 镜像构建。
+- 可选：启动临时容器检查 `/health` 和 `/api/version` 返回 200。
+- 脚本失败时有清晰中文错误。
+- 不碰用户真实数据，只清理自己创建的临时容器、镜像和 volume。
+- 支持 `-SkipDocker`、`-SkipFrontend`、`-SkipBackend` 参数。
+
+**4. 发布检查清单**
+
+- `docs/release-checklist.md`：**新建** — 17 个验收维度的逐项检查清单。
+- 覆盖：构建验证、clean install、existing data upgrade、Docker compose 部署、管理员初始化、登录/登出、游戏安装、存档管理、Mod 管理、控制台命令、审计日志、健康检查、权限、脱敏、版本信息、支持包导出、前端体验。
+- 记录已知问题（联机角色槽异常、控制台通信方式）。
+- 说明如何运行 smoke test 和构建带版本号镜像。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `backend/internal/web/support_bundle.go` | 支持包导出 handler |
+| `scripts/smoke-test.ps1` | Windows 冒烟测试脚本 |
+| `docs/release-checklist.md` | 发布检查清单 |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/internal/config/config.go` | 新增 Commit/BuildDate 字段和 ldflags 变量 |
+| `backend/internal/web/handler.go` | health 新增 commit/buildDate；新增 /api/version；setup 白名单 |
+| `backend/internal/web/instance_handlers.go` | 注册 support-bundle 路由 |
+| `Dockerfile` | 新增 ARG/ldflags/OCI labels |
+| `deploy/docker-compose.yml` | 文档注释更新 |
+| `frontend/src/api.ts` | 新增 getVersion/downloadSupportBundle |
+| `frontend/src/App.tsx` | 版本显示、诊断包按钮 |
+| `frontend/src/App.css` | version-info/section-heading-actions 样式 |
+
+### 影响接口
+
+```text
+GET  /api/version                       — 新增（无需认证）
+POST /api/instances/:id/support-bundle  — 新增（admin-only）
+GET  /health                            — 变更（新增 commit/buildDate 字段）
+```
+
+### 验证
+
+```powershell
+# 后端测试
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'
+go test ./...
+# 全部通过
+
+# 前端构建
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 通过
+
+# 冒烟测试
+cd E:\stardew-server-anxi-panel
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
+```
+
+### 仍没有解决的已知问题
+
+- 联机角色槽异常（重复新农夫入口）：已记录在发布检查清单中，需要排查 JunimoServer/Stardew 联机层面行为。
+- Unix 平台的 `ComposeExecTTY` 实现未完成。
+- 实时日志流（SSE/WebSocket tail logs）未实现。
+- 审计日志没有清理/归档机制。

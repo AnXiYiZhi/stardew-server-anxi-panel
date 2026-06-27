@@ -40,6 +40,7 @@ type LifecycleDockerService interface {
 	ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeRestart(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	ComposeExecTTY(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.ComposeExecTTYResult, error)
 	ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
 }
 
@@ -217,6 +218,8 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 			msg, "running", jobCtx.ID)
 		r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, inviteCode)
 	}
+	// Clear the "restart required" flag now that the server is running with latest mods.
+	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
 }
 
@@ -265,6 +268,8 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 			msg, "running", jobCtx.ID)
 		r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, inviteCode)
 	}
+	// Clear the "restart required" flag now that the server is running with latest mods.
+	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
 }
 

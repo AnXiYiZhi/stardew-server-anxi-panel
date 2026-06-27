@@ -6,6 +6,7 @@ import {
   selectSave,
   selectSaveAndStart,
   deleteSave,
+  exportSave,
   createNewGame,
   uploadSavePreview,
   uploadSaveCommitAndStart,
@@ -32,6 +33,7 @@ function SaveRow({
   onSelect,
   onSelectAndStart,
   onDelete,
+  onExport,
 }: {
   save: SaveInfo
   isActive: boolean
@@ -39,6 +41,7 @@ function SaveRow({
   onSelect: () => void
   onSelectAndStart: () => void
   onDelete: () => void
+  onExport: () => void
 }) {
   return (
     <div className={`save-row${isActive ? ' save-row-active' : ''}`}>
@@ -70,6 +73,9 @@ function SaveRow({
         ) : null}
         <button className="button button-small button-secondary" disabled={busy} onClick={onSelectAndStart} type="button">
           {isActive ? '使用此存档启动' : '选择并启动'}
+        </button>
+        <button className="button button-small button-secondary" disabled={busy} onClick={onExport} type="button">
+          导出
         </button>
         {!isActive ? (
           <button
@@ -191,6 +197,26 @@ export function SavesSection({
     }
   }
 
+  async function handleExport(name: string) {
+    setBusy(true)
+    setMessage('')
+    try {
+      const { blob, filename } = await exportSave(name)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setMessage(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleNewGameSubmit(cfg: NewGameConfig) {
     setBusy(true)
     setNewGameError('')
@@ -299,6 +325,7 @@ export function SavesSection({
               onSelect={() => handleSelect(save.name)}
               onSelectAndStart={() => handleSelectAndStart(save.name)}
               onDelete={() => handleDelete(save.name)}
+              onExport={() => handleExport(save.name)}
             />
           ))}
         </div>

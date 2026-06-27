@@ -4,19 +4,24 @@ import {
   ApiError,
   clearJobs,
   createJobEventSource,
+  downloadSupportBundle,
+  getAuditLogs,
   getComposePs,
   getDockerStatus,
+  getHealthDiagnostics,
   getInstallOptions,
   getJob,
   getJobLogs,
   getJobs,
   getStardewState,
+  getVersion,
   installInstance,
   request,
   startFailingTestJob,
   startTestJob,
   submitSteamGuardInput,
 } from './api'
+import type { AuditLogEntry, HealthCheck, VersionInfo } from './api'
 import type {
   ComposePsResponse,
   CurrentUser,
@@ -47,6 +52,8 @@ import { InstallSection, emptyInstallForm } from './games/stardew/InstallSection
 import type { InstallFormState } from './games/stardew/InstallSection'
 import { LifecycleSection } from './games/stardew/LifecycleSection'
 import { SavesSection } from './games/stardew/SavesSection'
+import { ModsSection } from './games/stardew/ModsSection'
+import { ConsoleSection } from './games/stardew/ConsoleSection'
 import { JobsSection } from './games/stardew/JobsSection'
 import { DockerSection } from './games/stardew/DockerSection'
 import {
@@ -77,9 +84,11 @@ function App() {
   const [users, setUsers] = useState<PanelUser[]>([])
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
 
   useEffect(() => {
     boot()
+    void getVersion().then(setVersionInfo).catch(() => {})
   }, [])
 
   async function boot() {
@@ -239,6 +248,13 @@ function App() {
       <section className="panel-card">
         <p className="eyebrow">Stardew Valley 管理面板</p>
         <h1>Stardew Anxi Panel</h1>
+        {versionInfo ? (
+          <p className="version-info">
+            v{versionInfo.version}
+            {versionInfo.commit ? ` · ${versionInfo.commit}` : ''}
+            {versionInfo.buildDate ? ` · ${versionInfo.buildDate}` : ''}
+          </p>
+        ) : null}
         {message ? <div className="error-banner">{message}</div> : null}
         {view === 'booting' ? <p className="summary">正在读取面板状态……</p> : null}
         {view === 'setup' ? (
@@ -309,6 +325,15 @@ function Dashboard({
   const [streamFailed, setStreamFailed] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [savesRefreshKey, setSavesRefreshKey] = useState(0)
+
+  // Audit logs state
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditLoading, setAuditLoading] = useState(false)
+
+  // Health diagnostics state
+  const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([])
+  const [healthLoading, setHealthLoading] = useState(false)
 
   // Install flow state
   const [showInstallModal, setShowInstallModal] = useState(false)
@@ -503,6 +528,45 @@ function Dashboard({
       setDockerMessage(errorMessage(error))
     } finally {
       setDockerBusy(false)
+    }
+  }
+
+  async function loadAuditLogs() {
+    setAuditLoading(true)
+    try {
+      const res = await getAuditLogs(50, 0)
+      setAuditLogs(res.logs ?? [])
+      setAuditTotal(res.total ?? 0)
+    } catch {
+      // Silently fail — audit logs are admin-only.
+    } finally {
+      setAuditLoading(false)
+    }
+  }
+
+  async function loadHealthDiagnostics() {
+    setHealthLoading(true)
+    try {
+      const res = await getHealthDiagnostics()
+      setHealthChecks(res.checks ?? [])
+    } catch {
+      // Silently fail.
+    } finally {
+      setHealthLoading(false)
+    }
+  }
+
+  async function handleDownloadSupportBundle() {
+    try {
+      const { blob, filename } = await downloadSupportBundle()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setJobMessage(errorMessage(error))
     }
   }
 
@@ -813,6 +877,15 @@ function Dashboard({
               onStateRefresh={refreshState}
               refreshTrigger={savesRefreshKey}
             />
+            <ModsSection
+              state={state}
+              isAdmin={user.role === 'admin'}
+              refreshTrigger={savesRefreshKey}
+            />
+            <ConsoleSection
+              state={state}
+              isAdmin={user.role === 'admin'}
+            />
           </div>
           <div className="dashboard-main-right">
             <JobsSection
@@ -924,6 +997,68 @@ function Dashboard({
                     </div>
                   ))}
                 </div>
+              </section>
+            ) : null}
+
+            {/* Health Diagnostics */}
+            {user.role === 'admin' ? (
+              <section className="health-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>健康检查</h2>
+                    <p>检查面板各组件是否正常工作。</p>
+                  </div>
+                  <div className="section-heading-actions">
+                    <button className="button button-small" disabled={healthLoading} onClick={loadHealthDiagnostics} type="button">
+                      {healthLoading ? '检查中...' : '开始检查'}
+                    </button>
+                    <button className="button button-small" onClick={handleDownloadSupportBundle} type="button">
+                      导出诊断包
+                    </button>
+                  </div>
+                </div>
+                {healthChecks.length > 0 ? (
+                  <div className="health-checks">
+                    {healthChecks.map((c) => (
+                      <div key={c.name} className={`health-check health-check-${c.status}`}>
+                        <span className="health-check-icon">{c.status === 'ok' ? '✓' : c.status === 'warning' ? '⚠' : '✗'}</span>
+                        <span className="health-check-msg">{c.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {/* Audit Logs */}
+            {user.role === 'admin' ? (
+              <section className="audit-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>操作审计</h2>
+                    <p>最近 {auditTotal} 条操作记录。</p>
+                  </div>
+                  <button className="button button-small" disabled={auditLoading} onClick={loadAuditLogs} type="button">
+                    {auditLoading ? '加载中...' : '刷新'}
+                  </button>
+                </div>
+                {auditLogs.length > 0 ? (
+                  <div className="audit-table" role="table" aria-label="审计日志">
+                    <div className="audit-row audit-row-head" role="row">
+                      <span>时间</span><span>操作</span><span>操作者</span><span>目标</span>
+                    </div>
+                    {auditLogs.map((log) => (
+                      <div className="audit-row" key={log.id} role="row">
+                        <span title={log.createdAt}>{new Date(log.createdAt).toLocaleString()}</span>
+                        <span>{log.action}</span>
+                        <span>{log.actorName ?? '-'}</span>
+                        <span>{log.targetType}{log.targetId ? `/${log.targetId}` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-hint">暂无审计记录，点击「刷新」加载。</p>
+                )}
               </section>
             ) : null}
           </div>

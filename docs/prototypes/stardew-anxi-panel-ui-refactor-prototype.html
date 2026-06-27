@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stardew Anxi Panel UI Refactor Prototype</title>
+  <style>
+    :root {
+      --sky: #eaf6f7;
+      --grass: #dfeecf;
+      --paper: #fff3cf;
+      --paper-soft: #fff8e6;
+      --wood: #7b4a26;
+      --wood-dark: #4b2816;
+      --ink: #2f1d12;
+      --muted: #73583f;
+      --green: #3f8f3d;
+      --sky-accent: #287da8;
+      --gold: #d99a24;
+      --red: #b54837;
+      --line: #8f6a3f;
+      --shadow: 0 2px 0 rgba(75, 40, 22, .34);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--sky);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        linear-gradient(180deg, rgba(234, 246, 247, .96), rgba(223, 238, 207, .98)),
+        repeating-linear-gradient(90deg, rgba(75,40,22,.035) 0 1px, transparent 1px 24px);
+    }
+
+    .board {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 28px;
+      display: grid;
+      gap: 28px;
+    }
+
+    .title-strip {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: end;
+      padding: 20px 24px;
+      border: 2px solid var(--wood-dark);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 30px; line-height: 1.1; }
+    h2 { font-size: 18px; }
+    h3 { font-size: 14px; }
+    p { line-height: 1.55; }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper-soft);
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+    }
+
+    .app-frame {
+      min-height: 860px;
+      display: grid;
+      grid-template-columns: 228px minmax(0, 1fr);
+      border: 2px solid var(--wood-dark);
+      border-radius: 8px;
+      background: #f8ecd0;
+      overflow: hidden;
+      box-shadow: 0 16px 38px rgba(75, 40, 22, .18);
+    }
+
+    .nav {
+      background: linear-gradient(180deg, var(--wood-dark), #68401f);
+      color: #fff8e6;
+      padding: 18px 14px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border: 2px solid #f3c66b;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, transparent 47%, rgba(75,40,22,.35) 47% 53%, transparent 53%),
+        linear-gradient(0deg, #5fa64a 0 38%, #f0c36b 38% 58%, #8f5a2d 58%);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.16);
+    }
+    .brand strong { display: block; font-size: 14px; }
+    .brand span { display: block; margin-top: 2px; font-size: 11px; color: #dfcda6; }
+
+    .nav-list { display: grid; align-content: start; gap: 6px; }
+    .nav-item {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: #f9eccb;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .nav-item.active { background: rgba(255, 243, 207, .17); color: #fff; }
+    .nav-dot {
+      width: 18px;
+      height: 18px;
+      border: 2px solid currentColor;
+      border-radius: 5px;
+      opacity: .85;
+    }
+    .nav-count {
+      min-width: 22px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(217, 154, 36, .22);
+      color: #ffd88a;
+      text-align: center;
+      font-size: 11px;
+    }
+    .nav-foot {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 8px;
+      background: rgba(0,0,0,.16);
+      font-size: 12px;
+      color: #dfcda6;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 2px solid rgba(75,40,22,.16);
+      background: rgba(255, 248, 230, .78);
+    }
+
+    .status-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .status-pill.good { border-color: #78b66d; color: #1f6622; background: #e7f6dc; }
+    .status-pill.warn { border-color: #d99a24; color: #7b5209; background: #fff1c4; }
+    .status-pill.info { border-color: #7db7cd; color: #175d7a; background: #e1f3f8; }
+    .button {
+      min-height: 36px;
+      border: 1px solid var(--wood-dark);
+      border-radius: 8px;
+      background: var(--green);
+      color: #fff8e6;
+      padding: 8px 12px;
+      font-weight: 900;
+      box-shadow: var(--shadow);
+    }
+    .button.secondary { background: var(--wood); }
+    .button.danger { background: var(--red); }
+    .button.ghost { background: var(--paper-soft); color: var(--ink); }
+    .button.small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
+
+    .content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 318px;
+      gap: 18px;
+      padding: 18px;
+      background:
+        linear-gradient(180deg, rgba(234,246,247,.42), rgba(223,238,207,.55)),
+        repeating-linear-gradient(0deg, rgba(75,40,22,.025) 0 1px, transparent 1px 20px);
+      min-width: 0;
+    }
+
+    .main-stack, .rail, .screen-grid { display: grid; gap: 14px; align-content: start; min-width: 0; }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      min-width: 0;
+    }
+    .panel.soft { background: var(--paper-soft); }
+    .panel.dark {
+      background: #2d1b12;
+      border-color: #130b07;
+      color: #fff0c7;
+    }
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .panel-head p { margin-top: 4px; font-size: 12px; color: var(--muted); }
+
+    .hero-ops {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .server-state {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+      min-height: 260px;
+    }
+    .state-number {
+      font-size: 52px;
+      line-height: .9;
+      font-weight: 950;
+      color: #235f27;
+    }
+    .invite-box {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #78b66d;
+      border-radius: 8px;
+      background: #e7f6dc;
+    }
+    .invite-code {
+      font-size: 24px;
+      letter-spacing: 2px;
+      font-weight: 900;
+      color: #1f6622;
+    }
+    .preflight { display: grid; gap: 8px; }
+    .check {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px;
+      border-radius: 8px;
+      background: rgba(255,255,255,.48);
+      font-size: 13px;
+    }
+    .check .icon {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .check.warn .icon { background: var(--gold); }
+    .check.bad .icon { background: var(--red); }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .quick-card {
+      min-height: 112px;
+      display: grid;
+      gap: 8px;
+      align-content: space-between;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+    }
+    .quick-card strong { font-size: 14px; }
+    .quick-card p { color: var(--muted); font-size: 12px; }
+
+    .rail .panel { padding: 12px; }
+    .timeline { display: grid; gap: 10px; }
+    .event {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      font-size: 12px;
+    }
+    .event::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .event.warn::before { background: var(--gold); }
+    .event.bad::before { background: var(--red); }
+    .event strong { display: block; font-size: 13px; }
+    .event span { color: var(--muted); }
+
+    .mini-health {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .health-tile {
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+      font-size: 12px;
+    }
+    .health-tile strong { display: block; margin-top: 3px; }
+
+    .prototype-section {
+      display: grid;
+      gap: 14px;
+    }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: end;
+      padding: 0 4px;
+    }
+    .section-title h2 { font-size: 22px; }
+
+    .wide-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .wizard {
+      display: grid;
+      gap: 12px;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .step {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+      font-size: 12px;
+    }
+    .step.active { border-color: var(--sky-accent); background: #e1f3f8; }
+    .step.done { border-color: #78b66d; background: #e7f6dc; }
+    .progress {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(75,40,22,.16);
+      overflow: hidden;
+    }
+    .progress span {
+      display: block;
+      height: 100%;
+      width: var(--value);
+      background: var(--sky-accent);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      padding: 9px 8px;
+      border-bottom: 1px solid rgba(75,40,22,.14);
+      text-align: left;
+      white-space: nowrap;
+    }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    tr.active-row td { background: rgba(63,143,61,.11); }
+
+    .mod-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .mod-tile {
+      display: grid;
+      gap: 8px;
+      min-height: 112px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+    }
+    .mod-tile.error { border-color: var(--red); background: #ffe8df; }
+
+    .diagnostic-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .diagnostic {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+      font-size: 12px;
+    }
+    .diagnostic strong { display: block; margin-bottom: 5px; }
+    .diagnostic.bad { border-color: var(--red); background: #ffe8df; }
+
+    .mobile-note {
+      display: none;
+      padding: 12px;
+      border: 1px solid var(--sky-accent);
+      border-radius: 8px;
+      background: #e1f3f8;
+      color: #175d7a;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    @media (max-width: 1080px) {
+      .app-frame { grid-template-columns: 1fr; }
+      .nav { grid-template-rows: auto; grid-template-columns: 1fr; }
+      .nav-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .content, .hero-ops, .wide-grid { grid-template-columns: 1fr; }
+      .mobile-note { display: block; }
+    }
+
+    @media (max-width: 760px) {
+      .board { padding: 14px; }
+      .title-strip, .topbar, .quick-grid, .steps, .mod-grid, .diagnostic-grid, .mini-health {
+        grid-template-columns: 1fr;
+      }
+      .nav-list { grid-template-columns: 1fr 1fr; }
+      .state-number { font-size: 38px; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="board">
+    <header class="title-strip">
+      <div>
+        <h1>Stardew Anxi Panel UI Refactor Prototype</h1>
+        <p class="muted">V2 product blueprint: task-shaped operations console, not a long debug page.</p>
+      </div>
+      <div class="tag-row">
+        <span class="tag">Single Game Mode</span>
+        <span class="tag">React + TypeScript</span>
+        <span class="tag">JunimoServer Driver</span>
+      </div>
+    </header>
+
+    <section class="app-frame" aria-label="Overview dashboard prototype">
+      <aside class="nav">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>
+            <strong>Anxi Panel</strong>
+            <span>Stardew instance</span>
+          </div>
+        </div>
+        <nav class="nav-list" aria-label="Prototype navigation">
+          <div class="nav-item active"><span class="nav-dot"></span><span>Overview</span></div>
+          <div class="nav-item"><span class="nav-dot"></span><span>Install</span></div>
+          <div class="nav-item"><span class="nav-dot"></span><span>Saves</span><span class="nav-count">3</span></div>
+          <div class="nav-item"><span class="nav-dot"></span><span>Mods</span><span class="nav-count">8</span></div>
+          <div class="nav-item"><span class="nav-dot"></span><span>Console</span></div>
+          <div class="nav-item"><span class="nav-dot"></span><span>Troubleshoot</span><span class="nav-count">1</span></div>
+          <div class="nav-item"><span class="nav-dot"></span><span>Security</span></div>
+        </nav>
+        <div class="nav-foot">
+          <strong>admin</strong>
+          <span>v0.14.0 · local build</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div class="topbar">
+          <div class="status-line">
+            <span class="status-pill good">Running</span>
+            <span class="status-pill info">Active save: <span class="mono">RiverFarm_3314</span></span>
+            <span class="status-pill warn">Mod restart pending</span>
+          </div>
+          <button class="button ghost">Refresh</button>
+          <button class="button secondary">Logout</button>
+        </div>
+
+        <div class="content">
+          <div class="main-stack">
+            <div class="mobile-note">Mobile: left navigation collapses into a two-column menu; ops rail stacks below content.</div>
+
+            <section class="panel hero-ops">
+              <div class="server-state">
+                <div>
+                  <p class="muted">Primary operation</p>
+                  <div class="state-number">Online</div>
+                  <p>2 / 8 players · Year 2 Spring 12 · server has been stable for 4h 21m.</p>
+                </div>
+                <div class="invite-box">
+                  <div>
+                    <p class="muted">Invite code</p>
+                    <strong class="invite-code mono">ABCD-7429</strong>
+                  </div>
+                  <button class="button">Copy</button>
+                </div>
+                <div class="status-line">
+                  <button class="button secondary">Restart</button>
+                  <button class="button danger">Stop</button>
+                  <button class="button ghost">Open console</button>
+                </div>
+              </div>
+
+              <div class="preflight">
+                <div class="panel soft">
+                  <div class="panel-head">
+                    <div>
+                      <h2>Start preflight</h2>
+                      <p>Same surface as lifecycle actions, so users understand blockers before clicking.</p>
+                    </div>
+                  </div>
+                  <div class="check"><span class="icon">✓</span><span>Junimo installed</span><span class="status-pill good">OK</span></div>
+                  <div class="check"><span class="icon">✓</span><span>Active save exists</span><span class="mono">RiverFarm_3314</span></div>
+                  <div class="check warn"><span class="icon">!</span><span>Mods changed</span><span>restart after players leave</span></div>
+                  <div class="check"><span class="icon">✓</span><span>Docker server container</span><span class="status-pill good">healthy</span></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="quick-grid">
+              <div class="quick-card">
+                <strong>Save management</strong>
+                <p>Active save pinned; create/upload only when safe.</p>
+                <button class="button small ghost">View saves</button>
+              </div>
+              <div class="quick-card">
+                <strong>Mod maintenance</strong>
+                <p>8 installed, 1 parse warning, restart required.</p>
+                <button class="button small ghost">Review mods</button>
+              </div>
+              <div class="quick-card">
+                <strong>Console commands</strong>
+                <p>Run allowlisted Junimo commands, grouped by role.</p>
+                <button class="button small ghost">Open commands</button>
+              </div>
+            </section>
+          </div>
+
+          <aside class="rail">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Latest job</h2>
+                  <p>Always visible during long operations.</p>
+                </div>
+                <span class="status-pill good">done</span>
+              </div>
+              <div class="timeline">
+                <div class="event"><div><strong>Server restart</strong><span>completed 2 minutes ago</span></div></div>
+                <div class="event warn"><div><strong>Mod change detected</strong><span>restart banner is active</span></div></div>
+                <div class="event"><div><strong>Invite code fetched</strong><span>output came from FIFO command path</span></div></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Health</h2>
+                  <p>One glance before users dig into logs.</p>
+                </div>
+              </div>
+              <div class="mini-health">
+                <div class="health-tile">Docker<strong>OK</strong></div>
+                <div class="health-tile">Compose<strong>OK</strong></div>
+                <div class="health-tile">Data dir<strong>OK</strong></div>
+                <div class="health-tile">Active save<strong>OK</strong></div>
+              </div>
+            </section>
+
+            <section class="panel dark">
+              <div class="panel-head">
+                <div>
+                  <h2>Command output</h2>
+                  <p style="color:#c9b78e">Compact tail, full logs in Jobs.</p>
+                </div>
+              </div>
+              <pre class="mono" style="white-space:pre-wrap;margin:0;font-size:12px;line-height:1.5">--- Server Info ---
+Farm: River Farm
+Players: 2/8
+Invite: [REDACTED]</pre>
+            </section>
+          </aside>
+        </div>
+      </main>
+    </section>
+
+    <section class="prototype-section">
+      <div class="section-title">
+        <div>
+          <h2>Install Wizard</h2>
+          <p class="muted">The first-time flow becomes a decision-focused wizard; full logs move to the ops rail.</p>
+        </div>
+      </div>
+      <div class="wide-grid">
+        <div class="panel wizard">
+          <div class="steps">
+            <div class="step done"><strong>1 Prepare</strong><br><span>instance and image tag</span></div>
+            <div class="step done"><strong>2 Pull</strong><br><span>docker images</span></div>
+            <div class="step active"><strong>3 Steam</strong><br><span>Guard required</span></div>
+            <div class="step"><strong>4 Ready</strong><br><span>game files</span></div>
+          </div>
+          <div class="panel soft">
+            <div class="panel-head">
+              <div>
+                <h2>Steam Guard verification</h2>
+                <p>Choose only the current required decision. QR failure offers a safe fallback.</p>
+              </div>
+            </div>
+            <div class="status-line">
+              <button class="button">Approve in mobile app</button>
+              <button class="button secondary">Enter code</button>
+              <button class="button ghost">View technical logs</button>
+            </div>
+          </div>
+          <div class="progress" style="--value:72%"><span></span></div>
+          <p class="muted">72% · waiting for Steam auth response</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Install failure state</h2>
+              <p>Failures promote the next best action instead of leaving users in raw phase labels.</p>
+            </div>
+          </div>
+          <div class="check bad"><span class="icon">!</span><span>QR auth failed before QR generation</span><button class="button small">Use account/password</button></div>
+          <div class="check warn"><span class="icon">!</span><span>Pull stalled for 15 minutes</span><button class="button small ghost">Retry pull</button></div>
+          <div class="check"><span class="icon">✓</span><span>Credentials are stored in .env and redacted from logs</span><span>safe</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prototype-section">
+      <div class="section-title">
+        <div>
+          <h2>Saves and Mods</h2>
+          <p class="muted">Maintenance surfaces become dense, table-like, and safety-aware.</p>
+        </div>
+      </div>
+      <div class="wide-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Saves</h2>
+              <p>Active row pinned; destructive actions are secondary.</p>
+            </div>
+            <button class="button small">Upload save</button>
+          </div>
+          <table>
+            <thead><tr><th>Status</th><th>Save</th><th>Farm</th><th>Time</th><th>Map</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr class="active-row"><td>Active</td><td class="mono">RiverFarm_3314</td><td>河畔农场</td><td>Y2 春 12</td><td>Riverland</td><td><button class="button small ghost">Export</button></td></tr>
+              <tr><td>Ready</td><td class="mono">Meadow_8821</td><td>草地农场</td><td>Y1 夏 04</td><td>Meadowlands</td><td><button class="button small">Select</button></td></tr>
+              <tr><td>Backup</td><td class="mono">Forest_1201</td><td>森林小屋</td><td>Y3 冬 28</td><td>Forest</td><td><button class="button small ghost">Restore</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Mods</h2>
+              <p>Restart state is explicit and linked to lifecycle actions.</p>
+            </div>
+            <span class="status-pill warn">Restart required</span>
+          </div>
+          <div class="mod-grid">
+            <div class="mod-tile"><strong>Content Patcher</strong><span class="tag">OK</span><p class="muted">1.30.4 · installed</p></div>
+            <div class="mod-tile"><strong>Farm Type Manager</strong><span class="tag">OK</span><p class="muted">ready after restart</p></div>
+            <div class="mod-tile error"><strong>BrokenManifest</strong><span class="tag">parse error</span><p class="muted">manifest.json missing</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prototype-section">
+      <div class="section-title">
+        <div>
+          <h2>Troubleshoot and Security</h2>
+          <p class="muted">Advanced is split into task-specific pages: diagnostics versus admin control.</p>
+        </div>
+      </div>
+      <div class="wide-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Troubleshoot</h2>
+              <p>Health, Docker, failed jobs, and support bundle live together.</p>
+            </div>
+            <button class="button small">Export support bundle</button>
+          </div>
+          <div class="diagnostic-grid">
+            <div class="diagnostic"><strong>Docker daemon</strong>正常响应</div>
+            <div class="diagnostic"><strong>Compose file</strong>实例目录已就绪</div>
+            <div class="diagnostic bad"><strong>Latest failed job</strong>QR auth failed; fallback available</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Security</h2>
+              <p>Users and audit logs are no longer mixed with Docker debugging.</p>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th></tr></thead>
+            <tbody>
+              <tr><td>18:22</td><td>instance_restart</td><td>admin</td><td>stardew</td></tr>
+              <tr><td>18:15</td><td>mod_upload</td><td>admin</td><td>ContentPack.zip</td></tr>
+              <tr><td>17:58</td><td>auth_login</td><td>viewer</td><td>panel</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
