@@ -247,3 +247,38 @@ export type LifecycleJobResponse = {
   jobId: string
   saveName?: string
 }
+
+export type ModInfo = {
+  id: string
+  uniqueId?: string
+  name?: string
+  version?: string
+  author?: string
+  description?: string
+  folderName: string
+  parseError?: string
+}
+
+export type ModsListResult = {
+  mods: ModInfo[]
+  restartRequired?: boolean
+}
+
+export type ConsoleCommandDef = {
+  id: string
+  name: string
+  description: string
+  adminOnly: boolean
+}
+
+export type CommandsListResult = {
+  commands: ConsoleCommandDef[]
+}
+
+export type CommandRunResult = {
+  command: string
+  output?: string
+  error?: string
+  exitCode: number
+  durationMs: number
+}

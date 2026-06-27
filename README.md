@@ -10,7 +10,7 @@
 
 首个可上线版本默认使用 **Single Game Mode**：用户登录后直接进入 Stardew 面板，不显示总面板和游戏列表。内部仍按 `instances + driver_id + GameDriver` 设计，等开发第二个游戏面板时再开启 **Multi Game Mode**。
 
-> 当前状态：**Milestone 6: Stardew Junimo Prepare and Install 已完成**。Milestone 0-6 已完成。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry，以及 Stardew Junimo 的工作目录准备、Steam 认证和游戏安装流程；前端已支持安装向导、Steam 登录方式选择、Steam Guard 交互、二维码展示、下载进度和任务中心。服务器生命周期、启动前存档策略、完整存档管理、Mod 和控制台仍在后续 Milestone 中实现。
+> 当前状态：**Milestone 14: Release Candidate 已完成**。Milestone 0-14 已完成。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry、Stardew Junimo 的工作目录准备、Steam 认证、游戏安装、服务器生命周期、存档管理、Mod 管理、控制台命令、多阶段 Docker 镜像构建、操作审计、日志脱敏、备份恢复、健康检查诊断、版本信息、支持包导出和冒烟测试脚本。
 
 ## GitHub 描述
 
@@ -104,10 +104,14 @@ frontend/src/games/palworld       + backend/internal/games/palworld
 stardew-server-anxi-panel
 ├─ backend              Go API 服务
 ├─ frontend             React + TypeScript 前端
+├─ deploy               部署示例（docker-compose.yml）
 ├─ docs
 │  ├─ architecture.md   架构决策
+│  ├─ deployment.md     部署指南
 │  ├─ handoff-roadmap.md
 │  └─ prototypes        产品原型和说明
+├─ Dockerfile           多阶段构建
+├─ .dockerignore
 ├─ LICENSE
 ├─ README.en.md
 └─ README.md
@@ -349,6 +353,48 @@ http://localhost:5173
 - admin 可看到最小用户管理区域和 Docker 状态区域。
 - 普通 user 不显示用户管理、Docker 控制或测试任务按钮。
 
+## Docker 部署
+
+本项目支持构建为独立 Docker 镜像，用户只需 Docker Engine + Compose V2 即可运行面板。
+
+### 构建镜像
+
+```bash
+docker build -t stardew-server-anxi-panel:local .
+```
+
+### 运行容器
+
+```bash
+docker run -d \
+  --name anxi-panel \
+  -p 8090:8090 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v anxi-panel-data:/data \
+  stardew-server-anxi-panel:local
+```
+
+Windows Docker Desktop 用户命令相同（socket 通过 WSL2 转发）。
+
+### 使用 Docker Compose
+
+```bash
+cd deploy
+docker compose up -d
+```
+
+### 首次访问
+
+打开 `http://localhost:8090`，进入管理员初始化注册页。
+
+### 数据持久化
+
+所有面板数据存储在 `/data`，使用 named volume 挂载可在容器重建后保留。
+
+### 安全说明
+
+挂载 Docker Socket 等同于给面板容器宿主机 Docker 控制权。建议仅在受信任的内网环境运行，不要将端口暴露到公网。详见 [部署指南](docs/deployment.md)。
+
 ## 本机测试流程
 
 1. 启动后端：
@@ -471,6 +517,26 @@ go test ./...
 ```bash
 cd frontend
 npm run build
+```
+
+冒烟测试：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
+```
+
+## 构建带版本号镜像
+
+```powershell
+# 获取当前 commit hash
+$commit = git rev-parse --short HEAD
+$date = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
+
+# 构建
+docker build -t stardew-server-anxi-panel:1.0.0 `
+  --build-arg VERSION=1.0.0 `
+  --build-arg COMMIT=$commit `
+  --build-arg BUILD_DATE=$date .
 ```
 
 ## 文档

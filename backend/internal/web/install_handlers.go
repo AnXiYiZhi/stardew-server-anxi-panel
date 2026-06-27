@@ -24,7 +24,8 @@ var imageTagPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // Creates the working directory, docker-compose.yml, and .env template.
 // Requires admin.
 func (s *server) handleInstancePrepare(w http.ResponseWriter, r *http.Request, instanceID string) {
-	if _, ok := s.requireAdmin(w, r); !ok {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
 		return
 	}
 	instance, ok := s.loadInstance(w, r, instanceID)
@@ -38,7 +39,7 @@ func (s *server) handleInstancePrepare(w http.ResponseWriter, r *http.Request, i
 
 	if err := driver.Prepare(r.Context(), makeRegistryInstance(instance)); err != nil {
 		s.logger.Error("prepare failed", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "prepare_failed", "准备实例目录失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "prepare_failed", sanitizeErrorMsg(err, "准备实例目录失败"))
 		return
 	}
 
@@ -58,6 +59,7 @@ func (s *server) handleInstancePrepare(w http.ResponseWriter, r *http.Request, i
 		}
 	}
 
+	s.auditLog(r, &actor, "instance_prepare", "instance", instanceID, "{}")
 	writeJSON(w, http.StatusOK, makeInstanceStateResponse(instance))
 }
 
@@ -92,7 +94,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	if body.ReuseCredentials {
 		envVals, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "env_read_failed", "读取实例 .env 失败: "+err.Error())
+			writeError(w, http.StatusInternalServerError, "env_read_failed", sanitizeErrorMsg(err, "读取实例配置失败"))
 			return
 		}
 		body.SteamUsername = envVals["STEAM_USERNAME"]
@@ -128,7 +130,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	// Auto-prepare before install (idempotent: skips files that already exist).
 	if err := driver.Prepare(r.Context(), makeRegistryInstance(instance)); err != nil {
 		s.logger.Error("auto-prepare failed", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "prepare_failed", "准备实例目录失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "prepare_failed", sanitizeErrorMsg(err, "准备实例目录失败"))
 		return
 	}
 	if instance.State == storage.InstanceStateAdminCreated ||
@@ -157,12 +159,13 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	})
 	if err != nil {
 		s.logger.Error("install failed to start", "instance", instanceID, "error", err)
-		writeError(w, http.StatusInternalServerError, "install_failed", "安装任务启动失败: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "install_failed", sanitizeErrorMsg(err, "安装任务启动失败"))
 		return
 	}
 
 	// Log that install was requested (never log credentials).
 	s.logger.Info("install job started", "instance", instanceID, "job_id", job.ID, "actor", actor.User.ID)
+	s.auditLog(r, &actor, "instance_install", "instance", instanceID, auditMetadata("jobId", job.ID))
 
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
 }
@@ -218,7 +221,7 @@ func (s *server) handleInstanceSteamGuardInput(w http.ResponseWriter, r *http.Re
 	// trailing newline to be delivered to the application's Console.ReadLine().
 	input := body.Input + "\n"
 	if err := sender.SendSteamGuardInput(body.JobID, input); err != nil {
-		writeError(w, http.StatusConflict, "guard_input_failed", err.Error())
+		writeError(w, http.StatusConflict, "guard_input_failed", sanitizeError(err, "Steam Guard 输入失败"))
 		return
 	}
 

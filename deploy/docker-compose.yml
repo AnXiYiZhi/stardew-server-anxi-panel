@@ -1,0 +1,46 @@
+# Anxi Panel 部署示例
+#
+# 使用前请先构建镜像：
+#   docker build -t stardew-server-anxi-panel:local .
+#
+# 启动：
+#   docker compose up -d
+#
+# 查看日志：
+#   docker compose logs -f
+#
+# 停止：
+#   docker compose down
+#
+# 停止并删除数据卷（⚠️ 会丢失所有面板数据）：
+#   docker compose down -v
+
+services:
+  panel:
+    image: stardew-server-anxi-panel:local
+    # 构建带版本号的镜像：
+    #   docker compose build --build-arg VERSION=1.0.0 --build-arg COMMIT=$(git rev-parse --short HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    # 或直接：
+    #   docker build -t stardew-server-anxi-panel:1.0.0 --build-arg VERSION=1.0.0 --build-arg COMMIT=abc1234 --build-arg BUILD_DATE=2026-06-27 .
+    container_name: anxi-panel
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - panel-data:/data
+    environment:
+      # 生产环境建议设置一个随机长字符串作为 session secret。
+      # PANEL_SECRET=change-me-to-a-random-string
+      #
+      # 面板版本标识，显示在 /health 响应中。
+      # 构建镜像时通过 --build-arg VERSION=... 注入更佳。
+      # PANEL_VERSION=1.0.0
+      #
+      # 以下为默认值，通常无需修改：
+      # PANEL_ADDR=:8090
+      # PANEL_DATA_DIR=/data
+      # PANEL_MODE=single
+
+volumes:
+  panel-data:

@@ -1,4 +1,6 @@
 import type {
+  CommandRunResult,
+  CommandsListResult,
   ComposeLogsResponse,
   ComposePsResponse,
   DockerStatusResponse,
@@ -12,6 +14,7 @@ import type {
   JobResponse,
   JobsResponse,
   LifecycleJobResponse,
+  ModsListResult,
   NewGameConfig,
   PrepareResponse,
   PreflightResult,
@@ -248,6 +251,153 @@ export function deleteSave(name: string, instanceId = defaultInstanceId) {
     `/api/instances/${encodeURIComponent(instanceId)}/saves/${encodeURIComponent(name)}`,
     { method: 'DELETE' },
   )
+}
+
+export function exportSave(name: string, instanceId = defaultInstanceId) {
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/saves/${encodeURIComponent(name)}/export`, {
+    method: 'POST',
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : `${name}.zip`
+    return { blob, filename }
+  })
+}
+
+export function getMods(instanceId = defaultInstanceId) {
+  return request<ModsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods`)
+}
+
+export function uploadMod(file: File, instanceId = defaultInstanceId) {
+  const form = new FormData()
+  form.append('mod', file)
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/upload`, {
+    method: 'POST',
+    body: form,
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    return (await res.json()) as ModsListResult
+  })
+}
+
+export function deleteMod(modId: string, instanceId = defaultInstanceId) {
+  return request<{ ok: boolean }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/mods/${encodeURIComponent(modId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function exportMods(instanceId = defaultInstanceId) {
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/export`, {
+    method: 'POST',
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : 'stardew-mods.zip'
+    return { blob, filename }
+  })
+}
+
+export function getCommands(instanceId = defaultInstanceId) {
+  return request<CommandsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/commands`)
+}
+
+const COMMAND_TIMEOUT_MS = 40_000 // 40 seconds — backend has 30s, frontend adds margin
+
+export function runCommand(command: string, instanceId = defaultInstanceId) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), COMMAND_TIMEOUT_MS)
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/commands/run`,
+    { method: 'POST', body: { command }, signal: controller.signal },
+  ).finally(() => clearTimeout(timer))
+}
+
+export function sendSay(message: string, instanceId = defaultInstanceId) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), COMMAND_TIMEOUT_MS)
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/commands/say`,
+    { method: 'POST', body: { message }, signal: controller.signal },
+  ).finally(() => clearTimeout(timer))
+}
+
+// ── Version ──────────────────────────────────────────────────────────────────
+
+export interface VersionInfo {
+  version: string
+  commit?: string
+  buildDate?: string
+}
+
+export function getVersion() {
+  return request<VersionInfo>('/api/version')
+}
+
+// ── Support Bundle ──────────────────────────────────────────────────────────
+
+export function downloadSupportBundle(instanceId = defaultInstanceId) {
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/support-bundle`, {
+    method: 'POST',
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : 'support-bundle.zip'
+    return { blob, filename }
+  })
+}
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: number
+  actorUserId: number | null
+  actorName: string | null
+  action: string
+  targetType: string
+  targetId: string | null
+  metadataJson: string
+  ipAddress: string | null
+  userAgent: string | null
+  createdAt: string
+}
+
+export interface AuditLogsResponse {
+  logs: AuditLogEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export function getAuditLogs(limit = 50, offset = 0) {
+  return request<AuditLogsResponse>(`/api/audit-logs?limit=${limit}&offset=${offset}`)
+}
+
+// ── Health Diagnostics ────────────────────────────────────────────────────────
+
+export interface HealthCheck {
+  name: string
+  status: 'ok' | 'warning' | 'error'
+  message: string
+}
+
+export interface HealthDiagnosticsResponse {
+  status: string
+  checks: HealthCheck[]
+}
+
+export function getHealthDiagnostics() {
+  return request<HealthDiagnosticsResponse>('/api/health/diagnostics')
 }
 
 async function toApiError(response: Response): Promise<ApiError> {

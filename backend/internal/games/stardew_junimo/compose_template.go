@@ -61,6 +61,7 @@ const junimoComposeTemplate = `services:
       - ./.local-container/settings:/data/settings
       - ./.local-container/control:/data/control
       - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
+      - ./.local-container/mods:/data/Mods
 
 volumes:
   steam-session:

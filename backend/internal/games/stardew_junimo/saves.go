@@ -332,40 +332,9 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 	}
 	defer func() { _ = zr.Close() }()
 
-	// Security checks: zip-slip, absolute paths, symlinks, size bomb.
-	var totalUncompressed uint64
-	for _, f := range zr.File {
-		if f.FileInfo().Mode()&fs.ModeSymlink != 0 {
-			return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 包含符号链接，拒绝处理")
-		}
-		name := filepath.ToSlash(f.Name)
-		if filepath.IsAbs(name) || strings.HasPrefix(name, "/") {
-			return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 包含绝对路径 %q", f.Name)
-		}
-		// Reject path traversal at the segment level.
-		// filepath.Clean normalizes "foo/../bar" to "bar", so we must check
-		// the raw segments before cleaning.
-		// Trim trailing "/" so directory entries like "FarmerName_12345/"
-		// don't produce a trailing empty segment.
-		trimmed := strings.TrimSuffix(name, "/")
-		for _, seg := range strings.Split(trimmed, "/") {
-			if seg == ".." {
-				return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 包含目录穿越 (..)", f.Name)
-			}
-			if seg == "." {
-				return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 包含无效的当前目录引用 (.)", f.Name)
-			}
-			if seg == "" {
-				return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 路径 %q 包含空路径段", f.Name)
-			}
-		}
-		totalUncompressed += f.UncompressedSize64
-		if f.UncompressedSize64 > maxSingleFileBytes {
-			return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 内单个文件超过 %d MB", maxSingleFileBytes/1024/1024)
-		}
-		if totalUncompressed > maxUncompressedBytes {
-			return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 解压总大小超过 %d MB", maxUncompressedBytes/1024/1024)
-		}
+	// Security checks: symlinks, absolute paths, traversal, size bomb.
+	if err := validateZipEntries(zr.File); err != nil {
+		return "", registry.SaveInfo{}, "", err
 	}
 
 	// Detect save folder name: find the top-level directory.
@@ -424,11 +393,49 @@ func detectSaveFolderName(zr *zip.ReadCloser) (string, error) {
 	return "", fmt.Errorf("无法确定存档文件夹名")
 }
 
+// validateZipEntries performs full security validation on ZIP entries:
+// symlinks, absolute paths, path traversal (..), empty segments,
+// single-file size limit, and total uncompressed size limit.
+// Call this before extractZipSecure to reject malicious archives early.
+func validateZipEntries(files []*zip.File) error {
+	var totalUncompressed uint64
+	for _, f := range files {
+		if f.FileInfo().Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("ZIP 包含符号链接，拒绝处理")
+		}
+		name := filepath.ToSlash(f.Name)
+		if filepath.IsAbs(name) || strings.HasPrefix(name, "/") {
+			return fmt.Errorf("ZIP 包含绝对路径 %q", f.Name)
+		}
+		trimmed := strings.TrimSuffix(name, "/")
+		for _, seg := range strings.Split(trimmed, "/") {
+			if seg == ".." {
+				return fmt.Errorf("ZIP 路径 %q 包含目录穿越 (..)", f.Name)
+			}
+			if seg == "." {
+				return fmt.Errorf("ZIP 路径 %q 包含无效的当前目录引用 (.)", f.Name)
+			}
+			if seg == "" {
+				return fmt.Errorf("ZIP 路径 %q 包含空路径段", f.Name)
+			}
+		}
+		totalUncompressed += f.UncompressedSize64
+		if f.UncompressedSize64 > maxSingleFileBytes {
+			return fmt.Errorf("ZIP 内单个文件超过 %d MB", maxSingleFileBytes/1024/1024)
+		}
+		if totalUncompressed > maxUncompressedBytes {
+			return fmt.Errorf("ZIP 解压总大小超过 %d MB", maxUncompressedBytes/1024/1024)
+		}
+	}
+	return nil
+}
+
 // extractZipSecure extracts zr into destDir, verifying no path escapes during extraction.
+// Caller must have already validated entries with validateZipEntries.
 func extractZipSecure(zr *zip.ReadCloser, destDir string) error {
 	for _, f := range zr.File {
 		if f.FileInfo().Mode()&fs.ModeSymlink != 0 {
-			continue // already rejected by pre-check, skip defensively
+			continue // already rejected by validateZipEntries, skip defensively
 		}
 		outPath := filepath.Join(destDir, filepath.FromSlash(f.Name))
 		if !strings.HasPrefix(filepath.Clean(outPath)+string(os.PathSeparator), filepath.Clean(destDir)+string(os.PathSeparator)) {
@@ -979,6 +986,130 @@ func DeleteSave(dataDir, saveName string) error {
 	return nil
 }
 
+// ExportSaveZip creates a ZIP archive of a single save folder.
+// The ZIP filename follows the pattern: saveName_游戏时间.zip
+// e.g. "FarmerName_12345_1年_春_1日.zip"
+func ExportSaveZip(dataDir, saveName string) (string, error) {
+	if err := validateSaveName(saveName); err != nil {
+		return "", err
+	}
+	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
+	saveDir := filepath.Join(savesRoot, saveName)
+	info, err := os.Stat(saveDir)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("存档 %q 不存在", saveName)
+	}
+	if err != nil {
+		return "", fmt.Errorf("检查存档 %q 失败: %w", saveName, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("存档 %q 不是目录", saveName)
+	}
+
+	// Parse save info for the filename.
+	si := readSaveInfo(saveDir)
+	zipName := buildSaveZipName(saveName, si)
+	tmpPath := filepath.Join(os.TempDir(), zipName)
+
+	zf, err := os.Create(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("创建 ZIP 文件: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = zf.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	w := zip.NewWriter(zf)
+	err = filepath.WalkDir(saveDir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relPath, err := filepath.Rel(savesRoot, path)
+		if err != nil {
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		// Skip hidden files and temp files.
+		name := d.Name()
+		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			_, err := w.Create(relPath + "/")
+			return err
+		}
+
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		header, err := zip.FileInfoHeader(fi)
+		if err != nil {
+			return err
+		}
+		header.Name = relPath
+		header.Method = zip.Deflate
+
+		writer, err := w.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = file.Close() }()
+		_, err = io.Copy(writer, file)
+		return err
+	})
+
+	if err := w.Close(); err != nil {
+		_ = zf.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("关闭 ZIP: %w", err)
+	}
+	if err := zf.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("关闭文件: %w", err)
+	}
+
+	return tmpPath, nil
+}
+
+// buildSaveZipName constructs a human-readable ZIP filename for a save export.
+// Pattern: saveName_游戏时间.zip  e.g. "FarmerName_12345_1年_春_1日.zip"
+func buildSaveZipName(saveName string, info registry.SaveInfo) string {
+	sanitized := strings.ReplaceAll(saveName, " ", "_")
+	if info.GameYear > 0 && info.GameSeason != "" && info.GameDay > 0 {
+		seasonCN := seasonLabelCN(info.GameSeason)
+		return fmt.Sprintf("%s_%d年_%s_%d日.zip", sanitized, info.GameYear, seasonCN, info.GameDay)
+	}
+	return fmt.Sprintf("%s.zip", sanitized)
+}
+
+func seasonLabelCN(season string) string {
+	switch season {
+	case "spring":
+		return "春"
+	case "summer":
+		return "夏"
+	case "fall":
+		return "秋"
+	case "winter":
+		return "冬"
+	default:
+		return season
+	}
+}
+
 // HasTemplates returns true if at least one save template directory exists.
 func HasTemplates(dataDir string) bool {
 	tDir := savesTemplatesDir(dataDir)
@@ -992,4 +1123,287 @@ func HasTemplates(dataDir string) bool {
 		}
 	}
 	return false
+}
+
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+
+// backupsDir returns the path to the saves backup directory.
+func backupsDir(dataDir string) string {
+	return filepath.Join(dataDir, ".local-container", "backups", "saves")
+}
+
+// BackupInfo describes a single backup file.
+type BackupInfo struct {
+	Name      string `json:"name"`
+	SaveName  string `json:"saveName"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// BackupSave creates a ZIP backup of the specified save in the backups directory.
+// The backup filename includes the save name and a timestamp.
+// Returns the backup file path on success.
+func BackupSave(dataDir, saveName string) (string, error) {
+	if err := validateSaveName(saveName); err != nil {
+		return "", err
+	}
+	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
+	saveDir := filepath.Join(savesRoot, saveName)
+	info, err := os.Stat(saveDir)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("存档 %q 不存在，无法备份", saveName)
+	}
+	if err != nil {
+		return "", fmt.Errorf("检查存档 %q 失败: %w", saveName, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("存档 %q 不是目录", saveName)
+	}
+
+	backupDir := backupsDir(dataDir)
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return "", fmt.Errorf("创建备份目录失败: %w", err)
+	}
+
+	timestamp := time.Now().UTC().Format("20060102-150405")
+	backupName := fmt.Sprintf("%s_%s.zip", saveName, timestamp)
+	backupPath := filepath.Join(backupDir, backupName)
+
+	zf, err := os.Create(backupPath)
+	if err != nil {
+		return "", fmt.Errorf("创建备份文件失败: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = zf.Close()
+			_ = os.Remove(backupPath)
+		}
+	}()
+
+	w := zip.NewWriter(zf)
+	err = filepath.WalkDir(saveDir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relPath, err := filepath.Rel(savesRoot, path)
+		if err != nil {
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		name := d.Name()
+		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			_, err := w.Create(relPath + "/")
+			return err
+		}
+
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		header, err := zip.FileInfoHeader(fi)
+		if err != nil {
+			return err
+		}
+		header.Name = relPath
+		header.Method = zip.Deflate
+
+		writer, err := w.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = file.Close() }()
+		_, err = io.Copy(writer, file)
+		return err
+	})
+
+	if err := w.Close(); err != nil {
+		_ = zf.Close()
+		_ = os.Remove(backupPath)
+		return "", fmt.Errorf("关闭备份 ZIP 失败: %w", err)
+	}
+	if err := zf.Close(); err != nil {
+		_ = os.Remove(backupPath)
+		return "", fmt.Errorf("关闭备份文件失败: %w", err)
+	}
+	if err != nil {
+		return "", err
+	}
+	return backupPath, nil
+}
+
+// DeleteSaveWithBackup creates a backup before deleting the save.
+// If the backup fails, the delete is aborted to prevent unrecoverable data loss.
+func DeleteSaveWithBackup(dataDir, saveName string) (backupPath string, err error) {
+	// Attempt backup first — failure blocks deletion.
+	backupPath, backupErr := BackupSave(dataDir, saveName)
+	if backupErr != nil {
+		return "", fmt.Errorf("备份失败，已中止删除以保护数据: %w", backupErr)
+	}
+	// Delete the save.
+	if err := DeleteSave(dataDir, saveName); err != nil {
+		return backupPath, err
+	}
+	return backupPath, nil
+}
+
+// ListBackups returns all backup files in the backups directory.
+func ListBackups(dataDir string) ([]BackupInfo, error) {
+	backupDir := backupsDir(dataDir)
+	entries, err := os.ReadDir(backupDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取备份目录失败: %w", err)
+	}
+
+	var backups []BackupInfo
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".zip") {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		saveName := parseBackupSaveName(e.Name())
+		backups = append(backups, BackupInfo{
+			Name:      e.Name(),
+			SaveName:  saveName,
+			Size:      fi.Size(),
+			CreatedAt: fi.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+	return backups, nil
+}
+
+// RestoreBackup restores a backup ZIP to a save directory.
+// If a save with the same name already exists and overwrite is false, returns ErrConflict.
+// When overwriting, the old save is backed up first, then the backup is extracted
+// to a temporary directory and atomically moved into place. This prevents data loss
+// if extraction fails midway.
+func RestoreBackup(dataDir, backupName string, overwrite bool) (string, error) {
+	// Validate backup name — must be a simple filename, no path separators.
+	if backupName == "" || strings.ContainsAny(backupName, "/\\:") {
+		return "", fmt.Errorf("备份文件名不合法")
+	}
+	if strings.Contains(backupName, "..") {
+		return "", fmt.Errorf("备份文件名不合法")
+	}
+
+	backupPath := filepath.Join(backupsDir(dataDir), backupName)
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("备份文件 %q 不存在", backupName)
+	}
+
+	// Open the ZIP to detect the save name.
+	zr, err := zip.OpenReader(backupPath)
+	if err != nil {
+		return "", fmt.Errorf("打开备份 ZIP 失败: %w", err)
+	}
+
+	// Full security validation before any extraction.
+	if err := validateZipEntries(zr.File); err != nil {
+		_ = zr.Close()
+		return "", err
+	}
+
+	saveName, err := detectSaveFolderName(zr)
+	if err != nil {
+		_ = zr.Close()
+		return "", fmt.Errorf("无法从备份中识别存档名: %w", err)
+	}
+	if err := validateSaveName(saveName); err != nil {
+		_ = zr.Close()
+		return "", fmt.Errorf("备份中的存档名不合法: %w", err)
+	}
+
+	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
+	targetDir := filepath.Join(savesRoot, saveName)
+
+	// Check for existing save.
+	if _, err := os.Stat(targetDir); err == nil {
+		if !overwrite {
+			_ = zr.Close()
+			return saveName, fmt.Errorf("存档 %q 已存在，请使用覆盖选项或先删除已有存档", saveName)
+		}
+		// Backup existing save before overwriting.
+		if _, backupErr := BackupSave(dataDir, saveName); backupErr != nil {
+			_ = zr.Close()
+			return "", fmt.Errorf("覆盖前备份已有存档失败，已中止恢复以保护数据: %w", backupErr)
+		}
+	}
+
+	// Close and re-open the ZIP before extraction to ensure a clean read state.
+	// This avoids issues on some platforms where iterating zr.File headers
+	// can affect the underlying reader state.
+	_ = zr.Close()
+	zr, err = zip.OpenReader(backupPath)
+	if err != nil {
+		return "", fmt.Errorf("重新打开备份 ZIP 失败: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+
+	// Extract to a temporary directory first — atomic approach.
+	tempDir, err := os.MkdirTemp(savesRoot, ".restore-tmp-*")
+	if err != nil {
+		return "", fmt.Errorf("创建临时目录失败: %w", err)
+	}
+	success := false
+	defer func() {
+		if !success {
+			_ = os.RemoveAll(tempDir)
+		}
+	}()
+
+	if err := extractZipSecure(zr, tempDir); err != nil {
+		return "", fmt.Errorf("解压备份失败: %w", err)
+	}
+
+	// Verify the extracted save is valid (contains SaveGameInfo).
+	extractedSave := filepath.Join(tempDir, saveName)
+	if _, err := os.Stat(filepath.Join(extractedSave, "SaveGameInfo")); err != nil {
+		return "", fmt.Errorf("恢复的存档缺少 SaveGameInfo，可能不是有效的 Stardew 存档")
+	}
+
+	// Atomic replace: remove old, move new into place.
+	if _, err := os.Stat(targetDir); err == nil {
+		if err := os.RemoveAll(targetDir); err != nil {
+			return "", fmt.Errorf("删除已有存档失败: %w", err)
+		}
+	}
+	if err := os.Rename(extractedSave, targetDir); err != nil {
+		return "", fmt.Errorf("移动恢复存档到目标位置失败: %w", err)
+	}
+
+	success = true
+	return saveName, nil
+}
+
+// parseBackupSaveName extracts the save name from a backup filename like
+// "SaveName_20260627-150405.zip" → "SaveName".
+func parseBackupSaveName(filename string) string {
+	name := strings.TrimSuffix(filename, ".zip")
+	// Find the last underscore followed by a timestamp pattern.
+	idx := strings.LastIndex(name, "_")
+	if idx > 0 {
+		candidate := name[idx+1:]
+		// Check if it looks like a timestamp (digits and hyphens).
+		if len(candidate) >= 15 && strings.ContainsAny(candidate, "0123456789-") {
+			return name[:idx]
+		}
+	}
+	return name
 }

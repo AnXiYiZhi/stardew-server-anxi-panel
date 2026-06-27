@@ -119,6 +119,11 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "已移除旧版运行时素材导出服务；前端将使用随镜像发布的素材。")
 	}
+	if changed, err := migrateModsCompose(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
+		return fmt.Errorf("migrate mods compose mount: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已添加 mods 目录挂载到 docker-compose.yml。")
+	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 		"正在检查 Junimo 镜像，请稍候...", "pull_running", jobCtx.ID)

@@ -388,6 +388,68 @@ func (s *Store) CreateAuditLog(ctx context.Context, params AuditLogParams) error
 	return createAuditLog(ctx, s.db, params)
 }
 
+// AuditLogEntry represents a single audit log record for API responses.
+type AuditLogEntry struct {
+	ID           int64   `json:"id"`
+	ActorUserID  *int64  `json:"actorUserId"`
+	ActorName    *string `json:"actorName"`
+	Action       string  `json:"action"`
+	TargetType   string  `json:"targetType"`
+	TargetID     *string `json:"targetId"`
+	MetadataJSON string  `json:"metadataJson"`
+	IPAddress    *string `json:"ipAddress"`
+	UserAgent    *string `json:"userAgent"`
+	CreatedAt    string  `json:"createdAt"`
+}
+
+// ListAuditLogsParams controls pagination and filtering for audit log queries.
+type ListAuditLogsParams struct {
+	Limit  int
+	Offset int
+}
+
+// ListAuditLogs returns recent audit logs with actor username joined.
+func (s *Store) ListAuditLogs(ctx context.Context, params ListAuditLogsParams) ([]AuditLogEntry, int, error) {
+	if params.Limit <= 0 || params.Limit > 200 {
+		params.Limit = 50
+	}
+	if params.Offset < 0 {
+		params.Offset = 0
+	}
+
+	var total int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_logs`).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count audit logs: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.id, a.actor_user_id, u.username, a.action, a.target_type, a.target_id,
+		       a.metadata_json, a.ip_address, a.user_agent, a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id = a.actor_user_id
+		ORDER BY a.id DESC
+		LIMIT ? OFFSET ?
+	`, params.Limit, params.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list audit logs: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []AuditLogEntry
+	for rows.Next() {
+		var e AuditLogEntry
+		if err := rows.Scan(&e.ID, &e.ActorUserID, &e.ActorName, &e.Action, &e.TargetType, &e.TargetID,
+			&e.MetadataJSON, &e.IPAddress, &e.UserAgent, &e.CreatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scan audit log: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("audit logs rows: %w", err)
+	}
+	return entries, total, nil
+}
+
 func adminExistsTx(ctx context.Context, tx *sql.Tx) (bool, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE role = ? AND is_active = 1`, auth.RoleAdmin).Scan(&count); err != nil {

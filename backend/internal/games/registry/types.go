@@ -204,6 +204,18 @@ type SavesListResult struct {
 }
 
 type ModInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string `json:"id"`
+	UniqueID    string `json:"uniqueId,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Author      string `json:"author,omitempty"`
+	Description string `json:"description,omitempty"`
+	FolderName  string `json:"folderName"`
+	ParseError  string `json:"parseError,omitempty"`
+}
+
+// ModsListResult is returned by GET .../mods.
+type ModsListResult struct {
+	Mods            []ModInfo `json:"mods"`
+	RestartRequired bool      `json:"restartRequired,omitempty"`
 }

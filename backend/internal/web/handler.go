@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/static"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -100,6 +102,12 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleHealth(w, r)
+	case "/api/version":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleVersion(w, r)
 	case "/api/setup/status":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -148,6 +156,10 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleTestJob(w, r, true)
 	case "/api/instances":
 		s.handleInstances(w, r)
+	case "/api/audit-logs":
+		s.handleAuditLogs(w, r)
+	case "/api/health/diagnostics":
+		s.handleHealthDiagnostics(w, r)
 	case "/api/docker/status":
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -179,12 +191,108 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 			s.handleInstanceByID(w, r)
 			return
 		}
-		writeError(w, http.StatusNotFound, "not_found", "resource not found")
+		s.serveStatic(w, r)
 	}
 }
 
 func (s *server) isSetupAllowed(r *http.Request) bool {
-	return r.URL.Path == "/health" || r.URL.Path == "/api/setup/status" || r.URL.Path == "/api/setup/admin"
+	p := r.URL.Path
+	return p == "/health" || p == "/api/setup/status" || p == "/api/setup/admin" || p == "/api/version" ||
+		p == "/" || p == "/index.html" || strings.HasPrefix(p, "/assets/") || p == "/favicon.ico"
+}
+
+// isStaticAsset returns true for paths that refer to concrete static assets
+// (JS bundles, CSS, images, fonts, favicon). These should return 404 when
+// missing rather than falling back to index.html.
+func isStaticAsset(p string) bool {
+	if strings.HasPrefix(p, "assets/") {
+		return true
+	}
+	switch p {
+	case "favicon.ico", "index.html":
+		return true
+	}
+	// Common asset file extensions.
+	for _, ext := range []string{".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".map"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// serveStatic serves the embedded frontend build. For known asset paths it
+// returns 404 if the file is missing; for all other paths it falls back to
+// index.html so the SPA router can handle client-side routes.
+func (s *server) serveStatic(w http.ResponseWriter, r *http.Request) {
+	sub, err := fs.Sub(static.FS, "frontend_dist")
+	if err != nil {
+		s.logger.Error("failed to access embedded frontend", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+
+	p := strings.TrimPrefix(r.URL.Path, "/")
+	if p == "" {
+		p = "index.html"
+	}
+
+	// Try to serve the requested file.
+	data, err := fs.ReadFile(sub, p)
+	if err == nil {
+		w.Header().Set("Content-Type", detectContentType(p, data))
+		w.Write(data)
+		return
+	}
+
+	// File not found — known asset paths get 404, page routes get SPA fallback.
+	if isStaticAsset(p) {
+		writeError(w, http.StatusNotFound, "not_found", "资源不存在")
+		return
+	}
+
+	data, err = fs.ReadFile(sub, "index.html")
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "resource not found")
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
+func detectContentType(path string, data []byte) string {
+	if strings.HasSuffix(path, ".js") {
+		return "application/javascript"
+	}
+	if strings.HasSuffix(path, ".css") {
+		return "text/css"
+	}
+	if strings.HasSuffix(path, ".html") {
+		return "text/html; charset=utf-8"
+	}
+	if strings.HasSuffix(path, ".json") {
+		return "application/json"
+	}
+	if strings.HasSuffix(path, ".svg") {
+		return "image/svg+xml"
+	}
+	if strings.HasSuffix(path, ".png") {
+		return "image/png"
+	}
+	if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
+		return "image/jpeg"
+	}
+	if strings.HasSuffix(path, ".ico") {
+		return "image/x-icon"
+	}
+	if strings.HasSuffix(path, ".woff2") {
+		return "font/woff2"
+	}
+	if strings.HasSuffix(path, ".woff") {
+		return "font/woff"
+	}
+	// Fallback to Go's built-in detection.
+	return http.DetectContentType(data)
 }
 
 func normalizeConfig(cfg config.Config) config.Config {
@@ -210,10 +318,12 @@ func normalizeConfig(cfg config.Config) config.Config {
 }
 
 type healthResponse struct {
-	Status   string         `json:"status"`
-	Service  string         `json:"service"`
-	Version  string         `json:"version"`
-	Database healthDatabase `json:"database"`
+	Status    string         `json:"status"`
+	Service   string         `json:"service"`
+	Version   string         `json:"version"`
+	Commit    string         `json:"commit,omitempty"`
+	BuildDate string         `json:"buildDate,omitempty"`
+	Database  healthDatabase `json:"database"`
 }
 
 type healthDatabase struct {
@@ -223,9 +333,11 @@ type healthDatabase struct {
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	statusCode := http.StatusOK
 	response := healthResponse{
-		Status:  "ok",
-		Service: serviceName,
-		Version: s.config.Version,
+		Status:    "ok",
+		Service:   serviceName,
+		Version:   s.config.Version,
+		Commit:    s.config.Commit,
+		BuildDate: s.config.BuildDate,
 		Database: healthDatabase{
 			Status: "ok",
 		},
@@ -239,6 +351,20 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, statusCode, response)
+}
+
+type versionResponse struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit,omitempty"`
+	BuildDate string `json:"buildDate,omitempty"`
+}
+
+func (s *server) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, versionResponse{
+		Version:   s.config.Version,
+		Commit:    s.config.Commit,
+		BuildDate: s.config.BuildDate,
+	})
 }
 
 type errorResponse struct {

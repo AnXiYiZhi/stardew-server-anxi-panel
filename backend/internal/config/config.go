@@ -5,6 +5,14 @@ import (
 	"path/filepath"
 )
 
+// Build-time variables set via -ldflags. These override the corresponding
+// environment variables when non-empty.
+var (
+	buildVersion string
+	buildCommit  string
+	buildDate    string
+)
+
 const (
 	DefaultAddr       = ":8090"
 	DefaultDataDir    = "/data"
@@ -23,21 +31,39 @@ type Config struct {
 	DBPath            string
 	Secret            string
 	Version           string
+	Commit            string
+	BuildDate         string
 	PanelMode         string
 	DefaultInstanceID string
 	DefaultDriverID   string
 }
 
 // Load reads panel configuration from environment variables and applies defaults.
+// Build-time ldflags take precedence over environment variables for version metadata.
 func Load() Config {
 	dataDir := getEnv("PANEL_DATA_DIR", DefaultDataDir)
+
+	version := getEnv("PANEL_VERSION", DefaultVersion)
+	if buildVersion != "" {
+		version = buildVersion
+	}
+	commit := getEnv("PANEL_COMMIT", "")
+	if buildCommit != "" {
+		commit = buildCommit
+	}
+	buildDateVal := getEnv("PANEL_BUILD_DATE", "")
+	if buildDate != "" {
+		buildDateVal = buildDate
+	}
 
 	return Config{
 		Addr:              getEnv("PANEL_ADDR", DefaultAddr),
 		DataDir:           dataDir,
 		DBPath:            getEnv("PANEL_DB_PATH", filepath.Join(dataDir, "panel.db")),
 		Secret:            os.Getenv("PANEL_SECRET"),
-		Version:           getEnv("PANEL_VERSION", DefaultVersion),
+		Version:           version,
+		Commit:            commit,
+		BuildDate:         buildDateVal,
 		PanelMode:         panelMode(getEnv("PANEL_MODE", DefaultPanelMode)),
 		DefaultInstanceID: getEnv("DEFAULT_INSTANCE_ID", DefaultInstanceID),
 		DefaultDriverID:   getEnv("DEFAULT_DRIVER_ID", DefaultDriverID),

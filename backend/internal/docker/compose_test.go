@@ -115,7 +115,7 @@ func TestRunCapturesFailure(t *testing.T) {
 	if result.ExitCode != 9 {
 		t.Fatalf("expected exit code 9, got %d", result.ExitCode)
 	}
-	if strings.Contains(result.Stderr, "secret") || !strings.Contains(result.Stderr, redacted) {
+	if strings.Contains(result.Stderr, "secret") || !strings.Contains(result.Stderr, Redacted) {
 		t.Fatalf("expected stderr to be redacted, got %q", result.Stderr)
 	}
 }
