@@ -46,6 +46,7 @@ import { InstanceStateCard } from './games/stardew/InstanceStateCard'
 import { InstallSection, emptyInstallForm } from './games/stardew/InstallSection'
 import type { InstallFormState } from './games/stardew/InstallSection'
 import { LifecycleSection } from './games/stardew/LifecycleSection'
+import { SavesSection } from './games/stardew/SavesSection'
 import { JobsSection } from './games/stardew/JobsSection'
 import { DockerSection } from './games/stardew/DockerSection'
 import {
@@ -306,6 +307,8 @@ function Dashboard({
   const [jobMessage, setJobMessage] = useState('')
   const [jobBusy, setJobBusy] = useState(false)
   const [streamFailed, setStreamFailed] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [savesRefreshKey, setSavesRefreshKey] = useState(0)
 
   // Install flow state
   const [showInstallModal, setShowInstallModal] = useState(false)
@@ -383,6 +386,8 @@ function Dashboard({
       setSelectedJob(nextJob)
       void refreshJobs()
       void refreshState()
+      // Trigger saves list refresh after any job completes (create/upload/select-and-start).
+      setSavesRefreshKey((k) => k + 1)
       setActiveInstallJobId((current) => current === nextJob.id ? null : current)
       source.close()
     })
@@ -734,18 +739,24 @@ function Dashboard({
     return { ...latest, percent: Math.round((latest.done / latest.total) * 100) }
   }
 
+  const jobStarted = (jobId: string) => {
+    void getJob(jobId).then((r) => setSelectedJob(r.job))
+    void refreshJobs()
+  }
+
   return (
     <div className="dashboard-grid">
-      <div className="status-card">
-        <span>当前用户</span>
-        <strong>{user.username}</strong>
-        <small>{user.role === 'admin' ? '管理员' : '普通用户'}</small>
+      {/* ── 顶部状态摘要 ──────────────────────────────────── */}
+      <div className="dashboard-status-row">
+        <div className="status-card">
+          <span>当前用户</span>
+          <strong>{user.username}</strong>
+          <small>{user.role === 'admin' ? '管理员' : '普通用户'}</small>
+        </div>
+        <InstanceStateCard state={displayInstanceState} onRefresh={refreshState} />
       </div>
 
-      {/* Stardew 实例状态卡 */}
-      <InstanceStateCard state={displayInstanceState} onRefresh={refreshState} />
-
-      {/* 安装区域（仅 admin） */}
+      {/* ── 安装区域（仅 admin，未安装时显示） ──────────────── */}
       {user.role === 'admin' ? (
         <InstallSection
           state={state}
@@ -785,113 +796,146 @@ function Dashboard({
         />
       ) : null}
 
-      {/* 生命周期区域：game_installed 之后全部用户可见 */}
+      {/* ── 主操作区：生命周期 + 存档管理 | 任务日志 ──────── */}
       {isInstalled ? (
-        <LifecycleSection
-          state={state}
-          isAdmin={user.role === 'admin'}
-          onJobStarted={(jobId) => {
-            void getJob(jobId).then((r) => setSelectedJob(r.job))
-            void refreshJobs()
-          }}
-          onStateRefresh={refreshState}
-        />
-      ) : null}
-
-      <JobsSection
-        user={user}
-        jobs={jobs}
-        selectedJob={selectedJob}
-        logs={jobLogs}
-        busy={jobBusy}
-        message={jobMessage}
-        onRefresh={refreshJobs}
-        onSelectJob={setSelectedJob}
-        onRunTestJob={() => runTestJob(false)}
-        onRunFailingTestJob={() => runTestJob(true)}
-        onClearJobs={clearJobCenter}
-      />
-
-      {user.role === 'admin' ? (
-        <DockerSection
-          status={dockerStatus}
-          composePs={composePs}
-          checkedAt={dockerCheckedAt}
-          message={dockerMessage}
-          busy={dockerBusy}
-          onCheckDocker={checkDocker}
-          onLoadComposePs={loadComposePs}
-        />
-      ) : (
-        <div className="status-card">
-          <span>Docker / Compose</span>
-          <strong>仅管理员可用</strong>
-          <small>Docker 状态检查和 Compose 调试接口需要管理员权限。</small>
+        <div className="dashboard-main">
+          <div className="dashboard-main-left">
+            <LifecycleSection
+              state={state}
+              isAdmin={user.role === 'admin'}
+              onJobStarted={jobStarted}
+              onStateRefresh={refreshState}
+            />
+            <SavesSection
+              state={state}
+              isAdmin={user.role === 'admin'}
+              onJobStarted={jobStarted}
+              onStateRefresh={refreshState}
+              refreshTrigger={savesRefreshKey}
+            />
+          </div>
+          <div className="dashboard-main-right">
+            <JobsSection
+              user={user}
+              jobs={jobs}
+              selectedJob={selectedJob}
+              logs={jobLogs}
+              busy={jobBusy}
+              message={jobMessage}
+              onRefresh={refreshJobs}
+              onSelectJob={setSelectedJob}
+              onRunTestJob={() => runTestJob(false)}
+              onRunFailingTestJob={() => runTestJob(true)}
+              onClearJobs={clearJobCenter}
+            />
+          </div>
         </div>
-      )}
-
-      <button className="button button-secondary" disabled={busy} onClick={onLogout} type="button">
-        登出
-      </button>
-
-      {user.role === 'admin' ? (
-        <section className="users-section">
-          <div className="section-heading">
-            <div>
-              <h2>用户管理</h2>
-              <p>管理员可以创建、启用、禁用、删除用户并调整角色。</p>
-            </div>
-            <button className="button button-small" disabled={busy} onClick={onRefreshUsers} type="button">刷新</button>
-          </div>
-          <form className="create-user-form" onSubmit={onCreateUser} autoComplete="off">
-            <input aria-label="新用户用户名" name="new-panel-username" placeholder="用户名"
-              value={newUserForm.username} autoComplete="off"
-              onChange={(e) => onNewUserChange({ ...newUserForm, username: e.target.value })} required />
-            <PasswordInput value={newUserForm.password} visible={showNewPassword} placeholder="密码"
-              autoComplete="new-password" inputName="new-panel-password"
-              onChange={(p) => onNewUserChange({ ...newUserForm, password: p })}
-              onToggle={() => setShowNewPassword((v) => !v)} />
-            <select aria-label="新用户角色" value={newUserForm.role}
-              onChange={(e) => onNewUserChange({ ...newUserForm, role: e.target.value as 'admin' | 'user' })}>
-              <option value="user">普通用户</option>
-              <option value="admin">管理员</option>
-            </select>
-            <button className="button" disabled={busy} type="submit">创建用户</button>
-          </form>
-          <div className="user-table" role="table" aria-label="面板用户列表">
-            <div className="user-row user-row-head" role="row">
-              <span>用户名</span><span>角色</span><span>状态</span><span>操作</span>
-            </div>
-            {users.map((panelUser) => (
-              <div className="user-row" key={panelUser.id} role="row">
-                <span>{panelUser.username}</span>
-                <select aria-label={`${panelUser.username} 角色`} value={panelUser.role}
-                  disabled={busy || !panelUser.isActive}
-                  onChange={(e) => onUpdateRole(panelUser, e.target.value as 'admin' | 'user')}>
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
-                </select>
-                <span className={panelUser.isActive ? 'role-badge' : 'role-badge muted'}>
-                  {panelUser.isActive ? '已启用' : '已禁用'}
-                </span>
-                <div className="user-actions">
-                  <button
-                    className={panelUser.isActive ? 'button button-small button-danger' : 'button button-small'}
-                    disabled={busy || panelUser.id === user.id}
-                    onClick={() => onSetUserActive(panelUser, !panelUser.isActive)} type="button">
-                    {panelUser.isActive ? '禁用' : '启用'}
-                  </button>
-                  <button className="button button-small button-danger"
-                    disabled={busy || panelUser.id === user.id}
-                    onClick={() => onDeleteUser(panelUser)} type="button">删除</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       ) : (
-        <p className="summary">当前账号没有用户管理权限。</p>
+        <JobsSection
+          user={user}
+          jobs={jobs}
+          selectedJob={selectedJob}
+          logs={jobLogs}
+          busy={jobBusy}
+          message={jobMessage}
+          onRefresh={refreshJobs}
+          onSelectJob={setSelectedJob}
+          onRunTestJob={() => runTestJob(false)}
+          onRunFailingTestJob={() => runTestJob(true)}
+          onClearJobs={clearJobCenter}
+        />
       )}
+
+      {/* ── 高级区域（折叠） ──────────────────────────────── */}
+      <div className="dashboard-advanced">
+        <button
+          className="collapsible-header"
+          onClick={() => setShowAdvanced((v) => !v)}
+          type="button"
+        >
+          <span>{showAdvanced ? '▾' : '▸'} 高级设置</span>
+          <span className="collapsible-hint">Docker 调试、用户管理</span>
+        </button>
+        {showAdvanced ? (
+          <div className="collapsible-content">
+            {user.role === 'admin' ? (
+              <DockerSection
+                status={dockerStatus}
+                composePs={composePs}
+                checkedAt={dockerCheckedAt}
+                message={dockerMessage}
+                busy={dockerBusy}
+                onCheckDocker={checkDocker}
+                onLoadComposePs={loadComposePs}
+              />
+            ) : null}
+
+            {user.role === 'admin' ? (
+              <section className="users-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>用户管理</h2>
+                    <p>管理员可以创建、启用、禁用、删除用户并调整角色。</p>
+                  </div>
+                  <button className="button button-small" disabled={busy} onClick={onRefreshUsers} type="button">刷新</button>
+                </div>
+                <form className="create-user-form" onSubmit={onCreateUser} autoComplete="off">
+                  <input aria-label="新用户用户名" name="new-panel-username" placeholder="用户名"
+                    value={newUserForm.username} autoComplete="off"
+                    onChange={(e) => onNewUserChange({ ...newUserForm, username: e.target.value })} required />
+                  <PasswordInput value={newUserForm.password} visible={showNewPassword} placeholder="密码"
+                    autoComplete="new-password" inputName="new-panel-password"
+                    onChange={(p) => onNewUserChange({ ...newUserForm, password: p })}
+                    onToggle={() => setShowNewPassword((v) => !v)} />
+                  <select aria-label="新用户角色" value={newUserForm.role}
+                    onChange={(e) => onNewUserChange({ ...newUserForm, role: e.target.value as 'admin' | 'user' })}>
+                    <option value="user">普通用户</option>
+                    <option value="admin">管理员</option>
+                  </select>
+                  <button className="button" disabled={busy} type="submit">创建用户</button>
+                </form>
+                <div className="user-table" role="table" aria-label="面板用户列表">
+                  <div className="user-row user-row-head" role="row">
+                    <span>用户名</span><span>角色</span><span>状态</span><span>操作</span>
+                  </div>
+                  {users.map((panelUser) => (
+                    <div className="user-row" key={panelUser.id} role="row">
+                      <span>{panelUser.username}</span>
+                      <select aria-label={`${panelUser.username} 角色`} value={panelUser.role}
+                        disabled={busy || !panelUser.isActive}
+                        onChange={(e) => onUpdateRole(panelUser, e.target.value as 'admin' | 'user')}>
+                        <option value="user">普通用户</option>
+                        <option value="admin">管理员</option>
+                      </select>
+                      <span className={panelUser.isActive ? 'role-badge' : 'role-badge muted'}>
+                        {panelUser.isActive ? '已启用' : '已禁用'}
+                      </span>
+                      <div className="user-actions">
+                        <button
+                          className={panelUser.isActive ? 'button button-small button-danger' : 'button button-small'}
+                          disabled={busy || panelUser.id === user.id}
+                          onClick={() => onSetUserActive(panelUser, !panelUser.isActive)} type="button">
+                          {panelUser.isActive ? '禁用' : '启用'}
+                        </button>
+                        <button className="button button-small button-danger"
+                          disabled={busy || panelUser.id === user.id}
+                          onClick={() => onDeleteUser(panelUser)} type="button">删除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {/* ── 登出 ────────────────────────────────────────────── */}
+      <div className="dashboard-footer">
+        <button className="button button-secondary" disabled={busy} onClick={onLogout} type="button">
+          登出
+        </button>
+      </div>
     </div>
   )
 }

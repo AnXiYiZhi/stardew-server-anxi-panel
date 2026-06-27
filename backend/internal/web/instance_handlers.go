@@ -174,6 +174,38 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleSavesPreflight(w, r, instanceID)
 		return
 	}
+	// GET /api/instances/:id/saves
+	if len(parts) == 2 && parts[1] == "saves" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSavesList(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/saves/select
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "select" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSaveSelect(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/saves/select-and-start
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "select-and-start" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSaveSelectAndStart(w, r, instanceID)
+		return
+	}
+	// DELETE /api/instances/:id/saves/:name
+	if len(parts) == 3 && parts[1] == "saves" && r.Method == http.MethodDelete {
+		s.handleSaveDelete(w, r, instanceID, parts[2])
+		return
+	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "custom-new-game" {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

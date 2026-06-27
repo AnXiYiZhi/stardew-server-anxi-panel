@@ -1007,6 +1007,265 @@ button.job-row {
   }
 }
 
+/* ── Dashboard Layout (M9) ──────────────────────────────────────────── */
+
+.dashboard-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 18px;
+}
+
+.dashboard-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.dashboard-main-left {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.dashboard-main-right {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.dashboard-advanced {
+  border: 3px solid #8f5a2d;
+  border-radius: 18px;
+  background: #ffe6b6;
+  overflow: hidden;
+}
+
+.collapsible-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #3c2415;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.collapsible-header:hover {
+  background: rgba(103, 53, 25, 0.06);
+}
+
+.collapsible-hint {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: #6f4a2d;
+}
+
+.collapsible-content {
+  display: grid;
+  gap: 18px;
+  padding: 0 18px 18px;
+}
+
+.dashboard-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
+/* ── Saves Section (M9) ─────────────────────────────────────────────── */
+
+.saves-section {
+  border: 4px solid #673519;
+  border-radius: 18px;
+  background: #ffe6b6;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.saves-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.saves-active-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #d6eef8;
+  border: 3px solid #287da8;
+  border-radius: 14px;
+  font-size: 14px;
+  color: #165779;
+}
+
+.saves-active-hint strong {
+  font-family: monospace;
+  color: #0d3a50;
+}
+
+.saves-list {
+  display: grid;
+  gap: 10px;
+}
+
+.save-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 3px solid #8f5a2d;
+  border-radius: 14px;
+  background: #fff0c7;
+}
+
+.save-row-active {
+  border-color: #3f8f3d;
+  background: #d8f2c4;
+}
+
+.save-row-info {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.save-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.save-row-name strong {
+  font-family: monospace;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-active-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #3f8f3d;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.save-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: #6f4a2d;
+}
+
+.save-row-error {
+  font-size: 12px;
+  color: #681111;
+  font-weight: 700;
+}
+
+.save-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.empty-saves {
+  padding: 28px 20px;
+  text-align: center;
+  border: 3px dashed #8f5a2d;
+  border-radius: 14px;
+  background: #fff0c7;
+}
+
+.empty-saves-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #3c2415;
+  margin: 0 0 8px;
+}
+
+.empty-saves-hint {
+  font-size: 0.9rem;
+  color: #6f4a2d;
+  margin: 0 0 18px;
+  line-height: 1.6;
+}
+
+.empty-saves-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* Upload preview detail (M9) */
+
+.upload-preview-detail {
+  border: 3px solid #8f5a2d;
+  border-radius: 14px;
+  background: #fff0c7;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.upload-preview-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.upload-preview-label {
+  color: #6f4a2d;
+  font-weight: 700;
+}
+
+/* ── Responsive overrides (M9) ──────────────────────────────────────── */
+
+@media (max-width: 920px) {
+  .dashboard-main {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-status-row {
+    grid-template-columns: 1fr;
+  }
+
+  .save-row {
+    grid-template-columns: 1fr;
+  }
+
+  .save-row-actions {
+    justify-content: flex-start;
+  }
+
+  .upload-preview-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .shell {
     padding: 18px;

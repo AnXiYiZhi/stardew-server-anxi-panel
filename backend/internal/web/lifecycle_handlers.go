@@ -133,6 +133,10 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
+		return
+	}
 
 	var cfg registry.NewGameConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
@@ -252,6 +256,11 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		return
 	}
 
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
+		return
+	}
+
 	entry, err := s.pendingUploads.claim(body.Token, instanceID)
 	if err != nil {
 		writeError(w, http.StatusConflict, "token_invalid", err.Error())
@@ -291,6 +300,147 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID, "saveName": entry.SaveName})
 }
 
+// handleSavesList handles GET /api/instances/:id/saves.
+func (s *server) handleSavesList(w http.ResponseWriter, r *http.Request, instanceID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	saves, err := driver.ListSaves(r.Context(), makeRegistryInstance(instance))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list_saves_failed", "读取存档列表失败: "+err.Error())
+		return
+	}
+	activeName := sj.GetActiveSaveName(instance.DataDir)
+	writeJSON(w, http.StatusOK, registry.SavesListResult{
+		Saves:          saves,
+		ActiveSaveName: activeName,
+	})
+}
+
+// handleSaveSelect handles POST /api/instances/:id/saves/select.
+func (s *server) handleSaveSelect(w http.ResponseWriter, r *http.Request, instanceID string) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
+		return
+	}
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "missing_field", "存档名称不能为空")
+		return
+	}
+	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
+		writeError(w, http.StatusNotFound, "save_not_found", err.Error())
+		return
+	}
+	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
+		writeError(w, http.StatusInternalServerError, "select_failed", "选择存档失败: "+err.Error())
+		return
+	}
+	// Advance state if currently in save_required.
+	if instance.State == storage.InstanceStateSaveRequired || instance.State == storage.InstanceStateGameInstalled {
+		if err := s.advanceToReadyToStart(r, instance); err != nil {
+			s.logger.Warn("advance state after select save", "instance", instanceID, "error", err)
+		}
+	}
+	s.logger.Info("save selected", "instance", instanceID, "save", body.Name)
+	writeJSON(w, http.StatusOK, map[string]string{"activeSaveName": body.Name})
+}
+
+// handleSaveSelectAndStart handles POST /api/instances/:id/saves/select-and-start.
+func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
+		return
+	}
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "missing_field", "存档名称不能为空")
+		return
+	}
+	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
+		writeError(w, http.StatusNotFound, "save_not_found", err.Error())
+		return
+	}
+	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
+		writeError(w, http.StatusInternalServerError, "select_failed", "选择存档失败: "+err.Error())
+		return
+	}
+	if err := s.advanceToReadyToStart(r, instance); err != nil {
+		s.logger.Warn("advance state after select-and-start", "instance", instanceID, "error", err)
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	instance, _ = s.loadInstance(w, r, instanceID)
+	job, err := driver.Start(r.Context(), registry.StartRequest{
+		Instance: makeRegistryInstance(instance),
+		ActorID:  actor.User.ID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "start_failed", "服务器启动失败: "+err.Error())
+		return
+	}
+	s.logger.Info("select-and-start", "instance", instanceID, "job", job.ID, "save", body.Name)
+	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
+}
+
+// handleSaveDelete handles DELETE /api/instances/:id/saves/:name.
+func (s *server) handleSaveDelete(w http.ResponseWriter, r *http.Request, instanceID, saveName string) {
+	if _, ok := s.requireAdmin(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
+		return
+	}
+	if err := sj.DeleteSave(instance.DataDir, saveName); err != nil {
+		writeError(w, http.StatusInternalServerError, "delete_failed", "删除存档失败: "+err.Error())
+		return
+	}
+	s.logger.Info("save deleted", "instance", instanceID, "save", saveName)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // handleInstanceStart handles POST /api/instances/:id/start.
 func (s *server) handleInstanceStart(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAdmin(w, r)
@@ -317,6 +467,18 @@ func (s *server) handleInstanceStart(w http.ResponseWriter, r *http.Request, ins
 		writeError(w, http.StatusConflict, "save_required", "没有可用存档，请先创建存档并启动或上传存档并启动")
 		return
 	}
+
+	// Check active save: must have one selected, and it must still exist.
+	activeName := sj.GetActiveSaveName(instance.DataDir)
+	if activeName == "" {
+		writeError(w, http.StatusConflict, "active_save_required", "没有已选择的启动存档，请先创建、上传或选择一个存档")
+		return
+	}
+	if err := sj.ValidateSaveExists(instance.DataDir, activeName); err != nil {
+		writeError(w, http.StatusConflict, "active_save_missing", "上次选择的存档不存在，请重新选择存档")
+		return
+	}
+
 	job, err := driver.Start(r.Context(), registry.StartRequest{
 		Instance: makeRegistryInstance(instance),
 		ActorID:  actor.User.ID,
@@ -397,6 +559,21 @@ func (s *server) handleInstanceInviteCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, registry.InviteCodeResult{InviteCode: code})
+}
+
+// ensureInstanceNotRunning reconciles instance state with real Docker state and
+// returns false (with an HTTP 409 response written) if the server is running or starting.
+// Callers should return immediately when this returns (instance, false).
+func (s *server) ensureInstanceNotRunning(w http.ResponseWriter, r *http.Request, instance storage.Instance) (storage.Instance, bool) {
+	instance, ok := s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return instance, false
+	}
+	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
+		writeError(w, http.StatusConflict, "server_running", "服务器运行中，请先停止服务器再操作存档。")
+		return instance, false
+	}
+	return instance, true
 }
 
 // advanceToReadyToStart moves instance state to ready_to_start when applicable.

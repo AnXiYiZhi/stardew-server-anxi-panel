@@ -131,6 +131,7 @@ type SaveInfo struct {
 	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
 	ModifiedAt    string `json:"modifiedAt,omitempty"`
 	ParseError    string `json:"parseError,omitempty"`
+	IsActive      bool   `json:"isActive,omitempty"`
 }
 
 // RgbColor is an RGB color for character appearance customization.
@@ -194,6 +195,12 @@ type UploadPreviewResult struct {
 // InviteCodeResult is returned by GET .../invite-code.
 type InviteCodeResult struct {
 	InviteCode string `json:"inviteCode"`
+}
+
+// SavesListResult is returned by GET .../saves.
+type SavesListResult struct {
+	Saves          []SaveInfo `json:"saves"`
+	ActiveSaveName string     `json:"activeSaveName"`
 }
 
 type ModInfo struct {

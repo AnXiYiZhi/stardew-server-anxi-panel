@@ -15,6 +15,7 @@ import type {
   NewGameConfig,
   PrepareResponse,
   PreflightResult,
+  SavesListResult,
   UploadPreviewResult,
 } from './types'
 
@@ -222,6 +223,31 @@ export function restartInstance(instanceId = defaultInstanceId) {
 
 export function getInviteCode(instanceId = defaultInstanceId) {
   return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`)
+}
+
+export function getSaves(instanceId = defaultInstanceId) {
+  return request<SavesListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves`)
+}
+
+export function selectSave(name: string, instanceId = defaultInstanceId) {
+  return request<{ activeSaveName: string }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/select`,
+    { method: 'POST', body: { name } },
+  )
+}
+
+export function selectSaveAndStart(name: string, instanceId = defaultInstanceId) {
+  return request<LifecycleJobResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/select-and-start`,
+    { method: 'POST', body: { name } },
+  )
+}
+
+export function deleteSave(name: string, instanceId = defaultInstanceId) {
+  return request<{ ok: boolean }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/${encodeURIComponent(name)}`,
+    { method: 'DELETE' },
+  )
 }
 
 async function toApiError(response: Response): Promise<ApiError> {
