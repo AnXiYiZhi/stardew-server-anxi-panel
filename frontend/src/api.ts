@@ -1,5 +1,4 @@
 import type {
-  CatalogResponse,
   ComposeLogsResponse,
   ComposePsResponse,
   DockerStatusResponse,
@@ -166,19 +165,6 @@ export function createJobEventSource(id: string, after = 0) {
   return new EventSource(`/api/jobs/${encodeURIComponent(id)}/stream${query ? `?${query}` : ''}`, {
     withCredentials: true,
   })
-}
-
-export function getCustomNewGameCatalog(instanceId = defaultInstanceId) {
-  return request<CatalogResponse>(
-    `/api/instances/${encodeURIComponent(instanceId)}/custom-new-game/catalog`,
-  )
-}
-
-export function refreshCustomNewGameCatalog(instanceId = defaultInstanceId) {
-  return request<CatalogResponse>(
-    `/api/instances/${encodeURIComponent(instanceId)}/custom-new-game/catalog`,
-    { method: 'POST' },
-  )
 }
 
 export function getSavesPreflight(instanceId = defaultInstanceId) {

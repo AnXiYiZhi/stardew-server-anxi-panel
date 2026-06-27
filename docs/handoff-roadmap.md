@@ -6,6 +6,18 @@
 
 ## Current Context
 
+### Frontend MVP 整理与交付化 ✅ completed (2026-06-27)
+
+Milestone 8 完成。原 ~2340 行单体 `App.tsx` 拆分为 14 个独立模块（`core/` 通用组件 + `games/stardew/` 游戏组件）。CSS 合并重复定义、替换未定义的 CSS 变量为 Stardew 主题色。eyebrow 更新为 "Stardew Valley 管理面板"。`go test ./...` 和 `npm run build` 通过。
+
+详见 `docs/conversation-handoff-2026-06-27.md`。
+
+### Docker 容器状态实时校验 ✅ completed (2026-06-27)
+
+修复了 Docker 容器停止后前端仍显示"运行中"的 bug。`ReconcileState()` 现在会在实例状态为 `running`/`starting` 时通过 `ComposePs` 校验 `server` 容器是否实际运行中，不在运行则自动修正为 `stopped`。保留 `DriverPayload`（如邀请码）不丢失。
+
+详见 `docs/conversation-handoff-2026-06-27.md`。
+
 ### 自定义新建存档修复 ✅ completed (2026-06-26)
 
 修复了"创建存档并启动"自定义配置完全不生效的三个叠加问题：
@@ -1211,7 +1223,7 @@ GET  /api/games/stardew/logs/stream
 - 启动成功后前端显示 `running`、邀请码、玩家数。
 - 停止后状态变为 `stopped`。
 
-## Milestone 8: Frontend MVP
+## Milestone 8: Frontend MVP ✅ 已完成（2026-06-27）
 
 目标：用 React 实现 MVP 可用界面。首版上线体验是 Stardew 单面板直达，不强制显示总面板。
 
@@ -1272,6 +1284,35 @@ After:
 - 普通用户能完整走完登录后查看状态。
 - 管理员能走完安装、认证、选择存档、启动服务器。
 - 前端按钮状态与后端状态机一致。
+
+### 完成内容（2026-06-27）
+
+**前端结构拆分：**
+- 将 ~2340 行的单体 `App.tsx` 拆分为 14 个独立模块。
+- `frontend/src/core/`：通用工具和 UI 组件（helpers.ts, StatusBadge.tsx, Field.tsx, PasswordInput.tsx, StatusPill.tsx, CommandOutput.tsx, SetupPanel.tsx, LoginPanel.tsx）。
+- `frontend/src/games/stardew/`：Stardew 专属组件（InstallSection.tsx, LifecycleSection.tsx, InstanceStateCard.tsx, JobsSection.tsx, DockerSection.tsx, install-helpers.ts, NewGameCreator.tsx, NewGameCreator.css）。
+- `App.tsx` 精简为 ~600 行的路由+布局+Dashboard 编排组件。
+
+**主面板打磨：**
+- eyebrow 文本从"里程碑 7 · Stardew Junimo Lifecycle"更新为"Stardew Valley 管理面板"。
+- CSS 修复：合并两处重复的 `.modal-overlay` / `.modal-card` 定义；将 `.lifecycle-section`、`.save-card`、`.preflight-result` 等从缺失的 CSS 变量（`--card`、`--border`、`--text-muted`）改为 Stardew 主题色值。
+- 新增 `.lifecycle-state-game_installed`、`.lifecycle-state-save_required`、`.lifecycle-state-ready_to_start` 状态色。
+- 按钮文案确认：启动服务器（使用上次存档）、创建存档并启动、上传存档并启动。
+
+**验证：**
+- `go test ./...` 全部通过
+- `npm.cmd run build` 通过（33 modules，无 TypeScript 错误）
+
+**未引入的变更（按计划有意跳过）：**
+- 未引入 React Router（当前 View 状态机已满足 Single Game Mode 需求）。
+- 未引入 TanStack Query / Zustand（当前 useState + 直接 API 调用已足够 MVP）。
+- 未创建假的 Minecraft/DST 页面。
+- 未删除 Docker 调试区域（admin 联调需要）。
+
+**下一步注意事项：**
+- 如果未来引入 React Router，建议使用 `react-router-dom` v6+，路由结构：`/` → Single Game Mode 入口，`/instances/:id` → 游戏面板。
+- `frontend/src/core/` 已建立，后续 Multi Game Mode 可直接扩展 `frontend/src/games/minecraft/` 等。
+- CSS 仍为单一文件，如需模块化可拆分为各组件的 `.css` 文件。
 
 ## Milestone 9: Saves
 

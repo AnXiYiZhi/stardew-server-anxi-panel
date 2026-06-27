@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -230,12 +231,45 @@ func (d *Driver) SendSteamGuardInput(jobID string, input string) error {
 	}
 }
 
-// ReconcileState corrects stale installed states when the expected local install
-// directory is still empty.
+// ReconcileState corrects stale states:
+//   - "running"/"starting" when the Docker container is no longer actually up → "stopped"
+//   - installed states when the expected local install directory is still empty → "error"
 func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) (storage.Instance, error) {
 	if d.store == nil {
 		return instance, nil
 	}
+
+	// Check if a "running" or "starting" instance's container is actually alive.
+	if isRunningState(instance.State) && d.docker != nil {
+		ps, err := d.docker.ComposePs(ctx, instance.DataDir)
+		if err == nil {
+			serverUp := false
+			for _, svc := range ps.Services {
+				if svc.Service == "server" {
+					state := strings.ToLower(svc.State)
+					if state == "running" || strings.HasPrefix(strings.ToLower(svc.Status), "up") {
+						serverUp = true
+					}
+					break
+				}
+			}
+			if !serverUp {
+				payload := instance.DriverPayload
+				if payload == "" {
+					payload = "{}"
+				}
+				return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+					ID:            instance.ID,
+					State:         storage.InstanceStateStopped,
+					StateMessage:  "服务器容器已停止",
+					DriverPhase:   "container_stopped",
+					DriverPayload: payload,
+				})
+			}
+		}
+		// If ComposePs itself errors, don't change state — could be a transient Docker issue.
+	}
+
 	if !requiresInstalledFiles(instance.State) {
 		return instance, nil
 	}
@@ -249,6 +283,12 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 		StateMessage: "未检测到游戏安装文件，请重新安装。",
 		DriverPhase:  "install_missing",
 	})
+}
+
+// isRunningState returns true if the instance state indicates the container should be up.
+func isRunningState(state string) bool {
+	return state == storage.InstanceStateRunning ||
+		state == storage.InstanceStateStarting
 }
 
 // Status returns a combined runtime + state view of the instance.

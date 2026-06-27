@@ -114,12 +114,11 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "已将 docker-compose.yml 中的 saves 命名卷迁移为 bind mount。")
 	}
-	if changed, err := migrateAssetExporterService(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
-		return fmt.Errorf("add asset-exporter service to docker-compose.yml: %w", err)
+	if changed, err := migrateRemoveAssetExporterService(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
+		return fmt.Errorf("remove legacy asset exporter from docker-compose.yml: %w", err)
 	} else if changed {
-		_, _ = jobCtx.Info(ctx, "已在 docker-compose.yml 中添加 asset-exporter 服务。")
+		_, _ = jobCtx.Info(ctx, "已移除旧版运行时素材导出服务；前端将使用随镜像发布的素材。")
 	}
-
 	// ── Step 2: docker compose pull ─────────────────────────────────────
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 		"正在检查 Junimo 镜像，请稍候...", "pull_running", jobCtx.ID)
@@ -160,8 +159,7 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		return err
 	}
 
-	// ── Step 4: export customization catalog ──────────────────────────────
-	return r.runCatalogExportPhase(ctx, jobCtx)
+	return nil
 }
 
 // missingServices returns the compose service names whose images are not present locally.
@@ -484,49 +482,9 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 }
 
 func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
-	// Leave phase as steam_auth_running (intermediate); runCatalogExportPhase
-	// will set game_installed once the export step completes.
-	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-		"游戏已安装，正在准备素材目录...", "export_catalog_queued", jobCtx.ID)
-	_, _ = jobCtx.Info(context.Background(), "Steam 认证成功，游戏和 Steam SDK 已安装，准备导出素材目录...")
-}
-
-// runCatalogExportPhase runs as the final install step.
-// It starts a temporary Junimo container, waits for the SMAPI mod to write
-// options.json, then stops the container.  Export failure is non-fatal —
-// the instance is marked game_installed regardless so the user can still
-// configure and start the server.
-func (r *installRunner) runCatalogExportPhase(ctx context.Context, jobCtx *jobs.Context) error {
-	imageRef := "sdvd/server:" + r.imageTag
-
-	// Acquire the lock so the catalog endpoint shows "generating".
-	if err := AcquireCatalogLock(r.instance.DataDir); err != nil {
-		_, _ = jobCtx.Warn(ctx, "素材目录导出锁已存在，跳过导出步骤。")
-		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
-			"游戏已安装。", "game_installed", jobCtx.ID)
-		_, _ = jobCtx.Info(context.Background(), "安装流程完成。")
-		return nil
-	}
-	defer ReleaseCatalogLock(r.instance.DataDir)
-
-	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
-		"正在从游戏文件导出素材目录...", "export_catalog_running", jobCtx.ID)
-	_, _ = jobCtx.Info(ctx, "正在启动素材导出容器，游戏首次启动可能需要几分钟，请耐心等待...")
-
-	logLine := func(line string) { _, _ = jobCtx.Info(context.Background(), line) }
-
-	if exportErr := ExportCatalogContent(ctx, r.instance.DataDir, imageRef, logLine); exportErr != nil {
-		_, _ = jobCtx.Warn(context.Background(), fmt.Sprintf("素材目录导出失败（非致命）：%v", exportErr))
-		WriteCatalogExportError(r.instance.DataDir, exportErr.Error())
-	} else {
-		ClearCatalogExportError(r.instance.DataDir)
-		_, _ = jobCtx.Info(context.Background(), "素材目录导出完成。")
-	}
-
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
-		"游戏已安装，素材目录已就绪。", "game_installed", jobCtx.ID)
+		"游戏已安装。", "game_installed", jobCtx.ID)
 	_, _ = jobCtx.Info(context.Background(), "安装流程全部完成。")
-	return nil
 }
 
 func isSteamGuardCodePrompt(lower string) bool {
@@ -737,9 +695,10 @@ func insertLineAfter(text, marker, line string) string {
 	return strings.Replace(text, marker, marker+"\n"+line, 1)
 }
 
-// migrateAssetExporterService adds the asset-exporter Compose service to an existing
-// docker-compose.yml that pre-dates the catalog export feature. Idempotent.
-func migrateAssetExporterService(path string) (bool, error) {
+// migrateRemoveAssetExporterService removes the old optional Compose service that
+// launched a temporary game on the user's machine to create UI assets. Assets are
+// now extracted once during panel development and packed in the frontend image.
+func migrateRemoveAssetExporterService(path string) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return false, nil
@@ -748,47 +707,24 @@ func migrateAssetExporterService(path string) (bool, error) {
 		return false, err
 	}
 	text := string(raw)
-	if strings.Contains(text, "asset-exporter:") {
+	const serviceStart = "\n  asset-exporter:\n"
+	const volumesStart = "\nvolumes:\n"
+	start := strings.Index(text, serviceStart)
+	if start < 0 {
 		return false, nil
 	}
-	// Insert the service block immediately before the top-level volumes: section.
-	const marker = "\nvolumes:\n"
-	if !strings.Contains(text, marker) {
-		return false, nil
+	relEnd := strings.Index(text[start:], volumesStart)
+	if relEnd < 0 {
+		return false, fmt.Errorf("asset-exporter block has no following volumes section")
 	}
-	serviceBlock := `
-  asset-exporter:
-    image: sdvd/server:${IMAGE_VERSION:-` + TestedImageTag + `}
-    profiles:
-      - catalog-export
-    stdin_open: true
-    tty: true
-    depends_on:
-      steam-auth:
-        condition: service_started
-    cap_add:
-      - SYS_TIME
-    environment:
-      STEAM_AUTH_URL: "http://steam-auth:${STEAM_AUTH_PORT:-3001}"
-      VNC_PASSWORD: "catalog-export-unused"
-      ALLOW_INSECURE_SETUP: "true"
-      SETTINGS_PATH: /data/settings/server-settings.json
-      SAP_CONTROL_DIR: /data/control
-      SAP_EXPORT_ONLY: "true"
-    volumes:
-      - game-data:/data/game
-      - ./.local-container/catalog-export-saves:/config/xdg/config/StardewValley
-      - ./.local-container/settings:/data/settings
-      - ./.local-container/control:/data/control
-      - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
-`
-	text = strings.Replace(text, marker, serviceBlock+marker, 1)
+	end := start + relEnd
+	updated := text[:start] + text[end:]
 	info, statErr := os.Stat(path)
 	mode := os.FileMode(0o644)
 	if statErr == nil {
 		mode = info.Mode().Perm()
 	}
-	return true, os.WriteFile(path, []byte(text), mode)
+	return true, os.WriteFile(path, []byte(updated), mode)
 }
 
 // migrateAllowInsecureSetup sets ALLOW_INSECURE_SETUP=true in the instance .env when

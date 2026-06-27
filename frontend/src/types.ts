@@ -198,8 +198,12 @@ export type NewGameConfig = {
   startingCabins: number
   cabinLayout: string
   profitMargin: string  // "100"|"75"|"50"|"25"
-  petBreed: number      // 0-3 Junimo index
+  petBreed: number      // 0-4 Stardew selectable breed index
   moneyMode: string     // "shared"|"separate"
+  remixedCommunityCenter: boolean
+  remixedMineRewards: boolean
+  spawnMonstersOnFarm: boolean
+  skipIntro: true
 
   // SMAPI character fields (applied by StardewAnxiPanel.Control mod)
   farmerName?: string
@@ -215,32 +219,6 @@ export type NewGameConfig = {
   eyeColor?: RgbColor
   hairColor?: RgbColor
   pantsColor?: RgbColor
-}
-
-export type CatalogItem = {
-  id: string
-  label: string
-  group?: string
-  description?: string
-  image?: string  // data URL (real game asset) or SVG placeholder
-}
-
-export type CatalogStatus = 'ready' | 'generating' | 'failed' | 'unavailable'
-
-export type CatalogResponse = {
-  status: CatalogStatus
-  source?: 'smapi'           // only when status === 'ready'
-  generatedAt?: string
-  catalogVersion?: string
-  error?: string             // set when status === 'failed'
-  farmTypes: CatalogItem[]
-  petTypes: CatalogItem[]
-  petBreeds: CatalogItem[]
-  genders: CatalogItem[]
-  cabinCounts: CatalogItem[]
-  cabinLayouts: CatalogItem[]
-  profitMargins: CatalogItem[]
-  moneyModes: CatalogItem[]
 }
 
 export type PreflightResult = {
