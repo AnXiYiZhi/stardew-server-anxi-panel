@@ -21,9 +21,11 @@ export function SavesPage({ user, instanceState, dashboardData, onNavigate }: St
         isAdmin={user.role === 'admin'}
         onJobStarted={(_jobId) => {
           dashboardData.refreshJobs()
+          dashboardData.refreshInstanceState()
           onNavigate('jobs')
         }}
         onStateRefresh={dashboardData.refreshInstanceState}
+        onSavesChanged={dashboardData.refreshSaves}
       />
     </div>
   )

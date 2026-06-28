@@ -6,6 +6,42 @@
 
 ## Current Context
 
+### FE-R6: SavesPage 存档管理页真实化（像素视觉迁移）✅ completed (2026-06-29)
+
+把 `/instances/stardew/saves` 的存档管理页从旧样式完整迁移为像素主题视觉，保留并强化所有已有功能。
+
+**迁移/改动内容：**
+
+1. **`SavesSection.tsx` 视觉全面重写**
+   - 所有 `.button`、`.modal-card`、`.modal-overlay`、`.error-banner` 等旧 App.css 类改为 `sd-btn-*`、`sd-saves-modal-*`、`sd-confirm-*`、`sd-saves-error` 等像素主题类。
+   - 删除确认从 `window.confirm()` 升级为内联 `sd-confirm-overlay` + `sd-confirm-dialog` 弹框（视觉一致，保留危险确认二次保障）。
+   - 新增 `onSavesChanged?: () => void` prop，供 `SavesPage` 在操作后同步刷新 `dashboardData.saves`。
+
+2. **运行中保护增强**
+   - 服务器 `running`/`starting` 时，创建/上传/删除/切换存档按钮全部保持可见但禁用（`disabled` + `title` tooltip），不再隐藏按钮。
+   - 页面顶部显示金色警示横条：「⚠ 服务器运行中，创建 / 上传 / 删除 / 切换存档已暂时禁用」。
+
+3. **`SavesPage.tsx` 回调更新**
+   - `onJobStarted` 同时调用 `refreshJobs + refreshInstanceState + navigate('jobs')`（原只有 `refreshJobs`）。
+   - 新传 `onSavesChanged={dashboardData.refreshSaves}` 给 `SavesSection`，保证操作后公共数据层同步。
+
+4. **`StardewPanel.css` 新增存档页专用样式类**（约 160 行）：
+   `sd-saves-header`、`sd-saves-header-left`、`sd-saves-header-actions`、`sd-saves-running-hint`、`sd-saves-active-hint`、`sd-saves-error`、`sd-saves-list`、`sd-save-card`、`sd-save-card.active`、`sd-save-card-info`、`sd-save-card-name`、`sd-save-active-tag`、`sd-save-card-error`、`sd-save-meta`、`sd-save-meta-muted`、`sd-save-card-actions`、`sd-saves-empty`、`sd-saves-empty-title`、`sd-saves-empty-hint`、`sd-saves-empty-actions`、`sd-saves-modal-overlay`、`sd-saves-modal-card`、`sd-saves-modal-card-wide`、`sd-saves-modal-header`、`sd-saves-modal-title`、`sd-saves-modal-actions`、`sd-saves-preview-table`、`sd-saves-preview-row`、`sd-saves-preview-label`、`sd-saves-hint`、`sd-saves-upload-form`。
+
+**已完整保留/迁移的功能：**
+- `getSaves`、`selectSave`、`selectSaveAndStart`、`deleteSave`、`exportSave`、`createNewGame`、`uploadSavePreview`、`uploadSaveCommitAndStart` 全部接入。
+- 自定义新建存档弹窗（`NewGameCreator`）完整保留，弹窗外壳换为像素主题。
+- 上传 ZIP → 解析预览 → 确认导入流程完整保留。
+- `NewGameCreator.tsx` 和 `NewGameCreator.css` 未改动。
+
+**待后续接入的功能（无后端支持）：**
+- `getSavesPreflight`（如 API 存在则可接入）。
+- 存档备份列表浏览和手动恢复（后端 API 已有，前端未接入）。
+
+`npm.cmd run build` 通过（exit 0），39 模块，JS 261.21 kB，CSS 54.56 kB。
+
+详见 `docs/conversation-handoff-2026-06-29.md`。
+
 ### Bug fix batch: SavesPage P1 + ServerControlPage P2/P3 ✅ completed (2026-06-29)
 
 修复 5 个问题：

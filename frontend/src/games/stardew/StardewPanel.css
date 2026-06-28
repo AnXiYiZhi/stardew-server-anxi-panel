@@ -985,6 +985,252 @@
   white-space: nowrap;
 }
 
+/* ── 存档管理页专用 ───────────────────────────────────────────────────────── */
+
+.sd-saves-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-saves-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sd-saves-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.sd-saves-running-hint {
+  font-size: 10px;
+  color: #7a4a10;
+  background: var(--sd-gold-light);
+  border: 1px solid var(--sd-gold-border);
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-saves-active-hint {
+  font-size: 10.5px;
+  color: var(--sd-green-text);
+  background: var(--sd-green-bg);
+  border: 1px solid var(--sd-green);
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sd-saves-error {
+  font-size: 10.5px;
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  padding: 4px 8px;
+}
+
+.sd-saves-list {
+  display: grid;
+  gap: 6px;
+}
+
+.sd-save-card {
+  padding: 7px 10px;
+  border: 1px solid #dcc898;
+  background: #f8f0d8;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sd-save-card.active {
+  border-color: var(--sd-green);
+  background: var(--sd-green-bg);
+}
+
+.sd-save-card-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sd-save-card-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-save-active-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  background: var(--sd-green);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.sd-save-card-error {
+  font-size: 10px;
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  padding: 2px 5px;
+}
+
+.sd-save-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 10px;
+  color: #5a3c1d;
+}
+
+.sd-save-meta-muted {
+  color: #8a7060;
+  font-style: italic;
+}
+
+.sd-save-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.sd-saves-empty {
+  padding: 20px 14px;
+  text-align: center;
+  border: 1px dashed #dcc898;
+  background: #f8f0d8;
+  display: grid;
+  gap: 8px;
+}
+
+.sd-saves-empty-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-saves-empty-hint {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.sd-saves-empty-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* 存档弹窗 */
+.sd-saves-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.sd-saves-modal-card {
+  background: #f8f0d8;
+  border: 3px solid #3d2510;
+  padding: 14px 18px;
+  max-width: 640px;
+  width: calc(100vw - 24px);
+  max-height: 90vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.sd-saves-modal-card-wide {
+  max-width: 1200px;
+  overflow-x: auto;
+}
+
+.sd-saves-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-saves-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+  margin: 0;
+}
+
+.sd-saves-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid #dcc898;
+  margin-top: 4px;
+}
+
+.sd-saves-preview-table {
+  display: grid;
+  gap: 4px;
+  font-size: 10.5px;
+}
+
+.sd-saves-preview-row {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-saves-preview-label {
+  color: #5a3c1d;
+  font-weight: 700;
+  min-width: 75px;
+  flex-shrink: 0;
+}
+
+.sd-saves-hint {
+  font-size: 10px;
+  color: #5a3c1d;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sd-saves-upload-form {
+  display: grid;
+  gap: 10px;
+}
+
 /* ── 响应式 ───────────────────────────────────────────────────────────────── */
 
 @media (max-width: 960px) {
