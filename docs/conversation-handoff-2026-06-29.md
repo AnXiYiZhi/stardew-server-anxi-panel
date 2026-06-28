@@ -1,5 +1,112 @@
 # Conversation Handoff 2026-06-29
 
+## FE-R9: ModsPage 模组管理页真实化
+
+### 目标
+
+把 `/instances/stardew/mods` 从占位页改造为真实可用的模组管理页，接入所有已有后端 Mod API，对无后端 API 的功能保持清晰的"待接入"空状态，不写死演示数据。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/ModsPage.tsx` | 完全重写（占位改为真实页面） |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 300 行 `sd-mods-*` 像素风样式 |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 FE-R9 完成节 |
+
+### 代码探查结论
+
+1. **已有完整 Mod API**：`getMods`、`uploadMod`、`deleteMod`、`exportMods` 均在 `api.ts` 中实现，路径分别为 `GET /mods`、`POST /mods/upload`、`DELETE /mods/:modId`、`POST /mods/export`。
+2. **旧 `ModsSection.tsx`**：文件仍存在，但无任何外部引用（已确认），保留不动。
+3. **`dashboardData.mods`**：公共数据层已加载 Mod 列表，`ModsPage` 挂载时优先使用此数据，避免重复请求；操作完成后调用 `dashboardData.refreshMods()` 同步。
+4. **running/starting 保护**：上传和删除 running/starting 时均禁用，与后端保护一致。
+
+### 各区域说明
+
+**概览统计行（`sd-mods-overview`）**
+- 已安装数量 / 服务器状态（彩色状态点）/ 重启需求标志 / 解析失败数量。
+- 全部来自真实 API 数据，无硬编码。
+
+**模组列表（`sd-mods-list`）**
+- 每张卡片（`sd-mods-card`）：名称 + 版本、UniqueID、作者、目录名、描述。
+- 解析失败时（`parseError` 非空）卡片变红色边框 + 错误信息。
+- 删除按钮 `writeDisabled`（`isRunning || !isAdmin`）保护，title 说明原因。
+
+**操作区（页头右侧）**
+- 刷新列表：所有用户可用，loading 时显示"刷新中…"。
+- 导出 Mod 包：调用 `exportMods()` 触发浏览器下载，mods 为空时 disabled。
+- 上传 Mod：admin 且非 running/starting 时可用，点击弹出上传弹窗。
+
+**上传流程**
+- 像素风弹窗（`sd-mods-modal-overlay + sd-mods-modal-card`），file input 接收 `.zip`。
+- 上传中按钮变"上传中…"并禁用，成功后显示全局成功横幅 4 秒，提示"需要重启"。
+- 失败时弹窗内显示后端错误。
+
+**删除流程**
+- 点击"删除"先打开 `sd-confirm-dialog` 像素风二次确认弹窗，不使用 `window.confirm`。
+- 确认后调用 `deleteMod(mod.id)`，成功后同步刷新列表和公共数据层。
+
+**待接入功能区**
+- 启用/禁用 / 依赖检查 / 更新检查：全部 disabled 按钮 + 待接入徽章 + 说明文字。
+
+### 真实接入 API 汇总
+
+| API 函数 | 路径 | 状态 |
+|----------|------|------|
+| `getMods` | `GET /api/instances/:id/mods` | ✅ 接入 |
+| `uploadMod` | `POST /api/instances/:id/mods/upload` | ✅ 接入 |
+| `deleteMod` | `DELETE /api/instances/:id/mods/:modId` | ✅ 接入 |
+| `exportMods` | `POST /api/instances/:id/mods/export` | ✅ 接入 |
+| 启用/禁用 API | — | ❌ 后端不存在 |
+| 依赖检查 API | — | ❌ 后端不存在 |
+| 更新检查 API | — | ❌ 后端不存在 |
+
+### 影响的接口/文件
+
+- 无新增后端接口，无改动 API 签名。
+- `StardewPanel.css` 追加约 300 行，不影响已有类（全部以 `sd-mods-` 开头）。
+- `ModsSection.tsx` 保留不动，无任何引用，不影响旧入口。
+- 未改动：`OverviewPage`、`ServerControlPage`、`SavesPage`、`JobsLogsPage`、`PlayersPage`。
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS ~287 kB，CSS ~67 kB
+```
+
+已验证通过（exit 0），JS 287.09 kB，CSS 67.30 kB。
+
+手动验证点：
+- `/instances/stardew/mods` 不再是占位页，显示概览统计行 + Mod 列表 + 操作区 + 待接入区。
+- Mod 为空时显示像素风空状态（带"上传 Mod"按钮）。
+- 非 admin 用户：上传/删除按钮可见但 disabled，title 说明"仅管理员可用"。
+- 服务器运行中：顶部显示金色警示条，上传/删除 disabled，title 说明"服务器运行中"。
+- 上传弹窗：file input 接收 .zip，上传中禁用，成功显示成功横幅，失败显示错误。
+- 删除：弹出 `sd-confirm-dialog` 二次确认（不是 `window.confirm`），确认后删除并刷新。
+- 导出：点击"导出 Mod 包"触发浏览器下载（无 Mod 时 disabled）。
+- 待接入区三个按钮全部 disabled，显示待接入徽章和说明。
+- 左侧导航、Overview、ServerControlPage、SavesPage、JobsLogsPage、PlayersPage 不受影响。
+
+### 下一步注意事项
+
+**FE-R10 建议：DiagnosticsPage 诊断页真实化**
+- `dashboardData.health` 已有完整的 `/api/health/diagnostics` 数据（Docker / Compose / 数据目录 / 实例 / 存档）。
+- 旧 App.tsx 有诊断显示逻辑可参考迁移。
+- 诊断包导出（`/api/instances/:id/support-bundle`）已实现，可接入"导出诊断包"按钮。
+
+**ModsSection 旧组件**
+- `ModsSection.tsx` 无外部引用，可在合适时机删除（不影响当前功能）。
+
+**Mod 高级能力**（需后端支持才能接入前端 UI）：
+- 按 Mod 单独启用/禁用。
+- Mod 依赖图完整性检查。
+- Nexus Mods / URL 在线安装。
+- SMAPI 兼容性 / 版本更新检查。
+
+---
+
 ## FE-R8: PlayersPage 玩家管理页真实化
 
 ### 目标

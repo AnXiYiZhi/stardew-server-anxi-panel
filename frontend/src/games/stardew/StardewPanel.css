@@ -1872,3 +1872,384 @@
   height: 20px !important;
   line-height: 1 !important;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   sd-mods-*  ModsPage 模组管理页
+   ══════════════════════════════════════════════════════════════ */
+
+/* 页头 */
+.sd-mods-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.sd-mods-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-mods-header-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* 运行中警示条 */
+.sd-mods-running-hint {
+  background: rgba(200, 160, 40, 0.15);
+  border: 1px solid #c8a028;
+  color: #7a5c10;
+  font-size: 10.5px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+
+/* 上传成功横幅 */
+.sd-mods-success-banner {
+  background: rgba(40, 140, 60, 0.12);
+  border: 1px solid #4a9a50;
+  color: #1a5c20;
+  font-size: 10.5px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+
+/* 重启需求横幅 */
+.sd-mods-restart-banner {
+  background: rgba(200, 140, 20, 0.12);
+  border: 1px solid #c87820;
+  color: #7a4a10;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+
+/* 列表错误 */
+.sd-mods-list-error {
+  background: rgba(185, 64, 64, 0.08);
+  border: 1px solid rgba(185, 64, 64, 0.35);
+  color: #b94040;
+  font-size: 10.5px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+
+/* 概览统计行 */
+.sd-mods-overview {
+  display: flex;
+  gap: 0;
+  margin-bottom: 10px;
+  border: 1px solid #dcc898;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sd-mods-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border-right: 1px solid #dcc898;
+  min-width: 0;
+}
+
+.sd-mods-stat:last-child {
+  border-right: none;
+}
+
+.sd-mods-stat-label {
+  font-size: 9.5px;
+  color: #8a7060;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sd-mods-stat-value {
+  font-size: 12px;
+  color: #2c1a0a;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-mods-restart-flag {
+  color: #c87820;
+}
+
+/* 区块标题 */
+.sd-mods-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5a3c1d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-mods-loading-tag {
+  font-size: 9.5px;
+  font-weight: 400;
+  color: #8a7060;
+  text-transform: none;
+  letter-spacing: 0;
+  font-style: italic;
+}
+
+.sd-mods-pending-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #7a5c30;
+  background: rgba(200, 160, 40, 0.18);
+  border: 1px solid #c8a028;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* 模组列表 */
+.sd-mods-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+/* 模组卡片 */
+.sd-mods-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(240, 225, 185, 0.2);
+  border: 1px solid #dcc898;
+  border-radius: 2px;
+}
+
+.sd-mods-card-error {
+  border-color: rgba(185, 64, 64, 0.4);
+  background: rgba(185, 64, 64, 0.05);
+}
+
+.sd-mods-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-mods-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+
+.sd-mods-card-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-mods-card-version {
+  font-size: 9.5px;
+  color: #7a5c30;
+  font-weight: 400;
+}
+
+.sd-mods-parse-error {
+  font-size: 10px;
+  color: #b94040;
+  background: rgba(185, 64, 64, 0.08);
+  border: 1px solid rgba(185, 64, 64, 0.25);
+  padding: 3px 7px;
+  border-radius: 2px;
+  margin-top: 2px;
+}
+
+.sd-mods-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.sd-mods-meta-item {
+  font-size: 10px;
+  color: #5a3c1d;
+  display: flex;
+  gap: 3px;
+  align-items: baseline;
+}
+
+.sd-mods-meta-label {
+  font-size: 9px;
+  color: #8a7060;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sd-mods-meta-desc {
+  font-size: 10px;
+  color: #7a6050;
+  width: 100%;
+  margin-top: 1px;
+  line-height: 1.4;
+}
+
+.sd-mods-card-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 空状态 */
+.sd-mods-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 12px;
+  border: 1px dashed #dcc898;
+  border-radius: 2px;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.sd-mods-empty-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  opacity: 0.45;
+}
+
+.sd-mods-empty-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #5a3c1d;
+}
+
+.sd-mods-empty-desc {
+  font-size: 10px;
+  color: #8a7060;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+/* 待接入功能区 */
+.sd-mods-pending-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.sd-mods-pending-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: rgba(200, 168, 100, 0.08);
+  border: 1px dashed rgba(200, 168, 100, 0.5);
+  border-radius: 2px;
+}
+
+.sd-mods-pending-desc {
+  font-size: 10px;
+  color: #8a7060;
+  font-style: italic;
+}
+
+/* 上传弹窗 */
+.sd-mods-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 10, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+
+.sd-mods-modal-card {
+  background: #f5e8c8;
+  border: 2px solid #8a6a40;
+  border-radius: 3px;
+  padding: 16px 18px;
+  width: min(460px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.4);
+}
+
+.sd-mods-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sd-mods-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-mods-upload-hint {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sd-mods-upload-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #3a2510;
+}
+
+.sd-mods-upload-input {
+  font-size: 10.5px;
+  color: #2c1a0a;
+  border: 1px solid #c8a870;
+  background: rgba(255, 248, 220, 0.8);
+  padding: 4px 6px;
+  border-radius: 2px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sd-mods-upload-filename {
+  font-size: 10px;
+  color: #5a3c1d;
+  background: rgba(200, 168, 100, 0.15);
+  border: 1px solid #dcc898;
+  padding: 4px 8px;
+  border-radius: 2px;
+}
+
+.sd-mods-modal-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
