@@ -79,9 +79,9 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 
 func (s *server) addVersionBundle(zw *zip.Writer) {
 	info := map[string]string{
-		"version":   s.config.Version,
-		"commit":    s.config.Commit,
-		"buildDate": s.config.BuildDate,
+		"version":    s.config.Version,
+		"commit":     s.config.Commit,
+		"buildDate":  s.config.BuildDate,
 		"exportedAt": time.Now().UTC().Format(time.RFC3339),
 	}
 	writeJSONToZip(zw, "version.json", info)
@@ -152,7 +152,7 @@ func (s *server) addJobsBundle(ctx context.Context, zw *zip.Writer) {
 		CreatedAt    string `json:"createdAt"`
 		FinishedAt   string `json:"finishedAt,omitempty"`
 	}
-summaries := make([]jobSummary, 0, len(jobs))
+	summaries := make([]jobSummary, 0, len(jobs))
 	for _, j := range jobs {
 		errMsg := ""
 		if j.ErrorMessage.Valid {
@@ -190,7 +190,7 @@ func (s *server) addAuditLogsBundle(ctx context.Context, zw *zip.Writer) {
 		IPAddress  string `json:"ipAddress,omitempty"`
 		CreatedAt  string `json:"createdAt"`
 	}
-summaries := make([]auditSummary, 0, len(logs))
+	summaries := make([]auditSummary, 0, len(logs))
 	for _, l := range logs {
 		actorName := ""
 		if l.ActorName != nil {
