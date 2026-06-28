@@ -53,6 +53,7 @@ function SaveCard({
     : isRunning
       ? '服务器运行中，请先停止后操作'
       : undefined
+  const deleteTitle = writeTitle ?? (isActive ? '这是当前启动存档，删除后需要重新选择启动存档' : undefined)
 
   return (
     <div className={`sd-save-card${isActive ? ' active' : ''}`}>
@@ -114,17 +115,15 @@ function SaveCard({
         <button className="sd-btn-tan" disabled={busy} onClick={onExport} type="button">
           导出
         </button>
-        {!isActive ? (
-          <button
-            className="sd-btn-delete"
-            disabled={writeDisabled}
-            title={writeTitle}
-            onClick={onDelete}
-            type="button"
-          >
-            删除
-          </button>
-        ) : null}
+        <button
+          className="sd-btn-delete"
+          disabled={writeDisabled}
+          title={deleteTitle}
+          onClick={onDelete}
+          type="button"
+        >
+          删除
+        </button>
       </div>
     </div>
   )
@@ -331,6 +330,9 @@ export function SavesSection({
   const saves = data?.saves ?? []
   const hasSaves = saves.length > 0
   const isRunning = state === 'running' || state === 'starting'
+  const confirmDeleteSave = saves.find((save) => save.name === confirmDeleteName)
+  const confirmDeleteIsActive = Boolean(confirmDeleteSave?.isActive || data?.activeSaveName === confirmDeleteName)
+  const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1
 
   return (
     <section id="saves-section">
@@ -453,6 +455,16 @@ export function SavesSection({
               确定删除存档 <strong>"{confirmDeleteName}"</strong> 吗？
               删除前会自动备份，但操作本身不可直接撤销。
             </p>
+            {confirmDeleteIsActive ? (
+              <div className="sd-confirm-warning">
+                这是当前启动存档。删除后服务器将没有已选择的启动存档，下一次启动前需要重新选择、创建或上传存档。
+              </div>
+            ) : null}
+            {confirmDeleteIsLastSave ? (
+              <div className="sd-confirm-warning">
+                这是当前最后一个存档。删除后存档列表会变空，服务器启动前会要求先准备一个新存档。
+              </div>
+            ) : null}
             <div className="sd-confirm-actions">
               <button
                 className="sd-btn-tan"

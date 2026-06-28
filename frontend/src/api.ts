@@ -107,9 +107,10 @@ export function getJob(id: string) {
   return request<JobResponse>(`/api/jobs/${encodeURIComponent(id)}`)
 }
 
-export function getJobLogs(id: string, after = 0) {
+export function getJobLogs(id: string, after = 0, limit = 1000) {
   const params = new URLSearchParams()
   params.set('after', String(after))
+  params.set('limit', String(Math.min(limit, 1000)))
   return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
 }
 
