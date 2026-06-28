@@ -2253,3 +2253,284 @@
   gap: 6px;
   justify-content: flex-end;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   sd-diag-*  DiagnosticsPage 诊断与健康检查页
+   ══════════════════════════════════════════════════════════════ */
+
+/* 页头 */
+.sd-diag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.sd-diag-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-diag-header-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* 加载中 */
+.sd-diag-loading {
+  font-size: 10.5px;
+  color: #8a7060;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* 错误条 */
+.sd-diag-error-banner {
+  display: flex;
+  align-items: center;
+  background: rgba(185, 64, 64, 0.08);
+  border: 1px solid rgba(185, 64, 64, 0.35);
+  color: #b94040;
+  font-size: 10.5px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+
+/* 总状态面板 */
+.sd-diag-status-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #dcc898;
+  border-radius: 2px;
+  margin-bottom: 12px;
+}
+
+.sd-diag-status-ok {
+  background: rgba(40, 140, 60, 0.08);
+  border-color: rgba(40, 140, 60, 0.4);
+}
+
+.sd-diag-status-warning {
+  background: rgba(200, 160, 40, 0.1);
+  border-color: rgba(200, 160, 40, 0.5);
+}
+
+.sd-diag-status-error {
+  background: rgba(185, 64, 64, 0.08);
+  border-color: rgba(185, 64, 64, 0.4);
+}
+
+.sd-diag-status-icon-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+/* 大状态点 */
+.sd-diag-status-big-dot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sd-diag-status-panel .sd-dot-green.sd-diag-status-big-dot,
+.sd-diag-status-big-dot.sd-dot-green {
+  background: #3aaa3a;
+  box-shadow: 0 0 6px rgba(58, 170, 58, 0.5);
+}
+
+.sd-diag-status-big-dot.sd-dot-yellow {
+  background: #c8a028;
+  box-shadow: 0 0 6px rgba(200, 160, 40, 0.45);
+}
+
+.sd-diag-status-big-dot.sd-dot-red {
+  background: #c03030;
+  box-shadow: 0 0 6px rgba(192, 48, 48, 0.45);
+}
+
+.sd-diag-status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sd-diag-status-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-diag-status-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sd-diag-count {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.sd-diag-count-ok { color: #2a8a2a; }
+.sd-diag-count-warn { color: #a07010; }
+.sd-diag-count-error { color: #b94040; }
+
+/* 区块标题 */
+.sd-diag-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5a3c1d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-diag-pending-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #7a5c30;
+  background: rgba(200, 160, 40, 0.18);
+  border: 1px solid #c8a028;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* 检查项列表 */
+.sd-diag-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.sd-diag-check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 2px;
+  font-size: 10.5px;
+  border: 1px solid transparent;
+}
+
+.sd-diag-check-ok {
+  background: rgba(40, 140, 60, 0.06);
+  border-color: rgba(40, 140, 60, 0.2);
+}
+
+.sd-diag-check-warning {
+  background: rgba(200, 160, 40, 0.08);
+  border-color: rgba(200, 160, 40, 0.35);
+}
+
+.sd-diag-check-error {
+  background: rgba(185, 64, 64, 0.06);
+  border-color: rgba(185, 64, 64, 0.3);
+}
+
+.sd-diag-check-name {
+  font-weight: 700;
+  color: #3a2510;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.sd-diag-check-msg {
+  color: #5a3c1d;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 告警区 */
+.sd-diag-alert-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: #5a7a40;
+  padding: 7px 10px;
+  background: rgba(40, 140, 60, 0.07);
+  border: 1px solid rgba(40, 140, 60, 0.25);
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+
+.sd-diag-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.sd-diag-alert-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.sd-diag-alert-warning {
+  background: rgba(200, 160, 40, 0.1);
+  border-color: rgba(200, 160, 40, 0.4);
+}
+
+.sd-diag-alert-error {
+  background: rgba(185, 64, 64, 0.08);
+  border-color: rgba(185, 64, 64, 0.35);
+}
+
+.sd-diag-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-diag-alert-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-diag-alert-msg {
+  font-size: 10px;
+  color: #5a3c1d;
+  line-height: 1.5;
+}
+
+/* 资源趋势占位 */
+.sd-diag-resource-pending {
+  padding: 14px 10px;
+  border: 1px dashed rgba(200, 168, 100, 0.5);
+  border-radius: 2px;
+  background: rgba(200, 168, 100, 0.06);
+}
+
+.sd-diag-resource-pending-desc {
+  font-size: 10px;
+  color: #8a7060;
+  font-style: italic;
+  text-align: center;
+}
