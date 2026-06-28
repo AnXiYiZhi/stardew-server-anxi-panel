@@ -903,6 +903,15 @@
   line-height: 1.6;
 }
 
+.sd-confirm-warning {
+  padding: 7px 8px;
+  border: 1px solid #c58b2a;
+  background: #fff0c2;
+  color: #7a3b12;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
 .sd-confirm-actions {
   display: flex;
   gap: 8px;
@@ -1231,6 +1240,375 @@
   gap: 10px;
 }
 
+/* ── 任务与日志页（sd-jobs-*）────────────────────────────────────────────── */
+
+.sd-jobs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sd-jobs-toolbar-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 两列布局：左任务列表 / 右详情+日志 */
+.sd-jobs-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 8px;
+  min-height: 420px;
+}
+
+/* 左：任务列表 */
+.sd-jobs-list {
+  border: 1px solid #c8a870;
+  background: #f8f0d8;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 560px;
+}
+
+.sd-jobs-list-row {
+  padding: 7px 9px;
+  border-bottom: 1px solid #e8dab8;
+  cursor: pointer;
+  background: none;
+  border-left: 3px solid transparent;
+  border-right: none;
+  border-top: none;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sd-jobs-list-row:hover {
+  background: #f0e4c0;
+}
+
+.sd-jobs-list-row.active {
+  background: #e8d8a0;
+  border-left-color: #8a6820;
+}
+
+.sd-jobs-list-row-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.sd-jobs-list-row-type {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #2c1a0a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-jobs-list-row-date {
+  font-size: 9.5px;
+  color: #7a5040;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右：任务详情 */
+.sd-jobs-detail {
+  border: 1px solid #c8a870;
+  background: #f8f0d8;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sd-jobs-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-jobs-detail-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-jobs-detail-id {
+  font-size: 9.5px;
+  color: #7a5040;
+  font-family: var(--sd-font-mono, monospace);
+  margin-top: 2px;
+}
+
+.sd-jobs-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: #5a3c1d;
+}
+
+.sd-jobs-detail-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sd-jobs-detail-meta-label {
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+/* 错误横条（failed 任务） */
+.sd-jobs-error-banner {
+  padding: 5px 8px;
+  background: var(--sd-red-bg, #ffe0d6);
+  border: 1px solid var(--sd-red, #b54837);
+  font-size: 10.5px;
+  color: var(--sd-red-text, #681111);
+}
+
+/* 突出显示的错误（较粗边框） */
+.sd-jobs-error-banner-prominent {
+  border-width: 2px;
+  padding: 6px 9px;
+}
+
+.sd-jobs-error-label {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* SSE 实时状态提示 */
+.sd-jobs-sse-notice {
+  padding: 4px 8px;
+  background: rgba(200, 168, 122, 0.25);
+  border: 1px solid #c8a870;
+  font-size: 10px;
+  color: #5a3c1d;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-jobs-sse-notice-warn {
+  background: var(--sd-gold-light, #fff3d6);
+  border-color: var(--sd-gold-border, #b57a2d);
+  color: var(--sd-gold-text, #7a4a10);
+}
+
+.sd-jobs-sse-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4aaa28;
+  flex-shrink: 0;
+  animation: sd-pulse-dot 1.6s infinite;
+}
+
+/* 拉取进度（安装任务） */
+.sd-jobs-pull-progress {
+  padding: 6px 8px;
+  border: 1px solid #c8a870;
+  background: #f0e8d0;
+  display: grid;
+  gap: 5px;
+}
+
+.sd-jobs-pull-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: #2c1a0a;
+}
+
+.sd-jobs-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-jobs-progress-track {
+  flex: 1;
+  height: 7px;
+  background: #ddc8a0;
+  border: 1px solid #c0a870;
+  overflow: hidden;
+}
+
+.sd-jobs-progress-fill {
+  height: 100%;
+  background: #4aaa28;
+  transition: width 200ms ease;
+}
+
+.sd-jobs-progress-fill.done {
+  background: #2a8818;
+}
+
+.sd-jobs-progress-pct {
+  font-size: 10px;
+  color: #5a3c1d;
+  min-width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* 日志终端窗口 */
+.sd-jobs-log-window {
+  flex: 1;
+  overflow-y: auto;
+  background: #1e1209;
+  border: 1px solid #3d2510;
+  padding: 8px;
+  font-family: var(--sd-font-mono, 'Consolas', 'Monaco', monospace);
+  font-size: 10.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 160px;
+  max-height: 360px;
+}
+
+.sd-jobs-log-line {
+  display: grid;
+  grid-template-columns: 28px 40px 1fr;
+  gap: 5px;
+  padding: 1px 0;
+  color: #c8b890;
+  line-height: 1.45;
+}
+
+.sd-jobs-log-seq {
+  color: #4a3c28;
+  text-align: right;
+  font-size: 9.5px;
+  padding-top: 1px;
+  flex-shrink: 0;
+}
+
+.sd-jobs-log-level {
+  font-weight: 700;
+  font-size: 9.5px;
+  padding-top: 1px;
+}
+
+.sd-jobs-log-msg {
+  word-break: break-word;
+}
+
+/* 按 level 着色 */
+.sd-jobs-log-line.info  .sd-jobs-log-level { color: #5aaa60; }
+.sd-jobs-log-line.warn  .sd-jobs-log-level { color: #d0a020; }
+.sd-jobs-log-line.error .sd-jobs-log-level { color: #e05050; }
+.sd-jobs-log-line.debug .sd-jobs-log-level { color: #6080a8; }
+.sd-jobs-log-line.error .sd-jobs-log-msg   { color: #ff9090; }
+
+.sd-jobs-log-empty {
+  color: #4a3c28;
+  font-style: italic;
+  font-size: 10px;
+  padding: 4px 0;
+}
+
+/* 空状态和加载中 */
+.sd-jobs-empty {
+  padding: 22px 14px;
+  text-align: center;
+  border: 1px dashed #c8a870;
+  background: #f8f0d8;
+  display: grid;
+  gap: 8px;
+  color: #5a3c1d;
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.sd-jobs-empty-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-jobs-loading {
+  padding: 14px;
+  text-align: center;
+  color: #7a5040;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.sd-jobs-select-hint {
+  text-align: center;
+  color: #8a7060;
+  font-size: 10.5px;
+  font-style: italic;
+  padding: 14px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 任务状态徽章 */
+.sd-jobs-status {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+.sd-jobs-status-queued {
+  background: #ece0b8;
+  color: #5a4030;
+  border: 1px solid #b8a878;
+}
+
+.sd-jobs-status-running {
+  background: #d0eac0;
+  color: #1a5020;
+  border: 1px solid #70b050;
+}
+
+.sd-jobs-status-succeeded {
+  background: #c4e8b8;
+  color: #0e4018;
+  border: 1px solid #58a040;
+}
+
+.sd-jobs-status-failed {
+  background: #fcd8d8;
+  color: #7a1010;
+  border: 1px solid #d06060;
+}
+
+.sd-jobs-status-canceled {
+  background: #e0d8c8;
+  color: #4a3c2a;
+  border: 1px solid #b0a080;
+}
+
 /* ── 响应式 ───────────────────────────────────────────────────────────────── */
 
 @media (max-width: 960px) {
@@ -1240,6 +1618,20 @@
 
   .sd-opsrail {
     display: none;
+  }
+
+  /* 任务页：窄屏改为单列（列表在上，详情在下） */
+  .sd-jobs-layout {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .sd-jobs-list {
+    max-height: 200px;
+  }
+
+  .sd-jobs-log-window {
+    max-height: 280px;
   }
 }
 

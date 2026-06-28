@@ -6,6 +6,59 @@
 
 ## Current Context
 
+### FE-R7a: JobsLogsPage review follow-up ✅ completed (2026-06-29)
+
+修复 FE-R7 提交前 review 中发现的任务日志页细节：
+- `frontend/src/api.ts`：`getJobLogs(id, after, limit)` 新增 `limit` 参数，默认请求后端允许的 1000 行，避免详情页仍按后端默认 200 行加载。
+- `frontend/src/games/stardew/pages/JobsLogsPage.tsx`：详情加载失败时显示错误条，不再静默退回“选择任务”占位；日志达到 1000 行时显示截断提示；刷新/清空时同步清理详情错误和截断状态。
+- 验证：`npm.cmd run build` 通过。
+
+### FE-R6a: 存档删除交互修正 ✅ completed (2026-06-29)
+
+修正 `/instances/stardew/saves` 中“当前启动存档不能删除”的前端限制。后端 `DeleteSave` 已支持删除 active save 并自动清理 gameloader 配置，因此前端不应隐藏当前存档的删除入口。
+
+改动内容：
+- `SavesSection.tsx`：当前启动存档也始终显示“删除”按钮，仍保留 admin、running/starting、busy 禁用规则。
+- 删除确认弹窗新增风险提示：删除当前启动存档后需要重新选择/创建/上传存档；如果这是最后一个存档，再额外提示删除后列表会变空。
+- `StardewPanel.css`：新增 `sd-confirm-warning` 样式，用于像素风警告块。
+
+验证：`npm.cmd run build` 通过。
+
+### FE-R7: JobsLogsPage 任务与日志页真实化 ✅ completed (2026-06-29)
+
+把 `/instances/stardew/jobs` 从占位页改造为真实可用的任务与日志页面，完全融入 Stardew 像素风 shell。
+
+**改动内容：**
+
+1. **`JobsLogsPage.tsx` 完全重写**
+   - 左侧任务列表：任务类型（中文）、状态徽章（中文）、创建时间，点击切换选中。
+   - 右侧详情区：任务类型/ID/时间元数据，failed 任务突出显示 `errorMessage`（红色双边框）。
+   - 日志终端：深色 `sd-jobs-log-window`，`sequence` 去重，按 `level` 着色。
+   - 安装任务专用拉取进度条（`extractPullProgress`）。
+   - 刷新按钮（所有用户）+ 清空历史（admin，像素风二次确认弹框）。
+   - 默认自动选中最近一条任务（`autoSelectedRef` 防重复）。
+
+2. **SSE 实时日志**
+   - 非终态任务开启 `createJobEventSource(id, lastSeq)` 接收 `log` 事件。
+   - `finished` 事件 → 关闭 SSE → 刷新详情 + 本地列表 + OpsRail + 实例状态。
+   - 组件卸载/切换任务时自动 `es.close()` + `cancelled` 标志防止 stale 更新。
+   - SSE 失败显示金色警示条，保留手动刷新。
+   - `appendUniqueLog` 按 `jobId+sequence` 去重。
+
+3. **`StardewPanel.css` 新增约 220 行 `sd-jobs-*` 样式**
+   - 两列布局、任务列表行、详情区、日志终端、状态徽章、进度条、空/加载/提示状态。
+
+**FE-R6 小修复确认（均已到位，本轮无需改动）：**
+- 非 admin 用户看到 disabled 按钮，不会触发 403（`writeDisabled = busy || isRunning || !isAdmin`）。
+- 空状态下 running 时按钮 disabled+title（而非隐藏）。
+- 删除确认弹框确认按钮 `disabled={busy || isRunning || !isAdmin}`。
+
+**已接入 API：** `getJobs`、`getJob`、`getJobLogs`、`createJobEventSource`（`GET /api/jobs/:id/stream` SSE）、`clearJobs`。
+
+`npm.cmd run build` 通过（exit 0），39 模块，JS 269.14 kB，CSS 59.57 kB。
+
+详见 `docs/conversation-handoff-2026-06-29.md`。
+
 ### FE-R6: SavesPage 存档管理页真实化（像素视觉迁移）✅ completed (2026-06-29)
 
 把 `/instances/stardew/saves` 的存档管理页从旧样式完整迁移为像素主题视觉，保留并强化所有已有功能。
