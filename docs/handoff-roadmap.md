@@ -6,6 +6,40 @@
 
 ## Current Context
 
+### FE-R10: DiagnosticsPage 诊断与健康检查页真实化 ✅ completed (2026-06-29)
+
+把 `/instances/stardew/diagnostics` 从占位页改造为真实可用的诊断与健康检查页面。
+
+**真实接入的 API：**
+- `getHealthDiagnostics()`（`GET /api/health/diagnostics`）：加载健康检查数据，返回 `{ status, checks[] }`。
+- `downloadSupportBundle()`（`POST /api/instances/:id/support-bundle`）：导出诊断包 ZIP，admin-only，触发浏览器下载。
+- `dashboardData.health / healthError / refreshHealth()`：公共数据层健康数据，用于初始渲染；重新检查时本地独立请求。
+
+**页面功能区：**
+1. **总状态面板**：大彩色状态点（ok=绿/warning=黄/error=红）+ 状态标签（系统正常/存在警告/存在错误）+ 正常/警告/错误计数。
+2. **检查项明细**：按后端返回逐项渲染，名称中文映射（docker_daemon / docker_compose / data_dir / instance_dir / compose_file / active_save），状态着色行。
+3. **告警与建议**：仅汇总 warning/error 项；全部正常时显示"暂无告警"绿色提示条。
+4. **快捷工具**：重新检查（独立 loading 状态，不阻塞公共层）、导出诊断包（admin-only，非 admin disabled + title）。
+5. **资源趋势**：待接入空状态，说明需要后端数据源，占位区预留渲染位置。
+
+**权限规则：**
+- `getHealthDiagnostics`：所有登录用户可用（后端 requireAuth）。
+- `downloadSupportBundle`：admin-only（后端 requireAdmin）；非 admin 显示 disabled 按钮 + title 说明。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/DiagnosticsPage.tsx` | 完全重写 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 220 行 `sd-diag-*` 样式 |
+| `docs/handoff-roadmap.md` | 新增 FE-R10 完成记录 |
+| `docs/conversation-handoff-2026-06-29.md` | 新增 FE-R10 接手节 |
+
+**验证：**`npm.cmd run build` 通过（exit 0），39 模块，JS 291.25 kB，CSS 70.88 kB。
+
+**待接入（有 UI 入口但 disabled/空状态）：**
+- CPU / 内存 / 磁盘实时趋势图表（无后端数据源，显示"待接入"空状态）。
+
 ### FE-R9: ModsPage 模组管理页真实化 ✅ completed (2026-06-29)
 
 把 `/instances/stardew/mods` 从占位页改造为真实可用的 Stardew 像素风模组管理页面。

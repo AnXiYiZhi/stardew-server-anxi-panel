@@ -1,5 +1,98 @@
 # Conversation Handoff 2026-06-29
 
+## FE-R10: DiagnosticsPage 诊断与健康检查页真实化
+
+### 目标
+
+把 `/instances/stardew/diagnostics` 从占位页改造为真实可用的诊断页，接入已有健康检查和支持包导出 API，对无后端数据的资源趋势区显示清晰"待接入"空状态。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/DiagnosticsPage.tsx` | 完全重写 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 220 行 `sd-diag-*` 像素风样式 |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 FE-R10 完成节 |
+
+### 代码探查结论
+
+1. **`getHealthDiagnostics()`** 已在 `api.ts` 中实现，对应 `GET /api/health/diagnostics`，返回 `{ status: string, checks: HealthCheck[] }`，后端 `requireAuth`（所有登录用户可用）。
+2. **`downloadSupportBundle()`** 已在 `api.ts` 中实现，对应 `POST /api/instances/:id/support-bundle`，后端 `requireAdmin`（admin-only）。
+3. **检查项字段**：后端返回 `name`（`docker_daemon` / `docker_compose` / `data_dir` / `instance_dir` / `compose_file` / `active_save`）、`status`（ok/warning/error）、`message`（中文说明）。
+4. **`dashboardData.health / healthError / refreshHealth()`** 均已在公共数据层就绪，DiagnosticsPage 初始渲染直接使用；重新检查时用 `getHealthDiagnostics()` 本地请求以获得独立 loading 状态，成功后同步调用 `refreshHealth()` 更新公共层。
+
+### 各区域说明
+
+**总状态面板（`sd-diag-status-panel`）**
+- 大圆点（16px）颜色根据 `overallStatus` 区分：ok=绿/warning=黄/error=红，带轻微发光阴影。
+- 状态标签（系统正常/存在警告/存在错误）+ 计数行（✓ N 正常 / ⚠ N 警告 / ✕ N 错误）。
+- 面板背景色随状态变化：ok=淡绿/warning=淡黄/error=淡红。
+
+**检查项明细（`sd-diag-checks`）**
+- 每行 `sd-diag-check-row`：状态点 + 名称（`sd-diag-check-name`，固定最小宽度 90px）+ 消息（`sd-diag-check-msg`）。
+- 行背景/边框颜色随 status 着色（ok/warning/error 三档）。
+- 名称通过 `CHECK_NAME_LABELS` 字典中文映射，fallback 显示原始 `name`。
+
+**告警与建议（`sd-diag-alerts`）**
+- 过滤 `status !== 'ok'` 项单独渲染。
+- 全部正常时显示绿色"暂无告警"提示条；未加载数据时提示"请先点击重新检查"。
+
+**快捷工具（页头右侧）**
+- 重新检查：独立 `refreshing` state，避免阻塞公共数据层。加载中显示"检查中…"。
+- 导出诊断包：`downloadSupportBundle()` 触发浏览器下载；非 admin 显示 disabled + title 说明"仅管理员可导出"；导出失败显示错误条。
+
+**资源趋势（`sd-diag-resource-pending`）**
+- 纯占位：虚线边框 + 说明文字，不显示假数据。
+
+### 真实接入 API 汇总
+
+| API 函数 | 路径 | 权限 | 状态 |
+|----------|------|------|------|
+| `getHealthDiagnostics` | `GET /api/health/diagnostics` | 所有登录用户 | ✅ 接入 |
+| `downloadSupportBundle` | `POST /api/instances/:id/support-bundle` | admin-only | ✅ 接入 |
+| 资源趋势 API | — | — | ❌ 后端不存在 |
+
+### 影响的接口/文件
+
+- 无新增后端接口，无改动 API 签名。
+- `StardewPanel.css` 追加约 220 行，不影响已有类（全部以 `sd-diag-` 开头）。
+- 未改动：`OverviewPage`、`ServerControlPage`、`SavesPage`、`JobsLogsPage`、`PlayersPage`、`ModsPage`。
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS ~291 kB，CSS ~71 kB
+```
+
+已验证通过（exit 0），JS 291.25 kB，CSS 70.88 kB。
+
+手动验证点：
+- `/instances/stardew/diagnostics` 不再是占位页，显示总状态面板 + 检查项列表 + 告警区 + 快捷工具 + 资源趋势占位。
+- 总状态面板颜色与实际 health.status 对应。
+- 检查项名称显示为中文（Docker 服务 / Docker Compose / 数据目录 / 实例目录 / Compose 文件 / 启动存档）。
+- 点击"重新检查"显示"检查中…"状态，完成后更新数据。
+- health 加载失败时显示红色错误条 + 重试按钮。
+- admin 用户可点击"导出诊断包"触发浏览器下载。
+- 非 admin 用户：导出按钮 disabled，title 说明"仅管理员可导出诊断包"。
+- 告警区：有 warning/error 时显示汇总列表；无告警时显示绿色"暂无告警"条。
+- 资源趋势区显示"待接入"提示，无假数据。
+- 左侧导航、Overview、ServerControlPage、SavesPage、JobsLogsPage、PlayersPage、ModsPage 不受影响。
+
+### 下一步注意事项
+
+**FE-R11 建议：SettingsPage 设置页真实化**
+- 后端已有 `/api/users` 用户管理 API（`GET/POST/PATCH/DELETE /api/users/:id`）。
+- 审计日志：`GET /api/audit-logs?limit=&offset=` 已实现，可在设置页接入审计日志查看。
+- 版本信息：`dashboardData.versionInfo` 已就绪，可在设置页展示版本 / commit / buildDate。
+
+**资源趋势后续接入建议（给后端开发者）**
+- 需新增 `GET /api/instances/:id/metrics` 或类似端点，返回 CPU/内存/磁盘使用数据。
+- 前端 `DiagnosticsPage` 的"资源趋势"区已预留位置，去掉占位条件渲染即可接入。
+
+---
+
 ## FE-R9: ModsPage 模组管理页真实化
 
 ### 目标
