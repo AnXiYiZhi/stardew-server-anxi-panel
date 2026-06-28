@@ -6,6 +6,47 @@
 
 ## Current Context
 
+### FE-R9: ModsPage 模组管理页真实化 ✅ completed (2026-06-29)
+
+把 `/instances/stardew/mods` 从占位页改造为真实可用的 Stardew 像素风模组管理页面。
+
+**真实接入的 API：**
+- `getMods`：加载 Mod 列表（含 `restartRequired` 标志）。
+- `uploadMod`：上传 ZIP 包安装 Mod，成功后刷新列表并显示"需要重启"提示。
+- `deleteMod`：删除 Mod（admin-only，像素风二次确认弹窗，running/starting 时 disabled）。
+- `exportMods`：导出全部 Mod 为 ZIP，触发浏览器下载（所有用户可用）。
+
+**页面功能区：**
+1. **概览统计行**：已安装数量、服务器状态（带彩色状态点）、重启需求标志、解析失败数量。
+2. **模组列表**：每张卡片显示名称、版本、UniqueID、作者、目录名、描述；解析失败时显示红色错误条。
+3. **操作区**：上传 Mod（admin + 非 running）、导出 Mod 包（所有用户）、刷新列表。
+4. **删除**：admin-only，running/starting 时 disabled；点击弹出像素风 `sd-confirm-dialog` 二次确认，不使用 `window.confirm`。
+5. **待接入区**：启用/禁用、依赖检查、更新检查——全部 disabled + 待接入徽章，注明"后端待接入"。
+
+**权限规则：**
+- 非 admin：上传/删除按钮可见但 disabled，title 说明"仅管理员可用"。
+- running/starting：上传/删除 disabled，title 说明"服务器运行中，请先停止后操作"。
+- 导出无状态限制，mods 为空时 disabled。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/ModsPage.tsx` | 完全重写 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 300 行 `sd-mods-*` 样式 |
+| `docs/handoff-roadmap.md` | 新增 FE-R9 完成记录 |
+| `docs/conversation-handoff-2026-06-29.md` | 新增 FE-R9 接手节 |
+
+**验证：**`npm.cmd run build` 通过（exit 0），39 模块，JS 287.09 kB，CSS 67.30 kB。
+
+**待接入（有 UI 入口但 disabled）：**
+- 按 Mod 单独启用/禁用（无后端 API）。
+- 依赖完整性检查（无后端 API）。
+- Nexus/URL 在线安装（无后端 API）。
+- 更新检查（无后端 API）。
+
+**旧 ModsSection：** `ModsSection.tsx` 无任何外部引用，保留不动，不影响已有功能。
+
 ### FE-R8: PlayersPage 玩家管理页真实化 ✅ completed (2026-06-29)
 
 把 `/instances/stardew/players` 从占位页改造为真实的 Stardew 像素风玩家管理页面。
