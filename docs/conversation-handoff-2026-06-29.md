@@ -1,5 +1,107 @@
 # Conversation Handoff 2026-06-29
 
+## FE-R8: PlayersPage 玩家管理页真实化
+
+### 目标
+
+把 `/instances/stardew/players` 从占位页改造为真实可用的玩家管理页，接入所有现有后端能力，对无后端 API 的功能保持清晰的"待接入"空状态，不写死演示数据。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/PlayersPage.tsx` | 完全重写 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 160 行 `sd-players-*` 样式 |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 FE-R8 完成节 |
+
+### 代码探查结论
+
+探查后确认：
+1. **无玩家列表 API**：后端无 `/api/instances/:id/players` 接口，Junimo 也无玩家列表 HTTP API。
+2. **可接入的真实能力**：`instanceState`（状态）、`dashboardData.saves`（存档/农场信息）、`dashboardData.inviteCode`（邀请码）、`runCommand('info')`（JunimoServer `info` 命令原始输出）。
+3. **`info` 命令**：在 commandDefs allowlist 中已存在，描述"查看服务器当前状态、玩家数、存档信息"。服务器运行时调用会返回 attach-cli 输出，含玩家数等信息（输出格式由 Junimo 决定）。
+
+### 各区域说明
+
+**区域 1：玩家概览**
+- 服务器状态：从 `instanceState.state` 读取，彩色状态点。
+- 在线人数 / 最大人数：当前无 API，显示"—"+ 待接入徽章；解析 `info` 输出太脆弱，不尝试。
+- 当前农场 / 主机农民 / 游戏日期：从 `dashboardData.saves.saves` 找活跃存档，展示 `farmName`、`farmerName`、`gameYear/gameSeason/gameDay`。
+- 邀请码行：来自 `dashboardData.inviteCode`，带复制和刷新按钮（刷新调 `dashboardData.refreshInviteCode()`）。
+
+**区域 2：服务器信息**
+- 自动在服务器首次进入 running 状态时调用 `runCommand('info')`。
+- 原始输出显示在深色 `sd-players-info-terminal` 终端框中（像素风暗色背景）。
+- 提供"刷新"按钮手动重新获取；服务器未运行时禁用。
+- 服务器未运行显示"服务器未运行，暂无服务器信息"。
+
+**区域 3：在线玩家列表**
+- 服务器未运行：空状态"服务器未运行，暂无在线玩家"。
+- 服务器运行：空状态"玩家列表接口待接入 — JunimoServer 暂未提供玩家列表 API"。
+- 占位表头展示未来接入后的列结构（玩家名 / 角色 / 位置 / 在线时长 / 状态 / 操作）。
+
+**区域 4：玩家活动历史**
+- 待接入空状态，说明需要日志解析 API 支持。
+
+**区域 5：管理操作**
+- 踢出玩家、封禁玩家、白名单管理、权限设置：全部 `disabled` + 待接入徽章。
+- 非 admin 用户显示"仅管理员"提示，所有按钮 title 说明原因。
+- 未来接入时只需替换 disabled 属性和 click handler。
+
+### 真实接入 API 汇总
+
+| API / 数据 | 接入情况 |
+|-----------|---------|
+| `instanceState.state` | ✅ 接入 — 控制状态点和区域可用性 |
+| `dashboardData.saves.saves` | ✅ 接入 — 活跃存档的农场/农民/日期信息 |
+| `dashboardData.inviteCode` | ✅ 接入 — 邀请码展示和复制 |
+| `dashboardData.refreshInviteCode()` | ✅ 接入 — 刷新邀请码 |
+| `runCommand('info')` | ✅ 接入 — 服务器原始信息输出 |
+| 玩家列表 API | ❌ 后端不存在 |
+| 踢出/封禁/白名单 API | ❌ 后端不存在 |
+| 玩家事件历史 API | ❌ 后端不存在 |
+
+### 影响的接口/文件
+
+- 无新增后端接口，无改动 API 签名。
+- `PlayersPage.tsx` 不依赖 `dashboardData.jobs` 或 `dashboardData.mods`。
+- `StardewPanel.css` 追加约 160 行，不影响已有类。
+- 未改动：`OverviewPage`、`ServerControlPage`、`SavesPage`、`JobsLogsPage`。
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS ~278 kB，CSS ~62 kB
+```
+
+已验证通过（exit 0），JS 278.02 kB，CSS 62.53 kB。
+
+手动验证点：
+- `/instances/stardew/players` 不再是占位页，显示 5 个区域。
+- 服务器停止时：状态点灰色 / 邀请码显示"服务器未运行" / 服务器信息区显示提示 / 玩家列表显示停止状态空态。
+- 服务器运行时：状态点绿色脉冲 / 邀请码显示可复制 / 自动触发 `info` 命令并展示原始输出。
+- 管理操作按钮全部 disabled，非 admin 有仅管理员提示。
+- 左侧导航、Overview、ServerControlPage、SavesPage、JobsLogsPage 不受影响。
+
+### 下一步注意事项
+
+**FE-R9 建议：ModsPage 真实化**
+- 已有完整后端 API：`getMods`、`uploadMod`、`deleteMod`、`exportMods`。
+- 旧 `ModsSection.tsx` 已实现逻辑（来自 App.tsx 重构前），可迁移为像素风。
+
+**PlayersPage 后续接入建议（给后端开发者）**
+
+若要接入真实玩家列表，后端需要：
+1. 解析 JunimoServer 日志或调用 `info` 命令并结构化解析输出（玩家名、在线时长等）。
+2. 或接入 JunimoServer HTTP API（需 `API_ENABLED=true`，端口 `API_PORT`，`API_KEY`）。
+3. 提供 `GET /api/instances/:id/players` 返回 `{ players: PlayerInfo[] }`。
+4. 提供踢出 `POST /api/instances/:id/players/:name/kick`，封禁 `POST /api/instances/:id/players/:name/ban`。
+5. 前端只需移除 disabled 属性并补 click handler，UI 入口已就位。
+
+---
+
 ## FE-R7a: JobsLogsPage review follow-up
 
 ### 目标

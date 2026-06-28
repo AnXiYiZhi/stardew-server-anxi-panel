@@ -6,6 +6,34 @@
 
 ## Current Context
 
+### FE-R8: PlayersPage 玩家管理页真实化 ✅ completed (2026-06-29)
+
+把 `/instances/stardew/players` 从占位页改造为真实的 Stardew 像素风玩家管理页面。
+
+**真实接入的数据：**
+- `instanceState.state`：服务器运行/停止状态，影响全页可用性。
+- `dashboardData.saves?.activeSaveName`：活跃存档名，显示当前农场/农民信息。
+- `activeSave.farmName / farmerName / gameYear / gameSeason / gameDay`：从存档元数据展示游戏内日期。
+- `dashboardData.inviteCode`：服务器邀请码，带复制/刷新按钮。
+- `runCommand('info')`：在服务器运行时自动调用 JunimoServer `info` 命令，展示原始服务器状态文本（含玩家数、存档等）。
+
+**待接入（有 UI 入口但 disabled/空状态）：**
+- 在线玩家列表（无 backend API，显示清晰的"待接入"空状态 + 列头占位）。
+- 在线人数 / 最大人数（API 不存在，显示"—"+ 待接入徽章）。
+- 玩家活动 / 事件历史（无日志解析 API，显示待接入空状态）。
+- 踢出、封禁、白名单、权限设置（全部 disabled + 待接入徽章）。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/PlayersPage.tsx` | 完全重写 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 160 行 `sd-players-*` 样式 |
+| `docs/handoff-roadmap.md` | 新增 FE-R8 完成记录 |
+| `docs/conversation-handoff-2026-06-29.md` | 新增 FE-R8 接手节 |
+
+验证：`npm.cmd run build` 通过（exit 0），39 模块，JS 278.02 kB，CSS 62.53 kB。
+
 ### FE-R7a: JobsLogsPage review follow-up ✅ completed (2026-06-29)
 
 修复 FE-R7 提交前 review 中发现的任务日志页细节：

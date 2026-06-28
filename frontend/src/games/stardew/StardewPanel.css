@@ -1675,3 +1675,200 @@
     display: none;
   }
 }
+
+/* ── 玩家管理页专用（sd-players-*）──────────────────────────────────────── */
+
+/* 概览数据网格 */
+.sd-players-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+/* 单个统计项 */
+.sd-players-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sd-players-stat-label {
+  font-size: 10px;
+  color: #8a7060;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sd-players-stat-value {
+  font-size: 11.5px;
+  color: #2c1a0a;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-players-stat-pending {
+  color: #7a5c30;
+  font-weight: 400;
+}
+
+/* 邀请码行 */
+.sd-players-invite-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  background: rgba(220, 200, 152, 0.25);
+  border: 1px solid #dcc898;
+  border-radius: 2px;
+  margin-top: 8px;
+}
+
+.sd-players-invite-label {
+  font-size: 10px;
+  color: #8a7060;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.sd-players-invite-code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f5f1e;
+  letter-spacing: 0.08em;
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-players-invite-empty,
+.sd-players-invite-loading {
+  font-size: 10.5px;
+  color: #8a7060;
+  font-style: italic;
+  flex: 1;
+}
+
+.sd-players-invite-error {
+  font-size: 10.5px;
+  color: #b94040;
+  flex: 1;
+}
+
+/* 服务器 info 命令终端输出 */
+.sd-players-info-terminal {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #1e1209;
+  color: #c8e8c8;
+  border: 1px solid #3d2510;
+  border-radius: 2px;
+  padding: 8px 10px;
+  margin: 0 0 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.sd-players-info-error {
+  font-size: 10.5px;
+  color: #b94040;
+  background: rgba(185, 64, 64, 0.08);
+  border: 1px solid rgba(185, 64, 64, 0.25);
+  padding: 5px 8px;
+  border-radius: 2px;
+}
+
+/* 玩家列表空状态 */
+.sd-players-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  text-align: center;
+}
+
+.sd-players-empty-small {
+  padding: 8px;
+}
+
+.sd-players-empty-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  opacity: 0.5;
+  margin-bottom: 4px;
+}
+
+.sd-players-empty-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #5a3c1d;
+}
+
+.sd-players-empty-desc {
+  font-size: 10px;
+  color: #8a7060;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+/* 玩家列表占位表头 */
+.sd-players-table-placeholder {
+  margin-top: 8px;
+  border: 1px dashed #dcc898;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sd-players-table-header {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1.5fr 1fr 1fr 1fr;
+  gap: 0;
+  background: rgba(220, 200, 152, 0.35);
+  border-bottom: 1px solid #dcc898;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #5a3c1d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sd-players-table-empty-row {
+  padding: 10px 8px;
+  font-size: 10.5px;
+  color: #8a7060;
+  font-style: italic;
+  text-align: center;
+}
+
+/* 管理操作网格 */
+.sd-players-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.sd-players-action-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 超小按钮 */
+.sd-btn-xs {
+  padding: 1px 6px !important;
+  font-size: 9.5px !important;
+  min-height: unset !important;
+  height: 20px !important;
+  line-height: 1 !important;
+}
