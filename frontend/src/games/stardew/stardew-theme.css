@@ -1,0 +1,502 @@
+/*
+ * Stardew Valley 视觉主题基础
+ *
+ * 本文件只定义 CSS 变量和可选工具类，不覆盖 App.css 已有样式。
+ * 变量以 --sd- 前缀隔离，避免与全局命名空间冲突。
+ * 素材路径以 /assets/stardew/ui/ 为根，build 后可通过该路径访问。
+ *
+ * 目录：
+ *   1. 颜色变量
+ *   2. 素材路径变量
+ *   3. 木纹背景
+ *   4. 羊皮纸面板
+ *   5. 像素风按钮变体
+ *   6. 像素风输入框
+ *   7. 左侧导航项
+ *   8. 状态点
+ *   9. 紧凑表格 / 数据行
+ *  10. 指标卡
+ */
+
+/* ── 1. 颜色变量 ────────────────────────────────────────────────────────── */
+
+:root {
+  /* 主色 */
+  --sd-brown-dark:   #3c2415;
+  --sd-brown-border: #673519;
+  --sd-brown-mid:    #8f5a2d;
+  --sd-brown-light:  #6f4a2d;
+
+  /* 背景/面板 */
+  --sd-parchment:    #ffd995;
+  --sd-parchment-lt: #ffe6b6;
+  --sd-parchment-xl: #fff0c7;
+  --sd-black:        #2a160d;
+
+  /* 绿色系（运行中、主按钮、成功） */
+  --sd-green:        #3f8f3d;
+  --sd-green-shadow: #2f6d2d;
+  --sd-green-bg:     #d8f2c4;
+  --sd-green-text:   #1f5f1e;
+
+  /* 红色系（停止、危险、错误） */
+  --sd-red:          #b54837;
+  --sd-red-shadow:   #7f2d24;
+  --sd-red-bg:       #ffe0d6;
+  --sd-red-text:     #681111;
+
+  /* 金/棕色系（重启、次级按钮、警告） */
+  --sd-gold:         #c07820;
+  --sd-gold-light:   #fff3d6;
+  --sd-gold-border:  #b57a2d;
+  --sd-gold-text:    #7a4a10;
+
+  /* 蓝色系（信息、状态） */
+  --sd-blue:         #287da8;
+  --sd-blue-bg:      #d6eef8;
+  --sd-blue-text:    #165779;
+
+  /* 字体 */
+  --sd-font-ui:      Inter, ui-sans-serif, system-ui, sans-serif;
+  --sd-font-mono:    ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  --sd-font-pixel:   "Press Start 2P", "Pixel Sans Serif", ui-monospace, monospace;
+}
+
+/* ── 2. 素材路径变量 ─────────────────────────────────────────────────────── */
+
+:root {
+  /* 背景 */
+  --sd-img-bg-parchment: url("/assets/stardew/ui/backgrounds/background_parchment_tile.png");
+  --sd-img-bg-wood-side: url("/assets/stardew/ui/backgrounds/background_sidebar_wood_tile.png");
+  --sd-img-bg-wood-strip: url("/assets/stardew/ui/backgrounds/background_frame_wood_strip.png");
+  --sd-img-bg-black:     url("/assets/stardew/ui/backgrounds/background_app_black.png");
+
+  /* 导航 */
+  --sd-img-nav-default: url("/assets/stardew/ui/navigation/nav_item_default_blank.png");
+  --sd-img-nav-active:  url("/assets/stardew/ui/navigation/nav_item_active_green_blank.png");
+  --sd-img-tab-green:   url("/assets/stardew/ui/navigation/tab_top_green_blank.png");
+
+  /* 按钮 */
+  --sd-img-btn-green:   url("/assets/stardew/ui/buttons/button_server_start_green_blank.png");
+  --sd-img-btn-red:     url("/assets/stardew/ui/buttons/button_server_stop_red_blank.png");
+  --sd-img-btn-tan:     url("/assets/stardew/ui/buttons/button_server_restart_tan_blank.png");
+  --sd-img-btn-gold:    url("/assets/stardew/ui/buttons/button_quick_tool_gold_blank.png");
+  --sd-img-btn-sm-green: url("/assets/stardew/ui/buttons/button_primary_small_green_blank.png");
+  --sd-img-btn-sm-tan:  url("/assets/stardew/ui/buttons/button_secondary_small_tan_blank.png");
+
+  /* 面板底 */
+  --sd-img-panel-parchment: url("/assets/stardew/ui/panels/panel_parchment_section_blank.png");
+  --sd-img-panel-form:      url("/assets/stardew/ui/panels/panel_parchment_form_blank.png");
+  --sd-img-panel-metric:    url("/assets/stardew/ui/panels/panel_metric_card_blank.png");
+  --sd-img-panel-table:     url("/assets/stardew/ui/panels/panel_table_area_blank.png");
+  --sd-img-panel-warning:   url("/assets/stardew/ui/panels/panel_warning_row_blank.png");
+
+  /* 输入框 */
+  --sd-img-field-input:     url("/assets/stardew/ui/fields/field_path_input_blank.png");
+  --sd-img-field-search:    url("/assets/stardew/ui/fields/field_search_compact_blank.png");
+  --sd-img-field-select:    url("/assets/stardew/ui/fields/field_select_dropdown_blank.png");
+  --sd-img-field-invite:    url("/assets/stardew/ui/fields/field_invite_code_input_blank.png");
+}
+
+/* ── 3. 木纹背景 ─────────────────────────────────────────────────────────── */
+
+/* 横向重复平铺的木纹侧栏背景 */
+.sd-bg-wood-side {
+  background-image: var(--sd-img-bg-wood-side);
+  background-repeat: repeat-y;
+  background-size: contain;
+  background-color: #3a2010;
+}
+
+/* 垂直横条木纹（用于顶部装饰条等） */
+.sd-bg-wood-strip {
+  background-image: var(--sd-img-bg-wood-strip);
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+  background-color: #5a3020;
+}
+
+/* 深色黑木背景（全屏舞台背景） */
+.sd-bg-black {
+  background-image: var(--sd-img-bg-black);
+  background-repeat: repeat;
+  background-color: #1a0e08;
+}
+
+/* ── 4. 羊皮纸面板 ───────────────────────────────────────────────────────── */
+
+.sd-bg-parchment {
+  background-image: var(--sd-img-bg-parchment);
+  background-repeat: repeat;
+  background-color: var(--sd-parchment);
+}
+
+.sd-panel {
+  border: 3px solid var(--sd-brown-border);
+  border-radius: 0;
+  background: var(--sd-parchment-lt);
+  padding: 10px;
+}
+
+.sd-form-panel {
+  border: 2px solid var(--sd-brown-mid);
+  border-radius: 0;
+  background: var(--sd-parchment-xl);
+  padding: 8px;
+}
+
+.sd-metric-card {
+  border: 1px solid var(--sd-brown-mid);
+  border-radius: 0;
+  background: #f8f0d8;
+  padding: 4px 7px;
+  display: grid;
+  gap: 2px;
+}
+
+/* ── 5. 像素风按钮（PNG 底图）────────────────────────────────────────────── */
+
+/* 所有 PNG 按钮公共基础 */
+.sd-btn-green, .sd-btn-tan, .sd-btn-gold, .sd-btn-red,
+.sd-btn-start, .sd-btn-stop, .sd-btn-restart,
+.sd-btn-copy, .sd-btn-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  font-weight: 700;
+  transition: filter .1s, transform .07s;
+  user-select: none;
+  white-space: nowrap;
+  background-size: 100% 100%;
+  background-color: transparent;
+  padding: 0;
+}
+
+.sd-btn-green:active:not(:disabled),
+.sd-btn-tan:active:not(:disabled),
+.sd-btn-gold:active:not(:disabled),
+.sd-btn-red:active:not(:disabled),
+.sd-btn-start:active:not(:disabled),
+.sd-btn-stop:active:not(:disabled),
+.sd-btn-restart:active:not(:disabled),
+.sd-btn-copy:active:not(:disabled),
+.sd-btn-delete:active:not(:disabled) {
+  filter: brightness(.82);
+  transform: translateY(1px);
+}
+
+.sd-btn-green:disabled,
+.sd-btn-tan:disabled,
+.sd-btn-gold:disabled,
+.sd-btn-red:disabled,
+.sd-btn-start:disabled,
+.sd-btn-stop:disabled,
+.sd-btn-restart:disabled,
+.sd-btn-copy:disabled,
+.sd-btn-delete:disabled {
+  filter: grayscale(.6) brightness(.8);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 小绿色主按钮 */
+.sd-btn-green {
+  background-image: url('/assets/stardew/ui/buttons/button_primary_small_green_blank.png');
+  height: 24px;
+  min-width: 58px;
+  padding: 0 10px;
+  font-size: 11px;
+  color: #fff;
+}
+
+/* 小棕色次级按钮 */
+.sd-btn-tan {
+  background-image: url('/assets/stardew/ui/buttons/button_secondary_small_tan_blank.png');
+  height: 24px;
+  min-width: 50px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: #2c1a0a;
+}
+
+/* 金色快捷工具按钮 */
+.sd-btn-gold {
+  background-image: url('/assets/stardew/ui/buttons/button_quick_tool_gold_blank.png');
+  height: 26px;
+  min-width: 60px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: #2c1a0a;
+}
+
+/* 危险操作（使用停止按钮底图） */
+.sd-btn-red {
+  background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
+  height: 33px;
+  min-width: 88px;
+  padding: 0 14px;
+  font-size: 12px;
+  color: #fff;
+}
+
+/* 删除小按钮 */
+.sd-btn-delete {
+  background-image: url('/assets/stardew/ui/buttons/button_delete_small_tan_blank.png');
+  height: 24px;
+  min-width: 44px;
+  padding: 0 7px;
+  font-size: 11px;
+  color: #2c1a0a;
+}
+
+/* 复制小按钮 */
+.sd-btn-copy {
+  background-image: url('/assets/stardew/ui/buttons/button_copy_small_blank.png');
+  width: 48px;
+  height: 25px;
+  font-size: 11px;
+  color: #2c1a0a;
+}
+
+/* 生命周期大按钮（固定尺寸） */
+.sd-btn-start {
+  background-image: url('/assets/stardew/ui/buttons/button_server_start_green_blank.png');
+  width: 76px;
+  height: 34px;
+  font-size: 12px;
+  color: #fff;
+}
+
+.sd-btn-stop {
+  background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
+  width: 88px;
+  height: 33px;
+  font-size: 12px;
+  color: #fff;
+}
+
+.sd-btn-restart {
+  background-image: url('/assets/stardew/ui/buttons/button_server_restart_tan_blank.png');
+  width: 84px;
+  height: 34px;
+  font-size: 12px;
+  color: #2c1a0a;
+}
+
+/* 按钮内联小图标 */
+.sd-btn-img {
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+/* ── 6. 像素风输入框 ─────────────────────────────────────────────────────── */
+
+.sd-input {
+  height: 23px;
+  width: 100%;
+  border: 1px solid #7a5030;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.75);
+  color: #2c1a0a;
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 10.5px;
+  outline: none;
+}
+
+.sd-input:focus {
+  border-color: #3a7020;
+  outline: none;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.sd-input::placeholder {
+  color: #8a7060;
+}
+
+.sd-input-invite {
+  font-size: 1.2rem;
+  letter-spacing: 3px;
+  font-family: var(--sd-font-mono);
+  text-align: center;
+  height: auto;
+  padding: 4px 8px;
+  background-image: var(--sd-img-field-invite);
+  background-size: 100% 100%;
+  background-color: transparent;
+  border: none;
+}
+
+/* ── 7. 左侧导航项 ───────────────────────────────────────────────────────── */
+
+.sd-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 7px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #f0e0b8;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 400;
+  cursor: pointer;
+  text-align: left;
+  transition: background .1s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sd-nav-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+}
+
+.sd-nav-item.active,
+.sd-nav-item[aria-current="page"] {
+  background-image: url('/assets/stardew/ui/navigation/nav_item_active_green_blank.png');
+  background-size: 100% 100%;
+  background-color: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+
+.sd-nav-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sd-nav-item.active .sd-nav-icon,
+.sd-nav-item[aria-current="page"] .sd-nav-icon {
+  opacity: 1;
+}
+
+/* ── 8. 状态点 ───────────────────────────────────────────────────────────── */
+
+/* 小圆点，通常配合 ::before 或 <span> 使用 */
+.sd-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #8a7060;
+}
+
+.sd-dot-green  { background: #4caf50; box-shadow: 0 0 6px rgba(76,175,80,0.6); }
+.sd-dot-red    { background: #f44336; box-shadow: 0 0 6px rgba(244,67,54,0.6); }
+.sd-dot-yellow { background: #ffb300; box-shadow: 0 0 6px rgba(255,179,0,0.5); }
+.sd-dot-blue   { background: #29b6f6; box-shadow: 0 0 6px rgba(41,182,246,0.5); }
+.sd-dot-gray   { background: #90a4ae; }
+
+/* 带脉冲动画的在线状态点 */
+.sd-dot-pulse {
+  animation: sd-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sd-pulse {
+  0%   { box-shadow: 0 0 0 0 currentColor; }
+  50%  { box-shadow: 0 0 0 5px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ── 9. 紧凑数据行 / 表格 ────────────────────────────────────────────────── */
+
+/* 数据行容器 */
+.sd-data-list {
+  display: grid;
+  gap: 6px;
+}
+
+/* 单行数据卡 */
+.sd-data-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 5px;
+  border-bottom: 1px solid #dcc898;
+  background: transparent;
+  font-size: 10.5px;
+  color: #2c1a0a;
+}
+
+.sd-data-row:hover {
+  background: var(--sd-parchment-lt);
+}
+
+.sd-data-row.active {
+  border-color: var(--sd-green);
+  background: var(--sd-green-bg);
+}
+
+/* 表头行 */
+.sd-data-row-head {
+  background: var(--sd-parchment);
+  font-weight: 800;
+  border-color: var(--sd-brown-border);
+}
+
+/* 关键字/徽章 */
+.sd-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+  background: var(--sd-parchment-lt);
+  border: 1px solid var(--sd-brown-mid);
+  color: var(--sd-brown-light);
+}
+
+.sd-tag-green  { background: var(--sd-green-bg);  border-color: var(--sd-green);  color: var(--sd-green-text); }
+.sd-tag-red    { background: var(--sd-red-bg);    border-color: var(--sd-red);    color: var(--sd-red-text); }
+.sd-tag-blue   { background: var(--sd-blue-bg);   border-color: var(--sd-blue);   color: var(--sd-blue-text); }
+.sd-tag-gold   { background: var(--sd-gold-light); border-color: var(--sd-gold-border); color: var(--sd-gold-text); }
+
+/* ── 10. 指标卡摘要区 ────────────────────────────────────────────────────── */
+
+.sd-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.sd-metric {
+  display: grid;
+  gap: 2px;
+  padding: 4px 7px;
+  border: 1px solid #dcc898;
+  border-radius: 0;
+  background: #f8f0d8;
+}
+
+.sd-metric-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--sd-brown-light);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sd-metric-value {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: var(--sd-brown-dark);
+  line-height: 1.1;
+}
+
+.sd-metric-hint {
+  font-size: 0.72rem;
+  color: var(--sd-brown-light);
+}
