@@ -1,5 +1,150 @@
 # Conversation Handoff 2026-06-27
 
+## Pixel UI Asset Extraction（2026-06-27）
+
+### 目标
+
+把用户提供的 Stardew Valley 管理面板合成设计图，按区域、按钮、背景、控件、图标和贴图拆成无文字、可复用、适合后续 HTML 原型直接引用的最小化 PNG 素材。
+
+### 改了什么
+
+**新增脚本：**
+
+| 文件 | 说明 |
+|------|------|
+| `scripts/extract-ui-assets.py` | 基于固定坐标的素材裁切脚本；会清理按钮/输入/面板文字，生成透明图标和总览文件 |
+
+**新增素材目录：**
+
+| 路径 | 说明 |
+|------|------|
+| `docs/prototypes/assets/ui-extracted/backgrounds/` | 羊皮纸、木纹、黑色舞台等背景 |
+| `docs/prototypes/assets/ui-extracted/layout/` | 安装、总览、存档模组、健康诊断四个无字整窗壳 |
+| `docs/prototypes/assets/ui-extracted/panels/` | 表单、表格、指标卡、告警条、模组卡片等无字面板 |
+| `docs/prototypes/assets/ui-extracted/navigation/` | 左导航项、顶部编号标签、内容页标签 |
+| `docs/prototypes/assets/ui-extracted/buttons/` | 启动、停止、重启、下一步、复制、快捷工具等无字按钮 |
+| `docs/prototypes/assets/ui-extracted/fields/` | 邀请码输入、搜索、路径输入、下拉框等无字控件 |
+| `docs/prototypes/assets/ui-extracted/icons/` | 导航、状态摘要、按钮图标，已尽量透明抠底 |
+| `docs/prototypes/assets/ui-extracted/sprites/` | 农舍、云、宝箱、树、栅栏、蓝色设备、宝石等贴图 |
+| `docs/prototypes/assets/ui-extracted/manifest.json` | 每个素材的分类、文件名、源图坐标和说明 |
+| `docs/prototypes/assets/ui-extracted/preview.html` | 浏览器预览页 |
+| `docs/prototypes/assets/ui-extracted/contact-sheet.png` | 素材总览图 |
+| `docs/prototypes/assets/ui-extracted/README.md` | 使用说明 |
+
+当前共导出 61 个素材。按钮、输入框、面板和整窗壳已去除原图文字；文字/图标建议在 HTML 中重新叠加。
+
+### 影响接口/文件
+
+本次不修改前后端运行代码，不影响 API。只新增原型资产和导出脚本，并更新 `docs/handoff-roadmap.md`。
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel
+& 'C:\Users\anxi\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' .\scripts\extract-ui-assets.py
+```
+
+验证结果：
+
+- 脚本输出 `Wrote 61 assets to E:\stardew-server-anxi-panel\docs\prototypes\assets\ui-extracted`
+- 已查看 `docs/prototypes/assets/ui-extracted/contact-sheet.png`
+- 已查看 `docs/prototypes/assets/ui-extracted/layout/layout_overview_window_shell_blank.png`
+- 大窗口文字区、按钮文字和输入框文字已清理；边框、木纹、羊皮纸质感和主要贴图保留。
+
+### 下一步注意事项
+
+- 这些资产来自合成 PNG 原型，不是 Stardew 原版 UI 资源；后续商用或公开发布前需确认素材授权边界。
+- `layout/*_shell_blank.png` 适合快速 HTML 背景；真实前端实现建议更多使用 `backgrounds/`、`panels/`、`buttons/` 组合。
+- 如果设计图更新，优先修改 `scripts/extract-ui-assets.py` 的坐标和清理策略，再重新生成，保持文件名稳定。
+- 部分小图标从深色木纹或羊皮纸上透明抠底，像素级边缘可在最终 HTML 使用场景里再按实际背景微调。
+
+## Frontend UI / Interaction Refactor Spec（2026-06-27）
+
+### 目标
+
+项目 MVP 已完成后，针对下一阶段“前端 UI、审美、交互逻辑重构”输出可落地的产品设计交付。重点不是立刻改代码，而是从用户使用逻辑重新发现问题并给后续实现者明确方向。
+
+### 改了什么
+
+**新增文档：**
+
+| 文件 | 说明 |
+|------|------|
+| `docs/frontend-ui-interaction-refactor.md` | 前端 UI/交互重构文档，覆盖用户路径诊断、目标信息架构、视觉系统、组件映射、实施分期、验收清单 |
+| `docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.html` | V2 静态 HTML 产品原型，展示 Overview、Install Wizard、Saves/Mods、Troubleshoot/Security |
+| `docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.png` | 由 HTML 原型渲染出的 PNG 原型图，适合快速预览 |
+| `docs/prototypes/stardew-anxi-panel-ui-refactor-notes.md` | 原型说明，记录设计目标、视觉方向、实现映射和限制 |
+
+**Figma：**
+
+- 新建 Figma 设计草稿：`https://www.figma.com/design/GHadKWWdw2jWxgPXgY7fdM`
+- 已通过 Figma MCP `use_figma` 写入一个可编辑的简化原型画板，内容与 HTML 原型一致：左导航、顶部状态栏、主操作面、右侧任务/健康 rail、安装向导、维护与排障模块。
+
+### 关键产品判断
+
+当前前端功能完整，但页面仍偏“功能区块堆叠”。下一阶段建议从日常运维路径重构为：
+
+```text
+AppShell
+  LeftNav
+  TopStatusBar
+  MainRoute
+  OpsRail
+```
+
+核心交互规则：
+
+- 首屏必须回答：服务器能不能跑、当前 active save 是什么、下一步主要动作是什么、最近任务是否失败、健康状态是否异常。
+- `Start server` 与 `Active save / save_required` 必须在同一视觉上下文中，避免用户先点错再被滚动到存档区。
+- `InstallSection` 应重构为向导：Prepare、Pull、Steam、Ready。raw phase 和 job logs 放到技术详情或右侧任务 rail。
+- 现有高级设置应拆分：Troubleshoot（健康检查、Docker/Compose、support bundle、失败任务）和 Security（用户、审计日志）。
+- 视觉上保留农场/木框/羊皮纸氛围，但减少大标题、厚边框和大阴影，让日常运维更紧凑。
+
+### 影响接口/文件
+
+本次只新增文档和原型，不改前后端运行代码，不改变 API 行为。
+
+后续真实实现可优先复用现有接口：
+
+```text
+GET /api/instances/:id/state
+POST /api/instances/:id/start
+POST /api/instances/:id/stop
+POST /api/instances/:id/restart
+GET /api/instances/:id/saves
+GET /api/instances/:id/mods
+GET /api/jobs
+GET /api/health/diagnostics
+POST /api/instances/:id/support-bundle
+GET /api/audit-logs
+```
+
+建议后续新增但非本次必需：
+
+- dashboard summary 聚合接口：state、active save、latest job、health summary、restart-required flags 一次返回。
+- audit log filters。
+- saves summary 中补充 backup metadata。
+
+### 如何验证
+
+本次验证：
+
+```powershell
+# HTML 原型渲染 PNG
+# 使用 Playwright + 本机 Chrome 打开 file:///E:/stardew-server-anxi-panel/docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.html
+# 输出 docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.png
+```
+
+已用 `view_image` 检查 PNG 原型图，无明显文字截断、重叠或主体布局错位。Figma 画板已通过 Figma screenshot 接口成功渲染。
+
+### 下一步注意事项
+
+- 进入真实 UI 实现前，先做 Phase UI-1：`AppShell`、左导航、顶部状态栏、Overview、OpsRail，不要一口气重写所有功能组件。
+- 重构时不要破坏 Single Game Mode：首版仍然登录后直达 Stardew 面板，不显示多游戏总面板。
+- 所有 Stardew 专属交互继续留在 `frontend/src/games/stardew`，不要把未来 Minecraft/DST/Terraria/Palworld 逻辑塞进 Stardew。
+- 删除、停止、重启等危险操作建议从 `window.confirm` 迁移到统一 `ConfirmDialog`，但这属于后续代码实现。
+- Figma 画板是可编辑蓝图，不是像素级最终视觉稿；HTML/PNG 原型记录了更完整的信息层级。
+
 ## 修复：Docker 容器停止后前端仍显示"运行中"
 
 ### 问题

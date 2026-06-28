@@ -1,0 +1,917 @@
+[
+  {
+    "category": "backgrounds",
+    "name": "background_parchment_tile",
+    "file": "backgrounds/background_parchment_tile.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 580,
+      "y": 360,
+      "width": 88,
+      "height": 82
+    },
+    "kind": "texture",
+    "clean": "parchment",
+    "description": "无文字羊皮纸背景纹理，可平铺"
+  },
+  {
+    "category": "backgrounds",
+    "name": "background_sidebar_wood_tile",
+    "file": "backgrounds/background_sidebar_wood_tile.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 226,
+      "y": 340,
+      "width": 96,
+      "height": 112
+    },
+    "kind": "texture",
+    "clean": "raw",
+    "description": "深色木板侧栏纹理，可平铺"
+  },
+  {
+    "category": "backgrounds",
+    "name": "background_frame_wood_strip",
+    "file": "backgrounds/background_frame_wood_strip.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 348,
+      "y": 38,
+      "width": 256,
+      "height": 14
+    },
+    "kind": "texture",
+    "clean": "raw",
+    "description": "窗口木框横向纹理"
+  },
+  {
+    "category": "backgrounds",
+    "name": "background_app_black",
+    "file": "backgrounds/background_app_black.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 0,
+      "y": 690,
+      "width": 160,
+      "height": 120
+    },
+    "kind": "texture",
+    "clean": "raw",
+    "description": "原型黑色舞台背景"
+  },
+  {
+    "category": "layout",
+    "name": "layout_install_window_shell_blank",
+    "file": "layout/layout_install_window_shell_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 215,
+      "y": 36,
+      "width": 570,
+      "height": 459
+    },
+    "kind": "shell",
+    "clean": "masks",
+    "description": "安装向导整窗空白壳"
+  },
+  {
+    "category": "layout",
+    "name": "layout_overview_window_shell_blank",
+    "file": "layout/layout_overview_window_shell_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 796,
+      "y": 36,
+      "width": 730,
+      "height": 461
+    },
+    "kind": "shell",
+    "clean": "masks",
+    "description": "日常运行总览整窗空白壳"
+  },
+  {
+    "category": "layout",
+    "name": "layout_saves_mods_window_shell_blank",
+    "file": "layout/layout_saves_mods_window_shell_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 214,
+      "y": 510,
+      "width": 571,
+      "height": 489
+    },
+    "kind": "shell",
+    "clean": "masks",
+    "description": "存档与模组维护整窗空白壳"
+  },
+  {
+    "category": "layout",
+    "name": "layout_health_window_shell_blank",
+    "file": "layout/layout_health_window_shell_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 795,
+      "y": 510,
+      "width": 730,
+      "height": 489
+    },
+    "kind": "shell",
+    "clean": "masks",
+    "description": "诊断健康检查整窗空白壳"
+  },
+  {
+    "category": "panels",
+    "name": "panel_parchment_form_blank",
+    "file": "panels/panel_parchment_form_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 353,
+      "y": 197,
+      "width": 217,
+      "height": 163
+    },
+    "kind": "panel",
+    "clean": "inner",
+    "description": "表单卡片空白底"
+  },
+  {
+    "category": "panels",
+    "name": "panel_parchment_section_blank",
+    "file": "panels/panel_parchment_section_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 923,
+      "y": 138,
+      "width": 593,
+      "height": 113
+    },
+    "kind": "panel",
+    "clean": "inner",
+    "description": "大区块羊皮纸面板"
+  },
+  {
+    "category": "panels",
+    "name": "panel_metric_card_blank",
+    "file": "panels/panel_metric_card_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 928,
+      "y": 285,
+      "width": 87,
+      "height": 55
+    },
+    "kind": "panel",
+    "clean": "inner",
+    "description": "小型指标卡"
+  },
+  {
+    "category": "panels",
+    "name": "panel_table_area_blank",
+    "file": "panels/panel_table_area_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 352,
+      "y": 550,
+      "width": 383,
+      "height": 174
+    },
+    "kind": "panel",
+    "clean": "inner",
+    "description": "表格区域空白底"
+  },
+  {
+    "category": "panels",
+    "name": "panel_mod_card_blank",
+    "file": "panels/panel_mod_card_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 356,
+      "y": 788,
+      "width": 96,
+      "height": 68
+    },
+    "kind": "panel",
+    "clean": "inner",
+    "description": "模组卡片空白底"
+  },
+  {
+    "category": "panels",
+    "name": "panel_warning_row_blank",
+    "file": "panels/panel_warning_row_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 929,
+      "y": 824,
+      "width": 239,
+      "height": 35
+    },
+    "kind": "panel",
+    "clean": "inner",
+    "description": "告警条空白底"
+  },
+  {
+    "category": "navigation",
+    "name": "nav_item_default_blank",
+    "file": "navigation/nav_item_default_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 224,
+      "y": 102,
+      "width": 105,
+      "height": 29
+    },
+    "kind": "nav",
+    "clean": "inner",
+    "description": "默认左侧导航项"
+  },
+  {
+    "category": "navigation",
+    "name": "nav_item_active_green_blank",
+    "file": "navigation/nav_item_active_green_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 806,
+      "y": 102,
+      "width": 99,
+      "height": 29
+    },
+    "kind": "nav",
+    "clean": "inner",
+    "description": "激活左侧导航项"
+  },
+  {
+    "category": "navigation",
+    "name": "nav_item_active_saves_blank",
+    "file": "navigation/nav_item_active_saves_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 224,
+      "y": 653,
+      "width": 105,
+      "height": 28
+    },
+    "kind": "nav",
+    "clean": "inner",
+    "description": "存档页激活导航项"
+  },
+  {
+    "category": "navigation",
+    "name": "nav_quick_help_blank",
+    "file": "navigation/nav_quick_help_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 227,
+      "y": 459,
+      "width": 96,
+      "height": 28
+    },
+    "kind": "nav",
+    "clean": "inner",
+    "description": "左下快速帮助按钮"
+  },
+  {
+    "category": "navigation",
+    "name": "tab_top_green_blank",
+    "file": "navigation/tab_top_green_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 215,
+      "y": 13,
+      "width": 119,
+      "height": 27
+    },
+    "kind": "tab",
+    "clean": "inner",
+    "description": "顶部绿色编号标签"
+  },
+  {
+    "category": "navigation",
+    "name": "tab_content_active_blank",
+    "file": "navigation/tab_content_active_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 928,
+      "y": 548,
+      "width": 62,
+      "height": 29
+    },
+    "kind": "tab",
+    "clean": "inner",
+    "description": "内容页激活标签"
+  },
+  {
+    "category": "navigation",
+    "name": "tab_content_inactive_blank",
+    "file": "navigation/tab_content_inactive_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 990,
+      "y": 548,
+      "width": 63,
+      "height": 29
+    },
+    "kind": "tab",
+    "clean": "inner",
+    "description": "内容页普通标签"
+  },
+  {
+    "category": "buttons",
+    "name": "button_server_start_green_blank",
+    "file": "buttons/button_server_start_green_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 929,
+      "y": 169,
+      "width": 76,
+      "height": 34
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "启动服务器绿色按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_server_stop_red_blank",
+    "file": "buttons/button_server_stop_red_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1011,
+      "y": 169,
+      "width": 88,
+      "height": 33
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "停止服务器红色按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_server_restart_tan_blank",
+    "file": "buttons/button_server_restart_tan_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1104,
+      "y": 169,
+      "width": 84,
+      "height": 34
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "重启服务器浅色按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_next_step_green_blank",
+    "file": "buttons/button_next_step_green_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 687,
+      "y": 408,
+      "width": 64,
+      "height": 27
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "下一步绿色按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_primary_small_green_blank",
+    "file": "buttons/button_primary_small_green_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 354,
+      "y": 578,
+      "width": 58,
+      "height": 24
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "小号绿色操作按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_secondary_small_tan_blank",
+    "file": "buttons/button_secondary_small_tan_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 416,
+      "y": 578,
+      "width": 61,
+      "height": 24
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "小号浅色操作按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_delete_small_tan_blank",
+    "file": "buttons/button_delete_small_tan_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 548,
+      "y": 578,
+      "width": 46,
+      "height": 24
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "小号删除操作按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_quick_tool_gold_blank",
+    "file": "buttons/button_quick_tool_gold_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1376,
+      "y": 611,
+      "width": 122,
+      "height": 26
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "右侧快捷工具金色按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_health_check_brown_blank",
+    "file": "buttons/button_health_check_brown_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 947,
+      "y": 751,
+      "width": 100,
+      "height": 22
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "健康检查深棕按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_copy_small_blank",
+    "file": "buttons/button_copy_small_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1421,
+      "y": 103,
+      "width": 48,
+      "height": 25
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "小号复制按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_menu_square_blank",
+    "file": "buttons/button_menu_square_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1476,
+      "y": 102,
+      "width": 33,
+      "height": 27
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "方形更多菜单按钮"
+  },
+  {
+    "category": "buttons",
+    "name": "button_table_icon_square_blank",
+    "file": "buttons/button_table_icon_square_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1273,
+      "y": 396,
+      "width": 17,
+      "height": 17
+    },
+    "kind": "button",
+    "clean": "inner",
+    "description": "表格行小图标按钮"
+  },
+  {
+    "category": "fields",
+    "name": "field_invite_code_input_blank",
+    "file": "fields/field_invite_code_input_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1206,
+      "y": 169,
+      "width": 185,
+      "height": 31
+    },
+    "kind": "field",
+    "clean": "inner",
+    "description": "邀请码输入框"
+  },
+  {
+    "category": "fields",
+    "name": "field_search_compact_blank",
+    "file": "fields/field_search_compact_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 686,
+      "y": 557,
+      "width": 75,
+      "height": 20
+    },
+    "kind": "field",
+    "clean": "inner",
+    "description": "紧凑搜索框"
+  },
+  {
+    "category": "fields",
+    "name": "field_select_dropdown_blank",
+    "file": "fields/field_select_dropdown_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 584,
+      "y": 335,
+      "width": 169,
+      "height": 23
+    },
+    "kind": "field",
+    "clean": "inner",
+    "description": "下拉选择框"
+  },
+  {
+    "category": "fields",
+    "name": "field_path_input_blank",
+    "file": "fields/field_path_input_blank.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 583,
+      "y": 285,
+      "width": 122,
+      "height": 24
+    },
+    "kind": "field",
+    "clean": "inner",
+    "description": "路径输入框"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_farmhouse_scene",
+    "file": "sprites/sprite_farmhouse_scene.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 30,
+      "y": 120,
+      "width": 158,
+      "height": 92
+    },
+    "kind": "sprite",
+    "clean": "raw",
+    "description": "首屏农舍贴图，保留原背景"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_cloud_left",
+    "file": "sprites/sprite_cloud_left.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 30,
+      "y": 124,
+      "width": 31,
+      "height": 15
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "像素云朵左"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_cloud_right",
+    "file": "sprites/sprite_cloud_right.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 151,
+      "y": 126,
+      "width": 34,
+      "height": 14
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "像素云朵右"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_chest",
+    "file": "sprites/sprite_chest.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 31,
+      "y": 608,
+      "width": 22,
+      "height": 27
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "宝箱小贴图"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_tree",
+    "file": "sprites/sprite_tree.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 67,
+      "y": 606,
+      "width": 19,
+      "height": 29
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "树小贴图"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_fence",
+    "file": "sprites/sprite_fence.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 96,
+      "y": 604,
+      "width": 31,
+      "height": 31
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "栅栏小贴图"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_blue_device",
+    "file": "sprites/sprite_blue_device.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 133,
+      "y": 608,
+      "width": 14,
+      "height": 27
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "蓝色设备小贴图"
+  },
+  {
+    "category": "sprites",
+    "name": "sprite_blue_gem",
+    "file": "sprites/sprite_blue_gem.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 165,
+      "y": 607,
+      "width": 20,
+      "height": 28
+    },
+    "kind": "sprite",
+    "clean": "transparent",
+    "description": "蓝色宝石小贴图"
+  },
+  {
+    "category": "icons",
+    "name": "icon_sidebar_chicken",
+    "file": "icons/icon_sidebar_chicken.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 225,
+      "y": 56,
+      "width": 27,
+      "height": 31
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "侧栏鸡头像"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_overview_home",
+    "file": "icons/icon_nav_overview_home.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 108,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航概览图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_server_control",
+    "file": "icons/icon_nav_server_control.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 137,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航服务器控制图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_saves",
+    "file": "icons/icon_nav_saves.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 167,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航存档图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_mods",
+    "file": "icons/icon_nav_mods.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 197,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航模组图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_tasks",
+    "file": "icons/icon_nav_tasks.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 226,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航任务图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_players",
+    "file": "icons/icon_nav_players.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 257,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航玩家图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_settings",
+    "file": "icons/icon_nav_settings.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 286,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航设置图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_nav_diagnostics",
+    "file": "icons/icon_nav_diagnostics.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 229,
+      "y": 317,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "导航诊断图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_top_summary_save",
+    "file": "icons/icon_top_summary_save.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 938,
+      "y": 109,
+      "width": 17,
+      "height": 17
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "顶部存档摘要图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_top_summary_players",
+    "file": "icons/icon_top_summary_players.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1054,
+      "y": 109,
+      "width": 16,
+      "height": 17
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "顶部玩家摘要图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_top_summary_time",
+    "file": "icons/icon_top_summary_time.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1154,
+      "y": 109,
+      "width": 16,
+      "height": 17
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "顶部运行时间摘要图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_top_summary_version",
+    "file": "icons/icon_top_summary_version.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1246,
+      "y": 109,
+      "width": 16,
+      "height": 17
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "顶部版本摘要图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_button_play",
+    "file": "icons/icon_button_play.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 943,
+      "y": 180,
+      "width": 14,
+      "height": 16
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "启动播放图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_button_stop",
+    "file": "icons/icon_button_stop.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1030,
+      "y": 181,
+      "width": 13,
+      "height": 13
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "停止图标"
+  },
+  {
+    "category": "icons",
+    "name": "icon_button_restart",
+    "file": "icons/icon_button_restart.png",
+    "source": "C:\\Users\\anxi\\Desktop\\ig_0f07c610938a538d016a3f9e1577b48191a322d57d3249e8ff.png",
+    "box": {
+      "x": 1122,
+      "y": 180,
+      "width": 14,
+      "height": 14
+    },
+    "kind": "icon",
+    "clean": "transparent",
+    "description": "重启图标"
+  }
+]

@@ -1,776 +1,1036 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stardew Anxi Panel UI Refactor Prototype</title>
-  <style>
-    :root {
-      --sky: #eaf6f7;
-      --grass: #dfeecf;
-      --paper: #fff3cf;
-      --paper-soft: #fff8e6;
-      --wood: #7b4a26;
-      --wood-dark: #4b2816;
-      --ink: #2f1d12;
-      --muted: #73583f;
-      --green: #3f8f3d;
-      --sky-accent: #287da8;
-      --gold: #d99a24;
-      --red: #b54837;
-      --line: #8f6a3f;
-      --shadow: 0 2px 0 rgba(75, 40, 22, .34);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: var(--ink);
-      background: var(--sky);
-    }
+<meta charset="utf-8">
+<title>Stardew Valley 专用服务器管理面板</title>
+<style>
+:root {
+  --ink:#2c1a0a; --ink2:#5a3c1d; --parch:#f0deb3; --parch2:#dcc898; --parch3:#f8f0d8;
+  --wood-dk:#180d04; --wood-md:#3d2510; --wood-lt:#7a5030;
+  --green-hd:#1e3614; --green-nav:#2e5a1e; --green-btn:#3a7020; --green-lt:#5a9e3d;
+  --red-btn:#8a1515; --tan-btn:#9e7030; --tan-lt:#c8a060; --gold:#c09040;
+  --on-dk:#f0e0b8; --on-dk2:#c0a068; --muted:#8a7060;
+  --ok:#4a9e30; --warn:#d08010; --err:#c02020;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#000;min-width:1536px;font-family:"Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif;font-size:12px;color:var(--ink)}
+.stage{position:relative;width:1536px;min-height:1024px;background:#000}
 
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-width: 320px;
-      background:
-        linear-gradient(180deg, rgba(234, 246, 247, .96), rgba(223, 238, 207, .98)),
-        repeating-linear-gradient(90deg, rgba(75,40,22,.035) 0 1px, transparent 1px 24px);
-    }
+/* BRANDING */
+.brand{position:absolute;left:0;top:0;width:213px;height:1024px;background:var(--wood-dk);background-image:url('./assets/ui-extracted/backgrounds/background_sidebar_wood_tile.png');border-right:3px solid var(--wood-md);overflow:hidden;display:flex;flex-direction:column}
+.brand-logo{padding:10px 8px;text-align:center;color:var(--on-dk);font-size:12px;font-weight:700;line-height:1.5;border-bottom:1px solid var(--wood-md)}
+.brand-logo span{display:block;font-size:10px;color:var(--on-dk2);font-weight:400;margin-top:2px}
+.brand-farm{display:block;width:158px;height:92px;margin:6px auto;image-rendering:pixelated}
+.brand-sec{padding:6px 8px;border-bottom:1px solid var(--wood-md);flex-shrink:0}
+.brand-sec-title{font-size:10px;font-weight:700;color:var(--on-dk2);margin-bottom:4px}
+.brand-li{display:flex;gap:4px;font-size:10px;color:var(--on-dk);line-height:1.5;margin-bottom:1px}
+.brand-li::before{content:attr(data-b);color:var(--gold);flex-shrink:0}
+.brand-palette{display:flex;gap:3px;flex-wrap:wrap;padding:6px 8px}
+.swatch{width:20px;height:20px;border:1px solid rgba(0,0,0,.4)}
+.brand-icons{display:flex;gap:5px;padding:6px 8px;flex-wrap:wrap}
+.brand-icons img{width:28px;height:28px;image-rendering:pixelated}
 
-    .board {
-      width: min(1440px, 100%);
-      margin: 0 auto;
-      padding: 28px;
-      display: grid;
-      gap: 28px;
-    }
+/* SECTION LABELS */
+.sec-label{position:absolute;height:27px;display:flex;align-items:center;padding:0 10px;background-image:url('./assets/ui-extracted/navigation/tab_top_green_blank.png');background-size:100% 100%;color:var(--on-dk);font-size:11px;font-weight:700;min-width:148px}
 
-    .title-strip {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 20px;
-      align-items: end;
-      padding: 20px 24px;
-      border: 2px solid var(--wood-dark);
-      border-radius: 8px;
-      background: var(--paper);
-      box-shadow: var(--shadow);
-    }
+/* PANELS */
+.panel{position:absolute;display:flex;flex-direction:column;border:3px solid var(--wood-md);box-shadow:0 0 0 1px var(--wood-dk),3px 3px 14px rgba(0,0,0,.7);overflow:hidden}
+.panel-install {left:214px;top:39px;width:576px;height:453px}
+.panel-overview{left:797px;top:39px;width:724px;height:453px}
+.panel-saves   {left:214px;top:538px;width:576px;height:459px}
+.panel-health  {left:797px;top:538px;width:724px;height:459px}
+.panel-body{display:flex;flex:1;overflow:hidden}
 
-    h1, h2, h3, p { margin: 0; }
-    h1 { font-size: 30px; line-height: 1.1; }
-    h2 { font-size: 18px; }
-    h3 { font-size: 14px; }
-    p { line-height: 1.55; }
-    .muted { color: var(--muted); }
-    .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+/* SIDEBAR */
+.sidebar{width:107px;flex-shrink:0;background-image:url('./assets/ui-extracted/backgrounds/background_sidebar_wood_tile.png');background-color:var(--wood-dk);border-right:2px solid var(--wood-md);display:flex;flex-direction:column;overflow:hidden}
+.sb-head{padding:7px 6px;border-bottom:1px solid var(--wood-md);display:flex;gap:4px;align-items:flex-start}
+.sb-chicken{width:24px;height:28px;image-rendering:pixelated;flex-shrink:0}
+.sb-info{flex:1;min-width:0}
+.sb-name{font-size:10px;font-weight:700;color:var(--on-dk);line-height:1.3;word-break:break-all}
+.sb-status{font-size:9.5px;color:var(--muted)}
+.sb-status.running{color:var(--ok)}
+.sb-status.stopped{color:var(--err)}
+.sb-status.busy{color:var(--warn)}
+.nav-list{flex:1;list-style:none;padding:3px 0;overflow:hidden}
+.nav-item{display:flex;align-items:center;gap:4px;padding:4px 7px;cursor:pointer;color:var(--on-dk);font-size:10.5px;transition:background .1s;user-select:none;white-space:nowrap}
+.nav-item:hover{background:rgba(255,255,255,.09)}
+.nav-item.active{background-image:url('./assets/ui-extracted/navigation/nav_item_active_green_blank.png');background-size:100% 100%;color:#fff;font-weight:700}
+.nav-item.active-alt{background-image:url('./assets/ui-extracted/navigation/nav_item_active_saves_blank.png');background-size:100% 100%;color:#fff;font-weight:700}
+.nav-icon{width:13px;height:13px;image-rendering:pixelated;flex-shrink:0}
+.sb-help{height:28px;flex-shrink:0;border-top:1px solid var(--wood-md);background-image:url('./assets/ui-extracted/navigation/nav_quick_help_blank.png');background-size:100% 100%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--on-dk2);font-size:10px;font-weight:700}
 
-    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      min-height: 28px;
-      padding: 5px 9px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: var(--paper-soft);
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--muted);
-    }
+/* CONTENT */
+.content{flex:1;background-image:url('./assets/ui-extracted/backgrounds/background_parchment_tile.png');background-color:var(--parch);overflow:hidden;display:flex;flex-direction:column}
 
-    .app-frame {
-      min-height: 860px;
-      display: grid;
-      grid-template-columns: 228px minmax(0, 1fr);
-      border: 2px solid var(--wood-dark);
-      border-radius: 8px;
-      background: #f8ecd0;
-      overflow: hidden;
-      box-shadow: 0 16px 38px rgba(75, 40, 22, .18);
-    }
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;border:none;font-family:inherit;font-weight:700;transition:filter .1s,transform .07s;user-select:none;white-space:nowrap;background-size:100% 100%;background-color:transparent}
+.btn:active{filter:brightness(.8);transform:translateY(1px)}
+.btn:disabled{filter:grayscale(.6) brightness(.8);cursor:not-allowed;transform:none}
+.btn-start  {background-image:url('./assets/ui-extracted/buttons/button_server_start_green_blank.png');width:76px;height:34px;font-size:12px;color:#fff}
+.btn-stop   {background-image:url('./assets/ui-extracted/buttons/button_server_stop_red_blank.png');width:88px;height:33px;font-size:12px;color:#fff}
+.btn-restart{background-image:url('./assets/ui-extracted/buttons/button_server_restart_tan_blank.png');width:84px;height:34px;font-size:12px;color:var(--ink)}
+.btn-next   {background-image:url('./assets/ui-extracted/buttons/button_next_step_green_blank.png');width:64px;height:27px;font-size:12px;color:#fff}
+.btn-primary{background-image:url('./assets/ui-extracted/buttons/button_primary_small_green_blank.png');height:24px;min-width:58px;padding:0 10px;font-size:11px;color:#fff}
+.btn-secondary{background-image:url('./assets/ui-extracted/buttons/button_secondary_small_tan_blank.png');height:24px;min-width:50px;padding:0 8px;font-size:11px;color:var(--ink)}
+.btn-delete {background-image:url('./assets/ui-extracted/buttons/button_delete_small_tan_blank.png');height:24px;min-width:44px;padding:0 7px;font-size:11px;color:var(--ink)}
+.btn-copy   {background-image:url('./assets/ui-extracted/buttons/button_copy_small_blank.png');width:48px;height:25px;font-size:11px;color:var(--ink)}
+.btn-menu   {background-image:url('./assets/ui-extracted/buttons/button_menu_square_blank.png');width:33px;height:27px;font-size:14px;color:var(--ink2)}
+.btn-quick  {background-image:url('./assets/ui-extracted/buttons/button_quick_tool_gold_blank.png');height:26px;width:100%;font-size:11px;color:var(--ink);padding:0 6px}
+.btn-hcheck {background-image:url('./assets/ui-extracted/buttons/button_health_check_brown_blank.png');width:100px;height:22px;font-size:10.5px;color:var(--on-dk)}
+.btn-sm-alt {background:var(--tan-btn);border:1.5px solid #5a3a10;box-shadow:0 1px 0 rgba(0,0,0,.3);padding:1px 7px;font-size:10.5px;color:#fff;height:22px;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center}
+.btn-sm-alt:active{filter:brightness(.85);transform:translateY(1px)}
 
-    .nav {
-      background: linear-gradient(180deg, var(--wood-dark), #68401f);
-      color: #fff8e6;
-      padding: 18px 14px;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      gap: 20px;
-    }
+/* WIZARD */
+.wizard-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.step-bar{display:flex;align-items:center;justify-content:center;padding:10px 12px 6px;flex-shrink:0}
+.step{display:flex;align-items:center;gap:3px;font-size:10.5px;color:var(--muted)}
+.step.active{color:var(--green-btn);font-weight:700}
+.step.done{color:var(--ok)}
+.step-num{width:16px;height:16px;border-radius:50%;background:var(--muted);color:#fff;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.step.active .step-num{background:var(--green-btn)}
+.step.done .step-num{background:var(--ok)}
+.step-line{width:22px;height:1px;background:var(--parch2);margin:0 4px}
+.wizard-welcome{text-align:center;padding:6px 16px 7px;border-bottom:1px solid var(--parch2);flex-shrink:0}
+.wizard-welcome h2{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
+.wizard-welcome p{font-size:10.5px;color:var(--ink2)}
+.wizard-body{flex:1;display:flex;overflow:hidden}
+.wizard-col{flex:1;padding:8px 10px;border-right:1px solid var(--parch2);overflow-y:auto}
+.wizard-col:last-child{border-right:none}
+.wc-title{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:5px}
+.chk-row{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--parch2);font-size:10.5px}
+.chk-row:last-child{border-bottom:none}
+.chk-label{flex:1;color:var(--ink)}
+.chk-val{color:var(--ink2);font-size:10px}
+.chk-ok{color:var(--ok);font-weight:700}
+.form-group{margin-bottom:7px}
+.form-label{font-size:10.5px;font-weight:700;color:var(--ink);margin-bottom:3px;display:block}
+.form-note{font-size:9.5px;color:var(--ink2);margin-bottom:3px}
+.form-row{display:flex;align-items:center;gap:5px}
+.field-text{flex:1;background:rgba(255,255,255,.75);border:1px solid var(--wood-lt);padding:2px 5px;font-size:10.5px;color:var(--ink);font-family:inherit}
+.field-select{background-image:url('./assets/ui-extracted/fields/field_select_dropdown_blank.png');background-size:100% 100%;background-color:transparent;border:none;height:23px;width:100%;padding:0 8px;font-size:10.5px;color:var(--ink);font-family:inherit;cursor:pointer;appearance:none}
+.wizard-footer{flex-shrink:0;border-top:1px solid var(--parch2);padding:5px 10px;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--ink2)}
+.wizard-footer .sp{flex:1}
+.wiz-step{display:none;flex:1;flex-direction:column;overflow:hidden}
+.wiz-step.active{display:flex}
+.step4-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px}
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px;
-    }
-    .brand-mark {
-      width: 34px;
-      height: 34px;
-      border: 2px solid #f3c66b;
-      border-radius: 8px;
-      background:
-        linear-gradient(90deg, transparent 47%, rgba(75,40,22,.35) 47% 53%, transparent 53%),
-        linear-gradient(0deg, #5fa64a 0 38%, #f0c36b 38% 58%, #8f5a2d 58%);
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.16);
-    }
-    .brand strong { display: block; font-size: 14px; }
-    .brand span { display: block; margin-top: 2px; font-size: 11px; color: #dfcda6; }
+/* OVERVIEW */
+.ov-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.ov-banner{height:58px;flex-shrink:0;position:relative;overflow:hidden;border-bottom:1px solid var(--parch2);display:flex;align-items:center}
+.ov-banner-bg{position:absolute;inset:0;background-image:url('./assets/ui-extracted/sprites/sprite_farmhouse_scene.png');background-size:auto 100%;background-position:right center;background-color:#87c8e0}
+.ov-banner-overlay{position:absolute;inset:0;background:rgba(240,222,178,.72)}
+.ov-banner-stats{position:relative;display:flex;align-items:center;gap:12px;padding:0 10px;flex:1;font-size:10.5px;flex-wrap:wrap}
+.bstat{display:flex;align-items:center;gap:3px}
+.bstat img{width:14px;height:14px;image-rendering:pixelated}
+.bstat-v{font-weight:700}
+.bstat-l{color:var(--ink2)}
+.ov-banner-right{position:relative;display:flex;align-items:center;gap:4px;padding-right:8px;font-size:10px}
+.ov-section{padding:5px 8px;border-bottom:1px solid var(--parch2);flex-shrink:0}
+.ov-title{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.ctrl-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ctrl-div{color:var(--parch2);margin:0 2px;font-size:16px;line-height:1}
+.invite-wrap{display:flex;align-items:center;gap:5px}
+.invite-box{background:rgba(255,255,255,.6);border:1px solid var(--parch2);padding:2px 6px;display:flex;align-items:center;gap:6px}
+.invite-code{font-size:14px;font-weight:700;font-family:monospace;letter-spacing:1px;color:var(--ink)}
+.invite-expire{font-size:9.5px;color:var(--ink2)}
+.btn-reset{font-size:9.5px;color:var(--green-lt);cursor:pointer;text-decoration:underline;background:none;border:none;font-family:inherit}
+.action-row{display:flex;gap:10px}
+.act-link{display:flex;align-items:center;gap:3px;font-size:10.5px;color:var(--ink2);cursor:pointer;padding:2px 0;user-select:none}
+.act-link:hover{color:var(--green-btn)}
+.ov-body{flex:1;display:flex;overflow:hidden;min-height:0}
+.ov-left{flex:1;border-right:1px solid var(--parch2);overflow-y:auto;display:flex;flex-direction:column}
+.ov-right{width:210px;flex-shrink:0;overflow-y:auto;display:flex;flex-direction:column}
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:6px;flex-shrink:0}
+.metric-card{background:var(--parch3);border:1px solid var(--parch2);padding:4px 7px}
+.mc-name{font-size:10px;color:var(--muted)}
+.mc-val{font-size:15px;font-weight:700;color:var(--ink);line-height:1.2}
+.mc-bar{height:4px;background:var(--parch2);margin:2px 0;border-radius:2px;overflow:hidden}
+.mc-fill{height:100%;border-radius:2px;transition:width .4s}
+.mc-fill.ok{background:var(--ok)}
+.mc-fill.warn{background:var(--warn)}
+.mc-sub{font-size:9.5px;color:var(--muted)}
+.mc-wave{width:100%;height:22px}
+.player-hd{padding:4px 6px;font-size:11px;font-weight:700;color:var(--ink);background:var(--parch2);border-top:1px solid var(--parch2);border-bottom:1px solid var(--parch2);flex-shrink:0}
+.ptable{width:100%;border-collapse:collapse;font-size:10.5px}
+.ptable th{background:var(--parch2);padding:3px 5px;text-align:left;font-weight:700;border-bottom:1px solid var(--wood-lt);color:var(--ink)}
+.ptable td{padding:3px 5px;border-bottom:1px solid var(--parch2);color:var(--ink)}
+.ptable tr:hover td{background:rgba(255,255,255,.45)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}
+.dot.ok{background:var(--ok)}
+.icon-btn{width:20px;height:18px;background:rgba(255,255,255,.5);border:1px solid var(--wood-lt);cursor:pointer;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin:0 1px}
+.icon-btn:hover{background:rgba(255,255,255,.9)}
+.ev-title{padding:4px 8px;font-size:11px;font-weight:700;border-bottom:1px solid var(--parch2);background:var(--parch2)}
+.ev-list{padding:2px 0;flex:1}
+.ev-item{display:flex;gap:5px;padding:3px 8px;border-bottom:1px solid var(--parch2);font-size:10px}
+.ev-time{color:var(--muted);flex-shrink:0}
+.ev-text{color:var(--ink2);line-height:1.4}
+.ev-text b{color:var(--green-lt)}
+.all-logs-btn{display:flex;align-items:center;justify-content:center;background:var(--parch2);border-top:1px solid var(--wood-lt);padding:4px;cursor:pointer;font-size:10.5px;color:var(--ink2);flex-shrink:0}
+.all-logs-btn:hover{color:var(--green-btn)}
+.pack-section{padding:5px 8px}
+.pack-title{font-size:10.5px;font-weight:700;margin-bottom:4px}
+.pack-row{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--parch2);font-size:10px}
+.pack-name{flex:1;font-weight:700}
+.pack-on{color:var(--ok);font-size:9.5px}
+.pack-off{color:var(--err);font-size:9.5px;font-weight:700}
+.state-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:1px 6px;border-radius:2px}
+.state-badge.running{background:rgba(74,158,48,.15);color:var(--ok);border:1px solid var(--ok)}
+.state-badge.stopped{background:rgba(192,32,32,.12);color:var(--err);border:1px solid var(--err)}
+.state-badge.starting,.state-badge.stopping,.state-badge.restarting{background:rgba(208,128,16,.12);color:var(--warn);border:1px solid var(--warn)}
+.pulse-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s infinite}
 
-    .nav-list { display: grid; align-content: start; gap: 6px; }
-    .nav-item {
-      display: grid;
-      grid-template-columns: 24px minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 8px;
-      min-height: 38px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      color: #f9eccb;
-      font-size: 13px;
-      font-weight: 800;
-    }
-    .nav-item.active { background: rgba(255, 243, 207, .17); color: #fff; }
-    .nav-dot {
-      width: 18px;
-      height: 18px;
-      border: 2px solid currentColor;
-      border-radius: 5px;
-      opacity: .85;
-    }
-    .nav-count {
-      min-width: 22px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: rgba(217, 154, 36, .22);
-      color: #ffd88a;
-      text-align: center;
-      font-size: 11px;
-    }
-    .nav-foot {
-      display: grid;
-      gap: 8px;
-      padding: 10px;
-      border-radius: 8px;
-      background: rgba(0,0,0,.16);
-      font-size: 12px;
-      color: #dfcda6;
-    }
+/* SAVES */
+.saves-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.saves-sec{flex:1;display:flex;flex-direction:column;min-height:0;border-bottom:2px solid var(--parch2)}
+.mods-sec{flex:1.1;display:flex;flex-direction:column;min-height:0}
+.toolbar{display:flex;align-items:center;gap:3px;padding:4px 6px;background:var(--parch2);border-bottom:1px solid var(--wood-lt);flex-shrink:0;flex-wrap:wrap}
+.toolbar-title{font-size:12px;font-weight:700;color:var(--ink);margin-right:3px}
+.toolbar-sp{flex:1}
+.search-box{background-image:url('./assets/ui-extracted/fields/field_search_compact_blank.png');background-size:100% 100%;background-color:transparent;border:none;height:20px;width:90px;padding:0 18px 0 6px;font-size:10px;color:var(--ink);font-family:inherit}
+.stbl-scroll{flex:1;overflow-y:auto}
+.stbl{width:100%;border-collapse:collapse;font-size:10.5px}
+.stbl th{background:var(--parch2);padding:3px 5px;text-align:left;font-weight:700;border-bottom:1px solid var(--wood-lt);color:var(--ink)}
+.stbl td{padding:3px 5px;border-bottom:1px solid var(--parch2);color:var(--ink)}
+.stbl tr.selected td{background:rgba(58,112,32,.15)}
+.stbl tr:hover td{background:rgba(255,255,255,.5)}
+.stbl tr.selected:hover td{background:rgba(58,112,32,.22)}
+.badge-cur{display:inline;background:var(--green-btn);color:#fff;font-size:9px;font-weight:700;padding:0 3px;border-radius:2px;margin-left:3px}
+.mods-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:5px 6px;overflow-y:auto;flex:1}
+.mod-card{background-image:url('./assets/ui-extracted/panels/panel_mod_card_blank.png');background-size:100% 100%;background-color:var(--parch3);border:1px solid var(--parch2);padding:5px;cursor:pointer;min-height:68px}
+.mod-card:hover{filter:brightness(1.04)}
+.mod-card.add-mod{display:flex;flex-direction:column;align-items:center;justify-content:center;border:1.5px dashed var(--wood-lt);background:rgba(255,255,255,.25);color:var(--muted);font-size:11px;background-image:none}
+.mod-name{font-size:10.5px;font-weight:700;color:var(--ink)}
+.mod-auth{font-size:9px;color:var(--muted)}
+.mod-ver{font-size:9px;color:var(--ink2)}
+.mod-row{display:flex;align-items:center;gap:3px;margin-top:2px}
+.etag{font-size:9px;font-weight:700;padding:0 3px;border:1px solid;border-radius:1px}
+.etag.on{color:var(--ok);border-color:var(--ok);background:rgba(74,158,48,.1)}
+.etag.off{color:var(--muted);border-color:var(--muted);background:rgba(138,112,96,.1)}
+.mod-tog{margin-left:auto;width:15px;height:15px;background:rgba(255,255,255,.5);border:1px solid var(--wood-lt);cursor:pointer;font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+.mods-footer{padding:3px 8px;background:var(--parch2);border-top:1px solid var(--wood-lt);display:flex;align-items:center;font-size:10px;color:var(--muted);flex-shrink:0}
+.mods-footer .sp{flex:1}
 
-    .workspace {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-      min-width: 0;
-    }
+/* HEALTH */
+.health-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.dtab-bar{display:flex;border-bottom:2px solid var(--wood-lt);flex-shrink:0;background:var(--parch2)}
+.dtab{padding:4px 11px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ink2);border:none;background:none;font-family:inherit;border-right:1px solid var(--parch2);transition:background .1s;white-space:nowrap}
+.dtab:hover{background:rgba(255,255,255,.3)}
+.dtab.active{background-image:url('./assets/ui-extracted/navigation/tab_content_active_blank.png');background-size:100% 100%;background-color:transparent;color:var(--ink);border-bottom:2px solid var(--parch);margin-bottom:-2px}
+.dpane{display:none;flex:1;overflow:hidden}
+.dpane.active{display:flex}
+.hp-wrap{display:flex;flex:1;overflow:hidden}
+.hp-left{width:174px;flex-shrink:0;border-right:1px solid var(--parch2);padding:8px;display:flex;flex-direction:column;align-items:center}
+.score-circle{width:80px;height:80px;border-radius:50%;border:5px solid var(--ok);display:flex;flex-direction:column;align-items:center;justify-content:center;margin:6px auto}
+.score-num{font-size:28px;font-weight:700;color:var(--ok);line-height:1}
+.score-lbl{font-size:10px;color:var(--ok)}
+.health-desc{font-size:10px;color:var(--ink2);text-align:center;margin-top:5px;line-height:1.5}
+.health-meta{font-size:9.5px;color:var(--muted);text-align:center;margin-top:3px;line-height:1.5}
+.hp-mid{flex:1;overflow-y:auto;padding:5px 8px}
+.chk-title{font-size:11px;font-weight:700;margin-bottom:4px}
+.chk-li{display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--parch2)}
+.chk-li-name{flex:1;color:var(--ink);font-weight:700}
+.chk-li-st{min-width:26px;font-weight:700;font-size:10px;text-align:center}
+.chk-li-st.ok{color:var(--ok)}
+.chk-li-st.warn{color:var(--warn)}
+.chk-li-det{color:var(--ink2);font-size:9.5px}
+.alert-sec{margin-top:8px}
+.alert-item{display:flex;gap:4px;padding:3px 5px;margin-bottom:3px;border-left:3px solid var(--warn);background:rgba(208,128,16,.08);font-size:9.5px;line-height:1.4}
+.alert-time{color:var(--muted);flex-shrink:0;font-size:9px}
+.alert-txt{color:var(--ink2)}
+.hp-right{width:148px;flex-shrink:0;border-left:1px solid var(--parch2);padding:6px;display:flex;flex-direction:column;gap:4px}
+.quick-title{font-size:11px;font-weight:700;margin-bottom:2px;padding-bottom:3px;border-bottom:1px solid var(--parch2)}
+.perf-wrap{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;overflow-y:auto}
+.chart-card{background:var(--parch3);border:1px solid var(--parch2);padding:5px}
+.cc-title{font-size:10.5px;font-weight:700;margin-bottom:3px}
+.cc-chart{height:52px}
+.cc-chart svg{width:100%;height:100%}
+.cc-meta{font-size:9.5px;color:var(--muted);margin-top:2px}
+.log-wrap{flex:1;padding:6px 8px;overflow-y:auto;font-family:"Consolas","Courier New",monospace;font-size:10.5px}
+.log-ln{padding:1.5px 0;border-bottom:1px solid rgba(0,0,0,.05);display:flex;gap:6px}
+.log-t{color:var(--muted);flex-shrink:0}
+.log-lv{width:30px;flex-shrink:0;font-weight:700}
+.log-lv.info{color:var(--ok)}
+.log-lv.warn{color:var(--warn)}
+.log-lv.err{color:var(--err)}
+.log-msg{color:var(--ink2)}
+.cmd-wrap{flex:1;display:flex;flex-direction:column}
+.cmd-out{flex:1;background:#0e0e0e;padding:7px 10px;overflow-y:auto;font-family:"Consolas",monospace;font-size:11px;color:#d4d4d4}
+.cmd-out p{margin-bottom:2px}
+.cmd-out .g{color:#4ec9b0}
+.cmd-out .b{color:#9cdcfe}
+.cmd-out .y{color:#dcdcaa}
+.cmd-in-row{display:flex;gap:5px;border-top:2px solid var(--wood-lt);background:var(--parch2);padding:4px 8px;flex-shrink:0}
+.cmd-prompt{color:var(--green-lt);font-size:12px;font-weight:700;align-self:center}
+.cmd-input{flex:1;background:rgba(255,255,255,.8);border:1px solid var(--wood-lt);padding:3px 6px;font-family:"Consolas",monospace;font-size:11px;color:var(--ink)}
+.net-wrap{flex:1;padding:8px;overflow-y:auto}
+.net-li{display:flex;align-items:center;padding:5px 0;border-bottom:1px solid var(--parch2);gap:8px;font-size:11px}
+.net-lbl{width:130px;font-weight:700;color:var(--ink)}
+.net-val{flex:1;color:var(--ink2)}
+.net-st{font-weight:700}
+.net-st.ok{color:var(--ok)}
+.net-st.warn{color:var(--warn)}
 
-    .topbar {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      gap: 14px;
-      align-items: center;
-      padding: 14px 18px;
-      border-bottom: 2px solid rgba(75,40,22,.16);
-      background: rgba(255, 248, 230, .78);
-    }
+/* TOAST */
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(18px);opacity:0;z-index:999;min-width:260px;max-width:400px;padding:11px 15px;background:var(--parch3);border:2px solid var(--wood-lt);box-shadow:0 0 0 1px var(--wood-dk),0 8px 24px rgba(0,0,0,.55);transition:opacity .18s,transform .18s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast-title{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px}
+.toast-body{font-size:11px;color:var(--ink2)}
 
-    .status-line {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      min-width: 0;
-    }
-
-    .status-pill {
-      display: inline-flex;
-      gap: 6px;
-      align-items: center;
-      padding: 6px 9px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #fff;
-      font-size: 12px;
-      font-weight: 800;
-      white-space: nowrap;
-    }
-    .status-pill.good { border-color: #78b66d; color: #1f6622; background: #e7f6dc; }
-    .status-pill.warn { border-color: #d99a24; color: #7b5209; background: #fff1c4; }
-    .status-pill.info { border-color: #7db7cd; color: #175d7a; background: #e1f3f8; }
-    .button {
-      min-height: 36px;
-      border: 1px solid var(--wood-dark);
-      border-radius: 8px;
-      background: var(--green);
-      color: #fff8e6;
-      padding: 8px 12px;
-      font-weight: 900;
-      box-shadow: var(--shadow);
-    }
-    .button.secondary { background: var(--wood); }
-    .button.danger { background: var(--red); }
-    .button.ghost { background: var(--paper-soft); color: var(--ink); }
-    .button.small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
-
-    .content {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 318px;
-      gap: 18px;
-      padding: 18px;
-      background:
-        linear-gradient(180deg, rgba(234,246,247,.42), rgba(223,238,207,.55)),
-        repeating-linear-gradient(0deg, rgba(75,40,22,.025) 0 1px, transparent 1px 20px);
-      min-width: 0;
-    }
-
-    .main-stack, .rail, .screen-grid { display: grid; gap: 14px; align-content: start; min-width: 0; }
-
-    .panel {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper);
-      box-shadow: var(--shadow);
-      padding: 14px;
-      min-width: 0;
-    }
-    .panel.soft { background: var(--paper-soft); }
-    .panel.dark {
-      background: #2d1b12;
-      border-color: #130b07;
-      color: #fff0c7;
-    }
-    .panel-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-    .panel-head p { margin-top: 4px; font-size: 12px; color: var(--muted); }
-
-    .hero-ops {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
-      gap: 14px;
-      align-items: stretch;
-    }
-
-    .server-state {
-      display: grid;
-      gap: 14px;
-      align-content: start;
-      min-height: 260px;
-    }
-    .state-number {
-      font-size: 52px;
-      line-height: .9;
-      font-weight: 950;
-      color: #235f27;
-    }
-    .invite-box {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 10px;
-      padding: 12px;
-      border: 1px solid #78b66d;
-      border-radius: 8px;
-      background: #e7f6dc;
-    }
-    .invite-code {
-      font-size: 24px;
-      letter-spacing: 2px;
-      font-weight: 900;
-      color: #1f6622;
-    }
-    .preflight { display: grid; gap: 8px; }
-    .check {
-      display: grid;
-      grid-template-columns: 20px minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: center;
-      padding: 9px;
-      border-radius: 8px;
-      background: rgba(255,255,255,.48);
-      font-size: 13px;
-    }
-    .check .icon {
-      width: 18px;
-      height: 18px;
-      display: grid;
-      place-items: center;
-      border-radius: 50%;
-      color: #fff;
-      background: var(--green);
-      font-size: 12px;
-      font-weight: 900;
-    }
-    .check.warn .icon { background: var(--gold); }
-    .check.bad .icon { background: var(--red); }
-
-    .quick-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .quick-card {
-      min-height: 112px;
-      display: grid;
-      gap: 8px;
-      align-content: space-between;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-soft);
-    }
-    .quick-card strong { font-size: 14px; }
-    .quick-card p { color: var(--muted); font-size: 12px; }
-
-    .rail .panel { padding: 12px; }
-    .timeline { display: grid; gap: 10px; }
-    .event {
-      display: grid;
-      grid-template-columns: 10px minmax(0, 1fr);
-      gap: 10px;
-      align-items: start;
-      font-size: 12px;
-    }
-    .event::before {
-      content: "";
-      width: 10px;
-      height: 10px;
-      margin-top: 4px;
-      border-radius: 50%;
-      background: var(--green);
-    }
-    .event.warn::before { background: var(--gold); }
-    .event.bad::before { background: var(--red); }
-    .event strong { display: block; font-size: 13px; }
-    .event span { color: var(--muted); }
-
-    .mini-health {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .health-tile {
-      padding: 9px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-soft);
-      font-size: 12px;
-    }
-    .health-tile strong { display: block; margin-top: 3px; }
-
-    .prototype-section {
-      display: grid;
-      gap: 14px;
-    }
-    .section-title {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: end;
-      padding: 0 4px;
-    }
-    .section-title h2 { font-size: 22px; }
-
-    .wide-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .wizard {
-      display: grid;
-      gap: 12px;
-    }
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .step {
-      padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-soft);
-      font-size: 12px;
-    }
-    .step.active { border-color: var(--sky-accent); background: #e1f3f8; }
-    .step.done { border-color: #78b66d; background: #e7f6dc; }
-    .progress {
-      height: 10px;
-      border-radius: 999px;
-      background: rgba(75,40,22,.16);
-      overflow: hidden;
-    }
-    .progress span {
-      display: block;
-      height: 100%;
-      width: var(--value);
-      background: var(--sky-accent);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-    th, td {
-      padding: 9px 8px;
-      border-bottom: 1px solid rgba(75,40,22,.14);
-      text-align: left;
-      white-space: nowrap;
-    }
-    th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
-    tr.active-row td { background: rgba(63,143,61,.11); }
-
-    .mod-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .mod-tile {
-      display: grid;
-      gap: 8px;
-      min-height: 112px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-soft);
-    }
-    .mod-tile.error { border-color: var(--red); background: #ffe8df; }
-
-    .diagnostic-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .diagnostic {
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--paper-soft);
-      font-size: 12px;
-    }
-    .diagnostic strong { display: block; margin-bottom: 5px; }
-    .diagnostic.bad { border-color: var(--red); background: #ffe8df; }
-
-    .mobile-note {
-      display: none;
-      padding: 12px;
-      border: 1px solid var(--sky-accent);
-      border-radius: 8px;
-      background: #e1f3f8;
-      color: #175d7a;
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    @media (max-width: 1080px) {
-      .app-frame { grid-template-columns: 1fr; }
-      .nav { grid-template-rows: auto; grid-template-columns: 1fr; }
-      .nav-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .content, .hero-ops, .wide-grid { grid-template-columns: 1fr; }
-      .mobile-note { display: block; }
-    }
-
-    @media (max-width: 760px) {
-      .board { padding: 14px; }
-      .title-strip, .topbar, .quick-grid, .steps, .mod-grid, .diagnostic-grid, .mini-health {
-        grid-template-columns: 1fr;
-      }
-      .nav-list { grid-template-columns: 1fr 1fr; }
-      .state-number { font-size: 38px; }
-      table { display: block; overflow-x: auto; }
-    }
-  </style>
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--parch2)}
+::-webkit-scrollbar-thumb{background:var(--wood-lt);border-radius:2px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes pop{from{transform:scale(.92);opacity:.4}to{transform:scale(1);opacity:1}}
+.pop{animation:pop .15s ease-out}
+</style>
 </head>
 <body>
-  <div class="board">
-    <header class="title-strip">
-      <div>
-        <h1>Stardew Anxi Panel UI Refactor Prototype</h1>
-        <p class="muted">V2 product blueprint: task-shaped operations console, not a long debug page.</p>
-      </div>
-      <div class="tag-row">
-        <span class="tag">Single Game Mode</span>
-        <span class="tag">React + TypeScript</span>
-        <span class="tag">JunimoServer Driver</span>
-      </div>
-    </header>
+<div class="stage">
 
-    <section class="app-frame" aria-label="Overview dashboard prototype">
-      <aside class="nav">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true"></div>
-          <div>
-            <strong>Anxi Panel</strong>
-            <span>Stardew instance</span>
-          </div>
-        </div>
-        <nav class="nav-list" aria-label="Prototype navigation">
-          <div class="nav-item active"><span class="nav-dot"></span><span>Overview</span></div>
-          <div class="nav-item"><span class="nav-dot"></span><span>Install</span></div>
-          <div class="nav-item"><span class="nav-dot"></span><span>Saves</span><span class="nav-count">3</span></div>
-          <div class="nav-item"><span class="nav-dot"></span><span>Mods</span><span class="nav-count">8</span></div>
-          <div class="nav-item"><span class="nav-dot"></span><span>Console</span></div>
-          <div class="nav-item"><span class="nav-dot"></span><span>Troubleshoot</span><span class="nav-count">1</span></div>
-          <div class="nav-item"><span class="nav-dot"></span><span>Security</span></div>
-        </nav>
-        <div class="nav-foot">
-          <strong>admin</strong>
-          <span>v0.14.0 · local build</span>
-        </div>
-      </aside>
-
-      <main class="workspace">
-        <div class="topbar">
-          <div class="status-line">
-            <span class="status-pill good">Running</span>
-            <span class="status-pill info">Active save: <span class="mono">RiverFarm_3314</span></span>
-            <span class="status-pill warn">Mod restart pending</span>
-          </div>
-          <button class="button ghost">Refresh</button>
-          <button class="button secondary">Logout</button>
-        </div>
-
-        <div class="content">
-          <div class="main-stack">
-            <div class="mobile-note">Mobile: left navigation collapses into a two-column menu; ops rail stacks below content.</div>
-
-            <section class="panel hero-ops">
-              <div class="server-state">
-                <div>
-                  <p class="muted">Primary operation</p>
-                  <div class="state-number">Online</div>
-                  <p>2 / 8 players · Year 2 Spring 12 · server has been stable for 4h 21m.</p>
-                </div>
-                <div class="invite-box">
-                  <div>
-                    <p class="muted">Invite code</p>
-                    <strong class="invite-code mono">ABCD-7429</strong>
-                  </div>
-                  <button class="button">Copy</button>
-                </div>
-                <div class="status-line">
-                  <button class="button secondary">Restart</button>
-                  <button class="button danger">Stop</button>
-                  <button class="button ghost">Open console</button>
-                </div>
-              </div>
-
-              <div class="preflight">
-                <div class="panel soft">
-                  <div class="panel-head">
-                    <div>
-                      <h2>Start preflight</h2>
-                      <p>Same surface as lifecycle actions, so users understand blockers before clicking.</p>
-                    </div>
-                  </div>
-                  <div class="check"><span class="icon">✓</span><span>Junimo installed</span><span class="status-pill good">OK</span></div>
-                  <div class="check"><span class="icon">✓</span><span>Active save exists</span><span class="mono">RiverFarm_3314</span></div>
-                  <div class="check warn"><span class="icon">!</span><span>Mods changed</span><span>restart after players leave</span></div>
-                  <div class="check"><span class="icon">✓</span><span>Docker server container</span><span class="status-pill good">healthy</span></div>
-                </div>
-              </div>
-            </section>
-
-            <section class="quick-grid">
-              <div class="quick-card">
-                <strong>Save management</strong>
-                <p>Active save pinned; create/upload only when safe.</p>
-                <button class="button small ghost">View saves</button>
-              </div>
-              <div class="quick-card">
-                <strong>Mod maintenance</strong>
-                <p>8 installed, 1 parse warning, restart required.</p>
-                <button class="button small ghost">Review mods</button>
-              </div>
-              <div class="quick-card">
-                <strong>Console commands</strong>
-                <p>Run allowlisted Junimo commands, grouped by role.</p>
-                <button class="button small ghost">Open commands</button>
-              </div>
-            </section>
-          </div>
-
-          <aside class="rail">
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <h2>Latest job</h2>
-                  <p>Always visible during long operations.</p>
-                </div>
-                <span class="status-pill good">done</span>
-              </div>
-              <div class="timeline">
-                <div class="event"><div><strong>Server restart</strong><span>completed 2 minutes ago</span></div></div>
-                <div class="event warn"><div><strong>Mod change detected</strong><span>restart banner is active</span></div></div>
-                <div class="event"><div><strong>Invite code fetched</strong><span>output came from FIFO command path</span></div></div>
-              </div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <h2>Health</h2>
-                  <p>One glance before users dig into logs.</p>
-                </div>
-              </div>
-              <div class="mini-health">
-                <div class="health-tile">Docker<strong>OK</strong></div>
-                <div class="health-tile">Compose<strong>OK</strong></div>
-                <div class="health-tile">Data dir<strong>OK</strong></div>
-                <div class="health-tile">Active save<strong>OK</strong></div>
-              </div>
-            </section>
-
-            <section class="panel dark">
-              <div class="panel-head">
-                <div>
-                  <h2>Command output</h2>
-                  <p style="color:#c9b78e">Compact tail, full logs in Jobs.</p>
-                </div>
-              </div>
-              <pre class="mono" style="white-space:pre-wrap;margin:0;font-size:12px;line-height:1.5">--- Server Info ---
-Farm: River Farm
-Players: 2/8
-Invite: [REDACTED]</pre>
-            </section>
-          </aside>
-        </div>
-      </main>
-    </section>
-
-    <section class="prototype-section">
-      <div class="section-title">
-        <div>
-          <h2>Install Wizard</h2>
-          <p class="muted">The first-time flow becomes a decision-focused wizard; full logs move to the ops rail.</p>
-        </div>
-      </div>
-      <div class="wide-grid">
-        <div class="panel wizard">
-          <div class="steps">
-            <div class="step done"><strong>1 Prepare</strong><br><span>instance and image tag</span></div>
-            <div class="step done"><strong>2 Pull</strong><br><span>docker images</span></div>
-            <div class="step active"><strong>3 Steam</strong><br><span>Guard required</span></div>
-            <div class="step"><strong>4 Ready</strong><br><span>game files</span></div>
-          </div>
-          <div class="panel soft">
-            <div class="panel-head">
-              <div>
-                <h2>Steam Guard verification</h2>
-                <p>Choose only the current required decision. QR failure offers a safe fallback.</p>
-              </div>
-            </div>
-            <div class="status-line">
-              <button class="button">Approve in mobile app</button>
-              <button class="button secondary">Enter code</button>
-              <button class="button ghost">View technical logs</button>
-            </div>
-          </div>
-          <div class="progress" style="--value:72%"><span></span></div>
-          <p class="muted">72% · waiting for Steam auth response</p>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Install failure state</h2>
-              <p>Failures promote the next best action instead of leaving users in raw phase labels.</p>
-            </div>
-          </div>
-          <div class="check bad"><span class="icon">!</span><span>QR auth failed before QR generation</span><button class="button small">Use account/password</button></div>
-          <div class="check warn"><span class="icon">!</span><span>Pull stalled for 15 minutes</span><button class="button small ghost">Retry pull</button></div>
-          <div class="check"><span class="icon">✓</span><span>Credentials are stored in .env and redacted from logs</span><span>safe</span></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="prototype-section">
-      <div class="section-title">
-        <div>
-          <h2>Saves and Mods</h2>
-          <p class="muted">Maintenance surfaces become dense, table-like, and safety-aware.</p>
-        </div>
-      </div>
-      <div class="wide-grid">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Saves</h2>
-              <p>Active row pinned; destructive actions are secondary.</p>
-            </div>
-            <button class="button small">Upload save</button>
-          </div>
-          <table>
-            <thead><tr><th>Status</th><th>Save</th><th>Farm</th><th>Time</th><th>Map</th><th>Action</th></tr></thead>
-            <tbody>
-              <tr class="active-row"><td>Active</td><td class="mono">RiverFarm_3314</td><td>河畔农场</td><td>Y2 春 12</td><td>Riverland</td><td><button class="button small ghost">Export</button></td></tr>
-              <tr><td>Ready</td><td class="mono">Meadow_8821</td><td>草地农场</td><td>Y1 夏 04</td><td>Meadowlands</td><td><button class="button small">Select</button></td></tr>
-              <tr><td>Backup</td><td class="mono">Forest_1201</td><td>森林小屋</td><td>Y3 冬 28</td><td>Forest</td><td><button class="button small ghost">Restore</button></td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Mods</h2>
-              <p>Restart state is explicit and linked to lifecycle actions.</p>
-            </div>
-            <span class="status-pill warn">Restart required</span>
-          </div>
-          <div class="mod-grid">
-            <div class="mod-tile"><strong>Content Patcher</strong><span class="tag">OK</span><p class="muted">1.30.4 · installed</p></div>
-            <div class="mod-tile"><strong>Farm Type Manager</strong><span class="tag">OK</span><p class="muted">ready after restart</p></div>
-            <div class="mod-tile error"><strong>BrokenManifest</strong><span class="tag">parse error</span><p class="muted">manifest.json missing</p></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="prototype-section">
-      <div class="section-title">
-        <div>
-          <h2>Troubleshoot and Security</h2>
-          <p class="muted">Advanced is split into task-specific pages: diagnostics versus admin control.</p>
-        </div>
-      </div>
-      <div class="wide-grid">
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Troubleshoot</h2>
-              <p>Health, Docker, failed jobs, and support bundle live together.</p>
-            </div>
-            <button class="button small">Export support bundle</button>
-          </div>
-          <div class="diagnostic-grid">
-            <div class="diagnostic"><strong>Docker daemon</strong>正常响应</div>
-            <div class="diagnostic"><strong>Compose file</strong>实例目录已就绪</div>
-            <div class="diagnostic bad"><strong>Latest failed job</strong>QR auth failed; fallback available</div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Security</h2>
-              <p>Users and audit logs are no longer mixed with Docker debugging.</p>
-            </div>
-          </div>
-          <table>
-            <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th></tr></thead>
-            <tbody>
-              <tr><td>18:22</td><td>instance_restart</td><td>admin</td><td>stardew</td></tr>
-              <tr><td>18:15</td><td>mod_upload</td><td>admin</td><td>ContentPack.zip</td></tr>
-              <tr><td>17:58</td><td>auth_login</td><td>viewer</td><td>panel</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+<!-- BRANDING -->
+<div class="brand">
+  <div class="brand-logo">Stardew Valley<br>专用服务器管理面板<span>设计原型</span></div>
+  <img class="brand-farm" src="./assets/ui-extracted/sprites/sprite_farmhouse_scene.png" alt="">
+  <div class="brand-sec">
+    <div class="brand-sec-title">设计目标</div>
+    <div class="brand-li" data-b="◆">稳定易用的服务器管理</div>
+    <div class="brand-li" data-b="◆">贴近农场氛围的视觉语言</div>
+    <div class="brand-li" data-b="◆">一站式运维与协作体验</div>
   </div>
+  <div class="brand-sec">
+    <div class="brand-sec-title">设计原则</div>
+    <div class="brand-li" data-b="●">信息层级清晰</div>
+    <div class="brand-li" data-b="●">常用操作一键直达</div>
+    <div class="brand-li" data-b="●">状态可视化与可追溯</div>
+    <div class="brand-li" data-b="●">操作安全与容错</div>
+  </div>
+  <div class="brand-sec">
+    <div class="brand-sec-title">视觉语言</div>
+    <div class="brand-palette">
+      <div class="swatch" style="background:#3a6e25"></div>
+      <div class="swatch" style="background:#5a3c1d"></div>
+      <div class="swatch" style="background:#c09040"></div>
+      <div class="swatch" style="background:#f0deb3"></div>
+      <div class="swatch" style="background:#5c9ece"></div>
+      <div class="swatch" style="background:#a0522d"></div>
+      <div class="swatch" style="background:#f0f0f0"></div>
+      <div class="swatch" style="background:#8a1515"></div>
+    </div>
+  </div>
+  <div class="brand-icons">
+    <img src="./assets/ui-extracted/sprites/sprite_chest.png" alt="">
+    <img src="./assets/ui-extracted/sprites/sprite_tree.png" alt="">
+    <img src="./assets/ui-extracted/sprites/sprite_fence.png" alt="">
+    <img src="./assets/ui-extracted/sprites/sprite_blue_device.png" alt="">
+    <img src="./assets/ui-extracted/sprites/sprite_blue_gem.png" alt="">
+  </div>
+</div>
+
+<!-- SECTION LABELS -->
+<div class="sec-label" style="left:216px;top:12px">1. 首次安装向导</div>
+<div class="sec-label" style="left:798px;top:12px">2. 日常运行总览</div>
+<div class="sec-label" style="left:216px;top:511px">3. 存档与模组维护</div>
+<div class="sec-label" style="left:798px;top:511px">4. 诊断与健康检查</div>
+
+<!-- ===== PANEL 1: INSTALL WIZARD ===== -->
+<div class="panel panel-install">
+  <div class="panel-body">
+    <div class="sidebar">
+      <div class="sb-head">
+        <img class="sb-chicken" src="./assets/ui-extracted/icons/icon_sidebar_chicken.png" alt="">
+        <div class="sb-info"><div class="sb-name">我的农场服务器</div><div class="sb-status" id="sb1-st">未安装</div></div>
+      </div>
+      <ul class="nav-list" data-panel="p1">
+        <li class="nav-item" data-page="overview"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_overview_home.png" alt="">概览</li>
+        <li class="nav-item" data-page="ctrl"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_server_control.png" alt="">服务器控制</li>
+        <li class="nav-item" data-page="saves"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_saves.png" alt="">存档管理</li>
+        <li class="nav-item" data-page="mods"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_mods.png" alt="">模组管理</li>
+        <li class="nav-item" data-page="tasks"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_tasks.png" alt="">任务与日志</li>
+        <li class="nav-item" data-page="players"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_players.png" alt="">玩家管理</li>
+        <li class="nav-item" data-page="settings"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_settings.png" alt="">设置</li>
+        <li class="nav-item" data-page="diag"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_diagnostics.png" alt="">诊断与工具</li>
+      </ul>
+      <div class="sb-help" data-action="quick-help">● 快速帮助</div>
+    </div>
+    <div class="content">
+      <div class="wizard-wrap">
+        <div class="step-bar">
+          <div class="step active" data-sn="1"><span class="step-num">1</span>环境检查</div>
+          <div class="step-line"></div>
+          <div class="step" data-sn="2"><span class="step-num">2</span>基础配置</div>
+          <div class="step-line"></div>
+          <div class="step" data-sn="3"><span class="step-num">3</span>存档设置</div>
+          <div class="step-line"></div>
+          <div class="step" data-sn="4"><span class="step-num">4</span>完成安装</div>
+        </div>
+
+        <!-- Step 1 -->
+        <div class="wiz-step active" id="wiz-1">
+          <div class="wizard-welcome"><h2>欢迎使用 Stardew Valley 专用服务器面板</h2><p>让我们一步步完成服务器的安装与配置</p></div>
+          <div class="wizard-body">
+            <div class="wizard-col">
+              <div class="wc-title">环境检查</div>
+              <div class="chk-row"><span class="chk-label">操作系统</span><span class="chk-val">Ubuntu 22.04.3 LTS</span><span class="chk-ok">✓</span></div>
+              <div class="chk-row"><span class="chk-label">Docker</span><span class="chk-val">已安装</span><span class="chk-ok">✓</span></div>
+              <div class="chk-row"><span class="chk-label">磁盘空间</span><span class="chk-val">可用128.6 GB</span><span class="chk-ok">✓</span></div>
+              <div class="chk-row"><span class="chk-label">内存</span><span class="chk-val">7.8 GB</span><span class="chk-ok">✓</span></div>
+              <div class="chk-row"><span class="chk-label">网络连通</span><span class="chk-val">正常</span><span class="chk-ok">✓</span></div>
+            </div>
+            <div class="wizard-col">
+              <div class="form-group">
+                <div class="wc-title">安装包</div>
+                <div class="form-note">推荐版本：1.6.9 (Linux)</div>
+                <div class="form-row"><input class="field-text" value="1.6.9 (Linux)" readonly style="flex:1"><button class="btn btn-sm-alt" data-action="change-version">更换版本</button></div>
+              </div>
+              <div class="form-group">
+                <div class="wc-title">安装位置</div>
+                <div class="form-row"><input class="field-text" value="/opt/svserver" style="flex:1"><button class="btn btn-sm-alt" data-action="change-path">更改</button></div>
+              </div>
+              <div class="form-group">
+                <div class="wc-title">Steam CMD</div>
+                <select class="field-select"><option>自动安装（推荐）</option><option>手动指定路径</option><option>跳过（已有安装）</option></select>
+              </div>
+            </div>
+          </div>
+          <div class="wizard-footer"><span>安装过程大约需要 2-5 分钟，请确保网络连接稳定。</span><span class="sp"></span><button class="btn btn-next" data-action="next-step">下一步</button></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="wiz-step" id="wiz-2">
+          <div class="wizard-welcome"><h2>基础配置</h2><p>配置服务器名称、密码和连接端口</p></div>
+          <div class="wizard-body">
+            <div class="wizard-col">
+              <div class="form-group"><label class="form-label">服务器名称</label><input class="field-text" value="我的农场服务器" style="width:100%"></div>
+              <div class="form-group"><label class="form-label">连接密码（留空则无密码）</label><input class="field-text" type="password" placeholder="可选" style="width:100%"></div>
+              <div class="form-group"><label class="form-label">最大玩家数</label><select class="field-select"><option>8 人</option><option>4 人</option><option>16 人</option></select></div>
+            </div>
+            <div class="wizard-col">
+              <div class="form-group"><label class="form-label">服务端口</label><input class="field-text" value="24642" style="width:100%"></div>
+              <div class="form-group"><label class="form-label">公告模式</label><select class="field-select"><option>公开</option><option>仅邀请</option><option>隐藏</option></select></div>
+              <div class="form-group"><label class="form-label">时区</label><select class="field-select"><option>Asia/Shanghai</option><option>UTC</option></select></div>
+            </div>
+          </div>
+          <div class="wizard-footer"><span>端口 24642 需在防火墙中开放 UDP 流量。</span><span class="sp"></span><button class="btn btn-next" data-action="next-step">下一步</button></div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="wiz-step" id="wiz-3">
+          <div class="wizard-welcome"><h2>存档设置</h2><p>选择游戏存档来源和地图类型</p></div>
+          <div class="wizard-body">
+            <div class="wizard-col">
+              <div class="form-group"><label class="form-label">存档来源</label><select class="field-select"><option>新建存档</option><option>上传现有存档</option><option>暂不配置</option></select></div>
+              <div class="form-group"><label class="form-label">地图类型</label><select class="field-select"><option>标准农场</option><option>河边农场</option><option>山地农场</option><option>荒野农场</option></select></div>
+              <div class="form-group"><label class="form-label">存档名称</label><input class="field-text" value="GreenFarm" style="width:100%"></div>
+            </div>
+            <div class="wizard-col">
+              <div class="form-group"><label class="form-label">自动备份频率</label><select class="field-select"><option>每 6 小时</option><option>每天</option><option>关闭</option></select></div>
+              <div class="form-group"><label class="form-label">存档保留数量</label><input class="field-text" value="10" style="width:100%"></div>
+            </div>
+          </div>
+          <div class="wizard-footer"><span>存档将保存在 /opt/svserver/saves/ 目录。</span><span class="sp"></span><button class="btn btn-next" data-action="next-step">下一步</button></div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="wiz-step" id="wiz-4">
+          <div class="wizard-welcome"><h2>安装完成！</h2><p>服务器已成功配置，可以启动了</p></div>
+          <div class="step4-body">
+            <div style="color:var(--ok);font-size:42px;line-height:1">✓</div>
+            <div style="font-size:13px;color:var(--ink);text-align:center">所有组件已安装完毕，Stardew Valley 服务器正在就绪</div>
+            <div style="display:flex;gap:10px;margin-top:8px">
+              <button class="btn btn-next" style="width:auto;padding:0 16px" data-action="launch-server">立即启动</button>
+              <button class="btn btn-secondary" data-action="go-overview">进入总览</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PANEL 2: OVERVIEW ===== -->
+<div class="panel panel-overview">
+  <div class="panel-body">
+    <div class="sidebar">
+      <div class="sb-head">
+        <img class="sb-chicken" src="./assets/ui-extracted/icons/icon_sidebar_chicken.png" alt="">
+        <div class="sb-info"><div class="sb-name">我的农场服务器</div><div class="sb-status running" id="sb2-st">运行中</div></div>
+      </div>
+      <ul class="nav-list" data-panel="p2">
+        <li class="nav-item active" data-page="overview"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_overview_home.png" alt="">概览</li>
+        <li class="nav-item" data-page="ctrl"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_server_control.png" alt="">服务器控制</li>
+        <li class="nav-item" data-page="saves"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_saves.png" alt="">存档管理</li>
+        <li class="nav-item" data-page="mods"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_mods.png" alt="">模组管理</li>
+        <li class="nav-item" data-page="tasks"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_tasks.png" alt="">任务与日志</li>
+        <li class="nav-item" data-page="players"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_players.png" alt="">玩家管理</li>
+        <li class="nav-item" data-page="settings"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_settings.png" alt="">设置</li>
+        <li class="nav-item" data-page="diag"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_diagnostics.png" alt="">诊断与工具</li>
+      </ul>
+      <div class="sb-help" data-action="quick-help">● 快速帮助</div>
+    </div>
+    <div class="content">
+      <div class="ov-wrap">
+        <div class="ov-banner">
+          <div class="ov-banner-bg"></div>
+          <div class="ov-banner-overlay"></div>
+          <div class="ov-banner-stats">
+            <div class="bstat"><img src="./assets/ui-extracted/icons/icon_top_summary_save.png" alt=""><span class="bstat-l">存档：</span><span class="bstat-v">GreenFarm_春季12天</span></div>
+            <div class="bstat"><img src="./assets/ui-extracted/icons/icon_top_summary_players.png" alt=""><span class="bstat-l">玩家：</span><span class="bstat-v" id="ov-players">3/8</span></div>
+            <div class="bstat"><img src="./assets/ui-extracted/icons/icon_top_summary_time.png" alt=""><span class="bstat-l">运行：</span><span class="bstat-v">2天6小时24分</span></div>
+            <div class="bstat"><img src="./assets/ui-extracted/icons/icon_top_summary_version.png" alt=""><span class="bstat-l">版本：</span><span class="bstat-v">1.6.9</span></div>
+          </div>
+          <div class="ov-banner-right">
+            <span style="color:var(--ink2)">IP:端口&nbsp;</span>
+            <span style="font-weight:700">123.45.67.89:24642</span>
+            <button class="btn btn-copy" data-action="copy-text" data-copy="123.45.67.89:24642">复制</button>
+            <button class="btn btn-menu" data-action="more-menu">⋮</button>
+          </div>
+        </div>
+
+        <div class="ov-section">
+          <div class="ov-title">服务器控制</div>
+          <div class="ctrl-row">
+            <button class="btn btn-start"   id="btn-start"   data-action="start-server"><img src="./assets/ui-extracted/icons/icon_button_play.png" alt="" style="width:12px;height:13px;image-rendering:pixelated"> 启动</button>
+            <button class="btn btn-stop"    id="btn-stop"    data-action="stop-server"><img src="./assets/ui-extracted/icons/icon_button_stop.png" alt="" style="width:11px;height:11px;image-rendering:pixelated"> 停止</button>
+            <button class="btn btn-restart" id="btn-restart" data-action="restart-server"><img src="./assets/ui-extracted/icons/icon_button_restart.png" alt="" style="width:12px;height:12px;image-rendering:pixelated"> 重启</button>
+            <div class="ctrl-div">│</div>
+            <div class="invite-wrap">
+              <div class="invite-box">
+                <div>
+                  <div class="invite-code">7K2Y-4M9P-B8H1</div>
+                  <div class="invite-expire">锁定有效期：23小时59分</div>
+                </div>
+                <button class="btn btn-copy" data-action="copy-text" data-copy="7K2Y-4M9P-B8H1">复制</button>
+              </div>
+              <button class="btn-reset" data-action="reset-invite">重置</button>
+            </div>
+            <span id="state-badge" class="state-badge running"><span class="pulse-dot"></span>&nbsp;运行中</span>
+          </div>
+        </div>
+
+        <div class="ov-section" style="padding-top:3px;padding-bottom:4px">
+          <div class="action-row">
+            <div class="act-link" data-action="broadcast">📢 发送公告</div>
+            <div class="act-link" data-action="save-world">💾 保存世界</div>
+            <div class="act-link" data-action="backup">📦 备份存档</div>
+            <div class="act-link" data-action="cleanup">🧹 清理维护</div>
+          </div>
+        </div>
+
+        <div class="ov-body">
+          <div class="ov-left">
+            <div class="ov-title" style="padding:5px 8px 0">服务器状态</div>
+            <div class="metric-grid">
+              <div class="metric-card">
+                <div class="mc-name">CPU使用率</div>
+                <div class="mc-val">18%</div>
+                <div class="mc-bar"><div class="mc-fill ok" style="width:18%"></div></div>
+                <svg class="mc-wave" viewBox="0 0 80 22"><polyline points="0,16 10,10 20,14 30,8 40,12 50,6 60,10 70,8 80,11" fill="none" stroke="var(--ok)" stroke-width="1.5" opacity=".7"/></svg>
+              </div>
+              <div class="metric-card">
+                <div class="mc-name">内存使用率</div>
+                <div class="mc-val">2.1 GB</div>
+                <div class="mc-bar"><div class="mc-fill ok" style="width:27%"></div></div>
+                <div class="mc-sub">2.1 GB / 7.8 GB &nbsp; 27%</div>
+              </div>
+              <div class="metric-card">
+                <div class="mc-name">磁盘使用率</div>
+                <div class="mc-val">24.6 GB</div>
+                <div class="mc-bar"><div class="mc-fill warn" style="width:19%"></div></div>
+                <div class="mc-sub">24.6 GB / 128 GB &nbsp; 19%</div>
+              </div>
+              <div class="metric-card">
+                <div class="mc-name">网络 (上/下)</div>
+                <div class="mc-val">1.2 KB/s</div>
+                <div class="mc-bar"><div class="mc-fill ok" style="width:8%"></div></div>
+                <div class="mc-sub">↑1.2 KB/s &nbsp; ↓2.4 KB/s</div>
+              </div>
+            </div>
+            <div class="player-hd">玩家在线 <span id="player-cnt">3/8</span></div>
+            <div class="stbl-scroll" style="flex:1">
+              <table class="ptable">
+                <thead><tr><th>玩家名</th><th>角色名</th><th>位置</th><th>在线时长</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="dot ok"></span>FarmMaster</td><td>小农夫</td><td>农场</td><td>1小时12分</td>
+                    <td><button class="icon-btn" data-action="kick" data-player="FarmMaster" title="踢出">✕</button><button class="icon-btn" data-action="msg" data-player="FarmMaster" title="消息">✉</button></td></tr>
+                  <tr><td><span class="dot ok"></span>SunnyDay</td><td>阳光</td><td>猪猪镇</td><td>1小时47分</td>
+                    <td><button class="icon-btn" data-action="kick" data-player="SunnyDay" title="踢出">✕</button><button class="icon-btn" data-action="msg" data-player="SunnyDay" title="消息">✉</button></td></tr>
+                  <tr><td><span class="dot ok"></span>MoonLight</td><td>月光</td><td>矿洞45层</td><td>58分</td>
+                    <td><button class="icon-btn" data-action="kick" data-player="MoonLight" title="踢出">✕</button><button class="icon-btn" data-action="msg" data-player="MoonLight" title="消息">✉</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="ov-right">
+            <div class="ev-title">任务与事件</div>
+            <div class="ev-list">
+              <div class="ev-item"><div class="ev-time">10:15</div><div class="ev-text">玩家 <b>SunnyDay</b> 加入了游戏</div></div>
+              <div class="ev-item"><div class="ev-time">09:30</div><div class="ev-text">保存世界完成<br><span style="color:var(--muted);font-size:9px">GreenFarm_20250518_0930.zip</span></div></div>
+              <div class="ev-item"><div class="ev-time">09:00</div><div class="ev-text">自动备份完成</div></div>
+              <div class="ev-item"><div class="ev-time">昨天23:45</div><div class="ev-text">玩家 <b>MoonLight</b> 加入了游戏</div></div>
+            </div>
+            <div class="all-logs-btn" data-action="view-logs">查看全部日志 →</div>
+            <div class="pack-section">
+              <div class="pack-title">资源包（可选）</div>
+              <div class="pack-row"><span class="pack-name">内存包</span><span class="pack-off">未安装</span><button class="btn btn-primary" style="height:20px;min-width:40px;font-size:10px" data-action="install-pack">安装</button></div>
+              <div class="pack-row"><span class="pack-name">季节美化包</span><span class="pack-on">已启用</span><button class="btn btn-secondary" style="height:20px;min-width:40px;font-size:10px" data-action="manage-pack">管理</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PANEL 3: SAVES & MODS ===== -->
+<div class="panel panel-saves">
+  <div class="panel-body">
+    <div class="sidebar">
+      <div class="sb-head">
+        <img class="sb-chicken" src="./assets/ui-extracted/icons/icon_sidebar_chicken.png" alt="">
+        <div class="sb-info"><div class="sb-name">我的农场服务器</div><div class="sb-status running" id="sb3-st">运行中</div></div>
+      </div>
+      <ul class="nav-list" data-panel="p3">
+        <li class="nav-item" data-page="overview"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_overview_home.png" alt="">概览</li>
+        <li class="nav-item" data-page="ctrl"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_server_control.png" alt="">服务器控制</li>
+        <li class="nav-item active-alt" data-page="saves"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_saves.png" alt="">存档管理</li>
+        <li class="nav-item" data-page="mods"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_mods.png" alt="">模组管理</li>
+        <li class="nav-item" data-page="tasks"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_tasks.png" alt="">任务与日志</li>
+        <li class="nav-item" data-page="players"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_players.png" alt="">玩家管理</li>
+        <li class="nav-item" data-page="settings"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_settings.png" alt="">设置</li>
+        <li class="nav-item" data-page="diag"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_diagnostics.png" alt="">诊断与工具</li>
+      </ul>
+      <div class="sb-help" data-action="quick-help">● 快速帮助</div>
+    </div>
+    <div class="content">
+      <div class="saves-wrap">
+        <div class="saves-sec">
+          <div class="toolbar">
+            <span class="toolbar-title">存档管理</span>
+            <button class="btn btn-primary" data-action="upload-save">上传存档</button>
+            <button class="btn btn-secondary" data-action="backup-save">创建备份</button>
+            <button class="btn btn-secondary" data-action="set-current">设为当前</button>
+            <button class="btn btn-delete" data-action="delete-save">删除</button>
+            <span class="toolbar-sp"></span>
+            <input class="search-box" placeholder="搜索存档…" id="save-search">
+          </div>
+          <div class="stbl-scroll">
+            <table class="stbl">
+              <thead><tr><th>存档名</th><th>世界名</th><th>创建时间</th><th>大小</th><th>版本</th><th>操作</th></tr></thead>
+              <tbody id="save-tbody">
+                <tr class="selected" data-save="GreenFarm_春季12天">
+                  <td><span style="font-weight:700">GreenFarm_春季12天</span><span class="badge-cur">当前</span></td>
+                  <td>GreenFarm</td><td>2025-05-18 09:30</td><td>24.6 MB</td><td>1.6.9</td>
+                  <td><button class="icon-btn" title="下载">⬇</button><button class="icon-btn" title="更多">⋮</button></td>
+                </tr>
+                <tr data-save="GreenFarm_春季10天">
+                  <td><span style="font-weight:700">GreenFarm_春季10天</span></td>
+                  <td>GreenFarm</td><td>2025-05-16 22:10</td><td>24.2 MB</td><td>1.6.9</td>
+                  <td><button class="icon-btn" title="下载">⬇</button><button class="icon-btn" title="更多">⋮</button></td>
+                </tr>
+                <tr data-save="GreenFarm_春季第5天">
+                  <td><span style="font-weight:700">GreenFarm_春季第5天</span></td>
+                  <td>GreenFarm</td><td>2025-05-12 22:30</td><td>23.9 MB</td><td>1.6.9</td>
+                  <td><button class="icon-btn" title="下载">⬇</button><button class="icon-btn" title="更多">⋮</button></td>
+                </tr>
+                <tr data-save="GreenFarm_春季第1天">
+                  <td><span style="font-weight:700">GreenFarm_春季第1天</span></td>
+                  <td>GreenFarm</td><td>2025-05-10 10:20</td><td>22.7 MB</td><td>1.6.9</td>
+                  <td><button class="icon-btn" title="下载">⬇</button><button class="icon-btn" title="更多">⋮</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="mods-sec">
+          <div class="toolbar">
+            <span class="toolbar-title">模组管理</span>
+            <button class="btn btn-primary" data-action="install-mod">安装模组</button>
+            <button class="btn btn-secondary" data-action="import-mod">从网站导入</button>
+            <button class="btn btn-secondary" data-action="update-mods">更新全部</button>
+            <button class="btn btn-secondary" data-action="refresh-mods">刷新</button>
+            <span class="toolbar-sp"></span>
+            <input class="search-box" placeholder="搜索模组…">
+          </div>
+          <div class="mods-grid" id="mods-grid"></div>
+          <div class="mods-footer">
+            <span id="mods-cnt">已用 7/32 个模组</span>
+            <span class="sp"></span>
+            <button class="btn btn-secondary" style="height:22px;font-size:10.5px" data-action="sort-mods">模组加载顺序</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PANEL 4: HEALTH ===== -->
+<div class="panel panel-health">
+  <div class="panel-body">
+    <div class="sidebar">
+      <div class="sb-head">
+        <img class="sb-chicken" src="./assets/ui-extracted/icons/icon_sidebar_chicken.png" alt="">
+        <div class="sb-info"><div class="sb-name">我的农场服务器</div><div class="sb-status running" id="sb4-st">运行中</div></div>
+      </div>
+      <ul class="nav-list" data-panel="p4">
+        <li class="nav-item" data-page="overview"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_overview_home.png" alt="">概览</li>
+        <li class="nav-item" data-page="ctrl"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_server_control.png" alt="">服务器控制</li>
+        <li class="nav-item" data-page="saves"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_saves.png" alt="">存档管理</li>
+        <li class="nav-item" data-page="mods"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_mods.png" alt="">模组管理</li>
+        <li class="nav-item" data-page="tasks"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_tasks.png" alt="">任务与日志</li>
+        <li class="nav-item" data-page="players"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_players.png" alt="">玩家管理</li>
+        <li class="nav-item" data-page="settings"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_settings.png" alt="">设置</li>
+        <li class="nav-item active" data-page="diag"><img class="nav-icon" src="./assets/ui-extracted/icons/icon_nav_diagnostics.png" alt="">诊断与工具</li>
+      </ul>
+      <div class="sb-help" data-action="quick-help">● 快速帮助</div>
+    </div>
+    <div class="content">
+      <div class="health-wrap">
+        <div class="dtab-bar">
+          <button class="dtab active" data-dtab="health">健康检查</button>
+          <button class="dtab" data-dtab="performance">性能监控</button>
+          <button class="dtab" data-dtab="logs">日志查看</button>
+          <button class="dtab" data-dtab="command">命令行</button>
+          <button class="dtab" data-dtab="network">网络检测</button>
+        </div>
+
+        <!-- Health tab -->
+        <div class="dpane active" id="dpane-health">
+          <div class="hp-wrap">
+            <div class="hp-left">
+              <div class="score-circle"><div class="score-num">92</div><div class="score-lbl">健康</div></div>
+              <div class="health-desc">服务器运行良好，<br>请继续保持！</div>
+              <div class="health-meta">上次检查：<br>2025-05-18 10:20:30</div>
+              <button class="btn btn-hcheck" style="margin-top:10px" data-action="rerun-health">重新检查</button>
+            </div>
+            <div class="hp-mid">
+              <div class="chk-title">检查项</div>
+              <div class="chk-li"><span class="chk-li-name">进程状态</span><span class="chk-li-st ok">正常</span><span class="chk-li-det">StardewModdingAPI.exe 正在运行</span></div>
+              <div class="chk-li"><span class="chk-li-name">端口监听</span><span class="chk-li-st ok">正常</span><span class="chk-li-det">端口 24642 正在监听</span></div>
+              <div class="chk-li"><span class="chk-li-name">存档可读</span><span class="chk-li-st ok">正常</span><span class="chk-li-det">存档格式完整</span></div>
+              <div class="chk-li"><span class="chk-li-name">磁盘空间</span><span class="chk-li-st warn">警告</span><span class="chk-li-det">可用 12.4 GB（建议&gt;10GB）</span></div>
+              <div class="chk-li"><span class="chk-li-name">内存使用</span><span class="chk-li-st ok">正常</span><span class="chk-li-det">2.1 GB / 7.8 GB（27%）</span></div>
+              <div class="chk-li"><span class="chk-li-name">模组兼容</span><span class="chk-li-st warn">警告</span><span class="chk-li-det">发现 2 个模组可以更新</span></div>
+              <div class="chk-li"><span class="chk-li-name">备份状态</span><span class="chk-li-st ok">正常</span><span class="chk-li-det">最近备份：1小时前</span></div>
+              <div class="alert-sec">
+                <div class="chk-title" style="margin-top:6px">告警与建议 (2)</div>
+                <div class="alert-item"><span class="alert-time">10:18</span><span class="alert-txt">磁盘空间警告：可用空间 12.4 GB，建议清理旧存档或扩容</span></div>
+                <div class="alert-item"><span class="alert-time">10:10</span><span class="alert-txt">模组更新可用：有 2 个模组可以更新以获取更好的兼容性</span></div>
+              </div>
+            </div>
+            <div class="hp-right">
+              <div class="quick-title">快捷工具</div>
+              <button class="btn btn-quick" data-action="force-save">强制保存世界</button>
+              <button class="btn btn-quick" data-action="reload-mods">重载模组</button>
+              <button class="btn btn-quick" data-action="clear-cache">清理缓存</button>
+              <button class="btn btn-quick" data-action="repair-index">修复存档索引</button>
+              <button class="btn btn-quick" data-action="verify-game">验证游戏文件</button>
+              <button class="btn btn-quick" data-action="export-report">导出诊断报告</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance tab -->
+        <div class="dpane" id="dpane-performance">
+          <div class="perf-wrap">
+            <div class="chart-card">
+              <div class="cc-title">CPU 使用率 (%)</div>
+              <div class="cc-chart"><svg viewBox="0 0 200 52" preserveAspectRatio="none"><polygon points="0,52 0,42 20,35 40,38 60,28 80,32 100,22 120,28 140,20 160,24 180,18 200,22 200,52" fill="rgba(74,158,48,.15)"/><polyline points="0,42 20,35 40,38 60,28 80,32 100,22 120,28 140,20 160,24 180,18 200,22" fill="none" stroke="var(--ok)" stroke-width="1.5"/></svg></div>
+              <div class="cc-meta">平均 21% &nbsp; 最大 38%</div>
+            </div>
+            <div class="chart-card">
+              <div class="cc-title">内存使用 (GB)</div>
+              <div class="cc-chart"><svg viewBox="0 0 200 52" preserveAspectRatio="none"><polygon points="0,52 0,30 20,29 40,28 60,27 80,26 100,25 120,26 140,27 160,26 180,25 200,24 200,52" fill="rgba(74,158,48,.15)"/><polyline points="0,30 20,29 40,28 60,27 80,26 100,25 120,26 140,27 160,26 180,25 200,24" fill="none" stroke="var(--ok)" stroke-width="1.5"/></svg></div>
+              <div class="cc-meta">平均 2.2 GB &nbsp; 最大 2.6 GB</div>
+            </div>
+            <div class="chart-card">
+              <div class="cc-title">磁盘 I/O (MB/s)</div>
+              <div class="cc-chart"><svg viewBox="0 0 200 52" preserveAspectRatio="none"><polygon points="0,52 0,48 20,45 40,20 60,44 80,46 100,12 120,42 140,46 160,44 180,15 200,44 200,52" fill="rgba(208,128,16,.15)"/><polyline points="0,48 20,45 40,20 60,44 80,46 100,12 120,42 140,46 160,44 180,15 200,44" fill="none" stroke="var(--warn)" stroke-width="1.5"/></svg></div>
+              <div class="cc-meta">平均 1.1 MB/s &nbsp; 最大 4.3 MB/s</div>
+            </div>
+            <div class="chart-card">
+              <div class="cc-title">网络 (上/下 KB/s)</div>
+              <div class="cc-chart"><svg viewBox="0 0 200 52" preserveAspectRatio="none"><polygon points="0,52 0,40 20,36 40,42 60,30 80,38 100,28 120,34 140,30 160,36 180,28 200,32 200,52" fill="rgba(74,158,48,.15)"/><polyline points="0,40 20,36 40,42 60,30 80,38 100,28 120,34 140,30 160,36 180,28 200,32" fill="none" stroke="var(--ok)" stroke-width="1.5"/></svg></div>
+              <div class="cc-meta">平均 1.3 / 1.8 KB/s</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Log tab -->
+        <div class="dpane" id="dpane-logs">
+          <div class="log-wrap">
+            <div class="log-ln"><span class="log-t">[10:20:30]</span><span class="log-lv info">INFO</span><span class="log-msg">服务器健康检查完成，得分 92</span></div>
+            <div class="log-ln"><span class="log-t">[10:18:01]</span><span class="log-lv warn">WARN</span><span class="log-msg">磁盘空间不足警告：可用 12.4 GB</span></div>
+            <div class="log-ln"><span class="log-t">[10:15:32]</span><span class="log-lv info">INFO</span><span class="log-msg">玩家 SunnyDay 加入游戏 (ID: 3)</span></div>
+            <div class="log-ln"><span class="log-t">[10:10:00]</span><span class="log-lv info">INFO</span><span class="log-msg">自动备份完成：GreenFarm_20250518_1010.zip</span></div>
+            <div class="log-ln"><span class="log-t">[09:30:00]</span><span class="log-lv info">INFO</span><span class="log-msg">保存世界完成，耗时 1.2s</span></div>
+            <div class="log-ln"><span class="log-t">[09:00:00]</span><span class="log-lv info">INFO</span><span class="log-msg">自动备份完成：GreenFarm_20250518_0900.zip</span></div>
+            <div class="log-ln"><span class="log-t">[08:45:11]</span><span class="log-lv info">INFO</span><span class="log-msg">玩家 FarmMaster 加入游戏 (ID: 1)</span></div>
+            <div class="log-ln"><span class="log-t">[08:43:00]</span><span class="log-lv info">INFO</span><span class="log-msg">服务器启动完成，监听端口 24642</span></div>
+            <div class="log-ln"><span class="log-t">[08:42:58]</span><span class="log-lv info">INFO</span><span class="log-msg">加载模组：自动门 v2.0.0</span></div>
+            <div class="log-ln"><span class="log-t">[08:42:55]</span><span class="log-lv warn">WARN</span><span class="log-msg">模组 变脸像 v1.4.0 有新版本可用（1.5.0）</span></div>
+            <div class="log-ln"><span class="log-t">[08:42:54]</span><span class="log-lv info">INFO</span><span class="log-msg">StardewModdingAPI 1.6.9 已启动</span></div>
+          </div>
+        </div>
+
+        <!-- Command tab -->
+        <div class="dpane" id="dpane-command">
+          <div class="cmd-wrap">
+            <div class="cmd-out" id="cmd-out">
+              <p class="g">StardewValley 服务器命令行终端 v1.6.9</p>
+              <p style="color:#888">输入 <span class="y">help</span> 查看可用命令</p>
+              <p>&nbsp;</p>
+            </div>
+            <div class="cmd-in-row">
+              <span class="cmd-prompt">$</span>
+              <input class="cmd-input" id="cmd-input" placeholder="输入命令…" autocomplete="off">
+              <button class="btn btn-primary" style="height:26px;font-size:10.5px" data-action="run-cmd">执行</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Network tab -->
+        <div class="dpane" id="dpane-network">
+          <div class="net-wrap">
+            <div class="net-li"><span class="net-lbl">公网 IP</span><span class="net-val">123.45.67.89</span><span class="net-st ok">正常</span></div>
+            <div class="net-li"><span class="net-lbl">游戏端口 24642</span><span class="net-val">UDP 监听中</span><span class="net-st ok">正常</span></div>
+            <div class="net-li"><span class="net-lbl">RCON 端口</span><span class="net-val">未启用</span><span class="net-st warn">未配置</span></div>
+            <div class="net-li"><span class="net-lbl">延迟（本机→公网）</span><span class="net-val">12 ms</span><span class="net-st ok">优秀</span></div>
+            <div class="net-li"><span class="net-lbl">Stardew 服务器域名</span><span class="net-val">解析正常</span><span class="net-st ok">正常</span></div>
+            <div class="net-li"><span class="net-lbl">防火墙状态</span><span class="net-val">端口 24642 已开放</span><span class="net-st ok">正常</span></div>
+            <div class="net-li"><span class="net-lbl">NAT 穿透</span><span class="net-val">已检测到 UPnP 支持</span><span class="net-st ok">正常</span></div>
+            <div class="net-li"><span class="net-lbl">Steam 连接</span><span class="net-val">steam.api 可达</span><span class="net-st ok">正常</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-title" id="t-title"></div>
+  <div class="toast-body"  id="t-body"></div>
+</div>
+
+</div><!-- /stage -->
+
+<script>
+// ===== STATE =====
+const S = {
+  srv: 'running',
+  step: 1,
+  save: 'GreenFarm_春季12天',
+  mods: [
+    {name:'自动门',     auth:'Pathoschild', ver:'2.0.0',  on:true},
+    {name:'自动收物堆', auth:'Pathoschild', ver:'1.14.2', on:true},
+    {name:'NPC地图位置',auth:'Pathoschild', ver:'25.1',   on:true},
+    {name:'更好的时间', auth:'Pathoschild', ver:'12.0',   on:true},
+    {name:'物品信息显示',auth:'Coli',       ver:'1.8.5',  on:true},
+    {name:'变脸像',     auth:'FlashShifter',ver:'1.4.0',  on:true},
+    {name:'钓鱼信息',   auth:'Melqua',     ver:'2.2.4',  on:true},
+  ]
+};
+
+// ===== TOAST =====
+let toastTimer;
+const $toast = document.getElementById('toast');
+function toast(title, body='') {
+  document.getElementById('t-title').textContent = title;
+  document.getElementById('t-body').textContent  = body;
+  $toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $toast.classList.remove('show'), 2600);
+}
+
+// ===== CLIPBOARD =====
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove(); }
+}
+
+// ===== WIZARD =====
+function setStep(n) {
+  S.step = n;
+  document.querySelectorAll('[data-sn]').forEach(el => {
+    const i = +el.dataset.sn;
+    el.classList.toggle('active', i===n);
+    el.classList.toggle('done',   i<n);
+  });
+  for(let i=1;i<=4;i++){
+    const el = document.getElementById('wiz-'+i);
+    if(el) el.classList.toggle('active', i===n);
+  }
+}
+
+// ===== SERVER STATE =====
+const stateLabels = {stopped:'已停止',starting:'启动中…',running:'运行中',stopping:'停止中…',restarting:'重启中…'};
+function setSrv(state) {
+  S.srv = state;
+  const badge = document.getElementById('state-badge');
+  badge.className = 'state-badge '+state;
+  badge.innerHTML = `<span class="pulse-dot"></span>&nbsp;${stateLabels[state]}`;
+  ['sb2-st','sb3-st','sb4-st'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.className = 'sb-status ' + (state==='running'?'running':state==='stopped'?'stopped':'busy');
+    el.textContent = stateLabels[state];
+  });
+  document.getElementById('btn-start').disabled   = state!=='stopped';
+  document.getElementById('btn-stop').disabled    = state!=='running';
+  document.getElementById('btn-restart').disabled = state!=='running';
+}
+
+// ===== MODS GRID =====
+function renderMods() {
+  const g = document.getElementById('mods-grid');
+  g.innerHTML = '';
+  S.mods.forEach((m,i) => {
+    const c = document.createElement('div');
+    c.className = 'mod-card';
+    c.innerHTML = `<div class="mod-name">${m.name}</div><div class="mod-auth">作者：${m.auth}</div><div class="mod-ver">版本：${m.ver}</div><div class="mod-row"><span class="etag ${m.on?'on':'off'}">${m.on?'已启用':'已禁用'}</span><button class="mod-tog" data-mi="${i}" title="${m.on?'禁用':'启用'}">${m.on?'✓':'○'}</button></div>`;
+    g.appendChild(c);
+  });
+  const add = document.createElement('div');
+  add.className = 'mod-card add-mod';
+  add.dataset.action = 'install-mod';
+  add.innerHTML = '<div style="font-size:22px;margin-bottom:4px">+</div><div>添加模组</div><div style="font-size:9px;margin-top:2px">拖拽或点击安装</div>';
+  g.appendChild(add);
+}
+
+// ===== TABS =====
+document.querySelectorAll('.dtab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dtab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.dpane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('dpane-'+btn.dataset.dtab).classList.add('active');
+  });
+});
+
+// ===== SAVE TABLE =====
+document.getElementById('save-tbody').addEventListener('click', e => {
+  const row = e.target.closest('tr[data-save]');
+  if(!row) return;
+  S.save = row.dataset.save;
+  document.querySelectorAll('#save-tbody tr').forEach(r => r.classList.remove('selected'));
+  row.classList.add('selected');
+});
+
+// ===== MOD TOGGLE =====
+document.getElementById('mods-grid').addEventListener('click', e => {
+  const tb = e.target.closest('[data-mi]');
+  if(tb) { const i=+tb.dataset.mi; S.mods[i].on=!S.mods[i].on; renderMods(); toast(S.mods[i].name, S.mods[i].on?'模组已启用':'模组已禁用'); return; }
+  const add = e.target.closest('[data-action="install-mod"]');
+  if(add) toast('安装模组','打开模组安装面板');
+});
+
+// ===== COMMAND LINE =====
+const cmdOut   = document.getElementById('cmd-out');
+const cmdInput = document.getElementById('cmd-input');
+const cmdResps = {
+  help:   '可用命令：status, save, restart, kick <name>, say <msg>, mods, backup, clear',
+  status: '状态：运行中\n玩家：3/8\n运行时间：2天6小时24分',
+  save:   '正在保存世界…\n已保存：GreenFarm_20250518.zip (24.6 MB)',
+  mods:   '已加载 7 个模组:\n  自动门 v2.0.0 [启用]\n  自动收物堆 v1.14.2 [启用]\n  NPC地图位置 v25.1 [启用]',
+  backup: '正在创建备份…\n备份完成：GreenFarm_backup.zip',
+};
+function runCmd(cmd) {
+  const addLine = (html, cls='') => { const p=document.createElement('p'); if(cls)p.className=cls; p.innerHTML=html; cmdOut.appendChild(p); };
+  addLine(`<span class="b">$ </span>${cmd}`);
+  const c = cmd.trim().toLowerCase().split(' ')[0];
+  if(c==='clear'){cmdOut.innerHTML='';return;}
+  const resp = cmdResps[c] || `未知命令：${cmd}。输入 help 查看帮助。`;
+  resp.split('\n').forEach(l => addLine(l));
+  cmdOut.scrollTop = 99999;
+}
+cmdInput.addEventListener('keydown', e => { if(e.key==='Enter'&&cmdInput.value.trim()){runCmd(cmdInput.value.trim());cmdInput.value='';} });
+
+// ===== GLOBAL CLICK =====
+const msgs = {
+  'quick-help':    ['快速帮助','查阅文档或联系支持'],
+  'change-version':['更换版本','版本选择弹窗（正式版接入）'],
+  'change-path':   ['更改安装位置','目录选择器（正式版接入）'],
+  'go-overview':   ['进入总览','切换到日常运行总览界面'],
+  'launch-server': ['服务器启动中','服务器正在初始化，请稍候…'],
+  'broadcast':     ['发送公告','公告发送弹窗（正式版接入）'],
+  'save-world':    ['保存世界','已发送保存世界命令'],
+  'backup':        ['创建备份','备份任务已创建'],
+  'cleanup':       ['清理维护','维护任务已排队'],
+  'reset-invite':  ['邀请码已重置','新邀请码已生成'],
+  'view-logs':     ['任务与事件','打开完整日志页面'],
+  'install-pack':  ['安装资源包','内容包安装任务已创建'],
+  'manage-pack':   ['管理季节美化包','资源包管理面板'],
+  'more-menu':     ['更多操作','更多操作菜单'],
+  'upload-save':   ['上传存档','打开文件选择器上传存档'],
+  'backup-save':   ['创建备份','已对选中存档创建备份'],
+  'set-current':   ['设为当前','选中存档已设置为当前存档'],
+  'delete-save':   ['删除存档','已删除选中存档（正式版需二次确认）'],
+  'install-mod':   ['安装模组','打开模组安装面板'],
+  'import-mod':    ['从网站导入','粘贴 Nexus/ModDrop 链接'],
+  'update-mods':   ['更新全部','批量更新任务已创建'],
+  'refresh-mods':  ['刷新模组','已重新扫描模组目录'],
+  'sort-mods':     ['模组加载顺序','排序面板（正式版接入）'],
+  'rerun-health':  ['重新检查','健康检查任务已重新运行'],
+  'force-save':    ['强制保存世界','已发送保存世界命令'],
+  'reload-mods':   ['重载模组','已发送模组重载命令'],
+  'clear-cache':   ['清理缓存','缓存清理任务已创建'],
+  'repair-index':  ['修复存档索引','存档索引修复任务已创建'],
+  'verify-game':   ['验证游戏文件','游戏文件校验任务已创建'],
+  'export-report': ['导出诊断报告','诊断报告导出任务已创建'],
+};
+
+document.addEventListener('click', async e => {
+  // Nav items
+  const navItem = e.target.closest('.nav-item');
+  if(navItem) {
+    const list = navItem.closest('.nav-list');
+    list.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active','active-alt'));
+    navItem.classList.add('active');
+    toast('导航：'+navItem.textContent.trim(), '正式版中切换到对应功能页面');
+    return;
+  }
+
+  const el = e.target.closest('[data-action]');
+  if(!el) return;
+  const act = el.dataset.action;
+
+  if(act==='next-step') { const n=Math.min(S.step+1,4); setStep(n); toast('步骤 '+n+'/4', ['','基础配置','存档设置','安装完成！'][n]||''); return; }
+
+  if(act==='start-server') {
+    if(S.srv!=='stopped') return;
+    setSrv('starting'); toast('服务器启动中','正在初始化，约需 10 秒…');
+    setTimeout(()=>{ setSrv('running'); toast('服务器已启动','服务器正在运行，玩家可以加入。'); },2000);
+    return;
+  }
+  if(act==='stop-server') {
+    if(S.srv!=='running') return;
+    setSrv('stopping'); toast('服务器停止中','正在安全关闭服务…');
+    setTimeout(()=>{ setSrv('stopped'); toast('服务器已停止','所有玩家已断开连接。'); },2000);
+    return;
+  }
+  if(act==='restart-server') {
+    if(S.srv!=='running') return;
+    setSrv('restarting'); toast('重启中','服务器正在重启，约需 15 秒…');
+    setTimeout(()=>setSrv('stopping'),800);
+    setTimeout(()=>setSrv('starting'),2000);
+    setTimeout(()=>{ setSrv('running'); toast('服务器已重启','服务器恢复运行。'); },4000);
+    return;
+  }
+
+  if(el.dataset.copy) { await copy(el.dataset.copy); el.classList.add('pop'); setTimeout(()=>el.classList.remove('pop'),200); toast('已复制', el.dataset.copy); return; }
+
+  if(act==='run-cmd') { if(cmdInput.value.trim()){runCmd(cmdInput.value.trim());cmdInput.value='';} return; }
+
+  if(act==='kick') { toast('踢出玩家', el.dataset.player+' 已被踢出服务器'); return; }
+  if(act==='msg')  { toast('发送消息',  '发送私信给 '+el.dataset.player); return; }
+
+  const m = msgs[act];
+  if(m) toast(m[0], m[1]);
+});
+
+// ===== INIT =====
+setSrv('running');
+renderMods();
+</script>
 </body>
 </html>

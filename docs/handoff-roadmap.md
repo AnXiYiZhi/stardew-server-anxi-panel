@@ -6,6 +6,157 @@
 
 ## Current Context
 
+### Bug fix batch: SavesPage P1 + ServerControlPage P2/P3 ✅ completed (2026-06-29)
+
+修复 5 个问题：
+
+1. **P1 SavesPage 真实化**：`SavesPage.tsx` 从占位改为直接渲染 `SavesSection`（含自定义新建存档弹窗、上传弹窗、存档列表、选择/删除/导出）。props 桥接：`state = instanceState?.state`、`isAdmin = user.role === 'admin'`、`onJobStarted` → `refreshJobs + onNavigate('jobs')`、`onStateRefresh` → `dashboardData.refreshInstanceState`。
+2. **P2a ServerControlPage 存档页按钮修复**：`onClick={() => void 0}` 改为 `onNavigate('saves')`，同时补上 `onNavigate` 解构。
+3. **P2b 命令加载错误态**：新增 `commandsLoading` / `commandsError` state，`loadCommands()` 失败时设置 `commandsError`，JSX 渲染"加载失败 + 重试按钮"而非永远"加载中"。
+4. **P3a 剪贴板复制错误处理**：`ServerControlPage` 和 `OverviewPage` 的 `handleCopy()` 从 `void .then(...)` 改为 `.then(success, failure)` 两参数形式，失败时设置 `copyError` 并显示"复制失败，请手动选取"提示（3s 后自动消失）。
+5. **P3b 启动后刷新邀请码**：`handleStart()` 成功后在 `ServerControlPage` 和 `OverviewPage` 均新增 `dashboardData.refreshInviteCode()`。
+
+影响文件：`SavesPage.tsx`、`ServerControlPage.tsx`、`OverviewPage.tsx`。`npm.cmd run build` 通过（exit 0），39 模块，JS 260 kB。
+
+详见 `docs/conversation-handoff-2026-06-28.md`（追加在文件末尾的 2026-06-29 节）。
+
+### FE-R5: 服务器控制页（ServerControlPage）真实化 ✅ completed (2026-06-28)
+
+完整实现 `/instances/stardew/server` 路由，从占位页面升级为真实可用的服务器控制页。
+
+**已真实接入的功能：**
+
+- **生命周期控制**：`startInstance` / `stopInstance` / `restartInstance` 真实调用后端 API，按状态机禁用不可用按钮（如 `running` 时禁用启动、`stopped` 时禁用停止/重启），停止和重启有二步确认弹框，操作中显示 `actionBusy` 禁用态，成功后主动 `refreshInstanceState + refreshInviteCode + refreshJobs`。
+- **邀请码**：复用 `dashboardData.inviteCode` 公共数据层，带复制按钮（`navigator.clipboard`），提供"刷新"按钮调用 `dashboardData.refreshInviteCode()`，未运行/加载中/错误时都有明确空状态。
+- **状态卡片**：展示 `instanceState.name`、`state`（中文标签）、`driverPhase`、`stateMessage`、`updatedAt`、`saves.activeSaveName`、`versionInfo.version`。
+- **全服喊话**：真实调用 `sendSay()` API，优雅处理 `command_not_supported` 错误，支持 Enter 发送，有结果/错误回显。
+- **控制台命令**：调用 `getCommands()` 加载 allowlist 命令列表，下拉选择后调用 `runCommand()` 执行，展示命令描述和执行结果。
+
+**保留 UI 但待后端接入的功能：**
+
+- 保存世界（`sd-srv-badge-pending` 标注 disabled）
+- 备份存档（同上）
+- 计划重启（同上）
+- 服务器设置（端口/可见性/密码等，同上）
+
+**CSS 新增：**
+
+在 `StardewPanel.css` 中新增 `sd-srv-*` 前缀样式类：`.sd-srv-section`、`.sd-srv-section-title`、`.sd-srv-empty`、`.sd-srv-hint`、`.sd-srv-result`、`.sd-srv-result-pre`、`.sd-srv-badge-pending`。
+
+**未改动：** Overview 页保留自有快捷生命周期按钮（为独立的 CTA，不与 ServerControlPage 共享代码，逻辑相同但 UI 定位不同）。后端 API 无改动。
+
+`npm.cmd run build` 通过（exit 0），JS bundle 239.51 kB。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4l: 左侧导航内容组统一长度 ✅ completed (2026-06-28)
+
+根据用户澄清“统一长度没让你统一宽度”，保留 FE-R4k 每个按钮独立背景宽度，但统一图标+文字内容组长度。`frontend/src/games/stardew/StardewPanel.css` 中不再按 route 覆盖 `--sd-nav-pad-left/right`，所有 route 共用 `pad-left: 10`、`pad-right: 7`、`gap: 4` 源像素，并新增 `--sd-nav-text-w: 60`，让文字 `span` 固定为同一缩放宽度。结果是背景盒子仍按各自 route 宽度变化，但内容起点、图标间距和文字区域长度统一。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4k: 左侧导航每个按钮单独视觉宽度 ✅ completed (2026-06-28)
+
+根据用户要求“不要统一他们的宽度，每个按钮的背景图的实际宽度都不一样，需要完全符合”，在 `frontend/src/games/stardew/StardewPanel.css` 为 9 个 route 分别设置 `--sd-nav-w`、`--sd-nav-active-w` 和内边距变量：短标签（overview/players/mods/install/settings）使用 96 基准；server 使用 110/106；saves 使用 102/105 并保留 `105×28` 专用 active；jobs 使用 126/122；diagnostics 使用 106/102。按钮不再共享同一个视觉宽度，active 状态按每个 route 自己的变量覆盖。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4j: 左侧导航内边距按源 PNG 像素坐标缩放 ✅ completed (2026-06-28)
+
+针对用户反馈“又不实际匹配自己的背景宽度了，用你的眼睛去看实际匹配”，修正 FE-R4i 中 padding/gap 仍按侧栏 `cqi` 粗略计算的问题。`frontend/src/games/stardew/StardewPanel.css` 现在为导航项定义 `--sd-nav-pad-left/right/gap` 源图像素坐标，普通态默认按 `105×29` 的源坐标缩放，active 态按 `99×29` 设置自己的 `pad-left/right/gap`，避免内容左边距跟随侧栏而不是跟随当前 PNG 盒子。保留垂直居中、水平靠左、放大的字体和图标。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4i: 左侧导航内容靠左且放大 ✅ completed (2026-06-28)
+
+根据用户要求“上下居中，左右形式是靠左，字体和按钮图标可以适当再大一点”，调整 `frontend/src/games/stardew/StardewPanel.css`。在保留 FE-R4h 的按 PNG 实际尺寸计算规则下，左侧导航项从 `justify-content: center` 改为 `flex-start`，水平 padding 增加到 `clamp(12px, 8cqi, 15px)`，gap 增加到 `clamp(6px, 4.4cqi, 8px)`；字体从 `clamp(10px, 7cqi, 12px)` 提高为 `clamp(11px, 7.6cqi, 13px)`，图标从 `15–18px` 提高为 `17–20px`。垂直方向仍由 flex `align-items: center` 保持居中。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4h: 左侧导航按各 PNG 实际尺寸居中 ✅ completed (2026-06-28)
+
+根据用户要求“文字居中显示在 PNG 中间，每个 PNG 的宽度其实都不一样，按实际匹配，点击后的绿色也要完全覆盖他自己的背景图大小”，调整左侧导航尺寸模型。`StardewPanel.tsx` 为导航按钮增加 `data-route`，`StardewPanel.css` 不再把所有按钮统一视作 100% PNG 盒子，而是用素材实际尺寸计算：普通导航基准 `105×29`，绿色 active 为 `99×29`，`saves` 专用 active 为 `105×28`，底部帮助为 `96×28`。active 状态改变按钮自身宽高以匹配对应 PNG，并用 flex 居中文字和图标。普通态保持透明显示侧栏木纹原色。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4g: 普通导航底图撤销以恢复木纹原色 ✅ completed (2026-06-28)
+
+根据用户指出“在按素材比例校准那一步之前颜色正常”，重新确认真正导致左侧发淡的原因是 FE-R4d 把普通导航项和底部帮助都铺上了 `--sd-img-nav-default`。该底图平均色约 `rgba(73,47,29)`，比侧栏木纹平均色 `rgba(59,42,30)` 更亮，因此整块普通导航区看起来淡。已在 `frontend/src/games/stardew/StardewPanel.css` 撤销普通态和 `.sd-sidebar-help` 的默认底图，保留当前侧栏宽度、按钮高度比例、文字/图标对齐和 active 绿色底图。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4f: 底部 quick help 偏亮素材替换 ⚠ superseded (2026-06-28)
+
+针对用户继续反馈“还是淡淡的，和下面没有文字的背景颜色不一样”，对素材取样确认原因不是 CSS 颜色或插值，而是 `nav_quick_help_blank.png` 本身明显更亮：侧栏木纹平均约 `rgba(59,42,30)`，普通导航底图约 `rgba(73,47,29)`，quick help 约 `rgba(130,86,44)`。已在 `frontend/src/games/stardew/StardewPanel.css` 将 `.sd-sidebar-help` 的背景图从 `nav_quick_help_blank.png` 改为 `--sd-img-nav-default`，高度比例同步为 `105×29`，让底部按钮颜色与普通导航木板一致。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4e: 左侧像素背景缩放防发淡 ✅ completed (2026-06-28)
+
+针对用户反馈“改完之后底部的背景图颜色变淡”，确认没有改动颜色变量，原因是左侧木纹、导航按钮和底部 quick help PNG 在侧栏宽度放大后由浏览器默认平滑插值，像素边缘和底色被混合导致视觉发灰/发淡。已在 `frontend/src/games/stardew/StardewPanel.css` 为 `.sd-sidebar`、`.sd-sidebar-help`、`.sd-sidebar .sd-nav-item`、active 导航项补充 `image-rendering: pixelated`，保持放大后像素图锐利、不被平滑采样淡化。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4d: 左侧导航按钮边界按 PNG 比例校准 ✅ completed (2026-06-28)
+
+针对用户反馈“文字和背景的界限还是有很大偏移”，继续校准 `frontend/src/games/stardew/StardewPanel.css` 的左侧导航。保留 FE-R4c 的当前侧栏宽度策略，但按钮高度不再用粗略 `clamp(34px, 27cqi, 44px)`，改为按导航底图真实比例计算：`.sd-nav-item` 使用 `height = 100cqi * 29 / 105`，`.sd-sidebar-help` 使用 `height = 100cqi * 28 / 96`。同时给普通导航项也加上 `--sd-img-nav-default` 默认底图，选中态显式使用 `--sd-img-nav-active`，文字和图标以按钮盒子垂直居中，文字单行省略。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4c: 左侧当前宽度木板按钮适配 ✅ completed (2026-06-28)
+
+根据用户澄清“要的就是现在侧栏这个大小，文字按钮以现在这个侧栏的一个木板背景变动”，保留 FE-R4b 的左侧列宽 `clamp(148px, 10vw, 176px)`，不再回退到 112px/105px 原始素材尺寸。调整 `frontend/src/games/stardew/StardewPanel.css`：`.sd-sidebar` 启用 `container-type: inline-size`，导航按钮和快速帮助按钮宽度为当前侧栏 `100%`，按钮高度、左右内边距、图标和字号使用 `cqi` + `clamp()` 随当前侧栏宽度适配，文本开启单行省略，保证按钮与当前被拉伸后的木板宽度一致。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4b: Shell 三栏比例均衡修复 ✅ completed (2026-06-28)
+
+针对用户反馈“中间太大，左有两边太小”，调整 `frontend/src/games/stardew/StardewPanel.css` 的布局比例：Shell 从固定 `112px/1fr/212px` 改为响应式 `clamp(148px, 10vw, 176px) / minmax(0, 1fr) / clamp(280px, 20vw, 360px)`，左侧导航图标、行高和字号略放大，右侧 OpsRail 内边距和文本尺寸略放大；Overview 内部事件/资源栏从固定 `212px` 改为 `clamp(260px, 28%, 340px)`，减少宽屏下主内容区过度吞空间的问题。未改 API 和业务逻辑。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R4: Overview 真实 UI + 像素 UI 回归修复 ✅ completed (2026-06-28)
+
+完整重写 `OverviewPage.tsx` 为原型水平密集布局（农场横幅 58px + 服务器控制横排 + 双栏主体：左 2×2 指标格+玩家占位 / 右事件列表+模组摘要）。同时修复 P1/P2 视觉回归：Shell 尺寸改为 `112px/1fr/212px / 40px` 顶栏；按钮全部改用 PNG 底图（含新增 `sd-btn-start/stop/restart`）；导航 active 使用 `nav_item_active_green_blank.png`；所有圆角收紧至 0–2px；Topbar 改显示 `stateLabel()` 中文标签。`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R3: 公共数据层（useStardewDashboardData）✅ completed (2026-06-28)
+
+建立 StardewPanel 公共数据层。新增 `frontend/src/games/stardew/useStardewDashboardData.ts`，集中加载 7 个 API（instanceState/saves/mods/jobs/health/version/inviteCode），单个失败只降级不崩溃，对外暴露 `refreshAll / refreshInstanceState / refreshSaves / refreshMods / refreshJobs / refreshHealth / refreshInviteCode` 供各页面操作后主动刷新；instanceState 每 30s 轮询。在 `stardew-routes.ts` 新增 `StardewDashboardData` 类型并扩展 `StardewPageProps`。重写 `StardewPanel.tsx`，TopStatusBar 新增版本号和当前存档显示，OpsRail 新增健康摘要和 Mod 重启提示。更新 `OverviewPage.tsx` 展示存档/健康/Mod/任务摘要及邀请码，`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R2: StardewShell 与路由骨架 ✅ completed (2026-06-28)
+
+建立 StardewShell 和真实路由骨架。新增 `stardew-routes.ts`（`StardewRoute` union、URL 解析/生成、`StardewPageProps` 类型）、`StardewPanel.css`（Shell 四区网格布局）、`StardewPanel.tsx`（左侧木纹导航 9 入口、顶部状态栏、30s 状态轮询、右侧 OpsRail）和 9 个页面占位组件（`pages/`）。重写 `App.tsx`（从 1071 行降至 ~130 行），彻底移除 Dashboard 函数及所有 Dashboard 专用 state/import，`View` 新增 `'stardew'`，登录后全屏渲染 `StardewPanel`。`/instances/stardew/{route}` URL 模式，浏览器前进/后退同步，`npm.cmd run build` 通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### FE-R1: 前端资产与主题基础 ✅ completed (2026-06-28)
+
+完成 UI 重构第 1 步。将 `docs/prototypes/assets/ui-extracted/` 中 57 个 PNG 素材（backgrounds、buttons、fields、icons、navigation、panels、sprites 七类）复制到 `frontend/public/assets/stardew/ui/`，生产 build 后可通过 `/assets/stardew/ui/...` 访问。新增 `frontend/src/games/stardew/stardew-theme.css`，建立 `--sd-*` CSS 变量体系（颜色、素材路径）和基础工具类（木纹背景、羊皮纸面板、绿/红/金按钮变体、像素风输入框、左侧导航项、状态点、紧凑数据行、指标卡）。在 `frontend/src/main.tsx` 中引入该 CSS 文件。未改动任何业务组件或 API，`npm.cmd run build` 验证通过（exit 0）。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### Frontend UI Refactor Implementation Plan 📐 documented (2026-06-28)
+
+新增并修订 `docs/frontend-ui-refactor-implementation-plan.md`，把 `docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.html` 从“四个展示区块”识别为真实业务路由集合。当前拆分为 `install`、`overview`、`server`、`saves`、`jobs`、`players`、`mods`、`diagnostics`、`settings` 九个 Stardew 路由。文档明确了 Single Game Mode 不变原则、内部 route + History API 方案、StardewShell 结构、现有组件归位、每个路由已可接入的后端 API、原型中需要保留但等待后端的功能位、FE-R0 到 FE-R13 的细化目标和分轮实施节奏。特别说明：`players` 是未来游戏玩家管理，当前没有完整后端 API，只保留路由、UI 占位和可用摘要；面板用户/审计/版本应放在 `settings`，不要混入游戏玩家管理。
+
+详见 `docs/conversation-handoff-2026-06-28.md`。
+
+### Pixel UI asset extraction ✅ completed (2026-06-27)
+
+基于新的 Stardew Valley 专用服务器管理面板设计图，按区域、按钮、背景、表单控件、导航、图标和贴图拆出无文字可复用 PNG 素材。新增 `scripts/extract-ui-assets.py` 作为可重复运行的裁切/清理脚本，输出目录为 `docs/prototypes/assets/ui-extracted/`，包含 `manifest.json`、`preview.html`、`contact-sheet.png`、`README.md` 和 61 个分类素材。按钮、输入框、面板和整窗壳已清理文字，适合后续 HTML 原型直接作为背景或底图复用。
+
+详见 `docs/conversation-handoff-2026-06-27.md`。
+
+### Frontend UI / Interaction Refactor Spec 📐 documented (2026-06-27)
+
+MVP 功能完成后，新增前端 UI、审美、交互逻辑重构交付文档和 V2 原型。新增 `docs/frontend-ui-interaction-refactor.md`，从用户使用路径重新梳理首次安装、日常启动、存档维护、Mod 维护、排障和权限管理，提出从“长调试页”改为“任务型运维控制台”的信息架构：左侧导航、顶部状态栏、主操作面、右侧任务/健康 rail，并把高级设置拆为 Troubleshoot 与 Security。新增 `docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.html`、`docs/prototypes/stardew-anxi-panel-ui-refactor-prototype.png` 和 `docs/prototypes/stardew-anxi-panel-ui-refactor-notes.md`。同时创建 Figma 草稿原型：`https://www.figma.com/design/GHadKWWdw2jWxgPXgY7fdM`。
+
+详见 `docs/conversation-handoff-2026-06-27.md`。
+
 ### Release Candidate ✅ completed (2026-06-27)
 
 Milestone 14 完成。版本信息：新增 `GET /api/version`、`/health` 返回 commit/buildDate、Dockerfile 支持 `--build-arg VERSION/COMMIT/BUILD_DATE` ldflags 注入。支持包导出：新增 `POST /api/instances/:id/support-bundle` 管理员 API，导出 ZIP 包含 version/health/instance-state/jobs/audit-logs/compose-ps/server-logs（全部脱敏）。冒烟测试：新增 `scripts/smoke-test.ps1` Windows PowerShell 脚本。发布检查清单：新增 `docs/release-checklist.md`。前端：页面顶部显示版本号、健康检查区域新增「导出诊断包」按钮。
