@@ -50,7 +50,9 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
 
   // 本地状态：允许重新检查时独立维护 loading/error，不污染公共层
   const [localData, setLocalData] = useState(dashboardData.health)
-  const [localError, setLocalError] = useState<string | null>(dashboardData.healthError)
+  const [localError, setLocalError] = useState<string | null>(null)
+  // 用户手动触发过一次刷新后，不再 fallback 到公共层的过期 healthError
+  const [hasLocalAttempt, setHasLocalAttempt] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
   // 导出状态
@@ -59,7 +61,8 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
 
   // 以 localData 为准（重新检查后更新），dashboardData.health 只作为初始值
   const data = localData ?? dashboardData.health
-  const displayError = localError ?? dashboardData.healthError
+  // 手动刷新后以本次结果为准，不再读取公共层可能过期的错误
+  const displayError = hasLocalAttempt ? localError : dashboardData.healthError
 
   const checks: HealthCheck[] = data?.checks ?? []
   const overallStatus = data?.status ?? null
@@ -71,6 +74,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   async function handleRefresh() {
     setRefreshing(true)
     setLocalError(null)
+    setHasLocalAttempt(true)
     try {
       const res = await getHealthDiagnostics()
       setLocalData(res)
