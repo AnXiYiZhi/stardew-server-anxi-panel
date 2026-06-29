@@ -2534,3 +2534,889 @@
   font-style: italic;
   text-align: center;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   sd-settings-* — 设置与审计页
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sd-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 区块 */
+.sd-settings-section {
+  background: rgba(240, 224, 192, 0.55);
+  border: 1px solid rgba(180, 140, 80, 0.35);
+  border-radius: 2px;
+  padding: 10px 12px;
+}
+
+.sd-settings-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4a2c0a;
+  margin: 0 0 8px 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(180, 140, 80, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 工具栏（刷新 + 创建按钮行） */
+.sd-settings-section-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+/* ── 当前账号 ── */
+.sd-settings-account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sd-settings-account-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+}
+
+.sd-settings-account-actions {
+  margin-top: 6px;
+}
+
+/* ── 版本信息 ── */
+.sd-settings-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sd-settings-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+}
+
+/* ── 通用标签/值 ── */
+.sd-settings-label {
+  font-size: 10px;
+  color: #7a5c30;
+  min-width: 62px;
+  flex-shrink: 0;
+}
+
+.sd-settings-value {
+  font-size: 10.5px;
+  color: #2c1a0a;
+}
+
+.sd-settings-value-bold {
+  font-weight: 700;
+}
+
+.sd-settings-mono {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: #3a2a10;
+}
+
+.sd-settings-hint {
+  font-size: 10px;
+  color: #8a7060;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.sd-settings-hint-inline {
+  font-size: 10px;
+  color: #7a5c30;
+}
+
+.sd-settings-locked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: #7a5c30;
+  padding: 4px 0;
+}
+
+.sd-settings-error {
+  background: rgba(180, 40, 20, 0.1);
+  border: 1px solid rgba(180, 40, 20, 0.35);
+  border-radius: 2px;
+  padding: 5px 8px;
+  font-size: 10.5px;
+  color: #8b1a0a;
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ── 新建用户表单 ── */
+.sd-settings-create-form {
+  background: rgba(255, 245, 210, 0.8);
+  border: 1px solid rgba(180, 140, 80, 0.4);
+  border-radius: 2px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.sd-settings-form-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #4a2c0a;
+  margin-bottom: 7px;
+}
+
+.sd-settings-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.sd-settings-form-label {
+  font-size: 10px;
+  color: #7a5c30;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.sd-settings-form-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ── 用户列表 ── */
+.sd-settings-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-settings-user-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 5px 8px;
+  background: rgba(255, 248, 220, 0.6);
+  border: 1px solid rgba(180, 140, 80, 0.25);
+  border-radius: 2px;
+  font-size: 10.5px;
+}
+
+.sd-settings-user-row.sd-settings-user-inactive {
+  opacity: 0.55;
+  background: rgba(200, 190, 170, 0.4);
+}
+
+.sd-settings-user-name {
+  font-weight: 700;
+  color: #2c1a0a;
+  min-width: 80px;
+}
+
+.sd-settings-user-login {
+  font-size: 9.5px;
+  color: #8a7060;
+  flex: 1;
+}
+
+.sd-settings-user-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── 审计日志表格 ── */
+.sd-settings-audit-table {
+  border: 1px solid rgba(180, 140, 80, 0.25);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.sd-settings-audit-head,
+.sd-settings-audit-row {
+  display: grid;
+  grid-template-columns: 140px 80px 120px 1fr 100px;
+  gap: 0;
+  font-size: 10px;
+}
+
+.sd-settings-audit-head {
+  background: rgba(180, 140, 80, 0.18);
+  font-weight: 700;
+  color: #5a3c1d;
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(180, 140, 80, 0.25);
+}
+
+.sd-settings-audit-head > span {
+  padding: 0 4px;
+}
+
+.sd-settings-audit-row {
+  padding: 4px 6px;
+  color: #2c1a0a;
+  border-bottom: 1px solid rgba(180, 140, 80, 0.12);
+}
+
+.sd-settings-audit-row:last-child {
+  border-bottom: none;
+}
+
+.sd-settings-audit-row:hover {
+  background: rgba(240, 224, 192, 0.5);
+}
+
+.sd-settings-audit-row > span {
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* audit columns are positioned by the grid template — no extra rules needed */
+
+.sd-settings-audit-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── 安全与权限 ── */
+.sd-settings-security-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sd-settings-security-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sd-settings-security-item .sd-dot {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.sd-settings-security-item-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #2c1a0a;
+  margin-bottom: 2px;
+}
+
+.sd-settings-security-item-desc {
+  font-size: 10px;
+  color: #5a3c1d;
+  line-height: 1.5;
+}
+
+.sd-settings-code {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 9.5px;
+  background: rgba(100, 60, 20, 0.1);
+  padding: 0 3px;
+  border-radius: 1px;
+  color: #4a2c0a;
+}
+
+/* ── 待接入设置 ── */
+.sd-settings-pending-badge {
+  font-size: 9px;
+  font-weight: 400;
+  color: #8a6030;
+  background: rgba(200, 168, 100, 0.2);
+  border: 1px solid rgba(180, 140, 80, 0.3);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+.sd-settings-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-settings-pending-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  background: rgba(200, 190, 170, 0.3);
+  border: 1px dashed rgba(180, 140, 80, 0.3);
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.sd-settings-pending-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sd-settings-pending-item-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #4a2c0a;
+}
+
+.sd-settings-pending-item-desc {
+  font-size: 9.5px;
+  color: #7a5c30;
+}
+
+/* ── 安装向导页 (sd-install-*) ───────────────────────────────────────────────── */
+
+.sd-install-phase-tag {
+  font-family: monospace;
+  font-size: 10px;
+  color: #5a3c1d;
+  background: rgba(90, 60, 29, 0.08);
+  padding: 1px 5px;
+  border-radius: 2px;
+  word-break: break-all;
+}
+
+.sd-install-state-msg {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+/* ── 已安装成功卡 ─────────────────────────────────────────────────────────────── */
+
+.sd-install-complete-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid #4a9e30;
+  background: rgba(74, 158, 48, 0.07);
+  flex-wrap: wrap;
+}
+
+.sd-install-complete-icon {
+  font-size: 20px;
+  color: #4a9e30;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.sd-install-complete-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-install-complete-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #2c6818;
+  margin-bottom: 2px;
+}
+
+.sd-install-complete-desc {
+  font-size: 10.5px;
+  color: #3a8020;
+}
+
+/* ── 提示条 ──────────────────────────────────────────────────────────────────── */
+
+.sd-install-info-bar {
+  padding: 8px 12px;
+  border-left: 3px solid #c8a87a;
+  background: #f8f0d8;
+  color: #5a3c1d;
+  font-size: 10.5px;
+}
+
+.sd-install-error-bar {
+  padding: 8px 12px;
+  background: rgba(192, 32, 32, 0.07);
+  border: 1px solid #c02020;
+  border-left: 3px solid #c02020;
+  color: #8b0000;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.sd-install-sse-warn {
+  padding: 6px 10px;
+  background: rgba(208, 128, 16, 0.09);
+  border: 1px solid #d08010;
+  border-left: 3px solid #d08010;
+  color: #7a4800;
+  font-size: 10.5px;
+}
+
+/* ── 操作按钮行 ──────────────────────────────────────────────────────────────── */
+
+.sd-install-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── 安装配置表单卡 ──────────────────────────────────────────────────────────── */
+
+.sd-install-form-card {
+  padding: 12px;
+  border: 1px solid #dcc898;
+  background: #f8f0d8;
+  display: grid;
+  gap: 10px;
+}
+
+.sd-install-form-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-install-form-hint {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.sd-install-field {
+  display: grid;
+  gap: 4px;
+}
+
+.sd-install-field-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #3a2210;
+}
+
+.sd-install-input {
+  padding: 5px 7px;
+  border: 1px solid #c8a87a;
+  background: #fff8ee;
+  color: #2c1a0a;
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+  border-radius: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sd-install-input:focus {
+  border-color: #8a6038;
+  background: #fff;
+}
+
+.sd-install-select {
+  padding: 5px 7px;
+  border: 1px solid #c8a87a;
+  background: #fff8ee;
+  color: #2c1a0a;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sd-install-pwd-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.sd-install-pwd-row .sd-install-input {
+  flex: 1;
+}
+
+.sd-install-version-warn {
+  font-size: 10px;
+  color: #b06000;
+  margin: 2px 0 0;
+}
+
+.sd-install-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+  flex-wrap: wrap;
+}
+
+/* ── 安装进度区 ──────────────────────────────────────────────────────────────── */
+
+.sd-install-progress-section {
+  padding: 10px 12px;
+  border: 1px solid #dcc898;
+  background: #f8f0d8;
+  display: grid;
+  gap: 10px;
+}
+
+.sd-install-section-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #5a3c1d;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-install-steps {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.sd-install-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+  font-size: 10.5px;
+  color: #8a7060;
+  flex-shrink: 0;
+}
+
+.sd-install-step + .sd-install-step::before {
+  content: '›';
+  margin-right: 8px;
+  color: #c0a068;
+  font-weight: 700;
+}
+
+.sd-install-step-done  { color: #4a9e30; }
+.sd-install-step-active { color: #d08010; font-weight: 700; }
+.sd-install-step-error { color: #c02020; }
+.sd-install-step-pending { color: #8a7060; }
+
+.sd-install-step-icon {
+  width: 14px;
+  text-align: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sd-install-progress-label {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  line-height: 1.5;
+}
+
+/* ── 拉取镜像进度卡 ──────────────────────────────────────────────────────────── */
+
+.sd-install-pull-card {
+  padding: 9px 11px;
+  border: 1px solid #dcc898;
+  background: #fdf6e3;
+  display: grid;
+  gap: 7px;
+}
+
+.sd-install-pull-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sd-install-pull-icon {
+  font-size: 15px;
+  color: #4a9e30;
+  font-weight: 700;
+  flex-shrink: 0;
+  animation: sd-pulse-dot 1.5s infinite;
+}
+
+.sd-install-pull-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-install-pull-sub {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  margin-top: 2px;
+}
+
+.sd-install-pull-hint {
+  font-size: 10px;
+  color: #8a7060;
+  margin: 0;
+}
+
+.sd-install-prog-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-install-prog-track {
+  flex: 1;
+  height: 10px;
+  background: #e0c898;
+  border: 1px solid #c0a870;
+  position: relative;
+  overflow: hidden;
+}
+
+.sd-install-prog-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #5aae3a;
+  transition: width 0.4s ease;
+}
+
+.sd-install-prog-fill.done {
+  background: #3a8020;
+}
+
+.sd-install-prog-pct {
+  font-size: 10px;
+  color: #5a3c1d;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sd-install-waiting {
+  font-size: 10.5px;
+  color: #8a7060;
+  font-style: italic;
+}
+
+/* ── 游戏下载提示卡 ──────────────────────────────────────────────────────────── */
+
+.sd-install-download-card {
+  padding: 9px 11px;
+  border: 1px solid #d08010;
+  background: rgba(208, 128, 16, 0.05);
+  display: grid;
+  gap: 4px;
+}
+
+.sd-install-dl-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7a4800;
+}
+
+.sd-install-dl-hint {
+  font-size: 10px;
+  color: #8a7060;
+}
+
+/* ── Steam 认证交互区 ────────────────────────────────────────────────────────── */
+
+.sd-install-guard-section {
+  padding: 10px 12px;
+  border: 1px solid #c8a87a;
+  background: #fdf6e3;
+  display: grid;
+  gap: 10px;
+}
+
+.sd-install-guard-block {
+  display: grid;
+  gap: 7px;
+}
+
+.sd-install-guard-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-install-guard-desc {
+  font-size: 10.5px;
+  color: #5a3c1d;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.sd-install-guard-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sd-install-guard-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.sd-install-guard-form .sd-install-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.sd-install-guard-mobile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(208, 128, 16, 0.08);
+  border: 1px solid #d08010;
+  font-size: 10.5px;
+  color: #7a4800;
+  line-height: 1.5;
+}
+
+.sd-install-guard-error {
+  font-size: 10.5px;
+  color: #c02020;
+  padding: 3px 0;
+}
+
+/* ── QR 二维码弹窗 ───────────────────────────────────────────────────────────── */
+
+.sd-install-qr-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.sd-install-qr-card {
+  background: #1e1209;
+  color: #e8d8b0;
+  padding: 16px;
+  max-width: 92vw;
+  max-height: 92vh;
+  overflow: auto;
+  border: 2px solid #5a3c1d;
+  display: grid;
+  gap: 10px;
+  min-width: 320px;
+}
+
+.sd-install-qr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sd-install-qr-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffe6b6;
+}
+
+.sd-install-qr-pre {
+  font-family: monospace;
+  white-space: pre;
+  color: #e8d8b0;
+  margin: 0;
+  line-height: 1.1;
+  overflow-x: auto;
+}
+
+/* ── 安装日志预览 ────────────────────────────────────────────────────────────── */
+
+.sd-install-log-section {
+  display: grid;
+  gap: 6px;
+}
+
+.sd-install-log-window {
+  background: #1e1209;
+  color: #b0c8a0;
+  font-family: monospace;
+  font-size: 10.5px;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #3d2510;
+  display: grid;
+  gap: 1px;
+  align-content: start;
+}
+
+.sd-install-log-line {
+  display: flex;
+  gap: 6px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.sd-install-log-seq {
+  color: #5a5040;
+  min-width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 9px;
+  padding-top: 2px;
+}
+
+.sd-install-log-level {
+  min-width: 38px;
+  flex-shrink: 0;
+  font-size: 9px;
+  padding-top: 2px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.sd-install-log-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-install-log-info  .sd-install-log-level { color: #4caf50; }
+.sd-install-log-warn  .sd-install-log-level { color: #ffb300; }
+.sd-install-log-error .sd-install-log-level { color: #f44336; }
+.sd-install-log-debug .sd-install-log-level { color: #29b6f6; }
+
+.sd-install-log-warn  { color: #ffe080; }
+.sd-install-log-error { color: #ff8080; }
+
+.sd-install-log-empty {
+  font-size: 10.5px;
+  color: #8a7060;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.sd-install-log-hint {
+  font-size: 10px;
+  color: #8a7060;
+  margin: 0;
+}

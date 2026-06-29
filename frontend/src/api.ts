@@ -16,10 +16,13 @@ import type {
   LifecycleJobResponse,
   ModsListResult,
   NewGameConfig,
+  OKResponse,
+  PanelUser,
   PrepareResponse,
   PreflightResult,
   SavesListResult,
   UploadPreviewResult,
+  UsersResponse,
 } from './types'
 
 export const defaultInstanceId = 'stardew'
@@ -356,6 +359,34 @@ export function downloadSupportBundle(instanceId = defaultInstanceId) {
     const filename = match ? match[1] : 'support-bundle.zip'
     return { blob, filename }
   })
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export function getUsers() {
+  return request<UsersResponse>('/api/users')
+}
+
+export function createUser(username: string, password: string, role: string) {
+  return request<{ user: PanelUser }>('/api/users', {
+    method: 'POST',
+    body: { username, password, role },
+  })
+}
+
+export function updateUserRole(id: number, role: string) {
+  return request<{ user: PanelUser }>(`/api/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { role },
+  })
+}
+
+export function disableUser(id: number) {
+  return request<OKResponse>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function deleteUserHard(id: number) {
+  return request<OKResponse>(`/api/users/${encodeURIComponent(id)}?hard=true`, { method: 'DELETE' })
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

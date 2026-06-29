@@ -1,5 +1,257 @@
 # Conversation Handoff 2026-06-29
 
+## FE-R12: InstallPage 首次安装向导页真实化
+
+### 目标
+
+把 `/instances/stardew/install` 从占位页改造为真实可用的「首次安装向导」页，接入所有已有安装 API，完整实现 Steam Guard 交互、QR 扫码、安装进度展示和 SSE 实时日志。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/InstallPage.tsx` | 完全重写（约 360 行），含安装向导全部逻辑 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 370 行 `sd-install-*` 像素风样式 |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 FE-R12 完成节 |
+| `docs/conversation-handoff-2026-06-29.md` | 本节 |
+
+**未改动：** `InstallSection.tsx` 保留不动，无外部引用，不影响任何已有功能。后端无改动。
+
+### 代码探查结论
+
+1. **`getInstallOptions()`** → `GET /api/instances/:id/install-options`，返回 `{ imageTagOptions: ImageTagOption[] }`，每个选项含 `tag / label / recommended / warning / isLatest`。
+2. **`installInstance(body)`** → `POST /api/instances/:id/install`，body 可含 `{ steamUsername, steamPassword, vncPassword, imageTag }` 或 `{ reuseCredentials: true, imageTag }`（重试时），返回 `{ jobId }`。
+3. **`submitSteamGuardInput(jobId, input)`** → `POST /api/instances/:id/steam-guard/input`，`input` 为验证码字符串或选择数字（"1"/"2"）。
+4. **SSE 格式** 同 JobsLogsPage：`log` 事件（`JobLog`）+ `finished` 事件。
+5. **阶段驱动**：所有 Steam Guard 交互、进度状态均由 `instanceState.driverPhase` 驱动，无需前端猜测，后端通过 `updatePhase` 实时推送。
+6. **QR 文本提取**：从日志中过滤 `[steam] ` 前缀行，拼接后在 `pre` 块中显示 ASCII QR，字体大小按行数/行宽自适应（9–12px）。
+7. **日志去重**：复用 `appendUniqueLog`（按 `jobId+sequence` 去重），与 JobsLogsPage 一致。
+
+### 各区域说明
+
+**状态概览（`sd-state-card`）**
+- `state`（绿/黄/红/灰点）、`driverPhase`（monospace tag `sd-install-phase-tag`）、`stateMessage`。
+
+**已安装成功卡（`sd-install-complete-card`）**
+- `game_installed` 时显示绿框卡：✓ 已安装 + 说明 + "前往服务器控制"（`onNavigate('server')`）。
+- admin 额外显示"重新安装/修复"按钮，点击展开安装配置表单。
+- 非 admin 看不到写操作，但可见成功卡和进度。
+
+**非 admin 提示条（`sd-install-info-bar`）**
+- 仅对非 admin 显示，说明仅管理员可安装。
+
+**安装配置表单（`sd-install-form-card`）**
+- 镜像版本 `<select>`（`getInstallOptions` 加载）。
+- `canDirectRetry`（pull_failed / install_timeout / steam_auth_connection_failed / state=error）时只显示镜像版本，不重填账密。
+- Steam 密码 / VNC 密码均支持显隐切换，`autoComplete="new-password"` 防止浏览器填充敏感字段。
+- 表单内独立错误条（`installError`）。
+
+**安装进度（`sd-install-progress-section`）**
+- 5 步骤条：`done=✓绿` / `active=↻金/黄` / `error=✗红` / `pending=○灰`。
+- 阶段文字标签（`phaseLabel` 函数，覆盖全部后端阶段字符串）。
+- `pull_running` 阶段：Pull 镜像进度卡，从日志 `[pull:progress:N:M]` 解析，无数据时显示"等待 Docker..."。
+- `game_downloading` / `steam_sdk_downloading` 阶段：下载提示卡（后端不返回结构化百分比，仅展示阶段说明）。
+
+**Steam 认证交互区（`sd-install-guard-section`）**
+- `auth_method_required`：扫码（提交 "2"）/ 账号密码（提交 "1"）选择按钮。
+- `steam_guard_choice_required`：手机 App 批准（"1"）/ 输入验证码（"2"）选择按钮。
+- `steam_guard_required`：验证码输入 + 提交按钮，调用 `submitSteamGuardInput(jobId, code)`。
+- `steam_guard_mobile_required`：黄色等待条 + 说明文字（无操作，等待后端状态变化）。
+- `steam_qr_required`：打开扫码窗口按钮（`qrText` 非空才 enabled）。
+
+**QR 弹窗（`sd-install-qr-overlay`）**
+- 固定全屏暗色 overlay。
+- `pre.sd-install-qr-pre`：白色 monospace，显示从日志 `[steam]` 行提取的原始文本（含 ASCII QR 码）。
+- 字体大小 `qrCodeFontSize()` 自适应（9–12px）。
+
+**安装日志预览（`sd-install-log-window`）**
+- 深色终端，最近 50 条，`info`=绿/`warn`=金/`error`=红/`debug`=蓝 着色。
+- SSE 运行中时标题旁显示绿色脉冲点（复用 `sd-jobs-sse-dot`）。
+- 超 50 条时提示跳转任务与日志页（`onNavigate('jobs')`）。
+
+**SSE 连接生命周期**
+- `installJobId` 变化 → 加载 `getJob` + `getJobLogs` → 非终态时建 `createJobEventSource`。
+- `log` 事件 → `appendUniqueLog` 去重追加。
+- `finished` 事件 → 关 SSE → `getJob` 刷新详情 → `refreshJobs` + `refreshInstanceState`。
+- `onerror` → 关 SSE → 显示警告条。
+- 组件卸载/`installJobId` 切换 → `cancelled=true` + `es.close()`。
+
+**自动拾取活跃安装任务**
+- `useEffect` 监听 `dashboardData.jobs`：找 `type='stardew_install' && !isTerminalJobStatus` 的任务并设为 `installJobId`。
+- 处理刷新页面时已有安装任务在运行的场景。
+
+### 真实接入 API 汇总
+
+| API 函数 | 路径 | 权限 | 状态 |
+|----------|------|------|------|
+| `getInstallOptions` | `GET /api/instances/:id/install-options` | auth | ✅ 接入 |
+| `installInstance` | `POST /api/instances/:id/install` | admin | ✅ 接入 |
+| `submitSteamGuardInput` | `POST /api/instances/:id/steam-guard/input` | admin | ✅ 接入 |
+| `createJobEventSource` | `GET /api/jobs/:id/stream` | auth | ✅ 接入（SSE） |
+| `getJob` | `GET /api/jobs/:id` | auth | ✅ 接入 |
+| `getJobLogs` | `GET /api/jobs/:id/logs` | auth | ✅ 接入 |
+| `dashboardData.refreshInstanceState` | 公共数据层 | — | ✅ 接入 |
+| `dashboardData.refreshJobs` | 公共数据层 | — | ✅ 接入 |
+
+### 影响的接口/文件
+
+- 无新增后端接口，无改动 API 签名，无改动 `api.ts`。
+- `StardewPanel.css` 追加约 370 行，全部以 `sd-install-` 开头，不影响已有类。
+- 未改动：`InstallSection.tsx`、其他所有页面组件、路由文件、后端。
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS 324.18 kB，CSS 81.96 kB
+```
+
+手动验证点：
+- `/instances/stardew/install` 不再是占位页，显示完整安装向导。
+- 未安装时：显示"未安装"灰点 + admin 看到"安装游戏"按钮，非 admin 看到提示条。
+- 点击"安装游戏"展开表单：镜像版本下拉 + Steam 账密 + VNC 密码，密码字段可显隐。
+- 提交后：表单消失，出现进度区，日志预览出现并实时追加（SSE 连接中时标题旁绿色脉冲点）。
+- Pull 镜像阶段：步骤条第 2 步变金色↻，Pull 进度卡出现。
+- Steam Guard 阶段：认证交互区出现对应输入/选择 UI。
+- QR 阶段：出现"打开扫码窗口"按钮，点击后弹出暗色 QR 弹窗。
+- 安装成功（`game_installed`）：绿框成功卡出现，"前往服务器控制"按钮可点。
+- 已安装状态下 admin 点"重新安装/修复"展开表单，普通用户看不到此按钮。
+- auth 失败状态：红点 + "重新安装（凭据错误）"按钮。
+- 日志超 50 条：提示条出现，点"任务与日志"导航到 jobs 页。
+
+### Bug Fixes（本次会话）
+
+以下 3 个 bug 全部修复并已验证构建通过（JS 324.79 kB，CSS 81.96 kB）：
+
+| Bug | 修复位置 | 说明 |
+|-----|---------|------|
+| P2 QR 提取范围过宽 | `InstallPage.tsx` `extractQrText` | 改为取最后 80 条 `[steam]` 行，避免菜单/错误混入 |
+| P3 下载阶段双步骤同时 active | `InstallPage.tsx` `calcStepStatuses` | 把 `game_downloading` / `steam_sdk_downloading` 移出 `authPhases`，引入 `isPostAuthPhase`；下载中认证步骤显示 `done` |
+| P3 下载阶段显示"未安装" | `InstallPage.tsx` `isInstalling` | 增加 `INSTALLING_PHASES` 检查，phase 在列表中时 `isInstalling=true`，无需等 async installJob 加载 |
+| P3 非 admin 看到 Steam 认证交互区 | `InstallPage.tsx` Steam Guard 区渲染 | `!isAdmin` 时只显示"等待管理员完成验证"提示，admin 才显示完整交互区 |
+
+### 下一步注意事项
+
+**FE-R13 建议：OverviewPage 深化或整体 Review**
+- 当前 OverviewPage 已有基本内容，可按需补充安装引导（未安装时 overview 显示安装入口）。
+- 所有 9 个页面均已完成真实化，后续可进行整体 review 或 bug fix。
+
+**旧 InstallSection.tsx**
+- `InstallSection.tsx` 无外部引用，可在合适时机删除（不影响功能）。
+
+**游戏下载百分比（待后端支持）**
+- 目前 `game_downloading` / `steam_sdk_downloading` 阶段只显示文字提示，无百分比。
+- 后端 `installer.go` 目前不发送结构化的游戏下载进度日志（只通过 `driverPhase` 表达阶段）。
+- 如需百分比，需后端在 `lineHandler` 中解析 Steam 下载日志并发出 `[sdv:download:...]` 等结构化日志行，前端再对应解析。
+
+---
+
+## FE-R11: SettingsPage 设置与审计页真实化
+
+### 目标
+
+把 `/instances/stardew/settings` 从占位页改造为真实可用的「设置与审计」页，接入已有后端用户管理 API 和审计日志 API，对无后端能力的设置项保留 UI 入口但 disabled。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/api.ts` | 新增 `getUsers` / `createUser` / `updateUserRole` / `disableUser` / `deleteUserHard`；import 新增 `OKResponse` / `PanelUser` / `UsersResponse` |
+| `frontend/src/games/stardew/pages/SettingsPage.tsx` | 完全重写（约 370 行），拆为 6 个子区块组件 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 255 行 `sd-settings-*` 像素风样式 |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 FE-R11 完成节 |
+| `docs/conversation-handoff-2026-06-29.md` | 本文档顶部新增 FE-R11 节 |
+
+### 代码探查结论
+
+1. **`getUsers()`** 对应 `GET /api/users`，后端 `requireAdmin`，返回 `{ users: PanelUser[] }`。
+2. **`createUser()`** 对应 `POST /api/users`，admin-only；后端校验用户名/密码/角色，冲突返回 `username_taken`。
+3. **`updateUserRole()`** 对应 `PATCH /api/users/:id { role }`，admin-only；不能降级最后一个 admin（`last_admin` 错误）。
+4. **`disableUser()`** 对应 `DELETE /api/users/:id`（无 `?hard`），admin-only；不能禁用自己（`self_disable` 错误）。
+5. **`deleteUserHard()`** 对应 `DELETE /api/users/:id?hard=true`，admin-only；永久删除。
+6. **`getAuditLogs()`** 已存在于 `api.ts`，对应 `GET /api/audit-logs?limit=&offset=`，admin-only，max limit=200。
+7. **`dashboardData.versionInfo`** 已由公共数据层 `useStardewDashboardData` 填充，直接使用。
+
+### 各区域说明
+
+**当前账号（`sd-settings-account-card`）**
+- 展示 `user.username`、角色标签（管理员/普通用户双色区分）、登录状态绿点。
+- 退出登录按钮调用 props `onLogout`，无需额外 API。
+
+**面板版本（`sd-settings-info-grid`）**
+- `versionInfo.version` / `buildDate`（`formatDate` 格式化）/ `commit`，全部 monospace 字体。
+- 运行模式固定显示 `Single Game Mode` 蓝色标签。
+
+**用户管理（`UserManagementSection`）**
+- admin：加载并展示用户列表（含禁用态行 `sd-settings-user-inactive`）；新建用户表单可展开收起；角色切换/禁用/永久删除均弹像素风 `sd-confirm-overlay` 二次确认。
+- 自防护：当前用户自己的行，修改/禁用/删除按钮全部 `disabled` + `title` 说明。
+- 普通用户：整个区块替换为一行权限锁定提示，不加载 API。
+
+**审计日志（`AuditLogsSection`）**
+- 每页 20 条，`AUDIT_PAGE_SIZE = 20`；`total` 超过一页时显示上一页/下一页按钮。
+- 操作 `action` 字段通过 `AUDIT_ACTION_LABELS` 映射为中文（22 个常用动作）。
+- 目标类型 `targetType` 通过 `TARGET_TYPE_LABELS` 映射为中文（用户/实例/存档/Mod/命令/系统）。
+- 加载失败显示红色错误条 + 重试按钮；空结果显示提示文字。
+- 普通用户：整个区块替换为权限锁定提示。
+
+**安全与权限（`SecuritySection`）**
+- 5 条静态说明：Session 认证、密码存储（Argon2id）、Docker Socket 风险（黄点警告）、操作审计、日志脱敏。
+- 纯展示，无 API 调用。
+
+**待接入设置（`PendingSettingsSection`）**
+- 主题、语言、多游戏模式、备份策略、通知设置、会话超时——全 disabled 按钮 + 「后端待接入」徽章。
+
+### 真实接入 API 汇总
+
+| API 函数 | 路径 | 权限 | 状态 |
+|----------|------|------|------|
+| `getUsers` | `GET /api/users` | admin-only | ✅ 接入 |
+| `createUser` | `POST /api/users` | admin-only | ✅ 接入 |
+| `updateUserRole` | `PATCH /api/users/:id` | admin-only | ✅ 接入 |
+| `disableUser` | `DELETE /api/users/:id` | admin-only | ✅ 接入 |
+| `deleteUserHard` | `DELETE /api/users/:id?hard=true` | admin-only | ✅ 接入 |
+| `getAuditLogs` | `GET /api/audit-logs` | admin-only | ✅ 接入 |
+| `dashboardData.versionInfo` | 公共数据层 | 所有用户 | ✅ 接入 |
+
+### 影响的接口/文件
+
+- 无新增后端接口，无改动 API 签名。
+- `api.ts` 新增 5 个用户管理函数，已有 `getAuditLogs` / `AuditLogEntry` / `AuditLogsResponse` 不改动。
+- `StardewPanel.css` 追加约 255 行，不影响已有类（全部以 `sd-settings-` 开头）。
+- 未改动：其他所有页面组件。
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0
+```
+
+手动验证点：
+- `/instances/stardew/settings` 不再是占位页，显示 6 个区块。
+- 当前账号区：显示登录用户名、角色标签和退出按钮，点击退出登录有效。
+- 面板版本区：显示后端 `/api/version` 真实数据（版本号/构建时间/Commit）。
+- 用户管理区（admin）：显示用户列表；新建用户表单展开/提交成功后刷新列表；角色切换弹二次确认；禁用/永久删除弹二次确认；自己的行按钮 disabled。
+- 用户管理区（普通用户）：显示权限锁定提示，不展示用户数据。
+- 审计日志区（admin）：显示最近操作记录，操作名为中文；超过 20 条时显示翻页按钮；刷新按钮有效；失败时显示错误条 + 重试。
+- 审计日志区（普通用户）：显示权限锁定提示。
+- 安全区：5 条安全说明，Docker Socket 风险前显示黄点。
+- 待接入设置：6 个 disabled 按钮，标注「后端待接入」。
+
+### 下一步注意事项
+
+**FE-R12 建议：InstallPage 安装向导页真实化**
+- 后端已有完整安装流程 API：`prepareInstance`、`installInstance`、`submitSteamGuardInput`、SSE 日志流。
+- 安装页当前可能仍为旧实现，可评估是否需要完全重写为像素风。
+
+**用户管理后续扩展（如有需求）：**
+- 重置密码功能：`PATCH /api/users/:id { password }` 已支持，前端未接入。
+- 启用已禁用用户：`PATCH /api/users/:id { isActive: true }` 已支持，前端未接入。
+
+---
+
 ## FE-R10: DiagnosticsPage 诊断与健康检查页真实化
 
 ### 目标
