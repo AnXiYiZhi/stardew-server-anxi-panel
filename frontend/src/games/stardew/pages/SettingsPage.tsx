@@ -69,13 +69,13 @@ function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCanc
   return (
     <div className="sd-confirm-overlay" role="dialog" aria-modal>
       <div className="sd-confirm-dialog">
-        <div className="sd-confirm-title">{title}</div>
-        <div className="sd-confirm-body">{body}</div>
+        <h3>{title}</h3>
+        <p>{body}</p>
         <div className="sd-confirm-actions">
-          <button className="sd-btn sd-btn-red" onClick={onConfirm} aria-label={confirmLabel}>
+          <button className="sd-btn-tan" onClick={onCancel}>取消</button>
+          <button className="sd-btn-delete" onClick={onConfirm} aria-label={confirmLabel}>
             {danger ? '⚠ ' : ''}{confirmLabel}
           </button>
-          <button className="sd-btn" onClick={onCancel}>取消</button>
         </div>
       </div>
     </div>
@@ -105,7 +105,7 @@ function AccountSection({ user, onLogout }: Pick<StardewPageProps, 'user' | 'onL
           <span className="sd-settings-value">已登录</span>
         </div>
         <div className="sd-settings-account-actions">
-          <button className="sd-btn sd-btn-red" onClick={onLogout}>退出登录</button>
+          <button className="sd-btn-tan" onClick={onLogout}>退出登录</button>
         </div>
       </div>
     </section>
@@ -269,10 +269,10 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
       )}
 
       <div className="sd-settings-section-toolbar">
-        <button className="sd-btn sd-btn-green" onClick={() => setShowCreateForm(v => !v)}>
+        <button className="sd-btn-green" onClick={() => setShowCreateForm(v => !v)}>
           {showCreateForm ? '收起' : '+ 新建用户'}
         </button>
-        <button className="sd-btn" onClick={() => void loadUsers()} disabled={loading}>
+        <button className="sd-btn-tan" onClick={() => void loadUsers()} disabled={loading}>
           {loading ? '加载中…' : '刷新'}
         </button>
       </div>
@@ -316,13 +316,13 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
           </div>
           <div className="sd-settings-form-actions">
             <button
-              className="sd-btn sd-btn-green"
+              className="sd-btn-green"
               onClick={() => void handleCreate()}
               disabled={createBusy || !newUsername.trim() || !newPassword.trim()}
             >
               {createBusy ? '创建中…' : '创建'}
             </button>
-            <button className="sd-btn" onClick={() => setShowCreateForm(false)} disabled={createBusy}>
+            <button className="sd-btn-tan" onClick={() => setShowCreateForm(false)} disabled={createBusy}>
               取消
             </button>
           </div>
@@ -332,7 +332,7 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
       {loadError ? (
         <div className="sd-settings-error">
           {loadError}
-          <button className="sd-btn" style={{ marginLeft: 8 }} onClick={() => void loadUsers()}>重试</button>
+          <button className="sd-btn-tan" style={{ marginLeft: 8 }} onClick={() => void loadUsers()}>重试</button>
         </div>
       ) : loading && users.length === 0 ? (
         <div className="sd-settings-hint">加载用户列表…</div>
@@ -357,7 +357,7 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
               </span>
               <div className="sd-settings-user-actions">
                 <button
-                  className="sd-btn"
+                  className="sd-btn-tan"
                   disabled={roleBusy || deleteBusy || u.id === currentUserId}
                   title={u.id === currentUserId ? '不能修改自己的角色' : undefined}
                   onClick={() => setRoleConfirm({ user: u, toRole: u.role === 'admin' ? 'user' : 'admin' })}
@@ -365,7 +365,7 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
                   {u.role === 'admin' ? '降为普通用户' : '升为管理员'}
                 </button>
                 <button
-                  className="sd-btn sd-btn-red"
+                  className="sd-btn-delete"
                   disabled={roleBusy || deleteBusy || u.id === currentUserId}
                   title={u.id === currentUserId ? '不能禁用自己' : undefined}
                   onClick={() => setDeleteConfirm({ user: u, hard: false })}
@@ -373,7 +373,7 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
                   禁用
                 </button>
                 <button
-                  className="sd-btn sd-btn-red"
+                  className="sd-btn-delete"
                   disabled={roleBusy || deleteBusy || u.id === currentUserId}
                   title={u.id === currentUserId ? '不能删除自己' : '永久删除用户（不可恢复）'}
                   onClick={() => setDeleteConfirm({ user: u, hard: true })}
@@ -467,7 +467,7 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
 
       <div className="sd-settings-section-toolbar">
         <span className="sd-settings-hint-inline">共 {total} 条记录</span>
-        <button className="sd-btn" onClick={() => void loadLogs(offset)} disabled={loading}>
+        <button className="sd-btn-tan" onClick={() => void loadLogs(offset)} disabled={loading}>
           {loading ? '加载中…' : '刷新'}
         </button>
       </div>
@@ -475,7 +475,7 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
       {error ? (
         <div className="sd-settings-error">
           {error}
-          <button className="sd-btn" style={{ marginLeft: 8 }} onClick={() => void loadLogs(offset)}>重试</button>
+          <button className="sd-btn-tan" style={{ marginLeft: 8 }} onClick={() => void loadLogs(offset)}>重试</button>
         </div>
       ) : !hasLoaded || (loading && logs.length === 0) ? (
         <div className="sd-settings-hint">加载审计日志…</div>
@@ -516,7 +516,7 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
           {totalPages > 1 && (
             <div className="sd-settings-audit-pagination">
               <button
-                className="sd-btn"
+                className="sd-btn-tan"
                 disabled={offset === 0 || loading}
                 onClick={() => void loadLogs(Math.max(0, offset - AUDIT_PAGE_SIZE))}
               >
@@ -524,7 +524,7 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
               </button>
               <span className="sd-settings-hint-inline">第 {currentPage} / {totalPages} 页</span>
               <button
-                className="sd-btn"
+                className="sd-btn-tan"
                 disabled={offset + AUDIT_PAGE_SIZE >= total || loading}
                 onClick={() => void loadLogs(offset + AUDIT_PAGE_SIZE)}
               >
@@ -610,7 +610,7 @@ function PendingSettingsSection() {
               <span className="sd-settings-pending-item-label">{item.label}</span>
               <span className="sd-settings-pending-item-desc">{item.desc}</span>
             </div>
-            <button className="sd-btn" disabled title="后端待接入">待接入</button>
+            <button className="sd-btn-tan" disabled title="后端待接入">待接入</button>
           </div>
         ))}
       </div>

@@ -1731,6 +1731,54 @@
   .sd-opsrail {
     display: none;
   }
+
+  /* ── 移动端按钮布局优化（不改变 PNG 按钮高度，避免底图拉伸） ── */
+
+  /* 安装页：主操作和表单操作按钮组改为纵向，每个按钮撑满整行 */
+  .sd-install-actions,
+  .sd-install-form-actions,
+  .sd-install-guard-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sd-install-actions .sd-btn-green,
+  .sd-install-actions .sd-btn-tan,
+  .sd-install-form-actions .sd-btn-green,
+  .sd-install-form-actions .sd-btn-tan,
+  .sd-install-guard-actions .sd-btn-green,
+  .sd-install-guard-actions .sd-btn-tan {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* 存档页头部按钮组在窄屏换行 */
+  .sd-saves-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* 设置页工具栏允许换行 */
+  .sd-settings-section-toolbar {
+    flex-wrap: wrap;
+  }
+
+  /* 设置页用户行操作按钮组：允许换行，保证各按钮之间间距 */
+  .sd-settings-user-actions {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* Jobs 页工具栏允许换行 */
+  .sd-jobs-toolbar-actions {
+    flex-wrap: wrap;
+  }
+
+  /* Mods 页头部操作区宽度跟随容器 */
+  .sd-mods-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* ── 玩家管理页专用（sd-players-*）──────────────────────────────────────── */

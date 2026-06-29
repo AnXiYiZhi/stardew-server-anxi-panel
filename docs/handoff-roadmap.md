@@ -6,6 +6,44 @@
 
 ## Current Context
 
+### UI-R4: 全局按钮体系整理与可点击控件优化 ✅ completed (2026-06-29)
+
+统一全局 PNG 按钮系统，修复 SettingsPage 完全无样式的按钮，强化危险/次操作视觉区分，添加 hover 状态，优化移动端按钮布局。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/SettingsPage.tsx` | 替换全部 `sd-btn`（不存在类）为正确 `sd-btn-tan/green/delete`；修复 ConfirmDialog 使用 `h3`/`p` 标签；调整确认弹框按钮顺序（取消在前） |
+| `frontend/src/games/stardew/stardew-theme.css` | 新增所有 PNG 按钮 hover 状态（`brightness(1.08)`）；`sd-btn-copy` 高度 25→26px；`sd-btn-delete` 文字色改为暗红 `#8b2020` 以区分危险操作 |
+| `frontend/src/games/stardew/StardewPanel.css` | `@media (max-width: 640px)` 新增：安装页操作/表单/Steam 认证按钮组改为纵向全宽；存档/Mods/Jobs 页头部按钮组允许换行；设置页工具栏换行、用户操作按钮换行 |
+
+**改动明细：**
+
+- `SettingsPage.tsx`（重要 bug 修复）：
+  - 所有 `sd-btn`（不存在 CSS 类，导致按钮渲染为浏览器默认无样式） → `sd-btn-tan`
+  - `sd-btn sd-btn-green` → `sd-btn-green`
+  - `sd-btn sd-btn-red`（危险操作如禁用/删除/弹框确认） → `sd-btn-delete`
+  - "退出登录" → `sd-btn-tan`（不是删除操作，改为中性色）
+  - ConfirmDialog：`div.sd-confirm-title` → `h3`，`div.sd-confirm-body` → `p`（符合现有 CSS 选择器规则）
+  - 确认弹框按钮顺序：取消在前，危险操作在后（与 ServerControlPage 一致）
+
+- `stardew-theme.css`：
+  - PNG 按钮 hover：全部（green/tan/gold/red/start/stop/restart/copy/delete）加 `filter: brightness(1.08)` hover 状态
+  - `sd-btn-copy` 高度 25px → 26px（与其他小按钮对齐）
+  - `sd-btn-delete` 文字颜色 `#2c1a0a`（深棕）→ `#8b2020`（暗红），增强危险操作视觉区分
+
+- `StardewPanel.css`（移动端，max-width: 640px）：
+  - `.sd-install-actions/.sd-install-form-actions/.sd-install-guard-actions`：改为 `flex-direction: column; align-items: stretch`，按钮撑满宽度
+  - `.sd-saves-header-actions/.sd-mods-header-actions`：`width: 100%; justify-content: flex-start`
+  - `.sd-settings-section-toolbar`：`flex-wrap: wrap`
+  - `.sd-settings-user-actions`：`flex-wrap: wrap; gap: 4px`
+  - `.sd-jobs-toolbar-actions`：`flex-wrap: wrap`
+
+**未改动：** 业务逻辑、API、按钮 PNG 素材路径、颜色主题大方向、UI-R1/R2/R3 已有规则。
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 324.96 kB，CSS 84.51 kB。
+
 ### UI-R3: 移动端与窄屏布局修复 ✅ completed (2026-06-29)
 
 在 390px 宽度下修复 4 项问题：页面横向滚动、导航触控、顶栏信息过载、安装成功卡拥挤。

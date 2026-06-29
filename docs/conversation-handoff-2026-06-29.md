@@ -1012,3 +1012,78 @@ npm.cmd run build
 - **JobsSection 旧组件**：`JobsSection.tsx` 已被本页取代，后续可考虑删除或归档（仍有 App.css 依赖，谨慎删除）。
 - **存档备份恢复 UI**：后端 `GET /api/instances/:id/backups` 已存在，可在 `SavesPage` 增加备份列表和恢复入口。
 - **InstallPage 安装向导**：安装流程产生的任务（`stardew_install`）需要在 `JobsLogsPage` 的 SSE 里正确展示 Steam Guard 提示——当前页面显示进度条和日志，但 Steam Guard 交互仍在 `InstallPage`，两者互不干扰。
+
+---
+
+## UI-R4: 全局按钮体系整理与可点击控件优化
+
+### 目标
+
+梳理并统一全局 PNG 按钮视觉层级，修复 SettingsPage 因使用不存在的 `sd-btn` 类导致按钮完全无样式的重大 bug，添加 hover 状态，强化危险操作视觉区分，优化移动端按钮布局。只改 CSS 和最小必要 TSX 类名，不改业务逻辑。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/SettingsPage.tsx` | 替换全部无效 `sd-btn` 类；修复 ConfirmDialog 元素类型和按钮顺序 |
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 hover 状态；`sd-btn-copy` 高度对齐；`sd-btn-delete` 暗红文字 |
+| `frontend/src/games/stardew/StardewPanel.css` | `max-width: 640px` 新增按钮组布局规则 |
+
+### 改动明细
+
+#### SettingsPage.tsx（最重要：修复功能性 bug）
+
+SettingsPage 之前使用了 `sd-btn`（不存在的 CSS 类），导致 **退出登录、新建用户、刷新、创建、取消、升/降权、禁用、删除、翻页** 等所有按钮都渲染为浏览器默认无样式按钮，既破坏像素风，也在不同浏览器下表现不一致。
+
+替换规则：
+- `sd-btn` → `sd-btn-tan`（中性/次级操作）
+- `sd-btn sd-btn-green` → `sd-btn-green`（主操作）
+- `sd-btn sd-btn-red`（危险，如禁用/删除用户/弹框确认） → `sd-btn-delete`（小危险按钮）
+- "退出登录" 改为 `sd-btn-tan`（退出不是删除操作，用中性色）
+
+ConfirmDialog 修复：
+- `div.sd-confirm-title` → `<h3>`（CSS 规则是 `.sd-confirm-dialog h3`）
+- `div.sd-confirm-body` → `<p>`（CSS 规则是 `.sd-confirm-dialog p`）
+- 按钮顺序：确认在前→取消在前、危险操作在后（与 ServerControlPage 一致）
+
+#### stardew-theme.css
+
+- **新增 hover 状态**：所有 PNG 按钮（green/tan/gold/red/start/stop/restart/copy/delete）添加 `filter: brightness(1.08)`
+- **`sd-btn-copy` 高度**：25px → 26px（与全部小按钮对齐）
+- **`sd-btn-delete` 文字颜色**：`#2c1a0a`（深棕）→ `#8b2020`（暗红），让危险小按钮的文字色与普通次操作有视觉区别
+
+#### StardewPanel.css（max-width: 640px）
+
+- 安装页 `.sd-install-actions/.sd-install-form-actions/.sd-install-guard-actions`：改为 `flex-direction: column; align-items: stretch`，按钮全宽排列
+- 存档/Mods 页头部操作区：`width: 100%; justify-content: flex-start`，窄屏下不再超宽
+- 设置页 `.sd-settings-section-toolbar`：`flex-wrap: wrap`
+- 设置页 `.sd-settings-user-actions`：`flex-wrap: wrap; gap: 4px`，用户操作按钮可换行
+- Jobs 页 `.sd-jobs-toolbar-actions`：`flex-wrap: wrap`
+
+### 保留不动
+
+- UI-R1 字号变量、UI-R2 间距变量、UI-R3 移动端导航规则
+- `sd-btn-start/stop/restart` 固定尺寸（PNG 底图限制，不修改）
+- `sd-btn-xs` 的 `!important` 覆盖（仅用于 PlayersPage 待接入禁用按钮，不影响主流程）
+- 按钮颜色主题方向
+- 业务逻辑、API、React 组件交互
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS ~325 kB，CSS ~85 kB
+```
+
+手动验证要点：
+- **SettingsPage（settings 路由）**：退出登录/新建用户/刷新/创建/角色切换/禁用/删除/翻页按钮全部有像素风 PNG 样式，不再是浏览器默认按钮
+- **危险操作（禁用/删除按钮）**：文字呈暗红色，与 tan 灰色次按钮有明显区别
+- **所有 PNG 按钮 hover**：悬停时有轻微亮度提升反馈
+- **390px 宽度**：安装页操作按钮纵向全宽排列，设置页用户操作按钮可换行
+
+### 下一步注意事项
+
+- **UI-R5（如需）**：Overview 2×2 指标格在 390px 下是否需要单列化可独立评估
+- **安装步骤条**：极窄屏下步骤文字可能超出，可在 640px 下隐藏步骤文字只留图标
+- **sd-btn-xs**：当前用于 PlayersPage 禁用待接入按钮，有 `!important` 覆盖，若后续 PlayersPage 真实化时需要重新设计
