@@ -1,8 +1,630 @@
+import { useCallback, useEffect, useState } from 'react'
+import {
+  getAuditLogs,
+  getUsers,
+  createUser,
+  updateUserRole,
+  disableUser,
+  deleteUserHard,
+} from '../../../api'
+import type { AuditLogEntry } from '../../../api'
+import type { PanelUser } from '../../../types'
+import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 
-export function SettingsPage({ user }: StardewPageProps) {
+// ── 审计日志操作中文映射 ──────────────────────────────────────────────────────
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  admin_initialized: '初始化管理员',
+  user_login: '用户登录',
+  user_logout: '用户登出',
+  user_created: '创建用户',
+  user_updated: '修改用户',
+  user_disabled: '禁用用户',
+  user_deleted: '删除用户',
+  user_password_changed: '修改密码',
+  instance_started: '启动服务器',
+  instance_stopped: '停止服务器',
+  instance_restarted: '重启服务器',
+  instance_installed: '安装游戏',
+  save_selected: '选择存档',
+  save_deleted: '删除存档',
+  mod_uploaded: '上传 Mod',
+  mod_deleted: '删除 Mod',
+  command_executed: '执行命令',
+  support_bundle_exported: '导出诊断包',
+}
+
+function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action
+}
+
+// ── 目标类型中文映射 ──────────────────────────────────────────────────────────
+
+const TARGET_TYPE_LABELS: Record<string, string> = {
+  user: '用户',
+  instance: '实例',
+  save: '存档',
+  mod: 'Mod',
+  command: '命令',
+  system: '系统',
+}
+
+function targetTypeLabel(t: string): string {
+  return TARGET_TYPE_LABELS[t] ?? t
+}
+
+// ── 确认弹窗 ──────────────────────────────────────────────────────────────────
+
+type ConfirmDialogProps = {
+  title: string
+  body: string
+  confirmLabel?: string
+  onConfirm: () => void
+  onCancel: () => void
+  danger?: boolean
+}
+
+function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCancel, danger }: ConfirmDialogProps) {
   return (
-    <div className="sd-page">
+    <div className="sd-confirm-overlay" role="dialog" aria-modal>
+      <div className="sd-confirm-dialog">
+        <div className="sd-confirm-title">{title}</div>
+        <div className="sd-confirm-body">{body}</div>
+        <div className="sd-confirm-actions">
+          <button className="sd-btn sd-btn-red" onClick={onConfirm} aria-label={confirmLabel}>
+            {danger ? '⚠ ' : ''}{confirmLabel}
+          </button>
+          <button className="sd-btn" onClick={onCancel}>取消</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── 当前账号区 ────────────────────────────────────────────────────────────────
+
+function AccountSection({ user, onLogout }: Pick<StardewPageProps, 'user' | 'onLogout'>) {
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">当前账号</h3>
+      <div className="sd-settings-account-card">
+        <div className="sd-settings-account-row">
+          <span className="sd-settings-label">用户名</span>
+          <span className="sd-settings-value sd-settings-value-bold">{user.username}</span>
+        </div>
+        <div className="sd-settings-account-row">
+          <span className="sd-settings-label">角色</span>
+          <span className={`sd-tag ${user.role === 'admin' ? 'sd-tag-green' : 'sd-tag-blue'}`}>
+            {user.role === 'admin' ? '管理员' : '普通用户'}
+          </span>
+        </div>
+        <div className="sd-settings-account-row">
+          <span className="sd-settings-label">状态</span>
+          <span className="sd-dot sd-dot-green" aria-hidden="true" style={{ marginRight: 6 }} />
+          <span className="sd-settings-value">已登录</span>
+        </div>
+        <div className="sd-settings-account-actions">
+          <button className="sd-btn sd-btn-red" onClick={onLogout}>退出登录</button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── 版本信息区 ────────────────────────────────────────────────────────────────
+
+function VersionSection({ versionInfo }: { versionInfo: StardewPageProps['dashboardData']['versionInfo'] }) {
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">面板版本</h3>
+      <div className="sd-settings-info-grid">
+        <div className="sd-settings-info-row">
+          <span className="sd-settings-label">版本号</span>
+          <span className="sd-settings-value sd-settings-mono">
+            {versionInfo?.version ?? '—'}
+          </span>
+        </div>
+        <div className="sd-settings-info-row">
+          <span className="sd-settings-label">构建时间</span>
+          <span className="sd-settings-value sd-settings-mono">
+            {versionInfo?.buildDate ? formatDate(versionInfo.buildDate) : '—'}
+          </span>
+        </div>
+        <div className="sd-settings-info-row">
+          <span className="sd-settings-label">Commit</span>
+          <span className="sd-settings-value sd-settings-mono">
+            {versionInfo?.commit ?? '—'}
+          </span>
+        </div>
+        <div className="sd-settings-info-row">
+          <span className="sd-settings-label">运行模式</span>
+          <span className="sd-tag sd-tag-blue">Single Game Mode</span>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── 用户管理区 ────────────────────────────────────────────────────────────────
+
+type UserManagementSectionProps = {
+  currentUserId: number
+  isAdmin: boolean
+}
+
+function UserManagementSection({ currentUserId, isAdmin }: UserManagementSectionProps) {
+  const [users, setUsers] = useState<PanelUser[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  // 创建用户表单
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newUsername, setNewUsername] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newRole, setNewRole] = useState<'user' | 'admin'>('user')
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  // 角色变更确认弹窗
+  const [roleConfirm, setRoleConfirm] = useState<{ user: PanelUser; toRole: string } | null>(null)
+  const [roleBusy, setRoleBusy] = useState(false)
+
+  // 删除/禁用确认弹窗
+  const [deleteConfirm, setDeleteConfirm] = useState<{ user: PanelUser; hard: boolean } | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const loadUsers = useCallback(async () => {
+    if (!isAdmin) return
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const res = await getUsers()
+      setUsers(res.users)
+    } catch (e) {
+      setLoadError(errorMessage(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [isAdmin])
+
+  useEffect(() => {
+    void loadUsers()
+  }, [loadUsers])
+
+  async function handleCreate() {
+    if (!newUsername.trim() || !newPassword.trim()) return
+    setCreateBusy(true)
+    setCreateError(null)
+    try {
+      await createUser(newUsername.trim(), newPassword, newRole)
+      setNewUsername('')
+      setNewPassword('')
+      setNewRole('user')
+      setShowCreateForm(false)
+      await loadUsers()
+    } catch (e) {
+      setCreateError(errorMessage(e))
+    } finally {
+      setCreateBusy(false)
+    }
+  }
+
+  async function handleRoleChange() {
+    if (!roleConfirm) return
+    setRoleBusy(true)
+    setActionError(null)
+    try {
+      await updateUserRole(roleConfirm.user.id, roleConfirm.toRole)
+      setRoleConfirm(null)
+      await loadUsers()
+    } catch (e) {
+      setActionError(errorMessage(e))
+      setRoleConfirm(null)
+    } finally {
+      setRoleBusy(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteConfirm) return
+    setDeleteBusy(true)
+    setActionError(null)
+    try {
+      if (deleteConfirm.hard) {
+        await deleteUserHard(deleteConfirm.user.id)
+      } else {
+        await disableUser(deleteConfirm.user.id)
+      }
+      setDeleteConfirm(null)
+      await loadUsers()
+    } catch (e) {
+      setActionError(errorMessage(e))
+      setDeleteConfirm(null)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  if (!isAdmin) {
+    return (
+      <section className="sd-settings-section">
+        <h3 className="sd-settings-section-title">用户管理</h3>
+        <div className="sd-settings-locked">
+          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+          仅管理员可管理面板用户。
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">用户管理</h3>
+
+      {actionError && (
+        <div className="sd-settings-error">{actionError}</div>
+      )}
+
+      <div className="sd-settings-section-toolbar">
+        <button className="sd-btn sd-btn-green" onClick={() => setShowCreateForm(v => !v)}>
+          {showCreateForm ? '收起' : '+ 新建用户'}
+        </button>
+        <button className="sd-btn" onClick={() => void loadUsers()} disabled={loading}>
+          {loading ? '加载中…' : '刷新'}
+        </button>
+      </div>
+
+      {showCreateForm && (
+        <div className="sd-settings-create-form">
+          <div className="sd-settings-form-title">新建用户</div>
+          {createError && <div className="sd-settings-error">{createError}</div>}
+          <div className="sd-settings-form-row">
+            <label className="sd-settings-form-label">用户名</label>
+            <input
+              className="sd-input"
+              value={newUsername}
+              onChange={e => setNewUsername(e.target.value)}
+              placeholder="用户名"
+              disabled={createBusy}
+            />
+          </div>
+          <div className="sd-settings-form-row">
+            <label className="sd-settings-form-label">密码</label>
+            <input
+              className="sd-input"
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              placeholder="至少 6 位"
+              disabled={createBusy}
+            />
+          </div>
+          <div className="sd-settings-form-row">
+            <label className="sd-settings-form-label">角色</label>
+            <select
+              className="sd-input"
+              value={newRole}
+              onChange={e => setNewRole(e.target.value as 'user' | 'admin')}
+              disabled={createBusy}
+            >
+              <option value="user">普通用户</option>
+              <option value="admin">管理员</option>
+            </select>
+          </div>
+          <div className="sd-settings-form-actions">
+            <button
+              className="sd-btn sd-btn-green"
+              onClick={() => void handleCreate()}
+              disabled={createBusy || !newUsername.trim() || !newPassword.trim()}
+            >
+              {createBusy ? '创建中…' : '创建'}
+            </button>
+            <button className="sd-btn" onClick={() => setShowCreateForm(false)} disabled={createBusy}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loadError ? (
+        <div className="sd-settings-error">
+          {loadError}
+          <button className="sd-btn" style={{ marginLeft: 8 }} onClick={() => void loadUsers()}>重试</button>
+        </div>
+      ) : loading && users.length === 0 ? (
+        <div className="sd-settings-hint">加载用户列表…</div>
+      ) : users.length === 0 ? (
+        <div className="sd-settings-hint">暂无用户数据。</div>
+      ) : (
+        <div className="sd-settings-user-list">
+          {users.map(u => (
+            <div key={u.id} className={`sd-settings-user-row${!u.isActive ? ' sd-settings-user-inactive' : ''}`}>
+              <span className="sd-settings-user-name">
+                {u.username}
+                {u.id === currentUserId && (
+                  <span className="sd-tag sd-tag-blue" style={{ marginLeft: 6 }}>自己</span>
+                )}
+              </span>
+              <span className={`sd-tag ${u.role === 'admin' ? 'sd-tag-green' : 'sd-tag-blue'}`}>
+                {u.role === 'admin' ? '管理员' : '普通用户'}
+              </span>
+              {!u.isActive && <span className="sd-tag sd-tag-red">已禁用</span>}
+              <span className="sd-settings-user-login">
+                上次登录：{u.lastLoginAt ? formatDate(u.lastLoginAt) : '—'}
+              </span>
+              <div className="sd-settings-user-actions">
+                <button
+                  className="sd-btn"
+                  disabled={roleBusy || deleteBusy || u.id === currentUserId}
+                  title={u.id === currentUserId ? '不能修改自己的角色' : undefined}
+                  onClick={() => setRoleConfirm({ user: u, toRole: u.role === 'admin' ? 'user' : 'admin' })}
+                >
+                  {u.role === 'admin' ? '降为普通用户' : '升为管理员'}
+                </button>
+                <button
+                  className="sd-btn sd-btn-red"
+                  disabled={roleBusy || deleteBusy || u.id === currentUserId}
+                  title={u.id === currentUserId ? '不能禁用自己' : undefined}
+                  onClick={() => setDeleteConfirm({ user: u, hard: false })}
+                >
+                  禁用
+                </button>
+                <button
+                  className="sd-btn sd-btn-red"
+                  disabled={roleBusy || deleteBusy || u.id === currentUserId}
+                  title={u.id === currentUserId ? '不能删除自己' : '永久删除用户（不可恢复）'}
+                  onClick={() => setDeleteConfirm({ user: u, hard: true })}
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {roleConfirm && (
+        <ConfirmDialog
+          title="修改用户角色"
+          body={`确认将 "${roleConfirm.user.username}" 的角色改为 "${roleConfirm.toRole === 'admin' ? '管理员' : '普通用户'}"？`}
+          confirmLabel="确认修改"
+          onConfirm={() => void handleRoleChange()}
+          onCancel={() => setRoleConfirm(null)}
+        />
+      )}
+
+      {deleteConfirm && (
+        <ConfirmDialog
+          title={deleteConfirm.hard ? '永久删除用户' : '禁用用户'}
+          body={
+            deleteConfirm.hard
+              ? `确认永久删除用户 "${deleteConfirm.user.username}"？此操作不可恢复。`
+              : `确认禁用用户 "${deleteConfirm.user.username}"？禁用后该用户将无法登录。`
+          }
+          confirmLabel={deleteConfirm.hard ? '永久删除' : '确认禁用'}
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setDeleteConfirm(null)}
+          danger
+        />
+      )}
+    </section>
+  )
+}
+
+// ── 审计日志区 ────────────────────────────────────────────────────────────────
+
+const AUDIT_PAGE_SIZE = 20
+
+function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
+  const [logs, setLogs] = useState<AuditLogEntry[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasLoaded, setHasLoaded] = useState(false)
+
+  const loadLogs = useCallback(async (off: number) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await getAuditLogs(AUDIT_PAGE_SIZE, off)
+      setLogs(res.logs)
+      setTotal(res.total)
+      setOffset(off)
+      setHasLoaded(true)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAdmin) void loadLogs(0)
+  }, [isAdmin, loadLogs])
+
+  if (!isAdmin) {
+    return (
+      <section className="sd-settings-section">
+        <h3 className="sd-settings-section-title">审计日志</h3>
+        <div className="sd-settings-locked">
+          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+          仅管理员可查看审计日志。
+        </div>
+      </section>
+    )
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE))
+  const currentPage = Math.floor(offset / AUDIT_PAGE_SIZE) + 1
+
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">审计日志</h3>
+
+      <div className="sd-settings-section-toolbar">
+        <span className="sd-settings-hint-inline">共 {total} 条记录</span>
+        <button className="sd-btn" onClick={() => void loadLogs(offset)} disabled={loading}>
+          {loading ? '加载中…' : '刷新'}
+        </button>
+      </div>
+
+      {error ? (
+        <div className="sd-settings-error">
+          {error}
+          <button className="sd-btn" style={{ marginLeft: 8 }} onClick={() => void loadLogs(offset)}>重试</button>
+        </div>
+      ) : !hasLoaded || (loading && logs.length === 0) ? (
+        <div className="sd-settings-hint">加载审计日志…</div>
+      ) : logs.length === 0 ? (
+        <div className="sd-settings-hint">暂无审计日志。</div>
+      ) : (
+        <>
+          <div className="sd-settings-audit-table">
+            <div className="sd-settings-audit-head">
+              <span className="sd-settings-audit-col-time">时间</span>
+              <span className="sd-settings-audit-col-actor">操作者</span>
+              <span className="sd-settings-audit-col-action">动作</span>
+              <span className="sd-settings-audit-col-target">目标</span>
+              <span className="sd-settings-audit-col-ip">IP</span>
+            </div>
+            {logs.map(log => (
+              <div key={log.id} className="sd-settings-audit-row">
+                <span className="sd-settings-audit-col-time sd-settings-mono">
+                  {formatDate(log.createdAt)}
+                </span>
+                <span className="sd-settings-audit-col-actor">
+                  {log.actorName ?? '—'}
+                </span>
+                <span className="sd-settings-audit-col-action">
+                  {auditActionLabel(log.action)}
+                </span>
+                <span className="sd-settings-audit-col-target">
+                  {log.targetType ? targetTypeLabel(log.targetType) : '—'}
+                  {log.targetId ? <span className="sd-settings-mono"> #{log.targetId}</span> : null}
+                </span>
+                <span className="sd-settings-audit-col-ip sd-settings-mono">
+                  {log.ipAddress ?? '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="sd-settings-audit-pagination">
+              <button
+                className="sd-btn"
+                disabled={offset === 0 || loading}
+                onClick={() => void loadLogs(Math.max(0, offset - AUDIT_PAGE_SIZE))}
+              >
+                上一页
+              </button>
+              <span className="sd-settings-hint-inline">第 {currentPage} / {totalPages} 页</span>
+              <button
+                className="sd-btn"
+                disabled={offset + AUDIT_PAGE_SIZE >= total || loading}
+                onClick={() => void loadLogs(offset + AUDIT_PAGE_SIZE)}
+              >
+                下一页
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+// ── 安全与权限区 ──────────────────────────────────────────────────────────────
+
+function SecuritySection() {
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">安全与权限</h3>
+      <div className="sd-settings-security-list">
+        <div className="sd-settings-security-item">
+          <span className="sd-dot sd-dot-green" aria-hidden="true" />
+          <div>
+            <div className="sd-settings-security-item-title">Session 认证</div>
+            <div className="sd-settings-security-item-desc">登录凭证以 HttpOnly Cookie 方式保存，会话 token 经哈希后存入数据库，不保存明文。</div>
+          </div>
+        </div>
+        <div className="sd-settings-security-item">
+          <span className="sd-dot sd-dot-green" aria-hidden="true" />
+          <div>
+            <div className="sd-settings-security-item-title">密码存储</div>
+            <div className="sd-settings-security-item-desc">所有密码使用 Argon2id 算法哈希，不可逆，服务器不持有明文密码。</div>
+          </div>
+        </div>
+        <div className="sd-settings-security-item">
+          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+          <div>
+            <div className="sd-settings-security-item-title">Docker Socket 挂载风险</div>
+            <div className="sd-settings-security-item-desc">
+              本面板通过挂载 Docker Socket（<code className="sd-settings-code">/var/run/docker.sock</code>）管理容器。
+              获得面板 admin 权限等同于获得宿主机 Docker 完全控制权。请勿将面板暴露到公网，并严格管理 admin 账号。
+            </div>
+          </div>
+        </div>
+        <div className="sd-settings-security-item">
+          <span className="sd-dot sd-dot-green" aria-hidden="true" />
+          <div>
+            <div className="sd-settings-security-item-title">操作审计</div>
+            <div className="sd-settings-security-item-desc">关键操作（启停服务器、用户管理、存档/Mod 变更等）均记录审计日志，含操作者、IP 和时间戳。</div>
+          </div>
+        </div>
+        <div className="sd-settings-security-item">
+          <span className="sd-dot sd-dot-green" aria-hidden="true" />
+          <div>
+            <div className="sd-settings-security-item-title">日志脱敏</div>
+            <div className="sd-settings-security-item-desc">Steam 密码、VNC 密码、Session Token、邀请码等敏感字段已在日志记录时自动脱敏。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── 待接入设置区 ──────────────────────────────────────────────────────────────
+
+function PendingSettingsSection() {
+  const pendingItems = [
+    { label: '界面主题', desc: '浅色 / 深色 / 跟随系统' },
+    { label: '界面语言', desc: '中文 / English' },
+    { label: '多游戏模式', desc: '启用总面板以管理多个游戏实例' },
+    { label: '备份策略', desc: '自动备份频率、保留数量、备份路径' },
+    { label: '通知设置', desc: '服务器崩溃、Mod 冲突、磁盘告警推送' },
+    { label: '会话超时', desc: '自动登出时间（分钟）' },
+  ]
+
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">其他设置 <span className="sd-settings-pending-badge">后端待接入</span></h3>
+      <div className="sd-settings-pending-list">
+        {pendingItems.map(item => (
+          <div key={item.label} className="sd-settings-pending-item">
+            <div className="sd-settings-pending-item-left">
+              <span className="sd-settings-pending-item-label">{item.label}</span>
+              <span className="sd-settings-pending-item-desc">{item.desc}</span>
+            </div>
+            <button className="sd-btn" disabled title="后端待接入">待接入</button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// ── SettingsPage ──────────────────────────────────────────────────────────────
+
+export function SettingsPage({ user, dashboardData, onLogout }: StardewPageProps) {
+  const isAdmin = user.role === 'admin'
+
+  return (
+    <div className="sd-page sd-settings-page">
       <div className="sd-page-header">
         <img
           className="sd-page-icon"
@@ -10,37 +632,17 @@ export function SettingsPage({ user }: StardewPageProps) {
           alt=""
         />
         <div>
-          <h2 className="sd-page-title">设置</h2>
-          <p className="sd-page-desc">面板用户管理、审计日志、版本信息。</p>
+          <h2 className="sd-page-title">设置与审计</h2>
+          <p className="sd-page-desc">账号管理、面板版本、用户权限与操作审计日志。</p>
         </div>
       </div>
 
-      <div className="sd-state-card">
-        <div className="sd-state-row">
-          <span className="sd-state-label">当前用户</span>
-          <span className="sd-state-value">{user.username}</span>
-          <span className="sd-tag sd-tag-blue" style={{ marginLeft: 4 }}>{user.role}</span>
-        </div>
-      </div>
-
-      <div className="sd-feature-list">
-        <div className="sd-feature-item connected">
-          <span className="sd-dot sd-dot-green" aria-hidden="true" />
-          当前用户信息（已接入）
-        </div>
-        <div className="sd-feature-item pending">
-          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
-          面板用户列表 / 创建 / 角色修改（待迁移）
-        </div>
-        <div className="sd-feature-item pending">
-          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
-          审计日志（待迁移）
-        </div>
-        <div className="sd-feature-item pending">
-          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
-          版本信息与构建号（待迁移）
-        </div>
-      </div>
+      <AccountSection user={user} onLogout={onLogout} />
+      <VersionSection versionInfo={dashboardData.versionInfo} />
+      <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} />
+      <AuditLogsSection isAdmin={isAdmin} />
+      <SecuritySection />
+      <PendingSettingsSection />
     </div>
   )
 }

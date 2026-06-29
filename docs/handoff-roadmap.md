@@ -6,6 +6,75 @@
 
 ## Current Context
 
+### FE-R12: InstallPage 首次安装向导页真实化 ✅ completed (2026-06-29)
+
+把 `/instances/stardew/install` 从占位页改造为真实可用的「首次安装向导」页面。
+
+**真实接入的 API / 数据：**
+- `getInstallOptions()`（`GET /api/instances/:id/install-options`）：加载镜像版本选项。
+- `installInstance()`（`POST /api/instances/:id/install`）：启动安装任务，返回 `jobId`。
+- `submitSteamGuardInput(jobId, input)`（`POST /api/instances/:id/steam-guard/input`）：提交 Steam Guard 验证码或登录方式选择。
+- `createJobEventSource(jobId, lastSeq)`（SSE：`GET /api/jobs/:id/stream`）：实时接收安装日志。
+- `getJob(id)` / `getJobLogs(id, 0, 1000)`：加载安装任务详情和历史日志。
+- `dashboardData.refreshInstanceState()` / `refreshJobs()`：安装触发/完成后刷新公共数据层。
+- `dashboardData.jobs`：初始加载时自动拾取活跃的安装任务（页面刷新/跳转场景）。
+- `instanceState.state` / `driverPhase` / `stateMessage`：驱动页面状态显示和交互分支。
+
+**页面功能区（共 8 个）：**
+1. **状态概览**：`state`、`driverPhase`（monospace tag）、`stateMessage`，彩色状态点（绿/黄/红/灰）。
+2. **已安装成功卡**：绿框卡，提示已就绪，"前往服务器控制"按钮；admin 可见"重新安装/修复"按钮。
+3. **安装配置表单**：镜像版本下拉、Steam 用户名、Steam 密码（可切换显隐）、VNC 密码（可切换显隐）；`canDirectRetry` 时只显示镜像版本不重填凭据。
+4. **安装进度**：5 步骤条（准备环境→拉取镜像→Steam 认证→下载游戏→完成）+ 阶段文字 + Pull 镜像进度卡（解析 `[pull:progress:N:M]`）+ 游戏/SDK 下载提示卡。
+5. **Steam 认证交互区**：auth_method_required（扫码/账密选择）、steam_guard_choice_required（手机批准/输入码选择）、steam_guard_required（验证码输入）、steam_guard_mobile_required（等待手机批准提示）、steam_qr_required（打开扫码窗口按钮）。
+6. **QR 二维码弹窗**：暗色 overlay，`pre` 显示从日志提取的 `[steam]` 行文本（ASCII QR），字体自适应。
+7. **安装日志预览**：深色终端，SSE 实时追加（最近 50 条），四色着色，超 50 条提示跳转任务与日志。
+8. **错误提示**：QR 失败提示条、API 错误条、SSE 断线提示条。
+
+**权限规则：**
+- 非 admin：所有写操作不可见，显示"仅管理员可安装"提示，仍可查看状态/进度。
+- 已安装：显示成功卡，不误导重复安装；需点"重新安装/修复"才展开表单。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/InstallPage.tsx` | 完全重写（约 360 行） |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 370 行 `sd-install-*` 样式 |
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 324.18 kB，CSS 81.96 kB。
+
+### FE-R11: SettingsPage 设置与审计页真实化 ✅ completed (2026-06-29)
+
+把 `/instances/stardew/settings` 从占位页改造为真实可用的「设置与审计」页面。
+
+**真实接入的 API / 数据：**
+- `user`（props）：当前账号用户名、角色、ID，驱动退出登录按钮和权限控制。
+- `dashboardData.versionInfo`（公共数据层）：版本号 / 构建时间 / Commit，面板版本区直接展示。
+- `getUsers()`（`GET /api/users`，admin-only）：加载面板用户列表。
+- `createUser()`（`POST /api/users`，admin-only）：创建新用户。
+- `updateUserRole()`（`PATCH /api/users/:id`，admin-only）：切换用户角色，二次确认弹窗。
+- `disableUser()`（`DELETE /api/users/:id`，admin-only）：禁用用户，二次确认弹窗。
+- `deleteUserHard()`（`DELETE /api/users/:id?hard=true`，admin-only）：永久删除用户，二次确认弹窗。
+- `getAuditLogs()`（`GET /api/audit-logs`，admin-only）：分页加载审计日志（每页 20 条），支持翻页和刷新。
+
+**页面功能区（共 6 个）：**
+1. **当前账号**：用户名、角色标签、登录状态、退出登录按钮（复用 `onLogout`）。
+2. **面板版本**：版本号、构建时间、Commit hash、运行模式（Single Game Mode 标签）。
+3. **用户管理**：admin 可查看列表、新建、角色切换、禁用/永久删除（像素风二次确认）；普通用户显示权限提示；自防护（不能操作自己）。
+4. **审计日志**：admin 分页展示（时间/操作者/动作中文/目标/IP），支持翻页和刷新；普通用户权限提示；失败显示错误条+重试。
+5. **安全与权限**：5 条静态安全说明，突出 Docker Socket 风险。
+6. **待接入设置**：主题、语言、多游戏模式、备份策略、通知、会话超时——全部 disabled，标注徽章。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/api.ts` | 新增 `getUsers` / `createUser` / `updateUserRole` / `disableUser` / `deleteUserHard` |
+| `frontend/src/games/stardew/pages/SettingsPage.tsx` | 完全重写（约 370 行） |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增约 255 行 `sd-settings-*` 样式 |
+
+**验证：** `npm.cmd run build` 通过（exit 0）。
+
 ### FE-R10: DiagnosticsPage 诊断与健康检查页真实化 ✅ completed (2026-06-29)
 
 把 `/instances/stardew/diagnostics` 从占位页改造为真实可用的诊断与健康检查页面。
