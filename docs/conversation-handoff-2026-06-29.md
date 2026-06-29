@@ -1,5 +1,226 @@
 # Conversation Handoff 2026-06-29
 
+## UI-R3: 移动端与窄屏布局修复
+
+### 目标
+
+在 390px 宽度下修复页面横向撑破、导航触控困难、顶栏信息过载、安装成功卡拥挤四个问题。只改 CSS，不改业务逻辑、后端、API，不回退 UI-R1 字号和 UI-R2 间距变量。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/StardewPanel.css` | `.sd-main` 全局新增 `overflow-x: hidden`；`@media (max-width: 640px)` 块 5 处改动（详见下方） |
+
+### 改动明细
+
+| 位置 | 原规则 | 新规则 | 修复问题 |
+|------|--------|--------|---------|
+| `.sd-main`（全局） | `overflow-y: auto` only | 新增 `overflow-x: hidden` | 主内容区内部宽内容不再撑出页面 |
+| `.sd-shell`（640px） | 无 overflow 控制 | 新增 `overflow-x: hidden` | shell 级双保险防横向滚动 |
+| `.sd-sidebar .sd-nav-item`（640px） | `width:auto; min-height:auto; padding:4px 6px` | `min-width:36px; height:100%; min-height:0; padding:0 8px; gap:0; flex-shrink:0` | 图标充满侧栏高度，最小触控区 36px |
+| 顶栏隐藏列表（640px） | 隐藏 `version/save/username` | 新增隐藏 `sd-topbar-name`（品牌文字）和 `sd-topbar-user .sd-tag`（角色徽章） | 顶栏只剩 logo + 状态点 + 状态文字 + 登出 |
+| `.sd-install-complete-card`（640px） | `flex-direction:column; align-items:flex-start` | 同上 + `gap:8px`；按钮新增 `align-self:stretch` | 安装成功卡按钮撑满整行，不贴正文 |
+
+### 保留不动
+
+- UI-R1 字号变量体系、UI-R2 间距变量体系：完全不动
+- 桌面（1280px）Shell 三栏布局、顶栏、导航、OpsRail：不受影响
+- 960px 断点（隐藏 OpsRail + 任务页单列）：不受影响
+- 业务逻辑、API、React 组件、颜色体系：均未改动
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS 325.01 kB，CSS ~83 kB
+```
+
+手动验证（390px 宽度，浏览器 DevTools 模拟手机或直接拖窄）：
+
+- 各页面不出现页面级横向滚动条（可在 body 上检查 `scrollWidth > clientWidth`）
+- 左侧导航变为横向图标栏，图标可点击，高度充满侧栏 36px，最小宽度 36px
+- 顶栏只显示：鸡形 logo、状态点 + 状态文字（如"运行中"）、"登出"按钮
+- 品牌文字"Stardew Anxi Panel"、角色徽章"admin"在移动端不显示
+- `/instances/stardew/install` 安装成功卡：✓ 图标 → 标题/说明 → 按钮各占整行，按钮撑满宽度
+- 桌面（>1280px）Overview / Install / Jobs / Settings / 导航 / 顶栏无明显错位
+
+### 下一步注意事项
+
+**UI-R4（如需）：全局按钮体系重做**
+- 当前按钮依赖 PNG 底图，尺寸受素材限制，移动端仍保持 PNG 尺寸
+- 若需更好的移动端按钮体验，需配合 UI-R4 统一改
+
+**若继续做移动端深化（UI-R3b）：**
+- Overview 页的双栏主体（指标 2×2 + 事件/模组）在 390px 下可能仍需单列化，可独立评估
+- 安装进度步骤条在极窄屏下步骤文字可能溢出，可在 640px 下隐藏阶段文字只留图标
+
+---
+
+## UI-R2: 页面间距与卡片密度统一
+
+### 目标
+
+适配 UI-R1 字号放大后的空间关系，建立 spacing 变量体系，统一所有页面的 padding、卡片密度和行高，消除字号放大后的贴边、拥挤和按钮高度不足问题。只做 CSS 层面调整，不改任何业务逻辑。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 section 12 间距变量块（8 个变量）；按钮高度 24→26px（green/tan/delete）；输入框高度 23→26px |
+| `frontend/src/games/stardew/StardewPanel.css` | 多处间距、padding、gap、line-height 调整（详见下方） |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 UI-R2 完成节 |
+| `docs/conversation-handoff-2026-06-29.md` | 本节 |
+
+### 新增间距变量（stardew-theme.css section 12）
+
+```css
+--sd-space-1:        4px;
+--sd-space-2:        8px;
+--sd-space-3:        12px;
+--sd-space-4:        16px;
+--sd-space-5:        20px;
+--sd-card-padding:   10px 14px;
+--sd-section-gap:    14px;
+--sd-page-padding:   16px;
+```
+
+### StardewPanel.css 调整明细
+
+| 选择器 | 调整内容 |
+|--------|---------|
+| `.sd-page` | `padding 12px → var(--sd-page-padding)=16px`，`gap 14px → var(--sd-section-gap)=14px`（变量化） |
+| `.sd-topbar-logout-btn` | `height 22px → 24px`（13px 字号适配） |
+| `.sd-state-card` | `padding 7px 10px → var(--sd-card-padding)=10px 14px`，`gap 5px → 6px` |
+| `.sd-srv-section` | `padding 8px 10px → 10px 12px`，`gap 6px → 8px` |
+| `.sd-saves-list` | `gap 6px → 8px` |
+| `.sd-save-card` | `padding 7px 10px → 9px 12px` |
+| `.sd-save-meta` | 补 `line-height: 1.45`（meta 行不低于 1.35 要求） |
+| `.sd-mods-list` | `gap 5px → 7px` |
+| `.sd-mods-card` | `padding 7px 10px → 9px 12px` |
+| `.sd-mods-pending-grid` | `gap 5px → 7px` |
+| `.sd-jobs-list-row` | `padding 7px 9px → 8px 10px` |
+| `.sd-diag-check-row` | `padding 5px 9px → 7px 10px` |
+| `.sd-settings-page` | `gap 6px → var(--sd-section-gap)=14px`（区块间隔过窄修复） |
+| `.sd-settings-user-row` | `padding 5px 8px → 7px 10px` |
+| `.sd-settings-audit-head/.sd-settings-audit-row` | `padding 4px 6px → 5px 8px` |
+| `.sd-install-log-line` | `line-height 1.4 → 1.5`（日志行高 1.45–1.55 范围） |
+
+### 按钮高度修正（stardew-theme.css）
+
+| 按钮 | 原高度 | 新高度 | 原因 |
+|------|--------|--------|------|
+| `.sd-btn-green` | 24px | 26px | 13px 控件字号需要更多余量 |
+| `.sd-btn-tan` | 24px | 26px | 同上 |
+| `.sd-btn-delete` | 24px | 26px | 统一小按钮高度基准 |
+| `.sd-input` | 23px | 26px | 13px 控件字号在 23px 内过紧 |
+| `.sd-topbar-logout-btn` | 22px | 24px | 防止顶栏文字贴边 |
+
+### 保留不动
+
+- `.sd-jobs-log-window` 和 `.sd-install-log-window` 均已使用 `var(--sd-font-size-log)` ✓（UI-R1 review 问题已在上轮修复）
+- `.sd-jobs-log-line` 已有 `line-height: 1.45` ✓
+- 字号变量体系（UI-R1）完全不动
+- 顶栏/侧栏文字无明显挤压（`clamp` 响应式适配已到位）
+- 业务逻辑、API、路由、状态流均未改动
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS 325.01 kB，CSS 82.79 kB
+```
+
+手动验证点：
+- 各页面外边距感觉从 12px 变宽到 16px，内容不再贴边
+- 设置页各区块之间有明显间隔（原 6px 改为 14px）
+- 存档卡、Mod 卡、诊断检查行有更舒适的内边距
+- 控制台/服务器控制页区块之间留白更清晰
+- 小按钮（绿/棕/删除）高度 26px，与 13px 字号匹配，无文字顶边现象
+- 输入框高度 26px，控件字号不再显得拥挤
+- 设置页的用户行、审计日志行行距更舒适
+- 安装日志行高 1.5，可读性提升
+- 未引入任何新按钮/UI 组件（仅 CSS 调整）
+
+### 下一步注意事项
+
+**UI-R3（如需）：右侧 OpsRail 收窄/折叠**
+- OpsRail 当前 `clamp(280px, 20vw, 360px)`，宽屏下偏宽
+- 可考虑折叠/展开交互，但这是独立任务，不要混入本轮
+
+**UI-R4（如需）：全局按钮体系重做**
+- 当前按钮依赖 PNG 底图，尺寸受素材限制
+- 如需系统化重做，留到 UI-R4，本轮只做最小高度修正
+
+**UI-R5（如需）：Overview 页重排**
+- Overview 当前双栏布局较复杂，有可能字号放大后影响指标格
+- 独立评估，不在本轮处理
+
+---
+
+## UI-R1: 前端字号基线统一
+
+### 目标
+
+解决 Stardew 管理面板所有页面"字太小、长时间看费劲"的问题。只做字号基线和最小必要适配，不改业务逻辑、不重排页面、不改颜色体系。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 `--sd-font-size-*` 变量块（8个变量）；更新 `.sd-btn-green/tan/gold/red/delete/copy/start/stop/restart`、`.sd-input`、`.sd-nav-item`、`.sd-data-row` 字号引用变量 |
+| `frontend/src/games/stardew/StardewPanel.css` | 批量+定向替换所有不合理字号 |
+| `docs/handoff-roadmap.md` | Current Context 顶部新增 UI-R1 完成节 |
+| `docs/conversation-handoff-2026-06-29.md` | 本节 |
+
+**未改动：** 任何 `.tsx`/`.ts`/`.go` 文件、API 接口、状态逻辑、颜色变量、素材路径均未变动。
+
+### 字号变量体系（新增到 stardew-theme.css）
+
+```css
+--sd-font-size-meta:           11px;  /* 时间戳、序号、最小徽章 */
+--sd-font-size-small:          12px;  /* 次级说明、日志正文 */
+--sd-font-size-body:           13px;  /* 正文、描述、提示信息 */
+--sd-font-size-control:        13px;  /* 输入框、按钮、选择框 */
+--sd-font-size-section-title:  14px;  /* 区块标题 */
+--sd-font-size-page-title:     18px;  /* 页面标题 */
+--sd-font-size-metric:         18px;  /* 指标大数字 */
+--sd-font-size-log:            12px;  /* 日志正文 */
+```
+
+### 替换规则（StardewPanel.css）
+
+| 原始字号 | 新字号 | 角色说明 |
+|---------|-------|---------|
+| 8.5px | 11px | `sd-srv-badge-pending` 标签 |
+| 9px | 11px | 全部（时间戳、日志序号级别） |
+| 9.5px | 11px | 全部（次级 meta，徽章） |
+| 10px | 12px | 全部（次级说明文字） |
+| 10.5px | 13px | 全部（正文、提示、表单标签） |
+| 11.5px | 13px | 全部（卡片标题、guard 标题） |
+| 11px（区块标题） | 14px | `.sd-srv-section-title`, `.sd-settings-section-title`, `.sd-ov-title` |
+| 11px（正文） | 13px | 各页面正文内容（save card name 等） |
+| 11px（OpsRail base） | 12px | `.sd-opsrail` 容器基准 |
+| 11px（按钮/控件） | 通过变量 | `sd-install-input/select` → `var(--sd-font-size-control)` |
+| 13px（页面标题） | 18px | `.sd-page-title` → `var(--sd-font-size-page-title)` |
+| 15px（指标） | 18px | `.sd-mc-val` → `var(--sd-font-size-metric)` |
+| `clamp(11px,...)` | 不动 | 导航按钮已有响应式 clamp，不修改 |
+
+### 如何验证
+
+1. `cd frontend && npm.cmd run build` → 应 exit 0
+2. 打开面板各页面（Overview/Jobs/Settings/Mods/Diagnostics/Install）
+3. 检查正文字号是否明显比之前大，标题层次是否清晰（页面标题最大，区块标题次之，正文/按钮再次，徽章/序号最小）
+4. 确认没有文字溢出或布局错乱
+
+### 下一步注意事项
+
+- 日志区（`sd-jobs-log-window`/`sd-install-log-window`）日志正文已升到 13px（原 10.5px），如果感觉日志区太密，可适当增加 `line-height` 但不建议再改字号。
+- OpsRail 右侧栏字号已统一到 12-13px，如果侧栏宽度觉得不够，调整 `clamp(280px, 20vw, 360px)` 即可，不要把字号再降回去。
+- 将来新增 CSS 类时，应优先使用上述 `--sd-font-size-*` 变量，不要再硬编码 10px/10.5px 等小字号。
+
 ## FE-R12: InstallPage 首次安装向导页真实化
 
 ### 目标

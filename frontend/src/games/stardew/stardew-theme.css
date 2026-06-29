@@ -206,20 +206,20 @@
 /* 小绿色主按钮 */
 .sd-btn-green {
   background-image: url('/assets/stardew/ui/buttons/button_primary_small_green_blank.png');
-  height: 24px;
+  height: 26px;
   min-width: 58px;
   padding: 0 10px;
-  font-size: 11px;
+  font-size: var(--sd-font-size-control);
   color: #fff;
 }
 
 /* 小棕色次级按钮 */
 .sd-btn-tan {
   background-image: url('/assets/stardew/ui/buttons/button_secondary_small_tan_blank.png');
-  height: 24px;
+  height: 26px;
   min-width: 50px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--sd-font-size-control);
   color: #2c1a0a;
 }
 
@@ -229,7 +229,7 @@
   height: 26px;
   min-width: 60px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--sd-font-size-control);
   color: #2c1a0a;
 }
 
@@ -239,17 +239,17 @@
   height: 33px;
   min-width: 88px;
   padding: 0 14px;
-  font-size: 12px;
+  font-size: var(--sd-font-size-control);
   color: #fff;
 }
 
 /* 删除小按钮 */
 .sd-btn-delete {
   background-image: url('/assets/stardew/ui/buttons/button_delete_small_tan_blank.png');
-  height: 24px;
+  height: 26px;
   min-width: 44px;
   padding: 0 7px;
-  font-size: 11px;
+  font-size: var(--sd-font-size-small);
   color: #2c1a0a;
 }
 
@@ -258,7 +258,7 @@
   background-image: url('/assets/stardew/ui/buttons/button_copy_small_blank.png');
   width: 48px;
   height: 25px;
-  font-size: 11px;
+  font-size: var(--sd-font-size-small);
   color: #2c1a0a;
 }
 
@@ -267,7 +267,7 @@
   background-image: url('/assets/stardew/ui/buttons/button_server_start_green_blank.png');
   width: 76px;
   height: 34px;
-  font-size: 12px;
+  font-size: var(--sd-font-size-control);
   color: #fff;
 }
 
@@ -275,7 +275,7 @@
   background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
   width: 88px;
   height: 33px;
-  font-size: 12px;
+  font-size: var(--sd-font-size-control);
   color: #fff;
 }
 
@@ -283,7 +283,7 @@
   background-image: url('/assets/stardew/ui/buttons/button_server_restart_tan_blank.png');
   width: 84px;
   height: 34px;
-  font-size: 12px;
+  font-size: var(--sd-font-size-control);
   color: #2c1a0a;
 }
 
@@ -296,7 +296,7 @@
 /* ── 6. 像素风输入框 ─────────────────────────────────────────────────────── */
 
 .sd-input {
-  height: 23px;
+  height: 26px;
   width: 100%;
   border: 1px solid #7a5030;
   border-radius: 0;
@@ -304,7 +304,7 @@
   color: #2c1a0a;
   padding: 2px 5px;
   font: inherit;
-  font-size: 10.5px;
+  font-size: var(--sd-font-size-control);
   outline: none;
 }
 
@@ -344,7 +344,7 @@
   background: transparent;
   color: #f0e0b8;
   font: inherit;
-  font-size: 10.5px;
+  font-size: var(--sd-font-size-body);
   font-weight: 400;
   cursor: pointer;
   text-align: left;
@@ -425,7 +425,7 @@
   padding: 3px 5px;
   border-bottom: 1px solid #dcc898;
   background: transparent;
-  font-size: 10.5px;
+  font-size: var(--sd-font-size-body);
   color: #2c1a0a;
 }
 
@@ -499,4 +499,30 @@
 .sd-metric-hint {
   font-size: 0.72rem;
   color: var(--sd-brown-light);
+}
+
+/* ── 11. 字号变量 ─────────────────────────────────────────────────────────── */
+
+:root {
+  --sd-font-size-meta:           11px;  /* 时间戳、序号、最小徽章 */
+  --sd-font-size-small:          12px;  /* 次级说明、日志正文、meta 文字 */
+  --sd-font-size-body:           13px;  /* 正文、描述、提示信息 */
+  --sd-font-size-control:        13px;  /* 输入框、按钮、选择框 */
+  --sd-font-size-section-title:  14px;  /* 区块标题 */
+  --sd-font-size-page-title:     18px;  /* 页面标题 */
+  --sd-font-size-metric:         18px;  /* 指标大数字 */
+  --sd-font-size-log:            12px;  /* 日志正文 */
+}
+
+/* ── 12. 间距变量 ─────────────────────────────────────────────────────────── */
+
+:root {
+  --sd-space-1:        4px;
+  --sd-space-2:        8px;
+  --sd-space-3:        12px;
+  --sd-space-4:        16px;
+  --sd-space-5:        20px;
+  --sd-card-padding:   10px 14px;  /* 状态卡片、内容卡片通用内边距 */
+  --sd-section-gap:    14px;       /* 页面区块间距 */
+  --sd-page-padding:   16px;       /* 页面整体外边距 */
 }

@@ -6,6 +6,77 @@
 
 ## Current Context
 
+### UI-R3: 移动端与窄屏布局修复 ✅ completed (2026-06-29)
+
+在 390px 宽度下修复 4 项问题：页面横向滚动、导航触控、顶栏信息过载、安装成功卡拥挤。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/StardewPanel.css` | `.sd-main` 全局新增 `overflow-x: hidden`；`@media (max-width: 640px)` 扩充 5 处规则 |
+
+**改动明细：**
+- `.sd-main`（全局）：新增 `overflow-x: hidden`，主内容区宽内容不再撑出页面
+- `.sd-shell`（640px）：新增 `overflow-x: hidden`，shell 级防横向滚动双保险
+- `.sd-sidebar .sd-nav-item`（640px）：`min-width:36px; height:100%; min-height:0; padding:0 8px; gap:0; flex-shrink:0`，图标充满 36px 侧栏高度，最小触控区 36px
+- 顶栏隐藏列表（640px）：新增隐藏 `sd-topbar-name`（品牌文字）和 `sd-topbar-user .sd-tag`（角色徽章），只保留 logo + 状态 + 登出
+- `.sd-install-complete-card`（640px）：`gap:8px`，按钮加 `align-self:stretch` 撑满整行
+
+**未改动：** UI-R1 字号变量、UI-R2 间距变量、业务逻辑、API、React 组件、颜色体系、960px 断点。
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 325.01 kB，CSS 83.22 kB。
+
+### UI-R2: 页面间距与卡片密度统一 ✅ completed (2026-06-29)
+
+适配 UI-R1 字号放大后的空间关系，建立 spacing 变量体系，统一页面 padding、卡片 padding、列表行高和区块 gap，消除文字贴边和按钮高度与字号冲突。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 `--sd-space-*`（5个）、`--sd-card-padding`、`--sd-section-gap`、`--sd-page-padding` 共 8 个间距变量；按钮 `.sd-btn-green/.sd-btn-tan` 高度 24→26px；`.sd-btn-delete` 高度 24→26px；`.sd-input` 高度 23→26px |
+| `frontend/src/games/stardew/StardewPanel.css` | `.sd-page` padding 12→16px（变量化）；`.sd-settings-page` gap 6→14px（变量化）；`.sd-topbar-logout-btn` 高度 22→24px；`.sd-state-card` padding 7→10px；`.sd-srv-section` padding 8→10px，gap 6→8px；`.sd-save-card` padding 7→9px；`.sd-saves-list` gap 6→8px；`.sd-mods-card` padding 7→9px；`.sd-mods-list/.sd-mods-pending-grid` gap 5→7px；`.sd-jobs-list-row` padding 7→8px；`.sd-settings-user-row` padding 5→7px；`.sd-settings-audit-head/.row` padding 4→5px；`.sd-diag-check-row` padding 5→7px；`.sd-save-meta` 补 `line-height: 1.45`；`.sd-install-log-line` `line-height` 1.4→1.5 |
+
+**未改动：** 业务逻辑、API、React 组件、颜色体系、字号体系均未变动。
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 325.01 kB，CSS 82.79 kB。
+
+### UI-R1: 前端字号基线统一 ✅ completed (2026-06-29)
+
+解决 Stardew 管理面板"字太小、长时间看费劲"的问题，建立字号变量体系，全面提升可读性。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 `--sd-font-size-*` 变量块（8个变量），更新按钮/输入框/导航/数据行字号 |
+| `frontend/src/games/stardew/StardewPanel.css` | 批量替换所有过小字号，按角色分层 |
+
+**字号变量体系（新增到 `stardew-theme.css`）：**
+- `--sd-font-size-meta`: 11px — 时间戳、序号、最小徽章
+- `--sd-font-size-small`: 12px — 次级说明、日志正文
+- `--sd-font-size-body`: 13px — 正文、描述、提示信息
+- `--sd-font-size-control`: 13px — 输入框、按钮、选择框
+- `--sd-font-size-section-title`: 14px — 区块标题
+- `--sd-font-size-page-title`: 18px — 页面标题
+- `--sd-font-size-metric`: 18px — 指标大数字
+- `--sd-font-size-log`: 12px — 日志正文
+
+**字号分层处理（`StardewPanel.css`）：**
+- 8.5px/9px/9.5px → 11px（meta 级：时间戳/序号/徽章，不低于 10.5px 要求）
+- 10px → 12px（次级说明/meta 文字）
+- 10.5px/11.5px → 13px（正文/内容描述）
+- 区块标题 `.sd-srv-section-title`/`.sd-settings-section-title`/`.sd-ov-title` → `--sd-font-size-section-title`（14px）
+- 页面标题 `.sd-page-title` → `--sd-font-size-page-title`（18px）
+- 指标数字 `.sd-mc-val` → `--sd-font-size-metric`（18px）
+- OpsRail 容器基准 → 12px
+- 保留 `clamp(11px, 7.6cqi, 13px)` 的导航按钮不动（已是响应式）
+
+**未改动：** 业务逻辑、API、React 组件、颜色体系、图片素材均未变动。
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 325.01 kB，CSS 82.49 kB。
+
 ### FE-R12: InstallPage 首次安装向导页真实化 ✅ completed (2026-06-29)
 
 把 `/instances/stardew/install` 从占位页改造为真实可用的「首次安装向导」页面。
