@@ -298,19 +298,21 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             </div>
 
             {/* 系统健康 */}
-            <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus ? ' sd-mc--error' : ''}`}>
+            <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus === 'warning' ? ' sd-mc--warn' : healthStatus === 'error' ? ' sd-mc--error' : ''}`}>
               <div className="sd-mc-name">系统健康</div>
-              <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : '#c02020' }}>
-                {healthStatus === 'ok' ? '✓ 正常' : healthStatus ? `${errorCount}错误` : '—'}
+              <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : healthStatus === 'warning' ? '#d08010' : healthStatus === 'error' ? '#c02020' : '#2c1a0a' }}>
+                {healthStatus === 'ok' ? '✓ 正常' : healthStatus === 'warning' ? `${warnCount}警告` : healthStatus === 'error' ? `${errorCount}错误` : '—'}
               </div>
               <div className="sd-mc-sub">
                 {healthStatus === 'ok'
                   ? `${okCount}项全部通过`
-                  : healthStatus
-                    ? `${warnCount}警告 · ${okCount}正常`
-                    : dashboardData.healthError
-                      ? '健康检查失败'
-                      : '检查中…'}
+                  : healthStatus === 'warning'
+                    ? `${errorCount === 0 ? '' : `${errorCount}错误 · `}${okCount}正常`
+                    : healthStatus === 'error'
+                      ? `${warnCount}警告 · ${okCount}正常`
+                      : dashboardData.healthError
+                        ? '健康检查失败'
+                        : '检查中…'}
               </div>
             </div>
 
