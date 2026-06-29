@@ -1084,6 +1084,65 @@ npm.cmd run build
 
 ### 下一步注意事项
 
-- **UI-R5（如需）**：Overview 2×2 指标格在 390px 下是否需要单列化可独立评估
+- **UI-R5（已完成）**：Overview 移动端重排和信息层级优化，见下方 UI-R5 节
 - **安装步骤条**：极窄屏下步骤文字可能超出，可在 640px 下隐藏步骤文字只留图标
 - **sd-btn-xs**：当前用于 PlayersPage 禁用待接入按钮，有 `!important` 覆盖，若后续 PlayersPage 真实化时需要重新设计
+
+---
+
+## UI-R5: Overview 首页信息层级与移动端重排优化
+
+### 目标
+
+优化 Overview 页信息层级（状态/操作突出），移动端（390px/320px）双栏改单列，指标格单列，指标卡语义色，状态视觉区分。不改后端/API/数据 hook，不回退 UI-R1/R2/R3/R4 规则。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/StardewPanel.css` | 新增指标卡语义色 modifier（`.sd-mc--ok/warn/error`）；`@media (max-width: 640px)` 块内新增 Overview 移动端规则（横幅自适应、双栏改单列、指标格单列、控制行换行） |
+| `frontend/src/games/stardew/pages/OverviewPage.tsx` | 四个指标卡 `className` 改为动态拼接语义 modifier（`sd-mc--ok/warn/error`）  |
+
+### 改动明细
+
+**StardewPanel.css（全局，约 777 行处）**
+
+新增三个 modifier class，用于指标卡语义着色：
+
+```css
+.sd-mc--ok    { background: rgba(74, 158, 48, 0.07);   border-color: rgba(74, 158, 48, 0.4); }
+.sd-mc--warn  { background: rgba(208, 128, 16, 0.08);  border-color: rgba(208, 128, 16, 0.5); }
+.sd-mc--error { background: rgba(192, 32, 32, 0.07);   border-color: rgba(192, 32, 32, 0.35); }
+```
+
+**StardewPanel.css（640px 媒体查询末尾新增）**
+
+| 规则 | 效果 |
+|------|------|
+| `.sd-ov-banner { height: auto; flex-wrap: wrap; }` | 横幅不固定高度，移动端内容自动换行 |
+| `.sd-ov-body { flex-direction: column; }` | 双栏改单列 |
+| `.sd-ov-left { flex: none; border-right: none; border-bottom: ... }` | 左栏在上，右边框改底边框 |
+| `.sd-ov-right { width: 100%; }` | 右栏占满宽度 |
+| `.sd-metric-grid { grid-template-columns: 1fr; }` | 指标格 2×2 改单列 |
+| `.sd-ctrl-row { flex-wrap: wrap; row-gap: 4px; }` | 控制行邀请码在窄屏可换行 |
+
+**OverviewPage.tsx（指标卡 className 语义化）**
+
+| 指标卡 | 规则 |
+|--------|------|
+| 存档 | `savesError → sd-mc--error`；无激活存档 → `sd-mc--warn` |
+| 模组 | `modsError → sd-mc--error`；需重启 → `sd-mc--warn` |
+| 系统健康 | `ok → sd-mc--ok`；有错误 → `sd-mc--error` |
+| 运行任务 | `hasFailedJob → sd-mc--error` |
+
+### 如何验证
+
+1. `npm run build` 通过（已验证：exit 0，85.10 kB CSS，325.13 kB JS）
+2. 桌面宽度（>640px）：指标格 2×2，双栏布局，正常/错误/警告状态卡背景色有语义差异
+3. 移动端（390px 以下）：指标格单列、双栏变单列（左栏在上/右栏在下）、横幅自动换行
+
+### 下一步注意事项
+
+- **PlayersPage 真实化**：玩家列表 API 待接入，Overview 左栏"在线玩家"区目前显示占位文字
+- **sd-mc--warn（存档卡）**：`saveCount === 0 && !activeSave` 时触发警告色，若服务器首次启动前始终为空可考虑改为仅 `savesError` 时才着色
+- **指标卡值颜色**：系统健康和运行任务的 `sd-mc-val` 仍用 inline style 着色，和 modifier 体系并存，后续可统一

@@ -772,6 +772,21 @@
   color: #8a7060;
 }
 
+.sd-mc--ok {
+  background: rgba(74, 158, 48, 0.07);
+  border-color: rgba(74, 158, 48, 0.4);
+}
+
+.sd-mc--warn {
+  background: rgba(208, 128, 16, 0.08);
+  border-color: rgba(208, 128, 16, 0.5);
+}
+
+.sd-mc--error {
+  background: rgba(192, 32, 32, 0.07);
+  border-color: rgba(192, 32, 32, 0.35);
+}
+
 /* 玩家表头 */
 .sd-player-hd {
   padding: 4px 6px;
@@ -1778,6 +1793,52 @@
   .sd-mods-header-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  /* ── Overview 移动端重排 ── */
+
+  /* 横幅：不固定高度，允许内容换行 */
+  .sd-ov-banner {
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+  }
+
+  .sd-ov-banner-right {
+    padding: 0 8px 4px;
+  }
+
+  /* 双栏改单列 */
+  .sd-ov-body {
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: unset;
+  }
+
+  .sd-ov-left {
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid #dcc898;
+    overflow-y: visible;
+  }
+
+  .sd-ov-right {
+    width: 100%;
+    flex-shrink: 1;
+    overflow-y: visible;
+  }
+
+  /* 指标格：移动端改为单列 */
+  .sd-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* 控制行：邀请码在窄屏可换行 */
+  .sd-ctrl-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
   }
 }
 

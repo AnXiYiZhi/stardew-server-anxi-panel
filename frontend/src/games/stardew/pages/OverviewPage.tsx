@@ -267,7 +267,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
           <div className="sd-ov-title" style={{ padding: '5px 8px 0' }}>服务器状态</div>
           <div className="sd-metric-grid">
             {/* 存档 */}
-            <div className="sd-mc">
+            <div className={`sd-mc${dashboardData.savesError ? ' sd-mc--error' : !activeSave ? ' sd-mc--warn' : ''}`}>
               <div className="sd-mc-name">存档</div>
               <div className="sd-mc-val">{saveCount}</div>
               <div className="sd-mc-sub">
@@ -280,7 +280,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             </div>
 
             {/* 模组 */}
-            <div className="sd-mc">
+            <div className={`sd-mc${dashboardData.modsError ? ' sd-mc--error' : modRestartRequired ? ' sd-mc--warn' : ''}`}>
               <div className="sd-mc-name">
                 模组
                 {modRestartRequired ? (
@@ -298,7 +298,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             </div>
 
             {/* 系统健康 */}
-            <div className="sd-mc">
+            <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus ? ' sd-mc--error' : ''}`}>
               <div className="sd-mc-name">系统健康</div>
               <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : '#c02020' }}>
                 {healthStatus === 'ok' ? '✓ 正常' : healthStatus ? `${errorCount}错误` : '—'}
@@ -315,7 +315,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             </div>
 
             {/* 运行任务 */}
-            <div className="sd-mc">
+            <div className={`sd-mc${hasFailedJob ? ' sd-mc--error' : ''}`}>
               <div className="sd-mc-name">运行任务</div>
               <div
                 className="sd-mc-val"
