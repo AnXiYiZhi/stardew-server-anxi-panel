@@ -176,6 +176,18 @@
   padding: 0;
 }
 
+.sd-btn-green:hover:not(:disabled),
+.sd-btn-tan:hover:not(:disabled),
+.sd-btn-gold:hover:not(:disabled),
+.sd-btn-red:hover:not(:disabled),
+.sd-btn-start:hover:not(:disabled),
+.sd-btn-stop:hover:not(:disabled),
+.sd-btn-restart:hover:not(:disabled),
+.sd-btn-copy:hover:not(:disabled),
+.sd-btn-delete:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
 .sd-btn-green:active:not(:disabled),
 .sd-btn-tan:active:not(:disabled),
 .sd-btn-gold:active:not(:disabled),
@@ -243,21 +255,21 @@
   color: #fff;
 }
 
-/* 删除小按钮 */
+/* 删除/危险小按钮 */
 .sd-btn-delete {
   background-image: url('/assets/stardew/ui/buttons/button_delete_small_tan_blank.png');
   height: 26px;
   min-width: 44px;
   padding: 0 7px;
   font-size: var(--sd-font-size-small);
-  color: #2c1a0a;
+  color: #8b2020;
 }
 
 /* 复制小按钮 */
 .sd-btn-copy {
   background-image: url('/assets/stardew/ui/buttons/button_copy_small_blank.png');
   width: 48px;
-  height: 25px;
+  height: 26px;
   font-size: var(--sd-font-size-small);
   color: #2c1a0a;
 }
