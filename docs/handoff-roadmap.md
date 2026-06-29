@@ -6,6 +6,19 @@
 
 ## Current Context
 
+### UI-R5: Overview 首页信息层级与移动端重排优化 ✅ completed (2026-06-29)
+
+移动端双栏改单列、指标格单列、指标卡语义色（绿/金/红 modifier）、横幅自适应高度、控制行换行。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/StardewPanel.css` | 新增 `.sd-mc--ok/warn/error` 语义色；`@media (max-width: 640px)` 末尾追加 Overview 移动端规则（双栏→单列、指标格单列、横幅自适应、控制行换行） |
+| `frontend/src/games/stardew/pages/OverviewPage.tsx` | 四个指标卡 `className` 动态拼接语义 modifier（存档无激活→warn、读取失败→error；模组需重启→warn；健康OK→ok/有错误→error；有失败任务→error） |
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 325.13 kB，CSS 85.10 kB。
+
 ### UI-R4: 全局按钮体系整理与可点击控件优化 ✅ completed (2026-06-29)
 
 统一全局 PNG 按钮系统，修复 SettingsPage 完全无样式的按钮，强化危险/次操作视觉区分，添加 hover 状态，优化移动端按钮布局。
