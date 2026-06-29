@@ -89,14 +89,14 @@
 }
 
 .sd-topbar-logout-btn {
-  height: 22px;
+  height: 24px;
   padding: 0 9px;
   border: 1px solid #7a5030;
   border-radius: 0;
   background: transparent;
   color: #c8a87a;
   font: inherit;
-  font-size: 10.5px;
+  font-size: 13px;
   cursor: pointer;
   transition: background 100ms ease;
   white-space: nowrap;
@@ -205,12 +205,13 @@
   min-height: calc(100cqi * var(--sd-nav-h) / 105);
   gap: calc(100cqi * var(--sd-nav-gap) / 105);
   padding: 0 calc(100cqi * var(--sd-nav-pad-right) / 105) 0 calc(100cqi * var(--sd-nav-pad-left) / 105);
-  margin: 0 auto;
+  margin: 0;
   background-image: none;
   background-color: transparent;
   image-rendering: pixelated;
   font-size: clamp(11px, 7.6cqi, 13px);
   line-height: 1;
+  align-items: center;
   justify-content: flex-start;
 }
 
@@ -298,6 +299,7 @@
   background-image: var(--sd-img-bg-parchment);
   background-repeat: repeat;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
   min-height: 0;
   display: flex;
@@ -317,7 +319,7 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .sd-opsrail-section {
@@ -327,7 +329,7 @@
 }
 
 .sd-opsrail-heading {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 800;
   color: #5a3c1d;
   text-transform: uppercase;
@@ -345,7 +347,7 @@
 }
 
 .sd-opsrail-job-type {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
   overflow: hidden;
@@ -354,7 +356,7 @@
 }
 
 .sd-opsrail-job-meta {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   display: flex;
   align-items: center;
@@ -362,14 +364,14 @@
 }
 
 .sd-opsrail-empty {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   font-style: italic;
   padding: 2px 0;
 }
 
 .sd-opsrail-link {
-  font-size: 10px;
+  font-size: 12px;
   color: #3a7020;
   cursor: pointer;
   background: none;
@@ -388,8 +390,8 @@
 
 .sd-page {
   display: grid;
-  gap: 14px;
-  padding: 12px;
+  gap: var(--sd-section-gap);
+  padding: var(--sd-page-padding);
 }
 
 .sd-page-header {
@@ -411,14 +413,15 @@
 
 .sd-page-title {
   margin: 0 0 2px;
-  font-size: 13px;
+  font-size: var(--sd-font-size-page-title);
   font-weight: 700;
   color: #2c1a0a;
+  line-height: 1.2;
 }
 
 .sd-page-desc {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   line-height: 1.5;
 }
@@ -442,14 +445,14 @@
 
 .sd-placeholder-card h3 {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
 
 .sd-placeholder-card p {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   line-height: 1.5;
 }
@@ -457,19 +460,19 @@
 /* ── 状态摘要卡片 ─────────────────────────────────────────────────────────── */
 
 .sd-state-card {
-  padding: 7px 10px;
+  padding: var(--sd-card-padding);
   border: 1px solid #dcc898;
   border-radius: 0;
   background: #f8f0d8;
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .sd-state-row {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #2c1a0a;
 }
 
@@ -495,7 +498,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #2c1a0a;
 }
 
@@ -558,7 +561,7 @@
   gap: 12px;
   padding: 0 10px;
   flex: 1;
-  font-size: 10.5px;
+  font-size: 13px;
   flex-wrap: wrap;
   overflow: hidden;
 }
@@ -587,12 +590,12 @@
 .sd-bstat-v {
   font-weight: 700;
   color: #2c1a0a;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 .sd-bstat-l {
   color: #5a3c1d;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 /* 状态徽章 */
@@ -600,7 +603,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 2px;
@@ -662,7 +665,7 @@
 }
 
 .sd-ov-title {
-  font-size: 11px;
+  font-size: var(--sd-font-size-section-title);
   font-weight: 700;
   color: #2c1a0a;
   margin-bottom: 4px;
@@ -708,7 +711,7 @@
 
 .sd-ov-error {
   color: #c02020;
-  font-size: 10.5px;
+  font-size: 13px;
   margin-top: 4px;
 }
 
@@ -753,26 +756,26 @@
 }
 
 .sd-mc-name {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
 }
 
 .sd-mc-val {
-  font-size: 15px;
+  font-size: var(--sd-font-size-metric);
   font-weight: 700;
   color: #2c1a0a;
   line-height: 1.2;
 }
 
 .sd-mc-sub {
-  font-size: 9.5px;
+  font-size: 12px;
   color: #8a7060;
 }
 
 /* 玩家表头 */
 .sd-player-hd {
   padding: 4px 6px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
   background: #dcc898;
@@ -784,7 +787,7 @@
 /* 右侧事件列表 */
 .sd-ev-title {
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   border-bottom: 1px solid #dcc898;
   background: #dcc898;
@@ -801,13 +804,13 @@
   gap: 5px;
   padding: 3px 8px;
   border-bottom: 1px solid #dcc898;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .sd-ev-time {
   color: #8a7060;
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: 11px;
   padding-top: 1px;
 }
 
@@ -828,7 +831,7 @@
   border-bottom: none;
   padding: 4px;
   cursor: pointer;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   flex-shrink: 0;
   width: 100%;
@@ -845,7 +848,7 @@
 }
 
 .sd-pack-title {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   margin-bottom: 4px;
   color: #2c1a0a;
@@ -857,7 +860,7 @@
   gap: 5px;
   padding: 3px 0;
   border-bottom: 1px solid #dcc898;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .sd-pack-name {
@@ -898,7 +901,7 @@
 
 .sd-confirm-dialog p {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   line-height: 1.6;
 }
@@ -908,7 +911,7 @@
   border: 1px solid #c58b2a;
   background: #fff0c2;
   color: #7a3b12;
-  font-size: 10.5px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -922,17 +925,17 @@
 
 /* 每个功能区块：带边框和标题的卡片 */
 .sd-srv-section {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid #dcc898;
   background: #f8f0d8;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 /* 区块标题行（可包含内联按钮） */
 .sd-srv-section-title {
-  font-size: 11px;
+  font-size: var(--sd-font-size-section-title);
   font-weight: 800;
   color: #2c1a0a;
   display: flex;
@@ -944,7 +947,7 @@
 
 /* 空态/占位文字 */
 .sd-srv-empty {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   font-style: italic;
   padding: 2px 0;
@@ -952,7 +955,7 @@
 
 /* 次级提示文字 */
 .sd-srv-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   display: flex;
   align-items: center;
@@ -961,7 +964,7 @@
 
 /* 命令执行结果 */
 .sd-srv-result {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #1f5f1e;
   background: rgba(74, 158, 48, 0.08);
   border: 1px solid #b0d890;
@@ -971,7 +974,7 @@
 /* 预格式化命令输出 */
 .sd-srv-result-pre {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 10px;
+  font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 140px;
@@ -985,7 +988,7 @@
   align-items: center;
   margin-left: 5px;
   padding: 1px 4px;
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 700;
   color: #8a7060;
   background: rgba(138, 112, 96, 0.12);
@@ -1021,7 +1024,7 @@
 }
 
 .sd-saves-running-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #7a4a10;
   background: var(--sd-gold-light);
   border: 1px solid var(--sd-gold-border);
@@ -1032,7 +1035,7 @@
 }
 
 .sd-saves-active-hint {
-  font-size: 10.5px;
+  font-size: 13px;
   color: var(--sd-green-text);
   background: var(--sd-green-bg);
   border: 1px solid var(--sd-green);
@@ -1043,7 +1046,7 @@
 }
 
 .sd-saves-error {
-  font-size: 10.5px;
+  font-size: 13px;
   color: var(--sd-red-text);
   background: var(--sd-red-bg);
   border: 1px solid var(--sd-red);
@@ -1052,11 +1055,11 @@
 
 .sd-saves-list {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .sd-save-card {
-  padding: 7px 10px;
+  padding: 9px 12px;
   border: 1px solid #dcc898;
   background: #f8f0d8;
   display: flex;
@@ -1080,7 +1083,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
@@ -1091,14 +1094,14 @@
   padding: 0 5px;
   background: var(--sd-green);
   color: #fff;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   border-radius: 1px;
   flex-shrink: 0;
 }
 
 .sd-save-card-error {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--sd-red-text);
   background: var(--sd-red-bg);
   border: 1px solid var(--sd-red);
@@ -1109,8 +1112,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 2px 10px;
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
+  line-height: 1.45;
 }
 
 .sd-save-meta-muted {
@@ -1142,7 +1146,7 @@
 }
 
 .sd-saves-empty-hint {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   line-height: 1.6;
   margin: 0;
@@ -1211,7 +1215,7 @@
 .sd-saves-preview-table {
   display: grid;
   gap: 4px;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 .sd-saves-preview-row {
@@ -1229,7 +1233,7 @@
 }
 
 .sd-saves-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   line-height: 1.5;
   margin: 0;
@@ -1275,7 +1279,7 @@
 }
 
 .sd-jobs-list-row {
-  padding: 7px 9px;
+  padding: 8px 10px;
   border-bottom: 1px solid #e8dab8;
   cursor: pointer;
   background: none;
@@ -1306,7 +1310,7 @@
 }
 
 .sd-jobs-list-row-type {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
   overflow: hidden;
@@ -1315,7 +1319,7 @@
 }
 
 .sd-jobs-list-row-date {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #7a5040;
   margin-top: 2px;
   white-space: nowrap;
@@ -1351,7 +1355,7 @@
 }
 
 .sd-jobs-detail-id {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #7a5040;
   font-family: var(--sd-font-mono, monospace);
   margin-top: 2px;
@@ -1361,7 +1365,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
 }
 
@@ -1381,7 +1385,7 @@
   padding: 5px 8px;
   background: var(--sd-red-bg, #ffe0d6);
   border: 1px solid var(--sd-red, #b54837);
-  font-size: 10.5px;
+  font-size: 13px;
   color: var(--sd-red-text, #681111);
 }
 
@@ -1401,7 +1405,7 @@
   padding: 4px 8px;
   background: rgba(200, 168, 122, 0.25);
   border: 1px solid #c8a870;
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   display: flex;
   align-items: center;
@@ -1436,7 +1440,7 @@
 .sd-jobs-pull-header {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #2c1a0a;
 }
 
@@ -1465,7 +1469,7 @@
 }
 
 .sd-jobs-progress-pct {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   min-width: 30px;
   text-align: right;
@@ -1480,7 +1484,7 @@
   border: 1px solid #3d2510;
   padding: 8px;
   font-family: var(--sd-font-mono, 'Consolas', 'Monaco', monospace);
-  font-size: 10.5px;
+  font-size: var(--sd-font-size-log);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -1500,14 +1504,14 @@
 .sd-jobs-log-seq {
   color: #4a3c28;
   text-align: right;
-  font-size: 9.5px;
+  font-size: 11px;
   padding-top: 1px;
   flex-shrink: 0;
 }
 
 .sd-jobs-log-level {
   font-weight: 700;
-  font-size: 9.5px;
+  font-size: 11px;
   padding-top: 1px;
 }
 
@@ -1525,7 +1529,7 @@
 .sd-jobs-log-empty {
   color: #4a3c28;
   font-style: italic;
-  font-size: 10px;
+  font-size: 12px;
   padding: 4px 0;
 }
 
@@ -1538,7 +1542,7 @@
   display: grid;
   gap: 8px;
   color: #5a3c1d;
-  font-size: 10.5px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -1552,14 +1556,14 @@
   padding: 14px;
   text-align: center;
   color: #7a5040;
-  font-size: 11px;
+  font-size: 13px;
   font-style: italic;
 }
 
 .sd-jobs-select-hint {
   text-align: center;
   color: #8a7060;
-  font-size: 10.5px;
+  font-size: 13px;
   font-style: italic;
   padding: 14px;
   flex: 1;
@@ -1571,7 +1575,7 @@
 /* 任务状态徽章 */
 .sd-jobs-status {
   display: inline-block;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   padding: 1px 5px;
   white-space: nowrap;
@@ -1639,6 +1643,7 @@
   .sd-shell {
     grid-template-rows: 40px 36px 1fr;
     grid-template-columns: 1fr;
+    overflow-x: hidden; /* 防止子元素撑出页面宽度 */
   }
 
   .sd-topbar {
@@ -1662,13 +1667,65 @@
     margin: 2px 2px;
   }
 
-  .sd-nav-item span {
+  /* 覆盖桌面 .sd-sidebar .sd-nav-item 的高特异性规则 */
+  .sd-sidebar .sd-nav-item span {
     display: none;
   }
 
-  .sd-nav-item {
+  /* 移动端导航：只显示图标，充满侧栏高度，确保可触控 */
+  /* height: 30px = 侧栏行高 36px − 上下 padding 各 3px；不用 100% 因为 sidebar 无显式 height */
+  .sd-sidebar .sd-nav-item {
     width: auto;
-    padding: 4px 6px;
+    min-width: 36px;
+    height: 30px;
+    min-height: 0;
+    padding: 0 8px;
+    margin: 0;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  /* active 规则特异性更高（0-3-0），需单独覆盖，否则仍用 cqi 桌面尺寸 */
+  .sd-sidebar .sd-nav-item.active,
+  .sd-sidebar .sd-nav-item[aria-current="page"] {
+    width: auto;
+    min-width: 36px;
+    height: 30px;
+    min-height: 0;
+    background-image: none;
+    background-size: auto;
+    background-color: rgba(255, 230, 182, 0.12);
+  }
+
+  /* saves active 额外特异性（0-4-0），同样需要独立覆盖背景图 */
+  .sd-sidebar .sd-nav-item[data-route="saves"].active,
+  .sd-sidebar .sd-nav-item[data-route="saves"][aria-current="page"] {
+    background-image: none;
+  }
+
+  /* 顶栏：仅保留 logo、状态点/状态文字、登出按钮 */
+  .sd-topbar-name,
+  .sd-topbar-version,
+  .sd-topbar-save,
+  .sd-topbar-username,
+  .sd-topbar-user .sd-tag {
+    display: none;
+  }
+
+  /* 安装成功卡：窄屏纵向堆叠，按钮撑满卡片宽度 */
+  .sd-install-complete-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .sd-install-complete-body {
+    width: 100%;
+  }
+
+  .sd-install-complete-card .sd-btn-green,
+  .sd-install-complete-card .sd-btn-tan {
+    align-self: stretch;
   }
 
   .sd-opsrail {
@@ -1694,14 +1751,14 @@
 }
 
 .sd-players-stat-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 .sd-players-stat-value {
-  font-size: 11.5px;
+  font-size: 13px;
   color: #2c1a0a;
   font-weight: 700;
   display: flex;
@@ -1728,7 +1785,7 @@
 }
 
 .sd-players-invite-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1747,14 +1804,14 @@
 
 .sd-players-invite-empty,
 .sd-players-invite-loading {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   font-style: italic;
   flex: 1;
 }
 
 .sd-players-invite-error {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #b94040;
   flex: 1;
 }
@@ -1762,7 +1819,7 @@
 /* 服务器 info 命令终端输出 */
 .sd-players-info-terminal {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
@@ -1777,7 +1834,7 @@
 }
 
 .sd-players-info-error {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #b94040;
   background: rgba(185, 64, 64, 0.08);
   border: 1px solid rgba(185, 64, 64, 0.25);
@@ -1809,13 +1866,13 @@
 }
 
 .sd-players-empty-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #5a3c1d;
 }
 
 .sd-players-empty-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   max-width: 340px;
   line-height: 1.5;
@@ -1836,7 +1893,7 @@
   background: rgba(220, 200, 152, 0.35);
   border-bottom: 1px solid #dcc898;
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: #5a3c1d;
   text-transform: uppercase;
@@ -1845,7 +1902,7 @@
 
 .sd-players-table-empty-row {
   padding: 10px 8px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   font-style: italic;
   text-align: center;
@@ -1867,7 +1924,7 @@
 /* 超小按钮 */
 .sd-btn-xs {
   padding: 1px 6px !important;
-  font-size: 9.5px !important;
+  font-size: 11px !important;
   min-height: unset !important;
   height: 20px !important;
   line-height: 1 !important;
@@ -1905,7 +1962,7 @@
   background: rgba(200, 160, 40, 0.15);
   border: 1px solid #c8a028;
   color: #7a5c10;
-  font-size: 10.5px;
+  font-size: 13px;
   padding: 5px 10px;
   border-radius: 2px;
   margin-bottom: 8px;
@@ -1916,7 +1973,7 @@
   background: rgba(40, 140, 60, 0.12);
   border: 1px solid #4a9a50;
   color: #1a5c20;
-  font-size: 10.5px;
+  font-size: 13px;
   padding: 5px 10px;
   border-radius: 2px;
   margin-bottom: 8px;
@@ -1927,7 +1984,7 @@
   background: rgba(200, 140, 20, 0.12);
   border: 1px solid #c87820;
   color: #7a4a10;
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   padding: 5px 10px;
   border-radius: 2px;
@@ -1939,7 +1996,7 @@
   background: rgba(185, 64, 64, 0.08);
   border: 1px solid rgba(185, 64, 64, 0.35);
   color: #b94040;
-  font-size: 10.5px;
+  font-size: 13px;
   padding: 5px 10px;
   border-radius: 2px;
   margin-bottom: 8px;
@@ -1970,7 +2027,7 @@
 }
 
 .sd-mods-stat-label {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #8a7060;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -1991,7 +2048,7 @@
 
 /* 区块标题 */
 .sd-mods-section-title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: #5a3c1d;
   text-transform: uppercase;
@@ -2003,7 +2060,7 @@
 }
 
 .sd-mods-loading-tag {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 400;
   color: #8a7060;
   text-transform: none;
@@ -2012,7 +2069,7 @@
 }
 
 .sd-mods-pending-badge {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: #7a5c30;
   background: rgba(200, 160, 40, 0.18);
@@ -2027,7 +2084,7 @@
 .sd-mods-list {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 7px;
   margin-bottom: 4px;
 }
 
@@ -2036,7 +2093,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 9px 12px;
   background: rgba(240, 225, 185, 0.2);
   border: 1px solid #dcc898;
   border-radius: 2px;
@@ -2061,19 +2118,19 @@
 }
 
 .sd-mods-card-name {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
 
 .sd-mods-card-version {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #7a5c30;
   font-weight: 400;
 }
 
 .sd-mods-parse-error {
-  font-size: 10px;
+  font-size: 12px;
   color: #b94040;
   background: rgba(185, 64, 64, 0.08);
   border: 1px solid rgba(185, 64, 64, 0.25);
@@ -2090,7 +2147,7 @@
 }
 
 .sd-mods-meta-item {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   display: flex;
   gap: 3px;
@@ -2098,14 +2155,14 @@
 }
 
 .sd-mods-meta-label {
-  font-size: 9px;
+  font-size: 11px;
   color: #8a7060;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 .sd-mods-meta-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #7a6050;
   width: 100%;
   margin-top: 1px;
@@ -2141,13 +2198,13 @@
 }
 
 .sd-mods-empty-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #5a3c1d;
 }
 
 .sd-mods-empty-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   max-width: 360px;
   line-height: 1.5;
@@ -2157,7 +2214,7 @@
 .sd-mods-pending-grid {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 7px;
   margin-bottom: 4px;
 }
 
@@ -2172,7 +2229,7 @@
 }
 
 .sd-mods-pending-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   font-style: italic;
 }
@@ -2213,7 +2270,7 @@
 }
 
 .sd-mods-upload-hint {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   line-height: 1.5;
   margin: 0;
@@ -2223,13 +2280,13 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #3a2510;
 }
 
 .sd-mods-upload-input {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #2c1a0a;
   border: 1px solid #c8a870;
   background: rgba(255, 248, 220, 0.8);
@@ -2240,7 +2297,7 @@
 }
 
 .sd-mods-upload-filename {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   background: rgba(200, 168, 100, 0.15);
   border: 1px solid #dcc898;
@@ -2283,7 +2340,7 @@
 
 /* 加载中 */
 .sd-diag-loading {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   font-style: italic;
   padding: 8px 0;
@@ -2296,7 +2353,7 @@
   background: rgba(185, 64, 64, 0.08);
   border: 1px solid rgba(185, 64, 64, 0.35);
   color: #b94040;
-  font-size: 10.5px;
+  font-size: 13px;
   padding: 5px 10px;
   border-radius: 2px;
   margin-bottom: 8px;
@@ -2381,7 +2438,7 @@
 }
 
 .sd-diag-count {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2391,7 +2448,7 @@
 
 /* 区块标题 */
 .sd-diag-section-title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: #5a3c1d;
   text-transform: uppercase;
@@ -2403,7 +2460,7 @@
 }
 
 .sd-diag-pending-badge {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: #7a5c30;
   background: rgba(200, 160, 40, 0.18);
@@ -2426,9 +2483,9 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 9px;
+  padding: 7px 10px;
   border-radius: 2px;
-  font-size: 10.5px;
+  font-size: 13px;
   border: 1px solid transparent;
 }
 
@@ -2465,7 +2522,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a7a40;
   padding: 7px 10px;
   background: rgba(40, 140, 60, 0.07);
@@ -2509,13 +2566,13 @@
 }
 
 .sd-diag-alert-name {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
 
 .sd-diag-alert-msg {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   line-height: 1.5;
 }
@@ -2529,7 +2586,7 @@
 }
 
 .sd-diag-resource-pending-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   font-style: italic;
   text-align: center;
@@ -2542,7 +2599,7 @@
 .sd-settings-page {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sd-section-gap);
 }
 
 /* 区块 */
@@ -2554,7 +2611,7 @@
 }
 
 .sd-settings-section-title {
-  font-size: 11px;
+  font-size: var(--sd-font-size-section-title);
   font-weight: 700;
   color: #4a2c0a;
   margin: 0 0 8px 0;
@@ -2584,7 +2641,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 .sd-settings-account-actions {
@@ -2602,19 +2659,19 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 /* ── 通用标签/值 ── */
 .sd-settings-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #7a5c30;
   min-width: 62px;
   flex-shrink: 0;
 }
 
 .sd-settings-value {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #2c1a0a;
 }
 
@@ -2624,19 +2681,19 @@
 
 .sd-settings-mono {
   font-family: 'Courier New', Courier, monospace;
-  font-size: 10px;
+  font-size: 12px;
   color: #3a2a10;
 }
 
 .sd-settings-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   font-style: italic;
   padding: 4px 0;
 }
 
 .sd-settings-hint-inline {
-  font-size: 10px;
+  font-size: 12px;
   color: #7a5c30;
 }
 
@@ -2644,7 +2701,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #7a5c30;
   padding: 4px 0;
 }
@@ -2654,7 +2711,7 @@
   border: 1px solid rgba(180, 40, 20, 0.35);
   border-radius: 2px;
   padding: 5px 8px;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8b1a0a;
   margin-bottom: 7px;
   display: flex;
@@ -2673,7 +2730,7 @@
 }
 
 .sd-settings-form-title {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #4a2c0a;
   margin-bottom: 7px;
@@ -2687,7 +2744,7 @@
 }
 
 .sd-settings-form-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #7a5c30;
   min-width: 40px;
   flex-shrink: 0;
@@ -2711,11 +2768,11 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 5px 8px;
+  padding: 7px 10px;
   background: rgba(255, 248, 220, 0.6);
   border: 1px solid rgba(180, 140, 80, 0.25);
   border-radius: 2px;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 .sd-settings-user-row.sd-settings-user-inactive {
@@ -2730,7 +2787,7 @@
 }
 
 .sd-settings-user-login {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #8a7060;
   flex: 1;
 }
@@ -2754,14 +2811,14 @@
   display: grid;
   grid-template-columns: 140px 80px 120px 1fr 100px;
   gap: 0;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .sd-settings-audit-head {
   background: rgba(180, 140, 80, 0.18);
   font-weight: 700;
   color: #5a3c1d;
-  padding: 4px 6px;
+  padding: 5px 8px;
   border-bottom: 1px solid rgba(180, 140, 80, 0.25);
 }
 
@@ -2770,7 +2827,7 @@
 }
 
 .sd-settings-audit-row {
-  padding: 4px 6px;
+  padding: 5px 8px;
   color: #2c1a0a;
   border-bottom: 1px solid rgba(180, 140, 80, 0.12);
 }
@@ -2818,21 +2875,21 @@
 }
 
 .sd-settings-security-item-title {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
   margin-bottom: 2px;
 }
 
 .sd-settings-security-item-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   line-height: 1.5;
 }
 
 .sd-settings-code {
   font-family: 'Courier New', Courier, monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   background: rgba(100, 60, 20, 0.1);
   padding: 0 3px;
   border-radius: 1px;
@@ -2841,7 +2898,7 @@
 
 /* ── 待接入设置 ── */
 .sd-settings-pending-badge {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
   color: #8a6030;
   background: rgba(200, 168, 100, 0.2);
@@ -2874,13 +2931,13 @@
 }
 
 .sd-settings-pending-item-label {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #4a2c0a;
 }
 
 .sd-settings-pending-item-desc {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #7a5c30;
 }
 
@@ -2888,7 +2945,7 @@
 
 .sd-install-phase-tag {
   font-family: monospace;
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   background: rgba(90, 60, 29, 0.08);
   padding: 1px 5px;
@@ -2897,7 +2954,7 @@
 }
 
 .sd-install-state-msg {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   flex: 1;
   min-width: 0;
@@ -2931,14 +2988,14 @@
 }
 
 .sd-install-complete-title {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c6818;
   margin-bottom: 2px;
 }
 
 .sd-install-complete-desc {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #3a8020;
 }
 
@@ -2949,7 +3006,7 @@
   border-left: 3px solid #c8a87a;
   background: #f8f0d8;
   color: #5a3c1d;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 .sd-install-error-bar {
@@ -2958,7 +3015,7 @@
   border: 1px solid #c02020;
   border-left: 3px solid #c02020;
   color: #8b0000;
-  font-size: 10.5px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -2968,7 +3025,7 @@
   border: 1px solid #d08010;
   border-left: 3px solid #d08010;
   color: #7a4800;
-  font-size: 10.5px;
+  font-size: 13px;
 }
 
 /* ── 操作按钮行 ──────────────────────────────────────────────────────────────── */
@@ -2997,7 +3054,7 @@
 }
 
 .sd-install-form-hint {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   margin: 0;
   line-height: 1.5;
@@ -3009,7 +3066,7 @@
 }
 
 .sd-install-field-label {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #3a2210;
 }
@@ -3020,7 +3077,7 @@
   background: #fff8ee;
   color: #2c1a0a;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--sd-font-size-control);
   outline: none;
   border-radius: 0;
   width: 100%;
@@ -3038,7 +3095,7 @@
   background: #fff8ee;
   color: #2c1a0a;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--sd-font-size-control);
   border-radius: 0;
   width: 100%;
   box-sizing: border-box;
@@ -3055,7 +3112,7 @@
 }
 
 .sd-install-version-warn {
-  font-size: 10px;
+  font-size: 12px;
   color: #b06000;
   margin: 2px 0 0;
 }
@@ -3079,7 +3136,7 @@
 }
 
 .sd-install-section-title {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 800;
   color: #5a3c1d;
   text-transform: uppercase;
@@ -3103,7 +3160,7 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px 3px 0;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   flex-shrink: 0;
 }
@@ -3128,7 +3185,7 @@
 }
 
 .sd-install-progress-label {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   line-height: 1.5;
 }
@@ -3158,19 +3215,19 @@
 }
 
 .sd-install-pull-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
 
 .sd-install-pull-sub {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   margin-top: 2px;
 }
 
 .sd-install-pull-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   margin: 0;
 }
@@ -3204,14 +3261,14 @@
 }
 
 .sd-install-prog-pct {
-  font-size: 10px;
+  font-size: 12px;
   color: #5a3c1d;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .sd-install-waiting {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   font-style: italic;
 }
@@ -3227,13 +3284,13 @@
 }
 
 .sd-install-dl-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #7a4800;
 }
 
 .sd-install-dl-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
 }
 
@@ -3253,13 +3310,13 @@
 }
 
 .sd-install-guard-title {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #2c1a0a;
 }
 
 .sd-install-guard-desc {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #5a3c1d;
   margin: 0;
   line-height: 1.5;
@@ -3291,13 +3348,13 @@
   padding: 7px 10px;
   background: rgba(208, 128, 16, 0.08);
   border: 1px solid #d08010;
-  font-size: 10.5px;
+  font-size: 13px;
   color: #7a4800;
   line-height: 1.5;
 }
 
 .sd-install-guard-error {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #c02020;
   padding: 3px 0;
 }
@@ -3360,7 +3417,7 @@
   background: #1e1209;
   color: #b0c8a0;
   font-family: monospace;
-  font-size: 10.5px;
+  font-size: var(--sd-font-size-log);
   padding: 8px 10px;
   max-height: 220px;
   overflow-y: auto;
@@ -3373,7 +3430,7 @@
 .sd-install-log-line {
   display: flex;
   gap: 6px;
-  line-height: 1.4;
+  line-height: 1.5;
   word-break: break-all;
 }
 
@@ -3382,14 +3439,14 @@
   min-width: 32px;
   text-align: right;
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: 11px;
   padding-top: 2px;
 }
 
 .sd-install-log-level {
   min-width: 38px;
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: 11px;
   padding-top: 2px;
   text-transform: uppercase;
   font-weight: 700;
@@ -3409,14 +3466,14 @@
 .sd-install-log-error { color: #ff8080; }
 
 .sd-install-log-empty {
-  font-size: 10.5px;
+  font-size: 13px;
   color: #8a7060;
   font-style: italic;
   padding: 4px 0;
 }
 
 .sd-install-log-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #8a7060;
   margin: 0;
 }
