@@ -33,6 +33,7 @@ type DockerService interface {
 	DockerVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error)
 	ComposeVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error)
 	ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
+	ComposeStats(ctx context.Context, dir string) (paneldocker.ComposeStatsResult, error)
 	ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
 }
 
@@ -142,6 +143,8 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleUsers(w, r)
 	case "/api/jobs":
 		s.handleJobs(w, r)
+	case "/api/jobs/error-logs":
+		s.handleClearJobErrorLogs(w, r)
 	case "/api/jobs/test":
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

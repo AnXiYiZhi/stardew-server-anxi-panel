@@ -8,6 +8,10 @@ import (
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 )
 
+// globalWorkDir returns a directory suitable for docker commands that don't
+// need a specific project directory (e.g. "docker version").
+func globalWorkDir() string { return os.TempDir() }
+
 // HealthCheck represents a single diagnostic check result.
 type HealthCheck struct {
 	Name    string `json:"name"`
@@ -80,12 +84,12 @@ func (s *server) handleHealthDiagnostics(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *server) checkDockerDaemon(r *http.Request) bool {
-	result, err := s.docker.DockerVersion(r.Context(), "")
+	result, err := s.docker.DockerVersion(r.Context(), globalWorkDir())
 	return err == nil && result.ExitCode == 0
 }
 
 func (s *server) checkDockerCompose(r *http.Request) bool {
-	result, err := s.docker.ComposeVersion(r.Context(), "")
+	result, err := s.docker.ComposeVersion(r.Context(), globalWorkDir())
 	return err == nil && result.ExitCode == 0
 }
 

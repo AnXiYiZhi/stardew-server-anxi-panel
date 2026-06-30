@@ -24,7 +24,6 @@ export function LoginPanel({
   const [showPwd, setShowPwd] = useState(false)
   return (
     <form className="form-grid" onSubmit={onSubmit} autoComplete="on">
-      <p className="summary">请输入面板账号登录。登录状态会通过 HttpOnly Cookie 保存。</p>
       <Field label="用户名">
         <input value={form.username} autoComplete="username" required
           onChange={(e) => onChange({ ...form, username: e.target.value })} />

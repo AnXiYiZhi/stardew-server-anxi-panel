@@ -116,6 +116,97 @@ func TestAdminCanClearJobCenterWhenNoActiveJobs(t *testing.T) {
 	}
 }
 
+func TestAdminCanClearJobErrorLogs(t *testing.T) {
+	handler, closeStore := newTestHandler(t)
+	defer closeStore()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	created, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "player",
+		"password": "player-password",
+		"role":     "user",
+	}, adminCookie)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create user returned %d: %s", created.Code, created.Body.String())
+	}
+	login, userCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{
+		"username": "player",
+		"password": "player-password",
+	}, nil)
+	if login.Code != http.StatusOK {
+		t.Fatalf("player login returned %d: %s", login.Code, login.Body.String())
+	}
+
+	createdJob, _ := doJSON(t, handler, http.MethodPost, "/api/jobs/test-fail", nil, adminCookie)
+	if createdJob.Code != http.StatusAccepted {
+		t.Fatalf("create test-fail job returned %d: %s", createdJob.Code, createdJob.Body.String())
+	}
+	jobID := decodeJobID(t, createdJob.Body.Bytes())
+	waitForHTTPJobStatus(t, handler, adminCookie, jobID, "failed")
+
+	blocked, _ := doJSON(t, handler, http.MethodDelete, "/api/jobs/error-logs", nil, userCookie)
+	if blocked.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user clear error logs returned %d", blocked.Code)
+	}
+
+	cleared, _ := doJSON(t, handler, http.MethodDelete, "/api/jobs/error-logs", nil, adminCookie)
+	if cleared.Code != http.StatusOK {
+		t.Fatalf("clear error logs returned %d: %s", cleared.Code, cleared.Body.String())
+	}
+	var clearPayload struct {
+		Deleted         int64 `json:"deleted"`
+		MessagesCleared int64 `json:"messagesCleared"`
+	}
+	if err := json.Unmarshal(cleared.Body.Bytes(), &clearPayload); err != nil {
+		t.Fatalf("decode clear error logs response: %v", err)
+	}
+	if clearPayload.Deleted == 0 || clearPayload.MessagesCleared == 0 {
+		t.Fatalf("expected deleted logs and cleared messages, got %#v", clearPayload)
+	}
+
+	detail, _ := doJSON(t, handler, http.MethodGet, "/api/jobs/"+jobID, nil, adminCookie)
+	if detail.Code != http.StatusOK {
+		t.Fatalf("job detail returned %d: %s", detail.Code, detail.Body.String())
+	}
+	var detailPayload struct {
+		Job struct {
+			ErrorMessage *string `json:"errorMessage"`
+		} `json:"job"`
+	}
+	if err := json.Unmarshal(detail.Body.Bytes(), &detailPayload); err != nil {
+		t.Fatalf("decode job detail: %v", err)
+	}
+	if detailPayload.Job.ErrorMessage != nil {
+		t.Fatalf("expected errorMessage to be cleared, got %q", *detailPayload.Job.ErrorMessage)
+	}
+
+	logs, _ := doJSON(t, handler, http.MethodGet, "/api/jobs/"+jobID+"/logs", nil, adminCookie)
+	if logs.Code != http.StatusOK {
+		t.Fatalf("job logs returned %d: %s", logs.Code, logs.Body.String())
+	}
+	var logsPayload struct {
+		Logs []struct {
+			Level string `json:"level"`
+		} `json:"logs"`
+	}
+	if err := json.Unmarshal(logs.Body.Bytes(), &logsPayload); err != nil {
+		t.Fatalf("decode job logs: %v", err)
+	}
+	for _, logLine := range logsPayload.Logs {
+		if logLine.Level == "error" {
+			t.Fatal("expected error log lines to be cleared")
+		}
+	}
+}
+
 func TestStardewStateRequiresLogin(t *testing.T) {
 	handler, closeStore := newTestHandler(t)
 	defer closeStore()

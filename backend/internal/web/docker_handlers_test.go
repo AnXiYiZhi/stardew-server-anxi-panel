@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +19,8 @@ type fakeDockerService struct {
 	composeErr    error
 	psResult      paneldocker.ComposePsResult
 	psErr         error
+	statsResult   paneldocker.ComposeStatsResult
+	statsErr      error
 	logsResult    paneldocker.CommandResult
 	logsErr       error
 }
@@ -32,6 +35,10 @@ func (f fakeDockerService) ComposeVersion(ctx context.Context, workDir string) (
 
 func (f fakeDockerService) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
 	return f.psResult, f.psErr
+}
+
+func (f fakeDockerService) ComposeStats(ctx context.Context, dir string) (paneldocker.ComposeStatsResult, error) {
+	return f.statsResult, f.statsErr
 }
 
 func (f fakeDockerService) ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
@@ -118,6 +125,124 @@ func TestDockerLogsValidatesQuery(t *testing.T) {
 	response, _ := doJSON(t, handler, http.MethodGet, "/api/docker/logs?tail=999999", nil, adminCookie)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("docker logs invalid tail returned %d", response.Code)
+	}
+}
+
+func TestInstanceMetricsReturnsStatsAndDisk(t *testing.T) {
+	fake := fakeDockerService{statsResult: paneldocker.ComposeStatsResult{
+		Result: paneldocker.CommandResult{ExitCode: 0, Stdout: "{}"},
+		Services: []paneldocker.ComposeServiceStats{{
+			Name:             "demo-server-1",
+			Service:          "server",
+			CPUPerc:          125.4,
+			MemPerc:          45.6,
+			MemUsedBytes:     512,
+			MemLimitBytes:    1024,
+			RawCPUPerc:       "125.4%",
+			RawMemPerc:       "45.6%",
+			RawMemUsedBytes:  "512B",
+			RawMemLimitBytes: "1KiB",
+		}},
+	}}
+	handler, dataDir, closeStore := newDockerTestHandler(t, fake)
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+	prepareComposeProject(t, dataDir)
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/metrics", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("metrics returned %d: %s", response.Code, response.Body.String())
+	}
+	var body resourceMetricsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode metrics response: %v", err)
+	}
+	if body.Sample.CPUPercent == nil || *body.Sample.CPUPercent != 125.4 {
+		t.Fatalf("metrics response should preserve raw CPU percent above 100: %s", response.Body.String())
+	}
+	if body.Sample.MemoryPercent == nil || *body.Sample.MemoryPercent != 45.6 {
+		t.Fatalf("metrics response did not include memory stats: %s", response.Body.String())
+	}
+	if body.Sample.ContainerRunning != true || body.Service != "server" {
+		t.Fatalf("metrics response did not mark server stats correctly: %+v", body)
+	}
+}
+
+func TestInstanceMetricsDoesNotFallbackToNonServerStats(t *testing.T) {
+	fake := fakeDockerService{statsResult: paneldocker.ComposeStatsResult{
+		Result: paneldocker.CommandResult{ExitCode: 0, Stdout: "{}"},
+		Services: []paneldocker.ComposeServiceStats{{
+			Name:         "demo-steam-auth-1",
+			Service:      "steam-auth",
+			CPUPerc:      88,
+			MemPerc:      12,
+			MemUsedBytes: 128,
+		}},
+	}}
+	handler, dataDir, closeStore := newDockerTestHandler(t, fake)
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+	prepareComposeProject(t, dataDir)
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/metrics", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("metrics returned %d: %s", response.Code, response.Body.String())
+	}
+	var body resourceMetricsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode metrics response: %v", err)
+	}
+	if body.Sample.ContainerRunning {
+		t.Fatalf("metrics should not mark server running from non-server stats: %+v", body)
+	}
+	if body.Sample.CPUPercent != nil || body.Sample.MemoryPercent != nil {
+		t.Fatalf("metrics should not expose non-server CPU/memory stats: %+v", body.Sample)
+	}
+	if body.Service != "server" {
+		t.Fatalf("metrics response should keep server service label when server stats are absent: %+v", body)
+	}
+}
+
+func TestInstanceVNCConfigReturnsDefaultWhenEnvMissing(t *testing.T) {
+	handler, _, closeStore := newDockerTestHandler(t, fakeDockerService{})
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/config/vnc-port", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("vnc config returned %d: %s", response.Code, response.Body.String())
+	}
+	var body instanceVNCConfigResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode vnc config response: %v", err)
+	}
+	if body.VNCPort != "5800" {
+		t.Fatalf("default vnc port = %q, want 5800", body.VNCPort)
+	}
+}
+
+func TestInstanceVNCConfigUpdatesPort(t *testing.T) {
+	handler, _, closeStore := newDockerTestHandler(t, fakeDockerService{})
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+
+	updated, _ := doJSON(t, handler, http.MethodPut, "/api/instances/stardew/config/vnc-port", map[string]string{
+		"port": "5801",
+	}, adminCookie)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("vnc config update returned %d: %s", updated.Code, updated.Body.String())
+	}
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/config/vnc-port", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("vnc config returned %d: %s", response.Code, response.Body.String())
+	}
+	var body instanceVNCConfigResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode vnc config response: %v", err)
+	}
+	if body.VNCPort != "5801" {
+		t.Fatalf("updated vnc port = %q, want 5801", body.VNCPort)
 	}
 }
 

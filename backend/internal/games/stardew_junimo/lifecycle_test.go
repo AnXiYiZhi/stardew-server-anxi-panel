@@ -47,3 +47,35 @@ func TestMergeInviteCodeInPayload_EmptyExisting(t *testing.T) {
 		t.Errorf("invite_code not in payload: %s", result)
 	}
 }
+
+func TestLooksLikePortBindFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{
+			name: "windows reserved port",
+			text: "ports are not available: exposing port TCP 0.0.0.0:5800 -> 127.0.0.1:0: listen tcp 0.0.0.0:5800: bind: An attempt was made to access a socket in a way forbidden by its access permissions.",
+			want: true,
+		},
+		{
+			name: "already allocated",
+			text: "Bind for 0.0.0.0:5800 failed: port is already allocated",
+			want: true,
+		},
+		{
+			name: "non port docker error",
+			text: "docker compose up: docker command failed",
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := looksLikePortBindFailure(tc.text)
+			if got != tc.want {
+				t.Fatalf("looksLikePortBindFailure() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

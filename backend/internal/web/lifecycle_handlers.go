@@ -441,8 +441,13 @@ func (s *server) handleSaveDelete(w http.ResponseWriter, r *http.Request, instan
 	if !ok {
 		return
 	}
-	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	instance, ok = s.reconcileInstanceState(w, r, instance)
 	if !ok {
+		return
+	}
+	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
+	if activeSaveName == saveName && (instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting) {
+		writeError(w, http.StatusConflict, "active_save_running", "当前启动存档正在被服务器使用，请先停止服务器再删除。")
 		return
 	}
 	backupPath, err := sj.DeleteSaveWithBackup(instance.DataDir, saveName)
@@ -496,6 +501,34 @@ func (s *server) handleSavesBackupsList(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"backups": backups})
+}
+
+// handleSavesBackupDelete handles DELETE /api/instances/:id/saves/backups/:backupName.
+func (s *server) handleSavesBackupDelete(w http.ResponseWriter, r *http.Request, instanceID, backupName string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	if err := sj.DeleteBackup(instance.DataDir, backupName); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "不合法") {
+			writeError(w, http.StatusBadRequest, "invalid_backup_name", errMsg)
+			return
+		}
+		if strings.Contains(errMsg, "不存在") {
+			writeError(w, http.StatusNotFound, "backup_not_found", errMsg)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "delete_backup_failed", sanitizeErrorMsg(err, "删除备份失败"))
+		return
+	}
+
+	s.auditLog(r, &actor, "save_backup_delete", "instance", instanceID, auditMetadata("backupName", backupName))
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // handleSavesBackupRestore handles POST /api/instances/:id/saves/backups/restore.

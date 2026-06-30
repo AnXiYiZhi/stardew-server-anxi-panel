@@ -149,6 +149,13 @@ func readSaveInfo(saveFolder string) registry.SaveInfo {
 		return info
 	}
 
+	fillSaveInfoFromXML(&info, xmlData, func() string {
+		return readWhichFarmFromMainFile(saveFolder, name)
+	})
+	return info
+}
+
+func fillSaveInfoFromXML(info *registry.SaveInfo, xmlData []byte, farmTypeFallback func() string) {
 	// Try to parse as <SaveGame> structure (full save file).
 	// whichFarm can be an int (0-7) or a string (e.g. "MeadowlandsFarm").
 	type saveGameXML struct {
@@ -172,7 +179,7 @@ func readSaveInfo(saveFolder string) registry.SaveInfo {
 		if sg.WhichFarm != "" {
 			info.FarmType = farmTypeLabelFromString(sg.WhichFarm)
 		}
-		return info
+		return
 	}
 
 	// Try to parse as <Farmer> structure (Junimo SaveGameInfo format).
@@ -194,14 +201,13 @@ func readSaveInfo(saveFolder string) registry.SaveInfo {
 			info.GameSeason = seasonFromInt(*fm.SeasonForSave)
 		}
 		// <Farmer> does not contain whichFarm — try reading it from the main save file.
-		if info.FarmType == "" {
-			info.FarmType = readWhichFarmFromMainFile(saveFolder, name)
+		if info.FarmType == "" && farmTypeFallback != nil {
+			info.FarmType = farmTypeFallback()
 		}
-		return info
+		return
 	}
 
 	info.ParseError = "SaveGameInfo 解析失败"
-	return info
 }
 
 // whichFarmRe matches <whichFarm>...</whichFarm> in the main save file.
@@ -216,6 +222,10 @@ func readWhichFarmFromMainFile(saveFolder, saveName string) string {
 	if err != nil {
 		return ""
 	}
+	return readWhichFarmFromData(data)
+}
+
+func readWhichFarmFromData(data []byte) string {
 	// Use a limited reader approach: search for whichFarm in the raw data.
 	// The main save file can be very large (10+ MB), but whichFarm appears early.
 	matches := whichFarmRe.FindSubmatch(data)
@@ -875,13 +885,13 @@ func GetActiveSaveName(dataDir string) string {
 // reservedSaveNames are route path segments that would conflict with
 // DELETE /api/instances/:id/saves/:name routing.
 var reservedSaveNames = map[string]bool{
-	"preflight":              true,
-	"custom-new-game":        true,
-	"upload-preview":         true,
+	"preflight":               true,
+	"custom-new-game":         true,
+	"upload-preview":          true,
 	"upload-commit-and-start": true,
-	"select":                 true,
-	"select-and-start":       true,
-	"delete":                 true,
+	"select":                  true,
+	"select-and-start":        true,
+	"delete":                  true,
 }
 
 // validateSaveName rejects dangerous save names before any path construction.
@@ -1134,10 +1144,18 @@ func backupsDir(dataDir string) string {
 
 // BackupInfo describes a single backup file.
 type BackupInfo struct {
-	Name      string `json:"name"`
-	SaveName  string `json:"saveName"`
-	Size      int64  `json:"size"`
-	CreatedAt string `json:"createdAt"`
+	Name          string `json:"name"`
+	SaveName      string `json:"saveName"`
+	Size          int64  `json:"size"`
+	CreatedAt     string `json:"createdAt"`
+	FarmerName    string `json:"farmerName,omitempty"`
+	FarmName      string `json:"farmName,omitempty"`
+	GameYear      int    `json:"gameYear,omitempty"`
+	GameSeason    string `json:"gameSeason,omitempty"`
+	GameDay       int    `json:"gameDay,omitempty"`
+	FarmType      string `json:"farmType,omitempty"`
+	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
+	ParseError    string `json:"parseError,omitempty"`
 }
 
 // BackupSave creates a ZIP backup of the specified save in the backups directory.
@@ -1279,14 +1297,131 @@ func ListBackups(dataDir string) ([]BackupInfo, error) {
 			continue
 		}
 		saveName := parseBackupSaveName(e.Name())
-		backups = append(backups, BackupInfo{
+		backup := BackupInfo{
 			Name:      e.Name(),
 			SaveName:  saveName,
 			Size:      fi.Size(),
 			CreatedAt: fi.ModTime().UTC().Format(time.RFC3339),
-		})
+		}
+		enrichBackupInfo(filepath.Join(backupDir, e.Name()), &backup)
+		backups = append(backups, backup)
 	}
 	return backups, nil
+}
+
+func enrichBackupInfo(backupPath string, backup *BackupInfo) {
+	zr, err := zip.OpenReader(backupPath)
+	if err != nil {
+		backup.ParseError = "打开备份 ZIP 失败"
+		return
+	}
+	defer func() { _ = zr.Close() }()
+
+	if err := validateZipEntries(zr.File); err != nil {
+		backup.ParseError = err.Error()
+		return
+	}
+	saveName, err := detectSaveFolderName(zr)
+	if err != nil {
+		backup.ParseError = err.Error()
+		return
+	}
+	if saveName != "" {
+		backup.SaveName = saveName
+	}
+
+	mainPath := filepath.ToSlash(filepath.Join(saveName, saveName))
+	mainData, mainSize, _ := readZipEntry(zr.File, mainPath)
+	if mainSize > 0 {
+		backup.FileSizeBytes = int64(mainSize)
+	}
+
+	var xmlData []byte
+	for _, candidate := range []string{
+		filepath.ToSlash(filepath.Join(saveName, "SaveGameInfo")),
+		filepath.ToSlash(filepath.Join(saveName, "SaveGameInfo.xml")),
+		mainPath,
+	} {
+		data, _, ok := readZipEntry(zr.File, candidate)
+		if ok && len(data) > 0 {
+			xmlData = data
+			break
+		}
+	}
+	if len(xmlData) == 0 {
+		backup.ParseError = "未找到 SaveGameInfo 文件"
+		return
+	}
+
+	info := registry.SaveInfo{Name: saveName}
+	fillSaveInfoFromXML(&info, xmlData, func() string {
+		if len(mainData) == 0 {
+			return ""
+		}
+		return readWhichFarmFromData(mainData)
+	})
+	backup.FarmerName = info.FarmerName
+	backup.FarmName = info.FarmName
+	backup.GameYear = info.GameYear
+	backup.GameSeason = info.GameSeason
+	backup.GameDay = info.GameDay
+	backup.FarmType = info.FarmType
+	backup.ParseError = info.ParseError
+}
+
+func readZipEntry(files []*zip.File, name string) ([]byte, uint64, bool) {
+	name = filepath.ToSlash(name)
+	for _, f := range files {
+		if filepath.ToSlash(f.Name) != name {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, f.UncompressedSize64, false
+		}
+		defer func() { _ = rc.Close() }()
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			return nil, f.UncompressedSize64, false
+		}
+		return data, f.UncompressedSize64, true
+	}
+	return nil, 0, false
+}
+
+func validateBackupName(backupName string) error {
+	if backupName == "" || strings.ContainsAny(backupName, "/\\:") {
+		return fmt.Errorf("备份文件名不合法")
+	}
+	if strings.Contains(backupName, "..") {
+		return fmt.Errorf("备份文件名不合法")
+	}
+	if !strings.HasSuffix(backupName, ".zip") {
+		return fmt.Errorf("备份文件必须是 .zip")
+	}
+	return nil
+}
+
+// DeleteBackup permanently deletes one backup ZIP file.
+func DeleteBackup(dataDir, backupName string) error {
+	if err := validateBackupName(backupName); err != nil {
+		return err
+	}
+	backupPath := filepath.Join(backupsDir(dataDir), backupName)
+	info, err := os.Stat(backupPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("备份文件 %q 不存在", backupName)
+	}
+	if err != nil {
+		return fmt.Errorf("检查备份文件失败: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("备份文件 %q 不是文件", backupName)
+	}
+	if err := os.Remove(backupPath); err != nil {
+		return fmt.Errorf("删除备份文件失败: %w", err)
+	}
+	return nil
 }
 
 // RestoreBackup restores a backup ZIP to a save directory.
@@ -1295,12 +1430,8 @@ func ListBackups(dataDir string) ([]BackupInfo, error) {
 // to a temporary directory and atomically moved into place. This prevents data loss
 // if extraction fails midway.
 func RestoreBackup(dataDir, backupName string, overwrite bool) (string, error) {
-	// Validate backup name — must be a simple filename, no path separators.
-	if backupName == "" || strings.ContainsAny(backupName, "/\\:") {
-		return "", fmt.Errorf("备份文件名不合法")
-	}
-	if strings.Contains(backupName, "..") {
-		return "", fmt.Errorf("备份文件名不合法")
+	if err := validateBackupName(backupName); err != nil {
+		return "", err
 	}
 
 	backupPath := filepath.Join(backupsDir(dataDir), backupName)

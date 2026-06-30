@@ -7,9 +7,10 @@ const (
 
 // PublicUser is the user shape safe to return through the API.
 type PublicUser struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	ID           int64  `json:"id"`
+	Username     string `json:"username"`
+	Role         string `json:"role"`
+	IsSuperAdmin bool   `json:"isSuperAdmin"`
 }
 
 func IsValidRole(role string) bool {

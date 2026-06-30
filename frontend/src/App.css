@@ -1848,3 +1848,250 @@ button.job-row {
     gap: 2px;
   }
 }
+
+/* ── UI-R7: Stardew Auth Shell (登录/初始化页) ──────────────────────────── */
+
+.sd-auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: clamp(24px, 5vw, 72px);
+  padding-right: clamp(36px, 11vw, 180px);
+  position: relative;
+  overflow: hidden;
+  background-color: #1a0e06;
+}
+
+/* 登录页原创像素农场背景 */
+.sd-auth-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('/assets/stardew/ui/backgrounds/background_login_farm_generated.png');
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+
+/* 半透明暗色蒙层，保证面板可读性 */
+.sd-auth-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 6, 1, 0.48);
+  z-index: 1;
+}
+
+/* 登录面板 */
+.sd-auth-card {
+  position: relative;
+  z-index: 2;
+  width: min(420px, 100%);
+  border: 5px solid #5b2f18;
+  background-image:
+    linear-gradient(rgba(245, 202, 122, 0.28), rgba(205, 142, 70, 0.18)),
+    url('/assets/stardew/ui/backgrounds/background_parchment_tile.png');
+  background-color: #e7b96f;
+  background-blend-mode: multiply, normal;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 232, 168, 0.65),
+    inset 0 0 0 6px rgba(91, 47, 24, 0.14),
+    0 7px 0 #3b1d0d,
+    0 18px 42px rgba(0, 0, 0, 0.55);
+  padding: 26px 26px 30px;
+}
+
+/* 产品标识行 */
+.sd-auth-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #3f8f3d;
+}
+
+.sd-auth-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 900;
+  color: #3c2415;
+  line-height: 1.1;
+}
+
+.sd-auth-version {
+  margin: 0 0 16px;
+  font-size: 11px;
+  color: #8f5a2d;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* 错误提示条 */
+.sd-auth-error {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 3px solid #b54837;
+  background: #ffe0d6;
+  color: #681111;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* 正在加载提示 */
+.sd-auth-loading {
+  margin: 16px 0 0;
+  color: #6f4a2d;
+  font-size: 13px;
+}
+
+/* 表单间距 */
+.sd-auth-card .form-grid {
+  margin-top: 14px;
+  gap: 14px;
+}
+
+/* 简短说明文字 */
+.sd-auth-card .summary {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6f4a2d;
+  max-width: none;
+}
+
+/* 字段标签 */
+.sd-auth-card .field {
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3c2415;
+}
+
+/* 输入框 - Stardew 风格 */
+.sd-auth-card .field input,
+.sd-auth-card .password-input input {
+  min-height: 34px;
+  height: 34px;
+  border: 2px solid #673519;
+  border-radius: 0;
+  background: #fff0c7;
+  color: #3c2415;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.sd-auth-card .field input:focus-visible,
+.sd-auth-card .password-input input:focus-visible {
+  outline: 3px solid rgba(63, 143, 61, 0.4);
+  outline-offset: 2px;
+}
+
+/* 密码切换按钮 */
+.sd-auth-card .password-toggle {
+  min-width: 52px;
+  min-height: 34px;
+  border: 2px solid #673519;
+  border-radius: 0;
+  background: #ffe6b6;
+  color: #3c2415;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.sd-auth-card .password-toggle:hover {
+  background: #fff0c7;
+}
+
+/* 提交按钮 - 使用 Stardew 绿色 PNG */
+.sd-auth-card .button {
+  height: 36px;
+  min-height: 36px;
+  border: none;
+  border-radius: 0;
+  background-image: url('/assets/stardew/ui/buttons/button_primary_small_green_blank.png');
+  background-size: 100% 100%;
+  background-color: transparent;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: none;
+  padding: 0;
+  transition: filter 0.1s, transform 0.07s;
+}
+
+.sd-auth-card .button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+
+.sd-auth-card .button:active:not(:disabled) {
+  filter: brightness(0.82);
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.sd-auth-card .button:disabled {
+  filter: grayscale(0.5) brightness(0.8);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 密码提示文字 */
+.sd-auth-card .form-hint {
+  font-size: 12px;
+  color: #6f4a2d;
+  margin: -4px 0 0;
+}
+
+/* focus-visible 统一覆盖 */
+.sd-auth-card .password-toggle:focus-visible,
+.sd-auth-card .button:focus-visible {
+  outline: 3px solid rgba(63, 143, 61, 0.4);
+  outline-offset: 2px;
+}
+
+/* 平板/窄桌面回到居中，避免贴边 */
+@media (max-width: 900px) {
+  .sd-auth-shell {
+    justify-content: center;
+    padding-right: 24px;
+  }
+}
+
+/* 移动端 390px */
+@media (max-width: 430px) {
+  .sd-auth-shell {
+    padding: 12px;
+    align-items: flex-start;
+    padding-top: 36px;
+  }
+  .sd-auth-card {
+    padding: 20px 16px 24px;
+    width: 100%;
+  }
+  .sd-auth-title {
+    font-size: 18px;
+  }
+}
+
+/* 移动端 320px */
+@media (max-width: 340px) {
+  .sd-auth-shell {
+    padding: 8px;
+    padding-top: 24px;
+  }
+  .sd-auth-card {
+    padding: 16px 12px 20px;
+  }
+  .sd-auth-title {
+    font-size: 16px;
+  }
+  .sd-auth-card .field input,
+  .sd-auth-card .password-input input {
+    font-size: 12px;
+  }
+}

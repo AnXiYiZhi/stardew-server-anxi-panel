@@ -10,13 +10,14 @@ import (
 )
 
 type panelUser struct {
-	ID          int64   `json:"id"`
-	Username    string  `json:"username"`
-	Role        string  `json:"role"`
-	IsActive    bool    `json:"isActive"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
-	LastLoginAt *string `json:"lastLoginAt"`
+	ID           int64   `json:"id"`
+	Username     string  `json:"username"`
+	Role         string  `json:"role"`
+	IsSuperAdmin bool    `json:"isSuperAdmin"`
+	IsActive     bool    `json:"isActive"`
+	CreatedAt    string  `json:"createdAt"`
+	UpdatedAt    string  `json:"updatedAt"`
+	LastLoginAt  *string `json:"lastLoginAt"`
 }
 
 type listUsersResponse struct {
@@ -99,6 +100,11 @@ func (s *server) handleCreateUser(w http.ResponseWriter, r *http.Request, sessio
 	}
 	if !auth.IsValidRole(request.Role) {
 		writeError(w, http.StatusBadRequest, "invalid_role", "角色只能是 admin 或 user")
+		return
+	}
+
+	if request.Role == auth.RoleAdmin && !session.User.IsSuperAdmin {
+		writeError(w, http.StatusForbidden, "super_admin_required", "只有第一个管理员可以创建管理员或调整管理员权限")
 		return
 	}
 
@@ -272,8 +278,12 @@ func handleUserMutationError(w http.ResponseWriter, err error) bool {
 		writeError(w, http.StatusConflict, "username_taken", "用户名已被占用")
 	case errors.Is(err, storage.ErrLastAdmin):
 		writeError(w, http.StatusConflict, "last_admin", "不能移除或降级最后一个启用的管理员")
+	case errors.Is(err, storage.ErrLastSuperAdmin):
+		writeError(w, http.StatusConflict, "last_super_admin", "不能移除或降级第一个管理员")
 	case errors.Is(err, storage.ErrSelfDisable):
 		writeError(w, http.StatusBadRequest, "self_disable", "不能禁用或删除当前登录用户")
+	case errors.Is(err, storage.ErrSuperAdminRequired):
+		writeError(w, http.StatusForbidden, "super_admin_required", "只有第一个管理员可以创建管理员或调整管理员权限")
 	default:
 		return false
 	}
@@ -287,13 +297,14 @@ func toPanelUser(user storage.User) panelUser {
 		lastLoginAt = &value
 	}
 	return panelUser{
-		ID:          user.ID,
-		Username:    user.Username,
-		Role:        user.Role,
-		IsActive:    user.IsActive,
-		CreatedAt:   user.CreatedAt,
-		UpdatedAt:   user.UpdatedAt,
-		LastLoginAt: lastLoginAt,
+		ID:           user.ID,
+		Username:     user.Username,
+		Role:         user.Role,
+		IsSuperAdmin: user.IsSuperAdmin,
+		IsActive:     user.IsActive,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		LastLoginAt:  lastLoginAt,
 	}
 }
 

@@ -33,6 +33,7 @@ type Timeouts struct {
 	Version time.Duration
 	Ps      time.Duration
 	Logs    time.Duration
+	Stats   time.Duration
 	Pull    time.Duration
 	Up      time.Duration
 	Down    time.Duration
@@ -94,6 +95,30 @@ type ComposeService struct {
 	ExitCode int    `json:"exitCode,omitempty"`
 }
 
+type ComposeStatsResult struct {
+	Result   CommandResult         `json:"result"`
+	Services []ComposeServiceStats `json:"services"`
+}
+
+type ComposeServiceStats struct {
+	Name             string  `json:"name,omitempty"`
+	Container        string  `json:"container,omitempty"`
+	ID               string  `json:"id,omitempty"`
+	Service          string  `json:"service,omitempty"`
+	CPUPerc          float64 `json:"cpuPercent"`
+	MemPerc          float64 `json:"memoryPercent"`
+	MemUsage         string  `json:"memoryUsage,omitempty"`
+	MemUsedBytes     int64   `json:"memoryUsedBytes,omitempty"`
+	MemLimitBytes    int64   `json:"memoryLimitBytes,omitempty"`
+	NetIO            string  `json:"netIO,omitempty"`
+	BlockIO          string  `json:"blockIO,omitempty"`
+	PIDs             string  `json:"pids,omitempty"`
+	RawCPUPerc       string  `json:"rawCpuPercent,omitempty"`
+	RawMemPerc       string  `json:"rawMemoryPercent,omitempty"`
+	RawMemUsedBytes  string  `json:"rawMemoryUsedBytes,omitempty"`
+	RawMemLimitBytes string  `json:"rawMemoryLimitBytes,omitempty"`
+}
+
 func NewClient(options Options) *Client {
 	dockerPath := options.DockerPath
 	if dockerPath == "" {
@@ -124,6 +149,9 @@ func withDefaultTimeouts(timeouts Timeouts) Timeouts {
 	}
 	if timeouts.Logs <= 0 {
 		timeouts.Logs = 20 * time.Second
+	}
+	if timeouts.Stats <= 0 {
+		timeouts.Stats = 12 * time.Second
 	}
 	if timeouts.Pull <= 0 {
 		timeouts.Pull = 10 * time.Minute

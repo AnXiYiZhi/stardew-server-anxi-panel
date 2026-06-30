@@ -36,6 +36,20 @@ func (c *Client) ComposePs(ctx context.Context, dir string) (ComposePsResult, er
 	return composeResult, err
 }
 
+func (c *Client) ComposeStats(ctx context.Context, dir string) (ComposeStatsResult, error) {
+	result, err := c.run(ctx, "docker compose stats", dir, c.timeouts.Stats, "compose", "stats", "--no-stream", "--format", "json")
+	statsResult := ComposeStatsResult{Result: result}
+	if result.Stdout != "" {
+		services, parseErr := parseComposeStats(result.Stdout)
+		if parseErr != nil {
+			c.logger.Debug("failed to parse docker compose stats json", "error", parseErr)
+		} else {
+			statsResult.Services = services
+		}
+	}
+	return statsResult, err
+}
+
 func (c *Client) ComposePull(ctx context.Context, dir string) (CommandResult, error) {
 	return c.run(ctx, "docker compose pull", dir, c.timeouts.Pull, "compose", "pull")
 }
@@ -147,6 +161,39 @@ func parseComposeServices(stdout string) ([]ComposeService, error) {
 	return services, nil
 }
 
+func parseComposeStats(stdout string) ([]ComposeServiceStats, error) {
+	raw, err := parseComposeJSON(stdout)
+	if err != nil {
+		return nil, err
+	}
+	services := make([]ComposeServiceStats, 0, len(raw))
+	for _, item := range raw {
+		memUsage := firstString(item, "MemUsage", "Mem Usage", "memoryUsage", "memUsage")
+		memUsed, memLimit := parseMemoryUsage(memUsage)
+		rawCPU := firstString(item, "CPUPerc", "CPU %", "CPUPercentage", "cpuPercent")
+		rawMem := firstString(item, "MemPerc", "Mem %", "MemoryPercentage", "memoryPercent")
+		services = append(services, ComposeServiceStats{
+			Name:             firstString(item, "Name", "name"),
+			Container:        firstString(item, "Container", "container"),
+			ID:               firstString(item, "ID", "id"),
+			Service:          firstString(item, "Service", "service"),
+			CPUPerc:          parsePercent(rawCPU),
+			MemPerc:          parsePercent(rawMem),
+			MemUsage:         memUsage,
+			MemUsedBytes:     memUsed,
+			MemLimitBytes:    memLimit,
+			NetIO:            firstString(item, "NetIO", "Net I/O", "netIO"),
+			BlockIO:          firstString(item, "BlockIO", "Block I/O", "blockIO"),
+			PIDs:             firstString(item, "PIDs", "pids"),
+			RawCPUPerc:       rawCPU,
+			RawMemPerc:       rawMem,
+			RawMemUsedBytes:  firstString(item, "MemUsed", "MemoryUsed", "memoryUsed"),
+			RawMemLimitBytes: firstString(item, "MemLimit", "MemoryLimit", "memoryLimit"),
+		})
+	}
+	return services, nil
+}
+
 // parseComposeJSON handles three output formats from `docker compose ps --format json`:
 //   - JSON array  (Compose v2 < 2.21)
 //   - Single JSON object (single-service project)
@@ -206,6 +253,78 @@ func firstInt(item map[string]any, keys ...string) int {
 		}
 	}
 	return 0
+}
+
+func parsePercent(value string) float64 {
+	value = strings.TrimSpace(strings.TrimSuffix(value, "%"))
+	if value == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func parseMemoryUsage(value string) (int64, int64) {
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 {
+		return 0, 0
+	}
+	return parseByteSize(parts[0]), parseByteSize(parts[1])
+}
+
+func parseByteSize(value string) int64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+
+	fields := strings.Fields(value)
+	if len(fields) == 2 {
+		value = fields[0] + fields[1]
+	}
+
+	unitStart := len(value)
+	for i, r := range value {
+		if (r < '0' || r > '9') && r != '.' {
+			unitStart = i
+			break
+		}
+	}
+	if unitStart == 0 {
+		return 0
+	}
+	number, err := strconv.ParseFloat(strings.TrimSpace(value[:unitStart]), 64)
+	if err != nil {
+		return 0
+	}
+	unit := strings.ToLower(strings.TrimSpace(value[unitStart:]))
+	multiplier := float64(1)
+	switch unit {
+	case "b", "byte", "bytes", "":
+		multiplier = 1
+	case "kb":
+		multiplier = 1000
+	case "mb":
+		multiplier = 1000 * 1000
+	case "gb":
+		multiplier = 1000 * 1000 * 1000
+	case "tb":
+		multiplier = 1000 * 1000 * 1000 * 1000
+	case "kib":
+		multiplier = 1024
+	case "mib":
+		multiplier = 1024 * 1024
+	case "gib":
+		multiplier = 1024 * 1024 * 1024
+	case "tib":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	default:
+		return 0
+	}
+	return int64(number * multiplier)
 }
 
 func intString(value int) string {

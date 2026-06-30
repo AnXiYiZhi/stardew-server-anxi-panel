@@ -4,6 +4,7 @@ export type CurrentUser = {
   id: number
   username: string
   role: Role
+  isSuperAdmin: boolean
 }
 
 export type PanelUser = CurrentUser & {
@@ -150,6 +151,25 @@ export type InstanceState = {
   updatedAt: string
 }
 
+export type ResourceMetricSample = {
+  timestamp: string
+  cpuPercent: number | null
+  memoryPercent: number | null
+  memoryUsedBytes?: number
+  memoryLimitBytes?: number
+  diskPercent: number | null
+  diskUsedBytes?: number
+  diskTotalBytes?: number
+  containerRunning: boolean
+  message?: string
+}
+
+export type ResourceMetricsResponse = {
+  instanceId: string
+  service: string
+  sample: ResourceMetricSample
+}
+
 export type InstallJobResponse = {
   jobId: string
 }
@@ -233,6 +253,29 @@ export type SavesListResult = {
   activeSaveName: string
 }
 
+export type BackupInfo = {
+  name: string
+  saveName: string
+  size: number
+  createdAt: string
+  farmerName?: string
+  farmName?: string
+  gameYear?: number
+  gameSeason?: string
+  gameDay?: number
+  farmType?: string
+  fileSizeBytes?: number
+  parseError?: string
+}
+
+export type BackupsListResult = {
+  backups: BackupInfo[]
+}
+
+export type RestoreBackupResult = {
+  saveName: string
+}
+
 export type UploadPreviewResult = {
   token: string
   preview: SaveInfo
@@ -246,6 +289,10 @@ export type InviteCodeResult = {
 export type LifecycleJobResponse = {
   jobId: string
   saveName?: string
+}
+
+export type InstanceVNCConfig = {
+  vncPort: string
 }
 
 export type ModInfo = {

@@ -2,11 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Job, JobLog } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import {
+  clearJobErrorLogs,
   clearJobs,
   createJobEventSource,
+  getInstanceVNCConfig,
   getJob,
   getJobLogs,
   getJobs,
+  updateInstanceVNCPort,
 } from '../../../api'
 import {
   appendUniqueLog,
@@ -66,6 +69,29 @@ function extractPullProgress(
   return { ...latest, percent: Math.round((latest.done / latest.total) * 100) }
 }
 
+function isVNCPortProblem(job: Job | null, logs: JobLog[]): boolean {
+  const text = [
+    job?.errorMessage ?? '',
+    ...logs.map((log) => log.message),
+  ].join('\n')
+  const lower = text.toLowerCase()
+  return (
+    (text.includes('VNC 端口') || lower.includes('vnc port') || lower.includes('vnc_port')) &&
+    (text.includes('占用') ||
+      text.includes('系统保留') ||
+      lower.includes('forbidden by its access permissions') ||
+      lower.includes('port is already allocated') ||
+      lower.includes('ports are not available') ||
+      lower.includes('address already in use'))
+  )
+}
+
+function suggestNextPort(port: string): string {
+  const n = Number.parseInt(port, 10)
+  if (!Number.isFinite(n) || n < 1 || n >= 65535) return ''
+  return String(n + 1)
+}
+
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 
 export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
@@ -81,11 +107,19 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
   const [logsTruncated, setLogsTruncated] = useState(false)
   const [busy, setBusy] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showClearErrorConfirm, setShowClearErrorConfirm] = useState(false)
+  const [showVNCPortModal, setShowVNCPortModal] = useState(false)
+  const [vncPortLoading, setVNCPortLoading] = useState(false)
+  const [vncPortSaving, setVNCPortSaving] = useState(false)
+  const [currentVNCPort, setCurrentVNCPort] = useState('')
+  const [newVNCPort, setNewVNCPort] = useState('')
+  const [vncPortError, setVNCPortError] = useState('')
+  const [vncPortMessage, setVNCPortMessage] = useState('')
 
   const logEndRef = useRef<HTMLDivElement | null>(null)
   const autoSelectedRef = useRef(false)
 
-  const { refreshJobs: dashRefreshJobs, refreshInstanceState } = dashboardData
+  const { refreshJobs: dashRefreshJobs, refreshInstanceState, refreshInviteCode } = dashboardData
 
   const loadJobs = useCallback(async (): Promise<Job[]> => {
     try {
@@ -170,6 +204,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
             void loadJobs()
             dashRefreshJobs()
             refreshInstanceState()
+            refreshInviteCode()
           })
 
           es.onerror = () => {
@@ -190,7 +225,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       cancelled = true
       es?.close()
     }
-  }, [selectedJobId, loadJobs, dashRefreshJobs, refreshInstanceState])
+  }, [selectedJobId, loadJobs, dashRefreshJobs, refreshInstanceState, refreshInviteCode])
 
   // 新日志到来时自动滚动到底部
   useEffect(() => {
@@ -244,8 +279,84 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     }
   }
 
+  async function handleClearErrorConfirmed() {
+    setShowClearErrorConfirm(false)
+    setBusy(true)
+    setJobsError('')
+    setDetailError('')
+    try {
+      await clearJobErrorLogs()
+      const loaded = await loadJobs()
+      dashRefreshJobs()
+      if (selectedJobId) {
+        const [jobRes, logsRes] = await Promise.all([
+          getJob(selectedJobId).catch(() => null),
+          getJobLogs(selectedJobId, 0).catch(() => null),
+        ])
+        if (jobRes) setSelectedJob(jobRes.job)
+        if (logsRes) {
+          setLogs(logsRes.logs)
+          setLogsTruncated(logsRes.logs.length >= 1000)
+        }
+      } else if (loaded.length > 0) {
+        setSelectedJobId(loaded[0].id)
+      }
+    } catch (e) {
+      setJobsError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleOpenVNCPortModal() {
+    setShowVNCPortModal(true)
+    setVNCPortLoading(true)
+    setVNCPortError('')
+    setVNCPortMessage('')
+    try {
+      const res = await getInstanceVNCConfig()
+      setCurrentVNCPort(res.vncPort)
+      setNewVNCPort(suggestNextPort(res.vncPort))
+    } catch (e) {
+      setVNCPortError(errorMessage(e))
+    } finally {
+      setVNCPortLoading(false)
+    }
+  }
+
+  function handleCloseVNCPortModal() {
+    if (vncPortSaving) return
+    setShowVNCPortModal(false)
+    setVNCPortError('')
+    setVNCPortMessage('')
+  }
+
+  async function handleSaveVNCPort() {
+    const trimmed = newVNCPort.trim()
+    const n = Number.parseInt(trimmed, 10)
+    if (!/^\d+$/.test(trimmed) || !Number.isFinite(n) || n < 1 || n > 65535) {
+      setVNCPortError('VNC 端口必须是 1 到 65535 之间的数字')
+      return
+    }
+    setVNCPortSaving(true)
+    setVNCPortError('')
+    setVNCPortMessage('')
+    try {
+      const res = await updateInstanceVNCPort(trimmed)
+      setCurrentVNCPort(res.vncPort)
+      setNewVNCPort(res.vncPort)
+      setVNCPortMessage('VNC 端口已更新，请重新启动服务器。')
+      refreshInstanceState()
+    } catch (e) {
+      setVNCPortError(errorMessage(e))
+    } finally {
+      setVNCPortSaving(false)
+    }
+  }
+
   const visibleLogs = logs.filter((log) => !pullProgressRe.test(log.message))
   const pullProgress = extractPullProgress(logs, selectedJob?.type)
+  const showVNCPortFix = user.role === 'admin' && isVNCPortProblem(selectedJob, logs)
   const isLiveStreaming =
     selectedJob !== null && !isTerminalJobStatus(selectedJob.status) && !sseError
 
@@ -276,14 +387,24 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
             {busy || loadingJobs ? '刷新中…' : '刷新'}
           </button>
           {user.role === 'admin' && jobs.length > 0 ? (
-            <button
-              className="sd-btn-delete"
-              disabled={busy}
-              onClick={() => setShowClearConfirm(true)}
-              type="button"
-            >
-              清空任务历史
-            </button>
+            <>
+              <button
+                className="sd-btn-tan"
+                disabled={busy}
+                onClick={() => setShowClearErrorConfirm(true)}
+                type="button"
+              >
+                清空错误日志
+              </button>
+              <button
+                className="sd-btn-delete"
+                disabled={busy}
+                onClick={() => setShowClearConfirm(true)}
+                type="button"
+              >
+                清空任务历史
+              </button>
+            </>
           ) : null}
         </div>
         {jobsError ? <div className="sd-jobs-error-banner">{jobsError}</div> : null}
@@ -379,6 +500,22 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                   <div className="sd-jobs-error-banner sd-jobs-error-banner-prominent">
                     <span className="sd-jobs-error-label">错误：</span>
                     {selectedJob.errorMessage}
+                  </div>
+                ) : null}
+
+                {showVNCPortFix ? (
+                  <div className="sd-jobs-vnc-fix">
+                    <div className="sd-jobs-vnc-fix-text">
+                      <strong>VNC 端口被占用</strong>
+                      <span>请更换 VNC 端口后重新启动服务器。</span>
+                    </div>
+                    <button
+                      className="sd-btn-tan"
+                      type="button"
+                      onClick={() => void handleOpenVNCPortModal()}
+                    >
+                      更换 VNC 端口
+                    </button>
                   </div>
                 ) : null}
 
@@ -478,6 +615,95 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                 {busy ? '清空中…' : '确认清空'}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showClearErrorConfirm ? (
+        <div className="sd-confirm-overlay">
+          <div className="sd-confirm-dialog">
+            <h3>清空错误日志</h3>
+            <p>确定清空所有任务中的错误日志和错误详情吗？任务记录和任务状态会保留。</p>
+            <div className="sd-confirm-actions">
+              <button
+                className="sd-btn-tan"
+                type="button"
+                onClick={() => setShowClearErrorConfirm(false)}
+              >
+                取消
+              </button>
+              <button
+                className="sd-btn-delete"
+                type="button"
+                disabled={busy}
+                onClick={() => void handleClearErrorConfirmed()}
+              >
+                {busy ? '清空中…' : '确认清空'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showVNCPortModal ? (
+        <div className="sd-saves-modal-overlay" role="dialog" aria-modal="true">
+          <div className="sd-saves-modal-card sd-vnc-port-modal">
+            <div className="sd-saves-modal-header">
+              <h3 className="sd-saves-modal-title">更换 VNC 端口</h3>
+              <button
+                className="sd-btn-tan"
+                type="button"
+                disabled={vncPortSaving}
+                onClick={handleCloseVNCPortModal}
+              >
+                关闭
+              </button>
+            </div>
+
+            {vncPortLoading ? (
+              <div className="sd-jobs-loading">正在读取当前端口...</div>
+            ) : (
+              <div className="sd-vnc-port-form">
+                <label className="sd-vnc-port-field">
+                  <span>目前端口号</span>
+                  <input className="sd-input" value={currentVNCPort} readOnly />
+                </label>
+                <label className="sd-vnc-port-field">
+                  <span>要更改的端口号</span>
+                  <input
+                    className="sd-input"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={5}
+                    value={newVNCPort}
+                    onChange={(event) => setNewVNCPort(event.target.value)}
+                    placeholder="例如 5801"
+                  />
+                </label>
+                {vncPortError ? <div className="sd-jobs-error-banner">{vncPortError}</div> : null}
+                {vncPortMessage ? (
+                  <div className="sd-jobs-sse-notice">{vncPortMessage}</div>
+                ) : null}
+                <div className="sd-saves-modal-actions">
+                  <button
+                    className="sd-btn-tan"
+                    type="button"
+                    disabled={vncPortSaving}
+                    onClick={handleCloseVNCPortModal}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="sd-btn-green"
+                    type="button"
+                    disabled={vncPortSaving || vncPortLoading}
+                    onClick={() => void handleSaveVNCPort()}
+                  >
+                    {vncPortSaving ? '保存中...' : '保存端口'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

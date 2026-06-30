@@ -15,7 +15,8 @@ func TestComposeCommandsUseFixedArguments(t *testing.T) {
 case "$1 $2 $3 $4" in
   "version   ") printf 'Docker version ok' ;;
   "compose version  ") printf 'Docker Compose version ok' ;;
-  "compose ps --format json") printf '[{"Name":"demo","Service":"app","State":"running","Health":"healthy","ExitCode":0}]' ;;
+		"compose ps --format json") printf '[{"Name":"demo","Service":"app","State":"running","Health":"healthy","ExitCode":0}]' ;;
+		"compose stats --no-stream --format json") printf '{"Container":"demo-server-1","Name":"demo-server-1","Service":"server","CPUPerc":"2.50%%","MemUsage":"128MiB / 2GiB","MemPerc":"6.25%%"}' ;;
   "compose pull  ") printf 'pull ok' ;;
   "compose up -d ") printf 'up ok' ;;
   "compose down  ") printf 'down ok' ;;
@@ -43,6 +44,13 @@ esac
 
 	if result, err = client.ComposePull(context.Background(), workDir); err != nil || result.ExitCode != 0 {
 		t.Fatalf("ComposePull result=%+v err=%v", result, err)
+	}
+	stats, err := client.ComposeStats(context.Background(), workDir)
+	if err != nil || len(stats.Services) != 1 || stats.Services[0].Service != "server" {
+		t.Fatalf("ComposeStats result=%+v err=%v", stats, err)
+	}
+	if stats.Services[0].CPUPerc != 2.5 || stats.Services[0].MemUsedBytes != 128*1024*1024 {
+		t.Fatalf("parsed stats = %+v", stats.Services[0])
 	}
 	if result, err = client.ComposeUp(context.Background(), workDir); err != nil || result.ExitCode != 0 {
 		t.Fatalf("ComposeUp result=%+v err=%v", result, err)
@@ -128,6 +136,7 @@ func fakeDocker(t *testing.T, script string) string {
 			"if \"%1 %2 %3 %4\"==\"version   \" (echo Docker version ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose version  \" (echo Docker Compose version ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose ps --format json\" (echo [{\"Name\":\"demo\",\"Service\":\"app\",\"State\":\"running\",\"Health\":\"healthy\",\"ExitCode\":0}]& exit /b 0)\r\n" +
+			"if \"%1 %2 %3 %4 %5\"==\"compose stats --no-stream --format json\" (echo {\"Container\":\"demo-server-1\",\"Name\":\"demo-server-1\",\"Service\":\"server\",\"CPUPerc\":\"2.50%%\",\"MemUsage\":\"128MiB / 2GiB\",\"MemPerc\":\"6.25%%\"}& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose pull  \" (echo pull ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose up -d \" (echo up ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose down  \" (echo down ok& exit /b 0)\r\n" +

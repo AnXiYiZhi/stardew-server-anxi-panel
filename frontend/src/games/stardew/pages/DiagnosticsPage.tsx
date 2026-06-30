@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { getHealthDiagnostics, downloadSupportBundle } from '../../../api'
+import { useEffect, useMemo, useState } from 'react'
+import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
+import type { ResourceMetricSample } from '../../../types'
 
 // ── 检查项名称中文映射 ─────────────────────────────────────────────────────────
 
@@ -43,6 +44,133 @@ function CheckRow({ check }: { check: HealthCheck }) {
   )
 }
 
+function formatPercent(value: number | null | undefined): string {
+  if (value == null) return '—'
+  return `${Math.round(value * 10) / 10}%`
+}
+
+function formatBytes(value: number | undefined): string {
+  if (value == null || value < 0) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = value
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  const digits = size >= 10 || unit === 0 ? 0 : 1
+  return `${size.toFixed(digits)} ${units[unit]}`
+}
+
+function hasByteValue(value: number | undefined): value is number {
+  return value != null && value >= 0
+}
+
+function GaugeCard({
+  label,
+  value,
+  sub,
+  color,
+}: {
+  label: string
+  value: number | null | undefined
+  sub: string
+  color: string
+}) {
+  const percent = value == null ? 0 : Math.max(0, Math.min(100, value))
+  return (
+    <div className="sd-diag-gauge-card">
+      <div
+        className="sd-diag-gauge-ring"
+        style={{
+          background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(90, 60, 29, 0.16) 0deg)`,
+        }}
+      >
+        <div className="sd-diag-gauge-core">{formatPercent(value)}</div>
+      </div>
+      <div className="sd-diag-gauge-meta">
+        <span className="sd-diag-gauge-label">{label}</span>
+        <span className="sd-diag-gauge-sub">{sub}</span>
+      </div>
+    </div>
+  )
+}
+
+function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
+  const width = 560
+  const height = 156
+  const padX = 28
+  const padY = 16
+  const chartW = width - padX * 2
+  const chartH = height - padY * 2
+  const series = [
+    { key: 'cpu', label: 'CPU', color: '#3f8f2c', get: (s: ResourceMetricSample) => s.cpuPercent },
+    { key: 'memory', label: '内存', color: '#b06c18', get: (s: ResourceMetricSample) => s.memoryPercent },
+    { key: 'disk', label: '磁盘', color: '#5d7fb8', get: (s: ResourceMetricSample) => s.diskPercent },
+  ]
+  const maxValue = samples.reduce((max, sample) => {
+    return series.reduce((seriesMax, item) => {
+      const value = item.get(sample)
+      return value == null ? seriesMax : Math.max(seriesMax, value)
+    }, max)
+  }, 100)
+  const yMax = Math.max(100, Math.ceil(maxValue / 25) * 25)
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(yMax * ratio))
+
+  function pointsFor(getValue: (s: ResourceMetricSample) => number | null): string {
+    if (samples.length < 2) return ''
+    return samples
+      .map((sample, index) => {
+        const value = getValue(sample)
+        if (value == null) return null
+        const x = padX + (chartW * index) / Math.max(1, samples.length - 1)
+        const y = padY + chartH - (chartH * Math.max(0, Math.min(yMax, value))) / yMax
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      .filter(Boolean)
+      .join(' ')
+  }
+
+  return (
+    <div className="sd-diag-trend-card">
+      <div className="sd-diag-trend-head">
+        <span>实时趋势</span>
+        <div className="sd-diag-trend-legend">
+          {series.map((item) => (
+            <span key={item.key}>
+              <i style={{ background: item.color }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <svg className="sd-diag-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="CPU、内存、磁盘趋势折线图">
+        {ticks.map((tick) => {
+          const y = padY + chartH - (chartH * tick) / yMax
+          return (
+            <g key={tick}>
+              <line x1={padX} y1={y} x2={width - padX} y2={y} className="sd-diag-grid-line" />
+              <text x={8} y={y + 4} className="sd-diag-axis-label">{tick}</text>
+            </g>
+          )
+        })}
+        {series.map((item) => {
+          const points = pointsFor(item.get)
+          if (!points) return null
+          return (
+            <polyline
+              key={item.key}
+              className="sd-diag-trend-line"
+              points={points}
+              stroke={item.color}
+            />
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 // ── DiagnosticsPage ───────────────────────────────────────────────────────────
 
 export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
@@ -58,6 +186,9 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   // 导出状态
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [metricSamples, setMetricSamples] = useState<ResourceMetricSample[]>([])
+  const [metricError, setMetricError] = useState<string | null>(null)
+  const [metricService, setMetricService] = useState('server')
 
   // 以 localData 为准（重新检查后更新），dashboardData.health 只作为初始值
   const data = localData ?? dashboardData.health
@@ -70,6 +201,57 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   const okCount = checks.filter((c) => c.status === 'ok').length
   const warnCount = checks.filter((c) => c.status === 'warning').length
   const errorCount = checks.filter((c) => c.status === 'error').length
+  const latestMetric = metricSamples[metricSamples.length - 1]
+
+  useEffect(() => {
+    let alive = true
+    let timer: number | undefined
+
+    async function loadMetrics() {
+      try {
+        const res = await getInstanceMetrics()
+        if (!alive) return
+        setMetricError(null)
+        setMetricService(res.service || 'server')
+        setMetricSamples((prev) => [...prev, res.sample].slice(-24))
+      } catch (e) {
+        if (!alive) return
+        setMetricError(errorMessage(e))
+      } finally {
+        if (alive) {
+          timer = window.setTimeout(() => {
+            void loadMetrics()
+          }, 5000)
+        }
+      }
+    }
+
+    void loadMetrics()
+    return () => {
+      alive = false
+      if (timer != null) {
+        window.clearTimeout(timer)
+      }
+    }
+  }, [])
+
+  const metricSubtitles = useMemo(() => {
+    const memory =
+      hasByteValue(latestMetric?.memoryUsedBytes) && hasByteValue(latestMetric?.memoryLimitBytes)
+        ? `${formatBytes(latestMetric.memoryUsedBytes)} / ${formatBytes(latestMetric.memoryLimitBytes)}`
+        : latestMetric?.containerRunning
+          ? '容器内存'
+          : '启动后显示'
+    const disk =
+      hasByteValue(latestMetric?.diskUsedBytes) && hasByteValue(latestMetric?.diskTotalBytes)
+        ? `${formatBytes(latestMetric.diskUsedBytes)} / ${formatBytes(latestMetric.diskTotalBytes)}`
+        : '实例磁盘'
+    return {
+      cpu: latestMetric?.containerRunning ? metricService : '启动后显示',
+      memory,
+      disk,
+    }
+  }, [latestMetric, metricService])
 
   async function handleRefresh() {
     setRefreshing(true)
@@ -233,15 +415,25 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
         </div>
       )}
 
-      {/* 资源趋势（待接入） */}
+      {/* 资源趋势 */}
       <div className="sd-diag-section-title" style={{ marginTop: 14 }}>
         资源趋势
-        <span className="sd-diag-pending-badge">待接入</span>
+        <span className={latestMetric?.containerRunning ? 'sd-diag-live-badge' : 'sd-diag-idle-badge'}>
+          {latestMetric?.containerRunning ? '实时' : '待运行'}
+        </span>
       </div>
-      <div className="sd-diag-resource-pending">
-        <div className="sd-diag-resource-pending-desc">
-          CPU / 内存 / 磁盘实时趋势图表尚无后端数据源，待接入后在此区域渲染。
+      <div className="sd-diag-resource-panel">
+        <div className="sd-diag-gauge-grid">
+          <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} color="#3f8f2c" />
+          <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} color="#b06c18" />
+          <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} color="#5d7fb8" />
         </div>
+        <ResourceTrendChart samples={metricSamples} />
+        {(metricError || latestMetric?.message) && (
+          <div className="sd-diag-resource-note">
+            {metricError ?? latestMetric?.message}
+          </div>
+        )}
       </div>
     </div>
   )
