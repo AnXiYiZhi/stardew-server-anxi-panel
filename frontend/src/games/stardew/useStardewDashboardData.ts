@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createJobEventSource,
   getHealthDiagnostics,
+  getInstancePlayers,
   getInviteCode,
   getJobs,
   getMods,
@@ -10,7 +11,7 @@ import {
   getVersion,
 } from '../../api'
 import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
-import type { InstanceState, Job, ModsListResult, SavesListResult } from '../../types'
+import type { InstanceState, Job, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import type { StardewDashboardData } from './stardew-routes'
 
@@ -18,6 +19,7 @@ export function useStardewDashboardData(): StardewDashboardData {
   const [instanceState, setInstanceState] = useState<InstanceState | null>(null)
   const [saves, setSaves] = useState<SavesListResult | null>(null)
   const [mods, setMods] = useState<ModsListResult | null>(null)
+  const [players, setPlayers] = useState<StardewPlayersResponse | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
   const [health, setHealth] = useState<HealthDiagnosticsResponse | null>(null)
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
@@ -25,12 +27,18 @@ export function useStardewDashboardData(): StardewDashboardData {
 
   const [savesError, setSavesError] = useState<string | null>(null)
   const [modsError, setModsError] = useState<string | null>(null)
+  const [playersError, setPlayersError] = useState<string | null>(null)
   const [healthError, setHealthError] = useState<string | null>(null)
   const [inviteCodeError, setInviteCodeError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [playersLoading, setPlayersLoading] = useState(false)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const playersPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const invitePollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const staleInviteCodeRef = useRef<string | null>(null)
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map())
+  const [invitePollRequested, setInvitePollRequested] = useState(false)
 
   const refreshInstanceState = useCallback(async () => {
     try {
@@ -61,6 +69,19 @@ export function useStardewDashboardData(): StardewDashboardData {
     }
   }, [])
 
+  const refreshPlayers = useCallback(async () => {
+    setPlayersLoading(true)
+    setPlayersError(null)
+    try {
+      const res = await getInstancePlayers()
+      setPlayers(res)
+    } catch (e) {
+      setPlayersError(errorMessage(e))
+    } finally {
+      setPlayersLoading(false)
+    }
+  }, [])
+
   const refreshJobs = useCallback(async () => {
     try {
       const res = await getJobs()
@@ -84,12 +105,32 @@ export function useStardewDashboardData(): StardewDashboardData {
     setInviteCodeError(null)
     try {
       const res = await getInviteCode()
+      if (staleInviteCodeRef.current && res.inviteCode === staleInviteCodeRef.current) {
+        setInviteCode(null)
+        return
+      }
+      staleInviteCodeRef.current = null
       setInviteCode(res.inviteCode)
+      setInvitePollRequested(false)
     } catch (e) {
       setInviteCode(null)
       setInviteCodeError(errorMessage(e))
     }
   }, [])
+
+  const clearInviteCode = useCallback(() => {
+    staleInviteCodeRef.current = null
+    setInvitePollRequested(false)
+    setInviteCode(null)
+    setInviteCodeError(null)
+  }, [])
+
+  const requestInviteCodeRefresh = useCallback(() => {
+    staleInviteCodeRef.current = inviteCode
+    setInvitePollRequested(true)
+    setInviteCode(null)
+    setInviteCodeError(null)
+  }, [inviteCode])
 
   // 版本信息只在初始化时加载一次，不对外暴露刷新函数
   const fetchVersion = useCallback(async () => {
@@ -105,6 +146,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     void refreshInstanceState()
     void refreshSaves()
     void refreshMods()
+    void refreshPlayers()
     void refreshJobs()
     void refreshHealth()
     void refreshInviteCode()
@@ -112,6 +154,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshInstanceState,
     refreshSaves,
     refreshMods,
+    refreshPlayers,
     refreshJobs,
     refreshHealth,
     refreshInviteCode,
@@ -122,12 +165,14 @@ export function useStardewDashboardData(): StardewDashboardData {
     void refreshInstanceState()
     void refreshSaves()
     void refreshMods()
+    void refreshPlayers()
     void refreshInviteCode()
     window.setTimeout(() => {
       void refreshInstanceState()
       void refreshInviteCode()
+      void refreshPlayers()
     }, 1000)
-  }, [refreshInstanceState, refreshInviteCode, refreshJobs, refreshMods, refreshSaves])
+  }, [refreshInstanceState, refreshInviteCode, refreshJobs, refreshMods, refreshPlayers, refreshSaves])
 
   useEffect(() => {
     const init = async () => {
@@ -137,6 +182,7 @@ export function useStardewDashboardData(): StardewDashboardData {
         refreshInstanceState(),
         refreshSaves(),
         refreshMods(),
+        refreshPlayers(),
         refreshJobs(),
         refreshHealth(),
         refreshInviteCode(),
@@ -153,6 +199,8 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     return () => {
       if (pollRef.current !== null) clearInterval(pollRef.current)
+      if (playersPollRef.current !== null) clearTimeout(playersPollRef.current)
+      if (invitePollRef.current !== null) clearTimeout(invitePollRef.current)
       for (const es of jobStreamsRef.current.values()) {
         es.close()
       }
@@ -162,6 +210,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshInstanceState,
     refreshSaves,
     refreshMods,
+    refreshPlayers,
     refreshJobs,
     refreshHealth,
     refreshInviteCode,
@@ -204,31 +253,107 @@ export function useStardewDashboardData(): StardewDashboardData {
     if (!instanceState?.state) return
     if (instanceState.state === 'running') {
       void refreshInviteCode()
+      void refreshPlayers()
       return
     }
     setInviteCode(null)
     setInviteCodeError(null)
-  }, [instanceState?.state, refreshInviteCode])
+    void refreshPlayers()
+    setPlayersError(null)
+  }, [instanceState?.state, refreshInviteCode, refreshPlayers])
+
+  useEffect(() => {
+    if (playersPollRef.current !== null) {
+      clearTimeout(playersPollRef.current)
+      playersPollRef.current = null
+    }
+    if (instanceState?.state !== 'running') return
+
+    let cancelled = false
+    const pollPlayers = async () => {
+      await refreshPlayers()
+      if (cancelled) return
+      playersPollRef.current = window.setTimeout(() => {
+        void pollPlayers()
+      }, 5_000)
+    }
+    playersPollRef.current = window.setTimeout(() => {
+      void pollPlayers()
+    }, 5_000)
+    return () => {
+      cancelled = true
+      if (playersPollRef.current !== null) {
+        clearTimeout(playersPollRef.current)
+        playersPollRef.current = null
+      }
+    }
+  }, [instanceState?.state, refreshPlayers])
+
+  useEffect(() => {
+    if (invitePollRef.current !== null) {
+      clearTimeout(invitePollRef.current)
+      invitePollRef.current = null
+    }
+
+    const stateCanExposeInvite =
+      instanceState?.state === 'running' || instanceState?.state === 'starting'
+    const shouldPollInvite = stateCanExposeInvite && (invitePollRequested || !inviteCode)
+    if (!shouldPollInvite) return
+
+    let cancelled = false
+    const pollInviteCode = async () => {
+      await refreshInviteCode()
+      if (cancelled) return
+      invitePollRef.current = window.setTimeout(() => {
+        void refreshInstanceState()
+        void pollInviteCode()
+      }, invitePollRequested ? 5_000 : 10_000)
+    }
+
+    invitePollRef.current = window.setTimeout(() => {
+      void pollInviteCode()
+    }, invitePollRequested ? 5_000 : 2_000)
+
+    return () => {
+      cancelled = true
+      if (invitePollRef.current !== null) {
+        clearTimeout(invitePollRef.current)
+        invitePollRef.current = null
+      }
+    }
+  }, [
+    instanceState?.state,
+    inviteCode,
+    invitePollRequested,
+    refreshInstanceState,
+    refreshInviteCode,
+  ])
 
   return {
     instanceState,
     saves,
     mods,
+    players,
     jobs,
     health,
     versionInfo,
     inviteCode,
     savesError,
     modsError,
+    playersError,
     healthError,
     inviteCodeError,
     loading,
+    playersLoading,
     refreshAll,
     refreshInstanceState,
     refreshSaves,
     refreshMods,
+    refreshPlayers,
     refreshJobs,
     refreshHealth,
     refreshInviteCode,
+    clearInviteCode,
+    requestInviteCodeRefresh,
   }
 }

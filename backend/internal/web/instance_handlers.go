@@ -102,6 +102,14 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceMetrics(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "players" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePlayersList(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "docker" && parts[2] == "ps" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

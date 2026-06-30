@@ -170,6 +170,58 @@ export type ResourceMetricsResponse = {
   sample: ResourceMetricSample
 }
 
+export type StardewPlayerInfo = {
+  name: string
+  role?: string
+  location?: string
+  locationName?: string
+  locationDisplayName?: string
+  tileX?: number
+  tileY?: number
+  pixelX?: number
+  pixelY?: number
+  onlineFor?: string
+  status: 'online' | string
+  source: string
+  uniqueMultiplayerId?: string
+  isHost?: boolean
+  money?: number
+  farmIncome?: number
+  personalIncome?: number
+  totalMoneyEarned?: number
+  walletMode?: 'shared' | 'separate' | string
+  lastSeen?: string
+}
+
+export type StardewPlayerEvent = {
+  id: string
+  type: 'seen' | 'joined' | 'left' | string
+  playerName: string
+  uniqueMultiplayerId?: string
+  isHost?: boolean
+  location?: string
+  locationName?: string
+  locationDisplayName?: string
+  saveId?: string
+  at: string
+  message: string
+}
+
+export type StardewPlayersResponse = {
+  instanceId: string
+  state: string
+  source?: string
+  saveId?: string
+  onlineCount: number | null
+  maxPlayers: number | null
+  players: StardewPlayerInfo[]
+  recentEvents?: StardewPlayerEvent[]
+  rawInfo?: string
+  parseStatus: 'exact' | 'partial' | 'unavailable' | string
+  message?: string
+  updatedAt: string
+}
+
 export type InstallJobResponse = {
   jobId: string
 }

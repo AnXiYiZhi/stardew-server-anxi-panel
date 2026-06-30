@@ -34,6 +34,17 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     state !== 'starting'
   const modCount = dashboardData.mods?.mods.length ?? 0
   const modRestartRequired = dashboardData.mods?.restartRequired ?? false
+  const onlineCount = dashboardData.players?.onlineCount
+  const maxPlayers = dashboardData.players?.maxPlayers
+  const playerSummary =
+    onlineCount != null
+      ? maxPlayers != null
+        ? `${onlineCount}/${maxPlayers}`
+        : String(onlineCount)
+      : state === 'running'
+        ? '识别中'
+        : '—'
+  const onlinePlayers = dashboardData.players?.players.filter((player) => player.status === 'online') ?? []
 
   const healthChecks = dashboardData.health?.checks ?? []
   const healthStatus = dashboardData.health?.status
@@ -58,10 +69,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     setActionError(null)
     try {
       await startInstance()
+      dashboardData.requestInviteCodeRefresh()
       setSaveRequiredDetected(false)
       dashboardData.refreshInstanceState()
       dashboardData.refreshJobs()
-      dashboardData.refreshInviteCode()
     } catch (e) {
       const saveBlocker = saveStartBlocker(e)
       if (saveBlocker) {
@@ -80,10 +91,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   async function handleStop() {
     setActionBusy(true)
     setActionError(null)
+    dashboardData.clearInviteCode()
     try {
       await stopInstance()
       dashboardData.refreshInstanceState()
-      dashboardData.refreshInviteCode()
     } catch (e) {
       setActionError(errorMessage(e))
     } finally {
@@ -96,6 +107,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     setActionError(null)
     try {
       await restartInstance()
+      dashboardData.requestInviteCodeRefresh()
       dashboardData.refreshInstanceState()
     } catch (e) {
       setActionError(errorMessage(e))
@@ -230,7 +242,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
           <div className="sd-bstat">
             <img src="/assets/stardew/ui/icons/icon_top_summary_players.png" alt="" />
             <span className="sd-bstat-l">玩家：</span>
-            <span className="sd-bstat-v">—</span>
+            <span className="sd-bstat-v">{playerSummary}</span>
           </div>
           {dashboardData.versionInfo ? (
             <div className="sd-bstat">
@@ -292,11 +304,25 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
               <span className="sd-bstat-l">读取邀请码中…</span>
             ) : dashboardData.inviteCodeError ? (
               <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>
-                服务器未运行，邀请码不可用
+                {state === 'running' || state === 'starting'
+                  ? '获取邀请码失败，稍后可刷新重试'
+                  : '服务器未运行，邀请码不可用'}
               </span>
             ) : (
               <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>暂无邀请码</span>
             )}
+            <button
+              className="sd-btn-tan sd-invite-refresh-btn"
+              onClick={() => dashboardData.refreshInviteCode()}
+              disabled={state !== 'running' && state !== 'starting'}
+              title={
+                state === 'running' || state === 'starting'
+                  ? '重新获取邀请码'
+                  : '服务器未运行时无法获取邀请码'
+              }
+            >
+              刷新
+            </button>
           </div>
         </div>
         {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
@@ -377,18 +403,28 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             在线玩家
           </div>
           <div
-            style={{
-              padding: '4px 8px',
-              color: '#8a7060',
-              fontSize: 10,
-              fontStyle: 'italic',
-              flex: 1,
-            }}
+            className="sd-ov-player-body"
           >
-            玩家列表 API 待接入，当前无法获取在线人数。
+            {onlinePlayers.length > 0 ? (
+              <div className="sd-ov-player-list">
+                {onlinePlayers.slice(0, 4).map((player) => (
+                  <span className="sd-ov-player-chip" key={player.name}>
+                    <span className="sd-dot sd-dot-green" aria-hidden="true" />
+                    {player.name}
+                  </span>
+                ))}
+              </div>
+            ) : dashboardData.playersError ? (
+              <span>在线玩家读取失败。</span>
+            ) : onlineCount === 0 ? (
+              <span>暂无在线玩家。</span>
+            ) : state === 'running' ? (
+              <span>已接入在线人数，玩家姓名等待控制文件或 Junimo info 输出。</span>
+            ) : (
+              <span>服务器运行后显示在线玩家。</span>
+            )}
             <button
               className="sd-btn-tan"
-              style={{ marginLeft: 8, verticalAlign: 'middle' }}
               onClick={() => onNavigate('players')}
             >
               玩家管理

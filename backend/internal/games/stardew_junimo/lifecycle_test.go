@@ -1,7 +1,12 @@
 package stardew_junimo
 
 import (
+	"context"
+	"reflect"
 	"testing"
+
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 func TestParseInviteCode_ValidPatterns(t *testing.T) {
@@ -45,6 +50,70 @@ func TestMergeInviteCodeInPayload_EmptyExisting(t *testing.T) {
 	result := mergeInviteCodeInPayload("", "XXXX-1111")
 	if !containsStr(result, `"invite_code"`) {
 		t.Errorf("invite_code not in payload: %s", result)
+	}
+}
+
+func TestInviteCodeFromPayload(t *testing.T) {
+	if got := inviteCodeFromPayload(`{"invite_code":"SGD0XEES7LO2"}`); got != "SGD0XEES7LO2" {
+		t.Fatalf("inviteCodeFromPayload() = %q", got)
+	}
+	if got := inviteCodeFromPayload(`{"other":"value"}`); got != "" {
+		t.Fatalf("expected empty invite code, got %q", got)
+	}
+}
+
+func TestClearStaleInviteCodeRemovesOnlyStoredOldCode(t *testing.T) {
+	var calls [][]string
+	fake := &fakeConsoleDocker{
+		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+			calls = append(calls, append([]string{}, args...))
+			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+				return paneldocker.CommandResult{Stdout: "OLD-CODE\n", ExitCode: 0}, nil
+			}
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance: storage.Instance{
+			DataDir:       "custom-dir",
+			DriverPayload: `{"invite_code":"OLD-CODE"}`,
+		},
+	}
+
+	runner.clearStaleInviteCode(context.Background(), nil)
+
+	if len(calls) != 2 {
+		t.Fatalf("expected cat and rm calls, got %d: %#v", len(calls), calls)
+	}
+	if !reflect.DeepEqual(calls[1], []string{"rm", "-f", "/tmp/invite-code.txt"}) {
+		t.Fatalf("expected rm stale invite call, got %#v", calls[1])
+	}
+}
+
+func TestClearStaleInviteCodeKeepsFreshCode(t *testing.T) {
+	var calls [][]string
+	fake := &fakeConsoleDocker{
+		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+			calls = append(calls, append([]string{}, args...))
+			return paneldocker.CommandResult{Stdout: "NEW-CODE\n", ExitCode: 0}, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance: storage.Instance{
+			DataDir:       "custom-dir",
+			DriverPayload: `{"invite_code":"OLD-CODE"}`,
+		},
+	}
+
+	runner.clearStaleInviteCode(context.Background(), nil)
+
+	if len(calls) != 1 {
+		t.Fatalf("expected only cat call, got %d: %#v", len(calls), calls)
+	}
+	if !reflect.DeepEqual(calls[0], []string{"cat", "/tmp/invite-code.txt"}) {
+		t.Fatalf("expected cat invite call, got %#v", calls[0])
 	}
 }
 

@@ -2095,3 +2095,323 @@ button.job-row {
     font-size: 12px;
   }
 }
+
+/* ── Image2 Login Home: 原型图直铺 + 透明真实表单热区 ─────────────── */
+
+.sd-auth-shell--image-login {
+  display: block;
+  min-height: 100vh;
+  padding: 0;
+  background: #101605;
+}
+
+.sd-auth-shell--image-login::before,
+.sd-auth-shell--image-login::after {
+  content: none;
+}
+
+.sd-auth-shell--image-login .sd-auth-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  width: max(100vw, calc(100vh * 1.7778958555));
+  height: max(100vh, calc(100vw * 0.5627990431));
+  max-width: none;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: url('/assets/stardew/ui/backgrounds/background_login_home_image2.png') center / 100% 100% no-repeat;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+.sd-auth-shell--image-login .sd-auth-eyebrow,
+.sd-auth-shell--image-login .sd-auth-title,
+.sd-auth-shell--image-login .sd-auth-version,
+.sd-auth-shell--image-login .sd-auth-loading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.sd-auth-shell--image-login .form-grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+}
+
+.sd-auth-shell--image-login .field {
+  position: absolute;
+  display: block;
+  margin: 0;
+  height: 8.9%;
+}
+
+.sd-auth-shell--image-login .summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.sd-auth-shell--image-login .field > span {
+  display: block;
+  height: 32%;
+  color: #3f2412;
+  font-size: clamp(12px, 1.05vw, 18px);
+  font-weight: 900;
+  line-height: 1.1;
+  text-shadow: 0 1px 0 rgba(255, 239, 197, 0.82);
+}
+
+.sd-auth-shell--login .field:nth-of-type(1) {
+  left: 61.6%;
+  top: 40.8%;
+  width: 26.62%;
+}
+
+.sd-auth-shell--login .field:nth-of-type(2) {
+  left: 61.6%;
+  top: 52.8%;
+  width: 26.62%;
+}
+
+.sd-auth-shell--setup .field:nth-of-type(1) {
+  left: 61.6%;
+  top: 35.6%;
+  width: 26.62%;
+}
+
+.sd-auth-shell--setup .field:nth-of-type(2) {
+  left: 61.6%;
+  top: 46.6%;
+  width: 26.62%;
+}
+
+.sd-auth-shell--setup .field:nth-of-type(3) {
+  left: 61.6%;
+  top: 57.6%;
+  width: 26.62%;
+}
+
+.sd-auth-shell--image-login .password-input {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  height: 62%;
+}
+
+.sd-auth-shell--image-login .field input,
+.sd-auth-shell--image-login .password-input input {
+  width: 100%;
+  min-height: 0;
+  height: 62%;
+  border: 3px solid rgba(135, 84, 38, 0.9);
+  border-radius: 2px;
+  background:
+    linear-gradient(rgba(255, 238, 189, 0.84), rgba(246, 211, 145, 0.82)),
+    url('/assets/stardew/ui/backgrounds/background_parchment_tile.png');
+  color: #4b2a16;
+  caret-color: #4b2a16;
+  padding: 0 4.4%;
+  font-size: clamp(13px, 1.02vw, 18px);
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 238, 191, 0.75);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 247, 206, 0.5),
+    inset 0 -4px 0 rgba(122, 73, 30, 0.12),
+    0 2px 0 rgba(87, 45, 18, 0.34);
+}
+
+.sd-auth-shell--image-login .password-input input {
+  height: 100%;
+  padding-right: 21%;
+}
+
+.sd-auth-shell--image-login .field > input {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.sd-auth-shell--image-login .field input:focus-visible,
+.sd-auth-shell--image-login .password-input input:focus-visible {
+  outline: 3px solid rgba(72, 150, 58, 0.42);
+  outline-offset: 2px;
+}
+
+.sd-auth-shell--image-login .password-toggle {
+  position: absolute;
+  right: 1.5%;
+  top: 5%;
+  width: 18.5%;
+  min-width: 0;
+  min-height: 0;
+  height: 90%;
+  border: 0;
+  background: transparent;
+  color: #4b2a16;
+  font-size: clamp(10px, 0.86vw, 14px);
+  font-weight: 900;
+  text-shadow: 0 1px 0 rgba(255, 238, 191, 0.75);
+  padding: 0;
+  cursor: pointer;
+}
+
+.sd-auth-shell--image-login .password-toggle:hover {
+  background: rgba(93, 54, 23, 0.08);
+}
+
+.sd-auth-shell--image-login .button {
+  position: absolute;
+  left: 62.14%;
+  top: 72.37%;
+  width: 25.9%;
+  min-height: 0;
+  height: 8.82%;
+  border: 0;
+  background: transparent;
+  color: #fff3c7;
+  font-size: clamp(20px, 2.1vw, 34px);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow:
+    0 2px 0 #3f240f,
+    0 0 8px rgba(28, 74, 12, 0.54);
+  padding: 0;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
+}
+
+.sd-auth-shell--image-login .button:hover:not(:disabled) {
+  background: rgba(255, 255, 210, 0.12);
+  box-shadow: inset 0 0 18px rgba(255, 255, 180, 0.22);
+  transform: translateY(-1px);
+}
+
+.sd-auth-shell--image-login .button:active:not(:disabled) {
+  background: rgba(20, 55, 12, 0.22);
+  box-shadow: inset 0 8px 18px rgba(0, 0, 0, 0.24);
+  transform: translateY(3px);
+}
+
+.sd-auth-shell--image-login .button:disabled {
+  background: rgba(0, 0, 0, 0.18);
+  cursor: wait;
+  transform: none;
+}
+
+.sd-auth-shell--image-login .button:focus-visible,
+.sd-auth-shell--image-login .password-toggle:focus-visible {
+  outline: 3px solid rgba(255, 244, 173, 0.76);
+  outline-offset: 2px;
+}
+
+.sd-auth-shell--image-login:not(.sd-auth-shell--has-message) .sd-auth-card::after {
+  content: none;
+}
+
+.sd-auth-shell--image-login .form-hint {
+  position: absolute;
+  left: 61.66%;
+  top: 66.25%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  width: 26.45%;
+  height: 4.4%;
+  margin: 0;
+  color: #7b4b22;
+  font-size: clamp(10px, 0.9vw, 15px);
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  justify-content: center;
+  text-shadow: 0 1px 0 rgba(255, 238, 191, 0.75);
+}
+
+.sd-auth-shell--has-message .form-hint {
+  display: none;
+}
+
+.sd-auth-shell--login .form-hint {
+  display: none;
+}
+
+.sd-auth-shell--image-login .sd-auth-error {
+  position: absolute;
+  left: 61.66%;
+  top: 65.42%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  width: 26.45%;
+  height: 5.22%;
+  margin: 0;
+  padding: 0 2% 0 4.4%;
+  border: 2px solid rgba(157, 45, 25, 0.86);
+  background:
+    linear-gradient(rgba(242, 159, 112, 0.96), rgba(229, 127, 86, 0.96)),
+    url('/assets/stardew/ui/backgrounds/background_parchment_tile.png');
+  color: #6f1b13;
+  font-size: clamp(10px, 0.9vw, 15px);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 2px rgba(255, 212, 169, 0.42);
+}
+
+.sd-auth-shell--image-login .sd-auth-error::before {
+  content: '!';
+  position: absolute;
+  left: 2%;
+  top: 50%;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 2px;
+  background: #b63e25;
+  color: #ffe7b8;
+  font-size: 0.85em;
+  font-weight: 900;
+  line-height: 1.5em;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+@media (max-width: 700px) {
+  .sd-auth-shell--image-login .sd-auth-card {
+    transform: translate(-74.5%, -50%);
+  }
+
+  .sd-auth-shell--login .field:nth-of-type(1),
+  .sd-auth-shell--login .field:nth-of-type(2),
+  .sd-auth-shell--setup .field:nth-of-type(1),
+  .sd-auth-shell--setup .field:nth-of-type(2),
+  .sd-auth-shell--setup .field:nth-of-type(3),
+  .sd-auth-shell--image-login .form-hint,
+  .sd-auth-shell--image-login .sd-auth-error {
+    left: 62.1%;
+    width: 25.2%;
+  }
+
+  .sd-auth-shell--image-login .button {
+    left: 62.1%;
+    width: 25.2%;
+  }
+}

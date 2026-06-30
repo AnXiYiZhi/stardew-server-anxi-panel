@@ -169,6 +169,9 @@ func TestWriteInitConfig_PreservesPetGenderAndCabinSelection(t *testing.T) {
 	if init.Gender != "female" || init.PetType != "Dog" || init.PetBreed != "4" || init.CabinLayout != "separate" {
 		t.Fatalf("init selection changed: %#v", init)
 	}
+	if !init.AutoPause {
+		t.Fatalf("expected autoPause enabled in init config: %#v", init)
+	}
 }
 
 func TestListSaveDirs_Empty(t *testing.T) {

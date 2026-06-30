@@ -10,6 +10,8 @@ import (
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -23,6 +25,8 @@ type fakeDockerService struct {
 	statsErr      error
 	logsResult    paneldocker.CommandResult
 	logsErr       error
+	execFunc      func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	instanceState string
 }
 
 func (f fakeDockerService) DockerVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error) {
@@ -43,6 +47,45 @@ func (f fakeDockerService) ComposeStats(ctx context.Context, dir string) (paneld
 
 func (f fakeDockerService) ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
 	return f.logsResult, f.logsErr
+}
+
+func (f fakeDockerService) ComposePullStreaming(ctx context.Context, dir string, services []string, lineHandler func(line string)) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) ImageInspect(ctx context.Context, dir string, imageRef string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	return 0, nil
+}
+
+func (f fakeDockerService) ComposeUp(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) ComposeRestart(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
+	if f.execFunc != nil {
+		return f.execFunc(ctx, dir, service, stdinData, args...)
+	}
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) ComposeExecTTY(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.ComposeExecTTYResult, error) {
+	return paneldocker.ComposeExecTTYResult{ExitCode: 0}, nil
 }
 
 func TestDockerStatusRequiresAdmin(t *testing.T) {
@@ -203,6 +246,63 @@ func TestInstanceMetricsDoesNotFallbackToNonServerStats(t *testing.T) {
 	}
 }
 
+func TestInstancePlayersReturnsParsedInfoOutput(t *testing.T) {
+	step := 0
+	fake := fakeDockerService{
+		psResult: paneldocker.ComposePsResult{
+			Services: []paneldocker.ComposeService{{Name: "demo-server-1", Service: "server", State: "running", Status: "Up 1 minute"}},
+		},
+		execFunc: func(_ context.Context, _, _, stdinData string, args ...string) (paneldocker.CommandResult, error) {
+			step++
+			switch step {
+			case 1:
+				return paneldocker.CommandResult{Stdout: "0 /tmp/server-output.log", ExitCode: 0}, nil
+			case 2:
+				if stdinData != "info\n" {
+					t.Fatalf("stdin = %q, want info newline", stdinData)
+				}
+				return paneldocker.CommandResult{ExitCode: 0}, nil
+			default:
+				return paneldocker.CommandResult{
+					Stdout:   "Players: 2/4\nOnline players: Abigail, Sam\n",
+					ExitCode: 0,
+				}, nil
+			}
+		},
+	}
+	handler, store, dataDir, closeStore := newDockerTestHandlerWithStore(t, fake)
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+	prepareComposeProject(t, dataDir)
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:            storage.DefaultInstanceID,
+		State:         storage.InstanceStateRunning,
+		StateMessage:  "test running",
+		DriverPhase:   "running",
+		DriverPayload: "{}",
+	}); err != nil {
+		t.Fatalf("set instance running: %v", err)
+	}
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/players", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("players returned %d: %s", response.Code, response.Body.String())
+	}
+	var body sj.PlayersResult
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode players response: %v", err)
+	}
+	if body.OnlineCount == nil || *body.OnlineCount != 2 {
+		t.Fatalf("online count = %#v, want 2", body.OnlineCount)
+	}
+	if body.MaxPlayers == nil || *body.MaxPlayers != 4 {
+		t.Fatalf("max players = %#v, want 4", body.MaxPlayers)
+	}
+	if len(body.Players) != 2 || body.Players[0].Name != "Abigail" || body.Players[1].Name != "Sam" {
+		t.Fatalf("players = %+v, want Abigail/Sam", body.Players)
+	}
+}
+
 func TestInstanceVNCConfigReturnsDefaultWhenEnvMissing(t *testing.T) {
 	handler, _, closeStore := newDockerTestHandler(t, fakeDockerService{})
 	defer closeStore()
@@ -261,6 +361,12 @@ func setupDockerAdmin(t *testing.T, handler http.Handler) *http.Cookie {
 
 func newDockerTestHandler(t *testing.T, fake fakeDockerService) (http.Handler, string, func()) {
 	t.Helper()
+	handler, _, dataDir, cleanup := newDockerTestHandlerWithStore(t, fake)
+	return handler, dataDir, cleanup
+}
+
+func newDockerTestHandlerWithStore(t *testing.T, fake fakeDockerService) (http.Handler, *storage.Store, string, func()) {
+	t.Helper()
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
 		Addr:    ":0",
@@ -276,16 +382,45 @@ func newDockerTestHandler(t *testing.T, fake fakeDockerService) (http.Handler, s
 		_ = store.Close()
 		t.Fatalf("migrate storage: %v", err)
 	}
-
-	return NewHandler(Deps{
-			Config: config.Config{DataDir: dataDir, Secret: "test-secret", Version: "test"},
-			Store:  store,
-			Docker: fake,
-		}), dataDir, func() {
-			if err := store.Close(); err != nil {
-				t.Fatalf("close storage: %v", err)
-			}
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  filepath.Join(dataDir, "instances", storage.DefaultInstanceID),
+	}); err != nil {
+		_ = store.Close()
+		t.Fatalf("ensure default instance: %v", err)
+	}
+	if fake.instanceState != "" {
+		if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+			ID:            storage.DefaultInstanceID,
+			State:         fake.instanceState,
+			StateMessage:  "test state",
+			DriverPhase:   fake.instanceState,
+			DriverPayload: "{}",
+		}); err != nil {
+			_ = store.Close()
+			t.Fatalf("set test instance state: %v", err)
 		}
+	}
+
+	driverRegistry := registry.New()
+	if err := driverRegistry.Register(sj.New(fake, nil, nil, store)); err != nil {
+		_ = store.Close()
+		t.Fatalf("register stardew driver: %v", err)
+	}
+
+	handler := NewHandler(Deps{
+		Config:   config.Config{DataDir: dataDir, Secret: "test-secret", Version: "test"},
+		Store:    store,
+		Docker:   fake,
+		Registry: driverRegistry,
+	})
+	return handler, store, dataDir, func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("close storage: %v", err)
+		}
+	}
 }
 
 func prepareComposeProject(t *testing.T, dataDir string) {

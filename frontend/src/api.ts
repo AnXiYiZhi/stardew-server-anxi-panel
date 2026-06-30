@@ -25,6 +25,7 @@ import type {
   RestoreBackupResult,
   ResourceMetricsResponse,
   SavesListResult,
+  StardewPlayersResponse,
   UploadPreviewResult,
   UsersResponse,
 } from './types'
@@ -104,6 +105,10 @@ export function getInstanceState(instanceId = defaultInstanceId) {
 
 export function getInstanceMetrics(instanceId = defaultInstanceId) {
   return request<ResourceMetricsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/metrics`)
+}
+
+export function getInstancePlayers(instanceId = defaultInstanceId) {
+  return request<StardewPlayersResponse>(`/api/instances/${encodeURIComponent(instanceId)}/players`)
 }
 
 export function getJobs() {

@@ -768,6 +768,7 @@ type initConfigJSON struct {
 	MoneyMode            string   `json:"moneyMode,omitempty"`
 	ProfitMargin         int      `json:"profitMargin"`
 	SkipIntro            bool     `json:"skipIntro"`
+	AutoPause            bool     `json:"autoPause"`
 	BundlesRemix         bool     `json:"bundlesRemix"`
 	MinesRemix           bool     `json:"minesRemix"`
 	SpawnMonstersAtNight bool     `json:"spawnMonstersAtNight"`
@@ -828,6 +829,7 @@ func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
 		MoneyMode:            cfg.MoneyMode,
 		ProfitMargin:         profitInt,
 		SkipIntro:            true,
+		AutoPause:            true,
 		BundlesRemix:         cfg.RemixedCommunityCenter,
 		MinesRemix:           cfg.RemixedMineRewards,
 		SpawnMonstersAtNight: cfg.SpawnMonstersOnFarm,

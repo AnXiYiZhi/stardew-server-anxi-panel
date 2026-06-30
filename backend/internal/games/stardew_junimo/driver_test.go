@@ -55,6 +55,11 @@ func (f *fakeStore) GetInstance(_ context.Context, _ string) (storage.Instance, 
 
 func (f *fakeStore) UpdateInstanceState(_ context.Context, p storage.UpdateInstanceStateParams) (storage.Instance, error) {
 	f.updated = append(f.updated, p)
+	f.instance.State = p.State
+	f.instance.StateMessage.String = p.StateMessage
+	f.instance.StateMessage.Valid = p.StateMessage != ""
+	f.instance.DriverPhase = p.DriverPhase
+	f.instance.DriverPayload = p.DriverPayload
 	return f.instance, nil
 }
 
@@ -268,6 +273,63 @@ func TestDriverStatusUsesInstanceDataDir(t *testing.T) {
 	}
 	if status.Runtime.Containers[0].Service != "server" {
 		t.Fatalf("unexpected service: %q", status.Runtime.Containers[0].Service)
+	}
+}
+
+func TestDriverReconcileStatePromotesStoppedWhenServerIsRunning(t *testing.T) {
+	fake := &fakeDocker{
+		psResult: paneldocker.ComposePsResult{
+			Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up 1 minute"}},
+		},
+	}
+	store := &fakeStore{instance: storage.Instance{
+		ID:            "stardew",
+		DataDir:       "custom-dir",
+		State:         storage.InstanceStateStopped,
+		DriverPayload: `{"invite_code":"ABCD1234"}`,
+	}}
+	driver := New(fake, nil, nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateRunning {
+		t.Fatalf("expected running, got %q", updated.State)
+	}
+	if len(store.updated) != 1 {
+		t.Fatalf("expected one state update, got %d", len(store.updated))
+	}
+	if got := store.updated[0].DriverPayload; got != `{"invite_code":"ABCD1234"}` {
+		t.Fatalf("driver payload was not preserved: %s", got)
+	}
+	if fake.workDir != "custom-dir" {
+		t.Fatalf("expected custom-dir workdir, got %q", fake.workDir)
+	}
+}
+
+func TestDriverReconcileStateDoesNotPromoteWithoutServerService(t *testing.T) {
+	fake := &fakeDocker{
+		psResult: paneldocker.ComposePsResult{
+			Services: []paneldocker.ComposeService{{Service: "steam-auth", State: "running", Status: "Up 1 minute"}},
+		},
+	}
+	store := &fakeStore{instance: storage.Instance{
+		ID:      "stardew",
+		DataDir: "custom-dir",
+		State:   storage.InstanceStateStopped,
+	}}
+	driver := New(fake, nil, nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateStopped {
+		t.Fatalf("expected stopped, got %q", updated.State)
+	}
+	if len(store.updated) != 0 {
+		t.Fatalf("expected no state update, got %d", len(store.updated))
 	}
 }
 

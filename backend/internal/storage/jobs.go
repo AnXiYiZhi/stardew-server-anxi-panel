@@ -61,6 +61,12 @@ type ListJobsFilter struct {
 	Limit   int
 }
 
+type ListActiveJobsFilter struct {
+	TargetType string
+	TargetID   string
+	Types      []string
+}
+
 func NewJobID() (string, error) {
 	var data [16]byte
 	if _, err := rand.Read(data[:]); err != nil {
@@ -120,6 +126,54 @@ func (s *Store) CancelJob(ctx context.Context, id string, errorMessage string) (
 		RETURNING id, type, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
 	`, JobStatusCanceled, errorMessage, id)
 	return scanJobRow(row)
+}
+
+func (s *Store) ListActiveJobs(ctx context.Context, filter ListActiveJobsFilter) ([]Job, error) {
+	query := `
+		SELECT id, type, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		FROM jobs
+		WHERE status IN (?, ?)
+	`
+	args := []any{JobStatusQueued, JobStatusRunning}
+	if filter.TargetType != "" {
+		query += ` AND target_type = ?`
+		args = append(args, filter.TargetType)
+	}
+	if filter.TargetID != "" {
+		query += ` AND target_id = ?`
+		args = append(args, filter.TargetID)
+	}
+	if len(filter.Types) > 0 {
+		query += ` AND type IN (`
+		for i, typ := range filter.Types {
+			if i > 0 {
+				query += `, `
+			}
+			query += `?`
+			args = append(args, typ)
+		}
+		query += `)`
+	}
+	query += ` ORDER BY created_at ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list active jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []Job
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list active jobs rows: %w", err)
+	}
+	return jobs, nil
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (Job, error) {

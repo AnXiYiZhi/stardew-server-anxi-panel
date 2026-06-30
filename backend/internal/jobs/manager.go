@@ -13,8 +13,6 @@ import (
 
 const defaultJobTimeout = 30 * time.Minute
 
-var ErrCancelNotImplemented = errors.New("job cancellation is not implemented")
-
 type Manager struct {
 	store  *storage.Store
 	logger *slog.Logger
@@ -142,7 +140,47 @@ func (m *Manager) Subscribe(jobID string) (<-chan Event, func()) {
 }
 
 func (m *Manager) Cancel(ctx context.Context, jobID string) error {
-	return ErrCancelNotImplemented
+	m.mu.Lock()
+	cancel := m.cancels[jobID]
+	m.mu.Unlock()
+	if cancel != nil {
+		cancel()
+		return nil
+	}
+
+	job, err := m.store.GetJob(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if job.Status != storage.JobStatusQueued && job.Status != storage.JobStatusRunning {
+		return nil
+	}
+	const message = "任务已取消。"
+	_, _ = m.AppendLog(context.Background(), jobID, storage.JobLogLevelWarn, message)
+	canceled, err := m.store.CancelJob(context.Background(), jobID, message)
+	if err != nil {
+		return err
+	}
+	m.publish(Event{Type: EventFinished, Job: &canceled})
+	return nil
+}
+
+func (m *Manager) CancelActive(ctx context.Context, filter storage.ListActiveJobsFilter, exceptJobID string) ([]storage.Job, error) {
+	active, err := m.store.ListActiveJobs(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	canceled := make([]storage.Job, 0, len(active))
+	for _, job := range active {
+		if job.ID == exceptJobID {
+			continue
+		}
+		if err := m.Cancel(ctx, job.ID); err != nil {
+			return canceled, err
+		}
+		canceled = append(canceled, job)
+	}
+	return canceled, nil
 }
 
 func (m *Manager) run(ctx context.Context, cancel context.CancelFunc, job storage.Job, runner Runner) {
@@ -155,6 +193,17 @@ func (m *Manager) run(ctx context.Context, cancel context.CancelFunc, job storag
 
 	started, err := m.store.StartJob(ctx, job.ID)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			const message = "任务已取消。"
+			_, _ = m.AppendLog(context.Background(), job.ID, storage.JobLogLevelWarn, message)
+			canceled, cancelErr := m.store.CancelJob(context.Background(), job.ID, message)
+			if cancelErr != nil {
+				m.logger.Error("failed to mark queued job canceled", "job_id", job.ID, "error", cancelErr)
+				return
+			}
+			m.publish(Event{Type: EventFinished, Job: &canceled})
+			return
+		}
 		m.logger.Error("failed to start job", "job_id", job.ID, "error", err)
 		return
 	}
@@ -182,6 +231,16 @@ func (m *Manager) run(ctx context.Context, cancel context.CancelFunc, job storag
 		} else if errors.Is(ctx.Err(), context.Canceled) {
 			message = "任务已取消。"
 		}
+		if errors.Is(ctx.Err(), context.Canceled) {
+			_, _ = m.AppendLog(context.Background(), job.ID, storage.JobLogLevelWarn, message)
+			canceled, cancelErr := m.store.CancelJob(context.Background(), job.ID, message)
+			if cancelErr != nil {
+				m.logger.Error("failed to mark job canceled", "job_id", job.ID, "error", cancelErr)
+				return
+			}
+			m.publish(Event{Type: EventFinished, Job: &canceled})
+			return
+		}
 		_, _ = m.AppendLog(context.Background(), job.ID, storage.JobLogLevelError, message)
 		failed, failErr := m.store.FailJob(context.Background(), job.ID, message)
 		if failErr != nil {
@@ -189,6 +248,18 @@ func (m *Manager) run(ctx context.Context, cancel context.CancelFunc, job storag
 			return
 		}
 		m.publish(Event{Type: EventFinished, Job: &failed})
+		return
+	}
+
+	if errors.Is(ctx.Err(), context.Canceled) {
+		const message = "任务已取消。"
+		_, _ = m.AppendLog(context.Background(), job.ID, storage.JobLogLevelWarn, message)
+		canceled, err := m.store.CancelJob(context.Background(), job.ID, message)
+		if err != nil {
+			m.logger.Error("failed to mark job canceled", "job_id", job.ID, "error", err)
+			return
+		}
+		m.publish(Event{Type: EventFinished, Job: &canceled})
 		return
 	}
 

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <DefineConstants Condition="'$(SAP_CI_BUILD)' == 'true'">$(DefineConstants);SAP_CI_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(SAP_CI_BUILD)' != 'true'">
+    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.3.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
