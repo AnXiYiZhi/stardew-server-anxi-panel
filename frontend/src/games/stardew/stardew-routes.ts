@@ -12,6 +12,17 @@ export type StardewRoute =
   | 'diagnostics'
   | 'settings'
 
+export type StardewSaveAction = 'new' | 'upload'
+
+export type StardewNavigateOptions = {
+  saveAction?: StardewSaveAction
+}
+
+export type StardewSaveActionRequest = {
+  action: StardewSaveAction
+  nonce: number
+}
+
 // 公共数据层：由 useStardewDashboardData hook 填充，通过 StardewPanel 传给所有页面
 export type StardewDashboardData = {
   // 核心数据
@@ -43,7 +54,8 @@ export type StardewPageProps = {
   user: CurrentUser
   instanceState: InstanceState | null  // 与 dashboardData.instanceState 相同，保留向后兼容
   dashboardData: StardewDashboardData
-  onNavigate: (route: StardewRoute) => void
+  onNavigate: (route: StardewRoute, options?: StardewNavigateOptions) => void
+  saveActionRequest?: StardewSaveActionRequest | null
   onLogout: () => void
 }
 

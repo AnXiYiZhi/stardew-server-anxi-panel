@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CurrentUser } from '../../types'
 import { stateLabel } from '../../core/helpers'
 import { parseRoute, routeToPath } from './stardew-routes'
-import type { StardewRoute } from './stardew-routes'
+import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
 import { InstallPage } from './pages/InstallPage'
 import { OverviewPage } from './pages/OverviewPage'
@@ -65,6 +65,7 @@ export function StardewPanel({
   const [route, setRoute] = useState<StardewRoute>(() =>
     parseRoute(window.location.pathname),
   )
+  const [saveActionRequest, setSaveActionRequest] = useState<StardewSaveActionRequest | null>(null)
 
   const dashboardData = useStardewDashboardData()
   const { instanceState, jobs, health, versionInfo, saves } = dashboardData
@@ -75,13 +76,18 @@ export function StardewPanel({
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  function navigate(next: StardewRoute) {
+  function navigate(next: StardewRoute, options?: StardewNavigateOptions) {
+    if (options?.saveAction) {
+      setSaveActionRequest({ action: options.saveAction, nonce: Date.now() })
+    } else if (next !== 'saves') {
+      setSaveActionRequest(null)
+    }
     if (next === route) return
     window.history.pushState(null, '', routeToPath(next))
     setRoute(next)
   }
 
-  const pageProps = { user, instanceState, dashboardData, onNavigate: navigate, onLogout }
+  const pageProps = { user, instanceState, dashboardData, onNavigate: navigate, saveActionRequest, onLogout }
 
   function renderPage() {
     switch (route) {

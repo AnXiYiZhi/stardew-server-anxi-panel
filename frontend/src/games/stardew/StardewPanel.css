@@ -191,9 +191,9 @@
 }
 
 .sd-sidebar .sd-nav-item {
-  --sd-nav-w: 105;
+  --sd-nav-w: 110;
   --sd-nav-h: 29;
-  --sd-nav-active-w: 99;
+  --sd-nav-active-w: 106;
   --sd-nav-active-h: 29;
   --sd-nav-pad-left: 10;
   --sd-nav-pad-right: 7;
@@ -215,52 +215,6 @@
   justify-content: flex-start;
 }
 
-.sd-sidebar .sd-nav-item[data-route="overview"] {
-  --sd-nav-w: 96;
-  --sd-nav-active-w: 96;
-}
-
-.sd-sidebar .sd-nav-item[data-route="server"] {
-  --sd-nav-w: 110;
-  --sd-nav-active-w: 106;
-}
-
-.sd-sidebar .sd-nav-item[data-route="saves"] {
-  --sd-nav-w: 102;
-  --sd-nav-active-w: 105;
-  --sd-nav-active-h: 28;
-}
-
-.sd-sidebar .sd-nav-item[data-route="jobs"] {
-  --sd-nav-w: 126;
-  --sd-nav-active-w: 122;
-}
-
-.sd-sidebar .sd-nav-item[data-route="players"] {
-  --sd-nav-w: 96;
-  --sd-nav-active-w: 96;
-}
-
-.sd-sidebar .sd-nav-item[data-route="mods"] {
-  --sd-nav-w: 96;
-  --sd-nav-active-w: 96;
-}
-
-.sd-sidebar .sd-nav-item[data-route="diagnostics"] {
-  --sd-nav-w: 106;
-  --sd-nav-active-w: 102;
-}
-
-.sd-sidebar .sd-nav-item[data-route="install"] {
-  --sd-nav-w: 96;
-  --sd-nav-active-w: 96;
-}
-
-.sd-sidebar .sd-nav-item[data-route="settings"] {
-  --sd-nav-w: 96;
-  --sd-nav-active-w: 96;
-}
-
 .sd-sidebar .sd-nav-item.active,
 .sd-sidebar .sd-nav-item[aria-current="page"] {
   --sd-nav-gap: 4;
@@ -273,8 +227,6 @@
 
 .sd-sidebar .sd-nav-item[data-route="saves"].active,
 .sd-sidebar .sd-nav-item[data-route="saves"][aria-current="page"] {
-  --sd-nav-active-w: 105;
-  --sd-nav-active-h: 28;
   background-image: url('/assets/stardew/ui/navigation/nav_item_active_saves_blank.png');
 }
 
@@ -616,9 +568,9 @@
 }
 
 .sd-state-badge-stopped {
-  background: rgba(192, 32, 32, 0.12);
-  color: #c02020;
-  border: 1px solid #c02020;
+  background: rgba(138, 112, 96, 0.12);
+  color: #6a5040;
+  border: 1px solid #8a7060;
 }
 
 .sd-state-badge-error {
@@ -686,6 +638,24 @@
   flex-shrink: 0;
 }
 
+.sd-start-save-required {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--sd-gold-border);
+  background: var(--sd-gold-light);
+  color: var(--sd-gold-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sd-start-save-required span {
+  min-width: 0;
+}
+
 .sd-invite-wrap {
   display: flex;
   align-items: center;
@@ -710,8 +680,11 @@
 }
 
 .sd-ov-error {
-  color: #c02020;
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
   font-size: 13px;
+  padding: 4px 8px;
   margin-top: 4px;
 }
 
@@ -786,6 +759,14 @@
   background: rgba(192, 32, 32, 0.07);
   border-color: rgba(192, 32, 32, 0.35);
 }
+
+/* 指标卡语义色：name/sub 标签跟随 modifier 变色 */
+.sd-mc--ok .sd-mc-name    { color: var(--sd-green-text); }
+.sd-mc--ok .sd-mc-sub     { color: var(--sd-green-text); opacity: 0.8; }
+.sd-mc--warn .sd-mc-name  { color: var(--sd-gold-text); }
+.sd-mc--warn .sd-mc-sub   { color: var(--sd-gold-text); }
+.sd-mc--error .sd-mc-name { color: var(--sd-red-text); }
+.sd-mc--error .sd-mc-sub  { color: var(--sd-red-text); }
 
 /* 玩家表头 */
 .sd-player-hd {
@@ -1599,33 +1580,33 @@
 }
 
 .sd-jobs-status-queued {
-  background: #ece0b8;
+  background: rgba(200, 168, 100, 0.18);
   color: #5a4030;
-  border: 1px solid #b8a878;
+  border: 1px solid #c8a870;
 }
 
 .sd-jobs-status-running {
-  background: #d0eac0;
-  color: #1a5020;
-  border: 1px solid #70b050;
+  background: var(--sd-green-bg);
+  color: var(--sd-green-text);
+  border: 1px solid var(--sd-green);
 }
 
 .sd-jobs-status-succeeded {
-  background: #c4e8b8;
-  color: #0e4018;
-  border: 1px solid #58a040;
+  background: var(--sd-green-bg);
+  color: var(--sd-green-text);
+  border: 1px solid var(--sd-green-shadow);
 }
 
 .sd-jobs-status-failed {
-  background: #fcd8d8;
-  color: #7a1010;
-  border: 1px solid #d06060;
+  background: var(--sd-red-bg);
+  color: var(--sd-red-text);
+  border: 1px solid var(--sd-red);
 }
 
 .sd-jobs-status-canceled {
-  background: #e0d8c8;
-  color: #4a3c2a;
-  border: 1px solid #b0a080;
+  background: rgba(138, 112, 96, 0.12);
+  color: #6a5040;
+  border: 1px solid #8a7060;
 }
 
 /* ── 响应式 ───────────────────────────────────────────────────────────────── */
@@ -2068,46 +2049,42 @@
 
 /* 运行中警示条 */
 .sd-mods-running-hint {
-  background: rgba(200, 160, 40, 0.15);
-  border: 1px solid #c8a028;
-  color: #7a5c10;
+  background: var(--sd-gold-light);
+  border: 1px solid var(--sd-gold-border);
+  color: var(--sd-gold-text);
   font-size: 13px;
   padding: 5px 10px;
-  border-radius: 2px;
   margin-bottom: 8px;
 }
 
 /* 上传成功横幅 */
 .sd-mods-success-banner {
-  background: rgba(40, 140, 60, 0.12);
-  border: 1px solid #4a9a50;
-  color: #1a5c20;
+  background: var(--sd-green-bg);
+  border: 1px solid var(--sd-green);
+  color: var(--sd-green-text);
   font-size: 13px;
   padding: 5px 10px;
-  border-radius: 2px;
   margin-bottom: 8px;
 }
 
-/* 重启需求横幅 */
+/* 重启需求横幅（金黄警告，需要操作） */
 .sd-mods-restart-banner {
-  background: rgba(200, 140, 20, 0.12);
-  border: 1px solid #c87820;
-  color: #7a4a10;
+  background: var(--sd-gold-light);
+  border: 1px solid var(--sd-gold-border);
+  color: var(--sd-gold-text);
   font-size: 13px;
   font-weight: 700;
   padding: 5px 10px;
-  border-radius: 2px;
   margin-bottom: 8px;
 }
 
 /* 列表错误 */
 .sd-mods-list-error {
-  background: rgba(185, 64, 64, 0.08);
-  border: 1px solid rgba(185, 64, 64, 0.35);
-  color: #b94040;
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  color: var(--sd-red-text);
   font-size: 13px;
   padding: 5px 10px;
-  border-radius: 2px;
   margin-bottom: 8px;
 }
 
@@ -2459,12 +2436,12 @@
 .sd-diag-error-banner {
   display: flex;
   align-items: center;
-  background: rgba(185, 64, 64, 0.08);
-  border: 1px solid rgba(185, 64, 64, 0.35);
-  color: #b94040;
+  gap: 6px;
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  color: var(--sd-red-text);
   font-size: 13px;
   padding: 5px 10px;
-  border-radius: 2px;
   margin-bottom: 8px;
 }
 
@@ -2632,10 +2609,10 @@
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #5a7a40;
+  color: var(--sd-green-text);
   padding: 7px 10px;
-  background: rgba(40, 140, 60, 0.07);
-  border: 1px solid rgba(40, 140, 60, 0.25);
+  background: var(--sd-green-bg);
+  border: 1px solid var(--sd-green);
   border-radius: 2px;
   margin-bottom: 4px;
 }
@@ -2657,13 +2634,13 @@
 }
 
 .sd-diag-alert-warning {
-  background: rgba(200, 160, 40, 0.1);
-  border-color: rgba(200, 160, 40, 0.4);
+  background: var(--sd-gold-light);
+  border-color: var(--sd-gold-border);
 }
 
 .sd-diag-alert-error {
-  background: rgba(185, 64, 64, 0.08);
-  border-color: rgba(185, 64, 64, 0.35);
+  background: var(--sd-red-bg);
+  border-color: var(--sd-red);
 }
 
 .sd-diag-alert-content {
@@ -2816,12 +2793,12 @@
 }
 
 .sd-settings-error {
-  background: rgba(180, 40, 20, 0.1);
-  border: 1px solid rgba(180, 40, 20, 0.35);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
   border-radius: 2px;
   padding: 5px 8px;
   font-size: 13px;
-  color: #8b1a0a;
+  color: var(--sd-red-text);
   margin-bottom: 7px;
   display: flex;
   align-items: center;
@@ -3464,8 +3441,11 @@
 
 .sd-install-guard-error {
   font-size: 13px;
-  color: #c02020;
-  padding: 3px 0;
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  padding: 5px 8px;
+  line-height: 1.5;
 }
 
 /* ── QR 二维码弹窗 ───────────────────────────────────────────────────────────── */

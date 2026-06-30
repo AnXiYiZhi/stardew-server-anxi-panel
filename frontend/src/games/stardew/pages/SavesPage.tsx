@@ -1,7 +1,7 @@
 import type { StardewPageProps } from '../stardew-routes'
 import { SavesSection } from '../SavesSection'
 
-export function SavesPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
+export function SavesPage({ user, instanceState, dashboardData, onNavigate, saveActionRequest }: StardewPageProps) {
   return (
     <div className="sd-page">
       <div className="sd-page-header">
@@ -26,6 +26,7 @@ export function SavesPage({ user, instanceState, dashboardData, onNavigate }: St
         }}
         onStateRefresh={dashboardData.refreshInstanceState}
         onSavesChanged={dashboardData.refreshSaves}
+        saveActionRequest={saveActionRequest}
       />
     </div>
   )

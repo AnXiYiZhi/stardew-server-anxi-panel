@@ -1,11 +1,19 @@
-import { useState } from 'react'
-import { startInstance, stopInstance, restartInstance } from '../../../api'
+import { useEffect, useState } from 'react'
+import { ApiError, startInstance, stopInstance, restartInstance } from '../../../api'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
+
+function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
+  if (!(error instanceof ApiError)) return null
+  if (error.code === 'save_required') return 'new'
+  if (error.code === 'active_save_required' || error.code === 'active_save_missing') return 'saves'
+  return null
+}
 
 export function OverviewPage({ instanceState, onNavigate, dashboardData }: StardewPageProps) {
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
@@ -19,6 +27,11 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
   const activeSave = dashboardData.saves?.activeSaveName ?? null
   const saveCount = dashboardData.saves?.saves.length ?? 0
+  const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
+  const showSaveRequiredPrompt =
+    (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
+    state !== 'running' &&
+    state !== 'starting'
   const modCount = dashboardData.mods?.mods.length ?? 0
   const modRestartRequired = dashboardData.mods?.restartRequired ?? false
 
@@ -34,15 +47,30 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   ).length
   const hasFailedJob = dashboardData.jobs.some((j) => j.status === 'failed')
 
+  useEffect(() => {
+    if (state && state !== 'save_required') {
+      setSaveRequiredDetected(false)
+    }
+  }, [state])
+
   async function handleStart() {
     setActionBusy(true)
     setActionError(null)
     try {
       await startInstance()
+      setSaveRequiredDetected(false)
       dashboardData.refreshInstanceState()
       dashboardData.refreshJobs()
       dashboardData.refreshInviteCode()
     } catch (e) {
+      const saveBlocker = saveStartBlocker(e)
+      if (saveBlocker) {
+        setSaveRequiredDetected(saveBlocker === 'new')
+        setActionError(saveBlocker === 'new' ? null : errorMessage(e))
+        dashboardData.refreshInstanceState()
+        dashboardData.refreshSaves()
+        return
+      }
       setActionError(errorMessage(e))
     } finally {
       setActionBusy(false)
@@ -104,8 +132,14 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
     if (state === 'save_required') {
       return (
-        <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
-          前往存档管理
+        <button className="sd-btn-start" disabled>
+          <img
+            src="/assets/stardew/ui/icons/icon_button_play.png"
+            alt=""
+            className="sd-btn-img"
+            style={{ width: 12, height: 13 }}
+          />
+          启动
         </button>
       )
     }
@@ -228,6 +262,14 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
         <div className="sd-ov-title">服务器控制</div>
         <div className="sd-ctrl-row">
           {renderLifecycleButtons()}
+          {showSaveRequiredPrompt ? (
+            <div className="sd-start-save-required">
+              <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
+              <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
+                创建/上传存档
+              </button>
+            </div>
+          ) : null}
           {showCtrlDivider && dashboardData.inviteCode ? (
             <div className="sd-ctrl-div">│</div>
           ) : null}

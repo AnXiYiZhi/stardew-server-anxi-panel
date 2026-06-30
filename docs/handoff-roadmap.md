@@ -6,6 +6,530 @@
 
 ## Current Context
 
+### MVP-UX-3: 无存档引导兼容 stopped + saves=0 状态 ✅ completed (2026-06-30)
+
+用户截图反馈：总览页顶部状态为“已停止”，存档卡显示 `0 / 暂无激活存档`，但启动按钮旁没有出现“创建/上传存档”提示。原因是上一轮只按 `instanceState.state === save_required` 或启动接口刚返回 `save_required` 显示提示，没有把存档列表接口已经检测到 `saves.length === 0` 的状态纳入判断。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/OverviewPage.tsx` | 新增 `noSavesDetected = dashboardData.saves && saves.length === 0`；无存档引导条件扩展为 `save_required` / 本次启动检测 / 存档列表为 0，且不在 `running` / `starting` |
+| `frontend/src/games/stardew/pages/ServerControlPage.tsx` | 同步扩展无存档引导条件，兼容服务器控制页的 `stopped + saves=0` 场景 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.96 kB，JS 327.17 kB
+```
+
+**下一步注意：**
+- 截图场景应立即显示引导：顶部状态“已停止”且存档列表为 0 时，不需要等用户点击启动触发 `save_required`。
+- 如果存档列表接口读取失败，不显示该引导，避免把读取失败误判成无存档。
+
+### MVP-UX-2: 无存档启动时在启动按钮旁显示创建/上传引导 ✅ completed (2026-06-30)
+
+用户继续验证后要求：不要只弹提示，也不要自动替用户跳进创建弹窗；应在“启动服务器”按钮旁边出现一个创建/上传存档按钮，并用文字提示“当前没有存档，请点击此按钮去创建/上传存档”。该提示和按钮只在服务器检测到无存档时出现。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/OverviewPage.tsx` | `save_required` 时保留禁用的启动按钮，并在旁边显示无存档提示和“创建/上传存档”按钮；启动接口返回 `save_required` 时就地显示引导，不再自动跳转 |
+| `frontend/src/games/stardew/pages/ServerControlPage.tsx` | 生命周期控制区同样在启动按钮旁显示无存档提示和“创建/上传存档”按钮；隐藏原先泛化的“当前状态无法直接启动”提示 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增 `.sd-start-save-required` 样式，保证提示和按钮在窄屏可换行、不挤压生命周期按钮 |
+
+**保留行为：**
+- 后端 `start` 契约不变。
+- 仅当实例状态为 `save_required`，或本次启动请求收到 `save_required` 错误码后，才显示该提示和按钮。
+- “创建/上传存档”按钮进入存档页，由用户自行选择新建或上传，不再默认打开新建弹窗。
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.96 kB，JS 327.04 kB
+```
+
+**下一步注意：**
+- 真实浏览器补测：无存档状态下总览页和服务器控制页都应在启动按钮旁显示提示；有存档/已选存档/运行中时不显示。
+- `MVP-UX-1` 的一次性 `saveActionRequest` 机制仍保留，后续可用于别的显式入口；本轮启动失败流程不再使用它自动打开弹窗。
+
+### MVP-UX-1: 无存档启动时直达创建存档界面 ✅ completed (2026-06-30)
+
+用户向功能验证发现：实例没有可用存档时点击“启动服务器”，前端只显示 `save_required` 提示，没有把用户带到创建存档流程。已改为普通启动接口返回存档阻塞错误时，前端刷新实例状态/存档列表并导航到存档页；当错误码为 `save_required` 时自动打开“新建游戏/创建存档”弹窗。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-routes.ts` | 扩展 `onNavigate(route, options)`，新增 `saveAction` 导航意图类型 |
+| `frontend/src/games/stardew/StardewPanel.tsx` | 保存一次性的存档操作请求，并传给页面组件 |
+| `frontend/src/games/stardew/pages/OverviewPage.tsx` | 启动失败遇到 `save_required` 时跳转存档页并自动打开创建弹窗；已处于 `save_required` 状态时按钮改为“创建存档” |
+| `frontend/src/games/stardew/pages/ServerControlPage.tsx` | 生命周期启动失败遇到 `save_required` 时跳转存档页并自动打开创建弹窗 |
+| `frontend/src/games/stardew/pages/SavesPage.tsx` | 将存档操作请求传入 `SavesSection` |
+| `frontend/src/games/stardew/SavesSection.tsx` | 收到 `saveActionRequest` 时自动滚动到存档区域并打开新建/上传弹窗 |
+
+**保留行为：**
+- 后端 `start` 契约不变，仍由后端返回 `save_required` / `active_save_required` / `active_save_missing`。
+- `active_save_required` 和 `active_save_missing` 仍跳到存档页让用户选择已有存档，不强行打开新建弹窗。
+- 不改 Junimo 通信、不改存档创建接口、不改上传协议。
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 326.33 kB
+```
+
+**下一步注意：**
+- 还需要真实浏览器手动验证一次：在无存档实例上点击总览/服务器页的启动按钮，确认进入 `/instances/stardew/saves` 后直接展示“新建游戏”弹窗。
+- 如果后续想支持“无存档时默认打开上传存档”，复用本次新增的 `saveAction: 'upload'` 即可。
+
+### UI-R18: Stardew wood strip 背景按 image2 风格重新生成 ✅ completed (2026-06-30)
+
+用户要求对 `frontend/dist/assets/stardew/ui/backgrounds/background_frame_wood_strip.png` 用 image2 风格重新生成，不要简单重绘，而是按满意参考图的高级 Stardew 像素质感重新做对应素材。本轮实际修改源文件 `frontend/public/assets/stardew/ui/backgrounds/background_frame_wood_strip.png`，再通过 build 同步到 dist。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/backgrounds/background_frame_wood_strip.png` | 按 image2 生成的木条参考重新导出单张 256x14 wood strip，保留原文件名、原尺寸、不透明结构 |
+| `frontend/dist/assets/stardew/ui/backgrounds/background_frame_wood_strip.png` | 已通过 `npm.cmd run build` 同步 |
+| `tmp/stardew-background-frame-wood-strip-readable-contact-sheet.png` | 新增本轮 wood strip 可读性 contact sheet |
+
+**视觉原则：**
+- 使用 image2 生成高阶 Stardew 木质横条参考，最终本地按原尺寸导出，避免破坏 `repeat-x` 背景使用方式。
+- 保持 `256x14`、`HasAlpha=False`，适配 `--sd-img-bg-wood-strip` 在 topbar 和 wood strip 背景里的横向平铺。
+- 根据页面截图反馈，第一版过亮且细节过多，导致 topbar 上白字不清晰；已改为更暗、更克制的深胡桃木条。
+- 视觉保留像素木纹、深棕描边、低对比金色顶光和轻量木板接缝，但移除抢眼铆钉和高密度颗粒，优先保证 topbar 文案可读。
+- 未触碰 `new-game`、业务逻辑、API、CSS 路径。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- public/dist `background_frame_wood_strip.png` hash 一致。
+- alpha 扫描确认仍为不透明位图，尺寸仍为 `256x14`。
+- `new-game` 无变更。
+
+---
+
+### UI-R17: Stardew panels 按 image2 风格重新生成 ✅ completed (2026-06-30)
+
+用户要求对 `frontend/dist/assets/stardew/ui/panels/` 对应素材用 image2 重新生成，不要简单重绘，而是按文件名一一对应做更好看、更高级的 Stardew 像素面板皮肤。本轮实际修改源文件 `frontend/public/assets/stardew/ui/panels/`，再通过 build 同步到 dist。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/panels/*.png` | 从 image2 panel sheet 参考重新生成 6 个 panel，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/panels/*.png` | 已通过 `npm.cmd run build` 同步 |
+| `tmp/stardew-panels-image2-generated-contact-sheet.png` | 新增 panels contact sheet |
+
+**视觉原则：**
+- 使用 image2 生成高阶 Stardew panel sheet 参考，再按每个文件名裁切/重采样到原尺寸。
+- `panel_metric_card_blank.png`：小型指标卡片，木框 + 羊皮纸内底。
+- `panel_mod_card_blank.png`：中型模组卡片，紧凑木框面板。
+- `panel_parchment_form_blank.png`：表单面板，羊皮纸底和四角铆钉。
+- `panel_parchment_section_blank.png`：宽 section 面板，适合横向内容区。
+- `panel_table_area_blank.png`：表格区域，保留浅色网格行列。
+- `panel_warning_row_blank.png`：warning row，暖红/琥珀警告底色。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- public/dist panels PNG hash 一致。
+- alpha 扫描确认 6 个 panels PNG 均为不透明位图。
+- `new-game` 无变更。
+
+---
+
+### UI-R16: Stardew sprites 按 image2 风格重新生成 ✅ completed (2026-06-30)
+
+用户要求对 `frontend/dist/assets/stardew/ui/sprites/` 对应素材用 image2 重新生成，不要简单重绘，而是按文件名一一对应做更好看、更高级的 Stardew 像素 sprite。本轮实际修改源文件 `frontend/public/assets/stardew/ui/sprites/`，再通过 build 同步到 dist。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/sprites/*.png` | 从 image2 sprite sheet 参考重新生成 8 个 sprite，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/sprites/*.png` | 已通过 `npm.cmd run build` 同步 |
+| `tmp/stardew-sprites-image2-generated-contact-sheet.png` | 新增 sprites contact sheet |
+
+**视觉原则：**
+- 使用 image2 生成高阶 Stardew sprite sheet 参考，再按每个文件名裁切/重采样到原尺寸。
+- `sprite_blue_device.png`：发光蓝色手持设备。
+- `sprite_blue_gem.png`：高光切面蓝宝石。
+- `sprite_chest.png`：木质宝箱和金属扣。
+- `sprite_cloud_left.png` / `sprite_cloud_right.png`：柔和奶油色云朵。
+- `sprite_farmhouse_scene.png`：不透明 158x92 农舍横幅场景，避免黑底带入 Overview banner。
+- `sprite_fence.png`：木质栅栏段。
+- `sprite_tree.png`：小型绿树。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- public/dist sprites PNG hash 一致。
+- alpha 扫描确认 7 个小 sprite 保持透明，`sprite_farmhouse_scene.png` 保持不透明。
+- `new-game` 无变更。
+
+---
+
+### UI-R15: Stardew navigation 按 image2 风格重新生成 ✅ completed (2026-06-30)
+
+用户要求对 `frontend/dist/assets/stardew/ui/navigation/` 对应素材用 image2 重新生成，不要简单重绘，而是按文件名一一对应做更好看、更高级的 Stardew 像素 UI 皮肤。本轮实际修改源文件 `frontend/public/assets/stardew/ui/navigation/`，再通过 build 同步到 dist。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/navigation/*.png` | 重新生成 7 个 navigation PNG，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/navigation/*.png` | 已通过 `npm.cmd run build` 同步 |
+| `tmp/stardew-navigation-image2-generated-contact-sheet.png` | 新增 navigation contact sheet |
+
+**视觉原则：**
+- 使用 image2 生成高阶 Stardew 导航皮肤方向，再按原尺寸本地导出，避免破坏 CSS 背景拉伸。
+- `nav_item_default_blank.png`：深木纹默认导航条。
+- `nav_item_active_green_blank.png`：绿色 active 导航条，带木框、角钉、高光和内阴影。
+- `nav_item_active_saves_blank.png`：存档专用 active，羊皮纸内底 + 绿色下划强调。
+- `nav_quick_help_blank.png`：小型木质帮助按钮。
+- `tab_content_active_blank.png` / `tab_content_inactive_blank.png`：active/inactive tab 内容皮肤区分。
+- `tab_top_green_blank.png`：绿色顶部 tab，带 raised tab 结构。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- public/dist navigation PNG hash 一致。
+- alpha 扫描确认 7 个 navigation PNG 均为不透明位图。
+- `new-game` 无变更。
+
+---
+
+### UI-R14: Stardew 图标按满意参考图直接裁切 ✅ completed (2026-06-30)
+
+用户明确确认 `codex-clipboard-b6edf34e-1046-4b35-b2ac-4b3dd6d502b7.png` 这张 4x4 图标图满意，要求“就按照这张图来”，且图标像素大小可以与参考图元素一致。本轮不再重新生成新风格，而是把该图作为最终视觉源，按 4x4 顺序裁切为 16 个一一对应图标。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/icons/*.png` | 用参考图直接裁切并抠透明，重新输出 16 个大尺寸 PNG 图标 |
+| `frontend/dist/assets/stardew/ui/icons/*.png` | 已通过 `npm.cmd run build` 同步 |
+| `tmp/stardew-icons-reference-crop-contact-sheet.png` | 新增参考图裁切版 contact sheet |
+
+**实现说明：**
+- 参考图按行列对应现有文件名：播放、重启、停止、诊断；模组、首页、玩家、存档；服务器控制、设置、任务、小鸡；顶部玩家、顶部存档、顶部时间、顶部版本。
+- 输出不再压回 13x13/16x17，而是保留参考图元素级别的大尺寸与细节；现有 CSS 已对导航、页面标题、顶部摘要和按钮内图标做显示尺寸约束。
+- 使用本地抠图保留主体、高光、深棕描边和局部阴影，输出 PNG 四角透明。
+- 未触碰 `new-game`、业务逻辑、API 或 CSS 路径。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- public/dist icons PNG hash 一致。
+- 四角 alpha 均为 0，确认没有带入黑底方块。
+- `new-game` 无变更。
+
+---
+
+### UI-R13: Stardew 图标按文件名重新生成 ✅ completed (2026-06-30)
+
+用户反馈上一版图标过于简单，要求不要简单重绘，而是按参考图风格和图片名一一对应重新生成一批更好看、更高级的图标。本轮只处理 `frontend/public/assets/stardew/ui/icons/` 源素材，并通过 build 同步到 `frontend/dist/assets/stardew/ui/icons/`；未触碰 `new-game`、业务逻辑、API 或 CSS 路径。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/icons/*.png` | 重新生成 16 个透明 PNG 图标，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/icons/*.png` | 已通过 `npm.cmd run build` 同步 |
+| `tmp/stardew-icons-image2-generated-contact-sheet.png` | 新增本轮图标 contact sheet，便于逐个核对语义和观感 |
+
+**视觉原则：**
+- 使用 imagegen 生成高阶像素风参考方向，但最终按每个图标原始尺寸本地导出，避免透明边缘、尺寸和 CSS 对齐被破坏。
+- 每个文件按文件名语义重新设计：播放、重启、停止、诊断、模组、首页、玩家、存档、服务器控制、设置、任务、侧栏小鸡、顶部玩家/存档/时间/版本。
+- 小尺寸图标优先保证轮廓识别度，同时使用暖金高光、深棕描边、局部阴影和 Stardew 风格像素质感。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- public/dist icons PNG hash 一致。
+- alpha 扫描确认 16 个图标均保留透明背景。
+- `new-game` 无变更。
+
+---
+
+### UI-R12: Stardew 图标位图高级重绘 ✅ completed (2026-06-30)
+
+按用户要求对 `frontend/dist/assets/stardew/ui/icons/` 对应的图标素材做 image2 风格高级重绘。实际修改源文件位于 `frontend/public/assets/stardew/ui/icons/`，随后通过 `npm.cmd run build` 同步到 dist，避免下次构建覆盖。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/icons/*.png` | 重绘 16 个透明图标 PNG，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/icons/*.png` | 已通过 build 同步 |
+| `tmp/stardew-icons-image2-premium-contact-sheet.png` | 新增 5 倍放大的图标视觉总览图 |
+
+**视觉原则：**
+- 按 Stardew 像素风做更高级的小图标：深色投影、暖金主体、浅色高光，保留透明背景。
+- 13x13 导航图标优先保证语义可读性；玩家图标单独加强为多人轮廓。
+- 控制图标、导航图标、顶部摘要图标和侧栏图标均保持原尺寸。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- `git diff --name-only -- frontend/public/assets/stardew/ui/icons | Measure-Object` 为 16。
+- public/dist icons PNG hash 一致。
+- alpha 扫描确认 16 个图标均保留透明背景。
+- `new-game` 无变更。
+
+---
+
+### UI-R11: Stardew 输入框位图高级重绘 ✅ completed (2026-06-30)
+
+按用户要求对 `frontend/dist/assets/stardew/ui/fields/` 对应的输入框素材做 image2 风格高级重绘。实际修改源文件位于 `frontend/public/assets/stardew/ui/fields/`，随后通过 `npm.cmd run build` 同步到 dist，避免下次构建覆盖。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/fields/*.png` | 重绘 4 个输入框 PNG，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/fields/*.png` | 已通过 build 同步 |
+| `tmp/stardew-fields-image2-premium-contact-sheet.png` | 新增输入框视觉总览图 |
+
+**视觉原则：**
+- 按 Stardew 像素风做更高级的羊皮纸输入框皮肤：深木边框、内高光、底部阴影、细纸纹。
+- 搜索框和下拉框保留右侧控制区与像素图标。
+- 4 个输入框全部保持不透明，避免 CSS 背景拉伸漏底。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- `git diff --name-only -- frontend/public/assets/stardew/ui/fields | Measure-Object` 为 4。
+- public/dist fields PNG hash 一致。
+- alpha 扫描确认 4 个输入框均不透明。
+- `new-game` 无变更。
+
+---
+
+### UI-R10: Stardew 按钮位图高级重绘 ✅ completed (2026-06-30)
+
+按用户要求对 `frontend/dist/assets/stardew/ui/buttons/` 对应的按钮素材做 image2 风格高级重绘。实际修改源文件位于 `frontend/public/assets/stardew/ui/buttons/`，随后通过 `npm.cmd run build` 同步到 dist，避免下次构建覆盖。
+
+**改动内容：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/buttons/*.png` | 重绘 12 个按钮 PNG，保留原文件名、原尺寸、原目录结构 |
+| `frontend/dist/assets/stardew/ui/buttons/*.png` | 已通过 build 同步 |
+| `tmp/stardew-buttons-image2-premium-contact-sheet.png` | 新增按钮视觉总览图 |
+
+**视觉原则：**
+- 按 Stardew 像素风做更高级的木框按钮皮肤：外层硬边、内高光、底部阴影、像素颗粒纹理。
+- green/red/tan/gold/wood 按语义分别配色，保留现有 CSS 拉伸尺寸。
+- 12 个按钮全部保持不透明，避免背景图拉伸漏底。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+补充检查：
+- `git diff --name-only -- frontend/public/assets/stardew/ui/buttons | Measure-Object` 为 12。
+- public/dist buttons PNG hash 一致。
+- alpha 扫描确认 12 个按钮均不透明。
+- `new-game` 无变更。
+
+---
+
+### UI-R9: 左侧导航点击态尺寸统一 ✅ completed (2026-06-30)
+
+将 Stardew 面板左侧导航的桌面端按钮尺寸统一到“服务器”导航项的点击态视觉尺寸，避免总览、存档、任务日志、玩家、模组、诊断、安装、设置等条目被点击后出现长宽不一致的跳变。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/StardewPanel.css` | `.sd-sidebar .sd-nav-item` 默认宽度统一为 `--sd-nav-w: 110`，激活态统一为 `--sd-nav-active-w: 106`、`--sd-nav-active-h: 29`；删除各 `data-route` 对单独宽度/激活宽高的覆盖 |
+
+**保留行为：**
+- `saves` 仍保留专用激活贴图 `nav_item_active_saves_blank.png`，但不再使用不同的激活尺寸。
+- 移动端侧栏规则未改，仍使用图标紧凑布局 `min-width: 36px; height: 30px`。
+- 未改导航 PNG 素材、路由、文案、业务逻辑。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 89.68 kB，JS 325.25 kB
+```
+
+---
+
+### UI-R8: Stardew UI 位图资产按参考图重制 ✅ completed (2026-06-30)
+
+按用户提供的 UI 参考图 `codex-clipboard-da9ce68b-ffb8-448e-bd80-030206b9aa24.png` 重制 `frontend/public/assets/stardew/ui/` 下的面板 UI 位图资产。只处理 `ui` 目录，不碰 `new-game`，不改业务逻辑/API/CSS 路径；保留所有原文件名、原尺寸和原目录结构。
+
+**改动结果：**
+
+| 范围 | 修改 |
+|------|------|
+| `frontend/public/assets/stardew/ui/**/*.png` tracked 旧资产 | 按参考图裁切/重采样 56 个 UI PNG：backgrounds、buttons、fields、navigation、panels、icons、sprites |
+| `frontend/public/assets/stardew/ui/backgrounds/background_sidebar_wood_tile.png` | 已按用户要求单独回退到原始版本，并通过 build 同步到 dist |
+| `frontend/public/assets/stardew/ui/backgrounds/background_login_farm_generated.png` | 保留；这是 UI-R7 登录页新增背景图，本轮不覆盖 |
+| `frontend/dist/assets/stardew/ui/` | 已重新 `npm.cmd run build`，随 public 资产同步 |
+| `tmp/stardew-ui-assets-reference-crop-contact-sheet.png` | 新增本轮视觉总览检查图 |
+
+**实现原则：**
+- 以用户提供的参考图为视觉源，裁切其中的木框、羊皮纸、绿色/红色按钮、表格、表单和 sprite，再按项目资产原尺寸导出。
+- 结构性 UI 资产（backgrounds/buttons/fields/navigation/panels）强制保持不透明，避免 CSS 背景拉伸时漏底。
+- icons 和部分 sprites 保留透明 alpha；`sprite_farmhouse_scene.png` 保持不透明场景图。
+- 未触碰 `frontend/public/assets/stardew/new-game/`。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 模块，JS 325.25 kB，CSS 90.39 kB
+```
+
+补充检查：
+- `git diff --name-only -- frontend/public/assets/stardew/ui | Measure-Object` 为 56（侧边栏木纹 tile 已单独回退）。
+- `git diff --name-only -- frontend/public/assets/stardew/ui | Select-String new-game` 无输出。
+- alpha 扫描确认只有 icons 和部分 sprites 透明；结构性 UI 资产不透明。
+
+**后续建议：** 重点在真实页面里看按钮、导航、面板背景和 13x13 小图标语义。若某个小图标不清楚，单独微调该图标即可。
+
+---
+
+### UI-R7: 登录首页视觉重构（Stardew 风格统一）✅ completed (2026-06-30)
+
+将登录/初始化页面从普通后台风格完全重构为 Stardew Valley 像素风，与面板内部视觉系统统一。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/App.css` | 新增 `sd-auth-*` 样式块（约 230 行），包含全屏背景、羊皮纸面板、表单覆盖样式、移动端断点 |
+| `frontend/src/App.tsx` | 将 `main.shell` + `section.panel-card` 替换为 `main.sd-auth-shell` + `section.sd-auth-card` 及对应标题/版本/错误类名 |
+| `frontend/src/core/LoginPanel.tsx` | 移除多余描述段落（"请输入面板账号登录"），保留必要表单字段 |
+| `frontend/public/assets/stardew/ui/backgrounds/background_login_farm_generated.png` | 新增登录页原创像素农场背景图，替代直接拉伸 `sprite_farmhouse_scene.png` |
+
+**视觉设计：**
+- 全屏背景：`background_login_farm_generated.png` 原创像素农场背景图，`background-size: cover`，`::after` 暗色蒙层保证面板可读性；不再把 `sprite_farmhouse_scene.png` 直接拉伸成整页背景
+- 登录面板：桌面端移到右侧背景留白区，避免遮挡农舍主视觉；5px 深棕木框 + 暖色羊皮纸 PNG 混合底图 + 内描边 + 短木质投影，降低原先居中白色卡片的突兀感
+- 表单元素：34px 高度输入框，无圆角，棕色 2px 边框，`#fff0c7` 浅黄底色
+- 提交按钮：覆盖 `.sd-auth-card .button` 使用绿色 PNG 底图（`button_primary_small_green_blank.png`），无圆角
+- 错误提示：`.sd-auth-error` 红色语义条（与全站 `sd-notice--error` 语义一致）
+- 副标题：绿色 11px 全大写 eyebrow，深棕 22px 产品名，单色 mono 版本号
+
+**移动端：**
+- 900px 断点：卡片回到居中，避免窄桌面/平板贴右边
+- 430px 断点：面板宽度 100%，顶部留 36px padding，卡片减少 padding
+- 340px 断点：进一步收紧 padding，字号降至 16px
+
+**未改动：** 登录/初始化 API、认证逻辑、后端、路由结构、`Field.tsx`/`PasswordInput.tsx` 组件逻辑、`SetupPanel.tsx` 文字内容。
+
+**验证：**
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 模块，JS 325.25 kB，CSS 90.10 kB
+```
+Playwright（Chromium headless）截图确认：
+- 1280px 桌面：原创像素农场背景全屏显示，面板位于右侧留白区，无横向滚动
+- 390px 移动：面板占满宽度，背景图在下方可见，无横向滚动
+- 320px 移动：面板紧凑可用，无横向滚动
+- 错误状态：Stardew 风格红色提示条渲染正常
+
+---
+
+### UI-R6: 状态语义与提示体系统一优化 ✅ completed (2026-06-29)
+
+梳理并统一全站状态语义色（绿/金/红/灰），新增通用工具类，修复 13 处语义不一致的提示条/徽章/指标卡颜色。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 Section 13 语义提示工具类：`sd-notice`（`--ok/warn/error/info`）、`sd-empty-state`、`sd-tag--pending` |
+| `frontend/src/games/stardew/StardewPanel.css` | 修复 13 处颜色/语义问题（详见下方） |
+
+**CSS 修复明细：**
+
+1. **`sd-state-badge-stopped`**：红色 → 灰棕色（stopped 是正常状态，不是错误）
+2. **`sd-mc--ok/warn/error` 子元素级联**：新增 `.sd-mc-name`、`.sd-mc-sub` 跟随 modifier 变色规则
+3. **`sd-mods-running-hint`**：硬编码 amber → `var(--sd-gold-light/border/text)`
+4. **`sd-mods-success-banner`**：硬编码绿色 → `var(--sd-green-bg/green/green-text)`
+5. **`sd-mods-restart-banner`**：硬编码 amber → `var(--sd-gold-light/border/text)`
+6. **`sd-mods-list-error`**：硬编码 `rgba(185,64,64)` → `var(--sd-red-bg/red/red-text)`
+7. **`sd-diag-error-banner`**：硬编码 `rgba(185,64,64)` → CSS 变量
+8. **`sd-diag-alert-empty`**：硬编码绿色 → `var(--sd-green-bg/green/green-text)`
+9. **`sd-diag-alert-warning/error`**：硬编码 rgba → CSS 变量
+10. **`sd-settings-error`**：硬编码 `rgba(180,40,20)` → CSS 变量
+11. **`sd-install-guard-error`**：原仅文字颜色 → 补全背景 + 边框（与其他错误条一致）
+12. **`sd-ov-error`**：原仅文字颜色 → 补全红色背景 + 边框
+13. **`sd-jobs-status-*`**：运行/成功/失败/取消状态徽章全部改用 CSS 变量
+
+**新增工具类（`stardew-theme.css` Section 13）：**
+- `sd-notice` + `sd-notice--ok/warn/error/info`：提示条基类，可在各页面直接使用
+- `sd-empty-state`：空状态/待接入区统一占位样式
+- `sd-tag--pending`：待接入统一小徽章（与现有各页面 pending badge 语义对齐）
+
+**语义色规则（全站对齐）：**
+- 绿色：正常、完成、可用、运行正常
+- 金黄：警告、需要操作、等待、需重启
+- 红色：错误、失败、危险操作
+- 灰棕：空状态、未知、待接入、停止（正常停止 ≠ 错误）
+
+**验证：** `npm.cmd run build` 通过（exit 0），39 模块，JS 325.32 kB，CSS 86.84 kB。
+
 ### UI-R5: Overview 首页信息层级与移动端重排优化 ✅ completed (2026-06-29)
 
 移动端双栏改单列、指标格单列、指标卡语义色（绿/金/红 modifier）、横幅自适应高度、控制行换行。
