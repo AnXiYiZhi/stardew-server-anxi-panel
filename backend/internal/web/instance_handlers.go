@@ -309,6 +309,42 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleModsExport(w, r, instanceID)
 		return
 	}
+	// GET /api/instances/:id/mods/nexus/search
+	if len(parts) == 4 && parts[1] == "mods" && parts[2] == "nexus" && parts[3] == "search" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModNexusSearch(w, r, instanceID)
+		return
+	}
+	// GET /api/instances/:id/mods/sync-plan
+	if len(parts) == 3 && parts[1] == "mods" && parts[2] == "sync-plan" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModSyncPlan(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/mods/sync-pack/export
+	if len(parts) == 4 && parts[1] == "mods" && parts[2] == "sync-pack" && parts[3] == "export" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModSyncPackExport(w, r, instanceID)
+		return
+	}
+	// PUT /api/instances/:id/mods/:modId/sync-classification
+	if len(parts) == 4 && parts[1] == "mods" && parts[3] == "sync-classification" {
+		if r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModSyncClassificationUpdate(w, r, instanceID, parts[2])
+		return
+	}
 	// DELETE /api/instances/:id/mods/:modId
 	if len(parts) == 3 && parts[1] == "mods" && r.Method == http.MethodDelete {
 		s.handleModDelete(w, r, instanceID, parts[2])

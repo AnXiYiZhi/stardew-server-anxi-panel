@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,10 +16,10 @@ import (
 )
 
 const (
-	maxModZipBytes       = 200 * 1024 * 1024 // 200 MB compressed
-	maxModUncompressed   = 512 * 1024 * 1024 // 512 MB uncompressed total
-	maxModSingleFile     = 64 * 1024 * 1024  // 64 MB per file
-	restartRequiredKey   = "modsRestartRequired"
+	maxModZipBytes     = 200 * 1024 * 1024 // 200 MB compressed
+	maxModUncompressed = 512 * 1024 * 1024 // 512 MB uncompressed total
+	maxModSingleFile   = 64 * 1024 * 1024  // 64 MB per file
+	restartRequiredKey = "modsRestartRequired"
 )
 
 // modsDir returns the host-side path to the mods directory.
@@ -29,12 +30,36 @@ func modsDir(dataDir string) string {
 
 // modManifest represents the SMAPI manifest.json structure.
 type modManifest struct {
-	Name              string `json:"Name"`
-	UniqueID          string `json:"UniqueID"`
-	Version           string `json:"Version"`
-	Author            string `json:"Author"`
-	Description       string `json:"Description"`
-	MinimumApiVersion string `json:"MinimumApiVersion,omitempty"`
+	Name              string   `json:"Name"`
+	UniqueID          string   `json:"UniqueID"`
+	Version           string   `json:"Version"`
+	Author            string   `json:"Author"`
+	Description       string   `json:"Description"`
+	MinimumApiVersion string   `json:"MinimumApiVersion,omitempty"`
+	UpdateKeys        []string `json:"UpdateKeys,omitempty"`
+}
+
+// parseNexusModIDFromUpdateKeys scans a SMAPI manifest's UpdateKeys for a
+// "Nexus:<id>" entry (case-insensitive site name) and returns the numeric
+// mod ID. Returns 0, false if none is present or parseable.
+func parseNexusModIDFromUpdateKeys(updateKeys []string) (int, bool) {
+	for _, key := range updateKeys {
+		parts := strings.SplitN(key, ":", 2)
+		if len(parts) != 2 || !strings.EqualFold(strings.TrimSpace(parts[0]), "Nexus") {
+			continue
+		}
+		idPart := strings.TrimSpace(parts[1])
+		// Some UpdateKeys append a sub-key after the id, e.g. "Nexus:123:abc".
+		if i := strings.IndexByte(idPart, ':'); i >= 0 {
+			idPart = idPart[:i]
+		}
+		id, err := strconv.Atoi(idPart)
+		if err != nil || id <= 0 {
+			continue
+		}
+		return id, true
+	}
+	return 0, false
 }
 
 // ListMods scans the mods root directory for subdirectories, reads each manifest.json,
@@ -86,6 +111,10 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	info.Version = m.Version
 	info.Author = m.Author
 	info.Description = m.Description
+	info.UpdateKeys = m.UpdateKeys
+	if nexusID, ok := parseNexusModIDFromUpdateKeys(m.UpdateKeys); ok {
+		info.NexusModID = nexusID
+	}
 
 	if info.UniqueID == "" {
 		info.ParseError = "manifest.json 缺少 UniqueID"
@@ -429,6 +458,61 @@ func DeleteMod(dataDir, modID string) error {
 	return nil
 }
 
+// addModDirToZip walks a single mod directory and writes its files into the
+// ZIP writer using paths relative to root. Hidden files and temp files
+// (trailing "~") are skipped.
+func addModDirToZip(w *zip.Writer, root, dirName string) error {
+	modPath := filepath.Join(root, dirName)
+	return filepath.WalkDir(modPath, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		// Skip hidden files and temp files.
+		name := d.Name()
+		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			// Add directory entry.
+			_, err := w.Create(relPath + "/")
+			return err
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = relPath
+		header.Method = zip.Deflate
+
+		writer, err := w.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = file.Close() }()
+		_, err = io.Copy(writer, file)
+		return err
+	})
+}
+
 // ExportModsZip creates a ZIP archive of all mods in the mods directory.
 // Returns the path to the created ZIP file. Caller owns the file and must clean it up.
 func ExportModsZip(dataDir string) (string, error) {
@@ -470,67 +554,15 @@ func ExportModsZip(dataDir string) (string, error) {
 
 	w := zip.NewWriter(zf)
 	for _, dir := range dirs {
-		modPath := filepath.Join(root, dir.Name())
-		err = filepath.WalkDir(modPath, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			relPath, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
-			}
-			relPath = filepath.ToSlash(relPath)
-
-			// Skip hidden files and temp files.
-			name := d.Name()
-			if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			if d.IsDir() {
-				// Add directory entry.
-				_, err := w.Create(relPath + "/")
-				return err
-			}
-
-			info, err := d.Info()
-			if err != nil {
-				return err
-			}
-			header, err := zip.FileInfoHeader(info)
-			if err != nil {
-				return err
-			}
-			header.Name = relPath
-			header.Method = zip.Deflate
-
-			writer, err := w.CreateHeader(header)
-			if err != nil {
-				return err
-			}
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = file.Close() }()
-			_, err = io.Copy(writer, file)
-			return err
-		})
-		if err != nil {
-			break
+		if err = addModDirToZip(w, root, dir.Name()); err != nil {
+			return "", fmt.Errorf("写入 Mod %q 失败: %w", dir.Name(), err)
 		}
 	}
 
-	if err := w.Close(); err != nil {
-		_ = zf.Close()
-		_ = os.Remove(tmpPath)
+	if err = w.Close(); err != nil {
 		return "", fmt.Errorf("关闭 ZIP: %w", err)
 	}
-	if err := zf.Close(); err != nil {
-		_ = os.Remove(tmpPath)
+	if err = zf.Close(); err != nil {
 		return "", fmt.Errorf("关闭文件: %w", err)
 	}
 

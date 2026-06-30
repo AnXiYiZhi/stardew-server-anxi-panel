@@ -347,6 +347,8 @@ export type InstanceVNCConfig = {
   vncPort: string
 }
 
+export type ModSyncKind = 'server_only' | 'client_required' | 'unknown'
+
 export type ModInfo = {
   id: string
   uniqueId?: string
@@ -356,11 +358,48 @@ export type ModInfo = {
   description?: string
   folderName: string
   parseError?: string
+  syncKind: ModSyncKind
+  syncNote?: string
+  updateKeys?: string[]
+  nexusModId?: number
 }
 
 export type ModsListResult = {
   mods: ModInfo[]
   restartRequired?: boolean
+}
+
+export type ModSyncSummary = {
+  total: number
+  serverOnly: number
+  clientRequired: number
+  unknown: number
+}
+
+export type ModSyncPlanResult = {
+  mods: ModInfo[]
+  summary: ModSyncSummary
+}
+
+export type NexusModSearchResult = {
+  modId: number
+  name: string
+  summary?: string
+  author?: string
+  version?: string
+  updatedAt?: string
+  endorsementCount: number
+  downloadCount: number
+  pictureUrl?: string
+  nexusUrl: string
+  installed: boolean
+  installedFolderName?: string
+  installedVersion?: string
+}
+
+export type NexusModSearchResponse = {
+  query: string
+  results: NexusModSearchResult[]
 }
 
 export type ConsoleCommandDef = {

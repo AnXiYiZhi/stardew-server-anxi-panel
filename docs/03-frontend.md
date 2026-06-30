@@ -34,7 +34,7 @@ Stardew 面板内部路由：
 | `saves` | 存档列表、新建、上传预览、选择、删除、导出 |
 | `jobs` | 任务与日志 |
 | `players` | 玩家名册、在线状态、位置展示 |
-| `mods` | Mod 列表、上传、删除、导出 |
+| `mods` | Mod 工作台：下载模组、添加模组、配置模组 |
 | `diagnostics` | 健康检查、Docker/Compose、支持包 |
 | `settings` | 面板用户、审计日志、版本、登出 |
 
@@ -83,12 +83,15 @@ frontend/public/assets/stardew/ui/sprites
 | Saves | 新建、上传、选择、删除、导出、备份入口 | running/starting 禁止危险写操作 |
 | JobsLogs | 任务列表、日志详情、SSE | 长日志要可滚动 |
 | Players | 玩家名册、位置、tile/pixel、中文地图名 | 第三方地图 key 未知时保留原名 |
-| Mods | 上传、删除、导出、重启提示 | 运行中限制危险操作 |
+| Mods | 三段式 Mod 工作台：下载模组（Nexus 在线搜索）、添加模组（已安装列表/玩家同步包/上传删除导出）、配置模组（后续 SMAPI 配置入口） | 运行中限制危险操作；分类编辑仅管理员可写；Nexus 搜索任意登录用户可用；当前 Nexus 安装按钮仍为待接入 |
 | Diagnostics | 健康检查、Docker、支持包 | 技术信息不要淹没用户 |
 | Settings | 用户、审计、版本、登出 | 面板用户不要放进玩家页 |
 
 ## 近期前端修正摘要
 
+- `ModsPage` 参考 `E:\源码\emp_源码\dst-management-platform-web\src\views\game\mod.vue` 的 Mod 管理结构，改为页内三段工作台：`下载模组`、`添加模组`、`配置模组`。下载页承载 Nexus 搜索和卡片网格；添加页承载本服已安装 Mod、玩家同步统计、同步包导出、上传/删除/整包导出；配置页先提供启用/禁用、依赖检查、更新检查、SMAPI 配置的占位入口，等待后端能力接入。该改动只调整前端组织和视觉层级，不新增接口。
+- `ModsPage` 新增”在线搜索（Nexus Mods）”区域（未新建路由，无需管理员权限）：搜索框 + 搜索按钮，关键词为空时按钮禁用并提示；搜索中按钮显示”搜索中…”；失败显示中文错误条（复用 `sd-mods-list-error`）。结果用 `NexusResultCard` 卡片展示名称、作者、版本、更新时间、下载量、认可数、已安装标记（绿色 `sd-tag`，标注已安装版本号）和”打开 N 站”按钮（`window.open` 新窗口打开 `nexusUrl`）；本阶段不放安装按钮，只放一个禁用的”安装待接入”小标记。涉及 `frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`（新增 `.sd-mods-nexus-*` 一组类）、`frontend/src/types.ts`（`NexusModSearchResult`/`NexusModSearchResponse`，`ModInfo` 新增 `updateKeys?`/`nexusModId?`）、`frontend/src/api.ts`（`searchNexusMods`）。
+- `ModsPage` 新增”玩家同步”区域（未新建路由）：Mod 卡片用 `sd-tag` 展示同步标签（服务器专用/玩家需同步/待确认），管理员可用下拉框就地修改分类；区域顶部显示三类统计 tag 和“导出玩家同步包”按钮，无 `client_required` Mod 时按钮禁用，导出中显示 loading，失败显示中文错误。普通用户只能查看分类和点击导出，看不到分类下拉框。涉及 `frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`、`frontend/src/types.ts`、`frontend/src/api.ts`。
 - 登录/首次注册页已接入 `image2` 原型图整页背景，账号/密码区域、错误提示和按钮文字由前端按背景图风格覆盖绘制；首次注册态底部提示“请尽快注册管理员账号”，按钮显示“注册”，登录态按钮显示“登录”。
 - 左侧导航、按钮、输入框、图标、面板等位图资源经过多轮重绘。
 - StardewShell 已拆出 9 个路由。

@@ -68,6 +68,10 @@ npm.cmd run dev
 - 上传、删除、导出可用。
 - 运行中危险操作禁用。
 - 上传/删除后提示需要重启。
+- 玩家同步分类（`syncKind`：`server_only`/`client_required`/`unknown`）随 `GET /api/instances/:id/mods` 一起返回，前端不用单独再拉一次。
+- `GET /api/instances/:id/mods/sync-plan` 返回分类统计；`PUT /api/instances/:id/mods/:modId/sync-classification` 管理员专用，编辑不受运行状态限制；`POST /api/instances/:id/mods/sync-pack/export` 任何登录用户可用，运行中也允许导出，导出包含 `player-sync-manifest.json`，且永远不含面板自带的 `StardewAnxiPanel.Control`。
+- 无 `client_required` Mod 时导出接口返回 `400 no_sync_mods`，前端按钮直接禁用避免命中。
+- `GET /api/instances/:id/mods/nexus/search?q=关键词`：任意登录用户可用（不需要管理员权限），后端代理 Nexus Mods 官方 API，前端不直连 N站。未配置 `NEXUS_API_KEY` 返回 `503 nexus_api_key_missing`；空关键词返回 `400 invalid_query`；上游非 2xx 映射为 `404 nexus_mod_not_found` / `502 nexus_unauthorized` / `429 nexus_rate_limited` / `502 nexus_request_failed`，前端按 `errorMessage` 兜底显示后端返回的中文 `message`。返回结果按本地已装 Mod 的 manifest `UpdateKeys`（`Nexus:<id>`）匹配 `installed`，本阶段不做版本新旧判断、不提供安装入口。
 
 ### 6. 控制台命令
 
