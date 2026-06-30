@@ -14,6 +14,7 @@ import {
 import { errorMessage, formatBytes } from '../../core/helpers'
 import { Field } from '../../core/Field'
 import { NewGameCreator } from './NewGameCreator'
+import type { StardewSaveActionRequest } from './stardew-routes'
 
 const seasonLabel: Record<string, string> = {
   spring: '春', summer: '夏', fall: '秋', winter: '冬',
@@ -138,6 +139,7 @@ export function SavesSection({
   onStateRefresh,
   onSavesChanged,
   refreshTrigger,
+  saveActionRequest,
 }: {
   state: string
   isAdmin: boolean
@@ -145,11 +147,13 @@ export function SavesSection({
   onStateRefresh: () => void
   onSavesChanged?: () => void
   refreshTrigger?: number
+  saveActionRequest?: StardewSaveActionRequest | null
 }) {
   const [data, setData] = useState<SavesListResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const isRunning = state === 'running' || state === 'starting'
 
   // 删除确认（内联对话框，替代 window.confirm）
   const [confirmDeleteName, setConfirmDeleteName] = useState<string | null>(null)
@@ -195,6 +199,19 @@ export function SavesSection({
       document.getElementById('saves-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [state])
+
+  useEffect(() => {
+    if (!saveActionRequest || !isAdmin || isRunning) return
+    document.getElementById('saves-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setMessage('')
+    if (saveActionRequest.action === 'new') {
+      setShowUploadModal(false)
+      setShowNewGameModal(true)
+      return
+    }
+    setShowNewGameModal(false)
+    setShowUploadModal(true)
+  }, [saveActionRequest?.nonce, saveActionRequest?.action, isAdmin, isRunning])
 
   async function handleSelect(name: string) {
     setBusy(true)
@@ -329,7 +346,6 @@ export function SavesSection({
 
   const saves = data?.saves ?? []
   const hasSaves = saves.length > 0
-  const isRunning = state === 'running' || state === 'starting'
   const confirmDeleteSave = saves.find((save) => save.name === confirmDeleteName)
   const confirmDeleteIsActive = Boolean(confirmDeleteSave?.isActive || data?.activeSaveName === confirmDeleteName)
   const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1

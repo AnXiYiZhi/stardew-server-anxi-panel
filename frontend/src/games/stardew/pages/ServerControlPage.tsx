@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
+  ApiError,
   startInstance,
   stopInstance,
   restartInstance,
@@ -11,10 +12,18 @@ import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { ConsoleCommandDef } from '../../../types'
 
+function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
+  if (!(error instanceof ApiError)) return null
+  if (error.code === 'save_required') return 'new'
+  if (error.code === 'active_save_required' || error.code === 'active_save_missing') return 'saves'
+  return null
+}
+
 export function ServerControlPage({ instanceState, dashboardData, onNavigate }: StardewPageProps) {
   // ── 生命周期操作状态 ──────────────────────────────────────────────────────
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
 
   // ── 邀请码 ────────────────────────────────────────────────────────────────
@@ -41,6 +50,11 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
   const isRunning = state === 'running'
   const isStarting = state === 'starting'
   const isStopped = state === 'stopped' || state === 'ready_to_start'
+  const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
+  const showSaveRequiredPrompt =
+    (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
+    !isRunning &&
+    !isStarting
   const canStart = isStopped && !actionBusy
   const canStop = isRunning && !actionBusy
   const canRestart = isRunning && !actionBusy
@@ -84,16 +98,31 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
     void loadCommands()
   }, [loadCommands])
 
+  useEffect(() => {
+    if (state && state !== 'save_required') {
+      setSaveRequiredDetected(false)
+    }
+  }, [state])
+
   // ── 生命周期操作 ──────────────────────────────────────────────────────────
   async function handleStart() {
     setActionBusy(true)
     setActionError(null)
     try {
       await startInstance()
+      setSaveRequiredDetected(false)
       dashboardData.refreshInstanceState()
       dashboardData.refreshJobs()
       dashboardData.refreshInviteCode()
     } catch (e) {
+      const saveBlocker = saveStartBlocker(e)
+      if (saveBlocker) {
+        setSaveRequiredDetected(saveBlocker === 'new')
+        setActionError(saveBlocker === 'new' ? null : errorMessage(e))
+        dashboardData.refreshInstanceState()
+        dashboardData.refreshSaves()
+        return
+      }
       setActionError(errorMessage(e))
     } finally {
       setActionBusy(false)
@@ -285,6 +314,15 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
             {actionBusy && canStart ? '启动中…' : '启动'}
           </button>
 
+          {showSaveRequiredPrompt ? (
+            <div className="sd-start-save-required">
+              <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
+              <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
+                创建/上传存档
+              </button>
+            </div>
+          ) : null}
+
           <button
             className="sd-btn-stop"
             disabled={!canStop}
@@ -334,7 +372,7 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
           </div>
         ) : null}
 
-        {state && !isRunning && !isStopped && !isStarting ? (
+        {state && !isRunning && !isStopped && !isStarting && !showSaveRequiredPrompt ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
             当前状态（{stateLabelText}）下无法直接启动服务器，请先完成安装或选择存档。
           </div>
