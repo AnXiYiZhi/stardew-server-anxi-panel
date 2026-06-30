@@ -28,6 +28,12 @@ type jobLogsResponse struct {
 	Logs []jobLogResponse `json:"logs"`
 }
 
+type clearErrorLogsResponse struct {
+	OK              bool  `json:"ok"`
+	Deleted         int64 `json:"deleted"`
+	MessagesCleared int64 `json:"messagesCleared"`
+}
+
 type jobResponse struct {
 	ID           string  `json:"id"`
 	Type         string  `json:"type"`
@@ -79,6 +85,36 @@ func (s *server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		response.Jobs = append(response.Jobs, makeJobResponse(job))
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *server) handleClearJobErrorLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	session, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	deleted, messagesCleared, err := s.jobs.ClearErrorLogs(r.Context())
+	if err != nil {
+		s.logger.Error("failed to clear job error logs", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
+	actorID := session.User.ID
+	if err := s.store.CreateAuditLog(r.Context(), storage.AuditLogParams{
+		ActorUserID: &actorID,
+		Action:      "job_error_logs_cleared",
+		TargetType:  "jobs",
+		TargetID:    "error_logs",
+		Metadata:    fmt.Sprintf(`{"deleted":%d,"messagesCleared":%d}`, deleted, messagesCleared),
+		IPAddress:   remoteIP(r),
+		UserAgent:   userAgent(r),
+	}); err != nil {
+		s.logger.Error("failed to write job error logs clear audit", "error", err)
+	}
+	writeJSON(w, http.StatusOK, clearErrorLogsResponse{OK: true, Deleted: deleted, MessagesCleared: messagesCleared})
 }
 
 func (s *server) handleClearJobs(w http.ResponseWriter, r *http.Request) {

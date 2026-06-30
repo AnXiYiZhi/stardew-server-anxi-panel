@@ -50,6 +50,7 @@ func TestSetupLoginLogoutAndUserPermissions(t *testing.T) {
 	if me.Code != http.StatusOK {
 		t.Fatalf("me after setup returned %d: %s", me.Code, me.Body.String())
 	}
+	assertNestedJSONField(t, me.Body.Bytes(), "user", "isSuperAdmin", true)
 
 	createUserBody := map[string]string{
 		"username": "player",
@@ -152,6 +153,97 @@ func TestAdminCanEnableAndHardDeleteUser(t *testing.T) {
 	}
 }
 
+func TestSuperAdminControlsAdminRoleManagement(t *testing.T) {
+	handler, closeStore := newTestHandler(t)
+	defer closeStore()
+
+	setup, superCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "root",
+		"password":        "123456",
+		"confirmPassword": "123456",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup super admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+	assertNestedJSONField(t, setup.Body.Bytes(), "user", "isSuperAdmin", true)
+
+	adminCreated, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "manager",
+		"password": "123456",
+		"role":     "admin",
+	}, superCookie)
+	if adminCreated.Code != http.StatusCreated {
+		t.Fatalf("super admin create admin returned %d: %s", adminCreated.Code, adminCreated.Body.String())
+	}
+	assertNestedJSONField(t, adminCreated.Body.Bytes(), "user", "isSuperAdmin", false)
+
+	userCreated, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "player",
+		"password": "123456",
+		"role":     "user",
+	}, superCookie)
+	if userCreated.Code != http.StatusCreated {
+		t.Fatalf("super admin create user returned %d: %s", userCreated.Code, userCreated.Body.String())
+	}
+
+	login, managerCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{
+		"username": "manager",
+		"password": "123456",
+	}, nil)
+	if login.Code != http.StatusOK {
+		t.Fatalf("manager login returned %d: %s", login.Code, login.Body.String())
+	}
+	assertNestedJSONField(t, login.Body.Bytes(), "user", "isSuperAdmin", false)
+
+	blockCreateAdmin, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "admin2",
+		"password": "123456",
+		"role":     "admin",
+	}, managerCookie)
+	if blockCreateAdmin.Code != http.StatusForbidden {
+		t.Fatalf("normal admin create admin returned %d", blockCreateAdmin.Code)
+	}
+
+	blockPromote, _ := doJSON(t, handler, http.MethodPatch, "/api/users/3", map[string]string{"role": "admin"}, managerCookie)
+	if blockPromote.Code != http.StatusForbidden {
+		t.Fatalf("normal admin promote user returned %d", blockPromote.Code)
+	}
+
+	blockDemote, _ := doJSON(t, handler, http.MethodPatch, "/api/users/1", map[string]string{"role": "user"}, managerCookie)
+	if blockDemote.Code != http.StatusForbidden {
+		t.Fatalf("normal admin demote admin returned %d", blockDemote.Code)
+	}
+
+	blockAdminDisable, _ := doJSON(t, handler, http.MethodDelete, "/api/users/1", nil, managerCookie)
+	if blockAdminDisable.Code != http.StatusForbidden {
+		t.Fatalf("normal admin disable admin returned %d", blockAdminDisable.Code)
+	}
+
+	disableUser, _ := doJSON(t, handler, http.MethodDelete, "/api/users/3", nil, managerCookie)
+	if disableUser.Code != http.StatusOK {
+		t.Fatalf("normal admin disable ordinary user returned %d: %s", disableUser.Code, disableUser.Body.String())
+	}
+
+	anotherUser, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "player2",
+		"password": "123456",
+		"role":     "user",
+	}, superCookie)
+	if anotherUser.Code != http.StatusCreated {
+		t.Fatalf("super admin create second user returned %d: %s", anotherUser.Code, anotherUser.Body.String())
+	}
+
+	promote, _ := doJSON(t, handler, http.MethodPatch, "/api/users/4", map[string]string{"role": "admin"}, superCookie)
+	if promote.Code != http.StatusOK {
+		t.Fatalf("super admin promote user returned %d: %s", promote.Code, promote.Body.String())
+	}
+
+	demote, _ := doJSON(t, handler, http.MethodPatch, "/api/users/2", map[string]string{"role": "user"}, superCookie)
+	if demote.Code != http.StatusOK {
+		t.Fatalf("super admin demote admin returned %d: %s", demote.Code, demote.Body.String())
+	}
+}
+
 func newTestHandler(t *testing.T) (http.Handler, func()) {
 	t.Helper()
 	handler, store, cleanup := newTestHandlerWithStore(t)
@@ -220,5 +312,20 @@ func assertJSONField(t *testing.T, body []byte, field string, expected any) {
 	}
 	if payload[field] != expected {
 		t.Fatalf("expected %s=%v, got %v", field, expected, payload[field])
+	}
+}
+
+func assertNestedJSONField(t *testing.T, body []byte, objectField string, field string, expected any) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode JSON: %v", err)
+	}
+	object, ok := payload[objectField].(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s to be an object, got %T", objectField, payload[objectField])
+	}
+	if object[field] != expected {
+		t.Fatalf("expected %s.%s=%v, got %v", objectField, field, expected, object[field])
 	}
 }

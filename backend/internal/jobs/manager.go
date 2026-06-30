@@ -101,6 +101,10 @@ func (m *Manager) Clear(ctx context.Context) (int64, error) {
 	return m.store.ClearJobs(ctx)
 }
 
+func (m *Manager) ClearErrorLogs(ctx context.Context) (int64, int64, error) {
+	return m.store.ClearJobErrorLogs(ctx)
+}
+
 func (m *Manager) Logs(ctx context.Context, jobID string, afterSequence int64, limit int) ([]storage.JobLog, error) {
 	return m.store.ListJobLogs(ctx, jobID, afterSequence, limit)
 }

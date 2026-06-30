@@ -16,7 +16,9 @@ var (
 	ErrConflict           = errors.New("conflict")
 	ErrAlreadyInitialized = errors.New("already initialized")
 	ErrLastAdmin          = errors.New("last active admin")
+	ErrLastSuperAdmin     = errors.New("last active super admin")
 	ErrSelfDisable        = errors.New("cannot disable current user")
+	ErrSuperAdminRequired = errors.New("super admin required")
 )
 
 type User struct {
@@ -24,6 +26,7 @@ type User struct {
 	Username     string
 	PasswordHash string
 	Role         string
+	IsSuperAdmin bool
 	IsActive     bool
 	CreatedAt    string
 	UpdatedAt    string
@@ -32,9 +35,10 @@ type User struct {
 
 func (u User) Public() auth.PublicUser {
 	return auth.PublicUser{
-		ID:       u.ID,
-		Username: u.Username,
-		Role:     u.Role,
+		ID:           u.ID,
+		Username:     u.Username,
+		Role:         u.Role,
+		IsSuperAdmin: u.IsSuperAdmin,
 	}
 }
 
@@ -63,6 +67,7 @@ type CreateUserParams struct {
 	Username     string
 	PasswordHash string
 	Role         string
+	IsSuperAdmin bool
 }
 
 type UpdateUserParams struct {
@@ -116,6 +121,7 @@ func (s *Store) CreateFirstAdminWithSession(ctx context.Context, params CreateFi
 		Username:     params.Username,
 		PasswordHash: params.PasswordHash,
 		Role:         auth.RoleAdmin,
+		IsSuperAdmin: true,
 	})
 	if err != nil {
 		return User{}, Session{}, err
@@ -156,7 +162,7 @@ func (s *Store) CreateUser(ctx context.Context, params CreateUserParams) (User, 
 
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
+		SELECT id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
 		FROM users
 		ORDER BY id ASC
 	`)
@@ -185,7 +191,7 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (User, error) {
 
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (User, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
+		SELECT id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
 		FROM users
 		WHERE username = ? AND is_active = 1
 	`, username)
@@ -203,8 +209,24 @@ func (s *Store) UpdateUser(ctx context.Context, actorID int64, targetID int64, p
 	if err != nil {
 		return User{}, err
 	}
+	actor, err := getUserByIDTx(ctx, tx, actorID)
+	if err != nil {
+		return User{}, err
+	}
+
+	if target.Role == auth.RoleAdmin && !actor.IsSuperAdmin {
+		return User{}, ErrSuperAdminRequired
+	}
+	if params.Role != nil && !actor.IsSuperAdmin {
+		return User{}, ErrSuperAdminRequired
+	}
 
 	if params.Role != nil && target.Role == auth.RoleAdmin && *params.Role != auth.RoleAdmin {
+		if target.IsSuperAdmin {
+			if err := ensureNotLastSuperAdminTx(ctx, tx); err != nil {
+				return User{}, err
+			}
+		}
 		if err := ensureNotLastAdminTx(ctx, tx); err != nil {
 			return User{}, err
 		}
@@ -214,6 +236,11 @@ func (s *Store) UpdateUser(ctx context.Context, actorID int64, targetID int64, p
 			return User{}, ErrSelfDisable
 		}
 		if target.Role == auth.RoleAdmin {
+			if target.IsSuperAdmin {
+				if err := ensureNotLastSuperAdminTx(ctx, tx); err != nil {
+					return User{}, err
+				}
+			}
 			if err := ensureNotLastAdminTx(ctx, tx); err != nil {
 				return User{}, err
 			}
@@ -223,6 +250,10 @@ func (s *Store) UpdateUser(ctx context.Context, actorID int64, targetID int64, p
 	role := target.Role
 	if params.Role != nil {
 		role = *params.Role
+	}
+	isSuperAdmin := target.IsSuperAdmin
+	if role != auth.RoleAdmin {
+		isSuperAdmin = false
 	}
 	isActive := target.IsActive
 	if params.IsActive != nil {
@@ -237,10 +268,10 @@ func (s *Store) UpdateUser(ctx context.Context, actorID int64, targetID int64, p
 
 	row := tx.QueryRowContext(ctx, `
 		UPDATE users
-		SET role = ?, is_active = ?, password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		SET role = ?, is_super_admin = ?, is_active = ?, password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ?
-		RETURNING id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
-	`, role, boolToInt(isActive), passwordHash, targetID)
+		RETURNING id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
+	`, role, boolToInt(isSuperAdmin), boolToInt(isActive), passwordHash, targetID)
 	updated, err := scanUserRow(row)
 	if err != nil {
 		return User{}, err
@@ -279,10 +310,22 @@ func (s *Store) DeleteUser(ctx context.Context, actorID int64, targetID int64) e
 	if err != nil {
 		return err
 	}
+	actor, err := getUserByIDTx(ctx, tx, actorID)
+	if err != nil {
+		return err
+	}
 	if actorID == targetID {
 		return ErrSelfDisable
 	}
+	if target.Role == auth.RoleAdmin && !actor.IsSuperAdmin {
+		return ErrSuperAdminRequired
+	}
 	if target.Role == auth.RoleAdmin && target.IsActive {
+		if target.IsSuperAdmin {
+			if err := ensureNotLastSuperAdminTx(ctx, tx); err != nil {
+				return err
+			}
+		}
 		if err := ensureNotLastAdminTx(ctx, tx); err != nil {
 			return err
 		}
@@ -306,7 +349,7 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (Se
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
 			s.id, s.user_id, s.token_hash, s.expires_at,
-			u.id, u.username, u.password_hash, u.role, u.is_active, u.created_at, u.updated_at, u.last_login_at
+			u.id, u.username, u.password_hash, u.role, u.is_super_admin, u.is_active, u.created_at, u.updated_at, u.last_login_at
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ?
@@ -326,6 +369,7 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (Se
 		&result.User.Username,
 		&result.User.PasswordHash,
 		&result.User.Role,
+		&result.User.IsSuperAdmin,
 		&result.User.IsActive,
 		&result.User.CreatedAt,
 		&result.User.UpdatedAt,
@@ -469,27 +513,42 @@ func ensureNotLastAdminTx(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+func ensureNotLastSuperAdminTx(ctx context.Context, tx *sql.Tx) error {
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM users
+		WHERE role = ? AND is_super_admin = 1 AND is_active = 1
+	`, auth.RoleAdmin).Scan(&count); err != nil {
+		return fmt.Errorf("count super admins: %w", err)
+	}
+	if count <= 1 {
+		return ErrLastSuperAdmin
+	}
+	return nil
+}
+
 func createUser(ctx context.Context, db *sql.DB, params CreateUserParams) (User, error) {
 	row := db.QueryRowContext(ctx, `
-		INSERT INTO users (username, password_hash, role)
-		VALUES (?, ?, ?)
-		RETURNING id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
-	`, params.Username, params.PasswordHash, params.Role)
+		INSERT INTO users (username, password_hash, role, is_super_admin)
+		VALUES (?, ?, ?, ?)
+		RETURNING id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
+	`, params.Username, params.PasswordHash, params.Role, boolToInt(params.IsSuperAdmin))
 	return scanUserRow(row)
 }
 
 func createUserTx(ctx context.Context, tx *sql.Tx, params CreateUserParams) (User, error) {
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO users (username, password_hash, role)
-		VALUES (?, ?, ?)
-		RETURNING id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
-	`, params.Username, params.PasswordHash, params.Role)
+		INSERT INTO users (username, password_hash, role, is_super_admin)
+		VALUES (?, ?, ?, ?)
+		RETURNING id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
+	`, params.Username, params.PasswordHash, params.Role, boolToInt(params.IsSuperAdmin))
 	return scanUserRow(row)
 }
 
 func getUserByID(ctx context.Context, db *sql.DB, id int64) (User, error) {
 	row := db.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
+		SELECT id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
 		FROM users
 		WHERE id = ?
 	`, id)
@@ -498,7 +557,7 @@ func getUserByID(ctx context.Context, db *sql.DB, id int64) (User, error) {
 
 func getUserByIDTx(ctx context.Context, tx *sql.Tx, id int64) (User, error) {
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, username, password_hash, role, is_active, created_at, updated_at, last_login_at
+		SELECT id, username, password_hash, role, is_super_admin, is_active, created_at, updated_at, last_login_at
 		FROM users
 		WHERE id = ?
 	`, id)
@@ -547,7 +606,7 @@ func createAuditLogTx(ctx context.Context, tx *sql.Tx, params AuditLogParams) er
 
 func scanUserRow(row *sql.Row) (User, error) {
 	var user User
-	if err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsActive, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt); err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsSuperAdmin, &user.IsActive, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt); err != nil {
 		return User{}, mapScanErr(err, "scan user")
 	}
 	return user, nil
@@ -555,7 +614,7 @@ func scanUserRow(row *sql.Row) (User, error) {
 
 func scanUser(rows *sql.Rows) (User, error) {
 	var user User
-	if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsActive, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt); err != nil {
+	if err := rows.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.IsSuperAdmin, &user.IsActive, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt); err != nil {
 		return User{}, fmt.Errorf("scan user: %w", err)
 	}
 	return user, nil

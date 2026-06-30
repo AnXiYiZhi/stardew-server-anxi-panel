@@ -203,6 +203,41 @@ func (s *Store) ClearJobs(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+func (s *Store) ClearJobErrorLogs(ctx context.Context) (int64, int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin clear error logs transaction: %w", err)
+	}
+	defer rollback(tx)
+
+	logResult, err := tx.ExecContext(ctx, `DELETE FROM job_logs WHERE level = ?`, JobLogLevelError)
+	if err != nil {
+		return 0, 0, fmt.Errorf("delete error job logs: %w", err)
+	}
+	logsDeleted, err := logResult.RowsAffected()
+	if err != nil {
+		return 0, 0, fmt.Errorf("count deleted error job logs: %w", err)
+	}
+
+	messageResult, err := tx.ExecContext(ctx, `
+		UPDATE jobs
+		SET error_message = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE error_message IS NOT NULL
+	`)
+	if err != nil {
+		return 0, 0, fmt.Errorf("clear job error messages: %w", err)
+	}
+	messagesCleared, err := messageResult.RowsAffected()
+	if err != nil {
+		return 0, 0, fmt.Errorf("count cleared job error messages: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("commit clear error logs transaction: %w", err)
+	}
+	return logsDeleted, messagesCleared, nil
+}
+
 func (s *Store) AppendJobLog(ctx context.Context, jobID string, level string, message string) (JobLog, error) {
 	if !IsValidJobLogLevel(level) {
 		return JobLog{}, ErrInvalidJobStatus

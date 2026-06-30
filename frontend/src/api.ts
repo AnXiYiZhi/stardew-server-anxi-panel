@@ -7,6 +7,7 @@ import type {
   Instance,
   InstallJobResponse,
   InstallOptionsResponse,
+  InstanceVNCConfig,
   InstanceState,
   InstancesResponse,
   InviteCodeResult,
@@ -20,6 +21,9 @@ import type {
   PanelUser,
   PrepareResponse,
   PreflightResult,
+  BackupsListResult,
+  RestoreBackupResult,
+  ResourceMetricsResponse,
   SavesListResult,
   UploadPreviewResult,
   UsersResponse,
@@ -98,12 +102,20 @@ export function getInstanceState(instanceId = defaultInstanceId) {
   return request<InstanceState>(`/api/instances/${encodeURIComponent(instanceId)}/state`)
 }
 
+export function getInstanceMetrics(instanceId = defaultInstanceId) {
+  return request<ResourceMetricsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/metrics`)
+}
+
 export function getJobs() {
   return request<JobsResponse>('/api/jobs')
 }
 
 export function clearJobs() {
   return request<{ ok: boolean; deleted: number }>('/api/jobs', { method: 'DELETE' })
+}
+
+export function clearJobErrorLogs() {
+  return request<{ ok: boolean; deleted: number; messagesCleared: number }>('/api/jobs/error-logs', { method: 'DELETE' })
 }
 
 export function getJob(id: string) {
@@ -232,6 +244,17 @@ export function getInviteCode(instanceId = defaultInstanceId) {
   return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`)
 }
 
+export function getInstanceVNCConfig(instanceId = defaultInstanceId) {
+  return request<InstanceVNCConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/vnc-port`)
+}
+
+export function updateInstanceVNCPort(port: string, instanceId = defaultInstanceId) {
+  return request<InstanceVNCConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/vnc-port`, {
+    method: 'PUT',
+    body: { port },
+  })
+}
+
 export function getSaves(instanceId = defaultInstanceId) {
   return request<SavesListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves`)
 }
@@ -269,6 +292,24 @@ export function exportSave(name: string, instanceId = defaultInstanceId) {
     const filename = match ? match[1] : `${name}.zip`
     return { blob, filename }
   })
+}
+
+export function getSaveBackups(instanceId = defaultInstanceId) {
+  return request<BackupsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups`)
+}
+
+export function restoreSaveBackup(backupName: string, overwrite = false, instanceId = defaultInstanceId) {
+  return request<RestoreBackupResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups/restore`, {
+    method: 'POST',
+    body: { backupName, overwrite },
+  })
+}
+
+export function deleteSaveBackup(backupName: string, instanceId = defaultInstanceId) {
+  return request<{ ok: boolean }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/backups/${encodeURIComponent(backupName)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export function getMods(instanceId = defaultInstanceId) {

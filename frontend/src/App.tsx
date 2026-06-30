@@ -111,19 +111,19 @@ function App() {
   }
 
   return (
-    <main className="shell">
-      <section className="panel-card">
-        <p className="eyebrow">Stardew Valley 管理面板</p>
-        <h1>Stardew Anxi Panel</h1>
+    <main className="sd-auth-shell">
+      <section className="sd-auth-card">
+        <p className="sd-auth-eyebrow">Stardew Valley 管理面板</p>
+        <h1 className="sd-auth-title">Stardew Anxi Panel</h1>
         {versionInfo ? (
-          <p className="version-info">
+          <p className="sd-auth-version">
             v{versionInfo.version}
             {versionInfo.commit ? ` · ${versionInfo.commit}` : ''}
             {versionInfo.buildDate ? ` · ${versionInfo.buildDate}` : ''}
           </p>
         ) : null}
-        {message ? <div className="error-banner">{message}</div> : null}
-        {view === 'booting' ? <p className="summary">正在读取面板状态……</p> : null}
+        {message ? <div className="sd-auth-error">{message}</div> : null}
+        {view === 'booting' ? <p className="sd-auth-loading">正在读取面板状态……</p> : null}
         {view === 'setup' ? (
           <SetupPanel form={setupForm} busy={busy} onChange={setSetupForm} onSubmit={submitSetup} />
         ) : null}

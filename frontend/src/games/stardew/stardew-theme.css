@@ -538,3 +538,76 @@
   --sd-section-gap:    14px;       /* 页面区块间距 */
   --sd-page-padding:   16px;       /* 页面整体外边距 */
 }
+
+/* ── 13. 语义提示工具类 ───────────────────────────────────────────────────── */
+
+/*
+ * 语义色规则：
+ *   绿色 (ok)   — 正常、已完成、可用、运行正常
+ *   金黄 (warn) — 警告、需要操作、等待、需重启、未选择但不是错误
+ *   红色 (error)— 错误、失败、危险操作
+ *   灰棕 (info) — 中性、待接入、禁用、无数据
+ */
+
+/* 通用提示条基类 */
+.sd-notice {
+  padding: 7px 10px;
+  font-size: var(--sd-font-size-body);
+  line-height: 1.5;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.sd-notice--ok {
+  background: var(--sd-green-bg);
+  border-color: var(--sd-green);
+  color: var(--sd-green-text);
+}
+
+.sd-notice--warn {
+  background: var(--sd-gold-light);
+  border-color: var(--sd-gold-border);
+  color: var(--sd-gold-text);
+}
+
+.sd-notice--error {
+  background: var(--sd-red-bg);
+  border-color: var(--sd-red);
+  color: var(--sd-red-text);
+}
+
+.sd-notice--info {
+  background: #f8f0d8;
+  border-left: 3px solid var(--sd-brown-mid);
+  color: #5a3c1d;
+}
+
+/* 空状态 / 待接入区通用占位 */
+.sd-empty-state {
+  padding: 18px 14px;
+  text-align: center;
+  border: 1px dashed rgba(200, 168, 100, 0.5);
+  background: rgba(200, 168, 100, 0.06);
+  color: #8a7060;
+  font-size: var(--sd-font-size-body);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+/* 待接入统一小徽章（与 sd-srv-badge-pending / sd-mods-pending-badge 语义对齐） */
+.sd-tag--pending {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: var(--sd-font-size-meta);
+  font-weight: 700;
+  color: #7a5c30;
+  background: rgba(200, 160, 40, 0.18);
+  border: 1px solid #c8a028;
+  border-radius: 2px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  createJobEventSource,
   getHealthDiagnostics,
   getInviteCode,
   getJobs,
@@ -29,6 +30,7 @@ export function useStardewDashboardData(): StardewDashboardData {
   const [loading, setLoading] = useState(true)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const jobStreamsRef = useRef<Map<string, EventSource>>(new Map())
 
   const refreshInstanceState = useCallback(async () => {
     try {
@@ -84,6 +86,7 @@ export function useStardewDashboardData(): StardewDashboardData {
       const res = await getInviteCode()
       setInviteCode(res.inviteCode)
     } catch (e) {
+      setInviteCode(null)
       setInviteCodeError(errorMessage(e))
     }
   }, [])
@@ -114,6 +117,18 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshInviteCode,
   ])
 
+  const refreshAfterJobFinished = useCallback(() => {
+    void refreshJobs()
+    void refreshInstanceState()
+    void refreshSaves()
+    void refreshMods()
+    void refreshInviteCode()
+    window.setTimeout(() => {
+      void refreshInstanceState()
+      void refreshInviteCode()
+    }, 1000)
+  }, [refreshInstanceState, refreshInviteCode, refreshJobs, refreshMods, refreshSaves])
+
   useEffect(() => {
     const init = async () => {
       setLoading(true)
@@ -138,6 +153,10 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     return () => {
       if (pollRef.current !== null) clearInterval(pollRef.current)
+      for (const es of jobStreamsRef.current.values()) {
+        es.close()
+      }
+      jobStreamsRef.current.clear()
     }
   }, [
     refreshInstanceState,
@@ -148,6 +167,48 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshInviteCode,
     fetchVersion,
   ])
+
+  useEffect(() => {
+    const activeJobIds = new Set(
+      jobs
+        .filter((job) => job.status === 'queued' || job.status === 'running')
+        .map((job) => job.id),
+    )
+
+    for (const [jobId, es] of jobStreamsRef.current) {
+      if (!activeJobIds.has(jobId)) {
+        es.close()
+        jobStreamsRef.current.delete(jobId)
+      }
+    }
+
+    for (const jobId of activeJobIds) {
+      if (jobStreamsRef.current.has(jobId)) continue
+      const es = createJobEventSource(jobId)
+      jobStreamsRef.current.set(jobId, es)
+      es.addEventListener('finished', () => {
+        es.close()
+        jobStreamsRef.current.delete(jobId)
+        refreshAfterJobFinished()
+      })
+      es.onerror = () => {
+        es.close()
+        jobStreamsRef.current.delete(jobId)
+        void refreshJobs()
+        void refreshInstanceState()
+      }
+    }
+  }, [jobs, refreshAfterJobFinished, refreshInstanceState, refreshJobs])
+
+  useEffect(() => {
+    if (!instanceState?.state) return
+    if (instanceState.state === 'running') {
+      void refreshInviteCode()
+      return
+    }
+    setInviteCode(null)
+    setInviteCodeError(null)
+  }, [instanceState?.state, refreshInviteCode])
 
   return {
     instanceState,

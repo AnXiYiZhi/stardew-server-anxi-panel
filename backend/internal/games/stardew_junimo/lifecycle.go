@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -46,12 +48,12 @@ type LifecycleDockerService interface {
 
 // lifecycleRunner handles start/stop/restart job execution.
 type lifecycleRunner struct {
-	driver     *Driver
-	lifecycle  LifecycleDockerService
-	instance   storage.Instance
-	operation  string // "start", "stop", "restart"
-	actorID    int64
-	newGame    bool // When true, send "settings newgame --confirm" after server starts.
+	driver    *Driver
+	lifecycle LifecycleDockerService
+	instance  storage.Instance
+	operation string // "start", "stop", "restart"
+	actorID   int64
+	newGame   bool // When true, send "settings newgame --confirm" after server starts.
 }
 
 // Start implements registry.GameDriver.Start.
@@ -179,6 +181,15 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 
 	result, err := r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
 	if err != nil {
+		if friendly, ok := r.vncPortUnavailableMessage(result); ok {
+			_, _ = jobCtx.Error(ctx, friendly)
+			if stderr := strings.TrimSpace(result.Stderr); stderr != "" {
+				_, _ = jobCtx.Debug(ctx, "Docker 原始错误："+stderr)
+			}
+			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+				friendly, "vnc_port_unavailable", jobCtx.ID)
+			return errors.New(friendly)
+		}
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
 			"启动失败: "+result.Stderr, "start_failed", jobCtx.ID)
 		return fmt.Errorf("docker compose up: %w", err)
@@ -221,6 +232,48 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
+}
+
+func (r *lifecycleRunner) vncPortUnavailableMessage(result paneldocker.CommandResult) (string, bool) {
+	port := r.currentVNCPort()
+	combined := strings.ToLower(result.Stderr + "\n" + result.Stdout)
+	if !looksLikePortBindFailure(combined) {
+		return "", false
+	}
+	if port != "" && !strings.Contains(combined, ":"+port) && !strings.Contains(combined, "0.0.0.0:"+port) {
+		return "", false
+	}
+	if port == "" {
+		port = "当前"
+	}
+	return fmt.Sprintf("VNC 端口 %s 被占用或被系统保留，请更换 VNC 端口后重试。", port), true
+}
+
+func (r *lifecycleRunner) currentVNCPort() string {
+	values, err := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
+	if err != nil {
+		return ""
+	}
+	port := strings.TrimSpace(values["VNC_PORT"])
+	if port == "" {
+		port = sjconfig.EmptyEnvTemplate()["VNC_PORT"]
+	}
+	return port
+}
+
+func looksLikePortBindFailure(text string) bool {
+	if text == "" {
+		return false
+	}
+	hasPortContext := strings.Contains(text, "ports are not available") ||
+		strings.Contains(text, "port is already allocated") ||
+		strings.Contains(text, "bind for 0.0.0.0") ||
+		strings.Contains(text, "listen tcp")
+	hasBindFailure := strings.Contains(text, "bind") ||
+		strings.Contains(text, "forbidden by its access permissions") ||
+		strings.Contains(text, "address already in use") ||
+		strings.Contains(text, "already allocated")
+	return hasPortContext && hasBindFailure
 }
 
 func (r *lifecycleRunner) doStop(ctx context.Context, jobCtx *jobs.Context) error {

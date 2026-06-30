@@ -55,6 +55,10 @@ function healthSummaryDot(status: string | undefined): string {
   return 'sd-dot sd-dot-gray'
 }
 
+function roleLabel(role: CurrentUser['role']): string {
+  return role === 'admin' ? '管理员' : '普通用户'
+}
+
 export function StardewPanel({
   user,
   onLogout,
@@ -171,7 +175,7 @@ export function StardewPanel({
 
         <div className="sd-topbar-user">
           <span className="sd-topbar-username">{user.username}</span>
-          <span className="sd-tag sd-tag-blue">{user.role}</span>
+          <span className="sd-tag sd-tag-blue">{roleLabel(user.role)}</span>
           <button className="sd-topbar-logout-btn" onClick={onLogout}>
             登出
           </button>

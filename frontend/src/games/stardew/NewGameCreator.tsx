@@ -10,8 +10,8 @@ type Props = {
 }
 
 type Farm = { id: NewGameConfig['farmType']; label: string; asset: string }
-type Gender = { id: 'male' | 'female'; label: string; icon: string; preview: string }
-type PetPreference = { petType: 'Cat' | 'Dog'; breed: number; label: string; asset: string }
+type Gender = { id: 'male' | 'female'; icon: string; preview: string }
+type PetPreference = { petType: 'Cat' | 'Dog'; breed: number; asset: string }
 
 // These files are generated once from the local Stardew runtime and committed with
 // the panel image. They deliberately do not depend on a user's game download.
@@ -27,22 +27,22 @@ const farms: Farm[] = [
 ]
 
 const genders: Gender[] = [
-  { id: 'male', label: '男', icon: '/assets/stardew/new-game/gender/male-icon.png', preview: '/assets/stardew/new-game/characters/male-preview.png' },
-  { id: 'female', label: '女', icon: '/assets/stardew/new-game/gender/female-icon.png', preview: '/assets/stardew/new-game/characters/female-preview.png' },
+  { id: 'male', icon: '/assets/stardew/new-game/gender/male-icon.png', preview: '/assets/stardew/new-game/characters/male-preview.png' },
+  { id: 'female', icon: '/assets/stardew/new-game/gender/female-icon.png', preview: '/assets/stardew/new-game/characters/female-preview.png' },
 ]
 
 // This order is the game data order exported from the local runtime: every
 // selectable cat breed first, followed by every selectable dog breed.
 const petPreferences: PetPreference[] = [
-  ...[0, 1, 2, 3, 4].map((breed) => ({ petType: 'Cat' as const, breed, label: `猫 ${breed + 1}`, asset: `/assets/stardew/new-game/pets/cat-${breed}.png` })),
-  ...[0, 1, 2, 3, 4].map((breed) => ({ petType: 'Dog' as const, breed, label: `狗 ${breed + 1}`, asset: `/assets/stardew/new-game/pets/dog-${breed}.png` })),
+  ...[0, 1, 2, 3, 4].map((breed) => ({ petType: 'Cat' as const, breed, asset: `/assets/stardew/new-game/pets/cat-${breed}.png` })),
+  ...[0, 1, 2, 3, 4].map((breed) => ({ petType: 'Dog' as const, breed, asset: `/assets/stardew/new-game/pets/dog-${breed}.png` })),
 ]
 
 function defaultConfig(): NewGameConfig {
   return {
     farmName: '',
-    farmerName: '',
-    favoriteThing: '',
+    farmerName: 'host',
+    favoriteThing: '星露谷',
     farmType: 'standard',
     gender: 'male',
     petType: 'Cat',
@@ -62,7 +62,7 @@ function defaultConfig(): NewGameConfig {
 function ArrowButton({ direction, onClick, label }: { direction: 'left' | 'right'; onClick: () => void; label: string }) {
   return (
     <button type="button" className={`ngc-arrow ngc-arrow-${direction}`} onClick={onClick} aria-label={label}>
-      {direction === 'left' ? '◀' : '▶'}
+      <span aria-hidden="true" />
     </button>
   )
 }
@@ -146,10 +146,10 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
 
       <main className="ngc-main-panel">
         <section className="ngc-character-preview" aria-label="角色设置">
-          <div className="ngc-farmer-silhouette"><img src={selectedGender.preview} alt={`${selectedGender.label}角色预览`} /></div>
+          <div className="ngc-farmer-silhouette"><img src={selectedGender.preview} alt="角色预览" /></div>
           <div className="ngc-character-switch">
             <ArrowButton direction="left" label="切换性别" onClick={() => updateGender(-1)} />
-            <strong><img className="ngc-gender-icon" src={selectedGender.icon} alt="" />{selectedGender.label}</strong>
+            <strong><img className="ngc-gender-icon" src={selectedGender.icon} alt="" /></strong>
             <ArrowButton direction="right" label="切换性别" onClick={() => updateGender(1)} />
           </div>
         </section>
@@ -160,7 +160,7 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
           <label>最喜欢<br />的东西<input maxLength={100} value={cfg.favoriteThing ?? ''} onChange={(event) => set('favoriteThing', event.target.value)} /></label>
           <label className="ngc-pet-line">动物偏好
             <ArrowButton direction="left" label="上一种宠物" onClick={() => updatePet(-1)} />
-            <strong className="ngc-pet-choice"><img src={selectedPet.asset} alt="" />{selectedPet.label}</strong>
+            <strong className="ngc-pet-choice"><img src={selectedPet.asset} alt="宠物预览" /></strong>
             <ArrowButton direction="right" label="下一种宠物" onClick={() => updatePet(1)} />
           </label>
         </section>

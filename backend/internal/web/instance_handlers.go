@@ -94,6 +94,14 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceStatus(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "metrics" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceMetrics(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "docker" && parts[2] == "ps" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -166,6 +174,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceInviteCode(w, r, instanceID)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "config" && parts[2] == "vnc-port" {
+		s.handleInstanceVNCConfig(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "preflight" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -231,6 +243,11 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleSavesBackupRestore(w, r, instanceID)
+		return
+	}
+	// DELETE /api/instances/:id/saves/backups/:backupName
+	if len(parts) == 4 && parts[1] == "saves" && parts[2] == "backups" && r.Method == http.MethodDelete {
+		s.handleSavesBackupDelete(w, r, instanceID, parts[3])
 		return
 	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "custom-new-game" {

@@ -6,6 +6,442 @@
 
 ## Current Context
 
+### UI-PROT-1: Stardew 主面板页面级 image2 原型 ✅ completed (2026-06-30)
+
+用户要求根据项目目标和现有前端页面重新优化规划项目原型图，不需要 HTML，重点是“漂亮、很符合星露谷主题感”，并且所有页面的左侧栏、顶部总栏保持统一。本轮使用 image2 生成登录后 Stardew 主面板 9 个页面的独立静态原型图，作为后续 UI 重构参考。
+
+**新增文件：**
+
+| 文件/目录 | 说明 |
+|------|------|
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/01-overview.png` | 总览页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/02-server-control.png` | 服务器控制页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/03-saves.png` | 存档管理页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/04-jobs-logs.png` | 任务与日志页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/05-players.png` | 玩家管理页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/06-mods.png` | 模组管理页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/07-diagnostics.png` | 诊断与健康检查页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/08-install.png` | 首次安装向导页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/09-settings.png` | 设置与审计页原型 |
+| `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/README.md` | 页面清单、统一视觉约束和验证记录 |
+
+**视觉方向：**
+
+- 统一外壳：深木左侧导航、顶部状态总栏、右侧健康/任务摘要栏。
+- 主内容：羊皮纸面板、木框、像素按钮、状态灯、农场主题插画和少量图表。
+- 页面粒度：覆盖现有 `StardewRoute` 9 个页面；登录/初始化页不属于这批，因为它们没有主面板左侧栏和顶栏。
+- 定位：静态视觉原型，不生成 HTML，不改业务逻辑。
+
+**验证：**
+
+```powershell
+Add-Type -AssemblyName System.Drawing
+Get-ChildItem docs/prototypes/stardew-page-prototypes-image2-2026-06-30 -Filter *.png
+# 9 张图，全部 1672 x 941
+```
+
+**下一步注意事项：**
+
+- 这些图是视觉方向稿，中文细字可能有生成图常见的不稳定；落地前端时应以现有 React 组件和真实文案为准。
+- 若开始真实 UI 重构，优先把统一外壳拆成可复用布局 token：木侧栏、顶部状态栏、右侧 OpsRail、羊皮纸面板、状态灯、像素按钮。
+- 不要把原型里的示例数据当成真实接口契约；接口仍以 `frontend/src/api.ts`、`frontend/src/types.ts` 和后端 handler 为准。
+
+### UI-R21: 设置页新增面板端口与 VNC 端口区域 ✅ completed (2026-06-30)
+
+用户要求在“设置”里增加显示面板端口和 VNC 端口的区域。本轮在设置页新增“端口信息”区：面板端口从当前浏览器访问地址推导并只读显示；VNC 端口复用已有 `GET/PUT /api/instances/:id/config/vnc-port` 接口，管理员可查看、刷新和保存，普通用户显示权限提示。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/pages/SettingsPage.tsx` | 新增 `PortSection`，显示当前面板端口和 VNC 端口，支持 VNC 端口校验、刷新、保存与成功/错误提示；审计日志动作映射增加 `instance_vnc_port_update`。 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增设置页端口区布局、输入、提示样式；移动端强制单列，避免窄屏溢出。 |
+| `backend/internal/web/ports_handlers.go` | VNC 端口读取在 `.env` 缺失时返回默认 `5800`；保存端口前确保实例目录存在，避免新实例未 prepare 时写入失败。 |
+| `backend/internal/web/docker_handlers_test.go` | 新增 VNC 端口配置回归测试：缺 `.env` 返回默认端口、保存新端口后可读取。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+go test ./internal/web -run "TestInstanceVNCConfig|TestDocker|TestInstanceMetrics"
+go test ./...
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+```
+
+浏览器补充验证：Vite `http://127.0.0.1:5174/instances/stardew/settings` 设置页渲染正常，端口区显示面板端口 `5174` 与 VNC 当前配置；无 Vite overlay、无 console error/warn。桌面端端口区两列显示；390px 移动端单列显示，`bodyScrollWidth=375`、`viewportWidth=390`，无横向溢出。无效 VNC 端口输入会显示“VNC 端口必须是 1 到 65535 之间的数字”。
+
+**下一步注意事项：**
+- 面板端口是当前浏览器访问端口；如果用户通过反向代理访问，它显示的是外部访问端口，不一定等于容器内 `PANEL_ADDR`。
+- VNC 端口保存只更新实例 `.env` 中的 `VNC_PORT`，需要重启服务器容器后 Docker Compose 端口映射才会实际生效。
+
+### UI-R20: 浏览器标签页图标替换为 Anxi Panel 字标 ✅ completed (2026-06-30)
+
+用户要求把打开面板网页时显示的默认 Vue/Vite 图标替换成刚生成的 `anxi panel` 饥荒感字标小图标。本轮将 imagegen 生成图复制并缩放为项目内 favicon，并在 Vite HTML 入口显式声明，避免开发环境或打包部署时继续显示默认图标。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/public/favicon.png` | 新增 512x512 PNG favicon，来源于最新 imagegen 生成的 `anxi panel` 手绘旧纸风格字标。 |
+| `frontend/index.html` | 新增 `<link rel="icon" type="image/png" href="/favicon.png" />` 和 `apple-touch-icon`。 |
+| `frontend/dist/favicon.png` / `frontend/dist/index.html` | 通过 `npm.cmd run build` 同步生产构建产物，保证 Go 静态嵌入时也使用新图标。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0
+```
+
+补充检查：`frontend/dist/index.html` 已包含 `/favicon.png` 引用，`frontend/dist/favicon.png` 与 `frontend/public/favicon.png` 大小一致。
+
+**下一步注意事项：**
+- 如果浏览器仍显示旧图标，多半是 favicon 缓存；强刷新或清理站点数据后再看。
+- 之后如需更小体积，可单独压缩 `frontend/public/favicon.png`，但不要改回未声明 favicon 的状态。
+
+### DIAG-1: 诊断页资源趋势接入 ✅ completed (2026-06-30)
+
+用户要求把诊断页“资源趋势”占位接入真实数据，并做成更好看的折线图和圆圈型占用率。本轮新增实例资源指标 API，前端诊断页每 5 秒轮询一次并在页面内保留最近 24 个样本，展示 CPU、内存、磁盘三项环形占用率和同一张实时趋势折线图。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/internal/docker/types.go` | 新增 `ComposeStatsResult` / `ComposeServiceStats` 和 `Stats` 超时配置。 |
+| `backend/internal/docker/compose.go` | 新增 `ComposeStats()`，调用 `docker compose stats --no-stream --format json`，兼容 JSON/JSONL 输出并解析 CPU%、内存%、内存用量。 |
+| `backend/internal/docker/compose_test.go` | 覆盖 `ComposeStats` 命令参数和 stats JSON 解析。 |
+| `backend/internal/web/resource_metrics.go` | 新增实例资源指标 handler，优先选 `server` 服务；找不到明确 server stats 时不再 fallback 到第一个容器，容器未运行时返回磁盘占用和友好提示，不返回假 CPU/内存数据；CPU 指标保留 Docker 原始百分比，内存/磁盘占用率仍限制在 0-100。 |
+| `backend/internal/web/disk_usage_unix.go` / `backend/internal/web/disk_usage_windows.go` | 新增跨平台实例目录所在磁盘占用读取。 |
+| `backend/internal/web/handler.go` | `DockerService` 增加 `ComposeStats` 能力。 |
+| `backend/internal/web/instance_handlers.go` | 新增 `GET /api/instances/:id/metrics` 路由。 |
+| `backend/internal/web/docker_handlers_test.go` | 增加 fake Docker stats、`TestInstanceMetricsReturnsStatsAndDisk` 和非 server stats 不应冒充 server 的回归测试。 |
+| `frontend/src/types.ts` | 新增 `ResourceMetricSample` / `ResourceMetricsResponse`。 |
+| `frontend/src/api.ts` | 新增 `getInstanceMetrics()`。 |
+| `frontend/src/games/stardew/pages/DiagnosticsPage.tsx` | 资源趋势从“待接入”占位改为轮询真实 API，渲染 CPU/内存/磁盘环形占用率与 SVG 折线图；轮询改为本轮请求完成后再排下一次，避免慢 stats 请求叠加；趋势图在 CPU 超过 100% 时自动抬高纵轴。 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增资源面板、环形占用率、折线图、图例、提示条和移动端单列样式。 |
+
+**新增 API：**
+
+```text
+GET /api/instances/:id/metrics
+```
+
+返回示例字段：
+
+```json
+{
+  "instanceId": "stardew",
+  "service": "server",
+  "sample": {
+    "timestamp": "2026-06-30T18:00:00+08:00",
+    "cpuPercent": 12.3,
+    "memoryPercent": 45.6,
+    "memoryUsedBytes": 536870912,
+    "memoryLimitBytes": 1073741824,
+    "diskPercent": 62.1,
+    "diskUsedBytes": 123,
+    "diskTotalBytes": 456,
+    "containerRunning": true
+  }
+}
+```
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/docker
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/web -run "TestDocker|TestInstanceMetrics"
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./...
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+```
+
+浏览器补充验证：Vite `http://127.0.0.1:5174` 可打开；使用本地账号登录后真实 `/instances/stardew/diagnostics` 渲染正常，页面无 Vite overlay、无 console error。桌面端可见三张环形占用卡片和趋势图；390px 移动端无横向溢出，环形卡片按单列排列。当前浏览器环境代理到的 8090 后端仍是旧进程，资源接口返回 `resource not found`，因此页面显示提示条；重启/替换为本轮后端后 `/api/instances/:id/metrics` 才会返回真实指标。
+
+**下一步注意事项：**
+- CPU/内存来自 `docker compose stats`，只有服务器容器运行时才会显示；容器未运行时前端会显示“待运行/启动后显示”。
+- `docker compose stats` 里如果只有 `steam-auth`、`discord-bot` 等非 server 服务，接口会保持 `containerRunning=false`，不会用第一个容器的资源冒充服务器资源。
+- CPU 百分比允许超过 100%，用于表达多核占用；圆环视觉仍按 0-100 绘制，折线图会按样本最大值调整纵轴。
+- 磁盘占用来自实例目录所在宿主磁盘/容器挂载磁盘，服务器未运行时也可以显示。
+- 前端折线历史由页面轮询维护，刷新页面后历史会重新开始；如果后续要跨页面保留历史，可在 dashboard 数据层或后端增加短期缓存。
+
+### JOBS-1: 任务日志中心支持清空错误日志 ✅ completed (2026-06-30)
+
+用户要求增加“清空错误日志”按钮。本轮在任务与日志页新增独立按钮，管理员可只清理错误相关内容：删除 `job_logs.level = error` 的日志行，并清空 `jobs.error_message`，但保留任务记录和任务状态，避免误删完整任务历史。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/internal/storage/jobs.go` | 新增 `ClearJobErrorLogs()`，事务内删除 error 级别 job log，并将任务 `error_message` 置空，返回删除/清空数量。 |
+| `backend/internal/jobs/manager.go` | 新增 `ClearErrorLogs()` 透传到存储层。 |
+| `backend/internal/web/jobs_handlers.go` | 新增 `DELETE /api/jobs/error-logs` admin-only handler，写审计日志 `job_error_logs_cleared`。 |
+| `backend/internal/web/handler.go` | 接入 `/api/jobs/error-logs` 路由。 |
+| `backend/internal/web/jobs_handlers_test.go` | 覆盖普通用户禁止清空、管理员清空后 error log 行消失且 `errorMessage` 为 null。 |
+| `frontend/src/api.ts` | 新增 `clearJobErrorLogs()`。 |
+| `frontend/src/games/stardew/pages/JobsLogsPage.tsx` | 工具栏新增“清空错误日志”按钮和确认弹窗；清空后刷新任务列表、当前任务详情与日志。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/web -run "TestJobs|TestAdminCanClearJob"
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./...
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+```
+
+**下一步注意事项：**
+- 清空错误日志不会删除任务，也不会把 failed 状态改成 succeeded；只是清掉错误文本和红色 error log 行。
+- 如果后续要做按单个任务清空错误日志，可以复用 `ClearJobErrorLogs` 的 SQL 思路，增加 `job_id` 条件和对应权限校验。
+
+### AUTH-1: 首个管理员拥有隐藏超级管理员权限 ✅ completed (2026-06-30)
+
+用户要求“第一个登陆注册的管理员的权限应该是超级管理员才对”，但界面角色名称不要变化，统一仍显示“管理员”。本轮将权限能力从 `role=admin` 中拆出隐藏标志 `is_super_admin` / `isSuperAdmin`：第一个初始化管理员自动获得该标志；普通管理员仍是管理员，但只能管理普通用户，不能创建管理员、升降级用户，也不能禁用/删除管理员账号。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/migrations/005_super_admin.sql` | 新增 `users.is_super_admin` 字段；升级旧库时将最早的管理员回填为超级管理员，并增加索引。 |
+| `backend/internal/auth/types.go` | `PublicUser` 增加 `isSuperAdmin`，供 `/api/auth/me`、登录、初始化响应和前端权限判断使用。 |
+| `backend/internal/storage/auth.go` | 首个管理员创建时写入 `IsSuperAdmin=true`；用户查询/会话查询补齐字段；普通管理员修改管理员、创建管理员、升降级用户时返回 `ErrSuperAdminRequired`；防止移除最后一个启用的超级管理员。 |
+| `backend/internal/web/users_handlers.go` | 创建管理员前检查 `session.User.IsSuperAdmin`；用户变更错误增加 `super_admin_required` / `last_super_admin`。 |
+| `backend/internal/web/auth_handlers_test.go` | 增加首次管理员 `isSuperAdmin=true`、普通管理员越权失败、普通管理员仍可管理普通用户、超级管理员可创建/升降管理员的回归测试。 |
+| `frontend/src/types.ts` | `CurrentUser` / `PanelUser` 类型增加 `isSuperAdmin`。 |
+| `frontend/src/games/stardew/pages/SettingsPage.tsx` | 普通管理员创建用户时只显示“普通用户”；升降级按钮仅超级管理员可见；普通管理员不能禁用/删除管理员账号，但仍可禁用/删除普通用户。 |
+| `frontend/src/games/stardew/StardewPanel.tsx` | 顶部账号角色显示为中文角色名；超级管理员仍显示“管理员”，不额外暴露新名称。 |
+| `frontend/src/core/helpers.ts` | 增加超级管理员权限相关错误码中文提示。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/web -run "TestSetupLoginLogoutAndUserPermissions|TestLastAdminCannotBeDisabledOrDowngraded|TestAdminCanEnableAndHardDeleteUser|TestSuperAdminControlsAdminRoleManagement"
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/storage ./internal/auth
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./...
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+```
+
+**下一步注意事项：**
+- 不要在 UI 上新增“超级管理员”角色名；用户看见的角色仍只有“管理员”和“普通用户”。超级权限只是后台能力位。
+- 如果未来增加修改密码、启用用户等更多用户管理入口，也要复用同一条规则：普通管理员只能管理普通用户，涉及管理员账号或角色升降级必须要求 `isSuperAdmin=true`。
+- 旧数据库升级时只有最早的管理员会被回填为超级管理员；如需人工迁移其他账号，需显式数据库维护，不通过普通用户管理 UI 暴露。
+
+### MVP-UX-9: 备份条目支持彻底删除 ✅ completed (2026-06-30)
+
+用户要求“备份与恢复”的每一个备份存档也要有“彻底删除”按钮，用于清理不再需要的备份 ZIP。该操作只删除备份文件，不触碰正式存档目录，因此不需要停服；但前端必须二次确认并说明不可恢复。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/internal/games/stardew_junimo/saves.go` | 新增 `validateBackupName()` 和 `DeleteBackup()`，只允许删除 backups/saves 下的单个 `.zip` 文件，拒绝空名、路径分隔符、`..` 和非 zip 文件。 |
+| `backend/internal/games/stardew_junimo/saves_test.go` | 新增 `TestDeleteBackup_RemovesBackupFile` 和 `TestDeleteBackup_InvalidName`。 |
+| `backend/internal/web/instance_handlers.go` | 新增路由 `DELETE /api/instances/:id/saves/backups/:backupName`。 |
+| `backend/internal/web/lifecycle_handlers.go` | 新增 `handleSavesBackupDelete`，admin-only，写审计日志 `save_backup_delete`。 |
+| `frontend/src/api.ts` | 新增 `deleteSaveBackup()`。 |
+| `frontend/src/core/helpers.ts` | 新增备份删除相关错误码文案。 |
+| `frontend/src/games/stardew/SavesSection.tsx` | 每个备份条目增加“彻底删除”按钮；点击后弹出不可撤销确认，确认后调用删除接口并刷新备份列表。 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增备份行操作区样式。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/games/stardew_junimo -run "TestBackup|TestListBackups|TestDeleteBackup|TestRestoreBackup"
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/web -run "TestRunningProtection|TestSaveDelete"
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./...
+# exit 0
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，CSS 92.11 kB，JS 337.99 kB
+```
+
+**下一步注意：**
+- “彻底删除备份”不会再额外创建备份；前端文案已强调不可撤销。
+- 删除备份不要求停服，因为只操作 `.local-container/backups/saves/*.zip`，不改 `Saves/<save>` 正式目录。
+
+### MVP-UX-8: 备份列表展示存档详情 ✅ completed (2026-06-30)
+
+用户反馈“备份的存档也得展示存档信息”，仅显示备份 ZIP 名、原存档名、大小和创建时间不够。现在后端 `ListBackups` 会读取每个备份 ZIP 内的 `SaveGameInfo` / 主存档文件，并返回和普通存档列表一致的农场名、农民、游戏年月日、地图和解析错误；前端备份行同步展示这些信息。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/internal/games/stardew_junimo/saves.go` | 将普通存档 XML 解析拆成可复用 helper；`BackupInfo` 增加 `farmerName`、`farmName`、`gameYear`、`gameSeason`、`gameDay`、`farmType`、`fileSizeBytes`、`parseError`；`ListBackups` 打开备份 ZIP 并解析内部存档信息。 |
+| `backend/internal/games/stardew_junimo/saves_test.go` | 扩展 `TestListBackups_ReturnsBackupInfo`，断言备份列表能返回农民、农场、日期和地图。 |
+| `frontend/src/types.ts` | `BackupInfo` 类型补齐存档详情字段。 |
+| `frontend/src/games/stardew/SavesSection.tsx` | 备份行展示农场名、农民、年月日、地图、存档大小、备份 ZIP 大小；解析失败时显示原因。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/games/stardew_junimo -run "TestBackup|TestListBackups|TestRestoreBackup"
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./...
+# exit 0
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，CSS 92.01 kB，JS 336.56 kB
+```
+
+**下一步注意：**
+- 备份详情解析是 best-effort：坏 ZIP 或缺少 `SaveGameInfo` 不会让整个列表失败，会在对应行显示 `parseError`。
+- 当前备份详情仍不包含玩家列表等更深层信息；如果未来需要，可继续复用 ZIP 内主存档文件解析。
+
+### MVP-UX-7: 存档页接入备份与恢复区块 ✅ completed (2026-06-30)
+
+用户看到删除确认提示“删除前会自动备份”后追问备份在哪里，并要求在“存档”页增加“备份与恢复”区块：列出备份名、原存档名、大小、创建时间，提供恢复按钮；如果同名存档已存在，弹二次确认并说明覆盖前会先备份当前存档；恢复在服务器运行中仍保持禁用。后端已有 `GET /api/instances/:id/saves/backups` 和 `POST /api/instances/:id/saves/backups/restore`，本轮只接前端入口和交互。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/types.ts` | 新增 `BackupInfo`、`BackupsListResult`、`RestoreBackupResult` 类型。 |
+| `frontend/src/api.ts` | 新增 `getSaveBackups()` 与 `restoreSaveBackup()`，复用后端现有备份列表/恢复接口。 |
+| `frontend/src/games/stardew/SavesSection.tsx` | 在存档列表下方新增“备份与恢复”区块；管理员可刷新备份列表、查看备份名/原存档/大小/创建时间；恢复按钮运行中禁用；同名存档存在时进入覆盖恢复确认，覆盖恢复前由后端先备份当前存档。删除存档后会同步刷新备份列表。 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增备份区块、备份行、冲突标记、宽确认弹窗样式，并给 `#saves-section` 增加统一 grid 间距。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，CSS 92.01 kB，JS 336.00 kB
+```
+
+**下一步注意：**
+- 真实页面复测：删除一个非当前存档后，“备份与恢复”应出现新 ZIP；点击恢复可恢复同名存档；如果同名存档已存在，弹窗只允许“覆盖恢复”。
+- 后端当前备份目录为 `<instance.DataDir>/.local-container/backups/saves/`，默认容器路径为 `/data/instances/stardew/.local-container/backups/saves/`。
+
+### MVP-UX-6: 运行中删除存档只保护当前启动存档 ✅ completed (2026-06-30)
+
+用户反馈删除存档的限制过严：服务器运行或启动中时，只有当前启动/正在使用的那个存档需要被保护；其他非当前存档不应被硬性拦截，只需要弹出警告确认后允许删除。此前后端 `handleSaveDelete` 复用了通用 `ensureInstanceNotRunning`，导致运行中删除任意存档都会 409；前端也复用了 `writeDisabled`，把所有删除按钮都禁用。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/internal/web/lifecycle_handlers.go` | `handleSaveDelete` 改为先 reconcile 实例状态，再读取 Junimo gameloader active save；仅当待删存档等于当前启动存档且实例为 `running` / `starting` 时返回 `active_save_running`，其他存档允许继续执行删除前备份。 |
+| `backend/internal/web/saves_handlers_test.go` | 运行中保护测试不再把普通删除纳入全局 `server_running`；新增 `TestSaveDelete_RunningProtectsOnlyActiveSave`，覆盖运行中删除 active save 返回 409、删除 non-active save 返回 200 且不改变 active save。 |
+| `frontend/src/games/stardew/SavesSection.tsx` | 删除按钮从通用写操作禁用条件中拆出：运行中只禁用当前启动存档的删除；非当前存档可点击并在确认弹窗中显示运行中删除警告。 |
+| `frontend/src/core/helpers.ts` | 新增 `active_save_running` 错误码中文文案。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./internal/web -run "TestRunningProtection|TestSaveDelete"
+# exit 0
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，CSS 91.10 kB，JS 331.87 kB
+```
+
+**下一步注意：**
+- 真实页面复测时，服务器运行中应看到当前启动存档的删除按钮不可用；其他存档删除按钮可用，点击后弹窗提示“服务器正在运行，此存档不是当前启动存档，可以删除”。
+- 后端保护以 `junimohost.gameloader.json` 的 `SaveNameToLoad` 为准；如果未来启动流程改为从其他来源保存 active save，删除保护也要同步读取同一来源。
+
+### MVP-UX-5: 启动任务完成后自动同步运行状态和邀请码 ✅ completed (2026-06-30)
+
+用户反馈服务器已经成功启动，任务与日志中心已经输出邀请码，但总览页和服务器控制页仍显示“服务器未运行，邀请码不可用”，必须手动刷新才恢复。原因是启动接口只返回 jobId，页面立即刷新时服务仍在 `starting`；真正任务完成时，只有任务详情页的局部 SSE 在刷新状态，而且没有刷新全局邀请码。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/useStardewDashboardData.ts` | 全局 dashboard 数据层监听 `queued/running` 任务的 SSE `finished` 事件；任务结束后自动刷新任务、实例状态、存档、模组和邀请码，并 1 秒后补刷状态/邀请码，兜住后端刚落库的时间差。 |
+| `frontend/src/games/stardew/useStardewDashboardData.ts` | `refreshInviteCode()` 失败时清空旧邀请码；实例状态不是 `running` 时清空邀请码和邀请码错误，避免停服后显示旧码。 |
+| `frontend/src/games/stardew/pages/JobsLogsPage.tsx` | 任务详情页自己的 `finished` 回调也同步刷新邀请码，避免当前页路径只刷新状态不刷新邀请码。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0；CSS 91.10 kB，JS 331.09 kB
+```
+
+**下一步注意：**
+- 真实联调时从总览页/服务器控制页点击启动后，不需要进入任务日志页；任务完成后顶部状态、总览卡片、服务器控制页和邀请码区域应自动更新。
+- 如果未来任务中心做全局通知/进度条，可以复用 `useStardewDashboardData` 里的 job SSE 订阅；注意每个 job 只保留一个全局 EventSource，并在任务终态或组件卸载时关闭。
+
+### MVP-UX-4: VNC 端口占用启动失败引导 ✅ completed (2026-06-30)
+
+用户在启动服务器时遇到 Docker Compose 端口绑定失败：`ports are not available ... 0.0.0.0:5800 ... forbidden by its access permissions`。本轮将该错误类型固化为用户向流程：启动任务日志说明 VNC 端口被占用或被系统保留，请更换端口；任务日志详情上方出现“更换 VNC 端口”按钮；按钮打开与 Stardew 面板统一风格的弹窗，显示当前端口和待修改端口。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `backend/internal/games/stardew_junimo/lifecycle.go` | `docker compose up` 失败时识别端口绑定失败，读取 `.env` 中 `VNC_PORT`，将实例 phase 置为 `vnc_port_unavailable`，任务日志和 job error 写入友好提示。 |
+| `backend/internal/games/stardew_junimo/lifecycle_test.go` | 新增端口绑定失败识别测试，覆盖 Windows 系统保留端口和普通端口已占用两类 stderr。 |
+| `backend/internal/web/ports_handlers.go` | 新增 `GET/PUT /api/instances/:id/config/vnc-port`，读写 `.env` 的 `VNC_PORT` 并校验 1-65535。 |
+| `backend/internal/web/instance_handlers.go` | 接入 VNC 端口配置路由。 |
+| `frontend/src/api.ts` / `frontend/src/types.ts` | 新增 VNC 端口配置 API 类型与请求函数。 |
+| `frontend/src/games/stardew/pages/JobsLogsPage.tsx` | 任务日志中检测 VNC 端口失败，显示“更换 VNC 端口”修复条与弹窗，支持保存新端口。 |
+| `frontend/src/games/stardew/StardewPanel.css` | 新增修复条与 VNC 端口弹窗样式，复用面板按钮、输入框和弹窗风格。 |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\backend
+$env:GOCACHE='E:\stardew-server-anxi-panel\.gocache'; go test ./...
+# exit 0
+
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0
+```
+
+**下一步注意：**
+- 旧的失败任务只记录了 `docker compose up: docker command failed`，没有新的 VNC 友好日志；按钮会在下一次启动触发该错误后出现。
+- 端口保存只修改 `.env`，需要用户重新启动服务器让 Docker Compose 按新端口创建容器。
+- 如果未来要覆盖游戏端口/查询端口占用，可以复用本轮的错误分类和配置弹窗模式，但不要把所有 `compose up` 失败都误判为 VNC。
+
+### UI-R19: 新建游戏界面主面板风格微调 ✅ completed (2026-06-30)
+
+用户反馈新建游戏界面的布局和素材引用已经满意，但与主面板风格仍有一点违和；同时要求默认名字为 `host`，最喜欢的东西也要有默认值，保留用户可修改；用 image2 生成更符合风格的左右按钮图标；不要显示“男/女/猫1/猫2”这类文字描述，宠物图标要居中在左右按钮中间。
+
+**改动内容：**
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/NewGameCreator.tsx` | `farmerName` 默认 `host`，`favoriteThing` 默认 `星露谷`；去掉性别和宠物选项的可见文字 label，只保留图标预览与 aria label |
+| `frontend/src/games/stardew/NewGameCreator.css` | 面板背景改为主面板同源羊皮纸 tile + 木框色系；左右切换按钮改为 PNG 背景；宠物选择区固定三列并将宠物图标居中 |
+| `frontend/public/assets/stardew/new-game/buttons/arrow-left.png` | 新增 image2 生成并本地抠图/裁切的左箭头透明 PNG |
+| `frontend/public/assets/stardew/new-game/buttons/arrow-right.png` | 新增 image2 生成并本地抠图/裁切的右箭头透明 PNG |
+
+**验证：**
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# exit 0，39 modules，CSS 90.43 kB，JS 327.12 kB
+```
+
+补充检查：
+- 两个箭头 PNG 均为 `64x64 RGBA`，四角 alpha 为 0。
+- 使用真实 CSS/资源渲染临时预览，确认名字默认 `host`、最喜欢的东西默认 `星露谷`，页面没有显示“男/女/猫 N/狗 N”文字，宠物图标位于左右按钮之间居中。
+- 使用用户提供的本地账号 `anxi / 123456.` 登录真实面板并打开存档页“创建存档”弹窗，确认真实页面表现与临时预览一致。
+
+**下一步注意：**
+- 真实页面复测时密码包含末尾句号：`123456.`。
+- 本轮只改新建游戏前端组件、CSS 和 `new-game/buttons` 新素材，不改后端新建存档协议。
+
 ### MVP-UX-3: 无存档引导兼容 stopped + saves=0 状态 ✅ completed (2026-06-30)
 
 用户截图反馈：总览页顶部状态为“已停止”，存档卡显示 `0 / 暂无激活存档`，但启动按钮旁没有出现“创建/上传存档”提示。原因是上一轮只按 `instanceState.state === save_required` 或启动接口刚返回 `save_required` 显示提示，没有把存档列表接口已经检测到 `saves.length === 0` 的状态纳入判断。

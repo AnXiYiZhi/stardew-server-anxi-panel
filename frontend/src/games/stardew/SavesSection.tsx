@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
+import type { BackupInfo, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
 import {
+  ApiError,
   defaultInstanceId,
   getSaves,
+  getSaveBackups,
   selectSave,
   selectSaveAndStart,
   deleteSave,
+  deleteSaveBackup,
   exportSave,
+  restoreSaveBackup,
   createNewGame,
   uploadSavePreview,
   uploadSaveCommitAndStart,
@@ -49,12 +53,21 @@ function SaveCard({
   onExport: () => void
 }) {
   const writeDisabled = busy || isRunning || !isAdmin
+  const deleteDisabled = busy || !isAdmin || (isRunning && isActive)
   const writeTitle = !isAdmin
     ? '仅管理员可执行此操作'
     : isRunning
       ? '服务器运行中，请先停止后操作'
       : undefined
-  const deleteTitle = writeTitle ?? (isActive ? '这是当前启动存档，删除后需要重新选择启动存档' : undefined)
+  const deleteTitle = !isAdmin
+    ? '仅管理员可执行此操作'
+    : isRunning && isActive
+      ? '当前启动存档正在被服务器使用，请先停止服务器再删除'
+      : isRunning
+        ? '服务器运行中，仅允许删除非当前启动存档；删除前会再次确认'
+        : isActive
+          ? '这是当前启动存档，删除后需要重新选择启动存档'
+          : undefined
 
   return (
     <div className={`sd-save-card${isActive ? ' active' : ''}`}>
@@ -118,7 +131,7 @@ function SaveCard({
         </button>
         <button
           className="sd-btn-delete"
-          disabled={writeDisabled}
+          disabled={deleteDisabled}
           title={deleteTitle}
           onClick={onDelete}
           type="button"
@@ -153,6 +166,13 @@ export function SavesSection({
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [backupsLoading, setBackupsLoading] = useState(false)
+  const [backupMessage, setBackupMessage] = useState('')
+  const [restoreBackup, setRestoreBackup] = useState<BackupInfo | null>(null)
+  const [restoreNeedsOverwrite, setRestoreNeedsOverwrite] = useState(false)
+  const [restoreError, setRestoreError] = useState('')
+  const [deleteBackupTarget, setDeleteBackupTarget] = useState<BackupInfo | null>(null)
   const isRunning = state === 'running' || state === 'starting'
 
   // 删除确认（内联对话框，替代 window.confirm）
@@ -182,16 +202,35 @@ export function SavesSection({
     }
   }, [])
 
+  const loadBackups = useCallback(async () => {
+    if (!isAdmin) {
+      setBackups([])
+      return
+    }
+    setBackupsLoading(true)
+    setBackupMessage('')
+    try {
+      const result = await getSaveBackups()
+      setBackups([...result.backups].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
+    } catch (error) {
+      setBackupMessage(errorMessage(error))
+    } finally {
+      setBackupsLoading(false)
+    }
+  }, [isAdmin])
+
   useEffect(() => {
     void loadSaves()
-  }, [loadSaves])
+    void loadBackups()
+  }, [loadSaves, loadBackups])
 
   // refreshTrigger 变化时重新加载（如任务完成后）
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
       void loadSaves()
+      void loadBackups()
     }
-  }, [refreshTrigger, loadSaves])
+  }, [refreshTrigger, loadSaves, loadBackups])
 
   // save_required 状态时自动滚动到本区域
   useEffect(() => {
@@ -253,6 +292,7 @@ export function SavesSection({
     try {
       await deleteSave(name)
       await loadSaves()
+      await loadBackups()
       onStateRefresh()
       onSavesChanged?.()
     } catch (error) {
@@ -277,6 +317,52 @@ export function SavesSection({
       URL.revokeObjectURL(url)
     } catch (error) {
       setMessage(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function openRestoreDialog(backup: BackupInfo) {
+    setRestoreBackup(backup)
+    setRestoreNeedsOverwrite(saves.some((save) => save.name === backup.saveName))
+    setRestoreError('')
+  }
+
+  async function handleRestoreConfirmed(overwrite: boolean) {
+    if (!restoreBackup) return
+    setBusy(true)
+    setRestoreError('')
+    setBackupMessage('')
+    try {
+      await restoreSaveBackup(restoreBackup.name, overwrite)
+      setRestoreBackup(null)
+      setRestoreNeedsOverwrite(false)
+      await loadSaves()
+      await loadBackups()
+      onStateRefresh()
+      onSavesChanged?.()
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'save_exists') {
+        setRestoreNeedsOverwrite(true)
+        setRestoreError('同名存档已存在。确认覆盖后，系统会先备份当前存档再恢复此备份。')
+      } else {
+        setRestoreError(errorMessage(error))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleBackupDeleteConfirmed() {
+    if (!deleteBackupTarget) return
+    setBusy(true)
+    setBackupMessage('')
+    try {
+      await deleteSaveBackup(deleteBackupTarget.name)
+      setDeleteBackupTarget(null)
+      await loadBackups()
+    } catch (error) {
+      setBackupMessage(errorMessage(error))
     } finally {
       setBusy(false)
     }
@@ -349,6 +435,9 @@ export function SavesSection({
   const confirmDeleteSave = saves.find((save) => save.name === confirmDeleteName)
   const confirmDeleteIsActive = Boolean(confirmDeleteSave?.isActive || data?.activeSaveName === confirmDeleteName)
   const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1
+  const confirmDeleteBlocked = busy || !isAdmin || (isRunning && confirmDeleteIsActive)
+  const restoreSaveExists = restoreBackup ? saves.some((save) => save.name === restoreBackup.saveName) : false
+  const restoreBlocked = busy || isRunning || !isAdmin
 
   return (
     <section id="saves-section">
@@ -360,7 +449,7 @@ export function SavesSection({
           </div>
           {isRunning && (
             <div className="sd-saves-running-hint">
-              ⚠ 服务器运行中，创建 / 上传 / 删除 / 切换存档已暂时禁用
+              ⚠ 服务器运行中，创建 / 上传 / 切换存档已暂时禁用；当前启动存档受保护，其他存档删除前会再次确认
             </div>
           )}
         </div>
@@ -416,7 +505,7 @@ export function SavesSection({
             <SaveCard
               key={save.name}
               save={save}
-              isActive={save.isActive ?? false}
+              isActive={Boolean(save.isActive || data?.activeSaveName === save.name)}
               busy={busy || loading}
               isRunning={isRunning}
               isAdmin={isAdmin}
@@ -462,6 +551,90 @@ export function SavesSection({
         </div>
       )}
 
+      {/* ── 备份与恢复 ── */}
+      {isAdmin ? (
+        <section className="sd-save-backups-section" aria-label="备份与恢复">
+          <div className="sd-save-backups-header">
+            <div>
+              <div className="sd-srv-section-title" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
+                备份与恢复
+              </div>
+              {isRunning ? (
+                <div className="sd-saves-running-hint">
+                  ⚠ 服务器运行中，备份可以查看，恢复需要先停止服务器
+                </div>
+              ) : null}
+            </div>
+            <button
+              className="sd-btn-tan"
+              type="button"
+              disabled={backupsLoading}
+              onClick={() => void loadBackups()}
+            >
+              {backupsLoading ? '刷新中…' : '刷新备份'}
+            </button>
+          </div>
+          {backupMessage ? <div className="sd-saves-error">{backupMessage}</div> : null}
+          {backupsLoading ? (
+            <div className="sd-srv-empty">读取备份列表中…</div>
+          ) : backups.length > 0 ? (
+            <div className="sd-save-backups-list">
+              {backups.map((backup) => {
+                const sameNameExists = saves.some((save) => save.name === backup.saveName)
+                return (
+                  <div className="sd-save-backup-row" key={backup.name}>
+                    <div className="sd-save-backup-main">
+                      <div className="sd-save-backup-name">{backup.name}</div>
+                      <div className="sd-save-backup-meta">
+                        <span>原存档：{backup.saveName || '未知'}</span>
+                        {backup.farmName ? <span>农场：{backup.farmName}</span> : null}
+                        {backup.farmerName ? <span>农民：{backup.farmerName}</span> : null}
+                        {backup.gameYear ? (
+                          <span>
+                            第 {backup.gameYear} 年{' '}
+                            {seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason}{' '}
+                            第 {backup.gameDay} 天
+                          </span>
+                        ) : null}
+                        {backup.farmType ? <span>地图：{farmTypeLabel[backup.farmType] ?? backup.farmType}</span> : null}
+                        {backup.fileSizeBytes ? <span>存档：{formatBytes(backup.fileSizeBytes)}</span> : null}
+                        <span>备份：{formatBytes(backup.size)}</span>
+                        <span>创建：{new Date(backup.createdAt).toLocaleString()}</span>
+                        {sameNameExists ? <span className="sd-save-backup-conflict">同名存档存在</span> : null}
+                      </div>
+                      {backup.parseError ? (
+                        <div className="sd-save-card-error">解析失败：{backup.parseError}</div>
+                      ) : null}
+                    </div>
+                    <div className="sd-save-backup-actions">
+                      <button
+                        className="sd-btn-green"
+                        type="button"
+                        disabled={restoreBlocked}
+                        title={isRunning ? '服务器运行中，请先停止后再恢复备份' : undefined}
+                        onClick={() => openRestoreDialog(backup)}
+                      >
+                        恢复
+                      </button>
+                      <button
+                        className="sd-btn-delete"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setDeleteBackupTarget(backup)}
+                      >
+                        彻底删除
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="sd-srv-empty">暂无备份。删除存档前会自动创建备份，覆盖恢复前也会先备份当前存档。</div>
+          )}
+        </section>
+      ) : null}
+
       {/* ── 删除确认对话框 ── */}
       {confirmDeleteName ? (
         <div className="sd-confirm-overlay">
@@ -474,6 +647,16 @@ export function SavesSection({
             {confirmDeleteIsActive ? (
               <div className="sd-confirm-warning">
                 这是当前启动存档。删除后服务器将没有已选择的启动存档，下一次启动前需要重新选择、创建或上传存档。
+              </div>
+            ) : null}
+            {isRunning && confirmDeleteIsActive ? (
+              <div className="sd-confirm-warning">
+                服务器正在使用这个存档，必须先停止服务器才能删除。
+              </div>
+            ) : null}
+            {isRunning && !confirmDeleteIsActive ? (
+              <div className="sd-confirm-warning">
+                服务器正在运行。此存档不是当前启动存档，可以删除；删除前会自动备份，但请确认没有玩家正在使用它。
               </div>
             ) : null}
             {confirmDeleteIsLastSave ? (
@@ -492,11 +675,97 @@ export function SavesSection({
               <button
                 className="sd-btn-delete"
                 type="button"
-                disabled={busy || isRunning || !isAdmin}
+                disabled={confirmDeleteBlocked}
                 onClick={() => void handleDeleteConfirmed()}
               >
                 {busy ? '删除中…' : '确认删除'}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── 彻底删除备份确认对话框 ── */}
+      {deleteBackupTarget ? (
+        <div className="sd-confirm-overlay">
+          <div className="sd-confirm-dialog sd-confirm-dialog-wide">
+            <h3>彻底删除备份</h3>
+            <p>
+              确定彻底删除备份 <strong>"{deleteBackupTarget.name}"</strong> 吗？
+              这个操作只删除备份 ZIP，不会删除当前存档，但删除后无法从这个备份恢复。
+            </p>
+            <div className="sd-confirm-warning">
+              这是不可撤销操作。请确认你已经不需要这个备份。
+            </div>
+            <div className="sd-confirm-actions">
+              <button
+                className="sd-btn-tan"
+                type="button"
+                disabled={busy}
+                onClick={() => setDeleteBackupTarget(null)}
+              >
+                取消
+              </button>
+              <button
+                className="sd-btn-delete"
+                type="button"
+                disabled={busy}
+                onClick={() => void handleBackupDeleteConfirmed()}
+              >
+                {busy ? '删除中…' : '彻底删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── 恢复备份确认对话框 ── */}
+      {restoreBackup ? (
+        <div className="sd-confirm-overlay">
+          <div className="sd-confirm-dialog sd-confirm-dialog-wide">
+            <h3>恢复备份</h3>
+            <p>
+              确定恢复备份 <strong>"{restoreBackup.name}"</strong> 吗？
+              恢复后会生成存档 <strong>"{restoreBackup.saveName}"</strong>。
+            </p>
+            {isRunning ? (
+              <div className="sd-confirm-warning">
+                服务器正在运行。请先停止服务器，再恢复备份。
+              </div>
+            ) : null}
+            {restoreNeedsOverwrite || restoreSaveExists ? (
+              <div className="sd-confirm-warning">
+                同名存档已存在。选择覆盖恢复时，系统会先备份当前存档，再用这个备份覆盖它。
+              </div>
+            ) : null}
+            {restoreError ? <div className="sd-saves-error">{restoreError}</div> : null}
+            <div className="sd-confirm-actions">
+              <button
+                className="sd-btn-tan"
+                type="button"
+                disabled={busy}
+                onClick={() => { setRestoreBackup(null); setRestoreNeedsOverwrite(false); setRestoreError('') }}
+              >
+                取消
+              </button>
+              <button
+                className="sd-btn-green"
+                type="button"
+                disabled={restoreBlocked || restoreNeedsOverwrite || restoreSaveExists}
+                onClick={() => void handleRestoreConfirmed(false)}
+              >
+                {busy ? '恢复中…' : '确认恢复'}
+              </button>
+              {(restoreNeedsOverwrite || restoreSaveExists) ? (
+                <button
+                  className="sd-btn-delete"
+                  type="button"
+                  disabled={restoreBlocked}
+                  onClick={() => void handleRestoreConfirmed(true)}
+                >
+                  {busy ? '恢复中…' : '覆盖恢复'}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

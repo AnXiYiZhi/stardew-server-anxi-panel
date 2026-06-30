@@ -1,5 +1,89 @@
 # Conversation Handoff 2026-06-29
 
+## UI-R6: 状态语义与提示体系统一优化
+
+### 目标
+
+梳理并统一全站 Stardew 面板的状态语义色（绿/金/红/灰棕），新增通用提示工具类，修复各页面提示条、徽章、指标卡文字颜色的视觉不一致问题。只改 CSS，不改业务逻辑、API、后端、路由结构。
+
+### 改了什么
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/games/stardew/stardew-theme.css` | 新增 Section 13 语义工具类 |
+| `frontend/src/games/stardew/StardewPanel.css` | 修复 13 处颜色/语义问题 |
+
+### stardew-theme.css 新增（Section 13）
+
+```css
+/* 通用提示条基类 */
+.sd-notice { ... }
+.sd-notice--ok  { background: var(--sd-green-bg); border-color: var(--sd-green); color: var(--sd-green-text); }
+.sd-notice--warn  { background: var(--sd-gold-light); border-color: var(--sd-gold-border); color: var(--sd-gold-text); }
+.sd-notice--error { background: var(--sd-red-bg); border-color: var(--sd-red); color: var(--sd-red-text); }
+.sd-notice--info  { background: #f8f0d8; border-left: 3px solid var(--sd-brown-mid); color: #5a3c1d; }
+
+/* 空状态占位区 */
+.sd-empty-state { padding: 18px 14px; ... color: #8a7060; }
+
+/* 待接入小徽章（与现有各页面 pending badge 语义对齐） */
+.sd-tag--pending { ... color: #7a5c30; background: rgba(200,160,40,0.18); ... }
+```
+
+### StardewPanel.css 修复明细
+
+| 选择器 | 修改内容 |
+|--------|---------|
+| `.sd-state-badge-stopped` | 红色 → 灰棕色（stopped = 正常停止，不是错误） |
+| `.sd-mc--ok/warn/error .sd-mc-name` | 新增：name 标签跟随 modifier 变色 |
+| `.sd-mc--ok/warn/error .sd-mc-sub` | 新增：sub 标签跟随 modifier 变色 |
+| `.sd-mods-running-hint` | 硬编码 amber → CSS 变量（gold） |
+| `.sd-mods-success-banner` | 硬编码绿色 → CSS 变量（green） |
+| `.sd-mods-restart-banner` | 硬编码 amber → CSS 变量（gold） |
+| `.sd-mods-list-error` | `rgba(185,64,64)` → CSS 变量（red） |
+| `.sd-diag-error-banner` | `rgba(185,64,64)` → CSS 变量（red） |
+| `.sd-diag-alert-empty` | `#5a7a40` → CSS 变量（green-text/bg） |
+| `.sd-diag-alert-warning/error` | 硬编码 rgba → CSS 变量 |
+| `.sd-settings-error` | `rgba(180,40,20)` → CSS 变量（red） |
+| `.sd-install-guard-error` | 仅文字色 → 补全背景 + 边框 |
+| `.sd-ov-error` | 仅文字色 → 补全背景 + 边框 |
+| `.sd-jobs-status-running/succeeded/failed/canceled` | 硬编码颜色 → CSS 变量 |
+
+### 保留不动
+
+- UI-R1 字号、UI-R2 间距、UI-R3 移动端、UI-R4 按钮体系、UI-R5 指标卡 modifier 主规则：完全不动
+- 业务逻辑、API、React 组件、路由结构：均未改动
+- TSX 文件：零改动（所有修复均在 CSS 层完成）
+
+### 如何验证
+
+```powershell
+cd E:\stardew-server-anxi-panel\frontend
+npm.cmd run build
+# 预期：exit 0，39 模块，JS 325.32 kB，CSS 86.84 kB
+```
+
+手动验证（重点检查）：
+- 顶栏状态徽章：stopped → 灰棕色（不再红色）；running → 绿色；error → 红色
+- Overview 指标卡：warn modifier → name/sub 文字变金黄色；error → 变红色
+- ModsPage：运行中警告条 / 重启警告条 / 列表错误条颜色是否与全局语义色一致
+- DiagnosticsPage：全部正常 → 绿色提示条；告警行 warning/error 颜色
+- SettingsPage：加载错误条 / 用户操作错误条 → 统一红色
+- InstallPage：guardError 现在有背景/边框（不再是裸文字）
+- JobsLogsPage：running/succeeded → 绿色徽章；failed → 红色徽章；canceled → 灰棕色
+- 390px / 320px 宽度：所有提示条文字不溢出，无横向滚动
+
+### 下一步注意事项
+
+**UI-R7（如需）：Typography 与内容密度深化**
+- 部分页面（PlayersPage）仍有 inline `style={{ fontSize: N }}` 的残留，可视情况清理
+- `sd-notice` 工具类已就绪，各页面可在新功能中直接复用，不必再写一次性提示条样式
+
+**全站语义色合规检查（可选）：**
+- 可用 grep 搜索 `color: #c02020` / `color: #b94040` 等残留硬编码确认是否还有未修复的提示条
+
+---
+
 ## UI-R3: 移动端与窄屏布局修复
 
 ### 目标

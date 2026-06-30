@@ -6,6 +6,8 @@ import {
   updateUserRole,
   disableUser,
   deleteUserHard,
+  getInstanceVNCConfig,
+  updateInstanceVNCPort,
 } from '../../../api'
 import type { AuditLogEntry } from '../../../api'
 import type { PanelUser } from '../../../types'
@@ -33,6 +35,21 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   mod_deleted: '删除 Mod',
   command_executed: '执行命令',
   support_bundle_exported: '导出诊断包',
+  instance_vnc_port_update: '修改 VNC 端口',
+}
+
+function currentPanelPort(): string {
+  if (typeof window === 'undefined') return '—'
+  if (window.location.port) return window.location.port
+  if (window.location.protocol === 'https:') return '443'
+  if (window.location.protocol === 'http:') return '80'
+  return '—'
+}
+
+function isValidPort(value: string): boolean {
+  if (!/^\d+$/.test(value.trim())) return false
+  const n = Number.parseInt(value, 10)
+  return n >= 1 && n <= 65535
 }
 
 function auditActionLabel(action: string): string {
@@ -146,14 +163,125 @@ function VersionSection({ versionInfo }: { versionInfo: StardewPageProps['dashbo
   )
 }
 
+// ── 端口信息区 ────────────────────────────────────────────────────────────────
+
+function PortSection({ isAdmin }: { isAdmin: boolean }) {
+  const [vncPort, setVNCPort] = useState('')
+  const [draftVNCPort, setDraftVNCPort] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const panelPort = currentPanelPort()
+
+  const loadVNCPort = useCallback(async () => {
+    if (!isAdmin) return
+    setLoading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const res = await getInstanceVNCConfig()
+      setVNCPort(res.vncPort)
+      setDraftVNCPort(res.vncPort)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [isAdmin])
+
+  useEffect(() => {
+    void loadVNCPort()
+  }, [loadVNCPort])
+
+  async function handleSaveVNCPort() {
+    const trimmed = draftVNCPort.trim()
+    if (!isValidPort(trimmed)) {
+      setError('VNC 端口必须是 1 到 65535 之间的数字')
+      setMessage(null)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const res = await updateInstanceVNCPort(trimmed)
+      setVNCPort(res.vncPort)
+      setDraftVNCPort(res.vncPort)
+      setMessage('VNC 端口已保存，重启服务器后生效。')
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const trimmedDraft = draftVNCPort.trim()
+  const saveDisabled = loading || saving || !trimmedDraft || trimmedDraft === vncPort
+
+  return (
+    <section className="sd-settings-section">
+      <h3 className="sd-settings-section-title">端口信息</h3>
+
+      {error && <div className="sd-settings-error">{error}</div>}
+      {message && <div className="sd-settings-success">{message}</div>}
+
+      <div className="sd-settings-port-grid">
+        <div className="sd-settings-port-card">
+          <span className="sd-settings-port-label">面板端口</span>
+          <span className="sd-settings-port-value sd-settings-mono">{panelPort}</span>
+          <span className="sd-settings-port-desc">当前浏览器访问端口</span>
+        </div>
+
+        <div className="sd-settings-port-card sd-settings-port-card-wide">
+          <span className="sd-settings-port-label">VNC 端口</span>
+          {isAdmin ? (
+            <>
+              <div className="sd-settings-port-edit-row">
+                <input
+                  className="sd-input sd-settings-port-input"
+                  value={draftVNCPort}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder={loading ? '读取中…' : '5800'}
+                  onChange={e => {
+                    setDraftVNCPort(e.target.value)
+                    setMessage(null)
+                  }}
+                  disabled={loading || saving}
+                />
+                <button className="sd-btn-green" onClick={() => void handleSaveVNCPort()} disabled={saveDisabled}>
+                  {saving ? '保存中…' : '保存'}
+                </button>
+                <button className="sd-btn-tan" onClick={() => void loadVNCPort()} disabled={loading || saving}>
+                  {loading ? '读取中…' : '刷新'}
+                </button>
+              </div>
+              <span className="sd-settings-port-desc">
+                当前配置：<code className="sd-settings-code">{vncPort || '—'}</code>
+              </span>
+            </>
+          ) : (
+            <span className="sd-settings-port-locked">
+              <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+              仅管理员可查看和修改 VNC 端口。
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── 用户管理区 ────────────────────────────────────────────────────────────────
 
 type UserManagementSectionProps = {
   currentUserId: number
   isAdmin: boolean
+  isSuperAdmin: boolean
 }
 
-function UserManagementSection({ currentUserId, isAdmin }: UserManagementSectionProps) {
+function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserManagementSectionProps) {
   const [users, setUsers] = useState<PanelUser[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -193,6 +321,12 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
   useEffect(() => {
     void loadUsers()
   }, [loadUsers])
+
+  useEffect(() => {
+    if (!isSuperAdmin && newRole === 'admin') {
+      setNewRole('user')
+    }
+  }, [isSuperAdmin, newRole])
 
   async function handleCreate() {
     if (!newUsername.trim() || !newPassword.trim()) return
@@ -311,7 +445,7 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
               disabled={createBusy}
             >
               <option value="user">普通用户</option>
-              <option value="admin">管理员</option>
+              {isSuperAdmin && <option value="admin">管理员</option>}
             </select>
           </div>
           <div className="sd-settings-form-actions">
@@ -342,9 +476,20 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
         <div className="sd-settings-user-list">
           {users.map(u => (
             <div key={u.id} className={`sd-settings-user-row${!u.isActive ? ' sd-settings-user-inactive' : ''}`}>
+              {(() => {
+                const isSelf = u.id === currentUserId
+                const isAdminTarget = u.role === 'admin'
+                const canManageTarget = isSelf ? false : (isSuperAdmin || !isAdminTarget)
+                const manageTitle = isSelf
+                  ? '不能管理自己'
+                  : !canManageTarget
+                    ? '只有第一个管理员可以管理管理员账号'
+                    : undefined
+                return (
+                  <>
               <span className="sd-settings-user-name">
                 {u.username}
-                {u.id === currentUserId && (
+                {isSelf && (
                   <span className="sd-tag sd-tag-blue" style={{ marginLeft: 6 }}>自己</span>
                 )}
               </span>
@@ -356,31 +501,36 @@ function UserManagementSection({ currentUserId, isAdmin }: UserManagementSection
                 上次登录：{u.lastLoginAt ? formatDate(u.lastLoginAt) : '—'}
               </span>
               <div className="sd-settings-user-actions">
-                <button
-                  className="sd-btn-tan"
-                  disabled={roleBusy || deleteBusy || u.id === currentUserId}
-                  title={u.id === currentUserId ? '不能修改自己的角色' : undefined}
-                  onClick={() => setRoleConfirm({ user: u, toRole: u.role === 'admin' ? 'user' : 'admin' })}
-                >
-                  {u.role === 'admin' ? '降为普通用户' : '升为管理员'}
-                </button>
+                {isSuperAdmin && (
+                  <button
+                    className="sd-btn-tan"
+                    disabled={roleBusy || deleteBusy || isSelf}
+                    title={isSelf ? '不能修改自己的角色' : undefined}
+                    onClick={() => setRoleConfirm({ user: u, toRole: u.role === 'admin' ? 'user' : 'admin' })}
+                  >
+                    {u.role === 'admin' ? '降为普通用户' : '升为管理员'}
+                  </button>
+                )}
                 <button
                   className="sd-btn-delete"
-                  disabled={roleBusy || deleteBusy || u.id === currentUserId}
-                  title={u.id === currentUserId ? '不能禁用自己' : undefined}
+                  disabled={roleBusy || deleteBusy || !canManageTarget}
+                  title={manageTitle}
                   onClick={() => setDeleteConfirm({ user: u, hard: false })}
                 >
                   禁用
                 </button>
                 <button
                   className="sd-btn-delete"
-                  disabled={roleBusy || deleteBusy || u.id === currentUserId}
-                  title={u.id === currentUserId ? '不能删除自己' : '永久删除用户（不可恢复）'}
+                  disabled={roleBusy || deleteBusy || !canManageTarget}
+                  title={manageTitle ?? '永久删除用户（不可恢复）'}
                   onClick={() => setDeleteConfirm({ user: u, hard: true })}
                 >
                   删除
                 </button>
               </div>
+                  </>
+                )
+              })()}
             </div>
           ))}
         </div>
@@ -639,7 +789,8 @@ export function SettingsPage({ user, dashboardData, onLogout }: StardewPageProps
 
       <AccountSection user={user} onLogout={onLogout} />
       <VersionSection versionInfo={dashboardData.versionInfo} />
-      <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} />
+      <PortSection isAdmin={isAdmin} />
+      <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} isSuperAdmin={user.isSuperAdmin} />
       <AuditLogsSection isAdmin={isAdmin} />
       <SecuritySection />
       <PendingSettingsSection />

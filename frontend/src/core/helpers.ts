@@ -10,6 +10,8 @@ const errorCodeMap: Record<string, string> = {
   forbidden: '权限不足',
   setup_required: '请先初始化管理员账号',
   invalid_credentials: '用户名或密码错误',
+  super_admin_required: '只有第一个管理员可以创建管理员或调整管理员权限',
+  last_super_admin: '不能移除或降级第一个管理员',
   // Instance
   instance_not_found: '实例不存在',
   driver_not_registered: '实例配置异常，请重新初始化',
@@ -30,6 +32,7 @@ const errorCodeMap: Record<string, string> = {
   save_required: '没有可用存档，请先创建或上传存档',
   active_save_required: '没有已选择的启动存档，请先选择一个存档',
   active_save_missing: '上次选择的存档不存在，请重新选择存档',
+  active_save_running: '当前启动存档正在被服务器使用，请先停止服务器再删除',
   select_failed: '选择存档失败',
   delete_failed: '删除存档失败',
   export_failed: '导出存档失败',
@@ -60,6 +63,9 @@ const errorCodeMap: Record<string, string> = {
   list_backups_failed: '读取备份列表失败',
   restore_failed: '恢复备份失败',
   save_exists: '存档已存在，请先删除已有存档或使用覆盖选项',
+  delete_backup_failed: '删除备份失败',
+  backup_not_found: '备份文件不存在',
+  invalid_backup_name: '备份文件名不合法',
   // Jobs
   not_implemented: '功能暂未实现',
   // Generic

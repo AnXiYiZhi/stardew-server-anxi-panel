@@ -1250,7 +1250,14 @@ func TestListBackups_ReturnsBackupInfo(t *testing.T) {
 	if err := os.MkdirAll(saveDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame/>"), 0o644); err != nil {
+	saveInfoXML := `<SaveGame>
+<player><name>Abigail</name><farmName>Junimo Farm</farmName></player>
+<year>3</year><currentSeason>fall</currentSeason><dayOfMonth>12</dayOfMonth><whichFarm>2</whichFarm>
+</SaveGame>`
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte(saveInfoXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "TestSave"), []byte(saveInfoXML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, err := BackupSave(dir, "TestSave")
@@ -1268,6 +1275,18 @@ func TestListBackups_ReturnsBackupInfo(t *testing.T) {
 	if backups[0].SaveName != "TestSave" {
 		t.Errorf("expected saveName TestSave, got %q", backups[0].SaveName)
 	}
+	if backups[0].FarmerName != "Abigail" {
+		t.Errorf("expected farmer Abigail, got %q", backups[0].FarmerName)
+	}
+	if backups[0].FarmName != "Junimo Farm" {
+		t.Errorf("expected farm Junimo Farm, got %q", backups[0].FarmName)
+	}
+	if backups[0].GameYear != 3 || backups[0].GameSeason != "fall" || backups[0].GameDay != 12 {
+		t.Errorf("expected date year=3 season=fall day=12, got year=%d season=%q day=%d", backups[0].GameYear, backups[0].GameSeason, backups[0].GameDay)
+	}
+	if backups[0].FarmType != "forest" {
+		t.Errorf("expected farm type forest, got %q", backups[0].FarmType)
+	}
 }
 
 func TestListBackups_EmptyDir(t *testing.T) {
@@ -1278,6 +1297,38 @@ func TestListBackups_EmptyDir(t *testing.T) {
 	}
 	if len(backups) != 0 {
 		t.Errorf("expected 0 backups, got %d", len(backups))
+	}
+}
+
+func TestDeleteBackup_RemovesBackupFile(t *testing.T) {
+	dir := t.TempDir()
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+	backupName := filepath.Base(backupPath)
+
+	if err := DeleteBackup(dir, backupName); err != nil {
+		t.Fatalf("DeleteBackup: %v", err)
+	}
+	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
+		t.Fatalf("backup file should be deleted, stat err=%v", err)
+	}
+}
+
+func TestDeleteBackup_InvalidName(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"../escape.zip", "nested/backup.zip", "backup.txt", ""} {
+		if err := DeleteBackup(dir, name); err == nil {
+			t.Fatalf("DeleteBackup(%q) expected error", name)
+		}
 	}
 }
 
