@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -746,6 +747,7 @@ func (s *server) handleModsList(w http.ResponseWriter, r *http.Request, instance
 		writeError(w, http.StatusInternalServerError, "list_mods_failed", sanitizeErrorMsg(err, "读取 Mod 列表失败"))
 		return
 	}
+	mods = sj.ApplyModSyncClassification(instance.DataDir, mods)
 	restartRequired := sj.GetModsRestartRequired(instance.DataDir)
 	writeJSON(w, http.StatusOK, registry.ModsListResult{
 		Mods:            mods,
@@ -864,6 +866,155 @@ func (s *server) handleModsExport(w http.ResponseWriter, r *http.Request, instan
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(zipPath)))
 	http.ServeFile(w, r, zipPath)
+}
+
+// handleModSyncPlan handles GET /api/instances/:id/mods/sync-plan.
+func (s *server) handleModSyncPlan(w http.ResponseWriter, r *http.Request, instanceID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	plan, err := sj.BuildModSyncPlan(instance.DataDir)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "sync_plan_failed", sanitizeErrorMsg(err, "读取同步分类失败"))
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// modSyncClassificationRequest is the body of PUT .../mods/:modId/sync-classification.
+type modSyncClassificationRequest struct {
+	SyncKind string `json:"syncKind"`
+	SyncNote string `json:"syncNote,omitempty"`
+}
+
+// handleModSyncClassificationUpdate handles PUT /api/instances/:id/mods/:modId/sync-classification.
+// This only writes the panel's own classification metadata, so it is allowed
+// regardless of whether the server is running.
+func (s *server) handleModSyncClassificationUpdate(w http.ResponseWriter, r *http.Request, instanceID, modID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	var req modSyncClassificationRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if !registry.ValidModSyncKind(req.SyncKind) {
+		writeError(w, http.StatusBadRequest, "invalid_sync_kind", "无效的同步分类")
+		return
+	}
+	folder, err := sj.ResolveModFolder(instance.DataDir, modID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "mod_not_found", "Mod 不存在")
+		return
+	}
+	if err := sj.SetModSyncClassification(instance.DataDir, folder, req.SyncKind, req.SyncNote); err != nil {
+		writeError(w, http.StatusInternalServerError, "sync_classification_failed", sanitizeErrorMsg(err, "更新同步分类失败"))
+		return
+	}
+	s.logger.Info("mod sync classification updated", "instance", instanceID, "mod", folder, "syncKind", req.SyncKind)
+	s.auditLog(r, &actor, "mod_sync_classification_update", "instance", instanceID, auditMetadata("modId", folder, "syncKind", req.SyncKind))
+	syncKind, syncNote := sj.GetModSyncClassification(instance.DataDir, folder)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"folderName": folder,
+		"syncKind":   syncKind,
+		"syncNote":   syncNote,
+	})
+}
+
+// handleModSyncPackExport handles POST /api/instances/:id/mods/sync-pack/export.
+// Export is allowed while the server is running so players can download the
+// pack at any time.
+func (s *server) handleModSyncPackExport(w http.ResponseWriter, r *http.Request, instanceID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+
+	zipPath, err := sj.ExportModSyncPackZip(instance.DataDir)
+	if err != nil {
+		if errors.Is(err, sj.ErrNoSyncMods) {
+			writeError(w, http.StatusBadRequest, "no_sync_mods", "没有玩家需同步的 Mod 可导出")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "export_sync_pack_failed", sanitizeErrorMsg(err, "导出同步包失败"))
+		return
+	}
+	defer func() { _ = os.Remove(zipPath) }()
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", sj.PlayerSyncPackFileName))
+	http.ServeFile(w, r, zipPath)
+}
+
+// handleModNexusSearch handles GET /api/instances/:id/mods/nexus/search?q=...
+// Any logged-in user (not just admins) may search and open the Nexus page;
+// this phase is read-only and never proxies a download.
+func (s *server) handleModNexusSearch(w http.ResponseWriter, r *http.Request, instanceID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "invalid_query", "搜索关键词不能为空")
+		return
+	}
+
+	result, err := sj.SearchNexusMods(r.Context(), query)
+	if err != nil {
+		s.writeNexusError(w, err)
+		return
+	}
+	result.Results = sj.ApplyNexusInstalledMatch(instance.DataDir, result.Results)
+	writeJSON(w, http.StatusOK, result)
+}
+
+// writeNexusError maps Nexus client errors to structured HTTP responses
+// without ever including the upstream response body (which could echo
+// request details) in the message sent to the browser.
+func (s *server) writeNexusError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, sj.ErrNexusAPIKeyMissing):
+		writeError(w, http.StatusServiceUnavailable, "nexus_api_key_missing", "未配置 Nexus Mods API Key")
+		return
+	case errors.Is(err, sj.ErrInvalidNexusQuery):
+		writeError(w, http.StatusBadRequest, "invalid_query", "搜索关键词不能为空")
+		return
+	}
+
+	var apiErr *sj.NexusAPIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.StatusCode {
+		case http.StatusNotFound:
+			writeError(w, http.StatusNotFound, "nexus_mod_not_found", "未找到该 Mod")
+		case http.StatusUnauthorized, http.StatusForbidden:
+			writeError(w, http.StatusBadGateway, "nexus_unauthorized", "Nexus API Key 无效或权限不足")
+		case http.StatusTooManyRequests:
+			writeError(w, http.StatusTooManyRequests, "nexus_rate_limited", "Nexus 请求过于频繁，请稍后重试")
+		default:
+			writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 请求失败")
+		}
+		return
+	}
+
+	s.logger.Warn("nexus search failed", "error", err)
+	writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 请求失败，请稍后重试")
 }
 
 // ── Console / Commands handlers ───────────────────────────────────────────────

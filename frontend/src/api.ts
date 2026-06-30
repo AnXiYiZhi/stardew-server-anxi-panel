@@ -16,7 +16,10 @@ import type {
   JobsResponse,
   LifecycleJobResponse,
   ModsListResult,
+  ModSyncKind,
+  ModSyncPlanResult,
   NewGameConfig,
+  NexusModSearchResponse,
   OKResponse,
   PanelUser,
   PrepareResponse,
@@ -353,6 +356,43 @@ export function exportMods(instanceId = defaultInstanceId) {
     const filename = match ? match[1] : 'stardew-mods.zip'
     return { blob, filename }
   })
+}
+
+export function getModSyncPlan(instanceId = defaultInstanceId) {
+  return request<ModSyncPlanResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods/sync-plan`)
+}
+
+export function updateModSyncClassification(
+  modId: string,
+  syncKind: ModSyncKind,
+  syncNote?: string,
+  instanceId = defaultInstanceId,
+) {
+  return request<{ folderName: string; syncKind: ModSyncKind; syncNote: string }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/mods/${encodeURIComponent(modId)}/sync-classification`,
+    { method: 'PUT', body: { syncKind, syncNote } },
+  )
+}
+
+export function exportModSyncPack(instanceId = defaultInstanceId) {
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/sync-pack/export`, {
+    method: 'POST',
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : 'stardew-player-sync-pack.zip'
+    return { blob, filename }
+  })
+}
+
+export function searchNexusMods(query: string, instanceId = defaultInstanceId) {
+  const params = new URLSearchParams({ q: query })
+  return request<NexusModSearchResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/mods/nexus/search?${params.toString()}`,
+  )
 }
 
 export function getCommands(instanceId = defaultInstanceId) {

@@ -212,10 +212,48 @@ type ModInfo struct {
 	Description string `json:"description,omitempty"`
 	FolderName  string `json:"folderName"`
 	ParseError  string `json:"parseError,omitempty"`
+	SyncKind    string `json:"syncKind"`
+	SyncNote    string `json:"syncNote,omitempty"`
+	// UpdateKeys is the manifest.json UpdateKeys list (e.g. "Nexus:123"),
+	// used to resolve NexusModID. Not all mods declare it.
+	UpdateKeys []string `json:"updateKeys,omitempty"`
+	// NexusModID is parsed from a "Nexus:<id>" entry in UpdateKeys, if present.
+	NexusModID int `json:"nexusModId,omitempty"`
 }
 
 // ModsListResult is returned by GET .../mods.
 type ModsListResult struct {
 	Mods            []ModInfo `json:"mods"`
 	RestartRequired bool      `json:"restartRequired,omitempty"`
+}
+
+// Mod sync classification kinds. They describe whether a mod must be
+// installed client-side by players to join the server.
+const (
+	ModSyncKindServerOnly     = "server_only"
+	ModSyncKindClientRequired = "client_required"
+	ModSyncKindUnknown        = "unknown"
+)
+
+// ValidModSyncKind reports whether kind is one of the known sync classifications.
+func ValidModSyncKind(kind string) bool {
+	switch kind {
+	case ModSyncKindServerOnly, ModSyncKindClientRequired, ModSyncKindUnknown:
+		return true
+	}
+	return false
+}
+
+// ModSyncSummary counts installed mods by sync classification.
+type ModSyncSummary struct {
+	Total          int `json:"total"`
+	ServerOnly     int `json:"serverOnly"`
+	ClientRequired int `json:"clientRequired"`
+	Unknown        int `json:"unknown"`
+}
+
+// ModSyncPlanResult is returned by GET .../mods/sync-plan.
+type ModSyncPlanResult struct {
+	Mods    []ModInfo      `json:"mods"`
+	Summary ModSyncSummary `json:"summary"`
 }

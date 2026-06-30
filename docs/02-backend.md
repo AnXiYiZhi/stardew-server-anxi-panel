@@ -87,7 +87,7 @@ GET /api/jobs/:id/stream
 | 生命周期 | `POST /api/instances/:id/start`, `stop`, `restart` |
 | 邀请码 | `GET /api/instances/:id/invite-code` |
 | 存档 | `GET /api/instances/:id/saves`, 上传预览、提交启动、选择、删除、导出、备份恢复 |
-| Mods | `GET /api/instances/:id/mods`, 上传、删除、导出 |
+| Mods | `GET /api/instances/:id/mods`, 上传、删除、导出、玩家同步分类(`mods/sync-plan`、`mods/:modId/sync-classification`、`mods/sync-pack/export`)、Nexus 只读搜索(`mods/nexus/search`) |
 | 命令 | `GET /api/instances/:id/commands`, `POST /commands/run`, `POST /commands/say` |
 | 玩家 | `GET /api/instances/:id/players` |
 | Docker 诊断 | compose ps/logs/status 相关调试接口 |
@@ -120,6 +120,55 @@ Stardew 生命周期里的“重启服务器”必须只重启 Compose 的 `serv
 最近事件由后端根据当前在线快照和 `players-cache.json` 中上一轮状态差分生成，并写入 `.local-container/control/players-events.json`。当前支持首次记录、加入和离开事件，最多保留最近 50 条，并按 `saveId` 隔离，避免切换存档后显示旧存档活动。
 
 `players-cache.json` 必须按存档隔离：缓存文件带 `saveId`，只有 `cache.saveId == players.json.saveId` 时才合并历史离线玩家。切换/新建存档后，旧存档名册不能混入新存档玩家列表；旧版无 `saveId` 的缓存遇到当前存档 ID 时应被忽略并在下一次读取后重写。
+
+### Mod 玩家同步包
+
+`stardew_junimo` 提供 Mod 同步分类能力，逻辑全部在 `backend/internal/games/stardew_junimo/mod_sync.go`，不绕过 driver。
+
+- `ModInfo` 新增 `syncKind`(`server_only` | `client_required` | `unknown`) 和可选 `syncNote`。`GET /api/instances/:id/mods` 在返回前会调用 `ApplyModSyncClassification` 补全这两个字段，前端不需要单独再拉一次分类。
+- 分类持久化在面板自有文件 `.local-container/control/mod-sync.json`，绝不写入 Mod 自身的 `manifest.json`。未分类 Mod 默认 `unknown`；面板自带的 `StardewAnxiPanel.Control` 默认 `server_only`。
+- `GET /api/instances/:id/mods/sync-plan`：返回全部已装 Mod 及分类统计（`serverOnly`/`clientRequired`/`unknown`）。
+- `PUT /api/instances/:id/mods/:modId/sync-classification`：管理员专用，只写面板元数据，不受服务器运行状态限制。`:modId` 可以是文件夹名或 `UniqueID`（复用 `ResolveModFolder`，同 `DeleteMod` 的查找顺序）。
+- `POST /api/instances/:id/mods/sync-pack/export`：导出全部 `syncKind == client_required` 的 Mod 为 ZIP，附带面板生成的 `player-sync-manifest.json`（导出时间 + uniqueId/name/version/folderName/syncKind 列表）。服务器运行中也允许导出。`StardewAnxiPanel.Control` 无论分类如何，始终被排除在导出之外（双重保险：默认分类 + 导出时强制跳过）。没有任何 Mod 命中 `client_required` 时返回 `400 no_sync_mods`。
+
+涉及：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/mod_sync.go`、`backend/internal/games/stardew_junimo/mods.go`（抽出共用的 `addModDirToZip`）、`backend/internal/web/lifecycle_handlers.go`、`backend/internal/web/instance_handlers.go`。
+
+测试覆盖：分类文件读写、默认 unknown/server_only、导出只含 client_required、导出排除控制 Mod、`ResolveModFolder` 路径安全，见 `backend/internal/games/stardew_junimo/mod_sync_test.go`。
+
+`mods.go` 的 `ExportModsZip` 原本在循环失败但 `w.Close()` 成功时会因 `if err := w.Close(); err != nil` 遮蔽外层 `err`，把失败误判为成功；已修复为循环内失败直接 `return`、`Close()` 结果直接赋值给外层 `err`，与 `ExportModSyncPackZip` 写法一致。
+
+`ExportModSyncPackZip` 原本固定写入 `%TEMP%\stardew-player-sync-pack.zip`，两个并发导出请求会互相覆盖/截断对方的 ZIP，且一个请求失败后的 `defer` 清理可能删掉另一个请求正在 `ServeFile` 的文件；已改为 `os.CreateTemp("", "stardew-player-sync-pack-*.zip")` 生成唯一临时路径，对外 `Content-Disposition` 文件名固定用新增的 `PlayerSyncPackFileName` 常量，与实际磁盘路径解耦。
+
+`SetModSyncClassification` 原本对 `mod-sync.json` 是无锁的 load-modify-save，两个几乎同时的分类更新请求会让后写入的覆盖先写入的；已加上按 `dataDir` 维度的 `sync.Mutex`（`modSyncLockFor`）包住整个读改写流程，并把 `saveModSyncStore` 改成临时文件 + `os.Rename` 的原子写入，避免中途崩溃留下半截 JSON。
+
+### Nexus Mods 只读搜索（第二阶段）
+
+`backend/internal/games/stardew_junimo/nexus.go` 提供 Stardew Valley（`stardewvalley` game domain）只读搜索，不做下载/安装，只读 `NEXUS_API_KEY` 环境变量、不持久化任何配置。
+
+- **API Key 缺失**：`SearchNexusMods` 在调用前先检查 `NEXUS_API_KEY`，未配置时返回哨兵错误 `ErrNexusAPIKeyMissing`，handler 据此返回 `503 nexus_api_key_missing`。
+- **两种查询方式**：
+  - 查询关键词若是纯数字，按精确 Mod ID 查询走官方文档化的 v1 REST 接口 `GET https://api.nexusmods.com/v1/games/stardewvalley/mods/{id}.json`（`apikey` 请求头鉴权）。
+  - 其余关键词走 GraphQL v2（`https://api.nexusmods.com/v2/graphql`，与 nexusmods.com 网站搜索框同源）做关键词搜索。**注意**：Nexus 官方 v1 REST API 文档中没有任何关键词全文搜索接口（只有按 ID 查询、最近更新列表、MD5 查询），GraphQL v2 的具体字段名（`nexusGraphQLSearchQuery`/`nexusGraphQLResponse`，见 `nexus.go`）是根据公开资料推测的，**未用真实 API Key 验证过**；接入真实 Key 后如果解析失败，需要对照 Nexus 最新 GraphQL schema 调整这两处。
+  - 结果数量上限 `nexusMaxResults = 20`。
+- **请求安全**：固定 10 秒超时（`nexusRequestTimeout`）、固定 `User-Agent`；非 2xx 响应一律不读取/转发响应体，只保留状态码包成 `*NexusAPIError`，避免上游错误页（可能回显请求细节）泄露给前端；API Key 只通过请求头发送，从不出现在 URL 或错误信息里。
+- **query 校验**：空查询（trim 后）返回 `ErrInvalidNexusQuery`，handler 映射为 `400 invalid_query`。
+- **已安装匹配**：`ApplyNexusInstalledMatch(dataDir, results)` 读取本地已装 Mod，按 manifest `UpdateKeys` 中 `Nexus:<id>` 解析出的 `NexusModID` 做匹配，命中则把 `installed`/`installedFolderName`/`installedVersion` 填上；本阶段只判断"已安装"，不做版本新旧比较。
+- **manifest 解析扩展**：`modManifest`/`registry.ModInfo` 新增 `UpdateKeys []string` 和 `NexusModID int`（由 `parseNexusModIDFromUpdateKeys` 从 `UpdateKeys` 里挑出 `Nexus:` 前缀的条目解析），`readModInfo` 在解析时一并填充，所以 `GET .../mods` 现有列表也会带上这两个新字段（向后兼容，新字段都是 `omitempty`）。
+
+API：`GET /api/instances/:id/mods/nexus/search?q=关键词`，`requireAuth`（任意登录用户，普通玩家也能用，不需要管理员权限）。错误码映射：
+
+| 场景 | HTTP | code |
+| --- | --- | --- |
+| 未配置 `NEXUS_API_KEY` | 503 | `nexus_api_key_missing` |
+| 空查询 | 400 | `invalid_query` |
+| Nexus 返回 404（按 ID 查询未命中） | 404 | `nexus_mod_not_found` |
+| Nexus 返回 401/403 | 502 | `nexus_unauthorized` |
+| Nexus 返回 429 | 429 | `nexus_rate_limited` |
+| 其他非 2xx / 网络错误 | 502 | `nexus_request_failed` |
+
+涉及文件：`backend/internal/games/registry/types.go`（`ModInfo` 新增字段）、`backend/internal/games/stardew_junimo/mods.go`（manifest 解析扩展）、`backend/internal/games/stardew_junimo/nexus.go`（新文件）、`backend/internal/web/instance_handlers.go`（路由）、`backend/internal/web/lifecycle_handlers.go`（`handleModNexusSearch`/`writeNexusError`）。
+
+测试覆盖（`backend/internal/games/stardew_junimo/nexus_test.go`）：API Key 缺失、空 query、ID 查询结果解析、关键词搜索结果解析、结果数量上限裁剪、非 2xx 状态码映射为 `*NexusAPIError`（ID 查询和关键词搜索两条路径都覆盖）、API Key 不泄露（用 httptest mock 一个把 Key 回显到错误响应体里的恶意/有 bug 的上游，断言最终错误信息不包含该 Key）、`UpdateKeys`/`NexusModID` 解析与 `installed` 匹配。
 
 ### 单人菜单暂停
 
