@@ -25,11 +25,11 @@ export function LoginPanel({
   return (
     <form className="form-grid" onSubmit={onSubmit} autoComplete="on">
       <Field label="用户名">
-        <input value={form.username} autoComplete="username" required
+        <input value={form.username} autoComplete="username" placeholder=" " required
           onChange={(e) => onChange({ ...form, username: e.target.value })} />
       </Field>
       <Field label="密码">
-        <PasswordInput value={form.password} visible={showPwd} autoComplete="current-password"
+        <PasswordInput value={form.password} visible={showPwd} placeholder=" " autoComplete="current-password"
           onChange={(p) => onChange({ ...form, password: p })} onToggle={() => setShowPwd((v) => !v)} />
       </Field>
       <button className="button" disabled={busy} type="submit">{busy ? '正在登录……' : '登录'}</button>

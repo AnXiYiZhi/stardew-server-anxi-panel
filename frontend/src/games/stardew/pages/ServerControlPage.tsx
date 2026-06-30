@@ -110,10 +110,10 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
     setActionError(null)
     try {
       await startInstance()
+      dashboardData.requestInviteCodeRefresh()
       setSaveRequiredDetected(false)
       dashboardData.refreshInstanceState()
       dashboardData.refreshJobs()
-      dashboardData.refreshInviteCode()
     } catch (e) {
       const saveBlocker = saveStartBlocker(e)
       if (saveBlocker) {
@@ -132,10 +132,10 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
   async function handleStop() {
     setActionBusy(true)
     setActionError(null)
+    dashboardData.clearInviteCode()
     try {
       await stopInstance()
       dashboardData.refreshInstanceState()
-      dashboardData.refreshInviteCode()
       dashboardData.refreshJobs()
     } catch (e) {
       setActionError(errorMessage(e))
@@ -149,8 +149,8 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
     setActionError(null)
     try {
       await restartInstance()
+      dashboardData.requestInviteCodeRefresh()
       dashboardData.refreshInstanceState()
-      dashboardData.refreshInviteCode()
       dashboardData.refreshJobs()
     } catch (e) {
       setActionError(errorMessage(e))

@@ -70,6 +70,21 @@ func (c *Client) ComposeRestart(ctx context.Context, dir string) (CommandResult,
 	return c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, "compose", "restart")
 }
 
+func (c *Client) ComposeRestartServices(ctx context.Context, dir string, services ...string) (CommandResult, error) {
+	if len(services) == 0 {
+		return c.ComposeRestart(ctx, dir)
+	}
+	args := []string{"compose", "restart"}
+	for _, service := range services {
+		if !serviceNamePattern.MatchString(service) {
+			result := CommandResult{WorkDir: dir, Args: RedactArgs(append([]string{c.dockerPath}, args...)), ExitCode: -1}
+			return result, CommandError{Op: "docker compose restart", Result: result, Err: fmt.Errorf("invalid compose service name %q", service)}
+		}
+		args = append(args, service)
+	}
+	return c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, args...)
+}
+
 // ComposeExecPipe runs `docker compose exec -T <service> <args>` with stdinData piped to the
 // process stdin.  The -T flag disables pseudo-TTY allocation so stdin can be redirected.
 func (c *Client) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (CommandResult, error) {

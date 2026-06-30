@@ -110,8 +110,16 @@ function App() {
     return <StardewPanel user={currentUser} onLogout={logout} />
   }
 
+  const authShellClass = [
+    'sd-auth-shell',
+    view === 'login' || view === 'setup' ? 'sd-auth-shell--image-login' : '',
+    view === 'login' ? 'sd-auth-shell--login' : '',
+    view === 'setup' ? 'sd-auth-shell--setup' : '',
+    message ? 'sd-auth-shell--has-message' : '',
+  ].filter(Boolean).join(' ')
+
   return (
-    <main className="sd-auth-shell">
+    <main className={authShellClass}>
       <section className="sd-auth-card">
         <p className="sd-auth-eyebrow">Stardew Valley 管理面板</p>
         <h1 className="sd-auth-title">Stardew Anxi Panel</h1>

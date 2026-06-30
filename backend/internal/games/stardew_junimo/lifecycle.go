@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	lifecycleJobType       = "stardew_lifecycle"
 	lifecycleJobTimeout    = 30 * time.Minute
 	startServerWaitTimeout = 5 * time.Minute // Docker container reaches "running" within seconds; 5m is ample
 	startCheckInterval     = 3 * time.Second
@@ -41,6 +42,7 @@ type LifecycleDockerService interface {
 	ComposeUp(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeRestart(ctx context.Context, dir string) (paneldocker.CommandResult, error)
+	ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	ComposeExecTTY(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.ComposeExecTTYResult, error)
 	ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
@@ -70,6 +72,9 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
 	}
+	if err := d.cancelActiveLifecycleJobs(ctx, req.Instance.ID, "新的启动请求已提交，取消旧的生命周期任务。"); err != nil {
+		return nil, err
+	}
 	runner := &lifecycleRunner{
 		driver:    d,
 		lifecycle: ld,
@@ -79,7 +84,7 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 		newGame:   req.NewGame,
 	}
 	job, err := d.jobs.Start(ctx, jobs.Spec{
-		Type:       "stardew_lifecycle",
+		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   req.Instance.ID,
 		CreatedBy:  req.ActorID,
@@ -105,6 +110,9 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	if err != nil {
 		return fmt.Errorf("load instance: %w", err)
 	}
+	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "停止服务器请求已提交，取消旧的生命周期任务。"); err != nil {
+		return err
+	}
 	runner := &lifecycleRunner{
 		driver:    d,
 		lifecycle: ld,
@@ -112,7 +120,7 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 		operation: "stop",
 	}
 	if _, err := d.jobs.Start(ctx, jobs.Spec{
-		Type:       "stardew_lifecycle",
+		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   instance.ID,
 		CreatedBy:  0,
@@ -137,6 +145,9 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	if err != nil {
 		return fmt.Errorf("load instance: %w", err)
 	}
+	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "重启服务器请求已提交，取消旧的生命周期任务。"); err != nil {
+		return err
+	}
 	runner := &lifecycleRunner{
 		driver:    d,
 		lifecycle: ld,
@@ -144,7 +155,7 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 		operation: "restart",
 	}
 	if _, err := d.jobs.Start(ctx, jobs.Spec{
-		Type:       "stardew_lifecycle",
+		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   instance.ID,
 		CreatedBy:  0,
@@ -152,6 +163,24 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 		Run:        runner.run,
 	}); err != nil {
 		return fmt.Errorf("start restart job: %w", err)
+	}
+	return nil
+}
+
+func (d *Driver) cancelActiveLifecycleJobs(ctx context.Context, instanceID, reason string) error {
+	if d.jobs == nil {
+		return nil
+	}
+	canceled, err := d.jobs.CancelActive(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   instanceID,
+		Types:      []string{lifecycleJobType},
+	}, "")
+	if err != nil {
+		return fmt.Errorf("cancel active lifecycle jobs: %w", err)
+	}
+	for _, job := range canceled {
+		_, _ = d.jobs.AppendLog(context.Background(), job.ID, storage.JobLogLevelWarn, reason)
 	}
 	return nil
 }
@@ -201,6 +230,7 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 			"服务器启动失败", "start_failed", jobCtx.ID)
 		return err
 	}
+	r.clearStaleInviteCode(ctx, jobCtx)
 
 	// Container is running; poll for invite code and SMAPI status concurrently.
 	// JunimoServer writes the invite code as soon as the lobby is created (before save load),
@@ -218,6 +248,9 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 		"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
 
 	inviteCode := r.waitForReadyState(ctx, jobCtx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if inviteCode == "" {
 		_, _ = jobCtx.Info(ctx, "未能获取邀请码，服务器可能仍在初始化，可在面板手动刷新邀请码。")
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
@@ -294,12 +327,13 @@ func (r *lifecycleRunner) doStop(ctx context.Context, jobCtx *jobs.Context) erro
 func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在重启 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在重启...", "restarting", jobCtx.ID)
+	r.removeInviteCodeFile(ctx, jobCtx)
 
-	result, err := r.lifecycle.ComposeRestart(ctx, r.instance.DataDir)
+	result, err := r.lifecycle.ComposeRestartServices(ctx, r.instance.DataDir, "server")
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"重启失败: "+result.Stderr, "restart_failed", jobCtx.ID)
-		return fmt.Errorf("docker compose restart: %w", err)
+		return fmt.Errorf("docker compose restart server: %w", err)
 	}
 	_, _ = jobCtx.Info(ctx, "重启完成，等待服务器就绪...")
 
@@ -308,8 +342,12 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 			"重启后服务器未就绪", "restart_timeout", jobCtx.ID)
 		return err
 	}
+	r.clearStaleInviteCode(ctx, jobCtx)
 
 	inviteCode := r.waitForReadyState(ctx, jobCtx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if inviteCode == "" {
 		_, _ = jobCtx.Info(ctx, "未能获取邀请码，可在面板手动刷新。")
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
@@ -483,6 +521,39 @@ func (r *lifecycleRunner) tailServerLogs(ctx context.Context, jobCtx *jobs.Conte
 	_, _ = jobCtx.Info(ctx, fmt.Sprintf("[server 容器日志 —最后 %d 行]\n%s", tail, result.Stdout))
 }
 
+// clearStaleInviteCode removes /tmp/invite-code.txt only when it still contains
+// the invite code recorded before this lifecycle operation. This prevents
+// docker compose restart/up from reusing a stale /tmp file while avoiding
+// deletion of a fresh code that Junimo may have already written.
+func (r *lifecycleRunner) clearStaleInviteCode(ctx context.Context, jobCtx *jobs.Context) {
+	oldCode := inviteCodeFromPayload(r.instance.DriverPayload)
+	if oldCode == "" {
+		return
+	}
+	execCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	result, err := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
+		"", "cat", "/tmp/invite-code.txt")
+	if err != nil {
+		return
+	}
+	current := strings.TrimSpace(result.Stdout)
+	if current == "" || current != oldCode {
+		return
+	}
+	r.removeInviteCodeFile(ctx, jobCtx)
+}
+
+func (r *lifecycleRunner) removeInviteCodeFile(ctx context.Context, jobCtx *jobs.Context) {
+	execCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
+		"", "rm", "-f", "/tmp/invite-code.txt")
+	if err == nil && jobCtx != nil {
+		_, _ = jobCtx.Info(ctx, "已清理旧邀请码，等待 Junimo 生成新的邀请码...")
+	}
+}
+
 // fetchInviteCode reads /tmp/invite-code.txt directly from the server container
 // (written by JunimoServer as soon as the lobby is created), then falls back to
 // attach-cli if the file is empty or the exec fails.
@@ -654,6 +725,18 @@ func mergeInviteCodeInPayload(existing, inviteCode string) string {
 		return existing
 	}
 	return strings.TrimSpace(string(b))
+}
+
+func inviteCodeFromPayload(existing string) string {
+	if strings.TrimSpace(existing) == "" {
+		return ""
+	}
+	payload := map[string]any{}
+	if err := jsonUnmarshal(existing, &payload); err != nil {
+		return ""
+	}
+	code, _ := payload["invite_code"].(string)
+	return strings.TrimSpace(code)
 }
 
 func jsonUnmarshal(s string, v any) error {

@@ -106,10 +106,15 @@ stardew-server-anxi-panel
 ├─ frontend             React + TypeScript 前端
 ├─ deploy               部署示例（docker-compose.yml）
 ├─ docs
-│  ├─ architecture.md   架构决策
-│  ├─ deployment.md     部署指南
-│  ├─ handoff-roadmap.md
-│  └─ prototypes        产品原型和说明
+│  ├─ 01-project-overview.md
+│  ├─ 02-backend.md
+│  ├─ 03-frontend.md
+│  ├─ backend-handoff
+│  ├─ frontend-handoff
+│  ├─ 06-integration.md
+│  ├─ 07-later-optimizations.md
+│  ├─ 08-future-roadmap.md
+│  └─ 09-image-build.md
 ├─ Dockerfile           多阶段构建
 ├─ .dockerignore
 ├─ LICENSE
@@ -393,7 +398,7 @@ docker compose up -d
 
 ### 安全说明
 
-挂载 Docker Socket 等同于给面板容器宿主机 Docker 控制权。建议仅在受信任的内网环境运行，不要将端口暴露到公网。详见 [部署指南](docs/deployment.md)。
+挂载 Docker Socket 等同于给面板容器宿主机 Docker 控制权。建议仅在受信任的内网环境运行，不要将端口暴露到公网。详见 [镜像构建文档](docs/09-image-build.md)。
 
 ## 本机测试流程
 
@@ -543,10 +548,12 @@ docker build -t stardew-server-anxi-panel:1.0.0 `
 
 继续开发前建议阅读：
 
-- [Architecture](docs/architecture.md)
-- [Handoff Roadmap](docs/handoff-roadmap.md)
-- [Prototype Notes](docs/prototypes/stardew-anxi-panel-prototype-notes.md)
-- [Product Prototype HTML](docs/prototypes/stardew-anxi-panel-product-prototype.html)
+- [项目总纲](docs/01-project-overview.md)
+- [后端文档](docs/02-backend.md)
+- [前端文档](docs/03-frontend.md)
+- [前后端联调文档](docs/06-integration.md)
+- [未来路线](docs/08-future-roadmap.md)
+- [镜像构建文档](docs/09-image-build.md)
 
 ## 设计方向
 

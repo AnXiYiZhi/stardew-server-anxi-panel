@@ -71,6 +71,98 @@ func TestManagerRecoversPanicAsFailed(t *testing.T) {
 	}
 }
 
+func TestManagerCancelMarksRunningJobCanceled(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	started := make(chan struct{})
+	job, err := manager.Start(context.Background(), Spec{
+		Type:       "cancel_me",
+		TargetType: "instance",
+		TargetID:   storage.DefaultInstanceID,
+		Timeout:    3 * time.Second,
+		Run: func(ctx context.Context, job *Context) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+	if err != nil {
+		t.Fatalf("start cancel job: %v", err)
+	}
+	<-started
+
+	if err := manager.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatalf("cancel job: %v", err)
+	}
+	canceled := waitForJobStatus(t, store, job.ID, storage.JobStatusCanceled)
+	if canceled.ErrorMessage.String == "" {
+		t.Fatal("canceled job should record a message")
+	}
+}
+
+func TestManagerCancelActiveFiltersTarget(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	block := func(started chan struct{}) Runner {
+		return func(ctx context.Context, job *Context) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		}
+	}
+	firstStarted := make(chan struct{})
+	first, err := manager.Start(context.Background(), Spec{
+		Type:       "stardew_lifecycle",
+		TargetType: "instance",
+		TargetID:   "stardew",
+		Timeout:    3 * time.Second,
+		Run:        block(firstStarted),
+	})
+	if err != nil {
+		t.Fatalf("start first job: %v", err)
+	}
+	secondStarted := make(chan struct{})
+	second, err := manager.Start(context.Background(), Spec{
+		Type:       "stardew_lifecycle",
+		TargetType: "instance",
+		TargetID:   "other",
+		Timeout:    3 * time.Second,
+		Run:        block(secondStarted),
+	})
+	if err != nil {
+		t.Fatalf("start second job: %v", err)
+	}
+	<-firstStarted
+	<-secondStarted
+
+	canceled, err := manager.CancelActive(context.Background(), storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   "stardew",
+		Types:      []string{"stardew_lifecycle"},
+	}, "")
+	if err != nil {
+		t.Fatalf("cancel active: %v", err)
+	}
+	if len(canceled) != 1 || canceled[0].ID != first.ID {
+		t.Fatalf("unexpected canceled jobs: %#v", canceled)
+	}
+	waitForJobStatus(t, store, first.ID, storage.JobStatusCanceled)
+
+	stillRunning, err := store.GetJob(context.Background(), second.ID)
+	if err != nil {
+		t.Fatalf("get second job: %v", err)
+	}
+	if stillRunning.Status != storage.JobStatusRunning {
+		t.Fatalf("second job status = %s, want running", stillRunning.Status)
+	}
+	if err := manager.Cancel(context.Background(), second.ID); err != nil {
+		t.Fatalf("cleanup second job: %v", err)
+	}
+	waitForJobStatus(t, store, second.ID, storage.JobStatusCanceled)
+}
+
 func newJobsTestManager(t *testing.T) (*Manager, *storage.Store, func()) {
 	t.Helper()
 	dataDir := t.TempDir()

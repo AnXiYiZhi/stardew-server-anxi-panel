@@ -21,6 +21,7 @@ case "$1 $2 $3 $4" in
   "compose up -d ") printf 'up ok' ;;
   "compose down  ") printf 'down ok' ;;
   "compose restart  ") printf 'restart ok' ;;
+  "compose restart server ") printf 'restart server ok' ;;
   "compose logs --no-color --tail") printf 'logs ok tail=%s service=%s' "$5" "$6" ;;
   *) printf 'unexpected args: %s %s %s %s %s %s' "$1" "$2" "$3" "$4" "$5" "$6" >&2; exit 7 ;;
 esac
@@ -60,6 +61,9 @@ esac
 	}
 	if result, err = client.ComposeRestart(context.Background(), workDir); err != nil || result.ExitCode != 0 {
 		t.Fatalf("ComposeRestart result=%+v err=%v", result, err)
+	}
+	if result, err = client.ComposeRestartServices(context.Background(), workDir, "server"); err != nil || result.ExitCode != 0 || !strings.Contains(result.Stdout, "restart server ok") {
+		t.Fatalf("ComposeRestartServices result=%+v err=%v", result, err)
 	}
 	if result, err = client.ComposeLogs(context.Background(), workDir, LogsOptions{Service: "app", Tail: 25}); err != nil || !strings.Contains(result.Stdout, "tail=25 service=app") {
 		t.Fatalf("ComposeLogs result=%+v err=%v", result, err)
@@ -141,6 +145,7 @@ func fakeDocker(t *testing.T, script string) string {
 			"if \"%1 %2 %3 %4\"==\"compose up -d \" (echo up ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose down  \" (echo down ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose restart  \" (echo restart ok& exit /b 0)\r\n" +
+			"if \"%1 %2 %3 %4\"==\"compose restart server \" (echo restart server ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose logs --no-color --tail\" (echo logs ok tail=%5 service=%6& exit /b 0)\r\n" +
 			"echo password=secret 1>&2\r\nexit /b 9\r\n"
 		if strings.Contains(script, "exit 9") {

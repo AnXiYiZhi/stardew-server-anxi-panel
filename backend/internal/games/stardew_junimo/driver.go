@@ -239,21 +239,27 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 		return instance, nil
 	}
 
-	// Check if a "running" or "starting" instance's container is actually alive.
-	if isRunningState(instance.State) && d.docker != nil {
+	// Reconcile the persisted state against Docker's runtime truth whenever we can.
+	if d.docker != nil {
 		ps, err := d.docker.ComposePs(ctx, instance.DataDir)
 		if err == nil {
-			serverUp := false
-			for _, svc := range ps.Services {
-				if svc.Service == "server" {
-					state := strings.ToLower(svc.State)
-					if state == "running" || strings.HasPrefix(strings.ToLower(svc.Status), "up") {
-						serverUp = true
+			if serverServiceUp(ps.Services) {
+				if instance.State != storage.InstanceStateRunning {
+					payload := instance.DriverPayload
+					if payload == "" {
+						payload = "{}"
 					}
-					break
+					return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+						ID:            instance.ID,
+						State:         storage.InstanceStateRunning,
+						StateMessage:  "检测到 server 容器正在运行",
+						DriverPhase:   "running",
+						DriverPayload: payload,
+					})
 				}
+				return instance, nil
 			}
-			if !serverUp {
+			if isRunningState(instance.State) {
 				payload := instance.DriverPayload
 				if payload == "" {
 					payload = "{}"
@@ -283,6 +289,17 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 		StateMessage: "未检测到游戏安装文件，请重新安装。",
 		DriverPhase:  "install_missing",
 	})
+}
+
+func serverServiceUp(services []paneldocker.ComposeService) bool {
+	for _, svc := range services {
+		if svc.Service != "server" {
+			continue
+		}
+		state := strings.ToLower(svc.State)
+		return state == "running" || strings.HasPrefix(strings.ToLower(svc.Status), "up")
+	}
+	return false
 }
 
 // isRunningState returns true if the instance state indicates the container should be up.

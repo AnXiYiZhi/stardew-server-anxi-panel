@@ -105,9 +105,15 @@ stardew-server-anxi-panel
 ├─ backend              Go API service
 ├─ frontend             React + TypeScript frontend
 ├─ docs
-│  ├─ architecture.md   Architecture decisions
-│  ├─ handoff-roadmap.md
-│  └─ prototypes        Product prototype and notes
+│  ├─ 01-project-overview.md
+│  ├─ 02-backend.md
+│  ├─ 03-frontend.md
+│  ├─ backend-handoff
+│  ├─ frontend-handoff
+│  ├─ 06-integration.md
+│  ├─ 07-later-optimizations.md
+│  ├─ 08-future-roadmap.md
+│  └─ 09-image-build.md
 ├─ LICENSE
 ├─ README.en.md
 └─ README.md
@@ -286,10 +292,12 @@ Not implemented yet:
 
 Read these before continuing development:
 
-- [Architecture](docs/architecture.md)
-- [Handoff Roadmap](docs/handoff-roadmap.md)
-- [Prototype Notes](docs/prototypes/stardew-anxi-panel-prototype-notes.md)
-- [Product Prototype HTML](docs/prototypes/stardew-anxi-panel-product-prototype.html)
+- [Project overview](docs/01-project-overview.md)
+- [Backend documentation](docs/02-backend.md)
+- [Frontend documentation](docs/03-frontend.md)
+- [Frontend/backend integration](docs/06-integration.md)
+- [Future roadmap](docs/08-future-roadmap.md)
+- [Image build and deployment](docs/09-image-build.md)
 
 ## Design Direction
 

@@ -2,12 +2,16 @@
 
 .sd-shell {
   display: grid;
-  grid-template-rows: 40px 1fr;
+  grid-template-rows: 40px minmax(0, 1fr);
   grid-template-columns:
     clamp(148px, 10vw, 176px)
     minmax(0, 1fr)
     clamp(280px, 20vw, 360px);
-  min-height: 100vh;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: #000;
 }
 
@@ -142,6 +146,7 @@
   flex-direction: column;
   gap: 0;
   padding: 4px 0;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -253,6 +258,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -662,6 +668,14 @@
   gap: 5px;
 }
 
+.sd-invite-refresh-btn {
+  height: 22px;
+  min-width: 42px;
+  padding: 0 8px;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
 .sd-invite-box {
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid #dcc898;
@@ -789,6 +803,38 @@
   background: #dcc898;
   flex-shrink: 0;
   color: #2c1a0a;
+}
+
+.sd-ov-player-body {
+  padding: 5px 8px;
+  color: #8a7060;
+  font-size: 12px;
+  font-style: italic;
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sd-ov-player-list {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.sd-ov-player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid rgba(74, 158, 48, 0.32);
+  background: rgba(74, 158, 48, 0.08);
+  color: #2c6818;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .sd-ev-list {
@@ -1766,7 +1812,7 @@
 
 @media (max-width: 640px) {
   .sd-shell {
-    grid-template-rows: 40px 36px 1fr;
+    grid-template-rows: 40px 36px minmax(0, 1fr);
     grid-template-columns: 1fr;
     overflow-x: hidden; /* 防止子元素撑出页面宽度 */
   }
@@ -2121,12 +2167,14 @@
   margin-top: 8px;
   border: 1px dashed #dcc898;
   border-radius: 2px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .sd-players-table-header {
   display: grid;
-  grid-template-columns: 2fr 1.5fr 1.5fr 1fr 1fr 1fr;
+  grid-template-columns: 1.35fr 0.75fr 1.5fr 1.2fr 0.9fr 1fr 1fr 0.75fr 0.75fr;
+  min-width: 920px;
   gap: 0;
   background: rgba(220, 200, 152, 0.35);
   border-bottom: 1px solid #dcc898;
@@ -2138,12 +2186,151 @@
   letter-spacing: 0.03em;
 }
 
+.sd-players-table-row {
+  display: grid;
+  grid-template-columns: 1.35fr 0.75fr 1.5fr 1.2fr 0.9fr 1fr 1fr 0.75fr 0.75fr;
+  min-width: 920px;
+  gap: 0;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: #2c1a0a;
+  border-bottom: 1px solid rgba(220, 200, 152, 0.65);
+  align-items: center;
+}
+
+.sd-players-table-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-players-badge-live {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  padding: 1px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #2c6818;
+  background: rgba(74, 158, 48, 0.1);
+  border: 1px solid rgba(74, 158, 48, 0.4);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
 .sd-players-table-empty-row {
   padding: 10px 8px;
   font-size: 13px;
   color: #8a7060;
   font-style: italic;
   text-align: center;
+}
+
+/* 玩家活动流 */
+.sd-player-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sd-player-event {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(220, 200, 152, 0.7);
+  border-radius: 2px;
+  background: rgba(255, 248, 220, 0.35);
+}
+
+.sd-player-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9a8066;
+  box-shadow: 0 0 0 2px rgba(154, 128, 102, 0.12);
+}
+
+.sd-player-event-online .sd-player-event-dot {
+  background: #4a9e30;
+  box-shadow: 0 0 0 2px rgba(74, 158, 48, 0.12);
+}
+
+.sd-player-event-offline .sd-player-event-dot {
+  background: #8a7060;
+  box-shadow: 0 0 0 2px rgba(138, 112, 96, 0.14);
+}
+
+.sd-player-event-main {
+  min-width: 0;
+}
+
+.sd-player-event-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-player-event-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-player-event-type,
+.sd-player-event-host {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  border-radius: 2px;
+  color: #5a3c1d;
+  background: rgba(220, 200, 152, 0.45);
+  border: 1px solid rgba(220, 200, 152, 0.8);
+}
+
+.sd-player-event-host {
+  color: #2c6818;
+  background: rgba(74, 158, 48, 0.1);
+  border-color: rgba(74, 158, 48, 0.35);
+}
+
+.sd-player-event-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #8a7060;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-player-event-time {
+  justify-self: end;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #8a7060;
+}
+
+@media (max-width: 520px) {
+  .sd-player-event {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+
+  .sd-player-event-time {
+    grid-column: 2;
+    justify-self: start;
+    white-space: normal;
+  }
 }
 
 /* 管理操作网格 */
