@@ -76,7 +76,7 @@ func InstallNexusMod(ctx context.Context, dataDir, apiKey string, result NexusMo
 	}
 
 	logNexusInstall(logf, "正在校验并安装 Mod")
-	imported, err := UploadModZip(dataDir, tmpPath)
+	imported, err := uploadModZip(dataDir, tmpPath, uploadModZipOptions{inferNexusPackageOrigin: false})
 	if err != nil {
 		return nil, err
 	}
@@ -166,9 +166,9 @@ func nexusDownloadArchive(ctx context.Context, uri, destPath string) error {
 	}
 	req.Header.Set("User-Agent", nexusUserAgent)
 
-	resp, err := nexusHTTPClient.Do(req)
+	resp, err := nexusArchiveHTTPClient.Do(req)
 	if err != nil {
-		return errors.New("remote archive download failed")
+		return fmt.Errorf("remote archive download failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

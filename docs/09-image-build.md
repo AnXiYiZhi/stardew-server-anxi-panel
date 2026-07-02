@@ -183,3 +183,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 ```powershell
 docker run -d -p 9090:8090 ...
 ```
+# NEXUS-EXT-PACK-1 镜像内扩展资源
+
+- Runtime 镜像现在会复制仓库 `browser-extensions/` 到 `/app/browser-extensions/`。
+- Runtime 镜像构建时会执行 `zip`，把 `/app/browser-extensions/nexus-slow-installer` 预打包为 `/app/browser-extensions/anxi-nexus-installer.zip`。
+- 后端 `GET /api/instances/:id/mods/nexus/extension/download` 会优先返回实例目录已有的 `.local-container/browser-extensions/anxi-nexus-installer.zip`；不存在时优先复制镜像预包；预包不存在或损坏时，才从 `/app/browser-extensions/nexus-slow-installer` 或开发环境仓库路径生成。
+- 发布检查新增注意：正式镜像内应存在 `/app/browser-extensions/anxi-nexus-installer.zip`；兜底源码目录 `/app/browser-extensions/nexus-slow-installer/manifest.json` 也应保留，避免预包损坏时无法恢复。

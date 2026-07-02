@@ -262,6 +262,7 @@ export type NewGameConfig = {
   farmName: string
   farmType: string
   startingCabins: number
+  maxPlayers: number
   cabinLayout: string
   profitMargin: string  // "100"|"75"|"50"|"25"
   petBreed: number      // 0-4 Stardew selectable breed index
@@ -388,6 +389,11 @@ export type InstanceVNCConfig = {
   vncPort: string
 }
 
+export type InstanceRenderingResult = {
+  fps: number
+  output?: string
+}
+
 export type ModSyncKind = 'server_only' | 'client_required' | 'unknown'
 
 export type ModDependency = {
@@ -508,11 +514,6 @@ export type ModSearchResult = {
 export type NexusSettingsStatus = {
   configured: boolean
   last4?: string
-}
-
-export type RemoteModInstallRequest = {
-  url: string
-  mod?: NexusModSearchResult
 }
 
 export type ConsoleCommandDef = {

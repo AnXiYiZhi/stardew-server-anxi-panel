@@ -149,6 +149,7 @@ type NewGameConfig struct {
 	FarmName       string `json:"farmName"`
 	FarmType       string `json:"farmType"`       // standard|riverland|forest|hilltop|wilderness|fourcorners|beach
 	StartingCabins int    `json:"startingCabins"` // 0-7
+	MaxPlayers     int    `json:"maxPlayers"`     // 1-100, total concurrent players
 	CabinLayout    string `json:"cabinLayout"`    // nearby|separate
 	ProfitMargin   string `json:"profitMargin"`   // "100"|"75"|"50"|"25"
 	PetBreed       int    `json:"petBreed"`       // 0-4 (Stardew selectable breed index)

@@ -7,6 +7,7 @@ import type {
   InstallJobResponse,
   InstallOptionsResponse,
   InstanceVNCConfig,
+  InstanceRenderingResult,
   InstanceState,
   InstancesResponse,
   InviteCodeResult,
@@ -21,7 +22,6 @@ import type {
   NexusModSearchResponse,
   NexusModSearchResult,
   NexusSettingsStatus,
-  RemoteModInstallRequest,
   OKResponse,
   PanelUser,
   PrepareResponse,
@@ -253,6 +253,17 @@ export function updateInstanceVNCPort(port: string, instanceId = defaultInstance
   })
 }
 
+export function setInstanceRenderingFPS(fps: number, instanceId = defaultInstanceId) {
+  return request<InstanceRenderingResult>(`/api/instances/${encodeURIComponent(instanceId)}/rendering`, {
+    method: 'POST',
+    body: { fps },
+  })
+}
+
+export function getInstanceRenderingFPS(instanceId = defaultInstanceId) {
+  return request<InstanceRenderingResult>(`/api/instances/${encodeURIComponent(instanceId)}/rendering`)
+}
+
 export function getSaves(instanceId = defaultInstanceId) {
   return request<SavesListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves`)
 }
@@ -431,6 +442,20 @@ export function exportModSyncUpdatePack(instanceId = defaultInstanceId) {
   })
 }
 
+export function downloadNexusInstallerExtension(instanceId = defaultInstanceId) {
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/nexus/extension/download`, {
+    method: 'GET',
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : 'anxi-nexus-installer.zip'
+    return { blob, filename }
+  })
+}
+
 export function searchNexusMods(query: string, page = 1, pageSize = 20, instanceId = defaultInstanceId) {
   const params = new URLSearchParams({ q: query, page: String(page), pageSize: String(pageSize) })
   return request<NexusModSearchResponse>(
@@ -452,29 +477,6 @@ export function installNexusMod(result: NexusModSearchResult, instanceId = defau
       downloadCount: result.downloadCount,
       pictureUrl: result.pictureUrl,
       nexusUrl: result.nexusUrl,
-    },
-  })
-}
-
-export function installRemoteMod(payload: RemoteModInstallRequest, instanceId = defaultInstanceId) {
-  return request<LifecycleJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/mods/remote/install`, {
-    method: 'POST',
-    body: {
-      url: payload.url,
-      mod: payload.mod
-        ? {
-            modId: payload.mod.modId,
-            name: payload.mod.name,
-            summary: payload.mod.summary,
-            author: payload.mod.author,
-            version: payload.mod.version,
-            updatedAt: payload.mod.updatedAt,
-            endorsementCount: payload.mod.endorsementCount,
-            downloadCount: payload.mod.downloadCount,
-            pictureUrl: payload.mod.pictureUrl,
-            nexusUrl: payload.mod.nexusUrl,
-          }
-        : undefined,
     },
   })
 }

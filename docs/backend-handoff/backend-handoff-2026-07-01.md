@@ -1283,3 +1283,128 @@ go test ./...
 ## 下一步注意事项
 - `requiredMods[]` 表达的是 Nexus 页面维护的 Nexus Mod 依赖，不是 SMAPI manifest 里的 `Dependencies`。安装后的真实依赖/版本检查仍走 `GET /mods` 的 `dependencies[]`。
 - 配置了 Nexus API Key 时纯数字 ID 查询仍优先走 v1 REST，该路径目前没有补 `requiredMods[]`；如要数字 ID 也稳定显示前置，可后续给 v1 结果补一次 GraphQL requirement 查询。
+# REMOTE-MOD-DOWNLOAD-1 后端接手记录
+
+## 改了什么
+- 远程 Mod ZIP 下载改用独立 `nexusArchiveHTTPClient`，timeout 从 Nexus API 的 10 秒短超时放宽到 15 分钟。
+- 修复 Ridgeside Village 等大包通过扩展提交 CDN ZIP 后，后端在读取 response body 时 `context deadline exceeded` 的问题。
+
+## 影响文件/接口
+- 接口不变：`POST /api/instances/:id/mods/remote/install`、`POST /api/instances/:id/mods/nexus/install`。
+- 文件：`backend/internal/games/stardew_junimo/nexus.go`、`backend/internal/games/stardew_junimo/nexus_install.go`。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
+## 下一步注意事项
+- 不要把 Nexus API/search 的 10 秒 timeout 整体放宽；只有 ZIP body 下载需要长超时。大包仍受 `maxModZipBytes` 和 job timeout 限制。
+# NEXUS-EXT-BATCH-2 后端接手记录
+
+## 改了什么
+- `UploadModZip` 拆出内部 `uploadModZip` 和 `uploadModZipOptions`。公开 `UploadModZip` 仍用于普通手动上传并保留 Nexus 来源推断；`InstallNexusMod` / `InstallModFromDirectURL` 改用 `inferNexusPackageOrigin=false`，由显式 `NexusModSearchResult` 写入来源。
+- `SaveInstalledNexusMetadata` 增加多 Mod 包 Nexus ID 纠偏：如果导入包中只有一个正数 `Nexus:<id>` 且它与传入 `result.modId` 冲突，以包内声明为准，并清空该文件夹旧的其它 Nexus ID 缓存字段后写入。
+- 已修复当前测试实例的 `.local-container/control/nexus-mods.json`：`RidgesideVillage`、`[CC] Ridgeside Village`、`[FTM] Ridgeside Village` 从 `SpaceCore / 1348` 改回 `Ridgeside Village [Content Patcher component] / 7286`。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/mods.go`
+- `backend/internal/games/stardew_junimo/nexus_metadata.go`
+- `backend/internal/games/stardew_junimo/nexus_install.go`
+- `backend/internal/games/stardew_junimo/remote_install.go`
+- `backend/internal/games/stardew_junimo/mods_test.go`
+- 接口不变：`POST /api/instances/:id/mods/remote/install`、`POST /api/instances/:id/mods/nexus/install`。
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+
+## 下一步注意事项
+- 不要在 web handler 里手工修 Nexus 来源；继续让 `stardew_junimo` driver 写 sidecar。
+- 如果未来支持 Nexus 多文件选择，仍要把正确的 `modId/fileId` 上下文传给扩展 batch，后端纠偏只是防止显示来源被污染的兜底。
+# NEXUS-EXT-PACK-1 后端接手记录
+
+## 改了什么
+- 新增浏览器扩展 ZIP 打包能力：`ExportNexusInstallerExtensionZip(dataDir)` 用于强制生成，`EnsureNexusInstallerExtensionZip(dataDir)` 用于下载接口的“已有合法包优先，缺失/损坏才生成”折中策略。
+- 新增下载接口：`GET /api/instances/:id/mods/nexus/extension/download`。
+- 兜底打包来源为 `browser-extensions/nexus-slow-installer`，运行镜像兜底路径为 `/app/browser-extensions/nexus-slow-installer`。如果实例目录已存在 `.local-container/browser-extensions/anxi-nexus-installer.zip` 且根目录含 `manifest.json/background.js`，下载接口会直接复用该文件；实例目录没有时，会优先复制镜像/仓库中的预打包 `browser-extensions/anxi-nexus-installer.zip`。
+- 输出文件落到实例 `.local-container/browser-extensions/anxi-nexus-installer.zip`，与 `.local-container/smapi` 同级；ZIP 根目录直接包含 `manifest.json`，并额外写入 `安装说明.txt`。
+- Dockerfile runtime 阶段复制 `browser-extensions/` 到 `/app/browser-extensions/`，并在构建期用 `zip` 生成 `/app/browser-extensions/anxi-nexus-installer.zip`。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/nexus_extension_pack.go`
+- `backend/internal/web/instance_handlers.go`
+- `backend/internal/web/lifecycle_handlers.go`
+- `Dockerfile`
+- 接口：`GET /api/instances/:id/mods/nexus/extension/download`
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+- `TestExportNexusInstallerExtensionZip_IncludesManifestAtRoot` 会确认 ZIP 根目录包含 `manifest.json`，避免玩家加载解压目录时找不到扩展。
+- `TestEnsureNexusInstallerExtensionZip_ReusesValidExistingPackage` 覆盖预打包 ZIP 直接复用；`TestEnsureNexusInstallerExtensionZip_RebuildsInvalidExistingPackage` 覆盖坏包兜底重建。
+
+## 下一步注意事项
+- 后续修改扩展目录结构或预打包 ZIP 时，必须保证 `manifest.json` 和 `background.js` 仍在 ZIP 根目录；不要打成 `nexus-slow-installer/manifest.json` 的内层目录格式。
+- 正式镜像若裁剪资源，至少保留 `/app/browser-extensions/anxi-nexus-installer.zip`；建议同时保留 `/app/browser-extensions/nexus-slow-installer` 作为坏包兜底生成来源。
+# NEWGAME-PLAYERLIMIT-1 后端接手记录
+
+## 改了什么
+
+- `registry.NewGameConfig` 新增 `MaxPlayers` / JSON `maxPlayers`，表示最大同时在线人数。
+- `WriteServerSettings` 现在写入 Junimo `server-settings.json` 的 `Server.MaxPlayers`，并显式写入 `CabinStrategy="CabinStack"`、`ExistingCabinBehavior="KeepExisting"`。
+- `startingCabins` 仍只表示初始联机小屋数量，范围保持 `0-7`；`maxPlayers` 合法范围为 `1-100`，且不能小于 `startingCabins + 1`。旧客户端不传 `maxPlayers` 时会在 normalize 阶段默认成 `10`。
+
+## 影响文件/接口
+
+- `backend/internal/games/registry/types.go`
+- `backend/internal/games/stardew_junimo/saves.go`
+- `backend/internal/games/stardew_junimo/saves_test.go`
+- 接口：`POST /api/instances/:id/saves/custom-new-game`
+
+## 如何验证
+
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo -run "WriteServerSettings|ValidateNewGameConfig"`
+- 已执行：`cd frontend; npm.cmd run build`
+
+## 下一步注意事项
+
+- 如果后续要做已有存档的人数上限编辑，也应继续写 Junimo `Server.MaxPlayers`，不要绕过 `stardew_junimo` driver 直接在 web handler 里改 Stardew 文件。
+- 小屋数量和人数上限是两个概念：前者影响新建时初始建筑，后者影响运行期可加入人数。
+# PERF-REVIEW-1 后端接手记录
+
+## 改了什么
+- 存档主 XML 的农场类型兜底读取改为流式扫描 `<whichFarm>`，避免 `readWhichFarmFromMainFile` 对大型主存档整文件读入内存。
+- 备份 ZIP 元数据解析不再为了 `FileSizeBytes` 和 farm type fallback 提前读取主存档 entry；文件大小直接来自 ZIP header，farm type 只在需要时打开 entry 流式扫描。
+- Nexus 元数据补全时，sidecar store 中“某个 Nexus modId 已有展示元数据”的判断预先构建 map，避免多 Mod 列表下重复全量遍历 store。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/saves.go`
+- `backend/internal/games/stardew_junimo/saves_test.go`
+- `backend/internal/games/stardew_junimo/nexus_metadata.go`
+- 接口不变：`GET /api/instances/:id/saves/backups`、`GET /api/instances/:id/mods` 等响应结构不变。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo -run "Save|Backup|WhichFarm"`。
+- 已执行：`cd backend; go test ./internal/web -run "Save|Backup"`。
+- 已执行：`cd backend; go test ./...`。
+
+## 下一步注意事项
+- `whichFarm` 扫描器只寻找主存档 XML 中的 `<whichFarm>...</whichFarm>` 短标签，不解析或修改存档内容。
+- 后续如果继续做备份列表性能优化，优先保持 ZIP entry 流式读取，不要重新把完整主存档 XML 读入内存。
+# VNC-CONTROL-1 后端接手记录
+
+## 改了什么
+- 新增 `stardew_junimo.GetRenderingFPS()` / `SetRenderingFPS()`，从 `server` 容器内调用 JunimoServer `GET /rendering` 和 `POST /rendering?fps=...`；curl POST 请求必须显式带 `Content-Length: 0`，否则 Junimo API 会返回 `411 Length Required`。
+- 新增面板接口 `GET/POST /api/instances/:id/rendering`，管理员专用、服务器 running 时可用；前端刷新时用 GET 恢复真实渲染状态，传 `fps=15` 打开 VNC 显示、`fps=0` 关闭。
+- 接口会读取实例 `.env` 的 `API_PORT` 和 `API_KEY`，在后端注入 Junimo API 鉴权，不把 API key 暴露给浏览器。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/rendering.go`
+- `backend/internal/web/rendering_handlers.go`
+- `backend/internal/web/instance_handlers.go`
+- `GET/POST /api/instances/:id/rendering`
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo -run Rendering`
+- `cd backend; go test ./internal/web -run "Rendering|VNCConfig"`
+- 实例级手工验证：在实例目录执行 `docker compose exec -T server curl -sf -X POST -H "Content-Length: 0" http://localhost:<API_PORT>/rendering?fps=15`，应返回 `success: true`。
+
+## 下一步注意事项
+- 该接口只负责 Junimo 服务端渲染开关；VNC 页面访问仍走宿主 `VNC_PORT`。不要让前端直接访问 Junimo `API_PORT` 或读取 `.env` 里的 `API_KEY`。

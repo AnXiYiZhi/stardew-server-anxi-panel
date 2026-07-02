@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, searchNexusMods, installRemoteMod, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, createJobEventSource, getJob } from '../../../api'
+import { useMemo } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, downloadNexusInstallerExtension, searchNexusMods, installNexusMod, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, createJobEventSource, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { JobLog, ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
@@ -10,6 +11,58 @@ type ModWorkbenchTab = 'download' | 'installed' | 'settings'
 const NEXUS_SEARCH_PAGE_SIZE = 20
 const SMAPI_NEXUS_MOD_ID = 2400
 const SMAPI_NEXUS_URL = `https://www.nexusmods.com/stardewvalley/mods/${SMAPI_NEXUS_MOD_ID}`
+const NEXUS_EXTENSION_PANEL_SOURCE = 'ANXI_PANEL_NEXUS_INSTALL'
+const NEXUS_EXTENSION_SOURCE = 'ANXI_NEXUS_INSTALLER'
+const NEXUS_EXTENSION_INSTANCE_ID = 'stardew'
+const NEXUS_SEARCH_SESSION_KEY = 'stardew-anxi:nexus-search-state:v1'
+const NEXUS_EXTENSION_SESSION_KEY = 'stardew-anxi:nexus-extension-install:v1'
+
+type NexusExtensionConnectionStatus = 'unknown' | 'checking' | 'connected' | 'disconnected'
+
+type NexusExtensionConnectionState = {
+  status: NexusExtensionConnectionStatus
+  message: string
+  panelBaseUrl: string
+}
+
+type NexusExtensionBatchItemStatus = 'pending' | 'opening' | 'capturing' | 'ready' | 'posting' | 'queued' | 'done' | 'failed'
+
+type NexusExtensionBatchItem = {
+  id: string
+  role: 'target' | 'required'
+  modId: number
+  name: string
+  url: string
+  status: NexusExtensionBatchItemStatus
+  message?: string
+  jobId?: string
+}
+
+type NexusExtensionBatch = {
+  id: string
+  status: 'running' | 'done' | 'failed'
+  progress: number
+  items: NexusExtensionBatchItem[]
+}
+
+type NexusExtensionInstallState = {
+  modId: number
+  batchId: string
+  status: 'starting' | 'running' | 'done' | 'failed'
+  progress: number
+  error?: string
+  items?: NexusExtensionBatchItem[]
+}
+
+type NexusSearchSessionState = {
+  query: string
+  results: NexusModSearchResult[] | null
+  page: number
+  total: number
+  hasMore: boolean
+  pageInput: string
+  updatedAt: number
+}
 
 const SYNC_KIND_LABELS: Record<ModSyncKind, string> = {
   server_only: '服务器专用',
@@ -223,21 +276,6 @@ function nexusResultToSearchResult(result: NexusModSearchResult): ModSearchResul
   }
 }
 
-function nexusRequiredModToNexusResult(required: NexusRequiredMod): NexusModSearchResult {
-  return {
-    modId: required.modId,
-    name: required.name,
-    summary: required.notes,
-    endorsementCount: 0,
-    downloadCount: 0,
-    nexusUrl: required.nexusUrl,
-    installed: required.installed,
-    installedEnabled: required.installedEnabled,
-    installedFolderName: required.installedFolderName,
-    installedVersion: required.installedVersion,
-  }
-}
-
 function missingNexusRequiredMods(result: NexusModSearchResult) {
   return (result.requiredMods ?? []).filter((required) => !required.installed || required.installedEnabled === false)
 }
@@ -255,6 +293,47 @@ function nexusRequiredStatusClass(required: NexusRequiredMod) {
   return 'sd-tag-green'
 }
 
+function NexusRequiredModsBadge({
+  requiredMods,
+  missingRequiredMods,
+}: {
+  requiredMods: NexusRequiredMod[]
+  missingRequiredMods: NexusRequiredMod[]
+}) {
+  if (requiredMods.length === 0) return null
+
+  const hasMissing = missingRequiredMods.length > 0
+  const label = hasMissing ? '缺少前置mod' : '前置已满足'
+  const detailTitle = requiredMods
+    .map((required) => `${required.name} (NexusId:${required.modId})`)
+    .join('、')
+
+  return (
+    <details className="sd-mods-dependency-details">
+      <summary
+        className={`sd-tag ${hasMissing ? 'sd-tag-red' : 'sd-tag-green'} sd-mods-dependency-summary`}
+        title={detailTitle}
+      >
+        {label}
+      </summary>
+      <div className="sd-mods-dependency-popover" role="tooltip">
+        <div className="sd-mods-dependency-popover-title">{label}</div>
+        <ul className="sd-mods-dependency-list">
+          {requiredMods.map((required) => (
+            <li className="sd-mods-dependency-list-item" key={`required-${required.modId}`}>
+              <span className="sd-mods-dependency-name">{required.name}</span>
+              <span className="sd-mods-dependency-id">NexusId: {required.modId}</span>
+              <span className={`sd-tag ${nexusRequiredStatusClass(required)} sd-mods-dependency-state`}>
+                {nexusRequiredStatusLabel(required)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
+  )
+}
+
 function nexusExtensionInstallURL(result: NexusModSearchResult): string {
   const fallback = `https://www.nexusmods.com/stardewvalley/mods/${result.modId}`
   try {
@@ -264,6 +343,79 @@ function nexusExtensionInstallURL(result: NexusModSearchResult): string {
     return url.toString()
   } catch {
     return `${fallback}?tab=files&anxi_auto=1`
+  }
+}
+
+function nexusRequiredInstallURL(required: NexusRequiredMod): string {
+  const fallback = `https://www.nexusmods.com/stardewvalley/mods/${required.modId}`
+  try {
+    const url = new URL(required.nexusUrl || fallback)
+    url.searchParams.set('tab', 'files')
+    url.searchParams.set('anxi_auto', '1')
+    return url.toString()
+  } catch {
+    return `${fallback}?tab=files&anxi_auto=1`
+  }
+}
+
+function readNexusSearchSessionState(): NexusSearchSessionState | null {
+  try {
+    const raw = window.sessionStorage.getItem(NEXUS_SEARCH_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<NexusSearchSessionState>
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      query: typeof parsed.query === 'string' ? parsed.query : '',
+      results: Array.isArray(parsed.results) ? parsed.results as NexusModSearchResult[] : null,
+      page: Number.isFinite(parsed.page) ? Number(parsed.page) : 1,
+      total: Number.isFinite(parsed.total) ? Number(parsed.total) : 0,
+      hasMore: Boolean(parsed.hasMore),
+      pageInput: typeof parsed.pageInput === 'string' ? parsed.pageInput : String(parsed.page ?? 1),
+      updatedAt: Number.isFinite(parsed.updatedAt) ? Number(parsed.updatedAt) : Date.now(),
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeNexusSearchSessionState(state: NexusSearchSessionState) {
+  try {
+    window.sessionStorage.setItem(NEXUS_SEARCH_SESSION_KEY, JSON.stringify(state))
+  } catch {
+    // Session restore is best-effort only.
+  }
+}
+
+function readNexusExtensionSessionState(): NexusExtensionInstallState | null {
+  try {
+    const raw = window.sessionStorage.getItem(NEXUS_EXTENSION_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<NexusExtensionInstallState>
+    if (!parsed || typeof parsed !== 'object' || !parsed.modId || !parsed.batchId) return null
+    return {
+      modId: Number(parsed.modId),
+      batchId: String(parsed.batchId),
+      status: parsed.status === 'done' || parsed.status === 'failed' || parsed.status === 'running' || parsed.status === 'starting'
+        ? parsed.status
+        : 'running',
+      progress: Number.isFinite(parsed.progress) ? Number(parsed.progress) : 0,
+      error: typeof parsed.error === 'string' ? parsed.error : undefined,
+      items: Array.isArray(parsed.items) ? parsed.items as NexusExtensionBatchItem[] : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeNexusExtensionSessionState(state: NexusExtensionInstallState | null) {
+  try {
+    if (state) {
+      window.sessionStorage.setItem(NEXUS_EXTENSION_SESSION_KEY, JSON.stringify(state))
+    } else {
+      window.sessionStorage.removeItem(NEXUS_EXTENSION_SESSION_KEY)
+    }
+  } catch {
+    // Session restore is best-effort only.
   }
 }
 
@@ -434,6 +586,8 @@ function modBundleMembers(mods: ModInfo[], target: ModInfo) {
 }
 
 export function ModsPage({ user, instanceState, dashboardData }: StardewPageProps) {
+  const restoredNexusSearchState = readNexusSearchSessionState()
+  const restoredNexusExtensionState = readNexusExtensionSessionState()
   const [activeTab, setActiveTab] = useState<ModWorkbenchTab>('download')
   const [data, setData] = useState<ModsListResult | null>(dashboardData.mods)
   const [loading, setLoading] = useState(false)
@@ -459,14 +613,14 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [enableUpdating, setEnableUpdating] = useState<string | null>(null)
   const [enableError, setEnableError] = useState<string | null>(null)
 
-  const [nexusQuery, setNexusQuery] = useState('')
+  const [nexusQuery, setNexusQuery] = useState(restoredNexusSearchState?.query ?? '')
   const [nexusLoading, setNexusLoading] = useState(false)
   const [nexusError, setNexusError] = useState<string | null>(null)
-  const [nexusResults, setNexusResults] = useState<NexusModSearchResult[] | null>(null)
-  const [nexusPage, setNexusPage] = useState(1)
-  const [nexusTotal, setNexusTotal] = useState(0)
-  const [nexusHasMore, setNexusHasMore] = useState(false)
-  const [nexusPageInput, setNexusPageInput] = useState('1')
+  const [nexusResults, setNexusResults] = useState<NexusModSearchResult[] | null>(restoredNexusSearchState?.results ?? null)
+  const [nexusPage, setNexusPage] = useState(restoredNexusSearchState?.page ?? 1)
+  const [nexusTotal, setNexusTotal] = useState(restoredNexusSearchState?.total ?? 0)
+  const [nexusHasMore, setNexusHasMore] = useState(restoredNexusSearchState?.hasMore ?? false)
+  const [nexusPageInput, setNexusPageInput] = useState(restoredNexusSearchState?.pageInput ?? '1')
   const [nexusSettings, setNexusSettings] = useState<NexusSettingsStatus | null>(null)
   const [nexusSettingsLoading, setNexusSettingsLoading] = useState(false)
   const [showNexusKeyModal, setShowNexusKeyModal] = useState(false)
@@ -474,17 +628,24 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [nexusKeyBusy, setNexusKeyBusy] = useState(false)
   const [nexusKeyError, setNexusKeyError] = useState<string | null>(null)
   const [nexusKeyMessage, setNexusKeyMessage] = useState<string | null>(null)
-  const [nexusInstallingModId] = useState<string | null>(null)
+  const [nexusExtensionPackBusy, setNexusExtensionPackBusy] = useState(false)
+  const [nexusInstallingModId, setNexusInstallingModId] = useState<string | null>(null)
   const [nexusInstallJobId, setNexusInstallJobId] = useState<string | null>(null)
   const [nexusInstallLogs, setNexusInstallLogs] = useState<JobLog[]>([])
   const [nexusInstallError, setNexusInstallError] = useState<string | null>(null)
-  const [showRemoteInstallModal, setShowRemoteInstallModal] = useState(false)
-  const [remoteInstallURL, setRemoteInstallURL] = useState('')
-  const [remoteInstallBusy, setRemoteInstallBusy] = useState(false)
+  const [nexusExtensionInstall, setNexusExtensionInstall] = useState<NexusExtensionInstallState | null>(restoredNexusExtensionState)
+  const [nexusExtensionConnection, setNexusExtensionConnection] = useState<NexusExtensionConnectionState>({
+    status: 'unknown',
+    message: '尚未检测浏览器扩展',
+    panelBaseUrl: window.location.origin,
+  })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const nexusInstallEventSourceRef = useRef<EventSource | null>(null)
-  const defaultNexusLoadedRef = useRef(false)
+  const nexusExtensionPollRef = useRef<number | null>(null)
+  const nexusExtensionTimeoutRef = useRef<number | null>(null)
+  const nexusExtensionInstallRef = useRef<NexusExtensionInstallState | null>(null)
+  const defaultNexusLoadedRef = useRef(Boolean(restoredNexusSearchState?.results))
 
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
@@ -497,22 +658,63 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       : ''
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
 
-  const mods = sortInstalledMods(data?.mods ?? [])
-  const displayedInstalledMods = mods.filter(modHasNexusPresentation)
-  const hiddenLocalMods = mods.filter((mod) => !modHasNexusPresentation(mod))
-  const syncableMods = mods.filter(modCountsForPlayerSync)
+  const {
+    mods,
+    displayedInstalledMods,
+    hiddenLocalMods,
+    parseErrorCount,
+    syncSummary,
+    syncPackagedClientRequired,
+  } = useMemo(() => {
+    const sortedMods = sortInstalledMods(data?.mods ?? [])
+    const displayed: ModInfo[] = []
+    const hidden: ModInfo[] = []
+    let parseErrors = 0
+    let serverOnly = 0
+    let clientRequired = 0
+    let unknown = 0
+    let packagedClientRequired = 0
+
+    for (const mod of sortedMods) {
+      if (modHasNexusPresentation(mod)) {
+        displayed.push(mod)
+      } else {
+        hidden.push(mod)
+      }
+      if (mod.parseError) {
+        parseErrors += 1
+      }
+      if (!modCountsForPlayerSync(mod)) {
+        continue
+      }
+      if (mod.syncKind === 'server_only') {
+        serverOnly += 1
+      } else if (mod.syncKind === 'client_required') {
+        clientRequired += 1
+        if (!mod.builtIn) {
+          packagedClientRequired += 1
+        }
+      } else {
+        unknown += 1
+      }
+    }
+
+    return {
+      mods: sortedMods,
+      displayedInstalledMods: displayed,
+      hiddenLocalMods: hidden,
+      parseErrorCount: parseErrors,
+      syncSummary: { serverOnly, clientRequired, unknown },
+      syncPackagedClientRequired: packagedClientRequired,
+    }
+  }, [data?.mods])
   const restartRequired = data?.restartRequired ?? false
-  const parseErrorCount = mods.filter((m) => m.parseError).length
-  const deleteBundle = confirmDelete ? modBundleMembers(mods, confirmDelete) : []
+  const deleteBundle = useMemo(() => (
+    confirmDelete ? modBundleMembers(mods, confirmDelete) : []
+  ), [confirmDelete, mods])
   const deleteBundleCompanions = confirmDelete
     ? deleteBundle.filter((mod) => mod.folderName !== confirmDelete.folderName)
     : []
-  const syncSummary = {
-    serverOnly: syncableMods.filter((m) => m.syncKind === 'server_only').length,
-    clientRequired: syncableMods.filter((m) => m.syncKind === 'client_required').length,
-    unknown: syncableMods.filter((m) => m.syncKind !== 'server_only' && m.syncKind !== 'client_required').length,
-  }
-  const syncPackagedClientRequired = syncableMods.filter((m) => m.syncKind === 'client_required' && !m.builtIn).length
   const nexusTotalPages = Math.max(1, Math.ceil(nexusTotal / NEXUS_SEARCH_PAGE_SIZE))
 
   const tabItems: Array<{ id: ModWorkbenchTab; label: string; hint: string }> = [
@@ -568,8 +770,407 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return () => {
       nexusInstallEventSourceRef.current?.close()
       nexusInstallEventSourceRef.current = null
+      if (nexusExtensionPollRef.current !== null) {
+        window.clearInterval(nexusExtensionPollRef.current)
+        nexusExtensionPollRef.current = null
+      }
+      if (nexusExtensionTimeoutRef.current !== null) {
+        window.clearTimeout(nexusExtensionTimeoutRef.current)
+        nexusExtensionTimeoutRef.current = null
+      }
     }
   }, [])
+
+  useEffect(() => {
+    nexusExtensionInstallRef.current = nexusExtensionInstall
+    writeNexusExtensionSessionState(nexusExtensionInstall)
+  }, [nexusExtensionInstall])
+
+  useEffect(() => {
+    writeNexusSearchSessionState({
+      query: nexusQuery,
+      results: nexusResults,
+      page: nexusPage,
+      total: nexusTotal,
+      hasMore: nexusHasMore,
+      pageInput: nexusPageInput,
+      updatedAt: Date.now(),
+    })
+  }, [nexusQuery, nexusResults, nexusPage, nexusTotal, nexusHasMore, nexusPageInput])
+
+  function clearNexusExtensionTimers() {
+    if (nexusExtensionPollRef.current !== null) {
+      window.clearInterval(nexusExtensionPollRef.current)
+      nexusExtensionPollRef.current = null
+    }
+    if (nexusExtensionTimeoutRef.current !== null) {
+      window.clearTimeout(nexusExtensionTimeoutRef.current)
+      nexusExtensionTimeoutRef.current = null
+    }
+  }
+
+  function nexusExtensionItemProgress(status: NexusExtensionBatchItemStatus) {
+    if (status === 'done') return 100
+    if (status === 'queued') return 90
+    if (status === 'posting') return 80
+    if (status === 'ready') return 65
+    if (status === 'capturing') return 35
+    if (status === 'opening') return 10
+    if (status === 'failed') return 100
+    return 0
+  }
+
+  function nexusExtensionProgressFromItems(items: NexusExtensionBatchItem[] | undefined, fallback: number) {
+    if (!items || items.length === 0) return Math.max(0, Math.min(90, Math.round(fallback || 0)))
+    const total = items.reduce((sum, item) => sum + nexusExtensionItemProgress(item.status), 0)
+    return Math.max(0, Math.min(90, Math.round(total / items.length)))
+  }
+
+  function nexusExtensionFailedItemMessage(items: NexusExtensionBatchItem[] | undefined) {
+    const failed = items?.find((item) => item.status === 'failed')
+    if (!failed) return '后台页面没有成功提交 ZIP 链接'
+    return `${failed.name || `Mod ${failed.modId}`} 获取或提交失败：${failed.message || '请手动安装'}`
+  }
+
+  function nexusModInstalledMatchInList(modList: ModInfo[] | undefined, modId: number) {
+    if (!modList || modId <= 0) return null
+    const match = modList.find((mod) => (
+      (mod.nexusModId ?? 0) === modId ||
+      (mod.originSource === 'nexus' && (mod.originNexusModId ?? 0) === modId)
+    ))
+    if (!match) return null
+    return {
+      installed: true,
+      installedEnabled: match.enabled,
+      installedFolderName: match.folderName,
+      installedVersion: match.version,
+    }
+  }
+
+  function nexusModInstalledInList(modList: ModInfo[] | undefined, modId: number) {
+    return nexusModInstalledMatchInList(modList, modId) !== null
+  }
+
+  function syncNexusResultsFromInstalledMods(modList: ModInfo[] | undefined) {
+    if (!modList) return
+    setNexusResults((prev) => {
+      if (!prev) return prev
+      return prev.map((result) => {
+        const match = nexusModInstalledMatchInList(modList, result.modId)
+        const requiredMods = result.requiredMods?.map((required) => {
+          const requiredMatch = nexusModInstalledMatchInList(modList, required.modId)
+          return requiredMatch ? { ...required, ...requiredMatch } : required
+        })
+        return {
+          ...result,
+          ...(match ?? {}),
+          ...(requiredMods ? { requiredMods } : {}),
+        }
+      })
+    })
+  }
+
+  async function refreshModsAfterNexusExtensionDone() {
+    const latest = await loadMods()
+    const latestMods = latest?.mods ?? data?.mods ?? []
+    syncNexusResultsFromInstalledMods(latestMods)
+    await dashboardData.refreshMods()
+  }
+
+  async function markInstalledBatchItems(items: NexusExtensionBatchItem[]) {
+    const needsLocalCheck = items.some((item) => !item.jobId && item.status !== 'failed')
+    if (!needsLocalCheck) return items
+    const latest = await loadMods()
+    const latestMods = latest?.mods ?? data?.mods ?? []
+    syncNexusResultsFromInstalledMods(latestMods)
+    return items.map((item) => {
+      if (item.jobId || item.status === 'failed' || !nexusModInstalledInList(latestMods, item.modId)) {
+        return item
+      }
+      return {
+        ...item,
+        status: 'done' as NexusExtensionBatchItemStatus,
+        message: item.message || 'installed locally',
+      }
+    })
+  }
+
+  async function reconcileNexusExtensionJobs(batchId: string, items: NexusExtensionBatchItem[]) {
+    const reconciledItems = await markInstalledBatchItems(items)
+    const jobItems = reconciledItems.filter((item) => item.jobId)
+    const locallyDoneItems = reconciledItems.filter((item) => !item.jobId && item.status === 'done')
+    if (jobItems.length === 0) {
+      const activeInstall = nexusExtensionInstallRef.current
+      if (!activeInstall || activeInstall.batchId !== batchId || activeInstall.status !== 'running') return
+      if (locallyDoneItems.length === reconciledItems.length && reconciledItems.length > 0) {
+        const doneState: NexusExtensionInstallState = {
+          ...activeInstall,
+          status: 'done',
+          progress: 100,
+          error: undefined,
+          items: reconciledItems,
+        }
+        setNexusExtensionInstall(doneState)
+        nexusExtensionInstallRef.current = doneState
+        clearNexusExtensionTimers()
+        void refreshModsAfterNexusExtensionDone()
+        return
+      }
+      const waitingState: NexusExtensionInstallState = {
+        ...activeInstall,
+        status: 'running',
+        progress: Math.max(activeInstall.progress, nexusExtensionProgressFromItems(reconciledItems, activeInstall.progress)),
+        error: undefined,
+        items: reconciledItems,
+      }
+      setNexusExtensionInstall(waitingState)
+      nexusExtensionInstallRef.current = waitingState
+      return
+    }
+
+    const settled = await Promise.allSettled(jobItems.map((item) => getJob(item.jobId as string)))
+    const activeInstall = nexusExtensionInstallRef.current
+    if (!activeInstall || activeInstall.batchId !== batchId || activeInstall.status !== 'running') return
+
+    const failedIndex = settled.findIndex((result) => (
+      result.status === 'fulfilled' &&
+      (result.value.job.status === 'failed' || result.value.job.status === 'canceled')
+    ))
+    if (failedIndex >= 0) {
+      const item = jobItems[failedIndex]
+      const result = settled[failedIndex]
+      const job = result.status === 'fulfilled' ? result.value.job : null
+      const failedState: NexusExtensionInstallState = {
+        ...activeInstall,
+        status: 'failed',
+        progress: 100,
+        error: `${item.name || `Mod ${item.modId}`} 安装失败：${job?.errorMessage || job?.status || '请查看任务日志'}`,
+        items: reconciledItems,
+      }
+      setNexusExtensionInstall(failedState)
+      nexusExtensionInstallRef.current = failedState
+      clearNexusExtensionTimers()
+      return
+    }
+
+    if (jobItems.length + locallyDoneItems.length < reconciledItems.length) {
+      const waitingState: NexusExtensionInstallState = {
+        ...activeInstall,
+        status: 'running',
+        progress: Math.max(activeInstall.progress, nexusExtensionProgressFromItems(reconciledItems, activeInstall.progress)),
+        error: undefined,
+        items: reconciledItems,
+      }
+      setNexusExtensionInstall(waitingState)
+      nexusExtensionInstallRef.current = waitingState
+      return
+    }
+
+    const succeeded = settled.filter((result) => result.status === 'fulfilled' && result.value.job.status === 'succeeded').length
+    const hasPending = settled.some((result) => (
+      result.status === 'rejected' ||
+      (result.status === 'fulfilled' && (result.value.job.status === 'queued' || result.value.job.status === 'running'))
+    ))
+    if (jobItems.length + locallyDoneItems.length === reconciledItems.length && succeeded === jobItems.length && !hasPending) {
+      const doneState: NexusExtensionInstallState = {
+        ...activeInstall,
+        status: 'done',
+        progress: 100,
+        error: undefined,
+        items: reconciledItems,
+      }
+      setNexusExtensionInstall(doneState)
+      nexusExtensionInstallRef.current = doneState
+      clearNexusExtensionTimers()
+      void refreshModsAfterNexusExtensionDone()
+      return
+    }
+
+    const nextProgress = Math.max(activeInstall.progress, Math.round(90 + (succeeded / jobItems.length) * 10))
+    const runningState: NexusExtensionInstallState = {
+      ...activeInstall,
+      status: 'running',
+      progress: Math.max(90, Math.min(99, nextProgress)),
+      error: undefined,
+      items: reconciledItems,
+    }
+    setNexusExtensionInstall(runningState)
+    nexusExtensionInstallRef.current = runningState
+  }
+
+  function updateNexusExtensionBatch(batch: NexusExtensionBatch | null | undefined) {
+    if (!batch) return
+    const activeInstall = nexusExtensionInstallRef.current
+    if (!activeInstall || activeInstall.batchId !== batch.id) return
+    if (activeInstall.status === 'done' || activeInstall.status === 'failed') return
+
+    const nextStatus = batch.status === 'failed'
+      ? 'failed'
+      : 'running'
+    const nextProgress = Math.max(activeInstall.progress, nexusExtensionProgressFromItems(batch.items, batch.progress))
+    const nextState: NexusExtensionInstallState = {
+      ...activeInstall,
+      status: nextStatus,
+      progress: nextProgress,
+      error: nextStatus === 'failed' ? nexusExtensionFailedItemMessage(batch.items) : undefined,
+      items: batch.items,
+    }
+    setNexusExtensionInstall(nextState)
+    nexusExtensionInstallRef.current = nextState
+
+    if (nextStatus === 'failed') {
+      clearNexusExtensionTimers()
+    }
+    if (nextStatus !== 'failed') {
+      void reconcileNexusExtensionJobs(batch.id, batch.items || [])
+    }
+  }
+
+  function requestNexusExtension<T>(type: 'PING' | 'START_BATCH_INSTALL' | 'GET_BATCH_STATUS' | 'CLEAR_STATE', payload: Record<string, unknown>, timeoutMs = 6000): Promise<T> {
+    const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        window.removeEventListener('message', onMessage)
+        reject(new Error('浏览器扩展未响应，请在扩展管理页重新加载 Anxi Nexus Installer 后刷新面板页'))
+      }, timeoutMs)
+
+      function onMessage(event: MessageEvent) {
+        if (event.source !== window || event.origin !== window.location.origin) return
+        const data = event.data as { source?: string; type?: string; requestId?: string; ok?: boolean; error?: string } & T
+        if (data.source !== NEXUS_EXTENSION_SOURCE || data.requestId !== requestId || data.type !== `${type}_RESULT`) return
+        window.clearTimeout(timeout)
+        window.removeEventListener('message', onMessage)
+        if (data.ok) {
+          resolve(data)
+        } else {
+          reject(new Error(data.error || '浏览器扩展执行失败'))
+        }
+      }
+
+      window.addEventListener('message', onMessage)
+      window.postMessage({
+        source: NEXUS_EXTENSION_PANEL_SOURCE,
+        type,
+        requestId,
+        ...payload,
+      }, window.location.origin)
+    })
+  }
+
+  async function testNexusExtensionConnection(showSuccessMessage = true) {
+    const currentPanelBaseUrl = window.location.origin
+    setNexusExtensionConnection({
+      status: 'checking',
+      message: '正在检测浏览器扩展...',
+      panelBaseUrl: currentPanelBaseUrl,
+    })
+    try {
+      const response = await requestNexusExtension<{
+        config?: { panelBaseUrl?: string; instanceId?: string }
+      }>('PING', {
+        panelBaseUrl: currentPanelBaseUrl,
+        instanceId: NEXUS_EXTENSION_INSTANCE_ID,
+      }, 5000)
+      const panelBaseUrl = response.config?.panelBaseUrl || ''
+      const syncedOrigin = panelBaseUrl ? new URL(panelBaseUrl).origin : ''
+      if (syncedOrigin !== currentPanelBaseUrl) {
+        throw new Error(`扩展仍指向旧面板地址：${panelBaseUrl || '未配置'}，当前地址是 ${currentPanelBaseUrl}`)
+      }
+      setNexusExtensionConnection({
+        status: 'connected',
+        message: showSuccessMessage ? `扩展已连通，面板地址已同步为 ${currentPanelBaseUrl}` : `扩展已连通并已同步：${currentPanelBaseUrl}`,
+        panelBaseUrl,
+      })
+      return true
+    } catch (e) {
+      const message = errorMessage(e)
+      setNexusExtensionConnection({
+        status: 'disconnected',
+        message: message === 'unsupported_message'
+          ? '扩展脚本版本过旧，请在浏览器扩展管理页重新加载 Anxi Nexus Installer，然后刷新面板页'
+          : message,
+        panelBaseUrl: currentPanelBaseUrl,
+      })
+      return false
+    }
+  }
+
+  function resetNexusExtensionInstallState() {
+    clearNexusExtensionTimers()
+    nexusInstallEventSourceRef.current?.close()
+    nexusInstallEventSourceRef.current = null
+    const previousBatchId = nexusExtensionInstallRef.current?.batchId
+    setNexusExtensionInstall(null)
+    nexusExtensionInstallRef.current = null
+    setNexusInstallError(null)
+    setNexusInstallJobId(null)
+    setNexusInstallLogs([])
+    writeNexusExtensionSessionState(null)
+    void requestNexusExtension<{ ok?: boolean }>('CLEAR_STATE', previousBatchId ? { batchId: previousBatchId } : {}, 4000)
+      .catch(() => {
+        // The local panel state is already cleared; extension cleanup is best-effort.
+      })
+    void loadMods().then(() => dashboardData.refreshMods())
+  }
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.source !== window || event.origin !== window.location.origin) return
+      const data = event.data as { source?: string; type?: string; batch?: NexusExtensionBatch | null }
+      if (data.source === NEXUS_EXTENSION_SOURCE && data.type === 'BATCH_STATUS_UPDATE') {
+        updateNexusExtensionBatch(data.batch)
+      }
+    }
+
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const restoredInstall = nexusExtensionInstallRef.current
+    if (!restoredInstall || (restoredInstall.status !== 'starting' && restoredInstall.status !== 'running')) return
+    const batchId = restoredInstall.batchId
+
+    void requestNexusExtension<{ batch: NexusExtensionBatch }>('GET_BATCH_STATUS', { batchId }, 5000)
+      .then((response) => updateNexusExtensionBatch(response.batch))
+      .catch(() => {
+        const activeInstall = nexusExtensionInstallRef.current
+        if (activeInstall?.batchId === batchId && activeInstall.status !== 'done' && activeInstall.status !== 'failed') {
+          setNexusExtensionInstall({
+            ...activeInstall,
+            status: 'failed',
+            progress: 100,
+            error: '浏览器扩展未返回进度',
+          })
+          clearNexusExtensionTimers()
+        }
+      })
+
+    nexusExtensionPollRef.current = window.setInterval(() => {
+      void requestNexusExtension<{ batch: NexusExtensionBatch }>('GET_BATCH_STATUS', { batchId }, 4000)
+        .then((response) => updateNexusExtensionBatch(response.batch))
+        .catch(() => {
+          const activeInstall = nexusExtensionInstallRef.current
+          if (activeInstall?.batchId === batchId && activeInstall.status !== 'done' && activeInstall.status !== 'failed') {
+            setNexusExtensionInstall({
+              ...activeInstall,
+              status: 'failed',
+              progress: 100,
+              error: '浏览器扩展未返回进度',
+            })
+            clearNexusExtensionTimers()
+          }
+      })
+    }, 2500)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isAdmin) return
+    const timer = window.setTimeout(() => {
+      void testNexusExtensionConnection(false)
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleUpload() {
     if (uploadFiles.length === 0) return
@@ -697,6 +1298,19 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     }
   }
 
+  async function handleNexusExtensionPackDownload() {
+    setNexusExtensionPackBusy(true)
+    setNexusInstallError(null)
+    try {
+      const { blob, filename } = await downloadNexusInstallerExtension()
+      downloadBlob(blob, filename)
+    } catch (e) {
+      setNexusInstallError(errorMessage(e))
+    } finally {
+      setNexusExtensionPackBusy(false)
+    }
+  }
+
   const handleNexusSearch = useCallback(async (page = 1, queryOverride?: string) => {
     const query = (queryOverride ?? nexusQuery).trim()
     setNexusLoading(true)
@@ -816,7 +1430,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   function installFailureMessage(message: string | null | undefined) {
     const text = message || 'Mod 安装失败'
     if (text.includes('status 403') || text.includes('403')) {
-      return `${text}。非 Premium 账号请粘贴 Nexus 生成的 nxm:// 链接，或浏览器下载得到的 nexus-cdn .zip 临时链接继续安装。`
+      return `${text}。非 Premium 账号请使用普通一键安装，由浏览器扩展获取下载链接。`
     }
     return text
   }
@@ -871,20 +1485,46 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     }
   }
 
-  function handleNexusInstall(result: NexusModSearchResult) {
-    if (nexusInstallingModId !== null || remoteInstallBusy) return
-    setNexusInstallError(null)
-    setNexusInstallLogs([])
-    setNexusInstallJobId(null)
-    nexusInstallEventSourceRef.current?.close()
-    nexusInstallEventSourceRef.current = null
-    window.location.assign(nexusExtensionInstallURL(result))
+  function nexusExtensionInstallTargets(result: NexusModSearchResult) {
+    const byModId = new Map<number, NexusExtensionBatchItem>()
+    for (const required of result.requiredMods ?? []) {
+      if (required.installed) continue
+      byModId.set(required.modId, {
+        id: `required-${required.modId}`,
+        role: 'required',
+        modId: required.modId,
+        name: required.name,
+        url: nexusRequiredInstallURL(required),
+        status: 'pending',
+      })
+    }
+    byModId.set(result.modId, {
+      id: `target-${result.modId}`,
+      role: 'target',
+      modId: result.modId,
+      name: result.name,
+      url: nexusExtensionInstallURL(result),
+      status: 'pending',
+    })
+    return Array.from(byModId.values())
   }
 
-  async function handleRemoteInstall() {
-    const url = remoteInstallURL.trim()
-    if (!url || remoteInstallBusy) return
-    setRemoteInstallBusy(true)
+  async function handleNexusInstall(result: NexusModSearchResult) {
+    if (nexusInstallingModId !== null || nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running') return
+    if (nexusExtensionConnection.status !== 'connected') {
+      const connected = await testNexusExtensionConnection(false)
+      if (!connected) return
+    }
+    const batchId = `nexus_${result.modId}_${Date.now()}`
+    const installState: NexusExtensionInstallState = {
+      modId: result.modId,
+      batchId,
+      status: 'starting',
+      progress: 5,
+    }
+    clearNexusExtensionTimers()
+    setNexusExtensionInstall(installState)
+    nexusExtensionInstallRef.current = installState
     setNexusInstallError(null)
     setNexusInstallLogs([])
     setNexusInstallJobId(null)
@@ -892,13 +1532,61 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     nexusInstallEventSourceRef.current = null
 
     try {
-      const response = await installRemoteMod({ url })
-      setShowRemoteInstallModal(false)
-      setRemoteInstallURL('')
-      subscribeInstallJob(response.jobId, null, () => setRemoteInstallBusy(false))
+      const response = await requestNexusExtension<{ batch: NexusExtensionBatch }>('START_BATCH_INSTALL', {
+        payload: {
+          batchId,
+          targets: nexusExtensionInstallTargets(result),
+        },
+      }, 8000)
+      updateNexusExtensionBatch(response.batch)
+      nexusExtensionPollRef.current = window.setInterval(() => {
+        void requestNexusExtension<{ batch: NexusExtensionBatch }>('GET_BATCH_STATUS', { batchId }, 4000)
+          .then((pollResponse) => updateNexusExtensionBatch(pollResponse.batch))
+          .catch(() => {
+            const activeInstall = nexusExtensionInstallRef.current
+            if (activeInstall?.batchId === batchId && activeInstall.status !== 'done' && activeInstall.status !== 'failed') {
+              setNexusExtensionInstall({ ...activeInstall, status: 'failed', progress: 100, error: '浏览器扩展未返回进度' })
+              clearNexusExtensionTimers()
+            }
+          })
+      }, 2500)
+      nexusExtensionTimeoutRef.current = window.setTimeout(() => {
+        const activeInstall = nexusExtensionInstallRef.current
+        const hasPanelJobs = activeInstall?.items?.some((item) => item.jobId)
+        if (activeInstall?.batchId === batchId && activeInstall.status !== 'done' && !hasPanelJobs) {
+          setNexusExtensionInstall({ ...activeInstall, status: 'failed', progress: 100, error: '后台页面超时未提交 ZIP 链接' })
+          clearNexusExtensionTimers()
+        }
+      }, 210000)
+    } catch (e) {
+      const failedState: NexusExtensionInstallState = {
+        modId: result.modId,
+        batchId,
+        status: 'failed',
+        progress: 100,
+        error: errorMessage(e),
+      }
+      setNexusExtensionInstall(failedState)
+      nexusExtensionInstallRef.current = failedState
+      clearNexusExtensionTimers()
+    }
+  }
+
+  async function handleNexusPremiumInstall(result: NexusModSearchResult) {
+    if (!searchedModCanPremiumInstall(result)) return
+    setNexusInstallingModId(String(result.modId))
+    setNexusInstallError(null)
+    setNexusInstallLogs([])
+    setNexusInstallJobId(null)
+    nexusInstallEventSourceRef.current?.close()
+    nexusInstallEventSourceRef.current = null
+
+    try {
+      const response = await installNexusMod(result)
+      subscribeInstallJob(response.jobId, result, () => setNexusInstallingModId(null))
     } catch (e) {
       setNexusInstallError(errorMessage(e))
-      setRemoteInstallBusy(false)
+      setNexusInstallingModId(null)
     }
   }
 
@@ -973,11 +1661,22 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     URL.revokeObjectURL(url)
   }
 
-  function searchedModCanInstall(result: NexusModSearchResult) {
-    if (!isAdmin || isRunning || result.installed || nexusInstallingModId !== null || remoteInstallBusy) {
+  function searchedModBaseCanInstall(result: NexusModSearchResult) {
+    const extensionBusy = nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running'
+    const extensionFailedSameMod = nexusExtensionInstall?.status === 'failed' && nexusExtensionInstall.modId === result.modId
+    const extensionDoneSameMod = nexusExtensionInstall?.status === 'done' && nexusExtensionInstall.modId === result.modId
+    if (!isAdmin || isRunning || result.installed || nexusInstallingModId !== null || extensionBusy || extensionFailedSameMod || extensionDoneSameMod) {
       return false
     }
     return true
+  }
+
+  function searchedModCanInstall(result: NexusModSearchResult) {
+    return searchedModBaseCanInstall(result) && nexusExtensionConnection.status === 'connected'
+  }
+
+  function searchedModCanPremiumInstall(result: NexusModSearchResult) {
+    return nexusSettings?.configured === true && searchedModBaseCanInstall(result)
   }
 
   function searchedModInstallTitle(result: NexusModSearchResult) {
@@ -985,15 +1684,62 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     if (result.installed) return '该 Mod 已安装'
     if (!isAdmin) return '仅管理员可以安装 Mod'
     if (isRunning) return '服务器运行中，请先停止后安装 Mod'
-    if (nexusInstallingModId !== null || remoteInstallBusy) return '已有安装任务正在进行'
-    return '打开 Nexus 下载页，浏览器扩展会自动获取 ZIP 链接'
+    if (nexusInstallingModId !== null) return '已有安装任务正在进行'
+    if ((nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running') && nexusExtensionInstall.modId !== result.modId) {
+      return '已有扩展安装流程正在进行'
+    }
+    if (nexusExtensionInstall?.status === 'done' && nexusExtensionInstall.modId === result.modId) {
+      return '扩展安装流程已完成'
+    }
+    if (nexusExtensionInstall?.status === 'failed' && nexusExtensionInstall.modId === result.modId) {
+      return nexusExtensionInstall.error || '后台页面没有成功提交 ZIP 链接，请手动安装'
+    }
+    if (nexusExtensionConnection.status !== 'connected') {
+      return nexusExtensionConnection.status === 'checking'
+        ? '正在检测浏览器扩展连通性'
+        : `请先点击“检测扩展”，连通后才能使用普通一键安装。${nexusExtensionConnection.message || ''}`
+    }
+    return '后台打开 Nexus 下载页，浏览器扩展会自动获取 ZIP 链接并提交到面板'
+  }
+
+  function searchedModPremiumInstallTitle(result: NexusModSearchResult) {
+    if (!nexusSettings?.configured) return '需要先配置 Nexus API Key'
+    if (result.installed && result.installedEnabled === false) return '该 Mod 已安装，但当前存档未启用，可到配置模组中启用'
+    if (result.installed) return '该 Mod 已安装'
+    if (!isAdmin) return '仅管理员可以安装 Mod'
+    if (isRunning) return '服务器运行中，请先停止后安装 Mod'
+    if (nexusInstallingModId !== null) return '已有安装任务正在进行'
+    return 'Nexus Premium 用户可用：通过 Nexus API 直接下载安装到服务器'
   }
 
   function searchedModInstallLabel(result: NexusModSearchResult, installing: boolean) {
     if (installing) return '打开中...'
     if (result.installed && result.installedEnabled === false) return '已安装未启用'
     if (result.installed) return '已安装'
+    if (nexusExtensionInstall?.modId === result.modId) {
+      if (nexusExtensionInstall.status === 'failed') return '失败请手动安装'
+      if (nexusExtensionInstall.status === 'done') return '安装完成 100%'
+      return `安装中 ${Math.max(0, Math.min(100, Math.round(nexusExtensionInstall.progress)))}%`
+    }
     return '一键安装'
+  }
+
+  function searchedModPremiumInstallLabel(result: NexusModSearchResult) {
+    if (nexusInstallingModId === String(result.modId)) return '会员安装中...'
+    return 'N站会员专属安装'
+  }
+
+  function nexusExtensionConnectionLabel() {
+    if (nexusExtensionConnection.status === 'checking') return '检测扩展中...'
+    if (nexusExtensionConnection.status === 'connected') return '扩展已连通'
+    return '检测扩展'
+  }
+
+  function nexusExtensionConnectionTitle() {
+    if (nexusExtensionConnection.status === 'connected') {
+      return `浏览器扩展已连通，当前面板地址：${nexusExtensionConnection.panelBaseUrl}`
+    }
+    return nexusExtensionConnection.message || '检测浏览器扩展是否已安装、已重新加载，并自动同步当前面板地址'
   }
 
   return (
@@ -1074,13 +1820,17 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 <div className="sd-mods-panel-actions">
                   {isAdmin && (
                     <>
-                      <span className={`sd-tag ${nexusSettings?.configured ? 'sd-tag-green' : 'sd-tag-gold'}`}>
-                        {nexusSettingsLoading
-                          ? 'Nexus Key 读取中'
-                          : nexusSettings?.configured
-                            ? `Nexus Key 已配置${nexusSettings.last4 ? ` · ${nexusSettings.last4}` : ''}`
-                            : 'Nexus Key 未配置'}
-                      </span>
+                      {nexusSettingsLoading ? (
+                        <span className="sd-tag sd-tag-gold">Nexus Key 读取中</span>
+                      ) : nexusSettings?.configured ? (
+                        <span className="sd-tag sd-tag-green">
+                          {`Nexus Key 已配置${nexusSettings.last4 ? ` · ${nexusSettings.last4}` : ''}`}
+                        </span>
+                      ) : (
+                        <span className="sd-mods-premium-hint">
+                          如果您是尊贵的 Nexus Premium 用户，请填您的 NexusKey
+                        </span>
+                      )}
                       <button
                         className="sd-btn-tan"
                         type="button"
@@ -1090,15 +1840,35 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                       >
                         配置 Nexus Key
                       </button>
+                      <span className="sd-mods-extension-install-hint">
+                        Nexus 普通用户启用一键下载，请先安装浏览器扩展
+                      </span>
                       <button
-                        className="sd-btn-green"
+                        className="sd-btn-tan sd-mods-extension-download"
                         type="button"
-                        onClick={() => { setRemoteInstallURL(''); setShowRemoteInstallModal(true) }}
-                        disabled={isRunning || remoteInstallBusy || nexusInstallingModId !== null}
-                        title={isRunning ? '服务器运行中，请先停止后安装 Mod' : '粘贴 Nexus nxm:// 或 nexus-cdn .zip 临时链接安装'}
+                        onClick={() => void handleNexusExtensionPackDownload()}
+                        disabled={nexusExtensionPackBusy}
+                        title="下载面板打包好的浏览器扩展 ZIP，解压后在浏览器扩展管理页加载"
                       >
-                        {remoteInstallBusy ? '安装中...' : '粘贴链接安装'}
+                        {nexusExtensionPackBusy ? '打包中...' : '下载浏览器扩展'}
                       </button>
+                      <button
+                        className={`sd-btn-tan sd-mods-extension-check sd-mods-extension-check-${nexusExtensionConnection.status}`}
+                        type="button"
+                        onClick={() => void testNexusExtensionConnection(true)}
+                        disabled={nexusExtensionConnection.status === 'checking'}
+                        title={nexusExtensionConnectionTitle()}
+                      >
+                        {nexusExtensionConnectionLabel()}
+                      </button>
+                      {nexusExtensionConnection.status !== 'unknown' ? (
+                        <span
+                          className={`sd-mods-extension-status sd-mods-extension-status-${nexusExtensionConnection.status}`}
+                          title={nexusExtensionConnection.message}
+                        >
+                          {nexusExtensionConnection.message}
+                        </span>
+                      ) : null}
                     </>
                   )}
                   <span className="sd-mods-pending-badge">当前 N站 GraphQL v2 可直接搜索</span>
@@ -1165,61 +1935,63 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     {renderNexusPager('top')}
                     <div className="sd-mods-nexus-list">
                       {nexusResults.map((r) => {
-                        const installing = nexusInstallingModId === String(r.modId)
                         const canInstall = searchedModCanInstall(r)
+                        const canPremiumInstall = searchedModCanPremiumInstall(r)
                         const requiredMods = r.requiredMods ?? []
                         const missingRequiredMods = missingNexusRequiredMods(r)
+                        const extensionState = nexusExtensionInstall?.modId === r.modId ? nexusExtensionInstall : null
+                        const extensionProgress = extensionState ? Math.max(0, Math.min(100, Math.round(extensionState.progress))) : 0
+                        const installButtonClass = [
+                          'sd-btn-green',
+                          extensionState ? 'sd-mods-install-progress-button' : '',
+                          extensionState?.status === 'failed' ? 'sd-mods-install-progress-failed' : '',
+                        ].filter(Boolean).join(' ')
+                        const installButtonStyle = extensionState
+                          ? ({ '--sd-install-progress': `${extensionProgress}%` } as CSSProperties)
+                          : undefined
                         return (
                           <ModSearchResultCard
                             key={r.modId}
                             result={nexusResultToSearchResult(r)}
                             actionSlot={(
                               <button
-                                className="sd-btn-green"
+                                className={installButtonClass}
+                                style={installButtonStyle}
                                 type="button"
                                 disabled={!canInstall}
                                 title={searchedModInstallTitle(r)}
                                 onClick={() => void handleNexusInstall(r)}
                               >
-                                {searchedModInstallLabel(r, installing)}
+                                {searchedModInstallLabel(r, false)}
                               </button>
                             )}
-                            footerSlot={requiredMods.length > 0 ? (
-                              <div className="sd-mods-installed-footer">
-                                {missingRequiredMods.length > 0 ? (
-                                  <span className="sd-tag sd-tag-red sd-mods-dependency-tag" title={`缺少前置：${missingRequiredMods.map((dep) => dep.name).join('、')}`}>
-                                    缺少前置 {missingRequiredMods.length} 个
-                                  </span>
-                                ) : (
-                                  <span className="sd-tag sd-tag-green sd-mods-dependency-tag">
-                                    前置已满足
-                                  </span>
-                                )}
-                                {requiredMods.map((required) => {
-                                  const requiredResult = nexusRequiredModToNexusResult(required)
-                                  const canInstallRequired = searchedModCanInstall(requiredResult)
-                                  return (
-                                    <span className="sd-mods-required-pill" key={`${r.modId}-required-${required.modId}`}>
-                                      <span
-                                        className={`sd-tag ${nexusRequiredStatusClass(required)} sd-mods-dependency-tag`}
-                                        title={required.notes || required.name}
-                                      >
-                                        {nexusRequiredStatusLabel(required)}：{required.name}
-                                      </span>
-                                      {!required.installed ? (
-                                        <button
-                                          className="sd-btn-tan sd-mods-required-install"
-                                          type="button"
-                                          disabled={!canInstallRequired}
-                                          title={searchedModInstallTitle(requiredResult)}
-                                          onClick={() => void handleNexusInstall(requiredResult)}
-                                        >
-                                          安装前置
-                                        </button>
-                                      ) : null}
-                                    </span>
-                                  )
-                                })}
+                            footerSlot={requiredMods.length > 0 || nexusSettings?.configured || extensionState ? (
+                              <div className="sd-mods-search-footer">
+                                <NexusRequiredModsBadge
+                                  requiredMods={requiredMods}
+                                  missingRequiredMods={missingRequiredMods}
+                                />
+                                {nexusSettings?.configured ? (
+                                  <button
+                                    className="sd-btn-tan sd-mods-premium-install"
+                                    type="button"
+                                    disabled={!canPremiumInstall}
+                                    title={searchedModPremiumInstallTitle(r)}
+                                    onClick={() => void handleNexusPremiumInstall(r)}
+                                  >
+                                    {searchedModPremiumInstallLabel(r)}
+                                  </button>
+                                ) : null}
+                                {extensionState ? (
+                                  <button
+                                    className="sd-btn-tan sd-mods-extension-reset"
+                                    type="button"
+                                    title="清除当前浏览器保存的一键安装进度，安装已完成的 Mod 不会被删除"
+                                    onClick={resetNexusExtensionInstallState}
+                                  >
+                                    重置状态
+                                  </button>
+                                ) : null}
                               </div>
                             ) : undefined}
                           />
@@ -1592,61 +2364,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 disabled={uploadBusy}
                 type="button"
                 onClick={closeUpload}
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showRemoteInstallModal && (
-        <div className="sd-mods-modal-overlay" onClick={() => { if (!remoteInstallBusy) setShowRemoteInstallModal(false) }}>
-          <div
-            className="sd-mods-modal-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sd-mods-modal-header">
-              <span className="sd-mods-modal-title">粘贴链接安装</span>
-              <button
-                className="sd-btn-tan"
-                type="button"
-                disabled={remoteInstallBusy}
-                onClick={() => setShowRemoteInstallModal(false)}
-              >
-                关闭
-              </button>
-            </div>
-
-            <p className="sd-mods-upload-hint">
-              支持 Nexus 网站生成的 nxm:// 链接，也支持浏览器下载时得到的 Nexus CDN HTTPS .zip 临时链接。链接只用于当前安装任务，不会写入审计日志。
-            </p>
-
-            <input
-              className="sd-input"
-              type="text"
-              value={remoteInstallURL}
-              autoComplete="off"
-              placeholder="nxm://... 或 https://moddrop.com/...zip "
-              disabled={remoteInstallBusy}
-              onChange={(e) => setRemoteInstallURL(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void handleRemoteInstall() }}
-            />
-
-            <div className="sd-mods-modal-actions">
-              <button
-                className="sd-btn-green"
-                disabled={remoteInstallBusy || !remoteInstallURL.trim()}
-                onClick={handleRemoteInstall}
-                type="button"
-              >
-                {remoteInstallBusy ? '安装中...' : '开始安装'}
-              </button>
-              <button
-                className="sd-btn-tan"
-                disabled={remoteInstallBusy}
-                type="button"
-                onClick={() => setShowRemoteInstallModal(false)}
               >
                 取消
               </button>

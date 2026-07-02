@@ -5,7 +5,10 @@ import {
   stopInstance,
   restartInstance,
   createSaveBackup,
+  getInstanceVNCConfig,
+  getInstanceRenderingFPS,
   getRestartSchedule,
+  setInstanceRenderingFPS,
   updateRestartSchedule,
   getCommands,
   runCommand,
@@ -24,6 +27,15 @@ const defaultRestartSchedule: RestartSchedule = {
   warningMinutes: [10, 5, 1],
   backupBeforeShutdown: true,
   skipIfPlayersOnline: false,
+}
+
+const vncDisplayFPS = 15
+
+function buildVNCControlURL(port: string) {
+  const host = window.location.hostname.includes(':')
+    ? `[${window.location.hostname}]`
+    : window.location.hostname
+  return `http://${host}:${port}/`
 }
 
 function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
@@ -50,6 +62,13 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [scheduleSaved, setScheduleSaved] = useState<string | null>(null)
+  const [vncPort, setVNCPort] = useState('')
+  const [vncPortLoading, setVNCPortLoading] = useState(false)
+  const [vncDisplayBusy, setVNCDisplayBusy] = useState(false)
+  const [vncRenderingEnabled, setVNCRenderingEnabled] = useState(false)
+  const [vncRenderingStatusLoading, setVNCRenderingStatusLoading] = useState(false)
+  const [vncMessage, setVNCMessage] = useState<string | null>(null)
+  const [vncError, setVNCError] = useState<string | null>(null)
 
   // ── 邀请码 ────────────────────────────────────────────────────────────────
   const [copied, setCopied] = useState(false)
@@ -149,6 +168,58 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     }
   }, [state])
 
+  useEffect(() => {
+    if (!isRunning) {
+      setVNCRenderingEnabled(false)
+      setVNCRenderingStatusLoading(false)
+    }
+  }, [isRunning])
+
+  useEffect(() => {
+    if (!isAdmin || !isRunning) return
+    let canceled = false
+    setVNCRenderingStatusLoading(true)
+    getInstanceRenderingFPS()
+      .then((res) => {
+        if (canceled) return
+        setVNCRenderingEnabled(res.fps > 0)
+      })
+      .catch((e) => {
+        if (canceled) return
+        setVNCError(`读取 VNC 显示状态失败：${errorMessage(e)}`)
+      })
+      .finally(() => {
+        if (!canceled) setVNCRenderingStatusLoading(false)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [isAdmin, isRunning])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setVNCPort('')
+      return
+    }
+    let canceled = false
+    setVNCPortLoading(true)
+    getInstanceVNCConfig()
+      .then((res) => {
+        if (canceled) return
+        setVNCPort(res.vncPort)
+      })
+      .catch((e) => {
+        if (canceled) return
+        setVNCError(`读取 VNC 端口失败：${errorMessage(e)}`)
+      })
+      .finally(() => {
+        if (!canceled) setVNCPortLoading(false)
+      })
+    return () => {
+      canceled = true
+    }
+  }, [isAdmin])
+
   // ── 生命周期操作 ──────────────────────────────────────────────────────────
   async function handleStart() {
     setActionBusy(true)
@@ -227,6 +298,40 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     } finally {
       setQuickBackupBusy(false)
     }
+  }
+
+  async function handleToggleVNCDisplay() {
+    if (!isAdmin || !isRunning) return
+    const nextEnabled = !vncRenderingEnabled
+    const nextFPS = nextEnabled ? vncDisplayFPS : 0
+    setVNCDisplayBusy(true)
+    setVNCMessage(null)
+    setVNCError(null)
+    try {
+      const result = await setInstanceRenderingFPS(nextFPS)
+      setVNCRenderingEnabled(nextEnabled)
+      setVNCMessage(
+        nextEnabled
+          ? `VNC 显示已打开（${result.fps} FPS），现在可以跳转到 VNC 控制。`
+          : 'VNC 显示已关闭。'
+      )
+    } catch (e) {
+      setVNCError(errorMessage(e))
+    } finally {
+      setVNCDisplayBusy(false)
+    }
+  }
+
+  function handleOpenVNCControl() {
+    if (!isAdmin || !isRunning || !vncPort) return
+    setVNCError(null)
+    const opened = window.open(buildVNCControlURL(vncPort), '_blank')
+    if (!opened) {
+      setVNCError('浏览器拦截了 VNC 控制窗口，请允许弹出窗口后重试。')
+      return
+    }
+    opened.opener = null
+    setVNCMessage(`已打开 VNC 控制页面（端口 ${vncPort}）。`)
   }
 
   // ── 邀请码复制 ────────────────────────────────────────────────────────────
@@ -691,6 +796,52 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             计划重启
           </button>
           <button
+            className={vncRenderingEnabled ? 'sd-btn-tan' : 'sd-btn-green'}
+            disabled={!isAdmin || !isRunning || vncDisplayBusy || vncRenderingStatusLoading}
+            title={
+              !isAdmin
+                ? '仅管理员可控制 VNC 显示'
+                : !isRunning
+                  ? '服务器运行后才能控制 VNC 显示'
+                  : vncRenderingStatusLoading
+                    ? '正在读取 VNC 显示状态'
+                  : vncRenderingEnabled
+                    ? '关闭 Junimo 服务端画面渲染'
+                    : `通过 Junimo API 开启服务端画面渲染（${vncDisplayFPS} FPS）`
+            }
+            onClick={() => void handleToggleVNCDisplay()}
+          >
+            {vncDisplayBusy
+              ? vncRenderingEnabled
+                ? '关闭中…'
+                : '打开中…'
+              : vncRenderingStatusLoading
+                ? '读取VNC状态…'
+              : vncRenderingEnabled
+                ? '关闭VNC显示'
+                : '打开VNC显示'}
+          </button>
+          {vncRenderingEnabled ? (
+            <button
+              className="sd-btn-tan"
+              disabled={!isAdmin || !isRunning || vncPortLoading || !vncPort}
+              title={
+                !isAdmin
+                  ? '仅管理员可进入 VNC 控制'
+                  : !isRunning
+                    ? '服务器运行后才能进入 VNC 控制'
+                    : vncPortLoading
+                      ? '正在读取 VNC 端口'
+                      : vncPort
+                        ? `打开 ${buildVNCControlURL(vncPort)}`
+                        : '未读取到 VNC 端口'
+              }
+              onClick={handleOpenVNCControl}
+            >
+              {vncPortLoading ? '读取端口…' : '跳转VNC控制'}
+            </button>
+          ) : null}
+          <button
             className="sd-btn-tan"
             disabled
             title="待接入：端口/可见性/密码配置"
@@ -704,8 +855,18 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             {quickBackupMessage}
           </div>
         ) : null}
+        {vncMessage ? (
+          <div className="sd-srv-result" style={{ marginTop: 6 }}>
+            {vncMessage}
+          </div>
+        ) : null}
+        {vncError ? (
+          <div className="sd-ov-error" style={{ marginTop: 6 }}>
+            {vncError}
+          </div>
+        ) : null}
         <div className="sd-srv-hint" style={{ marginTop: 6 }}>
-          备份只会打包当前已经落盘的激活存档，运行中也可用，但不会强制保存尚未写盘的游戏进度。完整备份与恢复请前往
+          备份只会打包当前已经落盘的激活存档，运行中也可用，但不会强制保存尚未写盘的游戏进度。VNC 控制需要先打开显示渲染。完整备份与恢复请前往
           <button
             className="sd-inline-nav"
             style={{ marginLeft: 2 }}

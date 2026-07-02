@@ -139,7 +139,7 @@ func installRemoteArchive(ctx context.Context, dataDir, archiveURL string, resul
 	}
 
 	logNexusInstall(logf, "正在校验并安装 Mod")
-	imported, err := UploadModZip(dataDir, tmpPath)
+	imported, err := uploadModZip(dataDir, tmpPath, uploadModZipOptions{inferNexusPackageOrigin: false})
 	if err != nil {
 		return nil, err
 	}

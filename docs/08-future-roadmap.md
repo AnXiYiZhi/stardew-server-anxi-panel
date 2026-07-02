@@ -268,3 +268,34 @@ Multi Game Mode later
 - `NEXUS-EXT-3` completed：Nexus 搜索结果“一键安装”改为同页跳转到 Nexus 文件页并带 `anxi_auto=1`，由浏览器扩展自动获取临时 ZIP；扩展右下角只保留提交按钮，提交后创建 `mod_remote_install` 任务并跳回 `/instances/:id/jobs?jobId=...`，任务页会直接选中新任务。
 # NEXUS-REQ-1 状态
 - `NEXUS-REQ-1` completed：Nexus 搜索结果现在返回 `requiredMods[]`，前端搜索卡片会提示缺失/未启用的 Nexus 前置，并可对缺失前置走同一套扩展一键安装。浏览器扩展已支持 Nexus “Additional files required” 弹窗自动点击 `Download` 继续。
+# NEXUS-PREMIUM-2 状态
+- `NEXUS-PREMIUM-2` completed：Mods 下载页已移除“粘贴链接安装”人工入口和对应前端冗余 API/type。未配置 Nexus Key 时仅在配置按钮左侧提示 Premium 用户填写 NexusKey；配置后提示消失，并在每个 Nexus 搜索结果卡片底部显示 `N站会员专属安装`，走现有 Nexus API Key/Premium 直连安装。普通 `一键安装` 继续服务非 Premium 用户的浏览器扩展流程。
+# NEXUS-CARD-UI-1 状态
+- `NEXUS-CARD-UI-1` completed：Nexus 搜索结果卡片完成布局整理，主操作按钮固定在统一操作行，会员安装和前置依赖状态进入底部次操作区。前置依赖只显示 `缺少前置mod` / `前置已满足`，点击或悬停后展开具体 Mod 名、NexusId 和状态。
+
+# NEXUS-EXT-BATCH-1 状态
+
+- `NEXUS-EXT-BATCH-1` completed：普通 Nexus 一键安装已改为后台批量扩展流程。面板页保持不跳转，扩展后台同时打开当前 Mod 与未安装前置 Mod 的 Nexus 下载页，自动捕获并提交 ZIP 链接；搜索卡片主按钮显示扩展提交流程百分比，失败时显示 `失败请手动安装`。
+- 补充：ModsPage 会把 Nexus 搜索条件、结果、分页和扩展批量安装状态保存到 `sessionStorage`。用户切到任务日志等页面再返回时，不会重新加载默认热门或清空搜索结果；若扩展批量安装仍在进行，会继续通过 `GET_BATCH_STATUS` 轮询并恢复按钮进度。
+- 补充：扩展在后台标签页处理 `Manual download` / 前置确认 `Download` 时优先读取 `href` 直跳并保留批量参数；Manual 为 JS 按钮时改用页面主世界 `button.click()`，不再把 debugger 坐标点击作为唯一入口，修复后台页卡在“正在进入下载页”的问题。
+- 补充：批量自动提交按 ZIP 来源分流。直接生成链接走同一 message 生命周期继续推进；下载事件捕获链接则回到 content 再发 `SUBMIT_CAPTURED_URL`，避免 MV3 service worker 在 `downloads.onCreated` 长 fetch 时卡在 `posting`。Nexus content script 会用 `sessionStorage` 记住批量安装上下文，跳转丢参后仍会自动触发提交，不再停在人工“提交到面板”按钮。批量任务面板提交优先经已登录面板页 `panel-bridge.js` 同源转发，复用 Cookie/Vite proxy；面板提交请求增加 30 秒超时和失败回写。
+- 补充：远程 ZIP 下载改用独立 15 分钟 archive HTTP client，修复 Ridgeside Village 等大包在 10 秒 Nexus API timeout 下读 body 失败。扩展安装按钮进度也改为继续跟踪面板 job 最终状态：job 创建只到 90%，全部 succeeded 才 100%，任一 failed/canceled 则显示失败。content 直接生成 ZIP 和 downloads 捕获 ZIP 都会统一触发原提交按钮逻辑，background 只做消息丢失兜底。
+- 补充：无 `jobId` 但本地 Mod 列表已按 `nexusModId/originNexusModId` 命中的扩展 item 会被视为完成，修复实际安装成功但前端进度卡住的问题。
+- 补充：扩展提交消息现在显式携带并恢复 `batchId/itemId/autoSubmit`，background 可在捕获/提交阶段把丢失的 batch 上下文补回 capture，确保新任务 `jobId` 写回 batch item；本地已安装匹配只是兜底。
+- 补充：ModsPage 新增扩展安装 `重置状态` 入口，通过 `CLEAR_STATE` 清前端 session 和扩展存储，解决前后端重启后旧 batch 仍卡在浏览器里的问题。
+# NEXUS-EXT-BATCH-2 状态
+
+- `NEXUS-EXT-BATCH-2` completed：扩展批量安装终态收敛已修复，`done/failed` 不再被旧 batch 轮询覆盖；完成后会用最新本地 Mod 列表同步搜索结果缓存，避免返回下载页后已安装项又显示“一键安装”。
+- 补充：Nexus 多 Mod ZIP 来源纠偏已接入。显式 Nexus/远程安装不再先写推断来源；如果批量上下文传错 `result.modId`，后端会优先使用 ZIP 内唯一正数 `UpdateKeys: ["Nexus:<id>"]` 写 sidecar。当前测试实例的 Ridgeside Village 组件来源已从 SpaceCore 1348 修回 Ridgeside 7286。
+# NEXUS-EXT-BATCH-3 状态
+- `NEXUS-EXT-BATCH-3` completed：浏览器扩展批量安装入口已增加目标去重和 batch 幂等保护。相同 Nexus `modId` 只打开一个后台页，同一 `batchId` 重复发送不会重复开页，修复 Ridgeside Village 批量安装时本体页面被打开两次、其中一页成功关闭另一页遗留后台的问题。
+# NEXUS-EXT-CONNECT-1 状态
+- `NEXUS-EXT-CONNECT-1` completed：Mods 下载页在“配置 Nexus Key”旁新增“检测扩展”按钮；扩展会自动识别当前面板 `origin` 并写入 `panelBaseUrl`，连通后普通“一键安装”才开放，未连通时按钮灰色禁用。该握手通过 `GET /api/auth/me` 确认当前页是已登录面板，Premium Key 直连安装不受影响。
+# NEXUS-EXT-PACK-1 状态
+- `NEXUS-EXT-PACK-1` completed：面板已提供浏览器扩展下载引导。Mods 下载页在 `配置 Nexus Key` 右侧提示 Nexus 普通用户安装扩展，并提供 `下载浏览器扩展` 按钮；Docker 构建期会生成 `/app/browser-extensions/anxi-nexus-installer.zip`，后端优先复用实例目录或镜像中的合法预打包文件，缺失或损坏时才从 `browser-extensions/nexus-slow-installer` 兜底生成。
+# NEWGAME-PLAYERLIMIT-1 状态
+- `NEWGAME-PLAYERLIMIT-1` completed：自定义新建存档新增 `maxPlayers` 联机人数上限，前端可在“新建存档”界面把总在线人数调到 7 个初始小屋之外；后端写入 Junimo `Server.MaxPlayers`，并显式使用 `CabinStack` 自动小屋管理。`startingCabins` 保持 0-7，继续只表达初始小屋数量。
+# PERF-REVIEW-1 状态
+- `PERF-REVIEW-1` completed：完成一轮低风险性能/冗余/内存优化。后端存档主 XML 的 farm type 兜底改为流式扫描，备份 ZIP 元数据不再无条件读入完整主存档 entry；Nexus sidecar 展示元数据判断改为按 modId 预建 map。前端 `ModsPage` 合并已安装 Mod 派生数据统计并用 `useMemo` 缓存，减少频繁局部 state 更新下的重复排序/过滤和临时数组分配。
+# VNC-CONTROL-1 状态
+- `VNC-CONTROL-1` completed：服务器控制页新增管理员 VNC 操作入口。页面刷新后会先通过面板后端代理 Junimo `GET /rendering` 恢复真实渲染状态；`打开VNC显示` 通过 `POST /rendering?fps=15` 打开服务端画面渲染，成功后切换为 `关闭VNC显示` 并可通过 `fps=0` 关闭；`跳转VNC控制` 默认隐藏，仅在显示渲染打开后出现，按当前面板 hostname + 自定义 `vncPort` 打开 noVNC 页面。前端不接触 Junimo API key，VNC 密码不回显。

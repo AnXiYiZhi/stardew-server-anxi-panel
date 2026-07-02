@@ -186,6 +186,14 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceInviteCode(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "rendering" {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceRendering(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "config" && parts[2] == "vnc-port" {
 		s.handleInstanceVNCConfig(w, r, instanceID)
 		return
@@ -343,6 +351,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleModNexusInstall(w, r, instanceID)
+		return
+	}
+	// GET /api/instances/:id/mods/nexus/extension/download
+	if len(parts) == 5 && parts[1] == "mods" && parts[2] == "nexus" && parts[3] == "extension" && parts[4] == "download" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModNexusExtensionDownload(w, r, instanceID)
 		return
 	}
 	// POST /api/instances/:id/mods/remote/install
