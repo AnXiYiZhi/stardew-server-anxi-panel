@@ -427,9 +427,17 @@ func ValidateModName(name string) error {
 	return nil
 }
 
+type uploadModZipOptions struct {
+	inferNexusPackageOrigin bool
+}
+
 // UploadModZip validates a mod ZIP upload and extracts it to the mods directory.
 // Returns the list of imported mod folder names.
 func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
+	return uploadModZip(dataDir, zipPath, uploadModZipOptions{inferNexusPackageOrigin: true})
+}
+
+func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry.ModInfo, error) {
 	stat, err := os.Stat(zipPath)
 	if err != nil {
 		return nil, fmt.Errorf("stat upload: %w", err)
@@ -550,8 +558,10 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 		imported = append(imported, finalInfo)
 	}
 
-	if err := SaveInferredNexusPackageOrigin(dataDir, imported); err == nil {
-		imported = ApplyNexusMetadataToMods(dataDir, imported)
+	if opts.inferNexusPackageOrigin {
+		if err := SaveInferredNexusPackageOrigin(dataDir, imported); err == nil {
+			imported = ApplyNexusMetadataToMods(dataDir, imported)
+		}
 	}
 
 	return imported, nil

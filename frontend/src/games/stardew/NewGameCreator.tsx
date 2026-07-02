@@ -49,6 +49,7 @@ function defaultConfig(): NewGameConfig {
     petBreedId: '0',
     petBreed: 0,
     startingCabins: 0,
+    maxPlayers: 10,
     cabinLayout: 'nearby',
     profitMargin: '100',
     moneyMode: 'shared',
@@ -81,7 +82,21 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
   }
 
   function updateCabins(direction: -1 | 1) {
-    set('startingCabins', Math.max(0, Math.min(7, cfg.startingCabins + direction)))
+    setCfg((previous) => {
+      const nextCabins = Math.max(0, Math.min(7, previous.startingCabins + direction))
+      return {
+        ...previous,
+        startingCabins: nextCabins,
+        maxPlayers: Math.max(previous.maxPlayers ?? 10, nextCabins + 1),
+      }
+    })
+  }
+
+  function updateMaxPlayers(direction: -1 | 1) {
+    setCfg((previous) => ({
+      ...previous,
+      maxPlayers: Math.max(previous.startingCabins + 1, Math.min(100, (previous.maxPlayers ?? 10) + direction)),
+    }))
   }
 
   function updateFarm(direction: -1 | 1) {
@@ -117,6 +132,13 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
           <ArrowButton direction="left" label="减少联机小屋" onClick={() => updateCabins(-1)} />
           <strong>{cabinCount}</strong>
           <ArrowButton direction="right" label="增加联机小屋" onClick={() => updateCabins(1)} />
+        </div>
+
+        <div className="ngc-side-label">联机人数上限</div>
+        <div className="ngc-number-control">
+          <ArrowButton direction="left" label="降低联机人数上限" onClick={() => updateMaxPlayers(-1)} />
+          <strong>{cfg.maxPlayers ?? 10}人</strong>
+          <ArrowButton direction="right" label="提高联机人数上限" onClick={() => updateMaxPlayers(1)} />
         </div>
 
         <div className="ngc-side-label">联机小屋布局</div>

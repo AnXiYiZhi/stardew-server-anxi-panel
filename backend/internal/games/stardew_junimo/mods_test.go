@@ -415,6 +415,85 @@ func TestUploadModZip_AllowsSingleNexusWrapperWithMultipleMods(t *testing.T) {
 	}
 }
 
+func TestSaveInstalledNexusMetadata_CorrectsMismatchedBatchResultFromPackageUpdateKey(t *testing.T) {
+	dir := t.TempDir()
+	smapiManifest := `{
+		"Name":"Ridgeside Village [SMAPI component]",
+		"UniqueID":"Rafseazz.RidgesideVillage",
+		"Version":"2.5.17",
+		"Author":"Rafseazz",
+		"UpdateKeys":["Nexus:-1"]
+	}`
+	ccManifest := `{
+		"Name":"Ridgeside Village [Custom Companions component]",
+		"UniqueID":"Rafseazz.RSVCC",
+		"Version":"2.5.17",
+		"Author":"Rafseazz",
+		"UpdateKeys":["Nexus:-1"],
+		"ContentPackFor":{"UniqueID":"PeacefulEnd.CustomCompanions"}
+	}`
+	ftmManifest := `{
+		"Name":"Ridgeside Village [Farm Type Manager component]",
+		"UniqueID":"Rafseazz.RSVFTM",
+		"Version":"2.5.17",
+		"Author":"Rafseazz",
+		"UpdateKeys":["Nexus:-1"],
+		"ContentPackFor":{"UniqueID":"Esca.FarmTypeManager"}
+	}`
+	cpManifest := `{
+		"Name":"Ridgeside Village [Content Patcher component]",
+		"UniqueID":"Rafseazz.RSVCP",
+		"Version":"2.5.17",
+		"Author":"Rafseazz",
+		"UpdateKeys":["Nexus:7286"],
+		"ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}
+	}`
+	zipPath := createModZip(t, map[string]string{
+		"Ridgeside/RidgesideVillage/manifest.json":        smapiManifest,
+		"Ridgeside/[CC] Ridgeside Village/manifest.json":  ccManifest,
+		"Ridgeside/[FTM] Ridgeside Village/manifest.json": ftmManifest,
+		"Ridgeside/[CP] Ridgeside Village/manifest.json":  cpManifest,
+		"Ridgeside/[CP] Ridgeside Village/content.json":   "{}",
+		"Ridgeside/[CC] Ridgeside Village/content.json":   "{}",
+		"Ridgeside/[FTM] Ridgeside Village/content.json":  "{}",
+		"Ridgeside/RidgesideVillage/RidgesideVillage.dll": "dll",
+	})
+
+	imported, err := uploadModZip(dir, zipPath, uploadModZipOptions{inferNexusPackageOrigin: false})
+	if err != nil {
+		t.Fatalf("uploadModZip: %v", err)
+	}
+	if err := SaveInstalledNexusMetadata(dir, imported, NexusModSearchResult{
+		ModID:    1348,
+		Name:     "SpaceCore",
+		Author:   "spacechase0",
+		Version:  "1.28.4",
+		NexusURL: nexusModURL(1348),
+	}); err != nil {
+		t.Fatalf("SaveInstalledNexusMetadata: %v", err)
+	}
+
+	listed, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	listed = ApplyNexusMetadataToMods(dir, listed)
+	byFolder := map[string]registry.ModInfo{}
+	for _, mod := range listed {
+		byFolder[mod.FolderName] = mod
+	}
+	for _, folder := range []string{"RidgesideVillage", "[CC] Ridgeside Village", "[FTM] Ridgeside Village"} {
+		mod := byFolder[folder]
+		if mod.OriginNexusModID != 7286 || mod.OriginModName != "Ridgeside Village [Content Patcher component]" {
+			t.Fatalf("%s origin = id %d name %q, want Ridgeside package 7286",
+				folder, mod.OriginNexusModID, mod.OriginModName)
+		}
+	}
+	if cp := byFolder["[CP] Ridgeside Village"]; cp.NexusModID != 7286 || cp.OriginNexusModID != 0 {
+		t.Fatalf("CP component ids = own %d origin %d, want own 7286 only", cp.NexusModID, cp.OriginNexusModID)
+	}
+}
+
 func TestUploadModZip_RejectsZipSlip(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := createModZip(t, map[string]string{

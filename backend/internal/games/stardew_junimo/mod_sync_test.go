@@ -654,6 +654,111 @@ func TestExportModSyncUpdatePackZip_ExcludesSMAPIBundle(t *testing.T) {
 	}
 }
 
+func TestExportNexusInstallerExtensionZip_IncludesManifestAtRoot(t *testing.T) {
+	dir := t.TempDir()
+	zipPath, err := ExportNexusInstallerExtensionZip(dir)
+	if err != nil {
+		t.Fatalf("ExportNexusInstallerExtensionZip: %v", err)
+	}
+	if want := filepath.Join(dir, ".local-container", "browser-extensions", NexusInstallerExtensionFileName); zipPath != want {
+		t.Fatalf("zipPath = %q, want %q", zipPath, want)
+	}
+
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open exported zip: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+
+	if findZipFile(zr.File, "manifest.json") == nil {
+		t.Fatal("extension zip should contain manifest.json at root")
+	}
+	if findZipFile(zr.File, "background.js") == nil {
+		t.Fatal("extension zip should contain background.js at root")
+	}
+	if findZipFile(zr.File, "安装说明.txt") == nil {
+		t.Fatal("extension zip should contain install instructions")
+	}
+	for _, f := range zr.File {
+		if strings.HasPrefix(f.Name, "nexus-slow-installer/") {
+			t.Fatalf("extension zip should not require selecting an inner folder, found %q", f.Name)
+		}
+	}
+}
+
+func TestEnsureNexusInstallerExtensionZip_ReusesValidExistingPackage(t *testing.T) {
+	dir := t.TempDir()
+	outPath := nexusInstallerExtensionZipPath(dir)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	zf, err := os.Create(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(zf)
+	if err := addZipTextFile(zw, "manifest.json", `{"manifest_version":3,"name":"prebuilt","version":"1.0.0"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := addZipTextFile(zw, "background.js", "const prebuilt = true;\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zf.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath, err := EnsureNexusInstallerExtensionZip(dir)
+	if err != nil {
+		t.Fatalf("EnsureNexusInstallerExtensionZip: %v", err)
+	}
+	if zipPath != outPath {
+		t.Fatalf("zipPath = %q, want %q", zipPath, outPath)
+	}
+
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open exported zip: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	if got := readZipFileString(t, findZipFile(zr.File, "background.js")); got != "const prebuilt = true;\n" {
+		t.Fatalf("existing package should be reused, background.js = %q", got)
+	}
+}
+
+func TestEnsureNexusInstallerExtensionZip_RebuildsInvalidExistingPackage(t *testing.T) {
+	dir := t.TempDir()
+	outPath := nexusInstallerExtensionZipPath(dir)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outPath, []byte("not a zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath, err := EnsureNexusInstallerExtensionZip(dir)
+	if err != nil {
+		t.Fatalf("EnsureNexusInstallerExtensionZip: %v", err)
+	}
+	if zipPath != outPath {
+		t.Fatalf("zipPath = %q, want %q", zipPath, outPath)
+	}
+
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open exported zip: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	if findZipFile(zr.File, "manifest.json") == nil {
+		t.Fatal("rebuilt extension zip should contain manifest.json at root")
+	}
+	if findZipFile(zr.File, "background.js") == nil {
+		t.Fatal("rebuilt extension zip should contain background.js at root")
+	}
+}
+
 func TestPlayerSyncPowerShellScriptsParse(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("PowerShell parser smoke test only runs on Windows")

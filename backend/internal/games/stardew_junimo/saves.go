@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -227,29 +226,63 @@ func fillSaveInfoFromXML(info *registry.SaveInfo, xmlData []byte, farmTypeFallba
 	info.ParseError = "SaveGameInfo 解析失败"
 }
 
-// whichFarmRe matches <whichFarm>...</whichFarm> in the main save file.
-var whichFarmRe = regexp.MustCompile(`<whichFarm>([^<]+)</whichFarm>`)
-
 // readWhichFarmFromMainFile reads whichFarm from the main save file
 // (Saves/<saveName>/<saveName>) which is a full <SaveGame> XML.
 // Returns the farm type label, or empty string if not found.
 func readWhichFarmFromMainFile(saveFolder, saveName string) string {
 	mainFile := filepath.Join(saveFolder, saveName)
-	data, err := os.ReadFile(mainFile)
+	file, err := os.Open(mainFile)
 	if err != nil {
 		return ""
 	}
-	return readWhichFarmFromData(data)
+	defer func() { _ = file.Close() }()
+	return readWhichFarmFromReader(file)
 }
 
 func readWhichFarmFromData(data []byte) string {
-	// Use a limited reader approach: search for whichFarm in the raw data.
-	// The main save file can be very large (10+ MB), but whichFarm appears early.
-	matches := whichFarmRe.FindSubmatch(data)
-	if len(matches) < 2 {
-		return ""
+	return readWhichFarmFromReader(bytes.NewReader(data))
+}
+
+func readWhichFarmFromReader(r io.Reader) string {
+	startTag := []byte("<whichFarm>")
+	endTag := []byte("</whichFarm>")
+	const maxWhichFarmValueBytes = 128
+
+	buf := make([]byte, 0, 32*1024)
+	chunk := make([]byte, 32*1024)
+	for {
+		n, err := r.Read(chunk)
+		if n > 0 {
+			buf = append(buf, chunk[:n]...)
+			for {
+				start := bytes.Index(buf, startTag)
+				if start < 0 {
+					keep := len(startTag) - 1
+					if len(buf) > keep {
+						buf = append(buf[:0], buf[len(buf)-keep:]...)
+					}
+					break
+				}
+
+				valueStart := start + len(startTag)
+				end := bytes.Index(buf[valueStart:], endTag)
+				if end >= 0 {
+					value := strings.TrimSpace(string(buf[valueStart : valueStart+end]))
+					return farmTypeLabelFromString(value)
+				}
+				if len(buf)-valueStart > maxWhichFarmValueBytes {
+					return ""
+				}
+				if start > 0 {
+					buf = append(buf[:0], buf[start:]...)
+				}
+				break
+			}
+		}
+		if err != nil {
+			return ""
+		}
 	}
-	return farmTypeLabelFromString(string(matches[1]))
 }
 
 // seasonFromInt maps Junimo's seasonForSaveGame integer to a season string.
@@ -640,7 +673,10 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 			"SpawnMonstersAtNight": spawnMonsters,
 		},
 		"Server": map[string]any{
-			"SeparateWallets": separateWallets,
+			"MaxPlayers":            cfg.MaxPlayers,
+			"CabinStrategy":         "CabinStack",
+			"SeparateWallets":       separateWallets,
+			"ExistingCabinBehavior": "KeepExisting",
 		},
 	}
 
@@ -676,6 +712,9 @@ func normalizeCfg(cfg *registry.NewGameConfig) {
 	if cfg.MoneyMode == "" {
 		cfg.MoneyMode = "shared"
 	}
+	if cfg.MaxPlayers == 0 {
+		cfg.MaxPlayers = 10
+	}
 	if cfg.Gender == "" {
 		cfg.Gender = "male"
 	}
@@ -704,6 +743,12 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	}
 	if cfg.StartingCabins < 0 || cfg.StartingCabins > 7 {
 		return fmt.Errorf("startingCabins 必须在 0~7 之间")
+	}
+	if cfg.MaxPlayers != 0 && (cfg.MaxPlayers < 1 || cfg.MaxPlayers > 100) {
+		return fmt.Errorf("maxPlayers 必须在 1~100 之间")
+	}
+	if cfg.MaxPlayers != 0 && cfg.MaxPlayers < cfg.StartingCabins+1 {
+		return fmt.Errorf("maxPlayers 不能小于初始小屋数加主玩家")
 	}
 	if cfg.CabinLayout != "nearby" && cfg.CabinLayout != "separate" {
 		return fmt.Errorf("cabinLayout 必须是 nearby 或 separate")
@@ -1679,7 +1724,7 @@ func enrichBackupInfo(backupPath string, backup *BackupInfo) {
 	}
 
 	mainPath := filepath.ToSlash(filepath.Join(saveName, saveName))
-	mainData, mainSize, _ := readZipEntry(zr.File, mainPath)
+	mainSize, _ := zipEntryUncompressedSize(zr.File, mainPath)
 	if mainSize > 0 {
 		backup.FileSizeBytes = int64(mainSize)
 	}
@@ -1703,10 +1748,7 @@ func enrichBackupInfo(backupPath string, backup *BackupInfo) {
 
 	info := registry.SaveInfo{Name: saveName}
 	fillSaveInfoFromXML(&info, xmlData, func() string {
-		if len(mainData) == 0 {
-			return ""
-		}
-		return readWhichFarmFromData(mainData)
+		return readWhichFarmFromZipEntry(zr.File, mainPath)
 	})
 	backup.FarmerName = info.FarmerName
 	backup.FarmName = info.FarmName
@@ -1735,6 +1777,32 @@ func readZipEntry(files []*zip.File, name string) ([]byte, uint64, bool) {
 		return data, f.UncompressedSize64, true
 	}
 	return nil, 0, false
+}
+
+func zipEntryUncompressedSize(files []*zip.File, name string) (uint64, bool) {
+	name = filepath.ToSlash(name)
+	for _, f := range files {
+		if filepath.ToSlash(f.Name) == name {
+			return f.UncompressedSize64, true
+		}
+	}
+	return 0, false
+}
+
+func readWhichFarmFromZipEntry(files []*zip.File, name string) string {
+	name = filepath.ToSlash(name)
+	for _, f := range files {
+		if filepath.ToSlash(f.Name) != name {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return ""
+		}
+		defer func() { _ = rc.Close() }()
+		return readWhichFarmFromReader(rc)
+	}
+	return ""
 }
 
 func validateBackupName(backupName string) error {

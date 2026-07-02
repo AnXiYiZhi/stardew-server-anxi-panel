@@ -54,9 +54,13 @@ RUN apk add --no-cache \
     docker-cli \
     docker-cli-compose \
     ca-certificates \
-    tzdata
+    tzdata \
+    zip
 
 COPY --from=backend-builder /app/panel /app/panel
+COPY browser-extensions/ /app/browser-extensions/
+RUN cd /app/browser-extensions/nexus-slow-installer \
+    && zip -qr /app/browser-extensions/anxi-nexus-installer.zip .
 
 RUN mkdir -p /data
 

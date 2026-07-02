@@ -19,6 +19,7 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 		FarmName:               "TestFarm",
 		FarmType:               "riverland",
 		StartingCabins:         2,
+		MaxPlayers:             16,
 		CabinLayout:            "nearby",
 		ProfitMargin:           "75",
 		PetBreed:               1,
@@ -74,6 +75,12 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	if server["SeparateWallets"] != false { // shared → false
 		t.Errorf("Server.SeparateWallets = %v, want false", server["SeparateWallets"])
 	}
+	if server["MaxPlayers"] != float64(16) {
+		t.Errorf("Server.MaxPlayers = %v, want 16", server["MaxPlayers"])
+	}
+	if server["CabinStrategy"] != "CabinStack" {
+		t.Errorf("Server.CabinStrategy = %v, want CabinStack", server["CabinStrategy"])
+	}
 	if game["CabinLayoutNearby"] != true { // nearby → true
 		t.Errorf("Game.CabinLayoutNearby = %v, want true", game["CabinLayoutNearby"])
 	}
@@ -108,6 +115,22 @@ func TestWriteServerSettings_CabinsOutOfRange(t *testing.T) {
 	cfg := registry.NewGameConfig{FarmName: "Farm", StartingCabins: 8}
 	if err := WriteServerSettings(dir, cfg); err == nil {
 		t.Fatal("expected error for startingCabins=8")
+	}
+}
+
+func TestWriteServerSettings_MaxPlayersRange(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", MaxPlayers: 100}); err != nil {
+		t.Fatalf("maxPlayers=100 should be accepted: %v", err)
+	}
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", MaxPlayers: 101}); err == nil {
+		t.Fatal("expected error for maxPlayers=101")
+	}
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", MaxPlayers: -1}); err == nil {
+		t.Fatal("expected error for maxPlayers=-1")
+	}
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", StartingCabins: 7, MaxPlayers: 7}); err == nil {
+		t.Fatal("expected error when maxPlayers is below startingCabins + host")
 	}
 }
 
@@ -745,6 +768,13 @@ func TestReadSaveInfo_FarmerReadsStringWhichFarm(t *testing.T) {
 	}
 	if info.FarmType != "meadowlands" {
 		t.Errorf("FarmType = %q, want meadowlands (from main save file whichFarm=MeadowlandsFarm)", info.FarmType)
+	}
+}
+
+func TestReadWhichFarmFromReaderAcrossChunkBoundary(t *testing.T) {
+	payload := strings.Repeat("x", 32*1024-5) + "<whichFarm>MeadowlandsFarm</whichFarm>"
+	if got := readWhichFarmFromReader(strings.NewReader(payload)); got != "meadowlands" {
+		t.Fatalf("readWhichFarmFromReader() = %q, want meadowlands", got)
 	}
 }
 

@@ -1174,6 +1174,31 @@ func (s *server) handleModSyncUpdatePackExport(w http.ResponseWriter, r *http.Re
 	http.ServeFile(w, r, zipPath)
 }
 
+// handleModNexusExtensionDownload handles GET /api/instances/:id/mods/nexus/extension/download.
+func (s *server) handleModNexusExtensionDownload(w http.ResponseWriter, r *http.Request, instanceID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+
+	zipPath, err := sj.EnsureNexusInstallerExtensionZip(instance.DataDir)
+	if err != nil {
+		if errors.Is(err, sj.ErrNexusInstallerExtensionNotFound) {
+			writeError(w, http.StatusNotFound, "nexus_extension_not_found", "浏览器扩展包不存在，请检查面板部署是否包含 browser-extensions 目录")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "nexus_extension_export_failed", sanitizeErrorMsg(err, "打包浏览器扩展失败"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", sj.NexusInstallerExtensionFileName))
+	http.ServeFile(w, r, zipPath)
+}
+
 // handleModNexusSearch handles GET /api/instances/:id/mods/nexus/search?q=...
 // Any logged-in user (not just admins) may search and open the Nexus page;
 // this phase is read-only and never proxies a download.

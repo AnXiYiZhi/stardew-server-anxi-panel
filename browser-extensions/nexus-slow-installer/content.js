@@ -16,6 +16,7 @@
   let additionalDownloadClicking = false;
   let lastAdditionalDownloadClickAt = 0;
   const BACKGROUND_PENDING_URL = "__anxi_background_pending_url__";
+  const AUTOMATION_SESSION_KEY = "anxiNexusInstallerAutomation";
 
   function textOf(node) {
     return (node && node.textContent ? node.textContent : "").replace(/\s+/g, " ").trim();
@@ -72,6 +73,90 @@
     return matches[0] || null;
   }
 
+  function elementHref(node) {
+    if (!(node instanceof Element)) {
+      return "";
+    }
+    const link = node instanceof HTMLAnchorElement ? node : node.closest("a[href]");
+    if (link && link.href) {
+      return link.href;
+    }
+    for (const attr of ["href", "data-href", "data-url", "data-download-url"]) {
+      const value = node.getAttribute(attr);
+      if (value) {
+        try {
+          return new URL(value, window.location.href).toString();
+        } catch {
+          // Try the next attribute.
+        }
+      }
+    }
+    return "";
+  }
+
+  function withCurrentAnxiParams(rawUrl) {
+    const target = new URL(rawUrl, window.location.href);
+    const current = new URL(window.location.href);
+    for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item"]) {
+      const value = current.searchParams.get(key);
+      if (value) {
+        target.searchParams.set(key, value);
+      }
+    }
+    const batch = batchParams();
+    if (batch.autoSubmit) {
+      target.searchParams.set("anxi_auto", "1");
+      target.searchParams.set("anxi_auto_submit", "1");
+    }
+    if (batch.batchId) {
+      target.searchParams.set("anxi_batch", batch.batchId);
+    }
+    if (batch.itemId) {
+      target.searchParams.set("anxi_item", batch.itemId);
+    }
+    return target.toString();
+  }
+
+  function navigateWithCurrentAnxiParams(rawUrl) {
+    try {
+      const nextUrl = withCurrentAnxiParams(rawUrl);
+      if (nextUrl && nextUrl !== window.location.href) {
+        window.location.assign(nextUrl);
+        return true;
+      }
+    } catch {
+      // Fall back to event-based clicks when Nexus gives us a JS-only button.
+    }
+    return false;
+  }
+
+  function currentAnxiParams() {
+    const params = {};
+    try {
+      const current = new URL(window.location.href);
+      for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item"]) {
+        const value = current.searchParams.get(key);
+        if (value) {
+          params[key] = value;
+        }
+      }
+    } catch {
+      // No automation params to preserve.
+    }
+    const batch = batchParams();
+    if (batch.autoSubmit) {
+      params.anxi_auto = "1";
+      params.anxi_auto_submit = "1";
+    }
+    if (batch.batchId) {
+      params.anxi_batch = batch.batchId;
+    }
+    if (batch.itemId) {
+      params.anxi_item = batch.itemId;
+    }
+    return params;
+  }
+
   function closestAdditionalFilesDialog(node) {
     let current = node instanceof Element ? node : null;
     for (let depth = 0; current && depth < 10; depth += 1) {
@@ -115,6 +200,10 @@
     lastAdditionalDownloadClickAt = Date.now();
     setStatus("检测到 Nexus 前置确认弹窗，正在点击 Download...");
     try {
+      const href = elementHref(button);
+      if (href && navigateWithCurrentAnxiParams(href)) {
+        return true;
+      }
       await dispatchExtensionClick(button);
     } catch {
       dispatchMouseLikeClick(button);
@@ -270,9 +359,81 @@
   function hasAutoFlag() {
     try {
       const url = new URL(window.location.href);
-      return url.searchParams.get("anxi_auto") === "1";
+      return url.searchParams.get("anxi_auto") === "1" || readAutomationParams().autoSubmit;
     } catch {
-      return false;
+      return readAutomationParams().autoSubmit;
+    }
+  }
+
+  function emptyBatchParams() {
+    return { batchId: "", itemId: "", captureKey: "", autoSubmit: false };
+  }
+
+  function readAutomationParams() {
+    try {
+      const raw = window.sessionStorage.getItem(AUTOMATION_SESSION_KEY);
+      if (!raw) {
+        return emptyBatchParams();
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.expiresAt || Date.now() > Number(parsed.expiresAt)) {
+        window.sessionStorage.removeItem(AUTOMATION_SESSION_KEY);
+        return emptyBatchParams();
+      }
+      if (parsed.modId && pageInfo && Number(parsed.modId) !== Number(pageInfo.modId)) {
+        return emptyBatchParams();
+      }
+      const batchId = String(parsed.batchId || "");
+      const itemId = String(parsed.itemId || "");
+      return {
+        batchId,
+        itemId,
+        captureKey: String(parsed.captureKey || (batchId && itemId ? `${batchId}:${itemId}` : "")),
+        autoSubmit: Boolean(parsed.autoSubmit)
+      };
+    } catch {
+      return emptyBatchParams();
+    }
+  }
+
+  function rememberAutomationParams(params) {
+    if (!params || (!params.autoSubmit && !params.batchId && !params.itemId && !params.captureKey)) {
+      return;
+    }
+    try {
+      const batchId = String(params.batchId || "");
+      const itemId = String(params.itemId || "");
+      window.sessionStorage.setItem(AUTOMATION_SESSION_KEY, JSON.stringify({
+        batchId,
+        itemId,
+        captureKey: String(params.captureKey || (batchId && itemId ? `${batchId}:${itemId}` : "")),
+        autoSubmit: Boolean(params.autoSubmit),
+        modId: pageInfo && pageInfo.modId ? pageInfo.modId : 0,
+        expiresAt: Date.now() + 15 * 60 * 1000
+      }));
+    } catch {
+      // Losing this only falls back to the visible submit button.
+    }
+  }
+
+  function batchParams() {
+    try {
+      const url = new URL(window.location.href);
+      const batchId = url.searchParams.get("anxi_batch") || "";
+      const itemId = url.searchParams.get("anxi_item") || "";
+      const current = {
+        batchId,
+        itemId,
+        captureKey: batchId && itemId ? `${batchId}:${itemId}` : "",
+        autoSubmit: url.searchParams.get("anxi_auto_submit") === "1"
+      };
+      if (current.autoSubmit || current.batchId || current.itemId) {
+        rememberAutomationParams(current);
+        return current;
+      }
+      return readAutomationParams();
+    } catch {
+      return readAutomationParams();
     }
   }
 
@@ -340,12 +501,19 @@
 
   async function beginCapture(clickSlow) {
     hasStarted = true;
+    const batch = batchParams();
+    rememberAutomationParams(batch);
     await chrome.runtime.sendMessage({
       type: "START_CAPTURE",
       payload: {
         ...pageInfo,
         modName: document.querySelector("h1") ? textOf(document.querySelector("h1")) : "",
-        pageUrl: window.location.href
+        pageUrl: window.location.href,
+        batchId: batch.batchId,
+        itemId: batch.itemId,
+        captureKey: batch.captureKey,
+        autoSubmit: batch.autoSubmit,
+        closeTabOnComplete: batch.autoSubmit
       }
     });
 
@@ -385,12 +553,26 @@
   }
 
   async function captureUrl(url) {
+    const batch = batchParams();
+    rememberAutomationParams(batch);
     pendingDownloadUrl = url;
-    const response = await chrome.runtime.sendMessage({ type: "CAPTURE_URL", url });
+    const response = await chrome.runtime.sendMessage({
+      type: "CAPTURE_URL",
+      url,
+      captureKey: batch.captureKey,
+      batchId: batch.batchId,
+      itemId: batch.itemId,
+      autoSubmit: batch.autoSubmit
+    });
     if (!response || !response.ok) {
       throw new Error(response && response.error ? response.error : "保存 ZIP 链接失败");
     }
     setStatus("ZIP 链接已获取");
+    if (batch.autoSubmit) {
+      setStatus("ZIP 链接已获取，后台正在自动提交到面板...");
+      void submitCapturedUrl();
+      return;
+    }
     setSubmitEnabled(true);
   }
 
@@ -398,18 +580,37 @@
     if (!pendingDownloadUrl || submitting) {
       return;
     }
+    const batch = batchParams();
+    rememberAutomationParams(batch);
     submitting = true;
     setSubmitEnabled(false);
     setStatus("正在提交到面板...");
     try {
       const message = pendingDownloadUrl === BACKGROUND_PENDING_URL
-        ? { type: "SUBMIT_CAPTURED_URL" }
-        : { type: "SUBMIT_CAPTURED_URL", url: pendingDownloadUrl };
+        ? {
+            type: "SUBMIT_CAPTURED_URL",
+            captureKey: batch.captureKey,
+            batchId: batch.batchId,
+            itemId: batch.itemId,
+            autoSubmit: batch.autoSubmit
+          }
+        : {
+            type: "SUBMIT_CAPTURED_URL",
+            url: pendingDownloadUrl,
+            captureKey: batch.captureKey,
+            batchId: batch.batchId,
+            itemId: batch.itemId,
+            autoSubmit: batch.autoSubmit
+          };
       const response = await chrome.runtime.sendMessage(message);
       if (!response || !response.ok) {
         throw new Error(response && response.error ? response.error : "提交失败");
       }
       setStatus("已提交，正在返回任务日志...");
+      if (batch.autoSubmit) {
+        setStatus("Submitted to panel.");
+        return;
+      }
       if (response.jobsUrl) {
         window.location.assign(response.jobsUrl);
       }
@@ -543,7 +744,15 @@
         if (button) {
           clicking = true;
           setStatus("已找到 Manual download，正在进入下载页...");
-          dispatchExtensionClick(button)
+          const href = elementHref(button);
+          if (href && navigateWithCurrentAnxiParams(href)) {
+            window.setTimeout(() => {
+              void clickAdditionalFilesDownloadIfPresent();
+            }, 500);
+            resolve(true);
+            return true;
+          }
+          chrome.runtime.sendMessage({ type: "TRIGGER_NEXUS_MANUAL_DOWNLOAD", params: currentAnxiParams() })
             .then(() => {
               window.setTimeout(() => {
                 void clickAdditionalFilesDownloadIfPresent();
@@ -551,11 +760,20 @@
               resolve(true);
             })
             .catch(() => {
-              dispatchMouseLikeClick(button);
-              window.setTimeout(() => {
-                void clickAdditionalFilesDownloadIfPresent();
-              }, 500);
-              resolve(true);
+              dispatchExtensionClick(button)
+                .then(() => {
+                  window.setTimeout(() => {
+                    void clickAdditionalFilesDownloadIfPresent();
+                  }, 500);
+                  resolve(true);
+                })
+                .catch(() => {
+                  dispatchMouseLikeClick(button);
+                  window.setTimeout(() => {
+                    void clickAdditionalFilesDownloadIfPresent();
+                  }, 500);
+                  resolve(true);
+                });
             });
           return true;
         }
@@ -651,7 +869,23 @@
     watchUrlChanges();
     chrome.runtime.onMessage.addListener((message) => {
       if (message && message.type === "CAPTURED_URL_READY") {
+        if (message.captureKey || message.autoSubmit) {
+          const known = batchParams();
+          const captureKey = String(message.captureKey || known.captureKey || "");
+          const parts = captureKey.includes(":") ? captureKey.split(":", 2) : [known.batchId, known.itemId];
+          rememberAutomationParams({
+            batchId: parts[0] || known.batchId,
+            itemId: parts[1] || known.itemId,
+            captureKey,
+            autoSubmit: Boolean(message.autoSubmit || known.autoSubmit)
+          });
+        }
         pendingDownloadUrl = BACKGROUND_PENDING_URL;
+        if (message.autoSubmit || batchParams().autoSubmit) {
+          setStatus("ZIP 链接已获取，正在提交到面板...");
+          void submitCapturedUrl();
+          return;
+        }
         setStatus("ZIP 链接已获取");
         setSubmitEnabled(true);
       }

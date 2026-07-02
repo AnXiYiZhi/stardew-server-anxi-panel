@@ -20,6 +20,7 @@ const (
 	nexusStardewGameID   = "1303"
 	nexusUserAgent       = "stardew-server-anxi-panel/1.0 (+https://github.com/anxi-panel)"
 	nexusRequestTimeout  = 10 * time.Second
+	nexusArchiveTimeout  = 15 * time.Minute
 	nexusDefaultPageSize = 20
 	nexusMaxResults      = nexusDefaultPageSize
 	nexusMaxPageSize     = 50
@@ -34,6 +35,11 @@ var (
 
 // nexusHTTPClient is swappable in tests.
 var nexusHTTPClient = &http.Client{Timeout: nexusRequestTimeout}
+
+// nexusArchiveHTTPClient is used only for ZIP archive bodies. Search/API
+// requests should keep the short timeout above, but large Nexus archives can
+// legitimately take much longer than 10 seconds on throttled downloads.
+var nexusArchiveHTTPClient = &http.Client{Timeout: nexusArchiveTimeout}
 
 // ErrNexusAPIKeyMissing is returned when a key-gated Nexus operation is
 // requested but no Nexus API key is configured in panel settings. Keyword

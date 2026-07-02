@@ -544,3 +544,43 @@ docker run --rm `
 - `ApplyNexusInstalledMatch(dataDir, saveName, results)` 现在会同时给搜索结果本身和 `requiredMods[]` 标记本地安装/当前存档启用状态，判断仍基于已安装 Mod 的 `UpdateKeys: ["Nexus:<id>"]`。
 - GraphQL 只拉取前 10 个 Nexus 前置；外部依赖和自引用会被过滤。已安装后的精确 SMAPI 依赖状态仍由 `GET /mods` 的 `dependencies[]` 负责兜底。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+# REMOTE-MOD-DOWNLOAD-1 远程 ZIP 大包下载超时
+
+- `stardew_junimo.nexusDownloadArchive()` 不再复用 Nexus 搜索/API 的 10 秒 `nexusHTTPClient`，改用专门的 `nexusArchiveHTTPClient`，ZIP body 读取 timeout 放宽到 15 分钟。
+- 触发场景：Ridgeside Village 等大体积 Nexus CDN ZIP 在免费慢速下载链路下，10 秒内无法读完整个 body，旧实现会在 `io.Copy` 阶段报 `context deadline exceeded (Client.Timeout or context cancellation while reading body)`。
+- 搜索、GraphQL、v1 REST 等接口仍使用 10 秒短超时；只有实际 ZIP 下载走长超时，并继续受 `maxModZipBytes` 200 MB 限制和 job 30 分钟总 timeout 约束。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web` 通过。
+# NEXUS-EXT-BATCH-2 Nexus 来源纠偏
+
+- `UploadModZip` 拆出内部 `uploadModZip(..., uploadModZipOptions)`；普通上传继续推断 Nexus 包来源，`mod_nexus_install` 与 `mod_remote_install` 这类已经携带显式 Nexus 上下文的安装不再先写推断来源，避免临时 ZIP 安装过程中产生错误 sidecar。
+- `SaveInstalledNexusMetadata` 会在多 Mod 包中检查导入 Mod 自己的正数 `Nexus:<id>`。如果浏览器扩展批量上下文传来的 `result.modId` 与包内唯一正数 Nexus ID 冲突，会以包内声明为准纠偏，并清除旧的其它 Nexus ID 缓存字段后再写入。
+- 修复场景：Ridgeside Village 包内 `[CP] Ridgeside Village` 声明 `Nexus:7286`，其它组件为 `Nexus:-1`；即使批量流程误把 result 带成 SpaceCore `1348`，三个 Ridgeside 组件也会归到 Ridgeside CP 组件，而不是显示“随 SpaceCore 安装”。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
+# NEXUS-EXT-PACK-1 浏览器扩展下载包
+
+- 新增 `GET /api/instances/:id/mods/nexus/extension/download`，任意已登录用户可下载面板打包好的 Nexus 普通用户浏览器扩展 ZIP。
+- 后端下载接口采用折中策略：优先复用实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 中已有且合法的预打包 ZIP；如果文件不存在，会优先复制镜像/仓库中的预打包 `browser-extensions/anxi-nexus-installer.zip`；如果预包也不存在或损坏，才从 `browser-extensions/nexus-slow-installer` 源码重新生成。
+- ZIP 根目录直接包含 `manifest.json`、`background.js`、`content.js` 等扩展文件，并额外写入 `安装说明.txt`。玩家解压后选择该解压目录即可加载扩展，不需要再进入内层文件夹。
+- Docker 镜像运行层会复制 `browser-extensions/` 到 `/app/browser-extensions/`，并在构建时生成 `/app/browser-extensions/anxi-nexus-installer.zip`；正式部署优先使用这个预打包 ZIP。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+# NEWGAME-PLAYERLIMIT-1 自定义新存档联机人数上限
+
+- `NewGameConfig` 新增 `maxPlayers`，表示最大同时在线人数，合法范围 `1-100`；未传或为 `0` 时保持兼容并在写配置前默认成 `10`。
+- `WriteServerSettings` 现在把人数上限写入 Junimo 官方 `server-settings.json` 的 `Server.MaxPlayers`，并显式写入 `Server.CabinStrategy="CabinStack"` 与 `Server.ExistingCabinBehavior="KeepExisting"`，继续让 Junimo 的自动小屋管理处理超过原版初始小屋上限的玩家加入。
+- `startingCabins` 仍表示新建存档时地图上初始联机小屋数量，范围保持 `0-7`；`maxPlayers` 不能小于 `startingCabins + 1`，避免小屋数和总人数上限矛盾。
+- 涉及文件：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/saves.go`、`backend/internal/games/stardew_junimo/saves_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "WriteServerSettings|ValidateNewGameConfig"` 通过；`cd frontend; npm.cmd run build` 通过。
+# PERF-REVIEW-1 存档与 Nexus 元数据轻量优化
+
+- 存档信息解析的 `whichFarm` 兜底读取改为流式扫描：`readWhichFarmFromMainFile` 不再 `os.ReadFile` 整个主存档 XML，备份 ZIP 元数据解析也不再为了文件大小提前读取主存档 entry。
+- `enrichBackupInfo` 只通过 ZIP header 读取主存档未压缩大小；只有 `SaveGameInfo` 需要农场类型兜底时才打开主存档 entry 流式扫描 `<whichFarm>`。
+- Nexus 已安装元数据补全把“同 Nexus modId 是否已有展示元数据”的判断预先构建为 map，避免每个 Mod 都遍历 sidecar store。
+- 接口契约不变，主要收益是降低大存档/多 Mod 列表下的内存峰值和重复扫描。
+- 验证：`cd backend; go test ./...`。
+# VNC-CONTROL-1 服务器页 VNC 显示代理
+
+- 新增 `GET/POST /api/instances/:id/rendering`，管理员专用且要求实例为 `running`。`GET` 返回当前 Junimo 服务端渲染 `{ "fps": number }`，用于前端刷新后恢复 VNC 按钮真实状态；`POST` 请求体 `{ "fps": number }`，当前前端用 `15` 打开 VNC 显示、`0` 关闭。
+- Web 层只做鉴权、状态校准和路由，实际调用在 `stardew_junimo.GetRenderingFPS()` / `SetRenderingFPS()` 内完成：通过 `docker compose exec server curl http://localhost:<API_PORT>/rendering` 访问 JunimoServer REST API；POST 空 body 需要显式 `Content-Length: 0`。
+- `API_PORT` / `API_KEY` 从实例 `.env` 读取，后端在容器内注入 `Authorization: Bearer ...`；浏览器前端不会接触 Junimo API key。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run Rendering`、`cd backend; go test ./internal/web -run "Rendering|VNCConfig"`。

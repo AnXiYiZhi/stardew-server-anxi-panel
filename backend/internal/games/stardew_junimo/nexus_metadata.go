@@ -102,6 +102,7 @@ func saveNexusMetadataStore(dataDir string, store nexusMetadataStore) error {
 }
 
 func SaveInstalledNexusMetadata(dataDir string, imported []registry.ModInfo, result NexusModSearchResult) error {
+	result = normalizeInstalledNexusResult(imported, result)
 	if result.ModID <= 0 || len(imported) == 0 {
 		return nil
 	}
@@ -126,9 +127,44 @@ func SaveInstalledNexusMetadata(dataDir string, imported []registry.ModInfo, res
 		if mod.NexusModID > 0 && mod.NexusModID != result.ModID && len(imported) > 1 {
 			continue
 		}
-		store.Mods[mod.FolderName] = mergeNexusMetadata(store.Mods[mod.FolderName], entry)
+		existing := store.Mods[mod.FolderName]
+		if existing.ModID > 0 && existing.ModID != result.ModID {
+			existing = nexusInstalledMetadata{}
+		}
+		store.Mods[mod.FolderName] = mergeNexusMetadata(existing, entry)
 	}
 	return saveNexusMetadataStore(dataDir, store)
+}
+
+func normalizeInstalledNexusResult(imported []registry.ModInfo, result NexusModSearchResult) NexusModSearchResult {
+	if len(imported) <= 1 || result.ModID <= 0 {
+		return result
+	}
+	var candidate registry.ModInfo
+	for _, mod := range imported {
+		if mod.NexusModID <= 0 || mod.NexusModID == result.ModID {
+			continue
+		}
+		if candidate.NexusModID > 0 && candidate.NexusModID != mod.NexusModID {
+			return result
+		}
+		candidate = mod
+	}
+	if candidate.NexusModID <= 0 {
+		return result
+	}
+	corrected := result
+	corrected.ModID = candidate.NexusModID
+	corrected.Name = strings.TrimSpace(candidate.Name)
+	corrected.Author = strings.TrimSpace(candidate.Author)
+	corrected.Version = strings.TrimSpace(candidate.Version)
+	corrected.Summary = ""
+	corrected.UpdatedAt = ""
+	corrected.EndorsementCount = 0
+	corrected.DownloadCount = 0
+	corrected.PictureURL = ""
+	corrected.NexusURL = nexusModURL(candidate.NexusModID)
+	return corrected
 }
 
 func mergeNexusMetadata(existing, incoming nexusInstalledMetadata) nexusInstalledMetadata {
@@ -268,8 +304,9 @@ func EnrichNexusMetadataForMods(ctx context.Context, dataDir string, mods []regi
 		return mods
 	}
 	modsByNexusID := map[int][]registry.ModInfo{}
+	displayMetadataByModID := nexusDisplayMetadataByModID(store)
 	for _, mod := range mods {
-		if mod.NexusModID <= 0 || hasNexusMetadataForMod(store, mod) {
+		if mod.NexusModID <= 0 || hasNexusMetadataForMod(store, displayMetadataByModID, mod) {
 			continue
 		}
 		modsByNexusID[mod.NexusModID] = append(modsByNexusID[mod.NexusModID], mod)
@@ -303,19 +340,24 @@ func EnrichNexusMetadataForMods(ctx context.Context, dataDir string, mods []regi
 	return ApplyNexusMetadataToMods(dataDir, mods)
 }
 
-func hasNexusMetadataForMod(store nexusMetadataStore, mod registry.ModInfo) bool {
+func nexusDisplayMetadataByModID(store nexusMetadataStore) map[int]bool {
+	byModID := map[int]bool{}
+	for _, entry := range store.Mods {
+		if entry.ModID > 0 && entryHasDisplayMetadata(entry) {
+			byModID[entry.ModID] = true
+		}
+	}
+	return byModID
+}
+
+func hasNexusMetadataForMod(store nexusMetadataStore, displayMetadataByModID map[int]bool, mod registry.ModInfo) bool {
 	if entry, ok := store.Mods[mod.FolderName]; ok && entryHasDisplayMetadata(entry) {
 		return true
 	}
 	if mod.NexusModID <= 0 {
 		return false
 	}
-	for _, entry := range store.Mods {
-		if entry.ModID == mod.NexusModID && entryHasDisplayMetadata(entry) {
-			return true
-		}
-	}
-	return false
+	return displayMetadataByModID[mod.NexusModID]
 }
 
 func entryHasDisplayMetadata(entry nexusInstalledMetadata) bool {

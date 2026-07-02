@@ -359,3 +359,59 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 前端主 Mod 与前置 Mod 的扩展安装入口都统一追加 `tab=files&anxi_auto=1`；扩展捕获 ZIP 后仍调用 `POST /api/instances/:id/mods/remote/install`。
 - Nexus 页面出现 “Additional files required” 弹窗时，扩展应自动点击弹窗内 `Download` 按钮继续，不要求用户手点。该动作只发生在扩展已开始捕获的上下文里。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`、`cd frontend; npm.cmd run build`、扩展脚本 `node --check`。
+# NEXUS-PREMIUM-2 联调约定
+
+- 前端页面不再暴露“粘贴链接安装”按钮；`POST /api/instances/:id/mods/remote/install` 仍作为浏览器扩展提交 Nexus CDN 临时 ZIP 的接口保留。
+- `GET /api/settings/nexus` 返回 `configured=false` 时，前端仅提示 Premium 用户配置 NexusKey，不展示会员安装按钮。
+- `configured=true` 时，Nexus 搜索结果卡片显示 `N站会员专属安装`，点击后调用 `POST /api/instances/:id/mods/nexus/install`，请求体仍使用当前 `NexusModSearchResult` 字段映射。
+- 普通 `一键安装` 不调用后端安装接口，继续跳转 Nexus 文件页并交给扩展获取 ZIP 链接。
+
+# NEXUS-EXT-BATCH-1 联调约定
+
+- 普通 Nexus `一键安装` 现在由面板页向浏览器扩展发送 `START_BATCH_INSTALL` 消息，不直接跳转 Nexus，也不直接调用后端安装接口。
+- 扩展后台为每个目标打开非激活标签页，URL 会附加 `anxi_auto=1&anxi_auto_submit=1&anxi_batch=<batchId>&anxi_item=<itemId>`；Nexus content script 会把这些参数短期写入 `sessionStorage`，后续 Nexus 跳转即使丢失查询参数，捕获 ZIP 后仍自动提交到现有 `POST /api/instances/:id/mods/remote/install`。批量任务优先让面板页 `panel-bridge.js` 代表扩展发起同源请求，复用面板登录态与 Vite proxy；桥接不可达时才回退扩展 background 直连面板地址。
+- 面板按钮百分比只表示“扩展 ZIP 提交流程”的完成度，不表示后端解压导入 job 的完成度。后端真实安装结果仍以 `mod_remote_install` 任务日志为准。
+- 进度折算：扩展阶段单项 `opening=10`、`capturing=35`、`ready=65`、`posting=80`、`queued=90`；批量进度取所有目标平均值。`queued` 只表示面板已创建 job，前端拿到 `items[].jobId` 后继续轮询 `GET /api/jobs/:id`，所有 job `succeeded` 才显示 100%，任一 job `failed/canceled` 时整体失败并显示对应 Mod 名。没有任何 jobId 时才适用扩展提交超时。
+- 兜底：若 item 没有 `jobId`，但刷新 `GET /api/instances/:id/mods` 后可通过 `nexusModId` 或 `originNexusModId` 匹配到该 Nexus modId，前端可视为该 item 已完成。
+- `CAPTURE_URL` / `SUBMIT_CAPTURED_URL` 消息必须携带 `batchId/itemId/autoSubmit` 或可解析的 `captureKey=batch:item`。background 会用这些字段恢复 capture 的 batch 上下文，并在 `POST /mods/remote/install` 返回后把 `jobId` 写入对应 item。
+- 面板可发送 `CLEAR_STATE` 给扩展桥接，用于清理扩展 batch/capture 和前端卡住的 session 状态；该操作只清浏览器进度，不删除已经安装到服务器的 Mod。
+- 浏览器扩展新增 `panel-bridge.js`，只在当前页面 origin 等于扩展配置的 `panelBaseUrl` origin 时响应面板消息；正式部署时仍需保证同浏览器已登录面板管理员和 Nexus。
+# NEXUS-EXT-BATCH-2 联调契约
+
+- 扩展 batch 的 `done/failed` 在前端视为终态；后续 `GET_BATCH_STATUS` 只能用于补充仍在进行中的 batch，不得覆盖已经完成或失败的按钮状态。
+- 搜索页安装进度的最终成功仍以面板 job 为准：所有关联 `mod_remote_install` job 均为 `succeeded` 才显示 100% 完成；任一 job `failed/canceled` 显示失败。没有 `jobId` 的异常情况才允许用 `GET /mods` 的 `nexusModId/originNexusModId` 命中做兜底。
+- Nexus 多 Mod ZIP 的来源以 `stardew_junimo.SaveInstalledNexusMetadata` 写入的 sidecar 为准；如果扩展 batch 上下文和 ZIP 内唯一正数 `UpdateKeys: ["Nexus:<id>"]` 冲突，后端会用 ZIP 内声明纠偏。
+- Ridgeside Village 验证点：`RidgesideVillage`、`[CC] Ridgeside Village`、`[FTM] Ridgeside Village` 应显示随 `Ridgeside Village [Content Patcher component] / Nexus:7286` 安装，不应显示随 `SpaceCore / Nexus:1348` 安装。
+# NEXUS-EXT-BATCH-3 联调约定
+
+- 浏览器扩展批量安装入口 `START_BATCH_INSTALL` 现在是幂等的：同一个 `batchId` 重复发送只返回已有 batch，不再重复打开 Nexus 后台页。
+- 扩展会按 Nexus `modId` 对目标去重；缺少 `modId` 时按移除 `anxi_auto/anxi_auto_submit/anxi_batch/anxi_item` 后的 URL 去重。同一 Mod 同时作为前置和本体出现时，本体目标优先。
+- 验证 Ridgeside Village 这类“本体 + 多前置”时，预期每个 Nexus modId 只打开一个后台下载页；如果仍看到重复页，先检查面板传入 targets 是否缺失 modId 或 URL 是否指向不同 Nexus Mod。
+# NEXUS-EXT-CONNECT-1 联调约定
+
+- 面板下载页通过 `window.postMessage` 向浏览器扩展桥接脚本发送 `PING`，payload 至少包含 `{ panelBaseUrl: window.location.origin, instanceId: "stardew" }`。
+- `panel-bridge.js` 收到 `PING` 时允许绕过旧的 `panelBaseUrl` origin 校验，但会先调用当前面板页的 `GET /api/auth/me` 并要求返回已登录用户；验证成功后再向 background 发送 `REGISTER_PANEL`，由 background 保存 `panelBaseUrl` 和 `instanceId`。
+- `PING` 成功返回 `{ ok: true, config, state }` 后，前端显示“扩展已连通”，普通 Nexus “一键安装”开放。失败时按钮保持可重试，普通一键安装禁用；Premium Key 直连安装不依赖扩展连通。
+- 除 `PING` 外，`START_BATCH_INSTALL`、`GET_BATCH_STATUS`、`CLEAR_STATE` 和后台页提交仍要求当前页面 origin 与扩展配置的 `panelBaseUrl` 匹配，避免普通网页改写扩展安装目标。
+- 联调时浏览器扩展更新后需要在扩展管理页重新加载，并刷新面板页，让新的 `panel-bridge.js` 注入当前标签页。
+# NEXUS-EXT-PACK-1 联调契约
+
+- 新增扩展包下载接口：`GET /api/instances/:id/mods/nexus/extension/download`。
+- 请求要求已登录面板；响应为 `application/zip`，`Content-Disposition` 文件名固定为 `anxi-nexus-installer.zip`。
+- 后端优先返回实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 中已有且合法的预打包 ZIP；不存在时优先复制镜像/仓库中的 `browser-extensions/anxi-nexus-installer.zip`，预包不存在或损坏时才兜底生成。合法性至少要求 ZIP 根目录包含 `manifest.json` 和 `background.js`。
+- 前端 `下载浏览器扩展` 按钮只负责下载扩展包；安装后仍需用户在 Chrome/Edge 扩展管理页加载解压目录，再回面板点击 `检测扩展` 完成地址同步与连通校验。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`；`cd frontend; npm.cmd run build`。
+# NEWGAME-PLAYERLIMIT-1 自定义新存档人数上限联调契约
+
+- `POST /api/instances/:id/saves/custom-new-game` 新增可选字段 `maxPlayers`，表示最大同时在线人数，合法范围 `1-100`；旧客户端不传时后端默认写入 `10`。
+- `startingCabins` 仍表示初始联机小屋数量，范围 `0-7`；`maxPlayers` 是总在线人数上限，必须大于等于 `startingCabins + 1`。
+- 后端会写 `server-settings.json`：`Server.MaxPlayers=<maxPlayers>`、`Server.CabinStrategy="CabinStack"`、`Server.ExistingCabinBehavior="KeepExisting"`，以及原有 `Game.StartingCabins` / `Game.CabinLayoutNearby`。
+- 联调验证建议：新建存档时分别提交 `startingCabins=7,maxPlayers=8` 与 `startingCabins=7,maxPlayers=16`，确认配置文件写入正确；提交 `startingCabins=7,maxPlayers=7` 应返回结构化错误。
+# VNC-CONTROL-1 联调契约
+
+- `GET /api/instances/:id/rendering`：管理员专用，服务器必须处于 `running`。用于刷新页面后读取 Junimo 当前服务端渲染状态，成功返回 `{ "fps": 0|N, "output"?: string }`。
+- `POST /api/instances/:id/rendering`：管理员专用，服务器必须处于 `running`。请求体 `{ "fps": 15 }` 用于打开 Junimo 服务端渲染，`{ "fps": 0 }` 用于关闭，成功返回 `{ "fps": number, "output"?: string }`。
+- 该接口由面板后端在 `server` 容器内代理 JunimoServer `POST /rendering?fps=...`，并按实例 `.env` 注入 `API_KEY`；代理请求会显式带 `Content-Length: 0` 以满足 Junimo 空 POST 要求。前端不得直连 Junimo `API_PORT`，也不得读取 API key。
+- 服务器页 `跳转VNC控制` 通过已有 `GET /api/instances/:id/config/vnc-port` 读取宿主 VNC/noVNC 端口，并打开 `http://<当前面板hostname>:<vncPort>/`。VNC 密码只在 noVNC 页面中输入，不在面板前端回显。
+- 联调顺序建议：启动服务器 -> 点击 `打开VNC显示` -> 点击 `跳转VNC控制` -> noVNC 页面出现后输入安装时配置的 VNC 密码。
+- 验证：`go test ./internal/games/stardew_junimo -run Rendering`、`go test ./internal/web -run "Rendering|VNCConfig"`、`npm.cmd run build`。

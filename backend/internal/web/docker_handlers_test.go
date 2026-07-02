@@ -346,6 +346,89 @@ func TestInstanceVNCConfigUpdatesPort(t *testing.T) {
 	}
 }
 
+func TestInstanceRenderingOpenCallsJunimoAPI(t *testing.T) {
+	var capturedArgs []string
+	fake := fakeDockerService{
+		psResult: paneldocker.ComposePsResult{
+			Services: []paneldocker.ComposeService{{Name: "demo-server-1", Service: "server", State: "running", Status: "Up 1 minute"}},
+		},
+		execFunc: func(_ context.Context, _, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
+			if service != "server" || stdinData != "" {
+				t.Fatalf("unexpected exec service=%q stdin=%q", service, stdinData)
+			}
+			capturedArgs = append([]string(nil), args...)
+			return paneldocker.CommandResult{Stdout: `{"fps":15}`, ExitCode: 0}, nil
+		},
+		instanceState: storage.InstanceStateRunning,
+	}
+	handler, dataDir, closeStore := newDockerTestHandler(t, fake)
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatalf("create instance dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, ".env"), []byte("API_PORT=18080\nAPI_KEY=secret\n"), 0o600); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	response, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/rendering", map[string]int{
+		"fps": 15,
+	}, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("rendering returned %d: %s", response.Code, response.Body.String())
+	}
+	wantURL := "http://localhost:18080/rendering?fps=15"
+	if len(capturedArgs) == 0 || capturedArgs[len(capturedArgs)-1] != wantURL {
+		t.Fatalf("rendering call args = %#v, want URL %q", capturedArgs, wantURL)
+	}
+}
+
+func TestInstanceRenderingStatusCallsJunimoAPI(t *testing.T) {
+	var capturedArgs []string
+	fake := fakeDockerService{
+		psResult: paneldocker.ComposePsResult{
+			Services: []paneldocker.ComposeService{{Name: "demo-server-1", Service: "server", State: "running", Status: "Up 1 minute"}},
+		},
+		execFunc: func(_ context.Context, _, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
+			if service != "server" || stdinData != "" {
+				t.Fatalf("unexpected exec service=%q stdin=%q", service, stdinData)
+			}
+			capturedArgs = append([]string(nil), args...)
+			return paneldocker.CommandResult{Stdout: `{"fps":15}`, ExitCode: 0}, nil
+		},
+		instanceState: storage.InstanceStateRunning,
+	}
+	handler, dataDir, closeStore := newDockerTestHandler(t, fake)
+	defer closeStore()
+	adminCookie := setupDockerAdmin(t, handler)
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatalf("create instance dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, ".env"), []byte("API_PORT=18080\nAPI_KEY=secret\n"), 0o600); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/rendering", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("rendering status returned %d: %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		FPS int `json:"fps"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode rendering status response: %v", err)
+	}
+	if body.FPS != 15 {
+		t.Fatalf("fps = %d, want 15", body.FPS)
+	}
+	wantURL := "http://localhost:18080/rendering"
+	if len(capturedArgs) == 0 || capturedArgs[len(capturedArgs)-1] != wantURL {
+		t.Fatalf("rendering status call args = %#v, want URL %q", capturedArgs, wantURL)
+	}
+}
+
 func setupDockerAdmin(t *testing.T, handler http.Handler) *http.Cookie {
 	t.Helper()
 	response, cookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
