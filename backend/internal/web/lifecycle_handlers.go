@@ -926,6 +926,11 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 
 	// Mod writes are only allowed while the game server is stopped, so the next
 	// normal start will load the new files without requiring an extra restart.
+	if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+		if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
+			s.logger.Warn("mark imported mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+		}
+	}
 	if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
 		s.logger.Warn("clear mods restart required", "instance", instanceID, "error", err)
 	}
@@ -1055,17 +1060,21 @@ func (s *server) handleModEnabledUpdate(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusConflict, "active_save_required", "active save is required")
 		return
 	}
-	mod, err := sj.SetModEnabledForSave(instance.DataDir, saveName, modID, req.Enabled)
+	mods, err := sj.SetModEnabledForSaveCascade(instance.DataDir, saveName, modID, req.Enabled)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "mod_enable_failed", sanitizeErrorMsg(err, "update mod enabled state failed"))
 		return
 	}
-	s.logger.Info("mod enabled state updated", "instance", instanceID, "save", saveName, "mod", mod.FolderName, "enabled", req.Enabled)
-	s.auditLog(r, &actor, "mod_enabled_update", "instance", instanceID, auditMetadata("saveName", saveName, "modId", mod.FolderName, "enabled", strconv.FormatBool(req.Enabled)))
+	affectedNames := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		affectedNames = append(affectedNames, mod.FolderName)
+	}
+	s.logger.Info("mod enabled state updated", "instance", instanceID, "save", saveName, "mod", modID, "enabled", req.Enabled, "affected", strings.Join(affectedNames, ","))
+	s.auditLog(r, &actor, "mod_enabled_update", "instance", instanceID, auditMetadata("saveName", saveName, "modId", modID, "enabled", strconv.FormatBool(req.Enabled), "affected", strings.Join(affectedNames, ",")))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"folderName": mod.FolderName,
-		"enabled":    req.Enabled,
-		"saveName":   saveName,
+		"mods":     mods,
+		"enabled":  req.Enabled,
+		"saveName": saveName,
 	})
 }
 
@@ -1089,22 +1098,24 @@ func (s *server) handleModSyncClassificationUpdate(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "invalid_sync_kind", "鏃犳晥鐨勫悓姝ュ垎绫?")
 		return
 	}
-	folder, err := sj.ResolveModFolder(instance.DataDir, modID)
+	mods, err := sj.SetModSyncClassificationCascade(instance.DataDir, modID, req.SyncKind, req.SyncNote)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "mod_not_found", "Mod 涓嶅瓨鍦?")
+		if strings.Contains(err.Error(), "does not exist") {
+			writeError(w, http.StatusNotFound, "mod_not_found", "Mod 涓嶅瓨鍦?")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "sync_classification_failed", sanitizeErrorMsg(err, "鏇存柊鍚屾鍒嗙被澶辫触"))
 		return
 	}
-	if err := sj.SetModSyncClassification(instance.DataDir, folder, req.SyncKind, req.SyncNote); err != nil {
-		writeError(w, http.StatusInternalServerError, "sync_classification_failed", sanitizeErrorMsg(err, "鏇存柊鍚屾鍒嗙被澶辫触"))
-		return
+	affectedNames := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		affectedNames = append(affectedNames, mod.FolderName)
 	}
-	s.logger.Info("mod sync classification updated", "instance", instanceID, "mod", folder, "syncKind", req.SyncKind)
-	s.auditLog(r, &actor, "mod_sync_classification_update", "instance", instanceID, auditMetadata("modId", folder, "syncKind", req.SyncKind))
-	syncKind, syncNote := sj.GetModSyncClassification(instance.DataDir, folder)
-	writeJSON(w, http.StatusOK, map[string]string{
-		"folderName": folder,
-		"syncKind":   syncKind,
-		"syncNote":   syncNote,
+	s.logger.Info("mod sync classification updated", "instance", instanceID, "mod", modID, "syncKind", req.SyncKind, "affected", strings.Join(affectedNames, ","))
+	s.auditLog(r, &actor, "mod_sync_classification_update", "instance", instanceID, auditMetadata("modId", modID, "syncKind", req.SyncKind, "affected", strings.Join(affectedNames, ",")))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mods":     mods,
+		"syncKind": req.SyncKind,
 	})
 }
 
@@ -1191,7 +1202,8 @@ func (s *server) handleModNexusSearch(w http.ResponseWriter, r *http.Request, in
 		s.writeNexusError(w, err)
 		return
 	}
-	result.Results = sj.ApplyNexusInstalledMatch(instance.DataDir, result.Results)
+	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
+	result.Results = sj.ApplyNexusInstalledMatch(instance.DataDir, activeSaveName, result.Results)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -1283,7 +1295,7 @@ func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, i
 		CreatedBy:  actor.User.ID,
 		Timeout:    30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
-			_, _ = job.Info(ctx, fmt.Sprintf("鍑嗗瀹夎 Nexus Mod #%d", result.ModID))
+			_, _ = job.Info(ctx, fmt.Sprintf("准备安装 Nexus Mod #%d", result.ModID))
 			imported, err := sj.InstallNexusMod(ctx, instance.DataDir, apiKey, result, func(message string) {
 				_, _ = job.Info(ctx, message)
 			})
@@ -1295,7 +1307,15 @@ func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, i
 				if name == "" {
 					name = mod.FolderName
 				}
-				_, _ = job.Info(ctx, fmt.Sprintf("宸插鍏ワ細%s", name))
+				_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
+			}
+			if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+				if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
+					s.logger.Warn("mark nexus installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+					_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
+				} else {
+					_, _ = job.Info(ctx, fmt.Sprintf("已为当前存档启用：%s", activeSaveName))
+				}
 			}
 			_ = sj.ClearModsRestartRequired(instance.DataDir)
 			return nil
@@ -1350,7 +1370,7 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		CreatedBy:  actor.User.ID,
 		Timeout:    30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
-			_, _ = job.Info(ctx, "鍑嗗浠庤繙绋嬮摼鎺ュ畨瑁?Mod")
+			_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
 			imported, err := sj.InstallRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, func(message string) {
 				_, _ = job.Info(ctx, message)
 			})
@@ -1362,7 +1382,15 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 				if name == "" {
 					name = mod.FolderName
 				}
-				_, _ = job.Info(ctx, fmt.Sprintf("宸插鍏ワ細%s", name))
+				_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
+			}
+			if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+				if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
+					s.logger.Warn("mark remote installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+					_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
+				} else {
+					_, _ = job.Info(ctx, fmt.Sprintf("已为当前存档启用：%s", activeSaveName))
+				}
 			}
 			_ = sj.ClearModsRestartRequired(instance.DataDir)
 			return nil

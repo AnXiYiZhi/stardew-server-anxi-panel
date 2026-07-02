@@ -1,4 +1,20 @@
-﻿# PLAYERSYNC-PACK-10 后端接手记录
+﻿# DOC-CLEANUP-1 Mod 搜索契约修正
+
+## 改了什么
+- `docs/02-backend.md` 已从旧 `MODSEARCH-1` 统一搜索描述修正为当前事实：`/api/instances/:id/mods/search` 与 `/api/instances/:id/mods/search/install` 已撤回，当前在线搜索/安装入口是 Nexus-only 的 `/mods/nexus/search` 与 `/mods/nexus/install`。
+- 该改动只是文档契约清理；本次没有修改后端路由或 driver 逻辑。
+
+## 影响文件/接口
+- 修改文档：`docs/02-backend.md`、`docs/06-integration.md`、`docs/07-later-optimizations.md`、`docs/08-future-roadmap.md`
+- 当前接口事实：Nexus 搜索/安装保留；旧统一搜索接口不注册。
+
+## 如何验证
+- 执行：`cd backend; go test ./...`
+
+## 下一步注意事项
+- 后续如重新做多来源搜索，需要重新设计 API、排序和去重策略，不要按旧 `mod_search.go` 或 `/mods/search` 契约继续开发。
+
+# PLAYERSYNC-PACK-10 后端接手记录
 
 ## 改了什么
 - 玩家同步包安装脚本彻底禁用终端进度渲染。
@@ -324,6 +340,25 @@
 
 ## 下一步注意事项
 - 这里只兼容 UTF-8 BOM，不支持非 UTF-8 编码 manifest；如果后续遇到 GBK/UTF-16 manifest，应先确认 SMAPI 是否接受，再决定是否转换。
+
+# MODZIP-4 manifest JSONC 兼容
+
+## 改了什么
+- `readModInfo` 改为通过 `decodeModManifest` 解析 `manifest.json`：标准 JSON 成功时直接返回，失败时再尝试清理 JSONC 风格内容。
+- 新增清理逻辑：删除字符串外的 `//` 行注释、`/* ... */` 块注释，并移除对象/数组尾随逗号。字符串里的 `https://example.com` 仍会保留。
+- 真实触发场景：浏览器扩展已成功把 Nexus 临时 CDN ZIP 交给 `mod_remote_install`，但 `SpaceCore` 的 `manifest.json` 含注释，之前会报 `invalid character '/' looking for beginning of object key string`。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/mods.go`
+- `backend/internal/games/stardew_junimo/mods_test.go`
+- 复用接口：上传、Nexus 安装、远程 ZIP 安装都会经由 `UploadModZip` 和 `readModInfo` 受益。
+
+## 如何验证
+- 已执行：`go test ./internal/games/stardew_junimo -run "ReadModInfo|UploadModZip"`。
+
+## 下一步注意事项
+- 该兼容只面向 SMAPI `manifest.json`，不要把它扩展成“任意 JSON 配置都可带注释”的全局规则。
+- ZIP 路径安全、XNB 替换包拒绝、manifest 必填字段和 UniqueID 重复校验没有变化。
 
 # MODDEPS-1 后端交接
 
@@ -1167,3 +1202,84 @@ go test ./...
 - 关闭前备份不是强制保存世界，只备份已经写盘的 active save。
 - 计划开启只在到点后 5 分钟宽限内触发，避免补跑旧开启时间。
 - 后续如要做“跳过下一次”，需要新增持久化字段和 API；当前只实现每日窗口。
+
+# MODDEPS-2 后端接手记录
+
+## 改了什么
+- `ListMods` / `ListModsWithState` 会对 `ModDependency` 补齐状态：是否已安装、是否在当前存档启用、已安装版本、是否满足、状态码。
+- Nexus 搜索已安装匹配改为按当前存档调用 `ListModsWithState`，禁用目录里的 Mod 仍会被 `UpdateKeys: ["Nexus:<id>"]` 匹配为已安装，并返回 `installedEnabled=false`。
+
+## 影响文件/接口
+- `backend/internal/games/registry/types.go`
+- `backend/internal/games/stardew_junimo/mod_dependencies.go`
+- `backend/internal/games/stardew_junimo/mods.go`
+- `backend/internal/games/stardew_junimo/nexus.go`
+- `backend/internal/web/lifecycle_handlers.go`
+- 接口：`GET /api/instances/:id/mods`、`GET /api/instances/:id/mods/nexus/search`
+
+## 如何验证
+- 已执行：`cd backend; go test ./...`
+
+## 下一步注意事项
+- 本阶段只做检测和展示，不自动安装依赖，也不阻止启用 Mod。
+- 后续做自动补依赖时，仍应优先走 `stardew_junimo` driver 的 Nexus/ZIP 安装能力，不要在 web handler 里直接写 Stardew Mod 逻辑。
+
+# MODREL-1 后端接手记录
+
+## 改了什么
+- 新增 `mod_relationships.go`，统一构建必需依赖、反向依赖和 Nexus 来源包关系。
+- 同步分类更新改为 `SetModSyncClassificationCascade`：按必需依赖连通组一起变，前置、前置的前置、依赖它的下游和同 Nexus 包成员都会跟随当前选择，避免从“待确认”切回其它标签时后置 Mod 留在旧分类。
+- 启用状态更新改为 `SetModEnabledForSaveCascade`：启用时补同包成员和必需前置；禁用时禁同包成员和下游依赖者，不禁共享前置。
+- `PUT /mods/:modId/sync-classification` 返回 `{ mods, syncKind }`；`PUT /mods/:modId/enabled` 返回 `{ mods, enabled, saveName }`。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/mod_relationships.go`
+- `backend/internal/games/stardew_junimo/mod_sync.go`
+- `backend/internal/games/stardew_junimo/mod_profiles.go`
+- `backend/internal/web/lifecycle_handlers.go`
+- 接口：`PUT /api/instances/:id/mods/:modId/sync-classification`、`PUT /api/instances/:id/mods/:modId/enabled`
+
+## 如何验证
+- `cd backend; go test ./...`
+- `cd frontend; npm.cmd run build`
+
+## 下一步注意事项
+- 来源包关系只信任 `nexusModId/originNexusModId`，不要用 `[CP]` 文件夹名做同包判断。
+- Content Patcher 这类共享前置只能在启用依赖时自动补齐，不能因为禁用某个业务 Mod 就自动禁用。
+# NEXUS-EXT-2 后端接手记录
+
+## 改了什么
+- 修复 `mod_remote_install` 与 `mod_nexus_install` job 里用户可见的核心乱码日志。
+- 新任务会写入正常中文：`准备从远程链接安装 Mod`、`准备安装 Nexus Mod #...`、`已导入：...`。
+- 已经入库的旧任务日志不迁移，任务详情里旧记录仍可能保留乱码。
+- 新增 `MarkImportedModsEnabledForSave()`：上传、Nexus 安装和远程安装成功后，如果当前有激活存档，会把本次导入的 Mod 写入该存档 profile 并标记为启用，避免刚安装的 Mod 被 profile 应用移到 `mods-disabled/`。
+
+## 影响文件/接口
+- `backend/internal/web/lifecycle_handlers.go`
+- `backend/internal/games/stardew_junimo/mod_profiles.go`
+- `backend/internal/games/stardew_junimo/mod_profiles_test.go`
+- 接口不变：`POST /api/instances/:id/mods/remote/install`、`POST /api/instances/:id/mods/nexus/install`。
+
+## 如何验证
+- `go test ./internal/games/stardew_junimo ./internal/web`
+
+## 下一步注意事项
+- 当前仓库里仍有部分历史源码文案是乱码，本次只修安装链路的用户可见 job 日志。后续如做全量中文文案清理，建议分模块小步替换并配合接口/前端冒烟。
+# NEXUS-REQ-1 后端接手记录
+
+## 改了什么
+- Nexus GraphQL 搜索查询增加 `modRequirements.nexusRequirements`，并在搜索结果中返回 `requiredMods[]`。
+- `ApplyNexusInstalledMatch` 现在会同时给搜索结果和每个 Nexus 前置项补本地安装状态、当前存档启用状态、已安装版本和文件夹名。
+- 外部前置和自引用前置会被过滤；GraphQL 每个 Mod 只拉前 10 个 Nexus 前置。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/nexus.go`
+- `backend/internal/games/stardew_junimo/nexus_test.go`
+- `GET /api/instances/:id/mods/nexus/search` 响应的 `results[]` 可新增 `requiredMods[]`。
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+
+## 下一步注意事项
+- `requiredMods[]` 表达的是 Nexus 页面维护的 Nexus Mod 依赖，不是 SMAPI manifest 里的 `Dependencies`。安装后的真实依赖/版本检查仍走 `GET /mods` 的 `dependencies[]`。
+- 配置了 Nexus API Key 时纯数字 ID 查询仍优先走 v1 REST，该路径目前没有补 `requiredMods[]`；如要数字 ID 也稳定显示前置，可后续给 v1 结果补一次 GraphQL requirement 查询。

@@ -55,6 +55,11 @@ function statusCls(s: string): string {
   return `sd-jobs-status sd-jobs-status-${s}`
 }
 
+function selectedJobIdFromLocation(): string {
+  if (typeof window === 'undefined') return ''
+  return new URLSearchParams(window.location.search).get('jobId')?.trim() ?? ''
+}
+
 function extractPullProgress(
   logs: JobLog[],
   jobType?: string,
@@ -137,9 +142,14 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     void (async () => {
       setLoadingJobs(true)
       const loaded = await loadJobs()
-      if (!autoSelectedRef.current && loaded.length > 0) {
+      if (!autoSelectedRef.current) {
         autoSelectedRef.current = true
-        setSelectedJobId(loaded[0].id)
+        const requestedJobId = selectedJobIdFromLocation()
+        if (requestedJobId) {
+          setSelectedJobId(requestedJobId)
+        } else if (loaded.length > 0) {
+          setSelectedJobId(loaded[0].id)
+        }
       }
       setLoadingJobs(false)
     })()

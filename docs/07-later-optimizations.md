@@ -196,7 +196,7 @@ backend/internal/web/restart_schedule_handlers.go
 可选方向：
 
 - 启用/禁用 Mod。
-- 依赖关系和版本检查：`MODDEPS-1` 已把 manifest 声明展示给用户，后续还需要判断依赖是否已安装、最低版本是否满足，并给出缺失依赖的安装入口或确认提示。
+- 依赖关系和版本检查：`MODDEPS-2` 已判断依赖是否已安装、当前存档是否启用、最低版本是否满足，并在前端提示缺失/未启用/版本不足；后续还需要做缺失依赖的一键安装入口、依赖来源索引和更新提示。
 - Mod 更新提示。
 - Mod 配置编辑。
 
@@ -224,8 +224,8 @@ backend/internal/web/restart_schedule_handlers.go
 每次视觉改动都要跑 `npm.cmd run build`，并检查 1280px、390px、320px。
 # REMOTE-MOD / MODSEARCH 后续优化
 - 远程安装目前只支持 ZIP。后续如需开放 7z/rar，必须先引入可靠解压器，并补齐 zip-slip、绝对路径、符号链接、单文件大小、总解压大小等同等级安全校验。
-- 统一搜索骨架已完成，当前 live 搜索/一键安装来源仍只有 Nexus。后续可继续接：StardewModDataset 本地持久化索引/后台刷新（完整名称全文搜索、依赖和 UpdateKeys 匹配）、CurseForge Core API、GitHub Releases（release asset）、ModDrop 稳定下载元数据。
-- 一键安装优先级保持：CurseForge `download-url`、ModDrop `download-url`、GitHub Release / 直链、Nexus Premium、Nexus NXM/临时 CDN。没有自动链接时兜底为管理员粘贴 ZIP URL 或上传文件。
+- 当前线上搜索入口是 Nexus-only，旧 `/mods/search` 统一搜索骨架已撤回。后续如重新做多来源搜索，需要重新设计接口，再接 StardewModDataset 本地持久化索引/后台刷新（完整名称全文搜索、依赖和 UpdateKeys 匹配）、CurseForge Core API、GitHub Releases（release asset）、ModDrop 稳定下载元数据。
+- 多来源一键安装优先级可参考：CurseForge `download-url`、ModDrop `download-url`、GitHub Release / 直链、Nexus Premium、Nexus NXM/临时 CDN。没有自动链接时兜底为管理员粘贴 ZIP URL 或上传文件。
 - ModDrop 当前不做页面抓取；除非确认存在稳定公开 API 或 Dataset 中能可靠映射到可下载 ZIP，否则只保留为后续统一搜索来源候选和管理员粘贴 ZIP 直链安装来源。
 - Nexus 多文件 Mod 需要文件选择 UI，当前仍自动选 primary/main/first。
 # SCHEDULED-RESTART-1 后续增强

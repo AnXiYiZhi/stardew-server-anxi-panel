@@ -66,17 +66,31 @@ func (e *NexusAPIError) Error() string {
 // NexusModSearchResult is one search hit, merged with local install state by
 // ApplyNexusInstalledMatch.
 type NexusModSearchResult struct {
+	ModID               int                `json:"modId"`
+	Name                string             `json:"name"`
+	Summary             string             `json:"summary,omitempty"`
+	Author              string             `json:"author,omitempty"`
+	Version             string             `json:"version,omitempty"`
+	UpdatedAt           string             `json:"updatedAt,omitempty"`
+	EndorsementCount    int                `json:"endorsementCount"`
+	DownloadCount       int                `json:"downloadCount"`
+	PictureURL          string             `json:"pictureUrl,omitempty"`
+	NexusURL            string             `json:"nexusUrl"`
+	Installed           bool               `json:"installed"`
+	InstalledEnabled    bool               `json:"installedEnabled"`
+	InstalledFolderName string             `json:"installedFolderName,omitempty"`
+	InstalledVersion    string             `json:"installedVersion,omitempty"`
+	RequiredMods        []NexusRequiredMod `json:"requiredMods,omitempty"`
+}
+
+// NexusRequiredMod is a Nexus-side prerequisite declared on the mod page.
+type NexusRequiredMod struct {
 	ModID               int    `json:"modId"`
 	Name                string `json:"name"`
-	Summary             string `json:"summary,omitempty"`
-	Author              string `json:"author,omitempty"`
-	Version             string `json:"version,omitempty"`
-	UpdatedAt           string `json:"updatedAt,omitempty"`
-	EndorsementCount    int    `json:"endorsementCount"`
-	DownloadCount       int    `json:"downloadCount"`
-	PictureURL          string `json:"pictureUrl,omitempty"`
+	Notes               string `json:"notes,omitempty"`
 	NexusURL            string `json:"nexusUrl"`
 	Installed           bool   `json:"installed"`
+	InstalledEnabled    bool   `json:"installedEnabled"`
 	InstalledFolderName string `json:"installedFolderName,omitempty"`
 	InstalledVersion    string `json:"installedVersion,omitempty"`
 }
@@ -285,6 +299,17 @@ query ModsListing($filter: ModsFilter, $sort: [ModsSort!], $offset: Int, $count:
       downloads
       endorsements
       updatedAt
+      modRequirements {
+        nexusRequirements(offset: 0, count: 10) {
+          nodes {
+            modId
+            modName
+            notes
+            url
+            externalRequirement
+          }
+        }
+      }
     }
     totalCount
   }
@@ -297,15 +322,28 @@ type nexusGraphQLRequest struct {
 }
 
 type nexusGraphQLNode struct {
-	ModID        int    `json:"modId"`
-	Name         string `json:"name"`
-	Summary      string `json:"summary"`
-	Version      string `json:"version"`
-	Author       string `json:"author"`
-	PictureURL   string `json:"pictureUrl"`
-	Downloads    int    `json:"downloads"`
-	Endorsements int    `json:"endorsements"`
-	UpdatedAt    string `json:"updatedAt"`
+	ModID           int    `json:"modId"`
+	Name            string `json:"name"`
+	Summary         string `json:"summary"`
+	Version         string `json:"version"`
+	Author          string `json:"author"`
+	PictureURL      string `json:"pictureUrl"`
+	Downloads       int    `json:"downloads"`
+	Endorsements    int    `json:"endorsements"`
+	UpdatedAt       string `json:"updatedAt"`
+	ModRequirements struct {
+		NexusRequirements struct {
+			Nodes []nexusGraphQLRequirementNode `json:"nodes"`
+		} `json:"nexusRequirements"`
+	} `json:"modRequirements"`
+}
+
+type nexusGraphQLRequirementNode struct {
+	ModID               string `json:"modId"`
+	ModName             string `json:"modName"`
+	Notes               string `json:"notes"`
+	URL                 string `json:"url"`
+	ExternalRequirement bool   `json:"externalRequirement"`
 }
 
 type nexusGraphQLResponse struct {
@@ -472,7 +510,43 @@ func nexusGraphQLNodeToResult(n nexusGraphQLNode) NexusModSearchResult {
 		DownloadCount:    n.Downloads,
 		PictureURL:       n.PictureURL,
 		NexusURL:         nexusModURL(n.ModID),
+		RequiredMods:     nexusGraphQLRequirementsToRequiredMods(n),
 	}
+}
+
+func nexusGraphQLRequirementsToRequiredMods(n nexusGraphQLNode) []NexusRequiredMod {
+	if len(n.ModRequirements.NexusRequirements.Nodes) == 0 {
+		return nil
+	}
+	required := make([]NexusRequiredMod, 0, len(n.ModRequirements.NexusRequirements.Nodes))
+	seen := map[int]struct{}{}
+	for _, item := range n.ModRequirements.NexusRequirements.Nodes {
+		if item.ExternalRequirement {
+			continue
+		}
+		modID, ok := parsePositiveInt(strings.TrimSpace(item.ModID))
+		if !ok || modID == n.ModID {
+			continue
+		}
+		if _, exists := seen[modID]; exists {
+			continue
+		}
+		seen[modID] = struct{}{}
+		url := strings.TrimSpace(item.URL)
+		if url == "" {
+			url = nexusModURL(modID)
+		}
+		required = append(required, NexusRequiredMod{
+			ModID:    modID,
+			Name:     strings.TrimSpace(item.ModName),
+			Notes:    strings.TrimSpace(item.Notes),
+			NexusURL: url,
+		})
+	}
+	if len(required) == 0 {
+		return nil
+	}
+	return required
 }
 
 // ── shared request plumbing ─────────────────────────────────────────────────
@@ -538,30 +612,41 @@ func doNexusRequest(req *http.Request) ([]byte, error) {
 
 // ApplyNexusInstalledMatch marks each search result as installed when a
 // locally installed mod's manifest UpdateKeys resolves to the same Nexus mod
-// ID. Only an installed flag is set in this phase — no update comparison.
-func ApplyNexusInstalledMatch(dataDir string, results []NexusModSearchResult) []NexusModSearchResult {
-	mods, err := ListMods(dataDir)
+// ID. This phase includes enable state but doesn't compare remote updates.
+func ApplyNexusInstalledMatch(dataDir, saveName string, results []NexusModSearchResult) []NexusModSearchResult {
+	mods, err := ListModsWithState(dataDir, saveName)
 	if err != nil || len(mods) == 0 {
 		return results
 	}
 	installedByNexusID := map[int]struct {
 		folderName string
 		version    string
+		enabled    bool
 	}{}
 	for _, m := range mods {
 		if m.NexusModID > 0 {
 			installedByNexusID[m.NexusModID] = struct {
 				folderName string
 				version    string
-			}{folderName: m.FolderName, version: m.Version}
+				enabled    bool
+			}{folderName: m.FolderName, version: m.Version, enabled: m.Enabled}
 		}
 	}
 
 	for i := range results {
 		if match, ok := installedByNexusID[results[i].ModID]; ok {
 			results[i].Installed = true
+			results[i].InstalledEnabled = match.enabled
 			results[i].InstalledFolderName = match.folderName
 			results[i].InstalledVersion = match.version
+		}
+		for j := range results[i].RequiredMods {
+			if match, ok := installedByNexusID[results[i].RequiredMods[j].ModID]; ok {
+				results[i].RequiredMods[j].Installed = true
+				results[i].RequiredMods[j].InstalledEnabled = match.enabled
+				results[i].RequiredMods[j].InstalledFolderName = match.folderName
+				results[i].RequiredMods[j].InstalledVersion = match.version
+			}
 		}
 	}
 	return results

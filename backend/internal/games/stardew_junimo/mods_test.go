@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -15,15 +16,19 @@ import (
 
 func createTestMod(t *testing.T, modsRoot, folderName, uniqueID, name string) {
 	t.Helper()
-	modPath := filepath.Join(modsRoot, folderName)
-	if err := os.MkdirAll(modPath, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	m := modManifest{
+	createTestModWithManifest(t, modsRoot, folderName, modManifest{
 		Name:     name,
 		UniqueID: uniqueID,
 		Version:  "1.0.0",
 		Author:   "Test",
+	})
+}
+
+func createTestModWithManifest(t *testing.T, modsRoot, folderName string, m modManifest) {
+	t.Helper()
+	modPath := filepath.Join(modsRoot, folderName)
+	if err := os.MkdirAll(modPath, 0o755); err != nil {
+		t.Fatal(err)
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -32,6 +37,15 @@ func createTestMod(t *testing.T, modsRoot, folderName, uniqueID, name string) {
 	if err := os.WriteFile(filepath.Join(modPath, "manifest.json"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func modFoldersForTest(mods []registry.ModInfo) []string {
+	folders := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		folders = append(folders, mod.FolderName)
+	}
+	sort.Strings(folders)
+	return folders
 }
 
 func createModZip(t *testing.T, entries map[string]string) string {
@@ -195,6 +209,66 @@ func TestListMods_SkipsFiles(t *testing.T) {
 }
 
 // ── UploadModZip ──────────────────────────────────────────────────────────────
+
+func TestListModsWithState_AnnotatesDependencyStatus(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	disabledRoot := disabledModsDir(dir)
+	optional := false
+	createTestModWithManifest(t, root, "Consumer", modManifest{
+		Name:     "Consumer",
+		UniqueID: "Author.Consumer",
+		Version:  "1.0.0",
+		Author:   "Test",
+		Dependencies: []modManifestDependency{
+			{UniqueID: "Pathoschild.ContentPatcher", MinimumVersion: "2.0.0"},
+			{UniqueID: "Author.DisabledCore"},
+			{UniqueID: "Author.MissingCore"},
+			{UniqueID: "Author.OptionalMissing", IsRequired: &optional},
+		},
+	})
+	createTestModWithManifest(t, root, "ContentPatcher", modManifest{
+		Name:     "Content Patcher",
+		UniqueID: "Pathoschild.ContentPatcher",
+		Version:  "1.9.0",
+		Author:   "Test",
+	})
+	createTestModWithManifest(t, disabledRoot, "DisabledCore", modManifest{
+		Name:     "Disabled Core",
+		UniqueID: "Author.DisabledCore",
+		Version:  "1.0.0",
+		Author:   "Test",
+	})
+
+	mods, err := ListModsWithState(dir, "")
+	if err != nil {
+		t.Fatalf("ListModsWithState: %v", err)
+	}
+	byUniqueID := map[string]registry.ModInfo{}
+	for _, mod := range mods {
+		byUniqueID[mod.UniqueID] = mod
+	}
+	consumer := byUniqueID["Author.Consumer"]
+	if len(consumer.Dependencies) != 4 {
+		t.Fatalf("dependencies = %+v, want 4", consumer.Dependencies)
+	}
+	deps := map[string]registry.ModDependency{}
+	for _, dep := range consumer.Dependencies {
+		deps[dep.UniqueID] = dep
+	}
+	if dep := deps["Pathoschild.ContentPatcher"]; dep.Status != modDependencyStatusVersionMismatch || dep.Satisfied || dep.InstalledVersion != "1.9.0" {
+		t.Fatalf("Content Patcher status = %+v, want version_mismatch with current 1.9.0", dep)
+	}
+	if dep := deps["Author.DisabledCore"]; dep.Status != modDependencyStatusDisabled || dep.Satisfied || !dep.Installed || dep.Enabled {
+		t.Fatalf("DisabledCore status = %+v, want installed disabled", dep)
+	}
+	if dep := deps["Author.MissingCore"]; dep.Status != modDependencyStatusMissing || dep.Satisfied || dep.Installed {
+		t.Fatalf("MissingCore status = %+v, want missing", dep)
+	}
+	if dep := deps["Author.OptionalMissing"]; dep.Status != modDependencyStatusOptionalMissing || !dep.Satisfied || dep.Installed {
+		t.Fatalf("OptionalMissing status = %+v, want optional missing satisfied", dep)
+	}
+}
 
 func TestUploadModZip_ValidSingleMod(t *testing.T) {
 	dir := t.TempDir()
@@ -921,6 +995,39 @@ func TestReadModInfo_AllowsUTF8BOMManifest(t *testing.T) {
 	}
 	if info.UniqueID != "author.bom" || info.Name != "BOM Mod" {
 		t.Fatalf("info = %+v, want BOM manifest parsed", info)
+	}
+}
+
+func TestReadModInfo_AllowsJSONCManifest(t *testing.T) {
+	dir := t.TempDir()
+	modPath := filepath.Join(dir, "JSONCMod")
+	if err := os.MkdirAll(modPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{
+		// Some Nexus mods ship comments in manifest.json.
+		"Name": "JSONC Mod",
+		"UniqueID": "author.jsonc",
+		"Version": "1.0.0",
+		"Description": "URL should survive: https://example.com/mod",
+		/* trailing commas should also be accepted */
+		"UpdateKeys": [
+			"Nexus:1348",
+		],
+	}`
+	if err := os.WriteFile(filepath.Join(modPath, "manifest.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := readModInfo(modPath, "JSONCMod")
+	if info.ParseError != "" {
+		t.Fatalf("ParseError = %q, want empty", info.ParseError)
+	}
+	if info.UniqueID != "author.jsonc" || info.Name != "JSONC Mod" || info.NexusModID != 1348 {
+		t.Fatalf("info = %+v, want JSONC manifest parsed", info)
+	}
+	if !strings.Contains(info.Description, "https://example.com/mod") {
+		t.Fatalf("Description = %q, want URL string preserved", info.Description)
 	}
 }
 

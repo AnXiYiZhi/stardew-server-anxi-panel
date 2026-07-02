@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Anxi Nexus Installer</title>
+    <link rel="stylesheet" href="ui.css">
+  </head>
+  <body class="popup">
+    <h1>Anxi Nexus Installer</h1>
+    <p class="muted">捕获 N 站慢速下载生成的临时 ZIP 链接，并提交给面板远程安装。</p>
+
+    <section>
+      <label>
+        面板地址
+        <input id="panelBaseUrl" type="url" placeholder="https://panel.example.com">
+      </label>
+      <label>
+        实例 ID
+        <input id="instanceId" type="text" placeholder="stardew">
+      </label>
+      <label class="check">
+        <input id="autoStartOnNexusFilePage" type="checkbox">
+        进入 N 站文件页后自动开始捕获
+      </label>
+      <label class="check">
+        <input id="autoClickSlowDownload" type="checkbox">
+        自动点击 Slow download
+      </label>
+      <label class="check">
+        <input id="cancelBrowserDownload" type="checkbox">
+        捕获后取消浏览器本地下载
+      </label>
+    </section>
+
+    <div class="actions">
+      <button id="save">保存</button>
+      <button id="captureCurrent" class="secondary">捕获当前页</button>
+    </div>
+
+    <section class="status">
+      <h2>状态</h2>
+      <p id="statusText">读取中...</p>
+    </section>
+
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

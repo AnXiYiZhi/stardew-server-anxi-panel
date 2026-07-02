@@ -1,3 +1,12 @@
+# NEXUS-EXT-3 前端扩展安装入口
+
+- `ModsPage` 的 Nexus 搜索结果“一键安装”不再直接调用 `installNexusMod()` / `POST /mods/nexus/install`，改为同页跳转到 `https://www.nexusmods.com/stardewvalley/mods/:modId?tab=files&anxi_auto=1`，让浏览器扩展在用户已登录 Nexus 的本地浏览器里完成下载链接获取。
+- 搜索结果安装按钮不再要求 Nexus API Key；仍要求管理员、服务器停服、目标 Mod 未安装，且当前没有远程安装忙碌状态。
+- `JobsLogsPage` 支持 `?jobId=` 查询参数。扩展提交成功后跳回 `/instances/:id/jobs?jobId=<jobId>`，页面会优先选中该任务并打开实时日志。
+- `ModInstallMethod` 新增 `nexus_extension`，用于区分当前扩展链路和旧的后端 Nexus premium 下载链路。
+- 涉及文件：`frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/games/stardew/pages/JobsLogsPage.tsx`、`frontend/src/types.ts`、`browser-extensions/nexus-slow-installer/*`。
+- 验证：`cd frontend; npm.cmd run build` 通过；扩展脚本 `node --check` 通过。
+
 # FE-QUICK-BACKUP-1 服务器页快捷备份
 
 - `ServerControlPage` 的“快捷操作”里，“备份存档”已接入现有 `createSaveBackup()`，会对当前激活存档调用 `POST /api/instances/:id/saves/:name/backup` 创建手动备份。
@@ -45,9 +54,9 @@
 - “重启需求”统计改为“运行中重启”，只反映后端返回的 `restartRequired=true` 场景；当前停服 Mod 写操作完成后后端会返回 `false`。
 
 # MODUPLOAD-2 多 ZIP 批量上传入口
-- `frontend/src/api.ts` 新增 `uploadMods(files, instanceId?)`，会把多个文件重复 append 为 `mod` 字段后提交到原有 `POST /api/instances/:id/mods/upload`；原 `uploadMod(file)` 保留为单文件兼容封装。
+- `frontend/src/api.ts` 使用 `uploadMods(files, instanceId?)`，会把多个文件重复 append 为 `mod` 字段后提交到原有 `POST /api/instances/:id/mods/upload`。
 - `ModsPage` 的上传弹窗从单文件状态改为 `File[]`，文件选择器启用 `multiple`，选择后显示文件数量、总大小，数量不超过 5 个时额外展示文件名列表。上传成功或关闭弹窗时会清空 state 和 `<input>` 的值，避免重新选择同一批文件时浏览器不触发 change。
-- 旧版 `ModsSection` 也同步改为 `File[] + uploadMods`，保持后续如果仍被引用时行为一致。
+- 旧版 `ModsSection` 已清理删除，当前只维护路由页 `pages/ModsPage.tsx` 这一套 Mod UI。
 - 运行中、非管理员等原有禁用条件不变；按钮只是在未选择任何 ZIP 时禁用，不再要求只有一个文件。
 - 验证：`npm.cmd run build` 通过。
 
@@ -56,16 +65,11 @@
 - `ModsPage` 已安装 Mod 卡片继续优先使用 `pictureUrl`，无图时回退本地 Mod 图标；因此手动上传的 Mod 只要 manifest 声明 Nexus 更新键，刷新列表后也能展示与搜索结果一致的 Nexus 缩略图。
 - 数字 ID 搜索不再要求 Nexus API Key 才能展示元数据；Key 只和受限下载/安装链路有关。
 
-# MODSEARCH-3 前端展示顺序
-- `GET /api/instances/:id/mods/search` 已由后端按 `downloadCount` 从高到低排序，`ModsPage` 直接按接口顺序渲染搜索卡片，不在前端重复排序。
+# NEXUS-PAGED-1 / NEXUS-PAGER-2 前端搜索
 
-# MODSEARCH-1 前端统一搜索卡片
-
-- `ModsPage` 下载页从“在线搜索（Nexus Mods）”调整为“统一搜索”，调用新接口 `searchMods()`（`GET /api/instances/:id/mods/search`），结果类型改为 `ModSearchResult`。
-- 搜索结果卡片组件改为 `ModSearchResultCard`，展示 `来源：{sourceName}`。N站结果按钮显示 `跳转 N站`，其他来源后续按后端返回的 `externalLabel` 显示为 `跳转 {网站名}`。
-- 安装按钮不再写死“安装到服务器”，而是使用后端返回的 `installLabel`。当前 N站结果显示 `一键安装`；direct URL 结果后续显示一键安装；`none/manual` 会禁用并提示该来源暂不支持一键安装。
-- `installSearchedMod()` 调用 `POST /api/instances/:id/mods/search/install`，继续复用原安装进度面板、SSE 日志订阅和安装后刷新逻辑。粘贴链接安装入口保留，作为管理员粘贴 ZIP/NXM/CDN 链接的兜底。
-- 已安装 Mod 列表也复用统一卡片：有 Nexus 元数据时来源显示 N站；本地上传/无来源元数据时来源显示本地。
+- `ModsPage` 下载页当前只调用 Nexus 专用接口 `searchNexusMods()`（`GET /api/instances/:id/mods/nexus/search`），不再调用已撤回的 `/mods/search` 统一搜索骨架。
+- 搜索结果仍复用 `ModSearchResultCard` 作为展示模型，但数据来源只映射 Nexus 结果；安装按钮调用 `installNexusMod()`，管理员在停服且配置 Key 后可一键安装。
+- 搜索结果顶部和底部都有分页控件，支持首页、上一页、指定页、下一页、末页。空关键词合法，用于刷新默认热门列表。
 - 相关文件：`frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/api.ts`、`frontend/src/types.ts`。
 - 验证：`npm.cmd run build` 通过。
 
@@ -169,14 +173,15 @@ frontend/public/assets/stardew/ui/sprites
 | Saves | 新建、上传、选择、删除、导出、备份入口 | running/starting 禁止危险写操作 |
 | JobsLogs | 任务列表、日志详情、SSE | 长日志要可滚动 |
 | Players | 玩家名册、位置、tile/pixel、中文地图名 | 第三方地图 key 未知时保留原名 |
-| Mods | 三段式 Mod 工作台：下载模组（Nexus 在线搜索）、添加模组（已安装列表/玩家同步包/上传删除导出）、配置模组（后续 SMAPI 配置入口） | 运行中限制危险操作；同步分类任意登录用户可改；Nexus 搜索任意登录用户可用；当前 Nexus 安装按钮仍为待接入 |
+| Mods | 三段式 Mod 工作台：下载模组（Nexus 在线搜索/一键安装）、添加模组（已安装列表/玩家同步包/上传删除导出）、配置模组（按当前存档启用/禁用） | 运行中限制危险写操作；同步分类任意登录用户可改；Nexus 搜索任意登录用户可用；依赖缺失检查、更新检查和 SMAPI 配置编辑仍是后续 |
 | Diagnostics | 健康检查、Docker、支持包 | 技术信息不要淹没用户 |
 | Settings | 用户、审计、版本、登出 | 面板用户不要放进玩家页 |
 
 ## 近期前端修正摘要
 
-- `ModsPage` 参考 `E:\源码\emp_源码\dst-management-platform-web\src\views\game\mod.vue` 的 Mod 管理结构，改为页内三段工作台：`下载模组`、`添加模组`、`配置模组`。下载页承载 Nexus 搜索和卡片网格；添加页承载本服已安装 Mod、玩家同步统计、同步包导出、上传/删除/整包导出；配置页先提供启用/禁用、依赖检查、更新检查、SMAPI 配置的占位入口，等待后端能力接入。该改动只调整前端组织和视觉层级，不新增接口。
-- `ModsPage` 新增”在线搜索（Nexus Mods）”区域（未新建路由，无需管理员权限）：搜索框 + 搜索按钮，关键词为空时按钮禁用并提示；搜索中按钮显示”搜索中…”；失败显示中文错误条（复用 `sd-mods-list-error`）。结果用 `NexusResultCard` 卡片展示名称、作者、版本、更新时间、下载量、认可数、已安装标记（绿色 `sd-tag`，标注已安装版本号）和”打开 N 站”按钮（`window.open` 新窗口打开 `nexusUrl`）；本阶段不放安装按钮，只放一个禁用的”安装待接入”小标记。管理员在下载页头部可点“配置 API Key”粘贴 Nexus Key，前端调用 `/api/settings/nexus/api-key` 写入 SQLite 设置，保存后立即生效，页面只显示配置状态和末 4 位。涉及 `frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`（新增 `.sd-mods-nexus-*` / `.sd-mods-panel-actions` 类）、`frontend/src/types.ts`（`NexusModSearchResult`/`NexusModSearchResponse`/`NexusSettingsStatus`，`ModInfo` 新增 `updateKeys?`/`nexusModId?`）、`frontend/src/api.ts`（`searchNexusMods`、`getNexusSettings`、`saveNexusAPIKey`、`deleteNexusAPIKey`）。
+- `FE-CLEANUP-1`：删除无引用旧 Stardew Section 组件，清理前端死 API 封装和对应类型；`App.css` 裁掉旧单页仪表盘/Section 历史样式，仅保留全局 reset、基础登录表单和 `sd-auth-*` 登录页样式。当前 Stardew 路由页样式由 `StardewPanel.css` 与 `stardew-theme.css` 维护。
+- `ModsPage` 参考 `E:\源码\emp_源码\dst-management-platform-web\src\views\game\mod.vue` 的 Mod 管理结构，改为页内三段工作台：`下载模组`、`添加模组`、`配置模组`。下载页承载 Nexus 热门/搜索/分页和一键安装；添加页承载本服已安装 Mod、玩家同步统计、同步包导出、上传/删除/整包导出；配置页按当前激活存档展示启用/禁用开关。依赖缺失检查、更新检查和 SMAPI 配置编辑仍留给后续能力。
+- `ModsPage` 的 Nexus 下载页无需管理员即可搜索和查看结果；空关键词默认展示热门列表。管理员可在下载页头部配置 Nexus API Key，停服时可一键安装 Nexus 结果或粘贴 `nxm://` / Nexus CDN `.zip` 临时链接创建安装任务。所有安装仍由后端代理下载并复用 Mod ZIP 安全导入，不让前端直连写服务器目录。
 - `ModsPage` 新增”玩家同步”区域（未新建路由）：Mod 卡片用 `sd-tag` 展示同步标签（服务器专用/玩家需同步/待确认），任意登录用户都可用下拉框就地修改分类；区域顶部显示三类统计 tag 和“导出玩家同步包”按钮，无 `client_required` Mod 时按钮禁用，导出中显示 loading，失败显示中文错误。后端会自动把内容包和第三方 Mod 默认标为玩家需同步，玩家可再手动改。涉及 `frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`、`frontend/src/types.ts`、`frontend/src/api.ts`。
 - 登录/首次注册页已接入 `image2` 原型图整页背景，账号/密码区域、错误提示和按钮文字由前端按背景图风格覆盖绘制；首次注册态底部提示“请尽快注册管理员账号”，按钮显示“注册”，登录态按钮显示“登录”。
 - 左侧导航、按钮、输入框、图标、面板等位图资源经过多轮重绘。
@@ -318,3 +323,38 @@ npm.cmd run dev
 - 前端新增 `RestartSchedule` / `RestartScheduleResult` 类型，以及 `getRestartSchedule()` / `updateRestartSchedule()` API helper。
 - 影响文件：`frontend/src/games/stardew/pages/ServerControlPage.tsx`、`frontend/src/api.ts`、`frontend/src/types.ts`、`frontend/src/games/stardew/StardewPanel.css`。
 - 验证：`cd frontend; npm.cmd run build`。
+# MODDEPS-2 前端依赖状态与禁用安装提示
+
+- `frontend/src/types.ts` 的 `ModDependency` 已对齐后端依赖状态字段：`installed/enabled/installedVersion/satisfied/status`；`NexusModSearchResult` 和 `ModSearchResult` 新增 `installedEnabled`。
+- 下载页 Nexus 搜索结果现在区分“已安装”和“已安装但未启用”。当后端返回 `installed=true, installedEnabled=false` 时，卡片显示金色“已安装但未启用”标签，安装按钮文案显示“已安装未启用”，tooltip 引导去“配置模组”开启当前存档。
+- 已安装 Nexus 卡片和“配置模组”列表会根据依赖状态显示前置诊断：缺失前置、前置未启用、前置版本不足显示红色标签；版本无法确认显示金色标签。满足依赖时保留原来的“前置：...”提示。
+- “配置模组”列表中的依赖诊断标签放在 Mod 名称/UniqueID 下方，不再和“已启用/已禁用”状态、开关挤在同一列；Mod 名称和 UniqueID 固定单行省略，避免长英文名被压成竖排。
+- 本次没有新增前端请求；依赖诊断和搜索安装状态都复用现有 `GET /mods` 与 `GET /mods/nexus/search` 响应。
+- 验证：`cd frontend; npm.cmd run build`；浏览器 smoke 使用 Vite `http://127.0.0.1:5174/` 验证登录页加载、无 console error/warn、输入框可交互。当前浏览器无登录态，未进入 ModsPage 做真实数据渲染。
+
+# MODREL-1 前端联动更新
+
+- `updateModSyncClassification()` 返回类型改为 `{ mods, syncKind }`，`updateModEnabled()` 返回类型改为 `{ mods, enabled, saveName }`；两个接口都会返回本次受联动影响的 Mod 列表。
+- `ModsPage` 不再只更新当前卡片。同步分类和启用/禁用成功后，页面会按 `folderName` 合并后端返回的 `mods[]`，让依赖链、同 Nexus 包成员和共享前置状态立即反映到 UI。
+- 前端不复制后端联动规则，只展示结果。当前规则：同步分类按必需依赖连通组一起变，所以“待确认”后再切回“玩家需同步/服务器专用”也会把后置 Mod 一起带回；启用会补前置和同包，禁用会禁同包和下游但保留共享前置。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# NEXUS-EXT-1 浏览器扩展实验版
+
+- 新增独立 Chrome / Edge Manifest V3 扩展目录：`browser-extensions/nexus-slow-installer`。该扩展不打进 Vite 前端产物，作为本地手动加载测试包维护。
+- 扩展在 `nexusmods.com` Mod 文件页识别 `file_id`，可自动开始捕获并点击 `Slow download`；浏览器生成 `supporter-files.nexus-cdn.com/*.zip?...` 下载任务后，后台脚本通过 `chrome.downloads` 捕获链接、可取消本地浏览器下载，并把链接提交给面板已有 `POST /api/instances/:id/mods/remote/install`。
+- 扩展设置页/弹窗可配置面板地址、实例 ID、是否自动开始、是否自动点慢速下载、是否取消本地下载。第一版复用面板管理员登录 Cookie 调接口；若云端部署下浏览器策略导致 401/403，后续应新增扩展专用 token 接口。
+- 扩展状态只保存脱敏后的下载 URL，`md5/expires/user_id/key` 不写入明文状态；后端仍负责 ZIP 校验、解压和 Mod 安全导入。
+- 验证：对 `browser-extensions/nexus-slow-installer` 内 JS 运行 `node --check`；手动验证需要在 Chrome/Edge 加载已解压扩展、登录面板管理员和 Nexus，停服后打开 N 站文件下载页。
+# NEXUS-EXT-2 安装完成后刷新已安装页
+
+- `ModsPage` 的 Nexus/远程安装 job 成功后，会自动切到“添加模组”页，并重新拉取 `GET /api/instances/:id/mods`，再刷新公共 dashboard mods 缓存。
+- 后端会把本次导入的 Mod 标记为当前激活存档启用；这样通过浏览器扩展捕获 CDN ZIP 安装成功后，像 SpaceCore 这种带 `UpdateKeys: ["Nexus:1348"]` 的 Mod 会直接出现在“已安装 Nexus 模组”区域，避免用户停留在下载页误以为没有安装。
+- 验证：`npm.cmd run build`。
+# NEXUS-REQ-1 前置依赖提示与扩展弹窗
+
+- `NexusModSearchResult` 新增 `requiredMods?: NexusRequiredMod[]`，用于展示 Nexus 页面声明的前置 Mod。前端卡片会在 footer 显示“缺少前置/前置未启用/前置已安装”状态。
+- 缺失的 Nexus 前置会在当前搜索结果卡片里显示“安装前置”按钮，点击后复用现有扩展一键安装链路，跳转到对应前置 Mod 的 `?tab=files&anxi_auto=1` 页面。
+- 浏览器扩展 `content.js` 新增 “Additional files required” 弹窗处理：检测到 Nexus 前置确认弹窗后，只点击弹窗内文本为 `Download` 的按钮，然后继续等待 ZIP 链接。
+- 该检测只处理 Nexus 声明的前置 Mod；安装 ZIP 后的 SMAPI `manifest.json` 依赖状态仍由已安装列表的 `dependencies[]` 标签展示。
+- 验证：`cd frontend; npm.cmd run build`，以及扩展 `content.js/background.js/shared.js` 的 `node --check`。

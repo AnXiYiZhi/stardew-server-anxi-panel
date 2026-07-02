@@ -1,3 +1,24 @@
+# FE-CLEANUP-1 旧前端组件与死封装清理
+
+## 改了什么
+- 删除无 JSX 引用的旧 Stardew 分段组件：`ConsoleSection.tsx`、`DockerSection.tsx`、`InstallSection.tsx`、`JobsSection.tsx`、`LifecycleSection.tsx`、`ModsSection.tsx`。当前 Stardew 面板只维护 `pages/*` 路由页；`SavesSection.tsx` 仍被 `pages/SavesPage.tsx` 使用，保留。
+- 清理 `frontend/src/api.ts` 中无调用者的旧封装：`getComposeLogs()`、`startTestJob()`、`startFailingTestJob()`、`uploadMod()`、`getModSyncPlan()`。
+- 同步删除仅服务这些旧封装的前端类型：`ComposeLogsResponse`、`ModSyncSummary`、`ModSyncPlanResult`。
+- 文档同步修正为当前 Nexus-only 搜索/安装事实：旧 `/mods/search` 统一搜索骨架已撤回；Nexus 安装和按存档启用/禁用已接入，依赖缺失检查、更新检查、SMAPI 配置编辑仍是后续。
+
+## 影响文件/接口
+- 删除文件：`frontend/src/games/stardew/{ConsoleSection,DockerSection,InstallSection,JobsSection,LifecycleSection,ModsSection}.tsx`
+- 修改文件：`frontend/src/api.ts`、`frontend/src/types.ts`
+- 前端调用接口不变；后端开发/诊断接口如 `/api/jobs/test`、`/api/docker/logs` 本次未删除。
+
+## 如何验证
+- 执行：`cd frontend; npm.cmd run build`
+- 执行：`cd backend; go test ./...`
+
+## 下一步注意事项
+- 新增 Stardew 页面时优先放到 `frontend/src/games/stardew/pages/`，不要恢复旧 Section 组件体系。
+- 如未来重新接多来源 Mod 搜索，需要重新设计接口，不要复用已经撤回的 `/mods/search` 契约。
+
 # FE-QUICK-BACKUP-1 前端交接
 
 ## 改了什么
@@ -141,14 +162,13 @@
 # MODUPLOAD-2 前端交接
 
 ## 改了什么
-- `api.ts` 新增 `uploadMods(files, instanceId?)`，重复 append `mod` 字段后调用原上传接口；`uploadMod(file)` 保留为 `uploadMods([file])` 的兼容封装。
+- `api.ts` 新增 `uploadMods(files, instanceId?)`，重复 append `mod` 字段后调用原上传接口。`uploadMod(file)` 兼容封装已在 FE-CLEANUP-1 中删除。
 - `ModsPage` 上传弹窗改为多文件选择：`input[type=file]` 增加 `multiple`，状态从单个 `File | null` 改成 `File[]`，展示已选 ZIP 数量、总大小和最多 5 个文件名。
-- 旧版 `ModsSection` 也同步改为多文件上传，避免后续仍被引用时行为落后。
+- 旧版 `ModsSection` 后续已确认无引用，并在 FE-CLEANUP-1 中删除；当前只维护 `pages/ModsPage.tsx`。
 
 ## 影响文件
 - `frontend/src/api.ts`
 - `frontend/src/games/stardew/pages/ModsPage.tsx`
-- `frontend/src/games/stardew/ModsSection.tsx`
 
 ## 如何验证
 - 已执行：`npm.cmd run build`
@@ -368,11 +388,11 @@ npm.cmd run build
 
 - 新增 `ModSyncKind = 'server_only' | 'client_required' | 'unknown'`。
 - `ModInfo` 新增 `syncKind: ModSyncKind`（恒有值）和可选 `syncNote?: string`。
-- 新增 `ModSyncSummary`（total/serverOnly/clientRequired/unknown）和 `ModSyncPlanResult`（mods + summary），对应后端 `GET .../mods/sync-plan` 的返回结构。
+- 曾新增 `ModSyncSummary`（total/serverOnly/clientRequired/unknown）和 `ModSyncPlanResult`（mods + summary）用于 `GET .../mods/sync-plan`；FE-CLEANUP-1 已删除前端未使用的这两个类型，页面直接基于 `GET /mods` 返回的 `mods[].syncKind` 计算统计。
 
 `frontend/src/api.ts` 新增：
 
-- `getModSyncPlan(instanceId?)` — 对应 `GET .../mods/sync-plan`（目前 `ModsPage` 没有调用这个接口，因为 `getMods()` 已经在每个 Mod 上带了 `syncKind`，没必要再多打一次请求；保留这个封装是为了和后端三接口一一对应，以后如果有单独的分类统计场景可以直接用）。
+- `getModSyncPlan(instanceId?)` 曾对应 `GET .../mods/sync-plan`，但页面没有调用；FE-CLEANUP-1 已删除该前端封装。
 - `updateModSyncClassification(modId, syncKind, syncNote?, instanceId?)` — 对应 `PUT .../mods/:modId/sync-classification`。
 - `exportModSyncPack(instanceId?)` — 对应 `POST .../mods/sync-pack/export`，blob 下载模式和现有 `exportMods()` 完全一致（解析 `Content-Disposition` 拿文件名）。
 
@@ -403,7 +423,7 @@ npm.cmd run build
 ## 下一步注意事项
 
 - 没有给"玩家需同步"的 Mod 数量变化做特殊提示（比如导出后是否需要重新生成同步包），目前导出永远是当下最新分类的实时快照，足够用。
-- 新增 API 封装已同步 `docs/06-integration.md`；如果后续真的用上了 `getModSyncPlan`，记得在这里补一笔。
+- 前端已不再保留 `getModSyncPlan` 封装；如果后续真的需要单独同步计划视图，再按实际页面重新加回。
 # SMAPI-RUNTIME-1 前端交接
 
 ## 改了什么
@@ -634,3 +654,82 @@ npm.cmd run build
 ## 下一步注意事项
 - 文案继续区分“备份已保存进度”和“强制保存世界”：计划关闭前备份不等于立即保存游戏内实时进度。
 - 如果后续加“一次性跳过下一次维护”，前端可以在同一个弹窗底部加按钮，但当前后端未提供 skip-next API。
+# MODDEPS-2 前端接手记录
+
+## 改了什么
+- `types.ts` 对齐后端新增字段：`ModDependency.installed/enabled/installedVersion/satisfied/status`，以及 Nexus 搜索结果的 `installedEnabled`。
+- `ModsPage` 的 Nexus 搜索卡片会把 `installed=true && installedEnabled=false` 显示为“已安装但未启用”，安装按钮文案为“已安装未启用”，避免用户重复安装已禁用的同一个 Mod。
+- 已安装卡片与“配置模组”列表都会展示依赖诊断标签：缺失前置、前置未启用、版本不足为红色，版本待确认为金色；依赖满足时保留原“前置：...”提示。
+- “配置模组”列表已修复长 Mod 名与依赖诊断标签共同挤压时的排版问题：依赖诊断放回名称区域下方，右侧状态列只保留“内置/已启用/已禁用”，避免标题被压成竖排。
+
+## 影响文件/接口
+- `frontend/src/types.ts`
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- 复用接口：`GET /api/instances/:id/mods`、`GET /api/instances/:id/mods/nexus/search`
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build`
+- 已用浏览器打开 Vite `http://127.0.0.1:5174/`，验证页面加载、登录输入框可交互。当前浏览器无登录态，未进入 ModsPage 做真实存档数据视觉验证。
+
+## 下一步注意事项
+- 不要为了依赖状态再新增单独前端请求；当前状态随 `GET /mods` 返回。
+- 自动安装缺失依赖和更新提示仍是后续能力，当前 UI 只做检测提示与重复安装防护。
+
+# MODREL-1 前端接手记录
+
+## 改了什么
+- `api.ts` 中 `updateModSyncClassification()` 和 `updateModEnabled()` 的返回类型改为接收后端批量 `mods[]`。
+- `ModsPage` 的同步分类下拉和启用开关成功后，按 `folderName` 把后端返回的受影响 Mod 批量合并进本地列表，不再只改当前卡片。
+- 联动规则完全由后端决定：同步分类会按必需依赖连通组一起处理；启用/禁用会按同 Nexus 包和依赖方向处理；共享前置不会被某个业务包禁用连带关闭。
+
+## 影响文件/接口
+- `frontend/src/api.ts`
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- 接口：`PUT /api/instances/:id/mods/:modId/sync-classification`、`PUT /api/instances/:id/mods/:modId/enabled`
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- `cd backend; go test ./...`
+
+## 下一步注意事项
+- 前端不要复制 `mod_relationships.go` 的算法；如果以后需要更明确的联动提示，应让后端在响应里追加原因字段，而不是页面自己推断。
+
+# NEXUS-EXT-1 浏览器扩展实验包
+
+## 改了什么
+- 新增 `browser-extensions/nexus-slow-installer`，这是 Chrome/Edge 手动加载的 Manifest V3 扩展，不进入 Vite 构建产物。
+- `content.js` 注入 Nexus Mod 文件页，识别 `modId/fileId`，显示右下角小面板，并可自动开始捕获、自动点击 `Slow download`。
+- `background.js` 使用 `chrome.downloads.onCreated` 捕获最终 `supporter-files.nexus-cdn.com/*.zip?...` 下载链接，按设置取消本地浏览器下载，然后调用面板现有 `POST /api/instances/:id/mods/remote/install`。
+- `popup.html/js` 与 `options.html/js` 提供配置：面板地址、实例 ID、自动捕获、自动点击慢速下载、捕获取消本地下载。
+- 完整临时 URL 只发给面板；扩展本地状态会脱敏 `md5/expires/user_id/key`。
+
+## 影响文件/接口
+- `browser-extensions/nexus-slow-installer/*`
+- 复用接口：`POST /api/instances/:id/mods/remote/install`
+- 没有改 `frontend/src`，没有新增后端接口。
+
+## 如何验证
+- 静态验证：对扩展目录内 JS 执行 `node --check`。
+- 手动验证：Chrome/Edge 开发者模式加载 `browser-extensions/nexus-slow-installer`，配置面板地址和 `stardew` 实例；同浏览器登录面板管理员和 Nexus；停服后打开 Nexus 文件下载页，确认扩展捕获临时 ZIP 链接并创建 `mod_remote_install` 任务。
+
+## 下一步注意事项
+- 当前扩展请求依赖浏览器能把面板登录 Cookie 带到跨域 `fetch(..., credentials: "include")`。如果正式云端环境出现 401/403，应新增扩展配对 token，而不是让扩展保存管理员密码。
+- manifest 现阶段为了测试使用 `http://*/*`、`https://*/*` host 权限；正式发布前应收窄到 Nexus 域名和已配置的面板域名。
+- 后续要在 ModsPage 做真“一键扩展安装”时，应由面板打开 Nexus 文件页并把 mod/file 上下文交给扩展；本次只完成扩展端可测试闭环。
+# NEXUS-EXT-2 前端接手记录
+
+## 改了什么
+- `ModsPage` 在 Nexus/远程安装 job 成功后，会自动切到“添加模组”页。
+- 成功回调会重新拉取 `GET /mods` 并刷新 dashboard mods 缓存，避免扩展提交 CDN ZIP 后任务显示完成，但用户还停留在下载页或旧缓存里看不到新安装的 Mod。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- 复用接口：`GET /api/instances/:id/mods`。
+
+## 如何验证
+- `npm.cmd run build`
+- 手动联调：通过扩展或“粘贴链接安装”完成一个 Nexus ZIP 安装，job succeeded 后页面应切到“添加模组”，新 Mod 应出现在“已安装 Nexus 模组”区域。
+
+## 下一步注意事项
+- 已安装区仍按 Nexus 视角过滤：带 `nexusModId`、`originSource=nexus` 或 SMAPI 虚拟项才会显示为主卡片；纯本地 Mod 仍只计入隐藏提示。

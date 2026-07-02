@@ -79,13 +79,6 @@ export type ComposePsResponse = {
   services: ComposeService[]
 }
 
-export type ComposeLogsResponse = {
-  workDir: string
-  service: string
-  tail: number
-  result: CommandResult
-}
-
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
 
 export type Job = {
@@ -401,6 +394,11 @@ export type ModDependency = {
   uniqueId: string
   minimumVersion?: string
   required: boolean
+  installed: boolean
+  enabled: boolean
+  installedVersion?: string
+  satisfied: boolean
+  status?: string
 }
 
 export type ModInfo = {
@@ -440,18 +438,6 @@ export type ModsListResult = {
   restartRequired?: boolean
 }
 
-export type ModSyncSummary = {
-  total: number
-  serverOnly: number
-  clientRequired: number
-  unknown: number
-}
-
-export type ModSyncPlanResult = {
-  mods: ModInfo[]
-  summary: ModSyncSummary
-}
-
 export type NexusModSearchResult = {
   modId: number
   name: string
@@ -464,6 +450,19 @@ export type NexusModSearchResult = {
   pictureUrl?: string
   nexusUrl: string
   installed: boolean
+  installedEnabled: boolean
+  installedFolderName?: string
+  installedVersion?: string
+  requiredMods?: NexusRequiredMod[]
+}
+
+export type NexusRequiredMod = {
+  modId: number
+  name: string
+  notes?: string
+  nexusUrl: string
+  installed: boolean
+  installedEnabled: boolean
   installedFolderName?: string
   installedVersion?: string
 }
@@ -479,7 +478,7 @@ export type NexusModSearchResponse = {
 
 export type ModSource = 'nexus' | 'nexus_package' | 'local' | 'builtin'
 
-export type ModInstallMethod = 'none' | 'nexus_premium' | 'manual'
+export type ModInstallMethod = 'none' | 'nexus_premium' | 'nexus_extension' | 'manual'
 
 export type ModSearchResult = {
   id: string
@@ -501,6 +500,7 @@ export type ModSearchResult = {
   installLabel: string
   nexusModId?: number
   installed: boolean
+  installedEnabled?: boolean
   installedFolderName?: string
   installedVersion?: string
 }

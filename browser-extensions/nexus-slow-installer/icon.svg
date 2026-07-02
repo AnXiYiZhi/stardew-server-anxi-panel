@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Stardew Anxi Nexus Installer">
+  <rect width="128" height="128" rx="24" fill="#23180f"/>
+  <path d="M24 88h80v14H24z" fill="#d8a84e"/>
+  <path d="M32 28h64v52H32z" fill="#f5d188"/>
+  <path d="M42 38h44v8H42zm0 16h32v8H42zm0 16h24v8H42z" fill="#49311d"/>
+  <path d="M78 68l14 14 14-14h-9V38H87v30z" fill="#3f8f54"/>
+</svg>
