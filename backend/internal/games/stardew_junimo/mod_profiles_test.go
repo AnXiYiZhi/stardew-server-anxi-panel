@@ -3,7 +3,10 @@ package stardew_junimo
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
 
 func TestApplyNewSaveDefaultModStateDisablesNonBuiltInMods(t *testing.T) {
@@ -62,6 +65,45 @@ func TestSetModEnabledForSavePersistsAndAppliesProfile(t *testing.T) {
 	}
 }
 
+func TestMarkImportedModsEnabledForSaveOverridesDisabledDefault(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	saveName := "Farmer_12345"
+	if err := os.MkdirAll(filepath.Join(savesDir(dir), "Saves", saveName), 0o755); err != nil {
+		t.Fatalf("create save: %v", err)
+	}
+	createTestMod(t, root, "OldMod", "author.old", "Old Mod")
+	if err := EnsureDisabledModProfileForSave(dir, saveName); err != nil {
+		t.Fatalf("EnsureDisabledModProfileForSave: %v", err)
+	}
+	if err := ApplyModProfile(dir, saveName); err != nil {
+		t.Fatalf("ApplyModProfile: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(disabledModsDir(dir), "OldMod")); err != nil {
+		t.Fatalf("old mod should be disabled: %v", err)
+	}
+
+	createTestMod(t, root, "SpaceCore", "spacechase0.SpaceCore", "SpaceCore")
+	imported := []registry.ModInfo{readModInfo(filepath.Join(root, "SpaceCore"), "SpaceCore")}
+	if err := MarkImportedModsEnabledForSave(dir, saveName, imported); err != nil {
+		t.Fatalf("MarkImportedModsEnabledForSave: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "SpaceCore")); err != nil {
+		t.Fatalf("newly imported mod should stay enabled: %v", err)
+	}
+	mods, err := ListModsWithState(dir, saveName)
+	if err != nil {
+		t.Fatalf("ListModsWithState: %v", err)
+	}
+	state := map[string]bool{}
+	for _, mod := range mods {
+		state[mod.FolderName] = mod.Enabled
+	}
+	if !state["SpaceCore"] || state["OldMod"] {
+		t.Fatalf("unexpected mod states: %#v", state)
+	}
+}
+
 func TestApplyModProfileSwitchesPhysicalStateBetweenSaves(t *testing.T) {
 	dir := t.TempDir()
 	root := modsDir(dir)
@@ -100,5 +142,83 @@ func TestApplyModProfileSwitchesPhysicalStateBetweenSaves(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "ModB")); err != nil {
 		t.Fatalf("ModB should be enabled for saveB: %v", err)
+	}
+}
+
+func TestSetModEnabledForSaveCascadeBundlesPackageAndKeepsSharedDependency(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	saveName := "Farmer_12345"
+	if err := os.MkdirAll(filepath.Join(savesDir(dir), "Saves", saveName), 0o755); err != nil {
+		t.Fatalf("create save: %v", err)
+	}
+	createTestMod(t, root, "ContentPatcher", "Pathoschild.ContentPatcher", "Content Patcher")
+	createTestModWithManifest(t, root, "MultipleConstructionOrders", modManifest{
+		Name:       "Multiple Construction Orders",
+		UniqueID:   "moonslime.MultipleConstructionOrders",
+		Version:    "1.0.0",
+		Author:     "Test",
+		UpdateKeys: []string{"Nexus:47289"},
+	})
+	createTestModWithManifest(t, root, "[CP] Multiple Construction Orders", modManifest{
+		Name:     "[CP] Multiple Construction Orders",
+		UniqueID: "moonslime.MultipleConstructionOrders.CP",
+		Version:  "1.0.0",
+		Author:   "Test",
+		ContentPackFor: &modManifestDependency{
+			UniqueID: "Pathoschild.ContentPatcher",
+		},
+		Dependencies: []modManifestDependency{
+			{UniqueID: "moonslime.MultipleConstructionOrders"},
+		},
+	})
+	imported, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	nexusImported := make([]registry.ModInfo, 0, 2)
+	for _, mod := range imported {
+		if mod.FolderName == "MultipleConstructionOrders" || mod.FolderName == "[CP] Multiple Construction Orders" {
+			nexusImported = append(nexusImported, mod)
+		}
+	}
+	if err := SaveInstalledNexusMetadata(dir, nexusImported, NexusModSearchResult{ModID: 47289, Name: "Multiple Construction Orders"}); err != nil {
+		t.Fatalf("SaveInstalledNexusMetadata: %v", err)
+	}
+	if err := EnsureDisabledModProfileForSave(dir, saveName); err != nil {
+		t.Fatalf("EnsureDisabledModProfileForSave: %v", err)
+	}
+	if err := ApplyModProfile(dir, saveName); err != nil {
+		t.Fatalf("ApplyModProfile: %v", err)
+	}
+
+	affected, err := SetModEnabledForSaveCascade(dir, saveName, "moonslime.MultipleConstructionOrders.CP", true)
+	if err != nil {
+		t.Fatalf("enable cascade: %v", err)
+	}
+	if got := modFoldersForTest(affected); strings.Join(got, ",") != "ContentPatcher,MultipleConstructionOrders,[CP] Multiple Construction Orders" {
+		t.Fatalf("enable affected %v, want ContentPatcher/MCO/[CP]", got)
+	}
+
+	affected, err = SetModEnabledForSaveCascade(dir, saveName, "MultipleConstructionOrders", false)
+	if err != nil {
+		t.Fatalf("disable cascade: %v", err)
+	}
+	if got := modFoldersForTest(affected); strings.Join(got, ",") != "MultipleConstructionOrders,[CP] Multiple Construction Orders" {
+		t.Fatalf("disable affected %v, want only MCO/[CP]", got)
+	}
+	mods, err := ListModsWithState(dir, saveName)
+	if err != nil {
+		t.Fatalf("ListModsWithState: %v", err)
+	}
+	state := map[string]bool{}
+	for _, mod := range mods {
+		state[mod.FolderName] = mod.Enabled
+	}
+	if !state["ContentPatcher"] {
+		t.Fatalf("ContentPatcher should remain enabled as a shared dependency: %#v", state)
+	}
+	if state["MultipleConstructionOrders"] || state["[CP] Multiple Construction Orders"] {
+		t.Fatalf("MCO package should be disabled together: %#v", state)
 	}
 }

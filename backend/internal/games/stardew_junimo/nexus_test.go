@@ -345,7 +345,18 @@ func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
 				"mods": map[string]any{
 					"totalCount": 2,
 					"nodes": []map[string]any{
-						{"modId": 1, "name": "Mod One", "downloads": 10, "endorsements": 1},
+						{
+							"modId": 1, "name": "Mod One", "downloads": 10, "endorsements": 1,
+							"modRequirements": map[string]any{
+								"nexusRequirements": map[string]any{
+									"nodes": []map[string]any{
+										{"modId": "2400", "modName": "SMAPI - Stardew Modding API", "url": "", "notes": ""},
+										{"modId": "1", "modName": "Self requirement", "url": "", "notes": ""},
+										{"modId": "9999", "modName": "External", "externalRequirement": true},
+									},
+								},
+							},
+						},
 						{"modId": 2, "name": "Mod Two", "downloads": 20, "endorsements": 2},
 					},
 				},
@@ -363,6 +374,15 @@ func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
 	}
 	if resp.Results[0].Name != "Mod One" || resp.Results[1].ModID != 2 {
 		t.Errorf("unexpected results: %+v", resp.Results)
+	}
+	if len(resp.Results[0].RequiredMods) != 1 {
+		t.Fatalf("RequiredMods = %+v, want one Nexus prerequisite", resp.Results[0].RequiredMods)
+	}
+	if resp.Results[0].RequiredMods[0].ModID != 2400 || resp.Results[0].RequiredMods[0].Name != "SMAPI - Stardew Modding API" {
+		t.Fatalf("RequiredMods[0] = %+v, want SMAPI", resp.Results[0].RequiredMods[0])
+	}
+	if resp.Results[0].RequiredMods[0].NexusURL != "https://www.nexusmods.com/stardewvalley/mods/2400" {
+		t.Fatalf("RequiredMods[0].NexusURL = %q", resp.Results[0].RequiredMods[0].NexusURL)
 	}
 	if resp.Query != "farming" {
 		t.Errorf("Query = %q, want %q", resp.Query, "farming")
@@ -824,12 +844,16 @@ func TestApplyNexusInstalledMatch_MatchesByNexusID(t *testing.T) {
 
 	results := []NexusModSearchResult{
 		{ModID: 2400, Name: "Stardew Valley Expanded"},
+		{ModID: 5555, Name: "Needs SVE", RequiredMods: []NexusRequiredMod{{ModID: 2400, Name: "Stardew Valley Expanded"}}},
 		{ModID: 9999, Name: "Not Installed"},
 	}
-	results = ApplyNexusInstalledMatch(dir, results)
+	results = ApplyNexusInstalledMatch(dir, "", results)
 
 	if !results[0].Installed {
 		t.Errorf("result[0].Installed = false, want true")
+	}
+	if !results[0].InstalledEnabled {
+		t.Errorf("result[0].InstalledEnabled = false, want true")
 	}
 	if results[0].InstalledFolderName != "SVE" {
 		t.Errorf("InstalledFolderName = %q, want SVE", results[0].InstalledFolderName)
@@ -837,7 +861,16 @@ func TestApplyNexusInstalledMatch_MatchesByNexusID(t *testing.T) {
 	if results[0].InstalledVersion != "1.13.6" {
 		t.Errorf("InstalledVersion = %q, want 1.13.6", results[0].InstalledVersion)
 	}
-	if results[1].Installed {
+	if !results[1].RequiredMods[0].Installed {
+		t.Errorf("required mod install state was not applied: %+v", results[1].RequiredMods[0])
+	}
+	if !results[1].RequiredMods[0].InstalledEnabled {
+		t.Errorf("required mod enabled state was not applied: %+v", results[1].RequiredMods[0])
+	}
+	if results[1].RequiredMods[0].InstalledFolderName != "SVE" {
+		t.Errorf("required InstalledFolderName = %q, want SVE", results[1].RequiredMods[0].InstalledFolderName)
+	}
+	if results[2].Installed {
 		t.Errorf("result[1].Installed = true, want false (no matching Nexus:ID installed)")
 	}
 }
@@ -845,9 +878,31 @@ func TestApplyNexusInstalledMatch_MatchesByNexusID(t *testing.T) {
 func TestApplyNexusInstalledMatch_NoMods(t *testing.T) {
 	dir := t.TempDir()
 	results := []NexusModSearchResult{{ModID: 1, Name: "X"}}
-	got := ApplyNexusInstalledMatch(dir, results)
+	got := ApplyNexusInstalledMatch(dir, "", results)
 	if got[0].Installed {
 		t.Errorf("Installed = true, want false when no mods directory exists")
+	}
+}
+
+func TestApplyNexusInstalledMatch_IncludesDisabledMods(t *testing.T) {
+	dir := t.TempDir()
+	disabledRoot := disabledModsDir(dir)
+	writeManifestWithUpdateKeys(t, disabledRoot, "DisabledMod", "Author.Disabled", "2.0.0", []string{"Nexus:5555"})
+
+	results := []NexusModSearchResult{{ModID: 5555, Name: "Disabled Mod"}}
+	results = ApplyNexusInstalledMatch(dir, "", results)
+
+	if !results[0].Installed {
+		t.Fatalf("Installed = false, want true for mod in disabled directory")
+	}
+	if results[0].InstalledEnabled {
+		t.Fatalf("InstalledEnabled = true, want false for disabled mod")
+	}
+	if results[0].InstalledFolderName != "DisabledMod" {
+		t.Fatalf("InstalledFolderName = %q, want DisabledMod", results[0].InstalledFolderName)
+	}
+	if results[0].InstalledVersion != "2.0.0" {
+		t.Fatalf("InstalledVersion = %q, want 2.0.0", results[0].InstalledVersion)
 	}
 }
 

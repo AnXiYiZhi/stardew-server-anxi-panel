@@ -1,8 +1,8 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, searchNexusMods, installNexusMod, installRemoteMod, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, createJobEventSource, getJob } from '../../../api'
+import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, searchNexusMods, installRemoteMod, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, createJobEventSource, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
-import type { JobLog, ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusSettingsStatus } from '../../../types'
+import type { JobLog, ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
@@ -44,23 +44,91 @@ function dependencyLabel(uniqueId: string) {
     .trim() || uniqueId
 }
 
+function dependencyRequirementText(dep: NonNullable<ModInfo['dependencies']>[number]) {
+  const name = dependencyLabel(dep.uniqueId)
+  const minimum = dep.minimumVersion ? ` >= ${dep.minimumVersion}` : ''
+  const current = dep.installedVersion ? `（当前 ${dep.installedVersion}）` : ''
+  return `${name}${minimum}${current}`
+}
+
+function dependencyIssueText(dep: NonNullable<ModInfo['dependencies']>[number]) {
+  const requirement = dependencyRequirementText(dep)
+  switch (dep.status) {
+    case 'missing':
+      return `缺失：${requirement}`
+    case 'disabled':
+      return `未启用：${requirement}`
+    case 'version_mismatch':
+      return `版本不足：${requirement}`
+    case 'unknown_version':
+      return `版本待确认：${requirement}`
+    case 'optional_missing':
+      return `可选缺失：${requirement}`
+    case 'optional_disabled':
+      return `可选未启用：${requirement}`
+    case 'optional_version_mismatch':
+      return `可选版本不足：${requirement}`
+    case 'optional_unknown_version':
+      return `可选版本待确认：${requirement}`
+    default:
+      return requirement
+  }
+}
+
 function dependencyDisplay(mod: ModInfo) {
   const required = (mod.dependencies ?? []).filter((dep) => dep.required && dep.uniqueId)
   if (required.length === 0) return null
+  const issues = required.filter((dep) => dep.status && dep.status !== 'satisfied')
+  if (issues.length > 0) {
+    const statusPriority = ['missing', 'disabled', 'version_mismatch', 'unknown_version']
+    const primaryStatus = statusPriority.find((status) => issues.some((dep) => dep.status === status)) ?? issues[0].status
+    const primaryIssues = issues.filter((dep) => dep.status === primaryStatus)
+    const names = primaryIssues.map((dep) => dependencyLabel(dep.uniqueId))
+    const labelPrefix = primaryStatus === 'missing'
+      ? '缺失前置'
+      : primaryStatus === 'disabled'
+        ? '前置未启用'
+        : primaryStatus === 'version_mismatch'
+          ? '前置版本不足'
+          : '前置版本待确认'
+    return {
+      label: names.length <= 2
+        ? `${labelPrefix}：${names.join('、')}`
+        : `${labelPrefix}：${names.slice(0, 2).join('、')} 等 ${names.length} 个`,
+      title: `前置依赖检查：${issues.map(dependencyIssueText).join('、')}`,
+      className: primaryStatus === 'unknown_version' ? 'sd-tag-gold' : 'sd-tag-red',
+    }
+  }
   const names = required.map((dep) => dependencyLabel(dep.uniqueId))
   const titleLabels = required.map((dep) => (
-    `${dependencyLabel(dep.uniqueId)}${dep.minimumVersion ? ` >= ${dep.minimumVersion}` : ''}`
+    dependencyRequirementText(dep)
   ))
   if (names.length <= 2) {
     return {
       label: `前置：${names.join('、')}`,
       title: `需要前置依赖：${titleLabels.join('、')}`,
+      className: 'sd-tag-gold',
     }
   }
   return {
     label: `前置：${names.slice(0, 2).join('、')} 等 ${names.length} 个`,
     title: `需要前置依赖：${titleLabels.join('、')}`,
+    className: 'sd-tag-gold',
   }
+}
+
+function installedStatusLabel(result: ModSearchResult) {
+  const version = result.installedVersion ? ` v${result.installedVersion}` : ''
+  if (result.installedEnabled === false) return `已安装但未启用${version}`
+  return `已安装${version}`
+}
+
+function installedStatusTitle(result: ModSearchResult) {
+  const folder = result.installedFolderName ? `文件夹：${result.installedFolderName}` : ''
+  if (result.installedEnabled === false) {
+    return folder ? `${folder}；当前存档未启用` : '当前存档未启用'
+  }
+  return folder
 }
 
 function ModSearchResultCard({
@@ -94,8 +162,11 @@ function ModSearchResultCard({
             <span className="sd-tag sd-tag-gold" title={result.sourceDetail}>{result.sourceDetail}</span>
           ) : null}
           {result.installed ? (
-            <span className="sd-tag sd-tag-green" title={result.installedFolderName ?? ''}>
-              已安装{result.installedVersion ? ` v${result.installedVersion}` : ''}
+            <span
+              className={`sd-tag ${result.installedEnabled === false ? 'sd-tag-gold' : 'sd-tag-green'}`}
+              title={installedStatusTitle(result)}
+            >
+              {installedStatusLabel(result)}
             </span>
           ) : null}
         </div>
@@ -142,12 +213,57 @@ function nexusResultToSearchResult(result: NexusModSearchResult): ModSearchResul
     pictureUrl: result.pictureUrl,
     pageUrl: result.nexusUrl,
     externalLabel: '跳转 N站',
-    installMethod: 'nexus_premium',
+    installMethod: 'nexus_extension',
     installLabel: '一键安装',
     nexusModId: result.modId,
     installed: result.installed,
+    installedEnabled: result.installedEnabled,
     installedFolderName: result.installedFolderName,
     installedVersion: result.installedVersion,
+  }
+}
+
+function nexusRequiredModToNexusResult(required: NexusRequiredMod): NexusModSearchResult {
+  return {
+    modId: required.modId,
+    name: required.name,
+    summary: required.notes,
+    endorsementCount: 0,
+    downloadCount: 0,
+    nexusUrl: required.nexusUrl,
+    installed: required.installed,
+    installedEnabled: required.installedEnabled,
+    installedFolderName: required.installedFolderName,
+    installedVersion: required.installedVersion,
+  }
+}
+
+function missingNexusRequiredMods(result: NexusModSearchResult) {
+  return (result.requiredMods ?? []).filter((required) => !required.installed || required.installedEnabled === false)
+}
+
+function nexusRequiredStatusLabel(required: NexusRequiredMod) {
+  const version = required.installedVersion ? ` v${required.installedVersion}` : ''
+  if (!required.installed) return '缺少前置'
+  if (required.installedEnabled === false) return `前置未启用${version}`
+  return `前置已安装${version}`
+}
+
+function nexusRequiredStatusClass(required: NexusRequiredMod) {
+  if (!required.installed) return 'sd-tag-red'
+  if (required.installedEnabled === false) return 'sd-tag-gold'
+  return 'sd-tag-green'
+}
+
+function nexusExtensionInstallURL(result: NexusModSearchResult): string {
+  const fallback = `https://www.nexusmods.com/stardewvalley/mods/${result.modId}`
+  try {
+    const url = new URL(result.nexusUrl || fallback)
+    url.searchParams.set('tab', 'files')
+    url.searchParams.set('anxi_auto', '1')
+    return url.toString()
+  } catch {
+    return `${fallback}?tab=files&anxi_auto=1`
   }
 }
 
@@ -174,6 +290,7 @@ function modToSearchResult(mod: ModInfo): ModSearchResult {
         installLabel: '玩家自行安装',
         nexusModId: SMAPI_NEXUS_MOD_ID,
         installed: true,
+        installedEnabled: true,
         installedFolderName: mod.folderName,
         installedVersion: mod.version,
       }
@@ -196,6 +313,7 @@ function modToSearchResult(mod: ModInfo): ModSearchResult {
       installMethod: 'manual',
       installLabel: isSmapi ? '玩家自行安装' : '内置组件',
       installed: true,
+      installedEnabled: true,
       installedFolderName: mod.folderName,
       installedVersion: mod.version,
     }
@@ -230,6 +348,7 @@ function modToSearchResult(mod: ModInfo): ModSearchResult {
     installLabel: '已安装',
     nexusModId: modId || undefined,
     installed: true,
+    installedEnabled: mod.enabled,
     installedFolderName: mod.folderName,
     installedVersion: mod.version,
   }
@@ -355,7 +474,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [nexusKeyBusy, setNexusKeyBusy] = useState(false)
   const [nexusKeyError, setNexusKeyError] = useState<string | null>(null)
   const [nexusKeyMessage, setNexusKeyMessage] = useState<string | null>(null)
-  const [nexusInstallingModId, setNexusInstallingModId] = useState<string | null>(null)
+  const [nexusInstallingModId] = useState<string | null>(null)
   const [nexusInstallJobId, setNexusInstallJobId] = useState<string | null>(null)
   const [nexusInstallLogs, setNexusInstallLogs] = useState<JobLog[]>([])
   const [nexusInstallError, setNexusInstallError] = useState<string | null>(null)
@@ -408,8 +527,10 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     try {
       const result = await getMods()
       setData(result)
+      return result
     } catch (e) {
       setListError(errorMessage(e))
+      return null
     } finally {
       setLoading(false)
     }
@@ -510,12 +631,16 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     setSyncUpdating(mod.id)
     try {
       const result = await updateModSyncClassification(mod.id, syncKind)
+      const updates = new Map(result.mods.map((item) => [item.folderName, item]))
       setData((prev) =>
         prev ? {
           ...prev,
-          mods: prev.mods.map((m) => (
-            m.id === mod.id ? { ...m, syncKind: result.syncKind, syncNote: result.syncNote } : m
-          )),
+          mods: prev.mods.map((m) => {
+            const updated = updates.get(m.folderName)
+            return updated
+              ? { ...m, syncKind: updated.syncKind, syncNote: updated.syncNote }
+              : m
+          }),
         } : prev,
       )
       dashboardData.refreshMods()
@@ -531,14 +656,22 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     setEnableUpdating(mod.id)
     try {
       const result = await updateModEnabled(mod.id, enabled, activeSaveName || undefined)
+      const updates = new Map(result.mods.map((item) => [item.folderName, item]))
       setData((prev) =>
         prev ? {
           ...prev,
-          mods: prev.mods.map((m) => (
-            m.id === mod.id || m.folderName === result.folderName
-              ? { ...m, enabled: result.enabled }
+          mods: prev.mods.map((m) => {
+            const updated = updates.get(m.folderName)
+            return updated
+              ? {
+                  ...m,
+                  enabled: updated.enabled,
+                  canToggle: updated.canToggle,
+                  enableNote: updated.enableNote,
+                  dependencies: updated.dependencies ?? m.dependencies,
+                }
               : m
-          )),
+          }),
         } : prev,
       )
       dashboardData.refreshMods()
@@ -718,12 +851,12 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           if (result) {
             setNexusResults((prev) => prev?.map((item) => (
               item.modId === result.modId
-                ? { ...item, installed: true, installedVersion: result.version }
+                ? { ...item, installed: true, installedEnabled: true, installedVersion: result.version }
                 : item
             )) ?? prev)
           }
-          void loadMods()
-          dashboardData.refreshMods()
+          setActiveTab('installed')
+          void loadMods().then(() => dashboardData.refreshMods())
         }
       }).finally(onDone)
     })
@@ -738,22 +871,14 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     }
   }
 
-  async function handleNexusInstall(result: NexusModSearchResult) {
+  function handleNexusInstall(result: NexusModSearchResult) {
     if (nexusInstallingModId !== null || remoteInstallBusy) return
     setNexusInstallError(null)
     setNexusInstallLogs([])
     setNexusInstallJobId(null)
-    setNexusInstallingModId(String(result.modId))
     nexusInstallEventSourceRef.current?.close()
     nexusInstallEventSourceRef.current = null
-
-    try {
-      const response = await installNexusMod(result)
-      subscribeInstallJob(response.jobId, result, () => setNexusInstallingModId(null))
-    } catch (e) {
-      setNexusInstallError(errorMessage(e))
-      setNexusInstallingModId(null)
-    }
+    window.location.assign(nexusExtensionInstallURL(result))
   }
 
   async function handleRemoteInstall() {
@@ -852,20 +977,21 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     if (!isAdmin || isRunning || result.installed || nexusInstallingModId !== null || remoteInstallBusy) {
       return false
     }
-    return !!nexusSettings?.configured
+    return true
   }
 
   function searchedModInstallTitle(result: NexusModSearchResult) {
+    if (result.installed && result.installedEnabled === false) return '该 Mod 已安装，但当前存档未启用，可到配置模组中启用'
     if (result.installed) return '该 Mod 已安装'
     if (!isAdmin) return '仅管理员可以安装 Mod'
     if (isRunning) return '服务器运行中，请先停止后安装 Mod'
     if (nexusInstallingModId !== null || remoteInstallBusy) return '已有安装任务正在进行'
-    if (!nexusSettings?.configured) return '需要先配置 Nexus Mods API Key'
-    return '一键安装'
+    return '打开 Nexus 下载页，浏览器扩展会自动获取 ZIP 链接'
   }
 
   function searchedModInstallLabel(result: NexusModSearchResult, installing: boolean) {
-    if (installing) return '安装中...'
+    if (installing) return '打开中...'
+    if (result.installed && result.installedEnabled === false) return '已安装未启用'
     if (result.installed) return '已安装'
     return '一键安装'
   }
@@ -1041,6 +1167,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                       {nexusResults.map((r) => {
                         const installing = nexusInstallingModId === String(r.modId)
                         const canInstall = searchedModCanInstall(r)
+                        const requiredMods = r.requiredMods ?? []
+                        const missingRequiredMods = missingNexusRequiredMods(r)
                         return (
                           <ModSearchResultCard
                             key={r.modId}
@@ -1056,6 +1184,44 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                                 {searchedModInstallLabel(r, installing)}
                               </button>
                             )}
+                            footerSlot={requiredMods.length > 0 ? (
+                              <div className="sd-mods-installed-footer">
+                                {missingRequiredMods.length > 0 ? (
+                                  <span className="sd-tag sd-tag-red sd-mods-dependency-tag" title={`缺少前置：${missingRequiredMods.map((dep) => dep.name).join('、')}`}>
+                                    缺少前置 {missingRequiredMods.length} 个
+                                  </span>
+                                ) : (
+                                  <span className="sd-tag sd-tag-green sd-mods-dependency-tag">
+                                    前置已满足
+                                  </span>
+                                )}
+                                {requiredMods.map((required) => {
+                                  const requiredResult = nexusRequiredModToNexusResult(required)
+                                  const canInstallRequired = searchedModCanInstall(requiredResult)
+                                  return (
+                                    <span className="sd-mods-required-pill" key={`${r.modId}-required-${required.modId}`}>
+                                      <span
+                                        className={`sd-tag ${nexusRequiredStatusClass(required)} sd-mods-dependency-tag`}
+                                        title={required.notes || required.name}
+                                      >
+                                        {nexusRequiredStatusLabel(required)}：{required.name}
+                                      </span>
+                                      {!required.installed ? (
+                                        <button
+                                          className="sd-btn-tan sd-mods-required-install"
+                                          type="button"
+                                          disabled={!canInstallRequired}
+                                          title={searchedModInstallTitle(requiredResult)}
+                                          onClick={() => void handleNexusInstall(requiredResult)}
+                                        >
+                                          安装前置
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            ) : undefined}
                           />
                         )
                       })}
@@ -1264,7 +1430,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                               </select>
                             )}
                             {requiredDependency ? (
-                              <span className="sd-tag sd-tag-gold sd-mods-dependency-tag" title={requiredDependency.title}>
+                              <span className={`sd-tag ${requiredDependency.className} sd-mods-dependency-tag`} title={requiredDependency.title}>
                                 {requiredDependency.label}
                               </span>
                             ) : null}
@@ -1307,6 +1473,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                       const busy = enableUpdating === mod.id
                       const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy
                       const title = mod.enableNote || writeTitle || (mod.enabled ? '禁用此 Mod' : '启用此 Mod')
+                      const requiredDependency = dependencyDisplay(mod)
                       return (
                         <div className="sd-mods-enable-row" key={`enable-${mod.id}`}>
                           <div className="sd-mods-enable-main">
@@ -1314,6 +1481,13 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                             <span className="sd-mods-enable-meta">
                               {mod.uniqueId || mod.folderName}
                             </span>
+                            {requiredDependency ? (
+                              <div className="sd-mods-enable-dependencies">
+                                <span className={`sd-tag ${requiredDependency.className} sd-mods-dependency-tag`} title={requiredDependency.title}>
+                                  {requiredDependency.label}
+                                </span>
+                              </div>
+                            ) : null}
                           </div>
                           <div className="sd-mods-enable-tags">
                             {mod.builtIn ? <span className="sd-tag sd-tag-blue">内置</span> : null}

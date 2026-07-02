@@ -239,9 +239,14 @@ type ModInfo struct {
 }
 
 type ModDependency struct {
-	UniqueID       string `json:"uniqueId"`
-	MinimumVersion string `json:"minimumVersion,omitempty"`
-	Required       bool   `json:"required"`
+	UniqueID         string `json:"uniqueId"`
+	MinimumVersion   string `json:"minimumVersion,omitempty"`
+	Required         bool   `json:"required"`
+	Installed        bool   `json:"installed"`
+	Enabled          bool   `json:"enabled"`
+	InstalledVersion string `json:"installedVersion,omitempty"`
+	Satisfied        bool   `json:"satisfied"`
+	Status           string `json:"status,omitempty"`
 }
 
 // ModsListResult is returned by GET .../mods.

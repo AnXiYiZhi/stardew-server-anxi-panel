@@ -228,6 +228,61 @@ func SetModSyncClassification(dataDir, folderName, syncKind, syncNote string) er
 	return saveModSyncStore(dataDir, store)
 }
 
+// SetModSyncClassificationCascade persists sync classification changes across
+// the full installed dependency component. Sync classification is a packaging
+// decision, so a dependency chain should stay together when the user moves it
+// between client_required, server_only, and unknown.
+func SetModSyncClassificationCascade(dataDir, modID, syncKind, syncNote string) ([]registry.ModInfo, error) {
+	if !registry.ValidModSyncKind(syncKind) {
+		return nil, fmt.Errorf("无效的同步分类 %q", syncKind)
+	}
+	if err := ValidateModName(modID); err != nil {
+		return nil, err
+	}
+	mods, err := listPhysicalMods(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	mods = ApplyNexusMetadataToMods(dataDir, mods)
+	idx := buildModRelationshipIndex(mods)
+	seed, err := idx.resolve(modID)
+	if err != nil {
+		return nil, err
+	}
+	if !modCanRelationshipToggle(mods[seed]) {
+		return nil, fmt.Errorf("built-in mod %q cannot change sync classification", mods[seed].FolderName)
+	}
+	affectedIndexes := idx.connectedClosure(seed)
+
+	lock := modSyncLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	store, err := loadModSyncStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	affected := make([]registry.ModInfo, 0, len(affectedIndexes))
+	for _, i := range affectedIndexes {
+		mod := mods[i]
+		if !modCanRelationshipToggle(mod) {
+			continue
+		}
+		note := syncNote
+		if note == "" && mod.FolderName != mods[seed].FolderName {
+			note = fmt.Sprintf("随 %s 的 Mod 关系同步", mods[seed].FolderName)
+		}
+		store.Mods[mod.FolderName] = modSyncEntry{SyncKind: syncKind, SyncNote: note}
+		mod.SyncKind = syncKind
+		mod.SyncNote = note
+		affected = append(affected, mod)
+	}
+	if err := saveModSyncStore(dataDir, store); err != nil {
+		return nil, err
+	}
+	return affected, nil
+}
+
 // ResolveModFolder resolves a mod identifier (folder name or UniqueID) to its
 // on-disk folder name within the mods directory. Mirrors the lookup order
 // used by DeleteMod.

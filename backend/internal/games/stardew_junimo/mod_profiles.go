@@ -232,6 +232,51 @@ func EnsureDisabledModProfileForSave(dataDir, saveName string) error {
 	return saveModProfileStore(dataDir, store)
 }
 
+// MarkImportedModsEnabledForSave records newly installed mods as enabled for
+// the active save. Install actions are user intent to add the mod now; users can
+// still disable it later from the per-save configuration page.
+func MarkImportedModsEnabledForSave(dataDir, saveName string, imported []registry.ModInfo) error {
+	saveName = strings.TrimSpace(saveName)
+	if saveName == "" || len(imported) == 0 {
+		return nil
+	}
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return err
+	}
+
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	store, err := loadModProfileStore(dataDir)
+	if err != nil {
+		return err
+	}
+	profile, ok := store.Saves[saveName]
+	if !ok {
+		profile = modProfileSave{DefaultEnabled: true, Mods: map[string]modProfileEntry{}}
+	}
+	if profile.Mods == nil {
+		profile.Mods = map[string]modProfileEntry{}
+	}
+	profile.UpdatedAt = time.Now().Format(time.RFC3339)
+	for _, mod := range imported {
+		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) {
+			continue
+		}
+		profile.Mods[modProfileKey(mod)] = modProfileEntry{
+			Enabled:    true,
+			FolderName: mod.FolderName,
+			UniqueID:   mod.UniqueID,
+		}
+	}
+	store.Saves[saveName] = profile
+	if err := saveModProfileStore(dataDir, store); err != nil {
+		return err
+	}
+	return applyModProfileLocked(dataDir, saveName)
+}
+
 // ApplyModProfile makes the physical active/disabled directories match the
 // selected save profile. Existing saves without a profile keep their current
 // physical mod state for backwards compatibility.
@@ -328,6 +373,93 @@ func SetModEnabledForSave(dataDir, saveName, modID string, enabled bool) (regist
 	target.Enabled = enabled
 	target.CanToggle = true
 	return target, nil
+}
+
+// SetModEnabledForSaveCascade updates a save profile using Stardew mod
+// relationships instead of a single folder. Enabling pulls in required
+// dependencies and same-package members; disabling pushes to installed
+// dependents and same-package members. Shared framework dependencies therefore
+// get enabled when needed, but are not disabled merely because one dependent
+// package was disabled.
+func SetModEnabledForSaveCascade(dataDir, saveName, modID string, enabled bool) ([]registry.ModInfo, error) {
+	saveName = strings.TrimSpace(saveName)
+	if saveName == "" {
+		return nil, fmt.Errorf("save name is required")
+	}
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return nil, err
+	}
+	if err := ValidateModName(modID); err != nil {
+		return nil, err
+	}
+
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	mods, err := listPhysicalMods(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	mods = ApplyNexusMetadataToMods(dataDir, mods)
+	idx := buildModRelationshipIndex(mods)
+	seed, err := idx.resolve(modID)
+	if err != nil {
+		return nil, err
+	}
+	if !modCanRelationshipToggle(mods[seed]) {
+		return nil, fmt.Errorf("built-in mod %q cannot be toggled", mods[seed].FolderName)
+	}
+	affectedIndexes := idx.disableClosure(seed)
+	if enabled {
+		affectedIndexes = idx.enableClosure(seed)
+	}
+
+	store, err := loadModProfileStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	profile, ok := store.Saves[saveName]
+	if !ok {
+		profile = modProfileSave{DefaultEnabled: true, Mods: map[string]modProfileEntry{}}
+	}
+	if profile.Mods == nil {
+		profile.Mods = map[string]modProfileEntry{}
+	}
+	profile.UpdatedAt = time.Now().Format(time.RFC3339)
+	affectedFolders := map[string]bool{}
+	for _, i := range affectedIndexes {
+		mod := mods[i]
+		if !modCanRelationshipToggle(mod) {
+			continue
+		}
+		profile.Mods[modProfileKey(mod)] = modProfileEntry{
+			Enabled:    enabled,
+			FolderName: mod.FolderName,
+			UniqueID:   mod.UniqueID,
+		}
+		affectedFolders[mod.FolderName] = true
+	}
+	store.Saves[saveName] = profile
+	if err := saveModProfileStore(dataDir, store); err != nil {
+		return nil, err
+	}
+	if err := applyModProfileLocked(dataDir, saveName); err != nil {
+		return nil, err
+	}
+
+	updated, err := ListModsWithState(dataDir, saveName)
+	if err != nil {
+		return nil, err
+	}
+	updated = ApplyNexusMetadataToMods(dataDir, updated)
+	affected := make([]registry.ModInfo, 0, len(affectedFolders))
+	for _, mod := range updated {
+		if affectedFolders[mod.FolderName] {
+			affected = append(affected, mod)
+		}
+	}
+	return affected, nil
 }
 
 func ResolveModInfo(dataDir, modID string) (registry.ModInfo, error) {

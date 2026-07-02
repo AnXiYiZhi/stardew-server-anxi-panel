@@ -1,7 +1,6 @@
 import type {
   CommandRunResult,
   CommandsListResult,
-  ComposeLogsResponse,
   ComposePsResponse,
   DockerStatusResponse,
   Instance,
@@ -15,9 +14,9 @@ import type {
   JobResponse,
   JobsResponse,
   LifecycleJobResponse,
+  ModInfo,
   ModsListResult,
   ModSyncKind,
-  ModSyncPlanResult,
   NewGameConfig,
   NexusModSearchResponse,
   NexusModSearchResult,
@@ -93,15 +92,6 @@ export function getComposePs(instanceId = defaultInstanceId) {
   return request<ComposePsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/docker/ps`)
 }
 
-export function getComposeLogs(service = '', tail = 100) {
-  const params = new URLSearchParams()
-  if (service) {
-    params.set('service', service)
-  }
-  params.set('tail', String(tail))
-  return request<ComposeLogsResponse>(`/api/docker/logs?${params.toString()}`)
-}
-
 export function getInstances() {
   return request<InstancesResponse>('/api/instances')
 }
@@ -143,14 +133,6 @@ export function getJobLogs(id: string, after = 0, limit = 1000) {
   params.set('after', String(after))
   params.set('limit', String(Math.min(limit, 1000)))
   return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
-}
-
-export function startTestJob() {
-  return request<JobResponse>('/api/jobs/test', { method: 'POST' })
-}
-
-export function startFailingTestJob() {
-  return request<JobResponse>('/api/jobs/test-fail', { method: 'POST' })
 }
 
 export function getStardewState() {
@@ -361,10 +343,6 @@ export function getMods(instanceId = defaultInstanceId) {
   return request<ModsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods`)
 }
 
-export function uploadMod(file: File, instanceId = defaultInstanceId) {
-  return uploadMods([file], instanceId)
-}
-
 export function uploadMods(files: File[], instanceId = defaultInstanceId) {
   const form = new FormData()
   for (const file of files) {
@@ -401,17 +379,13 @@ export function exportMods(instanceId = defaultInstanceId) {
   })
 }
 
-export function getModSyncPlan(instanceId = defaultInstanceId) {
-  return request<ModSyncPlanResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods/sync-plan`)
-}
-
 export function updateModSyncClassification(
   modId: string,
   syncKind: ModSyncKind,
   syncNote?: string,
   instanceId = defaultInstanceId,
 ) {
-  return request<{ folderName: string; syncKind: ModSyncKind; syncNote: string }>(
+  return request<{ mods: ModInfo[]; syncKind: ModSyncKind }>(
     `/api/instances/${encodeURIComponent(instanceId)}/mods/${encodeURIComponent(modId)}/sync-classification`,
     { method: 'PUT', body: { syncKind, syncNote } },
   )
@@ -423,7 +397,7 @@ export function updateModEnabled(
   saveName?: string,
   instanceId = defaultInstanceId,
 ) {
-  return request<{ folderName: string; enabled: boolean; saveName: string }>(
+  return request<{ mods: ModInfo[]; enabled: boolean; saveName: string }>(
     `/api/instances/${encodeURIComponent(instanceId)}/mods/${encodeURIComponent(modId)}/enabled`,
     { method: 'PUT', body: { enabled, saveName } },
   )

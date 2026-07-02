@@ -30,19 +30,19 @@
 # NEXUS-META-1 联调约定
 - `GET /api/instances/:id/mods` 可能在返回前触发一次 Nexus GraphQL v2 元数据补全：当本地 Mod manifest 有 `UpdateKeys` 中的 `Nexus:<id>` 且 sidecar 尚无缓存时，后端会无 Key 查询 Nexus 缩略图和展示字段，成功后写入 `.local-container/control/nexus-mods.json`。
 - 该补全不改变接口结构，只让 `mods[]` 里的 `pictureUrl/nexusSummary/nexusUrl/downloadCount/endorsementCount/updatedAt` 更完整；Nexus 请求失败时接口仍返回 200 和本地 Mod 信息。
-- `GET /api/instances/:id/mods/search?q=<数字ID>` 未配置 Nexus API Key 时也应返回 GraphQL v2 精确 ID 结果；API Key 只影响 v1 REST 查询和 Nexus 下载安装，不再是展示缩略图/元数据的前置条件。
+- `GET /api/instances/:id/mods/nexus/search?q=<数字ID>` 未配置 Nexus API Key 时也应返回 GraphQL v2 精确 ID 结果；API Key 只影响 v1 REST 查询和 Nexus 下载安装，不再是展示缩略图/元数据的前置条件。
 
 # MODZIP-1 上传错误约定
 
 - `POST /api/instances/:id/mods` 只接受标准 SMAPI Mod ZIP。若用户上传 Nexus 上的老式 XNB 替换包（例如只包含 `Characters/*.xnb`、`Portraits/*.xnb`，没有 `manifest.json`），后端返回 `400 invalid_mod_zip`，message 会明确提示这是 XNB 替换包，不是 SMAPI Mod，不能上传到服务器 `Mods` 目录。
+- SMAPI `manifest.json` 解析兼容 UTF-8 BOM，以及字符串外的 `//` / `/* ... */` 注释和尾随逗号；这只用于 manifest 读取，不代表上传接口接受非 ZIP、非 SMAPI Mod 或 XNB 替换包。
 
-# MODSEARCH-1 联调约定
-- `GET /api/instances/:id/mods/search?q=...`：任意登录用户可用，返回统一搜索模型 `{ query, results }`。`results[]` 至少包含 `id/source/sourceName/name/pageUrl/externalLabel/installMethod/installLabel/installed`，并可带 `nexusModId/curseForgeModId/curseForgeFileId/installUrl` 等 provider 字段。
-- `results[]` 返回顺序按 `downloadCount` 从高到低稳定排序；下载量相同的条目保持 provider 原始顺序。前端应按接口顺序展示，不需要再自行排序。
-- 当前 live provider 是 Nexus：结果显示 `source=nexus`、`sourceName=N站`、`externalLabel=跳转 N站`、`installMethod=nexus_premium`、`installLabel=一键安装`。关键词仍走 GraphQL v2，配置 Nexus Key 后数字 ID 可走 REST v1 精确查询。
-- `POST /api/instances/:id/mods/search/install`：管理员专用，服务器 running/starting 时返回 `409 server_running`。请求体为某条 `ModSearchResult`，成功返回 `202 { "jobId": "..." }`。
-- 统一安装按 `installMethod` 分发：`nexus_premium` 需要 Nexus Key 并复用 Nexus 安装链路；`direct_url` 需要后端结果带 `installUrl` 并复用远程 ZIP 安装链路；`none/manual` 返回 `400 mod_install_not_supported`。
-- 前端创建任务后订阅 `GET /api/jobs/:jobId/stream`，完成后拉 `GET /api/jobs/:jobId` 并刷新 `GET /api/instances/:id/mods`。粘贴 URL / 上传文件仍作为兜底入口。
+# NEXUS-PAGED-1 联调约定
+- `GET /api/instances/:id/mods/nexus/search?q=...&page=...&pageSize=...`：任意登录用户可用，返回 Nexus 专用模型 `{ query, results, page, pageSize, total, hasMore }`。
+- 空 `q` 合法，用于默认热门列表；关键词搜索由后端通过 Nexus GraphQL v2 下推 `downloads DESC` 排序和 `offset/count` 分页；纯数字 ID 按 Nexus Mod ID 精确查询。
+- `POST /api/instances/:id/mods/nexus/install`：管理员专用，服务器 running/starting 时返回 `409 server_running`；需要 Nexus API Key 和后端可用的文件下载权限，成功返回 `202 { "jobId": "..." }`。
+- `/api/instances/:id/mods/search` 与 `/api/instances/:id/mods/search/install` 已撤下，不再作为联调契约。
+- 前端创建安装任务后订阅 `GET /api/jobs/:jobId/stream`，完成后拉 `GET /api/jobs/:jobId` 并刷新 `GET /api/instances/:id/mods`。粘贴 URL / 上传文件仍作为兜底入口。
 
 # REMOTE-MOD-1 联调约定
 - `POST /api/instances/:id/mods/remote/install`：管理员专用，服务器 running/starting 时返回 `409 server_running`。请求体 `{ "url": string, "mod"?: NexusModSearchResult-like }`，成功返回 `202 { "jobId": "..." }`。
@@ -50,6 +50,20 @@
 - `url` 为 `https://...zip` 时，后端直接下载该 ZIP，再走现有 `UploadModZip` 校验/解压/导入；该直链来源可以是 Nexus CDN、ModDrop、GitHub、CurseForge 等公网 HTTPS ZIP。当前不支持 7z/rar。
 - 前端创建任务后订阅 `GET /api/jobs/:jobId/stream`，与 `mod_nexus_install` 相同。任务成功后刷新 `GET /api/instances/:id/mods`。
 - 为防止临时授权泄漏，前端和审计日志不保存粘贴 URL；失败信息不应包含完整 NXM/CDN URL。
+
+# NEXUS-EXT-1 联调约定
+- `browser-extensions/nexus-slow-installer` 是独立浏览器扩展实验包，用于免费 Nexus 用户的慢速下载链路：本地浏览器登录 Nexus -> 扩展在文件页点击/等待 `Slow download` -> 捕获浏览器下载任务中的 Nexus CDN `.zip` 临时链接 -> 调用面板 `POST /api/instances/:id/mods/remote/install`。
+- 扩展第一版不新增后端接口，请求体仍是 `{ "url": string, "mod"?: { "modId": number, "name"?: string, "nexusUrl"?: string } }`；后端按 REMOTE-MOD-1 的 `.zip` 直链规则下载并安装。
+- 扩展调用面板接口时使用 `credentials: "include"` 复用同浏览器中的面板管理员登录态。若正式云端部署遇到 SameSite/Cookie 或跨域策略导致无法带登录态，应新增受限的扩展配对 token，而不是让扩展保存管理员密码。
+- 联调前置：面板管理员已登录、服务器已停止、Nexus 账号已登录、Nexus CDN 临时链接可由云端后端访问。测试失败时优先区分三类问题：扩展未捕获下载、面板鉴权 401/403、后端下载/导入 ZIP 失败。
+- 扩展状态与日志必须脱敏 `md5/expires/user_id/key`；完整临时 URL 只作为请求体短暂发送给面板，不应落入长期文档、审计或支持包。
+
+# NEXUS-EXT-3 联调约定
+
+- 前端 Nexus 搜索结果的“一键安装”主路径已经切到扩展链路：点击后同页跳转到 Nexus Mod 文件页，并附加 `anxi_auto=1`。前端不再为该按钮直接调用 `POST /api/instances/:id/mods/nexus/install`，也不再要求用户配置 Nexus API Key。
+- 扩展进入带 `anxi_auto=1` 的 Nexus 页面后自动打开手动下载/慢速下载流程，捕获到 Nexus CDN `.zip` 临时链接后只等待用户点击“提交到面板”。提交时复用 `POST /api/instances/:id/mods/remote/install`，成功响应仍为 `202 { "jobId": "..." }`。
+- 扩展提交成功后跳回 `/instances/:id/jobs?jobId=<jobId>`；`JobsLogsPage` 应优先读取 `jobId` 查询参数并加载该任务详情和日志。若任务不在第一页列表里，右侧详情仍应通过 `GET /api/jobs/:jobId` 加载。
+- 旧 `POST /mods/nexus/install` 可以保留给后续 Premium/API Key 直连或调试使用，但当前用户入口以扩展 + remote install 为准。
 
 # NEXUS-3 联调约定
 
@@ -317,3 +331,31 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 后端后台调度器每 30 秒检查启用计划。关闭时间前通过现有喊话通道写 `.local-container/control/commands/*.json`；关闭时可调用现有存档备份能力，再提交 `Stop` 生命周期 job；开启时提交 `Start` 生命周期 job。
 - 关闭前备份语义与快捷备份一致：只备份当前已经落盘的 active save，不强制保存游戏内尚未写盘的进度。
 - 联调建议：把关闭时间设置到当前时间后 1-2 分钟，确认弹窗保存后返回 `nextShutdownAt`；服务器运行中确认提醒文件写入 control commands；到点后任务中心出现 stop job。开启时间设置到停止后 1-2 分钟，确认 start job 被提交。
+# MODDEPS-2 联调契约
+
+- `GET /api/instances/:id/mods` 的 `mods[].dependencies[]` 结构扩展为 `{ uniqueId, minimumVersion?, required, installed, enabled, installedVersion?, satisfied, status? }`。前端应以 `satisfied=false` 或 `status` 判断展示诊断，不要再只把它当作纯 manifest 声明。
+- 常见 `status`：`satisfied`、`missing`、`disabled`、`version_mismatch`、`unknown_version`；可选依赖对应 `optional_missing`、`optional_disabled`、`optional_version_mismatch`、`optional_unknown_version`。可选依赖缺失默认不算硬失败。
+- `GET /api/instances/:id/mods/nexus/search` 的 `results[]` 新增 `installedEnabled`。当 `installed=true` 且 `installedEnabled=false` 时，表示该 Nexus Mod 已在服务器安装，但当前激活存档没有启用；前端应提示“已安装但未启用”，并禁止重复安装。
+- 搜索的安装匹配按当前激活存档计算。后端会读取 `GetActiveSaveName(dataDir)` 并用 `ListModsWithState` 合并 active/disabled 目录，确保禁用目录里的 Mod 仍能被 Nexus ID 匹配到。
+- 验证：`cd backend; go test ./...`、`cd frontend; npm.cmd run build`。
+
+# MODREL-1 联调契约
+
+- `PUT /api/instances/:id/mods/:modId/sync-classification` 响应从单个 `{ folderName, syncKind, syncNote }` 升级为 `{ mods, syncKind }`。`mods[]` 是本次按依赖/同包关系被同步分类影响的 Mod，前端必须按返回列表批量更新。
+- 同步分类没有方向性：设置 `client_required`、`server_only` 或 `unknown` 时，都包含同 Nexus 包成员、所有已安装必需前置依赖、前置的前置，以及依赖它的已安装下游。这样用户先点“待确认”再切回其它标签时，后置 Mod 不会停留在旧状态。
+- `PUT /api/instances/:id/mods/:modId/enabled` 响应从单个 `{ folderName, enabled, saveName }` 升级为 `{ mods, enabled, saveName }`。启用时包含同包成员和必需前置，禁用时包含同包成员和依赖它的下游。
+- 共享前置不随某个业务包禁用：例如启用 `[CP] Multiple Construction Orders` 会启用 `Multiple Construction Orders` 和 `Content Patcher`；禁用 `Multiple Construction Orders` 会禁用同包 `[CP]`，但不会禁用 `Content Patcher`，因为它可能仍被其他 Mod 使用。
+- 前端不要自行复刻关系图算法；以后联动规则调整时以后端返回的 `mods[]` 为准。
+- 验证：`cd backend; go test ./...`、`cd frontend; npm.cmd run build`。
+# NEXUS-EXT-2 安装完成可见性与日志
+
+- `mod_remote_install` / `mod_nexus_install` 新任务的安装进度日志应显示正常中文；旧任务历史日志如果已经以乱码入库，不做迁移。
+- 前端订阅安装 job 的 `finished` 事件后，成功状态会切到“添加模组”页并刷新 `GET /mods`。后端会把本次导入的 Mod 标记为当前激活存档启用；联调时如果任务已完成但页面没看到，应先确认是否刷新到了添加页，以及 `mods/` / `mods-disabled/` 目录和当前存档 profile。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+# NEXUS-REQ-1 联调约定
+
+- `GET /api/instances/:id/mods/nexus/search` 的 `results[]` 可能包含 `requiredMods[]`。字段来自 Nexus GraphQL 的 `modRequirements.nexusRequirements`，用于前端搜索卡片提示缺少的 Nexus 前置 Mod。
+- `requiredMods[]` 每项包含 `modId/name/notes/nexusUrl/installed/installedEnabled/installedFolderName/installedVersion`。前端可把 `installed=false` 的项渲染为“安装前置”，并跳转该前置 Mod 的 Nexus 文件页。
+- 前端主 Mod 与前置 Mod 的扩展安装入口都统一追加 `tab=files&anxi_auto=1`；扩展捕获 ZIP 后仍调用 `POST /api/instances/:id/mods/remote/install`。
+- Nexus 页面出现 “Additional files required” 弹窗时，扩展应自动点击弹窗内 `Download` 按钮继续，不要求用户手点。该动作只发生在扩展已开始捕获的上下文里。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`、`cd frontend; npm.cmd run build`、扩展脚本 `node --check`。

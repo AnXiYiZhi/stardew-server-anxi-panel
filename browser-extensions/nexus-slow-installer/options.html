@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Stardew Anxi Nexus Installer 设置</title>
+    <link rel="stylesheet" href="ui.css">
+  </head>
+  <body class="options">
+    <main>
+      <h1>Stardew Anxi Nexus Installer</h1>
+      <p class="muted">这是本地私用扩展。它不会保存完整 Nexus CDN 临时链接，只会把链接交给你配置的面板。</p>
+
+      <section>
+        <label>
+          面板地址
+          <input id="panelBaseUrl" type="url" placeholder="https://panel.example.com">
+        </label>
+        <label>
+          实例 ID
+          <input id="instanceId" type="text" placeholder="stardew">
+        </label>
+        <label class="check">
+          <input id="autoStartOnNexusFilePage" type="checkbox">
+          进入带 file_id 的 Nexus 文件页后自动开始捕获
+        </label>
+        <label class="check">
+          <input id="autoClickSlowDownload" type="checkbox">
+          自动点击 Slow download 按钮
+        </label>
+        <label class="check">
+          <input id="cancelBrowserDownload" type="checkbox">
+          捕获到链接后取消浏览器本地下载
+        </label>
+      </section>
+
+      <div class="actions">
+        <button id="save">保存设置</button>
+        <button id="clear" class="secondary">清空状态</button>
+      </div>
+
+      <section class="status">
+        <h2>当前状态</h2>
+        <pre id="state">读取中...</pre>
+      </section>
+    </main>
+
+    <script src="shared.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

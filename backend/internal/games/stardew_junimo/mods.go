@@ -83,7 +83,11 @@ func parseNexusModIDFromUpdateKeys(updateKeys []string) (int, bool) {
 // ListMods scans the mods root directory for subdirectories, reads each manifest.json,
 // and returns a list of ModInfo. Directories without a manifest are included with ParseError.
 func ListMods(dataDir string) ([]registry.ModInfo, error) {
-	return listModsFromRoot(modsDir(dataDir), true, true)
+	mods, err := listModsFromRoot(modsDir(dataDir), true, true)
+	if err != nil {
+		return nil, err
+	}
+	return applyModDependencyStatus(mods), nil
 }
 
 // ListModsWithState returns active and disabled mods in one list. When
@@ -94,7 +98,8 @@ func ListModsWithState(dataDir, saveName string) ([]registry.ModInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ApplyModEnableProfile(dataDir, saveName, mods), nil
+	mods = ApplyModEnableProfile(dataDir, saveName, mods)
+	return applyModDependencyStatus(mods), nil
 }
 
 func listPhysicalMods(dataDir string) ([]registry.ModInfo, error) {
@@ -198,8 +203,7 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	}
 
 	var m modManifest
-	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := decodeModManifest(data, &m); err != nil {
 		info.ParseError = "manifest.json 瑙ｆ瀽澶辫触: " + err.Error()
 		return info
 	}
@@ -235,6 +239,126 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	}
 
 	return info
+}
+
+func decodeModManifest(data []byte, manifest *modManifest) error {
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	if err := json.Unmarshal(data, manifest); err == nil {
+		return nil
+	}
+
+	normalized := normalizeManifestJSON(data)
+	if bytes.Equal(normalized, data) {
+		return json.Unmarshal(data, manifest)
+	}
+	return json.Unmarshal(normalized, manifest)
+}
+
+func normalizeManifestJSON(data []byte) []byte {
+	return stripJSONTrailingCommas(stripJSONComments(data))
+}
+
+func stripJSONComments(data []byte) []byte {
+	var out bytes.Buffer
+	out.Grow(len(data))
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if inString {
+			out.WriteByte(c)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if c == '"' {
+			inString = true
+			out.WriteByte(c)
+			continue
+		}
+		if c == '/' && i+1 < len(data) {
+			next := data[i+1]
+			if next == '/' {
+				i += 2
+				for i < len(data) && data[i] != '\n' && data[i] != '\r' {
+					i++
+				}
+				if i < len(data) {
+					out.WriteByte(data[i])
+				}
+				continue
+			}
+			if next == '*' {
+				i += 2
+				for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+					if data[i] == '\n' || data[i] == '\r' {
+						out.WriteByte(data[i])
+					}
+					i++
+				}
+				if i+1 < len(data) {
+					i++
+				}
+				continue
+			}
+		}
+		out.WriteByte(c)
+	}
+	return out.Bytes()
+}
+
+func stripJSONTrailingCommas(data []byte) []byte {
+	var out bytes.Buffer
+	out.Grow(len(data))
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if inString {
+			out.WriteByte(c)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if c == '"' {
+			inString = true
+			out.WriteByte(c)
+			continue
+		}
+		if c == ',' {
+			j := i + 1
+			for j < len(data) && (data[j] == ' ' || data[j] == '\t' || data[j] == '\r' || data[j] == '\n') {
+				j++
+			}
+			if j < len(data) && (data[j] == '}' || data[j] == ']') {
+				continue
+			}
+		}
+		out.WriteByte(c)
+	}
+	return out.Bytes()
 }
 
 func manifestDependencies(m modManifest) []registry.ModDependency {

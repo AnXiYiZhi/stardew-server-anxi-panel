@@ -192,6 +192,63 @@ func TestBuildModSyncPlan_Summary(t *testing.T) {
 	}
 }
 
+func TestSetModSyncClassificationCascadeUpdatesDependencyComponent(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	createTestModWithManifest(t, root, "Framework", modManifest{
+		Name:     "Framework",
+		UniqueID: "author.framework",
+		Version:  "1.0.0",
+		Author:   "Test",
+	})
+	createTestModWithManifest(t, root, "Core", modManifest{
+		Name:     "Core",
+		UniqueID: "author.core",
+		Version:  "1.0.0",
+		Author:   "Test",
+		Dependencies: []modManifestDependency{
+			{UniqueID: "author.framework"},
+		},
+	})
+	createTestModWithManifest(t, root, "Content", modManifest{
+		Name:     "Content",
+		UniqueID: "author.content",
+		Version:  "1.0.0",
+		Author:   "Test",
+		Dependencies: []modManifestDependency{
+			{UniqueID: "author.core"},
+		},
+	})
+
+	affected, err := SetModSyncClassificationCascade(dir, "author.core", registry.ModSyncKindUnknown, "")
+	if err != nil {
+		t.Fatalf("unknown cascade: %v", err)
+	}
+	if got := modFoldersForTest(affected); strings.Join(got, ",") != "Content,Core,Framework" {
+		t.Fatalf("unknown cascade affected %v, want Content/Core/Framework", got)
+	}
+	for _, folder := range []string{"Content", "Core", "Framework"} {
+		kind, _ := GetModSyncClassification(dir, folder)
+		if kind != registry.ModSyncKindUnknown {
+			t.Fatalf("%s kind = %q, want unknown", folder, kind)
+		}
+	}
+
+	affected, err = SetModSyncClassificationCascade(dir, "author.core", registry.ModSyncKindClientRequired, "")
+	if err != nil {
+		t.Fatalf("client cascade: %v", err)
+	}
+	if got := modFoldersForTest(affected); strings.Join(got, ",") != "Content,Core,Framework" {
+		t.Fatalf("client cascade affected %v, want Content/Core/Framework", got)
+	}
+	for _, folder := range []string{"Content", "Core", "Framework"} {
+		kind, _ := GetModSyncClassification(dir, folder)
+		if kind != registry.ModSyncKindClientRequired {
+			t.Fatalf("%s kind = %q, want client_required", folder, kind)
+		}
+	}
+}
+
 // ── ResolveModFolder ─────────────────────────────────────────────────────────
 
 func TestResolveModFolder_ByFolderName(t *testing.T) {

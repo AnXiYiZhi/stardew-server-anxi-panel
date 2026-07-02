@@ -81,6 +81,13 @@
 - `sanitizeError` 现在会保留常见 Mod 上传校验原因（目录已存在、UniqueID 重复、具体 Mod 的 manifest 解析失败等），避免前端只显示笼统的“第 N 个 Mod ZIP 无效”。
 - 验证：`go test ./internal/games/stardew_junimo -run "UploadModZip|ReadModInfo"`。
 
+# MODZIP-4 manifest JSONC 兼容
+
+- `readModInfo` 新增 `decodeModManifest`，先按标准 JSON 解析；失败后仅对 SMAPI `manifest.json` 做 JSONC 兼容清理：移除字符串外的 `//` 行注释、`/* ... */` 块注释和对象/数组尾随逗号，再重新解析。
+- 修复的真实场景：Nexus CDN 远程安装 `SpaceCore` 时，ZIP 下载和解压已成功，但 `manifest.json` 含注释导致 `invalid character '/' looking for beginning of object key string`，最终 `mod_remote_install` 失败。
+- 清理逻辑会保留字符串内容，例如 `https://...` 中的 `//` 不会被当作注释；ZIP 路径校验、manifest 必填字段、重复 UniqueID、XNB 替换包识别等安全规则不变。
+- 验证：`go test ./internal/games/stardew_junimo -run "ReadModInfo|UploadModZip"`。
+
 # MODDEPS-1 Mod 前置依赖字段
 
 - `GET /api/instances/:id/mods` 的 `mods[]` 现在会从每个 Mod 的 `manifest.json` 解析前置依赖并返回 `dependencies[]`：`{ uniqueId, minimumVersion?, required }`。
@@ -116,9 +123,10 @@
 - GraphQL 补全是非阻断逻辑：Nexus 请求失败不会影响 Mod 列表，只会暂时保留本地图标；成功后写回 sidecar，后续列表请求直接走缓存，不需要 API Key，也不需要重启。
 - Nexus API Key 仍只用于 v1 文件列表/下载链路等受限能力；普通搜索、数字 ID 展示元数据、手动上传后缩略图补全都不再依赖 Key。
 
-# MODSEARCH-3 下载量排序
-- `SearchMods` 返回 `ModSearchResult` 前会按 `downloadCount` 从高到低稳定排序；下载量相同的结果保持 provider 原始顺序。当前 live provider 只有 Nexus，后续接入 StardewModDataset/CurseForge/ModDrop/GitHub 时也应复用这条统一排序规则。
-- 新增 `TestSearchModsSortsResultsByDownloadCountDescending` 覆盖搜索结果排序，避免前端卡片顺序回退为上游默认顺序。
+# NEXUS-PAGED-1 搜索排序与分页
+- 当前在线搜索入口是 `GET /api/instances/:id/mods/nexus/search`。关键词搜索通过 Nexus GraphQL v2 下推 `downloads DESC` 排序，并使用 `page/pageSize` 计算 `offset/count`。
+- 空查询作为 Stardew Valley 默认热门列表处理；数字 ID 搜索仍支持无 Key GraphQL 精确查询和有 Key v1 REST 精确查询。
+- 旧 `SearchMods` / `ModSearchResult` 统一搜索骨架已撤回，不再作为当前接口契约。
 
 # MODZIP-1 XNB 替换包提示
 
@@ -127,14 +135,11 @@
 - Web 层 `sanitizeError` 对 XNB/SMAPI/manifest 这类产品级错误保留友好提示，不再统一压成“压缩包格式错误或已损坏”。
 - 验证：`go test ./internal/games/stardew_junimo ./internal/web` 覆盖 XNB 替换包识别和错误脱敏。
 
-# MODSEARCH-1 统一搜索与统一安装骨架
+# MODSEARCH-1 撤回记录
 
-- 新增 `backend/internal/games/stardew_junimo/mod_search.go`，定义页面级统一搜索结果 `ModSearchResult`：包含 `source/sourceName/sourceModId`、`pageUrl/externalLabel`、`installMethod/installLabel/installUrl`、Nexus/CurseForge 站点 ID、已安装匹配字段等。前端不再需要把搜索结果当成 Nexus 专用结构处理。
-- 新增 `GET /api/instances/:id/mods/search?q=...`，当前 live provider 先接现有 Nexus GraphQL v2 / REST v1 搜索，并映射为统一模型：N站结果 `source=nexus`、`sourceName=N站`、跳转按钮文案为 `跳转 N站`、安装按钮文案为 `一键安装`、`installMethod=nexus_premium`。
-- 新增 `POST /api/instances/:id/mods/search/install`，管理员专用且要求服务器不在 running/starting。接口按 `installMethod` 分发：`nexus_premium` 复用 `InstallNexusMod`；`direct_url` 复用 `InstallModFromDirectURL`；`none/manual` 返回 `400 mod_install_not_supported`。所有下载后的导入仍走 `UploadModZip` 安全校验，不绕过 `stardew_junimo`。
-- 该骨架是给 StardewModDataset、CurseForge、ModDrop、GitHub Release、直链 provider 共用的扩展点。后续接入时只需要在 `SearchMods` 中追加 provider 与去重排序，再按优先级填充 `installMethod/installUrl`：CurseForge download-url、ModDrop download-url、GitHub Release/直链、Nexus Premium、Nexus NXM/临时 CDN。
-- 相关文件：`backend/internal/games/stardew_junimo/mod_search.go`、`backend/internal/web/lifecycle_handlers.go`、`backend/internal/web/instance_handlers.go`。
-- 验证：`go test ./...` 覆盖统一卡片映射，确认 N站来源、跳转文案和一键安装文案不会回退成旧 Nexus 专用结构。
+- `/api/instances/:id/mods/search` 与 `/api/instances/:id/mods/search/install` 已撤回，当前不注册路由。
+- `backend/internal/games/stardew_junimo/mod_search.go` 和对应测试已删除；当前只保留 Nexus 专用搜索/安装接口，以及管理员粘贴 NXM/CDN ZIP 的远程安装兜底。
+- 后续如果重新做 StardewModDataset、CurseForge、ModDrop、GitHub Release 等多来源搜索，应重新设计接口和排序/去重策略，不要假设当前仍有统一搜索后端契约。
 
 # NEXUS-3 下载安装与已安装卡片元数据
 
@@ -511,3 +516,31 @@ docker run --rm `
 - 关闭前备份只打包已经落盘的 active save，不强制保存游戏内实时进度。备份失败会记录 `backup_failed` 并阻止本次关闭。
 - 计划开启只在到点后 5 分钟宽限窗口内触发，避免面板首次启动时补跑很久以前的开启时间；计划关闭可在维护窗口内补跑一次。状态通过 `last_*_at` 防止 30 秒轮询重复提交。
 - 验证：`cd backend; go test ./internal/storage ./internal/web ./cmd/panel`。
+# MODDEPS-2 依赖状态与按存档安装匹配
+
+- `GET /api/instances/:id/mods` 现在会在每个 `dependencies[]` 项上补齐状态字段：`installed/enabled/installedVersion/satisfied/status`。状态覆盖必需依赖缺失、依赖已安装但当前存档未启用、最低版本不满足、版本无法确认，以及可选依赖缺失等场景。
+- 依赖判断在 `stardew_junimo.ListModsWithState(dataDir, activeSaveName)` 内完成，基于合并后的 `mods` 与 `mods-disabled` 物理列表，并叠加当前存档 profile 的 enabled 状态；不绕过 Junimo driver，也不在 web handler 堆 Stardew 逻辑。
+- `GET /api/instances/:id/mods/nexus/search` 的已安装匹配改为调用当前存档维度的 `ApplyNexusInstalledMatch(dataDir, activeSaveName, results)`，因此当前存档禁用的 Mod 仍会显示 `installed=true`，同时返回 `installedEnabled=false`。
+- 版本比较采用保守的数字段比较，例如 `1.10` 大于 `1.9`；无法解析的版本会返回 `unknown_version`，供前端提示人工确认。本阶段只做检测和展示，不自动安装依赖，也不阻止启用。
+- 验证：`cd backend; go test ./...`。
+
+# MODREL-1 Mod 依赖与来源包联动
+
+- 新增 `mod_relationships.go`，统一计算已安装 Mod 的必需依赖图、反向依赖图和 Nexus 来源包 bundle。来源包只使用已有 `nexusModId/originNexusModId` sidecar 信息，不靠 `[CP]` 文件夹名前缀猜测。
+- `PUT /mods/:modId/sync-classification` 改为调用 `SetModSyncClassificationCascade` 并返回 `{ mods, syncKind }`。同步分类按已安装必需依赖连通组一起变：同包成员、前置依赖、前置的前置以及依赖它的下游都会跟随当前选择，避免先点“待确认”后再切回其它标签时下游停留在旧状态。
+- `PUT /mods/:modId/enabled` 改为调用 `SetModEnabledForSaveCascade` 并返回 `{ mods, enabled, saveName }`。启用时会一起启用同 Nexus 包成员和必需前置；禁用时会一起禁用同包成员和依赖它的下游，但不会禁用共享前置，例如禁用 Multiple Construction Orders 包不会禁用 Content Patcher。
+- 验证覆盖：同步分类的 `Content -> Core -> Framework` 依赖链方向；MCO 主 Mod 与 `[CP]` 内容包同包启停，同时 Content Patcher 作为共享前置保持独立。
+- 验证：`cd backend; go test ./...`；`cd frontend; npm.cmd run build`。
+# NEXUS-EXT-2 远程安装任务日志中文修复
+
+- `mod_remote_install` 与 `mod_nexus_install` 的 job 进度日志写入点已修复为正常 UTF-8 中文：`准备从远程链接安装 Mod`、`准备安装 Nexus Mod #...`、`已导入：...`。
+- 安装或上传 Mod 成功后，如果当前实例有激活存档，后端会把本次导入的 Mod 写入该存档 profile 并标记为启用，避免后续 profile 应用把刚安装的 Mod 移到 `mods-disabled/`。
+- 这次只修任务日志里用户直接看到的安装阶段文案；历史已经写入数据库的乱码日志不会被回写修复。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`。
+# NEXUS-REQ-1 搜索结果前置依赖
+
+- `GET /api/instances/:id/mods/nexus/search` 的 GraphQL 查询新增读取 `mods.nodes[].modRequirements.nexusRequirements`，搜索结果可返回 `requiredMods[]`。
+- `requiredMods[]` 每项结构为 `{ modId, name, notes?, nexusUrl, installed, installedEnabled, installedFolderName?, installedVersion? }`。来源是 Nexus 页面声明的 Nexus 前置 Mod，不是压缩包内 `manifest.json` 的 SMAPI UniqueID。
+- `ApplyNexusInstalledMatch(dataDir, saveName, results)` 现在会同时给搜索结果本身和 `requiredMods[]` 标记本地安装/当前存档启用状态，判断仍基于已安装 Mod 的 `UpdateKeys: ["Nexus:<id>"]`。
+- GraphQL 只拉取前 10 个 Nexus 前置；外部依赖和自引用会被过滤。已安装后的精确 SMAPI 依赖状态仍由 `GET /mods` 的 `dependencies[]` 负责兜底。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
