@@ -2,7 +2,10 @@ package stardew_junimo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -324,15 +327,15 @@ func TestSendSay_RejectsTooLongMessage(t *testing.T) {
 func TestSendSay_AcceptsMaxLength(t *testing.T) {
 	d := newTestDriver(&fakeConsoleDocker{})
 	instance := makeRunningInstance()
+	instance.DataDir = t.TempDir()
 
 	msg200 := strings.Repeat("x", 200)
-	_, err := sendSay(context.Background(), d, instance, msg200)
-	if err == nil {
-		t.Fatal("expected unsupported error for valid-length say message")
+	result, err := sendSay(context.Background(), d, instance, msg200)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	ce := err.(*CommandError)
-	if ce.Code != "command_not_supported" {
-		t.Errorf("expected code 'command_not_supported', got %q", ce.Code)
+	if result.Command != "say" || result.ExitCode != 0 {
+		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 
@@ -347,6 +350,46 @@ func TestSendSay_ServerNotRunning(t *testing.T) {
 	ce := err.(*CommandError)
 	if ce.Code != "server_not_running" {
 		t.Errorf("expected code 'server_not_running', got %q", ce.Code)
+	}
+}
+
+func TestSendSay_WritesBroadcastCommandFile(t *testing.T) {
+	d := newTestDriver(&fakeConsoleDocker{})
+	instance := makeRunningInstance()
+	instance.DataDir = t.TempDir()
+
+	result, err := sendSay(context.Background(), d, instance, "hello\nsettings show")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output == "" {
+		t.Fatal("expected user-facing output")
+	}
+
+	files, err := os.ReadDir(filepath.Join(instance.DataDir, ".local-container", "control", "commands"))
+	if err != nil {
+		t.Fatalf("read commands dir: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 command file, got %d", len(files))
+	}
+
+	raw, err := os.ReadFile(filepath.Join(instance.DataDir, ".local-container", "control", "commands", files[0].Name()))
+	if err != nil {
+		t.Fatalf("read command file: %v", err)
+	}
+	var command struct {
+		Name    string            `json:"name"`
+		Payload map[string]string `json:"payload"`
+	}
+	if err := json.Unmarshal(raw, &command); err != nil {
+		t.Fatalf("unmarshal command: %v", err)
+	}
+	if command.Name != "broadcast" {
+		t.Fatalf("expected broadcast command, got %q", command.Name)
+	}
+	if got := command.Payload["message"]; got != "hello settings show" {
+		t.Fatalf("expected sanitized message, got %q", got)
 	}
 }
 

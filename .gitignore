@@ -5,5 +5,7 @@ dist/
 tmp/
 backend/data/
 data/
+backend/internal/games/stardew_junimo/embedded/smapi-mod-src/bin/
+backend/internal/games/stardew_junimo/embedded/smapi-mod-src/obj/
 *.local
 .DS_Store

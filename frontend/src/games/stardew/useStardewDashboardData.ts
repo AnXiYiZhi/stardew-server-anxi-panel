@@ -38,6 +38,7 @@ export function useStardewDashboardData(): StardewDashboardData {
   const invitePollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const staleInviteCodeRef = useRef<string | null>(null)
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map())
+  const activeSaveNameRef = useRef<string | null>(null)
   const [invitePollRequested, setInvitePollRequested] = useState(false)
 
   const refreshInstanceState = useCallback(async () => {
@@ -263,6 +264,17 @@ export function useStardewDashboardData(): StardewDashboardData {
   }, [instanceState?.state, refreshInviteCode, refreshPlayers])
 
   useEffect(() => {
+    const activeSaveName = saves?.activeSaveName ?? ''
+    if (activeSaveNameRef.current === null) {
+      activeSaveNameRef.current = activeSaveName
+      return
+    }
+    if (activeSaveNameRef.current === activeSaveName) return
+    activeSaveNameRef.current = activeSaveName
+    void refreshMods()
+  }, [saves?.activeSaveName, refreshMods])
+
+  useEffect(() => {
     if (playersPollRef.current !== null) {
       clearTimeout(playersPollRef.current)
       playersPollRef.current = null
@@ -345,6 +357,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     inviteCodeError,
     loading,
     playersLoading,
+    inviteCodeRefreshing: invitePollRequested,
     refreshAll,
     refreshInstanceState,
     refreshSaves,

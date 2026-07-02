@@ -308,6 +308,7 @@ export type SavesListResult = {
 export type BackupInfo = {
   name: string
   saveName: string
+  kind: 'manual' | 'latest' | 'daily' | 'scheduled' | string
   size: number
   createdAt: string
   farmerName?: string
@@ -320,12 +321,59 @@ export type BackupInfo = {
   parseError?: string
 }
 
+export type BackupPolicy = {
+  gameSaveBackups: boolean
+  dailySnapshots: boolean
+  dailyRetentionDays: number
+  scheduledBackups: boolean
+  scheduledHour: number
+  scheduledIntervalHours?: number
+}
+
+export type BackupMaintenanceResult = {
+  createdBackupNames: string[]
+  consumedEvents: number
+}
+
 export type BackupsListResult = {
   backups: BackupInfo[]
+  policy?: BackupPolicy
+  maintenance?: BackupMaintenanceResult
 }
 
 export type RestoreBackupResult = {
   saveName: string
+}
+
+export type BackupCreateResult = {
+  backupName: string
+}
+
+export type BackupPolicyResult = {
+  policy: BackupPolicy
+}
+
+export type RestartSchedule = {
+  instanceId: string
+  enabled: boolean
+  shutdownTime: string
+  startupTime: string
+  timezone: string
+  warningMinutes: number[]
+  backupBeforeShutdown: boolean
+  skipIfPlayersOnline: boolean
+  nextShutdownAt?: string
+  nextStartupAt?: string
+  lastShutdownAt?: string
+  lastStartupAt?: string
+  lastStatus?: string
+  lastMessage?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type RestartScheduleResult = {
+  schedule: RestartSchedule
 }
 
 export type UploadPreviewResult = {
@@ -349,6 +397,12 @@ export type InstanceVNCConfig = {
 
 export type ModSyncKind = 'server_only' | 'client_required' | 'unknown'
 
+export type ModDependency = {
+  uniqueId: string
+  minimumVersion?: string
+  required: boolean
+}
+
 export type ModInfo = {
   id: string
   uniqueId?: string
@@ -358,10 +412,27 @@ export type ModInfo = {
   description?: string
   folderName: string
   parseError?: string
+  enabled: boolean
+  canToggle?: boolean
+  enableNote?: string
   syncKind: ModSyncKind
   syncNote?: string
+  builtIn?: boolean
+  nexusSummary?: string
+  updatedAt?: string
+  endorsementCount?: number
+  downloadCount?: number
+  pictureUrl?: string
+  nexusUrl?: string
   updateKeys?: string[]
   nexusModId?: number
+  isContentPack?: boolean
+  contentPackFor?: string
+  originSource?: string
+  originNexusModId?: number
+  originModName?: string
+  originModUrl?: string
+  dependencies?: ModDependency[]
 }
 
 export type ModsListResult = {
@@ -400,6 +471,48 @@ export type NexusModSearchResult = {
 export type NexusModSearchResponse = {
   query: string
   results: NexusModSearchResult[]
+  page: number
+  pageSize: number
+  total: number
+  hasMore: boolean
+}
+
+export type ModSource = 'nexus' | 'nexus_package' | 'local' | 'builtin'
+
+export type ModInstallMethod = 'none' | 'nexus_premium' | 'manual'
+
+export type ModSearchResult = {
+  id: string
+  source: ModSource
+  sourceName: string
+  sourceModId?: string
+  sourceDetail?: string
+  name: string
+  summary?: string
+  author?: string
+  version?: string
+  updatedAt?: string
+  endorsementCount?: number
+  downloadCount?: number
+  pictureUrl?: string
+  pageUrl?: string
+  externalLabel: string
+  installMethod: ModInstallMethod
+  installLabel: string
+  nexusModId?: number
+  installed: boolean
+  installedFolderName?: string
+  installedVersion?: string
+}
+
+export type NexusSettingsStatus = {
+  configured: boolean
+  last4?: string
+}
+
+export type RemoteModInstallRequest = {
+  url: string
+  mod?: NexusModSearchResult
 }
 
 export type ConsoleCommandDef = {

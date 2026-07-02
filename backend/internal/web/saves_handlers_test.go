@@ -1,6 +1,7 @@
 package web
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -265,5 +267,112 @@ func TestModUpload_RunningBlocked(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Errorf("mod upload running returned %d, want 409; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestModUpload_AcceptsMultipleZipFiles(t *testing.T) {
+	handler, _, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	addModZipPart(t, mw, "ModA.zip", "ModA", "author.moda", "Mod A")
+	addModZipPart(t, mw, "ModB.zip", "ModB", "author.modb", "Mod B")
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/mods/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if adminCookie != nil {
+		req.AddCookie(adminCookie)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("mod upload returned %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var result registry.ModsListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(result.Mods) != 2 {
+		t.Fatalf("len(mods) = %d, want 2: %+v", len(result.Mods), result.Mods)
+	}
+	if result.RestartRequired {
+		t.Fatal("RestartRequired = true, want false for stopped-server upload")
+	}
+}
+
+func TestModsList_StoppedServerSuppressesStaleRestartRequired(t *testing.T) {
+	handler, store, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+	instance, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if err := sj.SetModsRestartRequired(instance.DataDir); err != nil {
+		t.Fatalf("set restart flag: %v", err)
+	}
+	_, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:           storage.DefaultInstanceID,
+		State:        storage.InstanceStateStopped,
+		StateMessage: "test stopped",
+		DriverPhase:  "stopped",
+	})
+	if err != nil {
+		t.Fatalf("set instance stopped: %v", err)
+	}
+
+	resp, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/mods", nil, adminCookie)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("mods list returned %d, want 200; body: %s", resp.Code, resp.Body.String())
+	}
+	var result registry.ModsListResult
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if result.RestartRequired {
+		t.Fatal("RestartRequired = true, want false while server is stopped")
+	}
+}
+
+func addModZipPart(t *testing.T, mw *multipart.Writer, filename, folderName, uniqueID, modName string) {
+	t.Helper()
+	fw, err := mw.CreateFormFile("mod", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var zipBuf bytes.Buffer
+	zw := zip.NewWriter(&zipBuf)
+	manifest, err := zw.Create(folderName + "/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = manifest.Write([]byte(`{"Name":"` + modName + `","UniqueID":"` + uniqueID + `","Version":"1.0.0","Author":"Tester"}`))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(zipBuf.Bytes()); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -11,6 +12,32 @@ import (
 
 func parseJSON(data []byte, v any) error {
 	return json.Unmarshal(data, v)
+}
+
+func TestSanitizeErrorKeepsXNBReplacementHint(t *testing.T) {
+	msg := sanitizeError(
+		errors.New("这是 XNB 替换包，不是 SMAPI Mod，不能上传到服务器 Mods 目录；请使用带 manifest.json 的 SMAPI 或 Content Patcher 版本"),
+		"Mod ZIP 无效",
+	)
+	if msg != "这是 XNB 替换包，不是 SMAPI Mod，不能上传到服务器 Mods 目录；请使用带 manifest.json 的 SMAPI 或 Content Patcher 版本" {
+		t.Fatalf("sanitizeError returned %q", msg)
+	}
+}
+
+func TestSanitizeErrorKeepsModUploadValidationReason(t *testing.T) {
+	tests := []string{
+		`Mod 目录 "MultipleConstructionOrders" 已存在`,
+		`已安装相同 UniqueID "moonslime.MultipleConstructionOrders"（目录 "MultipleConstructionOrders"）`,
+		`mod "[CP] MultipleConstructionOrders" 不是合法的 SMAPI Mod: manifest.json 解析失败: invalid character 'ï' looking for beginning of value`,
+	}
+	for _, raw := range tests {
+		t.Run(raw, func(t *testing.T) {
+			msg := sanitizeError(errors.New(raw), "第 1 个 Mod ZIP 无效")
+			if msg != raw {
+				t.Fatalf("sanitizeError returned %q, want %q", msg, raw)
+			}
+		})
+	}
 }
 
 // TestPermissionHardening_AdminOnlyEndpoints verifies that admin-only endpoints

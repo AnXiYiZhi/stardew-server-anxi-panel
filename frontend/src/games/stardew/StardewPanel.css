@@ -961,10 +961,71 @@
   line-height: 1.55;
 }
 
+.sd-mods-delete-bundle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sd-mods-delete-bundle .sd-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sd-confirm-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.sd-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.sd-schedule-field,
+.sd-schedule-check {
+  display: flex;
+  gap: 6px;
+  color: #3c2415;
+  font-size: 11px;
+}
+
+.sd-schedule-field {
+  flex-direction: column;
+  font-weight: 700;
+}
+
+.sd-schedule-check {
+  align-items: center;
+  min-height: 26px;
+}
+
+.sd-schedule-check input {
+  flex: 0 0 auto;
+}
+
+.sd-schedule-field-wide {
+  grid-column: 1 / -1;
+}
+
+.sd-schedule-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sd-schedule-summary {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  color: #5a3c1d;
+  font-size: 10.5px;
 }
 
 /* ── 服务器控制页专用 ─────────────────────────────────────────────────────── */
@@ -1229,6 +1290,97 @@
   border-bottom: 1px solid #dcc898;
 }
 
+.sd-save-backup-policy {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1.2fr) auto minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-save-backup-policy-head {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: #4a3218;
+}
+
+.sd-save-backup-policy-head strong {
+  font-size: 13px;
+  color: #2c1a0a;
+}
+
+.sd-save-backup-policy-head span {
+  color: #6f4d23;
+}
+
+.sd-save-backup-toggle,
+.sd-save-backup-field,
+.sd-save-backup-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a3218;
+}
+
+.sd-save-backup-option {
+  align-items: flex-start;
+}
+
+.sd-save-backup-option > span,
+.sd-save-backup-slider > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sd-save-backup-option strong,
+.sd-save-backup-slider strong {
+  color: #2c1a0a;
+}
+
+.sd-save-backup-option small,
+.sd-save-backup-slider small {
+  max-width: 280px;
+  color: #6f4d23;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.sd-save-backup-field input[type="number"],
+.sd-save-backup-field select {
+  width: 76px;
+  height: 28px;
+  padding: 2px 6px;
+  border: 1px solid #c7a868;
+  background: #fff9e8;
+  color: #2c1a0a;
+}
+
+.sd-save-backup-slider {
+  min-width: min(100%, 320px);
+}
+
+.sd-save-backup-slider input[type="range"] {
+  width: 132px;
+}
+
+@media (max-width: 980px) {
+  .sd-save-backup-policy {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .sd-save-backup-policy {
+    grid-template-columns: 1fr;
+  }
+}
+
 .sd-save-backups-list {
   display: grid;
   gap: 6px;
@@ -1272,6 +1424,14 @@
   border: 1px solid #c58b2a;
   padding: 0 5px;
   font-weight: 700;
+}
+
+.sd-save-backup-kind {
+  color: #244b2a;
+  background: #e8f4cf;
+  border: 1px solid #9fbd72;
+  padding: 0 5px;
+  font-weight: 800;
 }
 
 .sd-save-backup-actions {
@@ -2536,6 +2696,14 @@
   margin-bottom: 4px;
 }
 
+.sd-mods-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* 在线搜索（Nexus Mods） */
 .sd-mods-nexus-search-row {
   display: flex;
@@ -2571,10 +2739,39 @@
 
 .sd-mods-nexus-total {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   color: #7a5c30;
   font-size: 12px;
   margin: 2px 0 7px;
+  flex-wrap: wrap;
+}
+
+.sd-mods-nexus-total-bottom {
+  margin-top: 2px;
+  margin-bottom: 12px;
+}
+
+.sd-mods-nexus-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sd-mods-nexus-page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sd-mods-nexus-page-input {
+  width: 72px;
+  min-width: 72px;
+  padding: 4px 6px;
+  text-align: center;
 }
 
 .sd-mods-nexus-list {
@@ -2612,10 +2809,15 @@
 }
 
 .sd-mods-nexus-card-pic-empty {
-  object-fit: contain;
-  padding: 16px;
-  opacity: 0.55;
-  image-rendering: pixelated;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #7a5c30;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  background: rgba(255, 248, 220, 0.64);
 }
 
 .sd-mods-nexus-card-main {
@@ -2661,6 +2863,94 @@
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
+}
+
+.sd-mods-nexus-card-footer {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.sd-mods-nexus-only-note {
+  color: #7a5c30;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.sd-mods-installed-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.sd-mods-installed-id {
+  font-size: 11px;
+  color: #8a7060;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.sd-mods-dependency-tag {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+
+.sd-mods-install-log {
+  border: 1px solid #dcc898;
+  background: rgba(255, 248, 220, 0.45);
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  display: grid;
+  gap: 5px;
+}
+
+.sd-mods-install-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5a3c1d;
+}
+
+.sd-mods-install-job {
+  font-family: monospace;
+  font-weight: 400;
+  color: #8a7060;
+}
+
+.sd-mods-install-log-lines {
+  display: grid;
+  gap: 2px;
+}
+
+.sd-mods-install-log-line,
+.sd-mods-install-log-empty {
+  font-size: 12px;
+  color: #2c1a0a;
+  line-height: 1.45;
+}
+
+.sd-mods-install-log-error {
+  color: #b94040;
+}
+
+.sd-mods-install-log-warn {
+  color: #9a6200;
 }
 
 .sd-mods-nexus-skeleton-grid {
@@ -2924,6 +3214,113 @@
   margin-bottom: 0;
 }
 
+.sd-mods-enable-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-mods-enable-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.sd-mods-enable-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 50px;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 7px 8px;
+  border: 1px solid rgba(122, 80, 48, 0.18);
+  background: rgba(255, 252, 235, 0.45);
+}
+
+.sd-mods-enable-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sd-mods-enable-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3e2a16;
+  overflow-wrap: anywhere;
+}
+
+.sd-mods-enable-meta {
+  min-width: 0;
+  font-size: 11px;
+  color: #8a7060;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mods-enable-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 92px;
+}
+
+.sd-mod-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 28px;
+  cursor: pointer;
+}
+
+.sd-mod-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sd-mod-toggle-track {
+  position: relative;
+  width: 42px;
+  height: 20px;
+  border: 2px solid #5c3a1d;
+  background: #c1b08a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.sd-mod-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #5c3a1d;
+  background: #fff6d6;
+  transition: transform 120ms ease;
+}
+
+.sd-mod-toggle-on .sd-mod-toggle-track {
+  background: #77b65a;
+}
+
+.sd-mod-toggle-on .sd-mod-toggle-thumb {
+  transform: translateX(20px);
+}
+
+.sd-mod-toggle-disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 @media (max-width: 720px) {
   .sd-mods-tabs {
     grid-template-columns: 1fr;
@@ -2940,6 +3337,10 @@
 
   .sd-mods-panel-head {
     flex-direction: column;
+  }
+
+  .sd-mods-panel-actions {
+    justify-content: flex-start;
   }
 
   .sd-mods-nexus-search-row {
@@ -2972,6 +3373,15 @@
 
   .sd-mods-settings-layout {
     grid-template-columns: 1fr;
+  }
+
+  .sd-mods-enable-row {
+    grid-template-columns: minmax(0, 1fr) 50px;
+  }
+
+  .sd-mods-enable-tags {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 }
 

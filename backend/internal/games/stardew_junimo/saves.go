@@ -38,6 +38,7 @@ func SetActiveSave(dataDir, saveName string) error {
 	if err := validateSaveName(saveName); err != nil {
 		return fmt.Errorf("存档名称不合法: %w", err)
 	}
+	clearNewGamePendingMarker(dataDir)
 	cfgDir := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		return fmt.Errorf("create gameloader dir: %w", err)
@@ -63,6 +64,22 @@ func serverSettingsPath(dataDir string) string {
 // controlDir is the host-side directory shared with the panel control mod.
 func controlDir(dataDir string) string {
 	return filepath.Join(dataDir, ".local-container", "control")
+}
+
+func newGamePendingPath(dataDir string) string {
+	return filepath.Join(controlDir(dataDir), "new-game-pending")
+}
+
+func writeNewGamePendingMarker(dataDir string) error {
+	path := newGamePendingPath(dataDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create control dir: %w", err)
+	}
+	return os.WriteFile(path, []byte("pending\n"), 0o644)
+}
+
+func clearNewGamePendingMarker(dataDir string) {
+	_ = os.Remove(newGamePendingPath(dataDir))
 }
 
 // DeleteAllSaves removes every save folder under <savesDir>/Saves/ and the SMAPI
@@ -639,7 +656,10 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 	if err := os.WriteFile(settingsPath, data, 0o644); err != nil {
 		return err
 	}
-	return WriteInitConfig(dataDir, cfg)
+	if err := WriteInitConfig(dataDir, cfg); err != nil {
+		return err
+	}
+	return writeNewGamePendingMarker(dataDir)
 }
 
 // normalizeCfg applies defaults.
@@ -682,8 +702,8 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	if !validFarms[cfg.FarmType] {
 		return fmt.Errorf("farmType 必须是 standard/riverland/forest/hilltop/wilderness/fourcorners/beach/meadowlands 之一")
 	}
-	if cfg.StartingCabins < 0 || cfg.StartingCabins > 3 {
-		return fmt.Errorf("startingCabins 必须在 0~3 之间")
+	if cfg.StartingCabins < 0 || cfg.StartingCabins > 7 {
+		return fmt.Errorf("startingCabins 必须在 0~7 之间")
 	}
 	if cfg.CabinLayout != "nearby" && cfg.CabinLayout != "separate" {
 		return fmt.Errorf("cabinLayout 必须是 nearby 或 separate")
@@ -781,14 +801,9 @@ type rgbJSON struct {
 }
 
 // WriteInitConfig writes server-init.json to the control directory.
-// The SMAPI mod reads this on game launch and applies character customization
-// on the SaveCreating event (works in Junimo runtime).
+// The SMAPI mod reads this on game launch and applies character/new-game
+// options around Junimo's save creation flow.
 func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
-	if cfg.FarmerName == "" && cfg.FavoriteThing == "" && cfg.Gender == "" {
-		// No SMAPI character fields provided — skip writing init config.
-		return nil
-	}
-
 	profitInt := 100
 	switch cfg.ProfitMargin {
 	case "75":
@@ -811,7 +826,7 @@ func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
 	}
 
 	ic := initConfigJSON{
-		Mode:                 "native-create",
+		Mode:                 "panel-newgame",
 		FarmerName:           cfg.FarmerName,
 		FarmName:             cfg.FarmName,
 		FavoriteThing:        cfg.FavoriteThing,
@@ -893,6 +908,7 @@ var reservedSaveNames = map[string]bool{
 	"upload-commit-and-start": true,
 	"select":                  true,
 	"select-and-start":        true,
+	"backups":                 true,
 	"delete":                  true,
 }
 
@@ -1148,6 +1164,7 @@ func backupsDir(dataDir string) string {
 type BackupInfo struct {
 	Name          string `json:"name"`
 	SaveName      string `json:"saveName"`
+	Kind          string `json:"kind"`
 	Size          int64  `json:"size"`
 	CreatedAt     string `json:"createdAt"`
 	FarmerName    string `json:"farmerName,omitempty"`
@@ -1158,6 +1175,99 @@ type BackupInfo struct {
 	FarmType      string `json:"farmType,omitempty"`
 	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
 	ParseError    string `json:"parseError,omitempty"`
+}
+
+type BackupPolicy struct {
+	GameSaveBackups       bool `json:"gameSaveBackups"`
+	DailySnapshots        bool `json:"dailySnapshots"`
+	DailyRetentionDays    int  `json:"dailyRetentionDays"`
+	ScheduledBackups      bool `json:"scheduledBackups"`
+	ScheduledHour         int  `json:"scheduledHour"`
+	ScheduledIntervalHour int  `json:"scheduledIntervalHours,omitempty"`
+}
+
+type BackupMaintenanceResult struct {
+	CreatedBackupNames []string `json:"createdBackupNames"`
+	ConsumedEvents     int      `json:"consumedEvents"`
+}
+
+type backupMaintenanceState struct {
+	LastScheduledAt string `json:"lastScheduledAt"`
+}
+
+type saveEventFile struct {
+	Type      string    `json:"type"`
+	SaveName  string    `json:"saveName"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func DefaultBackupPolicy() BackupPolicy {
+	return BackupPolicy{
+		GameSaveBackups:    true,
+		DailySnapshots:     true,
+		DailyRetentionDays: 3,
+		ScheduledBackups:   false,
+		ScheduledHour:      4,
+	}
+}
+
+func backupPolicyPath(dataDir string) string {
+	return filepath.Join(backupsDir(dataDir), "policy.json")
+}
+
+func backupMaintenanceStatePath(dataDir string) string {
+	return filepath.Join(backupsDir(dataDir), "maintenance-state.json")
+}
+
+func saveEventsDir(dataDir string) string {
+	return filepath.Join(controlDir(dataDir), "save-events")
+}
+
+func normalizeBackupPolicy(policy BackupPolicy) BackupPolicy {
+	if policy.DailyRetentionDays <= 0 {
+		policy.DailyRetentionDays = 3
+	}
+	if policy.DailyRetentionDays > 14 {
+		policy.DailyRetentionDays = 14
+	}
+	if policy.ScheduledHour < 0 {
+		policy.ScheduledHour = 0
+	}
+	if policy.ScheduledHour > 23 {
+		policy.ScheduledHour = 23
+	}
+	policy.ScheduledIntervalHour = 0
+	return policy
+}
+
+func ReadBackupPolicy(dataDir string) (BackupPolicy, error) {
+	policy := DefaultBackupPolicy()
+	data, err := os.ReadFile(backupPolicyPath(dataDir))
+	if os.IsNotExist(err) {
+		return policy, nil
+	}
+	if err != nil {
+		return policy, fmt.Errorf("read backup policy: %w", err)
+	}
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return policy, fmt.Errorf("parse backup policy: %w", err)
+	}
+	return normalizeBackupPolicy(policy), nil
+}
+
+func WriteBackupPolicy(dataDir string, policy BackupPolicy) (BackupPolicy, error) {
+	policy = normalizeBackupPolicy(policy)
+	if err := os.MkdirAll(backupsDir(dataDir), 0o755); err != nil {
+		return policy, fmt.Errorf("create backup dir: %w", err)
+	}
+	data, err := marshalJSON(policy)
+	if err != nil {
+		return policy, err
+	}
+	if err := os.WriteFile(backupPolicyPath(dataDir), data, 0o644); err != nil {
+		return policy, fmt.Errorf("write backup policy: %w", err)
+	}
+	return policy, nil
 }
 
 // BackupSave creates a ZIP backup of the specified save in the backups directory.
@@ -1263,6 +1373,241 @@ func BackupSave(dataDir, saveName string) (string, error) {
 	return backupPath, nil
 }
 
+func BackupLatest(dataDir, saveName string) (string, error) {
+	return backupSaveAs(dataDir, saveName, fmt.Sprintf("latest_%s.zip", saveName))
+}
+
+func BackupScheduled(dataDir, saveName string) (string, error) {
+	return backupSaveAs(dataDir, saveName, fmt.Sprintf("scheduled_%s.zip", saveName))
+}
+
+func BackupDailySnapshot(dataDir, saveName string, now time.Time, retentionDays int) (string, error) {
+	retentionDays = normalizeBackupPolicy(BackupPolicy{DailyRetentionDays: retentionDays}).DailyRetentionDays
+	path, err := backupSaveAs(dataDir, saveName, fmt.Sprintf("daily_%s_%s.zip", saveName, now.UTC().Format("20060102")))
+	if err != nil {
+		return "", err
+	}
+	if err := PruneDailySnapshots(dataDir, now.UTC(), retentionDays); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func backupSaveAs(dataDir, saveName, backupName string) (string, error) {
+	if err := validateBackupName(backupName); err != nil {
+		return "", err
+	}
+	tempPath, err := BackupSave(dataDir, saveName)
+	if err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(backupsDir(dataDir), backupName)
+	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+		_ = os.Remove(tempPath)
+		return "", err
+	}
+	if err := os.Rename(tempPath, targetPath); err != nil {
+		_ = os.Remove(tempPath)
+		return "", err
+	}
+	return targetPath, nil
+}
+
+func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
+	policy, err := ReadBackupPolicy(dataDir)
+	if err != nil {
+		return BackupMaintenanceResult{}, err
+	}
+	now := time.Now()
+	result := BackupMaintenanceResult{}
+	eventPaths, err := filepath.Glob(filepath.Join(saveEventsDir(dataDir), "*.json"))
+	if err != nil {
+		return result, fmt.Errorf("list save events: %w", err)
+	}
+	for _, path := range eventPaths {
+		event, err := readSaveEvent(path)
+		if err != nil {
+			_ = os.Remove(path)
+			continue
+		}
+		if policy.GameSaveBackups {
+			created, err := runAutoBackupsForSave(dataDir, event.SaveName, policy, now, true)
+			if err != nil {
+				return result, err
+			}
+			result.CreatedBackupNames = append(result.CreatedBackupNames, created...)
+		}
+		_ = os.Remove(path)
+		result.ConsumedEvents++
+	}
+	if policy.ScheduledBackups {
+		created, err := runScheduledBackupIfDue(dataDir, policy, now)
+		if err != nil {
+			return result, err
+		}
+		result.CreatedBackupNames = append(result.CreatedBackupNames, created...)
+	}
+	return result, nil
+}
+
+func readSaveEvent(path string) (saveEventFile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return saveEventFile{}, err
+	}
+	var event saveEventFile
+	if err := json.Unmarshal(data, &event); err != nil {
+		return saveEventFile{}, err
+	}
+	if event.SaveName == "" {
+		return saveEventFile{}, fmt.Errorf("missing save name")
+	}
+	return event, nil
+}
+
+func runAutoBackupsForSave(dataDir, saveName string, policy BackupPolicy, now time.Time, latest bool) ([]string, error) {
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return nil, err
+	}
+	var created []string
+	if latest {
+		path, err := BackupLatest(dataDir, saveName)
+		if err != nil {
+			return created, err
+		}
+		created = append(created, filepath.Base(path))
+	}
+	if policy.DailySnapshots {
+		path, err := BackupDailySnapshot(dataDir, saveName, now, policy.DailyRetentionDays)
+		if err != nil {
+			return created, err
+		}
+		created = append(created, filepath.Base(path))
+	}
+	return created, nil
+}
+
+func runScheduledBackupIfDue(dataDir string, policy BackupPolicy, now time.Time) ([]string, error) {
+	saveName := GetActiveSaveName(dataDir)
+	if saveName == "" {
+		return nil, nil
+	}
+	state := readBackupMaintenanceState(dataDir)
+	if !scheduledBackupDue(state.LastScheduledAt, now, policy.ScheduledHour) {
+		return nil, nil
+	}
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return nil, err
+	}
+	path, err := BackupScheduled(dataDir, saveName)
+	if err != nil {
+		return nil, err
+	}
+	created := []string{filepath.Base(path)}
+	if policy.DailySnapshots {
+		dailyPath, err := BackupDailySnapshot(dataDir, saveName, now, policy.DailyRetentionDays)
+		if err != nil {
+			return created, err
+		}
+		created = append(created, filepath.Base(dailyPath))
+	}
+	state.LastScheduledAt = now.Format(time.RFC3339)
+	if err := writeBackupMaintenanceState(dataDir, state); err != nil {
+		return created, err
+	}
+	return created, nil
+}
+
+func scheduledBackupDue(lastScheduledAt string, now time.Time, scheduledHour int) bool {
+	policy := normalizeBackupPolicy(BackupPolicy{ScheduledHour: scheduledHour})
+	localNow := now.Local()
+	if localNow.Hour() < policy.ScheduledHour {
+		return false
+	}
+	if lastScheduledAt == "" {
+		return true
+	}
+	last, err := time.Parse(time.RFC3339, lastScheduledAt)
+	if err != nil {
+		return true
+	}
+	lastLocal := last.Local()
+	nowYear, nowMonth, nowDay := localNow.Date()
+	lastYear, lastMonth, lastDay := lastLocal.Date()
+	if lastYear > nowYear || (lastYear == nowYear && lastMonth > nowMonth) || (lastYear == nowYear && lastMonth == nowMonth && lastDay > nowDay) {
+		return false
+	}
+	return lastYear != nowYear || lastMonth != nowMonth || lastDay != nowDay
+}
+
+func readBackupMaintenanceState(dataDir string) backupMaintenanceState {
+	data, err := os.ReadFile(backupMaintenanceStatePath(dataDir))
+	if err != nil {
+		return backupMaintenanceState{}
+	}
+	var state backupMaintenanceState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return backupMaintenanceState{}
+	}
+	return state
+}
+
+func writeBackupMaintenanceState(dataDir string, state backupMaintenanceState) error {
+	if err := os.MkdirAll(backupsDir(dataDir), 0o755); err != nil {
+		return err
+	}
+	data, err := marshalJSON(state)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(backupMaintenanceStatePath(dataDir), data, 0o644)
+}
+
+func PruneDailySnapshots(dataDir string, now time.Time, retentionDays int) error {
+	cutoff := now.AddDate(0, 0, -retentionDays+1).Format("20060102")
+	entries, err := os.ReadDir(backupsDir(dataDir))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "daily_") || !strings.HasSuffix(name, ".zip") {
+			continue
+		}
+		date := dailySnapshotDate(name)
+		if date != "" && date < cutoff {
+			if err := os.Remove(filepath.Join(backupsDir(dataDir), name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func dailySnapshotDate(name string) string {
+	base := strings.TrimSuffix(name, ".zip")
+	idx := strings.LastIndex(base, "_")
+	if idx < 0 {
+		return ""
+	}
+	date := base[idx+1:]
+	if len(date) != 8 {
+		return ""
+	}
+	for _, ch := range date {
+		if ch < '0' || ch > '9' {
+			return ""
+		}
+	}
+	return date
+}
+
 // DeleteSaveWithBackup creates a backup before deleting the save.
 // If the backup fails, the delete is aborted to prevent unrecoverable data loss.
 func DeleteSaveWithBackup(dataDir, saveName string) (backupPath string, err error) {
@@ -1302,6 +1647,7 @@ func ListBackups(dataDir string) ([]BackupInfo, error) {
 		backup := BackupInfo{
 			Name:      e.Name(),
 			SaveName:  saveName,
+			Kind:      inferBackupKind(e.Name()),
 			Size:      fi.Size(),
 			CreatedAt: fi.ModTime().UTC().Format(time.RFC3339),
 		}
@@ -1529,6 +1875,20 @@ func RestoreBackup(dataDir, backupName string, overwrite bool) (string, error) {
 // "SaveName_20260627-150405.zip" → "SaveName".
 func parseBackupSaveName(filename string) string {
 	name := strings.TrimSuffix(filename, ".zip")
+	for _, prefix := range []string{"latest_", "scheduled_"} {
+		if strings.HasPrefix(name, prefix) {
+			return strings.TrimPrefix(name, prefix)
+		}
+	}
+	for _, prefix := range []string{"daily_", "manual_"} {
+		if strings.HasPrefix(name, prefix) {
+			rest := strings.TrimPrefix(name, prefix)
+			if idx := strings.LastIndex(rest, "_"); idx > 0 {
+				return rest[:idx]
+			}
+			return rest
+		}
+	}
 	// Find the last underscore followed by a timestamp pattern.
 	idx := strings.LastIndex(name, "_")
 	if idx > 0 {
@@ -1539,4 +1899,20 @@ func parseBackupSaveName(filename string) string {
 		}
 	}
 	return name
+}
+
+func inferBackupKind(filename string) string {
+	name := strings.TrimSuffix(filename, ".zip")
+	switch {
+	case strings.HasPrefix(name, "latest_"):
+		return "latest"
+	case strings.HasPrefix(name, "scheduled_"):
+		return "scheduled"
+	case strings.HasPrefix(name, "daily_"):
+		return "daily"
+	case strings.HasPrefix(name, "manual_"):
+		return "manual"
+	default:
+		return "manual"
+	}
 }

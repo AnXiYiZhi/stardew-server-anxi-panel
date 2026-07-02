@@ -269,7 +269,7 @@ func newTestHandlerWithStore(t *testing.T) (http.Handler, *storage.Store, func()
 		t.Fatalf("migrate storage: %v", err)
 	}
 
-	handler := NewHandler(Deps{Config: config.Config{Secret: "test-secret", Version: "test"}, Store: store})
+	handler := NewHandler(Deps{Config: config.Config{DataDir: dataDir, Secret: "test-secret", Version: "test"}, Store: store})
 	return handler, store, func() {
 		if err := store.Close(); err != nil {
 			t.Fatalf("close storage: %v", err)

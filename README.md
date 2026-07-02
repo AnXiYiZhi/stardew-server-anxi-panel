@@ -579,7 +579,7 @@ Milestone 0-4 的实现不需要返工；其中临时写死的 Stardew 单实例
 
 ## 许可与第三方声明
 
-本项目以 MIT License 发布，详见 [LICENSE](LICENSE)。
+本项目以 GNU Affero General Public License v3.0 or later（AGPL-3.0-or-later）发布，详见 [LICENSE](LICENSE)。项目版权与第三方声明详见 [NOTICE](NOTICE)。
 
 本项目会直接拉取并运行 JunimoServer 容器镜像来提供 Stardew Valley 专用服务器能力。JunimoServer 是独立的第三方项目，其上游仓库为 [stardew-valley-dedicated-server/server](https://github.com/stardew-valley-dedicated-server/server)，上游许可证为 [MIT License](https://github.com/stardew-valley-dedicated-server/server/blob/master/LICENSE)。JunimoServer 容器镜像、镜像内组件及其依赖仍由上游项目及对应第三方许可约束。本仓库不声称拥有 JunimoServer、Stardew Valley、Steam 或相关商标、游戏内容、素材和服务的所有权。
 

@@ -305,6 +305,28 @@
   flex-shrink: 0;
 }
 
+.sd-btn-start.sd-btn-loading:disabled,
+.sd-btn-stop.sd-btn-loading:disabled,
+.sd-btn-restart.sd-btn-loading:disabled {
+  filter: brightness(.96);
+  cursor: wait;
+}
+
+.sd-btn-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-top-color: #fff;
+  border-radius: 50%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  animation: sd-btn-spin .8s linear infinite;
+}
+
+@keyframes sd-btn-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── 6. 像素风输入框 ─────────────────────────────────────────────────────── */
 
 .sd-input {

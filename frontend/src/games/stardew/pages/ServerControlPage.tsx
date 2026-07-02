@@ -4,13 +4,27 @@ import {
   startInstance,
   stopInstance,
   restartInstance,
+  createSaveBackup,
+  getRestartSchedule,
+  updateRestartSchedule,
   getCommands,
   runCommand,
   sendSay,
 } from '../../../api'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
-import type { ConsoleCommandDef } from '../../../types'
+import type { ConsoleCommandDef, RestartSchedule } from '../../../types'
+
+const defaultRestartSchedule: RestartSchedule = {
+  instanceId: 'stardew',
+  enabled: false,
+  shutdownTime: '04:00',
+  startupTime: '04:20',
+  timezone: 'Asia/Shanghai',
+  warningMinutes: [10, 5, 1],
+  backupBeforeShutdown: true,
+  skipIfPlayersOnline: false,
+}
 
 function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
   if (!(error instanceof ApiError)) return null
@@ -19,12 +33,23 @@ function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
   return null
 }
 
-export function ServerControlPage({ instanceState, dashboardData, onNavigate }: StardewPageProps) {
+export function ServerControlPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
   // ── 生命周期操作状态 ──────────────────────────────────────────────────────
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
+  const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
+  const [pendingStopAction, setPendingStopAction] = useState(false)
+  const [quickBackupBusy, setQuickBackupBusy] = useState(false)
+  const [quickBackupMessage, setQuickBackupMessage] = useState<string | null>(null)
+  const [quickBackupError, setQuickBackupError] = useState(false)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleDraft, setScheduleDraft] = useState<RestartSchedule>(defaultRestartSchedule)
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [scheduleSaved, setScheduleSaved] = useState<string | null>(null)
 
   // ── 邀请码 ────────────────────────────────────────────────────────────────
   const [copied, setCopied] = useState(false)
@@ -49,15 +74,23 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
   const isStarting = state === 'starting'
+  const isStopping = state === 'stopping'
   const isStopped = state === 'stopped' || state === 'ready_to_start'
+  const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
+  const isAdmin = user.role === 'admin'
+  const waitingForInvite =
+    isStarting ||
+    Boolean(pendingStartupAction) ||
+    (dashboardData.inviteCodeRefreshing && !dashboardData.inviteCode)
+  const waitingForStop = isStopping || pendingStopAction
   const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
   const showSaveRequiredPrompt =
     (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
     !isRunning &&
     !isStarting
-  const canStart = isStopped && !actionBusy
-  const canStop = isRunning && !actionBusy
-  const canRestart = isRunning && !actionBusy
+  const canStart = isStopped && !actionBusy && !waitingForInvite && !waitingForStop
+  const canStop = isRunning && !actionBusy && !waitingForInvite && !waitingForStop && Boolean(dashboardData.inviteCode)
+  const canRestart = isRunning && !actionBusy && !waitingForInvite && !waitingForStop && Boolean(dashboardData.inviteCode)
   const stateLabelText = state
     ? stateLabel(state)
     : dashboardData.loading
@@ -104,9 +137,23 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
     }
   }, [state])
 
+  useEffect(() => {
+    if (dashboardData.inviteCode) {
+      setPendingStartupAction(null)
+    }
+  }, [dashboardData.inviteCode])
+
+  useEffect(() => {
+    if (state === 'stopped' || state === 'ready_to_start' || state === 'save_required' || state === 'error') {
+      setPendingStopAction(false)
+    }
+  }, [state])
+
   // ── 生命周期操作 ──────────────────────────────────────────────────────────
   async function handleStart() {
     setActionBusy(true)
+    setPendingStartupAction('start')
+    setPendingStopAction(false)
     setActionError(null)
     try {
       await startInstance()
@@ -121,9 +168,11 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
         setActionError(saveBlocker === 'new' ? null : errorMessage(e))
         dashboardData.refreshInstanceState()
         dashboardData.refreshSaves()
+        setPendingStartupAction(null)
         return
       }
       setActionError(errorMessage(e))
+      setPendingStartupAction(null)
     } finally {
       setActionBusy(false)
     }
@@ -131,6 +180,8 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
 
   async function handleStop() {
     setActionBusy(true)
+    setPendingStopAction(true)
+    setPendingStartupAction(null)
     setActionError(null)
     dashboardData.clearInviteCode()
     try {
@@ -139,6 +190,7 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
       dashboardData.refreshJobs()
     } catch (e) {
       setActionError(errorMessage(e))
+      setPendingStopAction(false)
     } finally {
       setActionBusy(false)
     }
@@ -146,6 +198,7 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
 
   async function handleRestart() {
     setActionBusy(true)
+    setPendingStartupAction('restart')
     setActionError(null)
     try {
       await restartInstance()
@@ -154,12 +207,74 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
       dashboardData.refreshJobs()
     } catch (e) {
       setActionError(errorMessage(e))
+      setPendingStartupAction(null)
     } finally {
       setActionBusy(false)
     }
   }
 
+  async function handleQuickBackup() {
+    if (!activeSaveName || !isAdmin) return
+    setQuickBackupBusy(true)
+    setQuickBackupMessage(null)
+    setQuickBackupError(false)
+    try {
+      const result = await createSaveBackup(activeSaveName)
+      setQuickBackupMessage(`已为 ${activeSaveName} 创建手动备份：${result.backupName}`)
+    } catch (e) {
+      setQuickBackupError(true)
+      setQuickBackupMessage(errorMessage(e))
+    } finally {
+      setQuickBackupBusy(false)
+    }
+  }
+
   // ── 邀请码复制 ────────────────────────────────────────────────────────────
+  async function openRestartSchedule() {
+    if (!isAdmin) return
+    setScheduleOpen(true)
+    setScheduleLoading(true)
+    setScheduleSaving(false)
+    setScheduleError(null)
+    setScheduleSaved(null)
+    try {
+      const result = await getRestartSchedule()
+      setScheduleDraft(result.schedule)
+    } catch (e) {
+      setScheduleError(errorMessage(e))
+      setScheduleDraft(defaultRestartSchedule)
+    } finally {
+      setScheduleLoading(false)
+    }
+  }
+
+  async function handleSaveRestartSchedule() {
+    setScheduleSaving(true)
+    setScheduleError(null)
+    setScheduleSaved(null)
+    try {
+      const result = await updateRestartSchedule(scheduleDraft)
+      setScheduleDraft(result.schedule)
+      setScheduleSaved('计划重启已保存。')
+      dashboardData.refreshJobs()
+    } catch (e) {
+      setScheduleError(errorMessage(e))
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
+  function toggleScheduleWarning(minute: number) {
+    setScheduleDraft((draft) => {
+      const exists = draft.warningMinutes.includes(minute)
+      const next = exists
+        ? draft.warningMinutes.filter((value) => value !== minute)
+        : [...draft.warningMinutes, minute]
+      next.sort((a, b) => b - a)
+      return { ...draft, warningMinutes: next }
+    })
+  }
+
   function handleCopy() {
     if (!dashboardData.inviteCode) return
     setCopyError(false)
@@ -299,20 +414,26 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
       <div className="sd-srv-section">
         <div className="sd-srv-section-title">生命周期控制</div>
         <div className="sd-ctrl-row">
-          <button
-            className="sd-btn-start"
-            disabled={!canStart}
-            onClick={() => void handleStart()}
-            title={isRunning ? '服务器已运行' : isStarting ? '服务器启动中' : '启动服务器'}
-          >
-            <img
-              src="/assets/stardew/ui/icons/icon_button_play.png"
-              alt=""
-              className="sd-btn-img"
-              style={{ width: 12, height: 13 }}
-            />
-            {actionBusy && canStart ? '启动中…' : '启动'}
-          </button>
+          {!waitingForStop ? (
+            <button
+              className={`sd-btn-start${waitingForInvite ? ' sd-btn-loading' : ''}`}
+              disabled={waitingForInvite || !canStart}
+              onClick={() => void handleStart()}
+              title={waitingForInvite ? '服务器启动中，等待邀请码生成' : isRunning ? '服务器已运行' : '启动服务器'}
+            >
+              {waitingForInvite ? (
+                <span className="sd-btn-spinner" aria-hidden="true" />
+              ) : (
+                <img
+                  src="/assets/stardew/ui/icons/icon_button_play.png"
+                  alt=""
+                  className="sd-btn-img"
+                  style={{ width: 12, height: 13 }}
+                />
+              )}
+              {waitingForInvite || (actionBusy && canStart) ? '启动中…' : '启动'}
+            </button>
+          ) : null}
 
           {showSaveRequiredPrompt ? (
             <div className="sd-start-save-required">
@@ -323,35 +444,44 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
             </div>
           ) : null}
 
-          <button
-            className="sd-btn-stop"
-            disabled={!canStop}
-            onClick={() => setConfirmAction('stop')}
-            title={!isRunning ? '服务器未运行' : '停止服务器（需确认）'}
-          >
-            <img
-              src="/assets/stardew/ui/icons/icon_button_stop.png"
-              alt=""
-              className="sd-btn-img"
-              style={{ width: 11, height: 11 }}
-            />
-            停止
-          </button>
+          {waitingForStop ? (
+            <button className="sd-btn-stop sd-btn-loading" disabled>
+              <span className="sd-btn-spinner" aria-hidden="true" />
+              停止中…
+            </button>
+          ) : !waitingForInvite ? (
+            <>
+              <button
+                className="sd-btn-stop"
+                disabled={!canStop}
+                onClick={() => setConfirmAction('stop')}
+                title={!isRunning ? '服务器未运行' : '停止服务器（需确认）'}
+              >
+                <img
+                  src="/assets/stardew/ui/icons/icon_button_stop.png"
+                  alt=""
+                  className="sd-btn-img"
+                  style={{ width: 11, height: 11 }}
+                />
+                停止
+              </button>
 
-          <button
-            className="sd-btn-restart"
-            disabled={!canRestart}
-            onClick={() => setConfirmAction('restart')}
-            title={!isRunning ? '服务器未运行' : '重启服务器（需确认）'}
-          >
-            <img
-              src="/assets/stardew/ui/icons/icon_button_restart.png"
-              alt=""
-              className="sd-btn-img"
-              style={{ width: 12, height: 12 }}
-            />
-            重启
-          </button>
+              <button
+                className="sd-btn-restart"
+                disabled={!canRestart}
+                onClick={() => setConfirmAction('restart')}
+                title={!isRunning ? '服务器未运行' : '重启服务器（需确认）'}
+              >
+                <img
+                  src="/assets/stardew/ui/icons/icon_button_restart.png"
+                  alt=""
+                  className="sd-btn-img"
+                  style={{ width: 12, height: 12 }}
+                />
+                重启
+              </button>
+            </>
+          ) : null}
 
           {actionBusy ? (
             <span className="sd-srv-hint" style={{ marginLeft: 6 }}>
@@ -365,10 +495,17 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
           <div className="sd-ov-error" style={{ marginTop: 6 }}>{actionError}</div>
         ) : null}
 
-        {isStarting ? (
+        {waitingForInvite ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
             <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
-            &nbsp;服务器正在启动，请等待完成后再操作。
+            &nbsp;服务器正在启动，请等待邀请码生成后再操作。
+          </div>
+        ) : null}
+
+        {waitingForStop ? (
+          <div className="sd-srv-hint" style={{ marginTop: 4 }}>
+            <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
+            &nbsp;服务器正在停止，请等待完全停止后再启动。
           </div>
         ) : null}
 
@@ -387,8 +524,8 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
             className="sd-btn-tan"
             style={{ marginLeft: 8, fontSize: 9.5, height: 20, padding: '0 8px', minWidth: 40 }}
             onClick={() => dashboardData.refreshInviteCode()}
-            disabled={!isRunning}
-            title={isRunning ? '重新获取邀请码' : '服务器未运行时无法获取邀请码'}
+            disabled={!isRunning && !isStarting}
+            title={isRunning || isStarting ? '重新获取邀请码' : '服务器未运行时无法获取邀请码'}
           >
             刷新
           </button>
@@ -527,33 +664,31 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
         )}
       </div>
 
-      {/* ── 快捷操作（待接入） ─────────────────────────────────────────────── */}
+      {/* ── 快捷操作 ─────────────────────────────────────────────────────── */}
       <div className="sd-srv-section">
         <div className="sd-srv-section-title">快捷操作</div>
         <div className="sd-ctrl-row" style={{ flexWrap: 'wrap', gap: 6 }}>
           <button
-            className="sd-btn-tan"
-            disabled
-            title="待接入：后端尚无手动世界存档 API"
+            className="sd-btn-green"
+            disabled={quickBackupBusy || !isAdmin || !activeSaveName}
+            title={
+              !isAdmin
+                ? '仅管理员可执行此操作'
+                : !activeSaveName
+                  ? '当前没有激活存档，无法创建备份'
+                  : `为当前激活存档 ${activeSaveName} 备份已保存到磁盘的进度；不会强制保存游戏内实时进度`
+            }
+            onClick={() => void handleQuickBackup()}
           >
-            保存世界
-            <span className="sd-srv-badge-pending">待接入</span>
+            {quickBackupBusy ? '备份中…' : '备份已保存进度'}
           </button>
           <button
             className="sd-btn-tan"
-            disabled
-            title="待接入：后端尚无手动备份触发 API"
-          >
-            备份存档
-            <span className="sd-srv-badge-pending">待接入</span>
-          </button>
-          <button
-            className="sd-btn-tan"
-            disabled
-            title="待接入：计划重启功能后续实现"
+            disabled={!isAdmin}
+            title={isAdmin ? '设置每天几点关闭、几点开启服务器' : '仅管理员可设置计划重启'}
+            onClick={() => void openRestartSchedule()}
           >
             计划重启
-            <span className="sd-srv-badge-pending">待接入</span>
           </button>
           <button
             className="sd-btn-tan"
@@ -564,8 +699,13 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
             <span className="sd-srv-badge-pending">待接入</span>
           </button>
         </div>
+        {quickBackupMessage ? (
+          <div className={quickBackupError ? 'sd-ov-error' : 'sd-srv-result'} style={{ marginTop: 6 }}>
+            {quickBackupMessage}
+          </div>
+        ) : null}
         <div className="sd-srv-hint" style={{ marginTop: 6 }}>
-          快捷操作在后端 API 接入前保持禁用。存档管理请前往
+          备份只会打包当前已经落盘的激活存档，运行中也可用，但不会强制保存尚未写盘的游戏进度。完整备份与恢复请前往
           <button
             className="sd-inline-nav"
             style={{ marginLeft: 2 }}
@@ -599,6 +739,120 @@ export function ServerControlPage({ instanceState, dashboardData, onNavigate }: 
                 }}
               >
                 确认{confirmAction === 'stop' ? '停止' : '重启'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {scheduleOpen ? (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog sd-confirm-dialog-wide">
+            <h3>计划重启</h3>
+            {scheduleLoading ? (
+              <p>正在读取计划重启配置...</p>
+            ) : (
+              <>
+                <div className="sd-schedule-grid">
+                  <label className="sd-schedule-check">
+                    <input
+                      type="checkbox"
+                      checked={scheduleDraft.enabled}
+                      onChange={(e) => setScheduleDraft({ ...scheduleDraft, enabled: e.target.checked })}
+                    />
+                    启用每日计划维护
+                  </label>
+
+                  <label className="sd-schedule-field">
+                    <span>关闭时间</span>
+                    <input
+                      className="sd-input"
+                      type="time"
+                      value={scheduleDraft.shutdownTime}
+                      onChange={(e) => setScheduleDraft({ ...scheduleDraft, shutdownTime: e.target.value })}
+                    />
+                  </label>
+
+                  <label className="sd-schedule-field">
+                    <span>开启时间</span>
+                    <input
+                      className="sd-input"
+                      type="time"
+                      value={scheduleDraft.startupTime}
+                      onChange={(e) => setScheduleDraft({ ...scheduleDraft, startupTime: e.target.value })}
+                    />
+                  </label>
+
+                  <label className="sd-schedule-field">
+                    <span>时区</span>
+                    <input
+                      className="sd-input"
+                      value={scheduleDraft.timezone}
+                      onChange={(e) => setScheduleDraft({ ...scheduleDraft, timezone: e.target.value })}
+                    />
+                  </label>
+
+                  <div className="sd-schedule-field sd-schedule-field-wide">
+                    <span>关服前提醒</span>
+                    <div className="sd-schedule-options">
+                      {[10, 5, 1].map((minute) => (
+                        <label key={minute} className="sd-schedule-check">
+                          <input
+                            type="checkbox"
+                            checked={scheduleDraft.warningMinutes.includes(minute)}
+                            onChange={() => toggleScheduleWarning(minute)}
+                          />
+                          {minute} 分钟
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="sd-schedule-check sd-schedule-field-wide">
+                    <input
+                      type="checkbox"
+                      checked={scheduleDraft.backupBeforeShutdown}
+                      onChange={(e) => setScheduleDraft({ ...scheduleDraft, backupBeforeShutdown: e.target.checked })}
+                    />
+                    关闭前备份当前已保存进度
+                  </label>
+
+                  <label className="sd-schedule-check sd-schedule-field-wide">
+                    <input
+                      type="checkbox"
+                      checked={scheduleDraft.skipIfPlayersOnline}
+                      onChange={(e) => setScheduleDraft({ ...scheduleDraft, skipIfPlayersOnline: e.target.checked })}
+                    />
+                    如果仍有玩家在线则跳过本次关闭
+                  </label>
+                </div>
+
+                <div className="sd-confirm-warning">
+                  关闭时间到达后，面板会先按配置发送提醒、备份当前已经落盘的存档，再提交停止任务；开启时间到达后会按当前激活存档提交启动任务。
+                </div>
+
+                <div className="sd-schedule-summary">
+                  <div>下次关闭：{scheduleDraft.nextShutdownAt ? formatDate(scheduleDraft.nextShutdownAt) : '未启用'}</div>
+                  <div>下次开启：{scheduleDraft.nextStartupAt ? formatDate(scheduleDraft.nextStartupAt) : '未启用'}</div>
+                  <div>上次状态：{scheduleDraft.lastStatus ?? '暂无记录'}</div>
+                  {scheduleDraft.lastMessage ? <div>说明：{scheduleDraft.lastMessage}</div> : null}
+                </div>
+              </>
+            )}
+
+            {scheduleError ? <div className="sd-ov-error">{scheduleError}</div> : null}
+            {scheduleSaved ? <div className="sd-srv-result">{scheduleSaved}</div> : null}
+
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setScheduleOpen(false)} disabled={scheduleSaving}>
+                关闭
+              </button>
+              <button
+                className="sd-btn-green"
+                onClick={() => void handleSaveRestartSchedule()}
+                disabled={scheduleLoading || scheduleSaving}
+              >
+                {scheduleSaving ? '保存中...' : '保存计划'}
               </button>
             </div>
           </div>

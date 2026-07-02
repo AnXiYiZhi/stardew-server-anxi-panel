@@ -1,3 +1,64 @@
+# PLAYERSYNC-PACK-2 联调契约
+
+- `POST /api/instances/:id/mods/sync-pack/export` 下载文件名仍是 `stardew-player-sync-pack.zip`，但 ZIP 内容升级为安装包：根目录含 `安装玩家同步包.bat`、`卸载本同步包.bat`、`README.txt`、`pack-manifest.json`、`checksums.sha256`、`tools/` 和 `payload/`。
+- 前端无需解析 ZIP；仍按 Blob 下载即可。下游若需要读取包内容，应以 `pack-manifest.json` 为准，普通 Mod 文件在 `payload/mods/<folderName>/`，SMAPI 元数据在 `payload/smapi/smapi.json`。
+- `checksums.sha256` 校验 `payload/mods` 和随包 SMAPI ZIP；玩家端脚本会在复制 Mod 前校验。若包内没有 SMAPI ZIP，`pack-manifest.json.smapi.bundled=false`，脚本继续安装 Mod 并提示玩家自行安装 SMAPI。
+- 玩家端安装状态落在游戏目录 `.anxi-sync/installed.json`、`.anxi-sync/backups/`、`.anxi-sync/logs/`。卸载脚本按该记录移除本包安装的 Mod，可用 `-RestoreBackup` 恢复备份；不会默认卸载玩家已有 SMAPI。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`go test ./...`。
+
+# NEXUS-SMAPI-THUMB-1 联调约定
+
+- `GET /api/instances/:id/mods` 返回的虚拟 SMAPI 条目也会带 `nexusModId=2400` 和 `nexusUrl`，并在后端 Nexus GraphQL 补全成功后带 `pictureUrl`。
+- 前端无需为 SMAPI 写死图片 URL；统一使用 `mods[].pictureUrl`。如果首次请求时 Nexus 不可用或未返回图片，保持现有 `NEXUS` 文字占位即可。
+- 该行为不要求用户安装真实 SMAPI Mod 文件夹；它只用于面板展示和玩家同步清单语义。
+- 对随 Nexus 包安装的内容包，如果其自己的缓存记录没有 `pictureUrl`，后端会按同一个 Nexus `modId` 合并主 Mod 的完整缓存；前端仍只读 `mods[].pictureUrl`，不需要自己按来源包查找图片。
+
+# MODDEPS-1 联调约定
+
+- `GET /api/instances/:id/mods` 的 `mods[]` 可能包含 `dependencies[]`，每项结构为 `{ "uniqueId": string, "minimumVersion"?: string, "required": boolean }`。
+- 字段来源是 SMAPI `manifest.json` 的 `Dependencies` 和 `ContentPackFor`；`ContentPackFor` 统一按必需依赖返回，重复 UniqueID 会去重。
+- 前端已安装 Mod 卡片只把 `required=true` 的依赖展示为“需要前置依赖：...”标签；`required=false` 的可选依赖暂不展示。
+- 该字段不代表后端已验证依赖是否存在，也不代表安装接口会自动补装依赖。后续缺失依赖检查应基于同一 `dependencies[]` 与已安装 `uniqueId` 列表继续扩展。
+
+# MODUPLOAD-2 联调约定
+- `POST /api/instances/:id/mods/upload` 仍是管理员专用，服务器 running/starting 时仍返回 `409 server_running`；请求格式是 `multipart/form-data`。
+- 前端可以在同一个请求里重复追加多个 `mod` 文件字段，例如 `form.append('mod', fileA)`、`form.append('mod', fileB)`；后端同时兼容字段名 `mods`，但推荐继续使用重复 `mod` 字段。
+- 成功响应仍是 `ModsListResult`：`mods[]` 包含本次批量上传导入出的所有 Mod，`restartRequired` 继续遵循现有 Mod 重启语义；停服上传成功时应为 `false`，下次启动会直接加载新 Mod。前端成功后应刷新 `GET /api/instances/:id/mods` 和仪表盘缓存。
+- 任意一个 ZIP 校验/解压/导入失败时，后端会回滚本请求已导入的前序 Mod，并返回错误；前端应把这次上传视为失败，不要假设部分成功。
+- 单个 ZIP 内含多个顶层 SMAPI Mod 的能力仍由 `UploadModZip` 提供；“一次选择多个 ZIP”和“一个 ZIP 里多个 Mod”可以同时工作。
+
+# NEXUS-META-1 联调约定
+- `GET /api/instances/:id/mods` 可能在返回前触发一次 Nexus GraphQL v2 元数据补全：当本地 Mod manifest 有 `UpdateKeys` 中的 `Nexus:<id>` 且 sidecar 尚无缓存时，后端会无 Key 查询 Nexus 缩略图和展示字段，成功后写入 `.local-container/control/nexus-mods.json`。
+- 该补全不改变接口结构，只让 `mods[]` 里的 `pictureUrl/nexusSummary/nexusUrl/downloadCount/endorsementCount/updatedAt` 更完整；Nexus 请求失败时接口仍返回 200 和本地 Mod 信息。
+- `GET /api/instances/:id/mods/search?q=<数字ID>` 未配置 Nexus API Key 时也应返回 GraphQL v2 精确 ID 结果；API Key 只影响 v1 REST 查询和 Nexus 下载安装，不再是展示缩略图/元数据的前置条件。
+
+# MODZIP-1 上传错误约定
+
+- `POST /api/instances/:id/mods` 只接受标准 SMAPI Mod ZIP。若用户上传 Nexus 上的老式 XNB 替换包（例如只包含 `Characters/*.xnb`、`Portraits/*.xnb`，没有 `manifest.json`），后端返回 `400 invalid_mod_zip`，message 会明确提示这是 XNB 替换包，不是 SMAPI Mod，不能上传到服务器 `Mods` 目录。
+
+# MODSEARCH-1 联调约定
+- `GET /api/instances/:id/mods/search?q=...`：任意登录用户可用，返回统一搜索模型 `{ query, results }`。`results[]` 至少包含 `id/source/sourceName/name/pageUrl/externalLabel/installMethod/installLabel/installed`，并可带 `nexusModId/curseForgeModId/curseForgeFileId/installUrl` 等 provider 字段。
+- `results[]` 返回顺序按 `downloadCount` 从高到低稳定排序；下载量相同的条目保持 provider 原始顺序。前端应按接口顺序展示，不需要再自行排序。
+- 当前 live provider 是 Nexus：结果显示 `source=nexus`、`sourceName=N站`、`externalLabel=跳转 N站`、`installMethod=nexus_premium`、`installLabel=一键安装`。关键词仍走 GraphQL v2，配置 Nexus Key 后数字 ID 可走 REST v1 精确查询。
+- `POST /api/instances/:id/mods/search/install`：管理员专用，服务器 running/starting 时返回 `409 server_running`。请求体为某条 `ModSearchResult`，成功返回 `202 { "jobId": "..." }`。
+- 统一安装按 `installMethod` 分发：`nexus_premium` 需要 Nexus Key 并复用 Nexus 安装链路；`direct_url` 需要后端结果带 `installUrl` 并复用远程 ZIP 安装链路；`none/manual` 返回 `400 mod_install_not_supported`。
+- 前端创建任务后订阅 `GET /api/jobs/:jobId/stream`，完成后拉 `GET /api/jobs/:jobId` 并刷新 `GET /api/instances/:id/mods`。粘贴 URL / 上传文件仍作为兜底入口。
+
+# REMOTE-MOD-1 联调约定
+- `POST /api/instances/:id/mods/remote/install`：管理员专用，服务器 running/starting 时返回 `409 server_running`。请求体 `{ "url": string, "mod"?: NexusModSearchResult-like }`，成功返回 `202 { "jobId": "..." }`。
+- `url` 为 `nxm://...` 时，后端解析 `modId/fileId/key/expires` 并读取 SQLite 中的 Nexus API Key 调 v1 `download_link.json?key=...&expires=...`；未配置 Key 时任务失败为 `ErrNexusAPIKeyMissing`。
+- `url` 为 `https://...zip` 时，后端直接下载该 ZIP，再走现有 `UploadModZip` 校验/解压/导入；该直链来源可以是 Nexus CDN、ModDrop、GitHub、CurseForge 等公网 HTTPS ZIP。当前不支持 7z/rar。
+- 前端创建任务后订阅 `GET /api/jobs/:jobId/stream`，与 `mod_nexus_install` 相同。任务成功后刷新 `GET /api/instances/:id/mods`。
+- 为防止临时授权泄漏，前端和审计日志不保存粘贴 URL；失败信息不应包含完整 NXM/CDN URL。
+
+# NEXUS-3 联调约定
+
+- `GET /api/instances/:id/mods/nexus/search?q=...`：无 Nexus API Key 时也应能走 GraphQL v2 搜索；纯数字 query 未配置 Key 时按 GraphQL v2 的 `gameId=1303 + modId` 精确查询，已配置 Key 时仍可按 v1 REST 精确 ID 查询。
+- `POST /api/instances/:id/mods/nexus/install`：管理员专用，请求体为当前 Nexus 搜索卡片字段（至少 `modId`，建议带 `name/summary/version/pictureUrl/nexusUrl/downloadCount/endorsementCount`）。未配置 Key 返回 `503 nexus_api_key_missing`；服务器运行中返回 `409 server_running`；成功返回 `202 { jobId }`。
+- 前端安装后订阅 `GET /api/jobs/:jobId/stream`，展示 `log` 事件，`finished` 后拉取 `GET /api/jobs/:jobId` 判断 succeeded/failed，并刷新 `GET /api/instances/:id/mods`。
+- `GET /api/instances/:id/mods` 的 `mods[]` 现在可能包含 Nexus 卡片字段：`nexusSummary`、`pictureUrl`、`nexusUrl`、`downloadCount`、`endorsementCount`、`updatedAt`。前端可用这些字段把已安装 Mod 渲染成与搜索结果一致的卡片。
+- 安装流程不新增前端直连 Nexus；所有 Nexus 文件列表、下载链接、下载 ZIP、解压安装都由后端代理和现有 Mod ZIP 安全校验完成。
+
 # 前后端联调文档
 
 ## 联调目标
@@ -67,11 +128,12 @@ npm.cmd run dev
 
 - 上传、删除、导出可用。
 - 运行中危险操作禁用。
-- 上传/删除后提示需要重启。
-- 玩家同步分类（`syncKind`：`server_only`/`client_required`/`unknown`）随 `GET /api/instances/:id/mods` 一起返回，前端不用单独再拉一次。
-- `GET /api/instances/:id/mods/sync-plan` 返回分类统计；`PUT /api/instances/:id/mods/:modId/sync-classification` 管理员专用，编辑不受运行状态限制；`POST /api/instances/:id/mods/sync-pack/export` 任何登录用户可用，运行中也允许导出，导出包含 `player-sync-manifest.json`，且永远不含面板自带的 `StardewAnxiPanel.Control`。
+- 上传/删除/安装 Mod 写操作要求服务器停止；停服修改后下次启动会自动加载，不再提示需要重启。`restartRequired` 只用于运行中已有 Mod 变更待应用的历史/兼容场景，服务器停止时接口应返回 `false`。
+- 玩家同步分类（`syncKind`：`server_only`/`client_required`/`unknown`）随 `GET /api/instances/:id/mods` 一起返回，前端不用单独再拉一次。没有手动覆盖时，后端会自动把面板控制组件标为 `server_only`，把 SMAPI 内容包和其他第三方 Mod 标为 `client_required`，并在 `syncNote` 写入自动识别说明。
+- `GET /api/instances/:id/mods/sync-plan` 返回分类统计；`PUT /api/instances/:id/mods/:modId/sync-classification` 任意登录用户可用，编辑不受运行状态限制；`POST /api/instances/:id/mods/sync-pack/export` 任何登录用户可用，运行中也允许导出，导出包含 `pack-manifest.json`、`checksums.sha256`、安装脚本和 `payload/mods/`，且永远不含面板自带的 `StardewAnxiPanel.Control`。
 - 无 `client_required` Mod 时导出接口返回 `400 no_sync_mods`，前端按钮直接禁用避免命中。
-- `GET /api/instances/:id/mods/nexus/search?q=关键词`：任意登录用户可用（不需要管理员权限），后端代理 Nexus Mods 官方 API，前端不直连 N站。未配置 `NEXUS_API_KEY` 返回 `503 nexus_api_key_missing`；空关键词返回 `400 invalid_query`；上游非 2xx 映射为 `404 nexus_mod_not_found` / `502 nexus_unauthorized` / `429 nexus_rate_limited` / `502 nexus_request_failed`，前端按 `errorMessage` 兜底显示后端返回的中文 `message`。返回结果按本地已装 Mod 的 manifest `UpdateKeys`（`Nexus:<id>`）匹配 `installed`，本阶段不做版本新旧判断、不提供安装入口。
+- `GET /api/instances/:id/mods/nexus/search?q=关键词`：任意登录用户可用（不需要管理员权限），后端代理 Nexus Mods 官方 API，前端不直连 N站。鉴权按能力拆开：关键词搜索和无 Key 纯数字 ID 展示查询都走公开只读的 GraphQL v2，**不需要个人 API Key**；配置 Key 后纯数字 ID 可优先走 v1 REST 精确查询。只有当 Nexus 自己因鉴权拒绝 GraphQL 查询时才返回 `502 nexus_auth_required`（提示需要 OAuth/更高权限，配置 Key 不一定能解决）。空关键词作为默认热门列表返回 200；其余上游非 2xx 映射为 `404 nexus_mod_not_found` / `502 nexus_unauthorized`（v1 REST Key 无效/权限不足）/ `429 nexus_rate_limited` / `502 nexus_request_failed`，前端按 `errorMessage` 兜底显示后端返回的中文 `message`。返回结果按本地已装 Mod 的 manifest `UpdateKeys`（`Nexus:<id>`）匹配 `installed`，本阶段不做版本新旧判断。
+- `GET /api/settings/nexus` / `PUT /api/settings/nexus/api-key` / `DELETE /api/settings/nexus/api-key`：管理员专用的 Nexus Key 配置接口。PUT 请求体 `{ "apiKey": string }`，保存后当前进程立即生效；GET 只返回 `{ configured, last4? }`，不会回显完整 Key；DELETE 清除配置。
 
 ### 6. 控制台命令
 
@@ -79,6 +141,9 @@ npm.cmd run dev
 - 管理员看到完整 allowlist。
 - 不允许任意 shell。
 - 服务器未运行时命令禁用或返回 `server_not_running`。
+- `POST /api/instances/:id/commands/say` 请求体为 `{ "message": string }`；成功返回 `CommandRunResult{ command: "say", output, exitCode: 0, durationMs }`，表示后端已把喊话命令写入控制目录。
+- 喊话由 `StardewAnxiPanel.Control` 消费 `.local-container/control/commands/*.json` 后发送到游戏聊天，实际玩家可见文本前缀为 `[Panel]`。如果服务器已运行但世界尚未 ready，控制模组会在 `status.json` 记录忽略原因，后端不会暴露任意 SMAPI 命令入口。
+- 前端仍应在非 running 状态禁用喊话输入；运行中发送失败时按结构化错误码展示，成功时提示“已提交/已发送”即可，不需要等待聊天回执。
 
 ### 7. 玩家页
 
@@ -151,3 +216,104 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - `-SkipDocker`
 - `-SkipFrontend`
 - `-SkipBackend`
+# SMAPI-RUNTIME-1 联调约定
+
+- `GET /api/instances/:id/mods` 可能返回 `mods[0].builtIn=true` 的 `SMAPI` 虚拟条目；前端应把它作为置顶内置组件展示。
+- `builtIn=true` 条目不是服务器 Mods 目录中的真实文件夹，不能调用删除接口，也不能调用同步分类更新接口；后端同步包导出会忽略该条目。
+- 该条目的 `syncKind=client_required` 表达“玩家客户端需要先安装 SMAPI”，但它不会进入玩家同步 ZIP；前端同步统计应排除 `builtIn`，普通玩家看到的是提示而不是可下载内容。
+- SMAPI 条目只有在面板内置控制 Mod `StardewAnxiPanel.Control` 已出现在实例 Mods 目录时才注入，用来避免未准备实例显示运行组件。
+
+# MODORIGIN-1 Nexus 包来源字段
+
+- `GET /api/instances/:id/mods` 的 `mods[]` 可能同时包含 `nexusModId` 和 `originNexusModId` 两类字段。`nexusModId` 只表示该 Mod 文件夹自己的 SMAPI `UpdateKeys` 声明；`originNexusModId` 表示它随某个 Nexus 下载包一起安装。
+- 前端展示规则：`nexusModId>0` 显示为主 Nexus Mod；`nexusModId` 为空且 `originSource="nexus"` 时显示为“来源：N站包 / 随 <originModName> 安装”。不要把 `originNexusModId` 当作该内容包自己的 `nexusModId`，否则 `[CP]` 内容包会被误认为独立 N站 Mod。
+- 后端会把来源包的 `pictureUrl/downloadCount/endorsementCount/updatedAt` 填到内容包卡片上，用于展示缩略图和统计；同步分类、玩家同步包导出仍按真实 Mod 文件夹处理。
+- 删除是例外：`DELETE /api/instances/:id/mods/:modId` 会按来源包 bundle 删除同组真实 Mod 文件夹。前端删除确认应根据当前 `mods[]` 计算同 `nexusModId/originNexusModId` 的组成员并提示用户会一起删除；确认后只调用一次 DELETE，不要在前端循环多次删除。
+# NEXUS-PAGED-1 联调契约
+
+- 模组下载页在线搜索只调用 `GET /api/instances/:id/mods/nexus/search?q=...&page=...&pageSize=...`。
+- 响应结构为 `NexusModSearchResponse{query, results, page, pageSize, total, hasMore}`；前端用 `hasMore` 控制下一页，用 `page > 1` 控制上一页。
+- 关键词搜索在后端通过 Nexus GraphQL v2 下推 `downloads DESC` 排序和 `offset/count` 分页；前端不再调用 `/mods/search` 统一搜索骨架。
+- Nexus 一键安装继续调用 `POST /api/instances/:id/mods/nexus/install`；管理员粘贴 Nexus `nxm://` 或 Nexus CDN 临时 ZIP 仍走 `POST /api/instances/:id/mods/remote/install`。
+- `/api/instances/:id/mods/search` 与 `/api/instances/:id/mods/search/install` 已撤下，不再作为联调契约。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+
+# SMAPI-SYNC-2 联调契约
+
+- `GET /api/instances/:id/mods` 可能同时返回两个 `builtIn=true` 条目：虚拟 `SMAPI` 与真实 `StardewAnxiPanel.Control`。前端不要仅凭 `builtIn` 判断是否排除玩家同步；SMAPI 需要进入同步统计和同步清单，Control 不进入。
+- `SMAPI`：`uniqueId=Pathoschild.SMAPI`、`syncKind=client_required`、`builtIn=true`。它代表玩家客户端前置要求，导出同步包时进入 `pack-manifest.json` 的 `mods[]` 和 `smapi` 元数据；只有服务端已缓存 SMAPI ZIP 时才会写入 `payload/smapi/SMAPI*.zip`。
+- `StardewAnxiPanel.Control`：`folderName=StardewAnxiPanel.Control`、`builtIn=true`、`syncKind=server_only`。前端不得显示删除按钮或同步分类下拉；后端也会拒绝删除并排除同步包。
+- `pack-manifest.json` 条目包含 `builtIn` 与 `packaged`：下游如果做玩家同步安装器，应只自动复制 `packaged=true` 的 Mod；`packaged=false` 的 SMAPI 是玩家前置要求，不是 Mod 文件夹。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web` 与 `npm.cmd run build`。
+# PLAYERSYNC-PACK-15 联调契约
+
+- 完整同步包接口保持不变：`POST /api/instances/:id/mods/sync-pack/export`，下载文件名 `stardew-player-sync-pack.zip`，用于首次加入玩家，可按服务端缓存情况携带 `payload/smapi/SMAPI*.zip`。
+- 新增模组更新包接口：`POST /api/instances/:id/mods/sync-pack/export-update`，下载文件名 `stardew-player-mods-update-pack.zip`，用于已经运行过完整版同步包的玩家。
+- 更新包 ZIP 内 `pack-manifest.json.packType=mods_update`，不包含 `payload/smapi/`，`checksums.sha256` 只校验 `payload/mods/`。安装脚本会要求玩家游戏目录已存在 `StardewModdingAPI.exe`，否则提示先运行完整版同步包。
+- 前端只按 Blob 下载，不需要解析 ZIP；UI 上应把完整包和更新包区分展示。更新包没有真实可打包 Mod 时后端返回 `400 no_sync_mods`，前端按钮也应在只有虚拟 SMAPI 时禁用。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+
+# PLAYERSYNC-PACK-16 联调契约
+
+- 模组更新包 `stardew-player-mods-update-pack.zip` 的 `tools/install.ps1` 不再读取或修改 Steam 启动项，ZIP 内也不包含 `tools/steam-launch-options.ps1`。
+- 更新包仍要求玩家游戏目录已有 `StardewModdingAPI.exe`；缺失时提示先运行完整版玩家同步包。
+- 更新包安装完成摘要显示 `Steam 启动项：已跳过，沿用已有设置`，不会再输出 `Steam 启动项文本` 或复制提示。
+- 完整同步包契约不变：首次玩家包仍会尽力自动配置 Steam 启动项，失败时输出可复制 launch options。
+- 前端无需新增字段；继续区分“完整同步包”和“模组更新包”的下载按钮即可。
+
+# MODPROFILE-1 联调契约
+
+- `GET /api/instances/:id/mods` 返回的 `mods[]` 新增 `enabled/canToggle/enableNote`，用于展示当前激活存档下的 Mod 启用状态。
+- 禁用的 Mod 仍会出现在 `GET /mods` 响应中；前端必须读取 `enabled`，不要用是否出现在列表里判断启用。
+- 新增 `PUT /api/instances/:id/mods/:modId/enabled`。管理员专用、服务器 running/starting 时不可用；请求体 `{ "enabled": true|false, "saveName"?: string }`，不传 `saveName` 时使用当前激活存档。
+- 新建存档和新导入存档默认只启用内置组件，第三方 Mod 需要在配置页手动开启。旧存档没有 profile 时保持当前物理目录状态。
+- 启动前后端会按当前存档 profile 移动 Mod 目录，因此玩家同步包导出仍只打包当前启用目录里的玩家 Mod。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+# MODPROFILE-2 联调契约
+
+- `POST /api/instances/:id/saves/select` 和 `POST /api/instances/:id/saves/select-and-start` 切换存档后，后端会应用对应存档的 Mod profile；前端在收到切换成功并刷新 saves 后必须刷新 `GET /api/instances/:id/mods`，用新的 `enabled/canToggle/enableNote` 渲染当前存档状态。
+- 公共数据层现在监听 `activeSaveName`，活动存档变化会触发 mods 刷新；页面不要缓存旧 `mods` 当作跨存档状态。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+
+# NEXUS-DEFAULT-1 联调契约
+
+- `GET /api/instances/:id/mods/nexus/search?q=&page=1&pageSize=20` 合法，返回 Nexus Stardew Valley 默认热门列表，不再返回 `invalid_query`。
+- 空 `q` 响应结构仍是 `{ query, results, page, pageSize, total, hasMore }`，其中 `query` 为 `""`；前端用同一套 Nexus 结果卡片和分页控件展示。
+- 关键词、数字 ID、安装接口契约不变。只有下载页默认态和空输入刷新热门依赖这个新行为。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+# NEWGAME-CABINS-1 自定义新存档小屋联调契约
+
+- `POST /api/instances/:id/saves/custom-new-game` 的 `startingCabins` 表示“初始联机小屋数量”，不是总玩家数；合法范围为 0-7。
+- 前端新建存档 UI 必须直接显示并提交 `startingCabins`，不要把主玩家加 1 后当作“小屋数”展示。
+- 后端会同时写 Junimo `server-settings.json` 的 `Game.StartingCabins`、控制模组 `server-init.json` 的 `cabinCount/cabinLayout`，以及 `.local-container/control/new-game-pending` 一次性标记；控制模组只在该标记存在时提前同步 Stardew 原生新建参数。
+- 控制模组不再作为存档创建方；联调时应以 Junimo HTTP `POST /newgame` 和 Junimo 生成的存档目录为准，Control 只负责新建前参数同步和新建后角色定制。
+- 联调验证建议：创建 0、1、2 间小屋的新存档后，分别检查 `.local-container/settings/server-settings.json`、`.local-container/control/server-init.json`、`.local-container/control/new-game-pending`，并解析生成存档 XML 中可见/有效 Cabin building 数；已有存档不会因 `server-init.json` 残留而重新应用新建参数。
+
+# FE-QUICK-BACKUP-1 快捷备份联调契约
+
+- 服务器控制页“备份存档”复用现有 `POST /api/instances/:id/saves/:name/backup`，其中 `name` 必须来自 `GET /api/instances/:id/saves` 的 `activeSaveName`。
+- 前端仅管理员可点；无激活存档时禁用。成功响应仍为 `{ "backupName": string }`，前端只展示文件名并不解析 ZIP。
+- 该操作在 UI 中显示为“备份已保存进度”，语义是“对当前磁盘存档目录打 ZIP 手动备份”，不是“强制 Stardew 立即保存当前游戏内世界”。游戏内未触发保存事件的进度不会因为备份按钮自动写入主存档。
+- 手动验证：运行中和停服状态分别点击快捷备份，确认能创建手动备份；随后进入存档页备份列表应能看到同一备份文件。
+
+
+# SAVE-BACKUP-POLICY-1 ????
+
+- ??????????SMAPI Control `Saved` ?? -> ? `.local-container/control/save-events/*.json` -> ?? `GET /saves/backups` ???????? -> ?? latest ????/???? daily ???
+- ??????????????? -> `PUT /api/instances/:id/saves/backups/policy` -> ??? `.local-container/backups/saves/policy.json`?????????????????
+- ???????????/?????????????????????? scheduler????????????????????????????
+- ????????????????????????/??????????????????????????
+
+# SAVE-BACKUP-SCHEDULE-HOUR-1 联调契约
+
+- `GET|PUT /api/instances/:id/saves/backups/policy` 的定时备份字段使用 `scheduledHour`，取值 0-23，前端按 24 小时制展示为 `HH:00`。
+- 后端仍能读取旧 `scheduledIntervalHours` 配置文件，但新响应和新保存结果以 `scheduledHour` 为准，不再要求前端提供时间间隔。
+- 定时备份语义：每天到达配置整点后，下一次触发备份维护时覆盖同一份 `scheduled_<save>.zip`；同一自然日不会重复生成。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+# SCHEDULED-RESTART-1 计划重启联调契约
+
+- `GET /api/instances/:id/restart-schedule` 返回 `{ schedule }`，字段包括 `enabled`、`shutdownTime`、`startupTime`、`timezone`、`warningMinutes`、`backupBeforeShutdown`、`skipIfPlayersOnline`、`nextShutdownAt`、`nextStartupAt`、`lastStatus`、`lastMessage`。
+- `PUT /api/instances/:id/restart-schedule` 仅管理员可用，请求体使用同一组配置字段；时间格式为 `HH:MM`，时区默认 `Asia/Shanghai`。
+- 后端后台调度器每 30 秒检查启用计划。关闭时间前通过现有喊话通道写 `.local-container/control/commands/*.json`；关闭时可调用现有存档备份能力，再提交 `Stop` 生命周期 job；开启时提交 `Start` 生命周期 job。
+- 关闭前备份语义与快捷备份一致：只备份当前已经落盘的 active save，不强制保存游戏内尚未写盘的进度。
+- 联调建议：把关闭时间设置到当前时间后 1-2 分钟，确认弹窗保存后返回 `nextShutdownAt`；服务器运行中确认提醒文件写入 control commands；到点后任务中心出现 stop job。开启时间设置到停止后 1-2 分钟，确认 start job 被提交。

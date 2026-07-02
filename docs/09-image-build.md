@@ -103,7 +103,6 @@ docker compose up -d
 | `PANEL_MODE` | `single` | 当前默认单游戏模式 |
 | `DEFAULT_INSTANCE_ID` | `stardew` | 默认实例 |
 | `DEFAULT_DRIVER_ID` | `stardew_junimo` | 默认 driver |
-| `NEXUS_API_KEY` | 空 | Nexus Mods 个人 API Key（在 nexusmods.com 账号设置的 API Access 页面生成）。未配置时 `GET .../mods/nexus/search` 返回 `nexus_api_key_missing` 结构化错误，不影响其余面板功能 |
 
 ## 镜像内工具验证
 
@@ -140,7 +139,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 安装、启动、停止、重启、邀请码刷新可用。
 - 存档上传预览、提交启动、删除备份、恢复可用。
 - Mod 上传、删除、导出可用。
-- 配置 `NEXUS_API_KEY` 后 Nexus Mods 在线搜索可用；未配置时返回 `nexus_api_key_missing` 而不是 500。
+- 在 Mod 下载页用管理员账号配置 Nexus API Key 后，数字 ID 精确查询可用；未配置时返回 `nexus_api_key_missing` 而不是 500。普通关键词搜索不要求 Key。
 - 健康检查和支持包导出可用且脱敏。
 - 320px 以上窄屏无横向溢出。
 

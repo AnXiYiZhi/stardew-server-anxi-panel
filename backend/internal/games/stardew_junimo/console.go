@@ -2,7 +2,12 @@ package stardew_junimo
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -238,8 +243,50 @@ func sendSay(ctx context.Context, d *Driver, instance registry.Instance, message
 		return nil, &CommandError{Code: "server_not_running", Message: "服务器未运行，无法发送喊话"}
 	}
 
-	_ = message
-	return nil, &CommandError{Code: "command_not_supported", Message: "当前 Junimo/SMAPI 命令列表没有服务器喊话命令，暂不能发送喊话"}
+	start := time.Now()
+	if err := writePanelBroadcastCommand(instance.DataDir, message); err != nil {
+		return nil, fmt.Errorf("写入喊话命令失败: %w", err)
+	}
+	return &CommandRunResult{
+		Command:    "say",
+		Output:     "喊话已提交，控制模组会在游戏 tick 中发送给在线玩家。",
+		ExitCode:   0,
+		DurationMS: time.Since(start).Milliseconds(),
+	}, nil
+}
+
+func writePanelBroadcastCommand(dataDir, message string) error {
+	commandsDir := filepath.Join(controlDir(dataDir), "commands")
+	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+	id, err := randomHex(8)
+	if err != nil {
+		return err
+	}
+	command := struct {
+		Name      string            `json:"name"`
+		Payload   map[string]string `json:"payload"`
+		CreatedAt string            `json:"createdAt"`
+	}{
+		Name:      "broadcast",
+		Payload:   map[string]string{"message": message},
+		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	data, err := json.MarshalIndent(command, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal command: %w", err)
+	}
+	path := filepath.Join(commandsDir, fmt.Sprintf("%s-%s.json", time.Now().UTC().Format("20060102150405.000000000"), id))
+	return os.WriteFile(path, data, 0o644)
+}
+
+func randomHex(byteCount int) (string, error) {
+	buf := make([]byte, byteCount)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate command id: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 func sendServerCommand(ctx context.Context, exec commandExecutor, dir, command string) (string, int, string, error) {

@@ -139,6 +139,14 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleMe(w, r)
+	case "/api/settings/nexus":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleNexusSettingsStatus(w, r)
+	case "/api/settings/nexus/api-key":
+		s.handleNexusAPIKey(w, r)
 	case "/api/users":
 		s.handleUsers(w, r)
 	case "/api/jobs":

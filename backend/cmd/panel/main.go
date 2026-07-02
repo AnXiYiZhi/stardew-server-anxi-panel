@@ -89,6 +89,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	restartScheduler := web.NewRestartScheduler(web.RestartSchedulerDeps{
+		Store:    store,
+		Registry: driverRegistry,
+		Logger:   logger,
+	})
+	go restartScheduler.Run(signalCtx)
+
 	server := &http.Server{
 		Addr: cfg.Addr,
 		Handler: web.NewHandler(web.Deps{
@@ -110,8 +120,6 @@ func main() {
 		}
 	}()
 
-	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	<-signalCtx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ModInfo, ModsListResult } from '../../types'
-import { getMods, uploadMod, deleteMod, exportMods } from '../../api'
+import { getMods, uploadMods, deleteMod, exportMods } from '../../api'
 import { errorMessage } from '../../core/helpers'
 
 // ── ModRow ────────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ export function ModsSection({
 
   // Upload state
   const [showUploadModal, setShowUploadModal] = useState(false)
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadMessage, setUploadMessage] = useState('')
 
@@ -91,13 +91,13 @@ export function ModsSection({
   }, [refreshTrigger, loadMods])
 
   async function handleUpload() {
-    if (!uploadFile) return
+    if (uploadFiles.length === 0) return
     setUploadBusy(true)
     setUploadMessage('')
     try {
-      await uploadMod(uploadFile)
+      await uploadMods(uploadFiles)
       setShowUploadModal(false)
-      setUploadFile(null)
+      setUploadFiles([])
       await loadMods()
     } catch (error) {
       setUploadMessage(errorMessage(error))
@@ -226,7 +226,7 @@ export function ModsSection({
               <button
                 className="button button-small button-secondary"
                 type="button"
-                onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadMessage('') }}
+                onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadMessage('') }}
                 disabled={uploadBusy}
               >
                 关闭
@@ -244,13 +244,19 @@ export function ModsSection({
                 <input
                   type="file"
                   accept=".zip"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                  multiple
+                  onChange={(e) => setUploadFiles(Array.from(e.target.files ?? []))}
                 />
               </label>
+              {uploadFiles.length > 0 ? (
+                <div className="form-hint">
+                  已选择 {uploadFiles.length} 个 ZIP
+                </div>
+              ) : null}
               <div className="modal-actions">
                 <button
                   className="button"
-                  disabled={uploadBusy || !uploadFile}
+                  disabled={uploadBusy || uploadFiles.length === 0}
                   onClick={handleUpload}
                   type="button"
                 >
@@ -260,7 +266,7 @@ export function ModsSection({
                   className="button button-secondary"
                   disabled={uploadBusy}
                   type="button"
-                  onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadMessage('') }}
+                  onClick={() => { setShowUploadModal(false); setUploadFiles([]); setUploadMessage('') }}
                 >
                   取消
                 </button>
