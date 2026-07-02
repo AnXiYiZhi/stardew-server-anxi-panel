@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -86,6 +89,40 @@ func TestListMods_WithMods(t *testing.T) {
 	}
 	if len(mods) != 2 {
 		t.Fatalf("expected 2 mods, got %d", len(mods))
+	}
+}
+
+func TestListMods_IncludesSMAPIRuntimeWhenControlModInstalled(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".local-container", "mods")
+	createTestMod(t, root, controlModFolderName, "StardewAnxiPanel.Control", "Panel Control")
+
+	mods, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	if len(mods) != 2 {
+		t.Fatalf("expected SMAPI runtime plus control mod, got %d mods: %+v", len(mods), mods)
+	}
+	smapi := mods[0]
+	if !smapi.BuiltIn {
+		t.Fatalf("first mod should be built-in SMAPI runtime: %+v", smapi)
+	}
+	if smapi.Name != "SMAPI" || smapi.UniqueID != "Pathoschild.SMAPI" {
+		t.Fatalf("unexpected SMAPI runtime info: %+v", smapi)
+	}
+	if smapi.NexusModID != 2400 || len(smapi.UpdateKeys) != 1 || smapi.UpdateKeys[0] != "Nexus:2400" {
+		t.Fatalf("SMAPI Nexus metadata = id %d keys %v, want Nexus:2400", smapi.NexusModID, smapi.UpdateKeys)
+	}
+	if smapi.SyncKind != "client_required" {
+		t.Fatalf("SMAPI SyncKind = %q, want client_required", smapi.SyncKind)
+	}
+	control := mods[1]
+	if !control.BuiltIn {
+		t.Fatalf("control mod should be marked built-in: %+v", control)
+	}
+	if control.SyncKind != "server_only" {
+		t.Fatalf("control SyncKind = %q, want server_only", control.SyncKind)
 	}
 }
 
@@ -206,6 +243,104 @@ func TestUploadModZip_ValidMultipleMods(t *testing.T) {
 	}
 }
 
+func TestUploadModZip_AllowsSingleNexusWrapperWithMultipleMods(t *testing.T) {
+	dir := t.TempDir()
+	mainManifest := `{
+		"Name":"Multiple Construction Orders",
+		"UniqueID":"moonslime.MultipleConstructionOrders",
+		"Version":"1.1.0",
+		"Author":"moonslime",
+		"EntryDll":"MultipleConstructionOrders.dll",
+		"Dependencies":[{"UniqueID":"moonslime.MultipleConstructionOrders.CP"},{"UniqueID":"Pathoschild.ContentPatcher"}],
+		"UpdateKeys":["Nexus:47289"]
+	}`
+	cpManifest := `{
+		"Name":"[CP] Multiple Construction Orders",
+		"UniqueID":"moonslime.MultipleConstructionOrders.CP",
+		"Version":"1.0.0",
+		"Author":"moonslime",
+		"ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"},
+		"Dependencies":[{"UniqueID":"Pathoschild.ContentPatcher"}]
+	}`
+	zipPath := createModZip(t, map[string]string{
+		"MultipleConstructionOrders/MultipleConstructionOrders/manifest.json":                      mainManifest,
+		"MultipleConstructionOrders/MultipleConstructionOrders/MultipleConstructionOrders.dll":     "dll",
+		"MultipleConstructionOrders/[CP] MultipleConstructionOrders/manifest.json":                 cpManifest,
+		"MultipleConstructionOrders/[CP] MultipleConstructionOrders/content.json":                  "{}",
+		"MultipleConstructionOrders/[CP] MultipleConstructionOrders/Assets/ConstructionWorker.png": "png",
+	})
+
+	imported, err := UploadModZip(dir, zipPath)
+	if err != nil {
+		t.Fatalf("UploadModZip: %v", err)
+	}
+	if len(imported) != 2 {
+		t.Fatalf("expected 2 imported mods, got %d", len(imported))
+	}
+	byFolder := map[string]registry.ModInfo{}
+	for _, mod := range imported {
+		byFolder[mod.FolderName] = mod
+	}
+	if main := byFolder["MultipleConstructionOrders"]; main.NexusModID != 47289 {
+		t.Fatalf("main NexusModID = %d, want 47289", main.NexusModID)
+	}
+	cp := byFolder["[CP] MultipleConstructionOrders"]
+	if cp.NexusModID != 0 {
+		t.Fatalf("content pack NexusModID = %d, want 0", cp.NexusModID)
+	}
+	if cp.OriginSource != "nexus" || cp.OriginNexusModID != 47289 || cp.OriginModName != "Multiple Construction Orders" {
+		t.Fatalf("content pack origin = source %q id %d name %q, want Nexus package 47289",
+			cp.OriginSource, cp.OriginNexusModID, cp.OriginModName)
+	}
+
+	root := filepath.Join(dir, ".local-container", "mods")
+	for _, folder := range []string{"MultipleConstructionOrders", "[CP] MultipleConstructionOrders"} {
+		if _, err := os.Stat(filepath.Join(root, folder, "manifest.json")); err != nil {
+			t.Fatalf("manifest for %q not imported at mods root: %v", folder, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "MultipleConstructionOrders", "MultipleConstructionOrders", "manifest.json")); !os.IsNotExist(err) {
+		t.Fatalf("wrapper directory should be stripped, nested manifest stat err = %v", err)
+	}
+
+	listed, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	listed = ApplyNexusMetadataToMods(dir, listed)
+	byFolder = map[string]registry.ModInfo{}
+	for _, mod := range listed {
+		byFolder[mod.FolderName] = mod
+	}
+	cp = byFolder["[CP] MultipleConstructionOrders"]
+	if cp.NexusModID != 0 || cp.OriginNexusModID != 47289 {
+		t.Fatalf("persisted content pack ids = own %d origin %d, want own 0 origin 47289",
+			cp.NexusModID, cp.OriginNexusModID)
+	}
+
+	if err := SaveInstalledNexusMetadata(dir, []registry.ModInfo{byFolder["MultipleConstructionOrders"]}, NexusModSearchResult{
+		ModID:      47289,
+		Name:       "Multiple Construction Orders",
+		PictureURL: "https://example.com/mco.png",
+		NexusURL:   "https://www.nexusmods.com/stardewvalley/mods/47289",
+	}); err != nil {
+		t.Fatalf("SaveInstalledNexusMetadata: %v", err)
+	}
+	listed, err = ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods after metadata: %v", err)
+	}
+	listed = ApplyNexusMetadataToMods(dir, listed)
+	byFolder = map[string]registry.ModInfo{}
+	for _, mod := range listed {
+		byFolder[mod.FolderName] = mod
+	}
+	cp = byFolder["[CP] MultipleConstructionOrders"]
+	if cp.PictureURL != "https://example.com/mco.png" {
+		t.Fatalf("content pack PictureURL = %q, want package thumbnail", cp.PictureURL)
+	}
+}
+
 func TestUploadModZip_RejectsZipSlip(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := createModZip(t, map[string]string{
@@ -258,7 +393,7 @@ func TestUploadModZip_AllowsDirectoryEntry(t *testing.T) {
 	dir := t.TempDir()
 	manifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
 	zipPath := createModZip(t, map[string]string{
-		"TestMod/":             "",
+		"TestMod/":              "",
 		"TestMod/manifest.json": manifest,
 	})
 
@@ -280,6 +415,22 @@ func TestUploadModZip_RejectsNoManifest(t *testing.T) {
 	_, err := UploadModZip(dir, zipPath)
 	if err == nil {
 		t.Fatal("expected error for mod without manifest")
+	}
+}
+
+func TestUploadModZip_RejectsXNBReplacementWithHelpfulError(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := createModZip(t, map[string]string{
+		"I was thinking about dyeing my hair again/Dye it black/Characters/Abigail.xnb": "xnb",
+		"I was thinking about dyeing my hair again/Dye it black/Portraits/Abigail.xnb":  "xnb",
+	})
+
+	_, err := UploadModZip(dir, zipPath)
+	if err == nil {
+		t.Fatal("expected error for XNB replacement archive")
+	}
+	if !strings.Contains(err.Error(), "XNB") || !strings.Contains(err.Error(), "SMAPI") {
+		t.Fatalf("expected helpful XNB/SMAPI error, got %v", err)
 	}
 }
 
@@ -370,6 +521,49 @@ func TestDeleteMod_ByUniqueID(t *testing.T) {
 	}
 }
 
+func TestDeleteMod_RemovesNexusPackageBundle(t *testing.T) {
+	dir := t.TempDir()
+	mainManifest := `{
+		"Name":"Multiple Construction Orders",
+		"UniqueID":"moonslime.MultipleConstructionOrders",
+		"Version":"1.1.0",
+		"Author":"moonslime",
+		"UpdateKeys":["Nexus:47289"]
+	}`
+	cpManifest := `{
+		"Name":"[CP] Multiple Construction Orders",
+		"UniqueID":"moonslime.MultipleConstructionOrders.CP",
+		"Version":"1.0.0",
+		"Author":"moonslime",
+		"ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}
+	}`
+	zipPath := createModZip(t, map[string]string{
+		"MultipleConstructionOrders/MultipleConstructionOrders/manifest.json":      mainManifest,
+		"MultipleConstructionOrders/[CP] MultipleConstructionOrders/manifest.json": cpManifest,
+	})
+	if _, err := UploadModZip(dir, zipPath); err != nil {
+		t.Fatalf("UploadModZip: %v", err)
+	}
+
+	if err := DeleteMod(dir, "[CP] MultipleConstructionOrders"); err != nil {
+		t.Fatalf("DeleteMod bundle member: %v", err)
+	}
+
+	root := filepath.Join(dir, ".local-container", "mods")
+	for _, folder := range []string{"MultipleConstructionOrders", "[CP] MultipleConstructionOrders"} {
+		if _, err := os.Stat(filepath.Join(root, folder)); !os.IsNotExist(err) {
+			t.Fatalf("folder %q should have been deleted with bundle, stat err = %v", folder, err)
+		}
+	}
+	store, err := loadNexusMetadataStore(dir)
+	if err != nil {
+		t.Fatalf("loadNexusMetadataStore: %v", err)
+	}
+	if len(store.Mods) != 0 {
+		t.Fatalf("nexus sidecar entries = %+v, want empty after bundle delete", store.Mods)
+	}
+}
+
 func TestDeleteMod_RejectsDotDot(t *testing.T) {
 	dir := t.TempDir()
 	if err := DeleteMod(dir, ".."); err == nil {
@@ -397,6 +591,19 @@ func TestDeleteMod_CannotDeleteModsRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(root); os.IsNotExist(err) {
 		t.Fatal("mods root was deleted")
+	}
+}
+
+func TestDeleteMod_CannotDeleteControlMod(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".local-container", "mods")
+	createTestMod(t, root, controlModFolderName, controlModUniqueID, "Panel Control")
+
+	if err := DeleteMod(dir, controlModFolderName); err == nil {
+		t.Fatal("expected error when deleting built-in control mod")
+	}
+	if _, err := os.Stat(filepath.Join(root, controlModFolderName)); err != nil {
+		t.Fatalf("control mod folder should remain: %v", err)
 	}
 }
 
@@ -617,7 +824,11 @@ func TestReadModInfo_AllFields(t *testing.T) {
 		"UniqueID": "author.testmod",
 		"Version": "1.2.3",
 		"Author": "TestAuthor",
-		"Description": "A test mod"
+		"Description": "A test mod",
+		"Dependencies": [
+			{"UniqueID": "Pathoschild.ContentPatcher", "MinimumVersion": "2.0.0"},
+			{"UniqueID": "spacechase0.GenericModConfigMenu", "IsRequired": false}
+		]
 	}`
 	if err := os.WriteFile(filepath.Join(modPath, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -644,6 +855,72 @@ func TestReadModInfo_AllFields(t *testing.T) {
 	}
 	if info.FolderName != "TestMod" {
 		t.Errorf("FolderName = %q, want TestMod", info.FolderName)
+	}
+	if len(info.Dependencies) != 2 {
+		t.Fatalf("len(Dependencies) = %d, want 2: %+v", len(info.Dependencies), info.Dependencies)
+	}
+	if info.Dependencies[0].UniqueID != "Pathoschild.ContentPatcher" ||
+		info.Dependencies[0].MinimumVersion != "2.0.0" ||
+		!info.Dependencies[0].Required {
+		t.Errorf("Dependencies[0] = %+v, want required Content Patcher min 2.0.0", info.Dependencies[0])
+	}
+	if info.Dependencies[1].UniqueID != "spacechase0.GenericModConfigMenu" || info.Dependencies[1].Required {
+		t.Errorf("Dependencies[1] = %+v, want optional GMCM", info.Dependencies[1])
+	}
+}
+
+func TestReadModInfo_ContentPackForAsDependency(t *testing.T) {
+	dir := t.TempDir()
+	modPath := filepath.Join(dir, "CPMod")
+	if err := os.MkdirAll(modPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{
+		"Name": "[CP] Example",
+		"UniqueID": "author.cp",
+		"Version": "1.0.0",
+		"ContentPackFor": {"UniqueID": "Pathoschild.ContentPatcher", "MinimumVersion": "2.6.0"},
+		"Dependencies": [{"UniqueID": "Pathoschild.ContentPatcher"}]
+	}`
+	if err := os.WriteFile(filepath.Join(modPath, "manifest.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := readModInfo(modPath, "CPMod")
+	if len(info.Dependencies) != 1 {
+		t.Fatalf("len(Dependencies) = %d, want deduped Content Patcher dependency: %+v", len(info.Dependencies), info.Dependencies)
+	}
+	dep := info.Dependencies[0]
+	if dep.UniqueID != "Pathoschild.ContentPatcher" || dep.MinimumVersion != "2.6.0" || !dep.Required {
+		t.Fatalf("dependency = %+v, want required Content Patcher min 2.6.0", dep)
+	}
+	if !info.IsContentPack || info.ContentPackFor != "Pathoschild.ContentPatcher" {
+		t.Fatalf("content pack fields = isContentPack %v contentPackFor %q, want Content Patcher",
+			info.IsContentPack, info.ContentPackFor)
+	}
+}
+
+func TestReadModInfo_AllowsUTF8BOMManifest(t *testing.T) {
+	dir := t.TempDir()
+	modPath := filepath.Join(dir, "BOMMod")
+	if err := os.MkdirAll(modPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "\ufeff" + `{
+		"Name": "BOM Mod",
+		"UniqueID": "author.bom",
+		"Version": "1.0.0"
+	}`
+	if err := os.WriteFile(filepath.Join(modPath, "manifest.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := readModInfo(modPath, "BOMMod")
+	if info.ParseError != "" {
+		t.Fatalf("ParseError = %q, want empty", info.ParseError)
+	}
+	if info.UniqueID != "author.bom" || info.Name != "BOM Mod" {
+		t.Fatalf("info = %+v, want BOM manifest parsed", info)
 	}
 }
 

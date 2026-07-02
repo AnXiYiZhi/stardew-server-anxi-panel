@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { BackupInfo, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
+import type { BackupInfo, BackupPolicy, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
 import {
   ApiError,
   defaultInstanceId,
   getSaves,
   getSaveBackups,
+  createSaveBackup,
+  updateSaveBackupPolicy,
   selectSave,
   selectSaveAndStart,
   deleteSave,
@@ -31,6 +33,35 @@ const farmTypeLabel: Record<string, string> = {
 
 // ── SaveCard ─────────────────────────────────────────────────────────────────
 
+const defaultBackupPolicy: BackupPolicy = {
+  gameSaveBackups: true,
+  dailySnapshots: true,
+  dailyRetentionDays: 3,
+  scheduledBackups: false,
+  scheduledHour: 4,
+}
+
+function normalizeBackupPolicy(policy: BackupPolicy): BackupPolicy {
+  const rawHour = (policy as Partial<BackupPolicy>).scheduledHour
+  const scheduledHour = Math.max(
+    0,
+    Math.min(23, typeof rawHour === 'number' && Number.isFinite(rawHour) ? rawHour : defaultBackupPolicy.scheduledHour),
+  )
+  const { scheduledIntervalHours: _legacyScheduledIntervalHours, ...normalized } = {
+    ...defaultBackupPolicy,
+    ...policy,
+    scheduledHour,
+  }
+  return normalized
+}
+
+const backupKindLabel: Record<string, string> = {
+  manual: '手动备份',
+  latest: '最新备份',
+  daily: '每日快照',
+  scheduled: '定时备份',
+}
+
 function SaveCard({
   save,
   isActive,
@@ -39,6 +70,7 @@ function SaveCard({
   isAdmin,
   onSelect,
   onSelectAndStart,
+  onBackup,
   onDelete,
   onExport,
 }: {
@@ -49,6 +81,7 @@ function SaveCard({
   isAdmin: boolean
   onSelect: () => void
   onSelectAndStart: () => void
+  onBackup: () => void
   onDelete: () => void
   onExport: () => void
 }) {
@@ -130,6 +163,15 @@ function SaveCard({
           导出
         </button>
         <button
+          className="sd-btn-tan"
+          disabled={busy || !isAdmin}
+          title={!isAdmin ? '仅管理员可执行此操作' : undefined}
+          onClick={onBackup}
+          type="button"
+        >
+          手动备份
+        </button>
+        <button
           className="sd-btn-delete"
           disabled={deleteDisabled}
           title={deleteTitle}
@@ -169,6 +211,9 @@ export function SavesSection({
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [backupsLoading, setBackupsLoading] = useState(false)
   const [backupMessage, setBackupMessage] = useState('')
+  const [backupPolicy, setBackupPolicy] = useState<BackupPolicy>(defaultBackupPolicy)
+  const [backupPolicyDraft, setBackupPolicyDraft] = useState<BackupPolicy>(defaultBackupPolicy)
+  const [backupPolicyBusy, setBackupPolicyBusy] = useState(false)
   const [restoreBackup, setRestoreBackup] = useState<BackupInfo | null>(null)
   const [restoreNeedsOverwrite, setRestoreNeedsOverwrite] = useState(false)
   const [restoreError, setRestoreError] = useState('')
@@ -212,6 +257,11 @@ export function SavesSection({
     try {
       const result = await getSaveBackups()
       setBackups([...result.backups].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
+      if (result.policy) {
+        const normalizedPolicy = normalizeBackupPolicy(result.policy)
+        setBackupPolicy(normalizedPolicy)
+        setBackupPolicyDraft(normalizedPolicy)
+      }
     } catch (error) {
       setBackupMessage(errorMessage(error))
     } finally {
@@ -319,6 +369,37 @@ export function SavesSection({
       setMessage(errorMessage(error))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleManualBackup(name: string) {
+    setBusy(true)
+    setBackupMessage('')
+    try {
+      await createSaveBackup(name)
+      await loadBackups()
+      setBackupMessage('手动备份已创建。')
+    } catch (error) {
+      setBackupMessage(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleBackupPolicySave() {
+    setBackupPolicyBusy(true)
+    setBackupMessage('')
+    try {
+      const result = await updateSaveBackupPolicy(normalizeBackupPolicy(backupPolicyDraft))
+      const normalizedPolicy = normalizeBackupPolicy(result.policy)
+      setBackupPolicy(normalizedPolicy)
+      setBackupPolicyDraft(normalizedPolicy)
+      await loadBackups()
+      setBackupMessage('备份设置已保存。')
+    } catch (error) {
+      setBackupMessage(errorMessage(error))
+    } finally {
+      setBackupPolicyBusy(false)
     }
   }
 
@@ -438,6 +519,7 @@ export function SavesSection({
   const confirmDeleteBlocked = busy || !isAdmin || (isRunning && confirmDeleteIsActive)
   const restoreSaveExists = restoreBackup ? saves.some((save) => save.name === restoreBackup.saveName) : false
   const restoreBlocked = busy || isRunning || !isAdmin
+  const backupPolicyChanged = JSON.stringify(backupPolicyDraft) !== JSON.stringify(backupPolicy)
 
   return (
     <section id="saves-section">
@@ -511,6 +593,7 @@ export function SavesSection({
               isAdmin={isAdmin}
               onSelect={() => void handleSelect(save.name)}
               onSelectAndStart={() => void handleSelectAndStart(save.name)}
+              onBackup={() => void handleManualBackup(save.name)}
               onDelete={() => setConfirmDeleteName(save.name)}
               onExport={() => void handleExport(save.name)}
             />
@@ -574,6 +657,75 @@ export function SavesSection({
               {backupsLoading ? '刷新中…' : '刷新备份'}
             </button>
           </div>
+          <div className="sd-save-backup-policy">
+            <div className="sd-save-backup-policy-head">
+              <strong>自动备份规则</strong>
+              <span>手动备份会单独保留；下面这些只控制自动备份。</span>
+            </div>
+            <label className="sd-save-backup-toggle sd-save-backup-option">
+              <input
+                type="checkbox"
+                checked={backupPolicyDraft.gameSaveBackups}
+                onChange={(e) => setBackupPolicyDraft((policy) => ({ ...policy, gameSaveBackups: e.target.checked }))}
+              />
+              <span>
+                <strong>游戏保存后更新“最新备份”</strong>
+                <small>玩家睡觉完成保存后，覆盖同一份最新备份，方便回到最近一次保存。</small>
+              </span>
+            </label>
+            <label className="sd-save-backup-toggle sd-save-backup-option">
+              <input
+                type="checkbox"
+                checked={backupPolicyDraft.scheduledBackups}
+                onChange={(e) => setBackupPolicyDraft((policy) => ({ ...policy, scheduledBackups: e.target.checked }))}
+              />
+              <span>
+                <strong>每天固定时间更新“定时备份”</strong>
+                <small>到你选的时间后覆盖同一份定时备份，适合每天留一份固定保险。</small>
+              </span>
+            </label>
+            <label className="sd-save-backup-field">
+              <span>每天</span>
+              <select
+                value={backupPolicyDraft.scheduledHour}
+                onChange={(e) => {
+                  const value = Math.max(0, Math.min(23, Number(e.target.value) || 0))
+                  setBackupPolicyDraft((policy) => ({ ...policy, scheduledHour: value }))
+                }}
+              >
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <option key={hour} value={hour}>
+                    {String(hour).padStart(2, '0')}:00
+                  </option>
+                ))}
+              </select>
+              <span>执行一次</span>
+            </label>
+            <label className="sd-save-backup-slider">
+              <span>
+                <strong>每日快照最多保留 {backupPolicyDraft.dailyRetentionDays} 天</strong>
+                <small>每天只留一份；同一天再次备份会覆盖，超过天数会自动删旧快照。</small>
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={14}
+                value={backupPolicyDraft.dailyRetentionDays}
+                onChange={(e) => {
+                  const value = Math.max(1, Math.min(14, Number(e.target.value) || 3))
+                  setBackupPolicyDraft((policy) => ({ ...policy, dailySnapshots: true, dailyRetentionDays: value }))
+                }}
+              />
+            </label>
+            <button
+              className="sd-btn-green"
+              type="button"
+              disabled={backupPolicyBusy || !backupPolicyChanged}
+              onClick={() => void handleBackupPolicySave()}
+            >
+              {backupPolicyBusy ? '保存中…' : '保存备份设置'}
+            </button>
+          </div>
           {backupMessage ? <div className="sd-saves-error">{backupMessage}</div> : null}
           {backupsLoading ? (
             <div className="sd-srv-empty">读取备份列表中…</div>
@@ -586,6 +738,7 @@ export function SavesSection({
                     <div className="sd-save-backup-main">
                       <div className="sd-save-backup-name">{backup.name}</div>
                       <div className="sd-save-backup-meta">
+                        <span className="sd-save-backup-kind">{backupKindLabel[backup.kind] ?? backup.kind}</span>
                         <span>原存档：{backup.saveName || '未知'}</span>
                         {backup.farmName ? <span>农场：{backup.farmName}</span> : null}
                         {backup.farmerName ? <span>农民：{backup.farmerName}</span> : null}

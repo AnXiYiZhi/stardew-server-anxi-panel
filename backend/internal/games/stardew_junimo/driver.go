@@ -111,6 +111,7 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		filepath.Join(".local-container", "control"),
 		filepath.Join(".local-container", "control", "commands"),
 		filepath.Join(".local-container", "mods"),
+		filepath.Join(".local-container", "mods-disabled"),
 	} {
 		dir := filepath.Join(instance.DataDir, sub)
 		if err := os.MkdirAll(dir, 0o755); err != nil {

@@ -43,6 +43,7 @@ export type StardewDashboardData = {
   // 加载状态
   loading: boolean
   playersLoading: boolean
+  inviteCodeRefreshing: boolean
   // 刷新函数（供各页面在操作完成后主动刷新）
   refreshAll: () => void
   refreshInstanceState: () => void

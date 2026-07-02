@@ -76,6 +76,13 @@ public sealed class PlayersFile
     public PlayerInfo[] Players { get; set; } = Array.Empty<PlayerInfo>();
 }
 
+public sealed class SaveEventFile
+{
+    public string Type { get; set; } = "";
+    public string SaveName { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 public sealed class PlayerInfo
 {
     public string Name { get; set; } = "";

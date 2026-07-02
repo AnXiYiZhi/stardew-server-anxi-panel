@@ -2,12 +2,14 @@ package stardew_junimo
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +22,8 @@ const (
 	maxModUncompressed = 512 * 1024 * 1024 // 512 MB uncompressed total
 	maxModSingleFile   = 64 * 1024 * 1024  // 64 MB per file
 	restartRequiredKey = "modsRestartRequired"
+	smapiRuntimeModID  = "__smapi_runtime"
+	smapiNexusModID    = 2400
 )
 
 // modsDir returns the host-side path to the mods directory.
@@ -28,15 +32,29 @@ func modsDir(dataDir string) string {
 	return filepath.Join(dataDir, ".local-container", "mods")
 }
 
+// disabledModsDir stores installed mods that should not be mounted into the
+// current Stardew server process.
+func disabledModsDir(dataDir string) string {
+	return filepath.Join(dataDir, ".local-container", "mods-disabled")
+}
+
 // modManifest represents the SMAPI manifest.json structure.
 type modManifest struct {
-	Name              string   `json:"Name"`
-	UniqueID          string   `json:"UniqueID"`
-	Version           string   `json:"Version"`
-	Author            string   `json:"Author"`
-	Description       string   `json:"Description"`
-	MinimumApiVersion string   `json:"MinimumApiVersion,omitempty"`
-	UpdateKeys        []string `json:"UpdateKeys,omitempty"`
+	Name              string                  `json:"Name"`
+	UniqueID          string                  `json:"UniqueID"`
+	Version           string                  `json:"Version"`
+	Author            string                  `json:"Author"`
+	Description       string                  `json:"Description"`
+	MinimumApiVersion string                  `json:"MinimumApiVersion,omitempty"`
+	UpdateKeys        []string                `json:"UpdateKeys,omitempty"`
+	Dependencies      []modManifestDependency `json:"Dependencies,omitempty"`
+	ContentPackFor    *modManifestDependency  `json:"ContentPackFor,omitempty"`
+}
+
+type modManifestDependency struct {
+	UniqueID       string `json:"UniqueID"`
+	MinimumVersion string `json:"MinimumVersion,omitempty"`
+	IsRequired     *bool  `json:"IsRequired,omitempty"`
 }
 
 // parseNexusModIDFromUpdateKeys scans a SMAPI manifest's UpdateKeys for a
@@ -65,7 +83,47 @@ func parseNexusModIDFromUpdateKeys(updateKeys []string) (int, bool) {
 // ListMods scans the mods root directory for subdirectories, reads each manifest.json,
 // and returns a list of ModInfo. Directories without a manifest are included with ParseError.
 func ListMods(dataDir string) ([]registry.ModInfo, error) {
-	root := modsDir(dataDir)
+	return listModsFromRoot(modsDir(dataDir), true, true)
+}
+
+// ListModsWithState returns active and disabled mods in one list. When
+// saveName is set, persisted per-save enable settings are overlaid on the
+// physical directory state for display.
+func ListModsWithState(dataDir, saveName string) ([]registry.ModInfo, error) {
+	mods, err := listPhysicalMods(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return ApplyModEnableProfile(dataDir, saveName, mods), nil
+}
+
+func listPhysicalMods(dataDir string) ([]registry.ModInfo, error) {
+	active, err := listModsFromRoot(modsDir(dataDir), true, true)
+	if err != nil {
+		return nil, err
+	}
+	disabled, err := listModsFromRoot(disabledModsDir(dataDir), false, false)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	mods := make([]registry.ModInfo, 0, len(active)+len(disabled))
+	for _, mod := range active {
+		mods = append(mods, mod)
+		if mod.FolderName != "" {
+			seen[mod.FolderName] = struct{}{}
+		}
+	}
+	for _, mod := range disabled {
+		if _, ok := seen[mod.FolderName]; ok {
+			continue
+		}
+		mods = append(mods, mod)
+	}
+	return mods, nil
+}
+
+func listModsFromRoot(root string, enabled bool, includeSMAPIRuntime bool) ([]registry.ModInfo, error) {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -74,16 +132,53 @@ func ListMods(dataDir string) ([]registry.ModInfo, error) {
 		return nil, fmt.Errorf("read mods dir: %w", err)
 	}
 
-	var mods []registry.ModInfo
+	mods := make([]registry.ModInfo, 0, len(entries)+1)
+	if includeSMAPIRuntime && hasControlModDir(entries) {
+		mods = append(mods, smapiRuntimeModInfo())
+	}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		folderName := e.Name()
 		mod := readModInfo(filepath.Join(root, folderName), folderName)
+		mod.Enabled = enabled
+		mod.CanToggle = !mod.BuiltIn
+		if mod.BuiltIn {
+			mod.EnableNote = "鍐呯疆缁勪欢涓嶅彲绂佺敤"
+		}
 		mods = append(mods, mod)
 	}
 	return mods, nil
+}
+
+func hasControlModDir(entries []os.DirEntry) bool {
+	for _, e := range entries {
+		if e.IsDir() && e.Name() == controlModFolderName {
+			return true
+		}
+	}
+	return false
+}
+
+func smapiRuntimeModInfo() registry.ModInfo {
+	return registry.ModInfo{
+		ID:          smapiRuntimeModID,
+		UniqueID:    "Pathoschild.SMAPI",
+		Name:        "SMAPI",
+		Author:      "Pathoschild",
+		Description: "The mod loader for Stardew Valley.",
+		FolderName:  "SMAPI",
+		Enabled:     true,
+		CanToggle:   false,
+		EnableNote:  "SMAPI runtime cannot be disabled",
+		SyncKind:    registry.ModSyncKindClientRequired,
+		SyncNote:    "SMAPI is listed for player awareness but is not packaged as a normal mod.",
+		BuiltIn:     true,
+		UpdateKeys:  []string{"Nexus:2400"},
+		NexusModID:  smapiNexusModID,
+		NexusURL:    nexusModURL(smapiNexusModID),
+	}
 }
 
 // readModInfo reads a single mod directory and parses its manifest.json.
@@ -91,18 +186,21 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	info := registry.ModInfo{
 		ID:         folderName,
 		FolderName: folderName,
+		Enabled:    true,
+		CanToggle:  true,
 	}
 
 	manifestPath := filepath.Join(modPath, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		info.ParseError = "缺少 manifest.json"
+		info.ParseError = "缂哄皯 manifest.json"
 		return info
 	}
 
 	var m modManifest
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(data, &m); err != nil {
-		info.ParseError = "manifest.json 解析失败: " + err.Error()
+		info.ParseError = "manifest.json 瑙ｆ瀽澶辫触: " + err.Error()
 		return info
 	}
 
@@ -112,28 +210,75 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	info.Author = m.Author
 	info.Description = m.Description
 	info.UpdateKeys = m.UpdateKeys
+	info.Dependencies = manifestDependencies(m)
+	if m.ContentPackFor != nil {
+		info.IsContentPack = true
+		info.ContentPackFor = strings.TrimSpace(m.ContentPackFor.UniqueID)
+	}
 	if nexusID, ok := parseNexusModIDFromUpdateKeys(m.UpdateKeys); ok {
 		info.NexusModID = nexusID
 	}
 
 	if info.UniqueID == "" {
-		info.ParseError = "manifest.json 缺少 UniqueID"
+		info.ParseError = "manifest.json 缂哄皯 UniqueID"
 	}
 	if info.Name == "" {
-		info.ParseError = "manifest.json 缺少 Name"
+		info.ParseError = "manifest.json 缂哄皯 Name"
+	}
+
+	if isControlModInfo(info) {
+		info.BuiltIn = true
+		info.CanToggle = false
+		info.EnableNote = "Built-in component cannot be disabled"
+		info.SyncKind = registry.ModSyncKindServerOnly
+		info.SyncNote = "Built-in server control mod; excluded from player sync packs."
 	}
 
 	return info
 }
 
+func manifestDependencies(m modManifest) []registry.ModDependency {
+	deps := make([]registry.ModDependency, 0, len(m.Dependencies)+1)
+	seen := map[string]struct{}{}
+	add := func(dep modManifestDependency, requiredDefault bool) {
+		uniqueID := strings.TrimSpace(dep.UniqueID)
+		if uniqueID == "" {
+			return
+		}
+		if _, ok := seen[uniqueID]; ok {
+			return
+		}
+		required := requiredDefault
+		if dep.IsRequired != nil {
+			required = *dep.IsRequired
+		}
+		deps = append(deps, registry.ModDependency{
+			UniqueID:       uniqueID,
+			MinimumVersion: strings.TrimSpace(dep.MinimumVersion),
+			Required:       required,
+		})
+		seen[uniqueID] = struct{}{}
+	}
+	if m.ContentPackFor != nil {
+		add(*m.ContentPackFor, true)
+	}
+	for _, dep := range m.Dependencies {
+		add(dep, true)
+	}
+	return deps
+}
+
 // FindModByUniqueID searches the mods directory for a mod with the given UniqueID.
 // Returns the folder name if found, or empty string if not found.
 func FindModByUniqueID(dataDir, uniqueID string) (string, error) {
-	mods, err := ListMods(dataDir)
+	mods, err := listPhysicalMods(dataDir)
 	if err != nil {
 		return "", err
 	}
 	for _, m := range mods {
+		if m.BuiltIn {
+			continue
+		}
 		if m.UniqueID == uniqueID {
 			return m.FolderName, nil
 		}
@@ -144,16 +289,16 @@ func FindModByUniqueID(dataDir, uniqueID string) (string, error) {
 // ValidateModName rejects dangerous mod folder names.
 func ValidateModName(name string) error {
 	if name == "" {
-		return fmt.Errorf("mod 名称不能为空")
+		return fmt.Errorf("mod 鍚嶇О涓嶈兘涓虹┖")
 	}
 	if name == "." || name == ".." {
-		return fmt.Errorf("mod 名称不能是 %q", name)
+		return fmt.Errorf("mod 鍚嶇О涓嶈兘鏄?%q", name)
 	}
 	if strings.ContainsAny(name, `/\`) {
-		return fmt.Errorf("mod 名称不能包含路径分隔符")
+		return fmt.Errorf("mod name cannot contain path separators")
 	}
 	if filepath.IsAbs(name) {
-		return fmt.Errorf("mod 名称不能是绝对路径")
+		return fmt.Errorf("mod name cannot be an absolute path")
 	}
 	return nil
 }
@@ -166,12 +311,12 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 		return nil, fmt.Errorf("stat upload: %w", err)
 	}
 	if stat.Size() > maxModZipBytes {
-		return nil, fmt.Errorf("压缩包超过 %d MB 限制", maxModZipBytes/1024/1024)
+		return nil, fmt.Errorf("鍘嬬缉鍖呰秴杩?%d MB 闄愬埗", maxModZipBytes/1024/1024)
 	}
 
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return nil, fmt.Errorf("打开 ZIP 失败: %w", err)
+		return nil, fmt.Errorf("鎵撳紑 ZIP 澶辫触: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
 
@@ -181,7 +326,7 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 	}
 
 	// Detect mod structure.
-	topDirs, err := detectModTopDirs(zr)
+	modDirs, err := detectModDirs(zr)
 	if err != nil {
 		return nil, err
 	}
@@ -192,17 +337,22 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 		return nil, fmt.Errorf("create mods dir: %w", err)
 	}
 
-	// Check for duplicate UniqueIDs before extracting.
-	for _, dir := range topDirs {
-		if err := ValidateModName(dir); err != nil {
-			return nil, fmt.Errorf("mod 目录名不合法: %w", err)
+	// Check folder names before extracting.
+	seenFolderNames := map[string]struct{}{}
+	for _, dir := range modDirs {
+		if err := ValidateModName(dir.FolderName); err != nil {
+			return nil, fmt.Errorf("mod 鐩綍鍚嶄笉鍚堟硶: %w", err)
 		}
+		if _, dup := seenFolderNames[dir.FolderName]; dup {
+			return nil, fmt.Errorf("ZIP 鍐?Mod 鐩綍 %q 閲嶅", dir.FolderName)
+		}
+		seenFolderNames[dir.FolderName] = struct{}{}
 	}
 
 	// Extract to temp dir first, then validate, then move atomically.
 	td, err := os.MkdirTemp("", "stardew-mod-upload-*")
 	if err != nil {
-		return nil, fmt.Errorf("创建临时目录: %w", err)
+		return nil, fmt.Errorf("鍒涘缓涓存椂鐩綍: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(td) }()
 
@@ -210,52 +360,57 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 		return nil, err
 	}
 
-	// ── Pre-validation: check ALL mods before moving any ──
+	// 鈹€鈹€ Pre-validation: check ALL mods before moving any 鈹€鈹€
 	type modCandidate struct {
-		dir  string
-		info registry.ModInfo
+		sourcePath string
+		folderName string
+		info       registry.ModInfo
 	}
-	candidates := make([]modCandidate, 0, len(topDirs))
-	seenUniqueIDs := map[string]string{} // uniqueID → folderName (within this ZIP)
+	candidates := make([]modCandidate, 0, len(modDirs))
+	seenUniqueIDs := map[string]string{} // uniqueID 鈫?folderName (within this ZIP)
 
-	for _, dir := range topDirs {
-		modPath := filepath.Join(td, dir)
-		info := readModInfo(modPath, dir)
+	for _, dir := range modDirs {
+		modPath := filepath.Join(td, filepath.FromSlash(dir.SourcePath))
+		info := readModInfo(modPath, dir.FolderName)
 		if info.ParseError != "" {
-			return nil, fmt.Errorf("mod %q 不是合法的 SMAPI Mod: %s", dir, info.ParseError)
+			return nil, fmt.Errorf("mod %q 涓嶆槸鍚堟硶鐨?SMAPI Mod: %s", dir.FolderName, info.ParseError)
 		}
 
 		// Check for duplicate UniqueID within this ZIP.
 		if prev, dup := seenUniqueIDs[info.UniqueID]; dup {
-			return nil, fmt.Errorf("ZIP 内 UniqueID %q 重复（%q 和 %q）", info.UniqueID, prev, dir)
+			return nil, fmt.Errorf("ZIP contains duplicate UniqueID %q in %q and %q", info.UniqueID, prev, dir.FolderName)
 		}
-		seenUniqueIDs[info.UniqueID] = dir
+		seenUniqueIDs[info.UniqueID] = dir.FolderName
 
 		// Check for duplicate UniqueID against already-installed mods.
 		existing, err := FindModByUniqueID(dataDir, info.UniqueID)
 		if err != nil {
-			return nil, fmt.Errorf("检查已有 Mod 失败: %w", err)
+			return nil, fmt.Errorf("妫€鏌ュ凡鏈?Mod 澶辫触: %w", err)
 		}
 		if existing != "" {
-			return nil, fmt.Errorf("UniqueID %q 已存在于 Mod %q 中 (mod_exists)", info.UniqueID, existing)
+			return nil, fmt.Errorf("UniqueID %q 宸插瓨鍦ㄤ簬 Mod %q 涓?(mod_exists)", info.UniqueID, existing)
 		}
 
 		// Check target directory doesn't already exist.
-		dest := filepath.Join(root, dir)
+		dest := filepath.Join(root, dir.FolderName)
 		if _, err := os.Stat(dest); err == nil {
-			return nil, fmt.Errorf("Mod 目录 %q 已存在", dir)
+			return nil, fmt.Errorf("mod folder %q already exists", dir.FolderName)
 		}
 
-		candidates = append(candidates, modCandidate{dir: dir, info: info})
+		candidates = append(candidates, modCandidate{
+			sourcePath: filepath.FromSlash(dir.SourcePath),
+			folderName: dir.FolderName,
+			info:       info,
+		})
 	}
 
-	// ── All checks passed — move all mods with rollback on failure ──
+	// 鈹€鈹€ All checks passed 鈥?move all mods with rollback on failure 鈹€鈹€
 	var imported []registry.ModInfo
 	var moved []string // tracks successfully moved dest dirs for rollback
 
 	for _, c := range candidates {
-		src := filepath.Join(td, c.dir)
-		dest := filepath.Join(root, c.dir)
+		src := filepath.Join(td, c.sourcePath)
+		dest := filepath.Join(root, c.folderName)
 		if err := os.Rename(src, dest); err != nil {
 			// Cross-filesystem fallback.
 			if err := copyDir(src, dest); err != nil {
@@ -263,12 +418,16 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 				for _, d := range moved {
 					_ = os.RemoveAll(d)
 				}
-				return nil, fmt.Errorf("导入 Mod %q 失败: %w", c.dir, err)
+				return nil, fmt.Errorf("瀵煎叆 Mod %q 澶辫触: %w", c.folderName, err)
 			}
 		}
 		moved = append(moved, dest)
-		finalInfo := readModInfo(dest, c.dir)
+		finalInfo := readModInfo(dest, c.folderName)
 		imported = append(imported, finalInfo)
+	}
+
+	if err := SaveInferredNexusPackageOrigin(dataDir, imported); err == nil {
+		imported = ApplyNexusMetadataToMods(dataDir, imported)
 	}
 
 	return imported, nil
@@ -279,79 +438,154 @@ func validateModZip(zr *zip.ReadCloser) error {
 	var totalUncompressed uint64
 	for _, f := range zr.File {
 		if f.FileInfo().Mode()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("ZIP 包含符号链接，拒绝处理")
+			return fmt.Errorf("ZIP contains symbolic links")
 		}
 		name := filepath.ToSlash(f.Name)
 		if filepath.IsAbs(name) || strings.HasPrefix(name, "/") {
-			return fmt.Errorf("ZIP 包含绝对路径 %q", f.Name)
+			return fmt.Errorf("ZIP 鍖呭惈缁濆璺緞 %q", f.Name)
 		}
 		// Trim trailing "/" for directory entries.
 		trimmed := strings.TrimSuffix(name, "/")
 		for _, seg := range strings.Split(trimmed, "/") {
 			if seg == ".." {
-				return fmt.Errorf("ZIP 路径 %q 包含目录穿越 (..)", f.Name)
+				return fmt.Errorf("ZIP 璺緞 %q 鍖呭惈鐩綍绌胯秺 (..)", f.Name)
 			}
 			if seg == "." {
-				return fmt.Errorf("ZIP 路径 %q 包含无效的当前目录引用 (.)", f.Name)
+				return fmt.Errorf("ZIP 璺緞 %q 鍖呭惈鏃犳晥鐨勫綋鍓嶇洰褰曞紩鐢?(.)", f.Name)
 			}
 			if seg == "" {
-				return fmt.Errorf("ZIP 路径 %q 包含空路径段", f.Name)
+				return fmt.Errorf("ZIP 璺緞 %q 鍖呭惈绌鸿矾寰勬", f.Name)
 			}
 		}
 		totalUncompressed += f.UncompressedSize64
 		if f.UncompressedSize64 > maxModSingleFile {
-			return fmt.Errorf("ZIP 内单个文件超过 %d MB", maxModSingleFile/1024/1024)
+			return fmt.Errorf("ZIP 鍐呭崟涓枃浠惰秴杩?%d MB", maxModSingleFile/1024/1024)
 		}
 		if totalUncompressed > maxModUncompressed {
-			return fmt.Errorf("ZIP 解压总大小超过 %d MB", maxModUncompressed/1024/1024)
+			return fmt.Errorf("ZIP 瑙ｅ帇鎬诲ぇ灏忚秴杩?%d MB", maxModUncompressed/1024/1024)
 		}
 	}
 	return nil
 }
 
-// detectModTopDirs finds the top-level directories in the ZIP.
-// If the ZIP has a single top-level dir containing manifest.json, it's a single mod.
-// If multiple top-level dirs exist, each must be a valid mod.
-func detectModTopDirs(zr *zip.ReadCloser) ([]string, error) {
+type modZipDir struct {
+	SourcePath string
+	FolderName string
+}
+
+// detectModDirs finds importable SMAPI mod directories in the ZIP.
+// Normal SMAPI archives put one or more mod folders at the ZIP root. Some
+// Nexus archives wrap those folders in one extra directory; for that common
+// shape we strip only that single wrapper and import the child mod folders.
+func detectModDirs(zr *zip.ReadCloser) ([]modZipDir, error) {
 	topDirs := map[string]bool{}
 	hasManifest := map[string]bool{}
+	childManifests := map[string]map[string]bool{}
+	anyManifest := false
 
 	for _, f := range zr.File {
-		parts := strings.SplitN(filepath.ToSlash(f.Name), "/", 3)
-		if parts[0] == "" {
+		name := strings.TrimSuffix(filepath.ToSlash(f.Name), "/")
+		if name == "" {
+			continue
+		}
+		parts := strings.Split(name, "/")
+		if len(parts) == 0 || parts[0] == "" {
 			continue
 		}
 		topDirs[parts[0]] = true
 		// Check if this file is a manifest.json at the top level of a dir.
-		if len(parts) >= 2 && parts[1] == "manifest.json" && (len(parts) == 2 || parts[2] == "") {
+		if len(parts) >= 2 && pathBaseEqual(name, "manifest.json") {
+			anyManifest = true
+		}
+		if len(parts) == 2 && parts[1] == "manifest.json" {
 			hasManifest[parts[0]] = true
+		}
+		if len(parts) == 3 && parts[2] == "manifest.json" {
+			if childManifests[parts[0]] == nil {
+				childManifests[parts[0]] = map[string]bool{}
+			}
+			childManifests[parts[0]][parts[1]] = true
 		}
 	}
 
 	if len(topDirs) == 0 {
-		return nil, fmt.Errorf("ZIP 为空或没有有效文件")
+		return nil, fmt.Errorf("ZIP is empty or has no valid files")
+	}
+	if !anyManifest && isLikelyXNBReplacementZip(zr) {
+		return nil, fmt.Errorf("杩欐槸 XNB 鏇挎崲鍖咃紝涓嶆槸 SMAPI Mod锛屼笉鑳戒笂浼犲埌鏈嶅姟鍣?Mods 鐩綍锛涜浣跨敤甯?manifest.json 鐨?SMAPI 鎴?Content Patcher 鐗堟湰")
 	}
 
 	// If there's exactly one top dir with manifest.json, treat as single mod.
 	if len(topDirs) == 1 {
 		for name := range topDirs {
 			if hasManifest[name] {
-				return []string{name}, nil
+				return []modZipDir{{SourcePath: name, FolderName: name}}, nil
 			}
-			// Single dir without manifest — still try to extract, will fail validation later.
-			return []string{name}, nil
+			if children := childManifests[name]; len(children) > 0 {
+				childNames := sortedMapKeys(children)
+				dirs := make([]modZipDir, 0, len(childNames))
+				for _, child := range childNames {
+					dirs = append(dirs, modZipDir{
+						SourcePath: name + "/" + child,
+						FolderName: child,
+					})
+				}
+				return dirs, nil
+			}
+			// Single dir without manifest 鈥?still try to extract, will fail validation later.
+			return []modZipDir{{SourcePath: name, FolderName: name}}, nil
 		}
 	}
 
 	// Multiple top dirs: each must have a manifest.
-	var dirs []string
-	for name := range topDirs {
+	names := sortedMapKeys(topDirs)
+	dirs := make([]modZipDir, 0, len(names))
+	for _, name := range names {
 		if !hasManifest[name] {
-			return nil, fmt.Errorf("ZIP 包含多个顶层目录，但 %q 缺少 manifest.json", name)
+			return nil, fmt.Errorf("ZIP 鍖呭惈澶氫釜椤跺眰鐩綍锛屼絾 %q 缂哄皯 manifest.json", name)
 		}
-		dirs = append(dirs, name)
+		dirs = append(dirs, modZipDir{SourcePath: name, FolderName: name})
 	}
 	return dirs, nil
+}
+
+func sortedMapKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func isLikelyXNBReplacementZip(zr *zip.ReadCloser) bool {
+	hasXNB := false
+	hasGameContentPath := false
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := strings.ToLower(filepath.ToSlash(f.Name))
+		if pathBaseEqual(name, "manifest.json") {
+			return false
+		}
+		if strings.HasSuffix(name, ".xnb") {
+			hasXNB = true
+		}
+		if strings.Contains(name, "/characters/") ||
+			strings.Contains(name, "/portraits/") ||
+			strings.Contains(name, "/content/") ||
+			strings.Contains(name, "/maps/") ||
+			strings.Contains(name, "/tilesheets/") {
+			hasGameContentPath = true
+		}
+	}
+	return hasXNB && hasGameContentPath
+}
+
+func pathBaseEqual(name, want string) bool {
+	parts := strings.Split(strings.TrimSuffix(filepath.ToSlash(name), "/"), "/")
+	return len(parts) > 0 && parts[len(parts)-1] == want
 }
 
 // extractModZip extracts the ZIP to destDir with path escape verification.
@@ -362,16 +596,16 @@ func extractModZip(zr *zip.ReadCloser, destDir string) error {
 		}
 		outPath := filepath.Join(destDir, filepath.FromSlash(f.Name))
 		if !strings.HasPrefix(filepath.Clean(outPath)+string(os.PathSeparator), filepath.Clean(destDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("zip-slip 检测：路径 %q 逃逸", f.Name)
+			return fmt.Errorf("zip-slip detected for path %q", f.Name)
 		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(outPath, 0o755); err != nil {
-				return fmt.Errorf("创建目录 %s: %w", outPath, err)
+				return fmt.Errorf("鍒涘缓鐩綍 %s: %w", outPath, err)
 			}
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-			return fmt.Errorf("创建父目录 %s: %w", filepath.Dir(outPath), err)
+			return fmt.Errorf("鍒涘缓鐖剁洰褰?%s: %w", filepath.Dir(outPath), err)
 		}
 		if err := extractModFile(f, outPath); err != nil {
 			return err
@@ -398,64 +632,132 @@ func extractModFile(f *zip.File, outPath string) error {
 		return fmt.Errorf("write %s: %w", outPath, err)
 	}
 	if lr.N <= 0 {
-		return fmt.Errorf("文件 %s 解压后超过大小限制", f.Name)
+		return fmt.Errorf("file %s exceeds size limit after extraction", f.Name)
 	}
 	return nil
 }
 
 // DeleteMod removes a mod folder by UniqueID or folderName.
-// The target must be within the mods root directory.
+// Mods imported from the same Nexus package are treated as a bundle: deleting
+// any member removes the other folders installed from that package too.
 func DeleteMod(dataDir, modID string) error {
-	if err := ValidateModName(modID); err != nil {
+	targetFolder, err := ResolveModFolder(dataDir, modID)
+	if err != nil {
 		return err
 	}
+	if targetFolder == controlModFolderName {
+		return fmt.Errorf("built-in mod %q cannot be deleted", controlModFolderName)
+	}
+	folders, err := resolveModDeleteFolders(dataDir, targetFolder)
+	if err != nil {
+		return err
+	}
+	for _, folder := range folders {
+		if err := deleteModFolder(dataDir, folder); err != nil {
+			return err
+		}
+	}
+	_ = DeleteInstalledNexusMetadata(dataDir, folders)
+	return nil
+}
 
-	root := modsDir(dataDir)
-	targetPath := filepath.Join(root, modID)
+func resolveModDeleteFolders(dataDir, targetFolder string) ([]string, error) {
+	mods, err := ListModsWithState(dataDir, "")
+	if err != nil {
+		return nil, err
+	}
+	mods = ApplyNexusMetadataToMods(dataDir, mods)
+	var target registry.ModInfo
+	for _, mod := range mods {
+		if mod.FolderName == targetFolder && !mod.BuiltIn {
+			target = mod
+			break
+		}
+	}
+	if target.FolderName == "" {
+		return []string{targetFolder}, nil
+	}
+	bundleID := modNexusBundleID(target)
+	if bundleID <= 0 {
+		return []string{targetFolder}, nil
+	}
+	folders := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		if mod.BuiltIn {
+			continue
+		}
+		if modNexusBundleID(mod) == bundleID {
+			folders = append(folders, mod.FolderName)
+		}
+	}
+	if len(folders) == 0 {
+		return []string{targetFolder}, nil
+	}
+	sort.Strings(folders)
+	return folders, nil
+}
+
+func modNexusBundleID(mod registry.ModInfo) int {
+	if mod.OriginSource == "nexus" && mod.OriginNexusModID > 0 {
+		return mod.OriginNexusModID
+	}
+	return mod.NexusModID
+}
+
+func deleteModFolder(dataDir, folderName string) error {
+	if folderName == controlModFolderName {
+		return fmt.Errorf("built-in mod %q cannot be deleted", controlModFolderName)
+	}
+	if err := ValidateModName(folderName); err != nil {
+		return err
+	}
+	deleted := false
+	for _, root := range []string{modsDir(dataDir), disabledModsDir(dataDir)} {
+		ok, err := deleteModFolderFromRoot(root, folderName)
+		if err != nil {
+			return err
+		}
+		deleted = deleted || ok
+	}
+	if !deleted {
+		return fmt.Errorf("Mod %q does not exist", folderName)
+	}
+	return nil
+}
+
+func deleteModFolderFromRoot(root, folderName string) (bool, error) {
+	targetPath := filepath.Join(root, folderName)
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
-		return fmt.Errorf("resolve mods root: %w", err)
+		return false, fmt.Errorf("resolve mods root: %w", err)
 	}
 	absTarget, err := filepath.Abs(targetPath)
 	if err != nil {
-		return fmt.Errorf("resolve mod path: %w", err)
+		return false, fmt.Errorf("resolve mod path: %w", err)
 	}
 	rel, err := filepath.Rel(absRoot, absTarget)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("mod 路径不合法: %q", modID)
+		return false, fmt.Errorf("invalid mod path %q", folderName)
 	}
-	// Reject if target resolves to the mods root itself.
 	if absTarget == absRoot {
-		return fmt.Errorf("不能删除 mods 根目录")
+		return false, fmt.Errorf("cannot delete mods root")
 	}
 
 	info, statErr := os.Stat(absTarget)
-	if os.IsNotExist(statErr) {
-		// Try finding by UniqueID.
-		folder, findErr := FindModByUniqueID(dataDir, modID)
-		if findErr != nil {
-			return fmt.Errorf("查找 Mod 失败: %w", findErr)
-		}
-		if folder == "" {
-			return fmt.Errorf("Mod %q 不存在", modID)
-		}
-		absTarget = filepath.Join(root, folder)
-		info, statErr = os.Stat(absTarget)
-		if statErr != nil {
-			return fmt.Errorf("检查 Mod %q 失败: %w", folder, statErr)
-		}
-	}
 	if statErr != nil {
-		return fmt.Errorf("检查 Mod %q 失败: %w", modID, statErr)
+		if os.IsNotExist(statErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat mod %q: %w", folderName, statErr)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("Mod %q 不是目录", modID)
+		return false, fmt.Errorf("mod %q is not a directory", folderName)
 	}
 
 	if err := os.RemoveAll(absTarget); err != nil {
-		return fmt.Errorf("删除 Mod %q 失败: %w", modID, err)
+		return false, fmt.Errorf("delete mod %q: %w", folderName, err)
 	}
-	return nil
+	return true, nil
 }
 
 // addModDirToZip walks a single mod directory and writes its files into the
@@ -520,9 +822,9 @@ func ExportModsZip(dataDir string) (string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("mods 目录不存在")
+			return "", fmt.Errorf("mods directory does not exist")
 		}
-		return "", fmt.Errorf("读取 mods 目录: %w", err)
+		return "", fmt.Errorf("璇诲彇 mods 鐩綍: %w", err)
 	}
 
 	// Filter to directories only.
@@ -533,17 +835,17 @@ func ExportModsZip(dataDir string) (string, error) {
 		}
 	}
 	if len(dirs) == 0 {
-		return "", fmt.Errorf("没有已安装的 Mod 可导出")
+		return "", fmt.Errorf("no installed mods to export")
 	}
 
-	// Build a human-readable ZIP name: mod名_作者名.zip for single mod,
+	// Build a human-readable ZIP name: mod鍚峗浣滆€呭悕.zip for single mod,
 	// or stardew-mods-N.zip for multiple mods.
 	zipName := buildModsZipName(root, dirs)
 	tmpPath := filepath.Join(os.TempDir(), zipName)
 
 	zf, err := os.Create(tmpPath)
 	if err != nil {
-		return "", fmt.Errorf("创建 ZIP 文件: %w", err)
+		return "", fmt.Errorf("鍒涘缓 ZIP 鏂囦欢: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -555,22 +857,22 @@ func ExportModsZip(dataDir string) (string, error) {
 	w := zip.NewWriter(zf)
 	for _, dir := range dirs {
 		if err = addModDirToZip(w, root, dir.Name()); err != nil {
-			return "", fmt.Errorf("写入 Mod %q 失败: %w", dir.Name(), err)
+			return "", fmt.Errorf("鍐欏叆 Mod %q 澶辫触: %w", dir.Name(), err)
 		}
 	}
 
 	if err = w.Close(); err != nil {
-		return "", fmt.Errorf("关闭 ZIP: %w", err)
+		return "", fmt.Errorf("鍏抽棴 ZIP: %w", err)
 	}
 	if err = zf.Close(); err != nil {
-		return "", fmt.Errorf("关闭文件: %w", err)
+		return "", fmt.Errorf("鍏抽棴鏂囦欢: %w", err)
 	}
 
 	return tmpPath, nil
 }
 
 // buildModsZipName constructs a human-readable ZIP filename for a mods export.
-// Single mod: "mod名_作者名.zip"
+// Single mod: "mod鍚峗浣滆€呭悕.zip"
 // Multiple mods: "stardew-mods-N.zip"
 func buildModsZipName(root string, dirs []os.DirEntry) string {
 	if len(dirs) == 1 {

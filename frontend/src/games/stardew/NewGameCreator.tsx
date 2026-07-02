@@ -107,7 +107,7 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
   const selectedFarm = farms.find((farm) => farm.id === cfg.farmType) ?? farms[0]
   const selectedGender = genders.find((gender) => gender.id === cfg.gender) ?? genders[0]
   const selectedPet = petPreferences.find((pet) => pet.petType === cfg.petType && pet.breed === cfg.petBreed) ?? petPreferences[0]
-  const playerCount = cfg.startingCabins + 1
+  const cabinCount = cfg.startingCabins
 
   return (
     <form className="ngc-game" onSubmit={submit}>
@@ -115,7 +115,7 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
         <div className="ngc-side-title">初始联机小屋</div>
         <div className="ngc-number-control">
           <ArrowButton direction="left" label="减少联机小屋" onClick={() => updateCabins(-1)} />
-          <strong>{playerCount}</strong>
+          <strong>{cabinCount}</strong>
           <ArrowButton direction="right" label="增加联机小屋" onClick={() => updateCabins(1)} />
         </div>
 

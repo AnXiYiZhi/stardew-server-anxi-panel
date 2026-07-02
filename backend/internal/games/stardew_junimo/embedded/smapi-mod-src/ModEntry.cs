@@ -16,13 +16,11 @@ public sealed class ModEntry : Mod
     private string controlDir = "";
     private string commandDir = "";
     private InitConfig? initConfig;
-    private bool nativeCreateAttempted;
-    private bool nativeCreateCompleted;
     private bool isJunimoRuntime;
     private bool panelCustomizationApplied;
     private bool singlePlayerMenuPauseApplied;
     private int? singlePlayerMenuPauseSavedInterval;
-    private string[] saveFoldersBeforeCreate = Array.Empty<string>();
+    private bool pendingNewGameOptions;
 
     public override void Entry(IModHelper helper)
     {
@@ -34,8 +32,8 @@ public sealed class ModEntry : Mod
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.GameLoop.SaveCreating += OnSaveCreating;
-        helper.Events.GameLoop.SaveCreated += OnSaveCreated;
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+        helper.Events.GameLoop.Saved += OnSaved;
         helper.Events.GameLoop.UpdateTicking += OnUpdateTicking;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
 
@@ -51,6 +49,8 @@ public sealed class ModEntry : Mod
     {
         initConfig = ReadInitConfig();
         isJunimoRuntime = Helper.ModRegistry.IsLoaded("JunimoHost.Server");
+        pendingNewGameOptions = File.Exists(PendingNewGamePath());
+        ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
         WritePanelOptions();
         var saveId = initConfig?.SaveId ?? "";
@@ -61,15 +61,9 @@ public sealed class ModEntry : Mod
 
     private void OnSaveCreating(object? sender, SaveCreatingEventArgs e)
     {
+        ApplyPendingNewGameWorldOptions();
         ApplyPanelCharacterCustomization();
-        WriteStatus("native-save-creating", "Stardew Valley is creating the save through its native flow.");
-    }
-
-    private void OnSaveCreated(object? sender, SaveCreatedEventArgs e)
-    {
-        nativeCreateCompleted = true;
-        var saveFolder = DetectNewSaveFolder();
-        WriteStatus("native-save-created", $"Native Stardew save created: {saveFolder}", saveFolder);
+        WriteStatus("save-creating", "Stardew Valley is creating the save requested by JunimoServer.");
     }
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
@@ -77,7 +71,22 @@ public sealed class ModEntry : Mod
         ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
         var saveFolder = Constants.SaveFolderName;
+        ClearPendingNewGameOptions();
         WriteStatus("save-loaded", "Save loaded through JunimoServer. Direct IP connections are enabled on UDP port 24642.", saveFolder);
+    }
+
+    private void OnSaved(object? sender, SavedEventArgs e)
+    {
+        if (!Context.IsWorldReady)
+            return;
+
+        var saveName = Constants.SaveFolderName;
+        if (string.IsNullOrWhiteSpace(saveName))
+            saveName = Game1.GetSaveGameName();
+        if (string.IsNullOrWhiteSpace(saveName))
+            return;
+
+        WriteSaveEvent(saveName);
     }
 
     private void OnUpdateTicking(object? sender, UpdateTickingEventArgs e)
@@ -98,7 +107,7 @@ public sealed class ModEntry : Mod
         if (!e.IsMultipleOf(120))
             return;
 
-        TryStartNativeSaveCreate();
+        ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
         WritePlayers();
         ConsumeCommands();
@@ -177,51 +186,11 @@ public sealed class ModEntry : Mod
         return humanPlayers.All(FarmerRequestsMenuPause);
     }
 
-    private void TryStartNativeSaveCreate()
-    {
-        if (isJunimoRuntime)
-            return;
-        if (nativeCreateAttempted || nativeCreateCompleted || Context.IsWorldReady)
-            return;
-        if (initConfig is null || !string.Equals(initConfig.Mode, "native-create", StringComparison.OrdinalIgnoreCase))
-            return;
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SAVE_NAME")))
-        {
-            nativeCreateAttempted = true;
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(initConfig.FarmerName) || string.IsNullOrWhiteSpace(initConfig.FarmName))
-            return;
-
-        var existingSave = FindConfiguredSaveFolder(initConfig);
-        if (existingSave is not null)
-        {
-            WriteStatus("native-save-exists", $"Configured save already exists: {existingSave}", existingSave);
-            nativeCreateAttempted = true;
-            return;
-        }
-
-        nativeCreateAttempted = true;
-        saveFoldersBeforeCreate = Directory.Exists(Constants.SavesPath)
-            ? Directory.GetDirectories(Constants.SavesPath).Select(Path.GetFileName).Where(name => !string.IsNullOrWhiteSpace(name)).Cast<string>().ToArray()
-            : Array.Empty<string>();
-
-        try
-        {
-            StartNativeCreate(initConfig);
-        }
-        catch (Exception ex)
-        {
-            Monitor.Log($"Native save create probe failed: {ex}", LogLevel.Error);
-            WriteStatus("native-save-create-failed", ex.Message, initConfig.SaveId);
-        }
-    }
-
     private void ApplyPanelCharacterCustomization()
     {
         if (panelCustomizationApplied || initConfig is null || !Context.IsWorldReady)
             return;
-        if (!string.Equals(initConfig.Mode, "native-create", StringComparison.OrdinalIgnoreCase))
+        if (!IsPanelNewGameMode(initConfig.Mode))
             return;
         if (!string.Equals(Game1.player.farmName.Value, initConfig.FarmName, StringComparison.OrdinalIgnoreCase))
             return;
@@ -253,60 +222,7 @@ public sealed class ModEntry : Mod
         Game1.player.ConvertClothingOverrideToClothesItems();
         panelCustomizationApplied = true;
         Game1.saveOnNewDay = true;
-        WriteStatus("native-save-customized", "Panel character customization applied to the JunimoServer world.", Constants.SaveFolderName);
-    }
-
-    private void StartNativeCreate(InitConfig cfg)
-    {
-        WriteStatus("native-save-create-starting", "Starting native Stardew save creation without opening the UI.", cfg.SaveId);
-
-        Game1.player.Name = cfg.FarmerName;
-        Game1.player.displayName = cfg.FarmerName;
-        Game1.player.farmName.Value = cfg.FarmName;
-        Game1.player.favoriteThing.Value = string.IsNullOrWhiteSpace(cfg.FavoriteThing) ? "Anxi" : cfg.FavoriteThing;
-        Game1.player.changeGender(!string.Equals(cfg.Gender, "female", StringComparison.OrdinalIgnoreCase));
-        Game1.player.whichPetType = string.Equals(cfg.PetType, "Dog", StringComparison.OrdinalIgnoreCase) ? "Dog" : "Cat";
-        Game1.player.whichPetBreed = string.IsNullOrWhiteSpace(cfg.PetBreed) ? "0" : cfg.PetBreed;
-        if (cfg.Skin.HasValue)
-            Game1.player.changeSkinColor(cfg.Skin.Value, force: true);
-        if (cfg.Hair.HasValue)
-            Game1.player.changeHairStyle(cfg.Hair.Value);
-        if (!string.IsNullOrWhiteSpace(cfg.Shirt))
-            Game1.player.changeShirt(cfg.Shirt);
-        if (!string.IsNullOrWhiteSpace(cfg.Pants))
-            Game1.player.changePantStyle(cfg.Pants);
-        if (cfg.Accessory.HasValue)
-            Game1.player.changeAccessory(cfg.Accessory.Value);
-        if (cfg.EyeColor is not null)
-            Game1.player.changeEyeColor(ToColor(cfg.EyeColor));
-        if (cfg.HairColor is not null)
-            Game1.player.changeHairColor(ToColor(cfg.HairColor));
-        if (cfg.PantsColor is not null)
-            Game1.player.changePantsColor(ToColor(cfg.PantsColor));
-        Game1.player.difficultyModifier = ProfitMarginToModifier(cfg.ProfitMargin);
-        Game1.player.team.useSeparateWallets.Value = string.Equals(cfg.MoneyMode, "separate", StringComparison.OrdinalIgnoreCase);
-        Game1.player.isCustomized.Value = true;
-        Game1.player.ConvertClothingOverrideToClothesItems();
-        if (cfg.PantsColor is not null)
-            Game1.player.changePantsColor(ToColor(cfg.PantsColor));
-
-        SetFarmType(cfg.FarmType);
-        Game1.startingCabins = Math.Clamp(cfg.CabinCount, 0, 7);
-        Game1.cabinsSeparate = string.Equals(cfg.CabinLayout, "separate", StringComparison.OrdinalIgnoreCase);
-        ApplyDirectIpNetworkPolicy();
-        Game1.multiplayerMode = Game1.multiplayerServer;
-
-        Game1.game1.loadForNewGame(false);
-        Game1.saveOnNewDay = true;
-        Game1.player.eventsSeen.Add("60367");
-        Game1.player.currentLocation = Utility.getHomeOfFarmer(Game1.player);
-        Game1.player.Position = new Vector2(9f, 9f) * 64f;
-        Game1.player.isInBed.Value = true;
-        Game1.NewDay(0f);
-        Game1.exitActiveMenu();
-        Game1.setGameMode(Game1.playingGameMode);
-
-        WriteStatus("native-save-create-submitted", "Native Stardew save creation was submitted.", cfg.SaveId);
+        WriteStatus("save-customized", "Panel character customization applied to the JunimoServer world.", Constants.SaveFolderName);
     }
 
     private static Color ToColor(RgbColor color)
@@ -328,42 +244,48 @@ public sealed class ModEntry : Mod
         };
     }
 
-    private string? FindConfiguredSaveFolder(InitConfig cfg)
+    private static bool IsPanelNewGameMode(string mode)
     {
-        if (!Directory.Exists(Constants.SavesPath))
-            return null;
-
-        var candidates = Directory.GetDirectories(Constants.SavesPath)
-            .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Cast<string>()
-            .ToArray();
-
-        if (!string.IsNullOrWhiteSpace(cfg.SaveId) && candidates.Contains(cfg.SaveId, StringComparer.OrdinalIgnoreCase))
-            return cfg.SaveId;
-
-        return candidates
-            .Where(name =>
-                name.StartsWith(cfg.FarmName + "_", StringComparison.OrdinalIgnoreCase)
-                || name.StartsWith(cfg.FarmerName + "_", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(name => Directory.GetLastWriteTimeUtc(Path.Combine(Constants.SavesPath, name)))
-            .FirstOrDefault();
+        return string.Equals(mode, "panel-newgame", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "native-create", StringComparison.OrdinalIgnoreCase);
     }
 
-    private string DetectNewSaveFolder()
+    private void ApplyPendingNewGameWorldOptions()
     {
-        if (!Directory.Exists(Constants.SavesPath))
-            return initConfig?.SaveId ?? "";
+        if (initConfig is null || Context.IsWorldReady)
+            return;
+        if (!pendingNewGameOptions)
+            return;
+        if (!IsPanelNewGameMode(initConfig.Mode))
+            return;
 
-        var before = new HashSet<string>(saveFoldersBeforeCreate, StringComparer.OrdinalIgnoreCase);
-        var newest = Directory.GetDirectories(Constants.SavesPath)
-            .Select(Path.GetFileName)
-            .Where(name => !string.IsNullOrWhiteSpace(name) && !before.Contains(name))
-            .Cast<string>()
-            .OrderByDescending(name => Directory.GetLastWriteTimeUtc(Path.Combine(Constants.SavesPath, name)))
-            .FirstOrDefault();
+        SetFarmType(initConfig.FarmType);
+        Game1.startingCabins = Math.Clamp(initConfig.CabinCount, 0, 7);
+        Game1.cabinsSeparate = string.Equals(initConfig.CabinLayout, "separate", StringComparison.OrdinalIgnoreCase);
+        Game1.multiplayerMode = Game1.multiplayerServer;
+        if (Game1.player is not null)
+        {
+            Game1.player.difficultyModifier = ProfitMarginToModifier(initConfig.ProfitMargin);
+            Game1.player.team.useSeparateWallets.Value = string.Equals(initConfig.MoneyMode, "separate", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
-        return newest ?? initConfig?.SaveId ?? "";
+    private string PendingNewGamePath()
+    {
+        return Path.Combine(controlDir, "new-game-pending");
+    }
+
+    private void ClearPendingNewGameOptions()
+    {
+        pendingNewGameOptions = false;
+        try
+        {
+            File.Delete(PendingNewGamePath());
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Failed to clear pending new-game marker: {ex}", LogLevel.Warn);
+        }
     }
 
     private static void ApplyDirectIpNetworkPolicy()
@@ -639,6 +561,26 @@ public sealed class ModEntry : Mod
         });
     }
 
+    private void WriteSaveEvent(string saveName)
+    {
+        try
+        {
+            var eventDir = Path.Combine(controlDir, "save-events");
+            Directory.CreateDirectory(eventDir);
+            var path = Path.Combine(eventDir, $"{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}.json");
+            WriteJson(path, new SaveEventFile
+            {
+                Type = "saved",
+                SaveName = saveName,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Failed to write save event: {ex}", LogLevel.Warn);
+        }
+    }
+
     private static PlayerInfo BuildPlayerInfo(Farmer farmer, string walletMode)
     {
         var location = ResolveFarmerLocation(farmer);
@@ -725,8 +667,7 @@ public sealed class ModEntry : Mod
                 var message = command.Payload is not null && command.Payload.TryGetValue("message", out var rawMessage)
                     ? rawMessage.GetString()
                     : "";
-                Monitor.Log($"Broadcast command received: {message}", LogLevel.Info);
-                WriteStatus("command", "Broadcast command accepted.");
+                SendBroadcastMessage(message ?? "");
                 break;
             case "stop":
                 WriteStatus("stopping", "Stop command received. Container stop will be handled by backend later.");
@@ -735,6 +676,76 @@ public sealed class ModEntry : Mod
                 Monitor.Log($"Unknown panel command: {command.Name}", LogLevel.Warn);
                 break;
         }
+    }
+
+    private void SendBroadcastMessage(string message)
+    {
+        message = SanitizeChatText(message, 450);
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            WriteStatus("command", "Broadcast command ignored because the message was empty.");
+            return;
+        }
+        if (!Context.IsWorldReady)
+        {
+            WriteStatus("command", "Broadcast command ignored because the world is not ready.");
+            Monitor.Log("Broadcast command ignored because the world is not ready.", LogLevel.Warn);
+            return;
+        }
+
+        var text = $"[Panel] {message}";
+        Helper.Reflection.GetField<Multiplayer>(typeof(Game1), "multiplayer").GetValue()
+            .sendChatMessage(DetectChatLanguage(text), text, Multiplayer.AllPlayers);
+        WriteStatus("command", "Broadcast command sent.");
+        Monitor.Log($"Broadcast command sent: {text}", LogLevel.Info);
+    }
+
+    private static string SanitizeChatText(string input, int maxLength)
+    {
+        if (string.IsNullOrEmpty(input))
+            return "";
+
+        var sanitized = new string(input.Where(c => !char.IsControl(c) || c == ' ').ToArray()).Trim();
+        while (sanitized.Contains("  "))
+            sanitized = sanitized.Replace("  ", " ");
+        if (sanitized.Length > maxLength)
+            sanitized = sanitized[..maxLength];
+        return sanitized;
+    }
+
+    private static LocalizedContentManager.LanguageCode DetectChatLanguage(string text)
+    {
+        var hasCyrillic = false;
+        var hasHangul = false;
+        var hasKana = false;
+        var hasHan = false;
+        var hasThai = false;
+
+        foreach (var c in text)
+        {
+            if (c >= 0x0400 && c <= 0x04FF)
+                hasCyrillic = true;
+            else if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF))
+                hasHangul = true;
+            else if ((c >= 0x3040 && c <= 0x309F) || (c >= 0x30A0 && c <= 0x30FF))
+                hasKana = true;
+            else if (c >= 0x4E00 && c <= 0x9FFF)
+                hasHan = true;
+            else if (c >= 0x0E00 && c <= 0x0E7F)
+                hasThai = true;
+        }
+
+        if (hasKana)
+            return LocalizedContentManager.LanguageCode.ja;
+        if (hasHangul)
+            return LocalizedContentManager.LanguageCode.ko;
+        if (hasCyrillic)
+            return LocalizedContentManager.LanguageCode.ru;
+        if (hasThai)
+            return LocalizedContentManager.LanguageCode.th;
+        if (hasHan)
+            return LocalizedContentManager.LanguageCode.zh;
+        return LocalizedContentManager.LanguageCode.en;
     }
 
     private void WriteJson(string path, object value)

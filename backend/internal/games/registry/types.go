@@ -148,7 +148,7 @@ type RgbColor struct {
 type NewGameConfig struct {
 	FarmName       string `json:"farmName"`
 	FarmType       string `json:"farmType"`       // standard|riverland|forest|hilltop|wilderness|fourcorners|beach
-	StartingCabins int    `json:"startingCabins"` // 0-3
+	StartingCabins int    `json:"startingCabins"` // 0-7
 	CabinLayout    string `json:"cabinLayout"`    // nearby|separate
 	ProfitMargin   string `json:"profitMargin"`   // "100"|"75"|"50"|"25"
 	PetBreed       int    `json:"petBreed"`       // 0-4 (Stardew selectable breed index)
@@ -204,21 +204,44 @@ type SavesListResult struct {
 }
 
 type ModInfo struct {
-	ID          string `json:"id"`
-	UniqueID    string `json:"uniqueId,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Author      string `json:"author,omitempty"`
-	Description string `json:"description,omitempty"`
-	FolderName  string `json:"folderName"`
-	ParseError  string `json:"parseError,omitempty"`
-	SyncKind    string `json:"syncKind"`
-	SyncNote    string `json:"syncNote,omitempty"`
+	ID               string `json:"id"`
+	UniqueID         string `json:"uniqueId,omitempty"`
+	Name             string `json:"name,omitempty"`
+	Version          string `json:"version,omitempty"`
+	Author           string `json:"author,omitempty"`
+	Description      string `json:"description,omitempty"`
+	FolderName       string `json:"folderName"`
+	ParseError       string `json:"parseError,omitempty"`
+	Enabled          bool   `json:"enabled"`
+	CanToggle        bool   `json:"canToggle,omitempty"`
+	EnableNote       string `json:"enableNote,omitempty"`
+	SyncKind         string `json:"syncKind"`
+	SyncNote         string `json:"syncNote,omitempty"`
+	BuiltIn          bool   `json:"builtIn,omitempty"`
+	NexusSummary     string `json:"nexusSummary,omitempty"`
+	UpdatedAt        string `json:"updatedAt,omitempty"`
+	EndorsementCount int    `json:"endorsementCount,omitempty"`
+	DownloadCount    int    `json:"downloadCount,omitempty"`
+	PictureURL       string `json:"pictureUrl,omitempty"`
+	NexusURL         string `json:"nexusUrl,omitempty"`
 	// UpdateKeys is the manifest.json UpdateKeys list (e.g. "Nexus:123"),
 	// used to resolve NexusModID. Not all mods declare it.
 	UpdateKeys []string `json:"updateKeys,omitempty"`
 	// NexusModID is parsed from a "Nexus:<id>" entry in UpdateKeys, if present.
-	NexusModID int `json:"nexusModId,omitempty"`
+	NexusModID       int             `json:"nexusModId,omitempty"`
+	IsContentPack    bool            `json:"isContentPack,omitempty"`
+	ContentPackFor   string          `json:"contentPackFor,omitempty"`
+	OriginSource     string          `json:"originSource,omitempty"`
+	OriginNexusModID int             `json:"originNexusModId,omitempty"`
+	OriginModName    string          `json:"originModName,omitempty"`
+	OriginModURL     string          `json:"originModUrl,omitempty"`
+	Dependencies     []ModDependency `json:"dependencies,omitempty"`
+}
+
+type ModDependency struct {
+	UniqueID       string `json:"uniqueId"`
+	MinimumVersion string `json:"minimumVersion,omitempty"`
+	Required       bool   `json:"required"`
 }
 
 // ModsListResult is returned by GET .../mods.

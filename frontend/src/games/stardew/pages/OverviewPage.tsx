@@ -15,6 +15,8 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   const [actionError, setActionError] = useState<string | null>(null)
   const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
+  const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
+  const [pendingStopAction, setPendingStopAction] = useState(false)
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
 
@@ -64,8 +66,22 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     }
   }, [state])
 
+  useEffect(() => {
+    if (dashboardData.inviteCode) {
+      setPendingStartupAction(null)
+    }
+  }, [dashboardData.inviteCode])
+
+  useEffect(() => {
+    if (state === 'stopped' || state === 'ready_to_start' || state === 'save_required' || state === 'error') {
+      setPendingStopAction(false)
+    }
+  }, [state])
+
   async function handleStart() {
     setActionBusy(true)
+    setPendingStartupAction('start')
+    setPendingStopAction(false)
     setActionError(null)
     try {
       await startInstance()
@@ -80,9 +96,11 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
         setActionError(saveBlocker === 'new' ? null : errorMessage(e))
         dashboardData.refreshInstanceState()
         dashboardData.refreshSaves()
+        setPendingStartupAction(null)
         return
       }
       setActionError(errorMessage(e))
+      setPendingStartupAction(null)
     } finally {
       setActionBusy(false)
     }
@@ -90,6 +108,8 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
   async function handleStop() {
     setActionBusy(true)
+    setPendingStopAction(true)
+    setPendingStartupAction(null)
     setActionError(null)
     dashboardData.clearInviteCode()
     try {
@@ -97,6 +117,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
       dashboardData.refreshInstanceState()
     } catch (e) {
       setActionError(errorMessage(e))
+      setPendingStopAction(false)
     } finally {
       setActionBusy(false)
     }
@@ -104,6 +125,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
   async function handleRestart() {
     setActionBusy(true)
+    setPendingStartupAction('restart')
     setActionError(null)
     try {
       await restartInstance()
@@ -111,6 +133,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
       dashboardData.refreshInstanceState()
     } catch (e) {
       setActionError(errorMessage(e))
+      setPendingStartupAction(null)
     } finally {
       setActionBusy(false)
     }
@@ -133,6 +156,11 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
   function renderLifecycleButtons() {
     if (!state) return null
+    const waitingForInvite =
+      state === 'starting' ||
+      Boolean(pendingStartupAction) ||
+      (dashboardData.inviteCodeRefreshing && !dashboardData.inviteCode)
+    const waitingForStop = state === 'stopping' || pendingStopAction
 
     if (state === 'game_installed') {
       return (
@@ -156,6 +184,24 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
       )
     }
 
+    if (waitingForInvite) {
+      return (
+        <button className="sd-btn-start sd-btn-loading" disabled>
+          <span className="sd-btn-spinner" aria-hidden="true" />
+          启动中…
+        </button>
+      )
+    }
+
+    if (waitingForStop) {
+      return (
+        <button className="sd-btn-stop sd-btn-loading" disabled>
+          <span className="sd-btn-spinner" aria-hidden="true" />
+          停止中…
+        </button>
+      )
+    }
+
     if (state === 'ready_to_start' || state === 'stopped') {
       return (
         <button className="sd-btn-start" onClick={() => void handleStart()} disabled={actionBusy}>
@@ -166,15 +212,6 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             style={{ width: 12, height: 13 }}
           />
           {actionBusy ? '启动中…' : '启动'}
-        </button>
-      )
-    }
-
-    if (state === 'starting') {
-      return (
-        <button className="sd-btn-start" disabled>
-          <span className="sd-state-badge-dot" aria-hidden="true" />
-          启动中…
         </button>
       )
     }

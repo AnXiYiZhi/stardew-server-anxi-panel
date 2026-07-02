@@ -69,6 +69,15 @@ func sanitizeError(err error, fallback string) string {
 	if strings.Contains(lower, "connection refused") || strings.Contains(lower, "network") {
 		return "网络连接失败"
 	}
+	if strings.Contains(lower, "xnb") && strings.Contains(lower, "smapi") {
+		return "这是 XNB 替换包，不是 SMAPI Mod，不能上传到服务器 Mods 目录；请使用带 manifest.json 的 SMAPI 或 Content Patcher 版本"
+	}
+	if msg, ok := safeModUploadError(msg, lower); ok {
+		return msg
+	}
+	if strings.Contains(lower, "manifest.json") && strings.Contains(lower, "smapi") {
+		return "压缩包中没有找到 SMAPI manifest.json，不能作为 Mod 安装"
+	}
 	// ZIP/archive errors
 	if strings.Contains(lower, "zip") || strings.Contains(lower, "archive") {
 		return "压缩包格式错误或已损坏"
@@ -76,6 +85,23 @@ func sanitizeError(err error, fallback string) string {
 
 	// Redact any sensitive values from the fallback message
 	return docker.RedactString(fallback)
+}
+
+func safeModUploadError(msg, lower string) (string, bool) {
+	keywords := []string{
+		"mod 目录",
+		"zip 内 mod 目录",
+		"zip 内 uniqueid",
+		"已安装相同 uniqueid",
+		"不是合法的 smapi mod",
+		"manifest.json 解析失败",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(lower, keyword) {
+			return docker.RedactString(msg), true
+		}
+	}
+	return "", false
 }
 
 // sanitizeErrorMessage is like sanitizeError but takes the raw error message string.

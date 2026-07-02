@@ -174,6 +174,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceRestart(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "restart-schedule" {
+		s.handleRestartSchedule(w, r, instanceID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "invite-code" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -235,6 +239,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleSaveExport(w, r, instanceID, parts[2])
 		return
 	}
+	// POST /api/instances/:id/saves/:name/backup
+	if len(parts) == 4 && parts[1] == "saves" && parts[3] == "backup" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleSaveBackupCreate(w, r, instanceID, parts[2])
+		return
+	}
 	// GET /api/instances/:id/saves/backups
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "backups" {
 		if r.Method != http.MethodGet {
@@ -242,6 +255,11 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleSavesBackupsList(w, r, instanceID)
+		return
+	}
+	// GET/PUT /api/instances/:id/saves/backups/policy
+	if len(parts) == 4 && parts[1] == "saves" && parts[2] == "backups" && parts[3] == "policy" {
+		s.handleSavesBackupPolicy(w, r, instanceID)
 		return
 	}
 	// POST /api/instances/:id/saves/backups/restore
@@ -318,6 +336,24 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleModNexusSearch(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/mods/nexus/install
+	if len(parts) == 4 && parts[1] == "mods" && parts[2] == "nexus" && parts[3] == "install" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModNexusInstall(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/mods/remote/install
+	if len(parts) == 4 && parts[1] == "mods" && parts[2] == "remote" && parts[3] == "install" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModRemoteInstall(w, r, instanceID)
+		return
+	}
 	// GET /api/instances/:id/mods/sync-plan
 	if len(parts) == 3 && parts[1] == "mods" && parts[2] == "sync-plan" {
 		if r.Method != http.MethodGet {
@@ -336,6 +372,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleModSyncPackExport(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/mods/sync-pack/export-update
+	if len(parts) == 4 && parts[1] == "mods" && parts[2] == "sync-pack" && parts[3] == "export-update" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModSyncUpdatePackExport(w, r, instanceID)
+		return
+	}
 	// PUT /api/instances/:id/mods/:modId/sync-classification
 	if len(parts) == 4 && parts[1] == "mods" && parts[3] == "sync-classification" {
 		if r.Method != http.MethodPut {
@@ -343,6 +388,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleModSyncClassificationUpdate(w, r, instanceID, parts[2])
+		return
+	}
+	// PUT /api/instances/:id/mods/:modId/enabled
+	if len(parts) == 4 && parts[1] == "mods" && parts[3] == "enabled" {
+		if r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModEnabledUpdate(w, r, instanceID, parts[2])
 		return
 	}
 	// DELETE /api/instances/:id/mods/:modId

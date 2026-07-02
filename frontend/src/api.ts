@@ -20,12 +20,20 @@ import type {
   ModSyncPlanResult,
   NewGameConfig,
   NexusModSearchResponse,
+  NexusModSearchResult,
+  NexusSettingsStatus,
+  RemoteModInstallRequest,
   OKResponse,
   PanelUser,
   PrepareResponse,
   PreflightResult,
+  BackupCreateResult,
+  BackupPolicy,
+  BackupPolicyResult,
   BackupsListResult,
   RestoreBackupResult,
+  RestartSchedule,
+  RestartScheduleResult,
   ResourceMetricsResponse,
   SavesListResult,
   StardewPlayersResponse,
@@ -306,6 +314,35 @@ export function getSaveBackups(instanceId = defaultInstanceId) {
   return request<BackupsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups`)
 }
 
+export function createSaveBackup(name: string, instanceId = defaultInstanceId) {
+  return request<BackupCreateResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/${encodeURIComponent(name)}/backup`,
+    { method: 'POST' },
+  )
+}
+
+export function getSaveBackupPolicy(instanceId = defaultInstanceId) {
+  return request<BackupPolicyResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups/policy`)
+}
+
+export function updateSaveBackupPolicy(policy: BackupPolicy, instanceId = defaultInstanceId) {
+  return request<BackupPolicyResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups/policy`, {
+    method: 'PUT',
+    body: policy,
+  })
+}
+
+export function getRestartSchedule(instanceId = defaultInstanceId) {
+  return request<RestartScheduleResult>(`/api/instances/${encodeURIComponent(instanceId)}/restart-schedule`)
+}
+
+export function updateRestartSchedule(schedule: RestartSchedule, instanceId = defaultInstanceId) {
+  return request<RestartScheduleResult>(`/api/instances/${encodeURIComponent(instanceId)}/restart-schedule`, {
+    method: 'PUT',
+    body: schedule,
+  })
+}
+
 export function restoreSaveBackup(backupName: string, overwrite = false, instanceId = defaultInstanceId) {
   return request<RestoreBackupResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups/restore`, {
     method: 'POST',
@@ -325,8 +362,14 @@ export function getMods(instanceId = defaultInstanceId) {
 }
 
 export function uploadMod(file: File, instanceId = defaultInstanceId) {
+  return uploadMods([file], instanceId)
+}
+
+export function uploadMods(files: File[], instanceId = defaultInstanceId) {
   const form = new FormData()
-  form.append('mod', file)
+  for (const file of files) {
+    form.append('mod', file)
+  }
   return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/upload`, {
     method: 'POST',
     body: form,
@@ -374,6 +417,18 @@ export function updateModSyncClassification(
   )
 }
 
+export function updateModEnabled(
+  modId: string,
+  enabled: boolean,
+  saveName?: string,
+  instanceId = defaultInstanceId,
+) {
+  return request<{ folderName: string; enabled: boolean; saveName: string }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/mods/${encodeURIComponent(modId)}/enabled`,
+    { method: 'PUT', body: { enabled, saveName } },
+  )
+}
+
 export function exportModSyncPack(instanceId = defaultInstanceId) {
   return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/sync-pack/export`, {
     method: 'POST',
@@ -388,11 +443,81 @@ export function exportModSyncPack(instanceId = defaultInstanceId) {
   })
 }
 
-export function searchNexusMods(query: string, instanceId = defaultInstanceId) {
-  const params = new URLSearchParams({ q: query })
+export function exportModSyncUpdatePack(instanceId = defaultInstanceId) {
+  return fetch(`/api/instances/${encodeURIComponent(instanceId)}/mods/sync-pack/export-update`, {
+    method: 'POST',
+    credentials: 'include',
+  }).then(async (res) => {
+    if (!res.ok) throw await toApiError(res)
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : 'stardew-player-mods-update-pack.zip'
+    return { blob, filename }
+  })
+}
+
+export function searchNexusMods(query: string, page = 1, pageSize = 20, instanceId = defaultInstanceId) {
+  const params = new URLSearchParams({ q: query, page: String(page), pageSize: String(pageSize) })
   return request<NexusModSearchResponse>(
     `/api/instances/${encodeURIComponent(instanceId)}/mods/nexus/search?${params.toString()}`,
   )
+}
+
+export function installNexusMod(result: NexusModSearchResult, instanceId = defaultInstanceId) {
+  return request<LifecycleJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/mods/nexus/install`, {
+    method: 'POST',
+    body: {
+      modId: result.modId,
+      name: result.name,
+      summary: result.summary,
+      author: result.author,
+      version: result.version,
+      updatedAt: result.updatedAt,
+      endorsementCount: result.endorsementCount,
+      downloadCount: result.downloadCount,
+      pictureUrl: result.pictureUrl,
+      nexusUrl: result.nexusUrl,
+    },
+  })
+}
+
+export function installRemoteMod(payload: RemoteModInstallRequest, instanceId = defaultInstanceId) {
+  return request<LifecycleJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/mods/remote/install`, {
+    method: 'POST',
+    body: {
+      url: payload.url,
+      mod: payload.mod
+        ? {
+            modId: payload.mod.modId,
+            name: payload.mod.name,
+            summary: payload.mod.summary,
+            author: payload.mod.author,
+            version: payload.mod.version,
+            updatedAt: payload.mod.updatedAt,
+            endorsementCount: payload.mod.endorsementCount,
+            downloadCount: payload.mod.downloadCount,
+            pictureUrl: payload.mod.pictureUrl,
+            nexusUrl: payload.mod.nexusUrl,
+          }
+        : undefined,
+    },
+  })
+}
+
+export function getNexusSettings() {
+  return request<NexusSettingsStatus>('/api/settings/nexus')
+}
+
+export function saveNexusAPIKey(apiKey: string) {
+  return request<NexusSettingsStatus>('/api/settings/nexus/api-key', {
+    method: 'PUT',
+    body: { apiKey },
+  })
+}
+
+export function deleteNexusAPIKey() {
+  return request<NexusSettingsStatus>('/api/settings/nexus/api-key', { method: 'DELETE' })
 }
 
 export function getCommands(instanceId = defaultInstanceId) {

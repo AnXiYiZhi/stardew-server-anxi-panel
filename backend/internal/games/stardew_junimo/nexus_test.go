@@ -1,6 +1,8 @@
 package stardew_junimo
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -9,7 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
+
+const fakeNexusAPIKey = "fake-key-123"
 
 // withNexusEndpoints points the package-level Nexus base URLs at a test
 // server for the duration of the test, restoring the originals afterward.
@@ -28,26 +34,198 @@ func withNexusEndpoints(t *testing.T, server *httptest.Server) {
 
 // ── API key / query validation ──────────────────────────────────────────────
 
-func TestSearchNexusMods_MissingAPIKey(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "")
-	_, err := SearchNexusMods(context.Background(), "stardew valley expanded")
-	if err != ErrNexusAPIKeyMissing {
-		t.Fatalf("err = %v, want ErrNexusAPIKeyMissing", err)
+// Numeric input without a key uses the public GraphQL metadata path with an
+// exact gameId + modId filter. The v1 REST ID lookup is only used once a
+// Nexus API key is configured.
+func TestSearchNexusMods_NumericQueryUsesGraphQLIDLookupWithoutAPIKey(t *testing.T) {
+	var hitGraphQL bool
+	var capturedBody map[string]any
+	var headerSet bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/graphql" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		hitGraphQL = true
+		headerSet = r.Header.Get("apikey") != ""
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"mods": map[string]any{
+					"nodes": []map[string]any{{"modId": 2400, "name": "Mod 2400"}},
+				},
+			},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	resp, err := SearchNexusMods(context.Background(), "2400", "")
+	if err != nil {
+		t.Fatalf("SearchNexusMods: %v", err)
+	}
+	if !hitGraphQL {
+		t.Fatal("GraphQL endpoint was not called")
+	}
+	if headerSet {
+		t.Fatal("apikey header was sent for no-key GraphQL ID lookup")
+	}
+	variables, _ := capturedBody["variables"].(map[string]any)
+	filter, _ := variables["filter"].(map[string]any)
+	gameID, _ := filter["gameId"].([]any)
+	modID, _ := filter["modId"].([]any)
+	if len(gameID) != 1 || len(modID) != 1 {
+		t.Fatalf("filter = %+v, want gameId and modId entries", filter)
+	}
+	gameEntry, _ := gameID[0].(map[string]any)
+	modEntry, _ := modID[0].(map[string]any)
+	if gameEntry["value"] != nexusStardewGameID {
+		t.Errorf("gameId value = %v, want %q", gameEntry["value"], nexusStardewGameID)
+	}
+	if modEntry["value"] != "2400" {
+		t.Errorf("modId value = %v, want 2400", modEntry["value"])
+	}
+	if len(resp.Results) != 1 || resp.Results[0].ModID != 2400 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+// Keyword search (GraphQL v2) is a public read query and must work without
+// a Nexus API key configured in the panel.
+func TestSearchNexusMods_KeywordSearchWorksWithoutAPIKey(t *testing.T) {
+	var receivedHeader string
+	headerSet := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeader, headerSet = r.Header.Get("apikey"), r.Header.Get("apikey") != ""
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"mods": map[string]any{
+					"nodes": []map[string]any{{"modId": 1, "name": "Mod One"}},
+				},
+			},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	resp, err := SearchNexusMods(context.Background(), "farming", "")
+	if err != nil {
+		t.Fatalf("SearchNexusMods: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(resp.Results))
+	}
+	if headerSet {
+		t.Errorf("apikey header sent as %q, want no apikey header when key is unset", receivedHeader)
 	}
 }
 
 func TestSearchNexusMods_EmptyQuery(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "fake-key-123")
-	_, err := SearchNexusMods(context.Background(), "   ")
-	if err != ErrInvalidNexusQuery {
-		t.Fatalf("err = %v, want ErrInvalidNexusQuery", err)
+	var capturedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"mods": map[string]any{
+					"totalCount": 120,
+					"nodes": []map[string]any{
+						{"modId": 2400, "name": "SMAPI", "downloads": 1000000},
+					},
+				},
+			},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	resp, err := SearchNexusModsPage(context.Background(), "   ", fakeNexusAPIKey, 2, 20)
+	if err != nil {
+		t.Fatalf("SearchNexusModsPage: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].ModID != 2400 {
+		t.Fatalf("unexpected results: %+v", resp.Results)
+	}
+	if resp.Query != "" || resp.Page != 2 || resp.PageSize != 20 || resp.Total != 120 || !resp.HasMore {
+		t.Fatalf("unexpected response metadata: %+v", resp)
+	}
+
+	variables, _ := capturedBody["variables"].(map[string]any)
+	filter, _ := variables["filter"].(map[string]any)
+	if _, ok := filter["name"]; ok {
+		t.Fatalf("default listing filter should not include name: %+v", filter)
+	}
+	if _, ok := filter["gameDomainName"]; !ok {
+		t.Fatalf("default listing filter missing gameDomainName: %+v", filter)
+	}
+	if variables["offset"] != float64(20) {
+		t.Errorf("variables.offset = %v, want 20", variables["offset"])
+	}
+	if variables["count"] != float64(20) {
+		t.Errorf("variables.count = %v, want 20", variables["count"])
+	}
+	sort, _ := variables["sort"].([]any)
+	if len(sort) != 1 {
+		t.Fatalf("variables.sort = %+v, want one downloads sort", variables["sort"])
+	}
+}
+
+// ── keyword search auth-required mapping ─────────────────────────────────────
+
+func TestSearchNexusMods_KeywordSearchAuthRequired_HTTPStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	withNexusEndpoints(t, server)
+
+	_, err := SearchNexusMods(context.Background(), "farming", "")
+	if err != ErrNexusAuthRequired {
+		t.Fatalf("err = %v, want ErrNexusAuthRequired", err)
+	}
+}
+
+func TestSearchNexusMods_KeywordSearchAuthRequired_GraphQLError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]any{{"message": "Unauthenticated: must provide valid auth credentials"}},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	_, err := SearchNexusMods(context.Background(), "farming", "")
+	if err != ErrNexusAuthRequired {
+		t.Fatalf("err = %v, want ErrNexusAuthRequired", err)
+	}
+}
+
+// Regression guard: a schema error that happens to mention the "author"
+// field must not be misclassified as an auth failure just because "author"
+// contains the substring "auth". Only real auth/permission keywords should
+// trigger ErrNexusAuthRequired.
+func TestSearchNexusMods_GraphQLSchemaErrorMentioningAuthorIsNotAuthError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]any{{"message": "Field 'mods' doesn't accept argument 'author'"}},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	_, err := SearchNexusMods(context.Background(), "farming", "")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err == ErrNexusAuthRequired {
+		t.Fatalf("err = ErrNexusAuthRequired, want a generic schema error (message mentions 'author', not auth)")
 	}
 }
 
 // ── result parsing ───────────────────────────────────────────────────────────
 
 func TestSearchNexusMods_IDLookupParsesResult(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "fake-key-123")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/games/stardewvalley/mods/2400.json" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -67,7 +245,7 @@ func TestSearchNexusMods_IDLookupParsesResult(t *testing.T) {
 	}))
 	withNexusEndpoints(t, server)
 
-	resp, err := SearchNexusMods(context.Background(), "2400")
+	resp, err := SearchNexusMods(context.Background(), "2400", fakeNexusAPIKey)
 	if err != nil {
 		t.Fatalf("SearchNexusMods: %v", err)
 	}
@@ -87,8 +265,76 @@ func TestSearchNexusMods_IDLookupParsesResult(t *testing.T) {
 	}
 }
 
+// Regression guard: the "mods" GraphQL root field does not accept a
+// "gameDomain" argument directly (confirmed via live schema introspection
+// against api.nexusmods.com/v2/graphql) — the game and keyword filters must
+// both live inside the "filter" (ModsFilter) variable, as
+// gameDomainName/name. An earlier version of this client guessed a
+// "gameDomain" top-level argument, which Nexus rejected with a GraphQL
+// error on every single keyword search. This test locks in the verified
+// request shape so that regression can't silently reappear.
+func TestSearchNexusMods_KeywordSearchRequestShape(t *testing.T) {
+	var capturedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"mods": map[string]any{"nodes": []map[string]any{}}},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	if _, err := SearchNexusMods(context.Background(), "tractor", ""); err != nil {
+		t.Fatalf("SearchNexusMods: %v", err)
+	}
+
+	variables, _ := capturedBody["variables"].(map[string]any)
+	if variables == nil {
+		t.Fatalf("request body missing variables: %+v", capturedBody)
+	}
+	if _, hasTopLevelGameDomain := variables["gameDomain"]; hasTopLevelGameDomain {
+		t.Errorf("variables contains top-level %q — the mods field doesn't accept this argument", "gameDomain")
+	}
+	filter, _ := variables["filter"].(map[string]any)
+	if filter == nil {
+		t.Fatalf("variables missing filter: %+v", variables)
+	}
+	gameDomainName, _ := filter["gameDomainName"].([]any)
+	if len(gameDomainName) != 1 {
+		t.Fatalf("filter.gameDomainName = %+v, want one entry", filter["gameDomainName"])
+	}
+	entry, _ := gameDomainName[0].(map[string]any)
+	if entry["value"] != nexusGameDomain {
+		t.Errorf("filter.gameDomainName[0].value = %v, want %q", entry["value"], nexusGameDomain)
+	}
+	name, _ := filter["name"].([]any)
+	if len(name) != 1 {
+		t.Fatalf("filter.name = %+v, want one entry", filter["name"])
+	}
+	nameEntry, _ := name[0].(map[string]any)
+	if nameEntry["value"] != "tractor" {
+		t.Errorf("filter.name[0].value = %v, want %q", nameEntry["value"], "tractor")
+	}
+	sort, _ := variables["sort"].([]any)
+	if len(sort) != 1 {
+		t.Fatalf("variables.sort = %+v, want one downloads sort entry", variables["sort"])
+	}
+	sortEntry, _ := sort[0].(map[string]any)
+	downloadsSort, _ := sortEntry["downloads"].(map[string]any)
+	if downloadsSort["direction"] != "DESC" {
+		t.Errorf("sort.downloads.direction = %v, want DESC", downloadsSort["direction"])
+	}
+	if variables["offset"] != float64(0) {
+		t.Errorf("variables.offset = %v, want 0", variables["offset"])
+	}
+	if variables["count"] != float64(nexusDefaultPageSize) {
+		t.Errorf("variables.count = %v, want %d", variables["count"], nexusDefaultPageSize)
+	}
+}
+
 func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "fake-key-123")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/graphql" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -97,6 +343,7 @@ func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]any{
 				"mods": map[string]any{
+					"totalCount": 2,
 					"nodes": []map[string]any{
 						{"modId": 1, "name": "Mod One", "downloads": 10, "endorsements": 1},
 						{"modId": 2, "name": "Mod Two", "downloads": 20, "endorsements": 2},
@@ -107,7 +354,7 @@ func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
 	}))
 	withNexusEndpoints(t, server)
 
-	resp, err := SearchNexusMods(context.Background(), "farming")
+	resp, err := SearchNexusMods(context.Background(), "farming", fakeNexusAPIKey)
 	if err != nil {
 		t.Fatalf("SearchNexusMods: %v", err)
 	}
@@ -120,10 +367,46 @@ func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
 	if resp.Query != "farming" {
 		t.Errorf("Query = %q, want %q", resp.Query, "farming")
 	}
+	if resp.Page != 1 || resp.PageSize != nexusDefaultPageSize || resp.Total != 2 || resp.HasMore {
+		t.Errorf("unexpected paging metadata: %+v", resp)
+	}
+}
+
+func TestSearchNexusMods_KeywordSearchPaginationRequestShape(t *testing.T) {
+	var capturedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"mods": map[string]any{
+					"totalCount": 410,
+					"nodes":      []map[string]any{{"modId": 1915, "name": "Content Patcher"}},
+				},
+			},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	resp, err := SearchNexusModsPage(context.Background(), "Content Patcher", "", 3, 12)
+	if err != nil {
+		t.Fatalf("SearchNexusModsPage: %v", err)
+	}
+	variables, _ := capturedBody["variables"].(map[string]any)
+	if variables["offset"] != float64(24) {
+		t.Errorf("variables.offset = %v, want 24", variables["offset"])
+	}
+	if variables["count"] != float64(12) {
+		t.Errorf("variables.count = %v, want 12", variables["count"])
+	}
+	if resp.Page != 3 || resp.PageSize != 12 || resp.Total != 410 || !resp.HasMore {
+		t.Errorf("unexpected paging metadata: %+v", resp)
+	}
 }
 
 func TestSearchNexusMods_ResultsCappedAtMax(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "fake-key-123")
 	nodes := make([]map[string]any, 30)
 	for i := range nodes {
 		nodes[i] = map[string]any{"modId": i + 1, "name": "Mod"}
@@ -136,7 +419,7 @@ func TestSearchNexusMods_ResultsCappedAtMax(t *testing.T) {
 	}))
 	withNexusEndpoints(t, server)
 
-	resp, err := SearchNexusMods(context.Background(), "mod")
+	resp, err := SearchNexusMods(context.Background(), "mod", fakeNexusAPIKey)
 	if err != nil {
 		t.Fatalf("SearchNexusMods: %v", err)
 	}
@@ -148,14 +431,13 @@ func TestSearchNexusMods_ResultsCappedAtMax(t *testing.T) {
 // ── non-2xx error mapping ────────────────────────────────────────────────────
 
 func TestSearchNexusMods_NonOKStatusMapsToNexusAPIError(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "fake-key-123")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("not found"))
 	}))
 	withNexusEndpoints(t, server)
 
-	_, err := SearchNexusMods(context.Background(), "999999")
+	_, err := SearchNexusMods(context.Background(), "999999", fakeNexusAPIKey)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -169,13 +451,12 @@ func TestSearchNexusMods_NonOKStatusMapsToNexusAPIError(t *testing.T) {
 }
 
 func TestSearchNexusMods_NonOKStatusForKeywordSearch(t *testing.T) {
-	t.Setenv("NEXUS_API_KEY", "fake-key-123")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	withNexusEndpoints(t, server)
 
-	_, err := SearchNexusMods(context.Background(), "farming")
+	_, err := SearchNexusMods(context.Background(), "farming", fakeNexusAPIKey)
 	apiErr, ok := err.(*NexusAPIError)
 	if !ok {
 		t.Fatalf("err = %T(%v), want *NexusAPIError", err, err)
@@ -189,7 +470,6 @@ func TestSearchNexusMods_NonOKStatusForKeywordSearch(t *testing.T) {
 
 func TestSearchNexusMods_DoesNotLeakAPIKey(t *testing.T) {
 	const secretKey = "super-secret-nexus-key-do-not-leak"
-	t.Setenv("NEXUS_API_KEY", secretKey)
 
 	var receivedHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +481,7 @@ func TestSearchNexusMods_DoesNotLeakAPIKey(t *testing.T) {
 	}))
 	withNexusEndpoints(t, server)
 
-	_, err := SearchNexusMods(context.Background(), "1234")
+	_, err := SearchNexusMods(context.Background(), "1234", secretKey)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -214,6 +494,253 @@ func TestSearchNexusMods_DoesNotLeakAPIKey(t *testing.T) {
 }
 
 // ── installed matching ───────────────────────────────────────────────────────
+
+func makeNexusModZip(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	manifest, err := zw.Create("CoolMod/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = json.NewEncoder(manifest).Encode(modManifest{
+		Name:        "Cool Mod",
+		UniqueID:    "Author.CoolMod",
+		Version:     "1.2.3",
+		Author:      "Author",
+		Description: "From Nexus",
+		UpdateKeys:  []string{"Nexus:1234"},
+	})
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestInstallNexusMod_DownloadsInstallsAndStoresMetadata(t *testing.T) {
+	dataDir := t.TempDir()
+	archive := makeNexusModZip(t)
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/games/stardewvalley/mods/1234/files.json":
+			if r.Header.Get("apikey") != fakeNexusAPIKey {
+				t.Fatalf("apikey header = %q, want %q", r.Header.Get("apikey"), fakeNexusAPIKey)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"files": []map[string]any{{
+					"file_id":       99,
+					"name":          "Cool Mod main file",
+					"version":       "1.2.3",
+					"category_id":   1,
+					"category_name": "MAIN",
+				}},
+			})
+		case "/v1/games/stardewvalley/mods/1234/files/99/download_link.json":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"URI": serverURL + "/download/cool.zip"}})
+		case "/download/cool.zip":
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write(archive)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	serverURL = server.URL
+	withNexusEndpoints(t, server)
+
+	imported, err := InstallNexusMod(context.Background(), dataDir, fakeNexusAPIKey, NexusModSearchResult{
+		ModID:            1234,
+		Name:             "Cool Mod",
+		Summary:          "A cool Nexus mod",
+		Author:           "Author",
+		Version:          "1.2.3",
+		EndorsementCount: 12,
+		DownloadCount:    34,
+		PictureURL:       "https://example.com/thumb.png",
+		NexusURL:         "https://www.nexusmods.com/stardewvalley/mods/1234",
+	}, nil)
+	if err != nil {
+		t.Fatalf("InstallNexusMod: %v", err)
+	}
+	if len(imported) != 1 {
+		t.Fatalf("len(imported) = %d, want 1", len(imported))
+	}
+	if imported[0].FolderName != "CoolMod" || imported[0].NexusModID != 1234 {
+		t.Fatalf("unexpected imported mod: %+v", imported[0])
+	}
+	if imported[0].PictureURL != "https://example.com/thumb.png" {
+		t.Fatalf("PictureURL = %q, want thumbnail metadata", imported[0].PictureURL)
+	}
+	if GetModsRestartRequired(dataDir) {
+		t.Fatal("restart-required flag should not be set by stopped-server Nexus install")
+	}
+
+	mods, err := ListMods(dataDir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	mods = ApplyNexusMetadataToMods(dataDir, mods)
+	if len(mods) != 1 || mods[0].PictureURL != "https://example.com/thumb.png" {
+		t.Fatalf("metadata was not applied to installed list: %+v", mods)
+	}
+}
+
+func TestEnrichNexusMetadataForMods_UsesGraphQLAndCaches(t *testing.T) {
+	dataDir := t.TempDir()
+	modsRoot := modsDir(dataDir)
+	writeManifestWithUpdateKeys(t, modsRoot, "SMAPI", "Pathoschild.SMAPI", "4.5.2", []string{"Nexus:2400"})
+
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/graphql" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("apikey") != "" {
+			t.Fatalf("apikey header = %q, want empty", r.Header.Get("apikey"))
+		}
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"mods": map[string]any{
+					"nodes": []map[string]any{{
+						"modId":        2400,
+						"name":         "SMAPI - Stardew Modding API",
+						"summary":      "The mod loader for Stardew Valley.",
+						"version":      "4.5.2",
+						"author":       "Pathoschild",
+						"pictureUrl":   "https://example.com/smapi.png",
+						"downloads":    12345,
+						"endorsements": 678,
+						"updatedAt":    "2026-03-14T19:07:23Z",
+					}},
+				},
+			},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	mods, err := ListMods(dataDir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	enriched := EnrichNexusMetadataForMods(context.Background(), dataDir, mods)
+	if len(enriched) != 1 {
+		t.Fatalf("len(enriched) = %d, want 1", len(enriched))
+	}
+	if enriched[0].PictureURL != "https://example.com/smapi.png" {
+		t.Fatalf("PictureURL = %q, want GraphQL thumbnail", enriched[0].PictureURL)
+	}
+	if enriched[0].NexusSummary != "The mod loader for Stardew Valley." {
+		t.Fatalf("NexusSummary = %q, want GraphQL summary", enriched[0].NexusSummary)
+	}
+	if enriched[0].DownloadCount != 12345 || enriched[0].EndorsementCount != 678 {
+		t.Fatalf("counts not applied: %+v", enriched[0])
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1", calls)
+	}
+
+	mods, err = ListMods(dataDir)
+	if err != nil {
+		t.Fatalf("ListMods second call: %v", err)
+	}
+	cached := EnrichNexusMetadataForMods(context.Background(), dataDir, mods)
+	if cached[0].PictureURL != "https://example.com/smapi.png" {
+		t.Fatalf("cached PictureURL = %q, want sidecar metadata", cached[0].PictureURL)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls after cached enrichment = %d, want still 1", calls)
+	}
+}
+
+func TestEnrichNexusMetadataForMods_FillsBuiltInSMAPIRuntime(t *testing.T) {
+	dataDir := t.TempDir()
+	modsRoot := modsDir(dataDir)
+	createTestMod(t, modsRoot, controlModFolderName, "AnXiYiZhi.StardewAnxiPanel.Control", "Panel Control")
+
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/graphql" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"mods": map[string]any{
+					"nodes": []map[string]any{{
+						"modId":      2400,
+						"name":       "SMAPI - Stardew Modding API",
+						"summary":    "The mod loader for Stardew Valley.",
+						"version":    "4.5.2",
+						"author":     "Pathoschild",
+						"pictureUrl": "https://example.com/smapi-runtime.png",
+					}},
+				},
+			},
+		})
+	}))
+	withNexusEndpoints(t, server)
+
+	mods, err := ListMods(dataDir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	enriched := EnrichNexusMetadataForMods(context.Background(), dataDir, mods)
+	if len(enriched) != 2 {
+		t.Fatalf("len(enriched) = %d, want SMAPI runtime plus control mod", len(enriched))
+	}
+	smapi := enriched[0]
+	if !smapi.BuiltIn || smapi.UniqueID != "Pathoschild.SMAPI" {
+		t.Fatalf("first mod should be built-in SMAPI runtime: %+v", smapi)
+	}
+	if smapi.PictureURL != "https://example.com/smapi-runtime.png" {
+		t.Fatalf("SMAPI PictureURL = %q, want GraphQL thumbnail", smapi.PictureURL)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1", calls)
+	}
+}
+
+func TestApplyNexusMetadataToMods_MergesFolderEntryWithRicherSameModID(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := saveNexusMetadataStore(dataDir, nexusMetadataStore{
+		Mods: map[string]nexusInstalledMetadata{
+			"MultipleConstructionOrders": {
+				ModID:      47289,
+				Name:       "Multiple Construction Orders",
+				Summary:    "Allows Robin to accept multiple construction orders.",
+				PictureURL: "https://example.com/mco.png",
+				NexusURL:   "https://www.nexusmods.com/stardewvalley/mods/47289",
+			},
+			"[CP] MultipleConstructionOrders": {
+				ModID:    47289,
+				Name:     "Multiple Construction Orders",
+				NexusURL: "https://www.nexusmods.com/stardewvalley/mods/47289",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("saveNexusMetadataStore: %v", err)
+	}
+
+	mods := ApplyNexusMetadataToMods(dataDir, []registry.ModInfo{{
+		ID:         "[CP] MultipleConstructionOrders",
+		FolderName: "[CP] MultipleConstructionOrders",
+	}})
+	if len(mods) != 1 {
+		t.Fatalf("len(mods) = %d, want 1", len(mods))
+	}
+	if mods[0].PictureURL != "https://example.com/mco.png" {
+		t.Fatalf("PictureURL = %q, want richer same-modID thumbnail", mods[0].PictureURL)
+	}
+	if mods[0].OriginSource != "nexus" || mods[0].OriginNexusModID != 47289 {
+		t.Fatalf("origin = %q/%d, want nexus/47289", mods[0].OriginSource, mods[0].OriginNexusModID)
+	}
+}
 
 func writeManifestWithUpdateKeys(t *testing.T, modsRoot, folderName, uniqueID, version string, updateKeys []string) {
 	t.Helper()
@@ -234,6 +761,58 @@ func writeManifestWithUpdateKeys(t *testing.T, modsRoot, folderName, uniqueID, v
 	}
 	if err := os.WriteFile(filepath.Join(modPath, "manifest.json"), data, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestParseNexusNXMURL(t *testing.T) {
+	ticket, err := ParseNexusNXMURL("nxm://stardewvalley/mods/1234/files/99?key=abc123&expires=1782897483&user_id=42")
+	if err != nil {
+		t.Fatalf("ParseNexusNXMURL: %v", err)
+	}
+	if ticket.ModID != 1234 || ticket.FileID != 99 || ticket.Key != "abc123" || ticket.Expires != "1782897483" {
+		t.Fatalf("ticket = %+v, want mod/file/key/expires", ticket)
+	}
+}
+
+func TestInstallNexusModWithTicket_UsesNXMKeyAndExpires(t *testing.T) {
+	dataDir := t.TempDir()
+	archive := makeNexusModZip(t)
+	var serverURL string
+	var sawTicket bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/games/stardewvalley/mods/1234/files/99/download_link.json":
+			if r.Header.Get("apikey") != fakeNexusAPIKey {
+				t.Fatalf("apikey header = %q, want %q", r.Header.Get("apikey"), fakeNexusAPIKey)
+			}
+			if r.URL.Query().Get("key") != "abc123" || r.URL.Query().Get("expires") != "1782897483" {
+				t.Fatalf("ticket query = %q", r.URL.RawQuery)
+			}
+			sawTicket = true
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"URI": serverURL + "/download/cool.zip"}})
+		case "/download/cool.zip":
+			w.Header().Set("Content-Type", "application/zip")
+			_, _ = w.Write(archive)
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	serverURL = server.URL
+	withNexusEndpoints(t, server)
+
+	imported, err := InstallNexusModWithTicket(context.Background(), dataDir, fakeNexusAPIKey, NexusModSearchResult{
+		ModID:    1234,
+		Name:     "Cool Nexus Mod",
+		NexusURL: "https://www.nexusmods.com/stardewvalley/mods/1234",
+	}, NexusDownloadTicket{ModID: 1234, FileID: 99, Key: "abc123", Expires: "1782897483"}, nil)
+	if err != nil {
+		t.Fatalf("InstallNexusModWithTicket: %v", err)
+	}
+	if !sawTicket {
+		t.Fatal("download_link endpoint was not called with NXM ticket")
+	}
+	if len(imported) != 1 || imported[0].FolderName != "CoolMod" {
+		t.Fatalf("imported = %+v, want CoolMod", imported)
 	}
 }
 

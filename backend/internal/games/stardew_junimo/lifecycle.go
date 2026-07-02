@@ -208,6 +208,21 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：SMAPI mod 部署失败（不影响启动）：%v", err))
 	}
 
+	if r.newGame {
+		if err := ApplyNewSaveDefaultModState(r.instance.DataDir); err != nil {
+			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+				"apply new-save mod defaults failed: "+err.Error(), "mod_profile_failed", jobCtx.ID)
+			return err
+		}
+		_, _ = jobCtx.Info(ctx, "New save mod defaults applied: third-party mods are disabled.")
+	} else if activeSaveName := GetActiveSaveName(r.instance.DataDir); activeSaveName != "" {
+		if err := ApplyModProfile(r.instance.DataDir, activeSaveName); err != nil {
+			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+				"apply save mod profile failed: "+err.Error(), "mod_profile_failed", jobCtx.ID)
+			return err
+		}
+	}
+
 	result, err := r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
 	if err != nil {
 		if friendly, ok := r.vncPortUnavailableMessage(result); ok {
@@ -320,6 +335,7 @@ func (r *lifecycleRunner) doStop(ctx context.Context, jobCtx *jobs.Context) erro
 		return fmt.Errorf("docker compose down: %w", err)
 	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "服务器已停止", "stopped", jobCtx.ID)
+	_ = ClearModsRestartRequired(r.instance.DataDir)
 	_, _ = jobCtx.Info(ctx, "服务器已停止")
 	return nil
 }
@@ -697,6 +713,9 @@ func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.C
 			if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" {
 				saveDir := filepath.Join(savesDir(r.instance.DataDir), "Saves", gl.SaveNameToLoad)
 				if _, err := os.Stat(saveDir); err == nil {
+					if err := EnsureDisabledModProfileForSave(r.instance.DataDir, gl.SaveNameToLoad); err != nil {
+						_, _ = jobCtx.Warn(ctx, fmt.Sprintf("save mod profile write failed: %v", err))
+					}
 					_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档已创建：%s", gl.SaveNameToLoad))
 					return nil
 				}

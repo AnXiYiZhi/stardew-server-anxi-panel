@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
@@ -32,6 +33,9 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	path := serverSettingsPath(dir)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("settings file not created: %v", err)
+	}
+	if _, err := os.Stat(newGamePendingPath(dir)); err != nil {
+		t.Fatalf("new-game pending marker not created: %v", err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -64,6 +68,9 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	if game["FarmType"] != float64(1) { // riverland = 1
 		t.Errorf("Game.FarmType = %v, want 1", game["FarmType"])
 	}
+	if game["StartingCabins"] != float64(2) {
+		t.Errorf("Game.StartingCabins = %v, want 2", game["StartingCabins"])
+	}
 	if server["SeparateWallets"] != false { // shared → false
 		t.Errorf("Server.SeparateWallets = %v, want false", server["SeparateWallets"])
 	}
@@ -88,11 +95,19 @@ func TestWriteServerSettings_InvalidFarmType(t *testing.T) {
 	}
 }
 
-func TestWriteServerSettings_CabinsOutOfRange(t *testing.T) {
+func TestWriteServerSettings_CabinsAllowsStardew16Range(t *testing.T) {
 	dir := t.TempDir()
 	cfg := registry.NewGameConfig{FarmName: "Farm", StartingCabins: 5}
+	if err := WriteServerSettings(dir, cfg); err != nil {
+		t.Fatalf("startingCabins=5 should be accepted: %v", err)
+	}
+}
+
+func TestWriteServerSettings_CabinsOutOfRange(t *testing.T) {
+	dir := t.TempDir()
+	cfg := registry.NewGameConfig{FarmName: "Farm", StartingCabins: 8}
 	if err := WriteServerSettings(dir, cfg); err == nil {
-		t.Fatal("expected error for startingCabins=5")
+		t.Fatal("expected error for startingCabins=8")
 	}
 }
 
@@ -166,7 +181,7 @@ func TestWriteInitConfig_PreservesPetGenderAndCabinSelection(t *testing.T) {
 	if err := json.Unmarshal(data, &init); err != nil {
 		t.Fatal(err)
 	}
-	if init.Gender != "female" || init.PetType != "Dog" || init.PetBreed != "4" || init.CabinLayout != "separate" {
+	if init.Mode != "panel-newgame" || init.Gender != "female" || init.PetType != "Dog" || init.PetBreed != "4" || init.CabinCount != 2 || init.CabinLayout != "separate" {
 		t.Fatalf("init selection changed: %#v", init)
 	}
 	if !init.AutoPause {
@@ -1441,6 +1456,147 @@ func TestRestoreBackup_NonExistentBackup(t *testing.T) {
 	}
 }
 
+func TestBackupPolicy_DefaultAndClamp(t *testing.T) {
+	dir := t.TempDir()
+	policy, err := ReadBackupPolicy(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !policy.GameSaveBackups || !policy.DailySnapshots || policy.DailyRetentionDays != 3 || policy.ScheduledHour != 4 {
+		t.Fatalf("unexpected default policy: %#v", policy)
+	}
+	policy, err = WriteBackupPolicy(dir, BackupPolicy{
+		GameSaveBackups:    true,
+		DailySnapshots:     true,
+		DailyRetentionDays: 99,
+		ScheduledBackups:   true,
+		ScheduledHour:      99,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.DailyRetentionDays != 14 || policy.ScheduledHour != 23 || policy.ScheduledIntervalHour != 0 {
+		t.Fatalf("policy not clamped: %#v", policy)
+	}
+}
+
+func TestScheduledBackupRunsOncePerDayAtConfiguredHour(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave")
+	if err := SetActiveSave(dir, "TestSave"); err != nil {
+		t.Fatal(err)
+	}
+	policy := BackupPolicy{
+		DailySnapshots:     false,
+		DailyRetentionDays: 3,
+		ScheduledBackups:   true,
+		ScheduledHour:      3,
+	}
+
+	beforeHour := time.Date(2026, 7, 2, 2, 59, 0, 0, time.Local)
+	created, err := runScheduledBackupIfDue(dir, policy, beforeHour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("backup should not run before configured hour: %v", created)
+	}
+
+	firstRun := time.Date(2026, 7, 2, 3, 0, 0, 0, time.Local)
+	created, err = runScheduledBackupIfDue(dir, policy, firstRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 1 || created[0] != "scheduled_TestSave.zip" {
+		t.Fatalf("unexpected first scheduled backup result: %v", created)
+	}
+
+	sameDay := time.Date(2026, 7, 2, 23, 0, 0, 0, time.Local)
+	created, err = runScheduledBackupIfDue(dir, policy, sameDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("backup should not run twice in one day: %v", created)
+	}
+
+	nextDay := time.Date(2026, 7, 3, 3, 0, 0, 0, time.Local)
+	created, err = runScheduledBackupIfDue(dir, policy, nextDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 1 || created[0] != "scheduled_TestSave.zip" {
+		t.Fatalf("unexpected next-day scheduled backup result: %v", created)
+	}
+}
+
+func TestBackupMaintenance_SaveEventCreatesLatestAndDaily(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave")
+	eventDir := saveEventsDir(dir)
+	if err := os.MkdirAll(eventDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	event := saveEventFile{Type: "saved", SaveName: "TestSave", CreatedAt: time.Now().UTC()}
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(eventDir, "event.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := RunBackupMaintenance(dir)
+	if err != nil {
+		t.Fatalf("RunBackupMaintenance: %v", err)
+	}
+	if result.ConsumedEvents != 1 {
+		t.Fatalf("ConsumedEvents = %d, want 1", result.ConsumedEvents)
+	}
+	for _, name := range []string{"latest_TestSave.zip", "daily_TestSave_" + time.Now().UTC().Format("20060102") + ".zip"} {
+		if _, err := os.Stat(filepath.Join(backupsDir(dir), name)); err != nil {
+			t.Fatalf("expected backup %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(eventDir, "event.json")); !os.IsNotExist(err) {
+		t.Fatalf("event should be consumed, stat err=%v", err)
+	}
+}
+
+func TestPruneDailySnapshots_RemovesOldDays(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave")
+	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
+	for _, day := range []time.Time{now.AddDate(0, 0, -3), now.AddDate(0, 0, -2), now.AddDate(0, 0, -1), now} {
+		if _, err := BackupDailySnapshot(dir, "TestSave", day, 3); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldName := "daily_TestSave_" + now.AddDate(0, 0, -3).Format("20060102") + ".zip"
+	if _, err := os.Stat(filepath.Join(backupsDir(dir), oldName)); !os.IsNotExist(err) {
+		t.Fatalf("old daily snapshot should be pruned, stat err=%v", err)
+	}
+	keepName := "daily_TestSave_" + now.AddDate(0, 0, -2).Format("20060102") + ".zip"
+	if _, err := os.Stat(filepath.Join(backupsDir(dir), keepName)); err != nil {
+		t.Fatalf("recent daily snapshot should remain: %v", err)
+	}
+}
+
+func createTestSaveForBackup(t *testing.T, dir, saveName string) {
+	t.Helper()
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", saveName)
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	xmlContent := `<SaveGame><player><name>Farmer</name><farmName>Farm</farmName></player><year>1</year><currentSeason>spring</currentSeason><dayOfMonth>1</dayOfMonth><whichFarm>0</whichFarm></SaveGame>`
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, saveName), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseBackupSaveName(t *testing.T) {
 	tests := []struct {
 		input string
@@ -1449,6 +1605,10 @@ func TestParseBackupSaveName(t *testing.T) {
 		{"TestSave_20260627-150405.zip", "TestSave"},
 		{"MyFarm_20260627-120000.zip", "MyFarm"},
 		{"SimpleSave.zip", "SimpleSave"},
+		{"latest_TestSave.zip", "TestSave"},
+		{"scheduled_TestSave.zip", "TestSave"},
+		{"daily_TestSave_20260702.zip", "TestSave"},
+		{"manual_Test_Save_20260702-120000.zip", "Test_Save"},
 	}
 	for _, tt := range tests {
 		got := parseBackupSaveName(tt.input)

@@ -321,7 +321,7 @@ Milestones 0-4 do not need to be rewritten. Any temporary Stardew single-instanc
 
 ## License And Third-Party Notice
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
+This project is released under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). See [LICENSE](LICENSE). Project copyright and third-party notices are in [NOTICE](NOTICE).
 
 This project directly pulls and runs JunimoServer container images to provide Stardew Valley dedicated server functionality. JunimoServer is an independent third-party project. Its upstream repository is [stardew-valley-dedicated-server/server](https://github.com/stardew-valley-dedicated-server/server), and its upstream license is the [MIT License](https://github.com/stardew-valley-dedicated-server/server/blob/master/LICENSE). The JunimoServer container images, their bundled components, and their dependencies remain governed by the upstream project and their respective third-party licenses. This repository does not claim ownership of JunimoServer, Stardew Valley, Steam, or any related trademarks, game content, assets, or services.
 
