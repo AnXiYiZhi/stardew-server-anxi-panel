@@ -371,7 +371,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     selectedJob !== null && !isTerminalJobStatus(selectedJob.status) && !sseError
 
   return (
-    <div className="sd-page">
+    <div className="sd-page sd-jobs-page">
       {/* ── 页头 ── */}
       <div className="sd-page-header">
         <img

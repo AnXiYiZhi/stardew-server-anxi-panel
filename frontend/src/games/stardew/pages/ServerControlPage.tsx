@@ -432,7 +432,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const selectedCommandDef = commands.find((c) => c.id === selectedCommand)
 
   return (
-    <div className="sd-page">
+    <div className="sd-page sd-server-page">
       {/* ── 页面标题 ───────────────────────────────────────────────────────── */}
       <div className="sd-page-header">
         <img
@@ -516,7 +516,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 生命周期控制 ───────────────────────────────────────────────────── */}
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-server-lifecycle">
         <div className="sd-srv-section-title">生命周期控制</div>
         <div className="sd-ctrl-row">
           {!waitingForStop ? (
@@ -622,7 +622,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 邀请码 ─────────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-server-invite">
         <div className="sd-srv-section-title">
           邀请码
           <button
@@ -664,7 +664,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 全服喊话 ───────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-server-broadcast">
         <div className="sd-srv-section-title">全服消息</div>
         {isRunning ? (
           <>
@@ -705,7 +705,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 控制台命令 ─────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-server-command">
         <div className="sd-srv-section-title">控制台命令</div>
         {isRunning ? (
           commandsError ? (
@@ -770,7 +770,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 快捷操作 ─────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-server-quick">
         <div className="sd-srv-section-title">快捷操作</div>
         <div className="sd-ctrl-row" style={{ flexWrap: 'wrap', gap: 6 }}>
           <button

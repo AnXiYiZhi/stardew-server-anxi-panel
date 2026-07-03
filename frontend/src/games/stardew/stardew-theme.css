@@ -70,6 +70,7 @@
   --sd-img-bg-wood-side: url("/assets/stardew/ui/backgrounds/background_sidebar_wood_tile.png");
   --sd-img-bg-wood-strip: url("/assets/stardew/ui/backgrounds/background_frame_wood_strip.png");
   --sd-img-bg-black:     url("/assets/stardew/ui/backgrounds/background_app_black.png");
+  --sd-img-page-frame:   url("/assets/stardew/ui/panels/main_page_frame_empty_image2.png");
 
   /* 导航 */
   --sd-img-nav-default: url("/assets/stardew/ui/navigation/nav_item_default_blank.png");
@@ -414,6 +415,40 @@
   opacity: 1;
 }
 
+@media (min-width: 641px) {
+  .sd-sidebar .sd-nav-item {
+    background-color: transparent !important;
+    background-image: url('/assets/stardew/ui/navigation/nav_item_default_wood_blank_image2.png?v=split-sidebar-2') !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: 100% 100% !important;
+    color: #ffe7a4 !important;
+  }
+
+  .sd-sidebar .sd-nav-item.active,
+  .sd-sidebar .sd-nav-item[aria-current="page"],
+  .sd-sidebar .sd-nav-item:hover.active,
+  .sd-sidebar .sd-nav-item:hover[aria-current="page"] {
+    background-color: transparent !important;
+    background-image: url('/assets/stardew/ui/navigation/nav_item_active_wood_blank_image2.png?v=split-sidebar-2') !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: 100% 100% !important;
+    color: #ffe7a4 !important;
+    filter: none !important;
+  }
+
+  .sd-sidebar .sd-nav-item:not(.active):not([aria-current="page"]):hover {
+    background-color: transparent !important;
+    background-image: url('/assets/stardew/ui/navigation/nav_item_hover_wood_blank_image2.png?v=split-sidebar-3') !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: 100% 100% !important;
+    color: #ffe7a4 !important;
+    filter: none !important;
+  }
+}
+
 /* ── 8. 状态点 ───────────────────────────────────────────────────────────── */
 
 /* 小圆点，通常配合 ::before 或 <span> 使用 */
@@ -558,7 +593,7 @@
   --sd-space-5:        20px;
   --sd-card-padding:   10px 14px;  /* 状态卡片、内容卡片通用内边距 */
   --sd-section-gap:    14px;       /* 页面区块间距 */
-  --sd-page-padding:   16px;       /* 页面整体外边距 */
+  --sd-page-padding:   clamp(28px, 2.4vw, 42px); /* 页面整体外边距 */
 }
 
 /* ── 13. 语义提示工具类 ───────────────────────────────────────────────────── */

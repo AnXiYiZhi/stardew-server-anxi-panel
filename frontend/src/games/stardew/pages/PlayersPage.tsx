@@ -355,7 +355,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   }
 
   return (
-    <div className="sd-page">
+    <div className="sd-page sd-players-page">
       <div className="sd-page-header">
         <img
           className="sd-page-icon"
@@ -370,7 +370,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         </div>
       </div>
 
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-players-overview-section">
         <div className="sd-srv-section-title">玩家概览</div>
 
         <div className="sd-players-overview-grid">
@@ -480,7 +480,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         )}
       </div>
 
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-players-info-section">
         <div className="sd-srv-section-title">
           服务器信息
           {isRunning && (
@@ -531,7 +531,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         )}
       </div>
 
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-players-list-section">
         <div className="sd-srv-section-title">
           玩家列表
           {isRunning && playersData?.parseStatus === 'exact' ? (
@@ -636,7 +636,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         )}
       </div>
 
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-players-events-section">
         <div className="sd-srv-section-title">
           玩家活动 / 最近事件
           {recentEvents.length > 0 && (
@@ -679,7 +679,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         )}
       </div>
 
-      <div className="sd-srv-section">
+      <div className="sd-srv-section sd-players-actions-section">
         <div className="sd-srv-section-title">
           管理操作
           {!isAdmin && (

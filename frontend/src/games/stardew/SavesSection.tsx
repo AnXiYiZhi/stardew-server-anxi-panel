@@ -513,6 +513,9 @@ export function SavesSection({
 
   const saves = data?.saves ?? []
   const hasSaves = saves.length > 0
+  const activeSave = data?.activeSaveName
+    ? saves.find((save) => save.isActive || save.name === data.activeSaveName) ?? null
+    : null
   const confirmDeleteSave = saves.find((save) => save.name === confirmDeleteName)
   const confirmDeleteIsActive = Boolean(confirmDeleteSave?.isActive || data?.activeSaveName === confirmDeleteName)
   const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1
@@ -572,11 +575,52 @@ export function SavesSection({
       {/* ── 全局操作结果 ── */}
       {message ? <div className="sd-saves-error">{message}</div> : null}
 
-      {/* ── 活跃存档提示 ── */}
       {data?.activeSaveName ? (
-        <div className="sd-saves-active-hint">
-          <span>下次启动将加载：</span>
-          <strong>{data.activeSaveName}</strong>
+        <div className="sd-saves-active-card">
+          <div className="sd-saves-active-art" aria-hidden="true" />
+          <div className="sd-saves-active-main">
+            <div className="sd-saves-active-eyebrow">当前激活存档</div>
+            <div className="sd-saves-active-title">
+              {activeSave?.farmName || data.activeSaveName}
+              <span className="sd-save-active-tag">当前激活</span>
+            </div>
+            <div className="sd-save-meta">
+              <span>目录：{data.activeSaveName}</span>
+              {activeSave?.farmerName ? <span>农民：{activeSave.farmerName}</span> : null}
+              {activeSave?.gameYear ? (
+                <span>
+                  第 {activeSave.gameYear} 年{' '}
+                  {seasonLabel[activeSave.gameSeason ?? ''] ?? activeSave.gameSeason}{' '}
+                  第 {activeSave.gameDay} 天
+                </span>
+              ) : null}
+              {activeSave?.farmType ? <span>地图：{farmTypeLabel[activeSave.farmType] ?? activeSave.farmType}</span> : null}
+              {activeSave?.fileSizeBytes ? <span>大小：{formatBytes(activeSave.fileSizeBytes)}</span> : null}
+              {activeSave?.modifiedAt ? <span>修改：{new Date(activeSave.modifiedAt).toLocaleString()}</span> : null}
+            </div>
+          </div>
+          <div className="sd-saves-active-actions">
+            <button
+              className="sd-btn-green"
+              disabled={busy || isRunning || !isAdmin}
+              title={
+                !isAdmin
+                  ? '仅管理员可执行此操作'
+                  : isRunning
+                    ? '服务器运行中，请先停止后再启动'
+                    : undefined
+              }
+              onClick={() => void handleSelectAndStart(data.activeSaveName)}
+              type="button"
+            >
+              使用此存档启动
+            </button>
+            {activeSave ? (
+              <button className="sd-btn-tan" disabled={busy} onClick={() => void handleExport(activeSave.name)} type="button">
+                导出
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

@@ -1,5 +1,32 @@
-﻿# SERVER-SAY-1 状态
+﻿# FE-MAIN-PAGE-FRAME-3 状态
+- `FE-MAIN-PAGE-FRAME-3` completed：按用户红框示意，把所有 Stardew 页面共用的中间内容滚动视口重定界为 frame 内侧大矩形。`.sd-main` 四向 inset 改为 top `5.2%`、right `5%`、bottom `6%`、left `4%`（带移动下限和桌面上限），`.sd-main-scroll` 继续在该红框边界内滚动，所有路由统一生效。已验证 `cd frontend; npm.cmd run build` 通过；1750x1113 QA 下主内容区 `1068x1033` 时 inset 为 `55.5/53.4/64.1/42.7px`，390x760 下无横向溢出且滚动正常。
+
+# FE-MAIN-PAGE-FRAME-2 状态
+- `FE-MAIN-PAGE-FRAME-2` completed：修复中间内容区 frame 裁切方案导致模组页无法滚动的回归。`.sd-main` 继续以上一步界定的内侧 frame 边界作为裁切框，负责背景、内框 padding 和 `overflow:hidden`；新增 `.sd-main-scroll` 作为统一滚动视口，负责滚轮/触控板滚动和隐藏原生滚动条；各路由页面继续返回普通 `.sd-page`，避免复杂页面布局被滚动容器规则影响。已验证 `cd frontend; npm.cmd run build` 通过，内置浏览器 QA 在 1280x720 和 390x760 下滚动正常、无横向溢出、console error/warn 为空。
+
+# FE-TOPBAR-IMAGE2-REGEN-1 状态
+- `FE-TOPBAR-IMAGE2-REGEN-1` completed：按用户要求用 image2 参考 `01-overview.png` / `Top bar.png` 重新生成顶栏拆分素材，替换上一批不合格 topbar 资源。外壳为 `topbar_shell_left.png` + `topbar_shell_middle_tile.png` repeat-x + `topbar_shell_right.png`，控件框为独立 `*_9slice.png`，鸡/农场/头像/叶子/绿点/登出/下拉箭头为独立 v2 图标；文字继续由 React 渲染。右端缺失问题已通过重新归一化 `topbar_shell_right.png` 到完整高度修复。已验证前端构建通过、1920x900 顶栏无横向溢出、390x760 移动端顶栏策略正常。
+
+# FE-RIGHT-RAIL-TOP-FROM-BOTTOM-1 状态
+- `FE-RIGHT-RAIL-TOP-FROM-BOTTOM-1` completed：右侧栏上段素材已改为“底段去南瓜/向日葵后旋转 180 度”的版本。处理过程保留原底段文件不变，仅覆盖运行时使用的 `right_rail_shell_top_line_image2.png`，并按新图实测横梁范围同步更新 `.sd-opsrail::before` 的定位/尺寸常量和 stack 顶部留白。已验证前端构建通过，PNG 为 `1871x840` RGBA，alpha 范围 `0..255`，人工预览确认上段不再含南瓜/向日葵且横梁无破洞。
+
+# FE-ASSET-SIDEBAR-3PIECE-1 状态
+- `FE-ASSET-SIDEBAR-3PIECE-1` completed：已从 image2 左侧栏生成三段式可复用背景素材 `panel_side_rail_top_image2.png`、`panel_side_rail_middle_tile_image2.png`、`panel_side_rail_bottom_image2.png`。顶部段保留木质顶部外框和横梁，中段按方案 A 调整为可 `repeat-y` 的纯连续木板/立柱 tile，不含横向分隔线、按钮槽位、暗条、分层隔板或固定行高结构；底部段保留书架、灯笼、盆栽、紫水晶和书本/盒子装饰。三张均为 RGBA 透明 PNG，不含导航按钮、中文文字、菜单图标或按钮高亮。本次仅入库生产素材，尚未改运行时代码。
+
+# FE-SIDEBAR-ROW-BG-1 状态
+- `FE-SIDEBAR-ROW-BG-1` completed：左侧栏运行时已接入三段式背景素材，替换整张空壳背景 `100% 100%` 拉伸。导航 DOM 新增 `.sd-nav-list` / `.sd-nav-row`，每个按钮背后的木板段改由行容器渲染并随按钮布局走，解决背景固定槽位在放大/缩小时与按钮错位的问题。已验证 `cd frontend; npm.cmd run build` 通过；浏览器登录态侧栏截图验证受当前本地账号不可用阻塞。
+- `FE-SIDEBAR-ROW-BG-1` follow-up：为避免 `.sd-nav-list` 滚动条压缩行容器宽度导致中段素材右边框左移，完整 `panel_side_rail_middle_tile_image2.png` 改为只在 `.sd-sidebar` 外层绘制，`.sd-nav-row` 只保留上下阴影槽位感。已验证 `cd frontend; npm.cmd run build` 通过。
+- `FE-SIDEBAR-ROW-BG-1` follow-up：导航按钮宽度改用 `min(86cqi, 210px)`，以侧栏容器宽度为基准，不再因 `.sd-nav-list` 滚动条或行容器宽度变化而缩小。已验证 `cd frontend; npm.cmd run build` 通过。
+- `FE-SIDEBAR-ROW-BG-1` follow-up：桌面 `.sd-nav-list` 保留可滚动但隐藏滚动条，避免滚动条预留宽度把导航行居中区域压窄、导致按钮整体左移。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# SERVER-SAY-1 状态
 - `SERVER-SAY-1` completed：服务器控制页喊话入口已打通。后端 `POST /commands/say` 校验消息后写入 `.local-container/control/commands/broadcast*.json`，由 `StardewAnxiPanel.Control` 在游戏 tick 中调用 Stardew multiplayer chat message 向所有在线玩家发送 `[Panel]` 公告；不依赖不存在的上游 `say` SMAPI 命令。已验证当前 Junimo 镜像包含上游 `/ws chat_send` relay，但面板暂用控制模组文件通道以保持容器网络和部署兼容。
+
+# FE-ASSET-RIGHT-RAIL-SHELL-3PIECE-1 状态
+- `FE-ASSET-RIGHT-RAIL-SHELL-3PIECE-1` completed：已用 image2 重新生成右侧栏三段空壳与三张卡片九宫格素材：`right_rail_shell_top.png`、`right_rail_shell_middle_tile.png`、`right_rail_shell_bottom.png`、`right_card_health_9slice.png`、`right_card_progress_9slice.png`、`right_card_recent_9slice.png`。三段 shell 分别只保留顶部横梁/上边框/藤蔓角饰、左右木柱 + 纯木板 repeat-y 中段、底部木梁 + 南瓜 + 向日葵 + 藤蔓；三张卡片框不含标题、图标、CPU/内存/磁盘文字、进度条、任务列表或按钮文字，内容继续由前端渲染。已用 RGBA/alpha/洋红残留检查和棋盘底人工预览验证。
+
+# FE-RIGHT-RAIL-SPLIT-ASSETS-1 状态
+- `FE-RIGHT-RAIL-SPLIT-ASSETS-1` completed：Stardew Shell 右侧 OpsRail 已从整张 `panel_right_rail_image2.png` 背景方案迁移为拆分素材组合。运行时使用右栏空壳、外层边框、三张九宫格卡片框和三枚标题图标分层渲染；中文标题、健康摘要、任务列表、按钮文字和 Mod 重启提示继续由 React 数据层渲染，`.sd-dot*` 状态点复用原 CSS 动态效果。已验证 `cd frontend; npm.cmd run build`、1280×720 总览页三卡可见、右栏“查看诊断/查看全部任务”跳转成功、390×760 移动端右栏隐藏且无水平溢出，console 无 error/warn。
 
 # FE-SAVE-START-NAV-1 状态
 - `FE-SAVE-START-NAV-1` completed：从存档页发起的选择并启动、创建并启动、上传并启动成功创建任务后会跳转总览页，并触发新邀请码等待态；不再默认跳到任务页。
@@ -91,6 +118,9 @@
 
 - `NEXUS-3` completed：Nexus Mods 无 Key GraphQL 搜索、v1 REST/下载链路 Key-gated、一键安装、`mod_nexus_install` job 进度、下载安装后复用现有 ZIP 安全导入、已安装 Mod Nexus 元数据 sidecar、前端搜索/已安装同款卡片展示已完成。
 - 后续仍可优化：真实 Nexus 权限差异（手动下载限制、会员下载、OAuth）下的错误提示细分；多文件 Mod 的文件选择 UI；依赖/更新检查。
+
+# FE-SIDEBAR-SPLIT-ASSETS-1 状态
+- `FE-SIDEBAR-SPLIT-ASSETS-1` completed：Stardew Shell 左侧栏已从整张带文字按钮的 `panel_side_rail_image2.png` 透明热区方案迁移为拆分素材组合。桌面端使用左栏空壳作为唯一背景并填满侧栏格子，default / hover / active 三张按钮底图分别承担未选中、悬停、当前页状态，9 个独立导航图标和 React 中文 label；保留现有 9 路由、点击跳转、active、高亮、focus-visible 和移动端横向图标导航。侧栏四周用 CSS 像素边框补强；底部独立装饰层暂不接入运行时，避免与空壳底部残留装饰重复。已验证 `cd frontend; npm.cmd run build`、桌面 `overview -> server -> diagnostics` 点击跳转、390×760 移动视口无水平溢出，console 无 error/warn。
 
 # 未来路线
 
@@ -299,3 +329,84 @@ Multi Game Mode later
 - `PERF-REVIEW-1` completed：完成一轮低风险性能/冗余/内存优化。后端存档主 XML 的 farm type 兜底改为流式扫描，备份 ZIP 元数据不再无条件读入完整主存档 entry；Nexus sidecar 展示元数据判断改为按 modId 预建 map。前端 `ModsPage` 合并已安装 Mod 派生数据统计并用 `useMemo` 缓存，减少频繁局部 state 更新下的重复排序/过滤和临时数组分配。
 # VNC-CONTROL-1 状态
 - `VNC-CONTROL-1` completed：服务器控制页新增管理员 VNC 操作入口。页面刷新后会先通过面板后端代理 Junimo `GET /rendering` 恢复真实渲染状态；`打开VNC显示` 通过 `POST /rendering?fps=15` 打开服务端画面渲染，成功后切换为 `关闭VNC显示` 并可通过 `fps=0` 关闭；`跳转VNC控制` 默认隐藏，仅在显示渲染打开后出现，按当前面板 hostname + 自定义 `vncPort` 打开 noVNC 页面。前端不接触 Junimo API key，VNC 密码不回显。
+# FE-PROTOTYPE-LAYOUT-1 状态
+- `FE-PROTOTYPE-LAYOUT-1` completed：前端主要 Stardew 页面已按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30` 的信息架构重新排布。总览页对齐农场横幅、生命周期控制、邀请码、摘要指标和三列摘要；存档页新增当前激活存档重点卡；服务器、任务、玩家、模组、诊断、设置页通过页面级布局 class 调整为原型式分区。现有 API 和功能不变，`ModsPage` 保留三段式工作台。
+# FE-SHELL-IMAGE2-1 状态
+- `FE-SHELL-IMAGE2-1` completed：Stardew Shell 顶栏已替换为 image2 `Top bar.png`，左侧导航迁移到 `Left panel.png`，右侧任务栏迁移到 `01-overview-right-sidebar-empty-image2.png`。顶栏继续显示运行/停止状态、当前农场名、面板版本、管理员/普通用户和登出入口；左侧栏用透明热区承接原九路由点击逻辑，移动端保留横向图标导航；右侧 OpsRail 保留健康和任务状态逻辑。
+
+# FE-TOPBAR-SPLIT-ASSETS-1 状态
+- `FE-TOPBAR-SPLIT-ASSETS-1` completed：Stardew Shell 顶栏已从整张 `panel_top_bar_image2.png` 可见背景迁移为 `frontend/public/assets/stardew/ui/topbar/` 下的拆分素材组合。横栏空壳使用三段式 shell，品牌、状态框、农场框、版本框、用户框、头像、下拉箭头和登出按钮均分层渲染；状态红绿点继续复用现有 `.sd-dot` / `.sd-dot-pulse` 动态逻辑，没有改成图片。现有状态/存档/版本/用户/登出点击行为和数据来源保持不变，移动端无横向溢出。
+
+# FE-ASSET-TOP-BAR-SHELL-1 状态
+- `FE-ASSET-TOP-BAR-SHELL-1` completed：已从 image2 `Top bar.png` 生成可复用顶栏木质背景空壳素材 `panel_top_bar_shell_empty_image2.png`。素材为透明 PNG，移除鸡图标、品牌字、状态徽章、农场/版本/角色槽、登出按钮和所有图标文字，只保留木纹横栏、金棕边框、四角装饰和像素阴影；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-TOP-BAR-CORNERS-1 状态
+- `FE-ASSET-TOP-BAR-CORNERS-1` completed：已生成并入库顶栏四角像素装饰素材。新增左上、右上、左下、右下 4 个透明 PNG 和 `topbar_corner_ornaments_sprite_sheet_2x2_image2.png`；素材只保留金棕木质/金属角标、像素阴影和高光，不含顶栏背景、文字、按钮、图标或状态徽章，当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-TOP-BAR-CHICKEN-1 状态
+- `FE-ASSET-TOP-BAR-CHICKEN-1` completed：已生成并入库顶栏左侧品牌鸡图标素材 `icon_topbar_chicken_image2.png`。素材为透明 PNG，只保留白色鸡本体、红色鸡冠、黄色喙、橙色脚、像素描边、阴影和高光，不含品牌文字、顶栏木质背景或其它 UI 元素；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-TOP-BAR-BRAND-GLOW-1 状态
+- `FE-ASSET-TOP-BAR-BRAND-GLOW-1` completed：已生成并入库顶栏品牌文字暖黄色发光/阴影占位素材 `topbar_brand_text_glow_placeholder_image2.png`。素材为透明 PNG，不含实际文字、鸡图标或木质顶栏背景，仅供前端动态渲染品牌文字时作为底层光效；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-FARM-SELECT-FRAME-1 状态
+- `FE-ASSET-FARM-SELECT-FRAME-1` completed：已生成并入库顶栏农场选择框空底图 `field_topbar_farm_select_empty_image2.png`。素材为透明 PNG，只保留金棕像素边框、暗棕木纹内容底、像素阴影和下拉框外形，已移除农场图标、农场名、下拉箭头和顶栏背景；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-FARM-SELECT-3PIECE-1 状态
+- `FE-ASSET-FARM-SELECT-3PIECE-1` completed：已生成并入库农场选择框三段式透明素材和 `field_topbar_farm_select_3piece_sheet_image2.png`。左端/中段/右端均不含农场图标、农场名或下拉箭头，中段可横向平铺；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-DROPDOWN-ARROW-1 状态
+- `FE-ASSET-DROPDOWN-ARROW-1` completed：已生成并入库顶栏浅金色下拉箭头图标 `icon_dropdown_arrow_gold_image2.png`。素材为透明 PNG，只保留像素箭头、暗色描边和阴影，不含农场框、用户框或文字；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-VERSION-BADGE-FRAME-1 状态
+- `FE-ASSET-VERSION-BADGE-FRAME-1` completed：已生成并入库版本号小框空底图 `field_topbar_version_badge_empty_image2.png`。素材为透明 PNG，只保留棕色/金色像素边框、暗木纹内部、阴影和高光，不含版本号文字或顶栏背景；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-USER-ROLE-FRAME-1 状态
+- `FE-ASSET-USER-ROLE-FRAME-1` completed：已生成并入库用户角色框空底图 `field_topbar_user_role_empty_image2.png`。素材为透明 PNG，只保留木质/金色边框、暗棕内容底、像素阴影和高光，已移除头像、角色文字、下拉箭头和顶栏背景；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-USER-ROLE-3PIECE-1 状态
+- `FE-ASSET-USER-ROLE-3PIECE-1` completed：已生成并入库用户角色框三段式透明素材和 `field_topbar_user_role_3piece_sheet_image2.png`。左端/中段/右端均不含头像、角色文字或下拉箭头，中段可横向平铺；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-TOP-BAR-USER-AVATAR-1 状态
+- `FE-ASSET-TOP-BAR-USER-AVATAR-1` completed：已生成并入库顶栏用户头像图标 `icon_topbar_user_avatar_image2.png`。素材为透明 PNG，只保留橙色头发、蓝色衣服、脸部细节、像素描边和高光，不含用户框背景、文字或箭头；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-LOGOUT-BUTTON-FRAME-1 状态
+- `FE-ASSET-LOGOUT-BUTTON-FRAME-1` completed：已生成并入库红色登出按钮空底图 `button_topbar_logout_empty_image2.png`。素材为透明 PNG，只保留红色按钮底、暗红/金棕边框、像素阴影、高光和按键质感，已移除登出图标、文字和顶栏背景；当前仅入库生产素材，尚未接入 Shell。
+
+# FE-ASSET-LEFT-RAIL-SHELL-1 状态
+- `FE-ASSET-LEFT-RAIL-SHELL-1` completed：已从 image2 `Left panel.png` 生成可复用左侧栏木质背景空壳素材 `panel_side_rail_shell_empty_image2.png`。素材为透明 PNG，移除导航按钮、菜单文字、菜单图标和按钮状态残影，保留木框、深色木纹、横向分隔、底部置物架与装饰区；当前仅入库生产素材，尚未切换 Shell 引用。
+# FE-ASSET-NAV-BUTTON-DEFAULT-1 状态
+- `FE-ASSET-NAV-BUTTON-DEFAULT-1` completed：已从 image2 `Left panel.png` 提取并重绘默认态左侧导航按钮空底图 `nav_item_default_wood_blank_image2.png`。素材为透明 PNG，移除中文文字、菜单图标和侧栏背景，只保留木质按钮、金棕边框、像素角饰、内侧阴影和高光；当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-NAV-BUTTON-ACTIVE-1 状态
+- `FE-ASSET-NAV-BUTTON-ACTIVE-1` completed：已生成并抠图入库激活态左侧导航按钮空底图 `nav_item_active_wood_blank_image2.png`。素材为透明 PNG，宽度对齐默认态按钮，保留木质中心、亮金色双边框、像素角饰和轻微暖色发光；不含文字、图标和侧栏背景，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-NAV-BUTTON-HOVER-1 状态
+- `FE-ASSET-NAV-BUTTON-HOVER-1` completed：已生成并入库悬停态左侧导航按钮空底图 `nav_item_hover_wood_blank_image2.png`。素材为透明 PNG，尺寸对齐默认态按钮 `442x138`，在木质主体上加入轻微金色高光，状态介于默认态和激活态之间；不含文字、图标和侧栏背景，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-SIDEBAR-DECOR-PROPS-1 状态
+- `FE-ASSET-SIDEBAR-DECOR-PROPS-1` completed：已从 image2 `Left panel.png` 重生成左侧栏底部装饰整组与单件素材。覆盖整组 `sidebar_bottom_decor_props_group_image2.png`，以及单独灯笼、盆栽、紫水晶三个透明 PNG；整组可带木架，单件均不带菜单文字、导航按钮或侧栏背景，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-NAV-ICONS-IMAGE2-1 状态
+- `FE-ASSET-NAV-ICONS-IMAGE2-1` completed：已生成并入库 image2 左侧导航 9 枚透明图标和 3x3 sprite sheet。图标包括总览地图、服务器机柜、存档宝箱、任务日志卷轴、玩家头像、模组绿色晶体、诊断监视器、安装纸箱和设置齿轮；均不含按钮底图、中文文字或侧栏背景，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-RIGHT-RAIL-SHELL-1 状态
+- `FE-ASSET-RIGHT-RAIL-SHELL-1` completed：已生成并入库右侧栏木质背景空壳素材 `panel_right_rail_shell_empty_image2.png`。素材为透明 PNG，移除原右侧栏内部三块卡片、标题文字、图标、状态点、进度条和任务内容，只保留外层立柱、完整顶部横梁、深棕内底、藤蔓、底部基座和南瓜/向日葵装饰；当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-RIGHT-RAIL-BORDER-1 状态
+- `FE-ASSET-RIGHT-RAIL-BORDER-1` completed：已生成并入库右侧栏外层木质边框素材 `panel_right_rail_outer_border_image2.png`。素材为透明 PNG，中间区域完全透明，只保留最外侧左右竖梁、顶部/底部边缘、像素阴影、金棕木质雕刻和外框藤蔓点缀；不含内部卡片、文字、图标、进度条、任务内容和底部南瓜/向日葵装饰，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-RIGHT-RAIL-CARDS-1 状态
+- `FE-ASSET-RIGHT-RAIL-CARDS-1` completed：已生成并入库右侧栏三张卡片空框素材 `panel_right_rail_card_health_empty_image2.png`、`panel_right_rail_card_in_progress_empty_image2.png`、`panel_right_rail_card_recent_tasks_empty_image2.png`。三张素材为透明 PNG，分别对应系统健康、进行中和近期任务卡片，只保留木质边框、深棕内容底、金棕角饰、藤蔓和像素阴影；不含标题文字、图标、状态点、进度条、内部横线、任务列表或其它动态内容，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-RIGHT-RAIL-CARDS-NINESLICE-1 状态
+- `FE-ASSET-RIGHT-RAIL-CARDS-NINESLICE-1` completed：已生成并入库右侧栏三张九宫格卡片框素材 `panel_right_rail_card_health_nineslice_image2.png`、`panel_right_rail_card_in_progress_nineslice_image2.png`、`panel_right_rail_card_recent_tasks_nineslice_image2.png`。三张素材为透明 PNG，四角装饰完整，边框中段更规则，中心保留深棕木纹/皮革纹理；不含文字、图标、状态点、进度条、内部横线、任务列表或参考线，当前仅入库生产素材，尚未接入 Shell。
+# FE-ASSET-RIGHT-RAIL-TITLE-ICONS-1 状态
+- `FE-ASSET-RIGHT-RAIL-TITLE-ICONS-1` completed：已生成并入库右侧栏三枚标题图标 `icon_right_rail_health_heart_image2.png`、`icon_right_rail_in_progress_clock_image2.png`、`icon_right_rail_recent_tasks_clipboard_image2.png`。三枚素材为透明 PNG，分别对应系统健康红心、进行中蓝色时钟和近期任务剪贴板，只保留图标本体、像素描边、阴影和高光；不含文字、卡片框、右侧栏背景、进度条、状态点或列表内容，当前仅入库生产素材，尚未接入 Shell。
+# FE-RIGHT-RAIL-3PIECE-RUNTIME-1 状态
+
+- `FE-RIGHT-RAIL-3PIECE-RUNTIME-1` completed：右侧 OpsRail 运行时已接入新三段外壳，顶部固定段使用 `right_rail_shell_top.png`，中段使用 `right_rail_shell_middle_tile.png` 纵向 `repeat-y`，底部固定段使用 `right_rail_shell_bottom.png`。不再在生效规则里用整张右栏 shell 或整张截图做 `100% 100%` 拉伸。
+- 三张信息卡片已改用 `right_card_health_9slice.png`、`right_card_progress_9slice.png`、`right_card_recent_9slice.png` 作为 `border-image` 九宫格卡片框；标题、图标、健康状态、任务列表、按钮文字和状态点仍由 React/CSS 动态渲染。
+- 已验证 `cd frontend; npm.cmd run build` 通过；本地浏览器 QA 覆盖 1280x720、1280x900、1280x560、390x760，确认中段不纵向拉伸、矮窗口 stack 内部滚动、移动端隐藏右栏、console error/warn 为空。
+# FE-RIGHT-RAIL-PROTOTYPE-ALIGN-1 状态
+
+- `FE-RIGHT-RAIL-PROTOTYPE-ALIGN-1` completed：右侧 OpsRail 已按 `01-overview-right-sidebar-empty-image2.png` 原型继续调整运行时比例。右栏列宽改为 `clamp(340px, 27vw, 430px)`；顶部 shell 裁掉上方透明安全边后贴顶；底部 shell 按可见装饰区贴底；卡片收回左右木柱内侧并移除外投影，修复上下边框不贴边和左右边框被横向阴影切断的问题。已验证 `cd frontend; npm.cmd run build` 通过，本地 QA 页面 1280x900 截图确认顶部贴边、侧柱连续、卡片位于内框范围且 console error/warn 为空。
+
+# FE-RIGHT-RAIL-BLACK-EDGE-FIX-1 状态
+
+- `FE-RIGHT-RAIL-BLACK-EDGE-FIX-1` completed：修复右侧 OpsRail 三段 shell 接入后左右两侧露黑的问题。中段 `right_rail_shell_middle_tile.png` 改为 121% 横向 overscan 后居中 `repeat-y`，top/bottom 固定段按 108% 横向 overscan 并同步调整高度和 stack 扣底部装饰高度；兜底色改为木板棕。已验证 `cd frontend; npm.cmd run build` 通过，本地 QA 页面 1280x720 / 1280x560 截图确认黑边消失且矮窗口仍内部滚动。
+
+# FE-MAIN-PAGE-FRAME-1 状态
+- `FE-MAIN-PAGE-FRAME-1` completed：所有 Stardew 路由的中间主内容区 `.sd-main` 已统一替换为 image2 存档页空框背景 `main_page_frame_empty_image2.png`。资源从 `docs/prototypes/.../03-saves-page-frame-empty-image2.png` 复制到 `frontend/public/assets/stardew/ui/panels/` 供运行时和 Docker 静态发布使用；主内容背景改为居中、不重复、`100% 100%` 铺满，并把页面整体 padding 调整为 `clamp(28px, 2.4vw, 42px)` 避免压到木框角饰。主内容区仍保留 `overflow-y: auto`，但已隐藏 Firefox/Chromium/WebKit 原生滚动条，避免白色竖条压住右侧 frame 边框。已验证前端构建通过，生产 CSS 临时 Shell QA 页在 1280x720 和 390x760 下背景加载、滚动条隐藏、滚动能力保留、无横向溢出、console error/warn 为空。
