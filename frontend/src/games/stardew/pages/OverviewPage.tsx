@@ -365,83 +365,60 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
         {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
       </div>
 
-      {/* 主体双栏 */}
-      <div className="sd-ov-body">
-        {/* 左栏：指标 + 玩家 */}
-        <div className="sd-ov-left">
-          <div className="sd-ov-title" style={{ padding: '5px 8px 0' }}>服务器状态</div>
-          <div className="sd-metric-grid">
-            {/* 存档 */}
-            <div className={`sd-mc${dashboardData.savesError ? ' sd-mc--error' : !activeSave ? ' sd-mc--warn' : ''}`}>
-              <div className="sd-mc-name">存档</div>
-              <div className="sd-mc-val">{saveCount}</div>
-              <div className="sd-mc-sub">
-                {activeSave
-                  ? activeSave
-                  : dashboardData.savesError
-                    ? '读取失败'
-                    : '暂无激活存档'}
-              </div>
-            </div>
-
-            {/* 模组 */}
-            <div className={`sd-mc${dashboardData.modsError ? ' sd-mc--error' : modRestartRequired ? ' sd-mc--warn' : ''}`}>
-              <div className="sd-mc-name">
-                模组
-                {modRestartRequired ? (
-                  <span
-                    style={{ color: '#d08010', fontWeight: 700, marginLeft: 4, fontSize: 9 }}
-                  >
-                    ⚠需重启
-                  </span>
-                ) : null}
-              </div>
-              <div className="sd-mc-val">{modCount}</div>
-              <div className="sd-mc-sub">
-                {dashboardData.modsError ? '读取失败' : modRestartRequired ? '有模组变更待应用' : '状态正常'}
-              </div>
-            </div>
-
-            {/* 系统健康 */}
-            <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus === 'warning' ? ' sd-mc--warn' : healthStatus === 'error' ? ' sd-mc--error' : ''}`}>
-              <div className="sd-mc-name">系统健康</div>
-              <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : healthStatus === 'warning' ? '#d08010' : healthStatus === 'error' ? '#c02020' : '#2c1a0a' }}>
-                {healthStatus === 'ok' ? '✓ 正常' : healthStatus === 'warning' ? `${warnCount}警告` : healthStatus === 'error' ? `${errorCount}错误` : '—'}
-              </div>
-              <div className="sd-mc-sub">
-                {healthStatus === 'ok'
-                  ? `${okCount}项全部通过`
-                  : healthStatus === 'warning'
-                    ? `${errorCount === 0 ? '' : `${errorCount}错误 · `}${okCount}正常`
-                    : healthStatus === 'error'
-                      ? `${warnCount}警告 · ${okCount}正常`
-                      : dashboardData.healthError
-                        ? '健康检查失败'
-                        : '检查中…'}
-              </div>
-            </div>
-
-            {/* 运行任务 */}
-            <div className={`sd-mc${hasFailedJob ? ' sd-mc--error' : ''}`}>
-              <div className="sd-mc-name">运行任务</div>
-              <div
-                className="sd-mc-val"
-                style={{ color: hasFailedJob ? '#c02020' : '#2c1a0a' }}
-              >
-                {activeJobCount}
-              </div>
-              <div className="sd-mc-sub">
-                {hasFailedJob ? '最近有失败任务' : activeJobCount > 0 ? '进行中' : '无活跃任务'}
-              </div>
-            </div>
+      <div className="sd-metric-grid sd-ov-metric-strip" aria-label="服务器摘要">
+        <div className={`sd-mc${dashboardData.savesError ? ' sd-mc--error' : !activeSave ? ' sd-mc--warn' : ''}`}>
+          <div className="sd-mc-name">存档</div>
+          <div className="sd-mc-val">{saveCount}</div>
+          <div className="sd-mc-sub">
+            {activeSave
+              ? activeSave
+              : dashboardData.savesError
+                ? '读取失败'
+                : '暂无激活存档'}
           </div>
+        </div>
 
-          <div className="sd-player-hd">
-            在线玩家
+        <div className={`sd-mc${dashboardData.modsError ? ' sd-mc--error' : modRestartRequired ? ' sd-mc--warn' : ''}`}>
+          <div className="sd-mc-name">模组</div>
+          <div className="sd-mc-val">{modCount}</div>
+          <div className="sd-mc-sub">
+            {dashboardData.modsError ? '读取失败' : modRestartRequired ? '有模组变更待应用' : '状态正常'}
           </div>
-          <div
-            className="sd-ov-player-body"
-          >
+        </div>
+
+        <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus === 'warning' ? ' sd-mc--warn' : healthStatus === 'error' ? ' sd-mc--error' : ''}`}>
+          <div className="sd-mc-name">系统健康</div>
+          <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : healthStatus === 'warning' ? '#d08010' : healthStatus === 'error' ? '#c02020' : '#2c1a0a' }}>
+            {healthStatus === 'ok' ? '100%' : healthStatus === 'warning' ? `${warnCount}警告` : healthStatus === 'error' ? `${errorCount}错误` : '—'}
+          </div>
+          <div className="sd-mc-sub">
+            {healthStatus === 'ok'
+              ? `${okCount}项全部通过`
+              : healthStatus === 'warning'
+                ? `${errorCount === 0 ? '' : `${errorCount}错误 · `}${okCount}正常`
+                : healthStatus === 'error'
+                  ? `${warnCount}警告 · ${okCount}正常`
+                  : dashboardData.healthError
+                    ? '健康检查失败'
+                    : '检查中…'}
+          </div>
+        </div>
+
+        <div className={`sd-mc${hasFailedJob ? ' sd-mc--error' : ''}`}>
+          <div className="sd-mc-name">运行任务</div>
+          <div className="sd-mc-val" style={{ color: hasFailedJob ? '#c02020' : '#2c1a0a' }}>
+            {activeJobCount}
+          </div>
+          <div className="sd-mc-sub">
+            {hasFailedJob ? '最近有失败任务' : activeJobCount > 0 ? '进行中' : '无活跃任务'}
+          </div>
+        </div>
+      </div>
+
+      <div className="sd-ov-summary-grid">
+        <section className="sd-ov-card">
+          <div className="sd-player-hd">在线玩家</div>
+          <div className="sd-ov-player-body">
             {onlinePlayers.length > 0 ? (
               <div className="sd-ov-player-list">
                 {onlinePlayers.slice(0, 4).map((player) => (
@@ -460,18 +437,14 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             ) : (
               <span>服务器运行后显示在线玩家。</span>
             )}
-            <button
-              className="sd-btn-tan"
-              onClick={() => onNavigate('players')}
-            >
-              玩家管理
-            </button>
           </div>
-        </div>
+          <button className="sd-all-logs-btn" onClick={() => onNavigate('players')}>
+            查看全部玩家 →
+          </button>
+        </section>
 
-        {/* 右栏：事件 + 模组摘要 */}
-        <div className="sd-ov-right">
-          <div className="sd-ev-title">任务与事件</div>
+        <section className="sd-ov-card">
+          <div className="sd-ev-title">近期事件</div>
           <div className="sd-ev-list">
             {recentJobs.length > 0 ? (
               recentJobs.map((j) => (
@@ -505,47 +478,41 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
                 </div>
               ))
             ) : dashboardData.loading ? (
-              <div style={{ padding: '4px 8px', color: '#8a7060', fontSize: 10, fontStyle: 'italic' }}>
-                读取中…
-              </div>
+              <div className="sd-ov-empty">读取中…</div>
             ) : (
-              <div style={{ padding: '4px 8px', color: '#8a7060', fontSize: 10, fontStyle: 'italic' }}>
-                暂无事件记录
-              </div>
+              <div className="sd-ov-empty">暂无事件记录</div>
             )}
           </div>
           <button className="sd-all-logs-btn" onClick={() => onNavigate('jobs')}>
             查看全部任务 →
           </button>
+        </section>
 
+        <section className="sd-ov-card">
+          <div className="sd-pack-title">模组状态</div>
           <div className="sd-pack-section">
-            <div className="sd-pack-title">模组状态</div>
             <div className="sd-pack-row">
-              <span className="sd-pack-name">已安装模组</span>
-              <span style={{ color: '#4a9e30', fontSize: 9.5 }}>
+              <span className="sd-pack-name">已安装</span>
+              <span style={{ color: '#4a9e30', fontSize: 12 }}>
                 {dashboardData.mods ? `${modCount} 个` : '—'}
               </span>
             </div>
-            {modRestartRequired ? (
-              <div className="sd-pack-row">
-                <span className="sd-pack-name">模组变更</span>
-                <span style={{ color: '#d08010', fontWeight: 700, fontSize: 9.5 }}>需要重启</span>
-              </div>
-            ) : null}
-            <div className="sd-pack-row" style={{ borderBottom: 'none', paddingTop: 5 }}>
+            <div className="sd-pack-row">
+              <span className="sd-pack-name">运行状态</span>
+              <span style={{ color: modRestartRequired ? '#d08010' : '#4a9e30', fontWeight: 700, fontSize: 12 }}>
+                {modRestartRequired ? '需要重启' : '正常'}
+              </span>
+            </div>
+            <div className="sd-pack-row" style={{ borderBottom: 'none', paddingTop: 7 }}>
               <button className="sd-btn-tan" onClick={() => onNavigate('mods')}>
                 管理模组
               </button>
-              <button
-                className="sd-btn-tan"
-                style={{ marginLeft: 4 }}
-                onClick={() => onNavigate('diagnostics')}
-              >
-                诊断
+              <button className="sd-btn-tan" style={{ marginLeft: 4 }} onClick={() => onNavigate('diagnostics')}>
+                查看诊断
               </button>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
       {/* 危险操作确认弹框 */}

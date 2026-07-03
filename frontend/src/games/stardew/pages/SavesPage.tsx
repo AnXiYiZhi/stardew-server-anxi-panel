@@ -3,7 +3,7 @@ import { SavesSection } from '../SavesSection'
 
 export function SavesPage({ user, instanceState, dashboardData, onNavigate, saveActionRequest }: StardewPageProps) {
   return (
-    <div className="sd-page">
+    <div className="sd-page sd-saves-page">
       <div className="sd-page-header">
         <img
           className="sd-page-icon"

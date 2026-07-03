@@ -1743,7 +1743,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   }
 
   return (
-    <div className="sd-page">
+    <div className="sd-page sd-mods-page">
       <div className="sd-mods-header">
         <div className="sd-mods-header-left">
           <img

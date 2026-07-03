@@ -291,7 +291,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   // ── render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="sd-page">
+    <div className="sd-page sd-diag-page">
       {/* 页头 */}
       <div className="sd-diag-header">
         <div className="sd-diag-header-left">
@@ -380,60 +380,66 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
         </div>
       )}
 
-      {/* 检查项列表 */}
-      {checks.length > 0 && (
-        <>
-          <div className="sd-diag-section-title">检查项明细</div>
-          <div className="sd-diag-checks">
-            {checks.map((c) => (
-              <CheckRow key={c.name} check={c} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* 告警与建议 */}
-      <div className="sd-diag-section-title" style={{ marginTop: 14 }}>
-        告警与建议
-      </div>
-      {alerts.length === 0 ? (
-        <div className="sd-diag-alert-empty">
-          <span className="sd-dot sd-dot-green" aria-hidden="true" />
-          {data ? '暂无告警，所有检查项均正常' : '暂无数据，请先点击「重新检查」'}
-        </div>
-      ) : (
-        <div className="sd-diag-alerts">
-          {alerts.map((c) => (
-            <div key={c.name} className={`sd-diag-alert-row sd-diag-alert-${c.status}`}>
-              <StatusDot status={c.status} />
-              <div className="sd-diag-alert-content">
-                <span className="sd-diag-alert-name">{checkNameLabel(c.name)}</span>
-                <span className="sd-diag-alert-msg">{c.message}</span>
+      <div className="sd-diag-main-grid">
+        <div className="sd-diag-primary">
+          {/* 检查项列表 */}
+          {checks.length > 0 && (
+            <>
+              <div className="sd-diag-section-title">检查项明细</div>
+              <div className="sd-diag-checks">
+                {checks.map((c) => (
+                  <CheckRow key={c.name} check={c} />
+                ))}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            </>
+          )}
 
-      {/* 资源趋势 */}
-      <div className="sd-diag-section-title" style={{ marginTop: 14 }}>
-        资源趋势
-        <span className={latestMetric?.containerRunning ? 'sd-diag-live-badge' : 'sd-diag-idle-badge'}>
-          {latestMetric?.containerRunning ? '实时' : '待运行'}
-        </span>
-      </div>
-      <div className="sd-diag-resource-panel">
-        <div className="sd-diag-gauge-grid">
-          <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} color="#3f8f2c" />
-          <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} color="#b06c18" />
-          <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} color="#5d7fb8" />
-        </div>
-        <ResourceTrendChart samples={metricSamples} />
-        {(metricError || latestMetric?.message) && (
-          <div className="sd-diag-resource-note">
-            {metricError ?? latestMetric?.message}
+          {/* 告警与建议 */}
+          <div className="sd-diag-section-title" style={{ marginTop: 14 }}>
+            告警与建议
           </div>
-        )}
+          {alerts.length === 0 ? (
+            <div className="sd-diag-alert-empty">
+              <span className="sd-dot sd-dot-green" aria-hidden="true" />
+              {data ? '暂无告警，所有检查项均正常' : '暂无数据，请先点击「重新检查」'}
+            </div>
+          ) : (
+            <div className="sd-diag-alerts">
+              {alerts.map((c) => (
+                <div key={c.name} className={`sd-diag-alert-row sd-diag-alert-${c.status}`}>
+                  <StatusDot status={c.status} />
+                  <div className="sd-diag-alert-content">
+                    <span className="sd-diag-alert-name">{checkNameLabel(c.name)}</span>
+                    <span className="sd-diag-alert-msg">{c.message}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="sd-diag-resource-wrap">
+          {/* 资源趋势 */}
+          <div className="sd-diag-section-title">
+            资源趋势
+            <span className={latestMetric?.containerRunning ? 'sd-diag-live-badge' : 'sd-diag-idle-badge'}>
+              {latestMetric?.containerRunning ? '实时' : '待运行'}
+            </span>
+          </div>
+          <div className="sd-diag-resource-panel">
+            <div className="sd-diag-gauge-grid">
+              <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} color="#3f8f2c" />
+              <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} color="#b06c18" />
+              <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} color="#5d7fb8" />
+            </div>
+            <ResourceTrendChart samples={metricSamples} />
+            {(metricError || latestMetric?.message) && (
+              <div className="sd-diag-resource-note">
+                {metricError ?? latestMetric?.message}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

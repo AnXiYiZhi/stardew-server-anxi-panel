@@ -1,12 +1,13 @@
 /* ── Stardew Shell 整体布局 ─────────────────────────────────────────────── */
 
 .sd-shell {
+  --sd-topbar-height: clamp(62px, 4.8vw, 80px);
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-rows: var(--sd-topbar-height) minmax(0, 1fr);
   grid-template-columns:
-    clamp(148px, 10vw, 176px)
+    clamp(210px, 16.8vw, 252px)
     minmax(0, 1fr)
-    clamp(280px, 20vw, 360px);
+    clamp(340px, 27vw, 430px);
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -20,108 +21,392 @@
 .sd-topbar {
   grid-column: 1 / -1;
   background-color: #180d04;
-  background-image: var(--sd-img-bg-wood-strip);
-  background-repeat: repeat-x;
-  background-size: auto 100%;
-  border-bottom: 2px solid #3d2510;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  border-bottom: 0;
+  position: relative;
+  display: block;
+  height: var(--sd-topbar-height);
+  min-height: 62px;
+  padding: 0;
   overflow: hidden;
-}
-
-.sd-topbar-brand {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
-
-.sd-topbar-logo {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
   image-rendering: pixelated;
 }
 
-.sd-topbar-name {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #ffe6b6;
-  white-space: nowrap;
+.sd-topbar-bg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns:
+    calc(var(--sd-topbar-height) * 360 / 170)
+    minmax(0, 1fr)
+    calc(var(--sd-topbar-height) * 360 / 170);
+  pointer-events: none;
 }
 
-.sd-topbar-divider {
-  width: 1px;
-  height: 24px;
-  background: rgba(255, 230, 182, 0.2);
-  flex-shrink: 0;
+.sd-topbar-bg-left,
+.sd-topbar-bg-mid,
+.sd-topbar-bg-right {
+  display: block;
+  min-width: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: auto 100%;
+  image-rendering: pixelated;
 }
 
-.sd-topbar-state {
+.sd-topbar-bg-left {
+  background-image: url('/assets/stardew/ui/topbar/topbar_shell_left.png');
+  background-position: left center;
+}
+
+.sd-topbar-bg-mid {
+  background-image: url('/assets/stardew/ui/topbar/topbar_shell_middle_tile.png');
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+}
+
+.sd-topbar-bg-right {
+  background-image: url('/assets/stardew/ui/topbar/topbar_shell_right.png');
+  background-position: right center;
+}
+
+.sd-topbar-brand {
+  position: absolute;
+  z-index: 2;
+  left: clamp(20px, 3.2vw, 66px);
+  top: 14%;
+  width: min(29.2%, 610px);
+  height: 72%;
   display: flex;
   align-items: center;
-  gap: 5px;
-  flex: 1;
+  gap: clamp(10px, 1.15vw, 22px);
   min-width: 0;
+  pointer-events: none;
 }
 
-.sd-topbar-state-text {
-  font-size: 0.78rem;
-  color: #c8a87a;
-  white-space: nowrap;
+.sd-topbar-brand-icon {
+  display: block;
+  width: clamp(44px, 4.1vw, 76px);
+  height: clamp(44px, 4.1vw, 76px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(2px 3px 0 rgba(32, 13, 3, 0.55));
+}
+
+.sd-topbar-brand .sd-topbar-brand-icon {
+  content: url('/assets/stardew/ui/topbar/icon_topbar_chicken_image2_v2.png');
+}
+
+.sd-topbar-brand-copy {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+}
+
+.sd-topbar-brand-copy::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: 18%;
+  bottom: 0;
+  background-image: url('/assets/stardew/ui/topbar/topbar-logo-text-bg.png');
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 0.85;
+  image-rendering: pixelated;
+}
+
+.sd-topbar-brand-text {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.sd-topbar-spacer {
-  flex: 1;
-}
-
-.sd-topbar-user {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.sd-topbar-username {
-  font-size: 0.78rem;
-  color: #c8a87a;
   white-space: nowrap;
+  color: #ffe38e;
+  font-size: clamp(18px, 2.2vw, 41px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-shadow:
+    2px 2px 0 #271305,
+    -2px 2px 0 #271305,
+    2px -2px 0 #271305,
+    -2px -2px 0 #271305,
+    0 3px 0 rgba(41, 18, 5, 0.82);
 }
 
-.sd-topbar-logout-btn {
-  height: 24px;
-  padding: 0 9px;
-  border: 1px solid #7a5030;
-  border-radius: 0;
-  background: transparent;
-  color: #c8a87a;
+.sd-topbar-brand-leaf {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: clamp(14px, 1.45vw, 26px);
+  height: clamp(14px, 1.45vw, 26px);
+  margin-left: clamp(4px, 0.5vw, 10px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.6));
+}
+
+.sd-topbar button {
+  position: absolute;
+  z-index: 3;
+  isolation: isolate;
+  border: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
   font: inherit;
-  font-size: 13px;
   cursor: pointer;
-  transition: background 100ms ease;
-  white-space: nowrap;
+  color: #ffe9b0;
+  padding: 0;
+  image-rendering: pixelated;
+  transition: filter 110ms ease, transform 80ms ease;
 }
 
-.sd-topbar-logout-btn:hover {
-  background: rgba(255, 230, 182, 0.12);
-  color: #ffe6b6;
+.sd-topbar button:hover {
+  filter: brightness(1.08);
 }
 
-.sd-topbar-version {
-  font-size: 0.68rem;
-  color: rgba(200, 168, 122, 0.55);
-  white-space: nowrap;
+.sd-topbar button:active {
+  filter: brightness(0.9);
+  transform: translateY(1px);
 }
 
-.sd-topbar-save {
-  display: flex;
+.sd-topbar button:focus-visible {
+  outline: 2px solid #ffd86a;
+  outline-offset: -3px;
+  box-shadow: 0 0 0 2px rgba(45, 20, 5, 0.88);
+}
+
+.sd-topbar-status,
+.sd-topbar-save,
+.sd-topbar-version,
+.sd-topbar-user,
+.sd-topbar-logout-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-shadow:
+    1px 1px 0 #2a1506,
+    -1px 1px 0 #2a1506,
+    1px -1px 0 #2a1506,
+    -1px -1px 0 #2a1506,
+    0 2px 0 rgba(30, 12, 2, 0.7);
+}
+
+.sd-topbar .sd-topbar-status {
+  left: 30.4%;
+  top: 19%;
+  width: 8.4%;
+  height: 56%;
+  gap: clamp(5px, 0.55vw, 10px);
+  padding: 0 clamp(8px, 0.95vw, 16px);
+  border: clamp(7px, 0.58vw, 11px) solid transparent;
+  border-image-source: url('/assets/stardew/ui/topbar/topbar_status_button_9slice.png');
+  border-image-slice: 26 fill;
+  border-image-repeat: stretch;
+  font-size: clamp(12px, 0.92vw, 17px);
+}
+
+.sd-topbar-status .sd-dot {
+  width: clamp(8px, 0.78vw, 13px);
+  height: clamp(8px, 0.78vw, 13px);
+  flex: 0 0 auto;
+}
+
+.sd-topbar-status .sd-dot-green { color: #4caf50; }
+.sd-topbar-status .sd-dot-red { color: #f44336; }
+.sd-topbar-status .sd-dot-yellow { color: #ffb300; }
+.sd-topbar-status .sd-dot-gray { color: #90a4ae; }
+
+.sd-topbar-green-dot {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: clamp(8px, 0.78vw, 13px);
+  height: clamp(8px, 0.78vw, 13px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 1px 0 rgba(25, 11, 3, 0.55));
+}
+
+.sd-topbar-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-topbar .sd-topbar-save {
+  left: 40.3%;
+  top: 12%;
+  width: 19.1%;
+  height: 70%;
+  justify-content: flex-start;
+  gap: clamp(5px, 0.55vw, 10px);
+  padding: 0 clamp(34px, 2.8vw, 54px) 0 clamp(82px, 6.5vw, 112px);
+  border: clamp(8px, 0.62vw, 12px) solid transparent;
+  border-image-source: url('/assets/stardew/ui/topbar/topbar_save_frame_9slice.png');
+  border-image-slice: 26 fill;
+  border-image-repeat: stretch;
+  font-size: clamp(14px, 1.22vw, 22px);
+}
+
+.sd-topbar-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  pointer-events: none;
+}
+
+.sd-topbar-frame-left,
+.sd-topbar-frame-mid,
+.sd-topbar-frame-right {
+  min-width: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: auto 100%;
+  image-rendering: pixelated;
+}
+
+.sd-topbar-frame-mid {
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+}
+
+.sd-topbar-save-frame {
+  display: none;
+  grid-template-columns: clamp(42px, 3.8vw, 70px) minmax(0, 1fr) clamp(42px, 3.8vw, 70px);
+}
+
+.sd-topbar-save-icon {
+  position: absolute;
+  z-index: 1;
+  left: clamp(36px, 3.15vw, 58px);
+  width: clamp(30px, 3.1vw, 58px);
+  height: clamp(28px, 2.9vw, 54px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.6));
+}
+
+.sd-topbar-save-name,
+.sd-topbar-user-role {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-topbar .sd-topbar-version {
+  left: 61.4%;
+  top: 18%;
+  width: 9.1%;
+  height: 58%;
+  padding: 0 clamp(8px, 0.85vw, 16px);
+  border: clamp(7px, 0.58vw, 11px) solid transparent;
+  border-image-source: url('/assets/stardew/ui/topbar/topbar_version_frame_9slice.png');
+  border-image-slice: 26 fill;
+  border-image-repeat: stretch;
+  font-size: clamp(12px, 1.02vw, 18px);
+}
+
+.sd-topbar .sd-topbar-user {
+  left: 73.7%;
+  top: 13%;
+  width: 13.9%;
+  height: 66%;
+  justify-content: flex-start;
+  gap: clamp(5px, 0.5vw, 9px);
+  padding: 0 clamp(28px, 2vw, 42px) 0 clamp(60px, 4.5vw, 78px);
+  border: clamp(8px, 0.62vw, 12px) solid transparent;
+  border-image-source: url('/assets/stardew/ui/topbar/topbar_user_frame_9slice.png');
+  border-image-slice: 26 fill;
+  border-image-repeat: stretch;
+  font-size: clamp(13px, 1.15vw, 20px);
+}
+
+.sd-topbar-user-frame {
+  display: none;
+  grid-template-columns: clamp(34px, 2.9vw, 52px) minmax(0, 1fr) clamp(34px, 2.9vw, 52px);
+}
+
+.sd-topbar-user-avatar {
+  position: absolute;
+  z-index: 1;
+  left: clamp(22px, 1.95vw, 38px);
+  width: clamp(24px, 2.35vw, 44px);
+  height: clamp(28px, 2.8vw, 52px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.55));
+}
+
+.sd-topbar-dropdown {
+  position: absolute;
+  z-index: 1;
+  right: clamp(12px, 1.15vw, 22px);
+  width: clamp(15px, 1.35vw, 25px);
+  height: clamp(12px, 1vw, 19px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.6));
+}
+
+.sd-topbar-user-dot {
+  position: absolute;
+  right: clamp(30px, 2.8vw, 50px);
+  width: clamp(7px, 0.72vw, 12px);
+  height: clamp(7px, 0.72vw, 12px);
+}
+
+.sd-topbar .sd-topbar-logout-btn {
+  left: 89.1%;
+  top: 13%;
+  width: 9.2%;
+  height: 66%;
+  gap: clamp(5px, 0.55vw, 10px);
+  padding: 0 clamp(8px, 0.95vw, 16px);
+  border: clamp(7px, 0.58vw, 11px) solid transparent;
+  border-image-source: url('/assets/stardew/ui/topbar/topbar_logout_button_9slice.png');
+  border-image-slice: 26 fill;
+  border-image-repeat: stretch;
+  color: #fff4c4;
+  font-size: clamp(14px, 1.25vw, 23px);
+}
+
+.sd-topbar-logout-icon {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: clamp(17px, 1.6vw, 30px);
+  height: clamp(17px, 1.6vw, 30px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(25, 11, 3, 0.58));
+}
+
+.sd-topbar-logo,
+.sd-topbar-name,
+.sd-topbar-divider,
+.sd-topbar-state,
+.sd-topbar-state-text,
+.sd-topbar-spacer,
+.sd-topbar-username,
+.sd-topbar-meta-icon {
+  display: none;
 }
 
 .sd-topbar-meta-icon {
@@ -135,20 +420,63 @@
 /* ── 左侧导航栏 ──────────────────────────────────────────────────────────── */
 
 .sd-sidebar {
+  --sd-sidebar-top-art-height: calc(100cqi * 128 / 598);
+  --sd-sidebar-bottom-art-height: calc(100cqi * 409 / 598);
+  --sd-sidebar-top-content-space: clamp(22px, 3.3vh, 34px);
   container-type: inline-size;
   background-color: #180d04;
-  background-image: var(--sd-img-bg-wood-side);
+  background-image: url('/assets/stardew/ui/panels/panel_side_rail_middle_tile_image2.png');
   background-repeat: repeat-y;
   background-size: 100% auto;
+  background-position: center top;
   image-rendering: pixelated;
-  border-right: 2px solid #3d2510;
+  border: 2px solid #211005;
+  box-shadow:
+    inset 0 0 0 2px rgba(122, 72, 28, 0.74),
+    inset 0 0 0 4px rgba(12, 6, 2, 0.55);
+  box-sizing: border-box;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 4px 0;
+  align-items: center;
+  /* 底部预留空间放在 .sd-nav-list 的 margin-bottom 上：cqi 无法在容器自身解析 */
+  padding: var(--sd-sidebar-top-content-space) 0 0;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
+  isolation: isolate;
+}
+
+.sd-sidebar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 0;
+  height: var(--sd-sidebar-top-art-height);
+  pointer-events: none;
+  background-image: url('/assets/stardew/ui/panels/panel_side_rail_top_image2.png');
+  background-repeat: no-repeat;
+  background-position: top center;
+  background-size: 100% auto;
+  image-rendering: pixelated;
+}
+
+.sd-sidebar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  height: var(--sd-sidebar-bottom-art-height);
+  pointer-events: none;
+  background-image: url('/assets/stardew/ui/panels/panel_side_rail_bottom_image2.png');
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: 100% auto;
+  image-rendering: pixelated;
 }
 
 .sd-sidebar-head {
@@ -168,10 +496,44 @@
 }
 
 .sd-nav-divider {
-  height: 1px;
-  background: rgba(255, 230, 182, 0.12);
-  margin: 4px 6px;
-  flex-shrink: 0;
+  display: none;
+}
+
+.sd-nav-list {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-height: 0;
+  margin-bottom: var(--sd-sidebar-bottom-art-height);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.sd-nav-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.sd-nav-row {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: clamp(2px, 0.34vh, 4px) 0;
+  background: transparent;
+  image-rendering: pixelated;
+  box-shadow:
+    inset 0 1px 0 rgba(151, 91, 37, 0.18),
+    inset 0 -2px 0 rgba(13, 6, 2, 0.38);
 }
 
 .sd-sidebar-help {
@@ -196,88 +558,176 @@
 }
 
 .sd-sidebar .sd-nav-item {
-  --sd-nav-w: 110;
-  --sd-nav-h: 29;
-  --sd-nav-active-w: 106;
-  --sd-nav-active-h: 29;
-  --sd-nav-pad-left: 10;
-  --sd-nav-pad-right: 7;
-  --sd-nav-gap: 4;
-  --sd-nav-text-w: 60;
   position: relative;
-  width: calc(100cqi * var(--sd-nav-w) / 105);
-  box-sizing: border-box;
-  min-height: calc(100cqi * var(--sd-nav-h) / 105);
-  gap: calc(100cqi * var(--sd-nav-gap) / 105);
-  padding: 0 calc(100cqi * var(--sd-nav-pad-right) / 105) 0 calc(100cqi * var(--sd-nav-pad-left) / 105);
-  margin: 0;
-  background-image: none;
-  background-color: transparent;
-  image-rendering: pixelated;
-  font-size: clamp(11px, 7.6cqi, 13px);
-  line-height: 1;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: clamp(24px, 20cqi, 40px) minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-start;
+  justify-items: start;
+  gap: clamp(5px, 3.4cqi, 9px);
+  width: min(86cqi, 210px);
+  aspect-ratio: 442 / 138;
+  height: auto;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 0 clamp(10px, 6cqi, 18px);
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  background-image: url('/assets/stardew/ui/navigation/nav_item_default_wood_blank_image2.png?v=split-sidebar-1');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  color: #ffe7a4;
+  overflow: hidden;
+  cursor: pointer;
+  font: inherit;
+  image-rendering: pixelated;
+  transition: filter 110ms ease, transform 80ms ease;
 }
 
 .sd-sidebar .sd-nav-item.active,
 .sd-sidebar .sd-nav-item[aria-current="page"] {
-  --sd-nav-gap: 4;
-  width: calc(100cqi * var(--sd-nav-active-w) / 105);
-  min-height: calc(100cqi * var(--sd-nav-active-h) / 105);
-  background-image: var(--sd-img-nav-active);
-  background-size: 100% 100%;
-  image-rendering: pixelated;
+  background-image: url('/assets/stardew/ui/navigation/nav_item_active_wood_blank_image2.png?v=split-sidebar-1');
+  filter: none;
+  box-shadow: none;
 }
 
 .sd-sidebar .sd-nav-item[data-route="saves"].active,
 .sd-sidebar .sd-nav-item[data-route="saves"][aria-current="page"] {
-  background-image: url('/assets/stardew/ui/navigation/nav_item_active_saves_blank.png');
+  background-image: url('/assets/stardew/ui/navigation/nav_item_active_wood_blank_image2.png?v=split-sidebar-1');
+}
+
+.sd-sidebar .sd-nav-item:hover {
+  background-image: url('/assets/stardew/ui/navigation/nav_item_hover_wood_blank_image2.png?v=split-sidebar-3');
+  filter: none;
+}
+
+.sd-sidebar .sd-nav-item:active {
+  transform: translateY(1px);
+  filter: brightness(0.96);
+}
+
+.sd-sidebar .sd-nav-item:focus-visible {
+  outline: 2px solid #ffd86a;
+  outline-offset: -2px;
+  box-shadow:
+    0 0 0 2px rgba(66, 34, 8, 0.72),
+    0 0 0 4px rgba(255, 216, 106, 0.38);
+}
+
+.sd-sidebar .sd-nav-item:hover.active,
+.sd-sidebar .sd-nav-item:hover[aria-current="page"] {
+  background-image: url('/assets/stardew/ui/navigation/nav_item_active_wood_blank_image2.png?v=split-sidebar-1');
+  filter: none;
+}
+
+.sd-sidebar .sd-nav-item:not(.active):not([aria-current="page"]):hover {
+  background-image: url('/assets/stardew/ui/navigation/nav_item_hover_wood_blank_image2.png?v=split-sidebar-3') !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 100% 100% !important;
+  filter: none !important;
 }
 
 .sd-sidebar .sd-nav-icon {
-  width: clamp(17px, 12.5cqi, 20px);
-  height: clamp(17px, 12.5cqi, 20px);
+  display: block;
+  width: clamp(24px, 19cqi, 36px);
+  height: clamp(24px, 19cqi, 36px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(42, 18, 3, 0.45));
 }
 
-.sd-sidebar .sd-nav-item span {
-  flex: 0 0 calc(100cqi * var(--sd-nav-text-w) / 105);
+.sd-sidebar .sd-nav-label {
+  display: block;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.05;
+  white-space: nowrap;
+  color: #ffe7a4;
+  font-size: clamp(12px, 8cqi, 16px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
   text-align: left;
+  text-shadow:
+    1px 1px 0 #351907,
+    -1px 1px 0 #351907,
+    1px -1px 0 #351907,
+    -1px -1px 0 #351907,
+    0 2px 0 rgba(30, 12, 2, 0.72);
 }
 
 /* ── 主内容区 ─────────────────────────────────────────────────────────────── */
 
 .sd-main {
-  background: #f0deb3;
-  background-image: var(--sd-img-bg-parchment);
-  background-repeat: repeat;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0;
+  --sd-main-viewport-inset-top: clamp(22px, 5.2%, 60px);
+  --sd-main-viewport-inset-right: clamp(20px, 5%, 58px);
+  --sd-main-viewport-inset-bottom: clamp(26px, 6%, 72px);
+  --sd-main-viewport-inset-left: clamp(18px, 4%, 50px);
+  background-color: #f0deb3;
+  background-image: var(--sd-img-page-frame);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  overflow: hidden;
+  padding:
+    var(--sd-main-viewport-inset-top)
+    var(--sd-main-viewport-inset-right)
+    var(--sd-main-viewport-inset-bottom)
+    var(--sd-main-viewport-inset-left);
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  image-rendering: pixelated;
+  box-sizing: border-box;
+}
+
+.sd-main-scroll {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sd-main-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.sd-main-scroll > .sd-page {
+  min-height: 100%;
 }
 
 /* ── 右侧 Ops Rail ───────────────────────────────────────────────────────── */
 
 .sd-opsrail {
-  background: #f0deb3;
-  background-image: var(--sd-img-bg-parchment);
-  background-repeat: repeat;
-  border-left: 2px solid #3d2510;
-  padding: 9px 10px;
+  background-color: #180d04;
+  background-image:
+    linear-gradient(rgba(20, 10, 4, 0.74), rgba(20, 10, 4, 0.78)),
+    url('/assets/stardew/ui/panels/right_rail_shell_middle_tile.png');
+  background-repeat: repeat-y;
+  background-position: top center;
+  background-size: 100% auto;
+  border-left: 0;
+  padding: clamp(54px, 4.6vw, 74px) clamp(16px, 1.4vw, 22px) clamp(26px, 2vw, 36px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 0;
   font-size: 12px;
+  color: #f5dca8;
+  image-rendering: pixelated;
 }
 
 .sd-opsrail-section {
@@ -1943,7 +2393,7 @@
 
 @media (max-width: 960px) {
   .sd-shell {
-    grid-template-columns: 132px minmax(0, 1fr) 0;
+    grid-template-columns: clamp(178px, 22vw, 210px) minmax(0, 1fr) 0;
   }
 
   .sd-opsrail {
@@ -1972,24 +2422,83 @@
 
 @media (max-width: 640px) {
   .sd-shell {
-    grid-template-rows: 40px 36px minmax(0, 1fr);
+    grid-template-rows: 52px 40px minmax(0, 1fr);
     grid-template-columns: 1fr;
     overflow-x: hidden; /* 防止子元素撑出页面宽度 */
   }
 
   .sd-topbar {
     grid-column: 1;
+    height: 52px;
+    min-height: 52px;
+  }
+
+  .sd-topbar-bg {
+    grid-template-columns: 110px minmax(0, 1fr) 110px;
+  }
+
+  .sd-topbar-brand {
+    left: 9px;
+    top: 12%;
+    width: 42%;
+    height: 76%;
+    gap: 6px;
+  }
+
+  .sd-topbar-brand-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .sd-topbar-brand-copy {
+    display: none;
   }
 
   .sd-sidebar {
+    display: flex;
+    position: relative;
     flex-direction: row;
     padding: 3px 4px;
     gap: 2px;
     overflow-x: auto;
     overflow-y: hidden;
-    border-right: none;
+    border: 0;
     border-bottom: 2px solid #3d2510;
+    box-shadow: none;
+    background-image: var(--sd-img-bg-wood-strip);
+    background-repeat: repeat-x;
     background-size: auto 100%;
+  }
+
+  .sd-sidebar::before,
+  .sd-sidebar::after {
+    display: none;
+  }
+
+  .sd-sidebar .sd-nav-list {
+    z-index: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    margin-bottom: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .sd-sidebar .sd-nav-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sd-sidebar .sd-nav-row {
+    display: flex;
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0;
+    background-image: none;
+    box-shadow: none;
   }
 
   .sd-nav-divider {
@@ -1999,33 +2508,59 @@
   }
 
   /* 覆盖桌面 .sd-sidebar .sd-nav-item 的高特异性规则 */
-  .sd-sidebar .sd-nav-item span {
+  .sd-sidebar .sd-nav-label {
     display: none;
   }
 
   /* 移动端导航：只显示图标，充满侧栏高度，确保可触控 */
   /* height: 30px = 侧栏行高 36px − 上下 padding 各 3px；不用 100% 因为 sidebar 无显式 height */
   .sd-sidebar .sd-nav-item {
-    width: auto;
+    position: relative;
+    left: auto;
+    top: auto !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
     min-width: 36px;
     height: 30px;
+    aspect-ratio: auto;
     min-height: 0;
-    padding: 0 8px;
+    padding: 0;
     margin: 0;
     gap: 0;
     flex-shrink: 0;
+    color: #f0e0b8;
+    background-color: rgba(41, 21, 7, 0.72);
+    background-image: none;
+    border: 1px solid rgba(142, 92, 38, 0.82);
+    box-shadow: none;
+    filter: none;
+  }
+
+  .sd-sidebar .sd-nav-icon {
+    display: block;
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    image-rendering: pixelated;
   }
 
   /* active 规则特异性更高（0-3-0），需单独覆盖，否则仍用 cqi 桌面尺寸 */
   .sd-sidebar .sd-nav-item.active,
   .sd-sidebar .sd-nav-item[aria-current="page"] {
     width: auto;
+    width: 36px;
     min-width: 36px;
     height: 30px;
     min-height: 0;
     background-image: none;
-    background-size: auto;
-    background-color: rgba(255, 230, 182, 0.12);
+    background-color: rgba(77, 45, 13, 0.92);
+    border-color: rgba(255, 216, 106, 0.86);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 239, 165, 0.34),
+      0 0 0 1px rgba(63, 31, 7, 0.78);
+    filter: brightness(1.08);
   }
 
   /* saves active 额外特异性（0-4-0），同样需要独立覆盖背景图 */
@@ -2036,11 +2571,48 @@
 
   /* 顶栏：仅保留 logo、状态点/状态文字、登出按钮 */
   .sd-topbar-name,
-  .sd-topbar-version,
-  .sd-topbar-save,
+  .sd-topbar .sd-topbar-version,
+  .sd-topbar .sd-topbar-save,
   .sd-topbar-username,
-  .sd-topbar-user .sd-tag {
+  .sd-topbar .sd-topbar-user,
+  .sd-topbar .sd-topbar-user .sd-tag {
     display: none;
+  }
+
+  .sd-topbar .sd-topbar-status {
+    left: 47.5%;
+    top: 18%;
+    width: 86px;
+    height: 32px;
+    gap: 5px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .sd-topbar-status .sd-dot {
+    width: 9px;
+    height: 9px;
+  }
+
+  .sd-topbar-green-dot {
+    width: 9px;
+    height: 9px;
+  }
+
+  .sd-topbar .sd-topbar-logout-btn {
+    left: auto;
+    right: 3.5%;
+    top: 14%;
+    width: 66px;
+    height: 34px;
+    gap: 3px;
+    padding: 0 5px;
+    font-size: 12px;
+  }
+
+  .sd-topbar-logout-icon {
+    width: 14px;
+    height: 14px;
   }
 
   /* 安装成功卡：窄屏纵向堆叠，按钮撑满卡片宽度 */
@@ -5147,4 +5719,804 @@
   font-size: 12px;
   color: #8a7060;
   margin: 0;
+}
+
+/* ── Prototype layout pass: align routes to docs/prototypes information architecture ── */
+
+.sd-page {
+  align-content: start;
+}
+
+.sd-page-header,
+.sd-mods-header,
+.sd-diag-header {
+  background: rgba(255, 248, 220, 0.36);
+  border: 1px solid rgba(200, 168, 112, 0.58);
+  padding: 10px 12px;
+}
+
+.sd-opsrail {
+  background-color: #180d04;
+  background-image:
+    linear-gradient(rgba(20, 10, 4, 0.74), rgba(20, 10, 4, 0.78)),
+    url('/assets/stardew/ui/panels/right_rail_shell_middle_tile.png');
+  background-repeat: repeat-y;
+  background-size: 100% auto;
+  color: #f5dca8;
+}
+
+.sd-opsrail-section {
+  border: 1px solid #5a3518;
+  background: rgba(28, 16, 8, 0.72);
+  padding: 10px;
+}
+
+.sd-opsrail-heading,
+.sd-opsrail-job-type {
+  color: #ffe0a0;
+}
+
+.sd-opsrail-job {
+  background: rgba(0, 0, 0, 0.18);
+  border-color: rgba(200, 168, 112, 0.22);
+}
+
+.sd-opsrail-job-meta,
+.sd-opsrail-empty {
+  color: #d7b77f;
+}
+
+.sd-opsrail-link {
+  color: #f5c96b;
+  text-decoration: none;
+}
+
+.sd-ov-wrap {
+  overflow-y: auto;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.sd-ov-banner {
+  height: clamp(120px, 19vh, 190px);
+  border-bottom: 2px solid #7a5030;
+}
+
+.sd-ov-banner-bg {
+  background-size: cover;
+  background-position: center;
+}
+
+.sd-ov-banner-overlay {
+  background: linear-gradient(90deg, rgba(28, 16, 8, 0.08), rgba(240, 222, 178, 0.12));
+}
+
+.sd-ov-banner-stats {
+  align-self: flex-start;
+  padding: 12px;
+  gap: 8px;
+}
+
+.sd-bstat {
+  background: rgba(248, 240, 216, 0.8);
+  border: 1px solid rgba(122, 80, 48, 0.42);
+  padding: 3px 7px;
+}
+
+.sd-ov-section {
+  margin: 0 12px;
+  border: 1px solid #c8a870;
+  background: #f8f0d8;
+  padding: 10px 12px;
+}
+
+.sd-ov-metric-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 12px;
+}
+
+.sd-mc {
+  min-height: 82px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.sd-mc-name {
+  font-weight: 800;
+}
+
+.sd-ov-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.25fr) minmax(220px, 0.9fr);
+  gap: 10px;
+  padding: 0 12px;
+  min-height: 0;
+}
+
+.sd-ov-card {
+  min-width: 0;
+  border: 1px solid #c8a870;
+  background: #f8f0d8;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title {
+  padding: 8px 10px;
+  background: rgba(220, 200, 152, 0.55);
+  border-bottom: 1px solid #c8a870;
+}
+
+.sd-ov-player-body {
+  min-height: 130px;
+  flex: 1;
+  align-content: flex-start;
+}
+
+.sd-ov-empty {
+  padding: 8px 10px;
+  color: #8a7060;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.sd-pack-section {
+  padding: 10px;
+}
+
+.sd-server-page {
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.72fr);
+  align-items: start;
+}
+
+.sd-server-page .sd-page-header {
+  grid-column: 1 / -1;
+}
+
+.sd-server-page .sd-state-card {
+  min-height: 150px;
+}
+
+.sd-server-lifecycle {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.sd-server-invite,
+.sd-server-broadcast {
+  min-height: 138px;
+}
+
+.sd-server-command {
+  grid-column: 1 / -1;
+}
+
+.sd-server-quick {
+  grid-column: 1 / -1;
+}
+
+.sd-server-page .sd-srv-section,
+.sd-saves-page #saves-section > *,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-page .sd-jobs-layout,
+.sd-players-page .sd-srv-section,
+.sd-mods-page > .sd-mods-running-hint,
+.sd-mods-page > .sd-mods-success-banner,
+.sd-mods-page > .sd-mods-restart-banner,
+.sd-mods-page > .sd-mods-list-error,
+.sd-mods-overview,
+.sd-mods-workbench,
+.sd-diag-page > .sd-diag-status-panel,
+.sd-diag-page > .sd-diag-resource-panel,
+.sd-settings-section {
+  box-shadow: inset 0 0 0 1px rgba(255, 244, 194, 0.32);
+}
+
+.sd-saves-page #saves-section {
+  gap: 12px;
+}
+
+.sd-saves-header {
+  background: rgba(255, 248, 220, 0.36);
+  border: 1px solid rgba(200, 168, 112, 0.58);
+  padding: 10px 12px;
+  align-items: stretch;
+}
+
+.sd-saves-header-actions {
+  flex: 1 1 100%;
+  justify-content: flex-start;
+}
+
+.sd-saves-active-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 34%) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 2px solid #b57a2d;
+  background: #fff1cb;
+}
+
+.sd-saves-active-art {
+  min-height: 116px;
+  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
+  background-size: cover;
+  background-position: center;
+  border: 1px solid #9a6a30;
+  image-rendering: pixelated;
+}
+
+.sd-saves-active-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sd-saves-active-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  color: #7a4a10;
+}
+
+.sd-saves-active-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 900;
+  color: #2c1a0a;
+}
+
+.sd-saves-active-title > span:first-child {
+  min-width: 0;
+}
+
+.sd-saves-active-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 8px;
+  justify-content: start;
+  justify-items: start;
+}
+
+.sd-saves-active-actions .sd-btn-green {
+  min-width: 126px;
+}
+
+.sd-saves-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sd-save-card {
+  min-height: 94px;
+}
+
+.sd-save-backups-list {
+  display: grid;
+  gap: 6px;
+}
+
+.sd-jobs-page {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.sd-jobs-page .sd-jobs-layout {
+  min-height: 0;
+  height: min(620px, calc(100vh - 180px));
+  grid-template-columns: minmax(230px, 0.42fr) minmax(0, 1fr);
+}
+
+.sd-jobs-list,
+.sd-jobs-detail {
+  max-height: none;
+}
+
+.sd-jobs-log-window {
+  flex: 1;
+  max-height: none;
+}
+
+.sd-players-page {
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.4fr);
+  align-items: start;
+}
+
+.sd-players-page .sd-page-header,
+.sd-players-overview-section {
+  grid-column: 1 / -1;
+}
+
+.sd-players-info-section {
+  grid-column: 1;
+}
+
+.sd-players-list-section {
+  grid-column: 2;
+  grid-row: 3 / span 2;
+}
+
+.sd-players-events-section {
+  grid-column: 1;
+}
+
+.sd-players-actions-section {
+  grid-column: 1 / -1;
+}
+
+.sd-players-overview-grid {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+}
+
+.sd-players-stat {
+  border: 1px solid rgba(200, 168, 112, 0.5);
+  background: rgba(255, 248, 220, 0.38);
+  padding: 8px 9px;
+}
+
+.sd-players-invite-row {
+  margin-top: 10px;
+}
+
+.sd-players-info-terminal {
+  min-height: 190px;
+  max-height: 280px;
+}
+
+.sd-players-table-placeholder {
+  border-style: solid;
+}
+
+.sd-mods-page .sd-mods-header {
+  margin-bottom: 0;
+}
+
+.sd-mods-overview {
+  background: #f8f0d8;
+  border-radius: 0;
+}
+
+.sd-mods-stat {
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.sd-mods-stat-value {
+  font-size: 18px;
+}
+
+.sd-mods-workbench {
+  border-radius: 0;
+  background: #fff1cb;
+}
+
+.sd-mods-tab-panel {
+  padding: 12px;
+}
+
+.sd-mods-nexus-list,
+.sd-mods-list {
+  align-items: stretch;
+}
+
+.sd-diag-page .sd-diag-header,
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-error-banner,
+.sd-diag-page .sd-diag-loading {
+  grid-column: 1 / -1;
+}
+
+.sd-diag-status-panel {
+  min-height: 104px;
+  justify-content: space-between;
+}
+
+.sd-diag-status-label {
+  font-size: clamp(18px, 2vw, 30px);
+}
+
+.sd-diag-main-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.sd-diag-primary,
+.sd-diag-resource-wrap {
+  min-width: 0;
+}
+
+.sd-diag-resource-panel {
+  margin-top: 0;
+}
+
+.sd-diag-checks,
+.sd-diag-alerts,
+.sd-diag-alert-empty {
+  margin-bottom: 0;
+}
+
+.sd-settings-page {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sd-settings-page .sd-page-header,
+.sd-settings-page .sd-settings-section:nth-of-type(n + 4) {
+  grid-column: 1 / -1;
+}
+
+.sd-settings-section {
+  background: #f8f0d8;
+  border-color: #c8a870;
+}
+
+@media (max-width: 1180px) {
+  .sd-ov-metric-strip,
+  .sd-players-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid,
+  .sd-server-page,
+  .sd-players-page,
+  .sd-diag-main-grid,
+  .sd-settings-page {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-server-page .sd-page-header,
+  .sd-server-lifecycle,
+  .sd-server-command,
+  .sd-server-quick,
+  .sd-players-page .sd-page-header,
+  .sd-players-overview-section,
+  .sd-players-info-section,
+  .sd-players-list-section,
+  .sd-players-events-section,
+  .sd-players-actions-section,
+  .sd-diag-page .sd-diag-header,
+  .sd-diag-page .sd-diag-status-panel,
+  .sd-diag-page .sd-diag-resource-panel,
+  .sd-settings-page .sd-settings-section,
+  .sd-settings-page .sd-settings-section:nth-of-type(n + 4) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .sd-saves-active-card {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .sd-saves-active-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, max-content);
+  }
+}
+
+@media (max-width: 760px) {
+  .sd-ov-banner {
+    height: auto;
+    min-height: 90px;
+  }
+
+  .sd-ov-metric-strip,
+  .sd-saves-list,
+  .sd-players-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-saves-active-card {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-saves-active-art {
+    min-height: 96px;
+  }
+
+  .sd-saves-active-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-jobs-page .sd-jobs-layout {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Image2 right rail: split-assets OpsRail composition ───────────────────── */
+
+.sd-opsrail {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  color: #ffe7ad;
+  background: #331708;
+  image-rendering: pixelated;
+  isolation: isolate;
+  container-type: inline-size;
+}
+
+/* 中段平铺：seamless 版已裁掉原图四周纯黑边
+   （原 right_rail_shell_middle_tile.png 的 x130..1406 / y27..1005），
+   立柱外沿与元素边缘对齐，repeat-y 衔接处不再出现横向黑带 */
+.sd-opsrail-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #3a1a08;
+  background-image: url('/assets/stardew/ui/panels/right_rail_shell_middle_tile_seamless.png');
+  background-position: left top;
+  background-repeat: repeat-y;
+  background-size: 100% auto;
+  image-rendering: pixelated;
+}
+
+/* 顶/底封头：按各自素材的透明边距精确外扩定位，
+   横梁顶边贴 top:0、木槽底边贴 bottom:0，立柱与中段对齐 */
+.sd-opsrail::before,
+.sd-opsrail::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: 100% auto;
+  background-position: 0 0;
+  image-rendering: pixelated;
+}
+
+.sd-opsrail::before {
+  /* Rotated clean bottom shell: file 1871x840, rail x123..1807/y146..291. */
+  top: calc(-100cqi * 146 / 1684);
+  left: calc(-100cqi * 123 / 1684);
+  width: calc(100cqi * 1871 / 1684);
+  aspect-ratio: 1871 / 840;
+  background-image: url('/assets/stardew/ui/panels/right_rail_shell_top_line_image2.png');
+}
+
+.sd-opsrail::after {
+  /* 素材 1871x840，内容 bbox x66..1808(宽1743)，下边距 149 */
+  bottom: calc(-100cqi * 149 / 1743);
+  left: calc(-100cqi * 66 / 1743);
+  width: calc(100cqi * 1871 / 1743);
+  aspect-ratio: 1871 / 840;
+  background-image: url('/assets/stardew/ui/panels/right_rail_shell_bottom.png');
+}
+
+.sd-opsrail-stack {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  /* 行高随内容：与左侧栏按钮一致，只随栏宽缩放，不随窗口高度拉伸，也不滚动 */
+  grid-auto-rows: min-content;
+  align-content: start;
+  gap: clamp(10px, 1.5vh, 18px);
+  /* 底部停在木槽上沿：槽沿距素材底 840-548-149=143px（内容宽 1743） */
+  height: calc(100% - 100cqi * 143 / 1743);
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  /* Top clearance follows the rotated top beam and vine depth. */
+  padding:
+    calc(100cqi * 238 / 1684 + clamp(12px, 2vh, 20px))
+    calc(100cqi * 92 / 1277)
+    clamp(6px, 1vh, 12px);
+}
+
+/* 卡片九宫格：三张素材各带不同的透明边距，切片值必须 = 边距 + 木框厚度。
+   每张卡取单一缩放系数 s = 13 / (左切片 - 左透明边)，各边 border-width = slice * s，
+   负 margin = 透明边 * s。四边共用一个 s 才能让角部切片横纵等比缩放，
+   否则四角藤蔓会被拉伸变形 */
+.sd-opsrail-section,
+.sd-ops-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  color: #ffe4a6;
+  background: rgba(38, 18, 6, 0.72);
+  /* 背景只涂 padding-box：负 margin 后 border-box 大于可见木框，
+     不裁剪会从边框图透明边距漏出暗色矩形（阴影遮罩） */
+  background-clip: padding-box;
+  overflow: hidden;
+  border-style: solid;
+  border-color: transparent;
+  border-image-source: var(--sd-ops-card-frame);
+  border-image-slice: var(--sd-ops-card-slice) fill;
+  /* stretch 而不是 round：中心填充区平铺会在卡片中间产生拼接缝 */
+  border-image-repeat: stretch;
+  box-shadow: none;
+  padding: clamp(2px, 0.4vw, 6px);
+  image-rendering: pixelated;
+}
+
+.sd-ops-card-health {
+  /* 1053x1494，透明边 L62 T56 R64 B49，s = 13/(126-62) ≈ 0.203 */
+  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_health_9slice.png');
+  --sd-ops-card-slice: 126 126 156 126;
+  border-width: 26px 26px 32px 26px;
+  margin: -11px -13px -10px -13px;
+}
+
+.sd-ops-card-active {
+  /* 1693x929，透明边 L90 T140 R90 B178，s = 13/(150-90) ≈ 0.217 */
+  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_progress_9slice.png');
+  --sd-ops-card-slice: 175 150 220 150;
+  border-width: 38px 33px 48px 33px;
+  margin: -30px -20px -39px -20px;
+}
+
+.sd-ops-card-recent {
+  /* 1535x1025，透明边 L112 T126 R112 B136，s = 13/(178-112) ≈ 0.197 */
+  --sd-ops-card-frame: url('/assets/stardew/ui/panels/right_card_recent_9slice.png');
+  --sd-ops-card-slice: 195 178 185 178;
+  border-width: 38px 35px 36px 35px;
+  margin: -25px -22px -27px -22px;
+}
+
+.sd-opsrail-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  margin: -1px 0 10px;
+  font-size: clamp(15px, 1.08vw, 18px);
+  line-height: 1.08;
+  font-weight: 900;
+  color: #ffe9ad;
+  letter-spacing: 0;
+  text-transform: none;
+  text-shadow:
+    1px 1px 0 #2b1204,
+    -1px 1px 0 #2b1204,
+    1px -1px 0 #2b1204,
+    -1px -1px 0 #2b1204,
+    0 2px 0 rgba(30, 10, 2, 0.72);
+}
+
+.sd-opsrail-heading span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-opsrail-title-icon {
+  flex: 0 0 auto;
+  width: clamp(30px, 2.35vw, 40px);
+  height: clamp(30px, 2.35vw, 40px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(37, 14, 3, 0.66));
+}
+
+.sd-opsrail-list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 0;
+  overflow: visible;
+}
+
+.sd-opsrail-job,
+.sd-opsrail-mod-note {
+  min-width: 0;
+  padding: 6px 7px;
+  background: rgba(25, 11, 4, 0.55);
+  border: 1px solid rgba(245, 205, 116, 0.25);
+  box-shadow:
+    inset 0 0 0 1px rgba(63, 29, 8, 0.58),
+    0 2px 0 rgba(19, 7, 2, 0.25);
+}
+
+.sd-opsrail-health-summary {
+  margin-top: auto;
+}
+
+.sd-opsrail-job-type {
+  min-width: 0;
+  color: #ffe9b4;
+  font-size: clamp(11px, 0.95vw, 13px);
+  line-height: 1.24;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 1px 1px 0 rgba(33, 12, 3, 0.8);
+}
+
+.sd-opsrail-job-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #e8c984;
+  font-size: clamp(10px, 0.84vw, 12px);
+  line-height: 1.25;
+}
+
+.sd-opsrail-empty {
+  margin: 0;
+  padding: 7px 8px;
+  color: #e5c17d;
+  font-size: clamp(11px, 0.92vw, 12px);
+  line-height: 1.35;
+  font-style: normal;
+  background: rgba(25, 11, 4, 0.42);
+  border: 1px solid rgba(245, 205, 116, 0.18);
+  text-shadow: 1px 1px 0 rgba(28, 10, 3, 0.72);
+}
+
+.sd-opsrail-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 28px;
+  margin-top: auto;
+  border: 1px solid rgba(255, 217, 119, 0.45);
+  background:
+    linear-gradient(rgba(122, 72, 27, 0.88), rgba(68, 34, 11, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 234, 160, 0.22),
+    0 2px 0 rgba(24, 9, 2, 0.48);
+  color: #ffe08d;
+  cursor: pointer;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: clamp(11px, 0.9vw, 12px);
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+  text-decoration: none;
+  text-shadow: 1px 1px 0 #2c1204;
+  transition: filter 110ms ease, transform 80ms ease;
+}
+
+.sd-opsrail-link:hover {
+  filter: brightness(1.12);
+}
+
+.sd-opsrail-link:active {
+  transform: translateY(1px);
+  filter: brightness(0.92);
+}
+
+.sd-opsrail-link:focus-visible {
+  outline: 2px solid #ffd86a;
+  outline-offset: 2px;
+}
+
+.sd-opsrail-mod-note {
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+  background: rgba(77, 43, 10, 0.58);
+}
+
+.sd-opsrail-mod-link {
+  min-height: 24px;
+  margin-top: 0;
+}
+
+@media (max-width: 960px) {
+  .sd-opsrail {
+    display: none;
+  }
 }
