@@ -1326,3 +1326,20 @@
 ## 下一步注意事项
 - 如果以后又出现割裂，先确认三张 `topbar_shell_*.png` 是否仍同源（左段应是右段的镜像风格）；不要单独重绘其中一张。
 - 若并行会话再切回整幅九宫格方案（`topbar-shell.png` + border-image），需先对齐，两方案不能混用。
+# FE-MODS-DYNAMIC-PAGESIZE-1 前端接手记录（2026-07-03）
+## 改了什么
+- 下载模组页的 Nexus 搜索结果改为固定卡片高度 + 动态 pageSize。搜索结果列表新增专属 `.sd-mods-nexus-search-list` 和测量 ref，卡片高度固定为 `246px`。
+- `ModsPage` 会根据 `.sd-mods-nexus-search-list` 到统一滚动视口 `.sd-main-scroll` 底部的剩余高度、实际 grid 列数和行间距计算 `rows * columns`，范围限制为 `1..20`，并把结果作为 `pageSize` 传给 `searchNexusMods()`。
+- pageSize 改变且已有搜索结果时，会用当前关键词回到第 1 页重新搜索；分页总页数和顶部文案同步改为动态 pageSize。搜索结果底部重复分页器已移除，避免把当前 frame 内结果区撑长。
+- 加载骨架只使用当前 pageSize 和同样高度占位，不绑定测量 ref；实际测量只发生在真实搜索结果列表上，避免 loading 与结果态顶部位置不同造成 pageSize 来回变化。已安装/添加模组列表没有使用 `.sd-mods-nexus-search-list`，不会被固定高度裁切。
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- 继续使用既有 `GET /api/instances/:id/mods/nexus/search?q=&page=&pageSize=`，未改后端接口。
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 内置浏览器真实应用当前停在登录页，因此使用临时本地 QA 页面加载真实 `StardewPanel.css` 验证布局公式：1040x1120 下 2 列 x 2 行，pageSize=4；1040x720 下 2 列 x 1 行，pageSize=2；520x720 下 1 列 x 1 行，pageSize=1；三种视口卡片高度均为 `246px`。临时 QA 文件已删除。
+## 下一步注意事项
+- 后续如果调整搜索卡片高度，需要同时更新 CSS `--sd-mods-nexus-search-card-height` 和 `ModsPage.tsx` 中的 `NEXUS_SEARCH_CARD_HEIGHT` fallback。
+- 不要把固定高度规则放回通用 `.sd-mods-nexus-card`，否则已安装/添加模组列表的依赖标签和删除操作可能被裁切。
+- 动态 pageSize 依赖 `.sd-main-scroll` 作为统一滚动视口；若主内容滚动结构再变，需要同步检查测量逻辑。
