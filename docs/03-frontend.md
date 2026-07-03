@@ -807,3 +807,11 @@ npm.cmd run dev
 - 输出为 RGBA 透明 PNG，尺寸 `224x116`，主体 bbox 为 `(7, 8, 213, 110)`，四角透明；中央区域为空，方便前端叠加图标和文字。
 - 本次只新增生产素材，未改 `StardewPanel` 引用；后续可基于该底图派生 hover/active 状态。
 - 验证：Pillow 检查 `mode=RGBA`、四角 alpha 为 0、alpha 范围 `0..255`；人工预览确认无登出图标、文字和顶栏角饰残影。
+# FE-MODS-DYNAMIC-PAGESIZE-1 模组搜索动态分页
+
+- Nexus 搜索结果从固定 20 条改为“固定卡片高度 + 动态 pageSize”：`.sd-mods-nexus-search-list` 专门用于下载页搜索结果，卡片高度锁定为 `246px`，页面根据搜索结果网格到 `.sd-main-scroll` 底部的可见高度、CSS grid 实际列数和行间距计算 `rows * columns`，再把该值作为 `pageSize` 传给 `searchNexusMods()`。
+- 动态 pageSize 范围为 `1..20`，默认恢复值为 `8`；窗口大小、错误/安装日志或结果列表变化时会重新测量。pageSize 变化且已有搜索结果时，会用当前关键词回到第 1 页重新请求，避免不同 pageSize 下同一页码产生跳项。
+- 顶部分页器显示“每页 N 个”，总页数改为按动态 pageSize 计算；下载页搜索结果底部重复分页器已移除，避免它把结果区撑出当前 frame 可见范围。加载骨架只按当前 pageSize 和相同固定高度占位，不参与测量，避免 loading 与结果态高度差造成重复刷新。
+- 已安装/添加模组列表虽然复用 `.sd-mods-nexus-card`，但没有加 `.sd-mods-nexus-search-list`，因此不受固定搜索卡片高度裁切影响。
+- 影响文件：`frontend/src/games/stardew/pages/ModsPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`。
+- 验证：`cd frontend; npm.cmd run build` 通过；内置浏览器因本地实例停在登录页，使用临时本地 QA 页面加载真实 `StardewPanel.css` 验证布局公式：1040x1120 下 grid 为 2 列、可见 2 行、pageSize=4，1040x720 下 pageSize=2，520x720 下 1 列 pageSize=1；三种视口下搜索卡片计算高度均为 `246px`。临时 QA 文件已删除。

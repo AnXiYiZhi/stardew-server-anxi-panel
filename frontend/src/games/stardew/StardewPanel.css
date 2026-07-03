@@ -3413,6 +3413,18 @@
   margin-bottom: 12px;
 }
 
+.sd-mods-nexus-search-list {
+  --sd-mods-nexus-search-card-height: 246px;
+  gap: 12px;
+}
+
+.sd-mods-nexus-search-list > .sd-mods-nexus-card {
+  height: var(--sd-mods-nexus-search-card-height);
+  min-height: var(--sd-mods-nexus-search-card-height);
+  max-height: var(--sd-mods-nexus-search-card-height);
+  overflow: hidden;
+}
+
 .sd-mods-nexus-card {
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr);
@@ -3459,6 +3471,11 @@
   display: flex;
   flex-direction: column;
   min-height: 118px;
+}
+
+.sd-mods-nexus-search-list .sd-mods-nexus-card-main {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sd-mods-nexus-card-header {
@@ -3551,6 +3568,10 @@
   gap: 6px;
   flex-wrap: wrap;
   min-width: 0;
+}
+
+.sd-mods-nexus-search-list .sd-mods-nexus-card-footer {
+  overflow: hidden;
 }
 
 .sd-mods-nexus-only-note {
@@ -3752,7 +3773,8 @@
 }
 
 .sd-mods-nexus-skeleton {
-  min-height: 132px;
+  min-height: var(--sd-mods-nexus-search-card-height, 246px);
+  height: var(--sd-mods-nexus-search-card-height, 246px);
   border: 1px solid #dcc898;
   background:
     linear-gradient(90deg, rgba(248, 240, 216, 0.4), rgba(255, 248, 220, 0.78), rgba(248, 240, 216, 0.4));

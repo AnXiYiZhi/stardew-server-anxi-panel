@@ -8,7 +8,12 @@ import type { StardewPageProps } from '../stardew-routes'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
 
-const NEXUS_SEARCH_PAGE_SIZE = 20
+const NEXUS_SEARCH_PAGE_SIZE_DEFAULT = 8
+const NEXUS_SEARCH_PAGE_SIZE_MIN = 1
+const NEXUS_SEARCH_PAGE_SIZE_MAX = 20
+const NEXUS_SEARCH_CARD_HEIGHT = 246
+const NEXUS_SEARCH_CARD_GAP = 12
+const NEXUS_SEARCH_BOTTOM_RESERVE = 8
 const SMAPI_NEXUS_MOD_ID = 2400
 const SMAPI_NEXUS_URL = `https://www.nexusmods.com/stardewvalley/mods/${SMAPI_NEXUS_MOD_ID}`
 const NEXUS_EXTENSION_PANEL_SOURCE = 'ANXI_PANEL_NEXUS_INSTALL'
@@ -58,6 +63,7 @@ type NexusSearchSessionState = {
   query: string
   results: NexusModSearchResult[] | null
   page: number
+  pageSize: number
   total: number
   hasMore: boolean
   pageInput: string
@@ -182,6 +188,16 @@ function installedStatusTitle(result: ModSearchResult) {
     return folder ? `${folder}；当前存档未启用` : '当前存档未启用'
   }
   return folder
+}
+
+function clampNexusPageSize(value: number) {
+  if (!Number.isFinite(value)) return NEXUS_SEARCH_PAGE_SIZE_DEFAULT
+  return Math.min(NEXUS_SEARCH_PAGE_SIZE_MAX, Math.max(NEXUS_SEARCH_PAGE_SIZE_MIN, Math.trunc(value)))
+}
+
+function countGridColumns(gridTemplateColumns: string) {
+  if (!gridTemplateColumns || gridTemplateColumns === 'none') return 1
+  return Math.max(1, gridTemplateColumns.split(' ').filter((part) => part.trim() && part !== '0px').length)
 }
 
 function ModSearchResultCard({
@@ -368,6 +384,7 @@ function readNexusSearchSessionState(): NexusSearchSessionState | null {
       query: typeof parsed.query === 'string' ? parsed.query : '',
       results: Array.isArray(parsed.results) ? parsed.results as NexusModSearchResult[] : null,
       page: Number.isFinite(parsed.page) ? Number(parsed.page) : 1,
+      pageSize: clampNexusPageSize(Number(parsed.pageSize ?? NEXUS_SEARCH_PAGE_SIZE_DEFAULT)),
       total: Number.isFinite(parsed.total) ? Number(parsed.total) : 0,
       hasMore: Boolean(parsed.hasMore),
       pageInput: typeof parsed.pageInput === 'string' ? parsed.pageInput : String(parsed.page ?? 1),
@@ -618,6 +635,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [nexusError, setNexusError] = useState<string | null>(null)
   const [nexusResults, setNexusResults] = useState<NexusModSearchResult[] | null>(restoredNexusSearchState?.results ?? null)
   const [nexusPage, setNexusPage] = useState(restoredNexusSearchState?.page ?? 1)
+  const [nexusPageSize, setNexusPageSize] = useState(clampNexusPageSize(restoredNexusSearchState?.pageSize ?? NEXUS_SEARCH_PAGE_SIZE_DEFAULT))
   const [nexusTotal, setNexusTotal] = useState(restoredNexusSearchState?.total ?? 0)
   const [nexusHasMore, setNexusHasMore] = useState(restoredNexusSearchState?.hasMore ?? false)
   const [nexusPageInput, setNexusPageInput] = useState(restoredNexusSearchState?.pageInput ?? '1')
@@ -641,6 +659,12 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const nexusResultsListRef = useRef<HTMLDivElement>(null)
+  const lastNexusSearchPageSizeRef = useRef(
+    restoredNexusSearchState?.results
+      ? clampNexusPageSize(restoredNexusSearchState.results.length || restoredNexusSearchState.pageSize)
+      : nexusPageSize,
+  )
   const nexusInstallEventSourceRef = useRef<EventSource | null>(null)
   const nexusExtensionPollRef = useRef<number | null>(null)
   const nexusExtensionTimeoutRef = useRef<number | null>(null)
@@ -715,7 +739,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const deleteBundleCompanions = confirmDelete
     ? deleteBundle.filter((mod) => mod.folderName !== confirmDelete.folderName)
     : []
-  const nexusTotalPages = Math.max(1, Math.ceil(nexusTotal / NEXUS_SEARCH_PAGE_SIZE))
+  const nexusTotalPages = Math.max(1, Math.ceil(nexusTotal / nexusPageSize))
 
   const tabItems: Array<{ id: ModWorkbenchTab; label: string; hint: string }> = [
     { id: 'download', label: '下载模组', hint: '搜索 N 站并准备安装' },
@@ -791,12 +815,65 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       query: nexusQuery,
       results: nexusResults,
       page: nexusPage,
+      pageSize: nexusPageSize,
       total: nexusTotal,
       hasMore: nexusHasMore,
       pageInput: nexusPageInput,
       updatedAt: Date.now(),
     })
-  }, [nexusQuery, nexusResults, nexusPage, nexusTotal, nexusHasMore, nexusPageInput])
+  }, [nexusQuery, nexusResults, nexusPage, nexusPageSize, nexusTotal, nexusHasMore, nexusPageInput])
+
+  useEffect(() => {
+    if (activeTab !== 'download') return
+
+    let frame = 0
+    const measureNexusSearchPageSize = () => {
+      frame = 0
+      const list = nexusResultsListRef.current
+      if (!list) return
+
+      const scrollViewport = list.closest('.sd-main-scroll') as HTMLElement | null
+      const listRect = list.getBoundingClientRect()
+      const viewportBottom = scrollViewport
+        ? scrollViewport.getBoundingClientRect().bottom
+        : window.innerHeight
+      const listStyles = window.getComputedStyle(list)
+      const cardHeight = Number.parseFloat(listStyles.getPropertyValue('--sd-mods-nexus-search-card-height')) || NEXUS_SEARCH_CARD_HEIGHT
+      const rowGap = Number.parseFloat(listStyles.rowGap) || NEXUS_SEARCH_CARD_GAP
+      const columns = countGridColumns(listStyles.gridTemplateColumns)
+      const availableHeight = Math.max(cardHeight, viewportBottom - listRect.top - NEXUS_SEARCH_BOTTOM_RESERVE)
+      const rows = Math.max(1, Math.floor((availableHeight + rowGap) / (cardHeight + rowGap)))
+      const nextPageSize = clampNexusPageSize(rows * columns)
+
+      setNexusPageSize((current) => (current === nextPageSize ? current : nextPageSize))
+    }
+
+    const scheduleMeasure = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(measureNexusSearchPageSize)
+    }
+
+    scheduleMeasure()
+    const resizeObserver = new ResizeObserver(scheduleMeasure)
+    const list = nexusResultsListRef.current
+    const scrollViewport = list?.closest('.sd-main-scroll') as HTMLElement | null
+    if (list) resizeObserver.observe(list)
+    if (scrollViewport) resizeObserver.observe(scrollViewport)
+    window.addEventListener('resize', scheduleMeasure)
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', scheduleMeasure)
+    }
+  }, [
+    activeTab,
+    nexusError,
+    nexusInstallError,
+    nexusInstallJobId,
+    nexusInstallLogs.length,
+    nexusResults,
+  ])
 
   function clearNexusExtensionTimers() {
     if (nexusExtensionPollRef.current !== null) {
@@ -1311,12 +1388,14 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     }
   }
 
-  const handleNexusSearch = useCallback(async (page = 1, queryOverride?: string) => {
+  const handleNexusSearch = useCallback(async (page = 1, queryOverride?: string, pageSizeOverride?: number) => {
     const query = (queryOverride ?? nexusQuery).trim()
+    const searchPageSize = clampNexusPageSize(pageSizeOverride ?? nexusPageSize)
+    lastNexusSearchPageSizeRef.current = searchPageSize
     setNexusLoading(true)
     setNexusError(null)
     try {
-      const result = await searchNexusMods(query, page, NEXUS_SEARCH_PAGE_SIZE)
+      const result = await searchNexusMods(query, page, searchPageSize)
       setNexusResults(result.results)
       setNexusPage(result.page)
       setNexusTotal(result.total)
@@ -1332,13 +1411,19 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     } finally {
       setNexusLoading(false)
     }
-  }, [nexusQuery])
+  }, [nexusPageSize, nexusQuery])
 
   useEffect(() => {
     if (activeTab !== 'download' || defaultNexusLoadedRef.current) return
     defaultNexusLoadedRef.current = true
     void handleNexusSearch(1, '')
   }, [activeTab, handleNexusSearch])
+
+  useEffect(() => {
+    if (activeTab !== 'download' || nexusResults === null || nexusLoading) return
+    if (lastNexusSearchPageSizeRef.current === nexusPageSize) return
+    void handleNexusSearch(1, undefined, nexusPageSize)
+  }, [activeTab, handleNexusSearch, nexusLoading, nexusPageSize, nexusResults])
 
   function clampNexusPage(page: number) {
     if (!Number.isFinite(page)) return nexusPage
@@ -1367,7 +1452,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     const atLastPage = nexusPage >= nexusTotalPages || !nexusHasMore
     return (
       <div className={`sd-mods-nexus-total sd-mods-nexus-total-${position}`}>
-        <span>共 {nexusTotal.toLocaleString()} 个结果 · 第 {nexusPage} / {nexusTotalPages} 页</span>
+        <span>共 {nexusTotal.toLocaleString()} 个结果 · 每页 {nexusPageSize} 个 · 第 {nexusPage} / {nexusTotalPages} 页</span>
         <div className="sd-mods-nexus-page-actions">
           <button
             className="sd-btn-tan"
@@ -1920,8 +2005,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 </div>
               )}
               {nexusLoading ? (
-                <div className="sd-mods-nexus-skeleton-grid">
-                  {Array.from({ length: 6 }, (_, i) => (
+                <div className="sd-mods-nexus-skeleton-grid sd-mods-nexus-search-list">
+                  {Array.from({ length: nexusPageSize }, (_, i) => (
                     <div className="sd-mods-nexus-skeleton" key={i} />
                   ))}
                 </div>
@@ -1933,7 +2018,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 ) : (
                   <>
                     {renderNexusPager('top')}
-                    <div className="sd-mods-nexus-list">
+                    <div className="sd-mods-nexus-list sd-mods-nexus-search-list" ref={nexusResultsListRef}>
                       {nexusResults.map((r) => {
                         const canInstall = searchedModCanInstall(r)
                         const canPremiumInstall = searchedModCanPremiumInstall(r)
@@ -1998,7 +2083,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                         )
                       })}
                     </div>
-                    {renderNexusPager('bottom')}
                   </>
                 )
               ) : (
