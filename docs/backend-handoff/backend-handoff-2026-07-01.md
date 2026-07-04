@@ -1,4 +1,88 @@
-﻿# DOC-CLEANUP-1 Mod 搜索契约修正
+# JOB-DISPLAY-NAME-1 后端接手记录（2026-07-04）
+
+## 改了什么
+- jobs 表新增 `display_name` 字段，迁移文件为 `backend/migrations/007_job_display_name.sql`。
+- `storage.Job`、`CreateJobParams`、`jobs.Spec`、`jobResponse` 增加展示名字段；任务 API 和 job SSE 的 job payload 会返回 `displayName`。
+- `mod_nexus_install` / `mod_remote_install` 创建任务时写入 `mod_nexus_install · <Mod 名>` / `mod_remote_install · <Mod 名>`，并在缺少名称时用 `Nexus Mod #<id>` 兜底。
+
+## 影响文件/接口
+- `backend/migrations/007_job_display_name.sql`
+- `backend/internal/storage/jobs.go`
+- `backend/internal/jobs/types.go`
+- `backend/internal/jobs/manager.go`
+- `backend/internal/web/jobs_handlers.go`
+- `backend/internal/web/lifecycle_handlers.go`
+- `GET /api/jobs`、`GET /api/jobs/:id`、`GET /api/jobs/:id/stream` 的 job payload 新增可选 `displayName`。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/storage ./internal/jobs ./internal/web`。
+
+## 下一步注意事项
+- `type` 仍是机器可读字段，后续统计、筛选、进度估算继续用 `type`；用户可见标题优先用 `displayName`。
+- 如果新增其它长任务也存在并行同类型但不同目标的情况，应在创建 job 时填写 `DisplayName`。
+
+# MODUPLOAD-DUPLICATE-CODE-1 后端接手记录（2026-07-04）
+
+## 改了什么
+- Mod ZIP 上传遇到已安装相同 `UniqueID` 时，Web 层现在返回错误码 `mod_exists`，不再统一返回 `invalid_mod_zip`。
+- `UploadModZip` 的重复判断本身未改；只在 `lifecycle_handlers.go` 根据错误中的 `(mod_exists)` 标记选择响应 code。
+- 补测试覆盖同实例先上传一个 Mod、再上传另一个同 UniqueID Mod 的响应码。
+
+## 影响文件/接口
+- `backend/internal/web/lifecycle_handlers.go`
+- `backend/internal/web/audit.go`
+- `backend/internal/web/saves_handlers_test.go`
+- 接口：`POST /api/instances/:id/mods/upload` 的重复 Mod 错误码从 `invalid_mod_zip` 细分为 `mod_exists`。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/web -run "TestModUpload"`。
+
+## 下一步注意事项
+- 前端已有 `mod_exists` 文案；如果后续新增其它可识别上传失败原因，也优先用明确错误码，不要都塞进 `invalid_mod_zip`。
+- 真正坏 ZIP、无 manifest、XNB 替换包等仍应保持 `invalid_mod_zip`。
+
+# NEXUS-EXT-DOWNLOAD-GUARD-1 后端接手记录（2026-07-04）
+
+## 改了什么
+- 远程 Mod ZIP 下载统一增加 job 日志进度：连接远程下载服务器、HTTP 响应码、Content-Type、压缩包大小、已下载/总量/剩余/百分比。
+- `nexusDownloadArchive()` 的进度日志按 5 MB 或 2 秒节流，下载完成时强制输出最终进度；无 `Content-Length` 时输出已下载大小和“总大小未知”。
+- 如果远程响应是 `text/html`，立即失败并提示这是网页不是 ZIP，避免 Nexus 下载页或错误页被当成 ZIP 继续安装。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/nexus_install.go`
+- `backend/internal/games/stardew_junimo/remote_install.go`
+- `backend/internal/games/stardew_junimo/nexus_test.go`
+- 接口不变：`POST /api/instances/:id/mods/remote/install`、`POST /api/instances/:id/mods/nexus/install`。变化体现在对应 job 的日志和错误信息。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo -run "InstallNexusMod|NexusDownloadArchive|Remote|Download"`
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+
+## 下一步注意事项
+- 如果任务只显示“正在连接远程下载服务器”而没有 HTTP 响应，说明后端已经拿到 URL 但远程服务器没有返回响应头。
+- 如果任务失败提示返回网页不是 ZIP，优先查浏览器扩展是否真正捕获到 Nexus CDN ZIP，而不是只打开/提交了 Nexus 下载页。
+- 不要把 ZIP 下载 timeout 再改回短超时；大包下载仍需要 `nexusArchiveHTTPClient` 的长 timeout。
+# PLAYERS-MAXPLAYERS-1 玩家接口人数上限兜底（2026-07-03）
+
+## 改了什么
+- `stardew_junimo` driver 的 `ListPlayers` 现在在初始化 result 时用 `readServerMaxPlayers(instance.DataDir)` 兜底 `MaxPlayers`：从当前存档的 `server-settings.json`（`serverSettingsPath`，即 `.local-container/settings/server-settings.json`）读取 `Server.MaxPlayers`，文件缺失、解析失败或值非正数时保持 nil。
+- junimo info 回退路径解析出的 `MaxPlayers` 仍优先覆盖兜底值；smapi_control 与未运行分支此前从不设置该字段，现在也能带上人数上限。
+- 动机：前端右栏"系统健康"卡与总览页需要显示"在线玩家/当前存档最大玩家数"，而 smapi_control 快照不含上限、info 输出多数情况下也解析不到。
+
+## 影响文件/接口
+- `backend/internal/games/stardew_junimo/players.go`（`ListPlayers`、新增 `readServerMaxPlayers`）
+- `backend/internal/games/stardew_junimo/players_test.go`（新增 `TestReadServerMaxPlayers`）
+- `GET /api/instances/:id/players` 响应的 `maxPlayers` 字段语义变化：见 `docs/06-integration.md` 玩家页一节。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo/`、`go build ./...` 通过。
+- 手动：对已建档实例调 `GET /api/instances/stardew/players`，`maxPlayers` 应等于新建存档时的联机人数上限（如 12），停止状态下同样返回。
+
+## 下一步注意事项
+- `server-settings.json` 是实例级配置，由新建存档时写入；如果以后支持"编辑已有存档人数上限"，仍应通过 driver 写该文件，`readServerMaxPlayers` 无需改动。
+- 若未来切换存档不重写 `server-settings.json`，该兜底反映的是最近一次写入的配置；有偏差时优先在存档切换流程补写配置，而不是在 players 接口里猜。
+
+# DOC-CLEANUP-1 Mod 搜索契约修正
 
 ## 改了什么
 - `docs/02-backend.md` 已从旧 `MODSEARCH-1` 统一搜索描述修正为当前事实：`/api/instances/:id/mods/search` 与 `/api/instances/:id/mods/search/install` 已撤回，当前在线搜索/安装入口是 Nexus-only 的 `/mods/nexus/search` 与 `/mods/nexus/install`。
@@ -151,8 +235,8 @@
 
 ## 改了什么
 - 修复玩家同步包在 Windows 真机安装 SMAPI 4.5.2 后仍找不到 `StardewModdingAPI.exe` 的问题。
-- 原脚本会在 SMAPI ZIP 内选择看起来像安装器的 exe/bat，并传入 `--install --game-path --no-prompt`。真实测试确认 SMAPI 4.5.2 Windows 安装器没有这组静默参数，非交互调用会进入交互安装流程并可能失败。
-- 新脚本改为解压 SMAPI ZIP，定位 `internal/windows/install.dat`，复制成临时 `smapi-install-payload.zip` 后用 `Expand-Archive -Force` 解压到游戏目录。该 `install.dat` 是官方 Windows 安装 payload，包含 `StardewModdingAPI.exe`、`smapi-internal/`、`steam_appid.txt` 和 SMAPI 自带 Mod。
+- 玩家同步包安装 SMAPI 时改为调用随包官方 Windows 安装器 `internal/windows/SMAPI.Installer.exe`，传入 `--install --game-path "<Stardew Valley>" --no-prompt`，并通过 `Start-Process` 等待安装器退出。
+- 脚本不再直接解包 `install.dat`，也不做本机 `.NET` / `runtimeconfig` 特调；安装器超过 120 秒未退出时会终止并提示玩家检查安装器窗口是否在等待按键/输入。
 - 当前测试解压包 `C:\Users\anxi\Downloads\stardew-player-sync-pack\tools\install.ps1` 已热修复。
 
 ## 影响文件/接口
@@ -167,7 +251,7 @@
 ## 如何验证
 - 已执行：`go test ./internal/games/stardew_junimo -run "PlayerSync|ExportModSyncPack"`。
 - 已执行当前解压包 PowerShell parser 验证：`install.ps1` parse ok。
-- 已执行 SMAPI payload 流程验证：`install.dat -> smapi-install-payload.zip -> Expand-Archive` 可释放 `StardewModdingAPI.exe`。
+- 已更新源码测试，断言玩家同步包脚本定位 `SMAPI.Installer.exe` 并使用官方安装器参数，不再走 `install.dat -> smapi-install-payload.zip -> Expand-Archive` 流程。
 - 已在 `D:\steam\steamapps\common\Stardew Valley` 真实运行热修复后的安装脚本，参数为 `-SkipSteamLaunchOptions`，确认 SMAPI、`ContentPatcher`、`PettingAnimation`、`[CP] MultipleConstructionOrders` 安装成功。
 
 ## 下一步注意事项

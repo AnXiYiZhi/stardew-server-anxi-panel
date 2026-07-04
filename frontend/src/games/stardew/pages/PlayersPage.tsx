@@ -241,6 +241,9 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   const serverInfoLoading = dashboardData.playersLoading
   const onlineCountText = playersData?.onlineCount != null ? String(playersData.onlineCount) : '—'
   const maxPlayersText = playersData?.maxPlayers != null ? String(playersData.maxPlayers) : '—'
+  const onlineRatioText = playersData?.onlineCount != null && playersData?.maxPlayers
+    ? `${Math.round((playersData.onlineCount / playersData.maxPlayers) * 1000) / 10}%`
+    : '等待快照'
   const playerSourceText = playersData?.source === 'smapi_control'
     ? 'SMAPI 控制文件'
     : playersData?.source === 'junimo_info'
@@ -291,7 +294,12 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   function saveDate(save: NonNullable<typeof activeSave>): string {
     if (!save.gameYear) return '—'
     const season = SEASON_ZH[save.gameSeason?.toLowerCase() ?? ''] ?? save.gameSeason ?? '?'
-    return `第 ${save.gameYear} 年${season}季第 ${save.gameDay ?? '?'} 天`
+    return `第 ${save.gameYear} 年${season}季${save.gameDay ?? '?'} 日`
+  }
+
+  function shortId(value?: string): string {
+    if (!value) return '—'
+    return value.length > 10 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value
   }
 
   function playerRole(player: (typeof playerRows)[number]): string {
@@ -329,6 +337,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     return '—'
   }
 
+  function playerOnlineFor(player: (typeof playerRows)[number]): string {
+    if (player.status !== 'online') return player.lastSeen ? `上次 ${formatDate(player.lastSeen)}` : '—'
+    return player.onlineFor || '在线中'
+  }
+
   function formatPlayerLocation(player: (typeof playerRows)[number]): string {
     const name = translateLocationName(player)
     if (typeof player.tileX === 'number' && typeof player.tileY === 'number') {
@@ -354,12 +367,20 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     return translated === '—' ? '' : translated
   }
 
+  const farmNameText = activeSave
+    ? activeSave.farmName
+      ? activeSave.farmName
+      : activeSave.name
+    : activeSaveName ?? '—'
+  const hostFarmerText = activeSave?.farmerName ?? '—'
+  const gameDateText = activeSave?.gameYear ? saveDate(activeSave) : '—'
+
   return (
     <div className="sd-page sd-players-page">
       <div className="sd-page-header">
         <img
           className="sd-page-icon"
-          src="/assets/stardew/ui/icons/icon_nav_players.png"
+          src="/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png"
           alt=""
         />
         <div>
@@ -370,78 +391,69 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         </div>
       </div>
 
-      <div className="sd-srv-section sd-players-overview-section">
-        <div className="sd-srv-section-title">玩家概览</div>
-
+      <div className="sd-players-overview-section">
         <div className="sd-players-overview-grid">
           <div className="sd-players-stat">
+            <img src="/assets/stardew/ui/icons/icon_nav_server_rack_image2.png" alt="" />
             <span className="sd-players-stat-label">服务器状态</span>
-            <span className="sd-players-stat-value">
+            <strong className="sd-players-stat-value sd-players-stat-value-state">
               <span className={dotClass} aria-hidden="true" />
               {stateLabelText}
-            </span>
+            </strong>
+            <span className="sd-players-stat-sub">{isRunning ? '正常' : isStarting ? '启动中' : playerSourceText}</span>
           </div>
 
           <div className="sd-players-stat">
+            <img src="/assets/stardew/ui/icons/icon_top_summary_players.png" alt="" />
             <span className="sd-players-stat-label">在线人数</span>
-            <span className="sd-players-stat-value">
-              {onlineCountText}
+            <strong className="sd-players-stat-value">
+              {onlineCountText} / {maxPlayersText}
               {isRunning && playersData?.onlineCount == null && (
                 <span className="sd-srv-badge-pending">未识别</span>
               )}
-            </span>
+            </strong>
+            <span className="sd-players-stat-sub">{onlineRatioText}</span>
           </div>
 
           <div className="sd-players-stat">
+            <img src="/assets/stardew/ui/icons/icon_top_summary_version.png" alt="" />
             <span className="sd-players-stat-label">最大人数</span>
-            <span className="sd-players-stat-value">
+            <strong className="sd-players-stat-value">
               {maxPlayersText}
               {isRunning && playersData?.maxPlayers == null && (
                 <span className="sd-srv-badge-pending">未识别</span>
               )}
-            </span>
+            </strong>
+            <span className="sd-players-stat-sub">当前上限</span>
           </div>
 
           <div className="sd-players-stat">
-            <span className="sd-players-stat-label">数据来源</span>
-            <span className="sd-players-stat-value">{playerSourceText}</span>
-          </div>
-
-          {playersData?.saveId && (
-            <div className="sd-players-stat">
-              <span className="sd-players-stat-label">控制存档</span>
-              <span className="sd-players-stat-value">{playersData.saveId}</span>
-            </div>
-          )}
-
-          <div className="sd-players-stat">
+            <img src="/assets/stardew/ui/icons/icon_nav_overview_map_image2.png" alt="" />
             <span className="sd-players-stat-label">当前农场</span>
-            <span className="sd-players-stat-value">
-              {activeSave
-                ? activeSave.farmName
-                  ? activeSave.farmName
-                  : activeSave.name
-                : activeSaveName ?? '—'}
-            </span>
+            <strong className="sd-players-stat-value">{farmNameText}</strong>
+            <span className="sd-players-stat-sub">{activeSave?.farmType ?? playerSourceText}</span>
           </div>
 
-          {activeSave?.farmerName && (
-            <div className="sd-players-stat">
-              <span className="sd-players-stat-label">主机农民</span>
-              <span className="sd-players-stat-value">{activeSave.farmerName}</span>
-            </div>
-          )}
+          <div className="sd-players-stat">
+            <img src="/assets/stardew/ui/icons/icon_topbar_user_avatar_image2.png" alt="" />
+            <span className="sd-players-stat-label">主机农民</span>
+            <strong className="sd-players-stat-value">{hostFarmerText}</strong>
+            <span className="sd-players-stat-sub">当前存档</span>
+          </div>
 
-          {activeSave?.gameYear && (
-            <div className="sd-players-stat">
-              <span className="sd-players-stat-label">游戏日期</span>
-              <span className="sd-players-stat-value">{saveDate(activeSave)}</span>
-            </div>
-          )}
+          <div className="sd-players-stat">
+            <img src="/assets/stardew/ui/icons/icon_top_summary_time.png" alt="" />
+            <span className="sd-players-stat-label">游戏日期</span>
+            <strong className="sd-players-stat-value">{gameDateText}</strong>
+            <span className="sd-players-stat-sub">{playersData?.saveId ? `存档 ${playersData.saveId}` : '星露谷时间'}</span>
+          </div>
         </div>
 
         <div className="sd-players-invite-row">
-          <span className="sd-players-invite-label">邀请码</span>
+          <div className="sd-players-invite-copy">
+            <span className="sd-players-invite-label">邀请加入码</span>
+            <span>分享此代码邀请新玩家加入服务器</span>
+          </div>
           {isRunning ? (
             dashboardData.inviteCode ? (
               <span className="sd-players-invite-code">{dashboardData.inviteCode}</span>
@@ -455,17 +467,17 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           )}
           {isRunning && dashboardData.inviteCode && (
             <button
-              className="sd-btn-tan sd-btn-xs"
+              className="sd-btn-green sd-btn-xs sd-players-copy-btn"
               onClick={handleCopyInvite}
               disabled={!dashboardData.inviteCode}
               title="复制邀请码"
             >
-              {copied ? '已复制 ✓' : '复制'}
+              {copied ? '已复制' : '复制'}
             </button>
           )}
           {isRunning && (
             <button
-              className="sd-btn-tan sd-btn-xs"
+              className="sd-btn-blue sd-btn-xs sd-players-refresh-btn"
               onClick={() => { void dashboardData.refreshInviteCode() }}
               title="刷新邀请码"
             >
@@ -482,11 +494,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
 
       <div className="sd-srv-section sd-players-info-section">
         <div className="sd-srv-section-title">
-          服务器信息
+          <img className="sd-players-section-icon" src="/assets/stardew/ui/icons/icon_sidebar_chicken.png" alt="" />
+          服务器信息（Junimo）
           {isRunning && (
             <button
-              className="sd-btn-tan sd-btn-xs"
-              style={{ marginLeft: 8 }}
+              className="sd-btn-tan sd-btn-xs sd-players-title-action"
               onClick={() => { void dashboardData.refreshPlayers() }}
               disabled={serverInfoLoading}
             >
@@ -533,7 +545,8 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
 
       <div className="sd-srv-section sd-players-list-section">
         <div className="sd-srv-section-title">
-          玩家列表
+          <img className="sd-players-section-icon" src="/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png" alt="" />
+          在线玩家（{onlineCountText}）
           {isRunning && playersData?.parseStatus === 'exact' ? (
             <span className="sd-players-badge-live">已接入</span>
           ) : isRunning ? (
@@ -593,28 +606,39 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           <div className="sd-players-table-header">
             <span>玩家名</span>
             <span>角色</span>
-            <span>联机 ID</span>
             <span>位置</span>
-            <span>现金</span>
-            <span>农场收入</span>
-            <span>个人收入</span>
-            <span>钱包</span>
+            <span>在线时长</span>
             <span>状态</span>
+            <span>操作</span>
           </div>
           {playerRows.length > 0 ? (
             playerRows.map((player) => (
-              <div className="sd-players-table-row" key={player.uniqueMultiplayerId || player.name}>
-                <span>{player.name}</span>
-                <span>{playerRole(player)}</span>
-                <span>{player.uniqueMultiplayerId || '—'}</span>
+              <div
+                className="sd-players-table-row"
+                key={player.uniqueMultiplayerId || player.name}
+                title={`联机 ID：${player.uniqueMultiplayerId || '—'}；现金：${formatGold(player.money)}；农场收入：${formatGold(farmIncome(player))}；个人收入：${formatGold(personalIncome(player))}；钱包：${walletModeLabel(player.walletMode)}`}
+              >
+                <span className="sd-players-name-cell">
+                  <span className="sd-players-avatar" aria-hidden="true">{player.name.slice(0, 1).toUpperCase()}</span>
+                  <span className="sd-players-name-copy">
+                    <strong>{player.name}</strong>
+                    <small>{shortId(player.uniqueMultiplayerId)}</small>
+                  </span>
+                </span>
+                <span>
+                  {playerRole(player)}
+                  {player.isHost && <span className="sd-player-host-chip">主机</span>}
+                </span>
                 <span title={originalLocationName(player)}>{formatPlayerLocation(player)}</span>
-                <span>{formatGold(player.money)}</span>
-                <span>{formatGold(farmIncome(player))}</span>
-                <span>{formatGold(personalIncome(player))}</span>
-                <span>{walletModeLabel(player.walletMode)}</span>
+                <span>{playerOnlineFor(player)}</span>
                 <span>
                   <span className={playerStatusDot(player)} aria-hidden="true" />
                   {playerStatusText(player)}
+                </span>
+                <span className="sd-players-row-actions">
+                  <button className="sd-players-icon-button" type="button" disabled title="发送消息待接入" aria-label="发送消息" />
+                  <button className="sd-players-icon-button sd-players-icon-boot" type="button" disabled title="踢出玩家待接入" aria-label="踢出玩家" />
+                  <button className="sd-players-icon-button sd-players-icon-more" type="button" disabled title="更多操作待接入" aria-label="更多操作" />
                 </span>
               </div>
             ))
@@ -638,6 +662,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
 
       <div className="sd-srv-section sd-players-events-section">
         <div className="sd-srv-section-title">
+          <img className="sd-players-section-icon" src="/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png" alt="" />
           玩家活动 / 最近事件
           {recentEvents.length > 0 && (
             <span className="sd-players-badge-live">已接入</span>
@@ -681,6 +706,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
 
       <div className="sd-srv-section sd-players-actions-section">
         <div className="sd-srv-section-title">
+          <img className="sd-players-section-icon" src="/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png" alt="" />
           管理操作
           {!isAdmin && (
             <span className="sd-srv-badge-pending" style={{ background: 'rgba(180,80,0,0.12)', color: '#7a3c00' }}>
@@ -697,45 +723,63 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
 
         <div className="sd-players-actions-grid">
           <div className="sd-players-action-item">
+            <div className="sd-players-action-icon sd-players-action-icon-boot" aria-hidden="true" />
+            <strong>踢出玩家</strong>
+            <span>将玩家踢出服务器</span>
+            <select className="sd-players-action-select" disabled>
+              <option>选择玩家</option>
+            </select>
             <button
-              className="sd-btn-tan"
+              className="sd-btn-delete"
               disabled
               title={!isAdmin ? '仅管理员可用' : '踢出玩家 API 待接入'}
             >
-              踢出玩家
+              踢出
             </button>
             <span className="sd-srv-badge-pending">待接入</span>
           </div>
 
           <div className="sd-players-action-item">
+            <div className="sd-players-action-icon sd-players-action-icon-ban" aria-hidden="true" />
+            <strong>封禁玩家</strong>
+            <span>禁止玩家加入服务器</span>
+            <select className="sd-players-action-select" disabled>
+              <option>选择玩家</option>
+            </select>
             <button
-              className="sd-btn-tan"
+              className="sd-btn-delete"
               disabled
               title={!isAdmin ? '仅管理员可用' : '封禁 API 待接入'}
             >
-              封禁玩家
+              封禁
             </button>
             <span className="sd-srv-badge-pending">待接入</span>
           </div>
 
           <div className="sd-players-action-item">
+            <div className="sd-players-action-icon sd-players-action-icon-list" aria-hidden="true" />
+            <strong>白名单管理</strong>
+            <span>管理允许加入的玩家</span>
             <button
-              className="sd-btn-tan"
+              className="sd-btn-green"
               disabled
               title={!isAdmin ? '仅管理员可用' : '白名单 API 待接入'}
             >
-              白名单管理
+              管理白名单
             </button>
             <span className="sd-srv-badge-pending">待接入</span>
           </div>
 
           <div className="sd-players-action-item">
+            <div className="sd-players-action-icon sd-players-action-icon-star" aria-hidden="true" />
+            <strong>权限设置</strong>
+            <span>配置玩家权限组</span>
             <button
-              className="sd-btn-tan"
+              className="sd-btn-blue"
               disabled
               title={!isAdmin ? '仅管理员可用' : '权限设置 API 待接入'}
             >
-              权限设置
+              设置权限
             </button>
             <span className="sd-srv-badge-pending">待接入</span>
           </div>

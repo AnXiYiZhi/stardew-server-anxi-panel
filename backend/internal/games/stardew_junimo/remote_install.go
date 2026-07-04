@@ -134,7 +134,7 @@ func installRemoteArchive(ctx context.Context, dataDir, archiveURL string, resul
 	_ = tmp.Close()
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	if err := nexusDownloadArchive(ctx, archiveURL, tmpPath); err != nil {
+	if err := nexusDownloadArchive(ctx, archiveURL, tmpPath, logf); err != nil {
 		return nil, err
 	}
 

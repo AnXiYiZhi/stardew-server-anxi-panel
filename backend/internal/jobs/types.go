@@ -16,12 +16,13 @@ const (
 type Runner func(ctx context.Context, job *Context) error
 
 type Spec struct {
-	Type       string
-	TargetType string
-	TargetID   string
-	CreatedBy  int64
-	Timeout    time.Duration
-	Run        Runner
+	Type        string
+	DisplayName string
+	TargetType  string
+	TargetID    string
+	CreatedBy   int64
+	Timeout     time.Duration
+	Run         Runner
 }
 
 type Context struct {

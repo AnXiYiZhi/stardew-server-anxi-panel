@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMemo } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, downloadNexusInstallerExtension, searchNexusMods, installNexusMod, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, createJobEventSource, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { JobLog, ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
@@ -204,13 +204,17 @@ function ModSearchResultCard({
   result,
   actionSlot,
   footerSlot,
+  className,
 }: {
   result: ModSearchResult
   actionSlot?: ReactNode
   footerSlot?: ReactNode
+  className?: string
 }) {
+  const cardClassName = ['sd-mods-nexus-card', className].filter(Boolean).join(' ')
+
   return (
-    <div className="sd-mods-nexus-card">
+    <div className={cardClassName}>
       <div className="sd-mods-nexus-card-pic-wrap">
         {result.pictureUrl ? (
           <img className="sd-mods-nexus-card-pic" src={result.pictureUrl} alt="" />
@@ -312,9 +316,13 @@ function nexusRequiredStatusClass(required: NexusRequiredMod) {
 function NexusRequiredModsBadge({
   requiredMods,
   missingRequiredMods,
+  isOpen,
+  onToggle,
 }: {
   requiredMods: NexusRequiredMod[]
   missingRequiredMods: NexusRequiredMod[]
+  isOpen: boolean
+  onToggle: () => void
 }) {
   if (requiredMods.length === 0) return null
 
@@ -324,29 +332,40 @@ function NexusRequiredModsBadge({
     .map((required) => `${required.name} (NexusId:${required.modId})`)
     .join('、')
 
+  function handleToggle(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    onToggle()
+  }
+
   return (
-    <details className="sd-mods-dependency-details">
-      <summary
+    <div className={`sd-mods-dependency-details${isOpen ? ' sd-mods-dependency-details-open' : ''}`}>
+      <button
+        type="button"
         className={`sd-tag ${hasMissing ? 'sd-tag-red' : 'sd-tag-green'} sd-mods-dependency-summary`}
         title={detailTitle}
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        onClick={handleToggle}
       >
         {label}
-      </summary>
-      <div className="sd-mods-dependency-popover" role="tooltip">
-        <div className="sd-mods-dependency-popover-title">{label}</div>
-        <ul className="sd-mods-dependency-list">
-          {requiredMods.map((required) => (
-            <li className="sd-mods-dependency-list-item" key={`required-${required.modId}`}>
-              <span className="sd-mods-dependency-name">{required.name}</span>
-              <span className="sd-mods-dependency-id">NexusId: {required.modId}</span>
-              <span className={`sd-tag ${nexusRequiredStatusClass(required)} sd-mods-dependency-state`}>
-                {nexusRequiredStatusLabel(required)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </details>
+      </button>
+      {isOpen ? (
+        <div className="sd-mods-dependency-popover" role="dialog" aria-label={label}>
+          <div className="sd-mods-dependency-popover-title">{label}</div>
+          <ul className="sd-mods-dependency-list">
+            {requiredMods.map((required) => (
+              <li className="sd-mods-dependency-list-item" key={`required-${required.modId}`}>
+                <span className="sd-mods-dependency-name">{required.name}</span>
+                <span className="sd-mods-dependency-id">NexusId: {required.modId}</span>
+                <span className={`sd-tag ${nexusRequiredStatusClass(required)} sd-mods-dependency-state`}>
+                  {nexusRequiredStatusLabel(required)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -651,6 +670,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [nexusInstallJobId, setNexusInstallJobId] = useState<string | null>(null)
   const [nexusInstallLogs, setNexusInstallLogs] = useState<JobLog[]>([])
   const [nexusInstallError, setNexusInstallError] = useState<string | null>(null)
+  const [openNexusRequiredModId, setOpenNexusRequiredModId] = useState<number | null>(null)
   const [nexusExtensionInstall, setNexusExtensionInstall] = useState<NexusExtensionInstallState | null>(restoredNexusExtensionState)
   const [nexusExtensionConnection, setNexusExtensionConnection] = useState<NexusExtensionConnectionState>({
     status: 'unknown',
@@ -669,6 +689,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const nexusExtensionPollRef = useRef<number | null>(null)
   const nexusExtensionTimeoutRef = useRef<number | null>(null)
   const nexusExtensionInstallRef = useRef<NexusExtensionInstallState | null>(null)
+  const nexusExtensionKnownJobIdsRef = useRef<Set<string>>(new Set())
   const defaultNexusLoadedRef = useRef(Boolean(restoredNexusSearchState?.results))
 
   const isAdmin = user.role === 'admin'
@@ -804,6 +825,40 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (openNexusRequiredModId === null) return
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Element && target.closest('.sd-mods-dependency-details')) return
+      setOpenNexusRequiredModId(null)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpenNexusRequiredModId(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [openNexusRequiredModId])
+
+  useEffect(() => {
+    if (activeTab !== 'download') {
+      setOpenNexusRequiredModId(null)
+      return
+    }
+    if (openNexusRequiredModId === null || !nexusResults) return
+    if (!nexusResults.some((result) => result.modId === openNexusRequiredModId)) {
+      setOpenNexusRequiredModId(null)
+    }
+  }, [activeTab, nexusResults, openNexusRequiredModId])
 
   useEffect(() => {
     nexusExtensionInstallRef.current = nexusExtensionInstall
@@ -954,6 +1009,19 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     await dashboardData.refreshMods()
   }
 
+  function refreshDashboardForNexusBatchJobs(items: NexusExtensionBatchItem[] | null | undefined) {
+    let hasNewJob = false
+    for (const item of items ?? []) {
+      const jobId = item.jobId?.trim()
+      if (!jobId || nexusExtensionKnownJobIdsRef.current.has(jobId)) continue
+      nexusExtensionKnownJobIdsRef.current.add(jobId)
+      hasNewJob = true
+    }
+    if (hasNewJob) {
+      void dashboardData.refreshJobs()
+    }
+  }
+
   async function markInstalledBatchItems(items: NexusExtensionBatchItem[]) {
     const needsLocalCheck = items.some((item) => !item.jobId && item.status !== 'failed')
     if (!needsLocalCheck) return items
@@ -1080,6 +1148,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     const activeInstall = nexusExtensionInstallRef.current
     if (!activeInstall || activeInstall.batchId !== batch.id) return
     if (activeInstall.status === 'done' || activeInstall.status === 'failed') return
+    refreshDashboardForNexusBatchJobs(batch.items)
 
     const nextStatus = batch.status === 'failed'
       ? 'failed'
@@ -1179,6 +1248,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     const previousBatchId = nexusExtensionInstallRef.current?.batchId
     setNexusExtensionInstall(null)
     nexusExtensionInstallRef.current = null
+    nexusExtensionKnownJobIdsRef.current.clear()
     setNexusInstallError(null)
     setNexusInstallJobId(null)
     setNexusInstallLogs([])
@@ -1610,6 +1680,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     clearNexusExtensionTimers()
     setNexusExtensionInstall(installState)
     nexusExtensionInstallRef.current = installState
+    nexusExtensionKnownJobIdsRef.current.clear()
     setNexusInstallError(null)
     setNexusInstallLogs([])
     setNexusInstallJobId(null)
@@ -1668,6 +1739,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
     try {
       const response = await installNexusMod(result)
+      void dashboardData.refreshJobs()
       subscribeInstallJob(response.jobId, result, () => setNexusInstallingModId(null))
     } catch (e) {
       setNexusInstallError(errorMessage(e))
@@ -2034,9 +2106,11 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                         const installButtonStyle = extensionState
                           ? ({ '--sd-install-progress': `${extensionProgress}%` } as CSSProperties)
                           : undefined
+                        const requiredDetailsOpen = openNexusRequiredModId === r.modId
                         return (
                           <ModSearchResultCard
                             key={r.modId}
+                            className={requiredDetailsOpen ? 'sd-mods-nexus-card-dependency-open' : undefined}
                             result={nexusResultToSearchResult(r)}
                             actionSlot={(
                               <button
@@ -2055,6 +2129,10 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                                 <NexusRequiredModsBadge
                                   requiredMods={requiredMods}
                                   missingRequiredMods={missingRequiredMods}
+                                  isOpen={requiredDetailsOpen}
+                                  onToggle={() => setOpenNexusRequiredModId((current) => (
+                                    current === r.modId ? null : r.modId
+                                  ))}
                                 />
                                 {nexusSettings?.configured ? (
                                   <button

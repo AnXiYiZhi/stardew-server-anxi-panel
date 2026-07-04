@@ -64,10 +64,11 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {
 	}
 
 	job, err := m.store.CreateJob(ctx, storage.CreateJobParams{
-		Type:       spec.Type,
-		TargetType: spec.TargetType,
-		TargetID:   spec.TargetID,
-		CreatedBy:  spec.CreatedBy,
+		Type:        spec.Type,
+		DisplayName: spec.DisplayName,
+		TargetType:  spec.TargetType,
+		TargetID:    spec.TargetID,
+		CreatedBy:   spec.CreatedBy,
 	})
 	if err != nil {
 		return storage.Job{}, err

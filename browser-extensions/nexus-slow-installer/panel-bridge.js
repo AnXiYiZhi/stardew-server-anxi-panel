@@ -72,8 +72,8 @@
 
   async function postRemoteInstallFromPanel(payload) {
     const url = String((payload && payload.url) || "").trim();
-    if (!url) {
-      throw new Error("missing remote install url");
+    if (!isNexusArchiveDownloadUrl(url)) {
+      throw new Error("missing Nexus CDN ZIP download url");
     }
     const response = await fetchWithTimeout(panelRemoteInstallEndpoint(payload && payload.instanceId), {
       method: "POST",

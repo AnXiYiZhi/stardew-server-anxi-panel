@@ -46,6 +46,31 @@ func TestParsePlayersFromInfo_ChineseCountOnly(t *testing.T) {
 	}
 }
 
+func TestReadServerMaxPlayers(t *testing.T) {
+	dir := t.TempDir()
+	if got := readServerMaxPlayers(dir); got != nil {
+		t.Fatalf("max players without settings = %#v, want nil", got)
+	}
+
+	settingsPath := serverSettingsPath(dir)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{"Server":{"MaxPlayers":12}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := readServerMaxPlayers(dir); got == nil || *got != 12 {
+		t.Fatalf("max players = %#v, want 12", got)
+	}
+
+	if err := os.WriteFile(settingsPath, []byte(`{"Server":{"MaxPlayers":0}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := readServerMaxPlayers(dir); got != nil {
+		t.Fatalf("max players with zero value = %#v, want nil", got)
+	}
+}
+
 func TestReadPlayersFromControl(t *testing.T) {
 	dir := t.TempDir()
 	control := filepath.Join(dir, ".local-container", "control")

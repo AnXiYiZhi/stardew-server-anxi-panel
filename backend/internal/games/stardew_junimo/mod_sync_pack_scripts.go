@@ -34,7 +34,7 @@ const playerSyncReadme = `Stardew Anxi Panel 玩家同步包
 - 尝试从 Steam 注册表与 libraryfolders.vdf 定位 Stardew Valley。
 - 检查 Stardew Valley.exe / StardewModdingAPI.exe 是否正在运行。
 - 校验 payload/mods 与 SMAPI ZIP 的 SHA256。
-- 如果包内带 SMAPI ZIP，则解出官方 Windows install.dat payload 安装或更新 SMAPI。
+- 如果包内带 SMAPI ZIP，则运行 SMAPI 官方 Windows 安装器安装或更新 SMAPI。
 - 备份同名 Mod 后复制本包 Mod 到游戏 Mods 目录。
 - 尝试设置 Steam 启动项为 "<Stardew Valley>\StardewModdingAPI.exe" %command%。
 
@@ -364,6 +364,24 @@ function Get-DirectoryFingerprint([string]$Path) {
   }
 }
 
+function Invoke-OfficialSMAPIInstaller([string]$InstallerPath, [string]$GameDir) {
+  Clear-InstallProgressLine
+  $escapedGameDir = $GameDir.Replace('"', '\"')
+  $arguments = '--install --game-path "{0}" --no-prompt' -f $escapedGameDir
+  $process = Start-Process -FilePath $InstallerPath -ArgumentList $arguments -PassThru -WindowStyle Normal
+  $timeoutMs = 120000
+  if (-not $process.WaitForExit($timeoutMs)) {
+    try {
+      $process.Kill()
+      $process.WaitForExit(5000) | Out-Null
+    } catch {}
+    throw "SMAPI 官方安装器超过 120 秒未退出，通常是安装器在等待按键/输入。请点击安装器窗口按 Enter 后重试，或手动运行 SMAPI 官方 install on Windows.bat。"
+  }
+  if ($process.ExitCode -ne 0) {
+    throw "SMAPI 官方安装器失败，退出码：$($process.ExitCode)"
+  }
+}
+
 function Install-SMAPIIfBundled([string]$GameDir) {
   $zip = Get-ChildItem -Path (Join-Path $PackRoot "payload\smapi") -Filter "SMAPI*.zip" -File -ErrorAction SilentlyContinue |
     Sort-Object Name -Descending |
@@ -377,27 +395,25 @@ function Install-SMAPIIfBundled([string]$GameDir) {
   try {
     Show-InstallProgress 56 "解压 SMAPI 安装包"
     Expand-Archive -LiteralPath $zip.FullName -DestinationPath $temp -Force
-    $installPayload = Get-ChildItem -LiteralPath $temp -Recurse -File -Filter "install.dat" |
-      Where-Object { $_.FullName -match "\\internal\\windows\\install\.dat$" } |
+    $installerExe = Get-ChildItem -LiteralPath $temp -Recurse -File -Filter "SMAPI.Installer.exe" |
+      Where-Object { $_.FullName -match "\\internal\\windows\\SMAPI\.Installer\.exe$" } |
       Select-Object -First 1
-    if (-not $installPayload) {
-      $installPayload = Get-ChildItem -LiteralPath $temp -Recurse -File -Filter "install.dat" |
+    if (-not $installerExe) {
+      $installerExe = Get-ChildItem -LiteralPath $temp -Recurse -File -Filter "SMAPI.Installer.exe" |
         Select-Object -First 1
     }
-    if (-not $installPayload) {
-      Write-Step "未能在 SMAPI ZIP 内找到官方 Windows install.dat payload。"
-      return @{ installed = $false; reason = "install_payload_not_found"; zip = $zip.Name }
+    if (-not $installerExe) {
+      Write-Step "未能在 SMAPI ZIP 内找到官方 Windows 安装器。"
+      return @{ installed = $false; reason = "official_installer_not_found"; zip = $zip.Name }
     }
     Write-Step "安装/更新 SMAPI：$($zip.Name)"
-    Show-InstallProgress 62 "释放 SMAPI 官方安装文件"
-    $payloadZip = Join-Path $temp "smapi-install-payload.zip"
-    Copy-Item -LiteralPath $installPayload.FullName -Destination $payloadZip -Force
-    Expand-Archive -LiteralPath $payloadZip -DestinationPath $GameDir -Force
+    Show-InstallProgress 62 "运行 SMAPI 官方安装器"
+    Invoke-OfficialSMAPIInstaller $installerExe.FullName $GameDir
     if (-not (Test-Path -LiteralPath (Join-Path $GameDir "StardewModdingAPI.exe"))) {
-      throw "SMAPI 官方 payload 解压后未发现 StardewModdingAPI.exe。"
+      throw "SMAPI 官方安装器完成后未发现 StardewModdingAPI.exe。"
     }
     Show-InstallProgress 70 "SMAPI 安装完成"
-    return @{ installed = $true; zip = $zip.Name; method = "official_install_payload" }
+    return @{ installed = $true; zip = $zip.Name; method = "official_installer" }
   } finally {
     Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
   }

@@ -62,114 +62,81 @@ const backupKindLabel: Record<string, string> = {
   scheduled: '定时备份',
 }
 
+function saveFarmMapSrc(save: SaveInfo): string | null {
+  if (save.farmType && farmTypeLabel[save.farmType]) {
+    return `/assets/stardew/new-game/farms/${save.farmType}.png`
+  }
+  return null
+}
+
+function saveProgressText(save: SaveInfo): string | null {
+  if (!save.gameYear) return null
+  const season = seasonLabel[save.gameSeason ?? ''] ?? save.gameSeason ?? ''
+  return `第 ${save.gameYear} 年 · ${season}季 · ${save.gameDay} 日`
+}
+
 function SaveCard({
   save,
-  isActive,
   busy,
   isRunning,
   isAdmin,
   onSelect,
-  onSelectAndStart,
-  onBackup,
   onDelete,
-  onExport,
 }: {
   save: SaveInfo
-  isActive: boolean
   busy: boolean
   isRunning: boolean
   isAdmin: boolean
   onSelect: () => void
-  onSelectAndStart: () => void
-  onBackup: () => void
   onDelete: () => void
-  onExport: () => void
 }) {
   const writeDisabled = busy || isRunning || !isAdmin
-  const deleteDisabled = busy || !isAdmin || (isRunning && isActive)
+  const deleteDisabled = busy || !isAdmin
   const writeTitle = !isAdmin
     ? '仅管理员可执行此操作'
     : isRunning
       ? '服务器运行中，请先停止后操作'
-      : undefined
+      : '设为启动存档'
   const deleteTitle = !isAdmin
     ? '仅管理员可执行此操作'
-    : isRunning && isActive
-      ? '当前启动存档正在被服务器使用，请先停止服务器再删除'
-      : isRunning
-        ? '服务器运行中，仅允许删除非当前启动存档；删除前会再次确认'
-        : isActive
-          ? '这是当前启动存档，删除后需要重新选择启动存档'
-          : undefined
+    : isRunning
+      ? '服务器运行中，仅允许删除非当前启动存档；删除前会再次确认'
+      : undefined
+  const mapSrc = saveFarmMapSrc(save)
+  const progress = saveProgressText(save)
 
   return (
-    <div className={`sd-save-card${isActive ? ' active' : ''}`}>
+    <div className="sd-save-card">
+      <div className="sd-save-card-thumb" aria-hidden="true">
+        {mapSrc ? <img src={mapSrc} alt="" /> : <span className="sd-save-card-thumb-empty">?</span>}
+      </div>
       <div className="sd-save-card-info">
         <div className="sd-save-card-name">
-          {isActive ? <span className="sd-save-active-tag">当前</span> : null}
-          <span>{save.name}</span>
+          <span>{save.farmName || save.name}</span>
         </div>
         {save.parseError ? (
           <div className="sd-save-card-error">解析失败：{save.parseError}</div>
         ) : (
-          <div className="sd-save-meta">
-            {save.farmName
-              ? <span>农场：{save.farmName}</span>
-              : <span className="sd-save-meta-muted">农场名未知</span>}
-            {save.farmerName
-              ? <span>农民：{save.farmerName}</span>
-              : <span className="sd-save-meta-muted">农民名未知</span>}
-            {save.gameYear ? (
-              <span>
-                第 {save.gameYear} 年{' '}
-                {seasonLabel[save.gameSeason ?? ''] ?? save.gameSeason}{' '}
-                第 {save.gameDay} 天
-              </span>
-            ) : null}
-            {save.farmType
-              ? <span>地图：{farmTypeLabel[save.farmType] ?? save.farmType}</span>
-              : <span className="sd-save-meta-muted">地图未知</span>}
-            {save.fileSizeBytes ? <span>大小：{formatBytes(save.fileSizeBytes)}</span> : null}
-            {save.modifiedAt
-              ? <span>修改：{new Date(save.modifiedAt).toLocaleString()}</span>
-              : null}
-          </div>
+          <>
+            <div className="sd-save-card-line">
+              {progress ?? <span className="sd-save-meta-muted">进度未知</span>}
+            </div>
+            <div className="sd-save-card-line sd-save-card-line-muted">
+              {save.farmType ? (farmTypeLabel[save.farmType] ?? save.farmType) : '地图未知'}
+              {save.fileSizeBytes ? ` · ${formatBytes(save.fileSizeBytes)}` : ''}
+            </div>
+          </>
         )}
       </div>
       <div className="sd-save-card-actions">
-        {/* 写操作按钮：管理员可见，非管理员禁用（始终可见，避免用户困惑） */}
-        {!isActive ? (
-          <button
-            className="sd-btn-tan"
-            disabled={writeDisabled}
-            title={writeTitle}
-            onClick={onSelect}
-            type="button"
-          >
-            设为启动存档
-          </button>
-        ) : null}
         <button
           className="sd-btn-green"
           disabled={writeDisabled}
           title={writeTitle}
-          onClick={onSelectAndStart}
+          onClick={onSelect}
           type="button"
         >
-          {isActive ? '使用此存档启动' : '选择并启动'}
-        </button>
-        {/* 导出：所有登录用户均可操作 */}
-        <button className="sd-btn-tan" disabled={busy} onClick={onExport} type="button">
-          导出
-        </button>
-        <button
-          className="sd-btn-tan"
-          disabled={busy || !isAdmin}
-          title={!isAdmin ? '仅管理员可执行此操作' : undefined}
-          onClick={onBackup}
-          type="button"
-        >
-          手动备份
+          选择
         </button>
         <button
           className="sd-btn-delete"
@@ -218,6 +185,7 @@ export function SavesSection({
   const [restoreNeedsOverwrite, setRestoreNeedsOverwrite] = useState(false)
   const [restoreError, setRestoreError] = useState('')
   const [deleteBackupTarget, setDeleteBackupTarget] = useState<BackupInfo | null>(null)
+  const [showAllBackups, setShowAllBackups] = useState(false)
   const isRunning = state === 'running' || state === 'starting'
 
   // 删除确认（内联对话框，替代 window.confirm）
@@ -516,6 +484,8 @@ export function SavesSection({
   const activeSave = data?.activeSaveName
     ? saves.find((save) => save.isActive || save.name === data.activeSaveName) ?? null
     : null
+  // 存档库网格只展示非激活存档；激活存档在上方重点卡展示
+  const libRestSaves = saves.filter((save) => !(save.isActive || data?.activeSaveName === save.name))
   const confirmDeleteSave = saves.find((save) => save.name === confirmDeleteName)
   const confirmDeleteIsActive = Boolean(confirmDeleteSave?.isActive || data?.activeSaveName === confirmDeleteName)
   const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1
@@ -526,123 +496,163 @@ export function SavesSection({
 
   return (
     <section id="saves-section">
-      {/* ── 页头 ── */}
-      <div className="sd-saves-header">
-        <div className="sd-saves-header-left">
-          <div className="sd-srv-section-title" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
-            存档列表
-          </div>
-          {isRunning && (
-            <div className="sd-saves-running-hint">
-              ⚠ 服务器运行中，创建 / 上传 / 切换存档已暂时禁用；当前启动存档受保护，其他存档删除前会再次确认
-            </div>
-          )}
+      {/* ── 运行中提示 / 全局操作结果 ── */}
+      {isRunning && (
+        <div className="sd-saves-running-hint">
+          ⚠ 服务器运行中，创建 / 上传 / 切换存档已暂时禁用；当前启动存档受保护，其他存档删除前会再次确认
         </div>
-        <div className="sd-saves-header-actions">
-          <button
-            className="sd-btn-tan"
-            disabled={loading}
-            onClick={() => void loadSaves()}
-            type="button"
-          >
-            {loading ? '刷新中…' : '刷新列表'}
-          </button>
-          {isAdmin && (
-            <>
-              <button
-                className="sd-btn-green"
-                disabled={busy || isRunning}
-                title={isRunning ? '服务器运行中，请先停止后再创建存档' : undefined}
-                onClick={() => setShowNewGameModal(true)}
-                type="button"
-              >
-                创建存档
-              </button>
-              <button
-                className="sd-btn-tan"
-                disabled={busy || isRunning}
-                title={isRunning ? '服务器运行中，请先停止后再上传存档' : undefined}
-                onClick={() => setShowUploadModal(true)}
-                type="button"
-              >
-                上传存档
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── 全局操作结果 ── */}
+      )}
       {message ? <div className="sd-saves-error">{message}</div> : null}
 
       {data?.activeSaveName ? (
-        <div className="sd-saves-active-card">
-          <div className="sd-saves-active-art" aria-hidden="true" />
-          <div className="sd-saves-active-main">
-            <div className="sd-saves-active-eyebrow">当前激活存档</div>
-            <div className="sd-saves-active-title">
-              {activeSave?.farmName || data.activeSaveName}
-              <span className="sd-save-active-tag">当前激活</span>
-            </div>
-            <div className="sd-save-meta">
-              <span>目录：{data.activeSaveName}</span>
-              {activeSave?.farmerName ? <span>农民：{activeSave.farmerName}</span> : null}
-              {activeSave?.gameYear ? (
-                <span>
-                  第 {activeSave.gameYear} 年{' '}
-                  {seasonLabel[activeSave.gameSeason ?? ''] ?? activeSave.gameSeason}{' '}
-                  第 {activeSave.gameDay} 天
-                </span>
+        <>
+          <div className="sd-saves-eyebrow">
+            <span className="sd-saves-eyebrow-ico" aria-hidden="true">⭐</span>
+            <span>当前激活存档</span>
+          </div>
+          <div className="sd-saves-active-card">
+            <div className="sd-saves-active-art" aria-hidden="true">
+              {activeSave && saveFarmMapSrc(activeSave) ? (
+                <img
+                  className="sd-saves-active-art-map"
+                  src={saveFarmMapSrc(activeSave) as string}
+                  alt=""
+                />
               ) : null}
-              {activeSave?.farmType ? <span>地图：{farmTypeLabel[activeSave.farmType] ?? activeSave.farmType}</span> : null}
-              {activeSave?.fileSizeBytes ? <span>大小：{formatBytes(activeSave.fileSizeBytes)}</span> : null}
-              {activeSave?.modifiedAt ? <span>修改：{new Date(activeSave.modifiedAt).toLocaleString()}</span> : null}
+            </div>
+            <div className="sd-saves-active-main">
+              <div className="sd-saves-active-title">
+                <span>{activeSave?.farmName || data.activeSaveName}</span>
+                <span className="sd-save-active-tag">当前激活</span>
+                <span className="sd-saves-active-star" aria-hidden="true">⭐</span>
+              </div>
+              <div className="sd-saves-active-fields">
+                <div className="sd-saves-field">
+                  <span className="sd-saves-field-ico" aria-hidden="true">🧑‍🌾</span>
+                  <span className="sd-saves-field-label">农场主</span>
+                  <span className="sd-saves-field-value">{activeSave?.farmerName || '未知'}</span>
+                </div>
+                <div className="sd-saves-field">
+                  <span className="sd-saves-field-ico" aria-hidden="true">🕐</span>
+                  <span className="sd-saves-field-label">最后游玩</span>
+                  <span className="sd-saves-field-value">
+                    {activeSave?.modifiedAt ? new Date(activeSave.modifiedAt).toLocaleString() : '未知'}
+                  </span>
+                </div>
+                <div className="sd-saves-field">
+                  <span className="sd-saves-field-ico" aria-hidden="true">📅</span>
+                  <span className="sd-saves-field-label">日期</span>
+                  <span className="sd-saves-field-value">
+                    {activeSave ? (saveProgressText(activeSave) ?? '未知') : '未知'}
+                  </span>
+                </div>
+                <div className="sd-saves-field">
+                  <span className="sd-saves-field-ico" aria-hidden="true">💾</span>
+                  <span className="sd-saves-field-label">文件大小</span>
+                  <span className="sd-saves-field-value">
+                    {activeSave?.fileSizeBytes ? formatBytes(activeSave.fileSizeBytes) : '未知'}
+                  </span>
+                </div>
+                <div className="sd-saves-field">
+                  <span className="sd-saves-field-ico" aria-hidden="true">🌱</span>
+                  <span className="sd-saves-field-label">农场类型</span>
+                  <span className="sd-saves-field-value">
+                    {activeSave?.farmType ? (farmTypeLabel[activeSave.farmType] ?? activeSave.farmType) : '未知'}
+                  </span>
+                </div>
+                <div className="sd-saves-field">
+                  <span className="sd-saves-field-ico" aria-hidden="true">📁</span>
+                  <span className="sd-saves-field-label">存档目录</span>
+                  <span className="sd-saves-field-value">{data.activeSaveName}</span>
+                </div>
+              </div>
+              <div className="sd-saves-active-actions">
+                <button
+                  className="sd-btn-green"
+                  disabled={busy || isRunning || !isAdmin}
+                  title={
+                    !isAdmin
+                      ? '仅管理员可执行此操作'
+                      : isRunning
+                        ? '服务器运行中，请先停止后再启动'
+                        : undefined
+                  }
+                  onClick={() => void handleSelectAndStart(data.activeSaveName)}
+                  type="button"
+                >
+                  使用此存档启动
+                </button>
+                {activeSave ? (
+                  <button className="sd-btn-tan" disabled={busy} onClick={() => void handleExport(activeSave.name)} type="button">
+                    导出
+                  </button>
+                ) : null}
+                {activeSave ? (
+                  <button
+                    className="sd-btn-tan"
+                    disabled={busy || !isAdmin}
+                    title={!isAdmin ? '仅管理员可执行此操作' : undefined}
+                    onClick={() => void handleManualBackup(activeSave.name)}
+                    type="button"
+                  >
+                    手动备份
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
-          <div className="sd-saves-active-actions">
-            <button
-              className="sd-btn-green"
-              disabled={busy || isRunning || !isAdmin}
-              title={
-                !isAdmin
-                  ? '仅管理员可执行此操作'
-                  : isRunning
-                    ? '服务器运行中，请先停止后再启动'
-                    : undefined
-              }
-              onClick={() => void handleSelectAndStart(data.activeSaveName)}
-              type="button"
-            >
-              使用此存档启动
-            </button>
-            {activeSave ? (
-              <button className="sd-btn-tan" disabled={busy} onClick={() => void handleExport(activeSave.name)} type="button">
-                导出
-              </button>
-            ) : null}
-          </div>
-        </div>
+        </>
       ) : null}
 
-      {/* ── 存档列表 ── */}
+      {/* ── 存档库 ── */}
       {hasSaves ? (
-        <div className="sd-saves-list">
-          {saves.map((save) => (
-            <SaveCard
-              key={save.name}
-              save={save}
-              isActive={Boolean(save.isActive || data?.activeSaveName === save.name)}
-              busy={busy || loading}
-              isRunning={isRunning}
-              isAdmin={isAdmin}
-              onSelect={() => void handleSelect(save.name)}
-              onSelectAndStart={() => void handleSelectAndStart(save.name)}
-              onBackup={() => void handleManualBackup(save.name)}
-              onDelete={() => setConfirmDeleteName(save.name)}
-              onExport={() => void handleExport(save.name)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="sd-saves-eyebrow">
+            <span className="sd-saves-eyebrow-ico" aria-hidden="true">🍀</span>
+            <span>存档库</span>
+            <div className="sd-saves-eyebrow-actions">
+              <button
+                className="sd-btn-tan"
+                disabled={loading}
+                onClick={() => void loadSaves()}
+                type="button"
+              >
+                {loading ? '刷新中…' : '刷新列表'}
+              </button>
+            </div>
+          </div>
+          <div className="sd-saves-list">
+            {libRestSaves.map((save) => (
+              <SaveCard
+                key={save.name}
+                save={save}
+                busy={busy || loading}
+                isRunning={isRunning}
+                isAdmin={isAdmin}
+                onSelect={() => void handleSelect(save.name)}
+                onDelete={() => setConfirmDeleteName(save.name)}
+              />
+            ))}
+            {isAdmin ? (
+              <div className="sd-save-card sd-save-card-create">
+                <div className="sd-save-create-plus" aria-hidden="true">＋</div>
+                <div className="sd-save-card-info">
+                  <div className="sd-save-create-title">创建新存档</div>
+                  <p className="sd-save-create-hint">创建全新农场并立即启动</p>
+                </div>
+                <button
+                  className="sd-btn-green"
+                  disabled={busy || isRunning}
+                  title={isRunning ? '服务器运行中，请先停止后再创建存档' : undefined}
+                  onClick={() => setShowNewGameModal(true)}
+                  type="button"
+                >
+                  创建并启动
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : loading ? (
         <div className="sd-srv-empty">加载存档列表中…</div>
       ) : (
@@ -678,17 +688,37 @@ export function SavesSection({
         </div>
       )}
 
+      {/* ── 上传存档：天空横条入口 ── */}
+      {hasSaves && isAdmin ? (
+        <div className="sd-saves-upload-strip">
+          <span className="sd-saves-upload-ico" aria-hidden="true">📮</span>
+          <div className="sd-saves-upload-copy">
+            <div className="sd-saves-upload-title">上传存档文件</div>
+            <div className="sd-saves-upload-hint">上传现有存档文件并立即启动</div>
+          </div>
+          <button
+            type="button"
+            className="sd-btn-green"
+            disabled={busy || isRunning}
+            title={isRunning ? '服务器运行中，请先停止后再上传存档' : '上传本地 Stardew Valley 存档 ZIP'}
+            onClick={() => setShowUploadModal(true)}
+          >
+            上传并启动
+          </button>
+        </div>
+      ) : null}
+
       {/* ── 备份与恢复 ── */}
       {isAdmin ? (
         <section className="sd-save-backups-section" aria-label="备份与恢复">
           <div className="sd-save-backups-header">
             <div>
               <div className="sd-srv-section-title" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
-                备份与恢复
+                <span aria-hidden="true">🍀</span> 备份与恢复
               </div>
               {isRunning ? (
                 <div className="sd-saves-running-hint">
-                  ⚠ 服务器运行中，备份可以查看，恢复需要先停止服务器
+                  ⚠ 运行中仅可查看，恢复需先停止服务器
                 </div>
               ) : null}
             </div>
@@ -702,33 +732,29 @@ export function SavesSection({
             </button>
           </div>
           <div className="sd-save-backup-policy">
-            <div className="sd-save-backup-policy-head">
-              <strong>自动备份规则</strong>
-              <span>手动备份会单独保留；下面这些只控制自动备份。</span>
-            </div>
-            <label className="sd-save-backup-toggle sd-save-backup-option">
+            <span className="sd-save-backup-policy-title" title="以下规则只影响自动备份；手动备份始终单独保留">
+              自动备份
+            </span>
+            <label
+              className="sd-save-backup-toggle"
+              title="玩家睡觉完成保存后，覆盖同一份「最新备份」"
+            >
               <input
                 type="checkbox"
                 checked={backupPolicyDraft.gameSaveBackups}
                 onChange={(e) => setBackupPolicyDraft((policy) => ({ ...policy, gameSaveBackups: e.target.checked }))}
               />
-              <span>
-                <strong>游戏保存后更新“最新备份”</strong>
-                <small>玩家睡觉完成保存后，覆盖同一份最新备份，方便回到最近一次保存。</small>
-              </span>
+              <span>游戏保存后更新最新备份</span>
             </label>
-            <label className="sd-save-backup-toggle sd-save-backup-option">
+            <label
+              className="sd-save-backup-toggle"
+              title="每天到点覆盖同一份「定时备份」"
+            >
               <input
                 type="checkbox"
                 checked={backupPolicyDraft.scheduledBackups}
                 onChange={(e) => setBackupPolicyDraft((policy) => ({ ...policy, scheduledBackups: e.target.checked }))}
               />
-              <span>
-                <strong>每天固定时间更新“定时备份”</strong>
-                <small>到你选的时间后覆盖同一份定时备份，适合每天留一份固定保险。</small>
-              </span>
-            </label>
-            <label className="sd-save-backup-field">
               <span>每天</span>
               <select
                 value={backupPolicyDraft.scheduledHour}
@@ -743,13 +769,13 @@ export function SavesSection({
                   </option>
                 ))}
               </select>
-              <span>执行一次</span>
+              <span>定时备份</span>
             </label>
-            <label className="sd-save-backup-slider">
-              <span>
-                <strong>每日快照最多保留 {backupPolicyDraft.dailyRetentionDays} 天</strong>
-                <small>每天只留一份；同一天再次备份会覆盖，超过天数会自动删旧快照。</small>
-              </span>
+            <label
+              className="sd-save-backup-slider"
+              title="每天保留一份快照，超过天数自动删除最旧的"
+            >
+              <span>每日快照保留 {backupPolicyDraft.dailyRetentionDays} 天</span>
               <input
                 type="range"
                 min={1}
@@ -767,43 +793,59 @@ export function SavesSection({
               disabled={backupPolicyBusy || !backupPolicyChanged}
               onClick={() => void handleBackupPolicySave()}
             >
-              {backupPolicyBusy ? '保存中…' : '保存备份设置'}
+              {backupPolicyBusy ? '保存中…' : '保存设置'}
             </button>
           </div>
           {backupMessage ? <div className="sd-saves-error">{backupMessage}</div> : null}
           {backupsLoading ? (
             <div className="sd-srv-empty">读取备份列表中…</div>
           ) : backups.length > 0 ? (
-            <div className="sd-save-backups-list">
-              {backups.map((backup) => {
+            <div className="sd-save-backups-table" role="table" aria-label="备份列表">
+              <div className="sd-save-backups-thead" role="row">
+                <span>备份文件</span>
+                <span>所属农场</span>
+                <span>创建时间</span>
+                <span>大小</span>
+                <span>状态</span>
+                <span>操作</span>
+              </div>
+              {(showAllBackups ? backups : backups.slice(0, 5)).map((backup) => {
                 const sameNameExists = saves.some((save) => save.name === backup.saveName)
+                const rowTitle = [
+                  backupKindLabel[backup.kind] ?? backup.kind,
+                  backup.farmerName ? `农民：${backup.farmerName}` : null,
+                  backup.gameYear
+                    ? `第 ${backup.gameYear} 年 ${seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason} 第 ${backup.gameDay} 天`
+                    : null,
+                  backup.farmType ? `地图：${farmTypeLabel[backup.farmType] ?? backup.farmType}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
                 return (
-                  <div className="sd-save-backup-row" key={backup.name}>
-                    <div className="sd-save-backup-main">
-                      <div className="sd-save-backup-name">{backup.name}</div>
-                      <div className="sd-save-backup-meta">
-                        <span className="sd-save-backup-kind">{backupKindLabel[backup.kind] ?? backup.kind}</span>
-                        <span>原存档：{backup.saveName || '未知'}</span>
-                        {backup.farmName ? <span>农场：{backup.farmName}</span> : null}
-                        {backup.farmerName ? <span>农民：{backup.farmerName}</span> : null}
-                        {backup.gameYear ? (
-                          <span>
-                            第 {backup.gameYear} 年{' '}
-                            {seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason}{' '}
-                            第 {backup.gameDay} 天
-                          </span>
-                        ) : null}
-                        {backup.farmType ? <span>地图：{farmTypeLabel[backup.farmType] ?? backup.farmType}</span> : null}
-                        {backup.fileSizeBytes ? <span>存档：{formatBytes(backup.fileSizeBytes)}</span> : null}
-                        <span>备份：{formatBytes(backup.size)}</span>
-                        <span>创建：{new Date(backup.createdAt).toLocaleString()}</span>
-                        {sameNameExists ? <span className="sd-save-backup-conflict">同名存档存在</span> : null}
-                      </div>
+                  <div className="sd-save-backup-row" role="row" key={backup.name} title={rowTitle}>
+                    <span className="sd-save-backup-file">
+                      <span className="sd-save-backup-zip" aria-hidden="true">ZIP</span>
+                      <span className="sd-save-backup-file-text">
+                        <span className="sd-save-backup-name">{backup.name}</span>
+                        <small className="sd-save-backup-kind">{backupKindLabel[backup.kind] ?? backup.kind}</small>
+                      </span>
+                    </span>
+                    <span className="sd-save-backup-cell">
+                      {backup.farmName || backup.saveName || '未知'}
+                      {backup.farmerName ? `（${backup.farmerName}）` : ''}
+                    </span>
+                    <span className="sd-save-backup-cell">{new Date(backup.createdAt).toLocaleString()}</span>
+                    <span className="sd-save-backup-cell">{formatBytes(backup.size)}</span>
+                    <span className="sd-save-backup-cell">
                       {backup.parseError ? (
-                        <div className="sd-save-card-error">解析失败：{backup.parseError}</div>
-                      ) : null}
-                    </div>
-                    <div className="sd-save-backup-actions">
+                        <span className="sd-badge sd-badge-red">解析失败</span>
+                      ) : sameNameExists ? (
+                        <span className="sd-badge sd-badge-yellow">同名冲突</span>
+                      ) : (
+                        <span className="sd-badge sd-badge-green">正常</span>
+                      )}
+                    </span>
+                    <span className="sd-save-backup-actions">
                       <button
                         className="sd-btn-green"
                         type="button"
@@ -817,17 +859,27 @@ export function SavesSection({
                         className="sd-btn-delete"
                         type="button"
                         disabled={busy}
+                        title="彻底删除备份 ZIP，不影响当前存档"
                         onClick={() => setDeleteBackupTarget(backup)}
                       >
-                        彻底删除
+                        删除
                       </button>
-                    </div>
+                    </span>
                   </div>
                 )
               })}
+              {backups.length > 5 ? (
+                <button
+                  type="button"
+                  className="sd-save-backups-more"
+                  onClick={() => setShowAllBackups((v) => !v)}
+                >
+                  {showAllBackups ? '收起备份 ︿' : `查看更多备份（${backups.length - 5}） ﹀`}
+                </button>
+              ) : null}
             </div>
           ) : (
-            <div className="sd-srv-empty">暂无备份。删除存档前会自动创建备份，覆盖恢复前也会先备份当前存档。</div>
+            <div className="sd-srv-empty">暂无备份。删除存档或覆盖恢复前会自动创建备份。</div>
           )}
         </section>
       ) : null}

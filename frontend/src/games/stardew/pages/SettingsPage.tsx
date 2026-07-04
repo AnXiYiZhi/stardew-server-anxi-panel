@@ -103,7 +103,7 @@ function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCanc
 
 function AccountSection({ user, onLogout }: Pick<StardewPageProps, 'user' | 'onLogout'>) {
   return (
-    <section className="sd-settings-section">
+    <section className="sd-settings-section sd-settings-account-section">
       <h3 className="sd-settings-section-title">当前账号</h3>
       <div className="sd-settings-account-card">
         <div className="sd-settings-account-row">
@@ -133,7 +133,7 @@ function AccountSection({ user, onLogout }: Pick<StardewPageProps, 'user' | 'onL
 
 function VersionSection({ versionInfo }: { versionInfo: StardewPageProps['dashboardData']['versionInfo'] }) {
   return (
-    <section className="sd-settings-section">
+    <section className="sd-settings-section sd-settings-version-section">
       <h3 className="sd-settings-section-title">面板版本</h3>
       <div className="sd-settings-info-grid">
         <div className="sd-settings-info-row">
@@ -220,7 +220,7 @@ function PortSection({ isAdmin }: { isAdmin: boolean }) {
   const saveDisabled = loading || saving || !trimmedDraft || trimmedDraft === vncPort
 
   return (
-    <section className="sd-settings-section">
+    <section className="sd-settings-section sd-settings-port-section">
       <h3 className="sd-settings-section-title">端口信息</h3>
 
       {error && <div className="sd-settings-error">{error}</div>}
@@ -384,7 +384,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
 
   if (!isAdmin) {
     return (
-      <section className="sd-settings-section">
+      <section className="sd-settings-section sd-settings-users-section">
         <h3 className="sd-settings-section-title">用户管理</h3>
         <div className="sd-settings-locked">
           <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
@@ -395,7 +395,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
   }
 
   return (
-    <section className="sd-settings-section">
+    <section className="sd-settings-section sd-settings-users-section">
       <h3 className="sd-settings-section-title">用户管理</h3>
 
       {actionError && (
@@ -598,7 +598,7 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
 
   if (!isAdmin) {
     return (
-      <section className="sd-settings-section">
+      <section className="sd-settings-section sd-settings-audit-section">
         <h3 className="sd-settings-section-title">审计日志</h3>
         <div className="sd-settings-locked">
           <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
@@ -612,7 +612,7 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
   const currentPage = Math.floor(offset / AUDIT_PAGE_SIZE) + 1
 
   return (
-    <section className="sd-settings-section">
+    <section className="sd-settings-section sd-settings-audit-section">
       <h3 className="sd-settings-section-title">审计日志</h3>
 
       <div className="sd-settings-section-toolbar">
@@ -688,12 +688,39 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
   )
 }
 
-// ── 安全与权限区 ──────────────────────────────────────────────────────────────
+// ── 安全概览区 ──────────────────────────────────────────────────────────────
+
+function SecuritySummarySection() {
+  const summaryItems = [
+    { label: 'Session 认证', state: '已启用', level: 'green' },
+    { label: '密码哈希存储', state: '已启用', level: 'green' },
+    { label: '操作审计记录', state: '已启用', level: 'green' },
+    { label: 'Docker Socket', state: '高风险', level: 'yellow' },
+    { label: '日志脱敏策略', state: '已启用', level: 'green' },
+  ]
+
+  return (
+    <section className="sd-settings-section sd-settings-security-summary-section">
+      <h3 className="sd-settings-section-title">安全与权限</h3>
+      <div className="sd-settings-security-summary-list">
+        {summaryItems.map(item => (
+          <div key={item.label} className="sd-settings-security-summary-item">
+            <span className={`sd-dot sd-dot-${item.level}`} aria-hidden="true" />
+            <span>{item.label}</span>
+            <strong>{item.state}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// ── 安全建议区 ──────────────────────────────────────────────────────────────
 
 function SecuritySection() {
   return (
-    <section className="sd-settings-section">
-      <h3 className="sd-settings-section-title">安全与权限</h3>
+    <section className="sd-settings-section sd-settings-security-section">
+      <h3 className="sd-settings-section-title">安全建议</h3>
       <div className="sd-settings-security-list">
         <div className="sd-settings-security-item">
           <span className="sd-dot sd-dot-green" aria-hidden="true" />
@@ -751,7 +778,7 @@ function PendingSettingsSection() {
   ]
 
   return (
-    <section className="sd-settings-section">
+    <section className="sd-settings-section sd-settings-pending-section">
       <h3 className="sd-settings-section-title">其他设置 <span className="sd-settings-pending-badge">后端待接入</span></h3>
       <div className="sd-settings-pending-list">
         {pendingItems.map(item => (
@@ -778,7 +805,7 @@ export function SettingsPage({ user, dashboardData, onLogout }: StardewPageProps
       <div className="sd-page-header">
         <img
           className="sd-page-icon"
-          src="/assets/stardew/ui/icons/icon_nav_settings.png"
+          src="/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png"
           alt=""
         />
         <div>
@@ -787,13 +814,24 @@ export function SettingsPage({ user, dashboardData, onLogout }: StardewPageProps
         </div>
       </div>
 
-      <AccountSection user={user} onLogout={onLogout} />
-      <VersionSection versionInfo={dashboardData.versionInfo} />
-      <PortSection isAdmin={isAdmin} />
-      <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} isSuperAdmin={user.isSuperAdmin} />
-      <AuditLogsSection isAdmin={isAdmin} />
-      <SecuritySection />
-      <PendingSettingsSection />
+      <div className="sd-settings-top-grid">
+        <AccountSection user={user} onLogout={onLogout} />
+        <VersionSection versionInfo={dashboardData.versionInfo} />
+        <SecuritySummarySection />
+      </div>
+
+      <div className="sd-settings-main-grid">
+        <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} isSuperAdmin={user.isSuperAdmin} />
+        <AuditLogsSection isAdmin={isAdmin} />
+      </div>
+
+      <div className="sd-settings-bottom-grid">
+        <div className="sd-settings-bottom-stack">
+          <PortSection isAdmin={isAdmin} />
+          <PendingSettingsSection />
+        </div>
+        <SecuritySection />
+      </div>
     </div>
   )
 }

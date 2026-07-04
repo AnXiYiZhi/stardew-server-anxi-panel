@@ -4,17 +4,14 @@ import { SavesSection } from '../SavesSection'
 export function SavesPage({ user, instanceState, dashboardData, onNavigate, saveActionRequest }: StardewPageProps) {
   return (
     <div className="sd-page sd-saves-page">
-      <div className="sd-page-header">
+      <h2 className="sd-saves-page-title">
         <img
           className="sd-page-icon"
           src="/assets/stardew/ui/icons/icon_nav_saves.png"
           alt=""
         />
-        <div>
-          <h2 className="sd-page-title">存档管理</h2>
-          <p className="sd-page-desc">查看、选择、创建或上传 Stardew Valley 存档。</p>
-        </div>
-      </div>
+        存档管理
+      </h2>
 
       <SavesSection
         state={instanceState?.state ?? ''}

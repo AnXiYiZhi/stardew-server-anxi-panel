@@ -71,6 +71,15 @@
   --sd-img-bg-wood-strip: url("/assets/stardew/ui/backgrounds/background_frame_wood_strip.png");
   --sd-img-bg-black:     url("/assets/stardew/ui/backgrounds/background_app_black.png");
   --sd-img-page-frame:   url("/assets/stardew/ui/panels/main_page_frame_empty_image2.png");
+  --sd-img-page-frame-center: url("/assets/stardew/ui/panels/main_page_frame_center_tile_image2.png");
+  --sd-img-page-frame-corner-top-left: url("/assets/stardew/ui/panels/main_page_frame_corner_top_left_image2.png");
+  --sd-img-page-frame-corner-top-right: url("/assets/stardew/ui/panels/main_page_frame_corner_top_right_image2.png");
+  --sd-img-page-frame-corner-bottom-left: url("/assets/stardew/ui/panels/main_page_frame_corner_bottom_left_image2.png");
+  --sd-img-page-frame-corner-bottom-right: url("/assets/stardew/ui/panels/main_page_frame_corner_bottom_right_image2.png");
+  --sd-img-page-frame-edge-top: url("/assets/stardew/ui/panels/main_page_frame_edge_top_tile_image2.png");
+  --sd-img-page-frame-edge-bottom: url("/assets/stardew/ui/panels/main_page_frame_edge_bottom_tile_image2.png");
+  --sd-img-page-frame-edge-left: url("/assets/stardew/ui/panels/main_page_frame_edge_left_tile_image2.png");
+  --sd-img-page-frame-edge-right: url("/assets/stardew/ui/panels/main_page_frame_edge_right_tile_image2.png");
 
   /* 导航 */
   --sd-img-nav-default: url("/assets/stardew/ui/navigation/nav_item_default_blank.png");

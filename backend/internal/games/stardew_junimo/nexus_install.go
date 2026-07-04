@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
@@ -71,7 +72,7 @@ func InstallNexusMod(ctx context.Context, dataDir, apiKey string, result NexusMo
 	defer func() { _ = os.Remove(tmpPath) }()
 
 	logNexusInstall(logf, "正在从 Nexus 下载 Mod 压缩包")
-	if err := nexusDownloadArchive(ctx, link, tmpPath); err != nil {
+	if err := nexusDownloadArchive(ctx, link, tmpPath, logf); err != nil {
 		return nil, err
 	}
 
@@ -159,21 +160,31 @@ func nexusGetDownloadLinkURL(ctx context.Context, apiKey string, url string) (st
 	return "", ErrNexusNoDownloadableFiles
 }
 
-func nexusDownloadArchive(ctx context.Context, uri, destPath string) error {
+func nexusDownloadArchive(ctx context.Context, uri, destPath string, logf NexusInstallLogFunc) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
 	if err != nil {
 		return fmt.Errorf("build nexus archive request: %w", err)
 	}
 	req.Header.Set("User-Agent", nexusUserAgent)
 
+	logNexusInstall(logf, "正在连接远程下载服务器")
 	resp, err := nexusArchiveHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("remote archive download failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	logNexusInstall(logf, fmt.Sprintf("远程下载服务器已响应：HTTP %d", resp.StatusCode))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return &NexusAPIError{StatusCode: resp.StatusCode}
+	}
+	contentType := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Type")))
+	if contentType != "" {
+		logNexusInstall(logf, fmt.Sprintf("远程响应类型：%s", contentType))
+	}
+	if strings.Contains(contentType, "text/html") {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return fmt.Errorf("远程下载返回的是网页，不是 ZIP 压缩包；请确认浏览器扩展已经拿到 Nexus CDN ZIP 下载链接")
 	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
@@ -185,14 +196,99 @@ func nexusDownloadArchive(ctx context.Context, uri, destPath string) error {
 	}
 	defer func() { _ = out.Close() }()
 
+	progress := newArchiveDownloadProgress(resp.ContentLength, logf)
 	limited := &io.LimitedReader{R: resp.Body, N: maxModZipBytes + 1}
-	if _, err := io.Copy(out, limited); err != nil {
+	if _, err := io.Copy(io.MultiWriter(out, progress), limited); err != nil {
 		return fmt.Errorf("写入 Nexus 下载文件失败: %w", err)
 	}
+	progress.finish()
 	if limited.N <= 0 {
 		return fmt.Errorf("Nexus 下载文件超过 %d MB 限制", maxModZipBytes/1024/1024)
 	}
 	return nil
+}
+
+const (
+	archiveProgressLogEveryBytes = int64(5 * 1024 * 1024)
+	archiveProgressLogEveryTime  = 2 * time.Second
+)
+
+type archiveDownloadProgress struct {
+	total           int64
+	downloaded      int64
+	lastLoggedBytes int64
+	lastLoggedAt    time.Time
+	logf            NexusInstallLogFunc
+}
+
+func newArchiveDownloadProgress(total int64, logf NexusInstallLogFunc) *archiveDownloadProgress {
+	p := &archiveDownloadProgress{total: total, logf: logf}
+	if logf != nil {
+		if total > 0 {
+			logf(fmt.Sprintf("远程压缩包大小：%s", formatDownloadBytes(total)))
+		} else {
+			logf("远程压缩包大小未知，开始下载")
+		}
+	}
+	return p
+}
+
+func (p *archiveDownloadProgress) Write(b []byte) (int, error) {
+	n := len(b)
+	if n == 0 {
+		return 0, nil
+	}
+	p.downloaded += int64(n)
+	p.maybeLog(false)
+	return n, nil
+}
+
+func (p *archiveDownloadProgress) finish() {
+	p.maybeLog(true)
+}
+
+func (p *archiveDownloadProgress) maybeLog(force bool) {
+	if p.logf == nil || p.downloaded == 0 {
+		return
+	}
+	now := time.Now()
+	if !force && p.lastLoggedBytes > 0 && p.downloaded-p.lastLoggedBytes < archiveProgressLogEveryBytes && now.Sub(p.lastLoggedAt) < archiveProgressLogEveryTime {
+		return
+	}
+	p.lastLoggedBytes = p.downloaded
+	p.lastLoggedAt = now
+
+	if p.total > 0 {
+		remaining := p.total - p.downloaded
+		if remaining < 0 {
+			remaining = 0
+		}
+		percent := float64(p.downloaded) * 100 / float64(p.total)
+		if percent > 100 {
+			percent = 100
+		}
+		p.logf(fmt.Sprintf("下载进度：已下载 %s / %s，剩余 %s（%.1f%%）", formatDownloadBytes(p.downloaded), formatDownloadBytes(p.total), formatDownloadBytes(remaining), percent))
+		return
+	}
+	p.logf(fmt.Sprintf("下载进度：已下载 %s（总大小未知）", formatDownloadBytes(p.downloaded)))
+}
+
+func formatDownloadBytes(size int64) string {
+	const (
+		kib = 1024
+		mib = 1024 * kib
+		gib = 1024 * mib
+	)
+	switch {
+	case size >= gib:
+		return fmt.Sprintf("%.1f GB", float64(size)/gib)
+	case size >= mib:
+		return fmt.Sprintf("%.1f MB", float64(size)/mib)
+	case size >= kib:
+		return fmt.Sprintf("%.1f KB", float64(size)/kib)
+	default:
+		return fmt.Sprintf("%d B", size)
+	}
 }
 
 func nexusFileDisplayName(file nexusV1File) string {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createJobEventSource,
+  getJobLogs,
   getHealthDiagnostics,
   getInstancePlayers,
   getInviteCode,
@@ -11,7 +12,7 @@ import {
   getVersion,
 } from '../../api'
 import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
-import type { InstanceState, Job, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
+import type { InstanceState, Job, JobLog, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import type { StardewDashboardData } from './stardew-routes'
 
@@ -21,6 +22,7 @@ export function useStardewDashboardData(): StardewDashboardData {
   const [mods, setMods] = useState<ModsListResult | null>(null)
   const [players, setPlayers] = useState<StardewPlayersResponse | null>(null)
   const [jobs, setJobs] = useState<Job[]>([])
+  const [jobLogsByJobId, setJobLogsByJobId] = useState<Record<string, JobLog[]>>({})
   const [health, setHealth] = useState<HealthDiagnosticsResponse | null>(null)
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
@@ -90,6 +92,23 @@ export function useStardewDashboardData(): StardewDashboardData {
     } catch {
       // 保留上次已知任务列表
     }
+  }, [])
+
+  const appendJobLogs = useCallback((jobId: string, entries: JobLog[]) => {
+    if (entries.length === 0) return
+    setJobLogsByJobId((prev) => {
+      const current = prev[jobId] ?? []
+      const seen = new Set(current.map((entry) => entry.sequence))
+      const next = [...current]
+      for (const entry of entries) {
+        if (seen.has(entry.sequence)) continue
+        seen.add(entry.sequence)
+        next.push({ ...entry, jobId })
+      }
+      if (next.length === current.length) return prev
+      next.sort((a, b) => a.sequence - b.sequence)
+      return { ...prev, [jobId]: next.slice(-200) }
+    })
   }, [])
 
   const refreshHealth = useCallback(async () => {
@@ -193,9 +212,10 @@ export function useStardewDashboardData(): StardewDashboardData {
     }
     void init()
 
-    // 每 30s 轮询实例状态
+    // 每 30s 轮询实例状态和任务列表（任务列表兜底调度器触发的 job，SSE 只覆盖已知任务）
     pollRef.current = setInterval(() => {
       void refreshInstanceState()
+      void refreshJobs()
     }, 30_000)
 
     return () => {
@@ -234,8 +254,21 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     for (const jobId of activeJobIds) {
       if (jobStreamsRef.current.has(jobId)) continue
+      void getJobLogs(jobId)
+        .then((res) => appendJobLogs(jobId, res.logs))
+        .catch(() => {
+          // 实时流仍会继续写入后续日志；初始日志拉取失败不阻塞右栏显示任务。
+        })
       const es = createJobEventSource(jobId)
       jobStreamsRef.current.set(jobId, es)
+      es.addEventListener('log', (ev) => {
+        try {
+          const entry = JSON.parse((ev as MessageEvent<string>).data) as JobLog
+          appendJobLogs(jobId, [entry])
+        } catch {
+          // Ignore malformed SSE payloads; the full job page remains the source of truth.
+        }
+      })
       es.addEventListener('finished', () => {
         es.close()
         jobStreamsRef.current.delete(jobId)
@@ -248,7 +281,7 @@ export function useStardewDashboardData(): StardewDashboardData {
         void refreshInstanceState()
       }
     }
-  }, [jobs, refreshAfterJobFinished, refreshInstanceState, refreshJobs])
+  }, [appendJobLogs, jobs, refreshAfterJobFinished, refreshInstanceState, refreshJobs])
 
   useEffect(() => {
     if (!instanceState?.state) return
@@ -347,6 +380,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     mods,
     players,
     jobs,
+    jobLogsByJobId,
     health,
     versionInfo,
     inviteCode,

@@ -1,4 +1,66 @@
-﻿# FE-MAIN-PAGE-FRAME-3 状态
+# FE-MAIN-PAGE-FRAME-SLICES-1 状态
+- `FE-MAIN-PAGE-FRAME-SLICES-1` completed：所有 Stardew 页面共用的 `.sd-main` 主内容 frame 已从整图 `100% 100%` 拉伸改为 image2 空框 9 切片平铺。新增四角、上下左右边 tile 和中心羊皮纸 tile，运行时用 9 层 CSS background 实现四角固定、上下 `repeat-x`、左右 `repeat-y`、中心 `repeat`，窗口缩放时边框纹理不再被拉伸；`.sd-main-scroll` 统一滚动视口保持不变。已验证 `cd frontend; npm.cmd run build` 通过，并用内置浏览器临时 QA 页检查 1280x720 与 390x760 下背景层/重复规则正确、无横向溢出、滚动正常、console error/warn 为空。
+
+# FE-MODS-DEPENDENCY-POPOVER-1 状态
+- `FE-MODS-DEPENDENCY-POPOVER-1` completed：下载模组页 Nexus 搜索结果的前置信息弹层已改为受控按钮 + 弹层，修复固定高度搜索卡片裁切导致前置信息看起来无法展开的问题；点击信息弹层外部会自动收起，不再需要回点前置按钮。已验证 `cd frontend; npm.cmd run build` 通过，并用内置浏览器临时 QA 页检查 1280x720 与 390x760 展开/外部点击收起、无水平溢出、console error/warn 为空。
+
+# JOB-DISPLAY-NAME-1 状态
+- `JOB-DISPLAY-NAME-1` completed：jobs 表新增 `display_name`，任务 API/SSE 返回 `displayName`；Nexus/远程 Mod 安装任务会写入 `mod_nexus_install · <Mod 名>` / `mod_remote_install · <Mod 名>`，前端任务页、右栏进行中、右栏近期任务和总览近期事件均优先展示该字段，解决并行依赖安装时多个任务同名不可区分的问题。已验证后端 storage/jobs/web 测试和前端构建通过。
+
+# MODUPLOAD-DUPLICATE-CODE-1 状态
+- `MODUPLOAD-DUPLICATE-CODE-1` completed：Mod ZIP 上传遇到已安装相同 `UniqueID` 时，后端响应错误码改为 `mod_exists`，避免前端显示成“Mod ZIP 无效/解析失败”；真正坏 ZIP、无 manifest、XNB 替换包等仍保持 `invalid_mod_zip`。已验证 `cd backend; go test ./internal/web -run "TestModUpload"` 通过。
+
+# FE-OPSRAIL-DOWNLOAD-PROGRESS-1 状态
+- `FE-OPSRAIL-DOWNLOAD-PROGRESS-1` completed：右侧 OpsRail“进行中”卡已接入远程 Mod 安装下载日志进度，`mod_remote_install` / `mod_nexus_install` 会解析 `下载进度：已下载 ...（xx.x%）` 并映射到右栏进度条；扩展 batch 一旦返回新的 `jobId` 会立即刷新 jobs，让任务尽快出现在右栏，Premium 安装路径也同步主动刷新。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# NEXUS-EXT-DOWNLOAD-GUARD-1 状态
+- `NEXUS-EXT-DOWNLOAD-GUARD-1` completed：远程 Mod 安装任务新增下载可见进度和错误分界日志，显示连接远程下载服务器、HTTP 响应、Content-Type、压缩包大小、已下载/总量/剩余/百分比；无总量时显示已下载大小。浏览器扩展提交前强制校验 Nexus CDN `.zip`，后台页未真正拿到 ZIP 时不再创建面板安装任务；后端收到 `text/html` 会立即失败并提示这是网页不是 ZIP。已验证后端相关测试与扩展 JS 语法检查通过。
+
+# FE-SERVER-PROTOTYPE-IMAGE2-1 状态
+- `FE-SERVER-PROTOTYPE-IMAGE2-1` completed：服务器控制页已按 image2 原型重皮肤为羊皮纸控制台结构，包含当前状态大卡、生命周期控制卡、邀请代码、全服消息、黑色命令终端和快捷操作条；原型图未作为运行时资源，纸纹、铜边、内阴影、绿屏、终端和分隔线均由 CSS 实现。业务逻辑/API/权限/disabled 状态保持不变，按钮和标题图标复用既有 Stardew PNG/图标素材。已验证 `cd frontend; npm.cmd run build` 通过，并用临时 QA 页检查 1280x900 与 390x760 无横向溢出、按钮文字不溢出、命令执行输出可读。
+
+# FE-DIAGNOSTICS-IMAGE2-ICONS-1 状态
+- `FE-DIAGNOSTICS-IMAGE2-ICONS-1` completed：诊断页首轮 CSS 自绘图标已替换为 image2 风格透明 PNG 素材。新增 `frontend/public/assets/stardew/ui/diagnostics/`，包含 4x5 生成 sprite sheet 与状态盾牌、三色宝石、检查项、建议区、资源趋势、实时绿点、导出下载等 20 个单图；运行时使用单图背景，不使用整页原型图或整块截图。已验证 `cd frontend; npm.cmd run build` 通过，内置浏览器临时 QA 页检查 1280x900 与 390x760 无横向溢出、按钮不溢出、console error/warn 为空，可见诊断页图标背景均来自 `/assets/stardew/ui/diagnostics/`。
+
+# FE-DIAGNOSTICS-PROTOTYPE-IMAGE2-1 状态
+- `FE-DIAGNOSTICS-PROTOTYPE-IMAGE2-1` completed：诊断与健康页已按 image2 原型重皮肤为顶部双操作、系统状态横卡、三计数卡、检查项表、资源趋势卡和底部告警建议区；原型图未作为运行时背景或整块资源引用，业务逻辑/API/权限保持不变。已验证 `cd frontend; npm.cmd run build` 通过，并用内置浏览器临时 QA 页检查 1280x900 与 390x760 无横向溢出、无面板重叠、按钮文字不溢出、console error/warn 为空。注：首轮 CSS 自绘图标已在 `FE-DIAGNOSTICS-IMAGE2-ICONS-1` 中替换为 image2 PNG 素材。
+
+# FE-SETTINGS-PROTOTYPE-IMAGE2-1 状态
+- `FE-SETTINGS-PROTOTYPE-IMAGE2-1` completed：设置与审计页已按 image2 `09-settings - 副本.png` 原型重皮肤为顶部三卡、中部用户/审计双栏、底部设置/安全建议双栏结构。原型图未作为运行时背景或整块素材引用；纸纹、铜边、角钉、表头、分隔线和提示面板均为 CSS 实现，按钮/标题图标复用现有 Stardew PNG 素材。功能逻辑、API 调用、权限判断、loading/error/empty/disabled 状态保留。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器真实路由停在登录页，因此使用已删除的临时 `settings-qa.html` 加载同 CSS/素材/同结构 DOM 验证 1280x900 桌面、点击新建用户展开态、390x760 窄屏和底部状态均无页面级横向溢出，console error/warn 为空。
+
+# FE-INSTALL-PROTOTYPE-IMAGE2-1 状态
+- `FE-INSTALL-PROTOTYPE-IMAGE2-1` completed：安装页已按 image2 `08-install - 副本.png` 原型重皮肤为顶部状态横幅、五步安装时间线、安装配置/Steam 认证/安装日志三栏工作区。原型图未作为运行时资源；纸张纹理、边框、分隔线、步骤卡、进度条和日志终端均为 CSS 实现，按钮继续复用既有 PNG 按钮体系。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器临时 QA 覆盖 1280x900 认证态、未安装态点击展开表单、390x760 窄屏无横向溢出，console error/warn 为空。
+
+# FE-OPSRAIL-AUTO-COLLAPSE-1 状态
+- `FE-OPSRAIL-AUTO-COLLAPSE-1` completed：Stardew Shell 已按主内容预计宽度自动收起右侧 OpsRail，展开态主内容低于 `820px` 收起、收起后高于 `880px` 再展开；总览页 1180px 响应式规则补为 `.sd-main-scroll` 容器查询，避免窗口缩放时中间内容被右栏挤压后仍按桌面布局排布。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器 QA 覆盖 1200x760 自动收起、1200→1600 无刷新自动展开、390x760 移动布局，均无横向溢出且 console error/warn 为空。
+
+# FE-OVERVIEW-PROTOTYPE-IMAGE2-1 状态
+- `FE-OVERVIEW-PROTOTYPE-IMAGE2-1` completed：总览页已按 image2 原型重皮肤为农场横幅 + 羊皮纸控制台 + 四摘要卡 + 三列清单结构；页面背景、纸纹、卡片、分隔线、绿屏邀请码和状态标签均由 CSS 实现，未把原型图作为运行时资源。按钮和小图标复用现有 Stardew PNG/图标素材，业务逻辑/API/权限不变。已验证 `cd frontend; npm.cmd run build` 通过，并用内置浏览器临时 QA 页检查 1280x900 与 390x760 无横向溢出、按钮文字不溢出、console error/warn 为空。
+
+# FE-SAVES-SIMPLIFY-3 状态
+- `FE-SAVES-SIMPLIFY-3` completed：存档页页头精简为左上角纯文字标题（去框去描述）；全部按钮换回面板既有 PNG 素材按钮（`sd-btn-green/tan/delete`），撤销自绘 `.sd-pxbtn`；备份与恢复规则压缩为单行控件条，说明文字移入悬浮提示，文案精简。已验证前端构建通过。
+
+# FE-SAVES-MOCKUP-2 状态
+- `FE-SAVES-MOCKUP-2` completed：存档页按用户完整设计稿改版：眉标行、激活卡图标字段双列表、存档库只显示非激活存档（选择/删除糖块按钮）、横排虚线创建卡、上传横条（📮 + 上传并启动）、备份六列表格（状态徽章 + 5 行折叠）；新增纯 CSS `.sd-pxbtn` 糖块按钮体系；导出/手动备份/启动收敛到激活卡。已验证前端构建通过。
+
+# FE-SAVES-PROTO-CSS-1 状态
+- `FE-SAVES-PROTO-CSS-1` completed：存档页按 image2 原型重构为纯 CSS 皮肤（无图片资源）：铜框铆钉激活卡、双列虚线字段、圆角存档卡、虚线创建卡、像素云天空上传横条、表头带备份表格；创建/上传入口从页头移入创建卡与上传横条，业务逻辑未变。已验证前端构建通过。
+- `FE-SAVES-PROTO-CSS-1` follow-up：激活存档卡预览槽接入真实农场地图，按存档 `farmType` 复用新建游戏的 `/assets/stardew/new-game/farms/<farmType>.png` 素材，未知类型回落为空羊皮纸块。已验证前端构建通过。
+
+# FE-RIGHT-RAIL-ACTIVE-CARD-1 状态
+- `FE-RIGHT-RAIL-ACTIVE-CARD-1` completed：右栏"进行中"卡接入自动关机/自动开机倒计时（restart-schedule）、定时备份倒计时（backups/policy，仅管理员行）和运行中任务进度条（同类型历史耗时中位数估算，封顶 95%）；倒计时行为蓝色档、每秒走动，任务完成后行自动消失；dashboard 30s 轮询同时刷新 jobs 兜底调度器触发的任务。已验证前端构建通过。
+
+# FE-RIGHT-RAIL-HEALTH-STATS-1 状态
+- `FE-RIGHT-RAIL-HEALTH-STATS-1` completed：右栏"系统健康"卡按原型接入真实数据：CPU/内存/磁盘使用率（复用 `GET /api/instances/:id/metrics`，5s 轮询，圆润胶囊形进度条）、在线玩家（`onlineCount/当前存档 MaxPlayers`）、网络延迟（metrics 请求前端往返耗时）；按钮改为"查看详情 →"。已验证前端构建通过。
+- `FE-RIGHT-RAIL-HEALTH-STATS-1` follow-up：五行增加阈值配色，浆果点/进度条/数值随数值绿→黄→红（使用率 60/85、延迟 100/300ms 分档），在线玩家为 0 时显示红色。已验证 `npm run build` 通过。
+
+# PLAYERS-MAXPLAYERS-1 状态
+- `PLAYERS-MAXPLAYERS-1` completed：`stardew_junimo` driver 的 `ListPlayers` 现在用当前存档 `server-settings.json` 的 `Server.MaxPlayers` 兜底 `maxPlayers` 字段（junimo info 解析出的值仍优先），玩家接口在服务器未运行或 info 不含上限时也能返回人数上限。已验证 `go test ./internal/games/stardew_junimo/` 通过。
+
+# FE-RIGHT-RAIL-CARD-FIX-1 状态
+- `FE-RIGHT-RAIL-CARD-FIX-1` completed：右栏三卡（系统健康/进行中/近期任务）去掉内部滚动与等高拉伸逻辑，行高改为随内容、与左侧栏按钮一致只随栏宽缩放；四角藤蔓拉伸修复为每卡单一缩放系数换算 border-width/margin，角部切片横纵等比。已验证 `npm run build` 通过。详见 `docs/03-frontend.md` 与 `docs/frontend-handoff/frontend-handoff-2026-07-02.md` 对应条目。
+
+# FE-MAIN-PAGE-FRAME-3 状态
 - `FE-MAIN-PAGE-FRAME-3` completed：按用户红框示意，把所有 Stardew 页面共用的中间内容滚动视口重定界为 frame 内侧大矩形。`.sd-main` 四向 inset 改为 top `5.2%`、right `5%`、bottom `6%`、left `4%`（带移动下限和桌面上限），`.sd-main-scroll` 继续在该红框边界内滚动，所有路由统一生效。已验证 `cd frontend; npm.cmd run build` 通过；1750x1113 QA 下主内容区 `1068x1033` 时 inset 为 `55.5/53.4/64.1/42.7px`，390x760 下无横向溢出且滚动正常。
 
 # FE-MAIN-PAGE-FRAME-2 状态
@@ -51,7 +113,7 @@
 # PLAYERSYNC-PACK-6 状态
 - `PLAYERSYNC-PACK-6` completed：玩家同步安装脚本的文本进度条改为单行动态刷新。`Show-InstallProgress` 使用 `[Console]::Write([char]13...)` 原地更新当前进度，普通安装事件打印前会清除进度行、打印后重绘，避免 checksum 和 Mod 复制阶段刷出大量重复进度行。当前测试解压包已热修。
 # PLAYERSYNC-PACK-5 状态
-- `PLAYERSYNC-PACK-5` completed：修复玩家同步包安装 SMAPI 4.5.2 时找不到 `StardewModdingAPI.exe` 的真机问题。脚本不再调用交互式 SMAPI Windows 安装器或猜测静默参数，改为从官方 ZIP 中解出 `internal/windows/install.dat`，复制为临时 zip 后释放官方 payload 到游戏目录。已热修复当前测试解压包，并在 `D:\steam\steamapps\common\Stardew Valley` 用 `-SkipSteamLaunchOptions` 真实安装验证通过。
+- `PLAYERSYNC-PACK-5` completed：玩家同步包安装 SMAPI 时改为调用随包官方 Windows 安装器 `internal/windows/SMAPI.Installer.exe`，传入 `--install --game-path "<Stardew Valley>" --no-prompt`；脚本不再直接解包 `install.dat`，也不做本机 `.NET` / `runtimeconfig` 特调。安装器超过 120 秒未退出时会提示玩家检查安装器窗口是否在等待按键/输入。
 # PLAYERSYNC-PACK-4 状态
 
 - `PLAYERSYNC-PACK-4` completed：玩家同步安装脚本新增进度条，使用 PowerShell `Write-Progress` + 文本进度行显示安装阶段；checksum 按文件数推进，Mod 安装按待复制 Mod 数推进，SMAPI 阶段显示解压安装包、释放官方安装文件和完成。
@@ -412,3 +474,11 @@ Multi Game Mode later
 - `FE-MAIN-PAGE-FRAME-1` completed：所有 Stardew 路由的中间主内容区 `.sd-main` 已统一替换为 image2 存档页空框背景 `main_page_frame_empty_image2.png`。资源从 `docs/prototypes/.../03-saves-page-frame-empty-image2.png` 复制到 `frontend/public/assets/stardew/ui/panels/` 供运行时和 Docker 静态发布使用；主内容背景改为居中、不重复、`100% 100%` 铺满，并把页面整体 padding 调整为 `clamp(28px, 2.4vw, 42px)` 避免压到木框角饰。主内容区仍保留 `overflow-y: auto`，但已隐藏 Firefox/Chromium/WebKit 原生滚动条，避免白色竖条压住右侧 frame 边框。已验证前端构建通过，生产 CSS 临时 Shell QA 页在 1280x720 和 390x760 下背景加载、滚动条隐藏、滚动能力保留、无横向溢出、console error/warn 为空。
 # FE-MODS-DYNAMIC-PAGESIZE-1 状态
 - `FE-MODS-DYNAMIC-PAGESIZE-1` completed：模组下载页 Nexus 搜索结果已改为固定搜索卡片高度 + 动态 pageSize。`.sd-mods-nexus-search-list` 卡片高度固定 `246px`，前端按真实结果网格在 `.sd-main-scroll` 内的可见高度和实际列数计算每页数量，并传给既有 Nexus 搜索 API 的 `pageSize`；加载骨架不参与测量，避免 loading/结果态来回触发刷新；顶部翻页器同步显示“每页 N 个”，底部重复翻页器移除。已验证 `cd frontend; npm.cmd run build` 通过，并用临时本地 QA 页面确认 1040x1120 为 pageSize=4、1040x720 为 pageSize=2、520x720 为 pageSize=1，卡片高度均为 `246px`。
+# FE-JOBS-PROTOTYPE-IMAGE2-1 状态
+- `FE-JOBS-PROTOTYPE-IMAGE2-1` completed：任务与日志页已按 image2 原型重皮肤为羊皮纸双栏任务台，包含顶部标题虚线、按钮工具条、左侧任务列表、右侧任务详情/进度/SSE 状态/深色日志终端和 VNC 修复提示。原型图未作为运行时资源；纸纹、铜边、选中态、状态徽章、进度条、终端扫描线和警告纸条均由 CSS 实现，按钮/图标复用既有 Stardew PNG/图标素材。业务逻辑、API、权限、loading/error/empty/disabled 状态保持不变。已验证 `cd frontend; npm.cmd run build` 通过，并用临时 QA 页检查 1280x900 与 390x760 无横向溢出、按钮文字不溢出、移动端底部 VNC 提示可滚动完整查看、console error/warn 为空。
+# FE-PLAYERS-PROTOTYPE-IMAGE2-1 状态
+- `FE-PLAYERS-PROTOTYPE-IMAGE2-1` completed：玩家管理页已按 image2 `05-players - 副本.png` 原型重皮肤为六摘要卡、邀请加入码横条、Junimo 终端、在线玩家表、活动历史和管理员操作区结构。原型图未作为运行时背景或整块素材引用；纸纹、铜边、角钉、分隔线、绿字终端、表格和禁用操作按钮均为 CSS 实现。功能逻辑、API 调用、权限判断、loading/error/empty/disabled 状态保留；按钮/图标复用现有 Stardew PNG/CSS 按钮体系。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器临时 QA 覆盖 1280x900 与 390x760 无页面级横向溢出，桌面表格操作列首屏可见，窄屏表格仅自身横向滚动，console error/warn 为空。
+# FE-DIAGNOSTICS-GAUGE-CODE-1 状态
+- `FE-DIAGNOSTICS-GAUGE-CODE-1` completed：诊断与健康页 CPU / 内存 / 磁盘三枚资源仪表已完成代码级视觉优化。数值与 `%` 拆分排版，修复圆心文字拥挤；像素分段进度环、硬边描边、羊皮纸内芯、阴影和高光均由 CSS gradient / custom properties / box-shadow 实现。未新增图片素材，未使用原型图或截图作为资源，业务逻辑、API、权限和状态处理保持不变。
+# FE-INSTALL-IMAGE2-ICONS-2 状态
+- `FE-INSTALL-IMAGE2-ICONS-2` completed：安装页 CSS 自绘图标已替换为从 image2 安装页原型提取/抠图生成的透明 PNG 小素材。新增 `frontend/public/assets/stardew/ui/install/` 下 6 个单图，覆盖顶部状态土芽和五步时间线图标；未使用整页原型图作为背景或整块资源，页面纸卡、边框、分隔线、进度条和日志终端仍由 CSS 实现。已验证 `cd frontend; npm.cmd run build` 通过，并用临时 QA 页在内置浏览器检查 1280x900、390x760 和“安装游戏”展开表单交互，确认图标资源加载、无横向溢出、按钮文字不溢出、console error/warn 为空。

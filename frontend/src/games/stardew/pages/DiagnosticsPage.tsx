@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
@@ -32,21 +33,46 @@ function StatusDot({ status }: { status: 'ok' | 'warning' | 'error' }) {
   return <span className={cls} aria-hidden="true" />
 }
 
+function checkIconClass(name: string): string {
+  return `sd-diag-check-icon-${name.replace(/[^a-z0-9_-]/gi, '-')}`
+}
+
 // ── CheckRow ──────────────────────────────────────────────────────────────────
 
 function CheckRow({ check }: { check: HealthCheck }) {
   return (
     <div className={`sd-diag-check-row sd-diag-check-${check.status}`}>
-      <StatusDot status={check.status} />
+      <span className={`sd-diag-check-icon ${checkIconClass(check.name)}`} aria-hidden="true" />
       <span className="sd-diag-check-name">{checkNameLabel(check.name)}</span>
+      <span className="sd-diag-check-status">
+        <StatusDot status={check.status} />
+      </span>
       <span className="sd-diag-check-msg">{check.message}</span>
     </div>
   )
 }
 
-function formatPercent(value: number | null | undefined): string {
+function CountCard({
+  type,
+  label,
+  count,
+}: {
+  type: 'ok' | 'warn' | 'error'
+  label: string
+  count: number
+}) {
+  return (
+    <div className={`sd-diag-count-card sd-diag-count-card-${type}`}>
+      <span className="sd-diag-count-gem" aria-hidden="true" />
+      <span className="sd-diag-count-card-label">{label}</span>
+      <span className="sd-diag-count-card-value">{count}</span>
+    </div>
+  )
+}
+
+function formatGaugeNumber(value: number | null | undefined): string {
   if (value == null) return '—'
-  return `${Math.round(value * 10) / 10}%`
+  return `${Math.round(value * 10) / 10}`
 }
 
 function formatBytes(value: number | undefined): string {
@@ -66,6 +92,16 @@ function hasByteValue(value: number | undefined): value is number {
   return value != null && value >= 0
 }
 
+function formatTrendTime(timestamp: string): string {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 function GaugeCard({
   label,
   value,
@@ -78,15 +114,17 @@ function GaugeCard({
   color: string
 }) {
   const percent = value == null ? 0 : Math.max(0, Math.min(100, value))
+  const gaugeStyle = {
+    '--sd-diag-gauge-color': color,
+    '--sd-diag-gauge-angle': `${percent * 3.6}deg`,
+  } as CSSProperties
   return (
     <div className="sd-diag-gauge-card">
-      <div
-        className="sd-diag-gauge-ring"
-        style={{
-          background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(90, 60, 29, 0.16) 0deg)`,
-        }}
-      >
-        <div className="sd-diag-gauge-core">{formatPercent(value)}</div>
+      <div className="sd-diag-gauge-ring" style={gaugeStyle}>
+        <div className="sd-diag-gauge-core">
+          <span className="sd-diag-gauge-number">{formatGaugeNumber(value)}</span>
+          {value != null ? <span className="sd-diag-gauge-unit">%</span> : null}
+        </div>
       </div>
       <div className="sd-diag-gauge-meta">
         <span className="sd-diag-gauge-label">{label}</span>
@@ -98,15 +136,16 @@ function GaugeCard({
 
 function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
   const width = 560
-  const height = 156
+  const height = 176
   const padX = 28
-  const padY = 16
+  const padTop = 16
+  const padBottom = 26
   const chartW = width - padX * 2
-  const chartH = height - padY * 2
+  const chartH = height - padTop - padBottom
   const series = [
-    { key: 'cpu', label: 'CPU', color: '#3f8f2c', get: (s: ResourceMetricSample) => s.cpuPercent },
-    { key: 'memory', label: '内存', color: '#b06c18', get: (s: ResourceMetricSample) => s.memoryPercent },
-    { key: 'disk', label: '磁盘', color: '#5d7fb8', get: (s: ResourceMetricSample) => s.diskPercent },
+    { key: 'cpu', label: 'CPU (%)', color: '#3f8f2c', get: (s: ResourceMetricSample) => s.cpuPercent },
+    { key: 'memory', label: '内存 (%)', color: '#d87916', get: (s: ResourceMetricSample) => s.memoryPercent },
+    { key: 'disk', label: '磁盘 (%)', color: '#1f68b5', get: (s: ResourceMetricSample) => s.diskPercent },
   ]
   const maxValue = samples.reduce((max, sample) => {
     return series.reduce((seriesMax, item) => {
@@ -116,6 +155,17 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
   }, 100)
   const yMax = Math.max(100, Math.ceil(maxValue / 25) * 25)
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(yMax * ratio))
+  const xLabels =
+    samples.length < 2
+      ? []
+      : [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+          const index = Math.round((samples.length - 1) * ratio)
+          return {
+            key: `${ratio}-${samples[index]?.timestamp ?? ''}`,
+            x: padX + chartW * ratio,
+            label: formatTrendTime(samples[index]?.timestamp ?? ''),
+          }
+        })
 
   function pointsFor(getValue: (s: ResourceMetricSample) => number | null): string {
     if (samples.length < 2) return ''
@@ -124,7 +174,7 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
         const value = getValue(sample)
         if (value == null) return null
         const x = padX + (chartW * index) / Math.max(1, samples.length - 1)
-        const y = padY + chartH - (chartH * Math.max(0, Math.min(yMax, value))) / yMax
+        const y = padTop + chartH - (chartH * Math.max(0, Math.min(yMax, value))) / yMax
         return `${x.toFixed(1)},${y.toFixed(1)}`
       })
       .filter(Boolean)
@@ -146,7 +196,7 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
       </div>
       <svg className="sd-diag-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="CPU、内存、磁盘趋势折线图">
         {ticks.map((tick) => {
-          const y = padY + chartH - (chartH * tick) / yMax
+          const y = padTop + chartH - (chartH * tick) / yMax
           return (
             <g key={tick}>
               <line x1={padX} y1={y} x2={width - padX} y2={y} className="sd-diag-grid-line" />
@@ -154,6 +204,16 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
             </g>
           )
         })}
+        {xLabels.map((item) => (
+          <g key={item.key}>
+            <line x1={item.x} y1={padTop} x2={item.x} y2={padTop + chartH} className="sd-diag-grid-line sd-diag-grid-line-vertical" />
+            {item.label && (
+              <text x={item.x} y={height - 7} className="sd-diag-axis-label sd-diag-axis-label-x">
+                {item.label}
+              </text>
+            )}
+          </g>
+        ))}
         {series.map((item) => {
           const points = pointsFor(item.get)
           if (!points) return null
@@ -166,6 +226,11 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
             />
           )
         })}
+        {samples.length < 2 && (
+          <text x={width / 2} y={height / 2} className="sd-diag-chart-empty">
+            等待更多采样数据
+          </text>
+        )}
       </svg>
     </div>
   )
@@ -202,6 +267,22 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   const warnCount = checks.filter((c) => c.status === 'warning').length
   const errorCount = checks.filter((c) => c.status === 'error').length
   const latestMetric = metricSamples[metricSamples.length - 1]
+  const overallText =
+    overallStatus === 'ok'
+      ? '系统正常'
+      : overallStatus === 'warning'
+        ? '存在警告'
+        : overallStatus === 'error'
+          ? '存在错误'
+          : '状态未知'
+  const overallMessage =
+    overallStatus === 'ok'
+      ? '所有关键服务运行良好'
+      : overallStatus === 'warning'
+        ? '部分检查项需要关注'
+        : overallStatus === 'error'
+          ? '发现需要立即处理的问题'
+          : '点击重新检查获取最新状态'
 
   useEffect(() => {
     let alive = true
@@ -295,19 +376,14 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
       {/* 页头 */}
       <div className="sd-diag-header">
         <div className="sd-diag-header-left">
-          <img
-            className="sd-page-icon"
-            src="/assets/stardew/ui/icons/icon_nav_diagnostics.png"
-            alt=""
-          />
+          <img className="sd-page-icon" src="/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png" alt="" />
           <div>
             <h2 className="sd-page-title">诊断与健康检查</h2>
-            <p className="sd-page-desc">Docker 服务、数据目录、实例状态、支持包导出</p>
           </div>
         </div>
         <div className="sd-diag-header-actions">
           <button
-            className="sd-btn-tan"
+            className="sd-btn-green"
             disabled={refreshing}
             onClick={handleRefresh}
             type="button"
@@ -315,7 +391,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
             {refreshing ? '检查中…' : '重新检查'}
           </button>
           <button
-            className="sd-btn-green"
+            className="sd-btn-blue"
             disabled={exportBusy || !isAdmin}
             onClick={handleExportBundle}
             type="button"
@@ -354,28 +430,20 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
 
       {/* 总状态面板 */}
       {data && (
-        <div className={`sd-diag-status-panel sd-diag-status-${overallStatus}`}>
-          <div className="sd-diag-status-icon-wrap">
-            {overallStatus === 'ok' && <span className="sd-diag-status-big-dot sd-dot-green" />}
-            {overallStatus === 'warning' && <span className="sd-diag-status-big-dot sd-dot-yellow" />}
-            {overallStatus === 'error' && <span className="sd-diag-status-big-dot sd-dot-red" />}
+        <div className={`sd-diag-status-panel sd-diag-status-${overallStatus ?? 'unknown'}`}>
+          <div className="sd-diag-status-main">
+            <div className="sd-diag-status-icon-wrap" aria-hidden="true">
+              <span className="sd-diag-status-shield" />
+            </div>
+            <div className="sd-diag-status-info">
+              <div className="sd-diag-status-label">{overallText}</div>
+              <div className="sd-diag-status-subtitle">{overallMessage}</div>
+            </div>
           </div>
-          <div className="sd-diag-status-info">
-            <div className="sd-diag-status-label">
-              {overallStatus === 'ok' && '系统正常'}
-              {overallStatus === 'warning' && '存在警告'}
-              {overallStatus === 'error' && '存在错误'}
-              {!overallStatus && '未知'}
-            </div>
-            <div className="sd-diag-status-counts">
-              <span className="sd-diag-count sd-diag-count-ok">✓ {okCount} 正常</span>
-              {warnCount > 0 && (
-                <span className="sd-diag-count sd-diag-count-warn">⚠ {warnCount} 警告</span>
-              )}
-              {errorCount > 0 && (
-                <span className="sd-diag-count sd-diag-count-error">✕ {errorCount} 错误</span>
-              )}
-            </div>
+          <div className="sd-diag-count-strip" aria-label="健康检查统计">
+            <CountCard type="ok" label="正常" count={okCount} />
+            <CountCard type="warn" label="警告" count={warnCount} />
+            <CountCard type="error" label="错误" count={errorCount} />
           </div>
         </div>
       )}
@@ -384,53 +452,34 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
         <div className="sd-diag-primary">
           {/* 检查项列表 */}
           {checks.length > 0 && (
-            <>
-              <div className="sd-diag-section-title">检查项明细</div>
+            <div className="sd-diag-check-panel">
+              <div className="sd-diag-check-head" aria-hidden="true">
+                <span>检查项</span>
+                <span>状态</span>
+                <span>信息</span>
+              </div>
               <div className="sd-diag-checks">
                 {checks.map((c) => (
                   <CheckRow key={c.name} check={c} />
                 ))}
               </div>
-            </>
-          )}
-
-          {/* 告警与建议 */}
-          <div className="sd-diag-section-title" style={{ marginTop: 14 }}>
-            告警与建议
-          </div>
-          {alerts.length === 0 ? (
-            <div className="sd-diag-alert-empty">
-              <span className="sd-dot sd-dot-green" aria-hidden="true" />
-              {data ? '暂无告警，所有检查项均正常' : '暂无数据，请先点击「重新检查」'}
-            </div>
-          ) : (
-            <div className="sd-diag-alerts">
-              {alerts.map((c) => (
-                <div key={c.name} className={`sd-diag-alert-row sd-diag-alert-${c.status}`}>
-                  <StatusDot status={c.status} />
-                  <div className="sd-diag-alert-content">
-                    <span className="sd-diag-alert-name">{checkNameLabel(c.name)}</span>
-                    <span className="sd-diag-alert-msg">{c.message}</span>
-                  </div>
-                </div>
-              ))}
             </div>
           )}
         </div>
 
         <div className="sd-diag-resource-wrap">
           {/* 资源趋势 */}
-          <div className="sd-diag-section-title">
-            资源趋势
-            <span className={latestMetric?.containerRunning ? 'sd-diag-live-badge' : 'sd-diag-idle-badge'}>
-              {latestMetric?.containerRunning ? '实时' : '待运行'}
-            </span>
-          </div>
           <div className="sd-diag-resource-panel">
+            <div className="sd-diag-resource-head">
+              <div className="sd-diag-section-title">资源趋势</div>
+              <span className={latestMetric?.containerRunning ? 'sd-diag-live-badge' : 'sd-diag-idle-badge'}>
+                {latestMetric?.containerRunning ? '实时' : '待运行'}
+              </span>
+            </div>
             <div className="sd-diag-gauge-grid">
               <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} color="#3f8f2c" />
-              <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} color="#b06c18" />
-              <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} color="#5d7fb8" />
+              <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} color="#d87916" />
+              <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} color="#1f68b5" />
             </div>
             <ResourceTrendChart samples={metricSamples} />
             {(metricError || latestMetric?.message) && (
@@ -440,6 +489,47 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* 告警与建议 */}
+      <div className="sd-diag-advice-panel">
+        <div className="sd-diag-section-title">告警与建议</div>
+        {alerts.length === 0 ? (
+          <>
+            <div className="sd-diag-advice-row sd-diag-advice-good">
+              <span className="sd-diag-advice-icon" aria-hidden="true" />
+              <span className="sd-diag-advice-label">良好</span>
+              <span className="sd-diag-advice-msg">
+                {data ? '当前系统状态良好，暂无需要处理的问题。' : '暂无数据，请先点击「重新检查」。'}
+              </span>
+            </div>
+            <div className="sd-diag-advice-row sd-diag-advice-tip">
+              <span className="sd-diag-advice-icon" aria-hidden="true" />
+              <span className="sd-diag-advice-label">建议</span>
+              <span className="sd-diag-advice-msg">定期备份存档以防止数据丢失。</span>
+            </div>
+            <div className="sd-diag-advice-row sd-diag-advice-note">
+              <span className="sd-diag-advice-icon" aria-hidden="true" />
+              <span className="sd-diag-advice-label">提示</span>
+              <span className="sd-diag-advice-msg">可在“设置”中配置资源使用告警阈值。</span>
+            </div>
+          </>
+        ) : (
+          <>
+            {alerts.map((c) => (
+              <div key={c.name} className={`sd-diag-advice-row sd-diag-advice-${c.status}`}>
+                <span className="sd-diag-advice-icon" aria-hidden="true" />
+                <span className="sd-diag-advice-label">{checkNameLabel(c.name)}</span>
+                <span className="sd-diag-advice-msg">{c.message}</span>
+              </div>
+            ))}
+            <div className="sd-diag-advice-row sd-diag-advice-tip">
+              <span className="sd-diag-advice-icon" aria-hidden="true" />
+              <span className="sd-diag-advice-label">建议</span>
+              <span className="sd-diag-advice-msg">处理问题后点击“重新检查”刷新诊断结果。</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
