@@ -882,25 +882,27 @@ func TestPlayerSyncInstallScriptPrintsSteamLaunchOptionsInSummary(t *testing.T) 
 	}
 }
 
-func TestPlayerSyncInstallScriptUsesSMAPIInstallPayload(t *testing.T) {
+func TestPlayerSyncInstallScriptUsesOfficialSMAPIInstaller(t *testing.T) {
 	required := []string{
+		"-Filter \"SMAPI.Installer.exe\"",
+		"--install --game-path",
+		"--no-prompt",
+		"official_installer",
+		"Invoke-OfficialSMAPIInstaller",
+	}
+	for _, snippet := range required {
+		if !strings.Contains(installPowerShellScript, snippet) {
+			t.Fatalf("install script should install SMAPI through the official installer; missing %q", snippet)
+		}
+	}
+	forbidden := []string{
 		"-Filter \"install.dat\"",
 		"smapi-install-payload.zip",
 		"official_install_payload",
 	}
-	for _, snippet := range required {
-		if !strings.Contains(installPowerShellScript, snippet) {
-			t.Fatalf("install script should install SMAPI from official install.dat payload; missing %q", snippet)
-		}
-	}
-	forbidden := []string{
-		"--install --game-path",
-		"--no-prompt",
-		"SMAPI.*Installer.*",
-	}
 	for _, snippet := range forbidden {
 		if strings.Contains(installPowerShellScript, snippet) {
-			t.Fatalf("install script should not invoke SMAPI's interactive installer with guessed silent args; found %q", snippet)
+			t.Fatalf("install script should not unpack SMAPI's install.dat payload directly; found %q", snippet)
 		}
 	}
 }

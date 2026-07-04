@@ -1,5 +1,5 @@
 import { ApiError } from '../api'
-import type { JobLog, JobStatus } from '../types'
+import type { Job, JobLog, JobStatus } from '../types'
 
 // Centralized error code → Chinese message mapping.
 // Backend error codes are mapped to user-friendly Chinese messages.
@@ -97,6 +97,10 @@ export function formatBytes(bytes: number): string {
 
 export function shortJobID(id: string): string {
   return id.length > 14 ? `${id.slice(0, 10)}…` : id
+}
+
+export function jobDisplayName(job: Job): string {
+  return job.displayName?.trim() || job.type
 }
 
 export function statusClass(status: string): string {

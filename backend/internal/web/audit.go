@@ -104,6 +104,13 @@ func safeModUploadError(msg, lower string) (string, bool) {
 	return "", false
 }
 
+func modUploadErrorCode(err error) string {
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "(mod_exists)") {
+		return "mod_exists"
+	}
+	return "invalid_mod_zip"
+}
+
 // sanitizeErrorMessage is like sanitizeError but takes the raw error message string.
 func sanitizeErrorMessage(msg string) string {
 	return docker.RedactString(msg)

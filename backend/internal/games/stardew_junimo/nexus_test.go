@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -563,6 +564,7 @@ func TestInstallNexusMod_DownloadsInstallsAndStoresMetadata(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"URI": serverURL + "/download/cool.zip"}})
 		case "/download/cool.zip":
 			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Length", strconv.Itoa(len(archive)))
 			_, _ = w.Write(archive)
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
@@ -571,6 +573,7 @@ func TestInstallNexusMod_DownloadsInstallsAndStoresMetadata(t *testing.T) {
 	serverURL = server.URL
 	withNexusEndpoints(t, server)
 
+	var logs []string
 	imported, err := InstallNexusMod(context.Background(), dataDir, fakeNexusAPIKey, NexusModSearchResult{
 		ModID:            1234,
 		Name:             "Cool Mod",
@@ -581,7 +584,9 @@ func TestInstallNexusMod_DownloadsInstallsAndStoresMetadata(t *testing.T) {
 		DownloadCount:    34,
 		PictureURL:       "https://example.com/thumb.png",
 		NexusURL:         "https://www.nexusmods.com/stardewvalley/mods/1234",
-	}, nil)
+	}, func(message string) {
+		logs = append(logs, message)
+	})
 	if err != nil {
 		t.Fatalf("InstallNexusMod: %v", err)
 	}
@@ -605,6 +610,35 @@ func TestInstallNexusMod_DownloadsInstallsAndStoresMetadata(t *testing.T) {
 	mods = ApplyNexusMetadataToMods(dataDir, mods)
 	if len(mods) != 1 || mods[0].PictureURL != "https://example.com/thumb.png" {
 		t.Fatalf("metadata was not applied to installed list: %+v", mods)
+	}
+
+	joinedLogs := strings.Join(logs, "\n")
+	for _, want := range []string{"远程压缩包大小：", "下载进度：已下载", "剩余 0 B", "100.0%"} {
+		if !strings.Contains(joinedLogs, want) {
+			t.Fatalf("download progress logs missing %q in:\n%s", want, joinedLogs)
+		}
+	}
+}
+
+func TestNexusDownloadArchiveRejectsHTMLResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html>download page</html>"))
+	}))
+	defer server.Close()
+
+	var logs []string
+	err := nexusDownloadArchive(context.Background(), server.URL+"/download/cool.zip", filepath.Join(t.TempDir(), "cool.zip"), func(message string) {
+		logs = append(logs, message)
+	})
+	if err == nil {
+		t.Fatal("nexusDownloadArchive returned nil, want html response error")
+	}
+	if !strings.Contains(err.Error(), "不是 ZIP 压缩包") {
+		t.Fatalf("err = %v, want not-zip message", err)
+	}
+	if !strings.Contains(strings.Join(logs, "\n"), "远程响应类型：text/html") {
+		t.Fatalf("logs = %v, want content-type log", logs)
 	}
 }
 

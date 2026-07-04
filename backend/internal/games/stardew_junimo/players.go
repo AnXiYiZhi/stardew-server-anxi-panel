@@ -83,6 +83,9 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 		ParseStatus: "unavailable",
 		UpdatedAt:   time.Now().Format(time.RFC3339),
 	}
+	// 当前存档的人数上限来自新建存档时写入的 server-settings.json，
+	// 运行时来源（junimo info）解析出的值仍会覆盖这里的兜底。
+	result.MaxPlayers = readServerMaxPlayers(instance.DataDir)
 	zero := 0
 	if instance.State != storage.InstanceStateRunning {
 		result.OnlineCount = &zero
@@ -127,7 +130,9 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 
 	parsed := ParsePlayersFromInfo(raw)
 	result.OnlineCount = parsed.OnlineCount
-	result.MaxPlayers = parsed.MaxPlayers
+	if parsed.MaxPlayers != nil {
+		result.MaxPlayers = parsed.MaxPlayers
+	}
 	if len(parsed.Players) > 0 {
 		result.Players = mergePlayerRoster(instance.DataDir, "", parsed.Players, result.UpdatedAt)
 		result.RecentEvents = recentPlayerEvents(instance.DataDir, "")
@@ -138,6 +143,28 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 	result.ParseStatus = parsed.ParseStatus
 	result.Message = parsed.Message
 	return result, nil
+}
+
+// readServerMaxPlayers reads Server.MaxPlayers from the instance's
+// server-settings.json. Returns nil when the file is missing, unreadable, or
+// the value is not a positive number.
+func readServerMaxPlayers(dataDir string) *int {
+	data, err := os.ReadFile(serverSettingsPath(dataDir))
+	if err != nil {
+		return nil
+	}
+	var parsed struct {
+		Server struct {
+			MaxPlayers *int `json:"MaxPlayers"`
+		} `json:"Server"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil
+	}
+	if parsed.Server.MaxPlayers == nil || *parsed.Server.MaxPlayers <= 0 {
+		return nil
+	}
+	return parsed.Server.MaxPlayers
 }
 
 type playerCacheFile struct {

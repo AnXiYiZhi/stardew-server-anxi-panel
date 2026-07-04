@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import type { CurrentUser } from '../../types'
-import { stateLabel } from '../../core/helpers'
+import { useEffect, useRef, useState } from 'react'
+import type { BackupPolicy, CurrentUser, Job, JobLog, ResourceMetricSample, RestartSchedule } from '../../types'
+import { getInstanceMetrics, getRestartSchedule, getSaveBackupPolicy } from '../../api'
+import { jobDisplayName, stateLabel } from '../../core/helpers'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
@@ -47,11 +48,228 @@ const JOB_STATUS_DOT: Record<string, string> = {
   canceled: 'sd-dot sd-dot-gray',
 }
 
-function healthSummaryDot(status: string | undefined): string {
-  if (status === 'ok') return 'sd-dot sd-dot-green'
-  if (status === 'warning') return 'sd-dot sd-dot-yellow'
-  if (status === 'error') return 'sd-dot sd-dot-red'
-  return 'sd-dot sd-dot-gray'
+function metricPercentText(value: number | null | undefined): string {
+  return value == null ? '—' : `${Math.round(value)}%`
+}
+
+function metricPercentWidth(value: number | null | undefined): number {
+  if (value == null) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+type HealthStatLevel = 'ok' | 'warn' | 'crit'
+
+function usageLevel(value: number | null | undefined): HealthStatLevel {
+  if (value == null) return 'ok'
+  if (value >= 85) return 'crit'
+  if (value >= 60) return 'warn'
+  return 'ok'
+}
+
+function latencyLevel(ms: number | null): HealthStatLevel {
+  if (ms == null) return 'ok'
+  if (ms >= 300) return 'crit'
+  if (ms >= 100) return 'warn'
+  return 'ok'
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const DEFAULT_JOB_DURATION_MS = 60_000
+const REMOTE_INSTALL_JOB_TYPES = new Set(['mod_remote_install', 'mod_nexus_install'])
+const DOWNLOAD_PROGRESS_RE = /下载进度：已下载[\s\S]*?[（(]\s*([0-9]+(?:\.[0-9]+)?)%\s*[）)]/
+const OPS_RAIL_COLLAPSE_MAIN_WIDTH = 820
+const OPS_RAIL_EXPAND_MAIN_WIDTH = 880
+
+function clampNumber(min: number, value: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function expandedMainWidthForShell(shellWidth: number): number {
+  const sidebarWidth = clampNumber(210, shellWidth * 0.168, 252)
+  const opsRailWidth = clampNumber(340, shellWidth * 0.27, 430)
+  return shellWidth - sidebarWidth - opsRailWidth
+}
+
+function shouldAutoCollapseOpsRail(shellWidth: number, currentlyCollapsed: boolean): boolean {
+  if (shellWidth <= 640) return false
+  const expandedMainWidth = expandedMainWidthForShell(shellWidth)
+  const threshold = currentlyCollapsed ? OPS_RAIL_EXPAND_MAIN_WIDTH : OPS_RAIL_COLLAPSE_MAIN_WIDTH
+  return expandedMainWidth < threshold
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  return `${pad(hours)}:${pad(minutes)}:${pad(totalSeconds % 60)}`
+}
+
+// 普通运行中任务按同类型历史耗时估算；远程 Mod 安装优先读下载日志百分比，
+// 避免大文件下载阶段在右栏长期显示为未知或直接跳到 95%。
+function expectedJobDurationMs(type: string, jobs: Job[]): number {
+  const durations = jobs
+    .filter((j) => j.type === type && j.status === 'succeeded' && j.startedAt && j.finishedAt)
+    .map((j) => new Date(j.finishedAt as string).getTime() - new Date(j.startedAt as string).getTime())
+    .filter((ms) => ms > 0)
+    .sort((a, b) => a - b)
+  if (durations.length === 0) return DEFAULT_JOB_DURATION_MS
+  return durations[Math.floor(durations.length / 2)]
+}
+
+function isRemoteInstallJob(type: string): boolean {
+  return REMOTE_INSTALL_JOB_TYPES.has(type)
+}
+
+function remoteInstallLogPercent(logs: JobLog[]): number | null {
+  for (let i = logs.length - 1; i >= 0; i -= 1) {
+    const message = logs[i].message
+    if (message.includes('正在校验并安装 Mod')) return 92
+    if (message.includes('已完成') || message.includes('安装完成')) return 98
+    const match = message.match(DOWNLOAD_PROGRESS_RE)
+    if (match) {
+      const downloadPercent = Number.parseFloat(match[1])
+      if (Number.isFinite(downloadPercent)) {
+        return Math.max(12, Math.min(90, Math.round(12 + downloadPercent * 0.78)))
+      }
+    }
+    if (message.includes('远程压缩包大小')) return 12
+    if (message.includes('远程下载服务器已响应')) return 10
+    if (message.includes('正在从远程链接下载 Mod 压缩包')) return 8
+    if (message.includes('正在连接远程下载服务器')) return 6
+    if (message.includes('准备从远程链接安装 Mod')) return 4
+    if (message.includes('任务已开始')) return 3
+  }
+  return null
+}
+
+function runningJobPercent(job: Job, jobs: Job[], now: number, logs: JobLog[] = []): number {
+  if (job.status !== 'running') return 0
+  if (isRemoteInstallJob(job.type)) {
+    const logPercent = remoteInstallLogPercent(logs)
+    if (logPercent !== null) return logPercent
+  }
+  const startedAt = new Date(job.startedAt ?? job.createdAt).getTime()
+  if (!Number.isFinite(startedAt)) return 0
+  const elapsed = now - startedAt
+  if (elapsed <= 0) return 0
+  const estimated = Math.min(95, Math.round((elapsed / expectedJobDurationMs(job.type, jobs)) * 100))
+  return isRemoteInstallJob(job.type) ? Math.min(15, estimated) : estimated
+}
+
+// 进行中卡：维护计划/定时备份倒计时 + 运行中任务进度。
+// 每秒 tick 只重渲染本组件，不影响主内容区
+function OpsRailActiveCard({ jobs, jobLogsByJobId }: { jobs: Job[]; jobLogsByJobId: Record<string, JobLog[]> }) {
+  const [schedule, setSchedule] = useState<RestartSchedule | null>(null)
+  const [backupPolicy, setBackupPolicy] = useState<BackupPolicy | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    let timer: number | undefined
+
+    async function loadConfig() {
+      try {
+        const res = await getRestartSchedule()
+        if (alive) setSchedule(res.schedule)
+      } catch {
+        if (alive) setSchedule(null)
+      }
+      try {
+        const res = await getSaveBackupPolicy()
+        if (alive) setBackupPolicy(res.policy)
+      } catch {
+        // 备份策略接口仅管理员可读，普通用户静默隐藏定时备份行
+        if (alive) setBackupPolicy(null)
+      }
+      if (alive) {
+        timer = window.setTimeout(() => void loadConfig(), 60_000)
+      }
+    }
+
+    void loadConfig()
+    return () => {
+      alive = false
+      if (timer != null) window.clearTimeout(timer)
+    }
+  }, [])
+
+  const activeJobs = jobs.filter((j) => j.status === 'running' || j.status === 'queued')
+
+  const countdowns: { key: string; label: string; at: number }[] = []
+  if (schedule?.enabled) {
+    const shutdownAt = schedule.nextShutdownAt ? new Date(schedule.nextShutdownAt).getTime() : NaN
+    if (Number.isFinite(shutdownAt) && shutdownAt > now) {
+      countdowns.push({ key: 'auto-shutdown', label: '自动关机', at: shutdownAt })
+    }
+    const startupAt = schedule.nextStartupAt ? new Date(schedule.nextStartupAt).getTime() : NaN
+    if (Number.isFinite(startupAt) && startupAt > now) {
+      countdowns.push({ key: 'auto-startup', label: '自动开机', at: startupAt })
+    }
+  }
+  if (backupPolicy?.scheduledBackups) {
+    // 定时备份为每日 scheduledHour 整点（以面板本地时间近似后端本地时间）
+    const next = new Date(now)
+    next.setHours(backupPolicy.scheduledHour, 0, 0, 0)
+    if (next.getTime() <= now) next.setDate(next.getDate() + 1)
+    countdowns.push({ key: 'scheduled-backup', label: '定时备份', at: next.getTime() })
+  }
+  countdowns.sort((a, b) => a.at - b.at)
+
+  return (
+    <section className="sd-ops-card sd-ops-card-active sd-opsrail-section sd-opsrail-active">
+      <h2 className="sd-opsrail-heading">
+        <img className="sd-opsrail-title-icon" src={RIGHT_RAIL_TITLE_ICONS.active} alt="" />
+        <span>进行中</span>
+      </h2>
+      <div className="sd-opsrail-list">
+        {countdowns.length === 0 && activeJobs.length === 0 ? (
+          <p className="sd-opsrail-empty">暂无进行中的任务</p>
+        ) : (
+          <>
+            {countdowns.map((entry) => {
+              // 倒计时事件都是每日一次，进度条按 24h 周期内已经过的比例填充
+              const width = Math.max(0, Math.min(100, ((DAY_MS - (entry.at - now)) / DAY_MS) * 100))
+              return (
+                <div key={entry.key} className="sd-opsrail-hstat sd-opsrail-hstat--info">
+                  <div className="sd-opsrail-hstat-row">
+                    <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
+                    <span className="sd-opsrail-hstat-label">{entry.label}</span>
+                    <span className="sd-opsrail-hstat-value">{formatCountdown(entry.at - now)}</span>
+                  </div>
+                  <div className="sd-opsrail-hstat-bar">
+                    <span className="sd-opsrail-hstat-fill" style={{ width: `${width}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+            {activeJobs.map((job) => {
+              const percent = runningJobPercent(job, jobs, now, jobLogsByJobId[job.id] ?? [])
+              return (
+                <div key={job.id} className="sd-opsrail-hstat">
+                  <div className="sd-opsrail-hstat-row">
+                    <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
+                    <span className="sd-opsrail-hstat-label" title={jobDisplayName(job)}>{jobDisplayName(job)}</span>
+                    <span className="sd-opsrail-hstat-value">
+                      {job.status === 'queued' ? '排队中' : `${percent}%`}
+                    </span>
+                  </div>
+                  <div className="sd-opsrail-hstat-bar">
+                    <span className="sd-opsrail-hstat-fill" style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function roleLabel(role: CurrentUser['role']): string {
@@ -89,14 +307,80 @@ export function StardewPanel({
     parseRoute(window.location.pathname),
   )
   const [saveActionRequest, setSaveActionRequest] = useState<StardewSaveActionRequest | null>(null)
+  const [opsRailAutoCollapsed, setOpsRailAutoCollapsed] = useState(() =>
+    shouldAutoCollapseOpsRail(window.innerWidth, false),
+  )
+  const shellRef = useRef<HTMLDivElement | null>(null)
 
   const dashboardData = useStardewDashboardData()
-  const { instanceState, jobs, health, versionInfo, saves } = dashboardData
+  const { instanceState, jobs, versionInfo, saves } = dashboardData
+  const [metricSample, setMetricSample] = useState<ResourceMetricSample | null>(null)
+  const [apiLatencyMs, setApiLatencyMs] = useState<number | null>(null)
 
   useEffect(() => {
     const onPop = () => setRoute(parseRoute(window.location.pathname))
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    const shell = shellRef.current
+    if (!shell) return
+
+    let frameId: number | null = null
+    const measure = () => {
+      const shellWidth = shell.getBoundingClientRect().width || window.innerWidth
+      setOpsRailAutoCollapsed((current) => shouldAutoCollapseOpsRail(shellWidth, current))
+      frameId = null
+    }
+    const scheduleMeasure = () => {
+      if (frameId != null) return
+      frameId = window.requestAnimationFrame(measure)
+    }
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleMeasure)
+    resizeObserver?.observe(shell)
+    window.addEventListener('resize', scheduleMeasure)
+    scheduleMeasure()
+
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', scheduleMeasure)
+      if (frameId != null) window.cancelAnimationFrame(frameId)
+    }
+  }, [])
+
+  // 系统健康卡：轮询容器资源指标，网络延迟取本次请求的往返耗时
+  useEffect(() => {
+    let alive = true
+    let timer: number | undefined
+
+    async function loadMetrics() {
+      const startedAt = performance.now()
+      try {
+        const res = await getInstanceMetrics()
+        if (!alive) return
+        setMetricSample(res.sample)
+        setApiLatencyMs(Math.round(performance.now() - startedAt))
+      } catch {
+        if (!alive) return
+        setMetricSample(null)
+        setApiLatencyMs(null)
+      } finally {
+        if (alive) {
+          timer = window.setTimeout(() => {
+            void loadMetrics()
+          }, 5000)
+        }
+      }
+    }
+
+    void loadMetrics()
+    return () => {
+      alive = false
+      if (timer != null) window.clearTimeout(timer)
+    }
   }, [])
 
   function navigate(next: StardewRoute, options?: StardewNavigateOptions) {
@@ -141,9 +425,21 @@ export function StardewPanel({
     .slice(0, 5)
 
   const activeSaveName = saves?.activeSaveName
-  const healthStatus = health?.status
-  const errorChecks = health?.checks.filter((c) => c.status === 'error').length ?? 0
-  const warnChecks = health?.checks.filter((c) => c.status === 'warning').length ?? 0
+  const railResourceStats = [
+    { label: 'CPU 使用率', value: metricSample?.cpuPercent },
+    { label: '内存使用率', value: metricSample?.memoryPercent },
+    { label: '磁盘使用率', value: metricSample?.diskPercent },
+  ]
+  const onlineCount = dashboardData.players?.onlineCount
+  const maxPlayers = dashboardData.players?.maxPlayers
+  const railPlayerSummary =
+    onlineCount != null
+      ? maxPlayers != null
+        ? `${onlineCount}/${maxPlayers}`
+        : String(onlineCount)
+      : '—'
+  const railPlayerLevel: HealthStatLevel = onlineCount === 0 ? 'crit' : 'ok'
+  const railLatencyLevel = latencyLevel(apiLatencyMs)
   const activeSave = activeSaveName
     ? saves?.saves.find((save) => save.isActive || save.name === activeSaveName) ?? null
     : null
@@ -153,9 +449,14 @@ export function StardewPanel({
   const topbarStatusDotClass = topbarStatusDotClassName(instanceState?.state, dashboardData.loading)
   const topbarStatusUsesGreenIcon = topbarStatusDotClass.includes('sd-dot-green')
   const topbarStatusClassName = `sd-topbar-status sd-topbar-status-${instanceState?.state ?? 'unknown'}`
+  const shellClassName = `sd-shell${opsRailAutoCollapsed ? ' sd-shell--opsrail-auto-collapsed' : ''}`
 
   return (
-    <div className="sd-shell">
+    <div
+      ref={shellRef}
+      className={shellClassName}
+      data-opsrail-collapsed={opsRailAutoCollapsed ? 'auto' : undefined}
+    >
       {/* ── 顶部状态栏 ──────────────────────────────────────── */}
       <header className="sd-topbar" aria-label="Stardew Anxi Panel top bar">
         <div className="sd-topbar-bg" aria-hidden="true">
@@ -317,50 +618,46 @@ export function StardewPanel({
               <img className="sd-opsrail-title-icon" src={RIGHT_RAIL_TITLE_ICONS.health} alt="" />
               <span>系统健康</span>
             </h2>
-            {health ? (
-              <div className="sd-opsrail-job sd-opsrail-health-summary">
-                <div className="sd-opsrail-job-meta">
-                  <span className={healthSummaryDot(healthStatus)} aria-hidden="true" />
-                  <span className="sd-opsrail-job-type">
-                    {healthStatus === 'ok' ? '全部正常' : `${errorChecks} 错误 · ${warnChecks} 警告`}
+            <div className="sd-opsrail-hstat-list">
+              {railResourceStats.map((stat) => (
+                <div key={stat.label} className={`sd-opsrail-hstat sd-opsrail-hstat--${usageLevel(stat.value)}`}>
+                  <div className="sd-opsrail-hstat-row">
+                    <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
+                    <span className="sd-opsrail-hstat-label">{stat.label}</span>
+                    <span className="sd-opsrail-hstat-value">{metricPercentText(stat.value)}</span>
+                  </div>
+                  <div className="sd-opsrail-hstat-bar">
+                    <span
+                      className="sd-opsrail-hstat-fill"
+                      style={{ width: `${metricPercentWidth(stat.value)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className={`sd-opsrail-hstat sd-opsrail-hstat--${railPlayerLevel}`}>
+                <div className="sd-opsrail-hstat-row">
+                  <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
+                  <span className="sd-opsrail-hstat-label">在线玩家</span>
+                  <span className="sd-opsrail-hstat-value">{railPlayerSummary}</span>
+                </div>
+              </div>
+              <div className={`sd-opsrail-hstat sd-opsrail-hstat--${railLatencyLevel}`}>
+                <div className="sd-opsrail-hstat-row">
+                  <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
+                  <span className="sd-opsrail-hstat-label">网络延迟</span>
+                  <span className="sd-opsrail-hstat-value">
+                    {apiLatencyMs != null ? `${apiLatencyMs}ms` : '—'}
                   </span>
                 </div>
               </div>
-            ) : dashboardData.healthError ? (
-              <p className="sd-opsrail-empty">健康检查失败</p>
-            ) : (
-              <p className="sd-opsrail-empty">检查中…</p>
-            )}
+            </div>
             <button type="button" className="sd-opsrail-link" onClick={() => navigate('diagnostics')}>
-              查看诊断 →
+              查看详情 →
             </button>
           </section>
 
-          {/* 进行中的任务 */}
-          <section className="sd-ops-card sd-ops-card-active sd-opsrail-section sd-opsrail-active">
-            <h2 className="sd-opsrail-heading">
-              <img className="sd-opsrail-title-icon" src={RIGHT_RAIL_TITLE_ICONS.active} alt="" />
-              <span>进行中</span>
-            </h2>
-            <div className="sd-opsrail-list">
-              {activeJobs.length === 0 ? (
-                <p className="sd-opsrail-empty">暂无进行中的任务</p>
-              ) : (
-                activeJobs.map((job) => (
-                  <div key={job.id} className="sd-opsrail-job">
-                    <span className="sd-opsrail-job-type">{job.type}</span>
-                    <div className="sd-opsrail-job-meta">
-                      <span
-                        className={JOB_STATUS_DOT[job.status] ?? 'sd-dot sd-dot-gray'}
-                        aria-hidden="true"
-                      />
-                      {job.status}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
+          {/* 进行中：维护计划/定时备份倒计时 + 运行中任务进度 */}
+          <OpsRailActiveCard jobs={jobs} jobLogsByJobId={dashboardData.jobLogsByJobId} />
 
           {/* 近期任务 */}
           <section className="sd-ops-card sd-ops-card-recent sd-opsrail-section sd-opsrail-recent">
@@ -374,7 +671,7 @@ export function StardewPanel({
               ) : recentIdleJobs.length === 0 ? null : (
                 recentIdleJobs.map((job) => (
                   <div key={job.id} className="sd-opsrail-job">
-                    <span className="sd-opsrail-job-type">{job.type}</span>
+                    <span className="sd-opsrail-job-type" title={jobDisplayName(job)}>{jobDisplayName(job)}</span>
                     <div className="sd-opsrail-job-meta">
                       <span
                         className={JOB_STATUS_DOT[job.status] ?? 'sd-dot sd-dot-gray'}

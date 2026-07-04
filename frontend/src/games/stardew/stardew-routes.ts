@@ -1,5 +1,5 @@
 import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
-import type { CurrentUser, InstanceState, Job, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
+import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
 
 export type StardewRoute =
   | 'install'
@@ -31,6 +31,7 @@ export type StardewDashboardData = {
   mods: ModsListResult | null
   players: StardewPlayersResponse | null
   jobs: Job[]
+  jobLogsByJobId: Record<string, JobLog[]>
   health: HealthDiagnosticsResponse | null
   versionInfo: VersionInfo | null
   inviteCode: string | null

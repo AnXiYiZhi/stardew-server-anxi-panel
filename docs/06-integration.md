@@ -1,3 +1,33 @@
+# JOB-DISPLAY-NAME-1 联调契约
+
+- `GET /api/jobs`、`GET /api/jobs/:id` 和 job SSE 的 job payload 可能返回 `displayName`；前端应优先展示该字段，没有时回退 `type`。
+- `type` 仍是机器可读任务类型，例如 `mod_remote_install`，不要在前端用它判断具体 Mod；Nexus/远程 Mod 安装的用户可读名称在 `displayName` 中，例如 `mod_remote_install · Farm Type Manager (FTM)`。
+- 扩展普通一键安装提交 `POST /api/instances/:id/mods/remote/install` 时应继续传 `mod.name`，这样后端能给并行依赖任务写入不同展示名。
+- 验证：`cd backend; go test ./internal/storage ./internal/jobs ./internal/web`、`cd frontend; npm.cmd run build`。
+
+# MODUPLOAD-DUPLICATE-CODE-1 联调契约
+
+- `POST /api/instances/:id/mods/upload` 上传合法 SMAPI ZIP 时，如果实例里已存在相同 `UniqueID` 的 Mod，响应应为 `400 { error: { code: "mod_exists", ... } }`。
+- 该错误表示“已安装相同 ID 的 Mod”，不是 ZIP 结构损坏；前端可直接显示已有 `mod_exists` 文案。
+- 损坏 ZIP、缺少 manifest、XNB 替换包、manifest 解析失败等仍属于 `invalid_mod_zip`。
+- 验证：`cd backend; go test ./internal/web -run "TestModUpload"`。
+
+# FE-OPSRAIL-DOWNLOAD-PROGRESS-1 联调契约
+
+- 扩展普通一键安装在成功创建面板后端任务后，应尽快把 `jobId` 返回给面板页；面板收到新的 batch `jobId` 后会立即刷新 `GET /api/jobs`，右栏“进行中”不应再等 30s 轮询才出现。
+- 右栏远程安装进度依赖后端 job 日志：`GET /api/jobs/:jobId/logs` 和 `GET /api/jobs/:jobId/stream` 的 `log` 事件需要包含 `下载进度：已下载 ...（xx.x%）` 这类消息，面板据此显示下载阶段进度。
+- 下载百分比只代表 ZIP body 下载阶段；右栏会把它映射到任务整体进度的中前段，下载 100% 后仍会显示校验/安装阶段，任务真正完成以后由 `finished` 事件刷新 jobs 并移除进行中行。
+- 联调验收：普通一键安装点击后，扩展返回 `jobId` 时右栏立即出现 `mod_remote_install`；下载日志从 0% 到 100% 时右栏进度同步推进；若扩展没有拿到 ZIP 链接，则不应出现后端 job。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# NEXUS-EXT-DOWNLOAD-GUARD-1 联调契约
+
+- 扩展只有在捕获到真实 Nexus CDN ZIP 链接时才允许调用 `POST /api/instances/:id/mods/remote/install`。合法链接需满足 HTTPS、host 为 `supporter-files.nexus-cdn.com` 或其它 `*.nexus-cdn.com`，路径以 `.zip` 结尾。
+- 后台页仍停在 Nexus 文件页、Manual Download 页、Slow Download 页、Additional files 弹窗或错误页时，不应创建面板安装任务；前端批量进度只能显示捕获中/超时失败，不能显示 queued/jobId。
+- 后端远程安装任务日志现在必须能区分卡点：`正在连接远程下载服务器` 表示已拿到 URL 正在等响应头；`远程下载服务器已响应：HTTP ...` + `远程压缩包大小...` / `下载进度...` 表示已经开始读取 ZIP body。
+- 如果后端收到 `text/html`，任务应失败并提示远程下载返回网页而不是 ZIP；联调时优先检查扩展是否真的捕获到 CDN ZIP，而不是只打开了 Nexus 下载页面。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`，以及扩展三个脚本 `node --check`。
+
 # PLAYERSYNC-PACK-2 联调契约
 
 - `POST /api/instances/:id/mods/sync-pack/export` 下载文件名仍是 `stardew-player-sync-pack.zip`，但 ZIP 内容升级为安装包：根目录含 `安装玩家同步包.bat`、`卸载本同步包.bat`、`README.txt`、`pack-manifest.json`、`checksums.sha256`、`tools/` 和 `payload/`。
@@ -162,6 +192,7 @@ npm.cmd run dev
 ### 7. 玩家页
 
 - `GET /api/instances/:id/players` 返回在线快照和缓存名册。
+- `maxPlayers` 默认取当前存档 `server-settings.json` 的 `Server.MaxPlayers`（junimo info 解析出的值优先）；服务器未运行时也会返回，供前端显示"在线数/人数上限"。
 - 前端显示 online/offline、host、位置、tile/pixel。
 - 未知地图 key 保留原值。
 - 玩家页固定展示 `money`、`farmIncome`、`personalIncome` 和 `walletMode`；`farmIncome` 是农场/团队累计收入，`personalIncome` 是玩家个人累计收入，不随钱包模式改变含义。

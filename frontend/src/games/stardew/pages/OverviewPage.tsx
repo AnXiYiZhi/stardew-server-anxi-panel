@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import { ApiError, startInstance, stopInstance, restartInstance } from '../../../api'
-import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
+import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
+
+const OVERVIEW_ICONS = {
+  server: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
+  saves: '/assets/stardew/ui/icons/icon_nav_saves_chest_image2.png',
+  mods: '/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png',
+  health: '/assets/stardew/ui/icons/icon_right_rail_health_heart_image2.png',
+  tasks: '/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png',
+  players: '/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png',
+} as const
 
 function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
   if (!(error instanceof ApiError)) return null
@@ -308,58 +317,70 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
       {/* 服务器控制 */}
       <div className="sd-ov-section">
-        <div className="sd-ov-title">服务器控制</div>
+        <div className="sd-ov-title">
+          <img src={OVERVIEW_ICONS.server} alt="" />
+          服务器控制
+        </div>
         <div className="sd-ctrl-row">
-          {renderLifecycleButtons()}
-          {showSaveRequiredPrompt ? (
-            <div className="sd-start-save-required">
-              <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
-              <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
-                创建/上传存档
-              </button>
-            </div>
-          ) : null}
+          <div className="sd-lifecycle-actions">
+            {renderLifecycleButtons()}
+            {showSaveRequiredPrompt ? (
+              <div className="sd-start-save-required">
+                <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
+                <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
+                  创建/上传存档
+                </button>
+              </div>
+            ) : null}
+          </div>
           {showCtrlDivider && dashboardData.inviteCode ? (
             <div className="sd-ctrl-div">│</div>
           ) : null}
-          <div className="sd-invite-wrap">
-            {dashboardData.inviteCode ? (
-              <>
-                <div className="sd-invite-box">
-                  <div className="sd-invite-code">{dashboardData.inviteCode}</div>
-                  <button className="sd-btn-copy" onClick={handleCopy}>
-                    {copied ? '✓' : '复制'}
-                  </button>
-                </div>
-                {copyError ? (
-                  <span className="sd-bstat-l" style={{ color: '#c02020', fontSize: 9.5, marginLeft: 4 }}>
-                    复制失败，请手动选取
-                  </span>
-                ) : null}
-              </>
-            ) : dashboardData.loading ? (
-              <span className="sd-bstat-l">读取邀请码中…</span>
-            ) : dashboardData.inviteCodeError ? (
-              <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>
-                {state === 'running' || state === 'starting'
-                  ? '获取邀请码失败，稍后可刷新重试'
-                  : '服务器未运行，邀请码不可用'}
-              </span>
-            ) : (
-              <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>暂无邀请码</span>
-            )}
-            <button
-              className="sd-btn-tan sd-invite-refresh-btn"
-              onClick={() => dashboardData.refreshInviteCode()}
-              disabled={state !== 'running' && state !== 'starting'}
-              title={
-                state === 'running' || state === 'starting'
-                  ? '重新获取邀请码'
-                  : '服务器未运行时无法获取邀请码'
-              }
-            >
-              刷新
-            </button>
+          <div className="sd-invite-panel">
+            <div className="sd-invite-head">
+              <img src={OVERVIEW_ICONS.players} alt="" />
+              邀请代码
+            </div>
+            <div className="sd-invite-wrap">
+              {dashboardData.inviteCode ? (
+                <>
+                  <div className="sd-invite-box">
+                    <div className="sd-invite-code">{dashboardData.inviteCode}</div>
+                    <button className="sd-btn-copy" onClick={handleCopy}>
+                      {copied ? '✓' : '复制'}
+                    </button>
+                  </div>
+                  {copyError ? (
+                    <span className="sd-bstat-l" style={{ color: '#c02020', fontSize: 9.5, marginLeft: 4 }}>
+                      复制失败，请手动选取
+                    </span>
+                  ) : null}
+                </>
+              ) : dashboardData.loading ? (
+                <span className="sd-bstat-l">读取邀请码中…</span>
+              ) : dashboardData.inviteCodeError ? (
+                <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>
+                  {state === 'running' || state === 'starting'
+                    ? '获取邀请码失败，稍后可刷新重试'
+                    : '服务器未运行，邀请码不可用'}
+                </span>
+              ) : (
+                <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>暂无邀请码</span>
+              )}
+              <button
+                className="sd-btn-tan sd-invite-refresh-btn"
+                onClick={() => dashboardData.refreshInviteCode()}
+                disabled={state !== 'running' && state !== 'starting'}
+                title={
+                  state === 'running' || state === 'starting'
+                    ? '重新获取邀请码'
+                    : '服务器未运行时无法获取邀请码'
+                }
+              >
+                刷新
+              </button>
+            </div>
+            <div className="sd-invite-help">分享此代码，邀请朋友加入你的农场！</div>
           </div>
         </div>
         {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
@@ -367,7 +388,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
       <div className="sd-metric-grid sd-ov-metric-strip" aria-label="服务器摘要">
         <div className={`sd-mc${dashboardData.savesError ? ' sd-mc--error' : !activeSave ? ' sd-mc--warn' : ''}`}>
-          <div className="sd-mc-name">存档</div>
+          <div className="sd-mc-name">
+            <img src={OVERVIEW_ICONS.saves} alt="" />
+            存档
+          </div>
           <div className="sd-mc-val">{saveCount}</div>
           <div className="sd-mc-sub">
             {activeSave
@@ -376,18 +400,30 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
                 ? '读取失败'
                 : '暂无激活存档'}
           </div>
+          <span className={`sd-mc-pill${activeSave ? ' sd-mc-pill--ok' : ' sd-mc-pill--warn'}`}>
+            {activeSave ? '正常' : '待选择'}
+          </span>
         </div>
 
         <div className={`sd-mc${dashboardData.modsError ? ' sd-mc--error' : modRestartRequired ? ' sd-mc--warn' : ''}`}>
-          <div className="sd-mc-name">模组</div>
+          <div className="sd-mc-name">
+            <img src={OVERVIEW_ICONS.mods} alt="" />
+            模组
+          </div>
           <div className="sd-mc-val">{modCount}</div>
           <div className="sd-mc-sub">
             {dashboardData.modsError ? '读取失败' : modRestartRequired ? '有模组变更待应用' : '状态正常'}
           </div>
+          <span className={`sd-mc-pill${dashboardData.modsError ? ' sd-mc-pill--error' : modRestartRequired ? ' sd-mc-pill--warn' : ' sd-mc-pill--ok'}`}>
+            {dashboardData.modsError ? '异常' : modRestartRequired ? '待应用' : '健康'}
+          </span>
         </div>
 
         <div className={`sd-mc${healthStatus === 'ok' ? ' sd-mc--ok' : healthStatus === 'warning' ? ' sd-mc--warn' : healthStatus === 'error' ? ' sd-mc--error' : ''}`}>
-          <div className="sd-mc-name">系统健康</div>
+          <div className="sd-mc-name">
+            <img src={OVERVIEW_ICONS.health} alt="" />
+            系统健康
+          </div>
           <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : healthStatus === 'warning' ? '#d08010' : healthStatus === 'error' ? '#c02020' : '#2c1a0a' }}>
             {healthStatus === 'ok' ? '100%' : healthStatus === 'warning' ? `${warnCount}警告` : healthStatus === 'error' ? `${errorCount}错误` : '—'}
           </div>
@@ -402,30 +438,49 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
                     ? '健康检查失败'
                     : '检查中…'}
           </div>
+          <span className={`sd-mc-pill${healthStatus === 'error' ? ' sd-mc-pill--error' : healthStatus === 'warning' ? ' sd-mc-pill--warn' : healthStatus === 'ok' ? ' sd-mc-pill--ok' : ''}`}>
+            {healthStatus === 'error' ? '异常' : healthStatus === 'warning' ? '警告' : healthStatus === 'ok' ? '优秀' : '检查中'}
+          </span>
         </div>
 
         <div className={`sd-mc${hasFailedJob ? ' sd-mc--error' : ''}`}>
-          <div className="sd-mc-name">运行任务</div>
+          <div className="sd-mc-name">
+            <img src={OVERVIEW_ICONS.tasks} alt="" />
+            运行任务
+          </div>
           <div className="sd-mc-val" style={{ color: hasFailedJob ? '#c02020' : '#2c1a0a' }}>
             {activeJobCount}
           </div>
           <div className="sd-mc-sub">
             {hasFailedJob ? '最近有失败任务' : activeJobCount > 0 ? '进行中' : '无活跃任务'}
           </div>
+          <span className={`sd-mc-pill${hasFailedJob ? ' sd-mc-pill--error' : ' sd-mc-pill--ok'}`}>
+            {hasFailedJob ? '异常' : '正常'}
+          </span>
         </div>
       </div>
 
       <div className="sd-ov-summary-grid">
         <section className="sd-ov-card">
-          <div className="sd-player-hd">在线玩家</div>
+          <div className="sd-player-hd">
+            <img src={OVERVIEW_ICONS.players} alt="" />
+            在线玩家
+            {onlineCount != null && maxPlayers != null ? <span>{onlineCount}/{maxPlayers}</span> : null}
+          </div>
           <div className="sd-ov-player-body">
             {onlinePlayers.length > 0 ? (
               <div className="sd-ov-player-list">
                 {onlinePlayers.slice(0, 4).map((player) => (
-                  <span className="sd-ov-player-chip" key={player.name}>
+                  <div className="sd-ov-player-row" key={player.uniqueMultiplayerId || player.name}>
+                    <span className="sd-ov-player-avatar" aria-hidden="true">{player.name.slice(0, 1)}</span>
+                    <span className="sd-ov-player-main">
+                      <span className="sd-ov-player-name">{player.name}</span>
+                      <span className="sd-ov-player-meta">
+                        {player.locationDisplayName || player.locationName || player.location || (player.isHost ? '农场主' : '在线')}
+                      </span>
+                    </span>
                     <span className="sd-dot sd-dot-green" aria-hidden="true" />
-                    {player.name}
-                  </span>
+                  </div>
                 ))}
               </div>
             ) : dashboardData.playersError ? (
@@ -444,7 +499,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
         </section>
 
         <section className="sd-ov-card">
-          <div className="sd-ev-title">近期事件</div>
+          <div className="sd-ev-title">
+            <img src={OVERVIEW_ICONS.tasks} alt="" />
+            近期事件
+          </div>
           <div className="sd-ev-list">
             {recentJobs.length > 0 ? (
               recentJobs.map((j) => (
@@ -468,7 +526,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
                       aria-hidden="true"
                       style={{ marginRight: 4 }}
                     />
-                    {j.type}
+                    <span title={jobDisplayName(j)}>{jobDisplayName(j)}</span>
                     {j.status === 'failed' && j.errorMessage ? (
                       <span style={{ color: '#c02020', fontSize: 9, marginLeft: 4 }}>
                         {j.errorMessage}
@@ -489,7 +547,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
         </section>
 
         <section className="sd-ov-card">
-          <div className="sd-pack-title">模组状态</div>
+          <div className="sd-pack-title">
+            <img src={OVERVIEW_ICONS.mods} alt="" />
+            模组状态
+          </div>
           <div className="sd-pack-section">
             <div className="sd-pack-row">
               <span className="sd-pack-name">已安装</span>

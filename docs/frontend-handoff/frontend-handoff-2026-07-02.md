@@ -1,3 +1,481 @@
+# FE-MAIN-PAGE-FRAME-SLICES-1 前端接手记录（2026-07-04）
+
+## 改了什么
+- 将所有 Stardew 页面共用的 `.sd-main` 主内容 frame 从整张 `main_page_frame_empty_image2.png` 的 `100% 100%` 拉伸背景，改为 image2 空框切片平铺。
+- 从 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/03-saves-page-frame-empty-image2.png` 按原始像素裁出 9 个运行时素材：左上/右上/左下/右下四角，top/bottom/left/right 四条边 tile，以及中心羊皮纸 tile。
+- `.sd-main` 现在使用 9 层 CSS background：四角 `no-repeat`，上下边 `repeat-x`，左右边 `repeat-y`，中间纸纹 `repeat`。窗口缩放时边框纹理不再被横向或纵向拉伸。
+- 保留既有 `.sd-main-scroll` 统一滚动视口、内侧 inset 和所有路由 DOM；本次只替换 frame 背景绘制方式，没有改页面组件或业务逻辑。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/stardew-theme.css`
+- `frontend/src/games/stardew/StardewPanel.css`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_corner_top_left_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_corner_top_right_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_corner_bottom_left_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_corner_bottom_right_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_edge_top_tile_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_edge_bottom_tile_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_edge_left_tile_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_edge_right_tile_image2.png`
+- 新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_center_tile_image2.png`
+- 未改后端接口、路由、权限判断、数据轮询或页面组件结构。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 使用已删除的临时 `frontend/page-frame-slices-qa.html` 加载真实 `stardew-theme.css`、`StardewPanel.css` 和 public 素材做内置浏览器 QA。
+- 1280x720：`.sd-main` 背景层数量为 9；`background-repeat` 为四角 `no-repeat`、上下 `repeat-x`、左右 `repeat-y`、中心 `repeat`；不包含旧的整图 `100% 100%` 拉伸；页面无横向溢出；滚轮后 `.sd-main-scroll.scrollTop` 从 `0` 到 `520`；console error/warn 为空。
+- 390x760：背景层数量仍为 9，四边重复规则保持；页面无横向溢出；滚轮后 `.sd-main-scroll.scrollTop` 从 `0` 到 `420`；console error/warn 为空。
+
+## 下一步注意事项
+- 后续若继续调整主内容 frame，优先替换这 9 个切片或重新裁切切片；不要把整张 `main_page_frame_empty_image2.png` 再改回 `background-size: 100% 100%`，否则窗口缩放时边框会再次被拉伸。
+- `.sd-main-scroll` 仍是唯一滚动视口；不要为了 frame 视觉把滚动放回 `.sd-main` 或单页组件。
+- 当前四角/边厚通过 `.sd-main` 内的 `--sd-main-frame-corner-size` 和 `--sd-main-frame-edge-thickness` 控制。如更换切片尺寸，需要同步复查这些变量和既有内侧 inset。
+
+# FE-MODS-DEPENDENCY-POPOVER-1 前端接手记录（2026-07-04）
+
+## 改了什么
+- 修复下载模组页 Nexus 搜索结果卡片里的前置信息无法正常展开/可见的问题。
+- `NexusRequiredModsBadge` 从 `<details>/<summary>` 默认行为改为受控按钮 + 弹层，`ModsPage` 用 `openNexusRequiredModId` 记录当前打开项。
+- 打开后点击信息弹层外部会自动收起；切换 tab、搜索结果刷新导致当前 mod 不在列表中时也会关闭，并支持 `Escape` 关闭。
+- 搜索卡片固定高度和动态 pageSize 逻辑保持不变；只有当前前置弹层打开的卡片临时加 `sd-mods-nexus-card-dependency-open`，放开卡片和 footer 的 `overflow`，避免弹层被裁切。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- 未改后端接口、Nexus 搜索参数、安装流程、动态 pageSize 计算或已安装模组列表。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 内置浏览器真实路由仍可能受登录态影响，因此使用已删除的临时 `frontend/mods-dependency-qa.html` 加载真实构建 CSS 做交互 QA。
+- 1280x720：初始弹层隐藏、卡片默认 `overflow:hidden`；点击“缺少前置mod”后弹层显示、按钮 `aria-expanded=true`、卡片和 footer 临时 `overflow:visible`，信息未被裁切；点击外部区域后弹层关闭并恢复默认裁切，console error/warn 为空。
+- 390x760：弹层打开后宽度落在视口内，无水平溢出，console error/warn 为空。
+
+## 下一步注意事项
+- 前置信息弹层的外部点击监听只在 `openNexusRequiredModId !== null` 时挂载；后续如果把弹层改为 portal，需要同步调整外部点击判定范围。
+- 不要把搜索卡片的 `overflow: visible` 改成常驻，否则动态 pageSize 的固定卡片高度约束会失效，搜索结果可能重新撑开 frame。
+
+# JOB-DISPLAY-NAME-1 前端接手记录（2026-07-04）
+
+## 改了什么
+- `Job` 类型新增可选 `displayName`，并新增 `jobDisplayName(job)` helper。
+- 任务页列表/详情、右侧 OpsRail“进行中”、右侧“近期任务”和总览页近期事件都优先展示 `displayName`；旧任务或普通任务没有该字段时继续回退原来的 `type` / `typeLabel`。
+- 目标效果：并行安装多个 Nexus 依赖时，不再只看到多条 `mod_remote_install`，而是能看到 `mod_remote_install · <Mod 名>`。
+
+## 影响文件/接口
+- `frontend/src/types.ts`
+- `frontend/src/core/helpers.ts`
+- `frontend/src/games/stardew/StardewPanel.tsx`
+- `frontend/src/games/stardew/pages/JobsLogsPage.tsx`
+- `frontend/src/games/stardew/pages/OverviewPage.tsx`
+- 依赖后端 job payload 的可选 `displayName` 字段。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build`。
+
+## 下一步注意事项
+- 前端不要用 `displayName` 做任务类型判断；所有逻辑判断仍看 `job.type`。
+- 如果后续其它页面展示 job 名称，优先复用 `jobDisplayName(job)`。
+
+# FE-OPSRAIL-DOWNLOAD-PROGRESS-1 前端接手记录（2026-07-04）
+
+## 改了什么
+- 右侧 OpsRail 的“进行中”任务卡接入远程 Mod 安装下载日志：`mod_remote_install` / `mod_nexus_install` 优先解析 `下载进度：已下载 ...（xx.x%）`，不再只靠历史耗时估算到 95%。
+- `useStardewDashboardData` 为 active job 拉取一次初始日志，并订阅 job SSE 的 `log` 事件，维护 `jobLogsByJobId` 给 `OpsRailActiveCard` 使用；每个 job 保留最近 200 条日志。
+- 模组页扩展 batch 一旦拿到新的 `jobId` 就立即 `refreshJobs()`，让右栏进行中任务尽快出现；Premium/API Key 安装拿到 `jobId` 后也主动刷新 jobs。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/StardewPanel.tsx`
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- `frontend/src/games/stardew/stardew-routes.ts`
+- 后端接口未新增；依赖既有 `GET /api/jobs`、`GET /api/jobs/:jobId/logs` 和 `GET /api/jobs/:jobId/stream` 的 `log` / `finished` 事件。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 真实扩展下载链路需在浏览器扩展 + Nexus 登录态下联调：点击普通一键安装后，扩展返回 jobId 时右栏应立即出现 `mod_remote_install`；任务日志出现下载百分比后，右栏进度应随下载推进，而不是等下载 100% 后直接跳到 95%。
+
+## 下一步注意事项
+- 右栏下载进度依赖后端日志文案 `下载进度：已下载 ...（xx.x%）`；如果后端文案改动，需要同步调整 `DOWNLOAD_PROGRESS_RE`。
+- `jobLogsByJobId` 是 dashboard 公共数据层字段，后续其它轻量组件可复用，但不要在各卡片里重复开启 job 日志轮询。
+
+# NEXUS-EXT-DOWNLOAD-GUARD-1 前端/扩展接手记录（2026-07-04）
+
+## 改了什么
+- 浏览器扩展自动提交链路增加最终 URL 兜底校验：只有真实 Nexus CDN `.zip` 才能触发面板远程安装任务。
+- `background.js` 的 `finishInstall()` / `postRemoteInstall()` 会拒绝空 URL、普通 Nexus 页面 URL、非 CDN URL 和非 ZIP URL。
+- `panel-bridge.js` 的 `PANEL_REMOTE_INSTALL` 同样校验 URL，避免面板页桥接把未就绪页面状态提交给后端。
+
+## 影响文件/接口
+- `browser-extensions/nexus-slow-installer/background.js`
+- `browser-extensions/nexus-slow-installer/panel-bridge.js`
+- 面板 API 不变；扩展仍调用 `POST /api/instances/:id/mods/remote/install`，但调用前更严格。
+
+## 如何验证
+- 已执行：`node --check browser-extensions/nexus-slow-installer/background.js`
+- 已执行：`node --check browser-extensions/nexus-slow-installer/panel-bridge.js`
+- 已执行：`node --check browser-extensions/nexus-slow-installer/content.js`
+
+## 下一步注意事项
+- 用户更新扩展后需要在 Chrome/Edge 扩展管理页重新加载扩展，并刷新面板页让新的 `panel-bridge.js` 注入。
+- 批量安装时如果某个后台页停在 Nexus 下载页，预期行为是该项保持捕获中并最终超时失败，而不是创建一个无 ZIP 的 `mod_remote_install` job。
+- 真实安装是否完成仍以后端 job 状态为准；扩展 `queued` 只表示已经成功创建面板任务。
+# FE-PLAYERS-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 玩家管理页按 image2 原型 `05-players - 副本.png` 做视觉重皮肤：顶部六张摘要卡、邀请加入码横条、中部 Junimo 服务器终端 + 在线玩家表、底部玩家活动历史和管理员操作区对齐原型布局。
+- 原型图没有作为运行时背景或整块资源引用。羊皮纸底、纸纹噪点、铜色边框、内描边、角钉、分隔线、绿字终端、玩家表和禁用操作小按钮均由 CSS gradient / border / box-shadow / pseudo-elements 实现。
+- `PlayersPage.tsx` 只改展示结构：摘要从旧网格压成 6 卡，玩家表改为“玩家名 / 角色 / 位置 / 在线时长 / 状态 / 操作”6 列；现金、农场收入、个人收入、钱包模式和联机 ID 仍放在行 title 中保留可查信息。邀请码复制/刷新、玩家刷新、loading/error/empty、管理员权限和待接入 disabled 状态未改。
+- 按钮/图标复用现有素材：页头、摘要卡和分区标题使用 `ui/icons` 下 image2 PNG；复制用 `sd-btn-green`，刷新/权限用 `.sd-btn-blue`，踢出/封禁用 `sd-btn-delete`。没有新增图片素材。
+- 响应式补强：`.sd-players-page` 增加最终覆盖和容器查询；桌面保留六卡 + 左右分栏，中等宽度收成三卡/双操作，窄屏单列。补了 `.sd-players-page > * { min-width: 0 }`，避免表格或按钮把整页 grid 撑宽；玩家表仅自身横向滚动。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/PlayersPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、路由、API 参数、权限判断或数据结构。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 真实 `/instances/stardew/players` 当前受登录态影响停在登录页，页面身份检查显示未进入玩家页但 console error/warn 为空。
+- 使用已删除的临时 `frontend/players-qa.html` 加载同一份 CSS、public 素材和同结构 DOM 做内置浏览器 QA。
+- 1280x900 桌面：六张摘要卡一行显示，邀请加入码横条、Junimo 终端、在线玩家表和活动流在首屏对应原型；页面无横向溢出，玩家表操作列首屏可见且不需要横向滚动，console error/warn 为空。
+- 390x760 窄屏：玩家页收为单列，页面无横向溢出；邀请码和按钮可读，表格仅在表格容器内部横向滚动，管理按钮文字不溢出。
+- 已用 `view_image` 查看原型图、最终桌面实现截图和移动实现截图。
+
+## 下一步注意事项
+- 玩家行的踢出/消息/更多、底部踢出/封禁/白名单/权限仍是待接入禁用入口；后续接 API 时优先走 Junimo / `stardew_junimo` driver 已有能力，不要在前端或 API 层绕过 driver 堆 Stardew 逻辑。
+- 玩家表为了贴近原型没有继续展开现金/收入/钱包列，这些信息现在在行 `title` 中；如果用户要求显式展示，可在表格下方加详情抽屉或二级信息行，避免恢复 9 列导致首屏比例跑偏。
+- 日期摘要卡使用较短的 `第 N 年春季D日` 格式以匹配原型卡片宽度；如果其它页面也要复用日期格式，应另建格式化 helper，不要直接复用本页内部函数。
+
+# FE-INSTALL-IMAGE2-ICONS-2 前端接手记录（2026-07-03）
+
+## 改了什么
+- 用户反馈安装页 CSS 自绘图标质感不佳后，已从 image2 安装页原型 `08-install - 副本.png` 提取并抠图生成透明 PNG 小素材，替换顶部状态横幅土芽和五步安装时间线图标。
+- 新增 `frontend/public/assets/stardew/ui/install/`，包含 6 个运行时单图：`icon_install_status_seed_image2.png`、`icon_install_step_seed_image2.png`、`icon_install_step_box_image2.png`、`icon_install_step_steam_image2.png`、`icon_install_step_download_image2.png`、`icon_install_step_star_image2.png`。
+- `InstallPage.tsx` 将时间线从 `STEP_ART_CLASS` + CSS class 改为 `STEP_ICON_SRC` + `<img>`；顶部土芽改为 wrapper + `<img>`，避免图片在移动端被 grid 拉伸。
+- `StardewPanel.css` 删除安装页步骤 seed/box/steam/download/star 的伪元素绘制，以及顶部土芽的 CSS 土堆/嫩芽绘制；保留 wrapper 分隔线、尺寸、投影和移动端容器查询。
+- 未把原型图作为运行时背景或整块截图素材；只引用独立透明小图标。按钮继续复用 `sd-btn-green` / `sd-btn-tan` PNG 按钮体系，页面纸卡/边框/进度/日志终端仍为 CSS 实现。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/InstallPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `frontend/public/assets/stardew/ui/install/*.png`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、请求路径、安装提交、Steam Guard / QR、SSE 日志、权限判断、loading/error/empty/disabled 逻辑。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 使用已删除的临时 `frontend/install-qa.html` + `frontend/src/install-qa.tsx` 挂载真实 `InstallPage`、真实 CSS 和真实 public 素材做内置浏览器 QA。
+- 1280x900 认证态：顶部土芽自然尺寸 `112x92`、五步图标自然尺寸 `72x72`，运行时均加载自 `/assets/stardew/ui/install/`；无页面级横向溢出；按钮文字不溢出；console error/warn 为空。
+- 未安装态：点击“安装游戏”后表单展开，`JunimoServer 镜像版本 / Steam 用户名 / Steam 密码 / VNC 密码` 字段可见，按钮无文字溢出，console error/warn 为空。
+- 390x760：真实容器查询下五步条纵向排列，顶部土芽保持小图标尺寸，页面 `scrollWidth=clientWidth`，按钮无文字溢出，console error/warn 为空。
+
+## 下一步注意事项
+- 这批素材来自 image2 原型的局部小图标，不是整页背景；后续不要把 `08-install - 副本.png` 直接接入运行时。
+- 安装页移动端规则依赖 `.sd-main-scroll` 容器查询；做隔离 QA 时需要包同名 container，否则会误判为移动端断点未生效。
+- 若后续替换图标，保持 `ui/install/` 下文件名稳定，避免改页面组件逻辑。
+
+# FE-SERVER-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 服务器控制页按 image2 原型 `02-server-control - 副本.png` 重皮肤：顶部大标题、当前状态大卡、生命周期控制卡、邀请代码、全服消息、控制台命令终端、快捷操作条都调整为原型的羊皮纸 + 像素按钮风格。
+- 原型图未作为运行时资源；背景噪点、纸卡、铜色边框、内阴影、分隔线、绿屏邀请码、黑色终端、快捷操作按钮纹理均由 CSS 实现。
+- `ServerControlPage.tsx` 只改视觉结构和展示层：状态信息字段化，命令执行结果显示到终端区域，全服消息显示 `0/120` 计数，快捷操作按原型排成按钮条。生命周期、邀请码、喊话、命令、备份、VNC、计划重启的 API 调用、权限判断、loading/error/disabled 状态保持原逻辑。
+- 按钮/图标复用既有 Stardew 素材：`sd-btn-start/stop/restart/green/tan/delete`、`icon_button_*`、服务器/玩家/存档/时间/诊断等 `ui/icons`，状态点继续使用 `.sd-dot*`。
+- 响应式补强：`.sd-server-page` 增加容器查询断点；主内容变窄时自动单列，消息输入、命令输入、终端和快捷操作不会横向撑出；服务器页输入框局部使用 `box-sizing: border-box` 修复窄屏裁切。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/ServerControlPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、路由、权限、数据轮询或素材文件。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 真实路由当前受登录态影响不适合直接进入，因此使用临时 `frontend/server-control-qa.html` 挂载真实 `ServerControlPage` 组件和 mock 数据做浏览器 QA；QA 文件已删除。
+- 1280x900 桌面：页面双列布局，状态卡/生命周期卡/邀请代码/全服消息/命令终端/快捷操作可见，无横向溢出，按钮无文字溢出；点击“执行”后终端显示命令输出。
+- 390x760 窄屏：页面单列，消息输入、命令输入、终端、快捷操作按容器宽度收缩，无横向溢出，按钮无文字溢出。
+
+## 下一步注意事项
+- 本页视觉覆盖集中在 `StardewPanel.css` 的 `FE-SERVER-PROTOTYPE-IMAGE2-1` 段，并以 `.sd-server-page` 为作用域；后续不要把纸卡/终端规则提升为全局样式。
+- QA 页只是验证挂载工具，不能入库长期保留；如需要再次验证，重新临时创建后用完删除。
+- 如果真实数据里的命令名称或存档名更长，优先检查 `.sd-server-terminal pre`、`.sd-state-value`、`.sd-server-quick-grid` 的换行/截断，不要放宽到横向滚动。
+
+# FE-DIAGNOSTICS-IMAGE2-ICONS-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 用户反馈诊断页首轮 CSS 自绘图标质感太差后，重新用内置 Image Gen 按 `07-diagnostics - 副本.png` 的 image2 像素 UI 风格生成图标素材，并替换诊断页里刚才那批 CSS 图标。
+- 新增 `frontend/public/assets/stardew/ui/diagnostics/`：包含透明 sprite sheet `diag_icon_sheet_image2.png` 和 20 个透明 PNG 单图（状态盾牌、三色宝石、Docker/Compose/目录/文件/启动存档、建议叶子/灯泡/嫩芽/警告/错误、资源趋势镐子、实时绿点、导出下载）。
+- `StardewPanel.css` 通过诊断页作用域覆盖，把 `.sd-diag-status-shield`、`.sd-diag-count-gem`、`.sd-diag-check-icon-*`、`.sd-diag-advice-icon`、资源趋势标题图标、实时徽章图标和导出按钮图标改为 PNG 背景图；同时关闭初版 CSS 图标的 `clip-path`、渐变和伪元素残留。
+- 生成后处理：从 Codex 默认生成目录复制结果，洋红 chroma-key 阈值转 alpha，切片后检查所有 PNG 四角透明；清掉顶部孤立碎片并重新裁切透明边，避免图标上方脏点。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/StardewPanel.css`
+- `frontend/public/assets/stardew/ui/diagnostics/*.png`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改 `DiagnosticsPage.tsx`、未改任何 API、权限、loading/error/disabled 逻辑。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 已使用已删除的临时 `frontend/diagnostics-icons-qa.html` 加载真实 CSS 和 public 素材做内置浏览器 QA。
+- 1280x900：新盾牌、宝石、检查项图标、资源标题图标、实时绿点、导出按钮图标和建议区图标均可见；无横向溢出；按钮无文字溢出；console error/warn 为空。
+- 390x760：移动端无横向溢出，按钮无文字溢出，图标按单列布局正常显示。
+- 浏览器计算样式检查：可见诊断页图标背景均来自 `/assets/stardew/ui/diagnostics/`。
+
+## 下一步注意事项
+- 这批素材是基于一张 4x5 sprite sheet 切片而来，单图命名稳定；如果后续要替换其中一枚，优先保持同目录和文件名，避免改 CSS。
+- `diag_icon_sheet_image2.png` 保留为来源 sheet，运行时使用单图；不要把整张 sheet 当页面背景。
+- `.sd-btn-blue` 当前只有导出按钮用了下载图标；如果后续统一蓝色按钮体系，可把该图标规则沉淀到主题按钮样式。
+
+# FE-DIAGNOSTICS-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 诊断与健康页按 image2 原型 `07-diagnostics - 副本.png` 做视觉重皮肤：顶部标题/双按钮、系统状态横卡、三张计数卡、检查项表、资源趋势卡、底部告警建议区对齐原型布局。
+- 原型图没有作为运行时背景或整块素材引用。羊皮纸底、噪点、面板边框、内描边、虚线分隔、资源仪表盘由 CSS 实现；盾牌、宝石、检查项图标和建议图标已在后续 `FE-DIAGNOSTICS-IMAGE2-ICONS-1` 中替换为 image2 风格 PNG；趋势折线继续使用现有 SVG 数据绘制。
+- `DiagnosticsPage.tsx` 只改视觉 DOM 外壳：新增 `CountCard`、检查项图标列、检查表头、资源卡头部和全宽建议面板。`getHealthDiagnostics()`、`downloadSupportBundle()`、`getInstanceMetrics()`、管理员导出权限、loading/error/disabled 状态和 metrics 轮询未改。
+- 按钮/图标复用：页头图标改用现有 `icon_nav_diagnostics_monitor_image2.png`；重新检查按钮复用绿色 PNG 按钮体系；导出诊断包使用新增 `.sd-btn-blue` CSS 变体，未新增按钮图片。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/DiagnosticsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、路由、API 参数、权限判断或数据结构。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 已启动 Vite 本地服务，使用已删除的临时 `frontend/diagnostics-qa.html` 加载真实 CSS、public 素材和同结构 DOM 做内置浏览器 QA。
+- 1280x900：页面非空，标题/双按钮/状态横卡/左右面板/建议区渲染正常；按钮文字和检查项名称不溢出；主要面板无重叠；无横向溢出；console error/warn 为空；点击“重新检查”会进入“检查中...”禁用态。
+- 390x760：按钮、状态卡、检查表、资源卡、建议区按单列收缩；主要面板宽度均在页面内；无横向溢出；console error/warn 为空。
+- 已用 `view_image` 查看原型图、桌面实现截图和移动实现截图。
+
+## 下一步注意事项
+- 真实页面仍依赖登录态和后端数据；本次 QA 用同结构 DOM 验证视觉，未触发真实支持包下载，真实下载权限仍由原按钮的 `isAdmin`/`downloadSupportBundle()` 控制。
+- 如果后续检查项名称增加到更长文本，优先调整 `.sd-diag-check-row` 的网格列或允许信息列换行，不要放宽到页面横向溢出。
+- `.sd-btn-blue` 当前是诊断页新增的通用蓝色 CSS 按钮类；若其他页面也要使用，先确认是否需要沉淀到主题按钮体系。
+
+# FE-SETTINGS-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 设置与审计页按 image2 原型 `09-settings - 副本.png` 做视觉重皮肤：顶部三卡（当前账号 / 面板版本 / 安全与权限）、中部双栏（用户管理 / 审计日志）、底部双栏（端口信息 + 其他设置 / 安全建议）。
+- 没有把原型图作为运行时背景或整块素材。纸纹、铜色边框、四角角钉、内描边、表格表头、行分隔线、底部提示面板均为 `.sd-settings-page` scoped CSS 实现。
+- `SettingsPage.tsx` 只加视觉分组外壳和区块 modifier class；用户管理、审计日志、VNC 端口、登出、确认弹窗和权限判断逻辑未改。
+- 新增 `SecuritySummarySection` 用于顶部安全摘要；原安全说明保留为底部“安全建议”。设置页头图标切换为已有 `icon_nav_settings_gear_image2.png`。
+- 按钮继续复用现有 PNG 按钮类 `sd-btn-green` / `sd-btn-tan` / `sd-btn-delete`；标题图标复用既有 image2 导航/顶栏素材，无新增图片资源。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/SettingsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、API 调用、权限、路由或数据轮询。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 已启动临时 Vite 服务并用内置浏览器验证；真实 `/instances/stardew/settings` 当前停在登录页，登录页 console error/warn 为空。
+- 使用已删除的临时 `settings-qa.html` 加载同一份 CSS/素材/同结构 DOM 做视觉 QA：
+  - 1280x900：顶部三卡、用户/审计双栏、底部双栏比例对齐原型；无横向溢出；按钮无文字溢出；console error/warn 为空。
+  - 点击“新建用户”：表单展开，输入框/禁用创建按钮可读，无横向溢出。
+  - 390x760：页面单列；审计表只在自身容器内横向滚动；底部待接入/禁用按钮可读；页面无横向溢出。
+- 已用 `view_image` 对比原型图和最终桌面截图，确认未使用原型整图作为页面资源。
+
+## 下一步注意事项
+- 设置页新增样式都在 `.sd-settings-page` 作用域内；后续不要把这些纸卡/表格规则提升为全局规则，避免影响服务器、模组、存档页。
+- 如果真实数据里用户名、IP 或审计目标特别长，优先检查用户行和审计表的截断/横向滚动，不要放宽到页面级横向溢出。
+- 真实路由仍需登录态才能直达设置页；本次视觉 QA 使用临时同结构页面，功能逻辑由 TypeScript 构建和既有代码路径兜底。
+
+# FE-INSTALL-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 安装页按 image2 原型 `08-install - 副本.png` 重皮肤：顶部状态横幅、五步安装时间线、底部“安装配置 / Steam 认证 / 安装日志”三栏工作区，整体接近原型的羊皮纸 + 像素农场 + 深色日志终端。
+- 未把原型图作为运行时背景或整块素材。纸张底、噪点、描边、分隔线、步骤卡、进度条、配置栏占位、认证卡和日志终端均由 CSS 实现。
+- `InstallPage.tsx` 只调整页面级 DOM 外壳和派生展示值：新增总进度百分比、步骤图标 class、认证中配置栏占位；安装提交、Steam Guard / QR 交互、SSE 日志、权限判断、API 调用和导航逻辑不变。
+- 顶部农场横幅复用既有 `sprite_farmhouse_scene.png` 小素材并用 CSS 遮罩融合；按钮继续复用 `sd-btn-green` / `sd-btn-tan` PNG 按钮体系。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/InstallPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改任何后端接口、请求路径、权限判断或数据结构。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 真实 `/instances/stardew/install` 当前被登录页拦住，因此使用已删除的临时 `frontend/install-qa.html` + `src/install-qa.tsx` 挂载真实 `InstallPage`、真实 CSS 和 mock props 验证。
+- 1280x900 认证态：顶部状态横幅、步骤 3 高亮、三栏工作区、Steam 登录方式、日志空状态可见；console error/warn 为空。
+- 未安装态：点击“安装游戏”后表单正常展开，能看到 Steam 用户名、Steam 密码、VNC 密码字段；console error/warn 为空。
+- 390x760：页面纵向折叠，无横向溢出（`scrollWidth=clientWidth=390`），按钮/长英文 `Stardew Valley` 未撑破容器。
+- 已用 `view_image` 对比原型图、桌面实现截图和移动实现截图。
+
+## 下一步注意事项
+- CSS 中安装页新规则集中在 `StardewPanel.css` 文件末尾，分为 scoped override 与 structural rules 两段，用 `.sd-install-page` 和 `.sd-install-*` 限定安装页；后续整理时不要降低页面级作用域，避免影响存档/总览/设置页。
+- 顶部横幅只复用既有小农场素材，不是原型右侧完整农场图；如果后续要更接近原图，应生成独立“空农场横幅”生产素材，不要引用整页原型图。
+- 认证中配置栏现在显示“配置已提交”占位，避免空栏；如果后端以后能返回已选镜像/账号摘要，可在该占位里展示脱敏信息。
+
+# FE-OPSRAIL-AUTO-COLLAPSE-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 修复窗口缩放时右侧 OpsRail 挤压中间内容的问题：`StardewPanel` 现在按展开右栏时的预计主内容宽度自动决定是否收起右栏。
+- 收起阈值：展开态主内容 `<820px` 时收起；已经收起后需回到 `>880px` 才展开，避免拖动窗口时抖动。
+- CSS 层新增 `.sd-shell--opsrail-auto-collapsed`，把 shell 第三列设为 `0` 并隐藏 `.sd-opsrail`；左/右栏列宽抽成 `--sd-sidebar-width`、`--sd-opsrail-width`。
+- 总览页内部断点改进：`.sd-main-scroll` 开启 container query，总览页 1180px 的控制区/邀请码/摘要卡换行规则现在按主内容实际宽度触发，避免 1200px 视口下主内容已变窄但页面仍按桌面三列排布。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/StardewPanel.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、权限、路由、数据轮询或右栏卡片内容。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 真实 `/instances/stardew/overview` 当前停在登录页，因此用已删除的临时 `opsrail-collapse-qa.html` 挂载真实 `StardewPanel` 组件做布局 QA。
+- 1200x760：右栏自动收起，`.sd-shell--opsrail-auto-collapsed=true`，主内容宽 `959px`，总览页控制区/邀请码区按容器宽度换行，无横向溢出。
+- 1200x760 不刷新 resize 到 1600x860：右栏自动展开，右栏宽 `430px`，主内容宽 `887px`，无横向溢出。
+- 390x760：移动端仍为单列 shell + 横向导航，右栏隐藏，无横向溢出。
+- 三个验证点 console error/warn 为空。
+
+## 下一步注意事项
+- 后续若用户觉得右栏收起太早或太晚，优先改 `StardewPanel.tsx` 顶部 `OPS_RAIL_COLLAPSE_MAIN_WIDTH` / `OPS_RAIL_EXPAND_MAIN_WIDTH`，并保持两个值有间隔。
+- 如果其他页面也出现“主内容已变窄但视口媒体查询没触发”的问题，优先在 `.sd-main-scroll` 容器查询下补页面级 `@container` 规则，不要继续只堆 viewport `@media`。
+
+# FE-OVERVIEW-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 总览页按 image2 原型 `01-overview - 副本.png` 做视觉重皮肤：农场横幅、服务器控制条、邀请码绿屏、四张摘要卡和下方三列清单更接近原型的像素农场 + 羊皮纸仪表盘。
+- 未把原型整图作为背景或运行时资源。横幅只复用既有 `sprite_farmhouse_scene.png` 小素材，天空/云/田地/远山/暗角用 CSS 背景层实现；纸纹、边框、内阴影、分隔线和状态标签全部 CSS 实现。
+- `OverviewPage.tsx` 只新增必要视觉外壳：`.sd-lifecycle-actions`、`.sd-invite-panel`、标题图标、摘要状态标签、玩家行式结构。启动/停止/重启/复制/刷新/跳转等 handler 未改，API 与权限判断未改。
+- 按钮/图标复用：生命周期按钮仍用既有 `sd-btn-start/stop/restart` PNG 底图与 `icon_button_*`；复制/刷新/管理模组/查看诊断继续复用既有按钮体系；标题与摘要图标复用 `ui/icons` 下现有 image2 图标。
+- 响应式补强：1180px 以下布局收成单列/双列，640px 以下横幅压缩、按钮和邀请码允许换行；`.sd-ov-wrap` 显式隐藏横向溢出。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/OverviewPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口，未新增素材，未改路由或数据层。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 内置浏览器真实应用访问 `/instances/stardew/overview` 被当前登录页拦住，因此使用临时 `frontend/overview-qa.html` 加载同一份 CSS、真实素材和同结构 DOM 做视觉 QA；QA 文件已删除。
+- QA 结果：1280x900 桌面无横向溢出、console error/warn 为空；390x760 窄屏无横向溢出，按钮文字与邀请码不溢出。已用 `view_image` 查看原型、桌面实现截图、移动实现截图。
+
+## 下一步注意事项
+- 当前横幅没有使用原型整图，只是既有小农场图 + CSS 田野，因此与原型大场景不是逐像素一致；如果后续要更接近原型，应生成/拆分一张独立“空农场横幅”生产素材（不含页面 UI 文案和数据），不要直接引用整页截图。
+- 总览页样式都以 `.sd-ov-*` 为主，不要把新纸卡规则提升为全局卡片规则，否则会影响存档/模组/设置页。
+- 真实登录态下若总览页数据文案比 QA 样例更长，优先检查 `.sd-mc-sub`、`.sd-invite-code`、`.sd-ov-player-name` 的截断行为，避免放宽到横向溢出。
+
+# FE-SAVES-SIMPLIFY-3 前端接手记录（2026-07-03）
+
+## 改了什么
+- 存档页页头从带框 `.sd-page-header`（图标 + 标题 + 描述）精简为左上角 `.sd-saves-page-title`（小图标 + "存档管理"），无框无描述。
+- 撤销自绘 `.sd-pxbtn` 按钮体系（FE-SAVES-MOCKUP-2 引入，CSS 已删、TSX 无残留），全部换回既有 PNG 素材按钮：`sd-btn-green` / `sd-btn-delete` / `sd-btn-tan`，与其他页面视觉一致。
+- 备份与恢复：自动备份规则压缩为单行控件条（标题 + 游戏保存后更新最新备份 + 每天 HH:00 定时备份 + 快照保留天数滑条 + 保存设置），两行式说明文字移入 `title` 悬浮提示；多处文案精简。
+- 整页上提：`.sd-saves-page { padding-top: 0 }`，内容贴住 `.sd-main` 外框内沿；外框安全边界（viewport inset）本身未动，其他页面不受影响。
+
+## 影响文件/素材
+- `frontend/src/games/stardew/pages/SavesPage.tsx`、`frontend/src/games/stardew/SavesSection.tsx`、`frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`、`docs/08-future-roadmap.md`
+
+## 如何验证
+- 已执行：`cd frontend; npm run build` 通过；`grep pxbtn` 无残留。
+- 手动：页头左上角纯文字；按钮与服务器/模组页同款 PNG 素材；备份规则单行、悬浮提示可见、保存设置生效。
+
+## 下一步注意事项
+- 若以后需要设计稿里的大号"创建并启动/上传并启动"按钮观感，应新增对应 PNG 素材接入 `stardew-theme.css` 的 PNG 按钮体系，不要再回到自绘 CSS 按钮。
+- 备份规则的解释文案在各 label 的 `title` 里，改文案时同步维护。
+
+# FE-SAVES-MOCKUP-2 前端接手记录（2026-07-03）
+
+## 改了什么
+- 存档页按用户完整设计稿改版（在 FE-SAVES-PROTO-CSS-1 基础上）：眉标行、激活卡图标字段双列表、存档库只显示非激活存档（每卡：缩略图/农场名/进度/类型·大小 + 选择/删除）、横排虚线创建卡（创建并启动）、上传横条容器（📮 + 文案 + 上传并启动）、备份真表格（六列 + 状态徽章 + 5 行折叠"查看更多备份"）。
+- 新增复用按钮体系 `.sd-pxbtn`（`-green/-red/-blue/-lg/-sm`），纯 CSS 糖块像素按钮。
+- 功能位移：库卡的"选择并启动/导出/手动备份"收敛到激活卡操作行（使用此存档启动/导出/手动备份）；库卡"选择"= `handleSelect`（设为启动存档）。所有 handler 未改。
+- 备份状态徽章：`parseError`→红"解析失败"，同名存档存在→黄"同名冲突"，否则绿"正常"；年份/地图等细节在行 title 悬浮提示里。
+
+## 影响文件/素材
+- `frontend/src/games/stardew/SavesSection.tsx`、`frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`、`docs/08-future-roadmap.md`
+
+## 如何验证
+- 已执行：`cd frontend; npm run build` 通过。
+- 手动：对照设计稿看五块区域；验证选择→激活卡更新、删除确认、备份恢复/彻底删除、创建/上传弹窗、>5 条备份时折叠展开。
+
+## 下一步注意事项
+- 想给非激活存档直接"导出/备份"需先"选择"为激活存档再操作；如果用户反馈不便，可在库卡加次级小按钮行。
+- 备份表格行最小宽 660px，窄屏时容器横向滚动（`.sd-save-backups-table` overflow-x）；移动端如需卡片式布局另开任务。
+- 旧类 `.sd-save-backup-main/-meta/-conflict`、`.sd-saves-header*`、`.sd-saves-active-eyebrow` 的 DOM 已移除，基础 CSS 仍留在文件中（未清理，避免影响并行会话），后续统一清理时注意。
+
+# FE-SAVES-PROTO-CSS-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 存档页按 image2 原型（`03-saves-page-frame-clean-image2-no-buttons-icons-thumbnails.png`）重做视觉，纯 CSS、零图片资源：噪点羊皮纸、铜框铆钉激活卡（radial-gradient 铆钉）、双列虚线字段、圆角铜边存档卡、虚线"创建新存档"卡、像素云天空上传横条（多层白色矩形 background 层叠）、备份表头带 + 行分隔线。
+- DOM 调整：页头创建/上传按钮分别移入网格末尾的虚线创建卡和列表下方的天空横条按钮（均仅管理员、运行中禁用）；激活卡左侧预览槽不再引用 `sprite_farmhouse_scene.png`。
+- 预览槽后续按用户要求接入真实农场地图：按激活存档 `farmType` 显示 `/assets/stardew/new-game/farms/<farmType>.png`（新建游戏界面同款素材），仅当 `farmTypeLabel` 认识该类型才渲染 img（防未知值 404），未知时回落为空羊皮纸块。
+- 业务逻辑零改动；新样式全部以 `.sd-saves-page` 作用域追加在 `StardewPanel.css` 末尾。
+
+## 影响文件/素材
+- `frontend/src/games/stardew/SavesSection.tsx`、`frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`、`docs/08-future-roadmap.md`
+
+## 如何验证
+- 已执行：`cd frontend; npm run build` 通过。
+- 手动：存档页对照原型看五块区域；确认创建卡/上传条在运行中禁用、非管理员不可见；空状态时无天空横条但保留原创建/上传按钮。
+
+## 下一步注意事项
+- 天空横条的云朵矩形用百分比定位，条宽变化时云会横向重新分布，属预期；若想要严格像素画云可改为 box-shadow 像素块方案。
+- 移动端媒体查询（`.sd-saves-active-card` 窄屏单列）只调布局，与新皮肤（只动颜色/边框/圆角）不冲突；后续改布局时注意 `.sd-saves-page` 前缀的规则特异性更高。
+- 备份区内层元素靠 `.sd-save-backups-section > *:not(.sd-save-backups-header)` 的 margin 对齐；往该 section 新增直接子元素时会自动获得左右 12px 边距。
+
+# FE-RIGHT-RAIL-ACTIVE-CARD-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 右栏"进行中"卡改为三类内容：自动关机/自动开机倒计时（restart-schedule 的 `nextShutdownAt`/`nextStartupAt`）、定时备份倒计时（backups/policy 的 `scheduledHour`，仅管理员可见）、运行中任务进度条。
+- 新组件 `OpsRailActiveCard`（`StardewPanel.tsx` 内）：内部 1s tick 只重渲染本卡；restart-schedule 与备份策略每 60s 拉取一次，接口失败（含普通用户读备份策略 403）时静默隐藏对应行。
+- 任务进度算法：同类型最近成功任务耗时中位数为预期时长（无历史默认 60s），进度 = 已运行/预期封顶 95%；queued 显示"排队中"。倒计时进度条按 24h 周期已过比例填充。
+- 行样式复用 `.sd-opsrail-hstat*`，新增蓝色 `--info` 档用于倒计时行。
+- `useStardewDashboardData` 的 30s 轮询增加 `refreshJobs()`，兜底调度器后台触发的 job。
+
+## 影响文件/素材
+- `frontend/src/games/stardew/StardewPanel.tsx`、`frontend/src/games/stardew/StardewPanel.css`、`frontend/src/games/stardew/useStardewDashboardData.ts`
+- `docs/03-frontend.md`、`docs/08-future-roadmap.md`
+
+## 如何验证
+- 已执行：`cd frontend; npm run build` 通过。
+- 手动：服务器控制页开启计划重启后右栏出现"自动关机/自动开机"倒计时并每秒走动；存档页开启定时备份后出现"定时备份"行；触发备份/重启等任务时出现进度行，完成后消失。
+
+## 下一步注意事项
+- 定时备份的下次触发时间是"面板浏览器本地时间的每日 scheduledHour 整点"近似，后端实际按服务器本地时间判断；两端时区不一致时会有偏差，如需精确可让后端在 policy 响应里返回 `nextScheduledAt`。
+- 任务进度是估算值（封顶 95%），不是后端真实进度；如果以后 job 支持进度上报，替换 `runningJobPercent()` 即可。
+- 调度器触发的 job 最多延迟 30s 出现（依赖 jobs 轮询周期）。
+
+# FE-RIGHT-RAIL-HEALTH-STATS-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 右栏"系统健康"卡按原型改为五行资源统计：CPU 使用率、内存使用率、磁盘使用率（带进度条）、在线玩家、网络延迟；按钮文案从"查看诊断 →"改为"查看详情 →"（仍跳诊断页）。
+- `StardewPanel` 新增 metrics 轮询（每 5s 调 `getInstanceMetrics()`，与诊断页同接口）；网络延迟取该请求的前端往返耗时（`performance.now()` 差值取整），无独立后端接口。
+- 在线玩家显示 `onlineCount/maxPlayers`；配合后端 `ListPlayers` 新增的 `server-settings.json` `Server.MaxPlayers` 兜底（PLAYERS-MAXPLAYERS-1），未运行时也能显示 `0/12` 这类"在线/当前存档人数上限"。
+- 进度条按用户要求做成圆润二次元风：13px 胶囊形轨道（`border-radius: 999px` + 2px 内边距）+ 亮绿渐变糖果填充 + 顶部白高光；样式类为 `.sd-opsrail-hstat-*`。
+- 阈值配色（用户后续要求）：每行按数值加 `--ok/--warn/--crit` 修饰类，浆果点/进度条/数值同步变色。使用率 `<60` 绿 / `≥60` 黄 / `≥85` 红；延迟 `<100ms` 绿 / `≥100` 黄 / `≥300` 红；在线玩家为 `0` 时红。阈值在 `StardewPanel.tsx` 的 `usageLevel()` / `latencyLevel()` 里，调整时改这两个函数即可。
+- 移除原健康检查摘要行及其 `healthSummaryDot()`、`.sd-opsrail-health-summary`。
+
+## 影响文件/素材
+- `frontend/src/games/stardew/StardewPanel.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`、`docs/08-future-roadmap.md`
+
+## 如何验证
+- 已执行：`cd frontend; npm run build` 通过。
+- 手动：总览页右栏确认五行数据随轮询更新、进度条圆角与高光正常；停止服务器时 CPU/内存显示 `—`、在线玩家显示 `0/上限`。
+
+## 下一步注意事项
+- 网络延迟是面板 API 往返耗时的近似，不是游戏服务器到玩家的延迟；如果以后后端提供真实延迟接口，替换 `apiLatencyMs` 来源即可。
+- 健康检查（全部正常/N 错误）已不在右栏展示，只在总览页摘要格和诊断页；如果用户反馈缺失可考虑加回一行。
+
 # FE-MAIN-PAGE-FRAME-3 前端接手记录（2026-07-03）
 
 ## 改了什么
@@ -1343,3 +1821,51 @@
 - 后续如果调整搜索卡片高度，需要同时更新 CSS `--sd-mods-nexus-search-card-height` 和 `ModsPage.tsx` 中的 `NEXUS_SEARCH_CARD_HEIGHT` fallback。
 - 不要把固定高度规则放回通用 `.sd-mods-nexus-card`，否则已安装/添加模组列表的依赖标签和删除操作可能被裁切。
 - 动态 pageSize 依赖 `.sd-main-scroll` 作为统一滚动视口；若主内容滚动结构再变，需要同步检查测量逻辑。
+# FE-JOBS-PROTOTYPE-IMAGE2-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 任务与日志页按 image2 原型 `04-jobs-logs - 副本.png` 重皮肤：顶部大标题 + 虚线分隔、工具条按钮、左侧任务列表、右侧任务详情/进度/SSE 状态/深色日志终端和 VNC 修复提示改为原型里的羊皮纸 + 像素 UI 氛围。
+- 未把原型整图作为背景或运行时资源。纸纹噪点、木/铜描边、内阴影、列表选中绿色框和左侧箭头、状态徽章、进度条斜纹、终端扫描线、VNC 警告纸条均由 CSS 实现。
+- `JobsLogsPage.tsx` 只新增展示钩子：任务列表标题行、任务类型图标 class、短 job id 行、详情标题图标外壳、SSE 提示行容器；VNC 修复提示移到日志下方，贴近原型底部警告条位置。所有 API 调用、SSE、清空任务/错误日志、VNC 端口修改、权限判断、loading/error/empty/disabled 状态保持原逻辑。
+- 按钮/图标复用：工具条按钮继续用 `sd-btn-tan` / `sd-btn-delete`；任务类型图标复用 `icon_nav_install_package_image2.png`、`icon_sidebar_chicken.png`、`icon_nav_server_rack_image2.png`、`icon_nav_saves_chest_image2.png`、`icon_nav_mods_crystal_image2.png`；VNC 提示图标复用 `sprite_blue_device.png`。
+- 响应式补强：`.sd-jobs-page` 作用域下增加容器查询，窄屏左右两栏变单列，按钮纵向铺满，日志/按钮/长 ID 不横向撑出。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/JobsLogsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、路由、数据模型或权限。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build` 通过。
+- 真实 `/instances/stardew/jobs` 当前受登录页阻挡，因此使用临时 `frontend/jobs-logs-qa.html` 加载同一份 CSS、真实素材和同结构 DOM 做浏览器 QA；QA 文件已删除。
+- 1280x900 桌面：两栏布局约左 350px / 右 761px，无横向溢出，VNC 提示首屏可见，console error/warn 为空。
+- 390x760 窄屏：布局单列，无横向溢出；所有按钮文字未溢出；日志窗口不撑宽；滚到底部后 VNC 修复提示完整可见，console error/warn 为空。
+- 已用 `view_image` 查看原型图、桌面实现截图、移动实现截图。
+
+## 下一步注意事项
+- 当前真实页面如果后端返回很多任务，左侧列表会在自身区域滚动；若用户希望原型底部分页器，可另开任务接入真实分页，不要在本次视觉层硬编码分页。
+- 安装任务才有真实 `pullProgress` 进度条，非安装任务不会凭空显示进度，避免伪造业务进度；如果后端未来提供通用 job progress，可复用 `.sd-jobs-pull-progress` 样式。
+- 样式覆盖集中在 `StardewPanel.css` 的 `FE-JOBS-PROTOTYPE-IMAGE2-1` 段，并以 `.sd-jobs-page` 为作用域；不要把终端/纸卡/状态徽章规则提升为全局样式。
+# FE-DIAGNOSTICS-GAUGE-CODE-1 前端接手记录（2026-07-03）
+
+## 改了什么
+- 优化诊断与健康页资源占用三枚圆形仪表（CPU / 内存 / 磁盘）：数值和百分号拆分渲染，避免原先大号 `37.8%`、`3.5%`、`11%` 在圆心里挤压或视觉溢出。
+- 圆环从单层 inline `conic-gradient` 改为 CSS custom properties + 页面级样式控制；进度角度仍由实时指标百分比计算，业务数据来源不变。
+- 仪表盘质感改为代码实现的像素分段进度色环、硬边描边、羊皮纸内芯、内阴影和像素式投影；没有新增图片素材，也没有把原型图或截图作为运行时背景。
+
+## 影响文件/接口
+- `frontend/src/games/stardew/pages/DiagnosticsPage.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `docs/03-frontend.md`
+- `docs/08-future-roadmap.md`
+- 未改后端接口、路由、权限判断、API helper 或数据模型。
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- 本地浏览器 QA：加载真实 `StardewPanel.css` 的临时诊断仪表 DOM，检查 1280x900 与 390x760 下三枚仪表的数值和 `%` 不溢出，仪表卡片不重叠，无页面级横向溢出，console error/warn 为空。
+
+## 下一步注意事项
+- 以后如继续调整仪表圈，不要重新把百分号并回主数字；三位数或一位小数都需要维持在内芯宽度内。
+- 仪表的主题色和进度角度由 `--sd-diag-gauge-color` / `--sd-diag-gauge-angle` 控制；新增资源指标时优先复用这套结构，不要在 TSX 中重新拼整段背景字符串。

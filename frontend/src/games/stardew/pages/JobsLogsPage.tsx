@@ -16,6 +16,7 @@ import {
   errorMessage,
   formatDate,
   isTerminalJobStatus,
+  jobDisplayName,
   shortJobID,
 } from '../../../core/helpers'
 
@@ -43,6 +44,20 @@ const TYPE_LABELS: Record<string, string> = {
   test_fail: '失败测试',
 }
 
+const TYPE_ICON_CLASSES: Record<string, string> = {
+  stardew_install: 'install',
+  stardew_start: 'start',
+  stardew_stop: 'server',
+  stardew_restart: 'server',
+  stardew_custom_new_game: 'saves',
+  stardew_select_save_and_start: 'start',
+  stardew_upload_save_and_start: 'saves',
+  mod_remote_install: 'mods',
+  mod_nexus_install: 'mods',
+  test: 'server',
+  test_fail: 'server',
+}
+
 function typeLabel(t: string): string {
   return TYPE_LABELS[t] ?? t
 }
@@ -53,6 +68,10 @@ function statusLabel(s: string): string {
 
 function statusCls(s: string): string {
   return `sd-jobs-status sd-jobs-status-${s}`
+}
+
+function typeIconCls(t: string): string {
+  return `sd-jobs-type-icon sd-jobs-type-icon-${TYPE_ICON_CLASSES[t] ?? 'server'}`
 }
 
 function selectedJobIdFromLocation(): string {
@@ -432,6 +451,10 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
         <div className="sd-jobs-layout">
           {/* ── 左：任务列表 ── */}
           <div className="sd-jobs-list" role="list" aria-label="任务列表">
+            <div className="sd-jobs-list-head">
+              <span className="sd-jobs-list-head-title">任务列表</span>
+              <span className="sd-jobs-list-head-count">{jobs.length} 个任务</span>
+            </div>
             {jobs.map((job) => (
               <button
                 key={job.id}
@@ -441,9 +464,13 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                 role="listitem"
                 aria-pressed={selectedJobId === job.id}
               >
+                <span className={typeIconCls(job.type)} aria-hidden="true" />
                 <div className="sd-jobs-list-row-content">
-                  <div className="sd-jobs-list-row-type" title={job.type}>
-                    {typeLabel(job.type)}
+                  <div className="sd-jobs-list-row-type" title={jobDisplayName(job)}>
+                    {job.displayName?.trim() || typeLabel(job.type)}
+                  </div>
+                  <div className="sd-jobs-list-row-id" title={job.id}>
+                    ID: {shortJobID(job.id)}
                   </div>
                   <div className="sd-jobs-list-row-date">
                     {formatDate(job.createdAt)}
@@ -465,19 +492,19 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                 <span className="sd-jobs-error-label">加载失败：</span>
                 {detailError}
               </div>
-            ) : detailError ? (
-              <div className="sd-jobs-error-banner sd-jobs-error-banner-prominent">
-                <span className="sd-jobs-error-label">详情加载失败：</span>
-                {detailError}
-              </div>
             ) : selectedJob ? (
               <>
                 {/* 详情头 */}
                 <div className="sd-jobs-detail-head">
-                  <div>
-                    <div className="sd-jobs-detail-title">{typeLabel(selectedJob.type)}</div>
-                    <div className="sd-jobs-detail-id" title={selectedJob.id}>
-                      {shortJobID(selectedJob.id)}
+                  <div className="sd-jobs-detail-title-wrap">
+                    <span className={typeIconCls(selectedJob.type)} aria-hidden="true" />
+                    <div className="sd-jobs-detail-title-main">
+                      <div className="sd-jobs-detail-title" title={jobDisplayName(selectedJob)}>
+                        {selectedJob.displayName?.trim() || typeLabel(selectedJob.type)}
+                      </div>
+                      <div className="sd-jobs-detail-id" title={selectedJob.id}>
+                        {shortJobID(selectedJob.id)}
+                      </div>
                     </div>
                   </div>
                   <span className={statusCls(selectedJob.status)}>
@@ -505,55 +532,12 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                   ) : null}
                 </div>
 
-                {/* 错误信息（failed 任务） */}
-                {selectedJob.errorMessage ? (
-                  <div className="sd-jobs-error-banner sd-jobs-error-banner-prominent">
-                    <span className="sd-jobs-error-label">错误：</span>
-                    {selectedJob.errorMessage}
-                  </div>
-                ) : null}
-
-                {showVNCPortFix ? (
-                  <div className="sd-jobs-vnc-fix">
-                    <div className="sd-jobs-vnc-fix-text">
-                      <strong>VNC 端口被占用</strong>
-                      <span>请更换 VNC 端口后重新启动服务器。</span>
-                    </div>
-                    <button
-                      className="sd-btn-tan"
-                      type="button"
-                      onClick={() => void handleOpenVNCPortModal()}
-                    >
-                      更换 VNC 端口
-                    </button>
-                  </div>
-                ) : null}
-
-                {/* SSE 实时状态 / 断线提示 */}
-                {sseError ? (
-                  <div className="sd-jobs-sse-notice sd-jobs-sse-notice-warn">
-                    ⚠ {sseError}
-                  </div>
-                ) : isLiveStreaming ? (
-                  <div className="sd-jobs-sse-notice">
-                    <span className="sd-jobs-sse-dot" aria-hidden="true" />
-                    实时接收日志中…
-                  </div>
-                ) : null}
-
-                {logsTruncated ? (
-                  <div className="sd-jobs-sse-notice sd-jobs-sse-notice-warn">
-                    当前仅显示最近加载的 1000 行日志，完整分页加载可在后续里程碑继续补齐。
-                  </div>
-                ) : null}
-
-                {/* 拉取进度条（安装任务专用） */}
                 {pullProgress ? (
                   <div className="sd-jobs-pull-progress">
                     <div className="sd-jobs-pull-header">
-                      <span>拉取镜像</span>
+                      <span>进度</span>
                       <span>
-                        {pullProgress.done}/{pullProgress.total} 服务
+                        {pullProgress.percent}% ({pullProgress.done}/{pullProgress.total})
                       </span>
                     </div>
                     <div className="sd-jobs-progress-wrap">
@@ -563,15 +547,33 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                           style={{ width: `${pullProgress.percent}%` }}
                         />
                       </div>
-                      <span className="sd-jobs-progress-pct">{pullProgress.percent}%</span>
                     </div>
                   </div>
                 ) : null}
 
-                {/* 日志截断提示 */}
-                {logsTruncated ? (
-                  <div className="sd-jobs-sse-notice sd-jobs-sse-notice-warn">
-                    ⚠ 日志已达上限（1000 行），历史日志可能被截断
+                <div className="sd-jobs-stream-row">
+                  {sseError ? (
+                    <div className="sd-jobs-sse-notice sd-jobs-sse-notice-warn">
+                      ⚠ {sseError}
+                    </div>
+                  ) : isLiveStreaming ? (
+                    <div className="sd-jobs-sse-notice">
+                      <span className="sd-jobs-sse-dot" aria-hidden="true" />
+                      实时接收日志中…
+                    </div>
+                  ) : null}
+                  {logsTruncated ? (
+                    <div className="sd-jobs-sse-notice sd-jobs-sse-notice-warn">
+                      当前仅显示最近加载的 1000 行日志，完整分页加载可在后续里程碑继续补齐。
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* 错误信息（failed 任务） */}
+                {selectedJob.errorMessage ? (
+                  <div className="sd-jobs-error-banner sd-jobs-error-banner-prominent">
+                    <span className="sd-jobs-error-label">错误：</span>
+                    {selectedJob.errorMessage}
                   </div>
                 ) : null}
 
@@ -594,6 +596,22 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                   ))}
                   <div ref={logEndRef} />
                 </div>
+
+                {showVNCPortFix ? (
+                  <div className="sd-jobs-vnc-fix">
+                    <div className="sd-jobs-vnc-fix-text">
+                      <strong>VNC 端口被占用</strong>
+                      <span>请更换 VNC 端口后重新启动服务器。</span>
+                    </div>
+                    <button
+                      className="sd-btn-tan"
+                      type="button"
+                      onClick={() => void handleOpenVNCPortModal()}
+                    >
+                      更换 VNC 端口
+                    </button>
+                  </div>
+                ) : null}
               </>
             ) : (
               <div className="sd-jobs-select-hint">← 从左侧选择一个任务查看详情</div>

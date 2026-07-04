@@ -37,6 +37,7 @@ type clearErrorLogsResponse struct {
 type jobResponse struct {
 	ID           string  `json:"id"`
 	Type         string  `json:"type"`
+	DisplayName  *string `json:"displayName,omitempty"`
 	Status       string  `json:"status"`
 	TargetType   string  `json:"targetType"`
 	TargetID     string  `json:"targetId"`
@@ -411,6 +412,7 @@ func makeJobResponse(job storage.Job) jobResponse {
 	return jobResponse{
 		ID:           job.ID,
 		Type:         job.Type,
+		DisplayName:  nullableString(job.DisplayName),
 		Status:       job.Status,
 		TargetType:   job.TargetType,
 		TargetID:     job.TargetID,

@@ -13,9 +13,10 @@ func TestJobsStorageLifecycle(t *testing.T) {
 	defer closeStore()
 
 	job, err := store.CreateJob(context.Background(), CreateJobParams{
-		Type:       "test",
-		TargetType: "instance",
-		TargetID:   DefaultInstanceID,
+		Type:        "test",
+		DisplayName: "测试任务 · Farm Type Manager",
+		TargetType:  "instance",
+		TargetID:    DefaultInstanceID,
 	})
 	if err != nil {
 		t.Fatalf("create job: %v", err)
@@ -23,9 +24,19 @@ func TestJobsStorageLifecycle(t *testing.T) {
 	if job.Status != JobStatusQueued {
 		t.Fatalf("expected queued, got %s", job.Status)
 	}
+	if !job.DisplayName.Valid || job.DisplayName.String != "测试任务 · Farm Type Manager" {
+		t.Fatalf("display name = %#v, want saved display name", job.DisplayName)
+	}
 
 	if _, err := store.StartJob(context.Background(), job.ID); err != nil {
 		t.Fatalf("start job: %v", err)
+	}
+	started, err := store.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("get started job: %v", err)
+	}
+	if !started.DisplayName.Valid || started.DisplayName.String != "测试任务 · Farm Type Manager" {
+		t.Fatalf("started display name = %#v, want saved display name", started.DisplayName)
 	}
 	firstLog, err := store.AppendJobLog(context.Background(), job.ID, JobLogLevelInfo, "first")
 	if err != nil {

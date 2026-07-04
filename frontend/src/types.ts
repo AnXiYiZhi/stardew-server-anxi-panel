@@ -84,6 +84,7 @@ export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancele
 export type Job = {
   id: string
   type: string
+  displayName?: string | null
   status: JobStatus
   targetType: string
   targetId: string

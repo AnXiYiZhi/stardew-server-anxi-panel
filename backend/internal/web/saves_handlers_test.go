@@ -314,6 +314,53 @@ func TestModUpload_AcceptsMultipleZipFiles(t *testing.T) {
 	}
 }
 
+func TestModUpload_DuplicateUniqueIDReturnsModExists(t *testing.T) {
+	handler, _, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	postMod := func(folderName string) *httptest.ResponseRecorder {
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		addModZipPart(t, mw, folderName+".zip", folderName, "author.duplicate", folderName)
+		if err := mw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/mods/upload", &buf)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		if adminCookie != nil {
+			req.AddCookie(adminCookie)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w
+	}
+
+	first := postMod("DuplicateA")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first mod upload returned %d, want 200; body: %s", first.Code, first.Body.String())
+	}
+	second := postMod("DuplicateB")
+	if second.Code != http.StatusBadRequest {
+		t.Fatalf("second mod upload returned %d, want 400; body: %s", second.Code, second.Body.String())
+	}
+	var payload errorResponse
+	if err := json.Unmarshal(second.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload.Error.Code != "mod_exists" {
+		t.Fatalf("error code = %q, want mod_exists; body: %s", payload.Error.Code, second.Body.String())
+	}
+}
+
 func TestModsList_StoppedServerSuppressesStaleRestartRequired(t *testing.T) {
 	handler, store, closeFn := newTestHandlerWithStore(t)
 	defer closeFn()

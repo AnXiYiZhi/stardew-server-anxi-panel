@@ -1,4 +1,26 @@
-﻿# PLAYERSYNC-PACK-10 禁用终端进度渲染
+# JOB-DISPLAY-NAME-1 任务展示名字段
+
+- jobs 表新增 `display_name` 字段（迁移 `007_job_display_name.sql`），用于保存面向用户的任务展示名；`type` 继续保持机器可读任务类型，不用于拼接 Mod 名，避免影响任务筛选和历史耗时统计。
+- `jobs.Spec` / `CreateJobParams` 增加 `DisplayName`，`GET /api/jobs`、`GET /api/jobs/:id` 和 job SSE 里的 job payload 增加 `displayName`。
+- Nexus/远程 Mod 安装任务现在写入展示名：`mod_nexus_install · <Mod 名>`、`mod_remote_install · <Mod 名>`；若请求未带名称但有 `modId`，退回 `Nexus Mod #<id>`；普通任务和旧任务没有展示名时前端继续按 `type` 展示。
+- 验证：`cd backend; go test ./internal/storage ./internal/jobs ./internal/web`。
+
+# MODUPLOAD-DUPLICATE-CODE-1 重复 Mod 上传返回专用错误码
+
+- `POST /api/instances/:id/mods/upload` 在 `UploadModZip` 命中已安装相同 `UniqueID` 时，现在返回错误码 `mod_exists`，不再统一归为 `invalid_mod_zip`。
+- ZIP 结构校验、manifest 解析、XNB 替换包识别和真正损坏 ZIP 的行为不变；只有错误消息含后端重复标记 `(mod_exists)` 时才切换错误码。
+- 前端已有 `mod_exists -> 已安装相同 ID 的 Mod` 文案，因此用户重复上传已安装 Mod 时不会再误以为 ZIP 无法解析。
+- 验证：`cd backend; go test ./internal/web -run "TestModUpload"`。
+
+# NEXUS-EXT-DOWNLOAD-GUARD-1 远程 Mod 下载进度与网页响应拦截
+
+- `mod_remote_install` / `mod_nexus_install` 的 ZIP 下载阶段现在会向 job 日志输出可见进度：连接远程下载服务器、HTTP 响应码、响应 `Content-Type`、压缩包大小，以及下载进度“已下载 / 总量 / 剩余 / 百分比”。无 `Content-Length` 时仍会输出已下载大小与“总大小未知”。
+- 下载进度在 `stardew_junimo.nexusDownloadArchive()` 内统一实现，NXM、Nexus API Key 直连和浏览器扩展捕获 CDN ZIP 三条路径共享；日志按 5 MB 或 2 秒节流，完成时补最终进度，避免大包刷屏。
+- 如果远程响应 `Content-Type` 是 `text/html`，后端会立即失败并提示“远程下载返回的是网页，不是 ZIP 压缩包；请确认浏览器扩展已经拿到 Nexus CDN ZIP 下载链接”，避免把 Nexus 下载页/错误页当作 ZIP 任务继续跑。
+- 浏览器扩展提交层额外兜底：`background.finishInstall()` / `postRemoteInstall()` 和 `panel-bridge` 只允许真实 Nexus CDN `.zip` 链接创建面板远程安装任务；还停在普通 Nexus 下载页时不会再提前触发后端任务。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "InstallNexusMod|NexusDownloadArchive|Remote|Download"`、`go test ./internal/games/stardew_junimo ./internal/web`、扩展 `node --check`。
+
+# PLAYERSYNC-PACK-10 禁用终端进度渲染
 
 - 玩家同步包 `tools/install.ps1` 完全禁用控制台进度渲染：设置 `$ProgressPreference = "SilentlyContinue"`，并移除 `Show-InstallProgress` / `Complete-InstallProgress` 里的 `Write-Progress`。
 - 进度百分比仍写入 `.anxi-sync/logs/install-*.log`，用于排查；玩家终端只显示 `Write-Step` 的独立任务行和最终摘要。
@@ -36,9 +58,9 @@
 
 # PLAYERSYNC-PACK-5 SMAPI payload 安装修复
 
-- 玩家同步包 `tools/install.ps1` 不再尝试调用 SMAPI 4.5.2 的交互式 `SMAPI.Installer.exe` / `install on Windows.bat`，也不再传入无效的 `--install --game-path --no-prompt` 参数。
+- 玩家同步包 `tools/install.ps1` 恢复调用 SMAPI 官方 Windows 安装器：解压随包 SMAPI ZIP 后定位 `internal/windows/SMAPI.Installer.exe`，传入 `--install --game-path "<Stardew Valley>" --no-prompt`。
 - 真实 Windows 测试确认 SMAPI 4.5.2 安装器没有可用静默参数，非交互调用会进入交互流程并可能因为 Console 句柄失败；失败安装还可能把安装器运行时 DLL 散落到游戏根目录。
-- 新流程改为解压随包 SMAPI ZIP 后定位 `internal/windows/install.dat`，复制为临时 `smapi-install-payload.zip`，再用 `Expand-Archive -Force` 释放到 Stardew Valley 游戏目录。该 payload 是官方安装器随包携带的 Windows 安装内容，包含 `StardewModdingAPI.exe`、`smapi-internal/`、`steam_appid.txt` 以及 SMAPI 自带 Mod。
+- 官方安装器调用通过 `Start-Process` 执行，脚本会等待安装器退出；超过 120 秒会终止并提示玩家关注安装器窗口是否在等待按键/输入。脚本不再直接解包 `install.dat`，也不做本机 `.NET` / `runtimeconfig` 特调。
 - 热修复已同步到当前测试解压包 `C:\Users\anxi\Downloads\stardew-player-sync-pack\tools\install.ps1`。已用 `-GamePath "D:\steam\steamapps\common\Stardew Valley" -SkipSteamLaunchOptions` 真实安装验证，SMAPI 和玩家同步 Mod 均安装成功。
 - 测试补充：`TestPlayerSyncInstallScriptUsesSMAPIInstallPayload` 防止脚本回退到交互安装器调用；`TestPlayerSyncPowerShellScriptsParse` 覆盖脚本语法。
 
@@ -279,6 +301,8 @@ Stardew 生命周期里的“重启服务器”必须只重启 Compose 的 `serv
 最近事件由后端根据当前在线快照和 `players-cache.json` 中上一轮状态差分生成，并写入 `.local-container/control/players-events.json`。当前支持首次记录、加入和离开事件，最多保留最近 50 条，并按 `saveId` 隔离，避免切换存档后显示旧存档活动。
 
 `players-cache.json` 必须按存档隔离：缓存文件带 `saveId`，只有 `cache.saveId == players.json.saveId` 时才合并历史离线玩家。切换/新建存档后，旧存档名册不能混入新存档玩家列表；旧版无 `saveId` 的缓存遇到当前存档 ID 时应被忽略并在下一次读取后重写。
+
+`maxPlayers` 兜底（PLAYERS-MAXPLAYERS-1）：`ListPlayers` 现在默认从当前存档的 `server-settings.json` 读取 `Server.MaxPlayers`（`readServerMaxPlayers`，文件缺失/解析失败/非正数时返回 nil），junimo info 解析出的上限仍会覆盖兜底值。这样服务器未运行或 info 输出不含上限时，`GET /api/instances/:id/players` 也能返回 `maxPlayers`，前端右栏/总览可显示"在线数/人数上限"。测试见 `players_test.go` 的 `TestReadServerMaxPlayers`。
 
 ### Mod 玩家同步包
 

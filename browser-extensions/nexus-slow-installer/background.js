@@ -359,6 +359,10 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 }
 
 async function postRemoteInstall(downloadUrl, capture) {
+  downloadUrl = String(downloadUrl || "").trim();
+  if (!isNexusArchiveDownloadUrl(downloadUrl)) {
+    throw new Error("还没有拿到 Nexus CDN ZIP 下载链接，不能创建面板安装任务");
+  }
   const config = await getConfig();
   if (!config.panelBaseUrl) {
     throw new Error("请先在扩展设置里填写面板地址");
@@ -824,6 +828,10 @@ async function autoSubmitCapturedDownloadUrl(captureKey, downloadUrl) {
 }
 
 async function finishInstall(downloadUrl, captureKey) {
+  downloadUrl = String(downloadUrl || "").trim();
+  if (!isNexusArchiveDownloadUrl(downloadUrl)) {
+    throw new Error("还没有拿到 Nexus CDN ZIP 下载链接，不能创建面板安装任务");
+  }
   const config = await getConfig();
   const state = await getState();
   const rawCapture = findCapture(state, captureKey);

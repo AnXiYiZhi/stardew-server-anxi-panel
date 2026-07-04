@@ -918,7 +918,7 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 		_ = os.Remove(tmpPath)
 		if err != nil {
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusBadRequest, "invalid_mod_zip", sanitizeError(err, fmt.Sprintf("绗?%d 涓?Mod ZIP 鏃犳晥", i+1)))
+			writeError(w, http.StatusBadRequest, modUploadErrorCode(err), sanitizeError(err, fmt.Sprintf("绗?%d 涓?Mod ZIP 鏃犳晥", i+1)))
 			return
 		}
 		imported = append(imported, batch...)
@@ -1272,6 +1272,21 @@ func (req nexusInstallRequest) toSearchResult() sj.NexusModSearchResult {
 	}
 }
 
+func modInstallJobDisplayName(jobType string, result sj.NexusModSearchResult) string {
+	name := strings.Join(strings.Fields(result.Name), " ")
+	if name == "" && result.ModID > 0 {
+		name = fmt.Sprintf("Nexus Mod #%d", result.ModID)
+	}
+	if name == "" {
+		return ""
+	}
+	runes := []rune(name)
+	if len(runes) > 80 {
+		name = string(runes[:80]) + "..."
+	}
+	return fmt.Sprintf("%s · %s", jobType, name)
+}
+
 type remoteInstallRequest struct {
 	URL string              `json:"url"`
 	Mod nexusInstallRequest `json:"mod,omitempty"`
@@ -1314,11 +1329,12 @@ func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, i
 
 	result := req.toSearchResult()
 	job, err := s.jobs.Start(r.Context(), jobs.Spec{
-		Type:       "mod_nexus_install",
-		TargetType: "instance",
-		TargetID:   instanceID,
-		CreatedBy:  actor.User.ID,
-		Timeout:    30 * time.Minute,
+		Type:        "mod_nexus_install",
+		DisplayName: modInstallJobDisplayName("mod_nexus_install", result),
+		TargetType:  "instance",
+		TargetID:    instanceID,
+		CreatedBy:   actor.User.ID,
+		Timeout:     30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
 			_, _ = job.Info(ctx, fmt.Sprintf("准备安装 Nexus Mod #%d", result.ModID))
 			imported, err := sj.InstallNexusMod(ctx, instance.DataDir, apiKey, result, func(message string) {
@@ -1389,11 +1405,12 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 	}
 	result := req.Mod.toSearchResult()
 	job, err := s.jobs.Start(r.Context(), jobs.Spec{
-		Type:       "mod_remote_install",
-		TargetType: "instance",
-		TargetID:   instanceID,
-		CreatedBy:  actor.User.ID,
-		Timeout:    30 * time.Minute,
+		Type:        "mod_remote_install",
+		DisplayName: modInstallJobDisplayName("mod_remote_install", result),
+		TargetType:  "instance",
+		TargetID:    instanceID,
+		CreatedBy:   actor.User.ID,
+		Timeout:     30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
 			_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
 			imported, err := sj.InstallRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, func(message string) {

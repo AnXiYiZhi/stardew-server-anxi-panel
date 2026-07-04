@@ -1,10 +1,13 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 func TestJobsAPIPermissionsAndLifecycle(t *testing.T) {
@@ -67,6 +70,52 @@ func TestJobsAPIPermissionsAndLifecycle(t *testing.T) {
 	cancel, _ := doJSON(t, handler, http.MethodPost, "/api/jobs/"+jobID+"/cancel", nil, adminCookie)
 	if cancel.Code != http.StatusNotImplemented {
 		t.Fatalf("cancel returned %d", cancel.Code)
+	}
+}
+
+func TestJobsAPIIncludesDisplayName(t *testing.T) {
+	handler, store, closeStore := newTestHandlerWithStore(t)
+	defer closeStore()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	if _, err := store.CreateJob(context.Background(), storage.CreateJobParams{
+		Type:        "mod_remote_install",
+		DisplayName: "mod_remote_install · Farm Type Manager (FTM)",
+		TargetType:  "instance",
+		TargetID:    storage.DefaultInstanceID,
+	}); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	res, _ := doJSON(t, handler, http.MethodGet, "/api/jobs", nil, adminCookie)
+	if res.Code != http.StatusOK {
+		t.Fatalf("list jobs returned %d: %s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		Jobs []struct {
+			Type        string  `json:"type"`
+			DisplayName *string `json:"displayName"`
+		} `json:"jobs"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode jobs: %v", err)
+	}
+	if len(payload.Jobs) != 1 {
+		t.Fatalf("len(jobs) = %d, want 1", len(payload.Jobs))
+	}
+	if payload.Jobs[0].Type != "mod_remote_install" {
+		t.Fatalf("type = %q, want mod_remote_install", payload.Jobs[0].Type)
+	}
+	if payload.Jobs[0].DisplayName == nil || *payload.Jobs[0].DisplayName != "mod_remote_install · Farm Type Manager (FTM)" {
+		t.Fatalf("displayName = %#v, want mod name", payload.Jobs[0].DisplayName)
 	}
 }
 
