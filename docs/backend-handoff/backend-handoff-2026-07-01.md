@@ -1,3 +1,24 @@
+# STEAMCMD-REPAIR-DIRECT-1 后端接手记录（2026-07-06）
+
+## 改了什么
+- `POST /api/instances/:id/install` 收到 `reuseCredentials=true` 时，现在会显式传递 `SteamCMDRetry=true`，让 driver 跳过 `steam-auth` 并直达 SteamCMD 下载/校验。
+- SteamCMD 直达修复模式会使用已保存的 SteamCMD 授权缓存登录，命令从账号密码登录切换为 `+login "$STEAM_USERNAME"`，避免触发新的 Steam Guard 手机批准。
+- 若直达修复时上游仍要求 Guard/批准，后端按 `steamcmd_failed` 报告授权缓存不可用，不再返回 `credentials_required` 让用户重新输入账号密码。
+
+## 影响文件 / 接口
+- `backend/internal/web/install_handlers.go`
+- `backend/internal/games/stardew_junimo/installer.go`
+- `backend/internal/games/stardew_junimo/driver_test.go`
+- 接口路径不变：`POST /api/instances/:id/install`。语义变化是 `reuseCredentials=true` 代表复用已有凭据并直达 SteamCMD。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+- 新增测试 `TestDriverInstallRepairUsesSteamCMDCacheLogin` 覆盖已安装态修复时不运行 steam-auth、不执行 Junimo compose pull、SteamCMD 使用缓存登录。
+
+## 下一步注意事项
+- 不要把修复/重新安装路径再接回 `steam-auth`；该入口用于更新/校验游戏文件，应直接走 SteamCMD。
+- 如果用户机器确实没有 SteamCMD 授权缓存，应让任务以 `steamcmd_failed` 暴露缓存不可用，而不是要求重新输入 Steam 账号密码。
+
 # PUBLIC-IP-LOOKUP-1 后端接手记录（2026-07-06）
 
 ## 改了什么
@@ -1795,12 +1816,12 @@ go test ./...
 
 - 安装阶段的 Junimo 镜像检查已从 `docker compose pull server steam-auth` 改为后端逐镜像候选兜底。`steam-auth-cn` 和 `server` 都会先 inspect 全部候选，本地已有任何一个就直接写回 `.env` 并使用；全部缺失才按顺序 pull。
 - 新增/使用 `.env`：`SERVER_IMAGE`、`SERVER_IMAGE_CANDIDATES`、`STEAM_SERVICE_IMAGE_CANDIDATES`。成功选中的镜像会落到 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`，compose 启动不再回到单一源。
-- 默认候选：`docker.1ms.run`、`docker.m.daocloud.io`、`ghcr.io`、原始仓库。server 候选随安装 `imageTag` 动态生成；steam-auth-cn 固定 `1.5.0-anxi.2`。
+- 默认候选：server 使用 `docker.1ms.run`、`docker.m.daocloud.io`、`ghcr.io`、原始仓库；steam-auth-cn 先使用 `docker.1ms.run`，第二候选使用阿里云 ACR 新版个人版 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`，再兜底到 `docker.m.daocloud.io`、`ghcr.io`、Docker Hub。server 候选随安装 `imageTag` 动态生成；steam-auth-cn 固定 `1.5.0-anxi.2`。
 - 旧 compose 会在安装时迁移 `server.image` 到 `${SERVER_IMAGE:-sdvd/server:1.5.0-preview.121}`。如果现场排查发现 compose 仍写死 `sdvd/server:${IMAGE_VERSION...}`，优先重新触发安装迁移或检查 `migrateServerComposeImage()`。
 - 验证：`go test ./internal/games/stardew_junimo/config`；`go test ./internal/games/stardew_junimo -run "Prepare|Migrate.*ComposeImage|SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallMarksSteamAuthFailed|SteamAuthMenus|SteamGuard|QRCode"`。
 # JUNIMO-IMAGE-CANDIDATES-2 老实例候选源自动补齐
 
 - 背景：旧实例可能已经写入单值 `SERVER_IMAGE_CANDIDATES=sdvd/server:1.5.0-preview.121`，导致后续安装日志只显示 `server` 拉取 `(1/1)`，不会尝试 1ms、DaoCloud、GHCR。
-- 处理：`serverImageRefs()` 与 `steamServiceImageRefs()` 现在都会先展开默认候选源，再追加 `.env` 现有候选和当前主镜像值并去重。steam-auth cn 版 `anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2` 与 JunimoServer `sdvd/server:<IMAGE_VERSION>` 都走同一策略。
+- 处理：`serverImageRefs()` 与 `steamServiceImageRefs()` 现在都会先展开默认候选源，再追加 `.env` 现有候选和当前主镜像值并去重。steam-auth cn 版 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2` 与 JunimoServer `sdvd/server:<IMAGE_VERSION>` 都走同一策略。
 - 安装 Step 1 会把补齐后的 `SERVER_IMAGE_CANDIDATES` / `STEAM_SERVICE_IMAGE_CANDIDATES` 写回 `.env`；`ensureJunimoImages()` 选中镜像后也会连同实际 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE` 一起写回。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo -run "ImageRefs|Prepare|Migrate.*ComposeImage|SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallMarksSteamAuthFailed|SteamAuthMenus|SteamGuard|QRCode"`。

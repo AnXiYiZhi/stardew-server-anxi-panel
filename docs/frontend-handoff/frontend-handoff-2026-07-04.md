@@ -1,3 +1,39 @@
+# FE-STEAMCMD-REPAIR-DIRECT-1 前端接手记录（2026-07-06）
+
+## 改了什么
+- 已安装态点击“重新安装 / 修复”现在走复用凭据路径，安装页提交 `{ reuseCredentials: true, imageTag }`，不再显示 Steam 用户名、Steam 密码或 VNC 密码输入框。
+- 表单标题/按钮/提示改为“重新安装 / 修复安装”“确认修复 / 更新”，明确本次会跳过 `steam-auth`，复用已保存凭据和 SteamCMD 授权缓存直接下载/校验游戏文件。
+- SteamCMD 下载卡文案改为通用缓存复用说明，避免主动修复时还显示“steam-auth 下载失败后重新授权”。
+
+## 影响文件 / 接口
+- `frontend/src/games/stardew/pages/InstallPage.tsx`
+- 未新增 API；继续调用 `POST /api/instances/:id/install`。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build`。
+- 后端配套验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
+## 下一步注意事项
+- 已安装态、认证后下载失败、SteamCMD 失败重试都属于复用凭据入口；不要再为这些入口展示 Steam 凭据表单。
+- 如果后端返回 `steamcmd_failed`，前端应展示失败/重试，不要自动切回账号密码输入，除非后续新增明确的“重新录入凭据”独立入口。
+
+# FE-TOPBAR-BRAND-LIGHTER-2 前端接手记录（2026-07-06）
+
+## 改了什么
+- 按用户“再细 200”反馈，左上角 `Stardew Anxi Panel` 品牌标题继续减重。
+- `.sd-topbar-brand-text` 字重从 `700` 调为 `500`，暗色描边/投影不透明度同步降低，保留原有 28px 尺寸、黄色填充和像素标题感。
+
+## 影响文件 / 接口
+- `frontend/src/games/stardew/StardewPanel.css`
+- 未改顶栏状态牌、存档框、版本框、用户框、React 结构、后端 API、权限、轮询或 Junimo 通信。
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- Browser QA：打开 `http://127.0.0.1:5173/qa-layout.html?state=running`，确认 `.sd-topbar-brand-text` computed `fontWeight=500`；点击“服务器”再回“总览”后仍为 `500`，console error/warn 为空。
+
+## 下一步注意事项
+- 如果还需要更细，优先把 `font-weight` 调到 `400`；不建议直接移除全部描边，否则浅色标题在木质顶栏上会掉可读性。
+
 # FE-OVERVIEW-HEALTH-SHARE-1 前端接手记录（2026-07-06）
 ## 改了什么
 - 修复总览页“系统健康”卡在访问诊断页后仍显示 `— / 未检查` 的问题。

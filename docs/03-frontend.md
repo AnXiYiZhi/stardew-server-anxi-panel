@@ -1,3 +1,18 @@
+# FE-STEAMCMD-REPAIR-DIRECT-1 修复/重新安装不再要求输入凭据
+
+- 安装页已把已安装态的“重新安装 / 修复”纳入复用凭据路径，提交 `POST /api/instances/:id/install` 时只发送 `{ reuseCredentials: true, imageTag }`，不再显示 Steam 用户名、Steam 密码或 VNC 密码输入框。
+- 表单文案改为“确认修复 / 更新”，说明本次会跳过 `steam-auth`，复用已保存凭据和 SteamCMD 授权缓存直接下载/校验游戏文件。
+- SteamCMD 下载卡文案改为通用的“复用已保存凭据和授权缓存下载/校验”，避免把主动修复路径误描述成 `steam-auth` 下载失败后的重新授权。
+- 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-TOPBAR-BRAND-LIGHTER-2 顶栏品牌标题继续减重
+
+- 按用户“再细 200”反馈继续微调 Stardew Shell 左上角 `Stardew Anxi Panel`：`.sd-topbar-brand-text` 字重从 `700` 降到 `500`，暗色描边/投影不透明度同步再降一点。
+- 只影响顶栏品牌文字；未改顶栏状态牌、存档框、版本框、用户框、路由、API、权限、轮询或 Junimo 通信。
+- 影响文件：`frontend/src/games/stardew/StardewPanel.css`。
+- 验证：`cd frontend; npm.cmd run build`；Browser QA 打开 `qa-layout.html?state=running`，标题 computed `fontWeight=500`，总览/服务器往返后仍为 `500`。
+
 # FE-OVERVIEW-HEALTH-SHARE-1 概览系统健康卡同步诊断结果
 - 诊断页进入时自动执行的健康检查、以及用户点击“重新检查”成功后，会把 `GET /api/health/diagnostics` 的结果写回公共 `dashboardData.health`，因此回到总览页后“系统健康”统计卡会显示最新评分、通过/警告/错误数量和状态徽章，不再停留在 `— / 未检查`。
 - 公共 dashboard 初始化仍不主动调用 `/api/health/diagnostics`，保留 `DOCKER-POLL-PERF-1` 的降轮询设计；只有用户打开诊断页或手动检查后，概览页才消费这次已产生的诊断结果。

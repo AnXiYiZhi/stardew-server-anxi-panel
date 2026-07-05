@@ -362,13 +362,89 @@ http://localhost:5173
 
 本项目支持构建为独立 Docker 镜像，用户只需 Docker Engine + Compose V2 即可运行面板。
 
+### 系统要求
+
+最低系统要求：
+
+```text
+系统：Linux x86_64
+发行版：Ubuntu 20.04+ / Debian 11+ / CentOS 8+ / Rocky Linux 8+ / AlmaLinux 8+ / Alibaba Cloud Linux 3+
+Docker：Docker Engine 24+
+Compose：Docker Compose plugin v2+
+CPU：2 核
+内存：2 GB
+磁盘：20 GB 可用空间
+网络：公网 IP
+端口：TCP 8090，UDP 24642 / 27015
+```
+
+推荐配置：
+
+```text
+系统：Ubuntu 22.04 LTS / Ubuntu 24.04 LTS / Debian 12 / Alibaba Cloud Linux 3
+CPU：2 核以上
+内存：4 GB 以上
+磁盘：40 GB SSD 以上
+带宽：5 Mbps 以上
+Docker：Docker Engine 25+ / 26+ / 27+
+```
+
+多人游玩推荐：
+
+```text
+1-2 人：2 核 2 GB，建议开启 2 GB swap
+3-4 人：2 核 4 GB
+5-8 人：4 核 8 GB
+大量 Mod：4 核 8 GB 起步，磁盘 60 GB+
+```
+
+推荐使用 Ubuntu 22.04 LTS、2 核 4G、40G SSD 的云服务器；小型自用服务器最低 2 核 2G 可运行，但建议开启虚拟内存。
+
+### 云服务器安全组
+
+必须开放：
+
+```text
+TCP 8090      面板访问
+UDP 24642     Stardew 游戏端口
+UDP 27015     查询端口
+```
+
+按需开放：
+
+```text
+TCP 5800      VNC/noVNC，仅在需要浏览器查看游戏画面时开放
+```
+
+不要开放：
+
+```text
+TCP 8080      Junimo API，仅供面板和容器网络内部访问，不需要公网开放
+```
+
 ### 推荐：一键启动脚本
 
-Linux 云服务器用户优先使用 `deploy/run.sh` 快速模式。脚本会生成 `~/.anxi-panel/.env` 和 `docker-compose.yml`，自动创建 `PANEL_SECRET`，首次启动时可选择国内阿里云 ACR、Docker Hub 或自定义镜像地址，并使用 `panel-data` 数据卷保留面板数据。默认访问方式是：
+Linux 云服务器用户优先使用 `deploy/run.sh` 快速模式。脚本会生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和 `~/.anxi-panel/data`，自动创建 `PANEL_SECRET`，首次启动时可自动选择可用镜像源，也可手动切换阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR、Docker Hub 官方或自定义镜像地址。默认访问方式是：
 
 ```text
 http://服务器IP:8090
 ```
+
+国内加速安装：
+
+```bash
+curl -fsSL -o run.sh https://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+```
+
+GitHub Release 安装：
+
+```bash
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
+```
+
+如果 GitHub 访问不稳定，优先使用国内加速安装地址。加速地址只需要提供最新的 `run.sh` 静态文件；面板镜像本身仍由脚本自动从阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR 或 Docker Hub 候选源拉取。
+
+从仓库源码运行：
 
 ```bash
 cd deploy
@@ -376,7 +452,7 @@ chmod +x run.sh
 bash run.sh
 ```
 
-脚本菜单支持拉取启动、停止、重启、更新、查看状态、查看日志和切换国内/Docker Hub 镜像源。固定版本可这样启动：
+脚本菜单支持 Docker/Compose 安装修复、镜像候选兜底、启动、停止、重启、普通更新、强制更新、镜像源切换、脚本自更新、虚拟内存、开机自启、状态、日志和访问地址。固定版本可这样启动：
 
 ```bash
 PANEL_VERSION=0.1.0 PANEL_PORT=8090 bash run.sh install
@@ -414,11 +490,11 @@ docker compose up -d
 
 ### 数据持久化
 
-所有面板数据存储在 `/data`，使用 named volume 挂载可在容器重建后保留。
+一键脚本默认把宿主机 `~/.anxi-panel/data` 挂载到容器内同名绝对路径，容器重建后数据仍会保留。手动 `docker run` 时可继续使用 named volume 或宿主机目录挂载。
 
 ### 安全说明
 
-挂载 Docker Socket 等同于给面板容器宿主机 Docker 控制权。建议仅在受信任的内网环境运行，不要将端口暴露到公网。详见 [镜像构建文档](docs/09-image-build.md)。
+挂载 Docker Socket 等同于给面板容器宿主机 Docker 控制权。快速模式默认面向用户自有云服务器公网使用：只开放必要端口，首次进入面板后必须设置强管理员密码，不要开放 `TCP 8080`。详见 [镜像构建文档](docs/09-image-build.md)。
 
 ## 本机测试流程
 

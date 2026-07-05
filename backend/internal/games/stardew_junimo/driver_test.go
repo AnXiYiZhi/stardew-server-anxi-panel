@@ -734,6 +734,7 @@ func TestSteamServiceImageRefsPrependsDefaultCandidatesToExistingSingleCandidate
 	refs := steamServiceImageRefs(envVals)
 	want := []string{
 		"docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2",
 		"docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
 		"ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
 		"anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
@@ -879,6 +880,80 @@ func TestDriverInstallResumesSteamCMDDirectlyAfterSteamCMDFailure(t *testing.T) 
 	}
 	if updated.State != storage.InstanceStateGameInstalled || updated.DriverPhase != "game_installed" {
 		t.Fatalf("instance state should be installed after direct steamcmd retry: state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+}
+
+func TestDriverInstallRepairUsesSteamCMDCacheLogin(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:           instance.ID,
+		State:        storage.InstanceStateGameInstalled,
+		StateMessage: "Game installed",
+		DriverPhase:  "game_installed",
+	}); err != nil {
+		t.Fatalf("set installed phase: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthErr: errors.New("steam-auth should not run during repair"),
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+		SteamCMDRetry: true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if fake.steamAuthRuns != 0 {
+		t.Fatalf("steam-auth should be skipped on repair, ran %d times", fake.steamAuthRuns)
+	}
+	if fake.composePulls != 0 {
+		t.Fatalf("Junimo compose pull should be skipped on repair, ran %d times", fake.composePulls)
+	}
+	if fake.containerRuns != 1 {
+		t.Fatalf("expected SteamCMD container to run once, ran %d times", fake.containerRuns)
+	}
+	command := strings.Join(fake.containerOpts.Command, " ")
+	if !strings.Contains(command, `+login "$STEAM_USERNAME" +app_update 413150`) {
+		t.Fatalf("repair should use cached SteamCMD login without password, command=%q", command)
+	}
+	if strings.Contains(command, `"$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("repair should not pass Steam password to SteamCMD login, command=%q", command)
 	}
 }
 

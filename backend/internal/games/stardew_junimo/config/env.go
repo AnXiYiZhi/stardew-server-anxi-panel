@@ -11,8 +11,8 @@ import (
 const (
 	DefaultServerImage                       = "sdvd/server:1.5.0-preview.121"
 	DefaultServerImageCandidates             = "docker.1ms.run/sdvd/server:1.5.0-preview.121,docker.m.daocloud.io/sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121,sdvd/server:1.5.0-preview.121"
-	DefaultSteamServiceImage                 = "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
-	DefaultSteamServiceImageCandidates       = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+	DefaultSteamServiceImage                 = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+	DefaultSteamServiceImageCandidates       = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2,docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
 	DefaultSteamCMDImage                     = "docker.1ms.run/steamcmd/steamcmd:latest"
 	DefaultSteamCMDImageCandidates           = "docker.1ms.run/steamcmd/steamcmd:latest,docker.m.daocloud.io/steamcmd/steamcmd:latest,ghcr.io/steamcmd/steamcmd:latest,cm2network/steamcmd:latest"
 	DefaultSteamClientConnectTimeoutSeconds  = "60"

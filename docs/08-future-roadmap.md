@@ -1,3 +1,9 @@
+# STEAMCMD-REPAIR-DIRECT-1 状态
+- `STEAMCMD-REPAIR-DIRECT-1` completed：安装页“重新安装 / 修复”与复用凭据重试入口已改为直达 SteamCMD 下载/校验。前端不再要求输入 Steam/VNC 凭据；后端收到 `reuseCredentials=true` 后跳过 `steam-auth`，并用已有 SteamCMD 授权缓存执行 app_update。已验证 `cd backend; go test ./internal/games/stardew_junimo ./internal/web` 与 `cd frontend; npm.cmd run build`。
+
+# FE-TOPBAR-BRAND-LIGHTER-2 状态
+- `FE-TOPBAR-BRAND-LIGHTER-2` completed：Stardew Shell 左上角品牌标题已按“再细 200”反馈继续减重，`.sd-topbar-brand-text` 字重从 `700` 降到 `500`，暗色描边/投影不透明度同步降低；仅改前端 CSS，未改顶栏状态牌、存档/用户框、API、权限、路由或 Junimo 通信。验证：`cd frontend; npm.cmd run build`；Browser QA 标题 computed `fontWeight=500`，总览/服务器往返后仍为 `500`。
+
 # FE-TOPBAR-BRAND-LIGHTER-1 状态
 - `FE-TOPBAR-BRAND-LIGHTER-1` completed：Stardew Shell 左上角品牌标题已按用户反馈再调细，`.sd-topbar-brand-text` 字重从 `800` 降到 `700`，并减少暗色描边/投影层数；仅改前端 CSS，未改顶栏状态牌、存档/用户框、API、权限、路由或 Junimo 通信。验证：`cd frontend; npm.cmd run build`。
 
@@ -53,7 +59,7 @@
 
 # DEPLOY-RUN-SH-1 状态
 
-- `DEPLOY-RUN-SH-1` completed：新增 `deploy/run.sh` 作为用户优先使用的一键启动/维护脚本，产品口径收敛为快速模式：默认通过 `http://服务器IP:8090` 直接访问面板。脚本默认使用国内阿里云 ACR 面板镜像、默认 `latest` tag，并支持 `PANEL_VERSION=0.1.0` 固定版本；首次运行会生成 `~/.anxi-panel/.env` 与 `docker-compose.yml`，自动创建强随机 `PANEL_SECRET`，使用 named volume `panel-data` 保留面板数据。菜单覆盖拉取启动、停止、重启、更新、状态、日志、切换国内/Docker Hub 镜像源和显示访问地址；同时支持 `install/stop/restart/update/status/logs/url` 非交互命令。未改后端、前端、Junimo driver 或现有部署 compose 行为；已同步 `docs/09-image-build.md`。
+- `DEPLOY-RUN-SH-1` completed：新增 `deploy/run.sh` 作为用户优先使用的一键启动/维护脚本，产品口径收敛为快速模式：默认通过 `http://服务器IP:8090` 直接访问面板。脚本默认使用国内阿里云 ACR 面板镜像、默认 `latest` tag，并支持 `PANEL_VERSION=0.1.0` 固定版本；首次运行会生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和 `~/.anxi-panel/data`，自动创建强随机 `PANEL_SECRET`。新版脚本使用宿主机数据目录与容器内同名绝对路径持久化面板数据；菜单覆盖 Docker 安装修复、镜像候选兜底、启动、停止、重启、更新、状态、日志、镜像源切换和显示访问地址；同时支持 `install/docker/stop/restart/update/status/logs/url` 等非交互命令。已同步 `docs/09-image-build.md`。
 
 # FE-OPSRAIL-MAINTENANCE-PHASE-1 状态
 
@@ -695,7 +701,7 @@ Multi Game Mode later
 - `JUNIMO-IMAGE-CANDIDATES-1` completed：`server` 与 `steam-auth-cn` 镜像拉取已接入与 SteamCMD 类似的候选兜底机制，默认顺序为 `docker.1ms.run`、`docker.m.daocloud.io`、`ghcr.io`、原始仓库；本地已有任意候选会直接复用，拉取成功后写回 `.env`，避免后续 compose 回到单一镜像源。验证见后端接手文档。
 # JUNIMO-IMAGE-CANDIDATES-2 已完成
 
-- 已完成 JunimoServer 与 steam-auth cn 版镜像候选源自动补齐：旧实例单候选 `.env` 会被扩展为 1ms、DaoCloud、GHCR、原始镜像四级兜底。
+- 已完成 JunimoServer 与 steam-auth cn 版镜像候选源自动补齐：旧实例单候选 `.env` 会被扩展为默认候选；steam-auth cn 当前顺序为 1ms、阿里云 ACR 新版个人版、DaoCloud、GHCR、Docker Hub。
 - 已完成选中镜像写回：后端会把实际使用的 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE` 和补齐后的候选列表写回实例 `.env`，方便后续重试复用。
 # FE-GAME-INSTALLED-STARTABLE-1 已完成
 
@@ -703,3 +709,12 @@ Multi Game Mode later
 - 若没有可用存档，点击启动后仍由后端返回 `save_required` 并引导用户创建/上传/选择存档。
 # FE-OPSRAIL-METRICS-RESTORE-1 状态
 - `FE-OPSRAIL-METRICS-RESTORE-1` completed：右侧 OpsRail CPU / 内存 / 磁盘已恢复轻量实时显示，Stardew 面板挂载期间调用现有 `/api/instances/:id/metrics`，首次立即采样并按 `2s` 刷新；没有用户打开前端页面时自然不会产生浏览器轮询，页面卸载时停止 timer。普通 dashboard 初始化仍不触发 `/api/health/diagnostics`，保留此前诊断降轮询优化。验证：`cd frontend; npm.cmd run build`；Browser QA 打开 `qa-layout.html?state=running` 确认右侧栏显示 mock metrics 百分比而非空值。
+# RELEASE-TAG-CI-1 状态
+- `RELEASE-TAG-CI-1` completed：面板仓库已新增 GitHub tag 发版 workflow，推送 `v*` tag 后自动构建面板 Docker 镜像，发布 Docker Hub 与阿里云 ACR 的版本 tag / `latest`，并在 GitHub Release 上传 `deploy/run.sh`。配套 steam-service-cn 仓库已改造 tag workflow，可发布 `junimo-steam-service-cn` 到 Docker Hub、阿里云 ACR 和 GHCR。
+# RUN-SH-QUICK-MODE-1 状态
+- `RUN-SH-QUICK-MODE-1` completed：`deploy/run.sh` 已扩展为完整一键启动菜单，包含 Docker/Compose 自动安装修复、面板镜像候选兜底拉取、启动/停止/重启、普通更新/强制更新、镜像源切换、脚本自更新、虚拟内存、开机自启、状态/日志/访问地址。脚本默认使用宿主机 `~/.anxi-panel/data` 与容器内同名绝对路径持久化数据，避免面板通过 Docker socket 编排游戏容器时出现 bind mount 路径不一致。
+- `RUN-SH-QUICK-MODE-1` docs follow-up：README 与镜像构建文档已补充最低系统要求、推荐配置、多人游玩规格和云服务器安全组口径；对外只要求开放 TCP `8090`、UDP `24642` / `27015`，VNC/noVNC TCP `5800` 按需开放，Junimo API TCP `8080` 明确不要开放公网。
+- `RUN-SH-QUICK-MODE-1` docs follow-up：README 与镜像构建文档已补充“一键启动脚本”的国内加速安装入口，推荐国内用户通过自有轻量服务器静态分发 `run.sh`，GitHub Release 地址作为备用；Docker 镜像仍由脚本内候选源拉取，不通过该轻量服务器中转。
+- `RELEASE-TAG-CI-1` follow-up：面板仓库 ACR 发布地址已切换到阿里云新版个人版实例域名 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com`；GitHub Actions 和 `deploy/run.sh` 默认国内镜像源同步更新。`ALIYUN_REGISTRY_USERNAME` 使用 ACR 访问凭证登录命令中的 `--username` 值。
+- `RELEASE-TAG-CI-1` follow-up：配套 `junimo-steam-service-cn` tag 发布 workflow 已切换到同一 ACR 新版个人版域名；面板内 `STEAM_SERVICE_IMAGE_CANDIDATES` 默认把该 ACR 镜像放在第二候选，顺序为 1ms、ACR、DaoCloud、GHCR、Docker Hub。
+- `RELEASE-TAG-CI-1` follow-up：面板仓库 tag 发版 workflow 已增加 GHCR 发布目标 `ghcr.io/anxiyizhi/stardew-server-anxi-panel`，并给 `deploy/run.sh` 增加 GHCR 镜像源选项；配套 steam-service-cn workflow 保持发布 `ghcr.io/<owner>/junimo-steam-service-cn`。
