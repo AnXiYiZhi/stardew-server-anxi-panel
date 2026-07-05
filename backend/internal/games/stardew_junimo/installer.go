@@ -147,7 +147,7 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
 	if r.steamCMDRetry {
-		_, _ = jobCtx.Info(ctx, "检测到上次安装停在 SteamCMD 兜底阶段，本次重试将直接复用已保存账号密码进入 SteamCMD 授权/下载。")
+		_, _ = jobCtx.Info(ctx, "本次安装将跳过 steam-auth，直接复用已保存凭据和 SteamCMD 授权缓存下载/校验游戏文件。")
 		guardCh := make(chan string, 8)
 		r.driver.setGuardChan(jobCtx.ID, guardCh)
 		defer r.driver.clearGuardChan(jobCtx.ID)
@@ -601,11 +601,19 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		return err
 	}
 
+	downloadMessage := "steam-auth 国内网络下载失败，正在复用已保存账号密码通过 SteamCMD 兜底下载游戏文件..."
+	if r.steamCMDRetry {
+		downloadMessage = "正在复用已保存凭据和 SteamCMD 授权缓存下载/校验游戏文件..."
+	}
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-		"steam-auth 国内网络下载失败，正在复用已保存账号密码通过 SteamCMD 兜底下载游戏文件...", "steamcmd_downloading", jobCtx.ID)
+		downloadMessage, "steamcmd_downloading", jobCtx.ID)
 	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 使用 SteamCMD 镜像 %s。", imageRef))
 	_, _ = jobCtx.Info(context.Background(), "[steamcmd] Docker 镜像检查已完成；后续若看到 [----] Downloading update，是 SteamCMD 客户端自更新，不是 Docker 镜像拉取。")
-	_, _ = jobCtx.Info(context.Background(), "[steamcmd] 使用已保存的 Steam 账号密码启动 SteamCMD 兜底下载；如 Steam 要求重新授权，页面会提示选择手机批准或输入验证码。")
+	if r.steamCMDRetry {
+		_, _ = jobCtx.Info(context.Background(), "[steamcmd] 跳过 steam-auth，优先使用已保留的 SteamCMD 登录授权直接下载/校验。")
+	} else {
+		_, _ = jobCtx.Info(context.Background(), "[steamcmd] 使用已保存的 Steam 账号密码启动 SteamCMD 兜底下载；如 Steam 要求重新授权，页面会提示选择手机批准或输入验证码。")
+	}
 
 	var (
 		outputMu          sync.Mutex
@@ -630,6 +638,13 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		switch {
 		case isSteamCMDGuardChoiceMenu(lower):
 			guardPrompted = true
+			if r.steamCMDRetry {
+				credentialFailed = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。",
+					"steamcmd_failed", jobCtx.ID)
+				return
+			}
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请选择手机 App 批准或输入 App/邮箱验证码。",
 				"steamcmd_guard_choice_required", jobCtx.ID)
@@ -638,11 +653,25 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		case isSteamCMDMobileApprovalPrompt(lower):
 			guardPrompted = true
 			mobileApproval = true
+			if r.steamCMDRetry {
+				credentialFailed = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。",
+					"steamcmd_failed", jobCtx.ID)
+				return
+			}
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请打开 Steam 手机 App 批准本次登录。",
 				"steamcmd_guard_mobile_required", jobCtx.ID)
 		case isSteamCMDGuardCodePrompt(lower):
 			guardPrompted = true
+			if r.steamCMDRetry {
+				credentialFailed = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。",
+					"steamcmd_failed", jobCtx.ID)
+				return
+			}
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请输入 Steam App 或邮箱验证码。",
 				"steamcmd_guard_required", jobCtx.ID)
@@ -650,8 +679,12 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 			steamCMDLoggedIn = true
 		case containsAny(lower, "logging in user", "waiting for user info"):
 			if !guardPrompted && !mobileApproval {
+				message := "正在使用已保存账号密码登录 SteamCMD..."
+				if r.steamCMDRetry {
+					message = "正在使用已保存的 SteamCMD 授权缓存登录..."
+				}
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-					"正在使用已保存账号密码登录 SteamCMD...", "steamcmd_auth_running", jobCtx.ID)
+					message, "steamcmd_auth_running", jobCtx.ID)
 			}
 		case containsAny(lower, "downloading update", "update state", "downloading, progress", "validating"):
 			if steamCMDLoggedIn || strings.Contains(lower, "update state") || strings.Contains(lower, "downloading, progress") {
@@ -700,9 +733,13 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		message := "SteamCMD 兜底下载失败，请检查任务日志后重试。"
 		state := storage.InstanceStateError
 		if credentialFailed {
-			phase = "credentials_required"
-			message = "SteamCMD 重新授权失败：账号、密码或验证码不正确，请重新输入 Steam 凭据后重试。"
-			state = storage.InstanceStateSteamAuthFailed
+			if r.steamCMDRetry {
+				message = "SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。"
+			} else {
+				phase = "credentials_required"
+				message = "SteamCMD 重新授权失败：账号、密码或验证码不正确，请重新输入 Steam 凭据后重试。"
+				state = storage.InstanceStateSteamAuthFailed
+			}
 		}
 		r.driver.updatePhase(context.Background(), r.instance.ID, state, message, phase, jobCtx.ID)
 		_, _ = jobCtx.Error(context.Background(), fmt.Sprintf("SteamCMD 兜底下载以退出码 %d 结束。", exitCode))
@@ -843,13 +880,18 @@ func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress fu
 
 func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	loginCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit`
+	if r.steamCMDRetry {
+		loginCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit`
+	}
+	suLoginCommand := strings.ReplaceAll(loginCommand, `'`, `'"'"'`)
 	script := strings.Join([]string{
 		"set -e",
 		"mkdir -p /data/game /data/game/.steam-sdk /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam",
 		"if id steam >/dev/null 2>&1; then chown -R steam:steam /data/game /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam; fi",
 		`if [ -x /home/steam/steamcmd/steamcmd.sh ]; then steamcmd_bin=/home/steam/steamcmd/steamcmd.sh; elif command -v steamcmd >/dev/null 2>&1; then steamcmd_bin=$(command -v steamcmd); elif [ -x /usr/games/steamcmd ]; then steamcmd_bin=/usr/games/steamcmd; elif [ -x /steamcmd/steamcmd.sh ]; then steamcmd_bin=/steamcmd/steamcmd.sh; else echo "SteamCMD executable not found in container" >&2; exit 127; fi`,
 		`export STEAMCMD_BIN="$steamcmd_bin"`,
-		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit'; else "$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit; fi`,
+		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '` + suLoginCommand + `'; else ` + loginCommand + `; fi`,
 	}, "; ")
 	return paneldocker.ContainerTTYRunOpts{
 		ImageRef:   imageRef,

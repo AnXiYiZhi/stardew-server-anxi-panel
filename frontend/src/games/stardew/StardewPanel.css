@@ -149,7 +149,7 @@
   font-family: Verdana, "Microsoft YaHei", "SimHei", ui-sans-serif, system-ui, sans-serif;
   font-size: 28px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
   background: none;
@@ -157,12 +157,12 @@
   -webkit-text-stroke: 0;
   text-shadow:
     0 -1px 0 #fff2aa,
-    1px 0 0 rgba(81, 34, 7, 0.82),
-    -1px 0 0 rgba(81, 34, 7, 0.82),
-    0 1px 0 rgba(81, 34, 7, 0.82),
-    1px 1px 0 rgba(39, 19, 5, 0.68),
-    -1px 1px 0 rgba(39, 19, 5, 0.68),
-    0 2px 0 rgba(41, 18, 5, 0.58);
+    1px 0 0 rgba(81, 34, 7, 0.72),
+    -1px 0 0 rgba(81, 34, 7, 0.72),
+    0 1px 0 rgba(81, 34, 7, 0.72),
+    1px 1px 0 rgba(39, 19, 5, 0.55),
+    -1px 1px 0 rgba(39, 19, 5, 0.55),
+    0 2px 0 rgba(41, 18, 5, 0.45);
 }
 
 .sd-topbar-brand-leaf {

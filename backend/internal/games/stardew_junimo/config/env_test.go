@@ -188,4 +188,7 @@ func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 	if !strings.Contains(fields["STEAM_SERVICE_IMAGE_CANDIDATES"], "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2") {
 		t.Fatalf("STEAM_SERVICE_IMAGE_CANDIDATES should include ghcr.io fallback, got %q", fields["STEAM_SERVICE_IMAGE_CANDIDATES"])
 	}
+	if !strings.Contains(fields["STEAM_SERVICE_IMAGE_CANDIDATES"], "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2") {
+		t.Fatalf("STEAM_SERVICE_IMAGE_CANDIDATES should include Aliyun ACR fallback, got %q", fields["STEAM_SERVICE_IMAGE_CANDIDATES"])
+	}
 }

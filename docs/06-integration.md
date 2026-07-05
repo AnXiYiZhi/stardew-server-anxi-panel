@@ -1,3 +1,11 @@
+# STEAMCMD-REPAIR-DIRECT-1 联调契约
+
+- 前端在“重新安装 / 修复”、认证后下载失败重试、SteamCMD 重试这类复用凭据入口中，应继续调用 `POST /api/instances/:id/install`，请求体为 `{ "reuseCredentials": true, "imageTag": "..." }`，不要再提交 Steam 用户名、密码或 VNC 密码。
+- 后端收到 `reuseCredentials=true` 后会读取实例 `.env` 中的已保存凭据，并显式让 `stardew_junimo` driver 直达 SteamCMD 下载/校验路径：跳过 `steam-auth`，也跳过重新选择 Steam 登录方式。
+- SteamCMD 直达修复预期使用已保留的 SteamCMD 授权缓存登录；正常联调日志应出现 `[steamcmd] 跳过 steam-auth，优先使用已保留的 SteamCMD 登录授权直接下载/校验。`，不应出现新的 `[steam]` / `steam-auth` 认证流程。
+- 若 SteamCMD 缓存不可用，后端返回 `state=error, driverPhase=steamcmd_failed`，前端应提示查看日志/重试，不应展示 Steam 账号密码输入框或 `credentials_required` 文案。
+- 验证：已安装实例点击“重新安装 / 修复”后，表单不出现凭据输入；提交后任务日志直接进入 `[steamcmd]`，不出现 `auth_method_required`、二维码、Steam Guard 选择或 steam-auth 容器登录。
+
 # PUBLIC-IP-LOOKUP-1 联调契约
 
 - 新增 `GET /api/instances/:id/public-ip`：任意已登录用户可调用，返回面板后端所在服务器检测到的公网出口 IP，而不是浏览器客户端 IP。
@@ -564,5 +572,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 
 - 安装流程进入 Junimo 镜像检查时，后端会对 `steam-auth cn` 与 `server` 两类镜像分别展开默认候选源；旧 `.env` 中只有单候选值时也会被补齐。
 - 前端日志应能看到 `server` 缺失时最多按 `(1/4)` 到 `(4/4)` 尝试：`docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
-- `steam-auth cn` 同理最多四个候选：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- `steam-auth cn` 同理最多五个候选：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
 - 命中本地任一候选时应直接显示“本地已有镜像 ... 直接使用”，不应先拉取排在前面的缺失候选。

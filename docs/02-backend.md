@@ -1,3 +1,12 @@
+# STEAMCMD-REPAIR-DIRECT-1 修复/重新安装直达 SteamCMD
+
+- `POST /api/instances/:id/install` 在收到 `reuseCredentials=true` 时，除了继续从实例 `.env` 读取已保存 `STEAM_USERNAME` / `STEAM_PASSWORD` / `VNC_PASSWORD`，现在会显式传递 `SteamCMDRetry=true` 给 driver。
+- 这条路径用于安装页“重新安装 / 修复”、认证后下载失败重试、SteamCMD 重试等复用凭据入口；后端会跳过 Junimo 镜像检查和 `steam-auth`，直接进入 SteamCMD 下载/校验，不再让用户重新输入 Steam 账号密码，也不再走一遍 `steam-auth` 登录流程。
+- SteamCMD 直达模式会优先使用已有 SteamCMD 登录授权缓存执行 `+login "$STEAM_USERNAME" +app_update 413150 validate ...`，不再在命令里用账号密码触发新一轮 Steam Guard 批准；首次兜底且没有缓存的旧路径仍保留账号密码登录能力。
+- 如果直达修复模式下 SteamCMD 仍输出 Guard/批准提示，后端不会切到 `credentials_required` 要用户重新输入凭据，而是按 `steamcmd_failed` 报告“授权缓存不可用”，避免 UI 误导用户再次输入账号密码。
+- 影响文件：`backend/internal/web/install_handlers.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
 # PUBLIC-IP-LOOKUP-1 服务器公网 IP 检测接口
 - 新增 `GET /api/instances/:id/public-ip`，登录用户可调用，用于从面板后端所在服务器主动检测公网出口 IP；前端不要在浏览器里查 IP，避免拿到访问者客户端的公网 IP。
 - 接口默认使用短超时 HTTP 客户端按顺序请求 `api.ipify.org`、`checkip.amazonaws.com`、`ifconfig.me/ip`，只接受 `netip.ParseAddr()` 可解析且非 private/loopback/link-local/multicast/unspecified 的公网地址。
@@ -362,7 +371,7 @@ GET /api/jobs/:id/stream
 
 - 官方服务名保留 `steam-auth`、`server`、`discord-bot`。
 - 官方镜像版本变量是 `IMAGE_VERSION`。
-- `steam-auth` sidecar 当前默认使用 `anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- `steam-auth` sidecar 当前默认先使用 `docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`，第二候选使用阿里云 ACR 新版个人版镜像 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`，再保留 DaoCloud、GHCR、Docker Hub 兜底。
 - `.env` 会写入 Steam 连接等待和认证重试相关变量。
 - 不要用普通 stdin 重定向跑 `steam-auth setup` 的账号密码分支；该分支会用 `Console.ReadKey()` 读密码，后台 pipe 会失败。
 
@@ -717,7 +726,7 @@ docker run --rm `
 
 - 安装阶段不再对 `server` / `steam-auth` 走单点 `docker compose pull`；后端会分别按候选镜像列表执行 `ImageInspect`，本地已有任意候选即直接使用，全部缺失时才逐个 `docker pull`。
 - 新增 `.env` 键：`SERVER_IMAGE`、`SERVER_IMAGE_CANDIDATES`、`STEAM_SERVICE_IMAGE_CANDIDATES`。拉取成功或命中本地镜像后，后端会把实际使用的镜像写回 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`，`docker-compose.yml` 通过这些变量启动。
-- 默认候选顺序：server 为 `docker.1ms.run/sdvd/server:<tag>`、`docker.m.daocloud.io/sdvd/server:<tag>`、`ghcr.io/sdvd/server:<tag>`、`sdvd/server:<tag>`；steam-auth-cn 为 `docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- 默认候选顺序：server 为 `docker.1ms.run/sdvd/server:<tag>`、`docker.m.daocloud.io/sdvd/server:<tag>`、`ghcr.io/sdvd/server:<tag>`、`sdvd/server:<tag>`；steam-auth-cn 为 `docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
 - 旧实例安装时会把 `server` compose 镜像行从 `sdvd/server:${IMAGE_VERSION:-...}` 迁移为 `${SERVER_IMAGE:-sdvd/server:1.5.0-preview.121}`；`IMAGE_VERSION` 仍保留用于版本选择和默认候选生成。
 - 拉取进度继续通过 `[pull:progress:done:total]` 隐藏日志给前端估算百分比；单个候选失败会记录 warning 并继续下一个候选，全部失败才进入 `pull_failed`。
 - 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`compose_template.go`、`driver.go`、`config/env.go` 及对应测试。
@@ -726,5 +735,5 @@ docker run --rm `
 
 - 修复旧实例 `.env` 中 `SERVER_IMAGE_CANDIDATES` 或 `STEAM_SERVICE_IMAGE_CANDIDATES` 只有单个旧值时，安装流程只显示/尝试 `(1/1)` 的问题。
 - `stardew_junimo` 现在会始终把默认候选源排在前面，再追加实例 `.env` 中已有候选和当前主镜像值并去重；server 默认顺序为 `docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
-- steam-auth cn 版同样补齐：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- steam-auth cn 版同样补齐：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
 - 安装流程写入 `.env` 时会同步写回补齐后的候选列表，并在镜像命中/拉取成功后写回实际使用的 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`。

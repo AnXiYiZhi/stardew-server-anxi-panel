@@ -102,6 +102,59 @@ cd E:\stardew-server-anxi-panel\deploy
 docker compose up -d
 ```
 
+## 系统要求与安全组
+
+最低系统要求：
+
+```text
+系统：Linux x86_64
+发行版：Ubuntu 20.04+ / Debian 11+ / CentOS 8+ / Rocky Linux 8+ / AlmaLinux 8+ / Alibaba Cloud Linux 3+
+Docker：Docker Engine 24+
+Compose：Docker Compose plugin v2+
+CPU：2 核
+内存：2 GB
+磁盘：20 GB 可用空间
+网络：公网 IP
+端口：TCP 8090，UDP 24642 / 27015
+```
+
+推荐配置：
+
+```text
+系统：Ubuntu 22.04 LTS / Ubuntu 24.04 LTS / Debian 12 / Alibaba Cloud Linux 3
+CPU：2 核以上
+内存：4 GB 以上
+磁盘：40 GB SSD 以上
+带宽：5 Mbps 以上
+Docker：Docker Engine 25+ / 26+ / 27+
+```
+
+多人游玩推荐：
+
+```text
+1-2 人：2 核 2 GB，建议开启 2 GB swap
+3-4 人：2 核 4 GB
+5-8 人：4 核 8 GB
+大量 Mod：4 核 8 GB 起步，磁盘 60 GB+
+```
+
+云服务器安全组：
+
+```text
+必须开放：
+TCP 8090
+UDP 24642
+UDP 27015
+
+按需开放：
+TCP 5800
+
+不要开放：
+TCP 8080
+```
+
+`TCP 8080` 是 Junimo API，供面板和容器网络内部访问，不需要也不建议公网开放。
+
 ## 一键启动脚本（推荐给用户）
 
 面向普通 Linux 云服务器用户，优先推荐使用 `deploy/run.sh` 的快速模式。默认部署方式是公网 IP + `8090` 端口直接访问面板，用户只需要在云服务器安全组中放行对应端口。脚本会在用户主目录生成运行目录：
@@ -109,7 +162,8 @@ docker compose up -d
 ```text
 ~/.anxi-panel
 ├─ .env
-└─ docker-compose.yml
+├─ docker-compose.yml
+└─ data/
 ```
 
 默认行为：
@@ -117,17 +171,24 @@ docker compose up -d
 - 默认面板端口：`8090`。
 - 默认访问方式：`http://服务器IP:8090`。
 - 默认镜像 tag：`latest`，便于新用户快速启动；正式服可通过 `PANEL_VERSION=0.1.0` 固定版本。
-- 首次启动时会选择镜像源：国内阿里云 ACR、Docker Hub，或自定义完整镜像地址；默认推荐阿里云 ACR `registry.cn-hangzhou.aliyuncs.com/anxi-panel/stardew-server-anxi-panel`。
+- 首次启动时会选择镜像源：自动候选、国内阿里云 ACR、Docker Hub 加速链路、DaoCloud 加速链路、GitHub GHCR、Docker Hub 官方，或自定义完整镜像地址；默认推荐自动候选。
+- 面板镜像拉取复用后端候选镜像思路：先检查本地是否已有任意候选镜像；本地没有时按候选顺序逐个 `docker pull`，第一个成功的镜像会写回 `~/.anxi-panel/.env` 的 `PANEL_IMAGE`。
 - 自动生成强随机 `PANEL_SECRET` 并写入 `~/.anxi-panel/.env`。
-- 使用 Docker named volume `panel-data` 持久化 `/data`，更新/重建容器不删除数据。
+- 使用宿主机目录 `~/.anxi-panel/data` 持久化面板数据，并把容器内 `PANEL_DATA_DIR` 设置为同一个绝对路径，确保面板容器通过宿主机 Docker socket 编排游戏容器时，bind mount 路径在宿主机和面板容器中一致。
 - 挂载 `/var/run/docker.sock`，让面板继续按现有设计控制 JunimoServer 容器。
 
 用户首次启动：
 
+国内加速安装：
+
 ```bash
-curl -o run.sh https://你的发布域名/run.sh
-chmod +x run.sh
-bash run.sh
+curl -fsSL -o run.sh https://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+```
+
+GitHub Release 安装：
+
+```bash
+curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
 
 如果直接从仓库文件启动：
@@ -142,15 +203,20 @@ bash run.sh
 
 ```text
 [0] 拉取并启动面板
-[1] 启动/恢复面板
-[2] 停止面板
-[3] 重启面板
-[4] 更新面板镜像并重建容器
-[5] 查看面板状态
-[6] 查看面板日志
-[7] 切换镜像源（国内 ACR / Docker Hub）
-[8] 显示访问地址
-[9] 退出
+[1] 安装/修复 Docker 与 Compose
+[2] 启动/恢复面板
+[3] 停止面板
+[4] 重启面板
+[5] 更新面板镜像并重建容器
+[6] 强制更新面板镜像
+[7] 切换镜像源/加速节点
+[8] 更新 run.sh 启动脚本
+[9] 设置虚拟内存
+[10] 设置开机自启
+[11] 查看面板状态
+[12] 查看面板日志
+[13] 显示访问地址
+[14] 退出
 ```
 
 非交互命令：
@@ -162,6 +228,12 @@ bash run.sh restart
 bash run.sh update
 bash run.sh status
 bash run.sh logs
+bash run.sh docker
+bash run.sh force-update
+bash run.sh switch-image
+bash run.sh update-script
+bash run.sh swap 2
+bash run.sh autostart
 ```
 
 固定版本启动示例：
@@ -170,19 +242,25 @@ bash run.sh logs
 PANEL_VERSION=0.1.0 PANEL_PORT=8090 bash run.sh install
 ```
 
-改用 Docker Hub：
+改用 Docker Hub 优先：
 
 ```bash
 DEFAULT_MIRROR=dockerhub bash run.sh install
 ```
 
+改用 GitHub GHCR：
+
+```bash
+DEFAULT_MIRROR=ghcr bash run.sh install
+```
+
 注意：
 
-- 脚本不会自动安装 Docker；用户服务器需先安装并启动 Docker Engine 与 Docker Compose plugin。
+- 脚本支持自动安装/修复 Docker Engine 与 Docker Compose plugin。Ubuntu/Debian 使用阿里云 Docker CE apt 源；CentOS/RHEL/Anolis/Rocky/Alibaba Cloud Linux 类系统使用阿里云 Docker CE yum/dnf 源。无法识别的发行版仍需手动安装 Docker。
 - 如果云服务器外部无法访问面板，优先检查安全组/防火墙是否放行 TCP `8090`。
-- Stardew 游戏本身还需要按实例配置放行 UDP `24642` / `27015`，VNC/noVNC 端口按安装页配置放行。
+- Stardew 游戏本身还需要按实例配置放行 UDP `24642` / `27015`；VNC/noVNC 默认 `TCP 5800`，仅需要浏览器查看游戏画面时按需放行；`TCP 8080` 是 Junimo API，不要开放公网。
 - 快速模式默认使用 HTTP 明文访问，适合用户自有云服快速开服；首次进入面板后必须设置强管理员密码，不要使用默认或弱密码。
-- 不要把 `docker compose down -v` 作为普通停止方式；会删除 `panel-data` 数据卷。
+- 不要手动删除 `~/.anxi-panel/data`；该目录保存面板数据库、实例 compose、存档、mod、备份和审计日志。
 
 ## 数据目录
 
@@ -201,7 +279,7 @@ DEFAULT_MIRROR=dockerhub bash run.sh install
 └─ backups
 ```
 
-使用 named volume 保证容器重建后数据不丢。
+一键脚本默认把宿主机 `~/.anxi-panel/data` 挂载到容器内同名绝对路径，保证容器重建后数据不丢，同时让宿主机 Docker daemon 能解析游戏实例的 bind mount 路径。
 
 ## 环境变量
 
@@ -264,7 +342,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 这是给用户自有云服开游戏服务器的管理面板，不建议多人共用同一台宿主机。
 - 使用强 `PANEL_SECRET`。
 - 初始化管理员必须使用强密码。
-- 只放行必要端口：面板 TCP `8090`，游戏 UDP `24642` / `27015`，VNC/noVNC 按需放行。
+- 只放行必要端口：面板 TCP `8090`，游戏 UDP `24642` / `27015`，VNC/noVNC 默认 TCP `5800` 按需放行；不要开放 Junimo API 的 TCP `8080`。
 - 定期查看审计日志。
 - 支持包和日志确认无密码、token、session、邀请码明文。
 
@@ -310,7 +388,7 @@ docker run -d -p 9090:8090 ...
 
 - 安装 Stardew 时，面板运行镜像会额外拉取/使用 `steam-auth-cn` 与 `JunimoServer server` 运行期镜像。二者已支持候选兜底，不再只依赖 `docker compose pull` 的单一源。
 - 默认 `SERVER_IMAGE_CANDIDATES`：`docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
-- 默认 `STEAM_SERVICE_IMAGE_CANDIDATES`：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- 默认 `STEAM_SERVICE_IMAGE_CANDIDATES`：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
 - 离线或内网发布时，可预先 `docker pull` 上述任意候选，或在实例 `.env` 中把可用内网镜像写入 `SERVER_IMAGE_CANDIDATES` / `STEAM_SERVICE_IMAGE_CANDIDATES`。后端会优先复用本地已有候选，并把实际选中项写回 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`。
 - 注意：`ghcr.io/sdvd/server:*` 与 `ghcr.io/anxiyizhi/junimo-steam-service-cn:*` 只有在对应 GHCR 包真实发布且可公开拉取时才会成功；失败会自动继续后续候选。
 # JUNIMO-IMAGE-CANDIDATES-2 Junimo 镜像候选源补齐
@@ -318,5 +396,15 @@ docker run -d -p 9090:8090 ...
 - JunimoServer 与 steam-auth cn 镜像不再依赖 `docker compose pull` 的单源解析；后端逐个 `inspect/pull` 候选镜像，成功后写回 `.env` 的 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`。
 - 旧实例如果已经保存了单值 `SERVER_IMAGE_CANDIDATES` 或 `STEAM_SERVICE_IMAGE_CANDIDATES`，安装流程会自动把默认候选源补到前面并写回 `.env`，避免只尝试 `(1/1)`。
 - JunimoServer 默认顺序：`docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
-- steam-auth cn 默认顺序：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- steam-auth cn 默认顺序：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
 - 发布或离线部署时，预拉上述任意候选即可；本地已有候选会优先复用，不会因为排在前面的候选缺失而重新拉取。
+# RELEASE-TAG-CI-1 GitHub Tag 发版
+
+- 面板仓库新增 `.github/workflows/release.yml`：推送 `v*` tag 时自动构建 `Dockerfile`，并推送到 Docker Hub、阿里云 ACR 与 GitHub GHCR。
+- Git tag 使用 `v0.1.0` 形式；Docker 镜像 tag 会去掉前缀 `v`，发布为 `0.1.0`，同时更新 `latest`。
+- 发布目标：
+  - `anxiyizhi/stardew-server-anxi-panel:<version>` 与 `:latest`
+  - `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:<version>` 与 `:latest`
+  - `ghcr.io/anxiyizhi/stardew-server-anxi-panel:<version>` 与 `:latest`
+- GitHub Release 会自动生成 release notes，并上传 `deploy/run.sh`，供用户一键下载启动。
+- 仓库 secrets 需要配置：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`、`ALIYUN_REGISTRY_USERNAME`、`ALIYUN_REGISTRY_PASSWORD`。GHCR 使用 GitHub Actions 自动注入的 `GITHUB_TOKEN`，workflow 需要 `packages: write` 权限；首次发布后如果包是私有，需要在 GitHub Package settings 中改为 Public。阿里云 ACR 新版个人版实例必须使用控制台“访问凭证”里显示的登录名和域名；当前实例域名为 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com`，`ALIYUN_REGISTRY_USERNAME` 填控制台命令 `docker login --username=...` 里的值，例如 `安西义之`。

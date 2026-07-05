@@ -302,7 +302,7 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, s
     game_downloading: '正在下载游戏文件（约 10–30 分钟）...',
     steam_sdk_downloading: '游戏文件已下载，正在下载 Steam SDK 运行文件...',
     steamcmd_image_pulling: '正在拉取 SteamCMD 兜底镜像...',
-    steamcmd_auth_running: 'steam-auth 下载失败，正在使用 SteamCMD 重新登录...',
+    steamcmd_auth_running: 'SteamCMD 正在复用已保存授权登录...',
     steamcmd_guard_choice_required: 'SteamCMD 需要重新授权，请选择验证方式...',
     steamcmd_guard_required: 'SteamCMD 需要 App 或邮箱验证码...',
     steamcmd_guard_mobile_required: '请在 Steam 手机 App 批准 SteamCMD 登录...',
@@ -385,7 +385,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     && (latestInstallJob === null || isTerminalJobStatus(latestInstallJob.status))
   const basePhase = staleInstallingPhase ? 'install_interrupted' : phase
   const authSucceededInLogs = logsShowSteamAuthSucceeded(logs)
-  const canDirectRetry = state === 'error'
+  const canDirectRetry = isInstalled
+    || state === 'error'
     || staleInstallingPhase
     || authSucceededInLogs
     || ['pull_failed', 'install_timeout', 'steam_auth_connection_failed', 'install_interrupted', 'download_failed', 'post_auth_failed'].includes(basePhase)
@@ -874,6 +875,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   ? '上次已进入 SteamCMD 兜底但授权或下载未完成；本次会直接复用已保存账号密码进入 SteamCMD 授权/下载，本地已有 SteamCMD 镜像时不会重新拉取。'
                   : postAuthRecoverable
                   ? 'Steam 认证已经成功，本次只会复用已保存凭据重试下载/后续安装步骤，不需要重新输入账号密码。'
+                  : isInstalled
+                    ? '本次会跳过 steam-auth，复用已保存凭据和 SteamCMD 授权缓存直接下载/校验游戏文件，不需要重新输入账号密码。'
                   : canDirectRetry && !isInstalled
                     ? '将使用已保存的 Steam 凭据重新安装，只需确认镜像版本。'
                   : '请输入 Steam 账号信息和 VNC 密码。密码不会出现在任何日志中。'}
@@ -969,6 +972,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       ? '正在启动安装…'
                       : steamCMDRecoverable
                         ? '确认重试 SteamCMD'
+                        : isInstalled
+                          ? '确认修复 / 更新'
                         : canDirectRetry && !isInstalled
                           ? '确认重试'
                           : '确认安装'}
@@ -1039,7 +1044,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 {isSteamCMDClientUpdating
                   ? 'Docker 镜像已经就绪；这里显示的是 SteamCMD 容器内客户端自更新进度，完成后会进入登录授权。'
                   : effectivePhase === 'steamcmd_downloading'
-                  ? 'steam-auth 在国内网络下下载失败，面板已自动改用 SteamCMD 复用账号密码下载。'
+                  ? 'SteamCMD 正在复用已保存凭据和授权缓存下载/校验游戏文件。'
                   : '大文件下载中，请耐心等待（约 10–30 分钟）。下载完成后面板会自动继续。'}
               </div>
               {steamDownloadProgress ? (
@@ -1266,7 +1271,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               <img className="sd-install-auth-orb" src={STEAM_STEP_ICON_SRC} alt="" aria-hidden="true" />
               <p>
                 {isInstalled
-                  ? 'Steam 认证已完成。后续如需修复安装，可在左侧重新进入安装流程。'
+                  ? 'Steam 认证已完成。后续修复安装会复用已保存凭据与 SteamCMD 授权缓存。'
                   : isInstalling
                     ? '安装流程运行中，认证交互会在需要时显示在这里。'
                     : '启动安装后，这里会显示扫码登录、Steam Guard 或验证码输入。'}
