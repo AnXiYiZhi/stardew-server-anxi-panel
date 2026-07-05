@@ -38,13 +38,14 @@ type DockerService interface {
 }
 
 type server struct {
-	config         config.Config
-	store          *storage.Store
-	logger         *slog.Logger
-	docker         DockerService
-	jobs           *jobs.Manager
-	registry       *registry.Registry
-	pendingUploads *pendingUploadStore
+	config           config.Config
+	store            *storage.Store
+	logger           *slog.Logger
+	docker           DockerService
+	jobs             *jobs.Manager
+	registry         *registry.Registry
+	pendingUploads   *pendingUploadStore
+	publicIPResolver *publicIPResolver
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -60,13 +61,14 @@ func NewHandler(deps Deps) http.Handler {
 	}
 
 	s := &server{
-		config:         normalizeConfig(deps.Config),
-		store:          deps.Store,
-		logger:         logger,
-		docker:         dockerClient,
-		jobs:           deps.Jobs,
-		registry:       deps.Registry,
-		pendingUploads: newPendingUploadStore(),
+		config:           normalizeConfig(deps.Config),
+		store:            deps.Store,
+		logger:           logger,
+		docker:           dockerClient,
+		jobs:             deps.Jobs,
+		registry:         deps.Registry,
+		pendingUploads:   newPendingUploadStore(),
+		publicIPResolver: newPublicIPResolver(defaultPublicIPProviders),
 	}
 	if s.jobs == nil {
 		s.jobs = jobs.NewManager(deps.Store, logger)

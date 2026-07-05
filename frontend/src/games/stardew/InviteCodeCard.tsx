@@ -13,10 +13,11 @@ export function InviteCodeCard({
   instanceState,
   dashboardData,
   className,
-  label = '邀请加入码',
-  description = '分享此代码邀请新玩家加入服务器',
+  label = '邀请码',
+  description = '',
 }: InviteCodeCardProps) {
   const [copied, setCopied] = useState(false)
+  const [ipCopied, setIpCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
 
   const state = instanceState?.state ?? null
@@ -30,6 +31,22 @@ export function InviteCodeCard({
       () => {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
+      },
+      () => {
+        setCopyError(true)
+        setTimeout(() => setCopyError(false), 3000)
+      },
+    )
+  }
+
+  function handleCopyPublicIP() {
+    const ip = dashboardData.publicIP?.ip
+    if (!ip) return
+    setCopyError(false)
+    navigator.clipboard.writeText(ip).then(
+      () => {
+        setIpCopied(true)
+        setTimeout(() => setIpCopied(false), 2000)
       },
       () => {
         setCopyError(true)
@@ -76,9 +93,42 @@ export function InviteCodeCard({
           </button>
         </div>
       </div>
+      <div className="sd-players-invite-row sd-players-public-ip-row">
+        <div className="sd-players-invite-copy">
+          <span className="sd-players-invite-label">局域网邀请</span>
+        </div>
+        {dashboardData.publicIP?.ip ? (
+          <span className="sd-players-invite-code sd-players-public-ip-code">{dashboardData.publicIP.ip}</span>
+        ) : dashboardData.publicIPRefreshing ? (
+          <span className="sd-players-invite-loading">检测中…</span>
+        ) : dashboardData.publicIPError ? (
+          <span className="sd-players-invite-error">检测失败</span>
+        ) : (
+          <span className="sd-players-invite-empty">未检测</span>
+        )}
+        <div className="sd-players-invite-actions">
+          {dashboardData.publicIP?.ip ? (
+            <button
+              className="sd-btn-green sd-players-copy-btn"
+              onClick={handleCopyPublicIP}
+              title="复制服务器公网 IP"
+            >
+              {ipCopied ? '已复制' : '复制'}
+            </button>
+          ) : null}
+          <button
+            className="sd-btn-tan sd-players-refresh-btn"
+            onClick={() => { void dashboardData.refreshPublicIP(true) }}
+            disabled={dashboardData.publicIPRefreshing}
+            title="重新检测服务器公网 IP"
+          >
+            {dashboardData.publicIPRefreshing ? '检测中' : '刷新'}
+          </button>
+        </div>
+      </div>
       {copyError ? (
         <div className="sd-srv-hint" style={{ color: '#b94040', marginTop: 4 }}>
-          复制失败，请手动选取邀请码文字。
+          复制失败，请手动选取文字。
         </div>
       ) : null}
     </div>

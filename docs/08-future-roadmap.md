@@ -1,3 +1,31 @@
+# FE-TOPBAR-BRAND-LIGHTER-1 状态
+- `FE-TOPBAR-BRAND-LIGHTER-1` completed：Stardew Shell 左上角品牌标题已按用户反馈再调细，`.sd-topbar-brand-text` 字重从 `800` 降到 `700`，并减少暗色描边/投影层数；仅改前端 CSS，未改顶栏状态牌、存档/用户框、API、权限、路由或 Junimo 通信。验证：`cd frontend; npm.cmd run build`。
+
+# FE-OVERVIEW-HEALTH-SHARE-1 状态
+- `FE-OVERVIEW-HEALTH-SHARE-1` completed：诊断页成功执行健康检查后会把结果同步到公共 dashboard 数据层，用户从诊断页返回总览页时“系统健康”卡会显示最新评分和状态，不再保持 `— / 未检查`。普通 dashboard 初始化仍不主动调用 `/api/health/diagnostics`，保留诊断按需触发策略。验证：`cd frontend; npm.cmd run build`；Browser QA 通过总览 `—` -> 诊断页 6 项正常 -> 回总览 `100% / 6项全部通过 / 优秀`。
+
+# PUBLIC-IP-LOOKUP-1 状态
+- `PUBLIC-IP-LOOKUP-1` completed：新增 `GET /api/instances/:id/public-ip`，由面板后端检测服务器公网出口 IP，返回 `{ ip, checkedAt, source?, cached }`，成功结果缓存 `10min`，前端手动刷新会强制重新探测。邀请卡片已在邀请码下方新增公网 IP 框和复制/刷新按钮，上方标题保持“邀请码”，下方标题显示“局域网邀请”，公网 IP 失败态不显示复制按钮但两行值框保持同宽，并按用户反馈移除邀请码说明文字。未改 Junimo driver、Docker/Compose、实例状态或邀请码接口。验证：`cd backend; go test ./internal/web`，`cd frontend; npm.cmd run build`。
+
+# FE-MOD-COUNT-FILTER-BUILTIN-1 状态
+- `FE-MOD-COUNT-FILTER-BUILTIN-1` completed：总览页模组统计已过滤 SMAPI runtime、`StardewAnxiPanel.Control`、`JunimoServer` / `JunimoHost.Server` 三类内置运行组件；模组统计卡、`已启用 N 个` 和同步包摘要里的已启用/已停用数量均按用户可见 Mod 计算。系统运行组件识别已抽为 `mod-visibility.ts`，由总览页和模组页共用。仅改前端展示口径，未改后端 API、启用切换接口、同步包导出或 Junimo 通信。验证：`cd frontend; npm.cmd run build`。
+
+# DOCKER-POLL-PERF-1 状态
+
+- `DOCKER-POLL-PERF-1` completed：`ComposePs` 已增加默认 `1.5s` 短 TTL 成功结果缓存，并在 `compose up/down/restart` 前后失效，减少状态页、诊断和支持包短时间重复触发 Docker CLI 的开销。
+- 前端已停止普通 dashboard 初始化里的健康诊断请求，也移除右侧栏 `/metrics` 常驻轮询；资源指标只在诊断页可见时按 `8s` 间隔采样，后台 tab 隐藏时暂停。
+- `DockerVersion` / `ComposeVersion` 保持在 Diagnostics、Docker 状态页、安装前检查或用户手动刷新路径，不进入普通总览轮询。验证：`cd backend; go test -count=1 ./internal/docker`，`cd frontend; npm.cmd run build`。
+
+# ASSET-RUNTIME-SLIM-1 状态
+- `ASSET-RUNTIME-SLIM-1` completed：浏览器扩展安装包已从 runtime `zip -r` 改为 `extension-builder` 构建阶段产物，最终 Alpine runtime 不再安装 `zip`；`docs/prototypes` 已从 109 个历史截图/提取文件收敛为轻量索引和 2 张关键总览基准图，完整原型截图改由外部制品承接；超过 300 KB 的运行 PNG 已做无损重压缩并通过像素等价校验；登录背景因色调变化已回退为 PNG-only；favicon 已改为 `.ico` 加 32/64/128 PNG。
+
+# SUPPORT-BUNDLE-STREAM-1 状态
+
+- `SUPPORT-BUNDLE-STREAM-1` completed：支持包导出已改为直接对 HTTP 响应流写 ZIP，不再用内存 `bytes.Buffer` 聚合整个压缩包后一次性返回。下载接口、文件名和 ZIP 条目保持不变；响应不再设置 `Content-Length`，前端应按 Blob 下载处理。已验证 `cd backend; go test ./internal/web -run "SupportBundle|Docker|Metrics"` 与 `cd backend; go test ./...`。
+
+# FE-CLEANUP-UNUSED-ASSETS-1 状态
+- `FE-CLEANUP-UNUSED-ASSETS-1` completed：前端生产素材已清理 79 个源码零引用旧 PNG，主要是旧右栏整图、旧顶栏三段、旧导航/字段/图标 sheet 与早期装饰 sprite；`frontend/public/assets` 从约 39.52MB 降到约 18.56MB。同步删除无引用组件 `CommandOutput`、`StatusPill`、`StatusBadge`、`InstanceStateCard`。未改业务逻辑、API、路由或 Junimo 通信；保留动态路径使用的 `new-game` 素材和 QA 入口。已验证素材复扫无非 `new-game` 零引用文件，`cd frontend; npm.cmd run build` 通过。
+
 # FE-MODS-HIDE-SYSTEM-RUNTIME-1 状态
 - `FE-MODS-HIDE-SYSTEM-RUNTIME-1` completed：模组页已隐藏 SMAPI runtime、`StardewAnxiPanel.Control` 和 `JunimoServer` / `JunimoHost.Server` 这类系统运行组件；它们不再出现在“添加模组”的已安装卡片或“配置模组”的当前存档启用状态列表中。用户可见“已安装”和解析失败统计同步只计算普通 Mod；玩家同步统计和导出仍保留完整列表逻辑，避免影响基础运行依赖处理。仅改前端 `ModsPage.tsx` 和文档，未改后端 API、启用切换接口、玩家同步包导出或 Junimo 通信。验证：`cd frontend; npm.cmd run build`。
 
@@ -539,7 +567,7 @@ Multi Game Mode later
 # VNC-CONTROL-1 状态
 - `VNC-CONTROL-1` completed：服务器控制页新增管理员 VNC 操作入口。页面刷新后会先通过面板后端代理 Junimo `GET /rendering` 恢复真实渲染状态；`打开VNC显示` 通过 `POST /rendering?fps=15` 打开服务端画面渲染，成功后切换为 `关闭VNC显示` 并可通过 `fps=0` 关闭；`跳转VNC控制` 默认隐藏，仅在显示渲染打开后出现，按当前面板 hostname + 自定义 `vncPort` 打开 noVNC 页面。前端不接触 Junimo API key，VNC 密码不回显。
 # FE-PROTOTYPE-LAYOUT-1 状态
-- `FE-PROTOTYPE-LAYOUT-1` completed：前端主要 Stardew 页面已按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30` 的信息架构重新排布。总览页对齐农场横幅、生命周期控制、邀请码、摘要指标和三列摘要；存档页新增当前激活存档重点卡；服务器、任务、玩家、模组、诊断、设置页通过页面级布局 class 调整为原型式分区。现有 API 和功能不变，`ModsPage` 保留三段式工作台。
+- `FE-PROTOTYPE-LAYOUT-1` completed：前端主要 Stardew 页面已按 `external artifact stardew-page-prototypes-image2-2026-06-30` 的信息架构重新排布。总览页对齐农场横幅、生命周期控制、邀请码、摘要指标和三列摘要；存档页新增当前激活存档重点卡；服务器、任务、玩家、模组、诊断、设置页通过页面级布局 class 调整为原型式分区。现有 API 和功能不变，`ModsPage` 保留三段式工作台。
 # FE-SHELL-IMAGE2-1 状态
 - `FE-SHELL-IMAGE2-1` completed：Stardew Shell 顶栏已替换为 image2 `Top bar.png`，左侧导航迁移到 `Left panel.png`，右侧任务栏迁移到 `01-overview-right-sidebar-empty-image2.png`。顶栏继续显示运行/停止状态、当前农场名、面板版本、管理员/普通用户和登出入口；左侧栏用透明热区承接原九路由点击逻辑，移动端保留横向图标导航；右侧 OpsRail 保留健康和任务状态逻辑。
 
@@ -621,7 +649,7 @@ Multi Game Mode later
 - `FE-RIGHT-RAIL-BLACK-EDGE-FIX-1` completed：修复右侧 OpsRail 三段 shell 接入后左右两侧露黑的问题。中段 `right_rail_shell_middle_tile.png` 改为 121% 横向 overscan 后居中 `repeat-y`，top/bottom 固定段按 108% 横向 overscan 并同步调整高度和 stack 扣底部装饰高度；兜底色改为木板棕。已验证 `cd frontend; npm.cmd run build` 通过，本地 QA 页面 1280x720 / 1280x560 截图确认黑边消失且矮窗口仍内部滚动。
 
 # FE-MAIN-PAGE-FRAME-1 状态
-- `FE-MAIN-PAGE-FRAME-1` completed：所有 Stardew 路由的中间主内容区 `.sd-main` 已统一替换为 image2 存档页空框背景 `main_page_frame_empty_image2.png`。资源从 `docs/prototypes/.../03-saves-page-frame-empty-image2.png` 复制到 `frontend/public/assets/stardew/ui/panels/` 供运行时和 Docker 静态发布使用；主内容背景改为居中、不重复、`100% 100%` 铺满，并把页面整体 padding 调整为 `clamp(28px, 2.4vw, 42px)` 避免压到木框角饰。主内容区仍保留 `overflow-y: auto`，但已隐藏 Firefox/Chromium/WebKit 原生滚动条，避免白色竖条压住右侧 frame 边框。已验证前端构建通过，生产 CSS 临时 Shell QA 页在 1280x720 和 390x760 下背景加载、滚动条隐藏、滚动能力保留、无横向溢出、console error/warn 为空。
+- `FE-MAIN-PAGE-FRAME-1` completed：所有 Stardew 路由的中间主内容区 `.sd-main` 已统一替换为 image2 存档页空框背景 `main_page_frame_empty_image2.png`。资源从 `external artifact stardew-page-prototypes-image2-2026-06-30 (03-saves-page-frame-empty-image2.png)` 复制到 `frontend/public/assets/stardew/ui/panels/` 供运行时和 Docker 静态发布使用；主内容背景改为居中、不重复、`100% 100%` 铺满，并把页面整体 padding 调整为 `clamp(28px, 2.4vw, 42px)` 避免压到木框角饰。主内容区仍保留 `overflow-y: auto`，但已隐藏 Firefox/Chromium/WebKit 原生滚动条，避免白色竖条压住右侧 frame 边框。已验证前端构建通过，生产 CSS 临时 Shell QA 页在 1280x720 和 390x760 下背景加载、滚动条隐藏、滚动能力保留、无横向溢出、console error/warn 为空。
 # FE-MODS-DYNAMIC-PAGESIZE-1 状态
 - `FE-MODS-DYNAMIC-PAGESIZE-1` completed：模组下载页 Nexus 搜索结果已改为固定搜索卡片高度 + 动态 pageSize。`.sd-mods-nexus-search-list` 卡片高度固定 `246px`，前端按真实结果网格在 `.sd-main-scroll` 内的可见高度和实际列数计算每页数量，并传给既有 Nexus 搜索 API 的 `pageSize`；加载骨架不参与测量，避免 loading/结果态来回触发刷新；顶部翻页器同步显示“每页 N 个”，底部重复翻页器移除。已验证 `cd frontend; npm.cmd run build` 通过，并用临时本地 QA 页面确认 1040x1120 为 pageSize=4、1040x720 为 pageSize=2、520x720 为 pageSize=1，卡片高度均为 `246px`。
 # FE-JOBS-PROTOTYPE-IMAGE2-1 状态
@@ -673,3 +701,5 @@ Multi Game Mode later
 
 - 已修复安装完成态 `game_installed` 在前端不可启动的问题：总览页和服务器控制页都会把它作为可启动的未运行状态展示。
 - 若没有可用存档，点击启动后仍由后端返回 `save_required` 并引导用户创建/上传/选择存档。
+# FE-OPSRAIL-METRICS-RESTORE-1 状态
+- `FE-OPSRAIL-METRICS-RESTORE-1` completed：右侧 OpsRail CPU / 内存 / 磁盘已恢复轻量实时显示，Stardew 面板挂载期间调用现有 `/api/instances/:id/metrics`，首次立即采样并按 `2s` 刷新；没有用户打开前端页面时自然不会产生浏览器轮询，页面卸载时停止 timer。普通 dashboard 初始化仍不触发 `/api/health/diagnostics`，保留此前诊断降轮询优化。验证：`cd frontend; npm.cmd run build`；Browser QA 打开 `qa-layout.html?state=running` 确认右侧栏显示 mock metrics 百分比而非空值。

@@ -1,3 +1,27 @@
+# PUBLIC-IP-LOOKUP-1 联调契约
+
+- 新增 `GET /api/instances/:id/public-ip`：任意已登录用户可调用，返回面板后端所在服务器检测到的公网出口 IP，而不是浏览器客户端 IP。
+- 响应结构为 `{ "ip": string, "checkedAt": string, "source"?: string, "cached": boolean }`。默认返回后端 `10min` 成功缓存；前端点击刷新时请求 `?refresh=1` 强制重新探测。
+- 后端只接受合法公网地址；外部检测服务失败、返回内网/非法地址或超时时，接口返回 `502 public_ip_failed`。前端应显示“检测失败”，并允许用户手动刷新。
+- 该接口不依赖 JunimoServer、Docker Compose 或服务器运行状态；它检测的是面板容器/宿主当前出口公网 IP，主要用于用户配置端口转发、直连排查和确认服务器对外地址。
+- 验证：`cd backend; go test ./internal/web`，`cd frontend; npm.cmd run build`。
+
+# DOCKER-POLL-PERF-1 Docker 状态与资源轮询契约
+
+- 后端 `ComposePs` 有默认 `1.5s` 短 TTL 缓存，供状态页、支持包、诊断等短时间重复读取复用。接口响应结构不变，前端无需感知缓存命中。
+- `ComposeStats --no-stream` 仍只由 `/api/instances/:id/metrics` 触发，不做高频全局轮询。前端资源指标采样应只在诊断页/资源页可见时运行，刷新间隔保持 `5-10s`，当前实现为 `8s`。
+- 浏览器 tab 隐藏时前端必须停止资源指标 timer；恢复可见后可以立即采样一次。非资源页和后台 tab 不应持续请求 `/metrics`。
+- `/api/health/diagnostics` 会执行 Docker daemon 与 Compose 可用性检查，可能调用 `DockerVersion` / `ComposeVersion`；该接口只用于 Diagnostics、Docker 状态页、安装前检查或用户手动刷新，不进入普通总览初始化和常驻轮询。
+- 支持包中的 `ComposeLogs` 仍是一次性 tail 导出；后续大日志 tail 或安装进度应优先保持流式/SSE，不要等待长命令完成后一次性返回。
+- 验证：`cd backend; go test -count=1 ./internal/docker`，`cd frontend; npm.cmd run build`。
+
+# SUPPORT-BUNDLE-STREAM-1 联调契约
+
+- `POST /api/instances/:id/support-bundle` 仍由管理员触发，仍返回 `application/zip`，文件名形如 `support-bundle-YYYYMMDD-HHMMSS.zip`。
+- 后端现在流式写 ZIP，不再设置 `Content-Length`。前端下载逻辑应以 HTTP 成功和 Blob 内容为准，不要依赖总长度或进度百分比。
+- ZIP 内条目和脱敏语义保持不变：版本、健康检查、实例状态、近期任务、审计摘要、Compose 状态、Compose 配置摘要和 server 日志 tail。
+- 如果后续支持包单个条目采集失败，应在 ZIP 内写入对应 error/note 条目；流式响应开始后不能再切换成 JSON 错误体。
+
 # JUNIMO-MOD-MOUNT-RESTORE-1 联调契约
 
 - `/data/Mods` 由宿主 `.local-container/mods` 挂载提供；后端必须保证其中包含官方 `JunimoServer` Mod，否则 Junimo API、邀请码和 VNC rendering 都不会就绪。

@@ -25,6 +25,7 @@ import type {
   OKResponse,
   PanelUser,
   PrepareResponse,
+  PublicIPResult,
   PreflightResult,
   BackupCreateResult,
   BackupPolicy,
@@ -240,6 +241,11 @@ export function restartInstance(instanceId = defaultInstanceId) {
 
 export function getInviteCode(instanceId = defaultInstanceId) {
   return request<InviteCodeResult>(`/api/instances/${encodeURIComponent(instanceId)}/invite-code`)
+}
+
+export function getInstancePublicIP(instanceId = defaultInstanceId, refresh = false) {
+  const query = refresh ? '?refresh=1' : ''
+  return request<PublicIPResult>(`/api/instances/${encodeURIComponent(instanceId)}/public-ip${query}`)
 }
 
 export function getInstanceVNCConfig(instanceId = defaultInstanceId) {

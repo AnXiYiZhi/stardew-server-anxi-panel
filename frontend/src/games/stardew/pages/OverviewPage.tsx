@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ApiError, startInstance, stopInstance, restartInstance } from '../../../api'
 import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { InviteCodeCard } from '../InviteCodeCard'
+import { modIsSystemRuntime } from '../mod-visibility'
 import type { StardewPageProps } from '../stardew-routes'
 
 const OVERVIEW_ICONS = {
@@ -37,8 +38,9 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
     state !== 'running' &&
     state !== 'starting'
-  const modCount = dashboardData.mods?.mods.length ?? 0
-  const enabledModCount = dashboardData.mods?.mods.filter((m) => m.enabled).length ?? 0
+  const visibleMods = dashboardData.mods?.mods.filter((m) => !modIsSystemRuntime(m)) ?? []
+  const modCount = visibleMods.length
+  const enabledModCount = visibleMods.filter((m) => m.enabled).length
   const disabledModCount = modCount - enabledModCount
   const modRestartRequired = dashboardData.mods?.restartRequired ?? false
   const onlineCount = dashboardData.players?.onlineCount
@@ -352,10 +354,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
                   ? `${warnCount}警告 · ${okCount}正常`
                   : dashboardData.healthError
                     ? '健康检查失败'
-                    : '检查中…'}
+                    : '进入诊断页后检查'}
           </div>
           <span className={`sd-mc-pill${healthStatus === 'error' ? ' sd-mc-pill--error' : healthStatus === 'warning' ? ' sd-mc-pill--warn' : healthStatus === 'ok' ? ' sd-mc-pill--ok' : ''}`}>
-            {healthStatus === 'error' ? '异常' : healthStatus === 'warning' ? '警告' : healthStatus === 'ok' ? '优秀' : '检查中'}
+            {healthStatus === 'error' ? '异常' : healthStatus === 'warning' ? '警告' : healthStatus === 'ok' ? '优秀' : '未检查'}
           </span>
         </div>
 

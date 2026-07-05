@@ -1,3 +1,50 @@
+# FE-OVERVIEW-HEALTH-SHARE-1 概览系统健康卡同步诊断结果
+- 诊断页进入时自动执行的健康检查、以及用户点击“重新检查”成功后，会把 `GET /api/health/diagnostics` 的结果写回公共 `dashboardData.health`，因此回到总览页后“系统健康”统计卡会显示最新评分、通过/警告/错误数量和状态徽章，不再停留在 `— / 未检查`。
+- 公共 dashboard 初始化仍不主动调用 `/api/health/diagnostics`，保留 `DOCKER-POLL-PERF-1` 的降轮询设计；只有用户打开诊断页或手动检查后，概览页才消费这次已产生的诊断结果。
+- 影响文件：`frontend/src/games/stardew/stardew-routes.ts`、`frontend/src/games/stardew/useStardewDashboardData.ts`、`frontend/src/games/stardew/pages/DiagnosticsPage.tsx`。未改后端 API、权限、路由、Junimo 通信或普通概览初始化轮询。
+- 验证：`cd frontend; npm.cmd run build`；Browser QA 打开 `http://127.0.0.1:5174/qa-layout.html?state=running`，初始总览健康卡为 `—`，进入诊断页拿到 6 项正常后回总览，健康卡显示 `100% / 6项全部通过 / 优秀`。
+
+# FE-PUBLIC-IP-INVITE-CARD-1 邀请卡增加服务器公网 IP
+- `InviteCodeCard` 在邀请码下方新增“服务器公网 IP”一行，展示后端 `GET /api/instances/:id/public-ip` 检测到的面板服务器公网出口 IP，并提供复制、刷新按钮。
+- 总览页与服务器摘要页复用同一个 `InviteCodeCard`，因此两处都显示同一套 IP 检测框；刷新按钮会请求 `?refresh=1` 强制重新检测，复制按钮只复制 IP 文本。
+- 按用户反馈移除邀请码下方“分享此代码邀请新玩家加入服务器”说明文字，公网 IP 行也不展示说明文案，只保留标题、值和复制/刷新按钮，避免截图中的小框被说明文字撑高。
+- 上方邀请码行标题保持“邀请码”；下方公网 IP 检测行标题显示为“局域网邀请”。公网 IP 未检测/检测失败时不显示复制按钮，但操作区保留固定宽度，保证两行值框宽度一致。
+- 总览页“服务器控制”卡内的邀请/IP 组上移到右上区域，减少标题右侧原本的大块留白；未改变按钮宽度和两列主布局。
+- 数据层新增 `publicIP/publicIPError/publicIPRefreshing/refreshPublicIP()`，初始化与 `refreshAll()` 会做一次缓存读取，手动刷新才强制重新探测。
+- 影响文件：`frontend/src/api.ts`、`frontend/src/types.ts`、`frontend/src/games/stardew/stardew-routes.ts`、`frontend/src/games/stardew/useStardewDashboardData.ts`、`frontend/src/games/stardew/InviteCodeCard.tsx`、`frontend/src/games/stardew/StardewPanel.css`。未改邀请码获取、生命周期按钮、Junimo 通信或 Docker 诊断轮询。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-MOD-COUNT-FILTER-BUILTIN-1 总览模组统计过滤内置组件
+- 总览页模组统计现在复用模组页的系统运行组件识别口径：SMAPI runtime、`StardewAnxiPanel.Control`、`JunimoServer` / `JunimoHost.Server` 不计入用户可见模组统计。
+- “模组”统计卡的大数字、`已启用 N 个`、同步包摘要里的已启用/已停用数量都基于过滤后的用户可见 Mod 列表，避免把面板内置依赖算成玩家安装模组。
+- 新增共享 helper `frontend/src/games/stardew/mod-visibility.ts`，`OverviewPage` 与 `ModsPage` 共用 `modIsSystemRuntime()`，后续新增内置运行组件时只需同步扩展该 helper。
+- 影响文件：`frontend/src/games/stardew/mod-visibility.ts`、`frontend/src/games/stardew/pages/OverviewPage.tsx`、`frontend/src/games/stardew/pages/ModsPage.tsx`。未改后端 API、启用状态接口、同步包导出或 Junimo 通信。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-ASSET-RUNTIME-SLIM-1 前端运行素材与原型制品瘦身
+- `docs/prototypes/` 已从历史大图目录改为轻量索引目录：当前只保留 `README.md`、`overview-design-baseline-2026-06-30.png` 和 `overview-current-baseline-2026-07-04.png`。完整原型截图、当前实现截图和 `assets/ui-extracted` 提取工作区应作为 Release artifact、对象存储或单独设计仓库制品保存。
+- 登录背景已回退为 PNG-only 加载，避免 AVIF/WebP 或重编码造成色调偏移；`background_login_farm_generated.png` 与 `background_login_home_image2.png` 保持原仓库色调。
+- 对 `frontend/public/assets` 中超过 300 KB 的运行 PNG 做了无损重压缩并做像素等价校验；右栏 9-slice、tile 等非登录背景素材只做无损压缩，不改变切片参数。
+- favicon 从单个 512px / 545 KB PNG 改为 `favicon.ico` 加 32/64/128 PNG，多尺寸图标位于 `frontend/public/favicon-*.png`，默认 `favicon.png` 收敛为 128px。
+- 影响文件：`frontend/src/App.css`、`frontend/index.html`、`frontend/public/favicon*`、`frontend/public/assets/stardew/ui/backgrounds/*.{avif,webp,png}`、若干运行 PNG 素材、`docs/prototypes/README.md`。
+- 验证：PNG 无损重压缩脚本逐张通过像素等价校验；`docs/prototypes` 从 109 个文件约 71.38 MB 降到 3 个文件约 2.58 MB。
+
+# DOCKER-POLL-PERF-1 诊断与资源指标按需刷新
+
+- 公共 `useStardewDashboardData()` 初始化不再自动请求 `/api/health/diagnostics`，避免用户只是进入总览页时触发 `DockerVersion` / `ComposeVersion` 这类诊断命令。
+- 总览页“系统健康”统计卡在未打开诊断前显示“未检查 / 进入诊断页后检查”，不再显示“检查中”造成后台正在持续诊断的误解。
+- 右侧 OpsRail 不再常驻轮询 `/api/instances/:id/metrics`；非资源页不持续触发 `docker compose stats --no-stream`。
+- `DiagnosticsPage` 进入页面时会主动执行一次健康检查；用户点击“重新检查”时再执行一次。资源指标只在诊断页组件挂载且 `document.visibilityState === "visible"` 时刷新，间隔 `8s`；浏览器 tab 隐藏时清理 timer，回到可见时立即采样一次。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-CLEANUP-UNUSED-ASSETS-1 前端无引用素材与死组件清理
+- 清理 `frontend/public/assets/stardew/ui/` 下 79 个前端源码零引用的旧 PNG 生产素材，主要集中在旧右栏整图、旧顶栏三段素材、旧导航/字段/图标 sheet 和早期装饰 sprite；清理后 `frontend/public/assets` 从约 39.52MB 降到约 18.56MB。
+- 删除无引用 React 组件：`frontend/src/core/CommandOutput.tsx`、`frontend/src/core/StatusPill.tsx`、`frontend/src/core/StatusBadge.tsx`、`frontend/src/games/stardew/InstanceStateCard.tsx`。
+- 保留 `frontend/public/assets/stardew/new-game/`，其中宠物、农场等图片存在模板字符串动态路径；保留 `frontend/qa-layout.html` 与 `frontend/src/qa-layout-main.tsx` 作为现有前端回归 QA 入口。
+- `docs/prototypes/` 后续已改为轻量索引目录，完整历史原型截图迁出主仓；生产运行代码仍不依赖该路径。
+- 本地额外清理了已忽略的 `.gocache/` 与 `tmp/` 缓存目录，属于工作区本地瘦身，不影响仓库代码。
+- 验证：前端素材复扫 `UNUSED_NON_NEW_GAME=0`；`cd frontend; npm.cmd run build` 通过。
+
 # FE-MODS-HIDE-SYSTEM-RUNTIME-1 模组页隐藏系统运行组件
 - `ModsPage` 新增系统运行组件识别：SMAPI runtime、`StardewAnxiPanel.Control` 和 `JunimoServer` / `JunimoHost.Server` 不再出现在“添加模组”的已安装卡片列表，也不再出现在“配置模组 / 当前存档 Mod 启用状态”开关列表。
 - “已安装”统计和解析失败统计改为只统计用户可见 Mod；只剩系统运行组件时，添加页显示“当前没有可展示 Mod”，配置页显示“当前没有可配置 Mod”。
@@ -124,6 +171,13 @@
 - 备份区域增加 `align-items: start`，左侧策略卡按自身内容高度收住，不再被右侧备份列表卡拉伸出大段空白。
 - 影响文件：`frontend/src/games/stardew/SavesSection.tsx`、`frontend/src/games/stardew/StardewPanel.css`。未改备份策略保存、备份列表、恢复/删除、权限判断、API 或 Junimo 通信。
 - 验证：清理过期 `node_modules/.tmp/*.tsbuildinfo` 后 `cd frontend; npm.cmd run build` 通过；QA mock 全壳打开 `frontend/qa-layout.html` 点击“存档”，Edge/Playwright 截图确认策略卡宽 `250px`、高 `179px`，定时备份行无溢出，console error/warn 为空。
+
+# FE-TOPBAR-BRAND-LIGHTER-1 顶栏品牌标题再减重
+
+- 按用户反馈把 Stardew Shell 左上角 `Stardew Anxi Panel` 品牌标题再调细：`.sd-topbar-brand-text` 字重从 `800` 降到 `700`，并减轻暗色描边/投影层数。
+- 只影响顶栏品牌文字本身；未改顶栏状态牌、存档框、版本框、用户框、路由、API、权限、轮询或 Junimo 通信。
+- 影响文件：`frontend/src/games/stardew/StardewPanel.css`。
+- 验证：`cd frontend; npm.cmd run build`。
 
 # FE-PLAYERS-ACTION-ICONS-IMAGE2-1 玩家页活动行与管理图标修正
 
@@ -371,7 +425,7 @@
 
 # FE-MAIN-PAGE-FRAME-SLICES-1 主内容 Frame 切片平铺
 
-- 所有 Stardew 路由共用的 `.sd-main` 主内容背景不再把 `main_page_frame_empty_image2.png` 整图 `100% 100%` 拉伸；已从 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/03-saves-page-frame-empty-image2.png` 按原始 image2 空框确定性裁出 4 个角、4 条边和中心羊皮纸 tile。
+- 所有 Stardew 路由共用的 `.sd-main` 主内容背景不再把 `main_page_frame_empty_image2.png` 整图 `100% 100%` 拉伸；已从 `external artifact stardew-page-prototypes-image2-2026-06-30 (03-saves-page-frame-empty-image2.png)` 按原始 image2 空框确定性裁出 4 个角、4 条边和中心羊皮纸 tile。
 - 新增运行时素材：`frontend/public/assets/stardew/ui/panels/main_page_frame_corner_*_image2.png`、`main_page_frame_edge_*_tile_image2.png`、`main_page_frame_center_tile_image2.png`。四角固定绘制，顶部/底部 `repeat-x`，左/右 `repeat-y`，中心纸纹 `repeat`，窗口缩放时边框纹理不会被横向或纵向拉伸。
 - `stardew-theme.css` 新增 9 个 frame 切片资源变量；`StardewPanel.css` 的 `.sd-main` 改为 9 层 background，保留 `.sd-main-scroll` 作为唯一滚动视口，原有内侧 inset、裁切和所有页面业务 DOM 不变。
 - 影响文件：`frontend/src/games/stardew/stardew-theme.css`、`frontend/src/games/stardew/StardewPanel.css`、新增 `frontend/public/assets/stardew/ui/panels/main_page_frame_*_image2.png`。
@@ -422,7 +476,7 @@
 
 # FE-PLAYERS-PROTOTYPE-IMAGE2-1 玩家管理页按 image2 原型视觉重皮肤
 
-- 玩家管理页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/05-players - 副本.png` 重做首屏视觉：顶部六张摘要卡、邀请加入码横条、中部 Junimo 服务器终端 + 在线玩家表、底部玩家活动与管理员操作区对齐原型结构。
+- 玩家管理页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (05-players - 副本.png)` 重做首屏视觉：顶部六张摘要卡、邀请加入码横条、中部 Junimo 服务器终端 + 在线玩家表、底部玩家活动与管理员操作区对齐原型结构。
 - 未把原型图作为运行时背景或整块资源引用；整页羊皮纸底、纸纹噪点、铜色边框、内描边、角钉、分隔线、绿字终端、表格表头/行分隔、禁用操作小按钮均由 CSS gradient / border / box-shadow / pseudo-elements 实现。
 - `PlayersPage.tsx` 保留现有 `dashboardData.players`、`inviteCode`、`saves`、刷新、复制、loading/error/empty/disabled 和管理员权限判断，仅调整展示结构：摘要压成 6 卡，玩家表改为原型式 6 列，现金/收入/钱包/联机 ID 仍作为行 title 辅助信息保留，待接入的踢出/封禁/白名单/权限入口继续禁用。
 - 按钮与图标复用现有 Stardew 素材：页头/摘要/分区图标使用 `ui/icons` 下 image2 PNG，复制按钮复用 `sd-btn-green`，刷新和权限按钮复用已有 `.sd-btn-blue`，踢出/封禁复用 `sd-btn-delete`；没有新增图片素材。
@@ -441,7 +495,7 @@
 
 # FE-SERVER-PROTOTYPE-IMAGE2-1 服务器页按 image2 原型视觉重皮肤
 
-- 服务器页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/02-server-control - 副本.png` 调整为羊皮纸控制台结构：顶部大标题、左侧当前状态大卡、右侧生命周期按钮卡、中部邀请代码与全服消息、下方控制台命令绿字终端和快捷操作条。
+- 服务器页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (02-server-control - 副本.png)` 调整为羊皮纸控制台结构：顶部大标题、左侧当前状态大卡、右侧生命周期按钮卡、中部邀请代码与全服消息、下方控制台命令绿字终端和快捷操作条。
 - 未把原型图作为运行时背景或整块素材引用；页面底纹、纸卡、铜色描边、inset 高光、分隔线、绿屏邀请码、黑色终端、快捷操作纸卡均为 CSS gradient / border / box-shadow / pseudo-element 实现。
 - `ServerControlPage` 只新增视觉外壳和信息分组：状态卡字段化、命令结果合入右侧终端展示、全服消息增加字数显示、快捷操作改为原型式横向按钮条；启动/停止/重启/刷新邀请码/复制/喊话/执行命令/备份/VNC/计划重启等 handler、API、权限判断和 disabled 状态未改。
 - 按钮与图标复用既有素材：生命周期按钮继续使用 `sd-btn-start/stop/restart` 与 `icon_button_*` PNG；页头/分区标题复用 `ui/icons` 下的服务器、玩家、存档、时间、诊断等现有图标；状态点复用 `.sd-dot*`。
@@ -451,7 +505,7 @@
 
 # FE-DIAGNOSTICS-PROTOTYPE-IMAGE2-1 诊断与健康页按 image2 原型视觉重皮肤
 
-- 诊断与健康页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/07-diagnostics - 副本.png` 重做首屏视觉：顶部标题/操作、系统状态横向总览、正常/警告/错误计数、左侧检查项表、右侧资源趋势、底部告警与建议条对齐原型结构。
+- 诊断与健康页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (07-diagnostics - 副本.png)` 重做首屏视觉：顶部标题/操作、系统状态横向总览、正常/警告/错误计数、左侧检查项表、右侧资源趋势、底部告警与建议条对齐原型结构。
 - 未把原型图作为运行时背景或整块资源引用。页面羊皮纸底、纸纹噪点、面板边框、内描边、虚线分隔、状态点放大和资源仪表盘由 CSS gradient / border / box-shadow / pseudo-elements 实现；盾牌、宝石、检查项和建议区图标已在 `FE-DIAGNOSTICS-IMAGE2-ICONS-1` 中替换为 image2 风格透明 PNG；SVG 趋势图继续使用现有数据绘制。
 - `DiagnosticsPage.tsx` 保留既有 `getHealthDiagnostics()`、`downloadSupportBundle()`、`getInstanceMetrics()`、管理员导出权限、loading/error/disabled 状态和 5s metrics 轮询，仅调整 DOM 外壳：新增计数卡、检查表头/图标列、资源标题行和底部全宽建议面板。
 - 按钮/素材复用：页头图标复用 `icon_nav_diagnostics_monitor_image2.png`；“重新检查”复用既有绿色 PNG 按钮体系；“导出诊断包”新增诊断页蓝色 CSS 按钮变体，未新增按钮图片。
@@ -461,7 +515,7 @@
 
 # FE-SETTINGS-PROTOTYPE-IMAGE2-1 设置页按 image2 原型视觉重皮肤
 
-- 设置与审计页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/09-settings - 副本.png` 重排视觉结构：顶部原为“当前账号 / 面板版本 / 安全与权限”三卡，现已移除重复的“当前账号”卡，仅保留“面板版本 / 安全与权限”两卡；中部为“用户管理 / 审计日志”双栏，底部为“端口信息 + 其他设置 / 安全建议”两栏。业务数据、API 调用、权限判断、弹窗确认、用户创建/角色/禁用/删除、审计分页和 VNC 端口保存逻辑均保持不变。
+- 设置与审计页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (09-settings - 副本.png)` 重排视觉结构：顶部原为“当前账号 / 面板版本 / 安全与权限”三卡，现已移除重复的“当前账号”卡，仅保留“面板版本 / 安全与权限”两卡；中部为“用户管理 / 审计日志”双栏，底部为“端口信息 + 其他设置 / 安全建议”两栏。业务数据、API 调用、权限判断、弹窗确认、用户创建/角色/禁用/删除、审计分页和 VNC 端口保存逻辑均保持不变。
 - 本次没有把原型图作为运行时背景或整块素材引用；页面背景继续使用既有主内容 frame，设置页卡片、纸纹、铜色边框、角钉、内描边、表格表头、行分隔线、底部提示区均由 `.sd-settings-page` 作用域 CSS 使用 gradient、border、box-shadow 和伪元素实现。
 - `SettingsPage.tsx` 为各功能区补充页面级 modifier class，并新增 `SecuritySummarySection`，把原来长说明型安全信息保留为底部“安全建议”，同时在顶部提供与原型对应的安全状态摘要。设置页头图标切换为已有 image2 齿轮素材 `icon_nav_settings_gear_image2.png`。
 - 按钮与小图标继续复用现有 Stardew 素材体系：按钮为 `sd-btn-green` / `sd-btn-tan` / `sd-btn-delete`，标题图标复用既有导航/顶栏 image2 PNG；没有新增图片素材。窄屏下顶部/中部/底部网格收为单列，用户行按钮换行，审计表在自身容器内横向滚动，页面整体无横向溢出。
@@ -470,7 +524,7 @@
 
 # FE-INSTALL-PROTOTYPE-IMAGE2-1 安装页按 image2 原型视觉重皮肤
 
-- 安装页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/08-install - 副本.png` 做页面级视觉改造，未把原型图作为运行时背景或整块素材引用；羊皮纸背景、纸张噪点、面板描边、时间线卡片、绿色进度条、配置/认证/日志三栏、深色终端日志窗均由 CSS 实现。
+- 安装页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (08-install - 副本.png)` 做页面级视觉改造，未把原型图作为运行时背景或整块素材引用；羊皮纸背景、纸张噪点、面板描边、时间线卡片、绿色进度条、配置/认证/日志三栏、深色终端日志窗均由 CSS 实现。
 - `InstallPage.tsx` 保留原有安装、Steam Guard、二维码弹窗、SSE 日志、权限判断和 API 调用逻辑，只调整 DOM 外壳：顶部状态横幅、五步安装时间线、底部三栏工作区。认证中左侧配置栏新增“配置已提交”占位，避免运行中空栏；日志栏在无任务时显示空状态，安装任务开始后继续渲染原实时日志。
 - 顶部农场横幅复用既有小素材 `sprite_farmhouse_scene.png`，外层用 CSS 渐变、描边和遮罩融入纸张横幅；步骤图标使用 CSS 图形绘制，Steam/下载/星星等不新增截图素材。按钮继续复用现有 `sd-btn-green` / `sd-btn-tan` PNG 按钮体系。
 - 响应式：桌面保持顶部状态 + 横向五步 + 三栏工作区；`760px` 以下步骤条改纵向、底部三栏改单列，表单字段和按钮纵向排列，390px 窄屏无横向溢出。
@@ -488,7 +542,7 @@
 
 # FE-OVERVIEW-PROTOTYPE-IMAGE2-1 总览页按 image2 原型视觉重皮肤
 
-- 总览页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/01-overview - 副本.png` 调整视觉层级，但未把该原型图作为运行时背景或整块素材引用：页面背景、控制条、摘要卡、三列清单、绿屏邀请码、纸纹噪点、边框、内阴影和分隔线均为 CSS 实现。
+- 总览页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (01-overview - 副本.png)` 调整视觉层级，但未把该原型图作为运行时背景或整块素材引用：页面背景、控制条、摘要卡、三列清单、绿屏邀请码、纸纹噪点、边框、内阴影和分隔线均为 CSS 实现。
 - 横幅：继续复用既有小农场场景素材 `sprite_farmhouse_scene.png`，外层用 CSS 叠加天空、云、远山、田地线条、暗角和像素边框，避免新增大面积截图素材。
 - 控制区：`OverviewPage` 新增 `.sd-lifecycle-actions` 与 `.sd-invite-panel` 外壳，把生命周期按钮组和邀请码区排成原型式左右双区块；启动/停止/重启按钮继续复用现有 PNG 按钮底图和 `icon_button_*` 图标，刷新/复制继续走既有按钮组件与 handler。
 - 摘要区：四张摘要卡新增标题图标和右下角状态标签，卡片用 CSS 羊皮纸噪点、深木描边、inset 高光和底部投影模拟原型纸卡；数据仍来自现有 `dashboardData.saves/mods/health/jobs`。
@@ -517,7 +571,7 @@
 
 # FE-SAVES-PROTO-CSS-1 存档页按原型重构（纯 CSS，无图片资源）
 
-- 按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/03-saves-page-frame-clean-image2-no-buttons-icons-thumbnails.png` 重做存档页视觉，全部用 CSS 实现、不新增任何图片资源：羊皮纸纹理 = 两层低透明度 radial-gradient 噪点；激活卡四角铆钉 = 4 层 radial-gradient 圆点定位到四角；上传条像素云 = 多层白色矩形 background 层叠在蓝天渐变上；虚线创建卡 = `::before` inset 虚线框。
+- 按 `external artifact stardew-page-prototypes-image2-2026-06-30 (03-saves-page-frame-clean-image2-no-buttons-icons-thumbnails.png)` 重做存档页视觉，全部用 CSS 实现、不新增任何图片资源：羊皮纸纹理 = 两层低透明度 radial-gradient 噪点；激活卡四角铆钉 = 4 层 radial-gradient 圆点定位到四角；上传条像素云 = 多层白色矩形 background 层叠在蓝天渐变上；虚线创建卡 = `::before` inset 虚线框。
 - 布局映射：激活存档卡 → 铜框铆钉相框，左侧预览槽为 CSS 深色羊皮纸块打底（移除 `sprite_farmhouse_scene.png` 引用），内嵌当前存档的农场地图像素图——按存档 `farmType` 匹配 `/assets/stardew/new-game/farms/<farmType>.png`（新建游戏界面同款素材，8 种农场全覆盖），`object-fit: contain` + `image-rendering: pixelated` 放大，farmType 未知时回落为空羊皮纸块；右侧 `sd-save-meta` 改双列虚线底线字段；存档卡网格 → 圆角铜边卡；网格末尾新增管理员"创建新存档"虚线卡（原页头"创建存档"按钮移入）；列表下方新增全宽天空横条按钮作为上传入口（原页头"上传存档"按钮移入，运行中禁用）；备份与恢复 → 圆角面板 + 深色表头带 + 行分隔线表格。
 - 页头只保留"刷新列表"；空状态（无存档）里的创建/上传按钮保持不变，此时不渲染天空横条避免重复入口。
 - 所有交互逻辑（选择/启动/导出/备份/删除/恢复/策略/弹窗）未改动，只动了 DOM 外壳与样式；新 CSS 全部以 `.sd-saves-page` 作用域追加在 `StardewPanel.css` 末尾覆盖旧皮肤。
@@ -560,7 +614,7 @@
 # FE-MAIN-PAGE-FRAME-1 中间内容页统一背景框
 
 - 注意：本条中的 `.sd-main > .sd-page` 滚动容器方案已被上方 `FE-MAIN-PAGE-FRAME-2` 替代；当前滚动视口统一为 `.sd-main-scroll`，`.sd-main` 继续负责上一步界定的 frame 内侧边界和裁切。
-- 将原型图 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/03-saves-page-frame-empty-image2.png` 复制为运行时素材 `frontend/public/assets/stardew/ui/panels/main_page_frame_empty_image2.png`，作为所有 Stardew 路由中间主内容区的统一背景。
+- 将原型图 `external artifact stardew-page-prototypes-image2-2026-06-30 (03-saves-page-frame-empty-image2.png)` 复制为运行时素材 `frontend/public/assets/stardew/ui/panels/main_page_frame_empty_image2.png`，作为所有 Stardew 路由中间主内容区的统一背景。
 - `stardew-theme.css` 新增 `--sd-img-page-frame` 资源变量，`.sd-main` 从旧羊皮纸 tile 平铺切换为该整张 frame：`background-repeat: no-repeat`、`background-position: center`、`background-size: 100% 100%`、`image-rendering: pixelated`。左侧栏、右侧栏、顶栏和各页面业务 DOM 不变。
 - `--sd-page-padding` 从固定 `16px` 调整为 `clamp(28px, 2.4vw, 42px)`，避免页面标题和内容卡片压到 frame 的木质边框/角饰。
 - 主内容滚动裁切改为“外层 frame 遮罩 + 内层页面滚动”：`.sd-main` 负责固定背景框、`overflow: hidden` 和内侧视窗 padding（桌面约 top/left `15/14px`，移动约 `12/10px`）；直接子节点 `.sd-main > .sd-page` 才是滚动容器，`overflow-y: auto`，并用 `scrollbar-width: none`、`-ms-overflow-style: none` 和 `::-webkit-scrollbar { display: none; }` 隐藏原生滚动条。内容超出时会在 frame 内侧边界被裁掉，滚动后才显示，不再压到木框/顶边上。
@@ -612,7 +666,7 @@
 
 # FE-TOPBAR-IMAGE2-REGEN-1 顶栏 image2 重生拆分素材
 
-- 按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/01-overview.png` / `Top bar.png` 风格重新用 image2 生成顶栏拆分素材，替换上一批观感不合格的 topbar 资源；没有从原图按脚本坐标裁切，脚本仅用于生成图的 chroma-key 去底、尺寸归一化、预览和 alpha 校验。
+- 按 `docs/prototypes/overview-design-baseline-2026-06-30.png` / `Top bar.png` 风格重新用 image2 生成顶栏拆分素材，替换上一批观感不合格的 topbar 资源；没有从原图按脚本坐标裁切，脚本仅用于生成图的 chroma-key 去底、尺寸归一化、预览和 alpha 校验。
 - 顶栏外壳继续保持三段式：`topbar_shell_left.png`、`topbar_shell_middle_tile.png`、`topbar_shell_right.png`。运行时左/右端 `background-size: auto 100%`，中段 `repeat-x`，不再把整条带控件的顶栏做 `100% 100%` 横向拉伸。
 - 控件改为独立资源：`topbar_status_button_9slice.png`、`topbar_save_frame_9slice.png`、`topbar_version_frame_9slice.png`、`topbar_user_frame_9slice.png`、`topbar_logout_button_9slice.png`，由 CSS `border-image` 渲染。农场、版本、用户、状态和登出文字仍由 React 前端渲染。
 - 独立图标新增/切换为 v2：`icon_topbar_chicken_image2_v2.png`、`icon_topbar_farm_image2_v2.png`、`icon_topbar_user_avatar_image2_v2.png`、`icon_topbar_leaf_image2_v2.png`、`icon_topbar_green_dot_image2_v2.png`、`icon_topbar_logout_image2_v2.png`、`icon_topbar_dropdown_arrow_image2_v2.png`。
@@ -718,7 +772,7 @@
 
 # FE-PROTOTYPE-LAYOUT-1 原型信息架构重排
 
-- Stardew 路由页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30` 的页面布局重新排布信息层级，但不复刻原型静态内容：现有 API 数据和操作能力保留，按原型中相同功能的位置组织展示。
+- Stardew 路由页按 `external artifact stardew-page-prototypes-image2-2026-06-30` 的页面布局重新排布信息层级，但不复刻原型静态内容：现有 API 数据和操作能力保留，按原型中相同功能的位置组织展示。
 - `OverviewPage` 改为农场横幅、服务器控制/邀请码、四个摘要指标、在线玩家/近期事件/模组状态三列摘要的结构。
 - `ServerControlPage` 增加页面级布局分区，靠近原型的“状态卡 + 生命周期控制 + 邀请码/全服消息 + 控制命令 + 快捷操作”顺序。
 - `SavesSection` 新增当前激活存档重点卡，存档库、创建/上传入口、备份与恢复继续保留；移动端和窄主栏下按钮组改为左对齐/换行，避免被滚动条截断。
@@ -1164,7 +1218,7 @@ npm.cmd run dev
 
 # FE-ASSET-LEFT-RAIL-SHELL-1 左侧栏空壳素材
 
-- 新增 `frontend/public/assets/stardew/ui/panels/panel_side_rail_shell_empty_image2.png`，基于 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/Left panel.png` 生成左侧栏木质背景空壳素材。
+- 新增 `frontend/public/assets/stardew/ui/panels/panel_side_rail_shell_empty_image2.png`，基于 `external artifact stardew-page-prototypes-image2-2026-06-30 (Left panel.png)` 生成左侧栏木质背景空壳素材。
 - 素材保留原图的外侧竖向木梁、深色木纹、横向分隔阴影、底部置物架和装饰区；移除九个导航按钮、菜单文字、菜单图标、按钮金边和高亮残影。
 - 输出为 RGBA 透明 PNG，尺寸 `598x1807`，比原图四周多 4px 透明安全边距；适合后续在前端用 CSS 叠加独立按钮、图标和文字。
 - 本次只新增生产素材，未改 `StardewPanel` 引用；现有左侧栏仍使用 `panel_side_rail_image2.png`，后续切换时应同步调整定位尺寸和热区坐标。
@@ -1215,7 +1269,7 @@ npm.cmd run dev
 
 # FE-ASSET-RIGHT-RAIL-SHELL-1 右侧栏空壳素材
 
-- 新增 `frontend/public/assets/stardew/ui/panels/panel_right_rail_shell_empty_image2.png`，基于 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/01-overview-right-sidebar-empty-image2.png` 的右侧栏风格重绘。
+- 新增 `frontend/public/assets/stardew/ui/panels/panel_right_rail_shell_empty_image2.png`，基于 `external artifact stardew-page-prototypes-image2-2026-06-30 (01-overview-right-sidebar-empty-image2.png)` 的右侧栏风格重绘。
 - 素材只保留外层木质立柱、完整顶部横梁、深棕木质内底、金棕边框、藤蔓、底部木质基座和南瓜/向日葵装饰；移除三个内部内容卡片、标题文字、图标、状态点、进度条和任务内容。
 - 输出为 RGBA 透明 PNG，尺寸 `826x1903`，内部是干净连续的深棕木纹区域，适合后续用 CSS 叠加独立卡片框、标题图标、进度条和装饰层。
 - 该素材已在 `FE-RIGHT-RAIL-SPLIT-ASSETS-1` 中接入运行时，作为右侧栏背景空壳层使用。
@@ -1362,7 +1416,7 @@ npm.cmd run dev
 - 验证：`cd frontend; npm.cmd run build` 通过；内置浏览器因本地实例停在登录页，使用临时本地 QA 页面加载真实 `StardewPanel.css` 验证布局公式：1040x1120 下 grid 为 2 列、可见 2 行、pageSize=4，1040x720 下 pageSize=2，520x720 下 1 列 pageSize=1；三种视口下搜索卡片计算高度均为 `246px`。临时 QA 文件已删除。
 # FE-JOBS-PROTOTYPE-IMAGE2-1 任务与日志页按 image2 原型视觉重皮肤
 
-- 任务与日志页按 `docs/prototypes/stardew-page-prototypes-image2-2026-06-30/04-jobs-logs - 副本.png` 调整为羊皮纸双栏任务台：顶部大标题 + 虚线分隔、像素按钮工具条、左侧任务列表、右侧任务详情/进度/SSE 状态/深色日志终端/VNC 修复提示。
+- 任务与日志页按 `external artifact stardew-page-prototypes-image2-2026-06-30 (04-jobs-logs - 副本.png)` 调整为羊皮纸双栏任务台：顶部大标题 + 虚线分隔、像素按钮工具条、左侧任务列表、右侧任务详情/进度/SSE 状态/深色日志终端/VNC 修复提示。
 - 未把原型图作为运行时资源或整块背景引用；页面纸纹噪点、木/铜色描边、内阴影、标题虚线、选中态绿色框、状态徽章、进度条斜纹、终端扫描线和 VNC 警告纸条均由 CSS gradient / border / box-shadow / pseudo-element 实现。
 - `JobsLogsPage.tsx` 只新增展示钩子：任务列表标题行、任务类型图标 class、短 job id 行、详情标题图标外壳、SSE 提示行容器，并把 VNC 修复提示移到日志下方以贴近原型布局。`getJobs/getJob/getJobLogs`、SSE、清空任务/错误日志、VNC 端口修改、权限判断、loading/error/empty/disabled 逻辑保持不变。
 - 按钮和图标复用既有素材：工具条继续使用 `sd-btn-tan` / `sd-btn-delete` PNG 按钮体系；任务类型图标复用 `icon_nav_install_package_image2.png`、`icon_sidebar_chicken.png`、`icon_nav_server_rack_image2.png`、`icon_nav_saves_chest_image2.png`、`icon_nav_mods_crystal_image2.png`；VNC 提示复用 `sprite_blue_device.png`。
@@ -1469,3 +1523,10 @@ npm.cmd run dev
 - `ServerControlPage` 现在把 `game_installed` 与 `ready_to_start` / `stopped` 一样视为可启动的未运行状态，启动后如果后端发现没有存档，仍走现有 `save_required` 提示与存档页入口。
 - `OverviewPage` 移除 `game_installed` 下“前往安装配置”的特殊分支，改为显示启动按钮；这避免安装成功后把用户导回安装页造成误解。
 - 验证：`cd frontend; npm.cmd run build`。
+# FE-OPSRAIL-METRICS-RESTORE-1 右侧栏资源指标恢复轻量实时显示
+
+- 右侧 OpsRail 的 CPU / 内存 / 磁盘重新接入 `/api/instances/:id/metrics`，Stardew 面板挂载期间立即采样一次，并按 `2s` 间隔刷新；没有用户打开前端页面时自然不会产生浏览器轮询。
+- 本次只恢复右侧栏资源数值，不把 `/api/health/diagnostics` 加回普通 dashboard 初始化；Docker/Compose 版本等重诊断仍由诊断页或手动入口触发。
+- 请求失败时右侧栏保留上一份样本，避免短暂 Docker/API 波动导致数值闪回空状态；页面卸载时清理 timer。
+- 影响文件：`frontend/src/games/stardew/StardewPanel.tsx`。接口契约不变，继续使用现有 metrics API。
+- 验证：`cd frontend; npm.cmd run build`；Browser QA 打开 `qa-layout.html?state=running`，确认右侧栏 CPU/内存/磁盘显示 mock metrics 百分比而不是空值。

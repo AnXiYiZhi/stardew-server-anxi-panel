@@ -1,3 +1,143 @@
+# FE-OVERVIEW-HEALTH-SHARE-1 前端接手记录（2026-07-06）
+## 改了什么
+- 修复总览页“系统健康”卡在访问诊断页后仍显示 `— / 未检查` 的问题。
+- `DiagnosticsPage` 成功完成初次健康检查或手动“重新检查”后，会调用公共数据层新增的 `applyHealthDiagnostics(res)`，把诊断结果同步到 `dashboardData.health`。
+- 总览页继续不主动跑 `/api/health/diagnostics`，避免重新引入 Docker/Compose 版本等重诊断在普通 dashboard 初始化时的开销。
+## 影响文件 / 接口
+- `frontend/src/games/stardew/stardew-routes.ts`
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/pages/DiagnosticsPage.tsx`
+- 未新增或修改后端 API；继续消费现有 `GET /api/health/diagnostics`。
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- Browser QA：打开 `http://127.0.0.1:5174/qa-layout.html?state=running`，确认初始总览健康卡为 `—`；点击左侧“诊断”，等待显示 6 项检查正常；再点击“总览”，确认健康卡显示 `100% / 6项全部通过 / 优秀`，console error/warn 为空。
+## 下一步注意事项
+- 后续不要为了修复总览展示而把 `refreshHealth()` 放回 `refreshAll()` 或全局轮询；如果有其它页面也主动产生健康诊断结果，应复用 `applyHealthDiagnostics()` 同步公共状态。
+
+# FE-TOPBAR-BRAND-LIGHTER-1 前端接手记录（2026-07-06）
+
+## 改了什么
+- 按用户反馈，左上角 `Stardew Anxi Panel` 品牌标题再细一点。
+- `.sd-topbar-brand-text` 字重从 `800` 调为 `700`，同时减少暗色描边/投影层数和不透明度，保留原有 28px 尺寸、黄色填充和像素标题感。
+
+## 影响文件 / 接口
+- `frontend/src/games/stardew/StardewPanel.css`
+- 未改顶栏状态牌、存档框、版本框、用户框、React 结构、后端 API、权限、轮询或 Junimo 通信。
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+
+## 下一步注意事项
+- 顶栏标题仍是动态文字渲染；继续微调粗细时优先改 `font-weight` 与 `text-shadow`，不要把标题改成固定图片，否则版本/语言适配会变差。
+
+# FE-PUBLIC-IP-INVITE-CARD-1 前端接手记录（2026-07-06）
+## 改了什么
+- 邀请码卡片下方新增“服务器公网 IP”检测行，显示后端 `GET /api/instances/:id/public-ip` 返回的服务器出口公网 IP。
+- 公网 IP 行提供“复制”和“刷新”：复制只写入 IP 文本；刷新会调用 `refreshPublicIP(true)`，后端收到 `?refresh=1` 后强制重新探测。
+- 按用户截图反馈，去掉邀请码下方“分享此代码邀请新玩家加入服务器”说明文字；公网 IP 行也保持无说明文案，避免小框被额外文字撑高。
+- 上方邀请码行标题保持“邀请码”；下方公网 IP 检测行标题显示为“局域网邀请”。公网 IP 未检测/检测失败时不显示复制按钮，但操作区保留固定宽度，以保持两行值框宽度一致。
+- 总览页“服务器控制”卡里的邀请/IP 组做了轻量上移，填掉标题右侧原本的大块留白；没有再收窄或改动服务器详情页摘要卡。
+
+## 影响文件 / 接口
+- `frontend/src/api.ts`
+- `frontend/src/types.ts`
+- `frontend/src/games/stardew/stardew-routes.ts`
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/InviteCodeCard.tsx`
+- `frontend/src/games/stardew/StardewPanel.css`
+- 新增消费接口：`GET /api/instances/:id/public-ip`。未改邀请码接口、生命周期按钮、Junimo 通信或资源指标轮询。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build`。
+- 后端配套验证：`cd backend; go test ./internal/web`。
+
+## 下一步注意事项
+- 公网 IP 必须由后端检测，前端直接访问第三方 IP 服务会拿到用户浏览器所在网络的 IP。
+- 如果接口返回 `public_ip_failed`，前端只显示“检测失败”并保留刷新入口；不要把外部服务错误直接展示给普通用户。
+
+# FE-MOD-COUNT-FILTER-BUILTIN-1 前端接手记录（2026-07-06）
+## 改了什么
+- 总览页模组统计改为只统计用户可见 Mod，不再把 SMAPI runtime、`StardewAnxiPanel.Control`、`JunimoServer` / `JunimoHost.Server` 这三个内置运行组件算进“已启用”和停用统计。
+- 总览页“模组”统计卡的大数字、`已启用 N 个` 文案、同步包摘要里的已启用/已停用数量现在都使用过滤后的列表。
+- 将模组页原本的系统运行组件判断抽到 `mod-visibility.ts`，`OverviewPage` 和 `ModsPage` 复用同一套识别逻辑。
+
+## 影响文件 / 接口
+- `frontend/src/games/stardew/mod-visibility.ts`
+- `frontend/src/games/stardew/pages/OverviewPage.tsx`
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+- 未改后端 API、Mod 启用切换接口、同步包导出接口或 Junimo 通信。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build`。
+
+## 下一步注意事项
+- 后续新增必须随面板运行的内置组件时，应扩展 `modIsSystemRuntime()`，确保模组页展示和总览统计继续保持同一口径。
+- 玩家同步统计/导出仍保留完整列表逻辑；不要为了展示统计把基础运行依赖从同步包处理链路中移除。
+
+# DOCKER-POLL-PERF-1 前端接手记录（2026-07-06）
+## 改了什么
+- 公共 dashboard 初始化移除了 `/api/health/diagnostics` 请求，避免普通总览入口触发 Docker/Compose version 检查。
+- 右侧 OpsRail 不再常驻调用 `/api/instances/:id/metrics`，资源数字默认显示为空值/按需诊断入口，避免所有页面都持续触发 `docker compose stats --no-stream`。
+- `DiagnosticsPage` 进入后主动执行一次健康检查；手动“重新检查”仍可再次执行。资源指标采样只在诊断页可见时运行，间隔 `8s`，浏览器 tab 隐藏时停止 timer，恢复可见时立即刷新一次。
+- 总览页系统健康卡默认显示“未检查 / 进入诊断页后检查”，不再显示“检查中”。
+
+## 影响文件 / 接口
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/StardewPanel.tsx`
+- `frontend/src/games/stardew/pages/DiagnosticsPage.tsx`
+- `frontend/src/games/stardew/pages/OverviewPage.tsx`
+- 未新增 API；只是调整 `/api/health/diagnostics` 和 `/api/instances/:id/metrics` 的触发时机。
+
+## 如何验证
+- 已执行：`cd frontend; npm.cmd run build`。
+- 后端配套验证：`cd backend; go test -count=1 ./internal/docker`。
+
+## 下一步注意事项
+- 后续不要把 `dashboardData.refreshHealth()` 加回普通初始化或全局轮询；Docker 版本诊断只应由 Diagnostics、安装前检查、Docker 状态页或用户手动刷新触发。
+- 如果右侧栏以后要恢复资源数字，应复用诊断页采样结果或只做一次性展示，不要重新开全局 5s metrics 轮询。
+
+# ASSET-RUNTIME-SLIM-1 前端/发布瘦身接手记录（2026-07-06）
+## 改了什么
+- Dockerfile 新增 `extension-builder` 阶段，在构建阶段生成 `browser-extensions/anxi-nexus-installer.zip`；最终 runtime 不再安装 `zip`，只复制构建好的扩展目录。
+- `docs/prototypes/` 从完整历史截图目录改为轻量索引目录，只保留 `README.md`、`overview-design-baseline-2026-06-30.png` 和 `overview-current-baseline-2026-07-04.png`；完整原型截图和提取工作区迁出主仓，交给 Release artifact、对象存储或设计仓库保存。
+- 对超过 300 KB 的运行 PNG 做一轮无损重压缩并逐张做像素等价校验；登录背景已回退为 PNG-only 加载，避免 AVIF/WebP 或重编码造成色调偏移。
+- favicon 从单个 512px / 545 KB PNG 改为 `favicon.ico` + 32/64/128 PNG；默认 `favicon.png` 收敛为 128px。
+## 影响文件 / 接口
+- `Dockerfile`
+- `frontend/src/App.css`
+- `frontend/index.html`
+- `frontend/public/favicon*`
+- `frontend/public/assets/stardew/ui/backgrounds/*.png` 和一批被无损重压缩的运行 PNG。
+- `docs/prototypes/README.md` 与两张基准图。
+- 文档：`README.md`、`README.en.md`、`docs/03-frontend.md`、`docs/07-later-optimizations.md`、`docs/08-future-roadmap.md`、`docs/09-image-build.md`。
+- 未改前端路由、业务 API、权限、轮询或 Junimo 通信。
+## 如何验证
+- PNG 重压缩脚本只在输出更小且 `RGBA` 像素差异为空时覆盖原文件。
+- `docs/prototypes` 体积从 109 个文件约 71.38 MB 降到 3 个文件约 2.58 MB。
+- 需要执行：`cd frontend; npm.cmd run build`。
+- 建议执行：`docker build -t stardew-server-anxi-panel:local .`，并确认 runtime 层不再安装 `zip`，镜像内仍存在 `/app/browser-extensions/anxi-nexus-installer.zip`。
+## 下一步注意事项
+- 9-slice / tile 面板素材本轮只做无损压缩，没有改切片参数。若要继续瘦身，应单独做视觉回归，重点看边缘模糊、alpha、拉伸和平铺接缝。
+- `scripts/extract-ui-assets.py` 仍会向 `docs/prototypes/assets/ui-extracted` 生成提取工作区；只在设计任务需要时运行，生成物不要默认入主仓。
+- 生产代码仍不得引用 `docs/prototypes`；运行素材必须放在 `frontend/public/assets/...`。
+
+# FE-CLEANUP-UNUSED-ASSETS-1 前端接手记录（2026-07-05）
+## 改了什么
+- 删除 `frontend/public/assets/stardew/ui/` 下 79 个前端源码零引用的旧 PNG 素材，释放约 20.96MB 仓库生产素材体积；清理后运行时素材目录约 18.56MB。
+- 删除无引用前端组件：`CommandOutput`、`StatusPill`、`StatusBadge`、`InstanceStateCard`。
+- 本地清理已忽略的 `.gocache/` 与 `tmp/`，释放约 1.82GB 工作区缓存；这两个目录不进入 Git 变更。
+## 影响文件 / 接口
+- 删除文件集中在 `frontend/public/assets/stardew/ui/**`。
+- 删除组件文件：`frontend/src/core/CommandOutput.tsx`、`frontend/src/core/StatusPill.tsx`、`frontend/src/core/StatusBadge.tsx`、`frontend/src/games/stardew/InstanceStateCard.tsx`。
+- 未改前端路由、API helper、页面业务逻辑、后端接口或 Junimo 通信。
+## 如何验证
+- 已执行前端素材复扫：排除动态 `new-game` 路径后，`frontend/public/assets` 非新建存档素材无零引用文件。
+- 已执行：`cd frontend; npm.cmd run build`。
+## 下一步注意事项
+- `frontend/public/assets/stardew/new-game/` 有模板字符串动态引用，不能只按文件名静态搜索判断未使用。
+- 后续 `ASSET-RUNTIME-SLIM-1` 已把 `docs/prototypes/` 改为轻量索引目录；完整历史原型截图不再保留在主仓。
+- `qa-layout.html` / `qa-layout-main.tsx` 仍是当前回归验证入口，虽然不进生产构建，但不要在没有替代 QA 入口时删除。
+
 # FE-MODS-HIDE-SYSTEM-RUNTIME-1 前端接手记录（2026-07-05）
 ## 改了什么
 - 模组页现在把 SMAPI runtime、`StardewAnxiPanel.Control`、`JunimoServer` / `JunimoHost.Server` 识别为系统运行组件。
@@ -863,3 +1003,22 @@
 
 ## 下一步注意事项
 - 后续新增安装完成后的中间态时，要同步检查总览页和服务器控制页的“可启动未运行状态”集合，不要只看 `stopped`。
+# FE-OPSRAIL-METRICS-RESTORE-1 前端接手记录（2026-07-06）
+
+## 改了什么
+- 恢复右侧 OpsRail CPU / 内存 / 磁盘资源指标显示：Stardew 面板挂载期间调用 `/api/instances/:id/metrics`，首次立即采样，之后按 `2s` 间隔刷新；没有用户打开前端页面时自然不会产生浏览器轮询。
+- 保留 `DOCKER-POLL-PERF-1` 的重诊断优化：普通 dashboard 初始化仍不主动调用 `/api/health/diagnostics`，Docker/Compose 版本检查继续留在诊断页/手动入口。
+- metrics 请求失败时保留上一份右栏样本，不把短暂采集失败渲染成空值。
+
+## 影响文件 / 接口
+- `frontend/src/games/stardew/StardewPanel.tsx`
+- 未新增 API；继续消费现有 `GET /api/instances/:id/metrics`。
+- 未改诊断页趋势图、健康检查、权限、路由或 Junimo 通信。
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- Browser QA：打开 `qa-layout.html?state=running`，确认右侧栏 CPU/内存/磁盘显示 mock metrics 百分比，不再保持空值。
+
+## 下一步注意事项
+- 后续不要把 `/api/health/diagnostics` 放回 dashboard 全局初始化；右栏只需要轻量 metrics。
+- 如要进一步降开销，优先调大右栏 refresh interval 或复用页面内采样结果，不要再次把右栏数值改成固定空值。

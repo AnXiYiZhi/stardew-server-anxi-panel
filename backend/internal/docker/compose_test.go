@@ -2,11 +2,13 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestComposeCommandsUseFixedArguments(t *testing.T) {
@@ -115,6 +117,56 @@ func TestComposeLogsValidatesInput(t *testing.T) {
 	}
 }
 
+func TestComposePsUsesShortTTLCacheAndInvalidatesAfterStateChange(t *testing.T) {
+	workDir := t.TempDir()
+	countPath := filepath.Join(t.TempDir(), "ps-count.txt")
+	dockerPath := fakeDockerCountingPs(t, countPath)
+	client := NewClient(Options{DockerPath: dockerPath, ComposePsTTL: 50 * time.Millisecond})
+
+	for i := 0; i < 2; i++ {
+		ps, err := client.ComposePs(context.Background(), workDir)
+		if err != nil || len(ps.Services) != 1 || ps.Services[0].Service != "server" {
+			t.Fatalf("ComposePs #%d result=%+v err=%v", i+1, ps, err)
+		}
+	}
+	if got := readCountFile(t, countPath); got != 1 {
+		t.Fatalf("ComposePs command count after cache hit = %d, want 1", got)
+	}
+
+	if result, err := client.ComposeUp(context.Background(), workDir); err != nil || result.ExitCode != 0 {
+		t.Fatalf("ComposeUp result=%+v err=%v", result, err)
+	}
+	if _, err := client.ComposePs(context.Background(), workDir); err != nil {
+		t.Fatalf("ComposePs after ComposeUp err=%v", err)
+	}
+	if got := readCountFile(t, countPath); got != 2 {
+		t.Fatalf("ComposePs command count after invalidation = %d, want 2", got)
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	if _, err := client.ComposePs(context.Background(), workDir); err != nil {
+		t.Fatalf("ComposePs after TTL expiry err=%v", err)
+	}
+	if got := readCountFile(t, countPath); got != 3 {
+		t.Fatalf("ComposePs command count after TTL expiry = %d, want 3", got)
+	}
+}
+
+func readCountFile(t *testing.T, path string) int {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read count file: %v", err)
+	}
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func TestRunCapturesFailure(t *testing.T) {
 	workDir := t.TempDir()
 	dockerPath := fakeDocker(t, `printf 'password=secret' >&2; exit 9`)
@@ -130,6 +182,36 @@ func TestRunCapturesFailure(t *testing.T) {
 	if strings.Contains(result.Stderr, "secret") || !strings.Contains(result.Stderr, Redacted) {
 		t.Fatalf("expected stderr to be redacted, got %q", result.Stderr)
 	}
+}
+
+func fakeDockerCountingPs(t *testing.T, countPath string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		path := filepath.Join(t.TempDir(), "docker.cmd")
+		content := fmt.Sprintf("@echo off\r\n"+
+			"if \"%%1 %%2 %%3 %%4\"==\"compose ps --format json\" (echo ps>>\"%s\"& echo [{\"Name\":\"demo-server-1\",\"Service\":\"server\",\"State\":\"running\",\"Health\":\"healthy\",\"ExitCode\":0}]& exit /b 0)\r\n"+
+			"if \"%%1 %%2 %%3 %%4\"==\"compose up -d \" (echo up ok& exit /b 0)\r\n"+
+			"echo unexpected args: %%1 %%2 %%3 %%4 %%5 %%6 1>&2\r\nexit /b 7\r\n",
+			countPath,
+		)
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+			t.Fatalf("write fake docker: %v", err)
+		}
+		return path
+	}
+
+	path := filepath.Join(t.TempDir(), "docker")
+	content := fmt.Sprintf(`#!/bin/sh
+case "$1 $2 $3 $4" in
+  "compose ps --format json") printf 'ps\n' >> %q; printf '[{"Name":"demo-server-1","Service":"server","State":"running","Health":"healthy","ExitCode":0}]' ;;
+  "compose up -d ") printf 'up ok' ;;
+  *) printf 'unexpected args: %%s %%s %%s %%s %%s %%s' "$1" "$2" "$3" "$4" "$5" "$6" >&2; exit 7 ;;
+esac
+`, countPath)
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write fake docker: %v", err)
+	}
+	return path
 }
 
 func fakeDocker(t *testing.T, script string) string {

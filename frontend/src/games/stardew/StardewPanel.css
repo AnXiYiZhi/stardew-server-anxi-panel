@@ -149,7 +149,7 @@
   font-family: Verdana, "Microsoft YaHei", "SimHei", ui-sans-serif, system-ui, sans-serif;
   font-size: 28px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: 0;
   background: none;
@@ -157,14 +157,12 @@
   -webkit-text-stroke: 0;
   text-shadow:
     0 -1px 0 #fff2aa,
-    1px 0 0 #512207,
-    -1px 0 0 #512207,
-    0 1px 0 #512207,
-    1px 1px 0 #271305,
-    -1px 1px 0 #271305,
-    1px -1px 0 #271305,
-    -1px -1px 0 #271305,
-    0 3px 0 rgba(41, 18, 5, 0.78);
+    1px 0 0 rgba(81, 34, 7, 0.82),
+    -1px 0 0 rgba(81, 34, 7, 0.82),
+    0 1px 0 rgba(81, 34, 7, 0.82),
+    1px 1px 0 rgba(39, 19, 5, 0.68),
+    -1px 1px 0 rgba(39, 19, 5, 0.68),
+    0 2px 0 rgba(41, 18, 5, 0.58);
 }
 
 .sd-topbar-brand-leaf {
@@ -12544,12 +12542,14 @@
 }
 
 .sd-invite-card-wrap {
+  display: grid;
+  gap: 7px;
   min-width: 0;
 }
 
 .sd-players-invite-copy {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
   color: var(--sd-players-muted);
   font-size: 12px;
@@ -12615,7 +12615,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-width: max-content;
+  min-width: calc(86px * 2 + 8px);
 }
 
 .sd-players-copy-btn,
@@ -12625,6 +12625,10 @@
 
 .sd-overview-invite-card .sd-players-invite-row {
   margin-top: 0;
+}
+
+.sd-overview-invite-card {
+  margin-top: -33px;
 }
 
 .sd-players-info-section {
@@ -13782,6 +13786,10 @@
 .sd-install-title-strip .sd-page-title,
 .sd-settings-page .sd-page-title {
   text-shadow: none;
+}
+
+.sd-players-public-ip-row {
+  min-height: 54px;
 }
 
 /* FE-SAVES-V02-PROTOTYPE-LAYOUT-1: match version-02 saves card placement and proportions. */

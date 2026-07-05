@@ -392,6 +392,13 @@ export type InviteCodeResult = {
   inviteCode: string
 }
 
+export type PublicIPResult = {
+  ip: string
+  checkedAt: string
+  source?: string
+  cached: boolean
+}
+
 export type LifecycleJobResponse = {
   jobId: string
   saveName?: string

@@ -186,6 +186,14 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceInviteCode(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "public-ip" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstancePublicIP(w, r, instanceID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "rendering" {
 		if r.Method != http.MethodGet && r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

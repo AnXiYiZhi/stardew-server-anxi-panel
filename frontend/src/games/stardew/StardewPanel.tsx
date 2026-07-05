@@ -91,6 +91,7 @@ const SHELL_DESIGN_HEIGHT = 1024
 const SHELL_MIN_UI_SCALE = 0.72
 const OPS_RAIL_COLLAPSE_MAIN_WIDTH = 400
 const OPS_RAIL_EXPAND_MAIN_WIDTH = 460
+const OPS_RAIL_METRICS_REFRESH_MS = 2000
 const GAME_INSTALLED_STATES = new Set(['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'])
 const ACTIVE_INSTALL_JOB_STATUSES = new Set(['queued', 'running'])
 
@@ -582,10 +583,9 @@ export function StardewPanel({
 
   const dashboardData = useStardewDashboardData()
   const { instanceState, jobs, versionInfo, saves } = dashboardData
-  const [metricSample, setMetricSample] = useState<ResourceMetricSample | null>(null)
-  const [apiLatencyMs, setApiLatencyMs] = useState<number | null>(null)
   const [installPromptPending, setInstallPromptPending] = useState(true)
   const [showMissingGameInstallPrompt, setShowMissingGameInstallPrompt] = useState(false)
+  const [railMetric, setRailMetric] = useState<ResourceMetricSample | null>(null)
 
   useEffect(() => {
     const onPop = () => setRoute(parseRoute(window.location.pathname))
@@ -635,35 +635,41 @@ export function StardewPanel({
     }
   }, [])
 
-  // 系统健康卡：轮询容器资源指标，网络延迟取本次请求的往返耗时
   useEffect(() => {
     let alive = true
     let timer: number | undefined
 
+    function clearTimer() {
+      if (timer != null) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+    }
+
+    function scheduleNext() {
+      if (!alive) return
+      clearTimer()
+      timer = window.setTimeout(() => {
+        void loadMetrics()
+      }, OPS_RAIL_METRICS_REFRESH_MS)
+    }
+
     async function loadMetrics() {
-      const startedAt = performance.now()
       try {
         const res = await getInstanceMetrics()
         if (!alive) return
-        setMetricSample(res.sample)
-        setApiLatencyMs(Math.round(performance.now() - startedAt))
+        setRailMetric(res.sample)
       } catch {
-        if (!alive) return
-        setMetricSample(null)
-        setApiLatencyMs(null)
+        // Keep the previous sample so the right rail does not flicker during brief Docker/API hiccups.
       } finally {
-        if (alive) {
-          timer = window.setTimeout(() => {
-            void loadMetrics()
-          }, 5000)
-        }
+        scheduleNext()
       }
     }
 
     void loadMetrics()
     return () => {
       alive = false
-      if (timer != null) window.clearTimeout(timer)
+      clearTimer()
     }
   }, [])
 
@@ -710,10 +716,15 @@ export function StardewPanel({
 
   const activeSaveName = saves?.activeSaveName
   const railResourceStats = [
-    { label: 'CPU 使用率', value: metricSample?.cpuPercent },
-    { label: '内存使用率', value: metricSample?.memoryPercent },
-    { label: '磁盘使用率', value: metricSample?.diskPercent },
+    { label: 'CPU 使用率', value: null },
+    { label: '内存使用率', value: null },
+    { label: '磁盘使用率', value: null },
   ]
+  const railMetricValues = [railMetric?.cpuPercent, railMetric?.memoryPercent, railMetric?.diskPercent]
+  const liveRailResourceStats = railResourceStats.map((stat, index) => ({
+    ...stat,
+    value: railMetricValues[index] ?? null,
+  }))
   const onlineCount = dashboardData.players?.onlineCount
   const maxPlayers = dashboardData.players?.maxPlayers
   const railPlayerSummary =
@@ -723,7 +734,7 @@ export function StardewPanel({
         : String(onlineCount)
       : '—'
   const railPlayerLevel: HealthStatLevel = onlineCount === 0 ? 'crit' : 'ok'
-  const railLatencyLevel = latencyLevel(apiLatencyMs)
+  const railLatencyLevel = latencyLevel(null)
   const activeSave = activeSaveName
     ? saves?.saves.find((save) => save.isActive || save.name === activeSaveName) ?? null
     : null
@@ -900,7 +911,7 @@ export function StardewPanel({
               <span>系统健康</span>
             </h2>
             <div className="sd-opsrail-hstat-list">
-              {railResourceStats.map((stat) => (
+              {liveRailResourceStats.map((stat) => (
                 <div key={stat.label} className={`sd-opsrail-hstat sd-opsrail-hstat--${usageLevel(stat.value)}`}>
                   <div className="sd-opsrail-hstat-row">
                     <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
@@ -926,9 +937,7 @@ export function StardewPanel({
                 <div className="sd-opsrail-hstat-row">
                   <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
                   <span className="sd-opsrail-hstat-label">网络延迟</span>
-                  <span className="sd-opsrail-hstat-value">
-                    {apiLatencyMs != null ? `${apiLatencyMs}ms` : '—'}
-                  </span>
+                  <span className="sd-opsrail-hstat-value">按需诊断</span>
                 </div>
               </div>
             </div>

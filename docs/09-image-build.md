@@ -38,6 +38,11 @@
 
 运行时通过挂载宿主机 Docker Socket 控制 JunimoServer 容器。
 
+## 构建上下文排除
+
+- `.dockerignore` 已显式排除 `docs/prototypes/`，历史原型图不应进入 Docker 构建上下文或镜像产物。
+- 当前 Dockerfile 也采用精确 `COPY frontend`、`COPY backend`、`COPY browser-extensions` 的方式，不依赖 `COPY .`。后续如调整 Dockerfile，仍需确认文档、原型图、本地构建产物、`node_modules` 不会进入运行镜像。
+
 ## 构建镜像
 
 ```powershell
@@ -48,8 +53,9 @@ docker build -t stardew-server-anxi-panel:local .
 多阶段流程：
 
 1. `frontend-builder`: `node:22-alpine`，执行 `npm install` 和 `npm run build`。
-2. `backend-builder`: `golang:1.25-alpine`，复制前端 dist 到 `internal/static/frontend_dist/`，`CGO_ENABLED=0 go build`。
-3. `runtime`: `alpine:3.20`，安装 docker CLI / compose plugin，复制 `/app/panel`。
+2. `extension-builder`: `alpine:3.20`，安装构建期 `zip`，把 `browser-extensions/nexus-slow-installer` 预打包为 `browser-extensions/anxi-nexus-installer.zip`。
+3. `backend-builder`: `golang:1.25-alpine`，复制前端 dist 到 `internal/static/frontend_dist/`，`CGO_ENABLED=0 go build`。
+4. `runtime`: `alpine:3.20`，只安装 docker CLI / compose plugin、CA 与时区数据，复制 `/app/panel` 和 extension-builder 的浏览器扩展产物。
 
 ## 构建带版本号镜像
 
@@ -293,8 +299,8 @@ docker run -d -p 9090:8090 ...
 ```
 # NEXUS-EXT-PACK-1 镜像内扩展资源
 
-- Runtime 镜像现在会复制仓库 `browser-extensions/` 到 `/app/browser-extensions/`。
-- Runtime 镜像构建时会执行 `zip`，把 `/app/browser-extensions/nexus-slow-installer` 预打包为 `/app/browser-extensions/anxi-nexus-installer.zip`。
+- Runtime 镜像现在会从 `extension-builder` 复制 `browser-extensions/` 到 `/app/browser-extensions/`。
+- `anxi-nexus-installer.zip` 在 `extension-builder` 阶段生成；最终 runtime 不再安装 `zip`，也不在运行层执行打包命令。
 - 后端 `GET /api/instances/:id/mods/nexus/extension/download` 会优先返回实例目录已有的 `.local-container/browser-extensions/anxi-nexus-installer.zip`；不存在时优先复制镜像预包；预包不存在或损坏时，才从 `/app/browser-extensions/nexus-slow-installer` 或开发环境仓库路径生成。
 - 发布检查新增注意：正式镜像内应存在 `/app/browser-extensions/anxi-nexus-installer.zip`；兜底源码目录 `/app/browser-extensions/nexus-slow-installer/manifest.json` 也应保留，避免预包损坏时无法恢复。
 # PULL-PROGRESS-1 镜像拉取百分比

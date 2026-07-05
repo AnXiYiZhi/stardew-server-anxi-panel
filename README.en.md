@@ -303,11 +303,13 @@ Read these before continuing development:
 
 The planned UI uses a Stardew-inspired pixel farm style: wooden frames, parchment panels, bold borders, inventory-like navigation, and high-density server management information.
 
-The prototype is located in:
+The lightweight prototype index is located in:
 
 ```text
 docs/prototypes/
 ```
+
+Full historical prototype screenshots have been moved out of the main repository and should be stored as Release artifacts, object storage, or a separate design repository. This repo keeps only key baseline images and an index.
 
 ## Important Boundary
 

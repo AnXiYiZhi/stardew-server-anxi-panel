@@ -4,6 +4,7 @@ import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
+import { modIsJunimoServer, modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import type { StardewPageProps } from '../stardew-routes'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
@@ -554,38 +555,6 @@ function modHasNexusPresentation(mod: ModInfo) {
 
 function modDisplayName(mod: ModInfo) {
   return mod.name ?? mod.folderName
-}
-
-function modIsSmapi(mod: ModInfo) {
-  const uniqueId = mod.uniqueId?.trim().toLowerCase()
-  const folderName = mod.folderName?.trim().toLowerCase()
-  const name = mod.name?.trim().toLowerCase()
-  return mod.id === '__smapi_runtime' ||
-    uniqueId === 'pathoschild.smapi' ||
-    folderName === 'smapi' ||
-    name === 'smapi'
-}
-
-function modIsPanelControl(mod: ModInfo) {
-  const uniqueId = mod.uniqueId?.trim().toLowerCase()
-  const folderName = mod.folderName?.trim().toLowerCase()
-  const name = mod.name?.trim().toLowerCase()
-  return folderName === 'stardewanxipanel.control' ||
-    uniqueId === 'anxiyizhi.stardewanxipanel.control' ||
-    name === 'stardew anxi panel control'
-}
-
-function modIsJunimoServer(mod: ModInfo) {
-  const uniqueId = mod.uniqueId?.trim().toLowerCase()
-  const folderName = mod.folderName?.trim().toLowerCase()
-  const name = mod.name?.trim().toLowerCase()
-  return uniqueId === 'junimohost.server' ||
-    folderName === 'junimoserver' ||
-    name === 'junimoserver'
-}
-
-function modIsSystemRuntime(mod: ModInfo) {
-  return modIsSmapi(mod) || modIsPanelControl(mod) || modIsJunimoServer(mod)
 }
 
 function modCountsForPlayerSync(mod: ModInfo) {

@@ -5,6 +5,8 @@ import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { ResourceMetricSample } from '../../../types'
 
+const RESOURCE_METRICS_REFRESH_MS = 8000
+
 // ── 检查项名称中文映射 ─────────────────────────────────────────────────────────
 
 const CHECK_NAME_LABELS: Record<string, string> = {
@@ -278,6 +280,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   const [metricSamples, setMetricSamples] = useState<ResourceMetricSample[]>([])
   const [metricError, setMetricError] = useState<string | null>(null)
   const [metricService, setMetricService] = useState('server')
+  const { applyHealthDiagnostics } = dashboardData
 
   // 以 localData 为准（重新检查后更新），dashboardData.health 只作为初始值
   const data = localData ?? dashboardData.health
@@ -309,10 +312,55 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
           : '点击重新检查获取最新状态'
 
   useEffect(() => {
+    if (localData) return
+    let alive = true
+
+    async function loadInitialHealth() {
+      setRefreshing(true)
+      setLocalError(null)
+      setHasLocalAttempt(true)
+      try {
+        const res = await getHealthDiagnostics()
+        if (!alive) return
+        setLocalData(res)
+        applyHealthDiagnostics(res)
+      } catch (e) {
+        if (!alive) return
+        setLocalError(errorMessage(e))
+      } finally {
+        if (alive) {
+          setRefreshing(false)
+        }
+      }
+    }
+
+    void loadInitialHealth()
+    return () => {
+      alive = false
+    }
+  }, [applyHealthDiagnostics, localData])
+
+  useEffect(() => {
     let alive = true
     let timer: number | undefined
 
+    function clearTimer() {
+      if (timer != null) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+    }
+
+    function scheduleNext() {
+      if (!alive || document.visibilityState !== 'visible') return
+      clearTimer()
+      timer = window.setTimeout(() => {
+        void loadMetrics()
+      }, RESOURCE_METRICS_REFRESH_MS)
+    }
+
     async function loadMetrics() {
+      if (document.visibilityState !== 'visible') return
       try {
         const res = await getInstanceMetrics()
         if (!alive) return
@@ -323,20 +371,26 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
         if (!alive) return
         setMetricError(errorMessage(e))
       } finally {
-        if (alive) {
-          timer = window.setTimeout(() => {
-            void loadMetrics()
-          }, 5000)
-        }
+        scheduleNext()
       }
     }
 
-    void loadMetrics()
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void loadMetrics()
+        return
+      }
+      clearTimer()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    if (document.visibilityState === 'visible') {
+      void loadMetrics()
+    }
     return () => {
       alive = false
-      if (timer != null) {
-        window.clearTimeout(timer)
-      }
+      clearTimer()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 
@@ -365,7 +419,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
     try {
       const res = await getHealthDiagnostics()
       setLocalData(res)
-      dashboardData.refreshHealth()
+      applyHealthDiagnostics(res)
     } catch (e) {
       setLocalError(errorMessage(e))
     } finally {
@@ -427,7 +481,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
       </div>
 
       {/* 加载中状态 */}
-      {dashboardData.loading && !data && (
+      {(dashboardData.loading || refreshing) && !data && (
         <div className="sd-diag-loading">正在加载健康检查数据…</div>
       )}
 

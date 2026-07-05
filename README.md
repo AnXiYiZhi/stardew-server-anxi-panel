@@ -579,11 +579,13 @@ docker build -t stardew-server-anxi-panel:1.0.0 `
 
 计划 UI 采用 Stardew 风格的像素农场视觉：木质边框、羊皮纸面板、粗描边、库存式导航，以及高密度服务器管理信息。
 
-原型位于：
+轻量原型索引位于：
 
 ```text
 docs/prototypes/
 ```
+
+完整历史原型截图已迁出主仓，后续通过 Release artifact、对象存储或设计仓库保存；主仓只保留关键基准图和用途索引。
 
 ## 重要边界
 

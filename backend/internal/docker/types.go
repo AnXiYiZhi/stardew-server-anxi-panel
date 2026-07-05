@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -12,6 +13,7 @@ const (
 	DefaultMaxOutputBytes = 1 << 20
 	DefaultLogTail        = 100
 	MaxLogTail            = 1000
+	DefaultComposePsTTL   = 1500 * time.Millisecond
 )
 
 var (
@@ -27,6 +29,7 @@ type Options struct {
 	Logger         *slog.Logger
 	MaxOutputBytes int64
 	Timeouts       Timeouts
+	ComposePsTTL   time.Duration
 }
 
 type Timeouts struct {
@@ -45,6 +48,14 @@ type Client struct {
 	logger         *slog.Logger
 	maxOutputBytes int64
 	timeouts       Timeouts
+	composePsTTL   time.Duration
+	composePsMu    sync.Mutex
+	composePsCache map[string]composePsCacheEntry
+}
+
+type composePsCacheEntry struct {
+	result    ComposePsResult
+	expiresAt time.Time
 }
 
 type CommandResult struct {
@@ -132,11 +143,17 @@ func NewClient(options Options) *Client {
 	if maxOutputBytes <= 0 {
 		maxOutputBytes = DefaultMaxOutputBytes
 	}
+	composePsTTL := options.ComposePsTTL
+	if composePsTTL <= 0 {
+		composePsTTL = DefaultComposePsTTL
+	}
 	return &Client{
 		dockerPath:     dockerPath,
 		logger:         logger,
 		maxOutputBytes: maxOutputBytes,
 		timeouts:       withDefaultTimeouts(options.Timeouts),
+		composePsTTL:   composePsTTL,
+		composePsCache: make(map[string]composePsCacheEntry),
 	}
 }
 

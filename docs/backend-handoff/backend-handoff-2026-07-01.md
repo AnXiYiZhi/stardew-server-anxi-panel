@@ -1,3 +1,69 @@
+# PUBLIC-IP-LOOKUP-1 后端接手记录（2026-07-06）
+
+## 改了什么
+- 新增 `GET /api/instances/:id/public-ip`，由面板后端主动访问公网 IP 检测服务，返回服务器公网出口 IP。
+- 检测服务按 `api.ipify.org`、`checkip.amazonaws.com`、`ifconfig.me/ip` 顺序兜底，HTTP 客户端 `3s` timeout；返回值会用 `netip.ParseAddr()` 校验，并拒绝内网、loopback、link-local、multicast、unspecified 地址。
+- 成功结果缓存 `10min`；普通读取走缓存，`?refresh=1` / `?refresh=true` 强制重新检测。
+
+## 影响文件 / 接口
+- `backend/internal/web/public_ip.go`
+- `backend/internal/web/public_ip_test.go`
+- `backend/internal/web/handler.go`
+- `backend/internal/web/instance_handlers.go`
+- 新增接口：`GET /api/instances/:id/public-ip`，响应 `{ ip, checkedAt, source?, cached }`。
+- 未改 Junimo driver、Docker/Compose、实例状态、邀请码接口或安装/生命周期流程。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/web`。
+- 前端配套验证：`cd frontend; npm.cmd run build`。
+
+## 下一步注意事项
+- 这个接口检测的是面板后端所在环境的出口 IP，不是浏览器访问者 IP；不要把探测逻辑移到前端。
+- 如果后续需要让用户自定义检测源，优先增加配置项或环境变量，不要在前端硬编码外部 IP 服务。
+
+# DOCKER-POLL-PERF-1 后端接手记录（2026-07-06）
+
+## 改了什么
+- `backend/internal/docker.Client.ComposePs()` 增加默认 `1.5s` 的成功结果 TTL 缓存，降低同一页面短时间内多路径读取 Compose 状态时的 Docker CLI 进程启动次数。
+- `ComposeUp`、`ComposeDown`、`ComposeRestart` 和 `ComposeRestartServices` 会在命令执行前后清理对应 workDir 的 `ComposePs` 缓存。
+- 缓存不覆盖 `ComposeStats --no-stream`、`ComposeLogs`、`DockerVersion` 或 `ComposeVersion`；这些命令仍按显式调用执行。
+
+## 影响文件 / 接口
+- `backend/internal/docker/types.go`
+- `backend/internal/docker/compose.go`
+- `backend/internal/docker/compose_test.go`
+- API 响应结构不变；影响的是 `GET /api/instances/:id/state`、`GET /api/instances/:id/docker/ps`、支持包等内部复用 `ComposePs` 的路径。
+
+## 如何验证
+- 已执行：`cd backend; go test -count=1 ./internal/docker`。
+- 前端配套验证：`cd frontend; npm.cmd run build`。
+
+## 下一步注意事项
+- `ComposePs` 缓存 TTL 很短，只用于吸收同屏并发/连发状态查询；不要把它扩大成长期状态源。
+- `ComposeStats --no-stream` 成本较高，不建议后端缓存或高频轮询；保持由诊断页可见状态驱动低频请求。
+- `DockerVersion` / `ComposeVersion` 只放在 Diagnostics、Docker 状态页、安装前检查或用户手动刷新里，不要加进普通总览轮询。
+
+# SUPPORT-BUNDLE-STREAM-1 后端接手记录（2026-07-06）
+
+## 改了什么
+- 支持包导出从“先写入 `bytes.Buffer` 再一次性返回”改为直接对 `http.ResponseWriter` 创建 `zip.Writer` 流式写出。
+- 这样支持包未来加入更多日志或诊断文件时，不会把整个 ZIP 同时压在后端内存里。
+- 下载文件名、ZIP 内条目和脱敏逻辑不变；响应仍是 `application/zip`，但不再设置固定 `Content-Length`。
+
+## 影响文件 / 接口
+- `backend/internal/web/support_bundle.go`
+- `backend/internal/web/support_bundle_test.go`
+- 接口路径不变：`POST /api/instances/:id/support-bundle`。前端按 Blob 下载即可，不应依赖 `Content-Length` 作为完成判断。
+
+## 如何验证
+- 已执行：`cd backend; go test ./internal/web -run "SupportBundle|Docker|Metrics"`。
+- 已执行：`cd backend; go test ./...`。
+- 新增测试会确认响应是合法 ZIP，包含 `version.json`、`health.json`、`instance-state.json`、`jobs.json`、`audit-logs.json`、`compose-ps.json`、`server-logs.txt`，且没有固定 `Content-Length`。
+
+## 下一步注意事项
+- 流式响应一旦开始写 ZIP，就不能再可靠改成 JSON 错误响应；后续新增条目时，单项失败应优先写入 ZIP 内的 error/note 文件，保持下载链路稳定。
+- 如果未来需要显示导出进度，应另做 job 或 SSE，不要为了进度重新把 ZIP 完整缓存在内存中。
+
 # JUNIMO-MOD-MOUNT-RESTORE-1 后端接手记录（2026-07-05）
 
 ## 改了什么
