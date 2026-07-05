@@ -163,6 +163,60 @@ func TestManagerCancelActiveFiltersTarget(t *testing.T) {
 	waitForJobStatus(t, store, second.ID, storage.JobStatusCanceled)
 }
 
+func TestManagerRecoverInterruptedInstallMarksInstanceError(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	dataDir := filepath.Join(t.TempDir(), "instances", storage.DefaultInstanceID)
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  dataDir,
+	}); err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:           storage.DefaultInstanceID,
+		State:        storage.InstanceStateSteamAuthRunning,
+		StateMessage: "running steam auth",
+		DriverPhase:  "steam_auth_running",
+	}); err != nil {
+		t.Fatalf("set running install state: %v", err)
+	}
+
+	job, err := store.CreateJob(context.Background(), storage.CreateJobParams{
+		Type:       "stardew_install",
+		TargetType: "instance",
+		TargetID:   storage.DefaultInstanceID,
+	})
+	if err != nil {
+		t.Fatalf("create install job: %v", err)
+	}
+	if _, err := store.StartJob(context.Background(), job.ID); err != nil {
+		t.Fatalf("start install job: %v", err)
+	}
+
+	if err := manager.RecoverInterruptedJobs(context.Background()); err != nil {
+		t.Fatalf("recover interrupted jobs: %v", err)
+	}
+
+	failed, err := store.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("get failed job: %v", err)
+	}
+	if failed.Status != storage.JobStatusFailed {
+		t.Fatalf("job status = %s, want failed", failed.Status)
+	}
+	instance, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if instance.State != storage.InstanceStateError || instance.DriverPhase != "install_interrupted" {
+		t.Fatalf("instance state not marked interrupted: state=%s phase=%s", instance.State, instance.DriverPhase)
+	}
+}
+
 func newJobsTestManager(t *testing.T) (*Manager, *storage.Store, func()) {
 	t.Helper()
 	dataDir := t.TempDir()

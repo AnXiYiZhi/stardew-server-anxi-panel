@@ -4,14 +4,16 @@ import { SavesSection } from '../SavesSection'
 export function SavesPage({ user, instanceState, dashboardData, onNavigate, saveActionRequest }: StardewPageProps) {
   return (
     <div className="sd-page sd-saves-page">
-      <h2 className="sd-saves-page-title">
+      <div className="sd-page-header">
         <img
           className="sd-page-icon"
-          src="/assets/stardew/ui/icons/icon_nav_saves.png"
+          src="/assets/stardew/ui/icons/icon_nav_saves_chest_image2.png"
           alt=""
         />
-        存档管理
-      </h2>
+        <div>
+          <h2 className="sd-page-title">存档管理</h2>
+        </div>
+      </div>
 
       <SavesSection
         state={instanceState?.state ?? ''}

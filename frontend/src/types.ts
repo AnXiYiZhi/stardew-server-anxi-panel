@@ -367,6 +367,17 @@ export type RestartSchedule = {
   updatedAt?: string
 }
 
+export type RestartScheduleUpdate = Pick<
+  RestartSchedule,
+  | 'enabled'
+  | 'shutdownTime'
+  | 'startupTime'
+  | 'timezone'
+  | 'warningMinutes'
+  | 'backupBeforeShutdown'
+  | 'skipIfPlayersOnline'
+>
+
 export type RestartScheduleResult = {
   schedule: RestartSchedule
 }

@@ -28,7 +28,7 @@ const junimoComposeTemplate = `services:
       - game-data:/data/game
 
   server:
-    image: sdvd/server:${IMAGE_VERSION:-1.5.0-preview.121}
+    image: ${SERVER_IMAGE:-` + DefaultServerImage + `}
     stdin_open: true
     tty: true
     depends_on:

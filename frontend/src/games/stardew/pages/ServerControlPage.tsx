@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import {
   ApiError,
   startInstance,
@@ -15,6 +15,7 @@ import {
   sendSay,
 } from '../../../api'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
+import { ServerSummaryCard } from '../ServerSummaryCard'
 import type { StardewPageProps } from '../stardew-routes'
 import type { ConsoleCommandDef, RestartSchedule } from '../../../types'
 
@@ -32,11 +33,12 @@ const defaultRestartSchedule: RestartSchedule = {
 const vncDisplayFPS = 15
 const SERVER_PAGE_ICONS = {
   title: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
-  server: '/assets/stardew/ui/icons/icon_nav_server_control.png',
-  save: '/assets/stardew/ui/icons/icon_top_summary_save.png',
-  time: '/assets/stardew/ui/icons/icon_top_summary_time.png',
-  invite: '/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png',
   command: '/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png',
+  backup: '/assets/stardew/ui/icons/icon_nav_saves_chest_image2.png',
+  schedule: '/assets/stardew/ui/icons/icon_right_rail_in_progress_clock_image2.png',
+  display: '/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png',
+  vnc: '/assets/stardew/ui/icons/icon_dropdown_arrow_gold_image2.png',
+  settings: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png',
 } as const
 
 function buildVNCControlURL(port: string) {
@@ -78,10 +80,6 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const [vncMessage, setVNCMessage] = useState<string | null>(null)
   const [vncError, setVNCError] = useState<string | null>(null)
 
-  // ── 邀请码 ────────────────────────────────────────────────────────────────
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState(false)
-
   // ── 控制台命令 ────────────────────────────────────────────────────────────
   const [commands, setCommands] = useState<ConsoleCommandDef[]>([])
   const [commandsLoading, setCommandsLoading] = useState(false)
@@ -102,7 +100,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const isRunning = state === 'running'
   const isStarting = state === 'starting'
   const isStopping = state === 'stopping'
-  const isStopped = state === 'stopped' || state === 'ready_to_start'
+  const isStopped = state === 'stopped' || state === 'ready_to_start' || state === 'game_installed'
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
   const isAdmin = user.role === 'admin'
   const waitingForInvite =
@@ -123,24 +121,13 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     : dashboardData.loading
       ? '读取中…'
       : '未知'
-  const lifecycleStageText = isRunning
-    ? '游戏中'
-    : isStarting
-      ? '启动中'
-      : isStopping
-        ? '停止中'
-        : state
-          ? stateLabelText
-          : '未知'
-
-  const dotClass = isRunning
+  const lifecycleDotClass = isRunning
     ? 'sd-dot sd-dot-green sd-dot-pulse'
-    : state === 'error'
+    : state === 'stopped' || state === 'error'
       ? 'sd-dot sd-dot-red'
-      : isStarting
+      : isStarting || waitingForInvite || waitingForStop
         ? 'sd-dot sd-dot-yellow sd-dot-pulse'
         : 'sd-dot sd-dot-gray'
-
   // ── 命令列表：服务器运行时加载一次 ───────────────────────────────────────
   const loadCommands = useCallback(async () => {
     if (!isRunning) {
@@ -154,7 +141,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       const res = await getCommands()
       setCommands(res.commands)
       if (res.commands.length > 0 && !selectedCommand) {
-        setSelectedCommand(res.commands[0].id)
+        setSelectedCommand(res.commands[0].id || res.commands[0].name)
       }
     } catch (e) {
       setCommandsError(errorMessage(e))
@@ -180,7 +167,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   }, [dashboardData.inviteCode])
 
   useEffect(() => {
-    if (state === 'stopped' || state === 'ready_to_start' || state === 'save_required' || state === 'error') {
+    if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
       setPendingStopAction(false)
     }
   }, [state])
@@ -397,22 +384,6 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     })
   }
 
-  function handleCopy() {
-    if (!dashboardData.inviteCode) return
-    setCopyError(false)
-    navigator.clipboard.writeText(dashboardData.inviteCode).then(
-      () => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      },
-      () => {
-        // clipboard API 不可用（HTTP 环境或权限被拒），降级提示
-        setCopyError(true)
-        setTimeout(() => setCopyError(false), 3000)
-      },
-    )
-  }
-
   // ── 执行控制台命令 ────────────────────────────────────────────────────────
   async function handleRunCommand() {
     if (!selectedCommand) return
@@ -460,91 +431,27 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   return (
     <div className="sd-page sd-server-page">
       {/* ── 页面标题 ───────────────────────────────────────────────────────── */}
-      <div className="sd-page-header">
+      <div key="page-header" className="sd-page-header">
         <img
           className="sd-page-icon"
           src={SERVER_PAGE_ICONS.title}
           alt=""
         />
         <div>
-          <h2 className="sd-page-title">
-            服务器控制
-            <span className="sd-server-title-sprout" aria-hidden="true">⌘</span>
-          </h2>
+          <h2 className="sd-page-title">服务器控制</h2>
         </div>
       </div>
 
-      {/* ── 服务器状态卡片 ─────────────────────────────────────────────────── */}
-      <div className="sd-state-card">
-        <div className="sd-server-state-hero">
-          <div className="sd-server-state-art" aria-hidden="true" />
-          <div className="sd-server-state-readout">
-            <span className="sd-server-state-plaque">当前状态</span>
-            <div className="sd-server-state-main">
-              <span className={dotClass} aria-hidden="true" />
-              <span className="sd-server-state-text">{stateLabelText}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="sd-server-state-details">
-          <div className="sd-state-row">
-            <span className="sd-state-label">
-              <img src={SERVER_PAGE_ICONS.server} alt="" />
-              实例名称
-            </span>
-            <span className="sd-state-value">{instanceState?.name || '未命名实例'}</span>
-            <button
-              className="sd-server-refresh-dot"
-              type="button"
-              aria-label="刷新服务器状态"
-              title="刷新服务器状态"
-              onClick={() => dashboardData.refreshInstanceState()}
-            >
-              ↻
-            </button>
-          </div>
-          <div className="sd-state-row">
-            <span className="sd-state-label">
-              <span className="sd-server-row-gem" aria-hidden="true" />
-              驱动阶段
-            </span>
-            <span className="sd-state-value">{instanceState?.driverPhase || lifecycleStageText}</span>
-          </div>
-          <div className="sd-state-row">
-            <span className="sd-state-label">
-              <img src={SERVER_PAGE_ICONS.save} alt="" />
-              当前存档
-            </span>
-            <span className="sd-state-value">{dashboardData.saves?.activeSaveName || '未选择'}</span>
-          </div>
-          <div className="sd-state-row">
-            <span className="sd-state-label">
-              <img src={SERVER_PAGE_ICONS.time} alt="" />
-              更新时间
-            </span>
-            <span className="sd-state-value">
-              {instanceState?.updatedAt ? formatDate(instanceState.updatedAt) : '暂无记录'}
-            </span>
-          </div>
-        </div>
-
-        {instanceState ? (
-          <>
-            {instanceState.stateMessage ? (
-              <div className="sd-state-row">
-                <span className="sd-state-label">状态消息</span>
-                <span className="sd-state-value" style={{ fontWeight: 400, color: '#8a7060' }}>
-                  {instanceState.stateMessage}
-                </span>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+      {/* ── 服务器摘要卡片 ─────────────────────────────────────────────────── */}
+      <ServerSummaryCard
+        key="summary"
+        instanceState={instanceState}
+        dashboardData={dashboardData}
+        className="sd-server-summary-card"
+      />
 
       {/* ── 生命周期控制 ───────────────────────────────────────────────────── */}
-      <div className="sd-srv-section sd-server-lifecycle">
+      <div key="lifecycle" className="sd-srv-section sd-server-lifecycle">
         <div className="sd-srv-section-title">
           生命周期控制
           <span className="sd-server-title-sprout" aria-hidden="true">⌘</span>
@@ -552,6 +459,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         <div className="sd-ctrl-row">
           {!waitingForStop ? (
             <button
+              key="start"
               className={`sd-btn-start${waitingForInvite ? ' sd-btn-loading' : ''}`}
               disabled={waitingForInvite || !canStart}
               onClick={() => void handleStart()}
@@ -560,19 +468,14 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               {waitingForInvite ? (
                 <span className="sd-btn-spinner" aria-hidden="true" />
               ) : (
-                <img
-                  src="/assets/stardew/ui/icons/icon_button_play.png"
-                  alt=""
-                  className="sd-btn-img"
-                  style={{ width: 12, height: 13 }}
-                />
+                <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
               )}
               {waitingForInvite || (actionBusy && canStart) ? '启动中…' : '启动'}
             </button>
           ) : null}
 
           {showSaveRequiredPrompt ? (
-            <div className="sd-start-save-required">
+            <div key="save-required" className="sd-start-save-required">
               <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
               <button className="sd-btn-green" onClick={() => onNavigate('saves')} disabled={actionBusy}>
                 创建/上传存档
@@ -581,46 +484,38 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           ) : null}
 
           {waitingForStop ? (
-            <button className="sd-btn-stop sd-btn-loading" disabled>
+            <button key="stopping" className="sd-btn-stop sd-btn-loading" disabled>
               <span className="sd-btn-spinner" aria-hidden="true" />
               停止中…
             </button>
           ) : !waitingForInvite ? (
-            <>
+            <Fragment key="running-actions">
               <button
+                key="stop"
                 className="sd-btn-stop"
                 disabled={!canStop}
                 onClick={() => setConfirmAction('stop')}
                 title={!isRunning ? '服务器未运行' : '停止服务器（需确认）'}
               >
-                <img
-                  src="/assets/stardew/ui/icons/icon_button_stop.png"
-                  alt=""
-                  className="sd-btn-img"
-                  style={{ width: 11, height: 11 }}
-                />
+                <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
                 停止
               </button>
 
               <button
+                key="restart"
                 className="sd-btn-restart"
                 disabled={!canRestart}
                 onClick={() => setConfirmAction('restart')}
                 title={!isRunning ? '服务器未运行' : '重启服务器（需确认）'}
               >
-                <img
-                  src="/assets/stardew/ui/icons/icon_button_restart.png"
-                  alt=""
-                  className="sd-btn-img"
-                  style={{ width: 12, height: 12 }}
-                />
+                <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
                 重启
               </button>
-            </>
+            </Fragment>
           ) : null}
 
           {actionBusy ? (
-            <span className="sd-srv-hint" style={{ marginLeft: 6 }}>
+            <span key="busy-hint" className="sd-srv-hint" style={{ marginLeft: 6 }}>
               <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
               操作进行中，请稍候…
             </span>
@@ -630,6 +525,14 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         {actionError ? (
           <div className="sd-ov-error" style={{ marginTop: 6 }}>{actionError}</div>
         ) : null}
+
+        <div className="sd-server-lifecycle-status">
+          状态
+          <span className={lifecycleDotClass} aria-hidden="true" />
+          <span className={`sd-server-lifecycle-status-val sd-server-lifecycle-status-val-${state ?? 'unknown'}`}>
+            {stateLabelText}
+          </span>
+        </div>
 
         {waitingForInvite ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
@@ -652,51 +555,8 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         ) : null}
       </div>
 
-      {/* ── 邀请码 ─────────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section sd-server-invite">
-        <div className="sd-srv-section-title">
-          <img className="sd-server-section-icon" src={SERVER_PAGE_ICONS.invite} alt="" />
-          邀请代码
-          <span className="sd-server-title-sprout" aria-hidden="true">⌘</span>
-          <button
-            className="sd-btn-tan sd-server-title-action"
-            onClick={() => dashboardData.refreshInviteCode()}
-            disabled={!isRunning && !isStarting}
-            title={isRunning || isStarting ? '重新获取邀请码' : '服务器未运行时无法获取邀请码'}
-          >
-            刷新
-          </button>
-        </div>
-
-        {dashboardData.inviteCode ? (
-          <>
-            <div className="sd-invite-box">
-              <div className="sd-invite-code">{dashboardData.inviteCode}</div>
-              <button className="sd-btn-copy" onClick={handleCopy}>
-                {copied ? '✓' : '复制'}
-              </button>
-            </div>
-            {copyError ? (
-              <div className="sd-srv-hint" style={{ color: '#c02020', marginTop: 3 }}>
-                复制失败（需 HTTPS 或 localhost），请手动选择文本复制。
-              </div>
-            ) : null}
-          </>
-        ) : !isRunning ? (
-          <div className="sd-srv-empty">服务器未运行，邀请码不可用。启动服务器后点击"刷新"获取。</div>
-        ) : dashboardData.loading ? (
-          <div className="sd-srv-empty">读取邀请码中…</div>
-        ) : dashboardData.inviteCodeError ? (
-          <div className="sd-srv-empty" style={{ color: '#8a7060' }}>
-            获取邀请码失败（服务器可能尚未完全启动），可稍后点击刷新重试。
-          </div>
-        ) : (
-          <div className="sd-srv-empty">暂无邀请码，点击上方"刷新"或等待服务器完全启动。</div>
-        )}
-      </div>
-
       {/* ── 全服喊话 ───────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section sd-server-broadcast">
+      <div key="broadcast" className="sd-srv-section sd-server-broadcast">
         <div className="sd-srv-section-title">
           全服消息
           <span className="sd-server-title-sprout" aria-hidden="true">⌘</span>
@@ -740,7 +600,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 控制台命令 ─────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section sd-server-command">
+      <div key="command" className="sd-srv-section sd-server-command">
         <div className="sd-srv-section-title">
           <img className="sd-server-section-icon" src={SERVER_PAGE_ICONS.command} alt="" />
           控制台命令
@@ -753,8 +613,8 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 <div className="sd-srv-empty" style={{ color: '#c02020' }}>
                   加载命令列表失败：{commandsError}
                   <button
-                    className="sd-btn-tan"
-                    style={{ marginLeft: 8, fontSize: 9.5, height: 20, padding: '0 8px', minWidth: 40 }}
+                    className="sd-btn-tan sd-btn--sm"
+                    style={{ marginLeft: 8 }}
                     onClick={() => void loadCommands()}
                   >
                     重试
@@ -775,11 +635,14 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                       }}
                       disabled={commandBusy}
                     >
-                      {commands.map((cmd) => (
-                        <option key={cmd.id} value={cmd.id}>
+                      {commands.map((cmd) => {
+                        const commandId = cmd.id || cmd.name
+                        return (
+                        <option key={commandId} value={commandId}>
                           {cmd.name}{cmd.adminOnly ? ' (仅管理员)' : ''}
                         </option>
-                      ))}
+                        )
+                      })}
                     </select>
                     <button
                       className="sd-btn-green"
@@ -816,14 +679,15 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       </div>
 
       {/* ── 快捷操作 ─────────────────────────────────────────────────────── */}
-      <div className="sd-srv-section sd-server-quick">
+      <div key="quick" className="sd-srv-section sd-server-quick">
         <div className="sd-srv-section-title">
           快捷操作
           <span className="sd-server-title-sprout" aria-hidden="true">⌘</span>
         </div>
         <div className="sd-server-quick-grid">
           <button
-            className="sd-btn-green"
+            key="manual-backup"
+            className="sd-btn-green sd-btn--lg"
             disabled={quickBackupBusy || !isAdmin || !activeSaveName}
             title={
               !isAdmin
@@ -834,18 +698,28 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             }
             onClick={() => void handleQuickBackup()}
           >
-            {quickBackupBusy ? '备份中…' : '备份已保存进度'}
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.backup} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>{quickBackupBusy ? '备份中…' : '手动备份'}</strong>
+              <span>备份当前存档</span>
+            </span>
           </button>
           <button
-            className="sd-btn-tan"
+            key="restart-schedule"
+            className="sd-btn-tan sd-btn--lg"
             disabled={!isAdmin}
             title={isAdmin ? '设置每天几点关闭、几点开启服务器' : '仅管理员可设置计划重启'}
             onClick={() => void openRestartSchedule()}
           >
-            计划重启
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.schedule} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>计划重启</strong>
+              <span>设置定时重启</span>
+            </span>
           </button>
           <button
-            className={vncRenderingEnabled ? 'sd-btn-tan' : 'sd-btn-green'}
+            key="toggle-vnc-display"
+            className={`${vncRenderingEnabled ? 'sd-btn-tan' : 'sd-btn-green'} sd-btn--lg`}
             disabled={!isAdmin || !isRunning || vncDisplayBusy || vncRenderingStatusLoading}
             title={
               !isAdmin
@@ -860,19 +734,27 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             }
             onClick={() => void handleToggleVNCDisplay()}
           >
-            {vncDisplayBusy
-              ? vncRenderingEnabled
-                ? '关闭中…'
-                : '打开中…'
-              : vncRenderingStatusLoading
-                ? '读取VNC状态…'
-              : vncRenderingEnabled
-                ? '关闭VNC显示'
-                : '打开VNC显示'}
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.display} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>
+                {vncDisplayBusy
+                  ? vncRenderingEnabled
+                    ? '关闭中…'
+                    : '打开中…'
+                  : vncRenderingStatusLoading
+                    ? '读取VNC状态…'
+                    : vncRenderingEnabled
+                      ? '关闭VNC显示'
+                      : '打开VNC显示'}
+              </strong>
+              <span>远程桌面显示</span>
+            </span>
+            {vncRenderingEnabled ? <span className="sd-server-quick-status">已启用</span> : null}
           </button>
           {vncRenderingEnabled ? (
             <button
-              className="sd-btn-tan"
+              key="open-vnc-control"
+              className="sd-btn-tan sd-btn--lg"
               disabled={!isAdmin || !isRunning || vncPortLoading || !vncPort}
               title={
                 !isAdmin
@@ -887,15 +769,24 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               }
               onClick={handleOpenVNCControl}
             >
-              {vncPortLoading ? '读取端口…' : '跳转VNC控制'}
+              <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.vnc} alt="" />
+              <span className="sd-server-quick-copy">
+                <strong>{vncPortLoading ? '读取端口…' : '跳转VNC控制'}</strong>
+                <span>打开浏览器 VNC 控制台</span>
+              </span>
             </button>
           ) : null}
           <button
-            className="sd-btn-tan"
+            key="server-settings"
+            className="sd-btn-tan sd-btn--lg"
             disabled
             title="待接入：端口/可见性/密码配置"
           >
-            服务器设置
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.settings} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>服务器设置</strong>
+              <span>待接入</span>
+            </span>
             <span className="sd-srv-badge-pending">待接入</span>
           </button>
         </div>
@@ -928,7 +819,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
 
       {/* ── 危险操作确认弹框 ───────────────────────────────────────────────── */}
       {confirmAction ? (
-        <div className="sd-confirm-overlay">
+        <div key="confirm" className="sd-confirm-overlay">
           <div className="sd-confirm-dialog">
             <h3>{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
             <p>
@@ -941,7 +832,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 取消
               </button>
               <button
-                className={confirmAction === 'stop' ? 'sd-btn-stop' : 'sd-btn-restart'}
+                className={confirmAction === 'stop' ? 'sd-btn-delete' : 'sd-btn-green'}
                 onClick={() => {
                   const action = confirmAction
                   setConfirmAction(null)
@@ -956,7 +847,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       ) : null}
 
       {scheduleOpen ? (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <div key="schedule" className="sd-confirm-overlay" role="dialog" aria-modal="true">
           <div className="sd-confirm-dialog sd-confirm-dialog-wide">
             <h3>计划重启</h3>
             {scheduleLoading ? (
@@ -1055,14 +946,14 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
 
             <div className="sd-confirm-actions">
               <button className="sd-btn-tan" onClick={() => setScheduleOpen(false)} disabled={scheduleSaving}>
-                关闭
+                取消
               </button>
               <button
                 className="sd-btn-green"
                 onClick={() => void handleSaveRestartSchedule()}
                 disabled={scheduleLoading || scheduleSaving}
               >
-                {scheduleSaving ? '保存中...' : '保存计划'}
+                {scheduleSaving ? '保存中…' : '保存'}
               </button>
             </div>
           </div>

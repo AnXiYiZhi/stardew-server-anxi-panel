@@ -1,3 +1,150 @@
+# FE-MODS-HIDE-SYSTEM-RUNTIME-1 状态
+- `FE-MODS-HIDE-SYSTEM-RUNTIME-1` completed：模组页已隐藏 SMAPI runtime、`StardewAnxiPanel.Control` 和 `JunimoServer` / `JunimoHost.Server` 这类系统运行组件；它们不再出现在“添加模组”的已安装卡片或“配置模组”的当前存档启用状态列表中。用户可见“已安装”和解析失败统计同步只计算普通 Mod；玩家同步统计和导出仍保留完整列表逻辑，避免影响基础运行依赖处理。仅改前端 `ModsPage.tsx` 和文档，未改后端 API、启用切换接口、玩家同步包导出或 Junimo 通信。验证：`cd frontend; npm.cmd run build`。
+
+# JUNIMO-MOD-MOUNT-RESTORE-1 状态
+- `JUNIMO-MOD-MOUNT-RESTORE-1` completed：启动/重启前自动从当前 `sdvd/server` 镜像同步官方 `JunimoServer` Mod 到宿主 `.local-container/mods`，修复 mods 挂载遮住镜像内置组件后 Junimo API/VNC rendering 不可用的问题。`JunimoHost.Server` 现在是内置强制启用组件，物理 `smapi` 运行时目录不再显示为重复 Mod。验证：`go test ./internal/games/stardew_junimo -run "ListMods|ApplyNewSaveDefault|ApplyModProfileKeeps|Rendering|JunimoServerMod"`、`go test ./internal/web -run "Rendering|VNCConfig"`。
+
+# ENV-BOM-NORMALIZE-1 状态
+- `ENV-BOM-NORMALIZE-1` completed：实例 `.env` 读取/写回会剥离 UTF-8 BOM 前缀 key，修复 `﻿IMAGE_VERSION` 导致 `docker compose up` 报 `unexpected character "\ufeff"` 的启动失败。当前 `data/instances/stardew/.env` 已热修，`docker compose config --quiet` 和 `docker compose up -d` 已验证通过；后续排查启动失败时应先区分 Compose 配置解析错误和容器进程错误。
+
+# STEAMCMD-SELFUPDATE-CACHE-1 状态
+- `STEAMCMD-SELFUPDATE-CACHE-1` completed：SteamCMD 兜底容器已持久化 `/root/.local/share/Steam` 与 `/home/steam/.local/share/Steam`，用于缓存 SteamCMD 客户端自更新文件；前端将登录前 `[steamcmd] [ N%] Downloading update (... of 40,273 KB)` 标记为 SteamCMD 客户端更新，不再误显示为镜像拉取或游戏文件下载。验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallSteamCMD"`，`cd frontend; npm.cmd run build`。
+
+# STEAMCMD-RETRY-RESUME-1 状态
+- `STEAMCMD-RETRY-RESUME-1` completed：SteamCMD 兜底授权超时/失败后，复用凭据重试会直接恢复 SteamCMD fallback，不再先跑 Junimo compose pull 或 `steam-auth`；SteamCMD 镜像候选会先全量 inspect，本地已有任意候选即直接使用，避免重复拉取已下载镜像。前端安装页已补充“重试 SteamCMD 授权/下载”和“不重新拉取已有 SteamCMD 镜像”的提示。验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallSteamCMD"`，`cd frontend; npm.cmd run build`。
+
+# STEAMCMD-FALLBACK-1 状态
+
+- `STEAMCMD-FALLBACK-1` completed：安装流程在 `steam-auth` 已认证成功但游戏文件下载失败时，会自动切换到 SteamCMD 兜底下载，复用已保存 Steam 账号密码并持久化 SteamCMD 授权缓存；需要验证时前端展示 SteamCMD 专属“手机 App 批准 / App 或邮箱验证码”选项。新增 `steamcmd_*` 安装 phase、Docker 通用 TTY 容器执行和 SteamCMD 镜像拉取能力；SteamCMD 镜像按 `STEAMCMD_IMAGE_CANDIDATES` 候选列表兜底，默认顺序为 `docker.1ms.run/steamcmd/steamcmd:latest`、`docker.m.daocloud.io/steamcmd/steamcmd:latest`、`ghcr.io/steamcmd/steamcmd:latest`、`cm2network/steamcmd:latest`，旧实例会补齐新候选并过滤直连 Docker Hub 的 `steamcmd/steamcmd:latest` 和已移除的 `docker.xuanyuan.me/steamcmd/steamcmd:latest`，单次 pull 默认等待 30 分钟，避免单个镜像源 403 或慢速拉取后直接失败。已验证 `cd backend; go test ./internal/docker ./internal/web ./internal/games/stardew_junimo` 与 `cd frontend; npm.cmd run build` 通过。
+
+# FE-STEAM-AUTH-DOWNLOAD-PROGRESS-RESTORE-1 状态
+- `FE-STEAM-AUTH-DOWNLOAD-PROGRESS-RESTORE-1` completed：安装页 Steam 认证区现在按最新日志识别下载阶段，日志出现 `Downloading app 413150` / `Progress:` 后会显示游戏下载卡和真实文件/体积进度条，不再停留在手机 App 批准登录；历史 QR URL 也不再压过后续 Guard 验证码输入。仅改 `frontend/src/games/stardew/pages/InstallPage.tsx`，未改后端接口、SSE 或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；Browser QA 壳加载正常、无 overlay、console error/warn 为空。
+
+# INSTALL-INTERRUPTED-STATE-1 状态
+- `INSTALL-INTERRUPTED-STATE-1` completed：修复安装任务失败/面板重启后实例仍残留 `steam_auth_running` 导致前端卡在 48% 的问题。后端恢复 interrupted `stardew_install` 时会同步写 `install_interrupted`，steam-auth 容器运行错误会写 `steam_auth_failed`；前端安装页以活跃 job 为准，没有活跃安装任务时把旧运行中 phase 视为中断失败，并加载最近安装任务日志。已验证 `cd backend; go test ./internal/jobs ./internal/games/stardew_junimo` 与 `cd frontend; npm.cmd run build` 通过。
+
+# DEPLOY-RUN-SH-1 状态
+
+- `DEPLOY-RUN-SH-1` completed：新增 `deploy/run.sh` 作为用户优先使用的一键启动/维护脚本，产品口径收敛为快速模式：默认通过 `http://服务器IP:8090` 直接访问面板。脚本默认使用国内阿里云 ACR 面板镜像、默认 `latest` tag，并支持 `PANEL_VERSION=0.1.0` 固定版本；首次运行会生成 `~/.anxi-panel/.env` 与 `docker-compose.yml`，自动创建强随机 `PANEL_SECRET`，使用 named volume `panel-data` 保留面板数据。菜单覆盖拉取启动、停止、重启、更新、状态、日志、切换国内/Docker Hub 镜像源和显示访问地址；同时支持 `install/stop/restart/update/status/logs/url` 非交互命令。未改后端、前端、Junimo driver 或现有部署 compose 行为；已同步 `docs/09-image-build.md`。
+
+# FE-OPSRAIL-MAINTENANCE-PHASE-1 状态
+
+- `FE-OPSRAIL-MAINTENANCE-PHASE-1` completed：右栏“进行中”卡的计划维护展示已从纯 `nextShutdownAt/nextStartupAt` 倒计时改为当前维护窗口阶段状态。到关机点后显示 `关机中 / 等待关机结束`，关机完成后保留自动开机倒计时，到开机点后显示 `开机中 / 等待开机结束`，开机 job 成功后才切回下一天倒计时；计划维护对应的生命周期 job 不再重复作为普通任务显示。仅改前端 `StardewPanel.tsx`，未改后端接口、调度器、权限或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；Browser QA 全壳右栏渲染无 overlay、console error/warn 为空。
+
+# FE-OVERVIEW-METRIC-TYPE-UNIFY-1 状态
+
+- `FE-OVERVIEW-METRIC-TYPE-UNIFY-1` completed：总览页四张统计卡（存档 / 模组 / 系统健康 / 运行任务）已按用户截图反馈统一字体节奏。`.sd-ov-metric-strip` 下标题、数字、单位、说明和状态徽章现在使用同一 Verdana / Microsoft YaHei / SimHei 字体链，标题为 `14px/800`，数字为 `34px/800`，并减轻数字阴影，避免截图中的字体割裂和过粗跳字。仅改 `StardewPanel.css`，未改 TSX、API、权限、轮询或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖 1536x1024、点击服务器再回总览、390x844，console error/warn 为空，overlay 为 0，无横向溢出。
+
+# FE-RESTART-SCHEDULE-PUT-WRITE-MODEL-1 状态
+
+- `FE-RESTART-SCHEDULE-PUT-WRITE-MODEL-1` completed：服务器控制页“计划重启”保存请求体已收口为独立写入模型，避免把 `GET /restart-schedule` 返回的 `instanceId/nextShutdownAt/lastStatus` 等只读展示字段原样回传，触发后端 `DisallowUnknownFields()` 后显示 `request body must be valid JSON`。仅改前端 `types.ts` 与 `api.ts`，未改接口路径、后端调度器、权限或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-STOPPED-STATUS-RED-1 状态
+
+- `FE-STOPPED-STATUS-RED-1` completed：总览页“服务器控制”状态行、服务器控制页顶部摘要状态和生命周期状态行的 `已停止` 已按用户截图反馈改为红色字样，停止态状态点同步为红点。仅改前端展示类名与 CSS，未改生命周期 API、按钮 handler、权限、轮询或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖 stopped 总览、服务器页和 390x844 窄屏，目标文字 computed color 均为 `rgb(192, 32, 32)`，console error/warn 为空，无页面级横向溢出。
+
+# PLAYERS-SAVE-ROSTER-1 状态
+
+- `PLAYERS-SAVE-ROSTER-1` completed：玩家名册已恢复从当前 Stardew 存档主 XML 合并 `<player>` 与 `<farmhands><Farmer>`，解决 `players.json` 在线快照只有 host、缓存也只有 host 时，存档里的 farmhand `test` 不显示的问题。存档离线玩家返回 `status=offline/source=save_file`，在线快照仍覆盖同一玩家；前端“等待加入”只统计 `waiting/pending/joining`，不再把离线名册行算进去。已验证 `cd backend; go test ./internal/games/stardew_junimo` 与 `cd frontend; npm.cmd run build` 通过。
+
+# FE-JOBS-LOG-SCROLL-LOCK-1 状态
+
+- `FE-JOBS-LOG-SCROLL-LOCK-1` completed：修复点击“任务与日志”后 Stardew Shell 被浏览器外层页面向下滚走、顶栏消失、底部露黑的问题。根因是缩放 Shell 的未缩放布局盒子让 `body/#root` 产生页面级纵向滚动，任务日志 `scrollIntoView()` 又触发了外层滚动。已在 `App.css` 对 `.sd-shell` 运行态锁定 `body/#root` 为 `100dvh + overflow:hidden`，并把任务日志、安装日志自动滚到底改为滚动各自日志窗口自身。未改 API、SSE、权限、轮询、路由或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 1112x920 下修复前 `window.scrollY=351/.sd-shell.top=-351`，修复后点击任务日志并强制 `window.scrollTo(0,600)` 仍保持 `scrollY=0/.sd-shell.top=0`，console error 为空。
+
+# FE-MOBILE-NAV-BAR-SIZE-1 状态
+
+- `FE-MOBILE-NAV-BAR-SIZE-1` completed：单栏状态下最上方横向选择栏已按截图反馈适量放大。`max-width: 640px` 下导航行从 `40px` 提到 `48px`，按钮从 `36x30` 提到 `42x38`，图标从 `20px` 提到 `23px`。仅改前端 CSS 和接手文档，未改路由、页面逻辑、API、权限或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过，内置 Browser QA 覆盖 490x844 和 390x844，点击“服务器”导航后 active route 正常切换，console error/warn 为空，页面级横向溢出为 0。
+
+# FE-OVERVIEW-LIFECYCLE-LEFT-1 状态
+- `FE-OVERVIEW-LIFECYCLE-LEFT-1` completed：总览页“服务器控制”区启动/停止/重启按钮已按用户截图反馈从生命周期区域中间移回左侧，与标题和状态行对齐。根因是旧生命周期 flex 规则残留 `flex-wrap: wrap` + `align-content: center`，本次在总览最终覆盖段改为 `flex-wrap: nowrap`、`align-content: flex-start`，并让按钮行 `align-self: flex-start`。仅改前端 CSS，未改生命周期 API、按钮 handler、邀请码刷新、权限、轮询或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖默认视口、点击启动交互和 390x844 窄屏，console error/warn 为空且无页面级横向溢出。
+
+# FE-PLAYERS-ACTION-ICONS-IMAGE2-1 状态
+- `FE-PLAYERS-ACTION-ICONS-IMAGE2-1` completed：玩家页活动列表文字挤压已修正，分页由上一轮的每页 3 条改为每页 2 条并提高事件行高度；管理操作四个 CSS 临时图标已替换为 imagegen 生成、透明抠底后的 image2/Stardew 像素风 PNG（踢出、封禁、白名单、权限）。未改后端 API、玩家事件接口、权限或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖 1536x1024 与 390x844，console error/warn 为空、无页面级横向溢出。
+
+# FE-SAVES-BACKUP-POLICY-LAYOUT-1 状态
+- `FE-SAVES-BACKUP-POLICY-LAYOUT-1` completed：存档页“自动备份策略”卡片已按用户反馈修正文字错乱。定时备份项调整为“勾选框 / 定时备份 / 每天 / 时间选择框”同一行顺序，每日快照保留行与滑杆重新分配宽度，左侧策略卡不再被右侧列表拉伸。仅改前端 `SavesSection.tsx` 与 `StardewPanel.css`，未改备份策略保存、恢复/删除、权限、后端 API 或 Junimo 通信。已验证清理过期 tsbuildinfo 后 `cd frontend; npm.cmd run build` 通过；QA mock 全壳截图确认策略卡无文字错乱且 console error/warn 为空。
+
+# FE-TOPBAR-SAVE-STATUS-TYPE-1 状态
+- `FE-TOPBAR-SAVE-STATUS-TYPE-1` completed：Stardew Shell 顶栏已按用户截图反馈微调。标题字体从过粗的海报感改为更轻、更小的像素描边风格；运行中/已停止状态改用现有像素状态牌素材；存档框移除下拉箭头，农场图标左移贴边，文本改为“农场名：简略游戏时间”（如 `AnxiFarm：第一年春`）；用户角色框也移除下拉箭头。仅改前端 `StardewPanel.tsx` / `StardewPanel.css`，未改 API、权限、路由或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖 1536x720 running/stopped 和 390x844，无横向溢出、无 overlay、console error/warn 为空。
+
+# FE-MODS-PROTOTYPE-V02-LAYOUT-1 状态
+- `FE-MODS-PROTOTYPE-V02-LAYOUT-1` completed：模组管理页已按 version-02 原型 `06-mods.png` 回正卡片顺序和比例。首屏固定为标题操作区、三段标签页、Nexus 连接横条、搜索卡、2x2 搜索结果卡和分页；下载结果卡恢复原型两按钮结构，移除额外的会员安装按钮；按用户截图反馈移除底部扩展安装进度条和“全部类别”下拉框；搜索提示改为“输入英文模组名称、ID 或关键词...”，热门标签改为 `UI Info`、`Fishing Mod`、`Backpack Upgrades`、`Tractor` 并保持真实快捷搜索。模组页卡片复用其它页面统一羊皮纸卡片变量；前置状态统一放在统计行“认可”后面，无前置也显示“前置：无”，保证每张卡操作按钮垂直位置一致。仅改前端 `ModsPage.tsx` 与 `StardewPanel.css`，未改后端 API、上传/删除/导出、启用切换、玩家同步包或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖 1536x1024 和 390x844，无页面级横向溢出，热门标签点击后搜索框为 `Tractor`。
+
+# FE-DIAGNOSTICS-GAUGE-INNER-SAFE-1 状态
+- `FE-DIAGNOSTICS-GAUGE-INNER-SAFE-1` completed：诊断页资源趋势圆环卡已按用户反馈修正数字安全区，保持三张卡片与原型比例，扩大中心底色圆并降低数字/百分号字号，避免红色弧线遮挡 `27.1%` 等百分比读数。仅改前端 CSS，未改资源指标接口、健康检查、轮询、导出诊断包或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 点击“诊断”后确认三张资源卡数字不再被弧线遮挡，console error/warn 为空。
+
+# FE-PLAYERS-TIME-EVENTS-PAGING-1 状态
+- `FE-PLAYERS-TIME-EVENTS-PAGING-1` completed：玩家管理页在线时长列已压缩为“今天/昨天/N天前 HH:mm”短格式并保留旧数据回退，避免遮挡收入列；在线玩家表收入列顺序调整为“玩家收入 / 农场收入”；玩家活动改为每页 3 条分页，桌面下与右侧管理操作卡同高，移动端自然堆叠且无页面级横向溢出。未改后端 API、玩家轮询、权限或 Junimo 通信。已验证 `cd frontend; npm.cmd run build` 通过；内置 Browser QA 覆盖 1536x1024 与 390x844，console error/warn 为空。
+
+# FE-SETTINGS-API-PORT-REMOVE-1 状态
+- `FE-SETTINGS-API-PORT-REMOVE-1` completed：设置与审计页“端口信息”卡片已移除只读“API 端口”字段，仅保留“面板端口 / VNC 端口 + 保存/刷新”。只改前端展示 JSX 和设置页端口行 CSS，未改 VNC 端口保存接口、权限判断、后端 API、Junimo 通信或轮询逻辑。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-SAVES-UPLOAD-BLUE-BG-1 状态
+- `FE-SAVES-UPLOAD-BLUE-BG-1` completed：存档页上传横条背景已按用户反馈从羊皮纸虚线样式恢复为之前的蓝色天空版本（蓝色渐变 + 白色像素云 + 木色实线边框）。仅改 `StardewPanel.css` 视觉样式，上传弹窗、ZIP 预览、导入并启动、权限和禁用逻辑不变。已验证 `cd frontend; npm.cmd run build` 通过；QA mock 全壳截图确认上传条为蓝色背景且 console error/warn 为空。
+
+# FE-SAVES-V02-PROTOTYPE-LAYOUT-1 状态
+- `FE-SAVES-V02-PROTOTYPE-LAYOUT-1` completed：存档管理页已按 version-02 原型 `03-saves.png` 回正卡片位置和比例。激活存档区改为“信息卡 + 右操作卡”，存档库工具按钮上移到标题右侧，桌面主宽下三张存档卡同排，上传条与底部“自动备份策略 / 备份列表”双栏按原型落位。仅改前端 TSX/CSS 展示结构，创建/上传/选择/删除/导出/备份/恢复接口和权限逻辑不变。已验证 `cd frontend; npm.cmd run build` 通过；QA mock 全壳 1536x1024 对照原型、390x844 无横向溢出且 console error/warn 为空。
+
+# FE-SETTINGS-PROTOTYPE-V02-LAYOUT-2 状态
+- `FE-SETTINGS-PROTOTYPE-V02-LAYOUT-2` completed：设置与审计页已按 version-02 原型 `09-settings.png` 回正卡片结构和比例。左列为面板版本、用户管理、端口信息、其他设置，右列为安全与权限、审计日志、安全建议；版本卡补右侧图像槽，安全摘要改单列表，端口卡当时改三端口横排，后续 `FE-SETTINGS-API-PORT-REMOVE-1` 已移除重复的“API 端口”；审计首屏 7 条，安全建议改三条状态徽章。仅改前端页面与 CSS，未改 API、权限、轮询或后端逻辑。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器临时 mock QA 覆盖 1536x1024 与 390x844，console error/warn 为空、无页面级横向溢出，QA 临时文件已删除。
+
+# FE-SERVER-PROTOTYPE-V02-LAYOUT-2 状态
+- `FE-SERVER-PROTOTYPE-V02-LAYOUT-2` completed：服务器控制页已按 version-02 原型 `02-server.png` 回正卡片结构和比例。顶部摘要改为服务器专用整行大卡（状态/在线玩家/当前存档/主机农民/游戏日期 + 邀请码横条），中部恢复生命周期左列、快捷操作右列，快捷操作改为原型式浅色工具行，底部控制台命令横跨整行且终端满宽；移动端恢复单列顺序并无页面级横向溢出。未改 API、权限、轮询、Junimo 通信或后端逻辑。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器临时 mock QA 覆盖 1536x1024 与 390x760，console error/warn 为空，QA 临时文件已删除。
+
+# FE-OVERVIEW-BANNER-SCENE-IMAGE2-1 状态
+- `FE-OVERVIEW-BANNER-SCENE-IMAGE2-1` completed：总览页顶部农场横幅场景已替换为从 image2 原型 `01-overview.png` 裁出的运行时素材 `overview_banner_scene_image2.png`，不再由 CSS 田野/云层和旧 `sprite_farmhouse_scene.png` 叠加生成。裁切只包含农场场景，不含统计条或页面外壳；仅改前端 CSS 与静态素材，未动组件逻辑/API/后端。已验证新 PNG 预览正常，`cd frontend; npm.cmd run build` 通过。
+
+# FE-PROTOTYPE-SHELL-ALIGN-1 状态
+# FE-DIAGNOSTICS-PROTOTYPE-V02-LAYOUT-1 状态
+- `FE-DIAGNOSTICS-PROTOTYPE-V02-LAYOUT-1` completed：诊断页已按 version-02 current-frontend-code 原型 `07-diagnostics.png` 回正卡片位置与比例。页面专属收紧主 frame inset，顶部状态横卡约 `975x160`，中部检查项/资源趋势回到等宽双列约 `482x392`，底部告警建议横跨全宽并留在首屏内；资源仪表卡改为标题在上、圆环居中、说明在下，趋势图压回原型短图。未改后端接口、权限、轮询或业务状态。已验证 `cd frontend; npm.cmd run build` 通过；Playwright + 本机 Chrome 回退 QA：1536x1024 与 390x844 无横向溢出、console error/warn 为空。
+
+- `FE-PROTOTYPE-SHELL-ALIGN-1` completed：九页前端布局已对齐 image2 version-02 原型。根因是右信息栏(414px)/左导航(252px)过肥把主内容挤到 791px；已把 `--sd-opsrail-width` 收到 `clamp(268px,19vw,300px)`、`--sd-sidebar-width` 收到 `clamp(196px,14vw,216px)`，主内容区回到 937px，总览恢复 4 卡一行、控制区与邀请码并排。逐页修：服务器(生命周期|快捷操作并排、快捷操作改竖排)、任务日志(列表|详情两列)、玩家(表整行+活动|管理两列，逆转 FE-PLAYERS-LIST-LEFT-1)、诊断(检查信息单行不折)、设置(用户/审计表列不裁切)、存档(上传区改羊皮纸虚线)、模组(结果卡两列网格)、顶栏版本不折行。仅改 `StardewPanel.css`，未动逻辑/接口。已验证 `cd frontend; npm run build` 通过；mock-fetch harness + Playwright 1536 逐页对比原型、pageerror 为 0，真实登录态截图待补。
+
+# FE-PLAYERS-LIST-LEFT-1 状态
+- `FE-PLAYERS-LIST-LEFT-1` completed：玩家管理页桌面首屏已调整为左侧宽列显示在线玩家表、右侧窄列显示最近事件，取消旧规则导致玩家表落到右侧第三行的问题，减少中间空白；服务器信息（Junimo）保留为底部整行调试信息。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-DIAG-GAUGE-TOMIK-1 状态
+- `FE-DIAG-GAUGE-TOMIK-1` completed：诊断页 CPU/内存/磁盘三资源圆环从铜钱 conic 样式改为 Tomik23 circular-progress-bar 风格（灰底环 + yellow→#ff0000 渐变圆头描边 + 中心百分比），纯 SVG 实现无新依赖；空态只画底环。已验证 `cd frontend; npm.cmd run build` 通过，Playwright 真实登录态 1366/390 截图正常、pageerror 为 0。
+
+# FE-UNIFIED-CARD-PARCHMENT-TONE-1 状态
+- `FE-UNIFIED-CARD-PARCHMENT-TONE-1` completed：总览统计卡当前的浅羊皮纸暖黄已提升为统一小卡片背景色，文件尾部覆盖 `--sd-save-card-bg` / `--sd-save-card-bg-strong`，所有复用统一小卡片变量的非模组页小框都会跟随；总览 `.sd-mc` 保持同色且无斜纹。未改卡片尺寸、边框、圆角、阴影、文字布局或业务逻辑。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-INSTALL-STEAM-AUTH-ICON-1 状态
+- `FE-INSTALL-STEAM-AUTH-ICON-1` completed：安装页“Steam 认证”卡片中间占位图标和栏目标题小图标均已改为复用安装进度第三步的 `icon_install_step_steam_image2.png`，不再使用 CSS 渐变画出的蓝色 Steam 圆球。未改 Steam 认证、Steam Guard、扫码、日志或后端接口。已验证 `cd frontend; npm.cmd run build` 通过；真实安装页受登录页限制，登录态截图待补。
+
+# FE-SETTINGS-FILL-GAP-1 状态
+- `FE-SETTINGS-FILL-GAP-1` completed：设置页已从三段式布局改为左右两列堆叠，左列为“面板版本 / 用户管理 / 端口信息 / 其他设置”，右列为“安全与权限 / 审计日志 / 安全建议”，让端口信息和其他设置上移补足短列空位；`780px` 以下再切回单列。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-OVERVIEW-METRIC-CLEAN-BG-1 状态
+- `FE-OVERVIEW-METRIC-CLEAN-BG-1` completed：总览页四个统计卡 `.sd-mc` 已移除斜向纸纹背景，并改为干净、偏浅的羊皮纸暖黄渐变；后续按反馈从偏白略微压黄，但不恢复旧的高饱和黄色。保留卡片尺寸、边框、角饰、文字布局和状态徽章。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-INSTALL-HERO-SCENE-REMOVE-1 状态
+- `FE-INSTALL-HERO-SCENE-REMOVE-1` completed：安装页顶部状态横幅已移除右侧大农舍场景图 `.sd-install-farm-scene`，不再渲染安装页顶部的 `sprite_farmhouse_scene.png`；状态横幅改为“小土芽图标 + 状态信息”两列。未改安装状态、Steam 认证、日志、进度或后端接口。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-INVITE-CARD-COPY-ORDER-1 状态
+- `FE-INVITE-CARD-COPY-ORDER-1` completed：邀请码卡片新增共享 `InviteCodeCard`，服务器摘要卡和总览页服务器控制区统一复用；复制按钮调整到刷新按钮左侧，仅在已有邀请码时渲染，未有码状态不保留空按钮列。总览页已移除旧 `sd-invite-panel` JSX、本地复制状态和独立 `handleCopy()`，后续邀请码展示/复制/刷新只维护一套组件。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器在未登录状态下确认服务器页与总览页应用壳非空、console error/warn 为空，登录态卡片截图待补。
+
+# FE-SETTINGS-ACCOUNT-CARD-REMOVE-1 状态
+- `FE-SETTINGS-ACCOUNT-CARD-REMOVE-1` completed：设置与审计页已移除顶部“当前账号”卡片，避免和顶栏用户入口重复；顶部摘要区从三卡改为“面板版本 / 安全与权限”两卡，并清理 `sd-settings-account-*` 死样式。登出仍保留在 Stardew Shell 顶栏，未改 session、权限、用户管理或审计日志逻辑。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-PAGE-HEADER-SHADOW-1 状态
+- `FE-PAGE-HEADER-SHADOW-1` completed：Stardew 各路由页头已移除标题文字、导航图标和右侧虚线分隔的阴影背景，只保留干净标题、图标和分隔线；未改页面结构、按钮、卡片布局、API 或业务逻辑。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-PAGE-TOP-ALIGN-1 状态
+- `FE-PAGE-TOP-ALIGN-1` completed：Stardew 各 routed 页面已通过文件尾部 CSS 兜底统一贴齐主内容 frame 顶部，覆盖任务、诊断、安装、设置等页面后置 `padding` 造成的顶部下沉；未改页面结构、卡片布局、API 或业务逻辑。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-SERVER-ACTION-CARDS-1 状态
+- `FE-SERVER-ACTION-CARDS-1` completed：服务器控制页生命周期控制卡已下移到顶部摘要卡下方左侧，快捷操作卡放到同一行右侧；快捷操作按钮统一叠加 `.sd-btn--lg`，与生命周期按钮共用 40px lg 尺寸令牌，并移除原 64px 卡片式按钮和伪图标。已验证 `cd frontend; npm.cmd run build` 通过；真实路由受登录页限制，仅完成应用非空、无框架覆盖、console error/warn 为空的烟测，未完成登录态截图验证。
+
+# FE-SERVER-INVITE-IN-SUMMARY-1 状态
+- `FE-SERVER-INVITE-IN-SUMMARY-1` completed：服务器控制页移除中部独立“邀请代码”卡片，邀请码复制/刷新入口收敛到顶部服务器摘要卡；“刷新”按钮位于“邀请加入码”显示区右侧，运行中/启动中可用，未运行时禁用。删除 `ServerControlPage` 第二套复制状态和 `handleCopy()`，后续统一复用 `ServerSummaryCard`；“全服消息”在删除邀请码卡片后改为横跨整行。已验证 `cd frontend; npm.cmd run build` 通过；真实路由受登录页限制，内置浏览器确认应用加载非空且 console error/warn 为空，未完成登录态截图验证。
+
+# NEXUS-ERROR-TEXT-1 状态
+- `NEXUS-ERROR-TEXT-1` completed：Nexus 搜索/安装错误响应中的中文 mojibake 已修复，`nexus_request_failed` 等错误不再显示为 `璇锋眰澶辫触`。前端 `errorCodeMap` 同步增加 Nexus 错误码中文兜底，后续即使后端 message 异常也会优先显示正常中文。已验证 `cd backend; go test ./internal/web -run TestWriteNexusErrorMessagesAreReadableChinese` 和 `cd frontend; npm.cmd run build` 通过。
+
+# FE-BTN-UNIFY-1 状态
+- `FE-BTN-UNIFY-1` completed：9 个页面按钮与操作区统一化。按钮尺寸收敛为 lg 40px / md 28px / sm 22px 三档令牌（`.sd-btn--lg` / 默认 / `.sd-btn--sm`），语义色收敛为绿(主)/棕(次)/红(危险)，删除 `.sd-btn-blue`、`.sd-btn-xs` 与死样式 `sd-btn-gold`/`sd-btn-red`；危险确认弹窗统一红色确认键与"取消+确认"顺序；新增共享 `.sd-actionbar` / `.sd-rowactions` 操作区布局类；删除全部逐页按钮尺寸覆写与 JSX 内联尺寸；统一"刷新/保存/X并启动"等文案；修复总览页无邀请码时邀请面板被 1px 网格列挤成竖排的问题。已验证 `cd frontend; npm.cmd run build` 通过，并用 Playwright 真实登录态对 9 页 × 4 视口做改前/改后截图对比，console 无新增报错。
+
 # FE-MAIN-PAGE-FRAME-SLICES-1 状态
 - `FE-MAIN-PAGE-FRAME-SLICES-1` completed：所有 Stardew 页面共用的 `.sd-main` 主内容 frame 已从整图 `100% 100%` 拉伸改为 image2 空框 9 切片平铺。新增四角、上下左右边 tile 和中心羊皮纸 tile，运行时用 9 层 CSS background 实现四角固定、上下 `repeat-x`、左右 `repeat-y`、中心 `repeat`，窗口缩放时边框纹理不再被拉伸；`.sd-main-scroll` 统一滚动视口保持不变。已验证 `cd frontend; npm.cmd run build` 通过，并用内置浏览器临时 QA 页检查 1280x720 与 390x760 下背景层/重复规则正确、无横向溢出、滚动正常、console error/warn 为空。
 
@@ -408,6 +555,9 @@ Multi Game Mode later
 # FE-ASSET-TOP-BAR-CHICKEN-1 状态
 - `FE-ASSET-TOP-BAR-CHICKEN-1` completed：已生成并入库顶栏左侧品牌鸡图标素材 `icon_topbar_chicken_image2.png`。素材为透明 PNG，只保留白色鸡本体、红色鸡冠、黄色喙、橙色脚、像素描边、阴影和高光，不含品牌文字、顶栏木质背景或其它 UI 元素；当前仅入库生产素材，尚未接入 Shell。
 
+# FE-SHELL-SCALE-1 状态
+- `FE-SHELL-SCALE-1` completed：Stardew Shell 已接入全局等比缩放。以 `1536x1024` 为设计基准，`.sd-shell` 计算 `--sd-ui-scale = max(0.72, min(100vw/1536, 100dvh/1024))`，使用反向宽高 + `transform: scale(...)` 让整套 UI 填满当前浏览器可视区；右 OpsRail 隐藏阈值下放到最小全布局之后，`StardewPanel.tsx` 自动折叠估算同步按新 scale/栏宽计算。已验证前端构建通过，并用临时 HTTP QA 页确认 760x504 为最小三栏基准、1920x1080 可继续等比放大且无页面溢出。
+
 # FE-ASSET-TOP-BAR-BRAND-GLOW-1 状态
 - `FE-ASSET-TOP-BAR-BRAND-GLOW-1` completed：已生成并入库顶栏品牌文字暖黄色发光/阴影占位素材 `topbar_brand_text_glow_placeholder_image2.png`。素材为透明 PNG，不含实际文字、鸡图标或木质顶栏背景，仅供前端动态渲染品牌文字时作为底层光效；当前仅入库生产素材，尚未接入 Shell。
 
@@ -482,3 +632,44 @@ Multi Game Mode later
 - `FE-DIAGNOSTICS-GAUGE-CODE-1` completed：诊断与健康页 CPU / 内存 / 磁盘三枚资源仪表已完成代码级视觉优化。数值与 `%` 拆分排版，修复圆心文字拥挤；像素分段进度环、硬边描边、羊皮纸内芯、阴影和高光均由 CSS gradient / custom properties / box-shadow 实现。未新增图片素材，未使用原型图或截图作为资源，业务逻辑、API、权限和状态处理保持不变。
 # FE-INSTALL-IMAGE2-ICONS-2 状态
 - `FE-INSTALL-IMAGE2-ICONS-2` completed：安装页 CSS 自绘图标已替换为从 image2 安装页原型提取/抠图生成的透明 PNG 小素材。新增 `frontend/public/assets/stardew/ui/install/` 下 6 个单图，覆盖顶部状态土芽和五步时间线图标；未使用整页原型图作为背景或整块资源，页面纸卡、边框、分隔线、进度条和日志终端仍由 CSS 实现。已验证 `cd frontend; npm.cmd run build` 通过，并用临时 QA 页在内置浏览器检查 1280x900、390x760 和“安装游戏”展开表单交互，确认图标资源加载、无横向溢出、按钮文字不溢出、console error/warn 为空。
+# FE-CARD-UNIFY-SAVES-1 状态
+- `FE-CARD-UNIFY-SAVES-1` completed：除模组管理页外，Stardew 其他页面小框已统一为存档管理页卡片基准，使用暖色纸面、铜色 2px 边框、9px 圆角、内描边和轻微阴影；背景按最新反馈改为干净浅色高光 + 纯色纸面，不再铺密集点状纹理。同步收敛标题/说明字号、padding、gap 和窄屏容器查询，模组页 `.sd-mods-*` 主体卡片保持原状。已验证 `cd frontend; npm.cmd run build` 通过，并用已删除的临时 QA 页检查 1280x720/390x760 无横向溢出、无点状纹理、模组卡未误套新样式。
+# FE-CARD-UNIFY-SAVES-1 follow-up
+- `FE-CARD-UNIFY-SAVES-1` follow-up completed：总览页四个统计卡 `.sd-mc`（存档/模组/系统健康/运行任务）已按反馈仅移除点状 `radial-gradient` 纹理，保留原有结构、尺寸、边框、阴影和布局。已验证 `cd frontend; npm.cmd run build` 通过。
+# FE-SERVER-PLAYERS-CARD-LAYOUT-1 状态
+- `FE-SERVER-PLAYERS-CARD-LAYOUT-1` completed：服务器控制页已使用共享 `ServerSummaryCard` 替换原大状态卡并移除独立邀请码卡；玩家管理页已移除顶部摘要卡，将“服务器信息（Junimo）”置底；在线玩家表删除“角色”列，主机标识并入玩家名右侧，并新增可见“农场收入 / 玩家收入”列。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器 DOM 快照接口本次返回兼容错误，未完成截图式 QA。
+
+# FE-PLAYERS-PROTOTYPE-CURRENT-1 状态
+- `FE-PLAYERS-PROTOTYPE-CURRENT-1` completed：玩家管理页已继续按 version-02 `05-players.png` 原型校准卡片比例和首屏节奏，并通过玩家页专属 `.sd-main:has(.sd-players-page)` 收紧主 frame inset。在线玩家表为整行首块，标题改为 `在线: N` / `等待加入: N` 徽章；活动/最近事件与管理操作保持第二行左右两列，管理操作隐藏原型不存在的说明文字；Junimo 终端整行置底并在桌面首屏可见。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器 QA 覆盖 1536x1024 与 390x844，console error/warn 为空，桌面表格无自身横向滚动条，窄屏无页面级横向溢出。
+
+# FE-MISSING-GAME-INSTALL-PROMPT-1 状态
+- `FE-MISSING-GAME-INSTALL-PROMPT-1` completed：每次登录或已有 session 进入 Stardew 面板后，若实例状态未检测到游戏文件，会弹出“请先安装游戏”引导弹窗；主按钮跳转到 `/instances/stardew/install`。已安装状态、正在运行的 `stardew_install` 任务和当前已在安装页时不会触发该弹窗。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# STEAM-QR-PHASE-CLASSIFY-1 状态
+- `STEAM-QR-PHASE-CLASSIFY-1` completed：Steam QR 扫码登录后端阶段识别已修正，`Choice [1]: 2` 不再误判为 Steam Guard 手机批准，QR 模式下保持 `steam_qr_required` 供前端展示扫码入口。现场诊断确认 steam-auth 容器基础网络可解析并连通 Steam Web API/CM 端口，当前失败属于 SteamClient QR 登录连接未建立而非 Docker 完全无网络。已验证 `cd backend; go test ./internal/games/stardew_junimo` 通过。
+
+# FE-STEAM-QR-LOG-FALLBACK-1 状态
+- `FE-STEAM-QR-LOG-FALLBACK-1` completed：安装页增加 QR 日志兜底，当后端阶段短暂误显 `steam_guard_mobile_required` 但最新日志证明用户选择 QR（例如 `Choice [1]: 2`）时，前端按 `steam_qr_required` 展示扫码交互，避免 QR 流程误显示 Steam Guard 手机批准。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# FE-STEAM-QR-IMAGE-CODE-1 状态
+- `FE-STEAM-QR-IMAGE-CODE-1` completed：安装页 QR 弹窗不再把终端字符画作为主扫码对象，而是从最新 `Or open: https://s.team/q/...` 提取 Steam 登录 URL 并用本地 `qrcode` 生成标准二维码图片；字符画仅作为图片生成失败时的备用。已验证 `cd frontend; npm.cmd run build` 通过，后端 QR 阶段识别相关定向测试通过。
+
+# FE-STEAM-AUTH-OPTIMISTIC-PHASE-1 状态
+- `FE-STEAM-AUTH-OPTIMISTIC-PHASE-1` completed：安装页 Steam 认证选择已加入本地乐观阶段，点击扫码登录/手机批准/输入验证码后立即切换到对应交互区，不再等待实例状态轮询；当前有效的 QR URL 日志可修正落后的选择按钮，但后续 Guard/下载/失败日志优先。已验证 `cd frontend; npm.cmd run build` 通过，后端 QR 阶段识别相关定向测试通过。
+# STEAM-POST-AUTH-RETRY-1 状态
+- `BE-STEAM-POST-AUTH-RETRY-1` / `FE-STEAM-POST-AUTH-RETRY-1` completed：Steam 登录成功后的下载/CDN/磁盘/后续安装失败现在归类为 `error/download_failed` 或 `error/post_auth_failed`，前端通过日志兜底识别认证已成功，并只允许复用已保存凭据重试，不再要求用户重新输入 Steam 账号密码。已验证 `go test ./internal/games/stardew_junimo -run "DownloadFailedAfterSuccessfulAuth|InstallMarksSteamAuthFailedWhenRunErrors"` 与 `cd frontend; npm.cmd run build`。
+# STEAMCMD-PULL-PROGRESS-1 状态
+
+- `STEAMCMD-PULL-PROGRESS-1` completed：Junimo 镜像拉取与 SteamCMD 兜底镜像拉取都会通过 `[pull:progress:done:total]` 给前端提供估算百分比；安装页顶部总进度、镜像拉取卡和任务日志详情可展示“约 N%”，避免用户只能看 layer 日志猜测。已验证 `go test ./internal/games/stardew_junimo -run "SteamCMD|DownloadFailed|InstallMarksSteamAuthFailedWhenRunErrors"`、`go test ./internal/docker ./internal/games/stardew_junimo/config` 与 `cd frontend; npm.cmd run build`。
+# FE-STEAMCMD-BRACKET-PROGRESS-1 状态
+- `FE-STEAMCMD-BRACKET-PROGRESS-1` completed：安装页已支持 SteamCMD 原生 `[ 28%] Downloading update (done of total KB)` 进度日志，并继续支持 SteamCMD 手机 App 批准提示。验证：`cd frontend; npm.cmd run build`。
+# JUNIMO-IMAGE-CANDIDATES-1 状态
+- `JUNIMO-IMAGE-CANDIDATES-1` completed：`server` 与 `steam-auth-cn` 镜像拉取已接入与 SteamCMD 类似的候选兜底机制，默认顺序为 `docker.1ms.run`、`docker.m.daocloud.io`、`ghcr.io`、原始仓库；本地已有任意候选会直接复用，拉取成功后写回 `.env`，避免后续 compose 回到单一镜像源。验证见后端接手文档。
+# JUNIMO-IMAGE-CANDIDATES-2 已完成
+
+- 已完成 JunimoServer 与 steam-auth cn 版镜像候选源自动补齐：旧实例单候选 `.env` 会被扩展为 1ms、DaoCloud、GHCR、原始镜像四级兜底。
+- 已完成选中镜像写回：后端会把实际使用的 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE` 和补齐后的候选列表写回实例 `.env`，方便后续重试复用。
+# FE-GAME-INSTALLED-STARTABLE-1 已完成
+
+- 已修复安装完成态 `game_installed` 在前端不可启动的问题：总览页和服务器控制页都会把它作为可启动的未运行状态展示。
+- 若没有可用存档，点击启动后仍由后端返回 `save_required` 并引导用户创建/上传/选择存档。

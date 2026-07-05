@@ -2,24 +2,43 @@ package stardew_junimo
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 type fakeDocker struct {
-	workDir       string
-	psResult      paneldocker.ComposePsResult
-	psErr         error
-	pullResult    paneldocker.CommandResult
-	pullErr       error
-	inspectResult paneldocker.CommandResult
-	inspectErr    error
+	workDir           string
+	psResult          paneldocker.ComposePsResult
+	psErr             error
+	pullResult        paneldocker.CommandResult
+	pullErr           error
+	composePulls      int
+	pullErrByImage    map[string]error
+	pulledImages      []string
+	inspectResult     paneldocker.CommandResult
+	inspectErr        error
+	inspectErrByImage map[string]error
+	inspectedImages   []string
+	steamAuthCode     int
+	steamAuthErr      error
+	steamAuthRuns     int
+	steamAuthLines    []string
+	containerCode     int
+	containerErr      error
+	containerRuns     int
+	containerLines    []string
+	containerOpts     paneldocker.ContainerTTYRunOpts
 }
 
 func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
@@ -28,6 +47,7 @@ func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.Com
 }
 
 func (f *fakeDocker) ComposePullStreaming(_ context.Context, _ string, _ []string, lineHandler func(string)) (paneldocker.CommandResult, error) {
+	f.composePulls++
 	if f.pullErr == nil {
 		lineHandler("steam-auth Pulling")
 		lineHandler("server Pulling")
@@ -35,12 +55,48 @@ func (f *fakeDocker) ComposePullStreaming(_ context.Context, _ string, _ []strin
 	return f.pullResult, f.pullErr
 }
 
+func (f *fakeDocker) PullImageStreaming(_ context.Context, _ string, imageRef string, lineHandler func(string)) (paneldocker.CommandResult, error) {
+	f.pulledImages = append(f.pulledImages, imageRef)
+	err := f.pullErr
+	if f.pullErrByImage != nil {
+		if imageErr, ok := f.pullErrByImage[imageRef]; ok {
+			err = imageErr
+		}
+	}
+	if err == nil {
+		lineHandler("09b89f0e06d0: Pulling fs layer")
+		lineHandler("a769fcf442cd: Pulling fs layer")
+		lineHandler("09b89f0e06d0: Pull complete")
+		lineHandler("a769fcf442cd: Pull complete")
+	}
+	return f.pullResult, err
+}
+
 func (f *fakeDocker) ImageInspect(ctx context.Context, dir string, imageRef string) (paneldocker.CommandResult, error) {
+	f.inspectedImages = append(f.inspectedImages, imageRef)
+	if f.inspectErrByImage != nil {
+		if err, ok := f.inspectErrByImage[imageRef]; ok {
+			return f.inspectResult, err
+		}
+	}
 	return f.inspectResult, f.inspectErr
 }
 
-func (f *fakeDocker) RunSteamAuthTTY(_ context.Context, _ string, _ paneldocker.SteamAuthRunOpts, _ <-chan string, _ func(string)) (int, error) {
-	return 0, nil
+func (f *fakeDocker) RunSteamAuthTTY(_ context.Context, _ string, _ paneldocker.SteamAuthRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
+	f.steamAuthRuns++
+	for _, line := range f.steamAuthLines {
+		lineHandler(line)
+	}
+	return f.steamAuthCode, f.steamAuthErr
+}
+
+func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
+	f.containerRuns++
+	f.containerOpts = opts
+	for _, line := range f.containerLines {
+		lineHandler(line)
+	}
+	return f.containerCode, f.containerErr
 }
 
 type fakeStore struct {
@@ -112,7 +168,7 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 	for _, want := range []string{
 		"steam-auth:",
 		"server:",
-		"IMAGE_VERSION",
+		"SERVER_IMAGE",
 		"stdin_open: true",
 		"tty: true",
 		"steam-session:/data/steam-session",
@@ -208,6 +264,37 @@ func TestMigrateSteamAuthComposeImage(t *testing.T) {
 	}
 }
 
+func TestMigrateServerComposeImage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "docker-compose.yml")
+	oldCompose := `services:
+  server:
+    image: sdvd/server:${IMAGE_VERSION:-1.5.0-preview.121}
+`
+	if err := os.WriteFile(path, []byte(oldCompose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := migrateServerComposeImage(path)
+	if err != nil {
+		t.Fatalf("migrateServerComposeImage: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected server compose migration to report changed")
+	}
+
+	gotBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(gotBytes)
+	if !strings.Contains(got, "image: ${SERVER_IMAGE:-"+DefaultServerImage+"}") {
+		t.Fatalf("migrated compose missing SERVER_IMAGE fallback:\n%s", got)
+	}
+	if strings.Contains(got, "image: sdvd/server:") {
+		t.Fatalf("old server image was not removed:\n%s", got)
+	}
+}
+
 func TestSteamAuthMenusAreClassifiedSeparately(t *testing.T) {
 	authMenuLines := []string{
 		"Choose authentication method:",
@@ -244,6 +331,38 @@ func TestSteamGuardCodePromptMatchesEmailPrompt(t *testing.T) {
 	line := "Enter Steam Guard code sent to qq.com:"
 	if !isSteamGuardCodePrompt(strings.ToLower(line)) {
 		t.Fatalf("expected Steam Guard email code prompt to match: %q", line)
+	}
+}
+
+func TestQRCodeChoiceEchoDoesNotLookLikeMobileApproval(t *testing.T) {
+	line := "Choice [1]: 2"
+	if isSteamMobileApprovalPrompt(strings.ToLower(line)) {
+		t.Fatalf("QR choice echo must not be classified as Steam Guard mobile approval: %q", line)
+	}
+}
+
+func TestSteamMobileApprovalPromptMatchesApprovalText(t *testing.T) {
+	lines := []string{
+		"Waiting for approval in the Steam app...",
+		"Open Steam app to approve this login.",
+		"Approve in Steam Mobile App",
+	}
+	for _, line := range lines {
+		if !isSteamMobileApprovalPrompt(strings.ToLower(line)) {
+			t.Fatalf("expected mobile approval prompt to match: %q", line)
+		}
+	}
+}
+
+func TestSteamCMDMobileApprovalPromptMatchesConfirmationText(t *testing.T) {
+	lines := []string{
+		"Please confirm the login in the Steam Mobile app on your phone.",
+		"Waiting for confirmation...",
+	}
+	for _, line := range lines {
+		if !isSteamCMDMobileApprovalPrompt(strings.ToLower(line)) {
+			t.Fatalf("expected SteamCMD mobile approval prompt to match: %q", line)
+		}
 	}
 }
 
@@ -365,10 +484,508 @@ func TestDriverInstall_ValidatesEmptyCredentials(t *testing.T) {
 	}
 }
 
+func TestDriverInstallMarksSteamAuthFailedWhenRunErrors(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{steamAuthErr: errors.New("docker run failed")}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateSteamAuthFailed || updated.DriverPhase != "steam_auth_failed" {
+		t.Fatalf("instance state not marked steam auth failed: state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+}
+
+func TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Logged in as [U:1:1231122837]",
+			"[SteamAuth:A0] Downloading app 413150...",
+			"[SteamAuth:A0] Game license verified",
+			"[SteamAuth:A0] Download failed: Download manifest failed across all CDN servers (403 Forbidden)",
+			"[SteamService] Game download failed: Download manifest failed across all CDN servers (403 Forbidden)",
+		},
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateGameInstalled || updated.DriverPhase != "game_installed" {
+		t.Fatalf("instance state should be installed after steamcmd fallback: state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+	wantImage := steamCMDImageRefs(nil)[0]
+	if fake.containerOpts.ImageRef != wantImage {
+		t.Fatalf("expected SteamCMD fallback image %q, got %q", wantImage, fake.containerOpts.ImageRef)
+	}
+	if !strings.Contains(strings.Join(fake.containerOpts.Command, " "), "app_update 413150") {
+		t.Fatalf("SteamCMD command should download Stardew app 413150: %#v", fake.containerOpts.Command)
+	}
+	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-root-local:/root/.local/share/Steam") {
+		t.Fatalf("SteamCMD should persist root self-update cache, binds=%v", fake.containerOpts.Binds)
+	}
+	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-user-local:/home/steam/.local/share/Steam") {
+		t.Fatalf("SteamCMD should persist steam user self-update cache, binds=%v", fake.containerOpts.Binds)
+	}
+}
+
+func TestDriverInstallTriesNextSteamCMDImageCandidateAfterPullFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	firstImage := "docker.1ms.run/steamcmd/steamcmd:latest"
+	secondImage := "docker.m.daocloud.io/steamcmd/steamcmd:latest"
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		inspectErrByImage: map[string]error{
+			firstImage:                         errors.New("missing first steamcmd image"),
+			secondImage:                        errors.New("missing second steamcmd image"),
+			"ghcr.io/steamcmd/steamcmd:latest": errors.New("missing third steamcmd image"),
+			"cm2network/steamcmd:latest":       errors.New("missing fourth steamcmd image"),
+		},
+		pullErrByImage: map[string]error{
+			firstImage: errors.New("403 Forbidden"),
+		},
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Logged in as [U:1:1231122837]",
+			"[SteamAuth:A0] Downloading app 413150...",
+			"[SteamAuth:A0] Download failed: Download manifest failed across all CDN servers (403 Forbidden)",
+		},
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if got, want := strings.Join(fake.pulledImages, ","), firstImage+","+secondImage; got != want {
+		t.Fatalf("expected SteamCMD pulls %s, got %s", want, got)
+	}
+	if fake.containerOpts.ImageRef != secondImage {
+		t.Fatalf("expected SteamCMD fallback to use second image %q, got %q", secondImage, fake.containerOpts.ImageRef)
+	}
+	logs, err := store.ListJobLogs(context.Background(), job.ID, 0, 1000)
+	if err != nil {
+		t.Fatalf("list logs: %v", err)
+	}
+	if !jobLogsContain(logs, "[pull:progress:2:2]") {
+		t.Fatalf("expected SteamCMD image pull progress marker in job logs")
+	}
+	if got := strings.Join(fake.containerOpts.Entrypoint, " "); got != "/bin/sh" {
+		t.Fatalf("expected SteamCMD fallback to override entrypoint to /bin/sh, got %q", got)
+	}
+	if !strings.Contains(strings.Join(fake.containerOpts.Command, " "), "command -v steamcmd") {
+		t.Fatalf("SteamCMD command should support official steamcmd image path lookup: %#v", fake.containerOpts.Command)
+	}
+}
+
+func TestSteamCMDImageRefsUsesMirrorCandidatesBeforeExistingCandidates(t *testing.T) {
+	envVals := map[string]string{
+		"STEAMCMD_IMAGE_CANDIDATES": "docker.xuanyuan.me/steamcmd/steamcmd:latest,steamcmd/steamcmd:latest,ghcr.io/steamcmd/steamcmd:latest,cm2network/steamcmd:latest",
+	}
+	refs := steamCMDImageRefs(envVals)
+	want := []string{
+		"docker.1ms.run/steamcmd/steamcmd:latest",
+		"docker.m.daocloud.io/steamcmd/steamcmd:latest",
+		"ghcr.io/steamcmd/steamcmd:latest",
+		"cm2network/steamcmd:latest",
+	}
+	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
+		t.Fatalf("expected SteamCMD image candidates %q, got %q", strings.Join(want, ","), got)
+	}
+	if normalized := steamCMDImageCandidatesValue(envVals["STEAMCMD_IMAGE_CANDIDATES"]); normalized != strings.Join(want, ",") {
+		t.Fatalf("expected normalized candidates %q, got %q", strings.Join(want, ","), normalized)
+	}
+}
+
+func TestServerImageRefsPrependsDefaultCandidatesToExistingSingleCandidate(t *testing.T) {
+	envVals := map[string]string{
+		"SERVER_IMAGE":            "sdvd/server:1.5.0-preview.121",
+		"SERVER_IMAGE_CANDIDATES": "sdvd/server:1.5.0-preview.121",
+	}
+	refs := serverImageRefs(envVals, TestedImageTag)
+	want := []string{
+		"docker.1ms.run/sdvd/server:1.5.0-preview.121",
+		"docker.m.daocloud.io/sdvd/server:1.5.0-preview.121",
+		"ghcr.io/sdvd/server:1.5.0-preview.121",
+		"sdvd/server:1.5.0-preview.121",
+	}
+	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
+		t.Fatalf("expected server image candidates %q, got %q", strings.Join(want, ","), got)
+	}
+}
+
+func TestSteamServiceImageRefsPrependsDefaultCandidatesToExistingSingleCandidate(t *testing.T) {
+	envVals := map[string]string{
+		"STEAM_SERVICE_IMAGE":            DefaultSteamServiceImage,
+		"STEAM_SERVICE_IMAGE_CANDIDATES": DefaultSteamServiceImage,
+	}
+	refs := steamServiceImageRefs(envVals)
+	want := []string{
+		"docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+	}
+	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
+		t.Fatalf("expected steam service image candidates %q, got %q", strings.Join(want, ","), got)
+	}
+}
+
+func TestDriverInstallSteamCMDFailsWhenMobileApprovalTimesOut(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Logged in as [U:1:1231122837]",
+			"[SteamAuth:A0] Downloading app 413150...",
+			"[SteamAuth:A0] Download failed: Download manifest failed across all CDN servers (403 Forbidden)",
+		},
+		containerLines: []string{
+			"Logging in user 'steam-user' [U:1:0] to Steam Public...This account is protected by a Steam Guard mobile authenticator.",
+			"Please confirm the login in the Steam Mobile app on your phone.",
+			"Waiting for confirmation...",
+			"Wait for confirmation timed out.Timed out waiting for confirmation.",
+			"ERROR (Timeout)",
+			"Unloading Steam API...OK",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateError || updated.DriverPhase != "steamcmd_failed" {
+		t.Fatalf("instance state should be steamcmd_failed after approval timeout: state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+}
+
+func TestDriverInstallResumesSteamCMDDirectlyAfterSteamCMDFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:           instance.ID,
+		State:        storage.InstanceStateError,
+		StateMessage: "SteamCMD approval timed out",
+		DriverPhase:  "steamcmd_failed",
+	}); err != nil {
+		t.Fatalf("set steamcmd failed phase: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthErr: errors.New("steam-auth should not run"),
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if fake.steamAuthRuns != 0 {
+		t.Fatalf("steam-auth should be skipped on SteamCMD retry, ran %d times", fake.steamAuthRuns)
+	}
+	if fake.composePulls != 0 {
+		t.Fatalf("Junimo compose pull should be skipped on SteamCMD retry, ran %d times", fake.composePulls)
+	}
+	if len(fake.pulledImages) != 0 {
+		t.Fatalf("local SteamCMD image should not be pulled again, pulled %v", fake.pulledImages)
+	}
+	if fake.containerRuns != 1 {
+		t.Fatalf("expected SteamCMD container to run once, ran %d times", fake.containerRuns)
+	}
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateGameInstalled || updated.DriverPhase != "game_installed" {
+		t.Fatalf("instance state should be installed after direct steamcmd retry: state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+}
+
+func TestDriverInstallUsesExistingLaterSteamCMDCandidateBeforePulling(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	firstImage := "docker.1ms.run/steamcmd/steamcmd:latest"
+	secondImage := "docker.m.daocloud.io/steamcmd/steamcmd:latest"
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		inspectErrByImage: map[string]error{
+			firstImage: errors.New("missing first steamcmd image"),
+		},
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Logged in as [U:1:1231122837]",
+			"[SteamAuth:A0] Downloading app 413150...",
+			"[SteamAuth:A0] Download failed: Download manifest failed across all CDN servers (403 Forbidden)",
+		},
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if len(fake.pulledImages) != 0 {
+		t.Fatalf("existing later SteamCMD candidate should be used before pulling, pulled %v", fake.pulledImages)
+	}
+	if fake.containerOpts.ImageRef != secondImage {
+		t.Fatalf("expected SteamCMD fallback to use existing second image %q, got %q", secondImage, fake.containerOpts.ImageRef)
+	}
+}
+
 func TestDriverSendSteamGuardInput_NoActiveJob(t *testing.T) {
 	driver := New(nil, nil, nil, nil)
 	err := driver.SendSteamGuardInput("nonexistent-job-id", "12345")
 	if err == nil {
 		t.Fatal("expected error for nonexistent job")
 	}
+}
+
+func jobLogsContain(logs []storage.JobLog, message string) bool {
+	for _, log := range logs {
+		if log.Message == message {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForDriverTestJobStatus(t *testing.T, store *storage.Store, jobID string, status string) storage.Job {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := store.GetJob(context.Background(), jobID)
+		if err != nil {
+			t.Fatalf("get job: %v", err)
+		}
+		if job.Status == status {
+			return job
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	job, _ := store.GetJob(context.Background(), jobID)
+	t.Fatalf("job %s did not reach %s, got %s", jobID, status, job.Status)
+	return storage.Job{}
 }

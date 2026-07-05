@@ -2,7 +2,10 @@ package stardew_junimo
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
@@ -146,5 +149,74 @@ func TestLooksLikePortBindFailure(t *testing.T) {
 				t.Fatalf("looksLikePortBindFailure() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestEnsureJunimoServerModCopiesFromServerImage(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".local-container", "mods"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("SERVER_IMAGE=sdvd/server:custom\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotOpts paneldocker.ContainerTTYRunOpts
+	fake := &fakeConsoleDocker{
+		runContainerFunc: func(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
+			gotOpts = opts
+			lineHandler("JunimoServer synced")
+			return 0, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance:  storage.Instance{DataDir: dir},
+	}
+
+	if err := runner.ensureJunimoServerMod(context.Background(), nil); err != nil {
+		t.Fatalf("ensureJunimoServerMod: %v", err)
+	}
+	if gotOpts.ImageRef != "sdvd/server:custom" {
+		t.Fatalf("ImageRef = %q, want custom server image", gotOpts.ImageRef)
+	}
+	if len(gotOpts.Entrypoint) != 1 || gotOpts.Entrypoint[0] != "/bin/sh" {
+		t.Fatalf("unexpected entrypoint: %#v", gotOpts.Entrypoint)
+	}
+	if len(gotOpts.Command) != 2 || !strings.Contains(gotOpts.Command[1], "/data/Mods/JunimoServer") {
+		t.Fatalf("copy command should reference JunimoServer, got %#v", gotOpts.Command)
+	}
+	if len(gotOpts.Binds) != 1 || !strings.HasSuffix(gotOpts.Binds[0], string(filepath.Separator)+".local-container"+string(filepath.Separator)+"mods:/out") {
+		t.Fatalf("unexpected binds: %#v", gotOpts.Binds)
+	}
+}
+
+func TestEnsureJunimoServerModSkipsWhenAlreadyPresent(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, ".local-container", "mods", "JunimoServer", "manifest.json")
+	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifest, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	fake := &fakeConsoleDocker{
+		runContainerFunc: func(context.Context, paneldocker.ContainerTTYRunOpts, <-chan string, func(string)) (int, error) {
+			called = true
+			return 0, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance:  storage.Instance{DataDir: dir},
+	}
+
+	if err := runner.ensureJunimoServerMod(context.Background(), nil); err != nil {
+		t.Fatalf("ensureJunimoServerMod: %v", err)
+	}
+	if called {
+		t.Fatal("RunContainerTTY should not be called when JunimoServer manifest exists")
 	}
 }

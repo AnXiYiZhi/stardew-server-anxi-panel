@@ -362,6 +362,26 @@ http://localhost:5173
 
 本项目支持构建为独立 Docker 镜像，用户只需 Docker Engine + Compose V2 即可运行面板。
 
+### 推荐：一键启动脚本
+
+Linux 云服务器用户优先使用 `deploy/run.sh` 快速模式。脚本会生成 `~/.anxi-panel/.env` 和 `docker-compose.yml`，自动创建 `PANEL_SECRET`，首次启动时可选择国内阿里云 ACR、Docker Hub 或自定义镜像地址，并使用 `panel-data` 数据卷保留面板数据。默认访问方式是：
+
+```text
+http://服务器IP:8090
+```
+
+```bash
+cd deploy
+chmod +x run.sh
+bash run.sh
+```
+
+脚本菜单支持拉取启动、停止、重启、更新、查看状态、查看日志和切换国内/Docker Hub 镜像源。固定版本可这样启动：
+
+```bash
+PANEL_VERSION=0.1.0 PANEL_PORT=8090 bash run.sh install
+```
+
 ### 构建镜像
 
 ```bash

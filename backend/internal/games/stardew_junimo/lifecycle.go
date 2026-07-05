@@ -203,6 +203,12 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	_, _ = jobCtx.Info(ctx, "正在启动 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在启动服务器...", "starting", jobCtx.ID)
 
+	if err := r.ensureJunimoServerMod(ctx, jobCtx); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+			"同步 JunimoServer 官方 Mod 失败: "+err.Error(), "junimo_server_mod_failed", jobCtx.ID)
+		return err
+	}
+
 	// Ensure the latest SMAPI mod DLL is deployed (idempotent; needed for IP direct-connect).
 	if err := installSMAPIMod(r.instance.DataDir); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：SMAPI mod 部署失败（不影响启动）：%v", err))
@@ -345,6 +351,12 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在重启...", "restarting", jobCtx.ID)
 	r.removeInviteCodeFile(ctx, jobCtx)
 
+	if err := r.ensureJunimoServerMod(ctx, jobCtx); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
+			"同步 JunimoServer 官方 Mod 失败: "+err.Error(), "junimo_server_mod_failed", jobCtx.ID)
+		return err
+	}
+
 	result, err := r.lifecycle.ComposeRestartServices(ctx, r.instance.DataDir, "server")
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
@@ -378,6 +390,78 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
+}
+
+func (r *lifecycleRunner) ensureJunimoServerMod(ctx context.Context, jobCtx *jobs.Context) error {
+	manifestPath := filepath.Join(modsDir(r.instance.DataDir), "JunimoServer", "manifest.json")
+	if _, err := os.Stat(manifestPath); err == nil {
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("check JunimoServer mod: %w", err)
+	}
+
+	imageRef := serverImageRef(r.instance.DataDir)
+	modsRoot, err := filepath.Abs(modsDir(r.instance.DataDir))
+	if err != nil {
+		return fmt.Errorf("resolve mods dir: %w", err)
+	}
+	if err := os.MkdirAll(modsRoot, 0o755); err != nil {
+		return fmt.Errorf("create mods dir: %w", err)
+	}
+
+	if jobCtx != nil {
+		_, _ = jobCtx.Info(ctx, "正在同步 JunimoServer 官方 Mod...")
+	}
+	syncCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	script := strings.Join([]string{
+		"set -eu",
+		"if [ ! -d /data/Mods/JunimoServer ]; then echo 'JunimoServer mod not found in server image' >&2; exit 12; fi",
+		"rm -rf /out/JunimoServer",
+		"cp -a /data/Mods/JunimoServer /out/JunimoServer",
+		"find /out/JunimoServer -type d -exec chmod 755 {} \\;",
+		"find /out/JunimoServer -type f -exec chmod 644 {} \\;",
+		"echo JunimoServer synced",
+	}, "; ")
+
+	exitCode, err := r.lifecycle.RunContainerTTY(syncCtx, paneldocker.ContainerTTYRunOpts{
+		ImageRef:   imageRef,
+		Entrypoint: []string{"/bin/sh"},
+		Command:    []string{"-lc", script},
+		Binds:      []string{modsRoot + ":/out"},
+		User:       "root",
+	}, nil, func(line string) {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "Connected to the docker container shell") || strings.Contains(line, "Exit and run 'make cli'") {
+			return
+		}
+		if jobCtx != nil {
+			_, _ = jobCtx.Debug(ctx, "[junimo-server-mod] "+line)
+		}
+	})
+	if err != nil {
+		return fmt.Errorf("sync JunimoServer mod from %s: %w", imageRef, err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("sync JunimoServer mod from %s exited with code %d", imageRef, exitCode)
+	}
+	return nil
+}
+
+func serverImageRef(dataDir string) string {
+	values, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		return "sdvd/server:" + TestedImageTag
+	}
+	if image := strings.TrimSpace(values["SERVER_IMAGE"]); image != "" {
+		return image
+	}
+	tag := strings.TrimSpace(values["IMAGE_VERSION"])
+	if tag == "" {
+		tag = TestedImageTag
+	}
+	return "sdvd/server:" + tag
 }
 
 // waitForServer polls docker compose ps until the `server` container is in running state.

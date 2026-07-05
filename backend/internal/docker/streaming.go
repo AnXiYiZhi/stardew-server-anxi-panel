@@ -165,3 +165,86 @@ func (c *Client) ComposePullStreaming(ctx context.Context, dir string, services 
 	result.Stderr = RedactString(cmdErr.Error())
 	return result, CommandError{Op: "docker compose pull", Result: result, Err: fmt.Errorf("start docker command: %w", cmdErr)}
 }
+
+// PullImageStreaming runs docker pull <imageRef> and invokes lineHandler for
+// each output line in real time.
+func (c *Client) PullImageStreaming(ctx context.Context, dir string, imageRef string, lineHandler func(line string)) (CommandResult, error) {
+	started := time.Now()
+	args := []string{"pull", imageRef}
+	result := CommandResult{
+		WorkDir:  dir,
+		Args:     RedactArgs(append([]string{c.dockerPath}, args...)),
+		ExitCode: -1,
+	}
+
+	if dir == "" {
+		result.DurationMS = time.Since(started).Milliseconds()
+		return result, CommandError{Op: "docker pull", Result: result, Err: ErrInvalidWorkDir}
+	}
+	if stat, err := os.Stat(dir); err != nil || !stat.IsDir() {
+		result.DurationMS = time.Since(started).Milliseconds()
+		if err != nil {
+			result.Stderr = RedactString(err.Error())
+		}
+		return result, CommandError{Op: "docker pull", Result: result, Err: ErrInvalidWorkDir}
+	}
+
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeouts.Pull)
+	defer cancel()
+
+	cmd := exec.CommandContext(commandCtx, c.dockerPath, args...)
+	cmd.Dir = dir
+
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+
+	if err := cmd.Start(); err != nil {
+		_ = pr.Close()
+		_ = pw.Close()
+		result.DurationMS = time.Since(started).Milliseconds()
+		result.Stderr = RedactString(err.Error())
+		return result, CommandError{Op: "docker pull", Result: result, Err: fmt.Errorf("start: %w", err)}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(pr)
+		for scanner.Scan() {
+			line := stripANSI(scanner.Text())
+			if line == "" {
+				continue
+			}
+			if redacted := RedactString(line); redacted != "" {
+				lineHandler(redacted)
+			}
+		}
+	}()
+
+	cmdErr := cmd.Wait()
+	_ = pw.Close()
+	wg.Wait()
+
+	result.DurationMS = time.Since(started).Milliseconds()
+
+	if commandCtx.Err() != nil {
+		result.TimedOut = true
+		return result, CommandError{Op: "docker pull", Result: result, Err: ErrCommandTimeout}
+	}
+
+	if cmdErr == nil {
+		result.ExitCode = 0
+		return result, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(cmdErr, &exitErr) {
+		result.ExitCode = exitErr.ExitCode()
+		return result, CommandError{Op: "docker pull", Result: result, Err: ErrCommandFailed}
+	}
+
+	result.Stderr = RedactString(cmdErr.Error())
+	return result, CommandError{Op: "docker pull", Result: result, Err: fmt.Errorf("start docker command: %w", cmdErr)}
+}

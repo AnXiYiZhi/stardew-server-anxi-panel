@@ -9,7 +9,12 @@ import (
 )
 
 const (
+	DefaultServerImage                       = "sdvd/server:1.5.0-preview.121"
+	DefaultServerImageCandidates             = "docker.1ms.run/sdvd/server:1.5.0-preview.121,docker.m.daocloud.io/sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121,sdvd/server:1.5.0-preview.121"
 	DefaultSteamServiceImage                 = "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+	DefaultSteamServiceImageCandidates       = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+	DefaultSteamCMDImage                     = "docker.1ms.run/steamcmd/steamcmd:latest"
+	DefaultSteamCMDImageCandidates           = "docker.1ms.run/steamcmd/steamcmd:latest,docker.m.daocloud.io/steamcmd/steamcmd:latest,ghcr.io/steamcmd/steamcmd:latest,cm2network/steamcmd:latest"
 	DefaultSteamClientConnectTimeoutSeconds  = "60"
 	DefaultSteamClientConnectRetries         = "5"
 	DefaultSteamAuthSessionRetries           = "3"
@@ -31,7 +36,7 @@ func ReadEnvFile(path string) (map[string]string, error) {
 	result := make(map[string]string)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := strings.TrimPrefix(scanner.Text(), "\ufeff")
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -40,7 +45,7 @@ func ReadEnvFile(path string) (map[string]string, error) {
 		if idx < 0 {
 			continue
 		}
-		key := strings.TrimSpace(trimmed[:idx])
+		key := strings.TrimPrefix(strings.TrimSpace(trimmed[:idx]), "\ufeff")
 		value := unquoteEnvValue(strings.TrimSpace(trimmed[idx+1:]))
 		if key != "" {
 			result[key] = value
@@ -81,7 +86,12 @@ func writeEnvFile(path string, fields map[string]string) error {
 	// Write known keys in a stable order first.
 	ordered := []string{
 		"IMAGE_VERSION",
+		"SERVER_IMAGE",
+		"SERVER_IMAGE_CANDIDATES",
 		"STEAM_SERVICE_IMAGE",
+		"STEAM_SERVICE_IMAGE_CANDIDATES",
+		"STEAMCMD_IMAGE",
+		"STEAMCMD_IMAGE_CANDIDATES",
 		"STEAM_USERNAME",
 		"STEAM_PASSWORD",
 		"STEAM_REFRESH_TOKEN",
@@ -145,7 +155,12 @@ func quoteEnvValue(value string) string {
 func EmptyEnvTemplate() map[string]string {
 	return map[string]string{
 		"IMAGE_VERSION":                          "",
+		"SERVER_IMAGE":                           DefaultServerImage,
+		"SERVER_IMAGE_CANDIDATES":                DefaultServerImageCandidates,
 		"STEAM_SERVICE_IMAGE":                    DefaultSteamServiceImage,
+		"STEAM_SERVICE_IMAGE_CANDIDATES":         DefaultSteamServiceImageCandidates,
+		"STEAMCMD_IMAGE":                         DefaultSteamCMDImage,
+		"STEAMCMD_IMAGE_CANDIDATES":              DefaultSteamCMDImageCandidates,
 		"STEAM_USERNAME":                         "",
 		"STEAM_PASSWORD":                         "",
 		"STEAM_REFRESH_TOKEN":                    "",

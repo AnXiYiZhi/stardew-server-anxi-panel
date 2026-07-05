@@ -290,6 +290,67 @@ func TestListPlayersMergesControlSnapshotWithCachedOfflinePlayers(t *testing.T) 
 	}
 }
 
+func TestListPlayersMergesControlSnapshotWithSaveFarmhands(t *testing.T) {
+	dir := t.TempDir()
+	control := filepath.Join(dir, ".local-container", "control")
+	if err := os.MkdirAll(control, 0o755); err != nil {
+		t.Fatalf("mkdir control: %v", err)
+	}
+	saveFolder := filepath.Join(dir, ".local-container", "saves", "Saves", "test_123")
+	if err := os.MkdirAll(saveFolder, 0o755); err != nil {
+		t.Fatalf("mkdir save: %v", err)
+	}
+	saveXML := `<SaveGame>
+  <player>
+    <name>host</name>
+    <UniqueMultiplayerID>1</UniqueMultiplayerID>
+    <money>500</money>
+    <totalMoneyEarned>1200</totalMoneyEarned>
+  </player>
+  <farmhands>
+    <Farmer>
+      <name>test</name>
+      <UniqueMultiplayerID>2</UniqueMultiplayerID>
+      <money>50</money>
+      <totalMoneyEarned>300</totalMoneyEarned>
+    </Farmer>
+  </farmhands>
+</SaveGame>`
+	if err := os.WriteFile(filepath.Join(saveFolder, "test_123"), []byte(saveXML), 0o644); err != nil {
+		t.Fatalf("write save: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(`{
+  "updatedAt": "2026-06-30T10:49:18Z",
+  "saveId": "test",
+  "players": [{"name": "host", "uniqueMultiplayerId": "1", "isHost": true}]
+}`), 0o644); err != nil {
+		t.Fatalf("write players.json: %v", err)
+	}
+
+	d := newTestDriver(&fakeConsoleDocker{})
+	instance := makeRunningInstance()
+	instance.DataDir = dir
+	result, err := d.ListPlayers(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("ListPlayers returned error: %v", err)
+	}
+	if result.OnlineCount == nil || *result.OnlineCount != 1 {
+		t.Fatalf("online count = %#v, want 1", result.OnlineCount)
+	}
+	if len(result.Players) != 2 {
+		t.Fatalf("players len = %d, want host online and test offline: %+v", len(result.Players), result.Players)
+	}
+	if result.Players[0].Name != "host" || result.Players[0].Status != "online" || !result.Players[0].IsHost {
+		t.Fatalf("first player = %+v, want host online", result.Players[0])
+	}
+	if result.Players[1].Name != "test" || result.Players[1].Status != "offline" || result.Players[1].Source != "save_file" {
+		t.Fatalf("second player = %+v, want save_file test offline", result.Players[1])
+	}
+	if result.Players[1].FarmIncome == nil || *result.Players[1].FarmIncome != 300 {
+		t.Fatalf("test farm income = %#v, want 300", result.Players[1].FarmIncome)
+	}
+}
+
 func TestListPlayersRecordsRecentPlayerEvents(t *testing.T) {
 	dir := t.TempDir()
 	control := filepath.Join(dir, ".local-container", "control")

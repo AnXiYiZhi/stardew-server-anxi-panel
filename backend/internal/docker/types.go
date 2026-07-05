@@ -154,7 +154,7 @@ func withDefaultTimeouts(timeouts Timeouts) Timeouts {
 		timeouts.Stats = 12 * time.Second
 	}
 	if timeouts.Pull <= 0 {
-		timeouts.Pull = 10 * time.Minute
+		timeouts.Pull = 30 * time.Minute
 	}
 	if timeouts.Up <= 0 {
 		timeouts.Up = 2 * time.Minute

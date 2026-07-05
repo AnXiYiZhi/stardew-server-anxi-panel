@@ -166,8 +166,24 @@
 
 /* ── 5. 像素风按钮（PNG 底图）────────────────────────────────────────────── */
 
+/* 按钮尺寸令牌（BTN-UNIFY-1）：全面板只允许三档
+   lg = 生命周期启动/停止/重启、页面级主操作
+   md = 默认档：工具栏 / 卡片 / 弹窗按钮
+   sm = 表格与列表行内、迷你重试 */
+:root {
+  --sd-btn-h-lg: 40px;
+  --sd-btn-font-lg: 15px;
+  --sd-btn-icon-lg: 20px;
+  --sd-btn-h-md: 28px;
+  --sd-btn-font-md: 13px;
+  --sd-btn-icon-md: 15px;
+  --sd-btn-h-sm: 22px;
+  --sd-btn-font-sm: 12px;
+  --sd-btn-icon-sm: 12px;
+}
+
 /* 所有 PNG 按钮公共基础 */
-.sd-btn-green, .sd-btn-tan, .sd-btn-gold, .sd-btn-red,
+.sd-btn-green, .sd-btn-tan,
 .sd-btn-start, .sd-btn-stop, .sd-btn-restart,
 .sd-btn-copy, .sd-btn-delete {
   display: inline-flex;
@@ -188,8 +204,6 @@
 
 .sd-btn-green:hover:not(:disabled),
 .sd-btn-tan:hover:not(:disabled),
-.sd-btn-gold:hover:not(:disabled),
-.sd-btn-red:hover:not(:disabled),
 .sd-btn-start:hover:not(:disabled),
 .sd-btn-stop:hover:not(:disabled),
 .sd-btn-restart:hover:not(:disabled),
@@ -200,8 +214,6 @@
 
 .sd-btn-green:active:not(:disabled),
 .sd-btn-tan:active:not(:disabled),
-.sd-btn-gold:active:not(:disabled),
-.sd-btn-red:active:not(:disabled),
 .sd-btn-start:active:not(:disabled),
 .sd-btn-stop:active:not(:disabled),
 .sd-btn-restart:active:not(:disabled),
@@ -213,8 +225,6 @@
 
 .sd-btn-green:disabled,
 .sd-btn-tan:disabled,
-.sd-btn-gold:disabled,
-.sd-btn-red:disabled,
 .sd-btn-start:disabled,
 .sd-btn-stop:disabled,
 .sd-btn-restart:disabled,
@@ -225,53 +235,33 @@
   transform: none;
 }
 
-/* 小绿色主按钮 */
+/* 绿色主按钮（md 默认档） */
 .sd-btn-green {
   background-image: url('/assets/stardew/ui/buttons/button_primary_small_green_blank.png');
-  height: 26px;
+  height: var(--sd-btn-h-md);
   min-width: 58px;
   padding: 0 10px;
-  font-size: var(--sd-font-size-control);
+  font-size: var(--sd-btn-font-md);
   color: #fff;
 }
 
-/* 小棕色次级按钮 */
+/* 棕色次级按钮（md 默认档） */
 .sd-btn-tan {
   background-image: url('/assets/stardew/ui/buttons/button_secondary_small_tan_blank.png');
-  height: 26px;
+  height: var(--sd-btn-h-md);
   min-width: 50px;
-  padding: 0 8px;
-  font-size: var(--sd-font-size-control);
+  padding: 0 10px;
+  font-size: var(--sd-btn-font-md);
   color: #2c1a0a;
 }
 
-/* 金色快捷工具按钮 */
-.sd-btn-gold {
-  background-image: url('/assets/stardew/ui/buttons/button_quick_tool_gold_blank.png');
-  height: 26px;
-  min-width: 60px;
-  padding: 0 8px;
-  font-size: var(--sd-font-size-control);
-  color: #2c1a0a;
-}
-
-/* 危险操作（使用停止按钮底图） */
-.sd-btn-red {
-  background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
-  height: 33px;
-  min-width: 88px;
-  padding: 0 14px;
-  font-size: var(--sd-font-size-control);
-  color: #fff;
-}
-
-/* 删除/危险小按钮 */
+/* 危险按钮（md 默认档）：删除/清空/踢出/封禁/危险确认统一用它 */
 .sd-btn-delete {
   background-image: url('/assets/stardew/ui/buttons/button_delete_small_tan_blank.png');
-  height: 26px;
-  min-width: 44px;
-  padding: 0 7px;
-  font-size: var(--sd-font-size-small);
+  height: var(--sd-btn-h-md);
+  min-width: 50px;
+  padding: 0 10px;
+  font-size: var(--sd-btn-font-md);
   color: #8b2020;
 }
 
@@ -279,40 +269,70 @@
 .sd-btn-copy {
   background-image: url('/assets/stardew/ui/buttons/button_copy_small_blank.png');
   width: 48px;
-  height: 26px;
-  font-size: var(--sd-font-size-small);
+  height: var(--sd-btn-h-md);
+  font-size: var(--sd-btn-font-sm);
   color: #2c1a0a;
 }
 
-/* 生命周期大按钮（固定尺寸） */
+/* 生命周期大按钮（lg 档，仅用于启动/停止/重启本体） */
 .sd-btn-start {
   background-image: url('/assets/stardew/ui/buttons/button_server_start_green_blank.png');
-  width: 76px;
-  height: 34px;
-  font-size: var(--sd-font-size-control);
   color: #fff;
 }
 
 .sd-btn-stop {
   background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
-  width: 88px;
-  height: 33px;
-  font-size: var(--sd-font-size-control);
   color: #fff;
 }
 
 .sd-btn-restart {
   background-image: url('/assets/stardew/ui/buttons/button_server_restart_tan_blank.png');
-  width: 84px;
-  height: 34px;
-  font-size: var(--sd-font-size-control);
-  color: #2c1a0a;
+  color: #fff7cf;
 }
 
-/* 按钮内联小图标 */
+.sd-btn-start, .sd-btn-stop, .sd-btn-restart {
+  height: var(--sd-btn-h-lg);
+  min-width: 112px;
+  padding: 0 18px;
+  gap: 8px;
+  font-size: var(--sd-btn-font-lg);
+  text-shadow: 0 1px 0 rgba(42, 20, 6, 0.42);
+}
+
+/* 尺寸修饰符：任何 sd-btn-* 都可叠加 */
+.sd-btn--lg {
+  height: var(--sd-btn-h-lg);
+  min-width: 96px;
+  padding: 0 16px;
+  font-size: var(--sd-btn-font-lg);
+}
+
+.sd-btn--sm {
+  height: var(--sd-btn-h-sm);
+  min-width: 40px;
+  padding: 0 8px;
+  font-size: var(--sd-btn-font-sm);
+}
+
+/* 按钮内联小图标：尺寸随档位，不要在 JSX 里写内联宽高 */
 .sd-btn-img {
   image-rendering: pixelated;
   flex-shrink: 0;
+  width: var(--sd-btn-icon-md);
+  height: var(--sd-btn-icon-md);
+}
+
+.sd-btn--lg .sd-btn-img,
+.sd-btn-start .sd-btn-img,
+.sd-btn-stop .sd-btn-img,
+.sd-btn-restart .sd-btn-img {
+  width: var(--sd-btn-icon-lg);
+  height: var(--sd-btn-icon-lg);
+}
+
+.sd-btn--sm .sd-btn-img {
+  width: var(--sd-btn-icon-sm);
+  height: var(--sd-btn-icon-sm);
 }
 
 .sd-btn-start.sd-btn-loading:disabled,
@@ -320,6 +340,39 @@
 .sd-btn-restart.sd-btn-loading:disabled {
   filter: brightness(.96);
   cursor: wait;
+}
+
+/* ── 5b. 操作区共享布局（BTN-UNIFY-1）───────────────────────────────────────
+   页面顶部操作区 / 区块工具栏统一挂 .sd-actionbar（与各页皮肤类并存），
+   表格与列表行内操作组挂 .sd-rowactions；布局度量只在这里定义一次。 */
+.sd-actionbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 操作区靠右（页头右侧、卡片右上角） */
+.sd-actionbar--end {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.sd-rowactions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .sd-actionbar {
+    width: 100%;
+    row-gap: 6px;
+  }
 }
 
 .sd-btn-spinner {

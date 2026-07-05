@@ -161,7 +161,7 @@ func ApplyModEnableProfile(dataDir, saveName string, mods []registry.ModInfo) []
 }
 
 func annotateModToggle(mod *registry.ModInfo) {
-	if mod.BuiltIn || isSMAPIRuntimeMod(*mod) || isControlModInfo(*mod) {
+	if mod.BuiltIn || isSMAPIRuntimeMod(*mod) || isControlModInfo(*mod) || isJunimoServerModInfo(*mod) {
 		mod.Enabled = true
 		mod.CanToggle = false
 		if mod.EnableNote == "" {
@@ -184,7 +184,7 @@ func ApplyNewSaveDefaultModState(dataDir string) error {
 		return err
 	}
 	for _, mod := range mods {
-		if !mod.Enabled || mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) {
+		if !mod.Enabled || mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) || isJunimoServerModInfo(mod) {
 			continue
 		}
 		if err := moveModFolder(dataDir, mod.FolderName, false); err != nil {
@@ -219,7 +219,7 @@ func EnsureDisabledModProfileForSave(dataDir, saveName string) error {
 		return err
 	}
 	for _, mod := range mods {
-		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) {
+		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) || isJunimoServerModInfo(mod) {
 			continue
 		}
 		profile.Mods[modProfileKey(mod)] = modProfileEntry{
@@ -261,7 +261,7 @@ func MarkImportedModsEnabledForSave(dataDir, saveName string, imported []registr
 	}
 	profile.UpdatedAt = time.Now().Format(time.RFC3339)
 	for _, mod := range imported {
-		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) {
+		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) || isJunimoServerModInfo(mod) {
 			continue
 		}
 		profile.Mods[modProfileKey(mod)] = modProfileEntry{
@@ -305,8 +305,8 @@ func applyModProfileLocked(dataDir, saveName string) error {
 		return err
 	}
 	for _, mod := range mods {
-		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) {
-			if !mod.Enabled && mod.FolderName == controlModFolderName {
+		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) || isJunimoServerModInfo(mod) {
+			if !mod.Enabled && (mod.FolderName == controlModFolderName || mod.FolderName == junimoServerModFolderName) {
 				if err := moveModFolder(dataDir, mod.FolderName, true); err != nil {
 					return err
 				}
@@ -338,7 +338,7 @@ func SetModEnabledForSave(dataDir, saveName, modID string, enabled bool) (regist
 	if err != nil {
 		return registry.ModInfo{}, err
 	}
-	if target.BuiltIn || isSMAPIRuntimeMod(target) || isControlModInfo(target) {
+	if target.BuiltIn || isSMAPIRuntimeMod(target) || isControlModInfo(target) || isJunimoServerModInfo(target) {
 		return registry.ModInfo{}, fmt.Errorf("built-in mod %q cannot be toggled", target.FolderName)
 	}
 

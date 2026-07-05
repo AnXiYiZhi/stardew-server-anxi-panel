@@ -48,11 +48,52 @@ func (m *Manager) RecoverInterruptedJobs(ctx context.Context) error {
 		if _, err := m.store.AppendJobLog(ctx, job.ID, storage.JobLogLevelError, message); err != nil {
 			m.logger.Error("failed to append interrupted job log", "job_id", job.ID, "error", err)
 		}
+		if job.Type == "stardew_install" && job.TargetType == "instance" && job.TargetID != "" {
+			m.markInterruptedInstallInstance(ctx, job, message)
+		}
 	}
 	if count > 0 {
 		m.logger.Warn("marked interrupted jobs as failed", "count", count)
 	}
 	return nil
+}
+
+func (m *Manager) markInterruptedInstallInstance(ctx context.Context, job storage.Job, message string) {
+	instance, err := m.store.GetInstance(ctx, job.TargetID)
+	if err != nil {
+		m.logger.Warn("failed to load interrupted install instance", "instance", job.TargetID, "job_id", job.ID, "error", err)
+		return
+	}
+	if instanceInstalled(instance.State) {
+		return
+	}
+	payload := instance.DriverPayload
+	if payload == "" {
+		payload = "{}"
+	}
+	if _, err := m.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+		ID:            job.TargetID,
+		State:         storage.InstanceStateError,
+		StateMessage:  message,
+		DriverPhase:   "install_interrupted",
+		DriverPayload: payload,
+	}); err != nil {
+		m.logger.Warn("failed to mark interrupted install instance", "instance", job.TargetID, "job_id", job.ID, "error", err)
+	}
+}
+
+func instanceInstalled(state string) bool {
+	switch state {
+	case storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+		storage.InstanceStateStopped:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {

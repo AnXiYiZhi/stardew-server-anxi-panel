@@ -1,9 +1,9 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMemo } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
-import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, downloadNexusInstallerExtension, searchNexusMods, installNexusMod, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, createJobEventSource, getJob } from '../../../api'
+import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
-import type { JobLog, ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
+import type { ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
@@ -11,7 +11,7 @@ type ModWorkbenchTab = 'download' | 'installed' | 'settings'
 const NEXUS_SEARCH_PAGE_SIZE_DEFAULT = 8
 const NEXUS_SEARCH_PAGE_SIZE_MIN = 1
 const NEXUS_SEARCH_PAGE_SIZE_MAX = 20
-const NEXUS_SEARCH_CARD_HEIGHT = 246
+const NEXUS_SEARCH_CARD_HEIGHT = 198
 const NEXUS_SEARCH_CARD_GAP = 12
 const NEXUS_SEARCH_BOTTOM_RESERVE = 8
 const SMAPI_NEXUS_MOD_ID = 2400
@@ -21,6 +21,7 @@ const NEXUS_EXTENSION_SOURCE = 'ANXI_NEXUS_INSTALLER'
 const NEXUS_EXTENSION_INSTANCE_ID = 'stardew'
 const NEXUS_SEARCH_SESSION_KEY = 'stardew-anxi:nexus-search-state:v1'
 const NEXUS_EXTENSION_SESSION_KEY = 'stardew-anxi:nexus-extension-install:v1'
+const NEXUS_QUICK_TAGS = ['UI Info', 'Fishing Mod', 'Backpack Upgrades', 'Tractor']
 
 type NexusExtensionConnectionStatus = 'unknown' | 'checking' | 'connected' | 'disconnected'
 
@@ -203,11 +204,13 @@ function countGridColumns(gridTemplateColumns: string) {
 function ModSearchResultCard({
   result,
   actionSlot,
+  statsSlot,
   footerSlot,
   className,
 }: {
   result: ModSearchResult
   actionSlot?: ReactNode
+  statsSlot?: ReactNode
   footerSlot?: ReactNode
   className?: string
 }) {
@@ -252,6 +255,7 @@ function ModSearchResultCard({
         <div className="sd-mods-nexus-card-stats">
           <span>下载 {(result.downloadCount ?? 0).toLocaleString()}</span>
           {result.endorsementCount !== undefined ? <span>认可 {result.endorsementCount.toLocaleString()}</span> : null}
+          {statsSlot}
         </div>
       </div>
       <div className="sd-mods-card-actions">
@@ -563,8 +567,25 @@ function modIsSmapi(mod: ModInfo) {
 }
 
 function modIsPanelControl(mod: ModInfo) {
-  return mod.folderName === 'StardewAnxiPanel.Control' ||
-    mod.uniqueId === 'AnXiYiZhi.StardewAnxiPanel.Control'
+  const uniqueId = mod.uniqueId?.trim().toLowerCase()
+  const folderName = mod.folderName?.trim().toLowerCase()
+  const name = mod.name?.trim().toLowerCase()
+  return folderName === 'stardewanxipanel.control' ||
+    uniqueId === 'anxiyizhi.stardewanxipanel.control' ||
+    name === 'stardew anxi panel control'
+}
+
+function modIsJunimoServer(mod: ModInfo) {
+  const uniqueId = mod.uniqueId?.trim().toLowerCase()
+  const folderName = mod.folderName?.trim().toLowerCase()
+  const name = mod.name?.trim().toLowerCase()
+  return uniqueId === 'junimohost.server' ||
+    folderName === 'junimoserver' ||
+    name === 'junimoserver'
+}
+
+function modIsSystemRuntime(mod: ModInfo) {
+  return modIsSmapi(mod) || modIsPanelControl(mod) || modIsJunimoServer(mod)
 }
 
 function modCountsForPlayerSync(mod: ModInfo) {
@@ -575,7 +596,8 @@ function modCountsForPlayerSync(mod: ModInfo) {
 function builtInRank(mod: ModInfo) {
   if (modIsSmapi(mod)) return 0
   if (modIsPanelControl(mod)) return 1
-  return 2
+  if (modIsJunimoServer(mod)) return 2
+  return 3
 }
 
 function modBundleKey(mod: ModInfo) {
@@ -666,9 +688,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [nexusKeyError, setNexusKeyError] = useState<string | null>(null)
   const [nexusKeyMessage, setNexusKeyMessage] = useState<string | null>(null)
   const [nexusExtensionPackBusy, setNexusExtensionPackBusy] = useState(false)
-  const [nexusInstallingModId, setNexusInstallingModId] = useState<string | null>(null)
-  const [nexusInstallJobId, setNexusInstallJobId] = useState<string | null>(null)
-  const [nexusInstallLogs, setNexusInstallLogs] = useState<JobLog[]>([])
   const [nexusInstallError, setNexusInstallError] = useState<string | null>(null)
   const [openNexusRequiredModId, setOpenNexusRequiredModId] = useState<number | null>(null)
   const [nexusExtensionInstall, setNexusExtensionInstall] = useState<NexusExtensionInstallState | null>(restoredNexusExtensionState)
@@ -685,7 +704,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       ? clampNexusPageSize(restoredNexusSearchState.results.length || restoredNexusSearchState.pageSize)
       : nexusPageSize,
   )
-  const nexusInstallEventSourceRef = useRef<EventSource | null>(null)
   const nexusExtensionPollRef = useRef<number | null>(null)
   const nexusExtensionTimeoutRef = useRef<number | null>(null)
   const nexusExtensionInstallRef = useRef<NexusExtensionInstallState | null>(null)
@@ -705,6 +723,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
   const {
     mods,
+    userVisibleMods,
     displayedInstalledMods,
     hiddenLocalMods,
     parseErrorCount,
@@ -712,6 +731,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     syncPackagedClientRequired,
   } = useMemo(() => {
     const sortedMods = sortInstalledMods(data?.mods ?? [])
+    const visibleMods = sortedMods.filter((mod) => !modIsSystemRuntime(mod))
     const displayed: ModInfo[] = []
     const hidden: ModInfo[] = []
     let parseErrors = 0
@@ -720,7 +740,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     let unknown = 0
     let packagedClientRequired = 0
 
-    for (const mod of sortedMods) {
+    for (const mod of visibleMods) {
       if (modHasNexusPresentation(mod)) {
         displayed.push(mod)
       } else {
@@ -729,6 +749,9 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       if (mod.parseError) {
         parseErrors += 1
       }
+    }
+
+    for (const mod of sortedMods) {
       if (!modCountsForPlayerSync(mod)) {
         continue
       }
@@ -746,6 +769,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
     return {
       mods: sortedMods,
+      userVisibleMods: visibleMods,
       displayedInstalledMods: displayed,
       hiddenLocalMods: hidden,
       parseErrorCount: parseErrors,
@@ -762,10 +786,10 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     : []
   const nexusTotalPages = Math.max(1, Math.ceil(nexusTotal / nexusPageSize))
 
-  const tabItems: Array<{ id: ModWorkbenchTab; label: string; hint: string }> = [
-    { id: 'download', label: '下载模组', hint: '搜索 N 站并准备安装' },
-    { id: 'installed', label: '添加模组', hint: '本服已安装与玩家同步' },
-    { id: 'settings', label: '配置模组', hint: '启用、依赖与配置入口' },
+  const tabItems: Array<{ id: ModWorkbenchTab; label: string; hint: string; icon: string }> = [
+    { id: 'download', label: '下载模组', hint: '搜索 N 站并准备安装', icon: '/assets/stardew/ui/install/icon_install_step_download_image2.png' },
+    { id: 'installed', label: '添加模组', hint: '本服已安装与玩家同步', icon: '/assets/stardew/ui/icons/icon_nav_install_package_image2.png' },
+    { id: 'settings', label: '配置模组', hint: '启用、依赖与配置入口', icon: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png' },
   ]
 
   const loadMods = useCallback(async () => {
@@ -813,8 +837,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
   useEffect(() => {
     return () => {
-      nexusInstallEventSourceRef.current?.close()
-      nexusInstallEventSourceRef.current = null
       if (nexusExtensionPollRef.current !== null) {
         window.clearInterval(nexusExtensionPollRef.current)
         nexusExtensionPollRef.current = null
@@ -925,8 +947,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     activeTab,
     nexusError,
     nexusInstallError,
-    nexusInstallJobId,
-    nexusInstallLogs.length,
+    nexusExtensionInstall?.status,
+    nexusExtensionInstall?.progress,
     nexusResults,
   ])
 
@@ -1243,15 +1265,11 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
   function resetNexusExtensionInstallState() {
     clearNexusExtensionTimers()
-    nexusInstallEventSourceRef.current?.close()
-    nexusInstallEventSourceRef.current = null
     const previousBatchId = nexusExtensionInstallRef.current?.batchId
     setNexusExtensionInstall(null)
     nexusExtensionInstallRef.current = null
     nexusExtensionKnownJobIdsRef.current.clear()
     setNexusInstallError(null)
-    setNexusInstallJobId(null)
-    setNexusInstallLogs([])
     writeNexusExtensionSessionState(null)
     void requestNexusExtension<{ ok?: boolean }>('CLEAR_STATE', previousBatchId ? { batchId: previousBatchId } : {}, 4000)
       .catch(() => {
@@ -1517,12 +1535,26 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     jumpToNexusPage(parsed)
   }
 
+  function handleNexusQuickTag(tag: string) {
+    setNexusQuery(tag)
+    void handleNexusSearch(1, tag)
+  }
+
   function renderNexusPager(position: 'top' | 'bottom') {
     const atFirstPage = nexusPage <= 1
     const atLastPage = nexusPage >= nexusTotalPages || !nexusHasMore
+    if (position === 'top') {
+      return (
+        <div className="sd-mods-nexus-total sd-mods-nexus-total-top">
+          <span>搜索结果（共 {nexusTotal.toLocaleString()} 个）</span>
+          <span>每页 {nexusPageSize} 个</span>
+        </div>
+      )
+    }
+
     return (
       <div className={`sd-mods-nexus-total sd-mods-nexus-total-${position}`}>
-        <span>共 {nexusTotal.toLocaleString()} 个结果 · 每页 {nexusPageSize} 个 · 第 {nexusPage} / {nexusTotalPages} 页</span>
+        <span>第 {nexusPage} / {nexusTotalPages} 页</span>
         <div className="sd-mods-nexus-page-actions">
           <button
             className="sd-btn-tan"
@@ -1582,64 +1614,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     )
   }
 
-  function installFailureMessage(message: string | null | undefined) {
-    const text = message || 'Mod 安装失败'
-    if (text.includes('status 403') || text.includes('403')) {
-      return `${text}。非 Premium 账号请使用普通一键安装，由浏览器扩展获取下载链接。`
-    }
-    return text
-  }
-
-  function subscribeInstallJob(jobId: string, result: NexusModSearchResult | null, onDone: () => void) {
-    setNexusInstallJobId(jobId)
-    const es = createJobEventSource(jobId)
-    nexusInstallEventSourceRef.current = es
-
-    es.addEventListener('log', (ev) => {
-      try {
-        const entry = JSON.parse((ev as MessageEvent<string>).data) as JobLog
-        setNexusInstallLogs((prev) => (
-          prev.some((item) => item.sequence === entry.sequence)
-            ? prev
-            : [...prev, { ...entry, jobId }]
-        ))
-      } catch {
-        // Ignore malformed SSE payloads; the job page remains the source of truth.
-      }
-    })
-
-    es.addEventListener('finished', () => {
-      es.close()
-      if (nexusInstallEventSourceRef.current === es) {
-        nexusInstallEventSourceRef.current = null
-      }
-      void getJob(jobId).then((jobResponse) => {
-        if (jobResponse.job.status === 'failed') {
-          setNexusInstallError(installFailureMessage(jobResponse.job.errorMessage))
-        } else if (jobResponse.job.status === 'succeeded') {
-          if (result) {
-            setNexusResults((prev) => prev?.map((item) => (
-              item.modId === result.modId
-                ? { ...item, installed: true, installedEnabled: true, installedVersion: result.version }
-                : item
-            )) ?? prev)
-          }
-          setActiveTab('installed')
-          void loadMods().then(() => dashboardData.refreshMods())
-        }
-      }).finally(onDone)
-    })
-
-    es.onerror = () => {
-      es.close()
-      if (nexusInstallEventSourceRef.current === es) {
-        nexusInstallEventSourceRef.current = null
-      }
-      setNexusInstallError('安装进度连接已断开，可以在任务页查看最新状态')
-      onDone()
-    }
-  }
-
   function nexusExtensionInstallTargets(result: NexusModSearchResult) {
     const byModId = new Map<number, NexusExtensionBatchItem>()
     for (const required of result.requiredMods ?? []) {
@@ -1665,7 +1639,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   }
 
   async function handleNexusInstall(result: NexusModSearchResult) {
-    if (nexusInstallingModId !== null || nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running') return
+    if (nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running') return
     if (nexusExtensionConnection.status !== 'connected') {
       const connected = await testNexusExtensionConnection(false)
       if (!connected) return
@@ -1682,10 +1656,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     nexusExtensionInstallRef.current = installState
     nexusExtensionKnownJobIdsRef.current.clear()
     setNexusInstallError(null)
-    setNexusInstallLogs([])
-    setNexusInstallJobId(null)
-    nexusInstallEventSourceRef.current?.close()
-    nexusInstallEventSourceRef.current = null
 
     try {
       const response = await requestNexusExtension<{ batch: NexusExtensionBatch }>('START_BATCH_INSTALL', {
@@ -1725,25 +1695,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       setNexusExtensionInstall(failedState)
       nexusExtensionInstallRef.current = failedState
       clearNexusExtensionTimers()
-    }
-  }
-
-  async function handleNexusPremiumInstall(result: NexusModSearchResult) {
-    if (!searchedModCanPremiumInstall(result)) return
-    setNexusInstallingModId(String(result.modId))
-    setNexusInstallError(null)
-    setNexusInstallLogs([])
-    setNexusInstallJobId(null)
-    nexusInstallEventSourceRef.current?.close()
-    nexusInstallEventSourceRef.current = null
-
-    try {
-      const response = await installNexusMod(result)
-      void dashboardData.refreshJobs()
-      subscribeInstallJob(response.jobId, result, () => setNexusInstallingModId(null))
-    } catch (e) {
-      setNexusInstallError(errorMessage(e))
-      setNexusInstallingModId(null)
     }
   }
 
@@ -1822,7 +1773,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     const extensionBusy = nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running'
     const extensionFailedSameMod = nexusExtensionInstall?.status === 'failed' && nexusExtensionInstall.modId === result.modId
     const extensionDoneSameMod = nexusExtensionInstall?.status === 'done' && nexusExtensionInstall.modId === result.modId
-    if (!isAdmin || isRunning || result.installed || nexusInstallingModId !== null || extensionBusy || extensionFailedSameMod || extensionDoneSameMod) {
+    if (!isAdmin || isRunning || result.installed || extensionBusy || extensionFailedSameMod || extensionDoneSameMod) {
       return false
     }
     return true
@@ -1832,16 +1783,11 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return searchedModBaseCanInstall(result) && nexusExtensionConnection.status === 'connected'
   }
 
-  function searchedModCanPremiumInstall(result: NexusModSearchResult) {
-    return nexusSettings?.configured === true && searchedModBaseCanInstall(result)
-  }
-
   function searchedModInstallTitle(result: NexusModSearchResult) {
     if (result.installed && result.installedEnabled === false) return '该 Mod 已安装，但当前存档未启用，可到配置模组中启用'
     if (result.installed) return '该 Mod 已安装'
     if (!isAdmin) return '仅管理员可以安装 Mod'
     if (isRunning) return '服务器运行中，请先停止后安装 Mod'
-    if (nexusInstallingModId !== null) return '已有安装任务正在进行'
     if ((nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running') && nexusExtensionInstall.modId !== result.modId) {
       return '已有扩展安装流程正在进行'
     }
@@ -1859,18 +1805,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return '后台打开 Nexus 下载页，浏览器扩展会自动获取 ZIP 链接并提交到面板'
   }
 
-  function searchedModPremiumInstallTitle(result: NexusModSearchResult) {
-    if (!nexusSettings?.configured) return '需要先配置 Nexus API Key'
-    if (result.installed && result.installedEnabled === false) return '该 Mod 已安装，但当前存档未启用，可到配置模组中启用'
-    if (result.installed) return '该 Mod 已安装'
-    if (!isAdmin) return '仅管理员可以安装 Mod'
-    if (isRunning) return '服务器运行中，请先停止后安装 Mod'
-    if (nexusInstallingModId !== null) return '已有安装任务正在进行'
-    return 'Nexus Premium 用户可用：通过 Nexus API 直接下载安装到服务器'
-  }
-
   function searchedModInstallLabel(result: NexusModSearchResult, installing: boolean) {
-    if (installing) return '打开中...'
+    if (installing) return '打开中…'
     if (result.installed && result.installedEnabled === false) return '已安装未启用'
     if (result.installed) return '已安装'
     if (nexusExtensionInstall?.modId === result.modId) {
@@ -1881,13 +1817,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return '一键安装'
   }
 
-  function searchedModPremiumInstallLabel(result: NexusModSearchResult) {
-    if (nexusInstallingModId === String(result.modId)) return '会员安装中...'
-    return 'N站会员专属安装'
-  }
-
   function nexusExtensionConnectionLabel() {
-    if (nexusExtensionConnection.status === 'checking') return '检测扩展中...'
+    if (nexusExtensionConnection.status === 'checking') return '检测扩展中…'
     if (nexusExtensionConnection.status === 'connected') return '扩展已连通'
     return '检测扩展'
   }
@@ -1901,11 +1832,11 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
   return (
     <div className="sd-page sd-mods-page">
-      <div className="sd-mods-header">
+      <div className="sd-mods-header sd-page-header">
         <div className="sd-mods-header-left">
           <img
             className="sd-page-icon"
-            src="/assets/stardew/ui/icons/icon_nav_mods.png"
+            src="/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png"
             alt=""
           />
           <div>
@@ -1913,7 +1844,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
             <p className="sd-page-desc">搜索、安装、同步和配置 SMAPI 模组</p>
           </div>
         </div>
-        <div className="sd-mods-header-actions">
+        <div className="sd-mods-header-actions sd-actionbar sd-actionbar--end">
           <button
             className="sd-btn-tan"
             disabled={loading}
@@ -1921,7 +1852,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
             type="button"
             title="刷新 Mod 列表"
           >
-            {loading ? '刷新中…' : '刷新列表'}
+            {loading ? '刷新中…' : '刷新'}
           </button>
           <button
             className="sd-btn-tan"
@@ -1952,14 +1883,17 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           {tabItems.map((tab) => (
             <button
               key={tab.id}
-              className={`sd-mods-tab${activeTab === tab.id ? ' sd-mods-tab-active' : ''}`}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <span className="sd-mods-tab-label">{tab.label}</span>
-              <span className="sd-mods-tab-hint">{tab.hint}</span>
+                className={`sd-mods-tab${activeTab === tab.id ? ' sd-mods-tab-active' : ''}`}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+              >
+              <img className="sd-mods-tab-icon" src={tab.icon} alt="" />
+              <span className="sd-mods-tab-text">
+                <span className="sd-mods-tab-label">{tab.label}</span>
+                <span className="sd-mods-tab-hint">{tab.hint}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -1967,27 +1901,27 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
         <div className="sd-mods-tab-panel" role="tabpanel">
           {activeTab === 'download' ? (
             <>
-              <div className="sd-mods-panel-head">
-                <div>
-                  <div className="sd-mods-section-title">搜索 Nexus Mods</div>
-                  <p className="sd-mods-sync-hint">
-                    默认展示 N 站近期热门 20 个模组，也可以输入名称或 ID 搜索。
-                  </p>
-                </div>
+              <div className="sd-mods-nexus-connect-strip">
+                <span className="sd-mods-connect-title">Nexus 连接</span>
+                <span className="sd-mods-connect-key-label">API Key</span>
+                <span className="sd-mods-connect-key">
+                  {nexusSettingsLoading
+                    ? '读取中...'
+                    : nexusSettings?.configured
+                      ? `••••••••••••${nexusSettings.last4 ? ` ${nexusSettings.last4}` : ''}`
+                      : '未配置'}
+                </span>
+                <span className={`sd-mods-connect-state ${nexusSettings?.configured ? 'sd-mods-connect-state-ok' : 'sd-mods-connect-state-warn'}`}>
+                  {nexusSettings?.configured ? '已配置' : '待配置'}
+                </span>
+                <span className="sd-mods-connect-divider" aria-hidden="true" />
+                <span className="sd-mods-connect-title">扩展连接</span>
+                <span className={`sd-mods-extension-status sd-mods-extension-status-${nexusExtensionConnection.status}`}>
+                  {nexusExtensionConnection.status === 'connected' ? '已连接' : nexusExtensionConnection.status === 'checking' ? '检测中' : '未连接'}
+                </span>
                 <div className="sd-mods-panel-actions">
                   {isAdmin && (
                     <>
-                      {nexusSettingsLoading ? (
-                        <span className="sd-tag sd-tag-gold">Nexus Key 读取中</span>
-                      ) : nexusSettings?.configured ? (
-                        <span className="sd-tag sd-tag-green">
-                          {`Nexus Key 已配置${nexusSettings.last4 ? ` · ${nexusSettings.last4}` : ''}`}
-                        </span>
-                      ) : (
-                        <span className="sd-mods-premium-hint">
-                          如果您是尊贵的 Nexus Premium 用户，请填您的 NexusKey
-                        </span>
-                      )}
                       <button
                         className="sd-btn-tan"
                         type="button"
@@ -1996,18 +1930,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                         title="配置 Nexus Mods API Key"
                       >
                         配置 Nexus Key
-                      </button>
-                      <span className="sd-mods-extension-install-hint">
-                        Nexus 普通用户启用一键下载，请先安装浏览器扩展
-                      </span>
-                      <button
-                        className="sd-btn-tan sd-mods-extension-download"
-                        type="button"
-                        onClick={() => void handleNexusExtensionPackDownload()}
-                        disabled={nexusExtensionPackBusy}
-                        title="下载面板打包好的浏览器扩展 ZIP，解压后在浏览器扩展管理页加载"
-                      >
-                        {nexusExtensionPackBusy ? '打包中...' : '下载浏览器扩展'}
                       </button>
                       <button
                         className={`sd-btn-tan sd-mods-extension-check sd-mods-extension-check-${nexusExtensionConnection.status}`}
@@ -2018,64 +1940,59 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                       >
                         {nexusExtensionConnectionLabel()}
                       </button>
-                      {nexusExtensionConnection.status !== 'unknown' ? (
-                        <span
-                          className={`sd-mods-extension-status sd-mods-extension-status-${nexusExtensionConnection.status}`}
-                          title={nexusExtensionConnection.message}
-                        >
-                          {nexusExtensionConnection.message}
-                        </span>
-                      ) : null}
+                      <button
+                        className="sd-btn-tan sd-mods-extension-download"
+                        type="button"
+                        onClick={() => void handleNexusExtensionPackDownload()}
+                        disabled={nexusExtensionPackBusy}
+                        title="下载面板打包好的浏览器扩展 ZIP，解压后在浏览器扩展管理页加载"
+                      >
+                        {nexusExtensionPackBusy ? '打包中…' : '下载扩展'}
+                      </button>
                     </>
                   )}
-                  <span className="sd-mods-pending-badge">当前 N站 GraphQL v2 可直接搜索</span>
                 </div>
               </div>
 
-              <div className="sd-mods-nexus-search-row">
-                <select className="sd-mods-search-type" value="text" disabled title="按 Nexus 关键词或数字 ID 搜索">
-                  <option value="text">名称 / ID</option>
-                </select>
-                <input
-                  className="sd-input"
-                  type="text"
-                  placeholder="输入 Mod 名称、唯一 ID 或站点 ID 搜索；留空刷新热门..."
-                  value={nexusQuery}
-                  onChange={(e) => setNexusQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') void handleNexusSearch(1) }}
-                />
-                <button
-                  className="sd-btn-tan"
-                  disabled={nexusLoading}
-                  onClick={() => void handleNexusSearch(1)}
-                  type="button"
-                  title={nexusQuery.trim() ? '搜索 Nexus Mods' : '刷新近期热门 Nexus Mods'}
-                >
-                  {nexusLoading ? '搜索中...' : nexusQuery.trim() ? '搜索' : '刷新热门'}
-                </button>
+              <div className="sd-mods-search-card">
+                <div className="sd-mods-section-title">搜索 Nexus Mods</div>
+                <div className="sd-mods-nexus-search-row">
+                  <input
+                    className="sd-input"
+                    type="text"
+                    placeholder="输入英文模组名称、ID 或关键词..."
+                    value={nexusQuery}
+                    onChange={(e) => setNexusQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleNexusSearch(1) }}
+                  />
+                  <button
+                    className="sd-btn-green"
+                    disabled={nexusLoading}
+                    onClick={() => void handleNexusSearch(1)}
+                    type="button"
+                    title={nexusQuery.trim() ? '搜索 Nexus Mods' : '刷新近期热门 Nexus Mods'}
+                  >
+                    {nexusLoading ? '搜索中…' : '搜索'}
+                  </button>
+                </div>
+                <div className="sd-mods-quick-tags">
+                  <span>热门标签:</span>
+                  {NEXUS_QUICK_TAGS.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className="sd-mods-quick-tag"
+                      disabled={nexusLoading}
+                      onClick={() => handleNexusQuickTag(tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {nexusError && <div className="sd-mods-list-error">{nexusError}</div>}
               {nexusInstallError && <div className="sd-mods-list-error">{nexusInstallError}</div>}
-              {(nexusInstallJobId || nexusInstallLogs.length > 0) && (
-                <div className="sd-mods-install-log">
-                  <div className="sd-mods-install-log-head">
-                    <span>安装进度</span>
-                    {nexusInstallJobId ? <span className="sd-mods-install-job">#{nexusInstallJobId}</span> : null}
-                  </div>
-                  {nexusInstallLogs.length > 0 ? (
-                    <div className="sd-mods-install-log-lines">
-                      {nexusInstallLogs.slice(-8).map((log) => (
-                        <div className={`sd-mods-install-log-line sd-mods-install-log-${log.level}`} key={log.sequence}>
-                          <span>{log.message}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="sd-mods-install-log-empty">等待安装任务开始...</div>
-                  )}
-                </div>
-              )}
               {nexusLoading ? (
                 <div className="sd-mods-nexus-skeleton-grid sd-mods-nexus-search-list">
                   {Array.from({ length: nexusPageSize }, (_, i) => (
@@ -2093,7 +2010,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     <div className="sd-mods-nexus-list sd-mods-nexus-search-list" ref={nexusResultsListRef}>
                       {nexusResults.map((r) => {
                         const canInstall = searchedModCanInstall(r)
-                        const canPremiumInstall = searchedModCanPremiumInstall(r)
                         const requiredMods = r.requiredMods ?? []
                         const missingRequiredMods = missingNexusRequiredMods(r)
                         const extensionState = nexusExtensionInstall?.modId === r.modId ? nexusExtensionInstall : null
@@ -2112,6 +2028,20 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                             key={r.modId}
                             className={requiredDetailsOpen ? 'sd-mods-nexus-card-dependency-open' : undefined}
                             result={nexusResultToSearchResult(r)}
+                            statsSlot={(
+                              requiredMods.length > 0 ? (
+                                <NexusRequiredModsBadge
+                                  requiredMods={requiredMods}
+                                  missingRequiredMods={missingRequiredMods}
+                                  isOpen={requiredDetailsOpen}
+                                  onToggle={() => setOpenNexusRequiredModId((current) => (
+                                    current === r.modId ? null : r.modId
+                                  ))}
+                                />
+                              ) : (
+                                <span className="sd-tag sd-tag-gold sd-mods-dependency-tag">前置：无</span>
+                              )
+                            )}
                             actionSlot={(
                               <button
                                 className={installButtonClass}
@@ -2124,37 +2054,16 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                                 {searchedModInstallLabel(r, false)}
                               </button>
                             )}
-                            footerSlot={requiredMods.length > 0 || nexusSettings?.configured || extensionState ? (
+                            footerSlot={extensionState ? (
                               <div className="sd-mods-search-footer">
-                                <NexusRequiredModsBadge
-                                  requiredMods={requiredMods}
-                                  missingRequiredMods={missingRequiredMods}
-                                  isOpen={requiredDetailsOpen}
-                                  onToggle={() => setOpenNexusRequiredModId((current) => (
-                                    current === r.modId ? null : r.modId
-                                  ))}
-                                />
-                                {nexusSettings?.configured ? (
-                                  <button
-                                    className="sd-btn-tan sd-mods-premium-install"
-                                    type="button"
-                                    disabled={!canPremiumInstall}
-                                    title={searchedModPremiumInstallTitle(r)}
-                                    onClick={() => void handleNexusPremiumInstall(r)}
-                                  >
-                                    {searchedModPremiumInstallLabel(r)}
-                                  </button>
-                                ) : null}
-                                {extensionState ? (
-                                  <button
-                                    className="sd-btn-tan sd-mods-extension-reset"
-                                    type="button"
-                                    title="清除当前浏览器保存的一键安装进度，安装已完成的 Mod 不会被删除"
-                                    onClick={resetNexusExtensionInstallState}
-                                  >
-                                    重置状态
-                                  </button>
-                                ) : null}
+                                <button
+                                  className="sd-btn-tan sd-mods-extension-reset"
+                                  type="button"
+                                  title="清除当前浏览器保存的一键安装进度，安装已完成的 Mod 不会被删除"
+                                  onClick={resetNexusExtensionInstallState}
+                                >
+                                  重置状态
+                                </button>
                               </div>
                             ) : undefined}
                           />
@@ -2166,6 +2075,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               ) : (
                 <div className="sd-mods-nexus-empty">输入名称或 ID 后开始搜索。本页会显示来源、跳转入口和可用的一键安装方式。</div>
               )}
+              {nexusResults && nexusResults.length > 0 ? renderNexusPager('bottom') : null}
             </>
           ) : null}
 
@@ -2186,7 +2096,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               <div className="sd-mods-overview">
                 <div className="sd-mods-stat">
                   <span className="sd-mods-stat-label">已安装</span>
-                  <span className="sd-mods-stat-value">{loading ? '-' : `${mods.length} 个`}</span>
+                  <span className="sd-mods-stat-value">{loading ? '-' : `${userVisibleMods.length} 个`}</span>
                 </div>
                 <div className="sd-mods-stat">
                   <span className="sd-mods-stat-label">服务器状态</span>
@@ -2228,7 +2138,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                   type="button"
                   title={syncSummary.clientRequired === 0 ? '暂无需要玩家同步的 Mod' : '首次加入玩家使用，包含 SMAPI'}
                 >
-                  {syncPackBusy === 'full' ? '导出中...' : '导出完整同步包'}
+                  {syncPackBusy === 'full' ? '导出中…' : '导出完整同步包'}
                 </button>
                 <button
                   className="sd-btn-tan"
@@ -2237,7 +2147,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                   type="button"
                   title={syncPackagedClientRequired === 0 ? '暂无可打包的玩家 Mod' : '已运行过同步包的玩家使用，不包含 SMAPI'}
                 >
-                  {syncPackBusy === 'update' ? '导出中...' : '导出模组更新包'}
+                  {syncPackBusy === 'update' ? '导出中…' : '导出模组更新包'}
                 </button>
               </div>
               <p className="sd-mods-sync-hint">
@@ -2254,17 +2164,17 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
               <div className="sd-mods-section-title">
                 已安装 Nexus 模组
-                {loading && <span className="sd-mods-loading-tag">加载中...</span>}
+                {loading && <span className="sd-mods-loading-tag">加载中…</span>}
               </div>
 
-              {!loading && mods.length === 0 ? (
+              {!loading && userVisibleMods.length === 0 ? (
                 <div className="sd-mods-empty">
                   <img
                     className="sd-mods-empty-icon"
                     src="/assets/stardew/ui/icons/icon_nav_mods.png"
                     alt=""
                   />
-                  <div className="sd-mods-empty-title">当前没有安装 Mod</div>
+                  <div className="sd-mods-empty-title">当前没有可展示 Mod</div>
                   <div className="sd-mods-empty-desc">
                     上传包含 SMAPI Mod 的 ZIP 文件来安装模组。
                     每个 Mod 文件夹中应包含 manifest.json。
@@ -2368,7 +2278,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                                 {requiredDependency.label}
                               </span>
                             ) : null}
-                            {syncBusy && <span className="sd-mods-loading-tag">更新中...</span>}
+                            {syncBusy && <span className="sd-mods-loading-tag">更新中…</span>}
                             {mod.parseError ? <span className="sd-mods-parse-error">解析失败：{mod.parseError}</span> : null}
                           </div>
                         )}
@@ -2395,15 +2305,15 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     <div className="sd-mods-empty-title">请先选择一个存档</div>
                     <div className="sd-mods-empty-desc">启用状态会按存档保存；没有当前存档时不能切换。</div>
                   </div>
-                ) : mods.length === 0 ? (
+                ) : userVisibleMods.length === 0 ? (
                   <div className="sd-mods-empty sd-mods-settings-empty">
                     <img className="sd-mods-empty-icon" src="/assets/stardew/ui/icons/icon_nav_mods.png" alt="" />
-                    <div className="sd-mods-empty-title">当前没有 Mod</div>
-                    <div className="sd-mods-empty-desc">安装 Mod 后可以在这里为当前存档启用或禁用。</div>
+                    <div className="sd-mods-empty-title">当前没有可配置 Mod</div>
+                    <div className="sd-mods-empty-desc">安装第三方 Mod 后可以在这里为当前存档启用或禁用。</div>
                   </div>
                 ) : (
                   <div className="sd-mods-enable-list">
-                    {mods.map((mod) => {
+                    {userVisibleMods.map((mod) => {
                       const busy = enableUpdating === mod.id
                       const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy
                       const title = mod.enableNote || writeTitle || (mod.enabled ? '禁用此 Mod' : '启用此 Mod')
@@ -2473,14 +2383,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           >
             <div className="sd-mods-modal-header">
               <span className="sd-mods-modal-title">上传 Mod</span>
-              <button
-                className="sd-btn-tan"
-                type="button"
-                disabled={uploadBusy}
-                onClick={closeUpload}
-              >
-                关闭
-              </button>
             </div>
 
             {uploadError && (
@@ -2514,20 +2416,20 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
             <div className="sd-mods-modal-actions">
               <button
-                className="sd-btn-green"
-                disabled={uploadBusy || uploadFiles.length === 0}
-                onClick={handleUpload}
-                type="button"
-              >
-                {uploadBusy ? '上传中...' : '上传并安装'}
-              </button>
-              <button
                 className="sd-btn-tan"
                 disabled={uploadBusy}
                 type="button"
                 onClick={closeUpload}
               >
                 取消
+              </button>
+              <button
+                className="sd-btn-green"
+                disabled={uploadBusy || uploadFiles.length === 0}
+                onClick={handleUpload}
+                type="button"
+              >
+                {uploadBusy ? '上传中…' : '上传并安装'}
               </button>
             </div>
           </div>
@@ -2544,14 +2446,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               <span className="sd-mods-modal-title">
                 配置 Nexus API Key
               </span>
-              <button
-                className="sd-btn-tan"
-                type="button"
-                disabled={nexusKeyBusy}
-                onClick={closeNexusKeyModal}
-              >
-                关闭
-              </button>
             </div>
 
             {nexusKeyError && <div className="sd-mods-list-error">{nexusKeyError}</div>}
@@ -2576,12 +2470,12 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
             <div className="sd-mods-modal-actions">
               <button
-                className="sd-btn-green"
-                disabled={nexusKeyBusy || !nexusKeyInput.trim()}
-                onClick={handleNexusKeySave}
+                className="sd-btn-tan"
+                disabled={nexusKeyBusy}
                 type="button"
+                onClick={closeNexusKeyModal}
               >
-                {nexusKeyBusy ? '保存中...' : '保存并生效'}
+                取消
               </button>
               <button
                 className="sd-btn-delete"
@@ -2592,12 +2486,12 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 删除 Key
               </button>
               <button
-                className="sd-btn-tan"
-                disabled={nexusKeyBusy}
+                className="sd-btn-green"
+                disabled={nexusKeyBusy || !nexusKeyInput.trim()}
+                onClick={handleNexusKeySave}
                 type="button"
-                onClick={closeNexusKeyModal}
               >
-                取消
+                {nexusKeyBusy ? '保存中…' : '保存'}
               </button>
             </div>
           </div>
@@ -2635,20 +2529,20 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
             )}
             <div className="sd-confirm-actions">
               <button
-                className="sd-btn-delete"
-                disabled={deleteBusy}
-                onClick={handleDeleteConfirm}
-                type="button"
-              >
-                {deleteBusy ? '删除中...' : '确认删除'}
-              </button>
-              <button
                 className="sd-btn-tan"
                 disabled={deleteBusy}
                 onClick={() => { setConfirmDelete(null); setDeleteError(null) }}
                 type="button"
               >
                 取消
+              </button>
+              <button
+                className="sd-btn-delete"
+                disabled={deleteBusy}
+                onClick={handleDeleteConfirm}
+                type="button"
+              >
+                {deleteBusy ? '删除中…' : '确认删除'}
               </button>
             </div>
           </div>

@@ -140,7 +140,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
   const [vncPortError, setVNCPortError] = useState('')
   const [vncPortMessage, setVNCPortMessage] = useState('')
 
-  const logEndRef = useRef<HTMLDivElement | null>(null)
+  const logWindowRef = useRef<HTMLDivElement | null>(null)
   const autoSelectedRef = useRef(false)
 
   const { refreshJobs: dashRefreshJobs, refreshInstanceState, refreshInviteCode } = dashboardData
@@ -258,7 +258,9 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
 
   // 新日志到来时自动滚动到底部
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const logWindow = logWindowRef.current
+    if (!logWindow) return
+    logWindow.scrollTo({ top: logWindow.scrollHeight, behavior: 'smooth' })
   }, [logs.length])
 
   async function handleRefresh() {
@@ -395,7 +397,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       <div className="sd-page-header">
         <img
           className="sd-page-icon"
-          src="/assets/stardew/ui/icons/icon_nav_tasks.png"
+          src="/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png"
           alt=""
         />
         <div>
@@ -406,7 +408,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
 
       {/* ── 工具栏 ── */}
       <div className="sd-jobs-toolbar">
-        <div className="sd-jobs-toolbar-actions">
+        <div className="sd-jobs-toolbar-actions sd-actionbar">
           <button
             className="sd-btn-tan"
             disabled={busy || loadingJobs}
@@ -578,7 +580,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                 ) : null}
 
                 {/* 日志区域 */}
-                <div className="sd-jobs-log-window" aria-label="任务日志">
+                <div ref={logWindowRef} className="sd-jobs-log-window" aria-label="任务日志">
                   {visibleLogs.length === 0 ? (
                     <span className="sd-jobs-log-empty">暂无日志</span>
                   ) : null}
@@ -594,7 +596,6 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                       <span className="sd-jobs-log-msg">{log.message}</span>
                     </div>
                   ))}
-                  <div ref={logEndRef} />
                 </div>
 
                 {showVNCPortFix ? (
@@ -678,14 +679,6 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
           <div className="sd-saves-modal-card sd-vnc-port-modal">
             <div className="sd-saves-modal-header">
               <h3 className="sd-saves-modal-title">更换 VNC 端口</h3>
-              <button
-                className="sd-btn-tan"
-                type="button"
-                disabled={vncPortSaving}
-                onClick={handleCloseVNCPortModal}
-              >
-                关闭
-              </button>
             </div>
 
             {vncPortLoading ? (
@@ -727,7 +720,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                     disabled={vncPortSaving || vncPortLoading}
                     onClick={() => void handleSaveVNCPort()}
                   >
-                    {vncPortSaving ? '保存中...' : '保存端口'}
+                    {vncPortSaving ? '保存中…' : '保存'}
                   </button>
                 </div>
               </div>

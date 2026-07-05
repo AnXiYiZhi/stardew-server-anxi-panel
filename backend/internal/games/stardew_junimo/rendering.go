@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,10 @@ func (d *Driver) GetRenderingFPS(ctx context.Context, instance registry.Instance
 
 	result, err := d.callRenderingAPI(ctx, instance, "GET", "")
 	if err != nil {
+		var ce *CommandError
+		if errors.As(err, &ce) {
+			return nil, ce
+		}
 		return nil, fmt.Errorf("GET /rendering: %w", err)
 	}
 	fps, err := parseRenderingFPS(result.Stdout)
@@ -54,6 +59,10 @@ func (d *Driver) SetRenderingFPS(ctx context.Context, instance registry.Instance
 
 	result, err := d.callRenderingAPI(ctx, instance, "POST", fmt.Sprintf("fps=%d", fps))
 	if err != nil {
+		var ce *CommandError
+		if errors.As(err, &ce) {
+			return nil, ce
+		}
 		return nil, fmt.Errorf("POST /rendering: %w", err)
 	}
 	return &RenderingResult{FPS: fps, Output: strings.TrimSpace(result.Stdout)}, nil
@@ -86,12 +95,34 @@ func (d *Driver) callRenderingAPI(ctx context.Context, instance registry.Instanc
 	defer cancel()
 	result, err := ld.ComposeExecPipe(reqCtx, instance.DataDir, "server", "", args...)
 	if err != nil {
+		if looksLikeJunimoAPIUnavailable(result.Stdout + "\n" + result.Stderr + "\n" + err.Error()) {
+			return result, &CommandError{
+				Code:    "junimo_api_unavailable",
+				Message: "JunimoServer API 未就绪，无法控制 VNC 显示；请等待服务器完全启动，或检查 JunimoServer 官方 Mod 是否已加载。",
+			}
+		}
 		return result, err
 	}
 	if result.ExitCode != 0 {
+		combined := result.Stdout + "\n" + result.Stderr
+		if looksLikeJunimoAPIUnavailable(combined) {
+			return result, &CommandError{
+				Code:    "junimo_api_unavailable",
+				Message: "JunimoServer API 未就绪，无法控制 VNC 显示；请等待服务器完全启动，或检查 JunimoServer 官方 Mod 是否已加载。",
+			}
+		}
 		return result, fmt.Errorf("%s /rendering failed: %s", method, strings.TrimSpace(result.Stderr))
 	}
 	return result, nil
+}
+
+func looksLikeJunimoAPIUnavailable(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "failed to connect") ||
+		strings.Contains(lower, "connection refused") ||
+		strings.Contains(lower, "could not connect") ||
+		strings.Contains(lower, "empty reply from server") ||
+		strings.Contains(lower, "curl: (7)")
 }
 
 func parseRenderingFPS(output string) (int, error) {

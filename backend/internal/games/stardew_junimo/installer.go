@@ -26,20 +26,22 @@ import (
 //
 // regexPullCount covers the "[+] Pulling X/Y" summary line present in some versions.
 var (
-	regexPullCount = regexp.MustCompile(`(?i)pulling (\d+)/(\d+)`)
-	regexPullStart = regexp.MustCompile(`(?i)(^image \S+\s+pulling\s*$|^pulling \S+ \()`)
-	regexPullDone  = regexp.MustCompile(`(?i)(^image \S+\s+pulled\s*$|^status: (downloaded newer image|image is up to date))`)
+	regexPullCount      = regexp.MustCompile(`(?i)pulling (\d+)/(\d+)`)
+	regexPullStart      = regexp.MustCompile(`(?i)(^image \S+\s+pulling\s*$|^pulling \S+ \()`)
+	regexPullDone       = regexp.MustCompile(`(?i)(^image \S+\s+pulled\s*$|^status: (downloaded newer image|image is up to date))`)
+	regexImagePullLayer = regexp.MustCompile(`(?i)^([0-9a-f]+):\s+(pulling fs layer|waiting|downloading|extracting|download complete|pull complete|already exists)\s*$`)
 )
 
 // installRunner carries everything needed to execute one install job.
 type installRunner struct {
-	driver   *Driver
-	instance storage.Instance
-	username string
-	password string // never logged
-	vncPass  string // never logged
-	imageTag string
-	autoMode bool
+	driver        *Driver
+	instance      storage.Instance
+	username      string
+	password      string // never logged
+	vncPass       string // never logged
+	imageTag      string
+	autoMode      bool
+	steamCMDRetry bool
 }
 
 type steamAuthMode string
@@ -90,7 +92,21 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		"STEAM_PASSWORD": r.password,
 		"VNC_PASSWORD":   r.vncPass,
 	}
+	ensureEnvDefault(updates, envVals, "SERVER_IMAGE", serverImageDefault(r.imageTag))
+	ensureEnvDefault(updates, envVals, "SERVER_IMAGE_CANDIDATES", serverImageCandidatesDefault(r.imageTag))
 	ensureEnvDefault(updates, envVals, "STEAM_SERVICE_IMAGE", DefaultSteamServiceImage)
+	ensureEnvDefault(updates, envVals, "STEAM_SERVICE_IMAGE_CANDIDATES", DefaultSteamServiceImageCandidates)
+	if normalized := strings.Join(serverImageRefs(envVals, r.imageTag), ","); normalized != "" && normalized != strings.TrimSpace(envVals["SERVER_IMAGE_CANDIDATES"]) {
+		updates["SERVER_IMAGE_CANDIDATES"] = normalized
+	}
+	if normalized := strings.Join(steamServiceImageRefs(envVals), ","); normalized != "" && normalized != strings.TrimSpace(envVals["STEAM_SERVICE_IMAGE_CANDIDATES"]) {
+		updates["STEAM_SERVICE_IMAGE_CANDIDATES"] = normalized
+	}
+	ensureEnvDefault(updates, envVals, "STEAMCMD_IMAGE", DefaultSteamCMDImage)
+	ensureEnvDefault(updates, envVals, "STEAMCMD_IMAGE_CANDIDATES", DefaultSteamCMDImageCandidates)
+	if normalized := steamCMDImageCandidatesValue(envVals["STEAMCMD_IMAGE_CANDIDATES"]); normalized != "" && normalized != strings.TrimSpace(envVals["STEAMCMD_IMAGE_CANDIDATES"]) {
+		updates["STEAMCMD_IMAGE_CANDIDATES"] = normalized
+	}
 	ensureEnvDefault(updates, envVals, "STEAM_CLIENT_CONNECT_TIMEOUT_SECONDS", DefaultSteamClientConnectTimeoutSeconds)
 	ensureEnvDefault(updates, envVals, "STEAM_CLIENT_CONNECT_RETRIES", DefaultSteamClientConnectRetries)
 	ensureEnvDefault(updates, envVals, "STEAM_AUTH_SESSION_RETRIES", DefaultSteamAuthSessionRetries)
@@ -109,6 +125,11 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "已更新 docker-compose.yml 中的 steam-auth 镜像配置。")
 	}
+	if changed, err := migrateServerComposeImage(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
+		return fmt.Errorf("update server image in docker-compose.yml: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已更新 docker-compose.yml 中的 server 镜像配置。")
+	}
 	if changed, err := migrateSavesVolume(filepath.Join(r.instance.DataDir, "docker-compose.yml")); err != nil {
 		return fmt.Errorf("migrate saves volume in docker-compose.yml: %w", err)
 	} else if changed {
@@ -125,37 +146,22 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		_, _ = jobCtx.Info(ctx, "已添加 mods 目录挂载到 docker-compose.yml。")
 	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
+	if r.steamCMDRetry {
+		_, _ = jobCtx.Info(ctx, "检测到上次安装停在 SteamCMD 兜底阶段，本次重试将直接复用已保存账号密码进入 SteamCMD 授权/下载。")
+		guardCh := make(chan string, 8)
+		r.driver.setGuardChan(jobCtx.ID, guardCh)
+		defer r.driver.clearGuardChan(jobCtx.ID)
+		if err := r.runSteamCMDFallback(ctx, jobCtx, guardCh); err != nil {
+			return err
+		}
+		r.markInstallSucceeded(jobCtx)
+		return nil
+	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 		"正在检查 Junimo 镜像，请稍候...", "pull_running", jobCtx.ID)
 
-	missing := r.missingServices(ctx, jobCtx)
-	if len(missing) == 0 {
-		_, _ = jobCtx.Info(ctx, "本地已存在所有 Junimo 镜像，跳过 docker compose pull。")
-	} else {
-		_, _ = jobCtx.Info(ctx, fmt.Sprintf("需要拉取 %d 个服务的镜像：%s", len(missing), strings.Join(missing, ", ")))
-		pullResult, err := r.driver.docker.ComposePullStreaming(ctx, r.instance.DataDir, missing,
-			makePullLineHandler(jobCtx, func(done, total int) {
-				var msg string
-				if done == total && total > 0 {
-					msg = fmt.Sprintf("所有 %d 个镜像已拉取完成，准备启动 Steam 认证...", total)
-				} else {
-					msg = fmt.Sprintf("正在拉取 Junimo 镜像（%d/%d 完成），首次下载可能需要 10-30 分钟，请耐心等待...", done, total)
-				}
-				r.driver.updatePhase(context.Background(), r.instance.ID,
-					storage.InstanceStateSteamAuthRunning, msg, "pull_running", jobCtx.ID)
-			}),
-		)
-		if err != nil {
-			if ctx.Err() != nil {
-				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
-					"安装任务超时，Steam 认证未完成，请重试安装。", "install_timeout", jobCtx.ID)
-				return fmt.Errorf("install timed out: %w", ctx.Err())
-			}
-			// Use junimo_scaffolded (not error) so the user can click Install again to retry.
-			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateJunimoScaffolded,
-				"docker compose pull 失败，请检查日志后重新安装。", "pull_failed", jobCtx.ID)
-			return fmt.Errorf("docker compose pull failed (exit %d)", pullResult.ExitCode)
-		}
+	if err := r.ensureJunimoImages(ctx, jobCtx); err != nil {
+		return err
 	}
 	_, _ = jobCtx.Info(ctx, "镜像检查完成，等待选择 Steam 登录方式...")
 
@@ -167,28 +173,113 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	return nil
 }
 
-// missingServices returns the compose service names whose images are not present locally.
-// It logs a line per image so the job log shows exactly what was found.
-func (r *installRunner) missingServices(ctx context.Context, jobCtx *jobs.Context) []string {
-	type serviceImage struct {
-		service string
-		image   string
+func (r *installRunner) ensureJunimoImages(ctx context.Context, jobCtx *jobs.Context) error {
+	envPath := filepath.Join(r.instance.DataDir, ".env")
+	envVals, _ := sjconfig.ReadEnvFile(envPath)
+
+	steamImage, err := r.ensureCandidateImage(ctx, jobCtx, imageCandidatePullOptions{
+		Service:       "steam-auth",
+		Label:         "steam-auth-cn",
+		EnvKey:        "STEAM_SERVICE_IMAGE",
+		Refs:          steamServiceImageRefs(envVals),
+		PullLogPrefix: "[steam-auth:pull] ",
+	})
+	if err != nil {
+		return err
 	}
-	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
-	all := []serviceImage{
-		{"steam-auth", steamServiceImageRef(envVals)},
-		{"server", "sdvd/server:" + r.imageTag},
+	serverImage, err := r.ensureCandidateImage(ctx, jobCtx, imageCandidatePullOptions{
+		Service:       "server",
+		Label:         "JunimoServer",
+		EnvKey:        "SERVER_IMAGE",
+		Refs:          serverImageRefs(envVals, r.imageTag),
+		PullLogPrefix: "[server:pull] ",
+	})
+	if err != nil {
+		return err
 	}
-	var missing []string
-	for _, si := range all {
-		if _, err := r.driver.docker.ImageInspect(ctx, r.instance.DataDir, si.image); err != nil {
-			_, _ = jobCtx.Info(ctx, fmt.Sprintf("[check] %s 镜像缺失，需要拉取。", si.image))
-			missing = append(missing, si.service)
-		} else {
-			_, _ = jobCtx.Info(ctx, fmt.Sprintf("[check] %s 镜像已存在，跳过。", si.image))
+
+	updates := map[string]string{
+		"STEAM_SERVICE_IMAGE":            steamImage,
+		"STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(steamServiceImageRefs(envVals), ","),
+		"SERVER_IMAGE":                   serverImage,
+		"SERVER_IMAGE_CANDIDATES":        strings.Join(serverImageRefs(envVals, r.imageTag), ","),
+	}
+	if err := sjconfig.UpdateEnvFile(envPath, updates); err != nil {
+		return fmt.Errorf("write selected Junimo images to .env: %w", err)
+	}
+	return nil
+}
+
+type imageCandidatePullOptions struct {
+	Service       string
+	Label         string
+	EnvKey        string
+	Refs          []string
+	PullLogPrefix string
+}
+
+func (r *installRunner) ensureCandidateImage(ctx context.Context, jobCtx *jobs.Context, opts imageCandidatePullOptions) (string, error) {
+	if len(opts.Refs) == 0 {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateJunimoScaffolded,
+			fmt.Sprintf("%s 镜像未配置，请检查实例 .env。", opts.Label), "pull_failed", jobCtx.ID)
+		return "", fmt.Errorf("%s image candidates are empty", opts.Service)
+	}
+
+	for i, imageRef := range opts.Refs {
+		if _, err := r.driver.docker.ImageInspect(ctx, r.instance.DataDir, imageRef); err == nil {
+			if i == 0 {
+				_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[%s] 本地已有镜像 %s，直接使用。", opts.Service, imageRef))
+			} else {
+				_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[%s] 本地已有备用镜像 %s，直接使用。", opts.Service, imageRef))
+			}
+			return imageRef, nil
 		}
 	}
-	return missing
+
+	var failures []string
+	for i, imageRef := range opts.Refs {
+		if _, err := r.driver.docker.ImageInspect(ctx, r.instance.DataDir, imageRef); err == nil {
+			return imageRef, nil
+		}
+
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+			fmt.Sprintf("正在拉取 %s 镜像（%d/%d），请稍候...", opts.Label, i+1, len(opts.Refs)), "pull_running", jobCtx.ID)
+		_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[%s] 本地缺少镜像 %s，正在拉取（%d/%d）。", opts.Service, imageRef, i+1, len(opts.Refs)))
+
+		if _, pullErr := r.driver.docker.PullImageStreaming(ctx, r.instance.DataDir, imageRef,
+			makeImagePullLineHandler(jobCtx, opts.PullLogPrefix, func(done, total int) {
+				percent := 0
+				if total > 0 {
+					percent = int(float64(done) * 100 / float64(total))
+				}
+				message := fmt.Sprintf("正在拉取 %s 镜像（约 %d%%，%d/%d 层，候选 %d/%d），首次下载可能需要 10-30 分钟...",
+					opts.Label, percent, done, total, i+1, len(opts.Refs))
+				if done == total && total > 0 {
+					message = fmt.Sprintf("%s 镜像拉取完成，正在检查下一个组件...", opts.Label)
+				}
+				r.driver.updatePhase(context.Background(), r.instance.ID,
+					storage.InstanceStateSteamAuthRunning, message, "pull_running", jobCtx.ID)
+			})); pullErr != nil {
+			if ctx.Err() != nil {
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"安装任务超时，镜像拉取未完成，请重试安装。", "install_timeout", jobCtx.ID)
+				return "", fmt.Errorf("install timed out: %w", ctx.Err())
+			}
+			safeErr := paneldocker.RedactString(pullErr.Error())
+			failures = append(failures, fmt.Sprintf("%s: %s", imageRef, safeErr))
+			if i+1 < len(opts.Refs) {
+				_, _ = jobCtx.Warn(context.Background(), fmt.Sprintf("%s 镜像 %s 拉取失败，正在尝试备用镜像。", opts.Label, imageRef))
+				continue
+			}
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateJunimoScaffolded,
+				fmt.Sprintf("%s 镜像全部拉取失败，请检查 Docker 镜像源或实例 .env 中的 %s。", opts.Label, opts.EnvKey), "pull_failed", jobCtx.ID)
+			_, _ = jobCtx.Error(context.Background(), fmt.Sprintf("%s 镜像拉取失败：%s", opts.Label, strings.Join(failures, "；")))
+			return "", fmt.Errorf("pull %s image candidates: %s", opts.Service, strings.Join(failures, "; "))
+		}
+		return imageRef, nil
+	}
+
+	return "", fmt.Errorf("%s image candidates are empty", opts.Service)
 }
 
 func (r *installRunner) runSteamAuth(ctx context.Context, jobCtx *jobs.Context) error {
@@ -324,7 +415,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 				"Steam 需要二步验证，请在面板选择 Steam Guard 方式。",
 				"steam_guard_choice_required", jobCtx.ID)
 
-		case containsAny(lower, "waiting for approval", "open steam app", "choice [1]", "approve in steam mobile"):
+		case mode != steamAuthModeQR && isSteamMobileApprovalPrompt(lower):
 			// After option 1 is selected (by user or auto), Steam waits for mobile approval.
 			mobileApproval = true
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
@@ -336,10 +427,10 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 				"Steam Guard 验证码已请求，请在面板输入验证码。",
 				"steam_guard_required", jobCtx.ID)
 
-		case containsAny(lower, "steam guard", "two-factor", "authenticator"):
+		case mode != steamAuthModeQR && containsAny(lower, "steam guard", "two-factor", "authenticator"):
 			// Don't overwrite steam_guard_choice_required while the user is choosing.
-			// The explicit "waiting for approval" / "choice [1]" case below handles
-			// the transition once an actual selection is made.
+			// The explicit "waiting for approval" / mobile-app text case handles the
+			// transition once approval is actually requested.
 			if !mobileApproval && !guardChoiceShown {
 				r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 					"请打开 Steam 手机 App，批准此次登录请求；如果你选择输入验证码，面板会再显示验证码输入框。",
@@ -413,11 +504,20 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 			r.markInstallSucceeded(jobCtx)
 			return false, nil
 		}
+		if authSucceeded {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"Steam 认证已成功，但后续安装步骤失败；请检查任务日志后使用已保存凭据重试。", "post_auth_failed", jobCtx.ID)
+			_, _ = jobCtx.Error(context.Background(), "Steam 认证已成功，但后续安装步骤失败："+paneldocker.RedactString(cmdErr.Error()))
+			return false, fmt.Errorf("post-auth install error: %w", cmdErr)
+		}
 		if ctx.Err() != nil {
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 				"安装任务超时，Steam 认证未完成，请重试安装。", "install_timeout", jobCtx.ID)
 			return false, fmt.Errorf("steam-auth timed out: %w", ctx.Err())
 		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthFailed,
+			"Steam 认证容器运行失败，请检查 Docker 状态和任务日志后重试安装。", "steam_auth_failed", jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), "steam-auth 容器运行失败："+paneldocker.RedactString(cmdErr.Error()))
 		return false, fmt.Errorf("steam-auth run error: %w", cmdErr)
 	}
 
@@ -442,10 +542,12 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	if downloadFailed {
-		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthFailed,
-			"游戏文件下载失败，请检查网络和磁盘空间后重试安装。", "download_failed", jobCtx.ID)
-		_, _ = jobCtx.Error(context.Background(), "Steam 认证成功，但游戏文件下载失败，请检查任务日志中的具体错误。")
-		return false, fmt.Errorf("game download failed after successful auth")
+		_, _ = jobCtx.Warn(context.Background(), "steam-auth 国内网络下载波动，游戏文件下载失败；正在自动切换到 SteamCMD 兜底下载。")
+		if err := r.runSteamCMDFallback(ctx, jobCtx, guardCh); err != nil {
+			return false, err
+		}
+		r.markInstallSucceeded(jobCtx)
+		return false, nil
 	}
 
 	if qrAuthFailed {
@@ -481,7 +583,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthFailed,
-		"Steam 认证失败，请检查日志并重试。", "credentials_required", jobCtx.ID)
+		"Steam 认证失败，请检查日志并重试。", "steam_auth_failed", jobCtx.ID)
 	_, _ = jobCtx.Error(context.Background(), fmt.Sprintf("steam-auth 以退出码 %d 结束。", exitCode))
 	return false, fmt.Errorf("steam-auth download exited with code %d", exitCode)
 }
@@ -490,6 +592,284 @@ func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
 		"游戏已安装。", "game_installed", jobCtx.ID)
 	_, _ = jobCtx.Info(context.Background(), "安装流程全部完成。")
+}
+
+func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Context, guardCh <-chan string) error {
+	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
+	imageRef, err := r.ensureSteamCMDImage(ctx, jobCtx, steamCMDImageRefs(envVals))
+	if err != nil {
+		return err
+	}
+
+	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+		"steam-auth 国内网络下载失败，正在复用已保存账号密码通过 SteamCMD 兜底下载游戏文件...", "steamcmd_downloading", jobCtx.ID)
+	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 使用 SteamCMD 镜像 %s。", imageRef))
+	_, _ = jobCtx.Info(context.Background(), "[steamcmd] Docker 镜像检查已完成；后续若看到 [----] Downloading update，是 SteamCMD 客户端自更新，不是 Docker 镜像拉取。")
+	_, _ = jobCtx.Info(context.Background(), "[steamcmd] 使用已保存的 Steam 账号密码启动 SteamCMD 兜底下载；如 Steam 要求重新授权，页面会提示选择手机批准或输入验证码。")
+
+	var (
+		outputMu          sync.Mutex
+		app413150Done     bool
+		app1007Done       bool
+		credentialFailed  bool
+		guardPrompted     bool
+		mobileApproval    bool
+		authTimedOut      bool
+		steamCMDLoggedIn  bool
+		downloadStarted   bool
+		downloadCompleted bool
+	)
+	lineHandler := func(line string) {
+		outputMu.Lock()
+		defer outputMu.Unlock()
+
+		safeLine := sanitizeSteamOutputLine(line, r.password)
+		_, _ = jobCtx.Info(context.Background(), "[steamcmd] "+safeLine)
+		lower := strings.ToLower(line)
+
+		switch {
+		case isSteamCMDGuardChoiceMenu(lower):
+			guardPrompted = true
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请选择手机 App 批准或输入 App/邮箱验证码。",
+				"steamcmd_guard_choice_required", jobCtx.ID)
+		case containsAny(lower, "timed out waiting for confirmation", "wait for confirmation timed out", "error (timeout)"):
+			authTimedOut = true
+		case isSteamCMDMobileApprovalPrompt(lower):
+			guardPrompted = true
+			mobileApproval = true
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请打开 Steam 手机 App 批准本次登录。",
+				"steamcmd_guard_mobile_required", jobCtx.ID)
+		case isSteamCMDGuardCodePrompt(lower):
+			guardPrompted = true
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请输入 Steam App 或邮箱验证码。",
+				"steamcmd_guard_required", jobCtx.ID)
+		case containsAny(lower, "waiting for user info...ok", "logged in ok"):
+			steamCMDLoggedIn = true
+		case containsAny(lower, "logging in user", "waiting for user info"):
+			if !guardPrompted && !mobileApproval {
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"正在使用已保存账号密码登录 SteamCMD...", "steamcmd_auth_running", jobCtx.ID)
+			}
+		case containsAny(lower, "downloading update", "update state", "downloading, progress", "validating"):
+			if steamCMDLoggedIn || strings.Contains(lower, "update state") || strings.Contains(lower, "downloading, progress") {
+				downloadStarted = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"SteamCMD 已授权，正在兜底下载并校验游戏文件...", "steamcmd_downloading", jobCtx.ID)
+			}
+		case strings.Contains(lower, "success! app '413150' fully installed"):
+			app413150Done = true
+			downloadCompleted = true
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+				"SteamCMD 已完成 Stardew Valley 游戏文件下载，正在处理 Steam SDK 运行文件...", "steamcmd_downloading", jobCtx.ID)
+		case strings.Contains(lower, "success! app '1007' fully installed"):
+			app1007Done = true
+			downloadCompleted = true
+		case containsAny(lower, "invalid password", "password check for user failed", "login failure", "invalid login auth code"):
+			credentialFailed = true
+		}
+	}
+
+	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSteamCMDOpts(imageRef), guardCh, lineHandler)
+	if err != nil {
+		if ctx.Err() != nil {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"安装任务超时，SteamCMD 兜底下载未完成，请重试安装。", "install_timeout", jobCtx.ID)
+			return fmt.Errorf("steamcmd fallback timed out: %w", ctx.Err())
+		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"SteamCMD 兜底下载运行失败，请检查任务日志后重试。", "steamcmd_failed", jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底下载运行失败："+paneldocker.RedactString(err.Error()))
+		return fmt.Errorf("steamcmd fallback run error: %w", err)
+	}
+	if ctx.Err() != nil {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"安装任务超时，SteamCMD 兜底下载未完成，请重试安装。", "install_timeout", jobCtx.ID)
+		return fmt.Errorf("steamcmd fallback timed out: %w", ctx.Err())
+	}
+	if authTimedOut {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"SteamCMD 等待 Steam 手机 App 批准超时，请重试并及时批准，或改用验证码方式。", "steamcmd_failed", jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), "SteamCMD 等待 Steam 手机 App 批准超时，未开始下载游戏文件。")
+		return fmt.Errorf("steamcmd fallback auth confirmation timed out")
+	}
+	if exitCode != 0 {
+		phase := "steamcmd_failed"
+		message := "SteamCMD 兜底下载失败，请检查任务日志后重试。"
+		state := storage.InstanceStateError
+		if credentialFailed {
+			phase = "credentials_required"
+			message = "SteamCMD 重新授权失败：账号、密码或验证码不正确，请重新输入 Steam 凭据后重试。"
+			state = storage.InstanceStateSteamAuthFailed
+		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, state, message, phase, jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), fmt.Sprintf("SteamCMD 兜底下载以退出码 %d 结束。", exitCode))
+		return fmt.Errorf("steamcmd fallback exited with code %d", exitCode)
+	}
+
+	if !app413150Done {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"SteamCMD 兜底下载未确认完成，请检查任务日志后重试。", "steamcmd_failed", jobCtx.ID)
+		if downloadStarted || downloadCompleted {
+			_, _ = jobCtx.Error(context.Background(), "SteamCMD 输出过下载进度，但没有看到 Stardew Valley 游戏文件安装完成信号。")
+		} else {
+			_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底下载结束，但日志中没有看到游戏文件安装完成信号。")
+		}
+		return fmt.Errorf("steamcmd fallback finished without success marker")
+	}
+	if !app1007Done {
+		_, _ = jobCtx.Warn(context.Background(), "SteamCMD 未输出 Steam SDK 完成标记；如果后续启动缺少 SDK 运行文件，请重新执行安装修复。")
+	}
+	_, _ = jobCtx.Info(context.Background(), "[steamcmd] SteamCMD 兜底下载完成。")
+	return nil
+}
+
+func (r *installRunner) ensureSteamCMDImage(ctx context.Context, jobCtx *jobs.Context, imageRefs []string) (string, error) {
+	if len(imageRefs) == 0 {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"SteamCMD 兜底镜像未配置，请在实例 .env 中配置 STEAMCMD_IMAGE 或 STEAMCMD_IMAGE_CANDIDATES。", "steamcmd_image_pull_failed", jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底镜像未配置。")
+		return "", fmt.Errorf("steamcmd image candidates are empty")
+	}
+
+	for i, imageRef := range imageRefs {
+		if _, err := r.driver.docker.ImageInspect(ctx, r.instance.DataDir, imageRef); err == nil {
+			if i == 0 {
+				_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 本地已有 SteamCMD 镜像 %s，直接使用。", imageRef))
+			} else {
+				_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 使用已存在的备用 SteamCMD 镜像 %s。", imageRef))
+			}
+			return imageRef, nil
+		}
+	}
+
+	var failures []string
+	for i, imageRef := range imageRefs {
+		if _, err := r.driver.docker.ImageInspect(ctx, r.instance.DataDir, imageRef); err == nil {
+			if i > 0 {
+				_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 使用已存在的备用 SteamCMD 镜像 %s。", imageRef))
+			}
+			return imageRef, nil
+		}
+
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+			"正在拉取 SteamCMD 兜底镜像，请稍候...", "steamcmd_image_pulling", jobCtx.ID)
+		_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 本地缺少 SteamCMD 镜像 %s，正在拉取（%d/%d）。", imageRef, i+1, len(imageRefs)))
+		if _, pullErr := r.driver.docker.PullImageStreaming(ctx, r.instance.DataDir, imageRef,
+			makeImagePullLineHandler(jobCtx, "[steamcmd:pull] ", func(done, total int) {
+				percent := 0
+				if total > 0 {
+					percent = int(float64(done) * 100 / float64(total))
+				}
+				message := fmt.Sprintf("正在拉取 SteamCMD 兜底镜像（约 %d%%，%d/%d 层），请稍候...", percent, done, total)
+				if done == total && total > 0 {
+					message = "SteamCMD 兜底镜像拉取完成，正在启动 SteamCMD..."
+				}
+				r.driver.updatePhase(context.Background(), r.instance.ID,
+					storage.InstanceStateSteamAuthRunning, message, "steamcmd_image_pulling", jobCtx.ID)
+			})); pullErr != nil {
+			safeErr := paneldocker.RedactString(pullErr.Error())
+			failures = append(failures, fmt.Sprintf("%s: %s", imageRef, safeErr))
+			if i+1 < len(imageRefs) {
+				_, _ = jobCtx.Warn(context.Background(), fmt.Sprintf("SteamCMD 镜像 %s 拉取失败，正在尝试备用镜像。", imageRef))
+				continue
+			}
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"SteamCMD 兜底镜像全部拉取失败，请检查 Docker 镜像源或在实例 .env 中配置 STEAMCMD_IMAGE_CANDIDATES。", "steamcmd_image_pull_failed", jobCtx.ID)
+			_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底镜像拉取失败："+strings.Join(failures, "；"))
+			return "", fmt.Errorf("pull steamcmd image candidates: %s", strings.Join(failures, "; "))
+		}
+		return imageRef, nil
+	}
+
+	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+		"SteamCMD 兜底镜像未配置，请在实例 .env 中配置 STEAMCMD_IMAGE 或 STEAMCMD_IMAGE_CANDIDATES。", "steamcmd_image_pull_failed", jobCtx.ID)
+	_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底镜像未配置。")
+	return "", fmt.Errorf("steamcmd image candidates are empty")
+}
+
+func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress func(done, total int)) func(string) {
+	var (
+		mu       sync.Mutex
+		layers   = map[string]bool{}
+		lastEmit string
+	)
+
+	return func(line string) {
+		_, _ = jobCtx.Info(context.Background(), prefix+line)
+
+		m := regexImagePullLayer.FindStringSubmatch(line)
+		if m == nil {
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		layerID := strings.ToLower(m[1])
+		status := strings.ToLower(m[2])
+		doneStatus := status == "pull complete" || status == "already exists"
+		if _, ok := layers[layerID]; !ok {
+			layers[layerID] = false
+		}
+		if doneStatus {
+			layers[layerID] = true
+		}
+
+		total := len(layers)
+		done := 0
+		for _, layerDone := range layers {
+			if layerDone {
+				done++
+			}
+		}
+		if total == 0 {
+			return
+		}
+
+		tag := fmt.Sprintf("[pull:progress:%d:%d]", done, total)
+		if tag == lastEmit {
+			return
+		}
+		lastEmit = tag
+		_, _ = jobCtx.Info(context.Background(), tag)
+		if onProgress != nil {
+			onProgress(done, total)
+		}
+	}
+}
+
+func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
+	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	script := strings.Join([]string{
+		"set -e",
+		"mkdir -p /data/game /data/game/.steam-sdk /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam",
+		"if id steam >/dev/null 2>&1; then chown -R steam:steam /data/game /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam; fi",
+		`if [ -x /home/steam/steamcmd/steamcmd.sh ]; then steamcmd_bin=/home/steam/steamcmd/steamcmd.sh; elif command -v steamcmd >/dev/null 2>&1; then steamcmd_bin=$(command -v steamcmd); elif [ -x /usr/games/steamcmd ]; then steamcmd_bin=/usr/games/steamcmd; elif [ -x /steamcmd/steamcmd.sh ]; then steamcmd_bin=/steamcmd/steamcmd.sh; else echo "SteamCMD executable not found in container" >&2; exit 127; fi`,
+		`export STEAMCMD_BIN="$steamcmd_bin"`,
+		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit'; else "$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit; fi`,
+	}, "; ")
+	return paneldocker.ContainerTTYRunOpts{
+		ImageRef:   imageRef,
+		Entrypoint: []string{"/bin/sh"},
+		User:       "root",
+		Command:    []string{"-lc", script},
+		Env: []string{
+			"STEAM_USERNAME=" + r.username,
+			"STEAM_PASSWORD=" + r.password,
+		},
+		Binds: []string{
+			projectName + "_steamcmd-login:/home/steam/Steam",
+			projectName + "_steamcmd-home:/home/steam/.steam",
+			projectName + "_steamcmd-user-local:/home/steam/.local/share/Steam",
+			projectName + "_steamcmd-login:/root/Steam",
+			projectName + "_steamcmd-home:/root/.steam",
+			projectName + "_steamcmd-root-local:/root/.local/share/Steam",
+			projectName + "_game-data:/data/game",
+		},
+	}
 }
 
 func isSteamGuardCodePrompt(lower string) bool {
@@ -513,6 +893,48 @@ func isSteamGuardChoiceMenu(lower string) bool {
 	return strings.Contains(lower, "steam guard authentication") ||
 		(strings.Contains(lower, "[1]") && containsAny(lower, "approve in steam mobile", "approve in steam")) ||
 		(strings.Contains(lower, "[2]") && containsAny(lower, "enter code", "email", "code from"))
+}
+
+func isSteamMobileApprovalPrompt(lower string) bool {
+	return containsAny(lower, "waiting for approval", "open steam app", "approve in steam mobile")
+}
+
+func isSteamCMDGuardChoiceMenu(lower string) bool {
+	return strings.Contains(lower, "steam guard") &&
+		(strings.Contains(lower, "[1]") || strings.Contains(lower, "1:")) &&
+		(strings.Contains(lower, "[2]") || strings.Contains(lower, "2:")) &&
+		containsAny(lower, "approve", "mobile", "email", "code")
+}
+
+func isSteamCMDGuardCodePrompt(lower string) bool {
+	return containsAny(lower,
+		"steam guard code",
+		"two-factor code",
+		"enter code from",
+		"enter the current code",
+		"enter verification code",
+		"code sent to",
+	)
+}
+
+func isSteamCMDMobileApprovalPrompt(lower string) bool {
+	return containsAny(lower,
+		"approve this login",
+		"approve in steam mobile",
+		"waiting for approval",
+		"waiting for confirmation",
+		"please confirm the login in the steam mobile app",
+		"check your steam mobile app",
+		"steam mobile app for a confirmation",
+	)
+}
+
+func sanitizeSteamOutputLine(line, password string) string {
+	line = paneldocker.RedactString(line)
+	if password != "" {
+		line = strings.ReplaceAll(line, password, "[REDACTED]")
+	}
+	return line
 }
 
 // containsAny returns true if s contains any of the given substrings.
@@ -591,6 +1013,116 @@ func steamServiceImageRef(envVals map[string]string) string {
 	return envWithDefault(envVals, "STEAM_SERVICE_IMAGE", DefaultSteamServiceImage)
 }
 
+func steamServiceImageRefs(envVals map[string]string) []string {
+	return imageRefsFromEnv(envVals, "STEAM_SERVICE_IMAGE_CANDIDATES", DefaultSteamServiceImageCandidates, "STEAM_SERVICE_IMAGE", DefaultSteamServiceImage)
+}
+
+func serverImageDefault(imageTag string) string {
+	tag := strings.TrimSpace(imageTag)
+	if tag == "" {
+		tag = TestedImageTag
+	}
+	return "sdvd/server:" + tag
+}
+
+func serverImageCandidatesDefault(imageTag string) string {
+	tag := strings.TrimSpace(imageTag)
+	if tag == "" {
+		tag = TestedImageTag
+	}
+	return strings.Join([]string{
+		"docker.1ms.run/sdvd/server:" + tag,
+		"docker.m.daocloud.io/sdvd/server:" + tag,
+		"ghcr.io/sdvd/server:" + tag,
+		"sdvd/server:" + tag,
+	}, ",")
+}
+
+func serverImageRefs(envVals map[string]string, imageTag string) []string {
+	return imageRefsFromEnv(envVals, "SERVER_IMAGE_CANDIDATES", serverImageCandidatesDefault(imageTag), "SERVER_IMAGE", serverImageDefault(imageTag))
+}
+
+func steamCMDImageRef(envVals map[string]string) string {
+	refs := steamCMDImageRefs(envVals)
+	if len(refs) > 0 {
+		return refs[0]
+	}
+	return DefaultSteamCMDImage
+}
+
+func steamCMDImageRefs(envVals map[string]string) []string {
+	refs := steamCMDImageCandidateRefs(envVals["STEAMCMD_IMAGE_CANDIDATES"])
+	refs = appendSteamCMDImageRef(refs, envWithDefault(envVals, "STEAMCMD_IMAGE", DefaultSteamCMDImage))
+	if len(refs) == 0 {
+		return []string{DefaultSteamCMDImage}
+	}
+	return refs
+}
+
+func steamCMDImageCandidatesValue(value string) string {
+	return strings.Join(steamCMDImageCandidateRefs(value), ",")
+}
+
+func steamCMDImageCandidateRefs(value string) []string {
+	defaultRefs := splitImageRefs(DefaultSteamCMDImageCandidates)
+	refs := splitImageRefs(value)
+	if len(refs) == 0 {
+		return defaultRefs
+	}
+	ordered := make([]string, 0, len(defaultRefs)+len(refs))
+	for _, ref := range defaultRefs {
+		ordered = appendSteamCMDImageRef(ordered, ref)
+	}
+	for _, ref := range refs {
+		ordered = appendSteamCMDImageRef(ordered, ref)
+	}
+	return ordered
+}
+
+func appendSteamCMDImageRef(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "steamcmd/steamcmd:latest" || value == "docker.xuanyuan.me/steamcmd/steamcmd:latest" {
+		return values
+	}
+	return appendUniqueString(values, value)
+}
+
+func imageRefsFromEnv(envVals map[string]string, candidatesKey string, defaultCandidates string, primaryKey string, defaultPrimary string) []string {
+	refs := splitImageRefs(defaultCandidates)
+	for _, ref := range splitImageRefs(envVals[candidatesKey]) {
+		refs = appendUniqueString(refs, ref)
+	}
+	refs = appendUniqueString(refs, envWithDefault(envVals, primaryKey, defaultPrimary))
+	if len(refs) == 0 {
+		return []string{defaultPrimary}
+	}
+	return refs
+}
+
+func splitImageRefs(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+	refs := make([]string, 0, len(fields))
+	for _, field := range fields {
+		refs = appendUniqueString(refs, strings.TrimSpace(field))
+	}
+	return refs
+}
+
+func appendUniqueString(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
 func fileMissing(path string) bool {
 	_, err := os.Stat(path)
 	return os.IsNotExist(err)
@@ -649,6 +1181,39 @@ func migrateSteamAuthComposeImage(path string) (bool, error) {
 	if !changed {
 		return false, nil
 	}
+	info, statErr := os.Stat(path)
+	mode := os.FileMode(0o644)
+	if statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	return true, os.WriteFile(path, []byte(text), mode)
+}
+
+func migrateServerComposeImage(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	text := string(raw)
+	changed := false
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "image: sdvd/server:") {
+			continue
+		}
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		lines[i] = indent + "image: ${SERVER_IMAGE:-" + DefaultServerImage + "}"
+		changed = true
+	}
+	if !changed {
+		return false, nil
+	}
+	text = strings.Join(lines, "\n")
 	info, statErr := os.Stat(path)
 	mode := os.FileMode(0o644)
 	if statErr == nil {

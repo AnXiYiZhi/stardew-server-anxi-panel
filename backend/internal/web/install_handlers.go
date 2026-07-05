@@ -201,7 +201,10 @@ func (s *server) handleInstanceSteamGuardInput(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.logger.Info("steam guard input received", "instance", instanceID, "job_id", body.JobID, "phase", instance.DriverPhase)
-	if (instance.DriverPhase == "auth_method_required" || instance.DriverPhase == "steam_guard_choice_required") && body.Input != "1" && body.Input != "2" {
+	if (instance.DriverPhase == "auth_method_required" ||
+		instance.DriverPhase == "steam_guard_choice_required" ||
+		instance.DriverPhase == "steamcmd_guard_choice_required") &&
+		body.Input != "1" && body.Input != "2" {
 		writeError(w, http.StatusBadRequest, "invalid_field", "认证方式只能选择 1 或 2")
 		return
 	}
@@ -243,6 +246,12 @@ func (s *server) handleInstanceSteamGuardInput(w http.ResponseWriter, r *http.Re
 		// the phase so the frontend shows the code input box without waiting for it.
 		nextPhase = "steam_guard_required"
 		nextMessage = "Steam Guard 验证码已请求，请在面板输入验证码。"
+	case instance.DriverPhase == "steamcmd_guard_choice_required" && body.Input == "1":
+		nextPhase = "steamcmd_guard_mobile_required"
+		nextMessage = "steam-auth 国内网络下载失败，正在等待 SteamCMD 手机 App 批准。"
+	case instance.DriverPhase == "steamcmd_guard_choice_required" && body.Input == "2":
+		nextPhase = "steamcmd_guard_required"
+		nextMessage = "steam-auth 国内网络下载失败，SteamCMD 需要输入 App 或邮箱验证码。"
 	}
 	if nextPhase != "" {
 		if _, err := s.store.UpdateInstanceState(r.Context(), storage.UpdateInstanceStateParams{

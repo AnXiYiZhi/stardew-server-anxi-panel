@@ -53,11 +53,19 @@ func (f fakeDockerService) ComposePullStreaming(ctx context.Context, dir string,
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
+func (f fakeDockerService) PullImageStreaming(ctx context.Context, dir string, imageRef string, lineHandler func(line string)) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
 func (f fakeDockerService) ImageInspect(ctx context.Context, dir string, imageRef string) (paneldocker.CommandResult, error) {
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
 func (f fakeDockerService) RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	return 0, nil
+}
+
+func (f fakeDockerService) RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
 	return 0, nil
 }
 
