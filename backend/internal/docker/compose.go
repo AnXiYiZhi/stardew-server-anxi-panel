@@ -23,6 +23,10 @@ func (c *Client) ComposeVersion(ctx context.Context, workDir string) (CommandRes
 }
 
 func (c *Client) ComposePs(ctx context.Context, dir string) (ComposePsResult, error) {
+	if cached, ok := c.cachedComposePs(dir, time.Now()); ok {
+		return cached, nil
+	}
+
 	result, err := c.run(ctx, "docker compose ps", dir, c.timeouts.Ps, "compose", "ps", "--format", "json")
 	composeResult := ComposePsResult{Result: result}
 	if result.Stdout != "" {
@@ -32,6 +36,9 @@ func (c *Client) ComposePs(ctx context.Context, dir string) (ComposePsResult, er
 		} else {
 			composeResult.Services = services
 		}
+	}
+	if err == nil {
+		c.storeComposePs(dir, composeResult, time.Now())
 	}
 	return composeResult, err
 }
@@ -59,15 +66,24 @@ func (c *Client) ImageInspect(ctx context.Context, dir string, imageRef string) 
 }
 
 func (c *Client) ComposeUp(ctx context.Context, dir string) (CommandResult, error) {
-	return c.run(ctx, "docker compose up", dir, c.timeouts.Up, "compose", "up", "-d")
+	c.invalidateComposePs(dir)
+	result, err := c.run(ctx, "docker compose up", dir, c.timeouts.Up, "compose", "up", "-d")
+	c.invalidateComposePs(dir)
+	return result, err
 }
 
 func (c *Client) ComposeDown(ctx context.Context, dir string) (CommandResult, error) {
-	return c.run(ctx, "docker compose down", dir, c.timeouts.Down, "compose", "down")
+	c.invalidateComposePs(dir)
+	result, err := c.run(ctx, "docker compose down", dir, c.timeouts.Down, "compose", "down")
+	c.invalidateComposePs(dir)
+	return result, err
 }
 
 func (c *Client) ComposeRestart(ctx context.Context, dir string) (CommandResult, error) {
-	return c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, "compose", "restart")
+	c.invalidateComposePs(dir)
+	result, err := c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, "compose", "restart")
+	c.invalidateComposePs(dir)
+	return result, err
 }
 
 func (c *Client) ComposeRestartServices(ctx context.Context, dir string, services ...string) (CommandResult, error) {
@@ -82,7 +98,10 @@ func (c *Client) ComposeRestartServices(ctx context.Context, dir string, service
 		}
 		args = append(args, service)
 	}
-	return c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, args...)
+	c.invalidateComposePs(dir)
+	result, err := c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, args...)
+	c.invalidateComposePs(dir)
+	return result, err
 }
 
 // ComposeExecPipe runs `docker compose exec -T <service> <args>` with stdinData piped to the
@@ -174,6 +193,50 @@ func parseComposeServices(stdout string) ([]ComposeService, error) {
 		})
 	}
 	return services, nil
+}
+
+func (c *Client) cachedComposePs(dir string, now time.Time) (ComposePsResult, bool) {
+	if c.composePsTTL <= 0 || dir == "" {
+		return ComposePsResult{}, false
+	}
+	c.composePsMu.Lock()
+	defer c.composePsMu.Unlock()
+	entry, ok := c.composePsCache[dir]
+	if !ok || now.After(entry.expiresAt) {
+		if ok {
+			delete(c.composePsCache, dir)
+		}
+		return ComposePsResult{}, false
+	}
+	return cloneComposePsResult(entry.result), true
+}
+
+func (c *Client) storeComposePs(dir string, result ComposePsResult, now time.Time) {
+	if c.composePsTTL <= 0 || dir == "" {
+		return
+	}
+	c.composePsMu.Lock()
+	defer c.composePsMu.Unlock()
+	c.composePsCache[dir] = composePsCacheEntry{
+		result:    cloneComposePsResult(result),
+		expiresAt: now.Add(c.composePsTTL),
+	}
+}
+
+func (c *Client) invalidateComposePs(dir string) {
+	if dir == "" {
+		return
+	}
+	c.composePsMu.Lock()
+	defer c.composePsMu.Unlock()
+	delete(c.composePsCache, dir)
+}
+
+func cloneComposePsResult(result ComposePsResult) ComposePsResult {
+	cloned := result
+	cloned.Result.Args = append([]string(nil), result.Result.Args...)
+	cloned.Services = append([]ComposeService(nil), result.Services...)
+	return cloned
 }
 
 func parseComposeStats(stdout string) ([]ComposeServiceStats, error) {

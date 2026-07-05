@@ -2,7 +2,6 @@ package web
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -35,8 +34,11 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 	}
 
 	ctx := r.Context()
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
+	filename := fmt.Sprintf("support-bundle-%s.zip", time.Now().Format("20060102-150405"))
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+
+	zw := zip.NewWriter(w)
 
 	// 1. Version info
 	s.addVersionBundle(zw)
@@ -64,15 +66,8 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 
 	if err := zw.Close(); err != nil {
 		s.logger.Error("failed to close support bundle zip", "error", err)
-		writeError(w, http.StatusInternalServerError, "bundle_failed", "诊断包生成失败")
 		return
 	}
-
-	filename := fmt.Sprintf("support-bundle-%s.zip", time.Now().Format("20060102-150405"))
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", buf.Len()))
-	w.Write(buf.Bytes())
 
 	s.auditLog(r, &session, "support_bundle_export", "instance", instanceID, "")
 }

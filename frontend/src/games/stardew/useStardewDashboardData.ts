@@ -4,6 +4,7 @@ import {
   getJobLogs,
   getHealthDiagnostics,
   getInstancePlayers,
+  getInstancePublicIP,
   getInviteCode,
   getJobs,
   getMods,
@@ -12,7 +13,7 @@ import {
   getVersion,
 } from '../../api'
 import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
-import type { InstanceState, Job, JobLog, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
+import type { InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import type { StardewDashboardData } from './stardew-routes'
 
@@ -26,14 +27,17 @@ export function useStardewDashboardData(): StardewDashboardData {
   const [health, setHealth] = useState<HealthDiagnosticsResponse | null>(null)
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [publicIP, setPublicIP] = useState<PublicIPResult | null>(null)
 
   const [savesError, setSavesError] = useState<string | null>(null)
   const [modsError, setModsError] = useState<string | null>(null)
   const [playersError, setPlayersError] = useState<string | null>(null)
   const [healthError, setHealthError] = useState<string | null>(null)
   const [inviteCodeError, setInviteCodeError] = useState<string | null>(null)
+  const [publicIPError, setPublicIPError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [playersLoading, setPlayersLoading] = useState(false)
+  const [publicIPRefreshing, setPublicIPRefreshing] = useState(false)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const playersPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -121,6 +125,11 @@ export function useStardewDashboardData(): StardewDashboardData {
     }
   }, [])
 
+  const applyHealthDiagnostics = useCallback((res: HealthDiagnosticsResponse) => {
+    setHealth(res)
+    setHealthError(null)
+  }, [])
+
   const refreshInviteCode = useCallback(async () => {
     setInviteCodeError(null)
     try {
@@ -135,6 +144,20 @@ export function useStardewDashboardData(): StardewDashboardData {
     } catch (e) {
       setInviteCode(null)
       setInviteCodeError(errorMessage(e))
+    }
+  }, [])
+
+  const refreshPublicIP = useCallback(async (force = false) => {
+    setPublicIPRefreshing(true)
+    setPublicIPError(null)
+    try {
+      const res = await getInstancePublicIP(undefined, force)
+      setPublicIP(res)
+    } catch (e) {
+      setPublicIP(null)
+      setPublicIPError(errorMessage(e))
+    } finally {
+      setPublicIPRefreshing(false)
     }
   }, [])
 
@@ -168,16 +191,16 @@ export function useStardewDashboardData(): StardewDashboardData {
     void refreshMods()
     void refreshPlayers()
     void refreshJobs()
-    void refreshHealth()
     void refreshInviteCode()
+    void refreshPublicIP()
   }, [
     refreshInstanceState,
     refreshSaves,
     refreshMods,
     refreshPlayers,
     refreshJobs,
-    refreshHealth,
     refreshInviteCode,
+    refreshPublicIP,
   ])
 
   const refreshAfterJobFinished = useCallback(() => {
@@ -204,8 +227,8 @@ export function useStardewDashboardData(): StardewDashboardData {
         refreshMods(),
         refreshPlayers(),
         refreshJobs(),
-        refreshHealth(),
         refreshInviteCode(),
+        refreshPublicIP(),
         fetchVersion(),
       ])
       setLoading(false)
@@ -233,8 +256,8 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshMods,
     refreshPlayers,
     refreshJobs,
-    refreshHealth,
     refreshInviteCode,
+    refreshPublicIP,
     fetchVersion,
   ])
 
@@ -384,14 +407,17 @@ export function useStardewDashboardData(): StardewDashboardData {
     health,
     versionInfo,
     inviteCode,
+    publicIP,
     savesError,
     modsError,
     playersError,
     healthError,
     inviteCodeError,
+    publicIPError,
     loading,
     playersLoading,
     inviteCodeRefreshing: invitePollRequested,
+    publicIPRefreshing,
     refreshAll,
     refreshInstanceState,
     refreshSaves,
@@ -399,7 +425,9 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshPlayers,
     refreshJobs,
     refreshHealth,
+    applyHealthDiagnostics,
     refreshInviteCode,
+    refreshPublicIP,
     clearInviteCode,
     requestInviteCodeRefresh,
   }

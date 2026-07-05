@@ -1,3 +1,26 @@
+# PUBLIC-IP-LOOKUP-1 服务器公网 IP 检测接口
+- 新增 `GET /api/instances/:id/public-ip`，登录用户可调用，用于从面板后端所在服务器主动检测公网出口 IP；前端不要在浏览器里查 IP，避免拿到访问者客户端的公网 IP。
+- 接口默认使用短超时 HTTP 客户端按顺序请求 `api.ipify.org`、`checkip.amazonaws.com`、`ifconfig.me/ip`，只接受 `netip.ParseAddr()` 可解析且非 private/loopback/link-local/multicast/unspecified 的公网地址。
+- 响应结构为 `{ ip, checkedAt, source?, cached }`。后端默认缓存成功结果 `10min`；请求 `?refresh=1` 或 `?refresh=true` 会强制重新检测。失败返回 `502 public_ip_failed`，不会暴露外部服务原始错误。
+- 影响文件：`backend/internal/web/public_ip.go`、`backend/internal/web/public_ip_test.go`、`backend/internal/web/handler.go`、`backend/internal/web/instance_handlers.go`。未改 Junimo driver、Docker/Compose 状态、邀请码接口或实例状态模型。
+- 验证：`cd backend; go test ./internal/web`。
+
+# SUPPORT-BUNDLE-STREAM-1 支持包流式 ZIP 导出
+
+- `POST /api/instances/:id/support-bundle` 不再先用 `bytes.Buffer` 在内存中完整拼出 ZIP 后一次性写回，而是设置下载响应头后直接用 `zip.NewWriter(w)` 流式写入 `http.ResponseWriter`。
+- 响应继续是 `application/zip` 和 `support-bundle-YYYYMMDD-HHMMSS.zip`；因为改为流式响应，不再设置 `Content-Length`，浏览器下载和前端 Blob 处理不受影响。
+- 支持包内容不变：`version.json`、`health.json`、`instance-state.json`、`jobs.json`、`audit-logs.json`、`compose-ps.json`、`docker-compose.yml` 或说明、`server-logs.txt`，敏感信息仍通过 Docker redact 逻辑脱敏。
+- 新增 `TestSupportBundleStreamsValidZip` 覆盖下载仍是合法 ZIP、关键条目存在且不写固定 `Content-Length`。
+- 验证：`cd backend; go test ./internal/web -run "SupportBundle|Docker|Metrics"`，`cd backend; go test ./...`。
+
+# DOCKER-POLL-PERF-1 Docker Compose 状态短缓存与轮询边界
+
+- `backend/internal/docker.Client.ComposePs()` 现在对成功的 `docker compose ps --format json` 结果做短 TTL 缓存，默认 `1.5s`。同一实例在状态页、资源页、支持包或诊断路径短时间内重复读取 Compose 状态时，可复用同一份解析结果，减少 Docker CLI 进程启动开销。
+- 缓存只覆盖 `ComposePs` 成功结果，不缓存失败；`ComposeUp`、`ComposeDown`、`ComposeRestart` 和 `ComposeRestartServices` 会在执行前后清理对应 workDir 的 `ComposePs` 缓存，避免生命周期命令后短时间读到旧状态。
+- `ComposeStats --no-stream` 不做后端缓存，仍只通过 `/api/instances/:id/metrics` 按需执行。它比 `ComposePs` 重，前端应限制为诊断/资源可见页低频刷新。
+- `DockerVersion` / `ComposeVersion` 仍用于 `/api/health/diagnostics`、Docker 状态页或安装前检查，不应进入普通总览常驻轮询。
+- 验证：`cd backend; go test -count=1 ./internal/docker`。
+
 # JUNIMO-MOD-MOUNT-RESTORE-1 官方 JunimoServer Mod 挂载修复
 
 - 根因：实例 `.local-container/mods` 会完整挂载到容器 `/data/Mods`，如果宿主目录里没有 `JunimoServer/`，就会遮住 `sdvd/server` 镜像内置的官方 `JunimoServer` Mod，导致 8080 API、邀请码、VNC rendering 全部不可用。

@@ -10,7 +10,19 @@ COPY frontend/ ./
 RUN npm run build
 
 # ============================================================
-# Stage 2: Build backend (Go)
+# Stage 2: Build browser extension artifacts
+# ============================================================
+FROM alpine:3.20 AS extension-builder
+
+WORKDIR /work
+
+RUN apk add --no-cache zip
+COPY browser-extensions/ browser-extensions/
+RUN cd browser-extensions/nexus-slow-installer \
+    && zip -qr ../anxi-nexus-installer.zip .
+
+# ============================================================
+# Stage 3: Build backend (Go)
 # ============================================================
 FROM golang:1.25-alpine AS backend-builder
 
@@ -37,7 +49,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /app/panel ./cmd/panel
 
 # ============================================================
-# Stage 3: Runtime image
+# Stage 4: Runtime image
 # ============================================================
 FROM alpine:3.20
 
@@ -54,13 +66,10 @@ RUN apk add --no-cache \
     docker-cli \
     docker-cli-compose \
     ca-certificates \
-    tzdata \
-    zip
+    tzdata
 
 COPY --from=backend-builder /app/panel /app/panel
-COPY browser-extensions/ /app/browser-extensions/
-RUN cd /app/browser-extensions/nexus-slow-installer \
-    && zip -qr /app/browser-extensions/anxi-nexus-installer.zip .
+COPY --from=extension-builder /work/browser-extensions/ /app/browser-extensions/
 
 RUN mkdir -p /data
 

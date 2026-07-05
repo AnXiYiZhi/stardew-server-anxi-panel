@@ -3,6 +3,7 @@
 data
 frontend/node_modules
 frontend/dist
+docs/prototypes
 *.log
 *.tmp
 *.bak

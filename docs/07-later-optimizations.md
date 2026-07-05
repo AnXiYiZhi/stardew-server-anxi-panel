@@ -2,6 +2,112 @@
 
 本文只记录已经讨论过、但当前不急着做的优化。当前优先级仍是保持 Stardew 单实例面板稳定。
 
+## 2026-07 体积与性能专项审计建议
+
+本节记录 2026-07-06 对 `stardew-server-anxi-panel` 主仓库和 `junimo-server-steam-service-cn` 配套仓库的体积、构建产物、前端轮询、后端 IO/Docker 调用路径的专项扫描结果。当前目标不是立刻改实现，而是为后续压缩镜像、减少运行时开销和降低维护成本排优先级。
+
+### 审计基线
+
+- Panel 镜像上一轮本地构建基线：`docker image ls` 显示约 194 MB；`docker save` 导出的 tar 约 55.9 MB。两者不是同一个口径：前者更接近本地解包后的虚拟大小，后者更接近可搬运产物大小。
+- Panel 运行镜像最大层来自 `apk add docker-cli docker-cli-compose ca-certificates tzdata`；浏览器扩展 zip 已改为构建阶段产物，runtime 不再安装 `zip`。
+- 当前前端构建产物 `frontend/dist` 为 155 个文件、约 19.83 MB；其中运行素材占绝大多数，JS 主包约 473.7 KB，CSS 约 286.9 KB，前端代码包体不是当前主要矛盾。
+- 当前运行素材 `frontend/public/assets` 为 151 个文件、约 18.56 MB。最大目录是 `panels` 约 9.42 MB、`backgrounds` 约 4.23 MB、`icons` 约 2.98 MB。
+- 当前最大运行素材包括：
+  - `background_login_home_image2.png` 约 2.46 MB。
+  - `background_login_farm_generated.png` 约 1.86 MB。
+  - `right_card_health_9slice.png` 约 1.63 MB。
+  - `right_rail_shell_middle_tile_seamless.png` 约 1.61 MB。
+  - `right_card_recent_9slice.png` 约 1.27 MB。
+  - `right_card_progress_9slice.png` 约 1.21 MB。
+- `docs/prototypes` 已从 109 个文件、约 71.38 MB 的历史原型截图目录收敛为 3 个文件、约 2.58 MB 的轻量索引和关键基准图目录。完整截图应作为 Release artifact、对象存储或单独设计仓库制品保存。
+- `frontend/node_modules` 约 74.19 MB，`frontend/dist` 约 19.83 MB，均已在 `.dockerignore` 中排除，属于本地工作区体积，不属于镜像体积。
+- `junimo-server-steam-service-cn` 源码工作区约 7.30 MB，`.dockerignore` 已排除 docs、测试、node_modules、sub_modules 等；它对 Panel 镜像无直接体积贡献。但 Junimo 运行镜像自身包含 Debian GUI/VNC/ffmpeg/tmux 等重依赖，是后续服务器镜像体积优化的大方向。
+
+### P0：先不要做的高风险优化
+
+- 不建议短期内为了省体积直接删除 Panel 镜像内的 `docker-cli` 和 `docker-cli-compose`。这确实是当前 Panel 运行镜像最大层，但后端大量能力依赖 `docker compose ps/stats/logs/pull/up/down/restart/exec`，替换为 Docker Engine API 会影响安装、生命周期、日志、资源指标、Steam Auth、TTY 执行等多条主链路。
+- 如果未来要移除 Docker CLI，应单独立项：先抽象 `backend/internal/docker`，用 Engine API 覆盖 `ps/stats/logs/exec`，再逐步替换 `compose up/down/restart/pull`。在完全覆盖之前，保留 CLI fallback。
+- 不建议用 UPX 压缩 Go 二进制作为默认发布策略。它可能降低磁盘占用，但会带来启动、杀软误报、调试和崩溃定位成本；除非发布渠道明确需要极限压缩，否则收益不如素材和依赖拆分稳定。
+
+### P1：镜像与发布体积
+
+- 已完成：浏览器扩展 zip 从运行层 `zip -r` 改为 `extension-builder` 构建阶段产物，最终 Alpine runtime 不再安装 `zip`。
+- 已完成：`docs/prototypes` 迁出主仓大图，只保留轻量索引和两张关键总览基准图；完整历史截图放外部制品。
+- 已完成：超过 300 KB 的运行 PNG 已做一轮无损重压缩，并通过像素等价校验。登录背景因色调变化已回退为 PNG-only；其它背景现代格式需要后续单独做视觉等价校验后再启用。
+- 已完成：favicon 改为 `.ico` + 32/64/128 PNG，多尺寸文件，避免继续把 512px 大图直接作为站点图标。
+- 仍待后续单独视觉回归：面板/边框类 9-slice 或 tile 素材的切片重导出。当前只做无损压缩，没有改 `border-image` slice 或 tile/cap 结构，避免边缘模糊、alpha 失真和重复平铺接缝。
+- 保持 `.dockerignore` 对 `frontend/dist`、`frontend/node_modules`、`docs` 类本地产物的排除。Dockerfile 当前使用精确 `COPY frontend`、`COPY backend`、`COPY browser-extensions`，后续如果改成 `COPY .`，必须同步复核构建上下文，否则 `docs/prototypes` 会重新进入 build context。
+
+### P1：前端数据刷新与渲染
+
+- `frontend/src/games/stardew/useStardewDashboardData.ts` 是当前面板数据刷新中枢。初始化会并发拉取 state、saves、mods、players、jobs、health、inviteCode、version；运行中 30 秒轮询 state/jobs，服务器 running 时 5 秒轮询 players，邀请码缺失或刷新时 5-10 秒轮询 inviteCode。
+- 建议新增轻量聚合接口，例如 `GET /api/instances/:id/dashboard-summary`，返回 state、jobs 摘要、players 摘要、inviteCode 状态和关键 health 摘要。前端总览和右侧栏用聚合接口，详情页继续按需拉 saves/mods/health，减少首屏 7 个并发请求和后续重复请求。
+- players 已有文件快照来源，后续优先做 `GET /api/instances/:id/players/stream` SSE：首屏走普通 `/players`，running 后订阅 SSE，断线再降级为 30 秒轮询。现有 5 秒轮询成本不高，但在长时间开面板、多用户同时打开时会放大。
+- inviteCode 刷新可以改成状态驱动：启动/重启 job finished 或 state 变更后短时间高频轮询，拿到稳定邀请码后停止；不要在 `running && !inviteCode` 时永久 10 秒轮询。
+- state/jobs 已有 job SSE，建议让 job finished 事件携带更多后续刷新提示，例如 `refresh: ["state","players","invite"]`，避免前端在 `refreshAfterJobFinished()` 里固定刷新 saves/mods/players/invite。
+- `frontend/src/games/stardew/pages/ModsPage.tsx` 文件较大且状态密集，后续可以拆分 Nexus 扩展、远程安装、同步包、表格过滤等子组件。拆分后配合 `React.memo`/`useMemo`，减少输入框、分页、批量任务状态变化时整页重渲染。
+- 当前所有页面随 `StardewPanel` 主包一起进入首屏 JS。JS 只有约 474 KB，不急；但如果 Mods/Install/Diagnostics 继续增长，可用 `React.lazy` 按路由拆包，首屏只加载 Overview/ServerControl 的必要代码。
+- `StardewPanel.css` 已经很大，建议后续按页面拆 CSS 或至少按区块整理，配合样式引用检查清理旧类名。CSS 体积不是瓶颈，但超长文件会拖慢维护和代码审查。
+- 当前多个文件中存在中文注释或用户可见文案乱码。建议单独做一次 UTF-8 编码修复和文案复核，防止错误文案进入 UI、日志和支持包。这是维护性优化，不建议夹在功能变更里做。
+
+### P1：后端 IO、缓存与接口成本
+
+- `ListModsWithState()` 每次读取 active/disabled mods 目录并解析每个 `manifest.json`。对于几十个 Mod 成本可接受；如果用户安装上百个 Mod，建议按目录 mtime、manifest mtime 和启用配置 mtime 做短 TTL 缓存，写操作后主动失效。
+- `readSaveInfo()` 会读取 `SaveGameInfo` 或主存档 XML 并解析。存档列表、备份维护、导出命名都会触发相关读取。建议为存档列表增加基于主文件 mtime/size 的元数据缓存，避免总览或保存页反复解析 XML。
+- `ListPlayers()` 优先读取 `.local-container/control/players.json`、`players-cache.json`、`players-events.json`，不走 Docker exec，这是正确方向。后续继续推动 Junimo/SMAPI 写结构化事件文件，避免回退到 `junimo info` 命令解析。
+- `RunBackupMaintenance()` 通过 `filepath.Glob(save-events/*.json)` 扫事件文件。事件量小问题不大；如果后续事件更多，建议改为单个 JSONL/队列文件并做消费游标，减少目录扫描和大量小文件。
+- 支持包 `backend/internal/web/support_bundle.go` 已完成流式 ZIP 导出（`SUPPORT-BUNDLE-STREAM-1`）：直接对 `http.ResponseWriter` 创建 `zip.Writer`，不再用 `bytes.Buffer` 聚合整个压缩包；响应不设置 `Content-Length`，浏览器下载仍可工作。后续新增支持包条目时继续保持“单项失败写入 ZIP 内 error/note”的模式。
+- Mod 导出、存档导出、同步包导出当前多处使用 zip writer + 临时文件，这比整包进内存更稳。后续要统一限制单文件大小、总大小、临时文件清理、下载完成后的删除策略，避免大 Mod 包长期堆在系统临时目录。
+- `AppendJobLog()` 每条日志通过 `SELECT COALESCE(MAX(sequence), 0) + 1 FROM job_logs WHERE job_id = ?` 获取序号。已有 `(job_id, sequence)` 索引，普通任务够用；高频日志任务可考虑在 jobs 表增加 `next_log_sequence` 或由内存 job context 分配序号，降低每行日志一次 MAX 查询。
+- 任务和审计表已经有基础索引。后续如果任务日志长期保留，建议新增日志保留策略：按 job 数量、创建时间或总行数清理，避免 SQLite 文件无限增长。
+- SQLite 已启用 `busy_timeout=5000` 和 WAL，这是合理默认。后续如果后台计划任务、多人操作和大量日志同时写入增加，可补充写入队列或批量日志写入，避免频繁小事务。
+
+### P1：Docker 命令与运行时性能
+
+- 当前 `backend/internal/docker` 通过 `exec.CommandContext` 调用 Docker CLI，命令输出有截断和脱敏，安全边界基本清晰。性能瓶颈主要来自进程启动和 Compose 自身延迟，不来自 Go 代码。
+- 已完成：`ComposePs` 增加默认 1.5 秒短 TTL 成功结果缓存，`compose up/down/restart` 前后主动失效，吸收同屏短时间重复状态查询。
+- 已完成：`ComposeStats --no-stream` 不再由右侧栏全局 5 秒轮询触发；资源指标只在诊断页可见时以 8 秒间隔刷新，后台 tab 隐藏时暂停。
+- 已完成：普通 dashboard 初始化不再调用 `/api/health/diagnostics`，因此 `DockerVersion`/`ComposeVersion` 不进入普通总览轮询，只保留在 Diagnostics、Docker 状态页、安装前检查或用户手动刷新路径。
+- 长命令 streaming 已用于 pull 等场景，这是正确方向。后续大日志 tail 或安装进度也应保持流式，避免等待命令完成后一次性返回。
+
+### P2：Junimo 配套仓库与服务器镜像
+
+- `junimo-server-steam-service-cn` 仓库源码体积不大，但生产 Dockerfile 基于 `jlesage/baseimage-gui:debian-11`，并安装 GUI、VNC、polybar、ffmpeg、tmux、tcpdump、调试工具等。这些能力对测试/可视化有价值，但对普通 headless 托管不一定都需要。
+- 建议长期拆分服务器镜像 profile：
+  - `server-headless`：只保留游戏、SMAPI、JunimoServer、必要 X/音频/Steam 依赖和 API。
+  - `server-gui`：保留 VNC/桌面/截图/录制能力。
+  - `server-test`：再额外包含测试 fixture、录制、调试工具和 test endpoints。
+- 当前 Dockerfile 已有 `docker/modern/Dockerfile` 的 Alpine/Zink/SwiftShader 实验路线，目标是减少 GUI/OpenGL 依赖体积。它标注为 WIP，不应直接切生产，但可以作为 headless/modern profile 的技术储备。
+- 生产镜像中 `TestFarmMod` 复制到 `/opt/test-fixtures`，默认不加载。为了进一步减小普通镜像，可把测试 fixture 移到 test profile，生产镜像完全不携带。
+- `docker/rootfs/data/images/wallpaper-junimo-server.png` 和 `wallpaper-sdv.png` 体积不大，但属于 GUI/VNC 体验资产。headless profile 可不带。
+- Junimo mod 已暴露 HTTP API/WebSocket，并在架构上适合事件驱动。Panel 后续玩家、日志、资源状态应优先消费 Junimo 的结构化 API/事件，而不是在 API 层增加 Stardew 逻辑或解析 UI/VNC。
+
+### P2：验证与回归基准
+
+- 体积验证：
+  - `npm.cmd run build`，记录 JS/CSS 和 `frontend/dist` 总大小。
+  - `docker build -t stardew-anxi-panel:local .`，记录 build context、`docker image ls`、`docker image history`。
+  - 如需分发口径，执行 `docker save stardew-anxi-panel:local -o panel.tar` 并记录 tar 大小；不要把它和 `docker image ls` 混为同一指标。
+- 前端性能验证：
+  - 打开 Overview、Mods、Jobs、Players、Diagnostics，检查 Network 面板 1 分钟内请求数量。
+  - running 状态下重点记录 `/players`、`/invite-code`、`/jobs`、`/state` 的请求频率。
+  - Mods 页面用 100/300/500 个 mock mod 观察过滤、分页、批量操作的输入延迟。
+- 后端性能验证：
+  - 构造 100+ Mod、100+ save、100k job_logs 的本地数据集。
+  - 对 `/mods`、`/saves`、`/players`、`/jobs/:id/logs`、`/support-bundle` 做响应时间和内存峰值记录。
+  - 对 Docker 不可用、Compose 项目不存在、server 容器退出三类场景做降级测试。
+- 视觉回归：
+  - 素材压缩或格式切换后检查登录页、Overview、右侧栏、导航、Mods、Saves 和移动端。
+  - 重点看像素边缘、9-slice 边框、平铺接缝、透明阴影和按钮 hover 状态。
+
+### 建议执行顺序
+
+1. 低风险体积清理已完成第一批：favicon 优化、扩展 zip 移到构建阶段、PNG 无损压缩和 `docs/prototypes` 外置；登录背景现代格式因色调变化已回退。
+2. 下一批低风险性能优化：资源指标页面可见时刷新、Docker ps 短 TTL 缓存已落地；支持包流式 zip 已完成，后续继续做更细的缓存和日志保留策略。
+3. 中等风险前端优化：dashboard-summary 聚合接口、players/inviteCode 状态驱动刷新、ModsPage 拆分。
+4. 中等风险后端优化：mods/saves 元数据缓存、job log 保留策略、日志序号批量化。
+5. 高风险架构优化：移除 Panel runtime Docker CLI、Junimo 服务器镜像 profile 拆分、headless/modern 生产化。
+
 ## 玩家事件驱动更新
 
 当前玩家页通过 5 秒轮询：

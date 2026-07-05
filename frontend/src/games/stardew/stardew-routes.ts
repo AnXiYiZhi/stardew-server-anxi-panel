@@ -1,5 +1,5 @@
 import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
-import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, SavesListResult, StardewPlayersResponse } from '../../types'
+import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse } from '../../types'
 
 export type StardewRoute =
   | 'install'
@@ -35,16 +35,19 @@ export type StardewDashboardData = {
   health: HealthDiagnosticsResponse | null
   versionInfo: VersionInfo | null
   inviteCode: string | null
+  publicIP: PublicIPResult | null
   // 降级错误摘要（不崩溃，只降级显示）
   savesError: string | null
   modsError: string | null
   playersError: string | null
   healthError: string | null
   inviteCodeError: string | null
+  publicIPError: string | null
   // 加载状态
   loading: boolean
   playersLoading: boolean
   inviteCodeRefreshing: boolean
+  publicIPRefreshing: boolean
   // 刷新函数（供各页面在操作完成后主动刷新）
   refreshAll: () => void
   refreshInstanceState: () => void
@@ -53,7 +56,9 @@ export type StardewDashboardData = {
   refreshPlayers: () => void
   refreshJobs: () => void
   refreshHealth: () => void
+  applyHealthDiagnostics: (health: HealthDiagnosticsResponse) => void
   refreshInviteCode: () => void
+  refreshPublicIP: (force?: boolean) => void
   clearInviteCode: () => void
   requestInviteCodeRefresh: () => void
 }
