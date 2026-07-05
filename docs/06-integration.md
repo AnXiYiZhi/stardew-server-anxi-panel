@@ -1,3 +1,55 @@
+# JUNIMO-MOD-MOUNT-RESTORE-1 联调契约
+
+- `/data/Mods` 由宿主 `.local-container/mods` 挂载提供；后端必须保证其中包含官方 `JunimoServer` Mod，否则 Junimo API、邀请码和 VNC rendering 都不会就绪。
+- `JunimoServer`、`StardewAnxiPanel.Control` 和虚拟 `SMAPI` 都是内置组件：前端应展示为已启用/不可切换，不参与“第三方 Mod 默认禁用”。
+- 前端不应展示物理 `smapi` 文件夹；接口层会跳过该目录，只返回虚拟 `SMAPI` 卡。
+- VNC 显示失败如果收到 `junimo_api_unavailable`，文案应提示“JunimoServer API 未就绪/官方组件未加载”，不要只显示 Docker 操作失败。
+
+# ENV-BOM-NORMALIZE-1 联调契约
+
+- 启动服务器前后，实例 `.env` 必须是 Docker Compose 可解析的普通 `KEY=value` 文件；如果混入 UTF-8 BOM 前缀，例如 `﻿IMAGE_VERSION`，旧流程会在 `docker compose up` 前置解析阶段失败。
+- 后端 `ReadEnvFile` / `UpdateEnvFile` 已对 BOM 前缀 key 做归一化；前端无需新增接口，只需要把生命周期 job 的失败日志展示出来即可。
+- 联调排查顺序：先运行 `docker compose -f data/instances/stardew/docker-compose.yml config --quiet` 验证配置解析，再看容器启动日志；不要只根据面板里的 `docker compose up: docker command failed` 判断是镜像或游戏进程问题。
+
+# STEAMCMD-SELFUPDATE-PROGRESS-1 联调契约
+
+- SteamCMD 兜底镜像命中本地后，job 日志会先出现“本地已有 SteamCMD 镜像 ... 直接使用”和“Docker 镜像检查已完成”；之后的 `[steamcmd] [ N%] Downloading update (... of 40,273 KB)` 属于 SteamCMD 客户端自更新，不代表重新拉 Docker 镜像。
+- 前端根据登录前的 SteamCMD bracket progress 展示客户端自更新进度；进入 `Logging in user`、`Waiting for user info` 或 app 安装后，后续进度再按游戏/SDK 下载处理。
+- SteamCMD 手机 App 批准仍以 `steamcmd_guard_mobile_required` 驱动；日志里的 `Please confirm the login in the Steam Mobile app` 和 `Waiting for confirmation` 都应让页面提示打开 Steam App 批准。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallSteamCMD"`；`cd frontend; npm.cmd run build`。
+
+# STEAMCMD-RETRY-RESUME-1 联调契约
+
+- 当 `steamcmd_failed` 或 `steamcmd_image_pull_failed` 后用户点击复用凭据重试，前端仍提交 `POST /api/instances/:id/install` 且 `reuseCredentials=true`；后端根据持久化 `driverPhase` 直接进入 SteamCMD fallback，不再先跑 `steam-auth`。
+- 直达 SteamCMD 重试仍使用同一个 Steam Guard 输入接口：`POST /api/instances/:id/steam-guard/input`。前端看到 `steamcmd_guard_mobile_required` 时提示打开 Steam 手机 App 批准；看到 `steamcmd_guard_required` 时显示验证码输入框。
+- 后端会先 inspect 所有 `STEAMCMD_IMAGE_CANDIDATES`。如果用户机器已有任意候选镜像，本次 job 日志会显示使用本地镜像并直接启动 SteamCMD；只有所有候选都缺失时才进入 `steamcmd_image_pulling`。
+- 联调复现：先让 SteamCMD 手机批准超时，使实例落到 `state=error, driverPhase=steamcmd_failed`；再点安装页重试。预期不出现新的 `[steam]` / steam-auth 下载流程，不出现已存在 SteamCMD 镜像的 pull，直接出现 `[steamcmd] Logging in user...` 和授权提示。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallResumes|InstallUsesExistingLater"`，`cd frontend; npm.cmd run build`。
+
+# STEAMCMD-FALLBACK-1 联调契约
+
+- 安装任务中只要 `steam-auth` 已经登录成功并进入游戏下载阶段，后续任何游戏文件下载失败都由后端自动尝试 SteamCMD 兜底，不再把用户带回 Steam 账号密码表单。典型日志顺序为 `[steam] Logged in as -> Downloading app 413150 -> Download failed` 后继续出现 `[steamcmd] ...`。
+- SteamCMD 兜底继续使用同一个 `stardew_install` job、同一条 SSE 流和同一个 `POST /api/instances/:id/steam-guard/input` 输入接口。前端只需要根据 `driverPhase`/日志展示 SteamCMD 专属授权 UI，不需要新增接口。
+- SteamCMD 授权 phase：`steamcmd_guard_choice_required` 展示两个选择（`1`=手机 App 批准，`2`=App/邮箱验证码）；`steamcmd_guard_required` 提交验证码字符串；`steamcmd_guard_mobile_required` 只提示用户在手机 App 批准。提交成功后后端会乐观推进 phase，最终以 job 日志和实例 state 为准。
+- SteamCMD 下载 phase：`steamcmd_image_pulling` 表示正在按 `STEAMCMD_IMAGE_CANDIDATES` 拉取兜底镜像，单个候选 403/超时会继续尝试下一个；`steamcmd_auth_running` 表示使用已保存账号密码登录；`steamcmd_downloading` 表示已授权并正在下载/校验 `413150`（并尝试 `1007` SDK）。
+- 失败契约：`steamcmd_failed` / `steamcmd_image_pull_failed` 属于下载/环境失败，可重试并复用已保存凭据；`steamcmd_image_pull_failed` 表示全部候选镜像都不可用，运维可在实例 `.env` 中把可用内网镜像放入 `STEAMCMD_IMAGE_CANDIDATES`；`credentials_required` 表示 SteamCMD 认为账号、密码或验证码失败，前端应要求重新输入 Steam 凭据。
+- 验证建议：模拟 `Logged in as -> Downloading app 413150 -> Download failed -> [steamcmd] Success! App '413150' fully installed. -> [steamcmd] Success! App '1007' fully installed.`，最终实例应为 `game_installed`，job 应为 succeeded。
+
+# INSTALL-INTERRUPTED-STATE-1 安装任务与实例状态联调契约
+
+- 安装页不能只相信 `instance.driverPhase` 判断任务是否仍在运行，必须同时看 `GET /api/jobs` 中是否存在 queued/running 的 `stardew_install`。没有活跃安装 job 时，残留的运行中 phase 应按 `install_interrupted` 展示。
+- 后端启动恢复 interrupted jobs 时，`stardew_install` 会同步更新实例为 `state=error`、`driverPhase=install_interrupted`；steam-auth 容器运行错误会同步更新为 `state=steam_auth_failed`、`driverPhase=steam_auth_failed`。
+- 前端收到 `install_interrupted` 应显示失败/可重试，不应继续显示 QR、Steam Guard 或“正在使用已保存凭据认证并下载游戏”。
+- 验证：启动安装后中断面板进程再重启，最新 `stardew_install` job 应为 failed，安装页应显示中断并加载该 job 日志，而不是卡在 48%。
+
+# FE-STEAM-AUTH-DOWNLOAD-PROGRESS-RESTORE-1 联调契约
+
+- 前端安装页解释 Steam 认证/下载日志时，以最新日志上下文为准：认证方式菜单下的 `Choice [1]: 2` 表示 QR；`Steam Guard Authentication` 菜单下的 `Choice [1]: 2` 表示输入手机 App/邮箱验证码。
+- 历史 `Or open: https://s.team/q/...` URL 只能作为当前 QR 阶段的兜底信号；如果后续日志已经出现 Steam Guard 菜单、`Enter Steam Guard code`、手机批准等待、下载开始或失败 phase，前端不得继续显示扫码窗口。
+- 日志出现 `Downloading app 413150`、`Target directory: /data/game`、`Manifest contains` 或 `Progress: N/M files - done/total (...)` 后，前端应显示 `game_downloading` 下载卡。`Progress:` 日志应渲染文件数、体积和进度条；后续 SDK 下载同理显示 `steam_sdk_downloading`。
+- 联调复现场景：手机批准后日志出现 `Logged in as ...`、`Downloading app 413150`、`Progress: 300/1470 files ...`，右侧认证区应显示“下载 Stardew Valley 游戏文件中…”和进度条，不应继续显示“请打开 Steam 手机 App，批准此次登录请求”。
+- 验证：`cd frontend; npm.cmd run build`；活跃安装任务手动联调上述日志顺序。
+
 # JOB-DISPLAY-NAME-1 联调契约
 
 - `GET /api/jobs`、`GET /api/jobs/:id` 和 job SSE 的 job payload 可能返回 `displayName`；前端应优先展示该字段，没有时回退 `type`。
@@ -176,7 +228,7 @@ npm.cmd run dev
 - 玩家同步分类（`syncKind`：`server_only`/`client_required`/`unknown`）随 `GET /api/instances/:id/mods` 一起返回，前端不用单独再拉一次。没有手动覆盖时，后端会自动把面板控制组件标为 `server_only`，把 SMAPI 内容包和其他第三方 Mod 标为 `client_required`，并在 `syncNote` 写入自动识别说明。
 - `GET /api/instances/:id/mods/sync-plan` 返回分类统计；`PUT /api/instances/:id/mods/:modId/sync-classification` 任意登录用户可用，编辑不受运行状态限制；`POST /api/instances/:id/mods/sync-pack/export` 任何登录用户可用，运行中也允许导出，导出包含 `pack-manifest.json`、`checksums.sha256`、安装脚本和 `payload/mods/`，且永远不含面板自带的 `StardewAnxiPanel.Control`。
 - 无 `client_required` Mod 时导出接口返回 `400 no_sync_mods`，前端按钮直接禁用避免命中。
-- `GET /api/instances/:id/mods/nexus/search?q=关键词`：任意登录用户可用（不需要管理员权限），后端代理 Nexus Mods 官方 API，前端不直连 N站。鉴权按能力拆开：关键词搜索和无 Key 纯数字 ID 展示查询都走公开只读的 GraphQL v2，**不需要个人 API Key**；配置 Key 后纯数字 ID 可优先走 v1 REST 精确查询。只有当 Nexus 自己因鉴权拒绝 GraphQL 查询时才返回 `502 nexus_auth_required`（提示需要 OAuth/更高权限，配置 Key 不一定能解决）。空关键词作为默认热门列表返回 200；其余上游非 2xx 映射为 `404 nexus_mod_not_found` / `502 nexus_unauthorized`（v1 REST Key 无效/权限不足）/ `429 nexus_rate_limited` / `502 nexus_request_failed`，前端按 `errorMessage` 兜底显示后端返回的中文 `message`。返回结果按本地已装 Mod 的 manifest `UpdateKeys`（`Nexus:<id>`）匹配 `installed`，本阶段不做版本新旧判断。
+- `GET /api/instances/:id/mods/nexus/search?q=关键词`：任意登录用户可用（不需要管理员权限），后端代理 Nexus Mods 官方 API，前端不直连 N站。鉴权按能力拆开：关键词搜索和无 Key 纯数字 ID 展示查询都走公开只读的 GraphQL v2，**不需要个人 API Key**；配置 Key 后纯数字 ID 可优先走 v1 REST 精确查询。只有当 Nexus 自己因鉴权拒绝 GraphQL 查询时才返回 `502 nexus_auth_required`（提示需要 OAuth/更高权限，配置 Key 不一定能解决）。空关键词作为默认热门列表返回 200；其余上游非 2xx 映射为 `404 nexus_mod_not_found` / `502 nexus_unauthorized`（v1 REST Key 无效/权限不足）/ `429 nexus_rate_limited` / `502 nexus_request_failed`。后端 message 必须保持正常 UTF-8 中文，前端也会按这些 Nexus 错误码兜底显示稳定中文。返回结果按本地已装 Mod 的 manifest `UpdateKeys`（`Nexus:<id>`）匹配 `installed`，本阶段不做版本新旧判断。
 - `GET /api/settings/nexus` / `PUT /api/settings/nexus/api-key` / `DELETE /api/settings/nexus/api-key`：管理员专用的 Nexus Key 配置接口。PUT 请求体 `{ "apiKey": string }`，保存后当前进程立即生效；GET 只返回 `{ configured, last4? }`，不会回显完整 Key；DELETE 清除配置。
 
 ### 6. 控制台命令
@@ -192,6 +244,7 @@ npm.cmd run dev
 ### 7. 玩家页
 
 - `GET /api/instances/:id/players` 返回在线快照和缓存名册。
+- 玩家名册会合并当前存档主 XML 中的 `<player>` 与 `<farmhands><Farmer>`；存档存在但当前不在线、也没进入缓存的玩家应显示为 `status=offline`、`source=save_file`，例如 `saveId=test` 可匹配 `Saves/test_数字` 下的 farmhand。
 - `maxPlayers` 默认取当前存档 `server-settings.json` 的 `Server.MaxPlayers`（junimo info 解析出的值优先）；服务器未运行时也会返回，供前端显示"在线数/人数上限"。
 - 前端显示 online/offline、host、位置、tile/pixel。
 - 未知地图 key 保留原值。
@@ -446,3 +499,46 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 服务器页 `跳转VNC控制` 通过已有 `GET /api/instances/:id/config/vnc-port` 读取宿主 VNC/noVNC 端口，并打开 `http://<当前面板hostname>:<vncPort>/`。VNC 密码只在 noVNC 页面中输入，不在面板前端回显。
 - 联调顺序建议：启动服务器 -> 点击 `打开VNC显示` -> 点击 `跳转VNC控制` -> noVNC 页面出现后输入安装时配置的 VNC 密码。
 - 验证：`go test ./internal/games/stardew_junimo -run Rendering`、`go test ./internal/web -run "Rendering|VNCConfig"`、`npm.cmd run build`。
+
+# STEAM-QR-PHASE-CLASSIFY-1 联调契约
+
+- 前端安装页继续以 `instance.driverPhase` 决定认证交互区：`steam_qr_required` 显示“Steam 手机扫码”和打开扫码窗口按钮，`steam_guard_mobile_required` 才显示“Steam Guard 验证 / 请打开 Steam 手机 App 批准登录”。
+- 后端在用户选择扫码登录（`POST /api/instances/stardew/steam-guard/input`，`input="2"`，当前 phase 为 `auth_method_required`）后应保持 `driverPhase=steam_qr_required`，不应被上游日志 `Choice [1]: 2` 覆盖成 `steam_guard_mobile_required`。
+- 前端安装页有防御性兜底：如果当前 `driverPhase=steam_guard_mobile_required`，但最近安装日志显示 `Choice [1]: 2` 或“已选择扫码登录”，且之后没有真正的 Steam Guard 菜单，则按 `steam_qr_required` 渲染 QR 区域。
+- QR 弹窗契约：前端应从最新 `Or open: https://s.team/q/...` 日志行提取 Steam 登录 URL，并在本地生成标准二维码图片；终端字符画只能作为备用显示，不能作为主扫码源，也不能把最近多段 `[steam]` 日志直接塞进二维码窗口。
+- 前端交互契约：管理员提交 Steam 认证选择后，页面应立即进入对应的本地乐观阶段，不等待后端 `driverPhase` 下一轮刷新。`auth_method_required + input=2` 立即显示 QR 等待；`steam_guard_choice_required + input=1/2` 分别立即显示手机批准等待/验证码输入框。若提交失败，前端回退并显示错误。
+- 如果 QR 流程最终出现 `QR authentication failed: SteamClient did not connect...`，应进入 `qr_auth_failed` 或连接失败类状态；前端应提示 QR 登录失败/网络连接问题，而不是继续显示 Guard 手机批准。
+- 联调网络判断：容器能解析 Steam 域名、连通 `api.steampowered.com:443` 与 Steam CM 端口，只说明 Docker 基础网络可用；SteamClient 仍可能因 CM 会话不稳定、地区网络或上游 QR 流程问题连接失败。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "QRCodeChoice|SteamMobileApproval|SteamAuthMenus"`。
+# STEAM-POST-AUTH-RETRY-1 联调契约
+- Steam 认证成功后，任何游戏下载、Steam CDN、磁盘、SDK 或后续安装步骤失败，都不得再把用户引导回 Steam 账号密码输入。后端应使用 `state=error` 搭配 `driverPhase=download_failed` 或 `post_auth_failed`；不要把这类失败写成 `state=steam_auth_failed`。
+- 前端应把 `[steam] Logged in as`、`Token expires`、`Game license verified`、`Got depot decryption key`、`Downloading app 413150`、`Target directory: /data/game` 视为“认证已成功”的日志信号。若后续失败，安装页只显示复用已保存凭据重试入口，并提交 `POST /api/instances/:id/install` with `{ "reuseCredentials": true }`。
+- 只有真正凭据错误才使用 `credentials_required` 并要求重新输入账号密码；QR 登录未成功也可以提示用户改用账号密码。下载失败、CDN 403、manifest 失败、磁盘不足、后续容器步骤失败都不属于凭据错误。
+- 验证建议：模拟日志顺序 `Logged in as -> Downloading app 413150 -> Download failed: ...403`，实例最终应为 `error/download_failed`，前端按钮应为“重试下载（不重新输入账号）”，表单不出现 Steam 用户名/密码字段。
+# PULL-PROGRESS-1 镜像拉取进度契约
+
+- 安装 job 日志中的 `[pull:progress:done:total]` 是前端专用隐藏进度信号。
+- `pull_running` 阶段的 `done/total` 表示 Junimo 镜像数量；`steamcmd_image_pulling` 阶段的 `done/total` 表示 SteamCMD 镜像 layer 数量。前端应展示为估算百分比，不要要求用户从 Docker layer 日志里猜进度。
+
+# STEAMCMD-DOWNLOAD-PROGRESS-1 游戏文件进度契约
+
+- SteamCMD 游戏文件下载进度不新增 API；前端从 job 日志中的 `[steamcmd] ... progress: N (done / total)` 解析百分比。
+- `Success! App '413150' fully installed.` 是 Stardew Valley 游戏文件完成标记；`Success! App '1007' fully installed.` 仅表示 Steam SDK 运行文件完成。
+- SteamCMD 手机 App 批准提示包括 `Please confirm the login in the Steam Mobile app` 和 `Waiting for confirmation`；批准超时属于 `steamcmd_failed`，不是安装成功。
+# STEAMCMD-BRACKET-PROGRESS-1 兜底下载进度契约补充
+
+- SteamCMD 兜底下载进度来源包括两类日志：`[steamcmd] ... progress: N (done / total)` 和 SteamCMD 原生 `[steamcmd] [ 28%] Downloading update (11,467 of 40,273 KB)...`。
+- 前端应把上述两类日志都视为 `steamcmd_downloading`，并展示百分比与已下载/总大小；后端无需新增进度 API。
+- SteamCMD 授权提示仍以日志和 `driverPhase` 双兜底：`Please confirm the login in the Steam Mobile app` / `Waiting for confirmation` 对应 `steamcmd_guard_mobile_required`。
+# JUNIMO-IMAGE-CANDIDATES-1 联调契约
+
+- 安装页看到 `driverPhase=pull_running` 时，后端可能正在拉取 `steam-auth-cn` 或 `JunimoServer` 候选镜像；日志前缀分别为 `[steam-auth:pull]`、`[server:pull]`，进度仍通过隐藏日志 `[pull:progress:done:total]` 给前端估算。
+- 候选顺序为国内镜像源优先，然后 `ghcr.io`，最后原始仓库。单个候选失败会继续尝试下一项，不应立即把安装视为失败；只有全部候选失败时才显示 `pull_failed`。
+- 成功命中的候选镜像会写回实例 `.env` 的 `STEAM_SERVICE_IMAGE` 或 `SERVER_IMAGE`，后续 compose / steam-auth TTY 均使用该选中镜像。
+- 前端无需新增接口；继续展示 job 日志和 `pull_running` 进度即可。
+# JUNIMO-IMAGE-CANDIDATES-2 安装页镜像候选联调
+
+- 安装流程进入 Junimo 镜像检查时，后端会对 `steam-auth cn` 与 `server` 两类镜像分别展开默认候选源；旧 `.env` 中只有单候选值时也会被补齐。
+- 前端日志应能看到 `server` 缺失时最多按 `(1/4)` 到 `(4/4)` 尝试：`docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
+- `steam-auth cn` 同理最多四个候选：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- 命中本地任一候选时应直接显示“本地已有镜像 ... 直接使用”，不应先拉取排在前面的缺失候选。

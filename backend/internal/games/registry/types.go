@@ -47,6 +47,7 @@ type InstallRequest struct {
 	VNCPassword   string // never log this field
 	ImageTag      string // docker image tag, e.g. "latest" or a pinned version
 	AutoDownload  bool   // skip auth method choice and run steam-auth download directly
+	SteamCMDRetry bool   // skip steam-auth and resume the SteamCMD fallback path
 }
 
 // ImageTagOption describes one selectable image tag in the install UI.

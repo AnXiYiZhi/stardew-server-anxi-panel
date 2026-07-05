@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -212,37 +213,28 @@ func playerEventsPath(dataDir string) string {
 
 func offlinePlayersFromCache(dataDir, saveID string) []PlayerInfo {
 	cache := readPlayerCache(dataDir)
-	if !cacheMatchesSave(cache.SaveID, saveID) {
-		return []PlayerInfo{}
+	byKey := map[string]playerCacheItem{}
+	if cacheMatchesSave(cache.SaveID, saveID) {
+		for _, item := range cache.Players {
+			key := playerKey(item.Name, item.UniqueMultiplayerID)
+			if key == "" {
+				continue
+			}
+			byKey[key] = item
+		}
 	}
-	players := make([]PlayerInfo, 0, len(cache.Players))
-	for _, item := range cache.Players {
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
+	for _, item := range saveRosterItems(dataDir, saveID) {
+		key := playerKey(item.Name, item.UniqueMultiplayerID)
+		if key == "" {
 			continue
 		}
-		farmIncome, personalIncome := normalizeCachedIncome(item.FarmIncome, item.PersonalIncome, item.TotalMoneyEarned, item.WalletMode)
-		players = append(players, PlayerInfo{
-			Name:                name,
-			Role:                normalizePlayerRole(item.Role, item.IsHost),
-			Location:            item.Location,
-			LocationName:        item.LocationName,
-			LocationDisplayName: item.LocationDisplayName,
-			TileX:               item.TileX,
-			TileY:               item.TileY,
-			PixelX:              item.PixelX,
-			PixelY:              item.PixelY,
-			Status:              "offline",
-			Source:              "panel_cache",
-			UniqueMultiplayerID: item.UniqueMultiplayerID,
-			IsHost:              item.IsHost,
-			Money:               item.Money,
-			FarmIncome:          farmIncome,
-			PersonalIncome:      personalIncome,
-			TotalMoneyEarned:    item.TotalMoneyEarned,
-			WalletMode:          item.WalletMode,
-			LastSeen:            item.LastSeen,
-		})
+		if _, ok := byKey[key]; !ok {
+			byKey[key] = item
+		}
+	}
+	players := make([]PlayerInfo, 0, len(byKey))
+	for _, item := range byKey {
+		players = append(players, playerInfoFromCacheItem(item, "offline", offlineRosterSource(item)))
 	}
 	sortPlayers(players)
 	return players
@@ -254,7 +246,7 @@ func markCachedPlayersOffline(dataDir, saveID, seenAt string) []PlayerInfo {
 	}
 	cache := readPlayerCache(dataDir)
 	if !cacheMatchesSave(cache.SaveID, saveID) {
-		return []PlayerInfo{}
+		return offlinePlayersFromCache(dataDir, saveID)
 	}
 	changed := false
 	events := []PlayerEvent{}
@@ -290,6 +282,15 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 			byKey[key] = item
 		}
 	}
+	for _, item := range saveRosterItems(dataDir, saveID) {
+		key := playerKey(item.Name, item.UniqueMultiplayerID)
+		if key == "" {
+			continue
+		}
+		if _, ok := byKey[key]; !ok {
+			byKey[key] = item
+		}
+	}
 
 	onlineKeys := map[string]bool{}
 	events := []PlayerEvent{}
@@ -303,6 +304,7 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 
 		item := byKey[key]
 		previousStatus := strings.TrimSpace(item.Status)
+		previousSource := strings.TrimSpace(item.Source)
 		isNewPlayer := playerKey(item.Name, item.UniqueMultiplayerID) == ""
 		if strings.TrimSpace(item.FirstSeen) == "" {
 			item.FirstSeen = seenAt
@@ -329,7 +331,7 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 		switch {
 		case isNewPlayer:
 			events = append(events, newPlayerEvent("seen", saveID, seenAt, item))
-		case strings.EqualFold(previousStatus, "offline"):
+		case strings.EqualFold(previousStatus, "offline") && !strings.EqualFold(previousSource, "save_file"):
 			events = append(events, newPlayerEvent("joined", saveID, seenAt, item))
 		}
 		byKey[key] = item
@@ -342,9 +344,8 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 		if name == "" {
 			continue
 		}
-		farmIncome, personalIncome := normalizeCachedIncome(item.FarmIncome, item.PersonalIncome, item.TotalMoneyEarned, item.WalletMode)
 		status := "offline"
-		source := "panel_cache"
+		source := offlineRosterSource(item)
 		if onlineKeys[key] {
 			status = "online"
 			source = item.Source
@@ -357,27 +358,7 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 			item.LastSeen = seenAt
 		}
 		cachePlayers = append(cachePlayers, item)
-		roster = append(roster, PlayerInfo{
-			Name:                name,
-			Role:                normalizePlayerRole(item.Role, item.IsHost),
-			Location:            item.Location,
-			LocationName:        item.LocationName,
-			LocationDisplayName: item.LocationDisplayName,
-			TileX:               item.TileX,
-			TileY:               item.TileY,
-			PixelX:              item.PixelX,
-			PixelY:              item.PixelY,
-			Status:              status,
-			Source:              source,
-			UniqueMultiplayerID: item.UniqueMultiplayerID,
-			IsHost:              item.IsHost,
-			Money:               item.Money,
-			FarmIncome:          farmIncome,
-			PersonalIncome:      personalIncome,
-			TotalMoneyEarned:    item.TotalMoneyEarned,
-			WalletMode:          item.WalletMode,
-			LastSeen:            item.LastSeen,
-		})
+		roster = append(roster, playerInfoFromCacheItem(item, status, source))
 	}
 
 	sort.Slice(cachePlayers, func(i, j int) bool {
@@ -392,6 +373,139 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 
 	sortPlayers(roster)
 	return roster
+}
+
+func playerInfoFromCacheItem(item playerCacheItem, status, source string) PlayerInfo {
+	name := strings.TrimSpace(item.Name)
+	farmIncome, personalIncome := normalizeCachedIncome(item.FarmIncome, item.PersonalIncome, item.TotalMoneyEarned, item.WalletMode)
+	return PlayerInfo{
+		Name:                name,
+		Role:                normalizePlayerRole(item.Role, item.IsHost),
+		Location:            item.Location,
+		LocationName:        item.LocationName,
+		LocationDisplayName: item.LocationDisplayName,
+		TileX:               item.TileX,
+		TileY:               item.TileY,
+		PixelX:              item.PixelX,
+		PixelY:              item.PixelY,
+		Status:              status,
+		Source:              source,
+		UniqueMultiplayerID: item.UniqueMultiplayerID,
+		IsHost:              item.IsHost,
+		Money:               item.Money,
+		FarmIncome:          farmIncome,
+		PersonalIncome:      personalIncome,
+		TotalMoneyEarned:    item.TotalMoneyEarned,
+		WalletMode:          item.WalletMode,
+		LastSeen:            item.LastSeen,
+	}
+}
+
+func offlineRosterSource(item playerCacheItem) string {
+	if strings.EqualFold(strings.TrimSpace(item.Source), "save_file") {
+		return "save_file"
+	}
+	return "panel_cache"
+}
+
+type saveRosterXML struct {
+	XMLName   xml.Name           `xml:"SaveGame"`
+	Player    saveRosterFarmer   `xml:"player"`
+	Farmhands []saveRosterFarmer `xml:"farmhands>Farmer"`
+}
+
+type saveRosterFarmer struct {
+	Name                        string `xml:"name"`
+	UniqueMultiplayerID         string `xml:"UniqueMultiplayerID"`
+	UniqueMultiplayerIDFallback string `xml:"uniqueMultiplayerID"`
+	Money                       *int64 `xml:"money"`
+	TotalMoneyEarned            *int64 `xml:"totalMoneyEarned"`
+}
+
+func saveRosterItems(dataDir, saveID string) []playerCacheItem {
+	saveFolder := resolveRosterSaveFolder(dataDir, saveID)
+	if saveFolder == "" {
+		return []playerCacheItem{}
+	}
+	saveName := filepath.Base(saveFolder)
+	raw, err := os.ReadFile(filepath.Join(saveFolder, saveName))
+	if err != nil || len(raw) == 0 {
+		return []playerCacheItem{}
+	}
+	var parsed saveRosterXML
+	if err := xml.Unmarshal(raw, &parsed); err != nil || parsed.XMLName.Local != "SaveGame" {
+		return []playerCacheItem{}
+	}
+
+	items := make([]playerCacheItem, 0, 1+len(parsed.Farmhands))
+	if item, ok := saveRosterFarmerItem(parsed.Player, true); ok {
+		items = append(items, item)
+	}
+	for _, farmer := range parsed.Farmhands {
+		if item, ok := saveRosterFarmerItem(farmer, false); ok {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func saveRosterFarmerItem(farmer saveRosterFarmer, isHost bool) (playerCacheItem, bool) {
+	name := strings.TrimSpace(farmer.Name)
+	if name == "" {
+		return playerCacheItem{}, false
+	}
+	uniqueID := strings.TrimSpace(farmer.UniqueMultiplayerID)
+	if uniqueID == "" {
+		uniqueID = strings.TrimSpace(farmer.UniqueMultiplayerIDFallback)
+	}
+	role := "player"
+	if isHost {
+		role = "host"
+	}
+	return playerCacheItem{
+		Name:                name,
+		Role:                role,
+		Source:              "save_file",
+		UniqueMultiplayerID: uniqueID,
+		IsHost:              isHost,
+		Money:               farmer.Money,
+		FarmIncome:          farmer.TotalMoneyEarned,
+		TotalMoneyEarned:    farmer.TotalMoneyEarned,
+		Status:              "offline",
+	}, true
+}
+
+func resolveRosterSaveFolder(dataDir, saveID string) string {
+	activeSave := strings.TrimSpace(GetActiveSaveName(dataDir))
+	if activeSave != "" {
+		if folder := findRosterSaveFolder(dataDir, activeSave); folder != "" {
+			return folder
+		}
+	}
+	return findRosterSaveFolder(dataDir, saveID)
+}
+
+func findRosterSaveFolder(dataDir, saveID string) string {
+	saveID = strings.TrimSpace(saveID)
+	if saveID == "" {
+		return ""
+	}
+	dirs, err := listSaveDirs(dataDir)
+	if err != nil || len(dirs) == 0 {
+		return ""
+	}
+	sort.Strings(dirs)
+	for _, name := range dirs {
+		if name == saveID {
+			return filepath.Join(savesDir(dataDir), "Saves", name)
+		}
+	}
+	for _, name := range dirs {
+		if strings.HasPrefix(name, saveID+"_") {
+			return filepath.Join(savesDir(dataDir), "Saves", name)
+		}
+	}
+	return ""
 }
 
 func cacheMatchesSave(cacheSaveID, currentSaveID string) bool {

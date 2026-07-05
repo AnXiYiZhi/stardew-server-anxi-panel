@@ -31,8 +31,8 @@ import type {
   BackupPolicyResult,
   BackupsListResult,
   RestoreBackupResult,
-  RestartSchedule,
   RestartScheduleResult,
+  RestartScheduleUpdate,
   ResourceMetricsResponse,
   SavesListResult,
   StardewPlayersResponse,
@@ -329,10 +329,20 @@ export function getRestartSchedule(instanceId = defaultInstanceId) {
   return request<RestartScheduleResult>(`/api/instances/${encodeURIComponent(instanceId)}/restart-schedule`)
 }
 
-export function updateRestartSchedule(schedule: RestartSchedule, instanceId = defaultInstanceId) {
+export function updateRestartSchedule(schedule: RestartScheduleUpdate, instanceId = defaultInstanceId) {
+  const body: RestartScheduleUpdate = {
+    enabled: schedule.enabled,
+    shutdownTime: schedule.shutdownTime,
+    startupTime: schedule.startupTime,
+    timezone: schedule.timezone,
+    warningMinutes: schedule.warningMinutes,
+    backupBeforeShutdown: schedule.backupBeforeShutdown,
+    skipIfPlayersOnline: schedule.skipIfPlayersOnline,
+  }
+
   return request<RestartScheduleResult>(`/api/instances/${encodeURIComponent(instanceId)}/restart-schedule`, {
     method: 'PUT',
-    body: schedule,
+    body,
   })
 }
 

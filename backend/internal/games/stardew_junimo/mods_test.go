@@ -140,6 +140,46 @@ func TestListMods_IncludesSMAPIRuntimeWhenControlModInstalled(t *testing.T) {
 	}
 }
 
+func TestListMods_SkipsPhysicalSMAPIRuntimeFolder(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".local-container", "mods")
+	createTestMod(t, root, controlModFolderName, controlModUniqueID, "Panel Control")
+	if err := os.MkdirAll(filepath.Join(root, "smapi", "ConsoleCommands"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	mods, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	if got := modFoldersForTest(mods); strings.Join(got, ",") != "SMAPI,StardewAnxiPanel.Control" {
+		t.Fatalf("mod folders = %v, want only virtual SMAPI and control mod", got)
+	}
+	for _, mod := range mods {
+		if mod.FolderName == "smapi" {
+			t.Fatalf("physical smapi folder should not be listed: %+v", mod)
+		}
+	}
+}
+
+func TestListMods_MarksJunimoServerBuiltIn(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".local-container", "mods")
+	createTestMod(t, root, junimoServerModFolderName, junimoServerModUniqueID, "JunimoServer")
+
+	mods, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	if len(mods) != 1 {
+		t.Fatalf("expected one mod, got %+v", mods)
+	}
+	mod := mods[0]
+	if !mod.BuiltIn || mod.CanToggle || mod.SyncKind != registry.ModSyncKindServerOnly {
+		t.Fatalf("JunimoServer should be built-in server_only: %+v", mod)
+	}
+}
+
 func TestListMods_ParseError(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, ".local-container", "mods")

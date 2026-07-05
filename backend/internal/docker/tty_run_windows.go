@@ -106,7 +106,9 @@ func winDockerDial(ctx context.Context) (net.Conn, error) {
 
 type winCreateBody struct {
 	Image        string        `json:"Image"`
+	Entrypoint   []string      `json:"Entrypoint,omitempty"`
 	Cmd          []string      `json:"Cmd"`
+	User         string        `json:"User,omitempty"`
 	Tty          bool          `json:"Tty"`
 	OpenStdin    bool          `json:"OpenStdin"`
 	AttachStdin  bool          `json:"AttachStdin"`
@@ -124,7 +126,9 @@ type winHostConfig struct {
 func winDockerCreate(ctx context.Context, opts SteamAuthRunOpts) (string, error) {
 	body := winCreateBody{
 		Image:        opts.ImageRef,
-		Cmd:          steamAuthCommand(opts),
+		Entrypoint:   opts.Entrypoint,
+		Cmd:          containerCommand(opts),
+		User:         opts.User,
 		Tty:          true,
 		OpenStdin:    true,
 		AttachStdin:  true,
@@ -151,6 +155,16 @@ func winDockerCreate(ctx context.Context, opts SteamAuthRunOpts) (string, error)
 		return "", fmt.Errorf("create response decode: %w", err)
 	}
 	return result.Id, nil
+}
+
+func runContainerTTYPlatform(
+	ctx context.Context,
+	_ string,
+	opts ContainerTTYRunOpts,
+	guardCh <-chan string,
+	lineHandler func(string),
+) (int, error) {
+	return runSteamAuthPlatform(ctx, "", opts, guardCh, lineHandler)
 }
 
 func winDockerAttach(ctx context.Context, containerID string) (net.Conn, *bufio.Reader, error) {

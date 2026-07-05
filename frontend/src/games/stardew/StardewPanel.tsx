@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BackupPolicy, CurrentUser, Job, JobLog, ResourceMetricSample, RestartSchedule } from '../../types'
+import type {
+  BackupPolicy,
+  CurrentUser,
+  InstanceState,
+  Job,
+  JobLog,
+  ResourceMetricSample,
+  RestartSchedule,
+  SaveInfo,
+} from '../../types'
 import { getInstanceMetrics, getRestartSchedule, getSaveBackupPolicy } from '../../api'
 import { jobDisplayName, stateLabel } from '../../core/helpers'
 import { parseRoute, routeToPath } from './stardew-routes'
@@ -77,21 +86,35 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_JOB_DURATION_MS = 60_000
 const REMOTE_INSTALL_JOB_TYPES = new Set(['mod_remote_install', 'mod_nexus_install'])
 const DOWNLOAD_PROGRESS_RE = /下载进度：已下载[\s\S]*?[（(]\s*([0-9]+(?:\.[0-9]+)?)%\s*[）)]/
-const OPS_RAIL_COLLAPSE_MAIN_WIDTH = 820
-const OPS_RAIL_EXPAND_MAIN_WIDTH = 880
+const SHELL_DESIGN_WIDTH = 1536
+const SHELL_DESIGN_HEIGHT = 1024
+const SHELL_MIN_UI_SCALE = 0.72
+const OPS_RAIL_COLLAPSE_MAIN_WIDTH = 400
+const OPS_RAIL_EXPAND_MAIN_WIDTH = 460
+const GAME_INSTALLED_STATES = new Set(['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'])
+const ACTIVE_INSTALL_JOB_STATUSES = new Set(['queued', 'running'])
 
 function clampNumber(min: number, value: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
+function shellUiScale(shellWidth: number): number {
+  const viewportHeight = window.innerHeight || SHELL_DESIGN_HEIGHT
+  return Math.max(
+    SHELL_MIN_UI_SCALE,
+    Math.min(shellWidth / SHELL_DESIGN_WIDTH, viewportHeight / SHELL_DESIGN_HEIGHT),
+  )
+}
+
 function expandedMainWidthForShell(shellWidth: number): number {
-  const sidebarWidth = clampNumber(210, shellWidth * 0.168, 252)
-  const opsRailWidth = clampNumber(340, shellWidth * 0.27, 430)
+  const scale = shellUiScale(shellWidth)
+  const sidebarWidth = clampNumber(196, shellWidth * 0.14, 216) * scale
+  const opsRailWidth = clampNumber(268, shellWidth * 0.19, 300) * scale
   return shellWidth - sidebarWidth - opsRailWidth
 }
 
 function shouldAutoCollapseOpsRail(shellWidth: number, currentlyCollapsed: boolean): boolean {
-  if (shellWidth <= 640) return false
+  if (shellWidth <= 720) return false
   const expandedMainWidth = expandedMainWidthForShell(shellWidth)
   const threshold = currentlyCollapsed ? OPS_RAIL_EXPAND_MAIN_WIDTH : OPS_RAIL_COLLAPSE_MAIN_WIDTH
   return expandedMainWidth < threshold
@@ -103,6 +126,206 @@ function formatCountdown(ms: number): string {
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   return `${pad(hours)}:${pad(minutes)}:${pad(totalSeconds % 60)}`
+}
+
+function parseClockMinutes(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim())
+  if (!match) return null
+  const hour = Number.parseInt(match[1], 10)
+  const minute = Number.parseInt(match[2], 10)
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
+  return hour * 60 + minute
+}
+
+function localScheduledTime(baseMs: number, clockMinutes: number, dayOffset: number): number {
+  const date = new Date(baseMs)
+  date.setDate(date.getDate() + dayOffset)
+  date.setHours(Math.floor(clockMinutes / 60), clockMinutes % 60, 0, 0)
+  return date.getTime()
+}
+
+type RestartWindow = {
+  shutdownAt: number
+  startupAt: number
+}
+
+function restartWindowForDay(schedule: RestartSchedule, now: number, dayOffset: number): RestartWindow | null {
+  const shutdownMinutes = parseClockMinutes(schedule.shutdownTime)
+  const startupMinutes = parseClockMinutes(schedule.startupTime)
+  if (shutdownMinutes == null || startupMinutes == null) return null
+  const shutdownAt = localScheduledTime(now, shutdownMinutes, dayOffset)
+  let startupAt = localScheduledTime(now, startupMinutes, dayOffset)
+  if (startupAt <= shutdownAt) startupAt = localScheduledTime(now, startupMinutes, dayOffset + 1)
+  return { shutdownAt, startupAt }
+}
+
+function sameScheduledMinute(value: string | undefined, expectedAt: number): boolean {
+  if (!value) return false
+  const actual = new Date(value).getTime()
+  return Number.isFinite(actual) && Math.abs(actual - expectedAt) < 60_000
+}
+
+function jobIdFromScheduleMessage(message: string | undefined): string | null {
+  if (!message) return null
+  try {
+    const parsed = JSON.parse(message) as { jobId?: unknown }
+    return typeof parsed.jobId === 'string' ? parsed.jobId : null
+  } catch {
+    return null
+  }
+}
+
+function lifecycleJobKind(job: Job, logs: JobLog[]): 'startup' | 'shutdown' | 'restart' | null {
+  if (job.type !== 'stardew_lifecycle') return null
+  const text = logs.map((entry) => entry.message).join('\n')
+  if (text.includes('正在重启 Stardew 服务器')) return 'restart'
+  if (text.includes('正在停止 Stardew 服务器') || text.includes('服务器已停止')) return 'shutdown'
+  if (text.includes('正在启动 Stardew 服务器') || text.includes('服务器运行中，邀请码')) return 'startup'
+  return null
+}
+
+function scheduledStartupJob(
+  jobs: Job[],
+  jobLogsByJobId: Record<string, JobLog[]>,
+  schedule: RestartSchedule,
+  window: RestartWindow,
+): Job | null {
+  const messageJobId =
+    schedule.lastStatus === 'startup_queued' && sameScheduledMinute(schedule.lastStartupAt, window.startupAt)
+      ? jobIdFromScheduleMessage(schedule.lastMessage)
+      : null
+  if (messageJobId) {
+    const matched = jobs.find((job) => job.id === messageJobId)
+    if (matched) return matched
+  }
+  return jobs.find((job) => {
+    if (job.type !== 'stardew_lifecycle') return false
+    const createdAt = new Date(job.createdAt).getTime()
+    if (!Number.isFinite(createdAt) || createdAt < window.startupAt - 30_000 || createdAt > window.startupAt + 10 * 60_000) {
+      return false
+    }
+    const kind = lifecycleJobKind(job, jobLogsByJobId[job.id] ?? [])
+    return kind === 'startup' || kind === null
+  }) ?? null
+}
+
+function isWindowStartupComplete(
+  schedule: RestartSchedule,
+  window: RestartWindow,
+  jobs: Job[],
+  jobLogsByJobId: Record<string, JobLog[]>,
+  instanceState: InstanceState | null,
+  now: number,
+): boolean {
+  if (now < window.startupAt) return false
+  const startupJob = scheduledStartupJob(jobs, jobLogsByJobId, schedule, window)
+  if (startupJob) return startupJob.status === 'succeeded'
+  if (schedule.lastStatus === 'skipped_already_running' && sameScheduledMinute(schedule.lastStartupAt, window.startupAt)) {
+    return true
+  }
+  return instanceState?.state === 'running' && now - window.startupAt > 10 * 60_000
+}
+
+function activeRestartWindow(
+  schedule: RestartSchedule,
+  now: number,
+  jobs: Job[],
+  jobLogsByJobId: Record<string, JobLog[]>,
+  instanceState: InstanceState | null,
+): RestartWindow | null {
+  const windows = [-1, 0, 1]
+    .map((offset) => restartWindowForDay(schedule, now, offset))
+    .filter((window): window is RestartWindow => window !== null)
+    .sort((a, b) => a.shutdownAt - b.shutdownAt)
+  const latestStarted = [...windows].reverse().find((window) => now >= window.shutdownAt)
+  if (
+    latestStarted &&
+    !isWindowStartupComplete(schedule, latestStarted, jobs, jobLogsByJobId, instanceState, now)
+  ) {
+    return latestStarted
+  }
+  return windows.find((window) => window.shutdownAt > now) ?? null
+}
+
+type MaintenanceRow = {
+  key: string
+  label: string
+  value: string
+  width: number
+  level?: 'info' | 'warn'
+}
+
+function maintenanceRows(
+  schedule: RestartSchedule | null,
+  now: number,
+  jobs: Job[],
+  jobLogsByJobId: Record<string, JobLog[]>,
+  instanceState: InstanceState | null,
+): { rows: MaintenanceRow[]; hiddenJobIds: Set<string> } {
+  const hiddenJobIds = new Set<string>()
+  if (!schedule?.enabled) return { rows: [], hiddenJobIds }
+  const window = activeRestartWindow(schedule, now, jobs, jobLogsByJobId, instanceState)
+  if (!window) return { rows: [], hiddenJobIds }
+
+  if (now < window.shutdownAt) {
+    return {
+      hiddenJobIds,
+      rows: [
+        {
+          key: 'auto-shutdown',
+          label: '自动关机',
+          value: formatCountdown(window.shutdownAt - now),
+          width: Math.max(0, Math.min(100, ((DAY_MS - (window.shutdownAt - now)) / DAY_MS) * 100)),
+        },
+        {
+          key: 'auto-startup',
+          label: '自动开机',
+          value: formatCountdown(window.startupAt - now),
+          width: Math.max(0, Math.min(100, ((DAY_MS - (window.startupAt - now)) / DAY_MS) * 100)),
+        },
+      ],
+    }
+  }
+
+  if (now < window.startupAt) {
+    if (instanceState?.state !== 'stopped') {
+      for (const job of jobs) {
+        if (lifecycleJobKind(job, jobLogsByJobId[job.id] ?? []) === 'shutdown') hiddenJobIds.add(job.id)
+      }
+      return {
+        hiddenJobIds,
+        rows: [{
+          key: 'auto-shutdown-running',
+          label: '关机中',
+          value: '等待关机结束',
+          width: Math.min(95, Math.max(15, ((now - window.shutdownAt) / DEFAULT_JOB_DURATION_MS) * 100)),
+          level: 'warn',
+        }],
+      }
+    }
+    return {
+      hiddenJobIds,
+      rows: [{
+        key: 'auto-startup-waiting',
+        label: '自动开机',
+        value: formatCountdown(window.startupAt - now),
+        width: Math.max(0, Math.min(100, ((now - window.shutdownAt) / (window.startupAt - window.shutdownAt)) * 100)),
+      }],
+    }
+  }
+
+  const startupJob = scheduledStartupJob(jobs, jobLogsByJobId, schedule, window)
+  if (startupJob) hiddenJobIds.add(startupJob.id)
+  return {
+    hiddenJobIds,
+    rows: [{
+      key: 'auto-startup-running',
+      label: '开机中',
+      value: '等待开机结束',
+      width: startupJob ? runningJobPercent(startupJob, jobs, now, jobLogsByJobId[startupJob.id] ?? []) : 65,
+      level: 'warn',
+    }],
+  }
 }
 
 // 普通运行中任务按同类型历史耗时估算；远程 Mod 安装优先读下载日志百分比，
@@ -159,7 +382,15 @@ function runningJobPercent(job: Job, jobs: Job[], now: number, logs: JobLog[] = 
 
 // 进行中卡：维护计划/定时备份倒计时 + 运行中任务进度。
 // 每秒 tick 只重渲染本组件，不影响主内容区
-function OpsRailActiveCard({ jobs, jobLogsByJobId }: { jobs: Job[]; jobLogsByJobId: Record<string, JobLog[]> }) {
+function OpsRailActiveCard({
+  jobs,
+  jobLogsByJobId,
+  instanceState,
+}: {
+  jobs: Job[]
+  jobLogsByJobId: Record<string, JobLog[]>
+  instanceState: InstanceState | null
+}) {
   const [schedule, setSchedule] = useState<RestartSchedule | null>(null)
   const [backupPolicy, setBackupPolicy] = useState<BackupPolicy | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -199,19 +430,10 @@ function OpsRailActiveCard({ jobs, jobLogsByJobId }: { jobs: Job[]; jobLogsByJob
     }
   }, [])
 
-  const activeJobs = jobs.filter((j) => j.status === 'running' || j.status === 'queued')
+  const { rows: restartRows, hiddenJobIds } = maintenanceRows(schedule, now, jobs, jobLogsByJobId, instanceState)
+  const activeJobs = jobs.filter((j) => (j.status === 'running' || j.status === 'queued') && !hiddenJobIds.has(j.id))
 
   const countdowns: { key: string; label: string; at: number }[] = []
-  if (schedule?.enabled) {
-    const shutdownAt = schedule.nextShutdownAt ? new Date(schedule.nextShutdownAt).getTime() : NaN
-    if (Number.isFinite(shutdownAt) && shutdownAt > now) {
-      countdowns.push({ key: 'auto-shutdown', label: '自动关机', at: shutdownAt })
-    }
-    const startupAt = schedule.nextStartupAt ? new Date(schedule.nextStartupAt).getTime() : NaN
-    if (Number.isFinite(startupAt) && startupAt > now) {
-      countdowns.push({ key: 'auto-startup', label: '自动开机', at: startupAt })
-    }
-  }
   if (backupPolicy?.scheduledBackups) {
     // 定时备份为每日 scheduledHour 整点（以面板本地时间近似后端本地时间）
     const next = new Date(now)
@@ -228,10 +450,25 @@ function OpsRailActiveCard({ jobs, jobLogsByJobId }: { jobs: Job[]; jobLogsByJob
         <span>进行中</span>
       </h2>
       <div className="sd-opsrail-list">
-        {countdowns.length === 0 && activeJobs.length === 0 ? (
+        {restartRows.length === 0 && countdowns.length === 0 && activeJobs.length === 0 ? (
           <p className="sd-opsrail-empty">暂无进行中的任务</p>
         ) : (
           <>
+            {restartRows.map((entry) => (
+              <div
+                key={entry.key}
+                className={`sd-opsrail-hstat sd-opsrail-hstat--${entry.level ?? 'info'}`}
+              >
+                <div className="sd-opsrail-hstat-row">
+                  <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
+                  <span className="sd-opsrail-hstat-label">{entry.label}</span>
+                  <span className="sd-opsrail-hstat-value">{entry.value}</span>
+                </div>
+                <div className="sd-opsrail-hstat-bar">
+                  <span className="sd-opsrail-hstat-fill" style={{ width: `${entry.width}%` }} />
+                </div>
+              </div>
+            ))}
             {countdowns.map((entry) => {
               // 倒计时事件都是每日一次，进度条按 24h 周期内已经过的比例填充
               const width = Math.max(0, Math.min(100, ((DAY_MS - (entry.at - now)) / DAY_MS) * 100))
@@ -276,6 +513,37 @@ function roleLabel(role: CurrentUser['role']): string {
   return role === 'admin' ? '管理员' : '普通用户'
 }
 
+const TOPBAR_SEASON_LABEL: Record<string, string> = {
+  spring: '春',
+  summer: '夏',
+  fall: '秋',
+  autumn: '秋',
+  winter: '冬',
+}
+
+const TOPBAR_YEAR_LABEL: Record<number, string> = {
+  1: '一',
+  2: '二',
+  3: '三',
+  4: '四',
+  5: '五',
+  6: '六',
+  7: '七',
+  8: '八',
+  9: '九',
+  10: '十',
+}
+
+function topbarSaveTimeLabel(save: SaveInfo | null): string {
+  if (!save?.gameYear && !save?.gameSeason) return ''
+  const year =
+    typeof save.gameYear === 'number' && save.gameYear > 0
+      ? `第${TOPBAR_YEAR_LABEL[save.gameYear] ?? save.gameYear}年`
+      : ''
+  const season = TOPBAR_SEASON_LABEL[save.gameSeason?.toLowerCase() ?? ''] ?? save.gameSeason ?? ''
+  return `${year}${season}`.trim()
+}
+
 function topbarStatusText(state: string | undefined, loading: boolean): string {
   if (!state) return loading ? '读取中' : '未知'
   if (state === 'running') return '运行中'
@@ -316,12 +584,28 @@ export function StardewPanel({
   const { instanceState, jobs, versionInfo, saves } = dashboardData
   const [metricSample, setMetricSample] = useState<ResourceMetricSample | null>(null)
   const [apiLatencyMs, setApiLatencyMs] = useState<number | null>(null)
+  const [installPromptPending, setInstallPromptPending] = useState(true)
+  const [showMissingGameInstallPrompt, setShowMissingGameInstallPrompt] = useState(false)
 
   useEffect(() => {
     const onPop = () => setRoute(parseRoute(window.location.pathname))
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  useEffect(() => {
+    if (!installPromptPending || dashboardData.loading || !instanceState) return
+    const installJobActive = jobs.some(
+      (job) => job.type === 'stardew_install' && ACTIVE_INSTALL_JOB_STATUSES.has(job.status),
+    )
+    const gameInstalled = GAME_INSTALLED_STATES.has(instanceState.state)
+    if (gameInstalled || installJobActive || route === 'install') {
+      setInstallPromptPending(false)
+      return
+    }
+    setShowMissingGameInstallPrompt(true)
+    setInstallPromptPending(false)
+  }, [dashboardData.loading, installPromptPending, instanceState, jobs, route])
 
   useEffect(() => {
     const shell = shellRef.current
@@ -443,7 +727,9 @@ export function StardewPanel({
   const activeSave = activeSaveName
     ? saves?.saves.find((save) => save.isActive || save.name === activeSaveName) ?? null
     : null
-  const topbarFarmName = activeSave?.farmName || activeSave?.name || activeSaveName || '选择存档'
+  const topbarSaveName = activeSave?.farmName || activeSave?.name || activeSaveName || '选择存档'
+  const topbarSaveTime = topbarSaveTimeLabel(activeSave)
+  const topbarSaveTitle = topbarSaveTime ? `${topbarSaveName}：${topbarSaveTime}` : topbarSaveName
   const topbarVersion = versionInfo?.version ? `v${versionInfo.version}` : 'v--'
   const topbarStateLabel = topbarStatusText(instanceState?.state, dashboardData.loading)
   const topbarStatusDotClass = topbarStatusDotClassName(instanceState?.state, dashboardData.loading)
@@ -504,8 +790,8 @@ export function StardewPanel({
           type="button"
           className="sd-topbar-save"
           onClick={() => navigate('saves')}
-          aria-label={`当前农场：${topbarFarmName}`}
-          title={`当前农场：${topbarFarmName}`}
+          aria-label={`当前存档：${topbarSaveTitle}`}
+          title={`当前存档：${topbarSaveTitle}`}
         >
           <span className="sd-topbar-frame sd-topbar-save-frame" aria-hidden="true">
             <span className="sd-topbar-frame-left" />
@@ -517,12 +803,12 @@ export function StardewPanel({
             src="/assets/stardew/ui/topbar/icon_topbar_farm_image2_v2.png"
             alt=""
           />
-          <span className="sd-topbar-save-name">{topbarFarmName}</span>
-          <img
-            className="sd-topbar-dropdown"
-            src="/assets/stardew/ui/topbar/icon_topbar_dropdown_arrow_image2_v2.png"
-            alt=""
-          />
+          <span className="sd-topbar-save-copy">
+            <span className="sd-topbar-save-name">{topbarSaveName}</span>
+            {topbarSaveTime ? (
+              <span className="sd-topbar-save-time">：{topbarSaveTime}</span>
+            ) : null}
+          </span>
         </button>
 
         <button
@@ -556,11 +842,6 @@ export function StardewPanel({
           <img
             className="sd-topbar-green-dot sd-topbar-user-dot"
             src="/assets/stardew/ui/topbar/icon_topbar_green_dot_image2_v2.png"
-            alt=""
-          />
-          <img
-            className="sd-topbar-dropdown"
-            src="/assets/stardew/ui/topbar/icon_topbar_dropdown_arrow_image2_v2.png"
             alt=""
           />
         </button>
@@ -657,7 +938,11 @@ export function StardewPanel({
           </section>
 
           {/* 进行中：维护计划/定时备份倒计时 + 运行中任务进度 */}
-          <OpsRailActiveCard jobs={jobs} jobLogsByJobId={dashboardData.jobLogsByJobId} />
+          <OpsRailActiveCard
+            jobs={jobs}
+            jobLogsByJobId={dashboardData.jobLogsByJobId}
+            instanceState={instanceState}
+          />
 
           {/* 近期任务 */}
           <section className="sd-ops-card sd-ops-card-recent sd-opsrail-section sd-opsrail-recent">
@@ -700,6 +985,33 @@ export function StardewPanel({
           </section>
         </div>
       </aside>
+
+      {showMissingGameInstallPrompt ? (
+        <div className="sd-confirm-overlay" role="presentation">
+          <div className="sd-confirm-dialog sd-confirm-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="sd-first-install-title">
+            <h3 id="sd-first-install-title">请先安装游戏</h3>
+            <p>
+              当前实例还没有检测到 Stardew Valley 游戏文件。请先进入安装界面完成 Steam
+              认证和游戏下载，之后再创建存档并启动服务器。
+            </p>
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" type="button" onClick={() => setShowMissingGameInstallPrompt(false)}>
+                稍后
+              </button>
+              <button
+                className="sd-btn-green"
+                type="button"
+                onClick={() => {
+                  setShowMissingGameInstallPrompt(false)
+                  navigate('install')
+                }}
+              >
+                去安装游戏
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

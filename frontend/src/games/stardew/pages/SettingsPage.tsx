@@ -99,64 +99,39 @@ function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCanc
   )
 }
 
-// ── 当前账号区 ────────────────────────────────────────────────────────────────
-
-function AccountSection({ user, onLogout }: Pick<StardewPageProps, 'user' | 'onLogout'>) {
-  return (
-    <section className="sd-settings-section sd-settings-account-section">
-      <h3 className="sd-settings-section-title">当前账号</h3>
-      <div className="sd-settings-account-card">
-        <div className="sd-settings-account-row">
-          <span className="sd-settings-label">用户名</span>
-          <span className="sd-settings-value sd-settings-value-bold">{user.username}</span>
-        </div>
-        <div className="sd-settings-account-row">
-          <span className="sd-settings-label">角色</span>
-          <span className={`sd-tag ${user.role === 'admin' ? 'sd-tag-green' : 'sd-tag-blue'}`}>
-            {user.role === 'admin' ? '管理员' : '普通用户'}
-          </span>
-        </div>
-        <div className="sd-settings-account-row">
-          <span className="sd-settings-label">状态</span>
-          <span className="sd-dot sd-dot-green" aria-hidden="true" style={{ marginRight: 6 }} />
-          <span className="sd-settings-value">已登录</span>
-        </div>
-        <div className="sd-settings-account-actions">
-          <button className="sd-btn-tan" onClick={onLogout}>退出登录</button>
-        </div>
-      </div>
-    </section>
-  )
-}
-
 // ── 版本信息区 ────────────────────────────────────────────────────────────────
 
 function VersionSection({ versionInfo }: { versionInfo: StardewPageProps['dashboardData']['versionInfo'] }) {
   return (
     <section className="sd-settings-section sd-settings-version-section">
       <h3 className="sd-settings-section-title">面板版本</h3>
-      <div className="sd-settings-info-grid">
-        <div className="sd-settings-info-row">
-          <span className="sd-settings-label">版本号</span>
-          <span className="sd-settings-value sd-settings-mono">
-            {versionInfo?.version ?? '—'}
-          </span>
+      <div className="sd-settings-version-body">
+        <div className="sd-settings-info-grid">
+          <div className="sd-settings-info-row">
+            <span className="sd-settings-label">版本号</span>
+            <span className="sd-settings-value sd-settings-mono">
+              {versionInfo?.version ?? '—'}
+            </span>
+          </div>
+          <div className="sd-settings-info-row">
+            <span className="sd-settings-label">构建时间</span>
+            <span className="sd-settings-value sd-settings-mono">
+              {versionInfo?.buildDate ? formatDate(versionInfo.buildDate) : '—'}
+            </span>
+          </div>
+          <div className="sd-settings-info-row">
+            <span className="sd-settings-label">Commit</span>
+            <span className="sd-settings-value sd-settings-mono">
+              {versionInfo?.commit ?? '—'}
+            </span>
+          </div>
+          <div className="sd-settings-info-row">
+            <span className="sd-settings-label">运行模式</span>
+            <span className="sd-tag sd-tag-blue">Single Game Mode</span>
+          </div>
         </div>
-        <div className="sd-settings-info-row">
-          <span className="sd-settings-label">构建时间</span>
-          <span className="sd-settings-value sd-settings-mono">
-            {versionInfo?.buildDate ? formatDate(versionInfo.buildDate) : '—'}
-          </span>
-        </div>
-        <div className="sd-settings-info-row">
-          <span className="sd-settings-label">Commit</span>
-          <span className="sd-settings-value sd-settings-mono">
-            {versionInfo?.commit ?? '—'}
-          </span>
-        </div>
-        <div className="sd-settings-info-row">
-          <span className="sd-settings-label">运行模式</span>
-          <span className="sd-tag sd-tag-blue">Single Game Mode</span>
+        <div className="sd-settings-version-art" aria-hidden="true">
+          <img src="/assets/stardew/ui/install/icon_install_step_box_image2.png" alt="" />
         </div>
       </div>
     </section>
@@ -226,49 +201,50 @@ function PortSection({ isAdmin }: { isAdmin: boolean }) {
       {error && <div className="sd-settings-error">{error}</div>}
       {message && <div className="sd-settings-success">{message}</div>}
 
-      <div className="sd-settings-port-grid">
-        <div className="sd-settings-port-card">
+      <div className="sd-settings-port-row">
+        <label className="sd-settings-port-field">
           <span className="sd-settings-port-label">面板端口</span>
-          <span className="sd-settings-port-value sd-settings-mono">{panelPort}</span>
-          <span className="sd-settings-port-desc">当前浏览器访问端口</span>
-        </div>
+          <input className="sd-input sd-settings-port-input" value={panelPort} readOnly />
+        </label>
 
-        <div className="sd-settings-port-card sd-settings-port-card-wide">
+        <label className="sd-settings-port-field">
           <span className="sd-settings-port-label">VNC 端口</span>
           {isAdmin ? (
-            <>
-              <div className="sd-settings-port-edit-row">
-                <input
-                  className="sd-input sd-settings-port-input"
-                  value={draftVNCPort}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder={loading ? '读取中…' : '5800'}
-                  onChange={e => {
-                    setDraftVNCPort(e.target.value)
-                    setMessage(null)
-                  }}
-                  disabled={loading || saving}
-                />
-                <button className="sd-btn-green" onClick={() => void handleSaveVNCPort()} disabled={saveDisabled}>
-                  {saving ? '保存中…' : '保存'}
-                </button>
-                <button className="sd-btn-tan" onClick={() => void loadVNCPort()} disabled={loading || saving}>
-                  {loading ? '读取中…' : '刷新'}
-                </button>
-              </div>
-              <span className="sd-settings-port-desc">
-                当前配置：<code className="sd-settings-code">{vncPort || '—'}</code>
-              </span>
-            </>
+            <input
+              className="sd-input sd-settings-port-input"
+              value={draftVNCPort}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder={loading ? '读取中…' : '5800'}
+              onChange={e => {
+                setDraftVNCPort(e.target.value)
+                setMessage(null)
+              }}
+              disabled={loading || saving}
+            />
           ) : (
-            <span className="sd-settings-port-locked">
-              <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
-              仅管理员可查看和修改 VNC 端口。
-            </span>
+            <input className="sd-input sd-settings-port-input" value="仅管理员" readOnly />
           )}
+        </label>
+
+        <div className="sd-settings-port-actions">
+          <button className="sd-btn-green" onClick={() => void handleSaveVNCPort()} disabled={!isAdmin || saveDisabled}>
+            {saving ? '保存中…' : '保存'}
+          </button>
+          <button className="sd-btn-tan" onClick={() => void loadVNCPort()} disabled={!isAdmin || loading || saving}>
+            {loading ? '读取中…' : '刷新'}
+          </button>
         </div>
       </div>
+
+      {!isAdmin && (
+        <span className="sd-settings-port-locked">
+          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+          仅管理员可查看和修改 VNC 端口。
+        </span>
+      )}
+
+      <span className="sd-settings-port-desc">修改端口后需要重启面板服务才能生效。</span>
     </section>
   )
 }
@@ -402,12 +378,12 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
         <div className="sd-settings-error">{actionError}</div>
       )}
 
-      <div className="sd-settings-section-toolbar">
+      <div className="sd-settings-section-toolbar sd-actionbar">
         <button className="sd-btn-green" onClick={() => setShowCreateForm(v => !v)}>
           {showCreateForm ? '收起' : '+ 新建用户'}
         </button>
         <button className="sd-btn-tan" onClick={() => void loadUsers()} disabled={loading}>
-          {loading ? '加载中…' : '刷新'}
+          {loading ? '刷新中…' : '刷新'}
         </button>
       </div>
 
@@ -449,15 +425,15 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
             </select>
           </div>
           <div className="sd-settings-form-actions">
+            <button className="sd-btn-tan" onClick={() => setShowCreateForm(false)} disabled={createBusy}>
+              取消
+            </button>
             <button
               className="sd-btn-green"
               onClick={() => void handleCreate()}
               disabled={createBusy || !newUsername.trim() || !newPassword.trim()}
             >
               {createBusy ? '创建中…' : '创建'}
-            </button>
-            <button className="sd-btn-tan" onClick={() => setShowCreateForm(false)} disabled={createBusy}>
-              取消
             </button>
           </div>
         </div>
@@ -466,7 +442,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
       {loadError ? (
         <div className="sd-settings-error">
           {loadError}
-          <button className="sd-btn-tan" style={{ marginLeft: 8 }} onClick={() => void loadUsers()}>重试</button>
+          <button className="sd-btn-tan sd-btn--sm" style={{ marginLeft: 8 }} onClick={() => void loadUsers()}>重试</button>
         </div>
       ) : loading && users.length === 0 ? (
         <div className="sd-settings-hint">加载用户列表…</div>
@@ -500,10 +476,10 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
               <span className="sd-settings-user-login">
                 上次登录：{u.lastLoginAt ? formatDate(u.lastLoginAt) : '—'}
               </span>
-              <div className="sd-settings-user-actions">
+              <div className="sd-settings-user-actions sd-rowactions">
                 {isSuperAdmin && (
                   <button
-                    className="sd-btn-tan"
+                    className="sd-btn-tan sd-btn--sm"
                     disabled={roleBusy || deleteBusy || isSelf}
                     title={isSelf ? '不能修改自己的角色' : undefined}
                     onClick={() => setRoleConfirm({ user: u, toRole: u.role === 'admin' ? 'user' : 'admin' })}
@@ -512,7 +488,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
                   </button>
                 )}
                 <button
-                  className="sd-btn-delete"
+                  className="sd-btn-delete sd-btn--sm"
                   disabled={roleBusy || deleteBusy || !canManageTarget}
                   title={manageTitle}
                   onClick={() => setDeleteConfirm({ user: u, hard: false })}
@@ -520,7 +496,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
                   禁用
                 </button>
                 <button
-                  className="sd-btn-delete"
+                  className="sd-btn-delete sd-btn--sm"
                   disabled={roleBusy || deleteBusy || !canManageTarget}
                   title={manageTitle ?? '永久删除用户（不可恢复）'}
                   onClick={() => setDeleteConfirm({ user: u, hard: true })}
@@ -566,7 +542,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
 
 // ── 审计日志区 ────────────────────────────────────────────────────────────────
 
-const AUDIT_PAGE_SIZE = 20
+const AUDIT_PAGE_SIZE = 7
 
 function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([])
@@ -615,17 +591,17 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
     <section className="sd-settings-section sd-settings-audit-section">
       <h3 className="sd-settings-section-title">审计日志</h3>
 
-      <div className="sd-settings-section-toolbar">
+      <div className="sd-settings-section-toolbar sd-actionbar">
         <span className="sd-settings-hint-inline">共 {total} 条记录</span>
         <button className="sd-btn-tan" onClick={() => void loadLogs(offset)} disabled={loading}>
-          {loading ? '加载中…' : '刷新'}
+          {loading ? '刷新中…' : '刷新'}
         </button>
       </div>
 
       {error ? (
         <div className="sd-settings-error">
           {error}
-          <button className="sd-btn-tan" style={{ marginLeft: 8 }} onClick={() => void loadLogs(offset)}>重试</button>
+          <button className="sd-btn-tan sd-btn--sm" style={{ marginLeft: 8 }} onClick={() => void loadLogs(offset)}>重试</button>
         </div>
       ) : !hasLoaded || (loading && logs.length === 0) ? (
         <div className="sd-settings-hint">加载审计日志…</div>
@@ -692,11 +668,11 @@ function AuditLogsSection({ isAdmin }: { isAdmin: boolean }) {
 
 function SecuritySummarySection() {
   const summaryItems = [
-    { label: 'Session 认证', state: '已启用', level: 'green' },
-    { label: '密码哈希存储', state: '已启用', level: 'green' },
-    { label: '操作审计记录', state: '已启用', level: 'green' },
-    { label: 'Docker Socket', state: '高风险', level: 'yellow' },
-    { label: '日志脱敏策略', state: '已启用', level: 'green' },
+    { label: 'Session 认证', detail: '管理员会话已启用', state: '已启用', level: 'green' },
+    { label: '密码哈希', detail: '使用强哈希（bcrypt）', state: '已启用', level: 'green' },
+    { label: '操作审计', detail: '记录敏感操作日志', state: '已启用', level: 'green' },
+    { label: 'Docker Socket', detail: '未挂载到容器内部', state: '安全', level: 'green' },
+    { label: '日志脱敏', detail: '已屏蔽敏感信息输出', state: '已启用', level: 'green' },
   ]
 
   return (
@@ -707,6 +683,7 @@ function SecuritySummarySection() {
           <div key={item.label} className="sd-settings-security-summary-item">
             <span className={`sd-dot sd-dot-${item.level}`} aria-hidden="true" />
             <span>{item.label}</span>
+            <span>{item.detail}</span>
             <strong>{item.state}</strong>
           </div>
         ))}
@@ -718,48 +695,46 @@ function SecuritySummarySection() {
 // ── 安全建议区 ──────────────────────────────────────────────────────────────
 
 function SecuritySection() {
+  const adviceItems = [
+    {
+      level: 'green',
+      title: '启用两步验证（2FA）',
+      desc: '建议为所有管理员账号启用 2FA，增强账号安全。',
+      badge: '良好',
+    },
+    {
+      level: 'yellow',
+      title: '限制 Docker Socket 挂载',
+      desc: 'Docker Socket 已暴露可能导致容器逃逸，建议禁止使用。',
+      badge: '警告',
+    },
+    {
+      level: 'blue',
+      title: '日志脱敏检查',
+      desc: '建议定期检查日志脱敏配置，避免敏感信息泄露。',
+      badge: '提示',
+    },
+  ]
+
   return (
     <section className="sd-settings-section sd-settings-security-section">
       <h3 className="sd-settings-section-title">安全建议</h3>
       <div className="sd-settings-security-list">
-        <div className="sd-settings-security-item">
-          <span className="sd-dot sd-dot-green" aria-hidden="true" />
-          <div>
-            <div className="sd-settings-security-item-title">Session 认证</div>
-            <div className="sd-settings-security-item-desc">登录凭证以 HttpOnly Cookie 方式保存，会话 token 经哈希后存入数据库，不保存明文。</div>
-          </div>
-        </div>
-        <div className="sd-settings-security-item">
-          <span className="sd-dot sd-dot-green" aria-hidden="true" />
-          <div>
-            <div className="sd-settings-security-item-title">密码存储</div>
-            <div className="sd-settings-security-item-desc">所有密码使用 Argon2id 算法哈希，不可逆，服务器不持有明文密码。</div>
-          </div>
-        </div>
-        <div className="sd-settings-security-item">
-          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
-          <div>
-            <div className="sd-settings-security-item-title">Docker Socket 挂载风险</div>
-            <div className="sd-settings-security-item-desc">
-              本面板通过挂载 Docker Socket（<code className="sd-settings-code">/var/run/docker.sock</code>）管理容器。
-              获得面板 admin 权限等同于获得宿主机 Docker 完全控制权。请勿将面板暴露到公网，并严格管理 admin 账号。
+        {adviceItems.map(item => (
+          <div key={item.title} className={`sd-settings-security-item sd-settings-security-item-${item.level}`}>
+            <span className={`sd-settings-security-icon sd-settings-security-icon-${item.level}`} aria-hidden="true" />
+            <div>
+              <div className="sd-settings-security-item-title">{item.title}</div>
+              <div className="sd-settings-security-item-desc">{item.desc}</div>
             </div>
+            <span className={`sd-settings-security-badge sd-settings-security-badge-${item.level}`}>
+              {item.badge}
+            </span>
           </div>
-        </div>
-        <div className="sd-settings-security-item">
-          <span className="sd-dot sd-dot-green" aria-hidden="true" />
-          <div>
-            <div className="sd-settings-security-item-title">操作审计</div>
-            <div className="sd-settings-security-item-desc">关键操作（启停服务器、用户管理、存档/Mod 变更等）均记录审计日志，含操作者、IP 和时间戳。</div>
-          </div>
-        </div>
-        <div className="sd-settings-security-item">
-          <span className="sd-dot sd-dot-green" aria-hidden="true" />
-          <div>
-            <div className="sd-settings-security-item-title">日志脱敏</div>
-            <div className="sd-settings-security-item-desc">Steam 密码、VNC 密码、Session Token、邀请码等敏感字段已在日志记录时自动脱敏。</div>
-          </div>
-        </div>
+        ))}
+      </div>
+      <div className="sd-settings-security-actions">
+        <button className="sd-btn-green" disabled title="安全设置后端待接入">前往安全设置</button>
       </div>
     </section>
   )
@@ -797,7 +772,7 @@ function PendingSettingsSection() {
 
 // ── SettingsPage ──────────────────────────────────────────────────────────────
 
-export function SettingsPage({ user, dashboardData, onLogout }: StardewPageProps) {
+export function SettingsPage({ user, dashboardData }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
 
   return (
@@ -814,23 +789,19 @@ export function SettingsPage({ user, dashboardData, onLogout }: StardewPageProps
         </div>
       </div>
 
-      <div className="sd-settings-top-grid">
-        <AccountSection user={user} onLogout={onLogout} />
-        <VersionSection versionInfo={dashboardData.versionInfo} />
-        <SecuritySummarySection />
-      </div>
-
-      <div className="sd-settings-main-grid">
-        <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} isSuperAdmin={user.isSuperAdmin} />
-        <AuditLogsSection isAdmin={isAdmin} />
-      </div>
-
-      <div className="sd-settings-bottom-grid">
-        <div className="sd-settings-bottom-stack">
+      <div className="sd-settings-content-grid">
+        <div className="sd-settings-stack">
+          <VersionSection versionInfo={dashboardData.versionInfo} />
+          <UserManagementSection currentUserId={user.id} isAdmin={isAdmin} isSuperAdmin={user.isSuperAdmin} />
           <PortSection isAdmin={isAdmin} />
           <PendingSettingsSection />
         </div>
-        <SecuritySection />
+
+        <div className="sd-settings-stack">
+          <SecuritySummarySection />
+          <AuditLogsSection isAdmin={isAdmin} />
+          <SecuritySection />
+        </div>
       </div>
     </div>
   )

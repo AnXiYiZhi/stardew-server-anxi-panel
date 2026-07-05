@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError, startInstance, stopInstance, restartInstance } from '../../../api'
 import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
+import { InviteCodeCard } from '../InviteCodeCard'
 import type { StardewPageProps } from '../stardew-routes'
 
 const OVERVIEW_ICONS = {
@@ -26,15 +27,8 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
   const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
   const [pendingStopAction, setPendingStopAction] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState(false)
 
   const state = instanceState?.state ?? null
-  const stateLabelText = state
-    ? stateLabel(state)
-    : dashboardData.loading
-      ? '读取中…'
-      : '未知'
 
   const activeSave = dashboardData.saves?.activeSaveName ?? null
   const saveCount = dashboardData.saves?.saves.length ?? 0
@@ -44,6 +38,8 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     state !== 'running' &&
     state !== 'starting'
   const modCount = dashboardData.mods?.mods.length ?? 0
+  const enabledModCount = dashboardData.mods?.mods.filter((m) => m.enabled).length ?? 0
+  const disabledModCount = modCount - enabledModCount
   const modRestartRequired = dashboardData.mods?.restartRequired ?? false
   const onlineCount = dashboardData.players?.onlineCount
   const maxPlayers = dashboardData.players?.maxPlayers
@@ -82,7 +78,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   }, [dashboardData.inviteCode])
 
   useEffect(() => {
-    if (state === 'stopped' || state === 'ready_to_start' || state === 'save_required' || state === 'error') {
+    if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
       setPendingStopAction(false)
     }
   }, [state])
@@ -148,21 +144,6 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     }
   }
 
-  function handleCopy() {
-    if (!dashboardData.inviteCode) return
-    setCopyError(false)
-    navigator.clipboard.writeText(dashboardData.inviteCode).then(
-      () => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      },
-      () => {
-        setCopyError(true)
-        setTimeout(() => setCopyError(false), 3000)
-      },
-    )
-  }
-
   function renderLifecycleButtons() {
     if (!state) return null
     const waitingForInvite =
@@ -171,23 +152,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
       (dashboardData.inviteCodeRefreshing && !dashboardData.inviteCode)
     const waitingForStop = state === 'stopping' || pendingStopAction
 
-    if (state === 'game_installed') {
-      return (
-        <button className="sd-btn-green" onClick={() => onNavigate('install')} disabled={actionBusy}>
-          前往安装配置
-        </button>
-      )
-    }
-
     if (state === 'save_required') {
       return (
         <button className="sd-btn-start" disabled>
-          <img
-            src="/assets/stardew/ui/icons/icon_button_play.png"
-            alt=""
-            className="sd-btn-img"
-            style={{ width: 12, height: 13 }}
-          />
+          <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
           启动
         </button>
       )
@@ -211,15 +179,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
       )
     }
 
-    if (state === 'ready_to_start' || state === 'stopped') {
+    if (state === 'ready_to_start' || state === 'stopped' || state === 'game_installed') {
       return (
         <button className="sd-btn-start" onClick={() => void handleStart()} disabled={actionBusy}>
-          <img
-            src="/assets/stardew/ui/icons/icon_button_play.png"
-            alt=""
-            className="sd-btn-img"
-            style={{ width: 12, height: 13 }}
-          />
+          <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
           {actionBusy ? '启动中…' : '启动'}
         </button>
       )
@@ -229,12 +192,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
       return (
         <>
           <button className="sd-btn-stop" onClick={() => setConfirmAction('stop')} disabled={actionBusy}>
-            <img
-              src="/assets/stardew/ui/icons/icon_button_stop.png"
-              alt=""
-              className="sd-btn-img"
-              style={{ width: 11, height: 11 }}
-            />
+            <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
             停止
           </button>
           <button
@@ -242,12 +200,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             onClick={() => setConfirmAction('restart')}
             disabled={actionBusy}
           >
-            <img
-              src="/assets/stardew/ui/icons/icon_button_restart.png"
-              alt=""
-              className="sd-btn-img"
-              style={{ width: 12, height: 12 }}
-            />
+            <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
             重启
           </button>
         </>
@@ -265,53 +218,39 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     return null
   }
 
-  const showCtrlDivider =
-    state === 'ready_to_start' ||
-    state === 'stopped' ||
-    state === 'starting' ||
-    state === 'running'
-
   return (
     <div className="sd-ov-wrap">
-      {/* 顶部农场横幅 */}
+      {/* 顶部农场横幅：场景图 + 底部信息条 */}
       <div className="sd-ov-banner">
-        <div className="sd-ov-banner-bg" />
-        <div className="sd-ov-banner-overlay" />
-        <div className="sd-ov-banner-stats">
-          {activeSave ? (
-            <div className="sd-bstat">
-              <img src="/assets/stardew/ui/icons/icon_top_summary_save.png" alt="" />
-              <span className="sd-bstat-l">存档：</span>
-              <span className="sd-bstat-v">{activeSave}</span>
+        <div className="sd-ov-banner-scene">
+          <div className="sd-ov-banner-bg" />
+          <div className="sd-ov-banner-overlay" />
+        </div>
+        <div className="sd-ov-banner-statbar">
+          <div className="sd-bstat">
+            <img src="/assets/stardew/ui/icons/icon_top_summary_save.png" alt="" />
+            <div className="sd-bstat-tx">
+              <span className="sd-bstat-l">存档</span>
+              <span className="sd-bstat-v">{saveCount}</span>
             </div>
-          ) : null}
+          </div>
           <div className="sd-bstat">
             <img src="/assets/stardew/ui/icons/icon_top_summary_players.png" alt="" />
-            <span className="sd-bstat-l">玩家：</span>
-            <span className="sd-bstat-v">{playerSummary}</span>
+            <div className="sd-bstat-tx">
+              <span className="sd-bstat-l">玩家</span>
+              <span className="sd-bstat-v">{playerSummary}</span>
+            </div>
           </div>
-          {dashboardData.versionInfo ? (
-            <div className="sd-bstat">
-              <img src="/assets/stardew/ui/icons/icon_top_summary_version.png" alt="" />
-              <span className="sd-bstat-l">版本：</span>
-              <span className="sd-bstat-v">{dashboardData.versionInfo.version}</span>
+          <div className="sd-bstat">
+            <img src="/assets/stardew/ui/icons/icon_top_summary_version.png" alt="" />
+            <div className="sd-bstat-tx">
+              <span className="sd-bstat-l">版本</span>
+              <span className="sd-bstat-v">{dashboardData.versionInfo?.version ?? '—'}</span>
             </div>
-          ) : null}
-          {instanceState?.updatedAt ? (
-            <div className="sd-bstat">
-              <img src="/assets/stardew/ui/icons/icon_top_summary_time.png" alt="" />
-              <span className="sd-bstat-l">更新：</span>
-              <span className="sd-bstat-v">{formatDate(instanceState.updatedAt)}</span>
-            </div>
-          ) : null}
-        </div>
-        <div className="sd-ov-banner-right">
-          <span className={`sd-state-badge sd-state-badge-${state ?? 'unknown'}`}>
-            {(state === 'running' || state === 'starting') ? (
-              <span className="sd-state-badge-dot" aria-hidden="true" />
-            ) : null}
-            {stateLabelText}
-          </span>
+          </div>
+          <div className="sd-bstat sd-bstat--latest">
+            <span className="sd-ov-latest">最新</span>
+          </div>
         </div>
       </div>
 
@@ -323,7 +262,25 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
         </div>
         <div className="sd-ctrl-row">
           <div className="sd-lifecycle-actions">
-            {renderLifecycleButtons()}
+            <div className="sd-lifecycle-btns">
+              {renderLifecycleButtons()}
+            </div>
+            <div className="sd-lifecycle-status">
+              状态
+              <span
+                className={
+                  state === 'running' || state === 'starting'
+                    ? 'sd-dot sd-dot-green'
+                    : state === 'stopped' || state === 'error'
+                      ? 'sd-dot sd-dot-red'
+                      : 'sd-dot sd-dot-gray'
+                }
+                aria-hidden="true"
+              />
+              <span className={`sd-lifecycle-status-val sd-lifecycle-status-val-${state ?? 'unknown'}`}>
+                {state ? stateLabel(state) : '未知'}
+              </span>
+            </div>
             {showSaveRequiredPrompt ? (
               <div className="sd-start-save-required">
                 <span>当前没有存档，请点击此按钮去创建/上传存档。</span>
@@ -333,55 +290,11 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
               </div>
             ) : null}
           </div>
-          {showCtrlDivider && dashboardData.inviteCode ? (
-            <div className="sd-ctrl-div">│</div>
-          ) : null}
-          <div className="sd-invite-panel">
-            <div className="sd-invite-head">
-              <img src={OVERVIEW_ICONS.players} alt="" />
-              邀请代码
-            </div>
-            <div className="sd-invite-wrap">
-              {dashboardData.inviteCode ? (
-                <>
-                  <div className="sd-invite-box">
-                    <div className="sd-invite-code">{dashboardData.inviteCode}</div>
-                    <button className="sd-btn-copy" onClick={handleCopy}>
-                      {copied ? '✓' : '复制'}
-                    </button>
-                  </div>
-                  {copyError ? (
-                    <span className="sd-bstat-l" style={{ color: '#c02020', fontSize: 9.5, marginLeft: 4 }}>
-                      复制失败，请手动选取
-                    </span>
-                  ) : null}
-                </>
-              ) : dashboardData.loading ? (
-                <span className="sd-bstat-l">读取邀请码中…</span>
-              ) : dashboardData.inviteCodeError ? (
-                <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>
-                  {state === 'running' || state === 'starting'
-                    ? '获取邀请码失败，稍后可刷新重试'
-                    : '服务器未运行，邀请码不可用'}
-                </span>
-              ) : (
-                <span className="sd-bstat-l" style={{ fontStyle: 'italic' }}>暂无邀请码</span>
-              )}
-              <button
-                className="sd-btn-tan sd-invite-refresh-btn"
-                onClick={() => dashboardData.refreshInviteCode()}
-                disabled={state !== 'running' && state !== 'starting'}
-                title={
-                  state === 'running' || state === 'starting'
-                    ? '重新获取邀请码'
-                    : '服务器未运行时无法获取邀请码'
-                }
-              >
-                刷新
-              </button>
-            </div>
-            <div className="sd-invite-help">分享此代码，邀请朋友加入你的农场！</div>
-          </div>
+          <InviteCodeCard
+            instanceState={instanceState}
+            dashboardData={dashboardData}
+            className="sd-overview-invite-card"
+          />
         </div>
         {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
       </div>
@@ -393,9 +306,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             存档
           </div>
           <div className="sd-mc-val">{saveCount}</div>
+          <div className="sd-mc-unit">个存档</div>
           <div className="sd-mc-sub">
             {activeSave
-              ? activeSave
+              ? `当前: ${activeSave}`
               : dashboardData.savesError
                 ? '读取失败'
                 : '暂无激活存档'}
@@ -411,8 +325,9 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             模组
           </div>
           <div className="sd-mc-val">{modCount}</div>
+          <div className="sd-mc-unit">个模组</div>
           <div className="sd-mc-sub">
-            {dashboardData.modsError ? '读取失败' : modRestartRequired ? '有模组变更待应用' : '状态正常'}
+            {dashboardData.modsError ? '读取失败' : modRestartRequired ? '有模组变更待应用' : `已启用 ${enabledModCount} 个`}
           </div>
           <span className={`sd-mc-pill${dashboardData.modsError ? ' sd-mc-pill--error' : modRestartRequired ? ' sd-mc-pill--warn' : ' sd-mc-pill--ok'}`}>
             {dashboardData.modsError ? '异常' : modRestartRequired ? '待应用' : '健康'}
@@ -427,6 +342,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
           <div className="sd-mc-val" style={{ color: healthStatus === 'ok' ? '#4a9e30' : healthStatus === 'warning' ? '#d08010' : healthStatus === 'error' ? '#c02020' : '#2c1a0a' }}>
             {healthStatus === 'ok' ? '100%' : healthStatus === 'warning' ? `${warnCount}警告` : healthStatus === 'error' ? `${errorCount}错误` : '—'}
           </div>
+          <div className="sd-mc-unit">健康评分</div>
           <div className="sd-mc-sub">
             {healthStatus === 'ok'
               ? `${okCount}项全部通过`
@@ -451,8 +367,9 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
           <div className="sd-mc-val" style={{ color: hasFailedJob ? '#c02020' : '#2c1a0a' }}>
             {activeJobCount}
           </div>
+          <div className="sd-mc-unit">个任务</div>
           <div className="sd-mc-sub">
-            {hasFailedJob ? '最近有失败任务' : activeJobCount > 0 ? '进行中' : '无活跃任务'}
+            {hasFailedJob ? '最近有失败任务' : activeJobCount > 0 ? '进行中' : '无异常'}
           </div>
           <span className={`sd-mc-pill${hasFailedJob ? ' sd-mc-pill--error' : ' sd-mc-pill--ok'}`}>
             {hasFailedJob ? '异常' : '正常'}
@@ -542,7 +459,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             )}
           </div>
           <button className="sd-all-logs-btn" onClick={() => onNavigate('jobs')}>
-            查看全部任务 →
+            查看全部事件 →
           </button>
         </section>
 
@@ -550,29 +467,37 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
           <div className="sd-pack-title">
             <img src={OVERVIEW_ICONS.mods} alt="" />
             模组状态
+            <button className="sd-pack-more" onClick={() => onNavigate('mods')}>查看更多 →</button>
           </div>
           <div className="sd-pack-section">
             <div className="sd-pack-row">
-              <span className="sd-pack-name">已安装</span>
-              <span style={{ color: '#4a9e30', fontSize: 12 }}>
-                {dashboardData.mods ? `${modCount} 个` : '—'}
+              <span className="sd-pack-name">
+                <span className="sd-dot sd-dot-green" aria-hidden="true" />已启用
               </span>
+              <span className="sd-pack-count">{dashboardData.mods ? enabledModCount : '—'}</span>
             </div>
             <div className="sd-pack-row">
-              <span className="sd-pack-name">运行状态</span>
-              <span style={{ color: modRestartRequired ? '#d08010' : '#4a9e30', fontWeight: 700, fontSize: 12 }}>
-                {modRestartRequired ? '需要重启' : '正常'}
+              <span className="sd-pack-name">
+                <span className="sd-dot sd-dot-yellow" aria-hidden="true" />已禁用
               </span>
+              <span className="sd-pack-count">{dashboardData.mods ? disabledModCount : '—'}</span>
             </div>
-            <div className="sd-pack-row" style={{ borderBottom: 'none', paddingTop: 7 }}>
-              <button className="sd-btn-tan" onClick={() => onNavigate('mods')}>
-                管理模组
-              </button>
-              <button className="sd-btn-tan" style={{ marginLeft: 4 }} onClick={() => onNavigate('diagnostics')}>
-                查看诊断
-              </button>
+            <div className="sd-pack-row">
+              <span className="sd-pack-name">
+                <span className="sd-dot sd-dot-yellow" aria-hidden="true" />可更新
+              </span>
+              <span className="sd-pack-count">{dashboardData.mods ? 0 : '—'}</span>
+            </div>
+            <div className="sd-pack-row">
+              <span className="sd-pack-name">
+                <span className="sd-dot sd-dot-red" aria-hidden="true" />异常
+              </span>
+              <span className="sd-pack-count">{dashboardData.modsError ? 1 : 0}</span>
             </div>
           </div>
+          <button className="sd-pack-manage sd-btn-tan" onClick={() => onNavigate('mods')}>
+            管理模组
+          </button>
         </section>
       </div>
 
@@ -591,7 +516,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
                 取消
               </button>
               <button
-                className={confirmAction === 'stop' ? 'sd-btn-stop' : 'sd-btn-restart'}
+                className={confirmAction === 'stop' ? 'sd-btn-delete' : 'sd-btn-green'}
                 onClick={() => {
                   const action = confirmAction
                   setConfirmAction(null)

@@ -1454,13 +1454,13 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 func (s *server) writeNexusError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sj.ErrNexusAPIKeyMissing):
-		writeError(w, http.StatusServiceUnavailable, "nexus_api_key_missing", "鏈厤缃?Nexus Mods API Key")
+		writeError(w, http.StatusServiceUnavailable, "nexus_api_key_missing", "未配置 Nexus Mods API Key")
 		return
 	case errors.Is(err, sj.ErrInvalidNexusQuery):
-		writeError(w, http.StatusBadRequest, "invalid_query", "鎼滅储鍏抽敭璇嶄笉鑳戒负绌?")
+		writeError(w, http.StatusBadRequest, "invalid_query", "搜索关键词不能为空")
 		return
 	case errors.Is(err, sj.ErrNexusAuthRequired):
-		writeError(w, http.StatusBadGateway, "nexus_auth_required", "璇ユ煡璇㈤渶瑕?Nexus OAuth/璁よ瘉鑳藉姏")
+		writeError(w, http.StatusBadGateway, "nexus_auth_required", "该查询需要 Nexus OAuth/认证能力")
 		return
 	}
 
@@ -1468,19 +1468,19 @@ func (s *server) writeNexusError(w http.ResponseWriter, err error) {
 	if errors.As(err, &apiErr) {
 		switch apiErr.StatusCode {
 		case http.StatusNotFound:
-			writeError(w, http.StatusNotFound, "nexus_mod_not_found", "鏈壘鍒拌 Mod")
+			writeError(w, http.StatusNotFound, "nexus_mod_not_found", "未找到该 Mod")
 		case http.StatusUnauthorized, http.StatusForbidden:
-			writeError(w, http.StatusBadGateway, "nexus_unauthorized", "Nexus API Key 鏃犳晥鎴栨潈闄愪笉瓒?")
+			writeError(w, http.StatusBadGateway, "nexus_unauthorized", "Nexus API Key 无效或权限不足")
 		case http.StatusTooManyRequests:
-			writeError(w, http.StatusTooManyRequests, "nexus_rate_limited", "Nexus 璇锋眰杩囦簬棰戠箒锛岃绋嶅悗閲嶈瘯")
+			writeError(w, http.StatusTooManyRequests, "nexus_rate_limited", "Nexus 请求过于频繁，请稍后重试")
 		default:
-			writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 璇锋眰澶辫触")
+			writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 请求失败")
 		}
 		return
 	}
 
 	s.logger.Warn("nexus search failed", "error", err)
-	writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 璇锋眰澶辫触锛岃绋嶅悗閲嶈瘯")
+	writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 请求失败，请稍后重试")
 }
 
 // 鈹€鈹€ Console / Commands handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€

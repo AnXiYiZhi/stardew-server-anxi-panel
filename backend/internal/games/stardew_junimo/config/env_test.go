@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
@@ -109,10 +110,49 @@ func TestUpdateEnvFile_PreservesUnknownFields(t *testing.T) {
 	}
 }
 
+func TestUpdateEnvFile_NormalizesBOMPrefixedKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	content := "IMAGE_VERSION=old\n\ufeffIMAGE_VERSION=1.5.0-preview.121\nSERVER_IMAGE=sdvd/server:old\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := config.UpdateEnvFile(path, map[string]string{
+		"VNC_PASSWORD": "vnc",
+	}); err != nil {
+		t.Fatalf("UpdateEnvFile: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	if strings.Contains(string(raw), "\ufeff") {
+		t.Fatalf(".env should not preserve BOM-prefixed keys:\n%s", raw)
+	}
+
+	fields, err := config.ReadEnvFile(path)
+	if err != nil {
+		t.Fatalf("ReadEnvFile: %v", err)
+	}
+	if fields["IMAGE_VERSION"] != "1.5.0-preview.121" {
+		t.Errorf("IMAGE_VERSION = %q, want %q", fields["IMAGE_VERSION"], "1.5.0-preview.121")
+	}
+	if _, ok := fields["\ufeffIMAGE_VERSION"]; ok {
+		t.Fatal("BOM-prefixed IMAGE_VERSION key should be normalized")
+	}
+}
+
 func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 	fields := config.EmptyEnvTemplate()
 	for _, key := range []string{
 		"IMAGE_VERSION",
+		"SERVER_IMAGE",
+		"SERVER_IMAGE_CANDIDATES",
+		"STEAM_SERVICE_IMAGE",
+		"STEAM_SERVICE_IMAGE_CANDIDATES",
+		"STEAMCMD_IMAGE",
+		"STEAMCMD_IMAGE_CANDIDATES",
 		"STEAM_USERNAME",
 		"STEAM_PASSWORD",
 		"STEAM_REFRESH_TOKEN",
@@ -141,5 +181,11 @@ func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 	}
 	if fields["GAME_PORT"] != "24642" || fields["QUERY_PORT"] != "27015" || fields["API_ENABLED"] != "true" {
 		t.Fatalf("unexpected defaults: %#v", fields)
+	}
+	if !strings.Contains(fields["SERVER_IMAGE_CANDIDATES"], "ghcr.io/sdvd/server:1.5.0-preview.121") {
+		t.Fatalf("SERVER_IMAGE_CANDIDATES should include ghcr.io fallback, got %q", fields["SERVER_IMAGE_CANDIDATES"])
+	}
+	if !strings.Contains(fields["STEAM_SERVICE_IMAGE_CANDIDATES"], "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2") {
+		t.Fatalf("STEAM_SERVICE_IMAGE_CANDIDATES should include ghcr.io fallback, got %q", fields["STEAM_SERVICE_IMAGE_CANDIDATES"])
 	}
 }

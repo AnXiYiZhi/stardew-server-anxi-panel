@@ -24,6 +24,8 @@ import (
 // export, regardless of its stored classification.
 const controlModFolderName = "StardewAnxiPanel.Control"
 const controlModUniqueID = "AnXiYiZhi.StardewAnxiPanel.Control"
+const junimoServerModFolderName = "JunimoServer"
+const junimoServerModUniqueID = "JunimoHost.Server"
 
 // ErrNoSyncMods is returned by ExportModSyncPackZip when no installed mod is
 // classified as client_required.
@@ -125,7 +127,7 @@ func saveModSyncStore(dataDir string, s modSyncStore) error {
 // the folder name is known. Full ModInfo-based inference happens in
 // inferDefaultModSyncClassification.
 func defaultModSyncKind(folderName string) string {
-	if folderName == controlModFolderName {
+	if folderName == controlModFolderName || folderName == junimoServerModFolderName {
 		return registry.ModSyncKindServerOnly
 	}
 	return registry.ModSyncKindClientRequired
@@ -134,6 +136,11 @@ func defaultModSyncKind(folderName string) string {
 func isControlModInfo(mod registry.ModInfo) bool {
 	return mod.FolderName == controlModFolderName ||
 		strings.EqualFold(mod.UniqueID, controlModUniqueID)
+}
+
+func isJunimoServerModInfo(mod registry.ModInfo) bool {
+	return mod.FolderName == junimoServerModFolderName ||
+		strings.EqualFold(mod.UniqueID, junimoServerModUniqueID)
 }
 
 func isSMAPIRuntimeMod(mod registry.ModInfo) bool {
@@ -149,12 +156,15 @@ func modCountsInPlayerSync(mod registry.ModInfo) bool {
 }
 
 func modHasPackagedSyncFiles(mod registry.ModInfo) bool {
-	return !mod.BuiltIn && !isControlModInfo(mod) && !isSMAPIRuntimeMod(mod)
+	return !mod.BuiltIn && !isControlModInfo(mod) && !isJunimoServerModInfo(mod) && !isSMAPIRuntimeMod(mod)
 }
 
 func inferDefaultModSyncClassification(mod registry.ModInfo) (string, string) {
 	if isControlModInfo(mod) {
 		return registry.ModSyncKindServerOnly, "自动识别：面板服务器控制组件"
+	}
+	if isJunimoServerModInfo(mod) {
+		return registry.ModSyncKindServerOnly, "自动识别：JunimoServer 官方服务端组件"
 	}
 	if mod.IsContentPack || mod.ContentPackFor != "" || hasContentPackPrefix(mod.FolderName) || hasContentPackPrefix(mod.Name) {
 		return registry.ModSyncKindClientRequired, "自动识别：内容包需要玩家同步"
@@ -464,7 +474,7 @@ func exportModSyncPackZip(dataDir string, opts modSyncPackExportOptions) (string
 
 	var selected []registry.ModInfo
 	for _, m := range mods {
-		if isControlModInfo(m) {
+		if isControlModInfo(m) || isJunimoServerModInfo(m) {
 			continue
 		}
 		if m.SyncKind != registry.ModSyncKindClientRequired {

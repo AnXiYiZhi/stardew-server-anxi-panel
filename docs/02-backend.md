@@ -1,3 +1,68 @@
+# JUNIMO-MOD-MOUNT-RESTORE-1 官方 JunimoServer Mod 挂载修复
+
+- 根因：实例 `.local-container/mods` 会完整挂载到容器 `/data/Mods`，如果宿主目录里没有 `JunimoServer/`，就会遮住 `sdvd/server` 镜像内置的官方 `JunimoServer` Mod，导致 8080 API、邀请码、VNC rendering 全部不可用。
+- 启动/重启前现在会检查 `.local-container/mods/JunimoServer/manifest.json`；缺失时用当前 server 镜像临时容器把 `/data/Mods/JunimoServer` 同步回宿主 mods 目录。
+- `JunimoHost.Server` 现在按内置服务端组件处理：永远启用、不可切换、不写入玩家同步包、不受新存档“默认禁用第三方 Mod”影响。
+- 物理 `mods/smapi/` 是 SMAPI 自带运行时目录，不再作为本地 Mod 扫描，页面只保留虚拟的 `SMAPI` 内置卡，避免出现重复 `smapi` 且解析失败。
+- VNC rendering 调用如果遇到 Junimo API connection refused，会返回 `junimo_api_unavailable` 结构化错误，不再只显示笼统 Docker 操作失败。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "ListMods|ApplyNewSaveDefault|ApplyModProfileKeeps|Rendering|JunimoServerMod"`，`cd backend; go test ./internal/web -run "Rendering|VNCConfig"`。
+
+# ENV-BOM-NORMALIZE-1 实例 .env 隐藏 BOM 归一化
+
+- `config.ReadEnvFile()` 现在会剥离行首和 key 前缀的 UTF-8 BOM，避免实例 `.env` 中混入 `﻿IMAGE_VERSION` 这类不可见变量名后，被 Docker Compose 报 `unexpected character "\ufeff"`。
+- `UpdateEnvFile()` 通过读取归一化后的 key 再写回 `.env`，会把 BOM 污染的重复 key 收敛成正常 `IMAGE_VERSION`，不再把非法变量名保留下来。
+- 已热修当前测试实例 `data/instances/stardew/.env`，删除中间残留的 BOM 前缀 `IMAGE_VERSION` 行；`docker compose -f data/instances/stardew/docker-compose.yml config --quiet` 已通过。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo/config`。
+
+# STEAMCMD-SELFUPDATE-CACHE-1 SteamCMD 客户端自更新缓存
+
+- SteamCMD 兜底容器现在额外挂载 `steamcmd-root-local` 到 `/root/.local/share/Steam`，并挂载 `steamcmd-user-local` 到 `/home/steam/.local/share/Steam`，用于持久化 SteamCMD 容器内客户端自更新文件。
+- 用户日志里的 `[steamcmd] [ 40%] Downloading update (.. of 40,273 KB)` 是 SteamCMD 客户端自更新，不是 Docker 镜像拉取；后端会在启动 SteamCMD 前写明镜像检查已完成，避免误解。
+- `buildSteamCMDOpts()` 会创建并 chown 上述目录；仍只使用 SteamCMD 候选镜像和现有 `game-data`、`steamcmd-login`、`steamcmd-home` 命名卷，不新增 Junimo/server 镜像来源。
+- 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallSteamCMD"`。
+
+# STEAMCMD-RETRY-RESUME-1 SteamCMD 兜底重试直达
+
+- 安装请求复用已保存凭据时，如果实例当前 `driverPhase` 已处于 `steamcmd_auth_running`、`steamcmd_guard_*`、`steamcmd_downloading`、`steamcmd_failed` 或 `steamcmd_image_pull_failed`，`stardew_junimo` 会跳过 Junimo compose pull 和 `steam-auth`，直接进入 `runSteamCMDFallback()`。
+- 直达重试会重新注册当前 job 的 Steam Guard 输入通道，所以前端继续使用 `POST /api/instances/:id/steam-guard/input` 提交 SteamCMD 手机批准选择或 App/邮箱验证码。
+- `ensureSteamCMDImage()` 现在先 inspect 完整 `STEAMCMD_IMAGE_CANDIDATES` 列表；只要任意候选本地存在就直接使用，不会因为前序候选缺失而先 pull。只有所有候选都不存在时才按顺序拉取。
+- 新增 `registry.InstallRequest.SteamCMDRetry` 作为显式入口；当前 web 层仍通过 `reuseCredentials=true` + 已持久化 `driverPhase` 由 driver 自动推断。
+- 影响文件：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/driver.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallSteamCMD"`；前端联动验证见 `FE-STEAMCMD-RETRY-RESUME-1`。
+
+# STEAMCMD-FALLBACK-1 steam-auth 下载失败自动切 SteamCMD
+
+- `stardew_junimo` 安装流程中，`steam-auth` 已经认证成功但游戏文件下载失败时，不再直接结束为 `download_failed`。后端会在同一个 `stardew_install` job 内自动切换到 SteamCMD 兜底下载，复用 `.env` 中保存的 `STEAM_USERNAME` / `STEAM_PASSWORD`，不要求用户重新输入账号密码。
+- 新增通用 Docker TTY 执行能力 `RunContainerTTY()` 和单镜像拉取 `PullImageStreaming()`；SteamCMD 会按 `STEAMCMD_IMAGE_CANDIDATES` 候选列表逐个 `inspect/pull`，默认顺序为 `docker.1ms.run/steamcmd/steamcmd:latest`、`docker.m.daocloud.io/steamcmd/steamcmd:latest`、`ghcr.io/steamcmd/steamcmd:latest`、`cm2network/steamcmd:latest`。旧实例仍写着旧候选列表时，安装流程会补齐新候选并过滤直连 Docker Hub 的 `steamcmd/steamcmd:latest` 和已移除的 `docker.xuanyuan.me/steamcmd/steamcmd:latest`；单次 Docker pull 默认等待 30 分钟。兜底容器挂载 `game-data` 到 `/data/game`，并挂载独立 `steamcmd-login` / `steamcmd-home` 命名卷保存 SteamCMD 登录授权缓存。
+- SteamCMD 阶段新增可见 phase：`steamcmd_image_pulling`、`steamcmd_auth_running`、`steamcmd_guard_choice_required`、`steamcmd_guard_required`、`steamcmd_guard_mobile_required`、`steamcmd_downloading`、`steamcmd_failed`、`steamcmd_image_pull_failed`。需要验证时继续复用 `POST /api/instances/:id/steam-guard/input`，但文案明确是“steam-auth 国内网络波动下载失败，需要重新授权 SteamCMD”。
+- SteamCMD 手机 App 批准超时不再视为安装成功；即使容器退出码为 0，也必须看到 `Success! App '413150' fully installed.` 才会把兜底下载判定为成功。SteamCMD `Update state ... progress: N (done / total)` 继续作为任务日志输出，供前端显示下载百分比。
+- SteamCMD 命令会下载/校验 Stardew Valley app `413150`，并尝试把 Steamworks SDK Redistributable app `1007` 安装到 `/data/game/.steam-sdk`。若 SDK 未输出完成标记只记录 warning，游戏 app 完成仍视为兜底下载成功。
+- 影响文件：`backend/internal/docker/streaming.go`、`backend/internal/docker/tty_run*.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver.go`、`backend/internal/web/install_handlers.go`、对应测试文件。
+- 验证：`cd backend; go test ./internal/docker ./internal/web ./internal/games/stardew_junimo`；目标覆盖 `TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure` 和 `TestDriverInstallTriesNextSteamCMDImageCandidateAfterPullFailure`。
+
+# INSTALL-INTERRUPTED-STATE-1 安装中断状态回收
+
+- `jobs.Manager.RecoverInterruptedJobs()` 现在在面板重启时不仅把 queued/running job 标记为 failed，也会针对 `stardew_install` 的 instance target 同步把实例改为 `state=error`、`driverPhase=install_interrupted`，避免任务已失败但安装页仍读到旧的 `steam_auth_running`。
+- `stardew_junimo` 安装流程中，`RunSteamAuthTTY` 自身返回错误时会把实例改为 `steam_auth_failed` / `driverPhase=steam_auth_failed`，并写入脱敏后的 job error log；未知非零退出码不再回退到误导性的 `credentials_required` phase。
+- 影响文件：`backend/internal/jobs/manager.go`、`backend/internal/games/stardew_junimo/installer.go`、对应测试文件。接口路径不变，变化体现在实例状态和安装页可见 phase。
+- 验证：`cd backend; go test ./internal/jobs ./internal/games/stardew_junimo`。
+
+# NEXUS-ERROR-TEXT-1 Nexus 错误中文乱码修复
+
+- `writeNexusError()` 的 Nexus 错误响应 message 已修复为正常 UTF-8 中文：未配置 Key、需要 OAuth/认证、未找到 Mod、Key 无效/权限不足、请求过频和通用请求失败不再返回 `璇锋眰澶辫触` 这类 mojibake。
+- 错误码和 HTTP 状态不变：`nexus_api_key_missing`、`nexus_auth_required`、`nexus_mod_not_found`、`nexus_unauthorized`、`nexus_rate_limited`、`nexus_request_failed` 仍按原契约返回。
+- 新增 `TestWriteNexusErrorMessagesAreReadableChinese`，直接覆盖 `writeNexusError` 的可读中文响应，防止 Nexus 搜索/安装失败时再次把乱码透给前端。
+- 验证：`cd backend; go test ./internal/web -run TestWriteNexusErrorMessagesAreReadableChinese`。
+
+# PLAYERS-SAVE-ROSTER-1 存档离线玩家名册恢复
+
+- `GET /api/instances/:id/players` 的 Junimo driver 合并逻辑现在会在 `StardewAnxiPanel.Control players.json` 在线快照和 `players-cache.json` 之外，读取当前存档主 XML 的 `<player>` 与 `<farmhands><Farmer>`，把存档里存在但当前不在线、也尚未进入缓存的玩家补入名册。
+- 存档目录优先取 Junimo gameloader 当前存档；找不到时按控制快照 `saveId` 匹配 `Saves/<saveId>` 或 `Saves/<saveId>_*`。因此控制文件里 `saveId=test`、真实目录为 `test_442477055` 时，farmhand `test` 会显示为 `status=offline`、`source=save_file`。
+- 仍由 `backend/internal/games/stardew_junimo/players.go` 完成，不在 Web/API 层堆 Stardew XML 逻辑；在线快照会覆盖同一玩家的存档离线项，缓存仍按 `saveId` 隔离，避免上一存档玩家串到当前存档。
+- 新增 `TestListPlayersMergesControlSnapshotWithSaveFarmhands` 覆盖“缓存只有 host / 在线快照只有 host / 存档 farmhands 有 test”的场景。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo`；`cd frontend; npm.cmd run build`。
+
 # JOB-DISPLAY-NAME-1 任务展示名字段
 
 - jobs 表新增 `display_name` 字段（迁移 `007_job_display_name.sql`），用于保存面向用户的任务展示名；`type` 继续保持机器可读任务类型，不用于拼接 Mod 名，避免影响任务筛选和历史耗时统计。
@@ -608,3 +673,35 @@ docker run --rm `
 - Web 层只做鉴权、状态校准和路由，实际调用在 `stardew_junimo.GetRenderingFPS()` / `SetRenderingFPS()` 内完成：通过 `docker compose exec server curl http://localhost:<API_PORT>/rendering` 访问 JunimoServer REST API；POST 空 body 需要显式 `Content-Length: 0`。
 - `API_PORT` / `API_KEY` 从实例 `.env` 读取，后端在容器内注入 `Authorization: Bearer ...`；浏览器前端不会接触 Junimo API key。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo -run Rendering`、`cd backend; go test ./internal/web -run "Rendering|VNCConfig"`。
+
+# STEAM-QR-PHASE-CLASSIFY-1 Steam QR 阶段识别修正
+
+- 修复扫码登录选择后，steam-auth 日志中的 `Choice [1]: 2` 被后端误识别为 Steam Guard 手机 App 批准的问题。该行只是上游菜单的默认值提示与用户选择回显，不能作为 `steam_guard_mobile_required` 的依据。
+- `installer.go` 现在只把明确的 `waiting for approval`、`open steam app`、`approve in steam mobile` 文案识别为手机批准；QR 模式下不再让泛化的 `steam guard/two-factor/authenticator` 文案覆盖 `steam_qr_required`。
+- 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。接口不变，仍通过 `POST /api/instances/:id/steam-guard/input` 发送菜单选择或验证码。
+- 现场诊断：同一 `anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2` 镜像在 `stardew_default` 网络内可解析 Steam 域名，TCP `api.steampowered.com:443` 与 `cm1-ord1.cm.steampowered.com:27017` 可连通，TLS 验证正常；本轮问题不是 Docker 容器完全断网，而是 QR 认证阶段 SteamClient 会话连接未建立成功。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamAuthMenus|SteamGuardCodePrompt|QRCodeChoice|SteamMobileApproval"`；`cd backend; go test ./internal/games/stardew_junimo`。
+# BE-STEAM-POST-AUTH-RETRY-1 Steam 认证成功后的失败不再归类为认证失败
+- 修复 steam-auth 已经登录成功后，游戏下载或后续安装步骤失败仍把实例写成 `steam_auth_failed` 的问题。`runSteamAuthAttempt()` 现在在 `authSucceeded=true` 后遇到容器错误会写 `state=error, driverPhase=post_auth_failed`；遇到 `Download failed:` / `Game download failed` 会写 `state=error, driverPhase=download_failed`。
+- 这样前端可以明确区分“账号密码/Steam Guard 错误”和“认证后的 CDN/磁盘/后续安装失败”，后者重试时复用 `.env` 中已保存的 Steam 凭据，不要求用户重新输入账号密码。
+- 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。未改变 `POST /api/instances/:id/install` 请求体，继续使用已有 `reuseCredentials=true` 重试契约。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "DownloadFailedAfterSuccessfulAuth|InstallMarksSteamAuthFailedWhenRunErrors"` 通过；同时保留原 steam-auth 容器启动失败仍写 `steam_auth_failed` 的覆盖测试。
+# STEAMCMD-PULL-PROGRESS-1 镜像拉取进度估算
+
+- 镜像拉取进度会写入隐藏 job 日志 `[pull:progress:done:total]`。Junimo compose pull 按服务镜像完成数估算；SteamCMD 单镜像 pull 按 Docker layer 的 `Pulling fs layer` / `Pull complete` / `Already exists` 估算。
+- `pull_running` 和 `steamcmd_image_pulling` 阶段会同步更新实例 `stateMessage`，文案包含“约 N%”，让安装页顶部和镜像拉取卡不再停在纯等待状态。
+# JUNIMO-IMAGE-CANDIDATES-1 Junimo/server 与 steam-auth-cn 镜像候选兜底
+
+- 安装阶段不再对 `server` / `steam-auth` 走单点 `docker compose pull`；后端会分别按候选镜像列表执行 `ImageInspect`，本地已有任意候选即直接使用，全部缺失时才逐个 `docker pull`。
+- 新增 `.env` 键：`SERVER_IMAGE`、`SERVER_IMAGE_CANDIDATES`、`STEAM_SERVICE_IMAGE_CANDIDATES`。拉取成功或命中本地镜像后，后端会把实际使用的镜像写回 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`，`docker-compose.yml` 通过这些变量启动。
+- 默认候选顺序：server 为 `docker.1ms.run/sdvd/server:<tag>`、`docker.m.daocloud.io/sdvd/server:<tag>`、`ghcr.io/sdvd/server:<tag>`、`sdvd/server:<tag>`；steam-auth-cn 为 `docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- 旧实例安装时会把 `server` compose 镜像行从 `sdvd/server:${IMAGE_VERSION:-...}` 迁移为 `${SERVER_IMAGE:-sdvd/server:1.5.0-preview.121}`；`IMAGE_VERSION` 仍保留用于版本选择和默认候选生成。
+- 拉取进度继续通过 `[pull:progress:done:total]` 隐藏日志给前端估算百分比；单个候选失败会记录 warning 并继续下一个候选，全部失败才进入 `pull_failed`。
+- 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`compose_template.go`、`driver.go`、`config/env.go` 及对应测试。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo/config`；`cd backend; go test ./internal/games/stardew_junimo -run "Prepare|Migrate.*ComposeImage|SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallMarksSteamAuthFailed|SteamAuthMenus|SteamGuard|QRCode"`。
+# JUNIMO-IMAGE-CANDIDATES-2 老实例候选源自动补齐
+
+- 修复旧实例 `.env` 中 `SERVER_IMAGE_CANDIDATES` 或 `STEAM_SERVICE_IMAGE_CANDIDATES` 只有单个旧值时，安装流程只显示/尝试 `(1/1)` 的问题。
+- `stardew_junimo` 现在会始终把默认候选源排在前面，再追加实例 `.env` 中已有候选和当前主镜像值并去重；server 默认顺序为 `docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
+- steam-auth cn 版同样补齐：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+- 安装流程写入 `.env` 时会同步写回补齐后的候选列表，并在镜像命中/拉取成功后写回实际使用的 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`。

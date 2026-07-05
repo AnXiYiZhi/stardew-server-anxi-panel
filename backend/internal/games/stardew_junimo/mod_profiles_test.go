@@ -13,6 +13,7 @@ func TestApplyNewSaveDefaultModStateDisablesNonBuiltInMods(t *testing.T) {
 	dir := t.TempDir()
 	root := modsDir(dir)
 	createTestMod(t, root, controlModFolderName, controlModUniqueID, "Panel Control")
+	createTestMod(t, root, junimoServerModFolderName, junimoServerModUniqueID, "JunimoServer")
 	createTestMod(t, root, "ContentPatcher", "Pathoschild.ContentPatcher", "Content Patcher")
 
 	if err := ApplyNewSaveDefaultModState(dir); err != nil {
@@ -20,6 +21,9 @@ func TestApplyNewSaveDefaultModStateDisablesNonBuiltInMods(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, controlModFolderName)); err != nil {
 		t.Fatalf("control mod should stay enabled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, junimoServerModFolderName)); err != nil {
+		t.Fatalf("JunimoServer mod should stay enabled: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "ContentPatcher")); !os.IsNotExist(err) {
 		t.Fatalf("third-party mod should be removed from active dir, err=%v", err)
@@ -62,6 +66,36 @@ func TestSetModEnabledForSavePersistsAndAppliesProfile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "ContentPatcher")); err != nil {
 		t.Fatalf("mod should return to active dir: %v", err)
+	}
+}
+
+func TestApplyModProfileKeepsJunimoServerEnabledFromHistoricalProfile(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	saveName := "Farmer_12345"
+	if err := os.MkdirAll(filepath.Join(savesDir(dir), "Saves", saveName), 0o755); err != nil {
+		t.Fatalf("create save: %v", err)
+	}
+	createTestMod(t, root, junimoServerModFolderName, junimoServerModUniqueID, "JunimoServer")
+	if err := EnsureDisabledModProfileForSave(dir, saveName); err != nil {
+		t.Fatalf("EnsureDisabledModProfileForSave: %v", err)
+	}
+	if err := ApplyModProfile(dir, saveName); err != nil {
+		t.Fatalf("ApplyModProfile: %v", err)
+	}
+
+	mods, err := ListModsWithState(dir, saveName)
+	if err != nil {
+		t.Fatalf("ListModsWithState: %v", err)
+	}
+	if len(mods) != 1 {
+		t.Fatalf("expected JunimoServer only, got %+v", mods)
+	}
+	if !mods[0].Enabled || !mods[0].BuiltIn || mods[0].CanToggle {
+		t.Fatalf("JunimoServer should stay enabled and built-in: %+v", mods[0])
+	}
+	if _, err := os.Stat(filepath.Join(root, junimoServerModFolderName)); err != nil {
+		t.Fatalf("JunimoServer should remain in active mods dir: %v", err)
 	}
 }
 

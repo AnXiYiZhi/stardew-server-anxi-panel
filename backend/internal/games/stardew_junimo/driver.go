@@ -32,7 +32,12 @@ const (
 
 	// DefaultSteamServiceImage is the patched steam-auth sidecar used by new instances.
 	// It should match https://github.com/AnXiYiZhi/junimo-server-steam-service-cn.
-	DefaultSteamServiceImage = sjconfig.DefaultSteamServiceImage
+	DefaultServerImage                 = sjconfig.DefaultServerImage
+	DefaultServerImageCandidates       = sjconfig.DefaultServerImageCandidates
+	DefaultSteamServiceImage           = sjconfig.DefaultSteamServiceImage
+	DefaultSteamServiceImageCandidates = sjconfig.DefaultSteamServiceImageCandidates
+	DefaultSteamCMDImage               = sjconfig.DefaultSteamCMDImage
+	DefaultSteamCMDImageCandidates     = sjconfig.DefaultSteamCMDImageCandidates
 
 	DefaultSteamClientConnectTimeoutSeconds  = sjconfig.DefaultSteamClientConnectTimeoutSeconds
 	DefaultSteamClientConnectRetries         = sjconfig.DefaultSteamClientConnectRetries
@@ -47,11 +52,13 @@ const (
 type DockerService interface {
 	ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
 	ComposePullStreaming(ctx context.Context, dir string, services []string, lineHandler func(line string)) (paneldocker.CommandResult, error)
+	PullImageStreaming(ctx context.Context, dir string, imageRef string, lineHandler func(line string)) (paneldocker.CommandResult, error)
 	ImageInspect(ctx context.Context, dir string, imageRef string) (paneldocker.CommandResult, error)
 	// RunSteamAuthTTY creates the steam-auth container via the Docker API with Tty:true
 	// so Console.ReadKey() works for interactive menu selection. guardCh provides raw
 	// stdin bytes (callers append "\n" for ReadLine, omit "\n" for ReadKey).
 	RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
+	RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
 }
 
 // StateStore defines what the driver needs from the storage layer.
@@ -190,13 +197,14 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	}
 
 	runner := &installRunner{
-		driver:   d,
-		instance: instance,
-		username: req.SteamUsername,
-		password: req.SteamPassword,
-		vncPass:  req.VNCPassword,
-		imageTag: imageTag,
-		autoMode: req.AutoDownload,
+		driver:        d,
+		instance:      instance,
+		username:      req.SteamUsername,
+		password:      req.SteamPassword,
+		vncPass:       req.VNCPassword,
+		imageTag:      imageTag,
+		autoMode:      req.AutoDownload,
+		steamCMDRetry: req.SteamCMDRetry || (req.AutoDownload && shouldResumeSteamCMD(instance.DriverPhase)),
 	}
 
 	job, err := d.jobs.Start(ctx, jobs.Spec{
@@ -213,6 +221,21 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 
 	d.logger.Info("install job started", "job_id", job.ID, "instance", req.Instance.ID)
 	return &registry.Job{ID: job.ID}, nil
+}
+
+func shouldResumeSteamCMD(phase string) bool {
+	switch phase {
+	case "steamcmd_auth_running",
+		"steamcmd_guard_choice_required",
+		"steamcmd_guard_required",
+		"steamcmd_guard_mobile_required",
+		"steamcmd_downloading",
+		"steamcmd_failed",
+		"steamcmd_image_pull_failed":
+		return true
+	default:
+		return false
+	}
 }
 
 // SendSteamGuardInput writes a Steam Guard code to the active install job's

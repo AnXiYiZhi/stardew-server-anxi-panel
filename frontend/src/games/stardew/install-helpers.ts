@@ -7,14 +7,21 @@ type DownloadProgress = {
   percent: number
   bytesDone: string
   bytesTotal: string
+  itemLabel?: string
 }
 
-const steamDownloadProgressRe = /\[steam\].*Progress:\s*(\d+)\/(\d+)\s+files\s+-\s+([^/()]+?)\/([^()]+?)\s+\((\d+(?:\.\d+)?)%\)/i
+type DownloadProgressKind = 'game' | 'sdk' | 'steamcmd_update'
 
-export function extractSteamDownloadProgress(logs: JobLog[], jobType: string | undefined, kind: 'game' | 'sdk'): DownloadProgress | null {
+const steamDownloadProgressRe = /\[steam\].*Progress:\s*(\d+)\/(\d+)\s+files\s+-\s+([^/()]+?)\/([^()]+?)\s+\((\d+(?:\.\d+)?)%\)/i
+const steamCMDDownloadProgressRe = /\[steamcmd\].*progress:\s*(\d+(?:\.\d+)?)\s*\(([^/()]+?)\s*\/\s*([^()]+?)\)/i
+const steamCMDBracketProgressRe = /\[steamcmd\]\s+\[\s*(\d+(?:\.\d+)?)%\]\s+downloading update\s+\(([\d,]+)\s+of\s+([\d,]+)\s+([^)]+?)\)/i
+
+export function extractSteamDownloadProgress(logs: JobLog[], jobType: string | undefined, kind: DownloadProgressKind): DownloadProgress | null {
   if (jobType !== 'stardew_install') return null
   let currentKind: 'game' | 'sdk' | null = null
   let sawSdk = false
+  let sawSteamCMDGameDone = false
+  let sawSteamCMDLogin = false
   let latest: DownloadProgress | null = null
   for (const log of logs) {
     const lower = log.message.toLowerCase()
@@ -27,6 +34,22 @@ export function extractSteamDownloadProgress(logs: JobLog[], jobType: string | u
       currentKind = 'sdk'
       sawSdk = true
     }
+    if (lower.includes('[steamcmd]') && lower.includes("success! app '413150' fully installed")) {
+      sawSteamCMDGameDone = true
+      if (kind === 'game') latest = completeSteamDownloadProgress(latest)
+      currentKind = 'sdk'
+      sawSdk = true
+    } else if (lower.includes('[steamcmd]') && lower.includes("success! app '1007' fully installed")) {
+      if (kind === 'sdk') latest = completeSteamDownloadProgress(latest)
+    }
+    if (lower.includes('[steamcmd]') && (
+      lower.includes('logging in user') ||
+      lower.includes('waiting for user info') ||
+      lower.includes('logged in ok') ||
+      lower.includes("success! app '413150' fully installed")
+    )) {
+      sawSteamCMDLogin = true
+    }
 
     const m = log.message.match(steamDownloadProgressRe)
     if (m) {
@@ -38,6 +61,43 @@ export function extractSteamDownloadProgress(logs: JobLog[], jobType: string | u
           bytesDone: m[3].trim(),
           bytesTotal: m[4].trim(),
           percent: fileCountPercent(parseInt(m[1], 10), parseInt(m[2], 10)),
+        }
+      }
+      continue
+    }
+
+    const steamCMDMatch = log.message.match(steamCMDDownloadProgressRe)
+    if (steamCMDMatch) {
+      const progressKind = currentKind ?? (sawSdk || sawSteamCMDGameDone ? 'sdk' : 'game')
+      if (progressKind === kind) {
+        const percent = roundPercent(parseFloat(steamCMDMatch[1]))
+        latest = {
+          filesDone: percent,
+          filesTotal: 100,
+          bytesDone: steamCMDMatch[2].trim(),
+          bytesTotal: steamCMDMatch[3].trim(),
+          percent,
+          itemLabel: `SteamCMD ${percent}%`,
+        }
+      }
+      continue
+    }
+
+    const steamCMDBracketMatch = log.message.match(steamCMDBracketProgressRe)
+    if (steamCMDBracketMatch) {
+      const progressKind: DownloadProgressKind = !sawSteamCMDLogin && !currentKind
+        ? 'steamcmd_update'
+        : currentKind ?? (sawSdk || sawSteamCMDGameDone ? 'sdk' : 'game')
+      if (progressKind === kind) {
+        const percent = roundPercent(parseFloat(steamCMDBracketMatch[1]))
+        const unit = steamCMDBracketMatch[4].trim()
+        latest = {
+          filesDone: percent,
+          filesTotal: 100,
+          bytesDone: `${steamCMDBracketMatch[2]} ${unit}`,
+          bytesTotal: `${steamCMDBracketMatch[3]} ${unit}`,
+          percent,
+          itemLabel: progressKind === 'steamcmd_update' ? `SteamCMD 客户端 ${percent}%` : `SteamCMD ${percent}%`,
         }
       }
     } else if (lower.includes('[steam]') && lower.includes('download complete')) {
@@ -68,8 +128,17 @@ function fileCountPercent(done: number, total: number): number {
   return roundPercent((done / total) * 100)
 }
 
-function completeSteamDownloadProgress(progress: DownloadProgress | null): DownloadProgress | null {
-  if (!progress) return null
+function completeSteamDownloadProgress(progress: DownloadProgress | null): DownloadProgress {
+  if (!progress) {
+    return {
+      filesDone: 1,
+      filesTotal: 1,
+      bytesDone: '完成',
+      bytesTotal: '完成',
+      percent: 100,
+      itemLabel: '100%',
+    }
+  }
   return {
     filesDone: progress.filesTotal,
     filesTotal: progress.filesTotal,
@@ -83,8 +152,9 @@ export function calcSteamDownloadTaskProgress(
   phase: string,
   gameProgress: DownloadProgress | null,
   sdkProgress: DownloadProgress | null,
+  steamCMDClientProgress: DownloadProgress | null = null,
 ) {
-  if (phase !== 'game_downloading' && phase !== 'steam_sdk_downloading') return null
+  if (phase !== 'game_downloading' && phase !== 'steam_sdk_downloading' && phase !== 'steamcmd_downloading') return null
   if (phase === 'steam_sdk_downloading') {
     return {
       done: sdkProgress?.percent === 100 ? 2 : 1,
@@ -93,6 +163,26 @@ export function calcSteamDownloadTaskProgress(
       label: sdkProgress?.percent === 100
         ? '游戏文件和 Steam SDK 均已下载完成。'
         : '游戏文件已下载完成，正在下载 Steam SDK 运行文件。',
+    }
+  }
+  if (phase === 'steamcmd_downloading') {
+    const sdkPercent = sdkProgress?.percent
+    const gamePercent = gameProgress?.percent ?? 0
+    if (steamCMDClientProgress && sdkPercent == null && gameProgress == null) {
+      return {
+        done: 0,
+        total: 2,
+        percent: roundPercent(steamCMDClientProgress.percent * 0.15),
+        label: 'SteamCMD 镜像已就绪，正在更新 SteamCMD 客户端；这不是 Docker 镜像拉取。',
+      }
+    }
+    return {
+      done: sdkPercent === 100 ? 2 : gamePercent >= 100 ? 1 : 0,
+      total: 2,
+      percent: sdkPercent != null ? roundPercent(50 + sdkPercent / 2) : roundPercent(gamePercent / 2),
+      label: sdkPercent != null
+        ? 'SteamCMD 已完成游戏文件，正在处理 Steam SDK 运行文件。'
+        : 'SteamCMD 正在兜底下载并校验 Stardew Valley 游戏文件。',
     }
   }
   return {
@@ -141,7 +231,10 @@ export function installFailureDisplayMessage(
     'credentials_required',
     'qr_auth_failed',
     'download_failed',
+    'post_auth_failed',
     'steam_auth_console_failed',
+    'steamcmd_failed',
+    'steamcmd_image_pull_failed',
   ].includes(phase)
   const isFailureState = state === 'steam_auth_failed' || state === 'error' || errorPhase || !!failedJob
   if (!isFailureState || state === 'game_installed') return ''
@@ -172,6 +265,15 @@ export function installFailureDisplayMessage(
   }
   if (phase === 'download_failed' || lower.includes('download failed')) {
     return '游戏文件下载失败：Steam 认证可能已经成功，但下载阶段失败，请检查网络、磁盘空间后重试。'
+  }
+  if (phase === 'steamcmd_failed') {
+    return 'steam-auth 下载失败后已自动切换 SteamCMD 兜底，但 SteamCMD 下载也失败了；请检查任务日志、网络和磁盘空间后重试。'
+  }
+  if (phase === 'steamcmd_image_pull_failed') {
+    return 'SteamCMD 兜底镜像拉取失败，请检查 Docker 网络或镜像源后重试。'
+  }
+  if (phase === 'post_auth_failed') {
+    return 'Steam 认证已经成功，但后续安装步骤失败；请使用已保存凭据重试，不需要重新输入账号密码。'
   }
   if (phase === 'pull_failed') {
     return 'Junimo 镜像拉取失败，请检查 Docker 网络或镜像地址后重试。'

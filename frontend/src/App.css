@@ -20,6 +20,23 @@ body {
   min-height: 100vh;
 }
 
+body:has(.sd-shell) {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#root:has(.sd-shell) {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
 button,
 input,
 select {

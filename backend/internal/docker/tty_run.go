@@ -2,17 +2,21 @@ package docker
 
 import "context"
 
-// SteamAuthRunOpts holds everything the Docker layer needs to create the steam-auth
-// container. The caller (installer) is responsible for building this from the .env
-// file and driver config so this package stays free of game-specific imports.
-type SteamAuthRunOpts struct {
-	ImageRef string   // e.g. "sdvd/steam-service:1.5.0-preview.121"
-	Command  []string // steam-auth command, e.g. ["download"] or ["setup"]
-	Env      []string // environment variables: "KEY=VALUE"
-	Binds    []string // volume bind specs: "volumename:/container/path"
+// ContainerTTYRunOpts holds everything the Docker layer needs to create an
+// interactive one-shot container.
+type ContainerTTYRunOpts struct {
+	ImageRef   string   // e.g. "sdvd/steam-service:1.5.0-preview.121"
+	Entrypoint []string // optional entrypoint override, e.g. ["/bin/sh"]
+	Command    []string // steam-auth command, e.g. ["download"] or ["setup"]
+	Env        []string // environment variables: "KEY=VALUE"
+	Binds      []string // volume bind specs: "volumename:/container/path"
+	User       string   // optional container user, e.g. "root"
 }
 
-func steamAuthCommand(opts SteamAuthRunOpts) []string {
+// SteamAuthRunOpts is kept for the existing steam-auth call path.
+type SteamAuthRunOpts = ContainerTTYRunOpts
+
+func containerCommand(opts ContainerTTYRunOpts) []string {
 	if len(opts.Command) == 0 {
 		return []string{"download"}
 	}
@@ -40,4 +44,15 @@ func (c *Client) RunSteamAuthTTY(
 	lineHandler func(string),
 ) (int, error) {
 	return runSteamAuthPlatform(ctx, dataDir, opts, guardCh, lineHandler)
+}
+
+// RunContainerTTY runs an arbitrary one-shot container with a TTY and forwards
+// guardCh to stdin. It is used for fallback tools that need Steam Guard input.
+func (c *Client) RunContainerTTY(
+	ctx context.Context,
+	opts ContainerTTYRunOpts,
+	guardCh <-chan string,
+	lineHandler func(string),
+) (int, error) {
+	return runContainerTTYPlatform(ctx, c.dockerPath, opts, guardCh, lineHandler)
 }

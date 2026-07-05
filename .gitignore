@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .vite/
+.claude/
+.codex/
 .gocache/
 tmp/
 backend/data/

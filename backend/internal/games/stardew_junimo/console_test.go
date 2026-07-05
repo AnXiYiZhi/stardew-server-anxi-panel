@@ -18,7 +18,8 @@ import (
 type fakeConsoleDocker struct {
 	paneldocker.Client // embed to satisfy interface; methods panic if called unexpectedly
 
-	execFunc func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	execFunc         func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	runContainerFunc func(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
 }
 
 func (f *fakeConsoleDocker) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
@@ -34,6 +35,13 @@ func (f *fakeConsoleDocker) ComposeExecTTY(ctx context.Context, dir, service, st
 
 func (f *fakeConsoleDocker) ComposePs(_ context.Context, _ string) (paneldocker.ComposePsResult, error) {
 	return paneldocker.ComposePsResult{}, nil
+}
+
+func (f *fakeConsoleDocker) RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	if f.runContainerFunc != nil {
+		return f.runContainerFunc(ctx, opts, guardCh, lineHandler)
+	}
+	return 0, nil
 }
 
 // makeRunningInstance returns a registry.Instance in running state.

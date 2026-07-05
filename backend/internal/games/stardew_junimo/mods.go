@@ -146,15 +146,22 @@ func listModsFromRoot(root string, enabled bool, includeSMAPIRuntime bool) ([]re
 			continue
 		}
 		folderName := e.Name()
+		if isRuntimeSupportModFolder(folderName) {
+			continue
+		}
 		mod := readModInfo(filepath.Join(root, folderName), folderName)
 		mod.Enabled = enabled
 		mod.CanToggle = !mod.BuiltIn
 		if mod.BuiltIn {
-			mod.EnableNote = "鍐呯疆缁勪欢涓嶅彲绂佺敤"
+			mod.EnableNote = "内置组件不可禁用"
 		}
 		mods = append(mods, mod)
 	}
 	return mods, nil
+}
+
+func isRuntimeSupportModFolder(folderName string) bool {
+	return strings.EqualFold(folderName, "smapi")
 }
 
 func hasControlModDir(entries []os.DirEntry) bool {
@@ -236,6 +243,13 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 		info.EnableNote = "Built-in component cannot be disabled"
 		info.SyncKind = registry.ModSyncKindServerOnly
 		info.SyncNote = "Built-in server control mod; excluded from player sync packs."
+	}
+	if isJunimoServerModInfo(info) {
+		info.BuiltIn = true
+		info.CanToggle = false
+		info.EnableNote = "JunimoServer official component cannot be disabled"
+		info.SyncKind = registry.ModSyncKindServerOnly
+		info.SyncNote = "Official JunimoServer component; required for server API, invite codes, and VNC rendering."
 	}
 
 	return info

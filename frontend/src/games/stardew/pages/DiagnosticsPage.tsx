@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
@@ -102,34 +101,59 @@ function formatTrendTime(timestamp: string): string {
   })
 }
 
+// 圆环参照 Tomik23 circular-progress-bar 样式：
+// 渐变描边（yellow -> #ff0000）+ 圆头端帽 + #e6e6e6 底环，SVG 实现无额外依赖
+const GAUGE_RADIUS = 52
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * GAUGE_RADIUS
+
 function GaugeCard({
   label,
   value,
   sub,
-  color,
+  gradientId,
 }: {
   label: string
   value: number | null | undefined
   sub: string
-  color: string
+  gradientId: string
 }) {
   const percent = value == null ? 0 : Math.max(0, Math.min(100, value))
-  const gaugeStyle = {
-    '--sd-diag-gauge-color': color,
-    '--sd-diag-gauge-angle': `${percent * 3.6}deg`,
-  } as CSSProperties
   return (
     <div className="sd-diag-gauge-card">
-      <div className="sd-diag-gauge-ring" style={gaugeStyle}>
+      <span className="sd-diag-gauge-label">{label}</span>
+      <div className="sd-diag-gauge-ring">
+        <svg
+          className="sd-diag-gauge-svg"
+          viewBox="0 0 120 120"
+          role="img"
+          aria-label={value == null ? `${label} 暂无数据` : `${label} ${formatGaugeNumber(value)}%`}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="yellow" />
+              <stop offset="100%" stopColor="#ff0000" />
+            </linearGradient>
+          </defs>
+          <circle className="sd-diag-gauge-track" cx="60" cy="60" r={GAUGE_RADIUS} />
+          {percent > 0 ? (
+            <circle
+              className="sd-diag-gauge-arc"
+              cx="60"
+              cy="60"
+              r={GAUGE_RADIUS}
+              stroke={`url(#${gradientId})`}
+              strokeDasharray={GAUGE_CIRCUMFERENCE}
+              strokeDashoffset={GAUGE_CIRCUMFERENCE * (1 - percent / 100)}
+              transform="rotate(-90 60 60)"
+            />
+          ) : null}
+        </svg>
         <div className="sd-diag-gauge-core">
           <span className="sd-diag-gauge-number">{formatGaugeNumber(value)}</span>
           {value != null ? <span className="sd-diag-gauge-unit">%</span> : null}
         </div>
       </div>
-      <div className="sd-diag-gauge-meta">
-        <span className="sd-diag-gauge-label">{label}</span>
-        <span className="sd-diag-gauge-sub">{sub}</span>
-      </div>
+      <span className="sd-diag-gauge-sub">{sub}</span>
     </div>
   )
 }
@@ -184,7 +208,7 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
   return (
     <div className="sd-diag-trend-card">
       <div className="sd-diag-trend-head">
-        <span>实时趋势</span>
+        <span>资源使用趋势（24小时）</span>
         <div className="sd-diag-trend-legend">
           {series.map((item) => (
             <span key={item.key}>
@@ -374,16 +398,16 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   return (
     <div className="sd-page sd-diag-page">
       {/* 页头 */}
-      <div className="sd-diag-header">
+      <div className="sd-diag-header sd-page-header">
         <div className="sd-diag-header-left">
           <img className="sd-page-icon" src="/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png" alt="" />
           <div>
             <h2 className="sd-page-title">诊断与健康检查</h2>
           </div>
         </div>
-        <div className="sd-diag-header-actions">
+        <div className="sd-diag-header-actions sd-actionbar sd-actionbar--end">
           <button
-            className="sd-btn-green"
+            className="sd-btn-green sd-btn--lg"
             disabled={refreshing}
             onClick={handleRefresh}
             type="button"
@@ -391,7 +415,7 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
             {refreshing ? '检查中…' : '重新检查'}
           </button>
           <button
-            className="sd-btn-blue"
+            className="sd-btn-tan sd-btn--lg sd-diag-export-btn"
             disabled={exportBusy || !isAdmin}
             onClick={handleExportBundle}
             type="button"
@@ -412,8 +436,8 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
         <div className="sd-diag-error-banner">
           {displayError}
           <button
-            className="sd-btn-tan"
-            style={{ marginLeft: 8, padding: '1px 8px', fontSize: '10px' }}
+            className="sd-btn-tan sd-btn--sm"
+            style={{ marginLeft: 8 }}
             disabled={refreshing}
             onClick={handleRefresh}
             type="button"
@@ -477,9 +501,9 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
               </span>
             </div>
             <div className="sd-diag-gauge-grid">
-              <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} color="#3f8f2c" />
-              <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} color="#d87916" />
-              <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} color="#1f68b5" />
+              <GaugeCard label="CPU" value={latestMetric?.cpuPercent} sub={metricSubtitles.cpu} gradientId="sd-gauge-grad-cpu" />
+              <GaugeCard label="内存" value={latestMetric?.memoryPercent} sub={metricSubtitles.memory} gradientId="sd-gauge-grad-memory" />
+              <GaugeCard label="磁盘" value={latestMetric?.diskPercent} sub={metricSubtitles.disk} gradientId="sd-gauge-grad-disk" />
             </div>
             <ResourceTrendChart samples={metricSamples} />
             {(metricError || latestMetric?.message) && (

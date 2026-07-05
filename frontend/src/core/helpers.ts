@@ -46,6 +46,13 @@ const errorCodeMap: Record<string, string> = {
   parse_form_failed: '解析上传表单失败（文件可能超过大小限制）',
   write_failed: '写入文件失败',
   token_invalid: '上传令牌无效或已过期',
+  // Nexus
+  nexus_api_key_missing: '未配置 Nexus Mods API Key',
+  nexus_auth_required: '该查询需要 Nexus OAuth/认证能力',
+  nexus_mod_not_found: '未找到该 Mod',
+  nexus_unauthorized: 'Nexus API Key 无效或权限不足',
+  nexus_rate_limited: 'Nexus 请求过于频繁，请稍后重试',
+  nexus_request_failed: 'Nexus 请求失败，请稍后重试',
   // Mods
   list_mods_failed: '读取 Mod 列表失败',
   invalid_mod_zip: 'Mod ZIP 无效',

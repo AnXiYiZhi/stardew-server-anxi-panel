@@ -645,7 +645,7 @@ func TestNexusDownloadArchiveRejectsHTMLResponse(t *testing.T) {
 func TestEnrichNexusMetadataForMods_UsesGraphQLAndCaches(t *testing.T) {
 	dataDir := t.TempDir()
 	modsRoot := modsDir(dataDir)
-	writeManifestWithUpdateKeys(t, modsRoot, "SMAPI", "Pathoschild.SMAPI", "4.5.2", []string{"Nexus:2400"})
+	writeManifestWithUpdateKeys(t, modsRoot, "ContentPatcher", "Pathoschild.ContentPatcher", "2.4.0", []string{"Nexus:1915"})
 
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -661,12 +661,12 @@ func TestEnrichNexusMetadataForMods_UsesGraphQLAndCaches(t *testing.T) {
 			"data": map[string]any{
 				"mods": map[string]any{
 					"nodes": []map[string]any{{
-						"modId":        2400,
-						"name":         "SMAPI - Stardew Modding API",
-						"summary":      "The mod loader for Stardew Valley.",
-						"version":      "4.5.2",
+						"modId":        1915,
+						"name":         "Content Patcher",
+						"summary":      "Loads content packs for Stardew Valley.",
+						"version":      "2.4.0",
 						"author":       "Pathoschild",
-						"pictureUrl":   "https://example.com/smapi.png",
+						"pictureUrl":   "https://example.com/content-patcher.png",
 						"downloads":    12345,
 						"endorsements": 678,
 						"updatedAt":    "2026-03-14T19:07:23Z",
@@ -685,10 +685,10 @@ func TestEnrichNexusMetadataForMods_UsesGraphQLAndCaches(t *testing.T) {
 	if len(enriched) != 1 {
 		t.Fatalf("len(enriched) = %d, want 1", len(enriched))
 	}
-	if enriched[0].PictureURL != "https://example.com/smapi.png" {
+	if enriched[0].PictureURL != "https://example.com/content-patcher.png" {
 		t.Fatalf("PictureURL = %q, want GraphQL thumbnail", enriched[0].PictureURL)
 	}
-	if enriched[0].NexusSummary != "The mod loader for Stardew Valley." {
+	if enriched[0].NexusSummary != "Loads content packs for Stardew Valley." {
 		t.Fatalf("NexusSummary = %q, want GraphQL summary", enriched[0].NexusSummary)
 	}
 	if enriched[0].DownloadCount != 12345 || enriched[0].EndorsementCount != 678 {
@@ -703,7 +703,7 @@ func TestEnrichNexusMetadataForMods_UsesGraphQLAndCaches(t *testing.T) {
 		t.Fatalf("ListMods second call: %v", err)
 	}
 	cached := EnrichNexusMetadataForMods(context.Background(), dataDir, mods)
-	if cached[0].PictureURL != "https://example.com/smapi.png" {
+	if cached[0].PictureURL != "https://example.com/content-patcher.png" {
 		t.Fatalf("cached PictureURL = %q, want sidecar metadata", cached[0].PictureURL)
 	}
 	if calls != 1 {
