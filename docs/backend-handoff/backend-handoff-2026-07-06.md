@@ -1,3 +1,31 @@
+# STEAMCMD-ANON-SDK-FULL-LOGIN-1 游戏段完整登录 + SDK 段匿名，废弃只用户名缓存模式
+
+> 说明：本条取代同日先前两版草稿（SDK 只用户名复用登录 / 139 清缓存后强制重登）。那两版基于「游戏段登录会在容器里缓存出可复用令牌」的错误假设——现场实证该环境根本不持久化可复用凭据，故 SDK 只用户名登录同样会挂。以本条为准。
+
+## 背景（现场实证，服务器 121.40.29.22）
+- SteamCMD 下载反复卡死在 `Loading Steam API...OK` / `Cached credentials not found.`，容器不是崩溃而是**挂在交互式密码提示**（`+login <用户名>` 无密码、无缓存 ⇒ SteamCMD 等 stdin 输密码，one-shot 容器无 stdin ⇒ 永久挂起）。
+- 关键实证：即便一次 Steam Guard 批准 + 登录成功 + 下载成功，`config.vdf` 里也**没有任何登录令牌键**（`ConnectCache`/`Accounts`/`MachineAuth`/`RefreshToken` 计数全 0），全卷也没有 `ssfn*`/`loginusers.vdf`。即**这套 SteamCMD 容器环境没有把可复用凭据持久化下来**。
+- 完整登录时游戏段 413150、SDK 段 1007 各自 `+login <账密>`，Steam Guard 手机批准被要求了**两次**。
+- 参考 `E:\源码\StardewValleyServerKit`：游戏段始终 `+login <账密>`，**SDK（1007）用 `+login anonymous`**，没有「只用户名缓存」这种模式。
+
+## 改了什么（`buildSteamCMDOpts()` + `run()`）
+- **游戏段 413150 恒为完整登录** `+login "$STEAM_USERNAME" "$STEAM_PASSWORD"`。`run()` 里 `r.steamCMDUseCache` **恒置 false**（不再从 `STEAMCMD_AUTH_COMPLETED` 推导），彻底废弃「只用户名缓存登录」——它在本环境必然命中 `Cached credentials not found.` 挂死。`steamCMDUseCache=false` 也让 `lineHandler` 把 guard 提示当作正常再认证展示给用户，而非「缓存不可用」报错。
+- **SDK 段 1007 恒为匿名登录** `+login anonymous`。SDK Redist 公开可匿名下载，不需要账号、不触发 Guard、永不挂死、也不用二次批准。
+- 回退了本条取代的两版草稿对 `clearSteamCMDRuntimeCache()` 的改动（该函数恢复为仅清卷）。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/installer.go`（`run()` 的 `steamCMDUseCache=false`；`buildSteamCMDOpts()`）
+- `backend/internal/games/stardew_junimo/driver_test.go`（新增 `TestBuildSteamCMDOptsGameFullLoginSDKAnonymous`；`TestDriverInstallRepairUsesSteamCMDCacheLogin` 改名为 `TestDriverInstallRepairUsesFullLoginAndAnonymousSDK` 并改断言为完整登录 + 匿名 SDK）
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo/... ./internal/web`
+- 真实服务器全新安装：游戏段 413150 只弹一次手机批准；SDK 段 1007 日志出现 `Logging in user anonymous` 直接下载，不再第二次 `Please confirm the login`，也不再停在 `Cached credentials not found.`。
+
+## 下一步注意事项（PART 2，待实测）
+- **「记住登录、下次免 2FA」**：靠持久化登录哨兵（Steam config 目录），不是靠只用户名登录。用户 Windows Docker Desktop 同镜像能记住、服务器记不住，疑似服务器触发过 `139` → `clearSteamCMDRuntimeCache()` 删掉 `steamcmd-root-local`（含哨兵）。
+- 新流程（分段 + 匿名 SDK）后 139 概率大幅下降。发版后需实测：全新安装一次 → SSH 查 `steamcmd-root-local`/其它卷是否落下哨兵/令牌 → 再装一次看游戏段是否免批准。
+- 若实测发现哨兵确实落盘、但被某次 139 清理删掉，再补 PART 2：把 `clearSteamCMDRuntimeCache()` 收窄为只删 `appcache`/`depotcache`/临时目录，**保留 `config/`**；或给凭据单独挂一个永不清理的嵌套卷。
+
 # STEAMCMD-HOME-CACHE-CLEANUP-1 SteamCMD HOME 与缓存清理加固
 
 ## 改了什么

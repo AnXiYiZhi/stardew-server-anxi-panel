@@ -96,9 +96,13 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在写入 .env 凭据...")
 	envPath := r.instance.DataDir + "/.env"
 	envVals, _ := sjconfig.ReadEnvFile(envPath)
-	// steamCMDUseCache: only trust the persisted SteamCMD authorization cache when
-	// we are NOT forcing a fresh re-auth. Absent flag ⇒ full login (safe default).
-	r.steamCMDUseCache = !r.forceReauth && strings.EqualFold(envVals["STEAMCMD_AUTH_COMPLETED"], "true")
+	// steamCMDUseCache stays false: this SteamCMD environment does not persist a
+	// reusable "cached credential" for a username-only login, so `+login <user>`
+	// (no password) always fails with "Cached credentials not found." and hangs on
+	// an interactive password prompt. The game always does a full username+password
+	// login instead; skipping the second Steam Guard prompt comes from the persisted
+	// login sentry (see the Steam config volumes), not from a username-only login.
+	r.steamCMDUseCache = false
 	updates := map[string]string{
 		"IMAGE_VERSION":  r.imageTag,
 		"STEAM_USERNAME": r.username,
@@ -1023,12 +1027,16 @@ func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress fu
 
 func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	// The game (413150) always does a full username+password login: this SteamCMD
+	// environment never persists a reusable credential (config.vdf gets no
+	// ConnectCache/MachineAuth/refresh token), so a username-only "cache" login can
+	// never succeed and would hang forever on an interactive password prompt.
 	gameCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +quit`
-	sdkCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 1007 validate +quit`
-	if r.steamCMDUseCache {
-		gameCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +quit`
-		sdkCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login "$STEAM_USERNAME" +app_update 1007 validate +quit`
-	}
+	// The Steamworks SDK redistributable (app 1007) is public and downloads with an
+	// anonymous login — no account credentials and no Steam Guard. Only the game
+	// login needs the real account, so a whole install needs at most one guard
+	// approval, and the SDK step can never stall waiting for credentials.
+	sdkCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login anonymous +app_update 1007 validate +quit`
 	steamHomePrefix := `HOME=/home/steam USER=steam LOGNAME=steam `
 	suGameCommand := strings.ReplaceAll(steamHomePrefix+gameCommand, `'`, `'"'"'`)
 	suSDKCommand := strings.ReplaceAll(steamHomePrefix+sdkCommand, `'`, `'"'"'`)

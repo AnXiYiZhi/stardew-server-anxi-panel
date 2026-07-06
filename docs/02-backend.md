@@ -2,8 +2,12 @@
 
 - 修复云服上 SteamCMD 在 `Success! App '413150' fully installed.` 后继续同一会话切换 `+force_install_dir /data/game/.steam-sdk +app_update 1007` 时出现 `Please use force_install_dir before logon!` 并段错误退出 `139` 的问题。
 - `buildSteamCMDOpts()` 仍使用同一个一次性 SteamCMD 容器和同一套缓存卷，但容器内拆成两次独立 SteamCMD 进程：第一次 `+force_install_dir /data/game +login ... +app_update 413150 validate +quit`，第二次 `+force_install_dir /data/game/.steam-sdk +login ... +app_update 1007 validate +quit`。
-- 旧实例 `.env` 中残留的 `docker.m.daocloud.io/steamcmd/steamcmd:latest` 会被过滤，不再因为本地已有旧 daocloud 镜像而优先使用它。若 SteamCMD 仍以 `139` 段错误退出，后端会删除 `steamcmd-user-local` / `steamcmd-root-local` 自更新缓存卷并自动重试一次，保留登录授权卷和游戏文件。
-- 缓存授权路径仍使用用户名登录，不把 Steam 密码传给 SteamCMD；完整登录路径两次进程都使用账号密码，第一轮授权成功后的缓存可被第二轮复用。
+- 旧实例 `.env` 中残留的 `docker.m.daocloud.io/steamcmd/steamcmd:latest` 会被过滤，不再因为本地已有旧 daocloud 镜像而优先使用它。若 SteamCMD 仍以 `139` 段错误退出，后端会删除 `steamcmd-user-local` / `steamcmd-root-local` 自更新缓存卷并自动重试一次（游戏文件保留）。
+- **登录模型（当前实现，见 `STEAMCMD-ANON-SDK-FULL-LOGIN-1`）**：`buildSteamCMDOpts()` 里
+  - **游戏段（413150）恒为完整登录** `+login "$STEAM_USERNAME" "$STEAM_PASSWORD"`；`r.steamCMDUseCache` 恒为 false。原因：这套 SteamCMD 容器环境不像本地那样可靠地持久化「可复用凭据」，用户名单独登录 `+login <user>` 会命中 `Cached credentials not found.` 并卡在交互式密码提示挂死。已彻底废弃「只用户名缓存登录」模式。
+  - **SDK 段（1007）恒为匿名登录** `+login anonymous`。Steamworks SDK Redist 是公开可匿名下载的，不需要账号，也不触发 Steam Guard。参考 `E:\源码\StardewValleyServerKit` 的 `install_steamworks_sdk()` 同样用匿名。
+  - 结果：一次安装最多只在游戏段批准一次 Steam Guard；SDK 段永不挂死、不用二次批准。见 driver_test 的 `TestBuildSteamCMDOptsGameFullLoginSDKAnonymous`、`TestDriverInstallRepairUsesFullLoginAndAnonymousSDK`。
+- **关于「记住登录、下次免 2FA」**：跳过二次 2FA 靠的是持久化的登录哨兵（Steam config 目录），而不是「只用户名登录」。用户 Windows Docker Desktop 能记住、Aliyun 服务器记不住，疑似因服务器触发过 `139` → `clearSteamCMDRuntimeCache()` 删掉了 `steamcmd-root-local`（含哨兵）。新流程分段 + 匿名 SDK 后 139 概率大幅降低；是否真正持久化哨兵需实测确认，若仍被 139 清掉再补「清理时保留 config 目录」（PART 2，待测）。
 - 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
 
