@@ -1,3 +1,9 @@
+# JUNIMO-APPNAME-CONTENV-FIX-1 联调契约
+
+- 如果 server 容器日志出现 `APP_NAME: /etc/cont-env.d/APP_NAME: 1: DockerApp: not found`，优先检查实例 compose 是否包含 `./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro`，以及实例目录是否存在 `.local-container/cont-env/APP_NAME`。
+- 该修复由后端 Prepare/安装/启动自动完成，前端不需要新增接口或特殊状态；用户只需要更新面板镜像后重新运行启动/安装流程。
+- 如果旧容器已经按旧 compose 创建，新增挂载后必须通过 `docker compose up -d` 重建 server 容器才会生效；后端 `doRestart()` 在检测到 compose 被迁移时会自动走 `ComposeUp`。
+
 # NEXUS-NETWORK-DIAGNOSTICS-1 / PANEL-ACCESS-HOST-INVITE-1 联调契约
 
 - Nexus 搜索 `GET /api/instances/:id/mods/nexus/search` 后端会用独立 20 秒上下文访问 Nexus GraphQL，避免浏览器请求取消导致上游搜索被提前打断。网络类失败返回 `502 nexus_network_failed`，前端展示“请确认面板服务器能访问 api.nexusmods.com”。

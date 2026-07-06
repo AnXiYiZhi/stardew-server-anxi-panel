@@ -221,6 +221,12 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：确保 IP 直连默认设置失败（不影响启动）：%v", err))
 	}
 
+	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer APP_NAME startup compatibility mount failed: %v", err))
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "JunimoServer APP_NAME startup compatibility mount has been applied.")
+	}
+
 	if r.newGame {
 		if err := ApplyNewSaveDefaultModState(r.instance.DataDir); err != nil {
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
@@ -368,7 +374,21 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 		return err
 	}
 
-	result, err := r.lifecycle.ComposeRestartServices(ctx, r.instance.DataDir, "server")
+	composeConfigChanged := false
+	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer APP_NAME startup compatibility mount failed: %v", err))
+	} else if changed {
+		composeConfigChanged = true
+		_, _ = jobCtx.Info(ctx, "JunimoServer APP_NAME startup compatibility mount has been applied.")
+	}
+
+	var result paneldocker.CommandResult
+	var err error
+	if composeConfigChanged {
+		result, err = r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
+	} else {
+		result, err = r.lifecycle.ComposeRestartServices(ctx, r.instance.DataDir, "server")
+	}
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"重启失败: "+result.Stderr, "restart_failed", jobCtx.ID)

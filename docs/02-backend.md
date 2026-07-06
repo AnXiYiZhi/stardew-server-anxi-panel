@@ -1,3 +1,11 @@
+# JUNIMO-APPNAME-CONTENV-FIX-1 JunimoServer APP_NAME 启动兼容挂载
+
+- 背景：部分 `sdvd/server:1.5.0-preview.121` 候选镜像内的 `/etc/cont-env.d/APP_NAME` 内容是裸 `DockerApp`，容器 init 会把它当 shell 命令执行，导致 server 日志出现 `APP_NAME: /etc/cont-env.d/APP_NAME: 1: DockerApp: not found` 并退出。
+- 新增 `EnsureServerContEnvFix(dataDir)`：在实例目录写入 `.local-container/cont-env/APP_NAME`，内容为 `printf '%s\n' 'DockerApp'`，并幂等迁移 `docker-compose.yml`，把该文件 bind mount 到 `/etc/cont-env.d/APP_NAME:ro`。
+- `Driver.Prepare()`、安装流程和 `doStart()` 都会调用该修正；`doRestart()` 如果发现 compose 新增挂载，会改用 `docker compose up` 让容器按新挂载重建。
+- 影响文件：`compose_template.go`、`server_env_fix.go`、`driver.go`、`installer.go`、`lifecycle.go` 及对应测试。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo`。
+
 # NEXUS-NETWORK-DIAGNOSTICS-1 Nexus 搜索防短断与错误诊断
 
 - `handleModNexusSearch()` 调用 Nexus GraphQL 时不再直接使用浏览器请求的 `r.Context()`，改为 `context.WithTimeout(context.WithoutCancel(r.Context()), 20*time.Second)`，避免前端刷新、切页、FRP/NAS 链路短断把上游 Nexus 搜索提前取消并报 `nexus request failed`。

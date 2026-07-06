@@ -60,6 +60,7 @@ const junimoComposeTemplate = `services:
       - ./.local-container/saves:/config/xdg/config/StardewValley
       - ./.local-container/settings:/data/settings
       - ./.local-container/control:/data/control
+      - ./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro
       - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
       - ./.local-container/mods:/data/Mods
 

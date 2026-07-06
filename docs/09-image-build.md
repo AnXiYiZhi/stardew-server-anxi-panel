@@ -1,3 +1,10 @@
+# JUNIMO-APPNAME-CONTENV-FIX-1 JunimoServer 镜像启动兼容
+
+- 部分上游 `sdvd/server:1.5.0-preview.121` 镜像在 `/etc/cont-env.d/APP_NAME` 内写入裸 `DockerApp`，会导致容器 init 执行时报 `DockerApp: not found`。
+- 面板不再要求用户使用本地热修 server 镜像；实例目录会自动生成 `.local-container/cont-env/APP_NAME` 并 bind mount 到 server 容器内覆盖该文件。
+- 该修复不改变 `SERVER_IMAGE` / `SERVER_IMAGE_CANDIDATES` 的选择逻辑，也不会影响镜像拉取兜底。离线部署时只需保证 panel 镜像更新到包含本修复的版本。
+- 排查命令：`grep -n "cont-env/APP_NAME" /path/to/instance/docker-compose.yml`，以及查看实例目录 `.local-container/cont-env/APP_NAME`。
+
 # SMAPI 运行环境预安装
 
 - 面板镜像本身不内置 SMAPI。安装 Stardew 时，后端会在游戏文件和 Steam SDK 完成后，用已选择的 JunimoServer 镜像启动一次性 `docker run --rm` 容器，挂载 `<project>_game-data:/data/game` 并安装 SMAPI。

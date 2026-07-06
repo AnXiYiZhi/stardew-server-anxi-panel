@@ -123,6 +123,7 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		filepath.Join(".local-container", "saves-templates"),
 		filepath.Join(".local-container", "control"),
 		filepath.Join(".local-container", "control", "commands"),
+		filepath.Join(".local-container", "cont-env"),
 		filepath.Join(".local-container", "mods"),
 		filepath.Join(".local-container", "mods-disabled"),
 	} {
@@ -150,6 +151,9 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		d.logger.Info("wrote docker-compose.yml", "instance", instance.ID)
 	} else {
 		return fmt.Errorf("stat docker-compose.yml: %w", err)
+	}
+	if _, err := EnsureServerContEnvFix(instance.DataDir); err != nil {
+		return fmt.Errorf("ensure server cont-env fix: %w", err)
 	}
 
 	// Write .env only when not already present.

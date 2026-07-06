@@ -174,6 +174,11 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "已添加 mods 目录挂载到 docker-compose.yml。")
 	}
+	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
+		return fmt.Errorf("ensure server cont-env fix: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "JunimoServer APP_NAME startup compatibility mount has been applied.")
+	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
 	if r.steamCMDDirect {
 		_, _ = jobCtx.Info(ctx, "本次安装将跳过 steam-auth，直接复用已保存凭据和 SteamCMD 授权缓存下载/校验游戏文件。")

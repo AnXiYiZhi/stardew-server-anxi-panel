@@ -1,3 +1,24 @@
+# JUNIMO-APPNAME-CONTENV-FIX-1 JunimoServer APP_NAME 启动兼容挂载
+## 背景
+- 真实部署中 server 容器反复输出 `APP_NAME: /etc/cont-env.d/APP_NAME: 1: DockerApp: not found`，这是 JunimoServer 镜像内 cont-env 脚本格式问题，不是面板 API、Steam 授权或 SMAPI 挂载问题。
+- 以前现场能跑通，是因为手动使用过本地热修镜像；更新/重装后回到候选 `sdvd/server:1.5.0-preview.121` 就会复现。
+## 改了什么
+- 新增 `server_env_fix.go`，实例目录生成 `.local-container/cont-env/APP_NAME`，脚本输出 `DockerApp`。
+- 新实例 compose 模板新增 `./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro`。
+- 旧实例由 `EnsureServerContEnvFix()` 幂等迁移 compose；Prepare、安装、启动都会调用。重启时如果本次刚迁移 compose，改用 `ComposeUp` 让容器重建并应用新挂载。
+## 影响文件
+- `backend/internal/games/stardew_junimo/compose_template.go`
+- `backend/internal/games/stardew_junimo/server_env_fix.go`
+- `backend/internal/games/stardew_junimo/driver.go`
+- `backend/internal/games/stardew_junimo/installer.go`
+- `backend/internal/games/stardew_junimo/lifecycle.go`
+- `backend/internal/games/stardew_junimo/server_env_fix_test.go`
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo`
+- 现场排查：实例 `docker-compose.yml` 应包含 `/etc/cont-env.d/APP_NAME:ro`，实例目录应存在 `.local-container/cont-env/APP_NAME`。
+## 下一步注意事项
+- 这是对上游 server 镜像的兼容遮罩，不改变 `SERVER_IMAGE_CANDIDATES`。如果未来 JunimoServer 镜像修复了该文件，挂载仍然是安全幂等的。
+
 # NEXUS-NETWORK-DIAGNOSTICS-1 Nexus 搜索失败修复
 
 ## 背景
