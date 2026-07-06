@@ -1,3 +1,9 @@
+# NEWGAME-TIMEOUT-WRONG-SAVE-1 新建存档超时回退旧存档修复
+
+- `lifecycle.go` `sendNewGameCommand()`：`POST /newgame` 是同步阻塞（要生成完整世界才返回），超时由 30s 提到 **4 分钟**；超时/出错不再直接判失败，改为 Warn 后继续走「等新存档落盘」轮询。
+- 发请求前记录 `gameloader.json` 的现有 `SaveNameToLoad` 为 `prevSave`，轮询要求新存档名 `!= prevSave`，避免把持久化 `saves/` 里残留的旧存档误当成新建存档（删 `game-data` 卷不删存档，旧存档会残留）。
+- 详见 `docs/backend-handoff/backend-handoff-2026-07-06.md` 的 `NEWGAME-TIMEOUT-WRONG-SAVE-1`。
+
 # STEAMCMD-SPLIT-SDK-1 SteamCMD 游戏与 SDK 分段下载
 
 - 修复云服上 SteamCMD 在 `Success! App '413150' fully installed.` 后继续同一会话切换 `+force_install_dir /data/game/.steam-sdk +app_update 1007` 时出现 `Please use force_install_dir before logon!` 并段错误退出 `139` 的问题。

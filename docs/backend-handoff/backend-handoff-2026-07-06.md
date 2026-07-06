@@ -1,3 +1,27 @@
+# NEWGAME-TIMEOUT-WRONG-SAVE-1 新建存档超时导致回退到旧存档
+
+## 背景（现场实证）
+- 全新安装后启动服务器建新存档（test / 海滩 / 3 联机小屋），日志出现 `创建新存档失败（服务器将继续加载已有存档）：POST /newgame: docker compose exec: docker command timed out`，最终**加载了删游戏文件之前残留的旧存档 1111**，而不是新建的 test。
+- 根因：`sendNewGameCommand()` 里 `POST /newgame` 只给 **30 秒**超时。JunimoServer 的 `/newgame` 是**同步阻塞**——要把整个世界生成完才返回；全新首次冷启动 + 2 核小机器满载，生成要 1~3 分钟，30 秒必然超时。
+- 超时后代码直接 `return err` 判失败，**没进入后面 5 分钟「等存档落盘」轮询**；上层只 Warn 不阻断，于是回退加载已有存档。存档目录在持久化 bind mount（`instances/stardew/saves/`），删 `game-data` 卷不会删存档，所以旧 1111 还在、`gameloader.json` 仍指向它 → 被加载。
+
+## 改了什么（`lifecycle.go` `sendNewGameCommand()`）
+- `POST /newgame` 超时 30s → **4 分钟**，避免生成中途 curl 被杀。
+- 超时/出错**不再 `return err`**，改为 Warn 后继续走「等新存档落盘」轮询（服务器可能仍在后台生成）。
+- 发请求前先记下 `gameloader.json` 现有 `SaveNameToLoad`（`prevSave`）；轮询要求检测到的存档名 **`!= prevSave`**，避免把残留旧存档误报成新建存档。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/lifecycle.go`
+
+## 如何验证
+- `cd backend; go build ./... && go test ./internal/games/stardew_junimo/...`
+- 真实服务器：重新发版后停服 → 再次「新建存档」，应能等到 test 存档生成并加载，不再回退到旧存档；日志不再是 30 秒即超时判失败。
+
+## 下一步注意事项
+- 若 2 核机器世界生成仍超过 4 分钟 POST 超时，靠后面 5 分钟轮询兜底（总计约 9 分钟）；如仍不够可再调大。
+- 旧存档 1111 仍在 `saves/Saves/`，`prevSave` 机制不会误认它，但用户如需干净测试可手动删除。
+- SMAPI 下载 curl 已加传输超时：`--speed-limit 1024 --speed-time 30`（30s 低于 1KB/s 就放弃、换下一个镜像源），解决慢镜像「连上却不传」长时间不换源的隐患；正常慢速源（本次约 70KB/s）远高于阈值不受影响。改在 `installer.go` 的 SMAPI 预安装脚本。
+
 # STEAMCMD-ANON-SDK-FULL-LOGIN-1 游戏段完整登录 + SDK 段匿名，废弃只用户名缓存模式
 
 > 说明：本条取代同日先前两版草稿（SDK 只用户名复用登录 / 139 清缓存后强制重登）。那两版基于「游戏段登录会在容器里缓存出可复用令牌」的错误假设——现场实证该环境根本不持久化可复用凭据，故 SDK 只用户名登录同样会挂。以本条为准。
