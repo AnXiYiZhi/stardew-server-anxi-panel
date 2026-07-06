@@ -2,6 +2,7 @@
 
 - 修复云服上 SteamCMD 在 `Success! App '413150' fully installed.` 后继续同一会话切换 `+force_install_dir /data/game/.steam-sdk +app_update 1007` 时出现 `Please use force_install_dir before logon!` 并段错误退出 `139` 的问题。
 - `buildSteamCMDOpts()` 仍使用同一个一次性 SteamCMD 容器和同一套缓存卷，但容器内拆成两次独立 SteamCMD 进程：第一次 `+force_install_dir /data/game +login ... +app_update 413150 validate +quit`，第二次 `+force_install_dir /data/game/.steam-sdk +login ... +app_update 1007 validate +quit`。
+- 旧实例 `.env` 中残留的 `docker.m.daocloud.io/steamcmd/steamcmd:latest` 会被过滤，不再因为本地已有旧 daocloud 镜像而优先使用它。若 SteamCMD 仍以 `139` 段错误退出，后端会删除 `steamcmd-user-local` / `steamcmd-root-local` 自更新缓存卷并自动重试一次，保留登录授权卷和游戏文件。
 - 缓存授权路径仍使用用户名登录，不把 Steam 密码传给 SteamCMD；完整登录路径两次进程都使用账号密码，第一轮授权成功后的缓存可被第二轮复用。
 - 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。

@@ -35,6 +35,7 @@ type fakeDocker struct {
 	steamAuthRuns     int
 	steamAuthLines    []string
 	containerCode     int
+	containerCodes    []int
 	containerErr      error
 	containerRuns     int
 	containerLines    []string
@@ -113,7 +114,12 @@ func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.Contain
 	for _, line := range f.containerLines {
 		lineHandler(line)
 	}
-	return f.containerCode, f.containerErr
+	code := f.containerCode
+	if len(f.containerCodes) > 0 {
+		code = f.containerCodes[0]
+		f.containerCodes = f.containerCodes[1:]
+	}
+	return code, f.containerErr
 }
 
 func (f *fakeDocker) RemoveVolumes(_ context.Context, _ string, names []string) (paneldocker.CommandResult, error) {
@@ -651,6 +657,72 @@ func TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure(t *t
 	}
 }
 
+func TestDriverInstallRetriesSteamCMDAfterSegfaultClearsRuntimeCache(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Logged in as [U:1:1231122837]",
+			"[SteamAuth:A0] Downloading app 413150...",
+			"[SteamService] Game download failed: Download manifest failed across all CDN servers (403 Forbidden)",
+		},
+		containerCodes: []int{139, 0},
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if fake.containerRuns != 2 {
+		t.Fatalf("expected SteamCMD to retry once after exit 139, ran %d times", fake.containerRuns)
+	}
+	wantVolumes := []string{
+		storage.DefaultInstanceID + "_steamcmd-user-local",
+		storage.DefaultInstanceID + "_steamcmd-root-local",
+	}
+	for _, name := range wantVolumes {
+		if !stringSliceContains(fake.removedVolumes, name) {
+			t.Fatalf("expected SteamCMD runtime cache volume %q to be removed, got %v", name, fake.removedVolumes)
+		}
+	}
+}
+
 func TestDriverInstallTriesNextSteamCMDImageCandidateAfterPullFailure(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
@@ -737,7 +809,7 @@ func TestDriverInstallTriesNextSteamCMDImageCandidateAfterPullFailure(t *testing
 
 func TestSteamCMDImageRefsUsesMirrorCandidatesBeforeExistingCandidates(t *testing.T) {
 	envVals := map[string]string{
-		"STEAMCMD_IMAGE_CANDIDATES": "docker.xuanyuan.me/steamcmd/steamcmd:latest,steamcmd/steamcmd:latest,ghcr.io/steamcmd/steamcmd:latest,cm2network/steamcmd:latest",
+		"STEAMCMD_IMAGE_CANDIDATES": "docker.xuanyuan.me/steamcmd/steamcmd:latest,steamcmd/steamcmd:latest,docker.m.daocloud.io/steamcmd/steamcmd:latest,ghcr.io/steamcmd/steamcmd:latest,cm2network/steamcmd:latest",
 	}
 	refs := steamCMDImageRefs(envVals)
 	want := []string{

@@ -4,6 +4,8 @@
 - `buildSteamCMDOpts()` 不再把 `413150` 与 `1007` 放在同一个 SteamCMD 会话里连续执行。
 - 新流程仍是一个 Docker one-shot 容器，但容器内先运行一次 SteamCMD 下载/校验 `413150` 到 `/data/game`，退出后再运行第二次 SteamCMD 下载/校验 `1007` 到 `/data/game/.steam-sdk`。
 - 这样保证每次 `+force_install_dir` 都在对应 `+login` 前设置，避免真实云服日志中的 `Please use force_install_dir before logon!` 后 SteamCMD `Segmentation fault (exit 139)`。
+- `appendSteamCMDImageRef()` 过滤旧 `docker.m.daocloud.io/steamcmd/steamcmd:latest`，避免旧实例因为本地已有 daocloud 镜像而继续选中它。
+- `runSteamCMDFallback()` 遇到 exit code `139` 时，会删除 `<project>_steamcmd-user-local` 和 `<project>_steamcmd-root-local` 后自动重试一次；不会删除 `steamcmd-login` / `steamcmd-home`，因此 SteamCMD 授权缓存仍保留。
 
 ## 影响文件
 - `backend/internal/games/stardew_junimo/installer.go`
@@ -12,6 +14,7 @@
 ## 如何验证
 - `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
 - 真实服务器重试安装时，日志应出现 `Running SteamCMD app_update 413150...` 和 `Running SteamCMD app_update 1007...`，且不应再出现 `Please use force_install_dir before logon!`。
+- 如果首次仍出现 `exit code 139`，应看到自动清理 runtime cache 并再次启动 SteamCMD；第二次不应继续使用 `docker.m.daocloud.io/steamcmd/steamcmd:latest`。
 
 ## 下一步注意事项
 - 不要为了减少进程数把两个 `app_update` 合并回同一条 SteamCMD 命令；SteamCMD 对 `force_install_dir` 的位置敏感，SDK 阶段容易崩溃。
