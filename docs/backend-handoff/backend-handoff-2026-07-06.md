@@ -5,7 +5,7 @@
 - 邀请码走 Steam SDR/Galaxy P2P，需要**真实 Steam 账号登录**（`STEAM_REFRESH_TOKEN`）。用户环境 token 为空（游戏文件走了 SteamCMD 兜底、steam-auth 下载失败），所以邀请码永远 `n/a`，却一直显示「获取中」。
 
 ## 改了什么（本次已完成 ①②③提示）
-- **①（`lifecycle.go`）**：`doStart`/`doRestart` 在服务器就绪、置 `Running` 后**立即完成 job**（前端显示「启动完成」）；新增 `pollInviteCodeBackground()`——后台协程用 `context.Background()` 轮询邀请码，拿到后 `updateDriverPayloadInviteCode`，并在实例非 `Running`（停服/重启）时自动退出，不泄漏。
+- **①（`lifecycle.go`）——后端任务/日志保持原样**：`doStart`/`doRestart` 仍先置 `Running`（`server_initializing`）再跑 `waitForReadyState`，**任务日志继续输出「等待邀请码 第N次…」进度**，用户能看到邀请码拉到哪一步；拿到就写 payload、超时则「邀请码待就绪」。启动是否成功**不由 job/邀请码判定**，改由前端「host 主机在线」判定（见下）。（曾短暂改成「提前结束 job + 后台协程轮询」，按需求已还原。）
 - **②（`config/env.go` + `web/instance_handlers.go`）**：新增 `config.SteamAuthLoggedIn(dataDir)` = **`STEAM_AUTH_COMPLETED=="true"`**（认证成功过一次即算登录）。**更正**：早先误用 `STEAM_REFRESH_TOKEN` 非空判定——错的，正常可用环境该字段也是空（用户本地实测空 token 照样出邀请码），登录持久化不靠它，按「日志认证成功」即 `STEAM_AUTH_COMPLETED` 判定。`instanceStateResponse.steamAuthLoggedIn` 返回给前端。
 - **③前端（`InviteCodeCard.tsx` + `types.ts` + `OverviewPage.tsx`）**：`steamAuthLoggedIn===false`（从未认证）时邀请码显示「需登录 Steam 授权」+【登录授权】按钮，点击 **`onNavigate('install')` 跳转安装页**去完成认证；已认证过则正常显示/获取邀请码。
 
