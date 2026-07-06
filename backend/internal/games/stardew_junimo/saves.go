@@ -677,6 +677,11 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 			"CabinStrategy":         "CabinStack",
 			"SeparateWallets":       separateWallets,
 			"ExistingCabinBehavior": "KeepExisting",
+			// Enable IP direct-connect by default. Invite codes go through Steam
+			// SDR / Galaxy P2P and can fail independently (they often stall at
+			// "n/a" behind cloud networking); IP direct-connect is the more
+			// reliable join path, so it must be on out of the box.
+			"AllowIpConnections": true,
 		},
 	}
 
@@ -696,6 +701,43 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 		return err
 	}
 	return writeNewGamePendingMarker(dataDir)
+}
+
+// EnsureServerSettingsDefaults makes sure server-settings.json carries the
+// runtime defaults every server start should have, without clobbering any
+// existing keys. Currently it guarantees Server.AllowIpConnections=true so
+// existing saves (created before this default) also get IP direct-connect on
+// their next start — invite codes via Steam SDR / Galaxy P2P can stall, so IP
+// direct-connect must be available. Best-effort: callers log and continue on error.
+func EnsureServerSettingsDefaults(dataDir string) error {
+	settingsPath := serverSettingsPath(dataDir)
+	root := map[string]any{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		if err := json.Unmarshal(data, &root); err != nil {
+			return fmt.Errorf("parse server-settings.json: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read server-settings.json: %w", err)
+	}
+
+	server, _ := root["Server"].(map[string]any)
+	if server == nil {
+		server = map[string]any{}
+	}
+	if _, ok := server["AllowIpConnections"]; ok {
+		return nil // already set (either value): respect it, nothing to do.
+	}
+	server["AllowIpConnections"] = true
+	root["Server"] = server
+
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		return fmt.Errorf("create settings dir: %w", err)
+	}
+	data, err := marshalJSON(root)
+	if err != nil {
+		return fmt.Errorf("marshal server-settings.json: %w", err)
+	}
+	return os.WriteFile(settingsPath, data, 0o644)
 }
 
 // normalizeCfg applies defaults.

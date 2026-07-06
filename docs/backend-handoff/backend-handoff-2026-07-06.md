@@ -1,3 +1,27 @@
+# IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
+
+## 背景（现场实证）
+- 服务器启动加载存档后日志出现 `IP connections disabled (default). Players must use invite codes to join.`，而邀请码走 Steam SDR / Galaxy P2P 一直 `Invite Code: n/a`（`SDR relay status: k_ESteamNetworkingAvailability_Waiting`）→ 玩家既没邀请码、又没 IP 直连，根本进不去。
+- 根因：`WriteServerSettings()` 写的 `server-settings.json` 的 `Server` 段**没有 `AllowIpConnections` 字段**，JunimoServer 回落到默认「关闭」。参考项目 `StardewValleyServerKit` 默认就是 `Server.AllowIpConnections=true`（sdv-server.sh、admin-panel.js），并注明邀请码与 IP 直连相互独立、邀请码可能单独失败。
+
+## 改了什么
+- `saves.go WriteServerSettings()`：`Server` 段新增 `"AllowIpConnections": true`（新建存档默认开 IP 直连）。
+- 新增 `saves.go EnsureServerSettingsDefaults(dataDir)`：幂等地确保 `server-settings.json` 的 `Server.AllowIpConnections` 存在（缺失才补 true，已显式设置则尊重不覆盖），并合并保留其它键。
+- `lifecycle.go doStart()`：`ComposeUp` 前调用 `EnsureServerSettingsDefaults`（best-effort），使**已有存档**（如本次 test2，建时还没这默认）重启后也能拿到 IP 直连。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/saves.go`
+- `backend/internal/games/stardew_junimo/lifecycle.go`
+- `backend/internal/games/stardew_junimo/saves_test.go`（新增 `TestEnsureServerSettingsDefaults`，`TestWriteServerSettings_ValidConfig` 加 `AllowIpConnections` 断言）
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo/ -run ServerSettings`
+- 真实服务器：重新发版后重启服务器，日志应变为「IP connections enabled」类；玩家可用 `服务器IP:24642` 直连（**需在安全组放行 UDP 24642**），不再必须等邀请码。
+
+## 下一步注意事项
+- IP 直连要真正可用，云安全组必须放行 **UDP 24642**（Stardew）/ 视情况 27015。邀请码（Steam SDR）卡 `n/a` 是独立的 Steam 中继/网络问题，本改动不修它，只是提供更可靠的 IP 直连通道绕过它。
+- 后续如需前端可切换 IP 直连开关，再把它提升为 `NewGameConfig` 字段 + UI；当前是默认 true。
+
 # NEWGAME-TIMEOUT-WRONG-SAVE-1 新建存档超时导致回退到旧存档
 
 ## 背景（现场实证）

@@ -1,3 +1,9 @@
+# IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
+
+- `saves.go WriteServerSettings()` 的 `Server` 段新增 `"AllowIpConnections": true`；JunimoServer 默认关闭 IP 直连（日志 `IP connections disabled (default)`），邀请码走 Steam SDR/Galaxy P2P 可能单独失败（卡 `Invite Code: n/a`），故默认开 IP 直连作为可靠 join 通道。
+- 新增 `EnsureServerSettingsDefaults(dataDir)`，`lifecycle.go doStart()` 在 `ComposeUp` 前调用：幂等确保 `server-settings.json` 的 `Server.AllowIpConnections`（缺失补 true、显式值尊重），让已有存档重启也生效。
+- 真机需在安全组放行 UDP 24642 才能真正 IP 直连。详见接手文档 `IP-DIRECT-CONNECT-DEFAULT-ON-1`。
+
 # NEWGAME-TIMEOUT-WRONG-SAVE-1 新建存档超时回退旧存档修复
 
 - `lifecycle.go` `sendNewGameCommand()`：`POST /newgame` 是同步阻塞（要生成完整世界才返回），超时由 30s 提到 **4 分钟**；超时/出错不再直接判失败，改为 Warn 后继续走「等新存档落盘」轮询。
