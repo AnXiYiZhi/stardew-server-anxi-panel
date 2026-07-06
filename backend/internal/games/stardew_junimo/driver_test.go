@@ -1174,7 +1174,7 @@ func TestDriverInstallReRunsSteamAuthAfterPullFailureRetry(t *testing.T) {
 	}
 }
 
-func TestDriverInstallRepairUsesSteamCMDCacheLogin(t *testing.T) {
+func TestDriverInstallRepairUsesFullLoginAndAnonymousSDK(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
 		DataDir: dataDir,
@@ -1206,8 +1206,10 @@ func TestDriverInstallRepairUsesSteamCMDCacheLogin(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set installed phase: %v", err)
 	}
-	// Simulate an instance that has already authorized SteamCMD once, so repair
-	// reuses the cached (username-only) login instead of a full password login.
+	// Simulate an instance that has already authorized SteamCMD once. Repair still
+	// skips steam-auth and the compose pull, but the game login is always a full
+	// username+password login (this environment never caches a reusable
+	// credential), and the SDK downloads anonymously.
 	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 		t.Fatalf("mkdir instance: %v", err)
 	}
@@ -1248,14 +1250,14 @@ func TestDriverInstallRepairUsesSteamCMDCacheLogin(t *testing.T) {
 		t.Fatalf("expected SteamCMD container to run once, ran %d times", fake.containerRuns)
 	}
 	command := strings.Join(fake.containerOpts.Command, " ")
-	if !strings.Contains(command, `+login "$STEAM_USERNAME" +app_update 413150`) {
-		t.Fatalf("repair should use cached SteamCMD login without password, command=%q", command)
+	if !strings.Contains(command, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("repair game download should use a full username+password login, command=%q", command)
 	}
-	if !strings.Contains(command, `+login "$STEAM_USERNAME" +app_update 1007`) {
-		t.Fatalf("repair should use cached SteamCMD login for Steam SDK without password, command=%q", command)
+	if !strings.Contains(command, `+login anonymous +app_update 1007`) {
+		t.Fatalf("repair Steam SDK download should use anonymous login, command=%q", command)
 	}
-	if strings.Contains(command, `"$STEAM_PASSWORD" +app_update 413150`) || strings.Contains(command, `"$STEAM_PASSWORD" +app_update 1007`) {
-		t.Fatalf("repair should not pass Steam password to SteamCMD login, command=%q", command)
+	if strings.Contains(command, `"$STEAM_USERNAME" +app_update 1007`) || strings.Contains(command, `"$STEAM_PASSWORD" +app_update 1007`) {
+		t.Fatalf("Steam SDK download must not pass account credentials, command=%q", command)
 	}
 }
 
@@ -1347,6 +1349,26 @@ func stringSliceContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestBuildSteamCMDOptsGameFullLoginSDKAnonymous(t *testing.T) {
+	opts := (&installRunner{instance: storage.Instance{DataDir: "/data/instances/stardew"}}).buildSteamCMDOpts("img:latest")
+	script := opts.Command[len(opts.Command)-1]
+
+	// The game (413150) always does a full username+password login: this SteamCMD
+	// environment never caches a reusable credential, so a username-only login
+	// would hang on "Cached credentials not found."
+	if !strings.Contains(script, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("game command should do a full username+password login, got:\n%s", script)
+	}
+	// The SDK (1007) is public and must download anonymously so it never needs
+	// credentials or a second Steam Guard approval.
+	if !strings.Contains(script, `+login anonymous +app_update 1007`) {
+		t.Fatalf("SDK command should use anonymous login, got:\n%s", script)
+	}
+	if strings.Contains(script, `"$STEAM_USERNAME" +app_update 1007`) || strings.Contains(script, `"$STEAM_PASSWORD" +app_update 1007`) {
+		t.Fatalf("SDK command must not pass account credentials, got:\n%s", script)
+	}
 }
 
 func waitForDriverTestJobStatus(t *testing.T, store *storage.Store, jobID string, status string) storage.Job {
