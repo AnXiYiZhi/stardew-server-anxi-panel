@@ -74,10 +74,11 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   }, [state])
 
   useEffect(() => {
-    if (dashboardData.inviteCode) {
+    // Startup is complete once the server is running (invite code is optional/background).
+    if (state === 'running' || dashboardData.inviteCode) {
       setPendingStartupAction(null)
     }
-  }, [dashboardData.inviteCode])
+  }, [state, dashboardData.inviteCode])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -148,10 +149,11 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
   function renderLifecycleButtons() {
     if (!state) return null
+    // "Starting" ends when the server is running, not when an invite code arrives
+    // (invite codes are optional/background and may never appear).
     const waitingForInvite =
       state === 'starting' ||
-      Boolean(pendingStartupAction) ||
-      (dashboardData.inviteCodeRefreshing && !dashboardData.inviteCode)
+      Boolean(pendingStartupAction)
     const waitingForStop = state === 'stopping' || pendingStopAction
 
     if (state === 'save_required') {
@@ -296,6 +298,7 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
             instanceState={instanceState}
             dashboardData={dashboardData}
             className="sd-overview-invite-card"
+            onNavigate={onNavigate}
           />
         </div>
         {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
