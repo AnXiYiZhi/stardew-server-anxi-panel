@@ -177,6 +177,58 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
 }
 
+// handleInstanceSteamAuthLogin handles POST /api/instances/:id/steam-auth/login.
+// It re-runs ONLY steam-auth using the saved account/password (no re-entry) to obtain
+// a fresh STEAM_REFRESH_TOKEN — required for the server to generate Steam/Galaxy
+// invite codes. The game server must be stopped first: steam-auth and the server
+// share the compose project and would conflict. Steam Guard prompts, if any, reuse
+// the existing POST …/steam-guard/input flow.
+func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
+		writeError(w, http.StatusConflict, "server_running", "请先停止服务器，再登录 Steam 授权（steam-auth 与游戏服务器不能同时运行）。")
+		return
+	}
+	envVals, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "env_read_failed", sanitizeErrorMsg(err, "读取实例配置失败"))
+		return
+	}
+	if envVals["STEAM_USERNAME"] == "" || envVals["STEAM_PASSWORD"] == "" {
+		writeError(w, http.StatusBadRequest, "credentials_missing", "未找到已保存的 Steam 账号密码，请先在安装页面完成一次凭据填写。")
+		return
+	}
+
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	job, err := driver.Install(r.Context(), registry.InstallRequest{
+		Instance:      makeRegistryInstance(instance),
+		ActorID:       actor.User.ID,
+		SteamUsername: envVals["STEAM_USERNAME"],
+		SteamPassword: envVals["STEAM_PASSWORD"],
+		VNCPassword:   envVals["VNC_PASSWORD"],
+		ImageTag:      stardew_junimo.TestedImageTag,
+		AuthLoginOnly: true,
+	})
+	if err != nil {
+		s.logger.Error("steam-auth login failed to start", "instance", instanceID, "error", err)
+		writeError(w, http.StatusInternalServerError, "auth_login_failed", sanitizeErrorMsg(err, "登录授权任务启动失败"))
+		return
+	}
+	s.logger.Info("steam-auth login job started", "instance", instanceID, "job_id", job.ID, "actor", actor.User.ID)
+	s.auditLog(r, &actor, "instance_steam_auth_login", "instance", instanceID, auditMetadata("jobId", job.ID))
+	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
+}
+
 // steamGuardInputBody is the JSON body for POST …/steam-guard/input.
 type steamGuardInputBody struct {
 	JobID string `json:"jobId"`
