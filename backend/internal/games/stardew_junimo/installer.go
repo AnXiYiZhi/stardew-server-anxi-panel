@@ -33,15 +33,25 @@ var (
 )
 
 // installRunner carries everything needed to execute one install job.
+//
+// Three orthogonal routing decisions replace the old single steamCMDRetry flag:
+//   - reuse:          reuse saved credentials without re-prompting for input.
+//   - steamCMDDirect: skip image pull + steam-auth, resume the SteamCMD path.
+//   - steamCMDUseCache: SteamCMD logs in with the cached authorization
+//     (username only) instead of a full username+password login. Derived from
+//     the persisted STEAMCMD_AUTH_COMPLETED flag in run().
+//   - forceReauth:    clear saved auth caches and re-run the full auth flow.
 type installRunner struct {
-	driver        *Driver
-	instance      storage.Instance
-	username      string
-	password      string // never logged
-	vncPass       string // never logged
-	imageTag      string
-	autoMode      bool
-	steamCMDRetry bool
+	driver           *Driver
+	instance         storage.Instance
+	username         string
+	password         string // never logged
+	vncPass          string // never logged
+	imageTag         string
+	reuse            bool
+	steamCMDDirect   bool
+	steamCMDUseCache bool
+	forceReauth      bool
 }
 
 type steamAuthMode string
@@ -86,11 +96,23 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在写入 .env 凭据...")
 	envPath := r.instance.DataDir + "/.env"
 	envVals, _ := sjconfig.ReadEnvFile(envPath)
+	// steamCMDUseCache: only trust the persisted SteamCMD authorization cache when
+	// we are NOT forcing a fresh re-auth. Absent flag ⇒ full login (safe default).
+	r.steamCMDUseCache = !r.forceReauth && strings.EqualFold(envVals["STEAMCMD_AUTH_COMPLETED"], "true")
 	updates := map[string]string{
 		"IMAGE_VERSION":  r.imageTag,
 		"STEAM_USERNAME": r.username,
 		"STEAM_PASSWORD": r.password,
 		"VNC_PASSWORD":   r.vncPass,
+	}
+	if r.forceReauth {
+		// Changing account / password: drop the saved Steam refresh token and both
+		// "auth completed" flags, then wipe the cached auth volumes so the old
+		// account's session cannot shadow the new login. Game files are preserved.
+		updates["STEAM_REFRESH_TOKEN"] = ""
+		updates["STEAMCMD_AUTH_COMPLETED"] = ""
+		updates["STEAM_AUTH_COMPLETED"] = ""
+		r.clearAuthVolumes(ctx, jobCtx)
 	}
 	ensureEnvDefault(updates, envVals, "SERVER_IMAGE", serverImageDefault(r.imageTag))
 	ensureEnvDefault(updates, envVals, "SERVER_IMAGE_CANDIDATES", serverImageCandidatesDefault(r.imageTag))
@@ -104,6 +126,8 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	}
 	ensureEnvDefault(updates, envVals, "STEAMCMD_IMAGE", DefaultSteamCMDImage)
 	ensureEnvDefault(updates, envVals, "STEAMCMD_IMAGE_CANDIDATES", DefaultSteamCMDImageCandidates)
+	ensureEnvDefault(updates, envVals, "SMAPI_VERSION", DefaultSMAPIVersion)
+	ensureEnvDefault(updates, envVals, "SMAPI_DOWNLOAD_URLS", DefaultSMAPIDownloadURLs)
 	if normalized := steamCMDImageCandidatesValue(envVals["STEAMCMD_IMAGE_CANDIDATES"]); normalized != "" && normalized != strings.TrimSpace(envVals["STEAMCMD_IMAGE_CANDIDATES"]) {
 		updates["STEAMCMD_IMAGE_CANDIDATES"] = normalized
 	}
@@ -146,7 +170,7 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		_, _ = jobCtx.Info(ctx, "已添加 mods 目录挂载到 docker-compose.yml。")
 	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
-	if r.steamCMDRetry {
+	if r.steamCMDDirect {
 		_, _ = jobCtx.Info(ctx, "本次安装将跳过 steam-auth，直接复用已保存凭据和 SteamCMD 授权缓存下载/校验游戏文件。")
 		guardCh := make(chan string, 8)
 		r.driver.setGuardChan(jobCtx.ID, guardCh)
@@ -154,7 +178,9 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		if err := r.runSteamCMDFallback(ctx, jobCtx, guardCh); err != nil {
 			return err
 		}
-		r.markInstallSucceeded(jobCtx)
+		if err := r.completeInstall(ctx, jobCtx); err != nil {
+			return err
+		}
 		return nil
 	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
@@ -290,7 +316,7 @@ func (r *installRunner) runSteamAuth(ctx context.Context, jobCtx *jobs.Context) 
 	}()
 
 	mode := steamAuthModeCredentials
-	if r.autoMode {
+	if r.reuse {
 		_, _ = jobCtx.Info(ctx, "复用已保存的 Steam 凭据，直接校验并下载游戏文件。")
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateSteamAuthRunning,
 			"正在复用已保存的 Steam 凭据校验已有文件并继续下载...", "game_downloading", jobCtx.ID)
@@ -499,9 +525,22 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	// RunSteamAuthTTY creates the container via Docker API with Tty:true so
 	// Console.ReadKey() works for the Steam Guard method selection menu.
 	exitCode, cmdErr := r.driver.docker.RunSteamAuthTTY(ctx, r.instance.DataDir, r.buildSteamAuthOpts(mode), guardCh, lineHandler)
+
+	// Persist that Steam authentication itself succeeded as soon as we get past
+	// the login (game depot download started, SDK downloaded, or an explicit
+	// success line). This is durable across sessions and lets every later
+	// operation skip the interactive steam-auth step even if the download stage
+	// later fails or the install is interrupted. downloadFailed still implies the
+	// login succeeded (only the depot transfer failed).
+	if authSucceeded || sdkDownloaded || downloadFailed || currentApp != "" {
+		r.markSteamAuthCompleted(jobCtx)
+	}
+
 	if cmdErr != nil {
 		if sdkDownloaded {
-			r.markInstallSucceeded(jobCtx)
+			if err := r.completeInstall(ctx, jobCtx); err != nil {
+				return false, err
+			}
 			return false, nil
 		}
 		if authSucceeded {
@@ -523,7 +562,9 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 
 	if ctx.Err() != nil {
 		if sdkDownloaded {
-			r.markInstallSucceeded(jobCtx)
+			if err := r.completeInstall(ctx, jobCtx); err != nil {
+				return false, err
+			}
 			return false, nil
 		}
 		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
@@ -546,7 +587,9 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		if err := r.runSteamCMDFallback(ctx, jobCtx, guardCh); err != nil {
 			return false, err
 		}
-		r.markInstallSucceeded(jobCtx)
+		if err := r.completeInstall(ctx, jobCtx); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 
@@ -578,7 +621,9 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	if authSucceeded {
-		r.markInstallSucceeded(jobCtx)
+		if err := r.completeInstall(ctx, jobCtx); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 
@@ -586,6 +631,71 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		"Steam 认证失败，请检查日志并重试。", "steam_auth_failed", jobCtx.ID)
 	_, _ = jobCtx.Error(context.Background(), fmt.Sprintf("steam-auth 以退出码 %d 结束。", exitCode))
 	return false, fmt.Errorf("steam-auth download exited with code %d", exitCode)
+}
+
+// clearAuthVolumes removes the Steam session and SteamCMD authorization volumes
+// so a new Steam account/password can log in cleanly. game-data is preserved.
+// Best-effort: failures (e.g. a volume in use) are logged but do not abort.
+func (r *installRunner) clearAuthVolumes(ctx context.Context, jobCtx *jobs.Context) {
+	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	names := []string{
+		projectName + "_steam-session",
+		projectName + "_steamcmd-login",
+		projectName + "_steamcmd-home",
+		projectName + "_steamcmd-user-local",
+		projectName + "_steamcmd-root-local",
+	}
+	_, _ = jobCtx.Info(ctx, "更换账号：正在清除已保存的 Steam / SteamCMD 授权缓存（游戏文件保留）...")
+	if _, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
+		_, _ = jobCtx.Warn(ctx, "清除授权缓存卷时出现问题（可能部分卷正被容器占用），将继续尝试重新认证："+paneldocker.RedactString(err.Error()))
+	}
+}
+
+// markSteamAuthCompleted persists that Steam authentication has succeeded at
+// least once. It is a durable, cross-session signal that lets later operations
+// skip the interactive steam-auth login step (see authAlreadySucceeded).
+func (r *installRunner) markSteamAuthCompleted(jobCtx *jobs.Context) {
+	if err := sjconfig.UpdateEnvFile(filepath.Join(r.instance.DataDir, ".env"), map[string]string{
+		"STEAM_AUTH_COMPLETED": "true",
+	}); err != nil {
+		_, _ = jobCtx.Warn(context.Background(), "记录 Steam 认证状态失败，后续可能需要再次认证。")
+	}
+}
+
+func (r *installRunner) completeInstall(ctx context.Context, jobCtx *jobs.Context) error {
+	if err := r.ensureSMAPIInstalled(ctx, jobCtx); err != nil {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"SMAPI 运行环境安装失败，请检查任务日志后重试。", "smapi_install_failed", jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), "SMAPI 运行环境安装失败："+paneldocker.RedactString(err.Error()))
+		return fmt.Errorf("install smapi runtime: %w", err)
+	}
+	r.markInstallSucceeded(jobCtx)
+	return nil
+}
+
+func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.Context) error {
+	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
+	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+		"游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境...", "smapi_installing", jobCtx.ID)
+
+	imageRef := envWithDefault(envVals, "SERVER_IMAGE", serverImageDefault(r.imageTag))
+	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[smapi] 使用 JunimoServer 镜像 %s 预安装 SMAPI。", imageRef))
+	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSMAPIInstallOpts(envVals, imageRef), nil, func(line string) {
+		_, _ = jobCtx.Info(context.Background(), "[smapi] "+paneldocker.RedactString(line))
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"安装任务超时，SMAPI 运行环境未安装完成，请重试安装。", "install_timeout", jobCtx.ID)
+			return fmt.Errorf("smapi preinstall timed out: %w", ctx.Err())
+		}
+		return fmt.Errorf("smapi preinstall container: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("smapi preinstall exited with code %d", exitCode)
+	}
+	_, _ = jobCtx.Info(context.Background(), "[smapi] SMAPI 运行环境已安装完成。")
+	return nil
 }
 
 func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
@@ -602,14 +712,14 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	downloadMessage := "steam-auth 国内网络下载失败，正在复用已保存账号密码通过 SteamCMD 兜底下载游戏文件..."
-	if r.steamCMDRetry {
+	if r.steamCMDUseCache {
 		downloadMessage = "正在复用已保存凭据和 SteamCMD 授权缓存下载/校验游戏文件..."
 	}
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 		downloadMessage, "steamcmd_downloading", jobCtx.ID)
 	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[steamcmd] 使用 SteamCMD 镜像 %s。", imageRef))
 	_, _ = jobCtx.Info(context.Background(), "[steamcmd] Docker 镜像检查已完成；后续若看到 [----] Downloading update，是 SteamCMD 客户端自更新，不是 Docker 镜像拉取。")
-	if r.steamCMDRetry {
+	if r.steamCMDUseCache {
 		_, _ = jobCtx.Info(context.Background(), "[steamcmd] 跳过 steam-auth，优先使用已保留的 SteamCMD 登录授权直接下载/校验。")
 	} else {
 		_, _ = jobCtx.Info(context.Background(), "[steamcmd] 使用已保存的 Steam 账号密码启动 SteamCMD 兜底下载；如 Steam 要求重新授权，页面会提示选择手机批准或输入验证码。")
@@ -638,7 +748,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		switch {
 		case isSteamCMDGuardChoiceMenu(lower):
 			guardPrompted = true
-			if r.steamCMDRetry {
+			if r.steamCMDUseCache {
 				credentialFailed = true
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 					"SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。",
@@ -653,7 +763,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		case isSteamCMDMobileApprovalPrompt(lower):
 			guardPrompted = true
 			mobileApproval = true
-			if r.steamCMDRetry {
+			if r.steamCMDUseCache {
 				credentialFailed = true
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 					"SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。",
@@ -665,7 +775,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 				"steamcmd_guard_mobile_required", jobCtx.ID)
 		case isSteamCMDGuardCodePrompt(lower):
 			guardPrompted = true
-			if r.steamCMDRetry {
+			if r.steamCMDUseCache {
 				credentialFailed = true
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 					"SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。",
@@ -680,7 +790,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		case containsAny(lower, "logging in user", "waiting for user info"):
 			if !guardPrompted && !mobileApproval {
 				message := "正在使用已保存账号密码登录 SteamCMD..."
-				if r.steamCMDRetry {
+				if r.steamCMDUseCache {
 					message = "正在使用已保存的 SteamCMD 授权缓存登录..."
 				}
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
@@ -722,6 +832,20 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 			"安装任务超时，SteamCMD 兜底下载未完成，请重试安装。", "install_timeout", jobCtx.ID)
 		return fmt.Errorf("steamcmd fallback timed out: %w", ctx.Err())
 	}
+	if steamCMDLoggedIn || downloadStarted || downloadCompleted {
+		// SteamCMD authorized successfully at least once (explicit "logged in ok",
+		// or it got far enough to start/finish a download — both imply login
+		// succeeded): persist ONLY the SteamCMD flag so its next run reuses the
+		// cached (username-only) login. steam-auth and SteamCMD keep independent
+		// credentials/sessions, so a SteamCMD login must NOT imply steam-auth
+		// succeeded — that is tracked separately by STEAM_AUTH_COMPLETED. Recorded
+		// even if the download later failed, because the authorization is valid.
+		if err := sjconfig.UpdateEnvFile(filepath.Join(r.instance.DataDir, ".env"), map[string]string{
+			"STEAMCMD_AUTH_COMPLETED": "true",
+		}); err != nil {
+			_, _ = jobCtx.Warn(context.Background(), "记录 SteamCMD 授权状态失败，后续可能需要再次授权。")
+		}
+	}
 	if authTimedOut {
 		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 			"SteamCMD 等待 Steam 手机 App 批准超时，请重试并及时批准，或改用验证码方式。", "steamcmd_failed", jobCtx.ID)
@@ -733,7 +857,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		message := "SteamCMD 兜底下载失败，请检查任务日志后重试。"
 		state := storage.InstanceStateError
 		if credentialFailed {
-			if r.steamCMDRetry {
+			if r.steamCMDUseCache {
 				message = "SteamCMD 已保存授权缓存不可用，无法直接修复下载；请先完成一次 SteamCMD 授权后再重试。"
 			} else {
 				phase = "credentials_required"
@@ -881,7 +1005,7 @@ func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress fu
 func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
 	loginCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit`
-	if r.steamCMDRetry {
+	if r.steamCMDUseCache {
 		loginCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit`
 	}
 	suLoginCommand := strings.ReplaceAll(loginCommand, `'`, `'"'"'`)
@@ -909,6 +1033,78 @@ func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.Container
 			projectName + "_steamcmd-login:/root/Steam",
 			projectName + "_steamcmd-home:/root/.steam",
 			projectName + "_steamcmd-root-local:/root/.local/share/Steam",
+			projectName + "_game-data:/data/game",
+		},
+	}
+}
+
+func (r *installRunner) buildSMAPIInstallOpts(envVals map[string]string, imageRef string) paneldocker.ContainerTTYRunOpts {
+	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	version := envWithDefault(envVals, "SMAPI_VERSION", DefaultSMAPIVersion)
+	urls := strings.Join(smapiDownloadURLs(envVals, version), ",")
+	script := `set -eu
+game_dir="/data/game"
+smapi_bin="${game_dir}/StardewModdingAPI"
+version="${SMAPI_VERSION:-4.5.2}"
+if [ -x "${smapi_bin}" ]; then
+  echo "SMAPI already installed at ${smapi_bin}, skipping."
+  exit 0
+fi
+if [ ! -e "${game_dir}/StardewValley" ] && [ ! -e "${game_dir}/Stardew Valley.dll" ]; then
+  echo "Stardew Valley game files are missing under ${game_dir}." >&2
+  exit 2
+fi
+tmp_dir="/tmp/anxi-smapi-install"
+rm -rf "${tmp_dir}"
+mkdir -p "${tmp_dir}/extract"
+ok=""
+for url in $(printf '%s' "${SMAPI_DOWNLOAD_URLS:-}" | tr ',' ' '); do
+  [ -n "${url}" ] || continue
+  echo "Trying SMAPI download: ${url}"
+  if curl -fL --connect-timeout 20 --retry 2 --retry-delay 2 "${url}" -o "${tmp_dir}/smapi.zip"; then
+    if unzip -t "${tmp_dir}/smapi.zip" >/dev/null; then
+      ok="1"
+      break
+    fi
+    echo "Downloaded SMAPI zip is invalid: ${url}" >&2
+  else
+    echo "SMAPI download failed: ${url}" >&2
+  fi
+done
+if [ "${ok}" != "1" ]; then
+  echo "All SMAPI download candidates failed." >&2
+  exit 3
+fi
+unzip -q "${tmp_dir}/smapi.zip" -d "${tmp_dir}/extract"
+installer="${tmp_dir}/extract/SMAPI ${version} installer/internal/linux/SMAPI.Installer"
+if [ ! -f "${installer}" ]; then
+  installer="$(find "${tmp_dir}/extract" -path '*/internal/linux/SMAPI.Installer' -type f | head -n 1)"
+fi
+if [ -z "${installer}" ] || [ ! -f "${installer}" ]; then
+  echo "SMAPI Linux installer was not found in the archive." >&2
+  exit 4
+fi
+chmod +x "${installer}"
+printf "2\n\n" | "${installer}" --install --game-path "${game_dir}"
+if [ ! -x "${smapi_bin}" ]; then
+  echo "SMAPI executable was not created at ${smapi_bin}." >&2
+  exit 5
+fi
+mkdir -p "${game_dir}/smapi-internal"
+cp -rf /data/smapi-config.json "${game_dir}/smapi-internal/config.user.json" 2>/dev/null || true
+rm -rf "${tmp_dir}"
+echo "SMAPI preinstall complete."
+`
+	return paneldocker.ContainerTTYRunOpts{
+		ImageRef:   imageRef,
+		Entrypoint: []string{"/bin/sh"},
+		User:       "root",
+		Command:    []string{"-lc", script},
+		Env: []string{
+			"SMAPI_VERSION=" + version,
+			"SMAPI_DOWNLOAD_URLS=" + urls,
+		},
+		Binds: []string{
 			projectName + "_game-data:/data/game",
 		},
 	}
@@ -956,6 +1152,11 @@ func isSteamCMDGuardCodePrompt(lower string) bool {
 		"enter the current code",
 		"enter verification code",
 		"code sent to",
+		"this computer has not been authenticated",
+		"please check your email",
+		"enter the steam guard",
+		"code from that message",
+		"set_steam_guard_code",
 	)
 }
 
@@ -1073,9 +1274,11 @@ func serverImageCandidatesDefault(imageTag string) string {
 		tag = TestedImageTag
 	}
 	return strings.Join([]string{
+		"dockerproxy.net/sdvd/server:" + tag,
 		"docker.1ms.run/sdvd/server:" + tag,
-		"docker.m.daocloud.io/sdvd/server:" + tag,
-		"ghcr.io/sdvd/server:" + tag,
+		"docker.1panel.live/sdvd/server:" + tag,
+		"docker.jiaxin.site/sdvd/server:" + tag,
+		"dockerproxy.link/sdvd/server:" + tag,
 		"sdvd/server:" + tag,
 	}, ",")
 }
@@ -1127,6 +1330,21 @@ func appendSteamCMDImageRef(values []string, value string) []string {
 		return values
 	}
 	return appendUniqueString(values, value)
+}
+
+func smapiDownloadURLs(envVals map[string]string, version string) []string {
+	value := strings.TrimSpace(envVals["SMAPI_DOWNLOAD_URLS"])
+	if value == "" {
+		value = strings.ReplaceAll(DefaultSMAPIDownloadURLs, DefaultSMAPIVersion, version)
+	}
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+	urls := make([]string, 0, len(fields))
+	for _, field := range fields {
+		urls = appendUniqueString(urls, strings.TrimSpace(field))
+	}
+	return urls
 }
 
 func imageRefsFromEnv(envVals map[string]string, candidatesKey string, defaultCandidates string, primaryKey string, defaultPrimary string) []string {

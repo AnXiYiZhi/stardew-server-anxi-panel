@@ -1,3 +1,37 @@
+# INSTALL-SMAPI-PREINSTALL-1 SDK 后置 SMAPI 预安装
+
+- Stardew 安装流程在游戏文件和 Steam SDK 均完成后，新增最后一步 `smapi_installing`：后端使用 JunimoServer 镜像启动一次性 `docker run --rm` 容器，挂载同一个 `<project>_game-data:/data/game` volume，在 `/data/game` 内安装 SMAPI 运行环境。
+- 该容器不是常驻服务，不新增需要用户维护的 compose service；它只用于稳定访问 Docker named volume 和复用 JunimoServer Linux 环境。若 `/data/game/StardewModdingAPI` 已存在且可执行，会直接跳过。
+- `.env` 新增默认项：`SMAPI_VERSION=4.5.2`，`SMAPI_DOWNLOAD_URLS=` 默认按 `gh.llkk.cc`、`github.dpik.top`、`ghfast.top`、GitHub 官方源依次兜底。安装器会逐个下载并用 `unzip -t` 校验，坏包不会继续使用。
+- SMAPI 安装失败时实例 phase 为 `smapi_install_failed`，任务失败但 Steam/SteamCMD 授权仍视为已通过；用户可复用保存凭据重试后续安装步骤。
+- 影响文件：`backend/internal/games/stardew_junimo/config/env.go`、`backend/internal/games/stardew_junimo/driver.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo`。
+
+# STEAMCMD-EMAIL-GUARD-PROMPT-1 SteamCMD 邮箱验证码分行提示识别
+
+- 修复 SteamCMD 首次在新机器登录时输出邮箱 Steam Guard 提示但后端没有切到 `steamcmd_guard_required` 的问题。SteamCMD 原生日志会把提示拆成多行：`This computer has not been authenticated...`、`Please check your email... enter the Steam Guard`、`code from that message.`、`set_steam_guard_code`，旧 matcher 只识别 `steam guard code` / `code sent to` 等完整短语。
+- `isSteamCMDGuardCodePrompt()` 现在额外识别上述分行提示；`runSteamCMDFallback()` 命中后继续复用现有逻辑，把实例 phase 更新为 `steamcmd_guard_required`，前端通过原有 `POST /api/instances/:id/steam-guard/input` 提交邮箱/App 验证码。
+- 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMDGuardCodePrompt|SteamGuardCodePrompt"`。
+
+# INSTALL-ROUTING-SPLIT-1 安装路由三决策拆分 + 更换账号入口
+
+- 把过去由 `reuseCredentials` 粗暴驱动、且一个 `steamCMDRetry` 字段兼管两职的安装路由，拆成三个正交决策，均按**实例已持久化的 driverPhase/state** + **一个新的 `.env` 标志**推导：
+  - `reuse`：复用已存账密、不再弹表单（= `reuseCredentials`）。
+  - `steamCMDDirect`（driver.go 计算）：`reuse && !forceReauth && (shouldResumeSteamCMD(phase) || authAlreadySucceeded(state, phase))`。为真才跳过拉镜像 + steam-auth 直达 SteamCMD。新增 `authAlreadySucceeded(state, phase)`：phase ∈ {download_failed,post_auth_failed,game_downloading,steam_sdk_downloading,game_installed} 或 state 属已安装态即视为“已过认证”，作为跨会话的持久判据。
+  - `steamCMDUseCache`（installer.go run() 从 `.env` 读 `STEAMCMD_AUTH_COMPLETED` 得出）：SteamCMD 用“仅用户名缓存登录”还是“账号密码完整登录”。替换了 fallback 内部原先的 `r.steamCMDRetry` 判断。
+- **两个对称的持久“认证成功”标志**（均写在实例 `.env`，`forceReauth` 时清空）：
+  - `STEAM_AUTH_COMPLETED`：steam-auth 认证成功（`downloading app` / 认证成功 / 下载失败等“已过登录”信号，或 SteamCMD 登录成功）后写入。`driver.Install` 读它并纳入 `steamCMDDirect` 判据，作为 `authAlreadySucceeded(state, phase)` 相位推断的兜底——即使 phase 被重置为 `install_interrupted` 也能可靠跳过 steam-auth。
+  - `STEAMCMD_AUTH_COMPLETED`：SteamCMD `logged in ok` 后写入，控制 `steamCMDUseCache`。
+  - 二者**各自独立、互不牵连**（steam-auth 与 SteamCMD 是两套不同的登录凭证/会话）：`STEAM_AUTH_COMPLETED` 只由 steam-auth 认证成功置位、决定“是否还需要跑 steam-auth 登录步骤”；`STEAMCMD_AUTH_COMPLETED` 只由 SteamCMD 登录成功置位、决定“SteamCMD 用缓存还是完整登录”。SteamCMD 登录成功**不会**顺带把 `STEAM_AUTH_COMPLETED` 也置位。
+- **“steam-auth 成功一次即永久走 cmd”**：路由用 `STEAM_AUTH_COMPLETED` 作 `steamCMDDirect` 判据——首次安装 steam-auth 认证成功（用于建服/邀请码）并继续下载游戏文件与 SDK；一旦认证成功该标志置位，之后所有 `reuse`（重试/重装/更新）一律 `steamCMDDirect` 走 SteamCMD，不再跑 steam-auth。只有“认证尚未成功过”的失败（如 `pull_failed`、认证前超时）重试才会重新拉镜像 + 跑 steam-auth。
+- **修复①（镜像拉取失败重试）**：`pull_failed` 不在上述直达条件里，因此复用凭据重试会**重新拉镜像 + 走 steam-auth**（`reuse` ⇒ autoMode 自动账号密码继续，跳过登录方式选择），不再误跳 SteamCMD。
+- **修复②（SteamCMD 认证超时重试）**：`STEAMCMD_AUTH_COMPLETED` 未置位时 `steamCMDUseCache=false` ⇒ SteamCMD 走**完整登录**并展示 guard 提示（回到验证界面），不再一上来报“授权缓存不可用”。该标志在检测到 SteamCMD `logged in ok` 后写入 `.env`，此后任何操作命中缓存路径。
+- **更换账号 / 强制重新认证**：`POST /api/instances/:id/install` 新增 `forceReauth`。为真时后端要求提供新账密（不复用）、清空 `.env` 的 `STEAM_REFRESH_TOKEN` 与 `STEAMCMD_AUTH_COMPLETED`，并调用新增的 `docker.RemoveVolumes` 清除 `<project>_steam-session` 与 `<project>_steamcmd-*` 授权卷（保留 `game-data`），随后走完整认证。卷删除 best-effort，占用中失败仅告警不阻断。
+- `install_handlers.go` 不再传 `SteamCMDRetry: reuseCredentials`；`registry.InstallRequest` 增加 `ForceReauth`，`SteamCMDRetry` 保留为兼容字段。`config.EmptyEnvTemplate`/写序新增 `STEAMCMD_AUTH_COMPLETED`。
+- 影响文件：`backend/internal/web/install_handlers.go`、`backend/internal/games/stardew_junimo/driver.go`、`installer.go`、`config/env.go`、`backend/internal/docker/compose.go`、`registry/types.go`、及相关 `_test.go`。
+- 验证：`cd backend; go test ./...`（新增 `TestDriverInstallReRunsSteamAuthAfterPullFailureRetry`，并更新了 repair 用例先写入 `STEAMCMD_AUTH_COMPLETED=true`）。
+
 # STEAMCMD-REPAIR-DIRECT-1 修复/重新安装直达 SteamCMD
 
 - `POST /api/instances/:id/install` 在收到 `reuseCredentials=true` 时，除了继续从实例 `.env` 读取已保存 `STEAM_USERNAME` / `STEAM_PASSWORD` / `VNC_PASSWORD`，现在会显式传递 `SteamCMDRetry=true` 给 driver。

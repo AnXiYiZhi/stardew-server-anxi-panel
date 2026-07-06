@@ -18,6 +18,15 @@ func (c *Client) DockerVersion(ctx context.Context, workDir string) (CommandResu
 	return c.run(ctx, "docker version", workDir, c.timeouts.Version, "version")
 }
 
+// RemoveVolumes deletes the named Docker volumes with `docker volume rm -f`.
+// The force flag makes missing volumes a no-op (no error). Volumes still in use
+// by a container will fail to remove; callers should treat that as best-effort.
+// workDir only needs to be any valid directory (volume names are global).
+func (c *Client) RemoveVolumes(ctx context.Context, workDir string, names []string) (CommandResult, error) {
+	args := append([]string{"volume", "rm", "-f"}, names...)
+	return c.run(ctx, "docker volume rm", workDir, c.timeouts.Version, args...)
+}
+
 func (c *Client) ComposeVersion(ctx context.Context, workDir string) (CommandResult, error) {
 	return c.run(ctx, "docker compose version", workDir, c.timeouts.Version, "compose", "version")
 }

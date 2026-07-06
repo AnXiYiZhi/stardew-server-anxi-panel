@@ -46,8 +46,9 @@ type InstallRequest struct {
 	SteamPassword string // never log this field
 	VNCPassword   string // never log this field
 	ImageTag      string // docker image tag, e.g. "latest" or a pinned version
-	AutoDownload  bool   // skip auth method choice and run steam-auth download directly
-	SteamCMDRetry bool   // skip steam-auth and resume the SteamCMD fallback path
+	AutoDownload  bool   // reuse saved credentials without re-prompting; routing is decided from the instance phase
+	SteamCMDRetry bool   // legacy: retained for compatibility; routing now derives from the instance phase
+	ForceReauth   bool   // clear saved auth caches and run the full auth flow again (change Steam account / password)
 }
 
 // ImageTagOption describes one selectable image tag in the install UI.

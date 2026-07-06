@@ -182,8 +182,8 @@ func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 	if fields["GAME_PORT"] != "24642" || fields["QUERY_PORT"] != "27015" || fields["API_ENABLED"] != "true" {
 		t.Fatalf("unexpected defaults: %#v", fields)
 	}
-	if !strings.Contains(fields["SERVER_IMAGE_CANDIDATES"], "ghcr.io/sdvd/server:1.5.0-preview.121") {
-		t.Fatalf("SERVER_IMAGE_CANDIDATES should include ghcr.io fallback, got %q", fields["SERVER_IMAGE_CANDIDATES"])
+	if !strings.Contains(fields["SERVER_IMAGE_CANDIDATES"], "docker.1ms.run/sdvd/server:1.5.0-preview.121") {
+		t.Fatalf("SERVER_IMAGE_CANDIDATES should include the docker.1ms.run mirror, got %q", fields["SERVER_IMAGE_CANDIDATES"])
 	}
 	if !strings.Contains(fields["STEAM_SERVICE_IMAGE_CANDIDATES"], "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2") {
 		t.Fatalf("STEAM_SERVICE_IMAGE_CANDIDATES should include ghcr.io fallback, got %q", fields["STEAM_SERVICE_IMAGE_CANDIDATES"])

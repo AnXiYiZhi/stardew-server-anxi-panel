@@ -10,11 +10,13 @@ import (
 
 const (
 	DefaultServerImage                       = "sdvd/server:1.5.0-preview.121"
-	DefaultServerImageCandidates             = "docker.1ms.run/sdvd/server:1.5.0-preview.121,docker.m.daocloud.io/sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121,sdvd/server:1.5.0-preview.121"
+	DefaultServerImageCandidates             = "dockerproxy.net/sdvd/server:1.5.0-preview.121,docker.1ms.run/sdvd/server:1.5.0-preview.121,docker.1panel.live/sdvd/server:1.5.0-preview.121,docker.jiaxin.site/sdvd/server:1.5.0-preview.121,dockerproxy.link/sdvd/server:1.5.0-preview.121,sdvd/server:1.5.0-preview.121"
 	DefaultSteamServiceImage                 = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
 	DefaultSteamServiceImageCandidates       = "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2,docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2,anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
 	DefaultSteamCMDImage                     = "docker.1ms.run/steamcmd/steamcmd:latest"
-	DefaultSteamCMDImageCandidates           = "docker.1ms.run/steamcmd/steamcmd:latest,docker.m.daocloud.io/steamcmd/steamcmd:latest,ghcr.io/steamcmd/steamcmd:latest,cm2network/steamcmd:latest"
+	DefaultSteamCMDImageCandidates           = "dockerproxy.net/steamcmd/steamcmd:latest,docker.1ms.run/steamcmd/steamcmd:latest,docker.1panel.live/steamcmd/steamcmd:latest,docker.jiaxin.site/steamcmd/steamcmd:latest,dockerproxy.link/steamcmd/steamcmd:latest,cm2network/steamcmd:latest"
+	DefaultSMAPIVersion                      = "4.5.2"
+	DefaultSMAPIDownloadURLs                 = "https://gh.llkk.cc/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip,https://github.dpik.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip,https://ghfast.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip,https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip"
 	DefaultSteamClientConnectTimeoutSeconds  = "60"
 	DefaultSteamClientConnectRetries         = "5"
 	DefaultSteamAuthSessionRetries           = "3"
@@ -92,6 +94,10 @@ func writeEnvFile(path string, fields map[string]string) error {
 		"STEAM_SERVICE_IMAGE_CANDIDATES",
 		"STEAMCMD_IMAGE",
 		"STEAMCMD_IMAGE_CANDIDATES",
+		"SMAPI_VERSION",
+		"SMAPI_DOWNLOAD_URLS",
+		"STEAMCMD_AUTH_COMPLETED",
+		"STEAM_AUTH_COMPLETED",
 		"STEAM_USERNAME",
 		"STEAM_PASSWORD",
 		"STEAM_REFRESH_TOKEN",
@@ -161,6 +167,10 @@ func EmptyEnvTemplate() map[string]string {
 		"STEAM_SERVICE_IMAGE_CANDIDATES":         DefaultSteamServiceImageCandidates,
 		"STEAMCMD_IMAGE":                         DefaultSteamCMDImage,
 		"STEAMCMD_IMAGE_CANDIDATES":              DefaultSteamCMDImageCandidates,
+		"SMAPI_VERSION":                          DefaultSMAPIVersion,
+		"SMAPI_DOWNLOAD_URLS":                    DefaultSMAPIDownloadURLs,
+		"STEAMCMD_AUTH_COMPLETED":                "",
+		"STEAM_AUTH_COMPLETED":                   "",
 		"STEAM_USERNAME":                         "",
 		"STEAM_PASSWORD":                         "",
 		"STEAM_REFRESH_TOKEN":                    "",

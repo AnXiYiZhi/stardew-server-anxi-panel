@@ -69,6 +69,10 @@ func (f fakeDockerService) RunContainerTTY(ctx context.Context, opts paneldocker
 	return 0, nil
 }
 
+func (f fakeDockerService) RemoveVolumes(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
 func (f fakeDockerService) ComposeUp(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }

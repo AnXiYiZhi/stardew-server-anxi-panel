@@ -452,7 +452,30 @@ chmod +x run.sh
 bash run.sh
 ```
 
-脚本菜单支持 Docker/Compose 安装修复、镜像候选兜底、启动、停止、重启、普通更新、强制更新、镜像源切换、脚本自更新、虚拟内存、开机自启、状态、日志和访问地址。固定版本可这样启动：
+脚本菜单支持 Docker/Compose 安装修复、镜像候选兜底、启动、停止、重启、普通更新、强制更新、镜像源切换、脚本自更新、虚拟内存、开机自启、状态、日志和访问地址。
+
+更新面板：
+
+```bash
+cd ~ && bash run.sh update
+```
+
+如果更新后仍显示旧版本，强制重新拉取镜像并重建容器：
+
+```bash
+cd ~ && bash run.sh force-update
+```
+
+如果启动脚本本身也有更新，先更新脚本再更新面板：
+
+```bash
+cd ~ && bash run.sh update-script
+cd ~ && bash run.sh update
+```
+
+更新面板只会重建面板容器，不会删除 `~/.anxi-panel/data`，存档、Mod、数据库和备份会继续保留。
+
+固定版本可这样启动：
 
 ```bash
 PANEL_VERSION=0.1.0 PANEL_PORT=8090 bash run.sh install

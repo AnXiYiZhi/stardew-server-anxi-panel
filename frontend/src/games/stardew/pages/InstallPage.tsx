@@ -103,6 +103,7 @@ type SteamAuthLogPhase =
   | 'steamcmd_guard_required'
   | 'steamcmd_guard_mobile_required'
   | 'steamcmd_downloading'
+  | 'smapi_installing'
 
 function inferLatestSteamAuthLogPhase(logs: JobLog[]): SteamAuthLogPhase | null {
   let activeMenu: 'auth' | 'guard' | 'steamcmd_guard' | null = null
@@ -114,6 +115,7 @@ function inferLatestSteamAuthLogPhase(logs: JobLog[]): SteamAuthLogPhase | null 
     const isGuardMenu = message.includes('steam guard authentication') ||
       (message.includes('[1]') && message.includes('approve in steam') && message.includes('[2]') && message.includes('enter code'))
     const isSteamCMD = message.includes('[steamcmd]')
+    const isSMAPI = message.includes('[smapi]')
     const isSteamCMDGuardMenu = isSteamCMD && message.includes('steam guard') &&
       message.includes('[1]') && message.includes('[2]') &&
       (message.includes('approve') || message.includes('code') || message.includes('email'))
@@ -150,7 +152,12 @@ function inferLatestSteamAuthLogPhase(logs: JobLog[]): SteamAuthLogPhase | null 
       message.includes('steamcmd 需要重新授权；请输入') ||
       message.includes('steam guard code') ||
       message.includes('code sent to') ||
-      message.includes('enter verification code')
+      message.includes('enter verification code') ||
+      message.includes('this computer has not been authenticated') ||
+      message.includes('please check your email') ||
+      message.includes('enter the steam guard') ||
+      message.includes('code from that message') ||
+      message.includes('set_steam_guard_code')
     )) {
       activeMenu = null
       latestPhase = 'steamcmd_guard_required'
@@ -168,6 +175,10 @@ function inferLatestSteamAuthLogPhase(logs: JobLog[]): SteamAuthLogPhase | null 
     )) {
       activeMenu = null
       latestPhase = 'steamcmd_downloading'
+    }
+    if (isSMAPI) {
+      activeMenu = null
+      latestPhase = 'smapi_installing'
     }
     if (isSteamCMD && message.includes('正在使用已保存账号密码登录 steamcmd')) {
       latestPhase = 'steamcmd_auth_running'
@@ -248,7 +259,7 @@ function calcStepStatuses(
     'steamcmd_guard_required', 'steamcmd_guard_mobile_required',
   ]
   // Phases where auth is already complete and game download is in progress
-  const downloadPhases = ['game_downloading', 'steam_sdk_downloading', 'steamcmd_downloading']
+  const downloadPhases = ['game_downloading', 'steam_sdk_downloading', 'steamcmd_downloading', 'smapi_installing']
 
   const isAuthPhase = authPhases.includes(phase)
   const isDownloadPhase = downloadPhases.includes(phase)
@@ -269,13 +280,14 @@ function calcStepStatuses(
   const s4: StepStatus =
     installed ? 'done'
     : isDownloadPhase ? 'active'
-    : phase === 'download_failed' || phase === 'post_auth_failed' ? 'error'
+    : phase === 'download_failed' || phase === 'post_auth_failed' || phase === 'smapi_install_failed' ? 'error'
     : 'pending'
   const s5: StepStatus = installed ? 'done' : 'pending'
   return [s1, s2, s3, s4, s5]
 }
 
 function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, state: string): string {
+  if (phase === 'smapi_install_failed') return 'SMAPI 运行环境安装失败，请检查任务日志后重试'
   if (['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'].includes(state)) return '安装完成'
   if (phase === 'download_failed') return '游戏文件下载失败，请检查网络/磁盘后重试'
   if (phase === 'post_auth_failed') return 'Steam 认证已成功，后续安装步骤失败，请使用已保存凭据重试'
@@ -291,6 +303,7 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, s
   if (phase === 'steam_auth_retrying') return 'Steam 连接较慢，正在自动重试认证...'
   if (!isInstalling) return ''
   const labels: Record<string, string> = {
+    smapi_installing: '游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境...',
     junimo_scaffolded: '目录已准备，正在拉取镜像...',
     pull_running: '正在拉取 JunimoServer 镜像...',
     steam_auth_running: '正在使用 Steam 凭据认证并下载游戏...',
@@ -371,7 +384,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     'steam_qr_required', 'steam_auth_retrying', 'steam_auth_done',
     'game_downloading', 'steam_sdk_downloading', 'steamcmd_image_pulling',
     'steamcmd_auth_running', 'steamcmd_guard_choice_required', 'steamcmd_guard_required',
-    'steamcmd_guard_mobile_required', 'steamcmd_downloading',
+    'steamcmd_guard_mobile_required', 'steamcmd_downloading', 'smapi_installing',
   ]
   const activeInstallJob = dashboardData.jobs.find(
     (j) => j.type === 'stardew_install' && !isTerminalJobStatus(j.status),
@@ -476,6 +489,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const [showVncPwd, setShowVncPwd] = useState(false)
   const [installBusy, setInstallBusy] = useState(false)
   const [installError, setInstallError] = useState('')
+  // forceReauth: 用户主动「更换 Steam 账号 / 重新认证」，强制重新输入账密并清除授权缓存。
+  const [forceReauth, setForceReauth] = useState(false)
 
   const handleInstallSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -483,15 +498,18 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     setInstallError('')
     setInstallBusy(true)
     try {
-      const body = canDirectRetry
-        ? { reuseCredentials: true, imageTag }
-        : { steamUsername, steamPassword, vncPassword, imageTag }
+      const body = forceReauth
+        ? { steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true }
+        : canDirectRetry
+          ? { reuseCredentials: true, imageTag }
+          : { steamUsername, steamPassword, vncPassword, imageTag }
       const res = await installInstance(body)
       setInstallJobId(res.jobId)
       setLogs([])
       setInstallJob(null)
       setSseError('')
       setShowForm(false)
+      setForceReauth(false)
       dashboardData.refreshJobs()
       dashboardData.refreshInstanceState()
     } catch (err) {
@@ -499,15 +517,16 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     } finally {
       setInstallBusy(false)
     }
-  }, [isAdmin, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData])
+  }, [isAdmin, forceReauth, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData])
 
   // ── Steam Guard ───────────────────────────────────────────────────────────────
   const [guardInput, setGuardInput] = useState('')
   const [guardBusy, setGuardBusy] = useState(false)
   const [guardError, setGuardError] = useState('')
+  const [guardSubmittedKind, setGuardSubmittedKind] = useState<'steam' | 'steamcmd' | null>(null)
   const [optimisticPhase, setOptimisticPhase] = useState<string | null>(null)
 
-  const handleGuardSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
+  const handleGuardSubmit = useCallback(async (e: FormEvent<HTMLFormElement>, kind: 'steam' | 'steamcmd') => {
     e.preventDefault()
     if (!installJobId) return
     setGuardError('')
@@ -515,12 +534,15 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     try {
       await submitSteamGuardInput(installJobId, guardInput)
       setGuardInput('')
+      setGuardSubmittedKind(kind)
+      dashboardData.refreshInstanceState()
     } catch (err) {
+      setGuardSubmittedKind(null)
       setGuardError(errorMessage(err))
     } finally {
       setGuardBusy(false)
     }
-  }, [installJobId, guardInput])
+  }, [installJobId, guardInput, dashboardData])
 
   const handleAuthMethodSelect = useCallback(async (choice: string) => {
     if (!installJobId) return
@@ -537,6 +559,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     setGuardError('')
     try {
       await submitSteamGuardInput(installJobId, choice)
+      setGuardSubmittedKind(null)
       dashboardData.refreshInstanceState()
     } catch (err) {
       setOptimisticPhase(null)
@@ -558,8 +581,10 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const steamSdkProgress = extractSteamDownloadProgress(logs, installJobType, 'sdk')
   const steamCMDClientProgress = extractSteamDownloadProgress(logs, installJobType, 'steamcmd_update')
   const logAuthPhase = inferLatestSteamAuthLogPhase(logs)
-  const logDownloadPhase = logAuthPhase === 'steamcmd_downloading'
-    ? 'steamcmd_downloading'
+  const logDownloadPhase = logAuthPhase === 'smapi_installing'
+    ? 'smapi_installing'
+    : logAuthPhase === 'steamcmd_downloading'
+      ? 'steamcmd_downloading'
     : logAuthPhase?.startsWith('steamcmd_guard')
       ? null
       : hasSteamSdkDownloadStarted(logs, installJobType) || steamSdkProgress
@@ -570,7 +595,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const qrPayload = extractQrPayload(logs)
   const qrUrl = qrPayload?.url ?? ''
   const qrText = qrPayload?.art ?? ''
-  const basePhaseIsFailure = AUTH_FAILED_PHASES.includes(basePhase)
+  const basePhaseIsFailure = AUTH_FAILED_PHASES.includes(basePhase) || basePhase === 'smapi_install_failed'
   const logQrPhaseIsCurrent = logAuthPhase === 'steam_qr_required' &&
     optimisticPhase !== 'steam_guard_required' &&
     optimisticPhase !== 'steam_guard_mobile_required' &&
@@ -600,7 +625,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const postAuthRecoverable = canDirectRetry && (
     authSucceededInLogs ||
     effectivePhase === 'download_failed' ||
-    effectivePhase === 'post_auth_failed'
+    effectivePhase === 'post_auth_failed' ||
+    effectivePhase === 'smapi_install_failed'
   )
   const steamCMDRecoverable = canDirectRetry && (
     effectivePhase === 'steamcmd_failed' ||
@@ -614,12 +640,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const needsQrCode = effectivePhase === 'steam_qr_required'
   const stepStatuses = calcStepStatuses(state, effectivePhase, authFailed, isInstalling)
   const showProgress = isInstalling || isInstalled || authFailed
-    || ['pull_failed', 'install_timeout', 'download_failed', 'post_auth_failed', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed'].includes(effectivePhase)
+    || ['pull_failed', 'install_timeout', 'download_failed', 'post_auth_failed', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed', 'smapi_install_failed'].includes(effectivePhase)
   const progressLabel = phaseLabel(effectivePhase, isInstalling, authFailed, state)
   const selectedOption = imageTagOptions.find((o) => o.tag === imageTag)
   const steamDownloadProgress = effectivePhase === 'steam_sdk_downloading'
     ? steamSdkProgress
-    : effectivePhase === 'game_downloading'
+      : effectivePhase === 'smapi_installing'
+        ? steamSdkProgress ?? steamGameProgress
+        : effectivePhase === 'game_downloading'
       ? steamGameProgress
       : effectivePhase === 'steamcmd_downloading'
         ? steamSdkProgress ?? steamGameProgress ?? steamCMDClientProgress
@@ -643,6 +671,17 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
       setOptimisticPhase(null)
     }
   }, [phase, optimisticPhase])
+
+  useEffect(() => {
+    if (!guardSubmittedKind) return
+    const stillWaitingForSteamCode = guardSubmittedKind === 'steam' &&
+      (effectivePhase === 'steam_guard_required' || effectivePhase === 'steam_guard_mobile_required')
+    const stillWaitingForSteamCMDCode = guardSubmittedKind === 'steamcmd' &&
+      (effectivePhase === 'steamcmd_guard_required' || effectivePhase === 'steamcmd_guard_mobile_required')
+    if (!stillWaitingForSteamCode && !stillWaitingForSteamCMDCode) {
+      setGuardSubmittedKind(null)
+    }
+  }, [effectivePhase, guardSubmittedKind])
 
   useEffect(() => {
     let canceled = false
@@ -801,9 +840,18 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-tan"
                   type="button"
-                  onClick={() => { setShowForm(true); setInstallError('') }}
+                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
                 >
                   重新安装 / 修复
+                </button>
+              ) : null}
+              {isAdmin ? (
+                <button
+                  className="sd-btn-tan"
+                  type="button"
+                  onClick={() => { setForceReauth(true); setShowForm(true); setInstallError('') }}
+                >
+                  更换 Steam 账号 / 重新认证
                 </button>
               ) : null}
             </div>
@@ -830,7 +878,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-green sd-btn--lg"
                   type="button"
-                  onClick={() => { setShowForm(true); setInstallError('') }}
+                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
                 >
                   {isQrAuthError
                     ? '改用账号密码重试'
@@ -843,6 +891,17 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       : canDirectRetry
                         ? '重试安装'
                         : '安装游戏'}
+                </button>
+              ) : null}
+              {/* 已有保存凭据（复用重试场景）时，提供更换账号入口；纯全新安装无需展示；
+                  已安装态由上方「已安装卡片」内的按钮提供，避免重复。 */}
+              {!isInstalled && canDirectRetry && !authFailed ? (
+                <button
+                  className="sd-btn-tan"
+                  type="button"
+                  onClick={() => { setForceReauth(true); setShowForm(true); setInstallError('') }}
+                >
+                  更换 Steam 账号 / 重新认证
                 </button>
               ) : null}
             </div>
@@ -858,7 +917,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           {showForm && isAdmin ? (
             <div className="sd-install-form-card">
               <div className="sd-install-form-title">
-                {steamCMDRecoverable
+                {forceReauth
+                  ? '更换 Steam 账号 / 重新认证'
+                  : steamCMDRecoverable
                   ? '重试 SteamCMD 兜底下载'
                   : postAuthRecoverable
                   ? '重试下载 / 继续安装'
@@ -871,7 +932,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       : '安装配置'}
               </div>
               <p className="sd-install-form-hint">
-                {steamCMDRecoverable
+                {forceReauth
+                  ? '将清除已保存的 Steam / SteamCMD 授权缓存并用新账号密码重新认证；已下载的游戏文件会保留。'
+                  : steamCMDRecoverable
                   ? '上次已进入 SteamCMD 兜底但授权或下载未完成；本次会直接复用已保存账号密码进入 SteamCMD 授权/下载，本地已有 SteamCMD 镜像时不会重新拉取。'
                   : postAuthRecoverable
                   ? 'Steam 认证已经成功，本次只会复用已保存凭据重试下载/后续安装步骤，不需要重新输入账号密码。'
@@ -903,7 +966,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   </div>
                 ) : null}
 
-                {!canDirectRetry ? (
+                {!canDirectRetry || forceReauth ? (
                   <>
                     <div className="sd-install-field">
                       <label className="sd-install-field-label">Steam 用户名</label>
@@ -970,7 +1033,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   <button className="sd-btn-green" type="submit" disabled={installBusy}>
                     {installBusy
                       ? '正在启动安装…'
-                      : steamCMDRecoverable
+                      : forceReauth
+                        ? '确认更换账号并重新认证'
+                        : steamCMDRecoverable
                         ? '确认重试 SteamCMD'
                         : isInstalled
                           ? '确认修复 / 更新'
@@ -982,7 +1047,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                     className="sd-btn-tan"
                     type="button"
                     disabled={installBusy}
-                    onClick={() => { setShowForm(false); setInstallError('') }}
+                    onClick={() => { setShowForm(false); setInstallError(''); setForceReauth(false) }}
                   >
                     取消
                   </button>
@@ -1029,6 +1094,16 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           ) : null}
 
           {/* 游戏/SDK 下载提示 */}
+          {effectivePhase === 'smapi_installing' && isInstalling ? (
+            <div className="sd-install-download-card">
+              <div className="sd-install-dl-title">安装 SMAPI 运行环境中...</div>
+              <div className="sd-install-dl-hint">
+                游戏文件和 Steam SDK 已完成，正在通过加速源安装 SMAPI；完成后会进入安装完成。
+              </div>
+              <div className="sd-install-waiting">正在等待 SMAPI 安装器输出...</div>
+            </div>
+          ) : null}
+
           {(effectivePhase === 'game_downloading' || effectivePhase === 'steam_sdk_downloading' || effectivePhase === 'steamcmd_downloading') && isInstalling ? (
             <div className="sd-install-download-card">
               <div className="sd-install-dl-title">
@@ -1145,24 +1220,40 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   <div className="sd-install-guard-title">Steam Guard 验证</div>
                   {effectivePhase === 'steam_guard_required' ? (
                     <>
-                      <p className="sd-install-guard-desc">Steam 已发送验证码，请在下方输入：</p>
-                      <form
-                        className="sd-install-guard-form"
-                        onSubmit={(e) => void handleGuardSubmit(e)}
-                      >
-                        <input
-                          className="sd-install-input"
-                          type="text"
-                          placeholder="输入 Steam Guard 验证码"
-                          value={guardInput}
-                          onChange={(e) => setGuardInput(e.target.value)}
-                          autoComplete="off"
-                          required
-                        />
-                        <button className="sd-btn-green" type="submit" disabled={guardBusy}>
-                          {guardBusy ? '提交中…' : '提交验证码'}
-                        </button>
-                      </form>
+                      {guardSubmittedKind === 'steam' ? (
+                        <div className="sd-install-guard-mobile">
+                          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+                          <span>验证码已提交，正在等待 Steam 响应；如果长时间没有进展，可以重新输入验证码。</span>
+                          <button
+                            className="sd-btn-tan"
+                            type="button"
+                            onClick={() => setGuardSubmittedKind(null)}
+                          >
+                            重新输入
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="sd-install-guard-desc">Steam 已发送验证码，请在下方输入：</p>
+                          <form
+                            className="sd-install-guard-form"
+                            onSubmit={(e) => void handleGuardSubmit(e, 'steam')}
+                          >
+                            <input
+                              className="sd-install-input"
+                              type="text"
+                              placeholder="输入 Steam Guard 验证码"
+                              value={guardInput}
+                              onChange={(e) => setGuardInput(e.target.value)}
+                              autoComplete="off"
+                              required
+                            />
+                            <button className="sd-btn-green" type="submit" disabled={guardBusy}>
+                              {guardBusy ? '提交中…' : '提交验证码'}
+                            </button>
+                          </form>
+                        </>
+                      )}
                       {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
                     </>
                   ) : null}
@@ -1209,26 +1300,42 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   <div className="sd-install-guard-title">授权 SteamCMD 兜底下载</div>
                   {effectivePhase === 'steamcmd_guard_required' ? (
                     <>
-                      <p className="sd-install-guard-desc">
-                        请输入 Steam 手机 App 或邮箱收到的验证码。验证码只会发送给当前 SteamCMD 登录进程，不会写入日志。
-                      </p>
-                      <form
-                        className="sd-install-guard-form"
-                        onSubmit={(e) => void handleGuardSubmit(e)}
-                      >
-                        <input
-                          className="sd-install-input"
-                          type="text"
-                          placeholder="输入 SteamCMD 验证码"
-                          value={guardInput}
-                          onChange={(e) => setGuardInput(e.target.value)}
-                          autoComplete="off"
-                          required
-                        />
-                        <button className="sd-btn-green" type="submit" disabled={guardBusy}>
-                          {guardBusy ? '提交中…' : '提交验证码'}
-                        </button>
-                      </form>
+                      {guardSubmittedKind === 'steamcmd' ? (
+                        <div className="sd-install-guard-mobile">
+                          <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
+                          <span>验证码已提交，正在等待 SteamCMD 响应；通过后会自动进入下载/校验阶段。</span>
+                          <button
+                            className="sd-btn-tan"
+                            type="button"
+                            onClick={() => setGuardSubmittedKind(null)}
+                          >
+                            重新输入
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="sd-install-guard-desc">
+                            请输入 Steam 手机 App 或邮箱收到的验证码。验证码只会发送给当前 SteamCMD 登录进程，不会写入日志。
+                          </p>
+                          <form
+                            className="sd-install-guard-form"
+                            onSubmit={(e) => void handleGuardSubmit(e, 'steamcmd')}
+                          >
+                            <input
+                              className="sd-install-input"
+                              type="text"
+                              placeholder="输入 SteamCMD 验证码"
+                              value={guardInput}
+                              onChange={(e) => setGuardInput(e.target.value)}
+                              autoComplete="off"
+                              required
+                            />
+                            <button className="sd-btn-green" type="submit" disabled={guardBusy}>
+                              {guardBusy ? '提交中…' : '提交验证码'}
+                            </button>
+                          </form>
+                        </>
+                      )}
                       {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
                     </>
                   ) : null}
