@@ -209,6 +209,7 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 		"game-data:/data/game",
 		"./.local-container/saves:/config/xdg/config/StardewValley",
 		"./.local-container/settings:/data/settings",
+		"./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro",
 	} {
 		if !strings.Contains(composeText, want) {
 			t.Errorf("docker-compose.yml missing %q", want)
@@ -226,6 +227,13 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 	}
 	if strings.Contains(envText, "JUNIMO_IMAGE_TAG") {
 		t.Fatal(".env should not contain JUNIMO_IMAGE_TAG")
+	}
+	appNameScript, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(serverAppNameContEnvFile)))
+	if err != nil {
+		t.Fatalf("APP_NAME cont-env fix script not created: %v", err)
+	}
+	if string(appNameScript) != serverAppNameScript {
+		t.Fatalf("unexpected APP_NAME cont-env script:\n%s", appNameScript)
 	}
 }
 

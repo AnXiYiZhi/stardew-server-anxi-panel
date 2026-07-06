@@ -1,3 +1,9 @@
+# 2026-07-07 已完成：JunimoServer APP_NAME 启动兼容挂载
+
+- `JUNIMO-APPNAME-CONTENV-FIX-1` completed：为 server 容器新增 `.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro` 兼容挂载，自动遮罩上游 `sdvd/server:1.5.0-preview.121` 中裸 `DockerApp` 导致的 `DockerApp: not found` 启动失败。
+- 已覆盖 Prepare、安装、启动和重启路径；旧实例会自动迁移 compose，重启时如本次刚新增挂载会用 `docker compose up` 重建 server 容器。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo`。
+
 # 2026-07-07 已完成：Nexus 搜索防短断与局域网邀请地址修正
 
 - 已完成：Nexus 搜索后端改用独立 20 秒上下文，避免浏览器刷新、切页、FRP/NAS 链路短断时把上游 GraphQL 请求提前取消并误报 `nexus request failed`。
