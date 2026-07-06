@@ -6,8 +6,8 @@
 
 ## 改了什么（本次已完成 ①②③提示）
 - **①（`lifecycle.go`）**：`doStart`/`doRestart` 在服务器就绪、置 `Running` 后**立即完成 job**（前端显示「启动完成」）；新增 `pollInviteCodeBackground()`——后台协程用 `context.Background()` 轮询邀请码，拿到后 `updateDriverPayloadInviteCode`，并在实例非 `Running`（停服/重启）时自动退出，不泄漏。
-- **②（`config/env.go` + `web/instance_handlers.go`）**：新增 `config.SteamAuthLoggedIn(dataDir)`（`STEAM_REFRESH_TOKEN` 非空即已登录；`STEAM_AUTH_COMPLETED` 不足为凭）；`instanceStateResponse` 新增 `steamAuthLoggedIn` 字段，`GET …/state` 返回给前端。
-- **③前端（`InviteCodeCard.tsx` + `types.ts`）**：服务器运行中但 `steamAuthLoggedIn===false` 且无邀请码时，邀请码显示「需登录 Steam 授权」并给出提示（先用 IP 直连或登录授权），不再无限「获取中」。
+- **②（`config/env.go` + `web/instance_handlers.go`）**：新增 `config.SteamAuthLoggedIn(dataDir)` = **`STEAM_AUTH_COMPLETED=="true"`**（认证成功过一次即算登录）。**更正**：早先误用 `STEAM_REFRESH_TOKEN` 非空判定——错的，正常可用环境该字段也是空（用户本地实测空 token 照样出邀请码），登录持久化不靠它，按「日志认证成功」即 `STEAM_AUTH_COMPLETED` 判定。`instanceStateResponse.steamAuthLoggedIn` 返回给前端。
+- **③前端（`InviteCodeCard.tsx` + `types.ts` + `OverviewPage.tsx`）**：`steamAuthLoggedIn===false`（从未认证）时邀请码显示「需登录 Steam 授权」+【登录授权】按钮，点击 **`onNavigate('install')` 跳转安装页**去完成认证；已认证过则正常显示/获取邀请码。
 
 ## 影响文件
 - `backend/internal/games/stardew_junimo/lifecycle.go`（`waitForReadyState`/`tailServerLogs`/`readSMAPIStatus` 现已无调用者——保留未删以缩小改动面，后续可清理）
@@ -20,15 +20,15 @@
 - `cd frontend; npx tsc --noEmit -p tsconfig.app.json`
 - 真机：启动服务器应很快显示「启动完成」；未登录 auth 时邀请码区显示「需登录 Steam 授权」。
 
-## 「登录 Steam 授权」按钮（方案 A，已实现）
-- `registry.InstallRequest` 加 `AuthLoginOnly`；`driver.Install`：该标志令 `reuse=true` 且强制 `steamCMDDirect=false`——即使游戏已装好也走 steam-auth 路径（token 从 steam-auth 登录产生）。run() 的 steam-auth 分支本就是 ensureImages + runSteamAuth + return，不碰下载完成/SMAPI，天然是「只登录」。
-- 新端点 `POST /api/instances/:id/steam-auth/login`（`install_handlers.go`）：要求**服务器已停**（Running/Starting 返回 409 `server_running`），从 `.env` 读已存账号密码（无需重输），以 `AuthLoginOnly=true` 起 install job。路由注册在 `instance_handlers.go`（`parts[1]=="steam-auth" && parts[2]=="login"`）。
-- 前端 `api.ts steamAuthLogin()` + `InviteCodeCard`：`steamAuthLoggedIn===false` 时邀请码显示「需登录 Steam 授权」并给【登录授权】按钮（服务器运行时禁用并提示先停服）；guard（手机批准/验证码）复用现有 `/steam-guard/input` + 授权状态 UI。
-- 影响文件补充：`registry/types.go`、`driver.go`、`install_handlers.go`、`instance_handlers.go`、`frontend/src/api.ts`、`InviteCodeCard.tsx`。
+## 「登录 Steam 授权」按钮 —— 改为跳转安装页（撤掉了 AuthLoginOnly 端点）
+- **撤销**：先前基于「只跑 steam-auth 拿 token」的 `AuthLoginOnly` 端点/标志已全部回退（`registry/types.go`、`driver.go`、`install_handlers.go`、`instance_handlers.go`、`api.ts` steamAuthLogin 均删除）。原因：`runSteamAuthAttempt` 登录后会尝试下载，国内下载失败 → 掉 `runSteamCMDFallback`（又要批准），且 token 也没写进 .env——这条路在国内走不通，且判定本就不该看 token。
+- **现方案**：`InviteCodeCard` 的【登录授权】按钮点击 `onNavigate('install')` **跳转安装页**，由现有安装/认证流程处理（guard 也在那儿）。按钮通过新增可选 prop `onNavigate` 从 `OverviewPage` 传入。
 
-## 待验证（真机）
-- steam-auth 登录在国内能否成功拿到 `STEAM_REFRESH_TOKEN`（历史是「登录成功、下载失败」，若登录仍能过则 token 应能写入）。若 steam-auth 连登录都连不上 Steam，则 token 拿不到——此时 IP 直连是主用通道，邀请码作为可选。
-- guard 提示当前在授权状态 UI 展示；如触发 guard 时用户在邀请码卡片看不到输入框，需要后续把 guard 输入也接到该卡片（暂未做）。
+## 前端启动判定解耦邀请码（本次同批修复）
+- 现象：后端 job 已完成、`state=running`（用户已能进游戏），但前端「启动」按钮一直「启动中…」，且**没邀请码时停止/重启按钮被禁用**。
+- 根因：`OverviewPage`/`ServerControlPage` 里 `waitingForInvite` 含 `inviteCodeRefreshing && !inviteCode`，且 `pendingStartupAction` 只在**出现邀请码**时清；`canStop/canRestart` 还要求 `Boolean(inviteCode)`。
+- 改为：`waitingForInvite` 只看 `starting || pendingStartupAction`；`pendingStartupAction` 在 `state==='running'` 即清；`canStop/canRestart` 去掉邀请码要求。即**「running 就算启动完成」，邀请码是后台可选**。
+- 影响文件补充：`frontend/src/games/stardew/pages/OverviewPage.tsx`、`ServerControlPage.tsx`。
 
 # IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
 

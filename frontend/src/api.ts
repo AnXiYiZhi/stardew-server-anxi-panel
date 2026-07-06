@@ -165,16 +165,6 @@ export function installInstance(
   })
 }
 
-// steamAuthLogin re-runs steam-auth with the saved account/password to obtain a
-// fresh STEAM_REFRESH_TOKEN (needed for invite codes). The server must be stopped.
-// Steam Guard prompts, if any, reuse submitSteamGuardInput.
-export function steamAuthLogin(instanceId = defaultInstanceId) {
-  return request<InstallJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/steam-auth/login`, {
-    method: 'POST',
-    body: {},
-  })
-}
-
 export function submitSteamGuardInput(
   jobId: string,
   input: string,

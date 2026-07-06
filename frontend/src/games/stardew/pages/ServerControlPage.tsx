@@ -103,10 +103,12 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const isStopped = state === 'stopped' || state === 'ready_to_start' || state === 'game_installed'
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
   const isAdmin = user.role === 'admin'
+  // "Starting" ends when the server is running — NOT when an invite code arrives.
+  // Invite codes need Steam SDR/Galaxy and can legitimately never appear; gating the
+  // UI on them left the button stuck at "启动中…" and disabled stop/restart forever.
   const waitingForInvite =
     isStarting ||
-    Boolean(pendingStartupAction) ||
-    (dashboardData.inviteCodeRefreshing && !dashboardData.inviteCode)
+    Boolean(pendingStartupAction)
   const waitingForStop = isStopping || pendingStopAction
   const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
   const showSaveRequiredPrompt =
@@ -114,8 +116,8 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     !isRunning &&
     !isStarting
   const canStart = isStopped && !actionBusy && !waitingForInvite && !waitingForStop
-  const canStop = isRunning && !actionBusy && !waitingForInvite && !waitingForStop && Boolean(dashboardData.inviteCode)
-  const canRestart = isRunning && !actionBusy && !waitingForInvite && !waitingForStop && Boolean(dashboardData.inviteCode)
+  const canStop = isRunning && !actionBusy && !waitingForStop
+  const canRestart = isRunning && !actionBusy && !waitingForStop
   const stateLabelText = state
     ? stateLabel(state)
     : dashboardData.loading
@@ -161,10 +163,11 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   }, [state])
 
   useEffect(() => {
-    if (dashboardData.inviteCode) {
+    // Startup is complete once the server is running (invite code is optional/background).
+    if (isRunning || dashboardData.inviteCode) {
       setPendingStartupAction(null)
     }
-  }, [dashboardData.inviteCode])
+  }, [isRunning, dashboardData.inviteCode])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {

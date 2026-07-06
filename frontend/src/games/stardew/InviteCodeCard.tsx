@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { steamAuthLogin } from '../../api'
-import type { StardewDashboardData } from './stardew-routes'
+import { routeToPath } from './stardew-routes'
+import type { StardewDashboardData, StardewNavigateOptions, StardewRoute } from './stardew-routes'
 
 type InviteCodeCardProps = {
   instanceState: StardewDashboardData['instanceState']
@@ -8,6 +8,7 @@ type InviteCodeCardProps = {
   className?: string
   label?: string
   description?: string
+  onNavigate?: (route: StardewRoute, options?: StardewNavigateOptions) => void
 }
 
 export function InviteCodeCard({
@@ -16,37 +17,22 @@ export function InviteCodeCard({
   className,
   label = '邀请码',
   description = '',
+  onNavigate,
 }: InviteCodeCardProps) {
   const [copied, setCopied] = useState(false)
   const [ipCopied, setIpCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
-  const [authBusy, setAuthBusy] = useState(false)
-  const [authMsg, setAuthMsg] = useState<string | null>(null)
 
   const state = instanceState?.state ?? null
   const canRefreshInvite = state === 'running' || state === 'starting'
-  // Invite codes need a valid steam-auth login (STEAM_REFRESH_TOKEN) for the host to
-  // log into Steam/Galaxy. Without it no invite code can ever be generated, so tell the
-  // user to log in rather than showing an endless "获取中…".
+  // Invite codes need Steam authentication to have succeeded at least once
+  // (steamAuthLoggedIn = STEAM_AUTH_COMPLETED). If it never has, point the user to
+  // the install page to authenticate instead of showing an endless "获取中…".
   const needAuthLogin = instanceState?.steamAuthLoggedIn === false
-  const serverRunning = canRefreshInvite
 
-  async function handleAuthLogin() {
-    if (serverRunning) {
-      setAuthMsg('请先停止服务器，再登录 Steam 授权。')
-      return
-    }
-    setAuthBusy(true)
-    setAuthMsg(null)
-    try {
-      await steamAuthLogin()
-      setAuthMsg('已发起 Steam 授权登录。若提示手机批准或验证码，请在安装/授权状态处完成；登录成功后启动服务器即可获得邀请码。')
-      dashboardData.refreshInstanceState()
-    } catch (e) {
-      setAuthMsg(e instanceof Error ? e.message : '登录授权发起失败')
-    } finally {
-      setAuthBusy(false)
-    }
+  function handleGoAuth() {
+    if (onNavigate) onNavigate('install')
+    else window.location.href = routeToPath('install')
   }
 
   function handleCopyInvite() {
@@ -114,11 +100,10 @@ export function InviteCodeCard({
           {needAuthLogin ? (
             <button
               className="sd-btn-green sd-players-copy-btn"
-              onClick={() => { void handleAuthLogin() }}
-              disabled={authBusy || serverRunning}
-              title={serverRunning ? '请先停止服务器再登录授权' : '用已保存账号登录 Steam 授权以开启邀请码'}
+              onClick={handleGoAuth}
+              title="前往安装页登录 Steam 授权以开启邀请码"
             >
-              {authBusy ? '登录中…' : '登录授权'}
+              登录授权
             </button>
           ) : (
             <button
@@ -134,13 +119,8 @@ export function InviteCodeCard({
       </div>
       {needAuthLogin ? (
         <div className="sd-srv-hint" style={{ marginTop: 4 }}>
-          邀请码需要登录 Steam 授权（steam-auth）才能生成，当前未登录。
-          {serverRunning ? '请先停止服务器再点【登录授权】；' : '点【登录授权】用已保存账号登录；'}
-          也可先用下方「局域网邀请」IP 直连进入。
+          邀请码需要先在安装页完成 Steam 授权，当前未登录。点【登录授权】前往安装页登录；也可先用下方「局域网邀请」IP 直连进入。
         </div>
-      ) : null}
-      {authMsg ? (
-        <div className="sd-srv-hint" style={{ marginTop: 4 }}>{authMsg}</div>
       ) : null}
       <div className="sd-players-invite-row sd-players-public-ip-row">
         <div className="sd-players-invite-copy">

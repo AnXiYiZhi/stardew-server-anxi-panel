@@ -57,18 +57,17 @@ func ReadEnvFile(path string) (map[string]string, error) {
 	return result, scanner.Err()
 }
 
-// SteamAuthLoggedIn reports whether a usable steam-auth login exists for the
-// instance — i.e. a non-empty STEAM_REFRESH_TOKEN in .env. This is what
-// JunimoServer needs to log the host into Steam/Galaxy and produce an invite
-// code. STEAM_AUTH_COMPLETED alone is NOT sufficient: it can be "true" while the
-// refresh token is empty/expired (e.g. game files came via the SteamCMD fallback,
-// not steam-auth), in which case no invite code can ever be generated.
+// SteamAuthLoggedIn reports whether Steam authentication has succeeded for the
+// instance at least once — the durable STEAM_AUTH_COMPLETED flag, which the driver
+// sets when the steam-auth log shows a successful login (see markSteamAuthCompleted).
+// Login persistence here is NOT the STEAM_REFRESH_TOKEN in .env (it is empty even in
+// working setups); "authenticated per the log" is the correct signal.
 func SteamAuthLoggedIn(dataDir string) bool {
 	vals, err := ReadEnvFile(filepath.Join(dataDir, ".env"))
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(vals["STEAM_REFRESH_TOKEN"]) != ""
+	return strings.EqualFold(strings.TrimSpace(vals["STEAM_AUTH_COMPLETED"]), "true")
 }
 
 func unquoteEnvValue(value string) string {
