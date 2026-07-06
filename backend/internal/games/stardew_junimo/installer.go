@@ -52,6 +52,7 @@ type installRunner struct {
 	steamCMDDirect   bool
 	steamCMDUseCache bool
 	forceReauth      bool
+	authOnly         bool // run steam-auth for login only; stop after auth succeeds (no download/fallback/SMAPI)
 }
 
 type steamAuthMode string
@@ -538,6 +539,21 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	// login succeeded (only the depot transfer failed).
 	if authSucceeded || sdkDownloaded || downloadFailed || currentApp != "" {
 		r.markSteamAuthCompleted(jobCtx)
+	}
+
+	if r.authOnly {
+		// Auth-login only: we needed the login (now recorded via STEAM_AUTH_COMPLETED),
+		// not the game files. Stop here — do NOT continue to depot download, the SteamCMD
+		// fallback, or SMAPI. A login counts as done if we saw a success line or got far
+		// enough that the container began downloading (downloadFailed / currentApp both
+		// imply the login already succeeded). Login failures fall through to normal
+		// handling below so the user gets a proper error.
+		if authSucceeded || sdkDownloaded || downloadFailed || currentApp != "" {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
+				"Steam 授权登录完成，可返回并启动服务器。", "steam_auth_login_done", jobCtx.ID)
+			_, _ = jobCtx.Info(context.Background(), "Steam 授权登录完成（仅登录，已跳过下载/兜底）。")
+			return false, nil
+		}
 	}
 
 	if cmdErr != nil {

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { steamAuthLogin } from '../../api'
+import { errorMessage } from '../../core/helpers'
 import { routeToPath } from './stardew-routes'
 import type { StardewDashboardData, StardewNavigateOptions, StardewRoute } from './stardew-routes'
 
@@ -22,17 +24,30 @@ export function InviteCodeCard({
   const [copied, setCopied] = useState(false)
   const [ipCopied, setIpCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authMsg, setAuthMsg] = useState<string | null>(null)
 
   const state = instanceState?.state ?? null
   const canRefreshInvite = state === 'running' || state === 'starting'
   // Invite codes need Steam authentication to have succeeded at least once
-  // (steamAuthLoggedIn = STEAM_AUTH_COMPLETED). If it never has, point the user to
-  // the install page to authenticate instead of showing an endless "获取中…".
+  // (steamAuthLoggedIn = STEAM_AUTH_COMPLETED). If it never has, offer to log in.
   const needAuthLogin = instanceState?.steamAuthLoggedIn === false
 
-  function handleGoAuth() {
-    if (onNavigate) onNavigate('install')
-    else window.location.href = routeToPath('install')
+  // Kick off a steam-auth login (login only — the backend stops after auth succeeds)
+  // and jump to the install page so the user can watch the logs and answer any Steam
+  // Guard prompt there. The server must be stopped; a 409 surfaces as an inline message.
+  async function handleGoAuth() {
+    setAuthBusy(true)
+    setAuthMsg(null)
+    try {
+      await steamAuthLogin()
+      if (onNavigate) onNavigate('install')
+      else window.location.href = routeToPath('install')
+    } catch (e) {
+      setAuthMsg(errorMessage(e))
+    } finally {
+      setAuthBusy(false)
+    }
   }
 
   function handleCopyInvite() {
@@ -100,10 +115,11 @@ export function InviteCodeCard({
           {needAuthLogin ? (
             <button
               className="sd-btn-green sd-players-copy-btn"
-              onClick={handleGoAuth}
-              title="前往安装页登录 Steam 授权以开启邀请码"
+              onClick={() => { void handleGoAuth() }}
+              disabled={authBusy}
+              title="登录 Steam 授权并前往安装页查看认证日志"
             >
-              登录授权
+              {authBusy ? '发起中…' : '登录授权'}
             </button>
           ) : (
             <button
@@ -119,8 +135,11 @@ export function InviteCodeCard({
       </div>
       {needAuthLogin ? (
         <div className="sd-srv-hint" style={{ marginTop: 4 }}>
-          邀请码需要先在安装页完成 Steam 授权，当前未登录。点【登录授权】前往安装页登录；也可先用下方「局域网邀请」IP 直连进入。
+          邀请码需要先完成 Steam 授权，当前未登录。点【登录授权】会用已保存账号发起登录并跳转到安装页查看认证日志（如需手机批准/验证码在那里完成）；也可先用下方「局域网邀请」IP 直连进入。
         </div>
+      ) : null}
+      {authMsg ? (
+        <div className="sd-srv-hint" style={{ marginTop: 4, color: '#b94040' }}>{authMsg}</div>
       ) : null}
       <div className="sd-players-invite-row sd-players-public-ip-row">
         <div className="sd-players-invite-copy">

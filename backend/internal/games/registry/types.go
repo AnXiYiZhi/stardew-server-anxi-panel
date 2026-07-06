@@ -49,6 +49,7 @@ type InstallRequest struct {
 	AutoDownload  bool   // reuse saved credentials without re-prompting; routing is decided from the instance phase
 	SteamCMDRetry bool   // legacy: retained for compatibility; routing now derives from the instance phase
 	ForceReauth   bool   // clear saved auth caches and run the full auth flow again (change Steam account / password)
+	AuthLoginOnly bool   // reuse saved credentials to run ONLY steam-auth login (for invite codes); forces the steam-auth path and stops as soon as auth succeeds (no download/fallback/SMAPI)
 }
 
 // ImageTagOption describes one selectable image tag in the install UI.
