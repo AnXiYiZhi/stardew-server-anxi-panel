@@ -42,6 +42,38 @@ func (c *Client) RemoveVolumes(ctx context.Context, workDir string, names []stri
 	return lastResult, nil
 }
 
+// RemoveContainersByVolume force-removes containers that still reference any
+// of the given Docker volumes. This is useful after a one-shot container exits
+// abnormally but Docker has not released the volume yet.
+func (c *Client) RemoveContainersByVolume(ctx context.Context, workDir string, names []string) (CommandResult, error) {
+	var lastResult CommandResult
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		result, err := c.run(ctx, "docker ps by volume", workDir, c.timeouts.Ps, "ps", "-aq", "--filter", "volume="+name)
+		lastResult = result
+		if err != nil {
+			return result, err
+		}
+		ids := strings.Fields(result.Stdout)
+		if len(ids) == 0 {
+			continue
+		}
+		args := append([]string{"rm", "-f"}, ids...)
+		result, err = c.run(ctx, "docker rm by volume", workDir, c.timeouts.Version, args...)
+		lastResult = result
+		if err != nil {
+			return result, err
+		}
+	}
+	if lastResult.Args == nil {
+		lastResult = CommandResult{WorkDir: workDir, ExitCode: 0}
+	}
+	return lastResult, nil
+}
+
 func isMissingVolumeRemove(result CommandResult, err error) bool {
 	if err == nil {
 		return false

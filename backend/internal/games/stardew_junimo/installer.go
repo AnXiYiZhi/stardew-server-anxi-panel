@@ -1070,17 +1070,32 @@ func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *j
 		projectName + "_steamcmd-user-local",
 		projectName + "_steamcmd-root-local",
 	}
-	if result, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
-		detail := strings.TrimSpace(result.Stderr)
-		if detail == "" {
-			detail = strings.TrimSpace(result.Stdout)
+	if result, err := r.driver.docker.RemoveContainersByVolume(ctx, r.instance.DataDir, names); err != nil {
+		detail := dockerResultDetail(result)
+		message := "[steamcmd] Failed to remove stale SteamCMD containers before cache cleanup: " + paneldocker.RedactString(err.Error())
+		if detail != "" {
+			message += ": " + detail
 		}
+		_, _ = jobCtx.Warn(ctx, message)
+	} else {
+		_, _ = jobCtx.Info(ctx, "[steamcmd] Stale SteamCMD containers have been checked before runtime cache cleanup.")
+	}
+	if result, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
+		detail := dockerResultDetail(result)
 		message := "[steamcmd] Failed to clear SteamCMD runtime cache volumes: " + paneldocker.RedactString(err.Error())
 		if detail != "" {
-			message += ": " + paneldocker.RedactString(detail)
+			message += ": " + detail
 		}
 		_, _ = jobCtx.Warn(ctx, message)
 	}
+}
+
+func dockerResultDetail(result paneldocker.CommandResult) string {
+	detail := strings.TrimSpace(result.Stderr)
+	if detail == "" {
+		detail = strings.TrimSpace(result.Stdout)
+	}
+	return paneldocker.RedactString(detail)
 }
 
 func (r *installRunner) buildSMAPIInstallOpts(envVals map[string]string, imageRef string) paneldocker.ContainerTTYRunOpts {

@@ -2,6 +2,7 @@
 
 - 已完成：SteamCMD fallback 以 `steam` 用户运行时显式设置 `HOME=/home/steam`，避免继续使用 `/root/.local/share/Steam` 自更新缓存引发 139 段错误。
 - 已完成：Docker volume 清理改为逐个删除并忽略缺失卷，139 后自动清理 SteamCMD runtime cache 的成功率更高；真实失败会把 Docker 输出写入任务日志。
+- 已完成：139 后清理 SteamCMD runtime cache 前，先按 volume 查找并删除残留 one-shot SteamCMD 容器，解决真实云服上 `volume is in use - [container_id]` 导致缓存无法清理的问题。
 
 # 2026-07-06 已完成：SteamCMD SDK 分段下载
 

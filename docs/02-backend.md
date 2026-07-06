@@ -784,6 +784,7 @@ docker run --rm `
 
 - 修复真实云服上 SteamCMD fallback 仍在 `Waiting for client config...` 阶段 exit code `139` 的问题。根因之一是 `su -m steam` 会保留 root 的 `HOME`，导致 SteamCMD 虽以 `steam` 用户运行但仍写入 `/root/.local/share/Steam` 自更新缓存；现在运行 SteamCMD 时显式设置 `HOME=/home/steam USER=steam LOGNAME=steam`。
 - `docker.Client.RemoveVolumes()` 改为逐个执行 `docker volume rm -f <name>`，并忽略 `no such volume` / `volume not found`。这样 139 后清理 `steamcmd-user-local` / `steamcmd-root-local` 时，不会因为其中一个卷不存在而整次清理失败。
+- 139 后清理 runtime cache 前会先按 volume 查找并强制删除残留的一次性 SteamCMD 容器，解决真实服务器上 `volume is in use - [container_id]` 导致缓存无法清理的问题。
 - SteamCMD runtime cache 清理失败时，任务日志会附带 Docker stderr/stdout 的脱敏详情，便于区分“不存在”“被容器占用”“Docker 权限异常”等情况。
 - 影响文件：`backend/internal/docker/compose.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/docker/compose_test.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/docker ./internal/games/stardew_junimo`、`cd backend; go test ./...`。

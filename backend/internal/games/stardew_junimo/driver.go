@@ -61,6 +61,8 @@ type DockerService interface {
 	// stdin bytes (callers append "\n" for ReadLine, omit "\n" for ReadKey).
 	RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
 	RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
+	// RemoveContainersByVolume force-removes containers still holding the given volumes.
+	RemoveContainersByVolume(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error)
 	// RemoveVolumes deletes the named Docker volumes (force: missing volumes are a no-op).
 	RemoveVolumes(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error)
 }

@@ -44,6 +44,7 @@ type fakeDocker struct {
 	smapiLines        []string
 	smapiOpts         paneldocker.ContainerTTYRunOpts
 	removedVolumes    []string
+	removedByVolumes  []string
 }
 
 func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
@@ -124,6 +125,11 @@ func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.Contain
 
 func (f *fakeDocker) RemoveVolumes(_ context.Context, _ string, names []string) (paneldocker.CommandResult, error) {
 	f.removedVolumes = append(f.removedVolumes, names...)
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f *fakeDocker) RemoveContainersByVolume(_ context.Context, _ string, names []string) (paneldocker.CommandResult, error) {
+	f.removedByVolumes = append(f.removedByVolumes, names...)
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
@@ -720,6 +726,9 @@ func TestDriverInstallRetriesSteamCMDAfterSegfaultClearsRuntimeCache(t *testing.
 		storage.DefaultInstanceID + "_steamcmd-root-local",
 	}
 	for _, name := range wantVolumes {
+		if !stringSliceContains(fake.removedByVolumes, name) {
+			t.Fatalf("expected stale SteamCMD containers using volume %q to be removed, got %v", name, fake.removedByVolumes)
+		}
 		if !stringSliceContains(fake.removedVolumes, name) {
 			t.Fatalf("expected SteamCMD runtime cache volume %q to be removed, got %v", name, fake.removedVolumes)
 		}
