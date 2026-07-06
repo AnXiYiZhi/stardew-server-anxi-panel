@@ -4,7 +4,6 @@ import {
   getJobLogs,
   getHealthDiagnostics,
   getInstancePlayers,
-  getInstancePublicIP,
   getInviteCode,
   getJobs,
   getMods,
@@ -16,6 +15,17 @@ import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
 import type { InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import type { StardewDashboardData } from './stardew-routes'
+
+function resolvePanelAccessHost(): PublicIPResult | null {
+  const host = window.location.hostname.trim()
+  if (!host) return null
+  return {
+    ip: host,
+    checkedAt: new Date().toISOString(),
+    source: 'panel-access-host',
+    cached: false,
+  }
+}
 
 export function useStardewDashboardData(): StardewDashboardData {
   const [instanceState, setInstanceState] = useState<InstanceState | null>(null)
@@ -147,11 +157,14 @@ export function useStardewDashboardData(): StardewDashboardData {
     }
   }, [])
 
-  const refreshPublicIP = useCallback(async (force = false) => {
+  const refreshPublicIP = useCallback(async (_force = false) => {
     setPublicIPRefreshing(true)
     setPublicIPError(null)
     try {
-      const res = await getInstancePublicIP(undefined, force)
+      const res = resolvePanelAccessHost()
+      if (!res) {
+        throw new Error('无法读取当前面板访问地址')
+      }
       setPublicIP(res)
     } catch (e) {
       setPublicIP(null)

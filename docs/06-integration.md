@@ -1,3 +1,19 @@
+# NEXUS-NETWORK-DIAGNOSTICS-1 / PANEL-ACCESS-HOST-INVITE-1 联调契约
+
+- Nexus 搜索 `GET /api/instances/:id/mods/nexus/search` 后端会用独立 20 秒上下文访问 Nexus GraphQL，避免浏览器请求取消导致上游搜索被提前打断。网络类失败返回 `502 nexus_network_failed`，前端展示“请确认面板服务器能访问 api.nexusmods.com”。
+- 如果日志出现 `nexus_network_failed`，先看后端日志中的底层错误；若只是旧版 `nexus request failed`，需要结合耗时判断，4 秒以内失败更可能是浏览器/代理链路取消，不一定是 Nexus 不通。
+- 邀请卡“局域网邀请”由前端 `window.location.hostname` 得出，不再消费 `/api/instances/:id/public-ip`。因此用户从什么 host 加 `:8090` 进入面板，就展示什么 host。
+- `/api/instances/:id/public-ip` 仍保留为后端公网出口 IP 检测接口，但当前邀请卡不再依赖它。
+
+# STEAM-AUTH-RUNTIME-READY-1 联调契约
+
+- `GET /api/instances/:id/state` 返回 `steamAuthLoggedIn` 与 `steamAuthReady` 两个字段：
+  - `steamAuthLoggedIn`：历史标志，表示 `.env` 中 `STEAM_AUTH_COMPLETED=true`，即 steam-auth 曾经成功过。
+  - `steamAuthReady`：当前运行态标志，表示当前 `steam-auth:3001/steam/ready` 可用并返回 200。
+- 邀请码需要当前 `steamAuthReady=true` 才可靠。`steamAuthLoggedIn=true` 但 `steamAuthReady=false` 时，说明历史认证存在但当前 steam-auth 服务没有可用登录账号，前端应提供重新授权入口。
+- 服务器运行中重新授权仍受 `POST /api/instances/:id/steam-auth/login` 的既有约束：必须先停服，否则返回 `409 server_running`。前端应提示“先停止服务器再重新授权”。
+- 验证：让服务器运行但 steam-auth 报 `no logged-in accounts`，`/state` 应返回 `steamAuthLoggedIn=true, steamAuthReady=false`；邀请码卡应显示重新授权提示，而不是只显示“刷新”。
+
 # INSTALL-SMAPI-PREINSTALL-1 安装链路联调说明
 
 - 安装顺序现在为：准备目录/镜像 -> Steam/SteamCMD 授权 -> 游戏文件下载/校验 -> Steam SDK 下载/校验 -> `smapi_installing` -> `game_installed`。

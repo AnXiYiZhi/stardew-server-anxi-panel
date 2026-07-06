@@ -1222,7 +1222,10 @@ func (s *server) handleModNexusSearch(w http.ResponseWriter, r *http.Request, in
 		return
 	}
 
-	result, err := sj.SearchNexusModsPage(r.Context(), query, apiKey, page, pageSize)
+	searchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 20*time.Second)
+	defer cancel()
+
+	result, err := sj.SearchNexusModsPage(searchCtx, query, apiKey, page, pageSize)
 	if err != nil {
 		s.writeNexusError(w, err)
 		return
@@ -1476,6 +1479,13 @@ func (s *server) writeNexusError(w http.ResponseWriter, err error) {
 		default:
 			writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 请求失败")
 		}
+		return
+	}
+
+	var requestErr *sj.NexusRequestError
+	if errors.As(err, &requestErr) {
+		s.logger.Warn("nexus request failed", "error", requestErr.Unwrap())
+		writeError(w, http.StatusBadGateway, "nexus_network_failed", "Nexus 网络连接失败，请确认面板服务器能访问 api.nexusmods.com")
 		return
 	}
 

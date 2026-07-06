@@ -1,3 +1,15 @@
+# 2026-07-07 已完成：Nexus 搜索防短断与局域网邀请地址修正
+
+- 已完成：Nexus 搜索后端改用独立 20 秒上下文，避免浏览器刷新、切页、FRP/NAS 链路短断时把上游 GraphQL 请求提前取消并误报 `nexus request failed`。
+- 已完成：Nexus 网络类错误新增 `nexus_network_failed`，后端日志保留真实底层错误，前端展示明确网络提示。
+- 已完成：“局域网邀请”改为读取当前进入面板的 host；用户用什么 IP/域名加 `:8090` 打开面板，就展示什么 host。
+
+# 2026-07-07 已完成：当前 steam-auth ready 状态与重新授权入口
+
+- 已完成：`GET /api/instances/:id/state` 新增 `steamAuthReady`，用于区分历史认证标志 `steamAuthLoggedIn` 与当前 `steam-auth` 服务是否真的有可用登录账号。
+- 已完成：邀请码卡片在历史认证存在但当前授权不可用时，会显示“需重新 Steam 授权”与停服后重新授权入口，不再只显示刷新按钮。
+- 后续可优化：把 ready 探测下沉到 Stardew driver，避免 web 层依赖 server 容器内 `nc`。
+
 # 2026-07-06 已完成：SteamCMD HOME 与缓存清理加固
 
 - 已完成：SteamCMD fallback 以 `steam` 用户运行时显式设置 `HOME=/home/steam`，避免继续使用 `/root/.local/share/Steam` 自更新缓存引发 139 段错误。

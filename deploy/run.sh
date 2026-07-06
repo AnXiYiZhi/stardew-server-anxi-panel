@@ -12,7 +12,21 @@ PANEL_CONTAINER_NAME="${PANEL_CONTAINER_NAME:-anxi-panel}"
 PANEL_VERSION_WAS_SET="${PANEL_VERSION+x}"
 PANEL_VERSION="${PANEL_VERSION:-latest}"
 PANEL_PORT="${PANEL_PORT:-8090}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.anxi-panel}"
+
+default_install_dir() {
+  local home_dir="${HOME:-}"
+  if [[ -n "$home_dir" && -d "$home_dir" && -w "$home_dir" ]]; then
+    printf "%s/.anxi-panel" "$home_dir"
+    return
+  fi
+  if [[ -n "${PWD:-}" && -d "$PWD" && -w "$PWD" ]]; then
+    printf "%s/.anxi-panel" "$PWD"
+    return
+  fi
+  printf "/tmp/.anxi-panel"
+}
+
+INSTALL_DIR="${INSTALL_DIR:-$(default_install_dir)}"
 PANEL_HOST_DATA_DIR="${PANEL_HOST_DATA_DIR:-$INSTALL_DIR/data}"
 PANEL_CONTAINER_DATA_DIR="${PANEL_CONTAINER_DATA_DIR:-$PANEL_HOST_DATA_DIR}"
 
@@ -77,6 +91,23 @@ require_command() {
     red "缺少命令：$name"
     exit 1
   fi
+}
+
+find_command() {
+  local name="$1"
+  shift || true
+  local candidate
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"
+    return 0
+  fi
+  for candidate in "$@"; do
+    if [[ -x "$candidate" ]]; then
+      printf "%s\n" "$candidate"
+      return 0
+    fi
+  done
+  return 1
 }
 
 detect_sudo() {
@@ -620,26 +651,50 @@ setup_swap() {
     exit 1
   fi
 
-  if swapon --show | grep -q '^/swapfile'; then
+  local swapon_cmd mkswap_cmd
+  swapon_cmd="$(find_command swapon /sbin/swapon /usr/sbin/swapon || true)"
+  mkswap_cmd="$(find_command mkswap /sbin/mkswap /usr/sbin/mkswap || true)"
+  if [[ -z "$swapon_cmd" || -z "$mkswap_cmd" ]]; then
+    red "当前系统缺少 swapon/mkswap，无法通过脚本设置虚拟内存。"
+    yellow "飞牛 NAS 可在系统设置里检查是否支持 swap，或手动安装 util-linux 后重试。"
+    exit 1
+  fi
+
+  if [[ -r /proc/swaps ]] && grep -qE '^/swapfile[[:space:]]' /proc/swaps; then
     green "虚拟内存已启用："
-    swapon --show
+    cat /proc/swaps
     return
+  fi
+
+  if [[ -e /swapfile ]]; then
+    yellow "检测到 /swapfile 已存在但未显示为启用状态，先尝试移除后重建。"
+    if ! run_as_root rm -f /swapfile; then
+      red "无法移除已有 /swapfile。它可能仍被系统占用，请先手动检查：cat /proc/swaps"
+      exit 1
+    fi
   fi
 
   cyan "正在创建 ${size_gb}G 虚拟内存 /swapfile..."
   if command -v fallocate >/dev/null 2>&1; then
-    run_as_root fallocate -l "${size_gb}G" /swapfile
+    if ! run_as_root fallocate -l "${size_gb}G" /swapfile; then
+      yellow "fallocate 创建失败，改用 dd 写入方式。"
+      run_as_root dd if=/dev/zero of=/swapfile bs=1M count="$((size_gb * 1024))"
+    fi
   else
-    run_as_root dd if=/dev/zero of=/swapfile bs=1G count="$size_gb"
+    run_as_root dd if=/dev/zero of=/swapfile bs=1M count="$((size_gb * 1024))"
   fi
   run_as_root chmod 600 /swapfile
-  run_as_root mkswap /swapfile
-  run_as_root swapon /swapfile
+  run_as_root "$mkswap_cmd" /swapfile
+  run_as_root "$swapon_cmd" /swapfile
   if ! grep -q '^/swapfile ' /etc/fstab; then
     printf "/swapfile none swap sw 0 0\n" | run_as_root tee -a /etc/fstab >/dev/null
   fi
   green "虚拟内存已启用。"
-  swapon --show
+  if [[ -r /proc/swaps ]]; then
+    cat /proc/swaps
+  else
+    "$swapon_cmd" --show || true
+  fi
 }
 
 enable_autostart() {

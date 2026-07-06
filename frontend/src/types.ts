@@ -143,9 +143,10 @@ export type InstanceState = {
   stateMessage: string | null
   driverPhase: string
   updatedAt: string
-  // True when a usable steam-auth login (non-empty STEAM_REFRESH_TOKEN) exists.
-  // Required for the server to produce a Steam/Galaxy invite code.
+  // Historical flag: true once steam-auth has completed successfully at least once.
   steamAuthLoggedIn?: boolean
+  // Current runtime flag: true only when the running steam-auth service has a logged-in account.
+  steamAuthReady?: boolean
 }
 
 export type ResourceMetricSample = {

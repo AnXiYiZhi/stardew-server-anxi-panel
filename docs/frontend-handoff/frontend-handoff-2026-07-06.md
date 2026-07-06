@@ -1,3 +1,48 @@
+# FE-PANEL-ACCESS-HOST-INVITE-1 局域网邀请地址来源
+
+## 背景
+- NAS/云服/FRP 场景下，用户希望“局域网邀请”显示的就是当前访问面板使用的地址，而不是后端探测到的公网出口 IP。
+- 旧逻辑调用 `/api/instances/:id/public-ip`，在局域网、反代、FRP、域名访问场景下可能与用户实际进入面板的地址不一致。
+
+## 改了什么
+- `useStardewDashboardData.refreshPublicIP()` 改为读取 `window.location.hostname` 并写入现有 `publicIP` 状态，`source` 标记为 `panel-access-host`。
+- `InviteCodeCard` 的复制/同步按钮文案改为“复制当前面板访问地址”“同步当前面板访问地址”，按钮显示“同步”而不是“刷新”。
+- 保留现有 `publicIP` 类型和属性名以减少改动面；语义已经从“公网 IP 探测结果”转为“当前面板访问 host”。
+
+## 影响文件
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/InviteCodeCard.tsx`
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- 分别用 `http://192.168.x.x:8090`、公网 IP、FRP 域名进入面板，邀请卡下方 host 应跟浏览器地址栏 hostname 一致。
+
+## 下一步注意事项
+- 如果用户用 `localhost:8090` 打开面板，局域网邀请也会显示 `localhost`；这是本次“用什么地址进来就显示什么地址”的规则结果。
+- 后端 `/public-ip` 接口还存在，但当前邀请卡不再调用。
+
+# FE-STEAM-AUTH-RUNTIME-READY-1 邀请码授权失效入口
+
+## 背景
+- `steamAuthLoggedIn=true` 只表示历史上 steam-auth 成功过一次；真实运行时可能仍出现 `Steam-auth service has no logged-in accounts`，导致邀请码一直 `n/a`。
+- 旧 `InviteCodeCard` 只在 `steamAuthLoggedIn===false` 时显示【登录授权】，所以历史认证存在但当前授权失效时，用户只能看到【刷新】，找不到重新登录入口。
+
+## 改了什么
+- `types.ts` 的 `InstanceState` 增加 `steamAuthReady?: boolean`，并修正 `steamAuthLoggedIn` 注释为历史标志。
+- `InviteCodeCard` 新增 `currentSteamAuthUnavailable` 判断：`steamAuthLoggedIn=true && steamAuthReady=false` 且当前无邀请码/邀请码错误时，显示“需重新 Steam 授权”。
+- 服务器运行中按钮显示“停服后重新授权”并禁用，提示先停止服务器；停服后显示“重新登录授权”，继续调用既有 `steamAuthLogin()` 并跳转安装页查看认证日志。
+
+## 影响文件
+- `frontend/src/types.ts`
+- `frontend/src/games/stardew/InviteCodeCard.tsx`
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- 手动联调：`/state` 返回 `steamAuthLoggedIn=true, steamAuthReady=false` 且邀请码为空/获取失败时，总览和服务器页的邀请码卡应显示重新授权提示，而不是只显示刷新按钮。
+
+## 下一步注意事项
+- `steamAuthReady=false` 在服务器未运行时不一定代表异常；前端只在邀请码缺失或错误上下文中展示重新授权入口，避免停止态一直催用户授权。
+
 # FE-INSTALL-SMAPI-PREINSTALL-1 安装页 SMAPI 子状态
 
 ## 改了什么
