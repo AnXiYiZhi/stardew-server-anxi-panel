@@ -272,42 +272,31 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 		}
 	}
 
-	// The server is up. Mark it running and finish the start job immediately — do
-	// NOT block for minutes waiting on the Steam/Galaxy invite code (which needs a
-	// valid steam-auth login and can legitimately never arrive). Invite-code
-	// polling continues in the background and fills in the payload when it appears.
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-		"服务器运行中（邀请码后台获取中）", "running", jobCtx.ID)
-	_, _ = jobCtx.Info(ctx, "服务器启动完成。邀请码将在后台自动获取，稍后可在面板查看。")
-	r.pollInviteCodeBackground()
+		"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
+
+	// Keep the job alive polling for the invite code so the task log shows its
+	// progress ("等待邀请码 第N次…"). Startup "success" is judged separately by the
+	// frontend (host player online); the invite code is best-effort and may never
+	// arrive, but the user can still watch how far it got here.
+	inviteCode := r.waitForReadyState(ctx, jobCtx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if inviteCode == "" {
+		_, _ = jobCtx.Info(ctx, "未能获取邀请码，服务器可能仍在初始化，可在面板手动刷新邀请码。")
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器运行中（邀请码待就绪）", "running", jobCtx.ID)
+	} else {
+		msg := "服务器运行中，邀请码：" + inviteCode
+		_, _ = jobCtx.Info(ctx, msg)
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			msg, "running", jobCtx.ID)
+		r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, inviteCode)
+	}
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
-}
-
-// pollInviteCodeBackground polls for the Steam/Galaxy invite code after the server
-// is already marked running, so the start/restart job can complete immediately.
-// It runs detached from the job (uses a background context), updates the driver
-// payload once the code appears, and stops early when the server is no longer
-// running (stopped/restarting) so it never leaks past the server's lifetime.
-func (r *lifecycleRunner) pollInviteCodeBackground() {
-	go func() {
-		ctx := context.Background()
-		deadline := time.Now().Add(readyStateTimeout)
-		for time.Now().Before(deadline) {
-			inst, err := r.driver.store.GetInstance(ctx, r.instance.ID)
-			if err != nil || inst.State != storage.InstanceStateRunning {
-				return // server stopped/restarting (or gone): stop polling.
-			}
-			if code, ferr := r.fetchInviteCode(ctx); ferr == nil && code != "" {
-				r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-					"服务器运行中，邀请码："+code, "running", "")
-				r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, code)
-				return
-			}
-			time.Sleep(readyInviteInterval)
-		}
-	}()
 }
 
 func (r *lifecycleRunner) vncPortUnavailableMessage(result paneldocker.CommandResult) (string, bool) {
@@ -394,12 +383,21 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	}
 	r.clearStaleInviteCode(ctx, jobCtx)
 
-	// Finish the restart job as soon as the server is running; poll the invite code
-	// in the background (see pollInviteCodeBackground / doStart).
-	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-		"服务器运行中（邀请码后台获取中）", "running", jobCtx.ID)
-	_, _ = jobCtx.Info(ctx, "服务器重启完成。邀请码将在后台自动获取。")
-	r.pollInviteCodeBackground()
+	inviteCode := r.waitForReadyState(ctx, jobCtx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if inviteCode == "" {
+		_, _ = jobCtx.Info(ctx, "未能获取邀请码，可在面板手动刷新。")
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器重启完成（邀请码待就绪）", "running", jobCtx.ID)
+	} else {
+		msg := "服务器运行中，邀请码：" + inviteCode
+		_, _ = jobCtx.Info(ctx, msg)
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			msg, "running", jobCtx.ID)
+		r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, inviteCode)
+	}
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
