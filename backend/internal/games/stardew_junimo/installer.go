@@ -1004,18 +1004,24 @@ func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress fu
 
 func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
-	loginCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit`
+	gameCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +quit`
+	sdkCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 1007 validate +quit`
 	if r.steamCMDUseCache {
-		loginCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +force_install_dir /data/game/.steam-sdk +app_update 1007 validate +quit`
+		gameCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +quit`
+		sdkCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login "$STEAM_USERNAME" +app_update 1007 validate +quit`
 	}
-	suLoginCommand := strings.ReplaceAll(loginCommand, `'`, `'"'"'`)
+	suGameCommand := strings.ReplaceAll(gameCommand, `'`, `'"'"'`)
+	suSDKCommand := strings.ReplaceAll(sdkCommand, `'`, `'"'"'`)
 	script := strings.Join([]string{
 		"set -e",
 		"mkdir -p /data/game /data/game/.steam-sdk /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam",
 		"if id steam >/dev/null 2>&1; then chown -R steam:steam /data/game /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam; fi",
 		`if [ -x /home/steam/steamcmd/steamcmd.sh ]; then steamcmd_bin=/home/steam/steamcmd/steamcmd.sh; elif command -v steamcmd >/dev/null 2>&1; then steamcmd_bin=$(command -v steamcmd); elif [ -x /usr/games/steamcmd ]; then steamcmd_bin=/usr/games/steamcmd; elif [ -x /steamcmd/steamcmd.sh ]; then steamcmd_bin=/steamcmd/steamcmd.sh; else echo "SteamCMD executable not found in container" >&2; exit 127; fi`,
 		`export STEAMCMD_BIN="$steamcmd_bin"`,
-		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '` + suLoginCommand + `'; else ` + loginCommand + `; fi`,
+		`echo "Running SteamCMD app_update 413150..."`,
+		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '` + suGameCommand + `'; else ` + gameCommand + `; fi`,
+		`echo "Running SteamCMD app_update 1007..."`,
+		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '` + suSDKCommand + `'; else ` + sdkCommand + `; fi`,
 	}, "; ")
 	return paneldocker.ContainerTTYRunOpts{
 		ImageRef:   imageRef,

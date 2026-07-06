@@ -1,3 +1,11 @@
+# STEAMCMD-SPLIT-SDK-1 SteamCMD 游戏与 SDK 分段下载
+
+- 修复云服上 SteamCMD 在 `Success! App '413150' fully installed.` 后继续同一会话切换 `+force_install_dir /data/game/.steam-sdk +app_update 1007` 时出现 `Please use force_install_dir before logon!` 并段错误退出 `139` 的问题。
+- `buildSteamCMDOpts()` 仍使用同一个一次性 SteamCMD 容器和同一套缓存卷，但容器内拆成两次独立 SteamCMD 进程：第一次 `+force_install_dir /data/game +login ... +app_update 413150 validate +quit`，第二次 `+force_install_dir /data/game/.steam-sdk +login ... +app_update 1007 validate +quit`。
+- 缓存授权路径仍使用用户名登录，不把 Steam 密码传给 SteamCMD；完整登录路径两次进程都使用账号密码，第一轮授权成功后的缓存可被第二轮复用。
+- 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
 # INSTALL-SMAPI-PREINSTALL-1 SDK 后置 SMAPI 预安装
 
 - Stardew 安装流程在游戏文件和 Steam SDK 均完成后，新增最后一步 `smapi_installing`：后端使用 JunimoServer 镜像启动一次性 `docker run --rm` 容器，挂载同一个 `<project>_game-data:/data/game` volume，在 `/data/game` 内安装 SMAPI 运行环境。

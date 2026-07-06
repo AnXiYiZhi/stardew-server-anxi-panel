@@ -1,3 +1,7 @@
+# 2026-07-06 已完成：SteamCMD SDK 分段下载
+
+- 已完成：SteamCMD fallback 在同一个容器内拆成两次 SteamCMD 进程，分别下载/校验 `413150` 和 `1007`，避免 SDK 阶段因登录后切换 `force_install_dir` 触发 SteamCMD 139 段错误。
+
 # 2026-07-06 已完成：SDK 后置 SMAPI 预安装
 
 - 已完成：安装流程在游戏文件与 Steam SDK 完成后，通过 JunimoServer 一次性容器预安装 SMAPI，减少 JunimoServer 首次启动时因 GitHub 下载 SMAPI 卡住的概率。
