@@ -62,6 +62,13 @@ func TestWriteNexusErrorMessagesAreReadableChinese(t *testing.T) {
 			code:       "nexus_request_failed",
 			message:    "Nexus 请求失败，请稍后重试",
 		},
+		{
+			name:       "network failure",
+			err:        &sj.NexusRequestError{Err: errors.New("dial tcp: i/o timeout")},
+			statusCode: http.StatusBadGateway,
+			code:       "nexus_network_failed",
+			message:    "Nexus 网络连接失败，请确认面板服务器能访问 api.nexusmods.com",
+		},
 	}
 
 	s := &server{logger: slog.Default()}

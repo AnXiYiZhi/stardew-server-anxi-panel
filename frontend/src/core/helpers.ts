@@ -53,6 +53,7 @@ const errorCodeMap: Record<string, string> = {
   nexus_unauthorized: 'Nexus API Key 无效或权限不足',
   nexus_rate_limited: 'Nexus 请求过于频繁，请稍后重试',
   nexus_request_failed: 'Nexus 请求失败，请稍后重试',
+  nexus_network_failed: 'Nexus 网络连接失败，请确认面板服务器能访问 api.nexusmods.com',
   // Mods
   list_mods_failed: '读取 Mod 列表失败',
   invalid_mod_zip: 'Mod ZIP 无效',

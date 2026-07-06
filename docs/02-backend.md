@@ -1,3 +1,16 @@
+# NEXUS-NETWORK-DIAGNOSTICS-1 Nexus 搜索防短断与错误诊断
+
+- `handleModNexusSearch()` 调用 Nexus GraphQL 时不再直接使用浏览器请求的 `r.Context()`，改为 `context.WithTimeout(context.WithoutCancel(r.Context()), 20*time.Second)`，避免前端刷新、切页、FRP/NAS 链路短断把上游 Nexus 搜索提前取消并报 `nexus request failed`。
+- `doNexusRequest()` 的 HTTP client / DNS / TLS / timeout 类失败现在包装为 `NexusRequestError`。Web 层返回 `502 nexus_network_failed`，同时在后端日志记录底层错误，便于区分 `context canceled`、超时、DNS、TLS 或 Cloudflare 抖动。
+- 现场 SSH 诊断确认：部署 NAS 宿主机与 `anxi-panel` 容器内均可 POST 到 `https://api.nexusmods.com/v2/graphql`，完整 Stardew `tractor` 搜索返回 200；旧日志中的 `nexus request failed` 不能单独证明 Nexus 当前不可达。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
+# STEAM-AUTH-RUNTIME-READY-1 当前 steam-auth 可用性
+
+- `GET /api/instances/:id/state` 新增 `steamAuthReady`。`steamAuthLoggedIn` 仍表示历史上 steam-auth 成功过一次（`.env` 中 `STEAM_AUTH_COMPLETED=true`），`steamAuthReady` 表示当前运行中的 `steam-auth` 服务是否有可用登录账号。
+- 后端通过可选 `ComposeExecPipe` 在 `server` 服务内向 `steam-auth:3001/steam/ready` 发送最小 HTTP 请求；探测失败、服务未运行或返回非 200 时记为 `false`，不阻断 state 接口。
+- 该字段用于区分“历史认证成功”与“当前 steam-auth 容器账号断开”，避免邀请码缺失时前端隐藏重新授权入口。
+
 # INVITE-CODE-DECOUPLE-AUTHSTATUS-1 启动不卡邀请码 + auth 登录状态
 
 - `lifecycle.go`：`doStart`/`doRestart` 服务器就绪即完成 job（不再阻塞等邀请码）；`pollInviteCodeBackground()` 后台轮询邀请码、非 Running 自动退出。

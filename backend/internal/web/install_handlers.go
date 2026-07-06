@@ -60,7 +60,7 @@ func (s *server) handleInstancePrepare(w http.ResponseWriter, r *http.Request, i
 	}
 
 	s.auditLog(r, &actor, "instance_prepare", "instance", instanceID, "{}")
-	writeJSON(w, http.StatusOK, makeInstanceStateResponse(instance))
+	writeJSON(w, http.StatusOK, s.makeInstanceStateResponse(r.Context(), instance))
 }
 
 // installRequestBody is the JSON body for POST …/install.

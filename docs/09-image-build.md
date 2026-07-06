@@ -109,6 +109,36 @@ cd E:\stardew-server-anxi-panel\deploy
 docker compose up -d
 ```
 
+## NAS / 图形化 Compose 部署
+
+- NAS（飞牛、群晖、绿联、威联通等）用户可通过图形化 Docker / Container Manager / Compose / 项目 / 应用栈部署，不要求使用 `run.sh`。
+- 面板容器必须挂载宿主机 Docker Socket：`/var/run/docker.sock:/var/run/docker.sock`。如果 NAS 图形界面禁止挂载 Docker Socket，面板无法继续创建 JunimoServer、SteamCMD 等游戏容器。
+- NAS 部署推荐使用宿主机真实绝对路径挂载数据目录，并让容器内 `PANEL_DATA_DIR` 与宿主机路径保持一致。例如：
+
+```yaml
+services:
+  anxi-panel:
+    image: crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:latest
+    container_name: anxi-panel
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /vol1/1000/docker/anxi-panel/data:/vol1/1000/docker/anxi-panel/data
+    environment:
+      PANEL_ADDR: ":8090"
+      PANEL_DATA_DIR: "/vol1/1000/docker/anxi-panel/data"
+      PANEL_DB_PATH: "/vol1/1000/docker/anxi-panel/data/panel.db"
+      PANEL_MODE: "single"
+      PANEL_SECRET: "please-change-to-a-long-random-string"
+```
+
+- 上例中的 `/vol1/1000/docker/anxi-panel/data` 只是示例路径，实际部署时必须替换成 NAS 图形界面显示的宿主机绝对路径，并保持 volume 左右路径和 `PANEL_DATA_DIR` 一致。
+- 上例只在 `anxi-panel` 服务里绑定 `8090`，因为它只是面板容器。`24642/udp`、`27015/udp` 和 `5800/tcp` 由面板后续创建的 JunimoServer 游戏容器绑定，不要写进 `anxi-panel` 的 `ports`，否则面板容器会提前占用游戏端口。
+- NAS 防火墙/路由器端口：面板 `TCP 8090`，游戏 `UDP 24642`，查询 `UDP 27015`，VNC `TCP 5800` 按需；不要开放 `TCP 8080`。
+- 低配 NAS 口径：i3 M380 / 2 核 4 线程 / 6 GB DDR3 / HDD 可跑 1-2 人自用，3-4 人原版或少量 Mod 可尝试，5 人以上或大量 Mod 不建议。
+
 ## 系统要求与安全组
 
 最低系统要求：
@@ -183,6 +213,8 @@ TCP 8080
 - 自动生成强随机 `PANEL_SECRET` 并写入 `~/.anxi-panel/.env`。
 - 使用宿主机目录 `~/.anxi-panel/data` 持久化面板数据，并把容器内 `PANEL_DATA_DIR` 设置为同一个绝对路径，确保面板容器通过宿主机 Docker socket 编排游戏容器时，bind mount 路径在宿主机和面板容器中一致。
 - 挂载 `/var/run/docker.sock`，让面板继续按现有设计控制 JunimoServer 容器。
+- NAS 或特殊 Linux 环境中，如果 `$HOME` 不存在或不可写，默认安装目录会回退到当前可写目录下的 `.anxi-panel`，避免飞牛等系统中 `/home/<user>` 不存在时 `mkdir` 失败。用户也可以显式设置 `INSTALL_DIR=/vol1/1000/docker/.anxi-panel` 指定安装目录。
+- 菜单 `[9] 设置虚拟内存` 会优先通过 `/proc/swaps` 判断 `/swapfile` 是否已启用，并兼容 `swapon` / `mkswap` 位于 `/sbin` 或 `/usr/sbin` 的 NAS 环境；如已有 `/swapfile` 但未启用，会先尝试移除后重建，避免直接覆盖导致 `Text file busy`。
 
 用户首次启动：
 

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
@@ -36,6 +38,11 @@ type instanceStateResponse struct {
 	DriverPhase       string  `json:"driverPhase"`
 	UpdatedAt         string  `json:"updatedAt"`
 	SteamAuthLoggedIn bool    `json:"steamAuthLoggedIn"`
+	SteamAuthReady    bool    `json:"steamAuthReady"`
+}
+
+type composeExecPipeDocker interface {
+	ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 }
 
 type instanceStatusResponse struct {
@@ -501,7 +508,7 @@ func (s *server) handleInstanceState(w http.ResponseWriter, r *http.Request, ins
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, makeInstanceStateResponse(instance))
+	writeJSON(w, http.StatusOK, s.makeInstanceStateResponse(r.Context(), instance))
 }
 
 func (s *server) handleInstanceStatus(w http.ResponseWriter, r *http.Request, instanceID string) {
@@ -601,7 +608,7 @@ func (s *server) makeInstanceResponse(instance storage.Instance) instanceRespons
 	return response
 }
 
-func makeInstanceStateResponse(instance storage.Instance) instanceStateResponse {
+func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage.Instance) instanceStateResponse {
 	return instanceStateResponse{
 		InstanceID:        instance.ID,
 		DriverID:          instance.DriverID,
@@ -611,7 +618,30 @@ func makeInstanceStateResponse(instance storage.Instance) instanceStateResponse 
 		DriverPhase:       instance.DriverPhase,
 		UpdatedAt:         instance.UpdatedAt,
 		SteamAuthLoggedIn: sjconfig.SteamAuthLoggedIn(instance.DataDir),
+		SteamAuthReady:    s.probeSteamAuthReady(ctx, instance),
 	}
+}
+
+func (s *server) probeSteamAuthReady(ctx context.Context, instance storage.Instance) bool {
+	if instance.DriverID != "stardew_junimo" {
+		return false
+	}
+	execDocker, ok := s.docker.(composeExecPipeDocker)
+	if !ok {
+		return false
+	}
+	if instance.State != storage.InstanceStateRunning && instance.State != storage.InstanceStateStarting {
+		return false
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := execDocker.ComposeExecPipe(probeCtx, instance.DataDir, "server", "",
+		"sh", "-lc", "printf 'GET /steam/ready HTTP/1.1\\r\\nHost: steam-auth\\r\\nConnection: close\\r\\n\\r\\n' | nc -w 3 steam-auth 3001")
+	if err != nil || result.ExitCode != 0 {
+		return false
+	}
+	return strings.Contains(result.Stdout, " 200 ") || strings.HasPrefix(result.Stdout, "HTTP/1.1 200")
 }
 
 func makeRegistryInstance(instance storage.Instance) registry.Instance {

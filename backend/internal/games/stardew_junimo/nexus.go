@@ -69,6 +69,26 @@ func (e *NexusAPIError) Error() string {
 	return fmt.Sprintf("nexus api returned status %d", e.StatusCode)
 }
 
+// NexusRequestError wraps network/client failures while calling Nexus. The
+// wrapped error is logged by the web layer but is not returned to browsers.
+type NexusRequestError struct {
+	Err error
+}
+
+func (e *NexusRequestError) Error() string {
+	if e == nil || e.Err == nil {
+		return "nexus request failed"
+	}
+	return fmt.Sprintf("nexus request failed: %v", e.Err)
+}
+
+func (e *NexusRequestError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 // NexusModSearchResult is one search hit, merged with local install state by
 // ApplyNexusInstalledMatch.
 type NexusModSearchResult struct {
@@ -598,7 +618,7 @@ func setNexusHeaders(req *http.Request, apiKey string) {
 func doNexusRequest(req *http.Request) ([]byte, error) {
 	resp, err := nexusHTTPClient.Do(req)
 	if err != nil {
-		return nil, errors.New("nexus request failed")
+		return nil, &NexusRequestError{Err: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 

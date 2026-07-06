@@ -1,3 +1,16 @@
+# FE-PANEL-ACCESS-HOST-INVITE-1 局域网邀请使用当前面板地址
+
+- 邀请码卡片下方“局域网邀请”不再调用后端公网 IP 检测接口，而是从 `window.location.hostname` 读取当前浏览器进入面板使用的 host。
+- 用户用 `192.168.x.x:8090` 进入面板时显示局域网 IP；用公网 IP、FRP 域名或反代域名进入时显示对应 host。复制按钮复制的也是该 host。
+- “刷新”按钮文案改为“同步”，表示同步当前面板访问地址，而不是重新探测公网出口。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-STEAM-AUTH-RUNTIME-READY-1 邀请码重新授权入口
+
+- `InstanceState` 新增可选 `steamAuthReady`。前端仍保留 `steamAuthLoggedIn` 的“历史认证成功过”语义，但邀请码卡片不再只靠它判断是否显示授权入口。
+- `InviteCodeCard` 在 `steamAuthLoggedIn=true` 且 `steamAuthReady=false`，并且当前没有邀请码/存在邀请码错误时，会显示“需重新 Steam 授权”与重新授权入口。
+- 如果服务器仍在运行或启动中，按钮显示“停服后重新授权”并禁用，提示用户先停止服务器；停止后可点击“重新登录授权”，复用已保存账号启动 `steam-auth/login` 并跳转安装页查看认证日志。
+
 # FE-INSTALL-SMAPI-PREINSTALL-1 安装页显示 SMAPI 子状态
 
 - 安装页新增识别 `smapi_installing` / `smapi_install_failed`。后端任务日志出现 `[smapi]` 时，前端会把当前阶段切到 `smapi_installing`。

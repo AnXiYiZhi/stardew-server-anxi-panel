@@ -1,3 +1,51 @@
+# NEXUS-NETWORK-DIAGNOSTICS-1 Nexus 搜索失败修复
+
+## 背景
+- 真机日志出现 `nexus search failed` / `nexus request failed`，其中一次请求耗时约 4 秒，低于 Nexus client 10 秒超时。
+- SSH 到部署 NAS 后验证：宿主机和 `anxi-panel` 容器内都能 POST 到 `https://api.nexusmods.com/v2/graphql`；完整 Stardew `tractor` GraphQL 搜索返回 200。
+- 因此该现场问题不是“容器完全无法访问 Nexus”，更可能是浏览器刷新/切页/FRP 或 NAS 代理链路短断导致 `r.Context()` 取消，上游 Nexus 请求随之被取消。
+
+## 改了什么
+- `handleModNexusSearch()` 调 Nexus 前创建 `context.WithTimeout(context.WithoutCancel(r.Context()), 20*time.Second)`，让短只读搜索不被浏览器连接取消直接打断。
+- `doNexusRequest()` 将 HTTP client 失败包装为 `NexusRequestError`。
+- `writeNexusError()` 对 `NexusRequestError` 返回 `nexus_network_failed`，并把底层错误写入后端日志。
+
+## 影响文件
+- `backend/internal/web/lifecycle_handlers.go`
+- `backend/internal/games/stardew_junimo/nexus.go`
+- `backend/internal/web/nexus_errors_test.go`
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+- 真机可用 `wget --post-data '{"query":"{ __typename }"}' https://api.nexusmods.com/v2/graphql` 在宿主机与 `docker exec anxi-panel` 内分别验证。
+
+## 下一步注意事项
+- 如果后续仍报 `nexus_network_failed`，先看容器日志里的底层错误，不要只看前端提示判断根因。
+- 这次只改搜索接口；Nexus ZIP 下载仍使用长超时 client 与 job 上下文，不受这次搜索防短断改动影响。
+
+# STEAM-AUTH-RUNTIME-READY-1 当前 steam-auth ready 状态
+
+## 背景
+- 真实 NAS 联调中，`.env` 已有 `STEAM_AUTH_COMPLETED=true`，但运行中的 JunimoServer 日志提示 `Steam-auth service has no logged-in accounts`，邀请码为 `n/a`。
+- 旧 `steamAuthLoggedIn` 只代表历史认证成功过一次，不能代表当前 `steam-auth` 服务里有可用账号。
+
+## 改了什么
+- `GET /api/instances/:id/state` 增加 `steamAuthReady`。
+- `instance_handlers.go` 通过可选 `ComposeExecPipe` 从 `server` 容器内向 `steam-auth:3001/steam/ready` 发送最小 HTTP 请求。返回 200 才记为 ready；探测失败、服务未运行或非 Stardew driver 均返回 false，不阻断 state。
+- `steamAuthLoggedIn` 保留历史语义，继续由 `config.SteamAuthLoggedIn()` 读取 `STEAM_AUTH_COMPLETED`。
+
+## 影响文件
+- `backend/internal/web/instance_handlers.go`
+- `backend/internal/web/install_handlers.go`
+
+## 如何验证
+- `cd backend; go test ./internal/web`
+- 真机：server 运行但 steam-auth 无登录账号时，`/api/instances/stardew/state` 应返回 `steamAuthLoggedIn=true` 且 `steamAuthReady=false`。
+
+## 下一步注意事项
+- 当前探测依赖 server 容器内有 `nc`，这是现有 JunimoServer 镜像可用能力；如果后续 server 镜像去掉 `nc`，应改为 Docker API 网络探测或把 ready 探测下沉到 driver。
+- 不要把 `steamAuthReady` 反向写入 `.env`，它是当前运行态，不是持久标志。
+
 # INVITE-CODE-DECOUPLE-AUTHSTATUS-1 启动不卡邀请码 + 暴露 auth 登录状态
 
 ## 背景
