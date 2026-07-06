@@ -1,3 +1,10 @@
+# SMAPI 运行环境预安装
+
+- 面板镜像本身不内置 SMAPI。安装 Stardew 时，后端会在游戏文件和 Steam SDK 完成后，用已选择的 JunimoServer 镜像启动一次性 `docker run --rm` 容器，挂载 `<project>_game-data:/data/game` 并安装 SMAPI。
+- 这不是新增常驻容器，也不需要用户开放新端口；容器运行完自动删除。目的是稳定访问 Docker named volume，并复用 JunimoServer 镜像里的 Linux 运行环境。
+- 默认下载源写入实例 `.env`：`SMAPI_VERSION=4.5.2`，`SMAPI_DOWNLOAD_URLS=https://gh.llkk.cc/... , https://github.dpik.top/... , https://ghfast.top/... , https://github.com/...`。可在 `.env` 中覆盖为自建 OSS/CDN 地址。
+- 离线/企业部署若希望完全避免现场 GitHub 下载，建议把 SMAPI installer zip 放到自有对象存储/CDN，并把 `SMAPI_DOWNLOAD_URLS` 改为自有地址优先。
+
 # ENV-BOM-NORMALIZE-1 Compose 启动前配置校验
 
 - 实例 `.env` 若被外部编辑器或复制粘贴插入 UTF-8 BOM 前缀，Docker Compose 会在解析阶段报 `unexpected character "\ufeff"`，表现为面板任务只显示 `docker compose up: docker command failed`。
@@ -235,6 +242,27 @@ bash run.sh update-script
 bash run.sh swap 2
 bash run.sh autostart
 ```
+
+更新面板：
+
+```bash
+cd ~ && bash run.sh update
+```
+
+如果更新后仍显示旧版本，强制重新拉取镜像并重建容器：
+
+```bash
+cd ~ && bash run.sh force-update
+```
+
+如果启动脚本本身也有更新，先更新脚本再更新面板：
+
+```bash
+cd ~ && bash run.sh update-script
+cd ~ && bash run.sh update
+```
+
+更新面板只会重建面板容器，不会删除 `~/.anxi-panel/data`，存档、Mod、数据库和备份会继续保留。
 
 固定版本启动示例：
 

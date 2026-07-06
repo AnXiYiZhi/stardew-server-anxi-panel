@@ -70,6 +70,7 @@ type installRequestBody struct {
 	VNCPassword      string `json:"vncPassword"`
 	ImageTag         string `json:"imageTag"`
 	ReuseCredentials bool   `json:"reuseCredentials"` // if true, read creds from existing .env
+	ForceReauth      bool   `json:"forceReauth"`      // if true, clear saved auth caches and re-run full auth
 }
 
 // handleInstanceInstall handles POST /api/instances/:id/install.
@@ -88,6 +89,11 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	instance, ok := s.loadInstance(w, r, instanceID)
 	if !ok {
 		return
+	}
+
+	// forceReauth always requires freshly entered credentials (account/password change).
+	if body.ForceReauth {
+		body.ReuseCredentials = false
 	}
 
 	// reuseCredentials: reload creds from .env so the user doesn't have to re-enter them.
@@ -156,7 +162,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		VNCPassword:   body.VNCPassword,
 		ImageTag:      body.ImageTag,
 		AutoDownload:  body.ReuseCredentials,
-		SteamCMDRetry: body.ReuseCredentials,
+		ForceReauth:   body.ForceReauth,
 	})
 	if err != nil {
 		s.logger.Error("install failed to start", "instance", instanceID, "error", err)

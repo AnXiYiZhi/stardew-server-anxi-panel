@@ -1,3 +1,20 @@
+# 2026-07-06 已完成：SDK 后置 SMAPI 预安装
+
+- 已完成：安装流程在游戏文件与 Steam SDK 完成后，通过 JunimoServer 一次性容器预安装 SMAPI，减少 JunimoServer 首次启动时因 GitHub 下载 SMAPI 卡住的概率。
+- 已完成：前端把 SMAPI 作为“下载游戏”步骤里的最后一个子状态展示，并区分 `smapi_install_failed` 后置失败。
+- 后续可优化：如果后续维护自定义 JunimoServer 镜像，可考虑把 SMAPI 安装包内置进镜像，进一步减少现场 GitHub 下载依赖。
+
+# FE-STEAM-GUARD-SUBMITTED-FEEDBACK-1 状态
+
+- `FE-STEAM-GUARD-SUBMITTED-FEEDBACK-1` completed：Steam / SteamCMD 验证码提交成功后，安装页会显示“验证码已提交，正在等待响应”的本地等待态，不再回到同一个空输入框。等待态保留“重新输入”入口，并在 phase 进入下载、失败或完成后自动清除。
+
+# STEAMCMD-EMAIL-GUARD-PROMPT-1 状态
+
+- `STEAMCMD-EMAIL-GUARD-PROMPT-1` completed：SteamCMD 首次新机器登录时的邮箱 Steam Guard 分行提示已纳入后端和前端识别。后端会把 `This computer has not been authenticated...` / `Please check your email...` / `code from that message` / `set_steam_guard_code` 等日志切到 `steamcmd_guard_required`；前端也会在 job 日志先到时展示 SteamCMD 验证码输入框，避免安装页卡在下载/自更新进度。
+
+# INSTALL-ROUTING-SPLIT-1 状态
+- `INSTALL-ROUTING-SPLIT-1` completed：安装流程按用户口述的完整期望重构。把 `reuseCredentials` 粗暴驱动的单一 `steamCMDRetry` 拆成 `reuse` / `steamCMDDirect` / `steamCMDUseCache` 三个正交决策，用已持久化的 driverPhase/state 判“是否已过认证”、用新 `.env` 标志 `STEAMCMD_AUTH_COMPLETED` 判“SteamCMD 是否有缓存”。修复：①镜像拉取失败重试重新拉镜像 + steam-auth（不再误跳 SteamCMD）；②SteamCMD 认证超时重试回到登录验证界面（不再秒报“授权缓存不可用”）；③认证成功后跨会话可靠跳过 steam-auth。并新增「更换 Steam 账号 / 强制重新认证」入口（`forceReauth`：清 steam-session/steamcmd 授权卷 + 重置标志，保留 game-data）；已安装态只保留卡片内换号按钮，操作区不再重复渲染。已验证 `cd backend; go test ./...`、`cd frontend; npm.cmd run build`。
+
 # STEAMCMD-REPAIR-DIRECT-1 状态
 - `STEAMCMD-REPAIR-DIRECT-1` completed：安装页“重新安装 / 修复”与复用凭据重试入口已改为直达 SteamCMD 下载/校验。前端不再要求输入 Steam/VNC 凭据；后端收到 `reuseCredentials=true` 后跳过 `steam-auth`，并用已有 SteamCMD 授权缓存执行 app_update。已验证 `cd backend; go test ./internal/games/stardew_junimo ./internal/web` 与 `cd frontend; npm.cmd run build`。
 

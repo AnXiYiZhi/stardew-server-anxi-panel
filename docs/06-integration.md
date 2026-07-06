@@ -1,3 +1,38 @@
+# INSTALL-SMAPI-PREINSTALL-1 安装链路联调说明
+
+- 安装顺序现在为：准备目录/镜像 -> Steam/SteamCMD 授权 -> 游戏文件下载/校验 -> Steam SDK 下载/校验 -> `smapi_installing` -> `game_installed`。
+- `smapi_installing` 只在游戏文件和 Steam SDK 完成后进入；不要把它提前到游戏文件下载结束前。失败 phase 为 `smapi_install_failed`。
+- 前端应把 `smapi_installing` 归入“下载游戏”大步骤的最后一个子状态；`smapi_install_failed` 允许用 `reuseCredentials=true` 重试，不要求用户重新输入 Steam 账号。
+- 后端日志前缀为 `[smapi]`，前端可用该前缀做日志兜底，以免实例状态轮询慢时仍停在 SteamCMD 下载阶段。
+- 联调验证：在干净实例安装完成 Steam SDK 后，应看到任务日志 `[smapi] 使用 JunimoServer 镜像 ... 预安装 SMAPI。`，随后进入安装完成；若 `/data/game/StardewModdingAPI` 已存在，应看到 skip 日志。
+
+# FE-STEAM-GUARD-SUBMITTED-FEEDBACK-1 联调契约
+
+- `POST /api/instances/:id/steam-guard/input` 返回成功只表示验证码/选项已经写入当前交互进程，不代表 Steam 已经完成验证。前端应在成功返回后立刻显示“已提交，等待 Steam/SteamCMD 响应”的本地等待态，而不是继续展示空输入框。
+- 等待态应保留重新输入入口；如果后端后续仍停在 `steam_guard_required` 或 `steamcmd_guard_required`，管理员可以重新提交验证码。若 phase 进入下载、失败或完成，前端应自动退出等待态。
+
+# STEAMCMD-EMAIL-GUARD-PROMPT-1 联调契约
+
+- SteamCMD 邮箱验证码提示可能不是单行 `Enter Steam Guard code sent to ...`，也可能拆成多行：`This computer has not been authenticated for your account using Steam Guard.`、`Please check your email ... enter the Steam Guard`、`code from that message.`、`set_steam_guard_code`。
+- 后端看到这些 `[steamcmd]` 输出时应进入 `driverPhase=steamcmd_guard_required`；前端如果先通过 job 日志看到这些文本，也应按 `steamcmd_guard_required` 渲染验证码输入框。
+- 验证码提交接口不变：`POST /api/instances/:id/steam-guard/input`。该阶段文案仍应明确是 SteamCMD 兜底授权，不要显示普通 steam-auth 下载或 Docker 镜像拉取状态。
+
+# INSTALL-ROUTING-SPLIT-1 联调契约（安装路由 + forceReauth）
+
+- `POST /api/instances/:id/install` 请求体：`steamUsername/steamPassword/vncPassword/imageTag/reuseCredentials` 之外新增 `forceReauth`（布尔，选填）。三选一语义：
+  - 全新安装 / 账密错误重输：发完整 `{ steamUsername, steamPassword, vncPassword, imageTag }`。
+  - 复用重试（镜像拉取失败、超时、下载失败、SteamCMD 重试、已安装重装等）：发 `{ reuseCredentials: true, imageTag }`。
+  - 更换账号 / 强制重新认证：发 `{ steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true }`。
+- 路由由后端按**实例已持久化 driverPhase/state** 决定，前端**不需要**自己区分该走 steam-auth 还是 SteamCMD：
+  | 触发 phase/state | 后端走向 |
+  | --- | --- |
+  | `pull_failed` / 认证前超时(`install_timeout`,`steam_auth_connection_failed`) | 重新拉镜像 → steam-auth（自动账号密码，跳过方式选择） |
+  | `credentials_required` | 前端弹表单重输，等同全新安装 |
+  | `download_failed` / `post_auth_failed` / 已安装态 / `steamcmd_*` | 直达 SteamCMD（有缓存则仅用户名秒过，无缓存则完整登录一次） |
+  | `forceReauth=true` | 清授权卷 + 重置标志 → 重新拉镜像 → 完整认证 |
+- 关键期望：SteamCMD **首次授权超时**后重试，联调应看到 SteamCMD **重新出现 guard 选择/验证码/批准提示**（而非 `state=error, steamcmd_failed` 秒退）；SteamCMD 成功登录（`logged in ok`）后 `.env` 会写 `STEAMCMD_AUTH_COMPLETED=true`，此后重装/更新命中缓存路径。
+- 更换账号联调：任务日志应出现 `更换账号：正在清除已保存的 Steam / SteamCMD 授权缓存...`，随后进入正常 `auth_method_required` / 扫码 / Steam Guard 流程；游戏文件（`game-data` 卷）保留。
+
 # STEAMCMD-REPAIR-DIRECT-1 联调契约
 
 - 前端在“重新安装 / 修复”、认证后下载失败重试、SteamCMD 重试这类复用凭据入口中，应继续调用 `POST /api/instances/:id/install`，请求体为 `{ "reuseCredentials": true, "imageTag": "..." }`，不要再提交 Steam 用户名、密码或 VNC 密码。

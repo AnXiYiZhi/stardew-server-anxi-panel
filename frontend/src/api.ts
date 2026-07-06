@@ -155,6 +155,7 @@ export function installInstance(
     vncPassword?: string
     imageTag?: string
     reuseCredentials?: boolean
+    forceReauth?: boolean
   },
   instanceId = defaultInstanceId,
 ) {

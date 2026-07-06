@@ -1,3 +1,37 @@
+# FE-INSTALL-SMAPI-PREINSTALL-1 安装页显示 SMAPI 子状态
+
+- 安装页新增识别 `smapi_installing` / `smapi_install_failed`。后端任务日志出现 `[smapi]` 时，前端会把当前阶段切到 `smapi_installing`。
+- “下载游戏”步骤的子任务进度从 2 段扩展为 3 段：游戏文件、Steam SDK、SMAPI 运行环境。SMAPI 安装发生在 Steam SDK 完成之后。
+- `smapi_install_failed` 不再按 Steam 认证失败处理；它属于后置安装失败，进度条只把第 4 步“下载游戏”标红，并允许复用已保存凭据重试。
+- 安装页新增 SMAPI 专属提示卡片：“安装 SMAPI 运行环境中...”，说明正在通过加速源安装，完成后进入安装完成。
+- 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`、`frontend/src/games/stardew/install-helpers.ts`。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-STEAM-GUARD-SUBMITTED-FEEDBACK-1 验证码提交后等待态
+
+- 修复 Steam / SteamCMD 验证码提交成功后页面立刻回到同一个输入框，用户容易误以为提交失败的问题。
+- `InstallPage.tsx` 新增 `guardSubmittedKind` 本地状态；普通 Steam Guard 和 SteamCMD 验证码提交成功后会清空输入框，并显示“验证码已提交，正在等待 Steam/SteamCMD 响应”的等待态。等待态提供“重新输入”按钮，避免验证码填错或上游长时间无响应时用户被锁死。
+- 当 `effectivePhase` 离开当前验证码/手机批准阶段（例如进入 `steamcmd_downloading`、失败或完成）时，等待态会自动清除。接口不变，仍使用 `POST /api/instances/:id/steam-guard/input`。
+- 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-STEAMCMD-EMAIL-GUARD-PROMPT-1 SteamCMD 邮箱验证码分行提示
+
+- 修复 SteamCMD 原生日志已经提示“请检查邮箱并输入 Steam Guard code”，但安装页仍停留在 `steamcmd_downloading` / 客户端自更新进度的显示问题。
+- `inferLatestSteamAuthLogPhase()` 的 SteamCMD 专属分支现在识别 `this computer has not been authenticated`、`please check your email`、`enter the steam guard`、`code from that message`、`set_steam_guard_code`。这些日志只在带 `[steamcmd]` 前缀时触发，命中后前端切到 `steamcmd_guard_required` 并展示验证码输入框。
+- 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`。
+- 验证：`cd frontend; npm.cmd run build`。
+
+# FE-INSTALL-CHANGE-ACCOUNT-1 更换 Steam 账号 / 强制重新认证入口
+
+- 安装页新增 `forceReauth` 状态与「更换 Steam 账号 / 重新认证」按钮：出现在已安装卡片（与“重新安装 / 修复”并列），以及未安装但可复用凭据重试的操作区（`!isInstalled && canDirectRetry && !authFailed` 时）。已安装态只使用卡片内按钮，避免重复渲染。点击后 `setForceReauth(true)` 并打开表单。
+- 凭据输入显示条件由 `!canDirectRetry` 改为 `!canDirectRetry || forceReauth`，即更换账号时即便处于复用态也会显示账号/密码/VNC 输入框。表单标题/提示新增 forceReauth 文案（“将清除已保存的 Steam / SteamCMD 授权缓存并用新账号密码重新认证；已下载的游戏文件会保留。”），提交按钮显示“确认更换账号并重新认证”。
+- `handleInstallSubmit`：`forceReauth` 时提交 `{ steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true }`；其余分支不变（复用发 `{ reuseCredentials:true, imageTag }`，全新发完整凭据）。提交成功或点“取消”都会复位 `forceReauth`；“安装/重试”“重新安装/修复”按钮点击时显式 `setForceReauth(false)` 防止残留。
+- `api.ts` `installInstance` body 类型新增可选 `forceReauth?: boolean`。
+- 说明：镜像拉取失败、连接/认证超时等**认证前**失败重试的“不弹凭据表单、自动账号密码继续”，以及只有 `credentials_required` 才重输凭据的既有逻辑均未改动——后端已把路由收敛，前端复用重试仍照发 `reuseCredentials`。
+- 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`、`frontend/src/api.ts`。
+- 验证：`cd frontend; npm.cmd run build`。
+
 # FE-STEAMCMD-REPAIR-DIRECT-1 修复/重新安装不再要求输入凭据
 
 - 安装页已把已安装态的“重新安装 / 修复”纳入复用凭据路径，提交 `POST /api/instances/:id/install` 时只发送 `{ reuseCredentials: true, imageTag }`，不再显示 Steam 用户名、Steam 密码或 VNC 密码输入框。

@@ -38,6 +38,8 @@ const (
 	DefaultSteamServiceImageCandidates = sjconfig.DefaultSteamServiceImageCandidates
 	DefaultSteamCMDImage               = sjconfig.DefaultSteamCMDImage
 	DefaultSteamCMDImageCandidates     = sjconfig.DefaultSteamCMDImageCandidates
+	DefaultSMAPIVersion                = sjconfig.DefaultSMAPIVersion
+	DefaultSMAPIDownloadURLs           = sjconfig.DefaultSMAPIDownloadURLs
 
 	DefaultSteamClientConnectTimeoutSeconds  = sjconfig.DefaultSteamClientConnectTimeoutSeconds
 	DefaultSteamClientConnectRetries         = sjconfig.DefaultSteamClientConnectRetries
@@ -59,6 +61,8 @@ type DockerService interface {
 	// stdin bytes (callers append "\n" for ReadLine, omit "\n" for ReadKey).
 	RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
 	RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
+	// RemoveVolumes deletes the named Docker volumes (force: missing volumes are a no-op).
+	RemoveVolumes(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error)
 }
 
 // StateStore defines what the driver needs from the storage layer.
@@ -196,15 +200,35 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 		imageTag = TestedImageTag
 	}
 
+	// reuse: reuse saved credentials without re-prompting the user for input.
+	reuse := req.AutoDownload || req.SteamCMDRetry
+	// steamAuthCompleted: durable ".env" flag set once Steam authentication has
+	// succeeded (via steam-auth or SteamCMD). It backstops the phase inference in
+	// authAlreadySucceeded so that even if the persisted phase was reset (e.g. an
+	// interrupted install marked install_interrupted) we still skip steam-auth.
+	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	steamAuthCompleted := strings.EqualFold(envVals["STEAM_AUTH_COMPLETED"], "true")
+	// steamCMDDirect: skip image pull + steam-auth and resume the SteamCMD path
+	// directly. Only when reusing credentials AND the instance has already passed
+	// Steam authentication (resuming a SteamCMD phase, a post-auth download/
+	// installed state, or the durable STEAM_AUTH_COMPLETED flag). Pre-auth failures
+	// (pull_failed, timeouts) must NOT take this shortcut — they re-pull images and
+	// run steam-auth again.
+	steamCMDDirect := reuse && !req.ForceReauth &&
+		(shouldResumeSteamCMD(instance.DriverPhase) ||
+			authAlreadySucceeded(instance.State, instance.DriverPhase) ||
+			steamAuthCompleted)
+
 	runner := &installRunner{
-		driver:        d,
-		instance:      instance,
-		username:      req.SteamUsername,
-		password:      req.SteamPassword,
-		vncPass:       req.VNCPassword,
-		imageTag:      imageTag,
-		autoMode:      req.AutoDownload,
-		steamCMDRetry: req.SteamCMDRetry || (req.AutoDownload && shouldResumeSteamCMD(instance.DriverPhase)),
+		driver:         d,
+		instance:       instance,
+		username:       req.SteamUsername,
+		password:       req.SteamPassword,
+		vncPass:        req.VNCPassword,
+		imageTag:       imageTag,
+		reuse:          reuse,
+		steamCMDDirect: steamCMDDirect,
+		forceReauth:    req.ForceReauth,
 	}
 
 	job, err := d.jobs.Start(ctx, jobs.Spec{
@@ -236,6 +260,34 @@ func shouldResumeSteamCMD(phase string) bool {
 	default:
 		return false
 	}
+}
+
+// authAlreadySucceeded reports whether the instance has already passed Steam
+// authentication at least once, based on its persisted phase/state. These
+// phases only occur after auth succeeds (download started/failed, post-auth
+// failure) or once the game is installed, so they double as a durable,
+// cross-session "auth done" signal that lets later operations skip steam-auth.
+func authAlreadySucceeded(state, phase string) bool {
+	switch phase {
+	case "download_failed",
+		"post_auth_failed",
+		"smapi_install_failed",
+		"game_downloading",
+		"steam_sdk_downloading",
+		"smapi_installing",
+		"game_installed":
+		return true
+	}
+	switch state {
+	case storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+		storage.InstanceStateStopped:
+		return true
+	}
+	return false
 }
 
 // SendSteamGuardInput writes a Steam Guard code to the active install job's

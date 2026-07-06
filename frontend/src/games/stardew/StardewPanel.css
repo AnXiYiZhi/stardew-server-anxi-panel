@@ -5715,6 +5715,14 @@
   line-height: 1.5;
 }
 
+.sd-install-guard-mobile > span:nth-child(2) {
+  flex: 1;
+}
+
+.sd-install-guard-mobile > .sd-btn-tan {
+  flex: 0 0 auto;
+}
+
 .sd-install-guard-error {
   font-size: 13px;
   color: var(--sd-red-text);

@@ -154,12 +154,25 @@ export function calcSteamDownloadTaskProgress(
   sdkProgress: DownloadProgress | null,
   steamCMDClientProgress: DownloadProgress | null = null,
 ) {
-  if (phase !== 'game_downloading' && phase !== 'steam_sdk_downloading' && phase !== 'steamcmd_downloading') return null
+  if (
+    phase !== 'game_downloading' &&
+    phase !== 'steam_sdk_downloading' &&
+    phase !== 'steamcmd_downloading' &&
+    phase !== 'smapi_installing'
+  ) return null
+  if (phase === 'smapi_installing') {
+    return {
+      done: 2,
+      total: 3,
+      percent: 88,
+      label: '游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境。',
+    }
+  }
   if (phase === 'steam_sdk_downloading') {
     return {
       done: sdkProgress?.percent === 100 ? 2 : 1,
-      total: 2,
-      percent: sdkProgress?.percent === 100 ? 100 : roundPercent(50 + (sdkProgress?.percent ?? 0) / 2),
+      total: 3,
+      percent: sdkProgress?.percent === 100 ? 80 : roundPercent(50 + (sdkProgress?.percent ?? 0) * 0.3),
       label: sdkProgress?.percent === 100
         ? '游戏文件和 Steam SDK 均已下载完成。'
         : '游戏文件已下载完成，正在下载 Steam SDK 运行文件。',
@@ -171,15 +184,15 @@ export function calcSteamDownloadTaskProgress(
     if (steamCMDClientProgress && sdkPercent == null && gameProgress == null) {
       return {
         done: 0,
-        total: 2,
+        total: 3,
         percent: roundPercent(steamCMDClientProgress.percent * 0.15),
         label: 'SteamCMD 镜像已就绪，正在更新 SteamCMD 客户端；这不是 Docker 镜像拉取。',
       }
     }
     return {
       done: sdkPercent === 100 ? 2 : gamePercent >= 100 ? 1 : 0,
-      total: 2,
-      percent: sdkPercent != null ? roundPercent(50 + sdkPercent / 2) : roundPercent(gamePercent / 2),
+      total: 3,
+      percent: sdkPercent != null ? roundPercent(50 + sdkPercent * 0.3) : roundPercent(gamePercent / 2),
       label: sdkPercent != null
         ? 'SteamCMD 已完成游戏文件，正在处理 Steam SDK 运行文件。'
         : 'SteamCMD 正在兜底下载并校验 Stardew Valley 游戏文件。',
@@ -187,7 +200,7 @@ export function calcSteamDownloadTaskProgress(
   }
   return {
     done: gameProgress?.percent === 100 ? 1 : 0,
-    total: 2,
+    total: 3,
     percent: roundPercent((gameProgress?.percent ?? 0) / 2),
     label: '正在校验/下载 Stardew Valley 游戏文件；已存在且校验通过的文件会自动跳过。',
   }
