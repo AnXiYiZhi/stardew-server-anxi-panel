@@ -772,29 +772,55 @@ func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.C
 
 	_, _ = jobCtx.Info(ctx, "服务器 API 就绪，发送创建新存档请求...")
 
+	// Remember which save (if any) the gameloader currently points at. A fresh install
+	// keeps the persistent saves dir, so an old save can still be present; the poll below
+	// uses this to tell a genuinely new save apart from a pre-existing one and never
+	// report the old save as "created".
+	gameloaderPath := filepath.Join(savesDir(r.instance.DataDir), ".smapi", "mod-data",
+		"junimohost.server", "junimohost.gameloader.json")
+	prevSave := ""
+	if data, err := os.ReadFile(gameloaderPath); err == nil {
+		var gl struct {
+			SaveNameToLoad string `json:"SaveNameToLoad"`
+		}
+		if json.Unmarshal(data, &gl) == nil {
+			prevSave = gl.SaveNameToLoad
+		}
+	}
+
 	// Call POST /newgame.  JunimoServer reads server-settings.json and creates a new save.
 	// The gameloader config is updated automatically.
-	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	//
+	// /newgame is synchronous: it generates the whole world before responding, which on a
+	// fresh first boot (cold cache, small VM) can take a couple of minutes. Give it a
+	// generous timeout so curl is not killed mid-generation. If it still times out, do NOT
+	// fail — the server keeps generating the save server-side, so fall through to the
+	// save-detection poll below. Failing here instead makes the lifecycle fall back to a
+	// pre-existing save (e.g. an old save left in the persistent saves dir), which is
+	// exactly the surprising "loaded the wrong save" behaviour.
+	cmdCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 	result, err := r.lifecycle.ComposeExecPipe(cmdCtx, r.instance.DataDir, "server",
 		"", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}",
 		"http://localhost:8080/newgame")
 	if err != nil {
-		return fmt.Errorf("POST /newgame: %w", err)
+		_, _ = jobCtx.Warn(ctx, fmt.Sprintf("创建新存档请求未正常返回（%s），服务器可能仍在后台生成，继续等待新存档落盘...",
+			paneldocker.RedactString(err.Error())))
+	} else {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档创建响应：%s", strings.TrimSpace(result.Stdout)))
 	}
-	_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档创建响应：%s", strings.TrimSpace(result.Stdout)))
 
-	// Wait for the new save to appear in the Saves directory.
+	// Wait for the new save to appear in the Saves directory. Require the gameloader to
+	// point at a save name different from the pre-existing one so a leftover old save is
+	// never mistaken for the newly created one.
 	saveDeadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(saveDeadline) {
-		gameloaderPath := filepath.Join(savesDir(r.instance.DataDir), ".smapi", "mod-data",
-			"junimohost.server", "junimohost.gameloader.json")
 		data, err := os.ReadFile(gameloaderPath)
 		if err == nil {
 			var gl struct {
 				SaveNameToLoad string `json:"SaveNameToLoad"`
 			}
-			if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" {
+			if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" && gl.SaveNameToLoad != prevSave {
 				saveDir := filepath.Join(savesDir(r.instance.DataDir), "Saves", gl.SaveNameToLoad)
 				if _, err := os.Stat(saveDir); err == nil {
 					if err := EnsureDisabledModProfileForSave(r.instance.DataDir, gl.SaveNameToLoad); err != nil {

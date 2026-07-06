@@ -1129,7 +1129,7 @@ ok=""
 for url in $(printf '%s' "${SMAPI_DOWNLOAD_URLS:-}" | tr ',' ' '); do
   [ -n "${url}" ] || continue
   echo "Trying SMAPI download: ${url}"
-  if curl -fL --connect-timeout 20 --retry 2 --retry-delay 2 "${url}" -o "${tmp_dir}/smapi.zip"; then
+  if curl -fL --connect-timeout 20 --speed-limit 1024 --speed-time 30 --retry 2 --retry-delay 2 "${url}" -o "${tmp_dir}/smapi.zip"; then
     if unzip -t "${tmp_dir}/smapi.zip" >/dev/null; then
       ok="1"
       break
