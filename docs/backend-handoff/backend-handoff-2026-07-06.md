@@ -1,3 +1,25 @@
+# STEAMCMD-HOME-CACHE-CLEANUP-1 SteamCMD HOME 与缓存清理加固
+
+## 改了什么
+- SteamCMD fallback 以 `steam` 用户运行时显式设置 `HOME=/home/steam USER=steam LOGNAME=steam`，避免 `su -m steam` 保留 root HOME 后继续使用 `/root/.local/share/Steam` 自更新缓存。
+- `docker.Client.RemoveVolumes()` 改为逐个删除 volume，并忽略缺失卷；真实失败仍返回错误。
+- `clearSteamCMDRuntimeCache()` 在清理失败时把 Docker stderr/stdout 脱敏后写进任务日志，便于现场判断是卷不存在、被占用还是 Docker 权限问题。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/installer.go`
+- `backend/internal/docker/compose.go`
+- `backend/internal/games/stardew_junimo/driver_test.go`
+- `backend/internal/docker/compose_test.go`
+
+## 如何验证
+- `cd backend; go test ./internal/docker ./internal/games/stardew_junimo`
+- `cd backend; go test ./...`
+- 真实服务器重试后，SteamCMD 日志应优先写入 `/home/steam/.local/share/Steam`；若仍出现 139，应先看到 runtime cache 清理，然后再自动重试一次。
+
+## 下一步注意事项
+- 如果真实日志仍提示 volume 被占用，下一步应在 139 后先清理可能残留的 one-shot SteamCMD 容器，再删除 cache volume。
+- 不要把 `413150` 与 `1007` 合回同一个 SteamCMD 会话；两段独立进程仍是当前更稳的结构。
+
 # STEAMCMD-SPLIT-SDK-1 SteamCMD 游戏与 SDK 分段下载
 
 ## 改了什么

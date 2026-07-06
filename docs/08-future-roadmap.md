@@ -1,3 +1,8 @@
+# 2026-07-06 已完成：SteamCMD HOME 与缓存清理加固
+
+- 已完成：SteamCMD fallback 以 `steam` 用户运行时显式设置 `HOME=/home/steam`，避免继续使用 `/root/.local/share/Steam` 自更新缓存引发 139 段错误。
+- 已完成：Docker volume 清理改为逐个删除并忽略缺失卷，139 后自动清理 SteamCMD runtime cache 的成功率更高；真实失败会把 Docker 输出写入任务日志。
+
 # 2026-07-06 已完成：SteamCMD SDK 分段下载
 
 - 已完成：SteamCMD fallback 在同一个容器内拆成两次 SteamCMD 进程，分别下载/校验 `413150` 和 `1007`，避免 SDK 阶段因登录后切换 `force_install_dir` 触发 SteamCMD 139 段错误。

@@ -1029,8 +1029,9 @@ func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.Container
 		gameCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +quit`
 		sdkCommand = `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login "$STEAM_USERNAME" +app_update 1007 validate +quit`
 	}
-	suGameCommand := strings.ReplaceAll(gameCommand, `'`, `'"'"'`)
-	suSDKCommand := strings.ReplaceAll(sdkCommand, `'`, `'"'"'`)
+	steamHomePrefix := `HOME=/home/steam USER=steam LOGNAME=steam `
+	suGameCommand := strings.ReplaceAll(steamHomePrefix+gameCommand, `'`, `'"'"'`)
+	suSDKCommand := strings.ReplaceAll(steamHomePrefix+sdkCommand, `'`, `'"'"'`)
 	script := strings.Join([]string{
 		"set -e",
 		"mkdir -p /data/game /data/game/.steam-sdk /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam",
@@ -1069,8 +1070,16 @@ func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *j
 		projectName + "_steamcmd-user-local",
 		projectName + "_steamcmd-root-local",
 	}
-	if _, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
-		_, _ = jobCtx.Warn(ctx, "[steamcmd] Failed to clear SteamCMD runtime cache volumes: "+paneldocker.RedactString(err.Error()))
+	if result, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
+		detail := strings.TrimSpace(result.Stderr)
+		if detail == "" {
+			detail = strings.TrimSpace(result.Stdout)
+		}
+		message := "[steamcmd] Failed to clear SteamCMD runtime cache volumes: " + paneldocker.RedactString(err.Error())
+		if detail != "" {
+			message += ": " + paneldocker.RedactString(detail)
+		}
+		_, _ = jobCtx.Warn(ctx, message)
 	}
 }
 
