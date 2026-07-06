@@ -633,8 +633,15 @@ func TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure(t *t
 	if fake.containerOpts.ImageRef != wantImage {
 		t.Fatalf("expected SteamCMD fallback image %q, got %q", wantImage, fake.containerOpts.ImageRef)
 	}
-	if !strings.Contains(strings.Join(fake.containerOpts.Command, " "), "app_update 413150") {
+	command := strings.Join(fake.containerOpts.Command, " ")
+	if !strings.Contains(command, "app_update 413150") {
 		t.Fatalf("SteamCMD command should download Stardew app 413150: %#v", fake.containerOpts.Command)
+	}
+	if !strings.Contains(command, "app_update 1007") {
+		t.Fatalf("SteamCMD command should download Steam SDK app 1007: %#v", fake.containerOpts.Command)
+	}
+	if strings.Contains(command, "app_update 413150 validate +force_install_dir") {
+		t.Fatalf("SteamCMD should run app 413150 and app 1007 in separate sessions so force_install_dir is before login, command=%q", command)
 	}
 	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-root-local:/root/.local/share/Steam") {
 		t.Fatalf("SteamCMD should persist root self-update cache, binds=%v", fake.containerOpts.Binds)
@@ -1160,7 +1167,10 @@ func TestDriverInstallRepairUsesSteamCMDCacheLogin(t *testing.T) {
 	if !strings.Contains(command, `+login "$STEAM_USERNAME" +app_update 413150`) {
 		t.Fatalf("repair should use cached SteamCMD login without password, command=%q", command)
 	}
-	if strings.Contains(command, `"$STEAM_PASSWORD" +app_update 413150`) {
+	if !strings.Contains(command, `+login "$STEAM_USERNAME" +app_update 1007`) {
+		t.Fatalf("repair should use cached SteamCMD login for Steam SDK without password, command=%q", command)
+	}
+	if strings.Contains(command, `"$STEAM_PASSWORD" +app_update 413150`) || strings.Contains(command, `"$STEAM_PASSWORD" +app_update 1007`) {
 		t.Fatalf("repair should not pass Steam password to SteamCMD login, command=%q", command)
 	}
 }
