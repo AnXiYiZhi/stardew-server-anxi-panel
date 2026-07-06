@@ -1,3 +1,9 @@
+# INVITE-CODE-DECOUPLE-AUTHSTATUS-1 启动不卡邀请码 + auth 登录状态
+
+- `lifecycle.go`：`doStart`/`doRestart` 服务器就绪即完成 job（不再阻塞等邀请码）；`pollInviteCodeBackground()` 后台轮询邀请码、非 Running 自动退出。
+- `config.SteamAuthLoggedIn(dataDir)`（`STEAM_REFRESH_TOKEN` 非空）经 `instanceStateResponse.steamAuthLoggedIn` 暴露；前端 `InviteCodeCard` 未登录时提示「需登录 Steam 授权」。
+- 待办：「登录 Steam 授权」按钮的后端（方案 A，`AuthLoginOnly` 强制 steam-auth 路径、需先停服、复用 guard）见接手文档 `INVITE-CODE-DECOUPLE-AUTHSTATUS-1`。
+
 # IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
 
 - `saves.go WriteServerSettings()` 的 `Server` 段新增 `"AllowIpConnections": true`；JunimoServer 默认关闭 IP 直连（日志 `IP connections disabled (default)`），邀请码走 Steam SDR/Galaxy P2P 可能单独失败（卡 `Invite Code: n/a`），故默认开 IP 直连作为可靠 join 通道。

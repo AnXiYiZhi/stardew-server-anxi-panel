@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -27,13 +28,14 @@ type instanceResponse struct {
 }
 
 type instanceStateResponse struct {
-	InstanceID   string  `json:"instanceId"`
-	DriverID     string  `json:"driverId"`
-	Name         string  `json:"name"`
-	State        string  `json:"state"`
-	StateMessage *string `json:"stateMessage"`
-	DriverPhase  string  `json:"driverPhase"`
-	UpdatedAt    string  `json:"updatedAt"`
+	InstanceID        string  `json:"instanceId"`
+	DriverID          string  `json:"driverId"`
+	Name              string  `json:"name"`
+	State             string  `json:"state"`
+	StateMessage      *string `json:"stateMessage"`
+	DriverPhase       string  `json:"driverPhase"`
+	UpdatedAt         string  `json:"updatedAt"`
+	SteamAuthLoggedIn bool    `json:"steamAuthLoggedIn"`
 }
 
 type instanceStatusResponse struct {
@@ -593,13 +595,14 @@ func (s *server) makeInstanceResponse(instance storage.Instance) instanceRespons
 
 func makeInstanceStateResponse(instance storage.Instance) instanceStateResponse {
 	return instanceStateResponse{
-		InstanceID:   instance.ID,
-		DriverID:     instance.DriverID,
-		Name:         instance.Name,
-		State:        instance.State,
-		StateMessage: nullableString(instance.StateMessage),
-		DriverPhase:  instance.DriverPhase,
-		UpdatedAt:    instance.UpdatedAt,
+		InstanceID:        instance.ID,
+		DriverID:          instance.DriverID,
+		Name:              instance.Name,
+		State:             instance.State,
+		StateMessage:      nullableString(instance.StateMessage),
+		DriverPhase:       instance.DriverPhase,
+		UpdatedAt:         instance.UpdatedAt,
+		SteamAuthLoggedIn: sjconfig.SteamAuthLoggedIn(instance.DataDir),
 	}
 }
 

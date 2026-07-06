@@ -1,3 +1,32 @@
+# INVITE-CODE-DECOUPLE-AUTHSTATUS-1 启动不卡邀请码 + 暴露 auth 登录状态
+
+## 背景
+- 启动服务器时 `doStart`/`doRestart` 在 `waitForReadyState`（最长 20 分钟）里阻塞轮询邀请码，导致「启动」job 迟迟不完成、前端一直转圈。
+- 邀请码走 Steam SDR/Galaxy P2P，需要**真实 Steam 账号登录**（`STEAM_REFRESH_TOKEN`）。用户环境 token 为空（游戏文件走了 SteamCMD 兜底、steam-auth 下载失败），所以邀请码永远 `n/a`，却一直显示「获取中」。
+
+## 改了什么（本次已完成 ①②③提示）
+- **①（`lifecycle.go`）**：`doStart`/`doRestart` 在服务器就绪、置 `Running` 后**立即完成 job**（前端显示「启动完成」）；新增 `pollInviteCodeBackground()`——后台协程用 `context.Background()` 轮询邀请码，拿到后 `updateDriverPayloadInviteCode`，并在实例非 `Running`（停服/重启）时自动退出，不泄漏。
+- **②（`config/env.go` + `web/instance_handlers.go`）**：新增 `config.SteamAuthLoggedIn(dataDir)`（`STEAM_REFRESH_TOKEN` 非空即已登录；`STEAM_AUTH_COMPLETED` 不足为凭）；`instanceStateResponse` 新增 `steamAuthLoggedIn` 字段，`GET …/state` 返回给前端。
+- **③前端（`InviteCodeCard.tsx` + `types.ts`）**：服务器运行中但 `steamAuthLoggedIn===false` 且无邀请码时，邀请码显示「需登录 Steam 授权」并给出提示（先用 IP 直连或登录授权），不再无限「获取中」。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/lifecycle.go`（`waitForReadyState`/`tailServerLogs`/`readSMAPIStatus` 现已无调用者——保留未删以缩小改动面，后续可清理）
+- `backend/internal/games/stardew_junimo/config/env.go`
+- `backend/internal/web/instance_handlers.go`
+- `frontend/src/types.ts`、`frontend/src/games/stardew/InviteCodeCard.tsx`
+
+## 如何验证
+- `cd backend; go build ./... && go test ./internal/games/stardew_junimo/... ./internal/web/...`
+- `cd frontend; npx tsc --noEmit -p tsconfig.app.json`
+- 真机：启动服务器应很快显示「启动完成」；未登录 auth 时邀请码区显示「需登录 Steam 授权」。
+
+## 待办（Part ③ 的「登录 Steam 授权」按钮 —— 需确认方案后再做）
+- 选定方案 A（复用已存账密重登 steam-auth 拿 token）。但发现**真实复杂度/风险**：
+  - steam-auth 容器里**登录与下载耦合**；用户环境 steam-auth 下载在国内失败（所以才有 steamcmd 兜底）。好在「登录成功→写 token」在「下载」之前，登录能过就能拿 token。
+  - **服务器运行中跑 steam-auth 有 compose 冲突**：按钮应要求**先停服**。
+  - guard 交互 UI（手机批准/验证码）需复用现有 `/steam-guard/input` + 状态轮询，属跨组件流程。
+- 建议实现：`registry.InstallRequest` 加 `AuthLoginOnly`；`driver.Install` 里该标志强制 `steamCMDDirect=false`（走 steam-auth 路径）+ `reuse=true`；新端点 `POST /api/instances/:id/steam-auth/login`（要求服务器已停），复用现有 guard 机制；前端按钮触发后靠现有安装/授权状态 UI 显示 guard。
+
 # IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
 
 ## 背景（现场实证）
