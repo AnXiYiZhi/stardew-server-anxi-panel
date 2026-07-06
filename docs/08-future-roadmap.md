@@ -1,6 +1,7 @@
 # 2026-07-06 已完成：SteamCMD SDK 分段下载
 
 - 已完成：SteamCMD fallback 在同一个容器内拆成两次 SteamCMD 进程，分别下载/校验 `413150` 和 `1007`，避免 SDK 阶段因登录后切换 `force_install_dir` 触发 SteamCMD 139 段错误。
+- 已完成：过滤旧 daocloud SteamCMD 候选，并在 SteamCMD exit code 139 时自动清理自更新缓存卷后重试一次。
 
 # 2026-07-06 已完成：SDK 后置 SMAPI 预安装
 

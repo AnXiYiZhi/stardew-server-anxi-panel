@@ -815,7 +815,10 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		}
 	}
 
-	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSteamCMDOpts(imageRef), guardCh, lineHandler)
+	runSteamCMD := func() (int, error) {
+		return r.driver.docker.RunContainerTTY(ctx, r.buildSteamCMDOpts(imageRef), guardCh, lineHandler)
+	}
+	exitCode, err := runSteamCMD()
 	if err != nil {
 		if ctx.Err() != nil {
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
@@ -826,6 +829,22 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 			"SteamCMD 兜底下载运行失败，请检查任务日志后重试。", "steamcmd_failed", jobCtx.ID)
 		_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底下载运行失败："+paneldocker.RedactString(err.Error()))
 		return fmt.Errorf("steamcmd fallback run error: %w", err)
+	}
+	if exitCode == 139 {
+		_, _ = jobCtx.Warn(context.Background(), "[steamcmd] SteamCMD exited with segmentation fault (139); clearing runtime cache and retrying once.")
+		r.clearSteamCMDRuntimeCache(context.Background(), jobCtx)
+		exitCode, err = runSteamCMD()
+		if err != nil {
+			if ctx.Err() != nil {
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"SteamCMD retry timed out after clearing runtime cache.", "install_timeout", jobCtx.ID)
+				return fmt.Errorf("steamcmd fallback timed out after cache cleanup: %w", ctx.Err())
+			}
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"SteamCMD retry failed after clearing runtime cache.", "steamcmd_failed", jobCtx.ID)
+			_, _ = jobCtx.Error(context.Background(), "SteamCMD retry failed after clearing runtime cache: "+paneldocker.RedactString(err.Error()))
+			return fmt.Errorf("steamcmd fallback retry run error: %w", err)
+		}
 	}
 	if ctx.Err() != nil {
 		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
@@ -1041,6 +1060,17 @@ func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.Container
 			projectName + "_steamcmd-root-local:/root/.local/share/Steam",
 			projectName + "_game-data:/data/game",
 		},
+	}
+}
+
+func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *jobs.Context) {
+	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	names := []string{
+		projectName + "_steamcmd-user-local",
+		projectName + "_steamcmd-root-local",
+	}
+	if _, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
+		_, _ = jobCtx.Warn(ctx, "[steamcmd] Failed to clear SteamCMD runtime cache volumes: "+paneldocker.RedactString(err.Error()))
 	}
 }
 
@@ -1332,7 +1362,10 @@ func steamCMDImageCandidateRefs(value string) []string {
 
 func appendSteamCMDImageRef(values []string, value string) []string {
 	value = strings.TrimSpace(value)
-	if value == "" || value == "steamcmd/steamcmd:latest" || value == "docker.xuanyuan.me/steamcmd/steamcmd:latest" {
+	if value == "" ||
+		value == "steamcmd/steamcmd:latest" ||
+		value == "docker.xuanyuan.me/steamcmd/steamcmd:latest" ||
+		value == "docker.m.daocloud.io/steamcmd/steamcmd:latest" {
 		return values
 	}
 	return appendUniqueString(values, value)
