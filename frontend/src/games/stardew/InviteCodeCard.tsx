@@ -22,6 +22,10 @@ export function InviteCodeCard({
 
   const state = instanceState?.state ?? null
   const canRefreshInvite = state === 'running' || state === 'starting'
+  // Invite codes need a valid steam-auth login (STEAM_REFRESH_TOKEN) for the host to
+  // log into Steam/Galaxy. Without it no invite code can ever be generated, so tell the
+  // user to log in rather than showing an endless "获取中…".
+  const needAuthLogin = canRefreshInvite && instanceState?.steamAuthLoggedIn === false
 
   function handleCopyInvite() {
     const code = dashboardData.inviteCode
@@ -65,7 +69,9 @@ export function InviteCodeCard({
         {dashboardData.inviteCode ? (
           <span className="sd-players-invite-code">{dashboardData.inviteCode}</span>
         ) : canRefreshInvite ? (
-          dashboardData.inviteCodeError ? (
+          needAuthLogin ? (
+            <span className="sd-players-invite-empty">需登录 Steam 授权</span>
+          ) : dashboardData.inviteCodeError ? (
             <span className="sd-players-invite-error">获取失败</span>
           ) : (
             <span className="sd-players-invite-loading">获取中…</span>
@@ -93,6 +99,11 @@ export function InviteCodeCard({
           </button>
         </div>
       </div>
+      {needAuthLogin ? (
+        <div className="sd-srv-hint" style={{ marginTop: 4 }}>
+          邀请码需要登录 Steam 授权（steam-auth）才能生成，当前未登录。可先用下方「局域网邀请」IP 直连进入，或登录授权后使用邀请码。
+        </div>
+      ) : null}
       <div className="sd-players-invite-row sd-players-public-ip-row">
         <div className="sd-players-invite-copy">
           <span className="sd-players-invite-label">局域网邀请</span>
