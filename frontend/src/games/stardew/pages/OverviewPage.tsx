@@ -73,12 +73,17 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     }
   }, [state])
 
+  const hostOnline = (dashboardData.players?.players ?? []).some(
+    (p) => p.isHost && p.status === 'online',
+  )
+
   useEffect(() => {
-    // Startup is complete once the server is running (invite code is optional/background).
-    if (state === 'running' || dashboardData.inviteCode) {
+    // Startup completes when the host player is online (save loaded/playable);
+    // invite code is optional/background.
+    if (hostOnline || dashboardData.inviteCode) {
       setPendingStartupAction(null)
     }
-  }, [state, dashboardData.inviteCode])
+  }, [hostOnline, dashboardData.inviteCode])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -149,11 +154,13 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
   function renderLifecycleButtons() {
     if (!state) return null
-    // "Starting" ends when the server is running, not when an invite code arrives
+    // Startup succeeds when the host player is online (save loaded/playable), not
+    // merely when the container is running, and not when an invite code arrives
     // (invite codes are optional/background and may never appear).
     const waitingForInvite =
       state === 'starting' ||
-      Boolean(pendingStartupAction)
+      Boolean(pendingStartupAction) ||
+      (state === 'running' && !hostOnline)
     const waitingForStop = state === 'stopping' || pendingStopAction
 
     if (state === 'save_required') {
