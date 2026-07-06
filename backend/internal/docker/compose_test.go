@@ -184,6 +184,17 @@ func TestRunCapturesFailure(t *testing.T) {
 	}
 }
 
+func TestIsMissingVolumeRemove(t *testing.T) {
+	result := CommandResult{Stderr: "Error response from daemon: get demo: no such volume"}
+	if !isMissingVolumeRemove(result, ErrCommandFailed) {
+		t.Fatal("expected missing Docker volume error to be ignored")
+	}
+	result = CommandResult{Stderr: "Error response from daemon: remove demo: volume is in use"}
+	if isMissingVolumeRemove(result, ErrCommandFailed) {
+		t.Fatal("expected in-use Docker volume error to remain fatal")
+	}
+}
+
 func fakeDockerCountingPs(t *testing.T, countPath string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {

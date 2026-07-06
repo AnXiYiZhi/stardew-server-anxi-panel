@@ -19,12 +19,37 @@ func (c *Client) DockerVersion(ctx context.Context, workDir string) (CommandResu
 }
 
 // RemoveVolumes deletes the named Docker volumes with `docker volume rm -f`.
-// The force flag makes missing volumes a no-op (no error). Volumes still in use
-// by a container will fail to remove; callers should treat that as best-effort.
+// Missing volumes are ignored. Volumes still in use by a container will fail to
+// remove; callers should treat that as best-effort.
 // workDir only needs to be any valid directory (volume names are global).
 func (c *Client) RemoveVolumes(ctx context.Context, workDir string, names []string) (CommandResult, error) {
-	args := append([]string{"volume", "rm", "-f"}, names...)
-	return c.run(ctx, "docker volume rm", workDir, c.timeouts.Version, args...)
+	var lastResult CommandResult
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		result, err := c.run(ctx, "docker volume rm", workDir, c.timeouts.Version, "volume", "rm", "-f", name)
+		lastResult = result
+		if err == nil || isMissingVolumeRemove(result, err) {
+			continue
+		}
+		return result, err
+	}
+	if lastResult.Args == nil {
+		lastResult = CommandResult{WorkDir: workDir, ExitCode: 0}
+	}
+	return lastResult, nil
+}
+
+func isMissingVolumeRemove(result CommandResult, err error) bool {
+	if err == nil {
+		return false
+	}
+	output := strings.ToLower(result.Stdout + "\n" + result.Stderr + "\n" + err.Error())
+	return strings.Contains(output, "no such volume") ||
+		strings.Contains(output, "volume not found") ||
+		strings.Contains(output, "not found")
 }
 
 func (c *Client) ComposeVersion(ctx context.Context, workDir string) (CommandResult, error) {

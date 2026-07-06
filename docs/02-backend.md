@@ -780,3 +780,10 @@ docker run --rm `
 - `stardew_junimo` 现在会始终把默认候选源排在前面，再追加实例 `.env` 中已有候选和当前主镜像值并去重；server 默认顺序为 `docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
 - steam-auth cn 版同样补齐：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
 - 安装流程写入 `.env` 时会同步写回补齐后的候选列表，并在镜像命中/拉取成功后写回实际使用的 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE`。
+# STEAMCMD-HOME-CACHE-CLEANUP-1 SteamCMD HOME 与缓存清理加固
+
+- 修复真实云服上 SteamCMD fallback 仍在 `Waiting for client config...` 阶段 exit code `139` 的问题。根因之一是 `su -m steam` 会保留 root 的 `HOME`，导致 SteamCMD 虽以 `steam` 用户运行但仍写入 `/root/.local/share/Steam` 自更新缓存；现在运行 SteamCMD 时显式设置 `HOME=/home/steam USER=steam LOGNAME=steam`。
+- `docker.Client.RemoveVolumes()` 改为逐个执行 `docker volume rm -f <name>`，并忽略 `no such volume` / `volume not found`。这样 139 后清理 `steamcmd-user-local` / `steamcmd-root-local` 时，不会因为其中一个卷不存在而整次清理失败。
+- SteamCMD runtime cache 清理失败时，任务日志会附带 Docker stderr/stdout 的脱敏详情，便于区分“不存在”“被容器占用”“Docker 权限异常”等情况。
+- 影响文件：`backend/internal/docker/compose.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/docker/compose_test.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
+- 验证：`cd backend; go test ./internal/docker ./internal/games/stardew_junimo`、`cd backend; go test ./...`。

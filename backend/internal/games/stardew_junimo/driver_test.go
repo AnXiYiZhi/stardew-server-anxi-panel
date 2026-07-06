@@ -649,6 +649,9 @@ func TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure(t *t
 	if strings.Contains(command, "app_update 413150 validate +force_install_dir") {
 		t.Fatalf("SteamCMD should run app 413150 and app 1007 in separate sessions so force_install_dir is before login, command=%q", command)
 	}
+	if !strings.Contains(command, "HOME=/home/steam USER=steam LOGNAME=steam") {
+		t.Fatalf("SteamCMD should run as steam user with HOME=/home/steam, command=%q", command)
+	}
 	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-root-local:/root/.local/share/Steam") {
 		t.Fatalf("SteamCMD should persist root self-update cache, binds=%v", fake.containerOpts.Binds)
 	}
