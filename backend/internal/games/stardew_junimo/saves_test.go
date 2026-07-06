@@ -81,9 +81,78 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	if server["CabinStrategy"] != "CabinStack" {
 		t.Errorf("Server.CabinStrategy = %v, want CabinStack", server["CabinStrategy"])
 	}
+	if server["AllowIpConnections"] != true {
+		t.Errorf("Server.AllowIpConnections = %v, want true (IP direct-connect on by default)", server["AllowIpConnections"])
+	}
 	if game["CabinLayoutNearby"] != true { // nearby → true
 		t.Errorf("Game.CabinLayoutNearby = %v, want true", game["CabinLayoutNearby"])
 	}
+}
+
+func TestEnsureServerSettingsDefaults(t *testing.T) {
+	// Missing file → creates one with IP direct-connect enabled.
+	dir := t.TempDir()
+	if err := EnsureServerSettingsDefaults(dir); err != nil {
+		t.Fatalf("EnsureServerSettingsDefaults (no file): %v", err)
+	}
+	server := readServerSection(t, dir)
+	if server["AllowIpConnections"] != true {
+		t.Fatalf("AllowIpConnections = %v, want true", server["AllowIpConnections"])
+	}
+
+	// Existing file without the key → adds it, preserving other keys.
+	dir2 := t.TempDir()
+	path := serverSettingsPath(dir2)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"Server":{"MaxPlayers":8}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureServerSettingsDefaults(dir2); err != nil {
+		t.Fatalf("EnsureServerSettingsDefaults (existing): %v", err)
+	}
+	server = readServerSection(t, dir2)
+	if server["AllowIpConnections"] != true {
+		t.Errorf("AllowIpConnections = %v, want true", server["AllowIpConnections"])
+	}
+	if server["MaxPlayers"] != float64(8) {
+		t.Errorf("MaxPlayers = %v, want 8 preserved", server["MaxPlayers"])
+	}
+
+	// Existing explicit false → respected, not overwritten.
+	dir3 := t.TempDir()
+	path3 := serverSettingsPath(dir3)
+	if err := os.MkdirAll(filepath.Dir(path3), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path3, []byte(`{"Server":{"AllowIpConnections":false}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureServerSettingsDefaults(dir3); err != nil {
+		t.Fatalf("EnsureServerSettingsDefaults (explicit false): %v", err)
+	}
+	server = readServerSection(t, dir3)
+	if server["AllowIpConnections"] != false {
+		t.Errorf("AllowIpConnections = %v, want false preserved", server["AllowIpConnections"])
+	}
+}
+
+func readServerSection(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(serverSettingsPath(dir))
+	if err != nil {
+		t.Fatalf("read server-settings.json: %v", err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("parse server-settings.json: %v", err)
+	}
+	server, ok := settings["Server"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing Server section: %v", settings)
+	}
+	return server
 }
 
 func TestWriteServerSettings_EmptyFarmName(t *testing.T) {

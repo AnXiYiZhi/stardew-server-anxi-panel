@@ -214,6 +214,13 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：SMAPI mod 部署失败（不影响启动）：%v", err))
 	}
 
+	// Ensure IP direct-connect is enabled by default, including for saves created
+	// before this default existed. Invite codes (Steam SDR / Galaxy P2P) can stall
+	// at "n/a", so IP direct-connect must be available as the reliable join path.
+	if err := EnsureServerSettingsDefaults(r.instance.DataDir); err != nil {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：确保 IP 直连默认设置失败（不影响启动）：%v", err))
+	}
+
 	if r.newGame {
 		if err := ApplyNewSaveDefaultModState(r.instance.DataDir); err != nil {
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
