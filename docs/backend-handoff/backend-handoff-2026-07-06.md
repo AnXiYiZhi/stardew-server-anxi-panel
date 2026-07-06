@@ -24,11 +24,11 @@
 - **撤销**：先前基于「只跑 steam-auth 拿 token」的 `AuthLoginOnly` 端点/标志已全部回退（`registry/types.go`、`driver.go`、`install_handlers.go`、`instance_handlers.go`、`api.ts` steamAuthLogin 均删除）。原因：`runSteamAuthAttempt` 登录后会尝试下载，国内下载失败 → 掉 `runSteamCMDFallback`（又要批准），且 token 也没写进 .env——这条路在国内走不通，且判定本就不该看 token。
 - **现方案**：`InviteCodeCard` 的【登录授权】按钮点击 `onNavigate('install')` **跳转安装页**，由现有安装/认证流程处理（guard 也在那儿）。按钮通过新增可选 prop `onNavigate` 从 `OverviewPage` 传入。
 
-## 前端启动判定解耦邀请码（本次同批修复）
-- 现象：后端 job 已完成、`state=running`（用户已能进游戏），但前端「启动」按钮一直「启动中…」，且**没邀请码时停止/重启按钮被禁用**。
-- 根因：`OverviewPage`/`ServerControlPage` 里 `waitingForInvite` 含 `inviteCodeRefreshing && !inviteCode`，且 `pendingStartupAction` 只在**出现邀请码**时清；`canStop/canRestart` 还要求 `Boolean(inviteCode)`。
-- 改为：`waitingForInvite` 只看 `starting || pendingStartupAction`；`pendingStartupAction` 在 `state==='running'` 即清；`canStop/canRestart` 去掉邀请码要求。即**「running 就算启动完成」，邀请码是后台可选**。
-- 影响文件补充：`frontend/src/games/stardew/pages/OverviewPage.tsx`、`ServerControlPage.tsx`。
+## 前端启动判定改为「host 主机在线」（本次同批修复）
+- 现象：后端 job 已完成、`state=running`（用户已能进游戏），但前端「启动」按钮一直「启动中…」，且没邀请码时停止/重启被禁用。
+- 根因：`OverviewPage`/`ServerControlPage` 把「有邀请码」当启动成功——`waitingForInvite` 含 `inviteCodeRefreshing && !inviteCode`、`pendingStartupAction` 只在出现邀请码时清、`canStop/canRestart` 要求 `Boolean(inviteCode)`。
+- **改为按「host 主机在线」判定**（存档加载完、可玩的准确信号）：`hostOnline = players.some(p => p.isHost && p.status==='online')`；`startupInProgress = starting || pendingStartupAction || (running && !hostOnline)`；`pendingStartupAction` 在 `hostOnline` 时清；`canStop/canRestart` 只看 `running`（去掉邀请码要求，运行中即可停/重启，便于取消卡住的加载）。邀请码彻底只作后台可选。
+- 影响文件补充：`frontend/src/games/stardew/pages/OverviewPage.tsx`、`ServerControlPage.tsx`（`waitingForInvite`→`startupInProgress`）。
 
 # IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
 

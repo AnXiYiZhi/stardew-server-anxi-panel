@@ -103,19 +103,24 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const isStopped = state === 'stopped' || state === 'ready_to_start' || state === 'game_installed'
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
   const isAdmin = user.role === 'admin'
-  // "Starting" ends when the server is running — NOT when an invite code arrives.
-  // Invite codes need Steam SDR/Galaxy and can legitimately never appear; gating the
-  // UI on them left the button stuck at "启动中…" and disabled stop/restart forever.
-  const waitingForInvite =
+  // Startup truly succeeds when the host player is online (the save has finished
+  // loading and the game is playable) — NOT merely when the container is running,
+  // and NOT when an invite code arrives (invite codes need Steam SDR/Galaxy and can
+  // legitimately never appear).
+  const hostOnline = (dashboardData.players?.players ?? []).some(
+    (p) => p.isHost && p.status === 'online',
+  )
+  const startupInProgress =
     isStarting ||
-    Boolean(pendingStartupAction)
+    Boolean(pendingStartupAction) ||
+    (isRunning && !hostOnline)
   const waitingForStop = isStopping || pendingStopAction
   const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
   const showSaveRequiredPrompt =
     (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
     !isRunning &&
     !isStarting
-  const canStart = isStopped && !actionBusy && !waitingForInvite && !waitingForStop
+  const canStart = isStopped && !actionBusy && !startupInProgress && !waitingForStop
   const canStop = isRunning && !actionBusy && !waitingForStop
   const canRestart = isRunning && !actionBusy && !waitingForStop
   const stateLabelText = state
@@ -127,7 +132,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     ? 'sd-dot sd-dot-green sd-dot-pulse'
     : state === 'stopped' || state === 'error'
       ? 'sd-dot sd-dot-red'
-      : isStarting || waitingForInvite || waitingForStop
+      : isStarting || startupInProgress || waitingForStop
         ? 'sd-dot sd-dot-yellow sd-dot-pulse'
         : 'sd-dot sd-dot-gray'
   // ── 命令列表：服务器运行时加载一次 ───────────────────────────────────────
@@ -163,11 +168,12 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   }, [state])
 
   useEffect(() => {
-    // Startup is complete once the server is running (invite code is optional/background).
-    if (isRunning || dashboardData.inviteCode) {
+    // Startup completes when the host player is online (save loaded/playable);
+    // invite code is optional/background.
+    if (hostOnline || dashboardData.inviteCode) {
       setPendingStartupAction(null)
     }
-  }, [isRunning, dashboardData.inviteCode])
+  }, [hostOnline, dashboardData.inviteCode])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -463,17 +469,17 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           {!waitingForStop ? (
             <button
               key="start"
-              className={`sd-btn-start${waitingForInvite ? ' sd-btn-loading' : ''}`}
-              disabled={waitingForInvite || !canStart}
+              className={`sd-btn-start${startupInProgress ? ' sd-btn-loading' : ''}`}
+              disabled={startupInProgress || !canStart}
               onClick={() => void handleStart()}
-              title={waitingForInvite ? '服务器启动中，等待邀请码生成' : isRunning ? '服务器已运行' : '启动服务器'}
+              title={startupInProgress ? '服务器启动中，正在加载存档' : isRunning ? '服务器已运行' : '启动服务器'}
             >
-              {waitingForInvite ? (
+              {startupInProgress ? (
                 <span className="sd-btn-spinner" aria-hidden="true" />
               ) : (
                 <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
               )}
-              {waitingForInvite || (actionBusy && canStart) ? '启动中…' : '启动'}
+              {startupInProgress || (actionBusy && canStart) ? '启动中…' : '启动'}
             </button>
           ) : null}
 
@@ -491,7 +497,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               <span className="sd-btn-spinner" aria-hidden="true" />
               停止中…
             </button>
-          ) : !waitingForInvite ? (
+          ) : !startupInProgress ? (
             <Fragment key="running-actions">
               <button
                 key="stop"
@@ -537,7 +543,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           </span>
         </div>
 
-        {waitingForInvite ? (
+        {startupInProgress ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
             <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
             &nbsp;服务器正在启动，请等待邀请码生成后再操作。
