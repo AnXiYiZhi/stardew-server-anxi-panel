@@ -20,9 +20,12 @@
 - `cd frontend; npx tsc --noEmit -p tsconfig.app.json`
 - 真机：启动服务器应很快显示「启动完成」；未登录 auth 时邀请码区显示「需登录 Steam 授权」。
 
-## 「登录 Steam 授权」按钮 —— 改为跳转安装页（撤掉了 AuthLoginOnly 端点）
-- **撤销**：先前基于「只跑 steam-auth 拿 token」的 `AuthLoginOnly` 端点/标志已全部回退（`registry/types.go`、`driver.go`、`install_handlers.go`、`instance_handlers.go`、`api.ts` steamAuthLogin 均删除）。原因：`runSteamAuthAttempt` 登录后会尝试下载，国内下载失败 → 掉 `runSteamCMDFallback`（又要批准），且 token 也没写进 .env——这条路在国内走不通，且判定本就不该看 token。
-- **现方案**：`InviteCodeCard` 的【登录授权】按钮点击 `onNavigate('install')` **跳转安装页**，由现有安装/认证流程处理（guard 也在那儿）。按钮通过新增可选 prop `onNavigate` 从 `OverviewPage` 传入。
+## 「登录 Steam 授权」按钮 —— 触发登录 + 跳转安装页 + 登录成功即停
+- `registry.InstallRequest.AuthLoginOnly` + `installRunner.authOnly`：`driver.Install` 里该标志令 `reuse=true`（复用已存账密、不重输）且强制 `steamCMDDirect=false`（走 steam-auth 路径）。
+- **登录成功即停**（修问题②「掉 CMD 兜底又要批准」）：`runSteamAuthAttempt` 在 `markSteamAuthCompleted` 之后、若 `authOnly` 且登录已成功（`authSucceeded||currentApp!=""||downloadFailed||sdkDownloaded`）→ 置 `game_installed`/`steam_auth_login_done` 并 `return nil`，**不再下载、不 `runSteamCMDFallback`、不 `completeInstall`**。国内 steam-auth 下载失败不影响——登录本身已成功、`STEAM_AUTH_COMPLETED` 已置位。
+- 端点 `POST /api/instances/:id/steam-auth/login`（`install_handlers.go`）：要求服务器已停（409 `server_running`），读 `.env` 账密，`AuthLoginOnly=true` 起 job。路由在 `instance_handlers.go`。
+- 前端 `api.ts steamAuthLogin()` + `InviteCodeCard`【登录授权】按钮：**先发起登录、再 `onNavigate('install')` 跳转安装页**给用户看认证日志/完成 guard（guard 复用现有 `/steam-guard/input`）。按钮经可选 prop `onNavigate`（由 `OverviewPage` 传入）。409 等错误内联提示。
+- 影响文件：`registry/types.go`、`driver.go`、`installer.go`（`authOnly` + `runSteamAuthAttempt` 截停）、`install_handlers.go`、`instance_handlers.go`、`frontend/src/api.ts`、`InviteCodeCard.tsx`、`OverviewPage.tsx`。
 
 ## 前端启动判定改为「host 主机在线」（本次同批修复）
 - 现象：后端 job 已完成、`state=running`（用户已能进游戏），但前端「启动」按钮一直「启动中…」，且没邀请码时停止/重启被禁用。

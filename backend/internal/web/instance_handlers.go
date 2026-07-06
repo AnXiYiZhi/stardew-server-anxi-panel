@@ -152,6 +152,14 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceSteamGuardInput(w, r, instanceID)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "steam-auth" && parts[2] == "login" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceSteamAuthLogin(w, r, instanceID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "start" {
 		if r.Method != http.MethodPost {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

@@ -165,6 +165,16 @@ export function installInstance(
   })
 }
 
+// steamAuthLogin re-runs steam-auth with the saved account/password and stops as soon
+// as login succeeds (for invite codes). The server must be stopped. Steam Guard
+// prompts, if any, appear on the install page (where the user is navigated to watch logs).
+export function steamAuthLogin(instanceId = defaultInstanceId) {
+  return request<InstallJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/steam-auth/login`, {
+    method: 'POST',
+    body: {},
+  })
+}
+
 export function submitSteamGuardInput(
   jobId: string,
   input: string,
