@@ -203,7 +203,7 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	}
 
 	// reuse: reuse saved credentials without re-prompting the user for input.
-	reuse := req.AutoDownload || req.SteamCMDRetry
+	reuse := req.AutoDownload || req.SteamCMDRetry || req.AuthLoginOnly
 	// steamAuthCompleted: durable ".env" flag set once Steam authentication has
 	// succeeded (via steam-auth or SteamCMD). It backstops the phase inference in
 	// authAlreadySucceeded so that even if the persisted phase was reset (e.g. an
@@ -216,7 +216,10 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	// installed state, or the durable STEAM_AUTH_COMPLETED flag). Pre-auth failures
 	// (pull_failed, timeouts) must NOT take this shortcut — they re-pull images and
 	// run steam-auth again.
-	steamCMDDirect := reuse && !req.ForceReauth &&
+	// AuthLoginOnly must run steam-auth (that is where a fresh STEAM_REFRESH_TOKEN
+	// comes from), so it must NOT take the SteamCMD shortcut even though the game is
+	// already installed.
+	steamCMDDirect := reuse && !req.ForceReauth && !req.AuthLoginOnly &&
 		(shouldResumeSteamCMD(instance.DriverPhase) ||
 			authAlreadySucceeded(instance.State, instance.DriverPhase) ||
 			steamAuthCompleted)

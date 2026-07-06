@@ -20,12 +20,15 @@
 - `cd frontend; npx tsc --noEmit -p tsconfig.app.json`
 - 真机：启动服务器应很快显示「启动完成」；未登录 auth 时邀请码区显示「需登录 Steam 授权」。
 
-## 待办（Part ③ 的「登录 Steam 授权」按钮 —— 需确认方案后再做）
-- 选定方案 A（复用已存账密重登 steam-auth 拿 token）。但发现**真实复杂度/风险**：
-  - steam-auth 容器里**登录与下载耦合**；用户环境 steam-auth 下载在国内失败（所以才有 steamcmd 兜底）。好在「登录成功→写 token」在「下载」之前，登录能过就能拿 token。
-  - **服务器运行中跑 steam-auth 有 compose 冲突**：按钮应要求**先停服**。
-  - guard 交互 UI（手机批准/验证码）需复用现有 `/steam-guard/input` + 状态轮询，属跨组件流程。
-- 建议实现：`registry.InstallRequest` 加 `AuthLoginOnly`；`driver.Install` 里该标志强制 `steamCMDDirect=false`（走 steam-auth 路径）+ `reuse=true`；新端点 `POST /api/instances/:id/steam-auth/login`（要求服务器已停），复用现有 guard 机制；前端按钮触发后靠现有安装/授权状态 UI 显示 guard。
+## 「登录 Steam 授权」按钮（方案 A，已实现）
+- `registry.InstallRequest` 加 `AuthLoginOnly`；`driver.Install`：该标志令 `reuse=true` 且强制 `steamCMDDirect=false`——即使游戏已装好也走 steam-auth 路径（token 从 steam-auth 登录产生）。run() 的 steam-auth 分支本就是 ensureImages + runSteamAuth + return，不碰下载完成/SMAPI，天然是「只登录」。
+- 新端点 `POST /api/instances/:id/steam-auth/login`（`install_handlers.go`）：要求**服务器已停**（Running/Starting 返回 409 `server_running`），从 `.env` 读已存账号密码（无需重输），以 `AuthLoginOnly=true` 起 install job。路由注册在 `instance_handlers.go`（`parts[1]=="steam-auth" && parts[2]=="login"`）。
+- 前端 `api.ts steamAuthLogin()` + `InviteCodeCard`：`steamAuthLoggedIn===false` 时邀请码显示「需登录 Steam 授权」并给【登录授权】按钮（服务器运行时禁用并提示先停服）；guard（手机批准/验证码）复用现有 `/steam-guard/input` + 授权状态 UI。
+- 影响文件补充：`registry/types.go`、`driver.go`、`install_handlers.go`、`instance_handlers.go`、`frontend/src/api.ts`、`InviteCodeCard.tsx`。
+
+## 待验证（真机）
+- steam-auth 登录在国内能否成功拿到 `STEAM_REFRESH_TOKEN`（历史是「登录成功、下载失败」，若登录仍能过则 token 应能写入）。若 steam-auth 连登录都连不上 Steam，则 token 拿不到——此时 IP 直连是主用通道，邀请码作为可选。
+- guard 提示当前在授权状态 UI 展示；如触发 guard 时用户在邀请码卡片看不到输入框，需要后续把 guard 输入也接到该卡片（暂未做）。
 
 # IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
 
