@@ -1,3 +1,8 @@
+# 2026-07-07 已完成：文档门户网站骨架上线（VitePress + GitHub Pages）
+
+- `DOCS-PORTAL-1` completed：`website/` 下手动搭建 VitePress 骨架（`npm create vitepress@latest` 实测解析到无关第三方包 `create-vitepress@0.0.6`，改用 `npm init` + `npm install -D vitepress` 手动创建），新增 `.github/workflows/docs.yml`（push `website/**` 到 `main` 时自动 `docs:build` 并部署到 GitHub Pages），用 `gh api repos/.../pages -f build_type=workflow` 开通 Pages（Source: GitHub Actions）。已推送并验证线上首页 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 返回 200。
+- 待办：内容迁移（方案第三节映射表）尚未做，目前线上只有占位首页，`guide/`、`deploy/`、`maintain/`、`faq/` 各页面均待从 `README.md` / `docs/user-guide/` 搬运改写。详见 `docs/11-docs-portal.md`。
+
 # 2026-07-07 已完成：Nexus ZIP 下载断点续传与卡死检测
 
 - `NEXUS-ARCHIVE-RESUME-1` completed：`mod_remote_install` / `mod_nexus_install` 的 ZIP body 下载窗口提升到 20 分钟，远程/Nexus Mod 安装 job 整体窗口确认为 30 分钟；下载阶段新增 `.part` 临时文件和 `Range` 断点续传，服务器支持 `206 Content-Range` 时从已下载字节继续，忽略 Range 返回 `200` 时自动丢弃半包并重下；新增 120 秒无新字节超时，连接卡死会取消当前 attempt 并在 20 分钟窗口内最多重试 4 次。验证：`cd backend; go test ./internal/games/stardew_junimo -run "NexusDownloadArchive"`；`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
