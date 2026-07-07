@@ -10,7 +10,7 @@ hero:
     alt: Anxi Panel
   actions:
     - theme: brand
-      text: 快速开始
+      text: 快速上手
       link: /guide/getting-started
     - theme: alt
       text: GitHub
@@ -18,8 +18,8 @@ hero:
 
 features:
   - icon: 🚀
-    title: 快速开始
-    details: 项目是什么、能做什么，首次进面板要做的六件事：建管理员、装游戏、建/传存档、拿邀请码。
+    title: 快速上手
+    details: 项目是什么、能做什么；服务器选择、部署安装、首次进面板要做的几件事一步步来。
     link: /guide/getting-started
     linkText: 开始了解
   - icon: 📦

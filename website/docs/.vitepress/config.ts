@@ -13,7 +13,7 @@ export default defineConfig({
     logo: '/logo.png',
     nav: [
       { text: '首页', link: '/' },
-      { text: '快速开始', link: '/guide/getting-started' },
+      { text: '快速上手', link: '/guide/getting-started' },
       { text: '部署指南', link: '/deploy/requirements' },
       { text: '日常维护', link: '/maintain/update' },
       { text: '常见问题', link: '/faq/' }
@@ -23,7 +23,9 @@ export default defineConfig({
         {
           text: '新手指南',
           items: [
-            { text: '快速开始', link: '/guide/getting-started' },
+            { text: '快速上手', link: '/guide/getting-started' },
+            { text: '服务器选择', link: '/guide/choose-server' },
+            { text: '部署安装', link: '/guide/deploy' },
             { text: '首次进入面板', link: '/guide/first-login' }
           ]
         }

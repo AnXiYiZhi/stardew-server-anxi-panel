@@ -38,7 +38,9 @@
 website/docs/
 ├─ index.md                    首页（Hero + 特性卡，VitePress 默认主页布局）
 ├─ guide/
-│  ├─ getting-started.md       项目是什么、能做什么、准备什么
+│  ├─ getting-started.md       快速上手：项目是什么、能做什么、三步跑起来（导航页）
+│  ├─ choose-server.md         服务器选择：部署前确认 + 没有服务器先领阿里云免费试用
+│  ├─ deploy.md                部署安装：一键脚本 run.sh 全流程（含真机截图）
 │  └─ first-login.md           首次进面板：建管理员、装游戏、建/传存档、拿邀请码
 ├─ deploy/
 │  ├─ requirements.md          系统要求（云服务器/NAS 最低与推荐配置）
@@ -60,7 +62,9 @@ website/docs/
 
 | 门户页面 | 现有内容来源 |
 | --- | --- |
-| `guide/getting-started.md` | `README.md` "新手先看" + `docs/user-guide/getting-started.md` 第一、二节 |
+| `guide/getting-started.md` | `README.md` "新手先看" + `docs/user-guide/getting-started.md` 第一、二节（后拆分为导航页，规格/部署细节移到下面两页，参考 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/) 的"服务器选择/部署安装"拆页结构） |
+| `guide/choose-server.md` | 从 `guide/getting-started.md` 拆出的"部署前确认"+ 阿里云免费试用真机截图流程 |
+| `guide/deploy.md` | 从 `guide/getting-started.md` 拆出的"一键部署"run.sh 真机截图流程 |
 | `guide/first-login.md` | `docs/user-guide/getting-started.md` 第四节"首次进入面板" |
 | `deploy/requirements.md` | `README.md` "系统要求" |
 | `deploy/quick-start.md` | `README.md` "推荐：一键启动脚本" + `docs/user-guide/getting-started.md` 第二节 |
