@@ -645,6 +645,54 @@ func TestUploadModZip_RejectsDuplicateUniqueID(t *testing.T) {
 	}
 }
 
+func TestUploadModZip_AllowsAlreadyInstalledWhenRemoteInstallIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
+
+	zipPath1 := createModZip(t, map[string]string{"Mod1/manifest.json": manifest})
+	if _, err := UploadModZip(dir, zipPath1); err != nil {
+		t.Fatalf("first upload: %v", err)
+	}
+
+	zipPath2 := createModZip(t, map[string]string{"Mod2/manifest.json": manifest})
+	imported, err := uploadModZip(dir, zipPath2, uploadModZipOptions{allowAlreadyInstalled: true})
+	if err != nil {
+		t.Fatalf("idempotent remote upload should skip already installed mod: %v", err)
+	}
+	if len(imported) != 0 {
+		t.Fatalf("imported duplicate mods = %d, want 0", len(imported))
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".local-container", "mods", "Mod2")); !os.IsNotExist(err) {
+		t.Fatalf("duplicate folder should not be imported, stat err = %v", err)
+	}
+}
+
+func TestUploadModZip_ImportsMissingModsWhenRemotePackagePartlyExists(t *testing.T) {
+	dir := t.TempDir()
+	existingManifest := `{"Name":"Existing Mod","UniqueID":"author.existing","Version":"1.0.0","Author":"Tester"}`
+	newManifest := `{"Name":"New Mod","UniqueID":"author.new","Version":"1.0.0","Author":"Tester"}`
+
+	zipPath1 := createModZip(t, map[string]string{"ExistingMod/manifest.json": existingManifest})
+	if _, err := UploadModZip(dir, zipPath1); err != nil {
+		t.Fatalf("first upload: %v", err)
+	}
+
+	zipPath2 := createModZip(t, map[string]string{
+		"ExistingModFromPackage/manifest.json": existingManifest,
+		"NewMod/manifest.json":                 newManifest,
+	})
+	imported, err := uploadModZip(dir, zipPath2, uploadModZipOptions{allowAlreadyInstalled: true})
+	if err != nil {
+		t.Fatalf("partly installed remote package should import missing mods: %v", err)
+	}
+	if got := modFoldersForTest(imported); strings.Join(got, ",") != "NewMod" {
+		t.Fatalf("imported folders = %v, want only NewMod", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".local-container", "mods", "NewMod", "manifest.json")); err != nil {
+		t.Fatalf("new mod should be imported: %v", err)
+	}
+}
+
 func TestUploadModZip_AtomicOnSecondModFailure(t *testing.T) {
 	dir := t.TempDir()
 	manifest1 := `{"Name":"Good Mod","UniqueID":"author.good","Version":"1.0","Author":"A"}`

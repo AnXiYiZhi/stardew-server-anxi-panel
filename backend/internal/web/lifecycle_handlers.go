@@ -30,7 +30,7 @@ const (
 	maxRequestBody    = 220 * 1024 * 1024 // hard cap on total request body (slightly above largest ZIP limit)
 )
 
-// 鈹€鈹€ Pending upload token store 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Pending upload token store ─────────────────────────────────────────────────
 
 type pendingUpload struct {
 	InstanceID string
@@ -75,7 +75,7 @@ func (s *pendingUploadStore) claim(token, instanceID string) (*pendingUpload, er
 	defer s.mu.Unlock()
 	entry, ok := s.entries[token]
 	if !ok {
-		return nil, fmt.Errorf("涓婁紶浠ょ墝鏃犳晥鎴栧凡杩囨湡")
+		return nil, fmt.Errorf("上传令牌无效或已过期")
 	}
 	if time.Now().After(entry.ExpiresAt) {
 		delete(s.entries, token)
@@ -83,7 +83,7 @@ func (s *pendingUploadStore) claim(token, instanceID string) (*pendingUpload, er
 		return nil, fmt.Errorf("upload token expired")
 	}
 	if entry.InstanceID != instanceID {
-		return nil, fmt.Errorf("涓婁紶浠ょ墝涓庡疄渚嬩笉鍖归厤")
+		return nil, fmt.Errorf("上传令牌与实例不匹配")
 	}
 	delete(s.entries, token)
 	return entry, nil
@@ -104,7 +104,7 @@ func newToken() string {
 	return hex.EncodeToString(b)
 }
 
-// 鈹€鈹€ Handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Handlers ──────────────────────────────────────────────────────────────────
 
 // handleSavesPreflight handles GET /api/instances/:id/saves/preflight.
 func (s *server) handleSavesPreflight(w http.ResponseWriter, r *http.Request, instanceID string) {
@@ -121,7 +121,7 @@ func (s *server) handleSavesPreflight(w http.ResponseWriter, r *http.Request, in
 	}
 	saves, err := driver.ListSaves(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_saves_failed", sanitizeErrorMsg(err, "璇诲彇瀛樻。鍒楄〃澶辫触"))
+		writeError(w, http.StatusInternalServerError, "list_saves_failed", sanitizeErrorMsg(err, "读取存档列表失败"))
 		return
 	}
 	writeJSON(w, http.StatusOK, registry.PreflightResult{
@@ -148,12 +148,12 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 
 	var cfg registry.NewGameConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "璇锋眰浣撹В鏋愬け璐?")
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
 		return
 	}
 
 	if err := sj.WriteServerSettings(instance.DataDir, cfg); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_config", sanitizeError(err, "閰嶇疆鍙傛暟鏃犳晥"))
+		writeError(w, http.StatusBadRequest, "invalid_config", sanitizeError(err, "配置参数无效"))
 		return
 	}
 
@@ -175,7 +175,7 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 		NewGame: true,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "鏈嶅姟鍣ㄥ惎鍔ㄥけ璐?"))
+		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
 
@@ -198,20 +198,20 @@ func (s *server) handleSavesUploadPreview(w http.ResponseWriter, r *http.Request
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 
 	if err := r.ParseMultipartForm(maxUploadFormSize); err != nil {
-		writeError(w, http.StatusBadRequest, "parse_form_failed", "瑙ｆ瀽涓婁紶琛ㄥ崟澶辫触锛堟枃浠跺彲鑳借秴杩囧ぇ灏忛檺鍒讹級")
+		writeError(w, http.StatusBadRequest, "parse_form_failed", "解析上传表单失败（文件可能超过大小限制）")
 		return
 	}
 
 	file, header, err := r.FormFile("save")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "missing_file", "鏈壘鍒颁笂浼犲瓧娈?'save'")
+		writeError(w, http.StatusBadRequest, "missing_file", "未找到上传字段 'save'")
 		return
 	}
 	defer func() { _ = file.Close() }()
 
 	tmp, err := os.CreateTemp("", "stardew-upload-*.zip")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "鍒涘缓涓存椂鏂囦欢澶辫触")
+		writeError(w, http.StatusInternalServerError, "internal_error", "创建临时文件失败")
 		return
 	}
 	tmpPath := tmp.Name()
@@ -219,14 +219,14 @@ func (s *server) handleSavesUploadPreview(w http.ResponseWriter, r *http.Request
 
 	if _, err := io.Copy(tmp, file); err != nil {
 		_ = tmp.Close()
-		writeError(w, http.StatusInternalServerError, "write_failed", "鍐欏叆涓存椂鏂囦欢澶辫触")
+		writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
 		return
 	}
 	_ = tmp.Close()
 
 	saveName, preview, tempDir, err := sj.PreviewSaveZip(tmpPath, header.Filename)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_zip", sanitizeError(err, "瀛樻。 ZIP 鏃犳晥"))
+		writeError(w, http.StatusBadRequest, "invalid_zip", sanitizeError(err, "存档 ZIP 无效"))
 		return
 	}
 
@@ -254,11 +254,11 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		Cancel bool   `json:"cancel"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "璇锋眰浣撹В鏋愬け璐?")
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
 		return
 	}
 	if body.Token == "" {
-		writeError(w, http.StatusBadRequest, "missing_field", "token 涓嶈兘涓虹┖")
+		writeError(w, http.StatusBadRequest, "missing_field", "token 不能为空")
 		return
 	}
 
@@ -275,13 +275,13 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 
 	entry, err := s.pendingUploads.claim(body.Token, instanceID)
 	if err != nil {
-		writeError(w, http.StatusConflict, "token_invalid", sanitizeError(err, "涓婁紶浠ょ墝鏃犳晥"))
+		writeError(w, http.StatusConflict, "token_invalid", sanitizeError(err, "上传令牌无效"))
 		return
 	}
 	defer func() { _ = os.RemoveAll(entry.TempDir) }()
 
 	if err := sj.ImportSaveToVolume(instance.DataDir, entry.TempDir, entry.SaveName); err != nil {
-		writeError(w, http.StatusInternalServerError, "import_failed", sanitizeErrorMsg(err, "瀵煎叆瀛樻。澶辫触"))
+		writeError(w, http.StatusInternalServerError, "import_failed", sanitizeErrorMsg(err, "导入存档失败"))
 		return
 	}
 
@@ -313,7 +313,7 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		ActorID:  actor.User.ID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "鏈嶅姟鍣ㄥ惎鍔ㄥけ璐?"))
+		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
 
@@ -337,7 +337,7 @@ func (s *server) handleSavesList(w http.ResponseWriter, r *http.Request, instanc
 	}
 	saves, err := driver.ListSaves(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_saves_failed", sanitizeErrorMsg(err, "璇诲彇瀛樻。鍒楄〃澶辫触"))
+		writeError(w, http.StatusInternalServerError, "list_saves_failed", sanitizeErrorMsg(err, "读取存档列表失败"))
 		return
 	}
 	activeName := sj.GetActiveSaveName(instance.DataDir)
@@ -365,19 +365,19 @@ func (s *server) handleSaveSelect(w http.ResponseWriter, r *http.Request, instan
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "璇锋眰浣撹В鏋愬け璐?")
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
 		return
 	}
 	if body.Name == "" {
-		writeError(w, http.StatusBadRequest, "missing_field", "瀛樻。鍚嶇О涓嶈兘涓虹┖")
+		writeError(w, http.StatusBadRequest, "missing_field", "存档名称不能为空")
 		return
 	}
 	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "瀛樻。涓嶅瓨鍦?"))
+		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
 		return
 	}
 	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "閫夋嫨瀛樻。澶辫触"))
+		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
 		return
 	}
 	if err := sj.ApplyModProfile(instance.DataDir, body.Name); err != nil {
@@ -413,19 +413,19 @@ func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "璇锋眰浣撹В鏋愬け璐?")
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
 		return
 	}
 	if body.Name == "" {
-		writeError(w, http.StatusBadRequest, "missing_field", "瀛樻。鍚嶇О涓嶈兘涓虹┖")
+		writeError(w, http.StatusBadRequest, "missing_field", "存档名称不能为空")
 		return
 	}
 	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "瀛樻。涓嶅瓨鍦?"))
+		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
 		return
 	}
 	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "閫夋嫨瀛樻。澶辫触"))
+		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
 		return
 	}
 	if err := sj.ApplyModProfile(instance.DataDir, body.Name); err != nil {
@@ -445,7 +445,7 @@ func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request
 		ActorID:  actor.User.ID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "鏈嶅姟鍣ㄥ惎鍔ㄥけ璐?"))
+		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
 	s.logger.Info("select-and-start", "instance", instanceID, "job", job.ID, "save", body.Name)
@@ -468,13 +468,13 @@ func (s *server) handleSaveDelete(w http.ResponseWriter, r *http.Request, instan
 	}
 	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
 	if activeSaveName == saveName && (instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting) {
-		writeError(w, http.StatusConflict, "active_save_running", "褰撳墠鍚姩瀛樻。姝ｅ湪琚湇鍔″櫒浣跨敤锛岃鍏堝仠姝㈡湇鍔″櫒鍐嶅垹闄ゃ€?")
+		writeError(w, http.StatusConflict, "active_save_running", "当前启动存档正在被服务器使用，请先停止服务器再删除。")
 		return
 	}
 	backupPath, err := sj.DeleteSaveWithBackup(instance.DataDir, saveName)
 	if err != nil {
 		s.logger.Warn("delete save failed (backup failure blocks deletion)", "instance", instanceID, "save", saveName, "error", err)
-		writeError(w, http.StatusInternalServerError, "save_delete_failed", sanitizeErrorMsg(err, "鍒犻櫎瀛樻。澶辫触"))
+		writeError(w, http.StatusInternalServerError, "save_delete_failed", sanitizeErrorMsg(err, "删除存档失败"))
 		return
 	}
 	if backupPath != "" {
@@ -497,7 +497,7 @@ func (s *server) handleSaveExport(w http.ResponseWriter, r *http.Request, instan
 
 	zipPath, err := sj.ExportSaveZip(instance.DataDir, saveName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "export_failed", sanitizeErrorMsg(err, "瀵煎嚭瀛樻。澶辫触"))
+		writeError(w, http.StatusInternalServerError, "export_failed", sanitizeErrorMsg(err, "导出存档失败"))
 		return
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -542,7 +542,7 @@ func (s *server) handleSavesBackupsList(w http.ResponseWriter, r *http.Request, 
 	}
 	backups, err := sj.ListBackups(instance.DataDir)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_backups_failed", sanitizeErrorMsg(err, "璇诲彇澶囦唤鍒楄〃澶辫触"))
+		writeError(w, http.StatusInternalServerError, "list_backups_failed", sanitizeErrorMsg(err, "读取备份列表失败"))
 		return
 	}
 	policy, policyErr := sj.ReadBackupPolicy(instance.DataDir)
@@ -602,15 +602,15 @@ func (s *server) handleSavesBackupDelete(w http.ResponseWriter, r *http.Request,
 	}
 	if err := sj.DeleteBackup(instance.DataDir, backupName); err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "涓嶅悎娉?") {
+		if strings.Contains(errMsg, "不合法") {
 			writeError(w, http.StatusBadRequest, "invalid_backup_name", errMsg)
 			return
 		}
-		if strings.Contains(errMsg, "涓嶅瓨鍦?") {
+		if strings.Contains(errMsg, "不存在") {
 			writeError(w, http.StatusNotFound, "backup_not_found", errMsg)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "delete_backup_failed", sanitizeErrorMsg(err, "鍒犻櫎澶囦唤澶辫触"))
+		writeError(w, http.StatusInternalServerError, "delete_backup_failed", sanitizeErrorMsg(err, "删除备份失败"))
 		return
 	}
 
@@ -638,22 +638,22 @@ func (s *server) handleSavesBackupRestore(w http.ResponseWriter, r *http.Request
 		Overwrite  bool   `json:"overwrite"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "璇锋眰浣撹В鏋愬け璐?")
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
 		return
 	}
 	if body.BackupName == "" {
-		writeError(w, http.StatusBadRequest, "missing_field", "backupName 涓嶈兘涓虹┖")
+		writeError(w, http.StatusBadRequest, "missing_field", "backupName 不能为空")
 		return
 	}
 
 	saveName, err := sj.RestoreBackup(instance.DataDir, body.BackupName, body.Overwrite)
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "宸插瓨鍦?") {
+		if strings.Contains(errMsg, "已存在") {
 			writeError(w, http.StatusConflict, "save_exists", errMsg)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "restore_failed", sanitizeErrorMsg(err, "鎭㈠澶囦唤澶辫触"))
+		writeError(w, http.StatusInternalServerError, "restore_failed", sanitizeErrorMsg(err, "恢复备份失败"))
 		return
 	}
 
@@ -680,22 +680,22 @@ func (s *server) handleInstanceStart(w http.ResponseWriter, r *http.Request, ins
 	// Creating or importing a save must always go through its explicit workflow.
 	saves, err := driver.ListSaves(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_saves_failed", sanitizeErrorMsg(err, "璇诲彇瀛樻。鍒楄〃澶辫触"))
+		writeError(w, http.StatusInternalServerError, "list_saves_failed", sanitizeErrorMsg(err, "读取存档列表失败"))
 		return
 	}
 	if len(saves) == 0 {
-		writeError(w, http.StatusConflict, "save_required", "娌℃湁鍙敤瀛樻。锛岃鍏堝垱寤哄瓨妗ｅ苟鍚姩鎴栦笂浼犲瓨妗ｅ苟鍚姩")
+		writeError(w, http.StatusConflict, "save_required", "没有可用存档，请先创建存档并启动或上传存档并启动")
 		return
 	}
 
 	// Check active save: must have one selected, and it must still exist.
 	activeName := sj.GetActiveSaveName(instance.DataDir)
 	if activeName == "" {
-		writeError(w, http.StatusConflict, "active_save_required", "娌℃湁宸查€夋嫨鐨勫惎鍔ㄥ瓨妗ｏ紝璇峰厛鍒涘缓銆佷笂浼犳垨閫夋嫨涓€涓瓨妗?")
+		writeError(w, http.StatusConflict, "active_save_required", "没有已选择的启动存档，请先创建、上传或选择一个存档。")
 		return
 	}
 	if err := sj.ValidateSaveExists(instance.DataDir, activeName); err != nil {
-		writeError(w, http.StatusConflict, "active_save_missing", "涓婃閫夋嫨鐨勫瓨妗ｄ笉瀛樺湪锛岃閲嶆柊閫夋嫨瀛樻。")
+		writeError(w, http.StatusConflict, "active_save_missing", "上次选择的存档不存在，请重新选择存档")
 		return
 	}
 
@@ -704,7 +704,7 @@ func (s *server) handleInstanceStart(w http.ResponseWriter, r *http.Request, ins
 		ActorID:  actor.User.ID,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "鏈嶅姟鍣ㄥ惎鍔ㄥけ璐?"))
+		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
 	s.auditLog(r, &actor, "instance_start", "instance", instanceID, auditMetadata("jobId", job.ID))
@@ -726,7 +726,7 @@ func (s *server) handleInstanceStop(w http.ResponseWriter, r *http.Request, inst
 		return
 	}
 	if err := driver.Stop(r.Context(), makeRegistryInstance(instance)); err != nil {
-		writeError(w, http.StatusInternalServerError, "stop_failed", sanitizeErrorMsg(err, "鏈嶅姟鍣ㄥ仠姝㈠け璐?"))
+		writeError(w, http.StatusInternalServerError, "stop_failed", sanitizeErrorMsg(err, "服务器停止失败"))
 		return
 	}
 	s.auditLog(r, &actor, "instance_stop", "instance", instanceID, "{}")
@@ -748,7 +748,7 @@ func (s *server) handleInstanceRestart(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	if err := driver.Restart(r.Context(), makeRegistryInstance(instance)); err != nil {
-		writeError(w, http.StatusInternalServerError, "restart_failed", sanitizeErrorMsg(err, "鏈嶅姟鍣ㄩ噸鍚け璐?"))
+		writeError(w, http.StatusInternalServerError, "restart_failed", sanitizeErrorMsg(err, "服务器重启失败"))
 		return
 	}
 	s.auditLog(r, &actor, "instance_restart", "instance", instanceID, "{}")
@@ -774,13 +774,13 @@ func (s *server) handleInstanceInviteCode(w http.ResponseWriter, r *http.Request
 	}
 	getter, supported := driver.(inviteCodeGetter)
 	if !supported {
-		writeError(w, http.StatusNotImplemented, "not_supported", "璇?driver 涓嶆敮鎸佽幏鍙栭個璇风爜")
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持获取邀请码")
 		return
 	}
 
 	code, err := getter.GetInviteCode(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invite_code_failed", sanitizeErrorMsg(err, "鑾峰彇閭€璇风爜澶辫触"))
+		writeError(w, http.StatusInternalServerError, "invite_code_failed", sanitizeErrorMsg(err, "获取邀请码失败"))
 		return
 	}
 	writeJSON(w, http.StatusOK, registry.InviteCodeResult{InviteCode: code})
@@ -795,7 +795,7 @@ func (s *server) ensureInstanceNotRunning(w http.ResponseWriter, r *http.Request
 		return instance, false
 	}
 	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
-		writeError(w, http.StatusConflict, "server_running", "鏈嶅姟鍣ㄨ繍琛屼腑锛岃鍏堝仠姝㈡湇鍔″櫒鍐嶆搷浣滃瓨妗ｃ€?")
+		writeError(w, http.StatusConflict, "server_running", "服务器运行中，请先停止服务器再操作存档。")
 		return instance, false
 	}
 	return instance, true
@@ -810,14 +810,14 @@ func (s *server) advanceToReadyToStart(r *http.Request, instance storage.Instanc
 	_, err := s.store.UpdateInstanceState(r.Context(), storage.UpdateInstanceStateParams{
 		ID:            instance.ID,
 		State:         storage.InstanceStateReadyToStart,
-		StateMessage:  "瀛樻。宸查€夋嫨锛屽噯澶囧惎鍔ㄣ€?",
+		StateMessage:  "存档已选择，准备启动。",
 		DriverPhase:   "ready_to_start",
 		DriverPayload: instance.DriverPayload,
 	})
 	return err
 }
 
-// 鈹€鈹€ Mods handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Mods handlers ─────────────────────────────────────────────────────────────
 
 // handleModsList handles GET /api/instances/:id/mods.
 func (s *server) handleModsList(w http.ResponseWriter, r *http.Request, instanceID string) {
@@ -831,7 +831,7 @@ func (s *server) handleModsList(w http.ResponseWriter, r *http.Request, instance
 	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
 	mods, err := sj.ListModsWithState(instance.DataDir, activeSaveName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list_mods_failed", sanitizeErrorMsg(err, "璇诲彇 Mod 鍒楄〃澶辫触"))
+		writeError(w, http.StatusInternalServerError, "list_mods_failed", sanitizeErrorMsg(err, "读取 Mod 列表失败"))
 		return
 	}
 	mods = sj.ApplyModSyncClassification(instance.DataDir, mods)
@@ -869,14 +869,14 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 
 	if err := r.ParseMultipartForm(maxModFormSize); err != nil {
-		writeError(w, http.StatusBadRequest, "parse_form_failed", "瑙ｆ瀽涓婁紶琛ㄥ崟澶辫触锛堟枃浠跺彲鑳借秴杩囧ぇ灏忛檺鍒讹級")
+		writeError(w, http.StatusBadRequest, "parse_form_failed", "解析上传表单失败（文件可能超过大小限制）")
 		return
 	}
 
 	modFiles := r.MultipartForm.File["mod"]
 	modFiles = append(modFiles, r.MultipartForm.File["mods"]...)
 	if len(modFiles) == 0 {
-		writeError(w, http.StatusBadRequest, "missing_file", "鏈壘鍒颁笂浼犲瓧娈?'mod'")
+		writeError(w, http.StatusBadRequest, "missing_file", "未找到上传字段 'mod'")
 		return
 	}
 
@@ -885,7 +885,7 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 		file, err := header.Open()
 		if err != nil {
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusBadRequest, "missing_file", fmt.Sprintf("璇诲彇绗?%d 涓?Mod ZIP 澶辫触", i+1))
+			writeError(w, http.StatusBadRequest, "missing_file", fmt.Sprintf("读取第 %d 个 Mod ZIP 失败", i+1))
 			return
 		}
 
@@ -893,7 +893,7 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 		if err != nil {
 			_ = file.Close()
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusInternalServerError, "internal_error", "鍒涘缓涓存椂鏂囦欢澶辫触")
+			writeError(w, http.StatusInternalServerError, "internal_error", "创建临时文件失败")
 			return
 		}
 		tmpPath := tmp.Name()
@@ -903,14 +903,14 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 			_ = tmp.Close()
 			_ = os.Remove(tmpPath)
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusInternalServerError, "write_failed", "鍐欏叆涓存椂鏂囦欢澶辫触")
+			writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
 			return
 		}
 		_ = file.Close()
 		if err := tmp.Close(); err != nil {
 			_ = os.Remove(tmpPath)
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusInternalServerError, "write_failed", "鍐欏叆涓存椂鏂囦欢澶辫触")
+			writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
 			return
 		}
 
@@ -918,7 +918,7 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 		_ = os.Remove(tmpPath)
 		if err != nil {
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusBadRequest, modUploadErrorCode(err), sanitizeError(err, fmt.Sprintf("绗?%d 涓?Mod ZIP 鏃犳晥", i+1)))
+			writeError(w, http.StatusBadRequest, modUploadErrorCode(err), sanitizeError(err, fmt.Sprintf("第 %d 个 Mod ZIP 无效", i+1)))
 			return
 		}
 		imported = append(imported, batch...)
@@ -970,7 +970,7 @@ func (s *server) handleModDelete(w http.ResponseWriter, r *http.Request, instanc
 		return
 	}
 	if err := sj.DeleteMod(instance.DataDir, modID); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete_failed", sanitizeErrorMsg(err, "鍒犻櫎 Mod 澶辫触"))
+		writeError(w, http.StatusInternalServerError, "delete_failed", sanitizeErrorMsg(err, "删除 Mod 失败"))
 		return
 	}
 	// Mod writes are only allowed while stopped; clear any stale restart marker.
@@ -994,7 +994,7 @@ func (s *server) handleModsExport(w http.ResponseWriter, r *http.Request, instan
 
 	zipPath, err := sj.ExportModsZip(instance.DataDir)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "export_failed", sanitizeErrorMsg(err, "瀵煎嚭 Mod 澶辫触"))
+		writeError(w, http.StatusInternalServerError, "export_failed", sanitizeErrorMsg(err, "导出 Mod 失败"))
 		return
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -1015,7 +1015,7 @@ func (s *server) handleModSyncPlan(w http.ResponseWriter, r *http.Request, insta
 	}
 	plan, err := sj.BuildModSyncPlan(instance.DataDir)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "sync_plan_failed", sanitizeErrorMsg(err, "璇诲彇鍚屾鍒嗙被澶辫触"))
+		writeError(w, http.StatusInternalServerError, "sync_plan_failed", sanitizeErrorMsg(err, "读取同步分类失败"))
 		return
 	}
 	writeJSON(w, http.StatusOK, plan)
@@ -1095,16 +1095,16 @@ func (s *server) handleModSyncClassificationUpdate(w http.ResponseWriter, r *htt
 		return
 	}
 	if !registry.ValidModSyncKind(req.SyncKind) {
-		writeError(w, http.StatusBadRequest, "invalid_sync_kind", "鏃犳晥鐨勫悓姝ュ垎绫?")
+		writeError(w, http.StatusBadRequest, "invalid_sync_kind", "无效的同步分类")
 		return
 	}
 	mods, err := sj.SetModSyncClassificationCascade(instance.DataDir, modID, req.SyncKind, req.SyncNote)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
-			writeError(w, http.StatusNotFound, "mod_not_found", "Mod 涓嶅瓨鍦?")
+			writeError(w, http.StatusNotFound, "mod_not_found", "Mod 不存在")
 			return
 		}
-		writeError(w, http.StatusBadRequest, "sync_classification_failed", sanitizeErrorMsg(err, "鏇存柊鍚屾鍒嗙被澶辫触"))
+		writeError(w, http.StatusBadRequest, "sync_classification_failed", sanitizeErrorMsg(err, "更新同步分类失败"))
 		return
 	}
 	affectedNames := make([]string, 0, len(mods))
@@ -1134,10 +1134,10 @@ func (s *server) handleModSyncPackExport(w http.ResponseWriter, r *http.Request,
 	zipPath, err := sj.ExportModSyncPackZip(instance.DataDir)
 	if err != nil {
 		if errors.Is(err, sj.ErrNoSyncMods) {
-			writeError(w, http.StatusBadRequest, "no_sync_mods", "娌℃湁鐜╁闇€鍚屾鐨?Mod 鍙鍑?")
+			writeError(w, http.StatusBadRequest, "no_sync_mods", "没有玩家需同步的 Mod 可导出")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "export_sync_pack_failed", sanitizeErrorMsg(err, "瀵煎嚭鍚屾鍖呭け璐?"))
+		writeError(w, http.StatusInternalServerError, "export_sync_pack_failed", sanitizeErrorMsg(err, "导出同步包失败"))
 		return
 	}
 	defer func() { _ = os.Remove(zipPath) }()
@@ -1287,7 +1287,7 @@ func modInstallJobDisplayName(jobType string, result sj.NexusModSearchResult) st
 	if len(runes) > 80 {
 		name = string(runes[:80]) + "..."
 	}
-	return fmt.Sprintf("%s · %s", jobType, name)
+	return fmt.Sprintf("%s · %s", name, jobType)
 }
 
 type remoteInstallRequest struct {
@@ -1315,7 +1315,7 @@ func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	if req.ModID <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid_query", "Nexus Mod ID 鏃犳晥")
+		writeError(w, http.StatusBadRequest, "invalid_query", "Nexus Mod ID 无效")
 		return
 	}
 
@@ -1366,7 +1366,7 @@ func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, i
 		},
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "job_create_failed", sanitizeErrorMsg(err, "鍒涘缓 Nexus 瀹夎浠诲姟澶辫触"))
+		writeError(w, http.StatusInternalServerError, "job_create_failed", sanitizeErrorMsg(err, "创建 Nexus 安装任务失败"))
 		return
 	}
 
@@ -1396,7 +1396,7 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 	}
 	rawURL := strings.TrimSpace(req.URL)
 	if rawURL == "" {
-		writeError(w, http.StatusBadRequest, "invalid_remote_mod_url", "杩滅▼ Mod 涓嬭浇閾炬帴涓嶈兘涓虹┖")
+		writeError(w, http.StatusBadRequest, "invalid_remote_mod_url", "远程 Mod 下载链接不能为空")
 		return
 	}
 
@@ -1442,7 +1442,7 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		},
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "job_create_failed", sanitizeErrorMsg(err, "鍒涘缓杩滅▼瀹夎浠诲姟澶辫触"))
+		writeError(w, http.StatusInternalServerError, "job_create_failed", sanitizeErrorMsg(err, "创建远程安装任务失败"))
 		return
 	}
 
@@ -1493,7 +1493,7 @@ func (s *server) writeNexusError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadGateway, "nexus_request_failed", "Nexus 请求失败，请稍后重试")
 }
 
-// 鈹€鈹€ Console / Commands handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Console / Commands handlers ───────────────────────────────────────────────
 
 // consoleRunner is the interface for drivers that support console commands.
 type consoleRunner interface {
@@ -1528,7 +1528,7 @@ func (s *server) handleCommandRun(w http.ResponseWriter, r *http.Request, instan
 		return
 	}
 	if instance.State != storage.InstanceStateRunning {
-		writeError(w, http.StatusConflict, "server_not_running", "鏈嶅姟鍣ㄦ湭杩愯锛屾棤娉曟墽琛屽懡浠?")
+		writeError(w, http.StatusConflict, "server_not_running", "服务器未运行，无法执行命令")
 		return
 	}
 	driver, ok := s.loadDriver(w, instance.DriverID)
@@ -1538,13 +1538,13 @@ func (s *server) handleCommandRun(w http.ResponseWriter, r *http.Request, instan
 
 	runner, supported := driver.(consoleRunner)
 	if !supported {
-		writeError(w, http.StatusNotImplemented, "not_supported", "璇?driver 涓嶆敮鎸佸懡浠ゆ墽琛?")
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持命令执行")
 		return
 	}
 
 	var req sj.CommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "璇锋眰鏍煎紡閿欒")
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 
@@ -1563,7 +1563,7 @@ func (s *server) handleCommandRun(w http.ResponseWriter, r *http.Request, instan
 			writeError(w, status, ce.Code, ce.Message)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "command_failed", sanitizeErrorMsg(err, "鎵ц鍛戒护澶辫触"))
+		writeError(w, http.StatusInternalServerError, "command_failed", sanitizeErrorMsg(err, "执行命令失败"))
 		return
 	}
 	s.auditLog(r, &actor, "command_run", "instance", instanceID, auditMetadata("command", req.Command))
@@ -1586,7 +1586,7 @@ func (s *server) handleCommandSay(w http.ResponseWriter, r *http.Request, instan
 		return
 	}
 	if instance.State != storage.InstanceStateRunning {
-		writeError(w, http.StatusConflict, "server_not_running", "鏈嶅姟鍣ㄦ湭杩愯锛屾棤娉曞彂閫佸枈璇?")
+		writeError(w, http.StatusConflict, "server_not_running", "服务器未运行，无法发送喊话")
 		return
 	}
 	driver, ok := s.loadDriver(w, instance.DriverID)
@@ -1596,7 +1596,7 @@ func (s *server) handleCommandSay(w http.ResponseWriter, r *http.Request, instan
 
 	runner, supported := driver.(consoleRunner)
 	if !supported {
-		writeError(w, http.StatusNotImplemented, "not_supported", "璇?driver 涓嶆敮鎸佸枈璇?")
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持喊话")
 		return
 	}
 
@@ -1604,7 +1604,7 @@ func (s *server) handleCommandSay(w http.ResponseWriter, r *http.Request, instan
 		Message string `json:"message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "璇锋眰鏍煎紡閿欒")
+		writeError(w, http.StatusBadRequest, "invalid_request", "请求格式错误")
 		return
 	}
 
@@ -1621,7 +1621,7 @@ func (s *server) handleCommandSay(w http.ResponseWriter, r *http.Request, instan
 			writeError(w, status, ce.Code, ce.Message)
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "say_failed", sanitizeErrorMsg(err, "鍙戦€佸枈璇濆け璐?"))
+		writeError(w, http.StatusInternalServerError, "say_failed", sanitizeErrorMsg(err, "发送喊话失败"))
 		return
 	}
 	writeJSON(w, http.StatusOK, result)

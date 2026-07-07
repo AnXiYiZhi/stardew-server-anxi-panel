@@ -1,3 +1,11 @@
+# NEXUS-ARCHIVE-RESUME-1 Nexus ZIP 下载断点续传与无进度超时
+
+- `mod_remote_install` / `mod_nexus_install` 的远程 ZIP 下载现在使用 `.part` 临时文件；同一个任务内如果连接中断，会用 `Range: bytes=<已下载字节>-` 续传。服务器返回 `206` 且 `Content-Range` 起点匹配时追加写入；如果服务器忽略 Range 返回 `200`，会丢弃本次 `.part` 并从头下载，避免拼出坏包。
+- ZIP body 下载窗口从 15 分钟提升到 **20 分钟**，并增加 **120 秒无新字节超时**：连接建立后只要 120 秒内没有收到任何新数据，就取消当前尝试并按可重试错误处理。单个 ZIP 最多重试 4 次，但必须仍在 20 分钟下载窗口内。
+- 远程/Nexus Mod 安装 job 的整体超时保持并确认拉长为 **30 分钟**，给免费 Nexus 慢速下载留下足够空间；下载完成后的 ZIP 校验、导入、重复 Mod 幂等跳过仍走原逻辑。
+- 保留现有安全边界：最大 ZIP 体积仍限制为 200MB；`text/html` 响应仍立即判定为“拿到网页而不是 ZIP”；4xx（例如过期 CDN 临时链接的 403/410）不做盲重试，后续如需可在拿链接层补刷新机制。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "NexusDownloadArchive"`；完整相关包：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
 # NEXUS-DNS-FALLBACK-1 出站请求 DNS 自愈
 
 - 背景：飞牛 NAS 现场 Nexus 搜索一直失败，容器日志根因为 `dial tcp: lookup api.nexusmods.com on 127.0.0.11:53: server misbehaving`——Docker 内嵌 DNS 转发给不稳定的消费级路由器 DNS，间歇 SERVFAIL。同一根因也让 Docker Hub 版本检查大量失败。用户是普通玩家，不能指望其修 DNS，因此在代码层自愈。
@@ -842,3 +850,21 @@ docker run --rm `
 - SteamCMD runtime cache 清理失败时，任务日志会附带 Docker stderr/stdout 的脱敏详情，便于区分“不存在”“被容器占用”“Docker 权限异常”等情况。
 - 影响文件：`backend/internal/docker/compose.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/docker/compose_test.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/docker ./internal/games/stardew_junimo`、`cd backend; go test ./...`。
+
+# MOJIBAKE-FIX-1 mods.go 与 lifecycle_handlers.go 历史乱码修复
+
+- 用户反馈 `mod_remote_install` 任务日志报错显示乱码：`UniqueID "..." 宸插瓨鍦ㄤ簬 Mod "..." 涓? (mod_exists)`。排查发现 `backend/internal/games/stardew_junimo/mods.go` 和 `backend/internal/web/lifecycle_handlers.go` 里大量中文字符串字面量（错误提示、注释）早已是乱码，推测是早期某次保存时把正确的 UTF-8 中文按 GBK(cp936) 误解码又存回 UTF-8 导致（correct UTF-8 bytes → decode as GBK → re-encode as UTF-8）。
+- 该乱码是**确定性、可逆**的：`原文 = UTF8.Decode(GBK936.Encode(乱码文本))`。用这个公式加脚本对两个文件做了全量修复（含错误提示、`fmt.Errorf`、注释、`// ──` 分隔线），已验证输出符合语境。少数原文标点在损坏当时就已经丢失（表现为文件中残留的半角 `?`），这部分靠上下文人工补全（如"已存在于 Mod...中""不是合法的 SMAPI Mod"）。
+- **顺带修复一个真实功能 bug**：`lifecycle_handlers.go` 里 `handleSavesBackupDelete` / `handleSavesBackupRestore` 用 `strings.Contains(errMsg, "涓嶅悎娉?")` / `"涓嶅瓨鍦?")` / `"宸插瓨鍦?")` 这类乱码字符串去匹配 `saves.go` 返回的**正确** UTF-8 错误文本（如"不合法""不存在""已存在"），两边编码不一致导致匹配永远失败，备份删除/恢复接口原本应返回的 `400 invalid_backup_name` / `404 backup_not_found` / `409 save_exists` 全部静默退化成通用 `500`。已改为匹配正确的中文子串。
+- 影响文件：`backend/internal/games/stardew_junimo/mods.go`、`backend/internal/web/lifecycle_handlers.go`。
+- 验证：`cd backend; go build ./...`、`go vet ./...`、`go test ./...` 全绿；已用脚本对整个 `backend` 目录做 `[CJK]\?` 乱码特征扫描确认清零。
+- 下一步注意事项：这次只清理了这两个文件；如果后续在其他文件的错误提示里再看到类似"字符像中文但读不通"的乱码，大概率是同一根因，可用上述可逆公式复查。
+
+# MOD-REMOTE-IDEMPOTENT-1 远程/Nexus Mod 安装重复包幂等
+
+- `mod_remote_install` / `mod_nexus_install` 现在只在下载类安装路径里启用 `allowAlreadyInstalled`：ZIP 中某个 Mod 的 `UniqueID` 已存在时跳过该目录，不再把 `(mod_exists)` 作为 job 失败；如果整个 ZIP 都已安装，任务记录"已安装，跳过重复导入"并以 succeeded 结束。
+- 普通手动上传 `POST /mods/upload` 仍保持严格语义：重复 `UniqueID` 继续返回 `400 mod_exists`，避免用户误以为上传替换已发生。
+- 同一包部分目录已存在、部分目录缺失时，远程/Nexus 安装会导入缺失目录并跳过已存在目录，用于修复浏览器扩展缓存/刷新导致重复提交时的误失败。
+- 新建 Mod 下载类 job 的 `displayName` 改为 Mod 名在前，例如 `Ridgeside Village · mod_remote_install`，任务类型仍保留在 `type` 字段。
+- 影响文件：`backend/internal/games/stardew_junimo/mods.go`、`remote_install.go`、`nexus_install.go`、`backend/internal/web/lifecycle_handlers.go` 及测试。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。

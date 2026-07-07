@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -88,7 +89,7 @@ func TestJobsAPIIncludesDisplayName(t *testing.T) {
 
 	if _, err := store.CreateJob(context.Background(), storage.CreateJobParams{
 		Type:        "mod_remote_install",
-		DisplayName: "mod_remote_install · Farm Type Manager (FTM)",
+		DisplayName: "Farm Type Manager (FTM) · mod_remote_install",
 		TargetType:  "instance",
 		TargetID:    storage.DefaultInstanceID,
 	}); err != nil {
@@ -114,8 +115,18 @@ func TestJobsAPIIncludesDisplayName(t *testing.T) {
 	if payload.Jobs[0].Type != "mod_remote_install" {
 		t.Fatalf("type = %q, want mod_remote_install", payload.Jobs[0].Type)
 	}
-	if payload.Jobs[0].DisplayName == nil || *payload.Jobs[0].DisplayName != "mod_remote_install · Farm Type Manager (FTM)" {
+	if payload.Jobs[0].DisplayName == nil || *payload.Jobs[0].DisplayName != "Farm Type Manager (FTM) · mod_remote_install" {
 		t.Fatalf("displayName = %#v, want mod name", payload.Jobs[0].DisplayName)
+	}
+}
+
+func TestModInstallJobDisplayNameUsesModNameFirst(t *testing.T) {
+	got := modInstallJobDisplayName("mod_remote_install", sj.NexusModSearchResult{
+		ModID: 7286,
+		Name:  "Ridgeside Village",
+	})
+	if got != "Ridgeside Village · mod_remote_install" {
+		t.Fatalf("display name = %q, want mod name first", got)
 	}
 }
 

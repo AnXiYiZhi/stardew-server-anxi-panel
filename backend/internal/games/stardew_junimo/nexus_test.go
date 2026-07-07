@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
@@ -639,6 +641,103 @@ func TestNexusDownloadArchiveRejectsHTMLResponse(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(logs, "\n"), "远程响应类型：text/html") {
 		t.Fatalf("logs = %v, want content-type log", logs)
+	}
+}
+
+func TestNexusDownloadArchiveResumesPartialDownload(t *testing.T) {
+	payload := []byte("abcdefghijklmnopqrstuvwxyz")
+	var calls int
+	var sawRange string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/zip")
+		switch calls {
+		case 1:
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			_, _ = w.Write(payload[:7])
+		default:
+			sawRange = r.Header.Get("Range")
+			if sawRange != "bytes=7-" {
+				t.Fatalf("Range = %q, want bytes=7-", sawRange)
+			}
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes 7-%d/%d", len(payload)-1, len(payload)))
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(payload[7:])
+		}
+	}))
+	defer server.Close()
+
+	dest := filepath.Join(t.TempDir(), "archive.zip")
+	if err := nexusDownloadArchive(context.Background(), server.URL+"/mod.zip", dest, nil); err != nil {
+		t.Fatalf("nexusDownloadArchive: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("downloaded payload = %q, want %q", got, payload)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestNexusDownloadArchiveRestartsWhenRangeIsIgnored(t *testing.T) {
+	payload := []byte("0123456789abcdef")
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		if calls == 1 {
+			_, _ = w.Write(payload[:4])
+			return
+		}
+		if r.Header.Get("Range") != "bytes=4-" {
+			t.Fatalf("Range = %q, want bytes=4-", r.Header.Get("Range"))
+		}
+		// A 200 response to a Range request means the server ignored resume; the
+		// downloader must discard the partial file and restart from byte zero.
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	dest := filepath.Join(t.TempDir(), "archive.zip")
+	if err := nexusDownloadArchive(context.Background(), server.URL+"/mod.zip", dest, nil); err != nil {
+		t.Fatalf("nexusDownloadArchive: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("downloaded payload = %q, want %q", got, payload)
+	}
+}
+
+func TestNexusDownloadArchiveFailsWhenDownloadStalls(t *testing.T) {
+	orig := nexusArchiveStallTimeout
+	nexusArchiveStallTimeout = 25 * time.Millisecond
+	t.Cleanup(func() { nexusArchiveStallTimeout = orig })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Length", "4")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte("data"))
+	}))
+	defer server.Close()
+
+	err := nexusDownloadArchive(context.Background(), server.URL+"/mod.zip", filepath.Join(t.TempDir(), "archive.zip"), nil)
+	if err == nil {
+		t.Fatal("nexusDownloadArchive returned nil, want stall error")
+	}
+	if !strings.Contains(err.Error(), "没有收到新的下载数据") {
+		t.Fatalf("err = %v, want no-progress timeout", err)
 	}
 }
 

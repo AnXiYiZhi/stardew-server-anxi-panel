@@ -1,3 +1,56 @@
+# NEXUS-ARCHIVE-RESUME-1 Nexus ZIP 下载断点续传与无进度超时
+## 背景
+- 普通 Nexus 免费下载链路速度慢且容易在中途卡住。历史逻辑只依赖单次 HTTP body 读取和 15 分钟 client timeout，遇到中途断流、长时间无新字节或短暂网络抖动时会直接让整个 Mod 安装 job 失败。
+- 实测 Nexus CDN 临时 ZIP 链接支持 `Range` 请求：即使响应头不总是显式带 `Accept-Ranges`，`Range: bytes=0-0` 可以返回 `206 Partial Content`，因此后端可对 ZIP body 做同一任务内的断点续传。
+
+## 改了什么
+- `nexusArchiveTimeout` 调整为 **20 分钟**，`nexusArchiveHTTPClient` 同步使用新的下载窗口。
+- `nexusDownloadArchive()` 改为走 `.part` 临时文件：失败后读取已有 `.part` 大小并用 `Range: bytes=<offset>-` 续传；`206` 且 `Content-Range` 起点匹配时追加；服务器返回 `200` 表示忽略 Range 时删除 `.part` 并从头下载。
+- 新增 **120 秒无进度超时**。HTTP body 开始读取后，如果 120 秒内没有收到任何新字节，会取消当前 attempt 并进入重试。单个 ZIP 最多 4 次尝试，仍受 20 分钟下载总窗口约束。
+- 远程/Nexus Mod install job 的整体 timeout 确认为 **30 分钟**，给慢速 ZIP 下载和后续导入留下余量。
+- 保留原有保护：200MB ZIP 上限、HTML 响应拦截、`NexusAPIError` 4xx 不盲重试、重复已安装 Mod 仍按 `MOD-REMOTE-IDEMPOTENT-1` 幂等跳过。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/nexus.go`
+- `backend/internal/games/stardew_junimo/nexus_install.go`
+- `backend/internal/games/stardew_junimo/nexus_test.go`
+- `backend/internal/web/lifecycle_handlers.go`（确认 remote/nexus mod job 使用 30 分钟任务窗口）
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo -run "NexusDownloadArchive"`
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+
+## 下一步注意事项
+- 当前续传只覆盖“已经拿到 ZIP URL 后的 body 下载”。如果 Nexus CDN 临时链接过期并返回 403/410，后端不会在下载函数里刷新链接；后续如需优化，应在 NXM/API ticket 或浏览器扩展捕获层补“重新取链接”能力。
+- `.part` 只用于当前 job 内重试，任务开始会清理旧目标文件和旧 `.part`，避免跨任务复用过期/来源不同的半包。
+
+# MOD-REMOTE-IDEMPOTENT-1 远程/Nexus Mod 安装重复包幂等
+
+## 背景
+- 用户安装一个主 Mod 和 3 个前置 Mod 时，浏览器扩展缓存/刷新导致其中一个前置 Mod 在已安装后又重复提交了一次 `mod_remote_install`。旧逻辑在 ZIP 预校验阶段遇到重复 `UniqueID` 直接返回 `(mod_exists)`，任务被标记为 failed，前端随后把整批安装显示成失败。
+
+## 改了什么
+- `uploadModZipOptions` 新增 `allowAlreadyInstalled`。仅 `InstallRemoteMod` / `InstallNexusMod` 下载类路径开启该选项；普通上传 `UploadModZip` 仍保持严格重复校验。
+- 开启该选项后，ZIP 内某个 Mod 的 `UniqueID` 已存在于实例时跳过该目录；如果 ZIP 里还有缺失目录，会继续导入缺失目录；如果整包都已安装，返回空导入列表并由调用方记录“已安装，跳过重复导入”，job 以 succeeded 结束。
+- 新建 Mod 下载类 job 的 `displayName` 改为 Mod 名在前，例如 `Ridgeside Village · mod_remote_install`；`type` 字段仍保持 `mod_remote_install` / `mod_nexus_install`。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/mods.go`
+- `backend/internal/games/stardew_junimo/remote_install.go`
+- `backend/internal/games/stardew_junimo/nexus_install.go`
+- `backend/internal/games/stardew_junimo/mods_test.go`
+- `backend/internal/web/lifecycle_handlers.go`
+- `backend/internal/web/jobs_handlers_test.go`
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo -run "UploadModZip_.*(DuplicateUniqueID|AllowsAlreadyInstalled|PartlyExists)|SaveInstalledNexusMetadata"`
+- `cd backend; go test ./internal/web -run "JobsAPIIncludesDisplayName|ModInstallJobDisplayName"`
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`
+
+## 下一步注意事项
+- 不要把 `allowAlreadyInstalled` 接到手动上传接口；上传重复仍应明确告诉用户“已安装相同 ID 的 Mod”，而不是静默跳过。
+- 如果以后支持“更新/覆盖安装”，应单独设计替换语义，不要复用本次的幂等跳过开关。
+
 # NEXUS-DNS-FALLBACK-1 出站请求 DNS 自愈（Nexus / Docker Hub / 公网 IP）
 
 ## 背景
@@ -65,3 +118,24 @@
 - 以后升级扩展只需 bump `manifest.json` 的 `version` 并重建镜像，用户重新下载即可拿到新版，无需再手动删实例缓存。
 - 首次发布本版本到已部署服务器时，旧实例缓存版本仍是 `0.1.0`（< `0.1.1`）会被自动刷新；但如果旧缓存恰好没有版本或结构损坏，走的仍是重打包兜底，同样安全。
 - `findFileIdOnPage()` 只信当前 Mod 的链接，避免抓到依赖（如 SMAPI）的 `file_id`；多文件 Mod 取页面上第一个当前 Mod 的 `file_id`，通常是主文件。
+
+# MOJIBAKE-FIX-1 mods.go 与 lifecycle_handlers.go 历史乱码修复
+
+## 背景
+- 用户远程安装 Mod 遇到重复 UniqueID 时，`mod_remote_install` 任务日志报错显示乱码：`UniqueID "..." 宸插瓨鍦ㄤ簬 Mod "..." 涓? (mod_exists)`。追查发现 `backend/internal/games/stardew_junimo/mods.go` 和 `backend/internal/web/lifecycle_handlers.go` 里大量中文错误提示/注释早已是乱码（历史遗留，非本次改动引入），推测是某次保存把正确 UTF-8 中文按 GBK(cp936) 误解码又存回 UTF-8。
+
+## 改了什么
+- 确认乱码是确定性可逆的：`原文 = UTF8.Decode(GBK936.Encode(乱码文本))`。用 PowerShell/.NET 脚本对两个文件的所有中文字面量（`fmt.Errorf`、`writeError` 提示、注释、`// ──` 分隔线）做了机械回退 + 人工核对上下文补全少数丢失标点（原始损坏过程里部分标点已经彻底丢失，文件中残留半角 `?`）。
+- 顺带修复一个真实功能 bug：`lifecycle_handlers.go` 的 `handleSavesBackupDelete`/`handleSavesBackupRestore` 用乱码字符串 `strings.Contains(errMsg, "涓嶅悎娉?")` 等去匹配 `saves.go` 返回的**正确**中文错误文本，两边编码不一致导致匹配永远为 false，备份删除/恢复接口的 `400`/`404`/`409` 分类全部静默退化成通用 `500`。已改为匹配正确子串（"不合法"/"不存在"/"已存在"）。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/mods.go`
+- `backend/internal/web/lifecycle_handlers.go`
+
+## 如何验证
+- `cd backend; go build ./...`、`go vet ./...`、`go test ./...` 全绿。
+- 对整个 `backend` 目录做过 `[CJK]\?` 乱码特征全量扫描，确认无残留；`gofmt -l` 对这两个文件的提示是既有 CRLF 换行差异导致，非本次改动引入。
+
+## 下一步注意事项
+- 本次只清理了这两个文件（用户反馈触发的排查范围）。如果后续在其他文件的错误提示里再看到"像中文但读不通"的乱码，大概率是同一根因，可用上述可逆公式复查（`GBK936.GetBytes(乱码) → UTF8.GetString`）。
+- 修 `strings.Contains` 这类错误分类逻辑时，务必确认匹配串和真实抛出的 `err.Error()` 编码一致；这次的教训是两边字面量分别在不同时间写入，肉眼看着都像"正常代码"，实际早已错配。
