@@ -5,6 +5,9 @@ hero:
   name: Anxi Panel 文档
   text: 星露谷物语专用服务器 Web 管理面板
   tagline: 一个 Docker 镜像，打开浏览器就能装服、开服、管存档、管 Mod
+  image:
+    src: /logo.png
+    alt: Anxi Panel
   actions:
     - theme: brand
       text: 快速开始

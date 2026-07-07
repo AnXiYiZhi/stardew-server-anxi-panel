@@ -6,7 +6,11 @@ export default defineConfig({
   lang: 'zh-CN',
   base: '/stardew-server-anxi-panel/',
   lastUpdated: true,
+  head: [
+    ['link', { rel: 'icon', href: '/stardew-server-anxi-panel/favicon.ico' }]
+  ],
   themeConfig: {
+    logo: '/logo.png',
     nav: [
       { text: '首页', link: '/' },
       { text: '快速开始', link: '/guide/getting-started' },
