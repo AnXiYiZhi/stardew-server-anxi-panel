@@ -34,6 +34,9 @@ const (
 	readySMAPIInterval  = 5 * time.Second  // how often to poll status.json
 
 	inviteCodeTimeout = 30 * time.Second
+
+	backgroundInviteAttempts = 20
+	backgroundInviteInterval = 15 * time.Second
 )
 
 // LifecycleDockerService extends DockerService with lifecycle operations.
@@ -56,6 +59,8 @@ type lifecycleRunner struct {
 	operation string // "start", "stop", "restart"
 	actorID   int64
 	newGame   bool // When true, send "settings newgame --confirm" after server starts.
+
+	steamAuthRefreshAttempted bool
 }
 
 // Start implements registry.GameDriver.Start.
@@ -220,11 +225,12 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	if err := EnsureServerSettingsDefaults(r.instance.DataDir); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：确保 IP 直连默认设置失败（不影响启动）：%v", err))
 	}
+	r.clearRuntimeControlSnapshots(ctx, jobCtx)
 
 	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
-		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer APP_NAME startup compatibility mount failed: %v", err))
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer static init compatibility mounts failed: %v", err))
 	} else if changed {
-		_, _ = jobCtx.Info(ctx, "JunimoServer APP_NAME startup compatibility mount has been applied.")
+		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
 	}
 
 	if r.newGame {
@@ -281,25 +287,11 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
 		"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
 
-	// Keep the job alive polling for the invite code so the task log shows its
-	// progress ("等待邀请码 第N次…"). Startup "success" is judged separately by the
-	// frontend (host player online); the invite code is best-effort and may never
-	// arrive, but the user can still watch how far it got here.
-	inviteCode := r.waitForReadyState(ctx, jobCtx)
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if inviteCode == "" {
-		_, _ = jobCtx.Info(ctx, "未能获取邀请码，服务器可能仍在初始化，可在面板手动刷新邀请码。")
-		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-			"服务器运行中（邀请码待就绪）", "running", jobCtx.ID)
-	} else {
-		msg := "服务器运行中，邀请码：" + inviteCode
-		_, _ = jobCtx.Info(ctx, msg)
-		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-			msg, "running", jobCtx.ID)
-		r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, inviteCode)
-	}
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("服务器已启动；邀请码将后台尝试获取，最多 %d 次，不影响 IP 直连。", backgroundInviteAttempts))
+	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+		"服务器运行中（邀请码后台获取中）", "running", jobCtx.ID)
+	r.startInviteCodePolling()
+
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
@@ -367,6 +359,7 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	_, _ = jobCtx.Info(ctx, "正在重启 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在重启...", "restarting", jobCtx.ID)
 	r.removeInviteCodeFile(ctx, jobCtx)
+	r.clearRuntimeControlSnapshots(ctx, jobCtx)
 
 	if err := r.ensureJunimoServerMod(ctx, jobCtx); err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
@@ -376,10 +369,10 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 
 	composeConfigChanged := false
 	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
-		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer APP_NAME startup compatibility mount failed: %v", err))
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer static init compatibility mounts failed: %v", err))
 	} else if changed {
 		composeConfigChanged = true
-		_, _ = jobCtx.Info(ctx, "JunimoServer APP_NAME startup compatibility mount has been applied.")
+		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
 	}
 
 	var result paneldocker.CommandResult
@@ -403,21 +396,11 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	}
 	r.clearStaleInviteCode(ctx, jobCtx)
 
-	inviteCode := r.waitForReadyState(ctx, jobCtx)
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if inviteCode == "" {
-		_, _ = jobCtx.Info(ctx, "未能获取邀请码，可在面板手动刷新。")
-		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-			"服务器重启完成（邀请码待就绪）", "running", jobCtx.ID)
-	} else {
-		msg := "服务器运行中，邀请码：" + inviteCode
-		_, _ = jobCtx.Info(ctx, msg)
-		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-			msg, "running", jobCtx.ID)
-		r.driver.updateDriverPayloadInviteCode(ctx, r.instance.ID, inviteCode)
-	}
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("服务器已重启；邀请码将后台尝试获取，最多 %d 次，不影响 IP 直连。", backgroundInviteAttempts))
+	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+		"服务器运行中（邀请码后台获取中）", "running", jobCtx.ID)
+	r.startInviteCodePolling()
+
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	return nil
@@ -605,6 +588,7 @@ func (r *lifecycleRunner) waitForReadyState(ctx context.Context, jobCtx *jobs.Co
 			lastInviteAttempt = time.Now()
 			code, err := r.fetchInviteCode(ctx)
 			if err == nil && code != "" {
+				r.markSteamAuthUsableFromInviteCode(jobCtx)
 				_, _ = jobCtx.Info(ctx, fmt.Sprintf("邀请码已就绪（第 %d 次）：%s", inviteAttempt, code))
 				return code
 			}
@@ -635,6 +619,9 @@ func (r *lifecycleRunner) waitForReadyState(ctx context.Context, jobCtx *jobs.Co
 	_, _ = jobCtx.Info(ctx, fmt.Sprintf(
 		"服务器在 %v 内未就绪（SMAPI 最终状态：%q），尝试最后一次获取邀请码...", readyStateTimeout, lastSMAPIState))
 	code, _ := r.fetchInviteCode(ctx)
+	if code != "" {
+		r.markSteamAuthUsableFromInviteCode(jobCtx)
+	}
 	return code
 }
 
@@ -649,7 +636,167 @@ func (r *lifecycleRunner) tailServerLogs(ctx context.Context, jobCtx *jobs.Conte
 	if err != nil || strings.TrimSpace(result.Stdout) == "" {
 		return
 	}
+	if serverLogShowsSteamAuthUnavailable(result.Stdout) {
+		if err := sjconfig.SetSteamAuthLoggedIn(r.instance.DataDir, false); err != nil {
+			_, _ = jobCtx.Warn(ctx, "检测到 steam-auth 授权不可用，但更新授权状态失败。")
+		} else {
+			_, _ = jobCtx.Warn(ctx, "检测到 steam-auth 容器当前没有可用授权账号，已标记为需要重新登录授权。")
+		}
+	} else if sjconfig.SteamAuthLoggedIn(r.instance.DataDir) && serverLogShowsSteamAuthServiceNotReady(result.Stdout) {
+		r.refreshSteamAuthService(ctx, jobCtx)
+	}
 	_, _ = jobCtx.Info(ctx, fmt.Sprintf("[server 容器日志 —最后 %d 行]\n%s", tail, result.Stdout))
+}
+
+func serverLogShowsSteamAuthUnavailable(output string) bool {
+	lower := strings.ToLower(output)
+	return containsAny(lower,
+		"steam-auth service has no logged-in accounts",
+		"steam-auth service has no logged in accounts",
+		"steam-auth has no logged-in accounts",
+		"steam-auth has no logged in accounts",
+		"no logged-in accounts",
+		"no logged in accounts",
+	)
+}
+
+func serverLogShowsSteamAuthServiceNotReady(output string) bool {
+	lower := strings.ToLower(output)
+	return containsAny(lower,
+		"steam-auth service not ready",
+		"steam auth service not ready",
+		"could not reach steam-auth service",
+		"could not reach steam auth service",
+		"steam auth service request failed",
+	)
+}
+
+func (r *lifecycleRunner) refreshSteamAuthService(ctx context.Context, jobCtx *jobs.Context) {
+	if r.steamAuthRefreshAttempted {
+		return
+	}
+	r.steamAuthRefreshAttempted = true
+	restartCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	result, err := r.lifecycle.ComposeRestartServices(restartCtx, r.instance.DataDir, "steam-auth")
+	if err != nil {
+		detail := dockerResultDetail(result)
+		if detail != "" {
+			detail = "：" + detail
+		}
+		_, _ = jobCtx.Warn(ctx, "检测到 steam-auth 服务暂未就绪；已有授权标记，但自动刷新 steam-auth 服务失败"+detail)
+		return
+	}
+	_, _ = jobCtx.Warn(ctx, "检测到 steam-auth 服务暂未就绪；已有授权标记，已自动刷新 steam-auth 服务。")
+}
+
+func (r *lifecycleRunner) markSteamAuthUsableFromInviteCode(jobCtx *jobs.Context) {
+	if sjconfig.SteamAuthLoggedIn(r.instance.DataDir) {
+		return
+	}
+	if err := sjconfig.SetSteamAuthLoggedIn(r.instance.DataDir, true); err != nil {
+		if jobCtx != nil {
+			_, _ = jobCtx.Warn(context.Background(), "邀请码已获取，但记录 Steam 授权状态失败。")
+		}
+	}
+}
+
+func (r *lifecycleRunner) startInviteCodePolling() {
+	driver := r.driver
+	if driver == nil {
+		return
+	}
+	runner := &lifecycleRunner{
+		driver:    driver,
+		lifecycle: r.lifecycle,
+		instance:  r.instance,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(backgroundInviteAttempts)*(backgroundInviteInterval+inviteCodeTimeout))
+		defer cancel()
+		runner.pollInviteCodeAttempts(ctx, backgroundInviteAttempts, backgroundInviteInterval)
+	}()
+}
+
+func (r *lifecycleRunner) pollInviteCodeAttempts(ctx context.Context, attempts int, interval time.Duration) string {
+	if attempts <= 0 {
+		return ""
+	}
+	if interval <= 0 {
+		interval = backgroundInviteInterval
+	}
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if !r.instanceStillRunning(ctx) {
+			if r.driver != nil && r.driver.logger != nil {
+				r.driver.logger.Info("invite code background polling stopped because instance is no longer running", "instance", r.instance.ID, "attempt", attempt)
+			}
+			return ""
+		}
+		code, err := r.fetchInviteCode(ctx)
+		if err == nil && code != "" {
+			r.markSteamAuthUsableFromInviteCode(nil)
+			if r.driver != nil {
+				r.driver.updateDriverPayloadInviteCode(context.Background(), r.instance.ID, code)
+				if r.driver.logger != nil {
+					r.driver.logger.Info("invite code obtained in background", "instance", r.instance.ID, "attempt", attempt)
+				}
+			}
+			return code
+		}
+		if r.driver != nil && r.driver.logger != nil && (attempt == 1 || attempt == attempts || attempt%5 == 0) {
+			r.driver.logger.Info("invite code not ready in background", "instance", r.instance.ID, "attempt", attempt, "max_attempts", attempts)
+		}
+		if attempt == attempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-time.After(interval):
+		}
+	}
+	if r.driver != nil && r.driver.logger != nil {
+		r.driver.logger.Info("invite code background polling finished without code", "instance", r.instance.ID, "attempts", attempts)
+	}
+	return ""
+}
+
+func (r *lifecycleRunner) instanceStillRunning(ctx context.Context) bool {
+	if r.driver == nil || r.driver.store == nil {
+		return true
+	}
+	inst, err := r.driver.store.GetInstance(ctx, r.instance.ID)
+	if err != nil {
+		return true
+	}
+	switch inst.State {
+	case storage.InstanceStateStopped,
+		storage.InstanceStateError,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired:
+		return false
+	default:
+		return true
+	}
+}
+
+func (r *lifecycleRunner) clearRuntimeControlSnapshots(ctx context.Context, jobCtx *jobs.Context) {
+	paths := []string{
+		filepath.Join(controlDir(r.instance.DataDir), "status.json"),
+		filepath.Join(controlDir(r.instance.DataDir), "players.json"),
+	}
+	removed := false
+	for _, path := range paths {
+		if err := os.Remove(path); err == nil {
+			removed = true
+		} else if err != nil && !os.IsNotExist(err) {
+			_, _ = jobCtx.Warn(ctx, fmt.Sprintf("清理旧运行状态文件失败：%s: %v", filepath.Base(path), err))
+		}
+	}
+	if removed {
+		_, _ = jobCtx.Info(ctx, "已清理上一轮 SMAPI 运行状态快照，等待本次启动写入新状态。")
+	}
 }
 
 // clearStaleInviteCode removes /tmp/invite-code.txt only when it still contains
@@ -729,7 +876,11 @@ func (d *Driver) GetInviteCode(ctx context.Context, instance registry.Instance) 
 		lifecycle: ld,
 		instance:  stored,
 	}
-	return runner.fetchInviteCode(ctx)
+	code, err := runner.fetchInviteCode(ctx)
+	if err == nil && code != "" {
+		_ = sjconfig.SetSteamAuthLoggedIn(stored.DataDir, true)
+	}
+	return code, err
 }
 
 // Galaxy P2P invite codes have no hyphens (e.g. "SGCWS0Z572F2"); Steam lobby codes use

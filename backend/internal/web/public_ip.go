@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/netdns"
 )
 
 const publicIPCacheTTL = 10 * time.Minute
@@ -39,7 +41,7 @@ type publicIPResolver struct {
 
 func newPublicIPResolver(providers []string) *publicIPResolver {
 	return &publicIPResolver{
-		client:    &http.Client{Timeout: 3 * time.Second},
+		client:    netdns.NewClient(3 * time.Second),
 		providers: append([]string(nil), providers...),
 		ttl:       publicIPCacheTTL,
 	}

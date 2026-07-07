@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/netdns"
 )
 
 // Nexus Mods only — Stardew Valley game domain. Read-only search; no
@@ -33,13 +35,14 @@ var (
 	nexusGraphQLURL = "https://api.nexusmods.com/v2/graphql"
 )
 
-// nexusHTTPClient is swappable in tests.
-var nexusHTTPClient = &http.Client{Timeout: nexusRequestTimeout}
+// nexusHTTPClient is swappable in tests. It uses the DNS-fallback transport so
+// a flaky host/router resolver doesn't break Nexus lookups (see netdns).
+var nexusHTTPClient = netdns.NewClient(nexusRequestTimeout)
 
 // nexusArchiveHTTPClient is used only for ZIP archive bodies. Search/API
 // requests should keep the short timeout above, but large Nexus archives can
 // legitimately take much longer than 10 seconds on throttled downloads.
-var nexusArchiveHTTPClient = &http.Client{Timeout: nexusArchiveTimeout}
+var nexusArchiveHTTPClient = netdns.NewClient(nexusArchiveTimeout)
 
 // ErrNexusAPIKeyMissing is returned when a key-gated Nexus operation is
 // requested but no Nexus API key is configured in panel settings. Keyword

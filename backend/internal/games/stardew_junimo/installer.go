@@ -175,9 +175,9 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		_, _ = jobCtx.Info(ctx, "已添加 mods 目录挂载到 docker-compose.yml。")
 	}
 	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
-		return fmt.Errorf("ensure server cont-env fix: %w", err)
+		return fmt.Errorf("ensure server static init compatibility fix: %w", err)
 	} else if changed {
-		_, _ = jobCtx.Info(ctx, "JunimoServer APP_NAME startup compatibility mount has been applied.")
+		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
 	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
 	if r.steamCMDDirect {
@@ -487,7 +487,6 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		case containsAny(lower, "download complete", "app installed to"):
 			if currentApp == "sdk" {
 				sdkDownloaded = true
-				authSucceeded = true
 			}
 
 		case strings.Contains(lower, "downloading app 1007") ||
@@ -513,8 +512,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 			// space, etc.). Flag it so we report failure instead of false success.
 			downloadFailed = true
 
-		case containsAny(lower, "logged in", "login succeeded", "auth done",
-			"authentication complete", "successfully logged", "login successful"):
+		case isSteamAuthLoginSuccessLine(lower):
 			authSucceeded = true
 
 		case containsAny(lower, "login failed", "authentication failed", "no accounts logged in", "skipping game download"):
@@ -536,13 +534,11 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	// Console.ReadKey() works for the Steam Guard method selection menu.
 	exitCode, cmdErr := r.driver.docker.RunSteamAuthTTY(ctx, r.instance.DataDir, r.buildSteamAuthOpts(mode), guardCh, lineHandler)
 
-	// Persist that Steam authentication itself succeeded as soon as we get past
-	// the login (game depot download started, SDK downloaded, or an explicit
-	// success line). This is durable across sessions and lets every later
-	// operation skip the interactive steam-auth step even if the download stage
-	// later fails or the install is interrupted. downloadFailed still implies the
-	// login succeeded (only the depot transfer failed).
-	if authSucceeded || sdkDownloaded || downloadFailed || currentApp != "" {
+	// Persist steam-auth/Galaxy authorization only when the steam-auth login log
+	// itself confirms success. SteamCMD fallback and later depot-download success
+	// must not set this flag; it controls whether invite-code auth is considered
+	// done for the main UI.
+	if authSucceeded {
 		r.markSteamAuthCompleted(jobCtx)
 	}
 
@@ -554,6 +550,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		// imply the login already succeeded). Login failures fall through to normal
 		// handling below so the user gets a proper error.
 		if authSucceeded || sdkDownloaded || downloadFailed || currentApp != "" {
+			r.refreshSteamAuthServiceAfterLogin(ctx, jobCtx)
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
 				"Steam 授权登录完成，可返回并启动服务器。", "steam_auth_login_done", jobCtx.ID)
 			_, _ = jobCtx.Info(context.Background(), "Steam 授权登录完成（仅登录，已跳过下载/兜底）。")
@@ -645,7 +642,7 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		return false, fmt.Errorf("steam authentication failed")
 	}
 
-	if authSucceeded {
+	if authSucceeded || sdkDownloaded {
 		if err := r.completeInstall(ctx, jobCtx); err != nil {
 			return false, err
 		}
@@ -680,11 +677,32 @@ func (r *installRunner) clearAuthVolumes(ctx context.Context, jobCtx *jobs.Conte
 // least once. It is a durable, cross-session signal that lets later operations
 // skip the interactive steam-auth login step (see authAlreadySucceeded).
 func (r *installRunner) markSteamAuthCompleted(jobCtx *jobs.Context) {
-	if err := sjconfig.UpdateEnvFile(filepath.Join(r.instance.DataDir, ".env"), map[string]string{
-		"STEAM_AUTH_COMPLETED": "true",
-	}); err != nil {
+	if err := sjconfig.SetSteamAuthLoggedIn(r.instance.DataDir, true); err != nil {
 		_, _ = jobCtx.Warn(context.Background(), "记录 Steam 认证状态失败，后续可能需要再次认证。")
 	}
+}
+
+type composeServiceRestarter interface {
+	ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
+}
+
+func (r *installRunner) refreshSteamAuthServiceAfterLogin(ctx context.Context, jobCtx *jobs.Context) {
+	restarter, ok := r.driver.docker.(composeServiceRestarter)
+	if !ok {
+		return
+	}
+	restartCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+	result, err := restarter.ComposeRestartServices(restartCtx, r.instance.DataDir, "steam-auth")
+	if err != nil {
+		detail := dockerResultDetail(result)
+		if detail != "" {
+			detail = "：" + detail
+		}
+		_, _ = jobCtx.Warn(context.Background(), "Steam 授权已记录，但自动刷新 steam-auth 服务失败；启动时会继续尝试自动修复"+detail)
+		return
+	}
+	_, _ = jobCtx.Info(context.Background(), "已刷新 steam-auth 服务，使其读取最新授权会话。")
 }
 
 func (r *installRunner) completeInstall(ctx context.Context, jobCtx *jobs.Context) error {
@@ -1214,6 +1232,20 @@ func isSteamGuardCodePrompt(lower string) bool {
 func isSteamAuthMethodMenu(lower string) bool {
 	return containsAny(lower, "choose authentication method", "username & password", "username and password") ||
 		(strings.Contains(lower, "[2]") && strings.Contains(lower, "qr code"))
+}
+
+func isSteamAuthLoginSuccessLine(lower string) bool {
+	if !strings.Contains(lower, "[steamauth:") && !strings.Contains(lower, "[steamservice]") {
+		return false
+	}
+	return containsAny(lower,
+		"logged in as",
+		"login succeeded",
+		"login successful",
+		"successfully logged",
+		"authentication complete",
+		"auth done",
+	)
 }
 
 func isSteamGuardChoiceMenu(lower string) bool {

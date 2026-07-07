@@ -5,11 +5,20 @@
 - “刷新”按钮文案改为“同步”，表示同步当前面板访问地址，而不是重新探测公网出口。
 - 验证：`cd frontend; npm.cmd run build`。
 
-# FE-STEAM-AUTH-RUNTIME-READY-1 邀请码重新授权入口
+# FE-STEAM-AUTH-FLAG-1 邀请码授权按钮按持久标志显示
 
-- `InstanceState` 新增可选 `steamAuthReady`。前端仍保留 `steamAuthLoggedIn` 的“历史认证成功过”语义，但邀请码卡片不再只靠它判断是否显示授权入口。
-- `InviteCodeCard` 在 `steamAuthLoggedIn=true` 且 `steamAuthReady=false`，并且当前没有邀请码/存在邀请码错误时，会显示“需重新 Steam 授权”与重新授权入口。
-- 如果服务器仍在运行或启动中，按钮显示“停服后重新授权”并禁用，提示用户先停止服务器；停止后可点击“重新登录授权”，复用已保存账号启动 `steam-auth/login` 并跳转安装页查看认证日志。
+- `InviteCodeCard` 的授权入口只按 `instanceState.steamAuthLoggedIn` 这个持久标志显示：不是 true 时显示“需登录 Steam 授权”和【登录授权】；true 时不再因为 `steamAuthReady=false` 单独显示重新授权。
+- 后端在 steam-auth 登录成功日志出现后把 `steamAuthLoggedIn` 写 true；启动/刷新邀请码成功拿到非空邀请码时也会写 true。如果启动服务器后日志明确显示 `steam-auth` 没有登录账号，后端会写回 false，前端下一轮状态刷新后重新显示授权入口。
+- `Steam-auth service not ready` 只表示运行态服务暂未就绪；已有授权标志时后端会自动刷新 `steam-auth` 服务，前端仍只消费 `steamAuthLoggedIn`。
+- 如果服务器仍在运行或启动中且需要授权，按钮显示“停服后登录授权”并禁用，提示用户先停止服务器；停止后可点击“登录授权”，复用已保存账号启动 `steam-auth/login` 并跳转安装页查看认证日志。
+- `steamAuthReady` 仍保留在类型里作为诊断字段，不再参与邀请码卡主按钮判断。
+
+# FE-LIFECYCLE-BACKGROUND-INVITE-1 启动不等待邀请码
+
+- `InstanceState` 新增可选 `inviteCode`，来自后端后台邀请码探测写入的 driver payload。`useStardewDashboardData` 会优先展示该值，成功后清理旧码等待态。
+- 自动邀请码轮询只在显式请求后运行，最多 20 次；没有邀请码不会让前端无限轮询，也不会阻塞停止/重启。
+- 总览页和服务器控制页的启动中状态按 active `stardew_lifecycle` job + `running/stopping` 判定，不再依赖邀请码、在线玩家或 SMAPI 存档加载日志。这样切到任务日志再切回来时，后台仍在跑的启动任务不会把按钮闪回“启动”。
+- 验证：`cd frontend; npm.cmd run build`。
 
 # FE-INSTALL-SMAPI-PREINSTALL-1 安装页显示 SMAPI 子状态
 
@@ -1564,7 +1573,7 @@ npm.cmd run dev
 - 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`。未改后端接口、安装 job、SSE 或 Steam 输入契约。
 - 验证：`cd frontend; npm.cmd run build` 通过；后端 QR 阶段识别定向测试通过。
 # FE-STEAM-POST-AUTH-RETRY-1 认证成功后的失败不再要求重新输入账号密码
-- 安装页新增 `logsShowSteamAuthSucceeded()` 兜底判断：只要最新安装日志已经出现 `[steam] Logged in as`、`Token expires`、`Game license verified`、`Got depot decryption key`、`Downloading app 413150` 或 `/data/game` 目标目录，就视为 Steam 认证已经成功。
+- 安装页新增 `logsShowSteamAuthSucceeded()` 兜底判断：只要最新安装日志已经出现 `[steam] [SteamAuth:A0] Logged in as`、`Token expires`、`Game license verified`、`Got depot decryption key`、`Downloading app 413150` 或 `/data/game` 目标目录，就在安装页视觉状态上视为 Steam 认证已经成功/已进入后续下载。持久 `STEAM_AUTH_COMPLETED` 以后端真实 steam-auth 登录成功日志或非空邀请码为准。
 - 当认证成功后发生 `download_failed`、`post_auth_failed` 或旧后端残留的通用失败状态时，左侧按钮显示“重试下载（不重新输入账号）”，安装表单只保留镜像版本确认，并通过既有 `reuseCredentials=true` 复用 `.env` 中保存的 Steam 凭据；不会再展示 Steam 用户名/密码输入框。
 - 真正需要重新输入凭据的场景仍限定在 `credentials_required` 或 QR 登录失败后用户主动改用账号密码。下载/CDN/磁盘/后续安装失败不再被文案描述为“凭据错误”。
 - 影响文件：`frontend/src/games/stardew/pages/InstallPage.tsx`、`frontend/src/games/stardew/install-helpers.ts`。未新增 API，继续使用 `POST /api/instances/:id/install` 的 `reuseCredentials` 契约。

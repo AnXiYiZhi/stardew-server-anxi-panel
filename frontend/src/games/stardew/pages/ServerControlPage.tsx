@@ -103,18 +103,15 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const isStopped = state === 'stopped' || state === 'ready_to_start' || state === 'game_installed'
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
   const isAdmin = user.role === 'admin'
-  // Startup truly succeeds when the host player is online (the save has finished
-  // loading and the game is playable) — NOT merely when the container is running,
-  // and NOT when an invite code arrives (invite codes need Steam SDR/Galaxy and can
-  // legitimately never appear).
-  const hostOnline = (dashboardData.players?.players ?? []).some(
-    (p) => p.isHost && p.status === 'online',
+  const hasActiveLifecycleJob = dashboardData.jobs.some(
+    (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
   )
+  const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
   const startupInProgress =
     isStarting ||
     Boolean(pendingStartupAction) ||
-    (isRunning && !hostOnline)
-  const waitingForStop = isStopping || pendingStopAction
+    (hasActiveLifecycleJob && !activeLifecycleIsStopping && !isRunning)
+  const waitingForStop = isStopping || pendingStopAction || activeLifecycleIsStopping
   const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
   const showSaveRequiredPrompt =
     (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
@@ -168,12 +165,12 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   }, [state])
 
   useEffect(() => {
-    // Startup completes when the host player is online (save loaded/playable);
-    // invite code is optional/background.
-    if (hostOnline || dashboardData.inviteCode) {
+    // Startup display follows the backend lifecycle job/state. Host player and
+    // invite code are optional runtime signals and can flicker during SMAPI boot.
+    if (!hasActiveLifecycleJob && isRunning) {
       setPendingStartupAction(null)
     }
-  }, [hostOnline, dashboardData.inviteCode])
+  }, [hasActiveLifecycleJob, isRunning])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {

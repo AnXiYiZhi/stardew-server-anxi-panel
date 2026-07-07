@@ -153,7 +153,7 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		return fmt.Errorf("stat docker-compose.yml: %w", err)
 	}
 	if _, err := EnsureServerContEnvFix(instance.DataDir); err != nil {
-		return fmt.Errorf("ensure server cont-env fix: %w", err)
+		return fmt.Errorf("ensure server static init compatibility fix: %w", err)
 	}
 
 	// Write .env only when not already present.
@@ -208,8 +208,8 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 
 	// reuse: reuse saved credentials without re-prompting the user for input.
 	reuse := req.AutoDownload || req.SteamCMDRetry || req.AuthLoginOnly
-	// steamAuthCompleted: durable ".env" flag set once Steam authentication has
-	// succeeded (via steam-auth or SteamCMD). It backstops the phase inference in
+	// steamAuthCompleted: durable ".env" flag set only after the steam-auth log
+	// confirms login success. It backstops the phase inference in
 	// authAlreadySucceeded so that even if the persisted phase was reset (e.g. an
 	// interrupted install marked install_interrupted) we still skip steam-auth.
 	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))

@@ -1,6 +1,6 @@
 # JUNIMO-APPNAME-CONTENV-FIX-1 联调契约
 
-- 如果 server 容器日志出现 `APP_NAME: /etc/cont-env.d/APP_NAME: 1: DockerApp: not found`，优先检查实例 compose 是否包含 `./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro`，以及实例目录是否存在 `.local-container/cont-env/APP_NAME`。
+- 如果 server 容器日志出现 `APP_NAME: DockerApp: not found`、`DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/dbus.base: not found`、`DOCKER_IMAGE_PLATFORM: linux/amd64: not found` 或 `/etc/cont-groups.d/...: 72: not found` 这类 init 静态值执行错误，优先检查实例 compose 是否包含 `.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*` 兼容挂载，以及实例目录是否存在对应脚本。
 - 该修复由后端 Prepare/安装/启动自动完成，前端不需要新增接口或特殊状态；用户只需要更新面板镜像后重新运行启动/安装流程。
 - 如果旧容器已经按旧 compose 创建，新增挂载后必须通过 `docker compose up -d` 重建 server 容器才会生效；后端 `doRestart()` 在检测到 compose 被迁移时会自动走 `ComposeUp`。
 
@@ -11,14 +11,17 @@
 - 邀请卡“局域网邀请”由前端 `window.location.hostname` 得出，不再消费 `/api/instances/:id/public-ip`。因此用户从什么 host 加 `:8090` 进入面板，就展示什么 host。
 - `/api/instances/:id/public-ip` 仍保留为后端公网出口 IP 检测接口，但当前邀请卡不再依赖它。
 
-# STEAM-AUTH-RUNTIME-READY-1 联调契约
+# STEAM-AUTH-FLAG-1 联调契约
 
-- `GET /api/instances/:id/state` 返回 `steamAuthLoggedIn` 与 `steamAuthReady` 两个字段：
-  - `steamAuthLoggedIn`：历史标志，表示 `.env` 中 `STEAM_AUTH_COMPLETED=true`，即 steam-auth 曾经成功过。
-  - `steamAuthReady`：当前运行态标志，表示当前 `steam-auth:3001/steam/ready` 可用并返回 200。
-- 邀请码需要当前 `steamAuthReady=true` 才可靠。`steamAuthLoggedIn=true` 但 `steamAuthReady=false` 时，说明历史认证存在但当前 steam-auth 服务没有可用登录账号，前端应提供重新授权入口。
+- `GET /api/instances/:id/state` 返回 `steamAuthLoggedIn`、`steamAuthReady` 与可选 `inviteCode`：
+  - `steamAuthLoggedIn`：主 UI 授权标志，表示 `.env` 中 `STEAM_AUTH_COMPLETED=true`。该值在 steam-auth 登录成功日志出现后写 true；启动/手动刷新成功获取非空邀请码时也写 true；server 启动日志明确出现 `no logged-in accounts` 后写回 false。
+  - `steamAuthReady`：当前运行态诊断字段，表示当前 `steam-auth:3001/steam/ready` 可用并返回 200。它不再直接控制邀请码卡的授权按钮。
+  - `inviteCode`：后端后台邀请码探测写入 driver payload 后回传的最后一次有效邀请码。前端可直接展示它，避免每次切页都重新 exec 容器。
+- 邀请码卡按钮只按 `steamAuthLoggedIn` 显示：false/空时显示【登录授权】；true 时显示刷新/获取状态。服务器运行中且需要授权时，按钮提示先停服。
+- 启动/重启生命周期 job 不等待邀请码：server 拉起后即进入 running，后台最多探测 20 次邀请码。探测失败不影响生命周期任务成功、不停止服务器，用户仍可走 IP 直连；探测成功后写 `steamAuthLoggedIn=true` 并通过 `/state.inviteCode` 展示。
 - 服务器运行中重新授权仍受 `POST /api/instances/:id/steam-auth/login` 的既有约束：必须先停服，否则返回 `409 server_running`。前端应提示“先停止服务器再重新授权”。
-- 验证：让服务器运行但 steam-auth 报 `no logged-in accounts`，`/state` 应返回 `steamAuthLoggedIn=true, steamAuthReady=false`；邀请码卡应显示重新授权提示，而不是只显示“刷新”。
+- 验证：安装时 fake/真实日志出现 `[SteamAuth:A0] Logged in as ...` 后，`/state` 应返回 `steamAuthLoggedIn=true`；启动或 `GET /api/instances/:id/invite-code` 成功返回 `SG...` 这类邀请码后也应返回 true；让服务器启动日志出现 `Steam-auth service has no logged-in accounts` 后，后续 `/state` 应返回 `steamAuthLoggedIn=false`，邀请码卡显示【登录授权】。
+- 如果 server 日志只有 `Steam-auth service not ready` / `Steam auth service request failed`，不要直接当未授权；已有 `steamAuthLoggedIn=true` 时后端会自动刷新一次 `steam-auth` 服务。
 
 # INSTALL-SMAPI-PREINSTALL-1 安装链路联调说明
 
@@ -117,12 +120,12 @@
 
 # STEAMCMD-FALLBACK-1 联调契约
 
-- 安装任务中只要 `steam-auth` 已经登录成功并进入游戏下载阶段，后续任何游戏文件下载失败都由后端自动尝试 SteamCMD 兜底，不再把用户带回 Steam 账号密码表单。典型日志顺序为 `[steam] Logged in as -> Downloading app 413150 -> Download failed` 后继续出现 `[steamcmd] ...`。
+- 安装任务中只要 `steam-auth` 已经登录成功并进入游戏下载阶段，后续任何游戏文件下载失败都由后端自动尝试 SteamCMD 兜底，不再把用户带回 Steam 账号密码表单。典型日志顺序为 `[steam] [SteamAuth:A0] Logged in as ... -> Downloading app 413150 -> Download failed` 后继续出现 `[steamcmd] ...`。
 - SteamCMD 兜底继续使用同一个 `stardew_install` job、同一条 SSE 流和同一个 `POST /api/instances/:id/steam-guard/input` 输入接口。前端只需要根据 `driverPhase`/日志展示 SteamCMD 专属授权 UI，不需要新增接口。
 - SteamCMD 授权 phase：`steamcmd_guard_choice_required` 展示两个选择（`1`=手机 App 批准，`2`=App/邮箱验证码）；`steamcmd_guard_required` 提交验证码字符串；`steamcmd_guard_mobile_required` 只提示用户在手机 App 批准。提交成功后后端会乐观推进 phase，最终以 job 日志和实例 state 为准。
 - SteamCMD 下载 phase：`steamcmd_image_pulling` 表示正在按 `STEAMCMD_IMAGE_CANDIDATES` 拉取兜底镜像，单个候选 403/超时会继续尝试下一个；`steamcmd_auth_running` 表示使用已保存账号密码登录；`steamcmd_downloading` 表示已授权并正在下载/校验 `413150`（并尝试 `1007` SDK）。
 - 失败契约：`steamcmd_failed` / `steamcmd_image_pull_failed` 属于下载/环境失败，可重试并复用已保存凭据；`steamcmd_image_pull_failed` 表示全部候选镜像都不可用，运维可在实例 `.env` 中把可用内网镜像放入 `STEAMCMD_IMAGE_CANDIDATES`；`credentials_required` 表示 SteamCMD 认为账号、密码或验证码失败，前端应要求重新输入 Steam 凭据。
-- 验证建议：模拟 `Logged in as -> Downloading app 413150 -> Download failed -> [steamcmd] Success! App '413150' fully installed. -> [steamcmd] Success! App '1007' fully installed.`，最终实例应为 `game_installed`，job 应为 succeeded。
+- 验证建议：模拟 `[SteamAuth:A0] Logged in as ... -> Downloading app 413150 -> Download failed -> [steamcmd] Success! App '413150' fully installed. -> [steamcmd] Success! App '1007' fully installed.`，最终实例应为 `game_installed`，job 应为 succeeded。
 
 # INSTALL-INTERRUPTED-STATE-1 安装任务与实例状态联调契约
 
@@ -136,7 +139,7 @@
 - 前端安装页解释 Steam 认证/下载日志时，以最新日志上下文为准：认证方式菜单下的 `Choice [1]: 2` 表示 QR；`Steam Guard Authentication` 菜单下的 `Choice [1]: 2` 表示输入手机 App/邮箱验证码。
 - 历史 `Or open: https://s.team/q/...` URL 只能作为当前 QR 阶段的兜底信号；如果后续日志已经出现 Steam Guard 菜单、`Enter Steam Guard code`、手机批准等待、下载开始或失败 phase，前端不得继续显示扫码窗口。
 - 日志出现 `Downloading app 413150`、`Target directory: /data/game`、`Manifest contains` 或 `Progress: N/M files - done/total (...)` 后，前端应显示 `game_downloading` 下载卡。`Progress:` 日志应渲染文件数、体积和进度条；后续 SDK 下载同理显示 `steam_sdk_downloading`。
-- 联调复现场景：手机批准后日志出现 `Logged in as ...`、`Downloading app 413150`、`Progress: 300/1470 files ...`，右侧认证区应显示“下载 Stardew Valley 游戏文件中…”和进度条，不应继续显示“请打开 Steam 手机 App，批准此次登录请求”。
+- 联调复现场景：手机批准后日志出现 `[SteamAuth:A0] Logged in as ...`、`Downloading app 413150`、`Progress: 300/1470 files ...`，右侧认证区应显示“下载 Stardew Valley 游戏文件中…”和进度条，不应继续显示“请打开 Steam 手机 App，批准此次登录请求”。
 - 验证：`cd frontend; npm.cmd run build`；活跃安装任务手动联调上述日志顺序。
 
 # JOB-DISPLAY-NAME-1 联调契约
@@ -297,8 +300,9 @@ npm.cmd run dev
 - 未安装时启动返回结构化错误，前端提示“请先安装游戏”。
 - 有可用存档后可启动。
 - 同一实例的启动、停止、重启任务必须互斥；用户点击停止后，旧启动任务应变为 `canceled`，不能继续显示 running。
-- 启动/重启提交成功后前端清空旧邀请码并等待新码。
+- 启动/重启提交成功后前端清空旧邀请码，但启动按钮等待 active lifecycle job 与实例 running 状态，不再等待新邀请码、在线玩家或 SMAPI 存档加载日志。
 - 后端过滤容器内旧 `/tmp/invite-code.txt`。
+- 后端启动前会清理旧 SMAPI `status.json` / `players.json` 快照，避免旧玩家/存档状态造成前端启动完成闪烁。
 - 停止后前端清空邀请码。
 
 ### 4. 存档
@@ -601,9 +605,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 验证：`cd backend; go test ./internal/games/stardew_junimo -run "QRCodeChoice|SteamMobileApproval|SteamAuthMenus"`。
 # STEAM-POST-AUTH-RETRY-1 联调契约
 - Steam 认证成功后，任何游戏下载、Steam CDN、磁盘、SDK 或后续安装步骤失败，都不得再把用户引导回 Steam 账号密码输入。后端应使用 `state=error` 搭配 `driverPhase=download_failed` 或 `post_auth_failed`；不要把这类失败写成 `state=steam_auth_failed`。
-- 前端应把 `[steam] Logged in as`、`Token expires`、`Game license verified`、`Got depot decryption key`、`Downloading app 413150`、`Target directory: /data/game` 视为“认证已成功”的日志信号。若后续失败，安装页只显示复用已保存凭据重试入口，并提交 `POST /api/instances/:id/install` with `{ "reuseCredentials": true }`。
+- 安装页视觉状态可把 `[steam] [SteamAuth:A0] Logged in as`、`Token expires`、`Game license verified`、`Got depot decryption key`、`Downloading app 413150`、`Target directory: /data/game` 视为“认证已成功/已进入后续下载”的日志信号。注意这只是安装页展示与重试入口判断；持久 `STEAM_AUTH_COMPLETED` 只由真实 steam-auth 登录成功日志或非空邀请码写入。
 - 只有真正凭据错误才使用 `credentials_required` 并要求重新输入账号密码；QR 登录未成功也可以提示用户改用账号密码。下载失败、CDN 403、manifest 失败、磁盘不足、后续容器步骤失败都不属于凭据错误。
-- 验证建议：模拟日志顺序 `Logged in as -> Downloading app 413150 -> Download failed: ...403`，实例最终应为 `error/download_failed`，前端按钮应为“重试下载（不重新输入账号）”，表单不出现 Steam 用户名/密码字段。
+- 验证建议：模拟日志顺序 `[SteamAuth:A0] Logged in as ... -> Downloading app 413150 -> Download failed: ...403`，实例最终应为 `error/download_failed`，前端按钮应为“重试下载（不重新输入账号）”，表单不出现 Steam 用户名/密码字段。
 # PULL-PROGRESS-1 镜像拉取进度契约
 
 - 安装 job 日志中的 `[pull:progress:done:total]` 是前端专用隐藏进度信号。

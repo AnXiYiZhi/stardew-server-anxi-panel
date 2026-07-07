@@ -1,8 +1,8 @@
-# 2026-07-07 已完成：JunimoServer APP_NAME 启动兼容挂载
+# 2026-07-07 已完成：JunimoServer 静态 init 文件兼容挂载
 
-- `JUNIMO-APPNAME-CONTENV-FIX-1` completed：为 server 容器新增 `.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro` 兼容挂载，自动遮罩上游 `sdvd/server:1.5.0-preview.121` 中裸 `DockerApp` 导致的 `DockerApp: not found` 启动失败。
-- 已覆盖 Prepare、安装、启动和重启路径；旧实例会自动迁移 compose，重启时如本次刚新增挂载会用 `docker compose up` 重建 server 容器。
-- 验证：`cd backend; go test ./internal/games/stardew_junimo`。
+- `JUNIMO-STATIC-INIT-FIX-1` completed：为 server 容器新增 `.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*` 兼容挂载，批量遮罩上游 `sdvd/server:1.5.0-preview.121` 中裸静态值被 init 当命令执行的问题。
+- 已覆盖 `APP_NAME`、`DBUS_SESSION_BUS_ADDRESS`、`DOCKER_IMAGE_PLATFORM`、XDG 路径、用户/组 id 等真实飞牛现场触发项；旧实例会自动迁移 compose，重启时如本次刚新增挂载会用 `docker compose up` 重建 server 容器。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo`；真机热修后 `stardew-server-1` healthy，Junimo API `/health` 返回 ok。
 
 # 2026-07-07 已完成：Nexus 搜索防短断与局域网邀请地址修正
 
@@ -10,11 +10,12 @@
 - 已完成：Nexus 网络类错误新增 `nexus_network_failed`，后端日志保留真实底层错误，前端展示明确网络提示。
 - 已完成：“局域网邀请”改为读取当前进入面板的 host；用户用什么 IP/域名加 `:8090` 打开面板，就展示什么 host。
 
-# 2026-07-07 已完成：当前 steam-auth ready 状态与重新授权入口
+# 2026-07-07 已完成：steam-auth 授权标志收口
 
-- 已完成：`GET /api/instances/:id/state` 新增 `steamAuthReady`，用于区分历史认证标志 `steamAuthLoggedIn` 与当前 `steam-auth` 服务是否真的有可用登录账号。
-- 已完成：邀请码卡片在历史认证存在但当前授权不可用时，会显示“需重新 Steam 授权”与停服后重新授权入口，不再只显示刷新按钮。
-- 后续可优化：把 ready 探测下沉到 Stardew driver，避免 web 层依赖 server 容器内 `nc`。
+- 已完成：`steamAuthLoggedIn` 收口为邀请码卡主 UI 授权标志；在 steam-auth 登录成功日志（`[SteamAuth:*] Logged in as ...` / `[SteamService] ... Logged in as ...`）出现后写 `STEAM_AUTH_COMPLETED=true`，启动/手动刷新成功拿到非空邀请码时也写 true。
+- 已完成：启动/重启后如果 server 日志明确出现 `no logged-in accounts`，后端会清空 `STEAM_AUTH_COMPLETED`，前端下一轮状态刷新后显示【登录授权】；`Steam-auth service not ready` 不直接清 false，已有 true 时自动刷新一次 `steam-auth` 服务。
+- 已完成：邀请码卡不再用 `steamAuthReady=false` 直接显示重新授权；`steamAuthReady` 保留为诊断字段，主按钮只按 `steamAuthLoggedIn` 显示。
+- 已完成：生命周期启动/重启不再等待邀请码，server running 后 job 完成；后端后台最多探测 20 次邀请码，成功后写 `STEAM_AUTH_COMPLETED=true` 与 `/state.inviteCode`，失败不影响服务器和 IP 直连。前端启动中状态改按 active lifecycle job + running/stopping 状态，不再依赖邀请码、在线玩家或 SMAPI 存档加载日志。验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/games/stardew_junimo/config ./internal/web`、`cd backend; go test ./...`、`cd frontend; npm.cmd run build`。
 
 # 2026-07-06 已完成：SteamCMD HOME 与缓存清理加固
 

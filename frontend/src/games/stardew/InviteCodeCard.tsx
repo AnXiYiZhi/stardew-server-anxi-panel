@@ -29,17 +29,14 @@ export function InviteCodeCard({
 
   const state = instanceState?.state ?? null
   const canRefreshInvite = state === 'running' || state === 'starting'
-  const currentSteamAuthUnavailable = instanceState?.steamAuthLoggedIn === true && instanceState?.steamAuthReady === false
-  // Invite codes need both historical steam-auth setup and a currently logged-in
-  // steam-auth service. If the runtime service lost its account, offer re-login.
-  const needAuthLogin = instanceState?.steamAuthLoggedIn === false ||
-    (currentSteamAuthUnavailable && (canRefreshInvite || !!dashboardData.inviteCodeError))
-  const authRequiresStop = currentSteamAuthUnavailable && canRefreshInvite
+  // Main UI follows the durable steam-auth flag. The backend sets it true only
+  // after steam-auth login succeeds, and clears it if server logs prove the auth
+  // service has no logged-in account.
+  const needAuthLogin = !dashboardData.inviteCode && instanceState?.steamAuthLoggedIn !== true
+  const authRequiresStop = needAuthLogin && canRefreshInvite
   const authButtonLabel = authBusy
     ? '发起中…'
-    : currentSteamAuthUnavailable
-      ? authRequiresStop ? '停服后重新授权' : '重新登录授权'
-      : '登录授权'
+    : authRequiresStop ? '停服后登录授权' : '登录授权'
 
   // Kick off a steam-auth login (login only — the backend stops after auth succeeds)
   // and jump to the install page so the user can watch the logs and answer any Steam
@@ -101,7 +98,7 @@ export function InviteCodeCard({
           <span className="sd-players-invite-code">{dashboardData.inviteCode}</span>
         ) : needAuthLogin ? (
           <span className="sd-players-invite-empty">
-            {currentSteamAuthUnavailable ? '需重新 Steam 授权' : '需登录 Steam 授权'}
+            需登录 Steam 授权
           </span>
         ) : canRefreshInvite ? (
           dashboardData.inviteCodeError ? (
@@ -128,7 +125,7 @@ export function InviteCodeCard({
               onClick={() => { void handleGoAuth() }}
               disabled={authBusy || authRequiresStop}
               title={authRequiresStop
-                ? '请先停止服务器，再重新登录 Steam 授权'
+                ? '请先停止服务器，再登录 Steam 授权'
                 : '登录 Steam 授权并前往安装页查看认证日志'}
             >
               {authButtonLabel}
@@ -147,11 +144,9 @@ export function InviteCodeCard({
       </div>
       {needAuthLogin ? (
         <div className="sd-srv-hint" style={{ marginTop: 4 }}>
-          {currentSteamAuthUnavailable
-            ? authRequiresStop
-              ? '当前 steam-auth 授权不可用。请先停止服务器，再重新登录 Steam 授权；也可先用下方「局域网邀请」IP 直连进入。'
-              : '当前 steam-auth 授权不可用。点【重新登录授权】会用已保存账号发起登录并跳转到安装页查看认证日志。'
-            : '邀请码需要先完成 Steam 授权，当前未登录。点【登录授权】会用已保存账号发起登录并跳转到安装页查看认证日志（如需手机批准/验证码在那里完成）；也可先用下方「局域网邀请」IP 直连进入。'}
+          {authRequiresStop
+            ? '当前未完成 Steam 授权。请先停止服务器，再登录 Steam 授权；也可先用下方「局域网邀请」IP 直连进入。'
+            : '邀请码需要先完成 Steam 授权。点【登录授权】会用已保存账号发起登录并跳转到安装页查看认证日志（如需手机批准/验证码在那里完成）；也可先用下方「局域网邀请」IP 直连进入。'}
         </div>
       ) : null}
       {authMsg ? (

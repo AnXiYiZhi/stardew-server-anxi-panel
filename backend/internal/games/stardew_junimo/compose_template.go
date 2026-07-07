@@ -61,6 +61,28 @@ const junimoComposeTemplate = `services:
       - ./.local-container/settings:/data/settings
       - ./.local-container/control:/data/control
       - ./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro
+      - ./.local-container/cont-env/DBUS_SESSION_BUS_ADDRESS:/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS:ro
+      - ./.local-container/cont-env/DOCKER_IMAGE_PLATFORM:/etc/cont-env.d/DOCKER_IMAGE_PLATFORM:ro
+      - ./.local-container/cont-env/GTK_A11Y:/etc/cont-env.d/GTK_A11Y:ro
+      - ./.local-container/cont-env/NO_AT_BRIDGE:/etc/cont-env.d/NO_AT_BRIDGE:ro
+      - ./.local-container/cont-env/TAKE_CONFIG_OWNERSHIP:/etc/cont-env.d/TAKE_CONFIG_OWNERSHIP:ro
+      - ./.local-container/cont-env/XDG_CACHE_HOME:/etc/cont-env.d/XDG_CACHE_HOME:ro
+      - ./.local-container/cont-env/XDG_CONFIG_HOME:/etc/cont-env.d/XDG_CONFIG_HOME:ro
+      - ./.local-container/cont-env/XDG_DATA_HOME:/etc/cont-env.d/XDG_DATA_HOME:ro
+      - ./.local-container/cont-env/XDG_RUNTIME_DIR:/etc/cont-env.d/XDG_RUNTIME_DIR:ro
+      - ./.local-container/cont-env/XDG_STATE_HOME:/etc/cont-env.d/XDG_STATE_HOME:ro
+      - ./.local-container/cont-groups/cinit/id:/etc/cont-groups.d/cinit/id:ro
+      - ./.local-container/cont-groups/nogroup/id:/etc/cont-groups.d/nogroup/id:ro
+      - ./.local-container/cont-groups/root/id:/etc/cont-groups.d/root/id:ro
+      - ./.local-container/cont-groups/shadow/id:/etc/cont-groups.d/shadow/id:ro
+      - ./.local-container/cont-groups/staff/id:/etc/cont-groups.d/staff/id:ro
+      - ./.local-container/cont-users/_apt/gid:/etc/cont-users.d/_apt/gid:ro
+      - ./.local-container/cont-users/_apt/home:/etc/cont-users.d/_apt/home:ro
+      - ./.local-container/cont-users/_apt/id:/etc/cont-users.d/_apt/id:ro
+      - ./.local-container/cont-users/root/gid:/etc/cont-users.d/root/gid:ro
+      - ./.local-container/cont-users/root/grps:/etc/cont-users.d/root/grps:ro
+      - ./.local-container/cont-users/root/home:/etc/cont-users.d/root/home:ro
+      - ./.local-container/cont-users/root/id:/etc/cont-users.d/root/id:ro
       - ./.local-container/mods/StardewAnxiPanel.Control:/data/Mods/StardewAnxiPanel.Control
       - ./.local-container/mods:/data/Mods
 

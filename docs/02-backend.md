@@ -1,10 +1,18 @@
-# JUNIMO-APPNAME-CONTENV-FIX-1 JunimoServer APP_NAME 启动兼容挂载
+# NEXUS-DNS-FALLBACK-1 出站请求 DNS 自愈
 
-- 背景：部分 `sdvd/server:1.5.0-preview.121` 候选镜像内的 `/etc/cont-env.d/APP_NAME` 内容是裸 `DockerApp`，容器 init 会把它当 shell 命令执行，导致 server 日志出现 `APP_NAME: /etc/cont-env.d/APP_NAME: 1: DockerApp: not found` 并退出。
-- 新增 `EnsureServerContEnvFix(dataDir)`：在实例目录写入 `.local-container/cont-env/APP_NAME`，内容为 `printf '%s\n' 'DockerApp'`，并幂等迁移 `docker-compose.yml`，把该文件 bind mount 到 `/etc/cont-env.d/APP_NAME:ro`。
-- `Driver.Prepare()`、安装流程和 `doStart()` 都会调用该修正；`doRestart()` 如果发现 compose 新增挂载，会改用 `docker compose up` 让容器按新挂载重建。
+- 背景：飞牛 NAS 现场 Nexus 搜索一直失败，容器日志根因为 `dial tcp: lookup api.nexusmods.com on 127.0.0.11:53: server misbehaving`——Docker 内嵌 DNS 转发给不稳定的消费级路由器 DNS，间歇 SERVFAIL。同一根因也让 Docker Hub 版本检查大量失败。用户是普通玩家，不能指望其修 DNS，因此在代码层自愈。
+- 新增包 `backend/internal/netdns`：`netdns.NewClient(timeout)` 返回带 DNS 兜底传输层的 `http.Client`。解析顺序为系统解析器优先（健康环境零改变），失败后按序直接查公共 DNS `223.5.5.5 / 119.29.29.29 / 1.1.1.1 / 8.8.8.8`，SERVFAIL/空答复触发下一台，命中即停；解析结果 IPv4 优先。
+- 三处出站客户端统一改用它：`nexusHTTPClient`、`nexusArchiveHTTPClient`（`nexus.go`）、Docker Hub 版本检查 `dockerHubHTTPClient`（`install_handlers.go`，替换原 `http.DefaultClient`）、公网 IP 探测（`public_ip.go`）。后续新增对外调用一律用 `netdns.NewClient`，不要裸用 `http.DefaultClient`。
+- 发布 compose 模板**不**默认写死 `dns:`，避免约束内网/海外用户；真机已临时在 `panel` 服务加 `dns:` 应急，代码修复上线后可保留可撤。
+- 验证：`cd backend; go test ./internal/netdns ./internal/web ./internal/games/stardew_junimo`。详见 `docs/backend-handoff/backend-handoff-2026-07-07.md`。
+
+# JUNIMO-STATIC-INIT-FIX-1 JunimoServer 静态 init 文件兼容挂载
+
+- 背景：真实飞牛部署中，`sdvd/server:1.5.0-preview.121` 的多处 `/etc/cont-*.d` 静态值文件会被容器 init 当 shell 脚本执行。先后表现为 `APP_NAME: DockerApp: not found`、`DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/dbus.base: not found`、`DOCKER_IMAGE_PLATFORM: linux/amd64: not found`、`/etc/cont-groups.d/cinit/id: 72: not found` 等，导致 `stardew-server-1` 以 127/1 退出。
+- `EnsureServerContEnvFix(dataDir)` 保持原入口，但已扩展为写入一组本地兼容脚本：`.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*`。脚本只输出原静态值，并通过 bind mount 覆盖镜像内对应 `/etc/cont-env.d/*`、`/etc/cont-groups.d/*`、`/etc/cont-users.d/*` 文件。
+- 新实例 compose 模板已内置上述挂载；旧实例由同一函数幂等迁移 `docker-compose.yml`。`Driver.Prepare()`、安装流程、`doStart()` 和 `doRestart()` 继续沿用既有调用点；重启时如本次新增挂载，会用 `docker compose up` 重建 server 容器。
 - 影响文件：`compose_template.go`、`server_env_fix.go`、`driver.go`、`installer.go`、`lifecycle.go` 及对应测试。
-- 验证：`cd backend; go test ./internal/games/stardew_junimo`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo`。真机热修后 `stardew-server-1` 为 healthy，`http://127.0.0.1:8080/health` 返回 `status=ok`。
 
 # NEXUS-NETWORK-DIAGNOSTICS-1 Nexus 搜索防短断与错误诊断
 
@@ -13,17 +21,19 @@
 - 现场 SSH 诊断确认：部署 NAS 宿主机与 `anxi-panel` 容器内均可 POST 到 `https://api.nexusmods.com/v2/graphql`，完整 Stardew `tractor` 搜索返回 200；旧日志中的 `nexus request failed` 不能单独证明 Nexus 当前不可达。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
 
-# STEAM-AUTH-RUNTIME-READY-1 当前 steam-auth 可用性
+# STEAM-AUTH-FLAG-1 steam-auth 授权标志
 
-- `GET /api/instances/:id/state` 新增 `steamAuthReady`。`steamAuthLoggedIn` 仍表示历史上 steam-auth 成功过一次（`.env` 中 `STEAM_AUTH_COMPLETED=true`），`steamAuthReady` 表示当前运行中的 `steam-auth` 服务是否有可用登录账号。
-- 后端通过可选 `ComposeExecPipe` 在 `server` 服务内向 `steam-auth:3001/steam/ready` 发送最小 HTTP 请求；探测失败、服务未运行或返回非 200 时记为 `false`，不阻断 state 接口。
-- 该字段用于区分“历史认证成功”与“当前 steam-auth 容器账号断开”，避免邀请码缺失时前端隐藏重新授权入口。
+- `steamAuthLoggedIn` 是前端邀请码授权按钮的主判定，来自实例 `.env` 的 `STEAM_AUTH_COMPLETED=true`。该标志由两类强证据写入：真实 steam-auth 登录成功日志（`[SteamAuth:*] Logged in as ...` / `[SteamService] ... Logged in as ...`），或启动/刷新时成功获取到非空邀请码。
+- SteamCMD 兜底登录、游戏/SDK 下载成功、`Downloading app`、`download_failed` 等不再写 `STEAM_AUTH_COMPLETED`；SteamCMD 只维护独立的 `STEAMCMD_AUTH_COMPLETED`。
+- 启动/重启服务器后，如果 server 容器日志明确出现 `Steam-auth service has no logged-in accounts` / `no logged-in accounts`，后端会把 `STEAM_AUTH_COMPLETED` 清空。前端随后重新显示【登录授权】。
+- `Steam-auth service not ready` / `Steam auth service request failed` 不直接清空授权标志；如果已有 `STEAM_AUTH_COMPLETED=true`，后端会 best-effort 自动刷新 `steam-auth` 服务，避免用户手动进服务器重启容器。
+- `steamAuthReady` 仍由 `/state` 返回，但只作为诊断运行态字段：后端通过 `ComposeExecPipe` 在 `server` 服务内探测 `steam-auth:3001/steam/ready`，失败不直接驱动主 UI 授权按钮。
 
 # INVITE-CODE-DECOUPLE-AUTHSTATUS-1 启动不卡邀请码 + auth 登录状态
 
-- `lifecycle.go`：`doStart`/`doRestart` 服务器就绪即完成 job（不再阻塞等邀请码）；`pollInviteCodeBackground()` 后台轮询邀请码、非 Running 自动退出。
-- `config.SteamAuthLoggedIn(dataDir)`（**`STEAM_AUTH_COMPLETED=="true"`**，即日志认证成功过；不是看 `STEAM_REFRESH_TOKEN`——该字段正常也是空）经 `instanceStateResponse.steamAuthLoggedIn` 暴露；前端 `InviteCodeCard` 未认证时提示「需登录 Steam 授权」+【登录授权】按钮跳转安装页。前端「启动完成/可停止重启」按 `running` 判定、不再依赖邀请码。
-- 待办：「登录 Steam 授权」按钮的后端（方案 A，`AuthLoginOnly` 强制 steam-auth 路径、需先停服、复用 guard）见接手文档 `INVITE-CODE-DECOUPLE-AUTHSTATUS-1`。
+- `lifecycle.go`：`doStart`/`doRestart` 只负责把 server 容器拉到运行态，启动/重启 job 不再等待邀请码，也不因邀请码获取失败而失败。发起启动前会清理 `.local-container/control/status.json` 与 `players.json`，避免旧 SMAPI/玩家快照导致前端误判“已启动”后又闪回。
+- 启动/重启完成后后端会调用 `startInviteCodePolling()` 在后台最多尝试 20 次获取邀请码；成功拿到非空码时写入 driver payload、置 `STEAM_AUTH_COMPLETED=true`，`/state.inviteCode` 会带回给前端；失败只记录日志，不关闭服务器、不影响 IP 直连。
+- `config.SteamAuthLoggedIn(dataDir)`（**`STEAM_AUTH_COMPLETED=="true"`**，由 steam-auth 登录成功日志或非空邀请码写入；不是看 `STEAM_REFRESH_TOKEN`）经 `instanceStateResponse.steamAuthLoggedIn` 暴露。前端 `InviteCodeCard` 未认证时提示「需登录 Steam 授权」+【登录授权】按钮跳转安装页；生命周期按钮按实例状态与 active lifecycle job 判定，不再依赖邀请码、SMAPI 存档加载日志或在线玩家。
 
 # IP-DIRECT-CONNECT-DEFAULT-ON-1 默认开启 IP 直连
 
@@ -73,10 +83,10 @@
   - `steamCMDDirect`（driver.go 计算）：`reuse && !forceReauth && (shouldResumeSteamCMD(phase) || authAlreadySucceeded(state, phase))`。为真才跳过拉镜像 + steam-auth 直达 SteamCMD。新增 `authAlreadySucceeded(state, phase)`：phase ∈ {download_failed,post_auth_failed,game_downloading,steam_sdk_downloading,game_installed} 或 state 属已安装态即视为“已过认证”，作为跨会话的持久判据。
   - `steamCMDUseCache`（installer.go run() 从 `.env` 读 `STEAMCMD_AUTH_COMPLETED` 得出）：SteamCMD 用“仅用户名缓存登录”还是“账号密码完整登录”。替换了 fallback 内部原先的 `r.steamCMDRetry` 判断。
 - **两个对称的持久“认证成功”标志**（均写在实例 `.env`，`forceReauth` 时清空）：
-  - `STEAM_AUTH_COMPLETED`：steam-auth 认证成功（`downloading app` / 认证成功 / 下载失败等“已过登录”信号，或 SteamCMD 登录成功）后写入。`driver.Install` 读它并纳入 `steamCMDDirect` 判据，作为 `authAlreadySucceeded(state, phase)` 相位推断的兜底——即使 phase 被重置为 `install_interrupted` 也能可靠跳过 steam-auth。
+  - `STEAM_AUTH_COMPLETED`：在 steam-auth 容器日志明确出现登录成功（`[SteamAuth:*] Logged in as ...` / `[SteamService] ... Logged in as ...`）后写入；启动或刷新成功拿到非空邀请码时也会写入。`driver.Install` 读它并纳入 `steamCMDDirect` 判据，作为 `authAlreadySucceeded(state, phase)` 相位推断的兜底——即使 phase 被重置为 `install_interrupted` 也能可靠跳过 steam-auth。
   - `STEAMCMD_AUTH_COMPLETED`：SteamCMD `logged in ok` 后写入，控制 `steamCMDUseCache`。
-  - 二者**各自独立、互不牵连**（steam-auth 与 SteamCMD 是两套不同的登录凭证/会话）：`STEAM_AUTH_COMPLETED` 只由 steam-auth 认证成功置位、决定“是否还需要跑 steam-auth 登录步骤”；`STEAMCMD_AUTH_COMPLETED` 只由 SteamCMD 登录成功置位、决定“SteamCMD 用缓存还是完整登录”。SteamCMD 登录成功**不会**顺带把 `STEAM_AUTH_COMPLETED` 也置位。
-- **“steam-auth 成功一次即永久走 cmd”**：路由用 `STEAM_AUTH_COMPLETED` 作 `steamCMDDirect` 判据——首次安装 steam-auth 认证成功（用于建服/邀请码）并继续下载游戏文件与 SDK；一旦认证成功该标志置位，之后所有 `reuse`（重试/重装/更新）一律 `steamCMDDirect` 走 SteamCMD，不再跑 steam-auth。只有“认证尚未成功过”的失败（如 `pull_failed`、认证前超时）重试才会重新拉镜像 + 跑 steam-auth。
+  - 二者**各自独立、互不牵连**（steam-auth 与 SteamCMD 是两套不同的登录凭证/会话）：`STEAM_AUTH_COMPLETED` 由 steam-auth 认证成功或非空邀请码置位、决定“是否还需要跑 steam-auth 登录步骤”；`STEAMCMD_AUTH_COMPLETED` 只由 SteamCMD 登录成功置位、决定“SteamCMD 用缓存还是完整登录”。SteamCMD 登录成功**不会**顺带把 `STEAM_AUTH_COMPLETED` 也置位。
+- **“steam-auth 标志有效期间走 cmd”**：路由用 `STEAM_AUTH_COMPLETED` 作 `steamCMDDirect` 判据——首次安装 steam-auth 认证成功（用于建服/邀请码）并继续下载游戏文件与 SDK；该标志为 true 期间，后续 `reuse`（重试/重装/更新）走 SteamCMD，不再跑 steam-auth。只有“认证尚未成功过”或启动日志已把标志清回 false 的情况，才会重新走 steam-auth。
 - **修复①（镜像拉取失败重试）**：`pull_failed` 不在上述直达条件里，因此复用凭据重试会**重新拉镜像 + 走 steam-auth**（`reuse` ⇒ autoMode 自动账号密码继续，跳过登录方式选择），不再误跳 SteamCMD。
 - **修复②（SteamCMD 认证超时重试）**：`STEAMCMD_AUTH_COMPLETED` 未置位时 `steamCMDUseCache=false` ⇒ SteamCMD 走**完整登录**并展示 guard 提示（回到验证界面），不再一上来报“授权缓存不可用”。该标志在检测到 SteamCMD `logged in ok` 后写入 `.env`，此后任何操作命中缓存路径。
 - **更换账号 / 强制重新认证**：`POST /api/instances/:id/install` 新增 `forceReauth`。为真时后端要求提供新账密（不复用）、清空 `.env` 的 `STEAM_REFRESH_TOKEN` 与 `STEAMCMD_AUTH_COMPLETED`，并调用新增的 `docker.RemoveVolumes` 清除 `<project>_steam-session` 与 `<project>_steamcmd-*` 授权卷（保留 `game-data`），随后走完整认证。卷删除 best-effort，占用中失败仅告警不阻断。
@@ -465,7 +475,7 @@ GET /api/jobs/:id/stream
 
 Junimo 会把邀请码写入容器内 `/tmp/invite-code.txt`。`docker compose restart` 可能保留旧文件，因此重启前后要清理或过滤旧码，前端启动/重启后也要等待非旧码的新邀请码。
 
-Stardew 生命周期里的“重启服务器”必须只重启 Compose 的 `server` 服务，不要重启 `steam-auth`。`steam-auth` 重启会重新登录 Steam，短时间多次尝试可能触发 `RateLimitExceeded`，导致 Junimo 启动时 30 秒内无法访问 steam-auth，最终日志显示 `Steam-auth service not ready` 且邀请码为 `n/a`。
+Stardew 生命周期里的普通“重启服务器”必须只重启 Compose 的 `server` 服务，不要无条件重启 `steam-auth`。`steam-auth` 重启会重新登录 Steam，短时间多次尝试可能触发 `RateLimitExceeded`。例外：如果已有 `STEAM_AUTH_COMPLETED=true` 且 server 日志显示 `Steam-auth service not ready` / 请求失败，后端会 best-effort 自动刷新一次 `steam-auth`，用于让常驻服务重新读取已写入的 session。
 
 ### 控制台与喊话
 

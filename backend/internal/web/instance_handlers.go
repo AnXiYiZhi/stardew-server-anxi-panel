@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -39,6 +40,7 @@ type instanceStateResponse struct {
 	UpdatedAt         string  `json:"updatedAt"`
 	SteamAuthLoggedIn bool    `json:"steamAuthLoggedIn"`
 	SteamAuthReady    bool    `json:"steamAuthReady"`
+	InviteCode        string  `json:"inviteCode,omitempty"`
 }
 
 type composeExecPipeDocker interface {
@@ -619,7 +621,20 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 		UpdatedAt:         instance.UpdatedAt,
 		SteamAuthLoggedIn: sjconfig.SteamAuthLoggedIn(instance.DataDir),
 		SteamAuthReady:    s.probeSteamAuthReady(ctx, instance),
+		InviteCode:        inviteCodeFromDriverPayload(instance.DriverPayload),
 	}
+}
+
+func inviteCodeFromDriverPayload(payload string) string {
+	if strings.TrimSpace(payload) == "" {
+		return ""
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+		return ""
+	}
+	code, _ := parsed["invite_code"].(string)
+	return strings.TrimSpace(code)
 }
 
 func (s *server) probeSteamAuthReady(ctx context.Context, instance storage.Instance) bool {

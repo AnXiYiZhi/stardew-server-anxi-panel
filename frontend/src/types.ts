@@ -143,10 +143,12 @@ export type InstanceState = {
   stateMessage: string | null
   driverPhase: string
   updatedAt: string
-  // Historical flag: true once steam-auth has completed successfully at least once.
+  // Durable UI flag: true after steam-auth login succeeds; cleared when server logs prove steam-auth has no account.
   steamAuthLoggedIn?: boolean
-  // Current runtime flag: true only when the running steam-auth service has a logged-in account.
+  // Diagnostic runtime flag: true only when the running steam-auth service probes ready.
   steamAuthReady?: boolean
+  // Last invite code recorded by the backend background probe, if any.
+  inviteCode?: string
 }
 
 export type ResourceMetricSample = {

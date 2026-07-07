@@ -21,16 +21,16 @@
 - 如果用户用 `localhost:8090` 打开面板，局域网邀请也会显示 `localhost`；这是本次“用什么地址进来就显示什么地址”的规则结果。
 - 后端 `/public-ip` 接口还存在，但当前邀请卡不再调用。
 
-# FE-STEAM-AUTH-RUNTIME-READY-1 邀请码授权失效入口
+# FE-STEAM-AUTH-FLAG-1 邀请码授权按钮按持久标志显示
 
 ## 背景
-- `steamAuthLoggedIn=true` 只表示历史上 steam-auth 成功过一次；真实运行时可能仍出现 `Steam-auth service has no logged-in accounts`，导致邀请码一直 `n/a`。
-- 旧 `InviteCodeCard` 只在 `steamAuthLoggedIn===false` 时显示【登录授权】，所以历史认证存在但当前授权失效时，用户只能看到【刷新】，找不到重新登录入口。
+- `steamAuthReady` 探测会出现与真实用户感知矛盾的情况：用户已经完成 steam-auth 登录、甚至能拿到邀请码，但前端仍因 ready 探测/状态未同步显示“未授权”。
+- 新规则把 `steamAuthLoggedIn` 作为邀请码卡主 UI 的唯一授权标志：安装阶段看到真实 steam-auth 登录成功日志写 true；启动/刷新邀请码成功拿到非空邀请码也写 true；启动后 server 日志明确说 `no logged-in accounts` 再写回 false。
 
 ## 改了什么
-- `types.ts` 的 `InstanceState` 增加 `steamAuthReady?: boolean`，并修正 `steamAuthLoggedIn` 注释为历史标志。
-- `InviteCodeCard` 新增 `currentSteamAuthUnavailable` 判断：`steamAuthLoggedIn=true && steamAuthReady=false` 且当前无邀请码/邀请码错误时，显示“需重新 Steam 授权”。
-- 服务器运行中按钮显示“停服后重新授权”并禁用，提示先停止服务器；停服后显示“重新登录授权”，继续调用既有 `steamAuthLogin()` 并跳转安装页查看认证日志。
+- `InviteCodeCard` 移除 `currentSteamAuthUnavailable` / `steamAuthReady` 主 UI 分支；只有 `steamAuthLoggedIn !== true` 且当前没有邀请码时，显示“需登录 Steam 授权”和【登录授权】。
+- 服务器运行中按钮显示“停服后登录授权”并禁用，提示先停止服务器；停服后继续调用既有 `steamAuthLogin()` 并跳转安装页查看认证日志。
+- `types.ts` 中 `steamAuthLoggedIn` 注释改为 durable UI flag；`steamAuthReady` 保留为 diagnostic runtime flag。
 
 ## 影响文件
 - `frontend/src/types.ts`
@@ -38,10 +38,30 @@
 
 ## 如何验证
 - `cd frontend; npm.cmd run build`
-- 手动联调：`/state` 返回 `steamAuthLoggedIn=true, steamAuthReady=false` 且邀请码为空/获取失败时，总览和服务器页的邀请码卡应显示重新授权提示，而不是只显示刷新按钮。
+- 手动联调：`/state` 返回 `steamAuthLoggedIn=false` 且邀请码为空时，总览和服务器页的邀请码卡显示【登录授权】；返回 `steamAuthLoggedIn=true` 时不显示授权按钮，即使 `steamAuthReady=false`。
 
 ## 下一步注意事项
-- `steamAuthReady=false` 在服务器未运行时不一定代表异常；前端只在邀请码缺失或错误上下文中展示重新授权入口，避免停止态一直催用户授权。
+- `steamAuthReady` 不再用于主按钮判断。授权失效应由后端在启动日志确认 `no logged-in accounts` 后把 `STEAM_AUTH_COMPLETED` 清空，再通过 `steamAuthLoggedIn=false` 传给前端。`Steam-auth service not ready` 属运行态服务未就绪，已有授权标志时后端会自动刷新 `steam-auth`，前端不要据此显示未授权。
+
+# FE-LIFECYCLE-BACKGROUND-INVITE-1 启动按钮不再等待邀请码
+## 背景
+- 用户可能只需要 IP 直连，邀请码失败不应让启动任务和按钮一直卡在“获取邀请码”。
+- SMAPI 存档加载会出现两次，旧 `players.json` / `status.json` 也可能让在线玩家短暂命中，导致按钮从启动中闪回启动/停止。
+
+## 改了什么
+- `useStardewDashboardData` 会优先消费 `/state.inviteCode`，后台拿到邀请码后直接回填；自动邀请码轮询只在显式请求时最多 20 次，不再因为没有邀请码而无限轮询。
+- `OverviewPage` 与 `ServerControlPage` 的启动中状态改为看 active `stardew_lifecycle` job + 实例 running/stopping 状态，不再依赖邀请码、在线玩家或 SMAPI 存档加载日志。
+- `InstanceState` 新增可选 `inviteCode` 字段，表示后端后台探测记录的最后一次有效邀请码。
+
+## 影响文件
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/pages/OverviewPage.tsx`
+- `frontend/src/games/stardew/pages/ServerControlPage.tsx`
+- `frontend/src/types.ts`
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- 手动联调：未授权启动时按钮在 lifecycle job 运行期间显示启动中，job 完成且 state=running 后显示停止/重启；邀请码未出现也不阻塞。后台后续拿到邀请码后卡片自动显示邀请码并不再显示授权入口。
 
 # FE-INSTALL-SMAPI-PREINSTALL-1 安装页 SMAPI 子状态
 

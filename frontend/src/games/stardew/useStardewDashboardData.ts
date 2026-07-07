@@ -53,6 +53,7 @@ export function useStardewDashboardData(): StardewDashboardData {
   const playersPollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const invitePollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const staleInviteCodeRef = useRef<string | null>(null)
+  const invitePollAttemptsRef = useRef(0)
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map())
   const activeSaveNameRef = useRef<string | null>(null)
   const [invitePollRequested, setInvitePollRequested] = useState(false)
@@ -61,6 +62,18 @@ export function useStardewDashboardData(): StardewDashboardData {
     try {
       const s = await getStardewState()
       setInstanceState(s)
+      const recordedInviteCode = s.inviteCode?.trim() ?? ''
+      if (recordedInviteCode) {
+        if (staleInviteCodeRef.current && recordedInviteCode === staleInviteCodeRef.current) {
+          setInviteCode(null)
+        } else {
+          staleInviteCodeRef.current = null
+          invitePollAttemptsRef.current = 0
+          setInviteCode(recordedInviteCode)
+          setInviteCodeError(null)
+          setInvitePollRequested(false)
+        }
+      }
     } catch {
       // 保留上次已知状态，不向用户暴露错误
     }
@@ -176,6 +189,7 @@ export function useStardewDashboardData(): StardewDashboardData {
 
   const clearInviteCode = useCallback(() => {
     staleInviteCodeRef.current = null
+    invitePollAttemptsRef.current = 0
     setInvitePollRequested(false)
     setInviteCode(null)
     setInviteCodeError(null)
@@ -183,6 +197,7 @@ export function useStardewDashboardData(): StardewDashboardData {
 
   const requestInviteCodeRefresh = useCallback(() => {
     staleInviteCodeRef.current = inviteCode
+    invitePollAttemptsRef.current = 0
     setInvitePollRequested(true)
     setInviteCode(null)
     setInviteCodeError(null)
@@ -378,22 +393,31 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     const stateCanExposeInvite =
       instanceState?.state === 'running' || instanceState?.state === 'starting'
-    const shouldPollInvite = stateCanExposeInvite && (invitePollRequested || !inviteCode)
+    const shouldPollInvite = stateCanExposeInvite && invitePollRequested && !inviteCode
     if (!shouldPollInvite) return
 
     let cancelled = false
     const pollInviteCode = async () => {
+      if (invitePollAttemptsRef.current >= 20) {
+        setInvitePollRequested(false)
+        return
+      }
+      invitePollAttemptsRef.current += 1
       await refreshInviteCode()
       if (cancelled) return
+      if (invitePollAttemptsRef.current >= 20) {
+        setInvitePollRequested(false)
+        return
+      }
       invitePollRef.current = window.setTimeout(() => {
         void refreshInstanceState()
         void pollInviteCode()
-      }, invitePollRequested ? 5_000 : 10_000)
+      }, 5_000)
     }
 
     invitePollRef.current = window.setTimeout(() => {
       void pollInviteCode()
-    }, invitePollRequested ? 5_000 : 2_000)
+    }, 5_000)
 
     return () => {
       cancelled = true

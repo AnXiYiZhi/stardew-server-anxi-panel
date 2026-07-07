@@ -13,8 +13,14 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/netdns"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
+
+// dockerHubHTTPClient talks to Docker Hub's public API. It uses the
+// DNS-fallback transport so a flaky host resolver doesn't break version checks
+// (the same resolver failure that broke Nexus also broke these — see netdns).
+var dockerHubHTTPClient = netdns.NewClient(10 * time.Second)
 
 // imageTagPattern allows alphanumeric, dots, hyphens, and underscores.
 // This matches standard Docker tag conventions (no colons, no slashes).
@@ -409,7 +415,7 @@ func dockerHubTagDigest(ctx context.Context, logger *slog.Logger, repo, tag stri
 	if err != nil {
 		return ""
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := dockerHubHTTPClient.Do(req)
 	if err != nil {
 		logger.Warn("docker hub tag fetch failed", "repo", repo, "tag", tag, "error", err)
 		return ""

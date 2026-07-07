@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -45,6 +47,7 @@ type fakeDocker struct {
 	smapiOpts         paneldocker.ContainerTTYRunOpts
 	removedVolumes    []string
 	removedByVolumes  []string
+	restartedServices []string
 }
 
 func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
@@ -133,6 +136,11 @@ func (f *fakeDocker) RemoveContainersByVolume(_ context.Context, _ string, names
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
+func (f *fakeDocker) ComposeRestartServices(_ context.Context, _ string, services ...string) (paneldocker.CommandResult, error) {
+	f.restartedServices = append(f.restartedServices, services...)
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
 type fakeStore struct {
 	instance storage.Instance
 	getErr   error
@@ -210,6 +218,9 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 		"./.local-container/saves:/config/xdg/config/StardewValley",
 		"./.local-container/settings:/data/settings",
 		"./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro",
+		"./.local-container/cont-env/DBUS_SESSION_BUS_ADDRESS:/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS:ro",
+		"./.local-container/cont-groups/cinit/id:/etc/cont-groups.d/cinit/id:ro",
+		"./.local-container/cont-users/root/home:/etc/cont-users.d/root/home:ro",
 	} {
 		if !strings.Contains(composeText, want) {
 			t.Errorf("docker-compose.yml missing %q", want)
@@ -228,12 +239,19 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 	if strings.Contains(envText, "JUNIMO_IMAGE_TAG") {
 		t.Fatal(".env should not contain JUNIMO_IMAGE_TAG")
 	}
-	appNameScript, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(serverAppNameContEnvFile)))
-	if err != nil {
-		t.Fatalf("APP_NAME cont-env fix script not created: %v", err)
-	}
-	if string(appNameScript) != serverAppNameScript {
-		t.Fatalf("unexpected APP_NAME cont-env script:\n%s", appNameScript)
+	for _, staticValue := range []serverStaticInitValue{
+		{serverContEnvDir + "/APP_NAME", "/etc/cont-env.d/APP_NAME", "DockerApp"},
+		{serverContEnvDir + "/DBUS_SESSION_BUS_ADDRESS", "/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/dbus.base"},
+		{serverContGroupsDir + "/cinit/id", "/etc/cont-groups.d/cinit/id", "72"},
+		{serverContUsersDir + "/root/home", "/etc/cont-users.d/root/home", "/root"},
+	} {
+		script, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(staticValue.localPath)))
+		if err != nil {
+			t.Fatalf("%s static init fix script not created: %v", staticValue.localPath, err)
+		}
+		if string(script) != serverStaticInitScript(staticValue.value) {
+			t.Fatalf("unexpected %s static init script:\n%s", staticValue.localPath, script)
+		}
 	}
 }
 
@@ -671,6 +689,87 @@ func TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure(t *t
 	}
 	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-user-local:/home/steam/.local/share/Steam") {
 		t.Fatalf("SteamCMD should persist steam user self-update cache, binds=%v", fake.containerOpts.Binds)
+	}
+}
+
+func TestIsSteamAuthLoginSuccessLineRequiresSteamAuthPrefix(t *testing.T) {
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"[SteamAuth:A0] Logged in as [U:1:1231122837]", true},
+		{"[SteamService] A0: Logged in as 76561199191388565", true},
+		{"[SteamAuth:A0] Logging in as 1517468252 with token (498 chars)...", false},
+		{"[SteamAuth:A0] Download failed: Download manifest failed across all CDN servers", false},
+		{"Logged in as steam-user", false},
+		{"[steamcmd] Waiting for user info...OK", false},
+	}
+	for _, tc := range cases {
+		if got := isSteamAuthLoginSuccessLine(strings.ToLower(tc.line)); got != tc.want {
+			t.Fatalf("isSteamAuthLoginSuccessLine(%q) = %v, want %v", tc.line, got, tc.want)
+		}
+	}
+}
+
+func TestDriverAuthLoginOnlyMarksSteamAuthCompletedAndRefreshesService(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Connecting... (1/5) +0.0s",
+			"[SteamAuth:A0] Connected to Steam +4.7s",
+			"[SteamAuth:A0] Logging in as 1517468252 with token (498 chars)... +0.0s",
+			"[SteamAuth:A0] Token expires: 2027-02-02 11:30:38 UTC (210 days remaining) +0.0s",
+			"[SteamAuth:A0] Logged in as [U:1:1231122837] +0.7s",
+			"[SteamAuth:A0] Downloading app 413150... +0.0s",
+			"[SteamAuth:A0] Download failed: Download manifest failed across all CDN servers (403 Forbidden). +3.6s",
+			"[SteamService] Game download failed: Download manifest failed across all CDN servers (403 Forbidden). +12.6s",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AuthLoginOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+
+	if !sjconfig.SteamAuthLoggedIn(instanceDir) {
+		t.Fatal("expected STEAM_AUTH_COMPLETED=true after real steam-auth logged-in line")
+	}
+	if !reflect.DeepEqual(fake.restartedServices, []string{"steam-auth"}) {
+		t.Fatalf("expected steam-auth service refresh, got %#v", fake.restartedServices)
+	}
+	if fake.containerRuns != 0 || fake.smapiRuns != 0 {
+		t.Fatalf("auth-only must not run SteamCMD/SMAPI, containerRuns=%d smapiRuns=%d", fake.containerRuns, fake.smapiRuns)
 	}
 }
 
@@ -1157,7 +1256,7 @@ func TestDriverInstallReRunsSteamAuthAfterPullFailureRetry(t *testing.T) {
 
 	manager := jobs.NewManager(store, slog.Default())
 	fake := &fakeDocker{
-		steamAuthLines: []string{"Logged in as steam-user"},
+		steamAuthLines: []string{"[SteamAuth:A0] Logged in as [U:1:1231122837]"},
 	}
 	driver := New(fake, slog.Default(), manager, store)
 	// reuseCredentials retry (no re-input). Must re-pull images + run steam-auth,
