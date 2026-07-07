@@ -1003,12 +1003,29 @@ func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.C
 				SaveNameToLoad string `json:"SaveNameToLoad"`
 			}
 			if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" && gl.SaveNameToLoad != prevSave {
-				saveDir := filepath.Join(savesDir(r.instance.DataDir), "Saves", gl.SaveNameToLoad)
+				resolvedName := gl.SaveNameToLoad
+				saveDir := filepath.Join(savesDir(r.instance.DataDir), "Saves", resolvedName)
+				if _, err := os.Stat(saveDir); err != nil {
+					// JunimoServer can write the wrong farm-name prefix into
+					// gameloader.json while still generating a correctly-suffixed
+					// save folder (e.g. pointer "test_123" but real folder
+					// "test2_123"). Recover the real name via the shared numeric
+					// suffix and heal the persisted pointer so later reads see it.
+					if fixed := suffixMatchSaveDir(r.instance.DataDir, resolvedName); fixed != "" {
+						if err := writeGameloaderPointer(r.instance.DataDir, fixed); err != nil {
+							_, _ = jobCtx.Warn(ctx, fmt.Sprintf("修正存档指针失败: %v", err))
+						} else {
+							_, _ = jobCtx.Info(ctx, fmt.Sprintf("gameloader 指针存档名有误（%s），已自动修正为：%s", resolvedName, fixed))
+							resolvedName = fixed
+							saveDir = filepath.Join(savesDir(r.instance.DataDir), "Saves", fixed)
+						}
+					}
+				}
 				if _, err := os.Stat(saveDir); err == nil {
-					if err := EnsureDisabledModProfileForSave(r.instance.DataDir, gl.SaveNameToLoad); err != nil {
+					if err := EnsureDisabledModProfileForSave(r.instance.DataDir, resolvedName); err != nil {
 						_, _ = jobCtx.Warn(ctx, fmt.Sprintf("save mod profile write failed: %v", err))
 					}
-					_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档已创建：%s", gl.SaveNameToLoad))
+					_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档已创建：%s", resolvedName))
 					return nil
 				}
 			}

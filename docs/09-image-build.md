@@ -421,6 +421,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 
 ## 常见问题
 
+面向普通用户的完整版本见 [故障排查指南](user-guide/troubleshooting.md)；本节只保留和镜像构建/本地开发直接相关的条目。
+
 ### 镜像拉取失败或 403
 
 检查 Docker Desktop 镜像源配置，必要时临时移除不可用镜像源。

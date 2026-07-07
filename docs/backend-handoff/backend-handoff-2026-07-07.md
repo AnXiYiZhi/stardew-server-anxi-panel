@@ -139,3 +139,35 @@
 ## 下一步注意事项
 - 本次只清理了这两个文件（用户反馈触发的排查范围）。如果后续在其他文件的错误提示里再看到"像中文但读不通"的乱码，大概率是同一根因，可用上述可逆公式复查（`GBK936.GetBytes(乱码) → UTF8.GetString`）。
 - 修 `strings.Contains` 这类错误分类逻辑时，务必确认匹配串和真实抛出的 `err.Error()` 编码一致；这次的教训是两边字面量分别在不同时间写入，肉眼看着都像"正常代码"，实际早已错配。
+
+# SAVE-POINTER-SUFFIX-HEAL-1 gameloader 指针存档名前缀写错的自愈修复
+
+## 背景（现场实证，服务器 121.40.29.22）
+- 用户新建存档 `test2` 后，"存档管理"页"当前激活存档"卡片"存档目录"显示正确（指针字符串本身），但农场主/日期/文件大小/最后游玩全部"未知"；存档库列表能正确显示 test2 的真实数据。另一次新建还出现过 `新存档请求已发送但未检测到新存档目录` 的告警，但实际存档已创建成功、局域网可正常连接游玩。
+- SSH 登录现场核实：`junimohost.gameloader.json` 的 `SaveNameToLoad` 是 `test_443102605`，但 `Saves/` 目录下真实存在的是 `test2_443102605`（已运行、`GET /status` 返回 `farmName: "test2"`），`test_443102605` 这个目录根本不存在。
+- 根因是 **JunimoServer 官方 Mod 自身**在生成新存档时，把 `gameloader.json` 里的农场名前缀写错了（用了旧的 "test" 而不是这次的 "test2"），但生成目录时用的数字后缀是对的（两者都是 `443102605`）。我们的面板此前对这个指针文件完全信任、不做存在性校验，导致：
+  1. `sendNewGameCommand()` 轮询新存档目录时用错误的完整字符串 `os.Stat`，永远找不到，超时后打印告警（尽管实际游戏已经生成好）。
+  2. `GetActiveSaveName()`（15+ 处调用方：存档列表、玩家名册、健康检查、重启计划等）拿到的指针目录不存在，相关字段全部读不到数据，前端兜底显示"未知"，且没有自愈机制，会一直卡住直到用户手动切换存档。
+
+## 改了什么
+- `saves.go` 新增 `suffixMatchSaveDir(dataDir, pointerName)`：当指针目录不存在时，按指针名里最后一个 `_` 之后的数字后缀在 `Saves/` 下找唯一匹配的真实目录；多个候选（歧义）时返回空，不瞎猜。
+- `GetActiveSaveName()` 内部接入该兜底：指针目录存在则直接返回（原行为不变，无性能回退）；不存在则尝试后缀匹配，命中就返回纠正后的名字，否则仍返回原始指针（保留原"未知"展示，不强行捏造）。这是**只读**兜底，不写盘，15+ 调用方自动受益。
+- 拆出 `writeGameloaderPointer(dataDir, saveName)`（`SetActiveSave()` 复用它），去掉了 `SetActiveSave()` 里 `clearNewGamePendingMarker()` 这个与本次无关的副作用耦合。
+- `lifecycle.go` `sendNewGameCommand()` 的落盘轮询：检测到 `os.Stat` 失败时，调用 `suffixMatchSaveDir()` 尝试恢复真实目录名，命中则调用 `writeGameloaderPointer()` **持久化修正**指针（不清 new-game-pending 标记），日志记录"gameloader 指针存档名有误（xxx），已自动修正为：yyy"，随后按修正后的名字继续走正常成功路径（`EnsureDisabledModProfileForSave` + "新存档已创建"），不再误报超时告警。
+- 新增单测 `TestGetActiveSaveName_RecoversFromWrongPrefix`（能纠正）、`TestGetActiveSaveName_AmbiguousSuffixNotRecovered`（两个目录后缀相同时保守不纠正，返回原始指针）。
+- **现场修复**：已通过 SSH（sudo）把该实例的 `junimohost.gameloader.json` 手动改为指向真实存在的 `test2_443102605`，面板刷新后可看到正确的存档信息；代码修复上线后该类问题应能自动恢复，无需再手动改文件。
+
+## 影响文件
+- `backend/internal/games/stardew_junimo/saves.go`
+- `backend/internal/games/stardew_junimo/lifecycle.go`
+- `backend/internal/games/stardew_junimo/saves_test.go`
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo -run "GetActiveSaveName|DeleteSave_ActiveSaveCleanup"`
+- `cd backend; go build ./... && go vet ./... && go test ./...`（全绿）
+- 真机：下次"新建游戏"如果 JunimoServer 再次写错前缀，任务日志应出现"已自动修正为：xxx"而不是"未检测到新存档目录"告警；"当前激活存档"卡片应直接显示正确数据，不再需要手动 SSH 改 `gameloader.json`。
+
+## 下一步注意事项
+- 这是**绕过第三方 Mod 内部 bug 的兜底**，不是修复 JunimoServer 本身；如果该 Mod 后续版本修好了这个写错前缀的问题，这段自愈逻辑仍然安全（指针目录本来就存在时完全不触发）。
+- 后缀匹配要求指针名里有 `_`；如果 JunimoServer 某次连数字后缀也写错（不只是前缀），本次兜底无法恢复，仍会回退到旧的"未知"展示，需要再具体分析当时的现场数据。
+- 尚未部署到用户的飞牛 NAS（仅本地代码仓库已修复+测试通过），部署由用户自行按 `docs/09-image-build.md` 流程处理。

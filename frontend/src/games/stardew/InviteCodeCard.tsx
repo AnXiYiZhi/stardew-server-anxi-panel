@@ -13,6 +13,35 @@ type InviteCodeCardProps = {
   onNavigate?: (route: StardewRoute, options?: StardewNavigateOptions) => void
 }
 
+// navigator.clipboard requires a secure context (HTTPS or localhost). This
+// panel is commonly reached over plain HTTP via a LAN/public IP, where
+// navigator.clipboard is undefined and calling it throws synchronously —
+// falling back to the legacy execCommand path keeps the copy buttons working.
+async function copyText(text: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // fall through to legacy fallback below
+    }
+  }
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 export function InviteCodeCard({
   instanceState,
   dashboardData,
@@ -59,32 +88,30 @@ export function InviteCodeCard({
     const code = dashboardData.inviteCode
     if (!code) return
     setCopyError(false)
-    navigator.clipboard.writeText(code).then(
-      () => {
+    void copyText(code).then((ok) => {
+      if (ok) {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
-      },
-      () => {
+      } else {
         setCopyError(true)
         setTimeout(() => setCopyError(false), 3000)
-      },
-    )
+      }
+    })
   }
 
   function handleCopyPublicIP() {
     const ip = dashboardData.publicIP?.ip
     if (!ip) return
     setCopyError(false)
-    navigator.clipboard.writeText(ip).then(
-      () => {
+    void copyText(ip).then((ok) => {
+      if (ok) {
         setIpCopied(true)
         setTimeout(() => setIpCopied(false), 2000)
-      },
-      () => {
+      } else {
         setCopyError(true)
         setTimeout(() => setCopyError(false), 3000)
-      },
-    )
+      }
+    })
   }
 
   return (

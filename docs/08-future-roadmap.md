@@ -781,3 +781,9 @@ Multi Game Mode later
 - `RELEASE-TAG-CI-1` follow-up：面板仓库 ACR 发布地址已切换到阿里云新版个人版实例域名 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com`；GitHub Actions 和 `deploy/run.sh` 默认国内镜像源同步更新。`ALIYUN_REGISTRY_USERNAME` 使用 ACR 访问凭证登录命令中的 `--username` 值。
 - `RELEASE-TAG-CI-1` follow-up：配套 `junimo-steam-service-cn` tag 发布 workflow 已切换到同一 ACR 新版个人版域名；面板内 `STEAM_SERVICE_IMAGE_CANDIDATES` 默认把该 ACR 镜像放在第二候选，顺序为 1ms、ACR、DaoCloud、GHCR、Docker Hub。
 - `RELEASE-TAG-CI-1` follow-up：面板仓库 tag 发版 workflow 已增加 GHCR 发布目标 `ghcr.io/anxiyizhi/stardew-server-anxi-panel`，并给 `deploy/run.sh` 增加 GHCR 镜像源选项；配套 steam-service-cn workflow 保持发布 `ghcr.io/<owner>/junimo-steam-service-cn`。
+
+# SAVE-POINTER-SUFFIX-HEAL-1 状态
+- `SAVE-POINTER-SUFFIX-HEAL-1` completed（代码已修复+测试通过，尚未部署）：修复 JunimoServer 新建存档时把 `gameloader.json` 存档名前缀写错导致"当前激活存档"永久显示"未知"、新建存档轮询误报超时的问题，面板现在能按数字后缀自动识别并修正真实存档目录。详见 `docs/backend-handoff/backend-handoff-2026-07-07.md`。
+
+# INVITE-COPY-CLIPBOARD-FALLBACK-1 状态
+- `INVITE-COPY-CLIPBOARD-FALLBACK-1` completed（代码已修复+构建通过，尚未部署）：修复邀请码/局域网 IP 复制按钮在非 HTTPS 访问下因 `navigator.clipboard` 不可用而完全无反应的问题，新增 `execCommand('copy')` 降级方案。详见 `docs/frontend-handoff/frontend-handoff-2026-07-07.md`。
