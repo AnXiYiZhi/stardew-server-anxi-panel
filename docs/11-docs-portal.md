@@ -2,7 +2,9 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1（本地脚手架）已完成，其余步骤待实施**。以下决策已和用户对齐：
+状态：**步骤 1-2、4-7 已完成，门户网站骨架已上线；步骤 3（内容迁移）待实施**。以下决策已和用户对齐：
+
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（目前只有占位首页，尚无实际内容页面）
 
 | 决策项 | 结论 |
 | --- | --- |
@@ -70,9 +72,9 @@ website/docs/
 
 ## 四、准备工作清单
 
-- [ ] 本机已安装 Node.js 20+（`node -v` 确认）
-- [ ] 对 `AnXiYiZhi/stardew-server-anxi-panel` 仓库有 push 权限
-- [ ] 对该仓库 Settings 有管理员权限（用于开启 Pages）
+- [x] 本机已安装 Node.js 20+（`node -v` 确认，实测 v22.22.2）
+- [x] 对 `AnXiYiZhi/stardew-server-anxi-panel` 仓库有 push 权限
+- [x] 对该仓库 Settings 有管理员权限（用于开启 Pages，实测用 `gh api` 直接开通，未走网页操作）
 - [ ] （可选，换自定义域名时才需要）一个你能配置 DNS 的域名
 
 ## 五、实施步骤
@@ -170,7 +172,9 @@ npm run docs:dev
 
 打开命令行输出的地址（通常是 `http://localhost:5173`）逐页检查导航、侧边栏和链接是否正确。
 
-### 步骤 5：新增 GitHub Actions 部署工作流
+已验证：`npm run docs:dev` 正常启动，实际访问地址是 `http://localhost:5173/stardew-server-anxi-panel/`（带 `base` 子路径），首页 `curl` 返回 200。
+
+### 步骤 5：新增 GitHub Actions 部署工作流（已完成）
 
 新建 `.github/workflows/docs.yml`：
 
@@ -224,16 +228,22 @@ jobs:
 
 `paths` 过滤确保改动只涉及面板本体代码（`backend/`、`frontend/`）时不会触发文档站重新部署。
 
-### 步骤 6：仓库开启 GitHub Pages（网页操作，需要仓库管理员权限，无法用命令代替）
+### 步骤 6：仓库开启 GitHub Pages（已完成）
 
-1. 打开仓库 `Settings` → `Pages`。
-2. `Build and deployment` → `Source` 选择 **GitHub Actions**（不要选 "Deploy from a branch"）。
-3. 保存。
+网页操作路径：打开仓库 `Settings` → `Pages` → `Build and deployment` → `Source` 选择 **GitHub Actions**（不要选 "Deploy from a branch"）。
 
-### 步骤 7：提交并推送
+实测发现这一步其实可以用命令代替，不需要网页操作：
 
 ```bash
-git add website .github/workflows/docs.yml
+gh api -X POST repos/AnXiYiZhi/stardew-server-anxi-panel/pages -f build_type=workflow
+```
+
+返回 `"build_type":"workflow"` 即代表开启成功。
+
+### 步骤 7：提交并推送（已完成）
+
+```bash
+git add website .github/workflows/docs.yml docs/01-project-overview.md docs/11-docs-portal.md
 git commit -m "docs: 新增文档门户网站（VitePress + GitHub Pages）"
 git push
 ```
