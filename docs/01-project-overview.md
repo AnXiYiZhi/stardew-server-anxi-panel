@@ -65,6 +65,7 @@
 | `docs/07-later-optimizations.md` | 后期优化池 |
 | `docs/08-future-roadmap.md` | 已完成里程碑与未来路线 |
 | `docs/09-image-build.md` | 镜像构建、部署、发布检查 |
+| `docs/11-docs-portal.md` | 公开文档门户网站（VitePress + GitHub Pages）方案与实施步骤 |
 
 ## 工作开始前必读
 
