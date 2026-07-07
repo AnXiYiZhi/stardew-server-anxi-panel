@@ -696,8 +696,14 @@ func TestEnsureNexusInstallerExtensionZip_ReusesValidExistingPackage(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A cached package is only reused when its version matches the bundled
+	// source; pin it to the real source version so the match holds across bumps.
+	version, ok := expectedNexusInstallerExtensionVersion()
+	if !ok {
+		t.Skip("bundled extension source not available")
+	}
 	zw := zip.NewWriter(zf)
-	if err := addZipTextFile(zw, "manifest.json", `{"manifest_version":3,"name":"prebuilt","version":"1.0.0"}`); err != nil {
+	if err := addZipTextFile(zw, "manifest.json", fmt.Sprintf(`{"manifest_version":3,"name":"prebuilt","version":%q}`, version)); err != nil {
 		t.Fatal(err)
 	}
 	if err := addZipTextFile(zw, "background.js", "const prebuilt = true;\n"); err != nil {
@@ -724,7 +730,59 @@ func TestEnsureNexusInstallerExtensionZip_ReusesValidExistingPackage(t *testing.
 	}
 	defer func() { _ = zr.Close() }()
 	if got := readZipFileString(t, findZipFile(zr.File, "background.js")); got != "const prebuilt = true;\n" {
-		t.Fatalf("existing package should be reused, background.js = %q", got)
+		t.Fatalf("version-matching package should be reused, background.js = %q", got)
+	}
+}
+
+func TestEnsureNexusInstallerExtensionZip_RefreshesStaleVersionPackage(t *testing.T) {
+	version, ok := expectedNexusInstallerExtensionVersion()
+	if !ok {
+		t.Skip("bundled extension source not available")
+	}
+
+	dir := t.TempDir()
+	outPath := nexusInstallerExtensionZipPath(dir)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	zf, err := os.Create(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Structurally valid, but an older version than the bundled source.
+	zw := zip.NewWriter(zf)
+	if err := addZipTextFile(zw, "manifest.json", `{"manifest_version":3,"name":"stale","version":"0.0.1-stale"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := addZipTextFile(zw, "background.js", "const stale = true;\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zf.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath, err := EnsureNexusInstallerExtensionZip(dir)
+	if err != nil {
+		t.Fatalf("EnsureNexusInstallerExtensionZip: %v", err)
+	}
+
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open exported zip: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	if got := readZipFileString(t, findZipFile(zr.File, "background.js")); got == "const stale = true;\n" {
+		t.Fatal("stale-version package should have been refreshed from source")
+	}
+	gotVersion, err := readManifestVersionFromZip(zipPath)
+	if err != nil {
+		t.Fatalf("read refreshed version: %v", err)
+	}
+	if gotVersion != version {
+		t.Fatalf("refreshed version = %q, want %q", gotVersion, version)
 	}
 }
 

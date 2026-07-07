@@ -37,3 +37,31 @@
 - 公共 DNS 列表目前硬编码，中文优先。若未来面向海外部署有需要，可加一个 `PANEL_DNS_FALLBACK`（逗号分隔）环境变量覆盖，不改核心逻辑。
 - 前提是容器允许出站 UDP/TCP 53 到公网 DNS（家用 NAS 一般允许）。若某网络同时封了本地和公网 53，则与现状一致，无法自愈。
 - 后续任何新增的对外 HTTP 调用，直接用 `netdns.NewClient(timeout)`，不要再裸用 `http.DefaultClient` / `&http.Client{}`。
+
+# NEXUS-EXT-VERSION-CACHE-1 浏览器扩展交付版本感知 + 适配 Nexus 新版下载入口
+
+## 背景
+- 真机截图：Nexus 改版后 Mod 页头部下载按钮由 `Manual download` 变短标签 `Manual`（旁 `Vortex`）。有依赖的 Mod（如 SpaceCore 依赖 SMAPI）点 `Manual` 会先弹 `Download mod file` 模态框，框内才有真正的 `Manual download`；无依赖的 Mod 不弹。旧扩展只匹配 `Manual download` 文案，在 Mod 页直接报“未找到 Manual download 按钮”。
+- 另一问题：面板下载扩展接口只按结构校验（有无 `manifest.json`/`background.js`）复用实例目录缓存 ZIP，不看版本。导致扩展升级后，服务器上旧缓存会一直遮住新版，必须手动删缓存才能生效。
+
+## 改了什么
+- 扩展（`browser-extensions/nexus-slow-installer`，`0.1.0 → 0.1.1`）：
+  - 主路径改为**直接拼链接**：`content.js` 新增 `findFileIdOnPage()`，在 Mod 页从 DOM（仅限当前 Mod 的链接/`data-file-id`）恢复 `file_id`，直接走 `generateNexusDownloadUrl()` 拿临时 ZIP 链接，跳过按钮/模态框；对弹与不弹模态的页面都适用。
+  - 兜底路径：抽不到 `file_id` 或直接生成失败时才点按钮。`findManualDownloadButton` 收紧为严格 `manual download`，新增 `findShortManualButton` 匹配短 `Manual`；`clickManualDownloadWhenReady` 改成两步（点短 `Manual` 开模态 → 点模态里 `Manual download`），带 4 秒节流。
+  - 同步 `manifest.json` + `background.js`/`panel-bridge.js` 的 `X-Anxi-Nexus-Installer` 版本头到 `0.1.1`（后端不校验该头，仅信息用）。
+- 后端 `nexus_extension_pack.go`：`EnsureNexusInstallerExtensionZip()` 改为**版本感知**。读源码 `manifest.json` 版本为期望值，实例缓存 / 预包 ZIP 仅在其 `manifest.json` 版本与之完全一致时复用，否则从源码重新打包。新增 `expectedNexusInstallerExtensionVersion()`、`readManifestVersionFromZip/Dir()`、`parseManifestVersion()`、`nexusInstallerExtensionZipMatchesVersion()`。源码不可用时退回旧的仅结构校验行为。
+
+## 影响文件
+- `browser-extensions/nexus-slow-installer/content.js`、`manifest.json`、`background.js`、`panel-bridge.js`、`README.md`
+- `backend/internal/games/stardew_junimo/nexus_extension_pack.go`
+- `backend/internal/games/stardew_junimo/mod_sync_test.go`（复用测试改用动态源码版本；新增 `TestEnsureNexusInstallerExtensionZip_RefreshesStaleVersionPackage`）
+
+## 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`、`go vet ./internal/games/stardew_junimo`。
+- 扩展：`node --check content.js background.js panel-bridge.js shared.js`。
+- 版本感知：预置一个旧版本 manifest 的实例缓存 ZIP，调用下载接口后 ZIP 应被刷新为源码版本（新测试覆盖）。
+
+## 下一步注意事项
+- 以后升级扩展只需 bump `manifest.json` 的 `version` 并重建镜像，用户重新下载即可拿到新版，无需再手动删实例缓存。
+- 首次发布本版本到已部署服务器时，旧实例缓存版本仍是 `0.1.0`（< `0.1.1`）会被自动刷新；但如果旧缓存恰好没有版本或结构损坏，走的仍是重打包兜底，同样安全。
+- `findFileIdOnPage()` 只信当前 Mod 的链接，避免抓到依赖（如 SMAPI）的 `file_id`；多文件 Mod 取页面上第一个当前 Mod 的 `file_id`，通常是主文件。

@@ -52,25 +52,51 @@
     return matches[0] || null;
   }
 
-  function findManualDownloadButton() {
+  // nodeLabel returns the accessible label for a control, falling back to
+  // aria-label/title when the button is icon-only (no text node).
+  function nodeLabel(node) {
+    const text = node instanceof HTMLInputElement ? node.value : textOf(node);
+    if (text) {
+      return text;
+    }
+    if (node && typeof node.getAttribute === "function") {
+      return (node.getAttribute("aria-label") || node.getAttribute("title") || "").replace(/\s+/g, " ").trim();
+    }
+    return "";
+  }
+
+  // The current Nexus mod page splits the flow into two controls:
+  //   1. a short "Manual" button in the header that opens a "Download mod file"
+  //      modal (isShortManualLabel), and
+  //   2. a real "Manual download" button — the old header button on legacy
+  //      layouts, and the button inside that modal — that performs the actual
+  //      download/navigation (isManualDownloadLabel).
+  // We click (1) to open the modal, then (2) to proceed.
+  function isManualDownloadLabel(label) {
+    return /manual\s+download/i.test(label.replace(/\s+/g, " ").trim());
+  }
+
+  function isShortManualLabel(label) {
+    return /^manual$/i.test(label.replace(/\s+/g, " ").trim());
+  }
+
+  function findLabeledControl(predicate) {
     const candidates = Array.from(document.querySelectorAll("button, a, [role='button'], input[type='button'], input[type='submit']"));
-    const matches = candidates.filter((node) => {
-      const value = node instanceof HTMLInputElement ? node.value : textOf(node);
-      return isVisible(node) && /manual\s+download/i.test(value);
-    });
+    const matches = candidates.filter((node) => isVisible(node) && predicate(nodeLabel(node)));
     matches.sort((a, b) => {
-      const aText = a instanceof HTMLInputElement ? a.value : textOf(a);
-      const bText = b instanceof HTMLInputElement ? b.value : textOf(b);
-      const aExact = /^manual\s+download$/i.test(aText) ? 0 : 1;
-      const bExact = /^manual\s+download$/i.test(bText) ? 0 : 1;
-      if (aExact !== bExact) {
-        return aExact - bExact;
-      }
       const aRect = a.getBoundingClientRect();
       const bRect = b.getBoundingClientRect();
       return (aRect.top - bRect.top) || ((bRect.width * bRect.height) - (aRect.width * aRect.height));
     });
     return matches[0] || null;
+  }
+
+  function findManualDownloadButton() {
+    return findLabeledControl(isManualDownloadLabel);
+  }
+
+  function findShortManualButton() {
+    return findLabeledControl(isShortManualLabel);
   }
 
   function elementHref(node) {
@@ -219,6 +245,53 @@
     const links = Array.from(document.querySelectorAll("a[href]"));
     const found = links.find((link) => isNexusArchiveDownloadUrl(link.href));
     return found ? found.href : "";
+  }
+
+  function fileIdFromUrl(rawUrl) {
+    try {
+      const url = new URL(rawUrl, window.location.href);
+      const raw = url.searchParams.get("file_id") || url.searchParams.get("file");
+      const id = Number(raw);
+      return Number.isInteger(id) && id > 0 ? id : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  // urlIsForCurrentMod guards against picking up a file id that belongs to a
+  // different mod linked on the page (e.g. a required dependency like SMAPI).
+  function urlIsForCurrentMod(rawUrl) {
+    try {
+      const url = new URL(rawUrl, window.location.href);
+      const match = url.pathname.match(/^\/[^/]+\/mods\/(\d+)/i);
+      return !!match && Number(match[1]) === pageInfo.modId;
+    } catch {
+      return false;
+    }
+  }
+
+  // findFileIdOnPage recovers the Nexus file id from the mod page DOM so we can
+  // build the download link directly (via generateNexusDownloadUrl) instead of
+  // clicking "Manual" and navigating through the download modal. It only trusts
+  // file ids from links that point at the current mod. Returns 0 when no file
+  // id is present yet (e.g. it only appears after opening the modal), in which
+  // case the caller falls back to the button-click flow.
+  function findFileIdOnPage() {
+    for (const link of Array.from(document.querySelectorAll("a[href]"))) {
+      const id = fileIdFromUrl(link.href);
+      if (id && urlIsForCurrentMod(link.href)) {
+        return id;
+      }
+    }
+    for (const node of Array.from(document.querySelectorAll("[data-file-id], [data-fileid], mod-file-download"))) {
+      for (const attr of ["data-file-id", "data-fileid", "file-id", "fileid"]) {
+        const id = Number(node.getAttribute && node.getAttribute(attr));
+        if (Number.isInteger(id) && id > 0) {
+          return id;
+        }
+      }
+    }
+    return 0;
   }
 
   function findNexusGameId() {
@@ -518,10 +591,33 @@
     });
 
     if (!pageInfo.fileId) {
+      // Preferred path: recover the file id straight from the mod page and
+      // build the download link directly, skipping the fragile "Manual" button
+      // and download modal. Only navigate via the button when no file id is
+      // exposed on the page or direct generation fails.
+      const discoveredFileId = findFileIdOnPage();
+      if (discoveredFileId) {
+        pageInfo = { ...pageInfo, fileId: discoveredFileId };
+        setStatus("已识别 Nexus 文件，正在直接获取 ZIP 链接...");
+        const directArchive = findDirectArchiveLink();
+        if (directArchive) {
+          await captureUrl(directArchive);
+          return;
+        }
+        try {
+          const generatedUrl = await generateNexusDownloadUrl();
+          await captureUrl(generatedUrl);
+          return;
+        } catch (error) {
+          const message = error && error.message ? error.message : String(error);
+          setStatus(`直接获取失败，改为打开下载页：${message}`);
+        }
+      }
+
       setStatus("正在打开 Nexus 文件下载页...");
       const clicked = await clickManualDownloadWhenReady();
       if (!clicked) {
-        setStatus("未找到 Manual download 按钮，请刷新页面后重试。");
+        setStatus("未找到下载入口，请刷新页面后重试。");
       }
       return;
     }
@@ -736,10 +832,14 @@
     return new Promise((resolve) => {
       const deadline = Date.now() + 30000;
       let clicking = false;
+      let lastShortClickAt = 0;
       const tryClick = () => {
         if (clicking) {
           return false;
         }
+        // Step 2 (and legacy single-step layout): the real "Manual download"
+        // control — the old header button, or the button inside the modal that
+        // the short "Manual" button opens. This performs the actual download.
         const button = findManualDownloadButton();
         if (button) {
           clicking = true;
@@ -776,6 +876,16 @@
                 });
             });
           return true;
+        }
+        // Step 1: the current Nexus mod page only shows a short "Manual" button
+        // that opens the "Download mod file" modal. Click it (throttled) and
+        // keep observing so the modal's "Manual download" gets picked up above.
+        const shortButton = findShortManualButton();
+        if (shortButton && Date.now() - lastShortClickAt > 4000) {
+          lastShortClickAt = Date.now();
+          setStatus("正在打开 Nexus 下载弹窗...");
+          dispatchExtensionClick(shortButton).catch(() => dispatchMouseLikeClick(shortButton));
+          return false;
         }
         if (Date.now() > deadline) {
           resolve(false);

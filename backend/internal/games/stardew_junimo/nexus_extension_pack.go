@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,17 +25,97 @@ var ErrNexusInstallerExtensionNotFound = errors.New("Nexus browser extension sou
 // local development self-healing.
 func EnsureNexusInstallerExtensionZip(dataDir string) (string, error) {
 	outPath := nexusInstallerExtensionZipPath(dataDir)
+	wantVersion, haveWant := expectedNexusInstallerExtensionVersion()
+
+	// Reuse the instance-local package only when it is structurally valid AND
+	// matches the bundled extension version. Without the version gate a stale
+	// cached ZIP would shadow every future extension update (the validator only
+	// checks that manifest.json/background.js exist, not their contents).
 	if err := validateNexusInstallerExtensionZip(outPath); err == nil {
-		return outPath, nil
+		if !haveWant || nexusInstallerExtensionZipMatchesVersion(outPath, wantVersion) {
+			return outPath, nil
+		}
 	}
+
+	// Prefer the prebuilt image/repo package, but only when its version matches
+	// the bundled source; otherwise fall through to repackaging from source.
 	if prebuiltPath, err := findPrebuiltNexusInstallerExtensionZip(); err == nil {
-		if err := copyNexusInstallerExtensionZip(prebuiltPath, outPath); err == nil {
-			if err := validateNexusInstallerExtensionZip(outPath); err == nil {
-				return outPath, nil
+		if !haveWant || nexusInstallerExtensionZipMatchesVersion(prebuiltPath, wantVersion) {
+			if err := copyNexusInstallerExtensionZip(prebuiltPath, outPath); err == nil {
+				if err := validateNexusInstallerExtensionZip(outPath); err == nil {
+					return outPath, nil
+				}
 			}
 		}
 	}
 	return ExportNexusInstallerExtensionZip(dataDir)
+}
+
+// expectedNexusInstallerExtensionVersion reads the version of the bundled
+// extension source. The bool is false when the source (or its version) cannot
+// be determined, in which case callers skip the version gate and fall back to
+// structural validation only.
+func expectedNexusInstallerExtensionVersion() (string, bool) {
+	sourceDir, err := findNexusInstallerExtensionSource()
+	if err != nil {
+		return "", false
+	}
+	version, err := readManifestVersionFromDir(sourceDir)
+	if err != nil || version == "" {
+		return "", false
+	}
+	return version, true
+}
+
+func readManifestVersionFromDir(dir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		return "", err
+	}
+	return parseManifestVersion(data)
+}
+
+func readManifestVersionFromZip(path string) (string, error) {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = zr.Close() }()
+	for _, f := range zr.File {
+		if f.Name != "manifest.json" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			return "", err
+		}
+		return parseManifestVersion(data)
+	}
+	return "", errors.New("manifest.json not found in extension package")
+}
+
+func parseManifestVersion(data []byte) (string, error) {
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(manifest.Version), nil
+}
+
+// nexusInstallerExtensionZipMatchesVersion reports whether the package at path
+// carries exactly the wanted manifest version. Exact match (not >=) is
+// deliberate: the bundled source is the source of truth, so any mismatch —
+// upgrade or downgrade — should trigger a refresh.
+func nexusInstallerExtensionZipMatchesVersion(path, want string) bool {
+	got, err := readManifestVersionFromZip(path)
+	return err == nil && got != "" && got == want
 }
 
 const nexusInstallerExtensionInstructions = `安装步骤：
