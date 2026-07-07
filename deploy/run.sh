@@ -42,6 +42,7 @@ RUN_SH_URL_CANDIDATES="${RUN_SH_URL_CANDIDATES:-https://gh.llkk.cc/${RUN_SH_URL}
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
 ENV_FILE="$INSTALL_DIR/.env"
 SCRIPT_PATH="${BASH_SOURCE[0]}"
+DOCKER_APT_SOURCE_FILE="/etc/apt/sources.list.d/anxi-panel-docker.list"
 
 SUDO=""
 SELECTED_PANEL_IMAGE=""
@@ -108,6 +109,113 @@ find_command() {
     fi
   done
   return 1
+}
+
+write_docker_apt_source() {
+  local repo_url="$1"
+  local codename="$2"
+
+  printf "deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] %s %s stable\n" \
+    "$(dpkg --print-architecture)" "$repo_url" "$codename" | run_as_root tee "$DOCKER_APT_SOURCE_FILE" >/dev/null
+}
+
+clean_docker_apt_lists() {
+  run_as_root rm -f \
+    /var/lib/apt/lists/*docker-ce* \
+    /var/lib/apt/lists/*docker.com* \
+    /var/lib/apt/lists/*download.docker.com* \
+    /var/lib/apt/lists/*mirrors.cloud.aliyuncs.com_docker-ce* \
+    /var/lib/apt/lists/*mirrors.aliyun.com_docker-ce* \
+    /var/lib/apt/lists/*mirrors.tuna.tsinghua.edu.cn_docker-ce* \
+    /var/lib/apt/lists/*mirrors.ustc.edu.cn_docker-ce*
+}
+
+disable_existing_docker_apt_sources() {
+  local file backup disabled
+  local files=()
+
+  [[ -f /etc/apt/sources.list ]] && files+=("/etc/apt/sources.list")
+  if [[ -d /etc/apt/sources.list.d ]]; then
+    while IFS= read -r -d '' file; do
+      files+=("$file")
+    done < <(find /etc/apt/sources.list.d -maxdepth 1 -type f \( -name "*.list" -o -name "*.sources" \) -print0 2>/dev/null || true)
+  fi
+
+  for file in "${files[@]}"; do
+    [[ "$file" == "$DOCKER_APT_SOURCE_FILE" ]] && continue
+
+    case "$file" in
+      *.sources)
+        if ! grep -Eiq 'docker-ce|download\.docker\.com|mirrors\.cloud\.aliyuncs\.com/docker-ce|mirrors\.aliyun\.com/docker-ce|mirrors\.tuna\.tsinghua\.edu\.cn/docker-ce|mirrors\.ustc\.edu\.cn/docker-ce' "$file"; then
+          continue
+        fi
+        backup="${file}.anxi-panel-bak"
+        [[ -f "$backup" ]] || run_as_root cp "$file" "$backup"
+        disabled="${file}.anxi-panel-disabled"
+        yellow "检测到旧 Docker APT 源，已停用：$file"
+        run_as_root mv "$file" "$disabled"
+        ;;
+      *)
+        if ! grep -Eiq '^[[:space:]]*deb[[:space:]].*(docker-ce|download\.docker\.com|mirrors\.cloud\.aliyuncs\.com/docker-ce|mirrors\.aliyun\.com/docker-ce|mirrors\.tuna\.tsinghua\.edu\.cn/docker-ce|mirrors\.ustc\.edu\.cn/docker-ce)' "$file"; then
+          continue
+        fi
+        backup="${file}.anxi-panel-bak"
+        [[ -f "$backup" ]] || run_as_root cp "$file" "$backup"
+        yellow "检测到旧 Docker APT 源，已注释：$file"
+        run_as_root sed -i -E '/^[[:space:]]*deb[[:space:]].*(docker-ce|download\.docker\.com|mirrors\.cloud\.aliyuncs\.com\/docker-ce|mirrors\.aliyun\.com\/docker-ce|mirrors\.tuna\.tsinghua\.edu\.cn\/docker-ce|mirrors\.ustc\.edu\.cn\/docker-ce)/ s#^#\# anxi-panel disabled stale docker source: #' "$file"
+        ;;
+    esac
+  done
+}
+
+configure_docker_apt_repo() {
+  local repo_os="$1"
+  local codename="$2"
+  local gpg_url
+  local gpg_urls=(
+    "https://mirrors.aliyun.com/docker-ce/linux/${repo_os}/gpg"
+    "https://download.docker.com/linux/${repo_os}/gpg"
+  )
+
+  run_as_root install -m 0755 -d /etc/apt/keyrings
+  run_as_root rm -f /etc/apt/keyrings/docker.gpg
+  for gpg_url in "${gpg_urls[@]}"; do
+    cyan "正在获取 Docker APT 签名密钥：$gpg_url"
+    if curl -fsSL "$gpg_url" | run_as_root gpg --dearmor -o /etc/apt/keyrings/docker.gpg; then
+      run_as_root chmod a+r /etc/apt/keyrings/docker.gpg
+      break
+    fi
+    yellow "Docker APT 签名密钥获取失败，继续尝试下一个地址。"
+    run_as_root rm -f /etc/apt/keyrings/docker.gpg
+  done
+
+  if [[ ! -s /etc/apt/keyrings/docker.gpg ]]; then
+    red "无法获取 Docker APT 签名密钥，请稍后重试或手动安装 Docker。"
+    exit 1
+  fi
+
+  local repo_url
+  local repo_urls=(
+    "https://mirrors.aliyun.com/docker-ce/linux/${repo_os}"
+    "https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/${repo_os}"
+    "https://mirrors.ustc.edu.cn/docker-ce/linux/${repo_os}"
+    "https://download.docker.com/linux/${repo_os}"
+  )
+
+  for repo_url in "${repo_urls[@]}"; do
+    cyan "正在检查 Docker APT 源：$repo_url"
+    disable_existing_docker_apt_sources
+    write_docker_apt_source "$repo_url" "$codename"
+    clean_docker_apt_lists
+    if run_as_root apt-get update; then
+      green "Docker APT 源可用：$repo_url"
+      return
+    fi
+    yellow "Docker APT 源暂不可用，可能正在同步，继续尝试下一个源。"
+  done
+
+  red "所有 Docker APT 源都不可用，请稍后重试或手动安装 Docker。"
+  exit 1
 }
 
 detect_sudo() {
@@ -204,15 +312,12 @@ install_docker() {
       exit 1
     fi
 
+    disable_existing_docker_apt_sources
+    run_as_root rm -f "$DOCKER_APT_SOURCE_FILE"
+    clean_docker_apt_lists
     run_as_root apt-get update
     run_as_root apt-get install -y ca-certificates curl gnupg
-    run_as_root install -m 0755 -d /etc/apt/keyrings
-    run_as_root rm -f /etc/apt/keyrings/docker.gpg
-    curl -fsSL "https://mirrors.aliyun.com/docker-ce/linux/${repo_os}/gpg" | run_as_root gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    run_as_root chmod a+r /etc/apt/keyrings/docker.gpg
-    printf "deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/%s %s stable\n" \
-      "$(dpkg --print-architecture)" "$repo_os" "$codename" | run_as_root tee /etc/apt/sources.list.d/docker.list >/dev/null
-    run_as_root apt-get update
+    configure_docker_apt_repo "$repo_os" "$codename"
     run_as_root apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
     local pkg="yum"

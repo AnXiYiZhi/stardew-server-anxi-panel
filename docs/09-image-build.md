@@ -1,3 +1,11 @@
+# RUN-SH-DOCKER-APT-FALLBACK-1 Docker APT 源自动切换
+
+- `deploy/run.sh` 的 Docker/Compose 自动安装在 apt 系系统上不再只依赖阿里云 Docker CE 源。
+- 脚本会先获取 Docker APT GPG key，然后按顺序尝试 Docker CE apt 源：阿里云、清华 TUNA、中科大 USTC、Docker 官方源。
+- 脚本现在只写入托管源 `/etc/apt/sources.list.d/anxi-panel-docker.list`；进入安装前会扫描 `/etc/apt/sources.list` 和 `/etc/apt/sources.list.d/`，把历史残留的 Docker CE 源行注释掉，Deb822 `.sources` 源文件会改名停用并留下 `.anxi-panel-bak` 备份。
+- 每次切换 Docker CE apt 源前会清理 `/var/lib/apt/lists/` 下的 Docker 源索引，避免镜像站同步期间出现 `File has unexpected size ... Mirror sync in progress?` 后继续复用坏源或坏索引。
+- 现场如果仍失败，通常说明服务器无法访问所有候选 Docker 源；可稍后重试 `bash run.sh docker`，或手动安装 Docker Engine 与 Docker Compose plugin 后再执行 `bash run.sh install`。
+
 # JUNIMO-STATIC-INIT-FIX-1 JunimoServer 镜像启动兼容
 
 - 部分上游 `sdvd/server:1.5.0-preview.121` 镜像在 `/etc/cont-env.d`、`/etc/cont-groups.d`、`/etc/cont-users.d` 内写入裸静态值，当前 init 会把它们当 shell 命令执行。真实失败可表现为 `DockerApp: not found`、`unix:path=/tmp/dbus.base: not found`、`linux/amd64: not found`、`72: not found`。

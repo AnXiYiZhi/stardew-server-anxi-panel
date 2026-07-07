@@ -1,3 +1,7 @@
+# 2026-07-08 已完成：run.sh Docker APT 源同步失败兜底
+
+- `RUN-SH-DOCKER-APT-FALLBACK-1` completed：修复一键脚本在 Ubuntu/Debian 安装 Docker 时只依赖阿里云 Docker CE apt 源的问题。遇到 `File has unexpected size ... Mirror sync in progress?` 这类镜像站同步期索引校验失败时，脚本会先停用系统里历史残留的 Docker apt 源并清理索引，再自动切换到阿里云、清华 TUNA、中科大 USTC、Docker 官方源继续重试。真实现场补充：阿里云 ECS 可能在 `/etc/apt/sources.list` 或其它源文件内残留 `http://mirrors.cloud.aliyuncs.com/docker-ce/...`，新脚本会注释这类旧源，只保留当前托管源 `/etc/apt/sources.list.d/anxi-panel-docker.list`。仅改部署脚本与镜像构建文档，未改面板运行镜像、后端 API 或前端逻辑。
+
 # 2026-07-07 已完成：文档门户网站骨架上线（VitePress + GitHub Pages）
 
 - `DOCS-PORTAL-1` completed：`website/` 下手动搭建 VitePress 骨架（`npm create vitepress@latest` 实测解析到无关第三方包 `create-vitepress@0.0.6`，改用 `npm init` + `npm install -D vitepress` 手动创建），新增 `.github/workflows/docs.yml`（push `website/**` 到 `main` 时自动 `docs:build` 并部署到 GitHub Pages），用 `gh api repos/.../pages -f build_type=workflow` 开通 Pages（Source: GitHub Actions）。已推送并验证线上首页 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 返回 200。
