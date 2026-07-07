@@ -70,6 +70,19 @@ func SteamAuthLoggedIn(dataDir string) bool {
 	return strings.EqualFold(strings.TrimSpace(vals["STEAM_AUTH_COMPLETED"]), "true")
 }
 
+// SetSteamAuthLoggedIn persists whether the steam-auth service has a usable
+// login. This flag is intentionally specific to steam-auth/Galaxy invite-code
+// authorization; SteamCMD fallback success must not set it.
+func SetSteamAuthLoggedIn(dataDir string, loggedIn bool) error {
+	value := ""
+	if loggedIn {
+		value = "true"
+	}
+	return UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"STEAM_AUTH_COMPLETED": value,
+	})
+}
+
 func unquoteEnvValue(value string) string {
 	if len(value) < 2 {
 		return value

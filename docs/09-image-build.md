@@ -1,9 +1,15 @@
-# JUNIMO-APPNAME-CONTENV-FIX-1 JunimoServer 镜像启动兼容
+# JUNIMO-STATIC-INIT-FIX-1 JunimoServer 镜像启动兼容
 
-- 部分上游 `sdvd/server:1.5.0-preview.121` 镜像在 `/etc/cont-env.d/APP_NAME` 内写入裸 `DockerApp`，会导致容器 init 执行时报 `DockerApp: not found`。
-- 面板不再要求用户使用本地热修 server 镜像；实例目录会自动生成 `.local-container/cont-env/APP_NAME` 并 bind mount 到 server 容器内覆盖该文件。
+- 部分上游 `sdvd/server:1.5.0-preview.121` 镜像在 `/etc/cont-env.d`、`/etc/cont-groups.d`、`/etc/cont-users.d` 内写入裸静态值，当前 init 会把它们当 shell 命令执行。真实失败可表现为 `DockerApp: not found`、`unix:path=/tmp/dbus.base: not found`、`linux/amd64: not found`、`72: not found`。
+- 面板不再要求用户使用本地热修 server 镜像；实例目录会自动生成 `.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*` 脚本，并 bind mount 到 server 容器内覆盖对应静态值文件。
 - 该修复不改变 `SERVER_IMAGE` / `SERVER_IMAGE_CANDIDATES` 的选择逻辑，也不会影响镜像拉取兜底。离线部署时只需保证 panel 镜像更新到包含本修复的版本。
-- 排查命令：`grep -n "cont-env/APP_NAME" /path/to/instance/docker-compose.yml`，以及查看实例目录 `.local-container/cont-env/APP_NAME`。
+- 排查命令：`grep -n "cont-env\\|cont-groups\\|cont-users" /path/to/instance/docker-compose.yml`，以及查看实例目录 `.local-container/cont-env/`、`.local-container/cont-groups/`、`.local-container/cont-users/`。
+
+# INVITE-BACKGROUND-POLL-1 启动不阻塞邀请码
+
+- 面板镜像包含本次生命周期行为：启动/重启只负责把 server 拉起，邀请码在后台最多探测 20 次。探测失败不影响 IP 直连，不会关闭 server。
+- 部署覆盖镜像后，旧实例无需手动进服务器修复；下一次启动/重启会自动清理旧 SMAPI `status.json` / `players.json` 快照，并使用新的后台邀请码探测逻辑。
+- 前端通过 `/api/instances/:id/state.inviteCode` 接收后端后台探测到的邀请码；因此覆盖镜像时必须同时包含本次后端与前端构建产物。
 
 # SMAPI 运行环境预安装
 

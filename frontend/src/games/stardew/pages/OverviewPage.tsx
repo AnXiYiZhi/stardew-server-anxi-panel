@@ -65,6 +65,10 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
   const activeJobCount = dashboardData.jobs.filter(
     (j) => j.status === 'running' || j.status === 'queued',
   ).length
+  const hasActiveLifecycleJob = dashboardData.jobs.some(
+    (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
+  )
+  const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
   const hasFailedJob = dashboardData.jobs.some((j) => j.status === 'failed')
 
   useEffect(() => {
@@ -73,17 +77,13 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     }
   }, [state])
 
-  const hostOnline = (dashboardData.players?.players ?? []).some(
-    (p) => p.isHost && p.status === 'online',
-  )
-
   useEffect(() => {
-    // Startup completes when the host player is online (save loaded/playable);
-    // invite code is optional/background.
-    if (hostOnline || dashboardData.inviteCode) {
+    // Startup display follows the backend lifecycle job/state. Host player and
+    // invite code are optional runtime signals and can flicker during SMAPI boot.
+    if (!hasActiveLifecycleJob && state === 'running') {
       setPendingStartupAction(null)
     }
-  }, [hostOnline, dashboardData.inviteCode])
+  }, [hasActiveLifecycleJob, state])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -160,8 +160,8 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     const waitingForInvite =
       state === 'starting' ||
       Boolean(pendingStartupAction) ||
-      (state === 'running' && !hostOnline)
-    const waitingForStop = state === 'stopping' || pendingStopAction
+      (hasActiveLifecycleJob && !activeLifecycleIsStopping && state !== 'running')
+    const waitingForStop = state === 'stopping' || pendingStopAction || activeLifecycleIsStopping
 
     if (state === 'save_required') {
       return (

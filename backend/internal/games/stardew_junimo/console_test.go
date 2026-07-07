@@ -20,6 +20,8 @@ type fakeConsoleDocker struct {
 
 	execFunc         func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	runContainerFunc func(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
+	composeLogsFunc  func(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
+	restartFunc      func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 }
 
 func (f *fakeConsoleDocker) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
@@ -35,6 +37,20 @@ func (f *fakeConsoleDocker) ComposeExecTTY(ctx context.Context, dir, service, st
 
 func (f *fakeConsoleDocker) ComposePs(_ context.Context, _ string) (paneldocker.ComposePsResult, error) {
 	return paneldocker.ComposePsResult{}, nil
+}
+
+func (f *fakeConsoleDocker) ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
+	if f.composeLogsFunc != nil {
+		return f.composeLogsFunc(ctx, dir, opts)
+	}
+	return paneldocker.CommandResult{}, nil
+}
+
+func (f *fakeConsoleDocker) ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
+	if f.restartFunc != nil {
+		return f.restartFunc(ctx, dir, services...)
+	}
+	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
 func (f *fakeConsoleDocker) RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {

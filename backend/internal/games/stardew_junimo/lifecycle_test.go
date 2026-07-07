@@ -2,13 +2,18 @@ package stardew_junimo
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	appconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -117,6 +122,311 @@ func TestClearStaleInviteCodeKeepsFreshCode(t *testing.T) {
 	}
 	if !reflect.DeepEqual(calls[0], []string{"cat", "/tmp/invite-code.txt"}) {
 		t.Fatalf("expected cat invite call, got %#v", calls[0])
+	}
+}
+
+func TestTailServerLogsClearsSteamAuthCompletedWhenServerReportsNoAccount(t *testing.T) {
+	dir := t.TempDir()
+	if err := sjconfig.SetSteamAuthLoggedIn(dir, true); err != nil {
+		t.Fatalf("seed steam auth flag: %v", err)
+	}
+
+	dataDir := filepath.Join(dir, "store")
+	store, err := storage.Open(context.Background(), appconfig.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	fake := &fakeConsoleDocker{
+		composeLogsFunc: func(_ context.Context, _ string, _ paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
+			return paneldocker.CommandResult{
+				Stdout: "[app] Steam-auth service has no logged-in accounts\n",
+			}, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance:  storage.Instance{ID: "stardew", DataDir: dir},
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type:       "test",
+		TargetType: "instance",
+		TargetID:   "stardew",
+		Timeout:    5 * time.Second,
+		Run: func(ctx context.Context, jobCtx *jobs.Context) error {
+			runner.tailServerLogs(ctx, jobCtx, 30)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("start job: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+
+	if sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("expected steam auth flag to be cleared after no logged-in accounts log")
+	}
+}
+
+func TestTailServerLogsRefreshesSteamAuthServiceWhenCompletedFlagIsStale(t *testing.T) {
+	dir := t.TempDir()
+	if err := sjconfig.SetSteamAuthLoggedIn(dir, true); err != nil {
+		t.Fatalf("seed steam auth flag: %v", err)
+	}
+
+	dataDir := filepath.Join(dir, "store")
+	store, err := storage.Open(context.Background(), appconfig.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	var restarted []string
+	fake := &fakeConsoleDocker{
+		composeLogsFunc: func(_ context.Context, _ string, _ paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
+			return paneldocker.CommandResult{
+				Stdout: "[05:52:29 ERROR JunimoServer] Steam-auth service not ready: Could not reach steam-auth service within 30s: Steam auth service request failed after 4 attempts\n" +
+					"[05:52:29 ERROR JunimoServer] Make sure you ran: docker compose run -it steam-auth setup\n" +
+					"[05:52:29 WARN JunimoServer] Steam-auth service not ready, Galaxy features unavailable\n",
+			}, nil
+		},
+		restartFunc: func(_ context.Context, _ string, services ...string) (paneldocker.CommandResult, error) {
+			restarted = append(restarted, services...)
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance:  storage.Instance{ID: "stardew", DataDir: dir},
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type:       "test",
+		TargetType: "instance",
+		TargetID:   "stardew",
+		Timeout:    5 * time.Second,
+		Run: func(ctx context.Context, jobCtx *jobs.Context) error {
+			runner.tailServerLogs(ctx, jobCtx, 30)
+			runner.tailServerLogs(ctx, jobCtx, 30)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("start job: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+
+	if !sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("steam-auth service not ready should not clear a completed login flag")
+	}
+	if !reflect.DeepEqual(restarted, []string{"steam-auth"}) {
+		t.Fatalf("expected one steam-auth refresh, got %#v", restarted)
+	}
+}
+
+func TestWaitForReadyStateMarksSteamAuthCompletedWhenInviteCodeArrives(t *testing.T) {
+	dir := t.TempDir()
+	if sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("expected fresh dir to start without steam auth flag")
+	}
+
+	dataDir := filepath.Join(dir, "store")
+	store, err := storage.Open(context.Background(), appconfig.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	fake := &fakeConsoleDocker{
+		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+				return paneldocker.CommandResult{Stdout: "SGD7WVVL8CGJ\n", ExitCode: 0}, nil
+			}
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	runner := &lifecycleRunner{
+		lifecycle: fake,
+		instance:  storage.Instance{ID: "stardew", DataDir: dir},
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type:       "test",
+		TargetType: "instance",
+		TargetID:   "stardew",
+		Timeout:    5 * time.Second,
+		Run: func(ctx context.Context, jobCtx *jobs.Context) error {
+			if got := runner.waitForReadyState(ctx, jobCtx); got != "SGD7WVVL8CGJ" {
+				t.Fatalf("waitForReadyState() = %q", got)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("start job: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+
+	if !sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("expected invite code success to mark steam auth completed")
+	}
+}
+
+func TestPollInviteCodeAttemptsMarksAuthAndStoresPayload(t *testing.T) {
+	dir := t.TempDir()
+	store := &fakeStore{
+		instance: storage.Instance{
+			ID:            "stardew",
+			DataDir:       dir,
+			State:         storage.InstanceStateRunning,
+			DriverPhase:   "running",
+			DriverPayload: "{}",
+		},
+	}
+	catAttempts := 0
+	fake := &fakeConsoleDocker{
+		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+				catAttempts++
+				if catAttempts == 3 {
+					return paneldocker.CommandResult{Stdout: "SGD7WVVL8CGJ\n", ExitCode: 0}, nil
+				}
+				return paneldocker.CommandResult{ExitCode: 0}, nil
+			}
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	driver := New(fake, slog.Default(), nil, store)
+	runner := &lifecycleRunner{
+		driver:    driver,
+		lifecycle: fake,
+		instance:  store.instance,
+	}
+
+	if got := runner.pollInviteCodeAttempts(context.Background(), 5, time.Millisecond); got != "SGD7WVVL8CGJ" {
+		t.Fatalf("pollInviteCodeAttempts() = %q", got)
+	}
+	if catAttempts != 3 {
+		t.Fatalf("cat attempts = %d, want 3", catAttempts)
+	}
+	if !sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("expected invite code success to mark steam auth completed")
+	}
+	if got := inviteCodeFromPayload(store.instance.DriverPayload); got != "SGD7WVVL8CGJ" {
+		t.Fatalf("stored invite code = %q", got)
+	}
+}
+
+func TestPollInviteCodeAttemptsStopsAtLimitWithoutFailingServer(t *testing.T) {
+	dir := t.TempDir()
+	store := &fakeStore{
+		instance: storage.Instance{
+			ID:          "stardew",
+			DataDir:     dir,
+			State:       storage.InstanceStateRunning,
+			DriverPhase: "running",
+		},
+	}
+	catAttempts := 0
+	fake := &fakeConsoleDocker{
+		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
+			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+				catAttempts++
+			}
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	driver := New(fake, slog.Default(), nil, store)
+	runner := &lifecycleRunner{
+		driver:    driver,
+		lifecycle: fake,
+		instance:  store.instance,
+	}
+
+	if got := runner.pollInviteCodeAttempts(context.Background(), 3, time.Millisecond); got != "" {
+		t.Fatalf("pollInviteCodeAttempts() = %q, want empty", got)
+	}
+	if catAttempts != 3 {
+		t.Fatalf("cat attempts = %d, want 3", catAttempts)
+	}
+	if len(store.updated) != 0 {
+		t.Fatalf("invite polling failure must not update server state, got %#v", store.updated)
+	}
+	if sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("failed invite polling must not mark steam auth completed")
+	}
+}
+
+func TestServerLogShowsSteamAuthUnavailable(t *testing.T) {
+	cases := []struct {
+		name   string
+		output string
+		want   bool
+	}{
+		{
+			name:   "no logged in accounts",
+			output: "[app] Steam-auth service has no logged-in accounts\n",
+			want:   true,
+		},
+		{
+			name: "service not ready",
+			output: "[05:52:29 ERROR JunimoServer] Steam-auth service not ready: Could not reach steam-auth service within 30s: Steam auth service request failed after 4 attempts\n" +
+				"[05:52:29 ERROR JunimoServer] Make sure you ran: docker compose run -it steam-auth setup\n" +
+				"[05:52:29 WARN JunimoServer] Steam-auth service not ready, Galaxy features unavailable\n",
+			want: false,
+		},
+		{
+			name:   "invite code n/a alone is not enough",
+			output: "[05:52:29 INFO JunimoServer] Invite Code: n/a\n",
+			want:   false,
+		},
+		{
+			name:   "ordinary startup log",
+			output: "[05:52:29 INFO JunimoServer] Server started\n",
+			want:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := serverLogShowsSteamAuthUnavailable(tc.output)
+			if got != tc.want {
+				t.Fatalf("serverLogShowsSteamAuthUnavailable() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestServerLogShowsSteamAuthServiceNotReady(t *testing.T) {
+	output := "[05:52:29 ERROR JunimoServer] Steam-auth service not ready: Could not reach steam-auth service within 30s: Steam auth service request failed after 4 attempts\n" +
+		"[05:52:29 WARN JunimoServer] Steam-auth service not ready, Galaxy features unavailable\n"
+	if !serverLogShowsSteamAuthServiceNotReady(output) {
+		t.Fatal("expected steam-auth service-not-ready marker")
+	}
+	if serverLogShowsSteamAuthServiceNotReady("[app] Steam-auth service has no logged-in accounts\n") {
+		t.Fatal("no logged-in accounts should be handled by unavailable matcher, not service-not-ready matcher")
 	}
 }
 
