@@ -67,3 +67,11 @@ POST /api/instances/:id/mods/remote/install
 - 主路径改为**直接拼链接**：在 Mod 页先用 `findFileIdOnPage()` 从页面 DOM（仅限当前 Mod 的链接/`data-file-id`）恢复 `file_id`，直接走 `generateNexusDownloadUrl()` 拿临时 ZIP 链接，跳过点按钮和模态框。
 - 兜底路径：Mod 页没有暴露 `file_id`（或直接生成失败）时，才回退到点击 `Manual`（短按钮）→ 等 `Download mod file` 模态框出现 → 点模态里的 `Manual download` 进入下载页；`findManualDownloadButton` 收紧为严格匹配 `manual download`，新增 `findShortManualButton` 匹配短 `Manual`，两步点击带 4 秒节流避免重复弹窗。
 - 交付提醒：面板下载扩展接口会**优先复用实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 缓存**（只校验 manifest/background 存在、不校验版本）。更新扩展后需删除该缓存 ZIP，或让后端从新镜像预包/源码重新生成，用户才能拿到新版本。
+
+# NEXUS-MODPAGE-DL-2 Shadow DOM 与 data-tracking 匹配（0.1.2）
+
+- 0.1.1 的按钮匹配仍按可见文案（`manual`/短 `Manual`）在 `document.querySelectorAll` 里找，Nexus 部分改版页面把下载控件渲染进 Web Component（shadow root），文案匹配也可能撞上无关按钮。
+- 新增 `deepQueryAll()`，遍历 `document` 及所有打开的 shadow root 做选择器匹配；`findFileIdOnPage()`、`findManualDownloadControl()` 都改用它。
+- 新增 `findManualDownloadControl()`：优先按 Nexus 自带的 `data-tracking*="Download"` 属性分类下载控件，用 `manual` 关键字排除 `vortex`/`mod manager`，再按控件是否已带 `file_id` 排序；找不到才回退到旧的文案匹配 `findManualDownloadButton`/`findShortManualButton` 逻辑（已从两步点击模型改为统一的“控件是否带 file_id”判断）。
+- 新增 `openNexusFileList()` + `waitForFileIdOnPage()`：`file_id` 未就绪时主动点击/跳转到文件列表页，并轮询（含 `MutationObserver`）等待 Nexus 异步渲染出 `file_id`，超时 20 秒才回退到点击流程，避免旧版在文件列表尚未加载时误判"未找到"。
+- 交付提醒同上：更新到 0.1.2 后，实例目录已有的 ZIP 缓存 manifest 版本仍是 `0.1.1`，会被后端版本感知逻辑判定为过期并自动重新打包，无需手动清缓存。

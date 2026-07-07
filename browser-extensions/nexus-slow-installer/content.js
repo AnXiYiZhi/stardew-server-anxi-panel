@@ -31,6 +31,38 @@
     return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && style.pointerEvents !== "none";
   }
 
+  // deepQueryAll matches a selector across the whole document AND every open
+  // shadow root. Nexus's redesigned mod page renders the download controls
+  // (Vortex / Manual buttons, file links) inside Web Components, so a plain
+  // document.querySelectorAll cannot see them.
+  function deepQueryAll(selector) {
+    const results = [];
+    const visit = (root) => {
+      let matches = [];
+      try {
+        matches = Array.from(root.querySelectorAll(selector));
+      } catch {
+        matches = [];
+      }
+      for (const node of matches) {
+        results.push(node);
+      }
+      let hosts = [];
+      try {
+        hosts = Array.from(root.querySelectorAll("*"));
+      } catch {
+        hosts = [];
+      }
+      for (const host of hosts) {
+        if (host.shadowRoot) {
+          visit(host.shadowRoot);
+        }
+      }
+    };
+    visit(document);
+    return results;
+  }
+
   function findSlowDownloadButton() {
     const candidates = Array.from(document.querySelectorAll("button, a, [role='button'], input[type='button'], input[type='submit']"));
     const matches = candidates.filter((node) => {
@@ -81,7 +113,7 @@
   }
 
   function findLabeledControl(predicate) {
-    const candidates = Array.from(document.querySelectorAll("button, a, [role='button'], input[type='button'], input[type='submit']"));
+    const candidates = deepQueryAll("button, a, [role='button'], input[type='button'], input[type='submit']");
     const matches = candidates.filter((node) => isVisible(node) && predicate(nodeLabel(node)));
     matches.sort((a, b) => {
       const aRect = a.getBoundingClientRect();
@@ -91,12 +123,100 @@
     return matches[0] || null;
   }
 
-  function findManualDownloadButton() {
-    return findLabeledControl(isManualDownloadLabel);
+  // controlLabel merges visible text with tracking/aria metadata so a control
+  // can be classified even when its text is icon-only, wrapped in nested spans,
+  // or padded with screen-reader-only words.
+  function controlLabel(node) {
+    const parts = [nodeLabel(node)];
+    if (node && typeof node.getAttribute === "function") {
+      parts.push(node.getAttribute("data-tracking") || "");
+      parts.push(node.getAttribute("aria-label") || "");
+      parts.push(node.getAttribute("title") || "");
+    }
+    return parts.join(" ").replace(/\s+/g, " ").trim().toLowerCase();
   }
 
-  function findShortManualButton() {
-    return findLabeledControl(isShortManualLabel);
+  // findManualDownloadControl locates the manual-download control the way the
+  // working community userscripts do: Nexus tags every download control with a
+  // `data-tracking` value containing "Download". The manual one mentions
+  // "manual"; the mod-manager one mentions "vortex"/"mod manager". This is far
+  // more robust than matching the visible button text, which changed to a bare
+  // "Manual" and can carry hidden words. Falls back to text matching for
+  // legacy layouts.
+  function findManualDownloadControl() {
+    const controls = deepQueryAll('a[data-tracking*="Download" i], button[data-tracking*="Download" i]');
+    const manual = controls.filter((node) => {
+      if (!isVisible(node)) {
+        return false;
+      }
+      const label = controlLabel(node);
+      return /manual/.test(label) && !/vortex|mod\s*manager/.test(label);
+    });
+    // Prefer a control whose href already carries a file id (the real per-file
+    // link) over the header opener that only launches the modal.
+    manual.sort((a, b) => {
+      const aHasFile = fileIdFromUrl(elementHref(a)) ? 0 : 1;
+      const bHasFile = fileIdFromUrl(elementHref(b)) ? 0 : 1;
+      if (aHasFile !== bHasFile) {
+        return aHasFile - bHasFile;
+      }
+      return a.getBoundingClientRect().top - b.getBoundingClientRect().top;
+    });
+    if (manual[0]) {
+      return manual[0];
+    }
+    return findLabeledControl((label) => isManualDownloadLabel(label) || isShortManualLabel(label));
+  }
+
+  // openNexusFileList reveals the file id, which Nexus loads lazily. It clicks
+  // the manual-download control (opens the "Download mod file" modal / loads the
+  // files list in-page); if no control is found and we are not already on the
+  // files tab, it navigates there, where the list loads via AJAX.
+  function openNexusFileList() {
+    const control = findManualDownloadControl();
+    if (control) {
+      setStatus("正在打开 Nexus 文件列表...");
+      dispatchExtensionClick(control).catch(() => dispatchMouseLikeClick(control));
+      return true;
+    }
+    if (!/[?&]tab=files/i.test(window.location.href) && pageInfo.gameDomain && pageInfo.modId) {
+      const filesUrl = `${window.location.origin}/${pageInfo.gameDomain}/mods/${pageInfo.modId}?tab=files`;
+      setStatus("正在打开 Nexus 文件页...");
+      return navigateWithCurrentAnxiParams(filesUrl);
+    }
+    return false;
+  }
+
+  // waitForFileIdOnPage polls (and observes) the DOM until the lazily-loaded
+  // file id appears, resolving 0 on timeout.
+  function waitForFileIdOnPage(timeoutMs) {
+    return new Promise((resolve) => {
+      const deadline = Date.now() + timeoutMs;
+      let obs = null;
+      const cleanup = () => {
+        window.clearInterval(interval);
+        if (obs) {
+          obs.disconnect();
+          obs = null;
+        }
+      };
+      const tick = () => {
+        const id = findFileIdOnPage();
+        if (id) {
+          cleanup();
+          resolve(id);
+          return;
+        }
+        if (Date.now() > deadline) {
+          cleanup();
+          resolve(0);
+        }
+      };
+      const interval = window.setInterval(tick, 500);
+      obs = new MutationObserver(tick);
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      tick();
+    });
   }
 
   function elementHref(node) {
@@ -154,33 +274,6 @@
       // Fall back to event-based clicks when Nexus gives us a JS-only button.
     }
     return false;
-  }
-
-  function currentAnxiParams() {
-    const params = {};
-    try {
-      const current = new URL(window.location.href);
-      for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item"]) {
-        const value = current.searchParams.get(key);
-        if (value) {
-          params[key] = value;
-        }
-      }
-    } catch {
-      // No automation params to preserve.
-    }
-    const batch = batchParams();
-    if (batch.autoSubmit) {
-      params.anxi_auto = "1";
-      params.anxi_auto_submit = "1";
-    }
-    if (batch.batchId) {
-      params.anxi_batch = batch.batchId;
-    }
-    if (batch.itemId) {
-      params.anxi_item = batch.itemId;
-    }
-    return params;
   }
 
   function closestAdditionalFilesDialog(node) {
@@ -277,14 +370,19 @@
   // id is present yet (e.g. it only appears after opening the modal), in which
   // case the caller falls back to the button-click flow.
   function findFileIdOnPage() {
-    for (const link of Array.from(document.querySelectorAll("a[href]"))) {
+    // 1. Any current-mod link that already carries a file id — the per-file
+    //    "Manual download" links in the files tab / download modal use
+    //    `?tab=files&file_id=...`.
+    for (const link of deepQueryAll("a[href]")) {
       const id = fileIdFromUrl(link.href);
       if (id && urlIsForCurrentMod(link.href)) {
         return id;
       }
     }
-    for (const node of Array.from(document.querySelectorAll("[data-file-id], [data-fileid], mod-file-download"))) {
-      for (const attr of ["data-file-id", "data-fileid", "file-id", "fileid"]) {
+    // 2. Nexus file rows expose the id on `dd[data-id]` (see the community
+    //    archive userscript) and some widgets on `data-file-id`.
+    for (const node of deepQueryAll("dd[data-id], [data-file-id], [data-fileid], mod-file-download")) {
+      for (const attr of ["data-id", "data-file-id", "data-fileid", "file-id", "fileid"]) {
         const id = Number(node.getAttribute && node.getAttribute(attr));
         if (Number.isInteger(id) && id > 0) {
           return id;
@@ -591,13 +689,18 @@
     });
 
     if (!pageInfo.fileId) {
-      // Preferred path: recover the file id straight from the mod page and
-      // build the download link directly, skipping the fragile "Manual" button
-      // and download modal. Only navigate via the button when no file id is
-      // exposed on the page or direct generation fails.
-      const discoveredFileId = findFileIdOnPage();
-      if (discoveredFileId) {
-        pageInfo = { ...pageInfo, fileId: discoveredFileId };
+      // Preferred path: recover the file id and build the download link
+      // directly via generateNexusDownloadUrl, skipping the fragile button/
+      // navigation flow. Nexus loads the file id lazily (files tab / modal),
+      // so when it isn't present yet we open the file list and poll for it.
+      setStatus("正在识别 Nexus 文件...");
+      let fileId = findFileIdOnPage();
+      if (!fileId) {
+        openNexusFileList();
+        fileId = await waitForFileIdOnPage(20000);
+      }
+      if (fileId) {
+        pageInfo = { ...pageInfo, fileId };
         setStatus("已识别 Nexus 文件，正在直接获取 ZIP 链接...");
         const directArchive = findDirectArchiveLink();
         if (directArchive) {
@@ -610,11 +713,11 @@
           return;
         } catch (error) {
           const message = error && error.message ? error.message : String(error);
-          setStatus(`直接获取失败，改为打开下载页：${message}`);
+          setStatus(`直接获取失败，尝试点击下载入口：${message}`);
         }
       }
 
-      setStatus("正在打开 Nexus 文件下载页...");
+      // Last resort: click through the manual-download control / modal.
       const clicked = await clickManualDownloadWhenReady();
       if (!clicked) {
         setStatus("未找到下载入口，请刷新页面后重试。");
@@ -837,54 +940,37 @@
         if (clicking) {
           return false;
         }
-        // Step 2 (and legacy single-step layout): the real "Manual download"
-        // control — the old header button, or the button inside the modal that
-        // the short "Manual" button opens. This performs the actual download.
-        const button = findManualDownloadButton();
-        if (button) {
-          clicking = true;
-          setStatus("已找到 Manual download，正在进入下载页...");
-          const href = elementHref(button);
-          if (href && navigateWithCurrentAnxiParams(href)) {
-            window.setTimeout(() => {
-              void clickAdditionalFilesDownloadIfPresent();
-            }, 500);
-            resolve(true);
-            return true;
-          }
-          chrome.runtime.sendMessage({ type: "TRIGGER_NEXUS_MANUAL_DOWNLOAD", params: currentAnxiParams() })
-            .then(() => {
+        const control = findManualDownloadControl();
+        if (control) {
+          const href = elementHref(control);
+          // A control that points at a specific file is the real download link.
+          if (fileIdFromUrl(href)) {
+            clicking = true;
+            setStatus("已找到下载链接，正在进入下载页...");
+            if (navigateWithCurrentAnxiParams(href)) {
               window.setTimeout(() => {
                 void clickAdditionalFilesDownloadIfPresent();
               }, 500);
               resolve(true);
-            })
-            .catch(() => {
-              dispatchExtensionClick(button)
-                .then(() => {
-                  window.setTimeout(() => {
-                    void clickAdditionalFilesDownloadIfPresent();
-                  }, 500);
-                  resolve(true);
-                })
-                .catch(() => {
-                  dispatchMouseLikeClick(button);
-                  window.setTimeout(() => {
-                    void clickAdditionalFilesDownloadIfPresent();
-                  }, 500);
-                  resolve(true);
-                });
-            });
-          return true;
-        }
-        // Step 1: the current Nexus mod page only shows a short "Manual" button
-        // that opens the "Download mod file" modal. Click it (throttled) and
-        // keep observing so the modal's "Manual download" gets picked up above.
-        const shortButton = findShortManualButton();
-        if (shortButton && Date.now() - lastShortClickAt > 4000) {
-          lastShortClickAt = Date.now();
-          setStatus("正在打开 Nexus 下载弹窗...");
-          dispatchExtensionClick(shortButton).catch(() => dispatchMouseLikeClick(shortButton));
+              return true;
+            }
+            dispatchExtensionClick(control)
+              .catch(() => dispatchMouseLikeClick(control))
+              .finally(() => {
+                window.setTimeout(() => {
+                  void clickAdditionalFilesDownloadIfPresent();
+                }, 500);
+                resolve(true);
+              });
+            return true;
+          }
+          // Otherwise it's the header opener: click it (throttled) to reveal the
+          // file list / modal, then keep observing for the real download link.
+          if (Date.now() - lastShortClickAt > 4000) {
+            lastShortClickAt = Date.now();
+            setStatus("正在打开 Nexus 文件列表...");
+            dispatchExtensionClick(control).catch(() => dispatchMouseLikeClick(control));
+          }
           return false;
         }
         if (Date.now() > deadline) {

@@ -1,3 +1,7 @@
+# 2026-07-07 已完成：Nexus 浏览器扩展适配 Shadow DOM 下载入口
+
+- `NEXUS-MODPAGE-DL-2` completed：扩展 `0.1.1 → 0.1.2`，新增 `deepQueryAll()` 遍历 shadow root 定位下载控件，新增按 `data-tracking` 属性分类的 `findManualDownloadControl()`，新增 `openNexusFileList()`/`waitForFileIdOnPage()` 轮询 `file_id`，替代旧的两步按钮点击模型。仅改浏览器扩展，未改后端接口；发布新镜像后旧实例扩展缓存 ZIP 会被已有版本感知逻辑自动刷新。已验证 `node --check` 和 `go test ./internal/games/stardew_junimo -run TestEnsureNexusInstallerExtensionZip`。
+
 # 2026-07-07 已完成：JunimoServer 静态 init 文件兼容挂载
 
 - `JUNIMO-STATIC-INIT-FIX-1` completed：为 server 容器新增 `.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*` 兼容挂载，批量遮罩上游 `sdvd/server:1.5.0-preview.121` 中裸静态值被 init 当命令执行的问题。

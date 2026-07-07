@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Stardew Anxi Nexus Installer",
   "description": "Capture Nexus Mods slow-download ZIP links and send them to a Stardew Anxi Panel server.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "action": {
     "default_popup": "popup.html",
     "default_title": "Anxi Nexus Installer"

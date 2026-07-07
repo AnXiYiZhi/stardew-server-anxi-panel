@@ -29,7 +29,7 @@
       method: "GET",
       credentials: "include",
       headers: {
-        "X-Anxi-Nexus-Installer": "0.1.1"
+        "X-Anxi-Nexus-Installer": "0.1.2"
       }
     });
     if (!response.ok) {
@@ -80,7 +80,7 @@
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Anxi-Nexus-Installer": "0.1.1"
+        "X-Anxi-Nexus-Installer": "0.1.2"
       },
       body: JSON.stringify({
         url,

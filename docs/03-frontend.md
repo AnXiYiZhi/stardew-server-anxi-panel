@@ -1601,3 +1601,11 @@ npm.cmd run dev
 - 请求失败时右侧栏保留上一份样本，避免短暂 Docker/API 波动导致数值闪回空状态；页面卸载时清理 timer。
 - 影响文件：`frontend/src/games/stardew/StardewPanel.tsx`。接口契约不变，继续使用现有 metrics API。
 - 验证：`cd frontend; npm.cmd run build`；Browser QA 打开 `qa-layout.html?state=running`，确认右侧栏 CPU/内存/磁盘显示 mock metrics 百分比而不是空值。
+# NEXUS-MODPAGE-DL-2 Shadow DOM 与 data-tracking 匹配（扩展 0.1.1 → 0.1.2）
+
+- `NEXUS-MODPAGE-DL-1`（0.1.1）按可见按钮文案（`manual`/短 `Manual`）在 `document.querySelectorAll` 里找下载控件，Nexus 部分改版页面把下载控件渲染进 Web Component（shadow root），纯文案匹配也可能撞上无关按钮。
+- `content.js` 新增 `deepQueryAll()` 遍历 `document` 及所有打开的 shadow root；`findFileIdOnPage()`、新增的 `findManualDownloadControl()` 都改用它。
+- `findManualDownloadControl()` 优先按 Nexus 自带的 `data-tracking*="Download"` 属性分类下载控件（用 `manual` 关键字排除 `vortex`/`mod manager`），按是否已带 `file_id` 排序；找不到才回退旧的文案匹配。旧的两步“短按钮开模态 → 模态内点击”流程统一改成按控件是否带 `file_id` 判断（带 `file_id` 直接当下载链接跳转，否则当列表/模态开关点击）。
+- 新增 `openNexusFileList()` + `waitForFileIdOnPage()`：`file_id` 未就绪时主动打开文件列表/跳转文件页，并轮询（含 `MutationObserver`）等待 Nexus 异步渲染出 `file_id`，超时 20 秒才回退到点击流程。
+- 仅改 `browser-extensions/nexus-slow-installer/content.js`，并同步 `manifest.json`、`background.js`、`panel-bridge.js` 的版本/请求头到 `0.1.2`；未改后端接口。扩展 0.1.1 → 0.1.2 触发后端 `EnsureNexusInstallerExtensionZip` 版本感知逻辑，旧实例缓存 ZIP 会自动重新打包，无需手动清缓存。
+- 验证：`node --check browser-extensions/nexus-slow-installer/content.js background.js panel-bridge.js`；`cd backend; go test ./internal/games/stardew_junimo -run TestEnsureNexusInstallerExtensionZip`。
