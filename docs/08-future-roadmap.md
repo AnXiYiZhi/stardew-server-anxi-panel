@@ -1,7 +1,7 @@
 # 2026-07-07 已完成：文档门户网站骨架上线（VitePress + GitHub Pages）
 
 - `DOCS-PORTAL-1` completed：`website/` 下手动搭建 VitePress 骨架（`npm create vitepress@latest` 实测解析到无关第三方包 `create-vitepress@0.0.6`，改用 `npm init` + `npm install -D vitepress` 手动创建），新增 `.github/workflows/docs.yml`（push `website/**` 到 `main` 时自动 `docs:build` 并部署到 GitHub Pages），用 `gh api repos/.../pages -f build_type=workflow` 开通 Pages（Source: GitHub Actions）。已推送并验证线上首页 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 返回 200。
-- 待办：内容迁移（方案第三节映射表）尚未做，目前线上只有占位首页，`guide/`、`deploy/`、`maintain/`、`faq/` 各页面均待从 `README.md` / `docs/user-guide/` 搬运改写。详见 `docs/11-docs-portal.md`。
+- `DOCS-PORTAL-2` completed：内容迁移（方案第三节映射表）已完成，`guide/`（2 页）、`deploy/`（4 页）、`maintain/`（4 页，比原方案多一页 `admin.md`）、`faq/`（1 页）共 11 个内容页从 `README.md` / `docs/user-guide/` 搬运改写完毕，`npm run docs:build` 验证无死链。待办：推送到 `main` 触发线上部署（当前线上仍是占位首页）。详见 `docs/11-docs-portal.md`。
 
 # 2026-07-07 已完成：Nexus ZIP 下载断点续传与卡死检测
 

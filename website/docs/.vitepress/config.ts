@@ -41,7 +41,8 @@ export default defineConfig({
           items: [
             { text: '更新面板', link: '/maintain/update' },
             { text: '存档与备份', link: '/maintain/saves-backup' },
-            { text: 'Mod 管理', link: '/maintain/mods' }
+            { text: 'Mod 管理', link: '/maintain/mods' },
+            { text: '面板管理与诊断', link: '/maintain/admin' }
           ]
         }
       ],

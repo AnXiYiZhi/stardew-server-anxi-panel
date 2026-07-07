@@ -2,9 +2,9 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-2、4-7 已完成，门户网站骨架已上线；步骤 3（内容迁移）待实施**。以下决策已和用户对齐：
+状态：**步骤 1-7 全部完成，门户网站首个内容版本待推送**。以下决策已和用户对齐：
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（目前只有占位首页，尚无实际内容页面）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前线上仍是占位首页，内容页面已写好但要等下一次推送才会更新到线上）
 
 | 决策项 | 结论 |
 | --- | --- |
@@ -48,12 +48,13 @@ website/docs/
 ├─ maintain/
 │  ├─ update.md                更新/强制更新/更新脚本本身
 │  ├─ saves-backup.md          存档新建/上传/备份/恢复
-│  └─ mods.md                  Mod 上传/Nexus 安装/导出
+│  ├─ mods.md                  Mod 上传/Nexus 安装/导出
+│  └─ admin.md                 面板用户与权限/日志诊断/安全维护清单（实施时新增，原方案未列）
 └─ faq/
    └─ index.md                 故障排查（Steam Guard、端口不通、启动失败等）
 ```
 
-## 三、内容来源映射
+## 三、内容来源映射（已完成）
 
 不重新创作内容，而是把已有材料改写、拆分成门户页面（Markdown 搬运 + 排版微调，语气保持面向新手）：
 
@@ -65,8 +66,13 @@ website/docs/
 | `deploy/quick-start.md` | `README.md` "推荐：一键启动脚本" + `docs/user-guide/getting-started.md` 第二节 |
 | `deploy/nas.md` | `README.md` "NAS 图形化 Docker Compose 部署" |
 | `deploy/ports.md` | `README.md` "云服务器安全组" + `docs/user-guide/getting-started.md` 第五节 |
-| `maintain/*.md` | `docs/user-guide/maintenance.md` 按主题拆分 |
-| `faq/index.md` | `docs/user-guide/troubleshooting.md` |
+| `maintain/update.md` | `docs/user-guide/maintenance.md` "更新面板" |
+| `maintain/saves-backup.md` | `docs/user-guide/maintenance.md` "存档备份"、"计划重启" |
+| `maintain/mods.md` | `docs/user-guide/maintenance.md` "Mod 管理" |
+| `maintain/admin.md` | `docs/user-guide/maintenance.md` "面板用户与权限"、"日志与诊断"、"安全维护清单"（原方案的 `maintain/*.md` 三页装不下这些内容，实施时新增第四页，并同步补了 `config.ts` 的 sidebar） |
+| `faq/index.md` | `docs/user-guide/troubleshooting.md` 全文 |
+
+已用 `npm run docs:build` 验证过全部页面互相链接无死链、构建通过。
 
 `docs/user-guide/` 三份文档定位不变：继续作为仓库内 Markdown 速查（GitHub 网页直接可读）。门户网站是面向公网用户的正式入口，内容更完整、图文更友好；后续任一侧更新，另一侧应同步核对，避免两处描述不一致（尤其是端口号、脚本地址、系统要求这类会变的数值）。
 
@@ -159,9 +165,9 @@ export default defineConfig({
 })
 ```
 
-### 步骤 3：搭建目录并迁移内容
+### 步骤 3：搭建目录并迁移内容（已完成）
 
-按第三节的映射表，在 `website/docs/`（或脚手架生成的默认内容目录，需与 `config.ts` 的 `srcDir` 对应）下创建对应 `.md` 文件，把 README 和 `docs/user-guide/` 里的对应段落改写进去。这一步是纯内容搬运工作，建议先把骨架（步骤 1-2、6-9）跑通、确认部署链路没问题后再逐页填内容，避免在还没验证部署成功前投入大量写作时间。
+按第三节的映射表，在 `website/docs/` 下创建了 10 个内容页（含新增的 `maintain/admin.md`），把 README 和 `docs/user-guide/` 里的对应段落改写进去。`npm run docs:build` 验证全部页面构建通过、内部链接无死链。
 
 ### 步骤 4：本地预览
 
