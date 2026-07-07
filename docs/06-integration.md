@@ -576,6 +576,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 新增扩展包下载接口：`GET /api/instances/:id/mods/nexus/extension/download`。
 - 请求要求已登录面板；响应为 `application/zip`，`Content-Disposition` 文件名固定为 `anxi-nexus-installer.zip`。
 - 后端优先返回实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 中已有且合法的预打包 ZIP；不存在时优先复制镜像/仓库中的 `browser-extensions/anxi-nexus-installer.zip`，预包不存在或损坏时才兜底生成。合法性至少要求 ZIP 根目录包含 `manifest.json` 和 `background.js`。
+- 复用是**版本感知**的：只有缓存 / 预包 ZIP 里 `manifest.json` 的版本与源码 `manifest.json` 版本完全一致才复用，否则从源码重新打包。升级扩展（bump manifest 版本）后用户重新下载即可拿到新版，无需手动清缓存。
 - 前端 `下载浏览器扩展` 按钮只负责下载扩展包；安装后仍需用户在 Chrome/Edge 扩展管理页加载解压目录，再回面板点击 `检测扩展` 完成地址同步与连通校验。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`；`cd frontend; npm.cmd run build`。
 # NEWGAME-PLAYERLIMIT-1 自定义新存档人数上限联调契约

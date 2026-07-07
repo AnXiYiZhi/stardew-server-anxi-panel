@@ -389,7 +389,7 @@ async function postRemoteInstall(downloadUrl, capture) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Anxi-Nexus-Installer": "0.1.0"
+        "X-Anxi-Nexus-Installer": "0.1.1"
       },
       body: JSON.stringify({ url: downloadUrl, mod })
     }, 30000);

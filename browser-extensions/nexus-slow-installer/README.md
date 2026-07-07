@@ -60,3 +60,10 @@ POST /api/instances/:id/mods/remote/install
 
 - Nexus 出现 “Additional files required” 弹窗时，扩展会自动点击弹窗里的 `Download` 按钮继续下载流程。
 - 这个自动点击只在扩展已经开始捕获时启用，并且只匹配包含前置提示文案的弹窗容器，避免误点普通页面按钮。
+
+# NEXUS-MODPAGE-DL-1 适配 Nexus 新版下载入口（0.1.1）
+
+- Nexus 改版后，Mod 页头部的下载按钮从 `Manual download` 变成短标签 `Manual`（旁边是 `Vortex`，位于 `Download:` 下方），点击后对**有依赖的 Mod**会先弹出 `Download mod file` 模态框，框内才是真正的 `Manual download`；对**无依赖的 Mod**则可能直接进入下载。旧扩展只匹配 `Manual download` 文案，导致在 Mod 页报“未找到 Manual download 按钮”。
+- 主路径改为**直接拼链接**：在 Mod 页先用 `findFileIdOnPage()` 从页面 DOM（仅限当前 Mod 的链接/`data-file-id`）恢复 `file_id`，直接走 `generateNexusDownloadUrl()` 拿临时 ZIP 链接，跳过点按钮和模态框。
+- 兜底路径：Mod 页没有暴露 `file_id`（或直接生成失败）时，才回退到点击 `Manual`（短按钮）→ 等 `Download mod file` 模态框出现 → 点模态里的 `Manual download` 进入下载页；`findManualDownloadButton` 收紧为严格匹配 `manual download`，新增 `findShortManualButton` 匹配短 `Manual`，两步点击带 4 秒节流避免重复弹窗。
+- 交付提醒：面板下载扩展接口会**优先复用实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 缓存**（只校验 manifest/background 存在、不校验版本）。更新扩展后需删除该缓存 ZIP，或让后端从新镜像预包/源码重新生成，用户才能拿到新版本。

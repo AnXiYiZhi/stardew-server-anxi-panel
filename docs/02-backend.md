@@ -778,6 +778,7 @@ docker run --rm `
 
 - 新增 `GET /api/instances/:id/mods/nexus/extension/download`，任意已登录用户可下载面板打包好的 Nexus 普通用户浏览器扩展 ZIP。
 - 后端下载接口采用折中策略：优先复用实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 中已有且合法的预打包 ZIP；如果文件不存在，会优先复制镜像/仓库中的预打包 `browser-extensions/anxi-nexus-installer.zip`；如果预包也不存在或损坏，才从 `browser-extensions/nexus-slow-installer` 源码重新生成。
+- 缓存与预包复用现在是**版本感知**的：`EnsureNexusInstallerExtensionZip()` 会读取源码 `manifest.json` 的 `version` 作为期望版本，只有实例缓存 / 预包 ZIP 内 `manifest.json` 的版本与之**完全一致**时才复用，否则视为过期并从源码重新打包。这样每次升级扩展（bump `manifest.json` 版本）后，用户重新下载即可拿到新版，无需手动删缓存。源码不可用时退回仅结构校验的旧行为。
 - ZIP 根目录直接包含 `manifest.json`、`background.js`、`content.js` 等扩展文件，并额外写入 `安装说明.txt`。玩家解压后选择该解压目录即可加载扩展，不需要再进入内层文件夹。
 - Docker 镜像运行层会复制 `browser-extensions/` 到 `/app/browser-extensions/`，并在构建时生成 `/app/browser-extensions/anxi-nexus-installer.zip`；正式部署优先使用这个预打包 ZIP。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
