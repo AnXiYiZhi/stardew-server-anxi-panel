@@ -38,6 +38,14 @@ func SetActiveSave(dataDir, saveName string) error {
 		return fmt.Errorf("存档名称不合法: %w", err)
 	}
 	clearNewGamePendingMarker(dataDir)
+	return writeGameloaderPointer(dataDir, saveName)
+}
+
+// writeGameloaderPointer writes junimohost.gameloader.json's SaveNameToLoad
+// without touching the new-game-pending marker, for internal callers that
+// are merely correcting the pointer to match reality rather than switching
+// the active save.
+func writeGameloaderPointer(dataDir, saveName string) error {
 	cfgDir := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		return fmt.Errorf("create gameloader dir: %w", err)
@@ -126,6 +134,37 @@ func listSaveDirs(dataDir string) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// suffixMatchSaveDir recovers the real save directory when a gameloader
+// pointer name has no matching folder. JunimoServer occasionally writes the
+// wrong farm-name prefix into junimohost.gameloader.json while still using a
+// correctly-generated unique numeric suffix for the folder it actually
+// created (e.g. pointer "test_443102605" but real folder "test2_443102605").
+// Returns the matching folder name if exactly one candidate shares the same
+// trailing "_<suffix>", or "" if the pointer has no suffix or the match is
+// ambiguous.
+func suffixMatchSaveDir(dataDir, pointerName string) string {
+	idx := strings.LastIndex(pointerName, "_")
+	if idx < 0 || idx == len(pointerName)-1 {
+		return ""
+	}
+	suffix := pointerName[idx:] // includes the leading "_"
+	names, err := listSaveDirs(dataDir)
+	if err != nil {
+		return ""
+	}
+	match := ""
+	for _, name := range names {
+		if name == pointerName || !strings.HasSuffix(name, suffix) {
+			continue
+		}
+		if match != "" {
+			return "" // ambiguous: more than one candidate shares the suffix
+		}
+		match = name
+	}
+	return match
 }
 
 // readSaveInfo reads metadata from a single save folder and returns a SaveInfo.
@@ -983,7 +1022,17 @@ func GetActiveSaveName(dataDir string) string {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return ""
 	}
-	return cfg.SaveNameToLoad
+	name := cfg.SaveNameToLoad
+	if name == "" {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(savesDir(dataDir), "Saves", name)); err == nil {
+		return name
+	}
+	if fixed := suffixMatchSaveDir(dataDir, name); fixed != "" {
+		return fixed
+	}
+	return name
 }
 
 // reservedSaveNames are route path segments that would conflict with

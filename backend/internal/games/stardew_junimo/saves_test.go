@@ -598,6 +598,40 @@ func TestDeleteSave_ActiveSaveCleanup(t *testing.T) {
 	}
 }
 
+func TestGetActiveSaveName_RecoversFromWrongPrefix(t *testing.T) {
+	dir := t.TempDir()
+	// JunimoServer wrote the wrong farm-name prefix into gameloader.json
+	// ("test" instead of "test2") while the folder it actually created kept
+	// the same numeric suffix.
+	realSave := filepath.Join(dir, ".local-container", "saves", "Saves", "test2_443102605")
+	if err := os.MkdirAll(realSave, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetActiveSave(dir, "test_443102605"); err != nil {
+		t.Fatal(err)
+	}
+	if got := GetActiveSaveName(dir); got != "test2_443102605" {
+		t.Fatalf("active save = %q, want recovered name test2_443102605", got)
+	}
+}
+
+func TestGetActiveSaveName_AmbiguousSuffixNotRecovered(t *testing.T) {
+	dir := t.TempDir()
+	savesRoot := filepath.Join(dir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(filepath.Join(savesRoot, "test2_443102605"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(savesRoot, "test3_443102605"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetActiveSave(dir, "test_443102605"); err != nil {
+		t.Fatal(err)
+	}
+	if got := GetActiveSaveName(dir); got != "test_443102605" {
+		t.Fatalf("active save = %q, want unresolved pointer test_443102605 when ambiguous", got)
+	}
+}
+
 func TestValidateSaveExists(t *testing.T) {
 	dir := t.TempDir()
 	savePath := filepath.Join(dir, ".local-container", "saves", "Saves", "RealSave")

@@ -1617,3 +1617,10 @@ npm.cmd run dev
 - 新增 `openNexusFileList()` + `waitForFileIdOnPage()`：`file_id` 未就绪时主动打开文件列表/跳转文件页，并轮询（含 `MutationObserver`）等待 Nexus 异步渲染出 `file_id`，超时 20 秒才回退到点击流程。
 - 仅改 `browser-extensions/nexus-slow-installer/content.js`，并同步 `manifest.json`、`background.js`、`panel-bridge.js` 的版本/请求头到 `0.1.2`；未改后端接口。扩展 0.1.1 → 0.1.2 触发后端 `EnsureNexusInstallerExtensionZip` 版本感知逻辑，旧实例缓存 ZIP 会自动重新打包，无需手动清缓存。
 - 验证：`node --check browser-extensions/nexus-slow-installer/content.js background.js panel-bridge.js`；`cd backend; go test ./internal/games/stardew_junimo -run TestEnsureNexusInstallerExtensionZip`。
+
+# INVITE-COPY-CLIPBOARD-FALLBACK-1 邀请码/局域网 IP 复制按钮在非 HTTPS 下失效
+
+- 现象：面板通常经 `http://局域网或公网IP:端口` 访问（非 HTTPS），`navigator.clipboard` 在这种非安全上下文下是 `undefined`；`InviteCodeCard.tsx` 原先直接调用 `navigator.clipboard.writeText(...)`，对 `undefined` 调用方法会同步抛异常，点击处理函数当场中断，复制按钮表现为"点了没反应"。
+- `InviteCodeCard.tsx` 新增 `copyText(text)`：仅在 `window.isSecureContext` 为真时用 `navigator.clipboard`，否则/失败时降级用隐藏 `<textarea>` + `document.execCommand('copy')`，两条路径都有 try/catch。邀请码与局域网 IP 两个复制按钮改用它。
+- 影响文件：`frontend/src/games/stardew/InviteCodeCard.tsx`。
+- 验证：`cd frontend; npm.cmd run build`。

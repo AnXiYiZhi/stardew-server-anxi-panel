@@ -718,13 +718,16 @@ docker run --rm `
 - 验证：`go test ./internal/games/stardew_junimo -run "WriteServerSettings|WriteInitConfig|ValidateNewGameConfig"`、`go test ./internal/games/stardew_junimo ./internal/web` 通过；SMAPI mod 通过 Docker + `/p:GamePath=/game` 编译通过。
 
 
-# SAVE-BACKUP-POLICY-1 ????
+# SAVE-BACKUP-POLICY-1 存档自动备份策略
 
-- ??????????????? `.local-container/backups/saves/policy.json`???????????????????`dailyRetentionDays=3`??? 14 ????????????????? 24 ????? 168 ???
-- ??/?????`POST /api/instances/:id/saves/:name/backup` ?????`GET|PUT /api/instances/:id/saves/backups/policy` ??/?????`GET /api/instances/:id/saves/backups` ??? `policy` ? `maintenance`??????????/?????
-- ??????????????????????????? `latest_<save>.zip`??????? `scheduled_<save>.zip`?????? `daily_<save>_<YYYYMMDD>.zip`??????????????????
-- SMAPI Control ? `GameLoop.Saved` ?? `.local-container/control/save-events/*.json`???????????? latest/daily ??????????
-- ???`go test ./internal/games/stardew_junimo ./internal/web` ???SMAPI Control DLL ??????? embedded mod?
+> 说明：本节原始记录在历史保存中损坏为不可逆的 `?` 占位符乱码（区别于 `MOJIBAKE-FIX-1` 那种可逆编码错位，本次已无法还原原文），以下依据当前代码重新整理。
+
+- 新增可配置的存档自动备份策略 `BackupPolicy`，持久化在 `.local-container/backups/saves/policy.json`：`gameSaveBackups`（游戏保存后自动更新最新备份，默认开）、`dailySnapshots`（每日快照，默认开）、`dailyRetentionDays`（每日快照保留天数，默认 3，上限 14）、`scheduledBackups`（定时备份开关，默认关）。定时触发频率最初用小时间隔表示，字段现仍以 `scheduledIntervalHours` 保留为只读兼容项；实际调度早已改为按小时定点触发（`scheduledHour`），详见下一节 `SAVE-BACKUP-SCHEDULE-HOUR-1`。
+- 新增接口：`POST /api/instances/:id/saves/:name/backup`（管理员手动备份指定存档）；`GET|PUT /api/instances/:id/saves/backups/policy`（读取/更新策略，仅管理员）；`GET /api/instances/:id/saves/backups` 返回备份列表、当前 `policy`，以及本次请求顺带执行的 `maintenance` 结果（消费的存档事件数、新建的备份文件名列表）。
+- 三类备份文件按固定规则命名：`latest_<存档名>.zip`（游戏保存后最新一份，覆盖式）、`scheduled_<存档名>.zip`（定时备份，覆盖式）、`daily_<存档名>_<YYYYMMDD>.zip`（按日期保留，超过 `dailyRetentionDays` 天数的旧快照会被自动清理）。
+- SMAPI Control mod（`embedded/smapi-mod-src/ModEntry.cs`）在游戏内 `GameLoop.Saved` 触发时，把存档事件写入 `.local-container/control/save-events/*.json`；后端 `RunBackupMaintenance()` 在每次请求 `GET /api/instances/:id/saves/backups`（即前端打开"存档"页或刷新备份列表）时消费这些事件文件并驱动 latest/daily 备份生成，不依赖独立的后台定时任务。
+- 影响文件：`backend/internal/games/stardew_junimo/saves.go`（`BackupPolicy`、`ReadBackupPolicy`/`WriteBackupPolicy`、`BackupSave`/`BackupLatest`/`BackupScheduled`/`BackupDailySnapshot`、`RunBackupMaintenance`）、`backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ModEntry.cs`、`backend/internal/web/lifecycle_handlers.go`。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`；SMAPI Control DLL 改动需要重新编译嵌入才能让游戏内保存事件生效。
 
 # SAVE-BACKUP-SCHEDULE-HOUR-1 定时备份整点设置
 
@@ -867,4 +870,12 @@ docker run --rm `
 - 同一包部分目录已存在、部分目录缺失时，远程/Nexus 安装会导入缺失目录并跳过已存在目录，用于修复浏览器扩展缓存/刷新导致重复提交时的误失败。
 - 新建 Mod 下载类 job 的 `displayName` 改为 Mod 名在前，例如 `Ridgeside Village · mod_remote_install`，任务类型仍保留在 `type` 字段。
 - 影响文件：`backend/internal/games/stardew_junimo/mods.go`、`remote_install.go`、`nexus_install.go`、`backend/internal/web/lifecycle_handlers.go` 及测试。
+
+# SAVE-POINTER-SUFFIX-HEAL-1 gameloader 指针存档名前缀写错的自愈修复
+
+- 现场实证：JunimoServer 官方 Mod 新建存档时会把 `junimohost.gameloader.json` 的 `SaveNameToLoad` 前缀写错（如指针 `test_443102605`，真实目录却是 `test2_443102605`，两者数字后缀一致），导致"当前激活存档"卡片农场主/日期/文件大小等字段永久显示"未知"，新建存档轮询也会误报"未检测到新存档目录"超时告警（尽管存档已生成、可正常联机）。
+- `saves.go` 新增 `suffixMatchSaveDir()`：指针目录不存在时，按数字后缀在 `Saves/` 下找唯一匹配的真实目录；歧义（多个候选）时不纠正。`GetActiveSaveName()`（15+ 处调用方）接入该只读兜底，指针目录存在时行为不变。
+- `lifecycle.go` `sendNewGameCommand()` 检测到指针目录不存在时，用同一兜底找到真实目录后调用新拆出的 `writeGameloaderPointer()` 持久化修正指针，按修正后的名字继续走正常成功路径，不再误报超时。
+- 影响文件：`backend/internal/games/stardew_junimo/saves.go`、`lifecycle.go`、`saves_test.go`。详见 `docs/backend-handoff/backend-handoff-2026-07-07.md` 的 `SAVE-POINTER-SUFFIX-HEAL-1`。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo -run "GetActiveSaveName|DeleteSave_ActiveSaveCleanup"`；`go build ./... && go vet ./... && go test ./...`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。

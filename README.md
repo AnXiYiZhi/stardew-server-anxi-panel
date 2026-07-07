@@ -12,6 +12,31 @@
 
 > 当前状态：**Milestone 14: Release Candidate 已完成**。Milestone 0-14 已完成。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry、Stardew Junimo 的工作目录准备、Steam 认证、游戏安装、服务器生命周期、存档管理、Mod 管理、控制台命令、多阶段 Docker 镜像构建、操作审计、日志脱敏、备份恢复、健康检查诊断、版本信息、支持包导出和冒烟测试脚本。
 
+## 新手先看
+
+如果你只是想把星露谷物语服务器部署到一台云服务器或 NAS 上，不需要从源码构建开始看。
+
+推荐阅读顺序：
+
+1. [新手使用指南](docs/user-guide/getting-started.md)
+2. [故障排查](docs/user-guide/troubleshooting.md)
+3. [日常维护](docs/user-guide/maintenance.md)
+
+普通服主只需要记住一个入口：
+
+```bash
+curl -fsSL -o run.sh https://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+```
+
+运行后会出现菜单，按菜单一步一步做即可：
+
+1. 安装/检测 Docker 环境。
+2. 执行一键部署。
+3. 打开 Web 管理面板，创建管理员账号。
+4. 安装游戏、完成 Steam Guard 验证。
+5. 新建或上传自己的正式农场存档。
+6. 复制邀请码或局域网直连地址给玩家。
+
 ## GitHub 描述
 
 ```text
@@ -774,7 +799,7 @@ docker build -t stardew-server-anxi-panel:1.0.0 `
 
 ## 文档
 
-继续开发前建议阅读：
+普通用户部署和使用请看"新手先看"一节；继续开发前建议阅读：
 
 - [项目总纲](docs/01-project-overview.md)
 - [后端文档](docs/02-backend.md)

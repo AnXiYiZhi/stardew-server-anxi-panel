@@ -52,3 +52,24 @@
 ## 下一步注意事项
 - 本次未改动后端接口和面板前端 React 代码，纯浏览器扩展内部适配；发布新镜像后旧实例缓存 ZIP 会被后端版本感知逻辑自动刷新，无需手动清理。
 - 如果 Nexus 后续继续改版页面结构，优先扩展 `data-tracking` 关键字匹配和 shadow root 遍历深度，避免退回纯文案匹配（改版后文案本身也不稳定）。
+
+# INVITE-COPY-CLIPBOARD-FALLBACK-1 邀请码/局域网 IP 复制按钮在非 HTTPS 下失效
+
+## 背景
+- 用户反馈"邀请码"和"局域网邀请"两个复制按钮点击没有任何反应，连报错提示都不出现。
+- `InviteCodeCard.tsx` 的 `handleCopyInvite`/`handleCopyPublicIP` 之前直接调用 `navigator.clipboard.writeText(...)`。`navigator.clipboard` 只在安全上下文（HTTPS 或 `localhost`）下才存在；面板通常通过 `http://局域网或公网IP:端口` 直接访问（非 HTTPS），此时 `navigator.clipboard` 是 `undefined`，对它调用 `.writeText` 会**同步抛异常**，点击处理函数当场中断，既不会进入 `.then` 的成功分支也不会进入失败分支，`copyError` 状态都不会被置位——表现就是"点了没反应"。
+
+## 改了什么
+- `InviteCodeCard.tsx` 新增 `copyText(text)` 辅助函数：优先用 `navigator.clipboard`（仅当 `window.isSecureContext` 为真时），失败或不可用则降级用隐藏 `<textarea>` + `document.execCommand('copy')` 的传统方案；两条路径都包了 try/catch，不会再抛出未捕获异常。
+- `handleCopyInvite`/`handleCopyPublicIP` 改为调用 `copyText()` 并根据返回的布尔值更新"已复制"/复制失败提示。
+
+## 影响文件
+- `frontend/src/games/stardew/InviteCodeCard.tsx`
+
+## 如何验证
+- `cd frontend; npm.cmd run build`（`tsc -b && vite build` 均通过）。
+- 真机：通过 `http://IP:端口`（非 HTTPS）访问面板，点击邀请码/局域网 IP 的"复制"按钮，应能正常复制并显示"已复制"，不再无反应。
+
+## 下一步注意事项
+- 尚未部署到用户的飞牛 NAS（仅本地代码仓库已修复+构建通过），部署由用户自行按 `docs/09-image-build.md` 流程处理。
+- 如果以后其它页面也需要复制到剪贴板，直接复用这个降级模式，不要再裸调用 `navigator.clipboard.writeText`。
