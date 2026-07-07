@@ -1,3 +1,25 @@
+# FE-MOD-BATCH-ERROR-FOCUS-1 Nexus 批量安装失败定位
+
+## 背景
+- 扩展批量安装主 Mod + 前置 Mod 时，旧前端只要任一关联后端 job 进入 failed/canceled，就把整个搜索卡片按钮显示成失败；按钮本身还是 disabled，用户无法从按钮直接跳到出错任务和日志。
+- 当后端旧逻辑因为重复 `UniqueID` 把已安装 Mod 标成 failed 时，前端也没有用最新 `GET /mods` 结果兜底校正，导致“东西已经装好了”却显示整批失败。
+
+## 改了什么
+- `NexusExtensionInstallState` 新增 `errorItemName` 和 `errorJobId`。后端 job 失败时，按钮文案显示具体 Mod 名，例如 `SpaceCore 失败`；如果有 `jobId`，按钮保持可点击，点击跳转 `/instances/stardew/jobs?jobId=<jobId>`。
+- 批量协调器 `markInstalledBatchItems()` 现在也会校正带 `jobId` 的条目：只要最新 Mod 列表能通过 `nexusModId` 或 `originNexusModId` 命中，该项即视为 done，不再因旧 failed job 误伤整批状态。
+- 无 `jobId` 的扩展捕获/提交失败仍按旧逻辑显示错误和“重置状态”，不会伪造任务日志入口。
+
+## 影响文件
+- `frontend/src/games/stardew/pages/ModsPage.tsx`
+
+## 如何验证
+- `cd frontend; npm.cmd run build`
+- 联调时可复用旧失败 job 场景：若对应 Mod 已能在 `GET /mods` 中匹配，搜索卡片批量状态应恢复完成；若是真实后端 job 失败，按钮显示具体 Mod 名，点击能进入任务日志页并选中该 job。
+
+## 下一步注意事项
+- 失败按钮的可点击条件依赖 `errorJobId`；扩展自身未拿到 ZIP、未创建 job 的失败不要跳任务页。
+- 后续如果任务页路由支持更正式的 query navigate，可把当前 `history.pushState + popstate` 小跳转收敛到公共导航工具里。
+
 # NEXUS-MODPAGE-DL-2 浏览器扩展适配 Nexus Shadow DOM 下载入口（0.1.1 → 0.1.2）
 
 ## 背景

@@ -1,3 +1,18 @@
+# NEXUS-ARCHIVE-RESUME-1 联调约定
+
+- `mod_remote_install` / `mod_nexus_install` 的 ZIP 下载阶段可能在 job 日志中出现“继续断点下载”“服务器未接受断点续传，重新从头下载”“下载连接卡住，正在重试”等提示。前端无需新增接口，继续展示 `GET /api/jobs/:jobId/logs` 和 SSE `log` 事件即可。
+- 远程/Nexus Mod install job 的整体超时为 **30 分钟**；单个 ZIP body 下载窗口为 **20 分钟**；如果 **120 秒没有收到新字节**，后端会判定当前连接卡死并重试。
+- ZIP 下载进度仍以日志里的“已下载/总量/百分比”为准。断点续传时百分比会从 `.part` 已有字节继续推进；如果服务器忽略 Range，后端会从 0 重新下载，前端按新日志刷新即可。
+- 403/410 这类 CDN 临时链接过期仍会作为任务失败暴露给用户查看日志；本次没有新增“重新获取 Nexus 链接”的 API 契约。
+
+# MOD-REMOTE-IDEMPOTENT-1 / FE-MOD-BATCH-ERROR-FOCUS-1 联调约定
+
+- `POST /api/instances/:id/mods/remote/install` 和 `POST /api/instances/:id/mods/nexus/install` 创建的后端安装 job 对“目标 Mod 已经安装”是幂等的：ZIP 内某个 `UniqueID` 已存在时跳过该目录；整个包都已安装时 job 应为 `succeeded`，日志显示已安装并跳过重复导入，不应返回 failed。
+- 手动上传 `POST /api/instances/:id/mods/upload` 仍保持严格重复校验，重复 `UniqueID` 返回 `400 mod_exists`。
+- Mod 下载类 job 的 `displayName` 为“Mod 名 · 任务类型”，例如 `Ridgeside Village · mod_remote_install`；`type` 字段仍是机器可读值，前端不要从 displayName 反推类型。
+- Nexus 普通一键安装批量进度中，后端 job 失败时前端按钮应显示失败的具体 Mod 名；若该项有 `jobId`，点击按钮跳转 `/instances/stardew/jobs?jobId=<jobId>` 查看任务与日志。
+- 批量进度应以最新 `GET /mods` 作为兜底：如果某项已经能通过 `nexusModId` 或 `originNexusModId` 匹配到本地安装结果，即使旧 job 曾因重复安装失败，也应视为完成，不应把整批任务标成失败。
+
 # JUNIMO-APPNAME-CONTENV-FIX-1 联调契约
 
 - 如果 server 容器日志出现 `APP_NAME: DockerApp: not found`、`DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/dbus.base: not found`、`DOCKER_IMAGE_PLATFORM: linux/amd64: not found` 或 `/etc/cont-groups.d/...: 72: not found` 这类 init 静态值执行错误，优先检查实例 compose 是否包含 `.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*` 兼容挂载，以及实例目录是否存在对应脚本。

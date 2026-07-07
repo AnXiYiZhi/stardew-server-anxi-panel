@@ -5,7 +5,7 @@ import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import { modIsJunimoServer, modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
-import type { StardewPageProps } from '../stardew-routes'
+import { routeToPath, type StardewPageProps } from '../stardew-routes'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
 
@@ -58,6 +58,8 @@ type NexusExtensionInstallState = {
   status: 'starting' | 'running' | 'done' | 'failed'
   progress: number
   error?: string
+  errorItemName?: string
+  errorJobId?: string
   items?: NexusExtensionBatchItem[]
 }
 
@@ -955,6 +957,13 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return `${failed.name || `Mod ${failed.modId}`} 获取或提交失败：${failed.message || '请手动安装'}`
   }
 
+  function openJobLogs(jobId: string | undefined) {
+    const trimmed = jobId?.trim()
+    if (!trimmed) return
+    window.history.pushState(null, '', `${routeToPath('jobs')}?jobId=${encodeURIComponent(trimmed)}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
+
   function nexusModInstalledMatchInList(modList: ModInfo[] | undefined, modId: number) {
     if (!modList || modId <= 0) return null
     const match = modList.find((mod) => (
@@ -1014,13 +1023,13 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   }
 
   async function markInstalledBatchItems(items: NexusExtensionBatchItem[]) {
-    const needsLocalCheck = items.some((item) => !item.jobId && item.status !== 'failed')
+    const needsLocalCheck = items.some((item) => item.status !== 'done' && item.modId > 0)
     if (!needsLocalCheck) return items
     const latest = await loadMods()
     const latestMods = latest?.mods ?? data?.mods ?? []
     syncNexusResultsFromInstalledMods(latestMods)
     return items.map((item) => {
-      if (item.jobId || item.status === 'failed' || !nexusModInstalledInList(latestMods, item.modId)) {
+      if (item.status === 'done' || !nexusModInstalledInList(latestMods, item.modId)) {
         return item
       }
       return {
@@ -1033,12 +1042,12 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
   async function reconcileNexusExtensionJobs(batchId: string, items: NexusExtensionBatchItem[]) {
     const reconciledItems = await markInstalledBatchItems(items)
-    const jobItems = reconciledItems.filter((item) => item.jobId)
-    const locallyDoneItems = reconciledItems.filter((item) => !item.jobId && item.status === 'done')
+    const jobItems = reconciledItems.filter((item) => item.jobId && item.status !== 'done')
+    const doneItems = reconciledItems.filter((item) => item.status === 'done')
     if (jobItems.length === 0) {
       const activeInstall = nexusExtensionInstallRef.current
       if (!activeInstall || activeInstall.batchId !== batchId || activeInstall.status !== 'running') return
-      if (locallyDoneItems.length === reconciledItems.length && reconciledItems.length > 0) {
+      if (doneItems.length === reconciledItems.length && reconciledItems.length > 0) {
         const doneState: NexusExtensionInstallState = {
           ...activeInstall,
           status: 'done',
@@ -1081,6 +1090,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
         status: 'failed',
         progress: 100,
         error: `${item.name || `Mod ${item.modId}`} 安装失败：${job?.errorMessage || job?.status || '请查看任务日志'}`,
+        errorItemName: item.name || `Mod ${item.modId}`,
+        errorJobId: item.jobId,
         items: reconciledItems,
       }
       setNexusExtensionInstall(failedState)
@@ -1089,7 +1100,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       return
     }
 
-    if (jobItems.length + locallyDoneItems.length < reconciledItems.length) {
+    if (jobItems.length + doneItems.length < reconciledItems.length) {
       const waitingState: NexusExtensionInstallState = {
         ...activeInstall,
         status: 'running',
@@ -1107,7 +1118,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       result.status === 'rejected' ||
       (result.status === 'fulfilled' && (result.value.job.status === 'queued' || result.value.job.status === 'running'))
     ))
-    if (jobItems.length + locallyDoneItems.length === reconciledItems.length && succeeded === jobItems.length && !hasPending) {
+    if (jobItems.length + doneItems.length === reconciledItems.length && succeeded === jobItems.length && !hasPending) {
       const doneState: NexusExtensionInstallState = {
         ...activeInstall,
         status: 'done',
@@ -1150,6 +1161,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       status: nextStatus,
       progress: nextProgress,
       error: nextStatus === 'failed' ? nexusExtensionFailedItemMessage(batch.items) : undefined,
+      errorItemName: nextStatus === 'failed' ? batch.items?.find((item) => item.status === 'failed')?.name : undefined,
+      errorJobId: nextStatus === 'failed' ? batch.items?.find((item) => item.status === 'failed')?.jobId : undefined,
       items: batch.items,
     }
     setNexusExtensionInstall(nextState)
@@ -1752,6 +1765,22 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return searchedModBaseCanInstall(result) && nexusExtensionConnection.status === 'connected'
   }
 
+  function searchedModCanClickAction(result: NexusModSearchResult) {
+    return searchedModCanInstall(result) || (
+      nexusExtensionInstall?.status === 'failed' &&
+      nexusExtensionInstall.modId === result.modId &&
+      !!nexusExtensionInstall.errorJobId
+    )
+  }
+
+  function handleNexusInstallAction(result: NexusModSearchResult) {
+    if (nexusExtensionInstall?.status === 'failed' && nexusExtensionInstall.modId === result.modId && nexusExtensionInstall.errorJobId) {
+      openJobLogs(nexusExtensionInstall.errorJobId)
+      return
+    }
+    void handleNexusInstall(result)
+  }
+
   function searchedModInstallTitle(result: NexusModSearchResult) {
     if (result.installed && result.installedEnabled === false) return '该 Mod 已安装，但当前存档未启用，可到配置模组中启用'
     if (result.installed) return '该 Mod 已安装'
@@ -1764,6 +1793,9 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       return '扩展安装流程已完成'
     }
     if (nexusExtensionInstall?.status === 'failed' && nexusExtensionInstall.modId === result.modId) {
+      if (nexusExtensionInstall.errorJobId) {
+        return `${nexusExtensionInstall.error || '安装失败'}；点击查看任务与日志`
+      }
       return nexusExtensionInstall.error || '后台页面没有成功提交 ZIP 链接，请手动安装'
     }
     if (nexusExtensionConnection.status !== 'connected') {
@@ -1779,7 +1811,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     if (result.installed && result.installedEnabled === false) return '已安装未启用'
     if (result.installed) return '已安装'
     if (nexusExtensionInstall?.modId === result.modId) {
-      if (nexusExtensionInstall.status === 'failed') return '失败请手动安装'
+      if (nexusExtensionInstall.status === 'failed') return `${nexusExtensionInstall.errorItemName || result.name || 'Mod'} 失败`
       if (nexusExtensionInstall.status === 'done') return '安装完成 100%'
       return `安装中 ${Math.max(0, Math.min(100, Math.round(nexusExtensionInstall.progress)))}%`
     }
@@ -1978,7 +2010,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     {renderNexusPager('top')}
                     <div className="sd-mods-nexus-list sd-mods-nexus-search-list" ref={nexusResultsListRef}>
                       {nexusResults.map((r) => {
-                        const canInstall = searchedModCanInstall(r)
+                        const canInstall = searchedModCanClickAction(r)
                         const requiredMods = r.requiredMods ?? []
                         const missingRequiredMods = missingNexusRequiredMods(r)
                         const extensionState = nexusExtensionInstall?.modId === r.modId ? nexusExtensionInstall : null
@@ -2018,7 +2050,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                                 type="button"
                                 disabled={!canInstall}
                                 title={searchedModInstallTitle(r)}
-                                onClick={() => void handleNexusInstall(r)}
+                                onClick={() => handleNexusInstallAction(r)}
                               >
                                 {searchedModInstallLabel(r, false)}
                               </button>

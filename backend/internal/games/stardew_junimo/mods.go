@@ -205,13 +205,13 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	manifestPath := filepath.Join(modPath, "manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		info.ParseError = "缂哄皯 manifest.json"
+		info.ParseError = "缺少 manifest.json"
 		return info
 	}
 
 	var m modManifest
 	if err := decodeModManifest(data, &m); err != nil {
-		info.ParseError = "manifest.json 瑙ｆ瀽澶辫触: " + err.Error()
+		info.ParseError = "manifest.json 解析失败: " + err.Error()
 		return info
 	}
 
@@ -231,10 +231,10 @@ func readModInfo(modPath, folderName string) registry.ModInfo {
 	}
 
 	if info.UniqueID == "" {
-		info.ParseError = "manifest.json 缂哄皯 UniqueID"
+		info.ParseError = "manifest.json 缺少 UniqueID"
 	}
 	if info.Name == "" {
-		info.ParseError = "manifest.json 缂哄皯 Name"
+		info.ParseError = "manifest.json 缺少 Name"
 	}
 
 	if isControlModInfo(info) {
@@ -427,10 +427,10 @@ func FindModByUniqueID(dataDir, uniqueID string) (string, error) {
 // ValidateModName rejects dangerous mod folder names.
 func ValidateModName(name string) error {
 	if name == "" {
-		return fmt.Errorf("mod 鍚嶇О涓嶈兘涓虹┖")
+		return fmt.Errorf("mod 名称不能为空")
 	}
 	if name == "." || name == ".." {
-		return fmt.Errorf("mod 鍚嶇О涓嶈兘鏄?%q", name)
+		return fmt.Errorf("mod 名称不能是 %q", name)
 	}
 	if strings.ContainsAny(name, `/\`) {
 		return fmt.Errorf("mod name cannot contain path separators")
@@ -443,6 +443,7 @@ func ValidateModName(name string) error {
 
 type uploadModZipOptions struct {
 	inferNexusPackageOrigin bool
+	allowAlreadyInstalled   bool
 }
 
 // UploadModZip validates a mod ZIP upload and extracts it to the mods directory.
@@ -457,12 +458,12 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		return nil, fmt.Errorf("stat upload: %w", err)
 	}
 	if stat.Size() > maxModZipBytes {
-		return nil, fmt.Errorf("鍘嬬缉鍖呰秴杩?%d MB 闄愬埗", maxModZipBytes/1024/1024)
+		return nil, fmt.Errorf("压缩包超过 %d MB 限制", maxModZipBytes/1024/1024)
 	}
 
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return nil, fmt.Errorf("鎵撳紑 ZIP 澶辫触: %w", err)
+		return nil, fmt.Errorf("打开 ZIP 失败: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
 
@@ -487,10 +488,10 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 	seenFolderNames := map[string]struct{}{}
 	for _, dir := range modDirs {
 		if err := ValidateModName(dir.FolderName); err != nil {
-			return nil, fmt.Errorf("mod 鐩綍鍚嶄笉鍚堟硶: %w", err)
+			return nil, fmt.Errorf("mod 目录名不合法: %w", err)
 		}
 		if _, dup := seenFolderNames[dir.FolderName]; dup {
-			return nil, fmt.Errorf("ZIP 鍐?Mod 鐩綍 %q 閲嶅", dir.FolderName)
+			return nil, fmt.Errorf("ZIP 内 Mod 目录 %q 重复", dir.FolderName)
 		}
 		seenFolderNames[dir.FolderName] = struct{}{}
 	}
@@ -498,7 +499,7 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 	// Extract to temp dir first, then validate, then move atomically.
 	td, err := os.MkdirTemp("", "stardew-mod-upload-*")
 	if err != nil {
-		return nil, fmt.Errorf("鍒涘缓涓存椂鐩綍: %w", err)
+		return nil, fmt.Errorf("创建临时目录: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(td) }()
 
@@ -506,20 +507,20 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		return nil, err
 	}
 
-	// 鈹€鈹€ Pre-validation: check ALL mods before moving any 鈹€鈹€
+	// ── Pre-validation: check ALL mods before moving any ──
 	type modCandidate struct {
 		sourcePath string
 		folderName string
 		info       registry.ModInfo
 	}
 	candidates := make([]modCandidate, 0, len(modDirs))
-	seenUniqueIDs := map[string]string{} // uniqueID 鈫?folderName (within this ZIP)
+	seenUniqueIDs := map[string]string{} // uniqueID -> folderName (within this ZIP)
 
 	for _, dir := range modDirs {
 		modPath := filepath.Join(td, filepath.FromSlash(dir.SourcePath))
 		info := readModInfo(modPath, dir.FolderName)
 		if info.ParseError != "" {
-			return nil, fmt.Errorf("mod %q 涓嶆槸鍚堟硶鐨?SMAPI Mod: %s", dir.FolderName, info.ParseError)
+			return nil, fmt.Errorf("mod %q 不是合法的 SMAPI Mod: %s", dir.FolderName, info.ParseError)
 		}
 
 		// Check for duplicate UniqueID within this ZIP.
@@ -531,10 +532,13 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		// Check for duplicate UniqueID against already-installed mods.
 		existing, err := FindModByUniqueID(dataDir, info.UniqueID)
 		if err != nil {
-			return nil, fmt.Errorf("妫€鏌ュ凡鏈?Mod 澶辫触: %w", err)
+			return nil, fmt.Errorf("检查已有 Mod 失败: %w", err)
 		}
 		if existing != "" {
-			return nil, fmt.Errorf("UniqueID %q 宸插瓨鍦ㄤ簬 Mod %q 涓?(mod_exists)", info.UniqueID, existing)
+			if opts.allowAlreadyInstalled {
+				continue
+			}
+			return nil, fmt.Errorf("UniqueID %q 已存在于 Mod %q 中 (mod_exists)", info.UniqueID, existing)
 		}
 
 		// Check target directory doesn't already exist.
@@ -550,7 +554,7 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		})
 	}
 
-	// 鈹€鈹€ All checks passed 鈥?move all mods with rollback on failure 鈹€鈹€
+	// -- All checks passed -- move all mods with rollback on failure --
 	var imported []registry.ModInfo
 	var moved []string // tracks successfully moved dest dirs for rollback
 
@@ -564,7 +568,7 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 				for _, d := range moved {
 					_ = os.RemoveAll(d)
 				}
-				return nil, fmt.Errorf("瀵煎叆 Mod %q 澶辫触: %w", c.folderName, err)
+				return nil, fmt.Errorf("导入 Mod %q 失败: %w", c.folderName, err)
 			}
 		}
 		moved = append(moved, dest)
@@ -590,27 +594,27 @@ func validateModZip(zr *zip.ReadCloser) error {
 		}
 		name := filepath.ToSlash(f.Name)
 		if filepath.IsAbs(name) || strings.HasPrefix(name, "/") {
-			return fmt.Errorf("ZIP 鍖呭惈缁濆璺緞 %q", f.Name)
+			return fmt.Errorf("ZIP 包含绝对路径 %q", f.Name)
 		}
 		// Trim trailing "/" for directory entries.
 		trimmed := strings.TrimSuffix(name, "/")
 		for _, seg := range strings.Split(trimmed, "/") {
 			if seg == ".." {
-				return fmt.Errorf("ZIP 璺緞 %q 鍖呭惈鐩綍绌胯秺 (..)", f.Name)
+				return fmt.Errorf("ZIP 路径 %q 包含目录穿越 (..)", f.Name)
 			}
 			if seg == "." {
-				return fmt.Errorf("ZIP 璺緞 %q 鍖呭惈鏃犳晥鐨勫綋鍓嶇洰褰曞紩鐢?(.)", f.Name)
+				return fmt.Errorf("ZIP 路径 %q 包含无效的当前目录引用 (.)", f.Name)
 			}
 			if seg == "" {
-				return fmt.Errorf("ZIP 璺緞 %q 鍖呭惈绌鸿矾寰勬", f.Name)
+				return fmt.Errorf("ZIP 路径 %q 包含空路径段", f.Name)
 			}
 		}
 		totalUncompressed += f.UncompressedSize64
 		if f.UncompressedSize64 > maxModSingleFile {
-			return fmt.Errorf("ZIP 鍐呭崟涓枃浠惰秴杩?%d MB", maxModSingleFile/1024/1024)
+			return fmt.Errorf("ZIP 内单个文件超过 %d MB", maxModSingleFile/1024/1024)
 		}
 		if totalUncompressed > maxModUncompressed {
-			return fmt.Errorf("ZIP 瑙ｅ帇鎬诲ぇ灏忚秴杩?%d MB", maxModUncompressed/1024/1024)
+			return fmt.Errorf("ZIP 解压总大小超过 %d MB", maxModUncompressed/1024/1024)
 		}
 	}
 	return nil
@@ -660,7 +664,7 @@ func detectModDirs(zr *zip.ReadCloser) ([]modZipDir, error) {
 		return nil, fmt.Errorf("ZIP is empty or has no valid files")
 	}
 	if !anyManifest && isLikelyXNBReplacementZip(zr) {
-		return nil, fmt.Errorf("杩欐槸 XNB 鏇挎崲鍖咃紝涓嶆槸 SMAPI Mod锛屼笉鑳戒笂浼犲埌鏈嶅姟鍣?Mods 鐩綍锛涜浣跨敤甯?manifest.json 鐨?SMAPI 鎴?Content Patcher 鐗堟湰")
+		return nil, fmt.Errorf("这是 XNB 替换包，不是 SMAPI Mod，不能放入服务器 Mods 目录；请使用带 manifest.json 的 SMAPI 或 Content Patcher 版本")
 	}
 
 	// If there's exactly one top dir with manifest.json, treat as single mod.
@@ -680,7 +684,7 @@ func detectModDirs(zr *zip.ReadCloser) ([]modZipDir, error) {
 				}
 				return dirs, nil
 			}
-			// Single dir without manifest 鈥?still try to extract, will fail validation later.
+			// Single dir without manifest -- still try to extract, will fail validation later.
 			return []modZipDir{{SourcePath: name, FolderName: name}}, nil
 		}
 	}
@@ -690,7 +694,7 @@ func detectModDirs(zr *zip.ReadCloser) ([]modZipDir, error) {
 	dirs := make([]modZipDir, 0, len(names))
 	for _, name := range names {
 		if !hasManifest[name] {
-			return nil, fmt.Errorf("ZIP 鍖呭惈澶氫釜椤跺眰鐩綍锛屼絾 %q 缂哄皯 manifest.json", name)
+			return nil, fmt.Errorf("ZIP 包含多个顶层目录，但 %q 缺少 manifest.json", name)
 		}
 		dirs = append(dirs, modZipDir{SourcePath: name, FolderName: name})
 	}
@@ -748,12 +752,12 @@ func extractModZip(zr *zip.ReadCloser, destDir string) error {
 		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(outPath, 0o755); err != nil {
-				return fmt.Errorf("鍒涘缓鐩綍 %s: %w", outPath, err)
+				return fmt.Errorf("创建目录 %s: %w", outPath, err)
 			}
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-			return fmt.Errorf("鍒涘缓鐖剁洰褰?%s: %w", filepath.Dir(outPath), err)
+			return fmt.Errorf("创建父目录 %s: %w", filepath.Dir(outPath), err)
 		}
 		if err := extractModFile(f, outPath); err != nil {
 			return err
@@ -972,7 +976,7 @@ func ExportModsZip(dataDir string) (string, error) {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf("mods directory does not exist")
 		}
-		return "", fmt.Errorf("璇诲彇 mods 鐩綍: %w", err)
+		return "", fmt.Errorf("读取 mods 目录: %w", err)
 	}
 
 	// Filter to directories only.
@@ -986,14 +990,14 @@ func ExportModsZip(dataDir string) (string, error) {
 		return "", fmt.Errorf("no installed mods to export")
 	}
 
-	// Build a human-readable ZIP name: mod鍚峗浣滆€呭悕.zip for single mod,
+	// Build a human-readable ZIP name: mod名_作者名.zip for single mod,
 	// or stardew-mods-N.zip for multiple mods.
 	zipName := buildModsZipName(root, dirs)
 	tmpPath := filepath.Join(os.TempDir(), zipName)
 
 	zf, err := os.Create(tmpPath)
 	if err != nil {
-		return "", fmt.Errorf("鍒涘缓 ZIP 鏂囦欢: %w", err)
+		return "", fmt.Errorf("创建 ZIP 文件: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -1005,22 +1009,22 @@ func ExportModsZip(dataDir string) (string, error) {
 	w := zip.NewWriter(zf)
 	for _, dir := range dirs {
 		if err = addModDirToZip(w, root, dir.Name()); err != nil {
-			return "", fmt.Errorf("鍐欏叆 Mod %q 澶辫触: %w", dir.Name(), err)
+			return "", fmt.Errorf("写入 Mod %q 失败: %w", dir.Name(), err)
 		}
 	}
 
 	if err = w.Close(); err != nil {
-		return "", fmt.Errorf("鍏抽棴 ZIP: %w", err)
+		return "", fmt.Errorf("关闭 ZIP: %w", err)
 	}
 	if err = zf.Close(); err != nil {
-		return "", fmt.Errorf("鍏抽棴鏂囦欢: %w", err)
+		return "", fmt.Errorf("关闭文件: %w", err)
 	}
 
 	return tmpPath, nil
 }
 
 // buildModsZipName constructs a human-readable ZIP filename for a mods export.
-// Single mod: "mod鍚峗浣滆€呭悕.zip"
+// Single mod: "mod名_作者名.zip"
 // Multiple mods: "stardew-mods-N.zip"
 func buildModsZipName(root string, dirs []os.DirEntry) string {
 	if len(dirs) == 1 {

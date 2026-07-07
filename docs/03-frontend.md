@@ -1,3 +1,11 @@
+# FE-MOD-BATCH-ERROR-FOCUS-1 Nexus 批量安装失败定位
+
+- Nexus 普通一键安装的进度按钮现在会在真实后端 job 失败时显示失败的具体 Mod 名，例如 `SpaceCore 失败`；如果该失败项带有 `jobId`，按钮保持可点击，点击后跳转到任务与日志页并自动选中对应任务。
+- 批量进度协调器会用最新 `GET /mods` 结果校正已安装项：即便旧后端 job 曾因重复 `UniqueID` 被标成 failed，只要本地已经能按 `nexusModId` 或 `originNexusModId` 匹配到该 Mod，该项就视为完成，不再把整批安装误判为失败。
+- 无后端 job 的扩展捕获/提交失败仍保持原有重置与手动处理流程；只有带 `jobId` 的后端安装失败才作为“点击查看日志”入口。
+- 影响文件：`frontend/src/games/stardew/pages/ModsPage.tsx`。未新增 API，复用现有 `GET /api/jobs/:id`、`GET /api/instances/:id/mods` 和任务页 `?jobId=` 查询参数。
+- 验证：`cd frontend; npm.cmd run build`。
+
 # FE-PANEL-ACCESS-HOST-INVITE-1 局域网邀请使用当前面板地址
 
 - 邀请码卡片下方“局域网邀请”不再调用后端公网 IP 检测接口，而是从 `window.location.hostname` 读取当前浏览器进入面板使用的 host。

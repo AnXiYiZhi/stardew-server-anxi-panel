@@ -1,3 +1,15 @@
+# 2026-07-07 已完成：Nexus ZIP 下载断点续传与卡死检测
+
+- `NEXUS-ARCHIVE-RESUME-1` completed：`mod_remote_install` / `mod_nexus_install` 的 ZIP body 下载窗口提升到 20 分钟，远程/Nexus Mod 安装 job 整体窗口确认为 30 分钟；下载阶段新增 `.part` 临时文件和 `Range` 断点续传，服务器支持 `206 Content-Range` 时从已下载字节继续，忽略 Range 返回 `200` 时自动丢弃半包并重下；新增 120 秒无新字节超时，连接卡死会取消当前 attempt 并在 20 分钟窗口内最多重试 4 次。验证：`cd backend; go test ./internal/games/stardew_junimo -run "NexusDownloadArchive"`；`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+
+# 2026-07-07 已完成：远程 Mod 重复安装幂等 + 批量失败定位
+
+- `MOD-REMOTE-IDEMPOTENT-1` / `FE-MOD-BATCH-ERROR-FOCUS-1` completed：`mod_remote_install` / `mod_nexus_install` 下载类任务遇到已存在 `UniqueID` 时改为跳过重复目录并成功结束，避免浏览器扩展缓存刷新造成的重复提交把“已经装好”的 Mod 误判为失败；普通手动上传仍保留 `400 mod_exists`。批量进度按钮会标明失败的具体 Mod，带 `jobId` 时点击跳转任务与日志；同时用最新 `GET /mods` 兜底校正旧失败 job 中其实已安装的项。新建 Mod 下载类任务展示名改为 `Mod 名 · 任务类型`，例如 `Ridgeside Village · mod_remote_install`。验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`、`cd frontend; npm.cmd run build`。
+
+# 2026-07-07 已完成：修复 mods.go / lifecycle_handlers.go 历史乱码 + 备份分类 bug
+
+- `MOJIBAKE-FIX-1` completed：修复 `mods.go` 和 `lifecycle_handlers.go` 里历史遗留的中文乱码（错误提示、注释），根因是早期某次保存把正确 UTF-8 中文按 GBK 误解码又存回 UTF-8，已用确定性可逆公式全量修复。顺带修复真实功能 bug：备份删除/恢复接口原本因乱码字符串匹配失败，`400`/`404`/`409` 分类全部静默退化成通用 `500`，现已修正。已验证 `go build`、`go vet`、`go test ./...` 全绿，并对 backend 全目录做过乱码特征扫描确认清零。
+
 # 2026-07-07 已完成：Nexus 浏览器扩展适配 Shadow DOM 下载入口
 
 - `NEXUS-MODPAGE-DL-2` completed：扩展 `0.1.1 → 0.1.2`，新增 `deepQueryAll()` 遍历 shadow root 定位下载控件，新增按 `data-tracking` 属性分类的 `findManualDownloadControl()`，新增 `openNexusFileList()`/`waitForFileIdOnPage()` 轮询 `file_id`，替代旧的两步按钮点击模型。仅改浏览器扩展，未改后端接口；发布新镜像后旧实例扩展缓存 ZIP 会被已有版本感知逻辑自动刷新。已验证 `node --check` 和 `go test ./internal/games/stardew_junimo -run TestEnsureNexusInstallerExtensionZip`。
