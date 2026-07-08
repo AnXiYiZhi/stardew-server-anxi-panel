@@ -16,6 +16,7 @@ export default defineConfig({
       { text: '快速上手', link: '/guide/getting-started' },
       { text: '部署指南', link: '/deploy/requirements' },
       { text: '日常维护', link: '/maintain/update' },
+      { text: '深度文档', link: '/handbook/' },
       { text: '常见问题', link: '/faq/' }
     ],
     sidebar: {
@@ -49,6 +50,24 @@ export default defineConfig({
             { text: '存档与备份', link: '/maintain/saves-backup' },
             { text: 'Mod 管理', link: '/maintain/mods' },
             { text: '面板管理与诊断', link: '/maintain/admin' }
+          ]
+        }
+      ],
+      '/handbook/': [
+        {
+          text: '深度文档',
+          items: [
+            { text: '总览', link: '/handbook/' },
+            { text: '界面总览', link: '/handbook/ui' },
+            { text: '账号与权限', link: '/handbook/accounts' },
+            { text: '安装游戏', link: '/handbook/install' },
+            { text: '服务器控制', link: '/handbook/server-control' },
+            { text: '存档管理', link: '/handbook/saves' },
+            { text: 'Mod 管理', link: '/handbook/mods' },
+            { text: '玩家管理', link: '/handbook/players' },
+            { text: '任务与日志', link: '/handbook/jobs-logs' },
+            { text: '诊断与支持包', link: '/handbook/diagnostics' },
+            { text: '面板设置', link: '/handbook/settings' }
           ]
         }
       ],
