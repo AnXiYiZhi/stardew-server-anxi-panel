@@ -21,8 +21,13 @@
 | 托管 | GitHub Pages（Project Pages） | 免费，和仓库同源，不需要额外账号 |
 | CI/CD | GitHub Actions | push 到 `main` 且 `website/**` 有改动时自动构建部署，无需手动上传 |
 | 搜索 | VitePress 内置本地搜索（`search.provider: 'local'`） | 免费，不依赖 Algolia 账号 |
+| 图片点击放大 | [medium-zoom](https://github.com/francoischalifour/medium-zoom)（2026-07-08 新增） | VitePress 默认主题不带图片 lightbox；medium-zoom 零依赖、体积小，官方博客同款方案 |
 
 `website/` 与现有 `frontend/`（面板本体前端）、`docs/`（内部维护文档）完全独立，互不影响构建流程。
+
+### 图片点击放大实现说明
+
+新增 `website/docs/.vitepress/theme/index.ts`：`extends: DefaultTheme`，在 `setup()` 里对 `.vp-doc img:not(.no-zoom)` 绑定 `mediumZoom()`，并 `watch(route.path)` 在切页后 `nextTick` 重新绑定（否则新页面的图片点不开）。配套 `website/docs/.vitepress/theme/custom.css` 加 `cursor: zoom-in` 提示和 overlay 层级。之前项目没有自定义主题目录，本次是从零新建。若某张图片不想被点击放大，给它加 `.no-zoom` class（Markdown 图片语法本身不支持加 class，需要写成 HTML `<img class="no-zoom" .../>`）。
 
 ## 二、信息架构
 
