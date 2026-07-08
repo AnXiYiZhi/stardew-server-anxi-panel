@@ -2,9 +2,9 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-7 全部完成，门户网站首个内容版本待推送**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线，新增「深度文档」专区（2026-07-08）**。以下决策已和用户对齐：
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前线上仍是占位首页，内容页面已写好但要等下一次推送才会更新到线上）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（内容已推送上线；本次新增的「深度文档」专区待推送后才会更新到线上）
 
 | 决策项 | 结论 |
 | --- | --- |
@@ -47,6 +47,18 @@ website/docs/
 │  ├─ quick-start.md           一键脚本部署（Linux 云服务器）
 │  ├─ nas.md                   NAS 图形化 Compose 部署
 │  └─ ports.md                 端口与安全组/防火墙说明
+├─ handbook/                   深度文档：按面板 9 个功能页逐页精讲（2026-07-08 新增）
+│  ├─ index.md                 深度文档导航页
+│  ├─ ui.md                    界面总览（顶栏/导航/总览页）
+│  ├─ accounts.md              账号与权限
+│  ├─ install.md               安装游戏（Steam 全流程/Steam Guard/SteamCMD 兜底）
+│  ├─ server-control.md        服务器控制（生命周期/邀请码/计划重启/控制台命令/喊话）
+│  ├─ saves.md                 存档管理（新建/上传/自动备份策略/恢复）
+│  ├─ mods.md                  Mod 管理（下载/添加/配置三个工作台，Nexus 一键安装，玩家同步包）
+│  ├─ players.md               玩家管理（含明确标注待接入的踢出/封禁/白名单/权限设置）
+│  ├─ jobs-logs.md             任务与日志
+│  ├─ diagnostics.md           诊断与支持包
+│  └─ settings.md              面板设置
 ├─ maintain/
 │  ├─ update.md                更新/强制更新/更新脚本本身
 │  ├─ saves-backup.md          存档新建/上传/备份/恢复
@@ -75,6 +87,7 @@ website/docs/
 | `maintain/mods.md` | `docs/user-guide/maintenance.md` "Mod 管理" |
 | `maintain/admin.md` | `docs/user-guide/maintenance.md` "面板用户与权限"、"日志与诊断"、"安全维护清单"（原方案的 `maintain/*.md` 三页装不下这些内容，实施时新增第四页，并同步补了 `config.ts` 的 sidebar） |
 | `faq/index.md` | `docs/user-guide/troubleshooting.md` 全文 |
+| `handbook/*.md`（11 页） | 新创作，不是搬运；来源是直接阅读 `frontend/src/games/stardew/` 各页面组件源码（`StardewPanel.tsx` 导航、`ModsPage.tsx` 三个工作台、`ServerControlPage.tsx` 控制台命令 allowlist、`PlayersPage.tsx`、`SettingsPage.tsx`、`NewGameCreator.tsx`）+ `backend/internal/games/stardew_junimo/console.go` 命令定义 + `docs/02-backend.md`、`docs/03-frontend.md` 接手记录，确保和当前代码行为一致。玩家页踢出/封禁/白名单/权限设置在源码里明确标注"待接入"，文档已如实标注，不夸大功能完成度。 |
 
 已用 `npm run docs:build` 验证过全部页面互相链接无死链、构建通过。
 
