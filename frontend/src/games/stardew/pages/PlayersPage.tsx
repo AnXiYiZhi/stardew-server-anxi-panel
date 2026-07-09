@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { formatDate } from '../../../core/helpers'
+import { kickPlayer } from '../../../api'
+import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 
 type PlayerLocationLike = {
@@ -231,8 +232,15 @@ function isWaitingPlayerStatus(status?: string): boolean {
   return status === 'waiting' || status === 'pending' || status === 'joining'
 }
 
+type KickTarget = { uniqueMultiplayerId: string; name: string }
+
 export function PlayersPage({ user, instanceState, dashboardData }: StardewPageProps) {
   const [eventsPage, setEventsPage] = useState(1)
+  const [kickConfirmTarget, setKickConfirmTarget] = useState<KickTarget | null>(null)
+  const [kickSelectId, setKickSelectId] = useState('')
+  const [kickBusy, setKickBusy] = useState(false)
+  const [kickError, setKickError] = useState<string | null>(null)
+  const [kickMessage, setKickMessage] = useState<string | null>(null)
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -361,6 +369,29 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     return translated === '—' ? '' : translated
   }
 
+  async function handleConfirmKick() {
+    const target = kickConfirmTarget
+    if (!target) return
+    setKickBusy(true)
+    setKickError(null)
+    setKickMessage(null)
+    try {
+      const res = await kickPlayer(target.uniqueMultiplayerId, target.name)
+      setKickMessage(res.output?.trim() || `已提交踢出 ${target.name} 的指令。`)
+      setKickSelectId('')
+      await dashboardData.refreshPlayers()
+    } catch (e) {
+      setKickError(errorMessage(e))
+    } finally {
+      setKickBusy(false)
+      setKickConfirmTarget(null)
+    }
+  }
+
+  const onlinePlayers = playerRows.filter(
+    (player) => player.status === 'online' && !player.isHost && player.uniqueMultiplayerId,
+  )
+
   return (
     <div className="sd-page sd-players-page">
       <div className="sd-page-header">
@@ -372,7 +403,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         <div>
           <h2 className="sd-page-title">玩家管理</h2>
           <p className="sd-page-desc">
-            查看玩家名册、在线/离线状态、持有现金、农场收入、个人收入、邀请码和 Junimo 服务器信息；踢出 / 白名单等管理功能待后端接入。
+            查看玩家名册、在线/离线状态、持有现金、农场收入、个人收入、邀请码和 Junimo 服务器信息；支持踢出在线玩家，封禁 / 白名单等管理功能待后端接入。
           </p>
         </div>
       </div>
@@ -475,7 +506,24 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                 </span>
                 <span className="sd-players-row-actions">
                   <button className="sd-players-icon-button" type="button" disabled title="发送消息待接入" aria-label="发送消息" />
-                  <button className="sd-players-icon-button sd-players-icon-boot" type="button" disabled title="踢出玩家待接入" aria-label="踢出玩家" />
+                  <button
+                    className="sd-players-icon-button sd-players-icon-boot"
+                    type="button"
+                    disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || kickBusy}
+                    title={
+                      !isAdmin
+                        ? '仅管理员可用'
+                        : player.isHost
+                          ? '无法踢出主机玩家'
+                          : player.status !== 'online'
+                            ? '玩家不在线'
+                            : !player.uniqueMultiplayerId
+                              ? '缺少玩家联机 ID，暂不支持踢出'
+                              : '踢出玩家'
+                    }
+                    aria-label="踢出玩家"
+                    onClick={() => setKickConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                  />
                   <button className="sd-players-icon-button sd-players-icon-more" type="button" disabled title="更多操作待接入" aria-label="更多操作" />
                 </span>
               </div>
@@ -586,17 +634,30 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             <div className="sd-players-action-icon sd-players-action-icon-boot" aria-hidden="true" />
             <strong>踢出玩家</strong>
             <span>将玩家踢出服务器</span>
-            <select className="sd-players-action-select" disabled>
-              <option>选择玩家</option>
+            <select
+              className="sd-players-action-select"
+              disabled={!isAdmin || !isRunning || onlinePlayers.length === 0 || kickBusy}
+              value={kickSelectId}
+              onChange={(e) => setKickSelectId(e.target.value)}
+            >
+              <option value="">{onlinePlayers.length === 0 ? '暂无可踢出玩家' : '选择玩家'}</option>
+              {onlinePlayers.map((player) => (
+                <option key={player.uniqueMultiplayerId} value={player.uniqueMultiplayerId}>
+                  {player.name}
+                </option>
+              ))}
             </select>
             <button
               className="sd-btn-delete"
-              disabled
-              title={!isAdmin ? '仅管理员可用' : '踢出玩家 API 待接入'}
+              disabled={!isAdmin || !isRunning || !kickSelectId || kickBusy}
+              title={!isAdmin ? '仅管理员可用' : '踢出玩家'}
+              onClick={() => {
+                const target = onlinePlayers.find((player) => player.uniqueMultiplayerId === kickSelectId)
+                if (target) setKickConfirmTarget({ uniqueMultiplayerId: target.uniqueMultiplayerId || '', name: target.name })
+              }}
             >
               踢出
             </button>
-            <span className="sd-srv-badge-pending">待接入</span>
           </div>
 
           <div className="sd-players-action-item">
@@ -645,8 +706,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           </div>
         </div>
 
+        {kickError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{kickError}</div> : null}
+        {kickMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{kickMessage}</div> : null}
+
         <div className="sd-srv-hint" style={{ marginTop: 8 }}>
-          踢出、封禁、白名单和权限设置仍需要 JunimoServer 提供对应 API 或可控命令后才能启用。
+          踢出玩家通过面板内置的 StardewAnxiPanel.Control 控制模组发送，无法踢出主机玩家；封禁、白名单和权限设置仍需要 JunimoServer 提供对应 API 或可控命令后才能启用。
         </div>
       </div>
 
@@ -700,6 +764,23 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           </div>
         )}
       </div>
+
+      {kickConfirmTarget ? (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>确认踢出玩家</h3>
+            <p>将玩家 {kickConfirmTarget.name} 踢出服务器？该操作会立即断开该玩家的连接，玩家可以重新加入。</p>
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setKickConfirmTarget(null)} disabled={kickBusy}>
+                取消
+              </button>
+              <button className="sd-btn-delete" onClick={() => void handleConfirmKick()} disabled={kickBusy}>
+                {kickBusy ? '踢出中…' : '确认踢出'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

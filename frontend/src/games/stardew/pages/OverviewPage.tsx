@@ -21,7 +21,8 @@ function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
   return null
 }
 
-export function OverviewPage({ instanceState, onNavigate, dashboardData }: StardewPageProps) {
+export function OverviewPage({ user, instanceState, onNavigate, dashboardData }: StardewPageProps) {
+  const isAdmin = user.role === 'admin'
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
@@ -192,7 +193,12 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
 
     if (state === 'ready_to_start' || state === 'stopped' || state === 'game_installed') {
       return (
-        <button className="sd-btn-start" onClick={() => void handleStart()} disabled={actionBusy}>
+        <button
+          className="sd-btn-start"
+          onClick={() => void handleStart()}
+          disabled={actionBusy || !isAdmin}
+          title={isAdmin ? undefined : '仅管理员可启动服务器'}
+        >
           <img src="/assets/stardew/ui/icons/icon_button_play.png" alt="" className="sd-btn-img" />
           {actionBusy ? '启动中…' : '启动'}
         </button>
@@ -202,14 +208,20 @@ export function OverviewPage({ instanceState, onNavigate, dashboardData }: Stard
     if (state === 'running') {
       return (
         <>
-          <button className="sd-btn-stop" onClick={() => setConfirmAction('stop')} disabled={actionBusy}>
+          <button
+            className="sd-btn-stop"
+            onClick={() => setConfirmAction('stop')}
+            disabled={actionBusy || !isAdmin}
+            title={isAdmin ? undefined : '仅管理员可停止服务器'}
+          >
             <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
             停止
           </button>
           <button
             className="sd-btn-restart"
             onClick={() => setConfirmAction('restart')}
-            disabled={actionBusy}
+            disabled={actionBusy || !isAdmin}
+            title={isAdmin ? undefined : '仅管理员可重启服务器'}
           >
             <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
             重启

@@ -1,3 +1,19 @@
+# 2026-07-09 已完成：启动/停止/重启按钮补齐管理员权限门控
+
+- `ADMIN-GATE-LIFECYCLE-1` completed：用户凭经验提出"普通用户不能启停服务器/上传 Mod"要求复查，全量排查发现 `ServerControlPage.tsx`（`canStart`/`canStop`/`canRestart` 未算 `isAdmin`）和 `OverviewPage.tsx`（组件根本没取 `user` prop，无 `isAdmin` 概念）的启动/停止/重启按钮缺少管理员权限门控——后端 `requireAdmin` 仍会拒绝，但普通用户会看到"可点击"的按钮，点了才被拒绝，体验不一致。两处均已补上 `isAdmin` 判断和对应 tooltip 提示。复查同时确认 Mod 上传、Nexus Mod 一键安装、游戏安装、玩家踢出、存档、设置、任务日志、诊断导出等其余功能本来就正确限制了管理员权限，未发现其它遗漏。详见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md` 的 `ADMIN-GATE-LIFECYCLE-1`。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；未做非管理员账号的浏览器实测。
+
+# 2026-07-09 已完成：踢出玩家 + 服务器密码设置/认证状态查询
+
+- `PLAYERS-KICK-1` completed：玩家页踢出功能（行内图标按钮 + "管理操作"卡片下拉+按钮）不再是禁用占位，接入真实后端。上游 JunimoServer 没有踢人 REST API，改为复用面板自带 `StardewAnxiPanel.Control` SMAPI Mod 已有的命令队列机制（和喊话 `say` 同一套通道）：面板写命令文件到 `control/commands/`，Mod 每 120 tick 消费一次，按 `UniqueMultiplayerID` 查找在线玩家并调用 `Game1.server.kick(...)`，禁止踢主机。**已重新编译并替换嵌入的 `StardewAnxiPanel.Control.dll`**，影响现有实例需要重启/重新准备 server 容器才能刷新到最新 Mod。fire-and-forget，前端只能提示"指令已提交"，拿不到精确执行结果。
+- `PASSWORD-STATUS-1` completed：`ServerControlPage.tsx` 原"服务器设置"占位按钮按用户要求改名为"服务器密码设置"并接入弹窗（不是新建 `SettingsPage.tsx` 区块）。弹窗内可读写 `.env` 的 `SERVER_PASSWORD`（JunimoServer 只支持容器启动时生效，保存后提示需重启 server 容器），并只读展示 JunimoServer `GET /auth` 代理出的密码保护状态（是否启用、已认证/待认证人数、认证超时秒数、最大失败次数）。
+- 详见 `docs/backend-handoff/backend-handoff-2026-07-09.md`、`docs/frontend-handoff/frontend-handoff-2026-07-09.md` 的对应小节。验证：`cd backend; go build ./... && go test ./...` 全绿；SMAPI Mod 用 Docker 官方命令重新编译 `Build succeeded, 0 Errors`；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做真机联机验证和浏览器截图验证**，建议下一位维护者找测试实例走一遍"设密码→重启→玩家登录→踢人→查看认证状态"完整链路。
+- 封禁玩家、白名单管理、权限设置三项仍是禁用占位，未在本轮改动范围内。
+
+# 2026-07-09 已完成：手机端适配新一轮系统性修复
+
+- `FE-MOBILE-FIXES-1` completed：不重构现有断点体系，针对调研定位到的具体移动端问题逐项修复：`.sd-input`（含 `.sd-mods-sync-select`、`.sd-players-action-select`）在 `max-width: 640px` 下字号提到 16px，避免 iOS Safari 聚焦表单自动放大整页；`viewport` meta 补 `viewport-fit=cover`，`#root:has(.sd-shell)` 补 `env(safe-area-inset-*)` 内边距；移动端顶部横向导航图标从 42×38px 提到 44×44px 触控热区（`.sd-shell` 第二行同步从 48px 调到 54px）；`.sd-confirm-dialog` 补 `max-height:90vh; overflow-y:auto` 避免长文案/矮视口溢出；Players 表格与存档备份表格的横向滚动容器补惯性滚动和右侧渐变提示，让移动端用户能发现可横滑。详见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md`。
+- 中期路线里的“更完整的移动端导航和表格卡片化”（见下文中期路线）不在本轮范围内，仍待后续单独排期。
+
 # 2026-07-08 已完成：run.sh Docker APT 源同步失败兜底
 
 - `RUN-SH-DOCKER-APT-FALLBACK-1` completed：修复一键脚本在 Ubuntu/Debian 安装 Docker 时只依赖阿里云 Docker CE apt 源的问题。遇到 `File has unexpected size ... Mirror sync in progress?` 这类镜像站同步期索引校验失败时，脚本会先停用系统里历史残留的 Docker apt 源并清理索引，再自动切换到阿里云、清华 TUNA、中科大 USTC、Docker 官方源继续重试。真实现场补充：阿里云 ECS 可能在 `/etc/apt/sources.list` 或其它源文件内残留 `http://mirrors.cloud.aliyuncs.com/docker-ce/...`，新脚本会注释这类旧源，只保留当前托管源 `/etc/apt/sources.list.d/anxi-panel-docker.list`。仅改部署脚本与镜像构建文档，未改面板运行镜像、后端 API 或前端逻辑。

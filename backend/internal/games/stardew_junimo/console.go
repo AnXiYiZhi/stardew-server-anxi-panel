@@ -156,6 +156,13 @@ func (d *Driver) SendSay(ctx context.Context, instance registry.Instance, messag
 	return sendSay(ctx, d, instance, message)
 }
 
+// KickPlayer disconnects the given player from the running server. It is
+// fire-and-forget: the embedded StardewAnxiPanel.Control SMAPI mod consumes
+// the command on its next tick and calls Game1.server.kick internally.
+func (d *Driver) KickPlayer(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*CommandRunResult, error) {
+	return kickPlayer(instance, uniqueMultiplayerID, name)
+}
+
 // runCommand is the testable core of RunAllowlistedCommand.
 func runCommand(ctx context.Context, d *Driver, instance registry.Instance, req CommandRequest, isAdmin bool) (*CommandRunResult, error) {
 	// Validate command ID against allowlist.
@@ -256,6 +263,38 @@ func sendSay(ctx context.Context, d *Driver, instance registry.Instance, message
 }
 
 func writePanelBroadcastCommand(dataDir, message string) error {
+	return writePanelCommand(dataDir, "broadcast", map[string]string{"message": message})
+}
+
+// kickPlayer is the testable core of Driver.KickPlayer.
+func kickPlayer(instance registry.Instance, uniqueMultiplayerID, name string) (*CommandRunResult, error) {
+	uniqueMultiplayerID = strings.TrimSpace(uniqueMultiplayerID)
+	if uniqueMultiplayerID == "" {
+		return nil, &CommandError{Code: "invalid_player", Message: "缺少玩家联机 ID"}
+	}
+	if instance.State != storage.InstanceStateRunning {
+		return nil, &CommandError{Code: "server_not_running", Message: "服务器未运行，无法踢出玩家"}
+	}
+
+	start := time.Now()
+	if err := writePanelCommand(instance.DataDir, "kick", map[string]string{
+		"uniqueMultiplayerId": uniqueMultiplayerID,
+		"name":                strings.TrimSpace(name),
+	}); err != nil {
+		return nil, fmt.Errorf("写入踢出命令失败: %w", err)
+	}
+	return &CommandRunResult{
+		Command:    "kick",
+		Output:     "踢出指令已提交，控制模组会在游戏 tick 中处理；无法踢出主机玩家。",
+		ExitCode:   0,
+		DurationMS: time.Since(start).Milliseconds(),
+	}, nil
+}
+
+// writePanelCommand drops a JSON command file into the instance's control
+// commands directory, where the embedded StardewAnxiPanel.Control SMAPI mod
+// polls and consumes it (see ModEntry.cs ConsumeCommands/HandleCommand).
+func writePanelCommand(dataDir, name string, payload map[string]string) error {
 	commandsDir := filepath.Join(controlDir(dataDir), "commands")
 	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
 		return fmt.Errorf("create commands dir: %w", err)
@@ -269,8 +308,8 @@ func writePanelBroadcastCommand(dataDir, message string) error {
 		Payload   map[string]string `json:"payload"`
 		CreatedAt string            `json:"createdAt"`
 	}{
-		Name:      "broadcast",
-		Payload:   map[string]string{"message": message},
+		Name:      name,
+		Payload:   payload,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	data, err := json.MarshalIndent(command, "", "  ")

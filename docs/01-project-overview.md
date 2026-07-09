@@ -59,8 +59,8 @@
 | `docs/01-project-overview.md` | 项目总纲、边界、索引 |
 | `docs/02-backend.md` | 后端架构、模块、API、测试 |
 | `docs/03-frontend.md` | 前端架构、路由、UI、构建 |
-| `docs/backend-handoff/`（最新：`backend-handoff-2026-07-06.md`） | 后端接手重点 |
-| `docs/frontend-handoff/`（最新：`frontend-handoff-2026-07-06.md`） | 前端接手重点 |
+| `docs/backend-handoff/`（最新：`backend-handoff-2026-07-09.md`） | 后端接手重点 |
+| `docs/frontend-handoff/`（最新：`frontend-handoff-2026-07-09.md`） | 前端接手重点 |
 | `docs/06-integration.md` | 前后端联调、API 契约、验证流程 |
 | `docs/07-later-optimizations.md` | 后期优化池 |
 | `docs/08-future-roadmap.md` | 已完成里程碑与未来路线 |

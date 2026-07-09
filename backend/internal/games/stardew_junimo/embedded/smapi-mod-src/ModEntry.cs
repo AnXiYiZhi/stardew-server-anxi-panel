@@ -669,6 +669,12 @@ public sealed class ModEntry : Mod
                     : "";
                 SendBroadcastMessage(message ?? "");
                 break;
+            case "kick":
+                var targetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawTargetId)
+                    ? rawTargetId.GetString()
+                    : "";
+                KickPlayer(targetId ?? "");
+                break;
             case "stop":
                 WriteStatus("stopping", "Stop command received. Container stop will be handled by backend later.");
                 break;
@@ -698,6 +704,45 @@ public sealed class ModEntry : Mod
             .sendChatMessage(DetectChatLanguage(text), text, Multiplayer.AllPlayers);
         WriteStatus("command", "Broadcast command sent.");
         Monitor.Log($"Broadcast command sent: {text}", LogLevel.Info);
+    }
+
+    private void KickPlayer(string uniqueMultiplayerId)
+    {
+        if (!Context.IsWorldReady)
+        {
+            WriteStatus("command", "Kick command ignored because the world is not ready.");
+            return;
+        }
+        if (!long.TryParse(uniqueMultiplayerId, out var targetId))
+        {
+            WriteStatus("command", "Kick command ignored because the target player id was invalid.");
+            return;
+        }
+
+        var target = Game1.getOnlineFarmers().FirstOrDefault(farmer => farmer.UniqueMultiplayerID == targetId);
+        if (target is null)
+        {
+            WriteStatus("command", "Kick command ignored because the target player is not online.");
+            return;
+        }
+        if (target.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID)
+        {
+            WriteStatus("command", "Kick command ignored because the target player is the host.");
+            Monitor.Log("Kick command ignored: cannot kick the host.", LogLevel.Warn);
+            return;
+        }
+
+        try
+        {
+            Game1.server?.kick(targetId);
+            WriteStatus("command", $"Kick command sent for player {target.Name}.");
+            Monitor.Log($"Kick command sent for player {target.Name} ({targetId}).", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            WriteStatus("command", "Kick command failed.");
+            Monitor.Log($"Kick command failed for player {targetId}: {ex}", LogLevel.Error);
+        }
     }
 
     private static string SanitizeChatText(string input, int maxLength)

@@ -35,6 +35,8 @@ body:has(.sd-shell) {
   min-height: 0;
   overflow: hidden;
   background: #000;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
 button,

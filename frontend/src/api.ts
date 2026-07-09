@@ -7,6 +7,8 @@ import type {
   InstallJobResponse,
   InstallOptionsResponse,
   InstanceVNCConfig,
+  InstanceServerPasswordConfig,
+  InstancePasswordStatus,
   InstanceRenderingResult,
   InstanceState,
   InstancesResponse,
@@ -268,6 +270,21 @@ export function updateInstanceVNCPort(port: string, instanceId = defaultInstance
     method: 'PUT',
     body: { port },
   })
+}
+
+export function getInstanceServerPassword(instanceId = defaultInstanceId) {
+  return request<InstanceServerPasswordConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-password`)
+}
+
+export function updateInstanceServerPassword(password: string, instanceId = defaultInstanceId) {
+  return request<InstanceServerPasswordConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-password`, {
+    method: 'PUT',
+    body: { password },
+  })
+}
+
+export function getInstancePasswordStatus(instanceId = defaultInstanceId) {
+  return request<InstancePasswordStatus>(`/api/instances/${encodeURIComponent(instanceId)}/password-status`)
 }
 
 export function setInstanceRenderingFPS(fps: number, instanceId = defaultInstanceId) {
@@ -545,6 +562,13 @@ export function sendSay(message: string, instanceId = defaultInstanceId) {
     `/api/instances/${encodeURIComponent(instanceId)}/commands/say`,
     { method: 'POST', body: { message }, signal: controller.signal },
   ).finally(() => clearTimeout(timer))
+}
+
+export function kickPlayer(uniqueMultiplayerId: string, name: string, instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/kick`,
+    { method: 'POST', body: { uniqueMultiplayerId, name } },
+  )
 }
 
 // ── Version ──────────────────────────────────────────────────────────────────

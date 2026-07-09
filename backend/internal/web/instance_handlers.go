@@ -121,6 +121,20 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handlePlayersList(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/players/kick
+	if len(parts) == 3 && parts[1] == "players" && parts[2] == "kick" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePlayerKick(w, r, instanceID)
+		return
+	}
+	// GET /api/instances/:id/password-status
+	if len(parts) == 2 && parts[1] == "password-status" {
+		s.handleInstancePasswordStatus(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "docker" && parts[2] == "ps" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -223,6 +237,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 3 && parts[1] == "config" && parts[2] == "vnc-port" {
 		s.handleInstanceVNCConfig(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "config" && parts[2] == "server-password" {
+		s.handleInstanceServerPassword(w, r, instanceID)
 		return
 	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "preflight" {

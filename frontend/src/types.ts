@@ -414,6 +414,18 @@ export type InstanceVNCConfig = {
   vncPort: string
 }
 
+export type InstanceServerPasswordConfig = {
+  serverPassword: string
+}
+
+export type InstancePasswordStatus = {
+  enabled: boolean
+  authenticatedCount: number
+  pendingCount: number
+  timeoutSeconds: number
+  maxAttempts: number
+}
+
 export type InstanceRenderingResult = {
   fps: number
   output?: string
