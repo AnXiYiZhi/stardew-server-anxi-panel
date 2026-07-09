@@ -3,7 +3,7 @@
 `Anxi Panel` 是围绕 [JunimoServer](https://stardew-valley-dedicated-server.github.io/server/) 构建的星露谷物语（Stardew Valley）专用服务器 Web 管理面板。
 
 ::: tip 🎮 全平台跨端联机
-**Windows、Mac、iOS、Android、iPad** 玩家可以直接加入同一个服务器一起玩，不需要都用同一个平台。
+**Windows、Mac、iOS、Android、iPad** 玩家可以直接加入同一个服务器一起玩，不需要都用同一个平台。点此观看[视频教程](https://www.bilibili.com/video/BV1GvMG6jE71/)。
 :::
 
 星露谷联机常卡在房主在线、跨平台加入、异地网络、端口转发、Steam 邀请、存档回档和 Mod 对齐上。这个项目的目的就是为了解决这些痛点。
