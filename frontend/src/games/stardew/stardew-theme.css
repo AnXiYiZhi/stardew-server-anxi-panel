@@ -415,6 +415,15 @@
   color: #8a7060;
 }
 
+@media (max-width: 640px) {
+  /* iOS Safari 对 font-size < 16px 的表单控件聚焦时会自动放大整页；必须排在 .sd-input 基础规则之后，
+     否则同优先级下会被后面无条件的基础规则覆盖 */
+  .sd-input {
+    font-size: 16px;
+    min-height: 32px;
+  }
+}
+
 .sd-input-invite {
   font-size: 1.2rem;
   letter-spacing: 3px;

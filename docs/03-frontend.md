@@ -1059,6 +1059,7 @@ frontend/public/assets/stardew/ui/sprites
 - 玩家页固定展示现金、农场收入、个人收入和钱包模式；农场收入/个人收入不随共享或分开钱包切换含义。
 - 玩家页“玩家活动 / 最近事件”已接入后端 `recentEvents`，展示首次记录、加入和离开事件。
 - Stardew Shell 已固定为视口高度；长页面只滚动中间 `.sd-main` 内容区，左侧导航、顶部状态栏和右侧任务栏保持固定，移动端顶部栏与横向导航同样不参与页面文档滚动。
+- `FE-MOBILE-FIXES-1`：新一轮系统性手机端适配，不改动现有断点数值，只修复具体问题：表单控件移动端字号提到 16px（防 iOS 自动缩放）、`viewport-fit=cover` + `env(safe-area-inset-*)` 安全区、移动端导航图标触控热区提到 44×44px、确认弹窗补 `max-height/overflow-y` 防溢出、Players/存档备份宽表格补横滑渐变提示。详见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md`。
 
 ## 前端验证
 
@@ -1624,3 +1625,24 @@ npm.cmd run dev
 - `InviteCodeCard.tsx` 新增 `copyText(text)`：仅在 `window.isSecureContext` 为真时用 `navigator.clipboard`，否则/失败时降级用隐藏 `<textarea>` + `document.execCommand('copy')`，两条路径都有 try/catch。邀请码与局域网 IP 两个复制按钮改用它。
 - 影响文件：`frontend/src/games/stardew/InviteCodeCard.tsx`。
 - 验证：`cd frontend; npm.cmd run build`。
+
+# PLAYERS-KICK-1 踢出玩家 + PASSWORD-STATUS-1 服务器密码设置弹窗
+
+- `PlayersPage.tsx` 的踢出功能接入真实后端：玩家表格每行右侧的踢出图标按钮（`sd-players-icon-boot`）和"管理操作"卡片里的踢出玩家下拉+按钮不再是禁用占位，改为调用 `kickPlayer(uniqueMultiplayerId, name)`（新增于 `api.ts`，对应 `POST /api/instances/:id/players/kick`）。点击后弹出确认弹窗（复用现有 `sd-confirm-overlay`/`sd-confirm-dialog` 通用弹窗样式），确认后提交请求并调用 `dashboardData.refreshPlayers()` 刷新玩家名册。
+  - 只有在线（`status === 'online'`）、非主机（`!isHost`）、且带 `uniqueMultiplayerId` 的玩家才能被选中踢出；主机保护是后端 SMAPI Mod 侧做的，前端这里只是提前禁用避免无意义请求。
+  - 底部"管理操作"卡片的下拉框只列出满足上述条件的在线玩家；封禁/白名单/权限设置三项仍保持原有"待接入"禁用占位，未改动。
+  - 页面顶部描述文案、管理操作区底部提示语同步更新，不再统一写"踢出待接入"。
+- **服务器密码设置按用户明确要求放进 `ServerControlPage.tsx` 原来的"服务器设置"快捷按钮里，而不是新建 `SettingsPage.tsx` 区块**：按钮改名"服务器密码设置"并移除 `disabled`，点击调用新增的 `openPasswordSettings()` 打开一个弹窗（复用 `scheduleOpen` 那套 `sd-confirm-overlay` 弹窗模式）：
+  - 弹窗内一个密码输入框（`type="password"`/`text` 切换显示）+ 保存按钮，调用新增的 `getInstanceServerPassword`/`updateInstanceServerPassword`（对应后端 `GET/PUT /api/instances/:id/config/server-password`）。保存后明确提示"需要重启服务器容器后才会生效"（因为 JunimoServer 不支持热改密码）。
+  - 弹窗下半部分是"密码保护状态"只读展示，调用新增的 `getInstancePasswordStatus`（对应 `GET /api/instances/:id/password-status`，代理 JunimoServer `GET /auth`），展示是否启用、已认证/待认证人数、认证超时秒数、最大失败次数；服务器未运行时不可刷新并提示"服务器未运行，无法读取密码保护状态"。
+- `types.ts` 新增 `InstanceServerPasswordConfig`、`InstancePasswordStatus`；`api.ts` 新增 `getInstanceServerPassword`/`updateInstanceServerPassword`/`getInstancePasswordStatus`/`kickPlayer` 四个函数，均沿用现有 `request<T>()` 封装，无特殊超时/AbortController（`say`/`runCommand` 那种 40 秒超时是因为要等 attach-cli 输出，这几个接口是纯 JSON 读写或 fire-and-forget，不需要）。
+- 影响文件：`frontend/src/types.ts`、`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`、`frontend/src/games/stardew/pages/ServerControlPage.tsx`。
+- 验证：`cd frontend; npx tsc --noEmit -p .` 通过；`cd frontend; npm run build`（`tsc -b && vite build`）通过。**未做浏览器实测**：没有连一个真实运行中的实例走一遍"设密码→重启→玩家登录→踢人→查看认证状态"的完整交互，弹窗的实际视觉效果、移动端窄屏下的表现也未截图验证。
+- 下一步注意事项：踢人是 fire-and-forget，前端拿到的 `output` 只是"指令已提交"，不代表真的踢成功了（详见 `docs/backend-handoff/backend-handoff-2026-07-09.md`）；如果用户反馈"点了踢出但玩家还在"，先确认服务器是否真的在跑最新的 `StardewAnxiPanel.Control.dll`（改了 Mod 源码后必须重启/重新准备 server 容器才会生效），而不是先怀疑前端逻辑。密码弹窗目前没有做"保存后一键重启"的联动按钮，如果后续用户反馈体验割裂，可以考虑在保存成功提示旁加一个跳转/直接触发重启的按钮。
+
+# ADMIN-GATE-LIFECYCLE-1 启动/停止/重启按钮补齐管理员权限门控
+
+- `ServerControlPage.tsx` 的 `canStart`/`canStop`/`canRestart` 三个派生变量补上 `isAdmin &&` 前缀；`OverviewPage.tsx` 补上 `user` prop 解构和 `isAdmin` 变量，`renderLifecycleButtons()` 里三个按钮 `disabled` 补 `|| !isAdmin`。两处都补了非管理员时的 `title` 提示。
+- 起因：后端 `/start`、`/stop`、`/restart` 一直是 `requireAdmin`，但这两个组件的按钮此前没有对应的前端门控，普通用户能看到可点击按钮，点击后才被 403 拒绝。全量排查确认其余页面（Mod 上传/一键安装、玩家踢出、存档、设置、任务日志、诊断导出）本来就正确限制了管理员权限。
+- 影响文件：`frontend/src/games/stardew/pages/ServerControlPage.tsx`、`frontend/src/games/stardew/pages/OverviewPage.tsx`。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；未做非管理员账号浏览器实测，详见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md`。

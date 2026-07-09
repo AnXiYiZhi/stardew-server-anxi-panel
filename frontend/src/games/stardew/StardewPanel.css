@@ -1489,6 +1489,8 @@
   padding: 18px 22px;
   max-width: 320px;
   width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
   display: grid;
   gap: 12px;
 }
@@ -2534,7 +2536,8 @@
 
 @media (max-width: 640px) {
   .sd-shell {
-    grid-template-rows: 52px 48px minmax(0, 1fr);
+    /* 第二行 54px = 导航图标触控热区 44px + 上下 padding 各 5px，满足 44px 触控热区推荐标准 */
+    grid-template-rows: 52px 54px minmax(0, 1fr);
     grid-template-columns: 1fr;
     overflow-x: hidden; /* 防止子元素撑出页面宽度 */
   }
@@ -2624,8 +2627,8 @@
     display: none;
   }
 
-  /* 移动端导航：只显示图标，充满侧栏高度，确保可触控 */
-  /* height: 30px = 侧栏行高 36px − 上下 padding 各 3px；不用 100% 因为 sidebar 无显式 height */
+  /* 移动端导航：只显示图标，确保可触控 */
+  /* height: 44px = 触控热区推荐最小尺寸；不用 100% 因为 sidebar 无显式 height */
   .sd-sidebar .sd-nav-item {
     position: relative;
     left: auto;
@@ -2633,9 +2636,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 42px;
-    min-width: 42px;
-    height: 38px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
     aspect-ratio: auto;
     min-height: 0;
     padding: 0;
@@ -2662,9 +2665,9 @@
   .sd-sidebar .sd-nav-item.active,
   .sd-sidebar .sd-nav-item[aria-current="page"] {
     width: auto;
-    width: 42px;
-    min-width: 42px;
-    height: 38px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
     min-height: 0;
     background-image: none;
     background-color: rgba(77, 45, 13, 0.92);
@@ -3935,6 +3938,13 @@
   background: rgba(255, 248, 220, 0.8);
   padding: 2px 4px;
   border-radius: 2px;
+}
+
+@media (max-width: 640px) {
+  /* iOS Safari 对 font-size < 16px 的表单控件聚焦时会自动放大整页 */
+  .sd-mods-sync-select {
+    font-size: 16px;
+  }
 }
 
 /* 区块标题 */
@@ -13019,6 +13029,14 @@
   font-weight: 800;
 }
 
+@media (max-width: 640px) {
+  /* iOS Safari 对 font-size < 16px 的表单控件聚焦时会自动放大整页 */
+  .sd-players-action-select {
+    font-size: 16px;
+    height: 36px;
+  }
+}
+
 .sd-players-action-item > button {
   grid-column: 1 / -1;
   width: 100%;
@@ -14121,6 +14139,23 @@
     width: 100%;
     justify-content: flex-start;
   }
+
+  /* 移动端默认滚动条不可见，加惯性滚动 + 右侧渐变提示，让用户知道备份表格可以横滑 */
+  .sd-save-backups-table {
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sd-save-backups-table::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, rgba(61, 37, 16, 0.3));
+  }
 }
 
 /* FE-UNIFIED-CARD-PARCHMENT-TONE-1: share the softened parchment tone across small cards. */
@@ -15144,6 +15179,23 @@
   .sd-players-table-header,
   .sd-players-table-row {
     min-width: 910px;
+  }
+
+  /* 移动端默认滚动条不可见，加惯性滚动 + 右侧渐变提示，让用户知道表格可以横滑 */
+  .sd-players-table-placeholder {
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sd-players-table-placeholder::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, rgba(61, 37, 16, 0.3));
   }
 }
 

@@ -13,11 +13,14 @@ import {
   getCommands,
   runCommand,
   sendSay,
+  getInstanceServerPassword,
+  updateInstanceServerPassword,
+  getInstancePasswordStatus,
 } from '../../../api'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import { ServerSummaryCard } from '../ServerSummaryCard'
 import type { StardewPageProps } from '../stardew-routes'
-import type { ConsoleCommandDef, RestartSchedule } from '../../../types'
+import type { ConsoleCommandDef, RestartSchedule, InstancePasswordStatus } from '../../../types'
 
 const defaultRestartSchedule: RestartSchedule = {
   instanceId: 'stardew',
@@ -80,6 +83,18 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const [vncMessage, setVNCMessage] = useState<string | null>(null)
   const [vncError, setVNCError] = useState<string | null>(null)
 
+  // ── 服务器密码设置 ────────────────────────────────────────────────────────
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const [passwordDraft, setPasswordDraft] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
+  const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
+  const [passwordStatusLoading, setPasswordStatusLoading] = useState(false)
+  const [passwordStatusError, setPasswordStatusError] = useState<string | null>(null)
+
   // ── 控制台命令 ────────────────────────────────────────────────────────────
   const [commands, setCommands] = useState<ConsoleCommandDef[]>([])
   const [commandsLoading, setCommandsLoading] = useState(false)
@@ -117,9 +132,9 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
     !isRunning &&
     !isStarting
-  const canStart = isStopped && !actionBusy && !startupInProgress && !waitingForStop
-  const canStop = isRunning && !actionBusy && !waitingForStop
-  const canRestart = isRunning && !actionBusy && !waitingForStop
+  const canStart = isAdmin && isStopped && !actionBusy && !startupInProgress && !waitingForStop
+  const canStop = isAdmin && isRunning && !actionBusy && !waitingForStop
+  const canRestart = isAdmin && isRunning && !actionBusy && !waitingForStop
   const stateLabelText = state
     ? stateLabel(state)
     : dashboardData.loading
@@ -379,6 +394,60 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     }
   }
 
+  async function openPasswordSettings() {
+    if (!isAdmin) return
+    setPasswordOpen(true)
+    setPasswordVisible(false)
+    setPasswordLoading(true)
+    setPasswordSaving(false)
+    setPasswordError(null)
+    setPasswordMessage(null)
+    try {
+      const res = await getInstanceServerPassword()
+      setPasswordDraft(res.serverPassword)
+    } catch (e) {
+      setPasswordError(errorMessage(e))
+      setPasswordDraft('')
+    } finally {
+      setPasswordLoading(false)
+    }
+    void loadPasswordStatus()
+  }
+
+  async function loadPasswordStatus() {
+    setPasswordStatusLoading(true)
+    setPasswordStatusError(null)
+    try {
+      const res = await getInstancePasswordStatus()
+      setPasswordStatus(res)
+    } catch (e) {
+      setPasswordStatus(null)
+      setPasswordStatusError(errorMessage(e))
+    } finally {
+      setPasswordStatusLoading(false)
+    }
+  }
+
+  async function handleSaveServerPassword() {
+    if (passwordDraft.length > 128) {
+      setPasswordError('服务器密码不能超过 128 个字符')
+      setPasswordMessage(null)
+      return
+    }
+    setPasswordSaving(true)
+    setPasswordError(null)
+    setPasswordMessage(null)
+    try {
+      const res = await updateInstanceServerPassword(passwordDraft)
+      setPasswordDraft(res.serverPassword)
+      setPasswordMessage('密码已保存，需要重启服务器容器后才会生效。')
+    } catch (e) {
+      setPasswordError(errorMessage(e))
+    } finally {
+      setPasswordSaving(false)
+    }
+  }
+
   function toggleScheduleWarning(minute: number) {
     setScheduleDraft((draft) => {
       const exists = draft.warningMinutes.includes(minute)
@@ -469,7 +538,15 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               className={`sd-btn-start${startupInProgress ? ' sd-btn-loading' : ''}`}
               disabled={startupInProgress || !canStart}
               onClick={() => void handleStart()}
-              title={startupInProgress ? '服务器启动中，正在加载存档' : isRunning ? '服务器已运行' : '启动服务器'}
+              title={
+                !isAdmin
+                  ? '仅管理员可启动服务器'
+                  : startupInProgress
+                    ? '服务器启动中，正在加载存档'
+                    : isRunning
+                      ? '服务器已运行'
+                      : '启动服务器'
+              }
             >
               {startupInProgress ? (
                 <span className="sd-btn-spinner" aria-hidden="true" />
@@ -501,7 +578,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 className="sd-btn-stop"
                 disabled={!canStop}
                 onClick={() => setConfirmAction('stop')}
-                title={!isRunning ? '服务器未运行' : '停止服务器（需确认）'}
+                title={!isAdmin ? '仅管理员可停止服务器' : !isRunning ? '服务器未运行' : '停止服务器（需确认）'}
               >
                 <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
                 停止
@@ -512,7 +589,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 className="sd-btn-restart"
                 disabled={!canRestart}
                 onClick={() => setConfirmAction('restart')}
-                title={!isRunning ? '服务器未运行' : '重启服务器（需确认）'}
+                title={!isAdmin ? '仅管理员可重启服务器' : !isRunning ? '服务器未运行' : '重启服务器（需确认）'}
               >
                 <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
                 重启
@@ -783,17 +860,17 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             </button>
           ) : null}
           <button
-            key="server-settings"
+            key="server-password-settings"
             className="sd-btn-tan sd-btn--lg"
-            disabled
-            title="待接入：端口/可见性/密码配置"
+            disabled={!isAdmin}
+            title={isAdmin ? '设置玩家加入服务器所需的密码' : '仅管理员可设置服务器密码'}
+            onClick={() => void openPasswordSettings()}
           >
             <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.settings} alt="" />
             <span className="sd-server-quick-copy">
-              <strong>服务器设置</strong>
-              <span>待接入</span>
+              <strong>服务器密码设置</strong>
+              <span>配置玩家加入密码</span>
             </span>
-            <span className="sd-srv-badge-pending">待接入</span>
           </button>
         </div>
         {quickBackupMessage ? (
@@ -962,6 +1039,92 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 {scheduleSaving ? '保存中…' : '保存'}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {passwordOpen ? (
+        <div key="password" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>服务器密码设置</h3>
+
+            {passwordLoading ? (
+              <p>正在读取当前密码配置...</p>
+            ) : (
+              <>
+                <label className="sd-schedule-field">
+                  <span>加入密码</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      className="sd-input"
+                      type={passwordVisible ? 'text' : 'password'}
+                      value={passwordDraft}
+                      placeholder="留空表示不设置密码"
+                      maxLength={128}
+                      onChange={(e) => {
+                        setPasswordDraft(e.target.value)
+                        setPasswordMessage(null)
+                      }}
+                      disabled={passwordSaving}
+                    />
+                    <button
+                      type="button"
+                      className="sd-btn-tan"
+                      onClick={() => setPasswordVisible((v) => !v)}
+                    >
+                      {passwordVisible ? '隐藏' : '显示'}
+                    </button>
+                  </div>
+                </label>
+
+                <div className="sd-confirm-warning">
+                  该密码仅在服务器容器启动时生效（JunimoServer 不支持运行时热改）。保存后需要重启服务器容器才会真正生效；玩家加入时需要在游戏内输入 <code>!login 密码</code>。
+                </div>
+
+                {passwordError ? <div className="sd-ov-error">{passwordError}</div> : null}
+                {passwordMessage ? <div className="sd-srv-result">{passwordMessage}</div> : null}
+
+                <div className="sd-confirm-actions">
+                  <button className="sd-btn-tan" onClick={() => setPasswordOpen(false)} disabled={passwordSaving}>
+                    关闭
+                  </button>
+                  <button
+                    className="sd-btn-green"
+                    onClick={() => void handleSaveServerPassword()}
+                    disabled={passwordSaving}
+                  >
+                    {passwordSaving ? '保存中…' : '保存'}
+                  </button>
+                </div>
+
+                <div className="sd-schedule-summary" style={{ marginTop: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong>密码保护状态（来自 JunimoServer）</strong>
+                    <button
+                      type="button"
+                      className="sd-btn-tan"
+                      onClick={() => void loadPasswordStatus()}
+                      disabled={passwordStatusLoading || !isRunning}
+                    >
+                      {passwordStatusLoading ? '读取中…' : '刷新'}
+                    </button>
+                  </div>
+                  {!isRunning ? (
+                    <div>服务器未运行，无法读取密码保护状态。</div>
+                  ) : passwordStatusError ? (
+                    <div className="sd-ov-error">{passwordStatusError}</div>
+                  ) : passwordStatus ? (
+                    <>
+                      <div>是否启用：{passwordStatus.enabled ? '已启用' : '未启用'}</div>
+                      <div>已认证玩家：{passwordStatus.authenticatedCount}　待认证玩家：{passwordStatus.pendingCount}</div>
+                      <div>认证超时：{passwordStatus.timeoutSeconds} 秒　最大失败次数：{passwordStatus.maxAttempts}</div>
+                    </>
+                  ) : (
+                    <div>暂无数据。</div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
