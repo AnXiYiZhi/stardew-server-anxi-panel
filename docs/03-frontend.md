@@ -1646,3 +1646,11 @@ npm.cmd run dev
 - 起因：后端 `/start`、`/stop`、`/restart` 一直是 `requireAdmin`，但这两个组件的按钮此前没有对应的前端门控，普通用户能看到可点击按钮，点击后才被 403 拒绝。全量排查确认其余页面（Mod 上传/一键安装、玩家踢出、存档、设置、任务日志、诊断导出）本来就正确限制了管理员权限。
 - 影响文件：`frontend/src/games/stardew/pages/ServerControlPage.tsx`、`frontend/src/games/stardew/pages/OverviewPage.tsx`。
 - 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；未做非管理员账号浏览器实测，详见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md`。
+
+# USER-PASSWORD-RESET-1 用户管理新增"重置密码"
+
+- `SettingsPage.tsx` 的 `UserManagementSection` 用户列表每行新增"重置密码"按钮，点击弹出输入新密码的弹窗（复用 `sd-confirm-overlay`/`sd-confirm-dialog` 样式，不是简单的 `ConfirmDialog` 因为需要一个密码输入框），调用新增的 `updateUserPassword(id, password)`（`api.ts`，`PATCH /api/users/{id}` body `{password}`）。
+- 按钮可见性 `canChangePassword = isSuperAdmin || isSelf || !isAdminTarget`：和已有的"禁用/删除"按钮用的 `canManageTarget`（故意排除 `isSelf`）不是同一个表达式，重置密码允许改自己但管理别人（禁用/删除）不允许改自己，两者语义不同不能共用一个变量。
+- 修改自己密码成功后，后端会撤销当前 session（`storage.UpdateUser` 里 `passwordChanged` 触发），前端在弹窗里显示"密码已修改，即将跳转到登录页…" 1.2 秒后 `window.location.reload()`，让 `App.tsx` 的 `boot()` 重新走一遍 `/api/auth/me` 探测到 401 自然显示登录页，没有做更复杂的全局 401 拦截器（那是更大范围的重构，本次不做）。修改别人的密码则直接 `loadUsers()` 刷新列表。
+- 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/SettingsPage.tsx`。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；未做浏览器实测（三种角色分别登录点一遍重置密码流程），建议下一位维护者补一次。

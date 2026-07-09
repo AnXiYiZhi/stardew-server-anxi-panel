@@ -116,3 +116,36 @@
 
 - 这次是一次**专项复查**，只针对"后端 requireAdmin 但前端按钮没挡"这一类问题做了全量排查，结论是除了这两处启停按钮，其余页面都是对的。以后新增任何会调用 `requireAdmin` 接口的按钮/表单，必须在写的时候就带上 `!isAdmin` 判断，不要等到发版前才靠人工审查兜底。
 - 如果以后要重构 `ServerControlPage.tsx`/`OverviewPage.tsx` 的生命周期按钮逻辑，注意 `canStart`/`canStop`/`canRestart`（`ServerControlPage.tsx`）和 `renderLifecycleButtons()`（`OverviewPage.tsx`）是两套独立实现，没有共享逻辑；这次是分别在两处手动加的 `isAdmin` 判断，没有做抽取公共 hook 的重构（超出本次修复范围，按"外科手术式修改"原则未做）。
+
+# USER-PASSWORD-RESET-1 用户管理新增"重置密码"
+
+## 背景
+
+用户提出面板账号（不是游戏加入密码）改密码权限规则："普通用户不能改自己密码，管理员能改自己的和普通用户的，第一个注册的管理员能改所有，包括自己"。调研发现后端 `PATCH /api/users/{id}` 早支持 `password` 字段，前端从未接入；同时后端权限检查有个 bug 比这条规则更严格（详见 `docs/backend-handoff/backend-handoff-2026-07-09.md` 的 `USER-PASSWORD-RESET-1`，已在同一轮修复）。这次前端只需要在已有的"用户管理"区加一个入口。
+
+## 改了什么
+
+- `api.ts` 新增 `updateUserPassword(id, password)`，`PATCH /api/users/{id}` body `{password}`，返回类型和 `updateUserRole` 一样是 `{ user: PanelUser }`。
+- `SettingsPage.tsx` `UserManagementSection`：
+  - 新增 state：`passwordTarget`（当前弹窗操作的目标用户）、`passwordDraft`、`passwordBusy`、`passwordDialogError`、`passwordSelfChanged`。
+  - 新增 `openPasswordDialog(user)` 打开弹窗，`handleChangePassword()` 提交。
+  - 每行用户操作区新增"重置密码"按钮，放在最前面（禁用/删除按钮之前）。可见性用 `canChangePassword = isSuperAdmin || isSelf || !isAdminTarget`——**特意没有复用**已有的 `canManageTarget`（`isSelf ? false : (isSuperAdmin || !isAdminTarget)`），因为"能不能管理别人"（禁用/删除，故意排除自己）和"能不能改密码"（故意允许改自己）语义相反，硬复用会把改自己密码也一起禁用掉。
+  - 弹窗是新写的（不是复用 `ConfirmDialog`，因为需要一个密码输入框），沿用 `sd-confirm-overlay`/`sd-confirm-dialog`/`sd-confirm-actions` 现成 CSS class。前端也做了 ≥6 位的长度校验（和后端 `validatePassword` 一致），按钮在小于 6 位时直接禁用。
+  - **改自己密码的特殊处理**：提交成功后不立即关闭弹窗，而是把 `passwordSelfChanged` 设为 `true`，弹窗内容换成"密码已修改，当前会话已失效，即将跳转到登录页…"，`setTimeout` 1.2 秒后 `window.location.reload()`。这是因为后端改自己密码会撤销当前 session，如果直接关闭弹窗当没事发生，用户下一次点别的按钮会莫名其妙收到"未登录"报错，体验很差；改成显式提示+自动刷新，让 `App.tsx` 的 `boot()` 走一遍探测 401 → 显示登录页的既有逻辑，不需要额外写全局 401 拦截器。
+  - 改别人的密码则正常关闭弹窗 + `loadUsers()` 刷新列表，不受影响。
+
+## 影响文件
+
+- `frontend/src/api.ts`
+- `frontend/src/games/stardew/pages/SettingsPage.tsx`
+
+## 如何验证
+
+- `cd frontend; npx tsc --noEmit -p .` 通过。
+- `cd frontend; npm run build`（`tsc -b && vite build`）通过。
+- **未做的验证**：没有用三种角色（超级管理员/普通管理员/普通用户）分别登录浏览器实测一遍"重置密码"按钮的可见性、弹窗交互、改自己密码后是否真的正确跳转登录页。逻辑上是对的（`tsc`/`build` 都过了，后端权限测试也过了），但这是一个涉及登录态的交互流程，强烈建议下一位维护者用真实浏览器走一遍，尤其是"改自己密码后自动 reload 跳登录页"这一步。
+
+## 下一步注意事项
+
+- 如果以后要做"用户自己改自己密码"（面向普通用户的自助改密码入口），这是一个全新功能而不是这次的延伸——这次明确排除了普通用户改自己密码的可能性，别搞混了两个需求。
+- `passwordSelfChanged` 这个 state 目前只在这一个组件内部使用，没有跟全局的登录态/session 逻辑打通；如果以后要在别的地方（比如密码过期强制修改）复用"改密码后跳登录页"这个模式，值得抽成一个小 hook，但这次只有一处用到，没有做这个抽象。

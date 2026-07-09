@@ -619,6 +619,13 @@ export function updateUserRole(id: number, role: string) {
   })
 }
 
+export function updateUserPassword(id: number, password: string) {
+  return request<{ user: PanelUser }>(`/api/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { password },
+  })
+}
+
 export function disableUser(id: number) {
   return request<OKResponse>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

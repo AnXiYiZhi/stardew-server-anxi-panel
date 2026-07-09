@@ -214,7 +214,7 @@ func (s *Store) UpdateUser(ctx context.Context, actorID int64, targetID int64, p
 		return User{}, err
 	}
 
-	if target.Role == auth.RoleAdmin && !actor.IsSuperAdmin {
+	if target.Role == auth.RoleAdmin && targetID != actorID && !actor.IsSuperAdmin {
 		return User{}, ErrSuperAdminRequired
 	}
 	if params.Role != nil && !actor.IsSuperAdmin {
