@@ -244,6 +244,97 @@ func TestSuperAdminControlsAdminRoleManagement(t *testing.T) {
 	}
 }
 
+func TestPasswordChangePermissions(t *testing.T) {
+	handler, closeStore := newTestHandler(t)
+	defer closeStore()
+
+	setup, superCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "root",
+		"password":        "123456",
+		"confirmPassword": "123456",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup super admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	adminCreated, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "manager",
+		"password": "123456",
+		"role":     "admin",
+	}, superCookie)
+	if adminCreated.Code != http.StatusCreated {
+		t.Fatalf("super admin create admin returned %d: %s", adminCreated.Code, adminCreated.Body.String())
+	}
+
+	userCreated, _ := doJSON(t, handler, http.MethodPost, "/api/users", map[string]string{
+		"username": "player",
+		"password": "123456",
+		"role":     "user",
+	}, superCookie)
+	if userCreated.Code != http.StatusCreated {
+		t.Fatalf("super admin create user returned %d: %s", userCreated.Code, userCreated.Body.String())
+	}
+
+	login, managerCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{
+		"username": "manager",
+		"password": "123456",
+	}, nil)
+	if login.Code != http.StatusOK {
+		t.Fatalf("manager login returned %d: %s", login.Code, login.Body.String())
+	}
+
+	// A regular admin can change their own password.
+	selfChange, _ := doJSON(t, handler, http.MethodPatch, "/api/users/2", map[string]string{"password": "654321"}, managerCookie)
+	if selfChange.Code != http.StatusOK {
+		t.Fatalf("manager change own password returned %d: %s", selfChange.Code, selfChange.Body.String())
+	}
+	reLogin, managerCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{
+		"username": "manager",
+		"password": "654321",
+	}, nil)
+	if reLogin.Code != http.StatusOK {
+		t.Fatalf("manager login with new password returned %d: %s", reLogin.Code, reLogin.Body.String())
+	}
+
+	// A regular admin can change an ordinary user's password.
+	userChange, _ := doJSON(t, handler, http.MethodPatch, "/api/users/3", map[string]string{"password": "654321"}, managerCookie)
+	if userChange.Code != http.StatusOK {
+		t.Fatalf("manager change ordinary user password returned %d: %s", userChange.Code, userChange.Body.String())
+	}
+
+	// A regular admin cannot change another admin's (the super admin's) password.
+	blockOtherAdmin, _ := doJSON(t, handler, http.MethodPatch, "/api/users/1", map[string]string{"password": "654321"}, managerCookie)
+	if blockOtherAdmin.Code != http.StatusForbidden {
+		t.Fatalf("manager change super admin password returned %d", blockOtherAdmin.Code)
+	}
+
+	// The super admin can change any account's password, including their own.
+	// Order matters: changing your own password revokes your current session,
+	// so change another admin's password first, then change your own last.
+	superOtherAdminChange, _ := doJSON(t, handler, http.MethodPatch, "/api/users/2", map[string]string{"password": "111111"}, superCookie)
+	if superOtherAdminChange.Code != http.StatusOK {
+		t.Fatalf("super admin change other admin password returned %d: %s", superOtherAdminChange.Code, superOtherAdminChange.Body.String())
+	}
+	superSelfChange, _ := doJSON(t, handler, http.MethodPatch, "/api/users/1", map[string]string{"password": "654321"}, superCookie)
+	if superSelfChange.Code != http.StatusOK {
+		t.Fatalf("super admin change own password returned %d: %s", superSelfChange.Code, superSelfChange.Body.String())
+	}
+
+	// A normal user has no access to the users API at all, so they cannot
+	// reach the password field even for their own account.
+	login2, playerCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{
+		"username": "player",
+		"password": "654321",
+	}, nil)
+	if login2.Code != http.StatusOK {
+		t.Fatalf("player login returned %d: %s", login2.Code, login2.Body.String())
+	}
+	blockSelf, _ := doJSON(t, handler, http.MethodPatch, "/api/users/3", map[string]string{"password": "222222"}, playerCookie)
+	if blockSelf.Code != http.StatusForbidden {
+		t.Fatalf("ordinary user change own password returned %d", blockSelf.Code)
+	}
+}
+
 func newTestHandler(t *testing.T) (http.Handler, func()) {
 	t.Helper()
 	handler, store, cleanup := newTestHandlerWithStore(t)

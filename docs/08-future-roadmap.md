@@ -1,3 +1,7 @@
+# 2026-07-09 已完成：用户管理新增"重置密码"，修正权限规则
+
+- `USER-PASSWORD-RESET-1` completed：面板登录账号（注意不是游戏加入密码）此前完全没有改密码的入口——后端 `PATCH /api/users/{id}` 早就支持 `password` 字段，但从未在前端暴露，而且原有权限检查比预期更严格（连管理员改自己密码都会被拒绝）。按用户明确规则实现：普通用户不能改自己密码（无入口，接口本身就是 `requireAdmin`）；普通管理员能改自己的和普通用户的密码，不能改其他管理员的；第一个注册的超级管理员能改所有人的密码，包括自己。后端 `storage.UpdateUser` 权限检查补一个"改自己"豁免条件；前端"设置"页用户列表新增"重置密码"按钮和弹窗，改自己密码后自动跳转登录页（当前 session 会被撤销）。新增测试 `TestPasswordChangePermissions` 覆盖五种权限场景。详见 `docs/backend-handoff/backend-handoff-2026-07-09.md`、`docs/frontend-handoff/frontend-handoff-2026-07-09.md` 的 `USER-PASSWORD-RESET-1`，以及 `website/docs/handbook/accounts.md` 补充的重置密码说明。验证：`cd backend; go build ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
+
 # 2026-07-09 已完成：启动/停止/重启按钮补齐管理员权限门控
 
 - `ADMIN-GATE-LIFECYCLE-1` completed：用户凭经验提出"普通用户不能启停服务器/上传 Mod"要求复查，全量排查发现 `ServerControlPage.tsx`（`canStart`/`canStop`/`canRestart` 未算 `isAdmin`）和 `OverviewPage.tsx`（组件根本没取 `user` prop，无 `isAdmin` 概念）的启动/停止/重启按钮缺少管理员权限门控——后端 `requireAdmin` 仍会拒绝，但普通用户会看到"可点击"的按钮，点了才被拒绝，体验不一致。两处均已补上 `isAdmin` 判断和对应 tooltip 提示。复查同时确认 Mod 上传、Nexus Mod 一键安装、游戏安装、玩家踢出、存档、设置、任务日志、诊断导出等其余功能本来就正确限制了管理员权限，未发现其它遗漏。详见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md` 的 `ADMIN-GATE-LIFECYCLE-1`。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；未做非管理员账号的浏览器实测。

@@ -4,6 +4,7 @@ import {
   getUsers,
   createUser,
   updateUserRole,
+  updateUserPassword,
   disableUser,
   deleteUserHard,
   getInstanceVNCConfig,
@@ -274,6 +275,13 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
   const [roleConfirm, setRoleConfirm] = useState<{ user: PanelUser; toRole: string } | null>(null)
   const [roleBusy, setRoleBusy] = useState(false)
 
+  // 重置密码弹窗
+  const [passwordTarget, setPasswordTarget] = useState<PanelUser | null>(null)
+  const [passwordDraft, setPasswordDraft] = useState('')
+  const [passwordBusy, setPasswordBusy] = useState(false)
+  const [passwordDialogError, setPasswordDialogError] = useState<string | null>(null)
+  const [passwordSelfChanged, setPasswordSelfChanged] = useState(false)
+
   // 删除/禁用确认弹窗
   const [deleteConfirm, setDeleteConfirm] = useState<{ user: PanelUser; hard: boolean } | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -335,6 +343,41 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
       setRoleConfirm(null)
     } finally {
       setRoleBusy(false)
+    }
+  }
+
+  function openPasswordDialog(user: PanelUser) {
+    setPasswordTarget(user)
+    setPasswordDraft('')
+    setPasswordDialogError(null)
+    setPasswordSelfChanged(false)
+  }
+
+  async function handleChangePassword() {
+    if (!passwordTarget) return
+    if (passwordDraft.length < 6) {
+      setPasswordDialogError('密码至少需要 6 位')
+      return
+    }
+    setPasswordBusy(true)
+    setPasswordDialogError(null)
+    try {
+      const isSelf = passwordTarget.id === currentUserId
+      await updateUserPassword(passwordTarget.id, passwordDraft)
+      setPasswordDraft('')
+      if (isSelf) {
+        // Changing your own password revokes the current session; keep the
+        // dialog open with a notice, then reload to show the login screen.
+        setPasswordSelfChanged(true)
+        setTimeout(() => window.location.reload(), 1200)
+        return
+      }
+      setPasswordTarget(null)
+      await loadUsers()
+    } catch (e) {
+      setPasswordDialogError(errorMessage(e))
+    } finally {
+      setPasswordBusy(false)
     }
   }
 
@@ -461,6 +504,8 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
                   : !canManageTarget
                     ? '只有第一个管理员可以管理管理员账号'
                     : undefined
+                const canChangePassword = isSuperAdmin || isSelf || !isAdminTarget
+                const passwordTitle = canChangePassword ? undefined : '只有第一个管理员可以修改其他管理员的密码'
                 return (
                   <>
               <span className="sd-settings-user-name">
@@ -477,6 +522,14 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
                 上次登录：{u.lastLoginAt ? formatDate(u.lastLoginAt) : '—'}
               </span>
               <div className="sd-settings-user-actions sd-rowactions">
+                <button
+                  className="sd-btn-tan sd-btn--sm"
+                  disabled={roleBusy || deleteBusy || !canChangePassword}
+                  title={passwordTitle}
+                  onClick={() => openPasswordDialog(u)}
+                >
+                  重置密码
+                </button>
                 {isSuperAdmin && (
                   <button
                     className="sd-btn-tan sd-btn--sm"
@@ -520,6 +573,50 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
           onConfirm={() => void handleRoleChange()}
           onCancel={() => setRoleConfirm(null)}
         />
+      )}
+
+      {passwordTarget && (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>重置密码</h3>
+            {passwordSelfChanged ? (
+              <p>密码已修改，当前会话已失效，即将跳转到登录页…</p>
+            ) : (
+              <>
+                <p>为用户 "{passwordTarget.username}" 设置新密码：</p>
+                <input
+                  className="sd-input"
+                  type="password"
+                  value={passwordDraft}
+                  placeholder="至少 6 位"
+                  autoFocus
+                  onChange={e => {
+                    setPasswordDraft(e.target.value)
+                    setPasswordDialogError(null)
+                  }}
+                  disabled={passwordBusy}
+                />
+                {passwordDialogError && <div className="sd-settings-error" style={{ marginTop: 8 }}>{passwordDialogError}</div>}
+                <div className="sd-confirm-actions">
+                  <button
+                    className="sd-btn-tan"
+                    onClick={() => { setPasswordTarget(null); setPasswordDraft(''); setPasswordDialogError(null) }}
+                    disabled={passwordBusy}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="sd-btn-green"
+                    onClick={() => void handleChangePassword()}
+                    disabled={passwordBusy || passwordDraft.length < 6}
+                  >
+                    {passwordBusy ? '保存中…' : '确认修改'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {deleteConfirm && (

@@ -891,3 +891,16 @@ docker run --rm `
 - 影响文件：`backend/internal/games/stardew_junimo/console.go`、`auth_status.go`（新增）、`backend/internal/web/players_handlers.go`、`server_password_handlers.go`（新增）、`instance_handlers.go`、`backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ModEntry.cs`、`embedded/smapi-mod/StardewAnxiPanel.Control.dll`。
 - 验证：`cd backend; go build ./... && go test ./...` 全绿；SMAPI Mod 用 Docker 官方文档命令重新编译（`docker run --rm -v ".../smapi-mod-src:/src" -v "E:\stardew-anxi-panel\runtime\game:/game" -w /src mcr.microsoft.com/dotnet/sdk:6.0 dotnet build -c Release /p:GamePath=/game`），Build succeeded，0 Errors（仅有历次已知的 ModBuildConfig analyzer 版本 warning）。**未做真机联机验证**：没有在真实运行中的 JunimoServer 实例上实际踢出过在线玩家，`Game1.server?.kick(...)` 的运行时行为、`GET /auth` 的真实响应字段名大小写只依据上游源码和文档确认，建议下一位维护者在真机上验证一次完整链路（设密码重启 → 玩家 `!login` → 踢人 → 状态查询）。
 - 下一步注意事项：踢人和 say 一样是 fire-and-forget，Go 层拿不到 SMAPI Mod 侧的真实执行结果（成功/目标离线/主机保护触发都只会写 `control/status.json`，不回传给 API），前端只能提示"指令已提交"；如果以后要做"踢人失败原因"这类精确反馈，需要设计一个命令结果回传通道（例如命令文件里带 id，Mod 处理完写一个 `command-results/<id>.json`，后端轮询读取），目前为了和 `say` 保持一致故意没做。密码保存后没有自动提示/触发重启，是否要在 UI 上强提醒"需要手动重启"由后续迭代决定。
+
+# USER-PASSWORD-RESET-1 面板账号"重置密码"权限修正
+
+- 注意区分：这里的"密码"是**面板登录账号密码**，和上面 `PASSWORD-STATUS-1` 的 JunimoServer 加入密码是完全不同的两个东西。
+- 起因：用户提出"普通用户不能改自己密码，管理员能改自己的和普通用户的，第一个注册的管理员能改所有，包括自己"。调研发现 `PATCH /api/users/{id}` 的 `password` 字段后端早就支持（`users_handlers.go`），但从未在前端暴露；同时 `storage.UpdateUser`（`backend/internal/storage/auth.go:217`）原有的权限检查 `target.Role == auth.RoleAdmin && !actor.IsSuperAdmin` 没有排除"改自己"的情况，导致连普通管理员改自己的密码都会被 `ErrSuperAdminRequired` 拒绝——这比用户想要的规则更严格。
+- 改了什么：`storage/auth.go` 的 `UpdateUser` 权限检查加一个 `targetID != actorID` 条件，改成 `target.Role == auth.RoleAdmin && targetID != actorID && !actor.IsSuperAdmin`。效果：
+  - 普通管理员：能改自己的密码（`targetID == actorID`，条件不成立，放行）；能改普通用户的密码（`target.Role != admin`，条件不成立，放行）；不能改其他管理员的密码（`targetID != actorID` 且 `target.Role == admin` 且不是超级管理员，拒绝）。
+  - 超级管理员：`actor.IsSuperAdmin` 恒真，条件永远不成立，能改任何人的密码，包括自己。
+  - 普通用户：整个 `/api/users/*` 都是 `requireAdmin`，普通用户连接口都摸不到，天然满足"不能改自己密码"。
+  - 角色变更（`params.Role != nil && !actor.IsSuperAdmin`）和自我禁用（`ErrSelfDisable`）两个独立检查完全没动，行为不受影响。
+- 影响文件：`backend/internal/storage/auth.go`（1 行条件修改）。
+- 验证：新增 `backend/internal/web/auth_handlers_test.go` 的 `TestPasswordChangePermissions`，覆盖"管理员改自己密码成功且能用新密码登录"、"管理员改普通用户密码成功"、"管理员改另一个管理员密码被拒绝"、"超级管理员改任何人（含自己）密码成功"、"普通用户完全摸不到接口"五种场景；`cd backend; go build ./... && go test ./...` 全绿。注意测试里"超级管理员改自己密码"必须放在"改别人密码"**之后**执行，因为改自己密码会让当前 session 立即失效，这个坑在写测试时踩过一次。
+- 下一步注意事项：这次只动了权限判断，没有新增"验证旧密码"这类二次校验（`validatePassword` 只校验新密码长度 ≥ 6 位）——管理员重置别人密码本来就不需要知道对方原密码，这是设计如此，不是遗漏。

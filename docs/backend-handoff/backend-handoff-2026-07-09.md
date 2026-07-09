@@ -72,3 +72,52 @@
 - 密码保存后不会自动重启 server 容器，也没有在 UI 强提醒"必须重启才生效"之外做更多（比如自动弹出"是否立即重启"）。是否需要更强的提醒/自动化由后续迭代决定。
 - 踢人的唯一服务端保护（不能踢 host）是在 SMAPI Mod C# 侧做的，Go/web 层没有重复校验 targetId 是否是 host（因为 Go 层不一定能准确判断谁是当前 host，尤其是 host 中途切换的场景）；如果以后要在 Go 层也做一层保护，需要先确认 `PlayersResult.Players[].IsHost` 的实时性是否够用。
 - SMAPI Mod 编译环境依赖本机 `E:\stardew-anxi-panel\runtime\game` 这份游戏文件（用于 `Pathoschild.Stardew.ModBuildConfig` 解析游戏程序集），如果换开发机或该目录被清理，需要重新准备一份游戏安装目录再执行编译命令。
+
+---
+
+# USER-PASSWORD-RESET-1 面板账号"重置密码"权限修正（同日追加）
+
+## 背景
+
+用户在 v0.1.4 发版前又提了一条权限相关的需求："管理员没有修改密码的功能，普通用户的密码也只能管理员修改，第一个注册的管理员可以修改所有人的密码"。先做了一轮调研（Explore agent，只读）确认：这里的"密码"是**面板登录账号密码**，和 `PLAYERS-KICK-1`/`PASSWORD-STATUS-1` 里的 JunimoServer 游戏加入密码完全是两回事，不要混淆。
+
+调研结论：`PATCH /api/users/{id}` 早就支持 `password` 字段（`users_handlers.go` 第 33-37、171-182 行），改密码会撤销目标用户所有 session（`storage/auth.go` 里 `passwordChanged` 触发）、写审计日志 `user_password_changed`——这套后端能力**一直存在但从未在前端暴露**（`SettingsPage.tsx` 的用户管理区没有对应按钮，`api.ts` 没有封装调用）。同时发现一个比需求更严格的既有 bug：`storage.UpdateUser`（`auth.go:217`）的权限检查 `target.Role == auth.RoleAdmin && !actor.IsSuperAdmin` 没有排除"目标就是自己"的情况，导致连普通管理员改自己的密码都会被当成"改别的管理员"一样拒绝。
+
+## 改了什么
+
+- `backend/internal/storage/auth.go` 的 `UpdateUser`：权限检查从
+  ```go
+  if target.Role == auth.RoleAdmin && !actor.IsSuperAdmin {
+  ```
+  改为
+  ```go
+  if target.Role == auth.RoleAdmin && targetID != actorID && !actor.IsSuperAdmin {
+  ```
+  只加了一个 `targetID != actorID` 条件。效果推导（这条语句同时管着 role/isActive/password 三种字段的更新，不是密码专用）：
+  - 目标是自己：条件里 `targetID != actorID` 为假，整个条件恒假，放行进入后续逻辑——但角色变更单独有 `params.Role != nil && !actor.IsSuperAdmin` 这条独立检查兜底（普通管理员依然不能改自己的角色），自我禁用单独有 `ErrSelfDisable` 兜底（依然不能禁用自己），所以这次放开的实际效果只有"改自己的密码"这一项。
+  - 目标是别的管理员（`targetID != actorID` 为真）：非超级管理员依然被拒绝，超级管理员放行。
+  - 目标是普通用户：`target.Role == auth.RoleAdmin` 本身就是假，任何管理员都能改。
+- 没有新增独立的密码修改端点，复用的还是 `PATCH /api/users/{id}` + `password` 字段这个已有接口，前端只是第一次真正调用它。
+
+## 影响文件
+
+- `backend/internal/storage/auth.go`（1 行条件修改）
+- `backend/internal/web/auth_handlers_test.go`（新增 `TestPasswordChangePermissions`）
+
+前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-09.md` 的 `USER-PASSWORD-RESET-1`。
+
+## 如何验证
+
+- 新增测试 `TestPasswordChangePermissions`（`backend/internal/web/auth_handlers_test.go`），覆盖：
+  1. 普通管理员改自己密码成功，且能用新密码重新登录。
+  2. 普通管理员改普通用户密码成功。
+  3. 普通管理员改另一个管理员（超级管理员）的密码被拒绝（403）。
+  4. 超级管理员改别的管理员密码、改自己密码都成功。
+  5. 普通用户完全够不到 `/api/users/*`（403），验证"普通用户不能改自己密码"这条规则不需要额外代码，天然被 `requireAdmin` 满足。
+- 写测试时踩了一个坑：第 4 点里"超级管理员改自己密码"必须放在"改别人密码"**之后**执行，因为改自己密码会立即撤销当前请求用的 session cookie，如果顺序反了，后续用同一个 cookie 发起的请求会 401 而不是预期的结果。
+- `cd backend; go build ./... && go test ./...` 全绿。
+
+## 下一步注意事项
+
+- 这次只解决了权限判断，没有加"验证旧密码"这类二次校验——管理员重置别人的密码本来就不需要知道对方原密码，这是设计如此。如果以后要做"用户自己改自己密码"（对普通用户开放自助改密码），那是一个新功能，需要新增一个不同的、不要求 `isAdmin` 但要求"目标是当前登录用户自己"的接口，并且大概率要加"验证旧密码"逻辑（当前 `validatePassword` 完全不校验旧密码）——这次没有做，因为用户明确说"普通用户不能改自己密码"。
+- `storage.UpdateUser` 这一条权限检查语句同时管 role/isActive/password 三个字段，这次改动是全局性的（不是只对 password 生效），但因为 role 和 isActive 各自都有独立的更严格检查兜底，实测不会引入意外的权限放宽。以后如果要在这条语句上加新字段的权限逻辑，先确认清楚会不会又踩到"role/isActive 已经有独立检查"这个前提。
