@@ -67,6 +67,8 @@ public sealed class RuntimeStatus
     public string Message { get; set; } = "";
     public string? SaveId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public bool PasswordBridgeAvailable { get; set; }
+    public string PasswordBridgeDetail { get; set; } = "";
 }
 
 public sealed class PlayersFile
@@ -100,6 +102,7 @@ public sealed class PlayerInfo
     public long PersonalIncome { get; set; }
     public long TotalMoneyEarned { get; set; }
     public string WalletMode { get; set; } = "";
+    public bool? IsAuthenticated { get; set; }
 }
 
 public sealed class PanelCommand

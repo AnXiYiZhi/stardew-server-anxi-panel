@@ -376,6 +376,8 @@ cabin 字段：
 | --- | --- | --- | --- |
 | `value` | integer | 是 | 非负整数。`0` 表示不超时 |
 
+> 注意：本节列出的接口是上游 JunimoServer 官方 REST API 的完整范围——**没有**查询待认证玩家名单/ID、也没有按 ID 批准认证的接口。面板"批准待认证玩家"功能（`APPROVE-PENDING-AUTH-1`，详见 `docs/02-backend.md`）没有走 REST，而是让内嵌 SMAPI 控制模组反射调用 JunimoServer 内部的 `PasswordProtectionService.TryAuthenticate`，不要在这里找不到对应端点就误以为面板没实现。
+
 ### 3.6 诊断与文档
 
 | 方法 | 路径 | 参数 | 用途 |

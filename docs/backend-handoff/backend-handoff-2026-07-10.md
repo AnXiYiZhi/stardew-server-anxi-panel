@@ -138,3 +138,164 @@
 - `ExistingCabinBehavior` 目前只能通过服务器控制页的 `UpdateServerRuntimeSettings` 真正改成 `MoveToStack`；新建存档阶段永远是 `KeepExisting`。如果以后要在新建存档页也暴露这个字段，需要重新评估语义（"已有小屋"在全新档案里不存在，暴露这个选项可能会让用户困惑）。
 - `NetworkBroadcastPeriod` 的 `1~10` 范围是面板侧自定义的防呆上限，不是从 JunimoServer 源码或文档里找到的官方硬限制；如果后续找到官方文档给出不同范围，需要同步调整 `validateServerRuntimeSettings` 和前端 `<select>` 选项。
 - 这组设置和 `SERVER_PASSWORD` 一样只在 `server` 容器**启动时**生效，`UpdateServerRuntimeSettings` 本身不会重启容器，也不会主动提示用户去重启——前端弹窗文案里写了提示，但如果以后新增"保存后自动询问是否重启"这类交互，需要注意这是一个可选的体验增强，不是本次范围。
+
+# APPROVE-PENDING-AUTH-1 批准待认证玩家（同日追加）
+
+## 背景
+
+用户提出方案：让面板自带的 `StardewAnxiPanel.Control` SMAPI 模组反射调用 JunimoServer 内部单例 `PasswordProtectionService.TryAuthenticate(long playerId, string password)`，用服务器自己配置的真实密码代替玩家完成一次认证，从而在面板上"批准"一个正卡在隔离小屋里的待认证玩家。
+
+先确认了这确实是唯一可行路径：`docs/10-junimo-rest-api.md` 3.5 节里 JunimoServer 官方 REST API 关于密码保护只有 `GET /auth`（五个计数字段）和 `POST /auth/timeout`，没有批准/待认证玩家名单接口；`FESTIVAL-EVENT-1`/`JOJA-ROUTE-1` 用过的"模拟游戏内聊天指令"这条路对本功能也不适用——读了上游 `LoginCommand.cs` 确认 `!login` 是按`passwordProtectionService.TryAuthenticate(msg.SourceFarmer, password)` 鉴权，即认证目标是"这条聊天消息的发送者"，主机在聊天框输入 `!login` 只能给自己认证（而主机本来就完全绕过认证检查），无法代替其他玩家完成认证。
+
+读了 JunimoServer 上游源码 `E:\codex\junimo-server-upstream\mod\JunimoServer\Services\PasswordProtection\PasswordProtectionService.cs` 确认关键事实：`TryAuthenticate`/`IsPlayerAuthenticated` 是 public 方法，密码校验成功后内部会处理"传送出隔离小屋、处理跨日过渡"等全部逻辑，模组侧不需要重新实现；单例存放在 `private static PasswordProtectionService _instance` 字段，没有公开 getter，必须反射拿实例；密码来自 `Environment.GetEnvironmentVariable("SERVER_PASSWORD")`，控制模组和 JunimoServer 运行在同一容器/进程，可以直接读同一环境变量而不需要额外反射密码本身。这是控制模组第一次真正反射进 JunimoServer 的私有实现（不是公开契约），存在"JunimoServer 升级后悄悄改字段名/方法签名导致反射静默失效"的固有风险，因此用 `AskUserQuestion` 向用户确认了两个设计决策：
+
+1. 是否要在模组启动时做一次性"反射能力自检"，结果写入 `status.json`，供面板据此提前禁用"批准"按钮——用户选择"加自检标志（推荐）"。
+2. 待认证玩家在 UI 上怎么呈现——用户选择"新增独立待认证玩家卡片"，不复用/不改动现有在线玩家表。
+
+## 改了什么
+
+### 1. 新增反射桥（`embedded/smapi-mod-src/PasswordProtectionBridge.cs`）
+
+独立文件隔离反射逻辑（参考 `ControlContract.cs` 已经把数据契约拆开的先例）。`Initialize(IMonitor)` 只在 `ModEntry.OnGameLaunched` 里、`isJunimoRuntime` 判定为真之后调用一次：遍历 `AppDomain.CurrentDomain.GetAssemblies()` 按程序集名 `JunimoServer` 定位已加载程序集（不新增编译期引用，纯运行时反射）→ `GetType("JunimoServer.Services.PasswordProtection.PasswordProtectionService")` → `GetField("_instance", NonPublic|Static)` → `GetMethod("TryAuthenticate", (long,string))`/`GetMethod("IsPlayerAuthenticated", (long))` → `AuthenticationResult` 的 `Success`/`Message`/`ShouldKick` 三个 `PropertyInfo`。每一步失败都记录具体哪一步失败到 `_detail`，全程 try/catch，异常绝不上抛导致模组崩溃。`Available`/`Detail` 供外部读取自检结果——**这只能证明"启动时反射链路建立成功"，不保证"每次调用都成功"或"JunimoServer 内部行为语义不变"**，这一点在代码注释和本文档里都写清楚了。
+
+### 2. `ModEntry.cs` 接入反射桥
+
+- 新增 `passwordBridge` 字段，`OnGameLaunched` 里 `isJunimoRuntime` 判定之后调用 `passwordBridge.Initialize(Monitor)`。
+- `WriteStatus` 构造 `RuntimeStatus` 时追加 `PasswordBridgeAvailable`/`PasswordBridgeDetail`（不改 `WriteStatus` 方法签名，所有现有调用点自动带上最新自检结果，这是最小侵入的做法）。
+- `WritePlayers()`/`BuildPlayerInfo` 为每个在线玩家追加 `IsAuthenticated`（`bool?`）：host 直接视为 `true`（host 本就完全绕过认证），其余玩家反射调用 `passwordBridge.IsPlayerAuthenticated(...)`，桥不可用或单次查询失败时为 `null`（序列化时因 `ContractJson.Options` 的 `WhenWritingNull` 自动省略该字段，旧前端/旧数据不受影响）。
+- `HandleCommand` 新增 `case "approve-auth"` → 新方法 `ApproveAuth(string uniqueMultiplayerId)`，完全模仿现有 `KickPlayer`（`ModEntry.cs` 第 715 行附近）的校验结构：`Context.IsWorldReady` → 桥可用性（不可用时提前返回并 `Monitor.Log` 警告）→ `long.TryParse` → `Game1.getOnlineFarmers()` 在线查找 → 排除 host → try/catch 调用 `passwordBridge.TryAuthenticate(targetId, 环境变量里的真实密码)` → `WriteStatus` 反馈成功/失败文案。`AuthenticationResult.ShouldKick`（超限踢出）字段有意丢弃不处理，因为 JunimoServer 内部的 `TryAuthenticate` 在超限时会自己调用 `Game1.server.kick(...)`，模组侧不需要重复实现。
+
+### 3. `ControlContract.cs` 新增字段
+
+`RuntimeStatus.PasswordBridgeAvailable`(bool)/`PasswordBridgeDetail`(string)；`PlayerInfo.IsAuthenticated`(`bool?`)。
+
+### 4. Go 后端
+
+- `players.go`：`PlayerInfo`/`playerCacheItem`/`controlPlayersFile` 新增 `IsAuthenticated *bool`。用指针而非 `bool`：区分"旧版本 DLL 没有这个字段"（`nil`）和"确实未认证"（`false`），避免旧实例的玩家被误判为全员待认证。`mergePlayerRoster` 从本次在线快照透传该字段到 roster 条目；`playerInfoFromCacheItem` 在 `status != "online"` 时把 `isAuthenticated` 强制置 `nil`——"待认证"是纯粹的瞬时在线状态，不应该进入离线花名册的长期缓存语义（否则玩家下线后再上线前，`isAuthenticated` 会残留上一次在线时的旧值，具有误导性）。
+- 新增 `player_auth.go`：
+  - `readPasswordBridgeStatus(dataDir) PasswordBridgeStatus`：只读 `control/status.json` 里模组写入的 `passwordBridgeAvailable`/`passwordBridgeDetail`，文件缺失/字段缺失/解析失败都返回 `Available:false`，不报错。独立于 `lifecycle.go` 现有的 `readSMAPIStatus`（后者只关心 `state` 字段，用于生命周期启动进度日志），两者职责不同不应该合并。
+  - `approveAuth(instance, uniqueMultiplayerID) (*CommandRunResult, error)`：完全模仿 `console.go` 的 `kickPlayer`——trim 校验非空 → 校验 `instance.State == running` → 校验 `readPasswordBridgeStatus(...).Available`（不可用则返回 `CommandError{Code:"password_bridge_unavailable"}`，这是防御性校验，不能只依赖前端提前禁用按钮，否则绕过前端直接调 API 时后端毫无防护）→ `writePanelCommand(..., "approve-auth", {"uniqueMultiplayerId":...})` → 返回和 kick/say 一致的 fire-and-forget 乐观提示。
+  - `Driver.ApproveAuth` 薄封装，供 web 层接口断言调用。
+- `auth_status.go`：`AuthStatusResult` 新增 `PasswordBridgeAvailable`/`PasswordBridgeDetail`（`omitempty`）。`GetAuthStatus` 只在 `GET /auth` REST 调用成功路径的末尾追加一行读取 `readPasswordBridgeStatus`，**不改动现有错误分支的语义**——服务器未运行/JunimoServer REST 未就绪时整体请求仍然失败，前端按"待认证功能不可用"处理，这和产品预期一致（服务器没跑起来时本来就不该显示待认证列表），避免为了传递一个诊断字段而大改现有稳定的错误处理路径。
+
+### 5. Web 层
+
+`players_handlers.go` 新增 `playerAuthApprover` 接口和 `handlePlayerApproveAuth`（`POST /api/instances/:id/players/approve-auth`），完全照抄 `handlePlayerKick`（`requireAdmin` → `loadInstance` → `reconcileInstanceState` → `loadDriver` → 接口断言 → 解析 body → 调用 → `CommandError` 按 `Code` 映射 HTTP 状态：`server_not_running`/`password_bridge_unavailable` → 409，`not_supported` → 501 → `auditLog` → `writeJSON`）。审计日志 action 名 `player_approve_auth`（metadata: `uniqueMultiplayerId`）。路由接入 `instance_handlers.go`，紧邻现有 `players/kick` 分支（用 `perl -0777 -pi` 精确字节匹配插入的，因为 `Edit` 工具在这个文件上连续几次因为缩进空白字符不匹配而失败，改用脚本插入后一次成功，供后续遇到同类问题时参考）。
+
+## 影响文件
+
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/PasswordProtectionBridge.cs`（新增）
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ControlContract.cs`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ModEntry.cs`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod/StardewAnxiPanel.Control.dll`（**已重新编译替换**）
+- `backend/internal/games/stardew_junimo/players.go`
+- `backend/internal/games/stardew_junimo/player_auth.go`（新增）
+- `backend/internal/games/stardew_junimo/auth_status.go`
+- `backend/internal/web/players_handlers.go`
+- `backend/internal/web/instance_handlers.go`
+
+前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `APPROVE-PENDING-AUTH-1` 小节。
+
+## 如何验证
+
+- SMAPI Mod 重新编译（本机已有 Docker 和挂载的游戏目录）：
+  ```powershell
+  docker run --rm `
+    -v "E:\stardew-server-anxi-panel\backend\internal\games\stardew_junimo\embedded\smapi-mod-src:/src" `
+    -v "E:\stardew-anxi-panel\runtime\game:/game" `
+    -w /src mcr.microsoft.com/dotnet/sdk:6.0 `
+    dotnet build -c Release /p:GamePath=/game
+  ```
+  `Build succeeded. 0 Errors`（1 个历次已知的 ModBuildConfig analyzer 版本 warning，无关；纯反射不新增 JunimoServer.dll 引用，编译期完全不依赖真实 JunimoServer 类型是否存在）。编译产物已用 md5 校验（编译前后 DLL 哈希确认不同）复制覆盖 `embedded/smapi-mod/StardewAnxiPanel.Control.dll`。
+- 新增测试：`player_auth_test.go`（`TestReadPasswordBridgeStatus_MissingFile`/`_ParsesFields`/`_UnavailableWithDetail`、`TestApproveAuth_RequiresPlayerID`/`_ServerNotRunning`/`_RequiresPasswordBridgeAvailable`/`_WritesCommandFile`）、`auth_status_test.go`（`TestGetAuthStatus_MergesPasswordBridgeStatus`/`_PasswordBridgeUnavailableWhenStatusMissing`）、`players_test.go` 新增 `TestReadPlayersFromControlParsesIsAuthenticated`（true/false/字段缺失三种输入）、`TestListPlayersOfflinePlayersHideIsAuthenticated`（玩家下线后 `isAuthenticated` 从 `false` 强制变回 `nil`，验证不会残留旧值）。
+- `cd backend; go build ./... && go vet ./... && go test ./internal/games/stardew_junimo/... ./internal/web/...` 全绿；`go test ./...` 全仓库回归也全绿。
+- 前端 `cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
+
+**未做的验证**：没有在开启 `SERVER_PASSWORD` 的真实运行实例上做端到端联机测试。反射桥的自检机制只能验证"启动时类型/字段/方法能被反射定位到"，不能验证"调用后行为是否符合预期"（例如 `TryAuthenticate` 内部的跨日过渡处理、`WarpToDestination` 的小屋查找逻辑是否在这个特定环境下正常工作）。强烈建议下一位维护者找测试实例走一遍完整链路：开密码 → 客户端连接但不 `!login` → 确认面板"待认证玩家"卡片显示该玩家且反射桥自检为可用 → 点击批准 → 确认玩家立即被传送出隔离小屋、`isAuthenticated` 变为 `true`；并顺带验证"批准已离线/不存在的联机 ID"和"重复批准已认证玩家"两个边界不会导致模组异常或崩溃。
+
+## 下一步注意事项
+
+- 反射目标是 JunimoServer **私有静态字段**和未公开为稳定契约的内部服务，不是公共 API。JunimoServer 后续版本一旦重命名/重构该单例、改方法签名，反射会静默失效——`PasswordBridgeAvailable` 只能捕捉"启动时反射链路建立失败"这一种情况。如果以后这个功能突然不生效了，第一步应该看 `control/status.json` 的 `passwordBridgeDetail` 诊断信息（会写清楚是类型找不到、字段找不到还是方法签名不匹配），而不是凭空猜测。
+- 和 kick/say/`!event`/`!joja` 一样是 fire-and-forget，没有做"命令文件带 id + `command-results/<id>.json`"精确反馈通道（历史文档提过这个方案但一直没实现）。这次评估后决定继续不做：批准操作的实际失败面比 kick 更窄，基本只有"反射桥不可用"这一种业务失败模式，而这一种已经被启动期自检提前拦截并禁用按钮，不需要逐次反馈来定位失败原因。
+- 待认证玩家能否被面板看到，依赖控制模组已经运行过至少一次 `WritePlayers()`（`OnUpdateTicked` 每 120 tick、约 2 秒一次，`Context.IsWorldReady` 为真时才写）；玩家刚连接的几秒钟内，"待认证玩家"卡片可能还没显示出来，这是正常的轮询延迟，不需要额外处理。
+- 如果以后要给"批准"加二次密码强度校验、审批理由记录等更复杂的审批流程，现在的实现是最小化的"一键批准"，没有为这些假设中的需求预留任何字段或抽象。
+
+# PLAYERS-BAN-1 封禁玩家 + 玩家行操作按钮精简（同日追加）
+
+## 背景
+
+用户看着玩家管理页"在线玩家"表格每行的图标按钮截图，要求精简：原本 3 个图标（恒禁用的"发送消息"占位、可用的"踢出"、恒禁用的"更多操作"占位）只保留"踢出"，图标换成"管理操作"卡片"踢出玩家"用的那张真实 PNG（`icon_players_action_boot_image2.png`），旁边加一个新按钮，图标复用"封禁玩家"的图标（`icon_players_action_ban_image2.png`）。
+
+第一轮讨论把新按钮定为"取消认证"（`APPROVE-PENDING-AUTH-1` 批准认证的反操作）。深入调研 JunimoServer 上游 `PasswordProtectionService.cs` 后向用户澄清了一个关键事实：认证状态是纯内存运行时字典（`_playerAuthData`），玩家每次连接（`OnFarmhandRequest`）都会被无条件创建一条全新的 `Unauthenticated` 记录，断线重连或容器重启都会自动重置——也就是说认证根本不持久化，"取消认证"在语义上唯一有意义的实现方式就是让当前连接结束（也就是踢出）。额外做一个"原地撤销认证但不踢人"的反射写操作，不仅要新增对 JunimoServer 私有可变字典（`_playerAuthData`）的写操作（比已实现的 `TryAuthenticate` 只读/单向调用风险高得多），实际运行效果还很差：如果服务器配置了 `AuthTimeoutSeconds > 0`（常见配置），JunimoServer 自己的 `OnUpdateTicked` 逻辑会在下一次 tick 几乎立刻把这个玩家自动踢出，效果等同踢出但绕了个大弯；如果 `AuthTimeoutSeconds = 0`，玩家会静默卡在原地无法移动/聊天（消息被过滤但没有传送回隔离小屋，也收不到"请重新登录"提示），体验比直接踢出更差。用户确认放弃这个方向，转而问"上游有没有拉黑功能，改成拉黑玩家，拒绝他的加入"。
+
+调研 JunimoServer 上游源码找到了真正的封禁能力：`Services/Commands/BanCommand.cs`/`UnbanCommand.cs`/`ListBansCommand.cs` 三个聊天指令 `!ban <名字>`/`!unban <id|名字>`/`!listbans`，和已实现的 `!joja` 是同一套模式——要求触发者持有 admin 角色（`RoleService.IsPlayerAdmin`），底层调用 vanilla `Game1.server.ban(uniqueMultiplayerID)`，写入 `Game1.bannedUsers`；`BanCommand.cs` 里 `IsServerHost(targetFarmer.UniqueMultiplayerID)` 会被上游自己拒绝并提示"You can't ban the server host."，host 保护由上游保证，不需要我们重复实现。`ModHelperExtensions.FindPlayerIdByFarmerNameOrUserName` 用 `Game1.getAllFarmers().FirstOrDefault(f => f.Name == name || GetFarmerUserNameById(id) == name)` 按名字匹配，`getAllFarmers()` 同时包含在线和离线的 farmhand——离线玩家也能被封禁，这正好对应玩家管理页"管理操作"卡片里已经存在但一直禁用、标着"待接入"的"封禁玩家"卡片，只是没接后端。
+
+唯一没能确认的关键事实：`Game1.bannedUsers` 是否随存档持久化，还是纯进程内存（容器重启即丢失）——全仓库搜索确认 JunimoServer 自己的代码里，`bannedUsers` 只在这三个命令文件里被引用，没有任何写盘持久化逻辑；这本身是 vanilla Stardew Valley 的字段，要彻底确认是否被 `SaveGame.cs` 序列化/反序列化，需要反编译游戏本体 DLL（用 `FESTIVAL-EVENT-1`/`JOJA-ROUTE-1` 时验证过的 `MetadataLoadContext`+`ilspycmd` 方法），这一步在规划阶段无法执行（不能跑 docker），需要放到实现阶段做。就这个不确定性征询了用户意见：面板自己做持久化补偿（新增数据库表记录封禁名单，每次启动后自动重新执行 `!ban`）还是先做简单接通接受重启可能失效——**用户选择了后者**："先做简单接通，接受重启可能失效"，不做面板侧持久化，只在 UI 确认弹窗里如实提示这个限制。
+
+## 改了什么
+
+### 1. `embedded/smapi-mod-src/ModEntry.cs`
+
+`HandleCommand` 新增 `case "ban":`，解析 `payload["name"]`，调用新方法 `BanPlayer(string name)`：
+
+```csharp
+private void BanPlayer(string name)
+{
+    if (!Context.IsWorldReady || Game1.chatBox is null)
+    {
+        WriteStatus("command", "Ban command ignored because the world is not ready.");
+        return;
+    }
+
+    name = SanitizeChatText(name, 60);
+    if (string.IsNullOrWhiteSpace(name))
+    {
+        WriteStatus("command", "Ban command ignored because the target player name was empty.");
+        return;
+    }
+
+    Game1.chatBox.textBoxEnter($"!ban {name}");
+    WriteStatus("command", $"Ban command sent for player {name}.");
+    Monitor.Log($"Ban command sent for player {name}.", LogLevel.Info);
+}
+```
+
+结构完全模仿 `EnableJojaRoute()`（模拟聊天指令），不是模仿 `KickPlayer`（直接调用游戏 API）——因为 `!ban` 和 `!joja` 一样需要 admin 权限，且都是通过 `Game1.chatBox.textBoxEnter(...)` 触发 JunimoServer 挂在 `ChatBox.receiveChatMessage` 上的 Harmony 补丁命令解析链路。模组侧不做权限提升，权限提升由 Go 后端在写命令文件之前先完成（和 `EnableJojaRoute` 的分工一致）。复用了已有的 `SanitizeChatText` 辅助方法做防御性清理。
+
+不需要改 `ControlContract.cs`：`PanelCommand.Payload` 已经是通用的 `Dictionary<string, JsonElement>`。
+
+### 2. 新增 `backend/internal/games/stardew_junimo/ban.go`
+
+`Driver.BanPlayer(ctx, instance, name, uniqueMultiplayerID)` → 核心 `banPlayer`：校验名字非空 → 校验实例 running → **完全复用** `joja.go` 已有的 `findHostPlayerID`/`callRolesAdminAPI`（这两个函数本来就是包级别可复用，不是 Joja 专属）把主机提升为 admin → `writePanelCommand(dataDir, "ban", {"name":...})`。返回文案明确写"如果服务器容器重启，此封禁可能失效，需要重新操作"，不是遗漏。
+
+### 3. Web 层（`players_handlers.go`/`instance_handlers.go`）
+
+新增接口 `playerBanner` 和请求体 `banPlayerRequest{Name, UniqueMultiplayerID}`（`UniqueMultiplayerID` 只用于审计日志，不参与实际封禁逻辑，因为 `!ban` 本身按名字匹配）；`handlePlayerBan` 完全照抄 `handlePlayerKick` 骨架，`CommandError.Code` 映射 `server_not_running`/`host_unknown`/`junimo_api_unavailable` → 409，`invalid_player` → 400，`not_supported` → 501；审计日志 `player_ban`（metadata: `name`、`uniqueMultiplayerId`）。路由接入 `instance_handlers.go`，紧邻 `players/kick`/`players/approve-auth` 分支（**同样用 `perl -0777 -pi` 按精确字节内容插入**，因为 `Edit` 工具在这个文件上又一次因缩进空白字符匹配问题失败，这是继 `APPROVE-PENDING-AUTH-1` 之后第二次在这个文件上踩这个坑，下次遇到同样问题应该直接用脚本化插入，不要反复尝试 `Edit`）。
+
+### 4. 前端（`frontend/src/`）详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-BAN-1` 小节
+
+## 影响文件
+
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ModEntry.cs`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod/StardewAnxiPanel.Control.dll`（已重新编译替换）
+- `backend/internal/games/stardew_junimo/ban.go`（新增）
+- `backend/internal/games/stardew_junimo/ban_test.go`（新增）
+- `backend/internal/web/players_handlers.go`
+- `backend/internal/web/instance_handlers.go`
+- 前端文件见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md`
+
+## 如何验证
+
+- SMAPI Mod 重新编译（沿用文档命令），`Build succeeded. 0 Errors`，编译产物已用 md5 校验（编译前后哈希确认不同）复制覆盖嵌入 DLL。
+- 新增 `ban_test.go`：`TestBanPlayer_RequiresName`、`TestBanPlayer_ServerNotRunning`、`TestBanPlayer_HostUnknown`、`TestBanPlayer_PromotesHostThenWritesCommandFile`（mock `ComposeExecPipe` 验证请求打到 `/roles/admin`，再验证 `ban` 命令文件的 `payload.name` 正确）。
+- `cd backend; go build ./... && go vet ./... && go test ./internal/games/stardew_junimo/... ./internal/web/...` 全绿；`go test ./...` 全仓库回归全绿。
+- 前端 `cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
+
+**未做的验证**：没有在真实运行实例上实际封禁过一个在线/离线玩家、确认其真的无法重新加入。**没有反编译 vanilla 游戏 DLL 确认 `Game1.bannedUsers` 是否跨容器重启持久化**——这是本次特意推迟到下一步的验证项：需要用已验证过的方法反编译 `Stardew Valley.dll`，检查 `SaveGame.cs` 的存档序列化/反序列化流程是否读写了这个字段。确认结果出来后，需要相应地修正前端确认弹窗文案和这两份文档里"可能失效"这个不确定性用词——如果确认持久化，去掉"可能"；如果确认不持久化，可以考虑评估是否要补一版面板侧持久化（新增数据库表 + 启动后自动重新执行 `!ban`）。
+
+## 下一步注意事项
+
+- 上游 `FindPlayerIdByFarmerNameOrUserName` 用 `FirstOrDefault` 按名字匹配，两个玩家重名时 `!ban`/`!kick`/`!admin` 都可能误伤，这是 JunimoServer 自身已知限制（其仓库 `.claude/plans/audit-security.md` 有记录），面板侧无法修复，只能在管理员使用时提醒留意重名情况。
+- 没有实现 `!unban`/`!listbans` 对应的"解封"管理界面——如果封禁操作失误，目前只能等服务器重启（如果确认不持久化）或者手动进入游戏聊天框输入 `!unban <id|名字>` 解决。这是本次按"先做简单接通"明确排除的范围，如果后续用户反馈需要撤销入口，是一个自然的后续迭代，不在这次实现范围。
+- 和 kick/say/`!event`/`!joja` 一样是 fire-and-forget，前端只能提示"指令已提交"，拿不到"目标是否真的被封禁成功"这类精确反馈。
+- 玩家管理页"管理操作"卡片里的 select+button 目前被一条较晚的 CSS 规则（`.sd-players-action-select, .sd-players-action-item > button { display: none; }`，`StardewPanel.css` 约 15131 行附近）整体隐藏，这是现有布局迭代遗留的既有状态（"踢出玩家"卡片本来就是这样，本次为了保持一致，"封禁玩家"卡片的 select+button 照抄同一结构，同样会被这条规则隐藏）——真正生效的交互入口是"在线玩家"表格每行新增的封禁图标按钮。如果以后要重新启用这些卡片内的 select+button 可见，需要专门评估这条 CSS 规则的意图，不要贸然删除。

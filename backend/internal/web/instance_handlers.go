@@ -130,6 +130,24 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handlePlayerKick(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/players/approve-auth
+	if len(parts) == 3 && parts[1] == "players" && parts[2] == "approve-auth" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePlayerApproveAuth(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/players/ban
+	if len(parts) == 3 && parts[1] == "players" && parts[2] == "ban" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePlayerBan(w, r, instanceID)
+		return
+	}
 	// POST /api/instances/:id/festival/event
 	if len(parts) == 3 && parts[1] == "festival" && parts[2] == "event" {
 		if r.Method != http.MethodPost {

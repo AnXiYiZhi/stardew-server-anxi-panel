@@ -39,6 +39,11 @@ type PlayerInfo struct {
 	TotalMoneyEarned    *int64 `json:"totalMoneyEarned,omitempty"`
 	WalletMode          string `json:"walletMode,omitempty"`
 	LastSeen            string `json:"lastSeen,omitempty"`
+	// IsAuthenticated reflects JunimoServer's password-protection state for this
+	// player (nil when the control mod doesn't support it or the query failed,
+	// which is distinct from "known to be unauthenticated"). Always nil/omitted
+	// for offline players; see playerInfoFromCacheItem.
+	IsAuthenticated *bool `json:"isAuthenticated,omitempty"`
 }
 
 // PlayerEvent is a compact player activity entry derived from roster changes.
@@ -195,6 +200,7 @@ type playerCacheItem struct {
 	Status              string `json:"status,omitempty"`
 	FirstSeen           string `json:"firstSeen,omitempty"`
 	LastSeen            string `json:"lastSeen,omitempty"`
+	IsAuthenticated     *bool  `json:"isAuthenticated,omitempty"`
 }
 
 type playerEventsFile struct {
@@ -326,6 +332,7 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 		item.PersonalIncome = player.PersonalIncome
 		item.TotalMoneyEarned = player.TotalMoneyEarned
 		item.WalletMode = player.WalletMode
+		item.IsAuthenticated = player.IsAuthenticated
 		item.Status = "online"
 		item.LastSeen = seenAt
 		switch {
@@ -378,6 +385,12 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 func playerInfoFromCacheItem(item playerCacheItem, status, source string) PlayerInfo {
 	name := strings.TrimSpace(item.Name)
 	farmIncome, personalIncome := normalizeCachedIncome(item.FarmIncome, item.PersonalIncome, item.TotalMoneyEarned, item.WalletMode)
+	// "Pending auth" is a transient online-only concept; never surface a stale
+	// authenticated/unauthenticated value for a player that is currently offline.
+	isAuthenticated := item.IsAuthenticated
+	if status != "online" {
+		isAuthenticated = nil
+	}
 	return PlayerInfo{
 		Name:                name,
 		Role:                normalizePlayerRole(item.Role, item.IsHost),
@@ -398,6 +411,7 @@ func playerInfoFromCacheItem(item playerCacheItem, status, source string) Player
 		TotalMoneyEarned:    item.TotalMoneyEarned,
 		WalletMode:          item.WalletMode,
 		LastSeen:            item.LastSeen,
+		IsAuthenticated:     isAuthenticated,
 	}
 }
 
@@ -741,6 +755,7 @@ type controlPlayersFile struct {
 		PersonalIncome      *int64 `json:"personalIncome"`
 		TotalMoneyEarned    *int64 `json:"totalMoneyEarned"`
 		WalletMode          string `json:"walletMode"`
+		IsAuthenticated     *bool  `json:"isAuthenticated"`
 	} `json:"players"`
 }
 
@@ -802,6 +817,7 @@ func readPlayersFromControl(dataDir string) (controlPlayersSnapshot, bool) {
 			PersonalIncome:      personalIncome,
 			TotalMoneyEarned:    player.TotalMoneyEarned,
 			WalletMode:          strings.TrimSpace(player.WalletMode),
+			IsAuthenticated:     player.IsAuthenticated,
 		})
 	}
 

@@ -17,9 +17,26 @@ type playerKicker interface {
 	KickPlayer(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*sj.CommandRunResult, error)
 }
 
+type playerAuthApprover interface {
+	ApproveAuth(ctx context.Context, instance registry.Instance, uniqueMultiplayerID string) (*sj.CommandRunResult, error)
+}
+
+type playerBanner interface {
+	BanPlayer(ctx context.Context, instance registry.Instance, name, uniqueMultiplayerID string) (*sj.CommandRunResult, error)
+}
+
 type kickPlayerRequest struct {
 	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
 	Name                string `json:"name"`
+}
+
+type approveAuthRequest struct {
+	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
+}
+
+type banPlayerRequest struct {
+	Name                string `json:"name"`
+	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
 }
 
 // handlePlayerKick handles POST /api/instances/:id/players/kick.
@@ -73,6 +90,116 @@ func (s *server) handlePlayerKick(w http.ResponseWriter, r *http.Request, instan
 		return
 	}
 	s.auditLog(r, &actor, "player_kick", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handlePlayerApproveAuth handles POST /api/instances/:id/players/approve-auth.
+func (s *server) handlePlayerApproveAuth(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	approver, supported := driver.(playerAuthApprover)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持批准认证")
+		return
+	}
+
+	var body approveAuthRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	uniqueMultiplayerID := strings.TrimSpace(body.UniqueMultiplayerID)
+	if uniqueMultiplayerID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_player", "缺少玩家联机 ID")
+		return
+	}
+
+	result, err := approver.ApproveAuth(r.Context(), makeRegistryInstance(instance), uniqueMultiplayerID)
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			status := http.StatusBadRequest
+			switch ce.Code {
+			case "server_not_running":
+				status = http.StatusConflict
+			case "password_bridge_unavailable":
+				status = http.StatusConflict
+			case "not_supported":
+				status = http.StatusNotImplemented
+			}
+			writeError(w, status, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "approve_auth_failed", sanitizeErrorMsg(err, "批准认证失败"))
+		return
+	}
+	s.auditLog(r, &actor, "player_approve_auth", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID))
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handlePlayerBan handles POST /api/instances/:id/players/ban.
+func (s *server) handlePlayerBan(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	banner, supported := driver.(playerBanner)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持封禁玩家")
+		return
+	}
+
+	var body banPlayerRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "invalid_player", "缺少玩家名字")
+		return
+	}
+
+	result, err := banner.BanPlayer(r.Context(), makeRegistryInstance(instance), name, body.UniqueMultiplayerID)
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			status := http.StatusBadRequest
+			switch ce.Code {
+			case "server_not_running", "host_unknown", "junimo_api_unavailable":
+				status = http.StatusConflict
+			case "not_supported":
+				status = http.StatusNotImplemented
+			}
+			writeError(w, status, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "ban_failed", sanitizeErrorMsg(err, "封禁玩家失败"))
+		return
+	}
+	s.auditLog(r, &actor, "player_ban", "instance", instanceID, auditMetadata("name", name, "uniqueMultiplayerId", body.UniqueMultiplayerID))
 	writeJSON(w, http.StatusOK, result)
 }
 
