@@ -238,7 +238,6 @@ type KickTarget = { uniqueMultiplayerId: string; name: string }
 export function PlayersPage({ user, instanceState, dashboardData }: StardewPageProps) {
   const [eventsPage, setEventsPage] = useState(1)
   const [kickConfirmTarget, setKickConfirmTarget] = useState<KickTarget | null>(null)
-  const [kickSelectId, setKickSelectId] = useState('')
   const [kickBusy, setKickBusy] = useState(false)
   const [kickError, setKickError] = useState<string | null>(null)
   const [kickMessage, setKickMessage] = useState<string | null>(null)
@@ -248,7 +247,6 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   const [approveError, setApproveError] = useState<string | null>(null)
   const [approveMessage, setApproveMessage] = useState<string | null>(null)
   const [banConfirmTarget, setBanConfirmTarget] = useState<KickTarget | null>(null)
-  const [banSelectId, setBanSelectId] = useState('')
   const [banBusy, setBanBusy] = useState(false)
   const [banError, setBanError] = useState<string | null>(null)
   const [banMessage, setBanMessage] = useState<string | null>(null)
@@ -389,7 +387,6 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     try {
       const res = await kickPlayer(target.uniqueMultiplayerId, target.name)
       setKickMessage(res.output?.trim() || `已提交踢出 ${target.name} 的指令。`)
-      setKickSelectId('')
       await dashboardData.refreshPlayers()
     } catch (e) {
       setKickError(errorMessage(e))
@@ -399,14 +396,9 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     }
   }
 
-  const onlinePlayers = playerRows.filter(
-    (player) => player.status === 'online' && !player.isHost && player.uniqueMultiplayerId,
-  )
   const pendingAuthPlayers = playerRows.filter(
     (player) => player.status === 'online' && player.isAuthenticated === false,
   )
-  // 封禁不要求玩家在线：离线/从未上线过的玩家也应该能被提前封禁。
-  const banTargetPlayers = playerRows.filter((player) => !player.isHost && player.uniqueMultiplayerId)
 
   useEffect(() => {
     if (!isRunning) return
@@ -450,7 +442,6 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     try {
       const res = await banPlayer(target.name, target.uniqueMultiplayerId)
       setBanMessage(res.output?.trim() || `已提交封禁 ${target.name} 的指令。`)
-      setBanSelectId('')
       await dashboardData.refreshPlayers()
     } catch (e) {
       setBanError(errorMessage(e))
@@ -626,6 +617,10 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             收入列固定显示农场累计收入和玩家个人累计收入，不随钱包模式切换含义。
           </div>
         )}
+        {kickError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{kickError}</div> : null}
+        {kickMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{kickMessage}</div> : null}
+        {banError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{banError}</div> : null}
+        {banMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{banMessage}</div> : null}
       </div>
 
       {passwordStatus?.enabled ? (
@@ -754,123 +749,6 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             </button>
           </div>
         )}
-      </div>
-
-      <div className="sd-srv-section sd-players-actions-section">
-        <div className="sd-srv-section-title">
-          <img className="sd-players-section-icon" src="/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png" alt="" />
-          管理操作
-          {!isAdmin && (
-            <span className="sd-srv-badge-pending" style={{ background: 'rgba(180,80,0,0.12)', color: '#7a3c00' }}>
-              仅管理员
-            </span>
-          )}
-        </div>
-
-        {!isAdmin && (
-          <div className="sd-srv-hint" style={{ marginBottom: 8 }}>
-            管理操作仅管理员可用。
-          </div>
-        )}
-
-        <div className="sd-players-actions-grid">
-          <div className="sd-players-action-item">
-            <div className="sd-players-action-icon sd-players-action-icon-boot" aria-hidden="true" />
-            <strong>踢出玩家</strong>
-            <span>将玩家踢出服务器</span>
-            <select
-              className="sd-players-action-select"
-              disabled={!isAdmin || !isRunning || onlinePlayers.length === 0 || kickBusy}
-              value={kickSelectId}
-              onChange={(e) => setKickSelectId(e.target.value)}
-            >
-              <option value="">{onlinePlayers.length === 0 ? '暂无可踢出玩家' : '选择玩家'}</option>
-              {onlinePlayers.map((player) => (
-                <option key={player.uniqueMultiplayerId} value={player.uniqueMultiplayerId}>
-                  {player.name}
-                </option>
-              ))}
-            </select>
-            <button
-              className="sd-btn-delete"
-              disabled={!isAdmin || !isRunning || !kickSelectId || kickBusy}
-              title={!isAdmin ? '仅管理员可用' : '踢出玩家'}
-              onClick={() => {
-                const target = onlinePlayers.find((player) => player.uniqueMultiplayerId === kickSelectId)
-                if (target) setKickConfirmTarget({ uniqueMultiplayerId: target.uniqueMultiplayerId || '', name: target.name })
-              }}
-            >
-              踢出
-            </button>
-          </div>
-
-          <div className="sd-players-action-item">
-            <div className="sd-players-action-icon sd-players-action-icon-ban" aria-hidden="true" />
-            <strong>封禁玩家</strong>
-            <span>禁止玩家加入服务器</span>
-            <select
-              className="sd-players-action-select"
-              disabled={!isAdmin || !isRunning || banTargetPlayers.length === 0 || banBusy}
-              value={banSelectId}
-              onChange={(e) => setBanSelectId(e.target.value)}
-            >
-              <option value="">{banTargetPlayers.length === 0 ? '暂无可封禁玩家' : '选择玩家'}</option>
-              {banTargetPlayers.map((player) => (
-                <option key={player.uniqueMultiplayerId} value={player.uniqueMultiplayerId}>
-                  {player.name}
-                </option>
-              ))}
-            </select>
-            <button
-              className="sd-btn-delete"
-              disabled={!isAdmin || !isRunning || !banSelectId || banBusy}
-              title={!isAdmin ? '仅管理员可用' : '封禁玩家'}
-              onClick={() => {
-                const target = banTargetPlayers.find((player) => player.uniqueMultiplayerId === banSelectId)
-                if (target) setBanConfirmTarget({ uniqueMultiplayerId: target.uniqueMultiplayerId || '', name: target.name })
-              }}
-            >
-              封禁
-            </button>
-          </div>
-
-          <div className="sd-players-action-item">
-            <div className="sd-players-action-icon sd-players-action-icon-list" aria-hidden="true" />
-            <strong>白名单管理</strong>
-            <span>管理允许加入的玩家</span>
-            <button
-              className="sd-btn-green"
-              disabled
-              title={!isAdmin ? '仅管理员可用' : '白名单 API 待接入'}
-            >
-              管理白名单
-            </button>
-            <span className="sd-srv-badge-pending">待接入</span>
-          </div>
-
-          <div className="sd-players-action-item">
-            <div className="sd-players-action-icon sd-players-action-icon-star" aria-hidden="true" />
-            <strong>权限设置</strong>
-            <span>配置玩家权限组</span>
-            <button
-              className="sd-btn-tan"
-              disabled
-              title={!isAdmin ? '仅管理员可用' : '权限设置 API 待接入'}
-            >
-              设置权限
-            </button>
-            <span className="sd-srv-badge-pending">待接入</span>
-          </div>
-        </div>
-
-        {kickError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{kickError}</div> : null}
-        {kickMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{kickMessage}</div> : null}
-        {banError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{banError}</div> : null}
-        {banMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{banMessage}</div> : null}
-
-        <div className="sd-srv-hint" style={{ marginTop: 8 }}>
-          踢出玩家和封禁玩家都通过面板内置的 StardewAnxiPanel.Control 控制模组发送，无法踢出/封禁主机玩家；封禁会临时把主机提升为管理员来模拟游戏内 !ban 指令，如果服务器容器重启，封禁可能失效需要重新操作。白名单和权限设置仍需要 JunimoServer 提供对应 API 或可控命令后才能启用。
-        </div>
       </div>
 
       <div className="sd-srv-section sd-players-info-section">

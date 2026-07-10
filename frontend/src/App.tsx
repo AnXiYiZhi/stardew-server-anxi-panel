@@ -11,10 +11,13 @@ import type { LoginFormState } from './core/LoginPanel'
 import { errorMessage } from './core/helpers'
 
 import { StardewPanel } from './games/stardew/StardewPanel'
+import { StardewMobileShell } from './games/stardew/StardewMobileShell'
+import { useMediaQuery } from './hooks/useMediaQuery'
 
 type View = 'booting' | 'setup' | 'login' | 'stardew'
 
 function App() {
+  const isMobile = useMediaQuery('(max-width: 768px)')
   const [view, setView] = useState<View>('booting')
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [setupForm, setSetupForm] = useState<SetupFormState>({ ...emptySetupForm })
@@ -107,7 +110,7 @@ function App() {
   }
 
   if (view === 'stardew' && currentUser) {
-    return <StardewPanel user={currentUser} onLogout={logout} />
+    return isMobile ? <StardewMobileShell user={currentUser} /> : <StardewPanel user={currentUser} onLogout={logout} />
   }
 
   const authShellClass = [

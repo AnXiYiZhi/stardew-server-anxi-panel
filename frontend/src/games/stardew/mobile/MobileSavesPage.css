@@ -1,0 +1,292 @@
+/* ── M5 移动端存档页：地图原画 + 核心信息 + 更多信息 ──────────────────────── */
+
+.sd-msave-wrap {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.sd-msave-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sd-msave-page-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff3d6;
+  text-shadow: 1px 1px 0 rgba(32, 13, 3, 0.6);
+}
+
+.sd-msave-page-title img {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.sd-msave-refresh-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 64px;
+}
+
+.sd-msave-page-notice {
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.sd-msave-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.sd-msave-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-msave-card-title img {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.sd-msave-notice {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.sd-msave-summary-card {
+  padding: 10px;
+}
+
+.sd-msave-summary-body {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.sd-msave-map-thumb-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 72px;
+  min-width: 0;
+}
+
+.sd-msave-map-thumb-frame {
+  position: relative;
+  width: 72px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 2px solid rgba(143, 91, 35, 0.52);
+  border-radius: 3px;
+  background: url('/assets/stardew/ui/backgrounds/background_parchment_tile.png');
+  background-size: 128px 128px;
+  box-shadow: inset 0 0 0 1px rgba(255, 252, 222, 0.5);
+}
+
+.sd-msave-map-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+}
+
+.sd-msave-status-tag {
+  position: static;
+  font-size: 9px;
+  padding: 1px 3px;
+  max-width: 72px;
+  white-space: nowrap;
+}
+
+.sd-msave-summary-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 8px;
+}
+
+/* 信息网格：核心信息 / 更多信息两张卡共用同一套两列布局 */
+
+.sd-msave-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sd-msave-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sd-msave-info-label {
+  font-size: 11px;
+  color: var(--sd-brown-light);
+  font-weight: 700;
+}
+
+.sd-msave-info-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: #2c1a0a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 空状态 / 加载态 */
+
+.sd-msave-empty {
+  padding: 12px 4px;
+  text-align: center;
+}
+
+.sd-msave-empty-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-msave-empty-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--sd-brown-light);
+}
+
+/* 存档操作卡：导出 / 导入 / 回档（占位，手机端暂不支持） */
+
+.sd-msave-op-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-msave-op-btn {
+  width: 100%;
+  min-height: 44px;
+}
+
+.sd-msave-op-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--sd-brown-light);
+}
+
+/* 导入存档弹窗（复用 MobileControlPage.css 的 .sd-mctrl-dialog-* 视觉参数，
+   这个文件独立维护一份 sd-msave- 前缀的等价类，不跨文件共享 CSS 类名） */
+
+.sd-msave-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(20, 10, 4, 0.6);
+  box-sizing: border-box;
+}
+
+.sd-msave-dialog {
+  width: 100%;
+  max-width: 400px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 16px;
+}
+
+.sd-msave-dialog h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-msave-dialog-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4a3320;
+}
+
+.sd-msave-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.sd-msave-field > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sd-brown-light);
+}
+
+.sd-msave-field .sd-input {
+  min-height: 44px;
+}
+
+.sd-msave-preview-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sd-msave-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: #2c1a0a;
+}
+
+.sd-msave-preview-label {
+  flex-shrink: 0;
+  color: var(--sd-brown-light);
+  font-weight: 700;
+}
+
+.sd-msave-preview-error {
+  color: #b23a2c;
+}
+
+.sd-msave-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sd-msave-dialog-btn {
+  min-height: 44px;
+  min-width: 72px;
+}

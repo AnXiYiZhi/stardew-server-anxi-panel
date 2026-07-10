@@ -1,0 +1,207 @@
+/* ── M4 移动端玩家页：单卡在线玩家卡片列表 ──────────────────────────────── */
+
+.sd-mplay-wrap {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.sd-mplay-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.sd-mplay-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sd-mplay-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mplay-header-title img {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.sd-mplay-refresh-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 72px;
+}
+
+.sd-mplay-notice {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 空状态 */
+
+.sd-mplay-empty {
+  padding: 14px 4px;
+  text-align: center;
+}
+
+.sd-mplay-empty-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mplay-empty-desc {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sd-brown-light);
+}
+
+/* 在线玩家卡片列表 */
+
+.sd-mplay-player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-mplay-player-card {
+  box-sizing: border-box;
+  padding: 10px;
+  border: var(--stardew-mobile-card-border);
+  border-radius: var(--stardew-mobile-card-radius);
+  background: var(--stardew-mobile-card-bg);
+  box-shadow: var(--stardew-mobile-card-shadow);
+}
+
+.sd-mplay-player-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sd-mplay-player-name {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #2c1a0a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mplay-status-tag {
+  flex-shrink: 0;
+}
+
+.sd-mplay-player-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-mplay-meta-tag {
+  flex-shrink: 0;
+}
+
+.sd-mplay-player-activity {
+  font-size: 11px;
+  color: var(--sd-brown-light);
+  overflow-wrap: anywhere;
+}
+
+.sd-mplay-player-bottom {
+  margin-top: 8px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sd-mplay-player-location {
+  min-width: 0;
+  flex: 1;
+  font-size: 11px;
+  color: var(--sd-brown-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mplay-player-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sd-mplay-player-action-btn {
+  min-height: 44px;
+  min-width: 64px;
+}
+
+/* 确认弹窗 */
+
+.sd-mplay-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(20, 10, 4, 0.6);
+  box-sizing: border-box;
+}
+
+.sd-mplay-confirm-dialog {
+  width: 100%;
+  max-width: 340px;
+  box-sizing: border-box;
+  padding: 16px;
+}
+
+.sd-mplay-confirm-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mplay-confirm-dialog p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4a3320;
+}
+
+.sd-mplay-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sd-mplay-confirm-btn {
+  min-height: 44px;
+  min-width: 72px;
+}

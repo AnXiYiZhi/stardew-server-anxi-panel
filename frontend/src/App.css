@@ -745,3 +745,246 @@ h3 {
     width: 24.6%;
   }
 }
+
+/* ── LOGIN-MOBILE-FIX-1: 移动端登录/初始化页布局修复 ────────────────────────
+   桌面 image2 大图版登录卡（.sd-auth-shell--image-login .sd-auth-card）靠固定
+   16:9 比例的绝对定位 + 手工百分比坐标摆放输入框：卡片宽度按 max(100vw,
+   100dvh*1.778) 计算，竖屏手机上会被撑到远超视口宽度（390px 宽视口下卡片实
+   际宽度接近 1500px），再叠加 .sd-auth-shell 的 overflow:hidden 和固定
+   min-height:100vh（内容绝对定位不参与流内高度，容器不会随内容增高），使内容
+   被裁切、错位，也无法滚动到被裁掉的部分。<=768px 时整体放弃这套坐标定位，
+   改回真实文档流的羊皮纸卡片，输入框/按钮按正常表单渲染。 */
+@media (max-width: 768px) {
+  .sd-auth-shell {
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sd-auth-shell--image-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+    padding: 20px 0 calc(28px + env(safe-area-inset-bottom, 0px));
+    /* image2 原图（background_login_home_image2.png）本身就是"一整张桌面窗口截图"——
+       木框、鸡形徽标、字段标签全部画死在图里，是给桌面版当作卡片本体背景用的，不是
+       纯环境背景。手机端卡片已经回到真实 DOM 渲染，如果还铺这张图会变成"背景里又有
+       一个假的登录窗口，前面又叠一个真的登录卡片"，两层 UI 互相打架、很违和。这里改用
+       仓库里另一张已有素材 background_login_farm_generated.png——它是纯像素农场场景，
+       没有任何假 UI 元素，本来就是设计给"背景 + 悬浮真实卡片"这种组合用的（非 image2
+       版 .sd-auth-shell::before 就是这么用它的，这里只是把同一种搭配方式搬到 image2
+       移动端分支）。没有引入新图片，也没有删除或替换 image2 素材本身，桌面端依然用
+       image2 大图。 */
+    background-image:
+      linear-gradient(rgba(12, 6, 1, 0.48), rgba(12, 6, 1, 0.48)),
+      url('/assets/stardew/ui/backgrounds/background_login_farm_generated.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  /* 卡片回到正常文档流：用真实宽度渲染，不再靠固定纵横比大图坐标换算位置 */
+  .sd-auth-shell--image-login .sd-auth-card {
+    position: relative;
+    inset: auto;
+    left: auto;
+    top: auto;
+    transform: none;
+    overflow: visible;
+    width: min(100% - 24px, 420px);
+    max-width: 420px;
+    height: auto;
+    max-height: none;
+    margin-top: 30px;
+    padding: 30px 18px 26px;
+    border: 4px solid #5b2f18;
+    border-radius: 0;
+    background-image:
+      linear-gradient(rgba(245, 202, 122, 0.32), rgba(205, 142, 70, 0.2)),
+      url('/assets/stardew/ui/backgrounds/background_parchment_tile.png');
+    background-color: #e7b96f;
+    background-size: auto;
+    background-repeat: repeat;
+    background-blend-mode: multiply, normal;
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 232, 168, 0.65),
+      inset 0 0 0 5px rgba(91, 47, 24, 0.14),
+      0 6px 0 #3b1d0d,
+      0 14px 30px rgba(0, 0, 0, 0.55);
+  }
+
+  /* 复用桌面 image2 大图顶部同一枚鸡形徽标素材（topbar 已经在用的同一张小图，非新增
+     素材），做成卡片顶部骑缝徽标，呼应 PC 端画死在大图里的"鸡+木框"招牌视觉，同时不
+     依赖任何坐标换算——它只是一个固定尺寸的小图标，不需要跟输入框对齐，不会重新引入
+     之前那种绝对定位坐标错位的问题 */
+  .sd-auth-shell--image-login .sd-auth-card::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 52px;
+    height: 59px;
+    transform: translate(-50%, -62%);
+    background: url('/assets/stardew/ui/topbar/icon_topbar_chicken_image2_v2.png') center / contain no-repeat;
+    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.5));
+    pointer-events: none;
+  }
+
+  /* 还原桌面版为大图让位而隐藏的文案：手机端没有大图承载标题，需要真实可读文字 */
+  .sd-auth-shell--image-login .sd-auth-eyebrow,
+  .sd-auth-shell--image-login .sd-auth-title,
+  .sd-auth-shell--image-login .sd-auth-version,
+  .sd-auth-shell--image-login .sd-auth-loading {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+
+  .sd-auth-shell--image-login .sd-auth-eyebrow { margin: 0 0 6px; }
+  .sd-auth-shell--image-login .sd-auth-title { margin: 0 0 4px; font-size: 20px; }
+  .sd-auth-shell--image-login .sd-auth-version { margin: 0 0 14px; }
+  .sd-auth-shell--image-login .sd-auth-loading { margin: 14px 0 0; color: #6f4a2d; font-size: 13px; }
+
+  .sd-auth-shell--image-login .summary {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0 0 8px;
+    padding: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #6f4a2d;
+  }
+
+  .sd-auth-shell--image-login .form-grid {
+    position: static;
+    display: grid;
+    gap: 14px;
+    margin: 14px 0 0;
+  }
+
+  /* .field 的基础绝对定位规则和 --login/--setup 各字段的 nth-of-type 坐标规则
+     specificity 相同，都需要在这里一起重置，否则后者仍会按坐标覆盖回去 */
+  .sd-auth-shell--image-login .field,
+  .sd-auth-shell--login .field:nth-of-type(1),
+  .sd-auth-shell--login .field:nth-of-type(2),
+  .sd-auth-shell--setup .field:nth-of-type(1),
+  .sd-auth-shell--setup .field:nth-of-type(2),
+  .sd-auth-shell--setup .field:nth-of-type(3) {
+    position: static;
+    left: auto;
+    top: auto;
+    width: auto;
+    height: auto;
+    display: grid;
+    gap: 5px;
+  }
+
+  .sd-auth-shell--image-login .field > span {
+    height: auto;
+    color: #3c2415;
+    font-size: 13px;
+    font-weight: 700;
+    text-shadow: none;
+  }
+
+  .sd-auth-shell--image-login .password-input {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .sd-auth-shell--image-login .field > input {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+  }
+
+  /* 输入框至少 40px 高触控热区；字号锁 16px 避免 iOS Safari 聚焦时整页自动放大 */
+  .sd-auth-shell--image-login .field input,
+  .sd-auth-shell--image-login .password-input input {
+    width: 100%;
+    height: auto;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.2;
+    border-radius: 0;
+    text-shadow: none;
+  }
+
+  .sd-auth-shell--image-login .password-input input {
+    height: auto;
+    padding-right: 12px;
+  }
+
+  .sd-auth-shell--image-login .password-toggle {
+    position: static;
+    width: auto;
+    min-width: 60px;
+    height: auto;
+    min-height: 40px;
+    padding: 6px 10px;
+    border: 2px solid #673519;
+    border-radius: 0;
+    background: #ffe6b6;
+    color: #3c2415;
+    font-size: 12px;
+    font-weight: 700;
+    text-shadow: none;
+  }
+
+  /* 登录/注册按钮至少 44px 高触控热区，复用现有绿色像素按钮素材 */
+  .sd-auth-shell--image-login .button {
+    position: static;
+    width: 100%;
+    height: auto;
+    min-height: 44px;
+    margin-top: 4px;
+    border: none;
+    background-image: url('/assets/stardew/ui/buttons/button_primary_small_green_blank.png');
+    background-size: 100% 100%;
+    background-color: transparent;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    text-shadow: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  /* position:relative（而不是 static）是为了让 .sd-auth-error::before 的“!”
+     图标仍然相对这个小错误条自身定位，不会因为祖先重新变成 static 而跳去
+     参照更外层的 .sd-auth-card 定位基准 */
+  .sd-auth-shell--image-login .form-hint,
+  .sd-auth-shell--image-login .sd-auth-error {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: auto;
+    height: auto;
+    margin: 0 0 4px;
+  }
+}

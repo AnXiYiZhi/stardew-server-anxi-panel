@@ -1,0 +1,238 @@
+/* ── M2 移动端总览页：单列卡片流 ──────────────────────────────────────────── */
+
+.sd-mhome-wrap {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.sd-mhome-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.sd-mhome-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mhome-card-title img {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.sd-mhome-title-tag {
+  margin-left: auto;
+}
+
+.sd-mhome-notice {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 状态摘要卡 */
+
+.sd-mhome-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sd-mhome-status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sd-mhome-status-label {
+  font-size: 11px;
+  color: var(--sd-brown-light);
+  font-weight: 700;
+}
+
+.sd-mhome-status-value {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #2c1a0a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 邀请信息卡：与 PC 端 InviteCodeCard 同一套“羊皮纸双边框码值框”视觉，
+   标签、码值框、复制按钮同一行放得下，不拆成两行。 */
+
+.sd-mhome-invite-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-mhome-invite-row + .sd-mhome-invite-row {
+  margin-top: 10px;
+}
+
+.sd-mhome-invite-label {
+  flex-shrink: 0;
+  width: 54px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--sd-brown-light);
+}
+
+.sd-mhome-invite-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 3px double rgba(143, 91, 35, 0.46);
+  border-radius: 2px;
+  background: linear-gradient(180deg, #fff7cf, #ffe7aa);
+  box-shadow: inset 0 0 0 1px rgba(255, 252, 223, 0.9);
+  color: #1c7c29;
+  font-family: var(--sd-font-mono);
+  font-size: clamp(13px, 4vw, 17px);
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-align: center;
+  text-shadow: 1px 1px 0 rgba(255, 247, 190, 0.94);
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.sd-mhome-invite-box--muted {
+  border: 2px dashed rgba(128, 78, 34, 0.36);
+  background: rgba(255, 241, 196, 0.52);
+  box-shadow: none;
+  color: #8a6030;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-shadow: none;
+}
+
+/* 邀请码用绿色、局域网地址用棕色（沿用 .sd-btn-green/.sd-btn-tan 的既有配色区分），
+   但两个按钮必须同尺寸：用固定 width 而不是 min-width，避免“复制”/“已复制”文案
+   长度不同或 .sd-btn-green/.sd-btn-tan 各自的默认 min-width 不一致导致视觉上一大一小。 */
+.sd-mhome-copy-btn {
+  flex-shrink: 0;
+  width: 64px;
+  min-height: 44px;
+  padding: 0;
+}
+
+/* 快捷控制卡 */
+
+.sd-mhome-lifecycle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-mhome-lifecycle-btn {
+  width: 100%;
+  min-height: 44px;
+}
+
+/* 待认证玩家卡 */
+
+.sd-mhome-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-mhome-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-mhome-pending-row:last-child {
+  border-bottom: none;
+}
+
+.sd-mhome-pending-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mhome-approve-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 64px;
+}
+
+/* 确认弹窗 */
+
+.sd-mhome-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(20, 10, 4, 0.6);
+  box-sizing: border-box;
+}
+
+.sd-mhome-confirm-dialog {
+  width: 100%;
+  max-width: 340px;
+  box-sizing: border-box;
+  padding: 16px;
+}
+
+.sd-mhome-confirm-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mhome-confirm-dialog p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4a3320;
+}
+
+.sd-mhome-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sd-mhome-confirm-btn {
+  min-height: 44px;
+  min-width: 72px;
+}
