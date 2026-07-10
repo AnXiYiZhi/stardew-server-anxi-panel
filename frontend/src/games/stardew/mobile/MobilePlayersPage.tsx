@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { banPlayer, kickPlayer } from '../../../api'
+import { banPlayer, kickPlayer, warpPlayerHome } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPlayerInfo } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
@@ -47,6 +47,10 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
   const isRunning = state === 'running'
 
   const [kickConfirmTarget, setKickConfirmTarget] = useState<PlayerTarget | null>(null)
+  const [warpHomeConfirmTarget, setWarpHomeConfirmTarget] = useState<PlayerTarget | null>(null)
+  const [warpHomeBusyId, setWarpHomeBusyId] = useState<string | null>(null)
+  const [warpHomeError, setWarpHomeError] = useState<string | null>(null)
+  const [warpHomeMessage, setWarpHomeMessage] = useState<string | null>(null)
   const [kickBusyId, setKickBusyId] = useState<string | null>(null)
   const [kickError, setKickError] = useState<string | null>(null)
   const [kickMessage, setKickMessage] = useState<string | null>(null)
@@ -83,6 +87,24 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     }
   }
 
+  async function handleConfirmWarpHome() {
+    const target = warpHomeConfirmTarget
+    if (!target) return
+    setWarpHomeBusyId(target.uniqueMultiplayerId)
+    setWarpHomeError(null)
+    setWarpHomeMessage(null)
+    try {
+      const res = await warpPlayerHome(target.uniqueMultiplayerId, target.name)
+      setWarpHomeMessage(res.output?.trim() || `已提交传送 ${target.name} 回家的指令。`)
+      await dashboardData.refreshPlayers()
+    } catch (e) {
+      setWarpHomeError(errorMessage(e))
+    } finally {
+      setWarpHomeBusyId(null)
+      setWarpHomeConfirmTarget(null)
+    }
+  }
+
   async function handleConfirmBan() {
     const target = banConfirmTarget
     if (!target) return
@@ -101,7 +123,7 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     }
   }
 
-  const rosterActionBusy = kickBusyId !== null || banBusyId !== null
+  const rosterActionBusy = warpHomeBusyId !== null || kickBusyId !== null || banBusyId !== null
 
   return (
     <div className="sd-mplay-wrap">
@@ -152,6 +174,34 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
                     {playerLocationText(player)}
                   </span>
                   <div className="sd-mplay-player-actions">
+                    <button
+                      type="button"
+                      className="sd-btn-green sd-mplay-player-action-btn"
+                      disabled={
+                        !isAdmin ||
+                        !isRunning ||
+                        player.status !== 'online' ||
+                        player.isHost ||
+                        !player.uniqueMultiplayerId ||
+                        rosterActionBusy
+                      }
+                      title={
+                        !isAdmin
+                          ? '仅管理员可用'
+                          : player.isHost
+                            ? '主机没有可传送的小屋'
+                            : player.status !== 'online'
+                              ? '玩家不在线'
+                              : !player.uniqueMultiplayerId
+                                ? '缺少玩家联机 ID，暂不支持传送回家'
+                                : '传送玩家回家'
+                      }
+                      onClick={() =>
+                        setWarpHomeConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })
+                      }
+                    >
+                      {warpHomeBusyId === player.uniqueMultiplayerId ? '处理中…' : '回家'}
+                    </button>
                     <button
                       type="button"
                       className="sd-btn-delete sd-mplay-player-action-btn"
@@ -208,9 +258,38 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
 
         {kickMessage ? <div className="sd-notice sd-notice--ok sd-mplay-notice">{kickMessage}</div> : null}
         {kickError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{kickError}</div> : null}
+        {warpHomeMessage ? <div className="sd-notice sd-notice--ok sd-mplay-notice">{warpHomeMessage}</div> : null}
+        {warpHomeError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{warpHomeError}</div> : null}
         {banMessage ? <div className="sd-notice sd-notice--ok sd-mplay-notice">{banMessage}</div> : null}
         {banError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{banError}</div> : null}
       </section>
+
+      {warpHomeConfirmTarget ? (
+        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-panel sd-mplay-confirm-dialog">
+            <h3>确认传送回家</h3>
+            <p>将玩家 {warpHomeConfirmTarget.name} 传送回自己的小屋？该操作适合玩家卡在地图或建筑边缘时救援。</p>
+            <div className="sd-mplay-confirm-actions">
+              <button
+                type="button"
+                className="sd-btn-tan sd-mplay-confirm-btn"
+                onClick={() => setWarpHomeConfirmTarget(null)}
+                disabled={warpHomeBusyId !== null}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="sd-btn-green sd-mplay-confirm-btn"
+                onClick={() => void handleConfirmWarpHome()}
+                disabled={warpHomeBusyId !== null}
+              >
+                {warpHomeBusyId !== null ? '传送中…' : '确认传送'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {kickConfirmTarget ? (
         <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">

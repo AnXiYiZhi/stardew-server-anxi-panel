@@ -17,6 +17,10 @@ type playerKicker interface {
 	KickPlayer(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*sj.CommandRunResult, error)
 }
 
+type playerHomeWarper interface {
+	WarpPlayerHome(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*sj.CommandRunResult, error)
+}
+
 type playerAuthApprover interface {
 	ApproveAuth(ctx context.Context, instance registry.Instance, uniqueMultiplayerID string) (*sj.CommandRunResult, error)
 }
@@ -32,6 +36,11 @@ type kickPlayerRequest struct {
 
 type approveAuthRequest struct {
 	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
+}
+
+type warpPlayerHomeRequest struct {
+	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
+	Name                string `json:"name"`
 }
 
 type banPlayerRequest struct {
@@ -90,6 +99,60 @@ func (s *server) handlePlayerKick(w http.ResponseWriter, r *http.Request, instan
 		return
 	}
 	s.auditLog(r, &actor, "player_kick", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handlePlayerWarpHome handles POST /api/instances/:id/players/warp-home.
+func (s *server) handlePlayerWarpHome(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	warper, supported := driver.(playerHomeWarper)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持传送玩家回家")
+		return
+	}
+
+	var body warpPlayerHomeRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	uniqueMultiplayerID := strings.TrimSpace(body.UniqueMultiplayerID)
+	if uniqueMultiplayerID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_player", "缺少玩家联机 ID")
+		return
+	}
+
+	result, err := warper.WarpPlayerHome(r.Context(), makeRegistryInstance(instance), uniqueMultiplayerID, body.Name)
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			status := http.StatusBadRequest
+			switch ce.Code {
+			case "server_not_running", "warp_home_bridge_unavailable":
+				status = http.StatusConflict
+			case "not_supported":
+				status = http.StatusNotImplemented
+			}
+			writeError(w, status, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "warp_home_failed", sanitizeErrorMsg(err, "传送玩家回家失败"))
+		return
+	}
+	s.auditLog(r, &actor, "player_warp_home", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
 	writeJSON(w, http.StatusOK, result)
 }
 

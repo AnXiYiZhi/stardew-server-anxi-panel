@@ -1806,3 +1806,12 @@ npm.cmd run dev
 - 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`。未新增图片素材（直接复用管理操作卡片已有的两张 PNG）。
 - 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实运行实例实际点一遍行内封禁图标和管理操作卡片封禁按钮，也未截图验证移动端窄屏下两个新图标按钮的间距/触控热区，建议下一位维护者补一次。
 - 下一步注意事项：管理操作卡片的 select+button 目前被一条较晚的 CSS 规则（`StardewPanel.css` 约 15131 行 `.sd-players-action-select, .sd-players-action-item > button { display: none; }`）整体隐藏（这是既有状态，"踢出玩家"卡片本来就是这样，"封禁玩家"卡片照抄同一结构保持一致），真正生效的交互入口是行内图标按钮；如果以后要让卡片内的 select/button 重新可见，需要先弄清楚这条 CSS 规则当初为什么要隐藏它们。
+
+# PLAYERS-WARP-HOME-1 玩家回家按钮
+
+- 玩家管理桌面页和手机玩家页新增“回家”操作，位置在“踢出”按钮左侧。桌面端为图标按钮，手机端为 44px+ 触控热区的文字按钮，均复用现有确认弹窗、busy、成功/失败提示和刷新玩家列表流程。
+- 前端新增 `warpPlayerHome(uniqueMultiplayerId, name, instanceId?)`，调用 `POST /api/instances/:id/players/warp-home`。按钮禁用条件：非管理员、服务器未运行、目标不在线、目标是主机、缺少 `uniqueMultiplayerId`、当前已有回家操作处理中。
+- 桌面端新增 image2 风格图标资源 `frontend/public/assets/stardew/ui/icons/icon_players_action_home_image2.png`，由玩家行 `.sd-players-icon-home::before` 引用。图标尺寸 192x192，显示为小屋 + 绿色回家箭头，用于和踢出/封禁 PNG 图标保持同一视觉体系。
+- 手机端 `MobilePlayersPage` 同步增加回家确认弹窗与单玩家 busy 状态；玩家卡片操作区顺序为“回家 / 踢出 / 封禁”，不新增手机端专属接口。
+- 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`、`frontend/src/games/stardew/mobile/MobilePlayersPage.tsx`、`MobilePlayersPage.css`、`StardewPanel.css`、新增 PNG 图标。
+- 验证：`cd frontend && npx tsc --noEmit -p .` 通过；`cd frontend && npm run build` 通过。尚未在真机多人联机环境验证点击后玩家实际落点，需结合后端 `PLAYERS-WARP-HOME-1` 做端到端测试。

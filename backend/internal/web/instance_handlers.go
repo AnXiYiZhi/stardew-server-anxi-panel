@@ -130,6 +130,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handlePlayerKick(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/players/warp-home
+	if len(parts) == 3 && parts[1] == "players" && parts[2] == "warp-home" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePlayerWarpHome(w, r, instanceID)
+		return
+	}
 	// POST /api/instances/:id/players/approve-auth
 	if len(parts) == 3 && parts[1] == "players" && parts[2] == "approve-auth" {
 		if r.Method != http.MethodPost {
