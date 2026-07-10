@@ -1,3 +1,65 @@
+# 2026-07-10 已完成：手机端背景、顶栏与存档卡片继续优化
+
+- `MOBILE-SHELL-SAVES-REFINE-1` completed：手机端整体背景改为复用 PC 端 `background_app_black.png` 深色纹理，主体区域复用 PC `.sd-main` 的 image2 页面框素材（四角、四边、中心 tile）；顶栏新增 `mobile_topbar_framed_generated_image2.png` 手机端专用四边框木纹横栏素材（imagegen 生成后整张缩放到 1170×174，不裁切，保留完整边框）并保留鸡图标做轻量化移动版，避免手机宽度下出现 PC 顶栏拼接接缝/撕裂感。移动壳固定为一屏，主体背景、顶栏和底栏保持不动；内容改由 `.sd-mshell-scroll` 内层滚动并被 `.sd-mshell-body` 上下边框安全区裁切，不再遮挡背景自带木纹框线；底部 Tab 占位挪到内层滚动区底部 padding，页面框背景铺满到屏幕底部，不再露出黑底；上方滚动内容额外 padding 收为 0，且 `.sd-mshell-body` 上方安全区减半，组件更贴近上方裁切区内侧顶格显示。
+- 手机端存档页删除独立大农场原画卡，农场图缩小为核心信息卡左侧约 72px 宽的 16:9 缩略图，和存档名称、农场名称、农场主、游戏日期合并展示；当前使用中/可用状态徽章放在缩略图上方，不再覆盖图片。
+- 手机端服务器模组页恢复隐藏内置/系统运行组件，只展示用户安装 Mod；搜索页和启用/禁用接口逻辑不变。
+- 验证：`cd frontend; npx tsc --noEmit -p .` 通过；`cd frontend; npm run build` 通过（仅 Vite 主 chunk 大小提示）。
+
+# 2026-07-10 已完成：手机端模组页 M7
+
+- `MOBILE-MODS-M7-1` completed：手机端底部 Tab 已在“玩家”和“存档”之间新增“模组”，移动壳底栏调整为 6 个入口。新增 `MobileModsPage`，页面右上角保留刷新、导出、上传 Mod，内部二级 Tab 为“搜索 / 服务器模组”。
+- 搜索页复用现有 Nexus 搜索接口和 `/mods` 安装状态数据，但按用户反馈做成移动端精简展示：删除搜索框上方 Nexus Key/扩展连接区，去掉安装按钮，移除来源/作者/下载/认可四项，搜索结果每页 4 个，卡片底部前置状态按钮与小号“跳转 N站”按钮同排平齐，分页控件收为单行。
+- 服务器模组页把已安装信息和启用状态合并在同一张卡片中：左侧展示 N 站缩略图，右侧展示名称、状态、版本、文件夹、更新时间和同步类型；作者/来源字段已按反馈删除。真实可点击启用开关改为底部标签行右侧的无文字绿色小开关；进入该子页时主动刷新 `GET /mods`，切换启用状态后刷新当前列表。后续 `MOBILE-SHELL-SAVES-REFINE-1` 已将该页口径改回隐藏内置/系统运行组件。移动壳主体改为顶部对齐，避免切换搜索/服务器模组时顶部模块上下跳动。
+- 验证：`cd frontend; npx tsc --noEmit -p .` 通过；`cd frontend; npm run build` 通过（仅 Vite 主 chunk 大小提示）。
+
+# 2026-07-10 已完成：手机端卡片与底部 Tab 视觉统一优化 M6
+
+- `MOBILE-VISUAL-UNIFY-M6-1` completed：手机端所有主要卡片（总览/控制/玩家/存档各页面的 `.sd-panel` 卡片）从直角方块升级为和 PC 总览页一致的圆角羊皮纸卡片。背景色取自 PC 总览页"存档/模组"指标卡（`linear-gradient(180deg, rgba(255,245,214,0.96), rgba(248,226,174,0.94)), #f7e3ad`），圆角/边框/阴影取自 PC 总览页"在线玩家"卡片（`border-radius:9px`、`border:2px solid #a06c2c`、三层 inset + drop shadow）。
+- 实现方式：`StardewMobileShell.css` 新增 `:root` 变量 `--stardew-mobile-card-bg/border/radius/shadow`，配合 `.sd-mshell .sd-panel` 祖先限定选择器（优先级 (0,2,0) 稳赢全局单类 `.sd-panel`），一条规则覆盖所有手机端页面内的 `.sd-panel` 卡片——不需要逐个页面改 className。作用域限定在 `.sd-mshell` 内，桌面端 `StardewPanel.tsx`、登录页 `.sd-auth-shell` 不受影响。
+- 玩家页内每张玩家行卡片（`.sd-mplay-player-card`）也同步引用同一组变量，从 `border:1px solid #dcc898; border-radius:2px; background:rgba(...)` 升级为和外层卡片一致的圆角羊皮纸样式。
+- 底部 Tab 栏全面重做：从贴底直角硬条改为悬浮圆润胶囊式导航条（`border-radius:20px`、两侧各留 `10px` 间距、`bottom:10px + safe-area-inset-bottom`），每个 Tab 按钮变成垂直图标+文字的圆角 pill（`border-radius:14px`、`min-height:48px` 满足触控热区）；新增从桌面导航共用的像素图标（5 个 tab 各对应一个 image2 nav icon）；active 态 `background:var(--sd-green-bg)` 绿色高亮；`:active` 有 `scale(0.92)` 按压反馈；文案用 `text-overflow:ellipsis` 防溢出。
+- `.sd-mshell` 的 `padding-bottom` 从 `56px + safe-area-inset-bottom` 提升到 `84px + safe-area-inset-bottom`，匹配新底栏更大的浮动占位。
+- 未改动任何 TSX 业务逻辑（hooks/store/API/权限判断），仅在 `StardewMobileShell.tsx` 给 `MOBILE_TABS` 补了 `icon` 字段和 Tab 按钮内部的 `<img>` + `<span>` 结构。
+- 影响文件：`frontend/src/games/stardew/StardewMobileShell.css`、`frontend/src/games/stardew/StardewMobileShell.tsx`、`frontend/src/games/stardew/mobile/MobilePlayersPage.css`。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；构建产物 CSS 确认 `.sd-mshell .sd-panel` 规则生效、tabbar `border-radius:20px` 规则生效。**未做真实浏览器/真机视觉验证**：建议下一位维护者 `npm run dev -- --host 0.0.0.0` 在手机访问 `http://192.168.0.5:5173/`，或 `qa-layout.html?shell=mobile&state=running` 在浏览器缩放到 390×844/393×852/430×932 确认：卡片圆角明显、底栏圆润浮动、Tab 图标和文字间距合理、active 态清晰、无横向滚动、登录页不受影响。
+
+# 2026-07-10 已完成：移动端玩家页 M4
+
+- `MOBILE-PLAYERS-M4-1` completed：`StardewMobileShell` 的“玩家”Tab 从占位卡换成真实页面 `frontend/src/games/stardew/mobile/MobilePlayersPage.tsx`。**最终结构**（经用户两轮反馈调整后）：页面只有一张“在线玩家”卡，卡片头部右上角是刷新按钮，下方是玩家卡片列表——每张卡片姓名+状态徽章（在线/等待/离线/未知）、主机/角色标签、最近活动文案、底部左侧位置信息 + 右侧“踢出”“封禁”按钮，空态显示“暂无在线玩家”。**不含**顶部统计卡和独立的“待授权玩家”同意/拒绝卡片（用户明确要求删除，待认证玩家的同意/拒绝能力保留在“总览”Tab 的 `MobileHomePage.tsx`）。
+- 全部复用既有接口，未新增后端 API：`kickPlayer`/`banPlayer`/`dashboardData.refreshPlayers`，`disabled`/`title` 门控逐条对齐桌面 `PlayersPage.tsx` 行内图标按钮。
+- 忙碌态精确到单个玩家（`kickBusyId`/`banBusyId` 存目标 ID 而非单一 boolean），操作中该玩家按钮显示“处理中…”，同时锁定其它玩家行的踢出/封禁按钮避免并发误触。
+- 桌面端 `PlayersPage.tsx`/`StardewPanel.css` 未改动；新增样式 `frontend/src/games/stardew/mobile/MobilePlayersPage.css`（class 前缀 `sd-mplay-`），只用全局 `stardew-theme.css` 工具类。
+- 详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-PLAYERS-M4-1` 小节（含两轮反馈调整的完整记录）。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做真实浏览器/真机视觉验证**：当前环境没有可用的浏览器自动化/截图工具，建议下一位维护者用 `npm run dev -- --host 0.0.0.0` 或 `qa-layout.html?shell=mobile&state=running` 在 390×844/393×852/430×932 下确认无横向溢出、卡片底部“位置信息+操作按钮”一行不挤压文字、真实连一个运行实例走一遍踢出/封禁完整链路。
+
+# 2026-07-10 已完成：移动端控制页 M3
+
+- `MOBILE-CONTROL-M3-1` completed：`StardewMobileShell` 的“控制”Tab 从占位卡换成真实页面 `frontend/src/games/stardew/mobile/MobileControlPage.tsx`，按用户口径限定为桌面 `ServerControlPage.tsx` 的“全服消息”卡片 + “快捷操作”卡片（去掉手动备份和 VNC 显示相关按钮），不含生命周期启停（已在 `MobileHomePage` 的“快捷控制”卡提供）。快捷操作按单列纵向按钮列表排布 5 个操作：计划重启、服务器密码设置、小屋与联机高级设置、触发节日活动、永久启用 Joja 路线，4 个表单类操作各自弹出全屏弹窗（`max-height:88vh; overflow-y:auto` 防止内容溢出小屏视口）。
+- 全部复用既有接口，未新增后端 API：`getRestartSchedule`/`updateRestartSchedule`/`getInstanceServerPassword`/`updateInstanceServerPassword`/`getInstancePasswordStatus`/`getInstanceServerRuntimeSettings`/`updateInstanceServerRuntimeSettings`/`triggerFestivalEvent`/`enableJojaRoute`/`sendSay`。未直接复用 `ServerControlPage.tsx` 组件或它挂在 `StardewPanel.css` 里的类名（移动端不加载该文件），只搬了状态判断逻辑，弹窗/按钮/提示条按移动端布局重排，视觉基础件继续用全局 `stardew-theme.css` 的 `.sd-panel`/`.sd-input`/`.sd-btn-*`/`.sd-notice--*`。
+- 顺手清理：全服消息卡片里过时的“该命令当前版本可能返回‘命令不支持’”提示文案（PC 端 `ServerControlPage.tsx` 和移动端一起删除，SMAPI say 命令现已正常支持）；移动端“发送”按钮按用户要求从 `sd-btn-green` 改成 `sd-btn-restart`（棕色，和重启按钮同色），PC 端保持 `sd-btn-green` 不变，两端故意区分颜色。
+- 桌面端 `ServerControlPage.tsx` 行为视觉不变（除上述文案删除）；新增样式 `frontend/src/games/stardew/mobile/MobileControlPage.css`（class 前缀 `sd-mctrl-`）。
+- 详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-CONTROL-M3-1` 小节。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做真实浏览器/真机视觉验证**：当前环境没有可用的浏览器自动化/截图工具，建议下一位维护者用 `npm run dev -- --host 0.0.0.0` 或 `qa-layout.html?shell=mobile&state=running` 在 390×844/393×852/430×932 下确认无横向溢出、5 个快捷操作按钮和 4 个弹窗渲染正常（尤其计划重启弹窗字段最多，需确认可纵向滚动到底部按钮）、非管理员禁用态。
+
+# 2026-07-10 已完成：移动端总览页 M2
+
+- `MOBILE-HOME-M2-1` completed：`StardewMobileShell` 的“总览”Tab 从 M0 的静态占位卡换成真实页面 `frontend/src/games/stardew/mobile/MobileHomePage.tsx`（新目录 `mobile/`，为后续 M3 移动端页面预留位置），按单列卡片流展示：①状态摘要卡（存档名/服务器状态/在线玩家/版本，状态文案区分“启动中/停止中”）；②邀请信息卡（邀请码 + 局域网邀请地址，各带复制按钮，长文本用等宽小字 + `break-all` 防撑破卡片）；③快捷控制卡（启动/停止/重启，按钮 `min-height:44px`，停止/重启带确认弹窗）；④待认证玩家批准卡（复用密码认证桥接批准能力）。
+- 全部复用既有数据与接口，未新增后端 API：`useStardewDashboardData()` 的 `instanceState`/`saves`/`players`/`jobs`/`versionInfo`/`inviteCode`/`publicIP` 及其刷新函数；生命周期 `startInstance`/`stopInstance`/`restartInstance`；玩家页已有的 `getInstancePasswordStatus`/`approvePlayerAuth`。邀请码/局域网地址复制逻辑参照 `InviteCodeCard.tsx` 重写为移动端轻量展示（未复制其 API 请求逻辑，只读同一份 `dashboardData` 字段）。
+- 桌面端 `OverviewPage.tsx`/`StardewPanel.css` 未改动；样式新增 `frontend/src/games/stardew/mobile/MobileHomePage.css`（class 前缀 `sd-mhome-`），按钮沿用 `stardew-theme.css` 全局 `.sd-btn-start`/`.sd-btn-stop`/`.sd-btn-restart`/`.sd-btn-green`/`.sd-btn-tan`/`.sd-btn-delete`/`.sd-panel`/`.sd-notice--*`/`.sd-tag` 等既有工具类（这些类在 `main.tsx` 全局加载，桌面专属的 `StardewPanel.css` 才不可用），只用 `min-height`/`width` 覆盖尺寸做触控热区放大，不重画按钮贴图。`StardewMobileShell` 新增接收 `user` prop（M0 遗留的“暂无 user”限制在本轮补上，`App.tsx`/`qa-layout-main.tsx` 同步传入）。
+- 详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-HOME-M2-1` 小节。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做真实浏览器/真机视觉验证**：当前环境没有可用的浏览器自动化工具，建议下一位维护者用 `npm run dev -- --host 0.0.0.0` 或 `qa-layout.html?shell=mobile` 在 390×844/393×852/430×932 下确认无横向滚动、四张卡片渲染正常、复制按钮反馈、启停按钮状态刷新、非管理员禁用态。
+
+# 2026-07-10 已完成：修复登录页移动端布局崩坏
+
+- `LOGIN-MOBILE-FIX-1` completed：用户提供真机截图反馈登录页在手机浏览器里布局崩坏（标题横条压住顶部鸡形徽标、卡片被横向撑爆、软键盘弹出后登录按钮被遮挡），且"没有输入法的时候也有突出，只是没有这么严重"。根因是登录/初始化页永远使用的 `.sd-auth-shell--image-login` 版式把整张桌面原型图当卡片背景，用固定 16:9 比例反算出 `position:absolute` 大盒子并用百分比坐标摆放输入框；手机竖屏宽高比和 16:9 差异很大，算出来的盒子宽度会远超视口（390px 宽视口下接近 1500px），被外层 `overflow:hidden` 裁掉，且已有的 `@media(max-width:700px)` 手工坐标补丁是按单一机型手算的偏移量，换一个宽高比就会跟着错位。
+- 只改了 `frontend/src/App.css` 一个文件：新增 `@media (max-width:768px)` 覆盖，作用域限定在 `.sd-auth-shell`/`.sd-auth-shell--image-login` 及其子选择器，`<=768px` 时整体放弃绝对坐标定位，改回真实文档流的羊皮纸卡片（`width:min(100% - 24px, 420px)`，`min-height:100dvh` 处理地址栏收缩，`overflow-y:auto` 允许纵向滚动，输入框 `min-height:40px`/字号锁 16px 防 iOS 自动缩放，按钮 `min-height:44px`）。卡片装饰复用现有 `background_parchment_tile.png`/`button_primary_small_green_blank.png`；背景第一版复用 `background_login_home_image2.png`（桌面那张画死了假窗口 UI 的原图）铺满裁切，用户反馈"背景还是 PC 端的登陆窗口，很违和"后改用 `background_login_farm_generated.png`（非 image2 版登录页用的纯像素农场背景，没有假 UI 元素，设计上就是给"背景 + 悬浮真实卡片"用的）。三张都是仓库已有素材，未新增或替换任何图片；未改 API、session、权限或用户初始化逻辑；未改 `MOBILE-SHELL-M0-1` 的 `StardewMobileShell`（两者完全独立，作用域不重叠）。
+- 用户看了背景返工后的效果又反馈卡片本体"太丑"，想要接近 PC 端右侧木框招牌的质感。没有去裁桌面大图里的招牌区域当卡片背景（那样等于把坐标错位的老问题换个更小的坐标系重演一遍），而是给卡片加了一枚固定像素尺寸的鸡形徽标（复用顶栏已有的 `icon_topbar_chicken_image2_v2.png`）骑在卡片顶部边框上，配合加深的投影和调整过的内边距，呼应桌面招牌"鸡+木框"的视觉但不依赖任何坐标换算。
+- 详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `LOGIN-MOBILE-FIX-1` 小节（含桌面版坐标选择器 specificity 的踩坑记录、背景素材两轮返工原因）。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；`npm run dev -- --host 0.0.0.0` 已启动供真机复测。**未做真机复测确认**：还需要在真机上刷新页面确认标题横条不再压住图标、卡片不再横向撑爆、背景不再显示违和的桌面窗口、卡片顶部鸡形徽标视觉效果、软键盘弹出后登录按钮可滚动到可见范围。
+
+# 2026-07-10 已完成：移动端基础入口 M0
+
+- `MOBILE-SHELL-M0-1` completed：在同一前端工程内新增移动端入口，未新建独立项目。新增通用 `frontend/src/hooks/useMediaQuery.ts` hook；`App.tsx` 用 `useMediaQuery('(max-width: 768px)')` 在进入 Stardew 面板处分流，`<=768px` 渲染新增占位组件 `frontend/src/games/stardew/StardewMobileShell.tsx`（顶部品牌 + 状态徽章、复用 `.sd-panel` 羊皮纸样式的“移动端面板建设中”占位卡、底部 5 个静态 Tab：总览/控制/玩家/任务/更多），桌面端继续渲染既有 `StardewPanel`，行为视觉不变。
+- M0 不做真实路由/分页、不改后端、不新增 API、不改登录和权限逻辑；`StardewMobileShell` 不接收 `user`/`onLogout`，暂无登出入口，留给 M1。样式独立在 `StardewMobileShell.css`（`sd-mshell-` 前缀），只复用 `stardew-theme.css` 已有变量和工具类，未新增图片素材、未引入新 UI 库。
+- QA mock 入口 `frontend/qa-layout.html` 新增 `?shell=mobile` 参数，可配合既有 `?state=running/stopped` 用 mock 数据回归移动端占位壳，不用连真实后端。
+- 详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-SHELL-M0-1` 小节（含 M1 注意事项）。验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做真实浏览器缩放/移动设备实测**，当前环境没有可用的浏览器自动化/截图工具，建议下一位维护者用 `qa-layout.html?shell=mobile` 在真实浏览器里确认 768px/390px/320px 下无横向滚动、底部 Tab 贴底、状态徽章和 Tab 高亮切换正常。
+
 # 2026-07-09 已完成：用户管理新增"重置密码"，修正权限规则
 
 - `USER-PASSWORD-RESET-1` completed：面板登录账号（注意不是游戏加入密码）此前完全没有改密码的入口——后端 `PATCH /api/users/{id}` 早就支持 `password` 字段，但从未在前端暴露，而且原有权限检查比预期更严格（连管理员改自己密码都会被拒绝）。按用户明确规则实现：普通用户不能改自己密码（无入口，接口本身就是 `requireAdmin`）；普通管理员能改自己的和普通用户的密码，不能改其他管理员的；第一个注册的超级管理员能改所有人的密码，包括自己。后端 `storage.UpdateUser` 权限检查补一个"改自己"豁免条件；前端"设置"页用户列表新增"重置密码"按钮和弹窗，改自己密码后自动跳转登录页（当前 session 会被撤销）。新增测试 `TestPasswordChangePermissions` 覆盖五种权限场景。详见 `docs/backend-handoff/backend-handoff-2026-07-09.md`、`docs/frontend-handoff/frontend-handoff-2026-07-09.md` 的 `USER-PASSWORD-RESET-1`，以及 `website/docs/handbook/accounts.md` 补充的重置密码说明。验证：`cd backend; go build ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
@@ -517,6 +579,11 @@ Multi Game Mode later
 | MODDEPS-1 | completed | Mod 列表解析并展示 SMAPI 前置依赖声明，普通用户可在已安装 Mod 卡片看到需要的前置依赖 |
 | MODORIGIN-1 | completed | Nexus 多 Mod ZIP 的内容包记录来源包字段，已安装卡片区分主 N站 Mod 与随包内容包，并支持同包相邻展示与捆绑删除 |
 | NEXUS-PAGED-1 / NEXUS-PAGER-2 | completed | 下载页回到 Nexus-only 搜索，支持默认热门、下载量排序、分页和 Nexus 一键安装；旧 `/mods/search` 统一搜索骨架已撤回 |
+| MOBILE-SHELL-M0-1 | completed | 移动端基础入口 M0：`useMediaQuery` hook + `App.tsx` 按 `<=768px` 分流到占位组件 `StardewMobileShell`（顶部品牌/状态、羊皮纸占位卡、5 个静态 Tab），桌面端 `StardewPanel` 行为视觉不变；真实移动端页面内容和 Tab 路由映射留给 M1 |
+| MOBILE-HOME-M2-1 | completed | 移动端总览页 M2：`StardewMobileShell` 的“总览”Tab 接入真实 `mobile/MobileHomePage.tsx`（状态摘要/邀请信息/快捷控制/待认证玩家批准四张卡片），全部复用现有 API 和 `useStardewDashboardData()`，未新增后端接口，桌面端总览页未改 |
+| MOBILE-CONTROL-M3-1 | completed | 移动端控制页 M3：`StardewMobileShell` 的“控制”Tab 接入真实 `mobile/MobileControlPage.tsx`（全服消息卡 + 快捷操作卡：计划重启/密码设置/小屋高级设置/触发节日活动/永久启用Joja路线，去掉手动备份和VNC显示），全部复用现有 API，未新增后端接口，桌面端 `ServerControlPage.tsx` 未改（除删除过时的 say 命令提示文案） |
+| MOBILE-PLAYERS-M4-1 | completed | 移动端玩家页 M4：`StardewMobileShell` 的“玩家”Tab 接入真实 `mobile/MobilePlayersPage.tsx`（单卡“在线玩家”：右上角刷新按钮 + 玩家卡片列表[名称/状态徽章/主机角色/最近活动/位置信息 + 踢出/封禁]），踢出/封禁复用 `kickPlayer`/`banPlayer`，未新增后端接口，桌面端 `PlayersPage.tsx` 未改；不含待授权玩家同意/拒绝（保留在 `MOBILE-HOME-M2-1` 的总览 Tab） |
+| LOGIN-MOBILE-FIX-1 | completed | 修复登录/初始化页在手机端的布局崩坏：`App.css` 新增 `@media(max-width:768px)` 覆盖，`.sd-auth-shell--image-login` 放弃固定 16:9 比例的绝对坐标定位，改回真实文档流羊皮纸卡片，复用现有三张素材，未新增图片、未改 API/权限 |
 
 ## 近期优先级
 
@@ -538,7 +605,7 @@ Multi Game Mode later
 - Mod 依赖缺失/版本检查和更新提示。
 - Nexus 多文件选择、权限差异提示和 OAuth/非 Premium 下载体验优化。
 - 设置页中的审计过滤、会话管理、安全策略。
-- 更完整的移动端导航和表格卡片化。
+- 更完整的移动端导航和表格卡片化：M0（识别移动端 + 占位壳分流）、M2（总览 Tab 真实化，见 `MOBILE-HOME-M2-1`）、M3（控制 Tab 真实化，见 `MOBILE-CONTROL-M3-1`）、M4（玩家 Tab 真实化，见 `MOBILE-PLAYERS-M4-1`）已完成；`任务`/`更多` 两个 Tab 仍是占位，控制台命令执行、玩家踢出/封禁操作未搬到移动端（均不在已完成里程碑范围内），详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-PLAYERS-M4-1` 小节“下一步注意事项”。
 
 ## 长期路线
 

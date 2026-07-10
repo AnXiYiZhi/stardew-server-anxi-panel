@@ -1,0 +1,300 @@
+/* ── M0 移动端占位壳：仅在 max-width:768px 分流时挂载 ────────────────────── */
+
+.sd-mshell {
+  --sd-mobile-topbar-height: 58px;
+  --sd-mobile-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px));
+  --sd-mobile-main-frame-corner-size: 46px;
+  --sd-mobile-main-frame-edge-thickness: 30px;
+  --sd-mobile-main-frame-center-tile-size: 192px;
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #000;
+  background-image: var(--sd-img-bg-black);
+  background-repeat: repeat;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: 0;
+  image-rendering: pixelated;
+}
+
+/* ── M6 手机端卡片视觉统一：背景取 PC 总览页“存档/模组”卡片色，
+   边框/圆角/阴影取 PC 总览页“在线玩家”卡片样式。两张 PC 卡片刚好共用
+   同一个 --sd-save-card-bg 背景值，这里单独抽出命名清楚的变量，不直接
+   依赖 StardewPanel.css 的 --sd-save-card-* 系列（那份变量只在挂载
+   StardewPanel.tsx 时才加载，移动端不可用）。只覆盖背景/边框/圆角/阴影，
+   不改 `.sd-panel` 的 padding，各页面卡片各自的 padding 保持不变。 */
+:root {
+  --stardew-mobile-card-bg:
+    linear-gradient(180deg, rgba(255, 245, 214, 0.96), rgba(248, 226, 174, 0.94)),
+    #f7e3ad;
+  --stardew-mobile-card-border: 2px solid #a06c2c;
+  --stardew-mobile-card-radius: 9px;
+  --stardew-mobile-card-shadow:
+    inset 0 0 0 2px rgba(255, 243, 210, 0.55),
+    inset 0 -5px 9px rgba(160, 108, 44, 0.12),
+    0 2px 0 rgba(90, 55, 18, 0.25);
+}
+
+/* 选择器用 `.sd-mshell .sd-panel`（两个类叠加的祖先限定）把优先级提到
+   (0,2,0)，不管 Vite 打包后各 CSS chunk 的实际顺序如何，都稳赢全局
+   `.sd-panel` 单类规则 (0,1,0)——这是 MOBILE-CONTROL-M3-1 已经踩过并记录
+   的同一类层叠顺序坑，这里直接照搬稳赢写法。作用域限定在 `.sd-mshell`
+   内，桌面端 `StardewPanel.tsx` 从不渲染在 `.sd-mshell` 下，不受影响。 */
+.sd-mshell .sd-panel {
+  background: var(--stardew-mobile-card-bg);
+  border: var(--stardew-mobile-card-border);
+  border-radius: var(--stardew-mobile-card-radius);
+  box-shadow: var(--stardew-mobile-card-shadow);
+}
+
+.sd-mshell-topbar {
+  flex-shrink: 0;
+  height: var(--sd-mobile-topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  position: relative;
+  background-color: #180d04;
+  background-image:
+    linear-gradient(180deg, rgba(255, 214, 126, 0.07), rgba(30, 13, 4, 0.18)),
+    url('/assets/stardew/ui/topbar/mobile_topbar_framed_generated_image2.png?v=mobile-topbar-4');
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: 100% 100%, 100% 100%;
+  box-shadow:
+    0 2px 0 rgba(26, 10, 3, 0.72),
+    inset 0 1px 0 rgba(255, 224, 150, 0.08),
+    inset 0 -1px 0 rgba(255, 224, 150, 0.1);
+}
+
+.sd-mshell-brand {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff3d6;
+  text-shadow:
+    1px 1px 0 #351907,
+    0 2px 0 rgba(30, 12, 2, 0.58);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 30px;
+}
+
+.sd-mshell-brand::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  background: url('/assets/stardew/ui/topbar/icon_topbar_chicken_image2_v2.png') center / contain no-repeat;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 2px 0 rgba(32, 13, 3, 0.45));
+}
+
+.sd-mshell-status {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 2px solid rgba(116, 66, 24, 0.72);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 238, 185, 0.9), rgba(203, 145, 70, 0.82)),
+    #c58a49;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 1px 0 rgba(34, 15, 4, 0.55);
+}
+
+.sd-mshell-status-text {
+  font-size: 12px;
+  font-weight: 800;
+  color: #3a210b;
+  white-space: nowrap;
+}
+
+.sd-mshell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(var(--sd-mobile-main-frame-edge-thickness) / 2) 0 var(--sd-mobile-main-frame-edge-thickness);
+  box-sizing: border-box;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: #f0deb3;
+  background-image:
+    var(--sd-img-page-frame-corner-top-left),
+    var(--sd-img-page-frame-corner-top-right),
+    var(--sd-img-page-frame-corner-bottom-left),
+    var(--sd-img-page-frame-corner-bottom-right),
+    var(--sd-img-page-frame-edge-top),
+    var(--sd-img-page-frame-edge-bottom),
+    var(--sd-img-page-frame-edge-left),
+    var(--sd-img-page-frame-edge-right),
+    var(--sd-img-page-frame-center);
+  background-repeat:
+    no-repeat,
+    no-repeat,
+    no-repeat,
+    no-repeat,
+    repeat-x,
+    repeat-x,
+    repeat-y,
+    repeat-y,
+    repeat;
+  background-position:
+    left top,
+    right top,
+    left bottom,
+    right bottom,
+    left top,
+    left bottom,
+    left top,
+    right top,
+    center;
+  background-size:
+    var(--sd-mobile-main-frame-corner-size) var(--sd-mobile-main-frame-corner-size),
+    var(--sd-mobile-main-frame-corner-size) var(--sd-mobile-main-frame-corner-size),
+    var(--sd-mobile-main-frame-corner-size) var(--sd-mobile-main-frame-corner-size),
+    var(--sd-mobile-main-frame-corner-size) var(--sd-mobile-main-frame-corner-size),
+    auto var(--sd-mobile-main-frame-edge-thickness),
+    auto var(--sd-mobile-main-frame-edge-thickness),
+    var(--sd-mobile-main-frame-edge-thickness) auto,
+    var(--sd-mobile-main-frame-edge-thickness) auto,
+    var(--sd-mobile-main-frame-center-tile-size) var(--sd-mobile-main-frame-center-tile-size);
+  background-origin: border-box;
+  background-clip: border-box;
+}
+
+.sd-mshell-scroll {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 16px calc(18px + var(--sd-mobile-bottom-nav-space));
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sd-mshell-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.sd-mshell-card {
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+  padding: 28px 20px;
+  text-align: center;
+}
+
+.sd-mshell-card-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mshell-card-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--sd-brown-light);
+}
+
+.sd-mshell-tabbar {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: var(--sd-brown-dark);
+  border: 2px solid var(--sd-brown-border);
+  border-radius: 20px;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.sd-mshell-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 6px 2px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #d8bd8f;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.sd-mshell-tab-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
+  image-rendering: pixelated;
+  opacity: 0.78;
+}
+
+.sd-mshell-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mshell-tab.active {
+  background: var(--sd-green-bg);
+  color: var(--sd-green-text);
+  font-weight: 800;
+}
+
+.sd-mshell-tab.active .sd-mshell-tab-icon {
+  opacity: 1;
+}
+
+.sd-mshell-tab:active {
+  transform: scale(0.92);
+}

@@ -1,0 +1,341 @@
+/* ── M3 移动端控制页：全服消息 + 快捷操作（精简子集，不含手动备份/VNC显示） ──── */
+
+.sd-mctrl-wrap {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.sd-mctrl-status-strip {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sd-mctrl-status-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #2c1a0a;
+}
+
+.sd-mctrl-status-save {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sd-brown-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mctrl-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.sd-mctrl-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mctrl-card-title img {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.sd-mctrl-notice {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 全服消息卡 */
+
+.sd-mctrl-say-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 下面两条都写成两个类叠加的复合选择器（`.sd-input.sd-mctrl-say-input`、
+   `.sd-btn-restart.sd-mctrl-say-btn`），不要简化成单类——原因和上面 `.sd-mctrl-action-btn--card`
+   的注释一样：全局 `.sd-input`（640px 断点内 min-height:32px）和 `.sd-btn-restart` 所在的
+   共享规则（min-width:112px）在打包后实际排在这个文件之后，单类选择器优先级相同时会被
+   源码顺序更靠后的全局规则覆盖回去，必须靠类叠加把优先级提高到稳赢。 */
+.sd-input.sd-mctrl-say-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.sd-btn-restart.sd-mctrl-say-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 72px;
+  image-rendering: pixelated;
+}
+
+.sd-mctrl-say-count {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--sd-brown-light);
+  text-align: right;
+}
+
+/* 快捷操作卡 */
+
+.sd-mctrl-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-mctrl-action-btn {
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+  /* 仍保留给"永久启用 Joja 路线"按钮用：它继续用 sd-btn-delete 的红色像素贴图（用户
+     要求这个危险操作按钮样式不动），贴图原生尺寸远小于这里的整行宽度，全局
+     background-size:100% 100% 拉伸后浏览器默认平滑插值会糊成一片，改成最近邻缩放
+     和图标 .sd-btn-img 的 image-rendering:pixelated 保持一致，不改全局按钮基础规则。 */
+  image-rendering: pixelated;
+}
+
+/* PC 端"快捷操作"网格里非危险操作按钮实际不是拉伸的像素贴图，而是文件尾部最终覆盖
+   （StardewPanel.css `.sd-server-quick .sd-server-quick-grid > button`）画的羊皮纸卡片
+   （边框 + 渐变 + 内阴影），完全不依赖 background-image，缩放到任意宽度都不会糊。这里
+   照抄同一套视觉参数，只加在这个修饰类上、不加进 `.sd-mctrl-action-btn` 本体，避免影响
+   仍需保留红色像素贴图的 Joja 按钮（它只有 `sd-mctrl-action-btn` 没有这个修饰类）。
+   选择器必须写成 `.sd-mctrl-action-btn.sd-mctrl-action-btn--card`（两个类叠加、而不是
+   只用 `.sd-mctrl-action-btn--card` 单类）：Vite 打包后 `stardew-theme.css` 里
+   `.sd-btn-tan` 的 background-image 规则实际排在这个组件 CSS 之后，单类选择器和
+   `.sd-btn-tan` 优先级相同时会被源码顺序更靠后的 `.sd-btn-tan` 覆盖回 PNG 贴图（踩过
+   一次坑：改完以为生效了，实际背景根本没变）。两个类叠加把优先级提到 (0,2,0)，不管
+   打包顺序如何都稳赢 (0,1,0) 的 `.sd-btn-tan`。 */
+.sd-mctrl-action-btn.sd-mctrl-action-btn--card {
+  border: 2px solid rgba(160, 108, 44, 0.58);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 246, 213, 0.92), rgba(239, 199, 123, 0.76)),
+    #f4d79a;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 252, 222, 0.7),
+    0 2px 0 rgba(99, 59, 22, 0.2);
+  color: #3a250e;
+  text-shadow: none;
+  image-rendering: auto;
+}
+
+.sd-mctrl-action-btn.sd-mctrl-action-btn--card:disabled {
+  background:
+    linear-gradient(180deg, rgba(246, 232, 196, 0.8), rgba(218, 194, 151, 0.72)),
+    #dcc79f;
+}
+
+.sd-mctrl-action-btn--card .sd-mctrl-action-copy span {
+  color: #7a5322;
+}
+
+.sd-mctrl-action-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
+.sd-mctrl-action-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sd-mctrl-action-copy strong {
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mctrl-action-copy span {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 弹窗（计划重启 / 密码设置 / 小屋高级设置 / Joja 确认共用） */
+
+.sd-mctrl-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(20, 10, 4, 0.6);
+  box-sizing: border-box;
+}
+
+.sd-mctrl-dialog {
+  width: 100%;
+  max-width: 400px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 16px;
+}
+
+.sd-mctrl-dialog h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--sd-brown-dark);
+}
+
+.sd-mctrl-dialog p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4a3320;
+}
+
+.sd-mctrl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.sd-mctrl-field > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sd-brown-light);
+}
+
+.sd-mctrl-field .sd-input {
+  min-height: 44px;
+}
+
+.sd-mctrl-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-mctrl-check input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.sd-mctrl-check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sd-mctrl-check-group .sd-mctrl-check {
+  margin-bottom: 0;
+}
+
+.sd-mctrl-inline-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-mctrl-inline-row .sd-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-mctrl-inline-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.sd-mctrl-warning {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(143, 91, 35, 0.4);
+  border-radius: 2px;
+  background: rgba(255, 241, 196, 0.5);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6a3f18;
+}
+
+.sd-mctrl-summary {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--sd-brown-light);
+}
+
+.sd-mctrl-summary-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #dcc898;
+}
+
+.sd-mctrl-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sd-mctrl-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sd-mctrl-dialog-btn {
+  min-height: 44px;
+}
+
+/* min-width 单独用复合选择器覆盖三种颜色的按钮基类（sd-btn-tan/-green/-delete 各自的
+   min-width 50/58/50px），原因同上：单类选择器和这些基类优先级相同，打包顺序不保证赢。
+   min-height 不受影响可以留单类——`height`（基类）和 `min-height`（这里）是两个不同的
+   CSS 属性，浏览器盒模型始终取两者较大值生效，不受层叠顺序影响。 */
+.sd-btn-tan.sd-mctrl-dialog-btn,
+.sd-btn-green.sd-mctrl-dialog-btn,
+.sd-btn-delete.sd-mctrl-dialog-btn {
+  min-width: 72px;
+}

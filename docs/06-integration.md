@@ -1,3 +1,8 @@
+# MOBILE-HOME-M2-1 联调约定
+
+- 移动端总览页（`frontend/src/games/stardew/mobile/MobileHomePage.tsx`）只复用现有 API，无新增后端契约：生命周期用 `POST /api/instances/:id/start|stop|restart`；邀请码/局域网地址用现有 `GET /api/instances/:id/invite-code` 和前端本地 `window.location.hostname`；待认证玩家批准用现有 `GET /api/instances/:id/password-status` 和 `POST /api/instances/:id/players/approve-auth`。
+- 后端无需为本轮改动做任何调整。
+
 # NEXUS-ARCHIVE-RESUME-1 联调约定
 
 - `mod_remote_install` / `mod_nexus_install` 的 ZIP 下载阶段可能在 job 日志中出现“继续断点下载”“服务器未接受断点续传，重新从头下载”“下载连接卡住，正在重试”等提示。前端无需新增接口，继续展示 `GET /api/jobs/:jobId/logs` 和 SSE `log` 事件即可。

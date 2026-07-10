@@ -780,9 +780,6 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             {sayError ? (
               <div className="sd-ov-error" style={{ marginTop: 4 }}>{sayError}</div>
             ) : null}
-            <div className="sd-srv-hint" style={{ marginTop: 4 }}>
-              通过 SMAPI say 命令发送全服公告。注：该命令当前版本可能返回"命令不支持"。
-            </div>
           </>
         ) : (
           <div className="sd-srv-empty">服务器运行时可向在线玩家发送全服消息。</div>

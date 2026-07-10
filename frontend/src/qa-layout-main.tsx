@@ -4,9 +4,11 @@ import { createRoot } from 'react-dom/client'
 import './App.css'
 import './games/stardew/stardew-theme.css'
 import { StardewPanel } from './games/stardew/StardewPanel'
+import { StardewMobileShell } from './games/stardew/StardewMobileShell'
 
 const params = new URLSearchParams(location.search)
 const STATE = params.get('state') || 'running'
+const SHELL = params.get('shell') || 'desktop'
 
 const now = new Date('2025-05-21T14:28:36+08:00')
 const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString()
@@ -16,6 +18,7 @@ const players = [
   { name: '小鸡快跑', locationDisplayName: '温室', tileX: 12, tileY: 30, uniqueMultiplayerId: '3c2e9d55', status: 'online', ping: 48, farmMoney: 52310, personalMoney: 41780, onlineSeconds: 6420 },
   { name: '星露谷旅人', locationDisplayName: '矿洞湖', uniqueMultiplayerId: 'a1b7c3f8', status: 'online', ping: 62, farmMoney: 34820, personalMoney: 29150, onlineSeconds: 3480 },
   { name: 'WinterBreeze', locationDisplayName: '等待加入…', uniqueMultiplayerId: 'd4e5f6a1', status: 'waiting', ping: null },
+  { name: 'PendingGuest', locationDisplayName: '登录中…', uniqueMultiplayerId: 'f2a8c410', status: 'online', isAuthenticated: false, ping: 50 },
 ]
 
 const recentPlayerEvents = [
@@ -91,9 +94,12 @@ const commands = { commands: [ { name: 'help', description: '显示帮助' }, { 
 const backups = { backups: saves.saves.map((s, i) => ({ name: `${s.name}_20250521_030000.zip`, saveName: s.name, kind: 'daily', size: (24.6 - i * 0.3) * 1048576, createdAt: iso((i + 1) * 1440), farmName: s.name })) }
 const backupPolicy = { policy: { gameSaveBackups: true, dailySnapshots: true, dailyRetentionDays: 7, scheduledBackups: true, scheduledHour: 3 } }
 const restartSchedule = { schedule: { instanceId: 'stardew', enabled: false, shutdownTime: '04:00', startupTime: '04:10', timezone: 'Asia/Shanghai', warningMinutes: [10, 5, 1], backupBeforeShutdown: true, skipIfPlayersOnline: true } }
+const passwordStatus = { enabled: true, authenticatedCount: 3, pendingCount: 1, timeoutSeconds: 60, maxAttempts: 3, passwordBridgeAvailable: true }
 const nexusSettings = { configured: true, hasApiKey: true, extensionConnected: true }
 const vncConfig = { vncPort: '24643' }
 const rendering = { fps: 30 }
+const serverPassword = { serverPassword: '' }
+const serverRuntimeSettings = { cabinStrategy: 'CabinStack', existingCabinBehavior: 'KeepExisting', networkBroadcastPeriod: 1 }
 
 function jsonRes(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -112,10 +118,14 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/saves\/preflight$/, { canCreate: true, canUpload: true, warnings: [] }],
   [/\/saves$/, saves],
   [/\/mods$/, mods],
+  [/\/mods\/nexus\/install$/, { jobId: 'job_mobile_nexus_install' }],
+  [/\/mods\/nexus\/extension\/download$/, {}],
   [/\/health\/diagnostics$/, health],
   [/\/invite-code$/, { inviteCode: STATE === 'running' ? 'ANXI-FARM-2024' : '' }],
   [/\/restart-schedule$/, restartSchedule],
   [/\/config\/vnc-port$/, vncConfig],
+  [/\/config\/server-password$/, serverPassword],
+  [/\/config\/server-runtime-settings$/, serverRuntimeSettings],
   [/\/rendering$/, rendering],
   [/\/mods\/nexus\/search/, { query: 'ui', page: 1, pageSize: 20, total: 1248, hasMore: true, results: [
     { modId: 2400, name: 'SMAPI - Stardew Modding API', summary: 'Stardew Modding API 的实现，所有模组的必要依赖。', author: 'Pathoschild', version: '4.0.8', updatedAt: '2024-05-16', endorsementCount: 3800, downloadCount: 7200000, nexusUrl: 'https://x', installed: false, installedEnabled: false, requiredMods: [] },
@@ -123,6 +133,7 @@ const routes: Array<[RegExp, unknown]> = [
     { modId: 1150, name: 'UI Info Suite 2', summary: '在游戏 UI 中显示更多有用信息和工具提示。', author: 'Annosz', version: '2.2.3', updatedAt: '2024-03-20', endorsementCount: 1400, downloadCount: 2600000, nexusUrl: 'https://x', installed: false, installedEnabled: false, requiredMods: [{ modId: 1915, name: 'Content Patcher', nexusUrl: 'https://x', installed: false, installedEnabled: false }] },
     { modId: 541, name: 'Lookup Anything', summary: '在游戏中检查物品、NPC、地名等的详细信息和 ID。', author: 'Pathoschild', version: '1.40.5', updatedAt: '2024-04-12', endorsementCount: 2000, downloadCount: 1400000, nexusUrl: 'https://x', installed: false, installedEnabled: false, requiredMods: [] },
   ] }],
+  [/\/password-status$/, passwordStatus],
   [/\/settings\/nexus$/, nexusSettings],
   [/\/api\/users$/, users],
   [/\/api\/audit-logs/, audit],
@@ -153,6 +164,6 @@ const mockUser = { id: 1, username: '管理员', role: 'admin' as const, isSuper
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <StardewPanel user={mockUser} onLogout={() => {}} />
+    {SHELL === 'mobile' ? <StardewMobileShell user={mockUser} /> : <StardewPanel user={mockUser} onLogout={() => {}} />}
   </StrictMode>,
 )
