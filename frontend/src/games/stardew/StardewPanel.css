@@ -2973,6 +2973,34 @@
   border-radius: 2px;
 }
 
+.sd-players-wallet-hint {
+  margin-top: 6px;
+}
+
+.sd-players-income-hint {
+  margin-top: 4px;
+}
+
+.sd-players-info-hint {
+  margin-top: 6px;
+}
+
+.sd-players-info-message {
+  margin-top: 2px;
+}
+
+.sd-players-info-command {
+  font-size: 9px;
+}
+
+.sd-players-action-feedback {
+  margin-top: 8px;
+}
+
+.sd-players-auth-bridge-error {
+  margin-bottom: 8px;
+}
+
 /* 玩家列表空状态 */
 .sd-players-empty {
   display: flex;
@@ -12880,6 +12908,10 @@
   width: 20px;
   height: 20px;
   image-rendering: pixelated;
+}
+
+.sd-players-icon-home::before {
+  background: url('/assets/stardew/ui/icons/icon_players_action_home_image2.png') center / contain no-repeat;
 }
 
 .sd-players-icon-boot::before {

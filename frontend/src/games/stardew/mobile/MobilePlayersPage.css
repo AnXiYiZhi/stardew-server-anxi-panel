@@ -157,7 +157,8 @@
 
 .sd-mplay-player-action-btn {
   min-height: 44px;
-  min-width: 64px;
+  min-width: 56px;
+  padding-inline: 10px;
 }
 
 /* 确认弹窗 */

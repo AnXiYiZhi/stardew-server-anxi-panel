@@ -646,3 +646,39 @@
 - `--stardew-mobile-card-*` 变量定义在 `:root` 上而非 `.sd-mshell` 上，这是因为 `MobilePlayersPage.css` 里 `.sd-mplay-player-card` 不在 `.sd-mshell .sd-panel` 选择器作用范围内（它不用 `.sd-panel` 类），需要直接引用这些变量。如果以后有其它非 `.sd-panel` 的手机端元素需要同一组卡片样式，直接引用这些变量即可。
 - `MOBILE-CONTROL-M3-1` 记录的 `MobileHomePage.css` 里 `.sd-mhome-copy-btn` 单类选择器可能存在的打包层叠顺序风险仍未修（不在本次范围）。如果以后修那个问题，直接改成复合选择器即可（如 `.sd-btn-tan.sd-mhome-copy-btn`、`.sd-btn-green.sd-mhome-copy-btn`）。
 - 底栏高度变化（56px→约 70px 含 padding，加浮动 gap 约 84px 占位）可能导致部分页面底部"最后一张卡片"距离底栏太近或太远，需要真机确认；如果太近可以把 `.sd-mshell` 的 `padding-bottom` 从 84px 微调到 90px。
+
+# PLAYERS-WARP-HOME-1 玩家回家按钮
+
+## 改了什么
+
+- 桌面玩家管理页 `PlayersPage.tsx` 的在线玩家行新增“回家”图标按钮，位置在“踢出”左侧。点击后弹确认框，确认后调用 `warpPlayerHome(uniqueMultiplayerId, name)`，成功/失败消息和刷新玩家列表流程沿用现有踢出/封禁模式。
+- 手机玩家页 `MobilePlayersPage.tsx` 同步新增“回家”按钮，位置同样在“踢出”左侧；按钮禁用条件、确认弹窗、busy 状态和错误提示与桌面端一致。
+- `api.ts` 新增 `warpPlayerHome()`，请求 `POST /api/instances/:id/players/warp-home`。
+- 新增 image2 风格图标 `frontend/public/assets/stardew/ui/icons/icon_players_action_home_image2.png`，尺寸 192x192，`StardewPanel.css` 通过 `.sd-players-icon-home::before` 引用。
+- `MobilePlayersPage.css` 轻微收窄玩家操作按钮宽度，确保手机端“回家 / 踢出 / 封禁”三按钮在卡片内更稳。
+
+## 影响文件
+
+- `frontend/src/api.ts`
+- `frontend/src/games/stardew/pages/PlayersPage.tsx`
+- `frontend/src/games/stardew/mobile/MobilePlayersPage.tsx`
+- `frontend/src/games/stardew/mobile/MobilePlayersPage.css`
+- `frontend/src/games/stardew/StardewPanel.css`
+- `frontend/public/assets/stardew/ui/icons/icon_players_action_home_image2.png`
+
+## 交互约束
+
+- 按钮禁用条件：非管理员、服务器未运行、目标离线、目标是 host、缺少 `uniqueMultiplayerId`、当前回家操作处理中。
+- 这是在线 rescue 功能，不处理离线玩家；实际调用的是后端 `PLAYERS-WARP-HOME-1`，最终由控制模组调用 JunimoServer 的 `farmer.WarpHome()`。
+- HTTP 成功只表示“命令已提交”，前端没有精确的游戏内落点回执。
+
+## 如何验证
+
+- `cd frontend; npx tsc --noEmit -p .` 通过。
+- `cd frontend; npm run build` 通过。
+- 后端相关包测试和 SMAPI DLL 构建见 backend handoff 同名小节。
+
+## 下一步注意事项
+
+- 仍需真机/真实服务器验证：手机端玩家卡片三个按钮不横向溢出，点击“回家”后确认弹窗可操作，farmhand 实际传送回家。
+- 新图标目前只用于桌面行内图标按钮；手机端按现有文字按钮风格处理，没有额外放图标，避免窄屏按钮拥挤。

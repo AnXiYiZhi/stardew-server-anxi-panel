@@ -364,6 +364,8 @@ npm.cmd run dev
 - 玩家页固定展示 `money`、`farmIncome`、`personalIncome` 和 `walletMode`；`farmIncome` 是农场/团队累计收入，`personalIncome` 是玩家个人累计收入，不随钱包模式改变含义。
 - `recentEvents` 返回最近玩家活动，至少覆盖首次记录、加入和离开；事件必须按 `saveId` 隔离。
 - 新建/切换存档后，玩家缓存必须按 `saveId` 隔离；上一存档玩家不应出现在当前存档列表。
+- `POST /api/instances/:id/players/warp-home`：管理员专用，body `{ "uniqueMultiplayerId": string, "name"?: string }`。实例必须为 `running`，且控制模组 `status.json` 必须暴露 `warpHomeBridgeAvailable=true`。成功返回 `CommandRunResult{ command:"warp-home", exitCode:0 }`，只表示已提交到控制模组；实际游戏内传送由下一次 SMAPI tick 消费命令后调用 JunimoServer `FarmerExtensions.WarpHome(Farmer)` 完成。
+- 回家按钮的前端禁用条件应和后端约束一致：非管理员、服务器未运行、目标离线、目标为 host、缺少 `uniqueMultiplayerId` 时禁用。失败时优先按结构化 `error.code` 显示中文提示；常见错误为 `server_not_running`、`warp_home_bridge_unavailable`、`invalid_player`。
 
 ## API 约定
 

@@ -299,3 +299,41 @@ private void BanPlayer(string name)
 - 没有实现 `!unban`/`!listbans` 对应的"解封"管理界面——如果封禁操作失误，目前只能等服务器重启（如果确认不持久化）或者手动进入游戏聊天框输入 `!unban <id|名字>` 解决。这是本次按"先做简单接通"明确排除的范围，如果后续用户反馈需要撤销入口，是一个自然的后续迭代，不在这次实现范围。
 - 和 kick/say/`!event`/`!joja` 一样是 fire-and-forget，前端只能提示"指令已提交"，拿不到"目标是否真的被封禁成功"这类精确反馈。
 - 玩家管理页"管理操作"卡片里的 select+button 目前被一条较晚的 CSS 规则（`.sd-players-action-select, .sd-players-action-item > button { display: none; }`，`StardewPanel.css` 约 15131 行附近）整体隐藏，这是现有布局迭代遗留的既有状态（"踢出玩家"卡片本来就是这样，本次为了保持一致，"封禁玩家"卡片的 select+button 照抄同一结构，同样会被这条规则隐藏）——真正生效的交互入口是"在线玩家"表格每行新增的封禁图标按钮。如果以后要重新启用这些卡片内的 select+button 可见，需要专门评估这条 CSS 规则的意图，不要贸然删除。
+
+# PLAYERS-WARP-HOME-1 玩家回家传送
+
+## 改了什么
+
+- 新增后端接口 `POST /api/instances/:id/players/warp-home`，管理员专用，请求体 `{ "uniqueMultiplayerId": string, "name"?: string }`。
+- 新增 `backend/internal/games/stardew_junimo/player_warp.go`：校验目标玩家 ID、实例 running 状态和控制模组 `warpHomeBridgeAvailable` 自检结果，然后写入 `warp-home` panel command。
+- 新增 `embedded/smapi-mod-src/WarpHomeBridge.cs`：在 JunimoServer 程序集中反射 `JunimoServer.Util.FarmerExtensions.WarpHome(Farmer)`。这条路是本次确认可走的“回家”路径，区别于 `TryAuthenticate`。
+- `ModEntry.cs` 新增 `warp-home` command 消费逻辑：按 `uniqueMultiplayerId` 找在线玩家，拒绝 host，调用 `warpHomeBridge.WarpHome(target)`，并把成功/失败写入 `status.json` 的 command 文案。
+- `ControlContract.RuntimeStatus` 新增 `WarpHomeBridgeAvailable` / `WarpHomeBridgeDetail`，供 Go 后端启动前置校验。
+- 已重新编译并覆盖 `embedded/smapi-mod/StardewAnxiPanel.Control.dll`。
+
+## 为什么不是 TryAuthenticate
+
+`PasswordProtectionService.TryAuthenticate` 不适合当“回家”按钮：已认证玩家会直接返回 `Already authenticated`，不会再次触发传送；认证内部 `WarpToDestination` 是 private，且绑定认证 lobby 清理语义。本次改用 JunimoServer 已有的公共扩展方法 `farmer.WarpHome()`，它也是上游处理“非主机进入主机屋子自动送回自己小屋”时调用的逻辑。
+
+## 影响文件
+
+- `backend/internal/games/stardew_junimo/player_warp.go`
+- `backend/internal/games/stardew_junimo/player_warp_test.go`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/WarpHomeBridge.cs`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ControlContract.cs`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ModEntry.cs`
+- `backend/internal/games/stardew_junimo/embedded/smapi-mod/StardewAnxiPanel.Control.dll`
+- `backend/internal/web/players_handlers.go`
+- `backend/internal/web/instance_handlers.go`
+
+## 如何验证
+
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web` 通过。
+- SMAPI 控制模组 Docker 构建通过：`dotnet build -c Release /p:GamePath=/game`，只有既有 ModBuildConfig analyzer 版本 warning，0 errors；新 DLL 已复制覆盖嵌入目录。
+- 前端验证见同日 frontend handoff 的 `PLAYERS-WARP-HOME-1`。
+
+## 下一步注意事项
+
+- 仍需真实多人联机验证：在线 farmhand 点击“回家”后，应被传送到自己小屋入口；host 按钮应禁用，因为 host 没有 farmhand cabin。
+- `farmer.WarpHome()` 依赖 `Game1.getFarm().GetCabin(farmer.UniqueMultiplayerID)` 找到玩家小屋。正常 farmhand 应可用；如果存档 cabin ownership 已损坏，调用可能无法生效，这属于上游逻辑限制。
+- 该接口和 kick/say/ban 一样是 fire-and-forget：HTTP 成功仅代表命令已提交，不代表游戏内动作一定已经完成。

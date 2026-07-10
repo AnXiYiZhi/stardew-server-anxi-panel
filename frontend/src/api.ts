@@ -583,6 +583,13 @@ export function kickPlayer(uniqueMultiplayerId: string, name: string, instanceId
   )
 }
 
+export function warpPlayerHome(uniqueMultiplayerId: string, name: string, instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/warp-home`,
+    { method: 'POST', body: { uniqueMultiplayerId, name } },
+  )
+}
+
 export function approvePlayerAuth(uniqueMultiplayerId: string, instanceId = defaultInstanceId) {
   return request<CommandRunResult>(
     `/api/instances/${encodeURIComponent(instanceId)}/players/approve-auth`,

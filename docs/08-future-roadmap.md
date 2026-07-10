@@ -895,3 +895,6 @@ Multi Game Mode later
 
 # PLAYERS-BAN-1 状态
 - `PLAYERS-BAN-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理页"管理操作"卡片里此前一直禁用、标着"待接入"的"封禁玩家"正式接通，同时"在线玩家"表格每行的图标按钮从 3 个（发消息占位/踢出/更多占位）精简为 2 个（踢出+封禁，图标均复用管理操作卡片同款真实 PNG）。上游 JunimoServer REST API 没有封禁端点，改为复用它真正的游戏内 `!ban <名字>` 聊天指令（和已实现的 `!joja` 同一套"先提升主机为 admin 再模拟聊天指令"模式），新增 `POST /api/instances/:id/players/ban`。已知限制：封禁名单（`Game1.bannedUsers`）是否跨容器重启持久化尚未反编译确认，本次按用户选择先简单接通、UI 如实提示"重启可能失效"，未做面板侧持久化补偿。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-BAN-1` 小节。
+
+# PLAYERS-WARP-HOME-1 状态
+- `PLAYERS-WARP-HOME-1` completed（代码已完成 + 后端相关包测试通过 + 前端 typecheck/build 通过 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理新增“回家”按钮，桌面端和手机端均放在“踢出”左侧；后端新增 `POST /api/instances/:id/players/warp-home`，由嵌入式 SMAPI 控制模组反射调用 JunimoServer `FarmerExtensions.WarpHome(Farmer)`，用于把在线 farmhand 传送回自己的小屋。该能力明确不复用 `TryAuthenticate`，因为已认证玩家不会再次触发认证传送。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-WARP-HOME-1` 小节。

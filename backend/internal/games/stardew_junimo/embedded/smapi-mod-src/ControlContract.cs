@@ -69,6 +69,8 @@ public sealed class RuntimeStatus
     public DateTimeOffset UpdatedAt { get; set; }
     public bool PasswordBridgeAvailable { get; set; }
     public string PasswordBridgeDetail { get; set; } = "";
+    public bool WarpHomeBridgeAvailable { get; set; }
+    public string WarpHomeBridgeDetail { get; set; } = "";
 }
 
 public sealed class PlayersFile

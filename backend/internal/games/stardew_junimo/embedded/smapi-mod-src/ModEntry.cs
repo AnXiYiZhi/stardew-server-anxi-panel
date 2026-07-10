@@ -18,6 +18,7 @@ public sealed class ModEntry : Mod
     private InitConfig? initConfig;
     private bool isJunimoRuntime;
     private readonly PasswordProtectionBridge passwordBridge = new();
+    private readonly WarpHomeBridge warpHomeBridge = new();
     private bool panelCustomizationApplied;
     private bool singlePlayerMenuPauseApplied;
     private int? singlePlayerMenuPauseSavedInterval;
@@ -51,7 +52,10 @@ public sealed class ModEntry : Mod
         initConfig = ReadInitConfig();
         isJunimoRuntime = Helper.ModRegistry.IsLoaded("JunimoHost.Server");
         if (isJunimoRuntime)
+        {
             passwordBridge.Initialize(Monitor);
+            warpHomeBridge.Initialize(Monitor);
+        }
         pendingNewGameOptions = File.Exists(PendingNewGamePath());
         ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
@@ -547,6 +551,8 @@ public sealed class ModEntry : Mod
             UpdatedAt = DateTimeOffset.UtcNow,
             PasswordBridgeAvailable = passwordBridge.Available,
             PasswordBridgeDetail = passwordBridge.Detail,
+            WarpHomeBridgeAvailable = warpHomeBridge.Available,
+            WarpHomeBridgeDetail = warpHomeBridge.Detail,
         };
         WriteJson(Path.Combine(controlDir, "status.json"), status);
     }
@@ -684,6 +690,12 @@ public sealed class ModEntry : Mod
                     : "";
                 KickPlayer(targetId ?? "");
                 break;
+            case "warp-home":
+                var warpHomeTargetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawWarpHomeTargetId)
+                    ? rawWarpHomeTargetId.GetString()
+                    : "";
+                WarpPlayerHome(warpHomeTargetId ?? "");
+                break;
             case "approve-auth":
                 var approveTargetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawApproveTargetId)
                     ? rawApproveTargetId.GetString()
@@ -769,6 +781,51 @@ public sealed class ModEntry : Mod
         {
             WriteStatus("command", "Kick command failed.");
             Monitor.Log($"Kick command failed for player {targetId}: {ex}", LogLevel.Error);
+        }
+    }
+
+    private void WarpPlayerHome(string uniqueMultiplayerId)
+    {
+        if (!Context.IsWorldReady)
+        {
+            WriteStatus("command", "Warp-home command ignored because the world is not ready.");
+            return;
+        }
+        if (!warpHomeBridge.Available)
+        {
+            WriteStatus("command", "Warp-home command ignored because the warp-home bridge is unavailable.");
+            Monitor.Log($"Warp-home command ignored: warp-home bridge unavailable ({warpHomeBridge.Detail}).", LogLevel.Warn);
+            return;
+        }
+        if (!long.TryParse(uniqueMultiplayerId, out var targetId))
+        {
+            WriteStatus("command", "Warp-home command ignored because the target player id was invalid.");
+            return;
+        }
+
+        var target = Game1.getOnlineFarmers().FirstOrDefault(farmer => farmer.UniqueMultiplayerID == targetId);
+        if (target is null)
+        {
+            WriteStatus("command", "Warp-home command ignored because the target player is not online.");
+            return;
+        }
+        if (target.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID)
+        {
+            WriteStatus("command", "Warp-home command ignored because the target player is the host.");
+            Monitor.Log("Warp-home command ignored: host has no farmhand cabin to warp to.", LogLevel.Warn);
+            return;
+        }
+
+        var (success, message) = warpHomeBridge.WarpHome(target);
+        if (success)
+        {
+            WriteStatus("command", $"Warp-home command succeeded for player {target.Name}.");
+            Monitor.Log($"Warp-home command succeeded for player {target.Name} ({targetId}).", LogLevel.Info);
+        }
+        else
+        {
+            WriteStatus("command", $"Warp-home command failed for player {target.Name}: {message}");
+            Monitor.Log($"Warp-home command failed for player {target.Name} ({targetId}): {message}", LogLevel.Warn);
         }
     }
 

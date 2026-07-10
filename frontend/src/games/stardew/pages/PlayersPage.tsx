@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { kickPlayer, approvePlayerAuth, banPlayer, getInstancePasswordStatus } from '../../../api'
+import { kickPlayer, warpPlayerHome, approvePlayerAuth, banPlayer, getInstancePasswordStatus } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { InstancePasswordStatus } from '../../../types'
@@ -237,6 +237,10 @@ type KickTarget = { uniqueMultiplayerId: string; name: string }
 
 export function PlayersPage({ user, instanceState, dashboardData }: StardewPageProps) {
   const [eventsPage, setEventsPage] = useState(1)
+  const [warpHomeConfirmTarget, setWarpHomeConfirmTarget] = useState<KickTarget | null>(null)
+  const [warpHomeBusy, setWarpHomeBusy] = useState(false)
+  const [warpHomeError, setWarpHomeError] = useState<string | null>(null)
+  const [warpHomeMessage, setWarpHomeMessage] = useState<string | null>(null)
   const [kickConfirmTarget, setKickConfirmTarget] = useState<KickTarget | null>(null)
   const [kickBusy, setKickBusy] = useState(false)
   const [kickError, setKickError] = useState<string | null>(null)
@@ -376,6 +380,24 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   function eventLocation(event: PlayerLocationLike): string {
     const translated = translateLocationName(event)
     return translated === '—' ? '' : translated
+  }
+
+  async function handleConfirmWarpHome() {
+    const target = warpHomeConfirmTarget
+    if (!target) return
+    setWarpHomeBusy(true)
+    setWarpHomeError(null)
+    setWarpHomeMessage(null)
+    try {
+      const res = await warpPlayerHome(target.uniqueMultiplayerId, target.name)
+      setWarpHomeMessage(res.output?.trim() || `已提交传送 ${target.name} 回家的指令。`)
+      await dashboardData.refreshPlayers()
+    } catch (e) {
+      setWarpHomeError(errorMessage(e))
+    } finally {
+      setWarpHomeBusy(false)
+      setWarpHomeConfirmTarget(null)
+    }
   }
 
   async function handleConfirmKick() {
@@ -565,6 +587,24 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                 </span>
                 <span className="sd-players-row-actions">
                   <button
+                    className="sd-players-icon-button sd-players-icon-home"
+                    type="button"
+                    disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || warpHomeBusy}
+                    title={
+                      !isAdmin
+                        ? '仅管理员可用'
+                        : player.isHost
+                          ? '主机没有可传送的小屋'
+                          : player.status !== 'online'
+                            ? '玩家不在线'
+                            : !player.uniqueMultiplayerId
+                              ? '缺少玩家联机 ID，暂不支持传送回家'
+                              : '传送玩家回家'
+                    }
+                    aria-label="传送玩家回家"
+                    onClick={() => setWarpHomeConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                  />
+                  <button
                     className="sd-players-icon-button sd-players-icon-boot"
                     type="button"
                     disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || kickBusy}
@@ -608,19 +648,21 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           )}
         </div>
         {playerRows.some((player) => player.walletMode === 'shared') && (
-          <div className="sd-srv-hint" style={{ marginTop: 6 }}>
+          <div className="sd-srv-hint sd-players-wallet-hint">
             当前存档使用共享钱包时，现金显示的是团队共享资金，不代表该玩家独立私有余额。
           </div>
         )}
         {playerRows.length > 0 && (
-          <div className="sd-srv-hint" style={{ marginTop: 4 }}>
+          <div className="sd-srv-hint sd-players-income-hint">
             收入列固定显示农场累计收入和玩家个人累计收入，不随钱包模式切换含义。
           </div>
         )}
-        {kickError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{kickError}</div> : null}
-        {kickMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{kickMessage}</div> : null}
-        {banError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{banError}</div> : null}
-        {banMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{banMessage}</div> : null}
+        {warpHomeError ? <div className="sd-players-info-error sd-players-action-feedback">{warpHomeError}</div> : null}
+        {warpHomeMessage ? <div className="sd-srv-result sd-players-action-feedback">{warpHomeMessage}</div> : null}
+        {kickError ? <div className="sd-players-info-error sd-players-action-feedback">{kickError}</div> : null}
+        {kickMessage ? <div className="sd-srv-result sd-players-action-feedback">{kickMessage}</div> : null}
+        {banError ? <div className="sd-players-info-error sd-players-action-feedback">{banError}</div> : null}
+        {banMessage ? <div className="sd-srv-result sd-players-action-feedback">{banMessage}</div> : null}
       </div>
 
       {passwordStatus?.enabled ? (
@@ -634,7 +676,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           </div>
 
           {passwordStatus.passwordBridgeAvailable === false && (
-            <div className="sd-players-info-error" style={{ marginBottom: 8 }} title={passwordStatus.passwordBridgeDetail || undefined}>
+            <div className="sd-players-info-error sd-players-auth-bridge-error" title={passwordStatus.passwordBridgeDetail || undefined}>
               密码认证反射桥不可用（可能是控制模组版本过旧或与当前 JunimoServer 版本不兼容），暂时无法从面板批准玩家，请让玩家在游戏内输入 !login 密码，或联系管理员升级控制模组后重启服务器。
             </div>
           )}
@@ -680,8 +722,8 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             </div>
           )}
 
-          {approveError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{approveError}</div> : null}
-          {approveMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{approveMessage}</div> : null}
+          {approveError ? <div className="sd-players-info-error sd-players-action-feedback">{approveError}</div> : null}
+          {approveMessage ? <div className="sd-srv-result sd-players-action-feedback">{approveMessage}</div> : null}
         </div>
       ) : null}
 
@@ -784,23 +826,40 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           </div>
         )}
 
-        <div className="sd-srv-hint" style={{ marginTop: 6 }}>
+        <div className="sd-srv-hint sd-players-info-hint">
           {playersData?.source === 'smapi_control' ? (
             <span>↑ 玩家列表优先来自 StardewAnxiPanel.Control 写出的结构化控制文件；Junimo info 仅作为回退。</span>
           ) : (
             <>
               <span>↑ 上方内容来自后端调用 JunimoServer </span>
-              <code style={{ fontSize: 9 }}>info</code>
+              <code className="sd-players-info-command">info</code>
               <span> 后的原始输出；玩家数量和姓名由后端保守解析。</span>
             </>
           )}
         </div>
         {playersData?.message && (
-          <div className="sd-srv-hint" style={{ marginTop: 2 }}>
+          <div className="sd-srv-hint sd-players-info-message">
             {playersData.message}
           </div>
         )}
       </div>
+
+      {warpHomeConfirmTarget ? (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>确认传送回家</h3>
+            <p>将玩家 {warpHomeConfirmTarget.name} 传送回自己的小屋？该操作会调用 JunimoServer 自己的 WarpHome 逻辑，适合玩家卡在地图或建筑边缘时救援。</p>
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setWarpHomeConfirmTarget(null)} disabled={warpHomeBusy}>
+                取消
+              </button>
+              <button className="sd-btn-green" onClick={() => void handleConfirmWarpHome()} disabled={warpHomeBusy}>
+                {warpHomeBusy ? '传送中…' : '确认传送'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {kickConfirmTarget ? (
         <div className="sd-confirm-overlay" role="dialog" aria-modal="true">

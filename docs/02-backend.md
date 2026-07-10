@@ -979,3 +979,13 @@ docker run --rm `
   - 上游 `FindPlayerIdByFarmerNameOrUserName` 用 `FirstOrDefault` 按名字匹配，两个玩家重名时可能封错人，这是 JunimoServer 自身已知限制（其仓库 `.claude/plans/audit-security.md` 记录），面板侧无法修复。
   - 没有实现 `!unban`/`!listbans` 对应的"解封"管理界面——封禁操作失误目前只能等服务器重启（如果确认不持久化）或手动进入游戏聊天框输入 `!unban <id|名字>`。这是本次按"先做简单接通"明确排除的范围，如果后续反馈需要撤销入口，是自然的后续迭代。
   - 和 kick/say/`!event`/`!joja` 一样是 fire-and-forget，前端只能提示"指令已提交"，拿不到"目标是否真的被封禁成功"这类精确反馈。
+
+# PLAYERS-WARP-HOME-1 玩家回家传送
+
+- 新增 `POST /api/instances/:id/players/warp-home`，管理员专用。请求体为 `{ "uniqueMultiplayerId": string, "name"?: string }`，后端要求实例处于 `running`，并要求嵌入式控制模组启动自检确认 `warpHomeBridgeAvailable=true`。
+- 该能力不复用 `PasswordProtectionService.TryAuthenticate`。`TryAuthenticate` 对已认证玩家会直接返回 `Already authenticated`，不会再次传送；认证流程里的 `WarpToDestination` 是 private，且绑定 lobby 清理语义。当前实现改为让 `StardewAnxiPanel.Control` 通过 `WarpHomeBridge` 反射 JunimoServer 程序集中的 `JunimoServer.Util.FarmerExtensions.WarpHome(Farmer)` 公共扩展方法。
+- 控制模组新增 `warp-home` panel command：解析目标 `uniqueMultiplayerId`，在当前在线玩家中查找目标，拒绝 host（host 没有 farmhand cabin 可回），然后调用上游 `farmer.WarpHome()`。该调用和 JunimoServer 自己在非主机进入主机屋子时使用的回家逻辑一致。
+- Go driver 新增 `Driver.WarpPlayerHome(ctx, instance, uniqueMultiplayerID, name)`，核心流程为：校验玩家 ID -> 校验 running -> 读取 `.local-container/control/status.json` 的 `warpHomeBridgeAvailable/detail` -> 写入 `.local-container/control/commands/*.json` 命令文件 `{ name:"warp-home", payload:{ uniqueMultiplayerId, name } }`。响应仍是 fire-and-forget，只表示控制命令已提交。
+- Web 层错误映射：`invalid_player` -> 400，`server_not_running` / `warp_home_bridge_unavailable` -> 409，`not_supported` -> 501；成功写审计日志 `player_warp_home`，metadata 包含 `uniqueMultiplayerId` 和 `name`。
+- 影响文件：`backend/internal/games/stardew_junimo/player_warp.go`、`player_warp_test.go`、`embedded/smapi-mod-src/WarpHomeBridge.cs`、`ControlContract.cs`、`ModEntry.cs`、`embedded/smapi-mod/StardewAnxiPanel.Control.dll`、`backend/internal/web/players_handlers.go`、`instance_handlers.go`。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web` 通过；SMAPI 控制模组用 Docker `dotnet build -c Release /p:GamePath=/game` 重新编译通过，并已复制覆盖嵌入 DLL。尚未做真实多人联机端到端验证，后续应在在线 farmhand 上点击“回家”确认玩家被传送到自己小屋入口。
