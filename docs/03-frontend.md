@@ -1654,3 +1654,30 @@ npm.cmd run dev
 - 修改自己密码成功后，后端会撤销当前 session（`storage.UpdateUser` 里 `passwordChanged` 触发），前端在弹窗里显示"密码已修改，即将跳转到登录页…" 1.2 秒后 `window.location.reload()`，让 `App.tsx` 的 `boot()` 重新走一遍 `/api/auth/me` 探测到 401 自然显示登录页，没有做更复杂的全局 401 拦截器（那是更大范围的重构，本次不做）。修改别人的密码则直接 `loadUsers()` 刷新列表。
 - 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/SettingsPage.tsx`。
 - 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过；未做浏览器实测（三种角色分别登录点一遍重置密码流程），建议下一位维护者补一次。
+
+# FESTIVAL-EVENT-1 触发节日活动 + JOJA-ROUTE-1 永久启用 Joja 路线
+
+- `ServerControlPage.tsx` 的"快捷操作"网格新增两个按钮，紧跟在"服务器密码设置"之后：
+  - **触发节日活动**：`sd-btn-tan` 样式，点击直接调用新增的 `handleTriggerFestivalEvent()` → `triggerFestivalEvent()`（`api.ts`，对应后端 `POST /api/instances/:id/festival/event`），无需二次确认（上游 `!event` 本身没有副作用风险，卡住时可以反复点）。结果/错误展示复用 `sd-srv-result`/`sd-ov-error`，和"手动备份"按钮的反馈样式一致。
+  - **永久启用 Joja 路线**：`sd-btn-delete`（红色危险样式）。因为这是不可逆操作（对应上游 `!joja IRREVERSIBLY_ENABLE_JOJA_RUN`，会永久禁用标准社区中心路线），没有直接调用 API，而是点击后 `openJojaConfirm()` 打开一个新的强确认弹窗（`jojaOpen`，复用 `sd-confirm-overlay`/`sd-confirm-dialog`），弹窗要求管理员在输入框里**精确输入** `IRREVERSIBLY_ENABLE_JOJA_RUN`（`JOJA_CONFIRM_TEXT` 常量）才能点亮"确认永久启用"按钮，和上游命令本身要求逐字匹配参数的交互保持一致。确认后调用新增的 `enableJojaRoute(confirm)`（对应 `POST /api/instances/:id/joja/enable`，body `{confirm}`），后端会再校验一次这个字符串（见 `docs/02-backend.md` FESTIVAL-EVENT-1/JOJA-ROUTE-1），不是只靠前端弹窗把关。
+  - 两个按钮的 `disabled`/`title` 都遵循现有惯例：`!isAdmin || !isRunning` 时禁用并给出对应提示，和"手动备份"“VNC 显示”等按钮门控写法一致。
+- `api.ts` 新增 `triggerFestivalEvent(instanceId?)`、`enableJojaRoute(confirm, instanceId?)`，均复用已有的 `CommandRunResult` 类型，没有引入新类型；两者都是普通 JSON 请求，没有像 `say`/`runCommand` 那样加 40 秒 `AbortController` 超时（后端是 fire-and-forget 写命令文件，不等待 attach-cli 输出，响应很快）。
+- 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/ServerControlPage.tsx`。图标复用现有素材（`icon_nav_tasks_scroll_image2.png`、`icon_players_action_permission_image2.png`），没有新增图片资源。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实运行中的实例实际点一遍这两个按钮观察游戏内聊天记录变化，弹窗的移动端窄屏表现也未截图验证，建议下一位维护者补一次。
+- 下一步注意事项：两个操作都是 fire-and-forget，前端拿到的 `output` 只是"指令已提交"，不代表游戏内一定生效（比如当天没有节日时"触发节日活动"不会有效果，前端无法感知）；如果用户反馈"点了但没反应"，先按 `docs/02-backend.md` 的说明确认服务器容器是否已经用了最新编译的 `StardewAnxiPanel.Control.dll`，而不是先怀疑前端。
+- follow-up（同日）：按用户反馈"不要让用户一个字一个字打确认文本"，Joja 强确认弹窗的输入框旁新增"填入"按钮（`sd-btn-tan`），点击直接把 `jojaConfirmInput` 设为 `JOJA_CONFIRM_TEXT`，输入框本身仍保留可编辑，不强制用户只能点按钮。这是为了在保留"确认文本必须精确匹配"这层把关的前提下，去掉不必要的手动打字摩擦。
+
+# CABIN-STRATEGY-1 小屋策略设置分层（新建存档简化二选一 + 服务器控制页完整高级设置）
+
+- 需求来源：用户给出明确的设计口径——`CabinStrategy`（小屋策略）不应该只在新建存档时硬编码一次。新建存档页只暴露一个简化二选一（推荐/原版），服务器控制页给完整高级设置（`CabinStrategy`/`ExistingCabinBehavior`/`NetworkBroadcastPeriod`），两边必须共用同一份后端配置来源，改完提示"重启服务器后生效"。后端契约详见 `docs/02-backend.md` `CABIN-STRATEGY-1` 与 `docs/06-integration.md` 对应小节。
+- `types.ts`：`NewGameConfig` 新增 `cabinMode?: string`（`"recommended"|"vanilla"`）；新增独立类型 `ServerRuntimeSettings{ cabinStrategy, existingCabinBehavior, networkBroadcastPeriod }`。
+- `api.ts` 新增 `getInstanceServerRuntimeSettings(instanceId?)` / `updateInstanceServerRuntimeSettings(settings, instanceId?)`，对应 `GET/PUT /api/instances/:id/config/server-runtime-settings`，写法和 `getInstanceServerPassword`/`updateInstanceServerPassword` 完全同构。
+- `NewGameCreator.tsx`：联机设置侧栏在"联机小屋布局"上方新增"小屋模式"步进控件（复用 `ArrowButton` + 左右切换两态的模式，和"资金管理"共享/分开的写法一致，不是新增交互模式），显示"推荐"/"原版"，默认值 `recommended`。这是故意做成二选一而不是三选一（不暴露 `FarmhouseStack`）——新建存档场景下用户只需要"要不要隐藏小屋"这一个决策，`FarmhouseStack` 这类更细的变体留给服务器控制页的高级设置。
+- `ServerControlPage.tsx`："快捷操作"网格里紧跟"服务器密码设置"之后新增"小屋与联机高级设置"按钮（`sd-btn-tan sd-btn--lg`，仅 `!isAdmin` 时禁用，不要求服务器运行中——因为这组配置本来就只在容器启动时生效，随时可以编辑）。点击 `openRuntimeSettings()` 打开新弹窗（复用 `sd-confirm-overlay`/`sd-confirm-dialog`，和"服务器密码设置"弹窗同构），弹窗内三个 `<select>`：
+  - `CabinStrategy`：`CabinStack`/`FarmhouseStack`/`None` 三选一，选项文案直接说明各自效果。
+  - `ExistingCabinBehavior`：`KeepExisting`/`MoveToStack` 二选一。
+  - `NetworkBroadcastPeriod`：`1`/`2`/`3` 三个预设刻数（对应用户给的参考表格"1=每个刻，3=原版"），没有做自定义数字输入框——三个预设覆盖了绝大多数场景，加自定义输入框在这个弹窗里是不必要的复杂度。
+  保存调用 `handleSaveRuntimeSettings()` → `updateInstanceServerRuntimeSettings()`，成功后提示"设置已保存，需要重启服务器容器后才会生效"，和密码弹窗的提示文案风格一致。
+- 影响文件：`frontend/src/types.ts`、`frontend/src/api.ts`、`frontend/src/games/stardew/NewGameCreator.tsx`、`frontend/src/games/stardew/pages/ServerControlPage.tsx`。未新增图片素材（弹窗内是纯 `<select>`，沿用 `sd-input`/`sd-schedule-field` 既有样式类），未改生命周期 API、密码设置、计划重启、VNC 或 Junimo 通信。
+- 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实实例走一遍"新建存档选原版→服务器控制页改小屋策略→重启→确认 `server-settings.json` 变化"的完整链路，弹窗在移动端窄屏下的表现也未截图验证，建议下一位维护者补一次。
+- 下一步注意事项：`ExistingCabinBehavior` 在新建存档页没有暴露入口（新档没有"已有小屋"概念，永远由后端写 `KeepExisting`），只能通过服务器控制页的高级设置事后修改；如果以后要统一到同一套表单里，需要重新设计交互而不是简单地把字段搬过去。

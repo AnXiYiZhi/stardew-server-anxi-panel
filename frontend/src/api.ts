@@ -9,6 +9,7 @@ import type {
   InstanceVNCConfig,
   InstanceServerPasswordConfig,
   InstancePasswordStatus,
+  ServerRuntimeSettings,
   InstanceRenderingResult,
   InstanceState,
   InstancesResponse,
@@ -285,6 +286,17 @@ export function updateInstanceServerPassword(password: string, instanceId = defa
 
 export function getInstancePasswordStatus(instanceId = defaultInstanceId) {
   return request<InstancePasswordStatus>(`/api/instances/${encodeURIComponent(instanceId)}/password-status`)
+}
+
+export function getInstanceServerRuntimeSettings(instanceId = defaultInstanceId) {
+  return request<ServerRuntimeSettings>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-runtime-settings`)
+}
+
+export function updateInstanceServerRuntimeSettings(settings: ServerRuntimeSettings, instanceId = defaultInstanceId) {
+  return request<ServerRuntimeSettings>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-runtime-settings`, {
+    method: 'PUT',
+    body: settings,
+  })
 }
 
 export function setInstanceRenderingFPS(fps: number, instanceId = defaultInstanceId) {
@@ -568,6 +580,20 @@ export function kickPlayer(uniqueMultiplayerId: string, name: string, instanceId
   return request<CommandRunResult>(
     `/api/instances/${encodeURIComponent(instanceId)}/players/kick`,
     { method: 'POST', body: { uniqueMultiplayerId, name } },
+  )
+}
+
+export function triggerFestivalEvent(instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/festival/event`,
+    { method: 'POST' },
+  )
+}
+
+export function enableJojaRoute(confirm: string, instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/joja/enable`,
+    { method: 'POST', body: { confirm } },
   )
 }
 

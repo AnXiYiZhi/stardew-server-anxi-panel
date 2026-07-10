@@ -903,4 +903,41 @@ docker run --rm `
   - 角色变更（`params.Role != nil && !actor.IsSuperAdmin`）和自我禁用（`ErrSelfDisable`）两个独立检查完全没动，行为不受影响。
 - 影响文件：`backend/internal/storage/auth.go`（1 行条件修改）。
 - 验证：新增 `backend/internal/web/auth_handlers_test.go` 的 `TestPasswordChangePermissions`，覆盖"管理员改自己密码成功且能用新密码登录"、"管理员改普通用户密码成功"、"管理员改另一个管理员密码被拒绝"、"超级管理员改任何人（含自己）密码成功"、"普通用户完全摸不到接口"五种场景；`cd backend; go build ./... && go test ./...` 全绿。注意测试里"超级管理员改自己密码"必须放在"改别人密码"**之后**执行，因为改自己密码会让当前 session 立即失效，这个坑在写测试时踩过一次。
+
+# FESTIVAL-EVENT-1 触发节日活动 + JOJA-ROUTE-1 永久启用 Joja 路线
+
+- 需求来源：`docs/handbook`（或 website 快速上手文档）里列出的 Junimo 容器"管理命令"表格中 `!event`（启动当前节日活动，卡住时用）和 `!joja IRREVERSIBLY_ENABLE_JOJA_RUN`（永久启用 Joja 路线，不可逆）此前只是文档列出、面板没有对应按钮。
+- 调研结论（读 `E:\codex\junimo-server-upstream` 上游源码）：这两个都是 JunimoServer 的**游戏内聊天指令**，不是 SMAPI 控制台命令也没有 REST API，`docs/10-junimo-rest-api.md` 确认没有对应端点。触发它们的唯一挂载点是 Harmony 补丁的 `StardewValley.Menus.ChatBox.receiveChatMessage`（`ChatCommands.cs`），而这个方法只会在真实调用 `ChatBox.textBoxEnter(text)` 时才会被触发（`textBoxEnter` 源码：先 `Game1.multiplayer.sendChatMessage(...)` 广播文本，再本地调用 `receiveChatMessage(Game1.player.UniqueMultiplayerID, 0, ..., text)`）。面板的 WebSocket `chat_send` 走的是 `ApiService` 的 `OnExternalChatMessage → SendExternalMessage → helper.SendPublicMessage`，**不会**进入 `ChatWatcher`/命令解析链路，因此这条路走不通。用 `System.Reflection.MetadataLoadContext` + `ilspycmd` 反编译验证过 `ChatBox.receiveChatMessage(Int64 sourceFarmer, Int32 chatKind, LanguageCode language, String message)` 是实例方法、`textBoxEnter` 内部确实会本地回调它，确认了下面的实现方式可行。
+- **权限差异（重要）**：`!event`（`AlwaysOnFestivals.StartEventCommand`）**没有任何权限校验**，任何人（包括模拟的主机身份）都能触发。`!joja`（`JojaCommand`）要求 `roleService.IsPlayerAdmin(msg.SourceFarmer)` 为真，而 `RoleService` 明确"没有默认管理员赋权"（`// No default admin assignment - admins are configured via ADMIN_STEAM_IDS`），dedicated server 的主机（host）**不会自动获得 admin**。因此 `!event` 可以直接模拟触发，`!joja` 必须先把主机提升为 admin。
+- **实现方式**：
+  - `embedded/smapi-mod-src/ModEntry.cs` 的 `HandleCommand` 新增 `case "trigger-event"` 和 `case "enable-joja"`，分别调用新方法 `TriggerFestivalEvent()` / `EnableJojaRoute()`：两者都先检查 `Context.IsWorldReady && Game1.chatBox is not null`，再调用 `Game1.chatBox.textBoxEnter("!event")` / `Game1.chatBox.textBoxEnter("!joja IRREVERSIBLY_ENABLE_JOJA_RUN")`，模拟主机在聊天框输入这两条指令（会广播到所有玩家聊天记录，属预期行为，保证透明度）。
+  - `console.go` 新增 `Driver.TriggerFestivalEvent(ctx, instance)`：校验实例 running，写 `{"name":"trigger-event"}` 命令文件到 `control/commands/`，fire-and-forget，和 kick/say 完全同构。
+  - 新增 `joja.go`：`Driver.EnableJojaRoute(ctx, instance, confirm string)`：
+    1. 校验 `confirm` 精确等于 `IRREVERSIBLY_ENABLE_JOJA_RUN`（`jojaConfirmText` 常量），不等直接拒绝（`confirm_mismatch`）——这是后端侧的硬校验，不只依赖前端弹窗。
+    2. 校验实例 running。
+    3. `findHostPlayerID(dataDir)`：复用已有的 `readPlayersFromControl`（players.json）找 `IsHost == true` 的条目取 `UniqueMultiplayerID`；找不到返回 `host_unknown`。
+    4. `callRolesAdminAPI(ctx, ld, instance, hostID)`：复用 `rendering.go` 的"容器内 curl 代理 Junimo REST API"模式，调用 JunimoServer 自带的 `POST /roles/admin?playerId=<hostID>` 把主机提升为 admin（幂等，即使已是 admin 也不会报错）。
+    5. 提升成功后才写 `{"name":"enable-joja"}` 命令文件。
+  - Web 层新增 `backend/internal/web/festival_handlers.go`：`handleFestivalEventTrigger`（`POST /api/instances/:id/festival/event`）、`handleJojaRouteEnable`（`POST /api/instances/:id/joja/enable`，请求体 `{"confirm": "..."}`），均 `requireAdmin`。路由接入 `instance_handlers.go`。
+  - 审计日志新增 `festival_event_trigger`、`joja_route_enable`（metadata 只记 `confirmed: true`，不记录多余信息）。
+  - **已重新编译并替换嵌入 DLL**（见下方"如何验证"）。
+- 影响文件：`backend/internal/games/stardew_junimo/console.go`、`joja.go`（新增）、`backend/internal/web/festival_handlers.go`（新增）、`instance_handlers.go`、`embedded/smapi-mod-src/ModEntry.cs`、`embedded/smapi-mod/StardewAnxiPanel.Control.dll`。前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md`。
+- 验证：`cd backend; go build ./... && go vet ./... && go test ./internal/games/stardew_junimo/... ./internal/web/...` 全绿。SMAPI Mod 用文档命令通过 Docker 重新编译（`dotnet build -c Release /p:GamePath=/game`），`Build succeeded. 0 Errors`（仅历次已知的 ModBuildConfig analyzer 版本 warning），编译产物已 md5 校验复制覆盖嵌入 DLL，`go build ./...` 确认新 DLL 能正常被 `//go:embed` 打包。前端 `cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做真机联机验证**：`Game1.chatBox.textBoxEnter` 在真实 dedicated server 进程里是否总是非空、`POST /roles/admin` 提升主机后 `!joja` 是否真的通过权限校验，只依据反编译的游戏程序集源码和 JunimoServer 上游源码交叉验证，没有在真实运行中的实例上跑过完整链路。
+- 下一步注意事项：
+  - `!event`/`!joja` 和 kick/say 一样是 fire-and-forget，前端只能提示"指令已提交"，拿不到"当天没有节日所以没生效"这类精确反馈；如果要做精确反馈需要设计命令结果回传通道（同 `PLAYERS-KICK-1` 提到的方案），这次故意没做。
+  - `EnableJojaRoute` 每次调用都会先打一次 `POST /roles/admin`，如果以后要在面板里做"管理员列表"这类功能，需要注意主机会永久出现在 JunimoServer 的 admin 名单里（`RoleService` 没有自动撤销机制，`UnassignAdmin` 也明确禁止撤销 host）。
+  - 建议下一位维护者找一个测试实例实际验证一次：当天有节日时点"触发节日活动"是否真的提前进入主线剧情倒计时；点"永久启用 Joja 路线"后 `GET /settings` 或存档内 `IsCommunityCenterRun` 是否真的变化。
 - 下一步注意事项：这次只动了权限判断，没有新增"验证旧密码"这类二次校验（`validatePassword` 只校验新密码长度 ≥ 6 位）——管理员重置别人密码本来就不需要知道对方原密码，这是设计如此，不是遗漏。
+
+# CABIN-STRATEGY-1 小屋策略设置分层（新建存档简化 + 服务器控制页完整高级设置）
+
+- 需求来源：`CabinStrategy`（小屋策略）此前在 `WriteServerSettings` 里被硬编码为 `"CabinStack"`，`ExistingCabinBehavior` 硬编码为 `"KeepExisting"`，用户完全无法选择，也无法在已有存档上事后调整。用户给出的设计：新建存档页只暴露一个简化二选一（推荐/原版），服务器控制页给完整高级设置（`CabinStrategy`/`ExistingCabinBehavior`/`NetworkBroadcastPeriod`），两边必须共用同一份底层配置来源，不能各自为政。
+- `registry.NewGameConfig` 新增 `CabinMode string`（json `cabinMode`），取值 `recommended|vanilla`，默认 `recommended`（`normalizeCfg` 兜底）。`WriteServerSettings` 不再硬编码，而是按 `cfg.CabinMode` 派生 `Server.CabinStrategy`：`recommended → "CabinStack"`，`vanilla → "None"`；`Server.ExistingCabinBehavior` 仍固定写 `"KeepExisting"`（新建存档场景下没有"已有小屋"需要处理，这个字段只在事后调整已有存档时才有意义）。`validateCfg` 新增 `cabinMode` 必须是 `recommended`/`vanilla` 之一的校验。
+- 新增独立类型 `ServerRuntimeSettings{ CabinStrategy, ExistingCabinBehavior, NetworkBroadcastPeriod }`（`saves.go`），以及两个函数：
+  - `ReadServerRuntimeSettings(dataDir) (ServerRuntimeSettings, error)`：读 `server-settings.json` 的 `Server` 段，字段缺失时兜底为 `CabinStack`/`KeepExisting`/`1`（不存在整个文件时同样返回这组默认值，不报错）。
+  - `UpdateServerRuntimeSettings(dataDir, settings) error`：`validateServerRuntimeSettings` 校验（`CabinStrategy` 必须是 `CabinStack`/`FarmhouseStack`/`None`，`ExistingCabinBehavior` 必须是 `KeepExisting`/`MoveToStack`，`NetworkBroadcastPeriod` 必须在 `1~10`）通过后，只覆盖这三个 key，**保留** `server-settings.json` 里其它已有字段（`MaxPlayers`、`AllowIpConnections` 等），和 `EnsureServerSettingsDefaults` 的"读取合并再写回"模式一致。这个函数可以在存档已存在、服务器随时运行/停止的情况下调用，不要求先新建存档。
+- 新增 Web 层 `backend/internal/web/server_runtime_settings_handlers.go`：`handleInstanceServerRuntimeSettings` 处理 `GET/PUT /api/instances/:id/config/server-runtime-settings`，完全照抄 `server_password_handlers.go` 的 `handleInstanceServerPassword` 结构（`requireAdmin` → `loadInstance` → 读/校验/写 → 审计日志），PUT 成功后写审计 `instance_server_runtime_settings_update`（metadata 记录 `cabinStrategy`/`existingCabinBehavior`）。路由已接入 `instance_handlers.go`，紧跟在 `config/server-password` 分支之后。
+- 这组设置和 `SERVER_PASSWORD` 一样，只在 JunimoServer `server` 容器**启动时**读取 `server-settings.json`，保存后必须重启服务器容器才会生效——前端已在弹窗里明确提示。
+- 影响文件：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/saves.go`、`backend/internal/games/stardew_junimo/saves_test.go`、`backend/internal/web/server_runtime_settings_handlers.go`（新增）、`backend/internal/web/instance_handlers.go`。前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md`。
+- 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿（新增 `TestWriteServerSettings_CabinMode*`、`TestServerRuntimeSettings_*` 系列测试；同时修正了两处直接调用 `validateCfg` 而未设置 `CabinMode` 的既有测试）。
+- 下一步注意事项：`ExistingCabinBehavior` 目前在新建存档阶段永远写 `KeepExisting`（因为新档没有"已有小屋"概念），只有通过服务器控制页的 `UpdateServerRuntimeSettings` 才能真正改成 `MoveToStack`；如果以后要在新建存档页也暴露这个字段，需要重新评估其语义是否适用于"从零创建"场景。

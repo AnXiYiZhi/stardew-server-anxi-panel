@@ -816,3 +816,9 @@ Multi Game Mode later
 
 # INVITE-COPY-CLIPBOARD-FALLBACK-1 状态
 - `INVITE-COPY-CLIPBOARD-FALLBACK-1` completed（代码已修复+构建通过，尚未部署）：修复邀请码/局域网 IP 复制按钮在非 HTTPS 访问下因 `navigator.clipboard` 不可用而完全无反应的问题，新增 `execCommand('copy')` 降级方案。详见 `docs/frontend-handoff/frontend-handoff-2026-07-07.md`。
+
+# FESTIVAL-EVENT-1 / JOJA-ROUTE-1 状态
+- `FESTIVAL-EVENT-1`/`JOJA-ROUTE-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：服务器控制页新增"触发节日活动"（模拟游戏内 `!event`）和"永久启用 Joja 路线"（模拟 `!joja IRREVERSIBLY_ENABLE_JOJA_RUN`，需强确认弹窗逐字输入）两个按钮。后者因上游要求触发者持有 admin 角色，后端会先调用 JunimoServer 自带的 `POST /roles/admin` 把主机提升为管理员再模拟指令。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md`。
+
+# CABIN-STRATEGY-1 状态
+- `CABIN-STRATEGY-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿，尚未浏览器实测和真机联机验证）：按用户明确设计口径把小屋策略设置分层——新建存档页只给简化二选一"小屋模式：推荐/原版"（`NewGameConfig.cabinMode`），服务器控制页新增"小屋与联机高级设置"弹窗给完整设置（`CabinStrategy`/`ExistingCabinBehavior`/`NetworkBroadcastPeriod`），新增 `GET/PUT /api/instances/:id/config/server-runtime-settings` 接口，两层共用同一份 `server-settings.json`。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `CABIN-STRATEGY-1` 小节。

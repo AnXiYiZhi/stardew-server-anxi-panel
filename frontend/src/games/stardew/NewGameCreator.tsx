@@ -51,6 +51,7 @@ function defaultConfig(): NewGameConfig {
     startingCabins: 0,
     maxPlayers: 10,
     cabinLayout: 'nearby',
+    cabinMode: 'recommended',
     profitMargin: '100',
     moneyMode: 'shared',
     remixedCommunityCenter: false,
@@ -139,6 +140,21 @@ export function NewGameCreator({ onSubmit, submitting, submitError }: Props) {
           <ArrowButton direction="left" label="降低联机人数上限" onClick={() => updateMaxPlayers(-1)} />
           <strong>{cfg.maxPlayers ?? 10}人</strong>
           <ArrowButton direction="right" label="提高联机人数上限" onClick={() => updateMaxPlayers(1)} />
+        </div>
+
+        <div className="ngc-side-label">小屋模式</div>
+        <div className="ngc-number-control">
+          <ArrowButton
+            direction="left"
+            label="切换小屋模式"
+            onClick={() => set('cabinMode', cfg.cabinMode === 'vanilla' ? 'recommended' : 'vanilla')}
+          />
+          <strong>{cfg.cabinMode === 'vanilla' ? '原版' : '推荐'}</strong>
+          <ArrowButton
+            direction="right"
+            label="切换小屋模式"
+            onClick={() => set('cabinMode', cfg.cabinMode === 'vanilla' ? 'recommended' : 'vanilla')}
+          />
         </div>
 
         <div className="ngc-side-label">联机小屋布局</div>

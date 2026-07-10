@@ -271,6 +271,7 @@ export type NewGameConfig = {
   startingCabins: number
   maxPlayers: number
   cabinLayout: string
+  cabinMode?: string     // "recommended"|"vanilla": recommended=隐藏小屋堆叠, vanilla=小屋出现在真实农场位置
   profitMargin: string  // "100"|"75"|"50"|"25"
   petBreed: number      // 0-4 Stardew selectable breed index
   moneyMode: string     // "shared"|"separate"
@@ -416,6 +417,12 @@ export type InstanceVNCConfig = {
 
 export type InstanceServerPasswordConfig = {
   serverPassword: string
+}
+
+export type ServerRuntimeSettings = {
+  cabinStrategy: string          // "CabinStack"|"FarmhouseStack"|"None"
+  existingCabinBehavior: string  // "KeepExisting"|"MoveToStack"
+  networkBroadcastPeriod: number // 1-10
 }
 
 export type InstancePasswordStatus = {

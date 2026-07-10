@@ -695,6 +695,13 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 	if cfg.SpawnMonstersOnFarm {
 		spawnMonsters = "true"
 	}
+	// cabinMode "recommended" hides cabins off-map and stacks them (matches most
+	// servers' expectations); "vanilla" places cabins at real farm locations like
+	// unmodded multiplayer.
+	cabinStrategy := "CabinStack"
+	if cfg.CabinMode == "vanilla" {
+		cabinStrategy = "None"
+	}
 
 	// Build server-settings.json matching JunimoServer's ServerSettings class structure.
 	// Game section: world creation params. Server section: runtime params.
@@ -713,7 +720,7 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 		},
 		"Server": map[string]any{
 			"MaxPlayers":            cfg.MaxPlayers,
-			"CabinStrategy":         "CabinStack",
+			"CabinStrategy":         cabinStrategy,
 			"SeparateWallets":       separateWallets,
 			"ExistingCabinBehavior": "KeepExisting",
 			// Enable IP direct-connect by default. Invite codes go through Steam
@@ -779,6 +786,105 @@ func EnsureServerSettingsDefaults(dataDir string) error {
 	return os.WriteFile(settingsPath, data, 0o644)
 }
 
+// ServerRuntimeSettings holds the subset of server-settings.json "Server"
+// fields that are safe to change on an existing save without recreating the
+// world. JunimoServer only reads server-settings.json on container start, so
+// none of these take effect until the server container is restarted.
+type ServerRuntimeSettings struct {
+	CabinStrategy          string `json:"cabinStrategy"`          // CabinStack|FarmhouseStack|None
+	ExistingCabinBehavior  string `json:"existingCabinBehavior"`  // KeepExisting|MoveToStack
+	NetworkBroadcastPeriod int    `json:"networkBroadcastPeriod"` // 1-10 ticks between state broadcasts (1=every tick, 3=vanilla)
+}
+
+var validCabinStrategies = map[string]bool{"CabinStack": true, "FarmhouseStack": true, "None": true}
+var validExistingCabinBehaviors = map[string]bool{"KeepExisting": true, "MoveToStack": true}
+
+func validateServerRuntimeSettings(settings ServerRuntimeSettings) error {
+	if !validCabinStrategies[settings.CabinStrategy] {
+		return fmt.Errorf("cabinStrategy 必须是 CabinStack/FarmhouseStack/None 之一")
+	}
+	if !validExistingCabinBehaviors[settings.ExistingCabinBehavior] {
+		return fmt.Errorf("existingCabinBehavior 必须是 KeepExisting 或 MoveToStack")
+	}
+	if settings.NetworkBroadcastPeriod < 1 || settings.NetworkBroadcastPeriod > 10 {
+		return fmt.Errorf("networkBroadcastPeriod 必须在 1~10 之间")
+	}
+	return nil
+}
+
+// ReadServerRuntimeSettings reads the current CabinStrategy/ExistingCabinBehavior/
+// NetworkBroadcastPeriod from server-settings.json, defaulting missing fields to
+// the same values WriteServerSettings would have written for a recommended save.
+func ReadServerRuntimeSettings(dataDir string) (ServerRuntimeSettings, error) {
+	settings := ServerRuntimeSettings{
+		CabinStrategy:          "CabinStack",
+		ExistingCabinBehavior:  "KeepExisting",
+		NetworkBroadcastPeriod: 1,
+	}
+	data, err := os.ReadFile(serverSettingsPath(dataDir))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return settings, nil
+		}
+		return settings, fmt.Errorf("read server-settings.json: %w", err)
+	}
+	root := map[string]any{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return settings, fmt.Errorf("parse server-settings.json: %w", err)
+	}
+	server, _ := root["Server"].(map[string]any)
+	if server == nil {
+		return settings, nil
+	}
+	if v, ok := server["CabinStrategy"].(string); ok && v != "" {
+		settings.CabinStrategy = v
+	}
+	if v, ok := server["ExistingCabinBehavior"].(string); ok && v != "" {
+		settings.ExistingCabinBehavior = v
+	}
+	if v, ok := server["NetworkBroadcastPeriod"].(float64); ok {
+		settings.NetworkBroadcastPeriod = int(v)
+	}
+	return settings, nil
+}
+
+// UpdateServerRuntimeSettings validates and writes CabinStrategy/
+// ExistingCabinBehavior/NetworkBroadcastPeriod into server-settings.json,
+// preserving every other key already present (e.g. MaxPlayers, AllowIpConnections).
+// Requires a server container restart to take effect.
+func UpdateServerRuntimeSettings(dataDir string, settings ServerRuntimeSettings) error {
+	if err := validateServerRuntimeSettings(settings); err != nil {
+		return err
+	}
+	settingsPath := serverSettingsPath(dataDir)
+	root := map[string]any{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		if err := json.Unmarshal(data, &root); err != nil {
+			return fmt.Errorf("parse server-settings.json: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read server-settings.json: %w", err)
+	}
+
+	server, _ := root["Server"].(map[string]any)
+	if server == nil {
+		server = map[string]any{}
+	}
+	server["CabinStrategy"] = settings.CabinStrategy
+	server["ExistingCabinBehavior"] = settings.ExistingCabinBehavior
+	server["NetworkBroadcastPeriod"] = settings.NetworkBroadcastPeriod
+	root["Server"] = server
+
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		return fmt.Errorf("create settings dir: %w", err)
+	}
+	data, err := marshalJSON(root)
+	if err != nil {
+		return fmt.Errorf("marshal server-settings.json: %w", err)
+	}
+	return os.WriteFile(settingsPath, data, 0o644)
+}
+
 // normalizeCfg applies defaults.
 func normalizeCfg(cfg *registry.NewGameConfig) {
 	if cfg.FarmType == "" {
@@ -786,6 +892,9 @@ func normalizeCfg(cfg *registry.NewGameConfig) {
 	}
 	if cfg.CabinLayout == "" {
 		cfg.CabinLayout = "nearby"
+	}
+	if cfg.CabinMode == "" {
+		cfg.CabinMode = "recommended"
 	}
 	if cfg.ProfitMargin == "" {
 		cfg.ProfitMargin = "100"
@@ -833,6 +942,9 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	}
 	if cfg.CabinLayout != "nearby" && cfg.CabinLayout != "separate" {
 		return fmt.Errorf("cabinLayout 必须是 nearby 或 separate")
+	}
+	if cfg.CabinMode != "recommended" && cfg.CabinMode != "vanilla" {
+		return fmt.Errorf("cabinMode 必须是 recommended 或 vanilla")
 	}
 	validProfit := map[string]bool{"100": true, "75": true, "50": true, "25": true}
 	if !validProfit[cfg.ProfitMargin] {

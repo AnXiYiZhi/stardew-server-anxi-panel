@@ -130,6 +130,24 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handlePlayerKick(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/festival/event
+	if len(parts) == 3 && parts[1] == "festival" && parts[2] == "event" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleFestivalEventTrigger(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/joja/enable
+	if len(parts) == 3 && parts[1] == "joja" && parts[2] == "enable" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleJojaRouteEnable(w, r, instanceID)
+		return
+	}
 	// GET /api/instances/:id/password-status
 	if len(parts) == 2 && parts[1] == "password-status" {
 		s.handleInstancePasswordStatus(w, r, instanceID)
@@ -241,6 +259,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 3 && parts[1] == "config" && parts[2] == "server-password" {
 		s.handleInstanceServerPassword(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "config" && parts[2] == "server-runtime-settings" {
+		s.handleInstanceServerRuntimeSettings(w, r, instanceID)
 		return
 	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "preflight" {

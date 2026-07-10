@@ -598,7 +598,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 
 - `POST /api/instances/:id/saves/custom-new-game` 新增可选字段 `maxPlayers`，表示最大同时在线人数，合法范围 `1-100`；旧客户端不传时后端默认写入 `10`。
 - `startingCabins` 仍表示初始联机小屋数量，范围 `0-7`；`maxPlayers` 是总在线人数上限，必须大于等于 `startingCabins + 1`。
-- 后端会写 `server-settings.json`：`Server.MaxPlayers=<maxPlayers>`、`Server.CabinStrategy="CabinStack"`、`Server.ExistingCabinBehavior="KeepExisting"`，以及原有 `Game.StartingCabins` / `Game.CabinLayoutNearby`。
+- 后端会写 `server-settings.json`：`Server.MaxPlayers=<maxPlayers>`、`Server.ExistingCabinBehavior="KeepExisting"`，以及原有 `Game.StartingCabins` / `Game.CabinLayoutNearby`。`Server.CabinStrategy` 从 `2026-07-10` 起改由新字段 `cabinMode`（`recommended|vanilla`，默认 `recommended`）派生：`recommended → "CabinStack"`，`vanilla → "None"`，详见下方 `CABIN-STRATEGY-1` 契约。
 - 联调验证建议：新建存档时分别提交 `startingCabins=7,maxPlayers=8` 与 `startingCabins=7,maxPlayers=16`，确认配置文件写入正确；提交 `startingCabins=7,maxPlayers=7` 应返回结构化错误。
 # VNC-CONTROL-1 联调契约
 
@@ -650,4 +650,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 安装流程进入 Junimo 镜像检查时，后端会对 `steam-auth cn` 与 `server` 两类镜像分别展开默认候选源；旧 `.env` 中只有单候选值时也会被补齐。
 - 前端日志应能看到 `server` 缺失时最多按 `(1/4)` 到 `(4/4)` 尝试：`docker.1ms.run/sdvd/server:<IMAGE_VERSION>`、`docker.m.daocloud.io/sdvd/server:<IMAGE_VERSION>`、`ghcr.io/sdvd/server:<IMAGE_VERSION>`、`sdvd/server:<IMAGE_VERSION>`。
 - `steam-auth cn` 同理最多五个候选：`docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2`、`docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`、`anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2`。
+
+# CABIN-STRATEGY-1 小屋策略分层联调契约
+
+- `POST /api/instances/:id/saves/custom-new-game` 新增可选字段 `cabinMode`（`"recommended"|"vanilla"`），不传时默认 `"recommended"`。这是新建存档页给用户的简化二选一：`recommended` 对应 `Server.CabinStrategy="CabinStack"`（隐藏小屋堆叠，共用位置各自只看到自己的小屋），`vanilla` 对应 `Server.CabinStrategy="None"`（原版行为，小屋出现在真实农场地图位置，此时 `cabinLayout: "nearby"|"separate"` 才会在视觉上产生实际差异）。
+- 新增 `GET /api/instances/:id/config/server-runtime-settings`：管理员专用，返回 `{ "cabinStrategy": "CabinStack"|"FarmhouseStack"|"None", "existingCabinBehavior": "KeepExisting"|"MoveToStack", "networkBroadcastPeriod": number }`。文件不存在或字段缺失时返回 `CabinStack`/`KeepExisting`/`1` 三个默认值，不报错。
+- 新增 `PUT /api/instances/:id/config/server-runtime-settings`：管理员专用，请求体是同一个 `ServerRuntimeSettings` 结构（三个字段都必须传）。后端会校验 `cabinStrategy` 必须是三选一、`existingCabinBehavior` 必须是二选一、`networkBroadcastPeriod` 必须在 `1~10`，校验失败返回 `400 invalid_settings`。成功后只覆盖这三个字段，`server-settings.json` 里的 `MaxPlayers`、`AllowIpConnections` 等其它字段原样保留。
+- 这两个接口是服务器控制页"小屋与联机高级设置"弹窗的完整版入口，和新建存档页的简化 `cabinMode` 共用同一份底层 `server-settings.json`，但**不是**同一层级：新建存档页只在建档瞬间写一次初始值，服务器控制页可以在存档已存在、服务器运行中或已停止的任何时候读写。两边都不会互相覆盖对方没有涉及的字段。
+- **关键约束**：无论通过哪个入口修改，都只在 JunimoServer `server` 容器**下一次启动**时生效（和 `SERVER_PASSWORD`、`ExistingServerSettings` 同理），前端弹窗必须提示"需要重启服务器容器"，不能暗示实时生效。
+- 联调验证建议：新建存档时分别提交 `cabinMode` 缺省、`"recommended"`、`"vanilla"`，确认 `server-settings.json` 的 `Server.CabinStrategy` 分别是 `CabinStack`/`CabinStack`/`None`；存档创建后调用 `PUT .../server-runtime-settings` 把 `cabinStrategy` 改成 `"FarmhouseStack"`、`networkBroadcastPeriod` 改成 `3`，重新 `GET` 确认改动生效且 `MaxPlayers` 未被覆盖；提交非法枚举值（如 `cabinStrategy: "Bogus"`）应返回 `400`。
 - 命中本地任一候选时应直接显示“本地已有镜像 ... 直接使用”，不应先拉取排在前面的缺失候选。

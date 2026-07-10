@@ -16,11 +16,21 @@ import {
   getInstanceServerPassword,
   updateInstanceServerPassword,
   getInstancePasswordStatus,
+  getInstanceServerRuntimeSettings,
+  updateInstanceServerRuntimeSettings,
+  triggerFestivalEvent,
+  enableJojaRoute,
 } from '../../../api'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import { ServerSummaryCard } from '../ServerSummaryCard'
 import type { StardewPageProps } from '../stardew-routes'
-import type { ConsoleCommandDef, RestartSchedule, InstancePasswordStatus } from '../../../types'
+import type { ConsoleCommandDef, RestartSchedule, InstancePasswordStatus, ServerRuntimeSettings } from '../../../types'
+
+const defaultRuntimeSettings: ServerRuntimeSettings = {
+  cabinStrategy: 'CabinStack',
+  existingCabinBehavior: 'KeepExisting',
+  networkBroadcastPeriod: 1,
+}
 
 const defaultRestartSchedule: RestartSchedule = {
   instanceId: 'stardew',
@@ -42,7 +52,11 @@ const SERVER_PAGE_ICONS = {
   display: '/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png',
   vnc: '/assets/stardew/ui/icons/icon_dropdown_arrow_gold_image2.png',
   settings: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png',
+  festival: '/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png',
+  joja: '/assets/stardew/ui/icons/icon_players_action_permission_image2.png',
 } as const
+
+const JOJA_CONFIRM_TEXT = 'IRREVERSIBLY_ENABLE_JOJA_RUN'
 
 function buildVNCControlURL(port: string) {
   const host = window.location.hostname.includes(':')
@@ -94,6 +108,26 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
   const [passwordStatusLoading, setPasswordStatusLoading] = useState(false)
   const [passwordStatusError, setPasswordStatusError] = useState<string | null>(null)
+
+  // ── 小屋与联机高级设置 ────────────────────────────────────────────────────
+  const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false)
+  const [runtimeSettingsDraft, setRuntimeSettingsDraft] = useState<ServerRuntimeSettings>(defaultRuntimeSettings)
+  const [runtimeSettingsLoading, setRuntimeSettingsLoading] = useState(false)
+  const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false)
+  const [runtimeSettingsError, setRuntimeSettingsError] = useState<string | null>(null)
+  const [runtimeSettingsMessage, setRuntimeSettingsMessage] = useState<string | null>(null)
+
+  // ── 触发节日活动 ──────────────────────────────────────────────────────────
+  const [festivalBusy, setFestivalBusy] = useState(false)
+  const [festivalMessage, setFestivalMessage] = useState<string | null>(null)
+  const [festivalError, setFestivalError] = useState(false)
+
+  // ── 永久启用 Joja 路线 ────────────────────────────────────────────────────
+  const [jojaOpen, setJojaOpen] = useState(false)
+  const [jojaConfirmInput, setJojaConfirmInput] = useState('')
+  const [jojaBusy, setJojaBusy] = useState(false)
+  const [jojaMessage, setJojaMessage] = useState<string | null>(null)
+  const [jojaError, setJojaError] = useState(false)
 
   // ── 控制台命令 ────────────────────────────────────────────────────────────
   const [commands, setCommands] = useState<ConsoleCommandDef[]>([])
@@ -325,6 +359,46 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     }
   }
 
+  async function handleTriggerFestivalEvent() {
+    if (!isAdmin || !isRunning) return
+    setFestivalBusy(true)
+    setFestivalMessage(null)
+    setFestivalError(false)
+    try {
+      const result = await triggerFestivalEvent()
+      setFestivalMessage(result.output?.trim() || '触发节日活动指令已提交。')
+    } catch (e) {
+      setFestivalError(true)
+      setFestivalMessage(errorMessage(e))
+    } finally {
+      setFestivalBusy(false)
+    }
+  }
+
+  function openJojaConfirm() {
+    if (!isAdmin || !isRunning) return
+    setJojaConfirmInput('')
+    setJojaMessage(null)
+    setJojaError(false)
+    setJojaOpen(true)
+  }
+
+  async function handleEnableJoja() {
+    if (jojaConfirmInput !== JOJA_CONFIRM_TEXT) return
+    setJojaBusy(true)
+    setJojaMessage(null)
+    setJojaError(false)
+    try {
+      const result = await enableJojaRoute(jojaConfirmInput)
+      setJojaMessage(result.output?.trim() || 'Joja 路线已永久启用。')
+    } catch (e) {
+      setJojaError(true)
+      setJojaMessage(errorMessage(e))
+    } finally {
+      setJojaBusy(false)
+    }
+  }
+
   async function handleToggleVNCDisplay() {
     if (!isAdmin || !isRunning) return
     const nextEnabled = !vncRenderingEnabled
@@ -445,6 +519,39 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       setPasswordError(errorMessage(e))
     } finally {
       setPasswordSaving(false)
+    }
+  }
+
+  async function openRuntimeSettings() {
+    if (!isAdmin) return
+    setRuntimeSettingsOpen(true)
+    setRuntimeSettingsLoading(true)
+    setRuntimeSettingsSaving(false)
+    setRuntimeSettingsError(null)
+    setRuntimeSettingsMessage(null)
+    try {
+      const res = await getInstanceServerRuntimeSettings()
+      setRuntimeSettingsDraft(res)
+    } catch (e) {
+      setRuntimeSettingsError(errorMessage(e))
+      setRuntimeSettingsDraft(defaultRuntimeSettings)
+    } finally {
+      setRuntimeSettingsLoading(false)
+    }
+  }
+
+  async function handleSaveRuntimeSettings() {
+    setRuntimeSettingsSaving(true)
+    setRuntimeSettingsError(null)
+    setRuntimeSettingsMessage(null)
+    try {
+      const res = await updateInstanceServerRuntimeSettings(runtimeSettingsDraft)
+      setRuntimeSettingsDraft(res)
+      setRuntimeSettingsMessage('设置已保存，需要重启服务器容器后才会生效。')
+    } catch (e) {
+      setRuntimeSettingsError(errorMessage(e))
+    } finally {
+      setRuntimeSettingsSaving(false)
     }
   }
 
@@ -872,10 +979,66 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               <span>配置玩家加入密码</span>
             </span>
           </button>
+          <button
+            key="server-runtime-settings"
+            className="sd-btn-tan sd-btn--lg"
+            disabled={!isAdmin}
+            title={isAdmin ? '配置小屋策略与联机广播频率' : '仅管理员可配置小屋与联机高级设置'}
+            onClick={() => void openRuntimeSettings()}
+          >
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.settings} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>小屋与联机高级设置</strong>
+              <span>小屋策略 / 广播频率</span>
+            </span>
+          </button>
+          <button
+            key="trigger-festival-event"
+            className="sd-btn-tan sd-btn--lg"
+            disabled={!isAdmin || !isRunning || festivalBusy}
+            title={
+              !isAdmin
+                ? '仅管理员可执行此操作'
+                : !isRunning
+                  ? '服务器运行后才能触发节日活动'
+                  : '模拟游戏内 !event 指令，强制开始当天节日的主活动（若当天没有节日则不会生效）'
+            }
+            onClick={() => void handleTriggerFestivalEvent()}
+          >
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.festival} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>{festivalBusy ? '触发中…' : '触发节日活动'}</strong>
+              <span>卡住时强制开始</span>
+            </span>
+          </button>
+          <button
+            key="enable-joja-route"
+            className="sd-btn-delete sd-btn--lg"
+            disabled={!isAdmin || !isRunning}
+            title={
+              !isAdmin
+                ? '仅管理员可执行此操作'
+                : !isRunning
+                  ? '服务器运行后才能启用 Joja 路线'
+                  : '永久启用 Joja 路线并禁用标准社区中心，此操作不可撤销'
+            }
+            onClick={openJojaConfirm}
+          >
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.joja} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>永久启用 Joja 路线</strong>
+              <span>不可撤销，请谨慎操作</span>
+            </span>
+          </button>
         </div>
         {quickBackupMessage ? (
           <div className={quickBackupError ? 'sd-ov-error' : 'sd-srv-result'} style={{ marginTop: 6 }}>
             {quickBackupMessage}
+          </div>
+        ) : null}
+        {festivalMessage ? (
+          <div className={festivalError ? 'sd-ov-error' : 'sd-srv-result'} style={{ marginTop: 6 }}>
+            {festivalMessage}
           </div>
         ) : null}
         {vncMessage ? (
@@ -1125,6 +1288,148 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 </div>
               </>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {runtimeSettingsOpen ? (
+        <div key="runtime-settings" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>小屋与联机高级设置</h3>
+
+            {runtimeSettingsLoading ? (
+              <p>正在读取当前配置...</p>
+            ) : (
+              <>
+                <label className="sd-schedule-field">
+                  <span>小屋策略（CabinStrategy）</span>
+                  <select
+                    className="sd-input"
+                    value={runtimeSettingsDraft.cabinStrategy}
+                    disabled={runtimeSettingsSaving}
+                    onChange={(e) => {
+                      setRuntimeSettingsDraft((draft) => ({ ...draft, cabinStrategy: e.target.value }))
+                      setRuntimeSettingsMessage(null)
+                    }}
+                  >
+                    <option value="CabinStack">CabinStack（隐藏小屋堆叠，最适合大多数服务器）</option>
+                    <option value="FarmhouseStack">FarmhouseStack（隐藏小屋，从主农舍共用入口出）</option>
+                    <option value="None">None（原版行为，小屋放置在真实农场位置）</option>
+                  </select>
+                </label>
+
+                <label className="sd-schedule-field">
+                  <span>已有小屋处理方式（ExistingCabinBehavior）</span>
+                  <select
+                    className="sd-input"
+                    value={runtimeSettingsDraft.existingCabinBehavior}
+                    disabled={runtimeSettingsSaving}
+                    onChange={(e) => {
+                      setRuntimeSettingsDraft((draft) => ({ ...draft, existingCabinBehavior: e.target.value }))
+                      setRuntimeSettingsMessage(null)
+                    }}
+                  >
+                    <option value="KeepExisting">KeepExisting（保留已有小屋位置）</option>
+                    <option value="MoveToStack">MoveToStack（把已有小屋迁移到策略指定位置）</option>
+                  </select>
+                </label>
+
+                <label className="sd-schedule-field">
+                  <span>网络广播频率（NetworkBroadcastPeriod，单位：刻）</span>
+                  <select
+                    className="sd-input"
+                    value={runtimeSettingsDraft.networkBroadcastPeriod}
+                    disabled={runtimeSettingsSaving}
+                    onChange={(e) => {
+                      setRuntimeSettingsDraft((draft) => ({ ...draft, networkBroadcastPeriod: Number(e.target.value) }))
+                      setRuntimeSettingsMessage(null)
+                    }}
+                  >
+                    <option value={1}>1（每刻广播，最实时）</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3（原版频率）</option>
+                  </select>
+                </label>
+
+                <div className="sd-confirm-warning">
+                  这些设置写入 server-settings.json，JunimoServer 只在容器启动时读取。保存后需要重启服务器容器才会生效，对已有存档同样适用。
+                </div>
+
+                {runtimeSettingsError ? <div className="sd-ov-error">{runtimeSettingsError}</div> : null}
+                {runtimeSettingsMessage ? <div className="sd-srv-result">{runtimeSettingsMessage}</div> : null}
+
+                <div className="sd-confirm-actions">
+                  <button className="sd-btn-tan" onClick={() => setRuntimeSettingsOpen(false)} disabled={runtimeSettingsSaving}>
+                    关闭
+                  </button>
+                  <button
+                    className="sd-btn-green"
+                    onClick={() => void handleSaveRuntimeSettings()}
+                    disabled={runtimeSettingsSaving}
+                  >
+                    {runtimeSettingsSaving ? '保存中…' : '保存'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {jojaOpen ? (
+        <div key="joja" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>永久启用 Joja 路线</h3>
+
+            <div className="sd-confirm-warning">
+              此操作会模拟游戏内 <code>!joja IRREVERSIBLY_ENABLE_JOJA_RUN</code> 指令，永久禁用标准社区中心路线，改为 Joja 路线。<strong>此操作不可撤销</strong>，对本存档的剩余游玩时间永久生效。请仅在你确实需要切换路线时使用。
+            </div>
+
+            <label className="sd-schedule-field">
+              <span>
+                请输入 <code>{JOJA_CONFIRM_TEXT}</code> 以确认
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  className="sd-input"
+                  type="text"
+                  value={jojaConfirmInput}
+                  placeholder={JOJA_CONFIRM_TEXT}
+                  onChange={(e) => {
+                    setJojaConfirmInput(e.target.value)
+                    setJojaMessage(null)
+                  }}
+                  disabled={jojaBusy}
+                />
+                <button
+                  type="button"
+                  className="sd-btn-tan"
+                  onClick={() => {
+                    setJojaConfirmInput(JOJA_CONFIRM_TEXT)
+                    setJojaMessage(null)
+                  }}
+                  disabled={jojaBusy}
+                >
+                  填入
+                </button>
+              </div>
+            </label>
+
+            {jojaError ? <div className="sd-ov-error">{jojaMessage}</div> : null}
+            {!jojaError && jojaMessage ? <div className="sd-srv-result">{jojaMessage}</div> : null}
+
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setJojaOpen(false)} disabled={jojaBusy}>
+                取消
+              </button>
+              <button
+                className="sd-btn-delete"
+                onClick={() => void handleEnableJoja()}
+                disabled={jojaBusy || jojaConfirmInput !== JOJA_CONFIRM_TEXT}
+              >
+                {jojaBusy ? '提交中…' : '确认永久启用'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
