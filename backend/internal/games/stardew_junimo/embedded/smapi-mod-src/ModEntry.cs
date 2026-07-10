@@ -675,6 +675,12 @@ public sealed class ModEntry : Mod
                     : "";
                 KickPlayer(targetId ?? "");
                 break;
+            case "trigger-event":
+                TriggerFestivalEvent();
+                break;
+            case "enable-joja":
+                EnableJojaRoute();
+                break;
             case "stop":
                 WriteStatus("stopping", "Stop command received. Container stop will be handled by backend later.");
                 break;
@@ -743,6 +749,35 @@ public sealed class ModEntry : Mod
             WriteStatus("command", "Kick command failed.");
             Monitor.Log($"Kick command failed for player {targetId}: {ex}", LogLevel.Error);
         }
+    }
+
+    private void TriggerFestivalEvent()
+    {
+        if (!Context.IsWorldReady || Game1.chatBox is null)
+        {
+            WriteStatus("command", "Trigger-event command ignored because the world is not ready.");
+            return;
+        }
+
+        Game1.chatBox.textBoxEnter("!event");
+        WriteStatus("command", "Trigger-event command sent.");
+        Monitor.Log("Trigger-event command sent (simulated \"!event\" chat message from the host).", LogLevel.Info);
+    }
+
+    private void EnableJojaRoute()
+    {
+        if (!Context.IsWorldReady || Game1.chatBox is null)
+        {
+            WriteStatus("command", "Enable-joja command ignored because the world is not ready.");
+            return;
+        }
+
+        // JunimoServer's "!joja" command requires the sending player to already hold the
+        // admin role (see RoleService.IsPlayerAdmin); the panel backend grants the host
+        // that role via JunimoServer's own POST /roles/admin before submitting this command.
+        Game1.chatBox.textBoxEnter("!joja IRREVERSIBLY_ENABLE_JOJA_RUN");
+        WriteStatus("command", "Enable-joja command sent.");
+        Monitor.Log("Enable-joja command sent (simulated \"!joja\" chat message from the host).", LogLevel.Info);
     }
 
     private static string SanitizeChatText(string input, int maxLength)

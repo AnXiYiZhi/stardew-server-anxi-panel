@@ -163,6 +163,31 @@ func (d *Driver) KickPlayer(ctx context.Context, instance registry.Instance, uni
 	return kickPlayer(instance, uniqueMultiplayerID, name)
 }
 
+// TriggerFestivalEvent asks the embedded control mod to simulate the "!event"
+// chat command, force-starting today's festival main event. Upstream JunimoServer
+// applies no permission check to this command. It is fire-and-forget like kick/say.
+func (d *Driver) TriggerFestivalEvent(ctx context.Context, instance registry.Instance) (*CommandRunResult, error) {
+	return triggerFestivalEvent(instance)
+}
+
+// triggerFestivalEvent is the testable core of Driver.TriggerFestivalEvent.
+func triggerFestivalEvent(instance registry.Instance) (*CommandRunResult, error) {
+	if instance.State != storage.InstanceStateRunning {
+		return nil, &CommandError{Code: "server_not_running", Message: "服务器未运行，无法触发节日活动"}
+	}
+
+	start := time.Now()
+	if err := writePanelCommand(instance.DataDir, "trigger-event", nil); err != nil {
+		return nil, fmt.Errorf("写入触发节日活动命令失败: %w", err)
+	}
+	return &CommandRunResult{
+		Command:    "trigger-event",
+		Output:     "指令已提交，控制模组会在游戏 tick 中模拟 !event 聊天指令；若当前没有进行中的节日则不会生效。",
+		ExitCode:   0,
+		DurationMS: time.Since(start).Milliseconds(),
+	}, nil
+}
+
 // runCommand is the testable core of RunAllowlistedCommand.
 func runCommand(ctx context.Context, d *Driver, instance registry.Instance, req CommandRequest, isAdmin bool) (*CommandRunResult, error) {
 	// Validate command ID against allowlist.

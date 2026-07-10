@@ -203,6 +203,90 @@ func TestWriteServerSettings_MaxPlayersRange(t *testing.T) {
 	}
 }
 
+func TestWriteServerSettings_CabinModeRecommendedDefault(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm"}); err != nil {
+		t.Fatalf("WriteServerSettings: %v", err)
+	}
+	server := readServerSection(t, dir)
+	if server["CabinStrategy"] != "CabinStack" {
+		t.Errorf("Server.CabinStrategy = %v, want CabinStack (default cabinMode)", server["CabinStrategy"])
+	}
+}
+
+func TestWriteServerSettings_CabinModeVanilla(t *testing.T) {
+	dir := t.TempDir()
+	cfg := registry.NewGameConfig{FarmName: "Farm", CabinMode: "vanilla"}
+	if err := WriteServerSettings(dir, cfg); err != nil {
+		t.Fatalf("WriteServerSettings: %v", err)
+	}
+	server := readServerSection(t, dir)
+	if server["CabinStrategy"] != "None" {
+		t.Errorf("Server.CabinStrategy = %v, want None (cabinMode=vanilla)", server["CabinStrategy"])
+	}
+}
+
+func TestWriteServerSettings_CabinModeInvalid(t *testing.T) {
+	dir := t.TempDir()
+	cfg := registry.NewGameConfig{FarmName: "Farm", CabinMode: "hidden"}
+	if err := WriteServerSettings(dir, cfg); err == nil {
+		t.Fatal("expected error for invalid cabinMode")
+	}
+}
+
+func TestServerRuntimeSettings_ReadDefaultsWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	settings, err := ReadServerRuntimeSettings(dir)
+	if err != nil {
+		t.Fatalf("ReadServerRuntimeSettings: %v", err)
+	}
+	if settings.CabinStrategy != "CabinStack" || settings.ExistingCabinBehavior != "KeepExisting" || settings.NetworkBroadcastPeriod != 1 {
+		t.Errorf("unexpected defaults: %+v", settings)
+	}
+}
+
+func TestServerRuntimeSettings_UpdateAndReadRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", MaxPlayers: 20}); err != nil {
+		t.Fatalf("WriteServerSettings: %v", err)
+	}
+	want := ServerRuntimeSettings{
+		CabinStrategy:          "FarmhouseStack",
+		ExistingCabinBehavior:  "MoveToStack",
+		NetworkBroadcastPeriod: 3,
+	}
+	if err := UpdateServerRuntimeSettings(dir, want); err != nil {
+		t.Fatalf("UpdateServerRuntimeSettings: %v", err)
+	}
+	got, err := ReadServerRuntimeSettings(dir)
+	if err != nil {
+		t.Fatalf("ReadServerRuntimeSettings: %v", err)
+	}
+	if got != want {
+		t.Errorf("ReadServerRuntimeSettings = %+v, want %+v", got, want)
+	}
+	// MaxPlayers written earlier must survive the runtime settings update.
+	server := readServerSection(t, dir)
+	if server["MaxPlayers"] != float64(20) {
+		t.Errorf("Server.MaxPlayers = %v, want 20 (must be preserved)", server["MaxPlayers"])
+	}
+}
+
+func TestServerRuntimeSettings_UpdateRejectsInvalid(t *testing.T) {
+	dir := t.TempDir()
+	cases := []ServerRuntimeSettings{
+		{CabinStrategy: "Bogus", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 1},
+		{CabinStrategy: "CabinStack", ExistingCabinBehavior: "Bogus", NetworkBroadcastPeriod: 1},
+		{CabinStrategy: "CabinStack", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 0},
+		{CabinStrategy: "CabinStack", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 11},
+	}
+	for _, c := range cases {
+		if err := UpdateServerRuntimeSettings(dir, c); err == nil {
+			t.Errorf("expected error for %+v", c)
+		}
+	}
+}
+
 func TestValidateNewGameConfig_ProfitMargin(t *testing.T) {
 	cases := []struct {
 		margin string
@@ -217,7 +301,7 @@ func TestValidateNewGameConfig_ProfitMargin(t *testing.T) {
 		{"100%", false},
 	}
 	for _, tc := range cases {
-		cfg := registry.NewGameConfig{FarmName: "Farm", FarmType: "standard", CabinLayout: "nearby", ProfitMargin: tc.margin, MoneyMode: "shared"}
+		cfg := registry.NewGameConfig{FarmName: "Farm", FarmType: "standard", CabinLayout: "nearby", CabinMode: "recommended", ProfitMargin: tc.margin, MoneyMode: "shared"}
 		err := validateCfg(cfg)
 		if tc.valid && err != nil {
 			t.Errorf("margin=%q expected valid, got error: %v", tc.margin, err)
@@ -243,7 +327,7 @@ func TestJunimoFarmTypeID(t *testing.T) {
 
 func TestValidateNewGameConfig_PetPreference(t *testing.T) {
 	base := registry.NewGameConfig{
-		FarmName: "Farm", FarmType: "standard", CabinLayout: "nearby",
+		FarmName: "Farm", FarmType: "standard", CabinLayout: "nearby", CabinMode: "recommended",
 		ProfitMargin: "100", MoneyMode: "shared", PetType: "Dog", PetBreed: 4, PetBreedID: "4",
 	}
 	if err := validateCfg(base); err != nil {
