@@ -17,6 +17,7 @@ public sealed class ModEntry : Mod
     private string commandDir = "";
     private InitConfig? initConfig;
     private bool isJunimoRuntime;
+    private readonly PasswordProtectionBridge passwordBridge = new();
     private bool panelCustomizationApplied;
     private bool singlePlayerMenuPauseApplied;
     private int? singlePlayerMenuPauseSavedInterval;
@@ -49,6 +50,8 @@ public sealed class ModEntry : Mod
     {
         initConfig = ReadInitConfig();
         isJunimoRuntime = Helper.ModRegistry.IsLoaded("JunimoHost.Server");
+        if (isJunimoRuntime)
+            passwordBridge.Initialize(Monitor);
         pendingNewGameOptions = File.Exists(PendingNewGamePath());
         ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
@@ -542,6 +545,8 @@ public sealed class ModEntry : Mod
             Message = message,
             SaveId = string.IsNullOrWhiteSpace(saveId) ? initConfig?.SaveId : saveId,
             UpdatedAt = DateTimeOffset.UtcNow,
+            PasswordBridgeAvailable = passwordBridge.Available,
+            PasswordBridgeDetail = passwordBridge.Detail,
         };
         WriteJson(Path.Combine(controlDir, "status.json"), status);
     }
@@ -550,7 +555,7 @@ public sealed class ModEntry : Mod
     {
         var walletMode = Game1.player?.team?.useSeparateWallets.Value == true ? "separate" : "shared";
         var players = Context.IsWorldReady
-            ? Game1.getOnlineFarmers().Select(farmer => BuildPlayerInfo(farmer, walletMode)).ToArray()
+            ? Game1.getOnlineFarmers().Select(farmer => BuildPlayerInfo(farmer, walletMode, passwordBridge)).ToArray()
             : Array.Empty<PlayerInfo>();
 
         WriteJson(Path.Combine(controlDir, "players.json"), new PlayersFile
@@ -581,15 +586,16 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private static PlayerInfo BuildPlayerInfo(Farmer farmer, string walletMode)
+    private static PlayerInfo BuildPlayerInfo(Farmer farmer, string walletMode, PasswordProtectionBridge bridge)
     {
         var location = ResolveFarmerLocation(farmer);
         var tile = farmer.TilePoint;
+        var isHost = farmer.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID;
         return new PlayerInfo
         {
             Name = farmer.Name,
             UniqueMultiplayerId = farmer.UniqueMultiplayerID.ToString(),
-            IsHost = farmer.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID,
+            IsHost = isHost,
             Location = location.Name,
             LocationName = location.Name,
             LocationDisplayName = location.DisplayName,
@@ -602,6 +608,9 @@ public sealed class ModEntry : Mod
             PersonalIncome = farmer.stats.Get("individualMoneyEarned"),
             TotalMoneyEarned = farmer.totalMoneyEarned,
             WalletMode = walletMode,
+            // Host always bypasses JunimoServer's password protection entirely,
+            // so it is never worth reflecting into IsPlayerAuthenticated for it.
+            IsAuthenticated = isHost ? true : bridge.IsPlayerAuthenticated(farmer.UniqueMultiplayerID),
         };
     }
 
@@ -675,11 +684,23 @@ public sealed class ModEntry : Mod
                     : "";
                 KickPlayer(targetId ?? "");
                 break;
+            case "approve-auth":
+                var approveTargetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawApproveTargetId)
+                    ? rawApproveTargetId.GetString()
+                    : "";
+                ApproveAuth(approveTargetId ?? "");
+                break;
             case "trigger-event":
                 TriggerFestivalEvent();
                 break;
             case "enable-joja":
                 EnableJojaRoute();
+                break;
+            case "ban":
+                var banName = command.Payload is not null && command.Payload.TryGetValue("name", out var rawBanName)
+                    ? rawBanName.GetString()
+                    : "";
+                BanPlayer(banName ?? "");
                 break;
             case "stop":
                 WriteStatus("stopping", "Stop command received. Container stop will be handled by backend later.");
@@ -751,6 +772,60 @@ public sealed class ModEntry : Mod
         }
     }
 
+    private void ApproveAuth(string uniqueMultiplayerId)
+    {
+        if (!Context.IsWorldReady)
+        {
+            WriteStatus("command", "Approve-auth command ignored because the world is not ready.");
+            return;
+        }
+        if (!passwordBridge.Available)
+        {
+            WriteStatus("command", "Approve-auth command ignored because the password bridge is unavailable.");
+            Monitor.Log($"Approve-auth command ignored: password bridge unavailable ({passwordBridge.Detail}).", LogLevel.Warn);
+            return;
+        }
+        if (!long.TryParse(uniqueMultiplayerId, out var targetId))
+        {
+            WriteStatus("command", "Approve-auth command ignored because the target player id was invalid.");
+            return;
+        }
+
+        var target = Game1.getOnlineFarmers().FirstOrDefault(farmer => farmer.UniqueMultiplayerID == targetId);
+        if (target is null)
+        {
+            WriteStatus("command", "Approve-auth command ignored because the target player is not online.");
+            return;
+        }
+        if (target.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID)
+        {
+            WriteStatus("command", "Approve-auth command ignored because the target player is the host.");
+            Monitor.Log("Approve-auth command ignored: host bypasses authentication already.", LogLevel.Warn);
+            return;
+        }
+
+        try
+        {
+            var password = Environment.GetEnvironmentVariable("SERVER_PASSWORD") ?? "";
+            var (success, message, _) = passwordBridge.TryAuthenticate(targetId, password);
+            if (success)
+            {
+                WriteStatus("command", $"Approve-auth command succeeded for player {target.Name}.");
+                Monitor.Log($"Approve-auth command succeeded for player {target.Name} ({targetId}).", LogLevel.Info);
+            }
+            else
+            {
+                WriteStatus("command", $"Approve-auth command failed for player {target.Name}: {message}");
+                Monitor.Log($"Approve-auth command failed for player {target.Name} ({targetId}): {message}", LogLevel.Warn);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteStatus("command", "Approve-auth command failed.");
+            Monitor.Log($"Approve-auth command failed for player {targetId}: {ex}", LogLevel.Error);
+        }
+    }
+
     private void TriggerFestivalEvent()
     {
         if (!Context.IsWorldReady || Game1.chatBox is null)
@@ -778,6 +853,30 @@ public sealed class ModEntry : Mod
         Game1.chatBox.textBoxEnter("!joja IRREVERSIBLY_ENABLE_JOJA_RUN");
         WriteStatus("command", "Enable-joja command sent.");
         Monitor.Log("Enable-joja command sent (simulated \"!joja\" chat message from the host).", LogLevel.Info);
+    }
+
+    private void BanPlayer(string name)
+    {
+        if (!Context.IsWorldReady || Game1.chatBox is null)
+        {
+            WriteStatus("command", "Ban command ignored because the world is not ready.");
+            return;
+        }
+
+        name = SanitizeChatText(name, 60);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            WriteStatus("command", "Ban command ignored because the target player name was empty.");
+            return;
+        }
+
+        // JunimoServer's "!ban" command requires the sending player to already hold the
+        // admin role (see RoleService.IsPlayerAdmin); the panel backend grants the host
+        // that role via JunimoServer's own POST /roles/admin before submitting this command.
+        // It also rejects banning the server host itself, so no extra guard is needed here.
+        Game1.chatBox.textBoxEnter($"!ban {name}");
+        WriteStatus("command", $"Ban command sent for player {name}.");
+        Monitor.Log($"Ban command sent for player {name}.", LogLevel.Info);
     }
 
     private static string SanitizeChatText(string input, int maxLength)

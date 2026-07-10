@@ -822,3 +822,9 @@ Multi Game Mode later
 
 # CABIN-STRATEGY-1 状态
 - `CABIN-STRATEGY-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿，尚未浏览器实测和真机联机验证）：按用户明确设计口径把小屋策略设置分层——新建存档页只给简化二选一"小屋模式：推荐/原版"（`NewGameConfig.cabinMode`），服务器控制页新增"小屋与联机高级设置"弹窗给完整设置（`CabinStrategy`/`ExistingCabinBehavior`/`NetworkBroadcastPeriod`），新增 `GET/PUT /api/instances/:id/config/server-runtime-settings` 接口，两层共用同一份 `server-settings.json`。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `CABIN-STRATEGY-1` 小节。
+
+# APPROVE-PENDING-AUTH-1 状态
+- `APPROVE-PENDING-AUTH-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理页新增独立"待认证玩家"卡片，管理员可一键批准密码保护下卡在隔离小屋的玩家，不需要玩家自己正确输入 `!login <password>`。上游 JunimoServer REST API 没有对应端点（`GET /auth` 只有计数，没有名单/批准接口），改为让内嵌 `StardewAnxiPanel.Control` SMAPI 模组反射调用 JunimoServer 内部单例 `PasswordProtectionService.TryAuthenticate`——这是控制模组第一次真正反射进 JunimoServer 私有实现（而非公开契约、非游戏内聊天指令模拟）。新增模组启动时的"反射能力自检"（写入 `status.json` 的 `passwordBridgeAvailable`/`passwordBridgeDetail`），前端据此提前禁用"批准"按钮，而不是等用户点击后才发现没生效。新增 `POST /api/instances/:id/players/approve-auth`，`GET /players` 每个玩家新增 `isAuthenticated`。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `APPROVE-PENDING-AUTH-1` 小节。
+
+# PLAYERS-BAN-1 状态
+- `PLAYERS-BAN-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理页"管理操作"卡片里此前一直禁用、标着"待接入"的"封禁玩家"正式接通，同时"在线玩家"表格每行的图标按钮从 3 个（发消息占位/踢出/更多占位）精简为 2 个（踢出+封禁，图标均复用管理操作卡片同款真实 PNG）。上游 JunimoServer REST API 没有封禁端点，改为复用它真正的游戏内 `!ban <名字>` 聊天指令（和已实现的 `!joja` 同一套"先提升主机为 admin 再模拟聊天指令"模式），新增 `POST /api/instances/:id/players/ban`。已知限制：封禁名单（`Game1.bannedUsers`）是否跨容器重启持久化尚未反编译确认，本次按用户选择先简单接通、UI 如实提示"重启可能失效"，未做面板侧持久化补偿。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-BAN-1` 小节。

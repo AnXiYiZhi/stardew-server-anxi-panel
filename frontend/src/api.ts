@@ -583,6 +583,20 @@ export function kickPlayer(uniqueMultiplayerId: string, name: string, instanceId
   )
 }
 
+export function approvePlayerAuth(uniqueMultiplayerId: string, instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/approve-auth`,
+    { method: 'POST', body: { uniqueMultiplayerId } },
+  )
+}
+
+export function banPlayer(name: string, uniqueMultiplayerId: string, instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/ban`,
+    { method: 'POST', body: { name, uniqueMultiplayerId } },
+  )
+}
+
 export function triggerFestivalEvent(instanceId = defaultInstanceId) {
   return request<CommandRunResult>(
     `/api/instances/${encodeURIComponent(instanceId)}/festival/event`,

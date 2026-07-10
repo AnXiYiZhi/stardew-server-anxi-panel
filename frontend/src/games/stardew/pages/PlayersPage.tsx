@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { kickPlayer } from '../../../api'
+import { useEffect, useState } from 'react'
+import { kickPlayer, approvePlayerAuth, banPlayer, getInstancePasswordStatus } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
+import type { InstancePasswordStatus } from '../../../types'
 
 type PlayerLocationLike = {
   location?: string
@@ -241,6 +242,16 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   const [kickBusy, setKickBusy] = useState(false)
   const [kickError, setKickError] = useState<string | null>(null)
   const [kickMessage, setKickMessage] = useState<string | null>(null)
+  const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
+  const [approveConfirmTarget, setApproveConfirmTarget] = useState<KickTarget | null>(null)
+  const [approveBusy, setApproveBusy] = useState(false)
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [approveMessage, setApproveMessage] = useState<string | null>(null)
+  const [banConfirmTarget, setBanConfirmTarget] = useState<KickTarget | null>(null)
+  const [banSelectId, setBanSelectId] = useState('')
+  const [banBusy, setBanBusy] = useState(false)
+  const [banError, setBanError] = useState<string | null>(null)
+  const [banMessage, setBanMessage] = useState<string | null>(null)
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -391,6 +402,63 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   const onlinePlayers = playerRows.filter(
     (player) => player.status === 'online' && !player.isHost && player.uniqueMultiplayerId,
   )
+  const pendingAuthPlayers = playerRows.filter(
+    (player) => player.status === 'online' && player.isAuthenticated === false,
+  )
+  // 封禁不要求玩家在线：离线/从未上线过的玩家也应该能被提前封禁。
+  const banTargetPlayers = playerRows.filter((player) => !player.isHost && player.uniqueMultiplayerId)
+
+  useEffect(() => {
+    if (!isRunning) return
+    let cancelled = false
+    getInstancePasswordStatus()
+      .then((res) => {
+        if (!cancelled) setPasswordStatus(res)
+      })
+      .catch(() => {
+        if (!cancelled) setPasswordStatus(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isRunning])
+
+  async function handleConfirmApprove() {
+    const target = approveConfirmTarget
+    if (!target) return
+    setApproveBusy(true)
+    setApproveError(null)
+    setApproveMessage(null)
+    try {
+      const res = await approvePlayerAuth(target.uniqueMultiplayerId)
+      setApproveMessage(res.output?.trim() || `已提交批准 ${target.name} 认证的指令。`)
+      await dashboardData.refreshPlayers()
+    } catch (e) {
+      setApproveError(errorMessage(e))
+    } finally {
+      setApproveBusy(false)
+      setApproveConfirmTarget(null)
+    }
+  }
+
+  async function handleConfirmBan() {
+    const target = banConfirmTarget
+    if (!target) return
+    setBanBusy(true)
+    setBanError(null)
+    setBanMessage(null)
+    try {
+      const res = await banPlayer(target.name, target.uniqueMultiplayerId)
+      setBanMessage(res.output?.trim() || `已提交封禁 ${target.name} 的指令。`)
+      setBanSelectId('')
+      await dashboardData.refreshPlayers()
+    } catch (e) {
+      setBanError(errorMessage(e))
+    } finally {
+      setBanBusy(false)
+      setBanConfirmTarget(null)
+    }
+  }
 
   return (
     <div className="sd-page sd-players-page">
@@ -505,7 +573,6 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                   {playerStatusText(player)}
                 </span>
                 <span className="sd-players-row-actions">
-                  <button className="sd-players-icon-button" type="button" disabled title="发送消息待接入" aria-label="发送消息" />
                   <button
                     className="sd-players-icon-button sd-players-icon-boot"
                     type="button"
@@ -524,7 +591,22 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                     aria-label="踢出玩家"
                     onClick={() => setKickConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
                   />
-                  <button className="sd-players-icon-button sd-players-icon-more" type="button" disabled title="更多操作待接入" aria-label="更多操作" />
+                  <button
+                    className="sd-players-icon-button sd-players-icon-ban"
+                    type="button"
+                    disabled={!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || banBusy}
+                    title={
+                      !isAdmin
+                        ? '仅管理员可用'
+                        : player.isHost
+                          ? '无法封禁主机玩家'
+                          : !player.uniqueMultiplayerId
+                            ? '缺少玩家联机 ID，暂不支持封禁'
+                            : '封禁玩家'
+                    }
+                    aria-label="封禁玩家"
+                    onClick={() => setBanConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                  />
                 </span>
               </div>
             ))
@@ -545,6 +627,68 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           </div>
         )}
       </div>
+
+      {passwordStatus?.enabled ? (
+        <div className="sd-srv-section sd-players-pending-auth-section">
+          <div className="sd-srv-section-title">
+            <img className="sd-players-section-icon" src="/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png" alt="" />
+            待认证玩家
+            {pendingAuthPlayers.length > 0 && (
+              <span className="sd-players-badge-waiting">待认证: {pendingAuthPlayers.length}</span>
+            )}
+          </div>
+
+          {passwordStatus.passwordBridgeAvailable === false && (
+            <div className="sd-players-info-error" style={{ marginBottom: 8 }} title={passwordStatus.passwordBridgeDetail || undefined}>
+              密码认证反射桥不可用（可能是控制模组版本过旧或与当前 JunimoServer 版本不兼容），暂时无法从面板批准玩家，请让玩家在游戏内输入 !login 密码，或联系管理员升级控制模组后重启服务器。
+            </div>
+          )}
+
+          {pendingAuthPlayers.length > 0 ? (
+            <div className="sd-players-table-placeholder">
+              <div className="sd-players-table-header">
+                <span>玩家名</span>
+                <span>联机 ID</span>
+                <span>操作</span>
+              </div>
+              {pendingAuthPlayers.map((player) => (
+                <div className="sd-players-table-row" key={player.uniqueMultiplayerId || player.name}>
+                  <span className="sd-players-name-cell">
+                    <span className="sd-players-avatar" aria-hidden="true">{player.name.slice(0, 1).toUpperCase()}</span>
+                    <strong>{player.name}</strong>
+                  </span>
+                  <span>{shortId(player.uniqueMultiplayerId)}</span>
+                  <span className="sd-players-row-actions">
+                    <button
+                      type="button"
+                      className="sd-btn-green"
+                      disabled={!isAdmin || !isRunning || !passwordStatus?.passwordBridgeAvailable || !player.uniqueMultiplayerId || approveBusy}
+                      title={
+                        !isAdmin
+                          ? '仅管理员可用'
+                          : !passwordStatus?.passwordBridgeAvailable
+                            ? '密码认证反射桥不可用'
+                            : '批准该玩家认证'
+                      }
+                      onClick={() => setApproveConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                    >
+                      批准
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="sd-players-empty sd-players-empty-small">
+              <div className="sd-players-empty-title">暂无待认证玩家</div>
+              <div className="sd-players-empty-desc">服务器已开启密码保护，当前没有玩家在等待认证。</div>
+            </div>
+          )}
+
+          {approveError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{approveError}</div> : null}
+          {approveMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{approveMessage}</div> : null}
+        </div>
+      ) : null}
 
       <div className="sd-srv-section sd-players-events-section">
         <div className="sd-srv-section-title">
@@ -664,17 +808,30 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             <div className="sd-players-action-icon sd-players-action-icon-ban" aria-hidden="true" />
             <strong>封禁玩家</strong>
             <span>禁止玩家加入服务器</span>
-            <select className="sd-players-action-select" disabled>
-              <option>选择玩家</option>
+            <select
+              className="sd-players-action-select"
+              disabled={!isAdmin || !isRunning || banTargetPlayers.length === 0 || banBusy}
+              value={banSelectId}
+              onChange={(e) => setBanSelectId(e.target.value)}
+            >
+              <option value="">{banTargetPlayers.length === 0 ? '暂无可封禁玩家' : '选择玩家'}</option>
+              {banTargetPlayers.map((player) => (
+                <option key={player.uniqueMultiplayerId} value={player.uniqueMultiplayerId}>
+                  {player.name}
+                </option>
+              ))}
             </select>
             <button
               className="sd-btn-delete"
-              disabled
-              title={!isAdmin ? '仅管理员可用' : '封禁 API 待接入'}
+              disabled={!isAdmin || !isRunning || !banSelectId || banBusy}
+              title={!isAdmin ? '仅管理员可用' : '封禁玩家'}
+              onClick={() => {
+                const target = banTargetPlayers.find((player) => player.uniqueMultiplayerId === banSelectId)
+                if (target) setBanConfirmTarget({ uniqueMultiplayerId: target.uniqueMultiplayerId || '', name: target.name })
+              }}
             >
               封禁
             </button>
-            <span className="sd-srv-badge-pending">待接入</span>
           </div>
 
           <div className="sd-players-action-item">
@@ -708,9 +865,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
 
         {kickError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{kickError}</div> : null}
         {kickMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{kickMessage}</div> : null}
+        {banError ? <div className="sd-players-info-error" style={{ marginTop: 8 }}>{banError}</div> : null}
+        {banMessage ? <div className="sd-srv-result" style={{ marginTop: 8 }}>{banMessage}</div> : null}
 
         <div className="sd-srv-hint" style={{ marginTop: 8 }}>
-          踢出玩家通过面板内置的 StardewAnxiPanel.Control 控制模组发送，无法踢出主机玩家；封禁、白名单和权限设置仍需要 JunimoServer 提供对应 API 或可控命令后才能启用。
+          踢出玩家和封禁玩家都通过面板内置的 StardewAnxiPanel.Control 控制模组发送，无法踢出/封禁主机玩家；封禁会临时把主机提升为管理员来模拟游戏内 !ban 指令，如果服务器容器重启，封禁可能失效需要重新操作。白名单和权限设置仍需要 JunimoServer 提供对应 API 或可控命令后才能启用。
         </div>
       </div>
 
@@ -776,6 +935,42 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
               </button>
               <button className="sd-btn-delete" onClick={() => void handleConfirmKick()} disabled={kickBusy}>
                 {kickBusy ? '踢出中…' : '确认踢出'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {approveConfirmTarget ? (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>确认批准认证</h3>
+            <p>批准玩家 {approveConfirmTarget.name} 的密码认证？该操作会立即让玩家进入正式农场，等同于服务器替其正确输入了一次密码。</p>
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setApproveConfirmTarget(null)} disabled={approveBusy}>
+                取消
+              </button>
+              <button className="sd-btn-green" onClick={() => void handleConfirmApprove()} disabled={approveBusy}>
+                {approveBusy ? '批准中…' : '确认批准'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {banConfirmTarget ? (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>确认封禁玩家</h3>
+            <p>
+              封禁玩家 {banConfirmTarget.name}？该玩家会被立即断开且暂时无法重新加入服务器；如果之后重启了服务器容器，这条封禁可能会失效，需要重新操作。
+            </p>
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setBanConfirmTarget(null)} disabled={banBusy}>
+                取消
+              </button>
+              <button className="sd-btn-delete" onClick={() => void handleConfirmBan()} disabled={banBusy}>
+                {banBusy ? '封禁中…' : '确认封禁'}
               </button>
             </div>
           </div>

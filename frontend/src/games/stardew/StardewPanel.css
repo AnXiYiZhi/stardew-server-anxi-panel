@@ -12877,31 +12877,17 @@
 
 .sd-players-icon-button::before {
   content: "";
-  width: 16px;
-  height: 13px;
-  background:
-    linear-gradient(currentColor 0 0) 3px 4px / 10px 5px no-repeat,
-    linear-gradient(135deg, transparent 0 6px, currentColor 6px 8px, transparent 8px) 2px 8px / 10px 6px no-repeat;
-  color: #4d4435;
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
 }
 
 .sd-players-icon-boot::before {
-  width: 16px;
-  height: 17px;
-  background:
-    linear-gradient(currentColor 0 0) 5px 1px / 5px 13px no-repeat,
-    linear-gradient(currentColor 0 0) 3px 11px / 11px 5px no-repeat,
-    radial-gradient(circle at 5px 4px, currentColor 0 3px, transparent 3.5px);
-  color: #a4461e;
+  background: url('/assets/stardew/ui/icons/icon_players_action_boot_image2.png') center / contain no-repeat;
 }
 
-.sd-players-icon-more::before {
-  width: 4px;
-  height: 18px;
-  background:
-    radial-gradient(circle, currentColor 0 2px, transparent 2.5px) center 2px / 4px 4px no-repeat,
-    radial-gradient(circle, currentColor 0 2px, transparent 2.5px) center 7px / 4px 4px no-repeat,
-    radial-gradient(circle, currentColor 0 2px, transparent 2.5px) center 12px / 4px 4px no-repeat;
+.sd-players-icon-ban::before {
+  background: url('/assets/stardew/ui/icons/icon_players_action_ban_image2.png') center / contain no-repeat;
 }
 
 .sd-players-icon-button:disabled {

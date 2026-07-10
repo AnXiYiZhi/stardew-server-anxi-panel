@@ -537,3 +537,97 @@ func TestListPlayersRunsInfoCommandWhenControlFileMissing(t *testing.T) {
 		t.Fatalf("players = %+v, want Leah", result.Players)
 	}
 }
+
+func TestReadPlayersFromControlParsesIsAuthenticated(t *testing.T) {
+	dir := t.TempDir()
+	control := filepath.Join(dir, ".local-container", "control")
+	if err := os.MkdirAll(control, 0o755); err != nil {
+		t.Fatalf("mkdir control: %v", err)
+	}
+	raw := `{
+  "updatedAt": "2026-07-10T10:00:00Z",
+  "saveId": "test",
+  "players": [
+    {"name": "host", "uniqueMultiplayerId": "1", "isHost": true, "isAuthenticated": true},
+    {"name": "pending", "uniqueMultiplayerId": "2", "isHost": false, "isAuthenticated": false},
+    {"name": "legacyMod", "uniqueMultiplayerId": "3", "isHost": false}
+  ]
+}`
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(raw), 0o644); err != nil {
+		t.Fatalf("write players.json: %v", err)
+	}
+
+	snapshot, ok := readPlayersFromControl(dir)
+	if !ok {
+		t.Fatal("readPlayersFromControl returned !ok")
+	}
+	if len(snapshot.Players) != 3 {
+		t.Fatalf("players len = %d, want 3", len(snapshot.Players))
+	}
+	if snapshot.Players[0].IsAuthenticated == nil || !*snapshot.Players[0].IsAuthenticated {
+		t.Fatalf("host isAuthenticated = %#v, want true", snapshot.Players[0].IsAuthenticated)
+	}
+	if snapshot.Players[1].IsAuthenticated == nil || *snapshot.Players[1].IsAuthenticated {
+		t.Fatalf("pending isAuthenticated = %#v, want false", snapshot.Players[1].IsAuthenticated)
+	}
+	if snapshot.Players[2].IsAuthenticated != nil {
+		t.Fatalf("legacyMod isAuthenticated = %#v, want nil (field absent from old mod builds)", snapshot.Players[2].IsAuthenticated)
+	}
+}
+
+func TestListPlayersOfflinePlayersHideIsAuthenticated(t *testing.T) {
+	dir := t.TempDir()
+	control := filepath.Join(dir, ".local-container", "control")
+	if err := os.MkdirAll(control, 0o755); err != nil {
+		t.Fatalf("mkdir control: %v", err)
+	}
+	// First snapshot: "pending" is online and unauthenticated.
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(`{
+  "updatedAt": "2026-07-10T10:00:00Z",
+  "saveId": "test",
+  "players": [
+    {"name": "host", "uniqueMultiplayerId": "1", "isHost": true, "isAuthenticated": true},
+    {"name": "pending", "uniqueMultiplayerId": "2", "isHost": false, "isAuthenticated": false}
+  ]
+}`), 0o644); err != nil {
+		t.Fatalf("write players.json: %v", err)
+	}
+
+	d := newTestDriver(&fakeConsoleDocker{})
+	instance := makeRunningInstance()
+	instance.DataDir = dir
+	if _, err := d.ListPlayers(context.Background(), instance); err != nil {
+		t.Fatalf("first ListPlayers returned error: %v", err)
+	}
+
+	// Second snapshot: "pending" has disconnected and is no longer listed as online.
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(`{
+  "updatedAt": "2026-07-10T10:05:00Z",
+  "saveId": "test",
+  "players": [
+    {"name": "host", "uniqueMultiplayerId": "1", "isHost": true, "isAuthenticated": true}
+  ]
+}`), 0o644); err != nil {
+		t.Fatalf("rewrite players.json: %v", err)
+	}
+
+	result, err := d.ListPlayers(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("second ListPlayers returned error: %v", err)
+	}
+	var pending *PlayerInfo
+	for i := range result.Players {
+		if result.Players[i].Name == "pending" {
+			pending = &result.Players[i]
+		}
+	}
+	if pending == nil {
+		t.Fatalf("expected offline 'pending' player still present in roster: %+v", result.Players)
+	}
+	if pending.Status != "offline" {
+		t.Fatalf("pending status = %q, want offline", pending.Status)
+	}
+	if pending.IsAuthenticated != nil {
+		t.Fatalf("pending isAuthenticated = %#v, want nil once offline", pending.IsAuthenticated)
+	}
+}

@@ -191,6 +191,7 @@ export type StardewPlayerInfo = {
   totalMoneyEarned?: number
   walletMode?: 'shared' | 'separate' | string
   lastSeen?: string
+  isAuthenticated?: boolean | null
 }
 
 export type StardewPlayerEvent = {
@@ -431,6 +432,8 @@ export type InstancePasswordStatus = {
   pendingCount: number
   timeoutSeconds: number
   maxAttempts: number
+  passwordBridgeAvailable?: boolean
+  passwordBridgeDetail?: string
 }
 
 export type InstanceRenderingResult = {

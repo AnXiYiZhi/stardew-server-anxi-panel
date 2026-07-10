@@ -1681,3 +1681,31 @@ npm.cmd run dev
 - 影响文件：`frontend/src/types.ts`、`frontend/src/api.ts`、`frontend/src/games/stardew/NewGameCreator.tsx`、`frontend/src/games/stardew/pages/ServerControlPage.tsx`。未新增图片素材（弹窗内是纯 `<select>`，沿用 `sd-input`/`sd-schedule-field` 既有样式类），未改生命周期 API、密码设置、计划重启、VNC 或 Junimo 通信。
 - 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实实例走一遍"新建存档选原版→服务器控制页改小屋策略→重启→确认 `server-settings.json` 变化"的完整链路，弹窗在移动端窄屏下的表现也未截图验证，建议下一位维护者补一次。
 - 下一步注意事项：`ExistingCabinBehavior` 在新建存档页没有暴露入口（新档没有"已有小屋"概念，永远由后端写 `KeepExisting`），只能通过服务器控制页的高级设置事后修改；如果以后要统一到同一套表单里，需要重新设计交互而不是简单地把字段搬过去。
+
+# APPROVE-PENDING-AUTH-1 批准待认证玩家
+
+- 需求来源：后端新增反射 JunimoServer `PasswordProtectionService` 批准待认证玩家的能力（详见 `docs/02-backend.md` `APPROVE-PENDING-AUTH-1`），`GET /players` 每个玩家新增 `isAuthenticated`（`boolean | null`），`GET /password-status` 新增 `passwordBridgeAvailable`/`passwordBridgeDetail` 自检字段，新增 `POST /players/approve-auth`。用户明确要求待认证玩家 UI 走**独立卡片**，不合并进现有"在线玩家"表。
+- `types.ts`：`StardewPlayerInfo` 新增 `isAuthenticated?: boolean | null`；`InstancePasswordStatus` 新增 `passwordBridgeAvailable?: boolean`/`passwordBridgeDetail?: string`。
+- `api.ts` 新增 `approvePlayerAuth(uniqueMultiplayerId, instanceId?)`，写法和 `kickPlayer` 完全同构。
+- `PlayersPage.tsx` 新增独立卡片 `sd-players-pending-auth-section`，插在"在线玩家"表和"玩家活动/最近事件"区块之间：
+  - 页面首次引入 `useEffect`（此前完全由外部 `dashboardData` 轮询驱动），`isRunning` 为真时按需拉取一次 `getInstancePasswordStatus()`，不进入全局轮询层（参考 `ServerControlPage.tsx` 已有的"页面自己按需拉取"做法）。
+  - 只在 `passwordStatus?.enabled` 为真时显示整个卡片；`pendingAuthPlayers` 严格用 `isAuthenticated === false` 过滤（`undefined`/`null` 不算待认证，只是"控制模组版本不支持/反射查询失败"）。
+  - `passwordBridgeAvailable === false` 时卡片顶部提示反射桥不可用，禁用"批准"按钮并给出诊断文案（`passwordBridgeDetail` 放进 `title` 属性）。
+  - "批准"按钮复用踢出玩家的整套"确认弹窗 → busy → 调用 API → 成功/失败提示 → `dashboardData.refreshPlayers()`"状态模式，没有引入新的交互模式；确认弹窗保留二次确认，因为批准会立即让玩家进入正式农场，不是纯只读操作。
+  - 未新增任何 CSS，卡片和行内元素全部复用 `sd-srv-section`/`sd-players-table-*`/`sd-players-badge-waiting`/`sd-players-empty*`/`sd-btn-green`/`sd-confirm-*` 既有类名。
+- 影响文件：`frontend/src/types.ts`、`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`。未新增图片素材，未改踢出玩家、密码设置弹窗或轮询逻辑。
+- 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实开启 `SERVER_PASSWORD` 的运行实例走一遍"玩家连接卡在待认证 → 卡片显示 → 点击批准 → 玩家进入农场"完整链路，也未截图验证移动端窄屏布局，建议下一位维护者补一次。
+- 下一步注意事项：页面里 `isWaitingPlayerStatus`（`status === 'waiting'|'pending'|'joining'`）和"等待加入"徽章是历史遗留的预留扩展点，后端从未产出过这些 status 值；本次"待认证"走独立的 `isAuthenticated` 字段和独立卡片，**没有**复用这套逻辑，两者是不同概念不要混淆。`passwordStatus` 只在页面挂载时拉取一次，不会随密码保护开关状态实时刷新，如果以后反馈这点延迟造成困扰可以加轮询或"刷新"按钮，这次按最小实现处理。
+
+# PLAYERS-BAN-1 封禁玩家 + 玩家行操作按钮精简
+
+- 需求来源：后端新增封禁玩家能力（详见 `docs/02-backend.md` `PLAYERS-BAN-1`，复用 JunimoServer `!ban` 聊天指令），新增 `POST /players/ban`。用户明确要求把"在线玩家"表格每行原本 3 个图标按钮（恒禁用的"发送消息"、可用的"踢出"、恒禁用的"更多操作"）精简为只保留"踢出"+新增"封禁"，图标都换成"管理操作"卡片同款真实 PNG（`icon_players_action_boot_image2.png`/`icon_players_action_ban_image2.png`）。
+- `api.ts` 新增 `banPlayer(name, uniqueMultiplayerId, instanceId?)`，写法和 `kickPlayer` 完全同构。
+- `PlayersPage.tsx`：
+  - 行内操作区（`sd-players-row-actions`）删除"发送消息"/"更多操作"两个恒禁用占位按钮，只保留"踢出"图标按钮和新增的"封禁"图标按钮；"封禁"按钮禁用条件 `!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || banBusy`，**不要求玩家在线**（封禁本来就该支持针对离线/曾经离开的玩家）。
+  - "管理操作"卡片"封禁玩家"从恒禁用改为真实可用：`<select>` 选项来源 `banTargetPlayers = playerRows.filter(p => !p.isHost && p.uniqueMultiplayerId)`（同样不按在线状态过滤），"封禁"按钮按 `!isAdmin || !isRunning || !banSelectId || banBusy` 判断，移除"待接入"徽章。
+  - 新增状态 `banConfirmTarget`/`banSelectId`/`banBusy`/`banError`/`banMessage`（复用已有 `KickTarget` 类型）和 `handleConfirmBan()`，完整复用踢出/批准认证的"确认弹窗 → busy → 调用 API → 成功/失败提示 → `dashboardData.refreshPlayers()`"状态模式。确认弹窗文案明确写出"如果之后重启了服务器容器，这条封禁可能会失效，需要重新操作"，如实告知用户这个不确定性，不假装是绝对永久封禁。
+- `StardewPanel.css`：`.sd-players-icon-boot::before`（行内小按钮唯一生效的那组定义）从纯 CSS `linear-gradient`/`radial-gradient` 画的靴子矢量图形改为直接引用 `icon_players_action_boot_image2.png`；新增 `.sd-players-icon-ban::before` 同样引用 `icon_players_action_ban_image2.png`；删除因移除"更多操作"按钮而变成孤儿样式的 `.sd-players-icon-more::before` 规则（这是本次改动直接导致的孤儿代码清理，不是清理无关的历史遗留）。
+- 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`。未新增图片素材（直接复用管理操作卡片已有的两张 PNG）。
+- 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实运行实例实际点一遍行内封禁图标和管理操作卡片封禁按钮，也未截图验证移动端窄屏下两个新图标按钮的间距/触控热区，建议下一位维护者补一次。
+- 下一步注意事项：管理操作卡片的 select+button 目前被一条较晚的 CSS 规则（`StardewPanel.css` 约 15131 行 `.sd-players-action-select, .sd-players-action-item > button { display: none; }`）整体隐藏（这是既有状态，"踢出玩家"卡片本来就是这样，"封禁玩家"卡片照抄同一结构保持一致），真正生效的交互入口是行内图标按钮；如果以后要让卡片内的 select/button 重新可见，需要先弄清楚这条 CSS 规则当初为什么要隐藏它们。

@@ -22,6 +22,14 @@ type AuthStatusResult struct {
 	PendingCount       int  `json:"pendingCount"`
 	TimeoutSeconds     int  `json:"timeoutSeconds"`
 	MaxAttempts        int  `json:"maxAttempts"`
+
+	// PasswordBridgeAvailable/Detail come from the embedded control mod's
+	// startup reflection self-check (see player_auth.go readPasswordBridgeStatus),
+	// not from JunimoServer's REST API. The frontend uses this to disable the
+	// "approve pending player" action up front when the reflection bridge into
+	// JunimoServer's PasswordProtectionService failed to resolve.
+	PasswordBridgeAvailable bool   `json:"passwordBridgeAvailable"`
+	PasswordBridgeDetail    string `json:"passwordBridgeDetail,omitempty"`
 }
 
 // GetAuthStatus proxies JunimoServer's GET /auth endpoint from inside the
@@ -74,5 +82,8 @@ func (d *Driver) GetAuthStatus(ctx context.Context, instance registry.Instance) 
 	if err := json.Unmarshal([]byte(result.Stdout), &status); err != nil {
 		return nil, fmt.Errorf("parse GET /auth response: %w", err)
 	}
+	bridge := readPasswordBridgeStatus(instance.DataDir)
+	status.PasswordBridgeAvailable = bridge.Available
+	status.PasswordBridgeDetail = bridge.Detail
 	return &status, nil
 }
