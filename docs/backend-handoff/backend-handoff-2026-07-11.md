@@ -151,3 +151,69 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 
 - `doRestoreAndRestart` 直接复用 `doStop`/`doStart` 方法体，这意味着以后如果这两个方法的内部逻辑变化（比如新增一个启动前置检查），"回档自动重启"会自动跟着变化，不需要单独维护一份重复逻辑——但也意味着如果 `doStart`/`doStop` 出现 bug，这条路径会一起受影响，排查时要意识到这三者共享同一套底层实现。
 - 如果回档本身成功但重新启动失败（`doStart` 内部任意一步出错），job 会整体标记为 `failed`，前端只能看到"任务失败"和日志里具体哪一步出错；没有做"回档成功但启动失败"这种部分成功状态的特殊 UI 展示，管理员需要看 job 日志或去服务器页手动重试启动。
+# PLAYER-OFFLINE-SAVE-FALLBACK-1 离线玩家信息完善
+
+## 改了什么
+
+- `saveRosterFarmer` 新增解析 `homeLocation`、`lastSleepLocation`、`lastSleepPoint` 和 `useSeparateWallets`。
+- 从存档构造离线名册时，位置优先使用 `lastSleepLocation`，缺失时回退 `homeLocation`；坐标使用 `lastSleepPoint`。前端“位置”列保持原样，语义是离线玩家在存档中的最后睡眠位置。
+- 独立钱包时使用 Farmer 的 `totalMoneyEarned` 兜底 `personalIncome`；共享钱包只返回农场累计收入，不伪造个人收入。
+- 新增 `mergePlayerCacheFallback`：存档字段只填补缓存缺口，不覆盖控制模组在玩家在线时记录的更准确位置、坐标和收入。
+- `cacheMatchesSave` 新增存档身份兼容：`FarmName` 与 `FarmName_<纯数字ID>` 视为同一存档，解决 `players.json`/`players-cache.json` 使用基础 ID、`status.json` 使用完整目录名时潜在的历史缓存失效；其它后缀仍严格区分。
+
+## 影响文件与接口
+
+- `backend/internal/games/stardew_junimo/players.go`
+- `backend/internal/games/stardew_junimo/players_test.go`
+- `GET /api/instances/:id/players` 的 URL 和响应结构不变，仅原先缺失的可选字段会更完整。
+
+## 如何验证
+
+- `go test ./internal/games/stardew_junimo/...` 通过。
+- `go test ./...` 后端全仓库通过。
+- 新增测试覆盖存档位置/坐标/独立钱包收入解析、基础 ID 与数字后缀目录 ID 的兼容，以及运行时位置不被存档兜底覆盖。
+
+## 下一步注意事项
+
+- 存档无法恢复真实的历史登录时间；`lastSeen` 仍只会在面板实际观察到玩家在线后写入缓存。
+- `lastSleepLocation` 是存档时的睡眠位置，不等同于玩家断线瞬间的位置。产品已确认前端列名继续显示“位置”，无需增加“存档位置”文案。
+- 已经丢失的历史运行时数据不会凭空恢复；部署本版本后，存档可提供的字段会立即补齐，玩家后续登录产生的运行时字段会继续由缓存优先保留。
+# REAL-INSTANCE-LIFECYCLE-BACKUP-VERIFIED-1 生命周期与回档真实实例验证补记
+
+- 用户已确认真实环境验证通过：大存档启动并等待主机上线、睡觉后生成游戏日自动回档点、运行中回档自动执行“停止→回档→重启”。
+- 本补记取代下文 `SAVE-BACKUP-GAMEDAY-1`、`SAVE-RESTORE-AUTORESTART-1` 对应的“未做真实实例端到端验证”记录。
+# UI-LIFECYCLE-STATUS-1
+
+- 改动：`instance_ui_status.go` 聚合实例、driverPhase、活动 lifecycle job、`status.json`、`players.json`，并由 `/state` 返回七态 `uiStatus`。
+- 影响：`backend/internal/web/instance_handlers.go`、`backend/internal/web/instance_ui_status.go`；接口新增字段，旧字段不变。
+- 验证：前端 TypeScript 检查通过；后端全包测试当前被工作区既有的 `internal/storage` 重复 `nullString` 定义阻塞。
+- 注意：状态文件是只读读取；未来增加阶段耗时时应持久化阶段切换时间，不要从文件 mtime 反推。
+- 后续补齐：`runtimeDiagnostic` 已包含 active/cache saveId、存档目录、控制模组与 Junimo 版本匹配、两段启动耗时；测试覆盖存档身份与耗时边界。当前耗时是结构化 JSON 时间戳差值，不使用文件 mtime。
+# PLAYER-ROSTER-SQLITE-1 玩家名册 SQLite 化
+
+## 改了什么
+
+- 新增 migration `008_player_roster.sql`：`save_identities` 维护基础/完整存档 ID 映射，`player_roster` 以实例、稳定存档 ID、玩家 ID 为联合主键。
+- 新增 `internal/storage/player_roster.go`，提供名册 upsert/list；保存首次出现、最后观测、最后在线、位置、坐标、收入、钱包与来源快照。
+- `ListPlayers` 在现有 `players.json + players-cache.json + 存档 XML` 合并后同步 SQLite，再从 SQLite 补齐离线历史。旧缓存成功导入后删除，生产路径不再写 `players-cache.json`；无 Store 的 driver 单元测试/降级运行仍保留旧兼容路径。
+- 第二期在同一 migration 增加 `player_events` 和 `player_roster.current_status`。每次运行时快照同步会按数据库上次状态生成 `seen/joined/left`，`recentEvents` 改为读取 SQLite；旧 `players-events.json` 幂等导入后与名册缓存一起退役。
+- 完整存档目录名优先作为稳定 ID；缺少 `UniqueMultiplayerID` 时暂用姓名身份，拿到正式 ID 后按同存档同名合并。
+
+## 影响文件与接口
+
+- `backend/migrations/008_player_roster.sql`
+- `backend/internal/storage/player_roster.go` / `player_roster_test.go`
+- `backend/internal/games/stardew_junimo/players.go` / `players_test.go`
+- `GET /api/instances/:id/players` 结构不变；`saveId` 更稳定，离线来源可能为 `sqlite_roster`。
+
+## 如何验证
+
+- `cd backend; go test ./...`
+- 集成测试 `TestListPlayersMigratesLegacyCacheToSQLiteRoster` 验证旧缓存导入、文件退役和后续 SQLite 离线恢复。
+- 存储测试验证首次/最后时间、最后在线不被离线刷新覆盖、最新快照更新、改名身份稳定、临时姓名身份晋升，以及首次在线→离开→重新加入的事件顺序。
+
+## 下一步注意事项
+
+- 名册与最近活动现在都由 SQLite 承担历史职责；`players.json` 是唯一持续使用的 JSON 玩家输入，只表示当前运行时快照。
+- 旧缓存仅在一次请求内导入；若个别记录写库失败，文件会保留供下次重试，不会提前删除。
+- 需要在真实升级实例确认 `players-cache.json`、`players-events.json` 首次访问玩家页后消失，并检查 `panel.db` 中同名不同存档没有串记录、玩家上下线事件没有重复。

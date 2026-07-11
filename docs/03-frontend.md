@@ -1021,6 +1021,8 @@ Stardew 面板内部路由：
 
 当前未使用 `react-router-dom`，路由通过内部 route + History API 管理。进入 Multi Game Mode 时再考虑正式路由库。
 
+上述桌面端 9 个路由页面（`StardewPanel.tsx`）和移动端 5 个页面（`StardewMobileShell.tsx`）均已改为 `React.lazy` 按需加载，`renderPage()` / Tab 内容外层套了 `Suspense`，fallback 复用已有占位卡片样式（桌面 `sd-placeholder-card`，移动 `sd-mshell-card`）。只有当前激活的 Tab 才会拉取对应页面代码，切换 Tab 才会触发新 chunk 请求。新增页面时按同样写法用 `lazy(() => import('./pages/XxxPage').then((m) => ({ default: m.XxxPage })))` 接入，不要退回静态 import，否则首屏 JS 体积会重新膨胀。
+
 ## 移动端入口（M0）
 
 - `frontend/src/hooks/useMediaQuery.ts`：通用 `useMediaQuery(query: string): boolean` hook，基于 `window.matchMedia` + `change` 事件，不绑定具体断点，可在其它场景复用。
@@ -1920,3 +1922,86 @@ npm.cmd run dev
 - 主机确认等待保留 10 分钟超时兜底；玩家快照持续不可用时不会永久卡在“启动中…”。服务器停止、报错或主机上线后会重置等待状态。
 - 影响文件：`frontend/src/games/stardew/pages/OverviewPage.tsx`。未新增或修改后端接口。
 - 验证：`cd frontend; npm.cmd run build` 通过，仅保留既有 Vite chunk 体积提示。
+# REAL-INSTANCE-CRITICAL-FLOWS-VERIFIED-1 关键流程真实实例验证标记
+
+- 用户已确认真实环境验证通过：大存档启动按钮持续等待主机上线、运行中回档自动重启、多人认证/踢出/封禁/回家、睡觉生成游戏日回档点，以及 Steam 授权和镜像源降级的前端状态流转。
+- 本标记取代相关历史小节中的“未做真机/端到端验证”说明；未明确列出的移动端视觉适配等验证空白仍然保留。
+
+# FE-LIFECYCLE-STATE-MACHINE-1 生命周期状态机统一
+
+- 新增 `frontend/src/games/stardew/useStardewLifecycleState.ts`，统一根据实例 `state/driverPhase`、active `stardew_lifecycle` job、在线主机和页面刚提交的 pending action 推导生命周期阶段。
+- 状态机统一输出启动中、等待主机、停止中、运行、停止、待存档、错误和未知状态；总览页与服务器控制页不再各自维护主机上线确认和 10 分钟超时逻辑。
+- 启动、停止、重启以及运行中回档产生的自动重启 lifecycle job 均消费相同的 `startupInProgress` / `waitingForStop` 结果。主机等待超时改为独立 timer，到期不再依赖下一次玩家快照更新才能生效。
+- 未新增或修改后端接口。验证：`cd frontend; npm.cmd run build` 通过，仅有既有 chunk 体积提示。
+# FE-UI-LIFECYCLE-STATUS-1 使用后端标准状态（2026-07-11）
+
+- `useStardewLifecycleState` 优先使用 `/state.uiStatus`，仅在连接旧版后端时保留原有 job/主机快照组合逻辑作为兼容回退。
+- 诊断页新增“服务器状态来源”，集中展示 UI 标准状态、实例/Driver、`status.json` 与 `players.json` 的状态和更新时间。
+- 同一区域展示文件新鲜/过期、存档目录、缓存身份、Compose 服务状态、两段启动耗时，以及控制模组/Junimo 版本匹配；Compose 仅在诊断页加载和手动刷新时探测。
+
+# FE-LIFECYCLE-ACTIONS-1 生命周期启停操作去重（前端拆分阶段二第一项，2026-07-11）
+
+- 新增 `frontend/src/games/stardew/useStardewLifecycleActions.ts`，在 `useStardewLifecycleState`（状态推导）之上再包一层“操作”hook：`handleStart/handleStop/handleRestart`、`saveStartBlocker`、启停相关 6 个 state（`actionBusy`/`actionError`/`saveRequiredDetected`/`confirmAction`/`pendingStartupAction`/`pendingStopAction`）、3 个派生 `useEffect`、`showSaveRequiredPrompt`/`canStart`/`canStop`/`canRestart` 派生值，以及 `requestConfirm`/`cancelConfirm`/`confirmPendingAction` 三个确认弹窗辅助函数，全部集中到这一个 hook。
+- `OverviewPage.tsx` 和 `ServerControlPage.tsx` 原本各自维护一份几乎逐行相同的实现，现在都改为 `useStardewLifecycleActions({ instanceState, dashboardData, isAdmin })` 一行接入；确认弹窗的取消/确认按钮分别接 `cancelConfirm`/`confirmPendingAction`，不再各自手写“记下 action、清空、再调用对应 handler”的闭包。
+- 新增页面或组件如果需要触发服务器启停，应复用这个 hook，不要再复制 `handleStart/handleStop/handleRestart` 这类逻辑。
+- 验证：`cd frontend && npx tsc -b && npm run build` 通过；用 Playwright 登录真实运行中的实例，在总览页和服务器控制页分别打开“停止”“重启”确认弹窗并点击“取消”，确认弹窗正确显示、UI 状态联动正常、控制台无新增错误——过程中未对实际运行的服务器执行任何真实停止/重启。
+
+# FE-SERVER-DOMAIN-HOOKS-1 ServerControlPage 领域 hook 拆分（前端拆分阶段二第二项，2026-07-11）
+
+- `ServerControlPage.tsx`（原 1437 行）按业务领域拆成 9 个独立 hook，全部放在 `frontend/src/games/stardew/` 下，与 `useStardewLifecycleActions.ts` 同级：
+  - `useServerQuickBackup.ts`：手动备份当前激活存档。
+  - `useServerRestartSchedule.ts`：计划重启的读取/保存/关闭前提醒分钟切换。
+  - `useServerVNCSettings.ts`：VNC 端口读取、显示渲染开关、跳转 VNC 控制页（含 3 个原本挂在页面上的 `useEffect`）。
+  - `useServerPassword.ts`：服务器加入密码读取/保存、JunimoServer 密码保护状态查询。
+  - `useServerRuntimeSettings.ts`：小屋策略（CabinStrategy）/联机广播频率等运行时设置。
+  - `useServerFestival.ts`：触发节日活动指令。
+  - `useServerJoja.ts`：永久启用 Joja 路线的二次确认输入校验和提交。
+  - `useServerConsole.ts`：控制台命令列表加载（服务器运行时）和执行。
+  - `useServerBroadcast.ts`：全服喊话输入与发送。
+- 每个 hook 只负责自己的 state + API 调用 + open/close/save 系列 handler，返回值命名尽量贴近原页面里的变量名（比如 `useServerJoja` 返回 `jojaConfirmText` 对应原来的模块级常量 `JOJA_CONFIRM_TEXT`），JSX 改动只是把 `onClick={() => setXxxOpen(...)}` 这类内联闭包换成 hook 暴露的具名函数（`openJojaConfirm`/`closeJojaConfirm`/`updateJojaConfirmInput`/`fillJojaConfirmText` 等），渲染结构和文案完全不变。
+- `ServerControlPage.tsx` 现在从 1437 行降到 979 行，页面主体基本只剩 `return (...)` 里的 JSX 和少量派生值（`stateLabelText`/`lifecycleDotClass`/`selectedCommandDef`/`terminalLines`）。
+- 新增同类领域（比如以后要加“定时清理日志”“Mod 热更新”这类独立功能）时，参照这 9 个 hook 的模式新开一个 `useServerXxx.ts`，不要继续往 `ServerControlPage.tsx` 里堆 state。
+- 验证：`cd frontend && npx tsc -b && npm run build` 通过（`ServerControlPage` chunk 从 32.21 KB 变为 35.92 KB——9 个 hook 只被这一个页面引用，未产生额外可共享的 chunk，属预期）。用 Playwright 登录真实运行中的实例，依次打开“计划重启”“服务器密码设置”“小屋与联机高级设置”“永久启用 Joja 路线”弹窗，确认真实数据正确加载、Joja 确认框输入联动正确，然后全部点击“取消/关闭”退出——**没有保存/提交任何一个弹窗**，未对运行中的实例做任何写操作；控制台无新增错误（仅有登录前既有的 401 探测）。
+
+# FE-PLAYER-LOCATION-NORMALIZE-1 玩家位置统一格式化
+
+- 新增 `frontend/src/games/stardew/location-format.ts`，桌面玩家表、最近事件、移动玩家页和总览在线玩家统一调用 `formatStardewLocation` / `readableStardewLocation`。
+- Stardew 内部位置实例名会保留在 API/SQLite 原字段中，但显示前归一化逻辑类型：`FarmHouse<UUID>`、`Cabin<UUID>`、`Cellar<UUID>`、`Shed<UUID>`、`Barn<UUID>`、`Coop<UUID>`，以及对应数字后缀，分别按基础类型映射为中文可读名称。
+- 精确映射优先于归一化，例如已有 `Barn2` / `Barn3` 等建筑等级名称仍使用 `LOCATION_ZH` 的具体标签；只有没有精确标签时才剥离实例后缀。
+- 玩家位置统一显示为 `可读名称 (tileX, tileY)`；缺坐标时只显示名称。桌面玩家表的 `title` 保留原始唯一位置名，便于诊断。
+- 验证：`cd frontend; npx.cmd tsc --noEmit -p . && npm.cmd run build`。
+
+# FE-SHARED-WALLET-PERSONAL-INCOME-1 共享钱包个人收入文案
+
+- 玩家表在 `walletMode=shared` 时不再把 `personalIncome=0` 显示成 `0g`，统一显示“共享模式不统计”。
+- 分开钱包仍显示个人累计收入；农场收入继续显示团队累计收入。
+- 底部说明同步明确：共享钱包的现金属于团队，原版不记录每位玩家个人累计收入。
+# FE-LIFECYCLE-LIVE-SIGNAL-PRIORITY-1 主机在线与停止中状态优先级
+
+- 修复在线玩家列表已出现在线主机后，按钮仍等待邀请码出现才脱离“启动中”的问题。根因是共享生命周期 hook 优先采用刷新频率较低的后端 `uiStatus`，且本地 `pendingStartup` 在 lifecycle job 等待后台邀请码探测期间持续为真。
+- 新规则：`state=running` 且共享玩家列表出现 `isHost && status==='online'` 时，立即结束启动中间态，不再等待 `uiStatus`、job 或邀请码刷新；邀请码继续作为后台独立信息加载。
+- 修复点击停止后没有立即出现“停止中”：本地 `pendingStop`、`state=stopping` 或 driver stopping phase 现在优先于旧的后端 `uiStatus`；总览页和手机总览也把停止分支放在启动分支之前。
+- 影响文件：`useStardewLifecycleState.ts`、`pages/OverviewPage.tsx`、`mobile/MobileHomePage.tsx`。服务器控制页复用共享 hook，无需单独复制判断。
+- 验证：上述四个相关 TypeScript 文件独立 `tsc --ignoreConfig --noEmit` 通过。完整前端构建被工作区中尚未接线完成的 `ServerControlPage.tsx` hook 拆分改动阻塞，与本次生命周期修改无关。
+# FE-MODS-MANAGEMENT-HOOK-1 ModsPage 本服管理领域 hook 拆分（前端拆分阶段二）
+
+- 新增 `frontend/src/games/stardew/useModsManagement.ts`，集中管理本服 Mod 列表加载、上传弹窗与多文件上传、删除确认、整包导出、玩家同步分类、完整/更新同步包导出，以及当前存档启用状态切换。
+- `ModsPage.tsx` 改为通过 `useModsManagement({ dashboardData, activeSaveName })` 接入上述 state、effect 和 handler；Nexus 搜索、API Key 与浏览器扩展批量安装仍保留为同一套强耦合状态机，未改变轮询、sessionStorage 恢复或任务日志跳转行为。
+- API、JSX 结构、CSS 类名和用户文案均未调整；页面从 2536 行降到 2360 行。
+- 验证：本次改动自身的 TypeScript 未出现错误；完整 `npx tsc -b` / `npm run build` 当前被并行 `SavesSection` 拆分新增文件 `useSaveBackups.ts` 的未使用参数错误阻塞。
+# FE-CSS-SPLIT-1 前端拆分阶段三：桌面页面 CSS 按需加载
+
+- `StardewPanel.css` 从约 16586 行的桌面全量样式拆为共享 Shell CSS（约 4551 行）和 9 个页面 CSS：`InstallPage.css`、`OverviewPage.css`、`ServerControlPage.css`、`SavesPage.css`、`JobsLogsPage.css`、`PlayersPage.css`、`ModsPage.css`、`DiagnosticsPage.css`、`SettingsPage.css`。
+- 每个懒加载页面在自身 TSX 中 import 同名 CSS，页面规则随对应页面 chunk 按需加载；Shell 布局、导航、通用按钮/卡片、跨页面合并选择器，以及 `InviteCodeCard`/`ServerSummaryCard` 等共享组件使用的规则继续留在 `StardewPanel.css`。
+- 拆分基于 CSS AST 处理媒体查询，未修改选择器内容或声明值。首轮 Vite 构建确认生成 9 个独立桌面页面 CSS chunk；随后对跨页面合并选择器做保守回收，10 个 CSS 文件均通过 PostCSS 解析。
+- 完整 TypeScript/Vite 复验当前被并行 `SavesSection.tsx` hook 拆分中的重复声明和未完成接线阻塞，与 CSS import/解析无关；待该任务收尾后应重新执行 `npx tsc -b && npm run build`。
+- 回归修正：初版拆分改变了原单文件中“页面基础规则 → 文件后半段统一皮肤覆盖”的级联顺序，导致全部桌面页面重新出现旧纸张点纹、旧边框等风格。现已把共享 CSS 中每个页面相关的最终覆盖复制到对应页面 CSS 末尾，恢复原先最终覆盖优先级；共享组件规则仍保留在共享 CSS。阶段三后续必须以级联顺序为第一约束，不能只按选择器归属移动规则。
+
+# FE-SAVES-DOMAIN-HOOKS-1 SavesSection 回档领域 hook 拆分（前端拆分阶段二 SavesSection 项，2026-07-12）
+
+- 新增 `frontend/src/games/stardew/useSaveBackups.ts`：备份列表加载、备份策略读取/保存（`defaultBackupPolicy`/`normalizeBackupPolicy` 常量和函数也搬进这个文件）、手动备份、彻底删除备份，以及 `autoBackups`/`otherBackups` 两个派生排序数组。入参 `{ isAdmin, setBusy }`。
+- 新增 `frontend/src/games/stardew/useSaveRestore.ts`：回档确认弹窗的完整状态机（打开/取消/提交、`ApiError` 的 `save_exists` 分支、运行中自动停止/回档/重启的 `jobId` 分支）。入参 `{ saves, isAdmin, isRunning, busy, setBusy, onJobStarted, onStateRefresh, onSavesChanged, loadSaves, loadBackups, clearBackupMessage }`。
+- `SavesSection.tsx` 里跨越备份/回档两个 hook 共用的 `busy`/`setBusy` 忙碌锁**没有**下沉进任何一个 hook，仍然声明在 `SavesSection` 组件顶层，作为参数分别传给两个 hook——原代码里手动备份、彻底删除备份、回档提交这三个操作和存档选择/删除/导出共用同一个 `busy`，任意一个进行中会让所有相关按钮一起禁用；如果各自拆一份独立 busy 会改变这个"一个写操作进行中全部按钮联动禁用"的行为，所以保留共享。
+- 存档列表 CRUD（`handleSelect`/`handleSelectAndStart`/`handleDeleteConfirmed`/`handleExport`）、新建游戏弹窗（`handleNewGameSubmit`）、上传存档弹窗（`handleUploadPreview`/`handleUploadCommit`/`handleUploadCancel`）**没有**拆分——这些不属于"回档"领域，upload 弹窗本身已经有独立的 `uploadBusy`，耦合度低，本次按 `docs/07-later-optimizations.md` 登记的范围（"回档逻辑拆 hook"）只拆备份和回档两块。
+- `SavesSection.tsx` 从 1236 行降到 1131 行；`SaveCard` 组件、`backupKindLabel`、`saveFarmMapSrc`/`saveProgressText` 等纯展示 helper 未改动。
+- 验证：`cd frontend && npx tsc -b && npm run build` 通过（此前 ModsPage/CSS 拆分两个并行任务提到的构建阻塞，是因为当时本次改动还在进行中，现已收尾，三项改动可以一起正常构建）。用 Playwright 登录真实运行中的实例，打开"游戏日回档"的"回档到此日"弹窗和"其他备份"的"彻底删除备份"弹窗，截图确认真实数据正确渲染（回档弹窗正确识别到同名存档已存在、展示"确认回档"和"覆盖回档"两个按钮），全部点击"取消"关闭——**没有提交任何一次真实的回档或删除操作**。

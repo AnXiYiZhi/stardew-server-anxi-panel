@@ -94,7 +94,7 @@ func (c *Client) ComposePs(ctx context.Context, dir string) (ComposePsResult, er
 	}
 
 	result, err := c.run(ctx, "docker compose ps", dir, c.timeouts.Ps, "compose", "ps", "--format", "json")
-	composeResult := ComposePsResult{Result: result}
+	composeResult := ComposePsResult{Result: result, Services: []ComposeService{}}
 	if result.Stdout != "" {
 		services, parseErr := parseComposeServices(result.Stdout)
 		if parseErr != nil {
@@ -301,7 +301,8 @@ func (c *Client) invalidateComposePs(dir string) {
 func cloneComposePsResult(result ComposePsResult) ComposePsResult {
 	cloned := result
 	cloned.Result.Args = append([]string(nil), result.Result.Args...)
-	cloned.Services = append([]ComposeService(nil), result.Services...)
+	cloned.Services = make([]ComposeService, len(result.Services))
+	copy(cloned.Services, result.Services)
 	return cloned
 }
 

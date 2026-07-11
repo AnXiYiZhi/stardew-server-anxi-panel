@@ -3,6 +3,7 @@ import { banPlayer, kickPlayer, warpPlayerHome } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPlayerInfo } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
+import { formatStardewLocation } from '../location-format'
 import './MobilePlayersPage.css'
 
 type MobilePlayersPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
@@ -33,12 +34,7 @@ function playerActivityText(player: StardewPlayerInfo): string {
 }
 
 function playerLocationText(player: StardewPlayerInfo): string {
-  const name = player.locationDisplayName || player.locationName || player.location
-  if (!name) return '—'
-  if (typeof player.tileX === 'number' && typeof player.tileY === 'number') {
-    return `${name} (${player.tileX}, ${player.tileY})`
-  }
-  return name
+  return formatStardewLocation(player)
 }
 
 export function MobilePlayersPage({ user, instanceState, dashboardData }: MobilePlayersPageProps) {

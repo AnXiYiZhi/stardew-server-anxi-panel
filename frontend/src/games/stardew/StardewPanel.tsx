@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type {
   CurrentUser,
   InstanceState,
@@ -13,16 +13,27 @@ import { jobDisplayName, stateLabel } from '../../core/helpers'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
-import { InstallPage } from './pages/InstallPage'
-import { OverviewPage } from './pages/OverviewPage'
-import { ServerControlPage } from './pages/ServerControlPage'
-import { SavesPage } from './pages/SavesPage'
-import { JobsLogsPage } from './pages/JobsLogsPage'
-import { PlayersPage } from './pages/PlayersPage'
-import { ModsPage } from './pages/ModsPage'
-import { DiagnosticsPage } from './pages/DiagnosticsPage'
-import { SettingsPage } from './pages/SettingsPage'
 import './StardewPanel.css'
+
+const InstallPage = lazy(() => import('./pages/InstallPage').then((m) => ({ default: m.InstallPage })))
+const OverviewPage = lazy(() => import('./pages/OverviewPage').then((m) => ({ default: m.OverviewPage })))
+const ServerControlPage = lazy(() =>
+  import('./pages/ServerControlPage').then((m) => ({ default: m.ServerControlPage })),
+)
+const SavesPage = lazy(() => import('./pages/SavesPage').then((m) => ({ default: m.SavesPage })))
+const JobsLogsPage = lazy(() => import('./pages/JobsLogsPage').then((m) => ({ default: m.JobsLogsPage })))
+const PlayersPage = lazy(() => import('./pages/PlayersPage').then((m) => ({ default: m.PlayersPage })))
+const ModsPage = lazy(() => import('./pages/ModsPage').then((m) => ({ default: m.ModsPage })))
+const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then((m) => ({ default: m.DiagnosticsPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+
+function PageLoadingFallback() {
+  return (
+    <div className="sd-placeholder-grid">
+      <div className="sd-placeholder-card">加载中…</div>
+    </div>
+  )
+}
 
 type NavEntry = {
   route: StardewRoute
@@ -861,7 +872,9 @@ export function StardewPanel({
 
       {/* ── 主内容区 ─────────────────────────────────────────── */}
       <main className="sd-main">
-        <div className="sd-main-scroll">{renderPage()}</div>
+        <div className="sd-main-scroll">
+          <Suspense fallback={<PageLoadingFallback />}>{renderPage()}</Suspense>
+        </div>
       </main>
 
       {/* ── 右侧 OpsRail ────────────────────────────────────── */}

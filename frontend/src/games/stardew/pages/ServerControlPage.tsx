@@ -1,49 +1,18 @@
-import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
-import {
-  ApiError,
-  startInstance,
-  stopInstance,
-  restartInstance,
-  createSaveBackup,
-  getInstanceVNCConfig,
-  getInstanceRenderingFPS,
-  getRestartSchedule,
-  setInstanceRenderingFPS,
-  updateRestartSchedule,
-  getCommands,
-  runCommand,
-  sendSay,
-  getInstanceServerPassword,
-  updateInstanceServerPassword,
-  getInstancePasswordStatus,
-  getInstanceServerRuntimeSettings,
-  updateInstanceServerRuntimeSettings,
-  triggerFestivalEvent,
-  enableJojaRoute,
-} from '../../../api'
-import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
+import { Fragment } from 'react'
+import { stateLabel, formatDate } from '../../../core/helpers'
 import { ServerSummaryCard } from '../ServerSummaryCard'
 import type { StardewPageProps } from '../stardew-routes'
-import type { ConsoleCommandDef, RestartSchedule, InstancePasswordStatus, ServerRuntimeSettings } from '../../../types'
+import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
+import { useServerQuickBackup } from '../useServerQuickBackup'
+import { useServerRestartSchedule } from '../useServerRestartSchedule'
+import { useServerVNCSettings } from '../useServerVNCSettings'
+import { useServerPassword } from '../useServerPassword'
+import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
+import { useServerFestival } from '../useServerFestival'
+import { useServerJoja } from '../useServerJoja'
+import { useServerConsole } from '../useServerConsole'
+import { useServerBroadcast } from '../useServerBroadcast'
 
-const defaultRuntimeSettings: ServerRuntimeSettings = {
-  cabinStrategy: 'CabinStack',
-  existingCabinBehavior: 'KeepExisting',
-  networkBroadcastPeriod: 1,
-}
-
-const defaultRestartSchedule: RestartSchedule = {
-  instanceId: 'stardew',
-  enabled: false,
-  shutdownTime: '04:00',
-  startupTime: '04:20',
-  timezone: 'Asia/Shanghai',
-  warningMinutes: [10, 5, 1],
-  backupBeforeShutdown: true,
-  skipIfPlayersOnline: false,
-}
-
-const vncDisplayFPS = 15
 const SERVER_PAGE_ICONS = {
   title: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
   command: '/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png',
@@ -56,137 +25,29 @@ const SERVER_PAGE_ICONS = {
   joja: '/assets/stardew/ui/icons/icon_players_action_permission_image2.png',
 } as const
 
-const JOJA_CONFIRM_TEXT = 'IRREVERSIBLY_ENABLE_JOJA_RUN'
-// 主机玩家迟迟不上线时的兜底超时：避免像 2026-07-06 那次一样因为玩家快照
-// 闪烁/不可用导致按钮永久卡在"启动中…"。实测大存档场景下，容器状态到
-// `running`、SMAPI 内部 status.json 到 `save-loaded`、主机真正出现在
-// players.json 在线列表里，前后可以相差好几分钟，超时阈值必须留足这个余量，
-// 否则会在主机还没真正上线时就提前放行，等于白做了这层确认。
-const HOST_ONLINE_WAIT_TIMEOUT_MS = 10 * 60_000
-
-function buildVNCControlURL(port: string) {
-  const host = window.location.hostname.includes(':')
-    ? `[${window.location.hostname}]`
-    : window.location.hostname
-  return `http://${host}:${port}/`
-}
-
-function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
-  if (!(error instanceof ApiError)) return null
-  if (error.code === 'save_required') return 'new'
-  if (error.code === 'active_save_required' || error.code === 'active_save_missing') return 'saves'
-  return null
-}
-
 export function ServerControlPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
-  // ── 生命周期操作状态 ──────────────────────────────────────────────────────
-  const [actionBusy, setActionBusy] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
-  const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
-  const [pendingStopAction, setPendingStopAction] = useState(false)
-  const [quickBackupBusy, setQuickBackupBusy] = useState(false)
-  const [quickBackupMessage, setQuickBackupMessage] = useState<string | null>(null)
-  const [quickBackupError, setQuickBackupError] = useState(false)
-  const [scheduleOpen, setScheduleOpen] = useState(false)
-  const [scheduleDraft, setScheduleDraft] = useState<RestartSchedule>(defaultRestartSchedule)
-  const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [scheduleSaving, setScheduleSaving] = useState(false)
-  const [scheduleError, setScheduleError] = useState<string | null>(null)
-  const [scheduleSaved, setScheduleSaved] = useState<string | null>(null)
-  const [vncPort, setVNCPort] = useState('')
-  const [vncPortLoading, setVNCPortLoading] = useState(false)
-  const [vncDisplayBusy, setVNCDisplayBusy] = useState(false)
-  const [vncRenderingEnabled, setVNCRenderingEnabled] = useState(false)
-  const [vncRenderingStatusLoading, setVNCRenderingStatusLoading] = useState(false)
-  const [vncMessage, setVNCMessage] = useState<string | null>(null)
-  const [vncError, setVNCError] = useState<string | null>(null)
-
-  // ── 服务器密码设置 ────────────────────────────────────────────────────────
-  const [passwordOpen, setPasswordOpen] = useState(false)
-  const [passwordDraft, setPasswordDraft] = useState('')
-  const [passwordVisible, setPasswordVisible] = useState(false)
-  const [passwordLoading, setPasswordLoading] = useState(false)
-  const [passwordSaving, setPasswordSaving] = useState(false)
-  const [passwordError, setPasswordError] = useState<string | null>(null)
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
-  const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
-  const [passwordStatusLoading, setPasswordStatusLoading] = useState(false)
-  const [passwordStatusError, setPasswordStatusError] = useState<string | null>(null)
-
-  // ── 小屋与联机高级设置 ────────────────────────────────────────────────────
-  const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false)
-  const [runtimeSettingsDraft, setRuntimeSettingsDraft] = useState<ServerRuntimeSettings>(defaultRuntimeSettings)
-  const [runtimeSettingsLoading, setRuntimeSettingsLoading] = useState(false)
-  const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false)
-  const [runtimeSettingsError, setRuntimeSettingsError] = useState<string | null>(null)
-  const [runtimeSettingsMessage, setRuntimeSettingsMessage] = useState<string | null>(null)
-
-  // ── 触发节日活动 ──────────────────────────────────────────────────────────
-  const [festivalBusy, setFestivalBusy] = useState(false)
-  const [festivalMessage, setFestivalMessage] = useState<string | null>(null)
-  const [festivalError, setFestivalError] = useState(false)
-
-  // ── 永久启用 Joja 路线 ────────────────────────────────────────────────────
-  const [jojaOpen, setJojaOpen] = useState(false)
-  const [jojaConfirmInput, setJojaConfirmInput] = useState('')
-  const [jojaBusy, setJojaBusy] = useState(false)
-  const [jojaMessage, setJojaMessage] = useState<string | null>(null)
-  const [jojaError, setJojaError] = useState(false)
-
-  // ── 控制台命令 ────────────────────────────────────────────────────────────
-  const [commands, setCommands] = useState<ConsoleCommandDef[]>([])
-  const [commandsLoading, setCommandsLoading] = useState(false)
-  const [commandsError, setCommandsError] = useState<string | null>(null)
-  const [selectedCommand, setSelectedCommand] = useState('')
-  const [commandBusy, setCommandBusy] = useState(false)
-  const [commandResult, setCommandResult] = useState<string | null>(null)
-  const [commandError, setCommandError] = useState<string | null>(null)
-
-  // ── 全服喊话 ──────────────────────────────────────────────────────────────
-  const [sayMessage, setSayMessage] = useState('')
-  const [sayBusy, setSayBusy] = useState(false)
-  const [sayResult, setSayResult] = useState<string | null>(null)
-  const [sayError, setSayError] = useState<string | null>(null)
-
   // ── 状态推导 ──────────────────────────────────────────────────────────────
-  const state = instanceState?.state ?? null
-  const isRunning = state === 'running'
-  const isStarting = state === 'starting'
-  const isStopping = state === 'stopping'
-  const isStopped = state === 'stopped' || state === 'ready_to_start' || state === 'game_installed'
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
   const isAdmin = user.role === 'admin'
-  const hasActiveLifecycleJob = dashboardData.jobs.some(
-    (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
-  )
-  const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
-  const hostOnline = (dashboardData.players?.players ?? []).some(
-    (p) => p.isHost && p.status === 'online',
-  )
-  // state 已经是 running（无论是本次点击启动，还是打开/刷新页面时服务器早已在
-  // 运行）但主机玩家还没出现在在线列表里，继续按"启动中"展示，不受
-  // pendingStartupAction 这个仅在当次点击时才有值的本地状态影响。为避免像
-  // 2026-07-06 那次一样因为玩家快照闪烁/不可用导致按钮永久转圈，超过
-  // HOST_ONLINE_WAIT_TIMEOUT_MS 后无论主机是否上线都会放行。
-  const hostWaitStartedAtRef = useRef<number | null>(null)
-  const [hostConfirmTimedOut, setHostConfirmTimedOut] = useState(false)
-  const awaitingHostConfirmation = isRunning && !hostOnline && !hostConfirmTimedOut
-  const startupInProgress =
-    isStarting ||
-    Boolean(pendingStartupAction) ||
-    (hasActiveLifecycleJob && !activeLifecycleIsStopping && !isRunning) ||
-    awaitingHostConfirmation
-  const waitingForStop = isStopping || pendingStopAction || activeLifecycleIsStopping
-  const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
-  const showSaveRequiredPrompt =
-    (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
-    !isRunning &&
-    !isStarting
-  const canStart = isAdmin && isStopped && !actionBusy && !startupInProgress && !waitingForStop
-  const canStop = isAdmin && isRunning && !actionBusy && !waitingForStop
-  const canRestart = isAdmin && isRunning && !actionBusy && !waitingForStop
+  const {
+    state,
+    isRunning,
+    isStarting,
+    isStopped,
+    startupInProgress,
+    waitingForStop,
+    actionBusy,
+    actionError,
+    showSaveRequiredPrompt,
+    confirmAction,
+    canStart,
+    canStop,
+    canRestart,
+    handleStart,
+    requestConfirm,
+    cancelConfirm,
+    confirmPendingAction,
+  } = useStardewLifecycleActions({ instanceState, dashboardData, isAdmin })
   const stateLabelText = state
     ? stateLabel(state)
     : dashboardData.loading
@@ -199,436 +60,105 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       : isStarting || startupInProgress || waitingForStop
         ? 'sd-dot sd-dot-yellow sd-dot-pulse'
         : 'sd-dot sd-dot-gray'
-  // ── 命令列表：服务器运行时加载一次 ───────────────────────────────────────
-  const loadCommands = useCallback(async () => {
-    if (!isRunning) {
-      setCommands([])
-      setCommandsError(null)
-      return
-    }
-    setCommandsLoading(true)
-    setCommandsError(null)
-    try {
-      const res = await getCommands()
-      setCommands(res.commands)
-      if (res.commands.length > 0 && !selectedCommand) {
-        setSelectedCommand(res.commands[0].id || res.commands[0].name)
-      }
-    } catch (e) {
-      setCommandsError(errorMessage(e))
-    } finally {
-      setCommandsLoading(false)
-    }
-  }, [isRunning, selectedCommand])
+  const { quickBackupBusy, quickBackupMessage, quickBackupError, handleQuickBackup } = useServerQuickBackup({
+    activeSaveName,
+    isAdmin,
+  })
 
-  useEffect(() => {
-    void loadCommands()
-  }, [loadCommands])
+  const {
+    scheduleOpen,
+    scheduleDraft,
+    setScheduleDraft,
+    scheduleLoading,
+    scheduleSaving,
+    scheduleError,
+    scheduleSaved,
+    openRestartSchedule,
+    closeRestartSchedule,
+    handleSaveRestartSchedule,
+    toggleScheduleWarning,
+  } = useServerRestartSchedule({ isAdmin, refreshJobs: dashboardData.refreshJobs })
 
-  useEffect(() => {
-    if (state && state !== 'save_required') {
-      setSaveRequiredDetected(false)
-    }
-  }, [state])
+  const {
+    vncPort,
+    vncPortLoading,
+    vncDisplayBusy,
+    vncRenderingEnabled,
+    vncRenderingStatusLoading,
+    vncMessage,
+    vncError,
+    vncDisplayFPS,
+    buildVNCControlURL,
+    handleToggleVNCDisplay,
+    handleOpenVNCControl,
+  } = useServerVNCSettings({ isAdmin, isRunning })
 
-  useEffect(() => {
-    // Startup display follows the backend lifecycle job/state.
-    if (!hasActiveLifecycleJob && isRunning) {
-      setPendingStartupAction(null)
-    }
-  }, [hasActiveLifecycleJob, isRunning])
+  const {
+    passwordOpen,
+    passwordDraft,
+    passwordVisible,
+    passwordLoading,
+    passwordSaving,
+    passwordError,
+    passwordMessage,
+    passwordStatus,
+    passwordStatusLoading,
+    passwordStatusError,
+    openPasswordSettings,
+    closePasswordSettings,
+    togglePasswordVisible,
+    updatePasswordDraft,
+    loadPasswordStatus,
+    handleSaveServerPassword,
+  } = useServerPassword({ isAdmin })
 
-  useEffect(() => {
-    if (isRunning && !hostOnline) {
-      if (hostWaitStartedAtRef.current === null) {
-        hostWaitStartedAtRef.current = Date.now()
-        setHostConfirmTimedOut(false)
-      } else if (Date.now() - hostWaitStartedAtRef.current >= HOST_ONLINE_WAIT_TIMEOUT_MS) {
-        setHostConfirmTimedOut(true)
-      }
-    } else {
-      hostWaitStartedAtRef.current = null
-      setHostConfirmTimedOut(false)
-    }
-  }, [isRunning, hostOnline, dashboardData.players?.updatedAt])
+  const {
+    runtimeSettingsOpen,
+    runtimeSettingsDraft,
+    setRuntimeSettingsDraft,
+    runtimeSettingsLoading,
+    runtimeSettingsSaving,
+    runtimeSettingsError,
+    runtimeSettingsMessage,
+    setRuntimeSettingsMessage,
+    openRuntimeSettings,
+    closeRuntimeSettings,
+    handleSaveRuntimeSettings,
+  } = useServerRuntimeSettings({ isAdmin })
 
-  useEffect(() => {
-    if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
-      setPendingStopAction(false)
-    }
-  }, [state])
+  const { festivalBusy, festivalMessage, festivalError, handleTriggerFestivalEvent } = useServerFestival({
+    isAdmin,
+    isRunning,
+  })
 
-  useEffect(() => {
-    if (!isRunning) {
-      setVNCRenderingEnabled(false)
-      setVNCRenderingStatusLoading(false)
-    }
-  }, [isRunning])
+  const {
+    jojaOpen,
+    jojaConfirmInput,
+    jojaBusy,
+    jojaMessage,
+    jojaError,
+    jojaConfirmText,
+    openJojaConfirm,
+    closeJojaConfirm,
+    updateJojaConfirmInput,
+    fillJojaConfirmText,
+    handleEnableJoja,
+  } = useServerJoja({ isAdmin, isRunning })
 
-  useEffect(() => {
-    if (!isAdmin || !isRunning) return
-    let canceled = false
-    setVNCRenderingStatusLoading(true)
-    getInstanceRenderingFPS()
-      .then((res) => {
-        if (canceled) return
-        setVNCRenderingEnabled(res.fps > 0)
-      })
-      .catch((e) => {
-        if (canceled) return
-        setVNCError(`读取 VNC 显示状态失败：${errorMessage(e)}`)
-      })
-      .finally(() => {
-        if (!canceled) setVNCRenderingStatusLoading(false)
-      })
-    return () => {
-      canceled = true
-    }
-  }, [isAdmin, isRunning])
+  const {
+    commands,
+    commandsLoading,
+    commandsError,
+    selectedCommand,
+    commandBusy,
+    commandResult,
+    commandError,
+    loadCommands,
+    selectCommand,
+    handleRunCommand,
+  } = useServerConsole({ isRunning })
 
-  useEffect(() => {
-    if (!isAdmin) {
-      setVNCPort('')
-      return
-    }
-    let canceled = false
-    setVNCPortLoading(true)
-    getInstanceVNCConfig()
-      .then((res) => {
-        if (canceled) return
-        setVNCPort(res.vncPort)
-      })
-      .catch((e) => {
-        if (canceled) return
-        setVNCError(`读取 VNC 端口失败：${errorMessage(e)}`)
-      })
-      .finally(() => {
-        if (!canceled) setVNCPortLoading(false)
-      })
-    return () => {
-      canceled = true
-    }
-  }, [isAdmin])
-
-  // ── 生命周期操作 ──────────────────────────────────────────────────────────
-  async function handleStart() {
-    setActionBusy(true)
-    setPendingStartupAction('start')
-    setPendingStopAction(false)
-    setActionError(null)
-    try {
-      await startInstance()
-      dashboardData.requestInviteCodeRefresh()
-      setSaveRequiredDetected(false)
-      dashboardData.refreshInstanceState()
-      dashboardData.refreshJobs()
-    } catch (e) {
-      const saveBlocker = saveStartBlocker(e)
-      if (saveBlocker) {
-        setSaveRequiredDetected(saveBlocker === 'new')
-        setActionError(saveBlocker === 'new' ? null : errorMessage(e))
-        dashboardData.refreshInstanceState()
-        dashboardData.refreshSaves()
-        setPendingStartupAction(null)
-        return
-      }
-      setActionError(errorMessage(e))
-      setPendingStartupAction(null)
-    } finally {
-      setActionBusy(false)
-    }
-  }
-
-  async function handleStop() {
-    setActionBusy(true)
-    setPendingStopAction(true)
-    setPendingStartupAction(null)
-    setActionError(null)
-    dashboardData.clearInviteCode()
-    try {
-      await stopInstance()
-      dashboardData.refreshInstanceState()
-      dashboardData.refreshJobs()
-    } catch (e) {
-      setActionError(errorMessage(e))
-      setPendingStopAction(false)
-    } finally {
-      setActionBusy(false)
-    }
-  }
-
-  async function handleRestart() {
-    setActionBusy(true)
-    setPendingStartupAction('restart')
-    setActionError(null)
-    try {
-      await restartInstance()
-      dashboardData.requestInviteCodeRefresh()
-      dashboardData.refreshInstanceState()
-      dashboardData.refreshJobs()
-    } catch (e) {
-      setActionError(errorMessage(e))
-      setPendingStartupAction(null)
-    } finally {
-      setActionBusy(false)
-    }
-  }
-
-  async function handleQuickBackup() {
-    if (!activeSaveName || !isAdmin) return
-    setQuickBackupBusy(true)
-    setQuickBackupMessage(null)
-    setQuickBackupError(false)
-    try {
-      const result = await createSaveBackup(activeSaveName)
-      setQuickBackupMessage(`已为 ${activeSaveName} 创建手动备份：${result.backupName}`)
-    } catch (e) {
-      setQuickBackupError(true)
-      setQuickBackupMessage(errorMessage(e))
-    } finally {
-      setQuickBackupBusy(false)
-    }
-  }
-
-  async function handleTriggerFestivalEvent() {
-    if (!isAdmin || !isRunning) return
-    setFestivalBusy(true)
-    setFestivalMessage(null)
-    setFestivalError(false)
-    try {
-      const result = await triggerFestivalEvent()
-      setFestivalMessage(result.output?.trim() || '触发节日活动指令已提交。')
-    } catch (e) {
-      setFestivalError(true)
-      setFestivalMessage(errorMessage(e))
-    } finally {
-      setFestivalBusy(false)
-    }
-  }
-
-  function openJojaConfirm() {
-    if (!isAdmin || !isRunning) return
-    setJojaConfirmInput('')
-    setJojaMessage(null)
-    setJojaError(false)
-    setJojaOpen(true)
-  }
-
-  async function handleEnableJoja() {
-    if (jojaConfirmInput !== JOJA_CONFIRM_TEXT) return
-    setJojaBusy(true)
-    setJojaMessage(null)
-    setJojaError(false)
-    try {
-      const result = await enableJojaRoute(jojaConfirmInput)
-      setJojaMessage(result.output?.trim() || 'Joja 路线已永久启用。')
-    } catch (e) {
-      setJojaError(true)
-      setJojaMessage(errorMessage(e))
-    } finally {
-      setJojaBusy(false)
-    }
-  }
-
-  async function handleToggleVNCDisplay() {
-    if (!isAdmin || !isRunning) return
-    const nextEnabled = !vncRenderingEnabled
-    const nextFPS = nextEnabled ? vncDisplayFPS : 0
-    setVNCDisplayBusy(true)
-    setVNCMessage(null)
-    setVNCError(null)
-    try {
-      const result = await setInstanceRenderingFPS(nextFPS)
-      setVNCRenderingEnabled(nextEnabled)
-      setVNCMessage(
-        nextEnabled
-          ? `VNC 显示已打开（${result.fps} FPS），现在可以跳转到 VNC 控制。`
-          : 'VNC 显示已关闭。'
-      )
-    } catch (e) {
-      setVNCError(errorMessage(e))
-    } finally {
-      setVNCDisplayBusy(false)
-    }
-  }
-
-  function handleOpenVNCControl() {
-    if (!isAdmin || !isRunning || !vncPort) return
-    setVNCError(null)
-    const opened = window.open(buildVNCControlURL(vncPort), '_blank')
-    if (!opened) {
-      setVNCError('浏览器拦截了 VNC 控制窗口，请允许弹出窗口后重试。')
-      return
-    }
-    opened.opener = null
-    setVNCMessage(`已打开 VNC 控制页面（端口 ${vncPort}）。`)
-  }
-
-  // ── 邀请码复制 ────────────────────────────────────────────────────────────
-  async function openRestartSchedule() {
-    if (!isAdmin) return
-    setScheduleOpen(true)
-    setScheduleLoading(true)
-    setScheduleSaving(false)
-    setScheduleError(null)
-    setScheduleSaved(null)
-    try {
-      const result = await getRestartSchedule()
-      setScheduleDraft(result.schedule)
-    } catch (e) {
-      setScheduleError(errorMessage(e))
-      setScheduleDraft(defaultRestartSchedule)
-    } finally {
-      setScheduleLoading(false)
-    }
-  }
-
-  async function handleSaveRestartSchedule() {
-    setScheduleSaving(true)
-    setScheduleError(null)
-    setScheduleSaved(null)
-    try {
-      const result = await updateRestartSchedule(scheduleDraft)
-      setScheduleDraft(result.schedule)
-      setScheduleSaved('计划重启已保存。')
-      dashboardData.refreshJobs()
-    } catch (e) {
-      setScheduleError(errorMessage(e))
-    } finally {
-      setScheduleSaving(false)
-    }
-  }
-
-  async function openPasswordSettings() {
-    if (!isAdmin) return
-    setPasswordOpen(true)
-    setPasswordVisible(false)
-    setPasswordLoading(true)
-    setPasswordSaving(false)
-    setPasswordError(null)
-    setPasswordMessage(null)
-    try {
-      const res = await getInstanceServerPassword()
-      setPasswordDraft(res.serverPassword)
-    } catch (e) {
-      setPasswordError(errorMessage(e))
-      setPasswordDraft('')
-    } finally {
-      setPasswordLoading(false)
-    }
-    void loadPasswordStatus()
-  }
-
-  async function loadPasswordStatus() {
-    setPasswordStatusLoading(true)
-    setPasswordStatusError(null)
-    try {
-      const res = await getInstancePasswordStatus()
-      setPasswordStatus(res)
-    } catch (e) {
-      setPasswordStatus(null)
-      setPasswordStatusError(errorMessage(e))
-    } finally {
-      setPasswordStatusLoading(false)
-    }
-  }
-
-  async function handleSaveServerPassword() {
-    if (passwordDraft.length > 128) {
-      setPasswordError('服务器密码不能超过 128 个字符')
-      setPasswordMessage(null)
-      return
-    }
-    setPasswordSaving(true)
-    setPasswordError(null)
-    setPasswordMessage(null)
-    try {
-      const res = await updateInstanceServerPassword(passwordDraft)
-      setPasswordDraft(res.serverPassword)
-      setPasswordMessage('密码已保存，需要重启服务器容器后才会生效。')
-    } catch (e) {
-      setPasswordError(errorMessage(e))
-    } finally {
-      setPasswordSaving(false)
-    }
-  }
-
-  async function openRuntimeSettings() {
-    if (!isAdmin) return
-    setRuntimeSettingsOpen(true)
-    setRuntimeSettingsLoading(true)
-    setRuntimeSettingsSaving(false)
-    setRuntimeSettingsError(null)
-    setRuntimeSettingsMessage(null)
-    try {
-      const res = await getInstanceServerRuntimeSettings()
-      setRuntimeSettingsDraft(res)
-    } catch (e) {
-      setRuntimeSettingsError(errorMessage(e))
-      setRuntimeSettingsDraft(defaultRuntimeSettings)
-    } finally {
-      setRuntimeSettingsLoading(false)
-    }
-  }
-
-  async function handleSaveRuntimeSettings() {
-    setRuntimeSettingsSaving(true)
-    setRuntimeSettingsError(null)
-    setRuntimeSettingsMessage(null)
-    try {
-      const res = await updateInstanceServerRuntimeSettings(runtimeSettingsDraft)
-      setRuntimeSettingsDraft(res)
-      setRuntimeSettingsMessage('设置已保存，需要重启服务器容器后才会生效。')
-    } catch (e) {
-      setRuntimeSettingsError(errorMessage(e))
-    } finally {
-      setRuntimeSettingsSaving(false)
-    }
-  }
-
-  function toggleScheduleWarning(minute: number) {
-    setScheduleDraft((draft) => {
-      const exists = draft.warningMinutes.includes(minute)
-      const next = exists
-        ? draft.warningMinutes.filter((value) => value !== minute)
-        : [...draft.warningMinutes, minute]
-      next.sort((a, b) => b - a)
-      return { ...draft, warningMinutes: next }
-    })
-  }
-
-  // ── 执行控制台命令 ────────────────────────────────────────────────────────
-  async function handleRunCommand() {
-    if (!selectedCommand) return
-    setCommandBusy(true)
-    setCommandResult(null)
-    setCommandError(null)
-    try {
-      const res = await runCommand(selectedCommand)
-      setCommandResult(res.output?.trim() || '命令已执行（无输出）')
-    } catch (e) {
-      setCommandError(errorMessage(e))
-    } finally {
-      setCommandBusy(false)
-    }
-  }
-
-  // ── 全服喊话 ──────────────────────────────────────────────────────────────
-  async function handleSay() {
-    if (!sayMessage.trim()) return
-    setSayBusy(true)
-    setSayResult(null)
-    setSayError(null)
-    try {
-      const res = await sendSay(sayMessage.trim())
-      setSayResult(res.output?.trim() || '消息已发送')
-      setSayMessage('')
-    } catch (e) {
-      setSayError(errorMessage(e))
-    } finally {
-      setSayBusy(false)
-    }
-  }
+  const { sayMessage, setSayMessage, sayBusy, sayResult, sayError, handleSay } = useServerBroadcast()
 
   const selectedCommandDef = commands.find((c) => c.id === selectedCommand)
   const terminalLines = commandResult
@@ -715,7 +245,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 key="stop"
                 className="sd-btn-stop"
                 disabled={!canStop}
-                onClick={() => setConfirmAction('stop')}
+                onClick={() => requestConfirm('stop')}
                 title={!isAdmin ? '仅管理员可停止服务器' : !isRunning ? '服务器未运行' : '停止服务器（需确认）'}
               >
                 <img src="/assets/stardew/ui/icons/icon_button_stop.png" alt="" className="sd-btn-img" />
@@ -726,7 +256,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 key="restart"
                 className="sd-btn-restart"
                 disabled={!canRestart}
-                onClick={() => setConfirmAction('restart')}
+                onClick={() => requestConfirm('restart')}
                 title={!isAdmin ? '仅管理员可重启服务器' : !isRunning ? '服务器未运行' : '重启服务器（需确认）'}
               >
                 <img src="/assets/stardew/ui/icons/icon_button_restart.png" alt="" className="sd-btn-img" />
@@ -846,11 +376,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                     <select
                       className="sd-input"
                       value={selectedCommand}
-                      onChange={(e) => {
-                        setSelectedCommand(e.target.value)
-                        setCommandResult(null)
-                        setCommandError(null)
-                      }}
+                      onChange={(e) => selectCommand(e.target.value)}
                       disabled={commandBusy}
                     >
                       {commands.map((cmd) => {
@@ -1102,16 +628,12 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 : '重启服务器将短暂中断所有玩家的连接。重启完成后服务器会自动恢复，确认继续？'}
             </p>
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setConfirmAction(null)}>
+              <button className="sd-btn-tan" onClick={cancelConfirm}>
                 取消
               </button>
               <button
                 className={confirmAction === 'stop' ? 'sd-btn-delete' : 'sd-btn-green'}
-                onClick={() => {
-                  const action = confirmAction
-                  setConfirmAction(null)
-                  void (action === 'stop' ? handleStop() : handleRestart())
-                }}
+                onClick={confirmPendingAction}
               >
                 确认{confirmAction === 'stop' ? '停止' : '重启'}
               </button>
@@ -1219,7 +741,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             {scheduleSaved ? <div className="sd-srv-result">{scheduleSaved}</div> : null}
 
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setScheduleOpen(false)} disabled={scheduleSaving}>
+              <button className="sd-btn-tan" onClick={closeRestartSchedule} disabled={scheduleSaving}>
                 取消
               </button>
               <button
@@ -1252,16 +774,13 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                       value={passwordDraft}
                       placeholder="留空表示不设置密码"
                       maxLength={128}
-                      onChange={(e) => {
-                        setPasswordDraft(e.target.value)
-                        setPasswordMessage(null)
-                      }}
+                      onChange={(e) => updatePasswordDraft(e.target.value)}
                       disabled={passwordSaving}
                     />
                     <button
                       type="button"
                       className="sd-btn-tan"
-                      onClick={() => setPasswordVisible((v) => !v)}
+                      onClick={togglePasswordVisible}
                     >
                       {passwordVisible ? '隐藏' : '显示'}
                     </button>
@@ -1276,7 +795,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 {passwordMessage ? <div className="sd-srv-result">{passwordMessage}</div> : null}
 
                 <div className="sd-confirm-actions">
-                  <button className="sd-btn-tan" onClick={() => setPasswordOpen(false)} disabled={passwordSaving}>
+                  <button className="sd-btn-tan" onClick={closePasswordSettings} disabled={passwordSaving}>
                     关闭
                   </button>
                   <button
@@ -1387,7 +906,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                 {runtimeSettingsMessage ? <div className="sd-srv-result">{runtimeSettingsMessage}</div> : null}
 
                 <div className="sd-confirm-actions">
-                  <button className="sd-btn-tan" onClick={() => setRuntimeSettingsOpen(false)} disabled={runtimeSettingsSaving}>
+                  <button className="sd-btn-tan" onClick={closeRuntimeSettings} disabled={runtimeSettingsSaving}>
                     关闭
                   </button>
                   <button
@@ -1415,27 +934,21 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
 
             <label className="sd-schedule-field">
               <span>
-                请输入 <code>{JOJA_CONFIRM_TEXT}</code> 以确认
+                请输入 <code>{jojaConfirmText}</code> 以确认
               </span>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   className="sd-input"
                   type="text"
                   value={jojaConfirmInput}
-                  placeholder={JOJA_CONFIRM_TEXT}
-                  onChange={(e) => {
-                    setJojaConfirmInput(e.target.value)
-                    setJojaMessage(null)
-                  }}
+                  placeholder={jojaConfirmText}
+                  onChange={(e) => updateJojaConfirmInput(e.target.value)}
                   disabled={jojaBusy}
                 />
                 <button
                   type="button"
                   className="sd-btn-tan"
-                  onClick={() => {
-                    setJojaConfirmInput(JOJA_CONFIRM_TEXT)
-                    setJojaMessage(null)
-                  }}
+                  onClick={fillJojaConfirmText}
                   disabled={jojaBusy}
                 >
                   填入
@@ -1447,13 +960,13 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             {!jojaError && jojaMessage ? <div className="sd-srv-result">{jojaMessage}</div> : null}
 
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setJojaOpen(false)} disabled={jojaBusy}>
+              <button className="sd-btn-tan" onClick={closeJojaConfirm} disabled={jojaBusy}>
                 取消
               </button>
               <button
                 className="sd-btn-delete"
                 onClick={() => void handleEnableJoja()}
-                disabled={jojaBusy || jojaConfirmInput !== JOJA_CONFIRM_TEXT}
+                disabled={jojaBusy || jojaConfirmInput !== jojaConfirmText}
               >
                 {jojaBusy ? '提交中…' : '确认永久启用'}
               </button>
@@ -1464,3 +977,4 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     </div>
   )
 }
+import './ServerControlPage.css'

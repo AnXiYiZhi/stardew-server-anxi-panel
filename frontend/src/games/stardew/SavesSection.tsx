@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { BackupInfo, BackupPolicy, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
+import type { NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
 import {
-  ApiError,
   defaultInstanceId,
   getSaves,
-  getSaveBackups,
-  createSaveBackup,
-  updateSaveBackupPolicy,
   selectSave,
   selectSaveAndStart,
   deleteSave,
-  deleteSaveBackup,
   exportSave,
-  restoreSaveBackup,
   createNewGame,
   uploadSavePreview,
   uploadSaveCommitAndStart,
@@ -21,6 +15,8 @@ import { errorMessage, formatBytes } from '../../core/helpers'
 import { Field } from '../../core/Field'
 import { NewGameCreator } from './NewGameCreator'
 import type { StardewSaveActionRequest } from './stardew-routes'
+import { useSaveBackups } from './useSaveBackups'
+import { useSaveRestore } from './useSaveRestore'
 
 const seasonLabel: Record<string, string> = {
   spring: '春', summer: '夏', fall: '秋', winter: '冬',
@@ -43,20 +39,6 @@ const farmTypeAlias: Record<string, string> = {
 }
 
 // ── SaveCard ─────────────────────────────────────────────────────────────────
-
-const defaultBackupPolicy: BackupPolicy = {
-  gameSaveBackups: true,
-  retainGameDays: 5,
-}
-
-function normalizeBackupPolicy(policy: BackupPolicy): BackupPolicy {
-  const rawDays = (policy as Partial<BackupPolicy>).retainGameDays
-  const retainGameDays = Math.max(
-    1,
-    Math.min(14, typeof rawDays === 'number' && Number.isFinite(rawDays) ? rawDays : defaultBackupPolicy.retainGameDays),
-  )
-  return { ...defaultBackupPolicy, ...policy, retainGameDays }
-}
 
 // "游戏日回档"（kind === 'auto'）之外的备份类型标签；latest/daily/scheduled 是
 // 已取消的旧机制留下的历史文件，不再产生新的，仅归入"历史备份"展示。
@@ -184,17 +166,6 @@ export function SavesSection({
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [backups, setBackups] = useState<BackupInfo[]>([])
-  const [backupsLoading, setBackupsLoading] = useState(false)
-  const [backupMessage, setBackupMessage] = useState('')
-  const [backupPolicy, setBackupPolicy] = useState<BackupPolicy>(defaultBackupPolicy)
-  const [backupPolicyDraft, setBackupPolicyDraft] = useState<BackupPolicy>(defaultBackupPolicy)
-  const [backupPolicyBusy, setBackupPolicyBusy] = useState(false)
-  const [restoreBackup, setRestoreBackup] = useState<BackupInfo | null>(null)
-  const [restoreNeedsOverwrite, setRestoreNeedsOverwrite] = useState(false)
-  const [restoreError, setRestoreError] = useState('')
-  const [deleteBackupTarget, setDeleteBackupTarget] = useState<BackupInfo | null>(null)
-  const [showAllBackups, setShowAllBackups] = useState(false)
   const isRunning = state === 'running' || state === 'starting'
 
   // 删除确认（内联对话框，替代 window.confirm）
@@ -224,27 +195,51 @@ export function SavesSection({
     }
   }, [])
 
-  const loadBackups = useCallback(async () => {
-    if (!isAdmin) {
-      setBackups([])
-      return
-    }
-    setBackupsLoading(true)
-    setBackupMessage('')
-    try {
-      const result = await getSaveBackups()
-      setBackups(result.backups)
-      if (result.policy) {
-        const normalizedPolicy = normalizeBackupPolicy(result.policy)
-        setBackupPolicy(normalizedPolicy)
-        setBackupPolicyDraft(normalizedPolicy)
-      }
-    } catch (error) {
-      setBackupMessage(errorMessage(error))
-    } finally {
-      setBackupsLoading(false)
-    }
-  }, [isAdmin])
+  const saves = data?.saves ?? []
+
+  const {
+    backupsLoading,
+    backupMessage,
+    backupPolicyDraft,
+    setBackupPolicyDraft,
+    backupPolicyBusy,
+    backupPolicyChanged,
+    autoBackups,
+    otherBackups,
+    showAllBackups,
+    setShowAllBackups,
+    deleteBackupTarget,
+    openDeleteBackupDialog,
+    cancelDeleteBackupDialog,
+    loadBackups,
+    handleManualBackup,
+    handleBackupPolicySave,
+    handleBackupDeleteConfirmed,
+    clearBackupMessage,
+  } = useSaveBackups({ isAdmin, setBusy })
+
+  const {
+    restoreBackup,
+    restoreNeedsOverwrite,
+    restoreError,
+    restoreSaveExists,
+    restoreBlocked,
+    openRestoreDialog,
+    cancelRestoreDialog,
+    handleRestoreConfirmed,
+  } = useSaveRestore({
+    saves,
+    isAdmin,
+    isRunning,
+    busy,
+    setBusy,
+    onJobStarted,
+    onStateRefresh,
+    onSavesChanged,
+    loadSaves,
+    loadBackups,
+    clearBackupMessage,
+  })
 
   useEffect(() => {
     void loadSaves()
@@ -349,91 +344,6 @@ export function SavesSection({
     }
   }
 
-  async function handleManualBackup(name: string) {
-    setBusy(true)
-    setBackupMessage('')
-    try {
-      await createSaveBackup(name)
-      await loadBackups()
-      setBackupMessage('手动备份已创建。')
-    } catch (error) {
-      setBackupMessage(errorMessage(error))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleBackupPolicySave() {
-    setBackupPolicyBusy(true)
-    setBackupMessage('')
-    try {
-      const result = await updateSaveBackupPolicy(normalizeBackupPolicy(backupPolicyDraft))
-      const normalizedPolicy = normalizeBackupPolicy(result.policy)
-      setBackupPolicy(normalizedPolicy)
-      setBackupPolicyDraft(normalizedPolicy)
-      await loadBackups()
-      setBackupMessage('备份设置已保存。')
-    } catch (error) {
-      setBackupMessage(errorMessage(error))
-    } finally {
-      setBackupPolicyBusy(false)
-    }
-  }
-
-  function openRestoreDialog(backup: BackupInfo) {
-    setRestoreBackup(backup)
-    setRestoreNeedsOverwrite(saves.some((save) => save.name === backup.saveName))
-    setRestoreError('')
-  }
-
-  async function handleRestoreConfirmed(overwrite: boolean) {
-    if (!restoreBackup) return
-    setBusy(true)
-    setRestoreError('')
-    setBackupMessage('')
-    try {
-      const result = await restoreSaveBackup(restoreBackup.name, overwrite, isRunning)
-      setRestoreBackup(null)
-      setRestoreNeedsOverwrite(false)
-      if (result.jobId) {
-        // Server was running: stop -> restore -> start submitted as one job.
-        // Let the existing job-polling/SSE machinery drive save/state refresh
-        // once it finishes, instead of reloading immediately (the restore
-        // itself hasn't happened yet at this point).
-        onJobStarted(result.jobId)
-      } else {
-        await loadSaves()
-        await loadBackups()
-        onStateRefresh()
-        onSavesChanged?.()
-      }
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'save_exists') {
-        setRestoreNeedsOverwrite(true)
-        setRestoreError('同名存档已存在。确认覆盖后，系统会先备份当前存档再恢复此备份。')
-      } else {
-        setRestoreError(errorMessage(error))
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleBackupDeleteConfirmed() {
-    if (!deleteBackupTarget) return
-    setBusy(true)
-    setBackupMessage('')
-    try {
-      await deleteSaveBackup(deleteBackupTarget.name)
-      setDeleteBackupTarget(null)
-      await loadBackups()
-    } catch (error) {
-      setBackupMessage(errorMessage(error))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   async function handleNewGameSubmit(cfg: NewGameConfig) {
     setBusy(true)
     setNewGameError('')
@@ -496,7 +406,6 @@ export function SavesSection({
     setUploadMessage('')
   }
 
-  const saves = data?.saves ?? []
   const hasSaves = saves.length > 0
   const activeSave = data?.activeSaveName
     ? saves.find((save) => save.isActive || save.name === data.activeSaveName) ?? null
@@ -507,20 +416,6 @@ export function SavesSection({
   const confirmDeleteIsActive = Boolean(confirmDeleteSave?.isActive || data?.activeSaveName === confirmDeleteName)
   const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1
   const confirmDeleteBlocked = busy || !isAdmin || (isRunning && confirmDeleteIsActive)
-  const restoreSaveExists = restoreBackup ? saves.some((save) => save.name === restoreBackup.saveName) : false
-  // 回档相关按钮（列表行入口和弹窗内提交）都不再因服务器运行中禁用——确认后
-  // 会自动停止服务器、完成回档，再重新启动服务器（见 handleRestoreConfirmed
-  // 的 autoRestart），而不是给一个只有 hover 才看得到说明的禁用按钮。
-  const restoreBlocked = busy || !isAdmin
-  const backupPolicyChanged = JSON.stringify(backupPolicyDraft) !== JSON.stringify(backupPolicy)
-  // 游戏日回档：按游戏内日期序号（不是现实创建时间）排序，后端已经按策略保留了最近 N 个游戏日。
-  const autoBackups = [...backups]
-    .filter((b) => b.kind === 'auto')
-    .sort((a, b) => (b.gameDayOrdinal ?? 0) - (a.gameDayOrdinal ?? 0))
-  // 其他备份：手动 / 删除前 / 回档前保护 / 历史遗留（latest、daily、scheduled），按现实创建时间排序。
-  const otherBackups = backups
-    .filter((b) => b.kind !== 'auto')
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 
   return (
     <section id="saves-section">
@@ -839,7 +734,7 @@ export function SavesSection({
                         type="button"
                         disabled={busy}
                         title="彻底删除这个回档点，不影响当前存档"
-                        onClick={() => setDeleteBackupTarget(backup)}
+                        onClick={() => openDeleteBackupDialog(backup)}
                       >
                         删除
                       </button>
@@ -922,7 +817,7 @@ export function SavesSection({
                         type="button"
                         disabled={busy}
                         title="彻底删除备份 ZIP，不影响当前存档"
-                        onClick={() => setDeleteBackupTarget(backup)}
+                        onClick={() => openDeleteBackupDialog(backup)}
                       >
                         删除
                       </button>
@@ -1014,7 +909,7 @@ export function SavesSection({
                 className="sd-btn-tan"
                 type="button"
                 disabled={busy}
-                onClick={() => setDeleteBackupTarget(null)}
+                onClick={cancelDeleteBackupDialog}
               >
                 取消
               </button>
@@ -1056,7 +951,7 @@ export function SavesSection({
                 className="sd-btn-tan"
                 type="button"
                 disabled={busy}
-                onClick={() => { setRestoreBackup(null); setRestoreNeedsOverwrite(false); setRestoreError('') }}
+                onClick={cancelRestoreDialog}
               >
                 取消
               </button>

@@ -1,0 +1,1640 @@
+/* SavesPage page-only styles. Loaded with the lazy page chunk. */
+
+
+.sd-saves-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-saves-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sd-saves-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.sd-saves-running-hint {
+  font-size: 12px;
+  color: #7a4a10;
+  background: var(--sd-gold-light);
+  border: 1px solid var(--sd-gold-border);
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-saves-active-hint {
+  font-size: 13px;
+  color: var(--sd-green-text);
+  background: var(--sd-green-bg);
+  border: 1px solid var(--sd-green);
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sd-saves-error {
+  font-size: 13px;
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  padding: 4px 8px;
+}
+
+.sd-saves-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sd-save-card {
+  padding: 9px 12px;
+  border: 1px solid #dcc898;
+  background: #f8f0d8;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sd-save-card.active {
+  border-color: var(--sd-green);
+  background: var(--sd-green-bg);
+}
+
+.sd-save-card-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sd-save-card-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-save-active-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  background: var(--sd-green);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.sd-save-card-error {
+  font-size: 12px;
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  padding: 2px 5px;
+}
+
+.sd-save-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 12px;
+  color: #5a3c1d;
+  line-height: 1.45;
+}
+
+.sd-save-meta-muted {
+  color: #8a7060;
+  font-style: italic;
+}
+
+.sd-save-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.sd-saves-empty {
+  padding: 20px 14px;
+  text-align: center;
+  border: 1px dashed #dcc898;
+  background: #f8f0d8;
+  display: grid;
+  gap: 8px;
+}
+
+.sd-saves-empty-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-saves-empty-hint {
+  font-size: 13px;
+  color: #5a3c1d;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.sd-saves-empty-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.sd-save-backups-section {
+  padding: 10px 12px;
+  border: 1px solid #dcc898;
+  background: #f8f0d8;
+  display: grid;
+  gap: 8px;
+}
+
+.sd-save-backups-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-save-backup-policy {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1.2fr) auto minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-save-backup-policy-head {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: #4a3218;
+}
+
+.sd-save-backup-policy-head strong {
+  font-size: 13px;
+  color: #2c1a0a;
+}
+
+.sd-save-backup-policy-head span {
+  color: #6f4d23;
+}
+
+.sd-save-backup-toggle,
+.sd-save-backup-field,
+.sd-save-backup-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a3218;
+}
+
+.sd-save-backup-option {
+  align-items: flex-start;
+}
+
+.sd-save-backup-option > span,
+.sd-save-backup-slider > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sd-save-backup-option strong,
+.sd-save-backup-slider strong {
+  color: #2c1a0a;
+}
+
+.sd-save-backup-option small,
+.sd-save-backup-slider small {
+  max-width: 280px;
+  color: #6f4d23;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.sd-save-backup-field input[type="number"],
+.sd-save-backup-field select {
+  width: 76px;
+  height: 28px;
+  padding: 2px 6px;
+  border: 1px solid #c7a868;
+  background: #fff9e8;
+  color: #2c1a0a;
+}
+
+.sd-save-backup-slider {
+  min-width: min(100%, 320px);
+}
+
+.sd-save-backup-slider input[type="range"] {
+  width: 132px;
+}
+
+@media (max-width: 980px) {
+  .sd-save-backup-policy {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .sd-save-backup-policy {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sd-save-backups-list {
+  display: grid;
+  gap: 6px;
+}
+
+.sd-save-backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid #dcc898;
+  background: rgba(255, 246, 217, 0.72);
+}
+
+.sd-save-backup-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sd-save-backup-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #2c1a0a;
+  overflow-wrap: anywhere;
+}
+
+.sd-save-backup-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-size: 12px;
+  color: #5a3c1d;
+  line-height: 1.45;
+}
+
+.sd-save-backup-conflict {
+  color: #7a3b12;
+  background: #fff0c2;
+  border: 1px solid #c58b2a;
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+.sd-save-backup-kind {
+  color: #244b2a;
+  background: #e8f4cf;
+  border: 1px solid #9fbd72;
+  padding: 0 5px;
+  font-weight: 800;
+}
+
+.sd-save-backup-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sd-saves-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.sd-saves-modal-card {
+  background: #f8f0d8;
+  border: 3px solid #3d2510;
+  padding: 14px 18px;
+  max-width: 640px;
+  width: calc(100vw - 24px);
+  max-height: 90vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.sd-saves-modal-card-wide {
+  max-width: 1200px;
+  overflow-x: auto;
+}
+
+.sd-saves-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-saves-modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+  margin: 0;
+}
+
+.sd-saves-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid #dcc898;
+  margin-top: 4px;
+}
+
+.sd-saves-preview-table {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.sd-saves-preview-row {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #dcc898;
+}
+
+.sd-saves-preview-label {
+  color: #5a3c1d;
+  font-weight: 700;
+  min-width: 75px;
+  flex-shrink: 0;
+}
+
+.sd-saves-hint {
+  font-size: 12px;
+  color: #5a3c1d;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sd-saves-upload-form {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .sd-saves-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.sd-saves-page #saves-section {
+  gap: 12px;
+}
+
+.sd-saves-header {
+  background: rgba(255, 248, 220, 0.36);
+  border: 1px solid rgba(200, 168, 112, 0.58);
+  padding: 10px 12px;
+  align-items: stretch;
+}
+
+.sd-saves-header-actions {
+  flex: 1 1 100%;
+  justify-content: flex-start;
+}
+
+.sd-saves-active-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 34%) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 2px solid #b57a2d;
+  background: #fff1cb;
+}
+
+.sd-saves-active-art {
+  min-height: 116px;
+  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
+  background-size: cover;
+  background-position: center;
+  border: 1px solid #9a6a30;
+  image-rendering: pixelated;
+}
+
+.sd-saves-active-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sd-saves-active-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  color: #7a4a10;
+}
+
+.sd-saves-active-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 900;
+  color: #2c1a0a;
+}
+
+.sd-saves-active-title > span:first-child {
+  min-width: 0;
+}
+
+.sd-saves-active-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 8px;
+  justify-content: start;
+  justify-items: start;
+}
+
+.sd-saves-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sd-save-card {
+  min-height: 94px;
+}
+
+.sd-save-backups-list {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 1180px) {
+
+  .sd-saves-active-card {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .sd-saves-active-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, max-content);
+  }
+}
+
+@media (max-width: 760px) {
+
+  .sd-saves-active-card {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-saves-active-art {
+    min-height: 96px;
+  }
+
+  .sd-saves-active-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sd-saves-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: -2px;
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #6e4416;
+}
+
+.sd-saves-eyebrow-ico {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sd-saves-eyebrow-actions {
+  margin-left: auto;
+}
+
+.sd-saves-page {
+  padding-top: 0;
+}
+
+.sd-saves-page-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  justify-self: start;
+  font-size: var(--sd-font-size-page-title);
+  font-weight: 900;
+  color: #2c1a0a;
+  line-height: 1.2;
+}
+
+.sd-saves-page .sd-saves-active-card {
+  position: relative;
+  border: 3px solid #8a5a22;
+  border-radius: 10px;
+  background:
+    radial-gradient(rgba(122, 80, 30, 0.05) 1px, transparent 1.4px) 0 0 / 7px 7px,
+    radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.4px) 3px 5px / 11px 11px,
+    #f4dfae;
+  box-shadow:
+    inset 0 0 0 2px #c9974a,
+    inset 0 0 0 4px rgba(122, 74, 26, 0.28),
+    0 2px 0 rgba(90, 55, 18, 0.3);
+}
+
+.sd-saves-page .sd-saves-active-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image:
+    radial-gradient(circle at 35% 30%, #f2eee4 0 1.5px, #9d9da8 1.5px 3.5px, #4f4f58 3.5px 4.5px, transparent 4.5px),
+    radial-gradient(circle at 35% 30%, #f2eee4 0 1.5px, #9d9da8 1.5px 3.5px, #4f4f58 3.5px 4.5px, transparent 4.5px),
+    radial-gradient(circle at 35% 30%, #f2eee4 0 1.5px, #9d9da8 1.5px 3.5px, #4f4f58 3.5px 4.5px, transparent 4.5px),
+    radial-gradient(circle at 35% 30%, #f2eee4 0 1.5px, #9d9da8 1.5px 3.5px, #4f4f58 3.5px 4.5px, transparent 4.5px);
+  background-size: 10px 10px;
+  background-repeat: no-repeat;
+  background-position:
+    6px 6px,
+    calc(100% - 16px) 6px,
+    6px calc(100% - 16px),
+    calc(100% - 16px) calc(100% - 16px);
+}
+
+.sd-saves-page .sd-saves-active-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 132px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid #c08c3e;
+  border-radius: 8px;
+  background:
+    linear-gradient(165deg, rgba(255, 252, 240, 0.35), rgba(255, 252, 240, 0) 46%),
+    #e9c887;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 244, 214, 0.35),
+    inset 0 -4px 8px rgba(150, 100, 40, 0.18);
+}
+
+.sd-saves-active-art-map {
+  /* 等比缩小到槽位一半，居中留白 */
+  width: 50%;
+  height: 50%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 2px 0 rgba(120, 78, 28, 0.35));
+}
+
+.sd-saves-page .sd-saves-active-title .sd-save-active-tag {
+  padding: 2px 9px;
+  border: 1px solid #3c7f24;
+  border-radius: 999px;
+  background: linear-gradient(#9ad46e, #6cb63f);
+  color: #1d3d0d;
+  text-shadow: none;
+}
+
+.sd-saves-active-star {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sd-saves-active-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 30px;
+}
+
+.sd-saves-field {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(150, 104, 44, 0.35);
+  font-size: 13px;
+}
+
+.sd-saves-field-ico {
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sd-saves-field-label {
+  flex: 0 0 auto;
+  min-width: 58px;
+  color: #7a5322;
+  font-weight: 800;
+}
+
+.sd-saves-field-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #3a250e;
+  font-weight: 700;
+}
+
+.sd-saves-page .sd-saves-active-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sd-saves-page .sd-save-card {
+  border: 2px solid #a06c2c;
+  border-radius: 9px;
+  background:
+    radial-gradient(rgba(122, 80, 30, 0.05) 1px, transparent 1.4px) 0 0 / 7px 7px,
+    radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.4px) 3px 5px / 11px 11px,
+    #f6e2b2;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 243, 210, 0.55),
+    inset 0 -5px 9px rgba(160, 108, 44, 0.12),
+    0 2px 0 rgba(90, 55, 18, 0.25);
+}
+
+.sd-saves-page .sd-save-card {
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.sd-save-card-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 92px;
+  height: 68px;
+  border: 1px solid #c08c3e;
+  border-radius: 7px;
+  overflow: hidden;
+  background:
+    linear-gradient(165deg, rgba(255, 252, 240, 0.35), rgba(255, 252, 240, 0) 46%),
+    #e9c887;
+  box-shadow: inset 0 0 0 2px rgba(255, 244, 214, 0.3);
+}
+
+.sd-save-card-thumb img {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sd-save-card-thumb-empty {
+  font-size: 20px;
+  font-weight: 900;
+  color: #b08a4a;
+}
+
+.sd-saves-page .sd-save-card-info {
+  gap: 4px;
+}
+
+.sd-saves-page .sd-save-card-name {
+  font-size: 14.5px;
+  font-weight: 900;
+  color: #3a250e;
+}
+
+.sd-save-card-line {
+  font-size: 12.5px;
+  color: #5a3c1d;
+  font-weight: 700;
+}
+
+.sd-save-card-line-muted {
+  color: #8a6a38;
+  font-weight: 600;
+}
+
+.sd-saves-page .sd-save-card-actions {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+.sd-saves-page .sd-save-card-create {
+  position: relative;
+}
+
+.sd-saves-page .sd-save-card-create::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px dashed rgba(160, 108, 44, 0.65);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.sd-save-create-plus {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 56px;
+  margin-left: 4px;
+  border: 2px dashed rgba(160, 108, 44, 0.6);
+  border-radius: 7px;
+  background: rgba(233, 200, 135, 0.55);
+  font-size: 26px;
+  font-weight: 900;
+  color: #8a5a22;
+}
+
+.sd-save-create-title {
+  font-size: 14.5px;
+  font-weight: 900;
+  color: #6e4416;
+}
+
+.sd-save-create-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #8a6a38;
+  line-height: 1.5;
+}
+
+.sd-saves-page .sd-saves-upload-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 66px;
+  padding: 12px 18px;
+  border: 2px solid #7f5a24;
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    linear-gradient(#ffffff, #ffffff) 30% 74% / 58px 11px,
+    linear-gradient(#ffffff, #ffffff) 31% 44% / 38px 10px,
+    linear-gradient(#f0faff, #f0faff) 44% 62% / 34px 9px,
+    linear-gradient(#ffffff, #ffffff) 54% 68% / 66px 12px,
+    linear-gradient(#ffffff, #ffffff) 55% 36% / 42px 10px,
+    linear-gradient(#f0faff, #f0faff) 66% 52% / 30px 9px,
+    linear-gradient(#ffffff, #ffffff) 72% 72% / 78px 13px,
+    linear-gradient(#ffffff, #ffffff) 73% 40% / 54px 11px,
+    linear-gradient(#f0faff, #f0faff) 79% 14% / 30px 9px,
+    linear-gradient(180deg, #a5e0f9 0%, #6ec4ef 48%, #47a9e4 100%);
+  background-repeat: no-repeat;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.4),
+    inset 0 -8px 0 rgba(28, 115, 184, 0.18),
+    0 3px 0 rgba(75, 47, 19, 0.25);
+}
+
+.sd-saves-upload-ico {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  font-size: 26px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 0 rgba(90, 55, 18, 0.35));
+}
+
+.sd-saves-upload-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sd-saves-upload-title {
+  font-size: 14.5px;
+  font-weight: 900;
+  color: #4a2c0f;
+  text-shadow: 0 1px 0 rgba(255, 248, 214, 0.6);
+}
+
+.sd-saves-upload-hint {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a5528;
+  text-shadow: 0 1px 0 rgba(255, 248, 214, 0.5);
+}
+
+.sd-saves-page .sd-save-backups-section {
+  padding: 0;
+  border: 2px solid #a06c2c;
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(rgba(122, 80, 30, 0.05) 1px, transparent 1.4px) 0 0 / 7px 7px,
+    radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.4px) 3px 5px / 11px 11px,
+    #f6e2b2;
+}
+
+.sd-saves-page .sd-save-backups-section > *:not(.sd-save-backups-header) {
+  margin: 0 12px;
+}
+
+.sd-saves-page .sd-save-backups-section > *:last-child {
+  margin-bottom: 12px;
+}
+
+.sd-saves-page .sd-save-backups-header {
+  margin: 0;
+  padding: 9px 12px;
+  background: linear-gradient(#dcbc7e, #d0ab64);
+  border-bottom: 1px solid #b08840;
+}
+
+.sd-save-backups-table,
+.sd-save-gameday-table {
+  display: grid;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.sd-save-backups-thead,
+.sd-saves-page .sd-save-backup-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 2.1fr) minmax(110px, 1.2fr) minmax(120px, 1.1fr) minmax(64px, 0.6fr) minmax(84px, 0.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 660px;
+}
+
+.sd-save-backups-thead {
+  padding: 7px 10px;
+  background: rgba(200, 160, 92, 0.45);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #6e4416;
+}
+
+.sd-saves-page .sd-save-backup-row {
+  padding: 9px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(160, 108, 44, 0.32);
+  background: transparent;
+}
+
+.sd-saves-page .sd-save-backup-row:last-of-type {
+  border-bottom: 0;
+}
+
+.sd-save-backup-file {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.sd-save-backup-zip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 30px;
+  height: 36px;
+  padding-bottom: 4px;
+  border: 2px solid #7a5322;
+  border-radius: 4px 9px 4px 4px;
+  background:
+    linear-gradient(135deg, transparent 9px, #fdf6e0 9px),
+    #e8d8ac;
+  color: #6e4416;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 -8px 0 rgba(200, 160, 92, 0.5);
+}
+
+.sd-save-backup-file-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sd-saves-page .sd-save-backup-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.sd-saves-page .sd-save-backup-kind {
+  font-size: 11px;
+  color: #8a6a38;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.sd-save-backup-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: #4a3218;
+  font-weight: 700;
+}
+
+.sd-saves-page .sd-save-backup-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sd-save-backups-more {
+  min-width: 660px;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid rgba(160, 108, 44, 0.32);
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 900;
+  color: #6e4416;
+  cursor: pointer;
+}
+
+.sd-save-backups-more:hover {
+  background: rgba(200, 160, 92, 0.25);
+}
+
+.sd-saves-page .sd-save-backup-policy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(160, 108, 44, 0.32);
+}
+
+.sd-save-backup-policy-title {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 900;
+  color: #6e4416;
+}
+
+.sd-saves-page .sd-save-backup-toggle,
+.sd-saves-page .sd-save-backup-slider {
+  min-height: 0;
+  color: #4a3218;
+}
+
+.sd-saves-page .sd-save-backup-toggle select {
+  height: 26px;
+  padding: 2px 6px;
+  border: 1px solid #c7a868;
+  background: #fff9e8;
+  color: #2c1a0a;
+}
+
+.sd-saves-page .sd-save-backup-slider {
+  min-width: 0;
+}
+
+.sd-saves-page .sd-save-backup-slider input[type="range"] {
+  width: 110px;
+}
+
+.sd-saves-page .sd-saves-empty {
+  border: 2px dashed rgba(160, 108, 44, 0.6);
+  border-radius: 10px;
+  background:
+    radial-gradient(rgba(122, 80, 30, 0.05) 1px, transparent 1.4px) 0 0 / 7px 7px,
+    radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.4px) 3px 5px / 11px 11px,
+    #f6e2b2;
+}
+
+.sd-saves-page .sd-save-card {
+  background: var(--sd-save-card-bg);
+}
+
+.sd-saves-page .sd-saves-active-card {
+  background: var(--sd-save-card-bg-strong);
+}
+
+.sd-saves-page #saves-section {
+  gap: 10px;
+}
+
+.sd-saves-page .sd-page-header {
+  min-height: 54px;
+  padding-inline: 0;
+}
+
+.sd-saves-page .sd-saves-running-hint {
+  min-height: 24px;
+  padding: 3px 10px;
+}
+
+.sd-saves-active-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(156px, 190px);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.sd-saves-page .sd-saves-active-card {
+  grid-template-columns: minmax(212px, 34%) minmax(0, 1fr);
+  min-height: 154px;
+  padding: 10px 12px;
+  gap: 14px;
+}
+
+.sd-saves-page .sd-saves-active-art {
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 1.72;
+  padding: 4px;
+}
+
+.sd-saves-active-art-map,
+.sd-save-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sd-saves-page .sd-saves-active-title {
+  font-size: 25px;
+  line-height: 1.05;
+}
+
+.sd-saves-page .sd-saves-active-title .sd-save-active-tag {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.sd-saves-page .sd-saves-active-fields {
+  gap: 6px 20px;
+}
+
+.sd-saves-page .sd-saves-field {
+  gap: 6px;
+  padding-bottom: 4px;
+  font-size: 12.5px;
+}
+
+.sd-saves-page .sd-saves-field-label {
+  min-width: 54px;
+}
+
+.sd-saves-active-action-card {
+  display: grid;
+  align-content: center;
+  gap: 9px;
+  padding: 10px;
+  border: 2px solid #a06c2c;
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 243, 210, 0.55),
+    inset 0 -5px 9px rgba(160, 108, 44, 0.12),
+    0 2px 0 rgba(90, 55, 18, 0.25);
+}
+
+.sd-saves-page .sd-saves-eyebrow {
+  min-height: 30px;
+  margin-bottom: -4px;
+}
+
+.sd-saves-page .sd-saves-eyebrow-actions {
+  gap: 8px;
+}
+
+.sd-saves-page .sd-saves-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sd-saves-page .sd-save-card {
+  display: grid;
+  grid-template-columns: 122px minmax(0, 1fr);
+  grid-template-rows: minmax(96px, 1fr) auto;
+  min-height: 166px;
+  align-items: stretch;
+  gap: 10px 12px;
+  padding: 10px;
+}
+
+.sd-saves-page .sd-save-card-thumb {
+  width: 122px;
+  height: 96px;
+}
+
+.sd-saves-page .sd-save-card-info {
+  align-self: center;
+  min-width: 0;
+}
+
+.sd-saves-page .sd-save-card-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-self: end;
+}
+
+.sd-saves-page .sd-saves-upload-strip {
+  min-height: 66px;
+  padding: 10px 18px;
+}
+
+.sd-saves-page .sd-save-backups-section {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.34fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.sd-saves-page .sd-save-backups-section > * {
+  margin: 0 !important;
+}
+
+.sd-save-backup-policy-card,
+.sd-save-backup-list-card {
+  min-width: 0;
+  border: 2px solid #a06c2c;
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 243, 210, 0.55),
+    inset 0 -5px 9px rgba(160, 108, 44, 0.12),
+    0 2px 0 rgba(90, 55, 18, 0.25);
+}
+
+.sd-save-backup-policy-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+}
+
+.sd-save-backup-list-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.sd-save-backup-list-card--full {
+  grid-column: 1 / -1;
+}
+
+.sd-save-backup-card-title {
+  font-size: 14px;
+  font-weight: 900;
+  color: #6e4416;
+}
+
+.sd-saves-page .sd-save-backups-header {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.sd-saves-page .sd-save-backup-policy {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.sd-saves-page .sd-save-backup-toggle,
+.sd-saves-page .sd-save-backup-slider {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.sd-saves-page .sd-save-backup-toggle input[type="checkbox"] {
+  justify-self: center;
+}
+
+.sd-saves-page .sd-save-backup-toggle-label {
+  min-width: 0;
+  font-weight: 900;
+}
+
+.sd-saves-page .sd-save-backup-slider {
+  grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
+}
+
+.sd-saves-page .sd-save-backup-slider-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  min-width: 0;
+  font-weight: 900;
+  color: #4a3218;
+}
+
+.sd-saves-page .sd-save-backup-slider-label strong {
+  color: #2c1a0a;
+}
+
+.sd-saves-page .sd-save-backup-slider input[type="range"] {
+  min-width: 0;
+  width: 100%;
+}
+
+.sd-saves-page .sd-save-backups-thead,
+.sd-saves-page .sd-save-backup-row {
+  grid-template-columns: minmax(160px, 2fr) minmax(90px, 1fr) minmax(118px, 1.1fr) minmax(60px, 0.55fr) minmax(70px, 0.65fr) minmax(94px, auto);
+  min-width: 620px;
+}
+
+@container sd-main-scroll (max-width: 900px) {
+  .sd-saves-active-row,
+  .sd-saves-page .sd-save-backups-section {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-saves-active-action-card {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: stretch;
+  }
+
+  .sd-saves-page .sd-saves-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container sd-main-scroll (max-width: 620px) {
+
+  .sd-saves-page .sd-saves-list,
+  .sd-saves-page .sd-saves-active-card,
+  .sd-saves-active-action-card {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-saves-page .sd-save-card {
+    grid-template-columns: 92px minmax(0, 1fr);
+    min-height: 132px;
+  }
+
+  .sd-saves-page .sd-save-card-thumb {
+    width: 92px;
+    height: 72px;
+  }
+
+  .sd-saves-page .sd-saves-eyebrow {
+    flex-wrap: wrap;
+  }
+
+  .sd-saves-page .sd-saves-eyebrow-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .sd-save-backups-table,
+  .sd-save-gameday-table {
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sd-save-backups-table::after,
+  .sd-save-gameday-table::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, rgba(61, 37, 16, 0.3));
+  }
+}
+
+/* Shared final overrides duplicated to preserve the pre-split cascade. */
+
+.sd-server-page .sd-srv-section,
+.sd-saves-page #saves-section > *,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-page .sd-jobs-layout,
+.sd-players-page .sd-srv-section,
+.sd-mods-page > .sd-mods-running-hint,
+.sd-mods-page > .sd-mods-success-banner,
+.sd-mods-page > .sd-mods-restart-banner,
+.sd-mods-page > .sd-mods-list-error,
+.sd-mods-overview,
+.sd-mods-workbench,
+.sd-diag-page > .sd-diag-status-panel,
+.sd-diag-page > .sd-diag-resource-panel,
+.sd-settings-section {
+  box-shadow: inset 0 0 0 1px rgba(255, 244, 194, 0.32);
+}
+
+@media (max-width: 760px) {
+
+  .sd-ov-metric-strip,
+  .sd-saves-list,
+  .sd-players-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sd-server-page .sd-page-header,
+.sd-saves-page .sd-page-header,
+.sd-jobs-page .sd-page-header,
+.sd-players-page .sd-page-header,
+.sd-mods-page .sd-page-header,
+.sd-diag-page .sd-page-header,
+.sd-install-title-strip.sd-page-header,
+.sd-settings-page .sd-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: 62px;
+  margin: 0;
+  padding: 3px 6px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sd-server-page .sd-page-header,
+.sd-saves-page .sd-page-header,
+.sd-jobs-page .sd-page-header,
+.sd-players-page .sd-page-header,
+.sd-mods-page .sd-page-header,
+.sd-diag-page .sd-page-header,
+.sd-settings-page .sd-page-header {
+  grid-column: 1 / -1;
+}
+
+.sd-server-page .sd-page-header::after,
+.sd-saves-page .sd-page-header::after,
+.sd-jobs-page .sd-page-header::after,
+.sd-players-page .sd-page-header::after,
+.sd-mods-page .sd-page-header::after,
+.sd-diag-page .sd-page-header::after,
+.sd-install-title-strip.sd-page-header::after,
+.sd-settings-page .sd-page-header::after {
+  content: "";
+  position: static;
+  order: 2;
+  flex: 1 1 auto;
+  align-self: center;
+  height: 2px;
+  min-width: 80px;
+  border: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(106, 61, 22, 0.72), transparent) center / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, rgba(106, 61, 22, 0.42) 0 9px, transparent 9px 15px);
+  box-shadow: none;
+  filter: drop-shadow(0 1px rgba(255, 242, 190, 0.72));
+}
+
+.sd-server-page .sd-page-icon,
+.sd-saves-page .sd-page-icon,
+.sd-jobs-page .sd-page-icon,
+.sd-players-page .sd-page-icon,
+.sd-mods-page .sd-page-icon,
+.sd-diag-page .sd-page-icon,
+.sd-install-title-strip .sd-page-icon,
+.sd-settings-page .sd-page-icon {
+  width: clamp(42px, 5cqi, 58px);
+  height: clamp(42px, 5cqi, 58px);
+  margin: 0;
+  padding: 0;
+  object-fit: contain;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  filter: drop-shadow(2px 3px 0 rgba(75, 40, 14, 0.24));
+}
+
+.sd-server-page .sd-page-title,
+.sd-saves-page .sd-page-title,
+.sd-jobs-page .sd-page-title,
+.sd-players-page .sd-page-title,
+.sd-mods-page .sd-page-title,
+.sd-diag-page .sd-page-title,
+.sd-install-title-strip .sd-page-title,
+.sd-settings-page .sd-page-title {
+  display: block;
+  margin: 0;
+  color: #2d1809;
+  font-size: clamp(30px, 3.8cqi, 42px);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-shadow:
+    1px 1px 0 rgba(255, 242, 190, 0.9),
+    2px 2px 0 rgba(88, 48, 16, 0.18);
+}
+
+.sd-server-page .sd-page-desc,
+.sd-saves-page .sd-page-desc,
+.sd-jobs-page .sd-page-desc,
+.sd-players-page .sd-page-desc,
+.sd-mods-page .sd-page-desc,
+.sd-diag-page .sd-page-desc,
+.sd-settings-page .sd-page-desc {
+  display: none;
+}
+
+@container sd-main-scroll (max-width: 760px) {
+  .sd-server-page .sd-page-header,
+  .sd-saves-page .sd-page-header,
+  .sd-jobs-page .sd-page-header,
+  .sd-players-page .sd-page-header,
+  .sd-mods-page .sd-page-header,
+  .sd-diag-page .sd-page-header,
+  .sd-install-title-strip.sd-page-header,
+  .sd-settings-page .sd-page-header {
+    min-height: auto;
+    gap: 10px;
+  }
+
+  .sd-server-page .sd-page-header::after,
+  .sd-saves-page .sd-page-header::after,
+  .sd-jobs-page .sd-page-header::after,
+  .sd-players-page .sd-page-header::after,
+  .sd-mods-page .sd-page-header::after,
+  .sd-diag-page .sd-page-header::after,
+  .sd-install-title-strip.sd-page-header::after,
+  .sd-settings-page .sd-page-header::after {
+    display: none;
+  }
+
+  .sd-server-page .sd-page-icon,
+  .sd-saves-page .sd-page-icon,
+  .sd-jobs-page .sd-page-icon,
+  .sd-players-page .sd-page-icon,
+  .sd-mods-page .sd-page-icon,
+  .sd-diag-page .sd-page-icon,
+  .sd-install-title-strip .sd-page-icon,
+  .sd-settings-page .sd-page-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sd-server-page .sd-page-title,
+  .sd-saves-page .sd-page-title,
+  .sd-jobs-page .sd-page-title,
+  .sd-players-page .sd-page-title,
+  .sd-mods-page .sd-page-title,
+  .sd-diag-page .sd-page-title,
+  .sd-install-title-strip .sd-page-title,
+  .sd-settings-page .sd-page-title {
+    font-size: 27px;
+  }
+}
+
+.sd-main-scroll > .sd-page,
+.sd-main-scroll > .sd-server-page,
+.sd-main-scroll > .sd-saves-page,
+.sd-main-scroll > .sd-jobs-page,
+.sd-main-scroll > .sd-players-page,
+.sd-main-scroll > .sd-mods-page,
+.sd-main-scroll > .sd-diag-page,
+.sd-main-scroll > .sd-install-page,
+.sd-main-scroll > .sd-settings-page {
+  padding-block-start: 0;
+}
+
+.sd-server-page .sd-page-icon,
+.sd-saves-page .sd-page-icon,
+.sd-jobs-page .sd-page-icon,
+.sd-players-page .sd-page-icon,
+.sd-mods-page .sd-page-icon,
+.sd-diag-page .sd-page-icon,
+.sd-install-title-strip .sd-page-icon,
+.sd-settings-page .sd-page-icon {
+  filter: none;
+}
+
+.sd-server-page .sd-page-header::after,
+.sd-saves-page .sd-page-header::after,
+.sd-jobs-page .sd-page-header::after,
+.sd-players-page .sd-page-header::after,
+.sd-mods-page .sd-page-header::after,
+.sd-diag-page .sd-page-header::after,
+.sd-install-title-strip.sd-page-header::after,
+.sd-settings-page .sd-page-header::after {
+  filter: none;
+  box-shadow: none;
+}
+
+.sd-server-page .sd-page-title,
+.sd-saves-page .sd-page-title,
+.sd-jobs-page .sd-page-title,
+.sd-players-page .sd-page-title,
+.sd-mods-page .sd-page-title,
+.sd-diag-page .sd-page-title,
+.sd-install-title-strip .sd-page-title,
+.sd-settings-page .sd-page-title {
+  text-shadow: none;
+}
+
+.sd-saves-active-actions .sd-btn-green {
+  min-width: 126px;
+}
+
+.sd-saves-page .sd-save-card-create .sd-btn-green {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  margin-right: 6px;
+  flex: 0 0 auto;
+}
+
+.sd-saves-upload-strip .sd-btn-green {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+.sd-saves-page .sd-save-backup-policy .sd-btn-green {
+  margin-left: auto;
+}
+
+.sd-main-scroll > .sd-saves-page {
+  padding-inline: 14px;
+  padding-block-end: 16px;
+  gap: 10px;
+}
+
+.sd-saves-active-action-card .sd-btn-green,
+.sd-saves-active-action-card .sd-btn-tan {
+  width: 100%;
+}
+
+.sd-saves-page .sd-save-card-actions .sd-btn-green,
+.sd-saves-page .sd-save-card-actions .sd-btn-delete {
+  width: 100%;
+}
+
+.sd-saves-page .sd-save-backup-policy .sd-btn-green {
+  width: 100%;
+  min-height: 30px;
+  margin-left: 0;
+}
+
+@container sd-main-scroll (max-width: 620px) {
+  .sd-main-scroll > .sd-saves-page {
+    padding-inline: 8px;
+  }
+}

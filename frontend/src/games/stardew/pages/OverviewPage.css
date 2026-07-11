@@ -1,0 +1,1938 @@
+/* OverviewPage page-only styles. Loaded with the lazy page chunk. */
+
+
+.sd-ov-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sd-ov-banner {
+  height: 58px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #dcc898;
+  display: flex;
+  align-items: center;
+}
+
+.sd-ov-banner-bg {
+  position: absolute;
+  inset: 0;
+  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
+  background-size: auto 100%;
+  background-position: right center;
+  background-color: #87c8e0;
+}
+
+.sd-ov-banner-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(240, 222, 178, 0.72);
+}
+
+.sd-ov-banner-stats {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  flex: 1;
+  font-size: 13px;
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+
+.sd-ov-banner-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  flex-shrink: 0;
+}
+
+.sd-ov-section {
+  padding: 5px 8px;
+  border-bottom: 1px solid #dcc898;
+  flex-shrink: 0;
+}
+
+.sd-ov-title {
+  font-size: var(--sd-font-size-section-title);
+  font-weight: 700;
+  color: #2c1a0a;
+  margin-bottom: 4px;
+}
+
+.sd-invite-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sd-invite-refresh-btn {
+  flex-shrink: 0;
+}
+
+.sd-invite-box {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid #dcc898;
+  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-invite-code {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: monospace;
+  letter-spacing: 1px;
+  color: #2c1a0a;
+}
+
+.sd-ov-error {
+  color: var(--sd-red-text);
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  font-size: 13px;
+  padding: 4px 8px;
+  margin-top: 4px;
+}
+
+.sd-ov-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sd-ov-left {
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid #dcc898;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-ov-right {
+  width: clamp(260px, 28%, 340px);
+  flex-shrink: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-mc {
+  background: #f8f0d8;
+  border: 1px solid #dcc898;
+  padding: 4px 7px;
+}
+
+.sd-mc-name {
+  font-size: 12px;
+  color: #8a7060;
+}
+
+.sd-mc-val {
+  font-size: var(--sd-font-size-metric);
+  font-weight: 700;
+  color: #2c1a0a;
+  line-height: 1.2;
+}
+
+.sd-mc-sub {
+  font-size: 12px;
+  color: #8a7060;
+}
+
+.sd-mc--ok {
+  background: rgba(74, 158, 48, 0.07);
+  border-color: rgba(74, 158, 48, 0.4);
+}
+
+.sd-mc--warn {
+  background: rgba(208, 128, 16, 0.08);
+  border-color: rgba(208, 128, 16, 0.5);
+}
+
+.sd-mc--error {
+  background: rgba(192, 32, 32, 0.07);
+  border-color: rgba(192, 32, 32, 0.35);
+}
+
+.sd-mc--ok .sd-mc-name    { color: var(--sd-green-text); }
+
+.sd-mc--ok .sd-mc-sub     { color: var(--sd-green-text); opacity: 0.8; }
+
+.sd-mc--warn .sd-mc-name  { color: var(--sd-gold-text); }
+
+.sd-mc--warn .sd-mc-sub   { color: var(--sd-gold-text); }
+
+.sd-mc--error .sd-mc-name { color: var(--sd-red-text); }
+
+.sd-mc--error .sd-mc-sub  { color: var(--sd-red-text); }
+
+.sd-ov-player-body {
+  padding: 5px 8px;
+  color: #8a7060;
+  font-size: 12px;
+  font-style: italic;
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sd-ov-player-list {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.sd-ov-player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid rgba(74, 158, 48, 0.32);
+  background: rgba(74, 158, 48, 0.08);
+  color: #2c6818;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .sd-ov-banner {
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+  }
+
+  .sd-ov-banner-right {
+    padding: 0 8px 4px;
+  }
+
+  .sd-ov-body {
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: unset;
+  }
+
+  .sd-ov-left {
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid #dcc898;
+    overflow-y: visible;
+  }
+
+  .sd-ov-right {
+    width: 100%;
+    flex-shrink: 1;
+    overflow-y: visible;
+  }
+}
+
+.sd-ov-wrap {
+  overflow-y: auto;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.sd-ov-banner {
+  height: clamp(120px, 19vh, 190px);
+  border-bottom: 2px solid #7a5030;
+}
+
+.sd-ov-banner-bg {
+  background-size: cover;
+  background-position: center;
+}
+
+.sd-ov-banner-overlay {
+  background: linear-gradient(90deg, rgba(28, 16, 8, 0.08), rgba(240, 222, 178, 0.12));
+}
+
+.sd-ov-banner-stats {
+  align-self: flex-start;
+  padding: 12px;
+  gap: 8px;
+}
+
+.sd-ov-section {
+  margin: 0 12px;
+  border: 1px solid #c8a870;
+  background: #f8f0d8;
+  padding: 10px 12px;
+}
+
+.sd-ov-metric-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 12px;
+}
+
+.sd-mc {
+  min-height: 82px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.sd-mc-name {
+  font-weight: 800;
+}
+
+.sd-ov-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.25fr) minmax(220px, 0.9fr);
+  gap: 10px;
+  padding: 0 12px;
+  min-height: 0;
+}
+
+.sd-ov-card {
+  min-width: 0;
+  border: 1px solid #c8a870;
+  background: #f8f0d8;
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title {
+  padding: 8px 10px;
+  background: rgba(220, 200, 152, 0.55);
+  border-bottom: 1px solid #c8a870;
+}
+
+.sd-ov-player-body {
+  min-height: 130px;
+  flex: 1;
+  align-content: flex-start;
+}
+
+.sd-ov-empty {
+  padding: 8px 10px;
+  color: #8a7060;
+  font-size: 12px;
+  font-style: italic;
+}
+
+@media (max-width: 760px) {
+  .sd-ov-banner {
+    height: auto;
+    min-height: 90px;
+  }
+}
+
+.sd-ov-wrap {
+  gap: 10px;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding: 0 2px 10px;
+  background:
+    radial-gradient(circle at 8px 8px, rgba(127, 79, 32, 0.08) 0 1px, transparent 1.5px) 0 0 / 18px 18px,
+    radial-gradient(circle at 17px 13px, rgba(255, 250, 205, 0.28) 0 1px, transparent 1.4px) 0 0 / 24px 20px,
+    #f7d493;
+  color: #2c1a0a;
+}
+
+.sd-ov-banner {
+  height: clamp(158px, 22vh, 228px);
+  min-height: 0;
+  border: 3px solid #59310f;
+  border-bottom-width: 4px;
+  border-radius: 3px 3px 0 0;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 230, 141, 0.46),
+    inset 0 -20px 0 rgba(61, 35, 13, 0.16),
+    0 3px 0 #3c2415;
+  background: #6fc8ed;
+}
+
+.sd-ov-banner-bg {
+  background:
+    radial-gradient(circle at 7% 22%, rgba(255, 255, 255, 0.92) 0 17px, transparent 18px),
+    radial-gradient(circle at 12% 17%, rgba(255, 255, 255, 0.82) 0 24px, transparent 25px),
+    radial-gradient(circle at 34% 16%, rgba(255, 255, 255, 0.86) 0 18px, transparent 19px),
+    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.86) 0 20px, transparent 21px),
+    linear-gradient(180deg, #47b8eb 0 40%, #8bd36e 40% 54%, #5ea534 54% 64%, #c37a2d 64% 100%);
+  background-color: #64c7ef;
+  image-rendering: pixelated;
+}
+
+.sd-ov-banner-bg::before,
+.sd-ov-banner-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sd-ov-banner-bg::before {
+  background:
+    linear-gradient(165deg, transparent 0 42%, rgba(57, 118, 68, 0.66) 42% 46%, transparent 46%),
+    linear-gradient(18deg, transparent 0 46%, rgba(92, 66, 31, 0.32) 46% 48%, transparent 48%),
+    repeating-linear-gradient(168deg, transparent 0 20px, rgba(60, 100, 22, 0.24) 21px 25px, transparent 26px 46px),
+    repeating-linear-gradient(7deg, transparent 0 30px, rgba(77, 48, 19, 0.26) 31px 35px, transparent 36px 76px);
+  opacity: 0.9;
+}
+
+.sd-ov-banner-bg::after {
+  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: auto min(92%, 188px);
+  filter: saturate(1.12) contrast(1.04);
+}
+
+.sd-ov-banner-overlay {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(58, 38, 15, 0.16)),
+    radial-gradient(circle at 50% 10%, transparent 0 58%, rgba(40, 22, 9, 0.14) 100%);
+}
+
+.sd-ov-banner-stats {
+  align-self: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.sd-ov-banner-right {
+  align-self: flex-start;
+  padding: 10px 12px 0 0;
+}
+
+.sd-ov-section {
+  position: relative;
+  margin: 0;
+  padding: 12px 14px 13px;
+  border: 3px solid #7a4217;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle at 12px 12px, rgba(130, 79, 26, 0.09) 0 1px, transparent 1.4px) 0 0 / 18px 18px,
+    linear-gradient(180deg, #ffe8b3, #f4c983);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 244, 199, 0.46),
+    inset 0 -8px 16px rgba(111, 66, 23, 0.12),
+    0 3px 0 #4c2b12;
+}
+
+.sd-ov-section::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: 50%;
+  width: 1px;
+  background: rgba(119, 70, 25, 0.35);
+  box-shadow: 1px 0 rgba(255, 239, 188, 0.72);
+  pointer-events: none;
+}
+
+.sd-ov-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: #2c1a0a;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sd-ov-title img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sd-invite-panel {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sd-invite-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-self: center;
+  font-size: 15px;
+  font-weight: 900;
+  color: #2c1a0a;
+}
+
+.sd-invite-head img {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.sd-invite-wrap {
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.sd-invite-box {
+  flex: 1 1 250px;
+  max-width: 430px;
+  min-height: 48px;
+  padding: 4px 5px 4px 14px;
+  border: 3px solid #6b3a12;
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(21, 92, 45, 0.95), rgba(9, 65, 35, 0.98));
+  box-shadow:
+    inset 0 0 0 2px rgba(21, 43, 20, 0.84),
+    inset 0 5px 12px rgba(255, 230, 131, 0.1),
+    0 2px 0 #3d2410;
+}
+
+.sd-invite-code {
+  flex: 1;
+  color: #ffd85b;
+  font-family: var(--sd-font-pixel);
+  font-size: 19px;
+  line-height: 1.25;
+  letter-spacing: 2px;
+  text-align: center;
+  text-shadow: 2px 2px 0 #3b3514;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-invite-box .sd-btn-copy {
+  flex-shrink: 0;
+}
+
+.sd-invite-help {
+  justify-self: center;
+  color: #6b4219;
+  font-size: 12px;
+}
+
+.sd-ov-metric-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+}
+
+.sd-mc {
+  position: relative;
+  min-height: 124px;
+  padding: 13px 14px 12px;
+  border: 3px solid #774317;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #ffe6ad, #f5ce8a);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 245, 202, 0.42),
+    inset 0 -8px 13px rgba(108, 64, 21, 0.12),
+    0 3px 0 #4b2a11;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.sd-mc::before,
+.sd-ov-card::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(120, 71, 24, 0.16);
+  pointer-events: none;
+}
+
+.sd-mc-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #2c1a0a;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.sd-mc-name img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sd-mc-val {
+  margin-top: 4px;
+  color: #2c1a0a;
+  font-size: 38px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 1px 2px 0 rgba(126, 78, 28, 0.22);
+}
+
+.sd-mc-sub {
+  max-width: 100%;
+  margin-top: 7px;
+  color: #5f3b18;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-mc-pill {
+  position: absolute;
+  right: 15px;
+  bottom: 14px;
+  min-width: 48px;
+  padding: 3px 7px;
+  border: 1px solid #a67a2d;
+  border-radius: 5px;
+  background: #d4b55a;
+  color: #5f3b18;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: inset 0 1px rgba(255, 247, 184, 0.48);
+}
+
+.sd-mc-pill--ok {
+  border-color: #88a84a;
+  background: #b9d865;
+  color: #315d19;
+}
+
+.sd-mc-pill--warn {
+  border-color: #d29b31;
+  background: #efc76a;
+  color: #70410d;
+}
+
+.sd-mc-pill--error {
+  border-color: #b64a36;
+  background: #df735f;
+  color: #681111;
+}
+
+.sd-ov-summary-grid {
+  grid-template-columns: minmax(230px, 1fr) minmax(280px, 1.18fr) minmax(230px, 0.92fr);
+  gap: 10px;
+  padding: 0;
+}
+
+.sd-ov-card {
+  position: relative;
+  min-width: 0;
+  min-height: 214px;
+  border: 3px solid #774317;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle at 10px 14px, rgba(128, 75, 22, 0.08) 0 1px, transparent 1.4px) 0 0 / 20px 18px,
+    linear-gradient(180deg, #ffe5aa, #f5cd87);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 244, 199, 0.4),
+    0 3px 0 #4b2a11;
+  overflow: hidden;
+}
+
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 13px;
+  border-bottom: 2px solid rgba(119, 67, 23, 0.46);
+  background:
+    linear-gradient(180deg, rgba(255, 238, 178, 0.88), rgba(231, 184, 96, 0.48));
+  color: #2c1a0a;
+  font-size: 16px;
+  font-weight: 900;
+  z-index: 1;
+}
+
+.sd-ov-card .sd-player-hd img,
+.sd-ov-card .sd-ev-title img,
+.sd-ov-card .sd-pack-title img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sd-ov-player-body {
+  position: relative;
+  min-height: 140px;
+  padding: 10px 12px;
+  color: #725128;
+  font-size: 13px;
+  font-style: normal;
+  z-index: 1;
+}
+
+.sd-ov-player-list {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+}
+
+.sd-ov-player-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 8px;
+  border: 2px solid rgba(179, 116, 38, 0.42);
+  background: rgba(255, 232, 175, 0.58);
+  box-shadow: inset 0 0 0 1px rgba(255, 248, 210, 0.46);
+}
+
+.sd-ov-player-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 2px solid #5b3212;
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, #d7893a, #794122);
+  color: #fff1bc;
+  font-weight: 900;
+  text-shadow: 1px 1px 0 #2d1708;
+}
+
+.sd-ov-player-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sd-ov-player-name {
+  color: #2c1a0a;
+  font-size: 13px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-ov-player-meta {
+  color: #6b4219;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-ov-empty {
+  position: relative;
+  z-index: 1;
+  padding: 11px 12px;
+  color: #725128;
+  font-size: 13px;
+  font-style: italic;
+}
+
+@media (max-width: 1180px) {
+
+  .sd-invite-head,
+  .sd-invite-help {
+    justify-self: start;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container sd-main-scroll (max-width: 1180px) {
+
+  .sd-invite-head,
+  .sd-invite-help {
+    justify-self: start;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .sd-ov-wrap {
+    gap: 8px;
+    padding-bottom: 8px;
+  }
+
+  .sd-ov-banner {
+    height: 118px;
+    min-height: 118px;
+    flex-wrap: nowrap;
+    padding: 0;
+  }
+
+  .sd-ov-banner-stats {
+    gap: 4px;
+    padding: 7px;
+  }
+
+  .sd-ov-banner-right {
+    padding: 7px 7px 0 0;
+  }
+
+  .sd-ov-section {
+    padding: 10px;
+  }
+
+  .sd-ov-title,
+  .sd-invite-head,
+  .sd-mc-name,
+  .sd-ov-card .sd-player-hd,
+  .sd-ov-card .sd-ev-title,
+  .sd-ov-card .sd-pack-title {
+    font-size: 14px;
+  }
+
+  .sd-invite-box {
+    flex-basis: 100%;
+    min-height: 44px;
+  }
+
+  .sd-invite-code {
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-mc {
+    min-height: 108px;
+  }
+
+  .sd-mc-val {
+    font-size: 32px;
+  }
+}
+
+.sd-ov-wrap {
+  gap: 11px;
+  background:
+    radial-gradient(circle at 9px 9px, rgba(104, 61, 20, 0.1) 0 1px, transparent 1.4px) 0 0 / 18px 18px,
+    radial-gradient(circle at 21px 14px, rgba(255, 246, 197, 0.33) 0 1px, transparent 1.4px) 0 0 / 26px 22px,
+    repeating-linear-gradient(10deg, rgba(116, 71, 24, 0.035) 0 1px, transparent 1px 10px),
+    #f5d18c;
+}
+
+.sd-ov-banner {
+  isolation: isolate;
+  height: clamp(174px, 24vh, 246px);
+  border: 4px solid #4b2a0e;
+  border-bottom-width: 5px;
+  border-radius: 2px 2px 0 0;
+  background: #6ac7ee;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 231, 143, 0.62),
+    inset 0 -18px 0 rgba(70, 40, 12, 0.16),
+    inset 0 0 28px rgba(35, 18, 6, 0.24),
+    0 4px 0 #2e1a0b;
+}
+
+.sd-ov-banner::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(72, 45, 19, 0.58) 0 2px, transparent 2px 22px) 0 63% / 44px 6px repeat-x,
+    linear-gradient(90deg, transparent 0 11px, rgba(93, 57, 22, 0.82) 11px 15px, transparent 15px 44px) 0 59% / 44px 22px repeat-x,
+    radial-gradient(ellipse at 88% 75%, rgba(58, 134, 151, 0.72) 0 8%, rgba(63, 165, 190, 0.5) 9% 13%, transparent 14%),
+    radial-gradient(circle at 12% 56%, rgba(35, 102, 39, 0.76) 0 25px, transparent 27px),
+    radial-gradient(circle at 15% 50%, rgba(42, 129, 45, 0.62) 0 34px, transparent 36px),
+    radial-gradient(circle at 84% 55%, rgba(37, 122, 43, 0.7) 0 30px, transparent 32px);
+  opacity: 0.72;
+}
+
+.sd-ov-banner-bg {
+  z-index: 0;
+  background:
+    radial-gradient(circle at 7% 22%, rgba(255, 255, 255, 0.94) 0 15px, transparent 16px),
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.84) 0 24px, transparent 25px),
+    radial-gradient(circle at 32% 15%, rgba(255, 255, 255, 0.9) 0 17px, transparent 18px),
+    radial-gradient(circle at 76% 17%, rgba(255, 255, 255, 0.88) 0 19px, transparent 20px),
+    radial-gradient(circle at 91% 14%, rgba(255, 255, 255, 0.76) 0 27px, transparent 28px),
+    linear-gradient(172deg, transparent 0 36%, rgba(95, 155, 86, 0.54) 36.5% 45%, transparent 45.5%),
+    linear-gradient(16deg, transparent 0 41%, rgba(82, 135, 76, 0.5) 41.5% 50%, transparent 50.5%),
+    linear-gradient(180deg, #45b7ea 0 40%, #8ed778 40% 54%, #5ba633 54% 64%, #c9782d 64% 100%);
+}
+
+.sd-ov-banner-bg::before {
+  z-index: 1;
+  background:
+    repeating-linear-gradient(168deg, transparent 0 20px, rgba(59, 104, 21, 0.24) 21px 25px, transparent 26px 48px),
+    repeating-linear-gradient(7deg, transparent 0 28px, rgba(80, 49, 18, 0.28) 29px 34px, transparent 35px 78px),
+    repeating-linear-gradient(90deg, rgba(99, 58, 18, 0.2) 0 2px, transparent 2px 28px);
+}
+
+.sd-ov-banner-bg::after {
+  z-index: 2;
+  background-size: auto min(86%, 170px);
+  background-position: center calc(100% + 2px);
+  filter: saturate(1.18) contrast(1.08) drop-shadow(0 5px 0 rgba(58, 32, 10, 0.28));
+}
+
+.sd-ov-banner-overlay {
+  z-index: 2;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(58, 36, 12, 0.08) 66%, rgba(55, 31, 9, 0.2)),
+    radial-gradient(circle at 50% 15%, transparent 0 62%, rgba(38, 18, 5, 0.18) 100%);
+}
+
+.sd-ov-banner-stats,
+.sd-ov-banner-right {
+  z-index: 3;
+}
+
+.sd-ov-banner-stats {
+  align-self: flex-end;
+  padding: 0 12px 10px;
+}
+
+.sd-ov-banner-right {
+  padding: 10px 12px 0 0;
+}
+
+.sd-ov-section {
+  padding: 13px 16px 14px;
+  border-color: #6d3b13;
+  background:
+    radial-gradient(circle at 12px 12px, rgba(120, 71, 23, 0.1) 0 1px, transparent 1.4px) 0 0 / 18px 18px,
+    repeating-linear-gradient(95deg, rgba(121, 75, 29, 0.035) 0 1px, transparent 1px 11px),
+    linear-gradient(180deg, #ffe9b4 0%, #f4ca82 100%);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 244, 196, 0.58),
+    inset 0 -10px 18px rgba(105, 61, 18, 0.13),
+    0 4px 0 #3c220d;
+}
+
+.sd-ov-section::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0 0, #d9ad50 0 3px, #704013 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 100% 0, #d9ad50 0 3px, #704013 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 0 100%, #d9ad50 0 3px, #704013 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 100% 100%, #d9ad50 0 3px, #704013 3.5px 5px, transparent 5.5px);
+}
+
+.sd-ov-title,
+.sd-invite-head,
+.sd-mc-name,
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title {
+  text-shadow: 1px 1px 0 rgba(255, 238, 176, 0.74);
+}
+
+.sd-invite-panel {
+  align-content: center;
+  min-height: 78px;
+}
+
+.sd-invite-box {
+  max-width: 470px;
+  min-height: 52px;
+  border-color: #5a320f;
+  background:
+    radial-gradient(circle at 12px 12px, rgba(255, 238, 100, 0.08) 0 1px, transparent 1.5px) 0 0 / 16px 16px,
+    linear-gradient(180deg, #15592e 0%, #0b3f24 100%);
+  box-shadow:
+    inset 0 0 0 2px rgba(16, 39, 18, 0.86),
+    inset 0 5px 11px rgba(255, 229, 120, 0.12),
+    inset 0 -5px 12px rgba(0, 0, 0, 0.16),
+    0 3px 0 #34200d;
+}
+
+.sd-invite-code {
+  color: #ffdb62;
+  font-size: clamp(16px, 2.5cqi, 21px);
+  letter-spacing: 3px;
+  text-shadow: 2px 2px 0 #303211;
+}
+
+.sd-ov-metric-strip {
+  gap: 11px;
+}
+
+.sd-mc {
+  min-height: 128px;
+  align-content: start;
+  justify-items: stretch;
+  text-align: left;
+  border-color: #6f3f16;
+  background:
+    repeating-linear-gradient(97deg, rgba(118, 72, 23, 0.035) 0 1px, transparent 1px 10px),
+    linear-gradient(180deg, #ffe8b0, #f4cb84);
+}
+
+.sd-mc::after,
+.sd-ov-card::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0 0, rgba(218, 172, 77, 0.9) 0 3px, rgba(92, 50, 15, 0.74) 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 100% 0, rgba(218, 172, 77, 0.9) 0 3px, rgba(92, 50, 15, 0.74) 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 0 100%, rgba(218, 172, 77, 0.9) 0 3px, rgba(92, 50, 15, 0.74) 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 100% 100%, rgba(218, 172, 77, 0.9) 0 3px, rgba(92, 50, 15, 0.74) 3.5px 5px, transparent 5.5px);
+}
+
+.sd-mc-name {
+  justify-content: flex-start;
+  min-height: 28px;
+}
+
+.sd-mc-val {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.sd-mc-sub {
+  text-align: center;
+}
+
+.sd-ov-summary-grid {
+  grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.22fr) minmax(240px, 0.92fr);
+  gap: 11px;
+}
+
+.sd-ov-card {
+  min-height: 224px;
+  border-color: #6f3f16;
+  background:
+    radial-gradient(circle at 10px 14px, rgba(128, 75, 22, 0.09) 0 1px, transparent 1.4px) 0 0 / 20px 18px,
+    repeating-linear-gradient(96deg, rgba(118, 72, 23, 0.032) 0 1px, transparent 1px 10px),
+    linear-gradient(180deg, #ffe7ad, #f4ca83);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 244, 199, 0.5),
+    inset 0 -9px 14px rgba(105, 61, 18, 0.1),
+    0 4px 0 #3c220d;
+}
+
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title {
+  border-bottom-color: rgba(108, 60, 20, 0.56);
+  background:
+    linear-gradient(180deg, rgba(255, 239, 181, 0.94), rgba(224, 169, 78, 0.58));
+}
+
+.sd-ov-player-row {
+  border-color: rgba(166, 100, 32, 0.48);
+  background:
+    linear-gradient(180deg, rgba(255, 236, 184, 0.72), rgba(239, 196, 121, 0.5));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 248, 210, 0.48),
+    0 1px 0 rgba(111, 64, 20, 0.12);
+}
+
+@container sd-main-scroll (max-width: 1180px) {
+
+  .sd-ov-section .sd-btn-start,
+  .sd-ov-section .sd-btn-stop,
+  .sd-ov-section .sd-btn-restart {
+    width: clamp(104px, 28cqi, 146px);
+  }
+}
+
+@media (max-width: 640px) {
+  .sd-ov-banner {
+    height: 124px;
+    min-height: 124px;
+  }
+
+  .sd-ov-banner::before {
+    inset: 4px;
+    opacity: 0.55;
+  }
+
+  .sd-ov-banner-bg::after {
+    background-size: auto 78%;
+  }
+
+  .sd-ov-banner-stats {
+    padding: 0 7px 7px;
+  }
+
+  .sd-ov-section .sd-btn-start,
+  .sd-ov-section .sd-btn-stop,
+  .sd-ov-section .sd-btn-restart {
+    width: 100%;
+    max-width: 154px;
+  }
+
+  .sd-invite-code {
+    letter-spacing: 1.5px;
+  }
+}
+
+@media (min-width: 901px) {
+
+  .sd-ov-section::before {
+    display: block;
+  }
+
+  .sd-invite-head,
+  .sd-invite-help {
+    justify-self: center;
+  }
+
+  .sd-invite-wrap {
+    justify-content: center;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid {
+    grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.22fr) minmax(240px, 0.92fr);
+  }
+}
+
+@container sd-main-scroll (min-width: 901px) {
+
+  .sd-ov-section::before {
+    display: block;
+  }
+
+  .sd-invite-head,
+  .sd-invite-help {
+    justify-self: center;
+  }
+
+  .sd-invite-wrap {
+    justify-content: center;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid {
+    grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.22fr) minmax(240px, 0.92fr);
+  }
+}
+
+@media (max-width: 900px) {
+
+  .sd-invite-head,
+  .sd-invite-help {
+    justify-self: start;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container sd-main-scroll (max-width: 900px) {
+
+  .sd-invite-head,
+  .sd-invite-help {
+    justify-self: start;
+  }
+
+  .sd-ov-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .sd-ov-metric-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sd-ov-banner-bg::before {
+  opacity: 0.4;
+}
+
+.sd-ov-banner-bg::after {
+  background-size: auto min(78%, 155px);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 9%, #000 91%, transparent 100%);
+}
+
+.sd-overview-invite-card {
+  margin-top: -33px;
+}
+
+.sd-ov-metric-strip {
+  align-items: stretch;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.sd-ov-metric-strip .sd-metric {
+  min-width: 0;
+  border: 2px solid var(--sd-save-card-border);
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow: var(--sd-save-card-shadow);
+  padding: 8px 10px;
+}
+
+.sd-mc {
+  background:
+    linear-gradient(180deg, rgba(255, 245, 214, 0.96), rgba(248, 226, 174, 0.94)),
+    #f7e3ad;
+}
+
+.sd-ov-wrap .sd-ov-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: clamp(172px, 21vh, 230px);
+  overflow: hidden;
+}
+
+.sd-ov-wrap .sd-ov-banner::before {
+  display: none;
+}
+
+.sd-ov-banner-scene {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sd-ov-banner-scene .sd-ov-banner-bg,
+.sd-ov-banner-scene .sd-ov-banner-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.sd-ov-banner-statbar {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: stretch;
+  border-top: 3px solid #4b2a0e;
+  background: linear-gradient(180deg, #f4dba4, #e7bf78);
+  box-shadow: inset 0 2px 0 rgba(255, 249, 214, 0.6);
+}
+
+.sd-ov-banner-statbar .sd-bstat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 18px;
+  margin: 0;
+  border: 0;
+  border-right: 1px solid rgba(120, 74, 28, 0.28);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.sd-ov-banner-statbar .sd-bstat:last-child {
+  border-right: 0;
+}
+
+.sd-ov-banner-statbar .sd-bstat img {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+  flex: 0 0 auto;
+}
+
+.sd-ov-banner-statbar .sd-bstat-tx {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sd-ov-banner-statbar .sd-bstat-l {
+  color: #7c5629;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.sd-ov-banner-statbar .sd-bstat-v {
+  color: #3a220d;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-ov-banner-statbar .sd-bstat--latest {
+  justify-content: flex-start;
+}
+
+.sd-ov-latest {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #2f7d1f;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sd-ov-latest::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background:
+    linear-gradient(180deg, #7ec95a, #4f9e30);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+  -webkit-mask: none;
+}
+
+.sd-ov-latest::after {
+  content: "✓";
+  position: absolute;
+  margin-left: -18px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sd-ov-metric-strip .sd-mc-unit {
+  margin-top: 1px;
+  color: #7c5629;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.sd-ov-summary-grid .sd-pack-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-ov-summary-grid .sd-pack-more {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #2f6d1f;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sd-ov-summary-grid .sd-pack-more:hover {
+  text-decoration: underline;
+}
+
+.sd-ov-summary-grid .sd-pack-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sd-ov-summary-grid .sd-pack-count {
+  color: #3a220d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sd-ov-summary-grid .sd-pack-manage {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.sd-ov-metric-strip .sd-mc {
+  font-family: Verdana, "Microsoft YaHei", "SimHei", ui-sans-serif, system-ui, sans-serif;
+}
+
+.sd-ov-metric-strip .sd-mc-name {
+  gap: 6px;
+  color: #2f1b09;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-shadow: 0 1px 0 rgba(255, 244, 196, 0.72);
+}
+
+.sd-ov-metric-strip .sd-mc-name img {
+  width: 21px;
+  height: 21px;
+}
+
+.sd-ov-metric-strip .sd-mc-val {
+  margin-top: 4px;
+  color: #2f1b09;
+  font-family: inherit;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: 0;
+  text-shadow:
+    0 1px 0 rgba(255, 239, 177, 0.85),
+    1px 2px 0 rgba(99, 57, 17, 0.14);
+}
+
+.sd-ov-metric-strip .sd-mc-unit,
+.sd-ov-metric-strip .sd-mc-sub,
+.sd-ov-metric-strip .sd-mc-pill {
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+.sd-ov-metric-strip .sd-mc-unit {
+  margin-top: 2px;
+  color: #7b5425;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.sd-ov-metric-strip .sd-mc-sub {
+  margin-top: 6px;
+  color: #5c3a18;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sd-ov-metric-strip .sd-mc-pill {
+  right: 13px;
+  bottom: 12px;
+  min-width: 44px;
+  padding: 3px 7px 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sd-ov-banner-scene .sd-ov-banner-bg {
+  background-image: url('/assets/stardew/ui/sprites/overview_banner_scene_image2.png');
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: 100% 100%;
+  background-color: #58bde9;
+}
+
+.sd-ov-banner-scene .sd-ov-banner-bg::before,
+.sd-ov-banner-scene .sd-ov-banner-bg::after {
+  display: none;
+  background: none;
+  background-image: none;
+  mask-image: none;
+}
+
+.sd-ov-banner-scene .sd-ov-banner-overlay {
+  background: none;
+}
+/* Keep the original late shared-card overrides after lazy CSS extraction. */
+.sd-ov-section,
+.sd-ov-card,
+.sd-invite-panel,
+.sd-pack-section {
+  border: 2px solid var(--sd-save-card-border);
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow: var(--sd-save-card-shadow);
+  color: var(--sd-save-card-text);
+}
+
+.sd-ov-section::before,
+.sd-ov-section::after,
+.sd-ov-card::before,
+.sd-ov-card::after {
+  display: none;
+}
+
+.sd-ov-section {
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+/* Shared final overrides duplicated to preserve the pre-split cascade. */
+
+@media (max-width: 1180px) {
+  .sd-ov-metric-strip,
+  .sd-players-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-ov-summary-grid,
+  .sd-server-page,
+  .sd-players-page,
+  .sd-diag-main-grid,
+  .sd-settings-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+
+  .sd-ov-metric-strip,
+  .sd-saves-list,
+  .sd-players-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sd-server-page .sd-invite-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px;
+  border: 3px double rgba(153, 90, 32, 0.56);
+  background:
+    linear-gradient(180deg, rgba(255, 244, 204, 0.7), rgba(244, 205, 137, 0.36)),
+    #fff1c4;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 250, 220, 0.62),
+    0 2px 0 rgba(90, 49, 16, 0.24);
+}
+
+.sd-server-page .sd-invite-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1d6d2a;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: clamp(22px, 3.1cqi, 32px);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-align: center;
+  text-shadow: 1px 1px 0 rgba(255, 247, 190, 0.9);
+}
+
+.sd-overview-invite-card .sd-players-invite-row {
+  margin-top: 0;
+}
+
+.sd-ov-section,
+.sd-ov-card,
+.sd-invite-panel,
+.sd-pack-section,
+.sd-server-page .sd-state-card,
+.sd-server-page .sd-srv-section,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-list,
+.sd-jobs-detail,
+.sd-jobs-pull-progress,
+.sd-jobs-empty,
+.sd-jobs-loading,
+.sd-jobs-select-hint,
+.sd-jobs-vnc-fix,
+.sd-players-overview-section,
+.sd-players-page .sd-srv-section,
+.sd-players-stat,
+.sd-players-invite-row,
+.sd-player-event,
+.sd-players-action-item,
+.sd-players-empty,
+.sd-players-table-placeholder,
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel,
+.sd-diag-page .sd-diag-advice-panel,
+.sd-diag-count-card,
+.sd-diag-check-row,
+.sd-diag-alert-empty,
+.sd-diag-alert-row,
+.sd-diag-page .sd-diag-gauge-card,
+.sd-diag-page .sd-diag-trend-card,
+.sd-install-page .sd-install-progress-section,
+.sd-install-page .sd-install-column,
+.sd-install-page .sd-install-complete-card,
+.sd-install-page .sd-install-form-card,
+.sd-install-page .sd-install-pull-card,
+.sd-install-page .sd-install-download-card,
+.sd-install-page .sd-install-guard-section,
+.sd-install-page .sd-install-guard-block,
+.sd-install-page .sd-install-info-bar,
+.sd-install-page .sd-install-error-bar,
+.sd-install-page .sd-install-sse-warn,
+.sd-install-page .sd-install-config-placeholder,
+.sd-install-page .sd-install-auth-placeholder,
+.sd-install-page .sd-install-log-section,
+.sd-settings-page .sd-settings-section,
+.sd-settings-info-row,
+.sd-settings-port-card,
+.sd-settings-create-form,
+.sd-settings-user-row,
+.sd-settings-security-item,
+.sd-settings-security-summary-item,
+.sd-settings-error,
+.sd-settings-success,
+.sd-settings-locked {
+  border: 2px solid var(--sd-save-card-border);
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow: var(--sd-save-card-shadow);
+  color: var(--sd-save-card-text);
+}
+
+.sd-ov-section::before,
+.sd-ov-section::after,
+.sd-ov-card::before,
+.sd-ov-card::after,
+.sd-server-page .sd-state-card::before,
+.sd-server-page .sd-state-card::after,
+.sd-server-page .sd-srv-section::before,
+.sd-server-page .sd-srv-section::after,
+.sd-jobs-list::before,
+.sd-jobs-list::after,
+.sd-jobs-detail::before,
+.sd-jobs-detail::after,
+.sd-players-overview-section::before,
+.sd-players-overview-section::after,
+.sd-players-page .sd-srv-section::before,
+.sd-players-page .sd-srv-section::after,
+.sd-diag-page .sd-diag-status-panel::before,
+.sd-diag-page .sd-diag-check-panel::before,
+.sd-diag-page .sd-diag-resource-panel::before,
+.sd-diag-page .sd-diag-advice-panel::before,
+.sd-diag-page .sd-diag-status-panel::after,
+.sd-diag-page .sd-diag-check-panel::after,
+.sd-diag-page .sd-diag-resource-panel::after,
+.sd-diag-page .sd-diag-advice-panel::after,
+.sd-settings-page .sd-settings-section::before,
+.sd-settings-page .sd-settings-section::after,
+.sd-install-page .sd-install-progress-section::before,
+.sd-install-page .sd-install-progress-section::after,
+.sd-install-page .sd-install-column::before,
+.sd-install-page .sd-install-column::after {
+  display: none;
+}
+
+.sd-ov-section,
+.sd-server-page .sd-srv-section,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-list,
+.sd-jobs-detail,
+.sd-players-overview-section,
+.sd-players-page .sd-srv-section,
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel,
+.sd-diag-page .sd-diag-advice-panel,
+.sd-install-page .sd-install-progress-section,
+.sd-install-page .sd-install-column,
+.sd-settings-page .sd-settings-section {
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.sd-ov-summary-grid,
+.sd-players-overview-grid,
+.sd-players-actions-grid,
+.sd-diag-gauge-grid,
+.sd-settings-port-grid,
+.sd-settings-security-summary-list,
+.sd-settings-info-grid {
+  gap: 10px;
+}
+
+.sd-ov-card,
+.sd-players-stat,
+.sd-players-action-item,
+.sd-diag-count-card,
+.sd-diag-page .sd-diag-gauge-card,
+.sd-settings-info-row,
+.sd-settings-port-card,
+.sd-settings-security-summary-item,
+.sd-settings-security-item {
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.sd-ov-title,
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title,
+.sd-server-page .sd-srv-section-title,
+.sd-jobs-list-head-title,
+.sd-jobs-detail-title,
+.sd-players-page .sd-srv-section-title,
+.sd-players-stat-value,
+.sd-players-action-item > strong,
+.sd-diag-page .sd-diag-section-title,
+.sd-diag-count-card-value,
+.sd-diag-gauge-label,
+.sd-diag-trend-head,
+.sd-install-page .sd-install-section-title,
+.sd-install-page .sd-install-column-title,
+.sd-install-complete-title,
+.sd-install-form-title,
+.sd-install-pull-title,
+.sd-install-dl-title,
+.sd-install-guard-title,
+.sd-settings-page .sd-settings-section-title,
+.sd-settings-value-bold,
+.sd-settings-port-value,
+.sd-settings-user-name,
+.sd-settings-security-item-title {
+  color: var(--sd-save-card-title);
+  font-size: 14.5px;
+  line-height: 1.25;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.sd-ov-card,
+.sd-ov-empty,
+.sd-pack-sub,
+.sd-pack-count,
+.sd-server-page .sd-state-label,
+.sd-server-page .sd-state-value,
+.sd-server-page .sd-srv-hint,
+.sd-server-page .sd-srv-empty,
+.sd-jobs-list-row-type,
+.sd-jobs-detail-meta,
+.sd-jobs-sse-notice,
+.sd-jobs-pull-header,
+.sd-jobs-empty,
+.sd-jobs-loading,
+.sd-jobs-select-hint,
+.sd-players-stat-label,
+.sd-players-stat-pending,
+.sd-players-action-item > span:not(.sd-srv-badge-pending),
+.sd-player-event-title,
+.sd-player-event-desc,
+.sd-player-event-time,
+.sd-diag-status-message,
+.sd-diag-count-card-label,
+.sd-diag-check-name,
+.sd-diag-check-msg,
+.sd-diag-alert-name,
+.sd-diag-alert-msg,
+.sd-diag-gauge-sub,
+.sd-diag-resource-note,
+.sd-install-state-msg,
+.sd-install-progress-label,
+.sd-install-step-label,
+.sd-install-form-hint,
+.sd-install-field-label,
+.sd-install-pull-sub,
+.sd-install-pull-hint,
+.sd-install-dl-hint,
+.sd-install-guard-desc,
+.sd-install-log-hint,
+.sd-settings-label,
+.sd-settings-value,
+.sd-settings-hint,
+.sd-settings-hint-inline,
+.sd-settings-port-label,
+.sd-settings-port-desc,
+.sd-settings-user-login,
+.sd-settings-security-item-desc,
+.sd-settings-security-summary-item span,
+.sd-settings-security-summary-item strong {
+  color: var(--sd-save-card-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.sd-ov-card .sd-player-hd img,
+.sd-ov-card .sd-ev-title img,
+.sd-ov-card .sd-pack-title img,
+.sd-server-section-icon,
+.sd-players-section-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.sd-players-invite-row,
+.sd-server-page .sd-invite-box,
+.sd-settings-port-edit-row,
+.sd-server-message-row,
+.sd-server-command-row {
+  background:
+    linear-gradient(165deg, rgba(255, 252, 240, 0.35), rgba(255, 252, 240, 0) 46%),
+    #e9c887;
+  border-color: #c08c3e;
+  box-shadow: inset 0 0 0 2px rgba(255, 244, 214, 0.3);
+}
+
+@container sd-main-scroll (max-width: 760px) {
+  .sd-ov-section,
+  .sd-server-page .sd-srv-section,
+  .sd-jobs-page .sd-jobs-toolbar,
+  .sd-jobs-list,
+  .sd-jobs-detail,
+  .sd-players-overview-section,
+  .sd-players-page .sd-srv-section,
+  .sd-diag-page .sd-diag-status-panel,
+  .sd-diag-page .sd-diag-check-panel,
+  .sd-diag-page .sd-diag-resource-panel,
+  .sd-diag-page .sd-diag-advice-panel,
+  .sd-install-page .sd-install-progress-section,
+  .sd-install-page .sd-install-column,
+  .sd-settings-page .sd-settings-section {
+    padding: 10px;
+  }
+
+  .sd-ov-card,
+  .sd-players-stat,
+  .sd-players-action-item,
+  .sd-diag-count-card,
+  .sd-diag-page .sd-diag-gauge-card,
+  .sd-settings-info-row,
+  .sd-settings-port-card,
+  .sd-settings-security-summary-item,
+  .sd-settings-security-item {
+    padding: 9px 10px;
+  }
+
+  .sd-ov-title,
+  .sd-ov-card .sd-player-hd,
+  .sd-ov-card .sd-ev-title,
+  .sd-ov-card .sd-pack-title,
+  .sd-server-page .sd-srv-section-title,
+  .sd-jobs-list-head-title,
+  .sd-jobs-detail-title,
+  .sd-players-page .sd-srv-section-title,
+  .sd-players-stat-value,
+  .sd-players-action-item > strong,
+  .sd-diag-page .sd-diag-section-title,
+  .sd-install-page .sd-install-section-title,
+  .sd-install-page .sd-install-column-title,
+  .sd-settings-page .sd-settings-section-title {
+    font-size: 13.5px;
+  }
+}
+
+.sd-overview-invite-card .sd-players-invite-row {
+  grid-template-columns: minmax(84px, 0.5fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.sd-overview-invite-card .sd-players-invite-code {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: clamp(15px, 1.7cqi, 20px);
+  letter-spacing: 1px;
+}
+
+.sd-overview-invite-card .sd-players-copy-btn,
+.sd-overview-invite-card .sd-players-refresh-btn {
+  min-width: 56px;
+}
+
+@media (max-width: 1180px) {
+
+  .sd-ov-section::before,
+  .sd-ctrl-div {
+    display: none;
+  }
+
+  .sd-lifecycle-actions,
+  .sd-invite-wrap {
+    justify-content: flex-start;
+  }
+}
+
+@container sd-main-scroll (max-width: 1180px) {
+
+  .sd-ov-section::before,
+  .sd-ctrl-div {
+    display: none;
+  }
+
+  .sd-lifecycle-actions,
+  .sd-invite-wrap {
+    justify-content: flex-start;
+  }
+}
+
+@container sd-main-scroll (max-width: 1180px) {
+
+  .sd-ov-section::before,
+  .sd-ctrl-div {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+
+  .sd-ov-section::before,
+  .sd-ctrl-div {
+    display: none;
+  }
+
+  .sd-lifecycle-actions,
+  .sd-invite-wrap {
+    justify-content: flex-start;
+  }
+}
+
+@container sd-main-scroll (max-width: 900px) {
+
+  .sd-ov-section::before,
+  .sd-ctrl-div {
+    display: none;
+  }
+
+  .sd-lifecycle-actions,
+  .sd-invite-wrap {
+    justify-content: flex-start;
+  }
+}
+
+.sd-invite-card-wrap {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}

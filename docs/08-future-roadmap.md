@@ -584,6 +584,12 @@ Multi Game Mode later
 | MOBILE-CONTROL-M3-1 | completed | 移动端控制页 M3：`StardewMobileShell` 的“控制”Tab 接入真实 `mobile/MobileControlPage.tsx`（全服消息卡 + 快捷操作卡：计划重启/密码设置/小屋高级设置/触发节日活动/永久启用Joja路线，去掉手动备份和VNC显示），全部复用现有 API，未新增后端接口，桌面端 `ServerControlPage.tsx` 未改（除删除过时的 say 命令提示文案） |
 | MOBILE-PLAYERS-M4-1 | completed | 移动端玩家页 M4：`StardewMobileShell` 的“玩家”Tab 接入真实 `mobile/MobilePlayersPage.tsx`（单卡“在线玩家”：右上角刷新按钮 + 玩家卡片列表[名称/状态徽章/主机角色/最近活动/位置信息 + 踢出/封禁]），踢出/封禁复用 `kickPlayer`/`banPlayer`，未新增后端接口，桌面端 `PlayersPage.tsx` 未改；不含待授权玩家同意/拒绝（保留在 `MOBILE-HOME-M2-1` 的总览 Tab） |
 | LOGIN-MOBILE-FIX-1 | completed | 修复登录/初始化页在手机端的布局崩坏：`App.css` 新增 `@media(max-width:768px)` 覆盖，`.sd-auth-shell--image-login` 放弃固定 16:9 比例的绝对坐标定位，改回真实文档流羊皮纸卡片，复用现有三张素材，未新增图片、未改 API/权限 |
+| FE-LAZYLOAD-1 | completed | 前端拆分阶段一：桌面端 9 路由（`StardewPanel.tsx`）与移动端 5 页面（`StardewMobileShell.tsx`）改为 `React.lazy` + `Suspense` 按需加载，主 JS chunk 从约 579 KB 降到约 243 KB，构建 chunk 大小警告消失；hook 拆分与 CSS 按页面拆分列入阶段二/三，见 `docs/07-later-optimizations.md` |
+| FE-LIFECYCLE-ACTIONS-1 | completed | 前端拆分阶段二第一项：新增 `useStardewLifecycleActions.ts`，把 `OverviewPage.tsx`/`ServerControlPage.tsx` 重复的启停 action、pending 状态、确认弹窗逻辑合并为一个 hook；`OverviewPage.tsx` 555→456 行，`ServerControlPage.tsx` 减少约 90 行重复逻辑；阶段二后续（ServerControlPage 其他领域 hook、SavesSection、ModsPage）见 `docs/07-later-optimizations.md` |
+| FE-SERVER-DOMAIN-HOOKS-1 | completed | 前端拆分阶段二第二项：`ServerControlPage.tsx` 拆成 9 个独立领域 hook（备份/计划重启/VNC/密码/运行时设置/节日/Joja/控制台/喊话），页面从 1437 行降到 979 行；阶段二剩余项（SavesSection、ModsPage）见 `docs/07-later-optimizations.md` |
+| FE-MODS-MANAGEMENT-HOOK-1 | completed | 前端拆分阶段二 ModsPage 项：新增 `useModsManagement.ts`，集中本服 Mod 列表、上传/删除/导出、玩家同步与当前存档启用切换；`ModsPage.tsx` 2536→2360 行，Nexus 扩展批量状态机保持原有时序 |
+| FE-CSS-SPLIT-1 | completed | 前端拆分阶段三：`StardewPanel.css` 拆为共享 Shell CSS 与 9 个桌面页面 CSS，各懒加载页面自行 import；共享 CSS 约 16586→4551 行，页面样式进入独立按需 chunk |
+| FE-SAVES-DOMAIN-HOOKS-1 | completed | 前端拆分阶段二 SavesSection 项：新增 `useSaveBackups.ts`（备份列表/策略/手动备份/删除备份）与 `useSaveRestore.ts`（回档确认弹窗），`SavesSection.tsx` 1236→1131 行；存档列表 CRUD、新建游戏、上传存档弹窗因不属于回档领域且低耦合，保留在页面内 |
 
 ## 近期优先级
 
@@ -913,3 +919,26 @@ Multi Game Mode later
 - `FE-STARTUP-HOST-CONFIRM-1` completed（同日追加，前端 typecheck 全绿，未做真机联机端到端验证）：修复两个用户反馈的问题。一是服务器控制页"启动/重启"按钮**切换过早**——原本纯按 `active stardew_lifecycle job + state=running` 判定完成（见上文 `FE-LIFECYCLE-BACKGROUND-INVITE-1`），现在叠加一层"主机玩家上线确认"：`state=running` 后，只要在线玩家列表里还没出现 `isHost && status==='online'` 的条目就继续按"启动中"展示，这个判断独立于是否点过启动按钮（刷新页面/换设备打开也生效），同时新增超时兜底避免像 2026-07-06 那次一样因为玩家快照闪烁/不可用导致按钮永久卡死转圈。**上线联调时改过三次**：第一版超时判断挂在了"仅当次点击启动才生效"的本地状态上，刷新页面就失效，已改成完全独立的派生状态；超时阈值也从最初拍脑袋定的 90 秒（用 `docker exec` 只读对比容器内 `status.json`/`players.json` 时间戳实测发现主机上线可能要几分钟）调大到 10 分钟；第三处是 `useStardewDashboardData.ts` 里服务器停止时没有清空在线玩家列表缓存，导致同一浏览器标签页"运行过→停止→再启动"时用旧快照误判主机已在线、按钮一点启动就切回正常态，改成离开 `running` 时同步清空。二是服务器停止后邀请码卡片会残留上一次运行时的旧邀请码——根因是 `refreshInstanceState` 只要后端返回的 `inviteCode` 非空就无条件写入本地状态，没检查 `state`，而后端 `doStop` 按设计不清空该字段；修复为只在 `state` 为 `running`/`starting` 时才采纳该字段，否则清空。局域网邀请（面板访问地址）本来就不受服务器状态影响，确认无需改动。详见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `FE-STARTUP-HOST-CONFIRM-1` 小节。
 # FE-OVERVIEW-STARTUP-HOST-CONFIRM-1 状态
 - `FE-OVERVIEW-STARTUP-HOST-CONFIRM-1` completed：总览页启动按钮现在会等待在线玩家列表中的主机真正在线后才脱离“启动中…”，刷新页面后同样生效，并保留 10 分钟玩家快照异常兜底。前端构建已通过，尚未做真实大存档端到端启动验证。
+# PLAYER-OFFLINE-SAVE-FALLBACK-1 状态
+- `PLAYER-OFFLINE-SAVE-FALLBACK-1` completed：离线玩家现在可从存档 Farmer 数据补齐最后睡眠位置、坐标和独立钱包收入，且不会覆盖已有运行时缓存；玩家缓存兼容基础 saveId 与带数字后缀的完整存档目录 ID，降低重启/切换标识后历史信息被整体丢弃的风险。后端全仓库测试通过，尚未在生产多人存档验证。
+# PLAYER-ROSTER-SQLITE-1 状态
+- `PLAYER-ROSTER-SQLITE-1` completed：新增 `save_identities` / `player_roster` / `player_events` SQLite 模型，以 `instance_id + stable_save_id + player_id` 为联合身份，持久化首次出现、最后在线、位置、收入快照和 seen/joined/left 活动；基础 `saveId` 会归一化到完整存档目录 ID。`players.json` 与存档 XML 保持事实输入，旧 `players-cache.json` / `players-events.json` 首次成功导入后删除且不再写入。API 名册与 `recentEvents` 结构不变，后端全量测试通过；真实升级实例仍待验证。
+# FE-PLAYER-LOCATION-NORMALIZE-1 状态
+- `FE-PLAYER-LOCATION-NORMALIZE-1` completed：新增共享位置格式化工具，统一桌面玩家表、最近事件、移动玩家页和总览展示；`FarmHouse/Cabin/Cellar/Shed/Barn/Coop` 等数字或 UUID 后缀实例名会映射为中文逻辑位置并附坐标，原始唯一名继续保留在 API、SQLite 和桌面悬停标题中。前端 typecheck/build 通过。
+# FE-SHARED-WALLET-PERSONAL-INCOME-1 状态
+- `FE-SHARED-WALLET-PERSONAL-INCOME-1` completed：玩家表共享钱包的个人收入从误导性的 `0g` 改为“共享模式不统计”，分开钱包个人累计收入与农场团队累计收入展示不变。
+# REAL-INSTANCE-CRITICAL-FLOWS-VERIFIED-1 状态
+
+- `REAL-INSTANCE-CRITICAL-FLOWS-VERIFIED-1` completed：用户已确认以下关键链路均完成真实实例验证：大存档启动并等待主机上线；运行中回档自动停止、回档并重启；多人认证批准、踢出、封禁和回家；睡觉后生成游戏日回档点；Steam/SteamCMD 授权与镜像候选降级。本状态覆盖对应旧条目中的“尚未真机/端到端验证”，但不覆盖未明确确认的移动端视觉、封禁跨重启持久化等独立验证项。
+
+# FE-LIFECYCLE-STATE-MACHINE-1 状态
+
+- `FE-LIFECYCLE-STATE-MACHINE-1` completed：总览页与服务器控制页已改为共用 `useStardewLifecycleState`，统一 active lifecycle job、driver stopping、启动/停止 pending、等待主机上线和 10 分钟超时的判定；启动、停止、重启及运行中回档自动重启均消费同一套派生状态。前端构建通过，未修改 API。
+# UI-LIFECYCLE-STATUS-1（已完成，2026-07-11）
+
+- [x] 后端提供七态 UI 生命周期语义，前端停止自行拼装状态。
+- [x] 现有诊断页展示实例、Driver、SMAPI status/players 来源及更新时间。
+- [x] 诊断页补充 Compose 快照、存档/缓存身份、控制文件新鲜度、启动阶段耗时和控制模组/Junimo 版本矩阵。
+- [ ] 后续将当前基于三类更新时间差值的启动耗时升级为持久化阶段事件，支持跨重启历史趋势。
+# FE-LIFECYCLE-LIVE-SIGNAL-PRIORITY-1 状态
+- `FE-LIFECYCLE-LIVE-SIGNAL-PRIORITY-1` completed：在线玩家列表确认主机在线后立即结束启动中间态，不再等待邀请码或滞后的后端 `uiStatus`；点击停止后本地 pending 状态立即展示“停止中”。桌面总览、服务器控制页共享 hook 与手机总览均已统一。相关文件独立 TypeScript 校验通过；完整构建受工作区另一批未完成的 ServerControlPage hook 拆分影响。

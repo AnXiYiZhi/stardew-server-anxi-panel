@@ -1462,3 +1462,4 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     </div>
   )
 }
+import './InstallPage.css'

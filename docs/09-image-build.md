@@ -491,3 +491,7 @@ docker run -d -p 9090:8090 ...
   - `ghcr.io/anxiyizhi/stardew-server-anxi-panel:<version>` 与 `:latest`
 - GitHub Release 会自动生成 release notes，并上传 `deploy/run.sh`，供用户一键下载启动。
 - 仓库 secrets 需要配置：`DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`、`ALIYUN_REGISTRY_USERNAME`、`ALIYUN_REGISTRY_PASSWORD`。GHCR 使用 GitHub Actions 自动注入的 `GITHUB_TOKEN`，workflow 需要 `packages: write` 权限；首次发布后如果包是私有，需要在 GitHub Package settings 中改为 Public。阿里云 ACR 新版个人版实例必须使用控制台“访问凭证”里显示的登录名和域名；当前实例域名为 `crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com`，`ALIYUN_REGISTRY_USERNAME` 填控制台命令 `docker login --username=...` 里的值，例如 `安西义之`。
+# REAL-INSTANCE-STEAM-IMAGE-FALLBACK-VERIFIED-1 真实环境验证
+
+- Steam/SteamCMD 授权流程与镜像候选降级已经在真实环境验证通过：候选源不可用时会继续尝试后续镜像，本地已有候选可直接复用，授权状态能够继续安装流程。
+- 本标记取代相关历史章节的待验证说明；具体候选顺序与配置方式仍以 `JUNIMO-IMAGE-CANDIDATES-*`、`STEAMCMD-*` 小节为准。

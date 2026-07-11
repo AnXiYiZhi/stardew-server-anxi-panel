@@ -689,3 +689,7 @@
 - 影响文件：`frontend/src/games/stardew/useSteamAuthLogin.ts`、`frontend/src/games/stardew/InviteCodeCard.tsx`、`frontend/src/games/stardew/pages/InstallPage.tsx`。
 - 验证：`cd frontend; npm.cmd run build` 通过；仅有既有的 chunk 大小提示。
 - 下一步注意：若以后调整 Steam 登录授权的文案、禁用条件或跳转行为，应只修改 `useSteamAuthLogin`，避免总览页与安装页再次分叉。
+# REAL-INSTANCE-MULTIPLAYER-VERIFIED-1 多人管理真实实例验证补记
+
+- 用户已确认认证批准、踢出、封禁、回家四条多人操作链路均已在真实实例验证通过。本标记取代相关小节的“未做真机联机验证”说明。
+- 未单独确认的移动端像素级布局、触控热区等视觉验证状态不随本标记改变。

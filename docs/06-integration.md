@@ -668,3 +668,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - **关键约束**：无论通过哪个入口修改，都只在 JunimoServer `server` 容器**下一次启动**时生效（和 `SERVER_PASSWORD`、`ExistingServerSettings` 同理），前端弹窗必须提示"需要重启服务器容器"，不能暗示实时生效。
 - 联调验证建议：新建存档时分别提交 `cabinMode` 缺省、`"recommended"`、`"vanilla"`，确认 `server-settings.json` 的 `Server.CabinStrategy` 分别是 `CabinStack`/`CabinStack`/`None`；存档创建后调用 `PUT .../server-runtime-settings` 把 `cabinStrategy` 改成 `"FarmhouseStack"`、`networkBroadcastPeriod` 改成 `3`，重新 `GET` 确认改动生效且 `MaxPlayers` 未被覆盖；提交非法枚举值（如 `cabinStrategy: "Bogus"`）应返回 `400`。
 - 命中本地任一候选时应直接显示“本地已有镜像 ... 直接使用”，不应先拉取排在前面的缺失候选。
+# REAL-INSTANCE-CRITICAL-FLOWS-VERIFIED-1 真实实例联调结论
+
+- 已完成真实实例联调：大存档启动→等待在线玩家列表出现主机；运行中回档→自动停止→完成回档→重新启动；多人待认证批准、踢出、封禁、回家；睡觉存档→生成游戏日回档点；Steam/SteamCMD 授权及镜像候选源失败后自动降级。
+- 上述结果取代对应历史章节里的“待联调/未真机验证”标记，现有 API 契约不变。
+# UI-LIFECYCLE-STATUS-1 联调契约（2026-07-11）
+
+`GET /api/instances/{id}/state` 新增 `uiStatus`、`uiStatusUpdatedAt`、`statusSource`、`playersSource`。新前端以 `uiStatus` 为生命周期展示的唯一判定；字段缺失时才启用旧逻辑兼容回退。
+
+同一响应的 `runtimeDiagnostic` 是只读排障摘要；Compose 服务快照继续复用 `GET /api/instances/{id}/docker/ps`，不放进高频 `/state` 轮询。
+# PLAYER-ROSTER-SQLITE-1 联调说明
+
+- `GET /api/instances/:id/players` 接口结构不变，前端无需迁移。
+- `saveId` 会从控制模组可能提供的基础名归一化为完整存档目录名；调用方不应再自行按 `_数字` 截断。
+- 离线玩家可能来自 `source=sqlite_roster`。该来源表示面板持久名册，不影响现有 `status=offline` 展示和管理动作使用的 `uniqueMultiplayerId`。
+- `players.json` 仍是运行时在线快照输入；`players-cache.json` 与 `players-events.json` 升级后仅导入一次并退役。响应中的 `recentEvents` 字段结构不变，但数据源已经是 SQLite。
+# FE-PLAYER-LOCATION-NORMALIZE-1 联调说明
+
+- 后端与 SQLite 的 `location`、`locationName`、`locationDisplayName` 保持原始值，不改变接口契约；例如 `FarmHouseeb266bf0-3eb0-4174-b9b7-f22a893a70bd` 会原样存储。
+- 前端共享格式化层负责把内部实例名归一化为逻辑位置并展示中文，坐标仍使用 `tileX` / `tileY`。不要在后端截断 UUID，否则会损失诊断和区分内部位置实例所需的信息。
+# FE-LIFECYCLE-LIVE-SIGNAL-PRIORITY-1 联调判定
+
+- 生命周期按钮的最终前端优先级：停止提交/停止 phase > 在线玩家列表主机在线 > 后端 `uiStatus` > lifecycle job/state 兜底。
+- `isHost && status==='online'` 出现后必须立即结束“启动中”，即使邀请码尚未生成、lifecycle job 尚在等待后台探测或实例状态响应里的 `uiStatus` 尚未刷新。
+- 用户确认停止后必须立即展示“停止中”，不等待后端下一轮 `/state` 返回 `stopping`。

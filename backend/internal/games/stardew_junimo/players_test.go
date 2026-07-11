@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 func TestParsePlayersFromInfo_CountAndNames(t *testing.T) {
@@ -313,6 +315,10 @@ func TestListPlayersMergesControlSnapshotWithSaveFarmhands(t *testing.T) {
       <UniqueMultiplayerID>2</UniqueMultiplayerID>
       <money>50</money>
       <totalMoneyEarned>300</totalMoneyEarned>
+	  <homeLocation>Cabin</homeLocation>
+	  <lastSleepLocation>FarmHouse</lastSleepLocation>
+	  <lastSleepPoint><X>12</X><Y>7</Y></lastSleepPoint>
+	  <useSeparateWallets>true</useSeparateWallets>
     </Farmer>
   </farmhands>
 </SaveGame>`
@@ -348,6 +354,114 @@ func TestListPlayersMergesControlSnapshotWithSaveFarmhands(t *testing.T) {
 	}
 	if result.Players[1].FarmIncome == nil || *result.Players[1].FarmIncome != 300 {
 		t.Fatalf("test farm income = %#v, want 300", result.Players[1].FarmIncome)
+	}
+	if result.Players[1].PersonalIncome == nil || *result.Players[1].PersonalIncome != 300 {
+		t.Fatalf("test personal income = %#v, want 300", result.Players[1].PersonalIncome)
+	}
+	if result.Players[1].Location != "FarmHouse" || result.Players[1].TileX == nil || *result.Players[1].TileX != 12 || result.Players[1].TileY == nil || *result.Players[1].TileY != 7 {
+		t.Fatalf("test saved location = %+v, want FarmHouse (12, 7)", result.Players[1])
+	}
+}
+
+func TestCacheMatchesSaveAcceptsFolderSuffixIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		cacheID string
+		saveID  string
+		want    bool
+	}{
+		{cacheID: "Farm", saveID: "Farm", want: true},
+		{cacheID: "Farm", saveID: "Farm_442923526", want: true},
+		{cacheID: "Farm_442923526", saveID: "Farm", want: true},
+		{cacheID: "Farm", saveID: "Farm_backup", want: false},
+		{cacheID: "Farm", saveID: "Other_442923526", want: false},
+	} {
+		if got := cacheMatchesSave(tc.cacheID, tc.saveID); got != tc.want {
+			t.Fatalf("cacheMatchesSave(%q, %q) = %v, want %v", tc.cacheID, tc.saveID, got, tc.want)
+		}
+	}
+}
+
+func TestMergePlayerCacheFallbackPreservesRuntimeLocation(t *testing.T) {
+	runtimeX, savedX := 65, 12
+	current := playerCacheItem{Location: "Farm", LocationName: "Farm", TileX: &runtimeX}
+	fallback := playerCacheItem{Location: "FarmHouse", LocationName: "FarmHouse", TileX: &savedX}
+	merged := mergePlayerCacheFallback(current, fallback)
+	if merged.Location != "Farm" || merged.TileX == nil || *merged.TileX != runtimeX {
+		t.Fatalf("runtime location was overwritten by save fallback: %+v", merged)
+	}
+}
+
+func TestListPlayersMigratesLegacyCacheToSQLiteRoster(t *testing.T) {
+	dir := t.TempDir()
+	control := filepath.Join(dir, ".local-container", "control")
+	saveFolder := filepath.Join(dir, ".local-container", "saves", "Saves", "Farm_123")
+	if err := os.MkdirAll(control, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(saveFolder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(control, "players-cache.json"), []byte(`{"saveId":"Farm","updatedAt":"2026-07-11T09:00:00Z","players":[{"name":"Guest","uniqueMultiplayerId":"2","lastSeen":"2026-07-11T09:00:00Z","location":"Town"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(control, "players-events.json"), []byte(`{"saveId":"Farm","updatedAt":"2026-07-11T09:00:00Z","events":[{"id":"legacy-left","type":"left","playerName":"Guest","uniqueMultiplayerId":"2","at":"2026-07-11T09:00:00Z"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(`{"saveId":"Farm","updatedAt":"2026-07-11T10:00:00Z","players":[{"name":"Host","uniqueMultiplayerId":"1","isHost":true,"location":"Farm"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{DataDir: dbDir, DBPath: filepath.Join(dbDir, "panel.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	instance := makeRunningInstance()
+	instance.ID = "roster-test"
+	instance.DataDir = dir
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{ID: instance.ID, DriverID: storage.DefaultDriverID, Name: "test", DataDir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	d := newTestDriver(&fakeConsoleDocker{})
+	d.store = store
+	result, err := d.ListPlayers(context.Background(), instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SaveID != "Farm_123" || len(result.Players) != 2 {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := os.Stat(filepath.Join(control, "players-cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy cache was not retired: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(control, "players-events.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy events were not retired: %v", err)
+	}
+	rows, err := store.ListPlayerRoster(context.Background(), instance.ID, "Farm_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("sqlite roster = %+v, want two players", rows)
+	}
+	events, err := store.ListPlayerRosterEvents(context.Background(), instance.ID, "Farm_123", 10)
+	if err != nil || len(events) < 2 {
+		t.Fatalf("sqlite events = %+v, err=%v", events, err)
+	}
+
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(`{"saveId":"Farm","updatedAt":"2026-07-11T11:00:00Z","players":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := d.ListPlayers(context.Background(), instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Players) != 2 || second.Players[0].Status != "offline" || second.Players[1].Status != "offline" {
+		t.Fatalf("durable offline roster = %+v", second.Players)
 	}
 }
 

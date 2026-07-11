@@ -46,8 +46,12 @@
 - inviteCode 刷新可以改成状态驱动：启动/重启 job finished 或 state 变更后短时间高频轮询，拿到稳定邀请码后停止；不要在 `running && !inviteCode` 时永久 10 秒轮询。
 - state/jobs 已有 job SSE，建议让 job finished 事件携带更多后续刷新提示，例如 `refresh: ["state","players","invite"]`，避免前端在 `refreshAfterJobFinished()` 里固定刷新 saves/mods/players/invite。
 - `frontend/src/games/stardew/pages/ModsPage.tsx` 文件较大且状态密集，后续可以拆分 Nexus 扩展、远程安装、同步包、表格过滤等子组件。拆分后配合 `React.memo`/`useMemo`，减少输入框、分页、批量任务状态变化时整页重渲染。
-- 当前所有页面随 `StardewPanel` 主包一起进入首屏 JS。JS 只有约 474 KB，不急；但如果 Mods/Install/Diagnostics 继续增长，可用 `React.lazy` 按路由拆包，首屏只加载 Overview/ServerControl 的必要代码。
-- `StardewPanel.css` 已经很大，建议后续按页面拆 CSS 或至少按区块整理，配合样式引用检查清理旧类名。CSS 体积不是瓶颈，但超长文件会拖慢维护和代码审查。
+- 已完成（阶段一，2026-07-11）：桌面端 9 个路由页面（`StardewPanel.tsx`）和移动端 5 个页面（`StardewMobileShell.tsx`）已改为 `React.lazy` + `Suspense` 按需加载，首屏只加载当前激活 Tab 的代码；构建后主 JS chunk 从约 579 KB 降到约 243 KB，`chunkSizeWarningLimit` 警告已消失。详见 `docs/03-frontend.md` “路由”一节和 `docs/frontend-handoff/frontend-handoff-2026-07-11.md`。
+- 已完成（阶段二第一项，2026-07-11）：新增 `useStardewLifecycleActions.ts`，把 `OverviewPage.tsx` 和 `ServerControlPage.tsx` 中重复的启停 action（`handleStart/handleStop/handleRestart`、`saveStartBlocker`、`actionBusy/actionError/saveRequiredDetected/confirmAction/pendingStartupAction/pendingStopAction` 六个 state、三个派生 effect、`showSaveRequiredPrompt`/`canStart/canStop/canRestart` 派生值）合并为一个 hook（内部复用既有 `useStardewLifecycleState.ts` 做状态推导）。两页面改为 `useStardewLifecycleActions({ instanceState, dashboardData, isAdmin })` 一行接入；`OverviewPage.tsx` 555→456 行，`ServerControlPage.tsx` 少了约 90 行重复逻辑。顺带统一了一个行为差异：`ServerControlPage` 原本 `handleStop` 会额外 `refreshJobs()`，`OverviewPage` 没有，合并后两页面都执行 `refreshJobs()`（更完整，行为收敛，不是回归）。详见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `FE-LIFECYCLE-ACTIONS-1` 小节。
+- 已完成（阶段二第二项，2026-07-11）：`ServerControlPage.tsx` 按业务领域拆成 9 个独立 hook——`useServerQuickBackup`（手动备份）、`useServerRestartSchedule`（计划重启）、`useServerVNCSettings`（VNC 端口/显示渲染）、`useServerPassword`（服务器密码 + JunimoServer 密码保护状态）、`useServerRuntimeSettings`（小屋策略/联机广播频率）、`useServerFestival`（触发节日活动）、`useServerJoja`（永久启用 Joja 路线）、`useServerConsole`（控制台命令列表与执行）、`useServerBroadcast`（全服喊话）。页面文件从 1437 行降到 979 行，JSX 基本只剩渲染，state/effect/handler 全部下沉到对应 hook。详见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `FE-SERVER-DOMAIN-HOOKS-1` 小节。
+- 阶段二 `ModsPage.tsx` 已完成本服管理领域拆分（2026-07-12）：新增 `useModsManagement.ts`，下沉列表加载、上传/删除/导出、同步分类/同步包和当前存档启用切换，页面 2536→2360 行；Nexus 搜索、Key 与扩展批量安装保留为同一套强耦合状态机，避免拆散轮询/session 恢复/job 对账时序。
+- 阶段二 `SavesSection.tsx` 已完成回档领域拆分（2026-07-12）：新增 `useSaveBackups.ts`（备份列表/策略/手动备份/彻底删除备份）和 `useSaveRestore.ts`（回档确认弹窗）两个 hook；存档列表 CRUD（选择/删除/导出）、新建游戏弹窗、上传存档弹窗仍留在页面内——这些不属于"回档"领域，且彼此耦合度低，本次不强行拆分。页面 1236→1131 行。`busy`/`setBusy` 这个跨多个操作共用的忙碌锁没有拆进任何一个 hook，仍留在 `SavesSection.tsx` 顶层并作为参数传给两个 hook，保持"任意一个存档相关写操作进行中，所有相关按钮一起禁用"的原有行为不变。详见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `FE-SAVES-DOMAIN-HOOKS-1` 小节。
+- 已完成（阶段三，2026-07-12）：`StardewPanel.css` 按页面前缀拆为共享 Shell CSS + 9 个桌面页面 CSS，各页面自行 import 同名文件并随懒加载 chunk 按需加载。共享组件和跨页面合并选择器经二次审计保守留在共享 CSS；共享文件约 16586→4551 行。详见前端接手文档 `FE-CSS-SPLIT-1`。
 - 当前多个文件中存在中文注释或用户可见文案乱码。建议单独做一次 UTF-8 编码修复和文案复核，防止错误文案进入 UI、日志和支持包。这是维护性优化，不建议夹在功能变更里做。
 
 ### P1：后端 IO、缓存与接口成本
@@ -107,6 +111,27 @@
 3. 中等风险前端优化：dashboard-summary 聚合接口、players/inviteCode 状态驱动刷新、ModsPage 拆分。
 4. 中等风险后端优化：mods/saves 元数据缓存、job log 保留策略、日志序号批量化。
 5. 高风险架构优化：移除 Panel runtime Docker CLI、Junimo 服务器镜像 profile 拆分、headless/modern 生产化。
+
+## 玩家正式数据模型（PLAYER-ROSTER-SQLITE-1，已完成第一期）
+
+当前 `GET /api/instances/:id/players` 会合并三类来源：SMAPI 控制模组写入的 `players.json` 在线快照、面板维护的 `players-cache.json` 历史缓存，以及 Stardew 存档 XML 中的主机/Farmhand 数据。该链路已能兼容基础 `saveId`（如 `Farm`）与完整存档目录名（如 `Farm_442923526`），但 JSON 缓存同时承担运行时输入和历史数据库职责，身份判定、字段优先级和历史保留会继续变复杂。
+
+第一期已把玩家名册迁入面板 SQLite，并落实以下边界：
+
+- 联合身份使用 `instance_id + stable_save_id + player_id`。`player_id` 优先采用 Stardew `UniqueMultiplayerID`；确实缺失时只能使用带来源标记的临时身份，获取正式 ID 后合并，不能长期以可变玩家名作为主键。
+- `stable_save_id` 必须在写库前统一解析。完整目录名中的数字后缀应作为首选稳定标识；基础名只作为别名保存和旧数据匹配入口，不能让 `Farm` 与另一个同名新存档永久共用历史。
+- 名册至少保存：首次出现时间、最后在线时间、最后观测位置/坐标、最近收入快照、钱包模式、主机/角色和最后显示名。位置与收入同时记录 `observed_at`/`source`，避免存档睡眠位置覆盖更精确的运行时位置。
+- `players.json` 和存档 XML 只作为事实输入；`players-cache.json` 在兼容迁移期只读导入，完成迁移后不再承担历史数据库职责。SMAPI 仍优先通过 Junimo/控制模组输出结构化快照或事件，不把 Stardew 业务逻辑堆到 Web API 层。
+
+第一期表结构为：
+
+- `player_roster`：当前名册快照，主键 `(instance_id, stable_save_id, player_id)`，保存上述首次/最后时间、位置、收入和来源字段。
+- `save_identities`：记录完整目录 ID、基础名及最后解析时间，负责旧基础 `saveId` 到稳定 ID 的归一化。
+- `player_events`：append-only 保存 `seen/joined/left`，由 `player_roster.current_status` 的状态跃迁生成，继续按最多 50 条返回 UI。
+
+已完成 SQLite migration、storage repository、`/players` upsert/离线补齐，以及 `players-cache.json` / `players-events.json` 幂等导入；成功导入后旧 JSON 立即删除且不再写入。API 的名册与 `recentEvents` 响应结构均保持不变。
+
+第一期自动化验收已覆盖：基础名/完整目录名归一化、同一玩家改名保持身份、运行时字段优先、旧缓存幂等导入与退役、SQLite 离线恢复。真实升级实例和同名新存档隔离仍需生产验证。
 
 ## 玩家事件驱动更新
 

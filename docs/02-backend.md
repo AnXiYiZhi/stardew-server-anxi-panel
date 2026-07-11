@@ -1057,3 +1057,31 @@ docker run --rm `
   - `TestDoRestoreAndRestart_RunningStopsThenRestoresBeforeStarting`：运行中时先 `ComposeDown` 再回档（回档结果已经能在磁盘上验证到）再尝试 `ComposeUp`；`ComposeUp` 故意返回错误让测试在不用把 `doStart` 完整成功路径（等待容器就绪、邀请码轮询等）全部 mock 出来的前提下，仍能验证"停止 → 回档 → 尝试启动"这个顺序确实生效。
   - `TestSavesBackupRestore_RunningWithoutAutoRestartReturns409`/`_RunningWithAutoRestartBypassesRunningGate`/`_StoppedStillWorksSynchronously`：覆盖 web 层三条分支路由是否正确（不判断 `driver.RestoreBackupWithRestart` 是否真的成功，因为这个仓库的 web 测试历来没有为任何需要真实 game driver 的接口注册过 fake `registry.GameDriver`——`players_handlers.go`、`festival_handlers.go` 等一样没有 HTTP 层测试，只在 `stardew_junimo` 包内测试核心函数——这次保持同样的分层测试策略，不额外引入一个 15 方法的 fake driver）。
   - **未做的验证**：没有连接真实运行中的 JunimoServer 实例走一遍"运行中点击回档 → 确认 → 观察服务器真的自动停止、回档、重新启动、玩家能重新连进正确的存档"这个完整链路。`doStart`/`doStop` 本身在这个代码库里也一直没有端到端自动化测试（只能靠真机验证），这次新增的编排逻辑继承了同样的验证空白，建议下一位维护者用测试实例走一遍。
+# PLAYER-OFFLINE-SAVE-FALLBACK-1 离线玩家存档信息兜底与缓存身份兼容
+
+- 玩家名册合并现在会从当前存档 XML 的 Farmer 数据为离线玩家补齐 `lastSleepLocation`、`lastSleepPoint`、钱包模式和收入信息；前端现有“位置”列无需修改即可展示存档中的最后睡眠位置与坐标。
+- 存档信息仅作为缺失字段兜底：如果 `players-cache.json` 已记录更准确的运行时位置、坐标或收入，不会被存档值覆盖。
+- 独立钱包玩家会用存档中的 `totalMoneyEarned` 兜底 `personalIncome`；共享钱包仍不虚构个人收入。
+- 玩家缓存的存档身份比较兼容 `FarmName` 与 `FarmName_<数字ID>` 两种形式，避免控制文件在基础 saveId 和完整存档目录名之间切换时整份丢弃历史名册。非数字后缀不会被误判为同一存档。
+- 影响文件：`backend/internal/games/stardew_junimo/players.go`、`players_test.go`。API 字段和 URL 均未变化。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo/...; go test ./...` 全部通过。
+# REAL-INSTANCE-CRITICAL-FLOWS-VERIFIED-1 关键流程真实实例验证标记
+
+- 用户已确认在真实实例完成：大存档启动并等待主机上线、运行中回档自动停止/重启、多人认证/踢出/封禁/回家、睡觉后自动生成游戏日回档点、Steam 授权及镜像候选降级。
+- 本标记取代历史接手记录中这些流程的“尚未真机验证”说明；未被列入上述范围的视觉、边界条件或其它功能验证状态不变。
+# UI-LIFECYCLE-STATUS-1 后端统一生命周期状态（2026-07-11）
+
+- `GET /api/instances/{id}/state` 新增 `uiStatus` 与 `uiStatusUpdatedAt`，状态固定为 `stopped / starting_container / loading_save / waiting_for_host / ready / stopping / failed`。
+- 聚合顺序为实例错误、停止阶段、活动生命周期 job、实例启动状态、SMAPI `status.json` 的 `save-loaded`、`players.json` 主机在线；前端不再组合这些来源决定生命周期按钮状态。
+- 同一响应只读暴露 `statusSource`、`playersSource`（含 saveId、更新时间和原始状态摘要），用于诊断页核对数据新鲜度。
+- `runtimeDiagnostic` 进一步提供当前存档目录、`players.json` 快照 saveId 与身份匹配、控制模组版本、配置的 Junimo 镜像与测试版本匹配，以及容器→存档、存档→主机两段耗时。`status.json` 是阶段事件而非心跳；耗时只在时间戳有效、顺序正确且间隔不超过 30 分钟时返回，避免跨启动轮次误算。
+# PLAYER-ROSTER-SQLITE-1 玩家正式数据模型
+
+- migration `008_player_roster.sql` 新增 `save_identities` 与 `player_roster`。玩家联合身份为 `(instance_id, stable_save_id, player_id)`，其中 `player_id` 优先使用 `UniqueMultiplayerID`，缺失时暂用 `name:<lower-name>`，后续获得正式 ID 会合并临时记录。
+- `stable_save_id` 优先解析为完整存档目录名（例如 `Farm_123`）；基础 `saveId` 只写入 `base_save_id` 作为兼容别名，避免同名新存档长期共用历史。
+- `player_roster` 保存首次出现、最后观测、最后在线、最后位置/坐标、收入快照、钱包模式、角色、主机标记和数据来源。运行时在线快照优先于存档睡眠位置；缺字段时才使用已有数据库值。
+- 同一 migration 还新增 `player_events`；`player_roster.current_status` 驱动 `seen/joined/left` 状态跃迁，`recentEvents` 直接从 SQLite 按时间倒序读取。
+- `Driver.ListPlayers()` 仍读取 `players.json` 和存档 XML 作为事实输入，但返回前会同步 SQLite 并用数据库补齐离线历史。旧 `players-cache.json`、`players-events.json` 只在升级后的首次读取中作为兼容导入源；名册和事件全部成功写库后一起删除，后续不再写这些历史 JSON。
+- `GET /api/instances/:id/players` URL 和 JSON 响应结构不变；`saveId` 现在尽量返回归一化后的完整存档目录 ID，数据库补齐的离线玩家 `source=sqlite_roster`。
+
+验证：`cd backend; go test ./...`。存储层测试覆盖历史时间、最新快照、玩家改名、临时身份晋升和 seen/left/joined 事件跃迁；driver 集成测试覆盖旧名册/事件导入、JSON 退役、基础/完整存档 ID 归一化和 SQLite 离线恢复。

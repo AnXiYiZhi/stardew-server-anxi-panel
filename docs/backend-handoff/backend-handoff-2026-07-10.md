@@ -337,3 +337,7 @@ private void BanPlayer(string name)
 - 仍需真实多人联机验证：在线 farmhand 点击“回家”后，应被传送到自己小屋入口；host 按钮应禁用，因为 host 没有 farmhand cabin。
 - `farmer.WarpHome()` 依赖 `Game1.getFarm().GetCabin(farmer.UniqueMultiplayerID)` 找到玩家小屋。正常 farmhand 应可用；如果存档 cabin ownership 已损坏，调用可能无法生效，这属于上游逻辑限制。
 - 该接口和 kick/say/ban 一样是 fire-and-forget：HTTP 成功仅代表命令已提交，不代表游戏内动作一定已经完成。
+# REAL-INSTANCE-MULTIPLAYER-VERIFIED-1 多人管理真实实例验证补记
+
+- 用户已确认 `APPROVE-PENDING-AUTH-1`、`PLAYERS-KICK-1`、`PLAYERS-BAN-1`、`PLAYERS-WARP-HOME-1` 均已在真实多人实例验证通过。
+- 本补记取代下文对应功能实现时记录的“未做真机联机验证”；关于封禁是否跨容器重启持久化的独立研究项仍保持原状态，不能仅凭一次封禁成功推断已经验证持久化。
