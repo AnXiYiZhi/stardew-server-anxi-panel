@@ -34,3 +34,4 @@ export function SavesPage({ user, instanceState, dashboardData, onNavigate, save
     </div>
   )
 }
+import './SavesPage.css'

@@ -1,0 +1,2381 @@
+/* DiagnosticsPage page-only styles. Loaded with the lazy page chunk. */
+
+.sd-diag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.sd-diag-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-diag-header-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.sd-diag-loading {
+  font-size: 13px;
+  color: #8a7060;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.sd-diag-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--sd-red-bg);
+  border: 1px solid var(--sd-red);
+  color: var(--sd-red-text);
+  font-size: 13px;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+}
+
+.sd-diag-status-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #dcc898;
+  border-radius: 2px;
+  margin-bottom: 12px;
+}
+
+.sd-diag-status-ok {
+  background: rgba(40, 140, 60, 0.08);
+  border-color: rgba(40, 140, 60, 0.4);
+}
+
+.sd-diag-status-warning {
+  background: rgba(200, 160, 40, 0.1);
+  border-color: rgba(200, 160, 40, 0.5);
+}
+
+.sd-diag-status-error {
+  background: rgba(185, 64, 64, 0.08);
+  border-color: rgba(185, 64, 64, 0.4);
+}
+
+.sd-diag-status-icon-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.sd-diag-status-big-dot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sd-diag-status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sd-diag-status-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-diag-status-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sd-diag-count {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sd-diag-count-ok { color: #2a8a2a; }
+
+.sd-diag-count-warn { color: #a07010; }
+
+.sd-diag-count-error { color: #b94040; }
+
+.sd-diag-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5a3c1d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-diag-pending-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7a5c30;
+  background: rgba(200, 160, 40, 0.18);
+  border: 1px solid #c8a028;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sd-diag-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.sd-diag-check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 2px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.sd-diag-check-ok {
+  background: rgba(40, 140, 60, 0.06);
+  border-color: rgba(40, 140, 60, 0.2);
+}
+
+.sd-diag-check-warning {
+  background: rgba(200, 160, 40, 0.08);
+  border-color: rgba(200, 160, 40, 0.35);
+}
+
+.sd-diag-check-error {
+  background: rgba(185, 64, 64, 0.06);
+  border-color: rgba(185, 64, 64, 0.3);
+}
+
+.sd-diag-check-name {
+  font-weight: 700;
+  color: #3a2510;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.sd-diag-check-msg {
+  color: #5a3c1d;
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-diag-alert-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--sd-green-text);
+  padding: 7px 10px;
+  background: var(--sd-green-bg);
+  border: 1px solid var(--sd-green);
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+
+.sd-diag-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.sd-diag-alert-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.sd-diag-alert-warning {
+  background: var(--sd-gold-light);
+  border-color: var(--sd-gold-border);
+}
+
+.sd-diag-alert-error {
+  background: var(--sd-red-bg);
+  border-color: var(--sd-red);
+}
+
+.sd-diag-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-diag-alert-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c1a0a;
+}
+
+.sd-diag-alert-msg {
+  font-size: 12px;
+  color: #5a3c1d;
+  line-height: 1.5;
+}
+
+.sd-diag-live-badge,
+.sd-diag-idle-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 2px;
+  letter-spacing: 0.03em;
+}
+
+.sd-diag-live-badge {
+  color: var(--sd-green-text);
+  background: var(--sd-green-bg);
+  border: 1px solid var(--sd-green);
+}
+
+.sd-diag-idle-badge {
+  color: #7a5c30;
+  background: rgba(200, 160, 40, 0.18);
+  border: 1px solid #c8a028;
+}
+
+.sd-diag-resource-panel {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(122, 80, 48, 0.35);
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 220, 0.76), rgba(240, 216, 168, 0.48)),
+    var(--sd-img-bg-parchment);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 246, 210, 0.55),
+    0 1px 0 rgba(61, 37, 16, 0.14);
+}
+
+.sd-diag-gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.sd-diag-gauge-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(122, 80, 48, 0.25);
+  background: rgba(255, 246, 218, 0.72);
+}
+
+.sd-diag-gauge-ring {
+  width: 62px;
+  height: 62px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow:
+    inset 0 0 0 1px rgba(61, 37, 16, 0.2),
+    0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.sd-diag-gauge-core {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff3cb;
+  border: 1px solid rgba(122, 80, 48, 0.28);
+  color: #2c1a0a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sd-diag-gauge-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sd-diag-gauge-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #2c1a0a;
+}
+
+.sd-diag-gauge-sub {
+  font-size: 12px;
+  color: #6a5034;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.sd-diag-trend-card {
+  border: 1px solid rgba(122, 80, 48, 0.25);
+  background: rgba(255, 248, 228, 0.68);
+  overflow: hidden;
+}
+
+.sd-diag-trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(122, 80, 48, 0.18);
+  color: #2c1a0a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sd-diag-trend-legend {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5a3c1d;
+}
+
+.sd-diag-trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sd-diag-trend-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(61, 37, 16, 0.22);
+}
+
+.sd-diag-trend-svg {
+  display: block;
+  width: 100%;
+  height: 180px;
+}
+
+.sd-diag-grid-line {
+  stroke: rgba(122, 80, 48, 0.14);
+  stroke-width: 1;
+}
+
+.sd-diag-axis-label {
+  fill: rgba(90, 60, 29, 0.55);
+  font-size: 10px;
+}
+
+.sd-diag-trend-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
+}
+
+.sd-diag-resource-note {
+  padding: 5px 8px;
+  border: 1px solid rgba(200, 160, 40, 0.35);
+  background: rgba(255, 240, 194, 0.62);
+  color: #7a5c30;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .sd-diag-gauge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-diag-trend-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sd-diag-trend-svg {
+    height: 150px;
+  }
+}
+
+.sd-diag-page .sd-diag-header,
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-error-banner,
+.sd-diag-page .sd-diag-loading {
+  grid-column: 1 / -1;
+}
+
+.sd-diag-status-panel {
+  min-height: 104px;
+  justify-content: space-between;
+}
+
+.sd-diag-status-label {
+  font-size: clamp(18px, 2vw, 30px);
+}
+
+.sd-diag-main-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.sd-diag-primary,
+.sd-diag-resource-wrap {
+  min-width: 0;
+}
+
+.sd-diag-resource-panel {
+  margin-top: 0;
+}
+
+.sd-diag-checks,
+.sd-diag-alerts,
+.sd-diag-alert-empty {
+  margin-bottom: 0;
+}
+
+.sd-diag-page {
+  --sd-diag-ink: #3b2510;
+  --sd-diag-muted: #6b4b28;
+  --sd-diag-line: rgba(130, 82, 36, 0.28);
+  --sd-diag-line-strong: rgba(111, 66, 25, 0.48);
+  --sd-diag-paper: #f7daa2;
+  --sd-diag-paper-light: #fff0c8;
+  --sd-diag-shadow: rgba(76, 45, 16, 0.22);
+  gap: clamp(12px, 1.2vw, 16px);
+  padding: clamp(18px, 1.9vw, 28px);
+  color: var(--sd-diag-ink);
+  background:
+    radial-gradient(circle at 7% 8%, rgba(112, 69, 22, 0.12) 0 1px, transparent 2px),
+    radial-gradient(circle at 83% 18%, rgba(112, 69, 22, 0.09) 0 1px, transparent 2px),
+    radial-gradient(circle at 31% 78%, rgba(255, 255, 255, 0.22) 0 1px, transparent 2px),
+    linear-gradient(180deg, rgba(255, 244, 200, 0.38), rgba(235, 186, 105, 0.14));
+  background-size: 34px 34px, 42px 42px, 28px 28px, 100% 100%;
+  overflow-x: hidden;
+}
+
+.sd-diag-page > .sd-diag-source-panel {
+  order: 99;
+}
+
+.sd-diag-page .sd-diag-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+  padding: 0 4px 10px;
+  border: 0;
+  background: transparent;
+}
+
+.sd-diag-page .sd-diag-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background:
+    linear-gradient(90deg, transparent, rgba(92, 55, 20, 0.56) 8%, rgba(92, 55, 20, 0.56) 92%, transparent),
+    linear-gradient(90deg, transparent, rgba(255, 246, 208, 0.82) 10%, rgba(255, 246, 208, 0.82) 90%, transparent);
+  background-size: 100% 1px, 100% 1px;
+  background-position: 0 0, 0 2px;
+  background-repeat: no-repeat;
+}
+
+.sd-diag-page .sd-diag-header-left {
+  gap: 12px;
+  min-width: 0;
+}
+
+.sd-diag-page .sd-page-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0;
+  padding: 5px;
+  filter: drop-shadow(0 2px 0 rgba(78, 46, 16, 0.24));
+}
+
+.sd-diag-page .sd-page-title {
+  margin: 0;
+  color: var(--sd-diag-ink);
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 900;
+  line-height: 1.05;
+  text-shadow: 0 2px 0 rgba(255, 239, 190, 0.85);
+  letter-spacing: 0;
+}
+
+.sd-diag-page .sd-diag-header-actions {
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.sd-diag-page .sd-diag-loading,
+.sd-diag-page .sd-diag-error-banner {
+  border: 2px solid var(--sd-diag-line-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 243, 203, 0.88), rgba(238, 204, 144, 0.68)),
+    radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.35) 0 1px, transparent 2px);
+  box-shadow: inset 0 0 0 1px rgba(255, 248, 214, 0.7), 0 3px 0 rgba(81, 48, 18, 0.15);
+}
+
+.sd-diag-page .sd-diag-error-banner {
+  color: #7a2016;
+  border-color: rgba(165, 58, 34, 0.72);
+}
+
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel,
+.sd-diag-page .sd-diag-advice-panel {
+  position: relative;
+  border: 2px solid var(--sd-diag-line-strong);
+  background:
+    radial-gradient(circle at 9% 12%, rgba(255, 255, 255, 0.35) 0 1px, transparent 2px),
+    radial-gradient(circle at 89% 72%, rgba(106, 63, 23, 0.08) 0 1px, transparent 2px),
+    linear-gradient(180deg, rgba(255, 240, 196, 0.9), rgba(238, 199, 130, 0.74)),
+    var(--sd-img-bg-parchment);
+  background-size: 30px 30px, 42px 42px, 100% 100%, auto;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 250, 224, 0.78),
+    inset 0 0 24px rgba(126, 75, 27, 0.08),
+    0 4px 0 rgba(73, 42, 15, 0.14);
+}
+
+.sd-diag-page .sd-diag-status-panel::before,
+.sd-diag-page .sd-diag-check-panel::before,
+.sd-diag-page .sd-diag-resource-panel::before,
+.sd-diag-page .sd-diag-advice-panel::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(121, 75, 31, 0.28);
+  pointer-events: none;
+}
+
+.sd-diag-page .sd-diag-status-panel {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(360px, 1.45fr);
+  gap: clamp(18px, 3vw, 42px);
+  align-items: center;
+  min-height: 132px;
+  margin: 0;
+  padding: clamp(18px, 2vw, 24px) clamp(20px, 3vw, 34px);
+}
+
+.sd-diag-status-main {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 1.7vw, 22px);
+  min-width: 0;
+}
+
+.sd-diag-page .sd-diag-status-icon-wrap {
+  width: clamp(72px, 8vw, 104px);
+  height: clamp(72px, 8vw, 104px);
+}
+
+.sd-diag-status-shield {
+  position: relative;
+  display: block;
+  width: 82%;
+  height: 92%;
+  clip-path: polygon(50% 0, 90% 13%, 86% 58%, 50% 100%, 14% 58%, 10% 13%);
+  background:
+    radial-gradient(circle at 31% 25%, rgba(255, 255, 255, 0.5) 0 8%, transparent 9%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 35%),
+    linear-gradient(180deg, #6cca38 0%, #399323 50%, #166b22 100%);
+  box-shadow:
+    inset 0 0 0 4px #174f18,
+    inset 0 0 0 8px #92e04f,
+    0 5px 0 rgba(37, 78, 20, 0.45),
+    0 0 0 2px rgba(41, 55, 20, 0.5);
+}
+
+.sd-diag-status-shield::before {
+  content: '';
+  position: absolute;
+  left: 28%;
+  top: 41%;
+  width: 42%;
+  height: 22%;
+  border-left: 7px solid #eaffb9;
+  border-bottom: 7px solid #eaffb9;
+  transform: rotate(-45deg);
+  filter: drop-shadow(0 2px 0 rgba(31, 84, 17, 0.55));
+}
+
+.sd-diag-status-warning .sd-diag-status-shield {
+  background:
+    radial-gradient(circle at 31% 25%, rgba(255, 255, 255, 0.52) 0 8%, transparent 9%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.22), transparent 35%),
+    linear-gradient(180deg, #ffd85b 0%, #e69c18 54%, #ab6611 100%);
+  box-shadow:
+    inset 0 0 0 4px #7a4210,
+    inset 0 0 0 8px #ffe07a,
+    0 5px 0 rgba(112, 67, 16, 0.42),
+    0 0 0 2px rgba(88, 56, 18, 0.48);
+}
+
+.sd-diag-status-error .sd-diag-status-shield {
+  background:
+    radial-gradient(circle at 31% 25%, rgba(255, 255, 255, 0.52) 0 8%, transparent 9%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent 35%),
+    linear-gradient(180deg, #ff6d43 0%, #d12f1d 54%, #8d1b16 100%);
+  box-shadow:
+    inset 0 0 0 4px #641611,
+    inset 0 0 0 8px #ff8754,
+    0 5px 0 rgba(91, 28, 17, 0.44),
+    0 0 0 2px rgba(74, 27, 17, 0.48);
+}
+
+.sd-diag-status-unknown .sd-diag-status-shield {
+  filter: grayscale(.72);
+}
+
+.sd-diag-status-info {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sd-diag-page .sd-diag-status-label {
+  color: #08742a;
+  font-size: clamp(30px, 4.4vw, 50px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-shadow: 0 2px 0 rgba(255, 245, 198, 0.9);
+}
+
+.sd-diag-status-warning .sd-diag-status-label {
+  color: #ad6b09;
+}
+
+.sd-diag-status-error .sd-diag-status-label {
+  color: #ad2419;
+}
+
+.sd-diag-status-subtitle {
+  color: var(--sd-diag-ink);
+  font-size: clamp(14px, 1.25vw, 18px);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.sd-diag-count-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 1.7vw, 24px);
+  min-width: 0;
+}
+
+.sd-diag-count-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  align-items: center;
+  min-height: 90px;
+  padding: 15px 18px;
+  border: 2px solid rgba(132, 81, 31, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 239, 194, 0.64), rgba(234, 192, 118, 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 248, 214, 0.62),
+    0 2px 0 rgba(90, 53, 20, 0.12);
+}
+
+.sd-diag-count-gem {
+  grid-row: 1 / span 2;
+  width: clamp(32px, 3.3vw, 46px);
+  height: clamp(32px, 3.3vw, 46px);
+  clip-path: polygon(50% 0, 88% 22%, 100% 58%, 50% 100%, 0 58%, 12% 22%);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55), transparent 34%),
+    linear-gradient(180deg, #74d83d, #21801f 62%, #0d5318);
+  box-shadow: inset 0 0 0 3px #0e4d16, 0 3px 0 rgba(66, 41, 15, 0.35);
+}
+
+.sd-diag-count-card-warn .sd-diag-count-gem {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55), transparent 34%),
+    linear-gradient(180deg, #ffd85f, #df9214 62%, #8d530b);
+  box-shadow: inset 0 0 0 3px #87520f, 0 3px 0 rgba(66, 41, 15, 0.35);
+}
+
+.sd-diag-count-card-error .sd-diag-count-gem {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55), transparent 34%),
+    linear-gradient(180deg, #ff724d, #d23020 62%, #7c1814);
+  box-shadow: inset 0 0 0 3px #741711, 0 3px 0 rgba(66, 41, 15, 0.35);
+}
+
+.sd-diag-count-card-label {
+  color: var(--sd-diag-ink);
+  font-size: clamp(14px, 1.2vw, 16px);
+  font-weight: 900;
+}
+
+.sd-diag-count-card-value {
+  color: #1f9224;
+  font-size: clamp(34px, 4vw, 48px);
+  font-weight: 900;
+  line-height: .95;
+}
+
+.sd-diag-count-card-warn .sd-diag-count-card-value {
+  color: #df8613;
+}
+
+.sd-diag-count-card-error .sd-diag-count-card-value {
+  color: #bd2b20;
+}
+
+.sd-diag-page .sd-diag-main-grid {
+  display: grid;
+  grid-template-columns: minmax(340px, 1.08fr) minmax(360px, 0.92fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.sd-diag-page .sd-diag-primary,
+.sd-diag-page .sd-diag-resource-wrap {
+  display: grid;
+  min-width: 0;
+}
+
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+}
+
+.sd-diag-check-head,
+.sd-diag-check-row {
+  display: grid;
+  grid-template-columns: 32px minmax(104px, .66fr) 48px minmax(168px, 1.34fr);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.sd-diag-check-head {
+  padding: 0 4px 9px;
+  border-bottom: 1px solid rgba(121, 75, 31, 0.22);
+  color: var(--sd-diag-muted);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.sd-diag-check-head span:first-child {
+  grid-column: 1 / 3;
+}
+
+.sd-diag-page .sd-diag-checks {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.sd-diag-page .sd-diag-check-row {
+  min-height: 52px;
+  padding: 7px 4px;
+  border: 0;
+  border-bottom: 1px dashed rgba(119, 77, 35, 0.3);
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.sd-diag-page .sd-diag-check-row:last-child {
+  border-bottom: 0;
+}
+
+.sd-diag-check-row::before,
+.sd-diag-check-row::after {
+  display: none;
+}
+
+.sd-diag-check-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--sd-diag-ink);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sd-diag-check-icon {
+  justify-self: start;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, #5fc2e3, #1f83bd);
+  box-shadow:
+    inset 0 0 0 2px rgba(14, 69, 102, 0.62),
+    inset 0 5px 0 rgba(255, 255, 255, 0.24),
+    0 2px 0 rgba(76, 46, 18, 0.28);
+  image-rendering: pixelated;
+}
+
+.sd-diag-check-icon-docker_daemon {
+  border-radius: 45% 48% 42% 48%;
+}
+
+.sd-diag-check-icon-docker_daemon::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 11px;
+  margin: 13px 0 0 6px;
+  border-radius: 0 0 10px 10px;
+  background: #9ee5ff;
+  box-shadow: 4px -7px 0 -2px #9ee5ff, 10px -7px 0 -2px #9ee5ff;
+}
+
+.sd-diag-check-icon-docker_compose {
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(255, 255, 255, 0.35) 46% 54%, transparent 55%),
+    linear-gradient(180deg, #69d7ff, #237bc6);
+}
+
+.sd-diag-check-icon-data_dir,
+.sd-diag-check-icon-instance_dir {
+  height: 26px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, #ffd45c 0 30%, #d98e16 31% 100%);
+  box-shadow:
+    inset 0 0 0 2px #795111,
+    inset 0 5px 0 rgba(255, 255, 255, 0.28),
+    0 2px 0 rgba(76, 46, 18, 0.28);
+}
+
+.sd-diag-check-icon-data_dir::before,
+.sd-diag-check-icon-instance_dir::before {
+  content: '';
+  display: block;
+  width: 14px;
+  height: 6px;
+  margin: -4px 0 0 3px;
+  border-radius: 3px 3px 0 0;
+  background: #ffd45c;
+  box-shadow: inset 0 0 0 2px #795111;
+}
+
+.sd-diag-check-icon-compose_file {
+  border-radius: 2px;
+  background:
+    linear-gradient(135deg, transparent 0 75%, #cfa65a 76%),
+    linear-gradient(180deg, #fff6d8, #e6c681);
+  box-shadow:
+    inset 0 0 0 2px #80602a,
+    0 2px 0 rgba(76, 46, 18, 0.28);
+}
+
+.sd-diag-check-icon-compose_file::before {
+  content: '';
+  display: block;
+  width: 17px;
+  height: 2px;
+  margin: 10px auto 0;
+  background: #8c6a31;
+  box-shadow: 0 6px 0 #8c6a31, 0 12px 0 #8c6a31;
+}
+
+.sd-diag-check-icon-active_save {
+  border-radius: 50% 45% 48% 44%;
+  background:
+    radial-gradient(circle at 40% 34%, #ffe6a5 0 13%, transparent 14%),
+    linear-gradient(180deg, #ffb04a, #d96825 62%, #873515);
+  box-shadow:
+    inset 0 0 0 2px #7d3114,
+    inset 0 5px 0 rgba(255, 255, 255, 0.16),
+    0 2px 0 rgba(76, 46, 18, 0.28);
+}
+
+.sd-diag-check-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sd-diag-page .sd-diag-check-msg {
+  min-width: 0;
+  color: var(--sd-diag-ink);
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-diag-resource-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sd-diag-page .sd-diag-section-title {
+  margin: 0;
+  color: var(--sd-diag-ink);
+  font-size: clamp(17px, 1.45vw, 22px);
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sd-diag-resource-head .sd-diag-section-title::before,
+.sd-diag-advice-panel .sd-diag-section-title::before {
+  content: '';
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  background:
+    linear-gradient(135deg, #8d5524 0 28%, transparent 29%),
+    linear-gradient(45deg, transparent 0 44%, #3b2510 45% 55%, transparent 56%),
+    radial-gradient(circle at 70% 25%, #eeb64c 0 18%, transparent 19%);
+  filter: drop-shadow(0 1px 0 rgba(255, 241, 190, .65));
+}
+
+.sd-diag-page .sd-diag-live-badge,
+.sd-diag-page .sd-diag-idle-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.sd-diag-page .sd-diag-live-badge::before,
+.sd-diag-page .sd-diag-idle-badge::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .45);
+}
+
+.sd-diag-page .sd-diag-gauge-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 1vw, 14px);
+  margin-bottom: 10px;
+}
+
+.sd-diag-page .sd-diag-gauge-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 4px 4px;
+  border: 0;
+  background: transparent;
+  text-align: center;
+}
+
+.sd-diag-page .sd-diag-gauge-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(98px, 8.2vw, 116px);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.sd-diag-page .sd-diag-gauge-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sd-diag-page .sd-diag-gauge-track {
+  fill: none;
+  stroke: #e6e6e6;
+  stroke-width: 11;
+}
+
+.sd-diag-page .sd-diag-gauge-arc {
+  fill: none;
+  stroke-width: 11;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease;
+}
+
+.sd-diag-page .sd-diag-gauge-core {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  width: 62%;
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--sd-diag-ink);
+  line-height: 1;
+  box-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-diag-page .sd-diag-gauge-number {
+  min-width: 0;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.sd-diag-page .sd-diag-gauge-unit {
+  flex: 0 0 auto;
+  margin-left: 1px;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.sd-diag-page .sd-diag-gauge-meta {
+  gap: 2px;
+}
+
+.sd-diag-page .sd-diag-gauge-label {
+  color: var(--sd-diag-ink);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.sd-diag-page .sd-diag-gauge-sub {
+  color: var(--sd-diag-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sd-diag-page .sd-diag-trend-card {
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.sd-diag-page .sd-diag-trend-head {
+  justify-content: center;
+  padding: 7px 6px 5px;
+  border-top: 1px solid rgba(111, 68, 25, 0.25);
+  border-bottom: 0;
+  background: transparent;
+  font-size: 0;
+}
+
+.sd-diag-page .sd-diag-trend-legend {
+  justify-content: center;
+  gap: clamp(10px, 1.7vw, 24px);
+  color: var(--sd-diag-ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sd-diag-page .sd-diag-trend-legend i {
+  width: 19px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(61, 37, 16, 0.2);
+}
+
+.sd-diag-page .sd-diag-trend-svg {
+  height: clamp(158px, 17vw, 224px);
+  border-top: 1px solid rgba(111, 68, 25, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 245, 208, 0.5), rgba(234, 196, 124, 0.16));
+}
+
+.sd-diag-page .sd-diag-grid-line {
+  stroke: rgba(115, 77, 35, 0.25);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.sd-diag-page .sd-diag-grid-line-vertical {
+  stroke: rgba(115, 77, 35, 0.18);
+}
+
+.sd-diag-page .sd-diag-axis-label {
+  fill: rgba(55, 37, 18, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sd-diag-page .sd-diag-axis-label-x {
+  text-anchor: middle;
+}
+
+.sd-diag-page .sd-diag-trend-line {
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.55));
+}
+
+.sd-diag-chart-empty {
+  fill: rgba(90, 60, 29, 0.58);
+  font-size: 15px;
+  font-weight: 900;
+  text-anchor: middle;
+}
+
+.sd-diag-page .sd-diag-resource-note {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-color: rgba(190, 126, 30, 0.45);
+  background: rgba(255, 229, 160, 0.58);
+  color: #7a4a10;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sd-diag-page .sd-diag-advice-panel {
+  display: grid;
+  gap: 0;
+  padding: 14px 18px 16px;
+}
+
+.sd-diag-advice-panel .sd-diag-section-title {
+  margin-bottom: 8px;
+}
+
+.sd-diag-advice-row {
+  display: grid;
+  grid-template-columns: 32px 88px minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  gap: 10px;
+  border-top: 1px dashed rgba(119, 77, 35, 0.32);
+  color: var(--sd-diag-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sd-diag-advice-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .6) 0 14%, transparent 15%),
+    linear-gradient(180deg, #74d83d, #21801f);
+  box-shadow: inset 0 0 0 2px rgba(23, 91, 18, 0.72), 0 2px 0 rgba(76, 46, 18, 0.2);
+}
+
+.sd-diag-advice-tip .sd-diag-advice-icon {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .62) 0 14%, transparent 15%),
+    linear-gradient(180deg, #ffd95e, #dc9214);
+  box-shadow: inset 0 0 0 2px rgba(123, 78, 12, 0.72), 0 2px 0 rgba(76, 46, 18, 0.2);
+}
+
+.sd-diag-advice-note .sd-diag-advice-icon,
+.sd-diag-advice-warning .sd-diag-advice-icon {
+  clip-path: polygon(50% 0, 100% 92%, 0 92%);
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 37%, rgba(255, 255, 255, .56) 0 10%, transparent 11%),
+    linear-gradient(180deg, #ffd95e, #dc9214);
+  box-shadow: none;
+}
+
+.sd-diag-advice-error .sd-diag-advice-icon {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .6) 0 14%, transparent 15%),
+    linear-gradient(180deg, #ff6d43, #ca2e20);
+  box-shadow: inset 0 0 0 2px rgba(114, 23, 16, 0.72), 0 2px 0 rgba(76, 46, 18, 0.2);
+}
+
+.sd-diag-advice-label {
+  color: var(--sd-diag-ink);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.sd-diag-advice-msg {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1180px) {
+  .sd-diag-page .sd-diag-status-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-diag-page .sd-diag-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .sd-diag-page {
+    padding: 16px 12px 18px;
+  }
+
+  .sd-diag-page .sd-diag-header {
+    align-items: flex-start;
+  }
+
+  .sd-diag-page .sd-page-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sd-diag-page .sd-page-title {
+    font-size: clamp(23px, 8vw, 32px);
+  }
+
+  .sd-diag-page .sd-diag-header-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-diag-page .sd-diag-status-panel {
+    padding: 16px 14px;
+  }
+
+  .sd-diag-status-main {
+    align-items: flex-start;
+  }
+
+  .sd-diag-page .sd-diag-status-icon-wrap {
+    width: 66px;
+    height: 66px;
+  }
+
+  .sd-diag-count-strip,
+  .sd-diag-page .sd-diag-gauge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-diag-page .sd-diag-gauge-ring {
+    width: 106px;
+  }
+
+  .sd-diag-page .sd-diag-gauge-number {
+    font-size: 28px;
+  }
+
+  .sd-diag-page .sd-diag-gauge-unit {
+    font-size: 14px;
+  }
+
+  .sd-diag-count-card {
+    min-height: 68px;
+  }
+
+  .sd-diag-check-head {
+    display: none;
+  }
+
+  .sd-diag-page .sd-diag-check-row {
+    grid-template-columns: 34px minmax(92px, .55fr) 32px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .sd-diag-page .sd-diag-check-msg {
+    font-size: 13px;
+  }
+
+  .sd-diag-resource-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sd-diag-page .sd-diag-trend-head {
+    align-items: center;
+  }
+
+  .sd-diag-page .sd-diag-trend-legend {
+    gap: 9px;
+    font-size: 12px;
+  }
+
+  .sd-diag-advice-row {
+    grid-template-columns: 28px minmax(64px, .28fr) minmax(0, 1fr);
+    gap: 8px;
+    min-height: 48px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 460px) {
+  .sd-diag-page .sd-diag-header-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-diag-page .sd-diag-check-row {
+    grid-template-columns: 30px minmax(0, 1fr) 28px;
+  }
+
+  .sd-diag-page .sd-diag-check-msg {
+    grid-column: 2 / -1;
+  }
+}
+
+.sd-diag-page .sd-diag-status-shield {
+  clip-path: none;
+  background: url('/assets/stardew/ui/diagnostics/icon_diag_status_ok_shield_image2.png') center / contain no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 5px 0 rgba(37, 78, 20, 0.34));
+}
+
+.sd-diag-page .sd-diag-status-shield::before {
+  display: none;
+}
+
+.sd-diag-page .sd-diag-status-warning .sd-diag-status-shield {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_status_warning_shield_image2.png');
+  filter: drop-shadow(0 5px 0 rgba(112, 67, 16, 0.34));
+}
+
+.sd-diag-page .sd-diag-status-error .sd-diag-status-shield {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_status_error_shield_image2.png');
+  filter: drop-shadow(0 5px 0 rgba(91, 28, 17, 0.34));
+}
+
+.sd-diag-page .sd-diag-status-unknown .sd-diag-status-shield {
+  filter: grayscale(.72) drop-shadow(0 5px 0 rgba(72, 48, 24, 0.28));
+}
+
+.sd-diag-page .sd-diag-count-gem {
+  clip-path: none;
+  background: url('/assets/stardew/ui/diagnostics/icon_diag_gem_ok_image2.png') center / contain no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 3px 0 rgba(66, 41, 15, 0.24));
+}
+
+.sd-diag-page .sd-diag-count-card-warn .sd-diag-count-gem {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_gem_warning_image2.png');
+}
+
+.sd-diag-page .sd-diag-count-card-error .sd-diag-count-gem {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_gem_error_image2.png');
+}
+
+.sd-diag-page .sd-diag-check-icon {
+  width: 34px;
+  height: 34px;
+  margin-top: 0;
+  border-radius: 0;
+  background: center / contain no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 0 rgba(76, 46, 18, 0.22));
+}
+
+.sd-diag-page .sd-diag-check-icon::before {
+  display: none;
+}
+
+.sd-diag-page .sd-diag-check-icon-docker_daemon {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_check_docker_image2.png');
+}
+
+.sd-diag-page .sd-diag-check-icon-docker_compose {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_check_compose_image2.png');
+}
+
+.sd-diag-page .sd-diag-check-icon-data_dir {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_check_data_dir_image2.png');
+}
+
+.sd-diag-page .sd-diag-check-icon-instance_dir {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_check_instance_dir_image2.png');
+}
+
+.sd-diag-page .sd-diag-check-icon-compose_file {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_check_compose_file_image2.png');
+}
+
+.sd-diag-page .sd-diag-check-icon-active_save {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_check_active_save_image2.png');
+}
+
+.sd-diag-page .sd-diag-resource-head .sd-diag-section-title::before {
+  background: url('/assets/stardew/ui/diagnostics/icon_diag_resource_pickaxe_image2.png') center / contain no-repeat;
+  filter: drop-shadow(0 1px 0 rgba(255, 241, 190, .65));
+}
+
+.sd-diag-page .sd-diag-live-badge::before {
+  width: 14px;
+  height: 14px;
+  background: url('/assets/stardew/ui/diagnostics/icon_diag_live_dot_image2.png') center / contain no-repeat;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sd-diag-page .sd-diag-export-btn::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  background: url('/assets/stardew/ui/diagnostics/icon_diag_export_download_image2.png') center / contain no-repeat;
+  image-rendering: pixelated;
+}
+
+.sd-diag-page .sd-diag-advice-icon {
+  width: 26px;
+  height: 26px;
+  clip-path: none;
+  border-radius: 0;
+  background: url('/assets/stardew/ui/diagnostics/icon_diag_advice_good_leaf_image2.png') center / contain no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 0 rgba(76, 46, 18, 0.18));
+}
+
+.sd-diag-page .sd-diag-advice-tip .sd-diag-advice-icon {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_advice_suggestion_bulb_image2.png');
+}
+
+.sd-diag-page .sd-diag-advice-note .sd-diag-advice-icon {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_advice_tip_sprout_image2.png');
+}
+
+.sd-diag-page .sd-diag-advice-warning .sd-diag-advice-icon {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_advice_warning_image2.png');
+}
+
+.sd-diag-page .sd-diag-advice-error .sd-diag-advice-icon {
+  background-image: url('/assets/stardew/ui/diagnostics/icon_diag_advice_error_image2.png');
+}
+
+.sd-diag-page {
+  gap: 12px;
+  padding: 0 10px 14px;
+}
+
+.sd-diag-page .sd-diag-header {
+  min-height: 62px;
+  padding: 3px 6px 2px;
+}
+
+.sd-diag-page .sd-page-title {
+  font-size: clamp(27px, 2.55vw, 38px);
+}
+
+.sd-diag-page .sd-diag-status-panel {
+  grid-template-columns: minmax(340px, 1fr) minmax(420px, 1.24fr);
+  gap: 24px;
+  min-height: 160px;
+  padding: 16px 24px;
+}
+
+.sd-diag-status-main {
+  gap: 18px;
+}
+
+.sd-diag-page .sd-diag-status-icon-wrap {
+  width: 88px;
+  height: 88px;
+}
+
+.sd-diag-page .sd-diag-status-label {
+  font-size: clamp(36px, 3.25vw, 48px);
+}
+
+.sd-diag-status-subtitle {
+  font-size: 14px;
+}
+
+.sd-diag-count-strip {
+  gap: 24px;
+}
+
+.sd-diag-count-card {
+  min-height: 110px;
+  padding: 14px 18px;
+}
+
+.sd-diag-count-gem {
+  width: 40px;
+  height: 40px;
+}
+
+.sd-diag-count-card-value {
+  font-size: 38px;
+}
+
+.sd-diag-page .sd-diag-main-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel {
+  min-height: 392px;
+  padding: 12px 14px;
+}
+
+.sd-diag-check-head,
+.sd-diag-check-row {
+  grid-template-columns: 32px minmax(104px, .74fr) 48px minmax(168px, 1.26fr);
+  column-gap: 10px;
+}
+
+.sd-diag-page .sd-diag-check-row {
+  min-height: 48px;
+  padding-block: 6px;
+}
+
+.sd-diag-resource-head {
+  margin-bottom: 8px;
+}
+
+.sd-diag-page .sd-diag-gauge-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 10px;
+}
+
+.sd-diag-page .sd-diag-gauge-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  align-items: center;
+  gap: 4px;
+  min-height: 174px;
+  padding: 8px 8px 9px;
+  border: 2px solid var(--sd-save-card-border);
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow: var(--sd-save-card-shadow);
+  text-align: center;
+}
+
+.sd-diag-page .sd-diag-gauge-ring {
+  width: clamp(86px, 6.8vw, 104px);
+}
+
+.sd-diag-page .sd-diag-gauge-number {
+  font-size: 27px;
+}
+
+.sd-diag-page .sd-diag-gauge-label {
+  font-size: 14.5px;
+  line-height: 1.1;
+}
+
+.sd-diag-page .sd-diag-gauge-sub {
+  max-width: 100%;
+  color: var(--sd-save-card-title);
+  font-size: 12px;
+  line-height: 1.18;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sd-diag-page .sd-diag-trend-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.sd-diag-page .sd-diag-trend-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0 6px;
+  border-top: 1px solid var(--sd-save-card-soft-line);
+  color: var(--sd-save-card-title);
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+
+.sd-diag-page .sd-diag-trend-head > span {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.sd-diag-page .sd-diag-trend-legend {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 11.5px;
+}
+
+.sd-diag-page .sd-diag-trend-legend i {
+  width: 18px;
+  height: 4px;
+}
+
+.sd-diag-page .sd-diag-trend-svg {
+  height: 102px;
+  border: 0;
+  border-top: 1px solid var(--sd-save-card-soft-line);
+  background: transparent;
+}
+
+.sd-diag-page .sd-diag-trend-line {
+  stroke-width: 3;
+}
+
+.sd-diag-page .sd-diag-advice-panel {
+  min-height: 160px;
+  padding: 12px 16px 14px;
+}
+
+.sd-diag-advice-panel .sd-diag-section-title {
+  margin-bottom: 6px;
+}
+
+.sd-diag-advice-row {
+  grid-template-columns: 32px 86px minmax(0, 1fr);
+  min-height: 40px;
+}
+
+@container sd-main-scroll (max-width: 820px) {
+  .sd-diag-page .sd-diag-status-panel,
+  .sd-diag-page .sd-diag-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-diag-page .sd-diag-check-panel,
+  .sd-diag-page .sd-diag-resource-panel {
+    min-height: 0;
+  }
+}
+
+@container sd-main-scroll (max-width: 560px) {
+  .sd-diag-page {
+    padding-inline: 8px;
+  }
+
+  .sd-diag-page .sd-diag-gauge-grid,
+  .sd-diag-count-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-diag-page .sd-diag-trend-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.sd-diag-page .sd-diag-gauge-ring {
+  width: clamp(98px, 7.2vw, 108px);
+}
+
+.sd-diag-page .sd-diag-gauge-core {
+  width: 68%;
+  aspect-ratio: 1;
+  align-items: center;
+  overflow: visible;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.42) 0 12%, transparent 13%),
+    linear-gradient(180deg, rgba(255, 238, 183, 0.96), rgba(248, 220, 155, 0.94));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 250, 224, 0.7),
+    0 0 0 3px rgba(255, 238, 183, 0.54);
+}
+
+.sd-diag-page .sd-diag-gauge-number {
+  max-width: 4ch;
+  font-size: clamp(19px, 1.85cqi, 23px);
+  line-height: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-diag-page .sd-diag-gauge-unit {
+  margin-left: 1px;
+  font-size: 10.5px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.sd-diag-page .sd-diag-gauge-sub {
+  font-size: 11.5px;
+}
+
+/* Shared final overrides duplicated to preserve the pre-split cascade. */
+
+.sd-page-header,
+.sd-mods-header,
+.sd-diag-header {
+  background: rgba(255, 248, 220, 0.36);
+  border: 1px solid rgba(200, 168, 112, 0.58);
+  padding: 10px 12px;
+}
+
+.sd-server-page .sd-srv-section,
+.sd-saves-page #saves-section > *,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-page .sd-jobs-layout,
+.sd-players-page .sd-srv-section,
+.sd-mods-page > .sd-mods-running-hint,
+.sd-mods-page > .sd-mods-success-banner,
+.sd-mods-page > .sd-mods-restart-banner,
+.sd-mods-page > .sd-mods-list-error,
+.sd-mods-overview,
+.sd-mods-workbench,
+.sd-diag-page > .sd-diag-status-panel,
+.sd-diag-page > .sd-diag-resource-panel,
+.sd-settings-section {
+  box-shadow: inset 0 0 0 1px rgba(255, 244, 194, 0.32);
+}
+
+@media (max-width: 1180px) {
+
+  .sd-ov-summary-grid,
+  .sd-server-page,
+  .sd-players-page,
+  .sd-diag-main-grid,
+  .sd-settings-page {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-server-page .sd-page-header,
+  .sd-server-summary-card,
+  .sd-server-lifecycle,
+  .sd-server-broadcast,
+  .sd-server-command,
+  .sd-server-quick,
+  .sd-players-page .sd-page-header,
+  .sd-players-overview-section,
+  .sd-players-info-section,
+  .sd-players-list-section,
+  .sd-players-events-section,
+  .sd-players-actions-section,
+  .sd-diag-page .sd-diag-header,
+  .sd-diag-page .sd-diag-status-panel,
+  .sd-diag-page .sd-diag-resource-panel,
+  .sd-settings-page .sd-settings-section,
+  .sd-settings-page .sd-settings-section:nth-of-type(n + 4) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+.sd-server-page .sd-page-header,
+.sd-saves-page .sd-page-header,
+.sd-jobs-page .sd-page-header,
+.sd-players-page .sd-page-header,
+.sd-mods-page .sd-page-header,
+.sd-diag-page .sd-page-header,
+.sd-install-title-strip.sd-page-header,
+.sd-settings-page .sd-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  min-height: 62px;
+  margin: 0;
+  padding: 3px 6px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.sd-server-page .sd-page-header,
+.sd-saves-page .sd-page-header,
+.sd-jobs-page .sd-page-header,
+.sd-players-page .sd-page-header,
+.sd-mods-page .sd-page-header,
+.sd-diag-page .sd-page-header,
+.sd-settings-page .sd-page-header {
+  grid-column: 1 / -1;
+}
+
+.sd-mods-header-left,
+.sd-diag-header-left {
+  order: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sd-mods-header-actions,
+.sd-diag-header-actions {
+  order: 3;
+}
+
+.sd-server-page .sd-page-header::after,
+.sd-saves-page .sd-page-header::after,
+.sd-jobs-page .sd-page-header::after,
+.sd-players-page .sd-page-header::after,
+.sd-mods-page .sd-page-header::after,
+.sd-diag-page .sd-page-header::after,
+.sd-install-title-strip.sd-page-header::after,
+.sd-settings-page .sd-page-header::after {
+  content: "";
+  position: static;
+  order: 2;
+  flex: 1 1 auto;
+  align-self: center;
+  height: 2px;
+  min-width: 80px;
+  border: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(106, 61, 22, 0.72), transparent) center / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, rgba(106, 61, 22, 0.42) 0 9px, transparent 9px 15px);
+  box-shadow: none;
+  filter: drop-shadow(0 1px rgba(255, 242, 190, 0.72));
+}
+
+.sd-server-page .sd-page-icon,
+.sd-saves-page .sd-page-icon,
+.sd-jobs-page .sd-page-icon,
+.sd-players-page .sd-page-icon,
+.sd-mods-page .sd-page-icon,
+.sd-diag-page .sd-page-icon,
+.sd-install-title-strip .sd-page-icon,
+.sd-settings-page .sd-page-icon {
+  width: clamp(42px, 5cqi, 58px);
+  height: clamp(42px, 5cqi, 58px);
+  margin: 0;
+  padding: 0;
+  object-fit: contain;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  filter: drop-shadow(2px 3px 0 rgba(75, 40, 14, 0.24));
+}
+
+.sd-server-page .sd-page-title,
+.sd-saves-page .sd-page-title,
+.sd-jobs-page .sd-page-title,
+.sd-players-page .sd-page-title,
+.sd-mods-page .sd-page-title,
+.sd-diag-page .sd-page-title,
+.sd-install-title-strip .sd-page-title,
+.sd-settings-page .sd-page-title {
+  display: block;
+  margin: 0;
+  color: #2d1809;
+  font-size: clamp(30px, 3.8cqi, 42px);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-shadow:
+    1px 1px 0 rgba(255, 242, 190, 0.9),
+    2px 2px 0 rgba(88, 48, 16, 0.18);
+}
+
+.sd-server-page .sd-page-desc,
+.sd-saves-page .sd-page-desc,
+.sd-jobs-page .sd-page-desc,
+.sd-players-page .sd-page-desc,
+.sd-mods-page .sd-page-desc,
+.sd-diag-page .sd-page-desc,
+.sd-settings-page .sd-page-desc {
+  display: none;
+}
+
+@container sd-main-scroll (max-width: 760px) {
+  .sd-server-page .sd-page-header,
+  .sd-saves-page .sd-page-header,
+  .sd-jobs-page .sd-page-header,
+  .sd-players-page .sd-page-header,
+  .sd-mods-page .sd-page-header,
+  .sd-diag-page .sd-page-header,
+  .sd-install-title-strip.sd-page-header,
+  .sd-settings-page .sd-page-header {
+    min-height: auto;
+    gap: 10px;
+  }
+
+  .sd-server-page .sd-page-header::after,
+  .sd-saves-page .sd-page-header::after,
+  .sd-jobs-page .sd-page-header::after,
+  .sd-players-page .sd-page-header::after,
+  .sd-mods-page .sd-page-header::after,
+  .sd-diag-page .sd-page-header::after,
+  .sd-install-title-strip.sd-page-header::after,
+  .sd-settings-page .sd-page-header::after {
+    display: none;
+  }
+
+  .sd-server-page .sd-page-icon,
+  .sd-saves-page .sd-page-icon,
+  .sd-jobs-page .sd-page-icon,
+  .sd-players-page .sd-page-icon,
+  .sd-mods-page .sd-page-icon,
+  .sd-diag-page .sd-page-icon,
+  .sd-install-title-strip .sd-page-icon,
+  .sd-settings-page .sd-page-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sd-server-page .sd-page-title,
+  .sd-saves-page .sd-page-title,
+  .sd-jobs-page .sd-page-title,
+  .sd-players-page .sd-page-title,
+  .sd-mods-page .sd-page-title,
+  .sd-diag-page .sd-page-title,
+  .sd-install-title-strip .sd-page-title,
+  .sd-settings-page .sd-page-title {
+    font-size: 27px;
+  }
+}
+
+.sd-ov-section,
+.sd-ov-card,
+.sd-invite-panel,
+.sd-pack-section,
+.sd-server-page .sd-state-card,
+.sd-server-page .sd-srv-section,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-list,
+.sd-jobs-detail,
+.sd-jobs-pull-progress,
+.sd-jobs-empty,
+.sd-jobs-loading,
+.sd-jobs-select-hint,
+.sd-jobs-vnc-fix,
+.sd-players-overview-section,
+.sd-players-page .sd-srv-section,
+.sd-players-stat,
+.sd-players-invite-row,
+.sd-player-event,
+.sd-players-action-item,
+.sd-players-empty,
+.sd-players-table-placeholder,
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel,
+.sd-diag-page .sd-diag-advice-panel,
+.sd-diag-count-card,
+.sd-diag-check-row,
+.sd-diag-alert-empty,
+.sd-diag-alert-row,
+.sd-diag-page .sd-diag-gauge-card,
+.sd-diag-page .sd-diag-trend-card,
+.sd-install-page .sd-install-progress-section,
+.sd-install-page .sd-install-column,
+.sd-install-page .sd-install-complete-card,
+.sd-install-page .sd-install-form-card,
+.sd-install-page .sd-install-pull-card,
+.sd-install-page .sd-install-download-card,
+.sd-install-page .sd-install-guard-section,
+.sd-install-page .sd-install-guard-block,
+.sd-install-page .sd-install-info-bar,
+.sd-install-page .sd-install-error-bar,
+.sd-install-page .sd-install-sse-warn,
+.sd-install-page .sd-install-config-placeholder,
+.sd-install-page .sd-install-auth-placeholder,
+.sd-install-page .sd-install-log-section,
+.sd-settings-page .sd-settings-section,
+.sd-settings-info-row,
+.sd-settings-port-card,
+.sd-settings-create-form,
+.sd-settings-user-row,
+.sd-settings-security-item,
+.sd-settings-security-summary-item,
+.sd-settings-error,
+.sd-settings-success,
+.sd-settings-locked {
+  border: 2px solid var(--sd-save-card-border);
+  border-radius: 9px;
+  background: var(--sd-save-card-bg);
+  box-shadow: var(--sd-save-card-shadow);
+  color: var(--sd-save-card-text);
+}
+
+.sd-server-page .sd-state-card,
+.sd-diag-page .sd-diag-status-panel,
+.sd-install-status-banner .sd-state-card {
+  border-color: var(--sd-save-card-border-dark);
+  background: var(--sd-save-card-bg-strong);
+}
+
+.sd-ov-section::before,
+.sd-ov-section::after,
+.sd-ov-card::before,
+.sd-ov-card::after,
+.sd-server-page .sd-state-card::before,
+.sd-server-page .sd-state-card::after,
+.sd-server-page .sd-srv-section::before,
+.sd-server-page .sd-srv-section::after,
+.sd-jobs-list::before,
+.sd-jobs-list::after,
+.sd-jobs-detail::before,
+.sd-jobs-detail::after,
+.sd-players-overview-section::before,
+.sd-players-overview-section::after,
+.sd-players-page .sd-srv-section::before,
+.sd-players-page .sd-srv-section::after,
+.sd-diag-page .sd-diag-status-panel::before,
+.sd-diag-page .sd-diag-check-panel::before,
+.sd-diag-page .sd-diag-resource-panel::before,
+.sd-diag-page .sd-diag-advice-panel::before,
+.sd-diag-page .sd-diag-status-panel::after,
+.sd-diag-page .sd-diag-check-panel::after,
+.sd-diag-page .sd-diag-resource-panel::after,
+.sd-diag-page .sd-diag-advice-panel::after,
+.sd-settings-page .sd-settings-section::before,
+.sd-settings-page .sd-settings-section::after,
+.sd-install-page .sd-install-progress-section::before,
+.sd-install-page .sd-install-progress-section::after,
+.sd-install-page .sd-install-column::before,
+.sd-install-page .sd-install-column::after {
+  display: none;
+}
+
+.sd-ov-section,
+.sd-server-page .sd-srv-section,
+.sd-jobs-page .sd-jobs-toolbar,
+.sd-jobs-list,
+.sd-jobs-detail,
+.sd-players-overview-section,
+.sd-players-page .sd-srv-section,
+.sd-diag-page .sd-diag-status-panel,
+.sd-diag-page .sd-diag-check-panel,
+.sd-diag-page .sd-diag-resource-panel,
+.sd-diag-page .sd-diag-advice-panel,
+.sd-install-page .sd-install-progress-section,
+.sd-install-page .sd-install-column,
+.sd-settings-page .sd-settings-section {
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.sd-ov-summary-grid,
+.sd-players-overview-grid,
+.sd-players-actions-grid,
+.sd-diag-gauge-grid,
+.sd-settings-port-grid,
+.sd-settings-security-summary-list,
+.sd-settings-info-grid {
+  gap: 10px;
+}
+
+.sd-ov-card,
+.sd-players-stat,
+.sd-players-action-item,
+.sd-diag-count-card,
+.sd-diag-page .sd-diag-gauge-card,
+.sd-settings-info-row,
+.sd-settings-port-card,
+.sd-settings-security-summary-item,
+.sd-settings-security-item {
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.sd-jobs-list-row,
+.sd-diag-check-row,
+.sd-diag-alert-row,
+.sd-player-event,
+.sd-settings-user-row,
+.sd-settings-audit-row {
+  border-color: var(--sd-save-card-soft-line);
+  background: transparent;
+  color: var(--sd-save-card-text);
+}
+
+.sd-jobs-list-row.active,
+.sd-jobs-list-row:hover,
+.sd-diag-check-row:hover,
+.sd-settings-audit-row:hover {
+  background: rgba(200, 160, 92, 0.22);
+}
+
+.sd-ov-title,
+.sd-ov-card .sd-player-hd,
+.sd-ov-card .sd-ev-title,
+.sd-ov-card .sd-pack-title,
+.sd-server-page .sd-srv-section-title,
+.sd-jobs-list-head-title,
+.sd-jobs-detail-title,
+.sd-players-page .sd-srv-section-title,
+.sd-players-stat-value,
+.sd-players-action-item > strong,
+.sd-diag-page .sd-diag-section-title,
+.sd-diag-count-card-value,
+.sd-diag-gauge-label,
+.sd-diag-trend-head,
+.sd-install-page .sd-install-section-title,
+.sd-install-page .sd-install-column-title,
+.sd-install-complete-title,
+.sd-install-form-title,
+.sd-install-pull-title,
+.sd-install-dl-title,
+.sd-install-guard-title,
+.sd-settings-page .sd-settings-section-title,
+.sd-settings-value-bold,
+.sd-settings-port-value,
+.sd-settings-user-name,
+.sd-settings-security-item-title {
+  color: var(--sd-save-card-title);
+  font-size: 14.5px;
+  line-height: 1.25;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.sd-ov-card,
+.sd-ov-empty,
+.sd-pack-sub,
+.sd-pack-count,
+.sd-server-page .sd-state-label,
+.sd-server-page .sd-state-value,
+.sd-server-page .sd-srv-hint,
+.sd-server-page .sd-srv-empty,
+.sd-jobs-list-row-type,
+.sd-jobs-detail-meta,
+.sd-jobs-sse-notice,
+.sd-jobs-pull-header,
+.sd-jobs-empty,
+.sd-jobs-loading,
+.sd-jobs-select-hint,
+.sd-players-stat-label,
+.sd-players-stat-pending,
+.sd-players-action-item > span:not(.sd-srv-badge-pending),
+.sd-player-event-title,
+.sd-player-event-desc,
+.sd-player-event-time,
+.sd-diag-status-message,
+.sd-diag-count-card-label,
+.sd-diag-check-name,
+.sd-diag-check-msg,
+.sd-diag-alert-name,
+.sd-diag-alert-msg,
+.sd-diag-gauge-sub,
+.sd-diag-resource-note,
+.sd-install-state-msg,
+.sd-install-progress-label,
+.sd-install-step-label,
+.sd-install-form-hint,
+.sd-install-field-label,
+.sd-install-pull-sub,
+.sd-install-pull-hint,
+.sd-install-dl-hint,
+.sd-install-guard-desc,
+.sd-install-log-hint,
+.sd-settings-label,
+.sd-settings-value,
+.sd-settings-hint,
+.sd-settings-hint-inline,
+.sd-settings-port-label,
+.sd-settings-port-desc,
+.sd-settings-user-login,
+.sd-settings-security-item-desc,
+.sd-settings-security-summary-item span,
+.sd-settings-security-summary-item strong {
+  color: var(--sd-save-card-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.sd-diag-checks,
+.sd-diag-alerts,
+.sd-settings-user-list,
+.sd-settings-security-list,
+.sd-players-event-list {
+  border-color: var(--sd-save-card-soft-line);
+  background: rgba(255, 242, 199, 0.32);
+}
+
+@container sd-main-scroll (max-width: 760px) {
+  .sd-ov-section,
+  .sd-server-page .sd-srv-section,
+  .sd-jobs-page .sd-jobs-toolbar,
+  .sd-jobs-list,
+  .sd-jobs-detail,
+  .sd-players-overview-section,
+  .sd-players-page .sd-srv-section,
+  .sd-diag-page .sd-diag-status-panel,
+  .sd-diag-page .sd-diag-check-panel,
+  .sd-diag-page .sd-diag-resource-panel,
+  .sd-diag-page .sd-diag-advice-panel,
+  .sd-install-page .sd-install-progress-section,
+  .sd-install-page .sd-install-column,
+  .sd-settings-page .sd-settings-section {
+    padding: 10px;
+  }
+
+  .sd-ov-card,
+  .sd-players-stat,
+  .sd-players-action-item,
+  .sd-diag-count-card,
+  .sd-diag-page .sd-diag-gauge-card,
+  .sd-settings-info-row,
+  .sd-settings-port-card,
+  .sd-settings-security-summary-item,
+  .sd-settings-security-item {
+    padding: 9px 10px;
+  }
+
+  .sd-ov-title,
+  .sd-ov-card .sd-player-hd,
+  .sd-ov-card .sd-ev-title,
+  .sd-ov-card .sd-pack-title,
+  .sd-server-page .sd-srv-section-title,
+  .sd-jobs-list-head-title,
+  .sd-jobs-detail-title,
+  .sd-players-page .sd-srv-section-title,
+  .sd-players-stat-value,
+  .sd-players-action-item > strong,
+  .sd-diag-page .sd-diag-section-title,
+  .sd-install-page .sd-install-section-title,
+  .sd-install-page .sd-install-column-title,
+  .sd-settings-page .sd-settings-section-title {
+    font-size: 13.5px;
+  }
+}
+
+.sd-main-scroll > .sd-page,
+.sd-main-scroll > .sd-server-page,
+.sd-main-scroll > .sd-saves-page,
+.sd-main-scroll > .sd-jobs-page,
+.sd-main-scroll > .sd-players-page,
+.sd-main-scroll > .sd-mods-page,
+.sd-main-scroll > .sd-diag-page,
+.sd-main-scroll > .sd-install-page,
+.sd-main-scroll > .sd-settings-page {
+  padding-block-start: 0;
+}
+
+.sd-server-page .sd-page-icon,
+.sd-saves-page .sd-page-icon,
+.sd-jobs-page .sd-page-icon,
+.sd-players-page .sd-page-icon,
+.sd-mods-page .sd-page-icon,
+.sd-diag-page .sd-page-icon,
+.sd-install-title-strip .sd-page-icon,
+.sd-settings-page .sd-page-icon {
+  filter: none;
+}
+
+.sd-server-page .sd-page-header::after,
+.sd-saves-page .sd-page-header::after,
+.sd-jobs-page .sd-page-header::after,
+.sd-players-page .sd-page-header::after,
+.sd-mods-page .sd-page-header::after,
+.sd-diag-page .sd-page-header::after,
+.sd-install-title-strip.sd-page-header::after,
+.sd-settings-page .sd-page-header::after {
+  filter: none;
+  box-shadow: none;
+}
+
+.sd-server-page .sd-page-title,
+.sd-saves-page .sd-page-title,
+.sd-jobs-page .sd-page-title,
+.sd-players-page .sd-page-title,
+.sd-mods-page .sd-page-title,
+.sd-diag-page .sd-page-title,
+.sd-install-title-strip .sd-page-title,
+.sd-settings-page .sd-page-title {
+  text-shadow: none;
+}
+
+.sd-diag-status-panel .sd-dot-green.sd-diag-status-big-dot,
+.sd-diag-status-big-dot.sd-dot-green {
+  background: #3aaa3a;
+  box-shadow: 0 0 6px rgba(58, 170, 58, 0.5);
+}
+
+.sd-diag-status-big-dot.sd-dot-yellow {
+  background: #c8a028;
+  box-shadow: 0 0 6px rgba(200, 160, 40, 0.45);
+}
+
+.sd-diag-status-big-dot.sd-dot-red {
+  background: #c03030;
+  box-shadow: 0 0 6px rgba(192, 48, 48, 0.45);
+}
+
+.sd-diag-page .sd-diag-check-status .sd-dot {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(69, 43, 18, 0.35);
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.42),
+    0 2px 0 rgba(78, 46, 16, 0.22),
+    0 0 8px currentColor;
+}
+
+.sd-diag-page .sd-diag-check-status .sd-dot-green {
+  color: #2baa1e;
+  background: radial-gradient(circle at 34% 28%, #d8ff96 0 13%, #46c631 14% 58%, #188020 59%);
+}
+
+.sd-diag-page .sd-diag-check-status .sd-dot-yellow {
+  color: #d99113;
+  background: radial-gradient(circle at 34% 28%, #fff0a4 0 13%, #f0b51d 14% 58%, #a9630c 59%);
+}
+
+.sd-diag-page .sd-diag-check-status .sd-dot-red {
+  color: #c53a27;
+  background: radial-gradient(circle at 34% 28%, #ffb59a 0 13%, #e0462b 14% 58%, #8e1d17 59%);
+}
+
+@media (max-width: 760px) {
+
+  .sd-diag-page .sd-diag-header-actions .sd-btn-green,
+  .sd-diag-page .sd-diag-header-actions .sd-btn-tan {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.sd-main:has(.sd-diag-page) {
+  --sd-main-viewport-inset-top: clamp(14px, 1.05vw, 18px);
+  --sd-main-viewport-inset-right: clamp(14px, 1.1vw, 18px);
+  --sd-main-viewport-inset-bottom: clamp(24px, 3.2vw, 38px);
+  --sd-main-viewport-inset-left: clamp(14px, 1.1vw, 18px);
+}

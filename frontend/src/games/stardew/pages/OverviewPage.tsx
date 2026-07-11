@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { ApiError, startInstance, stopInstance, restartInstance } from '../../../api'
-import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
+import './OverviewPage.css'
+import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { InviteCodeCard } from '../InviteCodeCard'
 import { modIsSystemRuntime } from '../mod-visibility'
 import type { StardewPageProps } from '../stardew-routes'
+import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
+import { formatStardewLocation } from '../location-format'
 
 const OVERVIEW_ICONS = {
   server: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
@@ -14,36 +15,24 @@ const OVERVIEW_ICONS = {
   players: '/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png',
 } as const
 
-// 和服务器控制页保持一致：容器进入 running 后，大存档仍可能需要几分钟
-// 才会让主机出现在 players.json 在线列表里。等待主机在线后再结束“启动中”，
-// 同时保留超时兜底，避免玩家快照不可用时永久卡住。
-const HOST_ONLINE_WAIT_TIMEOUT_MS = 10 * 60_000
-
-function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
-  if (!(error instanceof ApiError)) return null
-  if (error.code === 'save_required') return 'new'
-  if (error.code === 'active_save_required' || error.code === 'active_save_missing') return 'saves'
-  return null
-}
-
 export function OverviewPage({ user, instanceState, onNavigate, dashboardData }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
-  const [actionBusy, setActionBusy] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
-  const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
-  const [pendingStopAction, setPendingStopAction] = useState(false)
-
-  const state = instanceState?.state ?? null
+  const {
+    state,
+    actionBusy,
+    actionError,
+    showSaveRequiredPrompt,
+    confirmAction,
+    startupInProgress,
+    waitingForStop,
+    handleStart,
+    requestConfirm,
+    cancelConfirm,
+    confirmPendingAction,
+  } = useStardewLifecycleActions({ instanceState, dashboardData, isAdmin })
 
   const activeSave = dashboardData.saves?.activeSaveName ?? null
   const saveCount = dashboardData.saves?.saves.length ?? 0
-  const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
-  const showSaveRequiredPrompt =
-    (state === 'save_required' || saveRequiredDetected || noSavesDetected) &&
-    state !== 'running' &&
-    state !== 'starting'
   const visibleMods = dashboardData.mods?.mods.filter((m) => !modIsSystemRuntime(m)) ?? []
   const modCount = visibleMods.length
   const enabledModCount = visibleMods.filter((m) => m.enabled).length
@@ -71,123 +60,13 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   const activeJobCount = dashboardData.jobs.filter(
     (j) => j.status === 'running' || j.status === 'queued',
   ).length
-  const hasActiveLifecycleJob = dashboardData.jobs.some(
-    (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
-  )
-  const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
   const hasFailedJob = dashboardData.jobs.some((j) => j.status === 'failed')
-  const hostOnline = (dashboardData.players?.players ?? []).some(
-    (player) => player.isHost && player.status === 'online',
-  )
-  const hostWaitStartedAtRef = useRef<number | null>(null)
-  const [hostConfirmTimedOut, setHostConfirmTimedOut] = useState(false)
-  const awaitingHostConfirmation = state === 'running' && !hostOnline && !hostConfirmTimedOut
-
-  useEffect(() => {
-    if (state && state !== 'save_required') {
-      setSaveRequiredDetected(false)
-    }
-  }, [state])
-
-  useEffect(() => {
-    if (!hasActiveLifecycleJob && state === 'running') {
-      setPendingStartupAction(null)
-    }
-  }, [hasActiveLifecycleJob, state])
-
-  useEffect(() => {
-    if (state === 'running' && !hostOnline) {
-      if (hostWaitStartedAtRef.current === null) {
-        hostWaitStartedAtRef.current = Date.now()
-        setHostConfirmTimedOut(false)
-      } else if (Date.now() - hostWaitStartedAtRef.current >= HOST_ONLINE_WAIT_TIMEOUT_MS) {
-        setHostConfirmTimedOut(true)
-      }
-    } else {
-      hostWaitStartedAtRef.current = null
-      setHostConfirmTimedOut(false)
-    }
-  }, [state, hostOnline, dashboardData.players?.updatedAt])
-
-  useEffect(() => {
-    if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
-      setPendingStopAction(false)
-    }
-  }, [state])
-
-  async function handleStart() {
-    setActionBusy(true)
-    setPendingStartupAction('start')
-    setPendingStopAction(false)
-    setActionError(null)
-    try {
-      await startInstance()
-      dashboardData.requestInviteCodeRefresh()
-      setSaveRequiredDetected(false)
-      dashboardData.refreshInstanceState()
-      dashboardData.refreshJobs()
-    } catch (e) {
-      const saveBlocker = saveStartBlocker(e)
-      if (saveBlocker) {
-        setSaveRequiredDetected(saveBlocker === 'new')
-        setActionError(saveBlocker === 'new' ? null : errorMessage(e))
-        dashboardData.refreshInstanceState()
-        dashboardData.refreshSaves()
-        setPendingStartupAction(null)
-        return
-      }
-      setActionError(errorMessage(e))
-      setPendingStartupAction(null)
-    } finally {
-      setActionBusy(false)
-    }
-  }
-
-  async function handleStop() {
-    setActionBusy(true)
-    setPendingStopAction(true)
-    setPendingStartupAction(null)
-    setActionError(null)
-    dashboardData.clearInviteCode()
-    try {
-      await stopInstance()
-      dashboardData.refreshInstanceState()
-    } catch (e) {
-      setActionError(errorMessage(e))
-      setPendingStopAction(false)
-    } finally {
-      setActionBusy(false)
-    }
-  }
-
-  async function handleRestart() {
-    setActionBusy(true)
-    setPendingStartupAction('restart')
-    setActionError(null)
-    try {
-      await restartInstance()
-      dashboardData.requestInviteCodeRefresh()
-      dashboardData.refreshInstanceState()
-    } catch (e) {
-      setActionError(errorMessage(e))
-      setPendingStartupAction(null)
-    } finally {
-      setActionBusy(false)
-    }
-  }
 
   function renderLifecycleButtons() {
     if (!state) return null
     // Startup succeeds when the host player is online (save loaded/playable), not
     // merely when the container is running, and not when an invite code arrives
     // (invite codes are optional/background and may never appear).
-    const waitingForInvite =
-      state === 'starting' ||
-      Boolean(pendingStartupAction) ||
-      (hasActiveLifecycleJob && !activeLifecycleIsStopping && state !== 'running') ||
-      awaitingHostConfirmation
-    const waitingForStop = state === 'stopping' || pendingStopAction || activeLifecycleIsStopping
-
     if (state === 'save_required') {
       return (
         <button className="sd-btn-start" disabled>
@@ -197,20 +76,20 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
       )
     }
 
-    if (waitingForInvite) {
-      return (
-        <button className="sd-btn-start sd-btn-loading" disabled>
-          <span className="sd-btn-spinner" aria-hidden="true" />
-          启动中…
-        </button>
-      )
-    }
-
     if (waitingForStop) {
       return (
         <button className="sd-btn-stop sd-btn-loading" disabled>
           <span className="sd-btn-spinner" aria-hidden="true" />
           停止中…
+        </button>
+      )
+    }
+
+    if (startupInProgress) {
+      return (
+        <button className="sd-btn-start sd-btn-loading" disabled>
+          <span className="sd-btn-spinner" aria-hidden="true" />
+          启动中…
         </button>
       )
     }
@@ -234,7 +113,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
         <>
           <button
             className="sd-btn-stop"
-            onClick={() => setConfirmAction('stop')}
+            onClick={() => requestConfirm('stop')}
             disabled={actionBusy || !isAdmin}
             title={isAdmin ? undefined : '仅管理员可停止服务器'}
           >
@@ -243,7 +122,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
           </button>
           <button
             className="sd-btn-restart"
-            onClick={() => setConfirmAction('restart')}
+            onClick={() => requestConfirm('restart')}
             disabled={actionBusy || !isAdmin}
             title={isAdmin ? undefined : '仅管理员可重启服务器'}
           >
@@ -441,7 +320,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
                     <span className="sd-ov-player-main">
                       <span className="sd-ov-player-name">{player.name}</span>
                       <span className="sd-ov-player-meta">
-                        {player.locationDisplayName || player.locationName || player.location || (player.isHost ? '农场主' : '在线')}
+                        {formatStardewLocation(player, { fallback: player.isHost ? '农场主' : '在线' })}
                       </span>
                     </span>
                     <span className="sd-dot sd-dot-green" aria-hidden="true" />
@@ -560,16 +439,12 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
                 : '重启服务器将短暂断开所有玩家连接，请确认操作。'}
             </p>
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setConfirmAction(null)}>
+              <button className="sd-btn-tan" onClick={cancelConfirm}>
                 取消
               </button>
               <button
                 className={confirmAction === 'stop' ? 'sd-btn-delete' : 'sd-btn-green'}
-                onClick={() => {
-                  const action = confirmAction
-                  setConfirmAction(null)
-                  void (action === 'stop' ? handleStop() : handleRestart())
-                }}
+                onClick={confirmPendingAction}
               >
                 确认{confirmAction === 'stop' ? '停止' : '重启'}
               </button>

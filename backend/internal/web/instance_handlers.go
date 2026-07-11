@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,16 +32,21 @@ type instanceResponse struct {
 }
 
 type instanceStateResponse struct {
-	InstanceID        string  `json:"instanceId"`
-	DriverID          string  `json:"driverId"`
-	Name              string  `json:"name"`
-	State             string  `json:"state"`
-	StateMessage      *string `json:"stateMessage"`
-	DriverPhase       string  `json:"driverPhase"`
-	UpdatedAt         string  `json:"updatedAt"`
-	SteamAuthLoggedIn bool    `json:"steamAuthLoggedIn"`
-	SteamAuthReady    bool    `json:"steamAuthReady"`
-	InviteCode        string  `json:"inviteCode,omitempty"`
+	InstanceID        string                 `json:"instanceId"`
+	DriverID          string                 `json:"driverId"`
+	Name              string                 `json:"name"`
+	State             string                 `json:"state"`
+	StateMessage      *string                `json:"stateMessage"`
+	DriverPhase       string                 `json:"driverPhase"`
+	UpdatedAt         string                 `json:"updatedAt"`
+	SteamAuthLoggedIn bool                   `json:"steamAuthLoggedIn"`
+	SteamAuthReady    bool                   `json:"steamAuthReady"`
+	InviteCode        string                 `json:"inviteCode,omitempty"`
+	UIStatus          string                 `json:"uiStatus"`
+	UIStatusUpdatedAt string                 `json:"uiStatusUpdatedAt"`
+	StatusSource      controlStatusSnapshot  `json:"statusSource"`
+	PlayersSource     controlPlayersSnapshot `json:"playersSource"`
+	RuntimeDiagnostic runtimeDiagnostic      `json:"runtimeDiagnostic"`
 }
 
 type composeExecPipeDocker interface {
@@ -678,6 +684,13 @@ func (s *server) makeInstanceResponse(instance storage.Instance) instanceRespons
 }
 
 func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage.Instance) instanceStateResponse {
+	uiStatus, uiStatusUpdatedAt := s.resolveInstanceUIStatus(ctx, instance)
+	controlDir := filepath.Join(instance.DataDir, ".local-container", "control")
+	var statusSource controlStatusSnapshot
+	var playersSource controlPlayersSnapshot
+	readControlJSON(filepath.Join(controlDir, "status.json"), &statusSource)
+	readControlJSON(filepath.Join(controlDir, "players.json"), &playersSource)
+	runtimeDiagnostic := buildRuntimeDiagnostic(instance, statusSource, playersSource)
 	return instanceStateResponse{
 		InstanceID:        instance.ID,
 		DriverID:          instance.DriverID,
@@ -689,6 +702,11 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 		SteamAuthLoggedIn: sjconfig.SteamAuthLoggedIn(instance.DataDir),
 		SteamAuthReady:    s.probeSteamAuthReady(ctx, instance),
 		InviteCode:        inviteCodeFromDriverPayload(instance.DriverPayload),
+		UIStatus:          uiStatus,
+		UIStatusUpdatedAt: uiStatusUpdatedAt,
+		StatusSource:      statusSource,
+		PlayersSource:     playersSource,
+		RuntimeDiagnostic: runtimeDiagnostic,
 	}
 }
 

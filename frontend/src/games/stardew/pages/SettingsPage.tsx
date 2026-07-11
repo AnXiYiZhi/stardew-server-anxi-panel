@@ -903,3 +903,4 @@ export function SettingsPage({ user, dashboardData }: StardewPageProps) {
     </div>
   )
 }
+import './SettingsPage.css'

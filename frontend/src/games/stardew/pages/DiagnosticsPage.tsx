@@ -1,11 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics } from '../../../api'
+import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
-import type { ResourceMetricSample } from '../../../types'
+import type { ComposeService, ResourceMetricSample } from '../../../types'
 
 const RESOURCE_METRICS_REFRESH_MS = 8000
+const CONTROL_FRESH_MS = 30_000
+
+function freshnessLabel(updatedAt?: string): string {
+  if (!updatedAt) return '无数据'
+  const age = Date.now() - new Date(updatedAt).getTime()
+  if (!Number.isFinite(age)) return '时间无效'
+  const seconds = Math.max(0, Math.round(age / 1000))
+  return `${seconds} 秒前 · ${age <= CONTROL_FRESH_MS ? '新鲜' : '已过期'}`
+}
+
+function eventAgeLabel(updatedAt?: string): string {
+  if (!updatedAt) return '无数据'
+  const age = Date.now() - new Date(updatedAt).getTime()
+  if (!Number.isFinite(age)) return '时间无效'
+  return `${Math.max(0, Math.round(age / 1000))} 秒前 · 阶段事件`
+}
+
+function durationLabel(value?: number): string {
+  if (value == null) return '暂无样本'
+  return value >= 60_000 ? `${(value / 60_000).toFixed(1)} 分钟` : `${(value / 1000).toFixed(1)} 秒`
+}
 
 // ── 检查项名称中文映射 ─────────────────────────────────────────────────────────
 
@@ -264,7 +285,7 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
 
 // ── DiagnosticsPage ───────────────────────────────────────────────────────────
 
-export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
+export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
 
   // 本地状态：允许重新检查时独立维护 loading/error，不污染公共层
@@ -280,6 +301,8 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
   const [metricSamples, setMetricSamples] = useState<ResourceMetricSample[]>([])
   const [metricError, setMetricError] = useState<string | null>(null)
   const [metricService, setMetricService] = useState('server')
+  const [composeServices, setComposeServices] = useState<ComposeService[]>([])
+  const [composeError, setComposeError] = useState<string | null>(null)
   const { applyHealthDiagnostics } = dashboardData
 
   // 以 localData 为准（重新检查后更新），dashboardData.health 只作为初始值
@@ -310,6 +333,12 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
         : overallStatus === 'error'
           ? '发现需要立即处理的问题'
           : '点击重新检查获取最新状态'
+
+  useEffect(() => {
+    let alive = true
+    getComposePs().then((res) => { if (alive) setComposeServices(res.services ?? []) }).catch((e) => { if (alive) setComposeError(errorMessage(e)) })
+    return () => { alive = false }
+  }, [])
 
   useEffect(() => {
     if (localData) return
@@ -417,8 +446,10 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
     setLocalError(null)
     setHasLocalAttempt(true)
     try {
-      const res = await getHealthDiagnostics()
+      const [res, compose] = await Promise.all([getHealthDiagnostics(), getComposePs()])
       setLocalData(res)
+      setComposeServices(compose.services ?? [])
+      setComposeError(null)
       applyHealthDiagnostics(res)
     } catch (e) {
       setLocalError(errorMessage(e))
@@ -505,6 +536,22 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
       {exportError && (
         <div className="sd-diag-error-banner">{exportError}</div>
       )}
+
+      <section className="sd-card sd-diag-source-panel" aria-label="生命周期状态来源">
+        <h3>服务器状态来源</h3>
+        <div className="sd-diag-check-list">
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">UI 标准状态</span><span className="sd-diag-check-msg">{instanceState?.uiStatus ?? '未知'} · {instanceState?.uiStatusUpdatedAt ?? '无更新时间'}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">实例 / Driver</span><span className="sd-diag-check-msg">{instanceState?.state ?? '未知'} / {instanceState?.driverPhase ?? '未知'} · {instanceState?.updatedAt ?? '无更新时间'}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">SMAPI status.json</span><span className="sd-diag-check-msg">{instanceState?.statusSource?.state ?? '无数据'} · saveId {instanceState?.statusSource?.saveId || '—'} · {eventAgeLabel(instanceState?.statusSource?.updatedAt)}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">SMAPI players.json</span><span className="sd-diag-check-msg">saveId {instanceState?.playersSource?.saveId || '—'} · {freshnessLabel(instanceState?.playersSource?.updatedAt)}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">当前存档 / 玩家快照身份</span><span className="sd-diag-check-msg">{instanceState?.runtimeDiagnostic?.activeSaveId || '—'} / {instanceState?.runtimeDiagnostic?.cacheSaveId || '—'} · {!instanceState?.runtimeDiagnostic?.cacheSaveId ? '快照未生成' : instanceState.runtimeDiagnostic.cacheMatchesActive ? '匹配' : '不匹配'}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">存档目录</span><span className="sd-diag-check-msg">{instanceState?.runtimeDiagnostic?.saveDirectory || '—'}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">Compose 容器</span><span className="sd-diag-check-msg">{composeServices.length ? composeServices.map((service) => `${service.service || service.name}: ${service.state || 'unknown'}${service.health ? ` (${service.health})` : ''}`).join(' · ') : composeError || '无数据'}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">最近启动阶段耗时</span><span className="sd-diag-check-msg">容器→存档 {durationLabel(instanceState?.runtimeDiagnostic?.containerToSaveMs)} · 存档→主机 {durationLabel(instanceState?.runtimeDiagnostic?.saveToHostMs)}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">控制模组版本</span><span className="sd-diag-check-msg">{instanceState?.runtimeDiagnostic?.controlModVersion || '未安装'} / 期望 {instanceState?.runtimeDiagnostic?.expectedControlModVersion || '—'} · {instanceState?.runtimeDiagnostic?.controlModMatches ? '匹配' : '不匹配'}</span></div>
+          <div className="sd-diag-check-row"><span className="sd-diag-check-name">Junimo 版本</span><span className="sd-diag-check-msg">{instanceState?.runtimeDiagnostic?.junimoImage || '未配置'} / 期望 {instanceState?.runtimeDiagnostic?.expectedJunimoVersion || '—'} · {instanceState?.runtimeDiagnostic?.junimoVersionMatches ? '匹配' : '不匹配'}</span></div>
+        </div>
+      </section>
 
       {/* 总状态面板 */}
       {data && (
@@ -612,3 +659,4 @@ export function DiagnosticsPage({ user, dashboardData }: StardewPageProps) {
     </div>
   )
 }
+import './DiagnosticsPage.css'

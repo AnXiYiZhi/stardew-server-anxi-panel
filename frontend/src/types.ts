@@ -149,6 +149,16 @@ export type InstanceState = {
   steamAuthReady?: boolean
   // Last invite code recorded by the backend background probe, if any.
   inviteCode?: string
+  uiStatus?: 'stopped' | 'starting_container' | 'loading_save' | 'waiting_for_host' | 'ready' | 'stopping' | 'failed'
+  uiStatusUpdatedAt?: string
+  statusSource?: { state?: string; saveId?: string; updatedAt?: string }
+  playersSource?: { saveId?: string; updatedAt?: string; players?: Array<{ isHost?: boolean; status?: string }> }
+  runtimeDiagnostic?: {
+    activeSaveId?: string; saveDirectory?: string; cacheSaveId?: string; cacheMatchesActive: boolean
+    controlModVersion?: string; expectedControlModVersion: string; controlModMatches: boolean
+    junimoImage?: string; expectedJunimoVersion: string; junimoVersionMatches: boolean
+    containerToSaveMs?: number; saveToHostMs?: number
+  }
 }
 
 export type ResourceMetricSample = {

@@ -731,3 +731,4 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     </div>
   )
 }
+import './JobsLogsPage.css'

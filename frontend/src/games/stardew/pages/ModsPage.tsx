@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMemo } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
-import { getMods, uploadMods, deleteMod, exportMods, updateModSyncClassification, updateModEnabled, exportModSyncPack, exportModSyncUpdatePack, downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
+import { downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
-import type { ModInfo, ModsListResult, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
+import type { ModInfo, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import { modIsJunimoServer, modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { routeToPath, type StardewPageProps } from '../stardew-routes'
+import { useModsManagement } from '../useModsManagement'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
 
@@ -618,29 +619,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const restoredNexusSearchState = readNexusSearchSessionState()
   const restoredNexusExtensionState = readNexusExtensionSessionState()
   const [activeTab, setActiveTab] = useState<ModWorkbenchTab>('download')
-  const [data, setData] = useState<ModsListResult | null>(dashboardData.mods)
-  const [loading, setLoading] = useState(false)
-  const [listError, setListError] = useState<string | null>(null)
-
-  const [showUpload, setShowUpload] = useState(false)
-  const [uploadFiles, setUploadFiles] = useState<File[]>([])
-  const [uploadBusy, setUploadBusy] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [uploadSuccess, setUploadSuccess] = useState(false)
-
-  const [confirmDelete, setConfirmDelete] = useState<ModInfo | null>(null)
-  const [deleteBusy, setDeleteBusy] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-
-  const [exportBusy, setExportBusy] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
-
-  const [syncUpdating, setSyncUpdating] = useState<string | null>(null)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [syncPackBusy, setSyncPackBusy] = useState<'full' | 'update' | null>(null)
-  const [syncPackError, setSyncPackError] = useState<string | null>(null)
-  const [enableUpdating, setEnableUpdating] = useState<string | null>(null)
-  const [enableError, setEnableError] = useState<string | null>(null)
 
   const [nexusQuery, setNexusQuery] = useState(restoredNexusSearchState?.query ?? '')
   const [nexusLoading, setNexusLoading] = useState(false)
@@ -668,7 +646,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     panelBaseUrl: window.location.origin,
   })
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const nexusResultsListRef = useRef<HTMLDivElement>(null)
   const lastNexusSearchPageSizeRef = useRef(
     restoredNexusSearchState?.results
@@ -691,6 +668,13 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       ? '服务器运行中，请先停止后操作'
       : ''
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
+  const {
+    data, loading, listError, showUpload, uploadFiles, setUploadFiles, uploadBusy, uploadError,
+    uploadSuccess, confirmDelete, deleteBusy, deleteError, exportBusy, exportError, syncUpdating, syncError,
+    syncPackBusy, syncPackError, enableUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
+    handleUpload, openDeleteConfirm, closeDeleteConfirm, handleDeleteConfirm, handleExport, handleSyncChange,
+    handleEnabledChange, handleSyncPackExport,
+  } = useModsManagement({ dashboardData, activeSaveName })
 
   const {
     mods,
@@ -762,33 +746,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     { id: 'installed', label: '添加模组', hint: '本服已安装与玩家同步', icon: '/assets/stardew/ui/icons/icon_nav_install_package_image2.png' },
     { id: 'settings', label: '配置模组', hint: '启用、依赖与配置入口', icon: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png' },
   ]
-
-  const loadMods = useCallback(async () => {
-    setLoading(true)
-    setListError(null)
-    try {
-      const result = await getMods()
-      setData(result)
-      return result
-    } catch (e) {
-      setListError(errorMessage(e))
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!dashboardData.mods) {
-      void loadMods()
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (dashboardData.mods) {
-      setData(dashboardData.mods)
-    }
-  }, [dashboardData.mods])
 
   const loadNexusSettings = useCallback(async () => {
     if (!isAdmin) return
@@ -1319,131 +1276,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return () => window.clearTimeout(timer)
   }, [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleUpload() {
-    if (uploadFiles.length === 0) return
-    setUploadBusy(true)
-    setUploadError(null)
-    setUploadSuccess(false)
-    try {
-      await uploadMods(uploadFiles)
-      await loadMods()
-      dashboardData.refreshMods()
-      setShowUpload(false)
-      setUploadFiles([])
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      setUploadSuccess(true)
-      setTimeout(() => setUploadSuccess(false), 4000)
-    } catch (e) {
-      setUploadError(errorMessage(e))
-    } finally {
-      setUploadBusy(false)
-    }
-  }
-
-  function openDeleteConfirm(mod: ModInfo) {
-    setDeleteError(null)
-    setConfirmDelete(mod)
-  }
-
-  async function handleDeleteConfirm() {
-    if (!confirmDelete) return
-    setDeleteBusy(true)
-    setDeleteError(null)
-    try {
-      await deleteMod(confirmDelete.id)
-      dashboardData.refreshMods()
-      await loadMods()
-      setConfirmDelete(null)
-    } catch (e) {
-      setDeleteError(errorMessage(e))
-    } finally {
-      setDeleteBusy(false)
-    }
-  }
-
-  async function handleExport() {
-    setExportBusy(true)
-    setExportError(null)
-    try {
-      const { blob, filename } = await exportMods()
-      downloadBlob(blob, filename)
-    } catch (e) {
-      setExportError(errorMessage(e))
-    } finally {
-      setExportBusy(false)
-    }
-  }
-
-  async function handleSyncChange(mod: ModInfo, syncKind: ModSyncKind) {
-    setSyncError(null)
-    setSyncUpdating(mod.id)
-    try {
-      const result = await updateModSyncClassification(mod.id, syncKind)
-      const updates = new Map(result.mods.map((item) => [item.folderName, item]))
-      setData((prev) =>
-        prev ? {
-          ...prev,
-          mods: prev.mods.map((m) => {
-            const updated = updates.get(m.folderName)
-            return updated
-              ? { ...m, syncKind: updated.syncKind, syncNote: updated.syncNote }
-              : m
-          }),
-        } : prev,
-      )
-      dashboardData.refreshMods()
-    } catch (e) {
-      setSyncError(errorMessage(e))
-    } finally {
-      setSyncUpdating(null)
-    }
-  }
-
-  async function handleEnabledChange(mod: ModInfo, enabled: boolean) {
-    setEnableError(null)
-    setEnableUpdating(mod.id)
-    try {
-      const result = await updateModEnabled(mod.id, enabled, activeSaveName || undefined)
-      const updates = new Map(result.mods.map((item) => [item.folderName, item]))
-      setData((prev) =>
-        prev ? {
-          ...prev,
-          mods: prev.mods.map((m) => {
-            const updated = updates.get(m.folderName)
-            return updated
-              ? {
-                  ...m,
-                  enabled: updated.enabled,
-                  canToggle: updated.canToggle,
-                  enableNote: updated.enableNote,
-                  dependencies: updated.dependencies ?? m.dependencies,
-                }
-              : m
-          }),
-        } : prev,
-      )
-      dashboardData.refreshMods()
-    } catch (e) {
-      setEnableError(errorMessage(e))
-    } finally {
-      setEnableUpdating(null)
-    }
-  }
-
-  async function handleSyncPackExport(kind: 'full' | 'update') {
-    setSyncPackBusy(kind)
-    setSyncPackError(null)
-    try {
-      const { blob, filename } = kind === 'update'
-        ? await exportModSyncUpdatePack()
-        : await exportModSyncPack()
-      downloadBlob(blob, filename)
-    } catch (e) {
-      setSyncPackError(errorMessage(e))
-    } finally {
-      setSyncPackBusy(null)
-    }
-  }
 
   async function handleNexusExtensionPackDownload() {
     setNexusExtensionPackBusy(true)
@@ -1732,14 +1564,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     }
   }
 
-  function closeUpload() {
-    if (uploadBusy) return
-    setShowUpload(false)
-    setUploadFiles([])
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    setUploadError(null)
-  }
-
   function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1867,7 +1691,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           <button
             className="sd-btn-green"
             disabled={writeDisabled}
-            onClick={() => { setUploadError(null); setShowUpload(true); setActiveTab('installed') }}
+            onClick={() => { openUpload(); setActiveTab('installed') }}
             type="button"
             title={writeTitle || '上传 ZIP 包安装 Mod'}
           >
@@ -2184,7 +2008,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     className="sd-btn-green"
                     disabled={writeDisabled}
                     title={writeTitle || '上传 ZIP 包安装 Mod'}
-                    onClick={() => { setUploadError(null); setShowUpload(true) }}
+                    onClick={openUpload}
                     type="button"
                   >
                     上传 Mod
@@ -2532,7 +2356,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               <button
                 className="sd-btn-tan"
                 disabled={deleteBusy}
-                onClick={() => { setConfirmDelete(null); setDeleteError(null) }}
+                onClick={closeDeleteConfirm}
                 type="button"
               >
                 取消
@@ -2552,3 +2376,4 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     </div>
   )
 }
+import './ModsPage.css'

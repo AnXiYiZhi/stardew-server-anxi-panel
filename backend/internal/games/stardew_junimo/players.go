@@ -77,11 +77,20 @@ type PlayersResult struct {
 	UpdatedAt    string        `json:"updatedAt"`
 }
 
+type playerRosterStore interface {
+	UpsertPlayerRoster(context.Context, storage.UpsertPlayerRosterParams) error
+	ListPlayerRoster(context.Context, string, string) ([]storage.PlayerRosterEntry, error)
+	MarkPlayerRosterOfflineExcept(context.Context, string, string, string, []string) error
+	ImportPlayerRosterEvents(context.Context, []storage.PlayerRosterEvent) error
+	ListPlayerRosterEvents(context.Context, string, string, int) ([]storage.PlayerRosterEvent, error)
+}
+
 // ListPlayers returns the best available online-player snapshot for a running
 // JunimoServer instance. The StardewAnxiPanel.Control SMAPI mod writes a
 // structured players.json file in the mounted control directory; older instances
 // without that bridge fall back to the conservative Junimo "info" parser.
 func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*PlayersResult, error) {
+	_, durableRoster := d.store.(playerRosterStore)
 	result := &PlayersResult{
 		InstanceID:  instance.ID,
 		State:       instance.State,
@@ -97,21 +106,21 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 		result.OnlineCount = &zero
 		saveID := latestControlSaveID(instance.DataDir)
 		result.SaveID = saveID
-		if cached := markCachedPlayersOffline(instance.DataDir, saveID, result.UpdatedAt); len(cached) > 0 {
+		if cached := markCachedPlayersOffline(instance.DataDir, saveID, result.UpdatedAt, !durableRoster); len(cached) > 0 {
 			result.Source = "panel_cache"
 			result.Players = cached
 			result.RecentEvents = recentPlayerEvents(instance.DataDir, saveID)
 			result.ParseStatus = "partial"
 			result.Message = "服务器未运行，显示已记录玩家名册。"
-			return result, nil
+			return d.persistPlayerRoster(ctx, instance, result), nil
 		}
 		result.RecentEvents = recentPlayerEvents(instance.DataDir, saveID)
 		result.Message = "服务器未运行，暂无已记录玩家。"
-		return result, nil
+		return d.persistPlayerRoster(ctx, instance, result), nil
 	}
 
 	if snapshot, ok := readPlayersFromControl(instance.DataDir); ok {
-		roster := mergePlayerRoster(instance.DataDir, snapshot.SaveID, snapshot.Players, snapshot.UpdatedAt)
+		roster := mergePlayerRoster(instance.DataDir, snapshot.SaveID, snapshot.Players, snapshot.UpdatedAt, !durableRoster)
 		result.Source = "smapi_control"
 		result.SaveID = snapshot.SaveID
 		result.OnlineCount = snapshot.OnlineCount
@@ -120,7 +129,7 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 		result.ParseStatus = "exact"
 		result.Message = "已从 StardewAnxiPanel.Control players.json 读取当前在线快照，并合并玩家名册。"
 		result.UpdatedAt = snapshot.UpdatedAt
-		return result, nil
+		return d.persistPlayerRoster(ctx, instance, result), nil
 	}
 
 	info, err := runCommand(ctx, d, instance, CommandRequest{Command: "info"}, true)
@@ -140,7 +149,7 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 		result.MaxPlayers = parsed.MaxPlayers
 	}
 	if len(parsed.Players) > 0 {
-		result.Players = mergePlayerRoster(instance.DataDir, "", parsed.Players, result.UpdatedAt)
+		result.Players = mergePlayerRoster(instance.DataDir, "", parsed.Players, result.UpdatedAt, !durableRoster)
 		result.RecentEvents = recentPlayerEvents(instance.DataDir, "")
 	} else {
 		result.Players = parsed.Players
@@ -148,7 +157,205 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 	}
 	result.ParseStatus = parsed.ParseStatus
 	result.Message = parsed.Message
-	return result, nil
+	return d.persistPlayerRoster(ctx, instance, result), nil
+}
+
+// persistPlayerRoster makes SQLite the durable history while keeping runtime
+// JSON and save XML as observation sources. Storage failures are deliberately
+// non-fatal: player status remains available even when persistence is degraded.
+func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Instance, result *PlayersResult) *PlayersResult {
+	store, ok := d.store.(playerRosterStore)
+	if !ok || result == nil {
+		return result
+	}
+	stableID, baseID, fullID := resolveStableSaveIdentity(instance.DataDir, result.SaveID)
+	if stableID == "" {
+		return result
+	}
+	result.SaveID = stableID
+	persisted, err := store.ListPlayerRoster(ctx, instance.ID, stableID)
+	if err != nil {
+		d.logger.Warn("list durable player roster", "instance_id", instance.ID, "save_id", stableID, "error", err)
+		return result
+	}
+	byKey := make(map[string]storage.PlayerRosterEntry, len(persisted))
+	for _, entry := range persisted {
+		byKey[playerKey(entry.DisplayName, entry.PlayerID)] = entry
+	}
+	legacyByKey := map[string]playerCacheItem{}
+	legacy := readPlayerCache(instance.DataDir)
+	if cacheMatchesSave(legacy.SaveID, result.SaveID) {
+		for _, item := range legacy.Players {
+			legacyByKey[playerKey(item.Name, item.UniqueMultiplayerID)] = item
+		}
+	}
+	seen := make(map[string]bool, len(result.Players))
+	onlineIDs := []string{}
+	allPersisted := true
+	for i := range result.Players {
+		player := &result.Players[i]
+		id := strings.TrimSpace(player.UniqueMultiplayerID)
+		if id == "" {
+			id = "name:" + strings.ToLower(strings.TrimSpace(player.Name))
+		}
+		if player.Status == "online" {
+			onlineIDs = append(onlineIDs, id)
+		}
+		key := playerKey(player.Name, id)
+		seen[key] = true
+		if old, exists := byKey[key]; exists && player.Status != "online" {
+			mergeStoredPlayerFallback(player, old)
+		}
+		entry := storage.PlayerRosterEntry{
+			InstanceID: instance.ID, StableSaveID: stableID, PlayerID: id, DisplayName: player.Name,
+			Role: player.Role, IsHost: player.IsHost, LastSeenAt: player.LastSeen,
+			Location: player.Location, LocationName: player.LocationName, LocationDisplayName: player.LocationDisplayName,
+			TileX: player.TileX, TileY: player.TileY, PixelX: player.PixelX, PixelY: player.PixelY,
+			Money: player.Money, FarmIncome: player.FarmIncome, PersonalIncome: player.PersonalIncome,
+			TotalMoneyEarned: player.TotalMoneyEarned, WalletMode: player.WalletMode,
+			SnapshotSource: player.Source, SnapshotObservedAt: result.UpdatedAt,
+		}
+		if legacyItem, exists := legacyByKey[playerKey(player.Name, player.UniqueMultiplayerID)]; exists {
+			entry.FirstSeenAt = legacyItem.FirstSeen
+			entry.LastOnlineAt = legacyItem.LastSeen
+		}
+		if entry.LastSeenAt == "" {
+			entry.LastSeenAt = result.UpdatedAt
+		}
+		if err := store.UpsertPlayerRoster(ctx, storage.UpsertPlayerRosterParams{Entry: entry, BaseSaveID: baseID, FullSaveID: fullID, Online: player.Status == "online"}); err != nil {
+			allPersisted = false
+			d.logger.Warn("upsert durable player roster", "instance_id", instance.ID, "save_id", stableID, "player_id", id, "error", err)
+		}
+	}
+	if err := store.MarkPlayerRosterOfflineExcept(ctx, instance.ID, stableID, result.UpdatedAt, onlineIDs); err != nil {
+		allPersisted = false
+		d.logger.Warn("mark durable player roster offline", "instance_id", instance.ID, "save_id", stableID, "error", err)
+	}
+	legacyEvents := readPlayerEventsFile(instance.DataDir)
+	if cacheMatchesSave(legacyEvents.SaveID, stableID) && len(legacyEvents.Events) > 0 {
+		imports := make([]storage.PlayerRosterEvent, 0, len(legacyEvents.Events))
+		for _, event := range legacyEvents.Events {
+			playerID := strings.TrimSpace(event.UniqueMultiplayerID)
+			if playerID == "" {
+				playerID = "name:" + strings.ToLower(strings.TrimSpace(event.PlayerName))
+			}
+			imports = append(imports, storage.PlayerRosterEvent{ID: event.ID, InstanceID: instance.ID, StableSaveID: stableID, Type: event.Type, PlayerID: playerID, PlayerName: event.PlayerName, IsHost: event.IsHost, Location: event.Location, LocationName: event.LocationName, LocationDisplayName: event.LocationDisplayName, OccurredAt: event.At})
+		}
+		if err := store.ImportPlayerRosterEvents(ctx, imports); err != nil {
+			allPersisted = false
+			d.logger.Warn("import legacy player events", "instance_id", instance.ID, "save_id", stableID, "error", err)
+		}
+	}
+	for _, entry := range persisted {
+		key := playerKey(entry.DisplayName, entry.PlayerID)
+		if seen[key] {
+			continue
+		}
+		result.Players = append(result.Players, playerInfoFromRosterEntry(entry))
+	}
+	sortPlayers(result.Players)
+	if events, err := store.ListPlayerRosterEvents(ctx, instance.ID, stableID, maxPlayerEvents); err != nil {
+		allPersisted = false
+		d.logger.Warn("list durable player events", "instance_id", instance.ID, "save_id", stableID, "error", err)
+	} else {
+		result.RecentEvents = playerEventsFromRoster(events)
+	}
+	if allPersisted {
+		// players-cache.json was the old historical database. Once its contents
+		// have been durably observed, stop treating it as persistent state.
+		_ = os.Remove(playerCachePath(instance.DataDir))
+		_ = os.Remove(playerEventsPath(instance.DataDir))
+	}
+	return result
+}
+
+func playerEventsFromRoster(events []storage.PlayerRosterEvent) []PlayerEvent {
+	result := make([]PlayerEvent, 0, len(events))
+	for _, event := range events {
+		uniqueID := event.PlayerID
+		if strings.HasPrefix(uniqueID, "name:") {
+			uniqueID = ""
+		}
+		item := playerCacheItem{Name: event.PlayerName, UniqueMultiplayerID: uniqueID, IsHost: event.IsHost, Location: event.Location, LocationName: event.LocationName, LocationDisplayName: event.LocationDisplayName}
+		converted := newPlayerEvent(event.Type, event.StableSaveID, event.OccurredAt, item)
+		converted.ID = event.ID
+		result = append(result, converted)
+	}
+	return result
+}
+
+func resolveStableSaveIdentity(dataDir, observedID string) (stableID, baseID, fullID string) {
+	observedID = strings.TrimSpace(observedID)
+	if folder := resolveRosterSaveFolder(dataDir, observedID); folder != "" {
+		fullID = filepath.Base(folder)
+	}
+	if fullID == "" {
+		active := strings.TrimSpace(GetActiveSaveName(dataDir))
+		if active != "" && (observedID == "" || sameSaveIdentity(active, observedID)) {
+			fullID = active
+		}
+	}
+	stableID = fullID
+	if stableID == "" {
+		stableID = observedID
+	}
+	baseID = stableID
+	if idx := strings.LastIndex(stableID, "_"); idx > 0 {
+		suffix := stableID[idx+1:]
+		if suffix != "" && saveFolderHasBaseID(stableID, stableID[:idx]) {
+			baseID = stableID[:idx]
+		}
+	}
+	return stableID, baseID, fullID
+}
+
+func mergeStoredPlayerFallback(player *PlayerInfo, old storage.PlayerRosterEntry) {
+	if player.Location == "" || (player.Source == "save_file" && old.SnapshotSource != "save_file") {
+		player.Location = old.Location
+		player.LocationName = old.LocationName
+		player.LocationDisplayName = old.LocationDisplayName
+		player.TileX = old.TileX
+		player.TileY = old.TileY
+		player.PixelX = old.PixelX
+		player.PixelY = old.PixelY
+	}
+	if player.Money == nil {
+		player.Money = old.Money
+	}
+	if player.FarmIncome == nil {
+		player.FarmIncome = old.FarmIncome
+	}
+	if player.PersonalIncome == nil {
+		player.PersonalIncome = old.PersonalIncome
+	}
+	if player.TotalMoneyEarned == nil {
+		player.TotalMoneyEarned = old.TotalMoneyEarned
+	}
+	if player.WalletMode == "" {
+		player.WalletMode = old.WalletMode
+	}
+	if player.LastSeen == "" {
+		player.LastSeen = old.LastOnlineAt
+		if player.LastSeen == "" {
+			player.LastSeen = old.LastSeenAt
+		}
+	}
+	if player.Source == "save_file" && old.SnapshotSource != "" {
+		player.Source = old.SnapshotSource
+	}
+}
+
+func playerInfoFromRosterEntry(entry storage.PlayerRosterEntry) PlayerInfo {
+	uniqueID := entry.PlayerID
+	if strings.HasPrefix(uniqueID, "name:") {
+		uniqueID = ""
+	}
+	return PlayerInfo{Name: entry.DisplayName, Role: normalizePlayerRole(entry.Role, entry.IsHost), Location: entry.Location,
+		LocationName: entry.LocationName, LocationDisplayName: entry.LocationDisplayName, TileX: entry.TileX, TileY: entry.TileY,
+		PixelX: entry.PixelX, PixelY: entry.PixelY, Status: "offline", Source: "sqlite_roster",
+		UniqueMultiplayerID: uniqueID, IsHost: entry.IsHost, Money: entry.Money,
+		FarmIncome: entry.FarmIncome, PersonalIncome: entry.PersonalIncome, TotalMoneyEarned: entry.TotalMoneyEarned,
+		WalletMode: entry.WalletMode, LastSeen: entry.LastOnlineAt}
 }
 
 // readServerMaxPlayers reads Server.MaxPlayers from the instance's
@@ -234,7 +441,9 @@ func offlinePlayersFromCache(dataDir, saveID string) []PlayerInfo {
 		if key == "" {
 			continue
 		}
-		if _, ok := byKey[key]; !ok {
+		if existing, ok := byKey[key]; ok {
+			byKey[key] = mergePlayerCacheFallback(existing, item)
+		} else {
 			byKey[key] = item
 		}
 	}
@@ -246,7 +455,7 @@ func offlinePlayersFromCache(dataDir, saveID string) []PlayerInfo {
 	return players
 }
 
-func markCachedPlayersOffline(dataDir, saveID, seenAt string) []PlayerInfo {
+func markCachedPlayersOffline(dataDir, saveID, seenAt string, writeLegacyHistory bool) []PlayerInfo {
 	if strings.TrimSpace(seenAt) == "" {
 		seenAt = time.Now().Format(time.RFC3339)
 	}
@@ -264,7 +473,7 @@ func markCachedPlayersOffline(dataDir, saveID, seenAt string) []PlayerInfo {
 			changed = true
 		}
 	}
-	if changed {
+	if changed && writeLegacyHistory {
 		cache.UpdatedAt = seenAt
 		_ = writePlayerCache(dataDir, cache)
 		appendPlayerEvents(dataDir, saveID, events, seenAt)
@@ -272,7 +481,7 @@ func markCachedPlayersOffline(dataDir, saveID, seenAt string) []PlayerInfo {
 	return offlinePlayersFromCache(dataDir, saveID)
 }
 
-func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenAt string) []PlayerInfo {
+func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenAt string, writeLegacyHistory bool) []PlayerInfo {
 	if strings.TrimSpace(seenAt) == "" {
 		seenAt = time.Now().Format(time.RFC3339)
 	}
@@ -293,7 +502,9 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 		if key == "" {
 			continue
 		}
-		if _, ok := byKey[key]; !ok {
+		if existing, ok := byKey[key]; ok {
+			byKey[key] = mergePlayerCacheFallback(existing, item)
+		} else {
 			byKey[key] = item
 		}
 	}
@@ -371,12 +582,14 @@ func mergePlayerRoster(dataDir, saveID string, onlinePlayers []PlayerInfo, seenA
 	sort.Slice(cachePlayers, func(i, j int) bool {
 		return strings.ToLower(cachePlayers[i].Name) < strings.ToLower(cachePlayers[j].Name)
 	})
-	_ = writePlayerCache(dataDir, playerCacheFile{
-		SaveID:    strings.TrimSpace(saveID),
-		UpdatedAt: seenAt,
-		Players:   cachePlayers,
-	})
-	appendPlayerEvents(dataDir, saveID, events, seenAt)
+	if writeLegacyHistory {
+		_ = writePlayerCache(dataDir, playerCacheFile{
+			SaveID:    strings.TrimSpace(saveID),
+			UpdatedAt: seenAt,
+			Players:   cachePlayers,
+		})
+		appendPlayerEvents(dataDir, saveID, events, seenAt)
+	}
 
 	sortPlayers(roster)
 	return roster
@@ -434,6 +647,13 @@ type saveRosterFarmer struct {
 	UniqueMultiplayerIDFallback string `xml:"uniqueMultiplayerID"`
 	Money                       *int64 `xml:"money"`
 	TotalMoneyEarned            *int64 `xml:"totalMoneyEarned"`
+	HomeLocation                string `xml:"homeLocation"`
+	LastSleepLocation           string `xml:"lastSleepLocation"`
+	LastSleepPoint              struct {
+		X *int `xml:"X"`
+		Y *int `xml:"Y"`
+	} `xml:"lastSleepPoint"`
+	UseSeparateWallets bool `xml:"useSeparateWallets"`
 }
 
 func saveRosterItems(dataDir, saveID string) []playerCacheItem {
@@ -476,17 +696,69 @@ func saveRosterFarmerItem(farmer saveRosterFarmer, isHost bool) (playerCacheItem
 	if isHost {
 		role = "host"
 	}
+	location := strings.TrimSpace(farmer.LastSleepLocation)
+	if location == "" {
+		location = strings.TrimSpace(farmer.HomeLocation)
+	}
+	walletMode := "shared"
+	var personalIncome *int64
+	if farmer.UseSeparateWallets {
+		walletMode = "separate"
+		personalIncome = farmer.TotalMoneyEarned
+	}
 	return playerCacheItem{
 		Name:                name,
 		Role:                role,
+		Location:            location,
+		LocationName:        location,
+		TileX:               farmer.LastSleepPoint.X,
+		TileY:               farmer.LastSleepPoint.Y,
 		Source:              "save_file",
 		UniqueMultiplayerID: uniqueID,
 		IsHost:              isHost,
 		Money:               farmer.Money,
 		FarmIncome:          farmer.TotalMoneyEarned,
+		PersonalIncome:      personalIncome,
 		TotalMoneyEarned:    farmer.TotalMoneyEarned,
+		WalletMode:          walletMode,
 		Status:              "offline",
 	}, true
+}
+
+// mergePlayerCacheFallback fills fields that the runtime cache has never seen
+// from the save file without replacing more precise last-observed runtime data.
+func mergePlayerCacheFallback(current, fallback playerCacheItem) playerCacheItem {
+	if current.Location == "" {
+		current.Location = fallback.Location
+	}
+	if current.LocationName == "" {
+		current.LocationName = fallback.LocationName
+	}
+	if current.LocationDisplayName == "" {
+		current.LocationDisplayName = fallback.LocationDisplayName
+	}
+	if current.TileX == nil {
+		current.TileX = fallback.TileX
+	}
+	if current.TileY == nil {
+		current.TileY = fallback.TileY
+	}
+	if current.Money == nil {
+		current.Money = fallback.Money
+	}
+	if current.FarmIncome == nil {
+		current.FarmIncome = fallback.FarmIncome
+	}
+	if current.PersonalIncome == nil {
+		current.PersonalIncome = fallback.PersonalIncome
+	}
+	if current.TotalMoneyEarned == nil {
+		current.TotalMoneyEarned = fallback.TotalMoneyEarned
+	}
+	if current.WalletMode == "" {
+		current.WalletMode = fallback.WalletMode
+	}
+	return current
 }
 
 func resolveRosterSaveFolder(dataDir, saveID string) string {
@@ -531,7 +803,30 @@ func cacheMatchesSave(cacheSaveID, currentSaveID string) bool {
 	if cacheSaveID == "" {
 		return false
 	}
-	return cacheSaveID == currentSaveID
+	return sameSaveIdentity(cacheSaveID, currentSaveID)
+}
+
+func sameSaveIdentity(left, right string) bool {
+	if left == right {
+		return true
+	}
+	return saveFolderHasBaseID(left, right) || saveFolderHasBaseID(right, left)
+}
+
+func saveFolderHasBaseID(folderID, baseID string) bool {
+	if baseID == "" || !strings.HasPrefix(folderID, baseID+"_") {
+		return false
+	}
+	suffix := strings.TrimPrefix(folderID, baseID+"_")
+	if suffix == "" {
+		return false
+	}
+	for _, ch := range suffix {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeCachedIncome(farmIncome, personalIncome, totalMoneyEarned *int64, walletMode string) (*int64, *int64) {

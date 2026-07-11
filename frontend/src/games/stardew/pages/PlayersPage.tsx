@@ -3,14 +3,7 @@ import { kickPlayer, warpPlayerHome, approvePlayerAuth, banPlayer, getInstancePa
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { InstancePasswordStatus } from '../../../types'
-
-type PlayerLocationLike = {
-  location?: string
-  locationName?: string
-  locationDisplayName?: string
-  tileX?: number
-  tileY?: number
-}
+import { formatStardewLocation, rawStardewLocation, readableStardewLocation, type StardewLocationLike } from '../location-format'
 
 const PLAYER_EVENTS_PAGE_SIZE = 2
 
@@ -198,37 +191,6 @@ const LOCATION_ZH: Record<string, string> = {
   Woods: '秘密树林',
 }
 
-function normalizeLocationKey(value?: string): string {
-  return (value ?? '').trim()
-}
-
-function generatedLocationLabel(key: string): string | null {
-  if (/^Barn\d*$/i.test(key)) return '畜棚'
-  if (/^Cabin\d*$/i.test(key)) return '小屋'
-  if (/^Cellar\d*$/i.test(key)) return '地窖'
-  if (/^Coop\d*$/i.test(key)) return '鸡舍'
-  if (/^FarmHouse\d*$/i.test(key)) return '农舍'
-  if (/^Shed\d*$/i.test(key)) return '小屋'
-  if (/^VolcanoDungeon\d*$/i.test(key)) return '火山地牢'
-  if (/^UndergroundMine\d*$/i.test(key)) return '矿井'
-  return null
-}
-
-function translateLocationName(player: PlayerLocationLike): string {
-  const candidates = [player.locationName, player.location, player.locationDisplayName]
-  for (const raw of candidates) {
-    const key = normalizeLocationKey(raw)
-    if (!key) continue
-    const mapped = LOCATION_ZH[key] ?? generatedLocationLabel(key)
-    if (mapped) return mapped
-  }
-  return player.locationDisplayName || player.locationName || player.location || '—'
-}
-
-function originalLocationName(player: PlayerLocationLike): string {
-  return player.locationDisplayName || player.locationName || player.location || '—'
-}
-
 function isWaitingPlayerStatus(status?: string): boolean {
   return status === 'waiting' || status === 'pending' || status === 'joining'
 }
@@ -303,11 +265,17 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   }
 
   function personalIncome(player: (typeof playerRows)[number]): number | undefined {
+    if (player.walletMode === 'shared') return undefined
     if (typeof player.personalIncome === 'number') return player.personalIncome
     const personalMoney = optionalNumber(player, 'personalMoney')
     if (personalMoney !== undefined) return personalMoney
     if (player.walletMode === 'separate') return player.totalMoneyEarned
     return undefined
+  }
+
+  function personalIncomeText(player: (typeof playerRows)[number]): string {
+    if (player.walletMode === 'shared') return '共享模式不统计'
+    return formatGold(personalIncome(player))
   }
 
   function walletModeLabel(mode?: string): string {
@@ -358,11 +326,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   }
 
   function formatPlayerLocation(player: (typeof playerRows)[number]): string {
-    const name = translateLocationName(player)
-    if (typeof player.tileX === 'number' && typeof player.tileY === 'number') {
-      return `${name} (${player.tileX}, ${player.tileY})`
-    }
-    return name
+    return formatStardewLocation(player, { labels: LOCATION_ZH })
   }
 
   function eventTypeText(type?: string): string {
@@ -377,8 +341,8 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     return 'sd-player-event'
   }
 
-  function eventLocation(event: PlayerLocationLike): string {
-    const translated = translateLocationName(event)
+  function eventLocation(event: StardewLocationLike): string {
+    const translated = readableStardewLocation(event, LOCATION_ZH)
     return translated === '—' ? '' : translated
   }
 
@@ -577,9 +541,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                     <small>{shortId(player.uniqueMultiplayerId)}</small>
                   </span>
                 </span>
-                <span title={originalLocationName(player)}>{formatPlayerLocation(player)}</span>
+                <span title={rawStardewLocation(player)}>{formatPlayerLocation(player)}</span>
                 <span>{playerOnlineFor(player)}</span>
-                <span className="sd-players-money-cell">{formatGold(personalIncome(player))}</span>
+                <span className="sd-players-money-cell" title={player.walletMode === 'shared' ? 'Stardew Valley 在共享钱包模式下不记录每位玩家的个人累计收入' : undefined}>
+                  {personalIncomeText(player)}
+                </span>
                 <span className="sd-players-money-cell">{formatGold(farmIncome(player))}</span>
                 <span>
                   <span className={playerStatusDot(player)} aria-hidden="true" />
@@ -649,12 +615,12 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
         </div>
         {playerRows.some((player) => player.walletMode === 'shared') && (
           <div className="sd-srv-hint sd-players-wallet-hint">
-            当前存档使用共享钱包时，现金显示的是团队共享资金，不代表该玩家独立私有余额。
+            当前存档使用共享钱包：现金是团队共享资金，游戏不记录每位玩家的个人累计收入。
           </div>
         )}
         {playerRows.length > 0 && (
           <div className="sd-srv-hint sd-players-income-hint">
-            收入列固定显示农场累计收入和玩家个人累计收入，不随钱包模式切换含义。
+            农场收入显示团队累计收入；个人收入仅在分开钱包模式下有可靠统计。
           </div>
         )}
         {warpHomeError ? <div className="sd-players-info-error sd-players-action-feedback">{warpHomeError}</div> : null}
@@ -916,3 +882,4 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     </div>
   )
 }
+import './PlayersPage.css'

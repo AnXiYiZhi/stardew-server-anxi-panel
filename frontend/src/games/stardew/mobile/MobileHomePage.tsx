@@ -116,11 +116,15 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
     (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
   )
   const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
-  const waitingForStartup =
+  const hostOnline = (dashboardData.players?.players ?? []).some(
+    (player) => player.isHost && player.status === 'online',
+  )
+  const waitingForStop = state === 'stopping' || pendingStopAction || activeLifecycleIsStopping
+  const waitingForStartup = !waitingForStop && !hostOnline && (
     state === 'starting' ||
     Boolean(pendingStartupAction) ||
     (hasActiveLifecycleJob && !activeLifecycleIsStopping && state !== 'running')
-  const waitingForStop = state === 'stopping' || pendingStopAction || activeLifecycleIsStopping
+  )
   const canStart = state === 'ready_to_start' || state === 'stopped' || state === 'game_installed'
 
   useEffect(() => {
@@ -285,20 +289,20 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
       )
     }
 
-    if (waitingForStartup) {
-      return (
-        <button type="button" className="sd-btn-start sd-mhome-lifecycle-btn sd-btn-loading" disabled>
-          <span className="sd-btn-spinner" aria-hidden="true" />
-          启动中…
-        </button>
-      )
-    }
-
     if (waitingForStop) {
       return (
         <button type="button" className="sd-btn-stop sd-mhome-lifecycle-btn sd-btn-loading" disabled>
           <span className="sd-btn-spinner" aria-hidden="true" />
           停止中…
+        </button>
+      )
+    }
+
+    if (waitingForStartup) {
+      return (
+        <button type="button" className="sd-btn-start sd-mhome-lifecycle-btn sd-btn-loading" disabled>
+          <span className="sd-btn-spinner" aria-hidden="true" />
+          启动中…
         </button>
       )
     }

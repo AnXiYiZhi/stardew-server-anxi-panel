@@ -1,13 +1,26 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import type { CurrentUser } from '../../types'
 import { stateLabel } from '../../core/helpers'
 import { useStardewDashboardData } from './useStardewDashboardData'
-import { MobileHomePage } from './mobile/MobileHomePage'
-import { MobileControlPage } from './mobile/MobileControlPage'
-import { MobilePlayersPage } from './mobile/MobilePlayersPage'
-import { MobileModsPage } from './mobile/MobileModsPage'
-import { MobileSavesPage } from './mobile/MobileSavesPage'
 import './StardewMobileShell.css'
+
+const MobileHomePage = lazy(() => import('./mobile/MobileHomePage').then((m) => ({ default: m.MobileHomePage })))
+const MobileControlPage = lazy(() =>
+  import('./mobile/MobileControlPage').then((m) => ({ default: m.MobileControlPage })),
+)
+const MobilePlayersPage = lazy(() =>
+  import('./mobile/MobilePlayersPage').then((m) => ({ default: m.MobilePlayersPage })),
+)
+const MobileModsPage = lazy(() => import('./mobile/MobileModsPage').then((m) => ({ default: m.MobileModsPage })))
+const MobileSavesPage = lazy(() => import('./mobile/MobileSavesPage').then((m) => ({ default: m.MobileSavesPage })))
+
+function MobilePageLoadingFallback() {
+  return (
+    <section className="sd-mshell-card sd-panel">
+      <p className="sd-mshell-card-title">加载中…</p>
+    </section>
+  )
+}
 
 type MobileTabKey = 'overview' | 'server' | 'players' | 'mods' | 'saves' | 'more'
 
@@ -57,6 +70,7 @@ export function StardewMobileShell({ user }: StardewMobileShellProps) {
 
       <main className="sd-mshell-body">
         <div className="sd-mshell-scroll">
+        <Suspense fallback={<MobilePageLoadingFallback />}>
         {activeTab === 'overview' ? (
           <MobileHomePage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
         ) : activeTab === 'server' ? (
@@ -73,6 +87,7 @@ export function StardewMobileShell({ user }: StardewMobileShellProps) {
             <p className="sd-mshell-card-hint">更完整的移动端体验正在开发中，敬请期待</p>
           </section>
         )}
+        </Suspense>
         </div>
       </main>
 
