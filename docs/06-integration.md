@@ -510,19 +510,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 手动验证：运行中和停服状态分别点击快捷备份，确认能创建手动备份；随后进入存档页备份列表应能看到同一备份文件。
 
 
-# SAVE-BACKUP-POLICY-1 ????
+# SAVE-BACKUP-POLICY-1 / SAVE-BACKUP-SCHEDULE-HOUR-1（已废弃，被 SAVE-BACKUP-GAMEDAY-1 取代）
 
-- ??????????SMAPI Control `Saved` ?? -> ? `.local-container/control/save-events/*.json` -> ?? `GET /saves/backups` ???????? -> ?? latest ????/???? daily ???
-- ??????????????? -> `PUT /api/instances/:id/saves/backups/policy` -> ??? `.local-container/backups/saves/policy.json`?????????????????
-- ???????????/?????????????????????? scheduler????????????????????????????
-- ????????????????????????/??????????????????????????
+> 说明：本节原始记录在历史保存中损坏为不可逆的 `?` 占位符乱码，且这两版描述的"最新备份/每日快照/定时备份"机制已被下方 `SAVE-BACKUP-GAMEDAY-1` 全部取代（不再有 scheduled 分支，`BackupPolicy` 字段也已改变）。保留本节标题仅作为历史索引，具体契约请直接看 `SAVE-BACKUP-GAMEDAY-1`。
 
-# SAVE-BACKUP-SCHEDULE-HOUR-1 联调契约
+# SAVE-BACKUP-GAMEDAY-1 存档回档联调契约（游戏内日期驱动）
 
-- `GET|PUT /api/instances/:id/saves/backups/policy` 的定时备份字段使用 `scheduledHour`，取值 0-23，前端按 24 小时制展示为 `HH:00`。
-- 后端仍能读取旧 `scheduledIntervalHours` 配置文件，但新响应和新保存结果以 `scheduledHour` 为准，不再要求前端提供时间间隔。
-- 定时备份语义：每天到达配置整点后，下一次触发备份维护时覆盖同一份 `scheduled_<save>.zip`；同一自然日不会重复生成。
-- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`npm.cmd run build`。
+- 触发链路：SMAPI Control `GameLoop.Saved`（存档写盘完成后触发）→ 写 `.local-container/control/save-events/*.json` → 前端请求 `GET /api/instances/:id/saves/backups`（打开/刷新"存档"页）时后端顺带跑 `RunBackupMaintenance()` 消费事件 → 若 `policy.gameSaveBackups` 为真，为对应存档创建/覆盖 `auto_<save>_<游戏日序号六位>.zip` 并清理超出 `policy.retainGameDays` 的旧游戏日。
+- 排序和保留完全基于**游戏内日期序号**（`(year-1)*112 + seasonIndex*28 + day`），不是现实创建时间；`GET /saves/backups` 返回的每个 `BackupInfo` 带 `gameDayOrdinal` 字段供前端直接排序，不需要前端自己实现季节序号映射。
+- `GET|PUT /api/instances/:id/saves/backups/policy` 请求/响应体：`{ "gameSaveBackups": boolean, "retainGameDays": number }`（1-14，默认 5）。不再有 `scheduledBackups`/`scheduledHour`/`scheduledIntervalHours`/`dailySnapshots`/`dailyRetentionDays` 字段；旧客户端/旧 `policy.json` 传这些字段不会报错，只是被忽略。
+- `GET /saves/backups` 返回的 `BackupInfo.kind` 取值：`auto`（游戏日自动回档点，主列表展示）、`manual`（手动备份/服务器页快捷备份/计划重启关闭前备份）、`predelete`（删除存档前保护备份）、`prerestore`（回档前保护备份）、`latest`/`daily`/`scheduled`（历史遗留，不再产生新文件，仅供查看/回档/删除）。
+- 回档接口 `POST /api/instances/:id/saves/backups/restore` 请求体 `{ backupName, overwrite, autoRestart }`；覆盖已有同名存档时后端会先创建 `prerestore_*` 保护备份，失败则整体中止（`500 restore_failed`），不会破坏当前存档。
+- 服务器运行/启动中时：`autoRestart` 缺省或为 `false` → 保持原有 `409 server_running`；`autoRestart: true`（`SAVE-RESTORE-AUTORESTART-1`）→ 后端把"停止服务器 → 回档 → 重新启动服务器"编排成一个 lifecycle job，返回 `202 { jobId }`，前端用现有的 job 轮询/SSE 机制跟踪进度，和点"启动服务器"按钮拿到的响应形状、跟踪方式完全一致；服务器已停止时无论 `autoRestart` 是什么值都走同步路径，返回 `200 { saveName }`。前端应据此按 `jobId`/`saveName` 二选一分支处理响应，不要假设固定返回哪一个字段。
+- 删除存档接口 `DELETE /saves/:name`（`save_delete`）内部创建的保护备份现在是 `predelete_*` 前缀，响应体 `backupCreated` 字段语义不变。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`、`cd frontend; npx tsc --noEmit -p . && npm run build`。
 # SCHEDULED-RESTART-1 计划重启联调契约
 
 - `GET /api/instances/:id/restart-schedule` 返回 `{ schedule }`，字段包括 `enabled`、`shutdownTime`、`startupTime`、`timezone`、`warningMinutes`、`backupBeforeShutdown`、`skipIfPlayersOnline`、`nextShutdownAt`、`nextStartupAt`、`lastStatus`、`lastMessage`。

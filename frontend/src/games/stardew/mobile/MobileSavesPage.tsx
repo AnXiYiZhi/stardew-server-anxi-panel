@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { exportSave, uploadSavePreview, uploadSaveCommitAndStart } from '../../../api'
-import type { SaveInfo, UploadPreviewResult } from '../../../types'
+import { useEffect, useState } from 'react'
+import { ApiError, exportSave, getSaveBackups, restoreSaveBackup, uploadSavePreview, uploadSaveCommitAndStart } from '../../../api'
+import type { BackupInfo, SaveInfo, UploadPreviewResult } from '../../../types'
 import { errorMessage, formatBytes, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileSavesPage.css'
@@ -90,6 +90,16 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
 
+  // 游戏日回档：读法和桌面 SavesSection.tsx 一致，仅管理员可见，独立于共享
+  // dashboardData 轮询按需拉取（这个卡片不需要跟随 30s 轮询刷新）。
+  const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [backupsLoading, setBackupsLoading] = useState(false)
+  const [backupsError, setBackupsError] = useState<string | null>(null)
+  const [restoreTarget, setRestoreTarget] = useState<BackupInfo | null>(null)
+  const [restoreNeedsOverwrite, setRestoreNeedsOverwrite] = useState(false)
+  const [restoreBusy, setRestoreBusy] = useState(false)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+
   // ── 导入存档（上传）：逻辑照抄桌面 SavesSection.tsx 的 handleUploadPreview/
   // handleUploadCommit/handleUploadCancel，只是把 onJobStarted/onSavesChanged 回调
   // 换成移动端读得到的 dashboardData 刷新函数，弹窗视觉重新用 sd-msave-dialog 排布。
@@ -111,11 +121,77 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
 
   const mapSrc = mapImgFailed ? DEFAULT_MAP_SRC : saveFarmMapSrc(displaySave)
 
+  // 只展示自动回档点（kind === 'auto'），按游戏日序号倒序——和桌面"游戏日回档"
+  // 卡片同一套排序口径，不看现实创建时间。后端已经按策略把数量限制到 N 个。
+  const autoBackups = [...backups]
+    .filter((b) => b.kind === 'auto')
+    .sort((a, b) => (b.gameDayOrdinal ?? 0) - (a.gameDayOrdinal ?? 0))
+
+  async function loadBackups() {
+    if (!isAdmin) return
+    setBackupsLoading(true)
+    setBackupsError(null)
+    try {
+      const result = await getSaveBackups()
+      setBackups(result.backups)
+    } catch (e) {
+      setBackupsError(errorMessage(e))
+    } finally {
+      setBackupsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadBackups()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin])
+
+  function openRestoreDialog(backup: BackupInfo) {
+    setRestoreTarget(backup)
+    setRestoreNeedsOverwrite(saveRows.some((save) => save.name === backup.saveName))
+    setRestoreError(null)
+  }
+
+  function closeRestoreDialog() {
+    setRestoreTarget(null)
+    setRestoreNeedsOverwrite(false)
+    setRestoreError(null)
+  }
+
+  async function handleRestoreConfirmed(overwrite: boolean) {
+    if (!restoreTarget) return
+    setRestoreBusy(true)
+    setRestoreError(null)
+    try {
+      const result = await restoreSaveBackup(restoreTarget.name, overwrite, isRunning)
+      setRestoreTarget(null)
+      setRestoreNeedsOverwrite(false)
+      if (result.jobId) {
+        // Server was running: stop -> restore -> start submitted as one job.
+        // Refresh the shared job list so the dashboard hook picks it up and
+        // polls it (same SSE mechanism as any other lifecycle job); it will
+        // refresh saves/state itself once the job finishes.
+        dashboardData.refreshJobs()
+      } else {
+        await Promise.all([dashboardData.refreshSaves(), loadBackups()])
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'save_exists') {
+        setRestoreNeedsOverwrite(true)
+        setRestoreError('同名存档已存在。确认覆盖后，系统会先备份当前存档再恢复此回档点。')
+      } else {
+        setRestoreError(errorMessage(e))
+      }
+    } finally {
+      setRestoreBusy(false)
+    }
+  }
+
   async function handleRefresh() {
     setRefreshBusy(true)
     setMapImgFailed(false)
     try {
-      await dashboardData.refreshSaves()
+      await Promise.all([dashboardData.refreshSaves(), loadBackups()])
     } finally {
       setRefreshBusy(false)
     }
@@ -305,6 +381,50 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
             </>
           )}
 
+          {isAdmin ? (
+            <section className="sd-panel sd-msave-card">
+              <div className="sd-msave-card-title">
+                <img src="/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png" alt="" />
+                游戏日回档
+              </div>
+              {backupsError ? <div className="sd-notice sd-notice--error sd-msave-notice">{backupsError}</div> : null}
+              {backupsLoading ? (
+                <div className="sd-msave-empty">
+                  <div className="sd-msave-empty-title">正在读取回档列表</div>
+                </div>
+              ) : autoBackups.length > 0 ? (
+                <div className="sd-msave-gameday-list">
+                  {autoBackups.map((backup) => (
+                    <div className="sd-msave-gameday-row" key={backup.name}>
+                      <div className="sd-msave-gameday-main">
+                        <span className="sd-msave-gameday-date">{saveDateText(backup)}</span>
+                        <span className="sd-msave-gameday-meta">
+                          {backup.farmName || backup.saveName || '未知'}
+                          {backup.farmerName ? ` · ${backup.farmerName}` : ''}
+                        </span>
+                        <span className="sd-msave-gameday-meta sd-msave-gameday-meta-muted">
+                          {new Date(backup.createdAt).toLocaleString()} · {formatBytes(backup.size)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="sd-btn-green sd-msave-gameday-btn"
+                        disabled={restoreBusy}
+                        onClick={() => openRestoreDialog(backup)}
+                      >
+                        回档到此日
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="sd-msave-empty">
+                  <div className="sd-msave-empty-desc">暂无游戏日回档点。游戏内睡觉存档成功后会自动生成。</div>
+                </div>
+              )}
+            </section>
+          ) : null}
+
           <section className="sd-panel sd-msave-card">
             <div className="sd-msave-card-title">
               <img src="/assets/stardew/ui/icons/icon_nav_saves_chest_image2.png" alt="" />
@@ -335,17 +455,6 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
               >
                 导入存档
               </button>
-              <button
-                type="button"
-                className="sd-btn-tan sd-msave-op-btn"
-                disabled
-                title="回档功能依赖桌面端的备份列表操作，暂不支持在手机浏览器使用"
-              >
-                回档
-              </button>
-            </div>
-            <div className="sd-msave-op-hint">
-              回档（从备份恢复存档）暂不支持手机浏览器，请前往桌面端"存档管理"页使用备份与恢复功能。
             </div>
             {exportError ? <div className="sd-notice sd-notice--error sd-msave-notice">{exportError}</div> : null}
           </section>
@@ -460,6 +569,57 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
                 </div>
               </>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {restoreTarget ? (
+        <div className="sd-msave-dialog-overlay" role="dialog" aria-modal="true">
+          <div className="sd-panel sd-msave-dialog">
+            <h3>回档到此日</h3>
+            <p className="sd-msave-dialog-text">
+              确定回档到 "{restoreTarget.name}" 吗？回档后会生成存档 "{restoreTarget.saveName}"。
+            </p>
+            {isRunning ? (
+              <div className="sd-notice sd-notice--error sd-msave-notice">
+                服务器正在运行中。确认后将自动停止服务器、完成回档，并重新启动服务器；整个过程可能需要几分钟，请勿在此期间反复点击。
+              </div>
+            ) : null}
+            {restoreNeedsOverwrite ? (
+              <div className="sd-notice sd-notice--error sd-msave-notice">
+                同名存档已存在。选择覆盖回档时，系统会先备份当前存档，再用这个回档点覆盖它。
+              </div>
+            ) : null}
+            {restoreError ? <div className="sd-notice sd-notice--error sd-msave-notice">{restoreError}</div> : null}
+            <div className="sd-msave-dialog-actions">
+              <button
+                type="button"
+                className="sd-btn-tan sd-msave-dialog-btn"
+                onClick={closeRestoreDialog}
+                disabled={restoreBusy}
+              >
+                取消
+              </button>
+              {restoreNeedsOverwrite ? (
+                <button
+                  type="button"
+                  className="sd-btn-delete sd-msave-dialog-btn"
+                  onClick={() => void handleRestoreConfirmed(true)}
+                  disabled={!isAdmin || restoreBusy}
+                >
+                  {restoreBusy ? (isRunning ? '正在停止服务器…' : '回档中…') : isRunning ? '覆盖回档（自动重启）' : '覆盖回档'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="sd-btn-green sd-msave-dialog-btn"
+                  onClick={() => void handleRestoreConfirmed(false)}
+                  disabled={!isAdmin || restoreBusy}
+                >
+                  {restoreBusy ? (isRunning ? '正在停止服务器…' : '回档中…') : isRunning ? '确认回档（自动重启）' : '确认回档'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : null}

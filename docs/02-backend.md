@@ -988,4 +988,72 @@ docker run --rm `
 - Go driver 新增 `Driver.WarpPlayerHome(ctx, instance, uniqueMultiplayerID, name)`，核心流程为：校验玩家 ID -> 校验 running -> 读取 `.local-container/control/status.json` 的 `warpHomeBridgeAvailable/detail` -> 写入 `.local-container/control/commands/*.json` 命令文件 `{ name:"warp-home", payload:{ uniqueMultiplayerId, name } }`。响应仍是 fire-and-forget，只表示控制命令已提交。
 - Web 层错误映射：`invalid_player` -> 400，`server_not_running` / `warp_home_bridge_unavailable` -> 409，`not_supported` -> 501；成功写审计日志 `player_warp_home`，metadata 包含 `uniqueMultiplayerId` 和 `name`。
 - 影响文件：`backend/internal/games/stardew_junimo/player_warp.go`、`player_warp_test.go`、`embedded/smapi-mod-src/WarpHomeBridge.cs`、`ControlContract.cs`、`ModEntry.cs`、`embedded/smapi-mod/StardewAnxiPanel.Control.dll`、`backend/internal/web/players_handlers.go`、`instance_handlers.go`。
-- 验证：`go test ./internal/games/stardew_junimo ./internal/web` 通过；SMAPI 控制模组用 Docker `dotnet build -c Release /p:GamePath=/game` 重新编译通过，并已复制覆盖嵌入 DLL。尚未做真实多人联机端到端验证，后续应在在线 farmhand 上点击“回家”确认玩家被传送到自己小屋入口。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web` 通过；SMAPI 控制模组用 Docker `dotnet build -c Release /p:GamePath=/game` 重新编译通过，并已复制覆盖嵌入 DLL。尚未做真实多人联机端到端验证，后续应在在线 farmhand 上点击”回家”确认玩家被传送到自己小屋入口。
+
+# SAVE-BACKUP-GAMEDAY-1 存档回档重构：游戏内日期驱动的自动回档点（取代 SAVE-BACKUP-POLICY-1 / SAVE-BACKUP-SCHEDULE-HOUR-1 的定时备份部分）
+
+- **背景**：`SAVE-BACKUP-POLICY-1`/`SAVE-BACKUP-SCHEDULE-HOUR-1` 按”现实时间”管理三类自动备份（`latest_<save>.zip` 游戏保存后覆盖、`scheduled_<save>.zip` 每天到点覆盖、`daily_<save>_<YYYYMMDD>.zip` 按现实自然日保留 N 天）。用户要求彻底改为按”游戏内日期”（年/季/日）管理自动回档点：取消定时备份，自动回档点按游戏日序号排序和去重覆盖，默认保留最近 5 个不同游戏日（可设 1-14），回档前必须有保护备份且不能被自动清理误删。
+- **关键前提（未改 SMAPI Mod，未重新编译嵌入 DLL）**：触发时机”游戏内睡觉并成功保存、存档已经落盘”由现有 `ModEntry.cs` 的 `OnSaved`（SMAPI `GameLoop.Saved`，在存档写盘完成后触发）已经满足，事件写入 `.local-container/control/save-events/*.json`，后端 `RunBackupMaintenance()` 消费即可；游戏年/季/日已由 `readSaveInfo`/`fillSaveInfoFromXML` 解析为 `GameYear`/`GameSeason`/`GameDay`，只需新增一个游戏日序号换算函数。
+- **`BackupPolicy` 简化**（`saves.go`）：
+  ```go
+  type BackupPolicy struct {
+      GameSaveBackups bool `json:”gameSaveBackups”`
+      RetainGameDays  int  `json:”retainGameDays”`
+  }
+  ```
+  删除 `DailySnapshots`/`DailyRetentionDays`/`ScheduledBackups`/`ScheduledHour`/`ScheduledIntervalHour`。默认 `GameSaveBackups=true, RetainGameDays=5`；`normalizeBackupPolicy` 把 `RetainGameDays` clamp 到 `[1,14]`（`<=0` 时回落默认 5）。旧 `policy.json` 里 `scheduledBackups`/`scheduledHour`/`dailySnapshots`/`dailyRetentionDays` 等字段被 `encoding/json` 静默忽略、不报错；`gameSaveBackups` 字段名未变，值自动延续。
+- **游戏日序号**：新增 `gameDayOrdinal(year, season, day) = (year-1)*112 + seasonIndex(season)*28 + day`（`seasonIndex`: spring=0/summer=1/fall|autumn=2/winter=3），保证跨季节、跨年份正确排序。`BackupInfo` 新增 `GameDayOrdinal int json:”gameDayOrdinal,omitempty”`，由 `enrichBackupInfo` 一并算出返回给前端，避免前端重复实现季节序号映射。
+- **备份文件命名与分类**（四类新前缀 + 三类历史前缀）：
+  - `BackupManual(dataDir, saveName)` → `manual_<save>_<timestamp>.zip`：管理员手动备份、服务器页”备份已保存进度”快捷操作、计划重启关闭前备份统一改调这个（原来都直接调裸 `BackupSave`）。
+  - `BackupPreDelete(dataDir, saveName)` → `predelete_<save>_<timestamp>.zip`：`DeleteSaveWithBackup` 内部改调。
+  - `BackupPreRestore(dataDir, saveName)` → `prerestore_<save>_<timestamp>.zip`：`RestoreBackup` 覆盖前保护备份改调，失败仍然中止恢复（行为不变，只是换了前缀名）。
+  - `BackupAutoGameDay(dataDir, saveName)`：读当前存档目录（不是 ZIP）算出 `gameDayOrdinal`，目标名 `auto_<save>_<ordinal六位补零>.zip`；同一 ordinal 被 `backupSaveAs` 的改名覆盖语义自然覆盖旧文件——这同时满足”同一游戏日多次保存覆盖”和”回档到早期再重新游玩到相同日覆盖旧点”两条需求，不需要额外状态文件判断。存档日期解析失败（`GameYear<=0`/`GameDay<=0`）时返回错误，不生成 ordinal=0 的脏文件。
+  - `PruneAutoGameDayBackups(dataDir, saveName, retainGameDays)`：按 `auto_<save>_` 前缀枚举文件，解析出 ordinal 排序（不看文件 mtime），只保留最大的 N 个。
+  - 删除（scheduled 机制整体移除）：`BackupLatest`/`BackupScheduled`/`BackupDailySnapshot`/`PruneDailySnapshots`/`dailySnapshotDate`/`runScheduledBackupIfDue`/`scheduledBackupDue`/`readBackupMaintenanceState`/`writeBackupMaintenanceState`/`backupMaintenanceState` 类型（`maintenance-state.json` 不再需要，游戏日序号本身就是确定性状态）。
+  - `inferBackupKind`/`parseBackupSaveName` 新增 `auto_`/`manual_`/`predelete_`/`prerestore_` 前缀识别；保留旧 `latest_`/`daily_`/`scheduled_` 前缀识别（不再产生新文件，但已有 ZIP 继续被识别，交给前端归入”历史备份”，不做任何删除）。
+- **`RunBackupMaintenance` 重写**：遍历 save-events，若 `policy.GameSaveBackups` 为真则对每个事件调用 `BackupAutoGameDay` + `PruneAutoGameDayBackups(policy.RetainGameDays)`，不再有 scheduled 分支。调用方 `handleSavesBackupsList` 不变（仍在每次 `GET .../saves/backups` 时触发维护）。
+- **临时文件命名的连带修复**：重构过程中发现 `backupSaveAs`（`BackupLatest`/`BackupScheduled`/`BackupDailySnapshot` 时代就存在的”先建临时文件再改名覆盖”辅助函数）依赖 `BackupSave` 自带的秒级时间戳临时文件名（`<saveName>_<timestamp>.zip`）。如果这个临时名恰好和另一个正被打开读取的备份 ZIP 同名（例如 `RestoreBackup` 里”恢复源 ZIP”和”覆盖前保护备份”的临时文件在同一秒内先后创建，两者都用裸 `<saveName>_<timestamp>.zip` 命名模式时），Windows 下会因文件被占用而 `rename` 失败（测试中实际复现），理论上在其它平台会静默覆盖/损坏那份被打开的 ZIP。已抽出 `writeSaveZip(dataDir, saveName, backupName)` 核心逻辑，`backupSaveAs` 改用纳秒时间戳 + 目标名拼出的 `.tmp-*` 临时名，彻底消除这个此前已存在、和本次重构本身无关但被新增测试意外触发暴露的命名碰撞窗口。
+- **Web / 调度器调用点**：`lifecycle_handlers.go: handleSaveBackupCreate` 改调 `sj.BackupManual`；`restart_schedule_handlers.go: backupActiveSave` 改调 `sj.BackupManual`（关闭前备份归入”手动备份”桶，不占用自动回档配额）。`handleSavesBackupPolicy`/`handleSavesBackupsList`/`handleSavesBackupRestore`/`handleSavesBackupDelete` 路由和权限逻辑不变，`ensureInstanceNotRunning` 继续在恢复前拦截运行中的实例（`409 server_running`）。
+- **兼容策略**：旧 `policy.json` 含废弃字段不报错；已有 `latest_*.zip`/`daily_*_*.zip`/`scheduled_*.zip` 磁盘文件不删除、不迁移，`ListBackups`/恢复/删除接口 URL 和参数不变，只是 `kind`/`policy` 的取值集合变化。
+- 影响文件：`backend/internal/games/stardew_junimo/saves.go`、`saves_test.go`、`backend/internal/web/lifecycle_handlers.go`、`backend/internal/web/restart_schedule_handlers.go`。前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `SAVE-BACKUP-GAMEDAY-1` 小节。
+- 验证：新增/替换测试覆盖默认保留 5 个游戏日、legacy 字段兼容、跨季节跨年份排序（`TestGameDayOrdinal_CrossSeasonAndYear`）、同游戏日多次保存覆盖（`TestBackupAutoGameDay_OverwritesSameGameDay`）、回档到早期后重新游玩相同日覆盖旧点（`TestBackupAutoGameDay_RestoreEarlierThenReplaySameDayOverwrites`）、清理保留最近 5 个游戏日（`TestPruneAutoGameDayBackups_KeepsFiveMostRecentGameDays`）、自动清理不误删手动/保护备份（`TestRunBackupMaintenance_DoesNotTouchManualOrProtectionBackups`）、保护备份成功创建（`TestRestoreBackup_CreatesPreRestoreProtectionBackup`）、保护备份失败时中止回档且不破坏当前存档（`TestRestoreBackup_AbortsWhenProtectionBackupFails`）。`cd backend; go build ./... && go vet ./... && go test ./...` 全绿。
+- **未做的验证**：没有连接真实运行中的 JunimoServer 实例走一遍”睡觉存档 → 自动回档点生成 → 回档到早期游戏日 → 重新游玩到相同日 → 确认覆盖旧回档点”的完整端到端链路；纯基于单元测试和对 SMAPI `GameLoop.Saved` 文档行为的信任。建议下一位维护者找测试实例验证一次。
+
+## SAVE-BACKUP-GAMEDAY-1 追加修复：回档成功后遗留 `.restore-tmp-*` 临时目录
+
+用户实际使用本次新做的手机端"游戏日回档"功能后反馈：存档库里出现一张解析失败的卡片，名字是 `.restore-tmp-2156104854`，提示"解析失败：未找到 SaveGameInfo 文件"。排查后确认这是 `RestoreBackup`（`saves.go`）里一个**本次重构之前就存在**的 bug，只是这次用户第一次实际点击回档才触发：
+
+- `RestoreBackup` 用 `os.MkdirTemp(savesRoot, ".restore-tmp-*")` 在 `Saves/` 目录**内部**创建一个临时目录，把备份 ZIP 解压进去，再把里面的 `<saveName>` 子目录 `os.Rename` 移动到最终位置。原代码只在**失败**分支（`success == false`）才 `os.RemoveAll(tempDir)`；**成功**分支设置 `success = true` 后直接返回，从未清理这个临时目录本身——子目录被移走后，这个现在已经清空的 `.restore-tmp-*` 目录会永远留在 `Saves/` 里。
+- `listSaveDirs`（`ListSaves` 的数据源，供 `GET /api/instances/:id/saves` 使用）此前不过滤目录名，把这个残留的空目录也当成一个"存档"返回给前端，`readSaveInfo` 找不到 `SaveGameInfo` 就报"解析失败"，正是用户截图里看到的现象。
+
+修了两处，双重保险：
+
+1. **根因修复**：`RestoreBackup` 的 `defer` 改为无条件 `_ = os.RemoveAll(tempDir)`（不再判断 `success`）。成功路径下子目录已经被 rename 移出，此时 `tempDir` 必然为空，直接删除安全；失败路径下也一并清理掉可能残留的部分解压内容。删除了不再需要的 `success` 局部变量。
+2. **防御性修复**：`listSaveDirs` 跳过所有以 `.` 开头的目录名（`!strings.HasPrefix(e.Name(), ".")`）。这一条对**已经存在**的历史残留目录立即生效——不需要用户手动去 Docker 卷里删文件，重新部署这份代码后，`GET /saves` 就不会再把任何 `.` 前缀目录当存档返回。
+
+影响文件：`backend/internal/games/stardew_junimo/saves.go`、`saves_test.go`。
+
+新增测试：`TestListSaveDirs_SkipsDotPrefixedTempDirs`（手工构造一个 `.restore-tmp-*` 目录，断言 `listSaveDirs` 不返回它）、`TestRestoreBackup_Success` 追加断言（回档成功后扫描 `Saves/` 确认没有任何 `.restore-tmp-*` 残留）。`cd backend; go build ./... && go vet ./... && go test ./...` 全绿。
+
+**注意**：这个修复只解决"以后不再产生新的残留、且不再把已有残留显示成存档"，**不会**主动删除磁盘上已经存在的 `.restore-tmp-*` 孤儿目录（比如用户截图里那个 `.restore-tmp-2156104854`）。这些目录物理上还在 Docker 卷里，只是不再出现在存档列表里，不影响功能，只占用一点磁盘空间；如果要彻底清理，可以手动进入 `.local-container/saves/Saves/` 目录删除对应文件夹，或者不用管它。
+
+## SAVE-RESTORE-AUTORESTART-1 回档时自动停止/重启服务器
+
+- **需求**：此前服务器运行中点击回档，弹窗只会提示"请先停止服务器"并把提交按钮禁用，用户必须离开存档页去服务器页手动停止、再回来重新走一遍回档流程。用户要求：运行中也能直接点，确认后由面板自动完成"停止服务器 → 回档 → 重新启动服务器"整个流程。
+- **编排方式**：没有采用"HTTP 请求内阻塞轮询直到停止完成"的方案——`Driver.Stop` 本身是 fire-and-forget（内部提交一个 job 就立刻返回，不等待 `docker compose down` 真正跑完），在 HTTP handler 里自己写轮询等待既不符合这个仓库其它生命周期操作"提交即返回、前端轮询 job"的既有架构，也有代理超时风险。改为把"停止 → 回档 → 启动"三步实现成**同一个 lifecycle job** 内部顺序执行的三个阶段，复用 `lifecycleRunner` 已有的 `doStop`/`doStart` 方法（不是重新实现 compose down/up、Mod 同步、邀请码轮询等逻辑），前端拿到的还是一个普通 jobId，用现有的 job 轮询/SSE 机制展示进度——和"启动服务器"按钮的用户体验完全一致，没有引入任何新的前端等待逻辑。
+- **后端改动**（`backend/internal/games/stardew_junimo/lifecycle.go`）：
+  - `lifecycleRunner` 新增 `restoreBackupName`/`restoreOverwrite` 字段，`operation` 新增取值 `"restore_restart"`。
+  - 新增 `doRestoreAndRestart`：若实例当前是 `running`/`starting`，先调用 `r.doStop(...)`（原样复用，会经历 `stopping → stopped` 两个 phase）；然后调用 `RestoreBackup(dataDir, backupName, overwrite)`（和同步回档路径完全同一个函数，行为一致，包括覆盖前的 `prerestore_` 保护备份和失败即中止）；若之前是运行中，最后调用 `r.doStart(...)`（原样复用，包含 Mod 同步、`docker compose up`、等待就绪、邀请码轮询等全部既有逻辑）。若回档本身失败，直接返回错误、**不会**尝试启动——避免在一个已知损坏的存档状态下把服务器拉起来。
+  - 新增 `Driver.RestoreBackupWithRestart(ctx, instance, backupName, overwrite, actorID) (*registry.Job, error)`：和 `Start`/`Stop`/`Restart` 同构，`cancelActiveLifecycleJobs` 清理旧任务后 `d.jobs.Start(...)` 提交一个 `operation: "restore_restart"` 的 job，返回 jobId。
+- **Web 层改动**（`backend/internal/web/lifecycle_handlers.go`）：
+  - `POST /api/instances/:id/saves/backups/restore` 请求体新增 `autoRestart: boolean`。
+  - 逻辑分支：`running/starting` 且 `!autoRestart` → 保持原有 `409 server_running`（不改变现有 API 调用方的行为，仍然要求显式选择自动重启）；`running/starting` 且 `autoRestart` → 通过新增的窄接口 `backupRestoreRestarter`（`interface { RestoreBackupWithRestart(...) }`，和 `festival_handlers.go` 里 `festivalEventTrigger`/`jojaRouteEnabler` 同一套"定义窄接口 + driver 类型断言 + 501 not_supported"风格）调用 `driver.RestoreBackupWithRestart`，返回 `202 {"jobId": ...}`；已停止 → 走原有同步 `sj.RestoreBackup` 路径不变，返回 `200 {"saveName": ...}`。
+  - 是否运行的判断从 `ensureInstanceNotRunning`（会直接短路写 409）换成 `reconcileInstanceState` + 手动判断 `instance.State`，因为现在需要在"运行中"这个分支里继续往下走（调用 driver），而不是提前拦截。
+- **顺带修复的临时文件命名碰撞发现的连带影响**：无——这次改动不涉及 `saves.go` 的备份命名逻辑，只是复用其中的 `RestoreBackup` 函数本身。
+- 影响文件：`backend/internal/games/stardew_junimo/lifecycle.go`、`backend/internal/games/stardew_junimo/lifecycle_test.go`、`backend/internal/games/stardew_junimo/console_test.go`（`fakeConsoleDocker` 补充 `ComposeDown`/`ComposeUp` mock 支持）、`backend/internal/web/lifecycle_handlers.go`、`backend/internal/web/saves_handlers_test.go`。
+- **测试与覆盖边界**：
+  - `TestRestoreBackupWithRestart_RequiresJobManager`：job manager 未配置时返回错误（和 `Start`/`Stop` 同类防御但此前这两个也没有对应测试，一并补上同等级覆盖）。
+  - `TestDoRestoreAndRestart_StoppedSkipsStopAndStart`：已停止时直接回档，不触发 `ComposeDown`/`ComposeUp`，最终 phase 为 `restored`。
+  - `TestDoRestoreAndRestart_RunningStopsThenRestoresBeforeStarting`：运行中时先 `ComposeDown` 再回档（回档结果已经能在磁盘上验证到）再尝试 `ComposeUp`；`ComposeUp` 故意返回错误让测试在不用把 `doStart` 完整成功路径（等待容器就绪、邀请码轮询等）全部 mock 出来的前提下，仍能验证"停止 → 回档 → 尝试启动"这个顺序确实生效。
+  - `TestSavesBackupRestore_RunningWithoutAutoRestartReturns409`/`_RunningWithAutoRestartBypassesRunningGate`/`_StoppedStillWorksSynchronously`：覆盖 web 层三条分支路由是否正确（不判断 `driver.RestoreBackupWithRestart` 是否真的成功，因为这个仓库的 web 测试历来没有为任何需要真实 game driver 的接口注册过 fake `registry.GameDriver`——`players_handlers.go`、`festival_handlers.go` 等一样没有 HTTP 层测试，只在 `stardew_junimo` 包内测试核心函数——这次保持同样的分层测试策略，不额外引入一个 15 方法的 fake driver）。
+  - **未做的验证**：没有连接真实运行中的 JunimoServer 实例走一遍"运行中点击回档 → 确认 → 观察服务器真的自动停止、回档、重新启动、玩家能重新连进正确的存档"这个完整链路。`doStart`/`doStop` 本身在这个代码库里也一直没有端到端自动化测试（只能靠真机验证），这次新增的编排逻辑继承了同样的验证空白，建议下一位维护者用测试实例走一遍。

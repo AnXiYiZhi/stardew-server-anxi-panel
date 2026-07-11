@@ -7254,7 +7254,8 @@
 }
 
 /* 备份表格：列头带 + 行分隔线 + 状态徽章 */
-.sd-save-backups-table {
+.sd-save-backups-table,
+.sd-save-gameday-table {
   display: grid;
   min-width: 0;
   overflow-x: auto;
@@ -14020,6 +14021,11 @@
   padding: 10px 12px 12px;
 }
 
+/* "其他备份" 区块只有列表卡、没有策略卡，需要占满整行，不能被两栏网格挤到左侧窄栏。 */
+.sd-save-backup-list-card--full {
+  grid-column: 1 / -1;
+}
+
 .sd-save-backup-card-title {
   font-size: 14px;
   font-weight: 900;
@@ -14058,24 +14064,6 @@
 .sd-saves-page .sd-save-backup-toggle-label {
   min-width: 0;
   font-weight: 900;
-}
-
-.sd-saves-page .sd-save-backup-toggle--schedule {
-  grid-template-columns: 18px auto auto minmax(74px, 1fr);
-}
-
-.sd-saves-page .sd-save-backup-toggle--schedule .sd-save-backup-toggle-label {
-  white-space: nowrap;
-}
-
-.sd-saves-page .sd-save-backup-frequency {
-  white-space: nowrap;
-  font-weight: 900;
-}
-
-.sd-saves-page .sd-save-backup-toggle--schedule select {
-  width: 84px;
-  justify-self: end;
 }
 
 .sd-saves-page .sd-save-backup-slider {
@@ -14159,12 +14147,14 @@
   }
 
   /* 移动端默认滚动条不可见，加惯性滚动 + 右侧渐变提示，让用户知道备份表格可以横滑 */
-  .sd-save-backups-table {
+  .sd-save-backups-table,
+  .sd-save-gameday-table {
     position: relative;
     -webkit-overflow-scrolling: touch;
   }
 
-  .sd-save-backups-table::after {
+  .sd-save-backups-table::after,
+  .sd-save-gameday-table::after {
     content: "";
     position: absolute;
     top: 0;

@@ -178,7 +178,7 @@
   color: var(--sd-brown-light);
 }
 
-/* 存档操作卡：导出 / 导入 / 回档（占位，手机端暂不支持） */
+/* 存档操作卡：导出 / 导入 */
 
 .sd-msave-op-list {
   display: flex;
@@ -191,11 +191,58 @@
   min-height: 44px;
 }
 
-.sd-msave-op-hint {
-  margin-top: 8px;
+/* 游戏日回档卡：和桌面 SavesSection.tsx 的"游戏日回档"表格同一份数据，
+   手机端窄屏没法摆 6 列表格，改成堆叠行——日期/农场信息在左，按钮固定右侧。 */
+
+.sd-msave-gameday-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-msave-gameday-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(143, 91, 35, 0.25);
+}
+
+.sd-msave-gameday-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.sd-msave-gameday-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sd-msave-gameday-date {
+  font-size: 14px;
+  font-weight: 800;
+  color: #2c1a0a;
+}
+
+.sd-msave-gameday-meta {
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.5;
   color: var(--sd-brown-light);
+  overflow-wrap: anywhere;
+}
+
+.sd-msave-gameday-meta-muted {
+  opacity: 0.85;
+}
+
+.sd-msave-gameday-btn {
+  flex-shrink: 0;
+  min-height: 40px;
+  min-width: 92px;
 }
 
 /* 导入存档弹窗（复用 MobileControlPage.css 的 .sd-mctrl-dialog-* 视觉参数，

@@ -21,6 +21,7 @@ import {
   extractSteamDownloadProgress,
   hasSteamSdkDownloadStarted,
 } from '../install-helpers'
+import { useSteamAuthLogin } from '../useSteamAuthLogin'
 
 // ── 进度工具 ──────────────────────────────────────────────────────────────────
 
@@ -489,8 +490,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const [showVncPwd, setShowVncPwd] = useState(false)
   const [installBusy, setInstallBusy] = useState(false)
   const [installError, setInstallError] = useState('')
-  // forceReauth: 用户主动「更换 Steam 账号 / 重新认证」，强制重新输入账密并清除授权缓存。
-  const [forceReauth, setForceReauth] = useState(false)
+  const steamAuth = useSteamAuthLogin({ instanceState: dashboardData.instanceState, onNavigate })
 
   const handleInstallSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -498,18 +498,15 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     setInstallError('')
     setInstallBusy(true)
     try {
-      const body = forceReauth
-        ? { steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true }
-        : canDirectRetry
-          ? { reuseCredentials: true, imageTag }
-          : { steamUsername, steamPassword, vncPassword, imageTag }
+      const body = canDirectRetry
+        ? { reuseCredentials: true, imageTag }
+        : { steamUsername, steamPassword, vncPassword, imageTag }
       const res = await installInstance(body)
       setInstallJobId(res.jobId)
       setLogs([])
       setInstallJob(null)
       setSseError('')
       setShowForm(false)
-      setForceReauth(false)
       dashboardData.refreshJobs()
       dashboardData.refreshInstanceState()
     } catch (err) {
@@ -517,7 +514,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     } finally {
       setInstallBusy(false)
     }
-  }, [isAdmin, forceReauth, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData])
+  }, [isAdmin, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData])
 
   // ── Steam Guard ───────────────────────────────────────────────────────────────
   const [guardInput, setGuardInput] = useState('')
@@ -840,22 +837,28 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-tan"
                   type="button"
-                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
+                  onClick={() => { setShowForm(true); setInstallError('') }}
                 >
                   重新安装 / 修复
                 </button>
               ) : null}
-              {isAdmin ? (
-                <button
-                  className="sd-btn-tan"
-                  type="button"
-                  onClick={() => { setForceReauth(true); setShowForm(true); setInstallError('') }}
-                >
-                  更换 Steam 账号 / 重新认证
-                </button>
-              ) : null}
             </div>
           ) : null}
+
+          <div className="sd-install-actions">
+            <button
+              className="sd-btn-green"
+              type="button"
+              onClick={() => { void steamAuth.login() }}
+              disabled={steamAuth.busy || steamAuth.requiresStop}
+              title={steamAuth.title}
+            >
+              {steamAuth.label}
+            </button>
+            {steamAuth.message ? (
+              <div className="sd-srv-hint" style={{ color: '#b94040' }}>{steamAuth.message}</div>
+            ) : null}
+          </div>
 
           {/* ── 非 admin 提示 ──────────────────────────────────────────────── */}
           {!isAdmin ? (
@@ -878,7 +881,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-green sd-btn--lg"
                   type="button"
-                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
+                  onClick={() => { setShowForm(true); setInstallError('') }}
                 >
                   {isQrAuthError
                     ? '改用账号密码重试'
@@ -891,17 +894,6 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       : canDirectRetry
                         ? '重试安装'
                         : '安装游戏'}
-                </button>
-              ) : null}
-              {/* 已有保存凭据（复用重试场景）时，提供更换账号入口；纯全新安装无需展示；
-                  已安装态由上方「已安装卡片」内的按钮提供，避免重复。 */}
-              {!isInstalled && canDirectRetry && !authFailed ? (
-                <button
-                  className="sd-btn-tan"
-                  type="button"
-                  onClick={() => { setForceReauth(true); setShowForm(true); setInstallError('') }}
-                >
-                  更换 Steam 账号 / 重新认证
                 </button>
               ) : null}
             </div>
@@ -917,9 +909,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           {showForm && isAdmin ? (
             <div className="sd-install-form-card">
               <div className="sd-install-form-title">
-                {forceReauth
-                  ? '更换 Steam 账号 / 重新认证'
-                  : steamCMDRecoverable
+                {steamCMDRecoverable
                   ? '重试 SteamCMD 兜底下载'
                   : postAuthRecoverable
                   ? '重试下载 / 继续安装'
@@ -932,9 +922,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       : '安装配置'}
               </div>
               <p className="sd-install-form-hint">
-                {forceReauth
-                  ? '将清除已保存的 Steam / SteamCMD 授权缓存并用新账号密码重新认证；已下载的游戏文件会保留。'
-                  : steamCMDRecoverable
+                {steamCMDRecoverable
                   ? '上次已进入 SteamCMD 兜底但授权或下载未完成；本次会直接复用已保存账号密码进入 SteamCMD 授权/下载，本地已有 SteamCMD 镜像时不会重新拉取。'
                   : postAuthRecoverable
                   ? 'Steam 认证已经成功，本次只会复用已保存凭据重试下载/后续安装步骤，不需要重新输入账号密码。'
@@ -966,7 +954,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   </div>
                 ) : null}
 
-                {!canDirectRetry || forceReauth ? (
+                {!canDirectRetry ? (
                   <>
                     <div className="sd-install-field">
                       <label className="sd-install-field-label">Steam 用户名</label>
@@ -1033,9 +1021,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   <button className="sd-btn-green" type="submit" disabled={installBusy}>
                     {installBusy
                       ? '正在启动安装…'
-                      : forceReauth
-                        ? '确认更换账号并重新认证'
-                        : steamCMDRecoverable
+                      : steamCMDRecoverable
                         ? '确认重试 SteamCMD'
                         : isInstalled
                           ? '确认修复 / 更新'
@@ -1047,7 +1033,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                     className="sd-btn-tan"
                     type="button"
                     disabled={installBusy}
-                    onClick={() => { setShowForm(false); setInstallError(''); setForceReauth(false) }}
+                    onClick={() => { setShowForm(false); setInstallError('') }}
                   >
                     取消
                   </button>

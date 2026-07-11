@@ -46,8 +46,9 @@
 
 - `InstanceState` 新增可选 `inviteCode`，来自后端后台邀请码探测写入的 driver payload。`useStardewDashboardData` 会优先展示该值，成功后清理旧码等待态。
 - 自动邀请码轮询只在显式请求后运行，最多 20 次；没有邀请码不会让前端无限轮询，也不会阻塞停止/重启。
-- 总览页和服务器控制页的启动中状态按 active `stardew_lifecycle` job + `running/stopping` 判定，不再依赖邀请码、在线玩家或 SMAPI 存档加载日志。这样切到任务日志再切回来时，后台仍在跑的启动任务不会把按钮闪回“启动”。
+- 总览页和服务器控制页的启动中状态以 active `stardew_lifecycle` job + `running/stopping` 为基础判定，不再依赖邀请码或 SMAPI 存档加载日志。这样切到任务日志再切回来时，后台仍在跑的启动任务不会把按钮闪回“启动”。
 - 验证：`cd frontend; npm.cmd run build`。
+- **2026-07-11 更新**：服务器控制页与总览页都在 job+state 判定基础上叠加了一层“主机上线确认”（带超时兜底），因为纯 job+state 判定会在游戏实际加载完成前就把按钮切回正常态。详见下方 `FE-STARTUP-HOST-CONFIRM-1` 与 `FE-OVERVIEW-STARTUP-HOST-CONFIRM-1`。这次改动不影响邀请码后台轮询逻辑。
 
 # FE-INSTALL-SMAPI-PREINSTALL-1 安装页显示 SMAPI 子状态
 
@@ -1815,3 +1816,107 @@ npm.cmd run dev
 - 手机端 `MobilePlayersPage` 同步增加回家确认弹窗与单玩家 busy 状态；玩家卡片操作区顺序为“回家 / 踢出 / 封禁”，不新增手机端专属接口。
 - 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`、`frontend/src/games/stardew/mobile/MobilePlayersPage.tsx`、`MobilePlayersPage.css`、`StardewPanel.css`、新增 PNG 图标。
 - 验证：`cd frontend && npx tsc --noEmit -p .` 通过；`cd frontend && npm run build` 通过。尚未在真机多人联机环境验证点击后玩家实际落点，需结合后端 `PLAYERS-WARP-HOME-1` 做端到端测试。
+# FE-INSTALL-STEAM-AUTH-BUTTON-1 安装页常驻 Steam 登录授权入口
+
+- 安装页原“更换 Steam 账号 / 重新认证”入口已替换为总览页邀请码卡同款“登录授权”入口，并且在安装页始终显示，不再受安装完成、已有认证、重试状态或配置表单显隐条件影响。
+- 总览页与安装页通过 `useSteamAuthLogin` 共用完整行为：调用现有 `steam-auth/login`、发起中反馈、服务器运行/启动时显示“停服后登录授权”并禁用、成功后跳转安装页、失败时就地显示错误。
+- 影响文件：`frontend/src/games/stardew/useSteamAuthLogin.ts`、`InviteCodeCard.tsx`、`pages/InstallPage.tsx`。未新增或修改后端接口。
+- 验证：`cd frontend; npm.cmd run build` 通过（仅保留 Vite chunk 大小提示）。
+
+# SAVE-BACKUP-GAMEDAY-1 存档回档功能重构：游戏日回档 + 其他备份两栏 UI
+
+- 后端已把自动备份体系从"现实时间"（最新备份/每日快照/定时备份）改为"游戏内日期驱动"（详见 `docs/02-backend.md`/`docs/backend-handoff/backend-handoff-2026-07-11.md` 的 `SAVE-BACKUP-GAMEDAY-1`）：`BackupPolicy` 简化为 `{ gameSaveBackups, retainGameDays }`；`BackupInfo.kind` 新增 `auto`/`predelete`/`prerestore`，`latest`/`daily`/`scheduled` 变为只读历史 kind；`BackupInfo` 新增 `gameDayOrdinal` 字段。这次做前端接线与页面重排。
+- `types.ts`：`BackupPolicy` 改为 `{ gameSaveBackups: boolean; retainGameDays: number }`；`BackupInfo.kind` 联合类型追加 `'auto' | 'predelete' | 'prerestore'`，新增 `gameDayOrdinal?: number`。删除 `dailySnapshots`/`dailyRetentionDays`/`scheduledBackups`/`scheduledHour`/`scheduledIntervalHours`。`api.ts` 里 `getSaveBackups`/`createSaveBackup`/`getSaveBackupPolicy`/`updateSaveBackupPolicy`/`restoreSaveBackup`/`deleteSaveBackup` 的 URL 和函数签名完全不变，只是传输的对象形状随类型变化。
+- `SavesSection.tsx`（主要改动文件）：
+  - `defaultBackupPolicy`/`normalizeBackupPolicy` 按新形状重写，只 clamp `retainGameDays` 到 1–14。
+  - 新增两个派生数组：`autoBackups`（`kind==='auto'`，按 `gameDayOrdinal` 降序——游戏日驱动的排序，不看现实创建时间）、`otherBackups`（其余全部 kind，按 `createdAt` 降序——这些不参与游戏日保留策略，现实时间排序符合直觉）。
+  - "自动备份策略"卡片从"游戏保存后更新最新备份 + 定时备份（勾选框+每天+24小时下拉框）+ 每日快照保留滑块"三块精简为两块：勾选框"睡觉存档后创建回档点" + 滑块"保留最近 N 个游戏日"（1–14，默认 5）。删除定时备份相关的整块 JSX（勾选框、"每天"文案、24 小时 `<select>`）。
+  - 原"备份列表"卡片改名"游戏日回档"，只渲染 `autoBackups`（后端已按策略限制到 N 个，不再需要"查看更多"折叠）。列改为：游戏内日期、农场、农场主、创建时间、大小、操作；主按钮文案"恢复"→"回档到此日"。
+  - 新增独立"其他备份"区块渲染 `otherBackups`，沿用原有六列表格结构（备份文件/所属农场/创建时间/大小/状态/操作）和"查看更多"折叠，`kind` 徽章文案：`manual`→手动备份，`predelete`→删除存档前备份，`prerestore`→回档前保护备份，`latest`/`daily`/`scheduled`/未知前缀→历史备份（旧机制遗留文件，不再产生新的，但继续可查看/回档/删除，不会被误删）。
+  - 回档入口可用性调整：游戏日回档和其他备份两个表格里的"回档到此日"行按钮不再因服务器运行中被整体 `disabled`（原来 `disabled={restoreBlocked}` 里含 `isRunning`，导致按钮静默不可点、只能靠 hover title 看到提示），新拆出 `restoreRowBlocked = busy || !isAdmin`（不含 `isRunning`），行按钮始终可点开确认弹窗；弹窗内继续显示"服务器正在运行中，无法直接回档。请先到"服务器"页停止服务器，再回来完成本次回档"的醒目警告，弹窗里"确认/覆盖回档"提交按钮维持 `restoreBlocked`（含 `isRunning`）禁用。这样运行中点击行按钮不再是一个无说明的死按钮，而是主动引导去停服。
+  - 弹窗与确认文案统一把"恢复"改为"回档"："恢复备份"→"回档到此日"、"确认恢复"→"确认回档"、"覆盖恢复"→"覆盖回档"。
+- `StardewPanel.tsx`：`OpsRailActiveCard`（右栏"进行中"卡）删除 `backupPolicy` state、`getSaveBackupPolicy` 拉取逻辑和 `countdowns` 计算/渲染块（定时备份倒计时行，功能已随后端移除）；保留 `restartRows`/`activeJobs`（计划重启倒计时和任务进度条不受影响）。清理随之产生的未使用 import（`BackupPolicy` 类型、`getSaveBackupPolicy`）。
+- `qa-layout-main.tsx`：mock `backupPolicy` 改为 `{ policy: { gameSaveBackups: true, retainGameDays: 5 } }`；mock `backups` 的 5 条记录 `kind` 改为 `'auto'` 并补上 `gameDayOrdinal`，与真实契约保持一致（否则 `tsc` 会因类型不匹配报错）。
+- `StardewPanel.css`：删除定时备份专属规则（`.sd-save-backup-toggle--schedule`、`.sd-save-backup-frequency` 及其内部 `select` 规则）；新增 `.sd-save-gameday-table`（与 `.sd-save-backups-table` 共用 `display:grid; overflow-x:auto` 及移动端横滑渐变提示）和 `.sd-save-backup-list-card--full`（"其他备份"区块只有列表卡没有策略卡，需要 `grid-column: 1 / -1` 占满整行，不被两栏网格挤到左侧窄栏）。游戏日回档表格复用既有 6 列 `grid-template-columns`（列数与旧表格相同，只是语义换了，不需要新的列宽定义）。
+- 影响文件：`frontend/src/types.ts`、`frontend/src/games/stardew/SavesSection.tsx`、`frontend/src/games/stardew/StardewPanel.tsx`、`frontend/src/games/stardew/StardewPanel.css`、`frontend/src/qa-layout-main.tsx`。未改 `api.ts` 的函数签名、未改新建存档/上传存档/选择存档/删除存档流程。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过（仅保留既有 Vite chunk 体积提示）。
+- **未做的验证**：没有连接真实运行实例走一遍完整链路（打开"存档"页确认"游戏日回档"/"其他备份"两栏渲染、策略卡只剩两个控件、服务器运行中点击行按钮弹出带停服引导的确认框、回档成功后列表刷新），也没有截图确认移动端窄屏下两个新表格的横向滚动表现。建议下一位维护者用 `qa-layout.html` 或真实实例走一遍。
+
+## 下一步注意事项
+
+- "游戏日回档"表格目前展示**全部** `kind==='auto'` 的条目，不按当前激活存档过滤（后端按存档名分别维护各自的最近 N 个游戏日配额）。正常使用场景下基本等价于"只有当前在玩的存档有回档点"；如果以后要支持"多个存档各自维护回档点并分组展示"，需要在前端按 `saveName` 分组，这次没有做。
+- 计划重启（`SCHEDULED-RESTART-1`）的"关闭前备份"和服务器控制页"备份已保存进度"快捷操作现在都归为 `manual` kind，混在"其他备份"区块里用同一个"手动备份"标签展示，没有进一步区分来源，这是刻意的最小实现。
+
+# SAVE-BACKUP-GAMEDAY-MOBILE-1 手机端游戏日回档（同日追加）
+
+- 用户要求把手机端"存档操作"卡片里那个恒禁用、提示"回档功能暂不支持手机浏览器"的"回档"按钮删除，改成在"存档操作"卡片**上面**新增一个和桌面同名的"游戏日回档"卡片，让手机端也能直接回档，不用被引导去桌面端。
+- `MobileSavesPage.tsx`：
+  - 删除"存档操作"卡片里恒禁用的"回档"按钮和它下面的 `.sd-msave-op-hint` 说明文字。
+  - 新增独立卡片"游戏日回档"（仅 `isAdmin` 渲染，和桌面"其他备份/游戏日回档"一样是管理员功能），复用 `getSaveBackups`/`restoreSaveBackup` API（和桌面 `SavesSection.tsx` 同一套接口，不新增后端能力）：本地维护 `backups`/`backupsLoading`/`backupsError` 状态，挂载时按 `isAdmin` 拉取一次；`autoBackups = backups.filter(b => b.kind === 'auto').sort(by gameDayOrdinal desc)`，和桌面同一套过滤排序口径。
+  - 每个回档点渲染为堆叠行（游戏内日期加粗大字 + 农场/农场主一行 + 创建时间/大小一行 + 右侧"回档到此日"按钮），不是桌面那种 6 列表格——手机窄屏放不下表格，这是本次唯一的视觉改动，数据字段和桌面完全一致。
+  - 回档确认弹窗复用页面已有的 `sd-msave-dialog-overlay`/`sd-msave-dialog` 结构（和"导入存档"弹窗同款），逻辑照抄桌面 `SavesSection.tsx` 的 `openRestoreDialog`/`handleRestoreConfirmed`：`restoreSaveExists` 判断是否需要覆盖、`ApiError.code === 'save_exists'` 时切换到覆盖态并展示对应警告、`overwrite=true` 提交按钮走 `sd-btn-delete` 危险色。服务器运行中不会禁用"回档到此日"入口按钮本身，而是在弹窗里展示"服务器正在运行中，无法直接回档，请先到"控制"页停止服务器"的警告，并把弹窗内提交按钮禁用——和桌面这次的调整（`restoreRowBlocked` vs `restoreBlocked`）同一套思路。
+  - 页头"刷新"按钮从只刷新 `dashboardData.refreshSaves()` 扩展为同时刷新游戏日回档列表（`Promise.all([refreshSaves(), loadBackups()])`）。
+- `MobileSavesPage.css`：删除孤儿规则 `.sd-msave-op-hint`（JSX 不再引用）；新增 `.sd-msave-gameday-list`/`.sd-msave-gameday-row`/`.sd-msave-gameday-main`/`.sd-msave-gameday-date`/`.sd-msave-gameday-meta`/`.sd-msave-gameday-btn` 一套堆叠行样式，独立于桌面 CSS、不跨文件共享类名（沿用这个文件一贯的做法）。
+- 影响文件：`frontend/src/games/stardew/mobile/MobileSavesPage.tsx`、`frontend/src/games/stardew/mobile/MobileSavesPage.css`。未新增后端接口，未改桌面 `SavesSection.tsx`。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
+- **未做的验证**：没有用真实移动设备或浏览器窄屏模式实际点开"游戏日回档"卡片、触发回档确认弹窗、验证覆盖态文案和按钮态，建议下一位维护者用 `qa-layout.html?shell=mobile` 或真机走一遍。
+
+# SAVE-RESTORE-AUTORESTART-1 回档时自动停止/重启服务器（同日追加）
+
+- 后端已把"服务器运行中回档"从"整体禁用+提示先停服"改为"确认后自动停止服务器→完成回档→重新启动服务器"，`POST .../saves/backups/restore` 新增请求体字段 `autoRestart`，运行中且 `autoRestart=true` 时返回 `202 {jobId}`（异步 job，和启动/停止服务器同一套 job 轮询/SSE 机制），已停止时行为不变（`200 {saveName}`）。详见 `docs/backend-handoff/backend-handoff-2026-07-11.md` 的 `SAVE-RESTORE-AUTORESTART-1` 小节。
+- `types.ts`：`RestoreBackupResult` 从 `{ saveName: string }` 改为 `{ saveName?: string; jobId?: string }`——两个响应形状二选一，`saveName` 对应停止状态下的同步回档，`jobId` 对应运行中自动重启的异步 job。
+- `api.ts`：`restoreSaveBackup(backupName, overwrite, autoRestart, instanceId?)` 新增 `autoRestart` 参数，请求体透传。
+- `SavesSection.tsx`：
+  - `handleRestoreConfirmed` 调用时传 `autoRestart: isRunning`；响应里有 `jobId` 时调用既有 `onJobStarted(jobId)`（复用页面已经在用的 job 启动回调，接入现有轮询/SSE，不重新实现等待逻辑），不再立即刷新存档/备份列表（因为此时回档实际上还没发生，要等 job 完成）；没有 `jobId`（服务器本来就是停止状态）时保持原有立即刷新逻辑。
+  - "游戏日回档"和"其他备份"两个表格的"回档到此日"行按钮、弹窗内"确认/覆盖回档"提交按钮，`restoreBlocked` 统一简化为 `busy || !isAdmin`（不再包含 `isRunning`，两个此前分别叫 `restoreBlocked`/`restoreRowBlocked` 的变量因为条件变得完全一致而合并成一个，减少重复）。
+  - 弹窗内运行中警告文案从"无法直接回档，请先停止服务器"改为"确认后将自动停止服务器、完成回档，并重新启动服务器；整个过程可能需要几分钟，请勿在此期间反复点击"；提交按钮文案运行中时追加"（自动重启服务器）"后缀，busy 态运行中显示"正在停止服务器…"而不是笼统的"回档中…"。
+- `MobileSavesPage.tsx`：`handleRestoreConfirmed` 同构改动（传 `autoRestart: isRunning`，`jobId` 时调用 `dashboardData.refreshJobs()` 让共享 dashboard hook 的 SSE 机制接管后续轮询和状态刷新，没有引入手机端专属的等待逻辑）；两个提交按钮的 `disabled` 去掉 `isRunning`；弹窗文案和按钮态同步桌面端的调整。
+- 影响文件：`frontend/src/types.ts`、`frontend/src/api.ts`、`frontend/src/games/stardew/SavesSection.tsx`、`frontend/src/games/stardew/mobile/MobileSavesPage.tsx`。未新增 CSS。
+- 验证：`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
+- **未做的验证**：没有连接真实运行实例点击"运行中回档"，观察服务器是否真的自动停止、回档、重新启动，也没有验证 job 失败时（比如回档本身失败、或重启失败）弹窗关闭后用户能否在"进行中"任务卡片里看清楚失败原因。建议下一位维护者用测试实例走一遍完整链路。
+
+# FE-STARTUP-HOST-CONFIRM-1 启动/重启按钮增加主机上线确认 + 邀请码停机后不再残留旧值
+
+## 背景
+
+用户反馈两个问题：服务器控制页"启动/重启"按钮在后端 job 完成、`state` 变为 `running` 后就立刻切回正常态，但游戏内主机角色实际上可能还没加载完，属于"切换过早"；服务器停止后邀请码卡片仍然显示上一次运行时的旧邀请码，而不是"服务器未运行"。局域网邀请（面板访问地址）本来就不受服务器状态影响，确认无需改动。
+
+`FE-LIFECYCLE-BACKGROUND-INVITE-1`（见上文）记录过相反方向的教训：之前就是按"邀请码/玩家快照出现"判断启动完成，结果因为快照闪烁/邀请码经常拿不到导致按钮永久卡在"启动中…"，才改成纯 job+state 判定。这次修复必须同时解决"切换过早"，又不能重新引入"卡死转圈"，因此新增了超时兜底。
+
+## 改了什么
+
+- `ServerControlPage.tsx`：
+  - 新增 `hostOnline` 派生值：从 `dashboardData.players?.players`（已有的、`state==='running'` 时每 5 秒轮询一次的在线玩家列表）中查找 `isHost === true && status === 'online'` 的条目，不新增任何轮询或 API 调用。
+  - 新增常量 `HOST_ONLINE_WAIT_TIMEOUT_MS = 10 * 60_000`（10 分钟）、`useRef<number | null>` 记录进入"等待主机上线"状态的起始时间、`useState<boolean> hostConfirmTimedOut` 记录是否已超时。一个独立 effect 监听 `[isRunning, hostOnline, dashboardData.players?.updatedAt]`：只要 `isRunning && !hostOnline`，第一次进入时记下起始时间，超过阈值后把 `hostConfirmTimedOut` 置 true；一旦不再满足 `isRunning && !hostOnline`（主机上线，或服务器不再是 running），立刻复位计时器和超时标记。**超时阈值最初设成 90 秒，上线联调时发现不够用**：直接 `docker exec` 进正在运行的实例读 `.local-container/control/status.json` 和 `players.json` 发现，容器内 SMAPI 侧状态从 `save-loaded` 到主机真正出现在 `players.json` 在线列表里，实测相差了好几分钟（大存档/带模组场景），90 秒会在主机还没真正加载完时就提前超时放行，等于白做。改成 10 分钟留出足够余量。
+  - **踩过一次坑**：第一版实现是在"清除 `pendingStartupAction` 的 effect"里加超时判断，结果只对"本次点击启动/重启"这个浏览器会话有效——如果用户是刷新页面或换设备打开面板，此时 job 早已结束、`pendingStartupAction` 从未被设置过（初始值就是 `null`），`startupInProgress` 直接为 false，完全绕过了这层新判断，服务器明明没有主机在线也会显示"停止/重启"正常按钮。修正为独立派生值 `awaitingHostConfirmation = isRunning && !hostOnline && !hostConfirmTimedOut`，直接作为 `startupInProgress` 的一个 OR 分支，不管本次会话有没有点过启动都会生效；`pendingStartupAction` 的清除 effect 恢复成最初的简单版本（`!hasActiveLifecycleJob && isRunning` 就清）。
+  - 转圈提示文案统一改成"服务器正在启动，等待主机玩家上线后再操作。"，去掉了原来"请等待邀请码生成后再操作"的措辞——启停按钮的完成判定全程只看在线玩家列表里是否有主机，不看邀请码是否已经拿到，文案不应该暗示邀请码是判断条件。
+  - 停止/重启中的 `waitingForStop` 判断未改动，用户没有反馈这一侧有问题。
+- `useStardewDashboardData.ts`：
+  - `refreshInstanceState` 里根因是只要后端 `state` 响应带的 `inviteCode` 字段非空就无条件 `setInviteCode`，没检查当前 `state`。后端 `doStop` 按设计不清空 `DriverPayload.invite_code`（保留历史元数据是有意行为，未改后端），所以停止后这个字段仍是旧值；虽然已有一个 effect 会在 `state` **变化**时清空邀请码，但每 30 秒一次的状态轮询会在 state 不变的后续轮次里把旧值又塞回来。
+  - 改为：只有 `s.state === 'running' || s.state === 'starting'` 时才采纳 `recordedInviteCode`，否则直接 `setInviteCode(null)`，每次轮询都会自纠正。
+  - **第三个坑**：`instanceState.state` 变化时清理邀请码的那个 effect，原本没有同步清空 `players`。同一个浏览器标签页里"运行过（有主机在线）→ 停止 → 再启动"时，`players` 会一直带着上一轮的旧快照（`refreshPlayers()` 失败时不会清空 `players`，只设 `playersError`），导致 `ServerControlPage` 的 `hostOnline` 用旧数据误判为真，按钮几乎一点击启动就切回正常态。修复为离开 `running` 时先 `setPlayers(null)` 再发起刷新。
+
+## 影响文件
+
+- `frontend/src/games/stardew/pages/ServerControlPage.tsx`
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+
+未改后端、未改 `InviteCodeCard.tsx`（局域网邀请本来就不依赖 `instanceState`，无需改动）。
+
+## 如何验证
+
+- `cd frontend; npx tsc -b` 通过，无类型错误。
+- 用户上线实测后反馈按钮在主机还没上线时就已经切回正常态；通过 `docker exec stardew-server-1 cat .local-container/control/{status,players}.json`（只读，未执行任何停止/重启）确认了根因：`save-loaded` 到主机出现在 `players.json` 之间实测差了好几分钟，验证了 90 秒超时阈值确实太短，据此改成 10 分钟。
+- **仍未做的验证**：本机 `stardew-server-1`/`stardew-steam-auth-1` 容器是用户当前在用的真实实例，没有对它执行"停止→等待 30 秒轮询→确认邀请码不再残留"、"人为让主机迟迟不上线，确认 10 分钟后会超时放行不会永久卡死"这两条端到端链路——因为这需要真实停止/重启服务器，未经用户确认不会主动执行。建议下一位维护者（或用户本人）找一个可以随意重启的测试实例走一遍。
+
+## 下一步注意事项
+
+- `HOST_ONLINE_WAIT_TIMEOUT_MS` 目前是硬编码 10 分钟（已根据实测调大过一次，原为 90 秒），如果以后发现更大存档场景下还是不够，可以继续调大这个常量，不需要改动其余逻辑。
+- 如果以后要给"等待主机上线"这个中间态加专属提示文案（目前复用的是原有"服务器正在启动，请等待邀请码生成后再操作"这行通用 hint），可以在 `startupInProgress` 为真但 `hostOnline` 为假时单独渲染一行更精确的提示，这次按最小改动没有做。
+# FE-OVERVIEW-STARTUP-HOST-CONFIRM-1 总览页启动等待主机在线
+
+- 总览页生命周期按钮与服务器控制页采用相同的启动完成标准：实例进入 `running` 后，仍需等待在线玩家列表出现 `isHost === true && status === 'online'`，才从“启动中…”切换为“停止/重启”。
+- 该判断不依赖本次浏览器是否亲自点击启动，刷新页面或换设备打开总览页时同样生效。
+- 主机确认等待保留 10 分钟超时兜底；玩家快照持续不可用时不会永久卡在“启动中…”。服务器停止、报错或主机上线后会重置等待状态。
+- 影响文件：`frontend/src/games/stardew/pages/OverviewPage.tsx`。未新增或修改后端接口。
+- 验证：`cd frontend; npm.cmd run build` 通过，仅保留既有 Vite chunk 体积提示。

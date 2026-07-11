@@ -91,8 +91,25 @@ const audit = {
 }
 
 const commands = { commands: [ { name: 'help', description: '显示帮助' }, { name: 'save', description: '保存存档' } ] }
-const backups = { backups: saves.saves.map((s, i) => ({ name: `${s.name}_20250521_030000.zip`, saveName: s.name, kind: 'daily', size: (24.6 - i * 0.3) * 1048576, createdAt: iso((i + 1) * 1440), farmName: s.name })) }
-const backupPolicy = { policy: { gameSaveBackups: true, dailySnapshots: true, dailyRetentionDays: 7, scheduledBackups: true, scheduledHour: 3 } }
+const backups = {
+  backups: Array.from({ length: 5 }, (_, i) => {
+    const gameDay = 12 - i
+    return {
+      name: `auto_AnxiFarm_${String(gameDay).padStart(6, '0')}.zip`,
+      saveName: 'AnxiFarm',
+      kind: 'auto',
+      size: (24.6 - i * 0.3) * 1048576,
+      createdAt: iso((i + 1) * 1440),
+      farmName: 'AnxiFarm',
+      farmerName: 'AnxiPlayer',
+      gameYear: 1,
+      gameSeason: 'spring',
+      gameDay,
+      gameDayOrdinal: gameDay,
+    }
+  }),
+}
+const backupPolicy = { policy: { gameSaveBackups: true, retainGameDays: 5 } }
 const restartSchedule = { schedule: { instanceId: 'stardew', enabled: false, shutdownTime: '04:00', startupTime: '04:10', timezone: 'Asia/Shanghai', warningMinutes: [10, 5, 1], backupBeforeShutdown: true, skipIfPlayersOnline: true } }
 const passwordStatus = { enabled: true, authenticatedCount: 3, pendingCount: 1, timeoutSeconds: 60, maxAttempts: 3, passwordBridgeAvailable: true }
 const nexusSettings = { configured: true, hasApiKey: true, extensionConnected: true }

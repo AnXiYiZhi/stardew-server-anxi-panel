@@ -898,3 +898,18 @@ Multi Game Mode later
 
 # PLAYERS-WARP-HOME-1 状态
 - `PLAYERS-WARP-HOME-1` completed（代码已完成 + 后端相关包测试通过 + 前端 typecheck/build 通过 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理新增“回家”按钮，桌面端和手机端均放在“踢出”左侧；后端新增 `POST /api/instances/:id/players/warp-home`，由嵌入式 SMAPI 控制模组反射调用 JunimoServer `FarmerExtensions.WarpHome(Farmer)`，用于把在线 farmhand 传送回自己的小屋。该能力明确不复用 `TryAuthenticate`，因为已认证玩家不会再次触发认证传送。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-WARP-HOME-1` 小节。
+# FE-INSTALL-STEAM-AUTH-BUTTON-1 状态
+
+- `FE-INSTALL-STEAM-AUTH-BUTTON-1` completed：安装页原“更换 Steam 账号 / 重新认证”已替换为总览页同逻辑的“登录授权”按钮，并改为常驻显示；两页现共用 `useSteamAuthLogin`。已验证 `cd frontend; npm.cmd run build` 通过。
+
+# SAVE-BACKUP-GAMEDAY-1 状态
+
+- `SAVE-BACKUP-GAMEDAY-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿，未做真机联机端到端验证）：存档回档功能重构为完全按"游戏内日期"（年/季/日）管理自动回档点，**取代 `SAVE-BACKUP-POLICY-1`/`SAVE-BACKUP-SCHEDULE-HOUR-1` 里的定时备份/每日快照机制**（取消定时备份，不再有"最新备份"/"每日快照"）。`BackupPolicy` 简化为 `{ gameSaveBackups, retainGameDays }`（默认保留最近 5 个游戏日，1-14 可调）；新增 `auto`/`predelete`/`prerestore` 三类备份 kind，`manual`（手动备份）不再占用自动回档配额；回档前保护备份失败会中止回档且不破坏当前存档；旧 `latest`/`daily`/`scheduled` 磁盘文件不删除，归入前端"其他备份→历史备份"展示。触发时机复用现有 SMAPI `GameLoop.Saved` 事件管线，**未改动、未重新编译嵌入 DLL**。前端"存档"页备份区拆成"游戏日回档"（主列表，按游戏日排序）+"其他备份"（手动/删除前/回档前/历史）两个区块，回档行按钮不再因服务器运行中被无说明地禁用，改为始终可点开确认弹窗并在弹窗内引导先停服。详见 `docs/backend-handoff/backend-handoff-2026-07-11.md`、`docs/frontend-handoff/frontend-handoff-2026-07-11.md`。
+- `SAVE-BACKUP-GAMEDAY-MOBILE-1` completed（同日追加，前端 typecheck/build 全绿，未做真机/窄屏实测）：手机端存档页删除恒禁用的"回档"占位按钮，在"存档操作"卡片上面新增和桌面同名的"游戏日回档"卡片（仅管理员可见），复用桌面同一套 `getSaveBackups`/`restoreSaveBackup` API，数据字段和排序口径与桌面一致，仅把 6 列表格改成手机堆叠行展示；回档确认弹窗同样把"服务器运行中"从无说明禁用改为弹窗内醒目引导先停服。详见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `SAVE-BACKUP-GAMEDAY-MOBILE-1` 小节。
+- `SAVE-RESTORE-AUTORESTART-1` completed（同日追加，后端 build/vet/test 全绿 + 前端 typecheck/build 全绿，未做真机联机端到端验证）：**取代上面两条里"服务器运行中回档需要先手动停服"的交互**——现在确认回档时，如果服务器正在运行，面板会自动完成"停止服务器 → 回档 → 重新启动服务器"整个流程，不需要用户离开弹窗手动操作。后端把这三步编排成一个 lifecycle job（复用现有 `doStop`/`doStart`，不重新实现 compose/Mod 同步/邀请码轮询），`POST .../saves/backups/restore` 新增 `autoRestart` 字段，运行中且传 `true` 时返回 `202 {jobId}`（和启动/停止服务器同一套 job 轮询/SSE 机制），已停止时行为不变。前端桌面和手机端回档按钮和弹窗提交按钮不再因服务器运行中被禁用，弹窗文案改为说明会自动停止/重启服务器。详见 `docs/backend-handoff/backend-handoff-2026-07-11.md`、`docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `SAVE-RESTORE-AUTORESTART-1` 小节。
+
+# FE-STARTUP-HOST-CONFIRM-1 状态
+
+- `FE-STARTUP-HOST-CONFIRM-1` completed（同日追加，前端 typecheck 全绿，未做真机联机端到端验证）：修复两个用户反馈的问题。一是服务器控制页"启动/重启"按钮**切换过早**——原本纯按 `active stardew_lifecycle job + state=running` 判定完成（见上文 `FE-LIFECYCLE-BACKGROUND-INVITE-1`），现在叠加一层"主机玩家上线确认"：`state=running` 后，只要在线玩家列表里还没出现 `isHost && status==='online'` 的条目就继续按"启动中"展示，这个判断独立于是否点过启动按钮（刷新页面/换设备打开也生效），同时新增超时兜底避免像 2026-07-06 那次一样因为玩家快照闪烁/不可用导致按钮永久卡死转圈。**上线联调时改过三次**：第一版超时判断挂在了"仅当次点击启动才生效"的本地状态上，刷新页面就失效，已改成完全独立的派生状态；超时阈值也从最初拍脑袋定的 90 秒（用 `docker exec` 只读对比容器内 `status.json`/`players.json` 时间戳实测发现主机上线可能要几分钟）调大到 10 分钟；第三处是 `useStardewDashboardData.ts` 里服务器停止时没有清空在线玩家列表缓存，导致同一浏览器标签页"运行过→停止→再启动"时用旧快照误判主机已在线、按钮一点启动就切回正常态，改成离开 `running` 时同步清空。二是服务器停止后邀请码卡片会残留上一次运行时的旧邀请码——根因是 `refreshInstanceState` 只要后端返回的 `inviteCode` 非空就无条件写入本地状态，没检查 `state`，而后端 `doStop` 按设计不清空该字段；修复为只在 `state` 为 `running`/`starting` 时才采纳该字段，否则清空。局域网邀请（面板访问地址）本来就不受服务器状态影响，确认无需改动。详见 `docs/frontend-handoff/frontend-handoff-2026-07-11.md` 的 `FE-STARTUP-HOST-CONFIRM-1` 小节。
+# FE-OVERVIEW-STARTUP-HOST-CONFIRM-1 状态
+- `FE-OVERVIEW-STARTUP-HOST-CONFIRM-1` completed：总览页启动按钮现在会等待在线玩家列表中的主机真正在线后才脱离“启动中…”，刷新页面后同样生效，并保留 10 分钟玩家快照异常兜底。前端构建已通过，尚未做真实大存档端到端启动验证。

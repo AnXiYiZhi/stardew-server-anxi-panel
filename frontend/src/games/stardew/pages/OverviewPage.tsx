@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError, startInstance, stopInstance, restartInstance } from '../../../api'
 import { errorMessage, stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { InviteCodeCard } from '../InviteCodeCard'
@@ -13,6 +13,11 @@ const OVERVIEW_ICONS = {
   tasks: '/assets/stardew/ui/icons/icon_nav_tasks_scroll_image2.png',
   players: '/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png',
 } as const
+
+// 和服务器控制页保持一致：容器进入 running 后，大存档仍可能需要几分钟
+// 才会让主机出现在 players.json 在线列表里。等待主机在线后再结束“启动中”，
+// 同时保留超时兜底，避免玩家快照不可用时永久卡住。
+const HOST_ONLINE_WAIT_TIMEOUT_MS = 10 * 60_000
 
 function saveStartBlocker(error: unknown): 'new' | 'saves' | null {
   if (!(error instanceof ApiError)) return null
@@ -71,6 +76,12 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   )
   const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
   const hasFailedJob = dashboardData.jobs.some((j) => j.status === 'failed')
+  const hostOnline = (dashboardData.players?.players ?? []).some(
+    (player) => player.isHost && player.status === 'online',
+  )
+  const hostWaitStartedAtRef = useRef<number | null>(null)
+  const [hostConfirmTimedOut, setHostConfirmTimedOut] = useState(false)
+  const awaitingHostConfirmation = state === 'running' && !hostOnline && !hostConfirmTimedOut
 
   useEffect(() => {
     if (state && state !== 'save_required') {
@@ -79,12 +90,24 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   }, [state])
 
   useEffect(() => {
-    // Startup display follows the backend lifecycle job/state. Host player and
-    // invite code are optional runtime signals and can flicker during SMAPI boot.
     if (!hasActiveLifecycleJob && state === 'running') {
       setPendingStartupAction(null)
     }
   }, [hasActiveLifecycleJob, state])
+
+  useEffect(() => {
+    if (state === 'running' && !hostOnline) {
+      if (hostWaitStartedAtRef.current === null) {
+        hostWaitStartedAtRef.current = Date.now()
+        setHostConfirmTimedOut(false)
+      } else if (Date.now() - hostWaitStartedAtRef.current >= HOST_ONLINE_WAIT_TIMEOUT_MS) {
+        setHostConfirmTimedOut(true)
+      }
+    } else {
+      hostWaitStartedAtRef.current = null
+      setHostConfirmTimedOut(false)
+    }
+  }, [state, hostOnline, dashboardData.players?.updatedAt])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -161,7 +184,8 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
     const waitingForInvite =
       state === 'starting' ||
       Boolean(pendingStartupAction) ||
-      (hasActiveLifecycleJob && !activeLifecycleIsStopping && state !== 'running')
+      (hasActiveLifecycleJob && !activeLifecycleIsStopping && state !== 'running') ||
+      awaitingHostConfirmation
     const waitingForStop = state === 'stopping' || pendingStopAction || activeLifecycleIsStopping
 
     if (state === 'save_required') {

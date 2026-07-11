@@ -682,3 +682,10 @@
 
 - 仍需真机/真实服务器验证：手机端玩家卡片三个按钮不横向溢出，点击“回家”后确认弹窗可操作，farmhand 实际传送回家。
 - 新图标目前只用于桌面行内图标按钮；手机端按现有文字按钮风格处理，没有额外放图标，避免窄屏按钮拥挤。
+# FE-INSTALL-STEAM-AUTH-BUTTON-1 安装页授权按钮统一
+
+- 改动：安装页删除“更换 Steam 账号 / 重新认证”及其强制重认证表单入口，改为常驻显示“登录授权”。该按钮不检查 `steamAuthLoggedIn`，所以认证完成后也继续显示。
+- 共用逻辑：新建 `frontend/src/games/stardew/useSteamAuthLogin.ts`，总览页 `InviteCodeCard` 与安装页均使用它；接口仍为 `POST /api/instances/:id/steam-auth/login`，成功跳转安装页，运行/启动状态要求先停服，错误原位显示。
+- 影响文件：`frontend/src/games/stardew/useSteamAuthLogin.ts`、`frontend/src/games/stardew/InviteCodeCard.tsx`、`frontend/src/games/stardew/pages/InstallPage.tsx`。
+- 验证：`cd frontend; npm.cmd run build` 通过；仅有既有的 chunk 大小提示。
+- 下一步注意：若以后调整 Steam 登录授权的文案、禁用条件或跳转行为，应只修改 `useSteamAuthLogin`，避免总览页与安装页再次分叉。
