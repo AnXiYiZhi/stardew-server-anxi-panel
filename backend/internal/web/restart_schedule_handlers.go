@@ -458,7 +458,7 @@ func backupActiveSave(instance storage.Instance) (string, error) {
 	if err := sj.ValidateSaveExists(instance.DataDir, saveName); err != nil {
 		return "", err
 	}
-	backupPath, err := sj.BackupSave(instance.DataDir, saveName)
+	backupPath, err := sj.BackupManual(instance.DataDir, saveName)
 	if err != nil {
 		return "", err
 	}

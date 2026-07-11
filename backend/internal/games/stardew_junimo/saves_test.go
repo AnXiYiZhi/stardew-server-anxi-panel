@@ -394,6 +394,25 @@ func TestListSaveDirs_WithSave(t *testing.T) {
 	}
 }
 
+func TestListSaveDirs_SkipsDotPrefixedTempDirs(t *testing.T) {
+	dir := t.TempDir()
+	savesPath := filepath.Join(dir, ".local-container", "saves", "Saves")
+	if err := os.MkdirAll(filepath.Join(savesPath, "TestFarmer_12345"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a leftover extraction temp dir from an interrupted restore.
+	if err := os.MkdirAll(filepath.Join(savesPath, ".restore-tmp-2156104854"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	names, err := listSaveDirs(dir)
+	if err != nil {
+		t.Fatalf("listSaveDirs: %v", err)
+	}
+	if len(names) != 1 || names[0] != "TestFarmer_12345" {
+		t.Fatalf("dot-prefixed temp dir should be skipped, got: %v", names)
+	}
+}
+
 func TestPreviewSaveZip_RejectsOversizedZip(t *testing.T) {
 	// Create a ZIP that claims to have a huge uncompressed file.
 	dir := t.TempDir()
@@ -1476,6 +1495,13 @@ func TestDeleteSaveWithBackup_CreatesBackupBeforeDelete(t *testing.T) {
 	if _, err := os.Stat(backupPath); err != nil {
 		t.Errorf("backup file should exist: %v", err)
 	}
+	name := filepath.Base(backupPath)
+	if !strings.HasPrefix(name, "predelete_") {
+		t.Errorf("expected predelete_ prefix, got %q", name)
+	}
+	if inferBackupKind(name) != "predelete" {
+		t.Errorf("expected kind predelete, got %q", inferBackupKind(name))
+	}
 }
 
 func TestListBackups_ReturnsBackupInfo(t *testing.T) {
@@ -1601,6 +1627,20 @@ func TestRestoreBackup_Success(t *testing.T) {
 	if _, err := os.Stat(restoredFile); err != nil {
 		t.Errorf("restored file should exist: %v", err)
 	}
+
+	// Regression: a successful restore must not leave its ".restore-tmp-*"
+	// extraction directory behind in Saves/ — it previously did, and the
+	// leftover empty dir would then show up in the saves list as a broken
+	// save with a "SaveGameInfo not found" parse error.
+	savesRootEntries, err := os.ReadDir(filepath.Join(dir, ".local-container", "saves", "Saves"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range savesRootEntries {
+		if strings.HasPrefix(e.Name(), ".restore-tmp-") {
+			t.Fatalf("restore left behind a temp directory: %q", e.Name())
+		}
+	}
 }
 
 func TestRestoreBackup_ConflictWithoutOverwrite(t *testing.T) {
@@ -1657,6 +1697,88 @@ func TestRestoreBackup_WithOverwrite(t *testing.T) {
 	}
 }
 
+func TestRestoreBackup_CreatesPreRestoreProtectionBackup(t *testing.T) {
+	dir := t.TempDir()
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame><player><name>Old</name></player></SaveGame>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+	backupName := filepath.Base(backupPath)
+
+	if _, err := RestoreBackup(dir, backupName, true); err != nil {
+		t.Fatalf("RestoreBackup with overwrite: %v", err)
+	}
+
+	entries, err := os.ReadDir(backupsDir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "prerestore_TestSave_") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected a prerestore_ protection backup to be created before overwrite")
+	}
+}
+
+func TestRestoreBackup_AbortsWhenProtectionBackupFails(t *testing.T) {
+	dir := t.TempDir()
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame><player><name>Source</name></player></SaveGame>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the backup we will restore FROM (a separate, valid snapshot).
+	backupPath, err := BackupSave(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+	backupName := filepath.Base(backupPath)
+
+	// Replace the existing save directory with a plain file so the protection
+	// backup step (which re-zips the current save before overwrite) fails
+	// deterministically: BackupSave requires the save path to be a directory.
+	if err := os.RemoveAll(saveDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(saveDir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := RestoreBackup(dir, backupName, true); err == nil {
+		t.Fatal("expected restore to abort when the protection backup fails")
+	}
+
+	// The current "save" must be untouched by the aborted restore.
+	info, err := os.Stat(saveDir)
+	if err != nil {
+		t.Fatalf("save path should still exist: %v", err)
+	}
+	if info.IsDir() {
+		t.Fatal("aborted restore should not have replaced the file with a directory")
+	}
+	content, err := os.ReadFile(saveDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "not a directory" {
+		t.Fatalf("save content changed after aborted restore: %q", content)
+	}
+}
+
 func TestRestoreBackup_InvalidBackupName(t *testing.T) {
 	dir := t.TempDir()
 	_, err := RestoreBackup(dir, "../escape.zip", false)
@@ -1679,77 +1801,68 @@ func TestBackupPolicy_DefaultAndClamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !policy.GameSaveBackups || !policy.DailySnapshots || policy.DailyRetentionDays != 3 || policy.ScheduledHour != 4 {
+	if !policy.GameSaveBackups || policy.RetainGameDays != 5 {
 		t.Fatalf("unexpected default policy: %#v", policy)
 	}
 	policy, err = WriteBackupPolicy(dir, BackupPolicy{
-		GameSaveBackups:    true,
-		DailySnapshots:     true,
-		DailyRetentionDays: 99,
-		ScheduledBackups:   true,
-		ScheduledHour:      99,
+		GameSaveBackups: true,
+		RetainGameDays:  99,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if policy.DailyRetentionDays != 14 || policy.ScheduledHour != 23 || policy.ScheduledIntervalHour != 0 {
+	if policy.RetainGameDays != 14 {
 		t.Fatalf("policy not clamped: %#v", policy)
 	}
 }
 
-func TestScheduledBackupRunsOncePerDayAtConfiguredHour(t *testing.T) {
+func TestReadBackupPolicy_IgnoresLegacyFields(t *testing.T) {
 	dir := t.TempDir()
-	createTestSaveForBackup(t, dir, "TestSave")
-	if err := SetActiveSave(dir, "TestSave"); err != nil {
+	if err := os.MkdirAll(backupsDir(dir), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	policy := BackupPolicy{
-		DailySnapshots:     false,
-		DailyRetentionDays: 3,
-		ScheduledBackups:   true,
-		ScheduledHour:      3,
+	legacyJSON := `{"gameSaveBackups":false,"dailySnapshots":true,"dailyRetentionDays":7,"scheduledBackups":true,"scheduledHour":9}`
+	if err := os.WriteFile(backupPolicyPath(dir), []byte(legacyJSON), 0o644); err != nil {
+		t.Fatal(err)
 	}
-
-	beforeHour := time.Date(2026, 7, 2, 2, 59, 0, 0, time.Local)
-	created, err := runScheduledBackupIfDue(dir, policy, beforeHour)
+	policy, err := ReadBackupPolicy(dir)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ReadBackupPolicy should tolerate legacy fields: %v", err)
 	}
-	if len(created) != 0 {
-		t.Fatalf("backup should not run before configured hour: %v", created)
+	if policy.GameSaveBackups {
+		t.Fatalf("expected gameSaveBackups to carry over as false, got %#v", policy)
 	}
-
-	firstRun := time.Date(2026, 7, 2, 3, 0, 0, 0, time.Local)
-	created, err = runScheduledBackupIfDue(dir, policy, firstRun)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(created) != 1 || created[0] != "scheduled_TestSave.zip" {
-		t.Fatalf("unexpected first scheduled backup result: %v", created)
-	}
-
-	sameDay := time.Date(2026, 7, 2, 23, 0, 0, 0, time.Local)
-	created, err = runScheduledBackupIfDue(dir, policy, sameDay)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(created) != 0 {
-		t.Fatalf("backup should not run twice in one day: %v", created)
-	}
-
-	nextDay := time.Date(2026, 7, 3, 3, 0, 0, 0, time.Local)
-	created, err = runScheduledBackupIfDue(dir, policy, nextDay)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(created) != 1 || created[0] != "scheduled_TestSave.zip" {
-		t.Fatalf("unexpected next-day scheduled backup result: %v", created)
+	if policy.RetainGameDays != 5 {
+		t.Fatalf("expected default RetainGameDays=5 when absent from legacy JSON, got %d", policy.RetainGameDays)
 	}
 }
 
-func TestBackupMaintenance_SaveEventCreatesLatestAndDaily(t *testing.T) {
+func TestGameDayOrdinal_CrossSeasonAndYear(t *testing.T) {
+	tests := []struct {
+		year   int
+		season string
+		day    int
+		want   int
+	}{
+		{1, "spring", 1, 1},
+		{1, "spring", 28, 28},
+		{1, "summer", 1, 29},
+		{1, "fall", 1, 57},
+		{1, "winter", 28, 112},
+		{2, "spring", 1, 113},
+		{3, "winter", 28, 336},
+	}
+	for _, tt := range tests {
+		got := gameDayOrdinal(tt.year, tt.season, tt.day)
+		if got != tt.want {
+			t.Errorf("gameDayOrdinal(%d, %q, %d) = %d, want %d", tt.year, tt.season, tt.day, got, tt.want)
+		}
+	}
+}
+
+func TestBackupMaintenance_SaveEventCreatesAutoGameDayBackup(t *testing.T) {
 	dir := t.TempDir()
-	createTestSaveForBackup(t, dir, "TestSave")
+	createTestSaveForBackup(t, dir, "TestSave") // year=1 spring day=1 → ordinal 1
 	eventDir := saveEventsDir(dir)
 	if err := os.MkdirAll(eventDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -1770,32 +1883,180 @@ func TestBackupMaintenance_SaveEventCreatesLatestAndDaily(t *testing.T) {
 	if result.ConsumedEvents != 1 {
 		t.Fatalf("ConsumedEvents = %d, want 1", result.ConsumedEvents)
 	}
-	for _, name := range []string{"latest_TestSave.zip", "daily_TestSave_" + time.Now().UTC().Format("20060102") + ".zip"} {
-		if _, err := os.Stat(filepath.Join(backupsDir(dir), name)); err != nil {
-			t.Fatalf("expected backup %s: %v", name, err)
-		}
+	if _, err := os.Stat(filepath.Join(backupsDir(dir), "auto_TestSave_000001.zip")); err != nil {
+		t.Fatalf("expected auto game-day backup: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(eventDir, "event.json")); !os.IsNotExist(err) {
 		t.Fatalf("event should be consumed, stat err=%v", err)
 	}
 }
 
-func TestPruneDailySnapshots_RemovesOldDays(t *testing.T) {
+func TestBackupAutoGameDay_OverwritesSameGameDay(t *testing.T) {
 	dir := t.TempDir()
 	createTestSaveForBackup(t, dir, "TestSave")
-	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
-	for _, day := range []time.Time{now.AddDate(0, 0, -3), now.AddDate(0, 0, -2), now.AddDate(0, 0, -1), now} {
-		if _, err := BackupDailySnapshot(dir, "TestSave", day, 3); err != nil {
+	first, err := BackupAutoGameDay(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupAutoGameDay (first): %v", err)
+	}
+	firstInfo, err := os.Stat(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	second, err := BackupAutoGameDay(dir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupAutoGameDay (second): %v", err)
+	}
+	if first != second {
+		t.Fatalf("expected same game day to overwrite the same file, got %q then %q", first, second)
+	}
+	secondInfo, err := os.Stat(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !secondInfo.ModTime().After(firstInfo.ModTime()) {
+		t.Fatalf("expected file to be recreated with a newer mtime")
+	}
+	entries, err := os.ReadDir(backupsDir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	autoCount := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "auto_TestSave_") {
+			autoCount++
+		}
+	}
+	if autoCount != 1 {
+		t.Fatalf("expected exactly 1 auto backup file, got %d", autoCount)
+	}
+}
+
+func TestBackupAutoGameDay_RestoreEarlierThenReplaySameDayOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave") // day 1
+	writeTestSaveGameDay(t, dir, "TestSave", 1, "spring", 5)
+	day5Path, err := BackupAutoGameDay(dir, "TestSave")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate restoring to an earlier day and creating a new auto backup there.
+	writeTestSaveGameDay(t, dir, "TestSave", 1, "spring", 2)
+	day2Path, err := BackupAutoGameDay(dir, "TestSave")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if day2Path == day5Path {
+		t.Fatalf("day 2 and day 5 should be distinct backup files")
+	}
+	if _, err := os.Stat(day5Path); err != nil {
+		t.Fatalf("day 5 backup should still exist after branching to day 2: %v", err)
+	}
+
+	// Replaying back up to day 5 must overwrite the original day 5 backup,
+	// not create a third file.
+	beforeReplay, err := os.Stat(day5Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	writeTestSaveGameDay(t, dir, "TestSave", 1, "spring", 5)
+	replayPath, err := BackupAutoGameDay(dir, "TestSave")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayPath != day5Path {
+		t.Fatalf("expected replay to day 5 to reuse the same file %q, got %q", day5Path, replayPath)
+	}
+	afterReplay, err := os.Stat(replayPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !afterReplay.ModTime().After(beforeReplay.ModTime()) {
+		t.Fatalf("expected day 5 backup to be recreated with a newer mtime")
+	}
+}
+
+func TestPruneAutoGameDayBackups_KeepsFiveMostRecentGameDays(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(backupsDir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for ordinal := 1; ordinal <= 6; ordinal++ {
+		name := fmt.Sprintf("auto_TestSave_%06d.zip", ordinal)
+		if err := os.WriteFile(filepath.Join(backupsDir(dir), name), []byte("zip"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	oldName := "daily_TestSave_" + now.AddDate(0, 0, -3).Format("20060102") + ".zip"
-	if _, err := os.Stat(filepath.Join(backupsDir(dir), oldName)); !os.IsNotExist(err) {
-		t.Fatalf("old daily snapshot should be pruned, stat err=%v", err)
+	if err := PruneAutoGameDayBackups(dir, "TestSave", 5); err != nil {
+		t.Fatalf("PruneAutoGameDayBackups: %v", err)
 	}
-	keepName := "daily_TestSave_" + now.AddDate(0, 0, -2).Format("20060102") + ".zip"
-	if _, err := os.Stat(filepath.Join(backupsDir(dir), keepName)); err != nil {
-		t.Fatalf("recent daily snapshot should remain: %v", err)
+	if _, err := os.Stat(filepath.Join(backupsDir(dir), "auto_TestSave_000001.zip")); !os.IsNotExist(err) {
+		t.Fatalf("oldest game day should be pruned, stat err=%v", err)
+	}
+	for ordinal := 2; ordinal <= 6; ordinal++ {
+		name := fmt.Sprintf("auto_TestSave_%06d.zip", ordinal)
+		if _, err := os.Stat(filepath.Join(backupsDir(dir), name)); err != nil {
+			t.Fatalf("recent game day %s should remain: %v", name, err)
+		}
+	}
+}
+
+func TestRunBackupMaintenance_DoesNotTouchManualOrProtectionBackups(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave")
+	manualPath, err := BackupManual(dir, "TestSave")
+	if err != nil {
+		t.Fatal(err)
+	}
+	protectPath, err := BackupPreRestore(dir, "TestSave")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eventDir := saveEventsDir(dir)
+	if err := os.MkdirAll(eventDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for day := 1; day <= 7; day++ {
+		writeTestSaveGameDay(t, dir, "TestSave", 1, "spring", day)
+		event := saveEventFile{Type: "saved", SaveName: "TestSave", CreatedAt: time.Now().UTC()}
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eventPath := filepath.Join(eventDir, fmt.Sprintf("event-%d.json", day))
+		if err := os.WriteFile(eventPath, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := RunBackupMaintenance(dir); err != nil {
+			t.Fatalf("RunBackupMaintenance (day %d): %v", day, err)
+		}
+	}
+
+	if _, err := os.Stat(manualPath); err != nil {
+		t.Fatalf("manual backup should not be touched by auto cleanup: %v", err)
+	}
+	if _, err := os.Stat(protectPath); err != nil {
+		t.Fatalf("protection backup should not be touched by auto cleanup: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(backupsDir(dir), "auto_TestSave_000001.zip")); !os.IsNotExist(err) {
+		t.Fatalf("day 1 auto backup should have been pruned after 7 days with default retention 5")
+	}
+}
+
+// writeTestSaveGameDay overwrites the live save directory's SaveGameInfo/main
+// file with a given year/season/day, simulating the game writing a new save.
+func writeTestSaveGameDay(t *testing.T, dir, saveName string, year int, season string, day int) {
+	t.Helper()
+	saveDir := filepath.Join(dir, ".local-container", "saves", "Saves", saveName)
+	xmlContent := fmt.Sprintf(`<SaveGame><player><name>Farmer</name><farmName>Farm</farmName></player><year>%d</year><currentSeason>%s</currentSeason><dayOfMonth>%d</dayOfMonth><whichFarm>0</whichFarm></SaveGame>`, year, season, day)
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, saveName), []byte(xmlContent), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1826,11 +2087,36 @@ func TestParseBackupSaveName(t *testing.T) {
 		{"scheduled_TestSave.zip", "TestSave"},
 		{"daily_TestSave_20260702.zip", "TestSave"},
 		{"manual_Test_Save_20260702-120000.zip", "Test_Save"},
+		{"auto_TestSave_000001.zip", "TestSave"},
+		{"predelete_TestSave_20260702-120000.zip", "TestSave"},
+		{"prerestore_TestSave_20260702-120000.zip", "TestSave"},
 	}
 	for _, tt := range tests {
 		got := parseBackupSaveName(tt.input)
 		if got != tt.want {
 			t.Errorf("parseBackupSaveName(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestInferBackupKind(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"auto_TestSave_000001.zip", "auto"},
+		{"manual_TestSave_20260702-120000.zip", "manual"},
+		{"predelete_TestSave_20260702-120000.zip", "predelete"},
+		{"prerestore_TestSave_20260702-120000.zip", "prerestore"},
+		{"latest_TestSave.zip", "latest"},
+		{"scheduled_TestSave.zip", "scheduled"},
+		{"daily_TestSave_20260702.zip", "daily"},
+		{"TestSave_20260702-120000.zip", "manual"},
+	}
+	for _, tt := range tests {
+		got := inferBackupKind(tt.input)
+		if got != tt.want {
+			t.Errorf("inferBackupKind(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

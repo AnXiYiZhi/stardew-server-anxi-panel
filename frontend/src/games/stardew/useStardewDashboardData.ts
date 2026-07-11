@@ -63,7 +63,12 @@ export function useStardewDashboardData(): StardewDashboardData {
       const s = await getStardewState()
       setInstanceState(s)
       const recordedInviteCode = s.inviteCode?.trim() ?? ''
-      if (recordedInviteCode) {
+      const stateExposesInviteCode = s.state === 'running' || s.state === 'starting'
+      if (!stateExposesInviteCode) {
+        // 服务器未运行时，后端为了保留历史元数据不会清空 invite_code 字段，
+        // 这里必须主动丢弃，否则每次轮询都会把停止前的旧邀请码重新展示出来。
+        setInviteCode(null)
+      } else if (recordedInviteCode) {
         if (staleInviteCodeRef.current && recordedInviteCode === staleInviteCodeRef.current) {
           setInviteCode(null)
         } else {
@@ -343,6 +348,11 @@ export function useStardewDashboardData(): StardewDashboardData {
     }
     setInviteCode(null)
     setInviteCodeError(null)
+    // 服务器一旦不再是 running，就把在线玩家列表清空，避免下一次启动时
+    // ServerControlPage 用上一轮运行时残留的"主机在线"快照误判为已就绪——
+    // refreshPlayers() 请求可能因为容器还没起来而失败，失败分支不会清空
+    // players，如果不在这里主动清空，旧快照会一直挂着直到请求成功为止。
+    setPlayers(null)
     void refreshPlayers()
     setPlayersError(null)
   }, [instanceState?.state, refreshInviteCode, refreshPlayers])

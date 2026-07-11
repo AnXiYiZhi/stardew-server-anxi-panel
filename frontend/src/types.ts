@@ -311,7 +311,7 @@ export type SavesListResult = {
 export type BackupInfo = {
   name: string
   saveName: string
-  kind: 'manual' | 'latest' | 'daily' | 'scheduled' | string
+  kind: 'auto' | 'manual' | 'predelete' | 'prerestore' | 'latest' | 'daily' | 'scheduled' | string
   size: number
   createdAt: string
   farmerName?: string
@@ -319,6 +319,7 @@ export type BackupInfo = {
   gameYear?: number
   gameSeason?: string
   gameDay?: number
+  gameDayOrdinal?: number
   farmType?: string
   fileSizeBytes?: number
   parseError?: string
@@ -326,11 +327,7 @@ export type BackupInfo = {
 
 export type BackupPolicy = {
   gameSaveBackups: boolean
-  dailySnapshots: boolean
-  dailyRetentionDays: number
-  scheduledBackups: boolean
-  scheduledHour: number
-  scheduledIntervalHours?: number
+  retainGameDays: number
 }
 
 export type BackupMaintenanceResult = {
@@ -345,7 +342,12 @@ export type BackupsListResult = {
 }
 
 export type RestoreBackupResult = {
-  saveName: string
+  // Present when the server was stopped, restored, and started synchronously
+  // (no restart needed).
+  saveName?: string
+  // Present when the server was running: the restore was submitted as an
+  // async stop -> restore -> start job, tracked like any other lifecycle job.
+  jobId?: string
 }
 
 export type BackupCreateResult = {

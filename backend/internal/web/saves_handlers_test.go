@@ -403,6 +403,134 @@ func TestModsList_StoppedServerSuppressesStaleRestartRequired(t *testing.T) {
 	}
 }
 
+// TestSavesBackupRestore_RunningWithoutAutoRestartReturns409 preserves the
+// existing behavior for callers that don't opt into auto stop/restart: a
+// plain restore request while running/starting must still be rejected.
+func TestSavesBackupRestore_RunningWithoutAutoRestartReturns409(t *testing.T) {
+	handler, store, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: storage.DefaultInstanceID, State: storage.InstanceStateRunning, StateMessage: "test running", DriverPhase: "running",
+	}); err != nil {
+		t.Fatalf("set instance running: %v", err)
+	}
+
+	resp, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/backups/restore",
+		map[string]any{"backupName": "whatever.zip", "overwrite": false}, adminCookie)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("restore without autoRestart while running returned %d, want 409; body: %s", resp.Code, resp.Body.String())
+	}
+	var payload errorResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload.Error.Code != "server_running" {
+		t.Fatalf("error code = %q, want server_running", payload.Error.Code)
+	}
+}
+
+// TestSavesBackupRestore_RunningWithAutoRestartBypassesRunningGate verifies
+// that setting autoRestart:true takes a different code path than the plain
+// 409 gate — it should proceed to load the driver (and fail there, since the
+// test harness has no game driver registered) instead of short-circuiting
+// with server_running. This is the cheapest way to assert the new branch is
+// actually reached without standing up a full fake GameDriver.
+func TestSavesBackupRestore_RunningWithAutoRestartBypassesRunningGate(t *testing.T) {
+	handler, store, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: storage.DefaultInstanceID, State: storage.InstanceStateRunning, StateMessage: "test running", DriverPhase: "running",
+	}); err != nil {
+		t.Fatalf("set instance running: %v", err)
+	}
+
+	resp, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/backups/restore",
+		map[string]any{"backupName": "whatever.zip", "overwrite": false, "autoRestart": true}, adminCookie)
+	if resp.Code == http.StatusConflict {
+		t.Fatalf("autoRestart request should not hit the server_running gate; body: %s", resp.Body.String())
+	}
+	var payload errorResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload.Error.Code != "driver_not_registered" {
+		t.Fatalf("expected to reach driver loading (driver_not_registered in this test harness), got code %q; body: %s", payload.Error.Code, resp.Body.String())
+	}
+}
+
+// TestSavesBackupRestore_StoppedStillWorksSynchronously preserves the existing
+// synchronous restore behavior when the server is stopped (no autoRestart
+// needed or requested).
+func TestSavesBackupRestore_StoppedStillWorksSynchronously(t *testing.T) {
+	handler, store, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+	instance, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	saveDir := filepath.Join(instance.DataDir, ".local-container", "saves", "Saves", "TestSave")
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatalf("create save dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("<SaveGame/>"), 0o644); err != nil {
+		t.Fatalf("write SaveGameInfo: %v", err)
+	}
+	backupPath, err := sj.BackupSave(instance.DataDir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupSave: %v", err)
+	}
+	if err := os.RemoveAll(saveDir); err != nil {
+		t.Fatalf("remove save dir: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: storage.DefaultInstanceID, State: storage.InstanceStateStopped, StateMessage: "test stopped", DriverPhase: "stopped",
+	}); err != nil {
+		t.Fatalf("set instance stopped: %v", err)
+	}
+
+	resp, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/backups/restore",
+		map[string]any{"backupName": filepath.Base(backupPath), "overwrite": false}, adminCookie)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("restore while stopped returned %d, want 200; body: %s", resp.Code, resp.Body.String())
+	}
+	var result struct {
+		SaveName string `json:"saveName"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if result.SaveName != "TestSave" {
+		t.Fatalf("saveName = %q, want TestSave", result.SaveName)
+	}
+}
+
 func addModZipPart(t *testing.T, mw *multipart.Writer, filename, folderName, uniqueID, modName string) {
 	t.Helper()
 	fw, err := mw.CreateFormFile("mod", filename)

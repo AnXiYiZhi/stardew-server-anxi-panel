@@ -392,10 +392,10 @@ export function updateRestartSchedule(schedule: RestartScheduleUpdate, instanceI
   })
 }
 
-export function restoreSaveBackup(backupName: string, overwrite = false, instanceId = defaultInstanceId) {
+export function restoreSaveBackup(backupName: string, overwrite = false, autoRestart = false, instanceId = defaultInstanceId) {
   return request<RestoreBackupResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/backups/restore`, {
     method: 'POST',
-    body: { backupName, overwrite },
+    body: { backupName, overwrite, autoRestart },
   })
 }
 

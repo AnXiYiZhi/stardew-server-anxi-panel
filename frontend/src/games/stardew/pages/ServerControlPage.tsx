@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
 import {
   ApiError,
   startInstance,
@@ -57,6 +57,12 @@ const SERVER_PAGE_ICONS = {
 } as const
 
 const JOJA_CONFIRM_TEXT = 'IRREVERSIBLY_ENABLE_JOJA_RUN'
+// 主机玩家迟迟不上线时的兜底超时：避免像 2026-07-06 那次一样因为玩家快照
+// 闪烁/不可用导致按钮永久卡在"启动中…"。实测大存档场景下，容器状态到
+// `running`、SMAPI 内部 status.json 到 `save-loaded`、主机真正出现在
+// players.json 在线列表里，前后可以相差好几分钟，超时阈值必须留足这个余量，
+// 否则会在主机还没真正上线时就提前放行，等于白做了这层确认。
+const HOST_ONLINE_WAIT_TIMEOUT_MS = 10 * 60_000
 
 function buildVNCControlURL(port: string) {
   const host = window.location.hostname.includes(':')
@@ -156,10 +162,22 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
   )
   const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
+  const hostOnline = (dashboardData.players?.players ?? []).some(
+    (p) => p.isHost && p.status === 'online',
+  )
+  // state 已经是 running（无论是本次点击启动，还是打开/刷新页面时服务器早已在
+  // 运行）但主机玩家还没出现在在线列表里，继续按"启动中"展示，不受
+  // pendingStartupAction 这个仅在当次点击时才有值的本地状态影响。为避免像
+  // 2026-07-06 那次一样因为玩家快照闪烁/不可用导致按钮永久转圈，超过
+  // HOST_ONLINE_WAIT_TIMEOUT_MS 后无论主机是否上线都会放行。
+  const hostWaitStartedAtRef = useRef<number | null>(null)
+  const [hostConfirmTimedOut, setHostConfirmTimedOut] = useState(false)
+  const awaitingHostConfirmation = isRunning && !hostOnline && !hostConfirmTimedOut
   const startupInProgress =
     isStarting ||
     Boolean(pendingStartupAction) ||
-    (hasActiveLifecycleJob && !activeLifecycleIsStopping && !isRunning)
+    (hasActiveLifecycleJob && !activeLifecycleIsStopping && !isRunning) ||
+    awaitingHostConfirmation
   const waitingForStop = isStopping || pendingStopAction || activeLifecycleIsStopping
   const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
   const showSaveRequiredPrompt =
@@ -214,12 +232,25 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   }, [state])
 
   useEffect(() => {
-    // Startup display follows the backend lifecycle job/state. Host player and
-    // invite code are optional runtime signals and can flicker during SMAPI boot.
+    // Startup display follows the backend lifecycle job/state.
     if (!hasActiveLifecycleJob && isRunning) {
       setPendingStartupAction(null)
     }
   }, [hasActiveLifecycleJob, isRunning])
+
+  useEffect(() => {
+    if (isRunning && !hostOnline) {
+      if (hostWaitStartedAtRef.current === null) {
+        hostWaitStartedAtRef.current = Date.now()
+        setHostConfirmTimedOut(false)
+      } else if (Date.now() - hostWaitStartedAtRef.current >= HOST_ONLINE_WAIT_TIMEOUT_MS) {
+        setHostConfirmTimedOut(true)
+      }
+    } else {
+      hostWaitStartedAtRef.current = null
+      setHostConfirmTimedOut(false)
+    }
+  }, [isRunning, hostOnline, dashboardData.players?.updatedAt])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -727,7 +758,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         {startupInProgress ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
             <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
-            &nbsp;服务器正在启动，请等待邀请码生成后再操作。
+            &nbsp;服务器正在启动，等待主机玩家上线后再操作。
           </div>
         ) : null}
 

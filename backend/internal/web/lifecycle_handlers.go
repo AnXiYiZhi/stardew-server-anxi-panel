@@ -517,7 +517,7 @@ func (s *server) handleSaveBackupCreate(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	backupPath, err := sj.BackupSave(instance.DataDir, saveName)
+	backupPath, err := sj.BackupManual(instance.DataDir, saveName)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "backup_failed", sanitizeErrorMsg(err, "save backup failed"))
 		return
@@ -618,7 +618,18 @@ func (s *server) handleSavesBackupDelete(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// backupRestoreRestarter is implemented by drivers that can orchestrate
+// stop -> restore -> start as a single async job (see stardew_junimo.Driver.
+// RestoreBackupWithRestart). Drivers without this capability fall back to
+// requiring the server be stopped before restoring, via ensureInstanceNotRunning.
+type backupRestoreRestarter interface {
+	RestoreBackupWithRestart(ctx context.Context, instance registry.Instance, backupName string, overwrite bool, actorID int64) (*registry.Job, error)
+}
+
 // handleSavesBackupRestore handles POST /api/instances/:id/saves/backups/restore.
+// When the instance is running/starting and the request opts in with
+// autoRestart, this stops the server, restores the backup, and starts it
+// again as one tracked job instead of requiring the admin to stop it first.
 func (s *server) handleSavesBackupRestore(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAdmin(w, r)
 	if !ok {
@@ -628,14 +639,15 @@ func (s *server) handleSavesBackupRestore(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	instance, ok = s.reconcileInstanceState(w, r, instance)
 	if !ok {
 		return
 	}
 
 	var body struct {
-		BackupName string `json:"backupName"`
-		Overwrite  bool   `json:"overwrite"`
+		BackupName  string `json:"backupName"`
+		Overwrite   bool   `json:"overwrite"`
+		AutoRestart bool   `json:"autoRestart"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
@@ -643,6 +655,32 @@ func (s *server) handleSavesBackupRestore(w http.ResponseWriter, r *http.Request
 	}
 	if body.BackupName == "" {
 		writeError(w, http.StatusBadRequest, "missing_field", "backupName 不能为空")
+		return
+	}
+
+	isRunning := instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting
+	if isRunning && !body.AutoRestart {
+		writeError(w, http.StatusConflict, "server_running", "服务器运行中，请先停止服务器再操作存档。")
+		return
+	}
+
+	if isRunning {
+		driver, ok := s.loadDriver(w, instance.DriverID)
+		if !ok {
+			return
+		}
+		restarter, ok := driver.(backupRestoreRestarter)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, "not_supported", "当前 driver 不支持自动停止/重启回档")
+			return
+		}
+		job, err := restarter.RestoreBackupWithRestart(r.Context(), makeRegistryInstance(instance), body.BackupName, body.Overwrite, actor.User.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "restore_restart_failed", sanitizeErrorMsg(err, "提交回档任务失败"))
+			return
+		}
+		s.auditLog(r, &actor, "save_restore", "instance", instanceID, auditMetadata("backupName", body.BackupName, "autoRestart", "true", "jobId", job.ID))
+		writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
 		return
 	}
 

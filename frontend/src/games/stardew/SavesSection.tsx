@@ -46,31 +46,27 @@ const farmTypeAlias: Record<string, string> = {
 
 const defaultBackupPolicy: BackupPolicy = {
   gameSaveBackups: true,
-  dailySnapshots: true,
-  dailyRetentionDays: 3,
-  scheduledBackups: false,
-  scheduledHour: 4,
+  retainGameDays: 5,
 }
 
 function normalizeBackupPolicy(policy: BackupPolicy): BackupPolicy {
-  const rawHour = (policy as Partial<BackupPolicy>).scheduledHour
-  const scheduledHour = Math.max(
-    0,
-    Math.min(23, typeof rawHour === 'number' && Number.isFinite(rawHour) ? rawHour : defaultBackupPolicy.scheduledHour),
+  const rawDays = (policy as Partial<BackupPolicy>).retainGameDays
+  const retainGameDays = Math.max(
+    1,
+    Math.min(14, typeof rawDays === 'number' && Number.isFinite(rawDays) ? rawDays : defaultBackupPolicy.retainGameDays),
   )
-  const { scheduledIntervalHours: _legacyScheduledIntervalHours, ...normalized } = {
-    ...defaultBackupPolicy,
-    ...policy,
-    scheduledHour,
-  }
-  return normalized
+  return { ...defaultBackupPolicy, ...policy, retainGameDays }
 }
 
+// "游戏日回档"（kind === 'auto'）之外的备份类型标签；latest/daily/scheduled 是
+// 已取消的旧机制留下的历史文件，不再产生新的，仅归入"历史备份"展示。
 const backupKindLabel: Record<string, string> = {
   manual: '手动备份',
-  latest: '最新备份',
-  daily: '每日快照',
-  scheduled: '定时备份',
+  predelete: '删除存档前备份',
+  prerestore: '回档前保护备份',
+  latest: '历史备份',
+  daily: '历史备份',
+  scheduled: '历史备份',
 }
 
 function saveFarmMapSrc(save: SaveInfo): string | null {
@@ -237,7 +233,7 @@ export function SavesSection({
     setBackupMessage('')
     try {
       const result = await getSaveBackups()
-      setBackups([...result.backups].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
+      setBackups(result.backups)
       if (result.policy) {
         const normalizedPolicy = normalizeBackupPolicy(result.policy)
         setBackupPolicy(normalizedPolicy)
@@ -396,13 +392,21 @@ export function SavesSection({
     setRestoreError('')
     setBackupMessage('')
     try {
-      await restoreSaveBackup(restoreBackup.name, overwrite)
+      const result = await restoreSaveBackup(restoreBackup.name, overwrite, isRunning)
       setRestoreBackup(null)
       setRestoreNeedsOverwrite(false)
-      await loadSaves()
-      await loadBackups()
-      onStateRefresh()
-      onSavesChanged?.()
+      if (result.jobId) {
+        // Server was running: stop -> restore -> start submitted as one job.
+        // Let the existing job-polling/SSE machinery drive save/state refresh
+        // once it finishes, instead of reloading immediately (the restore
+        // itself hasn't happened yet at this point).
+        onJobStarted(result.jobId)
+      } else {
+        await loadSaves()
+        await loadBackups()
+        onStateRefresh()
+        onSavesChanged?.()
+      }
     } catch (error) {
       if (error instanceof ApiError && error.code === 'save_exists') {
         setRestoreNeedsOverwrite(true)
@@ -504,8 +508,19 @@ export function SavesSection({
   const confirmDeleteIsLastSave = confirmDeleteName !== null && saves.length === 1
   const confirmDeleteBlocked = busy || !isAdmin || (isRunning && confirmDeleteIsActive)
   const restoreSaveExists = restoreBackup ? saves.some((save) => save.name === restoreBackup.saveName) : false
-  const restoreBlocked = busy || isRunning || !isAdmin
+  // 回档相关按钮（列表行入口和弹窗内提交）都不再因服务器运行中禁用——确认后
+  // 会自动停止服务器、完成回档，再重新启动服务器（见 handleRestoreConfirmed
+  // 的 autoRestart），而不是给一个只有 hover 才看得到说明的禁用按钮。
+  const restoreBlocked = busy || !isAdmin
   const backupPolicyChanged = JSON.stringify(backupPolicyDraft) !== JSON.stringify(backupPolicy)
+  // 游戏日回档：按游戏内日期序号（不是现实创建时间）排序，后端已经按策略保留了最近 N 个游戏日。
+  const autoBackups = [...backups]
+    .filter((b) => b.kind === 'auto')
+    .sort((a, b) => (b.gameDayOrdinal ?? 0) - (a.gameDayOrdinal ?? 0))
+  // 其他备份：手动 / 删除前 / 回档前保护 / 历史遗留（latest、daily、scheduled），按现实创建时间排序。
+  const otherBackups = backups
+    .filter((b) => b.kind !== 'auto')
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 
   return (
     <section id="saves-section">
@@ -727,64 +742,39 @@ export function SavesSection({
         </div>
       ) : null}
 
-      {/* ── 备份与恢复 ── */}
+      {/* ── 游戏日回档 ── */}
       {isAdmin ? (
-        <section className="sd-save-backups-section" aria-label="备份与恢复">
+        <section className="sd-save-backups-section" aria-label="游戏日回档">
           <div className="sd-save-backup-policy-card">
             <div className="sd-save-backup-card-title">自动备份策略</div>
             <div className="sd-save-backup-policy">
               <label
                 className="sd-save-backup-toggle"
-                title="玩家睡觉完成保存后，覆盖同一份「最新备份」"
+                title="睡觉存档成功、存档已经落盘后，为当前游戏日创建/覆盖一个回档点"
               >
                 <input
                   type="checkbox"
                   checked={backupPolicyDraft.gameSaveBackups}
                   onChange={(e) => setBackupPolicyDraft((policy) => ({ ...policy, gameSaveBackups: e.target.checked }))}
                 />
-                <span className="sd-save-backup-toggle-label">游戏保存后更新最新备份</span>
-              </label>
-              <label
-                className="sd-save-backup-toggle sd-save-backup-toggle--schedule"
-                title="每天到点覆盖同一份「定时备份」"
-              >
-                <input
-                  type="checkbox"
-                  checked={backupPolicyDraft.scheduledBackups}
-                  onChange={(e) => setBackupPolicyDraft((policy) => ({ ...policy, scheduledBackups: e.target.checked }))}
-                />
-                <span className="sd-save-backup-toggle-label">定时备份</span>
-                <span className="sd-save-backup-frequency">每天</span>
-                <select
-                  value={backupPolicyDraft.scheduledHour}
-                  onChange={(e) => {
-                    const value = Math.max(0, Math.min(23, Number(e.target.value) || 0))
-                    setBackupPolicyDraft((policy) => ({ ...policy, scheduledHour: value }))
-                  }}
-                >
-                  {Array.from({ length: 24 }, (_, hour) => (
-                    <option key={hour} value={hour}>
-                      {String(hour).padStart(2, '0')}:00
-                    </option>
-                  ))}
-                </select>
+                <span className="sd-save-backup-toggle-label">睡觉存档后创建回档点</span>
               </label>
               <label
                 className="sd-save-backup-slider"
-                title="每天保留一份快照，超过天数自动删除最旧的"
+                title="按游戏内日期保留，与现实时间无关；同一游戏日多次保存会覆盖同一个回档点"
               >
                 <span className="sd-save-backup-slider-label">
-                  <span>每日快照保留</span>
-                  <strong>{backupPolicyDraft.dailyRetentionDays} 天</strong>
+                  <span>保留最近</span>
+                  <strong>{backupPolicyDraft.retainGameDays} 个游戏日</strong>
                 </span>
                 <input
                   type="range"
                   min={1}
                   max={14}
-                  value={backupPolicyDraft.dailyRetentionDays}
+                  value={backupPolicyDraft.retainGameDays}
                   onChange={(e) => {
-                    const value = Math.max(1, Math.min(14, Number(e.target.value) || 3))
-                    setBackupPolicyDraft((policy) => ({ ...policy, dailySnapshots: true, dailyRetentionDays: value }))
+                    const value = Math.max(1, Math.min(14, Number(e.target.value) || 5))
+                    setBackupPolicyDraft((policy) => ({ ...policy, retainGameDays: value }))
                   }}
                 />
               </label>
@@ -800,7 +790,7 @@ export function SavesSection({
           </div>
           <div className="sd-save-backup-list-card">
             <div className="sd-save-backups-header">
-              <div className="sd-save-backup-card-title">备份列表</div>
+              <div className="sd-save-backup-card-title">游戏日回档</div>
               <button
                 className="sd-btn-tan"
                 type="button"
@@ -812,9 +802,67 @@ export function SavesSection({
             </div>
             {backupMessage ? <div className="sd-saves-error">{backupMessage}</div> : null}
             {backupsLoading ? (
-              <div className="sd-srv-empty">读取备份列表中…</div>
-            ) : backups.length > 0 ? (
-              <div className="sd-save-backups-table" role="table" aria-label="备份列表">
+              <div className="sd-srv-empty">读取回档列表中…</div>
+            ) : autoBackups.length > 0 ? (
+              <div className="sd-save-gameday-table" role="table" aria-label="游戏日回档">
+                <div className="sd-save-backups-thead" role="row">
+                  <span>游戏内日期</span>
+                  <span>农场</span>
+                  <span>农场主</span>
+                  <span>创建时间</span>
+                  <span>大小</span>
+                  <span>操作</span>
+                </div>
+                {autoBackups.map((backup) => (
+                  <div className="sd-save-backup-row" role="row" key={backup.name}>
+                    <span className="sd-save-backup-cell">
+                      {backup.gameYear
+                        ? `第 ${backup.gameYear} 年 ${seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason ?? ''}季 ${backup.gameDay} 日`
+                        : <span className="sd-save-meta-muted">未知</span>}
+                    </span>
+                    <span className="sd-save-backup-cell">{backup.farmName || backup.saveName || '未知'}</span>
+                    <span className="sd-save-backup-cell">{backup.farmerName || '未知'}</span>
+                    <span className="sd-save-backup-cell">{new Date(backup.createdAt).toLocaleString()}</span>
+                    <span className="sd-save-backup-cell">{formatBytes(backup.size)}</span>
+                    <span className="sd-save-backup-actions sd-rowactions">
+                      <button
+                        className="sd-btn-green sd-btn--sm"
+                        type="button"
+                        disabled={restoreBlocked}
+                        title={!isAdmin ? '仅管理员可执行此操作' : undefined}
+                        onClick={() => openRestoreDialog(backup)}
+                      >
+                        回档到此日
+                      </button>
+                      <button
+                        className="sd-btn-delete sd-btn--sm"
+                        type="button"
+                        disabled={busy}
+                        title="彻底删除这个回档点，不影响当前存档"
+                        onClick={() => setDeleteBackupTarget(backup)}
+                      >
+                        删除
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="sd-srv-empty">暂无游戏日回档点。游戏内睡觉存档成功后会自动生成。</div>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {/* ── 其他备份：手动备份 / 删除存档前备份 / 回档前保护备份 / 历史备份 ── */}
+      {isAdmin ? (
+        <section className="sd-save-backups-section" aria-label="其他备份">
+          <div className="sd-save-backup-list-card sd-save-backup-list-card--full">
+            <div className="sd-save-backups-header">
+              <div className="sd-save-backup-card-title">其他备份</div>
+            </div>
+            {otherBackups.length > 0 ? (
+              <div className="sd-save-backups-table" role="table" aria-label="其他备份">
               <div className="sd-save-backups-thead" role="row">
                 <span>备份文件</span>
                 <span>所属农场</span>
@@ -823,7 +871,7 @@ export function SavesSection({
                 <span>状态</span>
                 <span>操作</span>
               </div>
-              {(showAllBackups ? backups : backups.slice(0, 5)).map((backup) => {
+              {(showAllBackups ? otherBackups : otherBackups.slice(0, 5)).map((backup) => {
                 const sameNameExists = saves.some((save) => save.name === backup.saveName)
                 const rowTitle = [
                   backupKindLabel[backup.kind] ?? backup.kind,
@@ -864,10 +912,10 @@ export function SavesSection({
                         className="sd-btn-green sd-btn--sm"
                         type="button"
                         disabled={restoreBlocked}
-                        title={isRunning ? '服务器运行中，请先停止后再恢复备份' : undefined}
+                        title={!isAdmin ? '仅管理员可执行此操作' : undefined}
                         onClick={() => openRestoreDialog(backup)}
                       >
-                        恢复
+                        回档到此日
                       </button>
                       <button
                         className="sd-btn-delete sd-btn--sm"
@@ -882,18 +930,18 @@ export function SavesSection({
                   </div>
                 )
               })}
-              {backups.length > 5 ? (
+              {otherBackups.length > 5 ? (
                 <button
                   type="button"
                   className="sd-save-backups-more"
                   onClick={() => setShowAllBackups((v) => !v)}
                 >
-                  {showAllBackups ? '收起备份 ︿' : `查看更多备份（${backups.length - 5}） ﹀`}
+                  {showAllBackups ? '收起备份 ︿' : `查看更多备份（${otherBackups.length - 5}） ﹀`}
                 </button>
               ) : null}
             </div>
             ) : (
-              <div className="sd-srv-empty">暂无备份。删除存档或覆盖恢复前会自动创建备份。</div>
+              <div className="sd-srv-empty">暂无其他备份。手动备份、删除存档前备份和回档前保护备份会显示在这里。</div>
             )}
           </div>
         </section>
@@ -983,23 +1031,23 @@ export function SavesSection({
         </div>
       ) : null}
 
-      {/* ── 恢复备份确认对话框 ── */}
+      {/* ── 回档确认对话框 ── */}
       {restoreBackup ? (
         <div className="sd-confirm-overlay">
           <div className="sd-confirm-dialog sd-confirm-dialog-wide">
-            <h3>恢复备份</h3>
+            <h3>回档到此日</h3>
             <p>
-              确定恢复备份 <strong>"{restoreBackup.name}"</strong> 吗？
-              恢复后会生成存档 <strong>"{restoreBackup.saveName}"</strong>。
+              确定回档到 <strong>"{restoreBackup.name}"</strong> 吗？
+              回档后会生成存档 <strong>"{restoreBackup.saveName}"</strong>。
             </p>
             {isRunning ? (
               <div className="sd-confirm-warning">
-                服务器正在运行。请先停止服务器，再恢复备份。
+                服务器正在运行中。确认后将自动停止服务器、完成回档，并重新启动服务器；整个过程可能需要几分钟，请勿在此期间反复点击。
               </div>
             ) : null}
             {restoreNeedsOverwrite || restoreSaveExists ? (
               <div className="sd-confirm-warning">
-                同名存档已存在。选择覆盖恢复时，系统会先备份当前存档，再用这个备份覆盖它。
+                同名存档已存在。选择覆盖回档时，系统会先备份当前存档，再用这个回档点覆盖它。
               </div>
             ) : null}
             {restoreError ? <div className="sd-saves-error">{restoreError}</div> : null}
@@ -1018,7 +1066,7 @@ export function SavesSection({
                 disabled={restoreBlocked || restoreNeedsOverwrite || restoreSaveExists}
                 onClick={() => void handleRestoreConfirmed(false)}
               >
-                {busy ? '恢复中…' : '确认恢复'}
+                {busy ? (isRunning ? '正在停止服务器…' : '回档中…') : isRunning ? '确认回档（自动重启服务器）' : '确认回档'}
               </button>
               {(restoreNeedsOverwrite || restoreSaveExists) ? (
                 <button
@@ -1027,7 +1075,7 @@ export function SavesSection({
                   disabled={restoreBlocked}
                   onClick={() => void handleRestoreConfirmed(true)}
                 >
-                  {busy ? '恢复中…' : '覆盖恢复'}
+                  {busy ? (isRunning ? '正在停止服务器…' : '回档中…') : isRunning ? '覆盖回档（自动重启服务器）' : '覆盖回档'}
                 </button>
               ) : null}
             </div>

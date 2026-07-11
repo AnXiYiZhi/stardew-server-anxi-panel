@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	appconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
@@ -528,5 +530,165 @@ func TestEnsureJunimoServerModSkipsWhenAlreadyPresent(t *testing.T) {
 	}
 	if called {
 		t.Fatal("RunContainerTTY should not be called when JunimoServer manifest exists")
+	}
+}
+
+// ── restore-then-restart (SAVE-RESTORE-AUTORESTART-1) ──────────────────────
+
+func TestRestoreBackupWithRestart_RequiresJobManager(t *testing.T) {
+	d := newTestDriver(&fakeConsoleDocker{})
+	instance := registry.Instance{ID: storage.DefaultInstanceID, DriverID: DriverID, DataDir: t.TempDir(), State: storage.InstanceStateRunning}
+
+	if _, err := d.RestoreBackupWithRestart(context.Background(), instance, "backup.zip", false, 1); err == nil {
+		t.Fatal("expected error when job manager not configured")
+	}
+}
+
+func newLifecycleTestStore(t *testing.T) *storage.Store {
+	t.Helper()
+	dir := t.TempDir()
+	store, err := storage.Open(context.Background(), appconfig.Config{
+		DataDir: dir,
+		DBPath:  filepath.Join(dir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+	return store
+}
+
+// TestDoRestoreAndRestart_StoppedSkipsStopAndStart verifies that when the
+// instance is already stopped, doRestoreAndRestart restores the backup
+// directly without touching docker compose at all (no unnecessary stop/start
+// around a restore that doesn't need one).
+func TestDoRestoreAndRestart_StoppedSkipsStopAndStart(t *testing.T) {
+	dataDir := t.TempDir()
+	createTestSaveForBackup(t, dataDir, "TestSave")
+	backupPath, err := BackupManual(dataDir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupManual: %v", err)
+	}
+	backupName := filepath.Base(backupPath)
+
+	store := newLifecycleTestStore(t)
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{DataDir: dataDir}); err != nil {
+		t.Fatalf("EnsureDefaultInstance: %v", err)
+	}
+	composeDownCalled := false
+	composeUpCalled := false
+	fake := &fakeConsoleDocker{
+		composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			composeDownCalled = true
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+		composeUpFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			composeUpCalled = true
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	driver := New(fake, slog.Default(), manager, store)
+
+	runner := &lifecycleRunner{
+		driver:    driver,
+		lifecycle: fake,
+		instance: storage.Instance{
+			ID: storage.DefaultInstanceID, DataDir: dataDir,
+			State: storage.InstanceStateStopped, DriverPhase: "stopped",
+		},
+		operation:         "restore_restart",
+		restoreBackupName: backupName,
+		restoreOverwrite:  true, // TestSave dir still exists on disk from createTestSaveForBackup
+	}
+
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: "test", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		Timeout: 5 * time.Second, Run: runner.run,
+	})
+	if err != nil {
+		t.Fatalf("start job: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+
+	if composeDownCalled || composeUpCalled {
+		t.Fatalf("stopped instance should not trigger compose down/up: down=%v up=%v", composeDownCalled, composeUpCalled)
+	}
+	updated, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.DriverPhase != "restored" {
+		t.Fatalf("DriverPhase = %q, want restored", updated.DriverPhase)
+	}
+}
+
+// TestDoRestoreAndRestart_RunningStopsThenRestoresBeforeStarting verifies the
+// stop -> restore -> start ordering when the server is running: compose down
+// must happen (and the save must already be restored on disk) before compose
+// up is attempted, even though the fake ComposeUp deliberately fails here to
+// avoid needing to mock the full doStart success path (container-running
+// polling, invite code retrieval, etc. — none of that is exercised anywhere
+// else in this package either).
+func TestDoRestoreAndRestart_RunningStopsThenRestoresBeforeStarting(t *testing.T) {
+	dataDir := t.TempDir()
+	createTestSaveForBackup(t, dataDir, "TestSave")
+	backupPath, err := BackupManual(dataDir, "TestSave")
+	if err != nil {
+		t.Fatalf("BackupManual: %v", err)
+	}
+	backupName := filepath.Base(backupPath)
+
+	store := newLifecycleTestStore(t)
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{DataDir: dataDir}); err != nil {
+		t.Fatalf("EnsureDefaultInstance: %v", err)
+	}
+	var calls []string
+	fake := &fakeConsoleDocker{
+		composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			calls = append(calls, "down")
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+		composeUpFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			calls = append(calls, "up")
+			return paneldocker.CommandResult{}, errors.New("compose up unavailable in test")
+		},
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	driver := New(fake, slog.Default(), manager, store)
+
+	runner := &lifecycleRunner{
+		driver:    driver,
+		lifecycle: fake,
+		instance: storage.Instance{
+			ID: storage.DefaultInstanceID, DataDir: dataDir,
+			State: storage.InstanceStateRunning, DriverPhase: "running",
+		},
+		operation:         "restore_restart",
+		restoreBackupName: backupName,
+		restoreOverwrite:  true,
+	}
+
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: "test", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		Timeout: 5 * time.Second, Run: runner.run,
+	})
+	if err != nil {
+		t.Fatalf("start job: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+
+	if len(calls) < 1 || calls[0] != "down" {
+		t.Fatalf("expected compose down to run first, got %#v", calls)
+	}
+
+	// The restore must have already happened (between stop and the failed
+	// start attempt) — verified by re-reading the save from disk.
+	info := readSaveInfo(filepath.Join(dataDir, ".local-container", "saves", "Saves", "TestSave"))
+	if info.ParseError != "" {
+		t.Fatalf("expected restored save to parse cleanly, got: %s", info.ParseError)
 	}
 }

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
-  BackupPolicy,
   CurrentUser,
   InstanceState,
   Job,
@@ -9,7 +8,7 @@ import type {
   RestartSchedule,
   SaveInfo,
 } from '../../types'
-import { getInstanceMetrics, getRestartSchedule, getSaveBackupPolicy } from '../../api'
+import { getInstanceMetrics, getRestartSchedule } from '../../api'
 import { jobDisplayName, stateLabel } from '../../core/helpers'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
@@ -393,7 +392,6 @@ function OpsRailActiveCard({
   instanceState: InstanceState | null
 }) {
   const [schedule, setSchedule] = useState<RestartSchedule | null>(null)
-  const [backupPolicy, setBackupPolicy] = useState<BackupPolicy | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -412,13 +410,6 @@ function OpsRailActiveCard({
       } catch {
         if (alive) setSchedule(null)
       }
-      try {
-        const res = await getSaveBackupPolicy()
-        if (alive) setBackupPolicy(res.policy)
-      } catch {
-        // 备份策略接口仅管理员可读，普通用户静默隐藏定时备份行
-        if (alive) setBackupPolicy(null)
-      }
       if (alive) {
         timer = window.setTimeout(() => void loadConfig(), 60_000)
       }
@@ -434,16 +425,6 @@ function OpsRailActiveCard({
   const { rows: restartRows, hiddenJobIds } = maintenanceRows(schedule, now, jobs, jobLogsByJobId, instanceState)
   const activeJobs = jobs.filter((j) => (j.status === 'running' || j.status === 'queued') && !hiddenJobIds.has(j.id))
 
-  const countdowns: { key: string; label: string; at: number }[] = []
-  if (backupPolicy?.scheduledBackups) {
-    // 定时备份为每日 scheduledHour 整点（以面板本地时间近似后端本地时间）
-    const next = new Date(now)
-    next.setHours(backupPolicy.scheduledHour, 0, 0, 0)
-    if (next.getTime() <= now) next.setDate(next.getDate() + 1)
-    countdowns.push({ key: 'scheduled-backup', label: '定时备份', at: next.getTime() })
-  }
-  countdowns.sort((a, b) => a.at - b.at)
-
   return (
     <section className="sd-ops-card sd-ops-card-active sd-opsrail-section sd-opsrail-active">
       <h2 className="sd-opsrail-heading">
@@ -451,7 +432,7 @@ function OpsRailActiveCard({
         <span>进行中</span>
       </h2>
       <div className="sd-opsrail-list">
-        {restartRows.length === 0 && countdowns.length === 0 && activeJobs.length === 0 ? (
+        {restartRows.length === 0 && activeJobs.length === 0 ? (
           <p className="sd-opsrail-empty">暂无进行中的任务</p>
         ) : (
           <>
@@ -470,22 +451,6 @@ function OpsRailActiveCard({
                 </div>
               </div>
             ))}
-            {countdowns.map((entry) => {
-              // 倒计时事件都是每日一次，进度条按 24h 周期内已经过的比例填充
-              const width = Math.max(0, Math.min(100, ((DAY_MS - (entry.at - now)) / DAY_MS) * 100))
-              return (
-                <div key={entry.key} className="sd-opsrail-hstat sd-opsrail-hstat--info">
-                  <div className="sd-opsrail-hstat-row">
-                    <span className="sd-opsrail-hstat-orb" aria-hidden="true" />
-                    <span className="sd-opsrail-hstat-label">{entry.label}</span>
-                    <span className="sd-opsrail-hstat-value">{formatCountdown(entry.at - now)}</span>
-                  </div>
-                  <div className="sd-opsrail-hstat-bar">
-                    <span className="sd-opsrail-hstat-fill" style={{ width: `${width}%` }} />
-                  </div>
-                </div>
-              )
-            })}
             {activeJobs.map((job) => {
               const percent = runningJobPercent(job, jobs, now, jobLogsByJobId[job.id] ?? [])
               return (

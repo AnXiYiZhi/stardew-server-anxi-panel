@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -129,7 +130,10 @@ func listSaveDirs(dataDir string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
+		// Skip dot-prefixed directories such as leftover ".restore-tmp-*"
+		// extraction folders from an interrupted restore — these are never
+		// legitimate save names and must not be listed/selected as saves.
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
 			names = append(names, e.Name())
 		}
 	}
@@ -1410,37 +1414,34 @@ func backupsDir(dataDir string) string {
 
 // BackupInfo describes a single backup file.
 type BackupInfo struct {
-	Name          string `json:"name"`
-	SaveName      string `json:"saveName"`
-	Kind          string `json:"kind"`
-	Size          int64  `json:"size"`
-	CreatedAt     string `json:"createdAt"`
-	FarmerName    string `json:"farmerName,omitempty"`
-	FarmName      string `json:"farmName,omitempty"`
-	GameYear      int    `json:"gameYear,omitempty"`
-	GameSeason    string `json:"gameSeason,omitempty"`
-	GameDay       int    `json:"gameDay,omitempty"`
-	FarmType      string `json:"farmType,omitempty"`
-	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
-	ParseError    string `json:"parseError,omitempty"`
+	Name           string `json:"name"`
+	SaveName       string `json:"saveName"`
+	Kind           string `json:"kind"`
+	Size           int64  `json:"size"`
+	CreatedAt      string `json:"createdAt"`
+	FarmerName     string `json:"farmerName,omitempty"`
+	FarmName       string `json:"farmName,omitempty"`
+	GameYear       int    `json:"gameYear,omitempty"`
+	GameSeason     string `json:"gameSeason,omitempty"`
+	GameDay        int    `json:"gameDay,omitempty"`
+	GameDayOrdinal int    `json:"gameDayOrdinal,omitempty"`
+	FarmType       string `json:"farmType,omitempty"`
+	FileSizeBytes  int64  `json:"fileSizeBytes,omitempty"`
+	ParseError     string `json:"parseError,omitempty"`
 }
 
+// BackupPolicy controls the automatic per-game-day backup point mechanism.
+// Retention and ordering are driven entirely by in-game date (year/season/day),
+// not by real-world creation time. Older scheduled/daily-snapshot fields have
+// been removed; unknown legacy JSON fields are silently ignored on read.
 type BackupPolicy struct {
-	GameSaveBackups       bool `json:"gameSaveBackups"`
-	DailySnapshots        bool `json:"dailySnapshots"`
-	DailyRetentionDays    int  `json:"dailyRetentionDays"`
-	ScheduledBackups      bool `json:"scheduledBackups"`
-	ScheduledHour         int  `json:"scheduledHour"`
-	ScheduledIntervalHour int  `json:"scheduledIntervalHours,omitempty"`
+	GameSaveBackups bool `json:"gameSaveBackups"`
+	RetainGameDays  int  `json:"retainGameDays"`
 }
 
 type BackupMaintenanceResult struct {
 	CreatedBackupNames []string `json:"createdBackupNames"`
 	ConsumedEvents     int      `json:"consumedEvents"`
-}
-
-type backupMaintenanceState struct {
-	LastScheduledAt string `json:"lastScheduledAt"`
 }
 
 type saveEventFile struct {
@@ -1451,11 +1452,8 @@ type saveEventFile struct {
 
 func DefaultBackupPolicy() BackupPolicy {
 	return BackupPolicy{
-		GameSaveBackups:    true,
-		DailySnapshots:     true,
-		DailyRetentionDays: 3,
-		ScheduledBackups:   false,
-		ScheduledHour:      4,
+		GameSaveBackups: true,
+		RetainGameDays:  5,
 	}
 }
 
@@ -1463,29 +1461,40 @@ func backupPolicyPath(dataDir string) string {
 	return filepath.Join(backupsDir(dataDir), "policy.json")
 }
 
-func backupMaintenanceStatePath(dataDir string) string {
-	return filepath.Join(backupsDir(dataDir), "maintenance-state.json")
-}
-
 func saveEventsDir(dataDir string) string {
 	return filepath.Join(controlDir(dataDir), "save-events")
 }
 
 func normalizeBackupPolicy(policy BackupPolicy) BackupPolicy {
-	if policy.DailyRetentionDays <= 0 {
-		policy.DailyRetentionDays = 3
+	if policy.RetainGameDays <= 0 {
+		policy.RetainGameDays = 5
 	}
-	if policy.DailyRetentionDays > 14 {
-		policy.DailyRetentionDays = 14
+	if policy.RetainGameDays > 14 {
+		policy.RetainGameDays = 14
 	}
-	if policy.ScheduledHour < 0 {
-		policy.ScheduledHour = 0
-	}
-	if policy.ScheduledHour > 23 {
-		policy.ScheduledHour = 23
-	}
-	policy.ScheduledIntervalHour = 0
 	return policy
+}
+
+// gameDayOrdinal converts a save's in-game year/season/day into a single
+// monotonically increasing integer, so auto backups can be sorted and pruned
+// purely by game time and correctly handle season/year rollovers.
+func gameDayOrdinal(year int, season string, day int) int {
+	return (year-1)*112 + seasonIndex(season)*28 + day
+}
+
+func seasonIndex(season string) int {
+	switch strings.ToLower(strings.TrimSpace(season)) {
+	case "spring":
+		return 0
+	case "summer":
+		return 1
+	case "fall", "autumn":
+		return 2
+	case "winter":
+		return 3
+	default:
+		return 0
+	}
 }
 
 func ReadBackupPolicy(dataDir string) (BackupPolicy, error) {
@@ -1522,6 +1531,16 @@ func WriteBackupPolicy(dataDir string, policy BackupPolicy) (BackupPolicy, error
 // The backup filename includes the save name and a timestamp.
 // Returns the backup file path on success.
 func BackupSave(dataDir, saveName string) (string, error) {
+	timestamp := time.Now().UTC().Format("20060102-150405")
+	return writeSaveZip(dataDir, saveName, fmt.Sprintf("%s_%s.zip", saveName, timestamp))
+}
+
+// writeSaveZip zips the current on-disk contents of saveName into
+// backupsDir(dataDir)/backupName. Callers that need a guaranteed-unique
+// intermediate filename (e.g. backupSaveAs, to avoid colliding with another
+// backup file that may be open elsewhere) should pass one in rather than
+// relying on second-precision timestamps.
+func writeSaveZip(dataDir, saveName, backupName string) (string, error) {
 	if err := validateSaveName(saveName); err != nil {
 		return "", err
 	}
@@ -1543,8 +1562,6 @@ func BackupSave(dataDir, saveName string) (string, error) {
 		return "", fmt.Errorf("创建备份目录失败: %w", err)
 	}
 
-	timestamp := time.Now().UTC().Format("20060102-150405")
-	backupName := fmt.Sprintf("%s_%s.zip", saveName, timestamp)
 	backupPath := filepath.Join(backupDir, backupName)
 
 	zf, err := os.Create(backupPath)
@@ -1621,31 +1638,99 @@ func BackupSave(dataDir, saveName string) (string, error) {
 	return backupPath, nil
 }
 
-func BackupLatest(dataDir, saveName string) (string, error) {
-	return backupSaveAs(dataDir, saveName, fmt.Sprintf("latest_%s.zip", saveName))
+// BackupManual creates an explicitly-triggered backup: admin "手动备份" clicks,
+// the server page's "备份已保存进度" quick action, and the restart scheduler's
+// before-shutdown backup all use this. Manual backups never occupy the
+// auto game-day retention quota and are never touched by its cleanup.
+func BackupManual(dataDir, saveName string) (string, error) {
+	return backupSaveAsUnique(dataDir, saveName, "manual")
 }
 
-func BackupScheduled(dataDir, saveName string) (string, error) {
-	return backupSaveAs(dataDir, saveName, fmt.Sprintf("scheduled_%s.zip", saveName))
+// BackupPreDelete creates a protective backup before a save is deleted.
+func BackupPreDelete(dataDir, saveName string) (string, error) {
+	return backupSaveAsUnique(dataDir, saveName, "predelete")
 }
 
-func BackupDailySnapshot(dataDir, saveName string, now time.Time, retentionDays int) (string, error) {
-	retentionDays = normalizeBackupPolicy(BackupPolicy{DailyRetentionDays: retentionDays}).DailyRetentionDays
-	path, err := backupSaveAs(dataDir, saveName, fmt.Sprintf("daily_%s_%s.zip", saveName, now.UTC().Format("20060102")))
+// BackupPreRestore creates a protective backup before an existing save is
+// overwritten by a restore. Restore must abort if this fails.
+func BackupPreRestore(dataDir, saveName string) (string, error) {
+	return backupSaveAsUnique(dataDir, saveName, "prerestore")
+}
+
+func backupSaveAsUnique(dataDir, saveName, kindPrefix string) (string, error) {
+	timestamp := time.Now().UTC().Format("20060102-150405")
+	return backupSaveAs(dataDir, saveName, fmt.Sprintf("%s_%s_%s.zip", kindPrefix, saveName, timestamp))
+}
+
+// BackupAutoGameDay creates (or overwrites) the automatic backup point for the
+// save's *current* in-game day. The target filename is deterministic from the
+// game's year/season/day, so saving again on the same in-game day — including
+// after restoring to an earlier day and replaying back to it — naturally
+// overwrites the same file instead of accumulating duplicates.
+func BackupAutoGameDay(dataDir, saveName string) (string, error) {
+	if err := validateSaveName(saveName); err != nil {
+		return "", err
+	}
+	saveDir := filepath.Join(savesDir(dataDir), "Saves", saveName)
+	info := readSaveInfo(saveDir)
+	if info.GameYear <= 0 || info.GameDay <= 0 {
+		return "", fmt.Errorf("无法读取存档 %q 的当前游戏日期，跳过本次自动回档: %s", saveName, info.ParseError)
+	}
+	ordinal := gameDayOrdinal(info.GameYear, info.GameSeason, info.GameDay)
+	return backupSaveAs(dataDir, saveName, fmt.Sprintf("auto_%s_%06d.zip", saveName, ordinal))
+}
+
+// PruneAutoGameDayBackups keeps only the retainGameDays most recent distinct
+// in-game days of auto backups for the given save, ordered by the game-day
+// ordinal encoded in the filename (never by real creation time).
+func PruneAutoGameDayBackups(dataDir, saveName string, retainGameDays int) error {
+	retainGameDays = normalizeBackupPolicy(BackupPolicy{RetainGameDays: retainGameDays}).RetainGameDays
+	prefix := fmt.Sprintf("auto_%s_", saveName)
+	entries, err := os.ReadDir(backupsDir(dataDir))
+	if os.IsNotExist(err) {
+		return nil
+	}
 	if err != nil {
-		return "", err
+		return err
 	}
-	if err := PruneDailySnapshots(dataDir, now.UTC(), retentionDays); err != nil {
-		return "", err
+	type autoFile struct {
+		name    string
+		ordinal int
 	}
-	return path, nil
+	var files []autoFile
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".zip") {
+			continue
+		}
+		ordinalStr := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".zip")
+		ordinal, err := strconv.Atoi(ordinalStr)
+		if err != nil {
+			continue
+		}
+		files = append(files, autoFile{name: name, ordinal: ordinal})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].ordinal > files[j].ordinal })
+	for i := retainGameDays; i < len(files); i++ {
+		if err := os.Remove(filepath.Join(backupsDir(dataDir), files[i].name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backupSaveAs(dataDir, saveName, backupName string) (string, error) {
 	if err := validateBackupName(backupName); err != nil {
 		return "", err
 	}
-	tempPath, err := BackupSave(dataDir, saveName)
+	// Use a name that can never collide with any real backup file (including
+	// one that might currently be open elsewhere, e.g. the source ZIP being
+	// restored from), instead of BackupSave's second-precision timestamp.
+	tempName := fmt.Sprintf(".tmp-%d-%s", time.Now().UnixNano(), backupName)
+	tempPath, err := writeSaveZip(dataDir, saveName, tempName)
 	if err != nil {
 		return "", err
 	}
@@ -1661,12 +1746,15 @@ func backupSaveAs(dataDir, saveName, backupName string) (string, error) {
 	return targetPath, nil
 }
 
+// RunBackupMaintenance consumes pending save-events (written by the SMAPI
+// control mod after the game finishes writing a save to disk) and, when the
+// policy enables it, creates/overwrites that save's auto game-day backup
+// point and prunes older game days beyond the configured retention.
 func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 	policy, err := ReadBackupPolicy(dataDir)
 	if err != nil {
 		return BackupMaintenanceResult{}, err
 	}
-	now := time.Now()
 	result := BackupMaintenanceResult{}
 	eventPaths, err := filepath.Glob(filepath.Join(saveEventsDir(dataDir), "*.json"))
 	if err != nil {
@@ -1679,21 +1767,16 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 			continue
 		}
 		if policy.GameSaveBackups {
-			created, err := runAutoBackupsForSave(dataDir, event.SaveName, policy, now, true)
+			created, err := runAutoGameDayBackupForSave(dataDir, event.SaveName, policy.RetainGameDays)
 			if err != nil {
 				return result, err
 			}
-			result.CreatedBackupNames = append(result.CreatedBackupNames, created...)
+			if created != "" {
+				result.CreatedBackupNames = append(result.CreatedBackupNames, created)
+			}
 		}
 		_ = os.Remove(path)
 		result.ConsumedEvents++
-	}
-	if policy.ScheduledBackups {
-		created, err := runScheduledBackupIfDue(dataDir, policy, now)
-		if err != nil {
-			return result, err
-		}
-		result.CreatedBackupNames = append(result.CreatedBackupNames, created...)
 	}
 	return result, nil
 }
@@ -1713,154 +1796,26 @@ func readSaveEvent(path string) (saveEventFile, error) {
 	return event, nil
 }
 
-func runAutoBackupsForSave(dataDir, saveName string, policy BackupPolicy, now time.Time, latest bool) ([]string, error) {
+func runAutoGameDayBackupForSave(dataDir, saveName string, retainGameDays int) (string, error) {
 	if err := ValidateSaveExists(dataDir, saveName); err != nil {
-		return nil, err
+		return "", err
 	}
-	var created []string
-	if latest {
-		path, err := BackupLatest(dataDir, saveName)
-		if err != nil {
-			return created, err
-		}
-		created = append(created, filepath.Base(path))
-	}
-	if policy.DailySnapshots {
-		path, err := BackupDailySnapshot(dataDir, saveName, now, policy.DailyRetentionDays)
-		if err != nil {
-			return created, err
-		}
-		created = append(created, filepath.Base(path))
-	}
-	return created, nil
-}
-
-func runScheduledBackupIfDue(dataDir string, policy BackupPolicy, now time.Time) ([]string, error) {
-	saveName := GetActiveSaveName(dataDir)
-	if saveName == "" {
-		return nil, nil
-	}
-	state := readBackupMaintenanceState(dataDir)
-	if !scheduledBackupDue(state.LastScheduledAt, now, policy.ScheduledHour) {
-		return nil, nil
-	}
-	if err := ValidateSaveExists(dataDir, saveName); err != nil {
-		return nil, err
-	}
-	path, err := BackupScheduled(dataDir, saveName)
+	path, err := BackupAutoGameDay(dataDir, saveName)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	created := []string{filepath.Base(path)}
-	if policy.DailySnapshots {
-		dailyPath, err := BackupDailySnapshot(dataDir, saveName, now, policy.DailyRetentionDays)
-		if err != nil {
-			return created, err
-		}
-		created = append(created, filepath.Base(dailyPath))
+	name := filepath.Base(path)
+	if err := PruneAutoGameDayBackups(dataDir, saveName, retainGameDays); err != nil {
+		return name, err
 	}
-	state.LastScheduledAt = now.Format(time.RFC3339)
-	if err := writeBackupMaintenanceState(dataDir, state); err != nil {
-		return created, err
-	}
-	return created, nil
-}
-
-func scheduledBackupDue(lastScheduledAt string, now time.Time, scheduledHour int) bool {
-	policy := normalizeBackupPolicy(BackupPolicy{ScheduledHour: scheduledHour})
-	localNow := now.Local()
-	if localNow.Hour() < policy.ScheduledHour {
-		return false
-	}
-	if lastScheduledAt == "" {
-		return true
-	}
-	last, err := time.Parse(time.RFC3339, lastScheduledAt)
-	if err != nil {
-		return true
-	}
-	lastLocal := last.Local()
-	nowYear, nowMonth, nowDay := localNow.Date()
-	lastYear, lastMonth, lastDay := lastLocal.Date()
-	if lastYear > nowYear || (lastYear == nowYear && lastMonth > nowMonth) || (lastYear == nowYear && lastMonth == nowMonth && lastDay > nowDay) {
-		return false
-	}
-	return lastYear != nowYear || lastMonth != nowMonth || lastDay != nowDay
-}
-
-func readBackupMaintenanceState(dataDir string) backupMaintenanceState {
-	data, err := os.ReadFile(backupMaintenanceStatePath(dataDir))
-	if err != nil {
-		return backupMaintenanceState{}
-	}
-	var state backupMaintenanceState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return backupMaintenanceState{}
-	}
-	return state
-}
-
-func writeBackupMaintenanceState(dataDir string, state backupMaintenanceState) error {
-	if err := os.MkdirAll(backupsDir(dataDir), 0o755); err != nil {
-		return err
-	}
-	data, err := marshalJSON(state)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(backupMaintenanceStatePath(dataDir), data, 0o644)
-}
-
-func PruneDailySnapshots(dataDir string, now time.Time, retentionDays int) error {
-	cutoff := now.AddDate(0, 0, -retentionDays+1).Format("20060102")
-	entries, err := os.ReadDir(backupsDir(dataDir))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasPrefix(name, "daily_") || !strings.HasSuffix(name, ".zip") {
-			continue
-		}
-		date := dailySnapshotDate(name)
-		if date != "" && date < cutoff {
-			if err := os.Remove(filepath.Join(backupsDir(dataDir), name)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func dailySnapshotDate(name string) string {
-	base := strings.TrimSuffix(name, ".zip")
-	idx := strings.LastIndex(base, "_")
-	if idx < 0 {
-		return ""
-	}
-	date := base[idx+1:]
-	if len(date) != 8 {
-		return ""
-	}
-	for _, ch := range date {
-		if ch < '0' || ch > '9' {
-			return ""
-		}
-	}
-	return date
+	return name, nil
 }
 
 // DeleteSaveWithBackup creates a backup before deleting the save.
 // If the backup fails, the delete is aborted to prevent unrecoverable data loss.
 func DeleteSaveWithBackup(dataDir, saveName string) (backupPath string, err error) {
 	// Attempt backup first — failure blocks deletion.
-	backupPath, backupErr := BackupSave(dataDir, saveName)
+	backupPath, backupErr := BackupPreDelete(dataDir, saveName)
 	if backupErr != nil {
 		return "", fmt.Errorf("备份失败，已中止删除以保护数据: %w", backupErr)
 	}
@@ -1960,6 +1915,9 @@ func enrichBackupInfo(backupPath string, backup *BackupInfo) {
 	backup.GameDay = info.GameDay
 	backup.FarmType = info.FarmType
 	backup.ParseError = info.ParseError
+	if info.GameYear > 0 {
+		backup.GameDayOrdinal = gameDayOrdinal(info.GameYear, info.GameSeason, info.GameDay)
+	}
 }
 
 func readZipEntry(files []*zip.File, name string) ([]byte, uint64, bool) {
@@ -2089,8 +2047,10 @@ func RestoreBackup(dataDir, backupName string, overwrite bool) (string, error) {
 			_ = zr.Close()
 			return saveName, fmt.Errorf("存档 %q 已存在，请使用覆盖选项或先删除已有存档", saveName)
 		}
-		// Backup existing save before overwriting.
-		if _, backupErr := BackupSave(dataDir, saveName); backupErr != nil {
+		// Backup existing save before overwriting. This protection backup is
+		// required to succeed — restore aborts otherwise — and is excluded
+		// from the auto game-day retention quota and its cleanup.
+		if _, backupErr := BackupPreRestore(dataDir, saveName); backupErr != nil {
 			_ = zr.Close()
 			return "", fmt.Errorf("覆盖前备份已有存档失败，已中止恢复以保护数据: %w", backupErr)
 		}
@@ -2106,17 +2066,16 @@ func RestoreBackup(dataDir, backupName string, overwrite bool) (string, error) {
 	}
 	defer func() { _ = zr.Close() }()
 
-	// Extract to a temporary directory first — atomic approach.
+	// Extract to a temporary directory first — atomic approach. tempDir is
+	// always removed afterwards: on success its only child has already been
+	// renamed out to targetDir below (leaving it empty), and on any failure
+	// it may still hold partial extraction output that must not leak into
+	// the Saves/ directory and be mistaken for a real save.
 	tempDir, err := os.MkdirTemp(savesRoot, ".restore-tmp-*")
 	if err != nil {
 		return "", fmt.Errorf("创建临时目录失败: %w", err)
 	}
-	success := false
-	defer func() {
-		if !success {
-			_ = os.RemoveAll(tempDir)
-		}
-	}()
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	if err := extractZipSecure(zr, tempDir); err != nil {
 		return "", fmt.Errorf("解压备份失败: %w", err)
@@ -2138,7 +2097,6 @@ func RestoreBackup(dataDir, backupName string, overwrite bool) (string, error) {
 		return "", fmt.Errorf("移动恢复存档到目标位置失败: %w", err)
 	}
 
-	success = true
 	return saveName, nil
 }
 
@@ -2151,7 +2109,7 @@ func parseBackupSaveName(filename string) string {
 			return strings.TrimPrefix(name, prefix)
 		}
 	}
-	for _, prefix := range []string{"daily_", "manual_"} {
+	for _, prefix := range []string{"daily_", "manual_", "auto_", "predelete_", "prerestore_"} {
 		if strings.HasPrefix(name, prefix) {
 			rest := strings.TrimPrefix(name, prefix)
 			if idx := strings.LastIndex(rest, "_"); idx > 0 {
@@ -2175,14 +2133,22 @@ func parseBackupSaveName(filename string) string {
 func inferBackupKind(filename string) string {
 	name := strings.TrimSuffix(filename, ".zip")
 	switch {
+	case strings.HasPrefix(name, "auto_"):
+		return "auto"
+	case strings.HasPrefix(name, "predelete_"):
+		return "predelete"
+	case strings.HasPrefix(name, "prerestore_"):
+		return "prerestore"
+	case strings.HasPrefix(name, "manual_"):
+		return "manual"
+	// Legacy kinds: no longer produced by RunBackupMaintenance, but existing
+	// files on disk are still recognized so they are not lost or misfiled.
 	case strings.HasPrefix(name, "latest_"):
 		return "latest"
 	case strings.HasPrefix(name, "scheduled_"):
 		return "scheduled"
 	case strings.HasPrefix(name, "daily_"):
 		return "daily"
-	case strings.HasPrefix(name, "manual_"):
-		return "manual"
 	default:
 		return "manual"
 	}

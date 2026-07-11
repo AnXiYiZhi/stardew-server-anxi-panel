@@ -56,9 +56,14 @@ type lifecycleRunner struct {
 	driver    *Driver
 	lifecycle LifecycleDockerService
 	instance  storage.Instance
-	operation string // "start", "stop", "restart"
+	operation string // "start", "stop", "restart", "restore_restart"
 	actorID   int64
 	newGame   bool // When true, send "settings newgame --confirm" after server starts.
+
+	// Set when operation == "restore_restart": which backup to restore before
+	// (re)starting the server.
+	restoreBackupName string
+	restoreOverwrite  bool
 
 	steamAuthRefreshAttempted bool
 }
@@ -172,6 +177,51 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	return nil
 }
 
+// RestoreBackupWithRestart runs stop -> restore -> start as a single async
+// lifecycle job. It exists for the case where the admin wants to restore a
+// backup while the server is currently running: rather than making them
+// manually stop the server first, this submits one job that stops it,
+// restores the backup on disk, and starts it again — tracked by the caller
+// exactly like a plain Start/Stop/Restart job (same jobId, same job log /
+// SSE polling UI).
+func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry.Instance, backupName string, overwrite bool, actorID int64) (*registry.Job, error) {
+	if d.jobs == nil {
+		return nil, fmt.Errorf("driver: job manager not configured")
+	}
+	ld, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return nil, fmt.Errorf("docker 服务不支持生命周期操作")
+	}
+	stored, err := d.store.GetInstance(ctx, instance.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "回档请求已提交，取消旧的生命周期任务。"); err != nil {
+		return nil, err
+	}
+	runner := &lifecycleRunner{
+		driver:            d,
+		lifecycle:         ld,
+		instance:          stored,
+		operation:         "restore_restart",
+		actorID:           actorID,
+		restoreBackupName: backupName,
+		restoreOverwrite:  overwrite,
+	}
+	job, err := d.jobs.Start(ctx, jobs.Spec{
+		Type:       lifecycleJobType,
+		TargetType: "instance",
+		TargetID:   instance.ID,
+		CreatedBy:  actorID,
+		Timeout:    lifecycleJobTimeout,
+		Run:        runner.run,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("start restore-restart job: %w", err)
+	}
+	return &registry.Job{ID: job.ID}, nil
+}
+
 func (d *Driver) cancelActiveLifecycleJobs(ctx context.Context, instanceID, reason string) error {
 	if d.jobs == nil {
 		return nil
@@ -199,6 +249,8 @@ func (r *lifecycleRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		return r.doStop(ctx, jobCtx)
 	case "restart":
 		return r.doRestart(ctx, jobCtx)
+	case "restore_restart":
+		return r.doRestoreAndRestart(ctx, jobCtx)
 	default:
 		return fmt.Errorf("未知的生命周期操作: %s", r.operation)
 	}
@@ -353,6 +405,36 @@ func (r *lifecycleRunner) doStop(ctx context.Context, jobCtx *jobs.Context) erro
 	_ = ClearModsRestartRequired(r.instance.DataDir)
 	_, _ = jobCtx.Info(ctx, "服务器已停止")
 	return nil
+}
+
+// doRestoreAndRestart stops the server (if it was running), restores the
+// requested backup onto disk, then starts the server again. Reuses doStop/
+// doStart verbatim rather than duplicating their compose/mod-sync/invite-code
+// logic, so this stays in lockstep with any future change to plain start/stop.
+func (r *lifecycleRunner) doRestoreAndRestart(ctx context.Context, jobCtx *jobs.Context) error {
+	wasRunning := r.instance.State == storage.InstanceStateRunning || r.instance.State == storage.InstanceStateStarting
+	if wasRunning {
+		if err := r.doStop(ctx, jobCtx); err != nil {
+			return err
+		}
+	}
+
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("正在回档到备份 %s...", r.restoreBackupName))
+	saveName, err := RestoreBackup(r.instance.DataDir, r.restoreBackupName, r.restoreOverwrite)
+	if err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+			"回档失败: "+err.Error(), "restore_failed", jobCtx.ID)
+		return err
+	}
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("回档完成，当前存档已切换为 %s", saveName))
+
+	if !wasRunning {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "回档完成", "restored", jobCtx.ID)
+		return nil
+	}
+
+	_, _ = jobCtx.Info(ctx, "正在重新启动服务器...")
+	return r.doStart(ctx, jobCtx)
 }
 
 func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) error {
