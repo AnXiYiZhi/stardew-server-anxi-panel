@@ -62,14 +62,17 @@ func warpPlayerHome(instance registry.Instance, uniqueMultiplayerID, name string
 	}
 
 	start := time.Now()
-	if err := writePanelCommand(instance.DataDir, "warp-home", map[string]string{
+	commandID, err := writePanelCommand(instance.DataDir, "warp-home", map[string]string{
 		"uniqueMultiplayerId": uniqueMultiplayerID,
 		"name":                strings.TrimSpace(name),
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("写入回家传送命令失败: %w", err)
 	}
 	return &CommandRunResult{
 		Command:    "warp-home",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
 		Output:     "回家传送指令已提交，控制模组会在游戏 tick 中调用 JunimoServer 的 WarpHome 逻辑。",
 		ExitCode:   0,
 		DurationMS: time.Since(start).Milliseconds(),

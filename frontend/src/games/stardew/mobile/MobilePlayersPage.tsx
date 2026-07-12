@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { banPlayer, kickPlayer, warpPlayerHome } from '../../../api'
+import { useEffect, useState } from 'react'
+import { approvePlayerAuth, banPlayer, getInstancePasswordStatus, kickPlayer, warpPlayerHome } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
-import type { StardewPlayerInfo } from '../../../types'
+import type { InstancePasswordStatus, StardewPlayerInfo } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import { formatStardewLocation } from '../location-format'
+import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
 import './MobilePlayersPage.css'
 
 type MobilePlayersPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
@@ -47,14 +48,23 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
   const [warpHomeBusyId, setWarpHomeBusyId] = useState<string | null>(null)
   const [warpHomeError, setWarpHomeError] = useState<string | null>(null)
   const [warpHomeMessage, setWarpHomeMessage] = useState<string | null>(null)
+  const [warpHomeConfirmed, setWarpHomeConfirmed] = useState(false)
   const [kickBusyId, setKickBusyId] = useState<string | null>(null)
   const [kickError, setKickError] = useState<string | null>(null)
   const [kickMessage, setKickMessage] = useState<string | null>(null)
+  const [kickConfirmed, setKickConfirmed] = useState(false)
+  const [approveConfirmTarget, setApproveConfirmTarget] = useState<PlayerTarget | null>(null)
+  const [approveBusyId, setApproveBusyId] = useState<string | null>(null)
+  const [approveError, setApproveError] = useState<string | null>(null)
+  const [approveMessage, setApproveMessage] = useState<string | null>(null)
+  const [approveConfirmed, setApproveConfirmed] = useState(false)
+  const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
 
   const [banConfirmTarget, setBanConfirmTarget] = useState<PlayerTarget | null>(null)
   const [banBusyId, setBanBusyId] = useState<string | null>(null)
   const [banError, setBanError] = useState<string | null>(null)
   const [banMessage, setBanMessage] = useState<string | null>(null)
+  const [banConfirmed, setBanConfirmed] = useState(false)
 
   const playersData = dashboardData.players
   const playerRows = playersData?.players ?? []
@@ -65,6 +75,35 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     dashboardData.refreshPlayers()
   }
 
+  function applyFeedback(
+    feedback: PlayerCommandFeedback,
+    setMessage: (value: string | null) => void,
+    setError: (value: string | null) => void,
+    setConfirmed: (value: boolean) => void,
+  ) {
+    if (feedback.kind === 'failed') {
+      setMessage(null)
+      setError(feedback.message)
+      setConfirmed(false)
+    } else {
+      setError(null)
+      setMessage(feedback.message)
+      setConfirmed(feedback.kind === 'succeeded')
+    }
+  }
+
+  useEffect(() => {
+    if (!isRunning) {
+      setPasswordStatus(null)
+      return
+    }
+    let cancelled = false
+    getInstancePasswordStatus()
+      .then((result) => { if (!cancelled) setPasswordStatus(result) })
+      .catch(() => { if (!cancelled) setPasswordStatus(null) })
+    return () => { cancelled = true }
+  }, [isRunning])
+
   async function handleConfirmKick() {
     const target = kickConfirmTarget
     if (!target) return
@@ -72,9 +111,13 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     setKickError(null)
     setKickMessage(null)
     try {
-      const res = await kickPlayer(target.uniqueMultiplayerId, target.name)
-      setKickMessage(res.output?.trim() || `已提交踢出 ${target.name} 的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => kickPlayer(target.uniqueMultiplayerId, target.name),
+        'kick',
+        target.name,
+        (next) => applyFeedback(next, setKickMessage, setKickError, setKickConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setKickError(errorMessage(e))
     } finally {
@@ -90,14 +133,40 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     setWarpHomeError(null)
     setWarpHomeMessage(null)
     try {
-      const res = await warpPlayerHome(target.uniqueMultiplayerId, target.name)
-      setWarpHomeMessage(res.output?.trim() || `已提交传送 ${target.name} 回家的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => warpPlayerHome(target.uniqueMultiplayerId, target.name),
+        'warp-home',
+        target.name,
+        (next) => applyFeedback(next, setWarpHomeMessage, setWarpHomeError, setWarpHomeConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setWarpHomeError(errorMessage(e))
     } finally {
       setWarpHomeBusyId(null)
       setWarpHomeConfirmTarget(null)
+    }
+  }
+
+  async function handleConfirmApprove() {
+    const target = approveConfirmTarget
+    if (!target) return
+    setApproveBusyId(target.uniqueMultiplayerId)
+    setApproveError(null)
+    setApproveMessage(null)
+    try {
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => approvePlayerAuth(target.uniqueMultiplayerId),
+        'approve-auth',
+        target.name,
+        (next) => applyFeedback(next, setApproveMessage, setApproveError, setApproveConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
+    } catch (e) {
+      setApproveError(errorMessage(e))
+    } finally {
+      setApproveBusyId(null)
+      setApproveConfirmTarget(null)
     }
   }
 
@@ -108,9 +177,13 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     setBanError(null)
     setBanMessage(null)
     try {
-      const res = await banPlayer(target.name, target.uniqueMultiplayerId)
-      setBanMessage(res.output?.trim() || `已提交封禁 ${target.name} 的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => banPlayer(target.name, target.uniqueMultiplayerId),
+        'ban',
+        target.name,
+        (next) => applyFeedback(next, setBanMessage, setBanError, setBanConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setBanError(errorMessage(e))
     } finally {
@@ -119,7 +192,8 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     }
   }
 
-  const rosterActionBusy = warpHomeBusyId !== null || kickBusyId !== null || banBusyId !== null
+  const isPlayerActionBusy = (playerId: string) =>
+    warpHomeBusyId === playerId || kickBusyId === playerId || approveBusyId === playerId || banBusyId === playerId
 
   return (
     <div className="sd-mplay-wrap">
@@ -179,7 +253,7 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
                         player.status !== 'online' ||
                         player.isHost ||
                         !player.uniqueMultiplayerId ||
-                        rosterActionBusy
+                        isPlayerActionBusy(player.uniqueMultiplayerId)
                       }
                       title={
                         !isAdmin
@@ -207,7 +281,7 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
                         player.status !== 'online' ||
                         player.isHost ||
                         !player.uniqueMultiplayerId ||
-                        rosterActionBusy
+                        isPlayerActionBusy(player.uniqueMultiplayerId)
                       }
                       title={
                         !isAdmin
@@ -229,7 +303,7 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
                     <button
                       type="button"
                       className="sd-btn-delete sd-mplay-player-action-btn"
-                      disabled={!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || rosterActionBusy}
+                      disabled={!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || isPlayerActionBusy(player.uniqueMultiplayerId)}
                       title={
                         !isAdmin
                           ? '仅管理员可用'
@@ -245,6 +319,24 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
                     >
                       {banBusyId === player.uniqueMultiplayerId ? '处理中…' : '封禁'}
                     </button>
+                    {passwordStatus?.enabled && player.isAuthenticated === false ? (
+                      <button
+                        type="button"
+                        className="sd-btn-green sd-mplay-player-action-btn"
+                        disabled={
+                          !isAdmin ||
+                          !isRunning ||
+                          player.isHost ||
+                          !player.uniqueMultiplayerId ||
+                          !passwordStatus.passwordBridgeAvailable ||
+                          isPlayerActionBusy(player.uniqueMultiplayerId)
+                        }
+                        title={!passwordStatus.passwordBridgeAvailable ? '密码认证反射桥不可用' : '批准该玩家认证'}
+                        onClick={() => setApproveConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                      >
+                        {approveBusyId === player.uniqueMultiplayerId ? '处理中…' : '批准认证'}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -252,11 +344,13 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
           </div>
         )}
 
-        {kickMessage ? <div className="sd-notice sd-notice--ok sd-mplay-notice">{kickMessage}</div> : null}
+        {kickMessage ? <div className={`sd-notice ${kickConfirmed ? 'sd-notice--ok' : ''} sd-mplay-notice`}>{kickMessage}</div> : null}
         {kickError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{kickError}</div> : null}
-        {warpHomeMessage ? <div className="sd-notice sd-notice--ok sd-mplay-notice">{warpHomeMessage}</div> : null}
+        {warpHomeMessage ? <div className={`sd-notice ${warpHomeConfirmed ? 'sd-notice--ok' : ''} sd-mplay-notice`}>{warpHomeMessage}</div> : null}
         {warpHomeError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{warpHomeError}</div> : null}
-        {banMessage ? <div className="sd-notice sd-notice--ok sd-mplay-notice">{banMessage}</div> : null}
+        {approveMessage ? <div className={`sd-notice ${approveConfirmed ? 'sd-notice--ok' : ''} sd-mplay-notice`}>{approveMessage}</div> : null}
+        {approveError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{approveError}</div> : null}
+        {banMessage ? <div className={`sd-notice ${banConfirmed ? 'sd-notice--ok' : ''} sd-mplay-notice`}>{banMessage}</div> : null}
         {banError ? <div className="sd-notice sd-notice--error sd-mplay-notice">{banError}</div> : null}
       </section>
 
@@ -314,12 +408,39 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
         </div>
       ) : null}
 
+      {approveConfirmTarget ? (
+        <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-panel sd-mplay-confirm-dialog">
+            <h3>确认批准认证</h3>
+            <p>批准玩家 {approveConfirmTarget.name} 的密码认证？该操作会让玩家进入正式农场。</p>
+            <div className="sd-mplay-confirm-actions">
+              <button
+                type="button"
+                className="sd-btn-tan sd-mplay-confirm-btn"
+                onClick={() => setApproveConfirmTarget(null)}
+                disabled={approveBusyId !== null}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="sd-btn-green sd-mplay-confirm-btn"
+                onClick={() => void handleConfirmApprove()}
+                disabled={approveBusyId !== null}
+              >
+                {approveBusyId !== null ? '处理中…' : '确认批准'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {banConfirmTarget ? (
         <div className="sd-mplay-confirm-overlay" role="dialog" aria-modal="true">
           <div className="sd-panel sd-mplay-confirm-dialog">
             <h3>确认封禁玩家</h3>
             <p>
-              封禁玩家 {banConfirmTarget.name}？该玩家会被立即断开且暂时无法重新加入服务器；如果之后重启了服务器容器，这条封禁可能会失效，需要重新操作。
+              封禁玩家 {banConfirmTarget.name}？控制模组会优先按联机 ID 精确封禁；封禁记录在服务器容器重启后会丢失，需要重新操作。
             </p>
             <div className="sd-mplay-confirm-actions">
               <button

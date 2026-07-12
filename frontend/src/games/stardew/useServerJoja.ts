@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { enableJojaRoute } from '../../api'
 import { errorMessage } from '../../core/helpers'
+import { submitAndWaitForPlayerCommand } from './player-command-results'
 
 const JOJA_CONFIRM_TEXT = 'IRREVERSIBLY_ENABLE_JOJA_RUN'
 
@@ -44,8 +45,15 @@ export function useServerJoja({ isAdmin, isRunning }: ServerJojaOptions) {
     setJojaMessage(null)
     setJojaError(false)
     try {
-      const result = await enableJojaRoute(jojaConfirmInput)
-      setJojaMessage(result.output?.trim() || 'Joja 路线已永久启用。')
+      await submitAndWaitForPlayerCommand(
+        () => enableJojaRoute(jojaConfirmInput),
+        'enable-joja',
+        '',
+        (feedback) => {
+          setJojaError(feedback.kind === 'failed')
+          setJojaMessage(feedback.message)
+        },
+      )
     } catch (e) {
       setJojaError(true)
       setJojaMessage(errorMessage(e))

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { triggerFestivalEvent } from '../../api'
 import { errorMessage } from '../../core/helpers'
+import { submitAndWaitForPlayerCommand } from './player-command-results'
 
 type ServerFestivalOptions = {
   isAdmin: boolean
@@ -18,8 +19,15 @@ export function useServerFestival({ isAdmin, isRunning }: ServerFestivalOptions)
     setFestivalMessage(null)
     setFestivalError(false)
     try {
-      const result = await triggerFestivalEvent()
-      setFestivalMessage(result.output?.trim() || '触发节日活动指令已提交。')
+      await submitAndWaitForPlayerCommand(
+        () => triggerFestivalEvent(),
+        'trigger-event',
+        '',
+        (feedback) => {
+          setFestivalError(feedback.kind === 'failed')
+          setFestivalMessage(feedback.message)
+        },
+      )
     } catch (e) {
       setFestivalError(true)
       setFestivalMessage(errorMessage(e))

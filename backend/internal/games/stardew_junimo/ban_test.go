@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func TestBanPlayer_RequiresName(t *testing.T) {
 	instance := makeRunningInstance()
 	instance.DataDir = t.TempDir()
 
-	_, err := banPlayer(context.Background(), d, instance, "  ")
+	_, err := banPlayer(context.Background(), d, instance, "  ", "2")
 	if err == nil {
 		t.Fatal("expected error for empty name")
 	}
@@ -48,7 +49,7 @@ func TestBanPlayer_ServerNotRunning(t *testing.T) {
 	d := newTestDriver(&fakeConsoleDocker{})
 	instance := makeStoppedInstance()
 
-	_, err := banPlayer(context.Background(), d, instance, "griefer")
+	_, err := banPlayer(context.Background(), d, instance, "griefer", "2")
 	if err == nil {
 		t.Fatal("expected error for stopped server")
 	}
@@ -64,7 +65,7 @@ func TestBanPlayer_HostUnknown(t *testing.T) {
 	instance.DataDir = t.TempDir()
 	// No players.json written: findHostPlayerID cannot resolve the host.
 
-	_, err := banPlayer(context.Background(), d, instance, "griefer")
+	_, err := banPlayer(context.Background(), d, instance, "griefer", "2")
 	if err == nil {
 		t.Fatal("expected error when host is unknown")
 	}
@@ -88,7 +89,7 @@ func TestBanPlayer_PromotesHostThenWritesCommandFile(t *testing.T) {
 	instance.DataDir = t.TempDir()
 	writeHostPlayersJSON(t, instance.DataDir)
 
-	result, err := banPlayer(context.Background(), d, instance, "griefer")
+	result, err := banPlayer(context.Background(), d, instance, "griefer", "2")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,5 +121,25 @@ func TestBanPlayer_PromotesHostThenWritesCommandFile(t *testing.T) {
 	}
 	if command.Payload["name"] != "griefer" {
 		t.Fatalf("payload name = %q, want griefer", command.Payload["name"])
+	}
+	if command.Payload["uniqueMultiplayerId"] != "2" || command.Payload["adminPromoted"] != "true" {
+		t.Fatalf("unexpected precise ban payload: %+v", command.Payload)
+	}
+}
+
+func TestBanPlayer_AdminPromotionFailureIsStructured(t *testing.T) {
+	d := newTestDriver(&fakeConsoleDocker{
+		execFunc: func(_ context.Context, _, _, _ string, _ ...string) (paneldocker.CommandResult, error) {
+			return paneldocker.CommandResult{ExitCode: 1}, errors.New("promotion failed")
+		},
+	})
+	instance := makeRunningInstance()
+	instance.DataDir = t.TempDir()
+	writeHostPlayersJSON(t, instance.DataDir)
+
+	_, err := banPlayer(context.Background(), d, instance, "griefer", "2")
+	var commandErr *CommandError
+	if !errors.As(err, &commandErr) || commandErr.Code != "admin_promotion_failed" {
+		t.Fatalf("error = %v", err)
 	}
 }

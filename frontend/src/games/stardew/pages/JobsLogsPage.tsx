@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Job, JobLog } from '../../../types'
+import type { ControlCommand, Job, JobLog } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import {
   clearJobErrorLogs,
   clearJobs,
   createJobEventSource,
   getInstanceVNCConfig,
+  getControlCommands,
   getJob,
   getJobLogs,
   getJobs,
@@ -30,6 +31,16 @@ const STATUS_LABELS: Record<string, string> = {
   succeeded: '已完成',
   failed: '失败',
   canceled: '已取消',
+}
+
+const COMMAND_STATUS_LABELS: Record<string, string> = {
+  queued: '排队中', running: '处理中', succeeded: '已确认成功', dispatched: '已派发',
+  failed: '明确失败', expired: '结果已过期', unknown: '结果未知',
+}
+
+const COMMAND_TYPE_LABELS: Record<string, string> = {
+  'warp-home': '回家', kick: '踢出', 'approve-auth': '批准认证', broadcast: '喊话', say: '喊话',
+  ban: '封禁', 'trigger-event': '触发节日', 'enable-joja': '启用 Joja', 'save-now': '立即保存',
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -120,6 +131,8 @@ function suggestNextPort(port: string): string {
 
 export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
   const [jobs, setJobs] = useState<Job[]>([])
+  const [controlCommands, setControlCommands] = useState<ControlCommand[]>([])
+  const [controlCommandsError, setControlCommandsError] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [logs, setLogs] = useState<JobLog[]>([])
@@ -156,6 +169,16 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     }
   }, [])
 
+  const loadControlCommands = useCallback(async () => {
+    try {
+      const res = await getControlCommands()
+      setControlCommands(res.commands)
+      setControlCommandsError('')
+    } catch (e) {
+      setControlCommandsError(errorMessage(e))
+    }
+  }, [])
+
   // 初始加载任务列表，自动选中最近一条
   useEffect(() => {
     void (async () => {
@@ -173,6 +196,12 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       setLoadingJobs(false)
     })()
   }, [loadJobs])
+
+  useEffect(() => {
+    void loadControlCommands()
+    const timer = window.setInterval(() => void loadControlCommands(), 5000)
+    return () => window.clearInterval(timer)
+  }, [loadControlCommands])
 
   // 选中任务变化时：加载详情 + 日志 + 开启 SSE（非终态任务）
   useEffect(() => {
@@ -270,6 +299,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     setSseError('')
     try {
       const loaded = await loadJobs()
+      await loadControlCommands()
       dashRefreshJobs()
       if (!selectedJobId && loaded.length > 0) {
         setSelectedJobId(loaded[0].id)
@@ -620,6 +650,37 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
           </div>
         </div>
       )}
+
+      <section className="sd-card sd-command-history" aria-label="最近控制命令">
+        <div className="sd-command-history-head">
+          <h3>最近控制命令</h3>
+          <span>{controlCommands.length} 条</span>
+        </div>
+        {controlCommandsError ? <div className="sd-jobs-error-banner">{controlCommandsError}</div> : null}
+        {controlCommands.length === 0 && !controlCommandsError ? (
+          <div className="sd-command-history-empty">暂无控制命令记录。</div>
+        ) : (
+          <div className="sd-command-history-table-wrap">
+            <table className="sd-command-history-table">
+              <thead><tr><th>命令</th><th>目标</th><th>提交人</th><th>状态</th><th>提交 / 完成时间</th><th>结构化结果</th></tr></thead>
+              <tbody>{controlCommands.map((command) => (
+                <tr key={command.commandId}>
+                  <td><strong>{COMMAND_TYPE_LABELS[command.commandType] ?? command.commandType}</strong><small title={command.commandId}>{command.commandId.slice(0, 10)}</small></td>
+                  <td>{command.targetLabel || command.targetId || '全服'}</td>
+                  <td>{command.actorUsername || '未知'}</td>
+                  <td><span className={`sd-command-status sd-command-status-${command.status}`}>{command.resultSupported ? (COMMAND_STATUS_LABELS[command.status] ?? command.status) : '已提交（旧模组）'}</span></td>
+                  <td><span>{formatDate(command.submittedAt)}</span><small>{command.completedAt ? formatDate(command.completedAt) : '尚未完成'}</small></td>
+                  <td>
+                    {command.resultSupported ? (
+                      <><span>{command.resultMessage || (command.status === 'dispatched' ? '指令已发送，最终效果需结合游戏状态确认。' : '—')}</span>{command.errorCode ? <small>代码：{command.errorCode}</small> : null}{command.resultDetails && Object.keys(command.resultDetails).length ? <small>{Object.entries(command.resultDetails).map(([key, value]) => `${key}: ${value}`).join(' · ')}</small> : null}</>
+                    ) : <span>已提交，无法获取精确结果。</span>}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* ── 清空确认弹框 ── */}
       {showClearConfirm ? (

@@ -1063,7 +1063,7 @@ Stardew 面板内部路由：
 - `StardewMobileShell` “玩家”Tab 激活时渲染 `frontend/src/games/stardew/mobile/MobilePlayersPage.tsx`，仅剩“更多”Tab 是占位卡。
 - 页面结构只有单张“在线玩家”卡：卡片头部左侧标题、右上角一个“刷新”按钮（`dashboardData.refreshPlayers()`），下方是玩家卡片列表——`playerRows` 全量，不是只筛 `status==='online'`，因为字段要求同时展示在线/离线/等待/未知状态。首版曾做过顶部统计卡（在线人数/待授权数量）和独立的“待授权玩家”卡（同意/拒绝待认证玩家），用户反馈后整体删除，改成当前的单卡结构，不做批准/拒绝密码认证相关功能。空列表时展示“暂无在线玩家”，不留白。
 - 每张玩家卡片自上而下：①姓名 + 状态徽章（在线绿色/等待黄色/离线或未知默认灰底）；②次要信息行（`isHost` 显示"主机"、`player.role` 存在时显示角色徽章、活动文案 `playerActivityText()`：在线显示 `onlineFor` 或“在线中”，离线显示 `最近活动：${formatDate(lastSeen)}`，都没有显示“—”）；③底部一行 `justify-content:space-between`——左侧位置信息 `playerLocationText()`（取 `locationDisplayName`/`locationName`/`location` 中第一个非空值，有 `tileX`/`tileY` 时附加坐标，都没有值时显示“—”，不翻译成中文地名，避免把桌面页 200 多行的 `LOCATION_ZH` 字典搬进这个文件）、右侧“踢出”“封禁”两个操作按钮。
-- 踢出/封禁复用桌面 `kickPlayer()`/`banPlayer()`，未新增接口；`disabled`/`title` 门控条件与桌面 `PlayersPage.tsx` 行内图标按钮逐条对齐（踢出要求 `status==='online'`，封禁不要求在线但都排除主机 `isHost`）；忙碌态用 `kickBusyId`/`banBusyId`（存目标 `uniqueMultiplayerId`）+ `rosterActionBusy` 联合判断锁定其它玩家行按钮，避免并发误触；确认弹窗文案逐字复用桌面版（封禁弹窗保留“重启服务器容器后可能失效”的提示）。
+- 踢出/封禁复用桌面 `kickPlayer()`/`banPlayer()`，未新增接口；`disabled`/`title` 门控条件与桌面 `PlayersPage.tsx` 行内图标按钮逐条对齐（踢出要求 `status==='online'`，封禁不要求在线但都排除主机 `isHost`）；忙碌态保存目标 `uniqueMultiplayerId`。封禁弹窗已按真实验证结论明确提示“服务器容器重启后会丢失，需要重新操作”。
 - 未新增图片素材（页头图标复用现有 `icon_nav_players_avatar_image2.png`）；样式集中在 `frontend/src/games/stardew/mobile/MobilePlayersPage.css`（class 前缀 `sd-mplay-`），只用全局 `stardew-theme.css` 的 `.sd-panel`/`.sd-tag*`/`.sd-notice--*`/`.sd-btn-*`，未复用 `StardewPanel.css` 里的桌面玩家表格类名（那批类只在挂载 `StardewPanel` 时才加载）。
 - 待认证玩家的同意/拒绝仍保留在“总览”Tab 的待认证玩家批准卡（`MobileHomePage.tsx`，见 `MOBILE-HOME-M2-1`），“玩家”Tab 这次不再重复这块功能。
 - 详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-PLAYERS-M4-1` 小节。
@@ -1804,7 +1804,7 @@ npm.cmd run dev
 - `PlayersPage.tsx`：
   - 行内操作区（`sd-players-row-actions`）删除"发送消息"/"更多操作"两个恒禁用占位按钮，只保留"踢出"图标按钮和新增的"封禁"图标按钮；"封禁"按钮禁用条件 `!isAdmin || !isRunning || player.isHost || !player.uniqueMultiplayerId || banBusy`，**不要求玩家在线**（封禁本来就该支持针对离线/曾经离开的玩家）。
   - "管理操作"卡片"封禁玩家"从恒禁用改为真实可用：`<select>` 选项来源 `banTargetPlayers = playerRows.filter(p => !p.isHost && p.uniqueMultiplayerId)`（同样不按在线状态过滤），"封禁"按钮按 `!isAdmin || !isRunning || !banSelectId || banBusy` 判断，移除"待接入"徽章。
-  - 新增状态 `banConfirmTarget`/`banSelectId`/`banBusy`/`banError`/`banMessage`（复用已有 `KickTarget` 类型）和 `handleConfirmBan()`，完整复用踢出/批准认证的"确认弹窗 → busy → 调用 API → 成功/失败提示 → `dashboardData.refreshPlayers()`"状态模式。确认弹窗文案明确写出"如果之后重启了服务器容器，这条封禁可能会失效，需要重新操作"，如实告知用户这个不确定性，不假装是绝对永久封禁。
+  - 新增状态 `banConfirmTarget`/`banSelectId`/`banBusy`/`banError`/`banMessage`（复用已有 `KickTarget` 类型）和 `handleConfirmBan()`；后续已接入 command-result 轮询。用户真机确认封禁随容器重启丢失，确认弹窗现明确写“重启后会丢失，需要重新操作”。
 - `StardewPanel.css`：`.sd-players-icon-boot::before`（行内小按钮唯一生效的那组定义）从纯 CSS `linear-gradient`/`radial-gradient` 画的靴子矢量图形改为直接引用 `icon_players_action_boot_image2.png`；新增 `.sd-players-icon-ban::before` 同样引用 `icon_players_action_ban_image2.png`；删除因移除"更多操作"按钮而变成孤儿样式的 `.sd-players-icon-more::before` 规则（这是本次改动直接导致的孤儿代码清理，不是清理无关的历史遗留）。
 - 影响文件：`frontend/src/api.ts`、`frontend/src/games/stardew/pages/PlayersPage.tsx`、`frontend/src/games/stardew/StardewPanel.css`。未新增图片素材（直接复用管理操作卡片已有的两张 PNG）。
 - 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实运行实例实际点一遍行内封禁图标和管理操作卡片封禁按钮，也未截图验证移动端窄屏下两个新图标按钮的间距/触控热区，建议下一位维护者补一次。
@@ -2005,3 +2005,30 @@ npm.cmd run dev
 - 存档列表 CRUD（`handleSelect`/`handleSelectAndStart`/`handleDeleteConfirmed`/`handleExport`）、新建游戏弹窗（`handleNewGameSubmit`）、上传存档弹窗（`handleUploadPreview`/`handleUploadCommit`/`handleUploadCancel`）**没有**拆分——这些不属于"回档"领域，upload 弹窗本身已经有独立的 `uploadBusy`，耦合度低，本次按 `docs/07-later-optimizations.md` 登记的范围（"回档逻辑拆 hook"）只拆备份和回档两块。
 - `SavesSection.tsx` 从 1236 行降到 1131 行；`SaveCard` 组件、`backupKindLabel`、`saveFarmMapSrc`/`saveProgressText` 等纯展示 helper 未改动。
 - 验证：`cd frontend && npx tsc -b && npm run build` 通过（此前 ModsPage/CSS 拆分两个并行任务提到的构建阻塞，是因为当时本次改动还在进行中，现已收尾，三项改动可以一起正常构建）。用 Playwright 登录真实运行中的实例，打开"游戏日回档"的"回档到此日"弹窗和"其他备份"的"彻底删除备份"弹窗，截图确认真实数据正确渲染（回档弹窗正确识别到同名存档已存在、展示"确认回档"和"覆盖回档"两个按钮），全部点击"取消"关闭——**没有提交任何一次真实的回档或删除操作**。
+# FE-PLAYER-COMMAND-RESULTS-1 玩家操作精确回执
+
+- 桌面与手机玩家页对 `warp-home`、`kick`、`approve-auth` 共用 `player-command-results.ts`：提交响应有 `commandId + queued` 时每 500ms 查询一次结果，最多 10 秒；HTTP 请求本身不等待控制模组。
+- queued/running 显示“处理中…”；succeeded 使用具体中文成功信息；failed 按结构化 `errorCode` 映射中文错误；unknown/expired/dispatched 或 10 秒超时显示“未收到执行结果”，不会写成“执行失败”，也不会自动重试命令。
+- 旧控制模组提交响应没有 `status: queued` 时不轮询，继续显示后端原“指令已提交”文案。
+- busy 改为目标玩家 ID：同一玩家处理期间禁止重复操作，不再因为一个玩家的请求锁住其他玩家。手机端补齐了已有桌面端的待认证玩家批准入口，权限、主机禁用和桥能力检查保持一致。
+- 状态分类测试：`npm run test:command-results`；完整验证：`npm run build`。
+# FE-BROADCAST-BAN-RESULTS-1 喊话与封禁回执
+
+- 桌面 `useServerBroadcast` 与手机 `MobileControlPage` 均复用 command result 轮询：queued/running 为处理中，succeeded 显示“消息已交给游戏聊天系统”并明确“不保证每个客户端实际收到”，failed 显示结构化中文原因，unknown/超时显示“未收到执行结果”，不自动重试。旧模组继续显示提交文案。
+- 桌面与手机玩家页的 ban 也使用同一轮询器：succeeded 显示“已封禁”；仅 Junimo 名字降级派发时显示“封禁指令已发送给 JunimoServer，最终结果请结合游戏状态确认”；failed 显示具体原因；unknown 不视为失败。
+- 用户已在真实实例确认封禁记录会在服务器容器重启后丢失，因此两端确认弹窗改为确定性限制说明，不再写“可能失效”。本阶段不新增封禁名单和解封 UI。
+
+# EVENT-JOJA-SAVE-RESULTS-1 前端回执
+
+- 桌面与手机端的节日、Joja 操作复用 command result v1 轮询：queued/running 显示“处理中…”，dispatched 显示“指令已发送，等待游戏处理或需结合游戏状态确认”，succeeded 只表示已确认最终效果，failed 按结构化错误码显示中文。
+- `unknown`、`expired`、查询异常和客户端超时统一显示“无法确认最终结果，请先检查当前游戏状态再决定是否重试”，不会自动重试。旧控制模组没有 queued 能力标志时继续展示后端原“指令已提交”文案。
+- 桌面/手机服务器控制页新增“请求游戏内保存”。它与“手动备份”明确分开：保存按钮最多等待 125 秒轮询同一 commandId，只有 Saved 回执才显示完成；`save_timeout` 显示明确超时。ZIP 备份仍只打包已落盘目录。
+- Joja 的不可逆精确文本确认弹窗保持不变；dispatched/unknown 后不自动再次提交。`npm run test:command-results`、`npm run build` 均通过。
+
+# COMMAND-RESULT-PRODUCTIZATION-1 最近控制命令与诊断
+
+- “任务与日志”页新增响应式“最近控制命令”表格，展示命令类型、目标、提交人、精确状态、提交/完成时间、结构化消息/错误码/白名单详情；每 5 秒刷新并支持工具栏手动刷新。
+- `dispatched` 使用独立黄色中性状态，绝不复用 succeeded；unknown/expired/failed 各自保留明确标签。`resultSupported=false` 固定显示“已提交（旧模组）/已提交，无法获取精确结果”。
+- 诊断页新增 commandResultVersion、待消费命令、未入库结果、最老待处理、最近模组消费和 commands/command-results 可写性，并直接展示卡死/版本/权限警告。
+- 新增前端类型 `ControlCommand`/`ControlCommandsResponse` 和 API `getControlCommands`。桌面表格在窄屏保持横向滚动，不改变现有命令按钮、轮询或手机控制页行为。
+- 验证：`npm run build`。

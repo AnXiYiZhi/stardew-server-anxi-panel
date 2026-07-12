@@ -63,6 +63,7 @@ public sealed class OptionItem
 
 public sealed class RuntimeStatus
 {
+	public int CommandResultVersion { get; set; } = 1;
     public string State { get; set; } = "";
     public string Message { get; set; } = "";
     public string? SaveId { get; set; }
@@ -109,9 +110,32 @@ public sealed class PlayerInfo
 
 public sealed class PanelCommand
 {
+	public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public Dictionary<string, JsonElement>? Payload { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public static class CommandStatuses
+{
+    public const string Queued = "queued";
+    public const string Running = "running";
+    public const string Succeeded = "succeeded";
+    public const string Failed = "failed";
+    public const string Dispatched = "dispatched";
+    public const string Expired = "expired";
+    public const string Unknown = "unknown";
+}
+
+public sealed class CommandOutcome
+{
+    public string CommandId { get; set; } = "";
+    public string Status { get; set; } = CommandStatuses.Unknown;
+    public string ErrorCode { get; set; } = "";
+    public string Message { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public Dictionary<string, string>? Details { get; set; }
 }
 
 public static class ContractJson

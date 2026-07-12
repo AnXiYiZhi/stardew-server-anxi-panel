@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Build-time variables set via -ldflags. These override the corresponding
@@ -14,28 +15,32 @@ var (
 )
 
 const (
-	DefaultAddr       = ":8090"
-	DefaultDataDir    = "/data"
-	DefaultVersion    = "dev"
-	DefaultPanelMode  = "single"
-	DefaultInstanceID = "stardew"
-	DefaultDriverID   = "stardew_junimo"
-	PanelModeSingle   = "single"
-	PanelModeMulti    = "multi"
+	DefaultAddr                         = ":8090"
+	DefaultDataDir                      = "/data"
+	DefaultVersion                      = "dev"
+	DefaultPanelMode                    = "single"
+	DefaultInstanceID                   = "stardew"
+	DefaultDriverID                     = "stardew_junimo"
+	DefaultControlCommandRetentionDays  = 30
+	DefaultControlCommandRetentionCount = 1000
+	PanelModeSingle                     = "single"
+	PanelModeMulti                      = "multi"
 )
 
 // Config contains process-level settings loaded from the environment.
 type Config struct {
-	Addr              string
-	DataDir           string
-	DBPath            string
-	Secret            string
-	Version           string
-	Commit            string
-	BuildDate         string
-	PanelMode         string
-	DefaultInstanceID string
-	DefaultDriverID   string
+	Addr                         string
+	DataDir                      string
+	DBPath                       string
+	Secret                       string
+	Version                      string
+	Commit                       string
+	BuildDate                    string
+	PanelMode                    string
+	DefaultInstanceID            string
+	DefaultDriverID              string
+	ControlCommandRetentionDays  int
+	ControlCommandRetentionCount int
 }
 
 // Load reads panel configuration from environment variables and applies defaults.
@@ -57,17 +62,27 @@ func Load() Config {
 	}
 
 	return Config{
-		Addr:              getEnv("PANEL_ADDR", DefaultAddr),
-		DataDir:           dataDir,
-		DBPath:            getEnv("PANEL_DB_PATH", filepath.Join(dataDir, "panel.db")),
-		Secret:            os.Getenv("PANEL_SECRET"),
-		Version:           version,
-		Commit:            commit,
-		BuildDate:         buildDateVal,
-		PanelMode:         panelMode(getEnv("PANEL_MODE", DefaultPanelMode)),
-		DefaultInstanceID: getEnv("DEFAULT_INSTANCE_ID", DefaultInstanceID),
-		DefaultDriverID:   getEnv("DEFAULT_DRIVER_ID", DefaultDriverID),
+		Addr:                         getEnv("PANEL_ADDR", DefaultAddr),
+		DataDir:                      dataDir,
+		DBPath:                       getEnv("PANEL_DB_PATH", filepath.Join(dataDir, "panel.db")),
+		Secret:                       os.Getenv("PANEL_SECRET"),
+		Version:                      version,
+		Commit:                       commit,
+		BuildDate:                    buildDateVal,
+		PanelMode:                    panelMode(getEnv("PANEL_MODE", DefaultPanelMode)),
+		DefaultInstanceID:            getEnv("DEFAULT_INSTANCE_ID", DefaultInstanceID),
+		DefaultDriverID:              getEnv("DEFAULT_DRIVER_ID", DefaultDriverID),
+		ControlCommandRetentionDays:  getPositiveIntEnv("CONTROL_COMMAND_RETENTION_DAYS", DefaultControlCommandRetentionDays),
+		ControlCommandRetentionCount: getPositiveIntEnv("CONTROL_COMMAND_RETENTION_COUNT", DefaultControlCommandRetentionCount),
 	}
+}
+
+func getPositiveIntEnv(key string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func getEnv(key string, fallback string) string {

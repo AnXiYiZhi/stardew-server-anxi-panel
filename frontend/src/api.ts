@@ -1,6 +1,8 @@
 import type {
   CommandRunResult,
   CommandsListResult,
+  CommandOutcome,
+  ControlCommandsResponse,
   ComposePsResponse,
   DockerStatusResponse,
   Instance,
@@ -556,6 +558,16 @@ export function getCommands(instanceId = defaultInstanceId) {
   return request<CommandsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/commands`)
 }
 
+export function getControlCommands(instanceId = defaultInstanceId, limit = 50) {
+  return request<ControlCommandsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/control-commands?limit=${limit}`)
+}
+
+export function getCommandOutcome(commandId: string, instanceId = defaultInstanceId) {
+  return request<CommandOutcome>(
+    `/api/instances/${encodeURIComponent(instanceId)}/commands/${encodeURIComponent(commandId)}`,
+  )
+}
+
 const COMMAND_TIMEOUT_MS = 40_000 // 40 seconds — backend has 30s, frontend adds margin
 
 export function runCommand(command: string, instanceId = defaultInstanceId) {
@@ -615,6 +627,13 @@ export function enableJojaRoute(confirm: string, instanceId = defaultInstanceId)
   return request<CommandRunResult>(
     `/api/instances/${encodeURIComponent(instanceId)}/joja/enable`,
     { method: 'POST', body: { confirm } },
+  )
+}
+
+export function requestGameSave(instanceId = defaultInstanceId) {
+  return request<CommandRunResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/save-now`,
+    { method: 'POST' },
   )
 }
 

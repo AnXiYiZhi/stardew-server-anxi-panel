@@ -98,6 +98,11 @@ func main() {
 		Logger:   logger,
 	})
 	go restartScheduler.Run(signalCtx)
+	commandScheduler := web.NewControlCommandScheduler(web.ControlCommandSchedulerDeps{
+		Store: store, Logger: logger,
+		RetentionDays: cfg.ControlCommandRetentionDays, RetentionCount: cfg.ControlCommandRetentionCount,
+	})
+	go commandScheduler.Run(signalCtx)
 
 	server := &http.Server{
 		Addr: cfg.Addr,

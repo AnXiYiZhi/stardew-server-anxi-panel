@@ -900,7 +900,7 @@ Multi Game Mode later
 - `APPROVE-PENDING-AUTH-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理页新增独立"待认证玩家"卡片，管理员可一键批准密码保护下卡在隔离小屋的玩家，不需要玩家自己正确输入 `!login <password>`。上游 JunimoServer REST API 没有对应端点（`GET /auth` 只有计数，没有名单/批准接口），改为让内嵌 `StardewAnxiPanel.Control` SMAPI 模组反射调用 JunimoServer 内部单例 `PasswordProtectionService.TryAuthenticate`——这是控制模组第一次真正反射进 JunimoServer 私有实现（而非公开契约、非游戏内聊天指令模拟）。新增模组启动时的"反射能力自检"（写入 `status.json` 的 `passwordBridgeAvailable`/`passwordBridgeDetail`），前端据此提前禁用"批准"按钮，而不是等用户点击后才发现没生效。新增 `POST /api/instances/:id/players/approve-auth`，`GET /players` 每个玩家新增 `isAuthenticated`。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `APPROVE-PENDING-AUTH-1` 小节。
 
 # PLAYERS-BAN-1 状态
-- `PLAYERS-BAN-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理页"管理操作"卡片里此前一直禁用、标着"待接入"的"封禁玩家"正式接通，同时"在线玩家"表格每行的图标按钮从 3 个（发消息占位/踢出/更多占位）精简为 2 个（踢出+封禁，图标均复用管理操作卡片同款真实 PNG）。上游 JunimoServer REST API 没有封禁端点，改为复用它真正的游戏内 `!ban <名字>` 聊天指令（和已实现的 `!joja` 同一套"先提升主机为 admin 再模拟聊天指令"模式），新增 `POST /api/instances/:id/players/ban`。已知限制：封禁名单（`Game1.bannedUsers`）是否跨容器重启持久化尚未反编译确认，本次按用户选择先简单接通、UI 如实提示"重启可能失效"，未做面板侧持久化补偿。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-BAN-1` 小节。
+- `PLAYERS-BAN-1` completed（代码已完成 + 后端 build/vet/test 全绿 + 前端 typecheck/build 全绿 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换）：玩家管理页“封禁玩家”已接通。后续 command-result 阶段改为优先按 `uniqueMultiplayerId` 直接调用 `Game1.server.ban`，只有直接 API 不可用才降级唯一名字 `!ban`。用户已在真实实例确认 `Game1.bannedUsers` 随服务器容器重启丢失，UI 使用确定性限制提示；未做面板侧持久化、封禁名单或解封入口。
 
 # PLAYERS-WARP-HOME-1 状态
 - `PLAYERS-WARP-HOME-1` completed（代码已完成 + 后端相关包测试通过 + 前端 typecheck/build 通过 + 嵌入 SMAPI Mod 已用 Docker 重新编译替换，尚未真机联机验证）：玩家管理新增“回家”按钮，桌面端和手机端均放在“踢出”左侧；后端新增 `POST /api/instances/:id/players/warp-home`，由嵌入式 SMAPI 控制模组反射调用 JunimoServer `FarmerExtensions.WarpHome(Farmer)`，用于把在线 farmhand 传送回自己的小屋。该能力明确不复用 `TryAuthenticate`，因为已认证玩家不会再次触发认证传送。详见 `docs/backend-handoff/backend-handoff-2026-07-10.md`、`docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-WARP-HOME-1` 小节。
@@ -942,3 +942,20 @@ Multi Game Mode later
 - [ ] 后续将当前基于三类更新时间差值的启动耗时升级为持久化阶段事件，支持跨重启历史趋势。
 # FE-LIFECYCLE-LIVE-SIGNAL-PRIORITY-1 状态
 - `FE-LIFECYCLE-LIVE-SIGNAL-PRIORITY-1` completed：在线玩家列表确认主机在线后立即结束启动中间态，不再等待邀请码或滞后的后端 `uiStatus`；点击停止后本地 pending 状态立即展示“停止中”。桌面总览、服务器控制页共享 hook 与手机总览均已统一。相关文件独立 TypeScript 校验通过；完整构建受工作区另一批未完成的 ServerControlPage hook 拆分影响。
+# COMMAND-RESULT-PROTOCOL-1 状态
+
+- `COMMAND-RESULT-PROTOCOL-1` 阶段 1 completed：控制命令已有稳定 commandId、命令/结果原子文件协议、`command-results/`、七状态与结构化错误码、`commandResultVersion: 1`、非阻塞提交和只读查询 API；旧控制模组继续兼容。结果闸门保证已有结果不重复消费，崩溃歧义返回 unknown 且不自动重试；终态结果采用 7 天 + 24 小时 expired 墓碑清理策略。嵌入控制模组已重新编译并更新 DLL。阶段 2 的玩家操作精确 succeeded/failed 尚未开始。
+# PLAYER-COMMAND-RESULTS-1 状态
+
+- `PLAYER-COMMAND-RESULTS-1` implemented：command result v1 已为 warp-home、kick、approve-auth 接入真实 succeeded/failed 回执，包含完整结构化错误码；桌面与手机共用 500ms/10s 轮询、旧模组兼容、按玩家 busy 和 unknown 不重试语义。ban、broadcast、event、joja 保持 dispatched，未提前扩展。
+# BROADCAST-BAN-RESULTS-1 状态
+
+- `BROADCAST-BAN-RESULTS-1` implemented：broadcast/say 已能确认交给游戏聊天系统后返回 succeeded；ban 优先 uniqueMultiplayerId + `Game1.server.ban` 精确调用，名字降级存在重名时拒绝且只能返回 dispatched。桌面/手机已覆盖 succeeded/dispatched/failed/unknown/旧模组。用户真机确认封禁随容器重启丢失；名单持久化与解封入口不在本阶段。event、joja、save-now 保持未接入精确结果。
+
+# EVENT-JOJA-SAVE-RESULTS-1 状态
+
+- `EVENT-JOJA-SAVE-RESULTS-1` completed：trigger-event 与 enable-joja 已区分明确失败、聊天 dispatched 和可持久确认的 succeeded；save-now 已通过 commandId tracker 关联 `GameLoop.Saved`，两分钟超时为 save_timeout，崩溃歧义为 unknown 且不重试。桌面/手机统一轮询与精确文案，新增游戏内保存入口并与 ZIP 备份区分。Go、前端和模组构建全绿，嵌入 DLL 已更新；现有存档实测 event 明确失败、Joja dispatched、save Saved succeeded。
+
+# COMMAND-RESULT-PRODUCTIZATION-1 状态
+
+- `COMMAND-RESULT-PRODUCTIZATION-1` completed：回执历史已 SQLite 化并支持幂等导入、面板重启恢复、安全文件交接、30 天/数量保留和最终审计；任务与日志页及诊断页已展示协议历史与卡死信号。旧模组继续退化为“已提交，无法获取精确结果”，没有新增任何游戏命令或改变命令保证语义。

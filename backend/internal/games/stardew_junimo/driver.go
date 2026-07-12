@@ -105,6 +105,12 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 func (d *Driver) ID() string   { return DriverID }
 func (d *Driver) Name() string { return DriverName }
 
+// CommandOutcome returns the current file-protocol state without waiting for
+// the control mod or retrying ambiguous commands.
+func (d *Driver) CommandOutcome(ctx context.Context, instance registry.Instance, commandID string) (CommandOutcome, error) {
+	return GetCommandOutcome(instance.DataDir, commandID)
+}
+
 // Prepare ensures the instance working directory, docker-compose.yml, and .env
 // exist.  It never overwrites files the user has already modified.
 func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error {
@@ -123,6 +129,7 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		filepath.Join(".local-container", "saves-templates"),
 		filepath.Join(".local-container", "control"),
 		filepath.Join(".local-container", "control", "commands"),
+		filepath.Join(".local-container", "control", "command-results"),
 		filepath.Join(".local-container", "cont-env"),
 		filepath.Join(".local-container", "mods"),
 		filepath.Join(".local-container", "mods-disabled"),

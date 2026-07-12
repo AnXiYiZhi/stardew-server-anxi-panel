@@ -181,6 +181,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleJojaRouteEnable(w, r, instanceID)
 		return
 	}
+	// POST /api/instances/:id/saves/save-now
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "save-now" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleGameSaveRequest(w, r, instanceID)
+		return
+	}
 	// GET /api/instances/:id/password-status
 	if len(parts) == 2 && parts[1] == "password-status" {
 		s.handleInstancePasswordStatus(w, r, instanceID)
@@ -522,6 +531,23 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// GET /api/instances/:id/commands
+	if len(parts) == 2 && parts[1] == "control-commands" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleControlCommandHistory(w, r, instanceID)
+		return
+	}
+	// GET /api/instances/:id/commands
+	if len(parts) == 3 && parts[1] == "commands" && parts[2] != "run" && parts[2] != "say" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleCommandOutcome(w, r, instanceID, parts[2])
+		return
+	}
 	if len(parts) == 2 && parts[1] == "commands" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -691,6 +717,7 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 	readControlJSON(filepath.Join(controlDir, "status.json"), &statusSource)
 	readControlJSON(filepath.Join(controlDir, "players.json"), &playersSource)
 	runtimeDiagnostic := buildRuntimeDiagnostic(instance, statusSource, playersSource)
+	runtimeDiagnostic.CommandProtocol = s.commandProtocolDiagnostics(ctx, instance)
 	return instanceStateResponse{
 		InstanceID:        instance.ID,
 		DriverID:          instance.DriverID,

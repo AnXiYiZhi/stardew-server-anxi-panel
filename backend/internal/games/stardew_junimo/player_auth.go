@@ -74,13 +74,16 @@ func approveAuth(instance registry.Instance, uniqueMultiplayerID string) (*Comma
 	}
 
 	start := time.Now()
-	if err := writePanelCommand(instance.DataDir, "approve-auth", map[string]string{
+	commandID, err := writePanelCommand(instance.DataDir, "approve-auth", map[string]string{
 		"uniqueMultiplayerId": uniqueMultiplayerID,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("写入批准认证命令失败: %w", err)
 	}
 	return &CommandRunResult{
 		Command:    "approve-auth",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
 		Output:     "批准指令已提交，控制模组会在游戏 tick 中处理。",
 		ExitCode:   0,
 		DurationMS: time.Since(start).Milliseconds(),

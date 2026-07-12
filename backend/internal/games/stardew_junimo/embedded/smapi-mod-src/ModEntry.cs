@@ -12,13 +12,16 @@ namespace StardewAnxiPanel.Control;
 public sealed class ModEntry : Mod
 {
     private const int SinglePlayerMenuPausedTimeInterval = -100;
+    private static readonly TimeSpan SaveCommandTimeout = TimeSpan.FromMinutes(2);
 
     private string controlDir = "";
     private string commandDir = "";
+    private string commandResultDir = "";
     private InitConfig? initConfig;
     private bool isJunimoRuntime;
     private readonly PasswordProtectionBridge passwordBridge = new();
     private readonly WarpHomeBridge warpHomeBridge = new();
+    private readonly PendingSaveCommandTracker pendingSaveCommands = new();
     private bool panelCustomizationApplied;
     private bool singlePlayerMenuPauseApplied;
     private int? singlePlayerMenuPauseSavedInterval;
@@ -30,7 +33,9 @@ public sealed class ModEntry : Mod
             ?? Path.Combine(helper.DirectoryPath, "..", "..", "control");
         controlDir = Path.GetFullPath(controlDir);
         commandDir = Path.Combine(controlDir, "commands");
+        commandResultDir = Path.Combine(controlDir, "command-results");
         Directory.CreateDirectory(commandDir);
+        Directory.CreateDirectory(commandResultDir);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.GameLoop.SaveCreating += OnSaveCreating;
@@ -94,6 +99,14 @@ public sealed class ModEntry : Mod
             return;
 
         WriteSaveEvent(saveName);
+
+        var saveOutcome = pendingSaveCommands.Complete(DateTimeOffset.UtcNow);
+        if (saveOutcome is not null)
+        {
+            var resultPath = Path.Combine(commandResultDir, saveOutcome.CommandId + ".json");
+            WriteJsonAtomic(resultPath, saveOutcome);
+            Monitor.Log($"Save-now command {saveOutcome.CommandId} completed through GameLoop.Saved.", LogLevel.Info);
+        }
     }
 
     private void OnUpdateTicking(object? sender, UpdateTickingEventArgs e)
@@ -118,6 +131,14 @@ public sealed class ModEntry : Mod
         ApplyDirectIpNetworkPolicy();
         WritePlayers();
         ConsumeCommands();
+
+        var timedOutSave = pendingSaveCommands.Expire(DateTimeOffset.UtcNow);
+        if (timedOutSave is not null)
+        {
+            var resultPath = Path.Combine(commandResultDir, timedOutSave.CommandId + ".json");
+            WriteJsonAtomic(resultPath, timedOutSave);
+            Monitor.Log($"Save-now command {timedOutSave.CommandId} timed out waiting for GameLoop.Saved.", LogLevel.Warn);
+        }
     }
 
     private void ApplySinglePlayerMenuPause()
@@ -656,9 +677,45 @@ public sealed class ModEntry : Mod
             {
                 var json = File.ReadAllText(path);
                 var command = JsonSerializer.Deserialize<PanelCommand>(json, ContractJson.Options);
-                if (command is not null)
+                if (command is null)
+                    continue;
+
+                // Old panel commands had no ID or result protocol. Preserve their
+                // fire-and-forget behavior for rolling upgrades.
+                if (string.IsNullOrWhiteSpace(command.Id))
+                {
                     HandleCommand(command);
-                File.Delete(path);
+                    File.Delete(path);
+                    continue;
+                }
+
+                var resultPath = Path.Combine(commandResultDir, command.Id + ".json");
+                if (File.Exists(resultPath))
+                {
+                    File.Delete(path);
+                    continue;
+                }
+
+				var running = NewOutcome(command, CommandStatuses.Running, "", "Command execution started.");
+				if (!WriteJsonAtomic(resultPath, running))
+					continue;
+
+                CommandOutcome outcome;
+                try
+                {
+                    outcome = HandleCommand(command);
+                }
+                catch (Exception ex)
+                {
+                    outcome = NewOutcome(command, CommandStatuses.Failed, "command_handler_failed", ex.Message);
+                    Monitor.Log($"Panel command {command.Id} failed: {ex}", LogLevel.Warn);
+                }
+
+                // Never delete the command before its durable result exists. If the
+                // process dies after execution but before this write, the ambiguity is
+                // intentionally surfaced as unknown and is never auto-retried by panel.
+                if (WriteJsonAtomic(resultPath, outcome))
+                    File.Delete(path);
             }
             catch (Exception ex)
             {
@@ -667,273 +724,346 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void HandleCommand(PanelCommand command)
+    private CommandOutcome HandleCommand(PanelCommand command)
     {
         switch (command.Name)
         {
             case "save-now":
-                if (Context.IsWorldReady)
+                var saveOutcome = pendingSaveCommands.Begin(command, Context.IsWorldReady, DateTimeOffset.UtcNow, SaveCommandTimeout);
+                if (saveOutcome.Status == CommandStatuses.Running)
                 {
                     Game1.saveOnNewDay = true;
-                    WriteStatus("command", "Save command accepted.");
+                    Monitor.Log($"Save-now command {command.Id} registered; waiting for GameLoop.Saved.", LogLevel.Info);
                 }
-                break;
+                return saveOutcome;
             case "broadcast":
                 var message = command.Payload is not null && command.Payload.TryGetValue("message", out var rawMessage)
                     ? rawMessage.GetString()
                     : "";
-                SendBroadcastMessage(message ?? "");
-                break;
+                return SendBroadcastMessage(command, message ?? "");
             case "kick":
                 var targetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawTargetId)
                     ? rawTargetId.GetString()
                     : "";
-                KickPlayer(targetId ?? "");
-                break;
+                return KickPlayer(command, targetId ?? "");
             case "warp-home":
                 var warpHomeTargetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawWarpHomeTargetId)
                     ? rawWarpHomeTargetId.GetString()
                     : "";
-                WarpPlayerHome(warpHomeTargetId ?? "");
-                break;
+                return WarpPlayerHome(command, warpHomeTargetId ?? "");
             case "approve-auth":
                 var approveTargetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawApproveTargetId)
                     ? rawApproveTargetId.GetString()
                     : "";
-                ApproveAuth(approveTargetId ?? "");
-                break;
+                return ApproveAuth(command, approveTargetId ?? "");
             case "trigger-event":
-                TriggerFestivalEvent();
-                break;
+                return TriggerFestivalEvent(command);
             case "enable-joja":
-                EnableJojaRoute();
-                break;
+                var jojaAdminPromoted = command.Payload is not null && command.Payload.TryGetValue("adminPromoted", out var rawJojaAdminPromoted)
+                    && (rawJojaAdminPromoted.ValueKind == JsonValueKind.True || string.Equals(rawJojaAdminPromoted.GetString(), "true", StringComparison.OrdinalIgnoreCase));
+                return EnableJojaRoute(command, jojaAdminPromoted);
             case "ban":
                 var banName = command.Payload is not null && command.Payload.TryGetValue("name", out var rawBanName)
                     ? rawBanName.GetString()
                     : "";
-                BanPlayer(banName ?? "");
-                break;
+                var banTargetId = command.Payload is not null && command.Payload.TryGetValue("uniqueMultiplayerId", out var rawBanTargetId)
+                    ? rawBanTargetId.GetString()
+                    : "";
+                var adminPromoted = command.Payload is not null && command.Payload.TryGetValue("adminPromoted", out var rawAdminPromoted)
+                    && (rawAdminPromoted.ValueKind == JsonValueKind.True || string.Equals(rawAdminPromoted.GetString(), "true", StringComparison.OrdinalIgnoreCase));
+                return BanPlayer(command, banTargetId ?? "", banName ?? "", adminPromoted);
             case "stop":
                 WriteStatus("stopping", "Stop command received. Container stop will be handled by backend later.");
                 break;
             default:
                 Monitor.Log($"Unknown panel command: {command.Name}", LogLevel.Warn);
-                break;
+                return NewOutcome(command, CommandStatuses.Failed, "command_unknown", "Unknown panel command.");
         }
+        return NewOutcome(command, CommandStatuses.Dispatched, "", "Command dispatched to the game loop.");
     }
 
-    private void SendBroadcastMessage(string message)
+    private static CommandOutcome NewOutcome(PanelCommand command, string status, string errorCode, string message)
+    {
+        return new CommandOutcome
+        {
+            CommandId = command.Id,
+            Status = status,
+            ErrorCode = errorCode,
+            Message = message,
+            CreatedAt = command.CreatedAt,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    private static CommandOutcome PlayerCommandSucceeded(PanelCommand command, string message, string playerId, string playerName)
+    {
+        return PlayerCommandOutcomes.Succeeded(command, message, playerId, playerName);
+    }
+
+    private static CommandOutcome PlayerCommandFailed(PanelCommand command, string errorCode, string message, string playerId = "")
+    {
+        return PlayerCommandOutcomes.Failed(command, errorCode, message, playerId);
+    }
+
+    private CommandOutcome SendBroadcastMessage(PanelCommand command, string message)
     {
         message = SanitizeChatText(message, 450);
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            WriteStatus("command", "Broadcast command ignored because the message was empty.");
-            return;
-        }
-        if (!Context.IsWorldReady)
-        {
-            WriteStatus("command", "Broadcast command ignored because the world is not ready.");
-            Monitor.Log("Broadcast command ignored because the world is not ready.", LogLevel.Warn);
-            return;
-        }
+        var validation = BroadcastOutcomeValidator.Validate(command, message, Context.IsWorldReady, chatAvailable: true);
+        if (validation is not null)
+            return validation;
 
-        var text = $"[Panel] {message}";
-        Helper.Reflection.GetField<Multiplayer>(typeof(Game1), "multiplayer").GetValue()
-            .sendChatMessage(DetectChatLanguage(text), text, Multiplayer.AllPlayers);
-        WriteStatus("command", "Broadcast command sent.");
-        Monitor.Log($"Broadcast command sent: {text}", LogLevel.Info);
+        try
+        {
+            var chatSystem = Helper.Reflection.GetField<Multiplayer>(typeof(Game1), "multiplayer").GetValue();
+            validation = BroadcastOutcomeValidator.Validate(command, message, worldReady: true, chatAvailable: chatSystem is not null);
+            if (validation is not null)
+                return validation;
+
+            var text = $"[Panel] {message}";
+            chatSystem!.sendChatMessage(DetectChatLanguage(text), text, Multiplayer.AllPlayers);
+            Monitor.Log($"Broadcast command handed to the game chat system: {text}", LogLevel.Info);
+            return NewOutcome(command, CommandStatuses.Succeeded, "ok", "Message accepted by the game chat system; delivery to every client is not guaranteed.");
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Broadcast command failed: {ex}", LogLevel.Error);
+            return PlayerCommandFailed(command, "broadcast_failed", "The game chat system rejected the broadcast.");
+        }
     }
 
-    private void KickPlayer(string uniqueMultiplayerId)
+    private CommandOutcome KickPlayer(PanelCommand command, string uniqueMultiplayerId)
     {
         if (!Context.IsWorldReady)
         {
-            WriteStatus("command", "Kick command ignored because the world is not ready.");
-            return;
+            return PlayerCommandFailed(command, "world_not_ready", "The game world is not ready.", uniqueMultiplayerId);
         }
         if (!long.TryParse(uniqueMultiplayerId, out var targetId))
         {
-            WriteStatus("command", "Kick command ignored because the target player id was invalid.");
-            return;
+            return PlayerCommandFailed(command, "invalid_player_id", "The target player ID is invalid.");
         }
 
         var target = Game1.getOnlineFarmers().FirstOrDefault(farmer => farmer.UniqueMultiplayerID == targetId);
         if (target is null)
         {
-            WriteStatus("command", "Kick command ignored because the target player is not online.");
-            return;
+            return PlayerCommandFailed(command, "player_not_online", "The target player is not online.", uniqueMultiplayerId);
         }
         if (target.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID)
         {
-            WriteStatus("command", "Kick command ignored because the target player is the host.");
             Monitor.Log("Kick command ignored: cannot kick the host.", LogLevel.Warn);
-            return;
+            return PlayerCommandFailed(command, "host_not_supported", "The server host cannot be kicked.", uniqueMultiplayerId);
         }
 
         try
         {
-            Game1.server?.kick(targetId);
-            WriteStatus("command", $"Kick command sent for player {target.Name}.");
+            if (Game1.server is null)
+                return PlayerCommandFailed(command, "kick_failed", "The multiplayer server is unavailable.", uniqueMultiplayerId);
+            Game1.server.kick(targetId);
             Monitor.Log($"Kick command sent for player {target.Name} ({targetId}).", LogLevel.Info);
+            return PlayerCommandSucceeded(command, $"Player {target.Name} was kicked.", uniqueMultiplayerId, target.Name);
         }
         catch (Exception ex)
         {
-            WriteStatus("command", "Kick command failed.");
             Monitor.Log($"Kick command failed for player {targetId}: {ex}", LogLevel.Error);
+            return PlayerCommandFailed(command, "kick_failed", "The game rejected the kick operation.", uniqueMultiplayerId);
         }
     }
 
-    private void WarpPlayerHome(string uniqueMultiplayerId)
+    private CommandOutcome WarpPlayerHome(PanelCommand command, string uniqueMultiplayerId)
     {
         if (!Context.IsWorldReady)
         {
-            WriteStatus("command", "Warp-home command ignored because the world is not ready.");
-            return;
+            return PlayerCommandFailed(command, "world_not_ready", "The game world is not ready.", uniqueMultiplayerId);
         }
         if (!warpHomeBridge.Available)
         {
-            WriteStatus("command", "Warp-home command ignored because the warp-home bridge is unavailable.");
             Monitor.Log($"Warp-home command ignored: warp-home bridge unavailable ({warpHomeBridge.Detail}).", LogLevel.Warn);
-            return;
+            return PlayerCommandFailed(command, "bridge_unavailable", "The warp-home bridge is unavailable.", uniqueMultiplayerId);
         }
         if (!long.TryParse(uniqueMultiplayerId, out var targetId))
         {
-            WriteStatus("command", "Warp-home command ignored because the target player id was invalid.");
-            return;
+            return PlayerCommandFailed(command, "invalid_player_id", "The target player ID is invalid.");
         }
 
         var target = Game1.getOnlineFarmers().FirstOrDefault(farmer => farmer.UniqueMultiplayerID == targetId);
         if (target is null)
         {
-            WriteStatus("command", "Warp-home command ignored because the target player is not online.");
-            return;
+            return PlayerCommandFailed(command, "player_not_online", "The target player is not online.", uniqueMultiplayerId);
         }
         if (target.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID)
         {
-            WriteStatus("command", "Warp-home command ignored because the target player is the host.");
             Monitor.Log("Warp-home command ignored: host has no farmhand cabin to warp to.", LogLevel.Warn);
-            return;
+            return PlayerCommandFailed(command, "host_not_supported", "The server host cannot be warped home.", uniqueMultiplayerId);
         }
 
         var (success, message) = warpHomeBridge.WarpHome(target);
         if (success)
         {
-            WriteStatus("command", $"Warp-home command succeeded for player {target.Name}.");
             Monitor.Log($"Warp-home command succeeded for player {target.Name} ({targetId}).", LogLevel.Info);
+            return PlayerCommandSucceeded(command, $"Player {target.Name} was warped home.", uniqueMultiplayerId, target.Name);
         }
         else
         {
-            WriteStatus("command", $"Warp-home command failed for player {target.Name}: {message}");
             Monitor.Log($"Warp-home command failed for player {target.Name} ({targetId}): {message}", LogLevel.Warn);
+            return PlayerCommandFailed(command, "warp_failed", "The game rejected the warp-home operation.", uniqueMultiplayerId);
         }
     }
 
-    private void ApproveAuth(string uniqueMultiplayerId)
+    private CommandOutcome ApproveAuth(PanelCommand command, string uniqueMultiplayerId)
     {
         if (!Context.IsWorldReady)
         {
-            WriteStatus("command", "Approve-auth command ignored because the world is not ready.");
-            return;
+            return PlayerCommandFailed(command, "world_not_ready", "The game world is not ready.", uniqueMultiplayerId);
         }
         if (!passwordBridge.Available)
         {
-            WriteStatus("command", "Approve-auth command ignored because the password bridge is unavailable.");
             Monitor.Log($"Approve-auth command ignored: password bridge unavailable ({passwordBridge.Detail}).", LogLevel.Warn);
-            return;
+            return PlayerCommandFailed(command, "bridge_unavailable", "The password bridge is unavailable.", uniqueMultiplayerId);
         }
         if (!long.TryParse(uniqueMultiplayerId, out var targetId))
         {
-            WriteStatus("command", "Approve-auth command ignored because the target player id was invalid.");
-            return;
+            return PlayerCommandFailed(command, "invalid_player_id", "The target player ID is invalid.");
         }
 
         var target = Game1.getOnlineFarmers().FirstOrDefault(farmer => farmer.UniqueMultiplayerID == targetId);
         if (target is null)
         {
-            WriteStatus("command", "Approve-auth command ignored because the target player is not online.");
-            return;
+            return PlayerCommandFailed(command, "player_not_online", "The target player is not online.", uniqueMultiplayerId);
         }
         if (target.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID)
         {
-            WriteStatus("command", "Approve-auth command ignored because the target player is the host.");
             Monitor.Log("Approve-auth command ignored: host bypasses authentication already.", LogLevel.Warn);
-            return;
+            return PlayerCommandFailed(command, "host_not_supported", "The server host does not require authentication approval.", uniqueMultiplayerId);
         }
 
         try
         {
+            if (passwordBridge.IsPlayerAuthenticated(targetId) == true)
+                return PlayerCommandFailed(command, "already_authenticated", "The target player is already authenticated.", uniqueMultiplayerId);
+
             var password = Environment.GetEnvironmentVariable("SERVER_PASSWORD") ?? "";
-            var (success, message, _) = passwordBridge.TryAuthenticate(targetId, password);
+            var (success, message, _, invocationFailed) = passwordBridge.TryAuthenticate(targetId, password);
             if (success)
             {
-                WriteStatus("command", $"Approve-auth command succeeded for player {target.Name}.");
                 Monitor.Log($"Approve-auth command succeeded for player {target.Name} ({targetId}).", LogLevel.Info);
+                return PlayerCommandSucceeded(command, $"Authentication was approved for player {target.Name}.", uniqueMultiplayerId, target.Name);
             }
-            else
-            {
-                WriteStatus("command", $"Approve-auth command failed for player {target.Name}: {message}");
-                Monitor.Log($"Approve-auth command failed for player {target.Name} ({targetId}): {message}", LogLevel.Warn);
-            }
+
+            Monitor.Log($"Approve-auth command failed for player {target.Name} ({targetId}): {message}", LogLevel.Warn);
+            return PlayerCommandFailed(
+                command,
+                invocationFailed ? "authentication_failed" : "authentication_rejected",
+                invocationFailed ? "The authentication service failed." : "The authentication service rejected the approval.",
+                uniqueMultiplayerId);
         }
         catch (Exception ex)
         {
-            WriteStatus("command", "Approve-auth command failed.");
             Monitor.Log($"Approve-auth command failed for player {targetId}: {ex}", LogLevel.Error);
+            return PlayerCommandFailed(command, "authentication_failed", "The authentication service failed.", uniqueMultiplayerId);
         }
     }
 
-    private void TriggerFestivalEvent()
+    private CommandOutcome TriggerFestivalEvent(PanelCommand command)
     {
-        if (!Context.IsWorldReady || Game1.chatBox is null)
-        {
-            WriteStatus("command", "Trigger-event command ignored because the world is not ready.");
-            return;
-        }
+        var festivalToday = Context.IsWorldReady && Utility.isFestivalDay(Game1.dayOfMonth, Game1.season);
+        var festivalActive = Context.IsWorldReady && Game1.CurrentEvent is { isFestival: true };
+        var validation = FestivalCommandOutcomes.Validate(command, Context.IsWorldReady, festivalToday, festivalActive, Game1.chatBox is not null);
+        if (validation is not null)
+            return validation;
 
-        Game1.chatBox.textBoxEnter("!event");
-        WriteStatus("command", "Trigger-event command sent.");
-        Monitor.Log("Trigger-event command sent (simulated \"!event\" chat message from the host).", LogLevel.Info);
+        try
+        {
+            Game1.chatBox!.textBoxEnter("!event");
+            Monitor.Log("Trigger-event command dispatched (simulated \"!event\" chat message from the host); final festival effect is not confirmed.", LogLevel.Info);
+            return FestivalCommandOutcomes.Dispatched(command);
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Trigger-event command dispatch failed: {ex}", LogLevel.Error);
+            return FestivalCommandOutcomes.Failed(command, "command_dispatch_failed", "The !event command could not be delivered to JunimoServer.");
+        }
     }
 
-    private void EnableJojaRoute()
+    private CommandOutcome EnableJojaRoute(PanelCommand command, bool adminPromoted)
     {
-        if (!Context.IsWorldReady || Game1.chatBox is null)
-        {
-            WriteStatus("command", "Enable-joja command ignored because the world is not ready.");
-            return;
-        }
+        var validation = JojaCommandOutcomes.Validate(command, Context.IsWorldReady, adminPromoted, Game1.chatBox is not null);
+        if (validation is not null)
+            return validation;
+
+        // JojaMember is durable save data and therefore a stronger signal than
+        // JunimoServer's in-memory AlwaysOnConfig toggle. Only that durable state
+        // is allowed to produce succeeded; a successful chat dispatch alone is not.
+        if (Game1.MasterPlayer.mailReceived.Contains("JojaMember"))
+            return JojaCommandOutcomes.Succeeded(command);
 
         // JunimoServer's "!joja" command requires the sending player to already hold the
         // admin role (see RoleService.IsPlayerAdmin); the panel backend grants the host
         // that role via JunimoServer's own POST /roles/admin before submitting this command.
-        Game1.chatBox.textBoxEnter("!joja IRREVERSIBLY_ENABLE_JOJA_RUN");
-        WriteStatus("command", "Enable-joja command sent.");
-        Monitor.Log("Enable-joja command sent (simulated \"!joja\" chat message from the host).", LogLevel.Info);
+        try
+        {
+            Game1.chatBox!.textBoxEnter("!joja IRREVERSIBLY_ENABLE_JOJA_RUN");
+            Monitor.Log("Enable-joja command dispatched; permanent saved-game route state is not yet confirmed.", LogLevel.Info);
+            return JojaCommandOutcomes.Dispatched(command);
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Enable-joja command dispatch failed: {ex}", LogLevel.Error);
+            return JojaCommandOutcomes.Failed(command, "command_dispatch_failed", "The !joja command could not be delivered to JunimoServer.");
+        }
     }
 
-    private void BanPlayer(string name)
+    private CommandOutcome BanPlayer(PanelCommand command, string uniqueMultiplayerId, string name, bool adminPromoted)
     {
-        if (!Context.IsWorldReady || Game1.chatBox is null)
-        {
-            WriteStatus("command", "Ban command ignored because the world is not ready.");
-            return;
-        }
+        if (!Context.IsWorldReady)
+            return PlayerCommandFailed(command, "world_not_ready", "The game world is not ready.", uniqueMultiplayerId);
+        if (!adminPromoted)
+            return PlayerCommandFailed(command, "admin_promotion_failed", "JunimoServer admin promotion was not confirmed.", uniqueMultiplayerId);
 
         name = SanitizeChatText(name, 60);
-        if (string.IsNullOrWhiteSpace(name))
+        var candidates = Game1.getAllFarmers()
+            .Select(farmer => new BanCandidate(farmer.UniqueMultiplayerID.ToString(), farmer.Name, farmer.UniqueMultiplayerID == Game1.MasterPlayer.UniqueMultiplayerID))
+            .ToArray();
+        var directBanAvailable = Game1.server is not null;
+        var resolution = BanTargetResolver.Resolve(candidates, uniqueMultiplayerId, requireUniqueNameForFallback: !directBanAvailable);
+        if (!resolution.Success)
         {
-            WriteStatus("command", "Ban command ignored because the target player name was empty.");
-            return;
+            var message = resolution.ErrorCode switch
+            {
+                "ambiguous_player" => "Multiple players share the fallback ban name.",
+                "host_not_supported" => "The server host cannot be banned.",
+                _ => "The target player was not found.",
+            };
+            return PlayerCommandFailed(command, resolution.ErrorCode, message, uniqueMultiplayerId);
         }
 
-        // JunimoServer's "!ban" command requires the sending player to already hold the
-        // admin role (see RoleService.IsPlayerAdmin); the panel backend grants the host
-        // that role via JunimoServer's own POST /roles/admin before submitting this command.
-        // It also rejects banning the server host itself, so no extra guard is needed here.
-        Game1.chatBox.textBoxEnter($"!ban {name}");
-        WriteStatus("command", $"Ban command sent for player {name}.");
-        Monitor.Log($"Ban command sent for player {name}.", LogLevel.Info);
+        var target = resolution.Target!;
+        if (directBanAvailable && long.TryParse(target.PlayerId, out var targetId))
+        {
+            try
+            {
+                Game1.server!.ban(targetId);
+                Monitor.Log($"Ban invoked for player {target.Name} ({target.PlayerId}).", LogLevel.Info);
+                return PlayerCommandSucceeded(command, $"Player {target.Name} was banned.", target.PlayerId, target.Name);
+            }
+            catch (Exception ex)
+            {
+                Monitor.Log($"Ban failed for player {target.Name} ({target.PlayerId}): {ex}", LogLevel.Error);
+                return PlayerCommandFailed(command, "ban_failed", "The game server rejected the ban operation.", target.PlayerId);
+            }
+        }
+
+        if (Game1.chatBox is null || string.IsNullOrWhiteSpace(target.Name))
+            return PlayerCommandFailed(command, "command_dispatch_failed", "JunimoServer ban command dispatch is unavailable.", target.PlayerId);
+        try
+        {
+            Game1.chatBox.textBoxEnter($"!ban {target.Name}");
+            Monitor.Log($"Ban command dispatched to JunimoServer for player {target.Name} ({target.PlayerId}).", LogLevel.Info);
+            return NewOutcome(command, CommandStatuses.Dispatched, "ok", "Ban command dispatched to JunimoServer; final processing could not be confirmed.");
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Ban command dispatch failed for player {target.Name} ({target.PlayerId}): {ex}", LogLevel.Error);
+            return PlayerCommandFailed(command, "command_dispatch_failed", "JunimoServer ban command dispatch failed.", target.PlayerId);
+        }
     }
 
     private static string SanitizeChatText(string input, int maxLength)
@@ -986,14 +1116,30 @@ public sealed class ModEntry : Mod
 
     private void WriteJson(string path, object value)
     {
+		WriteJsonAtomic(path, value);
+    }
+
+    private bool WriteJsonAtomic(string path, object value)
+    {
+        var tempPath = "";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(value, ContractJson.Options));
+            var directory = Path.GetDirectoryName(path)!;
+            Directory.CreateDirectory(directory);
+            tempPath = Path.Combine(directory, $".tmp-{Guid.NewGuid():N}");
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(value, ContractJson.Options));
+            File.Move(tempPath, path, true);
+            return true;
         }
         catch (Exception ex)
         {
-            Monitor.Log($"Failed to write {path}: {ex}", LogLevel.Warn);
+            Monitor.Log($"Failed to atomically write {path}: {ex}", LogLevel.Warn);
+            return false;
+        }
+        finally
+        {
+            if (tempPath.Length > 0 && File.Exists(tempPath))
+                File.Delete(tempPath);
         }
     }
 
