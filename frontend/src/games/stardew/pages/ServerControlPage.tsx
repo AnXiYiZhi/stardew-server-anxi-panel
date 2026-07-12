@@ -12,6 +12,7 @@ import { useServerFestival } from '../useServerFestival'
 import { useServerJoja } from '../useServerJoja'
 import { useServerConsole } from '../useServerConsole'
 import { useServerBroadcast } from '../useServerBroadcast'
+import { useServerSaveNow } from '../useServerSaveNow'
 
 const SERVER_PAGE_ICONS = {
   title: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
@@ -130,6 +131,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     isAdmin,
     isRunning,
   })
+  const { saveNowBusy, saveNowMessage, saveNowError, handleSaveNow } = useServerSaveNow({ isAdmin, isRunning })
 
   const {
     jojaOpen,
@@ -158,7 +160,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     handleRunCommand,
   } = useServerConsole({ isRunning })
 
-  const { sayMessage, setSayMessage, sayBusy, sayResult, sayError, handleSay } = useServerBroadcast()
+  const { sayMessage, setSayMessage, sayBusy, sayResult, sayError, sayConfirmed, handleSay } = useServerBroadcast()
 
   const selectedCommandDef = commands.find((c) => c.id === selectedCommand)
   const terminalLines = commandResult
@@ -336,7 +338,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </button>
             </div>
             {sayResult ? (
-              <div className="sd-srv-result" style={{ marginTop: 5 }}>{sayResult}</div>
+              <div className={sayConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} style={{ marginTop: 5 }}>{sayResult}</div>
             ) : null}
             {sayError ? (
               <div className="sd-ov-error" style={{ marginTop: 4 }}>{sayError}</div>
@@ -446,6 +448,25 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             <span className="sd-server-quick-copy">
               <strong>{quickBackupBusy ? '备份中…' : '手动备份'}</strong>
               <span>备份当前存档</span>
+            </span>
+          </button>
+          <button
+            key="save-now"
+            className="sd-btn-green sd-btn--lg"
+            disabled={!isAdmin || !isRunning || saveNowBusy}
+            title={
+              !isAdmin
+                ? '仅管理员可执行此操作'
+                : !isRunning
+                  ? '服务器运行后才能请求游戏内保存'
+                  : '设置游戏内保存请求，并等待 GameLoop.Saved 确认；这不是创建 ZIP 备份'
+            }
+            onClick={() => void handleSaveNow()}
+          >
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.backup} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>{saveNowBusy ? '等待保存…' : '请求游戏内保存'}</strong>
+              <span>以 Saved 事件确认完成</span>
             </span>
           </button>
           <button
@@ -595,6 +616,11 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             {festivalMessage}
           </div>
         ) : null}
+        {saveNowMessage ? (
+          <div className={saveNowError ? 'sd-ov-error' : 'sd-srv-result'} style={{ marginTop: 6 }}>
+            {saveNowMessage}
+          </div>
+        ) : null}
         {vncMessage ? (
           <div className="sd-srv-result" style={{ marginTop: 6 }}>
             {vncMessage}
@@ -606,7 +632,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           </div>
         ) : null}
         <div className="sd-srv-hint" style={{ marginTop: 6 }}>
-          备份只会打包当前已经落盘的激活存档，运行中也可用，但不会强制保存尚未写盘的游戏进度。VNC 控制需要先打开显示渲染。完整备份与恢复请前往
+          “手动备份”只打包当前已经落盘的存档；“请求游戏内保存”只在收到同一 commandId 关联的 Saved 事件后才显示完成，两者不是同一操作。VNC 控制需要先打开显示渲染。完整备份与恢复请前往
           <button
             className="sd-inline-nav"
             style={{ marginLeft: 2 }}

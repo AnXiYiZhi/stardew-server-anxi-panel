@@ -4,6 +4,7 @@ import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { InstancePasswordStatus } from '../../../types'
 import { formatStardewLocation, rawStardewLocation, readableStardewLocation, type StardewLocationLike } from '../location-format'
+import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
 
 const PLAYER_EVENTS_PAGE_SIZE = 2
 
@@ -200,22 +201,26 @@ type KickTarget = { uniqueMultiplayerId: string; name: string }
 export function PlayersPage({ user, instanceState, dashboardData }: StardewPageProps) {
   const [eventsPage, setEventsPage] = useState(1)
   const [warpHomeConfirmTarget, setWarpHomeConfirmTarget] = useState<KickTarget | null>(null)
-  const [warpHomeBusy, setWarpHomeBusy] = useState(false)
+  const [warpHomeBusyId, setWarpHomeBusyId] = useState<string | null>(null)
   const [warpHomeError, setWarpHomeError] = useState<string | null>(null)
   const [warpHomeMessage, setWarpHomeMessage] = useState<string | null>(null)
+  const [warpHomeConfirmed, setWarpHomeConfirmed] = useState(false)
   const [kickConfirmTarget, setKickConfirmTarget] = useState<KickTarget | null>(null)
-  const [kickBusy, setKickBusy] = useState(false)
+  const [kickBusyId, setKickBusyId] = useState<string | null>(null)
   const [kickError, setKickError] = useState<string | null>(null)
   const [kickMessage, setKickMessage] = useState<string | null>(null)
+  const [kickConfirmed, setKickConfirmed] = useState(false)
   const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
   const [approveConfirmTarget, setApproveConfirmTarget] = useState<KickTarget | null>(null)
-  const [approveBusy, setApproveBusy] = useState(false)
+  const [approveBusyId, setApproveBusyId] = useState<string | null>(null)
   const [approveError, setApproveError] = useState<string | null>(null)
   const [approveMessage, setApproveMessage] = useState<string | null>(null)
+  const [approveConfirmed, setApproveConfirmed] = useState(false)
   const [banConfirmTarget, setBanConfirmTarget] = useState<KickTarget | null>(null)
   const [banBusy, setBanBusy] = useState(false)
   const [banError, setBanError] = useState<string | null>(null)
   const [banMessage, setBanMessage] = useState<string | null>(null)
+  const [banConfirmed, setBanConfirmed] = useState(false)
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -346,20 +351,41 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     return translated === '—' ? '' : translated
   }
 
+  function applyFeedback(
+    feedback: PlayerCommandFeedback,
+    setMessage: (value: string | null) => void,
+    setError: (value: string | null) => void,
+    setConfirmed: (value: boolean) => void,
+  ) {
+    if (feedback.kind === 'failed') {
+      setMessage(null)
+      setError(feedback.message)
+      setConfirmed(false)
+    } else {
+      setError(null)
+      setMessage(feedback.message)
+      setConfirmed(feedback.kind === 'succeeded')
+    }
+  }
+
   async function handleConfirmWarpHome() {
     const target = warpHomeConfirmTarget
     if (!target) return
-    setWarpHomeBusy(true)
+    setWarpHomeBusyId(target.uniqueMultiplayerId)
     setWarpHomeError(null)
     setWarpHomeMessage(null)
     try {
-      const res = await warpPlayerHome(target.uniqueMultiplayerId, target.name)
-      setWarpHomeMessage(res.output?.trim() || `已提交传送 ${target.name} 回家的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => warpPlayerHome(target.uniqueMultiplayerId, target.name),
+        'warp-home',
+        target.name,
+        (next) => applyFeedback(next, setWarpHomeMessage, setWarpHomeError, setWarpHomeConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setWarpHomeError(errorMessage(e))
     } finally {
-      setWarpHomeBusy(false)
+      setWarpHomeBusyId(null)
       setWarpHomeConfirmTarget(null)
     }
   }
@@ -367,17 +393,21 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   async function handleConfirmKick() {
     const target = kickConfirmTarget
     if (!target) return
-    setKickBusy(true)
+    setKickBusyId(target.uniqueMultiplayerId)
     setKickError(null)
     setKickMessage(null)
     try {
-      const res = await kickPlayer(target.uniqueMultiplayerId, target.name)
-      setKickMessage(res.output?.trim() || `已提交踢出 ${target.name} 的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => kickPlayer(target.uniqueMultiplayerId, target.name),
+        'kick',
+        target.name,
+        (next) => applyFeedback(next, setKickMessage, setKickError, setKickConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setKickError(errorMessage(e))
     } finally {
-      setKickBusy(false)
+      setKickBusyId(null)
       setKickConfirmTarget(null)
     }
   }
@@ -404,17 +434,21 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   async function handleConfirmApprove() {
     const target = approveConfirmTarget
     if (!target) return
-    setApproveBusy(true)
+    setApproveBusyId(target.uniqueMultiplayerId)
     setApproveError(null)
     setApproveMessage(null)
     try {
-      const res = await approvePlayerAuth(target.uniqueMultiplayerId)
-      setApproveMessage(res.output?.trim() || `已提交批准 ${target.name} 认证的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => approvePlayerAuth(target.uniqueMultiplayerId),
+        'approve-auth',
+        target.name,
+        (next) => applyFeedback(next, setApproveMessage, setApproveError, setApproveConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setApproveError(errorMessage(e))
     } finally {
-      setApproveBusy(false)
+      setApproveBusyId(null)
       setApproveConfirmTarget(null)
     }
   }
@@ -426,9 +460,13 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     setBanError(null)
     setBanMessage(null)
     try {
-      const res = await banPlayer(target.name, target.uniqueMultiplayerId)
-      setBanMessage(res.output?.trim() || `已提交封禁 ${target.name} 的指令。`)
-      await dashboardData.refreshPlayers()
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => banPlayer(target.name, target.uniqueMultiplayerId),
+        'ban',
+        target.name,
+        (next) => applyFeedback(next, setBanMessage, setBanError, setBanConfirmed),
+      )
+      if (feedback.kind === 'succeeded') await dashboardData.refreshPlayers()
     } catch (e) {
       setBanError(errorMessage(e))
     } finally {
@@ -555,7 +593,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                   <button
                     className="sd-players-icon-button sd-players-icon-home"
                     type="button"
-                    disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || warpHomeBusy}
+                    disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || warpHomeBusyId === player.uniqueMultiplayerId}
                     title={
                       !isAdmin
                         ? '仅管理员可用'
@@ -573,7 +611,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                   <button
                     className="sd-players-icon-button sd-players-icon-boot"
                     type="button"
-                    disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || kickBusy}
+                    disabled={!isAdmin || !isRunning || player.status !== 'online' || player.isHost || !player.uniqueMultiplayerId || kickBusyId === player.uniqueMultiplayerId}
                     title={
                       !isAdmin
                         ? '仅管理员可用'
@@ -624,11 +662,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           </div>
         )}
         {warpHomeError ? <div className="sd-players-info-error sd-players-action-feedback">{warpHomeError}</div> : null}
-        {warpHomeMessage ? <div className="sd-srv-result sd-players-action-feedback">{warpHomeMessage}</div> : null}
+        {warpHomeMessage ? <div className={`${warpHomeConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} sd-players-action-feedback`}>{warpHomeMessage}</div> : null}
         {kickError ? <div className="sd-players-info-error sd-players-action-feedback">{kickError}</div> : null}
-        {kickMessage ? <div className="sd-srv-result sd-players-action-feedback">{kickMessage}</div> : null}
+        {kickMessage ? <div className={`${kickConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} sd-players-action-feedback`}>{kickMessage}</div> : null}
         {banError ? <div className="sd-players-info-error sd-players-action-feedback">{banError}</div> : null}
-        {banMessage ? <div className="sd-srv-result sd-players-action-feedback">{banMessage}</div> : null}
+        {banMessage ? <div className={`${banConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} sd-players-action-feedback`}>{banMessage}</div> : null}
       </div>
 
       {passwordStatus?.enabled ? (
@@ -665,7 +703,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                     <button
                       type="button"
                       className="sd-btn-green"
-                      disabled={!isAdmin || !isRunning || !passwordStatus?.passwordBridgeAvailable || !player.uniqueMultiplayerId || approveBusy}
+                      disabled={!isAdmin || !isRunning || !passwordStatus?.passwordBridgeAvailable || !player.uniqueMultiplayerId || approveBusyId === player.uniqueMultiplayerId}
                       title={
                         !isAdmin
                           ? '仅管理员可用'
@@ -689,7 +727,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           )}
 
           {approveError ? <div className="sd-players-info-error sd-players-action-feedback">{approveError}</div> : null}
-          {approveMessage ? <div className="sd-srv-result sd-players-action-feedback">{approveMessage}</div> : null}
+          {approveMessage ? <div className={`${approveConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} sd-players-action-feedback`}>{approveMessage}</div> : null}
         </div>
       ) : null}
 
@@ -816,11 +854,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             <h3>确认传送回家</h3>
             <p>将玩家 {warpHomeConfirmTarget.name} 传送回自己的小屋？该操作会调用 JunimoServer 自己的 WarpHome 逻辑，适合玩家卡在地图或建筑边缘时救援。</p>
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setWarpHomeConfirmTarget(null)} disabled={warpHomeBusy}>
+              <button className="sd-btn-tan" onClick={() => setWarpHomeConfirmTarget(null)} disabled={warpHomeBusyId !== null}>
                 取消
               </button>
-              <button className="sd-btn-green" onClick={() => void handleConfirmWarpHome()} disabled={warpHomeBusy}>
-                {warpHomeBusy ? '传送中…' : '确认传送'}
+              <button className="sd-btn-green" onClick={() => void handleConfirmWarpHome()} disabled={warpHomeBusyId !== null}>
+                {warpHomeBusyId !== null ? '处理中…' : '确认传送'}
               </button>
             </div>
           </div>
@@ -833,11 +871,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             <h3>确认踢出玩家</h3>
             <p>将玩家 {kickConfirmTarget.name} 踢出服务器？该操作会立即断开该玩家的连接，玩家可以重新加入。</p>
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setKickConfirmTarget(null)} disabled={kickBusy}>
+              <button className="sd-btn-tan" onClick={() => setKickConfirmTarget(null)} disabled={kickBusyId !== null}>
                 取消
               </button>
-              <button className="sd-btn-delete" onClick={() => void handleConfirmKick()} disabled={kickBusy}>
-                {kickBusy ? '踢出中…' : '确认踢出'}
+              <button className="sd-btn-delete" onClick={() => void handleConfirmKick()} disabled={kickBusyId !== null}>
+                {kickBusyId !== null ? '处理中…' : '确认踢出'}
               </button>
             </div>
           </div>
@@ -850,11 +888,11 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             <h3>确认批准认证</h3>
             <p>批准玩家 {approveConfirmTarget.name} 的密码认证？该操作会立即让玩家进入正式农场，等同于服务器替其正确输入了一次密码。</p>
             <div className="sd-confirm-actions">
-              <button className="sd-btn-tan" onClick={() => setApproveConfirmTarget(null)} disabled={approveBusy}>
+              <button className="sd-btn-tan" onClick={() => setApproveConfirmTarget(null)} disabled={approveBusyId !== null}>
                 取消
               </button>
-              <button className="sd-btn-green" onClick={() => void handleConfirmApprove()} disabled={approveBusy}>
-                {approveBusy ? '批准中…' : '确认批准'}
+              <button className="sd-btn-green" onClick={() => void handleConfirmApprove()} disabled={approveBusyId !== null}>
+                {approveBusyId !== null ? '处理中…' : '确认批准'}
               </button>
             </div>
           </div>
@@ -866,7 +904,7 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
           <div className="sd-confirm-dialog">
             <h3>确认封禁玩家</h3>
             <p>
-              封禁玩家 {banConfirmTarget.name}？该玩家会被立即断开且暂时无法重新加入服务器；如果之后重启了服务器容器，这条封禁可能会失效，需要重新操作。
+              封禁玩家 {banConfirmTarget.name}？控制模组会优先按联机 ID 精确封禁；封禁记录在服务器容器重启后会丢失，需要重新操作。
             </p>
             <div className="sd-confirm-actions">
               <button className="sd-btn-tan" onClick={() => setBanConfirmTarget(null)} disabled={banBusy}>

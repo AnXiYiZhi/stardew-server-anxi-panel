@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,11 +106,13 @@ type CommandRequest struct {
 
 // CommandRunResult is the structured result returned to the frontend.
 type CommandRunResult struct {
-	Command    string `json:"command"`
-	Output     string `json:"output,omitempty"`
-	Error      string `json:"error,omitempty"`
-	ExitCode   int    `json:"exitCode"`
-	DurationMS int64  `json:"durationMs"`
+	Command    string        `json:"command"`
+	CommandID  string        `json:"commandId,omitempty"`
+	Status     CommandStatus `json:"status,omitempty"`
+	Output     string        `json:"output,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	ExitCode   int           `json:"exitCode"`
+	DurationMS int64         `json:"durationMs"`
 }
 
 // ConsoleCommandDef is the frontend-facing command definition.
@@ -170,6 +171,14 @@ func (d *Driver) TriggerFestivalEvent(ctx context.Context, instance registry.Ins
 	return triggerFestivalEvent(instance)
 }
 
+// RequestSaveNow registers a game save request with the embedded control mod.
+// The initial response only acknowledges the queued request; the command result
+// becomes succeeded exclusively when the mod observes GameLoop.Saved for the
+// same command ID.
+func (d *Driver) RequestSaveNow(ctx context.Context, instance registry.Instance) (*CommandRunResult, error) {
+	return requestSaveNow(instance)
+}
+
 // triggerFestivalEvent is the testable core of Driver.TriggerFestivalEvent.
 func triggerFestivalEvent(instance registry.Instance) (*CommandRunResult, error) {
 	if instance.State != storage.InstanceStateRunning {
@@ -177,12 +186,35 @@ func triggerFestivalEvent(instance registry.Instance) (*CommandRunResult, error)
 	}
 
 	start := time.Now()
-	if err := writePanelCommand(instance.DataDir, "trigger-event", nil); err != nil {
+	commandID, err := writePanelCommand(instance.DataDir, "trigger-event", nil)
+	if err != nil {
 		return nil, fmt.Errorf("写入触发节日活动命令失败: %w", err)
 	}
 	return &CommandRunResult{
 		Command:    "trigger-event",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
 		Output:     "指令已提交，控制模组会在游戏 tick 中模拟 !event 聊天指令；若当前没有进行中的节日则不会生效。",
+		ExitCode:   0,
+		DurationMS: time.Since(start).Milliseconds(),
+	}, nil
+}
+
+func requestSaveNow(instance registry.Instance) (*CommandRunResult, error) {
+	if instance.State != storage.InstanceStateRunning {
+		return nil, &CommandError{Code: "server_not_running", Message: "服务器未运行，无法请求游戏内保存"}
+	}
+
+	start := time.Now()
+	commandID, err := writePanelCommand(instance.DataDir, "save-now", nil)
+	if err != nil {
+		return nil, fmt.Errorf("写入游戏内保存命令失败: %w", err)
+	}
+	return &CommandRunResult{
+		Command:    "save-now",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
+		Output:     "游戏内保存请求已提交；只有后续 GameLoop.Saved 事件才能确认保存完成。",
 		ExitCode:   0,
 		DurationMS: time.Since(start).Milliseconds(),
 	}, nil
@@ -276,18 +308,21 @@ func sendSay(ctx context.Context, d *Driver, instance registry.Instance, message
 	}
 
 	start := time.Now()
-	if err := writePanelBroadcastCommand(instance.DataDir, message); err != nil {
+	commandID, err := writePanelBroadcastCommand(instance.DataDir, message)
+	if err != nil {
 		return nil, fmt.Errorf("写入喊话命令失败: %w", err)
 	}
 	return &CommandRunResult{
 		Command:    "say",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
 		Output:     "喊话已提交，控制模组会在游戏 tick 中发送给在线玩家。",
 		ExitCode:   0,
 		DurationMS: time.Since(start).Milliseconds(),
 	}, nil
 }
 
-func writePanelBroadcastCommand(dataDir, message string) error {
+func writePanelBroadcastCommand(dataDir, message string) (string, error) {
 	return writePanelCommand(dataDir, "broadcast", map[string]string{"message": message})
 }
 
@@ -302,14 +337,17 @@ func kickPlayer(instance registry.Instance, uniqueMultiplayerID, name string) (*
 	}
 
 	start := time.Now()
-	if err := writePanelCommand(instance.DataDir, "kick", map[string]string{
+	commandID, err := writePanelCommand(instance.DataDir, "kick", map[string]string{
 		"uniqueMultiplayerId": uniqueMultiplayerID,
 		"name":                strings.TrimSpace(name),
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("写入踢出命令失败: %w", err)
 	}
 	return &CommandRunResult{
 		Command:    "kick",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
 		Output:     "踢出指令已提交，控制模组会在游戏 tick 中处理；无法踢出主机玩家。",
 		ExitCode:   0,
 		DurationMS: time.Since(start).Milliseconds(),
@@ -319,30 +357,41 @@ func kickPlayer(instance registry.Instance, uniqueMultiplayerID, name string) (*
 // writePanelCommand drops a JSON command file into the instance's control
 // commands directory, where the embedded StardewAnxiPanel.Control SMAPI mod
 // polls and consumes it (see ModEntry.cs ConsumeCommands/HandleCommand).
-func writePanelCommand(dataDir, name string, payload map[string]string) error {
+func writePanelCommand(dataDir, name string, payload map[string]string) (string, error) {
 	commandsDir := filepath.Join(controlDir(dataDir), "commands")
 	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
-		return fmt.Errorf("create commands dir: %w", err)
+		return "", fmt.Errorf("create commands dir: %w", err)
 	}
-	id, err := randomHex(8)
+	if err := os.MkdirAll(commandResultsDir(dataDir), 0o755); err != nil {
+		return "", fmt.Errorf("create command results dir: %w", err)
+	}
+	id, err := randomHex(16)
 	if err != nil {
-		return err
+		return "", err
 	}
 	command := struct {
+		ID        string            `json:"id"`
 		Name      string            `json:"name"`
 		Payload   map[string]string `json:"payload"`
 		CreatedAt string            `json:"createdAt"`
 	}{
+		ID:        id,
 		Name:      name,
 		Payload:   payload,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	data, err := json.MarshalIndent(command, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal command: %w", err)
-	}
 	path := filepath.Join(commandsDir, fmt.Sprintf("%s-%s.json", time.Now().UTC().Format("20060102150405.000000000"), id))
-	return os.WriteFile(path, data, 0o644)
+	if err := writeJSONAtomic(path, command); err != nil {
+		return "", fmt.Errorf("write command atomically: %w", err)
+	}
+	return id, nil
+}
+
+func submissionStatus(dataDir string) CommandStatus {
+	if commandResultSupported(dataDir) {
+		return CommandStatusQueued
+	}
+	return ""
 }
 
 func randomHex(byteCount int) (string, error) {

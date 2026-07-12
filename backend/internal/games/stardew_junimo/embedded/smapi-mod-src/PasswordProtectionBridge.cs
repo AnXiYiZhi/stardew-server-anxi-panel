@@ -140,29 +140,29 @@ internal sealed class PasswordProtectionBridge
     /// real server password (read directly from the same SERVER_PASSWORD
     /// environment variable JunimoServer itself uses).
     /// </summary>
-    public (bool Success, string Message, bool ShouldKick) TryAuthenticate(long playerId, string password)
+    public (bool Success, string Message, bool ShouldKick, bool InvocationFailed) TryAuthenticate(long playerId, string password)
     {
         if (!_available || _instanceField is null || _tryAuthenticateMethod is null)
-            return (false, "Password bridge unavailable: " + _detail, false);
+            return (false, "Password bridge unavailable: " + _detail, false, true);
 
         try
         {
             var instance = _instanceField.GetValue(null);
             if (instance is null)
-                return (false, "PasswordProtectionService instance is not ready yet.", false);
+                return (false, "PasswordProtectionService instance is not ready yet.", false, true);
 
             var result = _tryAuthenticateMethod.Invoke(instance, new object[] { playerId, password });
             if (result is null)
-                return (false, "TryAuthenticate returned no result.", false);
+                return (false, "TryAuthenticate returned no result.", false, true);
 
             var success = (bool)(_resultSuccessProperty!.GetValue(result) ?? false);
             var message = (string?)_resultMessageProperty!.GetValue(result) ?? "";
             var shouldKick = (bool)(_resultShouldKickProperty!.GetValue(result) ?? false);
-            return (success, message, shouldKick);
+            return (success, message, shouldKick, false);
         }
         catch (Exception ex)
         {
-            return (false, $"TryAuthenticate invoke failed: {ex.Message}", false);
+            return (false, $"TryAuthenticate invoke failed: {ex.Message}", false, true);
         }
     }
 

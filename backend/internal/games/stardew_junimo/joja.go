@@ -53,19 +53,36 @@ func enableJojaRoute(ctx context.Context, d *Driver, instance registry.Instance,
 
 	start := time.Now()
 	if _, err := callRolesAdminAPI(ctx, ld, instance, hostID); err != nil {
+		if commandResultSupported(instance.DataDir) {
+			commandID, writeErr := writePanelCommand(instance.DataDir, "enable-joja", map[string]string{"adminPromoted": "false"})
+			if writeErr != nil {
+				return nil, fmt.Errorf("记录 Joja 管理员提升失败结果: %w", writeErr)
+			}
+			return &CommandRunResult{
+				Command:    "enable-joja",
+				CommandID:  commandID,
+				Status:     CommandStatusQueued,
+				Output:     "管理员权限提升失败；命令未派发，控制模组将写入结构化失败回执。",
+				ExitCode:   0,
+				DurationMS: time.Since(start).Milliseconds(),
+			}, nil
+		}
 		var ce *CommandError
 		if errors.As(err, &ce) {
-			return nil, ce
+			return nil, &CommandError{Code: "admin_promotion_failed", Message: "提升 JunimoServer 管理员权限失败：" + ce.Message}
 		}
-		return nil, fmt.Errorf("POST /roles/admin: %w", err)
+		return nil, &CommandError{Code: "admin_promotion_failed", Message: "提升 JunimoServer 管理员权限失败"}
 	}
 
-	if err := writePanelCommand(instance.DataDir, "enable-joja", nil); err != nil {
+	commandID, err := writePanelCommand(instance.DataDir, "enable-joja", map[string]string{"adminPromoted": "true"})
+	if err != nil {
 		return nil, fmt.Errorf("写入启用 Joja 路线命令失败: %w", err)
 	}
 
 	return &CommandRunResult{
 		Command:    "enable-joja",
+		CommandID:  commandID,
+		Status:     submissionStatus(instance.DataDir),
 		Output:     "已将主机提升为管理员并提交 !joja 指令，控制模组会在游戏 tick 中执行；此操作不可逆，将永久禁用标准社区中心路线。",
 		ExitCode:   0,
 		DurationMS: time.Since(start).Milliseconds(),

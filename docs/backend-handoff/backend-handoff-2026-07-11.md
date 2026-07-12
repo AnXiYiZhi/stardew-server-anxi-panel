@@ -217,3 +217,78 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - 名册与最近活动现在都由 SQLite 承担历史职责；`players.json` 是唯一持续使用的 JSON 玩家输入，只表示当前运行时快照。
 - 旧缓存仅在一次请求内导入；若个别记录写库失败，文件会保留供下次重试，不会提前删除。
 - 需要在真实升级实例确认 `players-cache.json`、`players-events.json` 首次访问玩家页后消失，并检查 `panel.db` 中同名不同存档没有串记录、玩家上下线事件没有重复。
+# COMMAND-RESULT-PROTOCOL-1 控制命令回执阶段 1
+
+## 改了什么
+
+- driver 命令文件协议加入稳定 `commandId`、JSON 内 `id`、临时文件 + 原子 rename，并创建 `command-results/`。
+- 控制模组加入协议 v1 能力标志、七状态 `CommandOutcome`、结构化错误码与结果原子写入；`HandleCommand` 改为返回 outcome，但阶段 1 的现有命令仍统一 `dispatched`，没有接入玩家操作精确结果。
+- 消费使用持久 `running` 闸门防重复执行，结果成功写入后才删除命令；残留命令遇到已有结果只删除、不执行。
+- 新增只读 API `GET /api/instances/:id/commands/:commandId`，Web handler 只负责鉴权/错误映射，状态判定与清理由 `stardew_junimo` driver 完成。
+
+## 影响文件
+
+- Go：`command_results.go`、`console.go`、`driver.go`、各玩家/节日命令提交文件、`instance_handlers.go`、`lifecycle_handlers.go` 及 `command_results_test.go`。
+- Mod：`embedded/smapi-mod-src/ControlContract.cs`、`ModEntry.cs`、重编后的 `embedded/smapi-mod/StardewAnxiPanel.Control.dll`。
+- 文档：`docs/02-backend.md`、`docs/06-integration.md`、`docs/08-future-roadmap.md` 和本文件。
+
+## 如何验证
+
+- `cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+- `cd backend; go test ./...`。
+- Docker 构建：`dotnet build -c Release /p:GamePath=/game`，本次 0 errors（仅 1 个既有 analyzer warning），DLL SHA256 更新为 `7E6CC3ACE96EE155F20C53FD908AE4286F96C5DA853E08D1DDE708364471B110`。
+
+## 下一步注意事项
+
+- 阶段 1 必须停在 `dispatched`；不要提前让踢出、回家、认证等返回精确 succeeded/failed。
+- 已知崩溃窗口：模组写入 `running` 后、覆盖终态回执前崩溃，最终会显示 `unknown / execution_interrupted`；这是宁可不确定也不重复执行的设计，不得自动重试。
+- 终态保留 7 天，expired 墓碑再保留 24 小时；queued 与活跃 running 不清理。后续如做后台定时清理，可复用现有 driver 函数，不要在 Web handler 重写文件协议。
+# PLAYER-COMMAND-RESULTS-1 精确玩家命令回执
+
+- `warp-home`、`kick`、`approve-auth` 的 Mod 处理函数已返回结构化 outcome，成功为 `succeeded/ok`，失败码完整记录在 `docs/02-backend.md`；不再用 `status.json` 充当单命令结果。
+- 认证桥通过 `InvocationFailed` 区分 Junimo 明确拒绝与反射/服务失败；三条命令均在消费时重新检查世界、ID、在线状态和主机保护。
+- 新增 `PlayerCommandOutcomes.cs` 与 `embedded/smapi-mod-contract-tests`，Docker contract test 覆盖全部错误码和成功封装。Mod 构建、Go 全量测试及真实实例验证结果见本节最终验证记录。
+- 未接入 ban、broadcast、event、joja；它们继续返回 dispatched。
+- 嵌入 DLL 已重新编译替换，SHA256 为 `5433F2E891550169EE8FBD3D7F52169A9190F2E918D1291D2696AC782B0B493D`。
+- 真实多人验证当前未执行：工作机 `docker ps` 没有运行容器，实例 `players.json` 仅有 2026-07-12 前的主机单人陈旧快照；in-app Browser 与 Chrome 也没有打开的面板实例。没有可安全操作的在线 farmhand，不能拿主机测试（协议明确禁止）或把旧快照冒充成功。待用户提供正在运行且有测试 farmhand/待认证玩家的实例后，依次验证回家、重新加入后踢出、未认证状态下批准，并检查对应结果 JSON。
+# BROADCAST-BAN-RESULTS-1
+
+- broadcast 已从 dispatched 升级为真实聊天系统调用回执：`sendChatMessage` 返回才 succeeded，且文案不承诺客户端送达；空消息、世界、聊天系统、异常均为结构化 failed。
+- ban payload 携带 ID + admin 提升证据。Mod 优先 ID 定位并直接调用 `Game1.server.ban(id)`；直接 API 不可用才按唯一名字派发 `!ban`，重名拒绝，派发成功只返回 dispatched。Go 侧 admin 提升失败统一为 `admin_promotion_failed`。
+- 用户已人工验证容器重启后封禁丢失，取代此前“是否持久化未知”的记录。未实现封禁名单、重放补偿或解封入口。
+- 验证入口：`embedded/smapi-mod-contract-tests`、`go test ./...`、`npm run test:command-results`、`npm run build`、Docker SMAPI build。真实喊话/封禁仍需有在线测试玩家的运行实例完成本版 DLL 端到端验证。
+- 嵌入 DLL SHA256：`12BC1C4201AB17F0873EE9ABF7A548A1A5D140EC8970C008770CE6F8EB532B2F`。已同步到本机真实 `stardew-server-1` 并重启加载；broadcast 实测结果为 `succeeded/ok`，命令文件在结果落盘后删除。ban 对唯一在线主机实测返回 `failed/host_not_supported`，主机保护生效。当前无 farmhand 在线，直接 `Game1.server.ban(id)` 的真实 succeeded 分支仍待有测试玩家时补验。
+
+# EVENT-JOJA-SAVE-RESULTS-1
+
+## 改了什么
+
+- 控制模组新增 `DeferredCommandOutcomes.cs`。event 明确检查世界、当天节日、节日现场和聊天系统，聊天成功只 dispatched；Joja 检查 admin 证据，只有存档 `JojaMember` 才 succeeded；save-now 使用两分钟 pending tracker 关联下一次 `GameLoop.Saved`。
+- Go 新增 `Driver.RequestSaveNow` 与 `POST /api/instances/:id/saves/save-now`。Joja admin 提升失败在 v1 模组上提交 `adminPromoted:false` 让模组写结构化 failed；旧模组继续返回兼容错误。
+- 已知崩溃窗口：Saved 已发生但 succeeded 原子写入前崩溃时，结果会从 running 变 unknown，tracker 不恢复，也绝不自动重试。
+
+## 影响文件与验证
+
+- 主要文件：`console.go`、`joja.go`、`festival_handlers.go`、`instance_handlers.go`、`ModEntry.cs`、`DeferredCommandOutcomes.cs`、contract tests 与嵌入 DLL。
+- `go test ./...`、Docker contract tests、前端测试/构建通过；SMAPI Mod 构建 0 errors（1 个既有 analyzer warning）。DLL SHA256：`ADF4473AF58BBFC58C1A4735389B07F269D73BC40AFD4F7626A3D0C68F2E7EBC`。
+- 用户授权使用现有 `1111_442923526`：event 为 `failed/no_festival_today`；Joja 日志确认命令解析，回执保持 `dispatched/ok`；save commandId `c1178eb65b034c96814416dc04c101f9` 在 `GameLoop.Saved` 后由 running 转 succeeded。
+
+## 下一步注意事项
+
+- `dispatched` 不能改写成最终成功；Joja 仅有聊天日志不能证明持久路线状态。save tracker 是进程内状态，崩溃后按 unknown 处理，不能恢复后重放。
+
+# COMMAND-RESULT-PRODUCTIZATION-1 接手记录（2026-07-12）
+
+## 改了什么与影响文件
+
+- 新增 `migrations/009_control_commands.sql`、`internal/storage/control_commands.go`、`internal/web/control_commands.go`。所有文件队列提交都记录安全的 actor/目标元数据；后台导入结果后删除交接文件，单命令查询和历史接口读 SQLite。
+- `cmd/panel/main.go` 启动命令结果 scheduler；`internal/config/config.go` 增加 30 天/1000 条默认值及两个环境变量。`instance_ui_status.go`、`health.go` 增加协议诊断和卡死告警。
+- 测试位于 `control_commands_test.go`（storage/web）及更新后的 driver result tests，覆盖迁移、幂等、重启、入库后删除、running 闸门和清理边界。
+
+## 验证与注意事项
+
+- `cd backend; go test ./...`；`cd frontend; npm run build`。
+- 结果文件必须在数据库事务成功后删除。不要清理 queued/running；不要删除尚未入库的结果；不要从 unknown 自动重放。终态历史按 30 天或数量上限清理。
+- active running 文件可能已入库但仍保留，这是故意的模组防重复闸门，不应计为“未入库”。最终审计只写一次，并通过 control_commands 关联 actor、目标和最终状态。
+- 本阶段没有更改 C# 或嵌入 DLL；上一阶段 DLL hash 仍为 `ADF4473AF58BBFC58C1A4735389B07F269D73BC40AFD4F7626A3D0C68F2E7EBC`。
+- 真机链路：临时隔离 DB + 临时 actor 通过 API 向真实实例提交 `say`，`64a0853e85c997d6b14ad6af48805f29` 为 queued→succeeded/ok，历史 API 的命令、actor、完成时间完整，`command-results` 清零。临时 DB/会话/进程均已删除；真实生产用户与认证库未改动。

@@ -692,3 +692,40 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 生命周期按钮的最终前端优先级：停止提交/停止 phase > 在线玩家列表主机在线 > 后端 `uiStatus` > lifecycle job/state 兜底。
 - `isHost && status==='online'` 出现后必须立即结束“启动中”，即使邀请码尚未生成、lifecycle job 尚在等待后台探测或实例状态响应里的 `uiStatus` 尚未刷新。
 - 用户确认停止后必须立即展示“停止中”，不等待后端下一轮 `/state` 返回 `stopping`。
+# 命令结果回执协议 v1（阶段 1）
+
+- 提交型控制接口继续立即返回，不阻塞等待游戏进程。对支持 `status.json.commandResultVersion >= 1` 的实例，响应会包含 `commandId` 与 `status: "queued"`；旧实例保留原“已提交”响应语义，`commandId` 仍可用于审计，但不承诺产生回执。
+- 查询：`GET /api/instances/:id/commands/:commandId`，响应状态只会是 `queued/running/succeeded/failed/dispatched/expired/unknown`。`dispatched` 表示控制模组已把既有行为派发到游戏逻辑，不等价于玩家操作精确成功；阶段 1 不改前端按钮交互。
+- 结果 JSON：`{ commandId, status, errorCode?, message?, createdAt, updatedAt, details? }`。客户端必须读取 `status/errorCode`，不得从 `message` 或 SMAPI 英文日志推断成功失败。
+- `unknown` 是终态歧义提示，不会自动重试。典型场景是命令已开始或已经执行、但控制模组在写终态回执前崩溃；为避免重复执行，结果闸门存在时模组不会再次消费同 ID 命令。
+- 兼容策略：旧模组无 `commandResultVersion` 时提交行为不变；查询不到结果时返回 `queued`（命令文件仍在）或 `unknown`（无可靠证据），不会伪造成功。
+# 三条玩家命令精确结果契约
+
+- `POST .../players/warp-home|kick|approve-auth` 对新版控制模组仍立即返回 `{commandId,status:"queued",output,...}`；前端随后调用 `GET /api/instances/:id/commands/:commandId`，500ms 一次、最多 10 秒。
+- 三条命令的终态现在是 `succeeded/ok` 或 `failed/<结构化错误码>`；玩家提交后立即离线返回 `failed/player_not_online`。若执行与终态回执之间崩溃则按 v1 协议返回 unknown，客户端只显示未确认且不重试。
+- 前端不得读取 `status.json.message` 或英文 `CommandOutcome.message` 决定结果，中文展示只根据 `status/errorCode`。旧模组无能力标志时维持 fire-and-forget “指令已提交”。
+- 本阶段不改变 ban、broadcast、event、joja 的 dispatched 行为。
+# broadcast/say 与 ban 回执契约
+
+- `POST /commands/say` 对新版模组返回 queued 后轮询结果；`succeeded/ok` 只表示游戏聊天发送 API 已接受调用，不表示所有客户端已收到。结构化失败码：`empty_message`、`world_not_ready`、`chat_unavailable`、`broadcast_failed`。
+- `POST /players/ban` payload 链路现在携带 `uniqueMultiplayerId`。终态可能是：直接 `Game1.server.ban(id)` 调用返回后的 `succeeded/ok`；只能模拟 Junimo `!ban` 时的 `dispatched/ok`；或结构化 failed。客户端不得把 dispatched 显示成已封禁。
+- unknown、expired、查询异常和 10 秒超时统一显示未确认且不重试。旧模组无 v1 能力时继续显示“指令已提交”。event、joja、save-now 未接入本阶段。
+- 已确认运行限制：封禁名单随服务器容器重启丢失；API 不提供封禁名单持久化或解封接口。
+
+# trigger-event / enable-joja / save-now 回执契约
+
+- `POST /festival/event`、`POST /joja/enable` 和新增 `POST /saves/save-now` 都立即返回 `{commandId,status:"queued",...}`，HTTP 不等待游戏。客户端通过既有 `GET /api/instances/:id/commands/:commandId` 查询，不读取 `status.json.message`。
+- `trigger-event` 的世界/节日条件可明确判断时 failed；模拟 `!event` 成功只保证命令交给 Junimo，返回 dispatched，不等价于“节日已触发”。
+- `enable-joja` 的不可逆确认和权限检查不变。admin 提升证据进入 payload；提升失败为 failed，聊天派发为 dispatched。只有持久 `JojaMember` 状态可见时才 succeeded。unknown/dispatched 不自动重试。
+- `save-now` 写 running 后删除命令文件并在内存 tracker 保留 commandId；同一次后续 `GameLoop.Saved` 原子更新同一结果为 succeeded。两分钟超时为 `failed/save_timeout`；崩溃丢失关联则最终 unknown。ZIP 备份不会完成该 commandId。
+- 前端 event/joja 每 500ms 轮询最多 10 秒；save-now 每 500ms 最多 125 秒。超时/unknown 只提示无法确认。旧模组无能力标志时维持“指令已提交”。
+- 实例验证：`trigger-event=failed/no_festival_today`；`enable-joja=dispatched/ok` 且 Junimo 日志确认命令解析；`save-now` 的 `c1178eb65b034c96814416dc04c101f9` 由 running 经 `GameLoop.Saved` 转 succeeded。
+
+# COMMAND-RESULT-PRODUCTIZATION-1 文件交接、SQLite 与保证边界
+
+- 提交响应仍不阻塞等待模组；Web 在拿到 commandId 后立即写 queued（旧模组写兼容 dispatched/resultSupported=false）。模组原子写结果，后台幂等 UPSERT SQLite，提交与结果可任意先后到达。
+- 安全删除顺序固定为“SQLite 事务成功 → 删除结果文件”。入库失败或文件仍是 active running 闸门时保留文件；同 commandId 重复扫描不会生成重复记录或重复最终审计。
+- 查询顺序为同步可见结果文件、读取 SQLite、最后才使用 driver 队列推断；不得把 status.json 消息当单命令回执。unknown/failed 均不触发自动重试。
+- 崩溃窗口不变：游戏效果已经发生、终态文件尚未原子写成时，只能最终 unknown。SQLite 持久化提高可查询性，但不把这个窗口伪装成成功。
+- 保证等级：warp-home/kick/approve-auth 与 direct ban 能确认调用效果；broadcast 只精确保证交给聊天系统；event/Joja 聊天路径和 ban 名字降级仅 dispatched；save-now 只有关联 Saved 才 succeeded。所有命令在进程/磁盘异常窗口都可能 unknown。
+- 真实完整链路已用隔离面板数据库连接运行实例验证：`say` 返回 queued，控制模组写 succeeded/ok，后台导入 SQLite 并关联临时 actor，历史 API 可见完成时间，结果文件在入库后删除。commandId 为 `64a0853e85c997d6b14ad6af48805f29`；测试广播正文不写入 SQLite。

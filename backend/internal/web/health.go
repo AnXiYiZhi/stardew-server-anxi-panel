@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,6 +65,19 @@ func (s *server) handleHealthDiagnostics(w http.ResponseWriter, r *http.Request)
 	// 5. Active save
 	saveChecks := s.checkActiveSave(r)
 	checks = append(checks, saveChecks...)
+
+	// 6. Control command result protocol
+	if instance, err := s.store.GetInstance(r.Context(), s.config.DefaultInstanceID); err == nil {
+		diagnostic := s.commandProtocolDiagnostics(r.Context(), instance)
+		warnings, _ := diagnostic["warnings"].([]string)
+		if len(warnings) == 0 {
+			checks = append(checks, HealthCheck{Name: "control_commands", Status: "ok", Message: "控制命令队列与回执目录正常"})
+		} else {
+			for i, message := range warnings {
+				checks = append(checks, HealthCheck{Name: fmt.Sprintf("control_commands_%d", i+1), Status: "warning", Message: message})
+			}
+		}
+	}
 
 	// Determine overall status.
 	overallStatus := "ok"

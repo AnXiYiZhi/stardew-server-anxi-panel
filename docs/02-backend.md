@@ -966,7 +966,7 @@ docker run --rm `
 
 - 需求来源：用户希望精简"在线玩家"表格每行的图标按钮（原本 3 个：恒禁用的"发送消息"占位、可用的"踢出"、恒禁用的"更多操作"占位），只保留"踢出"并换成"管理操作"卡片同款真实 PNG 图标，旁边加一个新按钮。最初讨论方向是"取消认证"（`APPROVE-PENDING-AUTH-1` 的反操作），调研 `PasswordProtectionService.cs` 后确认认证状态是纯内存运行时字典、断线重连必然重置为未认证、没有持久化——这意味着"踢出"本身已经语义等价于"取消认证"，额外做一个"原地撤销认证但不踢人"的反射功能风险更高（要新增对 JunimoServer 私有可变字典的写操作）且实际效果很差（`AuthTimeoutSeconds>0` 时几乎立刻被自动踢出，`=0` 时玩家会静默卡死无法移动/聊天）。用户确认放弃这个方向，转而调研 JunimoServer 是否有真正的封禁能力。
 - 调研结论：JunimoServer 上游有真正的 `!ban <名字>`/`!unban <id|名字>`/`!listbans` 聊天指令（`Services/Commands/BanCommand.cs`/`UnbanCommand.cs`/`ListBansCommand.cs`），机制和已实现的 `!joja` 完全一致——要求触发者持有 admin 角色（`RoleService.IsPlayerAdmin`），底层调用 vanilla `Game1.server.ban(uniqueMultiplayerID)`，写入 `Game1.bannedUsers`；`IsServerHost` 会被上游自己拒绝并提示"You can't ban the server host."，host 保护已由上游保证。匹配目标用 `Game1.getAllFarmers().FirstOrDefault(f => f.Name == name || GetFarmerUserNameById(id) == name)`——按游戏内农场主角色名或 Steam 用户名匹配，同时包含在线和离线的 farmhand，所以离线玩家也能被封禁。这正好对应玩家管理页"管理操作"卡片里已经存在但一直禁用、标着"待接入"的"封禁玩家"卡片。
-- **已知不确定项（用户已确认按"先简单接通，接受重启可能失效"处理）**：`Game1.bannedUsers` 是否随存档持久化还是纯进程内存（容器重启即丢失）未定——JunimoServer 自己代码里没有任何写盘持久化逻辑，需要反编译 vanilla 游戏 DLL 才能彻底确认（用 `FESTIVAL-EVENT-1`/`JOJA-ROUTE-1` 时验证过的 `MetadataLoadContext`+`ilspycmd` 方法），这次没有做面板侧持久化补偿（不新增数据库表、不做启动后自动重新封禁），只在确认弹窗文案里如实提示"如果之后重启了服务器容器，这条封禁可能会失效，需要重新操作"，不假装它是绝对永久的。
+- **已确认限制**：用户已在真实实例人工验证 `Game1.bannedUsers` 随服务器容器重启丢失。当前没有面板侧持久化补偿（不新增数据库表、不做启动后自动重新封禁），UI 明确提示重启后需要重新操作。
 - **实现方式**：
   - `embedded/smapi-mod-src/ModEntry.cs` 的 `HandleCommand` 新增 `case "ban":`，解析 `payload["name"]`，调用新方法 `BanPlayer(string name)`：`Context.IsWorldReady && Game1.chatBox is not null` 检查 → `SanitizeChatText(name, 60)` 防御性清理 → `Game1.chatBox.textBoxEnter($"!ban {name}")`——完全模仿 `EnableJojaRoute()` 的"模拟聊天指令"结构（不是模仿 `KickPlayer` 的直接调用结构），模组侧不做 admin 提权，提权由 Go 后端先完成。
   - 新增 `backend/internal/games/stardew_junimo/ban.go`：`Driver.BanPlayer(ctx, instance, name, uniqueMultiplayerID)` → 核心 `banPlayer`：校验名字非空 → 校验实例 running → **完全复用** `joja.go` 已有的 `findHostPlayerID`/`callRolesAdminAPI`（这两个函数本来就是包级别可复用，不是 Joja 专属）把主机提升为 admin → `writePanelCommand(dataDir, "ban", {"name":...})`。返回文案明确写"如果服务器容器重启，此封禁可能失效，需要重新操作"。
@@ -974,7 +974,7 @@ docker run --rm `
   - **已重新编译并替换嵌入 DLL**。
 - 影响文件：`backend/internal/games/stardew_junimo/embedded/smapi-mod-src/ModEntry.cs`、`embedded/smapi-mod/StardewAnxiPanel.Control.dll`、`backend/internal/games/stardew_junimo/ban.go`（新增）、`backend/internal/web/players_handlers.go`、`instance_handlers.go`。前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `PLAYERS-BAN-1` 小节。
 - 验证：新增 `ban_test.go`（空名字拒绝、服务器未运行拒绝、`findHostPlayerID` 找不到主机返回 `host_unknown`、提权成功后正确写入 `ban` 命令文件）。`cd backend; go build ./... && go vet ./... && go test ./...` 全绿。SMAPI Mod 用文档命令重新编译，`Build succeeded. 0 Errors`，编译产物已 md5 校验复制覆盖嵌入 DLL。前端 `cd frontend; npx tsc --noEmit -p . && npm run build` 通过。
-- **未做的验证**：没有在真实运行实例上实际封禁过一个在线/离线玩家确认其真的无法重新加入；**没有反编译 vanilla 游戏 DLL 确认 `Game1.bannedUsers` 是否跨容器重启持久化**（这是本次特意推迟到下一步的验证项，不是遗漏，确认结果出来后需要相应修正前端确认弹窗和本节文档里"可能失效"的措辞）。
+- **后续验证结论**：用户已实际验证封禁在容器重启后丢失；新版 command-result 实现已验证 broadcast succeeded 与 ban 主机保护，ban succeeded 仍待有在线测试 farmhand 时补验。
 - 下一步注意事项：
   - 上游 `FindPlayerIdByFarmerNameOrUserName` 用 `FirstOrDefault` 按名字匹配，两个玩家重名时可能封错人，这是 JunimoServer 自身已知限制（其仓库 `.claude/plans/audit-security.md` 记录），面板侧无法修复。
   - 没有实现 `!unban`/`!listbans` 对应的"解封"管理界面——封禁操作失误目前只能等服务器重启（如果确认不持久化）或手动进入游戏聊天框输入 `!unban <id|名字>`。这是本次按"先做简单接通"明确排除的范围，如果后续反馈需要撤销入口，是自然的后续迭代。
@@ -1085,3 +1085,49 @@ docker run --rm `
 - `GET /api/instances/:id/players` URL 和 JSON 响应结构不变；`saveId` 现在尽量返回归一化后的完整存档目录 ID，数据库补齐的离线玩家 `source=sqlite_roster`。
 
 验证：`cd backend; go test ./...`。存储层测试覆盖历史时间、最新快照、玩家改名、临时身份晋升和 seen/left/joined 事件跃迁；driver 集成测试覆盖旧名册/事件导入、JSON 退役、基础/完整存档 ID 归一化和 SQLite 离线恢复。
+# COMMAND-RESULT-PROTOCOL-1 控制命令执行结果回执（阶段 1）
+
+- `writePanelCommand` 现在生成 32 位小写十六进制 `commandId`（128-bit 随机值），同时写入命令 JSON 的 `id` 和文件名；命令经同目录临时文件写入、`fsync`、原子 rename 后才对控制模组可见。
+- 共享目录新增 `control/command-results/`。结果文件名为 `<commandId>.json`，契约为 `{commandId,status,errorCode?,message?,createdAt,updatedAt,details?}`；状态集合固定为 `queued/running/succeeded/failed/dispatched/expired/unknown`，错误判断使用 `errorCode`，禁止解析英文日志。
+- 内嵌 `StardewAnxiPanel.Control` 的 `PanelCommand` 新增 `Id`，新增 `CommandOutcome`/`CommandStatuses` 和公共原子 JSON 写入方法。消费顺序为：已有同 ID 结果则删除残留命令且不重复执行；否则先原子写 `running`，再调用返回 `CommandOutcome` 的 `HandleCommand`，最后原子写终态回执，只有成功后才删除命令文件。阶段 1 的既有命令统一返回 `dispatched`，未改变踢出、回家、认证、喊话等游戏行为。
+- 该顺序刻意关闭自动重试：若执行完成后、终态回执落盘前崩溃，磁盘保留 `running` 闸门，重启后不会重复执行；超过 5 分钟由后端转为 `unknown / execution_interrupted`。这是协议已知的崩溃窗口，不能据此自动重放命令。
+- `status.json` 新增 `commandResultVersion: 1`。新版实例提交文件队列命令时响应新增 `commandId` 和 `status: queued`；旧模组没有能力标志时仍返回原 `output`“已提交”文案并省略 `status`，保持滚动升级兼容。HTTP 请求从不等待模组。
+- 新增 `GET /api/instances/:id/commands/:commandId`。driver 先读结果文件；无结果但命令文件存在返回 `queued`；两者都不存在返回 `unknown`。非法 ID 返回结构化 `invalid_command_id`，读取失败返回 `command_result_read_failed`。
+- 清理策略：终态结果保留 7 天，之后原子改写为 `expired / result_expired` 墓碑并再保留 24 小时，最后删除；`queued` 和未超过 5 分钟的 `running` 永不清理，避免删除仍在处理的命令。
+- 验证：`go test ./internal/games/stardew_junimo ./internal/web`；`go test ./...`。SMAPI 模组用 Docker + `/p:GamePath=/game` 编译成功（0 errors，1 个既有 analyzer warning），并已替换 `embedded/smapi-mod/StardewAnxiPanel.Control.dll`。
+# PLAYER-COMMAND-RESULTS-1 三条玩家命令精确回执
+
+- command result v1 的阶段 2 已只接入 `warp-home`、`kick`、`approve-auth`。`HandleCommand` 对这三条直接返回各自处理函数产生的 `CommandOutcome`，不再把全局 `status.json` 最后一条消息当作命令结果；其他文件队列命令仍保持 `dispatched`。
+- 成功统一为 `succeeded / ok`，并在 `details` 返回 `playerId/playerName`。明确失败统一为 `failed`：warp-home 覆盖 `world_not_ready`、`bridge_unavailable`、`invalid_player_id`、`player_not_online`、`host_not_supported`、`warp_failed`；kick 覆盖 `world_not_ready`、`invalid_player_id`、`player_not_online`、`host_not_supported`、`kick_failed`；approve-auth 覆盖 `world_not_ready`、`bridge_unavailable`、`invalid_player_id`、`player_not_online`、`host_not_supported`、`already_authenticated`、`authentication_rejected`、`authentication_failed`。
+- `PasswordProtectionBridge.TryAuthenticate` 新增 `InvocationFailed` 维度：JunimoServer 明确返回 `Success=false` 映射为 `authentication_rejected`，反射异常、服务实例未就绪或空结果映射为 `authentication_failed`，不解析英文日志。批准前先调用 `IsPlayerAuthenticated`，已认证玩家返回 `already_authenticated`。
+- 主机保护仍在控制模组执行点强制检查；kick 额外确认 `Game1.server` 非空。目标在提交后离线会在消费时返回 `player_not_online`，前端不会把提交成功误报为执行成功。
+- C# 无游戏运行时契约测试位于 `embedded/smapi-mod-contract-tests/`，覆盖全部要求错误码及 `succeeded/ok` 封装；Docker `dotnet run -c Release` 可执行。实际 Mod 仍用 `/p:GamePath=/game` 构建。
+# BROADCAST-BAN-RESULTS-1 喊话与封禁执行回执
+
+- `broadcast`/`say`：控制模组完成输入清理后依次检查空消息、世界状态和 `Game1.multiplayer` 聊天系统；只有 `sendChatMessage(...)` 调用正常返回才写 `succeeded/ok`。失败码为 `empty_message`、`world_not_ready`、`chat_unavailable`、`broadcast_failed`。成功仅表示消息已交给游戏聊天系统，不承诺每个客户端都实际收到。
+- `ban`：Go driver 保留原权限与 Junimo admin 提升检查，但命令 payload 新增 `uniqueMultiplayerId` 与 `adminPromoted`。提升失败返回结构化 `admin_promotion_failed`，不创建命令。控制模组优先在 `Game1.getAllFarmers()` 按 ID 精确定位并拒绝主机；`Game1.server` 可用时直接调用 `Game1.server.ban(id)`，调用返回后写 `succeeded/ok`，异常写 `ban_failed`。
+- 只有直接 server API 不可用时才降级模拟 `!ban <name>`。降级前按已由 ID 定位的目标名字检查重名，重名返回 `ambiguous_player`，不会静默封错；成功调用聊天派发只能写 `dispatched`，不能冒充最终封禁成功。另覆盖 `world_not_ready`、`player_not_found`、`host_not_supported`、`command_dispatch_failed`。
+- 持久化结论已由用户在真实实例人工验证：`Game1.bannedUsers` 在服务器容器重启后丢失。前端已改成确定性提示“重启后会丢失，需要重新操作”；本阶段不实现面板侧封禁名单、持久化补偿或解封入口。
+- 测试：C# contract tests 覆盖 broadcast 空消息/世界未就绪/聊天不可用、ban ID 精确匹配/不存在/重名/主机/派发失败封装；Go 测试覆盖精确 payload 与 admin 提升失败；完整 `go test ./...`。
+- 真实实例：新版 DLL 加载后 broadcast 返回 `succeeded/ok`；ban 主机返回 `failed/host_not_supported`。因当时无 farmhand 在线，ban succeeded 真机分支未冒险伪造，待测试玩家在线时补验。
+
+# EVENT-JOJA-SAVE-RESULTS-1 节日、Joja 与游戏内保存回执
+
+- `trigger-event` 在控制模组执行点检查世界、当天节日、主机是否已处于节日现场以及聊天系统；明确失败码为 `world_not_ready`、`no_festival_today`、`festival_not_active`、`chat_unavailable`、`command_dispatch_failed`。当前 Junimo 只能通过 `!event` 聊天命令启动主活动倒计时，聊天调用返回仅写 `dispatched/ok`，不声称节日最终已经启动。
+- `enable-joja` 继续要求后端精确确认文本并先调用 Junimo `POST /roles/admin`。命令 payload 新增 `adminPromoted`：新版控制模组在提升失败时写 `failed/admin_promotion_failed` 且不派发；旧模组无回执能力时仍沿用原 HTTP 错误。聊天异常为 `command_dispatch_failed`。只有存档已有持久 `JojaMember` 标志时才允许 `succeeded/ok`；单纯把 `!joja` 交给聊天系统只返回 `dispatched/ok`。
+- 上游源码确认 `!joja` 当下只把 Junimo 内存中的 `AlwaysOnConfig.IsCommunityCenterRun` 设为 `false`；这个内存开关本身不是“永久存档状态”的充分证据，因此不能作为 succeeded 条件。
+- 新增管理员接口 `POST /api/instances/:id/saves/save-now`。HTTP 只返回 commandId/queued；模组将 commandId 注册到单一 pending tracker，设置 `Game1.saveOnNewDay=true` 后维持 `running`。只有后续 `GameLoop.Saved` 才以同一 commandId 原子覆盖为 `succeeded/ok`。两分钟无 Saved 为 `failed/save_timeout`；并发请求为 `failed/save_already_pending`。
+- 保存回执与自动回档事件共用 `GameLoop.Saved` 事实来源，但游戏内保存与面板 ZIP 备份是两件事。若保存发生后、终态结果落盘前崩溃，running 最终转为 `unknown/execution_interrupted`，绝不自动重试。
+- 测试：C# contract tests 覆盖世界未 ready、节日条件、派发、Joja 提权失败/持久确认、保存 commandId 关联、并发、Saved 完成和超时；Go 覆盖提交和提权失败 payload；`go test ./...` 通过。嵌入 DLL SHA256：`ADF4473AF58BBFC58C1A4735389B07F269D73BC40AFD4F7626A3D0C68F2E7EBC`。
+- 真实实例 `1111_442923526`：event 返回 `failed/no_festival_today`；Joja 经 Junimo 日志确认解析后结果为 `dispatched/ok`，未冒充永久完成；save-now 的同一 commandId `c1178eb65b034c96814416dc04c101f9` 从 running 在睡觉保存后转为 `succeeded/ok`。
+
+# COMMAND-RESULT-PRODUCTIZATION-1 命令回执持久化与运维收尾
+
+- migration `009_control_commands.sql` 新增 `control_commands`：按 `command_id` 主键幂等保存实例、命令、目标、actor 快照、七状态、结构化错误/白名单详情、提交/完成/导入时间和最终审计标记。面板重启后结果查询优先读 SQLite；文件只承担模组→面板交接。
+- 后台每 5 秒扫描各 Stardew 实例的 `command-results/`。结果成功事务入库后才删除终态文件；入库失败保留文件。`running` 且对应命令文件仍存在时保留结果闸门，避免容器重启后重复执行。超过 5 分钟的数据库 running 转为 `unknown/execution_interrupted` 并写最终审计，不自动重试。
+- 新增 `GET /api/instances/:id/control-commands?limit=50`（1–200），返回最近控制命令。既有单命令查询在文件被收走后从 SQLite 恢复。旧模组提交持久化为 `dispatched` 且 `resultSupported=false`，UI 必须显示“已提交，无法获取精确结果”。
+- 每小时清理终态历史：默认保留 30 天且最多 1000 条，环境变量 `CONTROL_COMMAND_RETENTION_DAYS`、`CONTROL_COMMAND_RETENTION_COUNT` 可调整；queued/running 永不因保留期或数量清理，未入库结果文件也不由数据库清理任务处理。
+- `runtimeDiagnostic.commandProtocol` 提供 commandResultVersion、待消费数、未入库结果数、最老待处理时间、最近消费时间及两个目录可写性；健康检查报告长时间 queued、旧模组和目录不可写。
+- 审计以 `control_command_submitted`/`control_command_completed` 关联 actor、commandId、命令、目标、最终状态与错误码。不会保存广播正文或完整 payload；details 只接受 playerId/playerName，疑似密码、凭据或 Token 的结果消息整体脱敏。
+- 验证：迁移、重复导入、重启恢复、文件删除闸门、终态保留边界和旧协议测试；`go test ./...`、前端构建。该阶段不修改控制模组和 DLL。
+- 真实实例验证：隔离临时面板数据库通过真实 `stardew` 控制目录提交 `say`，commandId `64a0853e85c997d6b14ad6af48805f29` 从 HTTP `queued` 到模组 `succeeded/ok`，SQLite 保留 `commandType=say`、actor `command-validation` 和完成时间，结果目录最终为 0。上线前遗留的 24 个结果文件也已由新版 scheduler 幂等导入生产 `panel.db` 后清理；因这些旧文件早于提交审计，无法反推的 commandType/actor 显示 unknown，不伪造历史身份。

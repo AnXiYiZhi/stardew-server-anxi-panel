@@ -98,7 +98,8 @@ func (s *server) handlePlayerKick(w http.ResponseWriter, r *http.Request, instan
 		writeError(w, http.StatusInternalServerError, "kick_failed", sanitizeErrorMsg(err, "踢出玩家失败"))
 		return
 	}
-	s.auditLog(r, &actor, "player_kick", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
+	s.recordControlCommandSubmission(r.Context(), actor, instanceID, result, "player", uniqueMultiplayerID, body.Name)
+	s.auditLog(r, &actor, "player_kick", "instance", instanceID, auditMetadata("commandId", result.CommandID, "uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -152,7 +153,8 @@ func (s *server) handlePlayerWarpHome(w http.ResponseWriter, r *http.Request, in
 		writeError(w, http.StatusInternalServerError, "warp_home_failed", sanitizeErrorMsg(err, "传送玩家回家失败"))
 		return
 	}
-	s.auditLog(r, &actor, "player_warp_home", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
+	s.recordControlCommandSubmission(r.Context(), actor, instanceID, result, "player", uniqueMultiplayerID, body.Name)
+	s.auditLog(r, &actor, "player_warp_home", "instance", instanceID, auditMetadata("commandId", result.CommandID, "uniqueMultiplayerId", uniqueMultiplayerID, "name", body.Name))
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -208,7 +210,8 @@ func (s *server) handlePlayerApproveAuth(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "approve_auth_failed", sanitizeErrorMsg(err, "批准认证失败"))
 		return
 	}
-	s.auditLog(r, &actor, "player_approve_auth", "instance", instanceID, auditMetadata("uniqueMultiplayerId", uniqueMultiplayerID))
+	s.recordControlCommandSubmission(r.Context(), actor, instanceID, result, "player", uniqueMultiplayerID, "")
+	s.auditLog(r, &actor, "player_approve_auth", "instance", instanceID, auditMetadata("commandId", result.CommandID, "uniqueMultiplayerId", uniqueMultiplayerID))
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -262,7 +265,8 @@ func (s *server) handlePlayerBan(w http.ResponseWriter, r *http.Request, instanc
 		writeError(w, http.StatusInternalServerError, "ban_failed", sanitizeErrorMsg(err, "封禁玩家失败"))
 		return
 	}
-	s.auditLog(r, &actor, "player_ban", "instance", instanceID, auditMetadata("name", name, "uniqueMultiplayerId", body.UniqueMultiplayerID))
+	s.recordControlCommandSubmission(r.Context(), actor, instanceID, result, "player", body.UniqueMultiplayerID, name)
+	s.auditLog(r, &actor, "player_ban", "instance", instanceID, auditMetadata("commandId", result.CommandID, "name", name, "uniqueMultiplayerId", body.UniqueMultiplayerID))
 	writeJSON(w, http.StatusOK, result)
 }
 

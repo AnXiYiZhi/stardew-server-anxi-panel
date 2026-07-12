@@ -10,11 +10,13 @@ import {
   updateInstanceServerRuntimeSettings,
   triggerFestivalEvent,
   enableJojaRoute,
+  requestGameSave,
 } from '../../../api'
 import type { InstancePasswordStatus, RestartSchedule, ServerRuntimeSettings } from '../../../types'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileControlPage.css'
+import { submitAndWaitForPlayerCommand } from '../player-command-results'
 
 type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
 
@@ -70,6 +72,7 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
   const [sayBusy, setSayBusy] = useState(false)
   const [sayResult, setSayResult] = useState<string | null>(null)
   const [sayError, setSayError] = useState<string | null>(null)
+  const [sayConfirmed, setSayConfirmed] = useState(false)
 
   // ── 计划重启 ────────────────────────────────────────────────────────────
   const [scheduleOpen, setScheduleOpen] = useState(false)
@@ -103,6 +106,9 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
   const [festivalBusy, setFestivalBusy] = useState(false)
   const [festivalMessage, setFestivalMessage] = useState<string | null>(null)
   const [festivalError, setFestivalError] = useState(false)
+  const [saveNowBusy, setSaveNowBusy] = useState(false)
+  const [saveNowMessage, setSaveNowMessage] = useState<string | null>(null)
+  const [saveNowError, setSaveNowError] = useState(false)
 
   // ── 永久启用 Joja 路线 ──────────────────────────────────────────────────
   const [jojaOpen, setJojaOpen] = useState(false)
@@ -120,9 +126,23 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
     setSayResult(null)
     setSayError(null)
     try {
-      const res = await sendSay(sayMessage.trim())
-      setSayResult(res.output?.trim() || '消息已发送')
-      setSayMessage('')
+      const feedback = await submitAndWaitForPlayerCommand(
+        () => sendSay(sayMessage.trim()),
+        'broadcast',
+        '',
+        (next) => {
+          if (next.kind === 'failed') {
+            setSayResult(null)
+            setSayError(next.message)
+            setSayConfirmed(false)
+          } else {
+            setSayError(null)
+            setSayResult(next.message)
+            setSayConfirmed(next.kind === 'succeeded')
+          }
+        },
+      )
+      if (feedback.kind === 'succeeded' || feedback.kind === 'legacy') setSayMessage('')
     } catch (e) {
       setSayError(errorMessage(e))
     } finally {
@@ -268,13 +288,44 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
     setFestivalMessage(null)
     setFestivalError(false)
     try {
-      const result = await triggerFestivalEvent()
-      setFestivalMessage(result.output?.trim() || '触发节日活动指令已提交。')
+      await submitAndWaitForPlayerCommand(
+        () => triggerFestivalEvent(),
+        'trigger-event',
+        '',
+        (feedback) => {
+          setFestivalError(feedback.kind === 'failed')
+          setFestivalMessage(feedback.message)
+        },
+      )
     } catch (e) {
       setFestivalError(true)
       setFestivalMessage(errorMessage(e))
     } finally {
       setFestivalBusy(false)
+    }
+  }
+
+  async function handleSaveNow() {
+    if (!isAdmin || !isRunning || saveNowBusy) return
+    setSaveNowBusy(true)
+    setSaveNowMessage(null)
+    setSaveNowError(false)
+    try {
+      await submitAndWaitForPlayerCommand(
+        () => requestGameSave(),
+        'save-now',
+        '',
+        (feedback) => {
+          setSaveNowError(feedback.kind === 'failed')
+          setSaveNowMessage(feedback.message)
+        },
+        125_000,
+      )
+    } catch (e) {
+      setSaveNowError(true)
+      setSaveNowMessage(errorMessage(e))
+    } finally {
+      setSaveNowBusy(false)
     }
   }
 
@@ -292,8 +343,15 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
     setJojaMessage(null)
     setJojaError(false)
     try {
-      const result = await enableJojaRoute(jojaConfirmInput)
-      setJojaMessage(result.output?.trim() || 'Joja 路线已永久启用。')
+      await submitAndWaitForPlayerCommand(
+        () => enableJojaRoute(jojaConfirmInput),
+        'enable-joja',
+        '',
+        (feedback) => {
+          setJojaError(feedback.kind === 'failed')
+          setJojaMessage(feedback.message)
+        },
+      )
     } catch (e) {
       setJojaError(true)
       setJojaMessage(errorMessage(e))
@@ -342,7 +400,7 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
               </button>
             </div>
             <div className="sd-mctrl-say-count">{sayMessage.length} 字</div>
-            {sayResult ? <div className="sd-notice sd-notice--ok sd-mctrl-notice">{sayResult}</div> : null}
+            {sayResult ? <div className={`sd-notice ${sayConfirmed ? 'sd-notice--ok' : ''} sd-mctrl-notice`}>{sayResult}</div> : null}
             {sayError ? <div className="sd-notice sd-notice--error sd-mctrl-notice">{sayError}</div> : null}
           </>
         ) : (
@@ -402,6 +460,26 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
           <button
             type="button"
             className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
+            disabled={!isAdmin || !isRunning || saveNowBusy}
+            title={
+              !isAdmin
+                ? '仅管理员可执行此操作'
+                : !isRunning
+                  ? '服务器运行后才能请求游戏内保存'
+                  : '设置游戏内保存请求，并等待 GameLoop.Saved 确认；这不是创建 ZIP 备份'
+            }
+            onClick={() => void handleSaveNow()}
+          >
+            <img className="sd-mctrl-action-icon" src={ICONS.quick} alt="" />
+            <span className="sd-mctrl-action-copy">
+              <strong>{saveNowBusy ? '等待保存…' : '请求游戏内保存'}</strong>
+              <span>以 Saved 事件确认完成</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
             disabled={!isAdmin || !isRunning || festivalBusy}
             title={
               !isAdmin
@@ -442,6 +520,11 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
         {festivalMessage ? (
           <div className={`sd-notice sd-mctrl-notice ${festivalError ? 'sd-notice--error' : 'sd-notice--ok'}`}>
             {festivalMessage}
+          </div>
+        ) : null}
+        {saveNowMessage ? (
+          <div className={`sd-notice sd-mctrl-notice ${saveNowError ? 'sd-notice--error' : 'sd-notice--ok'}`}>
+            {saveNowMessage}
           </div>
         ) : null}
       </section>

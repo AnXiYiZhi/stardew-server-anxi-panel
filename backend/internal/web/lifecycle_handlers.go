@@ -1539,6 +1539,43 @@ type consoleRunner interface {
 	SendSay(ctx context.Context, instance registry.Instance, message string) (*sj.CommandRunResult, error)
 }
 
+type commandOutcomeReader interface {
+	CommandOutcome(ctx context.Context, instance registry.Instance, commandID string) (sj.CommandOutcome, error)
+}
+
+func (s *server) handleCommandOutcome(w http.ResponseWriter, r *http.Request, instanceID, commandID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	if outcome, err := s.persistedCommandOutcome(r.Context(), instance, commandID); err == nil {
+		writeJSON(w, http.StatusOK, outcome)
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	reader, supported := driver.(commandOutcomeReader)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "command_results_not_supported", "该 driver 不支持命令结果查询")
+		return
+	}
+	outcome, err := reader.CommandOutcome(r.Context(), makeRegistryInstance(instance), commandID)
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			writeError(w, http.StatusBadRequest, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "command_result_read_failed", sanitizeErrorMsg(err, "读取命令结果失败"))
+		return
+	}
+	writeJSON(w, http.StatusOK, outcome)
+}
+
 // handleCommandsList handles GET /api/instances/:id/commands.
 func (s *server) handleCommandsList(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAuth(w, r)
@@ -1610,7 +1647,7 @@ func (s *server) handleCommandRun(w http.ResponseWriter, r *http.Request, instan
 
 // handleCommandSay handles POST /api/instances/:id/commands/say.
 func (s *server) handleCommandSay(w http.ResponseWriter, r *http.Request, instanceID string) {
-	_, ok := s.requireAuth(w, r)
+	actor, ok := s.requireAuth(w, r)
 	if !ok {
 		return
 	}
@@ -1662,5 +1699,7 @@ func (s *server) handleCommandSay(w http.ResponseWriter, r *http.Request, instan
 		writeError(w, http.StatusInternalServerError, "say_failed", sanitizeErrorMsg(err, "发送喊话失败"))
 		return
 	}
+	s.recordControlCommandSubmission(r.Context(), actor, instanceID, result, "instance", instanceID, "全服玩家")
+	s.auditLog(r, &actor, "server_broadcast", "instance", instanceID, auditMetadata("commandId", result.CommandID))
 	writeJSON(w, http.StatusOK, result)
 }

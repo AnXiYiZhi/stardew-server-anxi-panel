@@ -111,6 +111,30 @@ export type JobsResponse = {
   jobs: Job[]
 }
 
+export type ControlCommandStatus = 'queued' | 'running' | 'succeeded' | 'dispatched' | 'failed' | 'expired' | 'unknown'
+
+export type ControlCommand = {
+  commandId: string
+  instanceId: string
+  commandType: string
+  targetType?: string
+  targetId?: string
+  targetLabel?: string
+  actorUserId?: number
+  actorUsername?: string
+  status: ControlCommandStatus
+  resultSupported: boolean
+  errorCode?: string
+  resultMessage?: string
+  resultDetails?: Record<string, string>
+  submittedAt: string
+  completedAt?: string
+  updatedAt: string
+  importedAt?: string
+}
+
+export type ControlCommandsResponse = { commands: ControlCommand[] }
+
 export type JobResponse = {
   job: Job
 }
@@ -158,6 +182,16 @@ export type InstanceState = {
     controlModVersion?: string; expectedControlModVersion: string; controlModMatches: boolean
     junimoImage?: string; expectedJunimoVersion: string; junimoVersionMatches: boolean
     containerToSaveMs?: number; saveToHostMs?: number
+    commandProtocol?: {
+      commandResultVersion: number
+      pendingCommandCount: number
+      unimportedResultCount: number
+      oldestPendingAt?: string
+      lastControlModConsumeAt?: string
+      commandsWritable: boolean
+      commandResultsWritable: boolean
+      warnings?: string[]
+    }
   }
 }
 
@@ -588,8 +622,29 @@ export type CommandsListResult = {
 
 export type CommandRunResult = {
   command: string
+  commandId?: string
+  status?: CommandResultStatus
   output?: string
   error?: string
   exitCode: number
   durationMs: number
+}
+
+export type CommandResultStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'dispatched'
+  | 'expired'
+  | 'unknown'
+
+export type CommandOutcome = {
+  commandId: string
+  status: CommandResultStatus
+  errorCode?: string
+  message?: string
+  createdAt?: string
+  updatedAt: string
+  details?: Record<string, string>
 }

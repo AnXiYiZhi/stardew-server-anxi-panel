@@ -78,18 +78,19 @@ func firstNonEmpty(values ...string) string {
 }
 
 type runtimeDiagnostic struct {
-	ActiveSaveID          string `json:"activeSaveId,omitempty"`
-	SaveDirectory         string `json:"saveDirectory,omitempty"`
-	CacheSaveID           string `json:"cacheSaveId,omitempty"`
-	CacheMatchesActive    bool   `json:"cacheMatchesActive"`
-	ControlModVersion     string `json:"controlModVersion,omitempty"`
-	ExpectedControlMod    string `json:"expectedControlModVersion"`
-	ControlModMatches     bool   `json:"controlModMatches"`
-	JunimoImage           string `json:"junimoImage,omitempty"`
-	ExpectedJunimoVersion string `json:"expectedJunimoVersion"`
-	JunimoVersionMatches  bool   `json:"junimoVersionMatches"`
-	ContainerToSaveMs     *int64 `json:"containerToSaveMs,omitempty"`
-	SaveToHostMs          *int64 `json:"saveToHostMs,omitempty"`
+	ActiveSaveID          string         `json:"activeSaveId,omitempty"`
+	SaveDirectory         string         `json:"saveDirectory,omitempty"`
+	CacheSaveID           string         `json:"cacheSaveId,omitempty"`
+	CacheMatchesActive    bool           `json:"cacheMatchesActive"`
+	ControlModVersion     string         `json:"controlModVersion,omitempty"`
+	ExpectedControlMod    string         `json:"expectedControlModVersion"`
+	ControlModMatches     bool           `json:"controlModMatches"`
+	JunimoImage           string         `json:"junimoImage,omitempty"`
+	ExpectedJunimoVersion string         `json:"expectedJunimoVersion"`
+	JunimoVersionMatches  bool           `json:"junimoVersionMatches"`
+	ContainerToSaveMs     *int64         `json:"containerToSaveMs,omitempty"`
+	SaveToHostMs          *int64         `json:"saveToHostMs,omitempty"`
+	CommandProtocol       map[string]any `json:"commandProtocol"`
 }
 
 func buildRuntimeDiagnostic(instance storage.Instance, status controlStatusSnapshot, players controlPlayersSnapshot) runtimeDiagnostic {
