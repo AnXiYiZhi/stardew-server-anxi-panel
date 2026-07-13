@@ -41,7 +41,10 @@ export function useSaveBackups({ isAdmin, setBusy }: SaveBackupsOptions) {
     setBackupMessage('')
     try {
       const result = await getSaveBackups()
-      setBackups(result.backups)
+      // Older panel versions encoded an empty Go slice as null. Keep this
+      // boundary defensive so a malformed/legacy response cannot crash the
+      // lazy-loaded saves page during its first render on a fresh server.
+      setBackups(Array.isArray(result.backups) ? result.backups : [])
       if (result.policy) {
         const normalizedPolicy = normalizeBackupPolicy(result.policy)
         setBackupPolicy(normalizedPolicy)

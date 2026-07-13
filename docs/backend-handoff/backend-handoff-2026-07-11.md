@@ -292,3 +292,9 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - active running 文件可能已入库但仍保留，这是故意的模组防重复闸门，不应计为“未入库”。最终审计只写一次，并通过 control_commands 关联 actor、目标和最终状态。
 - 本阶段没有更改 C# 或嵌入 DLL；上一阶段 DLL hash 仍为 `ADF4473AF58BBFC58C1A4735389B07F269D73BC40AFD4F7626A3D0C68F2E7EBC`。
 - 真机链路：临时隔离 DB + 临时 actor 通过 API 向真实实例提交 `say`，`64a0853e85c997d6b14ad6af48805f29` 为 queued→succeeded/ok，历史 API 的命令、actor、完成时间完整，`command-results` 清零。临时 DB/会话/进程均已删除；真实生产用户与认证库未改动。
+# SAVE-BACKUPS-EMPTY-LIST-1 空备份列表契约修复（2026-07-13）
+
+- 改动：`backend/internal/games/stardew_junimo/saves.go` 的 `ListBackups()` 在目录不存在及空目录场景都返回非 nil 空切片，使备份列表 API 输出 `backups: []` 而非 `null`。
+- 影响接口：`GET /api/instances/:id/saves/backups`；不改变非空备份数据结构及备份维护策略。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`；`TestListBackups_EmptyDir` 新增非 nil 回归断言。
+- 注意：Go 新增返回分支时继续避免把 nil slice 直接暴露到 JSON 数组契约。

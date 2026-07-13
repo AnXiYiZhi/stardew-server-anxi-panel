@@ -1131,3 +1131,8 @@ docker run --rm `
 - 审计以 `control_command_submitted`/`control_command_completed` 关联 actor、commandId、命令、目标、最终状态与错误码。不会保存广播正文或完整 payload；details 只接受 playerId/playerName，疑似密码、凭据或 Token 的结果消息整体脱敏。
 - 验证：迁移、重复导入、重启恢复、文件删除闸门、终态保留边界和旧协议测试；`go test ./...`、前端构建。该阶段不修改控制模组和 DLL。
 - 真实实例验证：隔离临时面板数据库通过真实 `stardew` 控制目录提交 `say`，commandId `64a0853e85c997d6b14ad6af48805f29` 从 HTTP `queued` 到模组 `succeeded/ok`，SQLite 保留 `commandType=say`、actor `command-validation` 和完成时间，结果目录最终为 0。上线前遗留的 24 个结果文件也已由新版 scheduler 幂等导入生产 `panel.db` 后清理；因这些旧文件早于提交审计，无法反推的 commandType/actor 显示 unknown，不伪造历史身份。
+# SAVE-BACKUPS-EMPTY-LIST-1 空备份列表契约修复
+
+- `stardew_junimo.ListBackups()` 在备份目录不存在或目录内没有 ZIP 时固定返回非 nil 空切片，`GET /api/instances/:id/saves/backups` 因此稳定输出 `"backups": []`，不再输出 `null`。
+- 新增回归断言覆盖全新实例的空目录场景，避免后续重构重新引入 `nil` slice JSON 编码问题。
+- 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。

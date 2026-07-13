@@ -959,3 +959,6 @@ Multi Game Mode later
 # COMMAND-RESULT-PRODUCTIZATION-1 状态
 
 - `COMMAND-RESULT-PRODUCTIZATION-1` completed：回执历史已 SQLite 化并支持幂等导入、面板重启恢复、安全文件交接、30 天/数量保留和最终审计；任务与日志页及诊断页已展示协议历史与卡死信号。旧模组继续退化为“已提交，无法获取精确结果”，没有新增任何游戏命令或改变命令保证语义。
+# SAVE-BACKUPS-EMPTY-LIST-1（已完成，v0.1.12）
+
+- 修复全新服务器零备份时存档页黑屏，恢复首次进入存档页创建新存档的主流程；后端空列表契约与前端兼容保护均已完成。
