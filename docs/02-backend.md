@@ -59,12 +59,16 @@
 
 - 修复云服上 SteamCMD 在 `Success! App '413150' fully installed.` 后继续同一会话切换 `+force_install_dir /data/game/.steam-sdk +app_update 1007` 时出现 `Please use force_install_dir before logon!` 并段错误退出 `139` 的问题。
 - `buildSteamCMDOpts()` 仍使用同一个一次性 SteamCMD 容器和同一套缓存卷，但容器内拆成两次独立 SteamCMD 进程：第一次 `+force_install_dir /data/game +login ... +app_update 413150 validate +quit`，第二次 `+force_install_dir /data/game/.steam-sdk +login ... +app_update 1007 validate +quit`。
-- 旧实例 `.env` 中残留的 `docker.m.daocloud.io/steamcmd/steamcmd:latest` 会被过滤，不再因为本地已有旧 daocloud 镜像而优先使用它。若 SteamCMD 仍以 `139` 段错误退出，后端会删除 `steamcmd-user-local` / `steamcmd-root-local` 自更新缓存卷并自动重试一次（游戏文件保留）。
-- **登录模型（当前实现，见 `STEAMCMD-ANON-SDK-FULL-LOGIN-1`）**：`buildSteamCMDOpts()` 里
-  - **游戏段（413150）恒为完整登录** `+login "$STEAM_USERNAME" "$STEAM_PASSWORD"`；`r.steamCMDUseCache` 恒为 false。原因：这套 SteamCMD 容器环境不像本地那样可靠地持久化「可复用凭据」，用户名单独登录 `+login <user>` 会命中 `Cached credentials not found.` 并卡在交互式密码提示挂死。已彻底废弃「只用户名缓存登录」模式。
+- 旧实例 `.env` 中残留的 `docker.m.daocloud.io/steamcmd/steamcmd:latest` 会被过滤，不再因为本地已有旧 daocloud 镜像而优先使用它。若 SteamCMD 仍以 `139` 段错误退出，后端只移除占用旧卷的一次性容器并自动重试，**不再删除任何 SteamCMD 授权卷**（游戏文件和已批准设备身份均保留）。
+- **登录模型（当前实现，见 `STEAMCMD-CREDENTIAL-REUSE-1`）**：`buildSteamCMDOpts()` 里
+  - **游戏段（413150）首次为完整登录** `+login "$STEAM_USERNAME" "$STEAM_PASSWORD"`；登录成功写入 `STEAMCMD_AUTH_COMPLETED=true`。后续修复/重装使用 SteamCMD 自己的缓存登录 `+@NoPromptForPassword 1 ... +login "$STEAM_USERNAME"`，不再提交密码、不主动创建新的 Steam Guard 挑战。
+  - 缓存登录输出 `Cached credentials not found` / `No cached credentials` 等明确失效信号时，当前 job 会清空 `STEAMCMD_AUTH_COMPLETED` 并自动回退一次完整登录；`@NoPromptForPassword 1` 防止缓存缺失时卡死在交互式密码提示。
   - **SDK 段（1007）恒为匿名登录** `+login anonymous`。Steamworks SDK Redist 是公开可匿名下载的，不需要账号，也不触发 Steam Guard。参考 `E:\源码\StardewValleyServerKit` 的 `install_steamworks_sdk()` 同样用匿名。
-  - 结果：一次安装最多只在游戏段批准一次 Steam Guard；SDK 段永不挂死、不用二次批准。见 driver_test 的 `TestBuildSteamCMDOptsGameFullLoginSDKAnonymous`、`TestDriverInstallRepairUsesFullLoginAndAnonymousSDK`。
-- **关于「记住登录、下次免 2FA」**：跳过二次 2FA 靠的是持久化的登录哨兵（Steam config 目录），而不是「只用户名登录」。用户 Windows Docker Desktop 能记住、Aliyun 服务器记不住，疑似因服务器触发过 `139` → `clearSteamCMDRuntimeCache()` 删掉了 `steamcmd-root-local`（含哨兵）。新流程分段 + 匿名 SDK 后 139 概率大幅降低；是否真正持久化哨兵需实测确认，若仍被 139 清掉再补「清理时保留 config 目录」（PART 2，待测）。
+  - 结果：正常情况下只在首次游戏段批准一次 Steam Guard；SDK 段永不需要批准。见 driver_test 的 `TestBuildSteamCMDOptsGameFullLoginSDKAnonymous`、`TestBuildSteamCMDOptsCachedLoginUsesOneCrossImageAuthorizationVolume`。
+- **SteamCMD 与 steam-auth 严格独立**：这里没有复用 `steam-auth` 的 refresh token。SteamCMD 使用自己的 `config.vdf` / ConnectCache / machine authorization 文件；`STEAMCMD_AUTH_COMPLETED` 也不影响 `STEAM_AUTH_COMPLETED`。
+- **统一登录卷**：候选镜像的运行用户和目录不同：官方 `steamcmd/steamcmd` 以 root、`HOME=/root` 运行，CM2 镜像以 `steam`、`HOME=/home/steam` 运行。`steamcmd-login` 现在同时挂到 `/root/Steam`、`/root/.local/share/Steam`、`/home/steam/Steam`、`/home/steam/.local/share/Steam`，让一次 SteamCMD 批准在候选镜像切换后仍可见。旧 `steamcmd-user-local` / `steamcmd-root-local` 卷不再作为运行目录挂载，由下一条迁移逻辑择一导入有效旧会话。
+- **旧卷自动迁移**：运行 SteamCMD 前先启动一个短生命周期迁移容器；若统一卷尚无 `config/config.vdf`，按 root-local、user-local 顺序查找旧缓存，仅复制 SteamCMD `config/` 与卷根 `ssfn*` 到统一卷。旧卷只读挂载、不删除，已存在的统一缓存不覆盖，文件内容不进入日志。
+- **真实 Docker 验证（2026-07-13）**：现场旧缓存位于 `stardew_steamcmd-root-local/config/config.vdf`，`steamcmd-login` 为空；迁移后使用统一卷连续启动两个全新 SteamCMD 容器，两次均只执行 `+@NoPromptForPassword 1 +login <username> +quit`，均输出 `Logging in using cached credentials`、完成 user info、退出码 0，未提交密码、未触发 Steam Guard。
 - 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
 
@@ -106,8 +110,8 @@
 
 - `POST /api/instances/:id/install` 在收到 `reuseCredentials=true` 时，除了继续从实例 `.env` 读取已保存 `STEAM_USERNAME` / `STEAM_PASSWORD` / `VNC_PASSWORD`，现在会显式传递 `SteamCMDRetry=true` 给 driver。
 - 这条路径用于安装页“重新安装 / 修复”、认证后下载失败重试、SteamCMD 重试等复用凭据入口；后端会跳过 Junimo 镜像检查和 `steam-auth`，直接进入 SteamCMD 下载/校验，不再让用户重新输入 Steam 账号密码，也不再走一遍 `steam-auth` 登录流程。
-- SteamCMD 直达模式会优先使用已有 SteamCMD 登录授权缓存执行 `+login "$STEAM_USERNAME" +app_update 413150 validate ...`，不再在命令里用账号密码触发新一轮 Steam Guard 批准；首次兜底且没有缓存的旧路径仍保留账号密码登录能力。
-- 如果直达修复模式下 SteamCMD 仍输出 Guard/批准提示，后端不会切到 `credentials_required` 要用户重新输入凭据，而是按 `steamcmd_failed` 报告“授权缓存不可用”，避免 UI 误导用户再次输入账号密码。
+- SteamCMD 直达模式会优先使用已有 SteamCMD 登录授权缓存执行 `+@NoPromptForPassword 1 ... +login "$STEAM_USERNAME" +app_update 413150 validate ...`，不再在命令里用账号密码触发新一轮 Steam Guard 批准；首次兜底且没有缓存时仍保留账号密码登录能力。
+- 如果直达修复模式下缓存明确失效，后端会在同一个 job 内自动清空失效标志并回退完整登录；只有此时 SteamCMD 才可能再次要求批准。
 - 影响文件：`backend/internal/web/install_handlers.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
 
@@ -150,11 +154,11 @@
 - 已热修当前测试实例 `data/instances/stardew/.env`，删除中间残留的 BOM 前缀 `IMAGE_VERSION` 行；`docker compose -f data/instances/stardew/docker-compose.yml config --quiet` 已通过。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo/config`。
 
-# STEAMCMD-SELFUPDATE-CACHE-1 SteamCMD 客户端自更新缓存
+# STEAMCMD-SELFUPDATE-CACHE-1 SteamCMD 客户端与授权缓存（已由 STEAMCMD-CREDENTIAL-REUSE-1 调整）
 
-- SteamCMD 兜底容器现在额外挂载 `steamcmd-root-local` 到 `/root/.local/share/Steam`，并挂载 `steamcmd-user-local` 到 `/home/steam/.local/share/Steam`，用于持久化 SteamCMD 容器内客户端自更新文件。
+- 历史实现曾分别挂载 `steamcmd-root-local` 与 `steamcmd-user-local`；当前已改为统一使用 `steamcmd-login` 覆盖 root/steam 两种用户的 `Steam` 与 `.local/share/Steam` 路径，避免候选镜像切换后丢失 SteamCMD 自己的登录会话。
 - 用户日志里的 `[steamcmd] [ 40%] Downloading update (.. of 40,273 KB)` 是 SteamCMD 客户端自更新，不是 Docker 镜像拉取；后端会在启动 SteamCMD 前写明镜像检查已完成，避免误解。
-- `buildSteamCMDOpts()` 会创建并 chown 上述目录；仍只使用 SteamCMD 候选镜像和现有 `game-data`、`steamcmd-login`、`steamcmd-home` 命名卷，不新增 Junimo/server 镜像来源。
+- `buildSteamCMDOpts()` 会创建并 chown 上述目录；仍只使用 SteamCMD 候选镜像和现有 `game-data`、`steamcmd-login`、`steamcmd-home` 命名卷，不新增 Junimo/server 镜像来源。旧 local 卷留在磁盘但不再挂载，避免自动删除潜在授权数据。
 - 影响文件：`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo -run "SteamCMD|InstallFallsBack|InstallResumes|InstallUsesExistingLater|InstallSteamCMD"`。
 

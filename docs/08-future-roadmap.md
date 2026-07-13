@@ -149,6 +149,10 @@
 
 - `STEAMCMD-EMAIL-GUARD-PROMPT-1` completed：SteamCMD 首次新机器登录时的邮箱 Steam Guard 分行提示已纳入后端和前端识别。后端会把 `This computer has not been authenticated...` / `Please check your email...` / `code from that message` / `set_steam_guard_code` 等日志切到 `steamcmd_guard_required`；前端也会在 job 日志先到时展示 SteamCMD 验证码输入框，避免安装页卡在下载/自更新进度。
 
+# STEAMCMD-CREDENTIAL-REUSE-1 状态
+
+- `STEAMCMD-CREDENTIAL-REUSE-1` completed：基于 SteamCMD 自身的缓存机制实现“一次批准、后续复用”，不共享 steam-auth token。首次完整登录成功后写 `STEAMCMD_AUTH_COMPLETED`；后续使用 `+login <username>` 与 `@NoPromptForPassword` 读取 SteamCMD 缓存，缓存明确失效时同一 job 自动回退完整登录。root/steam 候选镜像的 `Steam` 与 `.local/share/Steam` 统一映射到 `steamcmd-login`，139 重试不再删除授权卷；空统一卷会自动从旧 root/user local 卷迁移 `config/` 与 `ssfn*`。自动化测试通过；真实 Docker 中从旧 root-local 迁移后连续两个全新 SteamCMD 容器均命中 cached credentials、退出码 0、未再次触发 Steam Guard。
+
 # INSTALL-ROUTING-SPLIT-1 状态
 - `INSTALL-ROUTING-SPLIT-1` completed：安装流程按用户口述的完整期望重构。把 `reuseCredentials` 粗暴驱动的单一 `steamCMDRetry` 拆成 `reuse` / `steamCMDDirect` / `steamCMDUseCache` 三个正交决策，用已持久化的 driverPhase/state 判“是否已过认证”、用新 `.env` 标志 `STEAMCMD_AUTH_COMPLETED` 判“SteamCMD 是否有缓存”。修复：①镜像拉取失败重试重新拉镜像 + steam-auth（不再误跳 SteamCMD）；②SteamCMD 认证超时重试回到登录验证界面（不再秒报“授权缓存不可用”）；③认证成功后跨会话可靠跳过 steam-auth。并新增「更换 Steam 账号 / 强制重新认证」入口（`forceReauth`：清 steam-session/steamcmd 授权卷 + 重置标志，保留 game-data）；已安装态只保留卡片内换号按钮，操作区不再重复渲染。已验证 `cd backend; go test ./...`、`cd frontend; npm.cmd run build`。
 
