@@ -97,13 +97,13 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在写入 .env 凭据...")
 	envPath := r.instance.DataDir + "/.env"
 	envVals, _ := sjconfig.ReadEnvFile(envPath)
-	// steamCMDUseCache stays false: this SteamCMD environment does not persist a
-	// reusable "cached credential" for a username-only login, so `+login <user>`
-	// (no password) always fails with "Cached credentials not found." and hangs on
-	// an interactive password prompt. The game always does a full username+password
-	// login instead; skipping the second Steam Guard prompt comes from the persisted
-	// login sentry (see the Steam config volumes), not from a username-only login.
-	r.steamCMDUseCache = false
+	// SteamCMD persists its machine authorization in the mounted Steam config
+	// volumes. After one successful full login, use the username-only form so
+	// SteamCMD consumes that cached authorization instead of starting a fresh
+	// password/Steam Guard login on every repair. runSteamCMDFallback falls back to
+	// a full login automatically if Steam reports that the cache has expired or is
+	// missing, so a stale flag cannot leave the install flow stuck.
+	r.steamCMDUseCache = !r.forceReauth && strings.EqualFold(strings.TrimSpace(envVals["STEAMCMD_AUTH_COMPLETED"]), "true")
 	updates := map[string]string{
 		"IMAGE_VERSION":  r.imageTag,
 		"STEAM_USERNAME": r.username,
@@ -774,6 +774,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	if err != nil {
 		return err
 	}
+	r.migrateLegacySteamCMDAuthCache(ctx, jobCtx, imageRef)
 
 	downloadMessage := "steam-auth 国内网络下载失败，正在复用已保存账号密码通过 SteamCMD 兜底下载游戏文件..."
 	if r.steamCMDUseCache {
@@ -874,7 +875,15 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		case strings.Contains(lower, "success! app '1007' fully installed"):
 			app1007Done = true
 			downloadCompleted = true
-		case containsAny(lower, "invalid password", "password check for user failed", "login failure", "invalid login auth code"):
+		case containsAny(lower,
+			"invalid password",
+			"password check for user failed",
+			"login failure",
+			"invalid login auth code",
+			"cached credentials not found",
+			"no cached credentials",
+			"using cached credentials failed",
+		):
 			credentialFailed = true
 		}
 	}
@@ -894,8 +903,30 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		_, _ = jobCtx.Error(context.Background(), "SteamCMD 兜底下载运行失败："+paneldocker.RedactString(err.Error()))
 		return fmt.Errorf("steamcmd fallback run error: %w", err)
 	}
+	if r.steamCMDUseCache && credentialFailed {
+		_, _ = jobCtx.Warn(context.Background(), "[steamcmd] 已保存的 SteamCMD 授权缓存不可用，正在自动切换为账号密码完整登录。")
+		if updateErr := sjconfig.UpdateEnvFile(filepath.Join(r.instance.DataDir, ".env"), map[string]string{
+			"STEAMCMD_AUTH_COMPLETED": "",
+		}); updateErr != nil {
+			_, _ = jobCtx.Warn(context.Background(), "清除失效的 SteamCMD 授权状态失败；本次仍会尝试重新认证。")
+		}
+		r.steamCMDUseCache = false
+		credentialFailed = false
+		guardPrompted = false
+		mobileApproval = false
+		authTimedOut = false
+		exitCode, err = runSteamCMD()
+		if err != nil {
+			if ctx.Err() != nil {
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"SteamCMD 重新认证超时，请重试安装。", "install_timeout", jobCtx.ID)
+				return fmt.Errorf("steamcmd full login timed out after cached login failed: %w", ctx.Err())
+			}
+			return fmt.Errorf("steamcmd full login run error after cached login failed: %w", err)
+		}
+	}
 	if exitCode == 139 {
-		_, _ = jobCtx.Warn(context.Background(), "[steamcmd] SteamCMD exited with segmentation fault (139); clearing runtime cache and retrying once.")
+		_, _ = jobCtx.Warn(context.Background(), "[steamcmd] SteamCMD exited with segmentation fault (139); preserving authorization volumes and retrying once.")
 		r.clearSteamCMDRuntimeCache(context.Background(), jobCtx)
 		exitCode, err = runSteamCMD()
 		if err != nil {
@@ -1087,11 +1118,13 @@ func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress fu
 
 func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
-	// The game (413150) always does a full username+password login: this SteamCMD
-	// environment never persists a reusable credential (config.vdf gets no
-	// ConnectCache/MachineAuth/refresh token), so a username-only "cache" login can
-	// never succeed and would hang forever on an interactive password prompt.
 	gameCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +quit`
+	if r.steamCMDUseCache {
+		// NoPromptForPassword makes a missing/expired cache fail promptly instead of
+		// hanging at an interactive password prompt. The caller detects that failure
+		// and automatically reruns this command with the full credentials.
+		gameCommand = `"$STEAMCMD_BIN" +@NoPromptForPassword 1 +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +quit`
+	}
 	// The Steamworks SDK redistributable (app 1007) is public and downloads with an
 	// anonymous login — no account credentials and no Steam Guard. Only the game
 	// login needs the real account, so a whole install needs at most one guard
@@ -1121,22 +1154,73 @@ func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.Container
 			"STEAM_PASSWORD=" + r.password,
 		},
 		Binds: []string{
+			// SteamCMD images do not agree on HOME or the canonical Steam data
+			// directory. Use one authorization volume for every observed config
+			// root so a session created by the root-based official image remains
+			// visible to the steam-user CM2 image and vice versa.
 			projectName + "_steamcmd-login:/home/steam/Steam",
+			projectName + "_steamcmd-login:/home/steam/.local/share/Steam",
 			projectName + "_steamcmd-home:/home/steam/.steam",
-			projectName + "_steamcmd-user-local:/home/steam/.local/share/Steam",
 			projectName + "_steamcmd-login:/root/Steam",
+			projectName + "_steamcmd-login:/root/.local/share/Steam",
 			projectName + "_steamcmd-home:/root/.steam",
-			projectName + "_steamcmd-root-local:/root/.local/share/Steam",
 			projectName + "_game-data:/data/game",
 		},
+	}
+}
+
+func (r *installRunner) buildSteamCMDAuthMigrationOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
+	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	script := `set -eu
+echo "anxi-steamcmd-auth-migrate: checking legacy authorization cache"
+if [ -s /auth/config/config.vdf ]; then
+  echo "anxi-steamcmd-auth-migrate: canonical cache already present"
+  exit 0
+fi
+for legacy in /legacy/root /legacy/user; do
+  if [ -s "${legacy}/config/config.vdf" ]; then
+    mkdir -p /auth/config
+    cp -a "${legacy}/config/." /auth/config/
+    find "${legacy}" -maxdepth 1 -type f -name 'ssfn*' -exec cp -p '{}' /auth/ ';'
+    echo "anxi-steamcmd-auth-migrate: migrated legacy cache"
+    exit 0
+  fi
+done
+echo "anxi-steamcmd-auth-migrate: no legacy cache found"
+`
+	return paneldocker.ContainerTTYRunOpts{
+		ImageRef:   imageRef,
+		Entrypoint: []string{"/bin/sh"},
+		User:       "root",
+		Command:    []string{"-lc", script},
+		Binds: []string{
+			projectName + "_steamcmd-login:/auth",
+			projectName + "_steamcmd-root-local:/legacy/root:ro",
+			projectName + "_steamcmd-user-local:/legacy/user:ro",
+		},
+	}
+}
+
+func (r *installRunner) migrateLegacySteamCMDAuthCache(ctx context.Context, jobCtx *jobs.Context, imageRef string) {
+	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSteamCMDAuthMigrationOpts(imageRef), nil, func(line string) {
+		if strings.HasPrefix(line, "anxi-steamcmd-auth-migrate:") {
+			_, _ = jobCtx.Info(context.Background(), "[steamcmd] "+strings.TrimPrefix(line, "anxi-steamcmd-auth-migrate: "))
+		}
+	})
+	if err != nil || exitCode != 0 {
+		message := "[steamcmd] 旧授权缓存迁移失败，将继续使用当前统一授权卷。"
+		if err != nil {
+			message += " " + paneldocker.RedactString(err.Error())
+		}
+		_, _ = jobCtx.Warn(context.Background(), message)
 	}
 }
 
 func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *jobs.Context) {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
 	names := []string{
-		projectName + "_steamcmd-user-local",
-		projectName + "_steamcmd-root-local",
+		projectName + "_steamcmd-login",
+		projectName + "_steamcmd-home",
 	}
 	if result, err := r.driver.docker.RemoveContainersByVolume(ctx, r.instance.DataDir, names); err != nil {
 		detail := dockerResultDetail(result)
@@ -1148,14 +1232,10 @@ func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *j
 	} else {
 		_, _ = jobCtx.Info(ctx, "[steamcmd] Stale SteamCMD containers have been checked before runtime cache cleanup.")
 	}
-	if result, err := r.driver.docker.RemoveVolumes(ctx, r.instance.DataDir, names); err != nil {
-		detail := dockerResultDetail(result)
-		message := "[steamcmd] Failed to clear SteamCMD runtime cache volumes: " + paneldocker.RedactString(err.Error())
-		if detail != "" {
-			message += ": " + detail
-		}
-		_, _ = jobCtx.Warn(ctx, message)
-	}
+	// Do not delete these volumes: SteamCMD stores its login sentry/config under
+	// Steam or .local/share/Steam depending on the image. Removing them after a 139
+	// crash discards the approved-machine identity and forces Steam Guard again.
+	_, _ = jobCtx.Info(ctx, "[steamcmd] SteamCMD authorization volumes were preserved for retry.")
 }
 
 func dockerResultDetail(result paneldocker.CommandResult) string {

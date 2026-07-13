@@ -41,7 +41,10 @@ type fakeDocker struct {
 	containerErr      error
 	containerRuns     int
 	containerLines    []string
+	containerRunLines [][]string
 	containerOpts     paneldocker.ContainerTTYRunOpts
+	authMigrateRuns   int
+	authMigrateOpts   paneldocker.ContainerTTYRunOpts
 	smapiRuns         int
 	smapiLines        []string
 	smapiOpts         paneldocker.ContainerTTYRunOpts
@@ -106,6 +109,12 @@ func (f *fakeDocker) RunSteamAuthTTY(_ context.Context, _ string, _ paneldocker.
 
 func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
 	command := strings.Join(opts.Command, " ")
+	if strings.Contains(command, "anxi-steamcmd-auth-migrate") {
+		f.authMigrateRuns++
+		f.authMigrateOpts = opts
+		lineHandler("anxi-steamcmd-auth-migrate: no legacy cache found")
+		return 0, nil
+	}
 	if strings.Contains(command, "anxi-install-verify") {
 		f.verifyRuns++
 		f.verifyOpts = opts
@@ -128,7 +137,12 @@ func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.Contain
 	}
 	f.containerRuns++
 	f.containerOpts = opts
-	for _, line := range f.containerLines {
+	lines := f.containerLines
+	if len(f.containerRunLines) > 0 {
+		lines = f.containerRunLines[0]
+		f.containerRunLines = f.containerRunLines[1:]
+	}
+	for _, line := range lines {
 		lineHandler(line)
 	}
 	code := f.containerCode
@@ -697,11 +711,11 @@ func TestDriverInstallFallsBackToSteamCMDAfterSuccessfulAuthDownloadFailure(t *t
 	if !strings.Contains(command, "HOME=/home/steam USER=steam LOGNAME=steam") {
 		t.Fatalf("SteamCMD should run as steam user with HOME=/home/steam, command=%q", command)
 	}
-	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-root-local:/root/.local/share/Steam") {
-		t.Fatalf("SteamCMD should persist root self-update cache, binds=%v", fake.containerOpts.Binds)
+	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-login:/root/.local/share/Steam") {
+		t.Fatalf("SteamCMD should persist root login cache in the canonical authorization volume, binds=%v", fake.containerOpts.Binds)
 	}
-	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-user-local:/home/steam/.local/share/Steam") {
-		t.Fatalf("SteamCMD should persist steam user self-update cache, binds=%v", fake.containerOpts.Binds)
+	if !stringSliceContains(fake.containerOpts.Binds, storage.DefaultInstanceID+"_steamcmd-login:/home/steam/.local/share/Steam") {
+		t.Fatalf("SteamCMD should persist steam-user login cache in the canonical authorization volume, binds=%v", fake.containerOpts.Binds)
 	}
 }
 
@@ -880,7 +894,7 @@ func TestDriverInstallFailsWhenRequiredGameRuntimeFilesAreMissing(t *testing.T) 
 	}
 }
 
-func TestDriverInstallRetriesSteamCMDAfterSegfaultClearsRuntimeCache(t *testing.T) {
+func TestDriverInstallRetriesSteamCMDAfterSegfaultPreservesAuthorizationVolumes(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
 		DataDir: dataDir,
@@ -936,15 +950,15 @@ func TestDriverInstallRetriesSteamCMDAfterSegfaultClearsRuntimeCache(t *testing.
 		t.Fatalf("expected SteamCMD to retry once after exit 139, ran %d times", fake.containerRuns)
 	}
 	wantVolumes := []string{
-		storage.DefaultInstanceID + "_steamcmd-user-local",
-		storage.DefaultInstanceID + "_steamcmd-root-local",
+		storage.DefaultInstanceID + "_steamcmd-login",
+		storage.DefaultInstanceID + "_steamcmd-home",
 	}
 	for _, name := range wantVolumes {
 		if !stringSliceContains(fake.removedByVolumes, name) {
 			t.Fatalf("expected stale SteamCMD containers using volume %q to be removed, got %v", name, fake.removedByVolumes)
 		}
-		if !stringSliceContains(fake.removedVolumes, name) {
-			t.Fatalf("expected SteamCMD runtime cache volume %q to be removed, got %v", name, fake.removedVolumes)
+		if stringSliceContains(fake.removedVolumes, name) {
+			t.Fatalf("SteamCMD authorization volume %q must be preserved after exit 139, removed=%v", name, fake.removedVolumes)
 		}
 	}
 }
@@ -1168,7 +1182,7 @@ func TestDriverInstallSteamCMDFailsWhenMobileApprovalTimesOut(t *testing.T) {
 	}
 }
 
-func TestDriverInstallResumesSteamCMDDirectlyAfterSteamCMDFailure(t *testing.T) {
+func TestDriverInstallResumesSteamCMDAndFallsBackWhenCachedAuthorizationIsMissing(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
 		DataDir: dataDir,
@@ -1200,14 +1214,25 @@ func TestDriverInstallResumesSteamCMDDirectlyAfterSteamCMDFailure(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("set steamcmd failed phase: %v", err)
 	}
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatalf("mkdir instance: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, ".env"), []byte("STEAMCMD_AUTH_COMPLETED=true\n"), 0o600); err != nil {
+		t.Fatalf("seed cached SteamCMD flag: %v", err)
+	}
 
 	manager := jobs.NewManager(store, slog.Default())
 	fake := &fakeDocker{
-		steamAuthErr: errors.New("steam-auth should not run"),
-		containerLines: []string{
-			"Logging in user steam-user",
-			"Success! App '413150' fully installed.",
-			"Success! App '1007' fully installed.",
+		steamAuthErr:   errors.New("steam-auth should not run"),
+		containerCodes: []int{1, 0},
+		containerRunLines: [][]string{
+			{"Logging in user steam-user", "Cached credentials not found."},
+			{
+				"Logging in user steam-user",
+				"Waiting for user info...OK",
+				"Success! App '413150' fully installed.",
+				"Success! App '1007' fully installed.",
+			},
 		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
@@ -1232,8 +1257,12 @@ func TestDriverInstallResumesSteamCMDDirectlyAfterSteamCMDFailure(t *testing.T) 
 	if len(fake.pulledImages) != 0 {
 		t.Fatalf("local SteamCMD image should not be pulled again, pulled %v", fake.pulledImages)
 	}
-	if fake.containerRuns != 1 {
-		t.Fatalf("expected SteamCMD container to run once, ran %d times", fake.containerRuns)
+	if fake.containerRuns != 2 {
+		t.Fatalf("expected cached SteamCMD login then one full-login fallback, ran %d times", fake.containerRuns)
+	}
+	finalCommand := strings.Join(fake.containerOpts.Command, " ")
+	if !strings.Contains(finalCommand, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("cache failure should automatically retry with a full SteamCMD login, command=%q", finalCommand)
 	}
 	updated, err := store.GetInstance(context.Background(), instance.ID)
 	if err != nil {
@@ -1388,7 +1417,7 @@ func TestDriverInstallReRunsSteamAuthAfterPullFailureRetry(t *testing.T) {
 	}
 }
 
-func TestDriverInstallRepairUsesFullLoginAndAnonymousSDK(t *testing.T) {
+func TestDriverInstallRepairUsesCachedLoginAndAnonymousSDK(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{
 		DataDir: dataDir,
@@ -1420,10 +1449,9 @@ func TestDriverInstallRepairUsesFullLoginAndAnonymousSDK(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set installed phase: %v", err)
 	}
-	// Simulate an instance that has already authorized SteamCMD once. Repair still
-	// skips steam-auth and the compose pull, but the game login is always a full
-	// username+password login (this environment never caches a reusable
-	// credential), and the SDK downloads anonymously.
+	// Simulate an instance that has already authorized SteamCMD once. Repair skips
+	// steam-auth and the compose pull and uses SteamCMD's own cached login; the SDK
+	// remains anonymous.
 	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 		t.Fatalf("mkdir instance: %v", err)
 	}
@@ -1464,8 +1492,11 @@ func TestDriverInstallRepairUsesFullLoginAndAnonymousSDK(t *testing.T) {
 		t.Fatalf("expected SteamCMD container to run once, ran %d times", fake.containerRuns)
 	}
 	command := strings.Join(fake.containerOpts.Command, " ")
-	if !strings.Contains(command, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
-		t.Fatalf("repair game download should use a full username+password login, command=%q", command)
+	if !strings.Contains(command, `+@NoPromptForPassword 1 +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150`) {
+		t.Fatalf("repair game download should use the cached SteamCMD login, command=%q", command)
+	}
+	if strings.Contains(command, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("cached SteamCMD login must not submit the password again, command=%q", command)
 	}
 	if !strings.Contains(command, `+login anonymous +app_update 1007`) {
 		t.Fatalf("repair Steam SDK download should use anonymous login, command=%q", command)
@@ -1569,9 +1600,8 @@ func TestBuildSteamCMDOptsGameFullLoginSDKAnonymous(t *testing.T) {
 	opts := (&installRunner{instance: storage.Instance{DataDir: "/data/instances/stardew"}}).buildSteamCMDOpts("img:latest")
 	script := opts.Command[len(opts.Command)-1]
 
-	// The game (413150) always does a full username+password login: this SteamCMD
-	// environment never caches a reusable credential, so a username-only login
-	// would hang on "Cached credentials not found."
+	// Without a completed SteamCMD authorization flag, the first game login must
+	// still use the full username+password form.
 	if !strings.Contains(script, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
 		t.Fatalf("game command should do a full username+password login, got:\n%s", script)
 	}
@@ -1582,6 +1612,65 @@ func TestBuildSteamCMDOptsGameFullLoginSDKAnonymous(t *testing.T) {
 	}
 	if strings.Contains(script, `"$STEAM_USERNAME" +app_update 1007`) || strings.Contains(script, `"$STEAM_PASSWORD" +app_update 1007`) {
 		t.Fatalf("SDK command must not pass account credentials, got:\n%s", script)
+	}
+}
+
+func TestBuildSteamCMDOptsCachedLoginUsesOneCrossImageAuthorizationVolume(t *testing.T) {
+	opts := (&installRunner{
+		instance:         storage.Instance{DataDir: "/data/instances/stardew"},
+		steamCMDUseCache: true,
+	}).buildSteamCMDOpts("img:latest")
+	script := opts.Command[len(opts.Command)-1]
+
+	if !strings.Contains(script, `+@NoPromptForPassword 1 +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150`) {
+		t.Fatalf("cached game command should use username-only SteamCMD login, got:\n%s", script)
+	}
+	if strings.Contains(script, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("cached game command must not submit the password, got:\n%s", script)
+	}
+	wantBinds := []string{
+		"stardew_steamcmd-login:/home/steam/Steam",
+		"stardew_steamcmd-login:/home/steam/.local/share/Steam",
+		"stardew_steamcmd-login:/root/Steam",
+		"stardew_steamcmd-login:/root/.local/share/Steam",
+	}
+	for _, bind := range wantBinds {
+		if !stringSliceContains(opts.Binds, bind) {
+			t.Fatalf("SteamCMD authorization volume should cover cross-image path %q, binds=%v", bind, opts.Binds)
+		}
+	}
+	for _, obsolete := range []string{"stardew_steamcmd-user-local:", "stardew_steamcmd-root-local:"} {
+		for _, bind := range opts.Binds {
+			if strings.HasPrefix(bind, obsolete) {
+				t.Fatalf("split SteamCMD authorization volume should no longer be mounted: %q", bind)
+			}
+		}
+	}
+}
+
+func TestBuildSteamCMDAuthMigrationOptsCopiesLegacyCachesIntoCanonicalVolume(t *testing.T) {
+	opts := (&installRunner{
+		instance: storage.Instance{DataDir: "/data/instances/stardew"},
+	}).buildSteamCMDAuthMigrationOpts("img:latest")
+	script := opts.Command[len(opts.Command)-1]
+
+	for _, bind := range []string{
+		"stardew_steamcmd-login:/auth",
+		"stardew_steamcmd-root-local:/legacy/root:ro",
+		"stardew_steamcmd-user-local:/legacy/user:ro",
+	} {
+		if !stringSliceContains(opts.Binds, bind) {
+			t.Fatalf("SteamCMD auth migration should mount %q, binds=%v", bind, opts.Binds)
+		}
+	}
+	if !strings.Contains(script, `[ -s /auth/config/config.vdf ]`) {
+		t.Fatalf("migration must preserve an existing canonical cache, script=%q", script)
+	}
+	if !strings.Contains(script, `cp -a "${legacy}/config/." /auth/config/`) {
+		t.Fatalf("migration must copy legacy SteamCMD config without printing it, script=%q", script)
+	}
+	if strings.Contains(script, "cat ") {
+		t.Fatalf("migration must never print credential file contents, script=%q", script)
 	}
 }
 

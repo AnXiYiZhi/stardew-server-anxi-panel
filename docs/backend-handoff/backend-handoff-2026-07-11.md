@@ -305,3 +305,32 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - 授权边界：`AuthLoginOnly` 现在恢复调用前保存的 state/phase，仅记录 Steam 授权成功，不再把安装失败伪装为 `game_installed`。
 - 验证：`TestDriverInstallFailsWhenRequiredGameRuntimeFilesAreMissing`、`TestDriverReconcileStateMarksInstalledStateInvalidWhenGameVolumeFilesAreMissing`、`TestDriverAuthLoginOnlyMarksSteamAuthCompletedAndRefreshesService`；完整 `cd backend; go test ./...` 通过。
 - 下一步注意：若 JunimoServer 后续升级 Steam SDK 所需文件名/目录，应只更新 `verifyGameDataVolume()` 的 SDK 规则和同一测试中的文件清单，安装完成与启动/协调三条路径会自动保持一致。
+
+# STEAMCMD-CREDENTIAL-REUSE-1 SteamCMD 独立授权缓存持久复用（2026-07-13）
+
+## 改了什么
+
+- 本功能只使用 SteamCMD 自己生成的登录缓存，不读取、不转换、不共享 Junimo `steam-auth` 的 refresh token。两者仍分别由 `STEAMCMD_AUTH_COMPLETED` / `STEAM_AUTH_COMPLETED` 跟踪。
+- `installer.go run()` 读取 `STEAMCMD_AUTH_COMPLETED=true` 后启用 SteamCMD 用户名缓存登录：`+@NoPromptForPassword 1 ... +login "$STEAM_USERNAME"`；首次或强制换号仍使用用户名+密码完整登录。
+- 缓存登录明确输出 `Cached credentials not found` / `No cached credentials` 等失效信号时，同一安装 job 会清空 SteamCMD 标志并自动回退完整登录，避免死循环或卡在密码提示。
+- 统一 `<project>_steamcmd-login` 授权卷，同时挂载到 `/home/steam/Steam`、`/home/steam/.local/share/Steam`、`/root/Steam`、`/root/.local/share/Steam`。这是为了兼容 CM2 镜像的 steam 用户布局和官方 `steamcmd/steamcmd` 的 root 布局，切换候选镜像后仍读取同一份 SteamCMD config/machine authorization。
+- SteamCMD 退出码 139 的重试不再删除任何授权卷；仅按 `steamcmd-login` / `steamcmd-home` 查找并移除可能残留的一次性容器后重试，防止把登录哨兵一起删掉。旧 local 卷不再挂载，也不自动删除。
+- 新增旧卷自动迁移：`buildSteamCMDAuthMigrationOpts()` / `migrateLegacySteamCMDAuthCache()` 在真正登录前检查统一卷；目标无 `config/config.vdf` 时按 root-local、user-local 顺序只读查找，复制 `config/` 与卷根 `ssfn*`。目标已有缓存立即跳过，迁移 best-effort，绝不输出凭据文件内容。
+
+## 影响文件与接口
+
+- `backend/internal/games/stardew_junimo/installer.go`
+- `backend/internal/games/stardew_junimo/driver_test.go`
+- HTTP API、请求体和前端 phase 不变；缓存失效后仍复用现有 SteamCMD Guard 交互接口。
+
+## 如何验证
+
+- 自动化：`cd backend; go test ./internal/games/stardew_junimo`；新增迁移命令 contract 测试，覆盖统一/旧卷挂载、已有目标不覆盖、复制不 `cat` 凭据。
+- 真实 Docker：现场确认旧授权仅存在于 `stardew_steamcmd-root-local/config/config.vdf`，统一卷为空；复制到统一卷后，用项目当前候选镜像和新运行时四路径挂载连续启动两个全新 SteamCMD 容器，两次均只传用户名并命中 `Logging in using cached credentials`，user info 成功、退出码 0、未要求 Steam Guard。
+- 可在不输出文件内容的前提下检查 `<instance>_steamcmd-login` 卷内存在 `config/config.vdf` 或 SteamCMD 生成的 machine authorization/sentry 文件；不要把文件内容写入支持包或日志。
+
+## 下一步注意事项
+
+- 旧版本用户升级后，旧会话可能只存在 `steamcmd-user-local` / `steamcmd-root-local`；迁移会优先复用它。仅当旧卷没有有效缓存或 Steam 已吊销会话时，才需要重新批准。
+- Steam 主动吊销设备、修改密码、账户安全策略变化或用户点击“更换 Steam 账号 / 强制重新认证”时，再次批准是预期行为。
+- 已完成真实 SteamCMD 缓存登录验证，但没有执行完整 `app_update 413150 validate`（避免无必要地长时间校验游戏卷）；登录复用本身已由连续两个新容器验证。
