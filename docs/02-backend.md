@@ -1136,3 +1136,10 @@ docker run --rm `
 - `stardew_junimo.ListBackups()` 在备份目录不存在或目录内没有 ZIP 时固定返回非 nil 空切片，`GET /api/instances/:id/saves/backups` 因此稳定输出 `"backups": []`，不再输出 `null`。
 - 新增回归断言覆盖全新实例的空目录场景，避免后续重构重新引入 `nil` slice JSON 编码问题。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`。
+# INSTALL-RUNTIME-VERIFICATION-1 安装成功必须验证完整运行文件
+
+- 安装流程在 SteamCMD `validate`、SMAPI 安装成功后，新增对同一 Docker `game-data` 卷的最终验证。只有以下运行文件均存在时才写入 `game_installed`：`StardewValley`、`Stardew Valley.dll`、`steamapps/appmanifest_413150.acf`、`StardewModdingAPI`、`StardewModdingAPI.dll`、`.steam-sdk/steamapps/appmanifest_1007.acf`，以及 `.steam-sdk` 下至少一个 `steamclient.so`。
+- 缺失任一项时实例转为 `error / install_verification_failed`，安装 job 失败并提示重新安装或修复；启动服务器前也会重复执行同一检查，禁止空卷或残缺卷启动。
+- `ReconcileState()` 对所有已安装/可启动/运行中状态检查该 Docker 卷，历史误写的 `game_installed` 会自动恢复为 `install_verification_failed`；Docker 或镜像暂时不可用时只保留原状态并记录告警，避免网络/daemon 短暂故障误报文件缺失。
+- “仅 Steam 授权登录”只更新授权标记，不再篡改原实例的安装 state/phase，避免认证成功把下载失败覆盖成“游戏已安装”。
+- 验证：`cd backend; go test ./...`。
