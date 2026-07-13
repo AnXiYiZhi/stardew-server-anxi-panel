@@ -1,4 +1,4 @@
-import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
+import type { HealthDiagnosticsResponse, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
 import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse } from '../../types'
 
 export type StardewRoute =
@@ -34,6 +34,9 @@ export type StardewDashboardData = {
   jobLogsByJobId: Record<string, JobLog[]>
   health: HealthDiagnosticsResponse | null
   versionInfo: VersionInfo | null
+  updateStatus: PanelUpdateStatus | null
+  updateDryRun: PanelUpdateDryRunStatus | null
+  updateApply: PanelUpdateApplyStatus | null
   inviteCode: string | null
   publicIP: PublicIPResult | null
   // 降级错误摘要（不崩溃，只降级显示）
@@ -43,11 +46,18 @@ export type StardewDashboardData = {
   healthError: string | null
   inviteCodeError: string | null
   publicIPError: string | null
+  updateError: string | null
+  updateDryRunError: string | null
+  updateApplyError: string | null
   // 加载状态
   loading: boolean
   playersLoading: boolean
   inviteCodeRefreshing: boolean
   publicIPRefreshing: boolean
+  updateChecking: boolean
+  updateDryRunChecking: boolean
+  updateApplyStarting: boolean
+  updateDialogOpen: boolean
   // 刷新函数（供各页面在操作完成后主动刷新）
   refreshAll: () => void
   refreshInstanceState: () => void
@@ -59,6 +69,11 @@ export type StardewDashboardData = {
   applyHealthDiagnostics: (health: HealthDiagnosticsResponse) => void
   refreshInviteCode: () => void
   refreshPublicIP: (force?: boolean) => void
+  refreshUpdateStatus: (manual?: boolean) => Promise<void>
+  runUpdateDryRun: (targetVersion: string) => Promise<void>
+  applyUpdate: () => Promise<void>
+  openUpdateDialog: () => void
+  closeUpdateDialog: () => void
   clearInviteCode: () => void
   requestInviteCodeRefresh: () => void
 }

@@ -1,3 +1,40 @@
+# PANEL-UPDATE-RELEASE-1 镜像与发布验收（2026-07-13）
+
+- v0.2.0 是首个包含完整 Web updater 的正式版本；Tag 推送后由现有 GitHub tag workflow 构建并发布精确版本镜像。v0.2.0 之前的安装需要先用原部署更新方式完成一次引导升级。
+- 隔离构建了旧版 `0.1.13`、目标版 `0.1.14` 与故意 unhealthy/写库的失败镜像，完成真实 Compose 成功替换和自动回滚；测试项目、端口、数据目录与现有部署完全隔离。
+- 由于本阶段明确不打 tag/不推镜像，E2E 通过测试专用 wrapper 对已预置本地的精确可信镜像跳过远端 pull。生产镜像和代码仍执行 `docker compose ... up -d --pull always --force-recreate --no-deps panel`；正式仓库拉取闭环须在版本号确认并发布镜像后复验。
+- helper 将宿主安装目录挂载到相同绝对路径，Compose config/file/working_dir labels 在升级后仍指向宿主真实路径；禁止恢复为 `/deployment` 固定挂载。
+- `scripts/smoke-test.ps1` 已补 UTF-8 BOM 兼容 Windows PowerShell 5.1、修正 `BUILD_DATE` 参数传递，并在镜像构建失败时跳过依赖的容器健康步骤，避免误拉同名远端镜像。fresh named volume、`/health`、`/api/version` smoke 已通过。
+- 首次升级兼容：已安装本次 updater 版本后，后续升级可全程 Web 完成；从尚未包含 updater 的历史发布进入首个 updater 发布，需使用该历史版本既有的部署更新流程完成一次引导升级。之后不再要求日常升级使用 SSH/run.sh。
+
+# FE-PANEL-UPDATE-1 前端发布与恢复检查
+
+- 正式镜像必须将同一构建版本注入 panel，并包含最新前端 bundle。升级恢复依赖公开 `/health` 返回 `{status:"ok"}`、`/api/version.version` 返回精确目标版本，以及登录后的 apply 状态接口；反向代理不得把这三个路径改写为 SPA HTML。
+- 页面不依赖 SSH、run.sh 或 Docker 命令。断线期间浏览器保留当前 URL 和已加载的 JS/CSS，面板恢复后自动继续；发布时不要给 HTML/API 配置会跨版本保留的强缓存。
+- 发布 QA 至少运行 `npm run test:panel-update`、`npm run test:update-status`、`npm run build`，并用 `qa-layout.html?update=available&apply=offline` 与 `apply=reconnect-success` 检查专用离线页和结果弹窗。桌面 1280、窄屏 900、移动 390 宽度均需检查顶栏不溢出。
+
+# PANEL-UPDATE-APPLY-1 镜像升级与回滚约定
+
+- `/app/panel-updater` 现支持固定 `apply` 子命令。面板以当前可信镜像 detached 启动 helper，挂载 Docker Socket、部署目录（apply 时可写）和 panel 数据目录；当前 panel 停止后 helper 继续运行。
+- 正式升级目标始终是构建版本对应的精确 tag，不使用 `latest`。helper 依序尝试硬编码 Docker Hub、ACR、GHCR 候选，记录最终镜像 ID；Compose 命令固定 project/config/env-file，并以 `--no-deps panel` 限定服务。
+- 标准 `deploy/run.sh` 部署须保留 `PANEL_HOST_INSTALL_DIR/PANEL_HOST_COMPOSE_FILE/PANEL_HOST_DATA_DIR/PANEL_COMPOSE_PROJECT`，以及 Docker Socket。缺失或无法安全识别的部署保持 unsupported，不尝试猜测宿主路径。
+- 升级备份在 panel 数据目录 `updater/backups/<updateId>`，不进入镜像层、支持包或下载接口。发布镜像必须同时包含 docker-cli、Compose plugin、`wget`、panel 和 panel-updater，且 `/api/version` 必须返回精确构建版本，否则升级会自动回滚。
+- 发布前除常规镜像构建外，执行 `PANEL_RUN_DOCKER_UPDATE_TEST=1 go test ./internal/updater -run TestDockerIntegrationApplyUsesIsolatedComposeProject`；该测试只创建随机临时 Compose project/镜像，禁止指向生产 panel-data。
+
+# PANEL-UPDATER-DRYRUN-1 镜像与 run.sh 约定
+
+- Panel 镜像现在同时构建 `/app/panel` 和独立 `/app/panel-updater`；运行层继续包含 docker-cli 与 docker-cli-compose。helper 通过覆盖 ENTRYPOINT 启动 updater，不复用面板 HTTP 进程。
+- `run.sh` 写入并传入 `PANEL_HOST_INSTALL_DIR`、`PANEL_HOST_COMPOSE_FILE`、`PANEL_HOST_DATA_DIR`、`PANEL_COMPOSE_PROJECT`，作为 Compose labels 不可用时的严格兜底；Compose 命令统一使用 PANEL_COMPOSE_PROJECT。
+- helper 只挂载 Docker Socket、部署目录（只读）和数据目录；状态写在数据目录 `updater/status.json`。不得挂载宿主机根目录、用户 HOME、Docker credential 目录或额外配置目录。
+- dry-run 镜像仓库白名单与 run.sh 正式候选保持一致：项目 ACR、GHCR、Docker Hub、1ms 和 DaoCloud Docker Hub 镜像；只允许精确稳定版本 tag，禁止 latest 和用户提交仓库。
+- 本阶段镜像行为仅增加 inspect/pull/config 校验，不执行 compose up/down、容器 stop/rm/restart，也不改变发布 tag 流程。
+
+# PANEL-UPDATE-CHECK-1 构建版本与发布约定
+
+- 面板更新检测继续使用现有构建参数 `version`、`commit`、`buildDate` 注入；正式镜像必须注入合法稳定语义版本（可带 `v` 前缀）。未注入时的 `dev`、空值或非法版本只显示“版本检测不可用”，不会误报可更新。
+- GitHub Release 必须是非 draft、非 prerelease 的正式 Release 才会参与比较；Release tag 应使用可解析的语义版本。
+- 本阶段不会拉取新镜像、替换容器、重启面板或操作数据库，也不改变现有镜像发布流程。后续升级执行必须单独设计和验证。
+
 # RUN-SH-DOCKER-APT-FALLBACK-1 Docker APT 源自动切换
 
 - `deploy/run.sh` 的 Docker/Compose 自动安装在 apt 系系统上不再只依赖阿里云 Docker CE 源。

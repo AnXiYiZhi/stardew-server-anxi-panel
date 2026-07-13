@@ -1,3 +1,37 @@
+# PANEL-UPDATE-RELEASE-1 发布闭环（2026-07-13）
+
+- 完成从 `0.1.13` 到 `0.1.14` 的隔离 Compose 真 Docker 成功升级，以及故意 unhealthy 镜像触发的自动回滚。成功终态为 `succeeded`；失败终态为 `failed_rolled_back`，升级中写入的数据库变更已由 SQLite 一致性备份恢复。
+- 修复 helper 将部署目录固定挂载到 `/deployment` 的发布阻塞问题：helper 现在把宿主安装目录按原绝对路径挂载并使用原 Compose 路径，避免新 panel 的 Compose labels 被写成 helper 私有路径，保证后续 Web 升级仍能识别部署。
+- 成功与回滚测试均确认 `--no-deps panel` 的隔离边界：Stardew、server、steam-auth 哨兵容器 ID 与启动时间未变化。备份目录为 0700，数据库、Compose、`.env`、manifest 均为 0600；状态与日志未写入密钥、完整环境或 registry 凭据。
+- 支持标准 `run.sh` 单 Compose、`service=panel`、Docker Socket 和可验证数据挂载部署。缺 Socket、缺 Compose labels 且无完整显式兜底、自定义 `docker run`、多 Compose 文件或自定义编排均返回 unsupported，不猜路径。
+- 发布前全量验证：`go build ./...`、`go vet ./...`、`go test ./...`、Docker integration apply、镜像构建、fresh-volume smoke、成功/回滚 Web E2E 均通过。
+
+# PANEL-UPDATE-APPLY-1 面板升级执行链路
+
+- 新增管理员 `POST /api/system/update/apply` 与 `GET /api/system/update/apply`。POST 不接受目标镜像或目标版本请求体，只使用后端版本检测服务当前确认的最新正式 Release；dev、相同版本、降级、unsupported 和并发任务均拒绝。
+- 主进程先用 SQLite `VACUUM INTO` 创建在线一致性备份并执行 `integrity_check`，再保存原镜像 ID/digest，随后 detached 启动独立 `panel-updater apply` helper。数据库备份失败或 helper 启动失败时不会修改部署。
+- helper 仅从硬编码 Docker Hub、ACR、GHCR 可信候选拉取精确版本 tag，备份 Compose、`.env` 和升级清单，只改 `PANEL_IMAGE`，并固定执行 `docker compose --project-name <self-project> ... up -d --pull always --force-recreate --no-deps panel`。不接受 shell、任意镜像或任意 service 参数。
+- 新容器必须同时满足 Docker health=healthy、容器内请求 `/health` 返回 ok、`/api/version` 等于目标版本，默认超时 120 秒。拉取、Compose、退出/unhealthy/超时/版本不匹配均进入自动回滚；回滚停止失败 panel、恢复数据库/Compose/`.env` 和原镜像 ID，重建并验收旧 panel。
+- `<PANEL_DATA_DIR>/updater/apply-status.json` 原子持久化 `checking/backing_up/pulling/recreating/waiting_health/succeeded/rolling_back/failed_rolled_back/rollback_failed`、公开进度和脱敏摘要。私有备份位于 `updater/backups/<updateId>`，目录 0700、文件 0600；支持包采用白名单采集，不包含该目录。
+
+# PANEL-UPDATER-DRYRUN-1 独立 Updater 与部署环境识别
+
+- 新增 `internal/updater` 与独立 `cmd/panel-updater`。面板优先用 `HOSTNAME` 作为 container ID 调用 Docker inspect，只在 Docker/Compose 可用、Docker Socket 和数据挂载可验证、Compose project/service/config labels 完整时报告 supported。
+- 标准 Compose 要求 `com.docker.compose.project`、`project.config_files`、`service=panel`；单一 compose 文件的父目录作为安装目录。缺 labels 时仅接受 `PANEL_HOST_INSTALL_DIR/PANEL_HOST_COMPOSE_FILE/PANEL_HOST_DATA_DIR/PANEL_COMPOSE_PROJECT` 全部存在且与 inspect 数据挂载一致的显式兜底。
+- 新增管理员接口：`GET /api/system/update/capability`、`GET|POST /api/system/update/dry-run`。普通用户不能读取宿主机路径或演练日志。
+- POST 只接收精确稳定 `targetVersion`，目标镜像由代码从 Docker Hub、ACR、GHCR、1ms/DaoCloud 项目候选生成；拒绝 latest、digest、任意仓库和 shell 参数。
+- 面板通过 `docker run --detach --rm --entrypoint /app/panel-updater` 启动独立 helper。helper 只挂载 Docker Socket、只读部署目录和面板数据目录，只执行 `docker image inspect`、`docker pull`、`docker compose ... config --quiet`。
+- 状态原子写入 `<PANEL_DATA_DIR>/updater/status.json`，日志只记录固定阶段、可信镜像引用和脱敏错误，不保存 registry 凭据、PANEL_SECRET、完整环境变量或 compose config 输出。
+- 本阶段没有 stop/rm/up/down/restart 当前面板的路径，也没有 apply/upgrade 接口。
+
+# PANEL-UPDATE-CHECK-1 面板版本检测
+
+- 新增 `internal/updatecheck`：当前版本读取构建注入的 `version/commit/buildDate`，出站请求复用 `netdns.NewClient`，从 GitHub Releases 列表中忽略 draft/prerelease，并按语义版本比较 `v0.1.14` 与 `0.1.14`。
+- 服务启动后立即检查一次，之后默认每 6 小时检查并加入正负 36 分钟随机抖动。成功结果保存在进程内；临时失败只更新 `checkStatus/checkError`，继续保留上次成功的版本、发布时间、链接和 `checkedAt`，避免把失败解释为“已是最新”。
+- `dev`、空值和非法当前版本返回 `unavailable`，不发起远程请求，也不会报告可更新。
+- 新增 `GET /api/system/update`（登录用户）与 `POST /api/system/update/check`（管理员）；本阶段没有 apply/upgrade 接口。
+- 主要文件：`internal/updatecheck/service.go`、`internal/web/update_handlers.go`、`cmd/panel/main.go`。验证：`go test ./...`、`go build ./...`。
+
 # NEXUS-ARCHIVE-RESUME-1 Nexus ZIP 下载断点续传与无进度超时
 
 - `mod_remote_install` / `mod_nexus_install` 的远程 ZIP 下载现在使用 `.part` 临时文件；同一个任务内如果连接中断，会用 `Range: bytes=<已下载字节>-` 续传。服务器返回 `206` 且 `Content-Range` 起点匹配时追加写入；如果服务器忽略 Range 返回 `200`，会丢弃本次 `.part` 并从头下载，避免拼出坏包。

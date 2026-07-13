@@ -4549,3 +4549,30 @@
 .sd-settings-security-actions .sd-btn-green {
   min-width: 144px;
 }
+
+.sd-topbar .sd-topbar-version--available {
+  width: 12.8%;
+  color: #fff1b8;
+  background: rgba(155, 42, 20, 0.48);
+  text-shadow: 1px 1px 0 #5b190f;
+  font-size: clamp(9px, 0.76vw, 13px);
+  animation: sd-topbar-update-pulse 1.4s steps(2, end) infinite;
+}
+
+.sd-topbar .sd-topbar-version--working {
+  color: #fff0ad;
+  background: rgba(45, 91, 124, .58);
+  font-size: clamp(9px, .78vw, 13px);
+}
+
+.sd-topbar .sd-topbar-version--rollback,
+.sd-topbar .sd-topbar-version--restored,
+.sd-topbar .sd-topbar-version--error {
+  color: #ffe3bd;
+  background: rgba(145, 55, 31, .58);
+  font-size: clamp(8px, .72vw, 12px);
+}
+
+@keyframes sd-topbar-update-pulse {
+  50% { filter: brightness(1.16); }
+}

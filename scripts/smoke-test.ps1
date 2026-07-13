@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Anxi Panel 发版冒烟测试脚本
@@ -115,15 +115,18 @@ Invoke-Step -Name '前端构建 (npm run build)' -Skip:$SkipFrontend -Action {
 $dockerImage = 'anxi-panel-smoke-test'
 $dockerContainer = 'anxi-panel-smoke-test'
 $dockerVolume = 'anxi-panel-smoke-test-data'
+$dockerBuildPassed = $false
 
 Invoke-Step -Name 'Docker 镜像构建' -Skip:$SkipDocker -Action {
     Push-Location $projectRoot
     try {
-        $output = & docker build -t $script:dockerImage --build-arg VERSION=smoke-test --build-arg COMMIT=smoke --build-arg BUILD_DATE=(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ') . 2>&1
+        $buildDate = Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ'
+        $output = & docker build -t $script:dockerImage --build-arg VERSION=smoke-test --build-arg COMMIT=smoke --build-arg "BUILD_DATE=$buildDate" . 2>&1
         $output | ForEach-Object { Write-Host "  $_" }
         if ($LASTEXITCODE -ne 0) {
             throw "docker build 失败，退出码: $LASTEXITCODE"
         }
+        $script:dockerBuildPassed = $true
     } finally {
         Pop-Location
     }
@@ -131,7 +134,7 @@ Invoke-Step -Name 'Docker 镜像构建' -Skip:$SkipDocker -Action {
 
 # ── 4. Docker 容器启动与健康检查 ─────────────────────────────────────────────
 
-if (-not $SkipDocker) {
+if (-not $SkipDocker -and $dockerBuildPassed) {
     Invoke-Step -Name 'Docker 容器启动与健康检查' -Action {
         # 清理可能残留的旧容器
         & docker rm -f $dockerContainer 2>$null | Out-Null
@@ -191,6 +194,9 @@ if (-not $SkipDocker) {
             Write-Host '  /api/version 未返回 200' -ForegroundColor Yellow
         }
     }
+} elseif (-not $SkipDocker) {
+    Write-Step -Name 'Docker 容器启动与健康检查' -Status 'SKIP' -Detail '镜像构建未通过'
+    $skipped++
 }
 
 # ── 清理 ─────────────────────────────────────────────────────────────────────

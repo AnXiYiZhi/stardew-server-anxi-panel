@@ -47,6 +47,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -X 'github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config.buildCommit=${COMMIT}' \
     -X 'github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config.buildDate=${BUILD_DATE}'" \
     -o /app/panel ./cmd/panel
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o /app/panel-updater ./cmd/panel-updater
 
 # ============================================================
 # Stage 4: Runtime image
@@ -69,6 +72,7 @@ RUN apk add --no-cache \
     tzdata
 
 COPY --from=backend-builder /app/panel /app/panel
+COPY --from=backend-builder /app/panel-updater /app/panel-updater
 COPY --from=extension-builder /work/browser-extensions/ /app/browser-extensions/
 
 RUN mkdir -p /data

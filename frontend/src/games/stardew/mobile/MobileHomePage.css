@@ -58,6 +58,31 @@
   min-width: 0;
 }
 
+button.sd-mhome-status-item--version {
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.sd-mhome-status-item--version:focus-visible {
+  outline: 2px solid #a2682d;
+  outline-offset: -3px;
+}
+
+.sd-mhome-status-item--available {
+  border-color: #c75d32;
+  color: #a5301d;
+  background: #ffe1a8;
+}
+
+.sd-mhome-status-item--working { border-color: #4c8dae; background: #d8edf2; }
+.sd-mhome-status-item--rollback,
+.sd-mhome-status-item--error { border-color: #b44f36; background: #f5caa8; }
+.sd-mhome-status-item--restored { border-color: #bd8030; background: #f5d99a; }
+
 .sd-mhome-status-label {
   font-size: 11px;
   color: var(--sd-brown-light);

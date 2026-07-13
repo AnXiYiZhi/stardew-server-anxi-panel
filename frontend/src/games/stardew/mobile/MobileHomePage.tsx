@@ -9,6 +9,7 @@ import {
 import type { InstancePasswordStatus, SaveInfo } from '../../../types'
 import { errorMessage, stateLabel } from '../../../core/helpers'
 import type { StardewDashboardData, StardewPageProps } from '../stardew-routes'
+import { panelUpdateSurface, } from '../panel-update-machine'
 import './MobileHomePage.css'
 
 type MobileHomePageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
@@ -274,6 +275,8 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
   const pendingAuthPlayers = (dashboardData.players?.players ?? []).filter(
     (player) => player.status === 'online' && player.isAuthenticated === false,
   )
+  const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
+  const currentPanelVersion = updateSurface.currentVersion || '—'
 
   // 和桌面 OverviewPage.tsx 的 renderLifecycleButtons() 同一套状态分支：未运行时只显示
   // 启动按钮，运行中才切换成停止+重启；不像早期版本那样把三个按钮同时常驻靠 disabled 区分。
@@ -383,6 +386,18 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
             <span className="sd-mhome-status-label">游戏日期</span>
             <span className="sd-mhome-status-value">{gameDateText}</span>
           </div>
+          <button type="button" className="sd-mhome-status-item sd-mhome-status-item--version" onClick={dashboardData.openUpdateDialog}>
+            <span className="sd-mhome-status-label">面板版本</span>
+            <span className="sd-mhome-status-value">{currentPanelVersion}</span>
+          </button>
+          <button
+            type="button"
+            className={`sd-mhome-status-item sd-mhome-status-item--version sd-mhome-status-item--${updateSurface.tone}`}
+            onClick={dashboardData.openUpdateDialog}
+          >
+            <span className="sd-mhome-status-label">更新状态</span>
+            <span className="sd-mhome-status-value">{updateSurface.overviewText}</span>
+          </button>
         </div>
       </section>
 

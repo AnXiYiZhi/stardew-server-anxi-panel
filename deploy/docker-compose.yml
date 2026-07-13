@@ -40,6 +40,10 @@ services:
       # 以下为默认值，通常无需修改：
       # PANEL_ADDR=:8090
       # PANEL_DATA_DIR=/data
+      # PANEL_HOST_INSTALL_DIR=/absolute/host/path/to/deployment
+      # PANEL_HOST_COMPOSE_FILE=/absolute/host/path/to/deployment/docker-compose.yml
+      # PANEL_HOST_DATA_DIR=/absolute/host/path/to/data
+      # PANEL_COMPOSE_PROJECT=anxi-panel
       # PANEL_MODE=single
 
 volumes:

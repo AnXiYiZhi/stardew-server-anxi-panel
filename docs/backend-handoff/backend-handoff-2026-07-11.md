@@ -1,3 +1,103 @@
+# PANEL-UPDATE-RELEASE-1 后端接手补充（2026-07-13）
+
+## 改了什么
+
+- 完成成功升级与 unhealthy 自动回滚的隔离真 Docker 发布验收，并修复 helper `/deployment` 挂载导致升级后 Compose labels 不可复用的问题。
+- `internal/updater/docker_cli.go` 现在保持宿主安装目录与 Compose 文件的原绝对路径；`updater_contract_test.go` 增加 dry-run/apply 路径回归断言。
+- smoke 脚本补 Windows PowerShell 5.1 UTF-8、构建日期参数和构建失败依赖隔离。
+
+## 如何验证与下一步
+
+- 已通过 `go build ./...`、`go vet ./...`、`go test ./...`、Docker integration、成功/回滚 E2E、fresh-volume smoke 和 `git diff --check`。
+- E2E 的 0.1.13/0.1.14 是本地测试注入版本，未推送 registry。用户确认正式版本后必须再验证真实可信仓库 pull；历史版本首次进入 updater 发布仍需一次既有部署更新。
+- 不要移除 `--no-deps panel`、绝对 Compose 路径、备份权限或三项健康验收；不要把私有备份加入支持包。
+
+# FE-PANEL-UPDATE-1 后端接口消费补充（2026-07-13）
+
+- 前端现已完整消费既有 update/dry-run/apply 契约，无新增后端接口。apply POST 继续无 body，浏览器断线后只查询状态，不会重复提交。
+- `/health`、`/api/version` 和持久 apply 状态是 Web 自动重连的三项输入；反向代理或后续 API 改动必须保持 `/health` 与 `/api/version` 无登录可读、版本精确，并保持 apply 终态跨进程可读。
+- 前端对 `rollback_failed` 只提供可理解的管理员联系提示，不执行额外破坏性恢复动作。后端仍是升级和回滚结果的唯一事实来源。
+- 验证：前端状态机/生产构建及桌面、窄屏、移动浏览器 QA；后端本阶段无代码变化。
+
+# PANEL-UPDATE-APPLY-1 后端接手补充（2026-07-13）
+
+## 改了什么
+
+- 新增 apply API、跨重启状态、SQLite `VACUUM INTO` 备份和独立 helper 的真实 panel 单服务升级/三项验收/自动回滚链路。
+- helper 参数、镜像候选、Compose project/file/service 都是结构化白名单；日志和状态不写 registry 凭据、`PANEL_SECRET` 或完整环境。
+
+## 影响接口与文件
+
+- `POST/GET /api/system/update/apply`
+- `backend/internal/storage/backup.go`
+- `backend/internal/updater/apply_*.go`、`service.go`、`docker_cli.go`、`types.go`
+- `backend/cmd/panel-updater/main.go`、`backend/internal/web/updater_handlers.go`
+
+## 如何验证
+
+- `cd backend; go test ./...`
+- `cd backend; $env:PANEL_RUN_DOCKER_UPDATE_TEST='1'; go test ./internal/updater -run TestDockerIntegrationApplyUsesIsolatedComposeProject -count=1 -v`
+- `cd backend; go build ./cmd/panel ./cmd/panel-updater`
+
+## 下一步注意事项
+
+- `rollback_failed` 必须提示人工处理，不能自动重试破坏性步骤。不要把 helper 扩展成任意 shell/镜像/service 执行器，也不要移除 `--no-deps panel`。
+- 备份目录是私有恢复材料，不得加入支持包或下载接口。完整前端恢复体验属于 `PANEL-UPDATE-UX-2`。
+
+# PANEL-UPDATER-DRYRUN-1 后端接手补充（2026-07-13）
+
+## 改了什么
+
+- 新增 `internal/updater`：自容器 inspect、Compose/显式部署识别、可信镜像白名单、helper 参数构造、原子 JSON 状态和 dry-run 引擎。
+- 新增独立 `cmd/panel-updater`，由面板 detached 启动；只执行 image inspect/pull 和 compose config。
+- 新增管理员 capability 与 dry-run GET/POST API；run.sh 补四个宿主机部署变量，Dockerfile 同镜像构建 updater。
+
+## 影响文件和接口
+
+- `backend/internal/updater/*`、`backend/cmd/panel-updater/main.go`
+- `backend/internal/web/updater_handlers.go`、`handler.go`、`backend/cmd/panel/main.go`
+- `backend/internal/config/config.go`、`Dockerfile`、`deploy/run.sh`、`deploy/docker-compose.yml`
+- 接口：`GET /api/system/update/capability`、`GET|POST /api/system/update/dry-run`（全部管理员）。
+
+## 如何验证
+
+- `cd backend; go test ./internal/updater -run DockerContract`
+- `cd backend; go test ./...`
+- `cd backend; go build ./...`
+- contract tests 覆盖标准 labels、缺 labels 拒绝、显式兜底、镜像白名单、helper 无 shell、dry-run 无破坏命令、状态原子替换和重启读取。
+
+## 下一步注意事项
+
+- supported 仅表示可安全演练，不表示已授权真实升级。不要把 succeeded 直接接成 compose up。
+- 状态是跨进程共享文件；面板必须在启动 helper 前完成最后一次写入，避免覆盖 helper 的完成状态。
+- 当前只支持单一 compose config 文件与 service=panel。多文件 Compose、自定义编排、普通 docker run 默认 unsupported。
+- helper 日志禁止加入 Docker stderr、compose config 输出、环境变量和凭据；后续执行阶段也必须延续。
+
+# PANEL-UPDATE-CHECK-1 后端接手补充（2026-07-13）
+
+## 改了什么
+
+- 新增版本检测服务，读取构建注入的 version/commit/buildDate，通过 `netdns.NewClient` 查询 GitHub 正式 Releases，过滤 draft/prerelease 并进行语义版本比较。
+- 启动立即检查，之后默认 6 小时加随机抖动；成功结果驻留内存，网络失败保留上次成功数据并暴露错误状态。
+- 新增 `GET /api/system/update`（登录用户）和 `POST /api/system/update/check`（管理员）。
+
+## 影响文件和接口
+
+- `backend/internal/updatecheck/service.go`、`service_test.go`
+- `backend/internal/web/update_handlers.go`、`update_handlers_test.go`、`handler.go`
+- `backend/cmd/panel/main.go`
+
+## 如何验证
+
+- `cd backend; go test ./...`
+- `cd backend; go build ./...`
+- 单测覆盖版本比较、稳定 Release 筛选、缓存保留、网络失败、dev/非法版本和权限。
+
+## 下一步注意事项
+
+- 当前缓存只在进程内，重启后会重新检查；这是本阶段接受的持久策略。
+- 不要在 API 层添加容器升级逻辑。本阶段没有 apply/upgrade；后续升级执行需走独立设计，并优先复用 Junimo/部署层能力。
+
 # SAVE-BACKUP-GAMEDAY-1 存档回档功能重构：游戏内日期驱动的自动回档点
 
 ## 背景

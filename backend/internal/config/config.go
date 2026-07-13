@@ -36,6 +36,10 @@ type Config struct {
 	Version                      string
 	Commit                       string
 	BuildDate                    string
+	HostInstallDir               string
+	HostComposeFile              string
+	HostDataDir                  string
+	ComposeProject               string
 	PanelMode                    string
 	DefaultInstanceID            string
 	DefaultDriverID              string
@@ -69,6 +73,10 @@ func Load() Config {
 		Version:                      version,
 		Commit:                       commit,
 		BuildDate:                    buildDateVal,
+		HostInstallDir:               os.Getenv("PANEL_HOST_INSTALL_DIR"),
+		HostComposeFile:              os.Getenv("PANEL_HOST_COMPOSE_FILE"),
+		HostDataDir:                  os.Getenv("PANEL_HOST_DATA_DIR"),
+		ComposeProject:               os.Getenv("PANEL_COMPOSE_PROJECT"),
 		PanelMode:                    panelMode(getEnv("PANEL_MODE", DefaultPanelMode)),
 		DefaultInstanceID:            getEnv("DEFAULT_INSTANCE_ID", DefaultInstanceID),
 		DefaultDriverID:              getEnv("DEFAULT_DRIVER_ID", DefaultDriverID),

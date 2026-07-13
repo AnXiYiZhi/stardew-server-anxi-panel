@@ -17,6 +17,8 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updatecheck"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updater"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/web"
 )
 
@@ -103,16 +105,32 @@ func main() {
 		RetentionDays: cfg.ControlCommandRetentionDays, RetentionCount: cfg.ControlCommandRetentionCount,
 	})
 	go commandScheduler.Run(signalCtx)
+	updateChecker := updatecheck.New(updatecheck.Options{
+		CurrentVersion: cfg.Version,
+		Commit:         cfg.Commit,
+		BuildDate:      cfg.BuildDate,
+		Logger:         logger,
+	})
+	go updateChecker.Run(signalCtx)
+	hostname, _ := os.Hostname()
+	panelUpdater := updater.NewService(updater.ServiceOptions{
+		Docker: updater.NewDockerCLI(), DataDir: cfg.DataDir, ContainerRef: hostname, ContainerDataDir: cfg.DataDir,
+		HostInstallDir: cfg.HostInstallDir, HostComposeFile: cfg.HostComposeFile,
+		HostDataDir: cfg.HostDataDir, ComposeProject: cfg.ComposeProject, Logger: logger,
+		Database: store, DatabasePath: cfg.DBPath,
+	})
 
 	server := &http.Server{
 		Addr: cfg.Addr,
 		Handler: web.NewHandler(web.Deps{
-			Config:   cfg,
-			Store:    store,
-			Logger:   logger,
-			Docker:   dockerClient,
-			Jobs:     jobManager,
-			Registry: driverRegistry,
+			Config:        cfg,
+			Store:         store,
+			Logger:        logger,
+			Docker:        dockerClient,
+			Jobs:          jobManager,
+			Registry:      driverRegistry,
+			UpdateChecker: updateChecker,
+			Updater:       panelUpdater,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

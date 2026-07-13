@@ -5,10 +5,15 @@ import './App.css'
 import './games/stardew/stardew-theme.css'
 import { StardewPanel } from './games/stardew/StardewPanel'
 import { StardewMobileShell } from './games/stardew/StardewMobileShell'
+import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
+import type { CurrentUser } from './types'
 
 const params = new URLSearchParams(location.search)
 const STATE = params.get('state') || 'running'
 const SHELL = params.get('shell') || 'desktop'
+const UPDATE = params.get('update') || 'latest'
+const APPLY = params.get('apply') || ''
+const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 
 const now = new Date('2025-05-21T14:28:36+08:00')
 const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString()
@@ -117,13 +122,33 @@ const vncConfig = { vncPort: '24643' }
 const rendering = { fps: 30 }
 const serverPassword = { serverPassword: '' }
 const serverRuntimeSettings = { cabinStrategy: 'CabinStack', existingCabinBehavior: 'KeepExisting', networkBroadcastPeriod: 1 }
+const panelUpdate = {
+  currentVersion: '0.1.14', currentCommit: '3f7a9c2', currentBuildDate: '2026-07-13T12:00:00Z',
+  latestVersion: UPDATE === 'available' ? 'v0.1.15' : 'v0.1.14',
+  updateAvailable: UPDATE === 'available',
+  releaseUrl: 'https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/tag/v0.1.15',
+  publishedAt: '2026-07-12T08:00:00Z', checkedAt: '2026-07-13T12:00:00Z',
+  checkStatus: UPDATE === 'error' ? 'error' : 'ok', checkError: UPDATE === 'error' ? '访问 GitHub Release 失败' : '',
+}
+const applyStatus = APPLY ? {
+  updateId: 'qa-panel-update', phase: APPLY === 'offline' || APPLY === 'reconnect-success' ? 'recreating' : APPLY, progress: APPLY === 'backing_up' ? 15 : APPLY === 'pulling' ? 35 : APPLY === 'recreating' || APPLY === 'offline' || APPLY === 'reconnect-success' ? 65 : APPLY === 'waiting_health' ? 82 : APPLY === 'rolling_back' ? 88 : 100,
+  fromVersion: '0.1.14', toVersion: '0.1.15', originalImage: '', originalDigest: '', selectedImage: '', selectedDigest: '', errorCode: APPLY === 'failed_rolled_back' ? 'health_check_failed' : '', error: APPLY === 'failed_rolled_back' ? '新版本未通过健康检查' : '', result: APPLY === 'succeeded' ? '面板升级并验收成功' : APPLY === 'failed_rolled_back' ? '已自动恢复并验收旧面板' : '', logs: [], startedAt: iso(5), updatedAt: iso(0), finishedAt: APPLY === 'succeeded' || APPLY === 'failed_rolled_back' ? iso(0) : null,
+} : null
+const dryRunStatus = {
+  id: 'qa-dry-run', phase: 'succeeded', targetVersion: '0.1.15', targetImage: 'ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.1.15',
+  capability: { supported: true, reason: '标准 Compose 部署可安全升级', code: 'supported', composeProject: 'anxi-panel', composeFile: '', installDir: '', currentContainer: 'anxi-panel', currentImage: 'ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.1.14', dataMount: '', dockerAvailable: true, composeAvailable: true },
+  logs: [], startedAt: iso(3), updatedAt: iso(0), finishedAt: iso(0), errorCode: '', error: '',
+}
 
 function jsonRes(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
 const routes: Array<[RegExp, unknown]> = [
-  [/\/api\/version$/, { version: '1.6.15 (Stable)', commit: '3f7a9c2', buildDate: '2025-05-21 14:28:36' }],
+  [/\/api\/system\/update\/apply$/, applyStatus],
+  [/\/api\/system\/update\/dry-run$/, dryRunStatus],
+  [/\/api\/system\/update(?:\/check)?$/, panelUpdate],
+  [/\/api\/version$/, { version: APPLY === 'succeeded' ? '0.1.15' : '0.1.14', commit: '3f7a9c2', buildDate: '2025-05-21 14:28:36' }],
   [/\/state$/, { instanceId: 'stardew', driverId: 'stardew_junimo', name: 'AnxiFarm', state: STATE, stateMessage: null, driverPhase: STATE, updatedAt: iso(2) }],
   [/\/metrics$/, metrics],
   [/\/players$/, { instanceId: 'stardew', state: STATE, source: 'junimo', onlineCount: 3, maxPlayers: 12, players, parseStatus: 'exact', updatedAt: iso(0), recentEvents: recentPlayerEvents, rawInfo: JSON.stringify({ server: 'AnxiFarm', uptime: '2天 4小时 12分', version: '1.6.15 (Stardew Valley)', players_online: 3, max_players: 8, junimo_note: '此信息为 Junimo 协议原始输出，用于调试与集成。', timestamp: '2025-05-21T14:28:36+08:00' }, null, 2) }],
@@ -160,8 +185,25 @@ const routes: Array<[RegExp, unknown]> = [
 ]
 
 const realFetch = window.fetch.bind(window)
+let applyFetchCount = 0
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  if (APPLY === 'offline' && url.includes('/api/system/update/apply')) {
+    applyFetchCount += 1
+    if (applyFetchCount > 2) throw new TypeError('mock panel offline')
+  }
+  if (APPLY === 'offline' && (url.endsWith('/health') || url.includes('/api/version')) && applyFetchCount > 2) {
+    throw new TypeError('mock panel offline')
+  }
+  if (APPLY === 'reconnect-success') {
+    if (url.includes('/api/system/update/apply')) {
+      applyFetchCount += 1
+      if (applyFetchCount === 3 || applyFetchCount === 4) throw new TypeError('mock expected restart')
+      if (applyFetchCount > 4) return jsonRes({ ...applyStatus, phase: 'succeeded', progress: 100, result: '面板升级并验收成功', finishedAt: iso(0) })
+    }
+    if (url.endsWith('/health')) return jsonRes({ status: 'ok' })
+    if (url.includes('/api/version') && applyFetchCount > 4) return jsonRes({ version: '0.1.15', commit: 'new-build', buildDate: now.toISOString() })
+  }
   if (url.includes('/api/')) {
     for (const [re, body] of routes) {
       if (re.test(url.split('?')[0]) || re.test(url)) return jsonRes(body)
@@ -177,10 +219,12 @@ class NoopES extends EventTarget {
 }
 ;(window as unknown as { EventSource: unknown }).EventSource = NoopES
 
-const mockUser = { id: 1, username: '管理员', role: 'admin' as const, isSuperAdmin: true }
+const mockUser: CurrentUser = { id: 1, username: ROLE === 'admin' ? '管理员' : '普通玩家', role: ROLE, isSuperAdmin: ROLE === 'admin' }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {SHELL === 'mobile' ? <StardewMobileShell user={mockUser} /> : <StardewPanel user={mockUser} onLogout={() => {}} />}
+    <PanelUpdateProvider user={mockUser}>
+      {SHELL === 'mobile' ? <StardewMobileShell user={mockUser} /> : <StardewPanel user={mockUser} onLogout={() => {}} />}
+    </PanelUpdateProvider>
   </StrictMode>,
 )
