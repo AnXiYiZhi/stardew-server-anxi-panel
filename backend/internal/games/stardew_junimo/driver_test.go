@@ -45,6 +45,11 @@ type fakeDocker struct {
 	smapiRuns         int
 	smapiLines        []string
 	smapiOpts         paneldocker.ContainerTTYRunOpts
+	verifyRuns        int
+	verifyCode        int
+	verifyErr         error
+	verifyLines       []string
+	verifyOpts        paneldocker.ContainerTTYRunOpts
 	removedVolumes    []string
 	removedByVolumes  []string
 	restartedServices []string
@@ -101,6 +106,14 @@ func (f *fakeDocker) RunSteamAuthTTY(_ context.Context, _ string, _ paneldocker.
 
 func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
 	command := strings.Join(opts.Command, " ")
+	if strings.Contains(command, "anxi-install-verify") {
+		f.verifyRuns++
+		f.verifyOpts = opts
+		for _, line := range f.verifyLines {
+			lineHandler(line)
+		}
+		return f.verifyCode, f.verifyErr
+	}
 	if strings.Contains(command, "SMAPI") || strings.Contains(command, "smapi") {
 		f.smapiRuns++
 		f.smapiOpts = opts
@@ -770,6 +783,100 @@ func TestDriverAuthLoginOnlyMarksSteamAuthCompletedAndRefreshesService(t *testin
 	}
 	if fake.containerRuns != 0 || fake.smapiRuns != 0 {
 		t.Fatalf("auth-only must not run SteamCMD/SMAPI, containerRuns=%d smapiRuns=%d", fake.containerRuns, fake.smapiRuns)
+	}
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != instance.State || updated.DriverPhase != instance.DriverPhase {
+		t.Fatalf("auth-only must preserve installation state, got state=%s phase=%s; want state=%s phase=%s", updated.State, updated.DriverPhase, instance.State, instance.DriverPhase)
+	}
+}
+
+func TestDriverReconcileStateMarksInstalledStateInvalidWhenGameVolumeFilesAreMissing(t *testing.T) {
+	instance := storage.Instance{
+		ID:          "stardew",
+		DataDir:     t.TempDir(),
+		State:       storage.InstanceStateGameInstalled,
+		DriverPhase: "game_installed",
+	}
+	if err := os.WriteFile(filepath.Join(instance.DataDir, ".env"), []byte("SERVER_IMAGE=example.test/junimo:latest\n"), 0o600); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	store := &fakeStore{instance: instance}
+	fake := &fakeDocker{verifyCode: installVerificationMissingExitCode}
+	driver := New(fake, slog.Default(), nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("reconcile state: %v", err)
+	}
+	if updated.State != storage.InstanceStateError || updated.DriverPhase != "install_verification_failed" {
+		t.Fatalf("missing runtime files should invalidate installed state, got state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+	if fake.verifyRuns != 1 {
+		t.Fatalf("expected one game-volume verification, got %d", fake.verifyRuns)
+	}
+}
+
+func TestDriverInstallFailsWhenRequiredGameRuntimeFilesAreMissing(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{DataDir: dataDir, DBPath: filepath.Join(dataDir, "panel.db")})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: storage.DefaultDriverID, Name: "Stardew Valley", DataDir: filepath.Join(dataDir, "instances", storage.DefaultInstanceID),
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthLines: []string{
+			"[SteamAuth:A0] Logged in as [U:1:123]",
+			"[SteamAuth:A0] Downloading app 413150...",
+			"[SteamService] Game download failed: CDN error",
+		},
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+		verifyCode: installVerificationMissingExitCode,
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance: registry.Instance{ID: instance.ID}, SteamUsername: "steam-user", SteamPassword: "steam-pass", VNCPassword: "vnc-pass", AutoDownload: true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateError || updated.DriverPhase != "install_verification_failed" {
+		t.Fatalf("missing runtime files should fail installation, got state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+	verifyCommand := strings.Join(fake.verifyOpts.Command, " ")
+	for _, required := range []string{
+		"StardewValley",
+		"Stardew Valley.dll",
+		"appmanifest_413150.acf",
+		"StardewModdingAPI",
+		"StardewModdingAPI.dll",
+		"appmanifest_1007.acf",
+		"steamclient.so",
+	} {
+		if !strings.Contains(verifyCommand, required) {
+			t.Fatalf("verification command must require %q, got %q", required, verifyCommand)
+		}
 	}
 }
 
@@ -1480,7 +1587,7 @@ func TestBuildSteamCMDOptsGameFullLoginSDKAnonymous(t *testing.T) {
 
 func waitForDriverTestJobStatus(t *testing.T, store *storage.Store, jobID string, status string) storage.Job {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		job, err := store.GetJob(context.Background(), jobID)
 		if err != nil {

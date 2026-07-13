@@ -734,3 +734,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 全新服务器尚无任何备份时，`GET /api/instances/:id/saves/backups` 的 `backups` 字段固定为 JSON 数组 `[]`，不得为 `null`。
 - 前端同时兼容历史 `null` 响应并降级为空数组，防止动态加载的存档页运行时崩溃。
 - 联调验证重点：完成游戏安装但尚未创建存档/备份时，管理员可正常进入存档页并使用“新建存档”。
+# INSTALL-RUNTIME-VERIFICATION-1 安装完成状态联调契约
+
+- 前端将 `game_installed`、`save_required` 等状态视为可创建/选择存档的前提；后端现保证这些状态只能在 Docker `game-data` 卷完整包含 Stardew、SMAPI 和 Steam SDK 所需文件时出现。
+- 后端发现缺文件时返回实例 `state=error`、`driverPhase=install_verification_failed`、中文状态消息“游戏运行文件不完整，请重新安装或修复。”；前端沿用既有安装失败/重试入口，不应继续跳转或提示创建游戏。
+- 联调验证：在新服务器故意保留仅 `steamapps/` 与 `.steam-sdk/` 空目录的卷时，安装任务必须失败；旧实例刷新状态后必须从“安装完成”切到可重试安装错误；授权登录完成后安装状态保持原值。

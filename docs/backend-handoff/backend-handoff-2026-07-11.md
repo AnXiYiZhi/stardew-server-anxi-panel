@@ -298,3 +298,10 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - 影响接口：`GET /api/instances/:id/saves/backups`；不改变非空备份数据结构及备份维护策略。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo ./internal/web`；`TestListBackups_EmptyDir` 新增非 nil 回归断言。
 - 注意：Go 新增返回分支时继续避免把 nil slice 直接暴露到 JSON 数组契约。
+# INSTALL-RUNTIME-VERIFICATION-1 安装状态机运行文件闭环（2026-07-13）
+
+- 改动：`Driver.verifyGameDataVolume()` 使用已拉取的 JunimoServer 镜像挂载 `<project>_game-data:/data/game`，统一验证 Stardew 主程序/DLL/413150 manifest、SMAPI 启动器/DLL、1007 manifest 与 Steam SDK `steamclient.so`。SteamCMD 的 `validate` 负责完整 depot 校验；此检查负责阻止“日志成功但卷为空/残缺”的状态误判。
+- 影响：`completeInstall()` 在写 `game_installed` 前强制验证；`doStart()` 在启动容器前强制验证；`ReconcileState()` 会修复历史 `game_installed`、`save_required`、`ready_to_start`、`starting`、`running`、`stopped` 的残缺卷状态为 `error/install_verification_failed`。Docker/image 探测失败不改状态，以免临时运行环境问题造成误降级。
+- 授权边界：`AuthLoginOnly` 现在恢复调用前保存的 state/phase，仅记录 Steam 授权成功，不再把安装失败伪装为 `game_installed`。
+- 验证：`TestDriverInstallFailsWhenRequiredGameRuntimeFilesAreMissing`、`TestDriverReconcileStateMarksInstalledStateInvalidWhenGameVolumeFilesAreMissing`、`TestDriverAuthLoginOnlyMarksSteamAuthCompletedAndRefreshesService`；完整 `cd backend; go test ./...` 通过。
+- 下一步注意：若 JunimoServer 后续升级 Steam SDK 所需文件名/目录，应只更新 `verifyGameDataVolume()` 的 SDK 规则和同一测试中的文件清单，安装完成与启动/协调三条路径会自动保持一致。

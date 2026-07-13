@@ -551,9 +551,11 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 		// handling below so the user gets a proper error.
 		if authSucceeded || sdkDownloaded || downloadFailed || currentApp != "" {
 			r.refreshSteamAuthServiceAfterLogin(ctx, jobCtx)
-			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateGameInstalled,
-				"Steam 授权登录完成，可返回并启动服务器。", "steam_auth_login_done", jobCtx.ID)
-			_, _ = jobCtx.Info(context.Background(), "Steam 授权登录完成（仅登录，已跳过下载/兜底）。")
+			// This operation only refreshes Steam/Galaxy authorization. It must not
+			// change an incomplete-download error into game_installed.
+			r.driver.updatePhase(context.Background(), r.instance.ID, r.instance.State,
+				r.instance.StateMessage.String, r.instance.DriverPhase, jobCtx.ID)
+			_, _ = jobCtx.Info(context.Background(), "Steam 授权登录完成（仅登录；游戏安装状态保持不变）。")
 			return false, nil
 		}
 	}
@@ -711,6 +713,25 @@ func (r *installRunner) completeInstall(ctx context.Context, jobCtx *jobs.Contex
 			"SMAPI 运行环境安装失败，请检查任务日志后重试。", "smapi_install_failed", jobCtx.ID)
 		_, _ = jobCtx.Error(context.Background(), "SMAPI 运行环境安装失败："+paneldocker.RedactString(err.Error()))
 		return fmt.Errorf("install smapi runtime: %w", err)
+	}
+	imageRef := gameInstallImage(r.instance.DataDir)
+	_, _ = jobCtx.Info(context.Background(), "正在验证 Stardew、SMAPI 与 Steam SDK 运行文件...")
+	ok, err := r.driver.verifyGameDataVolume(ctx, r.instance.DataDir, imageRef, func(line string) {
+		_, _ = jobCtx.Info(context.Background(), "[verify] "+paneldocker.RedactString(line))
+	})
+	if err != nil || !ok {
+		message := "游戏运行文件不完整，请重新安装或修复。"
+		if err != nil {
+			message = "验证游戏运行文件失败，请检查任务日志后重试。"
+		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			message, "install_verification_failed", jobCtx.ID)
+		if err != nil {
+			_, _ = jobCtx.Error(context.Background(), "游戏运行文件验证失败："+paneldocker.RedactString(err.Error()))
+			return fmt.Errorf("verify game runtime files: %w", err)
+		}
+		_, _ = jobCtx.Error(context.Background(), "游戏运行文件不完整：Stardew、SMAPI 或 Steam SDK 的必需文件缺失。")
+		return fmt.Errorf("game runtime files are incomplete")
 	}
 	r.markInstallSucceeded(jobCtx)
 	return nil

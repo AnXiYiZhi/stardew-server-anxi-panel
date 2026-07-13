@@ -48,6 +48,10 @@ const (
 
 	// LatestImageTag is always "latest"; it follows upstream and may break compatibility.
 	LatestImageTag = "latest"
+
+	// installVerificationMissingExitCode is emitted by the short-lived verifier
+	// container when the game-data volume is readable but incomplete.
+	installVerificationMissingExitCode = 42
 )
 
 // DockerService defines what the driver needs from the Docker layer.
@@ -372,15 +376,27 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 	if !requiresInstalledFiles(instance.State) {
 		return instance, nil
 	}
-	ok, err := hasLocalInstallFiles(instance.DataDir)
-	if err != nil || ok {
-		return instance, err
+
+	// The game files live in a named Docker volume, not the instance directory.
+	// Never turn a transient Docker problem into a false "files missing" error.
+	imageRef := gameInstallImage(instance.DataDir)
+	if _, err := d.docker.ImageInspect(ctx, instance.DataDir, imageRef); err != nil {
+		d.logger.Warn("skip installed-file reconciliation because server image is unavailable", "instance", instance.ID, "error", err)
+		return instance, nil
+	}
+	ok, err := d.verifyGameDataVolume(ctx, instance.DataDir, imageRef, nil)
+	if err != nil {
+		d.logger.Warn("installed-file reconciliation failed", "instance", instance.ID, "error", err)
+		return instance, nil
+	}
+	if ok {
+		return instance, nil
 	}
 	return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
 		ID:           instance.ID,
 		State:        storage.InstanceStateError,
-		StateMessage: "未检测到游戏安装文件，请重新安装。",
-		DriverPhase:  "install_missing",
+		StateMessage: "游戏运行文件不完整，请重新安装或修复。",
+		DriverPhase:  "install_verification_failed",
 	})
 }
 
@@ -512,23 +528,70 @@ func (d *Driver) InstallOptions() []registry.ImageTagOption {
 }
 
 func requiresInstalledFiles(state string) bool {
-	// Junimo's official compose stores downloaded game files in the Docker named
-	// volume `game-data`, not under the instance directory. A local filesystem
-	// check would therefore produce false negatives for valid installs. Runtime
-	// reconciliation should use Docker/Junimo checks once lifecycle support lands.
-	_ = state
-	return false
+	switch state {
+	case storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+		storage.InstanceStateStopped:
+		return true
+	default:
+		return false
+	}
 }
 
-func hasLocalInstallFiles(dataDir string) (bool, error) {
-	entries, err := os.ReadDir(filepath.Join(dataDir, ".local-container"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
+func gameInstallImage(dataDir string) string {
+	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	return envWithDefault(envVals, "SERVER_IMAGE", serverImageDefault(TestedImageTag))
+}
+
+// verifyGameDataVolume checks every runtime artifact installed by this panel.
+// SteamCMD `validate` remains the full-depot integrity check; this prevents a
+// stale success log or later state transition from accepting an empty volume.
+func (d *Driver) verifyGameDataVolume(ctx context.Context, dataDir, imageRef string, lineHandler func(string)) (bool, error) {
+	projectName := strings.ToLower(filepath.Base(dataDir))
+	script := `set -u
+echo "anxi-install-verify"
+missing=""
+require_file() { if [ ! -f "$1" ]; then missing="${missing} $2"; fi; }
+require_exec() { if [ ! -x "$1" ]; then missing="${missing} $2"; fi; }
+require_exec /data/game/StardewValley StardewValley
+require_file "/data/game/Stardew Valley.dll" StardewValleyDLL
+require_file /data/game/steamapps/appmanifest_413150.acf StardewManifest
+require_exec /data/game/StardewModdingAPI StardewModdingAPI
+require_file /data/game/StardewModdingAPI.dll StardewModdingAPIDLL
+require_file /data/game/.steam-sdk/steamapps/appmanifest_1007.acf SteamSDKManifest
+if ! find /data/game/.steam-sdk -type f -name steamclient.so -print -quit | grep -q .; then
+  missing="${missing} SteamClientLibrary"
+fi
+if [ -n "${missing}" ]; then
+  echo "INSTALL_REQUIRED_FILES_MISSING:${missing}" >&2
+  exit 42
+fi
+echo "INSTALL_REQUIRED_FILES_OK"
+`
+	exitCode, err := d.docker.RunContainerTTY(ctx, paneldocker.ContainerTTYRunOpts{
+		ImageRef:   imageRef,
+		Entrypoint: []string{"/bin/sh"},
+		User:       "root",
+		Command:    []string{"-lc", script},
+		Binds:      []string{projectName + "_game-data:/data/game"},
+	}, nil, func(line string) {
+		if lineHandler != nil {
+			lineHandler(line)
 		}
-		return false, err
+	})
+	if err != nil {
+		return false, fmt.Errorf("run game-data verifier: %w", err)
 	}
-	return len(entries) > 0, nil
+	if exitCode == 0 {
+		return true, nil
+	}
+	if exitCode == installVerificationMissingExitCode {
+		return false, nil
+	}
+	return false, fmt.Errorf("game-data verifier exited with code %d", exitCode)
 }
 
 // updatePhase attempts a best-effort instance state update; errors are only logged.

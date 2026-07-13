@@ -258,6 +258,22 @@ func (r *lifecycleRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 
 func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在启动 Stardew 服务器...")
+	imageRef := gameInstallImage(r.instance.DataDir)
+	ok, err := r.driver.verifyGameDataVolume(ctx, r.instance.DataDir, imageRef, func(line string) {
+		_, _ = jobCtx.Info(ctx, "[verify] "+paneldocker.RedactString(line))
+	})
+	if err != nil || !ok {
+		message := "游戏运行文件不完整，请重新安装或修复。"
+		if err != nil {
+			message = "验证游戏运行文件失败，请检查任务日志后重试。"
+		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			message, "install_verification_failed", jobCtx.ID)
+		if err != nil {
+			return fmt.Errorf("verify game runtime files before start: %w", err)
+		}
+		return fmt.Errorf("game runtime files are incomplete")
+	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在启动服务器...", "starting", jobCtx.ID)
 
 	if err := r.ensureJunimoServerMod(ctx, jobCtx); err != nil {
