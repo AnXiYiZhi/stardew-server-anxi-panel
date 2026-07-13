@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:command-results": "node --experimental-strip-types scripts/test-player-command-results.ts",
+    "test:update-status": "node --experimental-strip-types scripts/test-update-status.ts",
+    "test:panel-update": "node --experimental-strip-types scripts/test-panel-update-machine.ts",
     "preview": "vite preview"
   },
   "dependencies": {

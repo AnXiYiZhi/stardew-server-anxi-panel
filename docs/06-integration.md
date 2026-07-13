@@ -1,3 +1,40 @@
+# PANEL-UPDATE-RELEASE-1 联调验收（2026-07-13）
+
+- 隔离项目以本地构建的 `0.1.13`、`0.1.14` 和故意 unhealthy 的 `0.1.14` 镜像完成 Web 端到端验证。成功链路覆盖自动发现、双入口提示、管理员点击、备份、独立 helper 替换、浏览器重连、三项健康验收与 `succeeded` 持久终态。
+- 回滚链路覆盖数据库故意写入后 unhealthy、120 秒健康超时、恢复旧 Compose/`.env`/镜像/数据库、旧 panel 重新 healthy，以及前端 `failed_rolled_back` 结果。`PRAGMA integrity_check` 为 `ok`，故意写入的用户名已恢复。
+- 两个项目的 Stardew、server、steam-auth 哨兵容器 ID 和 `StartedAt` 全程不变；升级命令仍固定 `--no-deps panel`。
+- 无 Docker Socket 返回 `docker_unavailable`；有 Socket 但无 Compose labels 的自定义 `docker run` 返回 `compose_labels_missing`。权限、并发拒绝、非白名单镜像、draft/prerelease、网络失败保留上次成功状态由接口与单元/contract tests 覆盖。
+- 发布前隔离验收没有创建临时 tag，因此镜像预置在本地，并用测试专用 Docker CLI wrapper 跳过远端 pull；helper 生命周期、Compose 重建、健康检查和回滚均为真实 Docker。v0.2.0 Tag 推送后由发布 workflow 构建正式镜像，正式 registry `--pull always` 闭环留待镜像发布完成后复验。
+
+# FE-PANEL-UPDATE-1 升级期间联调行为
+
+- 前端只由全局 Provider 请求 `GET /api/system/update`、管理员 dry-run/apply 接口；顶栏、总览和弹窗是同一状态的消费者，不得各自轮询。
+- `POST /api/system/update/apply` 仍必须无 body。若 POST 在响应前发生网络中断，前端进入“结果待确认”状态并查询持久任务，不能自动重复 POST；在线连续 404 后才提示用户重新检查。
+- apply 活动阶段请求失败视为预期面板重启。前端以退避策略请求公开 `/health` 与 `/api/version`，并在 HTTP 恢复后读取管理员 apply 状态；目标版本成功需 `/api/version` 等于 `toVersion`，最终 UI 以 `succeeded|failed_rolled_back|rollback_failed` 为准。
+- `succeeded` 自动恢复原页面并显示新版本结果；`failed_rolled_back` 显示“升级失败，已恢复”；`rollback_failed` 明确提示联系面板管理员，不向普通用户展示 shell 命令或要求 SSH。游戏实例 API 的短暂失败不会覆盖专用升级全屏状态。
+
+# PANEL-UPDATE-APPLY-1 联调约定
+
+- `POST /api/system/update/apply`：仅管理员；请求必须无 body。后端从共享更新检查结果读取 `currentVersion/latestVersion`，只有已确认 `updateAvailable=true` 才创建任务，成功返回 HTTP 202 和持久化 apply 状态。前端不得提交任意版本或镜像。
+- `GET /api/system/update/apply`：仅管理员；无状态时 404。响应字段包含 `updateId/phase/progress/fromVersion/toVersion/errorCode/error/result/logs/startedAt/updatedAt/finishedAt`，以及管理员诊断用的原/目标镜像与 digest。
+- 活动阶段为 `checking|backing_up|pulling|recreating|waiting_health|rolling_back`；终态为 `succeeded|failed_rolled_back|rollback_failed`。HTTP 请求在 helper detached 启动后尽快返回；panel 重启期间前端可在恢复连接后继续读取同一状态文件。
+- 409 表示无已确认更新、版本不合法、部署 unsupported 或已有任务；SQLite 备份失败也在修改部署前终止。升级只允许 self Compose project 的 `panel` service，禁止操作 Stardew 实例 Compose。
+
+# PANEL-UPDATER-DRYRUN-1 联调约定
+
+- `GET /api/system/update/capability`：仅管理员。返回 `supported/reason/code/composeProject/composeFile/installDir/currentContainer/currentImage/dataMount/dockerAvailable/composeAvailable`；这是唯一可返回完整部署路径的前端接口。
+- `POST /api/system/update/dry-run`：仅管理员，请求 `{"targetVersion":"0.1.15"}`，成功启动返回 202 和持久状态。targetVersion 必须是无 prerelease/build metadata 的精确语义版本；客户端不能提交镜像仓库。
+- `GET /api/system/update/dry-run`：仅管理员，读取 `<PANEL_DATA_DIR>/updater/status.json`；状态为 `starting|running|succeeded|failed|unsupported`，包含 capability、目标版本/镜像、脱敏日志和时间。
+- unsupported 是正常能力结果，不等于 API 故障。前端只显示 reason/code，不自行推导宿主机路径或补猜部署方式。
+- 本阶段没有 apply/upgrade API。dry-run 允许 image inspect/pull 和 Compose config，禁止 stop/rm/up/down/restart 当前面板。
+
+# PANEL-UPDATE-CHECK-1 联调约定
+
+- `GET /api/system/update`：任意已登录用户可读取。响应固定包含 `currentVersion`、`latestVersion`、`updateAvailable`、`releaseUrl`、`publishedAt`、`checkedAt`、`checkStatus`、`checkError`，并附带 `currentCommit/currentBuildDate`。
+- `POST /api/system/update/check`：仅管理员可触发即时检查，返回相同结构；普通用户调用返回 403。
+- `checkStatus` 为 `pending|checking|ok|error|unavailable`。若存在成功缓存，后续网络失败时仍返回缓存的 latest/release/checkedAt，同时以 `error` 和 `checkError` 表明刷新失败；前端不得把此状态显示为“已是最新”。
+- 前端只由 dashboard 数据层请求这两个接口，顶栏、总览与弹窗共享结果。当前没有 `apply`、`upgrade`、容器替换、自动重启或回滚契约。
+
 # MOBILE-HOME-M2-1 联调约定
 
 - 移动端总览页（`frontend/src/games/stardew/mobile/MobileHomePage.tsx`）只复用现有 API，无新增后端契约：生命周期用 `POST /api/instances/:id/start|stop|restart`；邀请码/局域网地址用现有 `GET /api/instances/:id/invite-code` 和前端本地 `window.location.hostname`；待认证玩家批准用现有 `GET /api/instances/:id/password-status` 和 `POST /api/instances/:id/players/approve-auth`。

@@ -1,3 +1,38 @@
+# PANEL-UPDATE-RELEASE-1 Web 验收（2026-07-13）
+
+- 隔离真 Docker 成功链路中，顶栏与总览同时展示 `v0.1.14` 更新；管理员经环境检查和二次确认启动升级，页面在 panel 短暂离线时进入专用升级态，恢复后自动回原页面并展示成功结果。
+- 故意 unhealthy 镜像触发回滚后，顶栏、总览和统一弹窗一致显示“升级失败，已恢复”，未把预期断线渲染成普通网络错误，也未显示 helper 原始命令。
+- 桌面 1280×800 与移动 390×844 已做浏览器视觉 QA：弹窗无横向溢出，移动顶栏使用紧凑“已恢复”，总览保留完整状态；两条链路浏览器控制台均无错误。
+- 普通用户保持只读且没有环境检查/升级按钮；Provider 位于路由和响应式壳层之外，上横栏、总览、弹窗只使用一份状态与轮询。
+
+# FE-PANEL-UPDATE-1 完整 Web 面板升级交互
+
+- `PanelUpdateProvider/usePanelUpdate` 挂在登录后的 Stardew 桌面/移动壳之外，统一初始化版本状态、管理员 dry-run/apply 状态、手动检查、升级触发、单一轮询和结果弹窗；页面路由与桌面/移动响应式切换不会重建升级任务状态。
+- `panel-update-machine.ts` 统一派生顶栏、总览、移动端文案与颜色。阶段覆盖备份、拉取、重建、健康等待、回滚、成功、已恢复和恢复失败；顶栏不增高，总览继续复用版本/最新两格。
+- 管理员弹窗展示版本、发布时间、Release 说明链接、部署支持状态、安全边界、可折叠环境详情和公开阶段时间线；正式按钮为“立即升级并重启面板”，提交前使用第二层确认。普通用户只读且完全不渲染检查/升级按钮。
+- apply 活动请求断开时进入全屏“面板正在升级”，以指数退避检查 `/health`、`/api/version` 和持久 apply 状态，180 秒后提供继续自动等待与非命令行说明。成功或回滚后保留原 URL/路由、刷新页面数据并自动打开结果详情。
+- QA harness 支持 `update=available|latest|error`、`apply=pulling|rolling_back|failed_rolled_back|offline|reconnect-success`、`shell=mobile`、`role=user`。验证脚本为 `npm run test:panel-update`、`npm run test:update-status` 和 `npm run build`。
+
+# PANEL-UPDATE-APPLY-1 基础升级触发（历史阶段，已由 FE-PANEL-UPDATE-1 完善）
+
+- 更新详情弹窗在管理员 dry-run 成功且后端确认有正式新版本时提供基础“开始升级”触发；请求不携带镜像或版本。普通用户仍只读且不会请求管理员 apply 状态。
+- 当时弹窗仅共享 dashboard 中的 apply 状态并轮询活动阶段；完整确认、离线恢复和结果引导现已由上方 `FE-PANEL-UPDATE-1` 取代。
+
+# PANEL-UPDATER-DRYRUN-1 管理员升级环境演练展示（历史阶段）
+
+- 该阶段只提供“检查升级环境”；现在正式升级按钮由 `FE-PANEL-UPDATE-1` 在 dry-run 成功后展示。
+- 弹窗展示 supported/unsupported、reason/code、Compose 项目、当前容器/镜像、目标镜像和脱敏阶段日志；不展示 installDir、composeFile、dataMount 等宿主机详细路径。
+- 普通用户仍只看到版本检测信息，不请求、不显示 dry-run 状态，也不能手动执行环境检查。
+- `starting/running` 每 2 秒读取管理员状态接口，完成后停止；失败只表示演练未通过，不出现可执行升级按钮。
+
+# PANEL-UPDATE-CHECK-1 面板版本展示（历史阶段）
+
+- 当时由 `useStardewDashboardData` 持有共享状态；现已提升为 App 级 `PanelUpdateProvider`，消费者仍不各自请求接口。
+- 顶栏复用原版本区块，总览复用原“版本/最新”信息格；两处在有更新时统一显示“发现新版本 vX.Y.Z”，已是最新时保持“✓ 最新”。
+- `UpdateDetailsDialog` 的只读版本信息仍保留；管理员执行与恢复交互现由 `FE-PANEL-UPDATE-1` 提供。
+- 移动端首页增加同一状态入口，弹窗和状态样式适配窄屏；QA 页面支持 `update=available|latest|error`。
+- 主要文件：`UpdateDetailsDialog.tsx`、`update-status.ts`、`StardewPanel.tsx`、`OverviewPage.tsx`、`MobileHomePage.tsx`。验证：`npm run test:update-status`、`npm run build`。
+
 # MOBILE-SHELL-SAVES-REFINE-1 手机端背景、顶栏与存档卡片优化
 
 - `StardewMobileShell.css`：移动端整体背景改为复用 PC 端 `background_app_black.png` 深色纹理；主体区域复用 PC 端 `.sd-main` 的 image2 主页面框素材（四角、四边、中心 tile），让手机端页面背景更接近桌面端页面框风格。

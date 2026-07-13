@@ -1316,6 +1316,27 @@
   justify-content: flex-start;
 }
 
+.sd-ov-banner-statbar .sd-bstat--button {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sd-ov-banner-statbar .sd-bstat--button:hover {
+  background: rgba(255, 244, 197, 0.35);
+}
+
+.sd-ov-banner-statbar .sd-bstat--button:focus-visible {
+  outline: 2px solid #9b5c24;
+  outline-offset: -3px;
+}
+
 .sd-ov-latest {
   display: inline-flex;
   align-items: center;
@@ -1473,6 +1494,56 @@
 
 .sd-ov-banner-scene .sd-ov-banner-overlay {
   background: none;
+}
+
+.sd-ov-latest--available {
+  color: #ad371f;
+}
+
+.sd-ov-latest--working { color: #27698b; }
+.sd-ov-latest--working::before { background: linear-gradient(180deg, #65bce0, #397aa4); animation: sd-overview-update-pulse 1.1s steps(3, end) infinite; }
+.sd-ov-latest--rollback { color: #9b3b24; }
+.sd-ov-latest--rollback::before { background: linear-gradient(180deg, #e27c42, #a94527); animation: sd-overview-update-pulse 1.1s steps(2, end) infinite; }
+.sd-ov-latest--restored { color: #9b5c20; }
+.sd-ov-latest--restored::before { background: #d29036; }
+.sd-ov-latest--error { color: #9b3026; }
+.sd-ov-latest--error::before { background: #bd4538; }
+
+.sd-ov-latest--available::before {
+  background: linear-gradient(180deg, #ed7a38, #c94225);
+}
+
+.sd-ov-latest--available::after,
+.sd-ov-latest--working::after,
+.sd-ov-latest--rollback::after,
+.sd-ov-latest--restored::after,
+.sd-ov-latest--checking::after,
+.sd-ov-latest--error::after,
+.sd-ov-latest--unavailable::after {
+  content: none;
+}
+
+.sd-ov-latest--available::before {
+  animation: sd-overview-update-pulse 1.3s steps(2, end) infinite;
+}
+
+.sd-ov-latest--checking,
+.sd-ov-latest--error,
+.sd-ov-latest--unavailable {
+  color: #8a5c21;
+}
+
+.sd-ov-latest--checking::before,
+.sd-ov-latest--error::before,
+.sd-ov-latest--unavailable::before {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #c08a33;
+}
+
+@keyframes sd-overview-update-pulse {
+  50% { filter: brightness(1.22); transform: translateY(-1px); }
 }
 /* Keep the original late shared-card overrides after lazy CSS extraction. */
 .sd-ov-section,

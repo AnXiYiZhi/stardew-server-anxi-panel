@@ -12,6 +12,7 @@ import { errorMessage } from './core/helpers'
 
 import { StardewPanel } from './games/stardew/StardewPanel'
 import { StardewMobileShell } from './games/stardew/StardewMobileShell'
+import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
 import { useMediaQuery } from './hooks/useMediaQuery'
 
 type View = 'booting' | 'setup' | 'login' | 'stardew'
@@ -110,7 +111,11 @@ function App() {
   }
 
   if (view === 'stardew' && currentUser) {
-    return isMobile ? <StardewMobileShell user={currentUser} /> : <StardewPanel user={currentUser} onLogout={logout} />
+    return (
+      <PanelUpdateProvider user={currentUser}>
+        {isMobile ? <StardewMobileShell user={currentUser} /> : <StardewPanel user={currentUser} onLogout={logout} />}
+      </PanelUpdateProvider>
+    )
   }
 
   const authShellClass = [

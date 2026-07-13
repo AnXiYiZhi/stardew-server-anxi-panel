@@ -2,6 +2,8 @@ import { Suspense, lazy, useState } from 'react'
 import type { CurrentUser } from '../../types'
 import { stateLabel } from '../../core/helpers'
 import { useStardewDashboardData } from './useStardewDashboardData'
+import { UpdateDetailsDialog } from './UpdateDetailsDialog'
+import { panelUpdateSurface } from './panel-update-machine'
 import './StardewMobileShell.css'
 
 const MobileHomePage = lazy(() => import('./mobile/MobileHomePage').then((m) => ({ default: m.MobileHomePage })))
@@ -57,11 +59,20 @@ export function StardewMobileShell({ user }: StardewMobileShellProps) {
 
   const statusText = mobileStatusText(dashboardData.instanceState?.state, dashboardData.loading)
   const statusDotClass = mobileStatusDotClass(dashboardData.instanceState?.state, dashboardData.loading)
+  const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
 
   return (
     <div className="sd-mshell">
       <header className="sd-mshell-topbar">
         <span className="sd-mshell-brand">Stardew Anxi Panel</span>
+        <button
+          type="button"
+          className={`sd-mshell-update sd-mshell-update--${updateSurface.tone}`}
+          onClick={dashboardData.openUpdateDialog}
+          aria-label={`面板更新：${updateSurface.topbarText}`}
+        >
+          {updateSurface.mobileTopbarText}
+        </button>
         <span className="sd-mshell-status">
           <span className={statusDotClass} aria-hidden="true" />
           <span className="sd-mshell-status-text">{statusText}</span>
@@ -90,6 +101,7 @@ export function StardewMobileShell({ user }: StardewMobileShellProps) {
         </Suspense>
         </div>
       </main>
+      <UpdateDetailsDialog user={user} dashboardData={dashboardData} />
 
       <nav className="sd-mshell-tabbar" aria-label="移动端主导航">
         {MOBILE_TABS.map((tab) => (

@@ -1,0 +1,42 @@
+.sd-panel-update-reconnect {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #fff3ca;
+  background:
+    linear-gradient(rgba(20, 12, 8, .84), rgba(20, 12, 8, .92)),
+    url('/assets/stardew/ui/backgrounds/background_app_black.png') center / cover;
+  font-family: Verdana, "Microsoft YaHei", sans-serif;
+}
+
+.sd-panel-update-reconnect-card {
+  width: min(560px, 100%);
+  box-sizing: border-box;
+  padding: 34px 36px 30px;
+  text-align: center;
+  border: 4px solid #75421f;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #4d2e19, #2d1b11);
+  box-shadow: 0 0 0 4px #c4873a, 0 18px 40px rgba(0, 0, 0, .55), inset 0 0 0 2px rgba(255, 226, 157, .16);
+}
+
+.sd-panel-update-reconnect-sprite { font-size: 48px; filter: drop-shadow(0 4px 0 rgba(0,0,0,.35)); }
+.sd-panel-update-reconnect-kicker { margin: 10px 0 5px; color: #e0ad57; font-size: 11px; font-weight: 900; letter-spacing: 2px; }
+.sd-panel-update-reconnect h1 { margin: 0; color: #fff0bb; font-size: clamp(24px, 5vw, 36px); }
+.sd-panel-update-reconnect-phase { margin: 16px 0 8px; color: #ffd870; font-size: 17px; font-weight: 900; }
+.sd-panel-update-reconnect-card > p:not(.sd-panel-update-reconnect-kicker):not(.sd-panel-update-reconnect-phase):not(.sd-panel-update-reconnect-attempt) { margin: 0 auto; max-width: 450px; color: #e9d5a5; font-size: 13px; line-height: 1.8; }
+.sd-panel-update-reconnect-progress { height: 15px; margin: 24px 0 10px; overflow: hidden; border: 2px solid #8d5828; border-radius: 4px; background: #21150e; }
+.sd-panel-update-reconnect-progress span { display: block; width: 42%; height: 100%; background: linear-gradient(90deg, #63a638, #b6d354, #63a638); animation: sd-panel-update-reconnect 1.6s steps(8, end) infinite; }
+.sd-panel-update-reconnect-attempt { margin: 0; color: #bca277; font-size: 11px; }
+.sd-panel-update-reconnect button { margin-top: 20px; min-height: 42px; padding: 8px 18px; border: 3px solid #70401e; border-radius: 6px; color: #38220f; background: linear-gradient(#f3cf72, #cc9133); font-weight: 900; cursor: pointer; }
+
+@keyframes sd-panel-update-reconnect { from { transform: translateX(-105%); } to { transform: translateX(245%); } }
+
+@media (max-width: 560px) {
+  .sd-panel-update-reconnect { padding: 16px; }
+  .sd-panel-update-reconnect-card { padding: 28px 20px 24px; }
+  .sd-panel-update-reconnect-sprite { font-size: 42px; }
+}

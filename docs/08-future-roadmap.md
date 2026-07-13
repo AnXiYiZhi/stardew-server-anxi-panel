@@ -1,3 +1,37 @@
+# PANEL-UPDATE-RELEASE-1 状态（2026-07-13）
+
+- **已完成，随 v0.2.0 发布**：版本检测、独立 updater/dry-run、apply/回滚、完整 Web 交互和隔离真 Docker 发布闭环均已完成。
+- 发布阻塞修复：helper 保持宿主 Compose 绝对路径，避免升级后 Compose labels 指向临时 `/deployment`；已新增 contract regression tests。
+- 已验证成功升级与 unhealthy 自动回滚、数据库恢复、游戏服务容器不变、断线重连、权限/并发/unsupported 边界、桌面和移动布局。
+- v0.2.0 作为首个包含 Web updater 的正式版本发布；从不含 updater 的历史版本进入 v0.2.0，需要沿用现有部署更新方式完成一次引导升级，后续版本即可在面板内升级。
+
+# 2026-07-13 已完成：FE-PANEL-UPDATE-1 完整 Web 面板升级交互
+
+- 已完成全局 `PanelUpdateProvider/usePanelUpdate`、顶栏/总览双入口同步、管理员二次确认、普通用户只读、完整阶段时间线和桌面/移动统一弹窗。
+- 面板预期断线进入专用全屏状态，以 `/health`、`/api/version`、apply 状态退避重连；恢复后保留原路由并自动打开成功、已回滚或恢复失败结果。
+- 状态机测试覆盖权限、成功、活动阶段、回滚、终态、双入口派生和退避；浏览器 QA 覆盖 1280 桌面、900 窄屏、390 移动端、普通用户、回滚、离线及断线后成功恢复。
+- 完整 Web 升级闭环至此完成；后续只保留历史记录/通知增强，不扩展为任意镜像、任意服务或 shell 操作。
+
+# 2026-07-13 已完成：PANEL-UPDATE-APPLY-1 面板升级后端执行链路
+
+- 已完成管理员 apply API、SQLite 在线一致性备份、独立 helper 精确版本拉取、panel 单服务重建、Docker health + `/health` + `/api/version` 三项验收，以及失败自动恢复数据库/Compose/`.env`/旧镜像。
+- 状态跨 panel 重启持久化，终态区分 `succeeded`、`failed_rolled_back`、`rollback_failed`；并发、dev/相同/降级、unsupported、任意 body/镜像和普通用户均拒绝。
+- 隔离临时 Compose 真 Docker 测试确认 panel 可替换且 game 哨兵容器不变；脚本化 contract tests 覆盖拉取、重建、unhealthy、版本不匹配、备份失败和回滚成败。
+- 后续完整升级交互已由 `FE-PANEL-UPDATE-1` 完成，不扩展服务范围或发布流程。
+
+# 2026-07-13 已完成：PANEL-UPDATER-DRYRUN-1 独立 Updater 与部署环境演练
+
+- 已完成 Docker 自容器 inspect、Compose labels/显式环境兜底识别、能力响应、管理员 dry-run API、独立镜像内 `panel-updater` 和跨主进程重启可读的原子状态文件。
+- dry-run 目标只来自项目硬编码可信仓库并使用精确版本 tag；helper 只执行 image inspect/pull 与 Compose config，不执行当前面板的停止、删除、重建或重启。
+- 管理员更新弹窗可发起“检查升级环境”并查看 supported/unsupported 与脱敏日志；普通用户保持只读版本展示。本阶段仍无“立即升级”。
+- 支持模式：标准 run.sh/单文件 Compose panel 服务；或 inspect 挂载与四个显式宿主机变量完全一致的兜底。缺 Docker Socket/Compose、普通 docker run、缺失/冲突 labels、多 compose 文件和不可验证自定义编排均安全拒绝。
+
+# 2026-07-13 已完成：PANEL-UPDATE-CHECK-1 面板版本自动检测与展示
+
+- 后端已完成稳定 GitHub Release 检测、语义版本比较、启动检查、6 小时抖动调度、成功结果缓存与失败保留，并提供登录可读/管理员可刷新的版本状态接口。
+- 前端已完成共享状态、桌面顶栏与总览原区块复用、移动端入口及统一更新详情弹窗；有更新时顶栏和总览统一显示“发现新版本 vX.Y.Z”，普通用户只读，管理员可手动刷新。
+- 该阶段边界原为“检测和展示”；后续执行链路现已由 `PANEL-UPDATE-APPLY-1` 独立完成。
+
 # 2026-07-10 已完成：手机端背景、顶栏与存档卡片继续优化
 
 - `MOBILE-SHELL-SAVES-REFINE-1` completed：手机端整体背景改为复用 PC 端 `background_app_black.png` 深色纹理，主体区域复用 PC `.sd-main` 的 image2 页面框素材（四角、四边、中心 tile）；顶栏新增 `mobile_topbar_framed_generated_image2.png` 手机端专用四边框木纹横栏素材（imagegen 生成后整张缩放到 1170×174，不裁切，保留完整边框）并保留鸡图标做轻量化移动版，避免手机宽度下出现 PC 顶栏拼接接缝/撕裂感。移动壳固定为一屏，主体背景、顶栏和底栏保持不动；内容改由 `.sd-mshell-scroll` 内层滚动并被 `.sd-mshell-body` 上下边框安全区裁切，不再遮挡背景自带木纹框线；底部 Tab 占位挪到内层滚动区底部 padding，页面框背景铺满到屏幕底部，不再露出黑底；上方滚动内容额外 padding 收为 0，且 `.sd-mshell-body` 上方安全区减半，组件更贴近上方裁切区内侧顶格显示。

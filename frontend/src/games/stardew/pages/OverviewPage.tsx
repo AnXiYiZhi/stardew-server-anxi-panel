@@ -2,6 +2,7 @@ import './OverviewPage.css'
 import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { InviteCodeCard } from '../InviteCodeCard'
 import { modIsSystemRuntime } from '../mod-visibility'
+import { panelUpdateSurface } from '../panel-update-machine'
 import type { StardewPageProps } from '../stardew-routes'
 import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
 import { formatStardewLocation } from '../location-format'
@@ -49,6 +50,8 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
         ? '识别中'
         : '—'
   const onlinePlayers = dashboardData.players?.players.filter((player) => player.status === 'online') ?? []
+  const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
+  const currentPanelVersion = updateSurface.currentVersion || '—'
 
   const healthChecks = dashboardData.health?.checks ?? []
   const healthStatus = dashboardData.health?.status
@@ -167,16 +170,20 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
               <span className="sd-bstat-v">{playerSummary}</span>
             </div>
           </div>
-          <div className="sd-bstat">
+          <button type="button" className="sd-bstat sd-bstat--button" onClick={dashboardData.openUpdateDialog}>
             <img src="/assets/stardew/ui/icons/icon_top_summary_version.png" alt="" />
             <div className="sd-bstat-tx">
               <span className="sd-bstat-l">版本</span>
-              <span className="sd-bstat-v">{dashboardData.versionInfo?.version ?? '—'}</span>
+              <span className="sd-bstat-v">{currentPanelVersion}</span>
             </div>
-          </div>
-          <div className="sd-bstat sd-bstat--latest">
-            <span className="sd-ov-latest">最新</span>
-          </div>
+          </button>
+          <button
+            type="button"
+            className={`sd-bstat sd-bstat--latest sd-bstat--button sd-bstat--${updateSurface.tone}`}
+            onClick={dashboardData.openUpdateDialog}
+          >
+            <span className={`sd-ov-latest sd-ov-latest--${updateSurface.tone}`}>{updateSurface.overviewText}</span>
+          </button>
         </div>
       </div>
 

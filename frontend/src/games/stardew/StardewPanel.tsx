@@ -13,6 +13,8 @@ import { jobDisplayName, stateLabel } from '../../core/helpers'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
+import { UpdateDetailsDialog } from './UpdateDetailsDialog'
+import { panelUpdateSurface } from './panel-update-machine'
 import './StardewPanel.css'
 
 const InstallPage = lazy(() => import('./pages/InstallPage').then((m) => ({ default: m.InstallPage })))
@@ -717,7 +719,8 @@ export function StardewPanel({
   const topbarSaveName = activeSave?.farmName || activeSave?.name || activeSaveName || '选择存档'
   const topbarSaveTime = topbarSaveTimeLabel(activeSave)
   const topbarSaveTitle = topbarSaveTime ? `${topbarSaveName}：${topbarSaveTime}` : topbarSaveName
-  const topbarVersion = versionInfo?.version ? `v${versionInfo.version}` : 'v--'
+  const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, versionInfo)
+  const topbarVersion = updateSurface.topbarText
   const topbarStateLabel = topbarStatusText(instanceState?.state, dashboardData.loading)
   const topbarStatusDotClass = topbarStatusDotClassName(instanceState?.state, dashboardData.loading)
   const topbarStatusUsesGreenIcon = topbarStatusDotClass.includes('sd-dot-green')
@@ -800,8 +803,8 @@ export function StardewPanel({
 
         <button
           type="button"
-          className="sd-topbar-version"
-          onClick={() => navigate('settings')}
+          className={`sd-topbar-version sd-topbar-version--${updateSurface.tone}`}
+          onClick={dashboardData.openUpdateDialog}
           aria-label={`面板版本：${topbarVersion}`}
           title={`面板版本：${topbarVersion}`}
         >
@@ -876,6 +879,7 @@ export function StardewPanel({
           <Suspense fallback={<PageLoadingFallback />}>{renderPage()}</Suspense>
         </div>
       </main>
+      <UpdateDetailsDialog user={user} dashboardData={dashboardData} />
 
       {/* ── 右侧 OpsRail ────────────────────────────────────── */}
       <aside className="sd-opsrail" aria-label="任务状态">

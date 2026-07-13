@@ -9,12 +9,12 @@ import {
   getMods,
   getSaves,
   getStardewState,
-  getVersion,
 } from '../../api'
-import type { HealthDiagnosticsResponse, VersionInfo } from '../../api'
+import type { HealthDiagnosticsResponse } from '../../api'
 import type { InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse } from '../../types'
 import { errorMessage } from '../../core/helpers'
 import type { StardewDashboardData } from './stardew-routes'
+import { usePanelUpdate } from './PanelUpdateProvider'
 
 function resolvePanelAccessHost(): PublicIPResult | null {
   const host = window.location.hostname.trim()
@@ -28,6 +28,7 @@ function resolvePanelAccessHost(): PublicIPResult | null {
 }
 
 export function useStardewDashboardData(): StardewDashboardData {
+  const panelUpdate = usePanelUpdate()
   const [instanceState, setInstanceState] = useState<InstanceState | null>(null)
   const [saves, setSaves] = useState<SavesListResult | null>(null)
   const [mods, setMods] = useState<ModsListResult | null>(null)
@@ -35,7 +36,6 @@ export function useStardewDashboardData(): StardewDashboardData {
   const [jobs, setJobs] = useState<Job[]>([])
   const [jobLogsByJobId, setJobLogsByJobId] = useState<Record<string, JobLog[]>>({})
   const [health, setHealth] = useState<HealthDiagnosticsResponse | null>(null)
-  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [publicIP, setPublicIP] = useState<PublicIPResult | null>(null)
 
@@ -208,16 +208,6 @@ export function useStardewDashboardData(): StardewDashboardData {
     setInviteCodeError(null)
   }, [inviteCode])
 
-  // 版本信息只在初始化时加载一次，不对外暴露刷新函数
-  const fetchVersion = useCallback(async () => {
-    try {
-      const res = await getVersion()
-      setVersionInfo(res)
-    } catch {
-      // 静默失败
-    }
-  }, [])
-
   const refreshAll = useCallback(() => {
     void refreshInstanceState()
     void refreshSaves()
@@ -262,7 +252,6 @@ export function useStardewDashboardData(): StardewDashboardData {
         refreshJobs(),
         refreshInviteCode(),
         refreshPublicIP(),
-        fetchVersion(),
       ])
       setLoading(false)
     }
@@ -291,8 +280,13 @@ export function useStardewDashboardData(): StardewDashboardData {
     refreshJobs,
     refreshInviteCode,
     refreshPublicIP,
-    fetchVersion,
   ])
+
+  useEffect(() => {
+    const recovered = () => refreshAll()
+    window.addEventListener('panel-update-recovered', recovered)
+    return () => window.removeEventListener('panel-update-recovered', recovered)
+  }, [refreshAll])
 
   useEffect(() => {
     const activeJobIds = new Set(
@@ -445,6 +439,7 @@ export function useStardewDashboardData(): StardewDashboardData {
   ])
 
   return {
+    ...panelUpdate,
     instanceState,
     saves,
     mods,
@@ -452,7 +447,6 @@ export function useStardewDashboardData(): StardewDashboardData {
     jobs,
     jobLogsByJobId,
     health,
-    versionInfo,
     inviteCode,
     publicIP,
     savesError,

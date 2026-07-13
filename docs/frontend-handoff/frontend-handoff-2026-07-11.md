@@ -1,3 +1,105 @@
+# PANEL-UPDATE-RELEASE-1 前端接手补充（2026-07-13）
+
+## 改了什么与影响
+
+- 用隔离真 Docker 从 Web 完成成功升级和 unhealthy 自动回滚，确认顶栏、总览、统一弹窗与全屏重连由同一 Provider 同步驱动。
+- 成功后自动恢复原页面并打开结果；回滚后桌面与移动端均显示“升级失败，已恢复”，不暴露原始命令。
+
+## 如何验证与下一步
+
+- `npm run test:command-results`、`npm run test:update-status`、`npm run test:panel-update`、`npm run build` 均通过。
+- 浏览器验证 1280×800、390×844，无横向溢出且控制台无错误；普通用户权限由组件测试覆盖。
+- 正式版本发布后再以真实 registry 镜像复验一次。Provider 必须继续位于路由/桌面移动分流之外，apply POST 网络不确定时只能查询状态，不能自动重提。
+
+# FE-PANEL-UPDATE-1 前端接手补充（2026-07-13）
+
+## 改了什么
+
+- 将更新逻辑从 `useStardewDashboardData` 提升到 App 级 `PanelUpdateProvider/usePanelUpdate`，桌面、移动、顶栏、总览与弹窗共享状态和唯一轮询。
+- 新增完整阶段派生、管理员二次确认、普通用户只读、断线全屏退避重连、超时说明、恢复原路由及自动结果弹窗；同时修复 dry-run 请求体被二次 JSON 编码的问题。
+
+## 影响文件
+
+- `PanelUpdateProvider.tsx/.css`、`panel-update-machine.ts`
+- `App.tsx`、`useStardewDashboardData.ts`、`UpdateDetailsDialog.tsx/.css`
+- 桌面/移动壳、Overview/MobileHome、`api.ts`、QA harness 和 `scripts/test-panel-update-machine.ts`
+
+## 如何验证
+
+- `cd frontend; npm run test:panel-update; npm run test:update-status; npm run build`
+- 浏览器 QA：桌面 1280、窄屏 900、移动 390；验证 available、pulling、rolling_back、offline、reconnect-success 和 `role=user`。
+
+## 下一步注意事项
+
+- apply POST 网络不确定时只能查询状态，禁止自动重复提交。`rollback_failed` 不得伪装为已恢复，也不要向用户展示 helper 原始命令。
+- Provider 必须继续位于响应式桌面/移动分流之外；否则断点切换会重建轮询并丢失断线状态。
+
+# PANEL-UPDATE-APPLY-1 前端接手补充（2026-07-13）
+
+## 改了什么
+
+- 管理员更新弹窗在 dry-run 成功后提供基础 apply 触发；请求无 body，随后共享轮询持久化 phase/progress/result/error。普通用户无入口。
+
+## 影响文件与验证
+
+- `frontend/src/api.ts`、`useStardewDashboardData.ts`、`UpdateDetailsDialog.tsx/.css` 及 dashboard 类型透传。
+- 验证：`npm run test:update-status`、`npm run build`。
+
+## 下一步注意事项
+
+- 本阶段不是完整 UX。后续补断线恢复、二次确认与失败引导，但不能允许前端提交版本/镜像，也不能将 `failed_rolled_back` 显示成升级成功。
+
+# PANEL-UPDATER-DRYRUN-1 前端接手补充（2026-07-13）
+
+## 改了什么
+
+- 管理员更新详情弹窗新增“检查升级环境”，提交最新正式版本并轮询共享 dry-run 状态。
+- 展示支持状态、reason/code、Compose 项目、容器/镜像和脱敏日志；不展示宿主机 install/compose/data 路径。
+- 普通用户没有按钮，也不请求管理员 dry-run API；没有新增“立即升级”。
+
+## 影响文件和验证
+
+- `frontend/src/api.ts`
+- `frontend/src/games/stardew/stardew-routes.ts`
+- `frontend/src/games/stardew/useStardewDashboardData.ts`
+- `frontend/src/games/stardew/UpdateDetailsDialog.tsx/.css`
+- 验证：`cd frontend; npm run test:update-status`、`npm run build`。
+
+## 下一步注意事项
+
+- dry-run 必须继续由 dashboard 共享状态轮询，不能在弹窗或顶栏另起独立请求。
+- succeeded 的文案只能是“环境演练通过”，不能显示“升级完成”或提供容器操作按钮。
+- capability 完整路径仅管理员 API 可见，但当前 UI 刻意不渲染；后续也不要把这些路径放进普通用户共享版本响应。
+
+# PANEL-UPDATE-CHECK-1 前端接手补充（2026-07-13）
+
+## 改了什么
+
+- dashboard 数据层集中请求更新状态，桌面顶栏、总览、移动端首页和详情弹窗共享同一份数据。
+- 顶栏复用版本号区块，总览复用“版本/最新”信息格；有更新时两处统一显示“发现新版本 vX.Y.Z”。
+- v0.2.0 发布前补充了双入口一致性回归断言，后续修改版本提示必须同时更新 `panel-update-machine.ts` 与 `test-panel-update-machine.ts`，不得让顶栏和总览再次产生不同文案。
+- 新增统一更新详情弹窗；管理员可刷新，普通用户只读，弹窗明确升级执行属于下一阶段。
+
+## 影响文件
+
+- `frontend/src/api.ts`
+- `frontend/src/games/stardew/useStardewDashboardData.ts`、`stardew-routes.ts`
+- `frontend/src/games/stardew/UpdateDetailsDialog.tsx`、`update-status.ts`
+- `frontend/src/games/stardew/StardewPanel.tsx`、`StardewMobileShell.tsx`
+- `frontend/src/games/stardew/pages/OverviewPage.tsx`、`mobile/MobileHomePage.tsx` 及对应样式
+
+## 如何验证
+
+- `cd frontend; npm run test:update-status`
+- `cd frontend; npm run build`
+- QA 页面用 `qa-layout.html?state=running&update=available`，附加 `shell=mobile` 检查移动端。
+
+## 下一步注意事项
+
+- 不要让顶栏和总览各自发请求；新增消费者继续从 `StardewDashboardProps.panelUpdate` 读取。
+- `checkStatus=error` 且有成功缓存时仍可提示已知更新，但必须同时展示检查失败；没有成功结果时不能显示“✓ 最新”。
+- 历史备注：当时尚无后端执行链路；现在真实按钮已由 `PANEL-UPDATE-APPLY-1 + FE-PANEL-UPDATE-1` 完成，仍不得添加绕过后端状态机的假按钮。
+
 # SAVE-BACKUP-GAMEDAY-1 存档回档功能重构：游戏日回档 + 其他备份两栏 UI
 
 ## 背景

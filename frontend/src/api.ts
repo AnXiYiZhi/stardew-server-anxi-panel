@@ -645,8 +645,103 @@ export interface VersionInfo {
   buildDate?: string
 }
 
+export type PanelUpdateCheckStatus = 'pending' | 'checking' | 'ok' | 'error' | 'unavailable'
+
+export interface PanelUpdateStatus {
+  currentVersion: string
+  currentCommit: string
+  currentBuildDate: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl: string
+  publishedAt: string | null
+  checkedAt: string | null
+  checkStatus: PanelUpdateCheckStatus
+  checkError: string
+}
+
+export interface PanelUpdateCapability {
+  supported: boolean
+  reason: string
+  code: string
+  composeProject: string
+  composeFile: string
+  installDir: string
+  currentContainer: string
+  currentImage: string
+  dataMount: string
+  dockerAvailable: boolean
+  composeAvailable: boolean
+}
+
+export interface PanelUpdaterLogEntry {
+  at: string
+  level: 'info' | 'warn' | 'error' | string
+  message: string
+}
+
+export interface PanelUpdateDryRunStatus {
+  id: string
+  phase: 'starting' | 'running' | 'succeeded' | 'failed' | 'unsupported'
+  targetVersion: string
+  targetImage: string
+  capability: PanelUpdateCapability
+  logs: PanelUpdaterLogEntry[]
+  startedAt: string
+  updatedAt: string
+  finishedAt: string | null
+  errorCode: string
+  error: string
+}
+
+export interface PanelUpdateApplyStatus {
+  updateId: string
+  phase: 'checking' | 'backing_up' | 'pulling' | 'recreating' | 'waiting_health' | 'succeeded' | 'rolling_back' | 'failed_rolled_back' | 'rollback_failed'
+  progress: number
+  fromVersion: string
+  toVersion: string
+  originalImage: string
+  originalDigest: string
+  selectedImage: string
+  selectedDigest: string
+  errorCode: string
+  error: string
+  result: string
+  logs: PanelUpdaterLogEntry[]
+  startedAt: string
+  updatedAt: string
+  finishedAt: string | null
+}
+
 export function getVersion() {
   return request<VersionInfo>('/api/version')
+}
+
+export function getPanelUpdateStatus() {
+  return request<PanelUpdateStatus>('/api/system/update')
+}
+
+export function checkPanelUpdate() {
+  return request<PanelUpdateStatus>('/api/system/update/check', { method: 'POST' })
+}
+
+export function getPanelUpdateDryRunStatus() {
+  return request<PanelUpdateDryRunStatus>('/api/system/update/dry-run')
+}
+
+export function runPanelUpdateDryRun(targetVersion: string) {
+  return request<PanelUpdateDryRunStatus>('/api/system/update/dry-run', {
+    method: 'POST',
+    body: { targetVersion },
+  })
+}
+
+export function getPanelUpdateApplyStatus() {
+  return request<PanelUpdateApplyStatus>('/api/system/update/apply')
+}
+
+export function applyPanelUpdate() {
+  return request<PanelUpdateApplyStatus>('/api/system/update/apply', { method: 'POST' })
 }
 
 // ── Support Bundle ──────────────────────────────────────────────────────────
