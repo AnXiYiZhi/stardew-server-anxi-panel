@@ -729,3 +729,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 - 崩溃窗口不变：游戏效果已经发生、终态文件尚未原子写成时，只能最终 unknown。SQLite 持久化提高可查询性，但不把这个窗口伪装成成功。
 - 保证等级：warp-home/kick/approve-auth 与 direct ban 能确认调用效果；broadcast 只精确保证交给聊天系统；event/Joja 聊天路径和 ban 名字降级仅 dispatched；save-now 只有关联 Saved 才 succeeded。所有命令在进程/磁盘异常窗口都可能 unknown。
 - 真实完整链路已用隔离面板数据库连接运行实例验证：`say` 返回 queued，控制模组写 succeeded/ok，后台导入 SQLite 并关联临时 actor，历史 API 可见完成时间，结果文件在入库后删除。commandId 为 `64a0853e85c997d6b14ad6af48805f29`；测试广播正文不写入 SQLite。
+# SAVE-BACKUPS-EMPTY-LIST-1 空备份列表联调契约
+
+- 全新服务器尚无任何备份时，`GET /api/instances/:id/saves/backups` 的 `backups` 字段固定为 JSON 数组 `[]`，不得为 `null`。
+- 前端同时兼容历史 `null` 响应并降级为空数组，防止动态加载的存档页运行时崩溃。
+- 联调验证重点：完成游戏安装但尚未创建存档/备份时，管理员可正常进入存档页并使用“新建存档”。

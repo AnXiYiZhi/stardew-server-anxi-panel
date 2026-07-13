@@ -1559,6 +1559,9 @@ func TestListBackups_EmptyDir(t *testing.T) {
 	if len(backups) != 0 {
 		t.Errorf("expected 0 backups, got %d", len(backups))
 	}
+	if backups == nil {
+		t.Error("expected an empty non-nil slice so JSON responses encode backups as []")
+	}
 }
 
 func TestDeleteBackup_RemovesBackupFile(t *testing.T) {

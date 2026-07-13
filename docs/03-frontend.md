@@ -2032,3 +2032,8 @@ npm.cmd run dev
 - 诊断页新增 commandResultVersion、待消费命令、未入库结果、最老待处理、最近模组消费和 commands/command-results 可写性，并直接展示卡死/版本/权限警告。
 - 新增前端类型 `ControlCommand`/`ControlCommandsResponse` 和 API `getControlCommands`。桌面表格在窄屏保持横向滚动，不改变现有命令按钮、轮询或手机控制页行为。
 - 验证：`npm run build`。
+# FE-SAVE-BACKUPS-NULL-GUARD-1 新服务器存档页黑屏修复
+
+- `useSaveBackups.loadBackups()` 不再无条件信任 `result.backups` 为数组；仅在 `Array.isArray` 时写入，否则降级为空数组。
+- 该保护兼容旧后端曾返回的 `backups: null`，避免存档页对空值执行展开/过滤时抛出异常并卸载整个 React 面板。
+- 验证：`cd frontend; npm run build`。

@@ -1831,13 +1831,13 @@ func ListBackups(dataDir string) ([]BackupInfo, error) {
 	backupDir := backupsDir(dataDir)
 	entries, err := os.ReadDir(backupDir)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return []BackupInfo{}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("读取备份目录失败: %w", err)
 	}
 
-	var backups []BackupInfo
+	backups := make([]BackupInfo, 0)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".zip") {
 			continue
