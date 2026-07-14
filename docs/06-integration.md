@@ -1,3 +1,8 @@
+# MAINTENANCE-SINGLE-CARD-1 联调补充（2026-07-14）
+
+- 用户从版本维护卡片点击“立即升级”后，前端内部串联当前目标 dry-run 与 apply，所有用户态进度继续在同一卡片消费既有 GET 状态接口。
+- 技术详情不再作为用户流程跳转目标；接口、状态机、确认请求与安全门禁均未变化。
+
 # JUNIMO-ROLLBACK-STATE-1 联调补充（2026-07-14）
 
 - 回滚期间 Compose 仍消费临时 digest pin；回滚流程退出前必须恢复 `original.env` 中的可信 tag 引用，确保 `GET /junimo-update` 能继续返回正确版本状态。
