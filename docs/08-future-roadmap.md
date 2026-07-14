@@ -1,3 +1,14 @@
+# 2026-07-13 已完成：JUNIMO-STACK-UPDATE-1 阶段二
+
+- 已完成 server + steam-auth-cn 成对 dry-run：严格空 POST/GET、专用 job/双向互斥、可信候选 inspect/pull/digest、Compose/认证卷/运行态/磁盘 warning 检查、脱敏持久状态和前端刷新恢复/进度展示。
+- 阶段一内置推荐版本对及推荐 tag 不变；阶段三 apply、备份、停服重建、成对写回与失败回滚尚未实现。
+
+# 2026-07-13 已完成：JUNIMO-STACK-UPDATE-1 阶段一
+
+- 已完成构建内置、强校验的 Junimo server + steam-auth-cn 推荐版本对清单，实例 `.env` 五字段只读检测、五态模型、管理员详情 API、脱敏 runtimeDiagnostic、总览更新提示和诊断页整体展示。
+- 推荐版本保持当前实测的 server `1.5.0-preview.121` + steam-auth-cn `1.5.0-anxi.2`；不跟随远程 latest，不做 preview/anxi semver 排序，自定义镜像不判断可覆盖。
+- 阶段一明确不包含 pull、修改 `.env`、stop/recreate、dry-run、apply、升级备份或回滚；阶段二/三列入 `docs/07-later-optimizations.md`，后续需独立安全设计和授权。
+
 # PANEL-UPDATE-RELEASE-1 状态（2026-07-13）
 
 - **已完成，随 v0.2.0 发布**：版本检测、独立 updater/dry-run、apply/回滚、完整 Web 交互和隔离真 Docker 发布闭环均已完成。
@@ -1003,3 +1014,40 @@ Multi Game Mode later
 # INSTALL-RUNTIME-VERIFICATION-1（已完成，v0.1.13）
 
 - 修复新服务器游戏文件未真正安装完成却被误判为“安装成功”的问题；安装、启动和状态协调统一验证完整游戏运行文件，Steam 授权操作不再覆盖安装错误状态。
+# 2026-07-13 已完成：JUNIMO-STACK-UPDATE-1 阶段三
+
+- 已完成 server + steam-auth-cn 不可拆分成对 apply：管理员固定确认、实例独占互斥、关键预检重跑、可信镜像精确 digest、认证卷私有快照、五字段原子配置、auth-first/server-second 验收、原运行态恢复和审计。
+- 已完成失败成对回滚与重启恢复：恢复原配置/认证卷/旧 digest pair，终态为 `failed_rolled_back` 或 `rollback_failed`；不确定状态禁止猜测，后者保留材料并仅提供人工处理。
+- 安全边界固定：不接受目标/服务/命令，不用 latest，不执行 `down -v`，不删除 game-data/steam-session/存档/Mods/settings/control，不复用 Panel updater。真实 Steam 账号与真实推荐上游镜像的发布前长流程验收仍是发布门禁。
+# 2026-07-14 已完成：GAME-RUNTIME-VERSION-1 游戏与 SDK 只读版本检测
+
+- 已完成 App 413150 / 1007 推荐矩阵、ACF tokenizer、只读 volume 检测、六态比较、管理员 API、诊断详情、tested 总览提示、只读预检以及手动候选发现 workflow。
+- 推荐 buildid 随 Panel 发布且必须经过发布前验证；workflow 输出始终标记 `discovered`，只写 summary/artifact，不改 main、推荐矩阵或 tag。
+- **阶段六未实现**：不创建 staging volume、不下载 depot、不执行 app_update、不写 game-data、不停服/重建容器，也没有游戏/SDK更新按钮。后续阶段须单独设计容量复核、账号授权、原子切换、兼容矩阵、健康验收和完整回滚。
+
+## SMAPI 推荐升级子阶段（2026-07-14，已完成代码实现）
+
+- 完成 Panel 内置 SMAPI 4.5.2 推荐 URL/SHA/大小与 game+SDK+Junimo+auth+Control 兼容矩阵；用户实例不追踪 GitHub latest，维护者候选发现不改矩阵/tag。
+- 完成实际 game-data DLL/安装产物检测、七态 API、runtime-components 扩展、诊断 UI、严格无目标 POST、可信下载与 ZIP 安全验证。
+- 完成显式 GAME_DATA_VOLUME staging 克隆、官方 Linux installer、精确验版、Control 联动、原子切换、完整 stack 验收、原状态恢复、失败自动回滚和重启恢复。
+- 完成实际 game-data 容量估算、JunimoServer/Control 日志加载证据、Control 原先不存在时的精确回滚、初装与升级共用可信下载边界，以及隔离 staging installer Docker integration 测试。
+- 完成玩家完整包推荐 installer/version/SHA 联动；增量包继续不携带 SMAPI，旧包不可变。
+- **阶段八统一发布列车待办**：在真实 release-candidate Panel/Junimo/auth 镜像上跑完整长链路与故障注入；复核 4.5.2 对推荐 Stardew/SDK buildid 的游戏内兼容；生成并实机验证新版 Windows 玩家完整同步包；审查镜像 SBOM/签名与发布说明；之后才允许更新正式版本/tag/镜像。本次未提交、推送、打 tag 或发布包。
+
+## 2026-07-14 阶段八统一发布列车状态
+
+- 已完成：统一 schema v1、内嵌 recommended 快照、五组件精确版本与 digest/checksum、状态机与越级保护、同通道唯一 recommended 校验、withdrawn 新装/升级门禁、minimumPanelVersion 门禁。
+- 已完成：取消 auth-cn 发布驱动的 repository_dispatch/自动 PR；每个 Panel 版本直接指定完整 server/auth 及其他组件版本，普通 PR 和 tag 发布继续运行无真实 Steam/registry secrets 的完整 CI 与隔离 Docker integration。
+- 已完成：诊断页统一运行环境版本视图；实际更新仍拆分为 Junimo 对、游戏/SDK、SMAPI 三个安全事务。
+- 后续发版只需：确认目标 Junimo server 和对应 auth-cn 精确版本，更新 Panel 内嵌组件清单及 digest/buildid/SHA，在本机 Docker Desktop 和 CI 完成测试，然后创建 Panel tag。用户升级 Panel 后收到对应组件升级提示。无需 candidate/tested/recommended 晋级、Environment reviewer、`APPROVED_STACK_VERSION` 或 Steam E2E artifact。当前工作未创建 tag、PR、镜像或生产变更。
+# 2026-07-14 更新安全审查问题关闭
+
+- [x] SMAPI 使用真实 Compose 状态决定停服，并在停服后/切卷前 Panel 中断时恢复原运行服务器。
+- [x] SMAPI 回滚增加旧栈全链路验收，验收失败保留 `rollback_failed` 与恢复材料。
+- [x] Junimo 回滚记录运行容器真实 ImageID，回滚重建固定不可变 ID；auth-only 状态漂移先停服再快照。
+- [x] 兼容矩阵 CI 对基线与当前目录按 stackVersion 强制逐级迁移，push 分支修正为 `main`；发布验收记录绑定当前仓库、当前提交、成功 run 与当前 stack 的未过期 artifact。
+# 2026-07-14 已完成：真实镜像 inspect 与 .NET auth 探针兼容
+
+- [x] Docker 镜像/容器元数据读取缩小为格式化安全字段，真实 `sdvd/server:1.5.0-preview.121` 不再因环境变量脱敏导致 JSON 解析失败。
+- [x] steam-auth ready/ticket 探针移除 Node.js 运行时假设，并用无 Node fixture 与真实 `steam-auth-cn:1.5.0-anxi.2` 验证。
+- [ ] 真实已登录 Steam 测试账号的 session 保持仍属于发布 Environment 长链路验收，不能用无凭据探针替代。

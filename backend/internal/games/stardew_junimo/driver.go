@@ -79,28 +79,42 @@ type StateStore interface {
 
 // Driver implements registry.GameDriver for Stardew Valley / JunimoServer.
 type Driver struct {
-	docker DockerService
-	logger *slog.Logger
-	jobs   *jobs.Manager
-	store  StateStore
+	docker       DockerService
+	logger       *slog.Logger
+	jobs         *jobs.Manager
+	store        StateStore
+	panelVersion string
 
 	// guardChans maps running install job ID → channel for Steam Guard input.
 	mu         sync.Mutex
 	guardChans map[string]chan string
+
+	runtimeUpdateMu            sync.Mutex
+	runtimeUpdatePollInterval  time.Duration
+	runtimeUpdateAuthTimeout   time.Duration
+	runtimeUpdateServerTimeout time.Duration
 }
 
 // New creates a Driver.  jobs and store may be nil for tests that only use
 // the driver skeleton (Prepare, Status).
-func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, store StateStore) *Driver {
+func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, store StateStore, panelVersions ...string) *Driver {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	panelVersion := "dev"
+	if len(panelVersions) > 0 && strings.TrimSpace(panelVersions[0]) != "" {
+		panelVersion = strings.TrimSpace(panelVersions[0])
+	}
 	return &Driver{
-		docker:     docker,
-		logger:     logger,
-		jobs:       jobManager,
-		store:      store,
-		guardChans: make(map[string]chan string),
+		docker:                     docker,
+		logger:                     logger,
+		jobs:                       jobManager,
+		store:                      store,
+		panelVersion:               panelVersion,
+		guardChans:                 make(map[string]chan string),
+		runtimeUpdatePollInterval:  2 * time.Second,
+		runtimeUpdateAuthTimeout:   90 * time.Second,
+		runtimeUpdateServerTimeout: 5 * time.Minute,
 	}
 }
 
@@ -184,12 +198,19 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	} else {
 		return fmt.Errorf("stat .env: %w", err)
 	}
+	if err := EnsureGameDataVolumeBinding(instance.DataDir); err != nil {
+		return fmt.Errorf("ensure explicit game data volume binding: %w", err)
+	}
 
 	return nil
 }
 
 // Install validates credentials, creates an async install job, and returns its ID.
 func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*registry.Job, error) {
+	manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
+	if manifestErr != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
+		return nil, fmt.Errorf("内置兼容矩阵不是可安装的 recommended 状态")
+	}
 	if d.jobs == nil {
 		return nil, fmt.Errorf("driver: job manager not configured")
 	}
@@ -205,6 +226,11 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	if req.VNCPassword == "" {
 		return nil, fmt.Errorf("VNC 密码不能为空")
 	}
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
+		return nil, err
+	}
 
 	// Persist the instance so the runner has a stable snapshot.
 	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
@@ -215,6 +241,9 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	imageTag := req.ImageTag
 	if imageTag == "" {
 		imageTag = TestedImageTag
+	}
+	if imageTag != manifest.Server.Tag {
+		return nil, fmt.Errorf("只能安装当前 Panel 内置兼容矩阵中的精确 Junimo server 版本 %s", manifest.Server.Tag)
 	}
 
 	// reuse: reuse saved credentials without re-prompting the user for input.
@@ -501,30 +530,13 @@ func (d *Driver) clearGuardChan(jobID string) {
 
 // InstallOptions returns the image tag options available in the install UI.
 func (d *Driver) InstallOptions() []registry.ImageTagOption {
-	options := []registry.ImageTagOption{
+	return []registry.ImageTagOption{
 		{
 			Tag:         TestedImageTag,
 			Label:       TestedImageTag + " (已验证版本)",
 			Recommended: true,
 		},
 	}
-	if LatestImageTag != TestedImageTag {
-		options = append(options, registry.ImageTagOption{
-			Tag:         LatestImageTag,
-			Label:       "latest (最新版本)",
-			Recommended: false,
-			Warning:     "最新版本可能与当前面板功能不兼容，遇到问题请切换回已验证版本。",
-		})
-	} else {
-		// Same tag: still expose latest as an explicit option so the UI can warn.
-		options = append(options, registry.ImageTagOption{
-			Tag:         LatestImageTag,
-			Label:       "latest (最新版本)",
-			Recommended: false,
-			Warning:     "最新版本与当前已验证版本相同（" + TestedImageTag + "）。未来 JunimoServer 更新后可能与面板不兼容，建议先在测试环境验证。",
-		})
-	}
-	return options
 }
 
 func requiresInstalledFiles(state string) bool {
@@ -550,7 +562,7 @@ func gameInstallImage(dataDir string) string {
 // SteamCMD `validate` remains the full-depot integrity check; this prevents a
 // stale success log or later state transition from accepting an empty volume.
 func (d *Driver) verifyGameDataVolume(ctx context.Context, dataDir, imageRef string, lineHandler func(string)) (bool, error) {
-	projectName := strings.ToLower(filepath.Base(dataDir))
+	gameDataVolume := resolvedGameDataVolumeName(dataDir)
 	script := `set -u
 echo "anxi-install-verify"
 missing=""
@@ -576,7 +588,7 @@ echo "INSTALL_REQUIRED_FILES_OK"
 		Entrypoint: []string{"/bin/sh"},
 		User:       "root",
 		Command:    []string{"-lc", script},
-		Binds:      []string{projectName + "_game-data:/data/game"},
+		Binds:      []string{gameDataVolume + ":/data/game"},
 	}, nil, func(line string) {
 		if lineHandler != nil {
 			lineHandler(line)

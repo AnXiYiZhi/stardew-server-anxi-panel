@@ -6,12 +6,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -59,6 +62,31 @@ func (f fakeDockerService) PullImageStreaming(ctx context.Context, dir string, i
 
 func (f fakeDockerService) ImageInspect(ctx context.Context, dir string, imageRef string) (paneldocker.CommandResult, error) {
 	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) RuntimeImageInspect(_ context.Context, _, image string) (paneldocker.RuntimeImageMetadata, error) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	if manifest, err := sjconfig.BuiltInRuntimeStackManifest(); err == nil {
+		if expected := manifest.Server.Digests[image]; expected != "" {
+			digest = expected
+		}
+		if expected := manifest.SteamAuth.Digests[image]; expected != "" {
+			digest = expected
+		}
+	}
+	return paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("a", 64), Digest: digest}, nil
+}
+
+func (f fakeDockerService) RuntimeComposeConfigInspect(_ context.Context, dir, project string) (paneldocker.RuntimeComposeConfig, error) {
+	return paneldocker.RuntimeComposeConfig{Project: project, Services: []string{"server", "steam-auth"}, SteamSessionVolume: project + "_steam-session"}, nil
+}
+
+func (f fakeDockerService) RuntimeComposeConfigValidateImages(context.Context, string, string, string, string) error {
+	return nil
+}
+
+func (f fakeDockerService) RuntimeVolumeInspect(_ context.Context, _ string, name string) (paneldocker.RuntimeVolumeMetadata, error) {
+	return paneldocker.RuntimeVolumeMetadata{Name: name}, nil
 }
 
 func (f fakeDockerService) RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
@@ -503,8 +531,9 @@ func newDockerTestHandlerWithStore(t *testing.T, fake fakeDockerService) (http.H
 		}
 	}
 
+	jobManager := jobs.NewManager(store, nil)
 	driverRegistry := registry.New()
-	if err := driverRegistry.Register(sj.New(fake, nil, nil, store)); err != nil {
+	if err := driverRegistry.Register(sj.New(fake, nil, jobManager, store)); err != nil {
 		_ = store.Close()
 		t.Fatalf("register stardew driver: %v", err)
 	}
@@ -513,6 +542,7 @@ func newDockerTestHandlerWithStore(t *testing.T, fake fakeDockerService) (http.H
 		Config:   config.Config{DataDir: dataDir, Secret: "test-secret", Version: "test"},
 		Store:    store,
 		Docker:   fake,
+		Jobs:     jobManager,
 		Registry: driverRegistry,
 	})
 	return handler, store, dataDir, func() {

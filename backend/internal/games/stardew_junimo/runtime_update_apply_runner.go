@@ -1,0 +1,378 @@
+package stardew_junimo
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
+)
+
+type runtimeUpdatePreflight struct {
+	project, volume              string
+	originalServer, originalAuth RuntimeUpdateSelectedImage
+	target                       RuntimeUpdateSelectedPair
+	authWasRunning               bool
+}
+
+func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status RuntimeUpdateApplyStatus, recovery *runtimeUpdateRecoveryManifest) error {
+	setPhase := func(phase string, progress int, message string) error {
+		status.Phase, status.Progress, status.ErrorCode, status.Error = phase, progress, "", ""
+		status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: status.UpdatedAt, Level: "info", Message: paneldocker.RedactString(message)})
+		_, _ = job.Info(ctx, message)
+		return writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+	}
+	finish := func(phase, code, message string) error {
+		now := time.Now().UTC().Format(time.RFC3339)
+		status.Phase, status.Progress, status.UpdatedAt, status.FinishedAt = phase, 100, now, now
+		status.ErrorCode, status.Error = code, paneldocker.RedactString(message)
+		level := "error"
+		if phase == RuntimeUpdateApplySucceeded {
+			level = "info"
+			status.ErrorCode, status.Error = "", ""
+		}
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: level, Message: paneldocker.RedactString(message)})
+		status.ServerRunning = status.ServerWasRunning && phase == RuntimeUpdateApplySucceeded
+		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+			return err
+		}
+		d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
+		return nil
+	}
+
+	if recovery != nil {
+		if !recovery.ConfigWritten {
+			_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
+			return finish(RuntimeUpdateApplyFailedRolledBack, "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。")
+		}
+		if recovery.AuthRecreated && recovery.ServerRecreated && (status.Phase == RuntimeUpdateApplyVerifyingServer || status.Phase == RuntimeUpdateApplyRestoringState) {
+			if err := d.verifyRuntimeTarget(ctx, docker, instance, *recovery); err == nil {
+				if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, *recovery); err == nil {
+					_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, recovery.Project, recovery.SnapshotVolume)
+					_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
+					return finish(RuntimeUpdateApplySucceeded, "", "Panel 重启后已继续完成验收，Junimo 运行组件成对升级成功。")
+				}
+			}
+		}
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, *recovery, "panel_restart_recovery", "Panel 重启后进入受控回滚。")
+	}
+
+	if err := setPhase(RuntimeUpdateApplyChecking, 5, "正在重新执行关键升级预检。"); err != nil {
+		return err
+	}
+	preflight, err := d.runtimeUpdateApplyPreflight(ctx, docker, instance, &status)
+	if err != nil {
+		_ = finish(RuntimeUpdateApplyFailedRolledBack, runtimeUpdateErrorCode(err), "关键预检失败；实例未修改。")
+		return err
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "critical_preflight", Status: "ok", Message: "清单、实例、Docker/Compose、当前 digest、认证卷和两个目标镜像均已重新确认。"})
+
+	if err := setPhase(RuntimeUpdateApplyPulling, 20, "推荐 server 与 steam-auth-cn 镜像已按可信候选拉取并确认 digest。"); err != nil {
+		return err
+	}
+	status.Selected = preflight.target
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		return err
+	}
+
+	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 1, ApplyID: status.ApplyID, ActorID: status.CreatedBy, Project: preflight.project, SteamSessionVolume: preflight.volume, SnapshotVolume: preflight.project + "_anxi-junimo-update-" + strings.TrimPrefix(status.ApplyID, "apply_") + "-steam-session", ServerWasRunning: status.ServerWasRunning, AuthWasRunning: preflight.authWasRunning, OriginalState: instance.State, OriginalServer: preflight.originalServer, OriginalAuth: preflight.originalAuth, Target: preflight.target}
+	if err := setPhase(RuntimeUpdateApplyBackingUp, 30, "正在创建私有恢复材料并保护 Steam 认证卷。"); err != nil {
+		return err
+	}
+	if err := createRuntimeRecoveryFiles(instance.DataDir, manifest); err != nil {
+		_ = finish(RuntimeUpdateApplyFailedRolledBack, "backup_failed", "无法创建私有恢复材料；实例未修改。")
+		return err
+	}
+	stored, err := d.store.GetInstance(ctx, instance.ID)
+	if err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "instance_reload_failed", "无法重新读取实例。")
+	}
+	if manifest.ServerWasRunning || manifest.AuthWasRunning {
+		if err := setPhase(RuntimeUpdateApplyStopping, 40, "正在复用现有生命周期能力安全停止实例。"); err != nil {
+			return err
+		}
+		lr := &lifecycleRunner{driver: d, lifecycle: docker, instance: stored, operation: "stop"}
+		if err := lr.doStop(ctx, job); err != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "stop_failed", "安全停服失败。")
+		}
+	}
+	// Clone only after the existing lifecycle stop has quiesced steam-auth, so
+	// the saved session is a consistent volume snapshot.
+	if err := docker.RuntimeCreateSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_snapshot_create_failed", "无法创建 Steam 认证卷临时快照。")
+	}
+	if err := docker.RuntimeCloneVolume(ctx, instance.DataDir, manifest.SteamSessionVolume, manifest.SnapshotVolume, manifest.Target.Server.Image); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_snapshot_failed", "Steam 认证卷保护失败。")
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_session_snapshot", Status: "ok", Message: "steam-session 已在停服后克隆到当前 Compose project 限定的临时 Docker volume；未读取 token 内容。"})
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
+	}
+
+	if err := setPhase(RuntimeUpdateApplyWritingConfig, 50, "正在原子写入内置推荐版本对配置。"); err != nil {
+		return err
+	}
+	if err := writeRuntimeTargetEnvAtomic(instance.DataDir, status.Target, status.Selected); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "env_write_failed", "实例 .env 原子更新失败。")
+	}
+	manifest.ConfigWritten = true
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
+	}
+
+	if err := setPhase(RuntimeUpdateApplyRecreatingAuth, 60, "正在单独重建新版 steam-auth-cn。"); err != nil {
+		return err
+	}
+	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "steam-auth"); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_recreate_failed", "新版 steam-auth-cn 重建失败。")
+	}
+	manifest.AuthRecreated = true
+	_ = writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest)
+	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "正在验证 Steam 登录恢复与 app ticket。"); err != nil {
+		return err
+	}
+	if err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "新版 steam-auth-cn 认证验证失败。")
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: "新版 steam-auth-cn 返回 ready=true 且 has_ticket=true，镜像 digest 匹配目标。"})
+
+	if err := setPhase(RuntimeUpdateApplyRecreatingServer, 75, "正在重建同一推荐版本对的 Junimo server。"); err != nil {
+		return err
+	}
+	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "server"); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "server_recreate_failed", "新版 server 重建失败。")
+	}
+	manifest.ServerRecreated = true
+	_ = writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest)
+	if err := setPhase(RuntimeUpdateApplyVerifyingServer, 85, "正在验证容器、Junimo、SMAPI/控制契约和邀请码链路。"); err != nil {
+		return err
+	}
+	if err := d.verifyRuntimeTarget(ctx, docker, instance, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "新版 Junimo server 运行验证失败。")
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "junimo_runtime", Status: "ok", Message: "server/auth digest、容器健康、Junimo health/API、控制契约与邀请码链路均已验证。"})
+
+	if err := setPhase(RuntimeUpdateApplyRestoringState, 95, "正在恢复升级前的运行/停止状态。"); err != nil {
+		return err
+	}
+	if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "restore_state_failed", "无法恢复升级前运行状态。")
+	}
+	if err := docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume); err != nil {
+		status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；请人工检查私有快照卷。")
+	}
+	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
+	return finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。")
+}
+
+func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status *RuntimeUpdateApplyStatus) (runtimeUpdatePreflight, error) {
+	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
+		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
+	}
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
+		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: "manifest_invalid", Message: "内置推荐版本对无效或未测试。"}
+	}
+	if _, err := docker.DockerVersion(ctx, instance.DataDir); err != nil {
+		return runtimeUpdatePreflight{}, errors.New("docker_unavailable")
+	}
+	if _, err := docker.ComposeVersion(ctx, instance.DataDir); err != nil {
+		return runtimeUpdatePreflight{}, errors.New("compose_unavailable")
+	}
+	project := strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir)))
+	if !filepath.IsAbs(instance.DataDir) || !runtimeComposeProjectPattern.MatchString(project) {
+		return runtimeUpdatePreflight{}, errors.New("compose_project_unsafe")
+	}
+	composePath := filepath.Join(instance.DataDir, "docker-compose.yml")
+	composeFile, err := os.Lstat(composePath)
+	if err != nil || !composeFile.Mode().IsRegular() || composeFile.Mode()&os.ModeSymlink != 0 {
+		return runtimeUpdatePreflight{}, errors.New("compose_file_unsafe")
+	}
+	compose, err := docker.RuntimeComposeConfigInspect(ctx, instance.DataDir, project)
+	if err != nil || compose.Project != "" && compose.Project != project || !containsRuntimeService(compose.Services, "server") || !containsRuntimeService(compose.Services, "steam-auth") || compose.SteamSessionVolume == "" {
+		return runtimeUpdatePreflight{}, errors.New("compose_config_invalid")
+	}
+	ps, err := docker.ComposePs(ctx, instance.DataDir)
+	if err != nil {
+		return runtimeUpdatePreflight{}, errors.New("runtime_state_unavailable")
+	}
+	status.ServerWasRunning = composeServiceRunning(ps.Services, "server")
+	status.ServerRunning = status.ServerWasRunning
+	authWasRunning := composeServiceRunning(ps.Services, "steam-auth")
+	server, err := currentRuntimeImage(ctx, docker, instance.DataDir, project, "server", inspection.Current.Server.Image, status.ServerWasRunning)
+	if err != nil {
+		return runtimeUpdatePreflight{}, errors.New("current_server_digest_unavailable")
+	}
+	auth, err := currentRuntimeImage(ctx, docker, instance.DataDir, project, "steam-auth", inspection.Current.SteamAuth.Image, authWasRunning)
+	if err != nil {
+		return runtimeUpdatePreflight{}, errors.New("current_auth_digest_unavailable")
+	}
+	if _, err := docker.RuntimeVolumeInspect(ctx, instance.DataDir, compose.SteamSessionVolume); err != nil {
+		return runtimeUpdatePreflight{}, errors.New("steam_session_volume_missing")
+	}
+	targetServer, code := selectRuntimeUpdateImage(ctx, docker, instance.DataDir, inspection.Recommended.Server.TrustedCandidates, inspection.Recommended.Server.Digests)
+	if code != "" {
+		return runtimeUpdatePreflight{}, errors.New(code)
+	}
+	targetAuth, code := selectRuntimeUpdateImage(ctx, docker, instance.DataDir, inspection.Recommended.SteamAuth.TrustedCandidates, inspection.Recommended.SteamAuth.Digests)
+	if code != "" {
+		return runtimeUpdatePreflight{}, errors.New(code)
+	}
+	if err := docker.RuntimeComposeConfigValidateImages(ctx, instance.DataDir, project, targetServer.Image, targetAuth.Image); err != nil {
+		return runtimeUpdatePreflight{}, errors.New("compose_target_validation_failed")
+	}
+	status.Current, status.Target = inspection.Current, inspection.Recommended
+	status.Warnings = append(status.Warnings, "Docker 数据盘精确可用空间无法可靠判断；升级未伪造磁盘空间数值。")
+	return runtimeUpdatePreflight{project: project, volume: compose.SteamSessionVolume, originalServer: server, originalAuth: auth, target: RuntimeUpdateSelectedPair{Server: targetServer, SteamAuth: targetAuth}, authWasRunning: authWasRunning}, nil
+}
+
+func currentRuntimeImage(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, service, configuredImage string, running bool) (RuntimeUpdateSelectedImage, error) {
+	if running {
+		metadata, err := docker.RuntimeServiceInspect(ctx, dataDir, project, service)
+		if err != nil || !strings.EqualFold(metadata.State, "running") || !runtimeImageDigestPattern.MatchString(metadata.ImageID) {
+			return RuntimeUpdateSelectedImage{}, errors.New("running container image unavailable")
+		}
+		image := strings.TrimSpace(metadata.Image)
+		if image == "" {
+			image = configuredImage
+		}
+		return RuntimeUpdateSelectedImage{Image: image, Digest: metadata.ImageID, ImageID: metadata.ImageID}, nil
+	}
+	metadata, err := docker.RuntimeImageInspect(ctx, dataDir, configuredImage)
+	if err != nil || !runtimeImageDigestPattern.MatchString(metadata.Digest) || !runtimeImageDigestPattern.MatchString(metadata.ID) {
+		return RuntimeUpdateSelectedImage{}, errors.New("configured image unavailable")
+	}
+	return RuntimeUpdateSelectedImage{Image: configuredImage, Digest: metadata.Digest, ImageID: metadata.ID}, nil
+}
+
+func createRuntimeRecoveryFiles(dataDir string, manifest runtimeUpdateRecoveryManifest) error {
+	dir := runtimeUpdateRecoveryDir(dataDir, manifest.ApplyID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	for source, name := range map[string]string{filepath.Join(dataDir, ".env"): "original.env", filepath.Join(dataDir, "docker-compose.yml"): "original-compose.yml"} {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			return err
+		}
+	}
+	return writeRuntimeUpdateRecoveryManifest(dataDir, manifest)
+}
+
+func writeRuntimeTargetEnvAtomic(dataDir string, target sjconfig.RuntimeStackRecommendation, selected RuntimeUpdateSelectedPair) error {
+	envPath := filepath.Join(dataDir, ".env")
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dataDir, ".runtime-update-env-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	_ = tmp.Close()
+	defer os.Remove(tmpName)
+	if err := os.WriteFile(tmpName, data, 0o600); err != nil {
+		return err
+	}
+	values := map[string]string{"IMAGE_VERSION": target.Server.Tag, "SERVER_IMAGE": selected.Server.Image, "SERVER_IMAGE_CANDIDATES": strings.Join(target.Server.TrustedCandidates, ","), "STEAM_SERVICE_IMAGE": selected.SteamAuth.Image, "STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(target.SteamAuth.TrustedCandidates, ",")}
+	if err := sjconfig.UpdateEnvFile(tmpName, values); err != nil {
+		return err
+	}
+	return replaceRuntimeUpdateStatusFile(tmpName, envPath)
+}
+
+func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string) error {
+	deadline := time.Now().Add(d.runtimeUpdateAuthTimeout)
+	var last paneldocker.RuntimeSteamReady
+	for time.Now().Before(deadline) {
+		metadata, err := docker.RuntimeServiceInspect(ctx, dataDir, project, "steam-auth")
+		if err == nil && metadata.ImageID != imageID {
+			return errors.New("auth_digest_mismatch")
+		}
+		if err == nil {
+			last, err = docker.RuntimeSteamAuthReady(ctx, dataDir, project)
+			if err == nil && last.Ready && last.HasTicket {
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d.runtimeUpdatePollInterval):
+		}
+	}
+	if last.Ready && !last.HasTicket {
+		return errors.New("auth_ticket_missing")
+	}
+	return errors.New("auth_not_ready")
+}
+
+func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
+	if err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(d.runtimeUpdateServerTimeout)
+	for time.Now().Before(deadline) {
+		metadata, err := docker.RuntimeServiceInspect(ctx, instance.DataDir, manifest.Project, "server")
+		if err == nil && metadata.ImageID != manifest.Target.Server.ImageID {
+			return errors.New("server_digest_mismatch")
+		}
+		if err == nil && strings.EqualFold(metadata.State, "running") && (metadata.Health == "" || strings.EqualFold(metadata.Health, "healthy")) && docker.RuntimeServerHealth(ctx, instance.DataDir, manifest.Project) == nil {
+			contract, contractErr := docker.ComposeExecPipe(ctx, instance.DataDir, "server", "info\nquit\n", "attach-cli")
+			stored, storeErr := d.store.GetInstance(ctx, instance.ID)
+			controlState := readSMAPIStatus(instance.DataDir)
+			controlReady := (controlState == "launched" || controlState == "save-loaded") && commandResultSupported(instance.DataDir)
+			if contractErr == nil && strings.TrimSpace(contract.Stdout) != "" && storeErr == nil && controlReady {
+				runner := &lifecycleRunner{driver: d, lifecycle: docker, instance: stored}
+				if _, inviteErr := runner.fetchInviteCode(ctx); inviteErr == nil {
+					return nil
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d.runtimeUpdatePollInterval):
+		}
+	}
+	return errors.New("server_health_failed")
+}
+
+func (d *Driver) restoreRuntimeRunningState(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
+	if manifest.ServerWasRunning {
+		d.updatePhase(ctx, instance.ID, storage.InstanceStateRunning, "运行组件升级完成，服务器正在运行", "running", job.ID)
+		return nil
+	}
+	if err := docker.RuntimeComposeStopServices(ctx, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+		return err
+	}
+	d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件升级验证完成，已恢复停止状态", "stopped", job.ID)
+	return nil
+}
+
+func runtimeUpdateErrorCode(err error) string {
+	if v, ok := IsRuntimeUpdateValidationError(err); ok {
+		return v.Code
+	}
+	code := strings.TrimSpace(err.Error())
+	if code != "" && !strings.ContainsAny(code, " \r\n\t:") {
+		return code
+	}
+	return "runtime_update_failed"
+}

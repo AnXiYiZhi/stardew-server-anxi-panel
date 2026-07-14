@@ -1,5 +1,21 @@
 # 后期优化文档
 
+## GAME-RUNTIME-UPDATE-2 阶段六执行能力（暂缓，2026-07-14）
+
+- GAME-RUNTIME-VERSION-1 只完成 App 413150/1007 的推荐矩阵、ACF 检测、提示和只读预检。阶段六才可设计 staging volume 创建、Steam depot 下载/validate、game+SDK 成对切换、停服窗口、Junimo/SMAPI/steam-auth 联合健康验收和失败回滚。
+- 阶段六不能根据 buildid 数字大小选目标，只能消费当前 Panel embed 且 tested 的兼容矩阵；维护者 workflow 的 `discovered` JSON 必须经人工/真实环境验证 PR 才能成为 recommended。
+- 执行链路需要单独授权、明确空间估算和中断恢复；不得读取或返回 app ticket/密码/token，不得把 Steam login 命令写日志，也不得复用 Junimo 镜像 apply 直接改 game-data。
+
+## 2026-07-13 状态更新：JUNIMO-STACK-UPDATE-1 阶段三已完成
+
+- 原暂缓的成对 apply、Steam 认证卷保护、运行验收、自动回滚和 Panel 重启恢复已实现。仍保留为发布门禁的是使用专用真实 Steam 账号与真实推荐上游镜像完成长流程验收；不得在仓库或自动测试中保存真实凭据。
+
+## JUNIMO-STACK-UPDATE-3 执行与回滚（暂缓）
+
+- `JUNIMO-STACK-UPDATE-1` 阶段二已完成实例级 dry-run：标准 Compose/project/services、Docker/Compose、当前/目标 digest、可信候选和 steam-session 卷已验证，仍不接受任意镜像/tag/digest/registry。
+- 阶段三才可规划 apply：server 与 steam-auth-cn 必须按清单 stackVersion 原子切换，先备份 `.env`/Compose/必要状态，再拉取精确可信 tag、停服并重建两个组件，做 server health 与 steam-auth 状态验收，失败自动回滚整个版本对；禁止只升级其中一个组件。
+- 执行链路必须属于实例级 `stardew_junimo` driver，不得混入 Panel `/api/system/update` updater。开始前需单独完成并评审：并发锁、运行中用户确认、存档安全边界、断电恢复、日志脱敏、旧镜像保留/清理和真实 Docker 成功/回滚 E2E。
+
 ## PANEL-UPDATE-SAFETY-2 后续安全增强（暂缓）
 
 - 当前以硬编码仓库、精确 tag、拉取后 digest、三项健康验收和自动回滚建立基本信任边界。后续可增加镜像签名/SBOM provenance 验证，并把发布流水线产出的 digest 清单纳入 updater 校验。
@@ -373,3 +389,10 @@ backend/internal/web/restart_schedule_handlers.go
 # SCHEDULED-RESTART-1 后续增强
 
 计划重启第一阶段已落地：管理员弹窗、`GET|PUT /restart-schedule`、SQLite `restart_schedules`、后台 30 秒轮询、提前广播、关闭前备份、复用 Stop/Start lifecycle job。后续如果继续增强，优先考虑一次性跳过下一次维护、持久化 warning 去重、更多日历规则和更细的玩家在线策略。
+
+# SMAPI-UPGRADE 后续发布列车事项
+
+- 代码级和隔离 volume 集成测试已覆盖安全边界；阶段八仍需在发布候选镜像、真实 Steam 账号/票据和真实存档副本上执行一次完整 4.5.2 安装、Junimo/Control 加载、邀请码与 auth ticket 验收及故障注入回滚演练。
+- 维护者候选 JSON 已接手动 CI：只产出 `discovered` cache/artifact，失败保留并明确标记上次候选且 workflow 失败。阶段八仍须通过人工兼容矩阵审查后才可更新 embed 清单；不要让实例直接消费候选或 GitHub latest。
+- 阶段八还需生成新版 Windows 完整玩家同步包并在干净客户端验证 installer/version/SHA、Steam 启动项和客户端 SMAPI 兼容提示；增量包继续不得携带 SMAPI。
+- 成功升级后的旧 game-data 当前故意保留为人工恢复材料；未来可设计带保留期、二次确认和精确 label/引用检查的清理功能，但不得使用全局 volume prune。

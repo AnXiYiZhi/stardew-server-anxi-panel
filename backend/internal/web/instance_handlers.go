@@ -103,6 +103,50 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceState(w, r, instanceID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "junimo-update" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceJunimoUpdate(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "smapi-update" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceSMAPIUpdate(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "smapi-update" && parts[2] == "dry-run" {
+		s.handleInstanceSMAPIUpdateDryRun(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "smapi-update" && parts[2] == "apply" {
+		s.handleInstanceSMAPIUpdateApply(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "runtime-components" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceRuntimeComponents(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "runtime-components" && parts[2] == "dry-run" {
+		s.handleInstanceRuntimeComponentsPreflight(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "junimo-update" && parts[2] == "dry-run" {
+		s.handleInstanceJunimoUpdateDryRun(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "junimo-update" && parts[2] == "apply" {
+		s.handleInstanceJunimoUpdateApply(w, r, instanceID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "status" {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")

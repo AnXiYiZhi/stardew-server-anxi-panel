@@ -65,30 +65,36 @@ func main() {
 	dockerClient := paneldocker.NewClient(paneldocker.Options{Logger: logger})
 	jobManager := jobs.NewManager(store, logger)
 	driverRegistry := registry.New()
-	stardewDriver := stardew_junimo.New(dockerClient, logger, jobManager, store)
+	stardewDriver := stardew_junimo.New(dockerClient, logger, jobManager, store, cfg.Version)
 	if err := driverRegistry.Register(stardewDriver); err != nil {
 		logger.Error("failed to register stardew driver", "error", err)
 		os.Exit(1)
 	}
-	if defaultInstance.DriverID == stardewDriver.ID() {
-		if err := stardewDriver.Prepare(ctx, registry.Instance{
-			ID:            defaultInstance.ID,
-			DriverID:      defaultInstance.DriverID,
-			Name:          defaultInstance.Name,
-			DataDir:       defaultInstance.DataDir,
-			State:         defaultInstance.State,
-			StateMessage:  defaultInstance.StateMessage.String,
-			DriverPhase:   defaultInstance.DriverPhase,
-			DriverPayload: defaultInstance.DriverPayload,
-			CreatedAt:     defaultInstance.CreatedAt,
-			UpdatedAt:     defaultInstance.UpdatedAt,
-		}); err != nil {
-			logger.Error("failed to prepare default instance", "instance", defaultInstance.ID, "error", err)
-		}
-	}
 	if err := jobManager.RecoverInterruptedJobs(ctx); err != nil {
 		logger.Error("failed to recover interrupted jobs", "error", err)
 		os.Exit(1)
+	}
+	instances, err := store.ListInstances(ctx)
+	if err != nil {
+		logger.Error("failed to list instances for runtime update recovery", "error", err)
+		os.Exit(1)
+	}
+	for _, instance := range instances {
+		if instance.DriverID != stardewDriver.ID() {
+			continue
+		}
+		if err := stardewDriver.RecoverRuntimeUpdateApply(ctx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}); err != nil {
+			logger.Error("failed to recover Junimo runtime update", "instance", instance.ID, "error", err)
+		}
+		if err := stardewDriver.RecoverSMAPIUpdateApply(ctx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}); err != nil {
+			logger.Error("failed to recover SMAPI update", "instance", instance.ID, "error", err)
+		}
+	}
+	defaultRegistryInstance := registry.Instance{ID: defaultInstance.ID, DriverID: defaultInstance.DriverID, Name: defaultInstance.Name, DataDir: defaultInstance.DataDir, State: defaultInstance.State, StateMessage: defaultInstance.StateMessage.String, DriverPhase: defaultInstance.DriverPhase, DriverPayload: defaultInstance.DriverPayload, CreatedAt: defaultInstance.CreatedAt, UpdatedAt: defaultInstance.UpdatedAt}
+	if defaultInstance.DriverID == stardewDriver.ID() && !stardewDriver.RuntimeUpdateApplyInProgress(defaultRegistryInstance) && !stardewDriver.SMAPIUpdateApplyInProgress(defaultRegistryInstance) {
+		if err := stardewDriver.Prepare(ctx, defaultRegistryInstance); err != nil {
+			logger.Error("failed to prepare default instance", "instance", defaultInstance.ID, "error", err)
+		}
 	}
 
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

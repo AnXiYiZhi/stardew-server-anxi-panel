@@ -11,12 +11,15 @@ func TestRedactString(t *testing.T) {
 		"Password: plain",
 		"STEAM_PASSWORD=steam-secret",
 		"VNC_PASSWORD=vnc-secret",
+		"refresh_token=refresh-secret",
+		"app_ticket=ticket-secret",
+		`{"STEAM_REFRESH_TOKEN":"json-refresh","STEAM_APP_TICKET":"json-ticket"}`,
 		`{"token":"token-secret","secret":"top-secret"}`,
 		"--password=flag-secret",
 	}, "\n")
 
 	output := RedactString(input)
-	for _, secret := range []string{"plain", "steam-secret", "vnc-secret", "token-secret", "top-secret", "flag-secret"} {
+	for _, secret := range []string{"plain", "steam-secret", "vnc-secret", "refresh-secret", "ticket-secret", "json-refresh", "json-ticket", "token-secret", "top-secret", "flag-secret"} {
 		if strings.Contains(output, secret) {
 			t.Fatalf("expected %q to be redacted from %q", secret, output)
 		}

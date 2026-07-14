@@ -1,0 +1,43 @@
+name: Discover Steam build candidates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    environment: steam-build-discovery
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SteamCMD from Valve CDN
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/steamcmd"
+          curl --fail --silent --show-error --location https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP/steamcmd"
+      - name: Discover public branch buildids
+        shell: pwsh
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
+        run: ./scripts/discover-steam-builds.ps1 -SteamCmd "$env:RUNNER_TEMP/steamcmd/steamcmd.sh" -OutputPath artifacts/steam-builds-discovered.json
+      - name: Add discovered candidates to summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Steam build candidates (discovered, not recommended)'
+            echo
+            jq -r '.apps[] | "- \(.name) (App \(.appId)): buildid `\(.buildId)`"' artifacts/steam-builds-discovered.json
+            echo
+            echo 'This workflow never edits the tested recommendation matrix, creates tags, or updates instances.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steam-builds-discovered
+          path: artifacts/steam-builds-discovered.json
+          if-no-files-found: error

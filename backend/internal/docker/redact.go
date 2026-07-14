@@ -11,14 +11,14 @@ const Redacted = "[REDACTED]"
 // Pattern groups for sensitive keys. Each regex targets a different format.
 var (
 	// Matches JSON key-value pairs with sensitive keys.
-	jsonPattern = regexp.MustCompile(`(?i)("(?:STEAM_PASSWORD|VNC_PASSWORD|password|token|secret|session|cookie|authorization|api_key|apikey)"\s*:\s*")([^"]*)(")`)
+	jsonPattern = regexp.MustCompile(`(?i)("(?:STEAM_PASSWORD|STEAM_REFRESH_TOKEN|STEAM_APP_TICKET|VNC_PASSWORD|refresh_token|app_ticket|password|token|secret|session|cookie|authorization|api_key|apikey)"\s*:\s*")([^"]*)(")`)
 	// Matches key=value or key: value assignments.
 	// Excludes "authorization" — handled separately by bearerPattern.
-	assignmentPattern = regexp.MustCompile(`(?i)\b(STEAM_PASSWORD|VNC_PASSWORD|password|token|secret|session|cookie|api_key|apikey)\b\s*[:=]\s*([^\s\r\n,;}]+)`)
+	assignmentPattern = regexp.MustCompile(`(?i)\b(STEAM_PASSWORD|STEAM_REFRESH_TOKEN|STEAM_APP_TICKET|VNC_PASSWORD|refresh_token|app_ticket|password|token|secret|session|cookie|api_key|apikey)\b\s*[:=]\s*([^\s\r\n,;}]+)`)
 	// Matches --flag=value CLI flags.
 	flagEqualsPattern = regexp.MustCompile(`(?i)(--(?:password|token|secret|api-key)=)([^\s]+)`)
 	// Matches standalone sensitive keywords for flag detection.
-	sensitiveKeyPattern = regexp.MustCompile(`(?i)(STEAM_PASSWORD|VNC_PASSWORD|password|token|secret|session|cookie|api_key|apikey)`)
+	sensitiveKeyPattern = regexp.MustCompile(`(?i)(STEAM_PASSWORD|STEAM_REFRESH_TOKEN|STEAM_APP_TICKET|VNC_PASSWORD|refresh_token|app_ticket|password|token|secret|session|cookie|api_key|apikey)`)
 	// Matches env-like flags whose next argument is sensitive.
 	envFlagPattern = regexp.MustCompile(`(?i)^--(?:env|e)$`)
 	// Matches invite code patterns (alphanumeric codes near keywords).

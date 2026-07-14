@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 )
 
 // ── Classification file read/write ──────────────────────────────────────────
@@ -631,7 +632,7 @@ func TestExportModSyncUpdatePackZip_ExcludesSMAPIBundle(t *testing.T) {
 	if manifest.PackType != playerSyncPackTypeModsUpdate {
 		t.Fatalf("PackType = %q, want %q", manifest.PackType, playerSyncPackTypeModsUpdate)
 	}
-	if !manifest.SMAPI.Required || manifest.SMAPI.Bundled || manifest.SMAPI.InstallerFile != "" || manifest.SMAPI.SHA256 != "" {
+	if !manifest.SMAPI.Required || manifest.SMAPI.Bundled || manifest.SMAPI.InstallerFile != "" || manifest.SMAPI.Version != "4.5.2" || manifest.SMAPI.SHA256 != "dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4" {
 		t.Fatalf("unexpected update-pack SMAPI metadata: %+v", manifest.SMAPI)
 	}
 
@@ -651,6 +652,52 @@ func TestExportModSyncUpdatePackZip_ExcludesSMAPIBundle(t *testing.T) {
 		if !strings.Contains(installScript, snippet) {
 			t.Fatalf("update installer should require existing SMAPI and skip Steam launch options; missing %q", snippet)
 		}
+	}
+}
+
+func TestExportModSyncPackZip_BundlesExactRecommendedSMAPIInstaller(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, ".local-container", "mods")
+	createTestMod(t, root, "ClientMod", "author.client", "Client Mod")
+	payload := []byte("reviewed SMAPI installer fixture")
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.SMAPI.ArchiveBytes = int64(len(payload))
+	manifest.SMAPI.SHA256 = fmt.Sprintf("%x", sha256.Sum256(payload))
+	oldProvider := runtimeStackManifestForSync
+	runtimeStackManifestForSync = func() (sjconfig.RuntimeStackManifest, error) { return manifest, nil }
+	t.Cleanup(func() { runtimeStackManifestForSync = oldProvider })
+	packageDir := filepath.Join(dir, ".local-container", "smapi-update", "packages")
+	if err := os.MkdirAll(packageDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	installerName := "SMAPI-" + manifest.SMAPI.Version + "-installer.zip"
+	if err := os.WriteFile(filepath.Join(packageDir, installerName), payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath, err := ExportModSyncPackZip(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(zipPath)
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	var pack playerSyncPackManifest
+	if err := json.Unmarshal(readZipFileBytes(t, findZipFile(zr.File, "pack-manifest.json")), &pack); err != nil {
+		t.Fatal(err)
+	}
+	if !pack.SMAPI.Bundled || pack.SMAPI.Version != manifest.SMAPI.Version || pack.SMAPI.SHA256 != manifest.SMAPI.SHA256 || pack.SMAPI.InstallerFile != installerName {
+		t.Fatalf("full pack SMAPI metadata mismatch: %+v", pack.SMAPI)
+	}
+	bundled := findZipFile(zr.File, "payload/smapi/"+installerName)
+	if bundled == nil || string(readZipFileBytes(t, bundled)) != string(payload) {
+		t.Fatal("full pack did not carry the exact reviewed installer")
 	}
 }
 

@@ -137,6 +137,10 @@ func (m *Manager) List(ctx context.Context, filter storage.ListJobsFilter) ([]st
 	return m.store.ListJobs(ctx, filter)
 }
 
+func (m *Manager) Active(ctx context.Context, filter storage.ListActiveJobsFilter) ([]storage.Job, error) {
+	return m.store.ListActiveJobs(ctx, filter)
+}
+
 func (m *Manager) Clear(ctx context.Context) (int64, error) {
 	return m.store.ClearJobs(ctx)
 }

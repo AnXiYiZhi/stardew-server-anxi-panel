@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 )
 
 // controlModFolderName is the SMAPI mod folder name of the panel's own
@@ -427,6 +428,8 @@ type modSyncPackExportOptions struct {
 	requirePackagedMod bool
 }
 
+var runtimeStackManifestForSync = sjconfig.BuiltInRuntimeStackManifest
+
 // ExportModSyncPackZip creates a ZIP archive containing only the mods
 // classified as client_required, plus a Windows installer/uninstaller toolset,
 // pack-manifest.json, and checksums.sha256. The panel's own server-side
@@ -531,6 +534,12 @@ func exportModSyncPackZip(dataDir string, opts modSyncPackExportOptions) (string
 		NexusModID: smapiNexusModID,
 		PageURL:    nexusModURL(smapiNexusModID),
 	}
+	if runtimeManifest, manifestErr := runtimeStackManifestForSync(); manifestErr == nil {
+		smapi.Version = runtimeManifest.SMAPI.Version
+		// Every manifest records the reviewed recommendation. Bundled only says
+		// whether this immutable installer is physically present in this pack.
+		smapi.SHA256 = runtimeManifest.SMAPI.SHA256
+	}
 	if opts.includeSMAPIBundle {
 		smapiInstaller, err := findBundledSMAPIInstaller(dataDir)
 		if err != nil {
@@ -545,7 +554,9 @@ func exportModSyncPackZip(dataDir string, opts modSyncPackExportOptions) (string
 			checksums = append(checksums, syncPackChecksum{Path: zipPath, SHA: sha})
 			smapi.Bundled = true
 			smapi.InstallerFile = smapiInstaller.FileName
-			smapi.SHA256 = sha
+			if !strings.EqualFold(sha, smapi.SHA256) {
+				return "", errors.New("SMAPI 安装包校验值与 Panel 推荐清单不一致")
+			}
 		}
 		if err = writeZipBytes(w, "payload/smapi/smapi.json", mustJSON(smapi)); err != nil {
 			return "", fmt.Errorf("写入 SMAPI 元数据失败: %w", err)
@@ -607,7 +618,13 @@ func mustJSON(v any) []byte {
 }
 
 func findBundledSMAPIInstaller(dataDir string) (*bundledSMAPIInstaller, error) {
+	manifest, err := runtimeStackManifestForSync()
+	if err != nil {
+		return nil, err
+	}
+	wantName := "SMAPI-" + manifest.SMAPI.Version + "-installer.zip"
 	candidates := []string{
+		filepath.Join(dataDir, ".local-container", "smapi-update", "packages"),
 		filepath.Join(dataDir, ".local-container", "smapi"),
 		filepath.Join(dataDir, ".local-container", "control", "smapi"),
 		filepath.Join(dataDir, "smapi"),
@@ -626,8 +643,7 @@ func findBundledSMAPIInstaller(dataDir string) (*bundledSMAPIInstaller, error) {
 				continue
 			}
 			name := entry.Name()
-			lower := strings.ToLower(name)
-			if strings.HasSuffix(lower, ".zip") && strings.Contains(lower, "smapi") {
+			if name == wantName {
 				matches = append(matches, filepath.Join(dir, name))
 			}
 		}
@@ -637,6 +653,29 @@ func findBundledSMAPIInstaller(dataDir string) (*bundledSMAPIInstaller, error) {
 	}
 	sort.Strings(matches)
 	chosen := matches[len(matches)-1]
+	info, err := os.Stat(chosen)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() != manifest.SMAPI.ArchiveBytes {
+		return nil, errors.New("推荐 SMAPI 安装包大小不匹配")
+	}
+	f, err := os.Open(chosen)
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.New()
+	_, copyErr := io.Copy(h, io.LimitReader(f, manifest.SMAPI.MaxArchiveBytes+1))
+	closeErr := f.Close()
+	if copyErr != nil {
+		return nil, copyErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if fmt.Sprintf("%x", h.Sum(nil)) != manifest.SMAPI.SHA256 {
+		return nil, errors.New("推荐 SMAPI 安装包 SHA256 不匹配")
+	}
 	return &bundledSMAPIInstaller{Path: chosen, FileName: filepath.Base(chosen)}, nil
 }
 

@@ -743,8 +743,23 @@ func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.C
 		"游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境...", "smapi_installing", jobCtx.ID)
 
 	imageRef := envWithDefault(envVals, "SERVER_IMAGE", serverImageDefault(r.imageTag))
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		return err
+	}
+	archivePath := ""
+	if provider, ok := r.driver.docker.(interface {
+		RecommendedSMAPIArchive(context.Context, string, sjconfig.RuntimeStackManifest) (string, error)
+	}); ok {
+		archivePath, err = provider.RecommendedSMAPIArchive(ctx, r.instance.DataDir, manifest)
+	} else {
+		archivePath, err = ensureRecommendedSMAPIArchive(ctx, r.instance.DataDir, manifest)
+	}
+	if err != nil {
+		return fmt.Errorf("download reviewed SMAPI installer: %w", err)
+	}
 	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[smapi] 使用 JunimoServer 镜像 %s 预安装 SMAPI。", imageRef))
-	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSMAPIInstallOpts(envVals, imageRef), nil, func(line string) {
+	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSMAPIInstallOpts(imageRef, archivePath), nil, func(line string) {
 		_, _ = jobCtx.Info(context.Background(), "[smapi] "+paneldocker.RedactString(line))
 	})
 	if err != nil {
@@ -1164,7 +1179,7 @@ func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.Container
 			projectName + "_steamcmd-login:/root/Steam",
 			projectName + "_steamcmd-login:/root/.local/share/Steam",
 			projectName + "_steamcmd-home:/root/.steam",
-			projectName + "_game-data:/data/game",
+			resolvedGameDataVolumeName(r.instance.DataDir) + ":/data/game",
 		},
 	}
 }
@@ -1246,10 +1261,12 @@ func dockerResultDetail(result paneldocker.CommandResult) string {
 	return paneldocker.RedactString(detail)
 }
 
-func (r *installRunner) buildSMAPIInstallOpts(envVals map[string]string, imageRef string) paneldocker.ContainerTTYRunOpts {
-	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
-	version := envWithDefault(envVals, "SMAPI_VERSION", DefaultSMAPIVersion)
-	urls := strings.Join(smapiDownloadURLs(envVals, version), ",")
+func (r *installRunner) buildSMAPIInstallOpts(imageRef, archivePath string) paneldocker.ContainerTTYRunOpts {
+	manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
+	version, checksum, archiveBytes, maxArchiveBytes := DefaultSMAPIVersion, "", int64(0), int64(100*1024*1024)
+	if manifestErr == nil {
+		version, checksum, archiveBytes, maxArchiveBytes = manifest.SMAPI.Version, manifest.SMAPI.SHA256, manifest.SMAPI.ArchiveBytes, manifest.SMAPI.MaxArchiveBytes
+	}
 	script := `set -eu
 game_dir="/data/game"
 smapi_bin="${game_dir}/StardewModdingAPI"
@@ -1265,25 +1282,13 @@ fi
 tmp_dir="/tmp/anxi-smapi-install"
 rm -rf "${tmp_dir}"
 mkdir -p "${tmp_dir}/extract"
-ok=""
-for url in $(printf '%s' "${SMAPI_DOWNLOAD_URLS:-}" | tr ',' ' '); do
-  [ -n "${url}" ] || continue
-  echo "Trying SMAPI download: ${url}"
-  if curl -fL --connect-timeout 20 --speed-limit 1024 --speed-time 30 --retry 2 --retry-delay 2 "${url}" -o "${tmp_dir}/smapi.zip"; then
-    if unzip -t "${tmp_dir}/smapi.zip" >/dev/null; then
-      ok="1"
-      break
-    fi
-    echo "Downloaded SMAPI zip is invalid: ${url}" >&2
-  else
-    echo "SMAPI download failed: ${url}" >&2
-  fi
-done
-if [ "${ok}" != "1" ]; then
-  echo "All SMAPI download candidates failed." >&2
-  exit 3
-fi
-unzip -q "${tmp_dir}/smapi.zip" -d "${tmp_dir}/extract"
+echo "Installing Panel-recommended SMAPI ${version} from the reviewed read-only package."
+actual_bytes="$(wc -c < /package/smapi.zip | tr -d ' ')"
+if [ "${actual_bytes}" != "${SMAPI_ARCHIVE_BYTES}" ]; then echo "SMAPI archive length mismatch." >&2; exit 3; fi
+actual_sha="$(sha256sum /package/smapi.zip | awk '{print $1}')"
+if [ "${actual_sha}" != "${SMAPI_SHA256}" ]; then echo "SMAPI archive checksum mismatch." >&2; exit 3; fi
+if ! unzip -t /package/smapi.zip >/dev/null; then echo "SMAPI archive is invalid." >&2; exit 3; fi
+unzip -q /package/smapi.zip -d "${tmp_dir}/extract"
 installer="${tmp_dir}/extract/SMAPI ${version} installer/internal/linux/SMAPI.Installer"
 if [ ! -f "${installer}" ]; then
   installer="$(find "${tmp_dir}/extract" -path '*/internal/linux/SMAPI.Installer' -type f | head -n 1)"
@@ -1310,10 +1315,13 @@ echo "SMAPI preinstall complete."
 		Command:    []string{"-lc", script},
 		Env: []string{
 			"SMAPI_VERSION=" + version,
-			"SMAPI_DOWNLOAD_URLS=" + urls,
+			"SMAPI_SHA256=" + checksum,
+			"SMAPI_ARCHIVE_BYTES=" + strconv.FormatInt(archiveBytes, 10),
+			"SMAPI_MAX_ARCHIVE_BYTES=" + strconv.FormatInt(maxArchiveBytes, 10),
 		},
 		Binds: []string{
-			projectName + "_game-data:/data/game",
+			resolvedGameDataVolumeName(r.instance.DataDir) + ":/data/game",
+			archivePath + ":/package/smapi.zip:ro",
 		},
 	}
 }
@@ -1449,7 +1457,7 @@ func (r *installRunner) buildSteamAuthOpts(mode steamAuthMode) paneldocker.Steam
 		},
 		Binds: []string{
 			projectName + "_steam-session:/data/steam-session",
-			projectName + "_game-data:/data/game",
+			resolvedGameDataVolumeName(r.instance.DataDir) + ":/data/game",
 		},
 	}
 }
@@ -1555,21 +1563,6 @@ func appendSteamCMDImageRef(values []string, value string) []string {
 		return values
 	}
 	return appendUniqueString(values, value)
-}
-
-func smapiDownloadURLs(envVals map[string]string, version string) []string {
-	value := strings.TrimSpace(envVals["SMAPI_DOWNLOAD_URLS"])
-	if value == "" {
-		value = strings.ReplaceAll(DefaultSMAPIDownloadURLs, DefaultSMAPIVersion, version)
-	}
-	fields := strings.FieldsFunc(value, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
-	})
-	urls := make([]string, 0, len(fields))
-	for _, field := range fields {
-		urls = appendUniqueString(urls, strings.TrimSpace(field))
-	}
-	return urls
 }
 
 func imageRefsFromEnv(envVals map[string]string, candidatesKey string, defaultCandidates string, primaryKey string, defaultPrimary string) []string {

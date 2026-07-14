@@ -59,6 +59,9 @@ type lifecycleRunner struct {
 	operation string // "start", "stop", "restart", "restore_restart"
 	actorID   int64
 	newGame   bool // When true, send "settings newgame --confirm" after server starts.
+	// rollback-only: the SMAPI updater has restored the exact prior Control Mod
+	// and must not replace it before starting the old game-data volume.
+	preserveControlMod bool
 
 	// Set when operation == "restore_restart": which backup to restore before
 	// (re)starting the server.
@@ -73,6 +76,11 @@ type lifecycleRunner struct {
 func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registry.Job, error) {
 	if d.jobs == nil {
 		return nil, fmt.Errorf("driver: job manager not configured")
+	}
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
+		return nil, err
 	}
 	ld, ok := d.docker.(LifecycleDockerService)
 	if !ok {
@@ -112,6 +120,11 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	if d.jobs == nil {
 		return fmt.Errorf("driver: job manager not configured")
 	}
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
+		return err
+	}
 	ld, ok := d.docker.(LifecycleDockerService)
 	if !ok {
 		return fmt.Errorf("docker 服务不支持生命周期操作")
@@ -146,6 +159,11 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error {
 	if d.jobs == nil {
 		return fmt.Errorf("driver: job manager not configured")
+	}
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
+		return err
 	}
 	ld, ok := d.docker.(LifecycleDockerService)
 	if !ok {
@@ -187,6 +205,11 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry.Instance, backupName string, overwrite bool, actorID int64) (*registry.Job, error) {
 	if d.jobs == nil {
 		return nil, fmt.Errorf("driver: job manager not configured")
+	}
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
+		return nil, err
 	}
 	ld, ok := d.docker.(LifecycleDockerService)
 	if !ok {
@@ -283,8 +306,10 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	}
 
 	// Ensure the latest SMAPI mod DLL is deployed (idempotent; needed for IP direct-connect).
-	if err := installSMAPIMod(r.instance.DataDir); err != nil {
-		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：SMAPI mod 部署失败（不影响启动）：%v", err))
+	if !r.preserveControlMod {
+		if err := installSMAPIMod(r.instance.DataDir); err != nil {
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：SMAPI mod 部署失败（不影响启动）：%v", err))
+		}
 	}
 
 	// Ensure IP direct-connect is enabled by default, including for saves created
@@ -411,10 +436,10 @@ func (r *lifecycleRunner) doStop(ctx context.Context, jobCtx *jobs.Context) erro
 	_, _ = jobCtx.Info(ctx, "正在停止 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "正在停止...", "stopping", jobCtx.ID)
 
-	result, err := r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
+	_, err := r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
-			"停止失败: "+result.Stderr, "stop_failed", jobCtx.ID)
+			"停止失败，请检查 Docker/Compose 状态。", "stop_failed", jobCtx.ID)
 		return fmt.Errorf("docker compose down: %w", err)
 	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "服务器已停止", "stopped", jobCtx.ID)

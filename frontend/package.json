@@ -10,6 +10,9 @@
     "test:command-results": "node --experimental-strip-types scripts/test-player-command-results.ts",
     "test:update-status": "node --experimental-strip-types scripts/test-update-status.ts",
     "test:panel-update": "node --experimental-strip-types scripts/test-panel-update-machine.ts",
+    "test:junimo-update": "node --experimental-strip-types scripts/test-junimo-update-status.ts",
+    "test:runtime-components": "node --experimental-strip-types scripts/test-runtime-components-status.ts",
+    "test:smapi-update": "node --experimental-strip-types scripts/test-smapi-update-status.ts",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -78,24 +78,31 @@ func firstNonEmpty(values ...string) string {
 }
 
 type runtimeDiagnostic struct {
-	ActiveSaveID          string         `json:"activeSaveId,omitempty"`
-	SaveDirectory         string         `json:"saveDirectory,omitempty"`
-	CacheSaveID           string         `json:"cacheSaveId,omitempty"`
-	CacheMatchesActive    bool           `json:"cacheMatchesActive"`
-	ControlModVersion     string         `json:"controlModVersion,omitempty"`
-	ExpectedControlMod    string         `json:"expectedControlModVersion"`
-	ControlModMatches     bool           `json:"controlModMatches"`
-	JunimoImage           string         `json:"junimoImage,omitempty"`
-	ExpectedJunimoVersion string         `json:"expectedJunimoVersion"`
-	JunimoVersionMatches  bool           `json:"junimoVersionMatches"`
-	ContainerToSaveMs     *int64         `json:"containerToSaveMs,omitempty"`
-	SaveToHostMs          *int64         `json:"saveToHostMs,omitempty"`
-	CommandProtocol       map[string]any `json:"commandProtocol"`
+	ActiveSaveID             string         `json:"activeSaveId,omitempty"`
+	SaveDirectory            string         `json:"saveDirectory,omitempty"`
+	CacheSaveID              string         `json:"cacheSaveId,omitempty"`
+	CacheMatchesActive       bool           `json:"cacheMatchesActive"`
+	ControlModVersion        string         `json:"controlModVersion,omitempty"`
+	ExpectedControlMod       string         `json:"expectedControlModVersion"`
+	ControlModMatches        bool           `json:"controlModMatches"`
+	JunimoStackVersion       string         `json:"junimoStackVersion"`
+	JunimoUpdateStatus       string         `json:"junimoUpdateStatus"`
+	JunimoUpdateCode         string         `json:"junimoUpdateCode"`
+	JunimoUpdateReason       string         `json:"junimoUpdateReason"`
+	JunimoUpdateSupported    bool           `json:"junimoUpdateSupported"`
+	ServerVersion            string         `json:"serverVersion,omitempty"`
+	ExpectedServerVersion    string         `json:"expectedServerVersion"`
+	SteamAuthVersion         string         `json:"steamAuthVersion,omitempty"`
+	ExpectedSteamAuthVersion string         `json:"expectedSteamAuthVersion"`
+	JunimoVersionMatches     bool           `json:"junimoVersionMatches"`
+	ContainerToSaveMs        *int64         `json:"containerToSaveMs,omitempty"`
+	SaveToHostMs             *int64         `json:"saveToHostMs,omitempty"`
+	CommandProtocol          map[string]any `json:"commandProtocol"`
 }
 
 func buildRuntimeDiagnostic(instance storage.Instance, status controlStatusSnapshot, players controlPlayersSnapshot) runtimeDiagnostic {
 	active := sj.GetActiveSaveName(instance.DataDir)
-	d := runtimeDiagnostic{ActiveSaveID: active, ExpectedControlMod: expectedControlModVersion, ExpectedJunimoVersion: sj.TestedImageTag}
+	d := runtimeDiagnostic{ActiveSaveID: active, ExpectedControlMod: expectedControlModVersion}
 	if active != "" {
 		d.SaveDirectory = filepath.Join(instance.DataDir, "game-data", "Saves", active)
 	}
@@ -110,9 +117,17 @@ func buildRuntimeDiagnostic(instance storage.Instance, status controlStatusSnaps
 	readControlJSON(filepath.Join(instance.DataDir, ".local-container", "mods", "StardewAnxiPanel.Control", "manifest.json"), &manifest)
 	d.ControlModVersion = manifest.Version
 	d.ControlModMatches = manifest.Version == expectedControlModVersion
-	env, _ := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
-	d.JunimoImage = strings.TrimSpace(env["SERVER_IMAGE"])
-	d.JunimoVersionMatches = strings.Contains(d.JunimoImage, ":"+sj.TestedImageTag)
+	stack := sj.InspectRuntimeStack(instance.DataDir, instance.State)
+	d.JunimoStackVersion = stack.Recommended.StackVersion
+	d.JunimoUpdateStatus = stack.Status
+	d.JunimoUpdateCode = stack.Code
+	d.JunimoUpdateReason = stack.Reason
+	d.JunimoUpdateSupported = stack.Supported
+	d.ServerVersion = stack.Current.Server.Tag
+	d.ExpectedServerVersion = stack.Recommended.Server.Tag
+	d.SteamAuthVersion = stack.Current.SteamAuth.Tag
+	d.ExpectedSteamAuthVersion = stack.Recommended.SteamAuth.Tag
+	d.JunimoVersionMatches = stack.Status == sjconfig.RuntimeStackStatusUpToDate
 	d.ContainerToSaveMs = durationBetween(instance.UpdatedAt, status.UpdatedAt)
 	d.SaveToHostMs = durationBetween(status.UpdatedAt, players.UpdatedAt)
 	return d

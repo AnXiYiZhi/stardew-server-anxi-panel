@@ -1,0 +1,55 @@
+name: Compatibility matrix gates
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "scripts/compatibility_matrix.py"
+      - "scripts/tests/test_compatibility_matrix.py"
+      - ".github/workflows/compatibility-matrix.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Validate embedded component manifest
+        run: |
+          python scripts/compatibility_matrix.py validate backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
+          python -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
+      - name: Backend tests
+        working-directory: backend
+        run: go test ./...
+      - name: Frontend tests and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test:command-results
+          npm run test:update-status
+          npm run test:panel-update
+          npm run test:junimo-update
+          npm run test:runtime-components
+          npm run test:smapi-update
+          npm run build
+      - name: Isolated Docker integration
+        working-directory: backend
+        run: go test -tags=integration ./internal/docker

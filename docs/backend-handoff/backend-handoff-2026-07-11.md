@@ -1,3 +1,50 @@
+# JUNIMO-STACK-UPDATE-1 阶段二 dry-run 接手记录（2026-07-13）
+
+## 改了什么
+
+- `stardew_junimo` 新增成对升级预检服务、八阶段状态、专用 job 和原子状态文件；目标只能取阶段一 embed 清单。安装/生命周期/runtime update 创建任务使用同一 driver 锁和 active jobs 查询双向互斥。
+- Docker 新增受限 image/config/volume inspect 与受控两镜像环境覆盖的 Compose quiet 校验；只保留结构化摘要，丢弃 Compose 展开环境和原始 pull 输出。
+- Web 新增管理员 POST/GET dry-run，POST 仅接受空 body/严格 `{}`；错误、日志和响应不包含 Steam/registry 凭据或完整环境。
+
+## 影响接口/文件
+
+- 接口：`POST/GET /api/instances/:id/junimo-update/dry-run`；job type `stardew_junimo_update_dry_run`；状态文件 `<instance>/.local-container/junimo-update/dry-run-status.json`。
+- 核心文件：`internal/docker/runtime_update.go`、`internal/jobs/manager.go`、`internal/games/stardew_junimo/runtime_update_dry_run*.go`、`driver.go`、`lifecycle.go`、`internal/web/junimo_update_handlers.go`/`instance_handlers.go` 及对应测试。
+
+## 如何验证
+
+- `go test ./...` 覆盖候选首项失败后成功、全失败、digest 缺失、卷缺失、Compose 失败、custom/not-installed、运行中不停车、互斥、脱敏、持久恢复和管理员权限/请求体注入。
+- 交付前另执行 `go vet ./...`、`go build ./...` 与 `git diff --check`。所有 Docker 流程测试使用 fake，没有触碰真实实例。
+
+## 下一步注意
+
+- 阶段三 apply 尚未实现。不得直接复用 selected 字段执行；应定义成功 dry-run 的过期/配置漂移校验、成对备份/停服/重建/写回/健康验收和完整回滚状态机。
+- dry-run 详细事实只认状态文件，jobs 只认生命周期/互斥；不要创建第二套会覆盖它的状态。不要为卷可读性扩大 Panel 宿主挂载。
+
+# JUNIMO-STACK-UPDATE-1 阶段一接手记录（2026-07-13）
+
+## 改了什么
+
+- `stardew_junimo/config/runtime_stack_manifest.json` 是构建内置且可审查的唯一推荐版本对：server `1.5.0-preview.121` + steam-auth-cn `1.5.0-anxi.2`。`runtime_stack.go` 负责清单强校验、可信仓库校验、实例 `.env` 五字段读取与五态判断；Web 层不实现 Stardew 版本逻辑。
+- `stardew_junimo/runtime_stack.go` 根据实例安装状态调用配置层检测。`GET /api/instances/:id/junimo-update` 仅管理员可读，只返回挑选后的版本/运行态字段；普通用户从 `/state.runtimeDiagnostic` 获取不含仓库的 tag 和整体状态。
+- runtimeDiagnostic 不再用 `strings.Contains(serverImage, testedTag)`，而是复用完整版本对检测；自定义镜像固定为 `custom_images` + `unsupported/custom_images`。
+
+## 影响文件与接口
+
+- 清单/判断：`backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json`、`runtime_stack.go`、`runtime_stack_test.go`、`backend/internal/games/stardew_junimo/runtime_stack.go`。
+- Web：`backend/internal/web/junimo_update_handlers.go`、`junimo_update_handlers_test.go`、`instance_handlers.go`、`instance_ui_status.go`。
+- 新接口：`GET /api/instances/:id/junimo-update`（管理员，GET-only）。现有 `GET /api/instances/:id/state` 的 `runtimeDiagnostic` 新增版本对字段并停止返回 `junimoImage` 仓库引用。
+
+## 如何验证
+
+- `go test ./internal/games/stardew_junimo/config ./internal/games/stardew_junimo ./internal/web` 覆盖清单拒绝规则、完全匹配、单边旧、双边旧、自定义镜像、缺 `.env`、未安装、权限和敏感字段不泄漏。
+- 完整验证命令仍是 `gofmt`、`go test ./...`、`go vet ./...`、`go build ./...`；阶段一测试不得执行 Docker pull/stop/up。
+
+## 下一步注意事项
+
+- 更新推荐版本时必须把 server/auth 当作一次原子变更，并同时更新内置清单、现有安装默认常量和一致性测试；不要改成远程 latest 或 semver 猜测。
+- 阶段二/三的 capability、dry-run、apply、备份/回滚尚未实现；在明确设计并单独授权前，不得给本接口加请求体、目标镜像参数或任何 Docker/.env 写操作。
+
 # PANEL-UPDATE-RELEASE-1 后端接手补充（2026-07-13）
 
 ## 改了什么
@@ -434,3 +481,124 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - 旧版本用户升级后，旧会话可能只存在 `steamcmd-user-local` / `steamcmd-root-local`；迁移会优先复用它。仅当旧卷没有有效缓存或 Steam 已吊销会话时，才需要重新批准。
 - Steam 主动吊销设备、修改密码、账户安全策略变化或用户点击“更换 Steam 账号 / 强制重新认证”时，再次批准是预期行为。
 - 已完成真实 SteamCMD 缓存登录验证，但没有执行完整 `app_update 413150 validate`（避免无必要地长时间校验游戏卷）；登录复用本身已由连续两个新容器验证。
+# 2026-07-13 接手增量：JUNIMO-STACK-UPDATE-1 阶段三
+
+## 改了什么
+
+- `stardew_junimo/runtime_update_apply*.go` 实现管理员明确确认后的 server + steam-auth-cn 成对升级状态机、实例任务互斥、关键预检重跑、私有恢复材料、停服后 steam-session volume 克隆、五字段原子 `.env` 更新、auth-first/server-second 验收、原运行态恢复、终态审计和成对自动回滚。
+- `internal/docker/runtime_apply.go` 只暴露固定 Junimo 服务、固定 Compose 参数、固定 `/steam/ready`/Junimo health 探针与固定 volume clone/restore 脚本；临时卷必须匹配当前 project 的命名规则。`cmd/panel/main.go` 在普通 jobs 恢复后扫描非终态 apply，并按持久阶段/材料继续验收、回滚或停止猜测。
+- Web 新增 `POST/GET /api/instances/:id/junimo-update/apply`；POST 只接受 `{"confirm":true}`。详细状态位于 `.local-container/junimo-update/apply-status.json`，私有材料位于 `recovery/<applyId>`，支持包现有白名单不会包含它。
+
+## 影响文件/接口
+
+- 主要文件：`internal/games/stardew_junimo/runtime_update_apply.go`、`runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`internal/docker/runtime_apply.go`、`internal/web/junimo_update_handlers.go`、`cmd/panel/main.go` 及对应测试。
+- 状态终态：`succeeded`、`failed_rolled_back`、`rollback_failed`。后者必须保留材料并人工处理，禁止添加自动破坏性重试。
+
+## 如何验证
+
+- 单元/handler contract 覆盖确认体注入、权限、相同版本、拉取前失败、auth ready/ticket、server/auth digest、server health、成对回滚、运行/停止态、回滚失败保留材料和重启不猜测。
+- `go test -tags=integration ./internal/docker -run TestRuntimeApplyIsolatedSteamSessionCloneRestore -count=1` 使用唯一 `anxijunimotest*` volume 验证认证内容在模拟迁移后恢复；不得改成生产 project/volume。
+
+## 下一步注意事项
+
+- 发布前仍须用专用真实 Steam 测试账号和真实清单镜像完成长流程成功/回滚/Panel 中断验收。不要把账号/token 加进自动测试、状态或支持包。
+- 任何新增恢复分支必须先证明当前 `.env`、容器 digest 和私有 manifest 一致；不能根据阶段名猜测，也不能扩大 Docker 方法到任意 service/image/shell。
+# 2026-07-14 接手增量：GAME-RUNTIME-VERSION-1
+
+## 改了什么
+
+- 在既有 embed runtime stack 清单中加入 game 413150 / SDK 1007 tested 推荐 buildid；新增逐 token ACF/VDF 解析、只读 game-data volume reader、六态检测、管理员查询与只读预检。
+- 候选发现脚本/workflow 只生成 `classification=discovered` JSON/summary/artifact；413150 凭据只从受保护 Environment 进入临时 runscript，原始 SteamCMD 输出不打印。
+
+## 影响文件/接口与验证
+
+- 主要文件：`config/runtime_stack*`、`app_manifest.go`、`runtime_components.go`、`internal/docker/runtime_components.go`、`internal/web/junimo_update_handlers.go`、`scripts/discover-steam-builds.ps1`、`.github/workflows/discover-steam-builds.yml`。
+- 接口：管理员 `GET /runtime-components` 与 `GET|POST /runtime-components/dry-run`；未安装返回 HTTP 200 明确状态。测试覆盖解析顺序/空白/转义、appid/buildid 错误、缺失、四种匹配组合、未安装、权限、脱敏和发现工具不修改矩阵。
+
+## 下一步注意事项
+
+- 当前只读 helper 依赖已存在 game-data volume 与本地 server 镜像；必须保留 inspect-before-run、`--pull never`、`--network none` 和 readonly mount，防止 Docker 隐式建卷/拉取。
+- 阶段六尚无 staging/depot/app_update/切换/停服/重建/回滚；不要把本预检成功当作执行授权，也不要接入现有 Junimo stack apply。
+
+## 2026-07-14 SMAPI 推荐升级接手记录
+
+### 改了什么
+
+- 在 embed runtime stack 清单固定 SMAPI 4.5.2 URL/SHA/大小和 Control 兼容值；新增实际 DLL 检测七态、维护者候选 CLI、严格管理员 API、可信下载/ZIP 校验、staging 官方安装、原子 GAME_DATA_VOLUME 切换、完整验收、自动回滚与 Panel 重启恢复。
+- 初始安装也改为只使用内置推荐 SMAPI：Panel 侧完成 allowlist/SHA/ZIP 校验并只读 bind 给 installer，不再接受 `.env` 任意下载目标。完整玩家同步包只携带匹配推荐 SHA 的缓存 installer；全量/增量 manifest 都记录推荐版本与 checksum，增量仍没有 SMAPI payload。
+
+### 影响接口与文件
+
+- 主要文件：`config/runtime_stack_manifest.json`、`smapi_update.go`、`smapi_archive.go`、`smapi_update_workflow.go`、`game_data_volume.go`、`internal/docker/runtime_smapi.go`、`cmd/smapi-candidate`、`.github/workflows/discover-smapi-candidate.yml`、`mod_sync.go`、`internal/web/junimo_update_handlers.go`。
+- 接口：`GET /runtime-components` 新增 `smapi`；新增 `GET /smapi-update`、`GET|POST /smapi-update/dry-run`、`GET|POST /smapi-update/apply`。POST 永远不接目标参数。
+
+### 如何验证
+
+- `go test ./...`、`go vet ./...`；`go test -tags=integration ./internal/docker -run 'TestRuntime(SMAPIIsolatedStagingCloneAndInstaller|ApplyIsolatedSteamSessionCloneRestore)' -count=1`。
+- 候选实测：`go run ./cmd/smapi-candidate --output <临时文件>`，确认 4.5.2、41,889,142 字节和固定 SHA，随后删除临时候选。
+
+### 下一步注意事项
+
+- 不要把 SMAPI apply 合并进游戏 depot 或 Junimo/auth apply；任一前置矩阵不匹配必须拒绝。不要把 recovery manifest、旧卷或 staging label 变成通用 volume 删除入口。
+- recovery manifest 记录旧 Control manifest/DLL 是否存在；rollback lifecycle 必须保持 `preserveControlMod`，否则普通启动的幂等部署会再次覆盖刚恢复的旧 Control。验收必须同时保留 Junimo/Control 日志加载证据、status/players、health/invite/auth ticket。
+- 阶段八必须在真实推荐 stack 与存档副本上跑 installer/Control/邀请码/auth ticket 全链路及故障注入回滚；成功前不要更新 tag、镜像或推荐矩阵。
+
+## 2026-07-14 接手补充：统一矩阵与发布列车
+
+改动：扩展内嵌 runtime stack 为统一 schema v1，增加 channel/status/upstreamRef/sourceRevision/images/digests/SMAPI urls/controlMod；正式安装和所有更新门禁只接受 recommended 与满足最低 Panel 版本；Junimo/auth 选择器强制 digest 相符；新增 withdrawn 风险状态、Python schema/状态机/dispatch 生成器、PR/release workflows。
+
+影响接口：原 Junimo update 与 runtime-components 响应的 recommended 对象新增 `channel`、`status`，镜像组件以 `images`、`digests` 返回；POST 仍不接收任何目标参数。初始 install 的 imageTag 即使由旧客户端发送，也只能等于内嵌 server tag。没有新增远程矩阵读取 API。
+
+关键文件：`backend/internal/games/stardew_junimo/config/runtime_stack.go`、`runtime_stack_manifest.json`、`runtime_update_*`、`runtime_components.go`、`smapi_update_workflow.go`、`scripts/compatibility_matrix.py`、`compatibility-matrices/`、`.github/workflows/compatibility-matrix.yml`、`release.yml`。原 `receive-auth-release.yml` 已删除。
+
+验证：`go test ./internal/games/stardew_junimo/config ./internal/games/stardew_junimo`、矩阵 Python unittest、前端 build 已通过；全量验证命令和结果见本任务最终报告。接手注意：不要让 candidate 文件进入运行时 apply 路径；新 stack 必须人工指定完整 server/auth 精确版本对并从 candidate 开始，按 candidate -> tested -> recommended 分 PR，withdrawn 不可复活；代理镜像若返回与 canonical 不同 digest 会自动跳过或明确失败，不能降低校验。
+
+### 2026-07-14 补充：取消 auth 驱动的 Panel PR
+
+- 删除 `.github/workflows/receive-auth-release.yml` 以及 `compatibility_matrix.py from-auth-dispatch`；steam-auth-cn 发布不再通知 Panel，也不会生成 discovered PR。
+- 矩阵状态移除 discovered。维护者验证 Junimo 上游后，人工选择对应 auth tag，并一次填写 server/auth tag、digest、auth `upstreamRef`/`sourceRevision` 以及其余兼容元数据，才能创建 candidate。
+- 影响文件：矩阵脚本/测试/schema/README、Go 运行时状态校验、前端状态类型和发布流程文档。验证重点：discovered 必须拒绝、新 stack 非 candidate 必须拒绝、candidate 缺任一精确 digest 或 auth 溯源必须拒绝。
+## 2026-07-14 接手补充：更新事务与发布门禁安全修复
+
+### 改了什么
+- SMAPI apply/恢复改用真实 Compose 状态；切卷前重新检查并静默所有运行中的 server/auth。停服后切卷前发生 Panel 中断时，原先运行的旧服务器会被重新启动并完成旧栈验收。
+- SMAPI mutation 回滚新增旧 SMAPI、Junimo/API、auth ticket、Control 日志与 status/players、邀请码全链路验收；只有全部成功才进入 `failed_rolled_back`。
+- Junimo apply 从运行容器记录真实 ImageID，回滚以 ImageID 固定旧 server/auth；server 停止但 auth 运行也会先停服再快照。
+- 矩阵 CI 新增跨 git 基线状态迁移检查并监听 `main`；原同仓库/同 SHA 的真实 Steam Actions artifact 门禁随后已由 2026-07-14 本机验收流程取代。
+
+### 影响文件/接口
+- 后端：`smapi_update_workflow.go`、`runtime_update_apply.go`、`runtime_update_apply_runner.go`、`runtime_update_rollback.go` 及对应测试。
+- CI/发布：`scripts/compatibility_matrix.py`、`scripts/tests/test_compatibility_matrix.py`、`compatibility-matrix.yml`、`release.yml`。
+- API JSON 字段不变；`serverWasRunning` 语义改为真实 Docker 状态，`failed_rolled_back` 的保证增强。Docker 状态未知时 SMAPI apply 返回 `runtime_state_unavailable`。
+
+### 如何验证
+- `cd backend; go test ./internal/games/stardew_junimo -run 'Test(SMAPIUpdate|SMAPIRollback|RuntimeUpdateApply)' -count=1`
+- `python -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'`
+- `python scripts/compatibility_matrix.py validate backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json`
+- 发布不再读取验收 Actions run 或 artifact；维护者须先在本机 Docker Desktop 完成真实 Steam 验收，再更新 `panel-release.APPROVED_STACK_VERSION` 并审批受保护 Environment。Release 仍强制 embedded status 为 recommended、stackVersion 精确匹配，并在登录 registry 前执行远程 artifact/digest 与全量测试门禁。
+
+### 2026-07-14 补充：本机 Steam 验收发布模式
+
+- `.github/workflows/release.yml` 删除 `REAL_STEAM_E2E_RECORD`、GitHub Actions run/artifact 查询以及 `actions: read` 权限。
+- 本机验收最低要求：目标 server/auth 精确镜像已拉取；auth 返回 `ready=true`、`has_ticket=true`；server、Control/Junimo API 可用；重启 server/auth 后认证状态无需重新扫码。报告只记录版本、时间和布尔结论，不记录任何凭据或 Ticket。
+- GitHub 侧以 `panel-release` required reviewer 审批作为本机验收声明，并继续要求 `APPROVED_STACK_VERSION` 与内嵌 recommended stack 完全一致。不要在未完成本机验收时更新该变量或批准部署。
+
+### 下一步注意事项
+- 不要把回滚 pin 的 ImageID 改回漂移 tag 后再重建容器；人工恢复应以 recovery manifest 中的真实 ImageID 为准。
+- 新矩阵必须保留历史文件并逐级晋升；替换 recommended 时，旧 recommended 应转为 withdrawn 留档。
+- `rollback_failed` 的 recovery、旧卷、新卷或 steam-session snapshot 都不可自动清理。
+# 2026-07-14 接手补充：真实镜像 inspect / auth 探针修复
+
+## 改了什么
+- `internal/docker/runtime_update.go` 的镜像 inspect 改为安全字段格式化输出；`runtime_apply.go` 的容器 inspect 同步处理，避免完整 `Config.Env` 经脱敏后破坏 JSON。
+- steam-auth ready 探针由 Node.js HTTP 客户端改为 Bash `/dev/tcp`，兼容当前 `dotnet SteamService.dll` 镜像，同时保持只解析 `ready/has_ticket`。
+
+## 影响文件、验证和注意事项
+- 影响 `runtime_update.go`、`runtime_apply.go` 及对应 unit/integration tests；API 无变化。
+- 验证命令：`go test ./internal/docker -count=1`；`go test -tags=integration ./internal/docker -run 'TestRuntime(InspectAndAuthProbeWithoutNode|RealImagesOptIn)' -count=1 -v`。
+- 真实镜像测试需要本地已有精确镜像并设置两个 opt-in 环境变量；它不读取 token，也不能替代真实已登录 session 的发布验收。未来 auth 基础镜像若移除 Bash，必须先提供等价、受控的容器内健康探针再更新推荐矩阵。
+### 2026-07-14 补充：个人项目简化发布流程（覆盖此前发布列车设计）
+
+- 每个 Panel 版本只维护 `runtime_stack_manifest.json` 一份组件目标清单。维护者直接指定 Junimo server、对应 steam-auth-cn、game/SDK、SMAPI/Control 版本，测试后创建 Panel tag；用户升级 Panel 后按内嵌清单收到组件升级提示。
+- 删除 candidate/tested 状态晋级、候选目录与 git history transition 校验。运行时只接受内嵌 `recommended`，紧急停用仍保留 `withdrawn`。
+- `release.yml` 不再引用 `panel-release` Environment、required reviewer、`APPROVED_STACK_VERSION`、`REAL_STEAM_E2E_RECORD` 或验收 artifact。tag 发布仍执行精确 digest/auth 溯源、全量后端/前端与 Docker integration 门禁。

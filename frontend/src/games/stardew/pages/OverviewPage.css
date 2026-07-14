@@ -2007,3 +2007,33 @@
   gap: 7px;
   min-width: 0;
 }
+.sd-ov-junimo-update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 18px;
+}
+
+.sd-ov-junimo-update-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sd-ov-junimo-update-copy strong {
+  color: #8b4d17;
+}
+
+@media (max-width: 720px) {
+  .sd-ov-junimo-update {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sd-ov-junimo-update .sd-btn-tan {
+    width: 100%;
+  }
+}

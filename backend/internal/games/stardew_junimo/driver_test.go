@@ -58,6 +58,17 @@ type fakeDocker struct {
 	restartedServices []string
 }
 
+func (f *fakeDocker) RecommendedSMAPIArchive(_ context.Context, dataDir string, manifest sjconfig.RuntimeStackManifest) (string, error) {
+	path := filepath.Join(dataDir, ".local-container", "smapi-update", "packages", "SMAPI-"+manifest.SMAPI.Version+"-installer.zip")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte("test-only reviewed archive"), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
 	f.workDir = dir
 	return f.psResult, f.psErr
@@ -1085,19 +1096,6 @@ func TestServerImageRefsPrependsDefaultCandidatesToExistingSingleCandidate(t *te
 	}
 	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
 		t.Fatalf("expected server image candidates %q, got %q", strings.Join(want, ","), got)
-	}
-}
-
-func TestSMAPIDownloadURLsDefaultUseAccelerators(t *testing.T) {
-	urls := smapiDownloadURLs(map[string]string{}, DefaultSMAPIVersion)
-	want := []string{
-		"https://gh.llkk.cc/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
-		"https://github.dpik.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
-		"https://ghfast.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
-		"https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
-	}
-	if got := strings.Join(urls, ","); got != strings.Join(want, ",") {
-		t.Fatalf("expected SMAPI download URLs %q, got %q", strings.Join(want, ","), got)
 	}
 }
 
