@@ -188,6 +188,9 @@ export type JunimoRecommendedComponent = {
 export type JunimoUpdateInfo = {
   available: boolean
   supported: boolean
+  repairable: boolean
+  repairCode?: string
+  repairReason?: string
   status: JunimoUpdateStatus
   code: string
   reason: string
@@ -209,6 +212,11 @@ export type JunimoUpdateInfo = {
   releaseNotes: string[]
   serverRunning: boolean
   steamAuthLoggedIn: boolean
+}
+
+export type JunimoConfigRepairResult = JunimoUpdateInfo & {
+  repaired: boolean
+  backupId: string
 }
 
 export type JunimoUpdateDryRunPhase =

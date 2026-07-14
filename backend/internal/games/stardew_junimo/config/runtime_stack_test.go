@@ -182,6 +182,67 @@ func TestInspectRuntimeStackCustomMissingAndNotInstalled(t *testing.T) {
 	}
 }
 
+func TestRuntimeStackLegacyCandidatesAreRepairable(t *testing.T) {
+	dir := t.TempDir()
+	content := strings.Join([]string{
+		"IMAGE_VERSION=1.5.0-preview.121",
+		"SERVER_IMAGE=dockerproxy.net/sdvd/server:1.5.0-preview.121",
+		"SERVER_IMAGE_CANDIDATES=dockerproxy.net/sdvd/server:1.5.0-preview.125,sdvd/server:1.5.0-preview.121,docker.m.daocloud.io/sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121",
+		"STEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"STEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"STEAM_PASSWORD=must-stay-private",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	inspection := InspectRuntimeStack(dir, true)
+	if inspection.Status != RuntimeStackStatusInvalidConfig || inspection.Code != "invalid_config/image_candidates" || !inspection.Repairable || inspection.RepairCode != "repairable/legacy_candidates" {
+		t.Fatalf("inspection = %#v", inspection)
+	}
+	plan := PlanRuntimeStackConfigRepair(dir, true)
+	if !plan.Repairable {
+		t.Fatalf("plan = %#v", plan)
+	}
+	if strings.Contains(plan.Updates["SERVER_IMAGE_CANDIDATES"], "preview.125") || strings.Contains(plan.Updates["SERVER_IMAGE_CANDIDATES"], "daocloud") || strings.Contains(plan.Updates["SERVER_IMAGE_CANDIDATES"], "ghcr.io") {
+		t.Fatalf("server candidates were not normalized to current trusted .121 aliases: %s", plan.Updates["SERVER_IMAGE_CANDIDATES"])
+	}
+	for _, candidate := range strings.Split(plan.Updates["SERVER_IMAGE_CANDIDATES"], ",") {
+		if !strings.HasSuffix(candidate, ":1.5.0-preview.121") {
+			t.Fatalf("candidate did not preserve current tag: %s", candidate)
+		}
+	}
+	if strings.Contains(plan.Reason, "must-stay-private") {
+		t.Fatal("repair plan leaked unrelated env values")
+	}
+}
+
+func TestRuntimeStackRepairRejectsCustomPrimaryAndAmbiguousVersion(t *testing.T) {
+	base := map[string]string{
+		"IMAGE_VERSION":                  "1.5.0-preview.121",
+		"SERVER_IMAGE":                   "sdvd/server:1.5.0-preview.121",
+		"SERVER_IMAGE_CANDIDATES":        "sdvd/server:1.5.0-preview.125",
+		"STEAM_SERVICE_IMAGE":            "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"STEAM_SERVICE_IMAGE_CANDIDATES": "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+	}
+	custom := make(map[string]string, len(base))
+	for key, value := range base {
+		custom[key] = value
+	}
+	custom["SERVER_IMAGE"] = "registry.example/custom/server:1.5.0-preview.121"
+	if plan := planRuntimeStackConfigRepair(custom); plan.Repairable || plan.Code != "unsupported/custom_images" {
+		t.Fatalf("custom primary plan = %#v", plan)
+	}
+	ambiguous := make(map[string]string, len(base))
+	for key, value := range base {
+		ambiguous[key] = value
+	}
+	ambiguous["IMAGE_VERSION"] = "1.5.0-preview.120"
+	if plan := planRuntimeStackConfigRepair(ambiguous); plan.Repairable || plan.Code != "invalid_config/server_version_mismatch" {
+		t.Fatalf("ambiguous version plan = %#v", plan)
+	}
+}
+
 func writeRuntimeEnv(t *testing.T, dir, serverTag, authTag string, custom bool) {
 	t.Helper()
 	serverRepo := "sdvd/server"

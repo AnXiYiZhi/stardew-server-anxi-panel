@@ -1,3 +1,12 @@
+# JUNIMO-CONFIG-REPAIR-1 联调契约（2026-07-15）
+
+- `GET /api/instances/:id/junimo-update` 新增 `repairable:boolean`、可选 `repairCode/repairReason`。旧客户端可忽略；只有 `repairable=true` 才允许前端提供自动修复入口。
+- `POST /api/instances/:id/junimo-update/repair-config` 仅管理员，请求体为空或严格 `{}`；目标镜像、tag、候选、命令或任意额外字段返回 `400 config_repair_body_not_allowed`。匿名/普通用户仍为 401/403。
+- 成功返回 HTTP 200，包含修复后的完整 `JunimoUpdateInfo` 以及 `repaired=true/backupId`。预期旧 `.121` 候选修复后直接变为 `supported=true,status=update_available,available=true,repairable=false`，前端随后才能 POST 新 dry-run。
+- 自动修复仅规范化 `SERVER_IMAGE_CANDIDATES` 和 `STEAM_SERVICE_IMAGE_CANDIDATES`；不接受客户端目标，不改主镜像、当前版本、凭据、Compose 或容器。完整原 `.env` 只保存在实例私有备份中，不进入 API、日志或支持包。
+- `runtime_update_busy`、`manual_recovery_required`、自定义/未知镜像和无法消除歧义的版本字段返回 409；前端停止链路并显示错误，不得绕过修复直接 apply。
+- 用户一次点击“修复并升级”的顺序固定为：修复成功并复检 → 创建本次新 dry-run → 轮询同一 dryRunId 成功 → 单次 apply。历史成功预检不得复用。
+
 # MODBUNDLE-1 合包上传联调契约（2026-07-15）
 
 - `POST /api/instances/:id/mods/upload` 仍使用重复 multipart `mod` 字段；每个 ZIP 可以是单 Mod、Nexus 外壳包，或用户将整个 Mods 文件夹重新压缩后得到的多层合包。

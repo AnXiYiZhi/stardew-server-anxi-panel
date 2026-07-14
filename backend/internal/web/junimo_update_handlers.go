@@ -23,6 +23,10 @@ type junimoUpdateApplyDriver interface {
 	RuntimeUpdateApplyStatus(registry.Instance) (sj.RuntimeUpdateApplyStatus, error)
 }
 
+type junimoUpdateConfigRepairDriver interface {
+	RepairRuntimeStackConfig(context.Context, registry.Instance) (sj.RuntimeStackConfigRepairResult, error)
+}
+
 type runtimeComponentsDriver interface {
 	InspectRuntimeComponents(context.Context, registry.Instance) (sj.RuntimeComponentsInspection, error)
 	RunRuntimeComponentsPreflight(context.Context, registry.Instance) (sj.RuntimeComponentsPreflight, error)
@@ -46,6 +50,61 @@ type junimoUpdateResponse struct {
 	ReleaseNotes      []string `json:"releaseNotes"`
 	ServerRunning     bool     `json:"serverRunning"`
 	SteamAuthLoggedIn bool     `json:"steamAuthLoggedIn"`
+}
+
+type junimoUpdateConfigRepairResponse struct {
+	junimoUpdateResponse
+	Repaired bool   `json:"repaired"`
+	BackupID string `json:"backupId"`
+}
+
+func (s *server) handleInstanceJunimoUpdateConfigRepair(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !acceptStrictEmptyObject(r.Body) {
+		writeError(w, http.StatusBadRequest, "config_repair_body_not_allowed", "请求体只能为空或严格空对象")
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	repairer, ok := driver.(junimoUpdateConfigRepairDriver)
+	if !ok {
+		writeError(w, http.StatusConflict, "unsupported/driver", "实例 driver 不支持 Junimo 配置修复")
+		return
+	}
+	result, err := repairer.RepairRuntimeStackConfig(r.Context(), makeRegistryInstance(instance))
+	if err != nil {
+		if validation, yes := sj.IsRuntimeUpdateValidationError(err); yes {
+			writeError(w, http.StatusConflict, validation.Code, validation.Message)
+			return
+		}
+		s.logger.Error("failed to repair Junimo runtime config", "instance", instance.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "config_repair_failed", "修复 Junimo 运行组件配置失败；未继续执行升级")
+		return
+	}
+	s.auditLog(r, &actor, "junimo_runtime_config_repaired", "instance", instance.ID, auditMetadata("backupId", result.BackupID, "status", result.Status))
+	writeJSON(w, http.StatusOK, junimoUpdateConfigRepairResponse{
+		junimoUpdateResponse: junimoUpdateResponse{
+			RuntimeStackInspection: result.RuntimeStackInspection,
+			ReleaseNotes:           result.Recommended.ReleaseNotes,
+			ServerRunning:          instance.State == storage.InstanceStateRunning,
+			SteamAuthLoggedIn:      sjconfig.SteamAuthLoggedIn(instance.DataDir),
+		},
+		Repaired: result.Repaired,
+		BackupID: result.BackupID,
+	})
 }
 
 func (s *server) handleInstanceJunimoUpdateApply(w http.ResponseWriter, r *http.Request, instanceID string) {

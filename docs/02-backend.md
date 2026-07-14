@@ -1,3 +1,11 @@
+# JUNIMO-CONFIG-REPAIR-1 可信旧候选配置修复（2026-07-15）
+
+- `InspectRuntimeStack` 新增 `repairable/repairCode/repairReason`。只有 server/auth 主镜像仍属于当前可信仓库、`IMAGE_VERSION` 与 server 主镜像 tag 一致，且候选项全部属于当前可信仓库或固定旧版官方别名时，才把混合 tag/退役候选判为 `repairable/legacy_candidates`；自定义主镜像、未知候选、非法引用和版本主字段歧义继续拒绝自动处理。
+- 新增管理员 `POST /api/instances/:id/junimo-update/repair-config`，请求体仅允许为空或严格 `{}`。接口与 install/lifecycle/Junimo/SMAPI 更新任务互斥，并在 `rollback_failed` 时保持人工恢复锁。
+- 修复前完整 `.env` 私有备份到 `.local-container/junimo-update/config-repair/<backupId>/original.env`（目录 0700、文件 0600）；只原子改写 server/auth 候选字段，不改变主镜像、当前 tag、凭据、Compose、容器或数据卷。写后立即重新检查，未得到 `update_available/up_to_date` 时原子恢复原配置。
+- server 安装候选生成不再把新版默认 tag 和旧实例候选 tag 合并；仅保留与当前安装目标 tag 相同的旧候选，从源头阻止 `.125 + .121` 混合配置再次出现。
+- 修复响应不返回 `.env`、备份路径或凭据，只返回随机 `backupId` 和修复后的版本检查结果；审计事件为 `junimo_runtime_config_repaired`。
+
 # MODBUNDLE-1 Mods 文件夹合包完整导入（2026-07-15）
 
 - `UploadModZip` 不再只识别 ZIP 根目录或单层 Nexus 外壳；现在递归发现任意安全深度下所有包含 `manifest.json` 的 Mod 目录，再扁平化导入 `.local-container/mods` 根目录。分类目录和 `Mods1` 这类总外壳不会被当作 Mod 安装。

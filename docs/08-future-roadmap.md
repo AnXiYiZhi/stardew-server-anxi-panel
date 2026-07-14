@@ -1,3 +1,11 @@
+# 2026-07-15 已完成：PANEL-0.3.1 / JUNIMO-CONFIG-REPAIR-1
+
+- [x] 可信旧候选混合配置可被精确标记为 `repairable`，自定义/未知配置继续安全拒绝。
+- [x] 管理员一次点击完成私有备份、原子规范化、复检、dry-run 和 apply，不再要求手改 `.env`。
+- [x] 安装流程不再混合不同 server tag 的候选，从源头阻止同类状态复发。
+- [x] 后端配置/API 回归、前端生产构建、桌面与 390px 视觉验收覆盖完成。
+- [x] 使用新 Tag `v0.3.1` 触发三仓库镜像与 GitHub Release 标准发布链路。
+
 # 2026-07-15 已完成：MODBUNDLE-1
 
 - [x] Mod ZIP 递归发现多层 manifest，支持整个 Mods 文件夹重新打包上传。

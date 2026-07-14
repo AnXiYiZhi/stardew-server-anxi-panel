@@ -146,13 +146,23 @@ type RuntimeStackRecommendation struct {
 }
 
 type RuntimeStackInspection struct {
-	Available   bool                       `json:"available"`
-	Supported   bool                       `json:"supported"`
-	Status      string                     `json:"status"`
-	Code        string                     `json:"code"`
-	Reason      string                     `json:"reason"`
-	Current     RuntimeStackCurrent        `json:"current"`
-	Recommended RuntimeStackRecommendation `json:"recommended"`
+	Available    bool                       `json:"available"`
+	Supported    bool                       `json:"supported"`
+	Repairable   bool                       `json:"repairable"`
+	RepairCode   string                     `json:"repairCode,omitempty"`
+	RepairReason string                     `json:"repairReason,omitempty"`
+	Status       string                     `json:"status"`
+	Code         string                     `json:"code"`
+	Reason       string                     `json:"reason"`
+	Current      RuntimeStackCurrent        `json:"current"`
+	Recommended  RuntimeStackRecommendation `json:"recommended"`
+}
+
+type RuntimeStackConfigRepairPlan struct {
+	Repairable bool              `json:"repairable"`
+	Code       string            `json:"code,omitempty"`
+	Reason     string            `json:"reason,omitempty"`
+	Updates    map[string]string `json:"-"`
 }
 
 var trustedRuntimeRepositories = map[string]map[string]struct{}{
@@ -515,10 +525,10 @@ func InspectRuntimeStack(dataDir string, installed bool) RuntimeStackInspection 
 	auth, authCode, authReason := inspectConfiguredComponent("steamAuth", values["STEAM_SERVICE_IMAGE"], values["STEAM_SERVICE_IMAGE_CANDIDATES"])
 	result.Current.SteamAuth = auth
 	if code != "" {
-		return classifiedRuntimeStack(result, code, reason)
+		return withRuntimeStackRepairPlan(values, classifiedRuntimeStack(result, code, reason))
 	}
 	if authCode != "" {
-		return classifiedRuntimeStack(result, authCode, authReason)
+		return withRuntimeStackRepairPlan(values, classifiedRuntimeStack(result, authCode, authReason))
 	}
 	if strings.TrimSpace(values["IMAGE_VERSION"]) != server.Tag {
 		return invalidRuntimeStack(result, "invalid_config/server_version_mismatch", "IMAGE_VERSION 与 server 镜像 tag 不一致。")
@@ -535,6 +545,125 @@ func InspectRuntimeStack(dataDir string, installed bool) RuntimeStackInspection 
 	result.Status = RuntimeStackStatusUpdateAvailable
 	result.Code = "update_available"
 	result.Reason = "当前 Junimo 运行组件版本对与推荐版本对不一致。"
+	return result
+}
+
+var legacyRepairableRuntimeRepositories = map[string]map[string]struct{}{
+	"server": {
+		"docker.m.daocloud.io/sdvd/server": {},
+		"ghcr.io/sdvd/server":              {},
+	},
+}
+
+func withRuntimeStackRepairPlan(values map[string]string, result RuntimeStackInspection) RuntimeStackInspection {
+	if result.Code != "invalid_config/image_candidates" && result.Code != "unsupported/custom_images" {
+		return result
+	}
+	plan := planRuntimeStackConfigRepair(values)
+	if !plan.Repairable {
+		return result
+	}
+	result.Repairable = true
+	result.RepairCode = plan.Code
+	result.RepairReason = plan.Reason
+	return result
+}
+
+func PlanRuntimeStackConfigRepair(dataDir string, installed bool) RuntimeStackConfigRepairPlan {
+	if !installed {
+		return RuntimeStackConfigRepairPlan{Code: "not_installed", Reason: "实例尚未安装 Junimo 运行组件。"}
+	}
+	values, err := ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		return RuntimeStackConfigRepairPlan{Code: "invalid_config/read_env", Reason: "实例 .env 无法读取。"}
+	}
+	return planRuntimeStackConfigRepair(values)
+}
+
+func planRuntimeStackConfigRepair(values map[string]string) RuntimeStackConfigRepairPlan {
+	manifest, err := BuiltInRuntimeStackManifest()
+	if err != nil {
+		return RuntimeStackConfigRepairPlan{Code: "invalid_config/manifest", Reason: "内置运行组件清单无效。"}
+	}
+	serverRepo, serverTag, err := parseRuntimeImageRef(values["SERVER_IMAGE"])
+	if err != nil {
+		return RuntimeStackConfigRepairPlan{Code: "invalid_config/image_reference", Reason: "实例 server 镜像引用无效。"}
+	}
+	authRepo, authTag, err := parseRuntimeImageRef(values["STEAM_SERVICE_IMAGE"])
+	if err != nil {
+		return RuntimeStackConfigRepairPlan{Code: "invalid_config/image_reference", Reason: "实例 steam-auth 镜像引用无效。"}
+	}
+	if _, ok := trustedRuntimeRepositories["server"][serverRepo]; !ok {
+		return RuntimeStackConfigRepairPlan{Code: "unsupported/custom_images", Reason: "server 主镜像不是当前可信仓库，不能自动修复。"}
+	}
+	if _, ok := trustedRuntimeRepositories["steamAuth"][authRepo]; !ok {
+		return RuntimeStackConfigRepairPlan{Code: "unsupported/custom_images", Reason: "steam-auth 主镜像不是当前可信仓库，不能自动修复。"}
+	}
+	if strings.TrimSpace(values["IMAGE_VERSION"]) != serverTag {
+		return RuntimeStackConfigRepairPlan{Code: "invalid_config/server_version_mismatch", Reason: "IMAGE_VERSION 与 server 主镜像 tag 不一致，不能自动选择其一。"}
+	}
+
+	serverCandidates, serverNeedsRepair := repairableCandidateList("server", values["SERVER_IMAGE_CANDIDATES"], serverTag)
+	if serverCandidates == nil {
+		return RuntimeStackConfigRepairPlan{Code: "unsupported/custom_images", Reason: "server 候选列表包含未知或非法镜像，不能自动修复。"}
+	}
+	authCandidates, authNeedsRepair := repairableCandidateList("steamAuth", values["STEAM_SERVICE_IMAGE_CANDIDATES"], authTag)
+	if authCandidates == nil {
+		return RuntimeStackConfigRepairPlan{Code: "unsupported/custom_images", Reason: "steam-auth 候选列表包含未知或非法镜像，不能自动修复。"}
+	}
+	if !serverNeedsRepair && !authNeedsRepair {
+		return RuntimeStackConfigRepairPlan{Code: "config_repair_not_needed", Reason: "候选镜像配置无需自动修复。"}
+	}
+
+	serverCandidates = retagRuntimeCandidates(manifest.Server.Images, serverTag)
+	authCandidates = retagRuntimeCandidates(manifest.SteamAuth.Images, authTag)
+	if len(serverCandidates) == 0 || len(authCandidates) == 0 {
+		return RuntimeStackConfigRepairPlan{Code: "invalid_config/manifest", Reason: "内置运行组件候选清单无效。"}
+	}
+	return RuntimeStackConfigRepairPlan{
+		Repairable: true,
+		Code:       "repairable/legacy_candidates",
+		Reason:     "检测到可信旧版候选列表；可先私有备份原配置，再规范化为当前版本的可信候选并继续升级。",
+		Updates: map[string]string{
+			"SERVER_IMAGE_CANDIDATES":        strings.Join(serverCandidates, ","),
+			"STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(authCandidates, ","),
+		},
+	}
+}
+
+func repairableCandidateList(kind, value, primaryTag string) ([]string, bool) {
+	refs := strings.Split(value, ",")
+	if len(refs) == 0 {
+		return nil, false
+	}
+	needsRepair := false
+	for _, ref := range refs {
+		repo, tag, err := parseRuntimeImageRef(ref)
+		if err != nil {
+			return nil, false
+		}
+		if _, current := trustedRuntimeRepositories[kind][repo]; !current {
+			if _, legacy := legacyRepairableRuntimeRepositories[kind][repo]; !legacy {
+				return nil, false
+			}
+			needsRepair = true
+		}
+		if tag != primaryTag {
+			needsRepair = true
+		}
+	}
+	return refs, needsRepair
+}
+
+func retagRuntimeCandidates(images []string, tag string) []string {
+	result := make([]string, 0, len(images))
+	for _, image := range images {
+		repository, _, err := parseRuntimeImageRef(image)
+		if err != nil {
+			return nil
+		}
+		result = append(result, repository+":"+tag)
+	}
 	return result
 }
 

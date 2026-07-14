@@ -14,6 +14,7 @@ const SHELL = params.get('shell') || 'desktop'
 const UPDATE = params.get('update') || 'latest'
 const APPLY = params.get('apply') || ''
 const JUNIMO_WORKFLOW = params.get('junimoWorkflow') || ''
+const JUNIMO_CONFIG = params.get('junimoConfig') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 if (JUNIMO_WORKFLOW === 'race-retry') window.confirm = () => true
 
@@ -142,7 +143,12 @@ const dryRunStatus = {
   logs: [], startedAt: iso(3), updatedAt: iso(0), finishedAt: iso(0), errorCode: '', error: '',
 }
 const junimoUpdate = {
-  available: true, supported: true, status: 'update_available', reason: '',
+  available: JUNIMO_CONFIG !== 'repairable', supported: JUNIMO_CONFIG !== 'repairable', repairable: JUNIMO_CONFIG === 'repairable',
+  status: JUNIMO_CONFIG === 'repairable' ? 'invalid_config' : 'update_available',
+  code: JUNIMO_CONFIG === 'repairable' ? 'invalid_config/image_candidates' : 'update_available',
+  reason: JUNIMO_CONFIG === 'repairable' ? '实例运行组件候选镜像配置无效或 tag 不一致。' : '',
+  repairCode: JUNIMO_CONFIG === 'repairable' ? 'repairable/legacy_candidates' : undefined,
+  repairReason: JUNIMO_CONFIG === 'repairable' ? '检测到可信旧版候选列表；可先私有备份原配置，再规范化为当前版本的可信候选并继续升级。' : undefined,
   current: {
     server: { image: 'dockerproxy.net/sdvd/server:1.5.0-preview.121', tag: '1.5.0-preview.121' },
     steamAuth: { image: 'docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2', tag: '1.5.0-anxi.2' },

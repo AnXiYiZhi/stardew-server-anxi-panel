@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply } from '../../../api'
+import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, repairJunimoUpdateConfig, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
@@ -428,12 +428,13 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
           : '点击重新检查获取最新状态'
   const junimoUpdateAvailable = junimoUpdate?.available === true
     || instanceState?.runtimeDiagnostic?.junimoUpdateStatus === 'update_available'
+  const junimoConfigRepairable = junimoUpdate?.repairable === true
   const junimoStatus = junimoUpdate?.status ?? instanceState?.runtimeDiagnostic?.junimoUpdateStatus
   const gameUpdateAvailable = runtimeComponents?.recommended?.tested === true
     && runtimeComponents.status === 'update_available'
   const smapiUpdateAvailable = shouldShowSMAPIUpdate(smapiUpdate)
   const junimoNeedsAttention = junimoMaintenanceNeedsAttention(junimoStatus, junimoUpdateAvailable, junimoApply?.phase, junimoUpdateError !== null || junimoApplyError !== null)
-  const junimoNeedsReview = junimoNeedsAttention && !junimoUpdateAvailable && junimoApply?.phase !== 'rollback_failed' && !junimoApplyActive(junimoApply?.phase)
+  const junimoNeedsReview = junimoNeedsAttention && !junimoUpdateAvailable && !junimoConfigRepairable && junimoApply?.phase !== 'rollback_failed' && !junimoApplyActive(junimoApply?.phase)
   const maintenanceChecking = isAdmin && !junimoUpdate && !junimoUpdateError && !junimoApply && !junimoApplyError && !junimoStatus
   const smapiNeedsAttention = smapiUpdateAvailable || smapiApply?.phase === 'rollback_failed' || smapiPhaseActive(smapiApply?.phase)
   const maintenanceCount = [junimoNeedsAttention, gameUpdateAvailable, smapiNeedsAttention].filter(Boolean).length
@@ -693,11 +694,14 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   }
 
   async function handleJunimoUpgrade() {
-    if (!junimoUpdate || junimoApply?.phase === 'rollback_failed') return
+    if (!junimoUpdate || (!junimoUpdateAvailable && !junimoConfigRepairable) || junimoApply?.phase === 'rollback_failed') return
     const runningNote = junimoDryRun?.serverRunning || instanceState?.state === 'running'
       ? '更新期间服务器会安全停服，完成后恢复运行。'
       : '服务器当前停止；验收时会临时启动，完成后恢复停止。'
-    if (!window.confirm(`升级 Junimo 服务组件到 ${junimoUpdate.recommended.server.tag}？\n\n点击确认后会自动完成环境校验、镜像下载、安装和验收。${runningNote}\n如果新版本验收失败，系统会尝试恢复原版本。`)) return
+    const repairNote = junimoConfigRepairable
+      ? '系统会先私有备份原 .env，并把可证明安全的旧候选配置规范化；复检通过后自动继续升级。\n'
+      : ''
+    if (!window.confirm(`升级 Junimo 服务组件到 ${junimoUpdate.recommended.server.tag}？\n\n${repairNote}点击确认后会自动完成环境校验、镜像下载、安装和验收。${runningNote}\n如果新版本验收失败，系统会尝试恢复原版本。`)) return
     setJunimoRequestedDryRunId(null)
     junimoApplyStartedForDryRun.current = null
     setJunimoDryRun(null)
@@ -706,6 +710,13 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     setJunimoDryRunBusy(true)
     setJunimoDryRunError(null)
     try {
+      if (junimoConfigRepairable) {
+        const repaired = await repairJunimoUpdateConfig()
+        setJunimoUpdate(repaired)
+        if (!repaired.available && repaired.status !== 'update_available') {
+          throw new Error('旧候选配置已处理，但复检后没有得到可升级状态；已停止后续操作。')
+        }
+      }
       const result = await startJunimoUpdateDryRun()
       setJunimoDryRun(result)
       if (!result.dryRunId) throw new Error('升级预检未返回任务标识，请重新尝试。')
@@ -1068,16 +1079,18 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
               <div className="sd-diag-maintenance-item-main">
                 <span className="sd-diag-maintenance-item-icon" aria-hidden="true">{junimoApply?.phase === 'rollback_failed' ? '!' : '↑'}</span>
                 <div className="sd-diag-maintenance-copy">
-                  <strong>{junimoApply?.phase === 'rollback_failed' ? 'Junimo 服务组件需要人工恢复' : junimoNeedsReview ? 'Junimo 版本状态需要检查' : 'Junimo 服务组件有推荐更新'}</strong>
+                  <strong>{junimoApply?.phase === 'rollback_failed' ? 'Junimo 服务组件需要人工恢复' : junimoConfigRepairable ? 'Junimo 配置可自动修复并升级' : junimoNeedsReview ? 'Junimo 版本状态需要检查' : 'Junimo 服务组件有推荐更新'}</strong>
                   <p>{junimoApply?.phase === 'rollback_failed'
                     ? '上次升级未能确认安全回滚，已停止自动更新。恢复材料已保留，请联系面板管理员处理。'
+                    : junimoConfigRepairable
+                      ? `${junimoUpdate?.repairReason || '检测到可信旧版候选配置。'} 点击一次即可先备份、修复并继续完成升级；不会覆盖自定义主镜像。`
                     : junimoNeedsReview
                       ? (junimoUpdate?.reason || junimoUpdateError || junimoApplyError || '当前版本配置无法可靠判断，请联系面板管理员处理。')
                       : `${junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → ${junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。`}</p>
                 </div>
                 {isAdmin ? (junimoApply?.phase === 'rollback_failed' || junimoNeedsReview
                   ? null
-                  : <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoUpgradeBusy} onClick={handleJunimoUpgrade}>{junimoUpgradeBusy ? '升级进行中…' : '立即升级'}</button>) : <span className="sd-diag-maintenance-role-note">请联系管理员</span>}
+                  : <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoUpgradeBusy} onClick={handleJunimoUpgrade}>{junimoUpgradeBusy ? '升级进行中…' : junimoConfigRepairable ? '修复并升级' : '立即升级'}</button>) : <span className="sd-diag-maintenance-role-note">请联系管理员</span>}
               </div>
               {junimoWorkflowVisible ? <UserUpdateProgress {...junimoProgress} error={junimoProgress.error || junimoDryRunError || junimoApplyError || undefined} /> : null}
             </div>

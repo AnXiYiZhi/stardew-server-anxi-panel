@@ -1080,7 +1080,7 @@ func TestSteamCMDImageRefsUsesMirrorCandidatesBeforeExistingCandidates(t *testin
 	}
 }
 
-func TestServerImageRefsPrependsDefaultCandidatesToExistingSingleCandidate(t *testing.T) {
+func TestServerImageRefsDoesNotMixExistingCandidatesFromAnotherTag(t *testing.T) {
 	envVals := map[string]string{
 		"SERVER_IMAGE":            "sdvd/server:1.5.0-preview.121",
 		"SERVER_IMAGE_CANDIDATES": "sdvd/server:1.5.0-preview.121",
@@ -1093,7 +1093,6 @@ func TestServerImageRefsPrependsDefaultCandidatesToExistingSingleCandidate(t *te
 		"docker.jiaxin.site/sdvd/server:1.5.0-preview.125",
 		"dockerproxy.link/sdvd/server:1.5.0-preview.125",
 		"sdvd/server:1.5.0-preview.125",
-		"sdvd/server:1.5.0-preview.121",
 	}
 	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {
 		t.Fatalf("expected server image candidates %q, got %q", strings.Join(want, ","), got)
