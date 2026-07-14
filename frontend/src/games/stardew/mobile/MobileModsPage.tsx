@@ -9,6 +9,7 @@ import {
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModsListResult, NexusModSearchResult, NexusRequiredMod } from '../../../types'
 import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
+import { modDisplayName } from '../mod-display'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileModsPage.css'
 
@@ -77,10 +78,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
-}
-
-function modDisplayName(mod: ModInfo) {
-  return mod.name || mod.folderName || mod.uniqueId || mod.id
 }
 
 function dependencyLabel(uniqueId: string) {
@@ -398,14 +395,17 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
     setUploadError(null)
     setUploadSuccess(null)
     try {
-      await uploadMods(uploadFiles)
+      const result = await uploadMods(uploadFiles)
       await loadMods()
       dashboardData.refreshMods()
       setShowUpload(false)
       setUploadFiles([])
       if (fileInputRef.current) fileInputRef.current.value = ''
-      setUploadSuccess('Mod 上传成功，下次启动服务器时会自动加载。')
-      window.setTimeout(() => setUploadSuccess(null), 4000)
+      const summary = result.upload
+      setUploadSuccess(summary
+        ? `已解析 ${summary.archiveCount} 个 ZIP，发现 ${summary.discoveredCount} 个 Mod，安装 ${summary.importedCount} 个，已启用 ${summary.enabledCount} 个。下次启动服务器时会自动加载。`
+        : `已安装并启用 ${result.mods.length} 个 Mod，下次启动服务器时会自动加载。`)
+      window.setTimeout(() => setUploadSuccess(null), 8000)
     } catch (e) {
       setUploadError(errorMessage(e))
     } finally {

@@ -964,9 +964,13 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 
 	// Mod writes are only allowed while the game server is stopped, so the next
 	// normal start will load the new files without requiring an extra restart.
-	if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
+	if activeSaveName != "" {
 		if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
-			s.logger.Warn("mark imported mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+			s.logger.Error("mark imported mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+			writeError(w, http.StatusInternalServerError, "mod_enable_failed", "Mod 已解析但无法为当前存档启用，本次导入已回滚")
+			return
 		}
 	}
 	if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
@@ -978,6 +982,13 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 	writeJSON(w, http.StatusOK, registry.ModsListResult{
 		Mods:            imported,
 		RestartRequired: modsRestartRequiredForState(instance, instance.DataDir),
+		Upload: &registry.ModUploadSummary{
+			ArchiveCount:    len(modFiles),
+			DiscoveredCount: len(imported),
+			ImportedCount:   len(imported),
+			EnabledCount:    len(imported),
+			ActiveSaveName:  activeSaveName,
+		},
 	})
 }
 

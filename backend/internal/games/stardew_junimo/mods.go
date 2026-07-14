@@ -3,18 +3,22 @@ package stardew_junimo
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 const (
@@ -55,6 +59,63 @@ type modManifestDependency struct {
 	UniqueID       string `json:"UniqueID"`
 	MinimumVersion string `json:"MinimumVersion,omitempty"`
 	IsRequired     *bool  `json:"IsRequired,omitempty"`
+}
+
+// UnmarshalJSON accepts the string array required by SMAPI and also tolerates
+// numeric UpdateKeys produced by a few Windows-side community mods. Numeric
+// values are preserved as decimal strings for display; they are not treated as
+// Nexus IDs unless the normal "Nexus:<id>" prefix is present.
+func (m *modManifest) UnmarshalJSON(data []byte) error {
+	type plainModManifest modManifest
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	var rawUpdateKeys json.RawMessage
+	for key, raw := range fields {
+		if !strings.EqualFold(key, "UpdateKeys") {
+			continue
+		}
+		if len(rawUpdateKeys) != 0 {
+			return fmt.Errorf("manifest contains duplicate UpdateKeys fields")
+		}
+		rawUpdateKeys = raw
+		delete(fields, key)
+	}
+	withoutUpdateKeys, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var plain plainModManifest
+	if err := json.Unmarshal(withoutUpdateKeys, &plain); err != nil {
+		return err
+	}
+	*m = modManifest(plain)
+	if len(rawUpdateKeys) == 0 || bytes.Equal(bytes.TrimSpace(rawUpdateKeys), []byte("null")) {
+		return nil
+	}
+	var values []json.RawMessage
+	if err := json.Unmarshal(rawUpdateKeys, &values); err != nil {
+		return fmt.Errorf("UpdateKeys must be an array: %w", err)
+	}
+	for _, raw := range values {
+		var text string
+		if err := json.Unmarshal(raw, &text); err == nil {
+			m.UpdateKeys = append(m.UpdateKeys, text)
+			continue
+		}
+		var number json.Number
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&number); err == nil {
+			if _, err := strconv.ParseFloat(number.String(), 64); err == nil {
+				m.UpdateKeys = append(m.UpdateKeys, number.String())
+				continue
+			}
+		}
+		return fmt.Errorf("UpdateKeys entries must be strings or numbers")
+	}
+	return nil
 }
 
 // parseNexusModIDFromUpdateKeys scans a SMAPI manifest's UpdateKeys for a
@@ -466,6 +527,9 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		return nil, fmt.Errorf("打开 ZIP 失败: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
+	if err := normalizeModZipEntryNames(zr); err != nil {
+		return nil, err
+	}
 
 	// Security checks.
 	if err := validateModZip(zr); err != nil {
@@ -509,15 +573,19 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 
 	// ── Pre-validation: check ALL mods before moving any ──
 	type modCandidate struct {
-		sourcePath string
-		folderName string
-		info       registry.ModInfo
+		sourcePath  string
+		folderName  string
+		packageName string
+		info        registry.ModInfo
 	}
 	candidates := make([]modCandidate, 0, len(modDirs))
 	seenUniqueIDs := map[string]string{} // uniqueID -> folderName (within this ZIP)
 
 	for _, dir := range modDirs {
 		modPath := filepath.Join(td, filepath.FromSlash(dir.SourcePath))
+		if err := canonicalizeModRootFileNames(modPath); err != nil {
+			return nil, fmt.Errorf("mod %q 入口文件不兼容 Linux: %w", dir.FolderName, err)
+		}
 		info := readModInfo(modPath, dir.FolderName)
 		if info.ParseError != "" {
 			return nil, fmt.Errorf("mod %q 不是合法的 SMAPI Mod: %s", dir.FolderName, info.ParseError)
@@ -548,10 +616,21 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		}
 
 		candidates = append(candidates, modCandidate{
-			sourcePath: filepath.FromSlash(dir.SourcePath),
-			folderName: dir.FolderName,
-			info:       info,
+			sourcePath:  filepath.FromSlash(dir.SourcePath),
+			folderName:  dir.FolderName,
+			packageName: dir.PackageName,
+			info:        info,
 		})
+	}
+	packageMembers := map[string][]registry.ModInfo{}
+	for _, candidate := range candidates {
+		packageMembers[candidate.packageName] = append(packageMembers[candidate.packageName], candidate.info)
+	}
+	packageKeys := map[string]string{}
+	for packageName, members := range packageMembers {
+		if len(members) > 1 {
+			packageKeys[packageName] = modPackageKey(members)
+		}
 	}
 
 	// -- All checks passed -- move all mods with rollback on failure --
@@ -573,16 +652,54 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		}
 		moved = append(moved, dest)
 		finalInfo := readModInfo(dest, c.folderName)
+		finalInfo.PackageKey = packageKeys[c.packageName]
+		if finalInfo.PackageKey != "" {
+			finalInfo.PackageName = c.packageName
+		}
 		imported = append(imported, finalInfo)
 	}
 
 	if opts.inferNexusPackageOrigin {
-		if err := SaveInferredNexusPackageOrigin(dataDir, imported); err == nil {
+		groups := map[string][]registry.ModInfo{}
+		for _, mod := range imported {
+			key := mod.PackageKey
+			if key == "" {
+				key = "single:" + mod.FolderName
+			}
+			groups[key] = append(groups[key], mod)
+		}
+		if err := SaveInferredNexusPackageOrigins(dataDir, groups); err == nil {
 			imported = ApplyNexusMetadataToMods(dataDir, imported)
 		}
 	}
 
 	return imported, nil
+}
+
+// normalizeModZipEntryNames decodes legacy Windows ZIP names before security
+// validation and extraction. Windows Explorer and several Chinese archivers
+// write GBK/GB18030 bytes without the UTF-8 flag; archive/zip intentionally
+// leaves those bytes untouched in File.Name.
+func normalizeModZipEntryNames(zr *zip.ReadCloser) error {
+	seen := make(map[string]struct{}, len(zr.File))
+	for _, file := range zr.File {
+		name := file.Name
+		if !utf8.ValidString(name) {
+			decoded, err := simplifiedchinese.GB18030.NewDecoder().String(name)
+			if err != nil || !utf8.ValidString(decoded) {
+				return fmt.Errorf("ZIP 路径名既不是 UTF-8 也不是可识别的 GBK/GB18030 编码")
+			}
+			name = decoded
+		}
+		key := strings.ToLower(filepath.ToSlash(name))
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("ZIP 包含重复或仅大小写不同的路径 %q", name)
+		}
+		seen[key] = struct{}{}
+		file.Name = name
+		file.NonUTF8 = false
+	}
+	return nil
 }
 
 // validateModZip performs security checks on the ZIP entries.
@@ -621,84 +738,118 @@ func validateModZip(zr *zip.ReadCloser) error {
 }
 
 type modZipDir struct {
-	SourcePath string
-	FolderName string
+	SourcePath  string
+	FolderName  string
+	PackageName string
 }
 
-// detectModDirs finds importable SMAPI mod directories in the ZIP.
-// Normal SMAPI archives put one or more mod folders at the ZIP root. Some
-// Nexus archives wrap those folders in one extra directory; for that common
-// shape we strip only that single wrapper and import the child mod folders.
+// detectModDirs finds every importable SMAPI mod directory in the ZIP.
+// Besides normal single-mod/Nexus archives, users commonly zip an already
+// extracted Mods directory whose category/wrapper folders can be several
+// levels deep. Every directory containing a manifest is therefore discovered
+// recursively and flattened into the server Mods root. No discovered manifest
+// may be silently skipped.
 func detectModDirs(zr *zip.ReadCloser) ([]modZipDir, error) {
-	topDirs := map[string]bool{}
-	hasManifest := map[string]bool{}
-	childManifests := map[string]map[string]bool{}
-	anyManifest := false
+	manifestDirs := map[string]string{} // case-folded source dir -> original source dir
 
 	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
 		name := strings.TrimSuffix(filepath.ToSlash(f.Name), "/")
 		if name == "" {
 			continue
 		}
 		parts := strings.Split(name, "/")
-		if len(parts) == 0 || parts[0] == "" {
+		if len(parts) < 2 || parts[0] == "" || !strings.EqualFold(parts[len(parts)-1], "manifest.json") {
 			continue
 		}
-		topDirs[parts[0]] = true
-		// Check if this file is a manifest.json at the top level of a dir.
-		if len(parts) >= 2 && pathBaseEqual(name, "manifest.json") {
-			anyManifest = true
+		sourceDir := strings.Join(parts[:len(parts)-1], "/")
+		key := strings.ToLower(sourceDir)
+		if previous, exists := manifestDirs[key]; exists {
+			return nil, fmt.Errorf("ZIP 目录 %q 包含多个大小写不同的 manifest.json", previous)
 		}
-		if len(parts) == 2 && parts[1] == "manifest.json" {
-			hasManifest[parts[0]] = true
-		}
-		if len(parts) == 3 && parts[2] == "manifest.json" {
-			if childManifests[parts[0]] == nil {
-				childManifests[parts[0]] = map[string]bool{}
-			}
-			childManifests[parts[0]][parts[1]] = true
-		}
+		manifestDirs[key] = sourceDir
 	}
 
-	if len(topDirs) == 0 {
-		return nil, fmt.Errorf("ZIP is empty or has no valid files")
-	}
-	if !anyManifest && isLikelyXNBReplacementZip(zr) {
+	if len(manifestDirs) == 0 && isLikelyXNBReplacementZip(zr) {
 		return nil, fmt.Errorf("这是 XNB 替换包，不是 SMAPI Mod，不能放入服务器 Mods 目录；请使用带 manifest.json 的 SMAPI 或 Content Patcher 版本")
 	}
+	if len(manifestDirs) == 0 {
+		return nil, fmt.Errorf("ZIP 中没有找到 SMAPI manifest.json")
+	}
 
-	// If there's exactly one top dir with manifest.json, treat as single mod.
-	if len(topDirs) == 1 {
-		for name := range topDirs {
-			if hasManifest[name] {
-				return []modZipDir{{SourcePath: name, FolderName: name}}, nil
+	sourceDirs := make([]string, 0, len(manifestDirs))
+	for _, sourceDir := range manifestDirs {
+		sourceDirs = append(sourceDirs, sourceDir)
+	}
+	sort.Strings(sourceDirs)
+
+	// A manifest-bearing mod containing another manifest-bearing mod is
+	// ambiguous to flatten: moving the parent would also move the child. Reject
+	// the whole archive instead of importing a partial or duplicated package.
+	for i, parent := range sourceDirs {
+		parentPrefix := strings.ToLower(parent) + "/"
+		for _, child := range sourceDirs[i+1:] {
+			if strings.HasPrefix(strings.ToLower(child), parentPrefix) {
+				return nil, fmt.Errorf("ZIP 中 Mod 目录 %q 内部又包含 Mod %q，无法安全扁平化安装", parent, child)
 			}
-			if children := childManifests[name]; len(children) > 0 {
-				childNames := sortedMapKeys(children)
-				dirs := make([]modZipDir, 0, len(childNames))
-				for _, child := range childNames {
-					dirs = append(dirs, modZipDir{
-						SourcePath: name + "/" + child,
-						FolderName: child,
-					})
-				}
-				return dirs, nil
-			}
-			// Single dir without manifest -- still try to extract, will fail validation later.
-			return []modZipDir{{SourcePath: name, FolderName: name}}, nil
 		}
 	}
 
-	// Multiple top dirs: each must have a manifest.
-	names := sortedMapKeys(topDirs)
-	dirs := make([]modZipDir, 0, len(names))
-	for _, name := range names {
-		if !hasManifest[name] {
-			return nil, fmt.Errorf("ZIP 包含多个顶层目录，但 %q 缺少 manifest.json", name)
+	dirs := make([]modZipDir, 0, len(sourceDirs))
+	topLevels := map[string]struct{}{}
+	for _, sourceDir := range sourceDirs {
+		topLevels[strings.Split(sourceDir, "/")[0]] = struct{}{}
+	}
+	singleTop := ""
+	if len(topLevels) == 1 {
+		for top := range topLevels {
+			singleTop = top
 		}
-		dirs = append(dirs, modZipDir{SourcePath: name, FolderName: name})
+	}
+	for _, sourceDir := range sourceDirs {
+		parts := strings.Split(sourceDir, "/")
+		packageName := parts[0]
+		switch {
+		case singleTop != "" && isModsCollectionRoot(singleTop) && len(parts) > 1:
+			packageName = parts[1]
+		case singleTop != "":
+			// A conventional Nexus ZIP often has one wrapper directory which
+			// contains several companion folders. Keep those together.
+			packageName = singleTop
+		}
+		dirs = append(dirs, modZipDir{SourcePath: sourceDir, FolderName: path.Base(sourceDir), PackageName: packageName})
 	}
 	return dirs, nil
+}
+
+func isModsCollectionRoot(name string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	normalized = strings.NewReplacer(" ", "", "_", "", "-", "", "(", "", ")", "").Replace(normalized)
+	if !strings.HasPrefix(normalized, "mods") {
+		return false
+	}
+	for _, r := range strings.TrimPrefix(normalized, "mods") {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func modPackageKey(mods []registry.ModInfo) string {
+	identities := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		identity := strings.ToLower(strings.TrimSpace(mod.UniqueID))
+		if identity == "" {
+			identity = strings.ToLower(strings.TrimSpace(mod.FolderName))
+		}
+		identities = append(identities, identity)
+	}
+	sort.Strings(identities)
+	sum := sha256.Sum256([]byte(strings.Join(identities, "\n")))
+	return fmt.Sprintf("pkg:%x", sum[:12])
 }
 
 func sortedMapKeys(m map[string]bool) []string {
@@ -737,7 +888,43 @@ func isLikelyXNBReplacementZip(zr *zip.ReadCloser) bool {
 
 func pathBaseEqual(name, want string) bool {
 	parts := strings.Split(strings.TrimSuffix(filepath.ToSlash(name), "/"), "/")
-	return len(parts) > 0 && parts[len(parts)-1] == want
+	return len(parts) > 0 && strings.EqualFold(parts[len(parts)-1], want)
+}
+
+// canonicalizeModRootFileNames makes Windows-created mod archives loadable on
+// the Linux server filesystem. SMAPI/content-pack entry files are conventions
+// at the mod root; only their filename casing is normalized, never asset paths.
+func canonicalizeModRootFileNames(modPath string) error {
+	entries, err := os.ReadDir(modPath)
+	if err != nil {
+		return err
+	}
+	for _, canonical := range []string{"manifest.json", "content.json"} {
+		var matched []string
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.EqualFold(entry.Name(), canonical) {
+				matched = append(matched, entry.Name())
+			}
+		}
+		if len(matched) > 1 {
+			return fmt.Errorf("同时存在多个大小写不同的 %s", canonical)
+		}
+		if len(matched) == 0 || matched[0] == canonical {
+			continue
+		}
+
+		source := filepath.Join(modPath, matched[0])
+		temporary := filepath.Join(modPath, ".anxi-case-normalize-"+canonical)
+		target := filepath.Join(modPath, canonical)
+		if err := os.Rename(source, temporary); err != nil {
+			return fmt.Errorf("重命名 %s: %w", matched[0], err)
+		}
+		if err := os.Rename(temporary, target); err != nil {
+			_ = os.Rename(temporary, source)
+			return fmt.Errorf("规范化 %s: %w", matched[0], err)
+		}
+	}
+	return nil
 }
 
 // extractModZip extracts the ZIP to destDir with path escape verification.
@@ -829,8 +1016,8 @@ func resolveModDeleteFolders(dataDir, targetFolder string) ([]string, error) {
 	if target.FolderName == "" {
 		return []string{targetFolder}, nil
 	}
-	bundleID := modNexusBundleID(target)
-	if bundleID <= 0 {
+	bundleKey := modNexusPackageBundleKey(target)
+	if bundleKey == "" {
 		return []string{targetFolder}, nil
 	}
 	folders := make([]string, 0, len(mods))
@@ -838,7 +1025,7 @@ func resolveModDeleteFolders(dataDir, targetFolder string) ([]string, error) {
 		if mod.BuiltIn {
 			continue
 		}
-		if modNexusBundleID(mod) == bundleID {
+		if modNexusPackageBundleKey(mod) == bundleKey {
 			folders = append(folders, mod.FolderName)
 		}
 	}
@@ -847,13 +1034,6 @@ func resolveModDeleteFolders(dataDir, targetFolder string) ([]string, error) {
 	}
 	sort.Strings(folders)
 	return folders, nil
-}
-
-func modNexusBundleID(mod registry.ModInfo) int {
-	if mod.OriginSource == "nexus" && mod.OriginNexusModID > 0 {
-		return mod.OriginNexusModID
-	}
-	return mod.NexusModID
 }
 
 func deleteModFolder(dataDir, folderName string) error {

@@ -1,3 +1,12 @@
+# MODBUNDLE-1 合包上传联调契约（2026-07-15）
+
+- `POST /api/instances/:id/mods/upload` 仍使用重复 multipart `mod` 字段；每个 ZIP 可以是单 Mod、Nexus 外壳包，或用户将整个 Mods 文件夹重新压缩后得到的多层合包。
+- 成功响应仍是 `ModsListResult`，并额外携带 `upload: { archiveCount, discoveredCount, importedCount, enabledCount, activeSaveName? }`。前端应显示该摘要；成功时发现数和导入数必须相等。
+- 合包中任一已发现 Mod 解析失败时整批失败，不能返回部分成功。有激活存档时，导入后的 profile 启用写入也是成功契约的一部分；失败返回 `500 mod_enable_failed` 并回滚本批导入。
+- `ModInfo` 新增可选 `packageKey/packageName`。`packageKey` 表示物理 ZIP 子包归属，不表示 Nexus 身份；前端删除预览与排序应优先使用它，缺失时才回退 `originNexusModId/nexusModId`。聚合 ZIP 内不同第一层子包不得因为其中一个包有 Nexus ID 而互相继承来源。
+- 内容包名称仍以 manifest `name` 为事实字段；前端结合 `isContentPack/contentPackFor/folderName` 添加 `[CP]`/`[FTM]` 展示前缀，不要求后端篡改 manifest 名称。
+- 联调回归：两个独立 ZIP 应返回 `2/2/2`；`Mods1.zip` 实包应返回 `1 个 ZIP / 38 个发现 / 38 个安装 / 38 个启用`。
+
 # MAINTENANCE-SINGLE-CARD-1 联调补充（2026-07-14）
 
 - 用户从版本维护卡片点击“立即升级”后，前端内部串联当前目标 dry-run 与 apply，所有用户态进度继续在同一卡片消费既有 GET 状态接口。

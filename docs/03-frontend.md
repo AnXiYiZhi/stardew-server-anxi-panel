@@ -1,3 +1,12 @@
+# FE-MODBUNDLE-1 Mod 合包上传结果摘要（2026-07-15）
+
+- 桌面端 `useModsManagement` 现在保留后端上传响应的 `upload` 摘要，成功条明确显示本次 ZIP 数、实际发现/安装数、启用数和当前存档，不再只显示笼统的“Mod 上传成功”。
+- 手机端 `MobileModsPage` 也消费同一摘要并显示安装/启用数。若对接旧后端没有 `upload`，两端都回退使用 `mods.length`，不会阻断上传。
+- `ModsListResult` 新增可选 `ModUploadSummary`；`GET /mods` 不返回该字段，只有上传成功响应携带。前端生产构建已通过。
+- 桌面与手机共用 `modDisplayName()`：内容包根据 `contentPackFor` 和目录前缀恢复 `[CP]`/`[FTM]` 等技术标记，因此 manifest `Name` 为 `Stardew Valley Expanded` 时，`[CP] Stardew Valley Expanded` 不再与 DLL 主组件显示成同名卡片。
+- 已安装列表和删除确认优先按后端 `packageKey` 聚合；没有新字段的旧后端响应仍回退到 Nexus 来源 ID，保持兼容。
+- 已安装区不再以 Nexus 元数据作为可见性门槛：分区更名为“已安装模组”，所有非系统 Mod 都生成卡片；无 Nexus ID/来源的本地 Mod 显示为“本地 Mod”，保留名称、作者、版本、启用、同步分类、依赖和删除操作。原“已隐藏 N 个本地文件项”提示及过滤逻辑已移除。
+
 # FE-MAINTENANCE-SINGLE-CARD-1 单卡片升级交互（2026-07-14）
 
 - 面向用户的更新进度卡不再显示“查看开发者详情”或跳转到下方技术区的按钮；校验、下载层进度、安装、验收和错误均在原卡片内呈现。

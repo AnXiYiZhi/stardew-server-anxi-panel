@@ -779,12 +779,23 @@ export type ModInfo = {
   originNexusModId?: number
   originModName?: string
   originModUrl?: string
+  packageKey?: string
+  packageName?: string
   dependencies?: ModDependency[]
 }
 
 export type ModsListResult = {
   mods: ModInfo[]
   restartRequired?: boolean
+  upload?: ModUploadSummary
+}
+
+export type ModUploadSummary = {
+  archiveCount: number
+  discoveredCount: number
+  importedCount: number
+  enabledCount: number
+  activeSaveName?: string
 }
 
 export type NexusModSearchResult = {

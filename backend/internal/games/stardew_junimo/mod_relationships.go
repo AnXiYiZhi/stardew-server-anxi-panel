@@ -152,6 +152,9 @@ func normalizeModUniqueID(uniqueID string) string {
 }
 
 func modNexusPackageBundleKey(mod registry.ModInfo) string {
+	if strings.TrimSpace(mod.PackageKey) != "" {
+		return "package:" + strings.TrimSpace(mod.PackageKey)
+	}
 	if mod.OriginSource == "nexus" && mod.OriginNexusModID > 0 {
 		return fmt.Sprintf("nexus:%d", mod.OriginNexusModID)
 	}

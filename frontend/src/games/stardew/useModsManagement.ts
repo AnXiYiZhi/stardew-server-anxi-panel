@@ -10,7 +10,7 @@ import {
   uploadMods,
 } from '../../api'
 import { errorMessage } from '../../core/helpers'
-import type { ModInfo, ModsListResult, ModSyncKind } from '../../types'
+import type { ModInfo, ModsListResult, ModSyncKind, ModUploadSummary } from '../../types'
 import type { StardewPageProps } from './stardew-routes'
 
 type UseModsManagementOptions = {
@@ -37,7 +37,7 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState<ModUploadSummary | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<ModInfo | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -78,16 +78,21 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
     if (uploadFiles.length === 0) return
     setUploadBusy(true)
     setUploadError(null)
-    setUploadSuccess(false)
+    setUploadSuccess(null)
     try {
-      await uploadMods(uploadFiles)
+      const result = await uploadMods(uploadFiles)
       await loadMods()
       void dashboardData.refreshMods()
       setShowUpload(false)
       setUploadFiles([])
       if (fileInputRef.current) fileInputRef.current.value = ''
-      setUploadSuccess(true)
-      window.setTimeout(() => setUploadSuccess(false), 4000)
+      setUploadSuccess(result.upload ?? {
+        archiveCount: uploadFiles.length,
+        discoveredCount: result.mods.length,
+        importedCount: result.mods.length,
+        enabledCount: result.mods.length,
+      })
+      window.setTimeout(() => setUploadSuccess(null), 8000)
     } catch (error) {
       setUploadError(errorMessage(error))
     } finally {

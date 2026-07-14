@@ -233,14 +233,19 @@ type ModInfo struct {
 	// used to resolve NexusModID. Not all mods declare it.
 	UpdateKeys []string `json:"updateKeys,omitempty"`
 	// NexusModID is parsed from a "Nexus:<id>" entry in UpdateKeys, if present.
-	NexusModID       int             `json:"nexusModId,omitempty"`
-	IsContentPack    bool            `json:"isContentPack,omitempty"`
-	ContentPackFor   string          `json:"contentPackFor,omitempty"`
-	OriginSource     string          `json:"originSource,omitempty"`
-	OriginNexusModID int             `json:"originNexusModId,omitempty"`
-	OriginModName    string          `json:"originModName,omitempty"`
-	OriginModURL     string          `json:"originModUrl,omitempty"`
-	Dependencies     []ModDependency `json:"dependencies,omitempty"`
+	NexusModID       int    `json:"nexusModId,omitempty"`
+	IsContentPack    bool   `json:"isContentPack,omitempty"`
+	ContentPackFor   string `json:"contentPackFor,omitempty"`
+	OriginSource     string `json:"originSource,omitempty"`
+	OriginNexusModID int    `json:"originNexusModId,omitempty"`
+	OriginModName    string `json:"originModName,omitempty"`
+	OriginModURL     string `json:"originModUrl,omitempty"`
+	// PackageKey identifies folders installed from the same physical package.
+	// It is intentionally separate from Nexus identity: an aggregate Mods ZIP
+	// may contain several unrelated Nexus packages.
+	PackageKey   string          `json:"packageKey,omitempty"`
+	PackageName  string          `json:"packageName,omitempty"`
+	Dependencies []ModDependency `json:"dependencies,omitempty"`
 }
 
 type ModDependency struct {
@@ -256,8 +261,20 @@ type ModDependency struct {
 
 // ModsListResult is returned by GET .../mods.
 type ModsListResult struct {
-	Mods            []ModInfo `json:"mods"`
-	RestartRequired bool      `json:"restartRequired,omitempty"`
+	Mods            []ModInfo         `json:"mods"`
+	RestartRequired bool              `json:"restartRequired,omitempty"`
+	Upload          *ModUploadSummary `json:"upload,omitempty"`
+}
+
+// ModUploadSummary describes the complete, atomic result of a manual upload.
+// DiscoveredCount and ImportedCount are equal on success; keeping both fields
+// makes silent partial imports visible and preserves room for future previews.
+type ModUploadSummary struct {
+	ArchiveCount    int    `json:"archiveCount"`
+	DiscoveredCount int    `json:"discoveredCount"`
+	ImportedCount   int    `json:"importedCount"`
+	EnabledCount    int    `json:"enabledCount"`
+	ActiveSaveName  string `json:"activeSaveName,omitempty"`
 }
 
 // Mod sync classification kinds. They describe whether a mod must be
