@@ -1,3 +1,11 @@
+# 2026-07-14 接手补充：历史升级终态不得倒写真实版本
+
+- 现象：`/api/version` 已返回 `0.2.4`，页面先显示一瞬间 `0.2.4`，待持久化 `0.2.1 → 0.2.2 succeeded` 加载后又显示 `0.2.2`。
+- 修复：`panelUpdateSurface()` 使用 status/versionInfo 作为 observed current；历史 succeeded 仅在 toVersion 等于 observed current（或刚完成同一检测目标）时接管，历史 failed_rolled_back 仅在 fromVersion 等于当前版本时接管。活动任务和 rollback_failed 不受此规则削弱。
+- 影响文件：`frontend/src/games/stardew/panel-update-machine.ts`、`frontend/scripts/test-panel-update-machine.ts`；无 API、状态文件或升级 helper 变更。
+- 验证：新增“当前 0.1.16 + 历史 succeeded 0.1.15”回归，断言 current/target/topbar/overview 均保持 0.1.16；执行 panel update 状态脚本及生产构建。
+- 后续注意：历史状态只能解释同一目标或当前活动任务，任何页面都不得用旧 apply.toVersion 覆盖后端报告的更高实际 currentVersion。
+
 # 2026-07-14 接手补充：连续 Panel 升级状态修复
 
 ### 改了什么

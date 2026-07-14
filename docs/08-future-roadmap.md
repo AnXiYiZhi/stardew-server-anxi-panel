@@ -1,3 +1,9 @@
+# 2026-07-14 已完成：PANEL-UPDATE-HISTORY-STALE-1
+
+- [x] 真实当前版本高于历史成功目标时，不再出现“先显示新版本、再闪回旧版本”。
+- [x] succeeded/failed_rolled_back 仅在与当前版本相关时主导页面；活动任务与 rollback_failed 优先级保持不变。
+- [x] 增加异步加载旧 apply 状态的精确回归测试。
+
 # 2026-07-14 已完成：PANEL-UPDATE-CONTINUOUS-1 连续升级修复
 
 - [x] 历史成功升级不再覆盖后来发现的更高版本，也不再永久锁住下一次升级。
