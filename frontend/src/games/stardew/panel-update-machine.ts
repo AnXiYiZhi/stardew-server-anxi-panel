@@ -1,6 +1,6 @@
 import type { CurrentUser } from '../../types'
 import type { PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
-import { updateDisplayKind, withVersionPrefix } from './update-status.ts'
+import { updateDisplayKind, withoutVersionPrefix, withVersionPrefix } from './update-status.ts'
 
 export const ACTIVE_PANEL_UPDATE_PHASES = new Set([
   'checking',
@@ -57,7 +57,16 @@ export function panelUpdateSurface(
   versionInfo: VersionInfo | null,
 ): PanelUpdateSurface {
   const current = status?.currentVersion || versionInfo?.version || apply?.fromVersion || ''
-  const target = apply?.toVersion || status?.latestVersion || ''
+  const detectedTarget = status?.latestVersion || ''
+  const applyTarget = apply?.toVersion || ''
+  const applyOwnsSurface = isPanelUpdateActive(apply) || apply?.phase === 'rollback_failed'
+  const detectedUpdateSupersedesTerminal = !applyOwnsSurface
+    && updateDisplayKind(status) === 'available'
+    && Boolean(detectedTarget)
+    && withoutVersionPrefix(detectedTarget) !== withoutVersionPrefix(applyTarget)
+  const target = detectedUpdateSupersedesTerminal
+    ? detectedTarget
+    : applyTarget || detectedTarget
   if (apply && ACTIVE_PANEL_UPDATE_PHASES.has(apply.phase)) {
     if (apply.phase === 'rolling_back') {
       return {
@@ -73,7 +82,7 @@ export function panelUpdateSurface(
       overviewText: '正在升级…', tone: 'working',
     }
   }
-  if (apply?.phase === 'failed_rolled_back') {
+  if (apply?.phase === 'failed_rolled_back' && !detectedUpdateSupersedesTerminal) {
     return {
       currentVersion: current, targetVersion: target,
       topbarText: '升级失败，已恢复', mobileTopbarText: '已恢复', overviewText: '升级失败，已恢复', tone: 'restored',
@@ -85,7 +94,7 @@ export function panelUpdateSurface(
       topbarText: '升级需要处理', mobileTopbarText: '升级异常', overviewText: '自动恢复未完成', tone: 'error',
     }
   }
-  if (apply?.phase === 'succeeded') {
+  if (apply?.phase === 'succeeded' && !detectedUpdateSupersedesTerminal) {
     const upgraded = apply.toVersion || current
     return {
       currentVersion: upgraded, targetVersion: upgraded,
@@ -116,8 +125,18 @@ export function canStartPanelUpdate(
   dryRun: PanelUpdateDryRunStatus | null,
   apply: PanelUpdateApplyStatus | null,
 ): boolean {
-  const terminalBlocksRetry = apply?.phase === 'succeeded' || apply?.phase === 'rollback_failed'
-  return user.role === 'admin' && Boolean(status?.updateAvailable) && dryRun?.phase === 'succeeded' && !isPanelUpdateActive(apply) && !terminalBlocksRetry
+  const latestVersion = withoutVersionPrefix(status?.latestVersion)
+  const dryRunMatchesTarget = Boolean(latestVersion)
+    && withoutVersionPrefix(dryRun?.targetVersion) === latestVersion
+  const completedThisTarget = apply?.phase === 'succeeded'
+    && withoutVersionPrefix(apply.toVersion) === latestVersion
+  return user.role === 'admin'
+    && Boolean(status?.updateAvailable)
+    && dryRun?.phase === 'succeeded'
+    && dryRunMatchesTarget
+    && !isPanelUpdateActive(apply)
+    && apply?.phase !== 'rollback_failed'
+    && !completedThisTarget
 }
 
 export function reconnectDelay(attempt: number): number {

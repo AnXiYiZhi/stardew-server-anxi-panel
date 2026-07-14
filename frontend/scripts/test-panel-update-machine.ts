@@ -50,6 +50,25 @@ const succeeded = panelUpdateSurface(update, apply('succeeded', 100), null)
 assert.equal(succeeded.topbarText, 'v0.1.15')
 assert.equal(succeeded.overviewText, '✓ 最新')
 
+// 上一次升级成功记录只能解释它自己的目标，不能覆盖后续新版本。
+const nextUpdate: PanelUpdateStatus = {
+  ...update,
+  currentVersion: '0.1.15',
+  latestVersion: 'v0.1.16',
+}
+const nextDryRun: PanelUpdateDryRunStatus = {
+  ...dryRun,
+  id: 'dry-2',
+  targetVersion: '0.1.16',
+}
+const availableAfterSuccess = panelUpdateSurface(nextUpdate, apply('succeeded', 100), { version: '0.1.15' })
+assert.equal(availableAfterSuccess.currentVersion, '0.1.15')
+assert.equal(availableAfterSuccess.targetVersion, 'v0.1.16')
+assert.equal(availableAfterSuccess.topbarText, '发现新版本 v0.1.16')
+assert.equal(availableAfterSuccess.overviewText, '发现新版本 v0.1.16')
+assert.equal(panelUpdateSurface(nextUpdate, apply('pulling', 65), null).targetVersion, '0.1.15')
+assert.equal(panelUpdateSurface(nextUpdate, apply('rollback_failed', 100), null).targetVersion, '0.1.15')
+
 // 顶栏和总览由同一个 selector 读取同一份状态，不能各自推导出不同阶段。
 const shared = panelUpdateSurface(update, apply('recreating', 65), null)
 assert.equal(shared.topbarText, '正在升级 65%')
@@ -63,6 +82,9 @@ assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, up
 assert.equal(canStartPanelUpdate({ id: 2, username: 'player', role: 'user' }, update, dryRun, null), false)
 assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, update, dryRun, apply('pulling')), false)
 assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, update, dryRun, apply('succeeded')), false)
+assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, nextUpdate, dryRun, apply('succeeded')), false)
+assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, nextUpdate, nextDryRun, apply('succeeded')), true)
+assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, nextUpdate, nextDryRun, apply('rollback_failed')), false)
 assert.equal(isPanelUpdateActive(apply('waiting_health')), true)
 assert.equal(isPanelUpdateTerminal(apply('failed_rolled_back')), true)
 assert.deepEqual([0, 1, 2, 6, 20].map(reconnectDelay), [800, 1200, 2000, 10000, 10000])
