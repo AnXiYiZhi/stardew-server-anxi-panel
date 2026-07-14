@@ -1,3 +1,9 @@
+# JUNIMO-ROLLBACK-STATE-1 联调补充（2026-07-14）
+
+- 回滚期间 Compose 仍消费临时 digest pin；回滚流程退出前必须恢复 `original.env` 中的可信 tag 引用，确保 `GET /junimo-update` 能继续返回正确版本状态。
+- `rollback_failed` 即使容器已恢复健康也仍是安全锁；前端必须优先呈现人工处理状态，不能因同时出现 `invalid_config` 或接口读取失败而显示“无需操作”。
+- 本次没有变更接口 schema；新增内部错误码 `rollback_restore_final_env_failed` 用于最终 `.env` 恢复失败。
+
 # PANEL-0.2.2 / JUNIMO-125 联调契约（2026-07-14）
 
 - `0.2.2` 推荐版本对为 server `.125` + auth-cn `1.5.0-anxi.2`。当前 `.121` + auth-cn 配置返回 `supported=true,status=update_available,available=true`，不会返回 unsupported，也不会阻止其他实例 API。

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoPairMatches, junimoUpdateStatusLabel } from '../src/games/stardew/junimo-update-status.ts'
+import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../src/games/stardew/junimo-update-status.ts'
 
 assert.equal(junimoUpdateStatusLabel('up_to_date'), '推荐版本对已匹配')
 assert.equal(junimoUpdateStatusLabel('update_available'), 'Junimo 运行组件可更新')
@@ -16,6 +16,11 @@ assert.equal(junimoApplyPhaseLabel('verifying_auth'), '验证 Steam 登录')
 assert.equal(junimoApplyPhaseLabel('failed_rolled_back'), '升级失败，已成功回滚')
 assert.equal(junimoApplyPhaseLabel('rollback_failed'), '自动回滚失败，需人工处理')
 assert.equal(junimoApplyActive('rolling_back'), true)
+assert.equal(junimoMaintenanceNeedsAttention('up_to_date'), false)
+assert.equal(junimoMaintenanceNeedsAttention('update_available'), true)
+assert.equal(junimoMaintenanceNeedsAttention('invalid_config'), true)
+assert.equal(junimoMaintenanceNeedsAttention('up_to_date', false, 'rollback_failed'), true)
+assert.equal(junimoMaintenanceNeedsAttention(undefined, false, undefined, true), true)
 assert.equal(junimoApplyActive('succeeded'), false)
 assert.equal(junimoApplyActive('failed_rolled_back'), false)
 assert.equal(junimoApplyActive('rollback_failed'), false)

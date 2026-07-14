@@ -1,3 +1,15 @@
+# 2026-07-14 接手补充：维护卡片不得伪报无需操作
+
+## 改了什么
+- 维护摘要新增检查中状态；`invalid_config`、非标准矩阵、接口错误和 `rollback_failed` 均进入需要关注。
+- `rollback_failed` 只提供人工恢复说明和管理员详情入口，不显示普通升级动作。
+## 影响接口/文件
+- 无接口变化；影响 `DiagnosticsPage.tsx`、`junimo-update-status.ts`、`test-junimo-update-status.ts`。
+## 如何验证
+- `pnpm run test:junimo-update` 与 `pnpm run build`。
+## 下一步注意事项
+- 只有明确 `up_to_date` 且没有活动/失败终态时，才能显示“已是推荐版本”；加载中或读取失败不能使用绿色完成态。
+
 # 2026-07-14 接手补充：历史升级终态不得倒写真实版本
 
 - 现象：`/api/version` 已返回 `0.2.4`，页面先显示一瞬间 `0.2.4`，待持久化 `0.2.1 → 0.2.2 succeeded` 加载后又显示 `0.2.2`。

@@ -196,7 +196,7 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	}
 }
 
-func TestRuntimeUpdateApplyRecordsRunningContainerImageIDsDespiteTagDrift(t *testing.T) {
+func TestRuntimeUpdateApplyPinsRunningContainerImageIDsWithoutPersistingDigestConfig(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
 	fake.metadata["sdvd/server:1.4.0-preview.1"] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("d", 64), Digest: "sha256:" + strings.Repeat("d", 64)}
 	fake.metadata["anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1"] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("e", 64), Digest: "sha256:" + strings.Repeat("e", 64)}
@@ -213,8 +213,12 @@ func TestRuntimeUpdateApplyRecordsRunningContainerImageIDsDespiteTagDrift(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env["SERVER_IMAGE"] != "sha256:"+strings.Repeat("b", 64) || env["STEAM_SERVICE_IMAGE"] != "sha256:"+strings.Repeat("c", 64) {
-		t.Fatalf("rollback did not pin actual container images: %#v", env)
+	if env["SERVER_IMAGE"] != "sdvd/server:1.4.0-preview.1" || env["STEAM_SERVICE_IMAGE"] != "anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1" {
+		t.Fatalf("rollback leaked temporary digest pins into persistent config: %#v", env)
+	}
+	inspection := sjconfig.InspectRuntimeStack(instance.DataDir, true)
+	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || !inspection.Available {
+		t.Fatalf("restored tagged config no longer reports the recommended update: %#v", inspection)
 	}
 }
 
@@ -280,6 +284,13 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 			status := waitRuntimeApply(t, driver, instance)
 			if status.Phase != test.want {
 				t.Fatalf("phase=%s error=%s", status.Phase, status.Error)
+			}
+			env, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasPrefix(env["SERVER_IMAGE"], "sha256:") || strings.HasPrefix(env["STEAM_SERVICE_IMAGE"], "sha256:") {
+				t.Fatalf("rollback terminal state leaked temporary digest pins: %#v", env)
 			}
 			calls := strings.Join(fake.applyCalls, "\n")
 			if test.want == RuntimeUpdateApplyFailedRolledBack && (!strings.Contains(calls, "volume restore snapshot") || !strings.Contains(calls, "up steam-auth") || !strings.Contains(calls, "up server")) {

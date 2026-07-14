@@ -1,3 +1,10 @@
+# FE-MAINTENANCE-TRUTHFUL-STATE-1 维护卡片真实状态（2026-07-14）
+
+- 版本维护卡片只有在状态明确完成检查且无待处理项时才显示“已是推荐版本/不用做任何事”；初始加载改为“检查中”。
+- `invalid_config`、自定义镜像、撤回矩阵、接口读取失败以及 `rollback_failed` 都计入需要关注，不能再被折叠成绿色无操作状态。
+- `rollback_failed` 显示人工恢复说明和“查看管理员详情”，不再复用普通更新的版本箭头、升级描述或自动操作按钮。
+- 影响文件为 `DiagnosticsPage.tsx`、`junimo-update-status.ts` 与状态脚本；无 API 或请求体变化。
+
 # PANEL-UPDATE-HISTORY-STALE-1 历史终态与真实版本解耦（2026-07-14）
 
 - 修复外部完成 `0.2.4` 更新后，页面先显示真实 `0.2.4`、再被历史 `0.2.2 succeeded` 倒写的问题。
