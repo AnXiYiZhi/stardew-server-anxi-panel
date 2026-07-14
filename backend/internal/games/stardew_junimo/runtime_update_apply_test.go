@@ -80,7 +80,7 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, _ st
 }
 func (f *runtimeApplyFakeDocker) targetConfigured(dataDir string) bool {
 	env, _ := os.ReadFile(filepath.Join(dataDir, ".env"))
-	return strings.Contains(string(env), "IMAGE_VERSION=1.5.0-preview.121")
+	return strings.Contains(string(env), "IMAGE_VERSION=1.5.0-preview.125")
 }
 func (f *runtimeApplyFakeDocker) RuntimeServiceInspect(_ context.Context, dataDir, _ string, service string) (paneldocker.RuntimeServiceMetadata, error) {
 	digest := "sha256:" + strings.Repeat("a", 64)
@@ -182,7 +182,7 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	}
 	env, _ := os.ReadFile(filepath.Join(instance.DataDir, ".env"))
 	text := string(env)
-	if !strings.Contains(text, "IMAGE_VERSION=1.5.0-preview.121") || !strings.Contains(text, "STEAM_SERVICE_IMAGE=") {
+	if !strings.Contains(text, "IMAGE_VERSION=1.5.0-preview.125") || !strings.Contains(text, "STEAM_SERVICE_IMAGE=") {
 		t.Fatalf("version pair not written: %s", text)
 	}
 	calls := strings.Join(fake.applyCalls, "\n")

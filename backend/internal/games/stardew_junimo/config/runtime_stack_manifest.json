@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.121_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2",
+  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2",
   "channel": "preview",
-  "minimumPanelVersion": "0.1.14",
+  "minimumPanelVersion": "0.2.2",
   "server": {
-    "tag": "1.5.0-preview.121",
+    "tag": "1.5.0-preview.125",
     "images": [
-      "sdvd/server:1.5.0-preview.121"
+      "sdvd/server:1.5.0-preview.125"
     ],
     "digests": {
-      "sdvd/server:1.5.0-preview.121": "sha256:98d4b89a543e0fbed703d7df177874beff65a2f1fe12967238cfa59f3a82db6b"
+      "sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6"
     }
   },
   "steamAuth": {
@@ -53,7 +53,9 @@
   },
   "status": "recommended",
   "releaseNotes": [
-    "Junimo server、steam-auth-cn、游戏、SDK、SMAPI 与控制 Mod 已固定为统一兼容组合。",
+    "Panel 0.2.2 推荐 JunimoServer 1.5.0-preview.125；现有 1.5.0-preview.121 实例可继续使用并由管理员自愿升级。",
+    "steam-service 在 preview.121 到 preview.125 之间协议未变化，现有 steam-auth-cn 1.5.0-anxi.2 已验证与 server preview.125 配对兼容。",
+    "preview.125 继续保留 23 个 /etc/cont-*.d init 兼容挂载，避免裸静态值被容器 init 当作命令执行。",
     "各组件更新继续通过独立 staging、验收和回滚事务执行，不提供无条件 latest 更新。"
   ]
 }

@@ -1,3 +1,10 @@
+# PANEL-0.2.2 / JUNIMO-125 联调契约（2026-07-14）
+
+- `0.2.2` 推荐版本对为 server `.125` + auth-cn `1.5.0-anxi.2`。当前 `.121` + auth-cn 配置返回 `supported=true,status=update_available,available=true`，不会返回 unsupported，也不会阻止其他实例 API。
+- 新安装写入 `.125`；旧实例只有管理员显式 POST dry-run、确认 apply 后才会改变 `.env` 和容器。仅查看提示、升级 Panel 或普通用户登录不得自动拉取、停服或修改实例。
+- `.125` 继续使用现有 HTTP 路由、server/steam-auth Compose 服务、设置契约、邀请码文件和 Control 文件协议；`/status` 新增字段由旧客户端忽略。
+- 验收必须覆盖 `.121` 继续运行、`.121`→`.125` 成功、失败回滚到 `.121`、23 个 init 兼容挂载、auth ticket、邀请码、Control 状态/玩家文件及 VNC/字体。
+
 # JUNIMO-STACK-UPDATE-1 阶段二 dry-run 联调契约（2026-07-13）
 
 - `POST /api/instances/:id/junimo-update/dry-run` 仅管理员，空 body 或严格 `{}`，成功 `202`；任何目标/命令字段返回 `400 dry_run_body_not_allowed`。不支持/忙碌返回 409（如 `not_installed`、`unsupported/custom_images`、`invalid_config/*`、`runtime_update_busy`）。
