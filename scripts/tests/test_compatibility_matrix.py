@@ -25,6 +25,18 @@ class CompatibilityMatrixTests(unittest.TestCase):
         with self.assertRaises(MATRIX.MatrixError):
             MATRIX.validate(value)
 
+    def test_image_aliases_must_share_one_digest(self):
+        value = copy.deepcopy(self.base)
+        value["server"]["digests"][value["server"]["images"][1]] = "sha256:" + "f" * 64
+        with self.assertRaisesRegex(MATRIX.MatrixError, "share one canonical digest"):
+            MATRIX.validate(value)
+
+    def test_required_remote_image_policy(self):
+        self.assertTrue(MATRIX.required_remote_image("sdvd/server:1.2.3"))
+        self.assertTrue(MATRIX.required_remote_image("ghcr.io/anxiyizhi/example:1.2.3"))
+        self.assertTrue(MATRIX.required_remote_image("crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/example:1.2.3"))
+        self.assertFalse(MATRIX.required_remote_image("docker.1ms.run/sdvd/server:1.2.3"))
+
     def test_latest_and_incomplete_auth_source_are_rejected(self):
         value = copy.deepcopy(self.base)
         value["steamAuth"]["tag"] = "latest"

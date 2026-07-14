@@ -405,7 +405,13 @@ func validateManifestComponent(kind string, component RuntimeStackManifestCompon
 	if len(component.Images) == 0 || strings.TrimSpace(component.Image) == "" {
 		return fmt.Errorf("%s images are required", kind)
 	}
+	canonicalDigest := ""
+	seenImages := make(map[string]struct{}, len(component.Images))
 	for _, ref := range component.Images {
+		if _, exists := seenImages[ref]; exists {
+			return fmt.Errorf("%s image %q is duplicated", kind, ref)
+		}
+		seenImages[ref] = struct{}{}
 		repository, imageTag, err := parseRuntimeImageRef(ref)
 		if err != nil {
 			return fmt.Errorf("%s image %q: %w", kind, ref, err)
@@ -419,6 +425,12 @@ func validateManifestComponent(kind string, component RuntimeStackManifestCompon
 		digest, ok := component.Digests[ref]
 		if !ok || !validRuntimeDigest(digest) {
 			return fmt.Errorf("%s image %q must have an exact sha256 digest", kind, ref)
+		}
+		digest = strings.ToLower(strings.TrimSpace(digest))
+		if canonicalDigest == "" {
+			canonicalDigest = digest
+		} else if digest != canonicalDigest {
+			return fmt.Errorf("%s image %q does not match the canonical digest", kind, ref)
 		}
 	}
 	for ref := range component.Digests {

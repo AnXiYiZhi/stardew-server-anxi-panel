@@ -1,3 +1,26 @@
+# 2026-07-14 接手补充：升级矩阵复用安装镜像候选
+
+### 改了什么
+
+- server 升级候选改为 `dockerproxy.net → docker.1ms.run → docker.1panel.live → docker.jiaxin.site → dockerproxy.link → Docker Hub`；steam-auth-cn 候选改为 `1ms → ACR → DaoCloud → GHCR → Docker Hub`，与安装常量完全同序。
+- 所有别名仍分别登记精确 ref，但同一组件只能有一个 canonical digest。运行时任何拉取失败、digest 缺失或不一致都会继续后续候选，不接受实例 `.env` 注入目标。
+- release gate 对 canonical Docker Hub 和自有 ACR/GHCR 严格要求在线；第三方代理暂时不可达只告警，但一旦可访问则 digest 不一致会立即失败。
+
+### 影响接口与文件
+
+- 无 API/响应字段变化。
+- 修改 `config/runtime_stack_manifest.json`、`config/runtime_stack.go`、`config/runtime_stack_test.go`、`scripts/compatibility_matrix.py` 和脚本单测。
+
+### 如何验证
+
+- `go test ./internal/games/stardew_junimo/config ./internal/games/stardew_junimo`。
+- `python scripts/compatibility_matrix.py validate ...`、Python 单测与 `verify-remote-artifacts`；远程核验确认可访问别名 digest 一致，三个第三方 server 代理当前不可达时仅告警。
+
+### 下一步注意事项
+
+- 修改安装候选顺序时必须同步更新嵌入矩阵，否则 `TestBuiltInRuntimeStackManifestIsValid` 应阻止合并。
+- 不要把“代理返回的不同 digest”加入矩阵；即使层内容看似相同，也只能接受与 canonical OCI index digest 完全一致的别名。
+
 # JUNIMO-STACK-UPDATE-1 阶段二 dry-run 接手记录（2026-07-13）
 
 ## 改了什么

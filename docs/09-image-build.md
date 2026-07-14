@@ -1,3 +1,10 @@
+# PANEL-0.2.6 升级镜像候选回退说明（2026-07-14）
+
+- `v0.2.6` 将 Junimo server 和 steam-auth-cn 的升级矩阵候选扩展为安装流程的完整同序列表，解决国内环境只能直连 Docker Hub 拉取 `.125` 的问题。
+- server canonical digest 仍为 `sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6`；auth canonical digest 仍为 `sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518`。每个别名必须与对应 canonical digest 完全一致。
+- release gate 严格验证 Docker Hub canonical 和自有 ACR/GHCR；第三方代理临时不可达只产生 warning，可访问但 digest 不一致仍直接失败。运行时按候选顺序安全回退。
+- 发布不改变 `.121` 可继续使用的语义，不自动执行预检/升级，也不改变 23 个 init 兼容挂载。
+
 # PANEL-0.2.5 历史版本闪回修复说明（2026-07-14）
 
 - `v0.2.5` 修复真实 `/api/version=0.2.4` 被旧 `apply-status.json` 中 `toVersion=0.2.2` 覆盖的问题；不删除历史状态、备份或日志。

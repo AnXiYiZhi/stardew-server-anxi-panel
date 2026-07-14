@@ -1,3 +1,11 @@
+# RUNTIME-MATRIX-MIRRORS-1 升级候选与安装顺序统一（2026-07-14）
+
+- `runtime_stack_manifest.json` 的 server 与 steam-auth-cn `images` 已扩展为安装流程使用的完整候选列表，顺序分别与 `DefaultServerImageCandidates`、`DefaultSteamServiceImageCandidates` 完全一致。运行组件预检按该顺序 inspect/pull，失败自动继续下一候选。
+- 每个镜像别名都必须绑定同一 canonical OCI index digest；Go 清单校验新增候选去重与同 digest 强制约束，禁止通过为代理记录不同 digest 放宽内容身份。
+- Go 回归测试强制矩阵候选和安装默认候选逐项、逐序一致，并验证所有 alias digest 相同，防止两套流程再次漂移。
+- 发布侧 `compatibility_matrix.py` 同步强制单一 canonical digest。Docker Hub canonical 及自有 ACR/GHCR 必须可访问且匹配；第三方代理可访问时必须匹配，临时不可达仅告警，因为运行时会安全回退。
+- API、请求体、升级状态文件、停服/备份/回滚流程均未改变；用户 `.env` 中的任意自定义地址不会进入可信升级候选。
+
 # PANEL-0.2.2 / JUNIMO-125 推荐矩阵（2026-07-14）
 
 - Panel `0.2.2` 的内嵌推荐运行矩阵更新为 JunimoServer `1.5.0-preview.125` + steam-auth-cn `1.5.0-anxi.2`；server Docker Hub 索引 digest 固定为 `sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6`，`minimumPanelVersion` 为 `0.2.2`。
