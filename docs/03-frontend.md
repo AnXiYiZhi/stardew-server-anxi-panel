@@ -2162,3 +2162,9 @@ npm.cmd run dev
 - Junimo 镜像下载直接展示当前组件、完成层数/总层数和百分比；失败或回滚失败继续留在维护区，不会错误退回“无需处理”。
 - 游戏/SDK 当前只有安全预检能力，卡片明确显示“仅校验”，不伪造尚未存在的在线安装进度。
 - “维护与技术详情”保留原始 checks、镜像、digest、日志和恢复原因，作为管理员/开发者排障信息，不再承载主要升级入口。
+# FE-COMPONENT-UPDATE-GENERATION-1 组件升级任务代际绑定（2026-07-14）
+
+- Junimo 与 SMAPI 一键升级不再用一个布尔值衔接 dry-run/apply；每次点击只在 POST dry-run 返回新任务 ID 后建立本地请求代际，且只有同一 `dryRunId`/`updateId` 达到 `succeeded` 才提交 apply。
+- 使用 ref 记录已经提交 apply 的预检 ID，阻止 React effect 重入或 StrictMode 造成重复 POST；开始新任务时清除旧本地工作流，旧 `succeeded` 不再抢跑。
+- 卡片按 `startedAt` 选择较新的 dry-run/apply，新的预检会覆盖历史 `failed_rolled_back` 展示，新的 apply 启动后再接管进度。
+- 新增 `test:component-update-flow` 和 `qa-layout.html?...&junimoWorkflow=race-retry`：稳定模拟旧成功预检、旧失败 apply 和延迟的新 POST，验证一次点击严格按 dry-run→apply 执行。

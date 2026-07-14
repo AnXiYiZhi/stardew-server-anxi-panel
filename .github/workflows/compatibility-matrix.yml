@@ -47,6 +47,7 @@ jobs:
           npm run test:update-status
           npm run test:panel-update
           npm run test:junimo-update
+          npm run test:component-update-flow
           npm run test:runtime-components
           npm run test:smapi-update
           npm run build

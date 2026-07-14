@@ -1,3 +1,9 @@
+# PANEL-0.2.10 组件升级竞态修复发布（2026-07-15）
+
+- `v0.2.10` 修复 Junimo/SMAPI 一键升级误用历史成功预检、导致新预检与 apply 抢跑，以及旧失败终态覆盖新任务进度的问题。
+- 发布前必须通过 `test:component-update-flow` 和本地 `junimoWorkflow=race-retry` 点击验证；预期一次点击只有一个新 dry-run POST、成功轮询后才有一个 apply POST，且不得出现提前 apply 的 409。
+- Tag 继续触发 `.github/workflows/release.yml` 的完整矩阵、远程制品、Go/Docker integration、前端全量状态测试与生产构建，通过后发布三个仓库的 `0.2.10` 和 `latest`。
+
 # PANEL-0.2.8 单卡片交互覆盖发布（2026-07-14）
 
 - 按维护者要求复用并强制更新 `v0.2.8` tag；三个镜像仓库的 `0.2.8` 与 `latest` 都必须由新的 tag commit 重新构建覆盖，不得仅在服务器本地改文件。
@@ -662,3 +668,8 @@ steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel reposito
 - `v0.2.9` 修复 `.125` 容器和 Junimo health 已正常却因 `attach-cli -T` 固定失败、等待五分钟后错误回滚的问题。
 - 正式镜像必须包含 FIFO `info` 控制契约验收与回归测试；不得删除 digest、Steam ticket、SMAPI/control、邀请码或恢复状态门槛。
 - tag 发布继续由 `.github/workflows/release.yml` 执行完整矩阵、远程制品、Go/Docker integration、前端状态脚本与生产构建，并覆盖三个仓库的 `0.2.9` 和 `latest`。
+# COMPONENT-UPDATE-FLOW-GATE-1 发布前一键升级编排验证（2026-07-14）
+
+- 正式发布工作流与兼容矩阵工作流新增 `npm run test:component-update-flow`，验证新点击只能消费本次 dry-run ID、apply 不得抢跑或重复提交、较新工作流必须覆盖历史终态。
+- 发版前还必须运行本地 QA `junimoWorkflow=race-retry`：初始提供旧 `succeeded` dry-run 与旧 `failed_rolled_back` apply，POST 新 dry-run 故意延迟；一次点击的事件必须是新 dry-run POST/成功轮询后才有 apply POST，且不得出现 `apply:POST-rejected`。
+- 未通过上述状态测试、本地点击验证或生产构建时不得打 tag；该门禁从下一次 Panel 发布开始生效。
