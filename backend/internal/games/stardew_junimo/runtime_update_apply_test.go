@@ -25,6 +25,7 @@ type runtimeApplyFakeDocker struct {
 	authReady, authTicket  bool
 	authFailTarget         bool
 	serverHealthFailTarget bool
+	controlContractFail    bool
 	digestMismatchService  string
 	upErrorService         string
 	restoreError           bool
@@ -54,10 +55,19 @@ func (f *runtimeApplyFakeDocker) ComposeRestartServices(context.Context, string,
 	f.applyCall("compose restart services")
 	return paneldocker.CommandResult{}, nil
 }
-func (f *runtimeApplyFakeDocker) ComposeExecPipe(_ context.Context, _ string, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
-	f.applyCall("compose exec " + service)
+func (f *runtimeApplyFakeDocker) ComposeExecPipe(_ context.Context, dataDir string, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
+	f.applyCall("compose exec " + service + " " + strings.Join(args, " "))
 	if service == "server" && len(args) > 0 && args[0] == "cat" {
 		return paneldocker.CommandResult{Stdout: "ABC123\n"}, nil
+	}
+	if service == "server" && len(args) > 0 && args[0] == "wc" {
+		return paneldocker.CommandResult{Stdout: "128 /tmp/server-output.log\n"}, nil
+	}
+	if service == "server" && len(args) > 0 && args[0] == "tail" {
+		if f.targetConfigured(dataDir) && f.controlContractFail {
+			return paneldocker.CommandResult{}, nil
+		}
+		return paneldocker.CommandResult{Stdout: "[INFO JunimoServer] --- Server Info ---\n[INFO JunimoServer] Status: Ready\n"}, nil
 	}
 	return paneldocker.CommandResult{Stdout: "Junimo API ok\nABC123\n"}, nil
 }
@@ -194,6 +204,9 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	if !strings.Contains(calls, "up steam-auth") || !strings.Contains(calls, "up server") {
 		t.Fatalf("pair not recreated: %s", calls)
 	}
+	if !strings.Contains(calls, "tee -a "+serverInputFIFO) || strings.Contains(calls, "attach-cli") {
+		t.Fatalf("runtime verification did not use the FIFO control contract: %s", calls)
+	}
 }
 
 func TestRuntimeUpdateApplyPinsRunningContainerImageIDsWithoutPersistingDigestConfig(t *testing.T) {
@@ -271,6 +284,7 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 		{"auth not ready", func(f *runtimeApplyFakeDocker) { f.authFailTarget = true; f.authReady = false }, RuntimeUpdateApplyFailedRolledBack},
 		{"auth ticket missing", func(f *runtimeApplyFakeDocker) { f.authFailTarget = true; f.authReady = true; f.authTicket = false }, RuntimeUpdateApplyFailedRolledBack},
 		{"server health", func(f *runtimeApplyFakeDocker) { f.serverHealthFailTarget = true }, RuntimeUpdateApplyFailedRolledBack},
+		{"server control contract", func(f *runtimeApplyFakeDocker) { f.controlContractFail = true }, RuntimeUpdateApplyFailedRolledBack},
 		{"auth digest mismatch", func(f *runtimeApplyFakeDocker) { f.digestMismatchService = "steam-auth" }, RuntimeUpdateApplyFailedRolledBack},
 		{"server digest mismatch", func(f *runtimeApplyFakeDocker) { f.digestMismatchService = "server" }, RuntimeUpdateApplyFailedRolledBack},
 		{"rollback failed", func(f *runtimeApplyFakeDocker) { f.authFailTarget = true; f.authReady = false; f.restoreError = true }, RuntimeUpdateApplyRollbackFailed},

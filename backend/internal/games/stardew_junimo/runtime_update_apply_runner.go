@@ -3,8 +3,10 @@ package stardew_junimo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -353,14 +355,13 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 		} else if docker.RuntimeServerHealth(ctx, instance.DataDir, manifest.Project) != nil {
 			lastFailure = "junimo_health_not_ready"
 		} else {
-			contract, contractErr := docker.ComposeExecPipe(ctx, instance.DataDir, "server", "info\nquit\n", "attach-cli")
 			controlState := readSMAPIStatus(instance.DataDir)
-			if contractErr != nil || strings.TrimSpace(contract.Stdout) == "" {
-				lastFailure = "junimo_contract_not_ready"
-			} else if controlState != "launched" && controlState != "save-loaded" {
+			if controlState != "launched" && controlState != "save-loaded" {
 				lastFailure = "smapi_runtime_not_ready"
 			} else if !commandResultSupported(instance.DataDir) {
 				lastFailure = "control_contract_not_ready"
+			} else if !runtimeInfoContractReady(ctx, docker, instance.DataDir) {
+				lastFailure = "junimo_contract_not_ready"
 			} else if stored, storeErr := d.store.GetInstance(ctx, instance.ID); storeErr != nil {
 				lastFailure = "instance_state_unavailable"
 			} else {
@@ -378,6 +379,44 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 		}
 	}
 	return errors.New(lastFailure)
+}
+
+// runtimeInfoContractReady verifies the same FIFO-backed control path used by
+// normal Panel console commands. Junimo's attach-cli is a tmux UI and rejects
+// docker compose exec -T with "not a terminal", so it must not be used as a
+// one-shot health probe.
+func runtimeInfoContractReady(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir string) bool {
+	sizeResult, err := docker.ComposeExecPipe(ctx, dataDir, "server", "", "wc", "-c", serverOutputLog)
+	if err != nil {
+		return false
+	}
+	fields := strings.Fields(sizeResult.Stdout)
+	if len(fields) == 0 {
+		return false
+	}
+	offset, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil || offset < 0 {
+		return false
+	}
+	if _, err := docker.ComposeExecPipe(ctx, dataDir, "server", "info\n", "tee", "-a", serverInputFIFO); err != nil {
+		return false
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		result, tailErr := docker.ComposeExecPipe(ctx, dataDir, "server", "", "tail", "-c", fmt.Sprintf("+%d", offset+1), serverOutputLog)
+		if tailErr == nil && strings.Contains(stripControlChars(result.Stdout), "--- Server Info ---") {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func (d *Driver) restoreRuntimeRunningState(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {

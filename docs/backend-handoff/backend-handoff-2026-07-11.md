@@ -671,3 +671,25 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 ### 下一步注意事项
 
 - 历史 `rollback_failed` 继续作为安全锁，若要提供“重新验证恢复状态”必须设计显式管理员动作并完整验证原版本对，禁止在 GET 或 Panel 启动时静默清理。
+# 2026-07-14 接手补充：Junimo 升级 FIFO 验收
+
+## 改了什么
+
+- `verifyRuntimeTarget` 删除非 TTY 的 `attach-cli` 一次性调用，新增 `runtimeInfoContractReady`，通过 `/tmp/smapi-input` 与 `/tmp/server-output.log` 验证真实 Junimo `info` 控制链路。
+- 新读取严格从发送命令前的日志字节偏移开始，只有新的 `--- Server Info ---` 响应才算通过；不把响应正文持久化。
+
+## 影响接口/文件
+
+- 无 HTTP API、状态枚举或前端契约变化。
+- 影响 `backend/internal/games/stardew_junimo/runtime_update_apply_runner.go` 与对应 apply 回归测试。
+
+## 如何验证
+
+- `go test ./internal/games/stardew_junimo -run RuntimeUpdateApply -count=1`
+- 发布门禁继续运行全量 Go、Docker integration 与前端状态/构建测试。
+- 真实实例确认 `info` 经 FIFO 产生 `--- Server Info ---`，且 `attach-cli -T` 的已知错误不再参与验收。
+
+## 下一步注意事项
+
+- 不要把 `attach-cli` 重新用于无 TTY 的探针；若未来修改 Junimo 控制协议，应优先扩展现有 FIFO/控制 Mod 契约。
+- 验收响应可能包含邀请码，任何新增诊断都只能记录通过/失败，不得保存原始输出。
