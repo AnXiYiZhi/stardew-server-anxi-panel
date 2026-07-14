@@ -1,3 +1,9 @@
+# 2026-07-14 已完成：JUNIMO-ROLLBACK-TAG-RESTORE-1
+
+- [x] 回滚重建期间使用精确 image ID，退出时恢复原始 tag 配置，避免裸 digest 破坏版本检测。
+- [x] `rollback_failed`、`invalid_config` 和读取失败不再显示“已是推荐版本/不用做任何事”。
+- [x] 增加后端回滚终态和前端维护判断回归测试。
+
 # 2026-07-14 已完成：RUN-SH-LATEST-UPDATE-1
 
 - [x] `run.sh update/force-update` 未指定版本时自动解析最新正式 Release，不再被 `.env` 中旧的精确镜像 tag 截停。

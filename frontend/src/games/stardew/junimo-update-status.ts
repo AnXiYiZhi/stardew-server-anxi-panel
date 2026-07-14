@@ -40,6 +40,17 @@ export function junimoApplyActive(phase?: JunimoUpdateApplyPhase): boolean {
   return !!phase && !['idle', 'succeeded', 'failed_rolled_back', 'rollback_failed'].includes(phase)
 }
 
+export function junimoMaintenanceNeedsAttention(
+  status?: JunimoUpdateStatus,
+  available = false,
+  applyPhase?: JunimoUpdateApplyPhase,
+  loadFailed = false,
+): boolean {
+  if (loadFailed || applyPhase === 'rollback_failed' || junimoApplyActive(applyPhase)) return true
+  if (available || status === 'update_available') return true
+  return !!status && !['up_to_date', 'not_installed'].includes(status)
+}
+
 export function junimoApplyPhaseLabel(phase?: JunimoUpdateApplyPhase): string {
   const labels: Record<JunimoUpdateApplyPhase, string> = {
     idle: '尚未执行升级', checking: '重新预检', pulling: '拉取版本对', backing_up: '保护认证卷', stopping: '安全停服',

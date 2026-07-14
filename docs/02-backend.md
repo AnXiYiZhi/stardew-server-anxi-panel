@@ -1,3 +1,10 @@
+# JUNIMO-ROLLBACK-TAG-RESTORE-1 回滚后版本检测修复（2026-07-14）
+
+- Junimo 成对升级回滚仍先把 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE` 临时固定为升级前实际运行的 image ID，确保 tag 漂移时也只重建原 digest。
+- 回滚函数现在在所有退出路径再次原子恢复 recovery 中的 `original.env`；成功回滚与 `rollback_failed` 都不会把裸 `sha256:` 固化进实例配置。
+- 若最终配置恢复失败，状态使用 `rollback_restore_final_env_failed`，保留 recovery 并继续进入人工处理，不会伪报安全回滚。
+- 回归测试覆盖成功回滚、各类失败及 `rollback_failed`，并确认恢复后的可信 tag 配置重新返回 `.121 → .125 update_available`。
+
 # RUNTIME-MATRIX-MIRRORS-1 升级候选与安装顺序统一（2026-07-14）
 
 - `runtime_stack_manifest.json` 的 server 与 steam-auth-cn `images` 已扩展为安装流程使用的完整候选列表，顺序分别与 `DefaultServerImageCandidates`、`DefaultSteamServiceImageCandidates` 完全一致。运行组件预检按该顺序 inspect/pull，失败自动继续下一候选。

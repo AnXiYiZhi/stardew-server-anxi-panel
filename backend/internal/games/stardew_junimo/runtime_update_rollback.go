@@ -54,6 +54,8 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 func runtimeUpdateRollbackFailure(err error) (string, string) {
 	message := err.Error()
 	switch {
+	case strings.Contains(message, "restore original env after pinned rollback:"):
+		return "rollback_restore_final_env_failed", "无法在精确镜像回滚后恢复升级前的版本配置。"
 	case strings.HasPrefix(message, "stop new runtime pair:"):
 		return "rollback_stop_new_pair_failed", "无法停止新版 server/auth。"
 	case strings.HasPrefix(message, "restore env:"):
@@ -79,7 +81,7 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 	}
 }
 
-func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
+func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) (resultErr error) {
 	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated {
 		if err := docker.RuntimeComposeStopServices(ctx, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
 			return fmt.Errorf("stop new runtime pair: %w", err)
@@ -94,6 +96,19 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 	if err := pinRuntimeRollbackImages(instance.DataDir, manifest); err != nil {
 		return fmt.Errorf("pin original runtime images: %w", err)
 	}
+	// Recreate the old pair from the exact image IDs captured before the upgrade,
+	// but never persist those temporary digest pins. The normal stack inspector
+	// intentionally classifies supported versions from trusted tagged refs.
+	defer func() {
+		if err := restoreRuntimeRecoveryFile(instance.DataDir, manifest.ApplyID, "original.env", ".env"); err != nil {
+			restoreErr := fmt.Errorf("restore original env after pinned rollback: %w", err)
+			if resultErr == nil {
+				resultErr = restoreErr
+				return
+			}
+			resultErr = fmt.Errorf("%v; %w", resultErr, restoreErr)
+		}
+	}()
 	if manifest.AuthRecreated {
 		if err := docker.RuntimeRestoreVolume(ctx, instance.DataDir, manifest.SnapshotVolume, manifest.SteamSessionVolume, manifest.OriginalServer.Image); err != nil {
 			return fmt.Errorf("restore steam session: %w", err)

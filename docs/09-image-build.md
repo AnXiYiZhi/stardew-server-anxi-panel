@@ -1,3 +1,9 @@
+# PANEL-0.2.8 回滚版本检测与维护提示修复（2026-07-14）
+
+- `v0.2.8` 修复 Junimo 升级回滚把临时 image ID 永久写入 `.env`、导致 `.121 → .125` 推荐更新消失的问题。
+- 回滚容器仍按升级前精确 digest 重建；完成或失败退出时恢复原始 tag 配置。最终恢复失败继续保留 recovery 并进入人工处理。
+- 维护卡片对 `rollback_failed`、`invalid_config` 和读取失败显示需要关注，不再显示绿色“无需操作”。推荐矩阵、镜像候选和 23 个 init 兼容挂载不变。
+
 # RUN-SH-LATEST-UPDATE-1 自动解析更新目标（2026-07-14）
 
 - `deploy/run.sh update` 与 `force-update` 在未显式设置 `PANEL_VERSION` 时，会先从项目最新正式 GitHub Release 解析精确版本，再按该版本生成 ACR、1ms、DaoCloud、GHCR、Docker Hub 候选；不再优先拉取 `.env` 中保存的旧 `PANEL_IMAGE`。

@@ -1,3 +1,15 @@
+# 2026-07-14 接手补充：回滚 digest pin 不再污染持久配置
+
+## 改了什么
+- `performRuntimeUpdateRollback` 保留临时 digest pin，但通过 defer 在成功/失败退出前恢复 recovery 的 `original.env`。
+- 最终恢复失败新增 `rollback_restore_final_env_failed`，仍保持 `rollback_failed` 与 recovery 材料。
+## 影响接口/文件
+- 无接口 schema 变化；影响 `runtime_update_rollback.go`、`runtime_update_apply_test.go`。
+## 如何验证
+- `go test ./internal/games/stardew_junimo`；测试确认所有回滚终态不遗留裸 digest，可信 tag 恢复后重新识别推荐升级。
+## 下一步注意事项
+- 不要取消回滚期间的精确 image ID 固定；tag 只能在旧容器完成精确重建后恢复到持久配置。
+
 # 2026-07-14 接手补充：升级矩阵复用安装镜像候选
 
 ### 改了什么
