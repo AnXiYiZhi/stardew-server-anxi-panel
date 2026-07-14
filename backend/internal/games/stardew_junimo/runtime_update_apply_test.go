@@ -289,6 +289,9 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 				if status.ManualAction == "" {
 					t.Fatal("missing manual action")
 				}
+				if status.CauseCode == "" || status.CauseError == "" || status.RollbackCode != "rollback_restore_auth_volume_failed" || status.RollbackError == "" {
+					t.Fatalf("rollback failure details missing: %#v", status)
+				}
 				if _, err := os.Stat(runtimeUpdateRecoveryDir(instance.DataDir, status.ApplyID)); err != nil {
 					t.Fatal("recovery materials removed")
 				}

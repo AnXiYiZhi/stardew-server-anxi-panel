@@ -1,3 +1,16 @@
+# RUN-SH-LATEST-UPDATE-1 自动解析更新目标（2026-07-14）
+
+- `deploy/run.sh update` 与 `force-update` 在未显式设置 `PANEL_VERSION` 时，会先从项目最新正式 GitHub Release 解析精确版本，再按该版本生成 ACR、1ms、DaoCloud、GHCR、Docker Hub 候选；不再优先拉取 `.env` 中保存的旧 `PANEL_IMAGE`。
+- 启动、停止、重启、状态等日常操作仍使用已安装的固定镜像，不会隐式升级。若最新正式版本无法确认，更新操作直接失败并保留当前容器，不会把重新拉取旧 tag 报告成更新成功。
+- 运维仍可用 `PANEL_VERSION=x.y.z bash run.sh update|force-update` 显式选择精确稳定版本。发布门禁执行 `scripts/tests/test_run_sh_update.sh`，覆盖旧 `.env` 自动切换、显式版本优先和解析失败拒绝三条路径。
+
+# PANEL-0.2.7 运行组件升级可见性与验收修复（2026-07-14）
+
+- `v0.2.7` 修复 Junimo `.121/.125` 镜像没有 `wget` 时，新版本验收与旧版本回滚均被错误判定为超时的问题；server health 改为复用镜像已有的 Bash `/dev/tcp` 契约。
+- Junimo dry-run/apply 现在输出镜像层下载进度，并在 `rollback_failed` 同时保留初始失败和具体回滚失败步骤；维护卡片直接展示校验、下载、安装与验收，技术字段继续收进开发者详情。
+- `run.sh update/force-update` 未显式指定版本时解析最新正式 GitHub Release，再生成精确镜像候选；无法确认最新版本时安全终止，不再重新拉取 `.env` 中的旧 tag。
+- 本版本不改变 `.125` 推荐矩阵、`.121` 非强制升级语义、镜像候选顺序或 23 个 init 兼容挂载。发布继续由 tag workflow 执行完整矩阵、远程制品、Go/Docker integration、前端状态脚本和生产构建门禁。
+
 # PANEL-0.2.6 升级镜像候选回退说明（2026-07-14）
 
 - `v0.2.6` 将 Junimo server 和 steam-auth-cn 的升级矩阵候选扩展为安装流程的完整同序列表，解决国内环境只能直连 Docker Hub 拉取 `.125` 的问题。
@@ -628,3 +641,7 @@ steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel reposito
 - Docker integration 必须运行 `TestRuntimeInspectAndAuthProbeWithoutNode`，验证含敏感键环境变量的 inspect 不破坏结构，并验证 auth 镜像不依赖 Node.js。
 - 发布候选实机建议额外设置 `ANXI_REAL_SERVER_IMAGE` 与 `ANXI_REAL_AUTH_IMAGE` 运行 `TestRuntimeRealImagesOptIn`；该测试只检查推荐镜像 digest/ID、真实 .NET auth `/steam/ready` 可解析和容器状态，不读取凭据，也不替代 `has_ticket=true` 的真实 Steam Environment 验收。
 - 镜像 inspect 实现只能让 Docker 输出审核过的字段；禁止恢复完整 inspect JSON 后再脱敏解析。
+# JUNIMO-RUNTIME-HEALTH-PROBE-1 发布约束（2026-07-14）
+
+- Junimo 运行组件升级/回滚验收不得假定 server 镜像包含 `wget`；`.121` 与 `.125` 均使用镜像已有的 Bash `/dev/tcp` 检查本机 `8080/health`。
+- 发布门禁应保留“探针不含 wget”回归测试，并覆盖结构化镜像层下载进度、初始失败原因与回滚失败步骤。该变更不改变推荐矩阵、镜像候选或 23 个 init 兼容挂载。

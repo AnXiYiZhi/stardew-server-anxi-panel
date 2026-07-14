@@ -79,6 +79,7 @@ type RuntimeUpdateApplyStatus struct {
 	JobID            string                              `json:"jobId,omitempty"`
 	Phase            string                              `json:"phase"`
 	Progress         int                                 `json:"progress"`
+	Download         *RuntimeUpdateDownloadProgress      `json:"download,omitempty"`
 	Current          sjconfig.RuntimeStackCurrent        `json:"current"`
 	Target           sjconfig.RuntimeStackRecommendation `json:"target"`
 	Selected         RuntimeUpdateSelectedPair           `json:"selected"`
@@ -89,6 +90,10 @@ type RuntimeUpdateApplyStatus struct {
 	ServerRunning    bool                                `json:"serverRunning"`
 	ErrorCode        string                              `json:"errorCode,omitempty"`
 	Error            string                              `json:"error,omitempty"`
+	CauseCode        string                              `json:"causeCode,omitempty"`
+	CauseError       string                              `json:"causeError,omitempty"`
+	RollbackCode     string                              `json:"rollbackCode,omitempty"`
+	RollbackError    string                              `json:"rollbackError,omitempty"`
 	ManualAction     string                              `json:"manualAction,omitempty"`
 	StartedAt        string                              `json:"startedAt,omitempty"`
 	UpdatedAt        string                              `json:"updatedAt,omitempty"`

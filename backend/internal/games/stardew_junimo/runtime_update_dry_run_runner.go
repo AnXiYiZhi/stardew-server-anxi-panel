@@ -73,6 +73,18 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	unsupported := func(code, message string) error {
 		return finish(RuntimeUpdatePhaseUnsupported, code, message)
 	}
+	pullProgress := func(component string, base, span int) func(string) {
+		return makeImagePullLineHandler(job, "[runtime-update:"+component+":pull] ", func(done, total int) {
+			if total <= 0 {
+				return
+			}
+			percent := done * 100 / total
+			status.Download = &RuntimeUpdateDownloadProgress{Component: component, DoneLayers: done, TotalLayers: total, Percent: percent}
+			status.Progress = base + percent*span/100
+			status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+			_ = writeRuntimeUpdateDryRunStatus(instance.DataDir, status)
+		})
+	}
 
 	if err := setPhase(RuntimeUpdatePhaseChecking, 10, "正在检查实例与内置推荐版本对。"); err != nil {
 		return err
@@ -212,12 +224,13 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	if err := setPhase(RuntimeUpdatePhasePullingServer, 50, "正在按可信候选顺序检查或拉取推荐 server 镜像。"); err != nil {
 		return err
 	}
-	selectedServer, code := selectRuntimeUpdateImage(ctx, docker, instance.DataDir, status.Target.Server.TrustedCandidates, status.Target.Server.Digests)
+	selectedServer, code := selectRuntimeUpdateImageWithProgress(ctx, docker, instance.DataDir, status.Target.Server.TrustedCandidates, status.Target.Server.Digests, pullProgress("server", 50, 20))
 	if code != "" {
 		_ = addCheck("target_server_image", "error", "所有推荐 server 镜像候选均失败或无法取得 digest。")
 		return fail(code, "推荐 server 镜像候选全部不可用。")
 	}
 	status.Selected.Server = selectedServer
+	status.Download = &RuntimeUpdateDownloadProgress{Component: "server", Image: selectedServer.Image, DoneLayers: 1, TotalLayers: 1, Percent: 100}
 	if err := addCheck("target_server_image", "ok", "已选择可信 server 镜像并确认 digest。"); err != nil {
 		return err
 	}
@@ -225,12 +238,13 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	if err := setPhase(RuntimeUpdatePhasePullingAuth, 70, "正在按可信候选顺序检查或拉取推荐 steam-auth-cn 镜像。"); err != nil {
 		return err
 	}
-	selectedAuth, code := selectRuntimeUpdateImage(ctx, docker, instance.DataDir, status.Target.SteamAuth.TrustedCandidates, status.Target.SteamAuth.Digests)
+	selectedAuth, code := selectRuntimeUpdateImageWithProgress(ctx, docker, instance.DataDir, status.Target.SteamAuth.TrustedCandidates, status.Target.SteamAuth.Digests, pullProgress("steam-auth-cn", 70, 20))
 	if code != "" {
 		_ = addCheck("target_auth_image", "error", "所有推荐 steam-auth-cn 镜像候选均失败或无法取得 digest。")
 		return fail(code, "推荐 steam-auth-cn 镜像候选全部不可用。")
 	}
 	status.Selected.SteamAuth = selectedAuth
+	status.Download = &RuntimeUpdateDownloadProgress{Component: "steam-auth-cn", Image: selectedAuth.Image, DoneLayers: 1, TotalLayers: 1, Percent: 100}
 	if err := addCheck("target_auth_image", "ok", "已选择可信 steam-auth-cn 镜像并确认 digest。"); err != nil {
 		return err
 	}
@@ -249,6 +263,10 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 }
 
 func selectRuntimeUpdateImage(ctx context.Context, docker RuntimeUpdateDockerService, dataDir string, candidates []string, expectedDigests map[string]string) (RuntimeUpdateSelectedImage, string) {
+	return selectRuntimeUpdateImageWithProgress(ctx, docker, dataDir, candidates, expectedDigests, func(string) {})
+}
+
+func selectRuntimeUpdateImageWithProgress(ctx context.Context, docker RuntimeUpdateDockerService, dataDir string, candidates []string, expectedDigests map[string]string, lineHandler func(string)) (RuntimeUpdateSelectedImage, string) {
 	digestMissing := false
 	digestMismatch := false
 	for _, image := range candidates {
@@ -267,7 +285,7 @@ func selectRuntimeUpdateImage(ctx context.Context, docker RuntimeUpdateDockerSer
 		if inspectErr == nil && (!runtimeImageDigestPattern.MatchString(metadata.Digest) || !runtimeImageDigestPattern.MatchString(metadata.ID)) {
 			digestMissing = true
 		}
-		if _, pullErr := docker.PullImageStreaming(ctx, dataDir, image, func(string) {}); pullErr != nil {
+		if _, pullErr := docker.PullImageStreaming(ctx, dataDir, image, lineHandler); pullErr != nil {
 			continue
 		}
 		metadata, inspectErr = docker.RuntimeImageInspect(ctx, dataDir, image)

@@ -227,6 +227,7 @@ export type JunimoUpdateDryRunStatus = {
   jobId?: string
   phase: JunimoUpdateDryRunPhase
   progress: number
+  download?: { component: string; image?: string; doneLayers: number; totalLayers: number; percent: number }
   current: { server: JunimoRuntimeComponent; steamAuth: JunimoRuntimeComponent }
   target: JunimoUpdateInfo['recommended']
   selected: {
@@ -254,6 +255,7 @@ export type JunimoUpdateApplyStatus = {
   jobId?: string
   phase: JunimoUpdateApplyPhase
   progress: number
+  download?: JunimoUpdateDryRunStatus['download']
   current: JunimoUpdateDryRunStatus['current']
   target: JunimoUpdateInfo['recommended']
   selected: JunimoUpdateDryRunStatus['selected']
@@ -264,6 +266,10 @@ export type JunimoUpdateApplyStatus = {
   serverRunning: boolean
   errorCode?: string
   error?: string
+  causeCode?: string
+  causeError?: string
+  rollbackCode?: string
+  rollbackError?: string
   manualAction?: string
   startedAt?: string
   updatedAt?: string

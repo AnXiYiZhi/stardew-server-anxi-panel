@@ -17,6 +17,12 @@ printf 'GET /steam/ready HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\
 while IFS= read -r line <&3; do [ "$line" = $'\r' ] && break; done
 cat <&3`
 
+const runtimeServerHealthProbe = `set -eu
+exec 3<>/dev/tcp/127.0.0.1/8080
+printf 'GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+while IFS= read -r line <&3; do [ "$line" = $'\r' ] && break; done
+cat <&3`
+
 const runtimeVolumeCloneScript = `set -eu; cd /source; tar cf - . | tar xf - -C /target`
 const runtimeVolumeRestoreScript = `set -eu; find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cd /source; tar cf - . | tar xf - -C /target`
 
@@ -125,7 +131,7 @@ func (c *Client) RuntimeServerHealth(ctx context.Context, dir, project string) e
 		return errors.New("invalid compose project")
 	}
 	result, err := c.run(ctx, "probe Junimo health", dir, c.timeouts.Ps,
-		"compose", "--project-name", project, "exec", "-T", "server", "wget", "-qO-", "http://127.0.0.1:8080/health")
+		"compose", "--project-name", project, "exec", "-T", "server", "bash", "-c", runtimeServerHealthProbe)
 	if err != nil {
 		return err
 	}

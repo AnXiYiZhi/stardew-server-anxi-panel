@@ -13,6 +13,7 @@ const STATE = params.get('state') || 'running'
 const SHELL = params.get('shell') || 'desktop'
 const UPDATE = params.get('update') || 'latest'
 const APPLY = params.get('apply') || ''
+const JUNIMO_WORKFLOW = params.get('junimoWorkflow') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 
 const now = new Date('2025-05-21T14:28:36+08:00')
@@ -171,14 +172,24 @@ const smapiUpdate = {
 }
 const idleWorkflow = { phase: 'idle', progress: 0, target: {}, selected: {}, checks: [], warnings: [], logs: [] }
 const idleJunimoWorkflow = { ...idleWorkflow, target: { server: {}, steamAuth: {} }, selected: { server: {}, steamAuth: {} } }
+const junimoDryRunWorkflow = JUNIMO_WORKFLOW === 'pulling' ? {
+  ...idleJunimoWorkflow, dryRunId: 'qa-junimo-dry-run', phase: 'pulling_server', progress: 61,
+  download: { component: 'server', image: 'dockerproxy.net/sdvd/server:1.5.0-preview.125', doneLayers: 5, totalLayers: 8, percent: 62 },
+} : JUNIMO_WORKFLOW === 'rollback-failed' ? { ...idleJunimoWorkflow, phase: 'succeeded', progress: 100 } : idleJunimoWorkflow
+const junimoApplyWorkflow = JUNIMO_WORKFLOW === 'rollback-failed' ? {
+  ...idleJunimoWorkflow, applyId: 'qa-junimo-apply', phase: 'rollback_failed', progress: 100,
+  causeCode: 'junimo_health_not_ready', causeError: '新版 Junimo 健康检查未在时限内就绪。',
+  rollbackCode: 'rollback_verify_server_failed', rollbackError: '升级前的 Junimo server 未能在验收时限内恢复就绪。',
+  manualAction: '保留恢复材料并核对当前旧服务状态。',
+} : idleJunimoWorkflow
 
 function jsonRes(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
 const routes: Array<[RegExp, unknown]> = [
-  [/\/junimo-update\/dry-run$/, idleJunimoWorkflow],
-  [/\/junimo-update\/apply$/, idleJunimoWorkflow],
+  [/\/junimo-update\/dry-run$/, junimoDryRunWorkflow],
+  [/\/junimo-update\/apply$/, junimoApplyWorkflow],
   [/\/junimo-update$/, junimoUpdate],
   [/\/runtime-components\/preflight$/, idleWorkflow],
   [/\/runtime-components$/, runtimeComponents],

@@ -129,6 +129,62 @@ function hasByteValue(value: number | undefined): value is number {
   return value != null && value >= 0
 }
 
+type UserUpdateProgressProps = {
+  headline: string
+  progress: number
+  currentStep: number
+  steps?: string[]
+  download?: { component: string; image?: string; doneLayers: number; totalLayers: number; percent: number }
+  tone?: 'active' | 'success' | 'warning' | 'error'
+  error?: string
+  onShowDetails: () => void
+}
+
+function UserUpdateProgress({ headline, progress, currentStep, steps = ['校验', '下载', '安装', '验收'], download, tone = 'active', error, onShowDetails }: UserUpdateProgressProps) {
+  const safeProgress = Math.max(0, Math.min(100, Math.round(progress)))
+  return (
+    <div className={`sd-diag-user-progress is-${tone}`}>
+      <div className="sd-diag-user-progress-head"><strong>{headline}</strong><span>{safeProgress}%</span></div>
+      <progress max={100} value={safeProgress} />
+      <div className="sd-diag-user-progress-steps" aria-label="更新步骤">
+        {steps.map((step, index) => <span className={index < currentStep ? 'is-done' : index === currentStep ? 'is-active' : ''} key={step}>{index < currentStep ? '✓ ' : ''}{step}</span>)}
+      </div>
+      {download ? <div className="sd-diag-user-download"><strong>镜像下载</strong><span>{download.component} · {download.doneLayers}/{download.totalLayers || '—'} 层 · {download.percent}%</span></div> : null}
+      {error ? <div className="sd-diag-user-progress-error">{error}</div> : null}
+      <button className="sd-diag-user-detail-link" type="button" onClick={onShowDetails}>查看开发者详情</button>
+    </div>
+  )
+}
+
+function junimoUserPhase(dryRun: JunimoUpdateDryRunStatus | null, apply: JunimoUpdateApplyStatus | null) {
+  if (apply && apply.phase !== 'idle') {
+    const installPhases = ['backing_up', 'stopping', 'writing_config', 'recreating_auth', 'verifying_auth', 'recreating_server']
+    const verifyPhases = ['verifying_server', 'restoring_state', 'rolling_back', 'failed_rolled_back', 'rollback_failed', 'succeeded']
+    const currentStep = apply.phase === 'checking' ? 0 : apply.phase === 'pulling' ? 1 : installPhases.includes(apply.phase) ? 2 : verifyPhases.includes(apply.phase) ? 3 : 0
+    const tone: NonNullable<UserUpdateProgressProps['tone']> = apply.phase === 'succeeded' ? 'success' : apply.phase === 'failed_rolled_back' ? 'warning' : apply.phase === 'rollback_failed' ? 'error' : 'active'
+    const error = apply.phase === 'rollback_failed'
+      ? `升级失败：${apply.causeError || apply.error || '当前版本未保留具体的首次失败原因'}；回滚失败：${apply.rollbackError || '当前版本未记录具体回滚步骤，请保留恢复材料。'}`
+      : apply.phase === 'failed_rolled_back' ? `新版本未通过验收，已恢复原版本。${apply.causeError || apply.error || ''}` : undefined
+    return { headline: junimoApplyPhaseLabel(apply.phase), progress: 25 + apply.progress * 0.75, currentStep, tone, error, download: apply.download }
+  }
+  const currentStep = dryRun?.phase === 'pulling_server' || dryRun?.phase === 'pulling_auth' ? 1 : dryRun?.phase === 'succeeded' ? 1 : 0
+  const tone: NonNullable<UserUpdateProgressProps['tone']> = dryRun?.phase === 'failed' || dryRun?.phase === 'unsupported' ? 'error' : 'active'
+  return { headline: junimoDryRunPhaseLabel(dryRun?.phase), progress: (dryRun?.progress ?? 0) * 0.25, currentStep, tone, error: dryRun?.error, download: dryRun?.download }
+}
+
+function smapiUserPhase(dryRun: SMAPIUpdateWorkflowStatus | null, apply: SMAPIUpdateWorkflowStatus | null) {
+  if (apply && apply.phase !== 'idle') {
+    const downloadPhases = ['downloading', 'validating_archive']
+    const installPhases = ['creating_staging', 'cloning', 'installing', 'verifying_staging', 'stopping', 'switching', 'starting']
+    const verifyPhases = ['verifying_stack', 'restoring_state', 'rolling_back', 'failed_rolled_back', 'rollback_failed', 'succeeded']
+    const currentStep = apply.phase === 'checking' ? 0 : downloadPhases.includes(apply.phase) ? 1 : installPhases.includes(apply.phase) ? 2 : verifyPhases.includes(apply.phase) ? 3 : 0
+    const tone: NonNullable<UserUpdateProgressProps['tone']> = apply.phase === 'succeeded' ? 'success' : apply.phase === 'failed_rolled_back' ? 'warning' : apply.phase === 'rollback_failed' || apply.phase === 'failed' ? 'error' : 'active'
+    return { headline: smapiPhaseLabel(apply.phase), progress: 25 + apply.progress * 0.75, currentStep, tone, error: apply.error }
+  }
+  const tone: NonNullable<UserUpdateProgressProps['tone']> = dryRun?.phase === 'failed' ? 'error' : 'active'
+  return { headline: smapiPhaseLabel(dryRun?.phase), progress: (dryRun?.progress ?? 0) * 0.25, currentStep: 0, tone, error: dryRun?.error }
+}
+
 function formatTrendTime(timestamp: string): string {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return ''
@@ -336,6 +392,8 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const [smapiDryRunBusy, setSMAPIDryRunBusy] = useState(false)
   const [smapiApply, setSMAPIApply] = useState<SMAPIUpdateWorkflowStatus | null>(null)
   const [smapiApplyBusy, setSMAPIApplyBusy] = useState(false)
+  const [junimoUpgradeRequested, setJunimoUpgradeRequested] = useState(false)
+  const [smapiUpgradeRequested, setSMAPIUpgradeRequested] = useState(false)
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const { applyHealthDiagnostics } = dashboardData
 
@@ -372,7 +430,9 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const gameUpdateAvailable = runtimeComponents?.recommended?.tested === true
     && runtimeComponents.status === 'update_available'
   const smapiUpdateAvailable = shouldShowSMAPIUpdate(smapiUpdate)
-  const maintenanceCount = [junimoUpdateAvailable, gameUpdateAvailable, smapiUpdateAvailable].filter(Boolean).length
+  const junimoNeedsAttention = junimoUpdateAvailable || junimoApply?.phase === 'rollback_failed' || junimoApplyActive(junimoApply?.phase)
+  const smapiNeedsAttention = smapiUpdateAvailable || smapiApply?.phase === 'rollback_failed' || smapiPhaseActive(smapiApply?.phase)
+  const maintenanceCount = [junimoNeedsAttention, gameUpdateAvailable, smapiNeedsAttention].filter(Boolean).length
 
   function showMaintenanceDetail(anchor: string) {
     setMaintenanceOpen(true)
@@ -440,10 +500,31 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   useEffect(() => {
     if (!isAdmin || !junimoApplyActive(junimoApply?.phase)) return
     const timer = window.setInterval(() => {
-      getJunimoUpdateApply().then((result) => { setJunimoApply(result); setJunimoApplyError(null) }).catch((e) => setJunimoApplyError(errorMessage(e)))
+      getJunimoUpdateApply().then((result) => {
+        setJunimoApply(result)
+        setJunimoApplyError(null)
+        if (!junimoApplyActive(result.phase)) void getJunimoUpdate().then(setJunimoUpdate)
+      }).catch((e) => setJunimoApplyError(errorMessage(e)))
     }, 1800)
     return () => window.clearInterval(timer)
   }, [isAdmin, junimoApply?.phase])
+
+  useEffect(() => {
+    if (!junimoUpgradeRequested || junimoDryRun?.phase !== 'succeeded' || junimoApplyBusy || junimoApplyActive(junimoApply?.phase)) return
+    setJunimoApplyBusy(true)
+    startJunimoUpdateApply().then((result) => {
+      setJunimoApply(result)
+      setJunimoApplyError(null)
+      setJunimoUpgradeRequested(false)
+    }).catch((e) => {
+      setJunimoApplyError(errorMessage(e))
+      setJunimoUpgradeRequested(false)
+    }).finally(() => setJunimoApplyBusy(false))
+  }, [junimoApply?.phase, junimoApplyBusy, junimoDryRun?.phase, junimoUpgradeRequested])
+
+  useEffect(() => {
+    if (junimoUpgradeRequested && (junimoDryRun?.phase === 'failed' || junimoDryRun?.phase === 'unsupported')) setJunimoUpgradeRequested(false)
+  }, [junimoDryRun?.phase, junimoUpgradeRequested])
 
   useEffect(() => {
     if (!isAdmin || !smapiPhaseActive(smapiApply?.phase)) return
@@ -456,6 +537,19 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     }, 1800)
     return () => window.clearInterval(timer)
   }, [isAdmin, smapiApply?.phase])
+
+  useEffect(() => {
+    if (!smapiUpgradeRequested || smapiDryRun?.phase !== 'succeeded' || smapiApplyBusy || smapiPhaseActive(smapiApply?.phase)) return
+    setSMAPIApplyBusy(true)
+    startSMAPIUpdateApply().then((result) => {
+      setSMAPIApply(result)
+      setSMAPIError(null)
+      setSMAPIUpgradeRequested(false)
+    }).catch((e) => {
+      setSMAPIError(errorMessage(e))
+      setSMAPIUpgradeRequested(false)
+    }).finally(() => setSMAPIApplyBusy(false))
+  }, [smapiApply?.phase, smapiApplyBusy, smapiDryRun?.phase, smapiUpgradeRequested])
 
   useEffect(() => {
     if (localData) return
@@ -595,27 +689,17 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     }
   }
 
-  async function handleJunimoDryRun() {
+  async function handleJunimoUpgrade() {
+    if (!junimoUpdate || junimoApply?.phase === 'rollback_failed') return
+    const runningNote = junimoDryRun?.serverRunning || instanceState?.state === 'running'
+      ? '更新期间服务器会安全停服，完成后恢复运行。'
+      : '服务器当前停止；验收时会临时启动，完成后恢复停止。'
+    if (!window.confirm(`升级 Junimo 服务组件到 ${junimoUpdate.recommended.server.tag}？\n\n点击确认后会自动完成环境校验、镜像下载、安装和验收。${runningNote}\n如果新版本验收失败，系统会尝试恢复原版本。`)) return
+    setJunimoUpgradeRequested(true)
+    setJunimoApplyError(null)
     setJunimoDryRunBusy(true)
     setJunimoDryRunError(null)
-    try {
-      setJunimoDryRun(await startJunimoUpdateDryRun())
-    } catch (e) {
-      setJunimoDryRunError(errorMessage(e))
-    } finally {
-      setJunimoDryRunBusy(false)
-    }
-  }
-
-  async function handleJunimoApply() {
-    if (!junimoDryRun || junimoDryRun.phase !== 'succeeded') return
-    const runningNote = junimoDryRun.serverRunning
-      ? '更新期间服务器会安全停服，成功后恢复运行。'
-      : '实例当前停止；验证时会临时启动，完成后恢复停止。'
-    const confirmed = window.confirm(`将把 server 与 steam-auth-cn 作为一个不可拆分版本对升级。\n\n当前：server ${junimoDryRun.current.server.tag || '—'} + steam-auth-cn ${junimoDryRun.current.steamAuth.tag || '—'}\n目标：server ${junimoDryRun.target.server.tag} + steam-auth-cn ${junimoDryRun.target.steamAuth.tag}\n\n${runningNote}\nSteam 授权预计通过受控认证卷快照保留。确认继续吗？`)
-    if (!confirmed) return
-    setJunimoApplyBusy(true); setJunimoApplyError(null)
-    try { setJunimoApply(await startJunimoUpdateApply()) } catch (e) { setJunimoApplyError(errorMessage(e)) } finally { setJunimoApplyBusy(false) }
+    try { setJunimoDryRun(await startJunimoUpdateDryRun()) } catch (e) { setJunimoDryRunError(errorMessage(e)); setJunimoUpgradeRequested(false) } finally { setJunimoDryRunBusy(false) }
   }
 
   async function handleRuntimePreflight() {
@@ -632,20 +716,19 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     }
   }
 
-  async function handleSMAPIDryRun() {
-    setSMAPIDryRunBusy(true)
+  async function handleSMAPIUpgrade() {
+    if (!smapiUpdate || smapiApply?.phase === 'rollback_failed') return
+    if (!window.confirm(`升级 SMAPI 到 ${smapiUpdate.recommended.version}？\n\n点击确认后会自动完成校验、下载安装、切换和验收。失败时会尝试恢复原 game-data。`)) return
+    setSMAPIUpgradeRequested(true)
     setSMAPIError(null)
-    try { setSMAPIDryRun(await startSMAPIUpdateDryRun()) } catch (e) { setSMAPIError(errorMessage(e)) } finally { setSMAPIDryRunBusy(false) }
+    setSMAPIDryRunBusy(true)
+    try { setSMAPIDryRun(await startSMAPIUpdateDryRun()) } catch (e) { setSMAPIError(errorMessage(e)); setSMAPIUpgradeRequested(false) } finally { setSMAPIDryRunBusy(false) }
   }
 
-  async function handleSMAPIApply() {
-    if (smapiDryRun?.phase !== 'succeeded' || !smapiUpdate) return
-    const confirmed = window.confirm(`将从可信清单把 SMAPI ${smapiUpdate.current.version || '未安装'} 升级到 ${smapiUpdate.recommended.version}。\n\nPanel 会复制当前 game-data 到 staging volume，在 staging 上运行官方 Linux 安装器；验收失败会切回旧 volume。玩家随后可能需要重新下载完整同步包。确认继续吗？`)
-    if (!confirmed) return
-    setSMAPIApplyBusy(true)
-    setSMAPIError(null)
-    try { setSMAPIApply(await startSMAPIUpdateApply()) } catch (e) { setSMAPIError(errorMessage(e)) } finally { setSMAPIApplyBusy(false) }
-  }
+  const junimoProgress = junimoUserPhase(junimoDryRun, junimoApply)
+  const smapiProgress = smapiUserPhase(smapiDryRun, smapiApply)
+  const junimoWorkflowVisible = junimoUpgradeRequested || junimoDryRunBusy || junimoApplyBusy || (junimoDryRun != null && junimoDryRun.phase !== 'idle') || (junimoApply != null && junimoApply.phase !== 'idle') || !!junimoDryRunError || !!junimoApplyError
+  const smapiWorkflowVisible = smapiUpgradeRequested || smapiDryRunBusy || smapiApplyBusy || (smapiDryRun != null && smapiDryRun.phase !== 'idle') || (smapiApply != null && smapiApply.phase !== 'idle') || !!smapiError
 
   // ── render ──────────────────────────────────────────────────────────────────
 
@@ -793,7 +876,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             {runtimeComponentsError ? <div className="sd-diag-check-row sd-diag-check-warning"><span className="sd-diag-check-name">检测错误</span><span className="sd-diag-check-msg">{runtimeComponentsError}</span></div> : null}
           </div>
           <div className="sd-diag-dry-run" aria-label="游戏运行文件只读预检">
-            <div className="sd-diag-dry-run-actions"><button className="sd-btn-green sd-btn--sm" type="button" disabled={runtimePreflightBusy} onClick={handleRuntimePreflight}>{runtimePreflightBusy ? '预检中…' : '运行只读预检'}</button><span>仅检查，不提供升级按钮</span></div>
+            <div className="sd-diag-dry-run-actions"><span>用户操作入口位于上方“版本维护”卡片；这里仅保留原始检查结果。</span></div>
             <div className="sd-diag-dry-run-head"><strong>{runtimePreflight?.phase === 'succeeded' ? '预检通过' : runtimePreflight?.phase === 'failed' ? '预检未通过' : '尚未运行'}</strong><span>{runtimePreflight?.progress ?? 0}%</span></div>
             <progress className="sd-diag-dry-run-progress" max={100} value={runtimePreflight?.progress ?? 0} />
             {runtimePreflight?.requiredBytes ? <div className="sd-diag-dry-run-meta">空间保守估算 {formatBytes(runtimePreflight.requiredBytes)} · 当前可用 {runtimePreflight.freeBytes ? formatBytes(runtimePreflight.freeBytes) : '无法可靠取得'}</div> : null}
@@ -818,10 +901,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             {smapiError ? <div className="sd-diag-check-row sd-diag-check-warning"><span className="sd-diag-check-name">读取或执行错误</span><span className="sd-diag-check-msg">{smapiError}</span></div> : null}
           </div>
           <div className="sd-diag-dry-run" aria-label="SMAPI 升级执行状态">
-            <div className="sd-diag-dry-run-actions">
-              <button className="sd-btn-green sd-btn--sm" type="button" disabled={smapiDryRunBusy || smapiPhaseActive(smapiApply?.phase) || !smapiUpdate?.available || !smapiUpdate?.supported} onClick={handleSMAPIDryRun}>{smapiDryRunBusy ? '预检中…' : '运行 SMAPI dry-run'}</button>
-              <button className="sd-btn-tan sd-btn--sm" type="button" disabled={smapiApplyBusy || smapiPhaseActive(smapiApply?.phase) || smapiDryRun?.phase !== 'succeeded'} onClick={handleSMAPIApply}>{smapiApplyBusy || smapiPhaseActive(smapiApply?.phase) ? '升级进行中…' : '安全升级 SMAPI'}</button>
-            </div>
+            <div className="sd-diag-dry-run-actions"><span>用户操作入口位于上方“版本维护”卡片；这里仅保留原始检查、恢复信息和脱敏日志。</span></div>
             {!smapiUpdate?.supported || !smapiUpdate?.available ? <div className="sd-diag-dry-run-warning">升级入口已禁用：{smapiUpdate?.reason || '尚未完成实际版本检测'}。请先从上方游戏运行文件或下方 Junimo 版本对入口修复前置组件；本流程不会顺便更新它们。</div> : null}
             <div className="sd-diag-dry-run-head"><strong>dry-run：{smapiPhaseLabel(smapiDryRun?.phase)}</strong><span>{smapiDryRun?.progress ?? 0}%</span></div>
             <progress className="sd-diag-dry-run-progress" max={100} value={smapiDryRun?.progress ?? 0} />
@@ -886,25 +966,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         </div>
         {isAdmin ? (
           <div className="sd-diag-dry-run" aria-label="Junimo 运行组件升级预检">
-            <div className="sd-diag-dry-run-actions">
-              <button
-                className="sd-btn-green sd-btn--sm"
-                disabled={junimoDryRunBusy || junimoDryRunActive(junimoDryRun?.phase) || junimoUpdate?.supported === false}
-                onClick={handleJunimoDryRun}
-                type="button"
-              >
-                {junimoDryRunBusy || junimoDryRunActive(junimoDryRun?.phase) ? '预检进行中…' : '运行升级预检'}
-              </button>
-              <button
-                className="sd-btn-tan sd-btn--sm"
-                disabled={junimoApplyBusy || junimoApplyActive(junimoApply?.phase) || junimoDryRun?.phase !== 'succeeded'}
-                onClick={handleJunimoApply}
-                type="button"
-                title={junimoDryRun?.phase !== 'succeeded' ? '必须先完成当前推荐版本对的升级预检' : 'server 与 steam-auth-cn 将同时升级'}
-              >
-                {junimoApplyBusy || junimoApplyActive(junimoApply?.phase) ? '升级进行中…' : '更新运行组件'}
-              </button>
-            </div>
+            <div className="sd-diag-dry-run-actions"><span>用户操作入口位于上方“版本维护”卡片；这里仅保留镜像、digest、检查项和脱敏日志。</span></div>
             <div className="sd-diag-dry-run-head">
               <strong>{junimoDryRunPhaseLabel(junimoDryRun?.phase)}</strong>
               <span>{junimoDryRun?.progress ?? 0}%</span>
@@ -930,7 +992,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
               {junimoApply?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>成对目标</strong><span>{junimoApply.target.stackVersion} · server {junimoApply.target.server.tag} + steam-auth-cn {junimoApply.target.steamAuth.tag}</span></div> : null}
               {junimoApply?.phase === 'succeeded' ? <div className="sd-diag-dry-run-check sd-diag-dry-run-check--ok"><span>完成</span><strong>成对升级成功</strong><p>Steam 认证与运行链路已验证，实例已恢复升级前运行状态。</p></div> : null}
               {junimoApply?.phase === 'failed_rolled_back' ? <div className="sd-diag-dry-run-warning">升级未通过验收，但 server/auth、认证卷与运行状态已自动回滚。</div> : null}
-              {junimoApply?.phase === 'rollback_failed' ? <div className="sd-diag-dry-run-error">自动回滚失败。{junimoApply.manualAction || '请保留恢复材料并联系管理员人工处理。'} 不提供自动破坏性重试。</div> : null}
+              {junimoApply?.phase === 'rollback_failed' ? <div className="sd-diag-dry-run-error">首次失败：{junimoApply.causeCode || '旧版本未记录'} · {junimoApply.causeError || '无法从旧状态还原具体原因'}<br />回滚失败：{junimoApply.rollbackCode || '旧版本未记录'} · {junimoApply.rollbackError || '无法从旧状态还原具体步骤'}<br />{junimoApply.manualAction || '请保留恢复材料并联系管理员人工处理。'} 不提供自动破坏性重试。</div> : null}
               {(junimoApply?.checks ?? []).map((check, index) => <div className={`sd-diag-dry-run-check sd-diag-dry-run-check--${check.status}`} key={`apply-${check.name}-${index}`}><span>{check.status === 'ok' ? '通过' : check.status === 'warning' ? '警告' : '失败'}</span><strong>{check.name}</strong><p>{check.message}</p></div>)}
               {(junimoApply?.warnings ?? []).map((warning, index) => <div className="sd-diag-dry-run-warning" key={`${warning}-${index}`}>警告：{warning}</div>)}
               {junimoApply?.error && junimoApply.phase !== 'rollback_failed' ? <div className="sd-diag-dry-run-error">{junimoApply.errorCode ? `${junimoApply.errorCode}：` : ''}{junimoApply.error}</div> : null}
@@ -974,28 +1036,37 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
           </span>
         </div>
         <div className="sd-diag-maintenance-list">
-          {junimoUpdateAvailable ? (
+          {junimoNeedsAttention ? (
             <div className="sd-diag-maintenance-item">
-              <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
-              <div>
-                <strong>Junimo 服务组件有推荐更新</strong>
-                <p>{junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → {junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。不升级仍可继续使用。</p>
+              <div className="sd-diag-maintenance-item-main">
+                <span className="sd-diag-maintenance-item-icon" aria-hidden="true">{junimoApply?.phase === 'rollback_failed' ? '!' : '↑'}</span>
+                <div className="sd-diag-maintenance-copy">
+                  <strong>{junimoApply?.phase === 'rollback_failed' ? 'Junimo 服务组件需要人工恢复' : 'Junimo 服务组件有推荐更新'}</strong>
+                  <p>{junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → {junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。</p>
+                </div>
+                {isAdmin ? <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoApply?.phase === 'rollback_failed' || junimoUpgradeRequested || junimoDryRunBusy || junimoApplyBusy || junimoApplyActive(junimoApply?.phase)} onClick={handleJunimoUpgrade}>{junimoApply?.phase === 'rollback_failed' ? '已停止自动操作' : junimoUpgradeRequested || junimoDryRunBusy || junimoApplyBusy || junimoApplyActive(junimoApply?.phase) ? '升级进行中…' : '立即升级'}</button> : <span className="sd-diag-maintenance-role-note">请联系管理员</span>}
               </div>
-              {isAdmin ? <button className="sd-btn-green sd-btn--sm" type="button" onClick={() => showMaintenanceDetail('junimo-update')}>查看并预检</button> : <span className="sd-diag-maintenance-role-note">请联系管理员</span>}
+              {junimoWorkflowVisible ? <UserUpdateProgress {...junimoProgress} error={junimoProgress.error || junimoDryRunError || junimoApplyError || undefined} onShowDetails={() => showMaintenanceDetail('junimo-update')} /> : null}
             </div>
           ) : null}
           {gameUpdateAvailable ? (
             <div className="sd-diag-maintenance-item">
-              <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
-              <div><strong>游戏运行文件有推荐更新</strong><p>先进行只读预检，确认版本与磁盘空间。</p></div>
-              <button className="sd-btn-green sd-btn--sm" type="button" onClick={() => showMaintenanceDetail('runtime-components-update')}>查看详情</button>
+              <div className="sd-diag-maintenance-item-main">
+                <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
+                <div className="sd-diag-maintenance-copy"><strong>游戏运行文件有推荐更新</strong><p>当前版本仅提供安全校验，在线下载安装执行器尚未开放，不会伪装成可升级。</p></div>
+                <button className="sd-btn-green sd-btn--sm" type="button" disabled={runtimePreflightBusy} onClick={handleRuntimePreflight}>{runtimePreflightBusy ? '校验中…' : '开始校验'}</button>
+              </div>
+              {runtimePreflightBusy || runtimePreflight?.phase && runtimePreflight.phase !== 'idle' ? <UserUpdateProgress headline={runtimePreflight?.phase === 'succeeded' ? '更新条件校验通过' : runtimePreflight?.phase === 'failed' ? '更新条件校验失败' : '正在校验更新条件'} progress={runtimePreflight?.progress ?? 5} currentStep={0} steps={['校验']} tone={runtimePreflight?.phase === 'succeeded' ? 'success' : runtimePreflight?.phase === 'failed' ? 'error' : 'active'} error={runtimePreflight?.error} onShowDetails={() => showMaintenanceDetail('runtime-components-update')} /> : null}
             </div>
           ) : null}
-          {smapiUpdateAvailable ? (
+          {smapiNeedsAttention ? (
             <div className="sd-diag-maintenance-item">
-              <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
-              <div><strong>SMAPI 有经过验证的更新</strong><p>{smapiUpdate?.current.version || '当前版本'} → {smapiUpdate?.recommended.version || '推荐版本'}，升级前会先执行安全预检。</p></div>
-              <button className="sd-btn-green sd-btn--sm" type="button" onClick={() => showMaintenanceDetail('smapi-update')}>查看并预检</button>
+              <div className="sd-diag-maintenance-item-main">
+                <span className="sd-diag-maintenance-item-icon" aria-hidden="true">{smapiApply?.phase === 'rollback_failed' ? '!' : '↑'}</span>
+                <div className="sd-diag-maintenance-copy"><strong>{smapiApply?.phase === 'rollback_failed' ? 'SMAPI 更新需要人工恢复' : 'SMAPI 有经过验证的更新'}</strong><p>{smapiUpdate?.current.version || '当前版本'} → {smapiUpdate?.recommended.version || '推荐版本'}，点击一次自动完成校验、下载安装和验收。</p></div>
+                <button className="sd-btn-green sd-btn--sm" type="button" disabled={smapiApply?.phase === 'rollback_failed' || smapiUpgradeRequested || smapiDryRunBusy || smapiApplyBusy || smapiPhaseActive(smapiApply?.phase)} onClick={handleSMAPIUpgrade}>{smapiApply?.phase === 'rollback_failed' ? '已停止自动操作' : smapiUpgradeRequested || smapiDryRunBusy || smapiApplyBusy || smapiPhaseActive(smapiApply?.phase) ? '升级进行中…' : '立即升级'}</button>
+              </div>
+              {smapiWorkflowVisible ? <UserUpdateProgress {...smapiProgress} error={smapiProgress.error || smapiError || undefined} onShowDetails={() => showMaintenanceDetail('smapi-update')} /> : null}
             </div>
           ) : null}
           {!maintenanceCount ? (
