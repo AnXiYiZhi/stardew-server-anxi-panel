@@ -42,4 +42,9 @@ features:
     details: 装不上、连不上、邀请码不显示、Mod 装不上……按现象查找对应解法。
     link: /faq/
     linkText: 查看常见问题
+  - icon: ⚠️
+    title: 已知问题
+    details: 上游 JunimoServer 存在的已知 Bug：存档回退丢失、FarmhouseStack、节日卡住等风险提示。
+    link: /faq/known-issues
+    linkText: 查看已知问题
 ---

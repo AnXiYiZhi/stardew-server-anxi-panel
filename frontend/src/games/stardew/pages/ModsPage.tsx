@@ -5,6 +5,7 @@ import { downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, sav
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import { modIsJunimoServer, modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
+import { modDisplayName } from '../mod-display'
 import { routeToPath, type StardewPageProps } from '../stardew-routes'
 import { useModsManagement } from '../useModsManagement'
 
@@ -496,7 +497,7 @@ function modToSearchResult(mod: ModInfo): ModSearchResult {
       source: 'builtin',
       sourceName: '内置组件',
       sourceModId: mod.uniqueId ?? mod.folderName,
-      name: mod.name ?? mod.folderName,
+      name: modDisplayName(mod),
       summary: mod.description,
       author: mod.author,
       version: mod.version,
@@ -530,7 +531,7 @@ function modToSearchResult(mod: ModInfo): ModSearchResult {
     sourceName: modId > 0 ? 'N站' : (hasNexusPackageOrigin ? 'N站包' : '本地'),
     sourceModId: modId > 0 ? String(modId) : (hasNexusPackageOrigin ? String(originNexusModId) : mod.folderName),
     sourceDetail: hasNexusPackageOrigin ? `随 ${mod.originModName || 'Nexus 安装包'} 安装` : undefined,
-    name: mod.name ?? mod.folderName,
+    name: modDisplayName(mod),
     summary: mod.nexusSummary ?? mod.description,
     author: mod.author,
     version: mod.version,
@@ -550,16 +551,6 @@ function modToSearchResult(mod: ModInfo): ModSearchResult {
   }
 }
 
-function modHasNexusPresentation(mod: ModInfo) {
-  if (modIsSmapi(mod)) return true
-  if ((mod.nexusModId ?? 0) > 0) return true
-  return mod.originSource === 'nexus' && (mod.originNexusModId ?? 0) > 0
-}
-
-function modDisplayName(mod: ModInfo) {
-  return mod.name ?? mod.folderName
-}
-
 function modCountsForPlayerSync(mod: ModInfo) {
   if (modIsSmapi(mod)) return true
   return !mod.builtIn
@@ -573,6 +564,9 @@ function builtInRank(mod: ModInfo) {
 }
 
 function modBundleKey(mod: ModInfo) {
+  if (mod.packageKey) {
+    return `package:${mod.packageKey}`
+  }
   if (mod.originSource === 'nexus' && (mod.originNexusModId ?? 0) > 0) {
     return `nexus:${mod.originNexusModId}`
   }
@@ -679,16 +673,12 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const {
     mods,
     userVisibleMods,
-    displayedInstalledMods,
-    hiddenLocalMods,
     parseErrorCount,
     syncSummary,
     syncPackagedClientRequired,
   } = useMemo(() => {
     const sortedMods = sortInstalledMods(data?.mods ?? [])
     const visibleMods = sortedMods.filter((mod) => !modIsSystemRuntime(mod))
-    const displayed: ModInfo[] = []
-    const hidden: ModInfo[] = []
     let parseErrors = 0
     let serverOnly = 0
     let clientRequired = 0
@@ -696,11 +686,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     let packagedClientRequired = 0
 
     for (const mod of visibleMods) {
-      if (modHasNexusPresentation(mod)) {
-        displayed.push(mod)
-      } else {
-        hidden.push(mod)
-      }
       if (mod.parseError) {
         parseErrors += 1
       }
@@ -725,8 +710,6 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     return {
       mods: sortedMods,
       userVisibleMods: visibleMods,
-      displayedInstalledMods: displayed,
-      hiddenLocalMods: hidden,
       parseErrorCount: parseErrors,
       syncSummary: { serverOnly, clientRequired, unknown },
       syncPackagedClientRequired: packagedClientRequired,
@@ -1914,7 +1897,11 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
               {uploadSuccess && (
                 <div className="sd-mods-success-banner">
-                  ✔ Mod 上传成功 - 下次启动服务器时会自动加载
+                  ✔ 已解析 {uploadSuccess.archiveCount} 个 ZIP，发现 {uploadSuccess.discoveredCount} 个 Mod，
+                  安装 {uploadSuccess.importedCount} 个，
+                  已启用 {uploadSuccess.enabledCount} 个
+                  {uploadSuccess.activeSaveName ? `（当前存档：${uploadSuccess.activeSaveName}）` : ''}。
+                  下次启动服务器时会自动加载。
                 </div>
               )}
 
@@ -1988,7 +1975,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               )}
 
               <div className="sd-mods-section-title">
-                已安装 Nexus 模组
+                已安装模组
                 {loading && <span className="sd-mods-loading-tag">加载中…</span>}
               </div>
 
@@ -2014,27 +2001,10 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     上传 Mod
                   </button>
                 </div>
-              ) : !loading && displayedInstalledMods.length === 0 ? (
-                <div className="sd-mods-empty">
-                  <img
-                    className="sd-mods-empty-icon"
-                    src="/assets/stardew/ui/icons/icon_nav_mods.png"
-                    alt=""
-                  />
-                  <div className="sd-mods-empty-title">暂无 Nexus 来源数据</div>
-                  <div className="sd-mods-empty-desc">
-                    通过 N 站安装，或上传带 Nexus UpdateKeys 的模组后会显示在这里。
-                  </div>
-                </div>
               ) : (
                 <>
-                  {hiddenLocalMods.length > 0 ? (
-                    <div className="sd-mods-nexus-only-note">
-                      已隐藏 {hiddenLocalMods.length} 个本地文件项
-                    </div>
-                  ) : null}
                   <div className="sd-mods-nexus-list">
-                    {displayedInstalledMods.map((mod) => {
+                    {userVisibleMods.map((mod) => {
                     const syncBusy = syncUpdating === mod.id
                     const requiredDependency = dependencyDisplay(mod)
                     const isBuiltIn = mod.builtIn === true

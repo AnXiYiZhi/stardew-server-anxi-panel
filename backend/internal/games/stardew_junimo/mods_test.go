@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -354,6 +355,153 @@ func TestUploadModZip_ValidMultipleMods(t *testing.T) {
 	}
 	if len(imported) != 2 {
 		t.Fatalf("expected 2 imported mods, got %d", len(imported))
+	}
+}
+
+func TestUploadModZip_RecursivelyImportsModsFolderBundle(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := createModZip(t, map[string]string{
+		"Mods1/DirectMod/manifest.json":                `{"Name":"Direct","UniqueID":"author.direct","Version":"1.0","Author":"A"}`,
+		"Mods1/Category/MainMod/manifest.json":         `{"Name":"Main","UniqueID":"author.main","Version":"1.0","Author":"A"}`,
+		"Mods1/Category/[CP] Main/manifest.json":       `{"Name":"Content","UniqueID":"author.main.cp","Version":"1.0","Author":"A","ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}}`,
+		"Mods1/Deep/Bundle/[CP] Feature/Manifest.json": `{"Name":"Feature","UniqueID":"author.feature","Version":"1.0","Author":"A","ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}}`,
+		"Mods1/Deep/Bundle/[CP] Feature/Content.json":  `{}`,
+	})
+
+	imported, err := UploadModZip(dir, zipPath)
+	if err != nil {
+		t.Fatalf("UploadModZip: %v", err)
+	}
+	if len(imported) != 4 {
+		t.Fatalf("expected all 4 recursively discovered mods, got %d: %+v", len(imported), imported)
+	}
+
+	root := filepath.Join(dir, ".local-container", "mods")
+	for _, folder := range []string{"DirectMod", "MainMod", "[CP] Main", "[CP] Feature"} {
+		if _, err := os.Stat(filepath.Join(root, folder, "manifest.json")); err != nil {
+			t.Fatalf("canonical manifest for %q not imported: %v", folder, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "[CP] Feature", "content.json")); err != nil {
+		t.Fatalf("uppercase Content.json was not normalized: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Mods1")); !os.IsNotExist(err) {
+		t.Fatalf("wrapper directory should not be installed, stat err = %v", err)
+	}
+}
+
+func TestUploadModZip_ModsCollectionKeepsPackagesAndNexusOriginsSeparate(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := createModZip(t, map[string]string{
+		"Mods1/PackA/MainA/manifest.json":   `{"Name":"Main A","UniqueID":"author.main-a","Version":"1.0","Author":"A","UpdateKeys":["Nexus:100"]}`,
+		"Mods1/PackA/[CP] A/manifest.json":  `{"Name":"A Content","UniqueID":"author.content-a","Version":"1.0","Author":"A","ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}}`,
+		"Mods1/PackA/ZAddon/manifest.json":  `{"Name":"Z Addon","UniqueID":"author.addon-a","Version":"1.0","Author":"A","UpdateKeys":["Nexus:150"]}`,
+		"Mods1/PackB/MainB/manifest.json":   `{"Name":"Main B","UniqueID":"author.main-b","Version":"1.0","Author":"B","UpdateKeys":["Nexus:200"]}`,
+		"Mods1/PackB/[FTM] B/manifest.json": `{"Name":"B Farm","UniqueID":"author.farm-b","Version":"1.0","Author":"B","ContentPackFor":{"UniqueID":"Esca.FarmTypeManager"}}`,
+		"Mods1/Direct/manifest.json":        `{"Name":"Direct","UniqueID":"author.direct-only","Version":"1.0","Author":"C","UpdateKeys":["Nexus:300"]}`,
+	})
+
+	imported, err := UploadModZip(dir, zipPath)
+	if err != nil {
+		t.Fatalf("UploadModZip: %v", err)
+	}
+	if len(imported) != 6 {
+		t.Fatalf("imported %d mods, want 6", len(imported))
+	}
+	byFolder := map[string]registry.ModInfo{}
+	for _, mod := range imported {
+		byFolder[mod.FolderName] = mod
+	}
+	mainA, contentA := byFolder["MainA"], byFolder["[CP] A"]
+	mainB, farmB := byFolder["MainB"], byFolder["[FTM] B"]
+	if mainA.PackageKey == "" || mainA.PackageKey != contentA.PackageKey {
+		t.Fatalf("PackA package keys = %q and %q, want same non-empty key", mainA.PackageKey, contentA.PackageKey)
+	}
+	if mainB.PackageKey == "" || mainB.PackageKey != farmB.PackageKey || mainB.PackageKey == mainA.PackageKey {
+		t.Fatalf("PackB package keys = %q and %q; PackA = %q", mainB.PackageKey, farmB.PackageKey, mainA.PackageKey)
+	}
+	if contentA.OriginNexusModID != 100 || farmB.OriginNexusModID != 200 {
+		t.Fatalf("component origins = A:%d B:%d, want 100 and 200", contentA.OriginNexusModID, farmB.OriginNexusModID)
+	}
+	if direct := byFolder["Direct"]; direct.PackageKey != "" || direct.OriginNexusModID != 0 {
+		t.Fatalf("direct singleton unexpectedly grouped: %+v", direct)
+	}
+
+	if err := DeleteMod(dir, contentA.UniqueID); err != nil {
+		t.Fatalf("DeleteMod PackA component: %v", err)
+	}
+	root := filepath.Join(dir, ".local-container", "mods")
+	for _, deleted := range []string{"MainA", "[CP] A", "ZAddon"} {
+		if _, err := os.Stat(filepath.Join(root, deleted)); !os.IsNotExist(err) {
+			t.Fatalf("PackA folder %q was not deleted: %v", deleted, err)
+		}
+	}
+	for _, kept := range []string{"MainB", "[FTM] B", "Direct"} {
+		if _, err := os.Stat(filepath.Join(root, kept)); err != nil {
+			t.Fatalf("unrelated folder %q was deleted: %v", kept, err)
+		}
+	}
+}
+
+func TestUploadModZip_DecodesLegacyGBKFolderAndNumericUpdateKey(t *testing.T) {
+	dir := t.TempDir()
+	archive, err := os.CreateTemp(t.TempDir(), "legacy-gbk-*.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(archive)
+	encodedName, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("模组合包/配偶助手/manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := &zip.FileHeader{Name: string(encodedName), Method: zip.Deflate, NonUTF8: true}
+	entry, err := zw.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte(`{"Name":"配偶助手","UniqueID":"author.spouse","Version":"1.0","Author":"A","UpdateKeys":[48113]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	imported, err := UploadModZip(dir, archive.Name())
+	if err != nil {
+		t.Fatalf("UploadModZip: %v", err)
+	}
+	if len(imported) != 1 || imported[0].FolderName != "配偶助手" {
+		t.Fatalf("unexpected imported mods: %+v", imported)
+	}
+	if len(imported[0].UpdateKeys) != 1 || imported[0].UpdateKeys[0] != "48113" {
+		t.Fatalf("numeric UpdateKeys not normalized: %+v", imported[0].UpdateKeys)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".local-container", "mods", "配偶助手", "manifest.json")); err != nil {
+		t.Fatalf("decoded GBK folder missing: %v", err)
+	}
+}
+
+func TestUploadModZip_InvalidDeepManifestRollsBackWholeBundle(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := createModZip(t, map[string]string{
+		"Mods1/Good/manifest.json":           `{"Name":"Good","UniqueID":"author.good","Version":"1.0","Author":"A"}`,
+		"Mods1/Category/Bad/manifest.json":   `not json`,
+		"Mods1/Category/Bad/some-asset.json": `{}`,
+	})
+
+	if _, err := UploadModZip(dir, zipPath); err == nil {
+		t.Fatal("expected invalid deep manifest to reject the whole bundle")
+	}
+	root := filepath.Join(dir, ".local-container", "mods")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read mods root: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("bundle failure left partially imported directories: %+v", entries)
 	}
 }
 

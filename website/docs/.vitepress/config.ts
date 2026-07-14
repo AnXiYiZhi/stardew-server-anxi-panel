@@ -71,7 +71,10 @@ export default defineConfig({
           ]
         }
       ],
-      '/faq/': [{ text: '常见问题', link: '/faq/' }]
+      '/faq/': [
+        { text: '常见问题', link: '/faq/' },
+        { text: '已知问题（上游）', link: '/faq/known-issues' }
+      ]
     },
     search: { provider: 'local' },
     socialLinks: [

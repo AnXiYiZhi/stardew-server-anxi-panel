@@ -1,3 +1,13 @@
+# MODBUNDLE-1 Mods 文件夹合包完整导入（2026-07-15）
+
+- `UploadModZip` 不再只识别 ZIP 根目录或单层 Nexus 外壳；现在递归发现任意安全深度下所有包含 `manifest.json` 的 Mod 目录，再扁平化导入 `.local-container/mods` 根目录。分类目录和 `Mods1` 这类总外壳不会被当作 Mod 安装。
+- 完整性语义改为严格原子导入：发现的任一 manifest 无效、目录名/`UniqueID` 重复，或 manifest Mod 目录互相包含无法安全扁平化时，整个 ZIP 失败且不留部分目录。
+- 兼容 Windows 用户自己重新压缩的 Mods 目录：无 UTF-8 标志且名称为 GBK/GB18030 的 ZIP 条目会在校验前解码；Mod 根目录的 `Manifest.json` / `Content.json` 会规范为 Linux 可用的小写文件名。社区 Mod 的数字 `UpdateKeys` 兼容读取为字符串，不会被误认为 `Nexus:<id>`。
+- `POST /api/instances/:id/mods/upload` 成功响应新增可选 `upload` 摘要：`archiveCount/discoveredCount/importedCount/enabledCount/activeSaveName`。成功时 `discoveredCount == importedCount`；当前存档启用写入失败则回滚本批目录并返回 `mod_enable_failed`。
+- 同包归属不再等同于 Nexus ID。`ModInfo` 与 `nexus-mods.json` 新增 `packageKey/packageName`：`Mods`/`Mods1` 聚合根按第一层子目录划分真实安装包，普通单外壳 Nexus ZIP 仍将其多个组件视为一包。删除、依赖联动和列表 bundle 优先使用 `packageKey`，旧 sidecar 没有该字段时继续按 `originNexusModId/nexusModId`，不会丢失既有同包删除逻辑。
+- Nexus 来源推断按每个真实子包分别执行；只有同一子包内无 Nexus ID 的组件才跟随该包主组件。无可用正数 Nexus ID 的 SVE 等包只记录 package，不伪造 Nexus 来源、缩略图或统计。
+- 实包验证：`Mods1.zip` 含 3095 个条目、38 个 manifest；隔离目录与本机实例均完整导入 38/38。实例当前存档 `1111_442923526` 的 38 个新 Mod 均标记启用，旧规则会漏掉的 SVE、Frontier Farm、YetAnotherFishingMod 和 MarketTown 组件均已在 Mods 根目录找到。
+
 # JUNIMO-ROLLBACK-TAG-RESTORE-1 回滚后版本检测修复（2026-07-14）
 
 - Junimo 成对升级回滚仍先把 `SERVER_IMAGE` / `STEAM_SERVICE_IMAGE` 临时固定为升级前实际运行的 image ID，确保 tag 漂移时也只重建原 digest。

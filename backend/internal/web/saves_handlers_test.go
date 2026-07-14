@@ -312,6 +312,12 @@ func TestModUpload_AcceptsMultipleZipFiles(t *testing.T) {
 	if result.RestartRequired {
 		t.Fatal("RestartRequired = true, want false for stopped-server upload")
 	}
+	if result.Upload == nil {
+		t.Fatal("upload summary is nil")
+	}
+	if result.Upload.ArchiveCount != 2 || result.Upload.DiscoveredCount != 2 || result.Upload.ImportedCount != 2 || result.Upload.EnabledCount != 2 {
+		t.Fatalf("unexpected upload summary: %+v", result.Upload)
+	}
 }
 
 func TestModUpload_DuplicateUniqueIDReturnsModExists(t *testing.T) {

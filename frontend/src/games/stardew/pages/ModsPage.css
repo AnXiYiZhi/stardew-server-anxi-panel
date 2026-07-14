@@ -508,12 +508,6 @@
   overflow: visible;
 }
 
-.sd-mods-nexus-only-note {
-  color: #7a5c30;
-  font-size: 12px;
-  margin-bottom: 8px;
-}
-
 .sd-mods-installed-footer {
   display: flex;
   align-items: center;

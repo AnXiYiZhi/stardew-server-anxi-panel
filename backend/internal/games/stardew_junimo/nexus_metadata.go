@@ -26,6 +26,8 @@ type nexusInstalledMetadata struct {
 	DownloadCount    int    `json:"downloadCount,omitempty"`
 	PictureURL       string `json:"pictureUrl,omitempty"`
 	NexusURL         string `json:"nexusUrl,omitempty"`
+	PackageKey       string `json:"packageKey,omitempty"`
+	PackageName      string `json:"packageName,omitempty"`
 }
 
 type nexusMetadataStore struct {
@@ -102,8 +104,18 @@ func saveNexusMetadataStore(dataDir string, store nexusMetadataStore) error {
 }
 
 func SaveInstalledNexusMetadata(dataDir string, imported []registry.ModInfo, result NexusModSearchResult) error {
-	result = normalizeInstalledNexusResult(imported, result)
-	if result.ModID <= 0 || len(imported) == 0 {
+	return saveInstalledNexusMetadata(dataDir, imported, result, true)
+}
+
+func saveInstalledNexusMetadata(dataDir string, imported []registry.ModInfo, result NexusModSearchResult, normalizeResult bool) error {
+	if normalizeResult {
+		result = normalizeInstalledNexusResult(imported, result)
+	}
+	if len(imported) == 0 {
+		return nil
+	}
+	packageKey, packageName := installedPackageIdentity(imported, result.Name)
+	if result.ModID <= 0 && packageKey == "" {
 		return nil
 	}
 	lock := nexusMetadataLockFor(dataDir)
@@ -115,23 +127,33 @@ func SaveInstalledNexusMetadata(dataDir string, imported []registry.ModInfo, res
 		return err
 	}
 	entry := nexusMetadataFromResult(result)
-	for folderName, existing := range store.Mods {
-		if existing.ModID == result.ModID {
-			store.Mods[folderName] = mergeNexusMetadata(existing, entry)
+	entry.PackageKey = packageKey
+	entry.PackageName = packageName
+	if result.ModID > 0 {
+		displayEntry := entry
+		displayEntry.PackageKey = ""
+		displayEntry.PackageName = ""
+		for folderName, existing := range store.Mods {
+			if existing.ModID == result.ModID {
+				store.Mods[folderName] = mergeNexusMetadata(existing, displayEntry)
+			}
 		}
 	}
 	for _, mod := range imported {
 		if mod.FolderName == "" {
 			continue
 		}
-		if mod.NexusModID > 0 && mod.NexusModID != result.ModID && len(imported) > 1 {
-			continue
-		}
 		existing := store.Mods[mod.FolderName]
-		if existing.ModID > 0 && existing.ModID != result.ModID {
+		incoming := entry
+		if mod.NexusModID > 0 && mod.NexusModID != result.ModID && len(imported) > 1 {
+			// Preserve this component's own Nexus identity while still recording
+			// that it belongs to the same physical install package.
+			incoming = nexusInstalledMetadata{PackageKey: packageKey, PackageName: packageName}
+		}
+		if incoming.ModID > 0 && existing.ModID > 0 && existing.ModID != incoming.ModID {
 			existing = nexusInstalledMetadata{}
 		}
-		store.Mods[mod.FolderName] = mergeNexusMetadata(existing, entry)
+		store.Mods[mod.FolderName] = mergeNexusMetadata(existing, incoming)
 	}
 	return saveNexusMetadataStore(dataDir, store)
 }
@@ -198,22 +220,65 @@ func mergeNexusMetadata(existing, incoming nexusInstalledMetadata) nexusInstalle
 	if incoming.NexusURL != "" {
 		existing.NexusURL = incoming.NexusURL
 	}
+	if incoming.PackageKey != "" {
+		existing.PackageKey = incoming.PackageKey
+	}
+	if incoming.PackageName != "" {
+		existing.PackageName = incoming.PackageName
+	}
 	return existing
+}
+
+func installedPackageIdentity(imported []registry.ModInfo, fallbackName string) (string, string) {
+	if len(imported) < 2 {
+		return "", ""
+	}
+	key := strings.TrimSpace(imported[0].PackageKey)
+	name := strings.TrimSpace(imported[0].PackageName)
+	for _, mod := range imported[1:] {
+		if key == "" || strings.TrimSpace(mod.PackageKey) != key {
+			key = ""
+			break
+		}
+	}
+	if key == "" {
+		key = modPackageKey(imported)
+	}
+	if name == "" {
+		name = strings.TrimSpace(fallbackName)
+	}
+	return key, name
 }
 
 func SaveInferredNexusPackageOrigin(dataDir string, imported []registry.ModInfo) error {
 	origin, ok := chooseNexusPackageOrigin(imported)
-	if !ok {
-		return nil
+	result := NexusModSearchResult{}
+	if ok {
+		result = NexusModSearchResult{
+			ModID:    origin.NexusModID,
+			Name:     origin.Name,
+			Author:   origin.Author,
+			Version:  origin.Version,
+			NexusURL: nexusModURL(origin.NexusModID),
+		}
 	}
-	result := NexusModSearchResult{
-		ModID:    origin.NexusModID,
-		Name:     origin.Name,
-		Author:   origin.Author,
-		Version:  origin.Version,
-		NexusURL: nexusModURL(origin.NexusModID),
+	// This result was derived from the package itself, so don't run the
+	// correction intended for a possibly mismatched external batch result.
+	return saveInstalledNexusMetadata(dataDir, imported, result, false)
+}
+
+func SaveInferredNexusPackageOrigins(dataDir string, groups map[string][]registry.ModInfo) error {
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
 	}
-	return SaveInstalledNexusMetadata(dataDir, imported, result)
+	sort.Strings(keys)
+	for _, key := range keys {
+		if err := SaveInferredNexusPackageOrigin(dataDir, groups[key]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func chooseNexusPackageOrigin(imported []registry.ModInfo) (registry.ModInfo, bool) {
@@ -384,6 +449,8 @@ func nexusMetadataFromResult(result NexusModSearchResult) nexusInstalledMetadata
 }
 
 func applyNexusMetadata(mod *registry.ModInfo, entry nexusInstalledMetadata) {
+	mod.PackageKey = entry.PackageKey
+	mod.PackageName = entry.PackageName
 	ownNexusMetadata := mod.NexusModID > 0 && mod.NexusModID == entry.ModID
 	if ownNexusMetadata {
 		if mod.NexusURL == "" {

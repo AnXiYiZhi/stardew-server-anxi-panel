@@ -1,3 +1,24 @@
+# 2026-07-15 接手补充：FE-MODBUNDLE-1 上传完整性摘要
+
+## 改了什么
+- 桌面 Mods 管理 hook 保留 `uploadMods()` 的返回值，成功条显示 ZIP 数、安装数、启用数和当前存档。
+- 手机 `MobileModsPage` 对齐同一摘要；两端保留旧后端无 `upload` 时按 `mods.length` 回退。
+- 新增共享 `mod-display.ts`。内容包展示名根据 `contentPackFor` 和目录标记补 `[CP]`/`[FTM]`，桌面搜索卡、已安装列表、删除确认和手机列表使用同一结果。
+- 桌面 bundle key 优先使用 `ModInfo.packageKey`，旧数据继续回退 Nexus ID；这保证聚合 ZIP 的不同子包不会在删除弹窗中合并。
+- 桌面已安装区已取消 Nexus-only 过滤：`userVisibleMods`（排除 SMAPI/Control/Junimo 系统项后）直接全部渲染。无来源项继续走既有 `modToSearchResult()` 的 local 分支，外链按钮禁用但管理能力完整。
+
+## 影响接口/文件
+- `types.ts` 新增 `ModUploadSummary`、`ModInfo.packageKey/packageName`，并把摘要挂到 `ModsListResult.upload?`。
+- 修改 `useModsManagement.ts`、`pages/ModsPage.tsx`/`ModsPage.css`、`mobile/MobileModsPage.tsx`，新增 `mod-display.ts`；未改上传 multipart 字段或启用切换接口。
+
+## 如何验证
+- `cd frontend; npm run build` 通过。后端实包结果为 `1 ZIP / 38 安装 / 38 启用`；SVE 的 CP/FTM 卡片应显示不同前缀，且不再继承 DaisyNiko 的图片和统计。
+
+## 下一步注意事项
+- `enabledCount` 表示物理启用/profile 启用成功，不等于已有运行中 SMAPI 加载证据；未来如新增 runtime-loaded 状态，应使用独立字段和标签。
+- 展示前缀不能写回 manifest `name`；新增内容包框架时扩展共享 helper，避免桌面/手机再次分叉。
+- 不要再用 `nexusModId`、`originNexusModId` 或图片是否存在过滤已安装列表；这些字段只决定来源标签和可用外链。
+
 # 2026-07-14 接手补充：用户更新只看一张卡片
 
 ## 改了什么

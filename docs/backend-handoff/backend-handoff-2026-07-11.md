@@ -1,3 +1,25 @@
+# 2026-07-15 接手补充：MODBUNDLE-1 多层 Mod 合包
+
+## 改了什么
+- `detectModDirs` 改为递归收集所有 manifest 目录并扁平化安装，彻底移除“只看 ZIP 根/单层外壳”的静默漏安装路径。
+- ZIP 条目名在安全校验前兼容解码 GBK/GB18030；Mod 根的 `Manifest.json`/`Content.json` 规范为小写。manifest 解析兼容数字 `UpdateKeys`。
+- 上传成功响应新增 `upload` 摘要；当前存档 profile 启用失败时回滚本批目录，不再只记 warning。
+- 新增独立的 `packageKey/packageName` 持久字段。聚合 `Mods*` 根按第一层子目录分包，普通单外壳 ZIP 保持整包；来源推断逐包执行。删除与依赖联动优先 package key，并对没有新字段的旧 Nexus sidecar 保留原 ID 分组回退。
+
+## 影响接口/文件
+- 接口：`POST /api/instances/:id/mods/upload` 新增可选 `upload` 字段；存档启用失败新增 `mod_enable_failed`。
+- 文件：`mods.go`/`mods_test.go`、`nexus_metadata.go`、`mod_relationships.go`、`registry/types.go`、`lifecycle_handlers.go`、`saves_handlers_test.go`、`go.mod`/`go.sum`（新增 `golang.org/x/text` 用于 GB18030 解码）。
+
+## 如何验证
+- 单测覆盖多层合包、深层无效 manifest 整包回滚、GBK 目录、数字 `UpdateKeys`、两 ZIP 摘要。
+- `C:\Users\anxi\Downloads\Mods1.zip` 在隔离目录导入 38/38；备份实例原 Mods/profile 后，在 `data/instances/stardew` 对存档 `1111_442923526` 验证导入 38、列表命中 38、启用 38。测试前备份位于 `data/manual-test-backups/mods1-before-20260715-012002`。
+- 包归属回归覆盖两个 Nexus 子包、各自无 ID 内容包、独立单 Mod 与按任意成员删除；确认只删除目标子包。真实实例污染状态另备份至 `data/manual-test-backups/mods1-polluted-before-fix-20260715`，随后从前一快照恢复并用新代码重导；SVE 三组件同 package、`originNexusModId=0`，4736 仅保留 DaisyNiko 自身。
+
+## 下一步注意事项
+- 不要再引入“找到部分 manifest 就成功”的容错。manifest-bearing 目录互相嵌套时当前明确拒绝，若未来要支持，必须先设计不重复复制子 Mod 的扁平化规则。
+- 大小写规范化只处理 Mod 根入口文件，不会猜测 assets 内部引用的大小写。
+- `packageKey` 是删除边界；不要重新用单一 Nexus ID 覆盖整个上传批次。未来修改聚合根识别时必须同时验证旧式 Nexus 单外壳 ZIP 和 `Mods1/子包/组件` 两类结构。
+
 # 2026-07-14 接手补充：回滚 digest pin 不再污染持久配置
 
 ## 改了什么
