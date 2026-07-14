@@ -214,10 +214,10 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
         <section className="sd-card sd-ov-junimo-update" aria-label="Junimo 运行组件更新提示">
           <div className="sd-ov-junimo-update-copy">
             <strong>Junimo 运行组件可更新</strong>
-            <span>server 与 steam-auth-cn 将始终作为一个版本对展示；阶段一不会执行升级。</span>
+            <span>{junimoUpdate.current.server.tag || '当前版本'} → {junimoUpdate.recommended.server.tag}。这是可选更新，不升级仍可继续使用；进入版本维护后点击一次即可自动完成校验、下载、安装和验收。</span>
           </div>
           <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>
-            查看详情
+            进入版本维护
           </button>
         </section>
       ) : null}
