@@ -1,3 +1,10 @@
+# 2026-07-14 已完成：RUNTIME-MATRIX-MIRRORS-1
+
+- [x] Junimo server 与 steam-auth-cn 升级矩阵候选顺序和安装流程完全统一。
+- [x] 所有别名强制绑定单一 canonical digest，拉取失败或校验失败自动回退，仍拒绝自定义升级目标。
+- [x] 增加安装/矩阵顺序一致性测试，以及 Go/Python 同 digest 门禁。
+- [x] release gate 区分必需仓库与可回退第三方代理，兼顾制品安全和发布可用性。
+
 # 2026-07-14 已完成：PANEL-UPDATE-HISTORY-STALE-1
 
 - [x] 真实当前版本高于历史成功目标时，不再出现“先显示新版本、再闪回旧版本”。

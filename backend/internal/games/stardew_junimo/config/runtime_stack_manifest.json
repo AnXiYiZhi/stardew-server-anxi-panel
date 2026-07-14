@@ -6,9 +6,19 @@
   "server": {
     "tag": "1.5.0-preview.125",
     "images": [
+      "dockerproxy.net/sdvd/server:1.5.0-preview.125",
+      "docker.1ms.run/sdvd/server:1.5.0-preview.125",
+      "docker.1panel.live/sdvd/server:1.5.0-preview.125",
+      "docker.jiaxin.site/sdvd/server:1.5.0-preview.125",
+      "dockerproxy.link/sdvd/server:1.5.0-preview.125",
       "sdvd/server:1.5.0-preview.125"
     ],
     "digests": {
+      "dockerproxy.net/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
+      "docker.1ms.run/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
+      "docker.1panel.live/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
+      "docker.jiaxin.site/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
+      "dockerproxy.link/sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6",
       "sdvd/server:1.5.0-preview.125": "sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6"
     }
   },
@@ -17,9 +27,17 @@
     "upstreamRef": "refs/tags/preview-1.5.0.121",
     "sourceRevision": "a6cee498f91b318cfcacf035b05b0644bd16829a",
     "images": [
+      "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+      "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2",
+      "docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+      "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
       "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
     ],
     "digests": {
+      "docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
+      "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
+      "docker.m.daocloud.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
+      "ghcr.io/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518",
       "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518"
     }
   },
@@ -56,6 +74,7 @@
     "Panel 0.2.2 推荐 JunimoServer 1.5.0-preview.125；现有 1.5.0-preview.121 实例可继续使用并由管理员自愿升级。",
     "steam-service 在 preview.121 到 preview.125 之间协议未变化，现有 steam-auth-cn 1.5.0-anxi.2 已验证与 server preview.125 配对兼容。",
     "preview.125 继续保留 23 个 /etc/cont-*.d init 兼容挂载，避免裸静态值被容器 init 当作命令执行。",
+    "Panel 0.2.6 起升级预检与安装流程使用同一组镜像候选顺序；每个别名仍必须匹配同一 canonical digest。",
     "各组件更新继续通过独立 staging、验收和回滚事务执行，不提供无条件 latest 更新。"
   ]
 }

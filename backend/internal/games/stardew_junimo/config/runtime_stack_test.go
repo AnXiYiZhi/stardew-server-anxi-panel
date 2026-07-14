@@ -18,15 +18,17 @@ func TestBuiltInRuntimeStackManifestIsValid(t *testing.T) {
 	if manifest.Game.AppID != "413150" || manifest.Game.BuildID == "" || manifest.SDK.AppID != "1007" || manifest.SDK.BuildID == "" || !manifest.Tested {
 		t.Fatalf("runtime content recommendation is incomplete: game=%#v sdk=%#v tested=%v", manifest.Game, manifest.SDK, manifest.Tested)
 	}
-	if manifest.Server.Image != DefaultServerImage {
-		t.Fatalf("server matrix preferred image must match the canonical install default")
-	}
-	if len(manifest.Server.Images) != 1 || len(manifest.SteamAuth.Images) != 1 {
-		t.Fatal("recommended matrix must contain only the currently verified canonical image refs")
+	wantServerImages := strings.Split(DefaultServerImageCandidates, ",")
+	wantAuthImages := strings.Split(DefaultSteamServiceImageCandidates, ",")
+	if !equalStrings(manifest.Server.Images, wantServerImages) || !equalStrings(manifest.SteamAuth.Images, wantAuthImages) {
+		t.Fatalf("matrix candidates must match install order: server=%v auth=%v", manifest.Server.Images, manifest.SteamAuth.Images)
 	}
 	for _, component := range []RuntimeStackManifestComponent{manifest.Server, manifest.SteamAuth} {
-		if !validRuntimeDigest(component.Digests[component.Images[0]]) {
-			t.Fatal("canonical image digest is missing")
+		canonicalDigest := component.Digests[component.Images[0]]
+		for _, image := range component.Images {
+			if !validRuntimeDigest(component.Digests[image]) || component.Digests[image] != canonicalDigest {
+				t.Fatalf("candidate %q is not pinned to canonical digest", image)
+			}
 		}
 	}
 }
@@ -86,6 +88,9 @@ func TestRuntimeStackManifestRejectsUnsafeComponents(t *testing.T) {
 		{"digest ref", func(m *RuntimeStackManifest) { m.Server.Image = "sdvd/server@sha256:" + strings.Repeat("a", 64) }},
 		{"digest tag", func(m *RuntimeStackManifest) { m.Server.Tag = strings.Repeat("a", 64) }},
 		{"untrusted repository", func(m *RuntimeStackManifest) { m.SteamAuth.Image = "evil.example/steam-auth:1.5.0-anxi.2" }},
+		{"candidate digest drift", func(m *RuntimeStackManifest) {
+			m.Server.Digests[m.Server.Images[1]] = "sha256:" + strings.Repeat("f", 64)
+		}},
 		{"game app mismatch", func(m *RuntimeStackManifest) { m.Game.AppID = "1007" }},
 		{"game build invalid", func(m *RuntimeStackManifest) { m.Game.BuildID = "latest" }},
 		{"sdk build missing", func(m *RuntimeStackManifest) { m.SDK.BuildID = "" }},
@@ -93,8 +98,18 @@ func TestRuntimeStackManifestRejectsUnsafeComponents(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			manifest := base
+			manifest.Server.Images = append([]string(nil), base.Server.Images...)
 			manifest.Server.TrustedCandidates = append([]string(nil), base.Server.TrustedCandidates...)
+			manifest.Server.Digests = make(map[string]string, len(base.Server.Digests))
+			for image, digest := range base.Server.Digests {
+				manifest.Server.Digests[image] = digest
+			}
+			manifest.SteamAuth.Images = append([]string(nil), base.SteamAuth.Images...)
 			manifest.SteamAuth.TrustedCandidates = append([]string(nil), base.SteamAuth.TrustedCandidates...)
+			manifest.SteamAuth.Digests = make(map[string]string, len(base.SteamAuth.Digests))
+			for image, digest := range base.SteamAuth.Digests {
+				manifest.SteamAuth.Digests[image] = digest
+			}
 			tc.mutate(&manifest)
 			if err := ValidateRuntimeStackManifest(manifest); err == nil {
 				t.Fatal("expected validation error")

@@ -54,6 +54,8 @@ def validate_image_component(name: str, component: object, strict: bool) -> None
         elif digest is not None:
             require(isinstance(digest, str) and SHA256_RE.fullmatch(digest) is not None, f"{name} digest is invalid: {image}")
     require(set(digests).issubset(set(images)), f"{name}.digests contains an image not listed in images")
+    reviewed = {digests[image] for image in images if image in digests}
+    require(len(reviewed) == 1, f"{name} image aliases must share one canonical digest")
 
 
 def validate(matrix: dict) -> None:
@@ -107,6 +109,16 @@ def digest_from_imagetools(output: str) -> str:
     raise MatrixError("docker buildx imagetools output did not contain a manifest digest")
 
 
+def required_remote_image(image: str) -> bool:
+    repository = image.rsplit(":", 1)[0]
+    first_segment = repository.split("/", 1)[0]
+    canonical_docker_hub = "." not in first_segment and ":" not in first_segment and first_segment != "localhost"
+    owned_mirror = repository.startswith("ghcr.io/anxiyizhi/") or repository.startswith(
+        "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/"
+    )
+    return canonical_docker_hub or owned_mirror
+
+
 def verify_remote_artifacts(matrix: dict) -> None:
     validate(matrix)
     require(matrix["status"] == "recommended", "remote verification requires the embedded recommended manifest")
@@ -119,7 +131,11 @@ def verify_remote_artifacts(matrix: dict) -> None:
                 text=True,
                 timeout=120,
             )
-            require(completed.returncode == 0, f"cannot inspect {image}: {completed.stderr.strip()}")
+            if completed.returncode != 0:
+                if required_remote_image(image):
+                    raise MatrixError(f"cannot inspect required image {image}: {completed.stderr.strip()}")
+                print(f"compatibility matrix warning: optional mirror unavailable: {image}", file=sys.stderr)
+                continue
             actual = digest_from_imagetools(completed.stdout)
             require(actual == matrix[name]["digests"][image], f"tag/digest mismatch for {image}: expected {matrix[name]['digests'][image]}, got {actual}")
 
