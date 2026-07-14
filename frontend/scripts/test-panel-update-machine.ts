@@ -69,6 +69,19 @@ assert.equal(availableAfterSuccess.overviewText, '发现新版本 v0.1.16')
 assert.equal(panelUpdateSurface(nextUpdate, apply('pulling', 65), null).targetVersion, '0.1.15')
 assert.equal(panelUpdateSurface(nextUpdate, apply('rollback_failed', 100), null).targetVersion, '0.1.15')
 
+// 当前进程已经高于历史成功目标时，历史记录只能作为详情，不能把版本倒写回去。
+const currentAfterExternalUpgrade: PanelUpdateStatus = {
+  ...nextUpdate,
+  currentVersion: '0.1.16',
+  latestVersion: 'v0.1.16',
+  updateAvailable: false,
+}
+const currentAfterHistoryLoads = panelUpdateSurface(currentAfterExternalUpgrade, apply('succeeded', 100), { version: '0.1.16' })
+assert.equal(currentAfterHistoryLoads.currentVersion, '0.1.16')
+assert.equal(currentAfterHistoryLoads.targetVersion, 'v0.1.16')
+assert.equal(currentAfterHistoryLoads.topbarText, 'v0.1.16')
+assert.equal(currentAfterHistoryLoads.overviewText, '✓ 最新')
+
 // 顶栏和总览由同一个 selector 读取同一份状态，不能各自推导出不同阶段。
 const shared = panelUpdateSurface(update, apply('recreating', 65), null)
 assert.equal(shared.topbarText, '正在升级 65%')

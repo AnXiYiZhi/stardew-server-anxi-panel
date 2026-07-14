@@ -56,17 +56,29 @@ export function panelUpdateSurface(
   apply: PanelUpdateApplyStatus | null,
   versionInfo: VersionInfo | null,
 ): PanelUpdateSurface {
-  const current = status?.currentVersion || versionInfo?.version || apply?.fromVersion || ''
+  const observedCurrent = status?.currentVersion || versionInfo?.version || ''
+  const current = observedCurrent
+    || (apply?.phase === 'succeeded' ? apply.toVersion : apply?.fromVersion)
+    || ''
   const detectedTarget = status?.latestVersion || ''
   const applyTarget = apply?.toVersion || ''
   const applyOwnsSurface = isPanelUpdateActive(apply) || apply?.phase === 'rollback_failed'
+  const succeededTargetsDetectedRelease = updateDisplayKind(status) === 'available'
+    && withoutVersionPrefix(applyTarget) === withoutVersionPrefix(detectedTarget)
+  const terminalApplyMatchesCurrent = apply?.phase === 'succeeded'
+    ? withoutVersionPrefix(applyTarget) === withoutVersionPrefix(current) || succeededTargetsDetectedRelease
+    : apply?.phase === 'failed_rolled_back'
+      ? withoutVersionPrefix(apply.fromVersion) === withoutVersionPrefix(current)
+      : false
   const detectedUpdateSupersedesTerminal = !applyOwnsSurface
     && updateDisplayKind(status) === 'available'
     && Boolean(detectedTarget)
     && withoutVersionPrefix(detectedTarget) !== withoutVersionPrefix(applyTarget)
-  const target = detectedUpdateSupersedesTerminal
-    ? detectedTarget
-    : applyTarget || detectedTarget
+  const applyOwnsTarget = applyOwnsSurface
+    || (terminalApplyMatchesCurrent && !detectedUpdateSupersedesTerminal)
+  const target = applyOwnsTarget
+    ? applyTarget || detectedTarget
+    : detectedTarget || current
   if (apply && ACTIVE_PANEL_UPDATE_PHASES.has(apply.phase)) {
     if (apply.phase === 'rolling_back') {
       return {
@@ -82,7 +94,7 @@ export function panelUpdateSurface(
       overviewText: '正在升级…', tone: 'working',
     }
   }
-  if (apply?.phase === 'failed_rolled_back' && !detectedUpdateSupersedesTerminal) {
+  if (apply?.phase === 'failed_rolled_back' && terminalApplyMatchesCurrent && !detectedUpdateSupersedesTerminal) {
     return {
       currentVersion: current, targetVersion: target,
       topbarText: '升级失败，已恢复', mobileTopbarText: '已恢复', overviewText: '升级失败，已恢复', tone: 'restored',
@@ -94,7 +106,7 @@ export function panelUpdateSurface(
       topbarText: '升级需要处理', mobileTopbarText: '升级异常', overviewText: '自动恢复未完成', tone: 'error',
     }
   }
-  if (apply?.phase === 'succeeded' && !detectedUpdateSupersedesTerminal) {
+  if (apply?.phase === 'succeeded' && terminalApplyMatchesCurrent && !detectedUpdateSupersedesTerminal) {
     const upgraded = apply.toVersion || current
     return {
       currentVersion: upgraded, targetVersion: upgraded,

@@ -1,3 +1,10 @@
+# PANEL-UPDATE-HISTORY-STALE-1 历史终态与真实版本解耦（2026-07-14）
+
+- 修复外部完成 `0.2.4` 更新后，页面先显示真实 `0.2.4`、再被历史 `0.2.2 succeeded` 倒写的问题。
+- 当前版本优先取 `/api/system/update.currentVersion` 或 `/api/version`；只有成功目标等于当前版本时，历史 succeeded 才能主导成功提示。旧终态继续保留在详情中，但不再修改当前/最新版本。
+- 同理，`failed_rolled_back` 只在其 fromVersion 仍是当前版本时主导页面；活动任务与 `rollback_failed` 始终保持最高优先级。
+- 回归测试覆盖“当前已通过外部更新升到新版本、随后旧 apply 状态异步加载”的真实闪回顺序。
+
 # PANEL-UPDATE-CONTINUOUS-1 连续升级状态修复（2026-07-14）
 
 - 修复历史 `apply.phase=succeeded` 永久覆盖新版本检测的问题。上一次成功目标与当前 `latestVersion` 不同时，顶栏、总览和版本详情改为展示新版本，不再把旧成功记录误当作“最新”。
