@@ -558,6 +558,23 @@
   background: rgba(255, 242, 199, 0.32);
 }
 
+.sd-diag-maintenance-item {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.sd-diag-maintenance-item-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sd-diag-maintenance-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .sd-diag-maintenance-item > div,
 .sd-diag-maintenance-empty > div {
   flex: 1 1 auto;
@@ -587,6 +604,84 @@
   color: var(--sd-save-card-muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.sd-diag-user-progress {
+  display: grid;
+  gap: 9px;
+  width: 100%;
+  margin-top: 2px;
+  padding: 12px;
+  border: 1px solid rgba(151, 103, 41, 0.34);
+  border-radius: 7px;
+  background: rgba(255, 250, 226, 0.7);
+}
+
+.sd-diag-user-progress.is-error { border-color: #b94836; background: rgba(255, 224, 205, 0.62); }
+.sd-diag-user-progress.is-warning { border-color: #c48724; background: rgba(255, 236, 184, 0.66); }
+.sd-diag-user-progress.is-success { border-color: #4f9639; background: rgba(222, 242, 199, 0.66); }
+
+.sd-diag-user-progress-head,
+.sd-diag-user-download {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sd-diag-user-progress-head span,
+.sd-diag-user-download span {
+  color: var(--sd-save-card-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.sd-diag-user-progress progress {
+  width: 100%;
+  height: 12px;
+  accent-color: #4f9639;
+}
+
+.sd-diag-user-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.sd-diag-user-progress-steps span {
+  padding: 6px 4px;
+  border-radius: 5px;
+  color: #866b43;
+  background: rgba(132, 94, 46, 0.09);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.sd-diag-user-progress-steps span.is-active { color: #fff8da; background: #b97718; }
+.sd-diag-user-progress-steps span.is-done { color: #275f20; background: #d9efd2; }
+.sd-diag-user-progress-steps span:only-child { grid-column: 1 / -1; }
+
+.sd-diag-user-progress-error {
+  color: #8c2d20;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.sd-diag-user-detail-link {
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  color: #72501e;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .sd-diag-maintenance-details {
@@ -656,6 +751,31 @@
   .sd-diag-maintenance-item > button,
   .sd-diag-maintenance-tools > button {
     width: 100%;
+  }
+
+  .sd-diag-maintenance-item-main {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sd-diag-maintenance-item-main > button {
+    width: 100%;
+  }
+
+  .sd-diag-user-progress-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sd-diag-user-progress-head,
+  .sd-diag-user-download {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .sd-diag-user-progress-head span,
+  .sd-diag-user-download span {
+    text-align: left;
   }
 
   .sd-diag-maintenance-badge {

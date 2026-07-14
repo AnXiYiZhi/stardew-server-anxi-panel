@@ -327,3 +327,15 @@ func TestRuntimeUpdateDryRunIgnoresRawPullLogs(t *testing.T) {
 		t.Fatalf("raw pull log leaked: %s", data)
 	}
 }
+
+func TestRuntimeUpdateDryRunPublishesDownloadProgress(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeUpdateDriver(t, storage.InstanceStateGameInstalled)
+	fake.pullLogLine = "abcdef123456: Pull complete"
+	if _, err := driver.StartRuntimeUpdateDryRun(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeUpdateStatus(t, driver, instance)
+	if status.Phase != RuntimeUpdatePhaseSucceeded || status.Download == nil || status.Download.Component != "steam-auth-cn" || status.Download.Percent != 100 {
+		t.Fatalf("download progress not published: %+v", status.Download)
+	}
+}

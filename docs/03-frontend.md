@@ -2142,3 +2142,9 @@ npm.cmd run dev
 诊断页增加统一版本总览，按 Junimo server/auth、游戏/SDK、SMAPI/控制 Mod 三组显示当前值与当前 Panel 内嵌目标，同时展示 stackVersion、stable/preview 通道、minimumPanelVersion 以及 recommended/withdrawn 状态。用户升级 Panel 后，页面直接比较已安装组件与该 Panel 指定版本并提示对应升级。每组链接到原有独立事务入口，并说明停服、验收、回滚及完整玩家同步包影响。
 
 界面不提供“全部更新到 latest”按钮。withdrawn 与非 recommended 状态使用风险徽标，后端门禁同时禁止操作。矩阵卡片、镜像引用和阶段日志均设置可换行；620px 以下三组改为单列，避免长 digest、buildid 或镜像名导致横向溢出。
+# FE-COMPONENT-UPDATE-CARD-1 卡片内一键升级进度（2026-07-14）
+
+- “版本维护”中的 Junimo 与 SMAPI 更新改为用户视角的一键流程：管理员确认一次后，在当前卡片内依次展示校验、下载、安装和验收，不再要求进入多层技术区重复点击。
+- Junimo 镜像下载直接展示当前组件、完成层数/总层数和百分比；失败或回滚失败继续留在维护区，不会错误退回“无需处理”。
+- 游戏/SDK 当前只有安全预检能力，卡片明确显示“仅校验”，不伪造尚未存在的在线安装进度。
+- “维护与技术详情”保留原始 checks、镜像、digest、日志和恢复原因，作为管理员/开发者排障信息，不再承载主要升级入口。

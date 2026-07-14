@@ -638,3 +638,24 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 
 - 运行兼容矩阵 validate/check-panel-version/verify-remote-artifacts、Go 相关包与发布全量门禁；`.125` 实镜像另已验证 23 个 init 兼容脚本挂载可正常执行。
 - 发版后确认 GitHub Release 与三仓库 `0.2.2/latest` 镜像，并用 Web updater 检查 0.2.1→0.2.2；不得把 `.121` 提示改成强制升级。旧联机存档 host-swap 向导留待后续独立功能。
+# 2026-07-14 接手补充：Junimo 升级进度与误判回滚修复
+
+### 改了什么
+
+- `internal/docker/runtime_apply.go` 的 server health 验收从 `wget` 改为 Bash `/dev/tcp`；实测 `.121` 镜像有 Bash/curl、没有 wget，旧探针会让新旧版本各等待五分钟后均被误判。
+- dry-run/apply 在可信镜像拉取期间持久化结构化 `download` 进度；apply 额外持久化最初失败与回滚失败的受控 code/message。
+- `runtime_update_apply_runner.go` 将最终验收拆为 server、Junimo、SMAPI、Control、实例状态和邀请码等明确错误码；`runtime_update_rollback.go` 将恢复失败映射到具体回滚步骤。
+
+### 影响接口/文件
+
+- 管理员 Junimo dry-run/apply GET/POST 的响应只新增可选字段，旧前端可忽略；POST 请求体和内嵌目标矩阵未改变。
+- 主要文件：`internal/docker/runtime_apply.go`、`internal/games/stardew_junimo/runtime_update_{dry_run,apply,rollback}*.go` 及对应测试。
+
+### 如何验证
+
+- 单元测试覆盖无 wget 探针、拉取层进度、初始 cause 保留和精确 rollback code。
+- 真实测试实例仅做只读核验：旧 `.121` server/auth 已回到原镜像并健康运行，Junimo health、Control status 和邀请码链路均正常；没有改写历史 `rollback_failed` 或删除 recovery。
+
+### 下一步注意事项
+
+- 历史 `rollback_failed` 继续作为安全锁，若要提供“重新验证恢复状态”必须设计显式管理员动作并完整验证原版本对，禁止在 GET 或 Panel 启动时静默清理。

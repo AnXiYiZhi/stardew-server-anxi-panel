@@ -59,3 +59,9 @@ func TestRuntimeUpdateDockerContractContainsNoDestructiveMethods(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeServerHealthProbeDoesNotRequireWget(t *testing.T) {
+	if strings.Contains(runtimeServerHealthProbe, "wget") || !strings.Contains(runtimeServerHealthProbe, "/dev/tcp/127.0.0.1/8080") {
+		t.Fatalf("runtime health probe must use the Junimo image's Bash TCP contract: %q", runtimeServerHealthProbe)
+	}
+}

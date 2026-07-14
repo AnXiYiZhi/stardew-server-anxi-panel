@@ -41,6 +41,9 @@ PANEL_IMAGE_CANDIDATES="${PANEL_IMAGE_CANDIDATES:-}"
 
 RUN_SH_URL="${RUN_SH_URL:-https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh}"
 RUN_SH_URL_CANDIDATES="${RUN_SH_URL_CANDIDATES:-https://gh.llkk.cc/${RUN_SH_URL},https://github.dpik.top/${RUN_SH_URL},https://ghfast.top/${RUN_SH_URL},${RUN_SH_URL}}"
+PANEL_RELEASE_API_URL="${PANEL_RELEASE_API_URL:-https://api.github.com/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest}"
+PANEL_RELEASE_API_URL_CANDIDATES="${PANEL_RELEASE_API_URL_CANDIDATES:-${PANEL_RELEASE_API_URL},https://gh.llkk.cc/${PANEL_RELEASE_API_URL},https://github.dpik.top/${PANEL_RELEASE_API_URL},https://ghfast.top/${PANEL_RELEASE_API_URL}}"
+PANEL_RELEASE_LATEST_URL="${PANEL_RELEASE_LATEST_URL:-https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest}"
 
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
 ENV_FILE="$INSTALL_DIR/.env"
@@ -364,6 +367,62 @@ read_env_value() {
   grep -E "^${key}=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true
 }
 
+normalize_panel_version() {
+  local version="${1#v}"
+  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf "%s\n" "$version"
+    return 0
+  fi
+  return 1
+}
+
+resolve_latest_panel_version() {
+  require_command curl
+
+  local payload tag url effective
+  local urls=()
+  IFS=',' read -r -a urls <<<"$PANEL_RELEASE_API_URL_CANDIDATES"
+  for url in "${urls[@]}"; do
+    url="$(printf "%s" "$url" | xargs)"
+    [[ -z "$url" ]] && continue
+    payload="$(curl -fsSL --connect-timeout 15 --max-time 60 "$url" 2>/dev/null || true)"
+    tag="$(printf "%s" "$payload" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"(v?[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -n1)"
+    if normalize_panel_version "$tag"; then
+      return 0
+    fi
+  done
+
+  effective="$(curl -fsSL --connect-timeout 15 --max-time 60 -o /dev/null -w '%{url_effective}' "$PANEL_RELEASE_LATEST_URL" 2>/dev/null || true)"
+  tag="$(printf "%s" "$effective" | sed -nE 's#^.*/tag/(v?[0-9]+\.[0-9]+\.[0-9]+)/?$#\1#p')"
+  if normalize_panel_version "$tag"; then
+    return 0
+  fi
+
+  return 1
+}
+
+prepare_update_target() {
+  if [[ -n "$PANEL_VERSION_WAS_SET" && "$PANEL_VERSION" != "latest" ]]; then
+    if ! normalize_panel_version "$PANEL_VERSION" >/dev/null; then
+      red "PANEL_VERSION 必须是精确稳定版本，例如 0.2.6。" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  local latest_version
+  cyan "正在查询最新正式版本..." >&2
+  if ! latest_version="$(resolve_latest_panel_version)"; then
+    red "无法确认最新正式版本，已停止更新；不会继续拉取当前旧版本。" >&2
+    yellow "可以显式指定版本重试，例如：PANEL_VERSION=0.2.6 bash run.sh force-update" >&2
+    return 1
+  fi
+
+  PANEL_VERSION="$latest_version"
+  PANEL_VERSION_WAS_SET="resolved-latest"
+  green "最新正式版本：${PANEL_VERSION}" >&2
+}
+
 is_unique() {
   local value="$1"
   shift
@@ -654,6 +713,7 @@ restart_panel() {
 
 update_panel() {
   check_prerequisites
+  prepare_update_target
   ensure_files
   resolve_panel_image true
   cyan "正在重建面板容器..."
@@ -664,6 +724,7 @@ update_panel() {
 
 force_update_panel() {
   check_prerequisites
+  prepare_update_target
   ensure_files
   local image
   image="$(current_image)"
@@ -923,4 +984,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

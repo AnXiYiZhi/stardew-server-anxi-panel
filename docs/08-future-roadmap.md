@@ -1,3 +1,9 @@
+# 2026-07-14 已完成：RUN-SH-LATEST-UPDATE-1
+
+- [x] `run.sh update/force-update` 未指定版本时自动解析最新正式 Release，不再被 `.env` 中旧的精确镜像 tag 截停。
+- [x] 日常启动/重启继续固定当前版本；最新版本解析失败时安全终止，不伪报旧版本更新成功。
+- [x] 增加 shell 回归测试并接入 tag release gate，覆盖自动目标、显式目标与解析失败。
+
 # 2026-07-14 已完成：RUNTIME-MATRIX-MIRRORS-1
 
 - [x] Junimo server 与 steam-auth-cn 升级矩阵候选顺序和安装流程完全统一。
@@ -1083,3 +1089,9 @@ Multi Game Mode later
 - [x] Docker 镜像/容器元数据读取缩小为格式化安全字段，真实 `sdvd/server:1.5.0-preview.121` 不再因环境变量脱敏导致 JSON 解析失败。
 - [x] steam-auth ready/ticket 探针移除 Node.js 运行时假设，并用无 Node fixture 与真实 `steam-auth-cn:1.5.0-anxi.2` 验证。
 - [ ] 真实已登录 Steam 测试账号的 session 保持仍属于发布 Environment 长链路验收，不能用无凭据探针替代。
+# 2026-07-14 已完成：JUNIMO-UPDATE-PROGRESS-1
+
+- [x] 修复 `.121/.125` 均无 `wget` 导致的新版本验收与旧版本回滚连续误判，统一改用 Junimo 镜像已有的 Bash health 契约。
+- [x] Junimo dry-run/apply 输出镜像层下载进度，并保留初始失败与具体回滚失败原因。
+- [x] 版本维护卡内一键展示校验、下载、安装和验收；技术详情降级为开发者排障信息，失败状态不再被“无需处理”覆盖。
+- [x] 游戏/SDK 只展示已有安全预检，不把未实现的 apply 伪装成可在线升级。

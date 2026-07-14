@@ -48,6 +48,7 @@ jobs:
           python scripts/compatibility_matrix.py check-panel-version backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json --version "${GITHUB_REF_NAME#v}"
           python scripts/compatibility_matrix.py verify-remote-artifacts backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
           python -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
+          bash scripts/tests/test_run_sh_update.sh
           (cd backend && go test ./...)
           (cd backend && go test -tags=integration ./internal/docker)
           (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:runtime-components && npm run test:smapi-update && npm run build)

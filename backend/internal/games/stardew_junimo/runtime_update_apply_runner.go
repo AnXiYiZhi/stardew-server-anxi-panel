@@ -68,7 +68,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := setPhase(RuntimeUpdateApplyChecking, 5, "正在重新执行关键升级预检。"); err != nil {
 		return err
 	}
-	preflight, err := d.runtimeUpdateApplyPreflight(ctx, docker, instance, &status)
+	preflight, err := d.runtimeUpdateApplyPreflight(ctx, job, docker, instance, &status)
 	if err != nil {
 		_ = finish(RuntimeUpdateApplyFailedRolledBack, runtimeUpdateErrorCode(err), "关键预检失败；实例未修改。")
 		return err
@@ -173,7 +173,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	return finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。")
 }
 
-func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status *RuntimeUpdateApplyStatus) (runtimeUpdatePreflight, error) {
+func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status *RuntimeUpdateApplyStatus) (runtimeUpdatePreflight, error) {
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
@@ -219,14 +219,28 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, docker Runtime
 	if _, err := docker.RuntimeVolumeInspect(ctx, instance.DataDir, compose.SteamSessionVolume); err != nil {
 		return runtimeUpdatePreflight{}, errors.New("steam_session_volume_missing")
 	}
-	targetServer, code := selectRuntimeUpdateImage(ctx, docker, instance.DataDir, inspection.Recommended.Server.TrustedCandidates, inspection.Recommended.Server.Digests)
+	pullProgress := func(component string, base, span int) func(string) {
+		return makeImagePullLineHandler(job, "[runtime-update:"+component+":pull] ", func(done, total int) {
+			if total <= 0 {
+				return
+			}
+			percent := done * 100 / total
+			status.Download = &RuntimeUpdateDownloadProgress{Component: component, DoneLayers: done, TotalLayers: total, Percent: percent}
+			status.Progress = base + percent*span/100
+			status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+			_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
+		})
+	}
+	targetServer, code := selectRuntimeUpdateImageWithProgress(ctx, docker, instance.DataDir, inspection.Recommended.Server.TrustedCandidates, inspection.Recommended.Server.Digests, pullProgress("server", 5, 7))
 	if code != "" {
 		return runtimeUpdatePreflight{}, errors.New(code)
 	}
-	targetAuth, code := selectRuntimeUpdateImage(ctx, docker, instance.DataDir, inspection.Recommended.SteamAuth.TrustedCandidates, inspection.Recommended.SteamAuth.Digests)
+	status.Download = &RuntimeUpdateDownloadProgress{Component: "server", Image: targetServer.Image, DoneLayers: 1, TotalLayers: 1, Percent: 100}
+	targetAuth, code := selectRuntimeUpdateImageWithProgress(ctx, docker, instance.DataDir, inspection.Recommended.SteamAuth.TrustedCandidates, inspection.Recommended.SteamAuth.Digests, pullProgress("steam-auth-cn", 12, 7))
 	if code != "" {
 		return runtimeUpdatePreflight{}, errors.New(code)
 	}
+	status.Download = &RuntimeUpdateDownloadProgress{Component: "steam-auth-cn", Image: targetAuth.Image, DoneLayers: 1, TotalLayers: 1, Percent: 100}
 	if err := docker.RuntimeComposeConfigValidateImages(ctx, instance.DataDir, project, targetServer.Image, targetAuth.Image); err != nil {
 		return runtimeUpdatePreflight{}, errors.New("compose_target_validation_failed")
 	}
@@ -328,21 +342,33 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 		return err
 	}
 	deadline := time.Now().Add(d.runtimeUpdateServerTimeout)
+	lastFailure := "server_container_not_ready"
 	for time.Now().Before(deadline) {
 		metadata, err := docker.RuntimeServiceInspect(ctx, instance.DataDir, manifest.Project, "server")
 		if err == nil && metadata.ImageID != manifest.Target.Server.ImageID {
 			return errors.New("server_digest_mismatch")
 		}
-		if err == nil && strings.EqualFold(metadata.State, "running") && (metadata.Health == "" || strings.EqualFold(metadata.Health, "healthy")) && docker.RuntimeServerHealth(ctx, instance.DataDir, manifest.Project) == nil {
+		if err != nil || !strings.EqualFold(metadata.State, "running") || metadata.Health != "" && !strings.EqualFold(metadata.Health, "healthy") {
+			lastFailure = "server_container_not_ready"
+		} else if docker.RuntimeServerHealth(ctx, instance.DataDir, manifest.Project) != nil {
+			lastFailure = "junimo_health_not_ready"
+		} else {
 			contract, contractErr := docker.ComposeExecPipe(ctx, instance.DataDir, "server", "info\nquit\n", "attach-cli")
-			stored, storeErr := d.store.GetInstance(ctx, instance.ID)
 			controlState := readSMAPIStatus(instance.DataDir)
-			controlReady := (controlState == "launched" || controlState == "save-loaded") && commandResultSupported(instance.DataDir)
-			if contractErr == nil && strings.TrimSpace(contract.Stdout) != "" && storeErr == nil && controlReady {
+			if contractErr != nil || strings.TrimSpace(contract.Stdout) == "" {
+				lastFailure = "junimo_contract_not_ready"
+			} else if controlState != "launched" && controlState != "save-loaded" {
+				lastFailure = "smapi_runtime_not_ready"
+			} else if !commandResultSupported(instance.DataDir) {
+				lastFailure = "control_contract_not_ready"
+			} else if stored, storeErr := d.store.GetInstance(ctx, instance.ID); storeErr != nil {
+				lastFailure = "instance_state_unavailable"
+			} else {
 				runner := &lifecycleRunner{driver: d, lifecycle: docker, instance: stored}
 				if _, inviteErr := runner.fetchInviteCode(ctx); inviteErr == nil {
 					return nil
 				}
+				lastFailure = "invite_code_not_ready"
 			}
 		}
 		select {
@@ -351,7 +377,7 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 		case <-time.After(d.runtimeUpdatePollInterval):
 		}
 	}
-	return errors.New("server_health_failed")
+	return errors.New(lastFailure)
 }
 
 func (d *Driver) restoreRuntimeRunningState(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {

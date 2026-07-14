@@ -70,11 +70,20 @@ type RuntimeUpdateSelectedPair struct {
 	SteamAuth RuntimeUpdateSelectedImage `json:"steamAuth"`
 }
 
+type RuntimeUpdateDownloadProgress struct {
+	Component   string `json:"component"`
+	Image       string `json:"image,omitempty"`
+	DoneLayers  int    `json:"doneLayers"`
+	TotalLayers int    `json:"totalLayers"`
+	Percent     int    `json:"percent"`
+}
+
 type RuntimeUpdateDryRunStatus struct {
 	DryRunID      string                              `json:"dryRunId,omitempty"`
 	JobID         string                              `json:"jobId,omitempty"`
 	Phase         string                              `json:"phase"`
 	Progress      int                                 `json:"progress"`
+	Download      *RuntimeUpdateDownloadProgress      `json:"download,omitempty"`
 	Current       sjconfig.RuntimeStackCurrent        `json:"current"`
 	Target        sjconfig.RuntimeStackRecommendation `json:"target"`
 	Selected      RuntimeUpdateSelectedPair           `json:"selected"`

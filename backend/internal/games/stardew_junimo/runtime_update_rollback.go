@@ -18,6 +18,7 @@ import (
 
 func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status *RuntimeUpdateApplyStatus, manifest runtimeUpdateRecoveryManifest, causeCode, causeMessage string) error {
 	status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyRollingBack, 90, causeCode, paneldocker.RedactString(causeMessage)
+	status.CauseCode, status.CauseError = causeCode, paneldocker.RedactString(causeMessage)
 	status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: status.UpdatedAt, Level: "warning", Message: "升级验收失败，正在成对回滚 server 与 steam-auth-cn。"})
 	_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
@@ -27,9 +28,11 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	now := time.Now().UTC().Format(time.RFC3339)
 	status.Progress, status.UpdatedAt, status.FinishedAt = 100, now, now
 	if rollbackErr != nil {
+		rollbackCode, rollbackMessage := runtimeUpdateRollbackFailure(rollbackErr)
 		status.Phase = RuntimeUpdateApplyRollbackFailed
 		status.ErrorCode = "rollback_failed"
-		status.Error = "自动回滚未能完成；私有恢复材料已保留。"
+		status.Error = "升级验收失败，且自动回滚未能完成；私有恢复材料已保留。"
+		status.RollbackCode, status.RollbackError = rollbackCode, rollbackMessage
 		status.ManualAction = "停止对该实例执行更新操作，保留 .local-container/junimo-update/recovery 下的私有材料，并由管理员核对原镜像 digest、.env、Compose 与 steam-session 快照后人工恢复。"
 		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "error", Message: status.Error})
 		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
@@ -46,6 +49,34 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume)
 	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
 	return errors.New(causeMessage)
+}
+
+func runtimeUpdateRollbackFailure(err error) (string, string) {
+	message := err.Error()
+	switch {
+	case strings.HasPrefix(message, "stop new runtime pair:"):
+		return "rollback_stop_new_pair_failed", "无法停止新版 server/auth。"
+	case strings.HasPrefix(message, "restore env:"):
+		return "rollback_restore_env_failed", "无法恢复升级前的实例配置。"
+	case strings.HasPrefix(message, "restore compose:"):
+		return "rollback_restore_compose_failed", "无法恢复升级前的 Compose 配置。"
+	case strings.HasPrefix(message, "pin original runtime images:"):
+		return "rollback_pin_images_failed", "无法固定升级前的 server/auth 镜像。"
+	case strings.HasPrefix(message, "restore steam session:"):
+		return "rollback_restore_auth_volume_failed", "无法恢复升级前的 Steam 认证卷。"
+	case strings.HasPrefix(message, "recreate old auth:"):
+		return "rollback_recreate_auth_failed", "无法重建升级前的 steam-auth-cn。"
+	case strings.HasPrefix(message, "verify old auth:"):
+		return "rollback_verify_auth_failed", "升级前的 Steam 认证未能恢复就绪。"
+	case strings.HasPrefix(message, "recreate old server:"):
+		return "rollback_recreate_server_failed", "无法重建升级前的 Junimo server。"
+	case strings.Contains(message, "rollback Junimo verification failed"):
+		return "rollback_verify_server_failed", "升级前的 Junimo server 未能恢复就绪。"
+	case strings.HasPrefix(message, "restore stopped state:"):
+		return "rollback_restore_stopped_state_failed", "无法恢复升级前的停止状态。"
+	default:
+		return "rollback_unknown_failed", "自动回滚在未识别步骤失败。"
+	}
 }
 
 func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
