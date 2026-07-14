@@ -1,3 +1,25 @@
+# 2026-07-14 接手补充：连续 Panel 升级状态修复
+
+### 改了什么
+
+- `panelUpdateSurface()` 只让活动升级、未恢复异常或与当前目标相同的终态主导页面；检测到更高正式版本时，历史成功/已恢复记录退回历史展示，新版本重新成为顶栏、总览和详情页主状态。
+- `canStartPanelUpdate()` 不再把所有历史 `succeeded` 永久视为门禁；但要求成功 dry-run 的 `targetVersion` 与当前 `latestVersion` 去除 `v` 前缀后精确一致，并继续阻止 active apply、同目标已成功和 `rollback_failed`。
+
+### 影响接口与文件
+
+- 无 API、持久化格式、helper 或镜像选择变更。
+- 修改 `frontend/src/games/stardew/panel-update-machine.ts` 和 `frontend/scripts/test-panel-update-machine.ts`。
+
+### 如何验证
+
+- `npm run test:panel-update` 覆盖历史成功目标 `0.1.15` 后发现 `0.1.16`：页面显示 `0.1.16`，旧 dry-run 不放行，新目标 dry-run 放行。
+- 同时执行 `npm run test:update-status`、全部 release frontend 状态脚本和 `npm run build`。
+
+### 下一步注意事项
+
+- 历史 apply 终态仍用于结果追溯，不能直接删除；所有决定“当前是否有更新”的 UI 必须优先使用后端 `PanelUpdateStatus`，只在活动任务或同目标终态期间由 apply 接管。
+- `rollback_failed` 表示当前部署可能未恢复完整，仍必须优先显示并阻止下一次升级。
+
 # 2026-07-14 接手补充：服务器健康页用户视角重构
 
 ### 改了什么

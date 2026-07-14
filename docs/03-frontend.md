@@ -1,3 +1,10 @@
+# PANEL-UPDATE-CONTINUOUS-1 连续升级状态修复（2026-07-14）
+
+- 修复历史 `apply.phase=succeeded` 永久覆盖新版本检测的问题。上一次成功目标与当前 `latestVersion` 不同时，顶栏、总览和版本详情改为展示新版本，不再把旧成功记录误当作“最新”。
+- 下一次升级不再被任意历史 `succeeded` 阻止；只有“该成功记录就是当前目标”或 `rollback_failed` 仍会阻止执行。
+- `canStartPanelUpdate()` 新增 dry-run 目标精确匹配：旧版本的成功预检不能复用于新版本，管理员必须对当前 `latestVersion` 重新执行环境检查。
+- 影响文件：`frontend/src/games/stardew/panel-update-machine.ts`、`frontend/scripts/test-panel-update-machine.ts`。验证覆盖“旧升级成功 + 新版本出现”、旧预检拒绝、新目标预检放行和 rollback_failed 门禁。
+
 # FE-DIAGNOSTICS-USER-FIRST-1 服务器健康页用户视角重构（2026-07-14）
 
 - 原“诊断与健康检查”改为“服务器健康”。默认视图按使用者的决策顺序组织：先给出整体是否正常，再列出真正需要处理的版本维护，最后展示各项检查、建议和资源占用。
