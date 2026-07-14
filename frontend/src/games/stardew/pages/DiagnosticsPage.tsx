@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
@@ -7,6 +7,7 @@ import type { ComposeService, JunimoUpdateApplyStatus, JunimoUpdateDryRunStatus,
 import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../junimo-update-status'
 import { runtimeComponentsStatusLabel } from '../runtime-components-status'
 import { shouldShowSMAPIUpdate, smapiPhaseActive, smapiPhaseLabel, smapiStatusLabel } from '../smapi-update-status'
+import { preferDryRunWorkflow, shouldStartRequestedApply } from '../component-update-flow'
 
 const RESOURCE_METRICS_REFRESH_MS = 8000
 const CONTROL_FRESH_MS = 30_000
@@ -155,7 +156,7 @@ function UserUpdateProgress({ headline, progress, currentStep, steps = ['校验'
 }
 
 function junimoUserPhase(dryRun: JunimoUpdateDryRunStatus | null, apply: JunimoUpdateApplyStatus | null) {
-  if (apply && apply.phase !== 'idle') {
+  if (apply && apply.phase !== 'idle' && !preferDryRunWorkflow(dryRun, apply)) {
     const installPhases = ['backing_up', 'stopping', 'writing_config', 'recreating_auth', 'verifying_auth', 'recreating_server']
     const verifyPhases = ['verifying_server', 'restoring_state', 'rolling_back', 'failed_rolled_back', 'rollback_failed', 'succeeded']
     const currentStep = apply.phase === 'checking' ? 0 : apply.phase === 'pulling' ? 1 : installPhases.includes(apply.phase) ? 2 : verifyPhases.includes(apply.phase) ? 3 : 0
@@ -171,7 +172,7 @@ function junimoUserPhase(dryRun: JunimoUpdateDryRunStatus | null, apply: JunimoU
 }
 
 function smapiUserPhase(dryRun: SMAPIUpdateWorkflowStatus | null, apply: SMAPIUpdateWorkflowStatus | null) {
-  if (apply && apply.phase !== 'idle') {
+  if (apply && apply.phase !== 'idle' && !preferDryRunWorkflow(dryRun, apply)) {
     const downloadPhases = ['downloading', 'validating_archive']
     const installPhases = ['creating_staging', 'cloning', 'installing', 'verifying_staging', 'stopping', 'switching', 'starting']
     const verifyPhases = ['verifying_stack', 'restoring_state', 'rolling_back', 'failed_rolled_back', 'rollback_failed', 'succeeded']
@@ -390,8 +391,10 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const [smapiDryRunBusy, setSMAPIDryRunBusy] = useState(false)
   const [smapiApply, setSMAPIApply] = useState<SMAPIUpdateWorkflowStatus | null>(null)
   const [smapiApplyBusy, setSMAPIApplyBusy] = useState(false)
-  const [junimoUpgradeRequested, setJunimoUpgradeRequested] = useState(false)
-  const [smapiUpgradeRequested, setSMAPIUpgradeRequested] = useState(false)
+  const [junimoRequestedDryRunId, setJunimoRequestedDryRunId] = useState<string | null>(null)
+  const [smapiRequestedDryRunId, setSMAPIRequestedDryRunId] = useState<string | null>(null)
+  const junimoApplyStartedForDryRun = useRef<string | null>(null)
+  const smapiApplyStartedForDryRun = useRef<string | null>(null)
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const { applyHealthDiagnostics } = dashboardData
 
@@ -449,12 +452,14 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
       setJunimoDryRunError(null)
       setJunimoApply(null)
       setJunimoApplyError(null)
+      setJunimoRequestedDryRunId(null)
       setRuntimeComponents(null)
       setRuntimeComponentsError(null)
       setRuntimePreflight(null)
       setSMAPIUpdate(null)
       setSMAPIDryRun(null)
       setSMAPIApply(null)
+      setSMAPIRequestedDryRunId(null)
       return
     }
     let alive = true
@@ -504,21 +509,23 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   }, [isAdmin, junimoApply?.phase])
 
   useEffect(() => {
-    if (!junimoUpgradeRequested || junimoDryRun?.phase !== 'succeeded' || junimoApplyBusy || junimoApplyActive(junimoApply?.phase)) return
+    if (!shouldStartRequestedApply(junimoRequestedDryRunId, junimoDryRun?.dryRunId, junimoDryRun?.phase, junimoApplyBusy, junimoApplyActive(junimoApply?.phase))) return
+    if (junimoApplyStartedForDryRun.current === junimoRequestedDryRunId) return
+    junimoApplyStartedForDryRun.current = junimoRequestedDryRunId
     setJunimoApplyBusy(true)
     startJunimoUpdateApply().then((result) => {
       setJunimoApply(result)
       setJunimoApplyError(null)
-      setJunimoUpgradeRequested(false)
+      setJunimoRequestedDryRunId(null)
     }).catch((e) => {
       setJunimoApplyError(errorMessage(e))
-      setJunimoUpgradeRequested(false)
+      setJunimoRequestedDryRunId(null)
     }).finally(() => setJunimoApplyBusy(false))
-  }, [junimoApply?.phase, junimoApplyBusy, junimoDryRun?.phase, junimoUpgradeRequested])
+  }, [junimoApply?.phase, junimoApplyBusy, junimoDryRun?.dryRunId, junimoDryRun?.phase, junimoRequestedDryRunId])
 
   useEffect(() => {
-    if (junimoUpgradeRequested && (junimoDryRun?.phase === 'failed' || junimoDryRun?.phase === 'unsupported')) setJunimoUpgradeRequested(false)
-  }, [junimoDryRun?.phase, junimoUpgradeRequested])
+    if (junimoRequestedDryRunId === junimoDryRun?.dryRunId && (junimoDryRun?.phase === 'failed' || junimoDryRun?.phase === 'unsupported')) setJunimoRequestedDryRunId(null)
+  }, [junimoDryRun?.dryRunId, junimoDryRun?.phase, junimoRequestedDryRunId])
 
   useEffect(() => {
     if (!isAdmin || !smapiPhaseActive(smapiApply?.phase)) return
@@ -533,17 +540,19 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   }, [isAdmin, smapiApply?.phase])
 
   useEffect(() => {
-    if (!smapiUpgradeRequested || smapiDryRun?.phase !== 'succeeded' || smapiApplyBusy || smapiPhaseActive(smapiApply?.phase)) return
+    if (!shouldStartRequestedApply(smapiRequestedDryRunId, smapiDryRun?.updateId, smapiDryRun?.phase, smapiApplyBusy, smapiPhaseActive(smapiApply?.phase))) return
+    if (smapiApplyStartedForDryRun.current === smapiRequestedDryRunId) return
+    smapiApplyStartedForDryRun.current = smapiRequestedDryRunId
     setSMAPIApplyBusy(true)
     startSMAPIUpdateApply().then((result) => {
       setSMAPIApply(result)
       setSMAPIError(null)
-      setSMAPIUpgradeRequested(false)
+      setSMAPIRequestedDryRunId(null)
     }).catch((e) => {
       setSMAPIError(errorMessage(e))
-      setSMAPIUpgradeRequested(false)
+      setSMAPIRequestedDryRunId(null)
     }).finally(() => setSMAPIApplyBusy(false))
-  }, [smapiApply?.phase, smapiApplyBusy, smapiDryRun?.phase, smapiUpgradeRequested])
+  }, [smapiApply?.phase, smapiApplyBusy, smapiDryRun?.phase, smapiDryRun?.updateId, smapiRequestedDryRunId])
 
   useEffect(() => {
     if (localData) return
@@ -689,11 +698,22 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
       ? '更新期间服务器会安全停服，完成后恢复运行。'
       : '服务器当前停止；验收时会临时启动，完成后恢复停止。'
     if (!window.confirm(`升级 Junimo 服务组件到 ${junimoUpdate.recommended.server.tag}？\n\n点击确认后会自动完成环境校验、镜像下载、安装和验收。${runningNote}\n如果新版本验收失败，系统会尝试恢复原版本。`)) return
-    setJunimoUpgradeRequested(true)
+    setJunimoRequestedDryRunId(null)
+    junimoApplyStartedForDryRun.current = null
+    setJunimoDryRun(null)
+    setJunimoApply(null)
     setJunimoApplyError(null)
     setJunimoDryRunBusy(true)
     setJunimoDryRunError(null)
-    try { setJunimoDryRun(await startJunimoUpdateDryRun()) } catch (e) { setJunimoDryRunError(errorMessage(e)); setJunimoUpgradeRequested(false) } finally { setJunimoDryRunBusy(false) }
+    try {
+      const result = await startJunimoUpdateDryRun()
+      setJunimoDryRun(result)
+      if (!result.dryRunId) throw new Error('升级预检未返回任务标识，请重新尝试。')
+      setJunimoRequestedDryRunId(result.dryRunId)
+    } catch (e) {
+      setJunimoDryRunError(errorMessage(e))
+      setJunimoRequestedDryRunId(null)
+    } finally { setJunimoDryRunBusy(false) }
   }
 
   async function handleRuntimePreflight() {
@@ -713,18 +733,29 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   async function handleSMAPIUpgrade() {
     if (!smapiUpdate || smapiApply?.phase === 'rollback_failed') return
     if (!window.confirm(`升级 SMAPI 到 ${smapiUpdate.recommended.version}？\n\n点击确认后会自动完成校验、下载安装、切换和验收。失败时会尝试恢复原 game-data。`)) return
-    setSMAPIUpgradeRequested(true)
+    setSMAPIRequestedDryRunId(null)
+    smapiApplyStartedForDryRun.current = null
+    setSMAPIDryRun(null)
+    setSMAPIApply(null)
     setSMAPIError(null)
     setSMAPIDryRunBusy(true)
-    try { setSMAPIDryRun(await startSMAPIUpdateDryRun()) } catch (e) { setSMAPIError(errorMessage(e)); setSMAPIUpgradeRequested(false) } finally { setSMAPIDryRunBusy(false) }
+    try {
+      const result = await startSMAPIUpdateDryRun()
+      setSMAPIDryRun(result)
+      if (!result.updateId) throw new Error('SMAPI 预检未返回任务标识，请重新尝试。')
+      setSMAPIRequestedDryRunId(result.updateId)
+    } catch (e) {
+      setSMAPIError(errorMessage(e))
+      setSMAPIRequestedDryRunId(null)
+    } finally { setSMAPIDryRunBusy(false) }
   }
 
   const junimoProgress = junimoUserPhase(junimoDryRun, junimoApply)
   const smapiProgress = smapiUserPhase(smapiDryRun, smapiApply)
-  const junimoUpgradeBusy = junimoUpgradeRequested || junimoDryRunBusy || junimoApplyBusy || junimoDryRunActive(junimoDryRun?.phase) || junimoApplyActive(junimoApply?.phase)
-  const smapiUpgradeBusy = smapiUpgradeRequested || smapiDryRunBusy || smapiApplyBusy || smapiPhaseActive(smapiDryRun?.phase) || smapiPhaseActive(smapiApply?.phase)
-  const junimoWorkflowVisible = junimoUpgradeRequested || junimoDryRunBusy || junimoApplyBusy || (junimoDryRun != null && junimoDryRun.phase !== 'idle') || (junimoApply != null && junimoApply.phase !== 'idle') || !!junimoDryRunError || !!junimoApplyError
-  const smapiWorkflowVisible = smapiUpgradeRequested || smapiDryRunBusy || smapiApplyBusy || (smapiDryRun != null && smapiDryRun.phase !== 'idle') || (smapiApply != null && smapiApply.phase !== 'idle') || !!smapiError
+  const junimoUpgradeBusy = junimoRequestedDryRunId !== null || junimoDryRunBusy || junimoApplyBusy || junimoDryRunActive(junimoDryRun?.phase) || junimoApplyActive(junimoApply?.phase)
+  const smapiUpgradeBusy = smapiRequestedDryRunId !== null || smapiDryRunBusy || smapiApplyBusy || smapiPhaseActive(smapiDryRun?.phase) || smapiPhaseActive(smapiApply?.phase)
+  const junimoWorkflowVisible = junimoRequestedDryRunId !== null || junimoDryRunBusy || junimoApplyBusy || (junimoDryRun != null && junimoDryRun.phase !== 'idle') || (junimoApply != null && junimoApply.phase !== 'idle') || !!junimoDryRunError || !!junimoApplyError
+  const smapiWorkflowVisible = smapiRequestedDryRunId !== null || smapiDryRunBusy || smapiApplyBusy || (smapiDryRun != null && smapiDryRun.phase !== 'idle') || (smapiApply != null && smapiApply.phase !== 'idle') || !!smapiError
 
   // ── render ──────────────────────────────────────────────────────────────────
 

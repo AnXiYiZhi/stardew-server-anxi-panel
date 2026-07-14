@@ -1,3 +1,9 @@
+# 2026-07-15 已完成：PANEL-0.2.10-RELEASE
+
+- [x] 组件升级任务代际修复已完成本地延迟竞态点击验证和完整发布门禁。
+- [x] 发布门禁已包含 `test:component-update-flow`，后续未通过该回归测试不得打包。
+- [x] 使用新 Tag `v0.2.10` 发布，不覆盖历史 Tag。
+
 # 2026-07-14 已完成：FE-MAINTENANCE-SINGLE-CARD-1
 
 - [x] 用户卡片内直接完成校验、下载、安装和验收，不再跳转到底部开发者详情。
@@ -1112,3 +1118,9 @@ Multi Game Mode later
 - [x] 定位 `.125` 健康运行仍等待五分钟的根因：非 TTY `attach-cli` 验收必然失败。
 - [x] 改用正式 FIFO 控制通道验证 `info` 新响应，保留全部其他验收门槛与自动回滚。
 - [x] 增加成功路径禁止 `attach-cli` 和控制契约失败回滚测试。
+# 2026-07-14 已完成：FE-COMPONENT-UPDATE-GENERATION-1
+
+- [x] 修复历史 dry-run `succeeded` 导致新 dry-run 与 apply 同时 POST 的竞态。
+- [x] Junimo 与 SMAPI 均绑定新预检任务 ID，并阻止同一 ID 重复提交 apply。
+- [x] 修复历史失败 apply 覆盖较新预检进度的问题。
+- [x] 增加纯状态测试、本地延迟竞态 QA 场景，并将测试加入两个正式 CI/发布门禁。

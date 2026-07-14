@@ -15,6 +15,7 @@ const UPDATE = params.get('update') || 'latest'
 const APPLY = params.get('apply') || ''
 const JUNIMO_WORKFLOW = params.get('junimoWorkflow') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
+if (JUNIMO_WORKFLOW === 'race-retry') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
 const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString()
@@ -172,11 +173,18 @@ const smapiUpdate = {
 }
 const idleWorkflow = { phase: 'idle', progress: 0, target: {}, selected: {}, checks: [], warnings: [], logs: [] }
 const idleJunimoWorkflow = { ...idleWorkflow, target: { server: {}, steamAuth: {} }, selected: { server: {}, steamAuth: {} } }
-const junimoDryRunWorkflow = JUNIMO_WORKFLOW === 'pulling' ? {
+const junimoDryRunWorkflow = JUNIMO_WORKFLOW === 'race-retry' ? {
+  ...idleJunimoWorkflow, dryRunId: 'qa-old-dry-run', phase: 'succeeded', progress: 100,
+  startedAt: '2026-07-14T15:20:00Z', finishedAt: '2026-07-14T15:20:02Z',
+} : JUNIMO_WORKFLOW === 'pulling' ? {
   ...idleJunimoWorkflow, dryRunId: 'qa-junimo-dry-run', phase: 'pulling_server', progress: 61,
   download: { component: 'server', image: 'dockerproxy.net/sdvd/server:1.5.0-preview.125', doneLayers: 5, totalLayers: 8, percent: 62 },
 } : JUNIMO_WORKFLOW === 'rollback-failed' ? { ...idleJunimoWorkflow, phase: 'succeeded', progress: 100 } : idleJunimoWorkflow
-const junimoApplyWorkflow = JUNIMO_WORKFLOW === 'rollback-failed' ? {
+const junimoApplyWorkflow = JUNIMO_WORKFLOW === 'race-retry' ? {
+  ...idleJunimoWorkflow, applyId: 'qa-old-apply', phase: 'failed_rolled_back', progress: 100,
+  causeCode: 'junimo_contract_not_ready', causeError: '旧任务未通过验收，已恢复原版本。',
+  startedAt: '2026-07-14T15:10:00Z', finishedAt: '2026-07-14T15:15:00Z',
+} : JUNIMO_WORKFLOW === 'rollback-failed' ? {
   ...idleJunimoWorkflow, applyId: 'qa-junimo-apply', phase: 'rollback_failed', progress: 100,
   causeCode: 'junimo_health_not_ready', causeError: '新版 Junimo 健康检查未在时限内就绪。',
   rollbackCode: 'rollback_verify_server_failed', rollbackError: '升级前的 Junimo server 未能在验收时限内恢复就绪。',
@@ -185,6 +193,31 @@ const junimoApplyWorkflow = JUNIMO_WORKFLOW === 'rollback-failed' ? {
 
 function jsonRes(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+}
+
+const qaJunimoEvents: string[] = []
+type QAJunimoWorkflow = Record<string, unknown> & {
+  phase: string
+  progress: number
+  dryRunId?: string
+  applyId?: string
+  jobId?: string
+}
+let qaRaceDryRun: QAJunimoWorkflow = junimoDryRunWorkflow
+let qaRaceApply: QAJunimoWorkflow = junimoApplyWorkflow
+let qaRaceDryRunGets = 0
+let qaRaceApplyGets = 0
+
+function recordQAJunimoEvent(event: string) {
+  qaJunimoEvents.push(event)
+  let output = document.getElementById('qa-junimo-events')
+  if (!output) {
+    output = document.createElement('output')
+    output.id = 'qa-junimo-events'
+    output.hidden = true
+    document.body.appendChild(output)
+  }
+  output.textContent = qaJunimoEvents.join(',')
 }
 
 const routes: Array<[RegExp, unknown]> = [
@@ -239,6 +272,45 @@ const realFetch = window.fetch.bind(window)
 let applyFetchCount = 0
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+  const path = url.split('?')[0]
+  if (JUNIMO_WORKFLOW === 'race-retry' && path.endsWith('/junimo-update/dry-run')) {
+    if (method === 'POST') {
+      recordQAJunimoEvent('dry-run:POST')
+      qaRaceDryRun = {
+        ...idleJunimoWorkflow, dryRunId: 'qa-new-dry-run', jobId: 'qa-new-dry-run-job', phase: 'checking', progress: 5,
+        startedAt: '2026-07-14T15:47:28Z', updatedAt: '2026-07-14T15:47:28Z',
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      return jsonRes(qaRaceDryRun)
+    }
+    recordQAJunimoEvent('dry-run:GET')
+    qaRaceDryRunGets += 1
+    if (qaRaceDryRunGets >= 1 && qaRaceDryRun.dryRunId === 'qa-new-dry-run') {
+      qaRaceDryRun = { ...qaRaceDryRun, phase: 'succeeded', progress: 100, updatedAt: '2026-07-14T15:47:30Z', finishedAt: '2026-07-14T15:47:30Z' }
+    }
+    return jsonRes(qaRaceDryRun)
+  }
+  if (JUNIMO_WORKFLOW === 'race-retry' && path.endsWith('/junimo-update/apply')) {
+    if (method === 'POST') {
+      if (qaRaceDryRun.dryRunId !== 'qa-new-dry-run' || qaRaceDryRun.phase !== 'succeeded') {
+        recordQAJunimoEvent('apply:POST-rejected')
+        return jsonRes({ code: 'runtime_update_busy', message: '新预检尚未完成。' }, 409)
+      }
+      recordQAJunimoEvent('apply:POST')
+      qaRaceApply = {
+        ...idleJunimoWorkflow, applyId: 'qa-new-apply', jobId: 'qa-new-apply-job', phase: 'checking', progress: 5,
+        startedAt: '2026-07-14T15:47:31Z', updatedAt: '2026-07-14T15:47:31Z',
+      }
+      return jsonRes(qaRaceApply)
+    }
+    recordQAJunimoEvent('apply:GET')
+    qaRaceApplyGets += 1
+    if (qaRaceApplyGets >= 1 && qaRaceApply.applyId === 'qa-new-apply') {
+      qaRaceApply = { ...qaRaceApply, phase: 'succeeded', progress: 100, updatedAt: '2026-07-14T15:47:33Z', finishedAt: '2026-07-14T15:47:33Z' }
+    }
+    return jsonRes(qaRaceApply)
+  }
   if (APPLY === 'offline' && url.includes('/api/system/update/apply')) {
     applyFetchCount += 1
     if (applyFetchCount > 2) throw new TypeError('mock panel offline')
