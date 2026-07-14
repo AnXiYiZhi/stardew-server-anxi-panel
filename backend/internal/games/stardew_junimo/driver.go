@@ -28,7 +28,7 @@ const (
 	// Server image: sdvd/server:<tag>. The steam-auth sidecar is patched separately
 	// through DefaultSteamServiceImage because slow Steam networks need connection/auth retries.
 	// Update this constant (and bump panel version) after testing a new JunimoServer release.
-	TestedImageTag = "1.5.0-preview.121"
+	TestedImageTag = "1.5.0-preview.125"
 
 	// DefaultSteamServiceImage is the patched steam-auth sidecar used by new instances.
 	// It should match https://github.com/AnXiYiZhi/junimo-server-steam-service-cn.

@@ -1,3 +1,10 @@
+# PANEL-0.2.2 / JUNIMO-125 发布说明（2026-07-14）
+
+- `v0.2.2` 内嵌推荐矩阵固定 `sdvd/server:1.5.0-preview.125@sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6` 与现有 auth-cn `1.5.0-anxi.2`。release gate 必须执行远程 digest/auth 溯源校验。
+- `.121`→`.125` 是管理员自愿的实例级升级，不与 Panel 镜像更新捆绑强制执行；新安装默认 `.125`，旧实例继续运行并显示推荐提示。
+- `.125` 实镜像仍存在 `/etc/cont-*.d` 裸静态值问题，23 个 init 兼容 bind mount 不得删除。已用实际 `.125` 镜像确认兼容脚本可执行并输出预期静态值。
+- 上游 steam-service 在 `.121`→`.125` 间无代码变化，auth-cn 镜像 tag/digest/upstreamRef/sourceRevision 保持不变；`server-settings.json` 字段也未变化。
+
 # JUNIMO-STACK-UPDATE-1 阶段二构建与 Docker 边界（2026-07-13）
 
 - Panel 镜像仍内置同一推荐清单，不查询 latest，也不改 Panel updater/发布流程。预检只执行 Docker/Compose version/ps/config、image inspect/pull、volume inspect；目标 Compose 验证用进程级两项镜像环境覆盖，不写 env 文件。
@@ -57,7 +64,7 @@
 
 # JUNIMO-STATIC-INIT-FIX-1 JunimoServer 镜像启动兼容
 
-- 部分上游 `sdvd/server:1.5.0-preview.121` 镜像在 `/etc/cont-env.d`、`/etc/cont-groups.d`、`/etc/cont-users.d` 内写入裸静态值，当前 init 会把它们当 shell 命令执行。真实失败可表现为 `DockerApp: not found`、`unix:path=/tmp/dbus.base: not found`、`linux/amd64: not found`、`72: not found`。
+- 上游 `sdvd/server:1.5.0-preview.121` 与 `1.5.0-preview.125` 镜像在 `/etc/cont-env.d`、`/etc/cont-groups.d`、`/etc/cont-users.d` 内仍会出现裸静态值，当前 init 会把它们当 shell 命令执行。真实失败可表现为 `DockerApp: not found`、`unix:path=/tmp/dbus.base: not found`、`linux/amd64: not found`、`72: not found`。
 - 面板不再要求用户使用本地热修 server 镜像；实例目录会自动生成 `.local-container/cont-env/*`、`.local-container/cont-groups/*`、`.local-container/cont-users/*` 脚本，并 bind mount 到 server 容器内覆盖对应静态值文件。
 - 该修复不改变 `SERVER_IMAGE` / `SERVER_IMAGE_CANDIDATES` 的选择逻辑，也不会影响镜像拉取兜底。离线部署时只需保证 panel 镜像更新到包含本修复的版本。
 - 排查命令：`grep -n "cont-env\\|cont-groups\\|cont-users" /path/to/instance/docker-compose.yml`，以及查看实例目录 `.local-container/cont-env/`、`.local-container/cont-groups/`、`.local-container/cont-users/`。

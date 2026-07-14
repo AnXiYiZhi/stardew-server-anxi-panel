@@ -1,3 +1,9 @@
+# 2026-07-14 已完成：Panel 0.2.2 推荐 JunimoServer preview.125
+
+- 内嵌推荐矩阵、新实例默认镜像和 `TestedImageTag` 已切换到 `.125`，保留 auth-cn `1.5.0-anxi.2` 的真实 `.121` 溯源并记录跨版本协议兼容验证。
+- `.121` 不强制升级：现有实例继续可用，只显示推荐更新；管理员仍通过现有 dry-run/确认/apply/回滚闭环自愿升级。
+- `.125` 的 23 个 init 兼容挂载继续保留并通过实镜像脚本验证。后续可独立评估旧联机存档 host-swap 向导，不纳入本次 0.2.2 发版范围。
+
 # 2026-07-13 已完成：JUNIMO-STACK-UPDATE-1 阶段二
 
 - 已完成 server + steam-auth-cn 成对 dry-run：严格空 POST/GET、专用 job/双向互斥、可信候选 inspect/pull/digest、Compose/认证卷/运行态/磁盘 warning 检查、脱敏持久状态和前端刷新恢复/进度展示。
