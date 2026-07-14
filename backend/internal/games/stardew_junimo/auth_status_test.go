@@ -11,7 +11,7 @@ func TestGetAuthStatus_MergesPasswordBridgeStatus(t *testing.T) {
 	d := newTestDriver(&fakeConsoleDocker{
 		execFunc: func(_ context.Context, _, _, _ string, _ ...string) (paneldocker.CommandResult, error) {
 			return paneldocker.CommandResult{
-				Stdout: `{"enabled":true,"authenticatedCount":1,"pendingCount":2,"timeoutSeconds":120,"maxAttempts":5}`,
+				Stdout:   `{"enabled":true,"authenticatedCount":1,"pendingCount":2,"timeoutSeconds":120,"maxAttempts":5}`,
 				ExitCode: 0,
 			}, nil
 		},
@@ -39,7 +39,7 @@ func TestGetAuthStatus_PasswordBridgeUnavailableWhenStatusMissing(t *testing.T) 
 	d := newTestDriver(&fakeConsoleDocker{
 		execFunc: func(_ context.Context, _, _, _ string, _ ...string) (paneldocker.CommandResult, error) {
 			return paneldocker.CommandResult{
-				Stdout: `{"enabled":false,"authenticatedCount":0,"pendingCount":0,"timeoutSeconds":0,"maxAttempts":0}`,
+				Stdout:   `{"enabled":false,"authenticatedCount":0,"pendingCount":0,"timeoutSeconds":0,"maxAttempts":0}`,
 				ExitCode: 0,
 			}, nil
 		},

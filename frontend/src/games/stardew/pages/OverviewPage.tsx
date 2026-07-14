@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import './OverviewPage.css'
+import { getJunimoUpdate, getRuntimeComponents } from '../../../api'
+import type { JunimoUpdateInfo, RuntimeComponentsInfo } from '../../../types'
 import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { InviteCodeCard } from '../InviteCodeCard'
 import { modIsSystemRuntime } from '../mod-visibility'
@@ -6,6 +9,8 @@ import { panelUpdateSurface } from '../panel-update-machine'
 import type { StardewPageProps } from '../stardew-routes'
 import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
 import { formatStardewLocation } from '../location-format'
+import { shouldShowRuntimeComponentsUpdate } from '../runtime-components-status'
+import { shouldShowSMAPIUpdate } from '../smapi-update-status'
 
 const OVERVIEW_ICONS = {
   server: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
@@ -18,6 +23,8 @@ const OVERVIEW_ICONS = {
 
 export function OverviewPage({ user, instanceState, onNavigate, dashboardData }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
+  const [junimoUpdate, setJunimoUpdate] = useState<JunimoUpdateInfo | null>(null)
+  const [runtimeComponents, setRuntimeComponents] = useState<RuntimeComponentsInfo | null>(null)
   const {
     state,
     actionBusy,
@@ -52,6 +59,22 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   const onlinePlayers = dashboardData.players?.players.filter((player) => player.status === 'online') ?? []
   const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
   const currentPanelVersion = updateSurface.currentVersion || '—'
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setJunimoUpdate(null)
+      setRuntimeComponents(null)
+      return
+    }
+    let alive = true
+    getJunimoUpdate().then((result) => {
+      if (alive) setJunimoUpdate(result)
+    }).catch(() => {
+      if (alive) setJunimoUpdate(null)
+    })
+    getRuntimeComponents().then((result) => { if (alive) setRuntimeComponents(result) }).catch(() => { if (alive) setRuntimeComponents(null) })
+    return () => { alive = false }
+  }, [isAdmin])
 
   const healthChecks = dashboardData.health?.checks ?? []
   const healthStatus = dashboardData.health?.status
@@ -186,6 +209,38 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
           </button>
         </div>
       </div>
+
+      {junimoUpdate?.available ? (
+        <section className="sd-card sd-ov-junimo-update" aria-label="Junimo 运行组件更新提示">
+          <div className="sd-ov-junimo-update-copy">
+            <strong>Junimo 运行组件可更新</strong>
+            <span>server 与 steam-auth-cn 将始终作为一个版本对展示；阶段一不会执行升级。</span>
+          </div>
+          <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>
+            查看详情
+          </button>
+        </section>
+      ) : null}
+
+      {shouldShowRuntimeComponentsUpdate(runtimeComponents) ? (
+        <section className="sd-card sd-ov-junimo-update" aria-label="游戏运行文件更新提示">
+          <div className="sd-ov-junimo-update-copy">
+            <strong>游戏运行文件可更新</strong>
+            <span>已验证的游戏版本或联机运行库与当前实例不一致；本阶段仅提示和预检，不会执行更新。</span>
+          </div>
+          <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>查看详情</button>
+        </section>
+      ) : null}
+
+      {shouldShowSMAPIUpdate(runtimeComponents?.smapi) ? (
+        <section className="sd-card sd-ov-junimo-update" aria-label="SMAPI 更新提示">
+          <div className="sd-ov-junimo-update-copy">
+            <strong>游戏模组运行环境可更新</strong>
+            <span>Panel 内置的已验证 SMAPI 推荐版本与实际游戏目录不一致；更新后玩家可能需要重新获取完整同步包。</span>
+          </div>
+          <button type="button" className="sd-btn-tan" onClick={() => onNavigate('diagnostics')}>查看详情</button>
+        </section>
+      ) : null}
 
       {/* 服务器控制 */}
       <div className="sd-ov-section">

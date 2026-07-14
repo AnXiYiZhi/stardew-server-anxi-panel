@@ -159,6 +159,243 @@ export type InstancesResponse = {
   instances: Instance[]
 }
 
+export type JunimoUpdateStatus =
+  | 'up_to_date'
+  | 'update_available'
+  | 'not_installed'
+  | 'custom_images'
+  | 'invalid_config'
+	| 'withdrawn'
+	| 'not_recommended'
+
+export type CompatibilityMatrixStatus = 'recommended' | 'withdrawn'
+
+export type JunimoRuntimeComponent = {
+  image?: string
+  tag?: string
+}
+
+export type JunimoRecommendedComponent = {
+  tag: string
+  images: string[]
+  digests: Record<string, string>
+  upstreamRef?: string
+  sourceRevision?: string
+  image?: string
+  trustedCandidates?: string[]
+}
+
+export type JunimoUpdateInfo = {
+  available: boolean
+  supported: boolean
+  status: JunimoUpdateStatus
+  code: string
+  reason: string
+  current: {
+    server: JunimoRuntimeComponent
+    steamAuth: JunimoRuntimeComponent
+  }
+  recommended: {
+    stackVersion: string
+		channel: 'stable' | 'preview'
+		status: CompatibilityMatrixStatus
+		withdrawal?: { reason: string; fallbackStackVersion: string; withdrawnAt?: string }
+    minimumPanelVersion: string
+    server: JunimoRecommendedComponent
+    steamAuth: JunimoRecommendedComponent
+    releaseNotes: string[]
+    tested: boolean
+  }
+  releaseNotes: string[]
+  serverRunning: boolean
+  steamAuthLoggedIn: boolean
+}
+
+export type JunimoUpdateDryRunPhase =
+  | 'idle'
+  | 'starting'
+  | 'checking'
+  | 'pulling_server'
+  | 'pulling_auth'
+  | 'validating_compose'
+  | 'succeeded'
+  | 'failed'
+  | 'unsupported'
+
+export type JunimoUpdateDryRunStatus = {
+  dryRunId?: string
+  jobId?: string
+  phase: JunimoUpdateDryRunPhase
+  progress: number
+  current: { server: JunimoRuntimeComponent; steamAuth: JunimoRuntimeComponent }
+  target: JunimoUpdateInfo['recommended']
+  selected: {
+    server: { image?: string; digest?: string; imageId?: string }
+    steamAuth: { image?: string; digest?: string; imageId?: string }
+  }
+  checks: Array<{ name: string; status: 'ok' | 'warning' | 'error'; message: string }>
+  warnings: string[]
+  logs: Array<{ at: string; level: 'info' | 'warning' | 'error'; message: string }>
+  serverRunning: boolean
+  errorCode?: string
+  error?: string
+  startedAt?: string
+  updatedAt?: string
+  finishedAt?: string
+}
+
+export type JunimoUpdateApplyPhase =
+  | 'idle' | 'checking' | 'pulling' | 'backing_up' | 'stopping' | 'writing_config'
+  | 'recreating_auth' | 'verifying_auth' | 'recreating_server' | 'verifying_server'
+  | 'restoring_state' | 'succeeded' | 'rolling_back' | 'failed_rolled_back' | 'rollback_failed'
+
+export type JunimoUpdateApplyStatus = {
+  applyId?: string
+  jobId?: string
+  phase: JunimoUpdateApplyPhase
+  progress: number
+  current: JunimoUpdateDryRunStatus['current']
+  target: JunimoUpdateInfo['recommended']
+  selected: JunimoUpdateDryRunStatus['selected']
+  checks: JunimoUpdateDryRunStatus['checks']
+  warnings: string[]
+  logs: JunimoUpdateDryRunStatus['logs']
+  serverWasRunning: boolean
+  serverRunning: boolean
+  errorCode?: string
+  error?: string
+  manualAction?: string
+  startedAt?: string
+  updatedAt?: string
+  finishedAt?: string
+}
+
+export type RuntimeComponentsStatus =
+  | 'up_to_date' | 'update_available' | 'game_missing' | 'sdk_missing' | 'manifest_invalid' | 'custom_or_unknown'
+
+export type RuntimeContentComponent = {
+  appId: string
+  buildId?: string
+  stateFlags?: string
+  installDir?: string
+  lastUpdated?: string
+  manifestPath: string
+  status: RuntimeComponentsStatus
+  code: string
+  reason: string
+}
+
+export type RuntimeContentRecommendation = {
+  appId: string
+  buildId: string
+  manifestVersion: string
+  notes: string[]
+  estimatedDownloadBytes: number
+}
+
+export type SMAPIUpdateStatus =
+  | 'up_to_date'
+  | 'update_available'
+  | 'missing'
+  | 'invalid'
+  | 'incompatible_game'
+  | 'incompatible_junimo'
+  | 'custom_or_unknown'
+
+export type SMAPIUpdateInfo = {
+  available: boolean
+  supported: boolean
+  status: SMAPIUpdateStatus
+  code: string
+  reason: string
+  current: {
+    version?: string
+    configuredVersion?: string
+    versionSource?: string
+    present: boolean
+    requiredFiles: boolean
+    gameDataVolume?: string
+  }
+  recommended: {
+    version: string
+    downloadUrl: string
+    sha256: string
+    archiveBytes: number
+    compatibility: {
+      gameBuildId: string
+      sdkBuildId: string
+      junimoVersion: string
+      steamAuthVersion: string
+      controlVersion: string
+      controlDllSha256: string
+      commandResultVersion: number
+    }
+  }
+  detectedAt: string
+}
+
+export type SMAPIUpdatePhase =
+  | 'idle' | 'checking' | 'downloading' | 'validating_archive' | 'creating_staging'
+  | 'cloning' | 'installing' | 'verifying_staging' | 'stopping' | 'switching'
+  | 'starting' | 'verifying_stack' | 'restoring_state' | 'succeeded'
+  | 'rolling_back' | 'failed_rolled_back' | 'rollback_failed' | 'failed'
+
+export type SMAPIUpdateWorkflowStatus = {
+  updateId?: string
+  jobId?: string
+  phase: SMAPIUpdatePhase
+  progress: number
+  current: SMAPIUpdateInfo['current']
+  target: SMAPIUpdateInfo['recommended']
+  checks: Array<{ name: string; status: 'ok' | 'warning' | 'error'; message: string }>
+  warnings: string[]
+  logs: Array<{ at: string; level: 'info' | 'warning' | 'error'; message: string }>
+  serverWasRunning: boolean
+  requiredBytes?: number
+  freeBytes?: number
+  errorCode?: string
+  error?: string
+  manualAction?: string
+  startedAt?: string
+  updatedAt?: string
+  finishedAt?: string
+}
+
+export type RuntimeComponentsInfo = {
+  available: boolean
+  supported: boolean
+  status: RuntimeComponentsStatus
+  code: string
+  reason: string
+  current: { game: RuntimeContentComponent; sdk: RuntimeContentComponent }
+  recommended: {
+		stackVersion: string
+		channel: 'stable' | 'preview'
+		status: CompatibilityMatrixStatus
+		minimumPanelVersion: string
+    game: RuntimeContentRecommendation
+    sdk: RuntimeContentRecommendation
+    tested: boolean
+    releaseNotes: string[]
+  }
+  detectedAt: string
+  smapi?: SMAPIUpdateInfo
+}
+
+export type RuntimeComponentsPreflight = {
+  phase: 'idle' | 'checking' | 'succeeded' | 'failed'
+  progress: number
+  target: RuntimeComponentsInfo['recommended']
+  checks: Array<{ name: string; status: 'ok' | 'warning' | 'error'; message: string }>
+  warnings: string[]
+  requiredBytes: number
+  freeBytes?: number
+  gameDataBytes?: number
+  errorCode?: string
+  error?: string
+  updatedAt?: string
+}
+
 export type InstanceState = {
   instanceId: string
   driverId: string
@@ -180,7 +417,14 @@ export type InstanceState = {
   runtimeDiagnostic?: {
     activeSaveId?: string; saveDirectory?: string; cacheSaveId?: string; cacheMatchesActive: boolean
     controlModVersion?: string; expectedControlModVersion: string; controlModMatches: boolean
-    junimoImage?: string; expectedJunimoVersion: string; junimoVersionMatches: boolean
+    junimoStackVersion: string
+    junimoUpdateStatus: JunimoUpdateStatus
+    junimoUpdateCode: string
+    junimoUpdateReason: string
+    junimoUpdateSupported: boolean
+    serverVersion?: string; expectedServerVersion: string
+    steamAuthVersion?: string; expectedSteamAuthVersion: string
+    junimoVersionMatches: boolean
     containerToSaveMs?: number; saveToHostMs?: number
     commandProtocol?: {
       commandResultVersion: number

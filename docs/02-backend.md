@@ -1,3 +1,18 @@
+# JUNIMO-STACK-UPDATE-1 阶段二：运行组件成对升级预检（2026-07-13）
+
+- 新增管理员 `POST/GET /api/instances/:id/junimo-update/dry-run`。POST 请求体只能为空或严格 `{}`，目标 server + steam-auth-cn 只能取自 embed 清单，不接受镜像、tag、digest、registry、service 或命令。
+- `stardew_junimo_update_dry_run` job 与 install、lifecycle、预留 apply 和另一 dry-run 双向互斥。预检验证实例/清单、Compose 文件/project/services、Docker/Compose、当前两镜像 digest、运行态、steam-session 卷、可信目标候选和受控 `compose config --quiet`；精确磁盘空间不可可靠获得时明确 warning。
+- 详细事实原子写入 `.local-container/junimo-update/dry-run-status.json`（0600），jobs 只负责生命周期/互斥；Panel 重启后仍可恢复最近结果。Docker 扩展面只有受限 inspect/pull/config/ps，原始 stderr、Compose 展开环境和 pull 输出不写状态。
+- 阶段二不会写 `.env`/Compose、创建认证备份、读取 token、修改数据卷或执行 `up/down/restart/rm/stop`/volume 删除。阶段三 apply 尚未实现。
+
+# JUNIMO-STACK-UPDATE-1 阶段一：运行组件版本对只读检测（2026-07-13）
+
+- 在 `stardew_junimo/config` 内新增 `go:embed` JSON 清单，把 Junimo server `1.5.0-preview.121` 与 steam-auth-cn `1.5.0-anxi.2` 建模为不可拆分的推荐版本对；清单含 `schemaVersion`、`stackVersion`、`minimumPanelVersion`、可信候选镜像、`releaseNotes`、`tested`，推荐值只随 Panel 构建发布，不查询远程 latest。
+- 清单校验拒绝空 tag、`latest`、digest 充当 tag、非白名单仓库、缺 server/auth 或未测试清单。实例检测只读取 `.env` 的 `IMAGE_VERSION`、`SERVER_IMAGE(_CANDIDATES)`、`STEAM_SERVICE_IMAGE(_CANDIDATES)`，按可信仓库内 server/auth 精确 tag 对判断 `up_to_date`、`update_available`、`not_installed`、`custom_images`、`invalid_config`，不对 preview/anxi tag 做 semver 排序。
+- 新增管理员只读 `GET /api/instances/:id/junimo-update`。响应提供 `available/supported/status/code/reason`、当前与推荐版本对、版本说明、`serverRunning`、`steamAuthLoggedIn`；只选取版本字段，不序列化 Steam 密码、refresh token 或完整环境。
+- `/state.runtimeDiagnostic` 改用同一检测器，分别给出 server 与 steam-auth-cn 当前/期望 tag、整体匹配和 unsupported 原因，删除原 `strings.Contains` 单 server 判断；普通用户只看到必要 tag/状态，不看到镜像仓库。
+- 阶段一没有 pull、`.env` 写入、容器 stop/recreate、dry-run 或 apply 路径，也不接入 `/api/system/update`。
+
 # PANEL-UPDATE-RELEASE-1 发布闭环（2026-07-13）
 
 - 完成从 `0.1.13` 到 `0.1.14` 的隔离 Compose 真 Docker 成功升级，以及故意 unhealthy 镜像触发的自动回滚。成功终态为 `succeeded`；失败终态为 `failed_rolled_back`，升级中写入的数据库变更已由 SQLite 一致性备份恢复。
@@ -1181,3 +1196,54 @@ docker run --rm `
 - `ReconcileState()` 对所有已安装/可启动/运行中状态检查该 Docker 卷，历史误写的 `game_installed` 会自动恢复为 `install_verification_failed`；Docker 或镜像暂时不可用时只保留原状态并记录告警，避免网络/daemon 短暂故障误报文件缺失。
 - “仅 Steam 授权登录”只更新授权标记，不再篡改原实例的安装 state/phase，避免认证成功把下载失败覆盖成“游戏已安装”。
 - 验证：`cd backend; go test ./...`。
+# JUNIMO-STACK-UPDATE-1 阶段三：成对升级、认证卷保护与自动回滚（2026-07-13）
+
+- 新增管理员 `POST/GET /api/instances/:id/junimo-update/apply` 和独立 `stardew_junimo_update_apply` job。POST 只接受严格 `{"confirm":true}`，目标仅来自当前构建内置且 `tested=true` 的推荐版本对；与 install、lifecycle、dry-run、apply 互斥，相同推荐版本拒绝重复执行。
+- 执行器位于 `stardew_junimo` 服务层：重新执行清单/实例/Docker/Compose/当前 digest/认证卷/候选拉取/config 关键预检，保存原 `.env`、Compose、两镜像引用/digest 和运行态；运行实例复用 `lifecycleRunner.doStop`。
+- 私有恢复目录 `.local-container/junimo-update/recovery/<applyId>` 为 0700、文件 0600；停服后把 `steam-session` 受控克隆到当前 Compose project 限定的临时 Docker volume，不枚举或输出 token。`.env` 五个版本字段经同目录临时文件原子替换。
+- 新版先重建 `steam-auth`，要求 `/steam/ready` 同时 `ready=true/has_ticket=true` 且 digest 匹配；再重建 `server`，验证容器/health、Junimo `/health`、目标 digest、attach-cli API 契约与邀请码。成功恢复升级前运行/停止状态并清理私有快照。
+- 变更后失败进入 `rolling_back`：停止新版 pair、恢复原配置和认证卷、依次重建并验收旧 auth/server、恢复原状态。终态区分 `succeeded`、`failed_rolled_back`、`rollback_failed`；后者保留私有材料且禁止自动破坏性重试。`apply-status.json` 跨 Panel 重启持久；只在可证明时继续验收，否则回滚，不一致时不猜测。
+- Docker 扩展只接受固定 `server`/`steam-auth` 和受限 project/volume/image，使用 `compose stop`、单服务 `up --no-deps --force-recreate --pull never` 与固定探针/克隆脚本；没有 `down -v`、目标卷删除或任意 shell 参数。支持包白名单不包含恢复目录。
+# GAME-RUNTIME-VERSION-1：Stardew / Steamworks SDK 只读版本检测（2026-07-14）
+
+- 扩展 `runtime_stack_manifest.json`：在既有 Junimo server/steam-auth 推荐对之外，固定记录 Stardew App `413150` 与 Steamworks SDK Redistributables App `1007` 的推荐 `buildId`、`manifestVersion`、说明、下载估算和共同 `tested` 标志。Panel 运行时不查询 Steam latest，也不按 buildid 数字大小判断升级/降级。
+- 新增最小 Valve KeyValues/VDF tokenizer，解析固定 ACF 的 `appid/buildid/StateFlags/installdir/LastUpdated`；支持字段换序、空白、BOM 和转义，拒绝 appid 错配、缺失/非法 buildid、损坏结构。只读 Docker helper 先 inspect 已存在 `<project>_game-data` volume 和本地 server 镜像，再以 `--pull never --network none`、只读 mount 读取两份固定文件；不会因 volume 不存在而隐式创建。
+- 管理员 API：`GET /api/instances/:id/runtime-components` 返回当前/推荐 game 与 SDK buildid、组件及整体状态、检测时间和 release notes；`GET|POST /api/instances/:id/runtime-components/dry-run` 恢复/运行只读预检。状态为 `up_to_date/update_available/game_missing/sdk_missing/manifest_invalid/custom_or_unknown`。未安装实例返回 `game_missing + not_installed`，不报 500。
+- 预检只验证当前 manifest、内置 tested 目标、下载+staging 保守空间估算、本地 SteamCMD/账号缓存能力、Docker daemon 与受控 staging 命名能力。它不联网登录 Steam、不拉镜像、不执行 `app_info_print/app_update`、不创建 staging volume、不写 game-data。
+- API 不返回完整 manifest、Steam 用户名/密码/token/ticket；错误只返回分类信息。阶段六的 depot 下载、staging 创建、校验、切换、停服/重启与回滚均未实现，也未接入 Junimo stack apply。
+
+## SMAPI 推荐矩阵与 staging 安全升级（2026-07-14）
+
+- `runtime_stack_manifest.json` 新增经发布验证的 SMAPI 4.5.2：官方 Release URL、精确 41,889,142 字节和 SHA256 `dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4`；同时固定 Control 0.1.0、DLL SHA256、`commandResultVersion=1`。用户实例不查询 GitHub latest。
+- `RuntimeReadSMAPIMetadata` 只读挂载当前显式 `GAME_DATA_VOLUME`，从 `StardewModdingAPI.dll` 的 AssemblyInformationalVersion 与 launcher/deps/runtimeconfig/config 固定产物判断实际安装；`.env` 的 `SMAPI_VERSION` 只作配置线索。状态为 `up_to_date/update_available/missing/invalid/incompatible_game/incompatible_junimo/custom_or_unknown`。
+- `GET /runtime-components` 追加 `smapi`；另提供管理员 `GET /smapi-update`、`GET|POST /smapi-update/dry-run`、`GET|POST /smapi-update/apply`。POST 不接受 URL、版本、SHA、ZIP、image/service 或命令；apply 只接受严格 `{"confirm":true}`。
+- dry-run 精确核对 Stardew buildid、SDK buildid、Junimo tag、steam-auth-cn tag、内置 Control 版本/DLL/协议和 staging/空间能力；只读 `du` 当前 game-data，并返回 `requiredBytes/freeBytes` 的克隆与安装缓冲估算。不匹配时拒绝，绝不顺便更新游戏、SDK、Junimo 或 auth，也不创建 volume、不下载 installer、不停服。
+- apply 仅下载清单 URL，限制官方 GitHub Release/审核重定向域名、Content-Length/读取上限，校验精确大小和 SHA256；ZIP 检查条目数、路径、symlink/device、压缩比与总解压上限，并要求官方 Linux/Windows installer 各一份。安装始终调用官方 Linux installer，不手拼 SMAPI 布局。
+- 当前 game-data 只读克隆至受控 `<project>_anxi-smapi-update-<24hex>` staging volume；在 staging 离线安装和精确验版后停服，才替换 host bind 的内置 Control，原子改写 `.env` 的 `GAME_DATA_VOLUME`，再启动完整推荐 stack。验收包括 SMAPI 精确版本、Junimo `/health`、server 日志中的 JunimoServer/Control 实际加载证据、commandResultVersion、status/players、邀请码和 auth ready/ticket。
+- 失败切回旧 volume、按“原文件存在/不存在”精确恢复 Control，并用 rollback 专用启动路径避免 lifecycle 再次覆盖旧 Control，最后恢复原运行状态；成功也保留旧 game-data 作为恢复材料，只清除临时 recovery 文件。`rollback_failed` 保留两卷和人工恢复指引，禁止自动破坏性重试、`down -v` 或 volume prune。Panel 重启不续跑安装器，而按 recovery manifest 安全回滚。
+- `cmd/smapi-candidate` 供维护者查询 `Pathoschild/SMAPI` 正式 Release，默认过滤 draft/prerelease，下载官方 installer 并输出候选 JSON/SHA256；失败不覆盖上次结果，也不修改矩阵/git/tag。
+- 玩家完整同步包仅在缓存中存在精确推荐安装器且大小/SHA 匹配时携带它；所有 pack manifest 都记录推荐 `version/checksum/bundled`，增量 Mod 包保持 `bundled=false` 且无 `payload/smapi`，旧包不会被改写。
+- 新实例初装也先由 Panel 的受控 HTTP client 下载并完整执行同一 URL/重定向 allowlist、大小、SHA256 与 ZIP 校验，再以只读 bind 交给容器中的官方 installer；`.env` 的旧 `SMAPI_DOWNLOAD_URLS` 仅为兼容字段，不再决定下载目标，新默认值也只保留官方 GitHub URL。
+
+## 2026-07-14：统一兼容矩阵与发布门禁
+
+Panel 的正式运行组合现在由 `backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json` 单一内嵌快照描述。schema v1 固定 Junimo server、steam-auth-cn（含 `upstreamRef` 与源码 revision）、Stardew App 413150 buildid、Steamworks SDK App 1007 buildid、SMAPI URL/SHA256、控制 Mod 与 `commandResultVersion`，并增加 `channel`、`minimumPanelVersion`、`status` 和 release notes。Go 结构仍在内存中生成旧调用需要的 preferred/candidate 别名，但 API 和持久状态以 `images`/`digests`/`urls`/`controlMod` 为准。
+
+每个 Panel 版本只内嵌一份当前组件清单，状态固定为 `recommended`；紧急停用时可标记 `withdrawn`。不再维护 candidate/tested 状态机或候选目录。正式新装、Junimo 成对升级、游戏/SDK 预检和 SMAPI dry-run/apply 读取这份内嵌清单，并检查当前 Panel 不低于 `minimumPanelVersion`。用户请求体仍不能传入目标 URL、tag、digest、ZIP 或命令；初始安装也不接受 `latest` 或任意 Junimo tag。
+
+Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项比较；digest 缺失返回 `target_image_digest_unavailable`，tag 指向其他内容返回 `target_image_digest_mismatch`。失败不会写实例配置。withdrawn 快照返回 `matrix_withdrawn`，阻止新安装/升级，同时保留已安装实例用于管理员按精确旧矩阵处理。
+
+`scripts/compatibility_matrix.py` 只校验 Panel 内嵌清单的精确 tag、digest、auth `upstreamRef`/`sourceRevision`、game/SDK buildid 和 SMAPI SHA，不再负责候选生成或状态晋级。steam-auth-cn 发布不触发 Panel；维护者为某个 Panel 版本直接指定已经确认的 server/auth 等组件版本。生产 apply API 只读取当前 Panel 镜像内嵌清单，不依赖远程 latest。
+# 2026-07-14 更新事务安全加固
+
+- SMAPI apply 的 `serverWasRunning` 改由 `docker compose ps` 真实状态产生，并在修改共享 Control Mod/切换卷前再次读取 server 与 steam-auth 状态；任一仍运行都会先复用生命周期停服。Panel 在停服后、切卷前中断时，会按持久化的 `serverWasRunning` 重启旧栈。
+- SMAPI 所有发生过 mutation 的回滚都必须通过旧 SMAPI 版本、Junimo health/API、auth ready/ticket、Junimo/Control 加载日志、Control status/players 与邀请码验收，才能写入 `failed_rolled_back`；否则保持 `rollback_failed` 并保留 recovery 与 volume。
+- Junimo 成对更新在停服前从运行中的 server/steam-auth 容器读取真实 ImageID；仅未运行的服务才回退检查 `.env` 镜像。恢复清单保存不可变 ImageID，回滚重建前将两项 image 临时固定为该 ImageID，避免同名 tag 漂移。
+- server 停止但 steam-auth 仍运行时也会执行完整生命周期停服，确认 auth 静默后才克隆 steam-session。`AuthWasRunning` 写入私有恢复清单，最终仍恢复 server 原有运行/停止意图。
+- 验证：`go test ./internal/games/stardew_junimo -run 'Test(SMAPIUpdate|SMAPIRollback|RuntimeUpdateApply)' -count=1`；新增状态漂移、中断恢复、旧栈验收失败、tag 漂移和 auth-only 漂移回归测试。
+# 2026-07-14：真实运行镜像检查与 steam-auth 探针兼容修复
+
+- `RuntimeImageInspect` 与 `RuntimeServiceInspect` 改为通过 Docker `--format` 只读取 ImageID、RepoDigests、配置镜像名、运行状态和 health；不再把包含 `Config.Env` 的完整 inspect JSON 经过日志脱敏后再解析，避免空 `VNC_PASSWORD=` 等环境项破坏 JSON，也减少凭据进入进程内输出的范围。
+- `RuntimeSteamAuthReady` 不再假设 steam-auth 镜像内存在 Node.js；改用镜像已具备的 Bash `/dev/tcp` 请求容器内 `127.0.0.1:3001/steam/ready`，仍只反序列化 `ready` 与 `has_ticket` 两个布尔值。
+- Docker integration 新增无 Node auth fixture：镜像故意包含敏感键环境变量，覆盖镜像 inspect、容器 inspect、真实 HTTP ready/ticket 探针。另提供 `ANXI_REAL_SERVER_IMAGE` / `ANXI_REAL_AUTH_IMAGE` opt-in 测试真实推荐镜像。
+- 验证：`go test ./internal/docker -count=1`；`go test -tags=integration ./internal/docker -run 'TestRuntime(InspectAndAuthProbeWithoutNode|RealImagesOptIn)' -count=1 -v`。

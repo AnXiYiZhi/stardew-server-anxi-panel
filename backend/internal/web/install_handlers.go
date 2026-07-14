@@ -372,15 +372,6 @@ func (s *server) handleInstanceInstallOptions(w http.ResponseWriter, r *http.Req
 
 	options := provider.InstallOptions()
 
-	// Check whether the tested tag is still the latest released version.
-	// Uses a short timeout; failure is logged and IsLatest stays false.
-	isLatest := checkTestedTagIsLatest(r.Context(), s.logger, "sdvd/steam-service", stardew_junimo.TestedImageTag)
-	for i := range options {
-		if options[i].Recommended {
-			options[i].IsLatest = isLatest
-		}
-	}
-
 	writeJSON(w, http.StatusOK, installOptionsResponse{ImageTagOptions: options})
 }
 

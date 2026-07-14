@@ -17,7 +17,7 @@ const (
 	DefaultSteamCMDImage                     = "docker.1ms.run/steamcmd/steamcmd:latest"
 	DefaultSteamCMDImageCandidates           = "dockerproxy.net/steamcmd/steamcmd:latest,docker.1ms.run/steamcmd/steamcmd:latest,docker.1panel.live/steamcmd/steamcmd:latest,docker.jiaxin.site/steamcmd/steamcmd:latest,dockerproxy.link/steamcmd/steamcmd:latest,cm2network/steamcmd:latest"
 	DefaultSMAPIVersion                      = "4.5.2"
-	DefaultSMAPIDownloadURLs                 = "https://gh.llkk.cc/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip,https://github.dpik.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip,https://ghfast.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip,https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip"
+	DefaultSMAPIDownloadURLs                 = "https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip"
 	DefaultSteamClientConnectTimeoutSeconds  = "60"
 	DefaultSteamClientConnectRetries         = "5"
 	DefaultSteamAuthSessionRetries           = "3"
@@ -114,6 +114,7 @@ func writeEnvFile(path string, fields map[string]string) error {
 
 	// Write known keys in a stable order first.
 	ordered := []string{
+		"GAME_DATA_VOLUME",
 		"IMAGE_VERSION",
 		"SERVER_IMAGE",
 		"SERVER_IMAGE_CANDIDATES",
@@ -187,6 +188,7 @@ func quoteEnvValue(value string) string {
 // EmptyEnvTemplate returns placeholder key-value pairs for a fresh .env.
 func EmptyEnvTemplate() map[string]string {
 	return map[string]string{
+		"GAME_DATA_VOLUME":                       "",
 		"IMAGE_VERSION":                          "",
 		"SERVER_IMAGE":                           DefaultServerImage,
 		"SERVER_IMAGE_CANDIDATES":                DefaultServerImageCandidates,

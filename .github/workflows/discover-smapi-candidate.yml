@@ -1,0 +1,80 @@
+name: Discover SMAPI release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Optional exact release tag (may be a prerelease)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Restore last discovered candidate
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/smapi-candidate-discovered.json
+          key: smapi-candidate-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            smapi-candidate-${{ runner.os }}-
+      - name: Query release and hash official installer
+        id: discover
+        continue-on-error: true
+        working-directory: backend
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          args=(-output ../artifacts/smapi-candidate-discovered.json)
+          if [[ -n "$REQUESTED_TAG" ]]; then args+=(-tag "$REQUESTED_TAG"); fi
+          go run ./cmd/smapi-candidate "${args[@]}"
+      - name: Write discovery summary
+        if: always()
+        shell: bash
+        env:
+          DISCOVERY_OUTCOME: ${{ steps.discover.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## SMAPI candidate (discovered, not recommended)'
+            echo
+            if [[ -f artifacts/smapi-candidate-discovered.json ]]; then
+              jq -r '"- Version: `\(.version)`\n- Installer SHA256: `\(.installer.sha256)`\n- Installer bytes: `\(.installer.bytes)`\n- Discovered at: `\(.discoveredAt)`"' artifacts/smapi-candidate-discovered.json
+            else
+              echo '- No previous or current candidate JSON is available.'
+            fi
+            echo
+            if [[ "$DISCOVERY_OUTCOME" != success ]]; then
+              echo '> The GitHub API/download check failed. Any restored JSON above is the previous discovered candidate and is stale; this run does not report “already latest”.'
+            fi
+            echo
+            echo 'This workflow never edits the tested recommendation matrix, creates a tag, publishes a package, or updates an instance.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save successful candidate for failure fallback
+        if: steps.discover.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/smapi-candidate-discovered.json
+          key: smapi-candidate-${{ runner.os }}-${{ github.run_id }}
+      - name: Upload candidate JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smapi-candidate-discovered
+          path: artifacts/smapi-candidate-discovered.json
+          if-no-files-found: warn
+      - name: Fail run when current discovery failed
+        if: steps.discover.outcome != 'success'
+        shell: bash
+        run: exit 1

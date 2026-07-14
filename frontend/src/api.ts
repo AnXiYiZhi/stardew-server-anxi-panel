@@ -14,6 +14,13 @@ import type {
   ServerRuntimeSettings,
   InstanceRenderingResult,
   InstanceState,
+  JunimoUpdateInfo,
+  JunimoUpdateDryRunStatus,
+  JunimoUpdateApplyStatus,
+  RuntimeComponentsInfo,
+  RuntimeComponentsPreflight,
+  SMAPIUpdateInfo,
+  SMAPIUpdateWorkflowStatus,
   InstancesResponse,
   InviteCodeResult,
   JobLogsResponse,
@@ -108,6 +115,64 @@ export function getInstance(instanceId = defaultInstanceId) {
 
 export function getInstanceState(instanceId = defaultInstanceId) {
   return request<InstanceState>(`/api/instances/${encodeURIComponent(instanceId)}/state`)
+}
+
+export function getJunimoUpdate(instanceId = defaultInstanceId) {
+  return request<JunimoUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update`)
+}
+
+export function getJunimoUpdateDryRun(instanceId = defaultInstanceId) {
+  return request<JunimoUpdateDryRunStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/dry-run`)
+}
+
+export function startJunimoUpdateDryRun(instanceId = defaultInstanceId) {
+  return request<JunimoUpdateDryRunStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/dry-run`, { method: 'POST' })
+}
+
+export function getJunimoUpdateApply(instanceId = defaultInstanceId) {
+  return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/apply`)
+}
+
+export function startJunimoUpdateApply(instanceId = defaultInstanceId) {
+  return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/apply`, {
+    method: 'POST',
+    body: { confirm: true },
+  })
+}
+
+export function getRuntimeComponents(instanceId = defaultInstanceId) {
+  return request<RuntimeComponentsInfo>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components`)
+}
+
+export function getRuntimeComponentsPreflight(instanceId = defaultInstanceId) {
+  return request<RuntimeComponentsPreflight>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components/dry-run`)
+}
+
+export function startRuntimeComponentsPreflight(instanceId = defaultInstanceId) {
+  return request<RuntimeComponentsPreflight>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components/dry-run`, { method: 'POST' })
+}
+
+export function getSMAPIUpdate(instanceId = defaultInstanceId) {
+  return request<SMAPIUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update`)
+}
+
+export function getSMAPIUpdateDryRun(instanceId = defaultInstanceId) {
+  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/dry-run`)
+}
+
+export function startSMAPIUpdateDryRun(instanceId = defaultInstanceId) {
+  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/dry-run`, { method: 'POST' })
+}
+
+export function getSMAPIUpdateApply(instanceId = defaultInstanceId) {
+  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/apply`)
+}
+
+export function startSMAPIUpdateApply(instanceId = defaultInstanceId) {
+  return request<SMAPIUpdateWorkflowStatus>(`/api/instances/${encodeURIComponent(instanceId)}/smapi-update/apply`, {
+    method: 'POST',
+    body: { confirm: true },
+  })
 }
 
 export function getInstanceMetrics(instanceId = defaultInstanceId) {

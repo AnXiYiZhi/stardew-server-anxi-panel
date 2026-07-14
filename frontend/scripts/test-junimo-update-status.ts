@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict'
+import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoPairMatches, junimoUpdateStatusLabel } from '../src/games/stardew/junimo-update-status.ts'
+
+assert.equal(junimoUpdateStatusLabel('up_to_date'), '推荐版本对已匹配')
+assert.equal(junimoUpdateStatusLabel('update_available'), 'Junimo 运行组件可更新')
+assert.equal(junimoUpdateStatusLabel('not_installed'), 'Junimo 运行组件尚未安装')
+assert.equal(junimoUpdateStatusLabel('custom_images'), '自定义镜像不支持自动判断')
+assert.equal(junimoUpdateStatusLabel('invalid_config'), '运行组件配置无法判断')
+assert.equal(junimoPairMatches('up_to_date'), true)
+assert.equal(junimoPairMatches('update_available'), false)
+assert.equal(junimoDryRunPhaseLabel('pulling_server'), '正在检查或拉取 server 镜像')
+assert.equal(junimoDryRunPhaseLabel('succeeded'), '升级预检通过')
+assert.equal(junimoDryRunActive('validating_compose'), true)
+assert.equal(junimoDryRunActive('failed'), false)
+assert.equal(junimoApplyPhaseLabel('verifying_auth'), '验证 Steam 登录')
+assert.equal(junimoApplyPhaseLabel('failed_rolled_back'), '升级失败，已成功回滚')
+assert.equal(junimoApplyPhaseLabel('rollback_failed'), '自动回滚失败，需人工处理')
+assert.equal(junimoApplyActive('rolling_back'), true)
+assert.equal(junimoApplyActive('succeeded'), false)
+assert.equal(junimoApplyActive('failed_rolled_back'), false)
+assert.equal(junimoApplyActive('rollback_failed'), false)
+
+console.log('junimo update status tests passed')

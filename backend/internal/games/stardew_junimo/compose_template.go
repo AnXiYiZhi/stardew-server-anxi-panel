@@ -89,4 +89,5 @@ const junimoComposeTemplate = `services:
 volumes:
   steam-session:
   game-data:
+    name: ${GAME_DATA_VOLUME}
 `

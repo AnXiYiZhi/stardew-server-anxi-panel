@@ -1,3 +1,16 @@
+# JUNIMO-STACK-UPDATE-1 阶段二：运行组件升级预检界面（2026-07-13）
+
+- 新增 dry-run 类型与 `getJunimoUpdateDryRun()` / `startJunimoUpdateDryRun()`；POST 不发送 body。管理员诊断页加载时恢复最近状态，活动阶段轮询并展示 progress、目标/选中版本对、checks、warnings、失败码和脱敏日志。
+- 唯一可用操作是整体“运行升级预检”；“执行升级（下一阶段提供）”保持 disabled。普通用户不调用管理员 dry-run API，继续只看脱敏 tag/整体状态。
+- 镜像/digest/检查项/日志允许任意断行；620px 以下按钮全宽、版本对与检查项纵向布局。`test:junimo-update` 覆盖 dry-run 阶段文案/活动态，生产构建继续执行 `tsc -b`。
+
+# JUNIMO-STACK-UPDATE-1 阶段一：运行组件更新提示（2026-07-13）
+
+- 新增 `JunimoUpdateInfo`/五态类型和 `getJunimoUpdate()`。管理员总览页仅在 `available=true` 时显示“Junimo 运行组件可更新”，唯一操作为“查看详情”并跳转诊断页，不提供 server/auth 独立按钮或执行升级按钮。
+- 诊断页把 server 与 steam-auth-cn 作为一个版本对展示：当前两组件镜像/tag、推荐 stackVersion 与两组件版本、整体是否匹配、unsupported 原因和版本说明。管理员可读取完整镜像引用；普通用户只消费 `/state.runtimeDiagnostic` 的 tag/状态，并显示“仓库信息仅管理员可见”。
+- 新增 `junimo-update-status.ts` 五态文案/匹配辅助与 `test:junimo-update`。总览提示和诊断镜像长文本使用 `min-width: 0`、`overflow-wrap:anywhere`，窄屏提示卡改为纵向，避免桌面和移动端横向溢出。
+- 阶段一 UI 没有 dry-run/apply，也不会触发镜像拉取、配置改写或容器操作；Panel 自身更新弹窗保持独立。
+
 # PANEL-UPDATE-RELEASE-1 Web 验收（2026-07-13）
 
 - 隔离真 Docker 成功链路中，顶栏与总览同时展示 `v0.1.14` 更新；管理员经环境检查和二次确认启动升级，页面在 panel 短暂离线时进入专用升级态，恢复后自动回原页面并展示成功结果。
@@ -2072,3 +2085,31 @@ npm.cmd run dev
 - `useSaveBackups.loadBackups()` 不再无条件信任 `result.backups` 为数组；仅在 `Array.isArray` 时写入，否则降级为空数组。
 - 该保护兼容旧后端曾返回的 `backups: null`，避免存档页对空值执行展开/过滤时抛出异常并卸载整个 React 面板。
 - 验证：`cd frontend; npm run build`。
+# JUNIMO-STACK-UPDATE-1 阶段三：成对升级界面（2026-07-13）
+
+- 新增 apply 类型/API 和完整阶段文案；诊断页仅在当前推荐版本对 dry-run `succeeded` 后启用“更新运行组件”，server/auth 始终作为一个操作，不提供单组件按钮。
+- 确认弹窗展示当前/目标两组件 tag、升级期间停服、Steam 授权预计保留，以及原停止实例会为验证临时启动后恢复停止。提交体固定为 `{"confirm":true}`，不携带目标信息。
+- 页面加载和活动轮询恢复最近 apply；展示进度、成对目标、检查项、warning、脱敏日志，并用不同文案区分 `succeeded`、`failed_rolled_back`、`rollback_failed`。恢复失败只显示人工处理指引，无自动破坏性重试。
+- apply 区域及长镜像/digest 使用 `min-width:0`、`overflow-wrap:anywhere`，窄屏按钮全宽、检查项纵向换行，避免页面级横向溢出。
+# GAME-RUNTIME-VERSION-1：游戏运行文件版本提示（2026-07-14）
+
+- 管理员诊断页新增“游戏运行文件版本”，以“游戏版本/联机运行库”为主文案，详情展示 App 413150/1007 当前与推荐 buildid、StateFlags、固定 manifest 路径、安装目录标记、缺失/损坏/未知原因和 tested 推荐矩阵版本。
+- 管理员可运行只读预检并查看空间估算、Steam 下载能力、staging 能力 checks/warnings；页面明确“仅检查，不提供升级按钮”。长 buildid、路径、安装目录和错误复用 `sd-diag-image-ref`/dry-run 样式任意断行，适配移动端。
+- 总览仅在管理员成功读取状态、推荐矩阵 `tested=true` 且整体为 `update_available` 时显示“游戏运行文件可更新”；缺失、损坏、custom/unknown、未测试矩阵均不冒充更新提示。
+- 新增 `runtime-components-status.ts` 与 `test:runtime-components`，覆盖六种状态文案和 tested 门控；生产构建继续通过 `tsc -b`。
+
+## SMAPI 推荐版本与安全升级（2026-07-14）
+
+- 管理员诊断页新增独立 SMAPI 卡片，显示实际检测版本、推荐版本、程序集元数据来源、推荐 installer SHA256/大小，以及 Stardew、SDK、Junimo、steam-auth-cn、Control/commandResultVersion 五类兼容门槛。
+- 前置不匹配、自定义/未知或安装损坏时升级按钮禁用；卡片链接到同页“游戏运行文件版本”和“Junimo 运行组件版本对”入口，并明确本流程不会连带更新前置组件。
+- 管理员总览仅在后端实际检测为 `update_available` 且 `available/supported=true` 时显示 SMAPI 更新提示；missing、invalid、incompatible、custom/unknown 不冒充可更新。
+- UI 分开展示 dry-run 与 apply 的下载、ZIP 校验、staging、复制、官方安装、停服、volume 切换、完整 stack 验收、恢复状态和回滚阶段；`rollback_failed` 显示保留材料与人工处理提示。
+- 页面提示 SMAPI 升级后玩家可能需要重新导出完整同步包，增量 Mod 包不含 SMAPI，客户端应与服务器推荐 SMAPI 版本保持一致。
+- 长 SHA、volume、错误和日志可任意断行；操作按钮在 620px 以下满宽，卡片/网格 `min-width:0`，无新增横向固定宽度。新增 `smapi-update-status.ts` 与 `npm run test:smapi-update`。
+- 总览只在 `available=true + supported=true + update_available` 时显示“游戏模组运行环境可更新”，不会把 GitHub discovered 候选当作用户目标。诊断页同时显示只读 dry-run 的 staging 空间估算与“未创建 volume/未下载/未停服”边界；apply POST 由通用 API client 序列化严格 `{confirm:true}`，不再二次 JSON 编码。
+
+## 2026-07-14：统一“运行环境版本”视图
+
+诊断页增加统一版本总览，按 Junimo server/auth、游戏/SDK、SMAPI/控制 Mod 三组显示当前值与当前 Panel 内嵌目标，同时展示 stackVersion、stable/preview 通道、minimumPanelVersion 以及 recommended/withdrawn 状态。用户升级 Panel 后，页面直接比较已安装组件与该 Panel 指定版本并提示对应升级。每组链接到原有独立事务入口，并说明停服、验收、回滚及完整玩家同步包影响。
+
+界面不提供“全部更新到 latest”按钮。withdrawn 与非 recommended 状态使用风险徽标，后端门禁同时禁止操作。矩阵卡片、镜像引用和阶段日志均设置可换行；620px 以下三组改为单列，避免长 digest、buildid 或镜像名导致横向溢出。

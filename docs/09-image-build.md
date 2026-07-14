@@ -1,3 +1,15 @@
+# JUNIMO-STACK-UPDATE-1 阶段二构建与 Docker 边界（2026-07-13）
+
+- Panel 镜像仍内置同一推荐清单，不查询 latest，也不改 Panel updater/发布流程。预检只执行 Docker/Compose version/ps/config、image inspect/pull、volume inspect；目标 Compose 验证用进程级两项镜像环境覆盖，不写 env 文件。
+- Panel 看不到 volume mountpoint 或 Docker 数据盘精确空间时只返回 warning，不扩大宿主机挂载、不读取 token、不伪造数值。
+- 阶段二没有 `compose up/down/restart/rm/stop`、容器/volume 删除、认证备份或数据卷修改；部署无需新增 volume，尤其不应直挂 `/var/lib/docker/volumes`。
+
+# JUNIMO-STACK-UPDATE-1 阶段一构建与镜像边界（2026-07-13）
+
+- `backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json` 通过 `go:embed` 编入 Panel 二进制，推荐版本随 Panel 构建固定发布；运行时不访问远程 latest。构建/发版复核必须确认 server `1.5.0-preview.121` 与 steam-auth-cn `1.5.0-anxi.2` 作为同一版本对通过测试。
+- 本阶段没有新增镜像拉取、registry 凭据、Compose 操作或部署环境变量；检测只读实例 `.env`。Panel 自身 `/api/system/update` 镜像升级链路与实例级 Junimo 检测保持完全独立。
+- 阶段一不允许通过 API 指定镜像/tag/digest/registry，也不修改实例 `.env`、不停止/重建 server 或 steam-auth。未来阶段如增加执行能力，必须另行补 capability、可信候选拉取、配置备份、原子版本对切换、健康验收和自动回滚。
+
 # PANEL-UPDATE-RELEASE-1 镜像与发布验收（2026-07-13）
 
 - v0.2.0 是首个包含完整 Web updater 的正式版本；Tag 推送后由现有 GitHub tag workflow 构建并发布精确版本镜像。v0.2.0 之前的安装需要先用原部署更新方式完成一次引导升级。
@@ -543,3 +555,42 @@ docker run -d -p 9090:8090 ...
 - 发布版本：`v0.1.13`，修复新服务器 `game-data` 卷仅创建 Steam 目录但无游戏文件时仍显示“安装完成”、允许创建游戏的问题。
 - 发布验证：后端 `go test ./...`、前端 `npm run build`、Docker 镜像构建；CI 构建完成后检查三个镜像仓库的 `0.1.13` 与 `latest`。
 - 升级验证：现有误判实例刷新面板后应显示“游戏运行文件不完整，请重新安装或修复”；执行安装/修复后，仅在 Stardew、SMAPI 与 Steam SDK 必需文件全部存在时才会进入创建存档流程。
+# JUNIMO-STACK-UPDATE-1 阶段三发布/镜像验收（2026-07-13）
+
+- Panel 镜像继续内置唯一 `tested=true` 推荐版本对；阶段三没有改变推荐 tag，也不查询远程 latest。发布新 Panel 前若调整清单，必须对 server/auth pair、Steam ticket、Junimo/SMAPI/邀请码和失败回滚一起验收。
+- 真实环境发布门禁：隔离 Compose project、非生产 steam-session/game-data、专用 Steam 测试账号和两个真实上游推荐镜像；覆盖运行/停止实例成功升级、auth/server 故障回滚、认证迁移恢复、Panel 中断恢复，凭据不得进入日志、状态、镜像层或仓库。
+- 自动 Docker integration test 使用本机 `alpine:3.20` 和唯一 `anxijunimotest*` 临时 volume，只验证受控 clone/restore/cleanup，不替代真实 Steam/上游镜像验收。
+- 私有恢复目录和临时认证快照不进入镜像构建上下文、支持包或普通下载；`rollback_failed` 必须先人工保全材料，禁止自动重复恢复。
+# GAME-RUNTIME-VERSION-1 构建、发现与发布边界（2026-07-14）
+
+- Panel 镜像 embed 的 `runtime_stack_manifest.json` 同时固定 Junimo 镜像对及 App 413150/1007 推荐 buildid。发布者只能在真实运行环境验证 game+SDK+Junimo 兼容后更新 buildid、manifestVersion、notes 并保持 `tested=true`；运行中 Panel 不查询 Steam latest。
+- `.github/workflows/discover-steam-builds.yml` 仅支持手动运行，绑定受保护 GitHub Environment `steam-build-discovery`。413150 凭据只从 Environment secrets 注入临时 0600 SteamCMD runscript，命令行和 workflow 日志不打印 login/password/token；1007 匿名查询。
+- workflow 只上传 `steam-builds-discovered.json` 并写 summary，分类固定为 `discovered`；不写推荐矩阵、不提交/推送、不打 tag。阶段八可消费该 JSON 创建人工审查的兼容矩阵 PR。
+- 运行时 ACF 检测用已有本地 server 镜像、`--pull never --network none` 和 game-data 只读 mount；发现 volume/镜像缺失只报告状态，不能隐式拉取或创建。发布检查增加 `npm run test:runtime-components` 与候选工具“无推荐矩阵/git mutation”静态测试。
+
+## SMAPI 推荐清单与发布门槛（2026-07-14）
+
+- Panel 镜像 embed 的同一 `runtime_stack_manifest.json` 固定 SMAPI 4.5.2 官方 installer URL、精确字节数、SHA256、下载/解压上限，以及 Control DLL/协议兼容值。更新这些字段视为正式 Panel 发布变更，必须与推荐 game/SDK/Junimo/auth 组合一起验收。
+- `go run ./cmd/smapi-candidate --output <path>` 只发现正式 GitHub Release 并原子保存候选 JSON；`--tag` 才允许维护者显式检查 prerelease。网络/API/下载/摘要异常时保持旧文件并返回失败，不能写“已是最新”。
+- `.github/workflows/discover-smapi-candidate.yml` 只允许手动触发，以只读 contents 权限运行上述 CLI；成功候选保存为 `discovered` cache/artifact，失败时 summary 明确展示的只是上次候选且任务最终失败。workflow 不编辑推荐矩阵、不提交/推送、不打 tag、不发布 installer。
+- 正式镜像发布前必须运行后端全量测试、`go vet`、隔离 Docker integration、前端 build/状态测试，并在 release-candidate 环境跑真实安装/回滚长链路。Control hash 不匹配时先按既有 Docker/.NET 流程重建，严禁提交 `bin/obj`。
+- SMAPI 下载缓存位于实例私有 `.local-container/smapi-update/packages`，不打入仓库；它用于后续完整玩家同步包。不得把候选 JSON、installer ZIP 或实例恢复材料提交、打 tag 或发布为本次产物。
+- 新实例初装和后续升级都只能从 embed 清单取目标；旧 `.env` 的 `SMAPI_DOWNLOAD_URLS` 不再参与下载选择。初装先在 Panel 侧按 allowlist/SHA/ZIP 上限缓存，再只读 bind 给安装容器，避免容器内 curl 跟随到未审核域名。
+- 隔离 Docker 验证命令：`go test -tags=integration ./internal/docker -run 'TestRuntime(SMAPIIsolatedStagingCloneAndInstaller|ApplyIsolatedSteamSessionCloneRestore)' -count=1`。SMAPI 用唯一临时 volume 和临时 helper image 验证 clone、官方 installer CLI 边界与清理；它不使用真实实例，也不替代阶段八真实 RC 长链路。
+
+## 2026-07-14：矩阵快照与发布 Environment
+
+正式 Panel 镜像构建上下文必须包含 `runtime_stack_manifest.json`；运行时不从远程 latest 获取目标版本。`release.yml` 在 registry 登录和推送前验证内嵌清单、远程 digest/auth 溯源、全量 Go 测试、前端 build 和隔离 Docker integration。推送 `v*` Panel tag 后直接构建发布，不使用 `panel-release` Environment、required reviewer、`APPROVED_STACK_VERSION`、Actions run 或 E2E artifact。
+
+矩阵中的镜像使用精确 tag 加 digest。运行时先按 tag 拉取，再 inspect RepoDigest；与内嵌 digest 不一致即拒绝，不把同名可变内容当作推荐镜像。auth-cn 新发布流程只推精确版本 tag，不再写 `latest`。已有旧镜像和旧矩阵信息必须保留用于人工确认后的回退；禁止 `docker compose down -v`、volume prune 或删除唯一 game-data 卷。
+
+steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel repository_dispatch token，也不向 Panel 自动创建 PR。维护者为新 Panel 版本直接填写已确认 server 及对应 auth 的精确 tag、digest、`upstreamRef` 和 `sourceRevision`；Panel CI 验证这组明确指定的版本对。
+# 2026-07-14 矩阵与发布门禁加固
+
+- `.github/workflows/compatibility-matrix.yml` 只验证当前 Panel 内嵌组件清单和相关测试，不再扫描候选目录或校验状态迁移历史。
+- 本机需要时可对精确 server/auth 版本对确认 `ready=true`、`has_ticket=true`、server/Junimo API 可用及重启后认证保持；这不是 GitHub 发布审批条件。任何验收笔记都必须脱敏，不得记录 Steam 密码、refresh token、App Ticket、二维码或 session volume 内容。
+# 2026-07-14：推荐镜像运行时契约发布门槛
+
+- Docker integration 必须运行 `TestRuntimeInspectAndAuthProbeWithoutNode`，验证含敏感键环境变量的 inspect 不破坏结构，并验证 auth 镜像不依赖 Node.js。
+- 发布候选实机建议额外设置 `ANXI_REAL_SERVER_IMAGE` 与 `ANXI_REAL_AUTH_IMAGE` 运行 `TestRuntimeRealImagesOptIn`；该测试只检查推荐镜像 digest/ID、真实 .NET auth `/steam/ready` 可解析和容器状态，不读取凭据，也不替代 `has_ticket=true` 的真实 Steam Environment 验收。
+- 镜像 inspect 实现只能让 Docker 输出审核过的字段；禁止恢复完整 inspect JSON 后再脱敏解析。

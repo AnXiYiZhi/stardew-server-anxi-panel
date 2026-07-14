@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "stackVersion": "junimo-1.5.0-preview.121_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2",
+  "channel": "preview",
+  "minimumPanelVersion": "0.1.14",
+  "server": {
+    "tag": "1.5.0-preview.121",
+    "images": [
+      "sdvd/server:1.5.0-preview.121"
+    ],
+    "digests": {
+      "sdvd/server:1.5.0-preview.121": "sha256:98d4b89a543e0fbed703d7df177874beff65a2f1fe12967238cfa59f3a82db6b"
+    }
+  },
+  "steamAuth": {
+    "tag": "1.5.0-anxi.2",
+    "upstreamRef": "refs/tags/preview-1.5.0.121",
+    "sourceRevision": "a6cee498f91b318cfcacf035b05b0644bd16829a",
+    "images": [
+      "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+    ],
+    "digests": {
+      "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": "sha256:99420ab30c09da019c425defd4d01796403ac03898ed261b9ee2a976f4bc6518"
+    }
+  },
+  "game": {
+    "appId": "413150",
+    "buildId": "16826371",
+    "manifestVersion": "stardew-1.6.15-public-2024-12-22",
+    "notes": ["Stardew Valley public branch build verified for the Panel runtime matrix."],
+    "estimatedDownloadBytes": 1500000000
+  },
+  "sdk": {
+    "appId": "1007",
+    "buildId": "20939719",
+    "manifestVersion": "steamworks-sdk-redist-public-2025-12-08",
+    "notes": ["Steamworks SDK Redistributables public branch build verified for the Panel runtime matrix."],
+    "estimatedDownloadBytes": 200000000
+  },
+  "smapi": {
+    "version": "4.5.2",
+    "sha256": "dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4",
+    "urls": ["https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip"],
+    "archiveBytes": 41889142,
+    "maxArchiveBytes": 104857600,
+    "maxExtractBytes": 536870912,
+    "trustedHosts": ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+  },
+  "controlMod": {
+    "version": "0.1.0",
+    "dllSha256": "adf4473af58bbfc58c1a4735389b07f269d73bc40afd4f7626a3d0c68f2e7ebc",
+    "commandResultVersion": 1
+  },
+  "status": "recommended",
+  "releaseNotes": [
+    "Junimo server、steam-auth-cn、游戏、SDK、SMAPI 与控制 Mod 已固定为统一兼容组合。",
+    "各组件更新继续通过独立 staging、验收和回滚事务执行，不提供无条件 latest 更新。"
+  ]
+}

@@ -27,6 +27,31 @@ jobs:
       - name: Checkout tag
         uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run release gates
+        shell: bash
+        run: |
+          python scripts/compatibility_matrix.py validate backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
+          python scripts/compatibility_matrix.py check-panel-version backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json --version "${GITHUB_REF_NAME#v}"
+          python scripts/compatibility_matrix.py verify-remote-artifacts backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
+          python -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
+          (cd backend && go test ./...)
+          (cd backend && go test -tags=integration ./internal/docker)
+          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:runtime-components && npm run test:smapi-update && npm run build)
+
       - name: Prepare release metadata
         id: meta
         shell: bash
@@ -34,6 +59,7 @@ jobs:
           GHCR_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
+          : "${GHCR_OWNER:?GHCR_OWNER is required}"
           version="${GITHUB_REF_NAME#v}"
           commit="${GITHUB_SHA::12}"
           build_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -53,9 +79,6 @@ jobs:
             echo "ghcr.io/${ghcr_owner}/stardew-server-anxi-panel:latest"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
