@@ -1,3 +1,26 @@
+# 2026-07-14 接手补充：服务器健康页用户视角重构
+
+### 改了什么
+
+- 页面标题改为“服务器健康”，首屏只保留整体健康结论、可执行的版本维护任务、检查结果、建议与资源占用。
+- 原先并列铺开的状态来源、运行环境版本、游戏文件、SMAPI 与 Junimo 技术面板，统一收进默认关闭的“维护与技术详情”。支持包导出、升级预检、确认、执行和日志仍完整保留在这里。
+- 新增“版本维护”摘要。Junimo `.121 → .125` 会显示为可选推荐，并明确“不升级仍可继续使用”；管理员从摘要进入详情后再预检，普通用户仍无升级操作。
+
+### 影响接口与文件
+
+- 无接口、请求参数或升级状态机变更。
+- 修改 `frontend/src/games/stardew/pages/DiagnosticsPage.tsx`、`frontend/src/games/stardew/pages/DiagnosticsPage.css`、`frontend/src/qa-layout-main.tsx`。
+
+### 如何验证
+
+- QA 页面桌面视觉检查：默认技术详情关闭，整体状态和版本维护位于首屏；展开后 5 个原技术区及支持包导出均存在；无横向溢出、无控制台错误。
+- 执行 `npm run test:junimo-update`、`npm run test:runtime-components`、`npm run test:smapi-update` 和 `npm run build`。
+
+### 下一步注意事项
+
+- 后续新增诊断项时，只有会改变用户决策的异常或维护任务才放在默认视图；镜像、digest、buildid、Driver 原始来源和过程日志继续放在技术详情。
+- 不要把 `.125` 推荐更新改成强制门禁，也不要因页面折叠而跳过原有 dry-run、确认和 apply 安全流程。
+
 # JUNIMO-STACK-UPDATE-1 阶段二 dry-run 前端接手记录（2026-07-13）
 
 ## 改了什么

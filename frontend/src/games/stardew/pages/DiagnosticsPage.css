@@ -486,6 +486,191 @@
   order: 99;
 }
 
+.sd-diag-maintenance-panel,
+.sd-diag-maintenance-details {
+  min-width: 0;
+  border: 2px solid var(--sd-save-card-border-dark);
+  border-radius: 9px;
+  background: var(--sd-save-card-bg-strong);
+  box-shadow: var(--sd-save-card-shadow);
+  color: var(--sd-save-card-text);
+}
+
+.sd-diag-maintenance-panel {
+  padding: 14px 16px;
+}
+
+.sd-diag-maintenance-head,
+.sd-diag-maintenance-item,
+.sd-diag-maintenance-empty,
+.sd-diag-maintenance-details > summary,
+.sd-diag-maintenance-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sd-diag-maintenance-head {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sd-diag-maintenance-head p,
+.sd-diag-maintenance-item p,
+.sd-diag-maintenance-empty p,
+.sd-diag-maintenance-tools p {
+  margin: 3px 0 0;
+  color: var(--sd-save-card-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.sd-diag-maintenance-badge,
+.sd-diag-maintenance-summary-count {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sd-diag-maintenance-badge.is-pending {
+  color: #74470b;
+  background: #f3d58e;
+}
+
+.sd-diag-maintenance-badge.is-ok {
+  color: #275f20;
+  background: #d9efd2;
+}
+
+.sd-diag-maintenance-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sd-diag-maintenance-item,
+.sd-diag-maintenance-empty {
+  padding: 11px 12px;
+  border: 1px solid var(--sd-save-card-soft-line);
+  border-radius: 8px;
+  background: rgba(255, 242, 199, 0.32);
+}
+
+.sd-diag-maintenance-item > div,
+.sd-diag-maintenance-empty > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sd-diag-maintenance-item-icon,
+.sd-diag-maintenance-empty > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff7d7;
+  background: #b97718;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.sd-diag-maintenance-empty > span {
+  background: #438b32;
+}
+
+.sd-diag-maintenance-role-note {
+  flex: 0 0 auto;
+  color: var(--sd-save-card-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sd-diag-maintenance-details {
+  order: 99;
+  overflow: hidden;
+}
+
+.sd-diag-maintenance-details > summary {
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sd-diag-maintenance-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sd-diag-maintenance-details > summary::before {
+  content: '＋';
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.sd-diag-maintenance-details[open] > summary::before {
+  content: '−';
+}
+
+.sd-diag-maintenance-details > summary > span:first-of-type {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sd-diag-maintenance-details > summary small {
+  margin-top: 2px;
+  color: var(--sd-save-card-muted);
+  font-size: 12px;
+}
+
+.sd-diag-maintenance-summary-count {
+  color: #5e421f;
+  background: rgba(200, 160, 92, 0.28);
+}
+
+.sd-diag-maintenance-tools {
+  justify-content: space-between;
+  margin: 0 14px;
+  padding: 12px 2px;
+  border-top: 1px solid var(--sd-save-card-soft-line);
+}
+
+.sd-diag-maintenance-details > .sd-diag-source-panel {
+  margin: 10px 14px 14px;
+}
+
+@media (max-width: 620px) {
+  .sd-diag-maintenance-head,
+  .sd-diag-maintenance-item,
+  .sd-diag-maintenance-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sd-diag-maintenance-item > button,
+  .sd-diag-maintenance-tools > button {
+    width: 100%;
+  }
+
+  .sd-diag-maintenance-badge {
+    align-self: flex-start;
+  }
+
+  .sd-diag-maintenance-details > summary {
+    align-items: flex-start;
+  }
+
+  .sd-diag-maintenance-summary-count {
+    display: none;
+  }
+}
+
 .sd-diag-page .sd-diag-header {
   position: relative;
   display: flex;
