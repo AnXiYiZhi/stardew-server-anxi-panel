@@ -657,3 +657,8 @@ steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel reposito
 
 - Junimo 运行组件升级/回滚验收不得假定 server 镜像包含 `wget`；`.121` 与 `.125` 均使用镜像已有的 Bash `/dev/tcp` 检查本机 `8080/health`。
 - 发布门禁应保留“探针不含 wget”回归测试，并覆盖结构化镜像层下载进度、初始失败原因与回滚失败步骤。该变更不改变推荐矩阵、镜像候选或 23 个 init 兼容挂载。
+# PANEL-0.2.9 Junimo FIFO 验收修复（2026-07-14）
+
+- `v0.2.9` 修复 `.125` 容器和 Junimo health 已正常却因 `attach-cli -T` 固定失败、等待五分钟后错误回滚的问题。
+- 正式镜像必须包含 FIFO `info` 控制契约验收与回归测试；不得删除 digest、Steam ticket、SMAPI/control、邀请码或恢复状态门槛。
+- tag 发布继续由 `.github/workflows/release.yml` 执行完整矩阵、远程制品、Go/Docker integration、前端状态脚本与生产构建，并覆盖三个仓库的 `0.2.9` 和 `latest`。
