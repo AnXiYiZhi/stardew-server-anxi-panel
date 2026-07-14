@@ -139,12 +139,52 @@ const dryRunStatus = {
   capability: { supported: true, reason: '标准 Compose 部署可安全升级', code: 'supported', composeProject: 'anxi-panel', composeFile: '', installDir: '', currentContainer: 'anxi-panel', currentImage: 'ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.1.14', dataMount: '', dockerAvailable: true, composeAvailable: true },
   logs: [], startedAt: iso(3), updatedAt: iso(0), finishedAt: iso(0), errorCode: '', error: '',
 }
+const junimoUpdate = {
+  available: true, supported: true, status: 'update_available', reason: '',
+  current: {
+    server: { image: 'dockerproxy.net/sdvd/server:1.5.0-preview.121', tag: '1.5.0-preview.121' },
+    steamAuth: { image: 'docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2', tag: '1.5.0-anxi.2' },
+  },
+  recommended: {
+    status: 'recommended', tested: true, stackVersion: 'junimo-1.5.0-preview.125_auth-1.5.0-anxi.2', channel: 'preview', minimumPanelVersion: '0.2.2',
+    server: { image: 'sdvd/server:1.5.0-preview.125', images: ['sdvd/server:1.5.0-preview.125'], tag: '1.5.0-preview.125' },
+    steamAuth: { image: 'anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2', images: ['anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2'], tag: '1.5.0-anxi.2' },
+  },
+  releaseNotes: ['preview.121 可继续使用；本次升级由管理员自愿执行。'],
+}
+const runtimeComponents = {
+  status: 'up_to_date', reason: '游戏版本与联机运行库均匹配推荐组合。',
+  current: {
+    game: { appId: '413150', buildId: '16826371', stateFlags: '4', manifestPath: 'steamapps/appmanifest_413150.acf', installDir: 'Stardew Valley' },
+    sdk: { appId: '1007', buildId: '20939719', stateFlags: '4', manifestPath: '.steam-sdk/steamapps/appmanifest_1007.acf', installDir: 'Steamworks SDK Redist' },
+  },
+  recommended: {
+    status: 'recommended', tested: true, stackVersion: 'junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2', channel: 'preview', minimumPanelVersion: '0.2.2',
+    game: { buildId: '16826371', manifestVersion: 'stardew-1.6.15-public', notes: [] },
+    sdk: { buildId: '20939719', manifestVersion: 'steamworks-sdk-redist-public', notes: [] },
+  },
+}
+const smapiUpdate = {
+  available: false, supported: true, status: 'up_to_date', reason: 'SMAPI 已匹配推荐版本。',
+  current: { present: true, valid: true, version: '4.5.2', versionSource: 'StardewModdingAPI.dll' },
+  recommended: { version: '4.5.2', sha256: 'qa-sha256', archiveBytes: 41943040, compatibility: { gameBuildId: '16826371', sdkBuildId: '20939719', junimoVersion: '1.5.0-preview.125', steamAuthVersion: '1.5.0-anxi.2', controlVersion: '0.1.0', commandResultVersion: 1 } },
+}
+const idleWorkflow = { phase: 'idle', progress: 0, target: {}, selected: {}, checks: [], warnings: [], logs: [] }
+const idleJunimoWorkflow = { ...idleWorkflow, target: { server: {}, steamAuth: {} }, selected: { server: {}, steamAuth: {} } }
 
 function jsonRes(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
 const routes: Array<[RegExp, unknown]> = [
+  [/\/junimo-update\/dry-run$/, idleJunimoWorkflow],
+  [/\/junimo-update\/apply$/, idleJunimoWorkflow],
+  [/\/junimo-update$/, junimoUpdate],
+  [/\/runtime-components\/preflight$/, idleWorkflow],
+  [/\/runtime-components$/, runtimeComponents],
+  [/\/smapi-update\/dry-run$/, idleWorkflow],
+  [/\/smapi-update\/apply$/, idleWorkflow],
+  [/\/smapi-update$/, smapiUpdate],
   [/\/api\/system\/update\/apply$/, applyStatus],
   [/\/api\/system\/update\/dry-run$/, dryRunStatus],
   [/\/api\/system\/update(?:\/check)?$/, panelUpdate],

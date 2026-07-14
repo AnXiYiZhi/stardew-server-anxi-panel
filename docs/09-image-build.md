@@ -1,3 +1,9 @@
+# PANEL-0.2.3 服务器健康页发布说明（2026-07-14）
+
+- `v0.2.3` 发布用户视角重构后的“服务器健康”页：默认只展示整体结论、可处理的版本维护、检查结果和资源情况；镜像、Driver、digest/buildid、兼容矩阵、预检及升级日志统一收进默认折叠的维护详情。
+- 本版本不改变 Junimo 推荐矩阵、镜像目标或升级状态机，继续推荐 `sdvd/server:1.5.0-preview.125`；`.121` 实例不强制升级，页面明确提示“不升级仍可继续使用”。
+- tag 仍使用 `v0.2.3` 触发 `.github/workflows/release.yml`，由 release gate 验证远程组件溯源、后端与 Docker integration、全部前端状态脚本和生产构建，再发布 Docker Hub、ACR、GHCR 的 `0.2.3` 与 `latest` 镜像并创建正式 GitHub Release。
+
 # PANEL-0.2.2 / JUNIMO-125 发布说明（2026-07-14）
 
 - `v0.2.2` 内嵌推荐矩阵固定 `sdvd/server:1.5.0-preview.125@sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6` 与现有 auth-cn `1.5.0-anxi.2`。release gate 必须执行远程 digest/auth 溯源校验。

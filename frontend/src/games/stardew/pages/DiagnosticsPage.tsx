@@ -6,7 +6,7 @@ import type { StardewPageProps } from '../stardew-routes'
 import type { ComposeService, JunimoUpdateApplyStatus, JunimoUpdateDryRunStatus, JunimoUpdateInfo, ResourceMetricSample, RuntimeComponentsInfo, RuntimeComponentsPreflight, SMAPIUpdateInfo, SMAPIUpdateWorkflowStatus } from '../../../types'
 import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoPairMatches, junimoUpdateStatusLabel } from '../junimo-update-status'
 import { runtimeComponentsStatusLabel } from '../runtime-components-status'
-import { smapiPhaseActive, smapiPhaseLabel, smapiStatusLabel } from '../smapi-update-status'
+import { shouldShowSMAPIUpdate, smapiPhaseActive, smapiPhaseLabel, smapiStatusLabel } from '../smapi-update-status'
 
 const RESOURCE_METRICS_REFRESH_MS = 8000
 const CONTROL_FRESH_MS = 30_000
@@ -336,6 +336,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
   const [smapiDryRunBusy, setSMAPIDryRunBusy] = useState(false)
   const [smapiApply, setSMAPIApply] = useState<SMAPIUpdateWorkflowStatus | null>(null)
   const [smapiApplyBusy, setSMAPIApplyBusy] = useState(false)
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const { applyHealthDiagnostics } = dashboardData
 
   // 以 localData 为准（重新检查后更新），dashboardData.health 只作为初始值
@@ -366,6 +367,19 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         : overallStatus === 'error'
           ? '发现需要立即处理的问题'
           : '点击重新检查获取最新状态'
+  const junimoUpdateAvailable = junimoUpdate?.available === true
+    || instanceState?.runtimeDiagnostic?.junimoUpdateStatus === 'update_available'
+  const gameUpdateAvailable = runtimeComponents?.recommended?.tested === true
+    && runtimeComponents.status === 'update_available'
+  const smapiUpdateAvailable = shouldShowSMAPIUpdate(smapiUpdate)
+  const maintenanceCount = [junimoUpdateAvailable, gameUpdateAvailable, smapiUpdateAvailable].filter(Boolean).length
+
+  function showMaintenanceDetail(anchor: string) {
+    setMaintenanceOpen(true)
+    window.requestAnimationFrame(() => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   useEffect(() => {
     let alive = true
@@ -642,7 +656,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         <div className="sd-diag-header-left">
           <img className="sd-page-icon" src="/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png" alt="" />
           <div>
-            <h2 className="sd-page-title">诊断与健康检查</h2>
+            <h2 className="sd-page-title">服务器健康</h2>
           </div>
         </div>
         <div className="sd-diag-header-actions sd-actionbar sd-actionbar--end">
@@ -653,15 +667,6 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             type="button"
           >
             {refreshing ? '检查中…' : '重新检查'}
-          </button>
-          <button
-            className="sd-btn-tan sd-btn--lg sd-diag-export-btn"
-            disabled={exportBusy || !isAdmin}
-            onClick={handleExportBundle}
-            type="button"
-            title={!isAdmin ? '仅管理员可导出诊断包' : '导出含系统信息、日志、状态的诊断包'}
-          >
-            {exportBusy ? '导出中…' : '导出诊断包'}
           </button>
         </div>
       </div>
@@ -692,6 +697,30 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         <div className="sd-diag-error-banner">{exportError}</div>
       )}
 
+      <details
+        className="sd-diag-maintenance-details"
+        open={maintenanceOpen}
+        onToggle={(event) => setMaintenanceOpen(event.currentTarget.open)}
+      >
+        <summary>
+          <span>
+            <strong>维护与技术详情</strong>
+            <small>版本、镜像、运行来源、预检和升级日志</small>
+          </span>
+          <span className="sd-diag-maintenance-summary-count">{maintenanceCount ? `${maintenanceCount} 项可处理` : '按需查看'}</span>
+        </summary>
+        <div className="sd-diag-maintenance-tools">
+          <p>这里用于升级和故障排查。日常查看服务器状态不需要理解下面的技术字段。</p>
+          <button
+            className="sd-btn-tan sd-btn--sm sd-diag-export-btn"
+            disabled={exportBusy || !isAdmin}
+            onClick={handleExportBundle}
+            type="button"
+            title={!isAdmin ? '仅管理员可导出诊断包' : '导出含系统信息、日志、状态的诊断包'}
+          >
+            {exportBusy ? '导出中…' : '导出诊断包'}
+          </button>
+        </div>
       <section className="sd-card sd-diag-source-panel" aria-label="生命周期状态来源">
         <h3>服务器状态来源</h3>
         <div className="sd-diag-check-list">
@@ -912,6 +941,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         ) : null}
         <p className="sd-diag-junimo-note">执行升级只使用 Panel 内置且 tested=true 的版本对；不会接受自定义目标，不会执行 down -v，也不会删除 game-data 或 steam-session。</p>
       </section>
+      </details>
 
       {/* 总状态面板 */}
       {data && (
@@ -932,6 +962,47 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
           </div>
         </div>
       )}
+
+      <section className="sd-diag-maintenance-panel" aria-label="版本维护建议">
+        <div className="sd-diag-maintenance-head">
+          <div>
+            <div className="sd-diag-section-title">版本维护</div>
+            <p>{maintenanceCount ? `发现 ${maintenanceCount} 项推荐维护，均由管理员确认后执行。` : '当前组件已匹配推荐版本，无需操作。'}</p>
+          </div>
+          <span className={`sd-diag-maintenance-badge ${maintenanceCount ? 'is-pending' : 'is-ok'}`}>
+            {maintenanceCount ? '建议处理' : '已是推荐版本'}
+          </span>
+        </div>
+        <div className="sd-diag-maintenance-list">
+          {junimoUpdateAvailable ? (
+            <div className="sd-diag-maintenance-item">
+              <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
+              <div>
+                <strong>Junimo 服务组件有推荐更新</strong>
+                <p>{junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → {junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。不升级仍可继续使用。</p>
+              </div>
+              {isAdmin ? <button className="sd-btn-green sd-btn--sm" type="button" onClick={() => showMaintenanceDetail('junimo-update')}>查看并预检</button> : <span className="sd-diag-maintenance-role-note">请联系管理员</span>}
+            </div>
+          ) : null}
+          {gameUpdateAvailable ? (
+            <div className="sd-diag-maintenance-item">
+              <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
+              <div><strong>游戏运行文件有推荐更新</strong><p>先进行只读预检，确认版本与磁盘空间。</p></div>
+              <button className="sd-btn-green sd-btn--sm" type="button" onClick={() => showMaintenanceDetail('runtime-components-update')}>查看详情</button>
+            </div>
+          ) : null}
+          {smapiUpdateAvailable ? (
+            <div className="sd-diag-maintenance-item">
+              <span className="sd-diag-maintenance-item-icon" aria-hidden="true">↑</span>
+              <div><strong>SMAPI 有经过验证的更新</strong><p>{smapiUpdate?.current.version || '当前版本'} → {smapiUpdate?.recommended.version || '推荐版本'}，升级前会先执行安全预检。</p></div>
+              <button className="sd-btn-green sd-btn--sm" type="button" onClick={() => showMaintenanceDetail('smapi-update')}>查看并预检</button>
+            </div>
+          ) : null}
+          {!maintenanceCount ? (
+            <div className="sd-diag-maintenance-empty"><span aria-hidden="true">✓</span><div><strong>不用做任何事</strong><p>游戏服务、运行文件和模组框架均未发现推荐更新。</p></div></div>
+          ) : null}
+        </div>
+      </section>
 
       <div className="sd-diag-main-grid">
         <div className="sd-diag-primary">
