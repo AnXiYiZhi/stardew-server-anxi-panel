@@ -1087,11 +1087,12 @@ func TestServerImageRefsPrependsDefaultCandidatesToExistingSingleCandidate(t *te
 	}
 	refs := serverImageRefs(envVals, TestedImageTag)
 	want := []string{
-		"dockerproxy.net/sdvd/server:1.5.0-preview.121",
-		"docker.1ms.run/sdvd/server:1.5.0-preview.121",
-		"docker.1panel.live/sdvd/server:1.5.0-preview.121",
-		"docker.jiaxin.site/sdvd/server:1.5.0-preview.121",
-		"dockerproxy.link/sdvd/server:1.5.0-preview.121",
+		"dockerproxy.net/sdvd/server:1.5.0-preview.125",
+		"docker.1ms.run/sdvd/server:1.5.0-preview.125",
+		"docker.1panel.live/sdvd/server:1.5.0-preview.125",
+		"docker.jiaxin.site/sdvd/server:1.5.0-preview.125",
+		"dockerproxy.link/sdvd/server:1.5.0-preview.125",
+		"sdvd/server:1.5.0-preview.125",
 		"sdvd/server:1.5.0-preview.121",
 	}
 	if got := strings.Join(refs, ","); got != strings.Join(want, ",") {

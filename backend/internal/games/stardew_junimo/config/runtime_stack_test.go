@@ -12,7 +12,7 @@ func TestBuiltInRuntimeStackManifestIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuiltInRuntimeStackManifest: %v", err)
 	}
-	if manifest.Server.Tag != "1.5.0-preview.121" || manifest.SteamAuth.Tag != "1.5.0-anxi.2" {
+	if manifest.Server.Tag != "1.5.0-preview.125" || manifest.SteamAuth.Tag != "1.5.0-anxi.2" {
 		t.Fatalf("unexpected tested pair: server=%q auth=%q", manifest.Server.Tag, manifest.SteamAuth.Tag)
 	}
 	if manifest.Game.AppID != "413150" || manifest.Game.BuildID == "" || manifest.SDK.AppID != "1007" || manifest.SDK.BuildID == "" || !manifest.Tested {
@@ -35,8 +35,8 @@ func TestPanelVersionSatisfiesMatrixMinimum(t *testing.T) {
 	for _, tc := range []struct {
 		current string
 		want    bool
-	}{{"0.1.14", true}, {"v0.1.15", true}, {"0.1.13", false}, {"latest", false}, {"dev", true}} {
-		if got := PanelVersionSatisfies(tc.current, "0.1.14"); got != tc.want {
+	}{{"0.2.2", true}, {"v0.2.3", true}, {"0.2.1", false}, {"latest", false}, {"dev", true}} {
+		if got := PanelVersionSatisfies(tc.current, "0.2.2"); got != tc.want {
 			t.Fatalf("PanelVersionSatisfies(%q)=%v, want %v", tc.current, got, tc.want)
 		}
 	}
@@ -132,7 +132,7 @@ func TestInspectRuntimeStackVersionPairs(t *testing.T) {
 		available bool
 	}{
 		{"exact pair", manifest.Server.Tag, manifest.SteamAuth.Tag, RuntimeStackStatusUpToDate, false},
-		{"server old auth new", "1.5.0-preview.120", manifest.SteamAuth.Tag, RuntimeStackStatusUpdateAvailable, true},
+		{"supported preview.121 remains optional update", "1.5.0-preview.121", manifest.SteamAuth.Tag, RuntimeStackStatusUpdateAvailable, true},
 		{"server new auth old", manifest.Server.Tag, "1.5.0-anxi.1", RuntimeStackStatusUpdateAvailable, true},
 		{"both old", "1.5.0-preview.120", "1.5.0-anxi.1", RuntimeStackStatusUpdateAvailable, true},
 	}

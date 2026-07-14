@@ -304,9 +304,9 @@ func TestJunimoUpdatePermissionsAndSensitiveData(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := strings.Join([]string{
-		"IMAGE_VERSION=1.5.0-preview.121",
-		"SERVER_IMAGE=sdvd/server:1.5.0-preview.121",
-		"SERVER_IMAGE_CANDIDATES=sdvd/server:1.5.0-preview.121",
+		"IMAGE_VERSION=1.5.0-preview.125",
+		"SERVER_IMAGE=sdvd/server:1.5.0-preview.125",
+		"SERVER_IMAGE_CANDIDATES=sdvd/server:1.5.0-preview.125",
 		"STEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
 		"STEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
 		"STEAM_AUTH_COMPLETED=true",
@@ -349,7 +349,7 @@ func TestJunimoUpdatePermissionsAndSensitiveData(t *testing.T) {
 	if state.Code != http.StatusOK {
 		t.Fatalf("ordinary user state = %d: %s", state.Code, state.Body.String())
 	}
-	if !strings.Contains(state.Body.String(), `"serverVersion":"1.5.0-preview.121"`) || !strings.Contains(state.Body.String(), `"junimoUpdateStatus":"up_to_date"`) {
+	if !strings.Contains(state.Body.String(), `"serverVersion":"1.5.0-preview.125"`) || !strings.Contains(state.Body.String(), `"junimoUpdateStatus":"up_to_date"`) {
 		t.Fatalf("ordinary state omitted necessary version status: %s", state.Body.String())
 	}
 	if strings.Contains(state.Body.String(), "sdvd/server") || strings.Contains(state.Body.String(), "junimo-steam-service-cn") {

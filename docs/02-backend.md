@@ -1,3 +1,11 @@
+# PANEL-0.2.2 / JUNIMO-125 推荐矩阵（2026-07-14）
+
+- Panel `0.2.2` 的内嵌推荐运行矩阵更新为 JunimoServer `1.5.0-preview.125` + steam-auth-cn `1.5.0-anxi.2`；server Docker Hub 索引 digest 固定为 `sha256:10f438581d741fc146ce710cbe20099475ac68908e99f565cf449f0b8192ccf6`，`minimumPanelVersion` 为 `0.2.2`。
+- 这是推荐版本更新，不是强制升级：现有 `.121` 实例继续识别为受支持的 `update_available`，可照常使用；只有管理员主动完成 dry-run 和确认后才会停服、写回版本对并升级。新安装默认使用 `.125`。
+- 上游 steam-service 与 `server-settings.json` 在 `.121`→`.125` 间契约未变化，现有 CN auth 镜像继续使用原 `upstreamRef/sourceRevision` 并已验证配对兼容；不得伪造其源码来源为 `.125`。
+- `.125` 实镜像仍含 `/etc/cont-env.d`、`cont-groups.d`、`cont-users.d` 裸静态值；现有 23 个 init 兼容脚本和 bind mount 必须保留。兼容脚本已挂入 `.125` 实镜像验证能执行并输出预期值。
+- 影响文件：`config/runtime_stack_manifest.json`、`config/env.go`、`driver.go` 及矩阵/安装/升级/API 测试。验证包括远程制品校验、相关 Go 测试和发布全量门禁。
+
 # JUNIMO-STACK-UPDATE-1 阶段二：运行组件成对升级预检（2026-07-13）
 
 - 新增管理员 `POST/GET /api/instances/:id/junimo-update/dry-run`。POST 请求体只能为空或严格 `{}`，目标 server + steam-auth-cn 只能取自 embed 清单，不接受镜像、tag、digest、registry、service 或命令。

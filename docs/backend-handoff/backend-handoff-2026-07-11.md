@@ -602,3 +602,16 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - 每个 Panel 版本只维护 `runtime_stack_manifest.json` 一份组件目标清单。维护者直接指定 Junimo server、对应 steam-auth-cn、game/SDK、SMAPI/Control 版本，测试后创建 Panel tag；用户升级 Panel 后按内嵌清单收到组件升级提示。
 - 删除 candidate/tested 状态晋级、候选目录与 git history transition 校验。运行时只接受内嵌 `recommended`，紧急停用仍保留 `withdrawn`。
 - `release.yml` 不再引用 `panel-release` Environment、required reviewer、`APPROVED_STACK_VERSION`、`REAL_STEAM_E2E_RECORD` 或验收 artifact。tag 发布仍执行精确 digest/auth 溯源、全量后端/前端与 Docker integration 门禁。
+
+# 2026-07-14 接手增量：Panel 0.2.2 / Junimo preview.125
+
+## 改了什么与影响文件
+
+- 推荐矩阵、新安装默认值和 `TestedImageTag` 从 `.121` 切到 `.125`；固定 server 索引 digest，auth-cn `1.5.0-anxi.2` 保持原 tag/digest 与真实 `.121` 溯源。
+- `.121` 仍是可迁移旧版本：检测结果为受支持且可更新，不强制升级，不自动修改实例。管理员继续走既有 dry-run/confirm/apply/rollback。
+- 影响：`config/runtime_stack_manifest.json`、`config/env.go`、`driver.go` 及相关测试；接口形状未变。
+
+## 如何验证与下一步
+
+- 运行兼容矩阵 validate/check-panel-version/verify-remote-artifacts、Go 相关包与发布全量门禁；`.125` 实镜像另已验证 23 个 init 兼容脚本挂载可正常执行。
+- 发版后确认 GitHub Release 与三仓库 `0.2.2/latest` 镜像，并用 Web updater 检查 0.2.1→0.2.2；不得把 `.121` 提示改成强制升级。旧联机存档 host-swap 向导留待后续独立功能。
