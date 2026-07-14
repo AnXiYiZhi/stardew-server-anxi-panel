@@ -14,17 +14,17 @@ import (
 func TestComposeCommandsUseFixedArguments(t *testing.T) {
 	workDir := t.TempDir()
 	dockerPath := fakeDocker(t, `
-case "$1 $2 $3 $4" in
-  "version   ") printf 'Docker version ok' ;;
-  "compose version  ") printf 'Docker Compose version ok' ;;
-		"compose ps --format json") printf '[{"Name":"demo","Service":"app","State":"running","Health":"healthy","ExitCode":0}]' ;;
-		"compose stats --no-stream --format json") printf '{"Container":"demo-server-1","Name":"demo-server-1","Service":"server","CPUPerc":"2.50%%","MemUsage":"128MiB / 2GiB","MemPerc":"6.25%%"}' ;;
-  "compose pull  ") printf 'pull ok' ;;
-  "compose up -d ") printf 'up ok' ;;
-  "compose down  ") printf 'down ok' ;;
-  "compose restart  ") printf 'restart ok' ;;
-  "compose restart server ") printf 'restart server ok' ;;
-  "compose logs --no-color --tail") printf 'logs ok tail=%s service=%s' "$5" "$6" ;;
+case "$1 $2 $3 $4 $5 $6" in
+  "version "*) printf 'Docker version ok' ;;
+  "compose version "*) printf 'Docker Compose version ok' ;;
+		"compose ps --format json "*) printf '[{"Name":"demo","Service":"app","State":"running","Health":"healthy","ExitCode":0}]' ;;
+		"compose stats --no-stream --format json"*) printf '{"Container":"demo-server-1","Name":"demo-server-1","Service":"server","CPUPerc":"2.50%%","MemUsage":"128MiB / 2GiB","MemPerc":"6.25%%"}' ;;
+  "compose pull "*) printf 'pull ok' ;;
+  "compose up -d "*) printf 'up ok' ;;
+  "compose down "*) printf 'down ok' ;;
+  "compose restart server "*) printf 'restart server ok' ;;
+  "compose restart "*) printf 'restart ok' ;;
+  "compose logs --no-color --tail "*) printf 'logs ok tail=%s service=%s' "$5" "$6" ;;
   *) printf 'unexpected args: %s %s %s %s %s %s' "$1" "$2" "$3" "$4" "$5" "$6" >&2; exit 7 ;;
 esac
 `)
