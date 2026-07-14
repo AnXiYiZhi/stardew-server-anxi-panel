@@ -1,3 +1,10 @@
+# PANEL-0.3.1 可信旧候选修复发布（2026-07-15）
+
+- `v0.3.1` 修复旧 `.121` 候选与新版 `.125` 默认候选被安装流程合并后，维护卡片只能显示“配置无效”且无法升级的问题。
+- 发布门禁必须覆盖：可信混合/退役候选返回 `repairable`；修复接口私有备份并规范化后返回 `.121 → .125 update_available`；自定义主镜像、未知候选和 `rollback_failed` 不得自动修复；安装候选不得跨 tag 混合。
+- 前端验收使用 `qa-layout.html?junimoConfig=repairable`；桌面和 390px 窄屏必须显示唯一“修复并升级”按钮，无横向溢出和控制台错误。
+- Tag `v0.3.1` 继续触发 `.github/workflows/release.yml`，通过远程矩阵制品、Go/Docker integration、前端全量状态测试和生产构建后，发布 Docker Hub、阿里云 ACR、GHCR 的 `0.3.1/latest` 并创建正式 GitHub Release。
+
 # PANEL-0.2.10 组件升级竞态修复发布（2026-07-15）
 
 - `v0.2.10` 修复 Junimo/SMAPI 一键升级误用历史成功预检、导致新预检与 apply 抢跑，以及旧失败终态覆盖新任务进度的问题。

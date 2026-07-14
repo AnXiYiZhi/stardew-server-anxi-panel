@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +14,76 @@ import (
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
+
+func TestJunimoUpdateConfigRepairBacksUpNormalizesAndRechecks(t *testing.T) {
+	handler, store, dataRoot, cleanup := newDockerTestHandlerWithStore(t, fakeDockerService{})
+	defer cleanup()
+	adminCookie := setupDockerAdmin(t, handler)
+	instance, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(instance.DataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	original := strings.Join([]string{
+		"IMAGE_VERSION=1.5.0-preview.121",
+		"SERVER_IMAGE=dockerproxy.net/sdvd/server:1.5.0-preview.121",
+		"SERVER_IMAGE_CANDIDATES=dockerproxy.net/sdvd/server:1.5.0-preview.125,sdvd/server:1.5.0-preview.121,docker.m.daocloud.io/sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121",
+		"STEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"STEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2",
+		"STEAM_PASSWORD=repair-secret-must-not-leak",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(instance.DataDir, ".env"), []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateGameInstalled, DriverPhase: "installed", DriverPayload: "{}",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	before, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/junimo-update", nil, adminCookie)
+	if before.Code != http.StatusOK || !strings.Contains(before.Body.String(), `"repairable":true`) || !strings.Contains(before.Body.String(), `"repairCode":"repairable/legacy_candidates"`) {
+		t.Fatalf("repairable inspection = %d: %s", before.Code, before.Body.String())
+	}
+	injected, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/junimo-update/repair-config", map[string]string{"image": "evil.invalid/server:latest"}, adminCookie)
+	if injected.Code != http.StatusBadRequest || !strings.Contains(injected.Body.String(), "config_repair_body_not_allowed") {
+		t.Fatalf("repair injection accepted: %d %s", injected.Code, injected.Body.String())
+	}
+	repaired, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/junimo-update/repair-config", map[string]any{}, adminCookie)
+	if repaired.Code != http.StatusOK || strings.Contains(repaired.Body.String(), "repair-secret-must-not-leak") {
+		t.Fatalf("repair response = %d: %s", repaired.Code, repaired.Body.String())
+	}
+	var payload struct {
+		Status     string `json:"status"`
+		Available  bool   `json:"available"`
+		Repairable bool   `json:"repairable"`
+		Repaired   bool   `json:"repaired"`
+		BackupID   string `json:"backupId"`
+	}
+	if err := json.Unmarshal(repaired.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Status != "update_available" || !payload.Available || payload.Repairable || !payload.Repaired || payload.BackupID == "" {
+		t.Fatalf("repair payload = %#v", payload)
+	}
+	updated, err := os.ReadFile(filepath.Join(dataRoot, "instances", storage.DefaultInstanceID, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(updated), "STEAM_PASSWORD=repair-secret-must-not-leak") || strings.Contains(string(updated), "preview.125,sdvd/server:1.5.0-preview.121") || strings.Contains(string(updated), "docker.m.daocloud.io/sdvd/server") || strings.Contains(string(updated), "ghcr.io/sdvd/server") {
+		t.Fatalf("repaired env was unsafe or incomplete: %s", updated)
+	}
+	backup, err := os.ReadFile(filepath.Join(instance.DataDir, ".local-container", "junimo-update", "config-repair", payload.BackupID, "original.env"))
+	if err != nil || string(backup) != original {
+		t.Fatalf("private backup mismatch: err=%v", err)
+	}
+	second, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/junimo-update/repair-config", map[string]any{}, adminCookie)
+	if second.Code != http.StatusConflict || !strings.Contains(second.Body.String(), "config_repair_not_needed") {
+		t.Fatalf("second repair should be rejected: %d %s", second.Code, second.Body.String())
+	}
+}
 
 func TestAcceptStrictEmptyJunimoDryRunBody(t *testing.T) {
 	tests := []struct {

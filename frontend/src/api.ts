@@ -14,6 +14,7 @@ import type {
   ServerRuntimeSettings,
   InstanceRenderingResult,
   InstanceState,
+  JunimoConfigRepairResult,
   JunimoUpdateInfo,
   JunimoUpdateDryRunStatus,
   JunimoUpdateApplyStatus,
@@ -119,6 +120,10 @@ export function getInstanceState(instanceId = defaultInstanceId) {
 
 export function getJunimoUpdate(instanceId = defaultInstanceId) {
   return request<JunimoUpdateInfo>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update`)
+}
+
+export function repairJunimoUpdateConfig(instanceId = defaultInstanceId) {
+  return request<JunimoConfigRepairResult>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/repair-config`, { method: 'POST' })
 }
 
 export function getJunimoUpdateDryRun(instanceId = defaultInstanceId) {

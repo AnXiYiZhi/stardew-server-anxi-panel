@@ -1514,7 +1514,29 @@ func serverImageCandidatesDefault(imageTag string) string {
 }
 
 func serverImageRefs(envVals map[string]string, imageTag string) []string {
-	return imageRefsFromEnv(envVals, "SERVER_IMAGE_CANDIDATES", serverImageCandidatesDefault(imageTag), "SERVER_IMAGE", serverImageDefault(imageTag))
+	tag := strings.TrimSpace(imageTag)
+	if tag == "" {
+		tag = TestedImageTag
+	}
+	refs := splitImageRefs(serverImageCandidatesDefault(tag))
+	for _, ref := range splitImageRefs(envVals["SERVER_IMAGE_CANDIDATES"]) {
+		if imageReferenceTag(ref) == tag {
+			refs = appendUniqueString(refs, ref)
+		}
+	}
+	if primary := strings.TrimSpace(envVals["SERVER_IMAGE"]); imageReferenceTag(primary) == tag {
+		refs = appendUniqueString(refs, primary)
+	}
+	return refs
+}
+
+func imageReferenceTag(ref string) string {
+	ref = strings.TrimSpace(ref)
+	lastSlash, lastColon := strings.LastIndex(ref, "/"), strings.LastIndex(ref, ":")
+	if lastColon <= lastSlash || lastColon == len(ref)-1 {
+		return ""
+	}
+	return strings.TrimSpace(ref[lastColon+1:])
 }
 
 func steamCMDImageRef(envVals map[string]string) string {

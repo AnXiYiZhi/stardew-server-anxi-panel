@@ -1,3 +1,25 @@
+# FE-JUNIMO-CONFIG-REPAIR-1 修复并升级流程（2026-07-15）
+
+## 改了什么
+
+- 维护卡片对 `repairable=true` 显示“Junimo 配置可自动修复并升级 / 修复并升级”；一次确认内部先调用 repair API，确认返回 `update_available` 后再复用现有 dry-run/apply 状态机。
+- 不可修复配置和 `rollback_failed` 仍无自动按钮；修复、下载、安装和验收继续留在同一卡片。
+
+## 影响接口/文件
+
+- `frontend/src/types.ts`、`api.ts`、`DiagnosticsPage.tsx`、`qa-layout-main.tsx`。
+- 消费新增 repair 字段和 `POST /junimo-update/repair-config`；无路由或 CSS 契约变化。
+
+## 如何验证
+
+- `npm run test:junimo-update && npm run test:component-update-flow && npm run build`
+- `qa-layout.html?junimoConfig=repairable`：桌面和 390px 窄屏均有唯一按钮，窄屏无横向溢出，控制台无错误/警告。
+
+## 下一步注意事项
+
+- repair 成功但复检不是 `update_available` 时必须停止，不能直接启动 dry-run/apply；不要把任意 `invalid_config` 当作可修复。
+- 若以后为修复阶段增加独立进度，仍应留在当前维护卡片，不要恢复跳往技术详情的用户流程。
+
 # 2026-07-15 接手补充：FE-MODBUNDLE-1 上传完整性摘要
 
 ## 改了什么

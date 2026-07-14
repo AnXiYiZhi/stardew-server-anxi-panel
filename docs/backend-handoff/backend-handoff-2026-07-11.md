@@ -1,3 +1,25 @@
+# JUNIMO-CONFIG-REPAIR-1 可信旧候选配置修复（2026-07-15）
+
+## 改了什么
+
+- 版本检查现在把可证明安全的旧候选混合/退役别名标记为 `repairable/legacy_candidates`；新增管理员 `POST /junimo-update/repair-config`，在互斥锁内备份完整 `.env`、只规范化两个候选字段并复检，失败时恢复原配置。
+- 安装器 `serverImageRefs` 只合并与安装目标 tag 相同的旧候选，不再制造 `.125 + .121` 混合列表。
+
+## 影响接口/文件
+
+- `config/runtime_stack.go`、`runtime_config_repair.go`、`installer.go`、`junimo_update_handlers.go`、`instance_handlers.go` 及对应测试。
+- `GET /junimo-update` 增加 repair 字段；新增严格空请求的 `POST /junimo-update/repair-config`。无 Docker/Compose/Junimo 控制协议变化。
+
+## 如何验证
+
+- `go test ./internal/games/stardew_junimo/config ./internal/games/stardew_junimo ./internal/web`
+- 全量 `go test ./...`、release gate、Docker integration 与镜像 smoke 见 `v0.3.1` 发布记录。
+
+## 下一步注意事项
+
+- 固定旧版可修复仓库表只用于识别并删除历史官方候选，绝不能把它们重新加入当前推荐矩阵；主镜像不可信或版本字段歧义时必须继续拒绝自动修复。
+- 私有备份包含凭据，禁止加入支持包或 API；后续如增加清理策略，必须保留审计与正在进行的升级恢复材料。
+
 # 2026-07-15 接手补充：MODBUNDLE-1 多层 Mod 合包
 
 ## 改了什么

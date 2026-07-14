@@ -1,3 +1,10 @@
+# FE-JUNIMO-CONFIG-REPAIR-1 修复并升级单卡片流程（2026-07-15）
+
+- 版本维护卡片识别 `repairable=true` 后显示“Junimo 配置可自动修复并升级”和唯一操作“修复并升级”，不再把可信旧候选混合配置一律丢给管理员手工改 `.env`。
+- 管理员一次确认后，前端按 `repair-config → 修复结果复检 → 新 dry-run → apply` 串联既有升级状态机；只有修复响应明确变为 `update_available` 才继续，后续下载、安装、验收和回滚仍在同一卡片展示。
+- 确认文案明确说明先私有备份并规范化旧候选；自定义主镜像、未知候选、版本主字段歧义和 `rollback_failed` 仍不显示自动按钮。
+- `qa-layout.html?junimoConfig=repairable` 提供固定视觉夹具。桌面与 390px 窄屏均已确认按钮唯一、无横向溢出、控制台无错误或警告。
+
 # FE-MODBUNDLE-1 Mod 合包上传结果摘要（2026-07-15）
 
 - 桌面端 `useModsManagement` 现在保留后端上传响应的 `upload` 摘要，成功条明确显示本次 ZIP 数、实际发现/安装数、启用数和当前存档，不再只显示笼统的“Mod 上传成功”。
