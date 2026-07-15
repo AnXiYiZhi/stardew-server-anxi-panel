@@ -716,3 +716,9 @@ docker run --rm `
 5. 版本号确认后再决定是否扩大灰度或改变默认值。未通过唯一目录/XML、单次 POST、回滚、profile、Control DLL/source 一致性或真实 SVE E2E 任一门禁时不得 tag/push/publish/latest。
 
 当前 Control DLL SHA256：`465c1cf64d18d994e7f1f5d478aa834867569484e8a9f0619fb199a586f88533`。阶段 8 已实际完成兼容清单校验、8 个矩阵脚本测试和 `docker build -t stardew-server-anxi-panel:phase8-release-gate .`；候选镜像只用于本机门禁并已清理。本阶段不创建 tag、不 push、不修改 latest 或生产容器。
+# 2026-07-16：无声卡运行环境与整包 Mod 兼容性
+
+- 新生成和已存在的 server compose 都应包含 `ALSOFT_DRIVERS=${ALSOFT_DRIVERS:-null}` 与 `SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-dummy}`。这两个默认值只禁用真实音频输出，不禁用游戏音频资源加载；部署方可显式覆盖。
+- 升级 Panel 后首次 prepare/start 会迁移旧 compose，并在启动前将可确认由 `mods/smapi` 提供的顶层 Console Commands/Save Backup 重复件移动到实例私有 quarantine。发布验收应检查 SMAPI 日志中不再出现 duplicate UniqueID 和 `NoAudioHardwareException`。
+- 发布候选需使用真实多 Mod ZIP 验证：上传统计、SVE/CP/FTM 加载、旧存档警告和新存档 32 人 Introductions；不得用自动改写旧存档作为验收方案。
+- 本次本机隔离验收已完成：`Mods1.zip` 发现 38、导入 36、跳过内置 2；SMAPI 26 个代码 Mod + 14 个内容包，SVE 自检通过，`Data/AudioChanges` 成功传播，新存档 Introductions 为 32，相关错误计数为 0。临时 Compose 项目、容器、卷和测试目录均已清理。

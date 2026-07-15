@@ -1895,12 +1895,23 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 </div>
               )}
 
+              {(data?.compatibilityWarnings ?? []).map((warning) => (
+                <div className="sd-mods-compatibility-warning" key={`${warning.code}:${warning.saveName ?? ''}`}>
+                  <strong>⚠ {warning.title}</strong>
+                  <span>{warning.message}</span>
+                  {warning.saveName ? <small>当前存档：{warning.saveName}</small> : null}
+                </div>
+              ))}
+
               {uploadSuccess && (
                 <div className="sd-mods-success-banner">
                   ✔ 已解析 {uploadSuccess.archiveCount} 个 ZIP，发现 {uploadSuccess.discoveredCount} 个 Mod，
                   安装 {uploadSuccess.importedCount} 个，
                   已启用 {uploadSuccess.enabledCount} 个
                   {uploadSuccess.activeSaveName ? `（当前存档：${uploadSuccess.activeSaveName}）` : ''}。
+                  {(uploadSuccess.skippedBuiltInCount ?? 0) > 0
+                    ? ` 已跳过 ${uploadSuccess.skippedBuiltInCount} 个由 SMAPI 自带的重复组件${uploadSuccess.skippedBuiltInNames?.length ? `（${uploadSuccess.skippedBuiltInNames.join('、')}）` : ''}。`
+                    : ''}
                   下次启动服务器时会自动加载。
                 </div>
               )}

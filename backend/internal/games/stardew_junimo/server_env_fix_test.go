@@ -48,6 +48,11 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
 			t.Fatalf("compose missing %s mount:\n%s", staticValue.localPath, updatedText)
 		}
 	}
+	for _, line := range serverHeadlessAudioEnvironment {
+		if !strings.Contains(updatedText, line) {
+			t.Fatalf("compose missing headless audio environment %q:\n%s", line, updatedText)
+		}
+	}
 
 	changed, err = EnsureServerContEnvFix(dataDir)
 	if err != nil {

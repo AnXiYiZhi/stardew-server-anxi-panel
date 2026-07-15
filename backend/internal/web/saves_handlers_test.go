@@ -322,6 +322,54 @@ func TestModUpload_AcceptsMultipleZipFiles(t *testing.T) {
 	}
 }
 
+func TestModUpload_SkipsSMAPIBundledSupportMods(t *testing.T) {
+	handler, _, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	addModZipPart(t, mw, "Regular.zip", "Regular", "author.regular", "Regular")
+	addModZipPart(t, mw, "ConsoleCommands.zip", "ConsoleCommands", "SMAPI.ConsoleCommands", "Console Commands")
+	addModZipPart(t, mw, "SaveBackup.zip", "SaveBackup", "SMAPI.SaveBackup", "Save Backup")
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/mods/upload", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if adminCookie != nil {
+		req.AddCookie(adminCookie)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("mod upload returned %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var result registry.ModsListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(result.Mods) != 1 || result.Mods[0].UniqueID != "author.regular" {
+		t.Fatalf("unexpected imported mods: %+v", result.Mods)
+	}
+	if result.Upload == nil || result.Upload.ArchiveCount != 3 || result.Upload.DiscoveredCount != 3 || result.Upload.ImportedCount != 1 || result.Upload.EnabledCount != 1 || result.Upload.SkippedBuiltInCount != 2 {
+		t.Fatalf("unexpected upload summary: %+v", result.Upload)
+	}
+	if got := strings.Join(result.Upload.SkippedBuiltInNames, ","); got != "Console Commands,Save Backup" {
+		t.Fatalf("skipped built-in names = %q", got)
+	}
+}
+
 func TestModUpload_DuplicateUniqueIDReturnsModExists(t *testing.T) {
 	handler, _, closeFn := newTestHandlerWithStore(t)
 	defer closeFn()

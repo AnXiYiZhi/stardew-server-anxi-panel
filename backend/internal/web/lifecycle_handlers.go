@@ -898,9 +898,11 @@ func (s *server) handleModsList(w http.ResponseWriter, r *http.Request, instance
 	mods = sj.ApplyModSyncClassification(instance.DataDir, mods)
 	mods = sj.EnrichNexusMetadataForMods(r.Context(), instance.DataDir, mods)
 	restartRequired := modsRestartRequiredForState(instance, instance.DataDir)
+	compatibilityWarnings := sj.DetectModCompatibilityWarnings(instance.DataDir, activeSaveName, mods)
 	writeJSON(w, http.StatusOK, registry.ModsListResult{
-		Mods:            mods,
-		RestartRequired: restartRequired,
+		Mods:                  mods,
+		RestartRequired:       restartRequired,
+		CompatibilityWarnings: compatibilityWarnings,
 	})
 }
 
@@ -942,6 +944,8 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 	}
 
 	var imported []registry.ModInfo
+	discoveredCount := 0
+	var skippedBuiltInNames []string
 	for i, header := range modFiles {
 		file, err := header.Open()
 		if err != nil {
@@ -975,14 +979,16 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 			return
 		}
 
-		batch, err := sj.UploadModZip(instance.DataDir, tmpPath)
+		batchResult, err := sj.UploadModZipDetailed(instance.DataDir, tmpPath)
 		_ = os.Remove(tmpPath)
 		if err != nil {
 			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
 			writeError(w, http.StatusBadRequest, modUploadErrorCode(err), sanitizeError(err, fmt.Sprintf("第 %d 个 Mod ZIP 无效", i+1)))
 			return
 		}
-		imported = append(imported, batch...)
+		discoveredCount += batchResult.Stats.DiscoveredCount
+		skippedBuiltInNames = append(skippedBuiltInNames, batchResult.Stats.SkippedBuiltInNames...)
+		imported = append(imported, batchResult.Mods...)
 	}
 
 	// Mod writes are only allowed while the game server is stopped, so the next
@@ -999,18 +1005,26 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 	if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
 		s.logger.Warn("clear mods restart required", "instance", instanceID, "error", err)
 	}
+	listed, listErr := sj.ListModsWithState(instance.DataDir, activeSaveName)
+	var compatibilityWarnings []registry.ModCompatibilityWarning
+	if listErr == nil {
+		compatibilityWarnings = sj.DetectModCompatibilityWarnings(instance.DataDir, activeSaveName, listed)
+	}
 
 	s.logger.Info("mods uploaded", "instance", instanceID, "count", len(imported))
 	s.auditLog(r, &actor, "mod_upload", "instance", instanceID, auditMetadata("count", fmt.Sprintf("%d", len(imported))))
 	writeJSON(w, http.StatusOK, registry.ModsListResult{
-		Mods:            imported,
-		RestartRequired: modsRestartRequiredForState(instance, instance.DataDir),
+		Mods:                  imported,
+		RestartRequired:       modsRestartRequiredForState(instance, instance.DataDir),
+		CompatibilityWarnings: compatibilityWarnings,
 		Upload: &registry.ModUploadSummary{
-			ArchiveCount:    len(modFiles),
-			DiscoveredCount: len(imported),
-			ImportedCount:   len(imported),
-			EnabledCount:    len(imported),
-			ActiveSaveName:  activeSaveName,
+			ArchiveCount:        len(modFiles),
+			DiscoveredCount:     discoveredCount,
+			ImportedCount:       len(imported),
+			EnabledCount:        len(imported),
+			SkippedBuiltInCount: len(skippedBuiltInNames),
+			SkippedBuiltInNames: skippedBuiltInNames,
+			ActiveSaveName:      activeSaveName,
 		},
 	})
 }

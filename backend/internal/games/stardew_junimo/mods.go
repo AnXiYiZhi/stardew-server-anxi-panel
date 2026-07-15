@@ -28,7 +28,14 @@ const (
 	restartRequiredKey = "modsRestartRequired"
 	smapiRuntimeModID  = "__smapi_runtime"
 	smapiNexusModID    = 2400
+	consoleCommandsID  = "SMAPI.ConsoleCommands"
+	saveBackupID       = "SMAPI.SaveBackup"
 )
+
+var smapiBundledSupportUniqueIDs = map[string]struct{}{
+	strings.ToLower(consoleCommandsID): {},
+	strings.ToLower(saveBackupID):      {},
+}
 
 // modsDir returns the host-side path to the mods directory.
 // Mods live at: <dataDir>/.local-container/mods/
@@ -516,12 +523,39 @@ func ValidateModName(name string) error {
 type uploadModZipOptions struct {
 	inferNexusPackageOrigin bool
 	allowAlreadyInstalled   bool
+	stats                   *ModZipImportStats
+}
+
+// ModZipImportStats distinguishes all valid manifests found in an aggregate
+// ZIP from folders actually installed. SMAPI bundles Console Commands and Save
+// Backup in the server runtime; user copies of those IDs must not be mounted a
+// second time.
+type ModZipImportStats struct {
+	DiscoveredCount     int
+	SkippedBuiltInNames []string
+}
+
+// ModZipImportResult is the detailed manual-upload result used by the web API.
+type ModZipImportResult struct {
+	Mods  []registry.ModInfo
+	Stats ModZipImportStats
 }
 
 // UploadModZip validates a mod ZIP upload and extracts it to the mods directory.
 // Returns the list of imported mod folder names.
 func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 	return uploadModZip(dataDir, zipPath, uploadModZipOptions{inferNexusPackageOrigin: true})
+}
+
+// UploadModZipDetailed imports a ZIP and also reports runtime-bundled support
+// mods which were intentionally skipped.
+func UploadModZipDetailed(dataDir, zipPath string) (ModZipImportResult, error) {
+	stats := ModZipImportStats{}
+	mods, err := uploadModZip(dataDir, zipPath, uploadModZipOptions{
+		inferNexusPackageOrigin: true,
+		stats:                   &stats,
+	})
+	return ModZipImportResult{Mods: mods, Stats: stats}, err
 }
 
 func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry.ModInfo, error) {
@@ -555,6 +589,9 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 	modDirs, err := detectModDirs(zr)
 	if err != nil {
 		return nil, err
+	}
+	if opts.stats != nil {
+		opts.stats.DiscoveredCount = len(modDirs)
 	}
 
 	// Validate each top dir has a manifest.
@@ -604,6 +641,12 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		info := readModInfo(modPath, dir.FolderName)
 		if info.ParseError != "" {
 			return nil, fmt.Errorf("mod %q 不是合法的 SMAPI Mod: %s", dir.FolderName, info.ParseError)
+		}
+		if isSMAPIBundledSupportMod(info) {
+			if opts.stats != nil {
+				opts.stats.SkippedBuiltInNames = append(opts.stats.SkippedBuiltInNames, info.Name)
+			}
+			continue
 		}
 
 		// Check for duplicate UniqueID within this ZIP.
@@ -689,6 +732,106 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 	}
 
 	return imported, nil
+}
+
+func isSMAPIBundledSupportMod(mod registry.ModInfo) bool {
+	_, ok := smapiBundledSupportUniqueIDs[strings.ToLower(strings.TrimSpace(mod.UniqueID))]
+	return ok
+}
+
+// QuarantineSMAPIBundledDuplicates moves legacy top-level copies of SMAPI's
+// Console Commands and Save Backup out of the mounted Mods root when the same
+// UniqueID is already supplied under the managed smapi runtime directory. The
+// files are preserved for manual recovery; a failed move rolls back the whole
+// batch.
+func QuarantineSMAPIBundledDuplicates(dataDir string) ([]string, error) {
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	root := modsDir(dataDir)
+	runtimeRoot := filepath.Join(root, "smapi")
+	runtimeEntries, err := os.ReadDir(runtimeRoot)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read managed SMAPI support directory: %w", err)
+	}
+	runtimeIDs := map[string]struct{}{}
+	for _, entry := range runtimeEntries {
+		if !entry.IsDir() {
+			continue
+		}
+		info := readModInfo(filepath.Join(runtimeRoot, entry.Name()), entry.Name())
+		if info.ParseError == "" && isSMAPIBundledSupportMod(info) {
+			runtimeIDs[strings.ToLower(strings.TrimSpace(info.UniqueID))] = struct{}{}
+		}
+	}
+	if len(runtimeIDs) == 0 {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("read mods directory for SMAPI duplicate repair: %w", err)
+	}
+	type duplicate struct {
+		folder string
+		source string
+	}
+	duplicates := make([]duplicate, 0, 2)
+	for _, entry := range entries {
+		if !entry.IsDir() || isRuntimeSupportModFolder(entry.Name()) {
+			continue
+		}
+		info := readModInfo(filepath.Join(root, entry.Name()), entry.Name())
+		id := strings.ToLower(strings.TrimSpace(info.UniqueID))
+		if info.ParseError != "" || !isSMAPIBundledSupportMod(info) {
+			continue
+		}
+		if _, managed := runtimeIDs[id]; !managed {
+			continue
+		}
+		duplicates = append(duplicates, duplicate{folder: entry.Name(), source: filepath.Join(root, entry.Name())})
+	}
+	if len(duplicates) == 0 {
+		return nil, nil
+	}
+
+	quarantineRoot := filepath.Join(dataDir, ".local-container", "mod-quarantine", "smapi-bundled-duplicates", time.Now().UTC().Format("20060102T150405.000000000Z"))
+	if err := os.MkdirAll(quarantineRoot, 0o700); err != nil {
+		return nil, fmt.Errorf("create SMAPI duplicate quarantine: %w", err)
+	}
+	type movedDuplicate struct{ source, target string }
+	moved := make([]movedDuplicate, 0, len(duplicates))
+	rollback := func() error {
+		var failures []string
+		for i := len(moved) - 1; i >= 0; i-- {
+			if err := os.Rename(moved[i].target, moved[i].source); err != nil {
+				failures = append(failures, err.Error())
+			}
+		}
+		if len(failures) > 0 {
+			return fmt.Errorf("rollback SMAPI duplicate quarantine: %s", strings.Join(failures, "; "))
+		}
+		return nil
+	}
+
+	folders := make([]string, 0, len(duplicates))
+	for _, item := range duplicates {
+		target := filepath.Join(quarantineRoot, item.folder)
+		if err := os.Rename(item.source, target); err != nil {
+			rollbackErr := rollback()
+			if rollbackErr != nil {
+				return nil, fmt.Errorf("quarantine SMAPI duplicate %q: %w; %v", item.folder, err, rollbackErr)
+			}
+			return nil, fmt.Errorf("quarantine SMAPI duplicate %q: %w", item.folder, err)
+		}
+		moved = append(moved, movedDuplicate{source: item.source, target: target})
+		folders = append(folders, item.folder)
+	}
+	return folders, nil
 }
 
 // normalizeModZipEntryNames decodes legacy Windows ZIP names before security

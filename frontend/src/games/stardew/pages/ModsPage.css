@@ -2136,3 +2136,21 @@
     flex: 1 1 128px;
   }
 }
+
+.sd-mods-compatibility-warning {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  color: #6b2f18;
+  background: #fff0c9;
+  border: 1px solid #d78c3b;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 55%);
+}
+
+.sd-mods-compatibility-warning strong,
+.sd-mods-compatibility-warning span,
+.sd-mods-compatibility-warning small {
+  overflow-wrap: anywhere;
+}
