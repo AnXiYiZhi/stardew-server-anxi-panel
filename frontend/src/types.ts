@@ -859,6 +859,7 @@ export type ModsListResult = {
   mods: ModInfo[]
   restartRequired?: boolean
   upload?: ModUploadSummary
+  compatibilityWarnings?: ModCompatibilityWarning[]
 }
 
 export type ModUploadSummary = {
@@ -866,7 +867,17 @@ export type ModUploadSummary = {
   discoveredCount: number
   importedCount: number
   enabledCount: number
+  skippedBuiltInCount?: number
+  skippedBuiltInNames?: string[]
   activeSaveName?: string
+}
+
+export type ModCompatibilityWarning = {
+  code: string
+  severity: 'warning' | 'error' | string
+  title: string
+  message: string
+  saveName?: string
 }
 
 export type NexusModSearchResult = {

@@ -263,20 +263,34 @@ type ModDependency struct {
 
 // ModsListResult is returned by GET .../mods.
 type ModsListResult struct {
-	Mods            []ModInfo         `json:"mods"`
-	RestartRequired bool              `json:"restartRequired,omitempty"`
-	Upload          *ModUploadSummary `json:"upload,omitempty"`
+	Mods                  []ModInfo                 `json:"mods"`
+	RestartRequired       bool                      `json:"restartRequired,omitempty"`
+	Upload                *ModUploadSummary         `json:"upload,omitempty"`
+	CompatibilityWarnings []ModCompatibilityWarning `json:"compatibilityWarnings,omitempty"`
 }
 
 // ModUploadSummary describes the complete, atomic result of a manual upload.
-// DiscoveredCount and ImportedCount are equal on success; keeping both fields
-// makes silent partial imports visible and preserves room for future previews.
+// DiscoveredCount includes valid manifests supplied for SMAPI-bundled support
+// mods; ImportedCount excludes those intentionally skipped duplicate copies.
 type ModUploadSummary struct {
-	ArchiveCount    int    `json:"archiveCount"`
-	DiscoveredCount int    `json:"discoveredCount"`
-	ImportedCount   int    `json:"importedCount"`
-	EnabledCount    int    `json:"enabledCount"`
-	ActiveSaveName  string `json:"activeSaveName,omitempty"`
+	ArchiveCount        int      `json:"archiveCount"`
+	DiscoveredCount     int      `json:"discoveredCount"`
+	ImportedCount       int      `json:"importedCount"`
+	EnabledCount        int      `json:"enabledCount"`
+	SkippedBuiltInCount int      `json:"skippedBuiltInCount,omitempty"`
+	SkippedBuiltInNames []string `json:"skippedBuiltInNames,omitempty"`
+	ActiveSaveName      string   `json:"activeSaveName,omitempty"`
+}
+
+// ModCompatibilityWarning reports a save-specific condition which cannot be
+// repaired safely by merely enabling a mod. It is intentionally advisory: the
+// panel never rewrites world terrain or serialized quest state automatically.
+type ModCompatibilityWarning struct {
+	Code     string `json:"code"`
+	Severity string `json:"severity"`
+	Title    string `json:"title"`
+	Message  string `json:"message"`
+	SaveName string `json:"saveName,omitempty"`
 }
 
 // Mod sync classification kinds. They describe whether a mod must be

@@ -358,6 +358,77 @@ func TestUploadModZip_ValidMultipleMods(t *testing.T) {
 	}
 }
 
+func TestUploadModZipDetailedSkipsSMAPIBundledSupportMods(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := createModZip(t, map[string]string{
+		"Mods1/ConsoleCommands/manifest.json": `{"Name":"Console Commands","UniqueID":"SMAPI.ConsoleCommands","Version":"4.5.2","Author":"SMAPI"}`,
+		"Mods1/SaveBackup/manifest.json":      `{"Name":"Save Backup","UniqueID":"SMAPI.SaveBackup","Version":"4.5.2","Author":"SMAPI"}`,
+		"Mods1/SVE/manifest.json":             `{"Name":"SVE","UniqueID":"FlashShifter.SVECode","Version":"1.15.11","Author":"FlashShifter"}`,
+	})
+
+	result, err := UploadModZipDetailed(dir, zipPath)
+	if err != nil {
+		t.Fatalf("UploadModZipDetailed: %v", err)
+	}
+	if result.Stats.DiscoveredCount != 3 || len(result.Stats.SkippedBuiltInNames) != 2 {
+		t.Fatalf("stats = %+v, want discovered 3 and skipped 2", result.Stats)
+	}
+	if len(result.Mods) != 1 || result.Mods[0].UniqueID != "FlashShifter.SVECode" {
+		t.Fatalf("imported mods = %+v, want SVE only", result.Mods)
+	}
+	for _, folder := range []string{"ConsoleCommands", "SaveBackup"} {
+		if _, err := os.Stat(filepath.Join(modsDir(dir), folder)); !os.IsNotExist(err) {
+			t.Fatalf("SMAPI bundled folder %q should not be imported: %v", folder, err)
+		}
+	}
+}
+
+func TestQuarantineSMAPIBundledDuplicatesPreservesFiles(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	createTestMod(t, filepath.Join(root, "smapi"), "ConsoleCommands", consoleCommandsID, "Managed Console Commands")
+	createTestMod(t, filepath.Join(root, "smapi"), "SaveBackup", saveBackupID, "Managed Save Backup")
+	createTestMod(t, root, "ConsoleCommands", consoleCommandsID, "User Console Commands")
+	createTestMod(t, root, "SaveBackup", saveBackupID, "User Save Backup")
+	createTestMod(t, root, "KeepMe", "Author.KeepMe", "Keep Me")
+
+	quarantined, err := QuarantineSMAPIBundledDuplicates(dir)
+	if err != nil {
+		t.Fatalf("QuarantineSMAPIBundledDuplicates: %v", err)
+	}
+	if strings.Join(quarantined, ",") != "ConsoleCommands,SaveBackup" {
+		t.Fatalf("quarantined = %v", quarantined)
+	}
+	for _, folder := range quarantined {
+		if _, err := os.Stat(filepath.Join(root, folder)); !os.IsNotExist(err) {
+			t.Fatalf("duplicate %q remains mounted: %v", folder, err)
+		}
+		matches, err := filepath.Glob(filepath.Join(dir, ".local-container", "mod-quarantine", "smapi-bundled-duplicates", "*", folder, "manifest.json"))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("quarantined %q manifest matches = %v, err=%v", folder, matches, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "KeepMe", "manifest.json")); err != nil {
+		t.Fatalf("unrelated mod moved: %v", err)
+	}
+	if again, err := QuarantineSMAPIBundledDuplicates(dir); err != nil || len(again) != 0 {
+		t.Fatalf("second quarantine = %v, err=%v", again, err)
+	}
+}
+
+func TestQuarantineSMAPIBundledDuplicatesKeepsOnlyAvailableCopy(t *testing.T) {
+	dir := t.TempDir()
+	createTestMod(t, modsDir(dir), "ConsoleCommands", consoleCommandsID, "Console Commands")
+
+	quarantined, err := QuarantineSMAPIBundledDuplicates(dir)
+	if err != nil || len(quarantined) != 0 {
+		t.Fatalf("quarantined = %v, err=%v", quarantined, err)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "ConsoleCommands", "manifest.json")); err != nil {
+		t.Fatalf("only available copy should remain: %v", err)
+	}
+}
+
 func TestUploadModZip_RecursivelyImportsModsFolderBundle(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := createModZip(t, map[string]string{

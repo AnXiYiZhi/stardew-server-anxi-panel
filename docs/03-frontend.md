@@ -2212,3 +2212,8 @@ npm.cmd run dev
 - 使用 ref 记录已经提交 apply 的预检 ID，阻止 React effect 重入或 StrictMode 造成重复 POST；开始新任务时清除旧本地工作流，旧 `succeeded` 不再抢跑。
 - 卡片按 `startedAt` 选择较新的 dry-run/apply，新的预检会覆盖历史 `failed_rolled_back` 展示，新的 apply 启动后再接管进度。
 - 新增 `test:component-update-flow` 和 `qa-layout.html?...&junimoWorkflow=race-retry`：稳定模拟旧成功预检、旧失败 apply 和延迟的新 POST，验证一次点击严格按 dry-run→apply 执行。
+# MOD-BUNDLE-RUNTIME-COMPAT-1：Mod 导入结果与旧存档提示（2026-07-16）
+
+- 桌面与移动端上传成功文案会分别展示 ZIP 中发现、实际导入/启用以及跳过的 SMAPI 内置重复组件，避免把“发现 38 个”误解成额外安装 38 份。
+- Mod 页消费 `compatibilityWarnings` 并在列表上方持续显示旧存档兼容性提示；启用 SVE 但活动存档仍保留原版 28 人 Introductions 时，明确说明旧树木、地形和任务不会因安装 Mod 自动重建，应新建存档获得完整 32 人内容。
+- 本次不隐藏无来源 Mod，不改变 `[CP]` 等名称展示、目录分组、删除或玩家同步判定。影响 `types.ts`、桌面/移动 `ModsPage` 与 `ModsPage.css`。

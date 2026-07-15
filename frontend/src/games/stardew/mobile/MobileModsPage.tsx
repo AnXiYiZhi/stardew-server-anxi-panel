@@ -403,7 +403,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
       if (fileInputRef.current) fileInputRef.current.value = ''
       const summary = result.upload
       setUploadSuccess(summary
-        ? `已解析 ${summary.archiveCount} 个 ZIP，发现 ${summary.discoveredCount} 个 Mod，安装 ${summary.importedCount} 个，已启用 ${summary.enabledCount} 个。下次启动服务器时会自动加载。`
+        ? `已解析 ${summary.archiveCount} 个 ZIP，发现 ${summary.discoveredCount} 个 Mod，安装 ${summary.importedCount} 个，已启用 ${summary.enabledCount} 个。${(summary.skippedBuiltInCount ?? 0) > 0 ? `已跳过 ${summary.skippedBuiltInCount} 个 SMAPI 重复内置组件。` : ''}下次启动服务器时会自动加载。`
         : `已安装并启用 ${result.mods.length} 个 Mod，下次启动服务器时会自动加载。`)
       window.setTimeout(() => setUploadSuccess(null), 8000)
     } catch (e) {
@@ -522,6 +522,12 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
       {listError ? <div className="sd-notice sd-notice--error sd-mmods-notice">{listError}</div> : null}
       {exportError ? <div className="sd-notice sd-notice--error sd-mmods-notice">{exportError}</div> : null}
       {uploadSuccess ? <div className="sd-notice sd-notice--ok sd-mmods-notice">{uploadSuccess}</div> : null}
+      {(data?.compatibilityWarnings ?? []).map((warning) => (
+        <div className="sd-notice sd-notice--warn sd-mmods-notice" key={`${warning.code}:${warning.saveName ?? ''}`}>
+          <strong>{warning.title}</strong><br />{warning.message}
+          {warning.saveName ? <><br /><small>当前存档：{warning.saveName}</small></> : null}
+        </div>
+      ))}
 
       {activeTab === 'search' ? (
         <section className="sd-panel sd-mmods-card">

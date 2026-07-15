@@ -457,6 +457,13 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 			return err
 		}
 	}
+	if quarantined, err := QuarantineSMAPIBundledDuplicates(r.instance.DataDir); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+			"repair duplicate SMAPI support mods failed: "+err.Error(), "smapi_mod_dedup_failed", jobCtx.ID)
+		return err
+	} else if len(quarantined) > 0 {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("已隔离重复的 SMAPI 内置组件：%s。原文件保留在私有隔离目录。", strings.Join(quarantined, "、")))
+	}
 
 	result, err := r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
 	if err != nil {
@@ -623,6 +630,13 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	} else if changed {
 		composeConfigChanged = true
 		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
+	}
+	if quarantined, err := QuarantineSMAPIBundledDuplicates(r.instance.DataDir); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
+			"repair duplicate SMAPI support mods failed: "+err.Error(), "smapi_mod_dedup_failed", jobCtx.ID)
+		return err
+	} else if len(quarantined) > 0 {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("已隔离重复的 SMAPI 内置组件：%s。原文件保留在私有隔离目录。", strings.Join(quarantined, "、")))
 	}
 
 	var result paneldocker.CommandResult

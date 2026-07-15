@@ -925,3 +925,22 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 - 新增 `EnsureImportedSaveModProfile`：官方导入第三方 false，custom 导入按 XML ID 的 provider/closure 精确 true。真实 SVE 1.15.11 完成 `FrontierFarm` 创建、XML、重启、Meadowlands 往返、备份/恢复/导出/删除/导入；导入后 7 个组件恢复。
 - 支持包测试增加事务/存档/假 secret 诱饵，确认均不进入 ZIP。默认 feature flag 仍 false；未 tag/push/publish。发版前剩余人工项为 900px + console-error 浏览器走查。
 - 最终本机门禁：`go test ./...`、`go build ./...`、Docker integration、前端全部状态测试与 production build、C# contract、Control Docker/.NET build、兼容清单及其 8 个 Python 测试、Panel 候选镜像 build 均通过；候选镜像和阶段 8 临时容器/卷/目录已清理。
+# 2026-07-16 接手补充：多 Mod ZIP 运行时完整性
+
+## 改了什么
+
+- 上传器保留原有 manifest 分组、同目录删除和 Nexus ID 跟随规则，只过滤 SMAPI 自带的 Console Commands/Save Backup 重复副本，并在摘要中区分发现数、导入数和跳过数。
+- lifecycle 会把既有顶层重复件移入实例私有 quarantine；无对应 `mods/smapi` 内置副本时不会移动。
+- compose 新增 headless 音频后端，旧 compose 自动迁移；Mod 列表增加 SVE 旧存档世界数据警告。
+
+## 影响接口/文件与验证
+
+- `GET /api/instances/:id/mods`、`POST /api/instances/:id/mods/upload` 新增 `compatibilityWarnings`；上传摘要新增 `skippedBuiltInCount/skippedBuiltInNames`。
+- 主要文件为 `mods.go`、`lifecycle.go`、`server_env_fix.go`、`mod_compatibility.go`、`lifecycle_handlers.go` 及对应测试。
+- 验证：后端单元测试、前端生产构建，以及隔离 Docker 实例使用 `Mods1.zip` 的真实启动验证。
+- E2E 结果：38 个 manifest 中实际导入 36、跳过 2 个 SMAPI 内置件；运行时为 26 个代码 Mod + 14 个内容包，SVE 自检缺失/过期 0，重复/音频/加载/ERROR 0；旧存档为 28，新存档为 32。
+
+## 下一步注意事项
+
+- 不要把旧存档提示升级为自动地图迁移；树木、地形、任务与事件状态来自序列化存档，盲改会破坏存档。
+- quarantine 是可恢复材料，不应由普通 Mod 列表展示或玩家同步包导出；内置 ID 过滤也不要扩展到普通无 Nexus ID Mod。

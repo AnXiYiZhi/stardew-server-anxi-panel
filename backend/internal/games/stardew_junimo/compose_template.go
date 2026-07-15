@@ -47,6 +47,8 @@ const junimoComposeTemplate = `services:
       ALLOW_INSECURE_SETUP: "${ALLOW_INSECURE_SETUP:-false}"
       SERVER_TPS: "${SERVER_TPS:-60}"
       SERVER_FPS: "${SERVER_FPS:-0}"
+      ALSOFT_DRIVERS: "${ALSOFT_DRIVERS:-null}"
+      SDL_AUDIODRIVER: "${SDL_AUDIODRIVER:-dummy}"
       SETTINGS_PATH: /data/settings/server-settings.json
       API_ENABLED: "${API_ENABLED:-true}"
       API_PORT: "${API_PORT:-8080}"

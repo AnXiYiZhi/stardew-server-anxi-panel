@@ -46,6 +46,11 @@ var serverStaticInitValues = []serverStaticInitValue{
 	{serverContUsersDir + "/root/id", "/etc/cont-users.d/root/id", "0"},
 }
 
+var serverHeadlessAudioEnvironment = []string{
+	`      ALSOFT_DRIVERS: "${ALSOFT_DRIVERS:-null}"`,
+	`      SDL_AUDIODRIVER: "${SDL_AUDIODRIVER:-dummy}"`,
+}
+
 // EnsureServerContEnvFix masks malformed static init values in the
 // JunimoServer image. Some upstream builds contain bare values such as
 // "DockerApp", "linux/amd64", or numeric IDs under /etc/cont-*.d; the init
@@ -82,7 +87,11 @@ func EnsureServerContEnvFix(dataDir string) (bool, error) {
 	if err != nil {
 		return changed, err
 	}
-	return changed || composeChanged, nil
+	audioChanged, err := migrateServerHeadlessAudioEnvironment(filepath.Join(dataDir, "docker-compose.yml"))
+	if err != nil {
+		return changed || composeChanged, err
+	}
+	return changed || composeChanged || audioChanged, nil
 }
 
 func serverStaticInitScript(value string) string {
@@ -140,4 +149,96 @@ func migrateServerContEnvFixMount(path string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func insertServerEnvironmentBlock(text, block string) string {
+	serverMarker := "\n  server:\n"
+	start := strings.Index(text, serverMarker)
+	if start < 0 {
+		if strings.HasPrefix(text, "  server:\n") {
+			start = -1
+		} else {
+			return text
+		}
+	}
+	contentStart := start + len(serverMarker)
+	if start == -1 {
+		contentStart = len("  server:\n")
+	}
+	rest := text[contentStart:]
+	sectionEnd := len(rest)
+	offset := 0
+	for _, line := range strings.SplitAfter(rest, "\n") {
+		trimmedLine := strings.TrimSuffix(line, "\n")
+		if offset > 0 && strings.HasPrefix(trimmedLine, "  ") && !strings.HasPrefix(trimmedLine, "    ") {
+			sectionEnd = offset
+			break
+		}
+		offset += len(line)
+	}
+	section := rest[:sectionEnd]
+	if env := strings.Index(section, "    environment:\n"); env >= 0 {
+		insertAt := contentStart + env + len("    environment:\n")
+		return text[:insertAt] + block + "\n" + text[insertAt:]
+	}
+	if volumes := strings.Index(section, "    volumes:\n"); volumes >= 0 {
+		insertAt := contentStart + volumes
+		return text[:insertAt] + "    environment:\n" + block + "\n" + text[insertAt:]
+	}
+	return text
+}
+
+func migrateServerHeadlessAudioEnvironment(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	text := string(raw)
+	missing := make([]string, 0, len(serverHeadlessAudioEnvironment))
+	for _, line := range serverHeadlessAudioEnvironment {
+		key := strings.TrimSpace(strings.SplitN(strings.TrimSpace(line), ":", 2)[0]) + ":"
+		if strings.Contains(text, "      "+key) {
+			continue
+		}
+		missing = append(missing, line)
+	}
+	if len(missing) == 0 {
+		return false, nil
+	}
+	block := strings.Join(missing, "\n")
+	for _, marker := range []string{
+		`      SAP_CONTROL_DIR: /data/control`,
+		`      SERVER_FPS: "${SERVER_FPS:-0}"`,
+		`      SERVER_TPS: "${SERVER_TPS:-60}"`,
+	} {
+		updated := insertLineAfter(text, marker, block)
+		if updated == text {
+			continue
+		}
+		info, statErr := os.Stat(path)
+		mode := os.FileMode(0o644)
+		if statErr == nil {
+			mode = info.Mode().Perm()
+		}
+		if err := os.WriteFile(path, []byte(updated), mode); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	updated := insertServerEnvironmentBlock(text, block)
+	if updated == text {
+		return false, nil
+	}
+	info, statErr := os.Stat(path)
+	mode := os.FileMode(0o644)
+	if statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := os.WriteFile(path, []byte(updated), mode); err != nil {
+		return false, err
+	}
+	return true, nil
 }

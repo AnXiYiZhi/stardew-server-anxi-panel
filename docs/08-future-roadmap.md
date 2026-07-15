@@ -1220,3 +1220,10 @@ Multi Game Mode later
 - [x] 导入 custom save 根据 XML FarmType 写精确依赖 profile；真实 FrontierFarm 完成备份、恢复、导出、删除/导入并重新加载，7 组件保持启用。
 - [x] disabled required dependency 的直接创建请求在 job/容器/`/newgame` 前返回 `farm_dependencies_missing`；必须先管理员确认一键准备。
 - [ ] 发版前补一次 900px 浏览器与 console-error 人工走查；已有 1280/390 证据，当前 localhost 被 in-app Browser 客户端策略阻止。本项完成且版本号确认后才能决定灰度包，不影响 feature flag 默认关闭。
+# 2026-07-16 状态更新
+
+- [x] 多 Mod ZIP 逐 manifest 导入，同时跳过 SMAPI 内置重复件并返回可解释统计。
+- [x] 启动/重启安全隔离既有 SMAPI 顶层重复件，保留可恢复文件。
+- [x] 无声卡容器的 OpenAL/SDL dummy 后端与旧实例 compose 自动迁移。
+- [x] SVE 旧存档 28 人/旧世界数据兼容性检测与桌面、移动端提示。
+- [ ] 通用世界大修 Mod 的存档迁移继续暂缓；没有 Mod 官方迁移器和可逆 schema 前不自动重写地形、树木、任务或事件。
