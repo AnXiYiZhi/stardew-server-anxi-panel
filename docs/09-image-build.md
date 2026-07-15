@@ -1,3 +1,10 @@
+# PANEL-0.3.2 宿主 Junimo DLL 升级修复发布（2026-07-15）
+
+- `v0.3.2` 修复 server 镜像升级后宿主 `./.local-container/mods/JunimoServer` 仍保留旧 DLL、导致容器 tag 与实际 Mod 版本不一致的问题。
+- 发布门禁必须覆盖：目标镜像 Mod 提取与严格版本校验、宿主目录事务替换、任一 apply 失败后的旧 Mod 恢复、启动自愈，以及 FIFO `info` 实际版本不符时拒绝成功。
+- runtime manifest 的 `minimumPanelVersion` 为 `0.3.2`。Tag `v0.3.2` 继续由 `.github/workflows/release.yml` 运行远程矩阵、Go/Docker integration、前端测试与构建，成功后推送 Docker Hub、阿里云 ACR、GHCR 的 `0.3.2/latest` 并创建 GitHub Release。
+- 生产升级顺序：更新 Panel 镜像到 `0.3.2`，在维护窗口重启 Stardew server，确认 `info` 的 `Version:` 与 `.env IMAGE_VERSION` 一致。仅拉取 `.125` server 镜像不足以更新 bind-mounted Mod。
+
 # PANEL-0.3.1 可信旧候选修复发布（2026-07-15）
 
 - `v0.3.1` 修复旧 `.121` 候选与新版 `.125` 默认候选被安装流程合并后，维护卡片只能显示“配置无效”且无法升级的问题。

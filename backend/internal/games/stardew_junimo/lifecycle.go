@@ -530,58 +530,49 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 }
 
 func (r *lifecycleRunner) ensureJunimoServerMod(ctx context.Context, jobCtx *jobs.Context) error {
-	manifestPath := filepath.Join(modsDir(r.instance.DataDir), "JunimoServer", "manifest.json")
-	if _, err := os.Stat(manifestPath); err == nil {
-		return nil
-	} else if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("check JunimoServer mod: %w", err)
-	}
-
-	imageRef := serverImageRef(r.instance.DataDir)
-	modsRoot, err := filepath.Abs(modsDir(r.instance.DataDir))
+	values, err := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
 	if err != nil {
-		return fmt.Errorf("resolve mods dir: %w", err)
+		return fmt.Errorf("read runtime config for JunimoServer sync: %w", err)
 	}
-	if err := os.MkdirAll(modsRoot, 0o755); err != nil {
-		return fmt.Errorf("create mods dir: %w", err)
+	expectedVersion := strings.TrimSpace(values["IMAGE_VERSION"])
+	if expectedVersion == "" {
+		expectedVersion = TestedImageTag
 	}
-
+	installedDir := junimoServerModDir(r.instance.DataDir)
+	installedVersion, versionErr := readJunimoServerModVersion(installedDir)
+	if versionErr == nil {
+		versionErr = validateExtractedJunimoServerMod(installedDir, expectedVersion)
+	}
+	if versionErr == nil {
+		return nil
+	}
+	imageRef := serverImageRef(r.instance.DataDir)
 	if jobCtx != nil {
-		_, _ = jobCtx.Info(ctx, "正在同步 JunimoServer 官方 Mod...")
+		if versionErr == nil {
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("正在把 JunimoServer 官方 Mod 从 %s 同步到 %s...", installedVersion, expectedVersion))
+		} else {
+			_, _ = jobCtx.Info(ctx, "正在同步 JunimoServer 官方 Mod...")
+		}
 	}
-	syncCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-
-	script := strings.Join([]string{
-		"set -eu",
-		"if [ ! -d /data/Mods/JunimoServer ]; then echo 'JunimoServer mod not found in server image' >&2; exit 12; fi",
-		"rm -rf /out/JunimoServer",
-		"cp -a /data/Mods/JunimoServer /out/JunimoServer",
-		"find /out/JunimoServer -type d -exec chmod 755 {} \\;",
-		"find /out/JunimoServer -type f -exec chmod 644 {} \\;",
-		"echo JunimoServer synced",
-	}, "; ")
-
-	exitCode, err := r.lifecycle.RunContainerTTY(syncCtx, paneldocker.ContainerTTYRunOpts{
-		ImageRef:   imageRef,
-		Entrypoint: []string{"/bin/sh"},
-		Command:    []string{"-lc", script},
-		Binds:      []string{modsRoot + ":/out"},
-		User:       "root",
-	}, nil, func(line string) {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, "Connected to the docker container shell") || strings.Contains(line, "Exit and run 'make cli'") {
-			return
-		}
-		if jobCtx != nil {
-			_, _ = jobCtx.Debug(ctx, "[junimo-server-mod] "+line)
-		}
-	})
+	root := filepath.Join(r.instance.DataDir, ".local-container", "junimo-mod-sync")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	workDir, err := os.MkdirTemp(root, "sync-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(workDir)
+	extractedDir, err := extractJunimoServerMod(ctx, r.lifecycle, imageRef, workDir, expectedVersion)
 	if err != nil {
 		return fmt.Errorf("sync JunimoServer mod from %s: %w", imageRef, err)
 	}
-	if exitCode != 0 {
-		return fmt.Errorf("sync JunimoServer mod from %s exited with code %d", imageRef, exitCode)
+	originalPresent, err := replaceJunimoServerMod(r.instance.DataDir, extractedDir, filepath.Join(workDir, runtimeOriginalJunimoDir))
+	if err != nil {
+		return err
+	}
+	if originalPresent && jobCtx != nil {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("JunimoServer 官方 Mod 已更新到 %s。", expectedVersion))
 	}
 	return nil
 }

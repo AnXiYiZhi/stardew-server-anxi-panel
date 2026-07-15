@@ -469,7 +469,7 @@ func TestEnsureJunimoServerModCopiesFromServerImage(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".local-container", "mods"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("SERVER_IMAGE=sdvd/server:custom\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("IMAGE_VERSION=custom\nSERVER_IMAGE=sdvd/server:custom\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -477,7 +477,18 @@ func TestEnsureJunimoServerModCopiesFromServerImage(t *testing.T) {
 	fake := &fakeConsoleDocker{
 		runContainerFunc: func(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
 			gotOpts = opts
-			lineHandler("JunimoServer synced")
+			workDir := strings.TrimSuffix(opts.Binds[0], ":/out")
+			targetDir := filepath.Join(workDir, runtimeTargetJunimoDir)
+			if err := os.MkdirAll(targetDir, 0o755); err != nil {
+				return 1, err
+			}
+			if err := os.WriteFile(filepath.Join(targetDir, junimoServerManifestName), []byte(`{"Name":"JunimoServer","Version":"custom","UniqueID":"JunimoHost.Server"}`), 0o644); err != nil {
+				return 1, err
+			}
+			if err := os.WriteFile(filepath.Join(targetDir, junimoServerAssemblyName), []byte("custom assembly"), 0o644); err != nil {
+				return 1, err
+			}
+			lineHandler(junimoModExtractMarker)
 			return 0, nil
 		},
 	}
@@ -498,18 +509,27 @@ func TestEnsureJunimoServerModCopiesFromServerImage(t *testing.T) {
 	if len(gotOpts.Command) != 2 || !strings.Contains(gotOpts.Command[1], "/data/Mods/JunimoServer") {
 		t.Fatalf("copy command should reference JunimoServer, got %#v", gotOpts.Command)
 	}
-	if len(gotOpts.Binds) != 1 || !strings.HasSuffix(gotOpts.Binds[0], string(filepath.Separator)+".local-container"+string(filepath.Separator)+"mods:/out") {
+	if len(gotOpts.Binds) != 1 || !strings.HasSuffix(gotOpts.Binds[0], ":/out") || !strings.Contains(gotOpts.Binds[0], "junimo-mod-sync") {
 		t.Fatalf("unexpected binds: %#v", gotOpts.Binds)
+	}
+	if version, err := readJunimoServerModVersion(junimoServerModDir(dir)); err != nil || version != "custom" {
+		t.Fatalf("synced JunimoServer version=%q err=%v", version, err)
 	}
 }
 
-func TestEnsureJunimoServerModSkipsWhenAlreadyPresent(t *testing.T) {
+func TestEnsureJunimoServerModSkipsWhenVersionMatches(t *testing.T) {
 	dir := t.TempDir()
 	manifest := filepath.Join(dir, ".local-container", "mods", "JunimoServer", "manifest.json")
 	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(manifest, []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte(`{"Name":"JunimoServer","Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(manifest), junimoServerAssemblyName), []byte("test dll"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("IMAGE_VERSION=1.5.0-preview.125\nSERVER_IMAGE=sdvd/server:1.5.0-preview.125\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -529,7 +549,7 @@ func TestEnsureJunimoServerModSkipsWhenAlreadyPresent(t *testing.T) {
 		t.Fatalf("ensureJunimoServerMod: %v", err)
 	}
 	if called {
-		t.Fatal("RunContainerTTY should not be called when JunimoServer manifest exists")
+		t.Fatal("RunContainerTTY should not be called when JunimoServer version matches")
 	}
 }
 

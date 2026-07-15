@@ -20,42 +20,43 @@ import (
 )
 
 type fakeDocker struct {
-	workDir           string
-	psResult          paneldocker.ComposePsResult
-	psErr             error
-	pullResult        paneldocker.CommandResult
-	pullErr           error
-	composePulls      int
-	pullErrByImage    map[string]error
-	pulledImages      []string
-	inspectResult     paneldocker.CommandResult
-	inspectErr        error
-	inspectErrByImage map[string]error
-	inspectedImages   []string
-	steamAuthCode     int
-	steamAuthErr      error
-	steamAuthRuns     int
-	steamAuthLines    []string
-	containerCode     int
-	containerCodes    []int
-	containerErr      error
-	containerRuns     int
-	containerLines    []string
-	containerRunLines [][]string
-	containerOpts     paneldocker.ContainerTTYRunOpts
-	authMigrateRuns   int
-	authMigrateOpts   paneldocker.ContainerTTYRunOpts
-	smapiRuns         int
-	smapiLines        []string
-	smapiOpts         paneldocker.ContainerTTYRunOpts
-	verifyRuns        int
-	verifyCode        int
-	verifyErr         error
-	verifyLines       []string
-	verifyOpts        paneldocker.ContainerTTYRunOpts
-	removedVolumes    []string
-	removedByVolumes  []string
-	restartedServices []string
+	workDir              string
+	psResult             paneldocker.ComposePsResult
+	psErr                error
+	pullResult           paneldocker.CommandResult
+	pullErr              error
+	composePulls         int
+	pullErrByImage       map[string]error
+	pulledImages         []string
+	inspectResult        paneldocker.CommandResult
+	inspectErr           error
+	inspectErrByImage    map[string]error
+	inspectedImages      []string
+	steamAuthCode        int
+	steamAuthErr         error
+	steamAuthRuns        int
+	steamAuthLines       []string
+	containerCode        int
+	containerCodes       []int
+	containerErr         error
+	containerRuns        int
+	containerLines       []string
+	containerRunLines    [][]string
+	containerOpts        paneldocker.ContainerTTYRunOpts
+	junimoExtractVersion string
+	authMigrateRuns      int
+	authMigrateOpts      paneldocker.ContainerTTYRunOpts
+	smapiRuns            int
+	smapiLines           []string
+	smapiOpts            paneldocker.ContainerTTYRunOpts
+	verifyRuns           int
+	verifyCode           int
+	verifyErr            error
+	verifyLines          []string
+	verifyOpts           paneldocker.ContainerTTYRunOpts
+	removedVolumes       []string
+	removedByVolumes     []string
+	restartedServices    []string
 }
 
 func (f *fakeDocker) RecommendedSMAPIArchive(_ context.Context, dataDir string, manifest sjconfig.RuntimeStackManifest) (string, error) {
@@ -120,6 +121,31 @@ func (f *fakeDocker) RunSteamAuthTTY(_ context.Context, _ string, _ paneldocker.
 
 func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
 	command := strings.Join(opts.Command, " ")
+	if strings.Contains(command, junimoModExtractMarker) {
+		f.containerRuns++
+		f.containerOpts = opts
+		if len(opts.Binds) == 0 || !strings.HasSuffix(opts.Binds[0], ":/out") {
+			return 1, errors.New("missing Junimo extraction bind")
+		}
+		workDir := strings.TrimSuffix(opts.Binds[0], ":/out")
+		targetDir := filepath.Join(workDir, runtimeTargetJunimoDir)
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
+			return 1, err
+		}
+		version := f.junimoExtractVersion
+		if version == "" {
+			version = opts.ImageRef[strings.LastIndex(opts.ImageRef, ":")+1:]
+		}
+		manifest := `{"Name":"JunimoServer","Version":"` + version + `","UniqueID":"JunimoHost.Server"}`
+		if err := os.WriteFile(filepath.Join(targetDir, junimoServerManifestName), []byte(manifest), 0o644); err != nil {
+			return 1, err
+		}
+		if err := os.WriteFile(filepath.Join(targetDir, junimoServerAssemblyName), []byte("test JunimoServer assembly "+version), 0o644); err != nil {
+			return 1, err
+		}
+		lineHandler(junimoModExtractMarker)
+		return 0, nil
+	}
 	if strings.Contains(command, "anxi-steamcmd-auth-migrate") {
 		f.authMigrateRuns++
 		f.authMigrateOpts = opts

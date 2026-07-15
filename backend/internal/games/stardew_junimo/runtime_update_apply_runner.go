@@ -85,7 +85,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		return err
 	}
 
-	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 1, ApplyID: status.ApplyID, ActorID: status.CreatedBy, Project: preflight.project, SteamSessionVolume: preflight.volume, SnapshotVolume: preflight.project + "_anxi-junimo-update-" + strings.TrimPrefix(status.ApplyID, "apply_") + "-steam-session", ServerWasRunning: status.ServerWasRunning, AuthWasRunning: preflight.authWasRunning, OriginalState: instance.State, OriginalServer: preflight.originalServer, OriginalAuth: preflight.originalAuth, Target: preflight.target}
+	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 1, ApplyID: status.ApplyID, ActorID: status.CreatedBy, Project: preflight.project, SteamSessionVolume: preflight.volume, SnapshotVolume: preflight.project + "_anxi-junimo-update-" + strings.TrimPrefix(status.ApplyID, "apply_") + "-steam-session", ServerWasRunning: status.ServerWasRunning, AuthWasRunning: preflight.authWasRunning, OriginalState: instance.State, OriginalServer: preflight.originalServer, OriginalAuth: preflight.originalAuth, Target: preflight.target, OriginalServerVersion: status.Current.Server.Tag, TargetServerVersion: status.Target.Server.Tag}
 	if err := setPhase(RuntimeUpdateApplyBackingUp, 30, "正在创建私有恢复材料并保护 Steam 认证卷。"); err != nil {
 		return err
 	}
@@ -119,8 +119,25 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
 	}
 
-	if err := setPhase(RuntimeUpdateApplyWritingConfig, 50, "正在原子写入内置推荐版本对配置。"); err != nil {
+	if err := setPhase(RuntimeUpdateApplyWritingConfig, 50, "正在事务化同步目标 JunimoServer Mod 并写入推荐版本对配置。"); err != nil {
 		return err
+	}
+	recoveryDir := runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID)
+	extractedDir, err := extractJunimoServerMod(ctx, docker, manifest.Target.Server.Image, recoveryDir, manifest.TargetServerVersion)
+	if err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_extract_failed", "无法从目标 server 镜像提取并验证 JunimoServer Mod。")
+	}
+	manifest.JunimoModPrepared = true
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
+	}
+	manifest.JunimoModOriginalPresent, err = replaceJunimoServerMod(instance.DataDir, extractedDir, filepath.Join(recoveryDir, runtimeOriginalJunimoDir))
+	if err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_replace_failed", "无法原子替换宿主 JunimoServer Mod。")
+	}
+	manifest.JunimoModReplaced = true
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
 	}
 	if err := writeRuntimeTargetEnvAtomic(instance.DataDir, status.Target, status.Selected); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "env_write_failed", "实例 .env 原子更新失败。")
@@ -360,7 +377,7 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 				lastFailure = "smapi_runtime_not_ready"
 			} else if !commandResultSupported(instance.DataDir) {
 				lastFailure = "control_contract_not_ready"
-			} else if !runtimeInfoContractReady(ctx, docker, instance.DataDir) {
+			} else if !runtimeInfoContractReady(ctx, docker, instance.DataDir, manifest.TargetServerVersion) {
 				lastFailure = "junimo_contract_not_ready"
 			} else if stored, storeErr := d.store.GetInstance(ctx, instance.ID); storeErr != nil {
 				lastFailure = "instance_state_unavailable"
@@ -385,7 +402,7 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 // normal Panel console commands. Junimo's attach-cli is a tmux UI and rejects
 // docker compose exec -T with "not a terminal", so it must not be used as a
 // one-shot health probe.
-func runtimeInfoContractReady(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir string) bool {
+func runtimeInfoContractReady(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, expectedVersion string) bool {
 	sizeResult, err := docker.ComposeExecPipe(ctx, dataDir, "server", "", "wc", "-c", serverOutputLog)
 	if err != nil {
 		return false
@@ -405,7 +422,9 @@ func runtimeInfoContractReady(ctx context.Context, docker RuntimeUpdateApplyDock
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		result, tailErr := docker.ComposeExecPipe(ctx, dataDir, "server", "", "tail", "-c", fmt.Sprintf("+%d", offset+1), serverOutputLog)
-		if tailErr == nil && strings.Contains(stripControlChars(result.Stdout), "--- Server Info ---") {
+		output := stripControlChars(result.Stdout)
+		versionReady := strings.TrimSpace(expectedVersion) == "" || strings.Contains(output, "Version: "+expectedVersion)
+		if tailErr == nil && strings.Contains(output, "--- Server Info ---") && versionReady {
 			return true
 		}
 		if time.Now().After(deadline) {

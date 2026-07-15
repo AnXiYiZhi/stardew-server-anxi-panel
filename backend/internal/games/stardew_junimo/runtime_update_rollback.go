@@ -62,6 +62,8 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 		return "rollback_restore_env_failed", "无法恢复升级前的实例配置。"
 	case strings.HasPrefix(message, "restore compose:"):
 		return "rollback_restore_compose_failed", "无法恢复升级前的 Compose 配置。"
+	case strings.HasPrefix(message, "restore JunimoServer mod:"):
+		return "rollback_restore_junimo_mod_failed", "无法恢复升级前的 JunimoServer Mod。"
 	case strings.HasPrefix(message, "pin original runtime images:"):
 		return "rollback_pin_images_failed", "无法固定升级前的 server/auth 镜像。"
 	case strings.HasPrefix(message, "restore steam session:"):
@@ -82,7 +84,7 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 }
 
 func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) (resultErr error) {
-	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated {
+	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated || manifest.JunimoModReplaced {
 		if err := docker.RuntimeComposeStopServices(ctx, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
 			return fmt.Errorf("stop new runtime pair: %w", err)
 		}
@@ -92,6 +94,11 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 	}
 	if err := restoreRuntimeRecoveryFile(instance.DataDir, manifest.ApplyID, "original-compose.yml", "docker-compose.yml"); err != nil {
 		return fmt.Errorf("restore compose: %w", err)
+	}
+	if manifest.JunimoModReplaced {
+		if err := restoreRuntimeJunimoServerMod(instance.DataDir, manifest.ApplyID, manifest.JunimoModOriginalPresent); err != nil {
+			return fmt.Errorf("restore JunimoServer mod: %w", err)
+		}
 	}
 	if err := pinRuntimeRollbackImages(instance.DataDir, manifest); err != nil {
 		return fmt.Errorf("pin original runtime images: %w", err)
@@ -155,7 +162,7 @@ func (d *Driver) verifyRuntimeOriginalServer(ctx context.Context, docker Runtime
 		if err == nil && metadata.ImageID != manifest.OriginalServer.ImageID {
 			return errors.New("rollback server digest mismatch")
 		}
-		if err == nil && strings.EqualFold(metadata.State, "running") && docker.RuntimeServerHealth(ctx, instance.DataDir, manifest.Project) == nil {
+		if err == nil && strings.EqualFold(metadata.State, "running") && docker.RuntimeServerHealth(ctx, instance.DataDir, manifest.Project) == nil && runtimeInfoContractReady(ctx, docker, instance.DataDir, manifest.OriginalServerVersion) {
 			return nil
 		}
 		select {
