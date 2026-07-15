@@ -45,6 +45,7 @@ type Config struct {
 	DefaultDriverID              string
 	ControlCommandRetentionDays  int
 	ControlCommandRetentionCount int
+	EnableModdedFarmCreation     bool
 }
 
 // Load reads panel configuration from environment variables and applies defaults.
@@ -82,7 +83,20 @@ func Load() Config {
 		DefaultDriverID:              getEnv("DEFAULT_DRIVER_ID", DefaultDriverID),
 		ControlCommandRetentionDays:  getPositiveIntEnv("CONTROL_COMMAND_RETENTION_DAYS", DefaultControlCommandRetentionDays),
 		ControlCommandRetentionCount: getPositiveIntEnv("CONTROL_COMMAND_RETENTION_COUNT", DefaultControlCommandRetentionCount),
+		EnableModdedFarmCreation:     getBoolEnv("ENABLE_MODDED_FARM_CREATION", false),
 	}
+}
+
+func getBoolEnv(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func getPositiveIntEnv(key string, fallback int) int {

@@ -154,6 +154,9 @@ func suffixMatchSaveDir(dataDir, pointerName string) string {
 		return ""
 	}
 	suffix := pointerName[idx:] // includes the leading "_"
+	if _, err := strconv.ParseUint(suffix[1:], 10, 64); err != nil {
+		return ""
+	}
 	names, err := listSaveDirs(dataDir)
 	if err != nil {
 		return ""
@@ -371,8 +374,14 @@ func farmTypeLabel(whichFarm int) string {
 // whichFarm can be an integer ("0"-"7") or a string name like "MeadowlandsFarm".
 func farmTypeLabelFromString(whichFarm string) string {
 	whichFarm = strings.TrimSpace(whichFarm)
+	if whichFarm == "" {
+		return ""
+	}
 	// Try integer first.
 	if id, err := strconv.Atoi(whichFarm); err == nil {
+		if id < 0 || id > 7 {
+			return ""
+		}
 		return farmTypeLabel(id)
 	}
 	// Map known string names.
@@ -394,6 +403,9 @@ func farmTypeLabelFromString(whichFarm string) string {
 	case "meadowlandsfarm":
 		return "meadowlands"
 	default:
+		if validateFarmCatalogID(whichFarm) == nil {
+			return whichFarm
+		}
 		return ""
 	}
 }
@@ -407,14 +419,36 @@ func (d *Driver) ListSaves(ctx context.Context, instance registry.Instance) ([]r
 	activeName := GetActiveSaveName(instance.DataDir)
 	savesPath := filepath.Join(savesDir(instance.DataDir), "Saves")
 	result := make([]registry.SaveInfo, 0, len(names))
+	farmLabels := saveFarmTypeLabels(instance.DataDir)
 	for _, name := range names {
 		info := readSaveInfo(filepath.Join(savesPath, name))
+		if info.FarmType != "" {
+			info.FarmTypeLabel = farmLabels[info.FarmType]
+			if info.FarmTypeLabel == "" {
+				info.FarmTypeLabel = info.FarmType
+			}
+		}
 		if name == activeName {
 			info.IsActive = true
 		}
 		result = append(result, info)
 	}
 	return result, nil
+}
+
+func saveFarmTypeLabels(dataDir string) map[string]string {
+	labels := map[string]string{
+		"standard": "标准农场", "riverland": "河边农场", "forest": "森林农场", "hilltop": "山顶农场",
+		"wilderness": "荒野农场", "fourcorners": "四角农场", "beach": "海滩农场", "meadowlands": "草原农场",
+	}
+	if catalog, err := ScanFarmCatalog(dataDir); err == nil {
+		for _, farm := range catalog.Farms {
+			if !farm.Conflict && farm.ID != "" && farm.Label != "" {
+				labels[farm.ID] = farm.Label
+			}
+		}
+	}
+	return labels
 }
 
 // PreviewSaveZip validates a ZIP upload, extracts to a temp directory, parses metadata,
@@ -683,13 +717,34 @@ func copyFile(src, dst string) error {
 // This controls what Junimo will use when creating the first game.
 // Fields that cannot be pre-configured are noted in comments.
 func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
-	// Normalise first.
-	normalizeCfg(&cfg)
-	if err := validateCfg(cfg); err != nil {
+	var err error
+	cfg, err = NormalizeNewGameConfigWithModded(cfg, true)
+	if err != nil {
+		return err
+	}
+	data, err := newGameServerSettingsJSON(cfg)
+	if err != nil {
 		return err
 	}
 
-	farmTypeID := junimoFarmTypeID(cfg.FarmType)
+	settingsPath := serverSettingsPath(dataDir)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		return fmt.Errorf("create settings dir: %w", err)
+	}
+	if err := os.WriteFile(settingsPath, data, 0o644); err != nil {
+		return err
+	}
+	if err := WriteInitConfig(dataDir, cfg); err != nil {
+		return err
+	}
+	return writeNewGamePendingMarker(dataDir)
+}
+
+func newGameServerSettingsJSON(cfg registry.NewGameConfig) ([]byte, error) {
+	farmTypeValue, err := farmTypeServerValue(cfg.FarmType)
+	if err != nil {
+		return nil, err
+	}
 	profitPercent := profitMarginPercent(cfg.ProfitMargin)
 	// JunimoServer uses nested PascalCase JSON: {"Game":{...}, "Server":{...}}.
 	// cabinLayout "nearby" → CabinLayoutNearby=true; moneyMode "shared" → SeparateWallets=false.
@@ -713,7 +768,7 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 	obj := map[string]any{
 		"Game": map[string]any{
 			"FarmName":             cfg.FarmName,
-			"FarmType":             farmTypeID,
+			"FarmType":             farmTypeValue,
 			"StartingCabins":       cfg.StartingCabins,
 			"CabinLayoutNearby":    cabinLayoutNearby,
 			"ProfitMargin":         profitPercent,
@@ -735,22 +790,11 @@ func WriteServerSettings(dataDir string, cfg registry.NewGameConfig) error {
 		},
 	}
 
-	settingsPath := serverSettingsPath(dataDir)
-	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
-		return fmt.Errorf("create settings dir: %w", err)
-	}
-
 	data, err := marshalJSON(obj)
 	if err != nil {
-		return fmt.Errorf("marshal server-settings.json: %w", err)
+		return nil, fmt.Errorf("marshal server-settings.json: %w", err)
 	}
-	if err := os.WriteFile(settingsPath, data, 0o644); err != nil {
-		return err
-	}
-	if err := WriteInitConfig(dataDir, cfg); err != nil {
-		return err
-	}
-	return writeNewGamePendingMarker(dataDir)
+	return data, nil
 }
 
 // EnsureServerSettingsDefaults makes sure server-settings.json carries the
@@ -891,9 +935,6 @@ func UpdateServerRuntimeSettings(dataDir string, settings ServerRuntimeSettings)
 
 // normalizeCfg applies defaults.
 func normalizeCfg(cfg *registry.NewGameConfig) {
-	if cfg.FarmType == "" {
-		cfg.FarmType = "standard"
-	}
 	if cfg.CabinLayout == "" {
 		cfg.CabinLayout = "nearby"
 	}
@@ -915,6 +956,41 @@ func normalizeCfg(cfg *registry.NewGameConfig) {
 	if cfg.PetType == "" {
 		cfg.PetType = "Cat"
 	}
+	// The panel creation flow always skips the vanilla intro; persist the
+	// effective value in the job payload instead of retaining a misleading
+	// client-supplied false value.
+	cfg.SkipIntro = true
+}
+
+// NormalizeNewGameConfig applies the documented defaults and validates that
+// the request describes one of the eight built-in farms. The returned value is
+// safe to persist in a lifecycle job payload; this function performs no I/O.
+func NormalizeNewGameConfig(cfg registry.NewGameConfig) (registry.NewGameConfig, error) {
+	return NormalizeNewGameConfigWithModded(cfg, false)
+}
+
+func NormalizeNewGameConfigWithModded(cfg registry.NewGameConfig, allowModded bool) (registry.NewGameConfig, error) {
+	normalizeCfg(&cfg)
+	farmType, err := NormalizeNewGameFarmType(cfg.FarmType)
+	if err != nil {
+		return registry.NewGameConfig{}, err
+	}
+	if !allowModded && !farmType.Builtin {
+		return registry.NewGameConfig{}, fmt.Errorf("模组农场创建功能未启用")
+	}
+	cfg.FarmType = farmType.ID
+	if err := validateCfg(cfg); err != nil {
+		return registry.NewGameConfig{}, err
+	}
+	return cfg, nil
+}
+
+// IsModdedFarmType reports whether a non-empty FarmType falls outside the
+// official allowlist. It is used only to return the explicit feature gate;
+// it never makes a modded ID selectable or valid for creation.
+func IsModdedFarmType(farmType string) bool {
+	normalized, err := NormalizeNewGameFarmType(farmType)
+	return err == nil && !normalized.Builtin
 }
 
 // validateCfg checks the config fields.
@@ -927,13 +1003,6 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	}
 	if cfg.FarmerName != "" && (!utf8.ValidString(cfg.FarmerName) || len(cfg.FarmerName) > 100) {
 		return fmt.Errorf("farmerName 包含无效字符或过长")
-	}
-	validFarms := map[string]bool{
-		"standard": true, "riverland": true, "forest": true,
-		"hilltop": true, "wilderness": true, "fourcorners": true, "beach": true, "meadowlands": true,
-	}
-	if !validFarms[cfg.FarmType] {
-		return fmt.Errorf("farmType 必须是 standard/riverland/forest/hilltop/wilderness/fourcorners/beach/meadowlands 之一")
 	}
 	if cfg.StartingCabins < 0 || cfg.StartingCabins > 7 {
 		return fmt.Errorf("startingCabins 必须在 0~7 之间")
@@ -979,14 +1048,11 @@ func validateCfg(cfg registry.NewGameConfig) error {
 }
 
 func junimoFarmTypeID(farmType string) int {
-	m := map[string]int{
-		"standard": 0, "riverland": 1, "forest": 2,
-		"hilltop": 3, "wilderness": 4, "fourcorners": 5, "beach": 6, "meadowlands": 7,
+	normalized, err := NormalizeNewGameFarmType(farmType)
+	if err == nil && normalized.Builtin {
+		return normalized.BuiltinNumber
 	}
-	if id, ok := m[farmType]; ok {
-		return id
-	}
-	return 0
+	return -1
 }
 
 func profitMarginPercent(profitMargin string) float64 {
@@ -1009,6 +1075,7 @@ func serverInitPath(dataDir string) string {
 
 // initConfigJSON is the structure written to server-init.json for the SMAPI mod.
 type initConfigJSON struct {
+	TransactionID        string   `json:"transactionId,omitempty"`
 	Mode                 string   `json:"mode"`
 	FarmerName           string   `json:"farmerName"`
 	FarmName             string   `json:"farmName"`
@@ -1046,6 +1113,22 @@ type rgbJSON struct {
 // The SMAPI mod reads this on game launch and applies character/new-game
 // options around Junimo's save creation flow.
 func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
+	data, err := newGameInitConfigJSON(cfg)
+	if err != nil {
+		return err
+	}
+	initPath := serverInitPath(dataDir)
+	if err := os.MkdirAll(filepath.Dir(initPath), 0o755); err != nil {
+		return fmt.Errorf("create control dir: %w", err)
+	}
+	return os.WriteFile(initPath, data, 0o644)
+}
+
+func newGameInitConfigJSON(cfg registry.NewGameConfig) ([]byte, error) {
+	return newGameInitConfigJSONForTransaction(cfg, "")
+}
+
+func newGameInitConfigJSONForTransaction(cfg registry.NewGameConfig, transactionID string) ([]byte, error) {
 	profitInt := 100
 	switch cfg.ProfitMargin {
 	case "75":
@@ -1068,6 +1151,7 @@ func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
 	}
 
 	ic := initConfigJSON{
+		TransactionID:        transactionID,
 		Mode:                 "panel-newgame",
 		FarmerName:           cfg.FarmerName,
 		FarmName:             cfg.FarmName,
@@ -1101,15 +1185,11 @@ func WriteInitConfig(dataDir string, cfg registry.NewGameConfig) error {
 		ic.PantsColor = &rgbJSON{R: cfg.PantsColor.R, G: cfg.PantsColor.G, B: cfg.PantsColor.B}
 	}
 
-	initPath := serverInitPath(dataDir)
-	if err := os.MkdirAll(filepath.Dir(initPath), 0o755); err != nil {
-		return fmt.Errorf("create control dir: %w", err)
-	}
 	data, err := marshalJSON(ic)
 	if err != nil {
-		return fmt.Errorf("marshal server-init.json: %w", err)
+		return nil, fmt.Errorf("marshal server-init.json: %w", err)
 	}
-	return os.WriteFile(initPath, data, 0o644)
+	return data, nil
 }
 
 // marshalJSON produces indented JSON for human-readable settings files.

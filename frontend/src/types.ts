@@ -556,6 +556,7 @@ export type SaveInfo = {
   gameSeason?: string
   gameDay?: number
   farmType?: string
+  farmTypeLabel?: string
   fileSizeBytes?: number
   modifiedAt?: string
   parseError?: string
@@ -603,6 +604,68 @@ export type PreflightResult = {
   hasSaves: boolean
   saves: SaveInfo[]
   templateAvailable: boolean
+}
+
+export type FarmTypeCatalogCondition = {
+  kind: string
+  when: unknown
+}
+
+export type NewGameModComponent = {
+  key: string
+  uniqueId?: string
+  folderName: string
+  name?: string
+  version?: string
+  packageKey?: string
+  enabled: boolean
+  provider: boolean
+}
+
+export type NewGameModSelection = {
+  farmTypeId: string
+  providerModKey?: string
+  providerModId?: string
+  providerName?: string
+  providerVersion?: string
+  requiredModKeys: string[]
+  optionalDependencyKeys: string[]
+  enabledModKeys: string[]
+  disabledRequiredModKeys: string[]
+  missingRequiredModKeys: string[]
+  conflictingProviderModKeys: string[]
+  components: NewGameModComponent[]
+  changedModKeys?: string[]
+  warnings: string[]
+  readiness: 'ready' | 'needs_enable' | 'missing_required' | 'conflict'
+  dependenciesReady: boolean
+}
+
+export type FarmTypeCatalogItem = {
+  id: string
+  label: string
+  description: string
+  kind: 'builtin' | 'modded'
+  providerModId?: string
+  providerName?: string
+  providerVersion?: string
+  providerFolder?: string
+  enabled: boolean
+  confidence: string
+  conditions: FarmTypeCatalogCondition[]
+  conflict: boolean
+  dependenciesReady: boolean | null
+  selectable: boolean
+  requiresRuntimeValidation: boolean
+  iconUrl?: string
+  warnings: string[]
+  modSelection?: NewGameModSelection
+}
+
+export type FarmTypeCatalogResponse = {
+  farmTypes: FarmTypeCatalogItem[]
+  catalogWarnings: string[]
+  moddedCreationEnabled: boolean
 }
 
 export type SavesListResult = {

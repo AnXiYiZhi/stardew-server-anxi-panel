@@ -396,3 +396,9 @@ backend/internal/web/restart_schedule_handlers.go
 - 维护者候选 JSON 已接手动 CI：只产出 `discovered` cache/artifact，失败保留并明确标记上次候选且 workflow 失败。阶段八仍须通过人工兼容矩阵审查后才可更新 embed 清单；不要让实例直接消费候选或 GitHub latest。
 - 阶段八还需生成新版 Windows 完整玩家同步包并在干净客户端验证 installer/version/SHA、Steam 启动项和客户端 SMAPI 兼容提示；增量包继续不得携带 SMAPI。
 - 成功升级后的旧 game-data 当前故意保留为人工恢复材料；未来可设计带保留期、二次确认和精确 label/引用检查的清理功能，但不得使用全局 volume prune。
+# 模组农场后期限制（2026-07-15）
+
+- 当前离线静态解析聚焦 Content Patcher `EditData Data/AdditionalFarms`、本地安全 Include、Strings/UI+i18n 和同包 Load 图标；不执行任意 token、不解析完整 CP 条件、不渲染 TMX/TBIN，也不把 FTM `FarmTypes` 条件当注册声明。
+- 纯 C# 或其他运行时动态注入农场无法仅靠离线扫描完整发现。创建最终支持方式是 Control 在本次启动读取 `DataLoader.AdditionalFarms(Game1.content)`；若希望这类农场出现在创建前 UI，未来需要受控 provider 声明/适配器，不能把任意运行时 ID 绕过依赖和 provider 门禁。
+- `modded` 在多个真实模组农场下依赖加载顺序，不稳定，只保留兼容用途；产品入口应持续推荐显式 `Data/AdditionalFarms` ID。
+- 900px 与 console-error 浏览器复验仍需在允许访问测试 localhost 的浏览器环境完成；不要仅凭 production build 把视觉项标记为已验证。

@@ -110,6 +110,7 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {
 		TargetType:  spec.TargetType,
 		TargetID:    spec.TargetID,
 		CreatedBy:   spec.CreatedBy,
+		Payload:     spec.Payload,
 	})
 	if err != nil {
 		return storage.Job{}, err

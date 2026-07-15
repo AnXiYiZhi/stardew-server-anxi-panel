@@ -687,3 +687,32 @@ steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel reposito
 - 正式发布工作流与兼容矩阵工作流新增 `npm run test:component-update-flow`，验证新点击只能消费本次 dry-run ID、apply 不得抢跑或重复提交、较新工作流必须覆盖历史终态。
 - 发版前还必须运行本地 QA `junimoWorkflow=race-retry`：初始提供旧 `succeeded` dry-run 与旧 `failed_rolled_back` apply，POST 新 dry-run 故意延迟；一次点击的事件必须是新 dry-run POST/成功轮询后才有 apply POST，且不得出现 `apply:POST-rejected`。
 - 未通过上述状态测试、本地点击验证或生产构建时不得打 tag；该门禁从下一次 Panel 发布开始生效。
+
+## Control 0.2.0 运行时农场目录构建（2026-07-15）
+
+- source manifest、embedded manifest 与 `runtime_stack_manifest.json.controlMod.version` 必须同时为 `0.2.0`。
+- 当前嵌入 DLL SHA256：`465c1cf64d18d994e7f1f5d478aa834867569484e8a9f0619fb199a586f88533`；`runtime_stack_manifest.json.controlMod.dllSha256` 必须一致。
+- 为避免构建过程把控制 Mod 部署进开发机游戏目录，游戏程序集应只读挂载，并显式关闭 ModBuildConfig deploy：
+
+```powershell
+docker run --rm `
+  -v "E:\stardew-server-anxi-panel\backend\internal\games\stardew_junimo\embedded\smapi-mod-src:/src" `
+  -v "E:\stardew-anxi-panel\runtime\game:/game:ro" `
+  -w /src mcr.microsoft.com/dotnet/sdk:6.0 `
+  dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false
+```
+
+- 构建要求为 0 errors；ModBuildConfig analyzer 的编译器版本 warning 是已知提示。复制 `bin/Release/net6.0/StardewAnxiPanel.Control.dll` 覆盖 embedded DLL 后，必须重新计算 SHA256、更新运行栈清单，并执行 `go build ./...` 验证 `go:embed`。
+- 纯契约测试仍从 `embedded/smapi-mod-contract-tests` 用 .NET 6 SDK 执行，不需要启动游戏。真实 `FrontierFarm` 运行时目录验证必须使用隔离实例，不能启动或改动生产实例，也不能用旧 options 缓存代替。
+
+阶段 7 用只读 `stardew_game-data` volume 和 `/p:EnableModDeploy=false` 重建 Control 0.2.0，0 errors（1 个已知 analyzer warning），并同步新 DLL/运行栈 SHA。`docker build -t stardew-server-anxi-panel:phase7-local .` 成功，仅作本地验证，未推送或发布。真实 SVE E2E 已使用独立临时 Compose project、Panel DB、game-data/steam-session volumes、端口和实例目录完成；结果包含 fresh `FrontierFarm` catalog、XML `FrontierFarm`、重启及双向切档。既有实例未操作，临时 feature flag 不改变默认关闭值。
+
+## 模组农场灰度与发布门禁（2026-07-15）
+
+1. 正式代码保持 `ENABLE_MODDED_FARM_CREATION=false`；release/compatibility workflow 必须运行 `test:farm-catalog`。
+2. 只在独立测试实例显式开启，且仅管理员看到/提交入口；请求只能携带 FarmType ID，不携带路径或任意 Mod 集合。
+3. 至少完成一次显式创建、XML、容器重启、官方/模组往返、备份、恢复、导出、导入周期；确认事务目录没有活动残留，错误目录只在私有隔离区。
+4. 观察日志必须脱敏；support bundle 不得包含事务快照、存档、认证/session 或恢复材料。
+5. 版本号确认后再决定是否扩大灰度或改变默认值。未通过唯一目录/XML、单次 POST、回滚、profile、Control DLL/source 一致性或真实 SVE E2E 任一门禁时不得 tag/push/publish/latest。
+
+当前 Control DLL SHA256：`465c1cf64d18d994e7f1f5d478aa834867569484e8a9f0619fb199a586f88533`。阶段 8 已实际完成兼容清单校验、8 个矩阵脚本测试和 `docker build -t stardew-server-anxi-panel:phase8-release-gate .`；候选镜像只用于本机门禁并已清理。本阶段不创建 tag、不 push、不修改 latest 或生产容器。

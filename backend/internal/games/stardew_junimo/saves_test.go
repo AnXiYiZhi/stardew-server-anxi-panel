@@ -163,11 +163,22 @@ func TestWriteServerSettings_EmptyFarmName(t *testing.T) {
 	}
 }
 
-func TestWriteServerSettings_InvalidFarmType(t *testing.T) {
+func TestWriteServerSettings_ExplicitModFarmTypeIsString(t *testing.T) {
 	dir := t.TempDir()
-	cfg := registry.NewGameConfig{FarmName: "Farm", FarmType: "moon", ProfitMargin: "100", MoneyMode: "shared"}
-	if err := WriteServerSettings(dir, cfg); err == nil {
-		t.Fatal("expected error for invalid farmType")
+	cfg := registry.NewGameConfig{FarmName: "Farm", FarmType: "FrontierFarm", ProfitMargin: "100", MoneyMode: "shared"}
+	if err := WriteServerSettings(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(serverSettingsPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if got := settings["Game"]["FarmType"]; got != "FrontierFarm" {
+		t.Fatalf("FarmType = %#v", got)
 	}
 }
 
@@ -316,7 +327,7 @@ func TestJunimoFarmTypeID(t *testing.T) {
 	cases := map[string]int{
 		"standard": 0, "riverland": 1, "forest": 2,
 		"hilltop": 3, "wilderness": 4, "fourcorners": 5, "beach": 6, "meadowlands": 7,
-		"unknown": 0,
+		"unknown": -1,
 	}
 	for name, want := range cases {
 		if got := junimoFarmTypeID(name); got != want {
@@ -1041,7 +1052,8 @@ func TestFarmTypeLabelFromString(t *testing.T) {
 		{"MeadowlandsFarm", "meadowlands"},
 		{"StandardFarm", "standard"},
 		{"BeachFarm", "beach"},
-		{"unknown_farm", ""},
+		{"unknown_farm", "unknown_farm"},
+		{"FrontierFarm", "FrontierFarm"},
 		{"", ""},
 		// Whitespace-wrapped values from XML like <whichFarm> 6 </whichFarm>.
 		{" 6 ", "beach"},

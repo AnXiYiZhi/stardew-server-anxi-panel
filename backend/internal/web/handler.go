@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/static"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
@@ -24,14 +26,15 @@ const serviceName = "stardew-anxi-panel"
 
 // Deps contains the dependencies required by the HTTP layer.
 type Deps struct {
-	Config        config.Config
-	Store         *storage.Store
-	Logger        *slog.Logger
-	Docker        DockerService
-	Jobs          *jobs.Manager
-	Registry      *registry.Registry
-	UpdateChecker UpdateChecker
-	Updater       UpdaterService
+	Config             config.Config
+	Store              *storage.Store
+	Logger             *slog.Logger
+	Docker             DockerService
+	Jobs               *jobs.Manager
+	Registry           *registry.Registry
+	UpdateChecker      UpdateChecker
+	Updater            UpdaterService
+	FarmCatalogScanner func(string) (sj.FarmCatalogResult, error)
 }
 
 type UpdateChecker interface {
@@ -56,16 +59,18 @@ type DockerService interface {
 }
 
 type server struct {
-	config           config.Config
-	store            *storage.Store
-	logger           *slog.Logger
-	docker           DockerService
-	jobs             *jobs.Manager
-	registry         *registry.Registry
-	pendingUploads   *pendingUploadStore
-	publicIPResolver *publicIPResolver
-	updateChecker    UpdateChecker
-	updater          UpdaterService
+	config             config.Config
+	store              *storage.Store
+	logger             *slog.Logger
+	docker             DockerService
+	jobs               *jobs.Manager
+	registry           *registry.Registry
+	pendingUploads     *pendingUploadStore
+	publicIPResolver   *publicIPResolver
+	updateChecker      UpdateChecker
+	updater            UpdaterService
+	farmCatalogScanner func(string) (sj.FarmCatalogResult, error)
+	farmPrepareMu      sync.Mutex
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -81,16 +86,20 @@ func NewHandler(deps Deps) http.Handler {
 	}
 
 	s := &server{
-		config:           normalizeConfig(deps.Config),
-		store:            deps.Store,
-		logger:           logger,
-		docker:           dockerClient,
-		jobs:             deps.Jobs,
-		registry:         deps.Registry,
-		pendingUploads:   newPendingUploadStore(),
-		publicIPResolver: newPublicIPResolver(defaultPublicIPProviders),
-		updateChecker:    deps.UpdateChecker,
-		updater:          deps.Updater,
+		config:             normalizeConfig(deps.Config),
+		store:              deps.Store,
+		logger:             logger,
+		docker:             dockerClient,
+		jobs:               deps.Jobs,
+		registry:           deps.Registry,
+		pendingUploads:     newPendingUploadStore(),
+		publicIPResolver:   newPublicIPResolver(defaultPublicIPProviders),
+		updateChecker:      deps.UpdateChecker,
+		updater:            deps.Updater,
+		farmCatalogScanner: deps.FarmCatalogScanner,
+	}
+	if s.farmCatalogScanner == nil {
+		s.farmCatalogScanner = sj.ScanFarmCatalog
 	}
 	if s.updateChecker == nil {
 		s.updateChecker = updatecheck.New(updatecheck.Options{

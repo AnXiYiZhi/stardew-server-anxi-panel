@@ -69,9 +69,10 @@ type SteamGuardSender interface {
 }
 
 type StartRequest struct {
-	Instance Instance
-	ActorID  int64
-	NewGame  bool // When true, lifecycle job sends "settings newgame --confirm" after server starts.
+	Instance      Instance
+	ActorID       int64
+	NewGame       bool           // When true, lifecycle job creates a new official-farm save.
+	NewGameConfig *NewGameConfig // Normalized, validated payload persisted by the lifecycle transaction.
 }
 
 type Job struct {
@@ -131,6 +132,7 @@ type SaveInfo struct {
 	GameSeason    string `json:"gameSeason,omitempty"`
 	GameDay       int    `json:"gameDay,omitempty"`
 	FarmType      string `json:"farmType,omitempty"`
+	FarmTypeLabel string `json:"farmTypeLabel,omitempty"`
 	FileSizeBytes int64  `json:"fileSizeBytes,omitempty"`
 	ModifiedAt    string `json:"modifiedAt,omitempty"`
 	ParseError    string `json:"parseError,omitempty"`

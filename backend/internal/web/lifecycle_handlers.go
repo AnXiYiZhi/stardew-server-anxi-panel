@@ -146,33 +146,56 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var cfg registry.NewGameConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
+	var requested registry.NewGameConfig
+	if !decodeJSON(w, r, &requested) {
 		return
 	}
-
-	if err := sj.WriteServerSettings(instance.DataDir, cfg); err != nil {
+	requestedFarmType, farmTypeErr := sj.NormalizeNewGameFarmType(requested.FarmType)
+	if farmTypeErr != nil {
+		writeError(w, http.StatusBadRequest, "invalid_config", sanitizeError(farmTypeErr, "FarmType 参数无效"))
+		return
+	}
+	if !requestedFarmType.Builtin && !s.config.EnableModdedFarmCreation {
+		writeError(w, http.StatusConflict, "modded_farm_creation_disabled", "模组农场创建功能未启用")
+		return
+	}
+	cfg, err := sj.NormalizeNewGameConfigWithModded(requested, s.config.EnableModdedFarmCreation)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_config", sanitizeError(err, "配置参数无效"))
 		return
 	}
-
-	if err := s.advanceToReadyToStart(r, instance); err != nil {
-		s.logger.Warn("advance state after new-game config", "instance", instanceID, "error", err)
+	if !requestedFarmType.Builtin {
+		selection, selectionErr := sj.ResolveNewGameModSelection(instance.DataDir, cfg.FarmType)
+		if selectionErr != nil {
+			if typed, ok := sj.IsNewGameModSelectionError(selectionErr); ok {
+				status := http.StatusConflict
+				if typed.Code == "farm_type_not_installed" {
+					status = http.StatusNotFound
+				}
+				writeError(w, status, typed.Code, typed.Message)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "farm_catalog_stale", "重新解析模组农场目录失败")
+			return
+		}
+		if !selection.DependenciesReady {
+			writeError(w, http.StatusConflict, "farm_dependencies_missing", "模组农场依赖尚未完整启用，请先确认并执行一键准备")
+			return
+		}
+		cfg.FarmType = selection.FarmTypeID
 	}
 
 	driver, ok := s.loadDriver(w, instance.DriverID)
 	if !ok {
 		return
 	}
-	// Re-load instance after state advance so Start sees updated state.
-	instance, _ = s.loadInstance(w, r, instanceID)
 	job, err := driver.Start(r.Context(), registry.StartRequest{
 		Instance: makeRegistryInstance(instance),
 		ActorID:  actor.User.ID,
 		// NewGame signals the lifecycle job to send "settings newgame --confirm"
 		// via attach-cli so JunimoServer creates a fresh save with the new config.
-		NewGame: true,
+		NewGame:       true,
+		NewGameConfig: &cfg,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
@@ -285,7 +308,7 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := sj.EnsureDisabledModProfileForSave(instance.DataDir, entry.SaveName); err != nil {
+	if err := sj.EnsureImportedSaveModProfile(instance.DataDir, entry.SaveName); err != nil {
 		writeError(w, http.StatusInternalServerError, "mod_profile_failed", sanitizeErrorMsg(err, "initialize save mod profile failed"))
 		return
 	}

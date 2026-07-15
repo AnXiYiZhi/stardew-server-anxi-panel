@@ -1,3 +1,126 @@
+# NEWGAME-TXN-1 官方创建事务接手说明（2026-07-15）
+
+## 改了什么
+
+- custom-new-game handler 已降为严格 DTO 边界：单 JSON、未知字段和超限 body 拒绝，规范化官方配置写入 jobs.payload；所有文件写入和 transactionId 都在 lifecycle job 内发生。模组 FarmType 返回 `modded_farm_creation_disabled`，未开放创建。
+- 新增 `new_game_transaction.go`：私有原子事务记录、结构化兼容 marker、配置双文件原子准备、Mod/文件/存档目录快照、一次性 `/newgame`、目录差检测、稳定性/XML/whichFarm 验证、歧义终态、失败隔离和恢复。
+- 旧 Control Mod 无需同步升级：它仍以 marker 是否存在决定是否应用 server-init；Go 不信任 marker 删除或任意 SaveLoaded，只以新目录与 XML 验证决定 success。
+
+## 影响接口/文件
+
+- API 路径与成功响应 `{jobId}` 不变；请求现在严格拒绝未知字段和 trailing JSON。模组 FarmType 错误从泛化 `invalid_config` 升级为 `409 modded_farm_creation_disabled`。
+- 新迁移 `010_job_payload.sql` 给内部 jobs 增加 payload；jobs HTTP 响应不暴露 payload。事务材料不进入普通支持包。
+- 核心文件：`new_game_transaction.go/_test.go`、`lifecycle.go`、`saves.go`、`lifecycle_handlers.go`、`registry/types.go`、jobs/storage 与迁移。
+
+## 如何验证与下一步
+
+- `cd backend; go test ./internal/games/stardew_junimo -run NewGame -count=1`
+- `cd backend; go test ./internal/web -run NewGame -count=1`
+- `cd backend; go test ./...`
+- `cd frontend; npm.cmd run build`
+- 本次实际结果：两组 NewGame 定向测试、`go test ./...` 与前端 production build 均通过；未启动 Docker/Junimo，未做真实实例冒烟。
+- 只允许在隔离实例做官方 Standard/Meadowlands 冒烟；不得操作生产存档。下一阶段若开放模组创建，必须在本状态机上增加运行时 provider/依赖验证，不能绕过事务或放宽 handler allowlist。
+
+# FARM-NEWGAME-MOD-PREPARE-1 依赖闭包与事务式准备（2026-07-15）
+
+## 改了什么
+
+- 新增 `farm_dependencies.go`，复用 `manifestDependencies + modRelationshipIndex` 计算 provider、required/package closure、optional、missing、disabled、conflict 和 readiness；模型不依赖 saveName、不持久化 save profile。
+- `ContentPackFor` 即使错误声明 `IsRequired=false` 也强制 required，并与 Dependencies 大小写不敏感去重。package 关系继续优先使用既有 `packageKey`；只有缺少新字段的历史 Nexus sidecar 才沿用原兼容 fallback，不使用一次上传批次把无关组件合并。
+- 新增严格 `{farmTypeId}` 的管理员 prepare API。driver 复用 lifecycle/runtime update 互斥；Mod upload/delete/toggle/prepare 共用文件状态锁。移动失败反序回滚，成功只启用组件，不启动、不创建。
+
+## 影响接口/文件
+
+- `GET .../saves/farm-types`：modded 增加 `modSelection`，`dependenciesReady` 实际计算。
+- `POST .../saves/farm-types/prepare`：返回 `NewGameModSelection` 与 `changedModKeys`。
+- 主要文件：`farm_dependencies.go/_test.go`、`mods.go`、`driver.go`、`farm_catalog_handlers.go/_test.go`、`instance_handlers.go`。
+
+## 如何验证
+
+- `go test ./internal/games/stardew_junimo`
+- `go test ./internal/web`
+- `go test ./...`
+- `STARDEW_REAL_DATA_DIR=... go test ./internal/games/stardew_junimo -run TestFarmCatalogDependenciesRealInstanceReadOnly -v` 只读确认 FrontierFarm 七组件闭包 ready；没有调用 prepare。
+
+## 下一步注意事项
+
+- prepare 后仍没有正式 save profile；未来创建事务必须在得到最终 saveName 后原子建立 profile，并再次做运行时加载验证。当前不得把 `dependenciesReady` 直接等同于可创建。
+
+# FARM-CATALOG-API-1 农场目录与受控图标 API（2026-07-15）
+
+## 改了什么
+
+- 新增管理员只读农场目录与图标端点。目录始终包含 8 个 builtin；扫描失败降级为官方列表和通用 warning。modded 条目固定不可选、需要运行时验证，冲突 ID 不生成图标 URL。
+- 图标端点只按扫描结果中的 Farm ID 定位受控 token，每次读取重新扫描并重新验证 provider 根内 containment、符号链接、媒体头、尺寸与大小；不接受任意路径，也不返回宿主绝对路径。
+- `custom-new-game` 未放宽，测试明确确认 `FrontierFarm` 仍被拒绝。
+
+## 影响接口/文件
+
+- `GET /api/instances/:id/saves/farm-types`
+- `GET /api/instances/:id/saves/farm-types/:farmId/icon`
+- `backend/internal/web/farm_catalog_handlers.go`、`farm_catalog_handlers_test.go`、`handler.go`、`instance_handlers.go`，以及 `farm_catalog_metadata.go` 的安全重读入口。
+
+## 如何验证
+
+- `cd backend; go test ./...`
+- handler 回归覆盖无 Mod、synthetic FrontierFarm、图标成功/删除/任意路径、disabled、冲突、部分损坏、扫描器整体失败、管理员权限和创建拒绝。
+
+## 下一步注意事项
+
+- 当前 `dependenciesReady=null`，模组条目一律 `selectable=false`。下一阶段要结合依赖与运行时加载证据验证，不能仅凭离线扫描结果放宽创建。
+
+# FARM-CATALOG-DISPLAY-1 离线农场名称、说明与安全图标（2026-07-15）
+
+## 改了什么
+
+- 沿用阶段 1 的 `ScanFarmCatalog`、Include 展开和 provider 模型，新增展示字段与语言选项；默认中文按 `zh-CN → zh → default → manifest.Name → FarmType ID` 解析，不在 Web handler 重复文件逻辑。
+- `Strings/UI:<key>` 只接受同包 `EditData Strings/UI` 中的精确 `{{i18n:key}}`。i18n 值只按第一个 `_` 拆标题/说明，保留后续下划线；空标题继续 fallback，移除控制字符并限制标题 80 rune、说明 512 rune，不执行任意 Content Patcher token。
+- `IconTexture` 只匹配同包 `Load Target`，验证静态相对 `FromFile`、Mod 根 containment、符号链接、允许扩展名、真实 PNG/JPEG/WebP 文件头、2 MiB 文件限制和 4096×4096/16 Mi 像素限制。成功只返回 provider 相对 `IconFile`、MIME 和尺寸；失败保持空图标并 warning，农场仍保留。
+
+## 影响接口与文件
+
+- 主要文件：`backend/internal/games/stardew_junimo/farm_catalog.go`、`farm_catalog_metadata.go`、`farm_catalog_test.go`。
+- `FarmCatalogEntry` 新增 `Label/Description/IconFile/IconMediaType/IconWidth/IconHeight`；`FarmCatalogResult` 记录受控 `Language`，新增内部 `FarmCatalogOptions` 和 `ScanFarmCatalogWithOptions`。没有 HTTP API、外部文件读取接口、前端、Mod profile、`custom-new-game` 或创建能力变化。
+- 不渲染 TMX/TBIN；`WorldMapTexture` 不用作新建页图标，也不提供世界地图渲染。
+
+## 如何验证
+
+- `cd backend; go test ./internal/games/stardew_junimo -run FarmCatalog -count=1`
+- `cd backend; go test ./internal/games/stardew_junimo -count=1`
+- `cd backend; go test ./...`
+- 当前 Windows 环境的符号链接逃逸测试实际 PASS、未 skip。真实实例只读调用同一入口得到：`ID=FrontierFarm`、`Label=边境农场`、说明存在、`IconFile=Assets/Tilesheets/Icon.png`、`image/png 22×20`、enabled；未修改或复制真实 Mod。
+
+## 下一步注意事项
+
+- 未来若增加 API，应只消费 `IconFile` 受控 token/相对路径并设计固定的按 provider 读取端点；禁止接受客户端文件路径或直接返回宿主路径。当前不要提前开放 API 或模组农场创建。
+- Content Patcher 条件与任意 token 仍不求值；若扩展更多 `Strings/*`、多目标 Load 或语言别名，必须保持失败降级和文件 containment。世界地图、TMX/TBIN 继续不在目录卡片范围内。
+
+# FARM-CATALOG-OFFLINE-1 离线模组农场扫描基础（2026-07-15）
+
+## 改了什么
+
+- 新增纯文件系统 `ScanFarmCatalog(dataDir)`，扫描 enabled/disabled 两个 Mods 根并记录 manifest 元数据；只识别 Content Patcher 对 `Data/AdditionalFarms` 的显式 `EditData` 注册，SVE 同结构 fixture 返回 `ID=FrontierFarm`，不会把 `FlashShifter.FrontierFarm/FrontierFarm` 当 FarmType。
+- 复用 `normalizeManifestJSON` 支持 BOM/JSONC/尾随逗号。Include 只读取 Mod 根内静态相对文件，具备目录/绝对路径/符号链接逃逸防护、循环与深度检测、2 MiB 单文件和 16 MiB 总量限制；Include 和声明自身 `When` 都保留在 `Conditions`，不会假定成立。
+- 同 Mod 完全相同声明去重；跨 Mod 同 ID 保留每个 provider 并返回确定性冲突来源。所有列表稳定排序，扫描目录不存在时仍返回非 nil 空列表；解析问题进入 Mod/农场/总结果 warnings，不因单个坏包丢弃其它包。
+
+## 支持边界与影响文件
+
+- 支持 `content.json` 的 `Changes`、Include 文件中的 patch 数组、带 `Changes` 的对象或单 patch 对象；ID 只取 `ID`、`Id` 或安全简单 Entries key，保留大小写并验证 UTF-8、128 字节上限与控制字符。ID 从不参与文件路径。
+- 不支持也不误认任意 `FarmType/FarmTypes` 条件、FTM `File_Conditions.FarmTypes`、地图 patch、i18n/普通字符串；尚未解析名称、i18n 和图标文件内容。
+- 新增 `backend/internal/games/stardew_junimo/farm_catalog.go` 与 `farm_catalog_test.go`；无 HTTP API、前端、Mod profile、custom-new-game 或创建流程变化。
+
+## 如何验证
+
+- `cd backend; go test ./internal/games/stardew_junimo -run FarmCatalog -count=1`
+- `cd backend; go test ./internal/games/stardew_junimo -count=1`
+- `cd backend; go test ./...`
+- fixture 覆盖 FrontierFarm 权威 ID、FTM/普通条件排除、`ID/Id`、JSONC、Include/嵌套/循环/穿越、超大/损坏 JSON、去重/冲突、enabled/disabled 与缺失目录。
+
+## 下一步注意事项
+
+- 名称、i18n 和安全图标解析已由 `FARM-CATALOG-DISPLAY-1` 完成；仍不要增加 Web API、前端入口或放宽模组农场创建。未来消费冲突结果时必须要求明确 provider，不能恢复为 map 按 ID 静默覆盖。
+- 若扩展 Content Patcher token/条件求值，应继续保留“未知条件不是 true”的保守语义；不要让 Farm ID 进入任何路径拼接。
+
 # JUNIMO-MOD-RUNTIME-SYNC-1 宿主 Junimo DLL 事务化升级（2026-07-15）
 
 ## 改了什么
@@ -761,3 +884,44 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 
 - 不要把 `attach-cli` 重新用于无 TTY 的探针；若未来修改 Junimo 控制协议，应优先扩展现有 FIFO/控制 Mod 契约。
 - 验收响应可能包含邀请码，任何新增诊断都只能记录通过/失败，不得保存原始输出。
+
+## 2026-07-15：阶段 6 运行时农场目录与创建前门禁
+
+### 已完成
+
+- `StardewAnxiPanel.Control` 0.2.0 在 `GameLaunched` 调用 `DataLoader.AdditionalFarms(Game1.content)`，原子写 schema 2 `options.json`。输出 transaction/request ID、生成时间、控制版本、排序后的已加载 Mod 列表、稳定 SHA256 指纹以及运行时农场 id/label/image/kind/generatedAt；不包含宿主路径，图片 data URI 上限 64 KiB。
+- 后端事务在 compose up 前写带 TTL 的 `farm-catalog-request.json` 并清除旧 options。调用 `/newgame` 前严格检查 fresh requestId/transactionId、时间、指纹和目标 ID；任何失败直接终止，`farm_type_not_loaded` 明确表示本次运行未加载目标农场。
+- transaction 快照和 rollback 已覆盖 catalog request/options。结构化 pending marker 由新控制组件校验 schema、init transaction 和 expiresAt，`SaveLoaded` 不再擅自清理；事务最终清理由后端负责。
+- `SetFarmType` 支持官方别名、Meadowlands、显式模组 ID 和 `modded` 兼容值；未知 ID 回落 Standard 但保持 unresolved，真正模组候选明确排除 Meadowlands。
+- 模组创建入口没有开放。HTTP handler 继续返回 feature disabled；运行时门禁目前为下一阶段开放提供安全基础。
+
+### 构建与验证
+
+- C# contract tests：Docker .NET 6 `dotnet run -c Release`，通过。
+- 控制 Mod：只读挂载游戏目录并使用 `/p:EnableModDeploy=false` 构建，0 errors、1 个既有 analyzer warning。
+- source manifest、embedded manifest 均为 0.2.0；构建 DLL 与嵌入 DLL SHA256 均为 `5E82EB847734D81C08F7295525944E53F343FC3E67715868198BC551E96B24CE`；运行栈清单已同步。
+- `cd backend; go test ./...` 通过；`cd frontend; npm.cmd run build` 通过。
+- 未执行真实 SVE fresh runtime 验证：工作区仅有一个既有 `stardew` 实例，不能确认是隔离实例，故未启动、停止或修改它。后续必须在隔离实例启动真实 SVE，并确认 matching transactionId 的 options 含 `FrontierFarm`。
+
+### 下一步注意事项
+
+- 不得把离线扫描、旧 options、单独时间戳或 manifest 声明当成创建最终事实；模组创建只接受匹配 transactionId 且指纹一致的本次运行目录。
+- 正式开放前仍需接通“待创建 Mod 集合”与事务准备状态，完成隔离实例 FrontierFarm 验证，并保持前后端双重 feature gate。
+- 不要恢复旧的 SaveLoaded 删除 marker 行为；unknown/unresolved 也不得自动重试 `/newgame`。
+
+## 2026-07-15：阶段 7 显式模组农场创建闭环
+
+- `farm_type.go` 统一官方/显式 custom/`modded` 规范化；Web feature gate 默认关闭。lifecycle 使用精确依赖集合并把兼容值解析为明确 ID。
+- 最终 XML 精确匹配；mismatch 隔离并恢复。`EnsureNewSaveModProfile` 原子提交创建时 Mod 决策；失败为 `mod_profile_commit_failed/profile_commit_pending`，保留正确存档。
+- save model 增加 `farmTypeLabel`。测试覆盖别名、0～7、legacy modded 0/1/多候选、精确依赖、XML Frontier/mismatch、profile 保存/失败恢复和 Web flag。
+- `go test ./...`、`go build ./...`、C# contract、Control Docker build、前端 build、Docker image build 通过。DLL SHA256 `465C1CF64D18D994E7F1F5D478AA834867569484E8A9F0619FB199A586F88533`。
+- 真实 E2E 已在独立临时 Panel/Compose project/volumes/端口中完成，既有 `stardew` 实例未启动、停止或修改。显式 `FrontierFarm` 创建成功，主 XML 为 `<whichFarm>FrontierFarm</whichFarm>`；重启后加载成功，并完成 `FrontierFarm → Standard → FrontierFarm` 双向切档，正式 profile 正确禁用/恢复依赖。默认开关继续关闭，开放仍需单独评审与发布。
+- E2E 修复：expected fingerprint 固定包含 SMAPI bundled ConsoleCommands/SaveBackup；Control 在 Content Patcher 尚未注入目标时按 120 tick 刷新 catalog，Go 等待 fresh matching catalog 出现目标后才放行。当前 DLL SHA256 为 `465C1CF64D18D994E7F1F5D478AA834867569484E8A9F0619FB199A586F88533`。
+
+## 2026-07-15：阶段 8 发布前故障注入
+
+- 真 Docker 注入发现兼容 `server-init` 在 API ready 前已生成唯一存档时，后端继续 POST 会产生第二目录。`sendNewGameCommand` 现在先检查事务目录差：唯一结果跳过 POST 并完整验证；多个结果 ambiguous；没有结果才持久化 `commandCalled=true` 后最多 POST 一次。新增回归固定 POST=0/1 与重启读取。
+- 模组 custom-new-game 要求 `DependenciesReady=true`；disabled required 返回 `farm_dependencies_missing`，必须先显式 prepare。真实禁用 Content Patcher 请求为 409，未启动隔离容器。
+- 新增 `EnsureImportedSaveModProfile`：官方导入第三方 false，custom 导入按 XML ID 的 provider/closure 精确 true。真实 SVE 1.15.11 完成 `FrontierFarm` 创建、XML、重启、Meadowlands 往返、备份/恢复/导出/删除/导入；导入后 7 个组件恢复。
+- 支持包测试增加事务/存档/假 secret 诱饵，确认均不进入 ZIP。默认 feature flag 仍 false；未 tag/push/publish。发版前剩余人工项为 900px + console-error 浏览器走查。
+- 最终本机门禁：`go test ./...`、`go build ./...`、Docker integration、前端全部状态测试与 production build、C# contract、Control Docker/.NET build、兼容清单及其 8 个 Python 测试、Panel 候选镜像 build 均通过；候选镜像和阶段 8 临时容器/卷/目录已清理。

@@ -35,6 +35,20 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(instanceDir, "docker-compose.yml"), []byte("services:\n  server:\n    environment:\n      STEAM_PASSWORD: compose-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	transactionDir := filepath.Join(instanceDir, ".local-container", "control", "new-game-transactions", "tx-secret")
+	if err := os.MkdirAll(transactionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(transactionDir, "transaction.json"), []byte(`{"password":"transaction-secret"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saveDir := filepath.Join(instanceDir, ".local-container", "saves", "Saves", "PrivateFarm_1")
+	if err := os.MkdirAll(saveDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "PrivateFarm_1"), []byte(`<SaveGame><secret>save-content-secret</secret></SaveGame>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	response, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/support-bundle", nil, adminCookie)
 	if response.Code != http.StatusOK {
@@ -55,7 +69,7 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 	var contents strings.Builder
 	for _, file := range reader.File {
 		names[file.Name] = true
-		if strings.Contains(file.Name, "smapi-update") || strings.Contains(file.Name, "recovery") {
+		if strings.Contains(file.Name, "smapi-update") || strings.Contains(file.Name, "recovery") || strings.Contains(file.Name, "new-game-transactions") || strings.Contains(file.Name, "Saves/") {
 			t.Fatalf("support bundle included private recovery entry %q", file.Name)
 		}
 		rc, openErr := file.Open()
@@ -75,7 +89,7 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 		}
 	}
 	serialized := strings.ToLower(contents.String())
-	for _, secret := range []string{"super-secret", "recovery-secret", "ticket-secret", "do-not-export-recovery-secret", "compose-secret"} {
+	for _, secret := range []string{"super-secret", "recovery-secret", "ticket-secret", "do-not-export-recovery-secret", "compose-secret", "transaction-secret", "save-content-secret"} {
 		if strings.Contains(serialized, secret) {
 			t.Fatalf("support bundle leaked %q", secret)
 		}

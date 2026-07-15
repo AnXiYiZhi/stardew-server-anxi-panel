@@ -21,6 +21,7 @@ type Spec struct {
 	TargetType  string
 	TargetID    string
 	CreatedBy   int64
+	Payload     string
 	Timeout     time.Duration
 	Run         Runner
 }

@@ -49,7 +49,8 @@ function saveFarmMapSrc(save: SaveInfo | null): string {
 
 function saveFarmTypeText(save: SaveInfo): string {
   if (!save.farmType) return '地图未知'
-  return farmTypeLabel[save.farmType] ?? save.farmType
+  const label = save.farmTypeLabel ?? farmTypeLabel[save.farmType] ?? save.farmType
+  return label !== save.farmType && !farmTypeLabel[save.farmType] ? `${label} (${save.farmType})` : label
 }
 
 const SEASON_ZH: Record<string, string> = {

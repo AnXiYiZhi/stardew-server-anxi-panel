@@ -123,6 +123,26 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 func (d *Driver) ID() string   { return DriverID }
 func (d *Driver) Name() string { return DriverName }
 
+// PrepareFarmMods serializes the transient new-game Mod preparation with
+// lifecycle/runtime update operations. It never creates a save or starts one.
+func (d *Driver) PrepareFarmMods(ctx context.Context, instance registry.Instance, farmTypeID string) (NewGameModSelection, error) {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
+		return NewGameModSelection{}, &NewGameModSelectionError{Code: "server_running", Message: "服务器运行中，无法准备模组农场"}
+	}
+	if d.jobs != nil {
+		active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID})
+		if err != nil {
+			return NewGameModSelection{}, fmt.Errorf("list conflicting jobs: %w", err)
+		}
+		if len(active) > 0 {
+			return NewGameModSelection{}, &NewGameModSelectionError{Code: "instance_busy", Message: "实例存在进行中的任务，请等待任务结束后再准备 Mod"}
+		}
+	}
+	return PrepareNewGameMods(instance.DataDir, farmTypeID)
+}
+
 // CommandOutcome returns the current file-protocol state without waiting for
 // the control mod or retrying ambiguous commands.
 func (d *Driver) CommandOutcome(ctx context.Context, instance registry.Instance, commandID string) (CommandOutcome, error) {

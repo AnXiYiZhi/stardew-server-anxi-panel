@@ -32,6 +32,8 @@ import type {
   ModsListResult,
   ModSyncKind,
   NewGameConfig,
+  FarmTypeCatalogResponse,
+  NewGameModSelection,
   NexusModSearchResponse,
   NexusModSearchResult,
   NexusSettingsStatus,
@@ -626,6 +628,20 @@ export function deleteNexusAPIKey() {
 
 export function getCommands(instanceId = defaultInstanceId) {
   return request<CommandsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/commands`)
+}
+
+export function getFarmTypeCatalog(instanceId = defaultInstanceId, signal?: AbortSignal) {
+  return request<FarmTypeCatalogResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/farm-types`,
+    { signal },
+  )
+}
+
+export function prepareFarmTypeMods(instanceId: string, farmTypeId: string, signal?: AbortSignal) {
+  return request<NewGameModSelection>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/farm-types/prepare`,
+    { method: 'POST', body: JSON.stringify({ farmTypeId }), signal },
+  )
 }
 
 export function getControlCommands(instanceId = defaultInstanceId, limit = 50) {

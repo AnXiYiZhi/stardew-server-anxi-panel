@@ -1,3 +1,49 @@
+# 2026-07-15 已完成：NEWGAME-TXN-1 官方农场创建事务安全化
+
+- [x] handler 只做严格 DTO 解析/规范化/校验和 job 创建；规范化配置持久化为内部 job payload，不再提前写 settings/init/marker。
+- [x] job 内建立私有原子事务，快照配置、指针、marker、profile、存档目录和 Mod 状态；结构化 marker 保持旧 Control Mod 的存在性兼容。
+- [x] `/newgame` 每事务最多一次，超时/错误不重试；使用目录集合差、主文件稳定、完整 XML 与 whichFarm 做最终判定，多个新目录进入 ambiguous。
+- [x] 失败恢复原文件/指针/Mod 状态，验证失败目录移入隔离区；回滚失败拥有独立状态和错误码，原始原因不被覆盖；事务记录支持面板重启后读取。
+- [x] Standard、Meadowlands、配置/marker 故障、超时、无目录、多目录、损坏 XML、FarmType 不匹配、一次性调用、Mod 恢复和回滚失败已有 Go 测试。
+- [ ] 隔离实例的真实官方农场冒烟需在有明确隔离环境时执行；本次不操作生产实例。
+- [ ] 模组农场仍不可创建。下一阶段必须在该事务状态机上叠加 provider/依赖运行时验证，不能直接放宽 custom-new-game。
+
+# 2026-07-15 已完成：FARM-NEWGAME-MOD-PREPARE-1 依赖闭包与一键准备
+
+- [x] 复用现有 relationship index 计算 provider、required/package closure、optional、missing/disabled、conflict 和稳定 readiness；ContentPackFor 强制 required 并去重。
+- [x] 新增不依赖 saveName、不持久化 profile 的 `NewGameModSelection`，目录 API 返回实际 dependenciesReady。
+- [x] 新增管理员、停服、严格 farmTypeId 的一键准备；与 lifecycle/jobs/Mod 写操作互斥，失败反序回滚，不自动启动或创建。
+- [x] 前端展示依赖完整/待启用/缺失/冲突，确认弹窗逐项列出将启用组件；模组 FarmType 仍不能进入创建表单。
+- [x] 真实 SVE 只读闭包确认 ready：Frontier provider + SVE CP/FTM/Code + Frontier FTM + Content Patcher + Farm Type Manager；未改变实例状态。
+- [ ] 下一阶段：启动前/运行时验证 SMAPI 实际加载 provider 与闭包，设计最终 saveName profile 提交和完整创建回滚；在此之前 custom-new-game 不开放模组 FarmType。
+
+# 2026-07-15 已完成：FARM-CATALOG-READONLY-1 农场目录 API 与只读展示
+
+- [x] 管理员目录 API 始终返回 8 种官方农场；扫描失败和部分损坏安全降级，modded 条目固定不可选并标记需要运行时验证。
+- [x] 受控图标端点只消费扫描器 token，每次读取重新验证 provider containment、符号链接、文件头、格式、尺寸与大小，不暴露宿主路径。
+- [x] 新建游戏页保留原官方静态选择与创建逻辑，新增 FrontierFarm 等模组农场只读卡、状态/冲突提示和图片/API 失败降级。
+- [x] 模组卡片按实机截图收紧为单列全宽横卡；目录内部解析 warning 不再展示，只呈现成功识别的农场卡片。
+- [x] 后端全量测试、前端目录状态测试与 production build 通过。
+- [ ] 当前机器无面板监听，未启动真实实例，因此登录态页面的“边境农场”只读卡验收待下次已有面板运行时补做；阶段 2 的真实 SVE 文件扫描结果已确认。
+- [ ] 下一阶段：计算依赖就绪状态、结合运行时加载证据验证 FarmType/provider，再设计可选与创建契约；在此之前 `custom-new-game` 继续只接受官方农场。
+
+# 2026-07-15 已完成：FARM-CATALOG-DISPLAY-1 离线农场展示元数据
+
+- [x] 按 `zh-CN/zh → default → manifest.Name → FarmType ID` 生成安全 `Label`，从第一个下划线拆分并限制说明。
+- [x] 只解析同包 `Strings/UI` 的精确 i18n token，不执行任意 Content Patcher token 或条件。
+- [x] 将 `IconTexture` 映射到同包 Load 相对文件，完成路径/符号链接 containment、格式、真实文件头、大小和尺寸校验。
+- [x] 图标失败保持农场条目并返回空 `IconFile`；结果不含宿主绝对路径，`WorldMapTexture` 不参与图标或地图渲染。
+- [x] 合成测试与真实 SVE 只读验证确认 `FrontierFarm → 边境农场 → Assets/Tilesheets/Icon.png (PNG 22×20)`。
+- [ ] 当前仍未增加 Web API、前端页面或模组农场创建；后续阶段需单独设计受控图标读取契约与冲突 provider 选择。
+
+# 2026-07-15 已完成：FARM-CATALOG-OFFLINE-1 离线模组农场扫描基础
+
+- [x] 停服状态扫描 `.local-container/mods` 与 `mods-disabled`，记录 manifest/provider 与启用状态。
+- [x] 仅从 Content Patcher `EditData -> Data/AdditionalFarms -> Entries` 读取权威 ID，排除 FTM 和所有普通 FarmType/FarmTypes 条件。
+- [x] 复用 JSONC 解析，安全支持 Include、嵌套、条件保留、循环/逃逸/大小/深度限制。
+- [x] 提供稳定结果、同 Mod 去重、跨 Mod 冲突状态与来源列表，并以合成 fixture 覆盖安全和错误边界。
+- [x] 后续 `FARM-CATALOG-DISPLAY-1` 已补充农场显示名称、i18n 与安全图标元数据；仍无 Web API、前端入口和模组农场创建能力。
+
 # 2026-07-15 已完成：PANEL-0.3.2 / JUNIMO-MOD-RUNTIME-SYNC-1
 
 - [x] 识别 Compose bind mount 遮蔽镜像内新版 Junimo DLL 的真实升级缺口。
@@ -1150,3 +1196,27 @@ Multi Game Mode later
 - [x] Junimo 与 SMAPI 均绑定新预检任务 ID，并阻止同一 ID 重复提交 apply。
 - [x] 修复历史失败 apply 覆盖较新预检进度的问题。
 - [x] 增加纯状态测试、本地延迟竞态 QA 场景，并将测试加入两个正式 CI/发布门禁。
+
+# 2026-07-15 已完成：MOD-FARM-RUNTIME-CATALOG-1
+
+- [x] 控制 Mod 0.2.0 从本次运行的 `DataLoader.AdditionalFarms` 输出 schema 2 农场目录。
+- [x] 用 transactionId/requestId 绑定后端 catalog request 与控制 Mod options，拒绝旧缓存。
+- [x] 以已加载 Mod `UniqueID + Version` 稳定排序计算 SHA256，并在创建请求前与准备集合比较。
+- [x] 显式解析官方别名、Meadowlands、模组 ID 和 `modded`；未知 ID 回落 Standard 但保持 unresolved。
+- [x] 结构化 marker 校验 schema、transactionId、expiresAt，取消 SaveLoaded 的无条件删除。
+- [x] 后端在 `/newgame` 前校验运行时目标；失败返回结构化错误并走事务恢复，绝不继续 POST。
+- [x] 构建并嵌入 Control 0.2.0 DLL，SHA256 `5e82eb847734d81c08f7295525944e53f343fc3e67715868198bc551e96b24ce`。
+- [x] 在独立临时 Compose project/volumes 中启用真实 SVE 1.15.11；matching transactionId/fingerprint 的 fresh options 经 Content Patcher 注入后包含 `FrontierFarm`，旧 options 与早期缺目标 catalog 均不能放行。
+- [ ] 模组创建入口继续关闭。下一阶段应在上述真实验证和待创建 Mod 集合接线完成后，单独评审是否开放；不得仅依赖离线目录。
+
+# 2026-07-15 已完成代码：MOD-FARM-CREATE-1
+
+- [x] 统一官方/显式 custom/`modded` 契约，未知值不回落 Standard。
+- [x] 精确依赖集准备、fresh runtime 门禁、XML ID 验证、rollback 与正式 save profile。
+- [x] feature flag 开启时前端可选择 ready FrontierFarm；存档页桌面/移动端显示 label/ID。
+- [x] 默认开关关闭；未发布、未创建 tag。
+- [x] 真正隔离实例已完成 SVE 1.15.11 显式创建、XML=`FrontierFarm`、重启、Standard/FrontierFarm 往返和依赖保持；既有实例未操作。技术 E2E 门槛已满足，但默认开关仍关闭，是否开放需另行评审和发布。
+- [x] `MOD-FARM-RELEASE-GATE-1`：故障注入发现并修复 Junimo 启动期自动建档与后端 POST 叠加产生双目录；唯一启动期结果现在跳过 POST，ambiguous/unknown 不重试。
+- [x] 导入 custom save 根据 XML FarmType 写精确依赖 profile；真实 FrontierFarm 完成备份、恢复、导出、删除/导入并重新加载，7 组件保持启用。
+- [x] disabled required dependency 的直接创建请求在 job/容器/`/newgame` 前返回 `farm_dependencies_missing`；必须先管理员确认一键准备。
+- [ ] 发版前补一次 900px 浏览器与 console-error 人工走查；已有 1280/390 证据，当前 localhost 被 in-app Browser 客户端策略阻止。本项完成且版本号确认后才能决定灰度包，不影响 feature flag 默认关闭。

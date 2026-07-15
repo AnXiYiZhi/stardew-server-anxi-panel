@@ -26,6 +26,12 @@ public sealed class ModEntry : Mod
     private bool singlePlayerMenuPauseApplied;
     private int? singlePlayerMenuPauseSavedInterval;
     private bool pendingNewGameOptions;
+	private PendingNewGameMarker? pendingNewGameMarker;
+	private FarmCatalogRequest? farmCatalogRequest;
+	private FarmTypeResolution? farmTypeResolution;
+	private bool catalogGenerated;
+	private bool runtimeFarmCatalogReady;
+	private const int MaxCatalogImageDataUriChars = 64 * 1024;
 
     public override void Entry(IModHelper helper)
     {
@@ -61,7 +67,14 @@ public sealed class ModEntry : Mod
             passwordBridge.Initialize(Monitor);
             warpHomeBridge.Initialize(Monitor);
         }
-        pendingNewGameOptions = File.Exists(PendingNewGamePath());
+		pendingNewGameMarker = ReadJsonFile<PendingNewGameMarker>(PendingNewGamePath(), "pending new-game marker");
+		var markerValidation = NewGameControlContract.ValidateMarker(pendingNewGameMarker, initConfig, DateTimeOffset.UtcNow);
+		pendingNewGameOptions = markerValidation.Valid;
+		if (!markerValidation.Valid && pendingNewGameMarker is not null)
+			Monitor.Log($"Pending new-game marker rejected: {markerValidation.ErrorCode}.", LogLevel.Warn);
+		farmCatalogRequest = ReadJsonFile<FarmCatalogRequest>(FarmCatalogRequestPath(), "farm catalog request");
+		if (!NewGameControlContract.IsFreshCatalogRequest(farmCatalogRequest, DateTimeOffset.UtcNow))
+			farmCatalogRequest = null;
         ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
         WritePanelOptions();
@@ -83,7 +96,6 @@ public sealed class ModEntry : Mod
         ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
         var saveFolder = Constants.SaveFolderName;
-        ClearPendingNewGameOptions();
         WriteStatus("save-loaded", "Save loaded through JunimoServer. Direct IP connections are enabled on UDP port 24642.", saveFolder);
     }
 
@@ -129,6 +141,8 @@ public sealed class ModEntry : Mod
 
         ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
+		if (farmCatalogRequest is not null && !runtimeFarmCatalogReady)
+			WritePanelOptions();
         WritePlayers();
         ConsumeCommands();
 
@@ -287,7 +301,9 @@ public sealed class ModEntry : Mod
         if (!IsPanelNewGameMode(initConfig.Mode))
             return;
 
-        SetFarmType(initConfig.FarmType);
+		farmTypeResolution = SetFarmType(initConfig.FarmType);
+		if (!farmTypeResolution.Resolved)
+			Monitor.Log(farmTypeResolution.Warning, LogLevel.Warn);
         Game1.startingCabins = Math.Clamp(initConfig.CabinCount, 0, 7);
         Game1.cabinsSeparate = string.Equals(initConfig.CabinLayout, "separate", StringComparison.OrdinalIgnoreCase);
         Game1.multiplayerMode = Game1.multiplayerServer;
@@ -303,17 +319,9 @@ public sealed class ModEntry : Mod
         return Path.Combine(controlDir, "new-game-pending");
     }
 
-    private void ClearPendingNewGameOptions()
+	private string FarmCatalogRequestPath()
     {
-        pendingNewGameOptions = false;
-        try
-        {
-            File.Delete(PendingNewGamePath());
-        }
-        catch (Exception ex)
-        {
-            Monitor.Log($"Failed to clear pending new-game marker: {ex}", LogLevel.Warn);
-        }
+		return Path.Combine(controlDir, "farm-catalog-request.json");
     }
 
     private static void ApplyDirectIpNetworkPolicy()
@@ -324,53 +332,23 @@ public sealed class ModEntry : Mod
         Game1.options.ipConnectionsEnabled = true;
     }
 
-    private static void SetFarmType(string farmType)
+	private static FarmTypeResolution SetFarmType(string farmType)
     {
+		var actualFarms = DataLoader.AdditionalFarms(Game1.content).ToArray();
+		var runtimeFarms = actualFarms
+			.Select(farm => new RuntimeFarmType(
+				farm.Id ?? "",
+				string.IsNullOrWhiteSpace(farm.Id) ? "Modded Farm" : farm.Id,
+				farm.SpawnMonstersByDefault,
+				string.Equals(farm.Id, "MeadowlandsFarm", StringComparison.OrdinalIgnoreCase) ? "builtin" : "modded"))
+			.ToArray();
+		var resolution = NewGameControlContract.ResolveFarmType(farmType, runtimeFarms);
         Game1.whichModFarm = null;
-        Game1.spawnMonstersAtNight = false;
-
-        switch (farmType.Trim().ToLowerInvariant())
-        {
-            case "riverland":
-                Game1.whichFarm = 1;
-                return;
-            case "forest":
-                Game1.whichFarm = 2;
-                return;
-            case "hilltop":
-            case "hill-top":
-            case "hills":
-                Game1.whichFarm = 3;
-                return;
-            case "wilderness":
-                Game1.whichFarm = 4;
-                Game1.spawnMonstersAtNight = true;
-                return;
-            case "four_corners":
-            case "four-corners":
-            case "fourcorners":
-                Game1.whichFarm = 5;
-                return;
-            case "beach":
-                Game1.whichFarm = 6;
-                return;
-            case "meadowlands":
-            case "meadowlandsfarm":
-                var meadowlands = DataLoader.AdditionalFarms(Game1.content)
-                    .FirstOrDefault(farm => string.Equals(farm.Id, "MeadowlandsFarm", StringComparison.OrdinalIgnoreCase));
-                if (meadowlands is not null)
-                {
-                    Game1.whichFarm = 7;
-                    Game1.whichModFarm = meadowlands;
-                    Game1.spawnMonstersAtNight = meadowlands.SpawnMonstersByDefault;
-                    return;
-                }
-                Game1.whichFarm = 0;
-                return;
-            default:
-                Game1.whichFarm = 0;
-                return;
-        }
+		Game1.whichFarm = resolution.WhichFarm;
+		Game1.spawnMonstersAtNight = resolution.SpawnMonstersByDefault;
+		if (resolution.ModFarm is not null)
+			Game1.whichModFarm = actualFarms.FirstOrDefault(farm => string.Equals(farm.Id, resolution.ModFarm.Id, StringComparison.OrdinalIgnoreCase));
+		return resolution;
     }
 
     private InitConfig? ReadInitConfig()
@@ -391,10 +369,26 @@ public sealed class ModEntry : Mod
         }
     }
 
+	private T? ReadJsonFile<T>(string path, string description) where T : class
+	{
+		if (!File.Exists(path))
+			return null;
+		try
+		{
+			return JsonSerializer.Deserialize<T>(File.ReadAllText(path), ContractJson.Options);
+		}
+		catch (Exception ex)
+		{
+			Monitor.Log($"Failed to read {description}: {ex}", LogLevel.Warn);
+			return null;
+		}
+	}
+
     private void WritePanelOptions()
     {
         try
         {
+			var generatedAt = DateTimeOffset.UtcNow;
             var farmTypes = new List<OptionItem>
             {
                 Option("standard", "标准农场", CropTextureDataUri(Game1.mouseCursors, new Rectangle(0, 324, 22, 20), 4) ?? PreviewSvg("标准", "#79a75f", "#d6edbd")),
@@ -414,14 +408,28 @@ public sealed class ModEntry : Mod
                 if (farmTypes.All(item => !string.Equals(item.Id, panelId, StringComparison.OrdinalIgnoreCase)))
                 {
                     var image = FarmTypeImage(farm) ?? PreviewSvg(label.Replace("农场", ""), "#7daa55", "#dcefb7");
-                    farmTypes.Add(Option(panelId, label, image));
+					var kind = string.Equals(id, "MeadowlandsFarm", StringComparison.OrdinalIgnoreCase) ? "builtin" : "modded";
+					farmTypes.Add(Option(panelId, label, image, kind: kind, generatedAt: generatedAt));
                 }
             }
+			var loadedMods = NewGameControlContract.SortLoadedMods(Helper.ModRegistry.GetAll().Select(mod => new LoadedModItem
+			{
+				UniqueId = mod.Manifest.UniqueID,
+				Version = mod.Manifest.Version.ToString(),
+			}));
+			runtimeFarmCatalogReady = farmCatalogRequest is null ||
+				NewGameControlContract.CatalogContainsRequestedFarm(farmTypes, farmCatalogRequest.RequestedFarmType);
 
             var options = new PanelOptions
             {
-                Source = "smapi",
-                GeneratedAt = DateTimeOffset.UtcNow,
+				SchemaVersion = 2,
+				Source = "smapi-runtime",
+				RequestId = farmCatalogRequest?.RequestId ?? "",
+				TransactionId = farmCatalogRequest?.TransactionId ?? "",
+				GeneratedAt = generatedAt,
+				ControlModVersion = ModManifest.Version.ToString(),
+				LoadedMods = loadedMods,
+				ModFingerprint = NewGameControlContract.ComputeModFingerprint(loadedMods),
                 Genders = new[] { Option("male", "男"), Option("female", "女") },
                 PetTypes = new[] {
                     Option("Cat", "猫", FirstPetBreedImage("Cat") ?? PreviewSvg("猫", "#d08d3c", "#f5d19a")),
@@ -434,7 +442,7 @@ public sealed class ModEntry : Mod
                 MoneyModes = new[] { Option("shared", "共享资金"), Option("separate", "分开资金") },
                 FarmTypes = farmTypes.ToArray(),
             };
-            WriteJson(Path.Combine(controlDir, "options.json"), options);
+			catalogGenerated = WriteJsonAtomic(Path.Combine(controlDir, "options.json"), options);
         }
         catch (Exception ex)
         {
@@ -543,13 +551,18 @@ public sealed class ModEntry : Mod
         output.SetData(cropped);
         using var stream = new MemoryStream();
         output.SaveAsPng(stream, width, height);
-        return "data:image/png;base64," + Convert.ToBase64String(stream.ToArray());
+		return BoundCatalogImage("data:image/png;base64," + Convert.ToBase64String(stream.ToArray()));
     }
 
-    private static OptionItem Option(string id, string label, string image = "", string description = "", string group = "")
+	private static OptionItem Option(string id, string label, string image = "", string description = "", string group = "", string kind = "builtin", DateTimeOffset? generatedAt = null)
     {
-        return new OptionItem { Id = id, Label = label, Image = image, Description = description, Group = group };
+		return new OptionItem { Id = id, Label = label, Image = BoundCatalogImage(image), Description = description, Group = group, Kind = kind, GeneratedAt = generatedAt ?? DateTimeOffset.UtcNow };
     }
+
+	private static string BoundCatalogImage(string? image)
+	{
+		return !string.IsNullOrEmpty(image) && image.Length <= MaxCatalogImageDataUriChars ? image : "";
+	}
 
     private static string PreviewSvg(string text, string bg, string fg)
     {
@@ -559,7 +572,7 @@ public sealed class ModEntry : Mod
             + "<circle cx=\"190\" cy=\"35\" r=\"18\" fill=\"#f7d76b\"/>"
             + $"<text x=\"24\" y=\"76\" font-family=\"Arial,'Microsoft YaHei',sans-serif\" font-size=\"30\" font-weight=\"700\" fill=\"#1f2b1f\">{text}</text>"
             + "</svg>";
-        return "data:image/svg+xml;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svg));
+		return BoundCatalogImage("data:image/svg+xml;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svg)));
     }
 
     private void WriteStatus(string state, string message, string? saveId = null)
@@ -574,6 +587,12 @@ public sealed class ModEntry : Mod
             PasswordBridgeDetail = passwordBridge.Detail,
             WarpHomeBridgeAvailable = warpHomeBridge.Available,
             WarpHomeBridgeDetail = warpHomeBridge.Detail,
+			NewGameTransactionId = initConfig?.TransactionId ?? "",
+			RequestedFarmType = initConfig?.FarmType ?? "",
+			ResolvedFarmType = farmTypeResolution?.ResolvedFarmType ?? "",
+			FarmTypeResolved = farmTypeResolution?.Resolved ?? false,
+			CatalogGenerated = catalogGenerated,
+			NewGameWarning = farmTypeResolution?.Warning ?? "",
         };
         WriteJson(Path.Combine(controlDir, "status.json"), status);
     }
@@ -1124,11 +1143,7 @@ public sealed class ModEntry : Mod
         var tempPath = "";
         try
         {
-            var directory = Path.GetDirectoryName(path)!;
-            Directory.CreateDirectory(directory);
-            tempPath = Path.Combine(directory, $".tmp-{Guid.NewGuid():N}");
-            File.WriteAllText(tempPath, JsonSerializer.Serialize(value, ContractJson.Options));
-            File.Move(tempPath, path, true);
+			ContractFile.WriteJsonAtomic(path, value);
             return true;
         }
         catch (Exception ex)
