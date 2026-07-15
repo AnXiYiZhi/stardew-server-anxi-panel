@@ -1,3 +1,10 @@
+# 2026-07-15 已完成：PANEL-0.3.2 / JUNIMO-MOD-RUNTIME-SYNC-1
+
+- [x] 识别 Compose bind mount 遮蔽镜像内新版 Junimo DLL 的真实升级缺口。
+- [x] 将目标 Mod 提取、严格校验、原子替换和旧 Mod 恢复纳入升级事务。
+- [x] 启动路径按 `.env` 目标版本自愈宿主 Mod，FIFO 验收精确比对实际加载版本。
+- [x] 补充成功、目标包错误、实际加载旧版本及通用回滚测试，并将最低 Panel 版本提升到 `0.3.2`。
+
 # 2026-07-15 已完成：PANEL-0.3.1 / JUNIMO-CONFIG-REPAIR-1
 
 - [x] 可信旧候选混合配置可被精确标记为 `repairable`，自定义/未知配置继续安全拒绝。

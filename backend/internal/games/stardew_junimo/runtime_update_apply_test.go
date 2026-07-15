@@ -26,6 +26,7 @@ type runtimeApplyFakeDocker struct {
 	authFailTarget         bool
 	serverHealthFailTarget bool
 	controlContractFail    bool
+	loadedVersionMismatch  bool
 	digestMismatchService  string
 	upErrorService         string
 	restoreError           bool
@@ -67,7 +68,14 @@ func (f *runtimeApplyFakeDocker) ComposeExecPipe(_ context.Context, dataDir stri
 		if f.targetConfigured(dataDir) && f.controlContractFail {
 			return paneldocker.CommandResult{}, nil
 		}
-		return paneldocker.CommandResult{Stdout: "[INFO JunimoServer] --- Server Info ---\n[INFO JunimoServer] Status: Ready\n"}, nil
+		version := "1.4.0-preview.1"
+		if f.targetConfigured(dataDir) {
+			version = "1.5.0-preview.125"
+			if f.loadedVersionMismatch {
+				version = "1.5.0-preview.121"
+			}
+		}
+		return paneldocker.CommandResult{Stdout: "[INFO JunimoServer] --- Server Info ---\n[INFO JunimoServer] Version: " + version + "\n[INFO JunimoServer] Status: Ready\n"}, nil
 	}
 	return paneldocker.CommandResult{Stdout: "Junimo API ok\nABC123\n"}, nil
 }
@@ -154,6 +162,16 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	oldJunimoDir := junimoServerModDir(instance.DataDir)
+	if err := os.MkdirAll(oldJunimoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldJunimoDir, junimoServerManifestName), []byte(`{"Name":"JunimoServer","Version":"1.4.0-preview.1","UniqueID":"JunimoHost.Server"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldJunimoDir, junimoServerAssemblyName), []byte("old assembly"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
 	status := RuntimeUpdateDryRunStatus{DryRunID: "dryrun_test", Phase: RuntimeUpdatePhaseSucceeded, Current: inspection.Current, Target: inspection.Recommended, Selected: RuntimeUpdateSelectedPair{Server: RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64)}, SteamAuth: RuntimeUpdateSelectedImage{Image: inspection.Recommended.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64)}}}
 	if err := writeRuntimeUpdateDryRunStatus(instance.DataDir, status); err != nil {
@@ -203,6 +221,10 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	}
 	if !strings.Contains(calls, "up steam-auth") || !strings.Contains(calls, "up server") {
 		t.Fatalf("pair not recreated: %s", calls)
+	}
+	version, err := readJunimoServerModVersion(junimoServerModDir(instance.DataDir))
+	if err != nil || version != "1.5.0-preview.125" {
+		t.Fatalf("host-mounted JunimoServer mod was not upgraded: version=%q err=%v", version, err)
 	}
 	if !strings.Contains(calls, "tee -a "+serverInputFIFO) || strings.Contains(calls, "attach-cli") {
 		t.Fatalf("runtime verification did not use the FIFO control contract: %s", calls)
@@ -285,6 +307,8 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 		{"auth ticket missing", func(f *runtimeApplyFakeDocker) { f.authFailTarget = true; f.authReady = true; f.authTicket = false }, RuntimeUpdateApplyFailedRolledBack},
 		{"server health", func(f *runtimeApplyFakeDocker) { f.serverHealthFailTarget = true }, RuntimeUpdateApplyFailedRolledBack},
 		{"server control contract", func(f *runtimeApplyFakeDocker) { f.controlContractFail = true }, RuntimeUpdateApplyFailedRolledBack},
+		{"loaded Junimo version mismatch", func(f *runtimeApplyFakeDocker) { f.loadedVersionMismatch = true }, RuntimeUpdateApplyFailedRolledBack},
+		{"target Junimo package version mismatch", func(f *runtimeApplyFakeDocker) { f.fakeDocker.junimoExtractVersion = "1.5.0-preview.121" }, RuntimeUpdateApplyFailedRolledBack},
 		{"auth digest mismatch", func(f *runtimeApplyFakeDocker) { f.digestMismatchService = "steam-auth" }, RuntimeUpdateApplyFailedRolledBack},
 		{"server digest mismatch", func(f *runtimeApplyFakeDocker) { f.digestMismatchService = "server" }, RuntimeUpdateApplyFailedRolledBack},
 		{"rollback failed", func(f *runtimeApplyFakeDocker) { f.authFailTarget = true; f.authReady = false; f.restoreError = true }, RuntimeUpdateApplyRollbackFailed},
@@ -306,8 +330,13 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 			if strings.HasPrefix(env["SERVER_IMAGE"], "sha256:") || strings.HasPrefix(env["STEAM_SERVICE_IMAGE"], "sha256:") {
 				t.Fatalf("rollback terminal state leaked temporary digest pins: %#v", env)
 			}
+			version, versionErr := readJunimoServerModVersion(junimoServerModDir(instance.DataDir))
+			if versionErr != nil || version != "1.4.0-preview.1" {
+				t.Fatalf("rollback did not restore original host JunimoServer mod: version=%q err=%v", version, versionErr)
+			}
 			calls := strings.Join(fake.applyCalls, "\n")
-			if test.want == RuntimeUpdateApplyFailedRolledBack && (!strings.Contains(calls, "volume restore snapshot") || !strings.Contains(calls, "up steam-auth") || !strings.Contains(calls, "up server")) {
+			requiresVolumeRestore := test.name != "target Junimo package version mismatch"
+			if test.want == RuntimeUpdateApplyFailedRolledBack && ((!strings.Contains(calls, "volume restore snapshot") && requiresVolumeRestore) || !strings.Contains(calls, "up steam-auth") || !strings.Contains(calls, "up server")) {
 				t.Fatalf("pair/auth not rolled back: %s", calls)
 			}
 			if test.want == RuntimeUpdateApplyRollbackFailed {

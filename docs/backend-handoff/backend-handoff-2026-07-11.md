@@ -1,3 +1,27 @@
+# JUNIMO-MOD-RUNTIME-SYNC-1 宿主 Junimo DLL 事务化升级（2026-07-15）
+
+## 改了什么
+
+- 修复 runtime update 只升级镜像、未同步宿主 bind-mounted `JunimoServer` 的缺口。目标 Mod 现在从目标镜像提取，校验 manifest、版本、DLL 与文件类型后，和 `.env`/容器一起纳入事务与回滚。
+- 启动路径新增同版本校验和自愈，因此已经形成 `.125` 镜像加载 `.121` Mod 的实例无需伪造新的 update 状态；升级 Panel 后重启 Stardew server 即会同步宿主 Mod。
+- FIFO `info` 验收新增精确 `Version:` 比对，防止健康容器掩盖实际加载旧 DLL。
+
+## 影响接口/文件
+
+- 外部 API 结构不变；runtime manifest 的 `minimumPanelVersion` 从 `0.2.2` 提升到 `0.3.2`。
+- 新增 `backend/internal/games/stardew_junimo/junimo_mod_runtime.go`；修改 lifecycle、apply/recovery/rollback 和 fake runner 测试。
+
+## 如何验证
+
+- `cd backend && go test ./internal/games/stardew_junimo -run "TestEnsureJunimoServerMod|TestRuntimeUpdateApply" -count=1`
+- `cd backend && go test ./...`
+- 成功场景应把旧 `.121` 宿主 Mod 替换为 `.125`；启动失败、实际加载版本不符或目标包版本不符时应恢复旧 Mod 与旧容器。
+
+## 下一步注意事项
+
+- 生产上先更新 Panel 到 `0.3.2`，再在维护窗口重启 Stardew server；检查 `info` 为 `.125` 后再让玩家进入。旧 Panel 无法补救已经写入宿主卷的旧 DLL。
+- recovery 目录是回滚依据，不要在任务运行期间人工删除 `.local-container/junimo-update` 内容。
+
 # JUNIMO-CONFIG-REPAIR-1 可信旧候选配置修复（2026-07-15）
 
 ## 改了什么

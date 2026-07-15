@@ -101,21 +101,26 @@ type RuntimeUpdateApplyStatus struct {
 }
 
 type runtimeUpdateRecoveryManifest struct {
-	SchemaVersion      int                        `json:"schemaVersion"`
-	ApplyID            string                     `json:"applyId"`
-	ActorID            int64                      `json:"actorId"`
-	Project            string                     `json:"project"`
-	SteamSessionVolume string                     `json:"steamSessionVolume"`
-	SnapshotVolume     string                     `json:"snapshotVolume"`
-	ServerWasRunning   bool                       `json:"serverWasRunning"`
-	AuthWasRunning     bool                       `json:"authWasRunning"`
-	OriginalState      string                     `json:"originalState"`
-	OriginalServer     RuntimeUpdateSelectedImage `json:"originalServer"`
-	OriginalAuth       RuntimeUpdateSelectedImage `json:"originalAuth"`
-	Target             RuntimeUpdateSelectedPair  `json:"target"`
-	ConfigWritten      bool                       `json:"configWritten"`
-	AuthRecreated      bool                       `json:"authRecreated"`
-	ServerRecreated    bool                       `json:"serverRecreated"`
+	SchemaVersion            int                        `json:"schemaVersion"`
+	ApplyID                  string                     `json:"applyId"`
+	ActorID                  int64                      `json:"actorId"`
+	Project                  string                     `json:"project"`
+	SteamSessionVolume       string                     `json:"steamSessionVolume"`
+	SnapshotVolume           string                     `json:"snapshotVolume"`
+	ServerWasRunning         bool                       `json:"serverWasRunning"`
+	AuthWasRunning           bool                       `json:"authWasRunning"`
+	OriginalState            string                     `json:"originalState"`
+	OriginalServer           RuntimeUpdateSelectedImage `json:"originalServer"`
+	OriginalAuth             RuntimeUpdateSelectedImage `json:"originalAuth"`
+	Target                   RuntimeUpdateSelectedPair  `json:"target"`
+	OriginalServerVersion    string                     `json:"originalServerVersion"`
+	TargetServerVersion      string                     `json:"targetServerVersion"`
+	JunimoModOriginalPresent bool                       `json:"junimoModOriginalPresent"`
+	JunimoModPrepared        bool                       `json:"junimoModPrepared"`
+	JunimoModReplaced        bool                       `json:"junimoModReplaced"`
+	ConfigWritten            bool                       `json:"configWritten"`
+	AuthRecreated            bool                       `json:"authRecreated"`
+	ServerRecreated          bool                       `json:"serverRecreated"`
 }
 
 func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {

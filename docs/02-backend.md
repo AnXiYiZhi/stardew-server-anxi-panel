@@ -1,3 +1,11 @@
+# JUNIMO-MOD-RUNTIME-SYNC-1 宿主 Junimo DLL 事务化升级（2026-07-15）
+
+- 根因是 Compose 将宿主 `./.local-container/mods` bind mount 到 `/data/Mods`，镜像内新版 `JunimoServer` 会被宿主旧 DLL 遮蔽。此前更新只改镜像 tag 并重建容器，所以会出现“容器为 `.125`、实际加载 Mod 为 `.121`”。
+- `ensureJunimoServerMod` 现在读取 `.env` 的 `IMAGE_VERSION`，仅在宿主 manifest 与目标版本完全一致且 DLL 有效时跳过；版本不一致会从当前 server 镜像提取 Mod，经私有临时目录校验后原子替换。这样已处于错配状态的实例在下一次启动时也可自愈。
+- runtime update apply 在改写 `.env` 前从目标镜像提取并校验 Junimo Mod，将旧目录保存到 recovery 后再替换；任一步失败都会回滚旧 Mod、旧配置及旧容器。软链接、空 DLL、错误 `UniqueID` 或版本不一致均拒绝发布。
+- 更新验收不再只检查镜像 digest、健康状态和 FIFO 存在；`info` 输出必须包含与目标 tag 完全一致的 `Version:`。runtime manifest 的最低 Panel 版本提升为 `0.3.2`。
+- 主要文件：`junimo_mod_runtime.go`、`lifecycle.go`、`runtime_update_apply_runner.go`、`runtime_update_rollback.go` 及对应测试。验证：`go test ./internal/games/stardew_junimo -run "TestEnsureJunimoServerMod|TestRuntimeUpdateApply" -count=1`、`go test ./...`。
+
 # JUNIMO-CONFIG-REPAIR-1 可信旧候选配置修复（2026-07-15）
 
 - `InspectRuntimeStack` 新增 `repairable/repairCode/repairReason`。只有 server/auth 主镜像仍属于当前可信仓库、`IMAGE_VERSION` 与 server 主镜像 tag 一致，且候选项全部属于当前可信仓库或固定旧版官方别名时，才把混合 tag/退役候选判为 `repairable/legacy_candidates`；自定义主镜像、未知候选、非法引用和版本主字段歧义继续拒绝自动处理。
