@@ -232,6 +232,77 @@ func EnsureDisabledModProfileForSave(dataDir, saveName string) error {
 	return saveModProfileStore(dataDir, store)
 }
 
+// EnsureNewSaveModProfile commits the exact Mod set used to create a modded
+// farm. New or unrelated installed Mods default to disabled; only the stable
+// keys recorded by the transaction are explicitly enabled.
+func EnsureNewSaveModProfile(dataDir, saveName string, enabledModKeys []string) error {
+	saveName = strings.TrimSpace(saveName)
+	if saveName == "" {
+		return fmt.Errorf("save name is required")
+	}
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	enabled := make(map[string]bool, len(enabledModKeys))
+	for _, key := range enabledModKeys {
+		if key = strings.TrimSpace(key); key != "" {
+			enabled[key] = true
+		}
+	}
+	store, err := loadModProfileStore(dataDir)
+	if err != nil {
+		return err
+	}
+	mods, err := listPhysicalMods(dataDir)
+	if err != nil {
+		return err
+	}
+	profile := modProfileSave{
+		DefaultEnabled: false,
+		UpdatedAt:      time.Now().Format(time.RFC3339),
+		Mods:           map[string]modProfileEntry{},
+	}
+	for _, mod := range mods {
+		if mod.BuiltIn || isSMAPIRuntimeMod(mod) || isControlModInfo(mod) || isJunimoServerModInfo(mod) {
+			continue
+		}
+		key := modProfileKey(mod)
+		profile.Mods[key] = modProfileEntry{
+			Enabled: enabled[key], FolderName: mod.FolderName, UniqueID: mod.UniqueID,
+		}
+	}
+	store.Saves[saveName] = profile
+	return saveModProfileStore(dataDir, store)
+}
+
+// EnsureImportedSaveModProfile initializes a profile from the imported save's
+// actual XML FarmType. Official saves retain the historical all-third-party-
+// disabled policy. A custom farm must resolve to one installed provider and a
+// complete dependency closure; only that exact closure is enabled.
+func EnsureImportedSaveModProfile(dataDir, saveName string) error {
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return err
+	}
+	rawFarmType := readWhichFarmFromMainFile(filepath.Join(savesDir(dataDir), "Saves", saveName), saveName)
+	farmType, err := NormalizeNewGameFarmType(rawFarmType)
+	if err != nil {
+		return fmt.Errorf("read imported save FarmType: %w", err)
+	}
+	if farmType.Builtin {
+		return EnsureDisabledModProfileForSave(dataDir, saveName)
+	}
+	selection, err := ResolveNewGameModSelection(dataDir, farmType.ID)
+	if err != nil {
+		return fmt.Errorf("resolve imported modded FarmType %q: %w", farmType.ID, err)
+	}
+	enabledKeys := make([]string, 0, len(selection.Components))
+	for _, component := range selection.Components {
+		enabledKeys = append(enabledKeys, component.Key)
+	}
+	return EnsureNewSaveModProfile(dataDir, saveName, enabledKeys)
+}
+
 // MarkImportedModsEnabledForSave records newly installed mods as enabled for
 // the active save. Install actions are user intent to add the mod now; users can
 // still disable it later from the per-save configuration page.

@@ -53,12 +53,19 @@ type LifecycleDockerService interface {
 
 // lifecycleRunner handles start/stop/restart job execution.
 type lifecycleRunner struct {
-	driver    *Driver
-	lifecycle LifecycleDockerService
-	instance  storage.Instance
-	operation string // "start", "stop", "restart", "restore_restart"
-	actorID   int64
-	newGame   bool // When true, send "settings newgame --confirm" after server starts.
+	driver                    *Driver
+	lifecycle                 LifecycleDockerService
+	instance                  storage.Instance
+	operation                 string // "start", "stop", "restart", "restore_restart"
+	actorID                   int64
+	newGame                   bool // When true, send "settings newgame --confirm" after server starts.
+	newGameConfig             *registry.NewGameConfig
+	newGameCommandTimeout     time.Duration
+	newGameObservationTimeout time.Duration
+	newGamePollInterval       time.Duration
+	newGameAPIReadyTimeout    time.Duration
+	newGameCatalogTimeout     time.Duration
+	commitNewGameModProfile   func(string, string, []string) error
 	// rollback-only: the SMAPI updater has restored the exact prior Control Mod
 	// and must not replace it before starting the old game-data volume.
 	preserveControlMod bool
@@ -93,19 +100,32 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	if err := d.cancelActiveLifecycleJobs(ctx, req.Instance.ID, "新的启动请求已提交，取消旧的生命周期任务。"); err != nil {
 		return nil, err
 	}
+	jobPayload := ""
+	if req.NewGame {
+		if req.NewGameConfig == nil {
+			return nil, &NewGameTransactionError{Code: "new_game_payload_missing", Message: "新建存档任务缺少规范化配置"}
+		}
+		payloadData, err := json.Marshal(req.NewGameConfig)
+		if err != nil {
+			return nil, &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "序列化新建存档任务配置失败", Cause: err}
+		}
+		jobPayload = string(payloadData)
+	}
 	runner := &lifecycleRunner{
-		driver:    d,
-		lifecycle: ld,
-		instance:  instance,
-		operation: "start",
-		actorID:   req.ActorID,
-		newGame:   req.NewGame,
+		driver:        d,
+		lifecycle:     ld,
+		instance:      instance,
+		operation:     "start",
+		actorID:       req.ActorID,
+		newGame:       req.NewGame,
+		newGameConfig: req.NewGameConfig,
 	}
 	job, err := d.jobs.Start(ctx, jobs.Spec{
 		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   req.Instance.ID,
 		CreatedBy:  req.ActorID,
+		Payload:    jobPayload,
 		Timeout:    lifecycleJobTimeout,
 		Run:        runner.run,
 	})
@@ -279,7 +299,7 @@ func (r *lifecycleRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	}
 }
 
-func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) error {
+func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (retErr error) {
 	_, _ = jobCtx.Info(ctx, "正在启动 Stardew 服务器...")
 	imageRef := gameInstallImage(r.instance.DataDir)
 	ok, err := r.driver.verifyGameDataVolume(ctx, r.instance.DataDir, imageRef, func(line string) {
@@ -296,6 +316,77 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 			return fmt.Errorf("verify game runtime files before start: %w", err)
 		}
 		return fmt.Errorf("game runtime files are incomplete")
+	}
+
+	var newGameTx *newGameTransaction
+	var newGameSelection *NewGameModSelection
+	composeStarted := false
+	newGameCompleted := false
+	if r.newGame {
+		if r.newGameConfig == nil {
+			return &NewGameTransactionError{Code: "new_game_payload_missing", Message: "新建存档任务缺少规范化配置"}
+		}
+		cfg, cfgErr := NormalizeNewGameConfigWithModded(*r.newGameConfig, true)
+		if cfgErr != nil {
+			return &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "新建存档任务配置无效", Cause: cfgErr}
+		}
+		farmType, farmTypeErr := NormalizeNewGameFarmType(cfg.FarmType)
+		if farmTypeErr != nil {
+			return &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "新建存档 FarmType 无效", Cause: farmTypeErr}
+		}
+		if !farmType.Builtin {
+			selection, selectionErr := ResolveNewGameModSelection(r.instance.DataDir, farmType.ID)
+			if selectionErr != nil {
+				return selectionErr
+			}
+			cfg.FarmType = selection.FarmTypeID
+			newGameSelection = &selection
+		}
+		newGameTx, retErr = beginNewGameTransaction(r.instance.DataDir, cfg)
+		if retErr != nil {
+			return &NewGameTransactionError{Code: "new_game_snapshot_failed", Message: "创建新存档事务快照失败", Cause: retErr}
+		}
+		defer func() {
+			if newGameCompleted || retErr == nil {
+				return
+			}
+			var composeStopErr error
+			if composeStarted {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				_, composeStopErr = r.lifecycle.ComposeDown(stopCtx, r.instance.DataDir)
+				cancel()
+			}
+			code := "new_game_failed"
+			stage := newGameStateFailed
+			var txErr *NewGameTransactionError
+			if errors.As(retErr, &txErr) {
+				code = txErr.Code
+			}
+			if newGameTx.record.Stage == newGameStateUnknown || newGameTx.record.Stage == newGameStateAmbiguous {
+				stage = newGameTx.record.Stage
+			}
+			if rollbackErr := newGameTx.rollback(retErr, code, stage); rollbackErr != nil {
+				retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且回滚未完整完成", Cause: retErr, RollbackError: rollbackErr}
+			}
+			if composeStopErr != nil {
+				newGameTx.record.Stage = newGameStateRollbackFail
+				newGameTx.record.Result = "failed"
+				newGameTx.record.RollbackCompleted = false
+				newGameTx.record.RollbackError = "stop server during rollback: " + paneldocker.RedactString(composeStopErr.Error())
+				_ = newGameTx.persist()
+				retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且停止服务器失败", Cause: retErr, RollbackError: composeStopErr}
+			}
+			finalCode := code
+			if newGameTx.record.Stage == newGameStateRollbackFail {
+				finalCode = "new_game_rollback_failed"
+			}
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateStopped,
+				"创建新存档失败: "+paneldocker.RedactString(retErr.Error()), finalCode, jobCtx.ID)
+		}()
+		if retErr = newGameTx.prepareConfigAndMarker(); retErr != nil {
+			return retErr
+		}
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("新建存档事务已准备：%s", newGameTx.record.TransactionID))
 	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在启动服务器...", "starting", jobCtx.ID)
 
@@ -327,12 +418,38 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	}
 
 	if r.newGame {
-		if err := ApplyNewSaveDefaultModState(r.instance.DataDir); err != nil {
+		var modPrepareErr error
+		if newGameSelection == nil {
+			modPrepareErr = ApplyNewSaveDefaultModState(r.instance.DataDir)
+		} else {
+			prepared, err := ApplyNewGameModSelectionState(r.instance.DataDir, *newGameSelection)
+			if err != nil {
+				modPrepareErr = err
+			} else {
+				newGameSelection = &prepared
+				newGameTx.record.ModSelection = &prepared
+				newGameTx.record.EnabledModKeys = append([]string{}, prepared.EnabledModKeys...)
+				newGameTx.record.RequestedFarmType = prepared.FarmTypeID
+				newGameTx.record.Config.FarmType = prepared.FarmTypeID
+				modPrepareErr = newGameTx.persist()
+			}
+		}
+		if modPrepareErr != nil {
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
-				"apply new-save mod defaults failed: "+err.Error(), "mod_profile_failed", jobCtx.ID)
+				"prepare new-save Mod set failed: "+modPrepareErr.Error(), "farm_dependencies_missing", jobCtx.ID)
+			return modPrepareErr
+		}
+		if err := newGameTx.mark(newGameStateModsPrepared); err != nil {
+			return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录 Mod 准备状态失败", Cause: err}
+		}
+		if err := newGameTx.prepareRuntimeCatalogRequest(); err != nil {
 			return err
 		}
-		_, _ = jobCtx.Info(ctx, "New save mod defaults applied: third-party mods are disabled.")
+		if newGameSelection == nil {
+			_, _ = jobCtx.Info(ctx, "New save mod defaults applied: third-party mods are disabled.")
+		} else {
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("已准备模组农场 %s 的必要 Mod 集合（%d 个组件）。", newGameSelection.FarmTypeID, len(newGameSelection.EnabledModKeys)))
+		}
 	} else if activeSaveName := GetActiveSaveName(r.instance.DataDir); activeSaveName != "" {
 		if err := ApplyModProfile(r.instance.DataDir, activeSaveName); err != nil {
 			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
@@ -354,7 +471,16 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 		}
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
 			"启动失败: "+result.Stderr, "start_failed", jobCtx.ID)
+		if r.newGame {
+			return &NewGameTransactionError{Code: "new_game_compose_start_failed", Message: "新建存档服务器启动失败", Cause: err}
+		}
 		return fmt.Errorf("docker compose up: %w", err)
+	}
+	composeStarted = true
+	if r.newGame {
+		if err := newGameTx.mark(newGameStateComposeUp); err != nil {
+			return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录服务器启动状态失败", Cause: err}
+		}
 	}
 	_, _ = jobCtx.Info(ctx, "docker compose up 完成，等待服务器就绪...")
 
@@ -372,9 +498,10 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) err
 	// If this is a new-game request, send "settings newgame --confirm" once SMAPI is ready.
 	// This creates a fresh save using the server-settings.json values without deleting old saves.
 	if r.newGame {
-		if err := r.sendNewGameCommand(ctx, jobCtx); err != nil {
-			_, _ = jobCtx.Warn(ctx, fmt.Sprintf("创建新存档失败（服务器将继续加载已有存档）：%v", err))
+		if err := r.sendNewGameCommand(ctx, jobCtx, newGameTx); err != nil {
+			return err
 		}
+		newGameCompleted = true
 	}
 
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
@@ -1045,25 +1172,45 @@ func (d *Driver) updateDriverPayloadInviteCode(ctx context.Context, instanceID, 
 // sendNewGameCommand waits for the JunimoServer HTTP API to be ready, then calls
 // POST /newgame to create a fresh save using the current server-settings.json values.
 // Existing saves are preserved; junimohost.gameloader.json is updated automatically.
-func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.Context) error {
+func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.Context, tx *newGameTransaction) error {
+	if tx == nil {
+		return &NewGameTransactionError{Code: "new_game_transaction_missing", Message: "新建存档事务不存在"}
+	}
+	if err := tx.waitForRuntimeFarmCatalog(ctx, r.newGameCatalogTimeout, r.newGamePollInterval); err != nil {
+		return err
+	}
+	_, _ = jobCtx.Info(ctx, "运行时农场目录已通过 transactionId、Mod 指纹和 FarmType 校验。")
 	_, _ = jobCtx.Info(ctx, "等待服务器 API 就绪后创建新存档...")
 
 	// Poll the HTTP API until /status responds (server is up and accepting requests).
 	apiURL := "http://localhost:8080/status"
-	deadline := time.Now().Add(5 * time.Minute)
+	readyTimeout := r.newGameAPIReadyTimeout
+	if readyTimeout <= 0 {
+		readyTimeout = 5 * time.Minute
+	}
+	pollInterval := r.newGamePollInterval
+	if pollInterval <= 0 {
+		pollInterval = 3 * time.Second
+	}
+	deadline := time.Now().Add(readyTimeout)
+	apiReady := false
 	for time.Now().Before(deadline) {
 		reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		result, err := r.lifecycle.ComposeExecPipe(reqCtx, r.instance.DataDir, "server",
 			"", "curl", "-sf", apiURL)
 		cancel()
 		if err == nil && result.ExitCode == 0 {
+			apiReady = true
 			break
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(3 * time.Second):
+		case <-time.After(pollInterval):
 		}
+	}
+	if !apiReady {
+		return &NewGameTransactionError{Code: "new_game_api_not_ready", Message: "服务器 API 在期限内未就绪"}
 	}
 
 	_, _ = jobCtx.Info(ctx, "服务器 API 就绪，发送创建新存档请求...")
@@ -1072,10 +1219,9 @@ func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.C
 	// keeps the persistent saves dir, so an old save can still be present; the poll below
 	// uses this to tell a genuinely new save apart from a pre-existing one and never
 	// report the old save as "created".
-	gameloaderPath := filepath.Join(savesDir(r.instance.DataDir), ".smapi", "mod-data",
-		"junimohost.server", "junimohost.gameloader.json")
+	gameloaderFile := gameloaderPath(r.instance.DataDir)
 	prevSave := ""
-	if data, err := os.ReadFile(gameloaderPath); err == nil {
+	if data, err := os.ReadFile(gameloaderFile); err == nil {
 		var gl struct {
 			SaveNameToLoad string `json:"SaveNameToLoad"`
 		}
@@ -1094,65 +1240,175 @@ func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.C
 	// save-detection poll below. Failing here instead makes the lifecycle fall back to a
 	// pre-existing save (e.g. an old save left in the persistent saves dir), which is
 	// exactly the surprising "loaded the wrong save" behaviour.
-	cmdCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
-	defer cancel()
-	result, err := r.lifecycle.ComposeExecPipe(cmdCtx, r.instance.DataDir, "server",
-		"", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}",
-		"http://localhost:8080/newgame")
-	if err != nil {
-		_, _ = jobCtx.Warn(ctx, fmt.Sprintf("创建新存档请求未正常返回（%s），服务器可能仍在后台生成，继续等待新存档落盘...",
-			paneldocker.RedactString(err.Error())))
+	commandTimeout := r.newGameCommandTimeout
+	if commandTimeout <= 0 {
+		commandTimeout = 4 * time.Minute
+	}
+	var commandErr error
+	commandTimedOut := false
+	startupSaveDetected := false
+	if !tx.record.CommandCalled {
+		// Junimo's legacy server-init flow can create the requested save during
+		// startup before its HTTP API becomes ready. Never POST /newgame on top of
+		// that already-observable result, otherwise one transaction can create two
+		// directories. The directory set was snapshotted before startup, so this
+		// check cannot confuse an old save with the requested result.
+		newDirs, scanErr := tx.newSaveDirs()
+		if scanErr != nil {
+			return &NewGameTransactionError{Code: "new_game_save_scan_failed", Message: "扫描启动期间生成的存档目录失败", Cause: scanErr}
+		}
+		if len(newDirs) > 1 {
+			err := fmt.Errorf("detected multiple new save directories before /newgame: %s", strings.Join(newDirs, ", "))
+			tx.setFailure(newGameStateAmbiguous, "new_game_ambiguous", err)
+			return &NewGameTransactionError{Code: "new_game_ambiguous", Message: "调用 /newgame 前已检测到多个新存档目录，结果不明确", Cause: err}
+		}
+		startupSaveDetected = len(newDirs) == 1
+	}
+	if startupSaveDetected {
+		_, _ = jobCtx.Info(ctx, "Junimo 启动流程已生成新存档；跳过 /newgame POST，直接验证落盘结果。")
+	} else if !tx.record.CommandCalled {
+		// Persist the irreversible fact before POST. A process crash after this
+		// point is ambiguous and must never cause an automatic second POST.
+		if err := tx.markCommandCalled(); err != nil {
+			return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录 /newgame 调用状态失败", Cause: err}
+		}
+		cmdCtx, cancel := context.WithTimeout(ctx, commandTimeout)
+		result, err := r.lifecycle.ComposeExecPipe(cmdCtx, r.instance.DataDir, "server",
+			"", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}",
+			"http://localhost:8080/newgame")
+		commandTimedOut = errors.Is(cmdCtx.Err(), context.DeadlineExceeded)
+		cancel()
+		commandErr = err
+		if err != nil {
+			_, _ = jobCtx.Warn(ctx, fmt.Sprintf("创建请求未正常返回（%s）；不重试，继续按目录差异观察结果。", paneldocker.RedactString(err.Error())))
+		} else if result.ExitCode != 0 {
+			commandErr = fmt.Errorf("newgame request exited with code %d", result.ExitCode)
+			_, _ = jobCtx.Warn(ctx, "创建请求返回失败；不重试，继续观察是否仍有存档落盘。")
+		} else {
+			_, _ = jobCtx.Info(ctx, "新存档创建请求已返回，正在验证落盘结果...")
+		}
 	} else {
-		_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档创建响应：%s", strings.TrimSpace(result.Stdout)))
+		_, _ = jobCtx.Warn(ctx, "事务已记录 /newgame 调用；不会重复 POST，仅恢复结果观察。")
+	}
+	if err := tx.mark(newGameStateObserving); err != nil {
+		return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录结果观察状态失败", Cause: err}
 	}
 
 	// Wait for the new save to appear in the Saves directory. Require the gameloader to
 	// point at a save name different from the pre-existing one so a leftover old save is
 	// never mistaken for the newly created one.
-	saveDeadline := time.Now().Add(5 * time.Minute)
+	observationTimeout := r.newGameObservationTimeout
+	if observationTimeout <= 0 {
+		observationTimeout = 5 * time.Minute
+	}
+	saveDeadline := time.Now().Add(observationTimeout)
+	stability := map[string]*newGameFileStability{}
 	for time.Now().Before(saveDeadline) {
-		data, err := os.ReadFile(gameloaderPath)
-		if err == nil {
-			var gl struct {
-				SaveNameToLoad string `json:"SaveNameToLoad"`
+		newDirs, err := tx.newSaveDirs()
+		if err != nil {
+			return &NewGameTransactionError{Code: "new_game_save_scan_failed", Message: "扫描新存档目录失败", Cause: err}
+		}
+		if len(newDirs) > 1 {
+			err := fmt.Errorf("detected multiple new save directories: %s", strings.Join(newDirs, ", "))
+			tx.setFailure(newGameStateAmbiguous, "new_game_ambiguous", err)
+			return &NewGameTransactionError{Code: "new_game_ambiguous", Message: "检测到多个新存档目录，结果不明确", Cause: err}
+		}
+		if len(newDirs) == 1 {
+			name := newDirs[0]
+			state := stability[name]
+			if state == nil {
+				state = &newGameFileStability{}
+				stability[name] = state
 			}
-			if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" && gl.SaveNameToLoad != prevSave {
-				resolvedName := gl.SaveNameToLoad
-				saveDir := filepath.Join(savesDir(r.instance.DataDir), "Saves", resolvedName)
-				if _, err := os.Stat(saveDir); err != nil {
-					// JunimoServer can write the wrong farm-name prefix into
-					// gameloader.json while still generating a correctly-suffixed
-					// save folder (e.g. pointer "test_123" but real folder
-					// "test2_123"). Recover the real name via the shared numeric
-					// suffix and heal the persisted pointer so later reads see it.
-					if fixed := suffixMatchSaveDir(r.instance.DataDir, resolvedName); fixed != "" {
-						if err := writeGameloaderPointer(r.instance.DataDir, fixed); err != nil {
-							_, _ = jobCtx.Warn(ctx, fmt.Sprintf("修正存档指针失败: %v", err))
-						} else {
-							_, _ = jobCtx.Info(ctx, fmt.Sprintf("gameloader 指针存档名有误（%s），已自动修正为：%s", resolvedName, fixed))
-							resolvedName = fixed
-							saveDir = filepath.Join(savesDir(r.instance.DataDir), "Saves", fixed)
+			validationFarmType := tx.record.ResolvedFarmType
+			if validationFarmType == "" {
+				validationFarmType = tx.record.RequestedFarmType
+			}
+			stable, validateErr := validateStableNewGameSave(r.instance.DataDir, name, validationFarmType, state)
+			if validateErr != nil {
+				return &NewGameTransactionError{Code: classifyNewGameValidationError(validateErr, tx.record.RequestedFarmType), Message: "新存档验证失败", Cause: validateErr}
+			}
+			if stable {
+				if data, readErr := os.ReadFile(gameloaderFile); readErr == nil {
+					var gl struct {
+						SaveNameToLoad string `json:"SaveNameToLoad"`
+					}
+					if json.Unmarshal(data, &gl) == nil && gl.SaveNameToLoad != "" && gl.SaveNameToLoad != name && uniqueNumericSuffixCandidate(gl.SaveNameToLoad, newDirs) == name {
+						if writeErr := writeGameloaderPointer(r.instance.DataDir, name); writeErr != nil {
+							return &NewGameTransactionError{Code: "new_game_gameloader_repair_failed", Message: "修复新存档指针失败", Cause: writeErr}
 						}
+						_, _ = jobCtx.Info(ctx, fmt.Sprintf("已将错误的 gameloader 前缀修正为：%s", name))
 					}
 				}
-				if _, err := os.Stat(saveDir); err == nil {
-					if err := EnsureDisabledModProfileForSave(r.instance.DataDir, resolvedName); err != nil {
-						_, _ = jobCtx.Warn(ctx, fmt.Sprintf("save mod profile write failed: %v", err))
-					}
-					_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档已创建：%s", resolvedName))
-					return nil
+				commitProfile := r.commitNewGameModProfile
+				if commitProfile == nil {
+					commitProfile = EnsureNewSaveModProfile
 				}
+				profileKeys := []string{}
+				if tx.record.ModSelection != nil {
+					profileKeys = append(profileKeys, tx.record.EnabledModKeys...)
+				}
+				if err := commitProfile(r.instance.DataDir, name, profileKeys); err != nil {
+					tx.record.CreatedSave = name
+					tx.setFailure(newGameStateProfilePending, "mod_profile_commit_failed", err)
+					return &NewGameTransactionError{Code: "mod_profile_commit_failed", Message: "存档已正确创建，但 Mod profile 提交失败；存档已保留且未激活，需要重试 profile commit", Cause: err}
+				}
+				if err := tx.complete(name); err != nil {
+					return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录新存档成功状态失败", Cause: err}
+				}
+				_, _ = jobCtx.Info(ctx, fmt.Sprintf("新存档已验证创建：%s（%s）", name, tx.record.RequestedFarmType))
+				return nil
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(3 * time.Second):
+			tx.setFailure(newGameStateUnknown, "new_game_outcome_unknown", ctx.Err())
+			return &NewGameTransactionError{Code: "new_game_outcome_unknown", Message: "创建结果未知，禁止自动重试", Cause: ctx.Err()}
+		case <-time.After(pollInterval):
 		}
 	}
 
-	_, _ = jobCtx.Warn(ctx, "新存档请求已发送但未检测到新存档目录，请检查服务器日志。")
-	return nil
+	if commandTimedOut || commandErr != nil && errors.Is(commandErr, context.DeadlineExceeded) {
+		err := fmt.Errorf("newgame request timed out and no new save became stable")
+		tx.setFailure(newGameStateUnknown, "new_game_outcome_unknown", err)
+		return &NewGameTransactionError{Code: "new_game_outcome_unknown", Message: "创建请求超时且未检测到可验证存档，结果未知，禁止自动重试", Cause: err}
+	}
+	if commandErr != nil {
+		return &NewGameTransactionError{Code: "new_game_command_failed", Message: "/newgame 返回失败且未生成存档", Cause: commandErr}
+	}
+	if current := readGameloaderSaveName(gameloaderFile); current != "" && current != prevSave {
+		return &NewGameTransactionError{Code: "new_game_pointer_without_save", Message: "gameloader 已变化但没有对应的新存档目录"}
+	}
+	return &NewGameTransactionError{Code: "new_game_save_not_found", Message: "/newgame 已调用但未检测到新存档目录"}
+}
+
+func readGameloaderSaveName(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var cfg struct {
+		SaveNameToLoad string `json:"SaveNameToLoad"`
+	}
+	if json.Unmarshal(data, &cfg) != nil {
+		return ""
+	}
+	return cfg.SaveNameToLoad
+}
+
+func classifyNewGameValidationError(err error, requestedFarmType string) string {
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "xml"):
+		return "new_game_xml_invalid"
+	case strings.Contains(message, "farm type mismatch"):
+		if !isBuiltinFarmType(requestedFarmType) {
+			return "farm_type_mismatch"
+		}
+		return "new_game_farm_type_mismatch"
+	default:
+		return "new_game_save_invalid"
+	}
 }
 
 // mergeInviteCodeInPayload parses existing JSON payload and injects invite_code.

@@ -57,7 +57,13 @@ function saveFarmMapSrc(save: SaveInfo): string | null {
   if (farmTypeKey) {
     return `/assets/stardew/new-game/farms/${farmTypeKey}.png`
   }
-  return null
+	return '/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png'
+}
+
+function saveFarmTypeText(save: SaveInfo): string {
+	if (!save.farmType) return '地图未知'
+	const label = save.farmTypeLabel ?? farmTypeLabel[save.farmType] ?? save.farmType
+	return label !== save.farmType && !farmTypeLabel[save.farmType] ? `${label} (${save.farmType})` : label
 }
 
 function saveProgressText(save: SaveInfo): string | null {
@@ -113,7 +119,7 @@ function SaveCard({
               {progress ?? <span className="sd-save-meta-muted">进度未知</span>}
             </div>
             <div className="sd-save-card-line sd-save-card-line-muted">
-              {save.farmType ? (farmTypeLabel[save.farmType] ?? save.farmType) : '地图未知'}
+              {saveFarmTypeText(save)}
               {save.fileSizeBytes ? ` · ${formatBytes(save.fileSizeBytes)}` : ''}
             </div>
           </>
@@ -481,7 +487,7 @@ export function SavesSection({
                     <span className="sd-saves-field-ico" aria-hidden="true">🌱</span>
                     <span className="sd-saves-field-label">农场类型</span>
                     <span className="sd-saves-field-value">
-                      {activeSave?.farmType ? (farmTypeLabel[activeSave.farmType] ?? activeSave.farmType) : '未知'}
+                      {activeSave ? saveFarmTypeText(activeSave) : '未知'}
                     </span>
                   </div>
                   <div className="sd-saves-field">

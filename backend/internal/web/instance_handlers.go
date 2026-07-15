@@ -363,6 +363,33 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleSavesPreflight(w, r, instanceID)
 		return
 	}
+	// GET /api/instances/:id/saves/farm-types
+	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "farm-types" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleFarmTypeCatalog(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/saves/farm-types/prepare
+	if len(parts) == 4 && parts[1] == "saves" && parts[2] == "farm-types" && parts[3] == "prepare" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePrepareFarmType(w, r, instanceID)
+		return
+	}
+	// GET /api/instances/:id/saves/farm-types/:farmId/icon
+	if len(parts) == 5 && parts[1] == "saves" && parts[2] == "farm-types" && parts[4] == "icon" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleFarmTypeIcon(w, r, instanceID, parts[3])
+		return
+	}
 	// GET /api/instances/:id/saves
 	if len(parts) == 2 && parts[1] == "saves" {
 		if r.Method != http.MethodGet {

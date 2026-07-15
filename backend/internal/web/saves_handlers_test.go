@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
@@ -556,4 +558,90 @@ func addModZipPart(t *testing.T, mw *multipart.Writer, filename, folderName, uni
 	if _, err := fw.Write(zipBuf.Bytes()); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestNewGameHandlerRejectsUnknownAndTrailingJSONBeforeWritingFiles(t *testing.T) {
+	handler, store, closeFn := newTestHandlerWithStore(t)
+	defer closeFn()
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username": "admin", "password": "admin-password", "confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup = %d: %s", setup.Code, setup.Body.String())
+	}
+	instance, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{
+		`{"farmName":"Farm","farmType":"standard","unknown":true}`,
+		`{"farmName":"Farm","farmType":"standard"} {}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/custom-new-game", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(adminCookie)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		if resp.Code != http.StatusBadRequest || !strings.Contains(resp.Body.String(), "invalid_json") {
+			t.Fatalf("body %q => %d: %s", body, resp.Code, resp.Body.String())
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(instance.DataDir, ".local-container", "settings", "server-settings.json"),
+		filepath.Join(instance.DataDir, ".local-container", "control", "server-init.json"),
+		filepath.Join(instance.DataDir, ".local-container", "control", "new-game-pending"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("handler wrote %s before job creation: %v", path, err)
+		}
+	}
+}
+
+func TestNewGameHandlerPassesNormalizedJobPayload(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{Addr: ":0", DataDir: dataDir, DBPath: filepath.Join(dataDir, "panel.db"), Secret: "test-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	capture := &capturingNewGameDriver{}
+	drivers := registry.New()
+	if err := drivers.Register(capture); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Deps{Config: config.Config{DataDir: dataDir, Secret: "test-secret"}, Store: store, Registry: drivers})
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username": "admin", "password": "admin-password", "confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup = %d: %s", setup.Code, setup.Body.String())
+	}
+	resp, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/custom-new-game", map[string]any{
+		"farmName": "Farm",
+	}, adminCookie)
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("create = %d: %s", resp.Code, resp.Body.String())
+	}
+	if capture.request.NewGameConfig == nil {
+		t.Fatal("normalized config not passed to lifecycle job")
+	}
+	cfg := *capture.request.NewGameConfig
+	if cfg.FarmType != "standard" || cfg.CabinLayout != "nearby" || cfg.CabinMode != "recommended" || cfg.MaxPlayers != 10 {
+		t.Fatalf("payload was not normalized: %#v", cfg)
+	}
+}
+
+type capturingNewGameDriver struct {
+	registry.GameDriver
+	request registry.StartRequest
+}
+
+func (d *capturingNewGameDriver) ID() string   { return sj.DriverID }
+func (d *capturingNewGameDriver) Name() string { return "test" }
+func (d *capturingNewGameDriver) Start(_ context.Context, request registry.StartRequest) (*registry.Job, error) {
+	d.request = request
+	return &registry.Job{ID: "job_new_game_test"}, nil
 }

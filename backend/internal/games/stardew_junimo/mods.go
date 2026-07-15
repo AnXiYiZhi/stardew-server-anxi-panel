@@ -438,28 +438,39 @@ func stripJSONTrailingCommas(data []byte) []byte {
 
 func manifestDependencies(m modManifest) []registry.ModDependency {
 	deps := make([]registry.ModDependency, 0, len(m.Dependencies)+1)
-	seen := map[string]struct{}{}
+	seen := map[string]int{}
 	add := func(dep modManifestDependency, requiredDefault bool) {
 		uniqueID := strings.TrimSpace(dep.UniqueID)
 		if uniqueID == "" {
-			return
-		}
-		if _, ok := seen[uniqueID]; ok {
 			return
 		}
 		required := requiredDefault
 		if dep.IsRequired != nil {
 			required = *dep.IsRequired
 		}
+		key := normalizeModUniqueID(uniqueID)
+		if existing, ok := seen[key]; ok {
+			// ContentPackFor is added first and is always required. If another
+			// duplicate declaration is stricter, retain the stricter semantics.
+			if required && !deps[existing].Required {
+				deps[existing].Required = true
+			}
+			if deps[existing].MinimumVersion == "" && strings.TrimSpace(dep.MinimumVersion) != "" {
+				deps[existing].MinimumVersion = strings.TrimSpace(dep.MinimumVersion)
+			}
+			return
+		}
 		deps = append(deps, registry.ModDependency{
 			UniqueID:       uniqueID,
 			MinimumVersion: strings.TrimSpace(dep.MinimumVersion),
 			Required:       required,
 		})
-		seen[uniqueID] = struct{}{}
+		seen[key] = len(deps) - 1
 	}
 	if m.ContentPackFor != nil {
-		add(*m.ContentPackFor, true)
+		contentPackFor := *m.ContentPackFor
+		contentPackFor.IsRequired = nil
+		add(contentPackFor, true)
 	}
 	for _, dep := range m.Dependencies {
 		add(dep, true)
@@ -514,6 +525,10 @@ func UploadModZip(dataDir, zipPath string) ([]registry.ModInfo, error) {
 }
 
 func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry.ModInfo, error) {
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
 	stat, err := os.Stat(zipPath)
 	if err != nil {
 		return nil, fmt.Errorf("stat upload: %w", err)
@@ -980,6 +995,10 @@ func extractModFile(f *zip.File, outPath string) error {
 // Mods imported from the same Nexus package are treated as a bundle: deleting
 // any member removes the other folders installed from that package too.
 func DeleteMod(dataDir, modID string) error {
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
 	targetFolder, err := ResolveModFolder(dataDir, modID)
 	if err != nil {
 		return err

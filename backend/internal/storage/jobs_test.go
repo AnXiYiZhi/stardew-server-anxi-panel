@@ -94,6 +94,25 @@ func TestFailInterruptedJobs(t *testing.T) {
 	}
 }
 
+func TestJobPayloadPersists(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+	job, err := store.CreateJob(context.Background(), CreateJobParams{
+		Type: "stardew_lifecycle", TargetType: "instance", TargetID: DefaultInstanceID,
+		Payload: `{"farmType":"standard","farmName":"Farm"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Payload.Valid || loaded.Payload.String != `{"farmType":"standard","farmName":"Farm"}` {
+		t.Fatalf("payload = %#v", loaded.Payload)
+	}
+}
+
 func newStorageTestStore(t *testing.T) (*Store, func()) {
 	t.Helper()
 	dataDir := t.TempDir()

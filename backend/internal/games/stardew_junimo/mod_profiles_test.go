@@ -33,6 +33,78 @@ func TestApplyNewSaveDefaultModStateDisablesNonBuiltInMods(t *testing.T) {
 	}
 }
 
+func TestEnsureNewSaveModProfilePersistsAndSwitchesExactCreationSet(t *testing.T) {
+	dir := t.TempDir()
+	const saveName = "Frontier_123"
+	root := modsDir(dir)
+	createTestMod(t, root, "Frontier Provider", "FlashShifter.FrontierFarm", "Frontier Farm")
+	createTestMod(t, root, "Content Patcher", "Pathoschild.ContentPatcher", "Content Patcher")
+	createTestMod(t, root, "Unrelated", "Example.Unrelated", "Unrelated")
+	enabledKeys := []string{"unique:FlashShifter.FrontierFarm", "unique:Pathoschild.ContentPatcher"}
+	if err := EnsureNewSaveModProfile(dir, saveName, enabledKeys); err != nil {
+		t.Fatal(err)
+	}
+	store, err := loadModProfileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := store.Saves[saveName]
+	if profile.DefaultEnabled || !profile.Mods["unique:FlashShifter.FrontierFarm"].Enabled || !profile.Mods["unique:Pathoschild.ContentPatcher"].Enabled || profile.Mods["unique:Example.Unrelated"].Enabled {
+		t.Fatalf("profile = %#v", profile)
+	}
+	if err := moveModFolder(dir, "Frontier Provider", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyModProfile(dir, saveName); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "Frontier Provider")); err != nil {
+		t.Fatalf("provider not re-enabled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(disabledModsDir(dir), "Unrelated")); err != nil {
+		t.Fatalf("unrelated Mod not disabled: %v", err)
+	}
+}
+
+func TestEnsureImportedSaveModProfileUsesXMLFarmTypeDependencyClosure(t *testing.T) {
+	dataDir := t.TempDir()
+	writeFarmCatalogMod(t, dataDir, true, "[CP] Import Farm", `{
+		"Name":"Import Farm","UniqueID":"Example.ImportFarm","Version":"1.0.0",
+		"ContentPackFor":{"UniqueID":"Pathoschild.ContentPatcher"}
+	}`, `{"Changes":[{"Action":"EditData","Target":"Data/AdditionalFarms","Entries":{"Example/Import":{"ID":"ImportFarm"}}}]}`)
+	writeFarmCatalogMod(t, dataDir, false, "Content Patcher", `{
+		"Name":"Content Patcher","UniqueID":"Pathoschild.ContentPatcher","Version":"2.0.0"
+	}`, "")
+	writeNewGameTestSave(t, dataDir, "Imported_1", "ImportFarm")
+
+	if err := EnsureImportedSaveModProfile(dataDir, "Imported_1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyModProfile(dataDir, "Imported_1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range []string{"[CP] Import Farm", "Content Patcher"} {
+		if _, err := os.Stat(filepath.Join(modsDir(dataDir), folder)); err != nil {
+			t.Fatalf("required imported-save component %q not enabled: %v", folder, err)
+		}
+	}
+}
+
+func TestEnsureImportedOfficialSaveKeepsThirdPartyDisabled(t *testing.T) {
+	dataDir := t.TempDir()
+	writeNewGameTestMod(t, dataDir, true, "Third Party", "Example.ThirdParty")
+	writeNewGameTestSave(t, dataDir, "Official_1", "0")
+	if err := EnsureImportedSaveModProfile(dataDir, "Official_1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyModProfile(dataDir, "Official_1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(disabledModsDir(dataDir), "Third Party")); err != nil {
+		t.Fatalf("official imported save did not disable third-party mod: %v", err)
+	}
+}
+
 func TestSetModEnabledForSavePersistsAndAppliesProfile(t *testing.T) {
 	dir := t.TempDir()
 	root := modsDir(dir)

@@ -51,7 +51,7 @@ jobs:
           bash scripts/tests/test_run_sh_update.sh
           (cd backend && go test ./...)
           (cd backend && go test -tags=integration ./internal/docker)
-          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run build)
+          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:farm-catalog && npm run build)
 
       - name: Prepare release metadata
         id: meta

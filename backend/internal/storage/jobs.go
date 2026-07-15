@@ -37,6 +37,7 @@ type Job struct {
 	StartedAt    sql.NullString
 	FinishedAt   sql.NullString
 	ErrorMessage sql.NullString
+	Payload      sql.NullString
 	UpdatedAt    string
 }
 
@@ -55,6 +56,7 @@ type CreateJobParams struct {
 	TargetType  string
 	TargetID    string
 	CreatedBy   int64
+	Payload     string
 }
 
 type ListJobsFilter struct {
@@ -83,10 +85,10 @@ func (s *Store) CreateJob(ctx context.Context, params CreateJobParams) (Job, err
 		return Job{}, err
 	}
 	row := s.db.QueryRowContext(ctx, `
-		INSERT INTO jobs (id, type, display_name, status, target_type, target_id, created_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
-	`, id, params.Type, nullStringParam(params.DisplayName), JobStatusQueued, params.TargetType, params.TargetID, optionalCreatedBy(params.CreatedBy))
+		INSERT INTO jobs (id, type, display_name, status, target_type, target_id, created_by, payload)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
+	`, id, params.Type, nullStringParam(params.DisplayName), JobStatusQueued, params.TargetType, params.TargetID, optionalCreatedBy(params.CreatedBy), nullStringParam(params.Payload))
 	return scanJobRow(row)
 }
 
@@ -95,7 +97,7 @@ func (s *Store) StartJob(ctx context.Context, id string) (Job, error) {
 		UPDATE jobs
 		SET status = ?, started_at = COALESCE(started_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ?
-		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 	`, JobStatusRunning, id)
 	return scanJobRow(row)
 }
@@ -105,7 +107,7 @@ func (s *Store) FinishJob(ctx context.Context, id string) (Job, error) {
 		UPDATE jobs
 		SET status = ?, finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), error_message = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ?
-		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 	`, JobStatusSucceeded, id)
 	return scanJobRow(row)
 }
@@ -115,7 +117,7 @@ func (s *Store) FailJob(ctx context.Context, id string, errorMessage string) (Jo
 		UPDATE jobs
 		SET status = ?, finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), error_message = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ?
-		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 	`, JobStatusFailed, errorMessage, id)
 	return scanJobRow(row)
 }
@@ -125,14 +127,14 @@ func (s *Store) CancelJob(ctx context.Context, id string, errorMessage string) (
 		UPDATE jobs
 		SET status = ?, finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), error_message = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		WHERE id = ?
-		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 	`, JobStatusCanceled, errorMessage, id)
 	return scanJobRow(row)
 }
 
 func (s *Store) ListActiveJobs(ctx context.Context, filter ListActiveJobsFilter) ([]Job, error) {
 	query := `
-		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 		FROM jobs
 		WHERE status IN (?, ?)
 	`
@@ -180,7 +182,7 @@ func (s *Store) ListActiveJobs(ctx context.Context, filter ListActiveJobsFilter)
 
 func (s *Store) GetJob(ctx context.Context, id string) (Job, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 		FROM jobs
 		WHERE id = ?
 	`, id)
@@ -194,7 +196,7 @@ func (s *Store) ListJobs(ctx context.Context, filter ListJobsFilter) ([]Job, err
 	}
 
 	query := `
-		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 		FROM jobs
 	`
 	args := []any{}
@@ -364,7 +366,7 @@ func (s *Store) ListJobLogs(ctx context.Context, jobID string, afterSequence int
 
 func (s *Store) ListInterruptedJobs(ctx context.Context) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, updated_at
+		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 		FROM jobs
 		WHERE status IN (?, ?)
 		ORDER BY created_at ASC
@@ -424,7 +426,7 @@ func IsValidJobLogLevel(level string) bool {
 
 func scanJobRow(row *sql.Row) (Job, error) {
 	var job Job
-	if err := row.Scan(&job.ID, &job.Type, &job.DisplayName, &job.Status, &job.TargetType, &job.TargetID, &job.CreatedBy, &job.CreatedAt, &job.StartedAt, &job.FinishedAt, &job.ErrorMessage, &job.UpdatedAt); err != nil {
+	if err := row.Scan(&job.ID, &job.Type, &job.DisplayName, &job.Status, &job.TargetType, &job.TargetID, &job.CreatedBy, &job.CreatedAt, &job.StartedAt, &job.FinishedAt, &job.ErrorMessage, &job.Payload, &job.UpdatedAt); err != nil {
 		return Job{}, mapScanErr(err, "scan job")
 	}
 	return job, nil
@@ -432,7 +434,7 @@ func scanJobRow(row *sql.Row) (Job, error) {
 
 func scanJob(rows *sql.Rows) (Job, error) {
 	var job Job
-	if err := rows.Scan(&job.ID, &job.Type, &job.DisplayName, &job.Status, &job.TargetType, &job.TargetID, &job.CreatedBy, &job.CreatedAt, &job.StartedAt, &job.FinishedAt, &job.ErrorMessage, &job.UpdatedAt); err != nil {
+	if err := rows.Scan(&job.ID, &job.Type, &job.DisplayName, &job.Status, &job.TargetType, &job.TargetID, &job.CreatedBy, &job.CreatedAt, &job.StartedAt, &job.FinishedAt, &job.ErrorMessage, &job.Payload, &job.UpdatedAt); err != nil {
 		return Job{}, fmt.Errorf("scan job: %w", err)
 	}
 	return job, nil

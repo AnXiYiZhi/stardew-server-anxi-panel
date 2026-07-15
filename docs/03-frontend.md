@@ -1,3 +1,19 @@
+# FE-FARM-MOD-PREPARE-1 模组农场依赖状态与一键准备（2026-07-15）
+
+- 模组卡消费目录响应的 `modSelection`，展示“依赖完整”“有 N 个依赖尚未启用”“缺少：UniqueID”或 FarmType 冲突；missing/conflict 不提供准备按钮。
+- `needs_enable` 卡提供“一键准备”。点击后必须先在确认弹窗逐项查看将启用组件的名称、版本和 UniqueID；确认请求只发送 `farmTypeId`，不能提交路径或自选 Mod 列表。成功后重新读取目录并显示实际启用数量，明确服务器不会自动启动。
+- 准备按钮不选择农场、不修改 `NewGameConfig.farmType`。现有 builtin ID 提交硬校验保持不变，模组卡仍显示运行时验证锁定说明，不能创建模组农场。
+- 新增 `NewGameModSelection/NewGameModComponent` 类型、`prepareFarmTypeMods` API、依赖状态/确认组件纯函数测试以及确认弹窗样式。请求和目录加载均在卸载时取消；验证：`npm.cmd run test:farm-catalog`、`npm.cmd run build`。
+
+# FE-FARM-CATALOG-READONLY-1 新建游戏页只读模组农场目录（2026-07-15）
+
+- `NewGameCreator` 打开时单次读取当前实例的农场目录；官方区域继续使用原有 8 种静态列表和素材，选择与提交行为未改变。目录失败只显示非阻断提示，不清空官方区域、不无限重试。
+- 新增“检测到的模组农场”卡片区，展示 label、MOD 标记、FarmType ID、provider/版本、enabled/disabled、conflict、说明和受控图标。无图标或图片 404 时切换固定占位图，卡片不会消失。
+- 模组卡片调整为单列全宽横卡，缩小图标并把说明限制为两行，避免双列窄卡造成中文逐字换行。目录内部解析 warnings 不在新建游戏页展示；页面只呈现成功识别出的农场卡片，只有目录请求整体失败时才保留不阻断官方创建的错误提示。
+- 所有模组卡片是无交互的 `article`，固定显示“已检测到该模组农场，创建能力将在完成运行时验证后开放。”；它们不会写入表单状态。提交前另用官方 ID 集合做硬校验，DOM/键盘无法从该组件提交模组 FarmType。
+- 新增目录响应类型、`getFarmTypeCatalog`、纯状态控制器和 `test:farm-catalog`。卸载时 AbortController 取消请求并阻止完成回调更新状态。验证：`npm.cmd run test:farm-catalog`、`npm.cmd run build`。
+- 当前仍没有模组农场选择或创建能力；下一阶段需完成依赖与运行时验证后，再单独设计开放条件。
+
 # FE-JUNIMO-CONFIG-REPAIR-1 修复并升级单卡片流程（2026-07-15）
 
 - 版本维护卡片识别 `repairable=true` 后显示“Junimo 配置可自动修复并升级”和唯一操作“修复并升级”，不再把可信旧候选混合配置一律丢给管理员手工改 `.env`。
@@ -2172,6 +2188,18 @@ npm.cmd run dev
 诊断页增加统一版本总览，按 Junimo server/auth、游戏/SDK、SMAPI/控制 Mod 三组显示当前值与当前 Panel 内嵌目标，同时展示 stackVersion、stable/preview 通道、minimumPanelVersion 以及 recommended/withdrawn 状态。用户升级 Panel 后，页面直接比较已安装组件与该 Panel 指定版本并提示对应升级。每组链接到原有独立事务入口，并说明停服、验收、回滚及完整玩家同步包影响。
 
 界面不提供“全部更新到 latest”按钮。withdrawn 与非 recommended 状态使用风险徽标，后端门禁同时禁止操作。矩阵卡片、镜像引用和阶段日志均设置可换行；620px 以下三组改为单列，避免长 digest、buildid 或镜像名导致横向溢出。
+
+## 2026-07-15：显式模组农场创建入口
+
+- 后端开关开启时，仅 enabled、dependenciesReady、无 conflict、explicit confidence 且 selectable 的卡片可选；高级设置可填 `Data/AdditionalFarms` ID，未知值不静默回落。`modded` 只在唯一候选时提示。
+- 保存列表桌面/移动端显示 `label (ID)`；custom/无预览使用固定占位图。补充创建错误文案。
+- 模组卡区域向左展开，1280px 浏览器实测约 400px；390px 移动端无横向溢出并显示“边境农场 (FrontierFarm)”。`test:farm-catalog` 与 production build 通过。隔离真实 SVE E2E 已确认目录/存档 API 在创建、重启及 `FrontierFarm → Standard → FrontierFarm` 切换后持续返回 `边境农场 (FrontierFarm)`；默认开关仍关闭。
+
+## 2026-07-15：模组农场发布前兼容门禁
+
+- 混合版本安全默认：旧后端响应缺少 `moddedCreationEnabled` 时前端严格按 false 处理，不会因 `undefined` 意外开放。旧控制 Mod、disabled/missing/conflict、API 500、icon 404、unknown 与 rollback_failed 均保持不可选择或非成功状态。
+- 发布与兼容矩阵 workflow 已加入 `npm run test:farm-catalog`；该脚本覆盖 feature 开关、官方 8 项、ready/disabled/missing/conflict、单/多 modded、图片 fallback、API 失败和卸载取消。
+- 既有 1280px 与 390px 浏览器证据仍有效，本轮代码没有改 CSS；本轮 in-app Browser 被客户端策略阻止访问 localhost，因此 900px 与 console-error 复验未冒充通过，列入发版前人工灰度清单。
 # FE-COMPONENT-UPDATE-CARD-1 卡片内一键升级进度（2026-07-14）
 
 - “版本维护”中的 Junimo 与 SMAPI 更新改为用户视角的一键流程：管理员确认一次后，在当前卡片内依次展示校验、下载、安装和验收，不再要求进入多层技术区重复点击。

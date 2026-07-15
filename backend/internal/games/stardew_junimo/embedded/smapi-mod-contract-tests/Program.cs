@@ -76,4 +76,90 @@ Expect(tracker.Begin(command, true, now, TimeSpan.FromSeconds(30)), CommandStatu
 if (tracker.Expire(now.AddSeconds(29)) is not null)
     throw new InvalidOperationException("save command expired before its deadline");
 Expect(tracker.Expire(now.AddSeconds(31))!, CommandStatuses.Failed, "save_timeout");
+
+var frontier = new RuntimeFarmType("FrontierFarm", "边境农场", false);
+var meadowlands = new RuntimeFarmType("MeadowlandsFarm", "草原农场", false, "builtin");
+var secondMod = new RuntimeFarmType("SecondFarm", "Second", true);
+
+var explicitFrontier = NewGameControlContract.ResolveFarmType("FrontierFarm", new[] { meadowlands, frontier });
+if (!explicitFrontier.Resolved || explicitFrontier.ResolvedFarmType != "FrontierFarm" || explicitFrontier.WhichFarm != 7 || explicitFrontier.ModFarm?.Id != "FrontierFarm")
+    throw new InvalidOperationException("FrontierFarm explicit runtime ID was not resolved");
+if (NewGameControlContract.CatalogContainsRequestedFarm(new[] { new OptionItem { Id = "standard" } }, "FrontierFarm"))
+    throw new InvalidOperationException("early catalog must not resolve FrontierFarm");
+if (!NewGameControlContract.CatalogContainsRequestedFarm(new[] { new OptionItem { Id = "FrontierFarm" } }, "FrontierFarm"))
+    throw new InvalidOperationException("refreshed catalog must resolve FrontierFarm");
+var unknownFarm = NewGameControlContract.ResolveFarmType("MissingFarm", new[] { frontier });
+if (unknownFarm.Resolved || unknownFarm.WhichFarm != 0 || unknownFarm.ResolvedFarmType != "standard" || unknownFarm.Warning.Length == 0)
+    throw new InvalidOperationException("unknown farm incorrectly reported resolved");
+if (NewGameControlContract.ResolveFarmType("modded", Array.Empty<RuntimeFarmType>()).Resolved)
+    throw new InvalidOperationException("modded without farms must fail");
+if (NewGameControlContract.ResolveFarmType("modded", new[] { frontier }).ResolvedFarmType != "FrontierFarm")
+    throw new InvalidOperationException("single modded farm was not selected");
+if (NewGameControlContract.ResolveFarmType("modded", new[] { frontier, secondMod }).ResolvedFarmType != "FrontierFarm")
+    throw new InvalidOperationException("first true modded farm was not selected deterministically");
+if (NewGameControlContract.ResolveFarmType("modded", new[] { meadowlands, frontier }).ResolvedFarmType != "FrontierFarm")
+    throw new InvalidOperationException("MeadowlandsFarm was not excluded from generic modded selection");
+if (!NewGameControlContract.ResolveFarmType("FourCorners", Array.Empty<RuntimeFarmType>()).Resolved)
+    throw new InvalidOperationException("FourCorners alias was not accepted");
+if (!NewGameControlContract.ResolveFarmType("MeadowlandsFarm", new[] { meadowlands }).Resolved)
+    throw new InvalidOperationException("MeadowlandsFarm was not accepted");
+
+var init = new InitConfig { TransactionId = command.Id };
+var marker = new PendingNewGameMarker
+{
+    SchemaVersion = 1,
+    TransactionId = command.Id,
+    RequestedFarmType = "FrontierFarm",
+    CreatedAt = now,
+    ExpiresAt = now.AddMinutes(10),
+    State = "pending",
+};
+if (!NewGameControlContract.ValidateMarker(marker, init, now).Valid)
+    throw new InvalidOperationException("matching transaction marker was rejected");
+if (NewGameControlContract.ValidateMarker(marker, new InitConfig { TransactionId = otherSave.Id }, now).ErrorCode != "transaction_mismatch")
+    throw new InvalidOperationException("mismatched transaction marker was accepted");
+marker.ExpiresAt = now.AddSeconds(-1);
+if (NewGameControlContract.ValidateMarker(marker, init, now).ErrorCode != "marker_expired")
+    throw new InvalidOperationException("expired marker was accepted");
+if (NewGameControlContract.ShouldClearMarkerOnSaveLoaded)
+    throw new InvalidOperationException("SaveLoaded must not clear an active backend transaction marker");
+
+var fingerprintA = NewGameControlContract.ComputeModFingerprint(new[]
+{
+    new LoadedModItem { UniqueId = "FlashShifter.SVECode", Version = "1.0.0" },
+    new LoadedModItem { UniqueId = "Pathoschild.ContentPatcher", Version = "2.0.0" },
+});
+var fingerprintB = NewGameControlContract.ComputeModFingerprint(new[]
+{
+    new LoadedModItem { UniqueId = "pathoschild.contentpatcher", Version = "2.0.0" },
+    new LoadedModItem { UniqueId = "flashshifter.svecode", Version = "1.0.0" },
+});
+if (fingerprintA != fingerprintB || fingerprintA != "0bc44377624ec2e2b98cda195b9df9ba06d9feed38be9c83991566d42bc12e22")
+    throw new InvalidOperationException("mod fingerprint is not stable under sorting/case normalization");
+
+var request = new FarmCatalogRequest
+{
+    SchemaVersion = 1, RequestId = command.Id, TransactionId = command.Id,
+    GeneratedAt = now, ExpiresAt = now.AddMinutes(1), RequestedFarmType = "FrontierFarm",
+};
+if (!NewGameControlContract.IsFreshCatalogRequest(request, now))
+    throw new InvalidOperationException("fresh matching catalog request was rejected");
+request.TransactionId = otherSave.Id;
+if (NewGameControlContract.IsFreshCatalogRequest(request, now))
+    throw new InvalidOperationException("mismatched catalog request was accepted");
+
+var atomicDir = Path.Combine(Path.GetTempPath(), "sap-contract-" + Guid.NewGuid().ToString("N"));
+var atomicPath = Path.Combine(atomicDir, "options.json");
+try
+{
+    ContractFile.WriteJsonAtomic(atomicPath, new PanelOptions { RequestId = command.Id, TransactionId = command.Id });
+    var parsed = System.Text.Json.JsonSerializer.Deserialize<PanelOptions>(File.ReadAllText(atomicPath), ContractJson.Options);
+    if (parsed?.RequestId != command.Id || Directory.GetFiles(atomicDir, ".tmp-*").Length != 0)
+        throw new InvalidOperationException("options atomic write did not publish exactly one complete file");
+}
+finally
+{
+    if (Directory.Exists(atomicDir))
+        Directory.Delete(atomicDir, true);
+}
 Console.WriteLine("control command outcome branch tests passed");
