@@ -1,8 +1,18 @@
-import { useEffect, useState } from 'react'
-import { ApiError, exportSave, getSaveBackups, restoreSaveBackup, uploadSavePreview, uploadSaveCommitAndStart } from '../../../api'
+import { useEffect, useRef, useState } from 'react'
+import { ApiError, cancelSaveUploadPreview, exportSave, getSaveBackups, restoreSaveBackup, uploadSavePreview, uploadSaveCommitAndStart } from '../../../api'
 import type { BackupInfo, SaveInfo, UploadPreviewResult } from '../../../types'
 import { errorMessage, formatBytes, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
+import {
+  findActiveSaveImportJob,
+  findLatestSaveImportJob,
+  saveImportErrorPresentation,
+  saveImportJobStage,
+  saveImportRuntimeUnsupported,
+  saveImportSubmissionDisabled,
+  type SaveImportDecisionDraft,
+  validateSaveImportDecision,
+} from '../save-import'
 import './MobileSavesPage.css'
 
 type MobileSavesPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
@@ -109,11 +119,28 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
   const [uploadPreview, setUploadPreview] = useState<UploadPreviewResult | null>(null)
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadMessage, setUploadMessage] = useState<string | null>(null)
+  const [uploadMessageTone, setUploadMessageTone] = useState<'error' | 'warning'>('error')
+  const [uploadRetryBlocked, setUploadRetryBlocked] = useState(false)
+  const [importDecision, setImportDecision] = useState<SaveImportDecisionDraft>({ mode: null, platformId: '', takeoverAcknowledged: false })
+  const uploadSubmittingRef = useRef(false)
 
   const savesResult = dashboardData.saves
   const savesLoading = dashboardData.loading && savesResult === null
   const saveRows = savesResult?.saves ?? []
   const activeSaveName = savesResult?.activeSaveName?.trim() ?? ''
+  const activeImportJob = findActiveSaveImportJob(dashboardData.jobs)
+  const latestImportJob = findLatestSaveImportJob(dashboardData.jobs)
+  const importJobStage = latestImportJob
+    ? saveImportJobStage(latestImportJob, dashboardData.jobLogsByJobId[latestImportJob.id] ?? [])
+    : null
+  const runtimeUnsupported = saveImportRuntimeUnsupported(instanceState)
+  const importSubmitDisabled = saveImportSubmissionDisabled({
+    draft: importDecision,
+    uploadBusy,
+    generalBusy: uploadRetryBlocked || isRunning,
+    runtimeUnsupported,
+    activeImport: activeImportJob !== null,
+  })
 
   const activeSave =
     saveRows.find((save) => save.isActive || (activeSaveName !== '' && save.name === activeSaveName)) ?? null
@@ -220,11 +247,14 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
   }
 
   function openUpload() {
-    if (!isAdmin || isRunning) return
+    if (!isAdmin || isRunning || runtimeUnsupported || activeImportJob) return
     setUploadOpen(true)
     setUploadFile(null)
     setUploadPreview(null)
     setUploadMessage(null)
+    setUploadMessageTone('error')
+    setUploadRetryBlocked(false)
+    setImportDecision({ mode: null, platformId: '', takeoverAcknowledged: false })
   }
 
   async function handleUploadPreview() {
@@ -234,6 +264,8 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
     try {
       const res = await uploadSavePreview(uploadFile)
       setUploadPreview(res)
+      setImportDecision({ mode: null, platformId: '', takeoverAcknowledged: false })
+      setUploadRetryBlocked(false)
     } catch (e) {
       setUploadMessage(errorMessage(e))
     } finally {
@@ -242,11 +274,14 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
   }
 
   async function handleUploadCommit() {
-    if (!uploadPreview) return
+    if (!uploadPreview || uploadSubmittingRef.current) return
+    const validation = validateSaveImportDecision(importDecision)
+    if (!validation.valid || !validation.hostHandling || importSubmitDisabled) return
+    uploadSubmittingRef.current = true
     setUploadBusy(true)
     setUploadMessage(null)
     try {
-      await uploadSaveCommitAndStart(uploadPreview.token)
+      await uploadSaveCommitAndStart(uploadPreview.token, validation.hostHandling)
       setUploadOpen(false)
       setUploadPreview(null)
       setUploadFile(null)
@@ -255,8 +290,12 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
       dashboardData.refreshJobs()
       void dashboardData.refreshSaves()
     } catch (e) {
-      setUploadMessage(errorMessage(e))
+      const presentation = saveImportErrorPresentation(e)
+      setUploadMessage(presentation.message)
+      setUploadMessageTone(presentation.tone)
+      setUploadRetryBlocked(presentation.retryBlocked)
     } finally {
+      uploadSubmittingRef.current = false
       setUploadBusy(false)
     }
   }
@@ -264,12 +303,15 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
   function handleUploadCancel() {
     if (uploadPreview) {
       // 尽力清理挂起的 token，和桌面版同一处理，失败静默忽略
-      void uploadSaveCommitAndStart(uploadPreview.token, true).catch(() => {})
+      void cancelSaveUploadPreview(uploadPreview.token).catch(() => {})
     }
     setUploadOpen(false)
     setUploadPreview(null)
     setUploadFile(null)
     setUploadMessage(null)
+    setUploadMessageTone('error')
+    setUploadRetryBlocked(false)
+    setImportDecision({ mode: null, platformId: '', takeoverAcknowledged: false })
   }
 
   return (
@@ -444,10 +486,14 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
               <button
                 type="button"
                 className="sd-btn-tan sd-msave-op-btn"
-                disabled={!isAdmin || isRunning}
+                disabled={!isAdmin || isRunning || runtimeUnsupported || activeImportJob !== null}
                 title={
                   !isAdmin
                     ? '仅管理员可执行此操作'
+                    : runtimeUnsupported
+                      ? '当前 Junimo 运行版本不支持安全导入'
+                      : activeImportJob
+                        ? '已有导入任务正在进行'
                     : isRunning
                       ? '服务器运行中，请先停止后再上传存档'
                       : '上传本地 Stardew Valley 存档 ZIP'
@@ -462,12 +508,20 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
         </>
       )}
 
+      {latestImportJob && importJobStage ? (
+        <section className={`sd-panel sd-msave-import-job sd-msave-import-job--${importJobStage.tone}`} role="status">
+          <strong>{importJobStage.label}</strong>
+          <span>任务 {latestImportJob.id.slice(0, 10)} · {latestImportJob.status}</span>
+          <small>{activeImportJob ? '关闭弹窗不会取消后端事务' : '状态已从任务记录恢复'}</small>
+        </section>
+      ) : null}
+
       {uploadOpen ? (
         <div className="sd-msave-dialog-overlay" role="dialog" aria-modal="true">
           <div className="sd-panel sd-msave-dialog">
             <h3>导入存档</h3>
 
-            {uploadMessage ? <div className="sd-notice sd-notice--error sd-msave-notice">{uploadMessage}</div> : null}
+            {uploadMessage ? <div className={`sd-notice ${uploadMessageTone === 'warning' ? 'sd-msave-import-warning' : 'sd-notice--error'} sd-msave-notice`}>{uploadMessage}</div> : null}
 
             {!uploadPreview ? (
               <>
@@ -549,7 +603,58 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
                     </div>
                   ) : null}
                 </div>
-                <p className="sd-msave-dialog-text">确认后将导入存档并启动服务器。</p>
+                <fieldset className="sd-msave-import-options">
+                  <legend>原主机角色处理方式</legend>
+                  <label className={`sd-msave-import-option ${importDecision.mode === 'swap_to_player' ? 'is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="mobile-save-import-host-mode"
+                      checked={importDecision.mode === 'swap_to_player'}
+                      onChange={() => setImportDecision((current) => ({ ...current, mode: 'swap_to_player', takeoverAcknowledged: false }))}
+                      disabled={uploadBusy || activeImportJob !== null}
+                    />
+                    <span><strong>保留原主机角色给玩家使用</strong><small>推荐。用于把原角色绑定回原玩家；技能、物品、关系、住宅和家庭迁移由 Junimo 处理。</small></span>
+                  </label>
+                  {importDecision.mode === 'swap_to_player' ? (
+                    <label className="sd-msave-import-platform">
+                      <span>原主机平台 ID</span>
+                      <input
+                        className="sd-input"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={importDecision.platformId}
+                        onChange={(event) => setImportDecision((current) => ({ ...current, platformId: event.target.value }))}
+                        placeholder="Steam64 / GOG ID"
+                        disabled={uploadBusy || activeImportJob !== null}
+                      />
+                      <small>支持 Steam64/GOG ID，仅允许十进制数字，并始终按字符串提交。</small>
+                    </label>
+                  ) : null}
+                  <label className={`sd-msave-import-option sd-msave-import-option--danger ${importDecision.mode === 'virtual_host_takeover' ? 'is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="mobile-save-import-host-mode"
+                      checked={importDecision.mode === 'virtual_host_takeover'}
+                      onChange={() => setImportDecision((current) => ({ ...current, mode: 'virtual_host_takeover', platformId: '', takeoverAcknowledged: false }))}
+                      disabled={uploadBusy || activeImportJob !== null}
+                    />
+                    <span><strong>由 Junimo 虚拟主机接管原角色</strong><small>高风险：原玩家之后可能无法再选择该角色。</small></span>
+                  </label>
+                  {importDecision.mode === 'virtual_host_takeover' ? (
+                    <label className="sd-msave-import-ack">
+                      <input
+                        type="checkbox"
+                        checked={importDecision.takeoverAcknowledged}
+                        onChange={(event) => setImportDecision((current) => ({ ...current, takeoverAcknowledged: event.target.checked }))}
+                        disabled={uploadBusy || activeImportJob !== null}
+                      />
+                      <span>我明白原主机角色将由虚拟主机接管，原玩家可能无法再选择该角色。</span>
+                    </label>
+                  ) : null}
+                </fieldset>
+                {runtimeUnsupported ? <div className="sd-notice sd-notice--error sd-msave-notice">当前 Junimo 运行版本不支持安全导入，请先升级运行组件。</div> : null}
+                {activeImportJob ? <div className="sd-notice sd-notice--error sd-msave-notice">已有导入任务正在进行，不能重复提交。</div> : null}
                 <div className="sd-msave-dialog-actions">
                   <button
                     type="button"
@@ -563,9 +668,9 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
                     type="button"
                     className="sd-btn-green sd-msave-dialog-btn"
                     onClick={() => void handleUploadCommit()}
-                    disabled={uploadBusy}
+                    disabled={importSubmitDisabled}
                   >
-                    {uploadBusy ? '导入中…' : '导入并启动'}
+                    {uploadBusy ? '正在创建导入任务…' : '确认并开始导入'}
                   </button>
                 </div>
               </>

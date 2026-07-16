@@ -75,6 +75,28 @@ type StartRequest struct {
 	NewGameConfig *NewGameConfig // Normalized, validated payload persisted by the lifecycle transaction.
 }
 
+// SaveImportRequest starts the durable save-import transaction. PlatformID is
+// deliberately transient: drivers must only persist a one-way fingerprint.
+type SaveImportRequest struct {
+	Instance    Instance
+	ActorID     int64
+	OperationID string
+	Token       string
+	StagedDir   string
+	// TransferSourceOwnership moves the durable upload payload into the
+	// operation-owned source directory. It is transient and never persisted.
+	TransferSourceOwnership func(targetDir string) error
+	SaveName                string
+	HostHandling            string
+	PlatformID              string
+}
+
+// SaveImportStarter is an optional driver capability used by the web layer.
+// Keeping it separate avoids widening the contract for unrelated game drivers.
+type SaveImportStarter interface {
+	ImportSaveAndStart(ctx context.Context, req SaveImportRequest) (*Job, error)
+}
+
 type Job struct {
 	ID string `json:"id"`
 }

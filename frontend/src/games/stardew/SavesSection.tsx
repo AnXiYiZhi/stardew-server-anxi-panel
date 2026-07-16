@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Job, JobLog, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
 import {
   defaultInstanceId,
   getSaves,
@@ -8,6 +8,7 @@ import {
   deleteSave,
   exportSave,
   createNewGame,
+  cancelSaveUploadPreview,
   uploadSavePreview,
   uploadSaveCommitAndStart,
 } from '../../api'
@@ -17,6 +18,15 @@ import { NewGameCreator } from './NewGameCreator'
 import type { StardewSaveActionRequest } from './stardew-routes'
 import { useSaveBackups } from './useSaveBackups'
 import { useSaveRestore } from './useSaveRestore'
+import {
+  findActiveSaveImportJob,
+  findLatestSaveImportJob,
+  saveImportErrorPresentation,
+  saveImportJobStage,
+  saveImportSubmissionDisabled,
+  type SaveImportDecisionDraft,
+  validateSaveImportDecision,
+} from './save-import'
 
 const seasonLabel: Record<string, string> = {
   spring: '春', summer: '夏', fall: '秋', winter: '冬',
@@ -159,6 +169,9 @@ export function SavesSection({
   onSavesChanged,
   refreshTrigger,
   saveActionRequest,
+  jobs,
+  jobLogsByJobId,
+  runtimeUnsupported,
 }: {
   state: string
   isAdmin: boolean
@@ -167,6 +180,9 @@ export function SavesSection({
   onSavesChanged?: () => void
   refreshTrigger?: number
   saveActionRequest?: StardewSaveActionRequest | null
+  jobs: Job[]
+  jobLogsByJobId: Record<string, JobLog[]>
+  runtimeUnsupported: boolean
 }) {
   const [data, setData] = useState<SavesListResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -187,6 +203,14 @@ export function SavesSection({
   const [uploadPreview, setUploadPreview] = useState<UploadPreviewResult | null>(null)
   const [uploadBusy, setUploadBusy] = useState(false)
   const [uploadMessage, setUploadMessage] = useState('')
+  const [uploadMessageTone, setUploadMessageTone] = useState<'error' | 'warning'>('error')
+  const [uploadRetryBlocked, setUploadRetryBlocked] = useState(false)
+  const [importDecision, setImportDecision] = useState<SaveImportDecisionDraft>({
+    mode: null,
+    platformId: '',
+    takeoverAcknowledged: false,
+  })
+  const uploadSubmittingRef = useRef(false)
 
   const loadSaves = useCallback(async () => {
     setLoading(true)
@@ -202,6 +226,18 @@ export function SavesSection({
   }, [])
 
   const saves = data?.saves ?? []
+  const activeImportJob = findActiveSaveImportJob(jobs)
+  const latestImportJob = findLatestSaveImportJob(jobs)
+  const importJobStage = latestImportJob
+    ? saveImportJobStage(latestImportJob, jobLogsByJobId[latestImportJob.id] ?? [])
+    : null
+  const importSubmitDisabled = saveImportSubmissionDisabled({
+    draft: importDecision,
+    uploadBusy,
+    generalBusy: busy || uploadRetryBlocked || isRunning,
+    runtimeUnsupported,
+    activeImport: activeImportJob !== null,
+  })
 
   const {
     backupsLoading,
@@ -268,7 +304,7 @@ export function SavesSection({
   }, [state])
 
   useEffect(() => {
-    if (!saveActionRequest || !isAdmin || isRunning) return
+    if (!saveActionRequest || !isAdmin || isRunning || runtimeUnsupported || activeImportJob) return
     document.getElementById('saves-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setMessage('')
     if (saveActionRequest.action === 'new') {
@@ -277,8 +313,8 @@ export function SavesSection({
       return
     }
     setShowNewGameModal(false)
-    setShowUploadModal(true)
-  }, [saveActionRequest?.nonce, saveActionRequest?.action, isAdmin, isRunning])
+    openUploadModal()
+  }, [saveActionRequest?.nonce, saveActionRequest?.action, isAdmin, isRunning, runtimeUnsupported, activeImportJob?.id])
 
   async function handleSelect(name: string) {
     setBusy(true)
@@ -374,6 +410,8 @@ export function SavesSection({
     try {
       const res = await uploadSavePreview(uploadFile)
       setUploadPreview(res)
+      setImportDecision({ mode: null, platformId: '', takeoverAcknowledged: false })
+      setUploadRetryBlocked(false)
     } catch (error) {
       setUploadMessage(errorMessage(error))
     } finally {
@@ -382,11 +420,14 @@ export function SavesSection({
   }
 
   async function handleUploadCommit() {
-    if (!uploadPreview) return
+    if (!uploadPreview || uploadSubmittingRef.current) return
+    const validation = validateSaveImportDecision(importDecision)
+    if (!validation.valid || !validation.hostHandling || importSubmitDisabled) return
+    uploadSubmittingRef.current = true
     setUploadBusy(true)
     setUploadMessage('')
     try {
-      const res = await uploadSaveCommitAndStart(uploadPreview.token)
+      const res = await uploadSaveCommitAndStart(uploadPreview.token, validation.hostHandling)
       setShowUploadModal(false)
       setUploadPreview(null)
       setUploadFile(null)
@@ -395,8 +436,12 @@ export function SavesSection({
       onStateRefresh()
       onSavesChanged?.()
     } catch (error) {
-      setUploadMessage(errorMessage(error))
+      const presentation = saveImportErrorPresentation(error)
+      setUploadMessage(presentation.message)
+      setUploadMessageTone(presentation.tone)
+      setUploadRetryBlocked(presentation.retryBlocked)
     } finally {
+      uploadSubmittingRef.current = false
       setUploadBusy(false)
     }
   }
@@ -404,12 +449,24 @@ export function SavesSection({
   function handleUploadCancel() {
     if (uploadPreview) {
       // 尽力清理挂起的 token
-      void uploadSaveCommitAndStart(uploadPreview.token, true).catch(() => {})
+      void cancelSaveUploadPreview(uploadPreview.token).catch(() => {})
     }
     setShowUploadModal(false)
     setUploadPreview(null)
     setUploadFile(null)
     setUploadMessage('')
+    setUploadMessageTone('error')
+    setUploadRetryBlocked(false)
+    setImportDecision({ mode: null, platformId: '', takeoverAcknowledged: false })
+  }
+
+  function openUploadModal() {
+    if (busy || isRunning || runtimeUnsupported || activeImportJob) return
+    setShowUploadModal(true)
+    setUploadMessage('')
+    setUploadMessageTone('error')
+    setUploadRetryBlocked(false)
+    setImportDecision({ mode: null, platformId: '', takeoverAcknowledged: false })
   }
 
   const hasSaves = saves.length > 0
@@ -555,9 +612,9 @@ export function SavesSection({
                   </button>
                   <button
                     className="sd-btn-tan"
-                    disabled={busy || isRunning}
-                    title={isRunning ? '服务器运行中，请先停止后再上传存档' : '上传本地 Stardew Valley 存档 ZIP'}
-                    onClick={() => setShowUploadModal(true)}
+                    disabled={busy || isRunning || runtimeUnsupported || activeImportJob !== null}
+                    title={runtimeUnsupported ? '当前 Junimo 运行版本不支持安全导入' : activeImportJob ? '已有导入任务正在进行' : isRunning ? '服务器运行中，请先停止后再上传存档' : '上传本地 Stardew Valley 存档 ZIP'}
+                    onClick={openUploadModal}
                     type="button"
                   >
                     上传存档
@@ -611,9 +668,9 @@ export function SavesSection({
               </button>
               <button
                 className="sd-btn-tan"
-                disabled={busy || isRunning}
-                title={isRunning ? '服务器运行中，请先停止后再上传存档' : undefined}
-                onClick={() => setShowUploadModal(true)}
+                disabled={busy || isRunning || runtimeUnsupported || activeImportJob !== null}
+                title={runtimeUnsupported ? '当前 Junimo 运行版本不支持安全导入' : activeImportJob ? '已有导入任务正在进行' : isRunning ? '服务器运行中，请先停止后再上传存档' : undefined}
+                onClick={openUploadModal}
                 type="button"
               >
                 上传并启动
@@ -622,6 +679,16 @@ export function SavesSection({
           ) : null}
         </div>
       )}
+
+      {latestImportJob && importJobStage ? (
+        <div className={`sd-save-import-job sd-save-import-job--${importJobStage.tone}`} role="status">
+          <div>
+            <strong>{importJobStage.label}</strong>
+            <span>任务 {latestImportJob.id.slice(0, 10)} · {latestImportJob.status}</span>
+          </div>
+          <span>{activeImportJob ? '关闭弹窗不会取消事务' : '状态已从任务记录恢复'}</span>
+        </div>
+      ) : null}
 
       {/* ── 上传存档：天空横条入口 ── */}
       {hasSaves && isAdmin ? (
@@ -634,9 +701,9 @@ export function SavesSection({
           <button
             type="button"
             className="sd-btn-green"
-            disabled={busy || isRunning}
-            title={isRunning ? '服务器运行中，请先停止后再上传存档' : '上传本地 Stardew Valley 存档 ZIP'}
-            onClick={() => setShowUploadModal(true)}
+            disabled={busy || isRunning || runtimeUnsupported || activeImportJob !== null}
+            title={runtimeUnsupported ? '当前 Junimo 运行版本不支持安全导入' : activeImportJob ? '已有导入任务正在进行' : isRunning ? '服务器运行中，请先停止后再上传存档' : '上传本地 Stardew Valley 存档 ZIP'}
+            onClick={openUploadModal}
           >
             选择文件
           </button>
@@ -1016,7 +1083,7 @@ export function SavesSection({
               <h3 className="sd-saves-modal-title">上传存档</h3>
             </div>
 
-            {uploadMessage ? <div className="sd-saves-error">{uploadMessage}</div> : null}
+            {uploadMessage ? <div className={uploadMessageTone === 'warning' ? 'sd-save-import-warning' : 'sd-saves-error'}>{uploadMessage}</div> : null}
 
             {!uploadPreview ? (
               <div className="sd-saves-upload-form">
@@ -1106,9 +1173,64 @@ export function SavesSection({
                     </div>
                   ) : null}
                 </div>
-                <p className="sd-saves-hint" style={{ marginTop: 10 }}>
-                  确认后将导入存档并启动服务器。
-                </p>
+                <fieldset className="sd-save-import-choice-group">
+                  <legend>原主机角色处理方式</legend>
+                  <label className={`sd-save-import-choice ${importDecision.mode === 'swap_to_player' ? 'is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="save-import-host-mode"
+                      checked={importDecision.mode === 'swap_to_player'}
+                      onChange={() => setImportDecision((current) => ({ ...current, mode: 'swap_to_player', takeoverAcknowledged: false }))}
+                      disabled={uploadBusy || activeImportJob !== null}
+                    />
+                    <span>
+                      <strong>保留原主机角色给玩家使用</strong>
+                      <small>推荐。Junimo 会把原角色绑定回原玩家，并处理技能、物品、关系、住宅和家庭迁移。</small>
+                    </span>
+                  </label>
+                  {importDecision.mode === 'swap_to_player' ? (
+                    <label className="sd-save-import-platform-field">
+                      <span>原主机平台 ID</span>
+                      <input
+                        className="sd-input"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={importDecision.platformId}
+                        onChange={(event) => setImportDecision((current) => ({ ...current, platformId: event.target.value }))}
+                        placeholder="Steam64 / GOG ID"
+                        disabled={uploadBusy || activeImportJob !== null}
+                      />
+                      <small>支持 Steam64/GOG ID，仅填写十进制数字；平台 ID 始终按字符串提交。</small>
+                    </label>
+                  ) : null}
+                  <label className={`sd-save-import-choice sd-save-import-choice--danger ${importDecision.mode === 'virtual_host_takeover' ? 'is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="save-import-host-mode"
+                      checked={importDecision.mode === 'virtual_host_takeover'}
+                      onChange={() => setImportDecision((current) => ({ ...current, mode: 'virtual_host_takeover', platformId: '', takeoverAcknowledged: false }))}
+                      disabled={uploadBusy || activeImportJob !== null}
+                    />
+                    <span>
+                      <strong>由 Junimo 虚拟主机接管原角色</strong>
+                      <small>高风险：原玩家之后可能无法再选择该角色。</small>
+                    </span>
+                  </label>
+                  {importDecision.mode === 'virtual_host_takeover' ? (
+                    <label className="sd-save-import-ack">
+                      <input
+                        type="checkbox"
+                        checked={importDecision.takeoverAcknowledged}
+                        onChange={(event) => setImportDecision((current) => ({ ...current, takeoverAcknowledged: event.target.checked }))}
+                        disabled={uploadBusy || activeImportJob !== null}
+                      />
+                      <span>我明白原主机角色将由虚拟主机接管，原玩家可能无法再选择该角色。</span>
+                    </label>
+                  ) : null}
+                </fieldset>
+                {runtimeUnsupported ? <div className="sd-saves-error">当前 Junimo 运行版本不支持安全导入，请先升级运行组件。</div> : null}
+                {activeImportJob ? <div className="sd-saves-error">已有导入任务正在进行，不能重复提交。</div> : null}
                 <div className="sd-saves-modal-actions">
                   <button
                     className="sd-btn-tan"
@@ -1120,11 +1242,11 @@ export function SavesSection({
                   </button>
                   <button
                     className="sd-btn-green"
-                    disabled={uploadBusy}
+                    disabled={importSubmitDisabled}
                     onClick={() => void handleUploadCommit()}
                     type="button"
                   >
-                    {uploadBusy ? '导入中…' : '导入并启动'}
+                    {uploadBusy ? '正在创建导入任务…' : '确认并开始导入'}
                   </button>
                 </div>
               </div>

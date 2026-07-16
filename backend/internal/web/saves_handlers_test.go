@@ -214,8 +214,12 @@ func TestSaveUploadCommitAndStart_RunningBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set instance running: %v", err)
 	}
+	legacyResp, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{"token": "fake-token-123"}, adminCookie)
+	if legacyResp.Code != http.StatusBadRequest || !strings.Contains(legacyResp.Body.String(), "host_decision_required") {
+		t.Fatalf("legacy request status=%d body=%s", legacyResp.Code, legacyResp.Body.String())
+	}
 
-	body, _ := json.Marshal(map[string]any{"token": "fake-token-123"})
+	body, _ := json.Marshal(map[string]any{"token": "fake-token-123", "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true}})
 	req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	if adminCookie != nil {
@@ -226,6 +230,9 @@ func TestSaveUploadCommitAndStart_RunningBlocked(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Errorf("upload-commit-and-start running returned %d, want 409; body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), sj.ImportErrorSaveInProgress) {
+		t.Errorf("upload-commit-and-start running error = %s, want %s", w.Body.String(), sj.ImportErrorSaveInProgress)
 	}
 }
 

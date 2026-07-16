@@ -4,6 +4,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.GameData;
+using StardewValley.Menus;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -751,7 +752,9 @@ public sealed class ModEntry : Mod
                 var saveOutcome = pendingSaveCommands.Begin(command, Context.IsWorldReady, DateTimeOffset.UtcNow, SaveCommandTimeout);
                 if (saveOutcome.Status == CommandStatuses.Running)
                 {
-                    Game1.saveOnNewDay = true;
+					if (Game1.activeClickableMenu is not null)
+						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_ui_busy", "The game menu is busy and could not start saving.")!;
+					Game1.activeClickableMenu = new SaveGameMenu();
                     Monitor.Log($"Save-now command {command.Id} registered; waiting for GameLoop.Saved.", LogLevel.Info);
                 }
                 return saveOutcome;

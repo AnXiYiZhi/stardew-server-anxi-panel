@@ -1,8 +1,12 @@
 package web
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 func TestSameDiagnosticSaveIdentity(t *testing.T) {
@@ -35,5 +39,20 @@ func TestDurationBetween(t *testing.T) {
 	}
 	if durationBetween(start, "2026-07-11T14:02:30Z") != nil {
 		t.Fatal("timestamps from different startup observations must not produce a duration")
+	}
+}
+
+func TestRuntimeDiagnosticUsesRecommendedControlVersion(t *testing.T) {
+	dataDir := t.TempDir()
+	modDir := filepath.Join(dataDir, ".local-container", "mods", "StardewAnxiPanel.Control")
+	if err := os.MkdirAll(modDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"0.2.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	diagnostic := buildRuntimeDiagnostic(storage.Instance{DataDir: dataDir, State: storage.InstanceStateStopped}, controlStatusSnapshot{}, controlPlayersSnapshot{})
+	if diagnostic.ExpectedControlMod != "0.2.0" || !diagnostic.ControlModMatches {
+		t.Fatalf("control diagnostic=%+v", diagnostic)
 	}
 }

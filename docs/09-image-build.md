@@ -1,3 +1,26 @@
+# v0.3.6 发布记录（2026-07-17）
+
+- `v0.3.6` 发布存档导入复合证据适配；tag workflow 在推送三个 registry 的 `0.3.6`/`latest` 和创建 GitHub Release 前执行兼容清单、远程制品、完整 Go、Docker integration、前端 save-import 专项及生产构建门禁。
+- 发布前本地门禁已通过；隔离 `.125` 技术 E2E 已覆盖 takeover/as-is、swap、持久保存和第二次重启。本版本不宣称 `SAVE-IMPORT-JUNIMO-1` 的人工游戏语义与完整故障注入总门禁 completed。
+- 发布说明明确保留上游无 commandId 的事实，并记录 Panel 使用磁盘事务痕迹、pending、saveId、finalizeCount、GameLoop.Saved 与 dayTransitionComplete 的复合证据路线。
+
+# SAVE-IMPORT-E2E-RELEASE-1 镜像发布门禁（2026-07-16，未放行）
+
+- 本轮没有构建发布镜像、创建 release、推送 registry 或部署生产。现有隔离 spike 容器全部保持停止，只进行了只读卷/归档盘点。
+- Go test/vet/build 和前端 typecheck/build 已通过，但真实八类存档 E2E、故障注入、人工游戏语义与第二次重启未完成，因此镜像发布门禁保持关闭。
+- 在 `SAVE-IMPORT-JUNIMO-1` 获得真实 completed 证据前，release workflow 不得仅凭单元测试结果宣称存档导入可发布。后续发布记录必须引用隔离 Compose project、每份原始 ZIP/SHA256、事务 operation/job、二次重启及人工检查结果。
+
+# PANEL-0.3.5-JUNIMO-REPAIR-SCRIPT 飞牛/NAS 一键修复（2026-07-16）
+
+- 新增 `deploy/repair-junimo-0.3.5.sh`，处理旧 Panel 升至 `0.3.5` 后可信候选镜像 tag 混用、实例停在 `invalid_config/image_candidates` 的现场。脚本必须在 NAS/Linux 宿主机 SSH 中运行，不能在 Panel 容器终端内运行。
+- 脚本只接受正在运行且 OCI title 为 `stardew-server-anxi-panel`、OCI version 精确为 `0.3.5` 的唯一容器，再通过 `PANEL_DATA_DIR` mount 反查宿主机实例目录；零个或多个匹配、自定义主镜像、主版本歧义、活动升级任务和 `rollback_failed` 都只报告并退出。
+- 通过门禁后，脚本先以 `0600` 备份实例 `.env`，只规范化 server/auth 候选列表，备份旧 required coordinator 状态，然后重启 Panel，让 `0.3.5` 内置 required update 事务完成 `.125` 下载、安装、验收和失败回滚。它不执行 `down -v`、volume prune，也不删除 `game-data`、steam-session、存档或 Mod。
+- `release.yml` 会把该脚本与 `deploy/run.sh` 一起附加到正式 Release。自有 HTTP 目录可直接提供 `curl -fsSL <URL>/repair-junimo-0.3.5.sh | sudo bash`；目标镜像仍必须联网拉取并通过内嵌 digest 校验，不能靠改 tag 绕过。
+- 飞牛现场修正：Docker mount inspect 使用无空格的 `destination|source` 格式输出后再精确匹配 `PANEL_DATA_DIR`，避免 Go template `println` 自动插入分隔空格、导致已有 bind mount 被误报为“无法确定宿主机数据目录”。
+- 旧部署若遗留 `IMAGE_VERSION=latest`，但 server 主镜像属于可信仓库且精确 tag 唯一为 `.121` 或目标 `.125`、auth 也精确为目标 `.2`，脚本允许在完整备份后把 `IMAGE_VERSION` 收敛为 server 主 tag；其它主字段歧义仍拒绝自动选择。
+- 脚本还兼容空值或带引号/空白的旧 `IMAGE_VERSION`、UTF-8 BOM 和非标准 NAS mount destination；mount 回退只接受唯一实际包含 `instances/stardew/.env` 的源。主 server 仅允许当前可信仓库与 `.121/.125`，auth 仅允许精确 `.2`，旧候选别名只会被替换而不能借此晋升为主镜像。
+- 执行前同时拦截 required coordinator、Junimo apply 与 SMAPI apply 的活动阶段或任一 `rollback_failed`，避免为修候选配置而中断另一项维护事务。已是 `.125` 的实例走同一幂等检查，配置规范化后由 Panel 判定 `up_to_date/succeeded`，不会无条件重建服务。
+
 # RELEASE-NOTES-BACKFILL-1 Tag 发布说明补全（2026-07-16）
 
 - 已为 `v0.1.0` 至 `v0.3.5` 的全部 32 个 GitHub Release 补充实际更新说明；内容优先取 annotated tag 的详细注释，其次取对应发布提交正文，并为历史短注释版本补充维护文档中的功能、修复与验证摘要。
@@ -699,7 +722,7 @@ steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel reposito
 ## Control 0.2.0 运行时农场目录构建（2026-07-15）
 
 - source manifest、embedded manifest 与 `runtime_stack_manifest.json.controlMod.version` 必须同时为 `0.2.0`。
-- 当前嵌入 DLL SHA256：`465c1cf64d18d994e7f1f5d478aa834867569484e8a9f0619fb199a586f88533`；`runtime_stack_manifest.json.controlMod.dllSha256` 必须一致。
+- 当前嵌入 DLL SHA256：`21eedc867d5a051389e19a5941aeaa067a7c6e36dbced1c86193d8e44a9c8249`；`runtime_stack_manifest.json.controlMod.dllSha256` 必须一致。
 - 为避免构建过程把控制 Mod 部署进开发机游戏目录，游戏程序集应只读挂载，并显式关闭 ModBuildConfig deploy：
 
 ```powershell
@@ -728,7 +751,7 @@ docker run --rm `
 4. 观察日志必须脱敏；support bundle 不得包含事务快照、存档、认证/session 或恢复材料。
 5. 版本号确认后再决定是否扩大灰度或改变默认值。未通过唯一目录/XML、单次 POST、回滚、profile、Control DLL/source 一致性或真实 SVE E2E 任一门禁时不得 tag/push/publish/latest。
 
-当前 Control DLL SHA256：`465c1cf64d18d994e7f1f5d478aa834867569484e8a9f0619fb199a586f88533`。阶段 8 已实际完成兼容清单校验、8 个矩阵脚本测试和 `docker build -t stardew-server-anxi-panel:phase8-release-gate .`；候选镜像只用于本机门禁并已清理。本阶段不创建 tag、不 push、不修改 latest 或生产容器。
+当前 Control DLL SHA256：`21eedc867d5a051389e19a5941aeaa067a7c6e36dbced1c86193d8e44a9c8249`。阶段 8 已实际完成兼容清单校验、8 个矩阵脚本测试和 `docker build -t stardew-server-anxi-panel:phase8-release-gate .`；候选镜像只用于本机门禁并已清理。本阶段不创建 tag、不 push、不修改 latest 或生产容器。
 # 2026-07-16：无声卡运行环境与整包 Mod 兼容性
 
 - 新生成和已存在的 server compose 都应包含 `ALSOFT_DRIVERS=${ALSOFT_DRIVERS:-null}` 与 `SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-dummy}`。这两个默认值只禁用真实音频输出，不禁用游戏音频资源加载；部署方可显式覆盖。
@@ -742,3 +765,16 @@ docker run --rm `
 - 可重复的升级真机命令：设置 `ANXI_REAL_UPGRADE_SOURCE_INSTANCE` 与 `ANXI_REAL_UPGRADE_SOURCE_GAME_VOLUME` 后运行 `go test -tags=integration ./internal/games/stardew_junimo -run TestRequiredRuntimeReal121To125OptIn -count=1 -v`。测试只读源实例/源卷，落盘前清空凭据，为 stopped/running 各建独立目录、game-data、空 steam-session 和 Compose project，结束自动清理。
 - 全新安装边界用 `ANXI_REAL_FRESH_INSTALL=1 go test -tags=integration ./internal/games/stardew_junimo -run TestFreshInstall125ReachesSteamLoginOptIn -count=1 -v`：必须证明 Prepare 阶段没有容器/卷，点击安装后直接使用 125/Auth pair，并在真实 QR 登录阶段取消、清理所有一次性资源。
 - Panel tag 继续使用不可变正式版本 `v0.3.5`，由 `release.yml` 在推送 registry 前运行远程 digest、全量 Go、Docker integration、前端状态脚本和生产构建；通过后发布 Docker Hub/ACR/GHCR 的 `0.3.5` 与 `latest` 并创建 GitHub Release。
+# Save-import E2E image note (2026-07-17)
+
+- Validation used `sdvd/server:1.5.0-preview.125` only in isolated Docker projects/volumes. The embedded Panel Control 0.2.0 DLL was rebuilt locally and validated with native `SaveGameMenu` -> SMAPI `GameLoop.Saved` behavior.
+- No image was published and no production deployment was performed. A future image/release still requires the remaining human semantic and fault-injection gates.
+
+## Local game-volume reuse note (2026-07-17)
+
+- The existing `stardew_game-data` volume was mounted read-only and copied into the new `save-import-local-rich-game-data` test volume. Accepted testing used the explicit `save-import-local-rich` Compose project and dedicated ports; the source game volume and original instance save directory were never used as writable import targets.
+- No image, release, registry push or production deployment was created.
+
+## v0.3.6 save-import release gate
+
+- `release.yml` and `compatibility-matrix.yml` run `npm run test:save-import` alongside the existing frontend state-machine tests before the production build. The runtime diagnostic's expected Control version is derived from the embedded compatibility manifest so the UI cannot drift back to a stale hard-coded version.

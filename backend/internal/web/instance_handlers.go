@@ -11,6 +11,7 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -87,6 +88,20 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	instanceID := parts[0]
+	if importMutexEndpoint(r.Method, parts) {
+		instance, err := s.store.GetInstance(r.Context(), instanceID)
+		if err == nil {
+			busy, busyErr := sj.HasUnfinishedImportTransaction(instance.DataDir)
+			if busyErr != nil {
+				writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to inspect import recovery state")
+				return
+			}
+			if busy {
+				writeError(w, http.StatusConflict, sj.ImportErrorBusy, "a save import transaction is active or requires recovery")
+				return
+			}
+		}
+	}
 	if len(parts) == 1 {
 		if r.Method != http.MethodGet {
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -353,6 +368,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 3 && parts[1] == "config" && parts[2] == "server-runtime-settings" {
 		s.handleInstanceServerRuntimeSettings(w, r, instanceID)
+		return
+	}
+	if len(parts) == 3 && parts[1] == "config" && parts[2] == "game-language" {
+		s.handleInstanceGameLanguage(w, r, instanceID)
 		return
 	}
 	if len(parts) == 3 && parts[1] == "saves" && parts[2] == "preflight" {
@@ -664,6 +683,26 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeError(w, http.StatusNotFound, "not_found", "resource not found")
+}
+
+func importMutexEndpoint(method string, parts []string) bool {
+	if method == http.MethodGet || len(parts) < 2 {
+		return false
+	}
+	area := parts[1]
+	if area == "start" || area == "stop" || area == "restart" || area == "install" || area == "junimo-update" || area == "smapi-update" {
+		return true
+	}
+	if area == "mods" {
+		return true
+	}
+	if area != "saves" {
+		return false
+	}
+	if len(parts) >= 3 && (parts[2] == "upload-preview" || parts[2] == "upload-commit-and-start") {
+		return false
+	}
+	return true
 }
 
 func (s *server) handleInstanceDetail(w http.ResponseWriter, r *http.Request, instanceID string) {

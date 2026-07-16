@@ -1737,6 +1737,27 @@ func BackupPreRestore(dataDir, saveName string) (string, error) {
 	return backupSaveAsUnique(dataDir, saveName, "prerestore")
 }
 
+// BackupPreImport preserves the exact uploaded save before Junimo is ever
+// allowed to transform it in place. These backups are operation-scoped and
+// are intentionally outside automatic game-day retention.
+func BackupPreImport(dataDir, saveName, operationID string) (string, string, error) {
+	if !validImportOperationID(operationID) {
+		return "", "", fmt.Errorf("invalid import operation id")
+	}
+	timestamp := time.Now().UTC().Format("20060102-150405.000000000")
+	name := fmt.Sprintf("preimport_%s_%s_%s.zip", saveName, importOperationDigest(operationID), timestamp)
+	path, err := backupSaveAs(dataDir, saveName, name)
+	if err != nil {
+		return "", "", err
+	}
+	hash, err := stableFileSHA256(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return "", "", fmt.Errorf("hash preimport backup: %w", err)
+	}
+	return path, hash, nil
+}
+
 func backupSaveAsUnique(dataDir, saveName, kindPrefix string) (string, error) {
 	timestamp := time.Now().UTC().Format("20060102-150405")
 	return backupSaveAs(dataDir, saveName, fmt.Sprintf("%s_%s_%s.zip", kindPrefix, saveName, timestamp))
@@ -2189,6 +2210,17 @@ func parseBackupSaveName(filename string) string {
 			return strings.TrimPrefix(name, prefix)
 		}
 	}
+	if strings.HasPrefix(name, "preimport_") {
+		rest := strings.TrimPrefix(name, "preimport_")
+		last := strings.LastIndex(rest, "_")
+		if last > 0 {
+			beforeTime := rest[:last]
+			if digest := strings.LastIndex(beforeTime, "_"); digest > 0 && len(beforeTime[digest+1:]) == 12 {
+				return beforeTime[:digest]
+			}
+		}
+		return rest
+	}
 	for _, prefix := range []string{"daily_", "manual_", "auto_", "predelete_", "prerestore_"} {
 		if strings.HasPrefix(name, prefix) {
 			rest := strings.TrimPrefix(name, prefix)
@@ -2215,6 +2247,8 @@ func inferBackupKind(filename string) string {
 	switch {
 	case strings.HasPrefix(name, "auto_"):
 		return "auto"
+	case strings.HasPrefix(name, "preimport_"):
+		return "preimport"
 	case strings.HasPrefix(name, "predelete_"):
 		return "predelete"
 	case strings.HasPrefix(name, "prerestore_"):

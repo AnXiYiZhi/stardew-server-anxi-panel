@@ -1,3 +1,116 @@
+# 2026-07-17 发布：v0.3.6 存档导入复合证据适配
+
+- [x] 发布范围包含持久上传事务、no-replace 暂存、preimport、Junimo `.125` 维护运行时、Phase A、激活/finalizer、Control save-now 持久化，以及桌面/手机显式 hostHandling。
+- [x] 隔离 Docker 技术链路已覆盖 takeover/as-is、swap、相同 commandId 的 `GameLoop.Saved`、dayTransitionComplete、稳定 XML 与真实第二次重启；发布门禁 test/vet/build、前端专项/typecheck/build 和兼容矩阵通过。
+- [ ] 本 tag 不把 `SAVE-IMPORT-JUNIMO-1` 标记 completed：八类完整非唯一夹具、人工客户端角色/住宅/家庭语义、桌面和手机同一真实 job 贯穿及完整故障注入矩阵仍待补齐。
+- [x] 保留最初 blocked 历史；上游仍没有 commandId，Panel 发布的是基于磁盘事务痕迹、pending、saveId、finalizeCount、GameLoop.Saved 和 dayTransitionComplete 的黑盒复合证据适配。
+
+# 2026-07-16 未完成：SAVE-IMPORT-E2E-RELEASE-1
+
+- [x] 只读盘点隔离 spike、Docker 状态及已有归档；未操作生产、未启动实例、未发送 import。两份归档已有 SHA256，但不构成八类发布夹具。
+- [x] 后端非缓存完整 test、专项 import test、vet/build 通过；前端 save-import 专项、typecheck/build 通过；静态门禁未发现旧导入回退、默认 takeover、日志/单指针成功判定或平台 ID 持久泄漏。
+- [ ] 准备普通单机、多人主机、升级住宅、家具/冰箱/地窖、配偶/孩子/宠物、farmhand、Mod、自定义 takeover 八类非唯一测试 ZIP，并逐份保留原始 ZIP 与 SHA256。
+- [ ] 使用隔离 Panel 实例执行 Phase A、finalize、持久保存、全部故障注入、人工游戏语义和真实第二次重启；桌面和手机都要贯穿同一真实 job。
+- [ ] 当前不得把 `SAVE-IMPORT-JUNIMO-1` 标记 completed。上游仍没有 commandId；Panel 已实现但尚待真机闭环的方案是磁盘事务痕迹、pending、saveId、finalizeCount、GameLoop.Saved、dayTransitionComplete 复合证据。
+- [ ] 全部 13 项门禁和人工语义通过后，再单独执行发布评审；本任务未提交、推送、创建 release、构建发布镜像或部署生产。
+
+# 2026-07-16 已完成：FE-SAVE-IMPORT-HOST-1
+
+- [x] 桌面和手机上传预览均强制选择原主机角色处理方式；swap 平台 ID 全程为纯十进制 string，takeover 必须二次确认，缺失选择不再有旧请求体或隐式 takeover 回退。
+- [x] 两端已接入持久导入 job 的 `202` 响应、jobs/SSE 阶段恢复、防重复门禁与全部稳定错误码；`result_unconfirmed` 为中性警告，`import_recovery_required` 禁止重复操作。
+- [x] 共用校验、请求体、阶段映射、刷新恢复和错误映射专项测试通过；`npx tsc -b`、`npm run build` 通过；桌面和 390×844 手机视觉 QA 无横向溢出且 console error/warn 为空。
+- [x] 先前 blocked 条目作为后端契约落地前历史保留；当前前端已按 `SAVE-IMPORT-WEB-API-1` 完成适配。
+
+# 2026-07-16 已完成：SAVE-IMPORT-WEB-API-1
+
+- [x] 上传 commit 已接入完整持久导入事务，强制嵌套 `hostHandling`；缺失选择绝不默认 takeover。
+- [x] swap 平台 ID 以十进制 string 做后端权威校验，只持久化 operation-salted SHA-256 fingerprint；日志、审计、响应和 journal 不保存原值。
+- [x] token reserve、operation ownership、journal、专用 job 和 `202 {jobId,operationId,saveName}` 已形成 durable 链；同 token 重试返回原 job，owned token cancel 不删除事务数据。
+- [x] Web 稳定错误码与运行中/活动导入/同名/低版本边界已固定；handler 不再调用旧覆盖导入、写指针或普通 Start。
+- [x] `FE-SAVE-IMPORT-HOST-1` 已完成前端接入：显式提供 `swap_to_player` 或已确认的 `virtual_host_takeover`，并把 platformId 全程保持 string。
+- [x] 原 `SAVE-IMPORT-JUNIMO-1 blocked` 历史记录继续保留；当前正式路线是 Panel 黑盒复合证据，缺少上游 commandId 不再构成 blocked。
+
+# 2026-07-16 已完成：SAVE-IMPORT-DURABLE-SAVE-1
+
+- [x] swap finalizer confirmed 后记录主文件 hash/mtime 和 status version，预持久化 commandId 后只提交一次 Control save-now。
+- [x] 只接受同 commandId 的 GameLoop.Saved succeeded；failed/unknown/expired 不停止、不重启、不重发 import 或 save-now。
+- [x] Saved 后从 post-Saved version 优先长轮询 `/wait/status` 等待新的 dayTransitionComplete=true；字段缺失和超时保持 unconfirmed warning。
+- [x] 保存后稳定主文件、严格 XML、hash/mtime 变化均通过才写 `save_verified -> completed`；损坏或无变化进入 recovery。
+- [x] as-is 不强制保存；Panel Prepare 可发现 `finalize_confirmed/save_persisting/save_verified` 并启动只观察原 commandId 的恢复 job。
+- [x] save-event/自动游戏日回档和 preimport 保留策略不变。
+
+# 2026-07-16 已完成：SAVE-IMPORT-ACTIVATION-1
+
+- [x] Phase A 后优先等待进程内 reload，以 Control RuntimeSaveID 验证目标真实加载，并持续观察 ProcessIdentity/pending/diagnostics/world state。
+- [x] reload 未完成时先保护在线玩家、应用目标 Mod profile，再至多受控重启一次；Phase A 已停机则 ComposeUp，任何路径都不重复发送 import。
+- [x] swap 同进程要求 pre-submit finalizeCount +1；新进程要求 count=1 或新代 baseline +1，并与 pending clear、`masterName=Server`、目标 saveId、online/day-transition complete 联合确认。
+- [x] as-is 不要求 finalizer count；partial/failed、wrong target、pending 持续、diagnostics missing/failed/unavailable 分别进入 recovery/timeout/unconfirmed 稳定分类。
+- [x] 成功推进 `finalize_confirmed`，维护 runtime 仍不提前发布 ready/邀请码；DURABLE-SAVE-1 已接续完成写盘与 completed 门禁。
+- [x] SAVE-IMPORT-JUNIMO-1 的历史 blocked 记录继续保留；缺上游 import commandId 不再是 blocker，正式路径仍使用黑盒复合证据且禁止自动重放。
+
+# 2026-07-16 已完成：SAVE-IMPORT-PHASE-A-1
+
+- [x] 在 runtime_ready 后重新验证 preimport、目标 hash/pointer/pending、ProcessIdentity、玩家连接和 log offset，并在导入互斥锁内只发送一次正式 FIFO 命令。
+- [x] FIFO 写成功即持久化 `import_submitted`；成功日志和单指针变化不推进状态，超时不自动重试。
+- [x] swap 以 hash+pending save/owner/fingerprint+pointer 复合确认；as-is 以 hash 不变+无 pending+pointer transition 确认，成功只推进 `import_confirmed`。
+- [x] 超时先停 server 并确认退出，再覆盖 no-effect、迟到成功、pointer 缺失、半转换恢复和矛盾 unknown/recovery 分类。
+- [x] 半转换从 preimport 隐藏解压并 rename 恢复，恢复后复核提交前 hash；原始 platform ID 不持久化。
+- [x] 后续 activation/finalize 与 durable save 代码阶段已实现；`SAVE-IMPORT-JUNIMO-1` 仍未 completed 的剩余门禁是本页顶部记录的真实角色/住宅/家庭语义、故障注入及二次重启 E2E，而不是继续等待上游 commandId。
+
+# 2026-07-16 已完成：SAVE-IMPORT-MAINTENANCE-RUNTIME-1
+
+- [x] `.125` 与挂载 DLL 静态校验在持久 staging 前完成；维护启动后才检查 server/FIFO/log/API/运行中 manifest。
+- [x] 新增 `save_import_maintenance` phase：不走普通 Start ready/邀请码/newgame，不改 active pointer，不发送 `saves import`，reconcile 不会误升为 running。
+- [x] 以裸 `saves` 做无副作用命令注册探测；玩家连接时明确停止且不踢人。
+- [x] `runtime_ready` 持久化 ImportEvidence baseline、server log offset、ProcessIdentity、finalizeCount、pointer/pending/目标 hash；证据不足不推进。
+- [x] ready 前失败或取消会停止本 job 启动的 runtime、恢复原 stopped 状态，并保留 staged/preimport。
+- [x] PHASE-A-1 已从 `runtime_ready` 实现正式 submission 与 Layer A 黑盒判定；Layer B/activation after-evidence 仍待后续，不能展示整个导入成功。
+
+# 2026-07-16 已完成：SAVE-IMPORT-STAGING-1
+
+- [x] journal 建立后把 token payload 转入 operation 专属持久 `source/`，token 标记 owned；handler 返回和 Panel 重启后均可发现，不再依赖进程内 token/tempDir。
+- [x] 新增跨平台 no-replace 原子暂存；同名零修改拒绝，跨文件系统通过 Saves 下隐藏目录复制、全树 fingerprint 校验后发布，失败不暴露半成品。
+- [x] `staged` 只在真实发布后写入；`backup_created` 只在上传目标的 `preimport` ZIP 与 SHA-256 成功后写入。`OriginalActiveSave` 不再被误当作 preimport 对象。
+- [x] pre-submit cancel 删除 transaction source 与未变化的本次 staged target，保留 preimport；目标变化或 submitted 后拒绝自动清理。
+- [x] preimport 可完整恢复且不参与 auto game-day pruning；旧覆盖型 `ImportSaveToVolume` 未被新事务复用。
+- [x] STAGING-1 当时未启动/exec Junimo、未发送 import、未修改 XML；后续 MAINTENANCE-RUNTIME-1 接续 baseline，PHASE-A-1 再负责正式一次性提交。
+
+# 2026-07-16 已完成：SAVE-IMPORT-EVIDENCE-1
+
+- [x] 以 `.125` 保存实例卷只读核验 `JunimoHost.SaveImport` 实际文件为 `junimohost.saveimport.json`，实现 missing/null/完整/损坏四态读取，零写入存档与 SMAPI data。
+- [x] 实现 `/diagnostics/state` 短超时读取及 API unavailable/timeout/field missing/failedFields 区分；实现双读稳定 hash、active pointer、Control saveId、day-transition 和容器/进程代际快照，无法读取的值保持 unknown。
+- [x] 复用 operation-salted SHA-256 比较 pending UserID，结果只暴露 `match/mismatch/unknown`；原始 ID 不进入 JSON、错误、journal、API 或日志。
+- [x] 未接上传/正式导入接口，未发送 `saves import`，未使用 `/test/*`，未修改 XML 或存档目录。
+- [ ] 下一阶段在现有 transaction journal 上设计并实测黑盒复合判定状态机；单一 diagnostics/pointer/hash 均不得宣布成功，进程变化或证据冲突必须进入 unknown/recovery。
+- [x] 保留 `SAVE-IMPORT-JUNIMO-1` blocked 历史；后续方向从等待上游 commandId 改为 Panel 黑盒复合证据适配，缺 commandId 不再单独构成 blocked。
+
+# 2026-07-16 blocked：FE-SAVE-IMPORT-HOST-1
+
+- [ ] **blocked**：SAVE-IMPORT-JUNIMO-1 尚无稳定终态；后端仍默认缺失 hostHandling，且枚举未与前端任务统一。
+- [x] 未只靠前端勾选伪造安全保证，未让桌面/手机接入不稳定请求体，未展示未经验证的成功或阶段。
+- [ ] 后端先强制拒绝缺失模式并发布稳定契约；随后桌面和手机共用校验、错误映射、job 恢复与视觉验收一次完成。
+
+# 2026-07-16 blocked：SAVE-IMPORT-JUNIMO-1
+
+- [ ] **blocked**：实现前复核确认 `.125` 正式 FIFO 仍无 commandId/机器可读终态；`ImportResult` 只在进程内和 test-only API 可用。
+- [ ] 上游补充正式 schema-versioned import result 后再继续维护环境启动、FIFO 提交、受控重启、目标世界/虚拟主机验证、profile 应用和恢复续跑。
+- [x] 未解析脆弱日志，未发送真实 import，未启用旧 Go 覆盖路径，未修改 Stardew XML。
+
+# 2026-07-16 已完成：SAVE-IMPORT-TXN-1
+
+- [x] 持久 pending upload、reserve/release/consume/cancel token 生命周期及同 token 并发互斥。
+- [x] `stardew_import_save_and_start`、九阶段原子 journal、平台 ID 单向指纹、重启恢复分类和提交前/后清理边界。
+- [x] `.125` + 宿主 DLL + live FIFO 门禁；同名 `save_exists` 零写入；相关操作统一 `409 save_import_busy`。
+- [x] 上传提交入口断开旧 `ImportSaveToVolume + SetActiveSave` 链，不接前端、不修改 XML。
+- [ ] 下一阶段：上游提供 commandId 机器回执后，才实现真实 Junimo 调用、激活验证、token consume 和前端交互。
+
+# 2026-07-16 blocked：SAVE-IMPORT-SPIKE-1
+
+- [x] 使用 JunimoServer `1.5.0-preview.125` 精确镜像、隔离卷和测试存档字节副本，真实覆盖活动/无活动世界、swap/as-is、reload 成功/跳过、非数字 ID、ID collision、损坏 XML、缺主文件、重复导入、pending 前后同/不同 ID 重试，以及 pointer/pending/Control saveId/`/status`/虚拟主机事实。
+- [x] 实测 `dayTransitionComplete` 的 false → Saved → true 顺序和 `/wait/status` 字段过滤；明确初始 true 时必须先等 false 边沿。
+- [ ] **blocked**：FIFO 导入没有 commandId 或机器可读终态；reload 拒绝/跳过/异步失败不能稳定关联，现场也未具备自动化游戏客户端重跑“玩家在线拒绝”分支。不得用日志文本猜测或自动重试。
+- [ ] 推动上游提供带 commandId 的正式 JSON import endpoint/结果文件及全退出路径 reloadStatus；完成后另开实现任务，当前不实现面板导入功能。
+
 # 2026-07-15 已完成：NEWGAME-TXN-1 官方农场创建事务安全化
 
 - [x] handler 只做严格 DTO 解析/规范化/校验和 job 创建；规范化配置持久化为内部 job payload，不再提前写 settings/init/marker。
@@ -1244,3 +1357,21 @@ Multi Game Mode later
 - [x] 新安装与已是 125 不重复迁移；自定义/不可信配置和 rollback_failed 不自动覆盖；同一 Panel/stack 确定性失败不随重启无限循环。
 - [x] 未完成 required 更新时禁止启动旧运行栈，保留停止、诊断、回滚和人工重试能力。
 - [x] 前端移除当前版本的“可选更新”语义，兼容矩阵 Go/Python schema、后端状态机及 LAN-only 验收测试已覆盖。
+
+# 2026-07-16 已完成：GAME-LANGUAGE-1
+
+- [x] 服务器游戏语言默认简体中文，并支持 Stardew Valley 官方 12 种语言。
+- [x] 老实例首次升级保留已有合法语言；面板保存后每次启动前同步 `startup_preferences`。
+- [x] 桌面与移动端提供“保存”和运行中“保存并重启”，并与面板界面语言解耦。
+# 2026-07-17 partial: SAVE-IMPORT-E2E-RELEASE-1 real technical E2E
+
+- [x] Isolated `.125` takeover/as-is and swap technical chains reached their strict evidence gates; both survived a real second server restart. Swap included matching `GameLoop.Saved`, dayTransitionComplete, stable XML/hash and completed runtime-state promotion.
+- [x] Real-run defects in version matching, command registration timing, process identity, baseline selection, restart recovery, BOM parsing, file stabilization, result archiving and Control save-now were fixed and covered by tests.
+- [ ] Eight non-unique rich fixtures, human Stardew client semantic verification, desktop/mobile traversal of the same live job, and the complete fault-injection matrix remain outstanding.
+- [ ] Keep `SAVE-IMPORT-JUNIMO-1` incomplete. Preserve its original blocked history: upstream still lacks commandId, while the implemented replacement is Panel composite black-box evidence.
+
+## 2026-07-17 partial: local rich-save takeover
+
+- [x] Reused a downloaded local game only as a read-only source, cloned it into an isolated volume, retained the original ZIP/SHA256, and completed a real upload/takeover job plus second restart.
+- [x] Verified the copied save retained two farmhands, three cabins, furniture/fridge data and three cellar assignments; fixed diagnostics-baseline startup polling and the missing-original-pointer pre-start gate.
+- [ ] noVNC/game-client visual semantics, swap role selection with the real player's platform identity, spouse/children/pet, reconnect and sleep remain unverified. `SAVE-IMPORT-JUNIMO-1` is still not completed.

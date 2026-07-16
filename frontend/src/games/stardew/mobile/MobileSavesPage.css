@@ -337,3 +337,92 @@
   min-height: 44px;
   min-width: 72px;
 }
+
+.sd-msave-import-job {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-color: #b99a61;
+  background: #fff9df;
+  color: #513719;
+}
+
+.sd-msave-import-job span,
+.sd-msave-import-job small { overflow-wrap: anywhere; font-size: 12px; }
+.sd-msave-import-job--success { border-color: #5e9b58; background: #eef9e8; }
+.sd-msave-import-job--warning { border-color: #c68a2d; background: #fff4cf; }
+.sd-msave-import-job--error { border-color: #b85a4b; background: #fff0e8; }
+
+.sd-msave-import-warning {
+  border: 1px solid #c68a2d;
+  background: #fff4cf;
+  color: #6e4a0e;
+}
+
+.sd-msave-import-options {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 10px;
+  border: 1px solid #c8ad7b;
+  box-sizing: border-box;
+}
+
+.sd-msave-import-options legend { padding: 0 4px; color: #513719; font-size: 13px; font-weight: 800; }
+
+.sd-msave-import-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #d8c59b;
+  background: #fffdf4;
+  box-sizing: border-box;
+}
+
+.sd-msave-import-option.is-selected { border-color: #658d3f; background: #f2f8df; }
+.sd-msave-import-option--danger.is-selected { border-color: #ad5a45; background: #fff0e8; }
+.sd-msave-import-option > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.sd-msave-import-option strong { color: #3f2a13; font-size: 13px; line-height: 1.4; }
+.sd-msave-import-option small,
+.sd-msave-import-platform small { color: #6f5b3e; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+
+.sd-msave-import-platform {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 4px;
+  color: #513719;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sd-msave-import-platform .sd-input { width: 100%; min-width: 0; box-sizing: border-box; }
+
+.sd-msave-import-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 4px;
+  color: #7b3027;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.sd-msave-import-ack span { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 390px) {
+  .sd-msave-dialog-overlay { padding: 8px; }
+  .sd-msave-dialog { max-height: calc(100vh - 16px); padding: 12px; }
+  .sd-msave-import-options { padding: 8px; }
+  .sd-msave-dialog-actions { flex-wrap: wrap; }
+  .sd-msave-dialog-btn { flex: 1 1 120px; min-width: 0; }
+}

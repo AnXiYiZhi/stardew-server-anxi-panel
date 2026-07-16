@@ -1,3 +1,24 @@
+# SAVE-IMPORT-E2E-RELEASE-1：前端发布门禁状态（2026-07-16，真实 E2E 缺失）
+
+- `FE-SAVE-IMPORT-HOST-1` 的共享 string 平台 ID 校验、桌面/手机请求体、takeover 二次确认、job 阶段和全部稳定错误码专项测试继续通过；`npx tsc -b` 与 `npm run build` 通过。
+- 先前桌面和 390×844 手机视觉 QA 已确认强制选择、二次确认、无横向溢出及 console error/warn 为空。本轮没有安全的完整测试存档/客户端条件，未通过真实上传 job 验证角色选择或 takeover 后的游戏语义，也未做页面刷新贯穿真实故障注入。
+- 因此桌面/手机的 UI 门禁只能记为自动化和视觉通过，不能替代真实导入 E2E；`result_unconfirmed` 仍为中性警告，`import_recovery_required` 仍明确禁止重复点击。
+
+# FE-SAVE-IMPORT-HOST-1：上传主机角色决策与导入任务（2026-07-16，completed）
+
+- 桌面 `SavesSection` 与手机 `MobileSavesPage` 现在共用 `SaveImportHostHandling`、平台 ID 校验、提交禁用、job 阶段与稳定错误码映射；缺少模式、无效字符串 ID 或未确认 takeover 时均无法提交，不再存在旧 `{token,cancel}` 导入请求体。
+- `swap_to_player` 的 `platformId` 从输入到请求始终保持 string，只接受 trim 后的十进制数字；`virtual_host_takeover` 必须勾选二次确认。两端均展示同等说明和风险，不会在缺少平台 ID 时隐式 takeover。
+- 提交改为消费 `202 {jobId, operationId, saveName}`，并复用 dashboard jobs/SSE 在弹窗关闭或页面刷新后恢复导入阶段。`import_result_unconfirmed` 使用中性警告，`import_recovery_required` 明确禁止重复提交；主要文案只按结构化错误码决定，不解析上游英文 message。
+- 新增 `save-import.ts` 与 `test-save-import.ts`，覆盖共享校验、超大 ID、双端请求体、takeover 确认、阶段恢复、防重复和全部错误码。验证通过：`npm run test:save-import`、`npx tsc -b`、`npm run build`；桌面与 390×844 手机 QA 无横向溢出，浏览器 console error/warn 为空。
+- 下方 blocked 记录保留为后端契约落地前的历史；当前实现以 `SAVE-IMPORT-WEB-API-1` 正式契约替代旧流程。
+
+# FE-SAVE-IMPORT-HOST-1：上传主机处理选择（2026-07-16，blocked）
+
+- 本任务未修改 TypeScript、桌面或手机 UI。两个硬前置条件均不成立：SAVE-IMPORT-JUNIMO-1 仍 blocked；后端不仅没有拒绝缺失 `hostHandling`，还会将空值默认成 `server_owns_original`。
+- 后端当前枚举为 `server_owns_original/swap_host_to`，任务要求的前端枚举为 `virtual_host_takeover/swap_to_player`，尚无稳定映射契约。现有 `uploadSaveCommitAndStart(token,cancel)` 也只发送 `{token,cancel}`；桌面 `SavesSection` 与手机 `MobileSavesPage` 均会省略 hostHandling。
+- 在这种状态下只增加前端必选项不能保证“任何客户端都不能绕过”，也无法安全展示真实导入阶段或 unknown/recovery。不得用客户端校验替代后端强制门禁，不得让 takeover 作为后端默认值继续存在。
+- 解锁条件：后端阶段 2完成并强制拒绝空/未知 hostHandling；统一枚举和错误码；提供稳定 job 阶段与 unknown/recovery 契约。届时桌面和手机必须共用 string 平台 ID 校验、takeover 独立确认和请求体构造。
+
 # FE-FARM-MOD-PREPARE-1 模组农场依赖状态与一键准备（2026-07-15）
 
 - 模组卡消费目录响应的 `modSelection`，展示“依赖完整”“有 N 个依赖尚未启用”“缺少：UniqueID”或 FarmType 冲突；missing/conflict 不提供准备按钮。
@@ -1202,6 +1223,7 @@ Stardew 面板内部路由：
   - 第二块"核心信息"卡：存档名称、农场名称、农场主（`farmerName`）、游戏日期（复用和 `MobileHomePage.tsx` 逐字一致的 `SEASON_ZH`/日期拼接私有函数），两列网格布局，字段缺失都有"—"兜底。
   - 第三块"更多信息"卡：地图类型（复用地图原画卡同一个 `farmTypeLabel` 文案）、存档大小（`formatBytes`）、最后保存时间（`formatDate(modifiedAt)`）、存档状态文字版；`parseError` 存在时额外展示一条错误提示（复用全局 `.sd-notice--error`）。
   - 第四块"存档操作"卡（不受空状态影响，即使暂无存档也展示，用于承载"导入存档"入口）：**导出存档**——直接复用桌面 `SavesSection.tsx` 的 `handleExport()` 逻辑（`exportSave(name)` 拿到 blob + 文件名后用临时 `<a download>` 触发浏览器下载），未新增 API，`disabled={exportBusy || !displaySave}`，不要求管理员权限（和桌面按钮门控一致）。**导入存档**——同样照抄桌面 `handleUploadPreview`/`handleUploadCommit`/`handleUploadCancel` 三段逻辑（`uploadSavePreview`→预览→`uploadSaveCommitAndStart` 导入并启动，取消时对已生成的 token 调用 `uploadSaveCommitAndStart(token, true)` 尽力清理），弹窗 UI 重新按移动端布局排（`.sd-msave-dialog-*`），`disabled={!isAdmin || isRunning}`（`isRunning` 判定和桌面 `SavesSection.tsx` 一致，包含 `running`/`starting` 两种状态）；导入成功后调用 `dashboardData.requestInviteCodeRefresh()`/`refreshInstanceState()`/`refreshJobs()`/`refreshSaves()` 刷新，而不是桌面版依赖的 `onJobStarted`/`onSavesChanged` 回调（移动端页面 props 里没有这两个）。**回档**——纯占位禁用按钮 + 提示文案，说明该功能依赖桌面端备份列表操作，暂不支持手机浏览器，引导用户去桌面端"存档管理"页操作，没有做任何 API 接线。
+  - 上述导入段落是 M5 初版历史。自 `FE-SAVE-IMPORT-HOST-1` 起，手机端已改为与桌面共用强制 hostHandling 决策和持久 import job；取消预览使用独立 `cancelSaveUploadPreview`，不再调用旧 `uploadSaveCommitAndStart(token, true)`，也不再把创建 job 视为普通“导入并启动”成功。
   - 视觉基础件全部走全局 `stardew-theme.css`（`.sd-panel`/`.sd-tag*`/`.sd-notice--*`/`.sd-btn-tan`/`.sd-btn-green`），未复用 `StardewPanel.css` 里桌面存档卡（`.sd-save-card*`）或上传弹窗（`.sd-saves-modal-*`）的任何类名（那批类只在挂载 `StardewPanel` 时才加载）。
 - 390×844/393×852/430×932 下无横向滚动（地图卡固定 `aspect-ratio` + `object-fit`，信息网格用 `overflow-wrap:anywhere` 防长文本撑破），内容纵向可滚动（沿用 `StardewMobileShell` 现有的文档级滚动，未新增额外滚动容器）。
 - 未改后端接口、`SaveInfo`/`SavesListResult` 类型、`SavesSection.tsx`/`SavesPage.tsx`（桌面存档管理页不受影响，创建/上传/删除/备份等能力仍只在桌面端）、`useStardewDashboardData.ts` 内部实现。
@@ -2228,3 +2250,18 @@ npm.cmd run dev
 - `JunimoUpdateInfo.recommended` 与 `RuntimeComponentsInfo.recommended` 新增 `runtimeUpdatePolicy: recommended|required`。当前 125 为 `required`；总览和版本维护不再显示“不升级仍可继续使用”，改为明确说明新 Panel 会自动校验、下载、安装和验收，无需再次确认。
 - 原 Junimo 手动升级按钮与确认框保留为自动协调失败后的管理员重试入口；正常 Panel 升级后由新 Panel 启动协调器直接推进现有 dry-run/apply 状态，页面继续复用已有轮询和 `UserUpdateProgress`，没有新增任意镜像/tag/命令输入。
 - `qa-layout-main.tsx` 的推荐矩阵 fixture 已补 `runtimeUpdatePolicy=required`。Panel 3.4/旧版本升级按钮本身无需理解新策略；容器切到新版本后即由新后端强制执行 125。
+
+# FE-GAME-LANGUAGE-1 服务器游戏语言（2026-07-16）
+
+- 桌面“服务器控制”和移动端“控制”新增“服务器游戏语言”，与设置页的面板“界面语言”严格区分。
+- 下拉框提供官方 12 种语言，默认简体中文；说明明确该设置控制服务器生成的 Mod 消息、系统文本和聊天通知。
+- “保存”提示下次启动/重启生效；服务器运行中额外显示“保存并重启”，复用现有 restart API。
+- 主要文件：`game-languages.ts`、`useGameLanguage.ts`、桌面/移动控制页、`api.ts`、`types.ts`。验证：生产构建通过。
+# SAVE-IMPORT-E2E-RELEASE-1 status (2026-07-17)
+
+- A real isolated takeover/as-is job and a real isolated swap job reached the backend terminal evidence gates. Existing desktop/mobile host-decision, structured warning, job/SSE and refresh code remains the UI contract.
+- The release gate remains open because the current fixtures do not cover the eight semantic scenarios and no human Stardew client verified role/family/house behavior. Frontend completion must not imply `SAVE-IMPORT-JUNIMO-1` completion.
+
+## Local rich-save UI observation (2026-07-17)
+
+- The backend job created from the real upload API completed and remained recoverable through the existing jobs contract. The isolated image's noVNC page loaded, but its WebSocket closed with code 1006 while `SERVER_FPS=0`; this is recorded as an unpassed visual/game-client check, not as semantic acceptance.

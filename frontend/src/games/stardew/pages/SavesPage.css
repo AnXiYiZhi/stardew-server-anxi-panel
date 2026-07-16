@@ -415,6 +415,91 @@
   gap: 10px;
 }
 
+.sd-save-import-warning {
+  padding: 10px 12px;
+  border: 1px solid #c68a2d;
+  background: #fff4cf;
+  color: #6e4a0e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sd-save-import-job {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid #b99a61;
+  background: #fff9df;
+  color: #513719;
+}
+
+.sd-save-import-job > div { display: flex; flex-direction: column; gap: 3px; }
+.sd-save-import-job span { font-size: 12px; }
+.sd-save-import-job--success { border-color: #5e9b58; background: #eef9e8; }
+.sd-save-import-job--warning { border-color: #c68a2d; background: #fff4cf; }
+.sd-save-import-job--error { border-color: #b85a4b; background: #fff0e8; }
+
+.sd-save-import-choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  margin: 14px 0 0;
+  padding: 12px;
+  border: 1px solid #c8ad7b;
+}
+
+.sd-save-import-choice-group legend { padding: 0 5px; color: #513719; font-weight: 800; }
+
+.sd-save-import-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #d8c59b;
+  background: #fffdf4;
+  cursor: pointer;
+}
+
+.sd-save-import-choice.is-selected { border-color: #658d3f; background: #f2f8df; }
+.sd-save-import-choice--danger.is-selected { border-color: #ad5a45; background: #fff0e8; }
+.sd-save-import-choice > span { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.sd-save-import-choice strong { color: #3f2a13; font-size: 14px; }
+.sd-save-import-choice small,
+.sd-save-import-platform-field small { color: #6f5b3e; line-height: 1.45; overflow-wrap: anywhere; }
+
+.sd-save-import-platform-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 11px 6px 34px;
+  color: #513719;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sd-save-import-platform-field .sd-input { width: 100%; min-width: 0; box-sizing: border-box; }
+
+.sd-save-import-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px 4px 34px;
+  color: #7b3027;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+@media (max-width: 620px) {
+  .sd-save-import-job { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .sd-save-import-platform-field,
+  .sd-save-import-ack { padding-left: 11px; }
+}
+
 @media (max-width: 640px) {
   .sd-saves-header-actions {
     width: 100%;

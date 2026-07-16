@@ -17,6 +17,8 @@ import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileControlPage.css'
 import { submitAndWaitForPlayerCommand } from '../player-command-results'
+import { useGameLanguage } from '../useGameLanguage'
+import { STARDEW_GAME_LANGUAGES } from '../game-languages'
 
 type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
 
@@ -101,6 +103,20 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
   const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false)
   const [runtimeSettingsError, setRuntimeSettingsError] = useState<string | null>(null)
   const [runtimeSettingsMessage, setRuntimeSettingsMessage] = useState<string | null>(null)
+
+  const {
+    gameLanguageOpen,
+    setGameLanguageOpen,
+    gameLanguageCode,
+    setGameLanguageCode,
+    gameLanguageLoading,
+    gameLanguageSaving,
+    gameLanguageError,
+    gameLanguageMessage,
+    setGameLanguageMessage,
+    openGameLanguage,
+    saveGameLanguage,
+  } = useGameLanguage({ isAdmin, isRunning })
 
   // ── 触发节日活动 ────────────────────────────────────────────────────────
   const [festivalBusy, setFestivalBusy] = useState(false)
@@ -415,6 +431,20 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
           快捷操作
         </div>
         <div className="sd-mctrl-action-list">
+          <button
+            type="button"
+            className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
+            disabled={!isAdmin}
+            title={isAdmin ? '设置服务器游戏与 Mod 消息使用的语言' : '仅管理员可设置服务器游戏语言'}
+            onClick={() => void openGameLanguage()}
+          >
+            <img className="sd-mctrl-action-icon" src={ICONS.settings} alt="" />
+            <span className="sd-mctrl-action-copy">
+              <strong>服务器游戏语言</strong>
+              <span>默认简体中文 / 12 种语言</span>
+            </span>
+          </button>
+
           <button
             type="button"
             className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
@@ -825,6 +855,53 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
                   >
                     {runtimeSettingsSaving ? '保存中…' : '保存'}
                   </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── 服务器游戏语言弹窗 ───────────────────────────────────────────── */}
+      {gameLanguageOpen ? (
+        <div className="sd-mctrl-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="mobile-game-language-title">
+          <div className="sd-panel sd-mctrl-dialog">
+            <h3 id="mobile-game-language-title">服务器游戏语言</h3>
+            {gameLanguageLoading ? (
+              <p>正在读取当前语言...</p>
+            ) : (
+              <>
+                <label className="sd-mctrl-field">
+                  <span>游戏语言</span>
+                  <select
+                    className="sd-input"
+                    value={gameLanguageCode}
+                    disabled={gameLanguageSaving}
+                    onChange={(event) => {
+                      setGameLanguageCode(event.target.value)
+                      setGameLanguageMessage(null)
+                    }}
+                  >
+                    {STARDEW_GAME_LANGUAGES.map((language) => (
+                      <option key={language.code} value={language.code}>{language.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="sd-mctrl-warning">
+                  决定服务器生成的 Mod 消息、系统文本和聊天通知语言，不影响面板界面语言。修改后需要重新启动服务器才能生效。
+                </div>
+                {gameLanguageError ? <div className="sd-notice sd-notice--error sd-mctrl-notice">{gameLanguageError}</div> : null}
+                {gameLanguageMessage ? <div className="sd-notice sd-notice--ok sd-mctrl-notice">{gameLanguageMessage}</div> : null}
+                <div className="sd-mctrl-dialog-actions">
+                  <button type="button" className="sd-btn-tan sd-mctrl-dialog-btn" onClick={() => setGameLanguageOpen(false)} disabled={gameLanguageSaving}>关闭</button>
+                  <button type="button" className="sd-btn-green sd-mctrl-dialog-btn" onClick={() => void saveGameLanguage(false)} disabled={gameLanguageSaving}>
+                    {gameLanguageSaving ? '保存中…' : '保存'}
+                  </button>
+                  {isRunning ? (
+                    <button type="button" className="sd-btn-tan sd-mctrl-dialog-btn" onClick={() => void saveGameLanguage(true)} disabled={gameLanguageSaving}>
+                      {gameLanguageSaving ? '处理中…' : '保存并重启'}
+                    </button>
+                  ) : null}
                 </div>
               </>
             )}

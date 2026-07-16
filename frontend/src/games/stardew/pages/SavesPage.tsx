@@ -1,5 +1,6 @@
 import type { StardewPageProps } from '../stardew-routes'
 import { SavesSection } from '../SavesSection'
+import { saveImportRuntimeUnsupported } from '../save-import'
 
 export function SavesPage({ user, instanceState, dashboardData, onNavigate, saveActionRequest }: StardewPageProps) {
   return (
@@ -30,6 +31,9 @@ export function SavesPage({ user, instanceState, dashboardData, onNavigate, save
           dashboardData.refreshMods()
         }}
         saveActionRequest={saveActionRequest}
+        jobs={dashboardData.jobs}
+        jobLogsByJobId={dashboardData.jobLogsByJobId}
+        runtimeUnsupported={saveImportRuntimeUnsupported(instanceState)}
       />
     </div>
   )

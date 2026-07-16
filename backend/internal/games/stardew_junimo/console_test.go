@@ -24,6 +24,7 @@ type fakeConsoleDocker struct {
 	restartFunc      func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	composeDownFunc  func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	composeUpFunc    func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
+	composePsFunc    func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
 }
 
 func (f *fakeConsoleDocker) ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
@@ -51,7 +52,10 @@ func (f *fakeConsoleDocker) ComposeExecTTY(ctx context.Context, dir, service, st
 	return paneldocker.ComposeExecTTYResult{Stdout: "ok", ExitCode: 0}, nil
 }
 
-func (f *fakeConsoleDocker) ComposePs(_ context.Context, _ string) (paneldocker.ComposePsResult, error) {
+func (f *fakeConsoleDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	if f.composePsFunc != nil {
+		return f.composePsFunc(ctx, dir)
+	}
 	return paneldocker.ComposePsResult{}, nil
 }
 

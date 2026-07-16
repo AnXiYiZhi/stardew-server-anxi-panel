@@ -12,6 +12,7 @@ import type {
   InstanceServerPasswordConfig,
   InstancePasswordStatus,
   ServerRuntimeSettings,
+  GameLanguageSettings,
   InstanceRenderingResult,
   InstanceState,
   JunimoConfigRepairResult,
@@ -51,6 +52,8 @@ import type {
   RestartScheduleUpdate,
   ResourceMetricsResponse,
   SavesListResult,
+  SaveImportHostHandling,
+  SaveImportJobResponse,
   StardewPlayersResponse,
   UploadPreviewResult,
   UsersResponse,
@@ -300,12 +303,19 @@ export function uploadSavePreview(file: File, instanceId = defaultInstanceId) {
 
 export function uploadSaveCommitAndStart(
   token: string,
-  cancel = false,
+  hostHandling: SaveImportHostHandling,
   instanceId = defaultInstanceId,
 ) {
-  return request<LifecycleJobResponse>(
+  return request<SaveImportJobResponse>(
     `/api/instances/${encodeURIComponent(instanceId)}/saves/upload-commit-and-start`,
-    { method: 'POST', body: { token, cancel } },
+    { method: 'POST', body: { token, hostHandling } },
+  )
+}
+
+export function cancelSaveUploadPreview(token: string, instanceId = defaultInstanceId) {
+  return request<{ cancelled: boolean }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/saves/upload-commit-and-start`,
+    { method: 'POST', body: { token, cancel: true } },
   )
 }
 
@@ -628,6 +638,17 @@ export function deleteNexusAPIKey() {
 
 export function getCommands(instanceId = defaultInstanceId) {
   return request<CommandsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/commands`)
+}
+
+export function getInstanceGameLanguage(instanceId = defaultInstanceId) {
+  return request<GameLanguageSettings>(`/api/instances/${encodeURIComponent(instanceId)}/config/game-language`)
+}
+
+export function updateInstanceGameLanguage(settings: GameLanguageSettings, instanceId = defaultInstanceId) {
+  return request<GameLanguageSettings>(`/api/instances/${encodeURIComponent(instanceId)}/config/game-language`, {
+    method: 'PUT',
+    body: settings,
+  })
 }
 
 export function updateAllModsEnabled(

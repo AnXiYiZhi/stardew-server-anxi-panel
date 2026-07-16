@@ -765,6 +765,16 @@ export type UploadPreviewResult = {
   saveName: string
 }
 
+export type SaveImportHostHandling =
+  | { mode: 'swap_to_player'; platformId: string }
+  | { mode: 'virtual_host_takeover'; acknowledged: true }
+
+export type SaveImportJobResponse = {
+  jobId: string
+  operationId: string
+  saveName: string
+}
+
 export type InviteCodeResult = {
   inviteCode: string
 }
@@ -855,6 +865,10 @@ export type ModInfo = {
   packageKey?: string
   packageName?: string
   dependencies?: ModDependency[]
+}
+
+export type GameLanguageSettings = {
+  languageCode: string
 }
 
 export type ModsListResult = {

@@ -51,6 +51,7 @@ jobs:
           npm run test:runtime-components
           npm run test:smapi-update
           npm run test:farm-catalog
+          npm run test:save-import
           npm run build
       - name: Isolated Docker integration
         working-directory: backend

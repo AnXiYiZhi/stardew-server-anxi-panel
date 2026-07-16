@@ -86,6 +86,9 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
+		return nil, err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
@@ -145,6 +148,9 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveSaveImport(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
 		return err
 	}
@@ -185,6 +191,9 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveSaveImport(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
 		return err
 	}
@@ -231,6 +240,9 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveSaveImport(ctx, instance.ID); err != nil {
+		return nil, err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
 		return nil, err
 	}
@@ -411,6 +423,13 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 	// at "n/a", so IP direct-connect must be available as the reliable join path.
 	if err := EnsureServerSettingsDefaults(r.instance.DataDir); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：确保 IP 直连默认设置失败（不影响启动）：%v", err))
+	}
+	if language, err := EnsureGameLanguagePreferences(r.instance.DataDir); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+			"同步服务器游戏语言失败: "+err.Error(), "game_language_sync_failed", jobCtx.ID)
+		return fmt.Errorf("sync game language before start: %w", err)
+	} else {
+		_, _ = jobCtx.Info(ctx, "服务器游戏语言已同步："+language.LanguageCode)
 	}
 	r.clearRuntimeControlSnapshots(ctx, jobCtx)
 
@@ -1128,6 +1147,9 @@ func (d *Driver) GetInviteCode(ctx context.Context, instance registry.Instance) 
 	stored, err := d.store.GetInstance(ctx, instance.ID)
 	if err != nil {
 		return "", fmt.Errorf("load instance: %w", err)
+	}
+	if stored.DriverPhase == importMaintenancePhase {
+		return "", &ImportTransactionError{Code: ImportErrorBusy, Message: "invite codes are unavailable during save import maintenance"}
 	}
 	runner := &lifecycleRunner{
 		driver:    d,

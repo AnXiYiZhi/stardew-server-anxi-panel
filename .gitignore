@@ -3,7 +3,9 @@ dist/
 .vite/
 .claude/
 .codex/
+.codex-test/
 .gocache/
+__pycache__/
 tmp/
 backend/data/
 data/
