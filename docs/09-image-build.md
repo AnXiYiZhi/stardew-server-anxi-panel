@@ -1,3 +1,11 @@
+# RELEASE-NOTES-BACKFILL-1 Tag 发布说明补全（2026-07-16）
+
+- 已为 `v0.1.0` 至 `v0.3.5` 的全部 32 个 GitHub Release 补充实际更新说明；内容优先取 annotated tag 的详细注释，其次取对应发布提交正文，并为历史短注释版本补充维护文档中的功能、修复与验证摘要。
+- 原发布流程仅使用 `generate_release_notes: true`。仓库多数版本由单个直推提交创建 tag、没有合并 PR，GitHub 自动生成器因此经常只能输出 `Full Changelog` 比较链接，不能形成面向用户的更新说明。
+- `.github/workflows/release.yml` 现在完整拉取 tag 历史，并在构建阶段生成 Release 正文：优先使用 tag 标题后的详细注释，缺失时回退到提交正文，再缺失时至少列出提交标题；正文统一附带上一版本的完整比较链接。
+- 后续创建 tag 时仍建议使用 annotated tag，并在标题后写清主要功能、修复、兼容性或升级注意事项。Release workflow 会原样采用这些说明，不再依赖 PR 才能生成有效正文。
+- 验证方式：检查 workflow YAML 可解析；创建测试 tag 或正式 tag 后，确认 GitHub Release 正文不只包含比较链接，且 `deploy/run.sh` 附件和三仓库镜像发布流程保持不变。
+
 # PANEL-0.3.2 宿主 Junimo DLL 升级修复发布（2026-07-15）
 
 - `v0.3.2` 修复 server 镜像升级后宿主 `./.local-container/mods/JunimoServer` 仍保留旧 DLL、导致容器 tag 与实际 Mod 版本不一致的问题。

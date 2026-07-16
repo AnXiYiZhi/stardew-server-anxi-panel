@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout tag
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -81,6 +83,42 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Prepare release notes
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          subject="$(git log -1 --format=%s "${tag}^{}")"
+          tag_message="$(git for-each-ref --format='%(contents)' "refs/tags/${tag}")"
+          details="$(printf '%s\n' "$tag_message" | tail -n +2 | sed '/./,$!d')"
+
+          if [[ -z "${details//[[:space:]]/}" ]]; then
+            commit_message="$(git log -1 --format=%B "${tag}^{}")"
+            details="$(printf '%s\n' "$commit_message" | tail -n +2 | sed '/./,$!d')"
+          fi
+
+          if [[ -z "${details//[[:space:]]/}" ]]; then
+            details="- ${subject}"
+          fi
+
+          previous_tag="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+          notes_path="${RUNNER_TEMP}/release-notes.md"
+          {
+            printf '## %s\n\n' "$tag"
+            printf '%s\n\n' "$details"
+            if [[ -n "$previous_tag" ]]; then
+              printf '**完整变更**：https://github.com/%s/compare/%s...%s\n' \
+                "$GITHUB_REPOSITORY" "$previous_tag" "$tag"
+            else
+              printf '**完整提交记录**：https://github.com/%s/commits/%s\n' \
+                "$GITHUB_REPOSITORY" "$tag"
+            fi
+          } > "$notes_path"
+
+          echo "path=$notes_path" >> "$GITHUB_OUTPUT"
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -120,6 +158,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Stardew Server Anxi Panel ${{ steps.meta.outputs.version }}
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             deploy/run.sh
