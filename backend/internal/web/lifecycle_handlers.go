@@ -212,7 +212,7 @@ func (s *server) handleSavesUploadPreview(w http.ResponseWriter, r *http.Request
 	if _, ok := s.requireAdmin(w, r); !ok {
 		return
 	}
-	_, ok := s.loadInstance(w, r, instanceID)
+	instance, ok := s.loadInstance(w, r, instanceID)
 	if !ok {
 		return
 	}
@@ -253,7 +253,12 @@ func (s *server) handleSavesUploadPreview(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	token := s.pendingUploads.put(instanceID, tempDir, saveName, preview)
+	token, err := s.pendingUploads.put(instance.DataDir, instanceID, tempDir, saveName, preview)
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		writeError(w, http.StatusInternalServerError, "upload_stage_failed", "failed to persist uploaded save preview")
+		return
+	}
 	writeJSON(w, http.StatusOK, registry.UploadPreviewResult{
 		Token:    token,
 		Preview:  preview,
@@ -272,10 +277,7 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		return
 	}
 
-	var body struct {
-		Token  string `json:"token"`
-		Cancel bool   `json:"cancel"`
-	}
+	var body saveUploadCommitRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
 		return
@@ -286,63 +288,95 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 	}
 
 	if body.Cancel {
-		s.pendingUploads.cancel(body.Token)
+		if err := s.pendingUploads.cancel(instance.DataDir, body.Token); err != nil {
+			writeError(w, http.StatusConflict, sj.ImportErrorSaveInProgress, "upload is already owned by an import transaction")
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 		return
 	}
 
-	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
-	if !ok {
+	mode, driverMode, platformID, decisionError := validateSaveImportHostHandling(body.HostHandling)
+	if decisionError != "" {
+		message := "host handling decision is required"
+		if decisionError == "platform_id_invalid" {
+			message = "platformId must be a non-zero decimal string"
+		}
+		writeError(w, http.StatusBadRequest, decisionError, message)
 		return
 	}
 
-	entry, err := s.pendingUploads.claim(body.Token, instanceID)
+	if prior, lookupErr := s.pendingUploads.lookup(instance.DataDir, body.Token, instanceID); lookupErr == nil && prior.JobID != "" {
+		retry := registry.SaveImportRequest{Instance: makeRegistryInstance(instance), OperationID: prior.OperationID,
+			SaveName: prior.SaveName, HostHandling: driverMode, PlatformID: platformID}
+		journal, journalErr := sj.LoadImportJournal(instance.DataDir, prior.OperationID)
+		if journalErr != nil || !sj.ImportJournalMatchesRequest(journal, retry) {
+			writeError(w, http.StatusConflict, sj.ImportErrorBusy, "upload token belongs to a different import request")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: prior.JobID, OperationID: prior.OperationID, SaveName: prior.SaveName})
+		return
+	}
+
+	busy, busyErr := sj.HasUnfinishedImportTransaction(instance.DataDir)
+	if busyErr != nil {
+		writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to inspect import recovery state")
+		return
+	}
+	if busy {
+		writeError(w, http.StatusConflict, sj.ImportErrorBusy, "a save import transaction is active or requires recovery")
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
+		writeError(w, http.StatusConflict, sj.ImportErrorSaveInProgress, "server must be stopped before importing a save")
+		return
+	}
+
+	entry, err := s.pendingUploads.reserveOrReuse(instance.DataDir, body.Token, instanceID, sj.NewImportOperationID())
 	if err != nil {
 		writeError(w, http.StatusConflict, "token_invalid", sanitizeError(err, "上传令牌无效"))
 		return
 	}
-	defer func() { _ = os.RemoveAll(entry.TempDir) }()
-
-	if err := sj.ImportSaveToVolume(instance.DataDir, entry.TempDir, entry.SaveName); err != nil {
-		writeError(w, http.StatusInternalServerError, "import_failed", sanitizeErrorMsg(err, "导入存档失败"))
+	operationID := entry.OperationID
+	{
+		driver, loaded := s.loadDriver(w, instance.DriverID)
+		if !loaded {
+			_ = s.pendingUploads.release(instance.DataDir, body.Token, operationID)
+			return
+		}
+		importer, supported := driver.(registry.SaveImportStarter)
+		if !supported {
+			_ = s.pendingUploads.release(instance.DataDir, body.Token, operationID)
+			writeError(w, http.StatusConflict, sj.ImportErrorUnsupported, "driver does not support transactional save import")
+			return
+		}
+		job, submitErr := importer.ImportSaveAndStart(r.Context(), registry.SaveImportRequest{
+			Instance: makeRegistryInstance(instance), ActorID: actor.User.ID, OperationID: operationID,
+			Token: body.Token, StagedDir: entry.StagedDir, SaveName: entry.SaveName,
+			HostHandling: driverMode, PlatformID: platformID,
+			TransferSourceOwnership: func(targetDir string) error {
+				return s.pendingUploads.transferOwnership(instance.DataDir, body.Token, operationID, targetDir)
+			},
+		})
+		if submitErr != nil {
+			if current, lookupErr := s.pendingUploads.lookup(instance.DataDir, body.Token, instanceID); lookupErr == nil && current.Status == "reserved" {
+				_ = s.pendingUploads.release(instance.DataDir, body.Token, operationID)
+			}
+			writeSaveImportSubmitError(w, submitErr)
+			return
+		}
+		if attachErr := s.pendingUploads.attachJob(instance.DataDir, body.Token, operationID, job.ID); attachErr != nil {
+			s.logger.Error("failed to persist import job ownership", "instance", instanceID, "job", job.ID, "operation", operationID, "error", attachErr)
+		}
+		s.logger.Info("save import transaction submitted", "instance", instanceID, "mode", mode, "job", job.ID, "operation", operationID, "save", entry.SaveName)
+		s.auditLog(r, &actor, "save_import_submit", "instance", instanceID, auditMetadata("mode", mode, "saveName", entry.SaveName, "jobId", job.ID, "operationId", operationID))
+		writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: job.ID, OperationID: operationID, SaveName: entry.SaveName})
 		return
 	}
-
-	if err := sj.EnsureImportedSaveModProfile(instance.DataDir, entry.SaveName); err != nil {
-		writeError(w, http.StatusInternalServerError, "mod_profile_failed", sanitizeErrorMsg(err, "initialize save mod profile failed"))
-		return
-	}
-	if err := sj.ApplyModProfile(instance.DataDir, entry.SaveName); err != nil {
-		writeError(w, http.StatusInternalServerError, "mod_profile_apply_failed", sanitizeErrorMsg(err, "apply save mod profile failed"))
-		return
-	}
-
-	// Tell JunimoServer to load the uploaded save on next start.
-	if err := sj.SetActiveSave(instance.DataDir, entry.SaveName); err != nil {
-		s.logger.Warn("set active save after upload", "instance", instanceID, "save", entry.SaveName, "error", err)
-	}
-
-	if err := s.advanceToReadyToStart(r, instance); err != nil {
-		s.logger.Warn("advance state after upload", "instance", instanceID, "error", err)
-	}
-
-	driver, ok := s.loadDriver(w, instance.DriverID)
-	if !ok {
-		return
-	}
-	instance, _ = s.loadInstance(w, r, instanceID)
-	job, err := driver.Start(r.Context(), registry.StartRequest{
-		Instance: makeRegistryInstance(instance),
-		ActorID:  actor.User.ID,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
-		return
-	}
-
-	s.logger.Info("upload commit + start", "instance", instanceID, "job", job.ID, "save", entry.SaveName)
-	s.auditLog(r, &actor, "save_upload_start", "instance", instanceID, auditMetadata("saveName", entry.SaveName, "jobId", job.ID))
-	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID, "saveName": entry.SaveName})
 }
 
 // handleSavesList handles GET /api/instances/:id/saves.

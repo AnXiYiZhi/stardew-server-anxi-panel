@@ -358,16 +358,29 @@ func kickPlayer(instance registry.Instance, uniqueMultiplayerID, name string) (*
 // commands directory, where the embedded StardewAnxiPanel.Control SMAPI mod
 // polls and consumes it (see ModEntry.cs ConsumeCommands/HandleCommand).
 func writePanelCommand(dataDir, name string, payload map[string]string) (string, error) {
-	commandsDir := filepath.Join(controlDir(dataDir), "commands")
-	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
-		return "", fmt.Errorf("create commands dir: %w", err)
-	}
-	if err := os.MkdirAll(commandResultsDir(dataDir), 0o755); err != nil {
-		return "", fmt.Errorf("create command results dir: %w", err)
-	}
 	id, err := randomHex(16)
 	if err != nil {
 		return "", err
+	}
+	if err := writePanelCommandWithID(dataDir, id, name, payload); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// writePanelCommandWithID publishes a caller-reserved command ID. Durable
+// workflows persist the ID before exposing the command file so a Panel crash
+// can resume observation without ever submitting a second command.
+func writePanelCommandWithID(dataDir, id, name string, payload map[string]string) error {
+	if !validCommandID(id) {
+		return &CommandError{Code: "invalid_command_id", Message: "命令 ID 格式错误"}
+	}
+	commandsDir := filepath.Join(controlDir(dataDir), "commands")
+	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+	if err := os.MkdirAll(commandResultsDir(dataDir), 0o755); err != nil {
+		return fmt.Errorf("create command results dir: %w", err)
 	}
 	command := struct {
 		ID        string            `json:"id"`
@@ -382,9 +395,9 @@ func writePanelCommand(dataDir, name string, payload map[string]string) (string,
 	}
 	path := filepath.Join(commandsDir, fmt.Sprintf("%s-%s.json", time.Now().UTC().Format("20060102150405.000000000"), id))
 	if err := writeJSONAtomic(path, command); err != nil {
-		return "", fmt.Errorf("write command atomically: %w", err)
+		return fmt.Errorf("write command atomically: %w", err)
 	}
-	return id, nil
+	return nil
 }
 
 func submissionStatus(dataDir string) CommandStatus {

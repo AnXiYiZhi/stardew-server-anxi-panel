@@ -13,8 +13,6 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
-const expectedControlModVersion = "0.1.0"
-
 type controlStatusSnapshot struct {
 	State     string `json:"state"`
 	SaveID    string `json:"saveId"`
@@ -102,7 +100,7 @@ type runtimeDiagnostic struct {
 
 func buildRuntimeDiagnostic(instance storage.Instance, status controlStatusSnapshot, players controlPlayersSnapshot) runtimeDiagnostic {
 	active := sj.GetActiveSaveName(instance.DataDir)
-	d := runtimeDiagnostic{ActiveSaveID: active, ExpectedControlMod: expectedControlModVersion}
+	d := runtimeDiagnostic{ActiveSaveID: active}
 	if active != "" {
 		d.SaveDirectory = filepath.Join(instance.DataDir, "game-data", "Saves", active)
 	}
@@ -116,8 +114,9 @@ func buildRuntimeDiagnostic(instance storage.Instance, status controlStatusSnaps
 	}
 	readControlJSON(filepath.Join(instance.DataDir, ".local-container", "mods", "StardewAnxiPanel.Control", "manifest.json"), &manifest)
 	d.ControlModVersion = manifest.Version
-	d.ControlModMatches = manifest.Version == expectedControlModVersion
 	stack := sj.InspectRuntimeStack(instance.DataDir, instance.State)
+	d.ExpectedControlMod = stack.Recommended.Control.Version
+	d.ControlModMatches = manifest.Version != "" && manifest.Version == d.ExpectedControlMod
 	d.JunimoStackVersion = stack.Recommended.StackVersion
 	d.JunimoUpdateStatus = stack.Status
 	d.JunimoUpdateCode = stack.Code

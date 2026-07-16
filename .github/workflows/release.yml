@@ -53,7 +53,7 @@ jobs:
           bash scripts/tests/test_run_sh_update.sh
           (cd backend && go test ./...)
           (cd backend && go test -tags=integration ./internal/docker)
-          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:farm-catalog && npm run build)
+          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:farm-catalog && npm run test:save-import && npm run build)
 
       - name: Prepare release metadata
         id: meta
@@ -161,3 +161,4 @@ jobs:
           body_path: ${{ steps.notes.outputs.path }}
           files: |
             deploy/run.sh
+            deploy/repair-junimo-0.3.5.sh

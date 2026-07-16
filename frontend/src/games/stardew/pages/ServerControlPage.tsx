@@ -13,6 +13,8 @@ import { useServerJoja } from '../useServerJoja'
 import { useServerConsole } from '../useServerConsole'
 import { useServerBroadcast } from '../useServerBroadcast'
 import { useServerSaveNow } from '../useServerSaveNow'
+import { useGameLanguage } from '../useGameLanguage'
+import { STARDEW_GAME_LANGUAGES } from '../game-languages'
 
 const SERVER_PAGE_ICONS = {
   title: '/assets/stardew/ui/icons/icon_nav_server_rack_image2.png',
@@ -126,6 +128,20 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     closeRuntimeSettings,
     handleSaveRuntimeSettings,
   } = useServerRuntimeSettings({ isAdmin })
+
+  const {
+    gameLanguageOpen,
+    setGameLanguageOpen,
+    gameLanguageCode,
+    setGameLanguageCode,
+    gameLanguageLoading,
+    gameLanguageSaving,
+    gameLanguageError,
+    gameLanguageMessage,
+    setGameLanguageMessage,
+    openGameLanguage,
+    saveGameLanguage,
+  } = useGameLanguage({ isAdmin, isRunning })
 
   const { festivalBusy, festivalMessage, festivalError, handleTriggerFestivalEvent } = useServerFestival({
     isAdmin,
@@ -555,6 +571,19 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             </span>
           </button>
           <button
+            key="game-language-settings"
+            className="sd-btn-tan sd-btn--lg"
+            disabled={!isAdmin}
+            title={isAdmin ? '设置服务器游戏与 Mod 消息使用的语言' : '仅管理员可设置服务器游戏语言'}
+            onClick={() => void openGameLanguage()}
+          >
+            <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.settings} alt="" />
+            <span className="sd-server-quick-copy">
+              <strong>服务器游戏语言</strong>
+              <span>默认简体中文 / 支持 12 种语言</span>
+            </span>
+          </button>
+          <button
             key="server-runtime-settings"
             className="sd-btn-tan sd-btn--lg"
             disabled={!isAdmin}
@@ -942,6 +971,52 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                   >
                     {runtimeSettingsSaving ? '保存中…' : '保存'}
                   </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {gameLanguageOpen ? (
+        <div key="game-language" className="sd-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="game-language-title">
+          <div className="sd-confirm-dialog">
+            <h3 id="game-language-title">服务器游戏语言</h3>
+            {gameLanguageLoading ? (
+              <p>正在读取当前语言...</p>
+            ) : (
+              <>
+                <label className="sd-schedule-field">
+                  <span>游戏语言</span>
+                  <select
+                    className="sd-input"
+                    value={gameLanguageCode}
+                    disabled={gameLanguageSaving}
+                    onChange={(event) => {
+                      setGameLanguageCode(event.target.value)
+                      setGameLanguageMessage(null)
+                    }}
+                  >
+                    {STARDEW_GAME_LANGUAGES.map((language) => (
+                      <option key={language.code} value={language.code}>{language.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="sd-confirm-warning">
+                  决定服务器生成的 Mod 消息、系统文本和聊天通知语言，不影响面板界面语言。修改后需要重新启动服务器才能生效。
+                </div>
+                {gameLanguageError ? <div className="sd-ov-error">{gameLanguageError}</div> : null}
+                {gameLanguageMessage ? <div className="sd-srv-result">{gameLanguageMessage}</div> : null}
+                <div className="sd-confirm-actions">
+                  <button className="sd-btn-tan" onClick={() => setGameLanguageOpen(false)} disabled={gameLanguageSaving}>关闭</button>
+                  <button className="sd-btn-green" onClick={() => void saveGameLanguage(false)} disabled={gameLanguageSaving}>
+                    {gameLanguageSaving ? '保存中…' : '保存'}
+                  </button>
+                  {isRunning ? (
+                    <button className="sd-btn-restart" onClick={() => void saveGameLanguage(true)} disabled={gameLanguageSaving}>
+                      {gameLanguageSaving ? '处理中…' : '保存并重启'}
+                    </button>
+                  ) : null}
                 </div>
               </>
             )}

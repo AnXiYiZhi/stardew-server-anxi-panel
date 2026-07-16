@@ -16,6 +16,7 @@ const APPLY = params.get('apply') || ''
 const JUNIMO_WORKFLOW = params.get('junimoWorkflow') || ''
 const JUNIMO_CONFIG = params.get('junimoConfig') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
+const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 if (JUNIMO_WORKFLOW === 'race-retry') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
@@ -175,7 +176,7 @@ const runtimeComponents = {
 const smapiUpdate = {
   available: false, supported: true, status: 'up_to_date', reason: 'SMAPI 已匹配推荐版本。',
   current: { present: true, valid: true, version: '4.5.2', versionSource: 'StardewModdingAPI.dll' },
-  recommended: { version: '4.5.2', sha256: 'qa-sha256', archiveBytes: 41943040, compatibility: { gameBuildId: '16826371', sdkBuildId: '20939719', junimoVersion: '1.5.0-preview.125', steamAuthVersion: '1.5.0-anxi.2', controlVersion: '0.1.0', commandResultVersion: 1 } },
+  recommended: { version: '4.5.2', sha256: 'qa-sha256', archiveBytes: 41943040, compatibility: { gameBuildId: '16826371', sdkBuildId: '20939719', junimoVersion: '1.5.0-preview.125', steamAuthVersion: '1.5.0-anxi.2', controlVersion: '0.2.0', commandResultVersion: 1 } },
 }
 const idleWorkflow = { phase: 'idle', progress: 0, target: {}, selected: {}, checks: [], warnings: [], logs: [] }
 const idleJunimoWorkflow = { ...idleWorkflow, target: { server: {}, steamAuth: {} }, selected: { server: {}, steamAuth: {} } }
@@ -248,6 +249,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/saves\/backups\/policy$/, backupPolicy],
   [/\/saves\/backups$/, backups],
   [/\/saves\/preflight$/, { canCreate: true, canUpload: true, warnings: [] }],
+  [/\/saves\/upload-preview$/, { token: 'qa-save-import-token', saveName: 'ImportedFarm_123', preview: { name: 'ImportedFarm_123', farmerName: 'OldHost', farmName: 'Imported Farm', gameYear: 3, gameSeason: 'fall', gameDay: 18, farmType: 'standard', fileSizeBytes: 25165824, modifiedAt: iso(5) } }],
   [/\/saves$/, saves],
   [/\/mods$/, mods],
   [/\/mods\/nexus\/install$/, { jobId: 'job_mobile_nexus_install' }],
@@ -258,6 +260,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/config\/vnc-port$/, vncConfig],
   [/\/config\/server-password$/, serverPassword],
   [/\/config\/server-runtime-settings$/, serverRuntimeSettings],
+  [/\/config\/game-language$/, { languageCode: 'zh' }],
   [/\/rendering$/, rendering],
   [/\/mods\/nexus\/search/, { query: 'ui', page: 1, pageSize: 20, total: 1248, hasMore: true, results: [
     { modId: 2400, name: 'SMAPI - Stardew Modding API', summary: 'Stardew Modding API 的实现，所有模组的必要依赖。', author: 'Pathoschild', version: '4.0.8', updatedAt: '2024-05-16', endorsementCount: 3800, downloadCount: 7200000, nexusUrl: 'https://x', installed: false, installedEnabled: false, requiredMods: [] },
@@ -347,6 +350,19 @@ class NoopES extends EventTarget {
   onerror: unknown = null
 }
 ;(window as unknown as { EventSource: unknown }).EventSource = NoopES
+
+if (SAVE_IMPORT_QA) {
+  const observer = new MutationObserver(() => {
+    const input = document.querySelector<HTMLInputElement>('input[type="file"][accept=".zip"]')
+    if (!input || input.files?.length) return
+    const transfer = new DataTransfer()
+    transfer.items.add(new File(['qa'], 'imported-save.zip', { type: 'application/zip' }))
+    input.files = transfer.files
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    observer.disconnect()
+  })
+  observer.observe(document.documentElement, { childList: true, subtree: true })
+}
 
 const mockUser: CurrentUser = { id: 1, username: ROLE === 'admin' ? '管理员' : '普通玩家', role: ROLE, isSuperAdmin: ROLE === 'admin' }
 

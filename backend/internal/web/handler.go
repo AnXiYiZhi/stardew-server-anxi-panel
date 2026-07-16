@@ -65,7 +65,7 @@ type server struct {
 	docker             DockerService
 	jobs               *jobs.Manager
 	registry           *registry.Registry
-	pendingUploads     *pendingUploadStore
+	pendingUploads     *durablePendingUploadStore
 	publicIPResolver   *publicIPResolver
 	updateChecker      UpdateChecker
 	updater            UpdaterService
@@ -92,7 +92,7 @@ func NewHandler(deps Deps) http.Handler {
 		docker:             dockerClient,
 		jobs:               deps.Jobs,
 		registry:           deps.Registry,
-		pendingUploads:     newPendingUploadStore(),
+		pendingUploads:     newDurablePendingUploadStore(),
 		publicIPResolver:   newPublicIPResolver(defaultPublicIPProviders),
 		updateChecker:      deps.UpdateChecker,
 		updater:            deps.Updater,

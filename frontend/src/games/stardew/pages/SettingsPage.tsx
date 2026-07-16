@@ -30,6 +30,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   instance_stopped: '停止服务器',
   instance_restarted: '重启服务器',
   instance_installed: '安装游戏',
+  instance_game_language_update: '修改服务器游戏语言',
   save_selected: '选择存档',
   save_deleted: '删除存档',
   mod_uploaded: '上传 Mod',

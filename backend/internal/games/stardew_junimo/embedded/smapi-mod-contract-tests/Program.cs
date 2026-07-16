@@ -76,6 +76,10 @@ Expect(tracker.Begin(command, true, now, TimeSpan.FromSeconds(30)), CommandStatu
 if (tracker.Expire(now.AddSeconds(29)) is not null)
     throw new InvalidOperationException("save command expired before its deadline");
 Expect(tracker.Expire(now.AddSeconds(31))!, CommandStatuses.Failed, "save_timeout");
+Expect(tracker.Begin(command, true, now, TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
+Expect(tracker.Fail(now.AddSeconds(1), "save_ui_busy", "busy")!, CommandStatuses.Failed, "save_ui_busy");
+if (tracker.PendingCommandId is not null)
+    throw new InvalidOperationException("failed save command remained pending");
 
 var frontier = new RuntimeFarmType("FrontierFarm", "边境农场", false);
 var meadowlands = new RuntimeFarmType("MeadowlandsFarm", "草原农场", false, "builtin");

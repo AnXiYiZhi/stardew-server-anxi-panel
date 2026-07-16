@@ -15,6 +15,7 @@
     "test:runtime-components": "node --experimental-strip-types scripts/test-runtime-components-status.ts",
     "test:smapi-update": "node --experimental-strip-types scripts/test-smapi-update-status.ts",
     "test:farm-catalog": "node --experimental-strip-types scripts/test-farm-catalog-state.ts",
+    "test:save-import": "node --experimental-strip-types scripts/test-save-import.ts",
     "preview": "vite preview"
   },
   "dependencies": {

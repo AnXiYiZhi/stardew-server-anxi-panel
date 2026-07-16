@@ -115,6 +115,16 @@ public sealed class PendingSaveCommandTracker
         return Create(command, CommandStatuses.Failed, "save_timeout", "The game save did not complete before the confirmation timeout.", now);
     }
 
+    public CommandOutcome? Fail(DateTimeOffset now, string code, string message)
+    {
+		if (pending is null)
+			return null;
+		var command = pending;
+		pending = null;
+		deadline = default;
+		return Create(command, CommandStatuses.Failed, code, message, now);
+    }
+
     private static CommandOutcome Create(PanelCommand command, string status, string code, string message, DateTimeOffset now) => new()
     {
         CommandId = command.Id,

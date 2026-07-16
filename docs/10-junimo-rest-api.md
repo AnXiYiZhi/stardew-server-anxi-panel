@@ -1,3 +1,9 @@
+# SAVE-IMPORT-E2E-RELEASE-1：导入回执发布状态（2026-07-16，真实 E2E 缺失）
+
+- Junimo `.125` 正式 `saves import` 仍没有 commandId，也没有新增正式 JSON import 回执；Panel 没有要求或修改上游，也没有使用 `/test/*`。
+- Panel 的黑盒适配器把磁盘主文件 hash、pending（saveName/OwnerUid/内存 fingerprint）、SaveNameToLoad、RuntimeSaveID、ProcessIdentity、`/diagnostics/state.saveImportFinalizeCount`、failedFields、虚拟主机/世界状态、同 Control commandId 的 GameLoop.Saved 和 dayTransitionComplete 组合判定。`/diagnostics/state`、日志、pending 清空、指针或 finalizeCount 任一单项都不构成成功。
+- 自动化契约通过，但尚无满足发布门禁的八类隔离存档与人工游戏客户端 E2E，也未做真实二次重启和完整故障注入。因此本文记录的是“实现已接线、发布验收未完成”，不得把 `SAVE-IMPORT-JUNIMO-1` 标记 completed。
+
 # JunimoServer REST API 接口整理
 
 整理时间：2026-07-02
@@ -439,7 +445,7 @@ X-Predicate-Changed-At-Ms-Ago: <milliseconds>
 
 | 方法 | 路径 | 参数 | 成功响应 |
 | --- | --- | --- | --- |
-| `GET` | `/wait/status` | `since`、`isReady`、`isPaused`、`day`、`playerCount`、`timeout` | 同 `/status` |
+| `GET` | `/wait/status` | `since`、`isReady`、`dayTransitionComplete`、`isPaused`、`day`、`playerCount`、`timeout` | 同 `/status` |
 | `GET` | `/wait/players` | `since`、`playerId`、`timeout` | 同 `/players` |
 | `GET` | `/wait/farmhands` | `since`、`farmhandCount`、`hasFarmhand`、`requireCustomized`、`timeout` | 同 `/farmhands` |
 | `GET` | `/wait/health` | `ready`、`timeout` | 同 `/health` |
@@ -450,6 +456,7 @@ X-Predicate-Changed-At-Ms-Ago: <milliseconds>
 
 - 等待新的状态快照版本。
 - 等待 `isReady` 变为指定值。
+- 等待 `dayTransitionComplete` 变为指定值。
 - 等待 `isPaused` 变为指定值。
 - 等待日期 `day` 变为指定值。
 - 等待玩家数 `playerCount` 变为指定值。
@@ -460,10 +467,13 @@ X-Predicate-Changed-At-Ms-Ago: <milliseconds>
 | --- | --- | --- |
 | `since` | long | 客户端已知的快照版本。服务端只匹配更新版本 |
 | `isReady` | boolean | 可选，等待 ready 状态 |
+| `dayTransitionComplete` | boolean | 可选，等待跨日/保存后的世界稳定状态；不能单独证明磁盘保存成功 |
 | `isPaused` | boolean | 可选，等待 pause 状态 |
 | `day` | integer | 可选，等待日期 |
 | `playerCount` | integer | 可选，等待玩家数 |
 | `timeout` | integer | 可选，毫秒 |
+
+Panel 的存档导入 durable-save 流程会在 Control 同 commandId 的 `GameLoop.Saved` succeeded 之后，先获取 post-Saved `version`，再使用 `dayTransitionComplete=true` 长轮询。该字段只证明世界状态稳定；写盘权威事实仍是 Control `GameLoop.Saved`，两者不可互相替代。
 
 ### `GET /wait/players`
 
@@ -769,3 +779,13 @@ WebSocket 主要用于实时聊天转发。消息统一为 JSON：
 4. `GET /diagnostics/state` 是诊断接口，内容多，建议只在诊断页或错误详情中请求。
 5. 如果设置了 `API_KEY`，面板后端代理请求时应统一注入 `Authorization`，不要把 API key 暴露给浏览器前端。
 6. 长轮询接口返回 `408` 属于正常超时，不应当作为错误弹窗处理。
+# Save-import E2E observations (2026-07-17)
+
+- `/diagnostics/state` supplied `saveImportFinalizeCount`, `masterName`, cabin/farmhand facts and `failedFields`; `/status`/`/wait/status` supplied world/day-transition evidence. None is sufficient alone.
+- The accepted swap run required target runtime saveId, cleared pending, process-generation-aware finalize count, virtual host and stable world before Control save-now. Completion then required the same commandId's SMAPI `GameLoop.Saved`, post-Saved dayTransitionComplete and changed stable XML.
+- No `/test/*` endpoint was used. The upstream FIFO still provides no commandId; Panel's operation ID and Control save command ID are local correlation mechanisms, not claimed upstream import IDs.
+
+## Rich takeover observation (2026-07-17)
+
+- During the local rich-save run, `/diagnostics/state` initially became reachable before all world-backed fields were stable. Maintenance now polls the composite baseline within its existing readiness deadline; missing/failed fields remain unknown and cannot pass the gate.
+- After takeover and a second restart, `/diagnostics/state` reported the target world's master plus three cabins/two farmhands with empty `failedFields`, while `/status` reported ready and `dayTransitionComplete=true`. Takeover/as-is correctly required no finalize-count increment.

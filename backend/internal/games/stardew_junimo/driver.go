@@ -90,6 +90,7 @@ type Driver struct {
 	guardChans map[string]chan string
 
 	runtimeUpdateMu            sync.Mutex
+	saveImportRunMu            sync.Mutex
 	runtimeUpdatePollInterval  time.Duration
 	runtimeUpdateAuthTimeout   time.Duration
 	runtimeUpdateServerTimeout time.Duration
@@ -158,6 +159,12 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	if instance.DataDir == "" {
 		return errors.New("instance data dir is empty")
 	}
+	recoveries, err := RecoverImportTransactions(instance.DataDir)
+	if err != nil {
+		return fmt.Errorf("recover save import transactions: %w", err)
+	} else if len(recoveries) > 0 {
+		d.logger.Warn("discovered unfinished save import transactions", "instance", instance.ID, "count", len(recoveries))
+	}
 
 	// Create main directory and sub-directories. The named Docker volumes remain
 	// official Junimo storage; local saves/mods directories are panel-owned future
@@ -224,6 +231,9 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	if err := EnsureGameDataVolumeBinding(instance.DataDir); err != nil {
 		return fmt.Errorf("ensure explicit game data volume binding: %w", err)
 	}
+	if err := d.resumeRecoveredImportDurableSaves(ctx, instance, recoveries); err != nil {
+		return fmt.Errorf("resume durable save import verification: %w", err)
+	}
 
 	return nil
 }
@@ -251,6 +261,9 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
+		return nil, err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
@@ -393,6 +406,12 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 		ps, err := d.docker.ComposePs(ctx, instance.DataDir)
 		if err == nil {
 			if serverServiceUp(ps.Services) {
+				// A save-import maintenance runtime is intentionally kept in the
+				// persisted stopped state. It must never be promoted to normal
+				// running/ready merely because its private server container is up.
+				if instance.DriverPhase == importMaintenancePhase {
+					return instance, nil
+				}
 				if instance.State != storage.InstanceStateRunning {
 					payload := instance.DriverPayload
 					if payload == "" {
