@@ -200,6 +200,17 @@
   gap: 10px;
 }
 
+.sd-mmods-bulk-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.sd-mmods-bulk-actions button {
+  min-width: 0;
+}
+
 .sd-mmods-search-card,
 .sd-mmods-installed-card {
   width: 100%;

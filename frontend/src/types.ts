@@ -204,6 +204,7 @@ export type JunimoUpdateInfo = {
 		status: CompatibilityMatrixStatus
 		withdrawal?: { reason: string; fallbackStackVersion: string; withdrawnAt?: string }
     minimumPanelVersion: string
+		runtimeUpdatePolicy: 'recommended' | 'required'
     server: JunimoRecommendedComponent
     steamAuth: JunimoRecommendedComponent
     releaseNotes: string[]
@@ -387,6 +388,7 @@ export type RuntimeComponentsInfo = {
 		channel: 'stable' | 'preview'
 		status: CompatibilityMatrixStatus
 		minimumPanelVersion: string
+		runtimeUpdatePolicy: 'recommended' | 'required'
     game: RuntimeContentRecommendation
     sdk: RuntimeContentRecommendation
     tested: boolean

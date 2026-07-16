@@ -667,11 +667,11 @@ steam-auth-cn 发布与 Panel 发布解耦：auth 仓库不持有 Panel reposito
 # 2026-07-14 矩阵与发布门禁加固
 
 - `.github/workflows/compatibility-matrix.yml` 只验证当前 Panel 内嵌组件清单和相关测试，不再扫描候选目录或校验状态迁移历史。
-- 本机需要时可对精确 server/auth 版本对确认 `ready=true`、`has_ticket=true`、server/Junimo API 可用及重启后认证保持；这不是 GitHub 发布审批条件。任何验收笔记都必须脱敏，不得记录 Steam 密码、refresh token、App Ticket、二维码或 session volume 内容。
+- 本机维护事务基线对精确 server/auth 版本对确认镜像一致、Auth `/steam/ready` schema 可解析、server/Junimo API 可用及重启恢复；不要求测试实例已登录。`ready=true`、`has_ticket=true`、邀请码及重启后认证保持属于 Steam 在线模式专项验收，不得成为 LAN-only 用户升级/回滚的运行时门槛。任何验收笔记都必须脱敏，不得记录 Steam 密码、refresh token、App Ticket、二维码或 session volume 内容。
 # 2026-07-14：推荐镜像运行时契约发布门槛
 
 - Docker integration 必须运行 `TestRuntimeInspectAndAuthProbeWithoutNode`，验证含敏感键环境变量的 inspect 不破坏结构，并验证 auth 镜像不依赖 Node.js。
-- 发布候选实机建议额外设置 `ANXI_REAL_SERVER_IMAGE` 与 `ANXI_REAL_AUTH_IMAGE` 运行 `TestRuntimeRealImagesOptIn`；该测试只检查推荐镜像 digest/ID、真实 .NET auth `/steam/ready` 可解析和容器状态，不读取凭据，也不替代 `has_ticket=true` 的真实 Steam Environment 验收。
+- 发布候选实机建议额外设置 `ANXI_REAL_SERVER_IMAGE` 与 `ANXI_REAL_AUTH_IMAGE` 运行 `TestRuntimeRealImagesOptIn`；该测试检查推荐镜像 digest/ID、真实 .NET auth `/steam/ready` 可解析和容器状态，不读取凭据。需要声明 Steam 邀请码在线能力时，应另跑有凭据专项验收；专项结果不改变维护事务的 LAN-only 基线。
 - 镜像 inspect 实现只能让 Docker 输出审核过的字段；禁止恢复完整 inspect JSON 后再脱敏解析。
 # JUNIMO-RUNTIME-HEALTH-PROBE-1 发布约束（2026-07-14）
 
@@ -705,11 +705,16 @@ docker run --rm `
 - 构建要求为 0 errors；ModBuildConfig analyzer 的编译器版本 warning 是已知提示。复制 `bin/Release/net6.0/StardewAnxiPanel.Control.dll` 覆盖 embedded DLL 后，必须重新计算 SHA256、更新运行栈清单，并执行 `go build ./...` 验证 `go:embed`。
 - 纯契约测试仍从 `embedded/smapi-mod-contract-tests` 用 .NET 6 SDK 执行，不需要启动游戏。真实 `FrontierFarm` 运行时目录验证必须使用隔离实例，不能启动或改动生产实例，也不能用旧 options 缓存代替。
 
-阶段 7 用只读 `stardew_game-data` volume 和 `/p:EnableModDeploy=false` 重建 Control 0.2.0，0 errors（1 个已知 analyzer warning），并同步新 DLL/运行栈 SHA。`docker build -t stardew-server-anxi-panel:phase7-local .` 成功，仅作本地验证，未推送或发布。真实 SVE E2E 已使用独立临时 Compose project、Panel DB、game-data/steam-session volumes、端口和实例目录完成；结果包含 fresh `FrontierFarm` catalog、XML `FrontierFarm`、重启及双向切档。既有实例未操作，临时 feature flag 不改变默认关闭值。
+阶段 7 用只读 `stardew_game-data` volume 和 `/p:EnableModDeploy=false` 重建 Control 0.2.0，0 errors（1 个已知 analyzer warning），并同步新 DLL/运行栈 SHA。`docker build -t stardew-server-anxi-panel:phase7-local .` 成功，仅作本地验证，未推送或发布。真实 SVE E2E 已使用独立临时 Compose project、Panel DB、game-data/steam-session volumes、端口和实例目录完成；结果包含 fresh `FrontierFarm` catalog、XML `FrontierFarm`、重启及双向切档。既有实例未操作；该阶段临时 feature flag 不改变当时的关闭值，现行版本已默认开启。
 
 ## 模组农场灰度与发布门禁（2026-07-15）
 
-1. 正式代码保持 `ENABLE_MODDED_FARM_CREATION=false`；release/compatibility workflow 必须运行 `test:farm-catalog`。
+1. 正式代码默认 `ENABLE_MODDED_FARM_CREATION=true`；需要禁用的部署必须显式设置 false。release/compatibility workflow 必须运行 `test:farm-catalog`，默认开启不豁免任何目录、依赖、runtime catalog、fingerprint 或 XML 验证。
+
+## 2026-07-16：模组地图创建默认开启
+
+- Panel 镜像未设置 `ENABLE_MODDED_FARM_CREATION` 时现在启用模组地图创建；设置为 `false` 可立即恢复关闭语义，设置无效值按安全的产品默认 true 回落。
+- 发布验收必须同时覆盖默认未设置时 API 返回 true、显式 false 时返回 false，以及前端仅允许 `selectable=true` 项提交；不得通过镜像 compose 硬编码 true 而绕过后端配置测试。
 2. 只在独立测试实例显式开启，且仅管理员看到/提交入口；请求只能携带 FarmType ID，不携带路径或任意 Mod 集合。
 3. 至少完成一次显式创建、XML、容器重启、官方/模组往返、备份、恢复、导出、导入周期；确认事务目录没有活动残留，错误目录只在私有隔离区。
 4. 观察日志必须脱敏；support bundle 不得包含事务快照、存档、认证/session 或恢复材料。
@@ -722,3 +727,10 @@ docker run --rm `
 - 升级 Panel 后首次 prepare/start 会迁移旧 compose，并在启动前将可确认由 `mods/smapi` 提供的顶层 Console Commands/Save Backup 重复件移动到实例私有 quarantine。发布验收应检查 SMAPI 日志中不再出现 duplicate UniqueID 和 `NoAudioHardwareException`。
 - 发布候选需使用真实多 Mod ZIP 验证：上传统计、SVE/CP/FTM 加载、旧存档警告和新存档 32 人 Introductions；不得用自动改写旧存档作为验收方案。
 - 本次本机隔离验收已完成：`Mods1.zip` 发现 38、导入 36、跳过内置 2；SMAPI 26 个代码 Mod + 14 个内容包，SVE 自检通过，`Data/AudioChanges` 成功传播，新存档 Introductions 为 32，相关错误计数为 0。临时 Compose 项目、容器、卷和测试目录均已清理。
+# v0.3.5：强制 JunimoServer 125 与维护验收解耦（2026-07-16）
+
+- `v0.3.5` 内嵌 `runtimeUpdatePolicy=required`：从 `v0.3.4` 或更早版本点击 Panel 升级后，新 Panel 启动会自动把受支持的旧 JunimoServer 121 配置升级到 125，不再要求用户进入版本维护二次确认。新安装默认 125，已是 125 不重建。
+- 发布门禁新增 required policy schema、自动协调成功/失败/修复/人工恢复/防循环/生命周期门禁测试。Docker 真机必须覆盖精确 121→125、Auth 未登录且无 ticket/邀请码、原运行/停止状态恢复、宿主 JunimoServer Mod 版本、FIFO `info` 精确 125，以及失败成对回滚不破坏 steam-session/game-data/saves。
+- 可重复的升级真机命令：设置 `ANXI_REAL_UPGRADE_SOURCE_INSTANCE` 与 `ANXI_REAL_UPGRADE_SOURCE_GAME_VOLUME` 后运行 `go test -tags=integration ./internal/games/stardew_junimo -run TestRequiredRuntimeReal121To125OptIn -count=1 -v`。测试只读源实例/源卷，落盘前清空凭据，为 stopped/running 各建独立目录、game-data、空 steam-session 和 Compose project，结束自动清理。
+- 全新安装边界用 `ANXI_REAL_FRESH_INSTALL=1 go test -tags=integration ./internal/games/stardew_junimo -run TestFreshInstall125ReachesSteamLoginOptIn -count=1 -v`：必须证明 Prepare 阶段没有容器/卷，点击安装后直接使用 125/Auth pair，并在真实 QR 登录阶段取消、清理所有一次性资源。
+- Panel tag 继续使用不可变正式版本 `v0.3.5`，由 `release.yml` 在推送 registry 前运行远程 digest、全量 Go、Docker integration、前端状态脚本和生产构建；通过后发布 Docker Hub/ACR/GHCR 的 `0.3.5` 与 `latest` 并创建 GitHub Release。

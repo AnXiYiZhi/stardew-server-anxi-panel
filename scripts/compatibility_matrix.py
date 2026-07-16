@@ -63,6 +63,7 @@ def validate(matrix: dict) -> None:
     require(isinstance(matrix.get("stackVersion"), str) and matrix["stackVersion"], "stackVersion is required")
     require(matrix.get("channel") in ("stable", "preview"), "channel must be stable or preview")
     require(VERSION_RE.fullmatch(str(matrix.get("minimumPanelVersion", ""))) is not None, "minimumPanelVersion must be exact")
+    require(matrix.get("runtimeUpdatePolicy") in {"recommended", "required"}, "runtimeUpdatePolicy must be recommended or required")
     status = matrix.get("status")
     require(status in STATUSES, "status is invalid")
     validate_image_component("server", matrix.get("server"), True)

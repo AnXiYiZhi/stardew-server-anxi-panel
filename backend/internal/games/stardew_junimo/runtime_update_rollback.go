@@ -124,7 +124,7 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "steam-auth"); err != nil {
 		return fmt.Errorf("recreate old auth: %w", err)
 	}
-	if err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.OriginalAuth.ImageID); err != nil {
+	if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.OriginalAuth.ImageID); err != nil {
 		return fmt.Errorf("verify old auth: %w", err)
 	}
 	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "server"); err != nil {

@@ -33,13 +33,14 @@ func TestApplyNewSaveDefaultModStateDisablesNonBuiltInMods(t *testing.T) {
 	}
 }
 
-func TestEnsureNewSaveModProfilePersistsAndSwitchesExactCreationSet(t *testing.T) {
+func TestEnsureNewSaveModProfilePreservesActiveModsAndEnablesCreationSet(t *testing.T) {
 	dir := t.TempDir()
 	const saveName = "Frontier_123"
 	root := modsDir(dir)
 	createTestMod(t, root, "Frontier Provider", "FlashShifter.FrontierFarm", "Frontier Farm")
 	createTestMod(t, root, "Content Patcher", "Pathoschild.ContentPatcher", "Content Patcher")
 	createTestMod(t, root, "Unrelated", "Example.Unrelated", "Unrelated")
+	createTestMod(t, disabledModsDir(dir), "Already Disabled", "Example.Disabled", "Already Disabled")
 	enabledKeys := []string{"unique:FlashShifter.FrontierFarm", "unique:Pathoschild.ContentPatcher"}
 	if err := EnsureNewSaveModProfile(dir, saveName, enabledKeys); err != nil {
 		t.Fatal(err)
@@ -49,7 +50,7 @@ func TestEnsureNewSaveModProfilePersistsAndSwitchesExactCreationSet(t *testing.T
 		t.Fatal(err)
 	}
 	profile := store.Saves[saveName]
-	if profile.DefaultEnabled || !profile.Mods["unique:FlashShifter.FrontierFarm"].Enabled || !profile.Mods["unique:Pathoschild.ContentPatcher"].Enabled || profile.Mods["unique:Example.Unrelated"].Enabled {
+	if profile.DefaultEnabled || !profile.Mods["unique:FlashShifter.FrontierFarm"].Enabled || !profile.Mods["unique:Pathoschild.ContentPatcher"].Enabled || !profile.Mods["unique:Example.Unrelated"].Enabled || profile.Mods["unique:Example.Disabled"].Enabled {
 		t.Fatalf("profile = %#v", profile)
 	}
 	if err := moveModFolder(dir, "Frontier Provider", false); err != nil {
@@ -61,8 +62,11 @@ func TestEnsureNewSaveModProfilePersistsAndSwitchesExactCreationSet(t *testing.T
 	if _, err := os.Stat(filepath.Join(modsDir(dir), "Frontier Provider")); err != nil {
 		t.Fatalf("provider not re-enabled: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(disabledModsDir(dir), "Unrelated")); err != nil {
-		t.Fatalf("unrelated Mod not disabled: %v", err)
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "Unrelated")); err != nil {
+		t.Fatalf("active unrelated Mod was not preserved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(disabledModsDir(dir), "Already Disabled")); err != nil {
+		t.Fatalf("disabled unrelated Mod should remain disabled: %v", err)
 	}
 }
 
@@ -326,5 +330,45 @@ func TestSetModEnabledForSaveCascadeBundlesPackageAndKeepsSharedDependency(t *te
 	}
 	if state["MultipleConstructionOrders"] || state["[CP] Multiple Construction Orders"] {
 		t.Fatalf("MCO package should be disabled together: %#v", state)
+	}
+}
+
+func TestSetAllModsEnabledForSaveKeepsBuiltInsAndTogglesUserMods(t *testing.T) {
+	dir := t.TempDir()
+	saveName := "Bulk_12345"
+	if err := os.MkdirAll(filepath.Join(savesDir(dir), "Saves", saveName), 0o755); err != nil {
+		t.Fatalf("create save: %v", err)
+	}
+	createTestMod(t, modsDir(dir), controlModFolderName, controlModUniqueID, "Panel Control")
+	createTestMod(t, modsDir(dir), junimoServerModFolderName, junimoServerModUniqueID, "Junimo Server")
+	createTestMod(t, modsDir(dir), "Mod A", "Example.ModA", "Mod A")
+	createTestMod(t, disabledModsDir(dir), "Mod B", "Example.ModB", "Mod B")
+
+	affected, err := SetAllModsEnabledForSave(dir, saveName, false)
+	if err != nil {
+		t.Fatalf("disable all: %v", err)
+	}
+	if got := modFoldersForTest(affected); strings.Join(got, ",") != "Mod A,Mod B" {
+		t.Fatalf("disable affected %v, want user Mods only", got)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), controlModFolderName)); err != nil {
+		t.Fatalf("built-in Control Mod should stay enabled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), junimoServerModFolderName)); err != nil {
+		t.Fatalf("built-in Junimo Server Mod should stay enabled: %v", err)
+	}
+	for _, folder := range []string{"Mod A", "Mod B"} {
+		if _, err := os.Stat(filepath.Join(disabledModsDir(dir), folder)); err != nil {
+			t.Fatalf("%s should be disabled: %v", folder, err)
+		}
+	}
+
+	if _, err := SetAllModsEnabledForSave(dir, saveName, true); err != nil {
+		t.Fatalf("enable all: %v", err)
+	}
+	for _, folder := range []string{"Mod A", "Mod B"} {
+		if _, err := os.Stat(filepath.Join(modsDir(dir), folder)); err != nil {
+			t.Fatalf("%s should be enabled: %v", folder, err)
+		}
 	}
 }

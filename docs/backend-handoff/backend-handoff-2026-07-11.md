@@ -911,9 +911,17 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 
 ## 2026-07-15：阶段 7 显式模组农场创建闭环
 
-- `farm_type.go` 统一官方/显式 custom/`modded` 规范化；Web feature gate 默认关闭。lifecycle 使用精确依赖集合并把兼容值解析为明确 ID。
+- `farm_type.go` 统一官方/显式 custom/`modded` 规范化；Web feature gate 现已默认开启，并可由环境变量显式关闭。lifecycle 使用精确依赖集合并把兼容值解析为明确 ID。
 - 最终 XML 精确匹配；mismatch 隔离并恢复。`EnsureNewSaveModProfile` 原子提交创建时 Mod 决策；失败为 `mod_profile_commit_failed/profile_commit_pending`，保留正确存档。
 - save model 增加 `farmTypeLabel`。测试覆盖别名、0～7、legacy modded 0/1/多候选、精确依赖、XML Frontier/mismatch、profile 保存/失败恢复和 Web flag。
+
+## 2026-07-16 模组农场 profile 保留已有启用状态
+
+- `EnsureNewSaveModProfile` 不再把创建所需依赖闭包当成存档的完整 Mod 白名单。它会合并当前物理启用状态与事务记录的 provider/required keys，再以 `DefaultEnabled=false` 写入 profile。
+- 影响文件：`backend/internal/games/stardew_junimo/mod_profiles.go`、`mod_profiles_test.go`；API 形状没有变化，创建、导入模组农场及后续启动应用 profile 的行为变化。
+- 验证：`go test ./internal/games/stardew_junimo -run 'TestEnsure(NewSave|ImportedSave)ModProfile' -count=1`；测试覆盖已启用无关 Mod 保持启用、已关闭无关 Mod 保持关闭、农场必要组件被强制启用。
+- 注意：已由旧版本写坏的存档 profile 需要在升级后重新保存/修复一次；代码变更不会自动推断旧 profile 中哪些 false 原本来自用户选择。
+- 同期新增 `SetAllModsEnabledForSave` 和管理员 `PUT /api/instances/:id/mods/enabled`。批量操作只接受 `enabled/saveName`，复用停服、活动存档和 built-in 保护边界，一次持久化并应用全部可切换 Mod；测试 `TestSetAllModsEnabledForSaveKeepsBuiltInsAndTogglesUserMods` 固定全部禁用后 Control 仍启用。
 - `go test ./...`、`go build ./...`、C# contract、Control Docker build、前端 build、Docker image build 通过。DLL SHA256 `465C1CF64D18D994E7F1F5D478AA834867569484E8A9F0619FB199A586F88533`。
 - 真实 E2E 已在独立临时 Panel/Compose project/volumes/端口中完成，既有 `stardew` 实例未启动、停止或修改。显式 `FrontierFarm` 创建成功，主 XML 为 `<whichFarm>FrontierFarm</whichFarm>`；重启后加载成功，并完成 `FrontierFarm → Standard → FrontierFarm` 双向切档，正式 profile 正确禁用/恢复依赖。默认开关继续关闭，开放仍需单独评审与发布。
 - E2E 修复：expected fingerprint 固定包含 SMAPI bundled ConsoleCommands/SaveBackup；Control 在 Content Patcher 尚未注入目标时按 120 tick 刷新 catalog，Go 等待 fresh matching catalog 出现目标后才放行。当前 DLL SHA256 为 `465C1CF64D18D994E7F1F5D478AA834867569484E8A9F0619FB199A586F88533`。
@@ -931,6 +939,7 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 
 - 上传器保留原有 manifest 分组、同目录删除和 Nexus ID 跟随规则，只过滤 SMAPI 自带的 Console Commands/Save Backup 重复副本，并在摘要中区分发现数、导入数和跳过数。
 - lifecycle 会把既有顶层重复件移入实例私有 quarantine；无对应 `mods/smapi` 内置副本时不会移动。
+- 2026-07-16 真机复现并修复后续联动缺陷：重复件被 quarantine 后，旧 `expectedRuntimeModFingerprint` 因只遍历顶层 `mods/mods-disabled` 而漏掉仍由 SMAPI 加载的 ConsoleCommands/SaveBackup，官方与模组建图都会在 `/newgame` 前误报 `mod_fingerprint_mismatch`。现在以 `mods/smapi` manifest 为权威来源、顶层镜像仅作缺失 fallback，并按 UniqueID 去重；`runtimeModFingerprint` 同时把 `7.4` 规范化为 SMAPI 报告的 `7.4.0`。影响 `runtime_farm_catalog.go/_test.go`；回归覆盖重复件隔离后 fingerprint 与短语义版本等价，验证命令为 `go test ./internal/games/stardew_junimo -run 'TestExpectedRuntimeModFingerprint|TestRuntimeModFingerprint' -count=1`。
 - compose 新增 headless 音频后端，旧 compose 自动迁移；Mod 列表增加 SVE 旧存档世界数据警告。
 
 ## 影响接口/文件与验证
@@ -944,3 +953,40 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 
 - 不要把旧存档提示升级为自动地图迁移；树木、地形、任务与事件状态来自序列化存档，盲改会破坏存档。
 - quarantine 是可恢复材料，不应由普通 Mod 列表展示或玩家同步包导出；内置 ID 过滤也不要扩展到普通无 Nexus ID Mod。
+
+# 2026-07-16 接手补充：模组地图创建默认开启
+
+- `config.Load` 的 `ENABLE_MODDED_FARM_CREATION` fallback 从 false 改为 true；显式 false 仍关闭，无效值使用 true。接口与事务实现没有放宽。
+- 影响 `internal/config/config.go` 和新增配置回归测试。验证时必须分别清空变量、设 false、设无效值，并继续运行 Web 门禁、farm catalog 和完整后端测试。
+- 不要把“默认开启”理解为任意自定义字符串都可创建；enabled、依赖、冲突、explicit confidence、fresh catalog、fingerprint 与 XML 精确匹配仍是强制条件。
+
+# 2026-07-16 接手补充：维护验收与 Steam 在线能力解耦
+
+## 改了什么
+
+- Junimo server/auth apply、Panel 重启续验和 pair rollback 的 Auth 硬门槛改为精确 ImageID、容器 running/可选 health=healthy、`/steam/ready` 可访问且完整包含布尔 `ready/has_ticket`。两个字段不要求为 true；未登录仅写非阻断 warning。
+- Junimo server 验收移除邀请码读取；SMAPI 新栈和旧栈回滚也移除邀请码及 `ready/has_ticket` 值判断。邀请码功能本身和后台非阻断刷新没有删除。
+- Docker Auth 响应解析改用必填字段语义，`{}`、缺字段、非法 JSON 或不可达仍失败；不是把服务健康门槛整体取消。
+
+## 影响接口/文件
+
+- API schema、阶段与终态不变；`steam_auth_ready` check 的语义从“已登录且有 ticket”调整为“Auth 服务契约可用”，LAN-only 时可能增加 warning。
+- 核心文件：`runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`smapi_update_workflow.go`、`internal/docker/runtime_apply.go` 及对应测试。
+
+## 如何验证与下一步注意事项
+
+- `go test ./internal/games/stardew_junimo -run 'TestRuntimeUpdateApply|TestSMAPIUpdate' -count=1`
+- `go test ./internal/docker -count=1`
+- 维护事务不得重新依赖 ticket、邀请码或登录状态。若未来需要验证 Steam 联机，应建模为独立可选 capability/E2E，不得让未登录用户无法升级或安全回滚。
+# 2026-07-16 接手补充：新 Panel 强制协调到 JunimoServer 125
+
+## 改了什么
+
+- 当前 runtime manifest 新增 `runtimeUpdatePolicy=required`。Panel 启动恢复任务并 Prepare 默认实例后，后台协调器对已安装旧版本自动执行可信配置修复、dry-run 和 apply，不走 HTTP、不二次询问，也不复制升级实现。
+- 私有 `required-status.json` 以 Panel/stack 为幂等键；同一确定性失败不无限重试。custom/invalid/rollback_failed 保留人工边界；未达到 125 时 `Start` 返回 `required_runtime_update`。
+
+## 影响文件、验证与注意事项
+
+- 文件：`required_runtime_update.go`、`driver.go`、`lifecycle.go`、`cmd/panel/main.go`、runtime config/manifest、协调测试。
+- 定向测试：`go test ./internal/games/stardew_junimo -run 'TestRequiredRuntime' -count=1`；还必须跑全量 Go、Python matrix、前端与 Docker E2E。
+- 不要把 required 扩大解释为自动升级 game/SDK/SMAPI；不要在 coordinator 中直接写 `.env` 或直接操作 Compose。将来强制新 pair 时只更新经真实验证的内嵌清单和精确 digest。

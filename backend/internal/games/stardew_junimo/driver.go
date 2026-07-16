@@ -93,6 +93,8 @@ type Driver struct {
 	runtimeUpdatePollInterval  time.Duration
 	runtimeUpdateAuthTimeout   time.Duration
 	runtimeUpdateServerTimeout time.Duration
+	requiredRuntimeMu          sync.Mutex
+	requiredRuntimeRunning     map[string]bool
 }
 
 // New creates a Driver.  jobs and store may be nil for tests that only use
@@ -115,6 +117,7 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		runtimeUpdatePollInterval:  2 * time.Second,
 		runtimeUpdateAuthTimeout:   90 * time.Second,
 		runtimeUpdateServerTimeout: 5 * time.Minute,
+		requiredRuntimeRunning:     make(map[string]bool),
 	}
 }
 

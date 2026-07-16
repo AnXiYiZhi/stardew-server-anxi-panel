@@ -1086,7 +1086,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
                       ? `${junimoUpdate?.repairReason || '检测到可信旧版候选配置。'} 点击一次即可先备份、修复并继续完成升级；不会覆盖自定义主镜像。`
                     : junimoNeedsReview
                       ? (junimoUpdate?.reason || junimoUpdateError || junimoApplyError || '当前版本配置无法可靠判断，请联系面板管理员处理。')
-                      : `${junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → ${junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。`}</p>
+                      : `${junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → ${junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。${junimoUpdate?.recommended.runtimeUpdatePolicy === 'required' ? '当前 Panel 强制使用此版本，系统会自动完成升级，无需再次确认。' : '点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。'}`}</p>
                 </div>
                 {isAdmin ? (junimoApply?.phase === 'rollback_failed' || junimoNeedsReview
                   ? null

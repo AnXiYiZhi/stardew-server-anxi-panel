@@ -1215,15 +1215,32 @@ Multi Game Mode later
 - [x] 精确依赖集准备、fresh runtime 门禁、XML ID 验证、rollback 与正式 save profile。
 - [x] feature flag 开启时前端可选择 ready FrontierFarm；存档页桌面/移动端显示 label/ID。
 - [x] 默认开关关闭；未发布、未创建 tag。
-- [x] 真正隔离实例已完成 SVE 1.15.11 显式创建、XML=`FrontierFarm`、重启、Standard/FrontierFarm 往返和依赖保持；既有实例未操作。技术 E2E 门槛已满足，但默认开关仍关闭，是否开放需另行评审和发布。
+- [x] 真正隔离实例已完成 SVE 1.15.11 显式创建、XML=`FrontierFarm`、重启、Standard/FrontierFarm 往返和依赖保持；既有实例未操作。技术 E2E 门槛已满足，现已完成默认开放。
 - [x] `MOD-FARM-RELEASE-GATE-1`：故障注入发现并修复 Junimo 启动期自动建档与后端 POST 叠加产生双目录；唯一启动期结果现在跳过 POST，ambiguous/unknown 不重试。
-- [x] 导入 custom save 根据 XML FarmType 写精确依赖 profile；真实 FrontierFarm 完成备份、恢复、导出、删除/导入并重新加载，7 组件保持启用。
+- [x] 导入 custom save 根据 XML FarmType 写 profile：强制启用精确依赖并保留当前已启用 Mod；真实 FrontierFarm 完成备份、恢复、导出、删除/导入并重新加载，7 个必要组件保持启用。
 - [x] disabled required dependency 的直接创建请求在 job/容器/`/newgame` 前返回 `farm_dependencies_missing`；必须先管理员确认一键准备。
-- [ ] 发版前补一次 900px 浏览器与 console-error 人工走查；已有 1280/390 证据，当前 localhost 被 in-app Browser 客户端策略阻止。本项完成且版本号确认后才能决定灰度包，不影响 feature flag 默认关闭。
+- [ ] 发版前补一次 900px 浏览器与 console-error 人工走查；已有 1280/390 证据，当前 localhost 被 in-app Browser 客户端策略阻止。该视觉走查不改变后端门禁，默认开关现已开启。
 # 2026-07-16 状态更新
+- [x] 修复模组农场新存档把依赖闭包误当成完整启用集合的问题；profile 现在保留创建前已启用 Mod、强制补齐农场依赖，并保持原先 disabled 的 Mod 关闭。
+- [x] 桌面端和移动端增加当前存档 Mod 一键全部启用/禁用；后端以单次 profile 写入应用所有可切换 Mod，并保护内置运行组件。
 
 - [x] 多 Mod ZIP 逐 manifest 导入，同时跳过 SMAPI 内置重复件并返回可解释统计。
 - [x] 启动/重启安全隔离既有 SMAPI 顶层重复件，保留可恢复文件。
+- [x] 修复隔离 SMAPI 顶层重复件后新建存档误报 `mod_fingerprint_mismatch`：fingerprint 直接读取 `mods/smapi` bundled 组件并规范化短语义版本。
 - [x] 无声卡容器的 OpenAL/SDL dummy 后端与旧实例 compose 自动迁移。
 - [x] SVE 旧存档 28 人/旧世界数据兼容性检测与桌面、移动端提示。
 - [ ] 通用世界大修 Mod 的存档迁移继续暂缓；没有 Mod 官方迁移器和可逆 schema 前不自动重写地形、树木、任务或事件。
+- [x] 模组地图创建在完整真实 SVE 与故障注入验证后改为默认开启；仍支持环境变量显式关闭，全部安全门禁保持。
+# 2026-07-16 已完成：AUTH-CAPABILITY-DECOUPLE-1
+
+- [x] Junimo server/auth 升级、重启续验和回滚只硬验收 Auth 精确镜像、容器运行/健康与 `/steam/ready` 完整可解析，不再要求 `ready=true` 或 `has_ticket=true`。
+- [x] Junimo 与 SMAPI 升级/回滚不再把邀请码作为成功条件，LAN-only、从未登录 Steam 的实例可以正常完成维护事务。
+- [x] Steam 在线状态保留为独立能力：未建立完整会话仅提示 warning；端点不可达、JSON/schema 损坏仍失败并按原事务安全规则回滚。
+- [x] 增加 LAN-only 成功与 Auth 服务失败回滚测试；定向 Stardew Junimo 与 Docker 测试通过。
+# 2026-07-16 已完成：REQUIRED-RUNTIME-BUNDLE-1
+
+- [x] 内嵌矩阵显式声明 Junimo/auth `runtimeUpdatePolicy=required`，当前 Panel 强制使用 server 125 + auth 1.5.0-anxi.2。
+- [x] 新 Panel 启动后自动处理 121：可信配置修复 → dry-run → apply → 恢复原运行态，全程不再二次确认。
+- [x] 新安装与已是 125 不重复迁移；自定义/不可信配置和 rollback_failed 不自动覆盖；同一 Panel/stack 确定性失败不随重启无限循环。
+- [x] 未完成 required 更新时禁止启动旧运行栈，保留停止、诊断、回滚和人工重试能力。
+- [x] 前端移除当前版本的“可选更新”语义，兼容矩阵 Go/Python schema、后端状态机及 LAN-only 验收测试已覆盖。

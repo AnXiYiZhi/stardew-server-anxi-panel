@@ -2193,11 +2193,12 @@ npm.cmd run dev
 
 - 后端开关开启时，仅 enabled、dependenciesReady、无 conflict、explicit confidence 且 selectable 的卡片可选；高级设置可填 `Data/AdditionalFarms` ID，未知值不静默回落。`modded` 只在唯一候选时提示。
 - 保存列表桌面/移动端显示 `label (ID)`；custom/无预览使用固定占位图。补充创建错误文案。
-- 模组卡区域向左展开，1280px 浏览器实测约 400px；390px 移动端无横向溢出并显示“边境农场 (FrontierFarm)”。`test:farm-catalog` 与 production build 通过。隔离真实 SVE E2E 已确认目录/存档 API 在创建、重启及 `FrontierFarm → Standard → FrontierFarm` 切换后持续返回 `边境农场 (FrontierFarm)`；默认开关仍关闭。
+- 模组卡区域向左展开，1280px 浏览器实测约 400px；390px 移动端无横向溢出并显示“边境农场 (FrontierFarm)”。`test:farm-catalog` 与 production build 通过。隔离真实 SVE E2E 已确认目录/存档 API 在创建、重启及 `FrontierFarm → Standard → FrontierFarm` 切换后持续返回 `边境农场 (FrontierFarm)`；该阶段默认关闭，现行后端已默认开启。
 
 ## 2026-07-15：模组农场发布前兼容门禁
 
 - 混合版本安全默认：旧后端响应缺少 `moddedCreationEnabled` 时前端严格按 false 处理，不会因 `undefined` 意外开放。旧控制 Mod、disabled/missing/conflict、API 500、icon 404、unknown 与 rollback_failed 均保持不可选择或非成功状态。
+- 新后端现在默认返回 `moddedCreationEnabled=true`，因此通过所有服务端门禁的模组地图默认可选择；旧后端缺字段或部署方显式关闭时，前端仍按 false 锁定入口。
 - 发布与兼容矩阵 workflow 已加入 `npm run test:farm-catalog`；该脚本覆盖 feature 开关、官方 8 项、ready/disabled/missing/conflict、单/多 modded、图片 fallback、API 失败和卸载取消。
 - 既有 1280px 与 390px 浏览器证据仍有效，本轮代码没有改 CSS；本轮 in-app Browser 被客户端策略阻止访问 localhost，因此 900px 与 console-error 复验未冒充通过，列入发版前人工灰度清单。
 # FE-COMPONENT-UPDATE-CARD-1 卡片内一键升级进度（2026-07-14）
@@ -2217,3 +2218,13 @@ npm.cmd run dev
 - 桌面与移动端上传成功文案会分别展示 ZIP 中发现、实际导入/启用以及跳过的 SMAPI 内置重复组件，避免把“发现 38 个”误解成额外安装 38 份。
 - Mod 页消费 `compatibilityWarnings` 并在列表上方持续显示旧存档兼容性提示；启用 SVE 但活动存档仍保留原版 28 人 Introductions 时，明确说明旧树木、地形和任务不会因安装 Mod 自动重建，应新建存档获得完整 32 人内容。
 - 本次不隐藏无来源 Mod，不改变 `[CP]` 等名称展示、目录分组、删除或玩家同步判定。影响 `types.ts`、桌面/移动 `ModsPage` 与 `ModsPage.css`。
+# FE-MODS-BULK-TOGGLE-1 当前存档 Mod 批量启停（2026-07-16）
+
+- 桌面端 Mod 设置页和移动端已安装列表增加“一键启用全部 / 一键禁用全部”。按钮只对当前存档的可切换第三方 Mod 生效；无活动存档、非管理员、服务器运行中或另一项启停操作进行中时禁用。
+- 前端调用单次 `PUT /api/instances/:id/mods/enabled`，不逐项循环请求。完成后统一刷新 Mod 列表和 dashboard 数据；移动端显示实际处理数量。
+- 内置 runtime/Control/Junimo 组件不计入批量按钮状态，也不会被全部禁用。验证：`npm.cmd run build`。
+# REQUIRED-RUNTIME-BUNDLE-1 强制 125 前端语义（2026-07-16）
+
+- `JunimoUpdateInfo.recommended` 与 `RuntimeComponentsInfo.recommended` 新增 `runtimeUpdatePolicy: recommended|required`。当前 125 为 `required`；总览和版本维护不再显示“不升级仍可继续使用”，改为明确说明新 Panel 会自动校验、下载、安装和验收，无需再次确认。
+- 原 Junimo 手动升级按钮与确认框保留为自动协调失败后的管理员重试入口；正常 Panel 升级后由新 Panel 启动协调器直接推进现有 dry-run/apply 状态，页面继续复用已有轮询和 `UserUpdateProgress`，没有新增任意镜像/tag/命令输入。
+- `qa-layout-main.tsx` 的推荐矩阵 fixture 已补 `runtimeUpdatePolicy=required`。Panel 3.4/旧版本升级按钮本身无需理解新策略；容器切到新版本后即由新后端强制执行 125。

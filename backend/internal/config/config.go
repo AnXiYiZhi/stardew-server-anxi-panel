@@ -83,7 +83,7 @@ func Load() Config {
 		DefaultDriverID:              getEnv("DEFAULT_DRIVER_ID", DefaultDriverID),
 		ControlCommandRetentionDays:  getPositiveIntEnv("CONTROL_COMMAND_RETENTION_DAYS", DefaultControlCommandRetentionDays),
 		ControlCommandRetentionCount: getPositiveIntEnv("CONTROL_COMMAND_RETENTION_COUNT", DefaultControlCommandRetentionCount),
-		EnableModdedFarmCreation:     getBoolEnv("ENABLE_MODDED_FARM_CREATION", false),
+		EnableModdedFarmCreation:     getBoolEnv("ENABLE_MODDED_FARM_CREATION", true),
 	}
 }
 

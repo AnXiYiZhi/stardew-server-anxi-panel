@@ -32,6 +32,8 @@ func main() {
 	}
 
 	ctx := context.Background()
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	store, err := storage.Open(ctx, cfg)
 	if err != nil {
 		logger.Error("failed to open storage", "error", err)
@@ -96,9 +98,9 @@ func main() {
 			logger.Error("failed to prepare default instance", "instance", defaultInstance.ID, "error", err)
 		}
 	}
-
-	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	if defaultInstance.DriverID == stardewDriver.ID() {
+		stardewDriver.StartRequiredRuntimeUpdate(signalCtx, defaultRegistryInstance)
+	}
 
 	restartScheduler := web.NewRestartScheduler(web.RestartSchedulerDeps{
 		Store:    store,

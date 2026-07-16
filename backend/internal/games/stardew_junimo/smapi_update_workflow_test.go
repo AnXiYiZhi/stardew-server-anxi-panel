@@ -276,6 +276,25 @@ func TestSMAPIUpdateWorkflowSuccessUsesStagingAndPreservesOldVolume(t *testing.T
 	}
 }
 
+func TestSMAPIUpdateWorkflowAcceptsLoggedOutAuth(t *testing.T) {
+	driver, instance, fake := setupSMAPIWorkflowDriver(t, storage.InstanceStateStopped)
+	withFakeSMAPIArchive(t, instance.DataDir)
+	fake.authFailTarget = true
+	fake.authReady = false
+	fake.authTicket = false
+	fake.inviteUnavailable = true
+	if _, err := driver.RunSMAPIUpdateDryRun(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := driver.StartSMAPIUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitSMAPIApply(t, driver, instance)
+	if status.Phase != SMAPIApplySucceeded {
+		t.Fatalf("logged-out LAN-only runtime was rejected: %#v", status)
+	}
+}
+
 func TestSMAPIUpdateWorkflowVerificationFailuresRollbackVolumeAndControl(t *testing.T) {
 	for _, test := range []struct {
 		name      string

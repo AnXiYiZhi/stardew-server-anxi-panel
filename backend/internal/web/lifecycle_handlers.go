@@ -1164,6 +1164,53 @@ func (s *server) handleModEnabledUpdate(w http.ResponseWriter, r *http.Request, 
 	})
 }
 
+// handleAllModsEnabledUpdate handles PUT /api/instances/:id/mods/enabled.
+// It changes every user-toggleable Mod for the selected save in one operation;
+// built-in runtime and panel control components are never disabled.
+func (s *server) handleAllModsEnabledUpdate(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
+		return
+	}
+	var req modEnabledRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	saveName := strings.TrimSpace(req.SaveName)
+	if saveName == "" {
+		saveName = sj.GetActiveSaveName(instance.DataDir)
+	}
+	if saveName == "" {
+		writeError(w, http.StatusConflict, "active_save_required", "active save is required")
+		return
+	}
+	mods, err := sj.SetAllModsEnabledForSave(instance.DataDir, saveName, req.Enabled)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "mod_enable_all_failed", sanitizeErrorMsg(err, "update all mod enabled states failed"))
+		return
+	}
+	affectedNames := make([]string, 0, len(mods))
+	for _, mod := range mods {
+		affectedNames = append(affectedNames, mod.FolderName)
+	}
+	s.logger.Info("all mod enabled states updated", "instance", instanceID, "save", saveName, "enabled", req.Enabled, "affected", strings.Join(affectedNames, ","))
+	s.auditLog(r, &actor, "all_mods_enabled_update", "instance", instanceID, auditMetadata("saveName", saveName, "enabled", strconv.FormatBool(req.Enabled), "affected", strings.Join(affectedNames, ",")))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mods":         mods,
+		"enabled":      req.Enabled,
+		"saveName":     saveName,
+		"changedCount": len(mods),
+	})
+}
+
 // handleModSyncClassificationUpdate handles PUT /api/instances/:id/mods/:modId/sync-classification.
 // This only writes the panel's own classification metadata, so it is allowed
 // regardless of whether the server is running.

@@ -37,6 +37,7 @@ type RuntimeStackManifest struct {
 	StackVersion        string                          `json:"stackVersion"`
 	Channel             string                          `json:"channel"`
 	MinimumPanelVersion string                          `json:"minimumPanelVersion"`
+	RuntimeUpdatePolicy string                          `json:"runtimeUpdatePolicy"`
 	Server              RuntimeStackManifestComponent   `json:"server"`
 	SteamAuth           RuntimeStackManifestComponent   `json:"steamAuth"`
 	Game                RuntimeContentManifestComponent `json:"game"`
@@ -52,6 +53,8 @@ type RuntimeStackManifest struct {
 const (
 	RuntimeMatrixStatusRecommended = "recommended"
 	RuntimeMatrixStatusWithdrawn   = "withdrawn"
+	RuntimeUpdatePolicyRecommended = "recommended"
+	RuntimeUpdatePolicyRequired    = "required"
 )
 
 type RuntimeStackWithdrawal struct {
@@ -133,6 +136,7 @@ type RuntimeStackRecommendation struct {
 	StackVersion        string                          `json:"stackVersion"`
 	Channel             string                          `json:"channel"`
 	MinimumPanelVersion string                          `json:"minimumPanelVersion"`
+	RuntimeUpdatePolicy string                          `json:"runtimeUpdatePolicy"`
 	Server              RuntimeStackManifestComponent   `json:"server"`
 	SteamAuth           RuntimeStackManifestComponent   `json:"steamAuth"`
 	Game                RuntimeContentManifestComponent `json:"game"`
@@ -204,6 +208,9 @@ func ValidateRuntimeStackManifest(manifest RuntimeStackManifest) error {
 	}
 	if strings.TrimSpace(manifest.MinimumPanelVersion) == "" {
 		return errors.New("minimumPanelVersion is required")
+	}
+	if manifest.RuntimeUpdatePolicy != RuntimeUpdatePolicyRecommended && manifest.RuntimeUpdatePolicy != RuntimeUpdatePolicyRequired {
+		return errors.New("runtimeUpdatePolicy must be recommended or required")
 	}
 	if manifest.Channel != "stable" && manifest.Channel != "preview" {
 		return errors.New("channel must be stable or preview")
@@ -707,7 +714,7 @@ func invalidRuntimeStack(result RuntimeStackInspection, code, reason string) Run
 
 func recommendationFromManifest(manifest RuntimeStackManifest) RuntimeStackRecommendation {
 	return RuntimeStackRecommendation{
-		StackVersion: manifest.StackVersion, Channel: manifest.Channel, MinimumPanelVersion: manifest.MinimumPanelVersion,
+		StackVersion: manifest.StackVersion, Channel: manifest.Channel, MinimumPanelVersion: manifest.MinimumPanelVersion, RuntimeUpdatePolicy: manifest.RuntimeUpdatePolicy,
 		Server: manifest.Server, SteamAuth: manifest.SteamAuth, Game: manifest.Game, SDK: manifest.SDK, SMAPI: manifest.SMAPI, Control: manifest.Control,
 		Status: manifest.Status, Withdrawal: manifest.Withdrawal, ReleaseNotes: manifest.ReleaseNotes, Tested: manifest.Tested,
 	}

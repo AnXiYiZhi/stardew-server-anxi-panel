@@ -3,6 +3,7 @@
   "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
+  "runtimeUpdatePolicy": "required",
   "server": {
     "tag": "1.5.0-preview.125",
     "images": [
@@ -72,7 +73,7 @@
   "status": "recommended",
   "releaseNotes": [
     "Panel 0.3.2 修复宿主 Mods bind mount 保留旧 JunimoServer DLL、导致 .125 镜像实际加载 .121 Mod 的升级缺口；升级与启动现在校验实际 Mod 版本并支持事务回滚。",
-    "JunimoServer 1.5.0-preview.125 仍为推荐版本；现有 1.5.0-preview.121 实例可继续使用并由管理员自愿升级。",
+    "当前 Panel 强制使用 JunimoServer 1.5.0-preview.125；已安装的受支持旧实例会在新 Panel 启动后自动完成预检与成对升级，不再二次询问。",
     "steam-service 在 preview.121 到 preview.125 之间协议未变化，现有 steam-auth-cn 1.5.0-anxi.2 已验证与 server preview.125 配对兼容。",
     "preview.125 继续保留 23 个 /etc/cont-*.d init 兼容挂载，避免裸静态值被容器 init 当作命令执行。",
     "Panel 0.2.6 起升级预检与安装流程使用同一组镜像候选顺序；每个别名仍必须匹配同一 canonical digest。",

@@ -54,6 +54,7 @@ type RuntimeComponentsRecommendation struct {
 	Channel             string                                   `json:"channel"`
 	Status              string                                   `json:"status"`
 	MinimumPanelVersion string                                   `json:"minimumPanelVersion"`
+	RuntimeUpdatePolicy string                                   `json:"runtimeUpdatePolicy"`
 	Game                sjconfig.RuntimeContentManifestComponent `json:"game"`
 	SDK                 sjconfig.RuntimeContentManifestComponent `json:"sdk"`
 	Tested              bool                                     `json:"tested"`
@@ -239,7 +240,7 @@ func newRuntimeComponentsInspection(manifest sjconfig.RuntimeStackManifest) Runt
 func runtimeComponentsRecommendation(manifest sjconfig.RuntimeStackManifest) RuntimeComponentsRecommendation {
 	return RuntimeComponentsRecommendation{
 		StackVersion: manifest.StackVersion, Channel: manifest.Channel, Status: manifest.Status,
-		MinimumPanelVersion: manifest.MinimumPanelVersion, Game: manifest.Game, SDK: manifest.SDK,
+		MinimumPanelVersion: manifest.MinimumPanelVersion, RuntimeUpdatePolicy: manifest.RuntimeUpdatePolicy, Game: manifest.Game, SDK: manifest.SDK,
 		Tested: manifest.Tested, ReleaseNotes: append([]string{}, manifest.ReleaseNotes...),
 	}
 }

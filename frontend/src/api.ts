@@ -630,6 +630,17 @@ export function getCommands(instanceId = defaultInstanceId) {
   return request<CommandsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/commands`)
 }
 
+export function updateAllModsEnabled(
+  enabled: boolean,
+  saveName?: string,
+  instanceId = defaultInstanceId,
+) {
+  return request<{ mods: ModInfo[]; enabled: boolean; saveName: string; changedCount: number }>(
+    `/api/instances/${encodeURIComponent(instanceId)}/mods/enabled`,
+    { method: 'PUT', body: { enabled, saveName } },
+  )
+}
+
 export function getFarmTypeCatalog(instanceId = defaultInstanceId, signal?: AbortSignal) {
   return request<FarmTypeCatalogResponse>(
     `/api/instances/${encodeURIComponent(instanceId)}/saves/farm-types`,

@@ -232,9 +232,11 @@ func EnsureDisabledModProfileForSave(dataDir, saveName string) error {
 	return saveModProfileStore(dataDir, store)
 }
 
-// EnsureNewSaveModProfile commits the exact Mod set used to create a modded
-// farm. New or unrelated installed Mods default to disabled; only the stable
-// keys recorded by the transaction are explicitly enabled.
+// EnsureNewSaveModProfile preserves the physical Mod state used while creating
+// a modded farm and force-enables the provider dependency closure recorded by
+// the transaction. Unrelated Mods therefore keep their pre-creation state;
+// newly installed Mods still default to disabled until explicitly enabled for
+// this save.
 func EnsureNewSaveModProfile(dataDir, saveName string, enabledModKeys []string) error {
 	saveName = strings.TrimSpace(saveName)
 	if saveName == "" {
@@ -258,6 +260,15 @@ func EnsureNewSaveModProfile(dataDir, saveName string, enabledModKeys []string) 
 	if err != nil {
 		return err
 	}
+	// Farm preparation only enables required components; it never disables an
+	// already active Mod. Merge the current physical state with the required
+	// closure so committing the new save cannot silently turn unrelated Mods
+	// off on its next start.
+	for _, mod := range mods {
+		if mod.Enabled {
+			enabled[modProfileKey(mod)] = true
+		}
+	}
 	profile := modProfileSave{
 		DefaultEnabled: false,
 		UpdatedAt:      time.Now().Format(time.RFC3339),
@@ -279,7 +290,8 @@ func EnsureNewSaveModProfile(dataDir, saveName string, enabledModKeys []string) 
 // EnsureImportedSaveModProfile initializes a profile from the imported save's
 // actual XML FarmType. Official saves retain the historical all-third-party-
 // disabled policy. A custom farm must resolve to one installed provider and a
-// complete dependency closure; only that exact closure is enabled.
+// complete dependency closure; those required Mods are enabled in addition to
+// the currently active Mod set.
 func EnsureImportedSaveModProfile(dataDir, saveName string) error {
 	if err := ValidateSaveExists(dataDir, saveName); err != nil {
 		return err
@@ -502,6 +514,73 @@ func SetModEnabledForSaveCascade(dataDir, saveName, modID string, enabled bool) 
 	for _, i := range affectedIndexes {
 		mod := mods[i]
 		if !modCanRelationshipToggle(mod) {
+			continue
+		}
+		profile.Mods[modProfileKey(mod)] = modProfileEntry{
+			Enabled:    enabled,
+			FolderName: mod.FolderName,
+			UniqueID:   mod.UniqueID,
+		}
+		affectedFolders[mod.FolderName] = true
+	}
+	store.Saves[saveName] = profile
+	if err := saveModProfileStore(dataDir, store); err != nil {
+		return nil, err
+	}
+	if err := applyModProfileLocked(dataDir, saveName); err != nil {
+		return nil, err
+	}
+
+	updated, err := ListModsWithState(dataDir, saveName)
+	if err != nil {
+		return nil, err
+	}
+	updated = ApplyNexusMetadataToMods(dataDir, updated)
+	affected := make([]registry.ModInfo, 0, len(affectedFolders))
+	for _, mod := range updated {
+		if affectedFolders[mod.FolderName] {
+			affected = append(affected, mod)
+		}
+	}
+	return affected, nil
+}
+
+// SetAllModsEnabledForSave updates every user-toggleable Mod for one save in a
+// single profile write and applies the resulting physical state once. Runtime,
+// Control, and other built-in components are intentionally left enabled.
+func SetAllModsEnabledForSave(dataDir, saveName string, enabled bool) ([]registry.ModInfo, error) {
+	saveName = strings.TrimSpace(saveName)
+	if saveName == "" {
+		return nil, fmt.Errorf("save name is required")
+	}
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return nil, err
+	}
+
+	lock := modProfileLockFor(dataDir)
+	lock.Lock()
+	defer lock.Unlock()
+
+	mods, err := listPhysicalMods(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	mods = ApplyNexusMetadataToMods(dataDir, mods)
+	store, err := loadModProfileStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	profile, ok := store.Saves[saveName]
+	if !ok {
+		profile = modProfileSave{DefaultEnabled: true, Mods: map[string]modProfileEntry{}}
+	}
+	if profile.Mods == nil {
+		profile.Mods = map[string]modProfileEntry{}
+	}
+	profile.UpdatedAt = time.Now().Format(time.RFC3339)
+	affectedFolders := map[string]bool{}
+	for _, mod := range mods {
+		if !modCanRelationshipToggle(mod) || isJunimoServerModInfo(mod) {
 			continue
 		}
 		profile.Mods[modProfileKey(mod)] = modProfileEntry{

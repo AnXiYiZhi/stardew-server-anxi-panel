@@ -5,6 +5,7 @@ import {
   exportModSyncPack,
   exportModSyncUpdatePack,
   getMods,
+  updateAllModsEnabled,
   updateModEnabled,
   updateModSyncClassification,
   uploadMods,
@@ -48,6 +49,7 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
   const [syncPackBusy, setSyncPackBusy] = useState<'full' | 'update' | null>(null)
   const [syncPackError, setSyncPackError] = useState<string | null>(null)
   const [enableUpdating, setEnableUpdating] = useState<string | null>(null)
+	const [enableAllUpdating, setEnableAllUpdating] = useState<boolean | null>(null)
   const [enableError, setEnableError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -201,6 +203,20 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
     }
   }
 
+  async function handleAllEnabledChange(enabled: boolean) {
+    setEnableError(null)
+    setEnableAllUpdating(enabled)
+    try {
+      await updateAllModsEnabled(enabled, activeSaveName || undefined)
+      await loadMods()
+      void dashboardData.refreshMods()
+    } catch (error) {
+      setEnableError(errorMessage(error))
+    } finally {
+      setEnableAllUpdating(null)
+    }
+  }
+
   async function handleSyncPackExport(kind: 'full' | 'update') {
     setSyncPackBusy(kind)
     setSyncPackError(null)
@@ -217,8 +233,8 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
   return {
     data, loading, listError, showUpload, uploadFiles, setUploadFiles, uploadBusy, uploadError,
     uploadSuccess, confirmDelete, deleteBusy, deleteError, exportBusy, exportError, syncUpdating, syncError,
-    syncPackBusy, syncPackError, enableUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
+    syncPackBusy, syncPackError, enableUpdating, enableAllUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
     handleUpload, openDeleteConfirm, closeDeleteConfirm, handleDeleteConfirm, handleExport, handleSyncChange,
-    handleEnabledChange, handleSyncPackExport,
+    handleEnabledChange, handleAllEnabledChange, handleSyncPackExport,
   }
 }
