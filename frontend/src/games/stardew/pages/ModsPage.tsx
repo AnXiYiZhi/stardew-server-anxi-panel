@@ -665,9 +665,9 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const {
     data, loading, listError, showUpload, uploadFiles, setUploadFiles, uploadBusy, uploadError,
     uploadSuccess, confirmDelete, deleteBusy, deleteError, exportBusy, exportError, syncUpdating, syncError,
-    syncPackBusy, syncPackError, enableUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
+    syncPackBusy, syncPackError, enableUpdating, enableAllUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
     handleUpload, openDeleteConfirm, closeDeleteConfirm, handleDeleteConfirm, handleExport, handleSyncChange,
-    handleEnabledChange, handleSyncPackExport,
+    handleEnabledChange, handleAllEnabledChange, handleSyncPackExport,
   } = useModsManagement({ dashboardData, activeSaveName })
 
   const {
@@ -2104,6 +2104,24 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                   当前存档 Mod 启用状态
                   {activeSaveName ? <span className="sd-mods-loading-tag">{activeSaveName}</span> : null}
                 </div>
+                <div className="sd-mods-enable-actions">
+                  <button
+                    type="button"
+                    className="sd-btn-green"
+                    disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || userVisibleMods.every((mod) => mod.enabled || !mod.canToggle)}
+                    onClick={() => void handleAllEnabledChange(true)}
+                  >
+                    {enableAllUpdating === true ? '正在全部启用…' : '一键启用全部'}
+                  </button>
+                  <button
+                    type="button"
+                    className="sd-btn-tan"
+                    disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || userVisibleMods.every((mod) => !mod.enabled || !mod.canToggle)}
+                    onClick={() => void handleAllEnabledChange(false)}
+                  >
+                    {enableAllUpdating === false ? '正在全部禁用…' : '一键禁用全部'}
+                  </button>
+                </div>
                 {enableError ? <div className="sd-mods-list-error">{enableError}</div> : null}
                 {!activeSaveName ? (
                   <div className="sd-mods-empty sd-mods-settings-empty">
@@ -2121,7 +2139,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                   <div className="sd-mods-enable-list">
                     {userVisibleMods.map((mod) => {
                       const busy = enableUpdating === mod.id
-                      const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy
+                      const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy || enableAllUpdating !== null
                       const title = mod.enableNote || writeTitle || (mod.enabled ? '禁用此 Mod' : '启用此 Mod')
                       const requiredDependency = dependencyDisplay(mod)
                       return (

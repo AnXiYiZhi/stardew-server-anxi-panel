@@ -65,6 +65,47 @@ func TestExpectedRuntimeModFingerprintIncludesDisabledBundledSMAPIMods(t *testin
 	}
 }
 
+func TestExpectedRuntimeModFingerprintIncludesManagedBundledModsAfterDuplicateQuarantine(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	createTestMod(t, root, "Control", "AnXiYiZhi.StardewAnxiPanel.Control", "Control")
+	createTestMod(t, filepath.Join(root, "smapi"), "ConsoleCommands", consoleCommandsID, "Managed Console Commands")
+	createTestMod(t, filepath.Join(root, "smapi"), "SaveBackup", saveBackupID, "Managed Save Backup")
+	createTestMod(t, root, "ConsoleCommands", consoleCommandsID, "Legacy Console Commands")
+	createTestMod(t, root, "SaveBackup", saveBackupID, "Legacy Save Backup")
+
+	quarantined, err := QuarantineSMAPIBundledDuplicates(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(quarantined, ",") != "ConsoleCommands,SaveBackup" {
+		t.Fatalf("quarantined = %v", quarantined)
+	}
+	got, err := expectedRuntimeModFingerprint(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := runtimeModFingerprint([]runtimeLoadedMod{
+		{UniqueID: "AnXiYiZhi.StardewAnxiPanel.Control", Version: "1.0.0"},
+		{UniqueID: consoleCommandsID, Version: "1.0.0"},
+		{UniqueID: saveBackupID, Version: "1.0.0"},
+	})
+	if got != want {
+		t.Fatalf("fingerprint after quarantine = %s, want %s", got, want)
+	}
+}
+
+func TestRuntimeModFingerprintNormalizesSMAPISemanticVersions(t *testing.T) {
+	raw := runtimeModFingerprint([]runtimeLoadedMod{{UniqueID: "Example.Mod", Version: "7.4"}})
+	normalized := runtimeModFingerprint([]runtimeLoadedMod{{UniqueID: "Example.Mod", Version: "7.4.0"}})
+	if raw != normalized {
+		t.Fatalf("raw fingerprint %s != normalized fingerprint %s", raw, normalized)
+	}
+	if got := normalizeRuntimeModVersion("1.5.0-preview.125"); got != "1.5.0-preview.125" {
+		t.Fatalf("prerelease version normalized to %q", got)
+	}
+}
+
 func TestRuntimeFarmCatalogValidationFailures(t *testing.T) {
 	tests := []struct {
 		name   string

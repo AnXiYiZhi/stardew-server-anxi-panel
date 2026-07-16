@@ -591,6 +591,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleModSyncClassificationUpdate(w, r, instanceID, parts[2])
 		return
 	}
+	// PUT /api/instances/:id/mods/enabled
+	if len(parts) == 3 && parts[1] == "mods" && parts[2] == "enabled" {
+		if r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleAllModsEnabledUpdate(w, r, instanceID)
+		return
+	}
 	// PUT /api/instances/:id/mods/:modId/enabled
 	if len(parts) == 4 && parts[1] == "mods" && parts[3] == "enabled" {
 		if r.Method != http.MethodPut {

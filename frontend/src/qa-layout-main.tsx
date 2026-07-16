@@ -154,7 +154,7 @@ const junimoUpdate = {
     steamAuth: { image: 'docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2', tag: '1.5.0-anxi.2' },
   },
   recommended: {
-    status: 'recommended', tested: true, stackVersion: 'junimo-1.5.0-preview.125_auth-1.5.0-anxi.2', channel: 'preview', minimumPanelVersion: '0.2.2',
+    status: 'recommended', tested: true, stackVersion: 'junimo-1.5.0-preview.125_auth-1.5.0-anxi.2', channel: 'preview', minimumPanelVersion: '0.3.2', runtimeUpdatePolicy: 'required',
     server: { image: 'sdvd/server:1.5.0-preview.125', images: ['sdvd/server:1.5.0-preview.125'], tag: '1.5.0-preview.125' },
     steamAuth: { image: 'anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2', images: ['anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2'], tag: '1.5.0-anxi.2' },
   },
@@ -167,7 +167,7 @@ const runtimeComponents = {
     sdk: { appId: '1007', buildId: '20939719', stateFlags: '4', manifestPath: '.steam-sdk/steamapps/appmanifest_1007.acf', installDir: 'Steamworks SDK Redist' },
   },
   recommended: {
-    status: 'recommended', tested: true, stackVersion: 'junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2', channel: 'preview', minimumPanelVersion: '0.2.2',
+    status: 'recommended', tested: true, stackVersion: 'junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2', channel: 'preview', minimumPanelVersion: '0.3.2', runtimeUpdatePolicy: 'required',
     game: { buildId: '16826371', manifestVersion: 'stardew-1.6.15-public', notes: [] },
     sdk: { buildId: '20939719', manifestVersion: 'steamworks-sdk-redist-public', notes: [] },
   },

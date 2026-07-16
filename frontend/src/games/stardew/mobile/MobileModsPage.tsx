@@ -3,6 +3,7 @@ import {
   exportMods,
   getMods,
   searchNexusMods,
+  updateAllModsEnabled,
   updateModEnabled,
   uploadMods,
 } from '../../../api'
@@ -230,6 +231,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [enableUpdating, setEnableUpdating] = useState<string | null>(null)
+  const [enableAllUpdating, setEnableAllUpdating] = useState<boolean | null>(null)
   const [enableError, setEnableError] = useState<string | null>(null)
   const [enableMessage, setEnableMessage] = useState<string | null>(null)
 
@@ -443,6 +445,22 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
     }
   }
 
+  async function handleAllEnabledChange(enabled: boolean) {
+    setEnableError(null)
+    setEnableMessage(null)
+    setEnableAllUpdating(enabled)
+    try {
+      const result = await updateAllModsEnabled(enabled, activeSaveName || undefined)
+      setEnableMessage(`${enabled ? '已启用' : '已禁用'} ${result.changedCount} 个 Mod。`)
+      await loadMods()
+      dashboardData.refreshMods()
+    } catch (e) {
+      setEnableError(errorMessage(e))
+    } finally {
+      setEnableAllUpdating(null)
+    }
+  }
+
   function closeUpload() {
     if (uploadBusy) return
     setShowUpload(false)
@@ -647,6 +665,24 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
             {data?.restartRequired ? <span className="sd-tag sd-tag-red">需要重启</span> : null}
             {activeSaveName ? <span className="sd-tag sd-tag-gold">{activeSaveName}</span> : null}
           </div>
+          <div className="sd-mmods-bulk-actions">
+            <button
+              type="button"
+              className="sd-btn-green"
+              disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || installedMods.every((mod) => mod.enabled || !mod.canToggle)}
+              onClick={() => void handleAllEnabledChange(true)}
+            >
+              {enableAllUpdating === true ? '正在全部启用…' : '一键启用全部'}
+            </button>
+            <button
+              type="button"
+              className="sd-btn-tan"
+              disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || installedMods.every((mod) => !mod.enabled || !mod.canToggle)}
+              onClick={() => void handleAllEnabledChange(false)}
+            >
+              {enableAllUpdating === false ? '正在全部禁用…' : '一键禁用全部'}
+            </button>
+          </div>
           {enableError ? <div className="sd-notice sd-notice--error sd-mmods-notice">{enableError}</div> : null}
           {enableMessage ? <div className="sd-notice sd-notice--ok sd-mmods-notice">{enableMessage}</div> : null}
           {loading && !data ? (
@@ -657,7 +693,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
             <div className="sd-mmods-installed-list">
               {installedMods.map((mod) => {
                 const busy = enableUpdating === mod.id
-                const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy
+                const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy || enableAllUpdating !== null
                 const title = mod.enableNote || writeTitle || (mod.enabled ? '禁用此 Mod' : '启用此 Mod')
                 const dependency = dependencyDisplay(mod)
                 const externalUrl = modExternalUrl(mod)

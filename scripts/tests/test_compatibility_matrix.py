@@ -18,6 +18,14 @@ class CompatibilityMatrixTests(unittest.TestCase):
     def test_embedded_recommended_is_valid(self):
         MATRIX.validate(self.base)
         self.assertEqual("recommended", self.base["status"])
+        self.assertEqual("required", self.base["runtimeUpdatePolicy"])
+
+    def test_update_policy_is_explicit(self):
+        for policy in (None, "silent", ""):
+            value = copy.deepcopy(self.base)
+            value["runtimeUpdatePolicy"] = policy
+            with self.assertRaisesRegex(MATRIX.MatrixError, "runtimeUpdatePolicy"):
+                MATRIX.validate(value)
 
     def test_exact_component_digests_are_required(self):
         value = copy.deepcopy(self.base)

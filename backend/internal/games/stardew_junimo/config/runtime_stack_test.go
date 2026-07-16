@@ -15,6 +15,9 @@ func TestBuiltInRuntimeStackManifestIsValid(t *testing.T) {
 	if manifest.Server.Tag != "1.5.0-preview.125" || manifest.SteamAuth.Tag != "1.5.0-anxi.2" {
 		t.Fatalf("unexpected tested pair: server=%q auth=%q", manifest.Server.Tag, manifest.SteamAuth.Tag)
 	}
+	if manifest.RuntimeUpdatePolicy != RuntimeUpdatePolicyRequired {
+		t.Fatalf("runtime stack must be mandatory for this Panel release: %q", manifest.RuntimeUpdatePolicy)
+	}
 	if manifest.Game.AppID != "413150" || manifest.Game.BuildID == "" || manifest.SDK.AppID != "1007" || manifest.SDK.BuildID == "" || !manifest.Tested {
 		t.Fatalf("runtime content recommendation is incomplete: game=%#v sdk=%#v tested=%v", manifest.Game, manifest.SDK, manifest.Tested)
 	}
@@ -94,6 +97,7 @@ func TestRuntimeStackManifestRejectsUnsafeComponents(t *testing.T) {
 		{"game app mismatch", func(m *RuntimeStackManifest) { m.Game.AppID = "1007" }},
 		{"game build invalid", func(m *RuntimeStackManifest) { m.Game.BuildID = "latest" }},
 		{"sdk build missing", func(m *RuntimeStackManifest) { m.SDK.BuildID = "" }},
+		{"invalid update policy", func(m *RuntimeStackManifest) { m.RuntimeUpdatePolicy = "silent" }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

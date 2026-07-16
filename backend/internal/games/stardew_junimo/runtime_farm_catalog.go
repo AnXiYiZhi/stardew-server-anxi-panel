@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -85,19 +86,69 @@ func expectedRuntimeModFingerprint(dataDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	loaded := make([]runtimeLoadedMod, 0, len(mods))
+	loadedByID := make(map[string]runtimeLoadedMod, len(mods))
+	bundledFallback := map[string]runtimeLoadedMod{}
 	for _, mod := range mods {
 		if isSMAPIRuntimeMod(mod) || mod.ParseError != "" || strings.TrimSpace(mod.UniqueID) == "" {
 			continue
 		}
-		// SMAPI loads these bundled utilities from the game runtime even when
-		// the panel's mirrored folders are in mods-disabled.
-		if !mod.Enabled && !isBundledSMAPILoadedMod(mod.UniqueID) {
+		item := runtimeLoadedMod{UniqueID: strings.TrimSpace(mod.UniqueID), Version: strings.TrimSpace(mod.Version)}
+		key := strings.ToLower(item.UniqueID)
+		if isBundledSMAPILoadedMod(mod.UniqueID) {
+			// Legacy top-level mirrors may be disabled or quarantined. Keep them
+			// only as a compatibility fallback; the managed runtime copy below is
+			// authoritative because that is what SMAPI actually loads.
+			bundledFallback[key] = item
 			continue
 		}
-		loaded = append(loaded, runtimeLoadedMod{UniqueID: strings.TrimSpace(mod.UniqueID), Version: strings.TrimSpace(mod.Version)})
+		if !mod.Enabled {
+			continue
+		}
+		loadedByID[key] = item
+	}
+	bundled, err := bundledSMAPIRuntimeLoadedMods(dataDir)
+	if err != nil {
+		return "", err
+	}
+	for _, item := range bundled {
+		loadedByID[strings.ToLower(item.UniqueID)] = item
+	}
+	for key, item := range bundledFallback {
+		if _, ok := loadedByID[key]; !ok {
+			loadedByID[key] = item
+		}
+	}
+	loaded := make([]runtimeLoadedMod, 0, len(loadedByID))
+	for _, item := range loadedByID {
+		loaded = append(loaded, item)
 	}
 	return runtimeModFingerprint(loaded), nil
+}
+
+func bundledSMAPIRuntimeLoadedMods(dataDir string) ([]runtimeLoadedMod, error) {
+	root := filepath.Join(modsDir(dataDir), "smapi")
+	entries, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read bundled SMAPI runtime mods: %w", err)
+	}
+	loaded := make([]runtimeLoadedMod, 0, len(smapiBundledSupportUniqueIDs))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		mod := readModInfo(filepath.Join(root, entry.Name()), entry.Name())
+		if mod.ParseError != "" || !isBundledSMAPILoadedMod(mod.UniqueID) {
+			continue
+		}
+		loaded = append(loaded, runtimeLoadedMod{
+			UniqueID: strings.TrimSpace(mod.UniqueID),
+			Version:  strings.TrimSpace(mod.Version),
+		})
+	}
+	return loaded, nil
 }
 
 func isBundledSMAPILoadedMod(uniqueID string) bool {
@@ -109,7 +160,7 @@ func runtimeModFingerprint(mods []runtimeLoadedMod) string {
 	canonical := make([]string, 0, len(mods))
 	for _, mod := range mods {
 		if id := strings.TrimSpace(mod.UniqueID); id != "" {
-			canonical = append(canonical, strings.ToLower(id)+"@"+strings.TrimSpace(mod.Version))
+			canonical = append(canonical, strings.ToLower(id)+"@"+normalizeRuntimeModVersion(mod.Version))
 		}
 	}
 	sort.Strings(canonical)
@@ -119,6 +170,39 @@ func runtimeModFingerprint(mods []runtimeLoadedMod) string {
 	}
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
+}
+
+// SMAPI's semantic version string adds missing numeric components (for
+// example 7.4 becomes 7.4.0). Normalize the manifest-side value the same way
+// before hashing so equivalent versions do not produce different fingerprints.
+func normalizeRuntimeModVersion(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	coreEnd := len(value)
+	if i := strings.IndexAny(value, "-+"); i >= 0 {
+		coreEnd = i
+	}
+	core, suffix := value[:coreEnd], value[coreEnd:]
+	parts := strings.Split(core, ".")
+	if len(parts) == 0 || len(parts) > 3 {
+		return value
+	}
+	for _, part := range parts {
+		if part == "" {
+			return value
+		}
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return value
+			}
+		}
+	}
+	for len(parts) < 3 {
+		parts = append(parts, "0")
+	}
+	return strings.Join(parts, ".") + suffix
 }
 
 func readRuntimeFarmCatalog(path string) (runtimeFarmCatalog, error) {

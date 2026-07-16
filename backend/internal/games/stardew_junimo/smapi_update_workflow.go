@@ -288,7 +288,7 @@ func (d *Driver) RecoverSMAPIUpdateApply(ctx context.Context, instance registry.
 				if err := lifecycle.doStart(runCtx, jobCtx); err != nil {
 					return d.markSMAPIRollbackFailed(instance.DataDir, &status, err)
 				}
-				if err := d.verifySMAPIRollbackStack(runCtx, workflow, lifecycle, instance, recovery.OriginalVolume, status.Current.Version); err != nil {
+				if err := d.verifySMAPIRollbackStack(runCtx, workflow, instance, recovery.OriginalVolume, status.Current.Version); err != nil {
 					return d.markSMAPIRollbackFailed(instance.DataDir, &status, err)
 				}
 			}
@@ -436,10 +436,10 @@ func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, 
 	if err := lifecycle.doStart(ctx, jobCtx); err != nil {
 		return err
 	}
-	if err := set(SMAPIApplyVerifying, 90, "验证 SMAPI、Junimo、Control、状态文件、邀请码和 auth ticket。"); err != nil {
+	if err := set(SMAPIApplyVerifying, 90, "验证 SMAPI、Junimo、Control、状态文件与 auth 服务接口。"); err != nil {
 		return err
 	}
-	if err := d.verifySMAPIUpdatedStack(ctx, dockerWorkflow, lifecycle, instance, stagingVolume, manifest); err != nil {
+	if err := d.verifySMAPIUpdatedStack(ctx, dockerWorkflow, instance, stagingVolume, manifest); err != nil {
 		return err
 	}
 	if !status.ServerWasRunning {
@@ -451,7 +451,7 @@ func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, 
 		}
 	}
 	status.Phase, status.Progress, status.UpdatedAt, status.FinishedAt = SMAPIApplySucceeded, 100, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)
-	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "full_stack", Status: "ok", Message: "SMAPI、JunimoServer、Control、commandResultVersion、status/players、health、邀请码与 auth ticket 均通过。"})
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "full_stack", Status: "ok", Message: "SMAPI、JunimoServer、Control、commandResultVersion、status/players、health 与 auth 服务接口均通过；Steam 登录和邀请码不属于升级硬门槛。"})
 	if err := writeSMAPIUpdateStatus(instance.DataDir, "apply-status.json", status); err != nil {
 		return err
 	}
@@ -459,29 +459,28 @@ func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, 
 	return nil
 }
 
-func (d *Driver) verifySMAPIUpdatedStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, lifecycle *lifecycleRunner, instance registry.Instance, volume string, manifest sjconfig.RuntimeStackManifest) error {
-	return d.verifySMAPIStack(ctx, dockerWorkflow, lifecycle, instance, volume, manifest.SMAPI.Version, manifest.Control.CommandResultVersion)
+func (d *Driver) verifySMAPIUpdatedStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, instance registry.Instance, volume string, manifest sjconfig.RuntimeStackManifest) error {
+	return d.verifySMAPIStack(ctx, dockerWorkflow, instance, volume, manifest.SMAPI.Version, manifest.Control.CommandResultVersion)
 }
 
-func (d *Driver) verifySMAPIRollbackStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, lifecycle *lifecycleRunner, instance registry.Instance, volume, expectedVersion string) error {
+func (d *Driver) verifySMAPIRollbackStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, instance registry.Instance, volume, expectedVersion string) error {
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		return err
 	}
-	return d.verifySMAPIStack(ctx, dockerWorkflow, lifecycle, instance, volume, expectedVersion, manifest.Control.CommandResultVersion)
+	return d.verifySMAPIStack(ctx, dockerWorkflow, instance, volume, expectedVersion, manifest.Control.CommandResultVersion)
 }
 
-func (d *Driver) verifySMAPIStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, lifecycle *lifecycleRunner, instance registry.Instance, volume, expectedVersion string, commandResultVersion int) error {
+func (d *Driver) verifySMAPIStack(ctx context.Context, dockerWorkflow SMAPIUpdateWorkflowDocker, instance registry.Instance, volume, expectedVersion string, commandResultVersion int) error {
 	deadline := time.Now().Add(d.runtimeUpdateServerTimeout)
 	for time.Now().Before(deadline) {
 		meta, metaErr := dockerWorkflow.RuntimeReadSMAPIMetadata(ctx, instance.DataDir, volume, gameInstallImage(instance.DataDir))
 		healthErr := dockerWorkflow.RuntimeServerHealth(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
-		auth, authErr := dockerWorkflow.RuntimeSteamAuthReady(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
+		_, authErr := dockerWorkflow.RuntimeSteamAuthReady(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
 		statusOK, playersOK := verifyControlRuntimeFiles(instance.DataDir, commandResultVersion)
 		logs, logsErr := dockerWorkflow.ComposeLogs(ctx, instance.DataDir, paneldocker.LogsOptions{Service: "server", Tail: 800})
 		junimoLoaded, controlLoaded := requiredSMAPIModsLoaded(logs.Stdout + "\n" + logs.Stderr)
-		invite, inviteErr := lifecycle.fetchInviteCode(ctx)
-		if metaErr == nil && meta.RequiredFiles && normalizedSMAPIVersion(meta.Version) == normalizedSMAPIVersion(expectedVersion) && healthErr == nil && authErr == nil && auth.Ready && auth.HasTicket && logsErr == nil && junimoLoaded && controlLoaded && statusOK && playersOK && inviteErr == nil && strings.TrimSpace(invite) != "" {
+		if metaErr == nil && meta.RequiredFiles && normalizedSMAPIVersion(meta.Version) == normalizedSMAPIVersion(expectedVersion) && healthErr == nil && authErr == nil && logsErr == nil && junimoLoaded && controlLoaded && statusOK && playersOK {
 			return nil
 		}
 		select {
@@ -558,7 +557,7 @@ func (d *Driver) rollbackSMAPIUpdate(ctx context.Context, jobCtx *jobs.Context, 
 	if err := lifecycle.doStart(ctx, jobCtx); err != nil {
 		return d.markSMAPIRollbackFailed(instance.DataDir, status, err)
 	}
-	if err := d.verifySMAPIRollbackStack(ctx, dockerWorkflow, lifecycle, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload}, recovery.OriginalVolume, status.Current.Version); err != nil {
+	if err := d.verifySMAPIRollbackStack(ctx, dockerWorkflow, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload}, recovery.OriginalVolume, status.Current.Version); err != nil {
 		return d.markSMAPIRollbackFailed(instance.DataDir, status, err)
 	}
 	if !recovery.ServerWasRunning {

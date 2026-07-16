@@ -89,6 +89,9 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
+	if err := d.requireCurrentRuntimeStack(req.Instance); err != nil {
+		return nil, err
+	}
 	ld, ok := d.docker.(LifecycleDockerService)
 	if !ok {
 		return nil, fmt.Errorf("docker 服务不支持生命周期操作")

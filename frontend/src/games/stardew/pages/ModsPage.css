@@ -2137,6 +2137,16 @@
   }
 }
 
+.sd-mods-enable-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sd-mods-enable-actions button {
+  min-width: 132px;
+}
+
 .sd-mods-compatibility-warning {
   display: grid;
   gap: 5px;

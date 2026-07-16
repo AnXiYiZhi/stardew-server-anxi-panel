@@ -51,3 +51,32 @@ func TestRuntimeApplyServiceAllowlistIsPairOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRuntimeSteamReadyResponseTreatsLoginStateAsCapability(t *testing.T) {
+	ready, err := parseRuntimeSteamReadyResponse(`{"ready":false,"has_ticket":false}`)
+	if err != nil || ready.Ready || ready.HasTicket {
+		t.Fatalf("logged-out response should remain a valid service contract: ready=%+v err=%v", ready, err)
+	}
+	withoutTicket, err := parseRuntimeSteamReadyResponse(`{"ready":false,"error":"Account 0 not configured"}`)
+	if err != nil || withoutTicket.Ready || withoutTicket.HasTicket {
+		t.Fatalf("real logged-out auth contract should be accepted without has_ticket: ready=%+v err=%v", withoutTicket, err)
+	}
+	for _, invalid := range []string{`{}`, `{"has_ticket":false}`, `not-json`} {
+		if _, err := parseRuntimeSteamReadyResponse(invalid); err == nil {
+			t.Fatalf("incomplete auth contract accepted: %s", invalid)
+		}
+	}
+	current, err := parseRuntimeSteamReadyResponse(`{"status":"ok","logged_in":true,"accounts":[]}`)
+	if err != nil || !current.Ready || current.HasTicket {
+		t.Fatalf("current logged-out auth contract should be accepted: ready=%+v err=%v", current, err)
+	}
+	for _, invalid := range []string{
+		`{"status":"ok","logged_in":true}`,
+		`{"status":"ok","accounts":[]}`,
+		`{"status":"failed","logged_in":false,"accounts":[]}`,
+	} {
+		if _, err := parseRuntimeSteamReadyResponse(invalid); err == nil {
+			t.Fatalf("incomplete current auth contract accepted: %s", invalid)
+		}
+	}
+}

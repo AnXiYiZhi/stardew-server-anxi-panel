@@ -116,14 +116,35 @@ func (c *Client) RuntimeSteamAuthReady(ctx context.Context, dir, project string)
 	if err != nil {
 		return RuntimeSteamReady{}, err
 	}
+	return parseRuntimeSteamReadyResponse(result.Stdout)
+}
+
+func parseRuntimeSteamReadyResponse(output string) (RuntimeSteamReady, error) {
 	var ready struct {
-		Ready     bool `json:"ready"`
-		HasTicket bool `json:"has_ticket"`
+		Ready     *bool           `json:"ready"`
+		HasTicket *bool           `json:"has_ticket"`
+		Status    *string         `json:"status"`
+		LoggedIn  *bool           `json:"logged_in"`
+		Accounts  json.RawMessage `json:"accounts"`
 	}
-	if err := json.Unmarshal([]byte(result.Stdout), &ready); err != nil {
+	if err := json.Unmarshal([]byte(output), &ready); err != nil {
 		return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
 	}
-	return RuntimeSteamReady{Ready: ready.Ready, HasTicket: ready.HasTicket}, nil
+	// Keep accepting the original ready/has_ticket contract, but also accept
+	// the current steam-service contract used by the reviewed auth image. Login
+	// and ticket availability are capabilities for online play, not hard
+	// runtime-upgrade acceptance requirements.
+	if ready.Ready != nil {
+		hasTicket := false
+		if ready.HasTicket != nil {
+			hasTicket = *ready.HasTicket
+		}
+		return RuntimeSteamReady{Ready: *ready.Ready, HasTicket: hasTicket}, nil
+	}
+	if ready.Status == nil || !strings.EqualFold(strings.TrimSpace(*ready.Status), "ok") || ready.LoggedIn == nil || ready.Accounts == nil || !json.Valid(ready.Accounts) {
+		return RuntimeSteamReady{}, errors.New("incomplete steam auth ready response")
+	}
+	return RuntimeSteamReady{Ready: true, HasTicket: false}, nil
 }
 
 func (c *Client) RuntimeServerHealth(ctx context.Context, dir, project string) error {

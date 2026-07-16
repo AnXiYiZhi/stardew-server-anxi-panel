@@ -37,6 +37,21 @@ func runSteamAuthPlatform(
 		return -1, err
 	}
 	defer conn.Close()
+	stopCancelWatch := make(chan struct{})
+	defer close(stopCancelWatch)
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Stop the one-shot container before unblocking streamTTYOutput.
+			// Disconnecting attach alone leaves the process running forever at
+			// an interactive prompt, so AutoRemove would never take effect.
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = winDockerStop(stopCtx, containerID)
+			stopCancel()
+			_ = conn.Close()
+		case <-stopCancelWatch:
+		}
+	}()
 
 	// 3. Wait goroutine BEFORE start so we don't miss the exit event.
 	exitCh := make(chan int, 1)
@@ -91,6 +106,20 @@ func runSteamAuthPlatform(
 	case <-ctx.Done():
 		return -1, ctx.Err()
 	}
+}
+
+func winDockerStop(ctx context.Context, containerID string) error {
+	resp, conn, err := winDockerCall(ctx, "POST", "/v1.41/containers/"+containerID+"/stop?t=3", "")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("stop steam-auth: HTTP %d: %s", resp.StatusCode, raw)
 }
 
 // ─── Docker Engine API helpers ─────────────────────────────────────────────

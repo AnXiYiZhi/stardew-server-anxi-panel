@@ -155,13 +155,17 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 	manifest.AuthRecreated = true
 	_ = writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest)
-	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "正在验证 Steam 登录恢复与 app ticket。"); err != nil {
+	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "正在验证 steam-auth-cn 容器与服务接口。"); err != nil {
 		return err
 	}
-	if err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+	authState, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID)
+	if err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "新版 steam-auth-cn 认证验证失败。")
 	}
-	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: "新版 steam-auth-cn 返回 ready=true 且 has_ticket=true，镜像 digest 匹配目标。"})
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: "新版 steam-auth-cn 容器运行、服务接口可解析，且镜像 digest 匹配目标。"})
+	if !authState.Ready || !authState.HasTicket {
+		status.Warnings = append(status.Warnings, "steam-auth-cn 当前未建立完整 Steam 在线会话；这不影响局域网模式或本次升级验收，需要邀请码时可稍后登录 Steam。")
+	}
 
 	if err := setPhase(RuntimeUpdateApplyRecreatingServer, 75, "正在重建同一推荐版本对的 Junimo server。"); err != nil {
 		return err
@@ -171,13 +175,13 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 	manifest.ServerRecreated = true
 	_ = writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest)
-	if err := setPhase(RuntimeUpdateApplyVerifyingServer, 85, "正在验证容器、Junimo、SMAPI/控制契约和邀请码链路。"); err != nil {
+	if err := setPhase(RuntimeUpdateApplyVerifyingServer, 85, "正在验证容器、Junimo、SMAPI 与控制契约。"); err != nil {
 		return err
 	}
 	if err := d.verifyRuntimeTarget(ctx, docker, instance, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "新版 Junimo server 运行验证失败。")
 	}
-	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "junimo_runtime", Status: "ok", Message: "server/auth digest、容器健康、Junimo health/API、控制契约与邀请码链路均已验证。"})
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "junimo_runtime", Status: "ok", Message: "server/auth digest、容器健康、Junimo health/API 与控制契约均已验证；邀请码不属于升级硬门槛。"})
 
 	if err := setPhase(RuntimeUpdateApplyRestoringState, 95, "正在恢复升级前的运行/停止状态。"); err != nil {
 		return err
@@ -330,34 +334,31 @@ func writeRuntimeTargetEnvAtomic(dataDir string, target sjconfig.RuntimeStackRec
 	return replaceRuntimeUpdateStatusFile(tmpName, envPath)
 }
 
-func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string) error {
+func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string) (paneldocker.RuntimeSteamReady, error) {
 	deadline := time.Now().Add(d.runtimeUpdateAuthTimeout)
 	var last paneldocker.RuntimeSteamReady
 	for time.Now().Before(deadline) {
 		metadata, err := docker.RuntimeServiceInspect(ctx, dataDir, project, "steam-auth")
 		if err == nil && metadata.ImageID != imageID {
-			return errors.New("auth_digest_mismatch")
+			return last, errors.New("auth_digest_mismatch")
 		}
-		if err == nil {
+		if err == nil && strings.EqualFold(metadata.State, "running") && (metadata.Health == "" || strings.EqualFold(metadata.Health, "healthy")) {
 			last, err = docker.RuntimeSteamAuthReady(ctx, dataDir, project)
-			if err == nil && last.Ready && last.HasTicket {
-				return nil
+			if err == nil {
+				return last, nil
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return last, ctx.Err()
 		case <-time.After(d.runtimeUpdatePollInterval):
 		}
 	}
-	if last.Ready && !last.HasTicket {
-		return errors.New("auth_ticket_missing")
-	}
-	return errors.New("auth_not_ready")
+	return last, errors.New("auth_service_not_ready")
 }
 
 func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
-	if err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+	if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(d.runtimeUpdateServerTimeout)
@@ -379,14 +380,8 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 				lastFailure = "control_contract_not_ready"
 			} else if !runtimeInfoContractReady(ctx, docker, instance.DataDir, manifest.TargetServerVersion) {
 				lastFailure = "junimo_contract_not_ready"
-			} else if stored, storeErr := d.store.GetInstance(ctx, instance.ID); storeErr != nil {
-				lastFailure = "instance_state_unavailable"
 			} else {
-				runner := &lifecycleRunner{driver: d, lifecycle: docker, instance: stored}
-				if _, inviteErr := runner.fetchInviteCode(ctx); inviteErr == nil {
-					return nil
-				}
-				lastFailure = "invite_code_not_ready"
+				return nil
 			}
 		}
 		select {
