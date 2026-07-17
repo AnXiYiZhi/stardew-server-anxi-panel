@@ -50,6 +50,7 @@ type RuntimeUpdateApplyDockerService interface {
 	RuntimeCloneVolume(context.Context, string, string, string, string) error
 	RuntimeRestoreVolume(context.Context, string, string, string, string) error
 	RuntimeRemoveSnapshotVolume(context.Context, string, string, string) error
+	RuntimeRemoveImage(context.Context, string, string, string) error
 }
 
 type runtimeUpdateAuditStore interface {

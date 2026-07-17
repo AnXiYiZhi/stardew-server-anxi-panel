@@ -202,6 +202,15 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("ANXI_REAL_UPGRADE_FORCE_121") == "1" {
+		if err := sjconfig.UpdateEnvFile(envPath, map[string]string{
+			"IMAGE_VERSION":           "1.5.0-preview.121",
+			"SERVER_IMAGE":            "dockerproxy.net/sdvd/server:1.5.0-preview.121",
+			"SERVER_IMAGE_CANDIDATES": "dockerproxy.net/sdvd/server:1.5.0-preview.121,sdvd/server:1.5.0-preview.121,docker.m.daocloud.io/sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	run("volume", "create", gameVolume)
 	run("volume", "create", steamVolume)
 	run("run", "--rm", "--network", "none",

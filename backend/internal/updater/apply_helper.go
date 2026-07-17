@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -232,6 +233,8 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		return nil
 	}()
 	if operationErr == nil {
+		cleanupPanelImages(ctx, executor, opts.CurrentImage, opts.OriginalDigest, selected, selectedDigest, &status)
+		status.CleanupCompleted = true
 		finished := now().UTC()
 		status.Phase, status.Progress, status.Result = PhaseSucceeded, 100, "面板升级并验收成功"
 		status.UpdatedAt, status.FinishedAt, status.Error, status.ErrorCode = finished, &finished, "", ""
@@ -249,6 +252,96 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		return failTerminal(PhaseRollbackFailed, CodeRollbackFailed, failure.message+"；自动回滚失败", "需要管理员人工检查部署和数据库备份")
 	}
 	return failTerminal(PhaseFailedRolledBack, failure.code, failure.message, "已自动恢复并验收旧面板")
+}
+
+func cleanupPanelImages(ctx context.Context, executor ApplyExecutor, originalImage, originalDigest, selectedImage, selectedDigest string, status *ApplyStatus) {
+	if strings.TrimSpace(originalImage) != "" && originalImage != selectedImage && strings.TrimSpace(originalDigest) != strings.TrimSpace(selectedDigest) {
+		inspectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		actualDigest, err := executor.Output(inspectCtx, "image", "inspect", "--format", "{{.Id}}", originalImage)
+		cancel()
+		if err != nil {
+			status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "warn", Message: "旧面板镜像已不存在或无法核对，跳过旧 tag 清理"})
+		} else if strings.TrimSpace(actualDigest) != strings.TrimSpace(originalDigest) {
+			status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "warn", Message: "旧面板镜像 tag 已指向其他 image ID，出于安全考虑未删除"})
+		} else {
+			removeCtx, removeCancel := context.WithTimeout(ctx, 2*time.Minute)
+			removeErr := executor.Run(removeCtx, "image", "rm", originalImage)
+			removeCancel()
+			if removeErr != nil {
+				status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "warn", Message: "旧面板镜像仍被其他容器引用或删除失败，已保留供管理员检查"})
+			} else {
+				status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "info", Message: "已删除升级前的旧面板镜像引用"})
+			}
+		}
+	}
+	cleanupTrustedPanelImageHistory(ctx, executor, selectedImage, selectedDigest, status)
+
+	// Only prune dangling images produced by this project's build. Never use
+	// `image prune -a`, which could remove rollback or unrelated images.
+	pruneCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	err := executor.Run(pruneCtx, "image", "prune", "--force", "--filter", "label=org.opencontainers.image.title=stardew-server-anxi-panel")
+	cancel()
+	if err != nil {
+		status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "warn", Message: "面板 dangling 镜像定向清理失败；升级结果不受影响"})
+	}
+}
+
+func cleanupTrustedPanelImageHistory(ctx context.Context, executor ApplyExecutor, selectedImage, selectedDigest string, status *ApplyStatus) {
+	listCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	images, err := executor.Output(listCtx, "image", "ls", "--no-trunc", "--filter", "label=org.opencontainers.image.title=stardew-server-anxi-panel", "--format", "{{.Repository}}|{{.Tag}}|{{.ID}}")
+	cancel()
+	if err != nil {
+		status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "warn", Message: "无法枚举可信 Panel 历史镜像，跳过带 tag 历史清理"})
+		return
+	}
+	containersCtx, containersCancel := context.WithTimeout(ctx, 30*time.Second)
+	containers, err := executor.Output(containersCtx, "container", "ls", "--all", "--no-trunc", "--format", "{{.Image}}")
+	containersCancel()
+	if err != nil {
+		status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "warn", Message: "无法核对宿主容器镜像引用，跳过带 tag 历史清理"})
+		return
+	}
+	protected := map[string]bool{strings.TrimSpace(selectedImage): true, strings.TrimSpace(selectedDigest): true}
+	for _, line := range strings.Split(containers, "\n") {
+		if value := strings.TrimSpace(line); value != "" {
+			protected[value] = true
+		}
+	}
+	removed := 0
+	for _, line := range strings.Split(images, "\n") {
+		parts := strings.Split(strings.TrimSpace(line), "|")
+		if len(parts) != 3 || parts[0] == "<none>" || parts[1] == "<none>" {
+			continue
+		}
+		repository, tag, listedID := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2])
+		if _, ok := trustedRepositoryOf(repository); !ok {
+			continue
+		}
+		if tag != "latest" {
+			if _, normalizeErr := NormalizeTargetVersion(tag); normalizeErr != nil {
+				continue
+			}
+		}
+		ref := repository + ":" + tag
+		if protected[ref] || protected[listedID] {
+			continue
+		}
+		inspectCtx, inspectCancel := context.WithTimeout(ctx, 30*time.Second)
+		actualID, inspectErr := executor.Output(inspectCtx, "image", "inspect", "--format", "{{.Id}}", ref)
+		inspectCancel()
+		if inspectErr != nil || strings.TrimSpace(actualID) != listedID {
+			continue
+		}
+		removeCtx, removeCancel := context.WithTimeout(ctx, 2*time.Minute)
+		removeErr := executor.Run(removeCtx, "image", "rm", ref)
+		removeCancel()
+		if removeErr == nil {
+			removed++
+		}
+	}
+	if removed > 0 {
+		status.Logs = append(status.Logs, LogEntry{At: time.Now().UTC(), Level: "info", Message: fmt.Sprintf("已清理 %d 个未被容器引用的可信 Panel 历史镜像 tag", removed)})
+	}
 }
 
 func secureApplyPaths(opts ApplyOptions) error {

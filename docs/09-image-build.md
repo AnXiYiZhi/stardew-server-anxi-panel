@@ -1,3 +1,19 @@
+# v0.3.7 发布记录：升级旧镜像安全清理（2026-07-17）
+
+- `v0.3.7` 发布 Panel 与 Junimo/auth 成功升级后的旧镜像定向清理，并包含新 Panel 对旧版本 helper 成功状态的幂等收尾，使 `0.3.6 → 0.3.7` 当次升级即可生效。失败、回滚、共享容器、自定义仓库、未知 tag、容器和 volume 安全边界不变。
+- Docker Desktop 真机门禁通过：Panel 成功升级真实删除本次旧 tag/可信历史 tag并保留容器引用和自定义镜像；unhealthy 目标真实回滚 Panel/数据库且不清理；真实 `0.3.7` 生产镜像从旧 helper `succeeded` 状态启动后写入 `cleanupCompleted`，测试前已有镜像全部受临时容器保护并确认未误删。
+- Junimo/driver 真机门禁通过：精确 image ID 与容器引用保护、steam-session clone/restore、真实 `.125` server/auth HTTP 探针、SMAPI staging，以及从只读真实 game-data 克隆的 `.121 → .125` stopped/running 升级；测试旧 `.121` tag 被清理后按测试前 image ID 恢复，随机容器/卷零泄漏。
+- 发布总门禁通过：后端 `go test ./... -count=1`、vet/build、Docker integration；前端 `npm ci`、九项状态脚本和生产 build；兼容矩阵 validate/check-panel-version/9 项 unittest、远程制品校验、`run.sh` 更新测试；本地 `0.3.7` 镜像 fresh volume 的 health、`/api/version`、OCI labels 和 `/app/panel-updater` 均通过。
+- Tag workflow 沿用往期流程发布 Docker Hub、阿里云 ACR、GHCR 的 `0.3.7` 与 `latest`，并附加 `run.sh`、0.3.5 修复脚本和 annotated tag 详细说明创建 GitHub Release。
+
+# IMAGE-CLEANUP-1 升级后旧镜像清理边界（2026-07-17）
+
+- Panel 新版本完成容器健康、HTTP health 和 `/api/version` 精确验收后，helper 会重新核对旧 tag 的 image ID，再执行不带 `--force` 的 `docker image rm`。随后按 OCI title label 枚举镜像，仅删除可信仓库内、未被任何现存容器引用且 image ID 再核对一致的历史稳定 tag或陈旧 `latest`；最后运行同 label 的默认 dangling prune，不使用 `-a`，不会清理自定义仓库或未知 tag。
+- Junimo server/steam-auth-cn 只在成对升级完整成功并清除事务恢复目录后，按 recovery manifest 中记录的旧精确引用和 image ID 定向删除。Docker 仍会拒绝删除被任何容器引用的镜像；tag 已漂移时 Panel 主动跳过。
+- 失败、成功回滚、`rollback_failed` 和仍在运行的升级均不清理旧镜像。清理失败只产生 warning，不回滚已经验收的新服务；容器、volume、game-data、steam-session、数据库、存档、Mod、SteamCMD、FRPC 和其它宿主镜像不受影响。
+- 下次成功 Panel 升级会处理此前积累且满足上述门禁的历史 tag；被容器引用或不在可信范围的镜像仍保留。管理员若要处理保留项，应先用 `docker ps -a` 核对引用，再无 `-f` 执行精确 `docker image rm <ref>`。禁止把 `docker image prune -a` 加入发布、升级或修复脚本。
+- 发布门禁：`go test ./internal/updater ./internal/docker ./internal/games/stardew_junimo -count=1`；可选隔离 Docker integration 验证旧 Panel 精确镜像在成功 apply 后不存在，同时测试 wrapper 必须拦截 label prune，避免触碰宿主其它部署。
+
 # v0.3.6 发布记录（2026-07-17）
 
 - `v0.3.6` 发布存档导入复合证据适配；tag workflow 在推送三个 registry 的 `0.3.6`/`latest` 和创建 GitHub Release 前执行兼容清单、远程制品、完整 Go、Docker integration、前端 save-import 专项及生产构建门禁。

@@ -1,3 +1,12 @@
+# IMAGE-CLEANUP-1：升级成功后的旧镜像定向清理（2026-07-17，completed）
+
+- Panel 自升级在新容器完成 health、HTTP health 和精确版本三项验收后，先重新 inspect 升级前 tag；只有 tag 仍指向事务记录的原 image ID 时，才执行不带 `--force` 的 `docker image rm <old-ref>`。tag 漂移、仍被其他容器引用或 Docker 删除失败只写 warning，不把已验收的新 Panel 回滚或伪报失败。
+- 跨版本首发兼容不能依赖旧 helper 已包含新代码：新 Panel 启动后会后台观察同一 `apply-status.json`；仅当旧 helper 写入 `succeeded`、`toVersion` 等于当前构建版本且完整镜像元数据存在时，幂等补做清理并写 `cleanupCompleted=true`。活动阶段继续等待，失败/回滚/其它目标直接退出；新 helper 自己完成清理时也写同一标志，避免重复执行。
+- Panel helper 随后按同一 OCI title label 枚举历史镜像，并只处理内置可信仓库中的稳定 semver tag 或陈旧 `latest`；当前目标、所有现存容器的镜像引用/ID、自定义仓库和未知 tag 均受保护。每个候选删除前再次核对 image ID且不带 `--force`；最后执行同 label 的默认 dangling prune，没有 `-a`，不会清理其它项目、容器、volume、数据库、存档或 Mod。隔离 Docker integration 会拦截宿主级 prune，只验证本测试旧精确镜像已删除。
+- Junimo server/steam-auth-cn 成对升级仅在目标 pair 验收、原运行状态恢复、认证快照和 recovery 收尾之后，按 recovery manifest 中的旧引用与旧 image ID 分别核对并执行不带 `--force` 的删除。普通失败、成功回滚和 `rollback_failed` 都不进入镜像清理；Panel 重启后安全续验成功走同一清理路径。
+- Docker 扩展新增受限 `RuntimeRemoveImage`：仍使用既有精确 tag 白名单，拒绝 `latest`、digest 混合引用和非法 image ID；删除前再次 inspect 防止 mutable tag 竞态。清理失败写入 apply warnings，管理员可据此检查共享容器引用。
+- 主要文件：`cmd/panel/main.go`、`internal/updater/{apply_helper,service,types}.go`、`internal/docker/runtime_apply.go`、`internal/games/stardew_junimo/runtime_update_apply{,_runner}.go` 及对应测试。验证覆盖轻量全量、Panel Docker 成功/回滚、真实 `0.3.7` 镜像跨旧 helper 启动收尾、Docker image ID/容器引用保护，以及真实 `.121 → .125` stopped/running 成对升级。
+
 # SAVE-IMPORT-E2E-RELEASE-1：发布前真实 E2E 门禁（2026-07-16，未完成）
 
 - 本轮只读盘点发现隔离的 `save-import-spike` Docker 项目及三个已停止的 server/auth 组合；没有启动这些容器，也没有操作生产实例。现有证据归档仅有 `original-saves-before-import.tgz`（SHA256 `8bfd50bf7c5f9b8aa94385d5c0c80afcf892c168b49f801e9495033bf1c5109d`）和 `generated-sources-before-import.tgz`（SHA256 `9863d782aa397ff693be9753b2050666529cbbd8aaaa8a3ab5566e5741a64d95`）。它们不是本门禁要求的八类原始 ZIP 清单，无法证明住宅、家具、冰箱、地窖、配偶、孩子、宠物、farmhand 或 Mod 场景。

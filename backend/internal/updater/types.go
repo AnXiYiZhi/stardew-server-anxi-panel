@@ -71,22 +71,23 @@ type DryRunStatus struct {
 }
 
 type ApplyStatus struct {
-	UpdateID       string     `json:"updateId"`
-	Phase          string     `json:"phase"`
-	Progress       int        `json:"progress"`
-	FromVersion    string     `json:"fromVersion"`
-	ToVersion      string     `json:"toVersion"`
-	OriginalImage  string     `json:"originalImage"`
-	OriginalDigest string     `json:"originalDigest"`
-	SelectedImage  string     `json:"selectedImage"`
-	SelectedDigest string     `json:"selectedDigest"`
-	ErrorCode      string     `json:"errorCode"`
-	Error          string     `json:"error"`
-	Result         string     `json:"result"`
-	Logs           []LogEntry `json:"logs"`
-	StartedAt      time.Time  `json:"startedAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	FinishedAt     *time.Time `json:"finishedAt"`
+	UpdateID         string     `json:"updateId"`
+	Phase            string     `json:"phase"`
+	Progress         int        `json:"progress"`
+	FromVersion      string     `json:"fromVersion"`
+	ToVersion        string     `json:"toVersion"`
+	OriginalImage    string     `json:"originalImage"`
+	OriginalDigest   string     `json:"originalDigest"`
+	SelectedImage    string     `json:"selectedImage"`
+	SelectedDigest   string     `json:"selectedDigest"`
+	ErrorCode        string     `json:"errorCode"`
+	Error            string     `json:"error"`
+	Result           string     `json:"result"`
+	CleanupCompleted bool       `json:"cleanupCompleted,omitempty"`
+	Logs             []LogEntry `json:"logs"`
+	StartedAt        time.Time  `json:"startedAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
+	FinishedAt       *time.Time `json:"finishedAt"`
 }
 
 func IsActiveApplyPhase(phase string) bool {

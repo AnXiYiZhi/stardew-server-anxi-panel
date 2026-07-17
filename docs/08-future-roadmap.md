@@ -1,3 +1,18 @@
+# 2026-07-17 发布：v0.3.7 升级旧镜像安全清理
+
+- [x] Panel 成功升级清理本次旧镜像、可信历史稳定 tag/陈旧 `latest` 和项目 dangling；保护当前目标、所有容器引用、自定义仓库和未知 tag。
+- [x] 新 Panel 可收尾旧版本 helper 写入的 succeeded 状态，因此 `0.3.6 → 0.3.7` 当次生效；`cleanupCompleted` 保证新旧 helper 路径幂等。
+- [x] Junimo server/auth 成对成功后按旧精确 image ID 清理；容器引用、tag 漂移和失败只 warning，任意失败/回滚路径不清理。
+- [x] Docker Desktop 真机覆盖 Panel 成功、unhealthy 回滚、历史/自定义/引用保护、跨版本生产镜像收尾、Docker driver、真实 `.121 → .125` stopped/running；完整后端、前端、兼容矩阵、远程制品、run.sh 和生产镜像 smoke 通过。
+- [x] Tag workflow 继续在门禁通过后发布 Docker Hub、阿里云 ACR、GHCR 的 `0.3.7/latest` 并创建带详细正文的 GitHub Release。
+
+# 2026-07-17 已完成：IMAGE-CLEANUP-1
+
+- [x] Panel 成功升级后按原 tag + 原 image ID 双重核对删除本次旧镜像，并用 OCI title + 可信仓库 + 现存容器引用门禁清理历史稳定 tag、陈旧 `latest` 和 dangling 镜像；没有强制 rmi 或 `prune -a`。
+- [x] Junimo server/auth 成对升级在完整验收和恢复原运行状态后删除事务记录的旧 pair 镜像；失败、回滚和 `rollback_failed` 保留旧镜像与恢复材料。
+- [x] tag 漂移、共享容器引用和删除失败只形成 warning，不改变已验收升级终态；容器、volume、存档、Mod 与其它项目镜像不在清理范围。
+- [x] updater、Docker 和 stardew_junimo 三个相关包全量测试通过；Docker integration 增加旧 Panel 镜像删除断言且保持宿主隔离。
+
 # 2026-07-17 发布：v0.3.6 存档导入复合证据适配
 
 - [x] 发布范围包含持久上传事务、no-replace 暂存、preimport、Junimo `.125` 维护运行时、Phase A、激活/finalizer、Control save-now 持久化，以及桌面/手机显式 hostHandling。

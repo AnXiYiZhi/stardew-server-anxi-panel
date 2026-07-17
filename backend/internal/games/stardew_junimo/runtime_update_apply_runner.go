@@ -60,6 +60,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 				if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, *recovery); err == nil {
 					_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, recovery.Project, recovery.SnapshotVolume)
 					_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
+					cleanupOldRuntimeImages(ctx, docker, instance.DataDir, *recovery, &status)
 					return finish(RuntimeUpdateApplySucceeded, "", "Panel 重启后已继续完成验收，Junimo 运行组件成对升级成功。")
 				}
 			}
@@ -193,7 +194,29 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；请人工检查私有快照卷。")
 	}
 	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
+	cleanupOldRuntimeImages(ctx, docker, instance.DataDir, manifest, &status)
 	return finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。")
+}
+
+func cleanupOldRuntimeImages(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir string, manifest runtimeUpdateRecoveryManifest, status *RuntimeUpdateApplyStatus) {
+	pairs := []struct {
+		name     string
+		original RuntimeUpdateSelectedImage
+		target   RuntimeUpdateSelectedImage
+	}{
+		{name: "Junimo server", original: manifest.OriginalServer, target: manifest.Target.Server},
+		{name: "steam-auth-cn", original: manifest.OriginalAuth, target: manifest.Target.SteamAuth},
+	}
+	for _, pair := range pairs {
+		if pair.original.Image == "" || pair.original.Image == pair.target.Image || pair.original.ImageID == pair.target.ImageID {
+			continue
+		}
+		if err := docker.RuntimeRemoveImage(ctx, dataDir, pair.original.Image, pair.original.ImageID); err != nil {
+			status.Warnings = append(status.Warnings, pair.name+" 旧镜像仍被其他容器引用、tag 已变化或删除失败；已保留供管理员检查。")
+			continue
+		}
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: time.Now().UTC().Format(time.RFC3339), Level: "info", Message: "已删除升级前的 " + pair.name + " 镜像引用。"})
+	}
 }
 
 func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status *RuntimeUpdateApplyStatus) (runtimeUpdatePreflight, error) {
