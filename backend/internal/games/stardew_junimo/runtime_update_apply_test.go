@@ -32,6 +32,7 @@ type runtimeApplyFakeDocker struct {
 	digestMismatchService  string
 	upErrorService         string
 	restoreError           bool
+	removeImageError       bool
 }
 
 func newRuntimeApplyFakeDocker(dataDir string) *runtimeApplyFakeDocker {
@@ -153,6 +154,13 @@ func (f *runtimeApplyFakeDocker) RuntimeRemoveSnapshotVolume(context.Context, st
 	f.applyCall("volume rm snapshot")
 	return nil
 }
+func (f *runtimeApplyFakeDocker) RuntimeRemoveImage(_ context.Context, _ string, image, expectedID string) error {
+	f.applyCall("image rm " + image + " " + expectedID)
+	if f.removeImageError {
+		return errors.New("image still in use")
+	}
+	return nil
+}
 
 func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Store, registry.Instance, *runtimeApplyFakeDocker) {
 	base, store, instance, _ := setupRuntimeUpdateDriver(t, state)
@@ -216,6 +224,10 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	if status.Phase != RuntimeUpdateApplySucceeded || !status.ServerRunning {
 		t.Fatalf("unexpected status: %#v", status)
 	}
+	cleanupCalls := strings.Join(fake.applyCalls, "\n")
+	if strings.Count(cleanupCalls, "image rm ") != 2 {
+		t.Fatalf("successful runtime apply did not clean both old images: %s", cleanupCalls)
+	}
 	env, _ := os.ReadFile(filepath.Join(instance.DataDir, ".env"))
 	text := string(env)
 	if !strings.Contains(text, "IMAGE_VERSION=1.5.0-preview.125") || !strings.Contains(text, "STEAM_SERVICE_IMAGE=") {
@@ -236,6 +248,18 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	}
 	if !strings.Contains(calls, "tee -a "+serverInputFIFO) || strings.Contains(calls, "attach-cli") {
 		t.Fatalf("runtime verification did not use the FIFO control contract: %s", calls)
+	}
+}
+
+func TestRuntimeUpdateApplyImageCleanupFailureIsWarning(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	fake.removeImageError = true
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeApply(t, driver, instance)
+	if status.Phase != RuntimeUpdateApplySucceeded || !strings.Contains(strings.Join(status.Warnings, "\n"), "旧镜像") {
+		t.Fatalf("cleanup failure changed success semantics or omitted warning: %#v", status)
 	}
 }
 

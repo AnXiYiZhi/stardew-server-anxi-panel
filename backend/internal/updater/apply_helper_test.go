@@ -15,6 +15,8 @@ type applyScenarioExecutor struct {
 	currentNew                                                      bool
 	calls                                                           [][]string
 	oldImage, newImage                                              string
+	imageList, containerImages                                      string
+	imageIDs                                                        map[string]string
 }
 
 func (e *applyScenarioExecutor) Run(_ context.Context, args ...string) error {
@@ -49,7 +51,14 @@ func (e *applyScenarioExecutor) Output(_ context.Context, args ...string) (strin
 	e.calls = append(e.calls, append([]string(nil), args...))
 	joined := strings.Join(args, " ")
 	switch {
+	case strings.Contains(joined, "image ls --no-trunc"):
+		return e.imageList, nil
+	case strings.Contains(joined, "container ls --all"):
+		return e.containerImages, nil
 	case strings.Contains(joined, "image inspect"):
+		if id, ok := e.imageIDs[args[len(args)-1]]; ok {
+			return id, nil
+		}
 		if strings.Contains(joined, e.newImage) {
 			return e.newImage + "@sha256:new", nil
 		}
@@ -83,6 +92,35 @@ func (e *applyScenarioExecutor) Output(_ context.Context, args ...string) (strin
 		return `{"version":"0.1.14"}`, nil
 	default:
 		return "", nil
+	}
+}
+
+func TestApplySuccessCleansTrustedPanelHistoryButProtectsContainersAndCustomImages(t *testing.T) {
+	executor := &applyScenarioExecutor{}
+	opts, _, _, _ := prepareApplyTest(t, executor)
+	repo, _ := trustedRepositoryOf(executor.newImage)
+	executor.imageList = strings.Join([]string{
+		repo + "|0.1.15|" + executor.newImage + "@sha256:new",
+		repo + "|0.1.13|sha256:stale",
+		repo + "|0.1.12|sha256:used",
+		repo + "|latest|sha256:latest",
+		"custom.invalid/panel|0.1.11|sha256:custom",
+	}, "\n")
+	executor.containerImages = repo + ":0.1.12"
+	executor.imageIDs = map[string]string{repo + ":0.1.13": "sha256:stale", repo + ":latest": "sha256:latest"}
+	if err := RunApply(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	joined := flattenCalls(executor.calls)
+	for _, want := range []string{"image rm " + repo + ":0.1.13", "image rm " + repo + ":latest"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing trusted history cleanup %q: %s", want, joined)
+		}
+	}
+	for _, forbidden := range []string{repo + ":0.1.12", "custom.invalid/panel:0.1.11", executor.newImage} {
+		if strings.Contains(joined, "image rm "+forbidden) {
+			t.Fatalf("protected/custom image was removed %q: %s", forbidden, joined)
+		}
 	}
 }
 
@@ -150,7 +188,7 @@ func TestApplySuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, _ := store.Read()
-	if status.Phase != PhaseSucceeded || status.SelectedImage != executor.newImage || status.SelectedDigest == "" {
+	if status.Phase != PhaseSucceeded || status.SelectedImage != executor.newImage || status.SelectedDigest == "" || !status.CleanupCompleted {
 		t.Fatalf("status=%+v", status)
 	}
 	env, _ := os.ReadFile(envFile)
@@ -158,6 +196,10 @@ func TestApplySuccess(t *testing.T) {
 		t.Fatalf("env=%s", env)
 	}
 	assertPanelOnlyCompose(t, executor.calls, opts.ComposeProject)
+	joined := flattenCalls(executor.calls)
+	if !strings.Contains(joined, "image rm "+executor.oldImage) || !strings.Contains(joined, "image prune --force --filter label=org.opencontainers.image.title=stardew-server-anxi-panel") {
+		t.Fatalf("successful apply did not clean old panel images: %s", joined)
+	}
 }
 
 func TestApplyFailureAndRollbackScenarios(t *testing.T) {
@@ -196,8 +238,19 @@ func TestApplyFailureAndRollbackScenarios(t *testing.T) {
 				}
 			}
 			assertPanelOnlyCompose(t, executor.calls, opts.ComposeProject)
+			if strings.Contains(flattenCalls(executor.calls), "image prune") || strings.Contains(flattenCalls(executor.calls), "image rm ") {
+				t.Fatalf("failed apply attempted image cleanup: %#v", executor.calls)
+			}
 		})
 	}
+}
+
+func flattenCalls(calls [][]string) string {
+	lines := make([]string, 0, len(calls))
+	for _, call := range calls {
+		lines = append(lines, strings.Join(call, " "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func assertPanelOnlyCompose(t *testing.T, calls [][]string, project string) {

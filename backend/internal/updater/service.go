@@ -81,6 +81,63 @@ func NewService(opts ServiceOptions) *Service {
 
 func (s *Service) ApplyStatus() (ApplyStatus, error) { return s.applyStore.Read() }
 
+// ReconcileCompletedImageCleanup lets a newly started Panel finish the image
+// cleanup for an upgrade whose helper came from the previous release. The old
+// helper can recreate and verify the new Panel, but cannot contain cleanup
+// logic introduced by that new release.
+func (s *Service) ReconcileCompletedImageCleanup(ctx context.Context, currentVersion string) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		done, err := s.reconcileCompletedImageCleanupOnce(ctx, currentVersion, ExecDocker{})
+		if err != nil {
+			s.logger.Warn("failed to reconcile completed panel image cleanup", "error", err)
+			return
+		}
+		if done {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *Service) reconcileCompletedImageCleanupOnce(ctx context.Context, currentVersion string, executor ApplyExecutor) (bool, error) {
+	status, err := s.applyStore.Read()
+	if err != nil {
+		if errors.Is(err, ErrNoApplyStatus) {
+			return true, nil
+		}
+		return true, err
+	}
+	current, normalizeErr := NormalizeTargetVersion(currentVersion)
+	if normalizeErr != nil || status.ToVersion != current {
+		return true, nil
+	}
+	if status.CleanupCompleted {
+		return true, nil
+	}
+	if status.Phase != PhaseSucceeded {
+		if IsActiveApplyPhase(status.Phase) {
+			return false, nil
+		}
+		return true, nil
+	}
+	if status.OriginalImage == "" || status.OriginalDigest == "" || status.SelectedImage == "" || status.SelectedDigest == "" {
+		return true, errors.New("completed panel update is missing image cleanup metadata")
+	}
+	cleanupPanelImages(ctx, executor, status.OriginalImage, status.OriginalDigest, status.SelectedImage, status.SelectedDigest, &status)
+	status.CleanupCompleted = true
+	status.UpdatedAt = s.now().UTC()
+	if err := s.applyStore.Write(status); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
 func (s *Service) StartApply(ctx context.Context, currentVersion, latestVersion string) (ApplyStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

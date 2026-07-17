@@ -127,6 +127,7 @@ func main() {
 		HostDataDir: cfg.HostDataDir, ComposeProject: cfg.ComposeProject, Logger: logger,
 		Database: store, DatabasePath: cfg.DBPath,
 	})
+	go panelUpdater.ReconcileCompletedImageCleanup(signalCtx, cfg.Version)
 
 	server := &http.Server{
 		Addr: cfg.Addr,

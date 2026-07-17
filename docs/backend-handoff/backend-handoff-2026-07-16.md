@@ -1,3 +1,23 @@
+# IMAGE-CLEANUP-1 接手记录（2026-07-17，completed）
+
+## 改了什么
+
+- Panel apply 成功验收后会再次核对原 tag 的 image ID，并无强制删除升级前镜像；随后枚举同 OCI title 的镜像，只清理可信仓库中未被任何现存容器引用的旧稳定 tag/陈旧 `latest`，最后执行同 label 的非 `-a` dangling prune。清理失败只落脱敏 warning，不改变成功终态。
+- `0.3.6 → 0.3.7` 的 helper 来自旧镜像，不能直接携带本功能；因此新 Panel main 启动 `ReconcileCompletedImageCleanup`，只观察本次目标版本的 active/succeeded 状态，并在旧 helper 成功后补做一次清理、原子写 `cleanupCompleted=true`。新 helper 正常路径也写该字段，保证幂等。
+- Junimo/auth pair 成功后使用 recovery manifest 已保存的旧引用和旧 image ID 调用受限 `RuntimeRemoveImage`；正常完成和 Panel 重启续验成功均覆盖，任意失败/回滚路径不清理旧镜像。
+- Docker 删除始终不带 `--force`。共享容器、tag 漂移或本地镜像缺失时 Docker/核对门禁会拒绝，升级状态保留明确 warning；容器、volume、game-data、steam-session、数据库、存档和 Mod 均不在本功能范围。
+
+## 影响文件与验证
+
+- 影响：`backend/internal/updater/apply_helper.go`、`backend/internal/docker/runtime_apply.go`、`backend/internal/games/stardew_junimo/runtime_update_apply.go`、`runtime_update_apply_runner.go` 和对应测试。
+- 已通过：后端全量 test/vet/build、前端全状态脚本/build、兼容矩阵本地/远端制品、run.sh 门禁；Docker Desktop 覆盖 Panel 成功清理、历史 tag、容器引用、自定义仓库、unhealthy 回滚、精确 image ID、真实 server/auth 探针、volume/SMAPI staging，以及 `.121 → .125` stopped/running。真实 `0.3.7` 生产镜像还覆盖 fresh volume health/version/OCI/updater 和旧 helper succeeded 后的新 Panel 收尾。
+
+## 下一步注意事项
+
+- 下次成功 Panel 升级会同时处理宿主已积累的可信历史 tag、陈旧 `latest` 和带 OCI title 的 `<none>` 镜像；自定义仓库、未知 tag 与任意现存容器引用继续保留。若 Docker 因共享引用拒绝删除，apply warning 会提示管理员核对。
+- 若未来提供 Web 手动清理入口，必须先返回预览并继续限制可信仓库、OCI title、容器引用和 active/rollback_failed 门禁；禁止直接暴露 `docker image prune -a`。
+- `cleanupCompleted` 是 apply 状态新增的可选字段；旧前端可忽略。不要把它当作升级成功门槛：镜像清理失败仍是 warning，`succeeded` 的健康验收语义不变。
+
 # SAVE-IMPORT-E2E-RELEASE-1 接手记录（2026-07-16，真实 E2E 缺失）
 
 ## 本轮完成的检查

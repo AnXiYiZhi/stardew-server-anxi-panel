@@ -206,6 +206,33 @@ func (c *Client) RuntimeRemoveSnapshotVolume(ctx context.Context, dir, project, 
 	return err
 }
 
+// RuntimeRemoveImage removes one exact, previously inspected runtime image
+// reference after a successful transaction. It never forces removal and first
+// verifies that the tag still resolves to the captured image ID, so a mutable
+// tag race cannot delete newly published content.
+func (c *Client) RuntimeRemoveImage(ctx context.Context, dir, imageRef, expectedImageID string) error {
+	if validateRestrictedImageRef(imageRef) != nil || !runtimeDigestPattern.MatchString(expectedImageID) {
+		return errors.New("invalid runtime image cleanup request")
+	}
+	metadata, err := c.RuntimeImageInspect(ctx, dir, imageRef)
+	if err != nil {
+		return err
+	}
+	if metadata.ID != expectedImageID {
+		return errors.New("runtime image tag changed before cleanup")
+	}
+	references, err := c.run(ctx, "check runtime image container references", dir, c.timeouts.Version,
+		"container", "ls", "--all", "--quiet", "--filter", "ancestor="+expectedImageID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(references.Stdout) != "" {
+		return errors.New("runtime image is still referenced by a container")
+	}
+	_, err = c.run(ctx, "remove old runtime image", dir, c.timeouts.Version, "image", "rm", imageRef)
+	return err
+}
+
 func validRuntimeServices(services []string) bool {
 	if len(services) == 0 || len(services) > 2 {
 		return false

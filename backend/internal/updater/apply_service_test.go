@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -105,5 +106,47 @@ func TestApplyServiceRejectsDevSameAndDowngrade(t *testing.T) {
 		if _, err := service.StartApply(context.Background(), versions[0], versions[1]); err == nil {
 			t.Fatalf("versions %v accepted", versions)
 		}
+	}
+}
+
+func TestReconcileCompletedImageCleanupFromPreviousReleaseHelper(t *testing.T) {
+	service, _ := newApplyServiceTest(t, &fakeDatabaseBackupper{})
+	oldImage := "anxiyizhi/stardew-server-anxi-panel:0.1.14"
+	newImage := "anxiyizhi/stardew-server-anxi-panel:0.1.15"
+	executor := &applyScenarioExecutor{oldImage: oldImage, newImage: newImage}
+	status := ApplyStatus{
+		UpdateID: "previous-helper", Phase: PhaseSucceeded, FromVersion: "0.1.14", ToVersion: "0.1.15",
+		OriginalImage: oldImage, OriginalDigest: oldImage + "@sha256:old",
+		SelectedImage: newImage, SelectedDigest: newImage + "@sha256:new", Logs: []LogEntry{},
+	}
+	if err := service.applyStore.Write(status); err != nil {
+		t.Fatal(err)
+	}
+	done, err := service.reconcileCompletedImageCleanupOnce(context.Background(), "0.1.15", executor)
+	if err != nil || !done {
+		t.Fatalf("done=%v err=%v", done, err)
+	}
+	updated, err := service.applyStore.Read()
+	if err != nil || !updated.CleanupCompleted {
+		t.Fatalf("status=%+v err=%v", updated, err)
+	}
+	joined := flattenCalls(executor.calls)
+	if !strings.Contains(joined, "image rm "+oldImage) || !strings.Contains(joined, "image prune") {
+		t.Fatalf("previous helper cleanup was not reconciled: %s", joined)
+	}
+}
+
+func TestReconcileImageCleanupWaitsForMatchingActiveUpgradeOnly(t *testing.T) {
+	service, _ := newApplyServiceTest(t, &fakeDatabaseBackupper{})
+	if err := service.applyStore.Write(ApplyStatus{UpdateID: "active", Phase: PhaseWaitingHealth, ToVersion: "0.1.15"}); err != nil {
+		t.Fatal(err)
+	}
+	done, err := service.reconcileCompletedImageCleanupOnce(context.Background(), "0.1.15", &applyScenarioExecutor{})
+	if err != nil || done {
+		t.Fatalf("matching active upgrade should keep reconciliation alive: done=%v err=%v", done, err)
+	}
+	done, err = service.reconcileCompletedImageCleanupOnce(context.Background(), "0.1.16", &applyScenarioExecutor{})
+	if err != nil || !done {
+		t.Fatalf("unrelated target should not be reconciled: done=%v err=%v", done, err)
 	}
 }

@@ -51,6 +51,46 @@ func TestRuntimeApplyIsolatedSteamSessionCloneRestore(t *testing.T) {
 	}
 }
 
+func TestRuntimeRemoveImageExactIDAndContainerProtection(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	suffix := strings.ToLower(strings.ReplaceAll(time.Now().UTC().Format("150405.000000"), ".", ""))
+	image := "anxiruntimecleanup" + suffix + "/server:1.0.0"
+	container := "anxi-runtime-cleanup-" + suffix
+	build := exec.CommandContext(ctx, "docker", "build", "-t", image, "-")
+	build.Stdin = strings.NewReader("FROM alpine:3.20\nLABEL anxipanel.runtime-cleanup-fixture=\"" + suffix + "\"\n")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build cleanup fixture: %v: %s", err, output)
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "rm", "-f", container).Run()
+		_ = exec.Command("docker", "image", "rm", "-f", image).Run()
+	})
+	client := NewClient(Options{DockerPath: "docker"})
+	metadata, err := client.RuntimeImageInspect(ctx, t.TempDir(), image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RuntimeRemoveImage(ctx, t.TempDir(), image, "sha256:"+strings.Repeat("f", 64)); err == nil {
+		t.Fatal("image cleanup accepted a mismatched expected image ID")
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "create", "--name", container, image, "sleep", "60").CombinedOutput(); err != nil {
+		t.Fatalf("create protected container: %v: %s", err, output)
+	}
+	if err := client.RuntimeRemoveImage(ctx, t.TempDir(), image, metadata.ID); err == nil {
+		t.Fatal("image cleanup removed an image referenced by a container")
+	}
+	if err := exec.CommandContext(ctx, "docker", "rm", "-f", container).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RuntimeRemoveImage(ctx, t.TempDir(), image, metadata.ID); err != nil {
+		t.Fatalf("remove exact unreferenced image: %v", err)
+	}
+	if err := exec.CommandContext(ctx, "docker", "image", "inspect", image).Run(); err == nil {
+		t.Fatal("exact runtime image reference still exists after cleanup")
+	}
+}
+
 // This fixture deliberately contains a sensitive-looking empty environment
 // value and has bash but no Node.js. It protects the real image inspect and
 // steam-auth readiness contracts from regressing to full-JSON parsing or a
