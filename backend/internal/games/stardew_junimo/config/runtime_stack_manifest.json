@@ -66,8 +66,8 @@
     "trustedHosts": ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
-    "version": "0.2.0",
-    "dllSha256": "21eedc867d5a051389e19a5941aeaa067a7c6e36dbced1c86193d8e44a9c8249",
+    "version": "0.2.1",
+    "dllSha256": "e01cfcdb8df3d06e541b4f011edd7b6f748ee351ed16f9bf0c8537fcc5b20015",
     "commandResultVersion": 1
   },
   "status": "recommended",
