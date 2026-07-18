@@ -302,3 +302,19 @@
 - Maintenance also validates a non-empty, unchanged original active pointer before ComposeUp. The real no-pointer run had shown Junimo entering new-game creation; the new test proves no container starts in that case.
 - Real isolated takeover operation `60953678b5ed8fd81bcca0252c9c17c0` used a copied local rich save and reached completed, then reloaded the target on a second restart with unchanged SHA256, `Pending=null`, ready/transition=true, three cabins and two farmhands. Full Go test/vet/build passed afterward.
 - The successful `save-import-local-rich` runtime is intentionally still running for optional human inspection. Its noVNC WebSocket did not connect with the current FPS-zero configuration, so visual/game-client semantics remain open and the umbrella task remains incomplete.
+# PANEL-POLL-LEAK-1 接手记录（2026-07-18，completed）
+
+## 改了什么
+
+- `lifecycle.go` 的邀请码路径只读 `/tmp/invite-code.txt`，空值由 Web 查询返回 `n/a`；driver 增加 5 秒按实例缓存与 singleflight，清理旧文件时失效缓存。禁止重新加入 attach-cli fallback。
+- `resource_metrics.go` 把完整采样放入 5 秒按实例缓存并合并并发；`lifecycle.go` 为重启 job 写持久 operation payload，活动重启再次提交返回 `ErrRestartInProgress`，Web 映射 `409 restart_in_progress`。
+
+## 影响与验证
+
+- 主要文件：`backend/internal/games/stardew_junimo/{driver,lifecycle}.go`、`backend/internal/web/{handler,resource_metrics,lifecycle_handlers}.go` 及单元/Integration 测试。
+- 专项测试覆盖 12 路并发邀请码/指标单次执行、空文件无 attach、重复重启保留原 job。Docker Desktop 29.5.3 用隔离 `bash:5.2` Compose project 验证真实 exec/stats；cleanup 后无运行测试容器或 attach-cli 进程。
+
+## 下一步注意事项
+
+- `n/a` 是“文件当前为空”，不是错误，也不能持久化进 driver payload。错误结果不缓存。若上游改变邀请码文件契约，应调整文件读取，不得恢复 attach-cli 轮询。
+- 指标缓存时间戳代表实际采样时刻；不要在每个响应上伪造新时间戳。若增加多实例，应继续以 instance ID 隔离缓存和 flight。

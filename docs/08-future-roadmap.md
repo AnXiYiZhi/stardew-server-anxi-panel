@@ -1397,3 +1397,10 @@ Multi Game Mode later
 - [x] Reused a downloaded local game only as a read-only source, cloned it into an isolated volume, retained the original ZIP/SHA256, and completed a real upload/takeover job plus second restart.
 - [x] Verified the copied save retained two farmhands, three cabins, furniture/fridge data and three cellar assignments; fixed diagnostics-baseline startup polling and the missing-original-pointer pre-start gate.
 - [ ] noVNC/game-client visual semantics, swap role selection with the real player's platform identity, spouse/children/pet, reconnect and sleep remain unverified. `SAVE-IMPORT-JUNIMO-1` is still not completed.
+# 2026-07-18 已完成：PANEL-POLL-LEAK-1
+
+- [x] 邀请码普通查询只读 `/tmp/invite-code.txt`，空值返回 `n/a`，完全移除 attach-cli 回退。
+- [x] 邀请码和资源指标按实例增加 5 秒缓存与 singleflight，多浏览器并发不重复启动 Docker exec/stats。
+- [x] 活动重启 job 拒绝第二次重启提交并返回稳定 `409 restart_in_progress`，不取消原任务。
+- [x] 页面隐藏/关闭停止玩家、邀请码和指标轮询；恢复可见后继续。
+- [x] 单元并发回归、后端/前端构建与 Docker Desktop 隔离真实 Compose exec/stats 验证通过；无测试容器和 attach-cli 遗留。

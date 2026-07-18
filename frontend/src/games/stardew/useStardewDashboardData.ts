@@ -162,12 +162,17 @@ export function useStardewDashboardData(): StardewDashboardData {
     setInviteCodeError(null)
     try {
       const res = await getInviteCode()
-      if (staleInviteCodeRef.current && res.inviteCode === staleInviteCodeRef.current) {
+	  const nextCode = res.inviteCode.trim()
+	  if (!nextCode || nextCode.toLowerCase() === 'n/a') {
+		setInviteCode(null)
+		return
+	  }
+      if (staleInviteCodeRef.current && nextCode === staleInviteCodeRef.current) {
         setInviteCode(null)
         return
       }
       staleInviteCodeRef.current = null
-      setInviteCode(res.inviteCode)
+	  setInviteCode(nextCode)
       setInvitePollRequested(false)
     } catch (e) {
       setInviteCode(null)
@@ -231,12 +236,16 @@ export function useStardewDashboardData(): StardewDashboardData {
     void refreshInstanceState()
     void refreshSaves()
     void refreshMods()
-    void refreshPlayers()
-    void refreshInviteCode()
+	if (document.visibilityState === 'visible') {
+	  void refreshPlayers()
+	  void refreshInviteCode()
+	}
     window.setTimeout(() => {
       void refreshInstanceState()
-      void refreshInviteCode()
-      void refreshPlayers()
+	  if (document.visibilityState === 'visible') {
+		void refreshInviteCode()
+		void refreshPlayers()
+	  }
     }, 1000)
   }, [refreshInstanceState, refreshInviteCode, refreshJobs, refreshMods, refreshPlayers, refreshSaves])
 
@@ -336,8 +345,10 @@ export function useStardewDashboardData(): StardewDashboardData {
   useEffect(() => {
     if (!instanceState?.state) return
     if (instanceState.state === 'running') {
-      void refreshInviteCode()
-      void refreshPlayers()
+	  if (document.visibilityState === 'visible') {
+		void refreshInviteCode()
+		void refreshPlayers()
+	  }
       return
     }
     setInviteCode(null)
@@ -347,7 +358,9 @@ export function useStardewDashboardData(): StardewDashboardData {
     // refreshPlayers() 请求可能因为容器还没起来而失败，失败分支不会清空
     // players，如果不在这里主动清空，旧快照会一直挂着直到请求成功为止。
     setPlayers(null)
-    void refreshPlayers()
+	if (document.visibilityState === 'visible') {
+	  void refreshPlayers()
+	}
     setPlayersError(null)
   }, [instanceState?.state, refreshInviteCode, refreshPlayers])
 
@@ -371,17 +384,34 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     let cancelled = false
     const pollPlayers = async () => {
+	  if (document.visibilityState !== 'visible') return
       await refreshPlayers()
       if (cancelled) return
       playersPollRef.current = window.setTimeout(() => {
         void pollPlayers()
       }, 5_000)
     }
-    playersPollRef.current = window.setTimeout(() => {
-      void pollPlayers()
-    }, 5_000)
+    const schedulePlayers = () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      playersPollRef.current = window.setTimeout(() => {
+        void pollPlayers()
+      }, 5_000)
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        if (playersPollRef.current !== null) {
+          clearTimeout(playersPollRef.current)
+          playersPollRef.current = null
+        }
+        return
+      }
+      schedulePlayers()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    schedulePlayers()
     return () => {
       cancelled = true
+	  document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (playersPollRef.current !== null) {
         clearTimeout(playersPollRef.current)
         playersPollRef.current = null
@@ -402,6 +432,7 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     let cancelled = false
     const pollInviteCode = async () => {
+	  if (document.visibilityState !== 'visible') return
       if (invitePollAttemptsRef.current >= 20) {
         setInvitePollRequested(false)
         return
@@ -419,12 +450,28 @@ export function useStardewDashboardData(): StardewDashboardData {
       }, 5_000)
     }
 
-    invitePollRef.current = window.setTimeout(() => {
-      void pollInviteCode()
-    }, 5_000)
+    const scheduleInvite = () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      invitePollRef.current = window.setTimeout(() => {
+        void pollInviteCode()
+      }, 5_000)
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        if (invitePollRef.current !== null) {
+          clearTimeout(invitePollRef.current)
+          invitePollRef.current = null
+        }
+        return
+      }
+      scheduleInvite()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    scheduleInvite()
 
     return () => {
       cancelled = true
+	  document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (invitePollRef.current !== null) {
         clearTimeout(invitePollRef.current)
         invitePollRef.current = null

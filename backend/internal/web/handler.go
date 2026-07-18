@@ -71,6 +71,9 @@ type server struct {
 	updater            UpdaterService
 	farmCatalogScanner func(string) (sj.FarmCatalogResult, error)
 	farmPrepareMu      sync.Mutex
+	metricsMu          sync.Mutex
+	metricsCache       map[string]resourceMetricsCacheEntry
+	metricsFlights     map[string]*resourceMetricsFlight
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -97,6 +100,8 @@ func NewHandler(deps Deps) http.Handler {
 		updateChecker:      deps.UpdateChecker,
 		updater:            deps.Updater,
 		farmCatalogScanner: deps.FarmCatalogScanner,
+		metricsCache:       make(map[string]resourceMetricsCacheEntry),
+		metricsFlights:     make(map[string]*resourceMetricsFlight),
 	}
 	if s.farmCatalogScanner == nil {
 		s.farmCatalogScanner = sj.ScanFarmCatalog
