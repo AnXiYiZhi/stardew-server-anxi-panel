@@ -1404,3 +1404,10 @@ Multi Game Mode later
 - [x] 活动重启 job 拒绝第二次重启提交并返回稳定 `409 restart_in_progress`，不取消原任务。
 - [x] 页面隐藏/关闭停止玩家、邀请码和指标轮询；恢复可见后继续。
 - [x] 单元并发回归、后端/前端构建与 Docker Desktop 隔离真实 Compose exec/stats 验证通过；无测试容器和 attach-cli 遗留。
+
+# 2026-07-19 已完成：CONTROL-PAUSE-COMPAT-1
+
+- [x] Control 0.2.1 使用真实连接数修复删除人物后无人状态无法自动暂停的问题，不修改 Junimo 上游。
+- [x] 暂停协调器改为前后帧单向补写 `IsPaused=true`，移除 `gameTimeInterval` 旁路和全局暂停清理，避免与上游及其他 Mod 抢写解除状态。
+- [x] 覆盖登录/捏人过渡连接、单人/多人菜单、删除、断线模型、普通日、节日、新日和 2:00 结算边界。
+- [x] Control 契约矩阵、真实 Mod 编译与 Docker Desktop Junimo `.125` 删除/时间/节日/重启验证通过。

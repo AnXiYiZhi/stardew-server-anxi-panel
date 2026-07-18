@@ -1,9 +1,15 @@
 {
   "Name": "Stardew Anxi Panel Control",
   "Author": "AnXiYiZhi",
-  "Version": "0.2.0",
+  "Version": "0.2.1",
   "Description": "File-based control bridge for Stardew Anxi Panel.",
   "UniqueID": "AnXiYiZhi.StardewAnxiPanel.Control",
   "EntryDll": "StardewAnxiPanel.Control.dll",
-  "MinimumApiVersion": "4.0.0"
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    {
+      "UniqueID": "JunimoHost.Server",
+      "IsRequired": true
+    }
+  ]
 }

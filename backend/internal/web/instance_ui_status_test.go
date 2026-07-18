@@ -1,11 +1,13 @@
 package web
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -43,16 +45,21 @@ func TestDurationBetween(t *testing.T) {
 }
 
 func TestRuntimeDiagnosticUsesRecommendedControlVersion(t *testing.T) {
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
 	dataDir := t.TempDir()
 	modDir := filepath.Join(dataDir, ".local-container", "mods", "StardewAnxiPanel.Control")
 	if err := os.MkdirAll(modDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"0.2.0"}`), 0o600); err != nil {
+	controlManifest := []byte(fmt.Sprintf(`{"Version":%q}`, manifest.Control.Version))
+	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), controlManifest, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	diagnostic := buildRuntimeDiagnostic(storage.Instance{DataDir: dataDir, State: storage.InstanceStateStopped}, controlStatusSnapshot{}, controlPlayersSnapshot{})
-	if diagnostic.ExpectedControlMod != "0.2.0" || !diagnostic.ControlModMatches {
+	if diagnostic.ExpectedControlMod != manifest.Control.Version || !diagnostic.ControlModMatches {
 		t.Fatalf("control diagnostic=%+v", diagnostic)
 	}
 }

@@ -12,8 +12,8 @@ namespace StardewAnxiPanel.Control;
 
 public sealed class ModEntry : Mod
 {
-    private const int SinglePlayerMenuPausedTimeInterval = -100;
     private static readonly TimeSpan SaveCommandTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan PauseErrorLogInterval = TimeSpan.FromSeconds(30);
 
     private string controlDir = "";
     private string commandDir = "";
@@ -24,8 +24,8 @@ public sealed class ModEntry : Mod
     private readonly WarpHomeBridge warpHomeBridge = new();
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
     private bool panelCustomizationApplied;
-    private bool singlePlayerMenuPauseApplied;
-    private int? singlePlayerMenuPauseSavedInterval;
+    private PauseReason lastForcedPauseReason;
+    private DateTimeOffset lastPauseErrorLogAt = DateTimeOffset.MinValue;
     private bool pendingNewGameOptions;
 	private PendingNewGameMarker? pendingNewGameMarker;
 	private FarmCatalogRequest? farmCatalogRequest;
@@ -124,19 +124,15 @@ public sealed class ModEntry : Mod
 
     private void OnUpdateTicking(object? sender, UpdateTickingEventArgs e)
     {
-        try
-        {
-            ApplySinglePlayerMenuPause();
-        }
-        catch (Exception ex)
-        {
-            RecoverSinglePlayerMenuPauseClock();
-            Monitor.Log($"Single-player menu pause failed and released the clock: {ex}", LogLevel.Error);
-        }
+        // Keep the clock paused throughout the game update. The post-update pass below
+        // then corrects JunimoServer if it overwrites IsPaused using a stale farmhand.
+        ApplyPauseCorrectionSafely();
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
+        ApplyPauseCorrectionSafely();
+
         if (!e.IsMultipleOf(120))
             return;
 
@@ -156,77 +152,64 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void ApplySinglePlayerMenuPause()
+    private void ApplyPauseCorrectionSafely()
     {
-        if (!isJunimoRuntime || initConfig?.AutoPause == false || !Context.IsWorldReady)
+        try
         {
-            ClearSinglePlayerMenuPause();
+            ApplyPauseCorrection();
+        }
+        catch (Exception ex)
+        {
+            lastForcedPauseReason = PauseReason.None;
+            var now = DateTimeOffset.UtcNow;
+            if (now - lastPauseErrorLogAt >= PauseErrorLogInterval)
+            {
+                lastPauseErrorLogAt = now;
+                Monitor.Log($"Pause compatibility check failed; leaving JunimoServer in control: {ex}", LogLevel.Error);
+            }
+        }
+    }
+
+    private void ApplyPauseCorrection()
+    {
+        if (!isJunimoRuntime || initConfig?.AutoPause == false || !Context.IsWorldReady || !Game1.IsServer)
+        {
+            lastForcedPauseReason = PauseReason.None;
             return;
         }
 
         var masterPlayerId = Game1.MasterPlayer?.UniqueMultiplayerID ?? Game1.player.UniqueMultiplayerID;
-        var humanPlayers = Game1.getOnlineFarmers()
-            .Where(farmer => farmer.UniqueMultiplayerID != masterPlayerId)
+        var gameplayPlayers = Game1.getOnlineFarmers()
+            .Where(farmer => farmer.UniqueMultiplayerID != masterPlayerId && farmer.isCustomized.Value)
             .ToArray();
-        var shouldPause = ShouldPauseForHumanPlayers(humanPlayers);
+        var pauseRequestCount = gameplayPlayers.Count(
+            farmer => farmer.hasMenuOpen.Value || farmer.requestingTimePause.Value
+        );
+        var server = Game1.server;
+        var decision = PausePolicy.Evaluate(
+            enabled: true,
+            isServer: true,
+            worldReady: true,
+            connectionCountKnown: server is not null,
+            connectionCount: server?.connectionsCount ?? 0,
+            isFestivalDay: Utility.isFestivalDay(Game1.dayOfMonth, Game1.season),
+            timeOfDay: Game1.timeOfDay,
+            gameplayPlayerCount: gameplayPlayers.Length,
+            pauseRequestCount: pauseRequestCount
+        );
 
-        if (shouldPause)
+        if (decision.ShouldForcePause)
+            Game1.netWorldState.Value.IsPaused = true;
+
+        if (decision.Reason != lastForcedPauseReason)
         {
-            HoldSinglePlayerMenuPauseClock();
-            return;
+            Monitor.Log(
+                $"Pause compatibility state changed: {lastForcedPauseReason} -> {decision.Reason} "
+                    + $"(connections={server?.connectionsCount.ToString() ?? "unknown"}, gameplayPlayers={gameplayPlayers.Length}, time={Game1.timeOfDay}).",
+                LogLevel.Trace
+            );
+            lastForcedPauseReason = decision.Reason;
         }
-
-        ClearSinglePlayerMenuPause();
-    }
-
-    private void HoldSinglePlayerMenuPauseClock()
-    {
-        if (Game1.gameTimeInterval >= 0 && singlePlayerMenuPauseSavedInterval is null)
-            singlePlayerMenuPauseSavedInterval = Game1.gameTimeInterval;
-
-        Game1.gameTimeInterval = SinglePlayerMenuPausedTimeInterval;
-        singlePlayerMenuPauseApplied = true;
-    }
-
-    private void ClearSinglePlayerMenuPause()
-    {
-        if (!singlePlayerMenuPauseApplied && Game1.gameTimeInterval != SinglePlayerMenuPausedTimeInterval)
-            return;
-
-        if (Game1.gameTimeInterval == SinglePlayerMenuPausedTimeInterval)
-            Game1.gameTimeInterval = Math.Max(0, singlePlayerMenuPauseSavedInterval ?? 0);
-
-        if (Game1.netWorldState.Value.IsTimePaused)
-            Game1.netWorldState.Value.IsTimePaused = false;
-        if (Game1.netWorldState.Value.IsPaused)
-            Game1.netWorldState.Value.IsPaused = false;
-        Game1.isTimePaused = false;
-        if (Game1.pauseTime > 0f)
-            Game1.pauseTime = 0f;
-        singlePlayerMenuPauseSavedInterval = null;
-        singlePlayerMenuPauseApplied = false;
-    }
-
-    private void RecoverSinglePlayerMenuPauseClock()
-    {
-        if (Game1.gameTimeInterval == SinglePlayerMenuPausedTimeInterval)
-            Game1.gameTimeInterval = Math.Max(0, singlePlayerMenuPauseSavedInterval ?? 0);
-
-        singlePlayerMenuPauseSavedInterval = null;
-        singlePlayerMenuPauseApplied = false;
-    }
-
-    private static bool FarmerRequestsMenuPause(Farmer farmer)
-    {
-        return farmer.hasMenuOpen.Value || farmer.requestingTimePause.Value;
-    }
-
-    private static bool ShouldPauseForHumanPlayers(IReadOnlyCollection<Farmer> humanPlayers)
-    {
-        if (humanPlayers.Count == 0)
-            return false;
-
-        return humanPlayers.All(FarmerRequestsMenuPause);
     }
 
     private void ApplyPanelCharacterCustomization()

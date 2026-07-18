@@ -318,3 +318,28 @@
 
 - `n/a` 是“文件当前为空”，不是错误，也不能持久化进 driver payload。错误结果不缓存。若上游改变邀请码文件契约，应调整文件读取，不得恢复 attach-cli 轮询。
 - 指标缓存时间戳代表实际采样时刻；不要在每个响应上伪造新时间戳。若增加多实例，应继续以 instance ID 隔离缓存和 flight。
+
+# 2026-07-19：CONTROL-PAUSE-COMPAT-1
+
+## 改了什么
+
+- Control Mod 从 0.2.0 升至 0.2.1，新增纯函数 `PausePolicy`。无人暂停以 `Game1.server.connectionsCount` 为准，在每帧更新前后仅补写 `IsPaused=true`；删除了旧菜单暂停对 `gameTimeInterval` 和所有全局 pause flag 的保存、恢复与清除。
+- 菜单暂停只接受“所有已自定义在场玩家都请求暂停，且连接数与在场玩家数完全一致”。这使密码认证、新角色捏人和连接过渡优先完成，不会被已有玩家的菜单状态卡住。
+- source/embedded manifest 声明必需依赖 `JunimoHost.Server`，版本统一为 0.2.1；嵌入 DLL SHA256 为 `e01cfcdb8df3d06e541b4f011edd7b6f748ee351ed16f9bf0c8537fcc5b20015`，推荐运行栈清单已同步。
+
+## 影响文件与接口
+
+- 主要文件：`embedded/smapi-mod-src/{ModEntry,PausePolicy}.cs`、两个 Control manifest、嵌入 DLL、`runtime_stack_manifest.json` 和 `smapi-mod-contract-tests`。
+- Web/driver API 没有变化；Junimo `/status.isPaused` 继续反映真实 `NetWorldState.IsPaused`，人物删除事务和备份流程不变。
+
+## 如何验证
+
+- Docker .NET 6 SDK 中运行 Control 契约测试并用只读 `stardew_game-data` 编译真实 Mod：0 errors（仅既有 analyzer/compiler 版本 warning）。
+- Docker Desktop 隔离 `farmhand-delete-e2e` 项目使用真实 `.125`、独立卷和测试存档验证删除后 15 秒时间不推进、重启、时间边界与节日放行；Control 错误日志为 0。
+- 发布前继续要求后端全量 test/vet/build、前端状态脚本与 production build、Docker integration、候选 Panel 镜像 smoke 全部通过。
+
+## 下一步注意事项
+
+- 兼容层必须保持“只补写 true、永不写 false”；不要恢复旧 `ClearSinglePlayerMenuPause()` 的全局清理。
+- `connectionsCount` 是握手安全边界，`otherFarmers`/`farmhandData` 不能替代。未来若上游连接模型改变，应先增加真实客户端连接/断线 E2E，再调整策略。
+- 节日和 2510..2600 必须继续放行，否则会卡住节日自动化或 2:00 晕倒/日结。
