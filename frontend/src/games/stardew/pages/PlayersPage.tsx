@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { kickPlayer, warpPlayerHome, approvePlayerAuth, banPlayer, getInstancePasswordStatus } from '../../../api'
+import { kickPlayer, warpPlayerHome, approvePlayerAuth, banPlayer, deleteFarmhand, getInstancePasswordStatus } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { InstancePasswordStatus } from '../../../types'
@@ -221,12 +221,20 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
   const [banError, setBanError] = useState<string | null>(null)
   const [banMessage, setBanMessage] = useState<string | null>(null)
   const [banConfirmed, setBanConfirmed] = useState(false)
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<KickTarget | null>(null)
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null)
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
   const isStarting = state === 'starting'
   const playersData = dashboardData.players
   const playerRows = playersData?.players ?? []
+  const onlineHumanCount = playerRows.filter((player) => player.status === 'online' && !player.isHost).length
+  const farmhandDeleteJobActive = dashboardData.jobs.some(
+    (job) => job.type === 'stardew_farmhand_delete' && (job.status === 'queued' || job.status === 'running'),
+  )
   const recentEvents = playersData?.recentEvents ?? []
   const serverInfo = playersData?.rawInfo ?? null
   const serverInfoError = dashboardData.playersError
@@ -475,6 +483,25 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
     }
   }
 
+  async function handleConfirmDelete() {
+    const target = deleteConfirmTarget
+    const saveId = dashboardData.saves?.activeSaveName
+    if (!target || !saveId) return
+    setDeleteBusyId(target.uniqueMultiplayerId)
+    setDeleteError(null)
+    setDeleteMessage(null)
+    try {
+      await deleteFarmhand(target.uniqueMultiplayerId, target.name, saveId)
+      setDeleteMessage(`人物 ${target.name} 的删除任务已提交；系统会先保存并创建整档保护备份。`)
+      dashboardData.refreshJobs()
+    } catch (e) {
+      setDeleteError(errorMessage(e))
+    } finally {
+      setDeleteBusyId(null)
+      setDeleteConfirmTarget(null)
+    }
+  }
+
   return (
     <div className="sd-page sd-players-page">
       <div className="sd-page-header">
@@ -642,6 +669,28 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                     aria-label="封禁玩家"
                     onClick={() => setBanConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
                   />
+                  <button
+                    className="sd-players-icon-button sd-players-icon-delete"
+                    type="button"
+                    disabled={!isAdmin || !isRunning || !player.canDeleteCharacter || !dashboardData.saves?.activeSaveName || farmhandDeleteJobActive || deleteBusyId !== null}
+                    title={
+                      !isAdmin
+                        ? '仅管理员可用'
+                        : !isRunning
+                          ? '服务器运行时才可删除存档人物'
+                          : player.isHost
+                            ? '无法删除主机人物'
+                            : player.status === 'online'
+                              ? '被删除的人物必须离线'
+                              : !player.saveCharacterPresent
+                                ? '该记录不属于当前存档人物'
+                                : farmhandDeleteJobActive
+                                  ? '已有存档人物删除任务正在执行'
+                                  : '删除离线存档人物'
+                    }
+                    aria-label="删除存档人物"
+                    onClick={() => setDeleteConfirmTarget({ uniqueMultiplayerId: player.uniqueMultiplayerId || '', name: player.name })}
+                  />
                 </span>
               </div>
             ))
@@ -661,6 +710,8 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
             农场收入显示团队累计收入；个人收入仅在分开钱包模式下有可靠统计。
           </div>
         )}
+        {deleteMessage ? <div className="sd-notice sd-notice--ok">{deleteMessage}</div> : null}
+        {deleteError ? <div className="sd-notice sd-notice--error">{deleteError}</div> : null}
         {warpHomeError ? <div className="sd-players-info-error sd-players-action-feedback">{warpHomeError}</div> : null}
         {warpHomeMessage ? <div className={`${warpHomeConfirmed ? 'sd-srv-result' : 'sd-srv-hint'} sd-players-action-feedback`}>{warpHomeMessage}</div> : null}
         {kickError ? <div className="sd-players-info-error sd-players-action-feedback">{kickError}</div> : null}
@@ -912,6 +963,26 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
               </button>
               <button className="sd-btn-delete" onClick={() => void handleConfirmBan()} disabled={banBusy}>
                 {banBusy ? '封禁中…' : '确认封禁'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteConfirmTarget ? (
+        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+          <div className="sd-confirm-dialog">
+            <h3>确认删除存档人物</h3>
+            <p>将永久删除人物 {deleteConfirmTarget.name}、其人物进度、背包以及对应小屋和小屋内容。该操作不会封禁玩家，对方以后仍可重新创建人物。</p>
+            {onlineHumanCount > 0 ? (
+              <p className="sd-notice sd-notice--warn">当前有 {onlineHumanCount} 名玩家在线。现支持有真人玩家在线时删除离线玩家存档，但删除会同时移除其小屋，现有在线客户端可能无法立即同步建筑变化，出现旧小屋残影或位置显示异常。建议在线玩家在操作完成后重新连接。系统将先保存并创建整档保护备份。</p>
+            ) : (
+              <p className="sd-notice sd-notice--warn">系统将先保存当前进度并创建整档保护备份。恢复保护备份会回滚整个农场，不能只恢复这一个人物。</p>
+            )}
+            <div className="sd-confirm-actions">
+              <button className="sd-btn-tan" onClick={() => setDeleteConfirmTarget(null)} disabled={deleteBusyId !== null}>取消</button>
+              <button className="sd-btn-delete" onClick={() => void handleConfirmDelete()} disabled={deleteBusyId !== null}>
+                {deleteBusyId !== null ? '正在提交…' : '确认删除人物'}
               </button>
             </div>
           </div>

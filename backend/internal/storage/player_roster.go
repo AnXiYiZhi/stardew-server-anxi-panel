@@ -106,7 +106,8 @@ money=COALESCE(excluded.money, player_roster.money), farm_income=COALESCE(exclud
 personal_income=COALESCE(excluded.personal_income, player_roster.personal_income),
 total_money_earned=COALESCE(excluded.total_money_earned, player_roster.total_money_earned),
 wallet_mode=COALESCE(excluded.wallet_mode, player_roster.wallet_mode), snapshot_source=excluded.snapshot_source,
-snapshot_observed_at=excluded.snapshot_observed_at, current_status=excluded.current_status`,
+snapshot_observed_at=excluded.snapshot_observed_at, current_status=excluded.current_status,
+character_deleted_at=NULL, character_delete_operation_id=NULL`,
 		e.InstanceID, e.StableSaveID, e.PlayerID, e.DisplayName, rosterNullString(e.Role), boolInt(e.IsHost), firstSeenAt, observedAt, lastOnline,
 		rosterNullString(e.Location), rosterNullString(e.LocationName), rosterNullString(e.LocationDisplayName), e.TileX, e.TileY, e.PixelX, e.PixelY,
 		e.Money, e.FarmIncome, e.PersonalIncome, e.TotalMoneyEarned, rosterNullString(e.WalletMode), e.SnapshotSource, observedAt, playerStatus(params.Online))
@@ -137,7 +138,7 @@ func (s *Store) ListPlayerRoster(ctx context.Context, instanceID, stableSaveID s
 COALESCE(role,''), is_host, first_seen_at, last_seen_at, COALESCE(last_online_at,''),
 COALESCE(location,''), COALESCE(location_name,''), COALESCE(location_display_name,''), tile_x, tile_y, pixel_x, pixel_y,
 money, farm_income, personal_income, total_money_earned, COALESCE(wallet_mode,''), COALESCE(snapshot_source,''), snapshot_observed_at, current_status
-FROM player_roster WHERE instance_id=? AND stable_save_id=? ORDER BY is_host DESC, lower(display_name)`, instanceID, stableSaveID)
+FROM player_roster WHERE instance_id=? AND stable_save_id=? AND character_deleted_at IS NULL ORDER BY is_host DESC, lower(display_name)`, instanceID, stableSaveID)
 	if err != nil {
 		return nil, fmt.Errorf("list player roster: %w", err)
 	}
@@ -159,6 +160,32 @@ FROM player_roster WHERE instance_id=? AND stable_save_id=? ORDER BY is_host DES
 		result = append(result, e)
 	}
 	return result, rows.Err()
+}
+
+// MarkPlayerCharacterDeleted hides a character from the current save roster
+// while preserving its historical observations and player events. A later
+// authoritative save/runtime observation of the same player ID clears this
+// tombstone through UpsertPlayerRoster.
+func (s *Store) MarkPlayerCharacterDeleted(ctx context.Context, instanceID, stableSaveID, playerID, operationID, deletedAt string) error {
+	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(stableSaveID) == "" || strings.TrimSpace(playerID) == "" {
+		return fmt.Errorf("instance, save and player id are required")
+	}
+	if strings.TrimSpace(deletedAt) == "" {
+		deletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE player_roster
+SET current_status='offline', character_deleted_at=?, character_delete_operation_id=?
+WHERE instance_id=? AND stable_save_id=? AND player_id=? AND is_host=0`,
+		deletedAt, nullString(operationID), instanceID, stableSaveID, playerID)
+	if err != nil {
+		return fmt.Errorf("mark player character deleted: %w", err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return err
+	} else if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) MarkPlayerRosterOfflineExcept(ctx context.Context, instanceID, stableSaveID, observedAt string, onlinePlayerIDs []string) error {

@@ -748,6 +748,18 @@ export function enableJojaRoute(confirm: string, instanceId = defaultInstanceId)
   )
 }
 
+export function deleteFarmhand(
+  uniqueMultiplayerId: string,
+  expectedName: string,
+  expectedSaveId: string,
+  instanceId = defaultInstanceId,
+) {
+  return request<InstallJobResponse>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/delete-farmhand`,
+    { method: 'POST', body: { uniqueMultiplayerId, expectedName, expectedSaveId, acknowledged: true } },
+  )
+}
+
 export function requestGameSave(instanceId = defaultInstanceId) {
   return request<CommandRunResult>(
     `/api/instances/${encodeURIComponent(instanceId)}/saves/save-now`,

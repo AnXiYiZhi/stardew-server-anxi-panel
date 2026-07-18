@@ -44,6 +44,11 @@ type PlayerInfo struct {
 	// which is distinct from "known to be unauthenticated"). Always nil/omitted
 	// for offline players; see playerInfoFromCacheItem.
 	IsAuthenticated *bool `json:"isAuthenticated,omitempty"`
+	// SaveCharacterPresent distinguishes a character that still exists in the
+	// active save from a history-only SQLite roster entry.
+	SaveCharacterPresent       bool   `json:"saveCharacterPresent"`
+	CanDeleteCharacter         bool   `json:"canDeleteCharacter"`
+	DeleteCharacterBlockReason string `json:"deleteCharacterBlockReason,omitempty"`
 }
 
 // PlayerEvent is a compact player activity entry derived from roster changes.
@@ -266,7 +271,34 @@ func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Inst
 		_ = os.Remove(playerCachePath(instance.DataDir))
 		_ = os.Remove(playerEventsPath(instance.DataDir))
 	}
+	markSaveCharacterCapabilities(instance.DataDir, stableID, result.Players)
 	return result
+}
+
+func markSaveCharacterCapabilities(dataDir, saveID string, players []PlayerInfo) {
+	present := make(map[string]bool)
+	for _, item := range saveRosterItems(dataDir, saveID) {
+		key := playerKey(item.Name, item.UniqueMultiplayerID)
+		if key != "" {
+			present[key] = true
+		}
+	}
+	for i := range players {
+		player := &players[i]
+		player.SaveCharacterPresent = present[playerKey(player.Name, player.UniqueMultiplayerID)]
+		switch {
+		case player.IsHost:
+			player.DeleteCharacterBlockReason = "host_not_supported"
+		case !player.SaveCharacterPresent:
+			player.DeleteCharacterBlockReason = "character_not_in_save"
+		case strings.TrimSpace(player.UniqueMultiplayerID) == "":
+			player.DeleteCharacterBlockReason = "player_id_missing"
+		case player.Status == "online":
+			player.DeleteCharacterBlockReason = "farmhand_online"
+		default:
+			player.CanDeleteCharacter = true
+		}
+	}
 }
 
 func playerEventsFromRoster(events []storage.PlayerRosterEvent) []PlayerEvent {

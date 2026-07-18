@@ -1,3 +1,10 @@
+# v0.3.8 发布记录：删除离线存档人物（2026-07-18）
+
+- `v0.3.8` 新增运行中删除当前存档离线 farmhand：Panel 通过 Junimo `.125` 官方 `/farmhands` 接口删除人物、小屋和 slot 记录，不直接编辑 XML；其他真人玩家在线允许操作，被删除目标在线仍硬拒绝。
+- 删除事务包含前保存、`prefarmhanddelete_*` 整档保护备份、删除前二次校验、运行态复核、后保存与磁盘 XML 复核；在线玩家收到删除前后游戏内通告，UI 明确建议重连以刷新小屋建筑状态。
+- Docker Desktop 使用独立 `farmhand-delete-e2e` Compose project、数据目录、端口和 game-data volume 克隆真实双人物/三小屋存档；验证人物 `2→1`、小屋 `3→2`、重启持久、重复删除安全失败，并用生成的保护备份自动停服/恢复/重启后确认人物和小屋复原。原来源实例未启动或改写。
+- 发布沿用 `release.yml`：完整门禁通过后 annotated tag `v0.3.8` 触发 Docker Hub、阿里云 ACR、GHCR 的 `0.3.8/latest` 与 GitHub Release。
+
 # v0.3.7 发布记录：升级旧镜像安全清理（2026-07-17）
 
 - `v0.3.7` 发布 Panel 与 Junimo/auth 成功升级后的旧镜像定向清理，并包含新 Panel 对旧版本 helper 成功状态的幂等收尾，使 `0.3.6 → 0.3.7` 当次升级即可生效。失败、回滚、共享容器、自定义仓库、未知 tag、容器和 volume 安全边界不变。

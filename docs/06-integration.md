@@ -1,3 +1,16 @@
+# FARMHAND-DELETE-1 联调契约（2026-07-18，completed）
+
+`POST /api/instances/:id/players/delete-farmhand` 请求：
+
+```json
+{"uniqueMultiplayerId":"-3583227484444031316","expectedName":"1","expectedSaveId":"1111_442923526","acknowledged":true}
+```
+
+- 受理返回 `202 {"jobId":"..."}`，最终状态由 `stardew_farmhand_delete` job 提供。未确认返回 `400 confirmation_required`；停服、存档切换、其它活动任务、目标在线或世界未就绪返回 `409`；当前 Junimo 不支持人物删除时返回 `501`。
+- `GET /players` 新增 `saveCharacterPresent/canDeleteCharacter/deleteCharacterBlockReason`。前端必须以 capability 为准，不能仅根据 `status=offline` 推断可删；目标上线时后端二次校验仍是最终权威。
+- 其他真人玩家在线是允许状态：确认框告知小屋同步风险；job 在删除前后提交游戏内 broadcast。被删除人物本人在线永远阻断。删除成功前必须完成前保存、整档备份、Junimo 删除、运行态复核、后保存与磁盘复核。
+- Docker Desktop 真实链路验证了 API、job、Control、Junimo `.125`、保存、备份、人物/小屋变化、重启持久性、重复删除和整档恢复；“其他两名真人在线允许、目标上线拒绝”的分支另由纯逻辑测试固定，广播文件协议在真实容器取得 succeeded。
+
 # SAVE-IMPORT-E2E-RELEASE-1 联调门禁（2026-07-16，未通过）
 
 - 安全环境盘点只确认一个已停止的 direct-Junimo `save-import-spike` 项目和两个 SHA256 固定的 `.tgz`。没有八类原始 ZIP/逐份 hash、隔离 Panel 数据库与完整 UI→job 运行记录，也没有人工游戏客户端验证条件；本轮未启动任何实例、未发送 `saves import`。

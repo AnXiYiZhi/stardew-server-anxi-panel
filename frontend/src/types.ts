@@ -496,6 +496,9 @@ export type StardewPlayerInfo = {
   walletMode?: 'shared' | 'separate' | string
   lastSeen?: string
   isAuthenticated?: boolean | null
+  saveCharacterPresent?: boolean
+  canDeleteCharacter?: boolean
+  deleteCharacterBlockReason?: string
 }
 
 export type StardewPlayerEvent = {

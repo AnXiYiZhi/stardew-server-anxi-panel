@@ -90,3 +90,36 @@ func TestPlayerRosterPromotesTemporaryNameIdentity(t *testing.T) {
 		t.Fatalf("temporary identity was not promoted: %+v", rows)
 	}
 }
+
+func TestPlayerRosterCharacterDeleteTombstoneAndAuthoritativeReappearance(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+	ctx := context.Background()
+	if _, err := store.EnsureDefaultInstance(ctx, EnsureDefaultInstanceParams{ID: "i1", DriverID: DefaultDriverID, Name: "test", DataDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	params := UpsertPlayerRosterParams{BaseSaveID: "Farm", FullSaveID: "Farm_1", Entry: PlayerRosterEntry{
+		InstanceID: "i1", StableSaveID: "Farm_1", PlayerID: "42", DisplayName: "Alice", SnapshotSource: "save_file", SnapshotObservedAt: "2026-07-18T10:00:00Z",
+	}}
+	if err := store.UpsertPlayerRoster(ctx, params); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkPlayerCharacterDeleted(ctx, "i1", "Farm_1", "42", "op-1", "2026-07-18T10:01:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := store.ListPlayerRoster(ctx, "i1", "Farm_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("deleted character leaked into visible roster: %+v", rows)
+	}
+	params.Entry.SnapshotObservedAt = "2026-07-18T11:00:00Z"
+	if err := store.UpsertPlayerRoster(ctx, params); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = store.ListPlayerRoster(ctx, "i1", "Farm_1")
+	if err != nil || len(rows) != 1 || rows[0].PlayerID != "42" {
+		t.Fatalf("authoritative reappearance did not clear tombstone: rows=%+v err=%v", rows, err)
+	}
+}
