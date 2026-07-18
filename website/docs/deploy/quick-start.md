@@ -15,7 +15,7 @@ http://服务器IP:8090
 国内加速安装：
 
 ```bash
-curl -fsSL -o run.sh https://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
 ```
 
 GitHub Release 安装：

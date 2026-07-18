@@ -1,3 +1,4 @@
+/* 中文档图片缩放 */
 .vp-doc img:not(.no-zoom) {
   cursor: zoom-in;
 }
@@ -8,4 +9,60 @@
 
 .medium-zoom-image--opened {
   z-index: 1000;
+}
+
+/* ===== 快速上手按钮突出样式 ===== */
+
+/* 顶部导航栏的"快速上手"高亮 */
+.VPNavBarMenuLink:has(> span:first-child > span:first-child:is(:has(> a[href*="getting-started"]))) a,
+.VPNavBarMenuLink a[href*="getting-started"] {
+  background: linear-gradient(135deg, #3eaf7c 0%, #42b883 100%);
+  color: #fff !important;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(62, 175, 124, 0.35);
+  transition: all 0.2s ease;
+}
+
+.VPNavBarMenuLink a[href*="getting-started"]:hover {
+  box-shadow: 0 3px 12px rgba(62, 175, 124, 0.5);
+  transform: translateY(-1px);
+  color: #fff !important;
+}
+
+/* 首页 hero 区的"快速上手"按钮加发光效果 */
+.VPHero .VPButton.brand {
+  box-shadow: 0 4px 16px rgba(62, 175, 124, 0.4), 0 0 0 0 rgba(62, 175, 124, 0);
+  animation: btn-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes btn-glow {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(62, 175, 124, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(62, 175, 124, 0.65), 0 0 40px rgba(62, 175, 124, 0.15);
+  }
+}
+
+/* 首页特性卡片中的"快速上手"卡片加左边框高亮 */
+.VPFeature:has(a[href*="getting-started"]) {
+  border-left: 3px solid #3eaf7c;
+  position: relative;
+}
+
+.VPFeature:has(a[href*="getting-started"])::before {
+  content: "推荐";
+  position: absolute;
+  top: -1px;
+  right: 12px;
+  background: linear-gradient(135deg, #3eaf7c 0%, #42b883 100%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 0 0 6px 6px;
+  letter-spacing: 1px;
 }
