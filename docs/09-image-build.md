@@ -807,3 +807,10 @@ docker run --rm `
 - 活动重启 job 使用持久 operation payload 标识；重复提交返回 `409 restart_in_progress`，不会取消或替换原重启。前端在页面隐藏或关闭时停止玩家、邀请码和指标轮询，恢复可见后再继续，并把 `n/a` 保持为未就绪状态。
 - Docker Desktop 29.5.3 使用隔离 `bash:5.2` Compose project 验证真实文件 exec、空值、12 路并发邀请码、真实 stats 与 12 路并发共享；测试项目已 down，宿主没有遗留运行测试容器或 attach-cli 进程。后端全量 test/vet/build、前端 TypeScript/Vite production build 与并发专项测试通过。
 - annotated tag `v0.3.9` 沿用 `.github/workflows/release.yml`，由远端发布门禁构建并推送 Docker Hub、阿里云 ACR、GHCR 的 `0.3.9/latest`，随后使用本 tag 的中文注释创建 GitHub Release。
+
+# v0.3.10 发布记录：删除人物后自动暂停兼容（2026-07-19）
+
+- `v0.3.10` 内嵌 Control 0.2.1：source/embedded manifest 均必需依赖 `JunimoHost.Server`，DLL SHA256 固定为 `e01cfcdb8df3d06e541b4f011edd7b6f748ee351ed16f9bf0c8537fcc5b20015`，`runtime_stack_manifest.json` 必须完全一致。
+- 发布门禁必须在 Docker .NET 6 SDK 中运行 Control 契约矩阵并使用只读真实 game-data 编译 Mod；随后执行后端全量 test/vet/build、Docker integration、前端全部状态脚本和生产构建，再构建 `stardew-server-anxi-panel:0.3.10-rc` 做版本、Control manifest/hash 与运行态 smoke。
+- Docker Desktop 真机验收使用隔离 `farmhand-delete-e2e` Compose project、独立存档目录和 game-data 卷；覆盖真实 `.125` 删除后暂停、15 秒时钟稳定、重启、600/610/2500/2510、节日 600→620 和错误日志扫描。不得把 test seam、测试覆盖文件或测试存档打入候选镜像。
+- annotated tag `v0.3.10` 继续触发 `.github/workflows/release.yml`，由远端门禁构建并推送 Docker Hub、阿里云 ACR、GHCR 的 `0.3.10/latest`，再以中文 tag 注释生成 GitHub Release。
