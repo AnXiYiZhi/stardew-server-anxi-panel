@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"strings"
@@ -8,6 +9,18 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 )
+
+const resourceMetricsCacheTTL = 5 * time.Second
+
+type resourceMetricsCacheEntry struct {
+	response  resourceMetricsResponse
+	expiresAt time.Time
+}
+
+type resourceMetricsFlight struct {
+	done     chan struct{}
+	response resourceMetricsResponse
+}
 
 type resourceMetricsResponse struct {
 	InstanceID string               `json:"instanceId"`
@@ -37,33 +50,72 @@ func (s *server) handleInstanceMetrics(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
+	writeJSON(w, http.StatusOK, s.resourceMetrics(instance.ID, instance.DataDir))
+}
+
+func (s *server) resourceMetrics(instanceID, dataDir string) resourceMetricsResponse {
+	now := time.Now()
+	s.metricsMu.Lock()
+	if s.metricsCache == nil {
+		s.metricsCache = make(map[string]resourceMetricsCacheEntry)
+	}
+	if s.metricsFlights == nil {
+		s.metricsFlights = make(map[string]*resourceMetricsFlight)
+	}
+	if cached, ok := s.metricsCache[instanceID]; ok && now.Before(cached.expiresAt) {
+		s.metricsMu.Unlock()
+		return cached.response
+	}
+	if flight, ok := s.metricsFlights[instanceID]; ok {
+		s.metricsMu.Unlock()
+		<-flight.done
+		return flight.response
+	}
+	flight := &resourceMetricsFlight{done: make(chan struct{})}
+	s.metricsFlights[instanceID] = flight
+	s.metricsMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	flight.response = s.collectResourceMetrics(ctx, instanceID, dataDir)
+	cancel()
+
+	s.metricsMu.Lock()
+	s.metricsCache[instanceID] = resourceMetricsCacheEntry{
+		response:  flight.response,
+		expiresAt: time.Now().Add(resourceMetricsCacheTTL),
+	}
+	delete(s.metricsFlights, instanceID)
+	close(flight.done)
+	s.metricsMu.Unlock()
+	return flight.response
+}
+
+func (s *server) collectResourceMetrics(ctx context.Context, instanceID, dataDir string) resourceMetricsResponse {
 	sample := resourceMetricSample{Timestamp: time.Now().Format(time.RFC3339)}
-	if disk, err := diskUsageForPath(instance.DataDir); err == nil && disk.TotalBytes > 0 {
+	if disk, err := diskUsageForPath(dataDir); err == nil && disk.TotalBytes > 0 {
 		sample.DiskUsedBytes = disk.UsedBytes
 		sample.DiskTotalBytes = disk.TotalBytes
 		sample.DiskPercent = floatPtr(occupancyPercent(float64(disk.UsedBytes) / float64(disk.TotalBytes) * 100))
 	}
 
-	project := composeProjectStatusForWorkDir(instance.DataDir)
+	project := composeProjectStatusForWorkDir(dataDir)
 	if !project.Ready {
 		sample.Message = "Compose 项目尚未准备，暂时只能显示磁盘占用"
-		writeJSON(w, http.StatusOK, resourceMetricsResponse{
-			InstanceID: instance.ID,
+		return resourceMetricsResponse{
+			InstanceID: instanceID,
 			Service:    "server",
 			Sample:     sample,
-		})
-		return
+		}
 	}
 
-	stats, err := s.docker.ComposeStats(r.Context(), instance.DataDir)
+	stats, err := s.docker.ComposeStats(ctx, dataDir)
 	if err != nil {
 		sample.Message = "容器指标暂不可用，请确认服务器容器已启动"
-		writeJSON(w, http.StatusOK, resourceMetricsResponse{
-			InstanceID: instance.ID,
+		return resourceMetricsResponse{
+			InstanceID: instanceID,
 			Service:    "server",
 			Sample:     sample,
-		})
-		return
+		}
 	}
 
 	if service, ok := selectServerStats(stats.Services); ok {
@@ -72,20 +124,19 @@ func (s *server) handleInstanceMetrics(w http.ResponseWriter, r *http.Request, i
 		sample.MemoryPercent = floatPtr(occupancyPercent(service.MemPerc))
 		sample.MemoryUsedBytes = service.MemUsedBytes
 		sample.MemoryLimitBytes = service.MemLimitBytes
-		writeJSON(w, http.StatusOK, resourceMetricsResponse{
-			InstanceID: instance.ID,
+		return resourceMetricsResponse{
+			InstanceID: instanceID,
 			Service:    serviceNameForStats(service),
 			Sample:     sample,
-		})
-		return
+		}
 	}
 
 	sample.Message = "服务器容器未运行，启动后会显示 CPU 和内存趋势"
-	writeJSON(w, http.StatusOK, resourceMetricsResponse{
-		InstanceID: instance.ID,
+	return resourceMetricsResponse{
+		InstanceID: instanceID,
 		Service:    "server",
 		Sample:     sample,
-	})
+	}
 }
 
 func selectServerStats(services []paneldocker.ComposeServiceStats) (paneldocker.ComposeServiceStats, bool) {

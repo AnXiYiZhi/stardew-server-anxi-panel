@@ -90,6 +90,9 @@ type Driver struct {
 	guardChans map[string]chan string
 
 	runtimeUpdateMu            sync.Mutex
+	inviteCodeMu               sync.Mutex
+	inviteCodeCache            map[string]inviteCodeCacheEntry
+	inviteCodeFlights          map[string]*inviteCodeFlight
 	saveImportRunMu            sync.Mutex
 	runtimeUpdatePollInterval  time.Duration
 	runtimeUpdateAuthTimeout   time.Duration
@@ -115,6 +118,8 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		store:                      store,
 		panelVersion:               panelVersion,
 		guardChans:                 make(map[string]chan string),
+		inviteCodeCache:            make(map[string]inviteCodeCacheEntry),
+		inviteCodeFlights:          make(map[string]*inviteCodeFlight),
 		runtimeUpdatePollInterval:  2 * time.Second,
 		runtimeUpdateAuthTimeout:   90 * time.Second,
 		runtimeUpdateServerTimeout: 5 * time.Minute,

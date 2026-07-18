@@ -843,6 +843,10 @@ func (s *server) handleInstanceRestart(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	if err := driver.Restart(r.Context(), makeRegistryInstance(instance)); err != nil {
+		if errors.Is(err, sj.ErrRestartInProgress) {
+			writeError(w, http.StatusConflict, "restart_in_progress", "服务器重启任务正在执行，请等待当前任务完成。")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "restart_failed", sanitizeErrorMsg(err, "服务器重启失败"))
 		return
 	}

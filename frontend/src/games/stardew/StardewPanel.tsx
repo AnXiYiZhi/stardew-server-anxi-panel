@@ -625,7 +625,7 @@ export function StardewPanel({
     }
 
     function scheduleNext() {
-      if (!alive) return
+	  if (!alive || document.visibilityState !== 'visible') return
       clearTimer()
       timer = window.setTimeout(() => {
         void loadMetrics()
@@ -633,6 +633,7 @@ export function StardewPanel({
     }
 
     async function loadMetrics() {
+	  if (document.visibilityState !== 'visible') return
       try {
         const res = await getInstanceMetrics()
         if (!alive) return
@@ -644,10 +645,22 @@ export function StardewPanel({
       }
     }
 
-    void loadMetrics()
+	function handleVisibilityChange() {
+	  if (document.visibilityState === 'visible') {
+		void loadMetrics()
+		return
+	  }
+	  clearTimer()
+	}
+
+	document.addEventListener('visibilitychange', handleVisibilityChange)
+	if (document.visibilityState === 'visible') {
+	  void loadMetrics()
+	}
     return () => {
       alive = false
       clearTimer()
+	  document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 

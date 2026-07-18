@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -29,7 +28,7 @@ const (
 	// New-game world generation can take 15+ min, but the invite code may arrive earlier
 	// (JunimoServer writes it as soon as the lobby is created, before save load completes).
 	readyStateTimeout   = 20 * time.Minute
-	readyInviteInterval = 15 * time.Second // how often to attempt attach-cli invitecode
+	readyInviteInterval = 15 * time.Second // how often to read the Junimo invite-code file
 	readyLogInterval    = 60 * time.Second // how often to tail container logs
 	readySMAPIInterval  = 5 * time.Second  // how often to poll status.json
 
@@ -37,7 +36,23 @@ const (
 
 	backgroundInviteAttempts = 20
 	backgroundInviteInterval = 15 * time.Second
+	inviteCodeCacheTTL       = 5 * time.Second
 )
+
+const restartJobPayload = `{"operation":"restart"}`
+
+var ErrRestartInProgress = errors.New("restart already in progress")
+
+type inviteCodeCacheEntry struct {
+	code      string
+	expiresAt time.Time
+}
+
+type inviteCodeFlight struct {
+	done chan struct{}
+	code string
+	err  error
+}
 
 // LifecycleDockerService extends DockerService with lifecycle operations.
 type LifecycleDockerService interface {
@@ -214,6 +229,9 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	if err != nil {
 		return fmt.Errorf("load instance: %w", err)
 	}
+	if err := d.rejectActiveRestart(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "重启服务器请求已提交，取消旧的生命周期任务。"); err != nil {
 		return err
 	}
@@ -228,10 +246,28 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 		TargetType: "instance",
 		TargetID:   instance.ID,
 		CreatedBy:  0,
+		Payload:    restartJobPayload,
 		Timeout:    lifecycleJobTimeout,
 		Run:        runner.run,
 	}); err != nil {
 		return fmt.Errorf("start restart job: %w", err)
+	}
+	return nil
+}
+
+func (d *Driver) rejectActiveRestart(ctx context.Context, instanceID string) error {
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   instanceID,
+		Types:      []string{lifecycleJobType},
+	})
+	if err != nil {
+		return fmt.Errorf("list active lifecycle jobs: %w", err)
+	}
+	for _, job := range active {
+		if job.Payload.Valid && job.Payload.String == restartJobPayload {
+			return ErrRestartInProgress
+		}
 	}
 	return nil
 }
@@ -1116,38 +1152,29 @@ func (r *lifecycleRunner) removeInviteCodeFile(ctx context.Context, jobCtx *jobs
 	defer cancel()
 	_, err := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
 		"", "rm", "-f", "/tmp/invite-code.txt")
+	if err == nil && r.driver != nil {
+		r.driver.inviteCodeMu.Lock()
+		delete(r.driver.inviteCodeCache, r.instance.ID)
+		r.driver.inviteCodeMu.Unlock()
+	}
 	if err == nil && jobCtx != nil {
 		_, _ = jobCtx.Info(ctx, "已清理旧邀请码，等待 Junimo 生成新的邀请码...")
 	}
 }
 
-// fetchInviteCode reads /tmp/invite-code.txt directly from the server container
-// (written by JunimoServer as soon as the lobby is created), then falls back to
-// attach-cli if the file is empty or the exec fails.
+// fetchInviteCode only reads /tmp/invite-code.txt from the server container.
+// Never fall back to attach-cli here: it owns an interactive tmux client and
+// leaked processes when browser polling overlapped or disconnected.
 func (r *lifecycleRunner) fetchInviteCode(ctx context.Context) (string, error) {
 	execCtx, cancel := context.WithTimeout(ctx, inviteCodeTimeout)
 	defer cancel()
 
-	// Primary: read the file JunimoServer writes directly — no parsing needed.
 	catResult, catErr := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
 		"", "cat", "/tmp/invite-code.txt")
-	if catErr == nil {
-		if code := strings.TrimSpace(catResult.Stdout); code != "" {
-			return code, nil
-		}
+	if catErr != nil {
+		return "", fmt.Errorf("read /tmp/invite-code.txt: %w", catErr)
 	}
-
-	// Fallback: ask attach-cli and parse its output.
-	result, err := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
-		"invitecode\nquit\n", "attach-cli")
-	combined := result.Stdout + result.Stderr
-	if code := parseInviteCode(combined); code != "" {
-		return code, nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("cat /tmp/invite-code.txt: %v; attach-cli: %w", catErr, err)
-	}
-	return "", fmt.Errorf("无法从 attach-cli 输出中解析邀请码，输出: %q", combined)
+	return strings.TrimSpace(catResult.Stdout), nil
 }
 
 // GetInviteCode fetches the invite code for a running instance (used by HTTP handler).
@@ -1168,32 +1195,49 @@ func (d *Driver) GetInviteCode(ctx context.Context, instance registry.Instance) 
 		lifecycle: ld,
 		instance:  stored,
 	}
-	code, err := runner.fetchInviteCode(ctx)
+	code, err := d.getInviteCodeCached(ctx, runner)
 	if err == nil && code != "" {
 		_ = sjconfig.SetSteamAuthLoggedIn(stored.DataDir, true)
+	}
+	if err == nil && code == "" {
+		return "n/a", nil
 	}
 	return code, err
 }
 
-// Galaxy P2P invite codes have no hyphens (e.g. "SGCWS0Z572F2"); Steam lobby codes use
-// hyphenated groups (e.g. "ABCD-1234-EFGH"). Accept both.
-var inviteCodePattern = regexp.MustCompile(`(?i)(?:invite\s*code[:\s]+|invitecode[:\s]+)([A-Z0-9]{8,}|[A-Z0-9]{4,}-[A-Z0-9]{4,}[A-Z0-9-]*)`)
-
-// parseInviteCode extracts the invite code from attach-cli output.
-// Returns empty string if not found.
-func parseInviteCode(output string) string {
-	if m := inviteCodePattern.FindStringSubmatch(output); len(m) > 1 {
-		return strings.TrimSpace(m[1])
+func (d *Driver) getInviteCodeCached(ctx context.Context, runner *lifecycleRunner) (string, error) {
+	now := time.Now()
+	d.inviteCodeMu.Lock()
+	if cached, ok := d.inviteCodeCache[runner.instance.ID]; ok && now.Before(cached.expiresAt) {
+		d.inviteCodeMu.Unlock()
+		return cached.code, nil
 	}
-	// Fallback: bare code on its own line (hyphenated or 8+ char no-hyphen).
-	standalone := regexp.MustCompile(`^([A-Z0-9]{8,}|[A-Z0-9]{4,}-[A-Z0-9]{4,}[A-Z0-9-]*)$`)
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if m := standalone.FindStringSubmatch(line); len(m) > 1 {
-			return m[1]
+	if flight, ok := d.inviteCodeFlights[runner.instance.ID]; ok {
+		d.inviteCodeMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-flight.done:
+			return flight.code, flight.err
 		}
 	}
-	return ""
+	flight := &inviteCodeFlight{done: make(chan struct{})}
+	d.inviteCodeFlights[runner.instance.ID] = flight
+	d.inviteCodeMu.Unlock()
+
+	flight.code, flight.err = runner.fetchInviteCode(ctx)
+
+	d.inviteCodeMu.Lock()
+	if flight.err == nil {
+		d.inviteCodeCache[runner.instance.ID] = inviteCodeCacheEntry{
+			code:      flight.code,
+			expiresAt: time.Now().Add(inviteCodeCacheTTL),
+		}
+	}
+	delete(d.inviteCodeFlights, runner.instance.ID)
+	close(flight.done)
+	d.inviteCodeMu.Unlock()
+	return flight.code, flight.err
 }
 
 // updateDriverPayloadInviteCode stores the invite code in the instance driver payload.

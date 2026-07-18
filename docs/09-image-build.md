@@ -801,3 +801,9 @@ docker run --rm `
 ## v0.3.6 save-import release gate
 
 - `release.yml` and `compatibility-matrix.yml` run `npm run test:save-import` alongside the existing frontend state-machine tests before the production build. The runtime diagnostic's expected Control version is derived from the embedded compatibility manifest so the UI cannot drift back to a stale hard-coded version.
+# v0.3.9 发布记录：轮询资源泄漏与重复重启门禁（2026-07-18）
+
+- `v0.3.9` 修复 Panel 长时间运行时的轮询资源泄漏：邀请码查询只读 server 容器 `/tmp/invite-code.txt`，空值返回 `n/a`，不再启动交互式 `attach-cli`；邀请码与资源指标均增加按实例 5 秒缓存和 singleflight，多浏览器页面共享同一次 Docker exec/stats。
+- 活动重启 job 使用持久 operation payload 标识；重复提交返回 `409 restart_in_progress`，不会取消或替换原重启。前端在页面隐藏或关闭时停止玩家、邀请码和指标轮询，恢复可见后再继续，并把 `n/a` 保持为未就绪状态。
+- Docker Desktop 29.5.3 使用隔离 `bash:5.2` Compose project 验证真实文件 exec、空值、12 路并发邀请码、真实 stats 与 12 路并发共享；测试项目已 down，宿主没有遗留运行测试容器或 attach-cli 进程。后端全量 test/vet/build、前端 TypeScript/Vite production build 与并发专项测试通过。
+- annotated tag `v0.3.9` 沿用 `.github/workflows/release.yml`，由远端发布门禁构建并推送 Docker Hub、阿里云 ACR、GHCR 的 `0.3.9/latest`，随后使用本 tag 的中文注释创建 GitHub Release。

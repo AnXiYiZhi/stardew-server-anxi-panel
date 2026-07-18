@@ -7,7 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
@@ -26,6 +29,8 @@ type fakeDockerService struct {
 	psErr         error
 	statsResult   paneldocker.ComposeStatsResult
 	statsErr      error
+	statsCalls    *atomic.Int32
+	statsDelay    time.Duration
 	logsResult    paneldocker.CommandResult
 	logsErr       error
 	execFunc      func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
@@ -45,6 +50,12 @@ func (f fakeDockerService) ComposePs(ctx context.Context, dir string) (paneldock
 }
 
 func (f fakeDockerService) ComposeStats(ctx context.Context, dir string) (paneldocker.ComposeStatsResult, error) {
+	if f.statsCalls != nil {
+		f.statsCalls.Add(1)
+	}
+	if f.statsDelay > 0 {
+		time.Sleep(f.statsDelay)
+	}
 	return f.statsResult, f.statsErr
 }
 
@@ -287,6 +298,39 @@ func TestInstanceMetricsDoesNotFallbackToNonServerStats(t *testing.T) {
 	}
 	if body.Service != "server" {
 		t.Fatalf("metrics response should keep server service label when server stats are absent: %+v", body)
+	}
+}
+
+func TestResourceMetricsConcurrentRequestsUseCacheAndSingleflight(t *testing.T) {
+	dataDir := t.TempDir()
+	prepareComposeProject(t, dataDir)
+	workDir := filepath.Join(dataDir, "instances", "stardew")
+	var calls atomic.Int32
+	s := &server{docker: fakeDockerService{
+		statsCalls: &calls,
+		statsDelay: 25 * time.Millisecond,
+		statsResult: paneldocker.ComposeStatsResult{Services: []paneldocker.ComposeServiceStats{{
+			Service: "server", CPUPerc: 1, MemPerc: 2,
+		}}},
+	}}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if got := s.resourceMetrics("stardew", workDir); !got.Sample.ContainerRunning {
+				t.Errorf("container should be running: %+v", got)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("ComposeStats calls = %d, want 1", got)
+	}
+	_ = s.resourceMetrics("stardew", workDir)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("cached ComposeStats calls = %d, want 1", got)
 	}
 }
 

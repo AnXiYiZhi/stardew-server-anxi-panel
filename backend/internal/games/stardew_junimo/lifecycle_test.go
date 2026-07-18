@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,30 +21,6 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
-func TestParseInviteCode_ValidPatterns(t *testing.T) {
-	cases := []struct {
-		output string
-		want   string
-	}{
-		{"Invite Code: ABCD-1234-EFGH", "ABCD-1234-EFGH"},
-		{"invitecode: XY12-3456-ABCD", "XY12-3456-ABCD"},
-		{"InviteCode: AA11-BB22-CC33", "AA11-BB22-CC33"},
-		{"some output\nABCD-1234\nmore", "ABCD-1234"},
-		// Galaxy P2P codes have no hyphens
-		{"Invite Code: SGCWS0Z572F2", "SGCWS0Z572F2"},
-		{"(Invite code: SGCWS0Z572F2)", "SGCWS0Z572F2"},
-		{"some output\nSGCWS0Z572F2\nmore", "SGCWS0Z572F2"},
-		{"no code here", ""},
-		{"", ""},
-	}
-	for _, tc := range cases {
-		got := parseInviteCode(tc.output)
-		if got != tc.want {
-			t.Errorf("parseInviteCode(%q) = %q, want %q", tc.output, got, tc.want)
-		}
-	}
-}
-
 func TestMergeInviteCodeInPayload(t *testing.T) {
 	result := mergeInviteCodeInPayload(`{"save_strategy":"new_game"}`, "ABCD-1234-WXYZ")
 	if !containsStr(result, `"invite_code"`) {
@@ -53,6 +31,66 @@ func TestMergeInviteCodeInPayload(t *testing.T) {
 	}
 	if !containsStr(result, "save_strategy") {
 		t.Errorf("existing key lost in merge: %s", result)
+	}
+}
+
+func TestGetInviteCodeEmptyFileReturnsNAWithoutAttachCLI(t *testing.T) {
+	var callsMu sync.Mutex
+	var calls [][]string
+	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, args ...string) (paneldocker.CommandResult, error) {
+		callsMu.Lock()
+		calls = append(calls, append([]string(nil), args...))
+		callsMu.Unlock()
+		if stdin != "" {
+			t.Fatalf("invite code read sent stdin %q", stdin)
+		}
+		return paneldocker.CommandResult{ExitCode: 0}, nil
+	}}
+	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateRunning}}
+	driver := New(fake, nil, nil, store)
+
+	code, err := driver.GetInviteCode(context.Background(), registry.Instance{ID: "stardew"})
+	if err != nil || code != "n/a" {
+		t.Fatalf("GetInviteCode() = %q, %v; want n/a", code, err)
+	}
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0], []string{"cat", "/tmp/invite-code.txt"}) {
+		t.Fatalf("runtime calls = %#v; attach-cli must never run", calls)
+	}
+}
+
+func TestGetInviteCodeConcurrentRequestsUseCacheAndSingleflight(t *testing.T) {
+	var catCalls atomic.Int32
+	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, args ...string) (paneldocker.CommandResult, error) {
+		if stdin != "" || !reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+			t.Errorf("unexpected invite runtime call stdin=%q args=%#v", stdin, args)
+		}
+		catCalls.Add(1)
+		time.Sleep(25 * time.Millisecond)
+		return paneldocker.CommandResult{Stdout: "SGD7WVVL8CGJ\n", ExitCode: 0}, nil
+	}}
+	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateRunning}}
+	driver := New(fake, nil, nil, store)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			code, err := driver.GetInviteCode(context.Background(), registry.Instance{ID: "stardew"})
+			if err != nil || code != "SGD7WVVL8CGJ" {
+				t.Errorf("GetInviteCode() = %q, %v", code, err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := catCalls.Load(); got != 1 {
+		t.Fatalf("cat calls = %d, want 1", got)
+	}
+	if _, err := driver.GetInviteCode(context.Background(), registry.Instance{ID: "stardew"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := catCalls.Load(); got != 1 {
+		t.Fatalf("cached cat calls = %d, want 1", got)
 	}
 }
 
@@ -561,6 +599,53 @@ func TestRestoreBackupWithRestart_RequiresJobManager(t *testing.T) {
 
 	if _, err := d.RestoreBackupWithRestart(context.Background(), instance, "backup.zip", false, 1); err == nil {
 		t.Fatal("expected error when job manager not configured")
+	}
+}
+
+func TestRestartRejectsSecondActiveRestart(t *testing.T) {
+	store := newLifecycleTestStore(t)
+	dataDir := t.TempDir()
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	release := make(chan struct{})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID,
+		Payload: restartJobPayload, Run: func(ctx context.Context, _ *jobs.Context) error {
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("start first restart fixture: %v", err)
+	}
+	t.Cleanup(func() { close(release) })
+
+	driver := New(&fakeConsoleDocker{}, slog.Default(), manager, store)
+	err = driver.Restart(context.Background(), makeRegistryInstanceForTest(instance))
+	if !errors.Is(err, ErrRestartInProgress) {
+		t.Fatalf("second Restart error = %v, want ErrRestartInProgress", err)
+	}
+	active, listErr := manager.Active(context.Background(), storage.ListActiveJobsFilter{
+		TargetType: "instance", TargetID: instance.ID, Types: []string{lifecycleJobType},
+	})
+	if listErr != nil || len(active) != 1 || active[0].ID != job.ID {
+		t.Fatalf("active restarts = %#v, err=%v", active, listErr)
+	}
+}
+
+func makeRegistryInstanceForTest(instance storage.Instance) registry.Instance {
+	return registry.Instance{
+		ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir,
+		State: instance.State, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload,
 	}
 }
 

@@ -2272,3 +2272,8 @@ npm.cmd run dev
 ## Local rich-save UI observation (2026-07-17)
 
 - The backend job created from the real upload API completed and remained recoverable through the existing jobs contract. The isolated image's noVNC page loaded, but its WebSocket closed with code 1006 while `SERVER_FPS=0`; this is recorded as an unpassed visual/game-client check, not as semantic acceptance.
+# PANEL-POLL-LEAK-1：隐藏页面停止高频轮询（2026-07-18，completed）
+
+- `useStardewDashboardData` 的玩家与邀请码轮询监听 `visibilitychange`：页面隐藏时立即清除 timeout，恢复可见后按原周期继续；组件卸载/页面关闭继续执行完整 cleanup。
+- `StardewPanel` 右侧栏指标轮询补齐相同可见性门禁；诊断页既有可见性门禁保持。后端邀请码空值 `n/a` 在 dashboard 中按“尚未就绪”处理，不会作为真实邀请码展示，也不会意外结束启动后的邀请码轮询。
+- 验证：`npm.cmd run build`（TypeScript project build + Vite production build）通过。
