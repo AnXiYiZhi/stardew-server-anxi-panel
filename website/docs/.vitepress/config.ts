@@ -17,6 +17,7 @@ export default defineConfig({
       { text: '部署指南', link: '/deploy/requirements' },
       { text: '日常维护', link: '/maintain/update' },
       { text: '深度文档', link: '/handbook/' },
+      { text: '更新日志', link: '/changelog' },
       { text: '常见问题', link: '/faq/' }
     ],
     sidebar: {
