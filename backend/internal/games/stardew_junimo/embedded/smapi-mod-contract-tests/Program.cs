@@ -59,6 +59,41 @@ Expect(JojaCommandOutcomes.Validate(command, true, false, true)!, CommandStatuse
 Expect(JojaCommandOutcomes.Dispatched(command), CommandStatuses.Dispatched, "ok");
 Expect(JojaCommandOutcomes.Succeeded(command), CommandStatuses.Succeeded, "ok");
 
+void ExpectPause(PauseDecision decision, bool shouldPause, PauseReason reason, string scenario)
+{
+    if (decision.ShouldForcePause != shouldPause || decision.Reason != reason)
+        throw new InvalidOperationException($"Pause policy failed for {scenario}: got {decision.ShouldForcePause}/{decision.Reason}");
+}
+
+PauseDecision Pause(
+    int connections = 0,
+    bool festival = false,
+    int time = 1200,
+    int players = 0,
+    int requests = 0,
+    bool enabled = true,
+    bool server = true,
+    bool worldReady = true,
+    bool countKnown = true
+) => PausePolicy.Evaluate(enabled, server, worldReady, countKnown, connections, festival, time, players, requests);
+
+ExpectPause(Pause(), true, PauseReason.NoConnectedClients, "normal daytime with no clients");
+ExpectPause(Pause(time: 610), true, PauseReason.NoConnectedClients, "idle pause lower time boundary");
+ExpectPause(Pause(time: 2500), true, PauseReason.NoConnectedClients, "idle pause upper time boundary");
+ExpectPause(Pause(time: 600), false, PauseReason.None, "new-day transition");
+ExpectPause(Pause(time: 2510), false, PauseReason.None, "forced pass-out window");
+ExpectPause(Pause(festival: true), false, PauseReason.None, "festival automation");
+ExpectPause(Pause(connections: 1), false, PauseReason.None, "client handshake");
+ExpectPause(Pause(connections: 1, players: 1, requests: 1), true, PauseReason.AllGameplayPlayersRequestedPause, "single-player menu");
+ExpectPause(Pause(connections: 2, players: 2, requests: 1), false, PauseReason.None, "partial multiplayer menu requests");
+ExpectPause(Pause(connections: 2, players: 2, requests: 2), true, PauseReason.AllGameplayPlayersRequestedPause, "all multiplayer menu requests");
+ExpectPause(Pause(connections: 2, players: 1, requests: 1), false, PauseReason.None, "gameplay menu while another client is handshaking");
+ExpectPause(Pause(connections: 1, players: 0, requests: 0), false, PauseReason.None, "uncustomized lobby client");
+ExpectPause(Pause(countKnown: false), false, PauseReason.None, "unknown server connection state");
+ExpectPause(Pause(enabled: false), false, PauseReason.None, "auto pause disabled");
+ExpectPause(Pause(server: false), false, PauseReason.None, "non-server game");
+ExpectPause(Pause(worldReady: false), false, PauseReason.None, "world not ready");
+
 var tracker = new PendingSaveCommandTracker();
 var now = DateTimeOffset.UtcNow;
 Expect(tracker.Begin(command, true, now, TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
