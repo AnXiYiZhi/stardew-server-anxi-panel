@@ -51,6 +51,7 @@ const TYPE_LABELS: Record<string, string> = {
   stardew_custom_new_game: '新建存档',
   stardew_select_save_and_start: '选档启动',
   stardew_upload_save_and_start: '上传存档启动',
+  stardew_farmhand_delete: '删除存档人物',
   test: '测试任务',
   test_fail: '失败测试',
 }
@@ -63,6 +64,7 @@ const TYPE_ICON_CLASSES: Record<string, string> = {
   stardew_custom_new_game: 'saves',
   stardew_select_save_and_start: 'start',
   stardew_upload_save_and_start: 'saves',
+  stardew_farmhand_delete: 'players',
   mod_remote_install: 'mods',
   mod_nexus_install: 'mods',
   test: 'server',

@@ -2104,6 +2104,7 @@ func TestParseBackupSaveName(t *testing.T) {
 		{"manual_Test_Save_20260702-120000.zip", "Test_Save"},
 		{"auto_TestSave_000001.zip", "TestSave"},
 		{"predelete_TestSave_20260702-120000.zip", "TestSave"},
+		{"prefarmhanddelete_TestSave_20260702-120000.zip", "TestSave"},
 		{"prerestore_TestSave_20260702-120000.zip", "TestSave"},
 	}
 	for _, tt := range tests {
@@ -2122,6 +2123,7 @@ func TestInferBackupKind(t *testing.T) {
 		{"auto_TestSave_000001.zip", "auto"},
 		{"manual_TestSave_20260702-120000.zip", "manual"},
 		{"predelete_TestSave_20260702-120000.zip", "predelete"},
+		{"prefarmhanddelete_TestSave_20260702-120000.zip", "prefarmhanddelete"},
 		{"prerestore_TestSave_20260702-120000.zip", "prerestore"},
 		{"latest_TestSave.zip", "latest"},
 		{"scheduled_TestSave.zip", "scheduled"},

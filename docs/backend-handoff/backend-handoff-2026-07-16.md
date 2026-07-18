@@ -1,3 +1,21 @@
+# FARMHAND-DELETE-1 接手记录（2026-07-18，completed）
+
+## 改了什么
+
+- `farmhand_delete.go` 新增 `stardew_farmhand_delete` 事务：两次 `/farmhands` 与玩家在线校验、可确认 broadcast、前保存、`prefarmhanddelete` 整档备份、Junimo DELETE、运行态复核、后保存和磁盘 farmhand 复核。只允许运行实例；目标在线/主机/未认领人物不删除，其他在线真人只触发风险通告。
+- `players.go` 输出存档人物 capability；`player_roster.go` 与迁移 011 用墓碑隐藏成功删除的人物，权威存档重新出现时清墓碑。生命周期启停、重启、回档会拒绝与活动删除 job 并发。
+- Web 接口位于 `players_handlers.go` 与 `instance_handlers.go`。存档备份类型在 `saves.go` 增加 `prefarmhanddelete`。不要把这条链路改回 API 层直接写 XML；Junimo DELETE 是删除人物、小屋和 slot 的唯一执行者。
+
+## 影响文件与验证
+
+- 主要影响：`backend/internal/games/stardew_junimo/{farmhand_delete,players,saves,lifecycle}.go`、`backend/internal/storage/player_roster.go`、迁移 011、Web 路由与对应测试。
+- 相关包测试通过。Docker Desktop 隔离真实 `.125` 存档验证停服拒绝、显式确认、删除/保存/备份、人物与小屋计数、重启、重复删除、真实 broadcast succeeded，以及保护备份整档恢复。
+
+## 下一步注意事项
+
+- 上游当前删除小屋不会向已连接客户端广播 demolition；因此不要删除确认框和重连通告。若上游未来提供明确建筑同步事件，需用真实两个客户端验证后才能收窄警告。
+- 保护备份是整档恢复，不是单人物恢复。任何失败若发生在 Junimo DELETE 之后、最终保存确认之前，错误必须明确提示 backup 名称，禁止自动重复 DELETE。
+
 # IMAGE-CLEANUP-1 接手记录（2026-07-17，completed）
 
 ## 改了什么

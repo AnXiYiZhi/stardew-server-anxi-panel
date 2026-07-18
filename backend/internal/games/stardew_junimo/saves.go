@@ -1731,6 +1731,13 @@ func BackupPreDelete(dataDir, saveName string) (string, error) {
 	return backupSaveAsUnique(dataDir, saveName, "predelete")
 }
 
+// BackupPreFarmhandDelete protects the whole active save immediately before a
+// farmhand and its cabin are removed. Recovery is intentionally whole-save;
+// Stardew has no safe single-character restore operation.
+func BackupPreFarmhandDelete(dataDir, saveName string) (string, error) {
+	return backupSaveAsUnique(dataDir, saveName, "prefarmhanddelete")
+}
+
 // BackupPreRestore creates a protective backup before an existing save is
 // overwritten by a restore. Restore must abort if this fails.
 func BackupPreRestore(dataDir, saveName string) (string, error) {
@@ -2221,7 +2228,7 @@ func parseBackupSaveName(filename string) string {
 		}
 		return rest
 	}
-	for _, prefix := range []string{"daily_", "manual_", "auto_", "predelete_", "prerestore_"} {
+	for _, prefix := range []string{"daily_", "manual_", "auto_", "predelete_", "prefarmhanddelete_", "prerestore_"} {
 		if strings.HasPrefix(name, prefix) {
 			rest := strings.TrimPrefix(name, prefix)
 			if idx := strings.LastIndex(rest, "_"); idx > 0 {
@@ -2251,6 +2258,8 @@ func inferBackupKind(filename string) string {
 		return "preimport"
 	case strings.HasPrefix(name, "predelete_"):
 		return "predelete"
+	case strings.HasPrefix(name, "prefarmhanddelete_"):
+		return "prefarmhanddelete"
 	case strings.HasPrefix(name, "prerestore_"):
 		return "prerestore"
 	case strings.HasPrefix(name, "manual_"):

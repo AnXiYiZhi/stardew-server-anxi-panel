@@ -55,6 +55,7 @@ const farmTypeAlias: Record<string, string> = {
 const backupKindLabel: Record<string, string> = {
   manual: '手动备份',
   predelete: '删除存档前备份',
+  prefarmhanddelete: '删除人物前保护备份',
   prerestore: '回档前保护备份',
   latest: '历史备份',
   daily: '历史备份',

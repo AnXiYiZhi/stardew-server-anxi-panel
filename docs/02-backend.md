@@ -1,3 +1,11 @@
+# FARMHAND-DELETE-1：运行中删除离线存档人物（2026-07-18，completed）
+
+- 新增管理员接口 `POST /api/instances/:id/players/delete-farmhand`，只在实例运行且请求显式确认、活动存档未变化、目标是当前存档中已认领且离线的非主机人物时创建 `stardew_farmhand_delete` job。被删人物上线会在删除前二次校验中中止；其他真人玩家在线不阻断。
+- job 先通过 Control `save-now` 等待同一 commandId 的 `GameLoop.Saved`，再创建 `prefarmhanddelete_*` 整档保护备份；随后调用 Junimo 官方 `DELETE /farmhands?playerId=` 删除人物、小屋及 slot 记录，复核 `/farmhands`，再次持久保存并解析磁盘主存档确认人物消失。Panel 不直接改 Stardew XML。
+- 有其他真人玩家在线时，删除前后都通过 Control `broadcast` 发游戏内通告，并等待命令结果；目标人物在线仍返回 `farmhand_online`。人物名册使用删除墓碑立即隐藏已删人物，后续权威存档再次发现同 ID 时自动清除墓碑，以支持整档恢复。
+- 删除 job 活动期间拒绝启停、重启和回档，避免与保存/删除边界竞态。迁移 `011_player_roster_character_delete.sql` 增加墓碑与 operation ID；备份列表新增 `prefarmhanddelete` 类型。
+- 验证：相关后端包非缓存测试通过；Docker Desktop 隔离 project `farmhand-delete-e2e` 使用真实 `.125`、真实双人物/三小屋存档完成停服拒绝、确认门禁、删除、两次保存、人物 `2→1`、小屋 `3→2`、重启不复现、重复删除安全失败、保护备份自动回档后人物和小屋恢复；真实 broadcast command result 为 `succeeded`。
+
 # IMAGE-CLEANUP-1：升级成功后的旧镜像定向清理（2026-07-17，completed）
 
 - Panel 自升级在新容器完成 health、HTTP health 和精确版本三项验收后，先重新 inspect 升级前 tag；只有 tag 仍指向事务记录的原 image ID 时，才执行不带 `--force` 的 `docker image rm <old-ref>`。tag 漂移、仍被其他容器引用或 Docker 删除失败只写 warning，不把已验收的新 Panel 回滚或伪报失败。

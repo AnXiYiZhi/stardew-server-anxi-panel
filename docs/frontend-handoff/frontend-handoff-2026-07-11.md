@@ -1,3 +1,20 @@
+# FE-FARMHAND-DELETE-1 接手记录（2026-07-18，completed）
+
+## 改了什么
+
+- `PlayersPage.tsx` 与 `MobilePlayersPage.tsx` 增加删除人物按钮、共享后端 capability 门禁、活动 job 防重复和一致确认框。在线真人数不包含虚拟 host；人数大于零时显示用户约定的小屋残影/位置异常/重连/整档备份全文。
+- `api.ts/types.ts` 增加删除请求与人物 capability；`SavesSection.tsx` 增加“删除人物前保护备份”，`JobsLogsPage.tsx` 增加任务名称。成功提交只表示 job 已创建，页面不得提前移除人物或显示删除成功。
+
+## 影响文件与验证
+
+- 影响：`frontend/src/{api,types}.ts`、桌面/手机玩家页、`PlayersPage.css`、备份和任务日志标签。
+- 生产 build 通过；真实后端 E2E 验证运行/停服 capability、202 job 和成功后名册消失。两名其他真人在线允许、目标在线拒绝由后端专项测试覆盖。
+
+## 下一步注意事项
+
+- `canDeleteCharacter` 是权威入口门禁；不要仅凭 `status === 'offline'` 启用按钮。确认时继续提交 `expectedSaveId`，避免切档后误删同 ID。
+- 其他玩家在线不能再禁用删除按钮；只能显示风险说明。被删除目标在线仍必须禁用，并接受后端竞态复核结果。
+
 # SAVE-IMPORT-E2E-RELEASE-1 前端接手记录（2026-07-16，真实 E2E 缺失）
 
 - 专项 `npm run test:save-import`、`npx tsc -b`、`npm run build` 均通过；桌面与手机仍共用 hostHandling 校验、结构化错误和 jobs/SSE 恢复逻辑。

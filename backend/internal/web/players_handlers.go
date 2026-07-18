@@ -29,6 +29,10 @@ type playerBanner interface {
 	BanPlayer(ctx context.Context, instance registry.Instance, name, uniqueMultiplayerID string) (*sj.CommandRunResult, error)
 }
 
+type farmhandDeleter interface {
+	DeleteFarmhand(ctx context.Context, req sj.FarmhandDeleteRequest) (*registry.Job, error)
+}
+
 type kickPlayerRequest struct {
 	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
 	Name                string `json:"name"`
@@ -46,6 +50,71 @@ type warpPlayerHomeRequest struct {
 type banPlayerRequest struct {
 	Name                string `json:"name"`
 	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
+}
+
+type deleteFarmhandRequest struct {
+	UniqueMultiplayerID string `json:"uniqueMultiplayerId"`
+	ExpectedName        string `json:"expectedName"`
+	ExpectedSaveID      string `json:"expectedSaveId"`
+	Acknowledged        bool   `json:"acknowledged"`
+}
+
+// handleFarmhandDelete handles POST /api/instances/:id/players/delete-farmhand.
+func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	deleter, supported := driver.(farmhandDeleter)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持删除存档人物")
+		return
+	}
+	var body deleteFarmhandRequest
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Acknowledged {
+		writeError(w, http.StatusBadRequest, "confirmation_required", "必须确认人物、小屋及其内容会被删除")
+		return
+	}
+	playerID := strings.TrimSpace(body.UniqueMultiplayerID)
+	if playerID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_player", "缺少玩家联机 ID")
+		return
+	}
+	job, err := deleter.DeleteFarmhand(r.Context(), sj.FarmhandDeleteRequest{Instance: makeRegistryInstance(instance), PlayerID: playerID,
+		ExpectedName: body.ExpectedName, ExpectedSave: body.ExpectedSaveID, ActorID: actor.User.ID})
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			status := http.StatusBadRequest
+			switch ce.Code {
+			case "server_not_running", "active_save_changed", "operation_in_progress", "farmhand_online", "save_in_progress", "world_not_ready":
+				status = http.StatusConflict
+			case "not_supported", "farmhand_delete_unsupported":
+				status = http.StatusNotImplemented
+			}
+			writeError(w, status, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "farmhand_delete_failed", sanitizeErrorMsg(err, "创建人物删除任务失败"))
+		return
+	}
+	s.auditLog(r, &actor, "farmhand_delete_requested", "instance", instanceID, auditMetadata("jobId", job.ID,
+		"uniqueMultiplayerId", playerID, "name", body.ExpectedName, "saveId", body.ExpectedSaveID))
+	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
 }
 
 // handlePlayerKick handles POST /api/instances/:id/players/kick.

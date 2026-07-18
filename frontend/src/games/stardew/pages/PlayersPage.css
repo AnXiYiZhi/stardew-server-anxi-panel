@@ -1744,3 +1744,11 @@
 .sd-players-actions-section > .sd-srv-hint {
   display: none;
 }
+.sd-players-icon-delete::before {
+  content: "×";
+  color: #9b251d;
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 18px;
+  text-align: center;
+}
