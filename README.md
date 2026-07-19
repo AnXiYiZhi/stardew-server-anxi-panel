@@ -10,7 +10,7 @@
 
 首个可上线版本默认使用 **Single Game Mode**：用户登录后直接进入 Stardew 面板，不显示总面板和游戏列表。内部仍按 `instances + driver_id + GameDriver` 设计，等开发第二个游戏面板时再开启 **Multi Game Mode**。
 
-> 当前状态：**Milestone 14: Release Candidate 已完成**。Milestone 0-14 已完成。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry、Stardew Junimo 的工作目录准备、Steam 认证、游戏安装、服务器生命周期、存档管理、Mod 管理、控制台命令、多阶段 Docker 镜像构建、操作审计、日志脱敏、备份恢复、健康检查诊断、版本信息、支持包导出和冒烟测试脚本。
+> 当前状态：**v0.3.13**。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry、Stardew Junimo 的工作目录准备、Steam 认证、游戏安装、服务器生命周期、存档管理（含中文存档编码修复）、Mod 管理、控制台命令、多阶段 Docker 镜像构建、操作审计、日志脱敏、备份恢复、健康检查诊断、版本信息、支持包导出和冒烟测试脚本。前端包含 Stardew 像素风 Shell、9 路由桌面端和 5 页面移动端。
 
 ## 新手先看
 
@@ -60,7 +60,7 @@ curl -fsSL -o run.sh https://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash
     - 自定义新建存档由面板收集农场名、玩家名、地图类型和初始设置，并生成可被 Stardew/Junimo 读取的真实初始存档；上游 Junimo 不支持完整自定义创建。
     - 上传存档先解析并展示游戏时间、地图、已有玩家名称等预览，确认后才上传到服务器。
 11. 后端运行 `docker compose up -d`。
-12. 后端通过 `attach-cli` 获取邀请码，并显示在面板中。
+12. 后端通过读取 server 容器内 `/tmp/invite-code.txt` 获取邀请码，并显示在面板中。
 13. 通过 Web UI 管理服务器状态、命令、聊天公告、存档、Mod 和面板用户。
 
 ## 架构
@@ -91,7 +91,7 @@ React Frontend
   -> Go API
   -> jobs/state machine
   -> games/stardew_junimo driver
-  -> Docker Compose / mounted files / attach-cli / Junimo HTTP status
+  -> Docker Compose / mounted files / /tmp/invite-code.txt / Junimo HTTP status
   -> JunimoServer containers
 ```
 
