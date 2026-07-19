@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2",
+  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.2.2",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
   "runtimeUpdatePolicy": "required",
@@ -66,8 +66,8 @@
     "trustedHosts": ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
-    "version": "0.2.1",
-    "dllSha256": "e01cfcdb8df3d06e541b4f011edd7b6f748ee351ed16f9bf0c8537fcc5b20015",
+    "version": "0.2.2",
+    "dllSha256": "547c08d8761d0a50fd713077ba9b6d5aa3db091df44be3a6400b6fdcf183f3a9",
     "commandResultVersion": 1
   },
   "status": "recommended",

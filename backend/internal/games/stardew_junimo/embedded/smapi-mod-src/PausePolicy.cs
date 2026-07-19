@@ -4,7 +4,6 @@ public enum PauseReason
 {
     None,
     NoConnectedClients,
-    AllGameplayPlayersRequestedPause,
 }
 
 public readonly record struct PauseDecision(bool ShouldForcePause, PauseReason Reason);
@@ -18,9 +17,7 @@ public static class PausePolicy
         bool connectionCountKnown,
         int connectionCount,
         bool isFestivalDay,
-        int timeOfDay,
-        int gameplayPlayerCount,
-        int pauseRequestCount)
+        int timeOfDay)
     {
         if (!enabled || !isServer || !worldReady)
             return new(false, PauseReason.None);
@@ -33,16 +30,6 @@ public static class PausePolicy
         )
         {
             return new(true, PauseReason.NoConnectedClients);
-        }
-
-        if (
-            connectionCountKnown
-            && connectionCount == gameplayPlayerCount
-            && gameplayPlayerCount > 0
-            && pauseRequestCount >= gameplayPlayerCount
-        )
-        {
-            return new(true, PauseReason.AllGameplayPlayersRequestedPause);
         }
 
         return new(false, PauseReason.None);

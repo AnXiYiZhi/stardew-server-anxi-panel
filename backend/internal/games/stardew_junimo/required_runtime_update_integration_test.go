@@ -4,6 +4,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -33,6 +34,24 @@ func TestRequiredRuntimeReal121To125OptIn(t *testing.T) {
 	sourceGameVolume := strings.TrimSpace(os.Getenv("ANXI_REAL_UPGRADE_SOURCE_GAME_VOLUME"))
 	if sourceDir == "" || sourceGameVolume == "" {
 		t.Skip("set ANXI_REAL_UPGRADE_SOURCE_INSTANCE and ANXI_REAL_UPGRADE_SOURCE_GAME_VOLUME")
+	}
+	for _, initialState := range []string{storage.InstanceStateStopped, storage.InstanceStateRunning} {
+		t.Run(initialState, func(t *testing.T) {
+			runRequiredRuntimeRealUpgrade(t, sourceDir, sourceGameVolume, initialState)
+		})
+	}
+}
+
+// TestRequiredRuntimeRealControlUpgradeOptIn covers the Panel-upgrade case in
+// which server/auth are already current but the running Control Mod reported by
+// options.json is older than the embedded recommendation. Prepare synchronizes
+// the new files, and the required runtime transaction must restart the exact
+// same image pair so the game actually loads them.
+func TestRequiredRuntimeRealControlUpgradeOptIn(t *testing.T) {
+	sourceDir := strings.TrimSpace(os.Getenv("ANXI_REAL_CONTROL_UPGRADE_SOURCE_INSTANCE"))
+	sourceGameVolume := strings.TrimSpace(os.Getenv("ANXI_REAL_CONTROL_UPGRADE_SOURCE_GAME_VOLUME"))
+	if sourceDir == "" || sourceGameVolume == "" {
+		t.Skip("set ANXI_REAL_CONTROL_UPGRADE_SOURCE_INSTANCE and ANXI_REAL_CONTROL_UPGRADE_SOURCE_GAME_VOLUME")
 	}
 	for _, initialState := range []string{storage.InstanceStateStopped, storage.InstanceStateRunning} {
 		t.Run(initialState, func(t *testing.T) {
@@ -203,6 +222,7 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 		t.Fatal(err)
 	}
 	if os.Getenv("ANXI_REAL_UPGRADE_FORCE_121") == "1" {
+		run("pull", "dockerproxy.net/sdvd/server:1.5.0-preview.121")
 		if err := sjconfig.UpdateEnvFile(envPath, map[string]string{
 			"IMAGE_VERSION":           "1.5.0-preview.121",
 			"SERVER_IMAGE":            "dockerproxy.net/sdvd/server:1.5.0-preview.121",
@@ -240,6 +260,9 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	instance := registry.Instance{ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: stored.DataDir, State: stored.State, DriverPhase: stored.DriverPhase, DriverPayload: stored.DriverPayload}
 	client := paneldocker.NewClient(paneldocker.Options{DockerPath: "docker"})
 	driver := New(client, slog.Default(), jobs.NewManager(store, slog.Default()), store, "0.3.5")
+	if err := driver.Prepare(ctx, instance); err != nil {
+		t.Fatalf("prepare real legacy instance with current embedded Control: %v", err)
+	}
 	driver.StartRequiredRuntimeUpdate(ctx, instance)
 
 	var required RequiredRuntimeUpdateStatus
@@ -261,6 +284,23 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	manifestData, err := os.ReadFile(filepath.Join(junimoServerModDir(dataDir), junimoServerManifestName))
 	if err != nil || !strings.Contains(string(manifestData), TestedImageTag) {
 		t.Fatalf("host JunimoServer manifest does not contain %s: %v %s", TestedImageTag, err, manifestData)
+	}
+	runtimeManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	optionsData, err := os.ReadFile(filepath.Join(controlDir(dataDir), "options.json"))
+	if err != nil {
+		t.Fatalf("read real Control options: %v", err)
+	}
+	var controlOptions struct {
+		ControlModVersion string `json:"controlModVersion"`
+	}
+	if err := json.Unmarshal(optionsData, &controlOptions); err != nil {
+		t.Fatalf("parse real Control options: %v", err)
+	}
+	if controlOptions.ControlModVersion != runtimeManifest.Control.Version {
+		t.Fatalf("real Control version=%s want=%s", controlOptions.ControlModVersion, runtimeManifest.Control.Version)
 	}
 	composeData, err := os.ReadFile(filepath.Join(dataDir, "docker-compose.yml"))
 	if err != nil {

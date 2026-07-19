@@ -178,13 +178,6 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        var masterPlayerId = Game1.MasterPlayer?.UniqueMultiplayerID ?? Game1.player.UniqueMultiplayerID;
-        var gameplayPlayers = Game1.getOnlineFarmers()
-            .Where(farmer => farmer.UniqueMultiplayerID != masterPlayerId && farmer.isCustomized.Value)
-            .ToArray();
-        var pauseRequestCount = gameplayPlayers.Count(
-            farmer => farmer.hasMenuOpen.Value || farmer.requestingTimePause.Value
-        );
         var server = Game1.server;
         var decision = PausePolicy.Evaluate(
             enabled: true,
@@ -193,9 +186,7 @@ public sealed class ModEntry : Mod
             connectionCountKnown: server is not null,
             connectionCount: server?.connectionsCount ?? 0,
             isFestivalDay: Utility.isFestivalDay(Game1.dayOfMonth, Game1.season),
-            timeOfDay: Game1.timeOfDay,
-            gameplayPlayerCount: gameplayPlayers.Length,
-            pauseRequestCount: pauseRequestCount
+            timeOfDay: Game1.timeOfDay
         );
 
         if (decision.ShouldForcePause)
@@ -205,7 +196,7 @@ public sealed class ModEntry : Mod
         {
             Monitor.Log(
                 $"Pause compatibility state changed: {lastForcedPauseReason} -> {decision.Reason} "
-                    + $"(connections={server?.connectionsCount.ToString() ?? "unknown"}, gameplayPlayers={gameplayPlayers.Length}, time={Game1.timeOfDay}).",
+                    + $"(connections={server?.connectionsCount.ToString() ?? "unknown"}, time={Game1.timeOfDay}).",
                 LogLevel.Trace
             );
             lastForcedPauseReason = decision.Reason;

@@ -543,6 +543,13 @@ func InspectRuntimeStack(dataDir string, installed bool) RuntimeStackInspection 
 
 	result.Supported = true
 	if server.Tag == manifest.Server.Tag && auth.Tag == manifest.SteamAuth.Tag {
+		if controlVersion, present := inspectRunningControlVersion(dataDir); present && controlVersion != manifest.Control.Version {
+			result.Available = true
+			result.Status = RuntimeStackStatusUpdateAvailable
+			result.Code = "control_update_available"
+			result.Reason = "当前运行中的 Control Mod 版本与推荐版本不一致，需要受控重启运行组件完成更新。"
+			return result
+		}
 		result.Status = RuntimeStackStatusUpToDate
 		result.Code = "up_to_date"
 		result.Reason = "当前 Junimo 运行组件版本对与推荐版本对完全匹配。"
@@ -553,6 +560,23 @@ func InspectRuntimeStack(dataDir string, installed bool) RuntimeStackInspection 
 	result.Code = "update_available"
 	result.Reason = "当前 Junimo 运行组件版本对与推荐版本对不一致。"
 	return result
+}
+
+func inspectRunningControlVersion(dataDir string) (string, bool) {
+	raw, err := os.ReadFile(filepath.Join(dataDir, ".local-container", "control", "options.json"))
+	if os.IsNotExist(err) {
+		return "", false
+	}
+	if err != nil {
+		return "", true
+	}
+	var options struct {
+		ControlModVersion string `json:"controlModVersion"`
+	}
+	if json.Unmarshal(raw, &options) != nil {
+		return "", true
+	}
+	return strings.TrimSpace(options.ControlModVersion), true
 }
 
 var legacyRepairableRuntimeRepositories = map[string]map[string]struct{}{
