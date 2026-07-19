@@ -7,6 +7,7 @@ package stardew_junimo
 const junimoComposeTemplate = `services:
   steam-auth:
     image: ${STEAM_SERVICE_IMAGE:-` + DefaultSteamServiceImage + `}
+    cpu_shares: 256
     stdin_open: true
     tty: true
     expose:
@@ -29,6 +30,7 @@ const junimoComposeTemplate = `services:
 
   server:
     image: ${SERVER_IMAGE:-` + DefaultServerImage + `}
+    cpu_shares: 768
     stdin_open: true
     tty: true
     depends_on:

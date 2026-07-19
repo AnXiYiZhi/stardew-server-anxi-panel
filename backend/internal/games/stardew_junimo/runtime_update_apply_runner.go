@@ -220,6 +220,11 @@ func cleanupOldRuntimeImages(ctx context.Context, docker RuntimeUpdateApplyDocke
 }
 
 func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status *RuntimeUpdateApplyStatus) (runtimeUpdatePreflight, error) {
+	if changed, err := EnsureServerContEnvFix(instance.DataDir); err != nil {
+		return runtimeUpdatePreflight{}, errors.New("compose_compatibility_migration_failed")
+	} else if changed {
+		_, _ = job.Info(ctx, "已补齐低资源启动调度权重与现有 Junimo 运行兼容配置。")
+	}
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
@@ -292,6 +297,13 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Cont
 	}
 	status.Current, status.Target = inspection.Current, inspection.Recommended
 	status.Warnings = append(status.Warnings, "Docker 数据盘精确可用空间无法可靠判断；升级未伪造磁盘空间数值。")
+	if reader, ok := docker.(interface {
+		RuntimeHostCapacity(context.Context, string) (paneldocker.RuntimeHostCapacity, error)
+	}); ok {
+		if capacity, capacityErr := reader.RuntimeHostCapacity(ctx, instance.DataDir); capacityErr == nil && (capacity.CPUs <= 2 || capacity.MemoryBytes < 3*1024*1024*1024) {
+			status.Warnings = append(status.Warnings, fmt.Sprintf("检测到低资源 Docker 主机（%d CPU，%.1f GiB 内存）；server 冷启动验收会持续等待最多 %v。若宿主机禁用换页，请先在宿主机配置可用 swap/swappiness。", capacity.CPUs, float64(capacity.MemoryBytes)/(1024*1024*1024), d.runtimeUpdateServerTimeout))
+		}
+	}
 	return runtimeUpdatePreflight{project: project, volume: compose.SteamSessionVolume, originalServer: server, originalAuth: auth, target: RuntimeUpdateSelectedPair{Server: targetServer, SteamAuth: targetAuth}, authWasRunning: authWasRunning}, nil
 }
 
@@ -461,7 +473,7 @@ func (d *Driver) restoreRuntimeRunningState(ctx context.Context, job *jobs.Conte
 		d.updatePhase(ctx, instance.ID, storage.InstanceStateRunning, "运行组件升级完成，服务器正在运行", "running", job.ID)
 		return nil
 	}
-	if err := docker.RuntimeComposeStopServices(ctx, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
 		return err
 	}
 	d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件升级验证完成，已恢复停止状态", "stopped", job.ID)

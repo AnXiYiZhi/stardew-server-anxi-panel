@@ -814,3 +814,10 @@ docker run --rm `
 - 发布门禁必须在 Docker .NET 6 SDK 中运行 Control 契约矩阵并使用只读真实 game-data 编译 Mod；随后执行后端全量 test/vet/build、Docker integration、前端全部状态脚本和生产构建，再构建 `stardew-server-anxi-panel:0.3.10-rc` 做版本、Control manifest/hash 与运行态 smoke。
 - Docker Desktop 真机验收使用隔离 `farmhand-delete-e2e` Compose project、独立存档目录和 game-data 卷；覆盖真实 `.125` 删除后暂停、15 秒时钟稳定、重启、600/610/2500/2510、节日 600→620 和错误日志扫描。不得把 test seam、测试覆盖文件或测试存档打入候选镜像。
 - annotated tag `v0.3.10` 继续触发 `.github/workflows/release.yml`，由远端门禁构建并推送 Docker Hub、阿里云 ACR、GHCR 的 `0.3.10/latest`，再以中文 tag 注释生成 GitHub Release。
+# v0.3.11 发布门禁：低资源主机升级冷启动修复（2026-07-19）
+
+- `v0.3.11` 修复旧 Panel 升级触发 `.121 -> .125` 冷重建时，低资源主机在固定 5 分钟内未完成 Junimo/SMAPI 启动而误回滚的问题。目标验收最长 20 分钟，stop 在 Docker 短时超时后最长 10 分钟幂等重试；硬验收、digest、认证快照和卷安全边界不变。
+- 候选镜像必须验证新生成与迁移后的 Compose 含 `steam-auth cpu_shares=256`、`server cpu_shares=768`，且这是相对权重而非 CPU quota。低资源 warning 只读取 Docker `NCPU/MemTotal`；镜像不得获得宿主 sysctl 写权限。
+- Docker Desktop 真机门禁必须使用隔离实例目录、Compose project、game-data/steam-session 卷与端口，覆盖 `.121 -> .125` stopped/running、真实目标健康/FIFO 版本、原运行状态恢复，以及注入 stop 前两次超时后的安全回滚。不得使用生产实例或凭据。
+- tag 前执行后端全量 test/vet/build、隔离 Docker integration、兼容矩阵脚本、全部前端状态测试与 production build，并构建 `stardew-server-anxi-panel:0.3.11-rc` 检查 `/health`、`/api/version`、OCI labels 与 Panel updater。annotated tag `v0.3.11` 沿用 `.github/workflows/release.yml` 发布三个 registry 的 `0.3.11/latest` 并生成 GitHub Release。
+- 本地发布结果：Docker Desktop 29.5.3 上真正的 `.121` 镜像与宿主 Mod fixture 已通过 stopped/running（173.86 秒/106.34 秒），两条链均升级到 `.125`、恢复原状态并验证 256/768 实际 CPU shares；后端 test/vet/build、Docker integration、兼容矩阵远端制品、九项前端状态脚本、production build、`run.sh` 测试及 `0.3.11-rc` health/version/OCI smoke 全部通过。三个不可用的可选 server 镜像源仅产生 warning，canonical 制品摘要校验通过。
