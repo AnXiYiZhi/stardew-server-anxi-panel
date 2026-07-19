@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -15,16 +17,21 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 const (
 	maxUploadZipBytes    = 100 * 1024 * 1024 // 100 MB compressed
 	maxUncompressedBytes = 512 * 1024 * 1024 // 512 MB uncompressed total
 	maxSingleFileBytes   = 64 * 1024 * 1024  // 64 MB per file
+	maxSaveNameBytes     = 180               // leaves room for backup prefixes and timestamps
 )
+
+const legacySaveNameWarning = "存档目录名使用了旧式或无效编码；当前仅允许备份、导出和删除，请重新上传 UTF-8 ZIP 后再选择启动"
 
 // savesDir returns the host-side path to the bind-mounted saves directory.
 // Stardew saves live at: <savesDir>/Saves/<SaveFolderName>/
@@ -138,6 +145,52 @@ func listSaveDirs(dataDir string) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// publicSaveName converts a legacy non-UTF-8 directory entry into a stable,
+// JSON-safe API name. New uploads are normalized before extraction, so this is
+// only a compatibility path for saves created by older panel versions or
+// copied into the volume manually.
+func publicSaveName(raw string) (string, bool) {
+	if utf8.ValidString(raw) {
+		return raw, false
+	}
+	if decoded, err := simplifiedchinese.GB18030.NewDecoder().String(raw); err == nil && utf8.ValidString(decoded) && !strings.ContainsRune(decoded, utf8.RuneError) {
+		if validateSaveName(decoded) == nil {
+			return decoded, true
+		}
+	}
+	return legacySaveAlias(raw), true
+}
+
+func legacySaveAlias(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return "encoding_error_" + hex.EncodeToString(sum[:6])
+}
+
+// publicSaveNameAtRoot keeps the friendly decoded name when it is unique. If
+// both a UTF-8 directory and a legacy byte-name decode to the same text, the
+// legacy entry receives a deterministic alias so list/delete can never target
+// the wrong save.
+func publicSaveNameAtRoot(savesRoot, raw string) (string, bool) {
+	public, legacy := publicSaveName(raw)
+	if !legacy {
+		return public, false
+	}
+	entries, err := os.ReadDir(savesRoot)
+	if err != nil {
+		return public, true
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == raw {
+			continue
+		}
+		otherPublic, _ := publicSaveName(entry.Name())
+		if otherPublic == public {
+			return legacySaveAlias(raw), true
+		}
+	}
+	return public, true
 }
 
 // suffixMatchSaveDir recovers the real save directory when a gameloader
@@ -422,13 +475,19 @@ func (d *Driver) ListSaves(ctx context.Context, instance registry.Instance) ([]r
 	farmLabels := saveFarmTypeLabels(instance.DataDir)
 	for _, name := range names {
 		info := readSaveInfo(filepath.Join(savesPath, name))
+		apiName, legacyEncoding := publicSaveNameAtRoot(savesPath, name)
+		info.Name = apiName
+		if legacyEncoding {
+			info.NameWarning = legacySaveNameWarning
+		}
 		if info.FarmType != "" {
 			info.FarmTypeLabel = farmLabels[info.FarmType]
 			if info.FarmTypeLabel == "" {
 				info.FarmTypeLabel = info.FarmType
 			}
 		}
-		if name == activeName {
+		activeAPIName, _ := publicSaveNameAtRoot(savesPath, activeName)
+		if name == activeName || apiName == activeAPIName {
 			info.IsActive = true
 		}
 		result = append(result, info)
@@ -468,6 +527,9 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 		return "", registry.SaveInfo{}, "", fmt.Errorf("打开 ZIP 失败: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
+	if err := normalizeSaveZipEntryNames(zr); err != nil {
+		return "", registry.SaveInfo{}, "", err
+	}
 
 	// Security checks: symlinks, absolute paths, traversal, size bomb.
 	if err := validateZipEntries(zr.File); err != nil {
@@ -483,6 +545,12 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 	// Validate the detected save name for safety (path traversal, reserved names, etc).
 	if err := validateSaveName(detectedSaveName); err != nil {
 		return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 存档目录名不合法: %w", err)
+	}
+	if !safeImportCommandToken(detectedSaveName) {
+		return "", registry.SaveInfo{}, "", fmt.Errorf("ZIP 存档目录名包含 Junimo 导入命令不支持的字符")
+	}
+	if err := validateSaveZipLayout(zr.File, detectedSaveName); err != nil {
+		return "", registry.SaveInfo{}, "", err
 	}
 
 	// Extract to temp dir.
@@ -506,6 +574,52 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 	si := readSaveInfo(saveDir)
 	si.Name = detectedSaveName
 	return detectedSaveName, si, td, nil
+}
+
+// normalizeSaveZipEntryNames decodes the legacy GBK/GB18030 names commonly
+// written by Windows Explorer and Chinese archive tools without the ZIP UTF-8
+// flag. Every entry is normalized before validation and extraction so the
+// preview response, durable token, transaction journal and on-disk directory
+// always use the same valid UTF-8 bytes.
+func normalizeSaveZipEntryNames(zr *zip.ReadCloser) error {
+	seen := make(map[string]struct{}, len(zr.File))
+	for _, file := range zr.File {
+		name := file.Name
+		if !utf8.ValidString(name) {
+			decoded, err := simplifiedchinese.GB18030.NewDecoder().String(name)
+			if err != nil || !utf8.ValidString(decoded) {
+				return fmt.Errorf("ZIP 路径名既不是 UTF-8 也不是可识别的 GBK/GB18030 编码")
+			}
+			name = decoded
+		}
+		key := strings.ToLower(filepath.ToSlash(name))
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("ZIP 包含重复或仅大小写不同的路径 %q", name)
+		}
+		seen[key] = struct{}{}
+		file.Name = name
+		file.NonUTF8 = false
+	}
+	return nil
+}
+
+func validateSaveZipLayout(files []*zip.File, saveName string) error {
+	mainPath := filepath.ToSlash(filepath.Join(saveName, saveName))
+	infoPath := filepath.ToSlash(filepath.Join(saveName, "SaveGameInfo"))
+	hasMain, hasInfo := false, false
+	for _, file := range files {
+		name := strings.TrimSuffix(filepath.ToSlash(file.Name), "/")
+		if name == mainPath && !file.FileInfo().IsDir() {
+			hasMain = true
+		}
+		if name == infoPath && !file.FileInfo().IsDir() {
+			hasInfo = true
+		}
+	}
+	if !hasMain || !hasInfo {
+		return fmt.Errorf("ZIP 存档结构无效：必须包含 %s 和 %s", mainPath, infoPath)
+	}
+	return nil
 }
 
 // detectSaveFolderName finds the single top-level directory in the ZIP.
@@ -1249,6 +1363,17 @@ func validateSaveName(saveName string) error {
 	if saveName == "" {
 		return fmt.Errorf("save name 不能为空")
 	}
+	if !utf8.ValidString(saveName) {
+		return fmt.Errorf("save name 必须是有效 UTF-8")
+	}
+	if len(saveName) > maxSaveNameBytes {
+		return fmt.Errorf("save name 不能超过 %d 个 UTF-8 字节", maxSaveNameBytes)
+	}
+	for _, r := range saveName {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("save name 不能包含控制字符")
+		}
+	}
 	if saveName == "." || saveName == ".." {
 		return fmt.Errorf("save name 不能是 %q", saveName)
 	}
@@ -1287,6 +1412,36 @@ func resolveSavePath(savesRoot, saveName string) string {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ""
 	}
+	if info, statErr := os.Stat(absTarget); statErr == nil && info.IsDir() {
+		return absTarget
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return ""
+	}
+
+	// Compatibility lookup for legacy non-UTF-8 directory entries. Never use a
+	// lossy JSON replacement string as a filesystem path; match the stable public
+	// alias and retain the original DirEntry.Name bytes for the actual operation.
+	entries, err := os.ReadDir(absRoot)
+	if err != nil {
+		return absTarget
+	}
+	match := ""
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		public, legacy := publicSaveNameAtRoot(absRoot, entry.Name())
+		if !legacy || public != saveName {
+			continue
+		}
+		if match != "" {
+			return "" // ambiguous aliases must never select an arbitrary directory
+		}
+		match = filepath.Join(absRoot, entry.Name())
+	}
+	if match != "" {
+		return match
+	}
 	return absTarget
 }
 
@@ -1314,6 +1469,20 @@ func ValidateSaveExists(dataDir, saveName string) error {
 	return nil
 }
 
+// ValidateSaveCanActivate rejects legacy raw-byte directory names. They remain
+// addressable through their safe public alias for backup/export/delete, but a
+// Junimo gameloader pointer cannot safely represent the original bytes.
+func ValidateSaveCanActivate(dataDir, saveName string) error {
+	if err := ValidateSaveExists(dataDir, saveName); err != nil {
+		return err
+	}
+	target := resolveSavePath(filepath.Join(savesDir(dataDir), "Saves"), saveName)
+	if target == "" || !utf8.ValidString(filepath.Base(target)) {
+		return fmt.Errorf("存档目录名编码异常，请备份或删除后使用 UTF-8 ZIP 重新上传")
+	}
+	return nil
+}
+
 // DeleteSave removes a single save folder from the bind-mounted saves directory.
 func DeleteSave(dataDir, saveName string) error {
 	if err := validateSaveName(saveName); err != nil {
@@ -1337,11 +1506,16 @@ func DeleteSave(dataDir, saveName string) error {
 	if err := os.RemoveAll(targetPath); err != nil {
 		return fmt.Errorf("删除存档 %q 失败: %w", saveName, err)
 	}
-	// If this was the active save, clear the gameloader config.
+	// Direct callers retain the historical active-pointer cleanup behavior.
+	// DeleteSaveWithBackup clears it before deletion so pointer failures cannot
+	// turn a successful directory removal into an ambiguous API failure.
 	active := GetActiveSaveName(dataDir)
-	if active == saveName {
+	activePublic, _ := publicSaveName(active)
+	if active != "" && (active == saveName || activePublic == saveName) {
 		gameloaderPath := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")
-		_ = os.Remove(gameloaderPath)
+		if err := os.Remove(gameloaderPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("清除已删除存档的活动指针失败: %w", err)
+		}
 	}
 	return nil
 }
@@ -1354,7 +1528,10 @@ func ExportSaveZip(dataDir, saveName string) (string, error) {
 		return "", err
 	}
 	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
-	saveDir := filepath.Join(savesRoot, saveName)
+	saveDir := resolveSavePath(savesRoot, saveName)
+	if saveDir == "" {
+		return "", fmt.Errorf("存档路径不合法: %q", saveName)
+	}
 	info, err := os.Stat(saveDir)
 	if os.IsNotExist(err) {
 		return "", fmt.Errorf("存档 %q 不存在", saveName)
@@ -1383,6 +1560,7 @@ func ExportSaveZip(dataDir, saveName string) (string, error) {
 	}()
 
 	w := zip.NewWriter(zf)
+	rawSaveName := filepath.Base(saveDir)
 	err = filepath.WalkDir(saveDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -1391,7 +1569,7 @@ func ExportSaveZip(dataDir, saveName string) (string, error) {
 		if err != nil {
 			return err
 		}
-		relPath = filepath.ToSlash(relPath)
+		relPath = archiveSaveRelativePath(filepath.ToSlash(relPath), rawSaveName, saveName)
 
 		// Skip hidden files and temp files.
 		name := d.Name()
@@ -1625,7 +1803,11 @@ func writeSaveZip(dataDir, saveName, backupName string) (string, error) {
 		return "", err
 	}
 	savesRoot := filepath.Join(savesDir(dataDir), "Saves")
-	saveDir := filepath.Join(savesRoot, saveName)
+	saveDir := resolveSavePath(savesRoot, saveName)
+	if saveDir == "" {
+		return "", fmt.Errorf("存档路径不合法: %q", saveName)
+	}
+	rawSaveName := filepath.Base(saveDir)
 	info, err := os.Stat(saveDir)
 	if os.IsNotExist(err) {
 		return "", fmt.Errorf("存档 %q 不存在，无法备份", saveName)
@@ -1664,7 +1846,7 @@ func writeSaveZip(dataDir, saveName, backupName string) (string, error) {
 		if err != nil {
 			return err
 		}
-		relPath = filepath.ToSlash(relPath)
+		relPath = archiveSaveRelativePath(filepath.ToSlash(relPath), rawSaveName, saveName)
 
 		name := d.Name()
 		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") {
@@ -1716,6 +1898,18 @@ func writeSaveZip(dataDir, saveName, backupName string) (string, error) {
 		return "", err
 	}
 	return backupPath, nil
+}
+
+func archiveSaveRelativePath(relPath, rawSaveName, publicName string) string {
+	parts := strings.Split(relPath, "/")
+	if len(parts) == 0 || parts[0] != rawSaveName {
+		return relPath
+	}
+	parts[0] = publicName
+	if len(parts) == 2 && parts[1] == rawSaveName {
+		parts[1] = publicName
+	}
+	return strings.Join(parts, "/")
 }
 
 // BackupManual creates an explicitly-triggered backup: admin "手动备份" clicks,
@@ -1927,8 +2121,22 @@ func DeleteSaveWithBackup(dataDir, saveName string) (backupPath string, err erro
 	if backupErr != nil {
 		return "", fmt.Errorf("备份失败，已中止删除以保护数据: %w", backupErr)
 	}
+	activeName := GetActiveSaveName(dataDir)
+	activePublicName, _ := publicSaveName(activeName)
+	wasActive := activeName != "" && (activeName == saveName || activePublicName == saveName)
+	gameloaderPath := filepath.Join(savesDir(dataDir), ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")
+	if wasActive {
+		if err := os.Remove(gameloaderPath); err != nil && !os.IsNotExist(err) {
+			return backupPath, fmt.Errorf("清除活动存档指针失败，已中止删除: %w", err)
+		}
+	}
 	// Delete the save.
 	if err := DeleteSave(dataDir, saveName); err != nil {
+		if wasActive {
+			if restoreErr := writeGameloaderPointer(dataDir, activeName); restoreErr != nil {
+				return backupPath, fmt.Errorf("%w；恢复活动存档指针失败: %v", err, restoreErr)
+			}
+		}
 		return backupPath, err
 	}
 	return backupPath, nil

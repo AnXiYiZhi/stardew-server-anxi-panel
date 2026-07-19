@@ -98,13 +98,15 @@ function SaveCard({
   onSelect: () => void
   onDelete: () => void
 }) {
-  const writeDisabled = busy || isRunning || !isAdmin
+  const writeDisabled = busy || isRunning || !isAdmin || Boolean(save.nameWarning)
   const deleteDisabled = busy || !isAdmin
   const writeTitle = !isAdmin
     ? '仅管理员可执行此操作'
     : isRunning
       ? '服务器运行中，请先停止后操作'
-      : '设为启动存档'
+      : save.nameWarning
+        ? save.nameWarning
+        : '设为启动存档'
   const deleteTitle = !isAdmin
     ? '仅管理员可执行此操作'
     : isRunning
@@ -135,6 +137,7 @@ function SaveCard({
             </div>
           </>
         )}
+        {save.nameWarning ? <div className="sd-save-card-error">{save.nameWarning}</div> : null}
       </div>
       <div className="sd-save-card-actions sd-rowactions">
         <button
@@ -356,13 +359,14 @@ export function SavesSection({
     setMessage('')
     try {
       await deleteSave(name)
-      await loadSaves()
-      await loadBackups()
       onStateRefresh()
       onSavesChanged?.()
     } catch (error) {
       setMessage(errorMessage(error))
     } finally {
+      // The mutation result and the refreshed server state are separate facts.
+      // Never leave the page busy or keep a stale card if one refresh request fails.
+      await Promise.allSettled([loadSaves(), loadBackups()])
       setBusy(false)
     }
   }

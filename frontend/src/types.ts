@@ -555,6 +555,7 @@ export type InstallOptionsResponse = {
 
 export type SaveInfo = {
   name: string
+  nameWarning?: string
   farmerName?: string
   farmName?: string
   gameYear?: number

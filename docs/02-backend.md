@@ -1,3 +1,10 @@
+# SAVE-NAME-ENCODING-DELETE-1：存档上传编码与删除一致性（2026-07-20，completed）
+
+- ZIP 预览在安全校验、布局校验和解压前统一把旧式 GBK/GB18030 路径名转换成 UTF-8；持久 token、事务 journal、API 名称和落盘目录因此使用同一组字节。上传包必须同时包含 `<存档名>/<存档名>` 与 `<存档名>/SaveGameInfo`，并拒绝重复、大小写冲突、控制字符、超长名称及 Junimo 命令不支持的名称。
+- 旧版本遗留或手工复制的非 UTF-8 目录不再经过 JSON 的 `�` 替换字符寻址。列表提供稳定、可逆查找的公开名称和 `nameWarning`；正常 GBK 名优先显示中文，无法识别或与现有 UTF-8 目录冲突时使用 `encoding_error_<hash>`，避免同名误删。此类目录只允许备份、导出和删除，不允许设为启动存档。
+- 删除接口先确认目标存在，删除前强制创建 `predelete` 备份；活动指针先清除，指针失败时不删除，目录删除失败时尝试恢复指针。成功删除活动存档后实例状态回到 `save_required`；重复删除稳定返回 `404 save_not_found`，不再出现“磁盘已删但 API 报失败”的模糊结果。
+- 验证：后端全量 test/vet/build、Linux 原始 GBK 文件名测试、Docker integration、兼容矩阵与远端制品校验均通过；Docker Desktop 隔离 Panel 实例完成 GBK ZIP HTTP 预览、历史乱码目录列表/激活拦截/删除/备份、重复删除和重启持久性验证。
+
 # FARMHAND-DELETE-1：运行中删除离线存档人物（2026-07-18，completed）
 
 - 新增管理员接口 `POST /api/instances/:id/players/delete-farmhand`，只在实例运行且请求显式确认、活动存档未变化、目标是当前存档中已认领且离线的非主机人物时创建 `stardew_farmhand_delete` job。被删人物上线会在删除前二次校验中中止；其他真人玩家在线不阻断。
