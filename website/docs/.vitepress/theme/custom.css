@@ -13,16 +13,18 @@
 
 /* ===== 快速上手按钮突出样式 ===== */
 
-/* 顶部导航栏的"快速上手"胶囊按钮 —— 收窄内边距 */
+/* 顶部导航栏的"快速上手"胶囊按钮 —— 紧凑样式 */
 .VPNavBarMenuLink[href*="getting-started"] {
   background: linear-gradient(135deg, #3eaf7c 0%, #42b883 100%) !important;
   color: #fff !important;
-  font-weight: 700 !important;
-  padding: 4px 12px !important;
-  border-radius: 16px !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  padding: 3px 10px !important;
+  border-radius: 14px !important;
   border: none !important;
   box-shadow: 0 2px 6px rgba(62, 175, 124, 0.3) !important;
   transition: all 0.2s ease !important;
+  line-height: 1.4 !important;
 }
 
 .VPNavBarMenuLink[href*="getting-started"]:hover {
