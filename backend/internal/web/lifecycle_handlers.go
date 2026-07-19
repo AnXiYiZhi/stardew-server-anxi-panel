@@ -433,6 +433,10 @@ func (s *server) handleSaveSelect(w http.ResponseWriter, r *http.Request, instan
 		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
 		return
 	}
+	if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
+		writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
+		return
+	}
 	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
 		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
 		return
@@ -479,6 +483,10 @@ func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request
 	}
 	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
 		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
+		return
+	}
+	if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
+		writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
 		return
 	}
 	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
@@ -528,11 +536,24 @@ func (s *server) handleSaveDelete(w http.ResponseWriter, r *http.Request, instan
 		writeError(w, http.StatusConflict, "active_save_running", "当前启动存档正在被服务器使用，请先停止服务器再删除。")
 		return
 	}
+	if err := sj.ValidateSaveExists(instance.DataDir, saveName); err != nil {
+		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
+		return
+	}
 	backupPath, err := sj.DeleteSaveWithBackup(instance.DataDir, saveName)
 	if err != nil {
-		s.logger.Warn("delete save failed (backup failure blocks deletion)", "instance", instanceID, "save", saveName, "error", err)
+		s.logger.Warn("delete save transaction failed", "instance", instanceID, "save", saveName, "error", err)
 		writeError(w, http.StatusInternalServerError, "save_delete_failed", sanitizeErrorMsg(err, "删除存档失败"))
 		return
+	}
+	if activeSaveName == saveName {
+		if _, stateErr := s.store.UpdateInstanceState(r.Context(), storage.UpdateInstanceStateParams{
+			ID: instance.ID, State: storage.InstanceStateSaveRequired,
+			StateMessage: "当前启动存档已删除，请选择、创建或上传存档。", DriverPhase: "save_required",
+			DriverPayload: instance.DriverPayload,
+		}); stateErr != nil {
+			s.logger.Warn("update state after active save delete", "instance", instanceID, "error", stateErr)
+		}
 	}
 	if backupPath != "" {
 		s.logger.Info("backup created before delete", "instance", instanceID, "save", saveName, "backup", backupPath)

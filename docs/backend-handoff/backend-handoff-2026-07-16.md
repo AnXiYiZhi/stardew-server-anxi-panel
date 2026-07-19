@@ -1,3 +1,17 @@
+# SAVE-NAME-ENCODING-DELETE-1 接手记录（2026-07-20，completed）
+
+## 改了什么
+
+- `saves.go` 在 ZIP 解压前严格规范 GBK/GB18030 文件名到 UTF-8，并验证准确的 Stardew 双文件布局。新名称限制为有效 UTF-8、180 字节内、无控制字符且满足 Junimo 安全 token；重复或仅大小写不同的路径会拒绝。
+- 历史原始字节目录通过 `publicSaveNameAtRoot` 映射。可解码且唯一时显示中文；不可解码或与 UTF-8/其它旧目录冲突时使用 SHA-256 派生别名。所有备份、导出、存在检查与删除都重新解析公开身份到原始 `DirEntry.Name`，禁止把 JSON replacement string 当路径。
+- `DeleteSaveWithBackup` 先备份、再清活动指针、后删除目录；清指针失败时不删，删除失败时恢复指针。Web 删除先做存在校验，重复请求返回 `save_not_found`；成功删除活动存档后写 `save_required`。select 两条接口对旧编码目录返回 `save_name_encoding_invalid`。
+
+## 影响文件、验证与后续注意
+
+- 主要文件：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/saves.go`、`saves_test.go`、`backend/internal/web/lifecycle_handlers.go`、`saves_handlers_test.go`。
+- Windows 全量 test/vet/build、Linux 原始 GBK 名/同名冲突测试、Docker integration、兼容矩阵和独立 Panel HTTP E2E 均通过。E2E 证明 GBK ZIP 返回中文，旧目录有 warning、不能激活、可生成 UTF-8 备份后删除，二次删除为 404，重启不复现。
+- 后续如把保存管理完整迁入 Junimo driver，应保留本次“公开身份与原始目录字节分离”和“删除失败不能掩盖磁盘终态”的契约；不要自动重命名未知历史目录，也不要恢复 API 层覆盖导入。
+
 # FARMHAND-DELETE-1 接手记录（2026-07-18，completed）
 
 ## 改了什么

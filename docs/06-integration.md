@@ -1,3 +1,10 @@
+# SAVE-NAME-ENCODING-DELETE-1 联调契约（2026-07-20，completed）
+
+- `POST /api/instances/:id/saves/upload-preview` 对 GBK/GB18030 ZIP 路径名先转为 UTF-8，再返回 `saveName` 并持久化 pending token；前端不得自行重新解码名称。结构不完整、路径重复/冲突或名称不安全仍返回 `400 invalid_zip`。
+- `GET /api/instances/:id/saves` 的每项可包含 `nameWarning`。有该字段时前端必须禁止 select/select-and-start，但可按响应中的 `name` 调用备份、导出和删除；`encoding_error_<hash>` 是稳定的历史目录公开身份，不是磁盘原始路径。
+- `POST .../saves/select` 与 `select-and-start` 对历史非 UTF-8 目录返回 `409 save_name_encoding_invalid`。`DELETE .../saves/:name` 成功返回 `200 {ok:true,backupCreated:true}`；目标已不存在返回 `404 save_not_found`；事务未完成才返回 `500 save_delete_failed`。
+- 删除响应后前端始终重新 GET saves/backups，以后端列表为权威；不得仅凭 DELETE 的异常保留旧卡片。删除活动存档成功后实例进入 `save_required`。
+
 # FARMHAND-DELETE-1 联调契约（2026-07-18，completed）
 
 `POST /api/instances/:id/players/delete-farmhand` 请求：

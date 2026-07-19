@@ -1,3 +1,10 @@
+# v0.3.13 发布记录：存档上传编码与删除一致性（2026-07-20）
+
+- `v0.3.13` 修复旧式中文 ZIP 路径名未规范化、历史非 UTF-8 目录经 JSON 变成 `�` 后无法寻址，以及删除已落盘成功却因后续清理报失败导致前端保留幽灵卡片的问题。新上传统一 UTF-8；遗留目录通过稳定公开身份执行备份、导出和删除，编码异常目录不允许激活。
+- 删除前备份、活动指针和目录删除形成有补偿的顺序；目标不存在明确返回 404。前端在成功与失败后都重新读取 saves/backups，并用 `allSettled` 保证刷新异常不会锁死页面。
+- 本地发版门禁：Control 0.2.2 Docker .NET 6 契约与只读 game-data 编译（0 errors）、后端全量 test/vet/build、Docker integration、兼容矩阵远端制品、9 个 Python 测试、`run.sh`、九项前端状态脚本与 production build均通过。可选 server 镜像源不可达仅产生 warning，canonical 制品校验成功。
+- Docker Desktop 使用独立 `save-name-fix-013-panel` 容器、`save-name-fix-013-panel-data` 卷和 18087 端口：验证 UTF-8/GBK ZIP HTTP 预览、原始 GBK 目录中文显示与告警、409 激活拦截、删除前中文备份、重复删除 404、目录确实消失及重启后不复现；未复用或修改现有实例。正式镜像继续由 annotated tag `v0.3.13` 触发三仓 `0.3.13/latest` 和 GitHub Release。
+
 # v0.3.8 发布记录：删除离线存档人物（2026-07-18）
 
 - `v0.3.8` 新增运行中删除当前存档离线 farmhand：Panel 通过 Junimo `.125` 官方 `/farmhands` 接口删除人物、小屋和 slot 记录，不直接编辑 XML；其他真人玩家在线允许操作，被删除目标在线仍硬拒绝。

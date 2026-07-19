@@ -148,6 +148,7 @@ type UploadedFile struct {
 
 type SaveInfo struct {
 	Name          string `json:"name"`
+	NameWarning   string `json:"nameWarning,omitempty"`
 	FarmerName    string `json:"farmerName,omitempty"`
 	FarmName      string `json:"farmName,omitempty"`
 	GameYear      int    `json:"gameYear,omitempty"`

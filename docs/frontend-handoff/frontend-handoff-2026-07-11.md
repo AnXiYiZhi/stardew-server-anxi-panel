@@ -1,3 +1,15 @@
+# FE-SAVE-NAME-DELETE-1 接手记录（2026-07-20，completed）
+
+## 改了什么
+
+- `SaveInfo.nameWarning` 贯穿类型与存档卡。历史目录编码异常时桌面端显示后端警告、禁用选择/启动，保留删除等恢复操作；新增 `save_name_encoding_invalid`、`save_delete_failed` 中文映射。
+- `handleDelete` 在请求成功或失败后都并行刷新 saves/backups，避免后端实际删除后界面仍保留旧卡片。刷新使用 `Promise.allSettled`，之后必定解除 busy；成功时仍触发状态和外层存档刷新。
+
+## 影响文件、验证与下一步
+
+- 影响：`frontend/src/types.ts`、`frontend/src/core/helpers.ts`、`frontend/src/games/stardew/SavesSection.tsx`。九项状态脚本和 production build 通过，Docker HTTP E2E 验证 UTF-8 名称和删除后权威空列表。
+- 后续若手机端增加存档选择/删除卡片，必须复用同一 `nameWarning` 禁止激活和“删除后始终刷新”契约；不要根据显示文本重新拼接或修复名称。
+
 # FE-FARMHAND-DELETE-1 接手记录（2026-07-18，completed）
 
 ## 改了什么

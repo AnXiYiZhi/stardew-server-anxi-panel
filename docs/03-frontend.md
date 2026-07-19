@@ -1,3 +1,9 @@
+# FE-SAVE-NAME-DELETE-1：乱码存档提示与删除后权威刷新（2026-07-20，completed）
+
+- `SaveInfo` 新增可选 `nameWarning`。桌面存档卡会直接显示历史目录编码警告并禁止选择/启动，但仍允许管理员备份、导出和删除；后端 `save_name_encoding_invalid` 与 `save_delete_failed` 均有稳定中文错误映射。
+- 删除请求无论成功或失败都会重新读取存档与备份列表，解决旧界面保留已从磁盘删除的卡片、再次点击却提示“不存在”的幽灵状态。刷新使用 `Promise.allSettled`，单个刷新失败不会让页面永久停留在 busy 状态。
+- 影响文件：`frontend/src/types.ts`、`frontend/src/core/helpers.ts`、`frontend/src/games/stardew/SavesSection.tsx`。九项前端状态脚本与 production build 通过；Docker HTTP E2E 验证中文名称响应与删除后空列表。
+
 # FE-FARMHAND-DELETE-1：桌面与手机删除存档人物（2026-07-18，completed）
 
 - 桌面和手机玩家页为管理员显示人物删除按钮；仅服务器运行、人物属于当前活动存档、后端标记 `canDeleteCharacter=true` 且没有活动删除 job 时可点击。主机、在线目标、历史名册人物和停服状态均显示明确禁用原因。

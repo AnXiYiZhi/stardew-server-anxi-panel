@@ -147,6 +147,10 @@ func TestSaveDelete_RunningProtectsOnlyActiveSave(t *testing.T) {
 	if got := sj.GetActiveSaveName(instance.DataDir); got != "ActiveSave" {
 		t.Fatalf("active save changed to %q, want ActiveSave", got)
 	}
+	missingResp, _ := doJSON(t, handler, http.MethodDelete, "/api/instances/stardew/saves/OtherSave", nil, adminCookie)
+	if missingResp.Code != http.StatusNotFound || !strings.Contains(missingResp.Body.String(), "save_not_found") {
+		t.Fatalf("second delete returned %d, want 404 save_not_found; body: %s", missingResp.Code, missingResp.Body.String())
+	}
 }
 
 // TestRunningProtection_StoppedAllowsOperations verifies that save/mod operations

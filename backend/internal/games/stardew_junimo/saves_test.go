@@ -2,15 +2,19 @@ package stardew_junimo
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 func TestWriteServerSettings_ValidConfig(t *testing.T) {
@@ -439,6 +443,8 @@ func TestPreviewSaveZip_RejectsOversizedZip(t *testing.T) {
 	// and missing-save scenarios here instead.
 	fw, _ := w.Create("ValidSave/SaveGameInfo")
 	_, _ = fw.Write([]byte("<SaveGame><player><name>Test</name><farmName>TestFarm</farmName></player><year>1</year><currentSeason>spring</currentSeason><dayOfMonth>1</dayOfMonth><whichFarm>0</whichFarm></SaveGame>"))
+	main, _ := w.Create("ValidSave/ValidSave")
+	_, _ = main.Write([]byte("<SaveGame><player><name>Test</name><farmName>TestFarm</farmName></player></SaveGame>"))
 	_ = w.Close()
 	_ = zf.Close()
 
@@ -1191,6 +1197,8 @@ func TestPreviewSaveZip_AcceptsValidPath(t *testing.T) {
 	w := zip.NewWriter(zf)
 	fw, _ := w.Create("FarmerName_12345/SaveGameInfo")
 	_, _ = fw.Write([]byte(`<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`))
+	main, _ := w.Create("FarmerName_12345/FarmerName_12345")
+	_, _ = main.Write([]byte(`<SaveGame><player><name>F</name><farmName>Farm</farmName></player></SaveGame>`))
 	_ = w.Close()
 	_ = zf.Close()
 
@@ -1218,6 +1226,8 @@ func TestPreviewSaveZip_AcceptsDirectoryEntry(t *testing.T) {
 	_, _ = w.Create("FarmerName_12345/")
 	fw, _ := w.Create("FarmerName_12345/SaveGameInfo")
 	_, _ = fw.Write([]byte(`<Farmer><name>F</name><farmName>Farm</farmName><dayOfMonthForSaveGame>1</dayOfMonthForSaveGame><seasonForSaveGame>0</seasonForSaveGame><yearForSaveGame>1</yearForSaveGame></Farmer>`))
+	main, _ := w.Create("FarmerName_12345/FarmerName_12345")
+	_, _ = main.Write([]byte(`<SaveGame><player><name>F</name><farmName>Farm</farmName></player></SaveGame>`))
 	_ = w.Close()
 	_ = zf.Close()
 
@@ -1228,6 +1238,160 @@ func TestPreviewSaveZip_AcceptsDirectoryEntry(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tempDir) }()
 	if saveName != "FarmerName_12345" {
 		t.Fatalf("expected saveName=FarmerName_12345, got %q", saveName)
+	}
+}
+
+func TestPreviewSaveZip_DecodesLegacyGBKSaveName(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "legacy-gbk.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	saveName := "中文农场_12345"
+	for _, relative := range []string{"SaveGameInfo", saveName} {
+		rawName, encodeErr := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(saveName + "/" + relative))
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		header := &zip.FileHeader{Name: string(rawName), Method: zip.Deflate, NonUTF8: true}
+		entry, createErr := w.CreateHeader(header)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if _, writeErr := entry.Write([]byte(`<SaveGame><player><name>F</name><farmName>中文农场</farmName></player></SaveGame>`)); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zf.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gotName, preview, tempDir, err := PreviewSaveZip(zipPath, "legacy-gbk.zip")
+	if err != nil {
+		t.Fatalf("PreviewSaveZip: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	if gotName != saveName || preview.Name != saveName {
+		t.Fatalf("decoded names = %q / %q, want %q", gotName, preview.Name, saveName)
+	}
+	for _, relative := range []string{"SaveGameInfo", saveName} {
+		if _, err := os.Stat(filepath.Join(tempDir, saveName, relative)); err != nil {
+			t.Fatalf("normalized extracted file %q missing: %v", relative, err)
+		}
+	}
+}
+
+func TestLegacyGBKSaveCanBeListedBackedUpAndDeleted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows filenames are UTF-16; raw invalid UTF-8 directory entries require a Unix filesystem")
+	}
+	dataDir := t.TempDir()
+	publicName := "中文农场_54321"
+	rawNameBytes, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(publicName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawName := string(rawNameBytes)
+	saveDir := filepath.Join(dataDir, ".local-container", "saves", "Saves", rawName)
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	xml := []byte(`<SaveGame><player><name>F</name><farmName>中文农场</farmName></player></SaveGame>`)
+	if err := os.WriteFile(filepath.Join(saveDir, rawName), xml, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), xml, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	driver := &Driver{}
+	saves, err := driver.ListSaves(context.Background(), registry.Instance{DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saves) != 1 || saves[0].Name != publicName || saves[0].NameWarning == "" {
+		t.Fatalf("legacy save listing = %+v", saves)
+	}
+	if err := ValidateSaveCanActivate(dataDir, publicName); err == nil {
+		t.Fatal("legacy raw-byte save must not be activatable")
+	}
+
+	backupPath, err := DeleteSaveWithBackup(dataDir, publicName)
+	if err != nil {
+		t.Fatalf("DeleteSaveWithBackup: %v", err)
+	}
+	if _, err := os.Stat(saveDir); !os.IsNotExist(err) {
+		t.Fatalf("raw legacy save still exists: %v", err)
+	}
+	zr, err := zip.OpenReader(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	wantMain := publicName + "/" + publicName
+	foundMain := false
+	for _, file := range zr.File {
+		if !utf8.ValidString(file.Name) {
+			t.Fatalf("backup retained invalid UTF-8 entry %q", file.Name)
+		}
+		if file.Name == wantMain {
+			foundMain = true
+		}
+	}
+	if !foundMain {
+		t.Fatalf("normalized backup main file %q missing", wantMain)
+	}
+}
+
+func TestLegacySaveAliasDoesNotCollideWithUTF8Directory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows filenames are UTF-16; raw invalid UTF-8 directory entries require a Unix filesystem")
+	}
+	dataDir := t.TempDir()
+	publicName := "中文农场_77777"
+	rawNameBytes, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(publicName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawName := string(rawNameBytes)
+	root := filepath.Join(dataDir, ".local-container", "saves", "Saves")
+	for _, name := range []string{publicName, rawName} {
+		saveDir := filepath.Join(root, name)
+		if err := os.MkdirAll(saveDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte(`<SaveGame/>`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	driver := &Driver{}
+	saves, err := driver.ListSaves(context.Background(), registry.Instance{DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saves) != 2 {
+		t.Fatalf("saves = %+v", saves)
+	}
+	legacyAlias := ""
+	for _, save := range saves {
+		if save.NameWarning != "" {
+			legacyAlias = save.Name
+		}
+	}
+	if legacyAlias == "" || legacyAlias == publicName || !strings.HasPrefix(legacyAlias, "encoding_error_") {
+		t.Fatalf("legacy collision alias = %q, saves = %+v", legacyAlias, saves)
+	}
+	if err := DeleteSave(dataDir, legacyAlias); err != nil {
+		t.Fatalf("delete legacy alias: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, publicName)); err != nil {
+		t.Fatalf("UTF-8 save was incorrectly deleted: %v", err)
 	}
 }
 
