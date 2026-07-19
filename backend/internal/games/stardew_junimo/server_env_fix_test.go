@@ -11,6 +11,8 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
 	dataDir := t.TempDir()
 	composePath := filepath.Join(dataDir, "docker-compose.yml")
 	compose := `services:
+  steam-auth:
+    image: auth:test
   server:
     image: ${SERVER_IMAGE:-sdvd/server:1.5.0-preview.121}
     volumes:
@@ -53,6 +55,11 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
 			t.Fatalf("compose missing headless audio environment %q:\n%s", line, updatedText)
 		}
 	}
+	for _, policy := range runtimeServiceCPUShares {
+		if !strings.Contains(updatedText, "  "+policy.service+":") || !strings.Contains(updatedText, "    cpu_shares: "+policy.value) {
+			t.Fatalf("compose missing %s cpu shares:\n%s", policy.service, updatedText)
+		}
+	}
 
 	changed, err = EnsureServerContEnvFix(dataDir)
 	if err != nil {
@@ -60,6 +67,30 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
 	}
 	if changed {
 		t.Fatal("expected second run to be idempotent")
+	}
+}
+
+func TestMigrateRuntimeServiceCPUSharesPreservesCRLF(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	compose := "services:\r\n  steam-auth:\r\n    image: auth\r\n  server:\r\n    image: server\r\n"
+	if err := os.WriteFile(path, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := migrateRuntimeServiceCPUShares(path)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\n") {
+		t.Fatalf("migration introduced mixed line endings: %q", got)
+	}
+	if !strings.Contains(got, "steam-auth:\r\n    image: auth\r\n    cpu_shares: 256\r\n") || !strings.Contains(got, "server:\r\n    image: server\r\n    cpu_shares: 768\r\n") {
+		t.Fatalf("CPU shares missing from CRLF compose: %q", got)
 	}
 }
 

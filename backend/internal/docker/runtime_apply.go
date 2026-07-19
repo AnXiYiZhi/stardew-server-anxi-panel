@@ -39,6 +39,32 @@ type RuntimeSteamReady struct {
 	HasTicket bool `json:"hasTicket"`
 }
 
+type RuntimeHostCapacity struct {
+	CPUs        int
+	MemoryBytes int64
+}
+
+func (c *Client) RuntimeHostCapacity(ctx context.Context, dir string) (RuntimeHostCapacity, error) {
+	result, err := c.run(ctx, "inspect Docker host capacity", dir, c.timeouts.Ps,
+		"info", "--format", `{{json .NCPU}}|{{json .MemTotal}}`)
+	if err != nil {
+		return RuntimeHostCapacity{}, err
+	}
+	return parseRuntimeHostCapacity(result.Stdout)
+}
+
+func parseRuntimeHostCapacity(output string) (RuntimeHostCapacity, error) {
+	parts := strings.SplitN(strings.TrimSpace(output), "|", 2)
+	if len(parts) != 2 {
+		return RuntimeHostCapacity{}, errors.New("invalid Docker host capacity response")
+	}
+	var capacity RuntimeHostCapacity
+	if json.Unmarshal([]byte(parts[0]), &capacity.CPUs) != nil || json.Unmarshal([]byte(parts[1]), &capacity.MemoryBytes) != nil || capacity.CPUs <= 0 || capacity.MemoryBytes <= 0 {
+		return RuntimeHostCapacity{}, errors.New("invalid Docker host capacity response")
+	}
+	return capacity, nil
+}
+
 // RuntimeComposeStopServices stops only the fixed Junimo runtime services. It
 // never removes containers or volumes and never accepts arbitrary services.
 func (c *Client) RuntimeComposeStopServices(ctx context.Context, dir, project string, services ...string) error {

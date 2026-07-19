@@ -51,6 +51,14 @@ var serverHeadlessAudioEnvironment = []string{
 	`      SDL_AUDIODRIVER: "${SDL_AUDIODRIVER:-dummy}"`,
 }
 
+var runtimeServiceCPUShares = []struct {
+	service string
+	value   string
+}{
+	{service: "steam-auth", value: "256"},
+	{service: "server", value: "768"},
+}
+
 // EnsureServerContEnvFix masks malformed static init values in the
 // JunimoServer image. Some upstream builds contain bare values such as
 // "DockerApp", "linux/amd64", or numeric IDs under /etc/cont-*.d; the init
@@ -91,7 +99,82 @@ func EnsureServerContEnvFix(dataDir string) (bool, error) {
 	if err != nil {
 		return changed || composeChanged, err
 	}
-	return changed || composeChanged || audioChanged, nil
+	resourceChanged, err := migrateRuntimeServiceCPUShares(filepath.Join(dataDir, "docker-compose.yml"))
+	if err != nil {
+		return changed || composeChanged || audioChanged, err
+	}
+	return changed || composeChanged || audioChanged || resourceChanged, nil
+}
+
+func migrateRuntimeServiceCPUShares(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	text := string(raw)
+	updated := text
+	newline := "\n"
+	if strings.Contains(text, "\r\n") {
+		newline = "\r\n"
+	}
+	for _, policy := range runtimeServiceCPUShares {
+		start, end := composeServiceBounds(updated, policy.service)
+		if start < 0 {
+			continue
+		}
+		section := updated[start:end]
+		if strings.Contains(section, "\n    cpu_shares:") {
+			continue
+		}
+		imageOffset := strings.Index(section, "\n    image:")
+		if imageOffset < 0 {
+			continue
+		}
+		lineEnd := strings.Index(section[imageOffset+1:], "\n")
+		if lineEnd < 0 {
+			continue
+		}
+		insertAt := start + imageOffset + 1 + lineEnd + 1
+		updated = updated[:insertAt] + "    cpu_shares: " + policy.value + newline + updated[insertAt:]
+	}
+	if updated == text {
+		return false, nil
+	}
+	info, statErr := os.Stat(path)
+	mode := os.FileMode(0o644)
+	if statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := os.WriteFile(path, []byte(updated), mode); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func composeServiceBounds(text, service string) (int, int) {
+	marker := "  " + service + ":"
+	start := strings.Index(text, marker)
+	if start < 0 || (start > 0 && text[start-1] != '\n') {
+		return -1, -1
+	}
+	lineEnd := strings.Index(text[start:], "\n")
+	if lineEnd < 0 {
+		return start, len(text)
+	}
+	end := len(text)
+	offset := start + lineEnd + 1
+	for _, line := range strings.SplitAfter(text[offset:], "\n") {
+		trimmed := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		if strings.HasPrefix(trimmed, "  ") && !strings.HasPrefix(trimmed, "    ") && strings.HasSuffix(trimmed, ":") {
+			end = offset
+			break
+		}
+		offset += len(line)
+	}
+	return start, end
 }
 
 func serverStaticInitScript(value string) string {

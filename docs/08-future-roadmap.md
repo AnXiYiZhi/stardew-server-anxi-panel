@@ -1411,3 +1411,9 @@ Multi Game Mode later
 - [x] 暂停协调器改为前后帧单向补写 `IsPaused=true`，移除 `gameTimeInterval` 旁路和全局暂停清理，避免与上游及其他 Mod 抢写解除状态。
 - [x] 覆盖登录/捏人过渡连接、单人/多人菜单、删除、断线模型、普通日、节日、新日和 2:00 结算边界。
 - [x] Control 契约矩阵、真实 Mod 编译与 Docker Desktop Junimo `.125` 删除/时间/节日/重启验证通过。
+# RUNTIME-COLD-START-1：低资源升级稳定性（2026-07-19，completed）
+
+- [x] server 冷启动验收从 5 分钟扩展到 20 分钟，保留完整 digest/health/SMAPI/Control/FIFO 门禁。
+- [x] server/auth stop 短时 Docker 超时在 10 分钟内幂等重试，持续失败才进入人工恢复。
+- [x] 新旧 Compose 增加相对 CPU shares，低资源 Docker 容量只读探针与 apply warning 已覆盖。
+- [x] 阿里云 2 vCPU/1.6 GiB 现场恢复完成；Docker Desktop 隔离 `.121 -> .125` stopped/running 分别在 173.86 秒和 106.34 秒升级成功并恢复原状态，完整发布门禁与 `0.3.11-rc` smoke 已通过。

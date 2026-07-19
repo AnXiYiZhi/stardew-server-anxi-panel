@@ -156,7 +156,7 @@ func TestFreshInstall125ReachesSteamLoginOptIn(t *testing.T) {
 
 func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, initialState string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
 	suffix := strings.ToLower(strings.ReplaceAll(time.Now().UTC().Format("150405.000000"), ".", ""))
 	project := "anxirealupgrade" + suffix
@@ -243,7 +243,7 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	driver.StartRequiredRuntimeUpdate(ctx, instance)
 
 	var required RequiredRuntimeUpdateStatus
-	for deadline := time.Now().Add(18 * time.Minute); time.Now().Before(deadline); {
+	for deadline := time.Now().Add(30 * time.Minute); time.Now().Before(deadline); {
 		required, err = readRequiredRuntimeUpdateStatus(dataDir)
 		if err == nil && (required.Phase == requiredRuntimePhaseSucceeded || required.Phase == requiredRuntimePhaseFailed || required.Phase == requiredRuntimePhaseManual) {
 			break
@@ -262,9 +262,23 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	if err != nil || !strings.Contains(string(manifestData), TestedImageTag) {
 		t.Fatalf("host JunimoServer manifest does not contain %s: %v %s", TestedImageTag, err, manifestData)
 	}
+	composeData, err := os.ReadFile(filepath.Join(dataDir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(composeData), "cpu_shares: 256") || !strings.Contains(string(composeData), "cpu_shares: 768") {
+		t.Fatalf("runtime compose did not receive low-resource CPU shares: %s", composeData)
+	}
 	ps := run("compose", "--project-name", project, "--project-directory", dataDir, "ps", "--format", "json", "--all")
 	if initialState == storage.InstanceStateRunning && !strings.Contains(strings.ToLower(ps), "running") {
 		t.Fatalf("running state was not restored: %s", ps)
+	}
+	if initialState == storage.InstanceStateRunning {
+		serverShares := strings.TrimSpace(run("inspect", "--format", "{{.HostConfig.CpuShares}}", project+"-server-1"))
+		authShares := strings.TrimSpace(run("inspect", "--format", "{{.HostConfig.CpuShares}}", project+"-steam-auth-1"))
+		if serverShares != "768" || authShares != "256" {
+			t.Fatalf("runtime CPU shares server=%s steam-auth=%s", serverShares, authShares)
+		}
 	}
 	if initialState == storage.InstanceStateStopped && strings.Contains(strings.ToLower(ps), `"state":"running"`) {
 		t.Fatalf("stopped state was not restored: %s", ps)

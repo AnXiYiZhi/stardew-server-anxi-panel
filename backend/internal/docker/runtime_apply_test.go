@@ -41,6 +41,18 @@ func TestParseRuntimeServiceInspectOutputUsesOnlySafeFields(t *testing.T) {
 	}
 }
 
+func TestParseRuntimeHostCapacityUsesOnlyNumericFields(t *testing.T) {
+	capacity, err := parseRuntimeHostCapacity("2|1728053248\n")
+	if err != nil || capacity.CPUs != 2 || capacity.MemoryBytes != 1728053248 {
+		t.Fatalf("capacity=%+v err=%v", capacity, err)
+	}
+	for _, invalid := range []string{"", "0|1024", "2|0", "two|1024", "2|1024|extra"} {
+		if _, err := parseRuntimeHostCapacity(invalid); err == nil {
+			t.Fatalf("invalid capacity accepted: %q", invalid)
+		}
+	}
+}
+
 func TestRuntimeApplyServiceAllowlistIsPairOnly(t *testing.T) {
 	if !validRuntimeServices([]string{"steam-auth", "server"}) {
 		t.Fatal("required pair rejected")

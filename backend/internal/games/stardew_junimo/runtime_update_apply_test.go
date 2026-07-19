@@ -33,6 +33,7 @@ type runtimeApplyFakeDocker struct {
 	upErrorService         string
 	restoreError           bool
 	removeImageError       bool
+	stopErrorsRemaining    int
 }
 
 func newRuntimeApplyFakeDocker(dataDir string) *runtimeApplyFakeDocker {
@@ -93,6 +94,10 @@ func (f *runtimeApplyFakeDocker) ComposeLogs(context.Context, string, paneldocke
 }
 func (f *runtimeApplyFakeDocker) RuntimeComposeStopServices(_ context.Context, _ string, _ string, services ...string) error {
 	f.applyCall("stop " + strings.Join(services, ","))
+	if f.stopErrorsRemaining > 0 {
+		f.stopErrorsRemaining--
+		return errors.New("docker command timed out")
+	}
 	return nil
 }
 func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, _ string, _ string, service string) error {
@@ -172,6 +177,7 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	driver.runtimeUpdatePollInterval = time.Millisecond
 	driver.runtimeUpdateAuthTimeout = 15 * time.Millisecond
 	driver.runtimeUpdateServerTimeout = 15 * time.Millisecond
+	driver.runtimeUpdateStopTimeout = 25 * time.Millisecond
 	if err := os.MkdirAll(filepath.Join(instance.DataDir, ".local-container", "control"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -555,6 +561,33 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRuntimeUpdateRollbackRetriesTransientDockerStopTimeout(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	fake.serverHealthFailTarget = true
+	fake.stopErrorsRemaining = 2
+	driver.runtimeUpdateStopTimeout = 100 * time.Millisecond
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeApply(t, driver, instance)
+	if status.Phase != RuntimeUpdateApplyFailedRolledBack {
+		t.Fatalf("transient stop timeout should still roll back safely: %#v", status)
+	}
+	if got := strings.Count(strings.Join(fake.applyCalls, "\n"), "stop server,steam-auth"); got < 3 {
+		t.Fatalf("stop was not retried after timeout: calls=%v", fake.applyCalls)
+	}
+}
+
+func TestRuntimeUpdateDefaultTimeoutsCoverSlowColdStart(t *testing.T) {
+	driver := New(nil, nil, nil, nil)
+	if driver.runtimeUpdateServerTimeout < 20*time.Minute {
+		t.Fatalf("server verification timeout=%v, want at least 20m", driver.runtimeUpdateServerTimeout)
+	}
+	if driver.runtimeUpdateStopTimeout < 10*time.Minute {
+		t.Fatalf("runtime stop retry timeout=%v, want at least 10m", driver.runtimeUpdateStopTimeout)
 	}
 }
 

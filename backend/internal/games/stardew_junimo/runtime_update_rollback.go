@@ -85,7 +85,7 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 
 func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) (resultErr error) {
 	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated || manifest.JunimoModReplaced {
-		if err := docker.RuntimeComposeStopServices(ctx, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
 			return fmt.Errorf("stop new runtime pair: %w", err)
 		}
 	}
@@ -137,11 +137,39 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 		d.updatePhase(ctx, instance.ID, storage.InstanceStateRunning, "运行组件升级失败，已回滚并恢复运行", "running", job.ID)
 		return nil
 	}
-	if err := docker.RuntimeComposeStopServices(ctx, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
 		return fmt.Errorf("restore stopped state: %w", err)
 	}
 	d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件升级失败，已回滚并恢复停止", "stopped", job.ID)
 	return nil
+}
+
+func (d *Driver) stopRuntimeServicesWithRetry(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project string, services ...string) error {
+	timeout := d.runtimeUpdateStopTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	deadline := time.Now().Add(timeout)
+	interval := d.runtimeUpdatePollInterval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	var lastErr error
+	for {
+		if err := docker.RuntimeComposeStopServices(ctx, dataDir, project, services...); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
 }
 
 func pinRuntimeRollbackImages(dataDir string, manifest runtimeUpdateRecoveryManifest) error {

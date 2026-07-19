@@ -343,3 +343,21 @@
 - 兼容层必须保持“只补写 true、永不写 false”；不要恢复旧 `ClearSinglePlayerMenuPause()` 的全局清理。
 - `connectionsCount` 是握手安全边界，`otherFarmers`/`farmhandData` 不能替代。未来若上游连接模型改变，应先增加真实客户端连接/断线 E2E，再调整策略。
 - 节日和 2510..2600 必须继续放行，否则会卡住节日自动化或 2:00 晕倒/日结。
+# RUNTIME-COLD-START-1 接手记录（2026-07-19，completed）
+
+## 改了什么
+
+- server 升级验收默认 20 分钟；server/auth stop 失败在 10 分钟内按同一 allowlist 幂等重试，避免 Docker daemon 短时失去调度就进入 `rollback_failed`。
+- 新 Compose 与旧实例迁移增加 `steam-auth=256/server=768` 相对 CPU shares；升级 apply preflight 会先补齐兼容迁移。
+- Docker 容量探针只解析 `NCPU/MemTotal`，低资源主机通过现有 apply warnings 提示 swap/swappiness 和长冷启动预期。
+
+## 影响文件/接口
+
+- 主要文件：`internal/games/stardew_junimo/{driver,compose_template,server_env_fix,runtime_update_apply_runner,runtime_update_rollback}.go`、`internal/docker/runtime_apply.go` 及对应测试。
+- HTTP 路径和请求体不变；`GET .../junimo-update/apply` 可能多一个低资源 warning。成功硬门槛、镜像 digest、认证快照、原运行状态恢复和人工恢复边界不变。
+
+## 如何验证与下一步
+
+- 专项：`go test ./internal/games/stardew_junimo -run 'RuntimeUpdate|EnsureServerContEnvFix' -count=1`、`go test ./internal/docker -run 'RuntimeApply|RuntimeHostCapacity' -count=1`。
+- Docker Desktop 29.5.3 已用真正的 `.121` 镜像与宿主 Mod fixture 跑通隔离 stopped/running 真升级（173.86 秒/106.34 秒），确认 `.125`、原状态恢复及 Compose/实际容器 256/768 CPU shares；全量 test/vet/build、Docker integration、兼容矩阵、前端状态矩阵、production build 和 `0.3.11-rc` smoke 均通过。
+- Panel 不修改宿主 sysctl。低配 Linux 部署仍应由管理员在宿主确认 swap 与 swappiness；不要把 privileged sysctl helper 加进 Panel 容器。

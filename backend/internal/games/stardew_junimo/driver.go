@@ -97,6 +97,7 @@ type Driver struct {
 	runtimeUpdatePollInterval  time.Duration
 	runtimeUpdateAuthTimeout   time.Duration
 	runtimeUpdateServerTimeout time.Duration
+	runtimeUpdateStopTimeout   time.Duration
 	requiredRuntimeMu          sync.Mutex
 	requiredRuntimeRunning     map[string]bool
 }
@@ -122,7 +123,8 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		inviteCodeFlights:          make(map[string]*inviteCodeFlight),
 		runtimeUpdatePollInterval:  2 * time.Second,
 		runtimeUpdateAuthTimeout:   90 * time.Second,
-		runtimeUpdateServerTimeout: 5 * time.Minute,
+		runtimeUpdateServerTimeout: 20 * time.Minute,
+		runtimeUpdateStopTimeout:   10 * time.Minute,
 		requiredRuntimeRunning:     make(map[string]bool),
 	}
 }
