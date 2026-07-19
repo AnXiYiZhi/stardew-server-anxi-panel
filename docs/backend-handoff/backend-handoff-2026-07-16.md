@@ -361,3 +361,17 @@
 - 专项：`go test ./internal/games/stardew_junimo -run 'RuntimeUpdate|EnsureServerContEnvFix' -count=1`、`go test ./internal/docker -run 'RuntimeApply|RuntimeHostCapacity' -count=1`。
 - Docker Desktop 29.5.3 已用真正的 `.121` 镜像与宿主 Mod fixture 跑通隔离 stopped/running 真升级（173.86 秒/106.34 秒），确认 `.125`、原状态恢复及 Compose/实际容器 256/768 CPU shares；全量 test/vet/build、Docker integration、兼容矩阵、前端状态矩阵、production build 和 `0.3.11-rc` smoke 均通过。
 - Panel 不修改宿主 sysctl。低配 Linux 部署仍应由管理员在宿主确认 swap 与 swappiness；不要把 privileged sysctl helper 加进 Panel 容器。
+# CONTROL-PAUSE-FEEDBACK-1 接手记录（2026-07-19，completed）
+
+## 根因与修改
+
+- 生产三人在线现场在 17:50 稳定复现 `AllGameplayPlayersRequestedPause`：Control 0.2.1 消费 `requestingTimePause` 后写 `IsPaused=true`，该全局暂停又维持请求位，导致每帧反馈锁。`world_freezetime 0` 在连接数重新匹配后会立即失效，容器、存档和性能均不是根因。
+- Control 0.2.2 的 `PausePolicy` 只接收连接数、节日和时间边界；删除 gameplay player/menu request 计数及对应 enum。任何正连接数都返回 `None`，菜单暂停完全交还上游；零连接 610..2500 单向补写逻辑不变。
+- `runtime_stack_manifest.json` 纳入 Control 0.2.2 identity/hash。`InspectRuntimeStack` 读取运行时 `options.json.controlModVersion`，旧进程返回 `control_update_available`；真实升级测试先走 `Prepare` 同步内嵌 Control，再用 required runtime 事务重启并校验实际加载版本。
+
+## 影响、验证与注意事项
+
+- 主要文件：`embedded/smapi-mod-src/{PausePolicy,ModEntry}.cs`、契约矩阵、两个 Control manifest/DLL、`config/runtime_stack_{manifest,test}.json/.go`、真实升级 integration test。API 形状不变，只新增稳定检查码 `control_update_available`。
+- Control Docker .NET 6 契约与只读真实 game-data 编译通过（0 errors，1 个既有 analyzer warning），source/embedded DLL SHA256 均为 `547c08d8761d0a50fd713077ba9b6d5aa3db091df44be3a6400b6fdcf183f3a9`。
+- Docker Desktop 29.5.3：`.121 -> .125` stopped/running 127.72 秒/120.12 秒；`.125 + Control 0.2.0 -> .125 + Control 0.2.2` stopped/running 144.61 秒/109.60 秒，四条链均恢复原状态且运行 options 报告 0.2.2。
+- 不要重新把 `hasMenuOpen` 或 `requestingTimePause` 引入兼容层，也不要增加“由 Control 清 false”的所有权猜测。若未来要扩展菜单暂停，必须在客户端/上游提供独立、可撤销且不会被全局暂停反向维持的权威信号后另做协议。

@@ -1417,3 +1417,9 @@ Multi Game Mode later
 - [x] server/auth stop 短时 Docker 超时在 10 分钟内幂等重试，持续失败才进入人工恢复。
 - [x] 新旧 Compose 增加相对 CPU shares，低资源 Docker 容量只读探针与 apply warning 已覆盖。
 - [x] 阿里云 2 vCPU/1.6 GiB 现场恢复完成；Docker Desktop 隔离 `.121 -> .125` stopped/running 分别在 173.86 秒和 106.34 秒升级成功并恢复原状态，完整发布门禁与 `0.3.11-rc` smoke 已通过。
+# CONTROL-PAUSE-FEEDBACK-1：在线暂停反馈锁（2026-07-19，completed）
+
+- [x] 生产三人现场复现并确认 `requestingTimePause -> IsPaused -> requestingTimePause` 自激锁，排除容器健康、性能和存档故障。
+- [x] Control 0.2.2 删除 connected-client/menu 强制暂停分支，仅保留真实零连接兼容；契约矩阵固定任意正连接数都返回 `None`。
+- [x] 运行时检查把旧 `options.json.controlModVersion` 识别为 `control_update_available`，保证 Panel 升级后通过受控重启加载新 DLL。
+- [x] Docker Desktop 真实 `.121 -> .125` 与 `.125 old-Control -> .125 Control 0.2.2` stopped/running 四条链通过；无 test seam 或生产凭据进入候选镜像。

@@ -167,6 +167,34 @@ func TestInspectRuntimeStackVersionPairs(t *testing.T) {
 	}
 }
 
+func TestInspectRuntimeStackRequiresRunningControlUpgrade(t *testing.T) {
+	manifest, err := BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeRuntimeEnv(t, dir, manifest.Server.Tag, manifest.SteamAuth.Tag, false)
+	controlDir := filepath.Join(dir, ".local-container", "control")
+	if err := os.MkdirAll(controlDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	optionsPath := filepath.Join(controlDir, "options.json")
+	if err := os.WriteFile(optionsPath, []byte(`{"controlModVersion":"0.2.1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := InspectRuntimeStack(dir, true)
+	if got.Status != RuntimeStackStatusUpdateAvailable || got.Code != "control_update_available" || !got.Available || !got.Supported {
+		t.Fatalf("old running Control result = %#v", got)
+	}
+	if err := os.WriteFile(optionsPath, []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got = InspectRuntimeStack(dir, true)
+	if got.Status != RuntimeStackStatusUpToDate || got.Available {
+		t.Fatalf("current running Control result = %#v", got)
+	}
+}
+
 func TestInspectRuntimeStackCustomMissingAndNotInstalled(t *testing.T) {
 	dir := t.TempDir()
 	writeRuntimeEnv(t, dir, "1.5.0-preview.121", "1.5.0-anxi.2", true)

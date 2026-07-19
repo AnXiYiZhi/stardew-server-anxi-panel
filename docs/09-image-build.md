@@ -821,3 +821,10 @@ docker run --rm `
 - Docker Desktop 真机门禁必须使用隔离实例目录、Compose project、game-data/steam-session 卷与端口，覆盖 `.121 -> .125` stopped/running、真实目标健康/FIFO 版本、原运行状态恢复，以及注入 stop 前两次超时后的安全回滚。不得使用生产实例或凭据。
 - tag 前执行后端全量 test/vet/build、隔离 Docker integration、兼容矩阵脚本、全部前端状态测试与 production build，并构建 `stardew-server-anxi-panel:0.3.11-rc` 检查 `/health`、`/api/version`、OCI labels 与 Panel updater。annotated tag `v0.3.11` 沿用 `.github/workflows/release.yml` 发布三个 registry 的 `0.3.11/latest` 并生成 GitHub Release。
 - 本地发布结果：Docker Desktop 29.5.3 上真正的 `.121` 镜像与宿主 Mod fixture 已通过 stopped/running（173.86 秒/106.34 秒），两条链均升级到 `.125`、恢复原状态并验证 256/768 实际 CPU shares；后端 test/vet/build、Docker integration、兼容矩阵远端制品、九项前端状态脚本、production build、`run.sh` 测试及 `0.3.11-rc` health/version/OCI smoke 全部通过。三个不可用的可选 server 镜像源仅产生 warning，canonical 制品摘要校验通过。
+# v0.3.12 发布门禁：在线暂停反馈锁修复（2026-07-19）
+
+- Control 版本为 0.2.2，source/embedded manifest 与推荐矩阵必须一致，嵌入 DLL SHA256 固定为 `547c08d8761d0a50fd713077ba9b6d5aa3db091df44be3a6400b6fdcf183f3a9`。契约测试必须证明任意正连接数均不由 Control 强制暂停，零连接普通日边界仍保留。
+- 运行栈版本包含 `control-0.2.2`；真实 `options.json` 报告旧 Control 时必须给出 `control_update_available` 并通过受控同镜像重启加载新 DLL。不得只检查宿主 manifest/DLL，也不得把磁盘覆盖冒充进程已升级。
+- Docker Desktop 门禁必须覆盖真正 `.121 -> .125 + Control 0.2.2` 和 `.125 old-Control -> .125 + Control 0.2.2` 的 stopped/running 四条链，断言运行 Control 版本、原状态恢复、目标健康和 CPU shares；源实例、game-data 与凭据保持只读/隔离。
+- tag 前继续执行 Control Docker .NET 6 契约/真实 Mod 编译、后端全量 test/vet/build、Docker integration、兼容矩阵远端制品、全部前端状态脚本与 production build、`run.sh` 测试，并构建 `stardew-server-anxi-panel:0.3.12-rc` 检查 health/version/OCI/updater。annotated tag `v0.3.12` 触发三仓镜像和 GitHub Release。
+- 本地发布结果：上述 Control 构建/契约、后端全量、Docker integration、兼容矩阵远端制品、9 个 Python 测试、`run.sh`、九项前端状态脚本与 production build 均通过；`0.3.12-rc` 返回 healthy、版本 0.3.12、数据库 ok，OCI version/revision/created 和 updater 可执行门禁通过。三个可选 server 镜像源不可达仅产生 warning，canonical digest 校验成功。

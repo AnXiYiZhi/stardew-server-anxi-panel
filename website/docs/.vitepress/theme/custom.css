@@ -13,52 +13,46 @@
 
 /* ===== 快速上手按钮突出样式 ===== */
 
-/* 顶部导航栏的"快速上手"胶囊按钮 */
+/* 顶部导航栏的"快速上手"胶囊按钮 —— 收窄内边距 */
 .VPNavBarMenuLink[href*="getting-started"] {
   background: linear-gradient(135deg, #3eaf7c 0%, #42b883 100%) !important;
   color: #fff !important;
   font-weight: 700 !important;
-  padding: 6px 18px !important;
-  border-radius: 20px !important;
+  padding: 4px 12px !important;
+  border-radius: 16px !important;
   border: none !important;
-  box-shadow: 0 2px 8px rgba(62, 175, 124, 0.35) !important;
+  box-shadow: 0 2px 6px rgba(62, 175, 124, 0.3) !important;
   transition: all 0.2s ease !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  line-height: 1.4 !important;
 }
 
 .VPNavBarMenuLink[href*="getting-started"]:hover {
-  box-shadow: 0 3px 12px rgba(62, 175, 124, 0.5) !important;
+  box-shadow: 0 3px 10px rgba(62, 175, 124, 0.5) !important;
   transform: translateY(-1px);
 }
 
-/* 首页 hero 区的"快速上手"品牌按钮发光呼吸效果 */
-.VPHero .actions .VPButton.brand[href*="getting-started"],
-.VPHero .action > .VPButton.brand {
+/* 首页 hero 区"快速上手"品牌按钮发光呼吸效果 */
+.VPHero .VPButton.brand[href*="getting-started"],
+.VPHero .actions .VPButton.brand:first-child {
   box-shadow: 0 4px 16px rgba(62, 175, 124, 0.4) !important;
   animation: btn-glow 2.5s ease-in-out infinite;
-  position: relative;
-  z-index: 1;
 }
 
 @keyframes btn-glow {
-  0%, 100% {
-    box-shadow: 0 4px 16px rgba(62, 175, 124, 0.4);
-  }
-  50% {
-    box-shadow: 0 4px 28px rgba(62, 175, 124, 0.65), 0 0 40px rgba(62, 175, 124, 0.15);
-  }
+  0%, 100% { box-shadow: 0 4px 16px rgba(62, 175, 124, 0.4); }
+  50% { box-shadow: 0 4px 28px rgba(62, 175, 124, 0.65), 0 0 40px rgba(62, 175, 124, 0.15); }
 }
 
-/* 首页特性卡片：快速上手卡片左边绿色高亮边 + 右上角"推荐"标签 */
-.VPFeature:has(a[href*="getting-started"]) {
+/* 首页特性卡片：第一张卡（快速上手）左侧绿色高亮边 + "推荐"标签 */
+.VPFeatures .container > .item:first-child {
   border-left: 3px solid #3eaf7c !important;
-  position: relative;
-  overflow: visible;
 }
 
-.VPFeature:has(a[href*="getting-started"]) .title::after {
+.VPFeatures .container > .item:first-child .VPFeature {
+  border-left: 3px solid #3eaf7c !important;
+}
+
+.VPFeatures .container > .item:first-child .VPFeature .title h2::after,
+.VPFeatures .container > .item:first-child h2.title::after {
   content: "推荐";
   display: inline-block;
   margin-left: 8px;
