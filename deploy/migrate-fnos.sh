@@ -6,7 +6,7 @@ set -Eeuo pipefail
 # built-in updater because their Docker Compose labels are incomplete. This
 # script never deletes Panel data, game containers, volumes, saves, or mods.
 
-SCRIPT_REVISION="1"
+SCRIPT_REVISION="3"
 GITHUB_LATEST_API="https://api.github.com/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest"
 GITHUB_LATEST_API_CN="https://gh-proxy.com/https://api.github.com/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest"
 OCI_TITLE="stardew-server-anxi-panel"
@@ -77,6 +77,59 @@ managed_project_name() {
   suffix="${suffix:0:48}"
   [[ -n "$suffix" ]] || return 1
   printf 'anxi-panel-%s\n' "$suffix"
+}
+
+collision_safe_project_name() {
+  local base="$1" container_id="$2" existing_project="$3" project_in_use="$4"
+  local id_suffix
+  [[ "$container_id" =~ ^[0-9a-fA-F]{12,64}$ ]] || return 1
+  if [[ "$existing_project" != "$base" && "$project_in_use" != "true" ]]; then
+    printf '%s\n' "$base"
+    return
+  fi
+  id_suffix="${container_id:0:12}"
+  printf 'anxi-panel-migrated-%s\n' "${id_suffix,,}"
+}
+
+migration_success_receipt() {
+  local version="$1" compose_file_path="$2"
+  cat <<EOF
+============================================================
+确认完成：标准 Compose 迁移与升级环境校验全部通过
+当前 Panel 版本：$version
+标准 Compose 文件：$compose_file_path
+确认结果：支持后续新版本通过 Panel Web 一键安全升级
+成功识别码：ANXI_PANEL_WEB_UPDATE_READY
+============================================================
+EOF
+}
+
+normalize_extra_mount() {
+  local type="$1" source="$2" name="$3" target="$4" rw="$5" propagation="$6"
+  local value
+  for value in "$source" "$name" "$target" "$propagation"; do
+    [[ "$value" != *'|'* && "$value" != *$'\n'* && "$value" != *$'\r'* ]] || return 1
+  done
+  [[ "$target" == /* && "$target" != "/" ]] || return 1
+  [[ "$rw" == "true" || "$rw" == "false" ]] || return 1
+
+  case "$type" in
+    bind)
+      [[ "$source" == /* && "$source" != "/" ]] || return 1
+      case "$propagation" in ''|private|rprivate|shared|rshared|slave|rslave) ;; *) return 1 ;; esac
+      printf 'bind|%s|%s|%s|%s\n' "$source" "$target" "$rw" "$propagation"
+      ;;
+    volume)
+      [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || return 1
+      [[ -z "$propagation" ]] || return 1
+      printf 'volume|%s|%s|%s|\n' "$name" "$target" "$rw"
+      ;;
+    *)
+      # tmpfs/npipe/cluster and future mount types need type-specific option
+      # recovery. Refusing them is safer than silently changing semantics.
+      return 1
+      ;;
+  esac
 }
 
 if [[ "${ANXI_MIGRATE_LIBRARY:-}" == "1" ]]; then
@@ -215,7 +268,20 @@ else
 fi
 
 IFS='|' read -r panel_container panel_version data_type host_data_dir panel_image _created <<< "$selected"
-DEFAULT_PROJECT="$(managed_project_name "$panel_container")" || die "无法从旧容器名称生成安全的 Compose 项目名。"
+base_project="$(managed_project_name "$panel_container")" || die "无法从旧容器名称生成安全的 Compose 项目名。"
+panel_container_id="$("${DOCKER[@]}" inspect -f '{{.Id}}' "$panel_container")"
+existing_project_label="$("${DOCKER[@]}" inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$panel_container" 2>/dev/null || true)"
+project_in_use=false
+if [[ -n "$("${DOCKER[@]}" ps -aq --filter "label=com.docker.compose.project=$base_project")" ]]; then
+  project_in_use=true
+fi
+DEFAULT_PROJECT="$(collision_safe_project_name "$base_project" "$panel_container_id" "$existing_project_label" "$project_in_use")" || die "无法生成与旧 Compose labels 隔离的项目名。"
+if [[ -n "$("${DOCKER[@]}" ps -aq --filter "label=com.docker.compose.project=$DEFAULT_PROJECT")" ]]; then
+  die "安全迁移项目名 $DEFAULT_PROJECT 已被其它容器占用；当前容器未修改，请先核对残留的迁移容器。"
+fi
+if [[ "$DEFAULT_PROJECT" != "$base_project" ]]; then
+  yellow "检测到旧 Compose labels 或同名项目占用；已使用隔离项目名：$DEFAULT_PROJECT"
+fi
 if [[ -n "${EXPECTED_ORIGINAL_IMAGE:-}" ]]; then
   [[ "$EXPECTED_ORIGINAL_IMAGE" != *$'\n'* && "$EXPECTED_ORIGINAL_IMAGE" != *$'\r'* && "$panel_image" == "$EXPECTED_ORIGINAL_IMAGE" ]] || die "旧容器镜像引用已在确认后变化，拒绝迁移。"
 fi
@@ -233,11 +299,30 @@ container_data_dir="$(container_env "$panel_container" PANEL_DATA_DIR)"
 [[ -n "$container_data_dir" ]] || container_data_dir="/data"
 [[ "$container_data_dir" == /* && "$container_data_dir" != "/" ]] || die "容器内 PANEL_DATA_DIR 不安全：$container_data_dir"
 
-socket_source="$("${DOCKER[@]}" inspect -f '{{range .Mounts}}{{if eq .Destination "/var/run/docker.sock"}}{{printf "%s|%s" .Type .Source}}{{end}}{{end}}' "$panel_container")"
-[[ "$socket_source" == "bind|/var/run/docker.sock" ]] || die "当前容器缺少标准 Docker Socket bind mount。"
+data_mount_rw="$("${DOCKER[@]}" inspect -f "{{range .Mounts}}{{if eq .Destination \"$container_data_dir\"}}{{printf \"%t\" .RW}}{{end}}{{end}}" "$panel_container")"
+[[ "$data_mount_rw" == "true" ]] || die "Panel 数据目录不是可写挂载，拒绝生成无法持久化的标准部署。"
 
-mount_count="$("${DOCKER[@]}" inspect -f '{{len .Mounts}}' "$panel_container")"
-[[ "$mount_count" == "2" ]] || die "当前容器包含除数据目录和 Docker Socket 外的额外挂载；为避免丢失自定义配置，脚本拒绝猜测。"
+socket_mount="$("${DOCKER[@]}" inspect -f '{{range .Mounts}}{{if eq .Destination "/var/run/docker.sock"}}{{printf "%s|%s|%t" .Type .Source .RW}}{{end}}{{end}}' "$panel_container")"
+IFS='|' read -r socket_type socket_source socket_rw <<< "$socket_mount"
+[[ "$socket_type" == "bind" && "$socket_source" == "/var/run/docker.sock" && ( "$socket_rw" == "true" || "$socket_rw" == "false" ) ]] || die "当前容器缺少标准 Docker Socket bind mount。"
+
+tmpfs_json="$("${DOCKER[@]}" inspect -f '{{json .HostConfig.Tmpfs}}' "$panel_container")"
+[[ "$tmpfs_json" == "{}" || "$tmpfs_json" == "null" ]] || die "当前容器使用 tmpfs；Docker inspect 无法无损还原全部 tmpfs 语义，脚本未修改容器。"
+device_count="$("${DOCKER[@]}" inspect -f '{{len .HostConfig.Devices}}' "$panel_container")"
+[[ "$device_count" == "0" ]] || die "当前容器映射了宿主设备；脚本拒绝自动扩大新版 Panel 的设备权限。"
+
+declare -a extra_mounts=()
+mount_lines="$("${DOCKER[@]}" inspect -f '{{range .Mounts}}{{printf "%s|%s|%s|%s|%t|%s\n" .Destination .Type .Source .Name .RW .Propagation}}{{end}}' "$panel_container")"
+while IFS='|' read -r mount_target mount_type mount_source mount_name mount_rw mount_propagation mount_extra; do
+  [[ -n "$mount_target" ]] || continue
+  [[ "$mount_target" == "$container_data_dir" || "$mount_target" == "/var/run/docker.sock" ]] && continue
+  [[ -z "$mount_extra" ]] || die "额外挂载字段包含不安全的分隔字符，拒绝迁移。"
+  normalized_mount="$(normalize_extra_mount "$mount_type" "$mount_source" "$mount_name" "$mount_target" "$mount_rw" "$mount_propagation" 2>/dev/null || true)"
+  if [[ -z "$normalized_mount" ]]; then
+    die "无法无损迁移额外挂载：type=${mount_type:-未知} target=${mount_target:-未知}。仅自动保留可验证的 bind mount 与 Docker volume。"
+  fi
+  extra_mounts+=("$normalized_mount")
+done <<< "$mount_lines"
 
 privileged="$("${DOCKER[@]}" inspect -f '{{.HostConfig.Privileged}}' "$panel_container")"
 [[ "$privileged" == "false" ]] || die "当前 Panel 使用 privileged 模式，脚本不自动迁移特殊部署。"
@@ -309,6 +394,13 @@ echo "  当前镜像：$panel_image"
 echo "  数据目录：$host_data_dir"
 echo "  访问端口：$host_port"
 echo "  目标版本：$TARGET_VERSION"
+if [[ ${#extra_mounts[@]} -gt 0 ]]; then
+  echo "  已识别额外挂载：${#extra_mounts[@]} 个（将按原目标、读写属性和传播模式写入新 Compose）"
+  for extra_mount in "${extra_mounts[@]}"; do
+    IFS='|' read -r extra_type extra_source extra_target extra_rw _extra_propagation <<< "$extra_mount"
+    echo "    - $extra_type $extra_source -> $extra_target (rw=$extra_rw)"
+  done
+fi
 echo
 
 if [[ "${YES:-0}" != "1" ]]; then
@@ -354,6 +446,8 @@ chmod 600 "$backup_dir/container-inspect.json"
 "${DOCKER[@]}" inspect -f '{{.Image}}' "$panel_container" > "$backup_dir/original-image-digest.txt"
 "${DOCKER[@]}" inspect -f '{{json .Config.Env}}' "$panel_container" > "$backup_dir/environment.json"
 chmod 600 "$backup_dir/original-image-digest.txt" "$backup_dir/environment.json"
+printf '%s\n' "${extra_mounts[@]}" > "$backup_dir/extra-mounts.txt"
+chmod 600 "$backup_dir/extra-mounts.txt"
 
 compose_file="$install_dir/docker-compose.yml"
 env_file="$install_dir/.env"
@@ -396,9 +490,25 @@ chmod 600 "$env_staging"
   echo '      - type: bind'
   echo '        source: /var/run/docker.sock'
   echo '        target: /var/run/docker.sock'
+  [[ "$socket_rw" == "true" ]] || echo '        read_only: true'
   echo '      - type: bind'
   printf '        source: %s\n' "$(yaml_quote "$host_data_dir")"
   printf '        target: %s\n' "$(yaml_quote "$container_data_dir")"
+  for extra_index in "${!extra_mounts[@]}"; do
+    IFS='|' read -r extra_type extra_source extra_target extra_rw extra_propagation <<< "${extra_mounts[$extra_index]}"
+    printf '      - type: %s\n' "$extra_type"
+    if [[ "$extra_type" == "volume" ]]; then
+      printf '        source: legacy_extra_volume_%s\n' "$extra_index"
+    else
+      printf '        source: %s\n' "$(yaml_quote "$extra_source")"
+    fi
+    printf '        target: %s\n' "$(yaml_quote "$extra_target")"
+    [[ "$extra_rw" == "true" ]] || echo '        read_only: true'
+    if [[ "$extra_type" == "bind" && -n "$extra_propagation" ]]; then
+      echo '        bind:'
+      printf '          propagation: %s\n' "$extra_propagation"
+    fi
+  done
   echo '    environment:'
   printf '      PANEL_ADDR: %s\n' "$(yaml_quote "$panel_addr")"
   printf '      PANEL_DATA_DIR: %s\n' "$(yaml_quote "$container_data_dir")"
@@ -425,6 +535,18 @@ chmod 600 "$env_staging"
       printf '    name: %s\n' "$(yaml_quote "${external_networks[$network_index]}")"
     done
   fi
+  volume_header_written=0
+  for extra_index in "${!extra_mounts[@]}"; do
+    IFS='|' read -r extra_type extra_source _extra_target _extra_rw _extra_propagation <<< "${extra_mounts[$extra_index]}"
+    [[ "$extra_type" == "volume" ]] || continue
+    if [[ "$volume_header_written" == "0" ]]; then
+      echo 'volumes:'
+      volume_header_written=1
+    fi
+    printf '  legacy_extra_volume_%s:\n' "$extra_index"
+    echo '    external: true'
+    printf '    name: %s\n' "$(yaml_quote "$extra_source")"
+  done
 } > "$compose_staging"
 chmod 600 "$compose_staging"
 
@@ -500,9 +622,29 @@ for ((_attempt = 1; _attempt <= health_attempts; _attempt++)); do
 done
 [[ "$healthy" == "1" ]] || rollback "新版 Panel 未在 ${health_timeout} 秒内通过容器健康和精确版本验收。"
 
-new_labels="$("${DOCKER[@]}" inspect -f '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$panel_container")"
-IFS='|' read -r label_project label_service label_config <<< "$new_labels"
-[[ "$label_project" == "$DEFAULT_PROJECT" && "$label_service" == "panel" && -n "$label_config" ]] || rollback "新版容器仍缺少标准 Compose labels。"
+echo "正在执行 Web 一键升级兼容性终检……"
+"${DOCKER[@]}" compose --project-name "$DEFAULT_PROJECT" --env-file "$env_file" -f "$compose_file" config --quiet || rollback "标准 Compose 在切换后无法重新解析。"
+
+new_labels="$("${DOCKER[@]}" inspect -f '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$panel_container")"
+IFS='|' read -r label_project label_service label_config label_working_dir <<< "$new_labels"
+[[ "$label_project" == "$DEFAULT_PROJECT" ]] || rollback "新版容器的 Compose project label 不一致。"
+[[ "$label_service" == "panel" ]] || rollback "新版容器的 Compose service label 不一致。"
+[[ "$label_config" == "$compose_file" ]] || rollback "新版容器的 Compose config_files label 未指向标准 Compose 文件。"
+[[ "$label_working_dir" == "$install_dir" ]] || rollback "新版容器的 Compose working_dir label 未指向标准安装目录。"
+
+new_container_id="$("${DOCKER[@]}" inspect -f '{{.Id}}' "$panel_container")"
+compose_container_id="$("${DOCKER[@]}" compose --project-name "$DEFAULT_PROJECT" --env-file "$env_file" -f "$compose_file" ps -q panel)"
+[[ -n "$new_container_id" && "$compose_container_id" == "$new_container_id" ]] || rollback "Compose panel 服务没有唯一指向当前 Panel 容器。"
+
+configured_images="$("${DOCKER[@]}" compose --project-name "$DEFAULT_PROJECT" --env-file "$env_file" -f "$compose_file" config --images)"
+[[ "$configured_images" == "$selected_image" ]] || rollback "Compose 解析出的镜像与已验收 Panel 镜像不一致。"
+configured_image_id="$("${DOCKER[@]}" image inspect -f '{{.Id}}' "$selected_image" 2>/dev/null || true)"
+running_image_id="$("${DOCKER[@]}" inspect -f '{{.Image}}' "$panel_container")"
+[[ -n "$configured_image_id" && "$running_image_id" == "$configured_image_id" ]] || rollback "当前 Panel 容器并未运行 Compose 指定的镜像 digest。"
+
+verified_data_mount="$("${DOCKER[@]}" inspect -f "{{range .Mounts}}{{if eq .Destination \"$container_data_dir\"}}{{printf \"%s|%s|%t\" .Type .Source .RW}}{{end}}{{end}}" "$panel_container")"
+IFS='|' read -r verified_data_type verified_data_source verified_data_rw <<< "$verified_data_mount"
+[[ "$verified_data_type" == "bind" && "$verified_data_source" == "$host_data_dir" && "$verified_data_rw" == "true" ]] || rollback "当前 Panel 的数据挂载未与标准 Compose 保持一致且可写。"
 trap - ERR INT TERM
 
 cat > "$backup_dir/result.txt" <<EOF
@@ -514,6 +656,8 @@ to_version=$TARGET_VERSION
 image=$selected_image
 compose_file=$compose_file
 data_dir=$host_data_dir
+upgrade_environment=supported
+success_code=ANXI_PANEL_WEB_UPDATE_READY
 EOF
 chmod 600 "$backup_dir/result.txt"
 
@@ -522,5 +666,8 @@ green "标准 Compose：$compose_file"
 green "旧容器已停止并保留：$legacy_name"
 green "备份目录：$backup_dir"
 echo
+migration_success_receipt "$TARGET_VERSION" "$compose_file" | while IFS= read -r receipt_line; do green "$receipt_line"; done
+echo
 yellow "旧容器仅用于回退，已关闭自动重启。请勿再从飞牛旧项目启动或更新它；确认新版稳定后再人工删除旧容器，但不要删除数据目录或仍被新版使用的 external 网络。"
-yellow "下一步：登录新版 Panel，在[运行组件升级]中执行可用更新；若仅 Control 版本不匹配，也必须通过 Panel 完成受控游戏重启，不能只在飞牛里重启容器。"
+yellow "验证方法：以后出现高于 $TARGET_VERSION 的版本时，登录 Panel 打开[面板版本详情]，先点[检查升级环境]；页面应显示[支持安全升级]。"
+yellow "若仅 Control 版本不匹配，也必须通过 Panel 完成受控游戏重启，不能只在飞牛里重启容器。"

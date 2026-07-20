@@ -1,3 +1,9 @@
+# DOCS-PORTAL-0.4.1：首页发布信息与视觉层级（2026-07-20，completed）
+
+- 展示文档更新 `v0.4.1` 飞牛 OS 迁移脚本日志，首页版本卡明确显示当前版本；顶部导航“快速上手”由占满导航高度的色块收为 30px 紧凑胶囊。
+- 首页第二行左侧“版本更新日志”卡增加完整品牌边框、浅色渐变、阴影、位移反馈与“最新版本”角标，深色主题有独立配色；第一张快速上手卡原推荐语义保留。
+- 影响文件：`website/docs/index.md`、`website/docs/changelog.md`、`website/docs/.vitepress/theme/custom.css`。验证包含 VitePress production build、桌面与窄屏浏览器视觉检查及 console error/warn 检查。
+
 # FE-SAVE-NAME-DELETE-1：乱码存档提示与删除后权威刷新（2026-07-20，completed）
 
 - `SaveInfo` 新增可选 `nameWarning`。桌面存档卡会直接显示历史目录编码警告并禁止选择/启动，但仍允许管理员备份、导出和删除；后端 `save_name_encoding_invalid` 与 `save_delete_failed` 均有稳定中文错误映射。

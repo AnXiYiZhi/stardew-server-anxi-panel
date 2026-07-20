@@ -18,13 +18,17 @@
   background: linear-gradient(135deg, #3eaf7c 0%, #42b883 100%) !important;
   color: #fff !important;
   font-weight: 600 !important;
-  font-size: 12px !important;
-  padding: 2px 8px !important;
-  border-radius: 12px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: 30px !important;
+  align-self: center !important;
+  margin: 0 2px !important;
+  padding: 0 10px !important;
+  border-radius: 999px !important;
   border: none !important;
   box-shadow: 0 2px 6px rgba(62, 175, 124, 0.3) !important;
   transition: all 0.2s ease !important;
-  line-height: 1.5 !important;
+  line-height: 30px !important;
 }
 
 .VPNavBarMenuLink[href*="getting-started"]:hover {
@@ -45,16 +49,11 @@
 }
 
 /* 首页特性卡片：第一张卡（快速上手）左侧绿色高亮边 + "推荐"标签 */
-.VPFeatures .container > .item:first-child {
+.VPFeatures .VPFeature[href*="getting-started"] {
   border-left: 3px solid #3eaf7c !important;
 }
 
-.VPFeatures .container > .item:first-child .VPFeature {
-  border-left: 3px solid #3eaf7c !important;
-}
-
-.VPFeatures .container > .item:first-child .VPFeature .title h2::after,
-.VPFeatures .container > .item:first-child h2.title::after {
+.VPFeatures .VPFeature[href*="getting-started"] h2.title::after {
   content: "推荐";
   display: inline-block;
   margin-left: 8px;
@@ -66,4 +65,46 @@
   border-radius: 4px;
   vertical-align: middle;
   letter-spacing: 1px;
+}
+
+/* 首页第二行左侧“版本更新日志”：用完整卡片层次突出最新动态。 */
+.VPFeatures .VPFeature[href*="/changelog"] {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid rgba(62, 175, 124, 0.7) !important;
+  background: linear-gradient(145deg, rgba(62, 175, 124, 0.13), rgba(66, 184, 131, 0.04)) !important;
+  box-shadow: 0 10px 28px rgba(62, 175, 124, 0.16) !important;
+  transform: translateY(-2px);
+}
+
+.VPFeatures .VPFeature[href*="/changelog"]::before {
+  content: "最新版本";
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 4px 10px 5px;
+  border-bottom-left-radius: 10px;
+  background: linear-gradient(135deg, #3eaf7c, #42b883);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.VPFeatures .VPFeature[href*="/changelog"] .title {
+  color: #27845d;
+}
+
+.VPFeatures .VPFeature[href*="/changelog"]:hover {
+  border-color: #3eaf7c !important;
+  box-shadow: 0 14px 34px rgba(62, 175, 124, 0.24) !important;
+  transform: translateY(-4px);
+}
+
+.dark .VPFeatures .VPFeature[href*="/changelog"] {
+  background: linear-gradient(145deg, rgba(62, 175, 124, 0.2), rgba(28, 35, 32, 0.7)) !important;
+}
+
+.dark .VPFeatures .VPFeature[href*="/changelog"] .title {
+  color: #72d8a6;
 }
