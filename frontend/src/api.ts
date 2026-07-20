@@ -795,6 +795,7 @@ export interface PanelUpdateCapability {
   reason: string
   code: string
   composeProject: string
+  composeService: string
   composeFile: string
   installDir: string
   currentContainer: string
@@ -802,6 +803,7 @@ export interface PanelUpdateCapability {
   dataMount: string
   dockerAvailable: boolean
   composeAvailable: boolean
+  conversionRequired?: boolean
 }
 
 export interface PanelUpdaterLogEntry {
@@ -841,6 +843,30 @@ export interface PanelUpdateApplyStatus {
   startedAt: string
   updatedAt: string
   finishedAt: string | null
+  fullStack?: {
+    phase: string
+    progress: number
+    instanceId?: string
+    runtimeRequired: boolean
+    serverWasRunning?: boolean
+    onlinePlayers?: number
+    backupName?: string
+    errorCode?: string
+    error?: string
+    result?: string
+    updatedAt?: string
+    finishedAt?: string
+    instances?: Array<{
+      instanceId: string
+      phase: string
+      progress: number
+      serverWasRunning?: boolean
+      onlinePlayers?: number
+      backupName?: string
+      errorCode?: string
+      error?: string
+    }>
+  }
 }
 
 export function getVersion() {
@@ -871,7 +897,7 @@ export function getPanelUpdateApplyStatus() {
 }
 
 export function applyPanelUpdate() {
-  return request<PanelUpdateApplyStatus>('/api/system/update/apply', { method: 'POST' })
+	return request<PanelUpdateApplyStatus>('/api/system/update/apply', { method: 'POST', body: { confirmFullStack: true } })
 }
 
 // ── Support Bundle ──────────────────────────────────────────────────────────

@@ -1932,6 +1932,12 @@ func BackupPreFarmhandDelete(dataDir, saveName string) (string, error) {
 	return backupSaveAsUnique(dataDir, saveName, "prefarmhanddelete")
 }
 
+// BackupPreRuntimeUpdate is a whole-save protection point created before a
+// required full-stack update is allowed to stop the running game services.
+func BackupPreRuntimeUpdate(dataDir, saveName string) (string, error) {
+	return backupSaveAsUnique(dataDir, saveName, "preruntimeupdate")
+}
+
 // BackupPreRestore creates a protective backup before an existing save is
 // overwritten by a restore. Restore must abort if this fails.
 func BackupPreRestore(dataDir, saveName string) (string, error) {

@@ -99,11 +99,47 @@ func EnsureServerContEnvFix(dataDir string) (bool, error) {
 	if err != nil {
 		return changed || composeChanged, err
 	}
-	resourceChanged, err := migrateRuntimeServiceCPUShares(filepath.Join(dataDir, "docker-compose.yml"))
+	apiPortChanged, err := migrateRuntimeInternalAPIPort(filepath.Join(dataDir, "docker-compose.yml"))
 	if err != nil {
 		return changed || composeChanged || audioChanged, err
 	}
-	return changed || composeChanged || audioChanged || resourceChanged, nil
+	resourceChanged, err := migrateRuntimeServiceCPUShares(filepath.Join(dataDir, "docker-compose.yml"))
+	if err != nil {
+		return changed || composeChanged || audioChanged || apiPortChanged, err
+	}
+	return changed || composeChanged || audioChanged || apiPortChanged || resourceChanged, nil
+}
+
+func migrateRuntimeInternalAPIPort(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	text := string(raw)
+	start, end := composeServiceBounds(text, "server")
+	if start < 0 {
+		return false, nil
+	}
+	section := text[start:end]
+	const oldLine = `      API_PORT: "${API_PORT:-8080}"`
+	const newLine = `      API_PORT: "8080"`
+	updatedSection := strings.Replace(section, oldLine, newLine, 1)
+	if updatedSection == section {
+		return false, nil
+	}
+	updated := text[:start] + updatedSection + text[end:]
+	info, statErr := os.Stat(path)
+	mode := os.FileMode(0o644)
+	if statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := os.WriteFile(path, []byte(updated), mode); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func migrateRuntimeServiceCPUShares(path string) (bool, error) {

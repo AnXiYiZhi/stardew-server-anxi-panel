@@ -98,7 +98,7 @@ func TestUpdaterEndpointsAreAdminOnly(t *testing.T) {
 	if rejectedBody.Code != http.StatusBadRequest || fake.applies != 0 {
 		t.Fatalf("apply body must be rejected: code=%d applies=%d", rejectedBody.Code, fake.applies)
 	}
-	apply, _ := doJSON(t, handler, http.MethodPost, "/api/system/update/apply", nil, adminCookie)
+	apply, _ := doJSON(t, handler, http.MethodPost, "/api/system/update/apply", map[string]bool{"confirmFullStack": true}, adminCookie)
 	if apply.Code != http.StatusAccepted || fake.applies != 1 || fake.applyFrom != "0.1.14" || fake.applyTo != "v0.1.15" {
 		t.Fatalf("admin apply=%d applies=%d from=%s to=%s: %s", apply.Code, fake.applies, fake.applyFrom, fake.applyTo, apply.Body.String())
 	}

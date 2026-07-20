@@ -195,8 +195,13 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		}
 	}
 
-	if err := installSMAPIMod(instance.DataDir); err != nil {
-		d.logger.Warn("SMAPI mod install failed (non-fatal)", "instance", instance.ID, "error", err)
+	// Never replace a Control DLL underneath a live or previously installed
+	// runtime. The required runtime coordinator owns the guarded
+	// save/backup/stop/sync/start/verify transaction for those instances.
+	if instance.State == storage.InstanceStateUninitialized || instance.State == storage.InstanceStateAdminCreated {
+		if err := installSMAPIMod(instance.DataDir); err != nil {
+			d.logger.Warn("SMAPI mod install failed (non-fatal)", "instance", instance.ID, "error", err)
+		}
 	}
 
 	// Write docker-compose.yml only when not already present.

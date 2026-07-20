@@ -53,7 +53,7 @@ const junimoComposeTemplate = `services:
       SDL_AUDIODRIVER: "${SDL_AUDIODRIVER:-dummy}"
       SETTINGS_PATH: /data/settings/server-settings.json
       API_ENABLED: "${API_ENABLED:-true}"
-      API_PORT: "${API_PORT:-8080}"
+      API_PORT: "8080"
       API_KEY: "${API_KEY:-}"
       SERVER_PASSWORD: "${SERVER_PASSWORD:-}"
       MAX_LOGIN_ATTEMPTS: "${MAX_LOGIN_ATTEMPTS:-3}"

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,22 @@ func TestRequiredRuntimeRealControlUpgradeOptIn(t *testing.T) {
 		t.Run(initialState, func(t *testing.T) {
 			runRequiredRuntimeRealUpgrade(t, sourceDir, sourceGameVolume, initialState)
 		})
+	}
+}
+
+func TestRuntimeInfoContractRealOptIn(t *testing.T) {
+	dataDir := strings.TrimSpace(os.Getenv("ANXI_REAL_RUNTIME_PROBE_INSTANCE"))
+	if dataDir == "" {
+		t.Skip("set ANXI_REAL_RUNTIME_PROBE_INSTANCE")
+	}
+	client := paneldocker.NewClient(paneldocker.Options{DockerPath: "docker"})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := client.RuntimeServerHealth(ctx, dataDir, strings.ToLower(filepath.Base(dataDir))); err != nil {
+		t.Fatalf("runtime health probe: %v", err)
+	}
+	if !runtimeInfoContractReady(ctx, client, dataDir, TestedImageTag) {
+		t.Fatal("FIFO info contract did not return the exact Junimo version")
 	}
 }
 
@@ -213,7 +231,7 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 		"GAME_PORT":           "0",
 		"QUERY_PORT":          "0",
 		"VNC_PORT":            "0",
-		"API_PORT":            "8080",
+		"API_PORT":            reserveIntegrationTCPPort(t),
 		"STEAM_AUTH_PORT":     "3001",
 		"STEAM_USERNAME":      "",
 		"STEAM_PASSWORD":      "",
@@ -238,7 +256,9 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 		"--mount", "type=volume,src="+gameVolume+",dst=/target",
 		"alpine:3.20", "sh", "-c", "cd /source && tar cf - . | tar xf - -C /target")
 	if initialState == storage.InstanceStateRunning {
+		startedAt := time.Now()
 		run("compose", "--project-name", project, "--project-directory", dataDir, "up", "-d")
+		waitForFreshRealControl(t, dataDir, startedAt)
 	}
 
 	store, err := storage.Open(ctx, appconfig.Config{DataDir: dataDir, DBPath: filepath.Join(dataDir, "panel-e2e.db")})
@@ -276,6 +296,14 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	if required.Phase != requiredRuntimePhaseSucceeded {
 		apply, _ := driver.RuntimeUpdateApplyStatus(instance)
 		t.Fatalf("required upgrade phase=%s code=%s error=%s apply=%+v", required.Phase, required.ErrorCode, required.Error, apply)
+	}
+	if initialState == storage.InstanceStateRunning {
+		if required.BackupName == "" {
+			t.Fatal("running full-stack update did not record its whole-save protection backup")
+		}
+		if info, statErr := os.Stat(filepath.Join(backupsDir(dataDir), required.BackupName)); statErr != nil || info.Size() == 0 {
+			t.Fatalf("whole-save protection backup missing or empty: name=%s err=%v", required.BackupName, statErr)
+		}
 	}
 	inspection := InspectRuntimeStack(dataDir, initialState)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpToDate || inspection.Current.Server.Tag != TestedImageTag {
@@ -323,6 +351,31 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	if initialState == storage.InstanceStateStopped && strings.Contains(strings.ToLower(ps), `"state":"running"`) {
 		t.Fatalf("stopped state was not restored: %s", ps)
 	}
+}
+
+func waitForFreshRealControl(t *testing.T, dataDir string, startedAt time.Time) {
+	t.Helper()
+	for deadline := time.Now().Add(8 * time.Minute); time.Now().Before(deadline); {
+		optionsInfo, optionsErr := os.Stat(filepath.Join(dataDir, ".local-container", "control", "options.json"))
+		if optionsErr == nil && optionsInfo.ModTime().After(startedAt) && readSMAPIStatus(dataDir) == "save-loaded" && commandResultSupported(dataDir) {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatal("real running fixture did not publish a fresh save-loaded Control contract")
+}
+
+func reserveIntegrationTCPPort(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return strconv.Itoa(port)
 }
 
 func copyRuntimeFixture(sourceDir, targetDir string) error {

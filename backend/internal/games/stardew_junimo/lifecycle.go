@@ -459,10 +459,13 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		return err
 	}
 
-	// Ensure the latest SMAPI mod DLL is deployed (idempotent; needed for IP direct-connect).
+	// A Control sync failure is a hard start gate. Running the game with an old
+	// DLL while the Panel assumes the new command contract is unsafe.
 	if !r.preserveControlMod {
 		if err := installSMAPIMod(r.instance.DataDir); err != nil {
-			_, _ = jobCtx.Info(ctx, fmt.Sprintf("警告：SMAPI mod 部署失败（不影响启动）：%v", err))
+			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+				"Control Mod 同步失败，已阻止服务器启动", "control_sync_failed", jobCtx.ID)
+			return fmt.Errorf("sync Control mod before start: %w", err)
 		}
 	}
 
@@ -565,6 +568,16 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
 			"服务器启动失败", "start_failed", jobCtx.ID)
 		return err
+	}
+	controlTimeout := r.driver.runtimeUpdateServerTimeout
+	if controlTimeout <= 0 || controlTimeout > time.Minute {
+		controlTimeout = time.Minute
+	}
+	if !r.preserveControlMod && !waitForRunningControlManifest(ctx, r.instance.DataDir, controlTimeout) {
+		_, _ = r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
+			"SMAPI 未实际加载当前 Panel 要求的 Control 版本，服务器已停止", "control_runtime_version_mismatch", jobCtx.ID)
+		return errors.New("SMAPI did not load the required Control version")
 	}
 	r.clearStaleInviteCode(ctx, jobCtx)
 
@@ -1110,6 +1123,7 @@ func (r *lifecycleRunner) clearRuntimeControlSnapshots(ctx context.Context, jobC
 	paths := []string{
 		filepath.Join(controlDir(r.instance.DataDir), "status.json"),
 		filepath.Join(controlDir(r.instance.DataDir), "players.json"),
+		filepath.Join(controlDir(r.instance.DataDir), "options.json"),
 	}
 	removed := false
 	for _, path := range paths {

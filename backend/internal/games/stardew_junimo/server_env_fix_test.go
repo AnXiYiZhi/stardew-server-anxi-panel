@@ -15,6 +15,8 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
     image: auth:test
   server:
     image: ${SERVER_IMAGE:-sdvd/server:1.5.0-preview.121}
+    environment:
+      API_PORT: "${API_PORT:-8080}"
     volumes:
       - ./.local-container/settings:/data/settings
       - ./.local-container/control:/data/control
@@ -60,6 +62,9 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
 			t.Fatalf("compose missing %s cpu shares:\n%s", policy.service, updatedText)
 		}
 	}
+	if !strings.Contains(updatedText, `      API_PORT: "8080"`) {
+		t.Fatalf("compose did not fix the internal API port:\n%s", updatedText)
+	}
 
 	changed, err = EnsureServerContEnvFix(dataDir)
 	if err != nil {
@@ -91,6 +96,27 @@ func TestMigrateRuntimeServiceCPUSharesPreservesCRLF(t *testing.T) {
 	}
 	if !strings.Contains(got, "steam-auth:\r\n    image: auth\r\n    cpu_shares: 256\r\n") || !strings.Contains(got, "server:\r\n    image: server\r\n    cpu_shares: 768\r\n") {
 		t.Fatalf("CPU shares missing from CRLF compose: %q", got)
+	}
+}
+
+func TestMigrateRuntimeInternalAPIPortPreservesHostPortAndCRLF(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker-compose.yml")
+	compose := "services:\r\n  server:\r\n    ports:\r\n      - \"${API_PORT:-8080}:8080/tcp\"\r\n    environment:\r\n      API_PORT: \"${API_PORT:-8080}\"\r\n"
+	if err := os.WriteFile(path, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := migrateRuntimeInternalAPIPort(path)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "- \"${API_PORT:-8080}:8080/tcp\"\r\n") || !strings.Contains(got, "API_PORT: \"8080\"\r\n") {
+		t.Fatalf("host/internal port separation was not preserved: %q", got)
 	}
 }
 

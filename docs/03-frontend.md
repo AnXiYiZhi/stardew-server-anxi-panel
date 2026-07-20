@@ -2283,3 +2283,8 @@ npm.cmd run dev
 - `useStardewDashboardData` 的玩家与邀请码轮询监听 `visibilitychange`：页面隐藏时立即清除 timeout，恢复可见后按原周期继续；组件卸载/页面关闭继续执行完整 cleanup。
 - `StardewPanel` 右侧栏指标轮询补齐相同可见性门禁；诊断页既有可见性门禁保持。后端邀请码空值 `n/a` 在 dashboard 中按“尚未就绪”处理，不会作为真实邀请码展示，也不会意外结束启动后的邀请码轮询。
 - 验证：`npm.cmd run build`（TypeScript project build + Vite production build）通过。
+# 2026-07-20：一键全栈升级交互
+
+- 更新详情根据 `capability.conversionRequired` 显示“转换为标准部署并升级”，并展示 Compose 项目、实际服务名及转换前备份/失败回滚边界。
+- 二次确认明确显示当前真人在线数量，并说明升级会保存、创建整档备份、按需停止和重启游戏服务器，在线连接会断开。
+- Panel 重启遮罩与进度条继续读取持久化的 `fullStack` 阶段；详情可展开查看全部实例的 Control 同步阶段、进度和错误，不会把 Panel 镜像成功误报为全栈升级完成。

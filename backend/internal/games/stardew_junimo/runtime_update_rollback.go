@@ -84,7 +84,7 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 }
 
 func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) (resultErr error) {
-	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated || manifest.JunimoModReplaced {
+	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated || manifest.JunimoModReplaced || manifest.ControlUpdated {
 		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
 			return fmt.Errorf("stop new runtime pair: %w", err)
 		}
@@ -98,6 +98,11 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 	if manifest.JunimoModReplaced {
 		if err := restoreRuntimeJunimoServerMod(instance.DataDir, manifest.ApplyID, manifest.JunimoModOriginalPresent); err != nil {
 			return fmt.Errorf("restore JunimoServer mod: %w", err)
+		}
+	}
+	if manifest.ControlUpdated {
+		if err := restoreRuntimeControlMod(instance.DataDir, manifest); err != nil {
+			return fmt.Errorf("restore Control mod: %w", err)
 		}
 	}
 	if err := pinRuntimeRollbackImages(instance.DataDir, manifest); err != nil {

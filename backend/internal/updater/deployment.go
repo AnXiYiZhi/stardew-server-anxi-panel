@@ -22,6 +22,10 @@ type DetectOptions struct {
 	ComposeProject   string
 }
 
+type composeDeploymentResolver interface {
+	ResolveComposeDeployment(context.Context, string, string, ContainerInfo, string, string) (string, error)
+}
+
 func DetectCapability(ctx context.Context, docker DockerRuntime, opts DetectOptions) Capability {
 	if !docker.Available(ctx) {
 		return Unsupported(CodeDockerUnavailable, "Docker Socket 不可用或无法连接 Docker daemon")
@@ -58,8 +62,14 @@ func DetectCapability(ctx context.Context, docker DockerRuntime, opts DetectOpti
 	service := strings.TrimSpace(labels[labelService])
 	configFiles := splitComposeFiles(labels[labelConfigFiles])
 	if project != "" || service != "" || len(configFiles) > 0 {
-		if !composeProjectPattern.MatchString(project) || service != "panel" || len(configFiles) != 1 {
-			base.Code, base.Reason = CodeComposeMetadataInvalid, "当前容器的 Compose labels 不完整或不符合标准 panel 服务"
+		if project == "" {
+			project = strings.TrimSpace(opts.ComposeProject)
+		}
+		if len(configFiles) == 0 && strings.TrimSpace(opts.HostComposeFile) != "" {
+			configFiles = []string{strings.TrimSpace(opts.HostComposeFile)}
+		}
+		if !composeProjectPattern.MatchString(project) || len(configFiles) != 1 {
+			base.Code, base.Reason = CodeComposeMetadataInvalid, "当前容器的 Compose 元数据不足，无法反查唯一部署"
 			return base
 		}
 		composeFile := filepath.Clean(configFiles[0])
@@ -76,21 +86,83 @@ func DetectCapability(ctx context.Context, docker DockerRuntime, opts DetectOpti
 		base.InstallDir = filepath.Dir(composeFile)
 	} else {
 		if !explicitDeploymentValid(opts, dataMount) {
-			base.Code, base.Reason = CodeComposeLabelsMissing, "缺少标准 Compose labels，且未提供完整可靠的宿主机部署变量"
-			return base
+			return legacyConversionCapability(base, info, opts.ContainerDataDir, dataMount)
 		}
 		base.ComposeProject = strings.TrimSpace(opts.ComposeProject)
 		base.ComposeFile = filepath.Clean(opts.HostComposeFile)
 		base.InstallDir = filepath.Clean(opts.HostInstallDir)
 	}
+	resolver, ok := docker.(composeDeploymentResolver)
+	if !ok {
+		base.Code, base.Reason = CodeComposeMetadataInvalid, "Docker 驱动不支持 Compose 反向一致性校验"
+		return base
+	}
+	resolvedService, err := resolver.ResolveComposeDeployment(ctx, base.ComposeProject, base.ComposeFile, info, opts.ContainerDataDir, dataMount)
+	if err != nil || service != "" && service != resolvedService {
+		base.Code, base.Reason = CodeComposeMetadataInvalid, "容器、Compose 文件、服务、镜像和数据挂载无法全部反向匹配"
+		return base
+	}
+	base.ComposeService = resolvedService
 	if strings.TrimSpace(base.CurrentImage) == "" {
 		base.Code, base.Reason = CodeComposeMetadataInvalid, "当前容器镜像引用为空"
 		return base
 	}
 	base.Supported = true
 	base.Code = CodeSupported
-	base.Reason = "已识别标准 Compose 部署，可安全执行只读升级演练"
+	base.Reason = "已反向确认容器、Compose 文件、服务、镜像和数据挂载完全一致，可安全升级"
 	return base
+}
+
+func legacyConversionCapability(base Capability, info ContainerInfo, dataDestination, dataMount string) Capability {
+	data := mountAt(info.Mounts, dataDestination)
+	socket := mountAt(info.Mounts, "/var/run/docker.sock")
+	hasSecret := false
+	for _, entry := range info.Env {
+		if strings.HasPrefix(entry, "PANEL_SECRET=") && strings.TrimSpace(strings.TrimPrefix(entry, "PANEL_SECRET=")) != "" {
+			hasSecret = true
+		}
+	}
+	ports := info.PortBindings["8090/tcp"]
+	if data.Type != "bind" || !filepath.IsAbs(dataMount) || filepath.Clean(dataMount) == string(filepath.Separator) ||
+		socket.Type != "bind" || filepath.Clean(socket.Source) != filepath.Clean("/var/run/docker.sock") || len(info.Mounts) != 2 ||
+		info.Privileged || strings.TrimSpace(info.User) != "" || !hasSecret || len(ports) == 0 || strings.TrimSpace(info.Image) == "" {
+		base.Code, base.Reason = CodeComposeMetadataInvalid, "非标准部署未通过安全转换前置检查；容器、端口、权限、环境或挂载存在无法保真的配置"
+		return base
+	}
+	installDir := filepath.Dir(filepath.Clean(dataMount))
+	if filepath.Base(filepath.Clean(dataMount)) != "data" {
+		installDir = filepath.Join(installDir, ".anxi-panel-"+info.Name)
+	}
+	base.Supported, base.Code, base.ConversionRequired = true, CodeSupported, true
+	base.ComposeProject, base.ComposeService = legacyComposeProject(info.Name), "panel"
+	base.InstallDir, base.ComposeFile = installDir, filepath.Join(installDir, "docker-compose.yml")
+	base.Reason = "检测到可安全转换的飞牛非标准部署；升级时将由独立 helper 生成标准 Compose，并保留旧容器用于自动回滚"
+	return base
+}
+
+func legacyComposeProject(containerName string) string {
+	var suffix strings.Builder
+	for _, r := range strings.ToLower(containerName) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+			suffix.WriteRune(r)
+		}
+		if suffix.Len() >= 48 {
+			break
+		}
+	}
+	if suffix.Len() == 0 {
+		return "anxi-panel-managed"
+	}
+	return "anxi-panel-" + suffix.String()
+}
+
+func mountAt(mounts []MountInfo, destination string) MountInfo {
+	for _, mount := range mounts {
+		if filepath.Clean(mount.Destination) == filepath.Clean(destination) {
+			return mount
+		}
+	}
+	return MountInfo{}
 }
 
 func explicitDeploymentValid(opts DetectOptions, actualDataMount string) bool {

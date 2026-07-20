@@ -23,7 +23,7 @@ const apply = (phase: PanelUpdateApplyStatus['phase'], progress = 0): PanelUpdat
 
 const dryRun: PanelUpdateDryRunStatus = {
   id: 'dry-1', phase: 'succeeded', targetVersion: '0.1.15', targetImage: '',
-  capability: { supported: true, reason: '', code: 'supported', composeProject: '', composeFile: '', installDir: '', currentContainer: '', currentImage: '', dataMount: '', dockerAvailable: true, composeAvailable: true },
+  capability: { supported: true, reason: '', code: 'supported', composeProject: '', composeService: '', composeFile: '', installDir: '', currentContainer: '', currentImage: '', dataMount: '', dockerAvailable: true, composeAvailable: true },
   logs: [], startedAt: '', updatedAt: '', finishedAt: '', errorCode: '', error: '',
 }
 
@@ -34,8 +34,8 @@ assert.equal(panelUpdatePhaseLabel('waiting_health'), '正在等待新版本健�
 assert.equal(panelUpdatePhaseLabel('rolling_back'), '正在回滚')
 
 const pulling = panelUpdateSurface(update, apply('pulling', 65), { version: '0.1.14' })
-assert.equal(pulling.topbarText, '正在升级 65%')
-assert.equal(pulling.overviewText, '正在升级…')
+assert.equal(pulling.topbarText, '正在全栈升级 65%')
+assert.equal(pulling.overviewText, '正在拉取镜像')
 assert.equal(pulling.tone, 'working')
 
 const rollingBack = panelUpdateSurface(update, apply('rolling_back', 88), null)
@@ -84,8 +84,8 @@ assert.equal(currentAfterHistoryLoads.overviewText, '✓ 最新')
 
 // 顶栏和总览由同一个 selector 读取同一份状态，不能各自推导出不同阶段。
 const shared = panelUpdateSurface(update, apply('recreating', 65), null)
-assert.equal(shared.topbarText, '正在升级 65%')
-assert.equal(shared.overviewText, '正在升级…')
+assert.equal(shared.topbarText, '正在全栈升级 65%')
+assert.equal(shared.overviewText, '正在重建面板')
 
 const available = panelUpdateSurface(update, null, null)
 assert.equal(available.topbarText, '发现新版本 v0.1.15')
@@ -100,6 +100,13 @@ assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, ne
 assert.equal(canStartPanelUpdate({ id: 1, username: 'admin', role: 'admin' }, nextUpdate, nextDryRun, apply('rollback_failed')), false)
 assert.equal(isPanelUpdateActive(apply('waiting_health')), true)
 assert.equal(isPanelUpdateTerminal(apply('failed_rolled_back')), true)
+const runtimeActive = { ...apply('succeeded', 100), fullStack: { phase: 'updating_runtime', progress: 72, runtimeRequired: true } }
+assert.equal(isPanelUpdateActive(runtimeActive), true)
+assert.equal(isPanelUpdateTerminal(runtimeActive), false)
+assert.equal(panelUpdateSurface(update, runtimeActive, null).topbarText, '正在全栈升级 72%')
+const runtimeSafeFailure = { ...apply('succeeded', 100), fullStack: { phase: 'failed_safe', progress: 100, runtimeRequired: true } }
+assert.equal(isPanelUpdateActive(runtimeSafeFailure), false)
+assert.equal(isPanelUpdateTerminal(runtimeSafeFailure), true)
 assert.deepEqual([0, 1, 2, 6, 20].map(reconnectDelay), [800, 1200, 2000, 10000, 10000])
 
 console.log('panel update state machine tests passed')

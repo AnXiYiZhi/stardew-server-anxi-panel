@@ -122,6 +122,9 @@ type runtimeUpdateRecoveryManifest struct {
 	ConfigWritten            bool                       `json:"configWritten"`
 	AuthRecreated            bool                       `json:"authRecreated"`
 	ServerRecreated          bool                       `json:"serverRecreated"`
+	ControlManifestPresent   bool                       `json:"controlManifestPresent"`
+	ControlDLLPresent        bool                       `json:"controlDllPresent"`
+	ControlUpdated           bool                       `json:"controlUpdated"`
 }
 
 func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
@@ -134,7 +137,7 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 	if previous, err := readRuntimeUpdateApplyStatus(instance.DataDir); err == nil && previous.Phase == RuntimeUpdateApplyRollbackFailed {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "manual_recovery_required", Message: "上次升级自动回滚失败；必须先人工处理并保全恢复材料，禁止自动重试。"}
 	}
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "already_up_to_date", Message: "当前运行组件版本对已经是推荐版本。"}
 	}
@@ -186,7 +189,7 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 func (d *Driver) RuntimeUpdateApplyStatus(instance registry.Instance) (RuntimeUpdateApplyStatus, error) {
 	status, err := readRuntimeUpdateApplyStatus(instance.DataDir)
 	if errors.Is(err, os.ErrNotExist) {
-		inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 		return RuntimeUpdateApplyStatus{Phase: "idle", Current: inspection.Current, Target: inspection.Recommended, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}}, nil
 	}
 	return status, err

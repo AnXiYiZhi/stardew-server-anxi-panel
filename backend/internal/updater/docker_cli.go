@@ -25,12 +25,20 @@ type MountInfo struct {
 }
 
 type ContainerInfo struct {
-	ID      string
-	Name    string
-	Image   string
-	ImageID string
-	Labels  map[string]string
-	Mounts  []MountInfo
+	ID           string
+	Name         string
+	Image        string
+	ImageID      string
+	Labels       map[string]string
+	Mounts       []MountInfo
+	Env          []string
+	User         string
+	Privileged   bool
+	NetworkMode  string
+	PortBindings map[string][]struct {
+		HostIP   string `json:"HostIp"`
+		HostPort string `json:"HostPort"`
+	}
 }
 
 type HelperSpec struct {
@@ -38,6 +46,7 @@ type HelperSpec struct {
 	RuntimeImage    string
 	TargetVersion   string
 	ComposeProject  string
+	ComposeService  string
 	HostInstallDir  string
 	HostComposeFile string
 	DataMount       string
@@ -61,12 +70,14 @@ type ApplyHelperSpec struct {
 	OriginalDigest       string
 	CurrentContainer     string
 	ComposeProject       string
+	ComposeService       string
 	HostInstallDir       string
 	HostComposeFile      string
 	DataMount            string
 	StateFile            string
 	BackupDir            string
 	DatabaseRelativePath string
+	Conversion           bool
 }
 
 type DockerCLI struct {
@@ -120,7 +131,17 @@ func (d *DockerCLI) InspectContainer(ctx context.Context, ref string) (Container
 		Config struct {
 			Image  string            `json:"Image"`
 			Labels map[string]string `json:"Labels"`
+			Env    []string          `json:"Env"`
+			User   string            `json:"User"`
 		} `json:"Config"`
+		HostConfig struct {
+			Privileged   bool   `json:"Privileged"`
+			NetworkMode  string `json:"NetworkMode"`
+			PortBindings map[string][]struct {
+				HostIP   string `json:"HostIp"`
+				HostPort string `json:"HostPort"`
+			} `json:"PortBindings"`
+		} `json:"HostConfig"`
 		Mounts []MountInfo `json:"Mounts"`
 	}
 	if err := json.Unmarshal(output, &raw); err != nil || len(raw) != 1 {
@@ -129,7 +150,77 @@ func (d *DockerCLI) InspectContainer(ctx context.Context, ref string) (Container
 	return ContainerInfo{
 		ID: raw[0].ID, Name: strings.TrimPrefix(raw[0].Name, "/"), Image: raw[0].Config.Image, ImageID: raw[0].Image,
 		Labels: raw[0].Config.Labels, Mounts: raw[0].Mounts,
+		Env: raw[0].Config.Env, User: raw[0].Config.User, Privileged: raw[0].HostConfig.Privileged,
+		NetworkMode: raw[0].HostConfig.NetworkMode, PortBindings: raw[0].HostConfig.PortBindings,
 	}, nil
+}
+
+// ResolveComposeDeployment treats Docker Compose itself as the authority and
+// proves that exactly one service resolves to this exact container, image and
+// data mount. Labels are hints only and may be incomplete on FNOS.
+func (d *DockerCLI) ResolveComposeDeployment(ctx context.Context, project, composeFile string, container ContainerInfo, dataDestination, dataSource string) (string, error) {
+	if !composeProjectPattern.MatchString(project) || !filepath.IsAbs(composeFile) {
+		return "", errors.New("invalid compose identity")
+	}
+	installDir := filepath.Dir(composeFile)
+	runner := []string{"run", "--rm", "--network", "none", "--entrypoint", "docker",
+		"--mount", "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock",
+		"--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,readonly", installDir, installDir), container.Image}
+	baseArgs := []string{"compose", "--project-name", project}
+	if envFile := filepath.Join(filepath.Dir(composeFile), ".env"); fileExists(envFile) {
+		baseArgs = append(baseArgs, "--env-file", envFile)
+	}
+	baseArgs = append(baseArgs, "-f", composeFile)
+	raw, err := d.command(ctx, 2*time.Minute, append(append(append([]string{}, runner...), baseArgs...), "config", "--format", "json")...)
+	if err != nil {
+		return "", err
+	}
+	var config struct {
+		Services map[string]struct {
+			Image   string `json:"image"`
+			Volumes []struct {
+				Type   string `json:"type"`
+				Source string `json:"source"`
+				Target string `json:"target"`
+			} `json:"volumes"`
+		} `json:"services"`
+	}
+	if json.Unmarshal(raw, &config) != nil || len(config.Services) == 0 {
+		return "", errors.New("invalid compose config")
+	}
+	matched := ""
+	for service, definition := range config.Services {
+		if !containerReferencePattern.MatchString(service) {
+			continue
+		}
+		id, psErr := d.command(ctx, 30*time.Second, append(append(append([]string{}, runner...), baseArgs...), "ps", "-q", service)...)
+		if psErr != nil || strings.TrimSpace(string(id)) != container.ID {
+			continue
+		}
+		if matched != "" {
+			return "", errors.New("container matches multiple compose services")
+		}
+		if strings.TrimSpace(definition.Image) != strings.TrimSpace(container.Image) {
+			resolvedID, imageErr := d.command(ctx, 30*time.Second, "image", "inspect", "--format", "{{.Id}}", definition.Image)
+			if imageErr != nil || strings.TrimSpace(string(resolvedID)) != strings.TrimSpace(container.ImageID) {
+				return "", errors.New("compose image mismatch")
+			}
+		}
+		mountMatches := 0
+		for _, volume := range definition.Volumes {
+			if filepath.Clean(volume.Target) == filepath.Clean(dataDestination) && filepath.Clean(volume.Source) == filepath.Clean(dataSource) {
+				mountMatches++
+			}
+		}
+		if mountMatches != 1 {
+			return "", errors.New("compose data mount mismatch")
+		}
+		matched = service
+	}
+	if matched == "" {
+		return "", errors.New("compose service not found")
+	}
+	return matched, nil
 }
 
 func (d *DockerCLI) ImageDigest(ctx context.Context, imageRef string) (string, error) {
@@ -148,6 +239,9 @@ func (d *DockerCLI) ImageDigest(ctx context.Context, imageRef string) (string, e
 }
 
 func BuildHelperArgs(spec HelperSpec) ([]string, error) {
+	if strings.TrimSpace(spec.ComposeService) == "" {
+		spec.ComposeService = "panel"
+	}
 	if !containerReferencePattern.MatchString(spec.Name) {
 		return nil, errors.New("invalid helper name")
 	}
@@ -158,7 +252,7 @@ func BuildHelperArgs(spec HelperSpec) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !composeProjectPattern.MatchString(spec.ComposeProject) {
+	if !composeProjectPattern.MatchString(spec.ComposeProject) || !containerReferencePattern.MatchString(spec.ComposeService) {
 		return nil, errors.New("invalid compose project")
 	}
 	installDir := filepath.Clean(spec.HostInstallDir)
@@ -199,6 +293,7 @@ func BuildHelperArgs(spec HelperSpec) ([]string, error) {
 		"dry-run",
 		"--target-version", version,
 		"--compose-project", spec.ComposeProject,
+		"--compose-service", spec.ComposeService,
 		"--compose-file", composeFile,
 		"--state-file", spec.StateFile,
 		"--current-image", spec.RuntimeImage,
@@ -216,6 +311,9 @@ func (d *DockerCLI) StartHelper(ctx context.Context, spec HelperSpec) error {
 }
 
 func BuildApplyHelperArgs(spec ApplyHelperSpec) ([]string, error) {
+	if strings.TrimSpace(spec.ComposeService) == "" {
+		spec.ComposeService = "panel"
+	}
 	if !containerReferencePattern.MatchString(spec.Name) || !containerReferencePattern.MatchString(spec.CurrentContainer) {
 		return nil, errors.New("invalid apply helper/container name")
 	}
@@ -230,7 +328,7 @@ func BuildApplyHelperArgs(spec ApplyHelperSpec) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !composeProjectPattern.MatchString(spec.ComposeProject) {
+	if !composeProjectPattern.MatchString(spec.ComposeProject) || !containerReferencePattern.MatchString(spec.ComposeService) {
 		return nil, errors.New("invalid compose project")
 	}
 	installDir := filepath.Clean(spec.HostInstallDir)
@@ -256,7 +354,18 @@ func BuildApplyHelperArgs(spec ApplyHelperSpec) ([]string, error) {
 		"--label", "com.anxi-panel.updater=apply",
 		"--entrypoint", "/app/panel-updater",
 		"--mount", "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock",
-		"--mount", fmt.Sprintf("type=bind,src=%s,dst=%s", installDir, installDir),
+	}
+	if spec.Conversion {
+		if !filepath.IsAbs(spec.DataMount) {
+			return nil, errors.New("legacy conversion requires a bind-mounted data directory")
+		}
+		hostParent := filepath.Dir(filepath.Clean(spec.DataMount))
+		if hostParent == string(filepath.Separator) {
+			return nil, errors.New("unsafe legacy conversion parent")
+		}
+		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s", hostParent, hostParent))
+	} else {
+		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=%s", installDir, installDir))
 	}
 	if filepath.IsAbs(spec.DataMount) {
 		args = append(args, "--mount", fmt.Sprintf("type=bind,src=%s,dst=/data", filepath.Clean(spec.DataMount)))
@@ -266,11 +375,16 @@ func BuildApplyHelperArgs(spec ApplyHelperSpec) ([]string, error) {
 		}
 		args = append(args, "--mount", fmt.Sprintf("type=volume,src=%s,dst=/data", spec.DataMount))
 	}
-	args = append(args, spec.RuntimeImage, "apply",
+	operation := "apply"
+	if spec.Conversion {
+		operation = "convert"
+	}
+	args = append(args, spec.RuntimeImage, operation,
 		"--from-version", fromVersion, "--target-version", targetVersion,
 		"--current-image", spec.RuntimeImage, "--original-digest", spec.OriginalDigest,
 		"--current-container", spec.CurrentContainer,
 		"--compose-project", spec.ComposeProject,
+		"--compose-service", spec.ComposeService,
 		"--compose-file", composeFile,
 		"--state-file", spec.StateFile, "--backup-dir", spec.BackupDir,
 		"--database-relative", filepath.ToSlash(dbRelative),

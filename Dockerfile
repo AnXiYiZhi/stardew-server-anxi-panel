@@ -66,6 +66,8 @@ LABEL org.opencontainers.image.title="stardew-server-anxi-panel" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
 RUN apk add --no-cache \
+    bash \
+    curl \
     docker-cli \
     docker-cli-compose \
     ca-certificates \
@@ -73,6 +75,7 @@ RUN apk add --no-cache \
 
 COPY --from=backend-builder /app/panel /app/panel
 COPY --from=backend-builder /app/panel-updater /app/panel-updater
+COPY deploy/migrate-fnos.sh /app/migrate-fnos.sh
 COPY --from=extension-builder /work/browser-extensions/ /app/browser-extensions/
 
 RUN mkdir -p /data

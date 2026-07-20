@@ -200,10 +200,11 @@ func (s *Service) StartApply(ctx context.Context, currentVersion, latestVersion 
 	spec := ApplyHelperSpec{
 		Name: "anxi-panel-updater-apply-" + status.UpdateID, RuntimeImage: capability.CurrentImage,
 		FromVersion: fromVersion, TargetVersion: toVersion, OriginalDigest: digest,
-		CurrentContainer: capability.CurrentContainer, ComposeProject: capability.ComposeProject,
+		CurrentContainer: capability.CurrentContainer, ComposeProject: capability.ComposeProject, ComposeService: capability.ComposeService,
 		HostInstallDir: capability.InstallDir, HostComposeFile: capability.ComposeFile,
 		DataMount: capability.DataMount, StateFile: "/data/updater/apply-status.json",
 		BackupDir: "/data/updater/backups/" + status.UpdateID, DatabaseRelativePath: filepath.ToSlash(dbRelative),
+		Conversion: capability.ConversionRequired,
 	}
 	if err := s.docker.StartApplyHelper(ctx, spec); err != nil {
 		s.logger.Warn("failed to start panel updater apply helper", "error", err)
@@ -257,6 +258,16 @@ func (s *Service) StartDryRun(ctx context.Context, targetVersion string) (DryRun
 	if _, err := TrustedImageCandidates(normalized, capability.CurrentImage); err != nil {
 		return DryRunStatus{}, ValidationError{Code: CodeImageNotAllowed, Message: err.Error()}
 	}
+	if capability.ConversionRequired {
+		finished := s.now().UTC()
+		status.Phase, status.TargetImage = "succeeded", "trusted candidates for "+normalized
+		status.UpdatedAt, status.FinishedAt = finished, &finished
+		status.Logs = append(status.Logs, LogEntry{At: finished, Level: "info", Message: "飞牛旧容器转换前置检查通过；独立 helper 将再次核对完整容器配置、拉取目标镜像并执行可回滚切换"})
+		if err := s.store.Write(status); err != nil {
+			return DryRunStatus{}, err
+		}
+		return status, nil
+	}
 	status.Logs = append(status.Logs, LogEntry{At: now, Level: "info", Message: "部署环境识别通过，正在启动独立升级演练 helper"})
 	status.Phase = "running"
 	if err := s.store.Write(status); err != nil {
@@ -264,7 +275,7 @@ func (s *Service) StartDryRun(ctx context.Context, targetVersion string) (DryRun
 	}
 	spec := HelperSpec{
 		Name: "anxi-panel-updater-" + status.ID, RuntimeImage: capability.CurrentImage,
-		TargetVersion: normalized, ComposeProject: capability.ComposeProject,
+		TargetVersion: normalized, ComposeProject: capability.ComposeProject, ComposeService: capability.ComposeService,
 		HostInstallDir: capability.InstallDir, HostComposeFile: capability.ComposeFile,
 		DataMount: capability.DataMount, StateFile: "/data/updater/status.json",
 	}

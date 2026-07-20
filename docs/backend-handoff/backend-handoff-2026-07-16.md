@@ -389,3 +389,19 @@
 - Control Docker .NET 6 契约与只读真实 game-data 编译通过（0 errors，1 个既有 analyzer warning），source/embedded DLL SHA256 均为 `547c08d8761d0a50fd713077ba9b6d5aa3db091df44be3a6400b6fdcf183f3a9`。
 - Docker Desktop 29.5.3：`.121 -> .125` stopped/running 127.72 秒/120.12 秒；`.125 + Control 0.2.0 -> .125 + Control 0.2.2` stopped/running 144.61 秒/109.60 秒，四条链均恢复原状态且运行 options 报告 0.2.2。
 - 不要重新把 `hasMenuOpen` 或 `requestingTimePause` 引入兼容层，也不要增加“由 Control 清 false”的所有权猜测。若未来要扩展菜单暂停，必须在客户端/上游提供独立、可撤销且不会被全局暂停反向维持的权威信号后另做协议。
+# 2026-07-20：飞牛旧容器标准 Compose 迁移脚本
+
+- 新增 `deploy/migrate-fnos.sh`，解决旧飞牛/NAS 容器因 Compose labels 不完整而无法使用 Panel 内置升级的问题。脚本自动选择最高版本的运行中健康 Panel；多个最高版本指向不同数据目录时拒绝自动选择，可用 `PANEL_CONTAINER` 显式指定。
+- 影响文件：`deploy/migrate-fnos.sh`、`scripts/tests/test_migrate_fnos.sh`、`.github/workflows/release.yml`、`docs/09-image-build.md`、`docs/08-future-roadmap.md`。正式 Release 现在会附加该迁移脚本。
+- 安全边界：仅接受可信镜像身份、稳定 SemVer、bind data mount、Docker Socket、单一逻辑端口、默认用户和无额外挂载的部署；默认 bridge 直接迁移，合法现有自定义/Compose 网络作为 external network 复用，host/container 模式拒绝。迁移先拉取并校验目标镜像，再备份 inspect/部署文件，旧容器改名保留。新容器健康、精确版本或 canonical labels 任一失败即恢复部署文件和旧容器。
+- 国内执行入口暂用 `https://gh-proxy.com/https://github.com/.../releases/latest/download/migrate-fnos.sh`；`anxinas.dpdns.org/migrate-fnos.sh` 当前返回 404，不得写进用户命令，待自托管站实际同步后再切换。镜像按 ACR、1ms、DaoCloud、GHCR、Docker Hub 顺序尝试；无法访问 GitHub latest API 时必须显式传入 `TARGET_VERSION=x.y.z`。
+- 已验证：Docker `bash:5.2` 中 `scripts/tests/test_migrate_fnos.sh` 与 ShellCheck 通过；隔离 Docker 29 dind 中，真实 `0.3.7` 独立容器已通过 ACR `0.3.13` 成功迁移，新容器健康/精确版本/Compose labels、旧容器停止保留及 result 文件均验收成功。停止新 Panel 的健康失败注入也已恢复原容器名称、运行状态、`restart=no` 和原部署文件。中断和真实多候选容器矩阵仍需补齐，不能直接宣称飞牛真机已经验证。
+- 下一步注意：脚本成功只完成 Panel 部署标准化。若运行时 Control 较旧，管理员仍须在新版 Panel 执行“运行组件升级”完成受控游戏重启；不得把飞牛直接 restart 游戏容器当作 Control 更新。
+# 2026-07-20 handoff：一键全栈升级第二阶段
+
+- 影响文件：`internal/updater/{deployment,docker_cli,service,helper,apply_helper,legacy_conversion,types}.go`、`cmd/panel-updater/main.go`、`cmd/panel/main.go`、`internal/web/updater_handlers.go`，以及 `internal/games/stardew_junimo` 的 required-runtime、lifecycle、runtime apply/rollback/inspection/save 流程。
+- Compose 服务名由反查结果驱动；部分飞牛 labels 不能单独作为信任依据。legacy conversion 必须满足单一 bind `/data`、Docker socket、8090 发布、非 privileged/自定义 user 等安全边界。
+- Control 更新只允许在受控停服事务中写入。失败时旧 Control 可留作人工恢复材料，但 lifecycle 启动门会阻止它再次运行；成功必须取得本次启动产生的新鲜 Control manifest。
+- 验证：`go test ./...`、`go vet ./...`；Docker updater integration 覆盖非 `panel` 服务名、成功切换与健康失败回滚。发布前还须运行 legacy conversion 成功/失败注入和候选镜像 smoke。
+- 下一步注意：新增 required-runtime 阶段时同步更新 web 聚合和前端 phase 集合；不得绕开 `stardew_junimo` driver 在 API handler 内直接操作 Control 或游戏容器。
+- Docker Desktop 真机补充：双飞牛容器依次转换不会互相重建；健康失败恢复旧容器。真实 `.125` 的 stopped/running Control 0.2.1→0.2.2 均通过，running 路径验证了通告、`GameLoop.Saved`、整档备份、停服、更新、重启和实载版本。测试同时推动修复内部 8080/宿主 API 端口混用与 Windows bind 目录 rename 锁。
