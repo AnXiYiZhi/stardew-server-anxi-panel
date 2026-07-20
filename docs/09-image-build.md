@@ -1,9 +1,19 @@
+# v0.4.1 发布记录：飞牛 OS 迁移脚本更新（2026-07-20）
+
+- `v0.4.1` 发布 `migrate-fnos.sh` 修订 3：支持保留可验证的额外 bind mount 与具名 Docker volume；迁移后复核 Compose、四项 labels、服务对应容器 ID、镜像引用/digest 和可写数据挂载，成功输出 `ANXI_PANEL_WEB_UPDATE_READY`。
+- 修复飞牛残留 Compose project/service labels 与新项目同名时，改名保留的旧容器被 Compose 误识别并重新启动的问题；冲突时使用旧容器 ID 派生的隔离 project，旧容器仍保留用于失败回滚。
+- 展示文档新增 `v0.4.1` 更新日志，收紧顶部“快速上手”导航胶囊高度，并突出首页第二行左侧的版本更新卡片。Docker Desktop 隔离 dind 已覆盖残留 labels、额外挂载和 `0.3.7 → 0.4.0` 成功迁移；完整后端 test/vet/build、两项 Docker integration、前端九项状态脚本与 production build、兼容矩阵、Shell 函数测试、ShellCheck、VitePress build 及桌面/390px 视觉验收均通过。`0.4.1-rc` 候选镜像返回 healthy、精确 `/api/version=0.4.1`、正确 OCI identity，并内置可执行 updater 与 `migrate-fnos.sh` 修订 3。
+
 # v0.4.0 发布记录：一键全栈安全升级（2026-07-20）
 
 - `v0.4.0` 将 Panel 自更新扩展为可恢复的一键全栈升级：安全识别任意 Compose 服务名，并对飞牛残缺 labels 执行容器、Compose、镜像和数据挂载四方反查；无法证明一致的部署拒绝自动操作。
 - 飞牛式旧容器可由镜像内独立 `/app/panel-updater` 转换为标准 Compose。重建前备份数据库、Compose、环境变量、容器 inspect 和旧镜像 digest；新 Panel 健康、版本或 labels 验收失败时恢复旧容器、部署文件与数据库。
 - 新 Panel 会逐实例校验 Control 版本和 DLL SHA-256。不匹配时严格执行游戏内通告、保存、整档保护备份、停服安装、重新启动和 SMAPI 实载版本验证；同步失败的实例保持停止，禁止带旧 DLL 继续运行。状态持久化保证 Panel 自身重启后继续剩余步骤。
 - Docker Desktop 门禁已覆盖自定义 Compose 服务、成功升级、健康失败回滚、多旧容器连续转换、数据库 hash 恢复、`.125` stopped/running Control 更新、在线通告与保存证据，以及 `0.4.0` 候选镜像 health/version/OCI/helper/script smoke。annotated tag `v0.4.0` 继续触发 Docker Hub、阿里云 ACR、GHCR 的 `0.4.0/latest` 和 GitHub Release。
+- `migrate-fnos.sh` 修订 2 不再因存在任意第三挂载而统一拒绝：脚本从 Docker inspect 分类额外挂载，可验证的 bind mount 保留 source/target/read-only/propagation，Docker volume 以原名称声明为 external 并保留 read-only；标准 Docker Socket也保留原只读属性。Panel 数据目录必须可写；tmpfs、宿主设备、未知 mount type 或不安全字段会在拉镜像、备份和切换前拒绝。`extra-mounts.txt` 随迁移保护材料落盘。
+- 修订 2 的成功门禁不再只检查新容器能否启动：切换后必须再次验证精确版本、Compose 可解析、project/service/config_files/working_dir labels、Compose `panel` 服务与当前容器 ID、配置镜像与运行 image digest、可写数据挂载全部一致。任一失败都回滚旧容器；全部通过时 `result.txt` 写入 `upgrade_environment=supported` 与 `success_code=ANXI_PANEL_WEB_UPDATE_READY`，终端明确输出“支持后续新版本通过 Panel Web 一键安全升级”和同一成功识别码，便于远程管理员确认。
+- 修订 3 修复飞牛部分残留 labels 与脚本生成 project 同名时，旧容器改名后仍被 Compose 当作目标服务重新启动的问题。脚本在修改前检查旧 project label 和全局同 project 容器；存在冲突时使用基于旧容器不可变 ID 的 `anxi-panel-migrated-<12位ID>` 隔离项目名，并再次确认该项目未被任何容器占用。这样既保留旧容器用于回滚，又保证新 Compose 只能创建并管理新 Panel。
+- Docker Desktop 真机使用真实 `0.3.7` 容器验证“只读时区 bind + 可写外部 volume + 只读 Docker Socket”迁移到 `0.4.0` 后四项 mount inspect 完全保持；另注入 `--tmpfs /tmp/custom`，脚本在修改前退出，旧容器仍为原镜像、原名称、`unless-stopped` 且持续健康，未生成 Compose 或事务目录。
 
 # v0.3.13 发布记录：存档上传编码与删除一致性（2026-07-20）
 
@@ -847,7 +857,7 @@ docker run --rm `
 
 - 新增 `deploy/migrate-fnos.sh`，用于处理飞牛/NAS 通过“创建容器”或非标准 Compose 部署后，Panel 内置升级提示“当前容器的 Compose labels 不完整或不符合标准 panel 服务”的启动死锁。脚本必须在 Linux/NAS 宿主机 SSH 中运行，不得在 Panel 容器终端内运行。
 - 脚本枚举运行中、健康、OCI identity 或可信仓库匹配且能解析稳定 SemVer 的 Panel，自动选择最高版本；最高版本同名候选共享数据目录时取创建时间最新者，不同数据目录时停止并要求通过 `PANEL_CONTAINER` 明确选择。不可按容器名称或可变 `latest` tag 猜测版本。
-- 迁移仅支持可验证的 bind-mounted Panel 数据目录、标准 Docker Socket、单一逻辑 `8090/tcp` 发布端口、非 privileged/root 默认用户；默认 bridge 可直接迁移，合法的现有自定义/Compose 网络会作为 external network 原样复用，不删除或重建。额外挂载、host/container 网络模式、匿名卷或多个独立部署一律停止，不擅自丢弃现场配置。
+- 迁移仅支持可验证且可写的 bind-mounted Panel 数据目录、标准 Docker Socket、单一逻辑 `8090/tcp` 发布端口、非 privileged/root 默认用户；默认 bridge 可直接迁移，合法的现有自定义/Compose 网络会作为 external network 原样复用，不删除或重建。额外 bind mount 与具名 Docker volume 在 source/name、target、读写属性及传播语义均可验证时原样保留；tmpfs、宿主设备、匿名卷、host/container 网络模式、无法无损表达的额外挂载或多个独立部署一律停止，不擅自丢弃现场配置。
 - 目标版本默认从 GitHub 最新稳定 Release 获取，也可通过 `TARGET_VERSION=x.y.z` 精确指定。镜像依次尝试阿里云 ACR、1ms、DaoCloud、GHCR、Docker Hub，拉取后必须校验 OCI title 和精确 version。
 - 事务顺序为：备份 `docker inspect` 与已有部署文件、生成并校验标准 Compose、旧容器改名保留并关闭自动重启、新容器创建、容器健康和 `/api/version` 精确验收、Compose canonical labels 验收。任何失败都会删除失败的新容器、恢复原部署文件、恢复旧容器名称/重启策略并启动旧容器；绝不删除 Panel 数据、游戏容器、volume、存档或 Mod。
 - 成功后的旧容器保持停止、`restart=no` 并保留，供管理员确认稳定后人工处理；不得再从飞牛旧项目启动/更新它。确认新版本稳定后可删除旧容器，但不能删除数据目录或新版仍作为 external 使用的旧网络。迁移只解决 Panel 部署/升级能力；运行中旧 Control 仍须登录新版 Panel 执行“运行组件升级”的受控保存、备份和游戏重启，禁止仅从飞牛直接重启游戏容器。

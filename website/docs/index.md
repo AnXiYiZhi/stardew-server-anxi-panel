@@ -39,7 +39,7 @@ features:
     linkText: 查看深度文档
   - icon: 📋
     title: 版本更新日志
-    details: 从 v0.1.0 到当前版本的完整更新记录，了解每次版本带来了哪些新功能和修复。
+    details: 当前最新 v0.4.1。查看飞牛 OS 迁移脚本更新，以及从 v0.1.0 至今的完整更新记录。
     link: /changelog
     linkText: 查看更新日志
   - icon: ❓

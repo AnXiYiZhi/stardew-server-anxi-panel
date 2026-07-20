@@ -10,7 +10,7 @@
 
 首个可上线版本默认使用 **Single Game Mode**：用户登录后直接进入 Stardew 面板，不显示总面板和游戏列表。内部仍按 `instances + driver_id + GameDriver` 设计，等开发第二个游戏面板时再开启 **Multi Game Mode**。
 
-> 当前状态：**v0.3.13**。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry、Stardew Junimo 的工作目录准备、Steam 认证、游戏安装、服务器生命周期、存档管理（含中文存档编码修复）、Mod 管理、控制台命令、多阶段 Docker 镜像构建、操作审计、日志脱敏、备份恢复、健康检查诊断、版本信息、支持包导出和冒烟测试脚本。前端包含 Stardew 像素风 Shell、9 路由桌面端和 5 页面移动端。
+> 当前状态：**v0.4.1**。后端已包含配置加载、SQLite、认证与权限、Docker / Compose allowlist、jobs/job_logs/SSE、instances、GameDriver registry、Stardew Junimo 的工作目录准备、Steam 认证、游戏安装、服务器生命周期、存档管理（含中文存档编码修复）、Mod 管理、控制台命令、多阶段 Docker 镜像构建、操作审计、日志脱敏、备份恢复、健康检查诊断、版本信息、支持包导出和冒烟测试脚本。前端包含 Stardew 像素风 Shell、9 路由桌面端和 5 页面移动端。
 
 ## 新手先看
 

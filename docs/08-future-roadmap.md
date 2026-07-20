@@ -1,7 +1,15 @@
+# 2026-07-20 发布：v0.4.1 飞牛 OS 迁移脚本更新
+
+- [x] 迁移脚本修订 3 保留安全可验证的额外挂载，以唯一 Compose project 隔离飞牛残留 labels，并在完整升级能力终检通过后输出固定成功识别码。
+- [x] 展示文档更新 v0.4.1 日志，收紧顶部快速上手导航样式，突出首页版本更新卡片。
+
 # 2026-07-20 发布：v0.4.0 一键全栈安全升级
 
 - [x] Compose 服务名不再硬编码为 `panel`；只有容器、Compose 配置、镜像身份与数据挂载反查完全一致时，才允许标准部署直接升级。
 - [x] 飞牛旧容器可由独立 helper 转换为标准 Compose；转换前保护数据库、Compose、环境变量、容器 inspect 与旧镜像 digest，新 Panel 健康失败自动恢复旧容器和数据库。
+- [x] 飞牛迁移脚本修订 2 会分类额外挂载：可验证的 bind mount 与 Docker volume 自动按原目标、读写属性和 propagation/external 语义迁移；tmpfs、宿主设备、不可写数据目录及无法无损表达的挂载在修改前拒绝。
+- [x] 飞牛迁移成功回执与 Web 升级能力终检：标准 Compose 二次解析、四项 Compose labels、服务对应容器 ID、镜像引用/digest 和可写数据挂载全部一致后，才持久化 `upgrade_environment=supported` 并输出固定识别码 `ANXI_PANEL_WEB_UPDATE_READY`；任一失败自动恢复旧容器。
+- [x] 飞牛残留 Compose labels 隔离：旧 project label 或全局同名项目与拟生成项目冲突时，迁移脚本改用旧容器 ID 派生的唯一 project，避免改名保留的旧容器被 Compose 误识别并重新启动。
 - [x] Panel 更新后逐实例校验 Control 版本和 DLL hash；不匹配时执行游戏内通告、保存、整档备份、停止、更新、启动和 SMAPI 实载验证，失败实例保持停止。
 - [x] 全栈升级状态持久化并支持 Panel 重启续跑；在线确认明确展示真人数量、保存、备份、重启和客户端断线影响。
 - [x] Docker Desktop 已覆盖任意 Compose 服务名、连续多旧容器转换、成功与健康失败回滚、数据库 hash 恢复、`.125` stopped/running Control 更新及候选镜像 smoke。
