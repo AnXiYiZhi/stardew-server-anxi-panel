@@ -98,8 +98,13 @@ func main() {
 			logger.Error("failed to prepare default instance", "instance", defaultInstance.ID, "error", err)
 		}
 	}
-	if defaultInstance.DriverID == stardewDriver.ID() {
-		stardewDriver.StartRequiredRuntimeUpdate(signalCtx, defaultRegistryInstance)
+	// Every managed instance participates in the required full-stack follow-up.
+	// The coordinator is durable per instance and serializes its own runtime jobs.
+	for _, instance := range instances {
+		if instance.DriverID != stardewDriver.ID() {
+			continue
+		}
+		stardewDriver.StartRequiredRuntimeUpdate(signalCtx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt})
 	}
 
 	restartScheduler := web.NewRestartScheduler(web.RestartSchedulerDeps{

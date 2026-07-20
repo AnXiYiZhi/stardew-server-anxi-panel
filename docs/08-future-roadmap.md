@@ -1,3 +1,11 @@
+# 2026-07-20 发布：v0.4.0 一键全栈安全升级
+
+- [x] Compose 服务名不再硬编码为 `panel`；只有容器、Compose 配置、镜像身份与数据挂载反查完全一致时，才允许标准部署直接升级。
+- [x] 飞牛旧容器可由独立 helper 转换为标准 Compose；转换前保护数据库、Compose、环境变量、容器 inspect 与旧镜像 digest，新 Panel 健康失败自动恢复旧容器和数据库。
+- [x] Panel 更新后逐实例校验 Control 版本和 DLL hash；不匹配时执行游戏内通告、保存、整档备份、停止、更新、启动和 SMAPI 实载验证，失败实例保持停止。
+- [x] 全栈升级状态持久化并支持 Panel 重启续跑；在线确认明确展示真人数量、保存、备份、重启和客户端断线影响。
+- [x] Docker Desktop 已覆盖任意 Compose 服务名、连续多旧容器转换、成功与健康失败回滚、数据库 hash 恢复、`.125` stopped/running Control 更新及候选镜像 smoke。
+
 # 2026-07-20 发布：v0.3.13 存档上传编码与删除一致性修复
 
 - [x] GBK/GB18030 ZIP 名称在预览前规范成 UTF-8，并固定完整 Stardew 存档布局、重复路径、控制字符、长度与 Junimo 命令边界。
@@ -1430,3 +1438,26 @@ Multi Game Mode later
 - [x] Control 0.2.2 删除 connected-client/menu 强制暂停分支，仅保留真实零连接兼容；契约矩阵固定任意正连接数都返回 `None`。
 - [x] 运行时检查把旧 `options.json.controlModVersion` 识别为 `control_update_available`，保证 Panel 升级后通过受控重启加载新 DLL。
 - [x] Docker Desktop 真实 `.121 -> .125` 与 `.125 old-Control -> .125 Control 0.2.2` stopped/running 四条链通过；无 test seam 或生产凭据进入候选镜像。
+
+# FNOS-COMPOSE-MIGRATION-1：飞牛旧容器升级引导（2026-07-20，implemented / Linux E2E pending）
+
+- [x] 提供 SSH 一键迁移脚本，自动识别最高版本的运行中健康 Anxi Panel，并对多数据目录歧义安全停止。
+- [x] 迁移生成标准 `panel` Compose 服务和完整宿主部署变量，使后续 Panel 内升级获得 canonical labels 与严格路径兜底。
+- [x] 使用精确稳定版本、国内镜像候选、OCI identity/version 校验、旧容器保留、部署文件备份和失败自动回滚；不删除数据、游戏容器或 volume。
+- [x] Release workflow 上传 `migrate-fnos.sh` 并执行脚本语法/纯函数测试。
+- [x] 隔离 Docker 29 dind 成功链已完成：真实 `0.3.7` 独立容器经 ACR 升到 `0.3.13`，健康、精确版本、canonical labels、旧容器保留和 result 文件全部通过。
+- [x] 停止新 Panel 的健康失败注入已验证自动回滚：原 `0.3.7` 容器名称、运行状态、`restart=no` 与部署文件全部恢复，新容器和临时旧名称没有残留。
+- [ ] 中断和真实多候选容器矩阵仍待补齐（最高 SemVer 纯函数已有回归）；当前不得宣称已经在飞牛真机完成迁移。
+- [ ] 后续在 Panel 内设计受控“遗留部署转标准 Compose”入口；已经被旧版前置校验拦截的实例仍必须先执行本脚本一次，无法由尚未运行的新版本自行修复。
+# 2026-07-20：一键全栈升级第二阶段
+
+- [x] Compose 服务名安全反查，不再硬编码 `panel`。
+- [x] 兼容飞牛部分 labels，并强制核对容器、Compose、镜像与数据挂载。
+- [x] 独立 helper 转换标准部署，转换前备份且新 Panel 失败自动恢复旧容器。
+- [x] Panel 更新后遍历全部实例校验 Control 版本/DLL hash，并持久化续跑。
+- [x] 运行实例执行通告、保存、整档备份、停服、Control 更新、重启与 SMAPI 实载验证；同步失败保持停服。
+- [x] 前端在线玩家升级警告、转换入口和逐实例状态。
+- [ ] 正式 tag/三仓镜像发布（仅在本阶段 Docker 真机矩阵全部通过后执行）。
+- [x] 多个旧 Panel 转换 project 隔离、确认后镜像 ID 防竞态复核。
+- [x] 多实例 API 端口内外分离与陈旧 Compose project 环境兼容。
+- [x] Docker Desktop `.125` stopped/running Control 实载矩阵及整档备份验证。

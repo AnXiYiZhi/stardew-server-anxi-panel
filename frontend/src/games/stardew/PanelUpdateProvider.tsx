@@ -269,7 +269,7 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
     refreshUpdateStatus, runUpdateDryRun, applyUpdate, continueReconnect,
   ])
 
-  const overlayPhase = panelUpdatePhaseLabel(updateApply?.phase ?? '')
+	const overlayPhase = panelUpdatePhaseLabel(updateApply?.fullStack?.phase ?? updateApply?.phase ?? '')
   return (
     <PanelUpdateContext.Provider value={value}>
       {children}
@@ -281,9 +281,9 @@ export function PanelUpdateProvider({ user, children }: { user: CurrentUser; chi
             <h1>{reconnectMode === 'timeout' ? '面板恢复时间比预期更长' : '面板正在升级'}</h1>
             <p className="sd-panel-update-reconnect-phase">{overlayPhase}</p>
             {reconnectMode === 'timeout' ? (
-              <p>游戏服务器仍会继续运行。你可以留在此页继续等待，或稍后重新打开面板；若持续无法恢复，请联系面板管理员查看恢复记录。</p>
+			  <p>全栈升级恢复时间比预期更长。游戏实例可能正在保存、备份、重启或回滚；请勿手动启动旧 Control。你可以继续等待，或稍后重新打开面板查看持久化状态。</p>
             ) : (
-              <p>游戏服务器不会停止。面板会短暂离线，正在自动等待新版本恢复，请不要重复点击升级。</p>
+			  <p>Panel 会短暂离线；新 Panel 恢复后将继续校验全部实例，必要时保存、整档备份并重启游戏服务器。请不要重复点击或手动重启容器。</p>
             )}
             <div className="sd-panel-update-reconnect-progress" aria-hidden="true"><span /></div>
             <p className="sd-panel-update-reconnect-attempt">已自动尝试连接 {reconnectAttempts} 次</p>

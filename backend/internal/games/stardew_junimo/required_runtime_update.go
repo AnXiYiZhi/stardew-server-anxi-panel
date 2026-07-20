@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
@@ -18,6 +19,9 @@ const (
 	requiredRuntimePhaseChecking  = "checking"
 	requiredRuntimePhaseRepairing = "repairing"
 	requiredRuntimePhasePreflight = "preflighting"
+	requiredRuntimePhaseNotifying = "notifying_players"
+	requiredRuntimePhaseSaving    = "saving_game"
+	requiredRuntimePhaseBackingUp = "backing_up_save"
 	requiredRuntimePhaseApplying  = "applying"
 	requiredRuntimePhaseSucceeded = "succeeded"
 	requiredRuntimePhaseFailed    = "failed"
@@ -30,15 +34,18 @@ const (
 // This file only prevents an identical Panel/stack pair from retrying forever
 // after a deterministic failure on every Panel restart.
 type RequiredRuntimeUpdateStatus struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	PanelVersion  string `json:"panelVersion"`
-	StackVersion  string `json:"stackVersion"`
-	Phase         string `json:"phase"`
-	ErrorCode     string `json:"errorCode,omitempty"`
-	Error         string `json:"error,omitempty"`
-	StartedAt     string `json:"startedAt,omitempty"`
-	UpdatedAt     string `json:"updatedAt,omitempty"`
-	FinishedAt    string `json:"finishedAt,omitempty"`
+	SchemaVersion    int    `json:"schemaVersion"`
+	PanelVersion     string `json:"panelVersion"`
+	StackVersion     string `json:"stackVersion"`
+	Phase            string `json:"phase"`
+	ErrorCode        string `json:"errorCode,omitempty"`
+	Error            string `json:"error,omitempty"`
+	StartedAt        string `json:"startedAt,omitempty"`
+	UpdatedAt        string `json:"updatedAt,omitempty"`
+	FinishedAt       string `json:"finishedAt,omitempty"`
+	ServerWasRunning bool   `json:"serverWasRunning,omitempty"`
+	OnlinePlayers    int    `json:"onlinePlayers,omitempty"`
+	BackupName       string `json:"backupName,omitempty"`
 }
 
 func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance registry.Instance) {
@@ -56,11 +63,11 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 		return
 	}
 	if previous, readErr := readRequiredRuntimeUpdateStatus(instance.DataDir); readErr == nil && previous.PanelVersion == d.panelVersion && previous.StackVersion == manifest.StackVersion {
-		if previous.Phase == requiredRuntimePhaseFailed || previous.Phase == requiredRuntimePhaseManual {
+		if previous.Phase == requiredRuntimePhaseManual || previous.Phase == requiredRuntimePhaseFailed && previous.ErrorCode != "context_cancelled" {
 			d.requiredRuntimeMu.Unlock()
 			return
 		}
-		if previous.Phase == requiredRuntimePhaseSucceeded && InspectRuntimeStack(instance.DataDir, instance.State).Status == sjconfig.RuntimeStackStatusUpToDate {
+		if previous.Phase == requiredRuntimePhaseSucceeded && InspectManagedRuntimeStack(instance.DataDir, instance.State).Status == sjconfig.RuntimeStackStatusUpToDate {
 			d.requiredRuntimeMu.Unlock()
 			return
 		}
@@ -88,7 +95,7 @@ func (d *Driver) requireCurrentRuntimeStack(instance registry.Instance) error {
 	if instance.State == storage.InstanceStateUninitialized || instance.State == storage.InstanceStateAdminCreated {
 		return nil
 	}
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
 		return nil
 	}
@@ -131,7 +138,7 @@ func (d *Driver) runRequiredRuntimeUpdate(ctx context.Context, instance registry
 		return instance
 	}
 	instance = refreshInstance()
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
 		return set(requiredRuntimePhaseSucceeded, "", "", true)
 	}
@@ -145,7 +152,7 @@ func (d *Driver) runRequiredRuntimeUpdate(ctx context.Context, instance registry
 			return err
 		}
 		instance = refreshInstance()
-		inspection = InspectRuntimeStack(instance.DataDir, instance.State)
+		inspection = InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	}
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		phase := requiredRuntimePhaseFailed
@@ -184,6 +191,12 @@ func (d *Driver) runRequiredRuntimeUpdate(ctx context.Context, instance registry
 	}
 
 apply:
+	instance = refreshInstance()
+	if err := d.prepareRequiredRuntimeMaintenance(ctx, instance, &status, set); err != nil {
+		code := runtimeUpdateErrorCode(err)
+		_ = set(requiredRuntimePhaseFailed, code, err.Error(), true)
+		return err
+	}
 	if err := set(requiredRuntimePhaseApplying, "", "", false); err != nil {
 		return err
 	}
@@ -214,6 +227,101 @@ apply:
 			return errors.New(current.ErrorCode)
 		}
 	}
+}
+
+// prepareRequiredRuntimeMaintenance protects the game state before the
+// runtime updater is allowed to stop or recreate containers. A loaded world
+// must acknowledge the save command; a configured but currently unloaded
+// save is already quiescent and can be backed up directly.
+func (d *Driver) prepareRequiredRuntimeMaintenance(ctx context.Context, instance registry.Instance, status *RequiredRuntimeUpdateStatus, set func(string, string, string, bool) error) error {
+	status.ServerWasRunning = instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting
+	if !status.ServerWasRunning {
+		return nil
+	}
+
+	if players, err := d.ListPlayers(ctx, instance); err == nil {
+		for _, player := range players.Players {
+			if !player.IsHost && player.Status == "online" {
+				status.OnlinePlayers++
+			}
+		}
+	}
+	worldLoaded := readSMAPIStatus(instance.DataDir) == "save-loaded"
+	if status.OnlinePlayers > 0 || worldLoaded {
+		if err := set(requiredRuntimePhaseNotifying, "", "", false); err != nil {
+			return err
+		}
+		commandID, err := writePanelBroadcastCommand(instance.DataDir, "服务器即将进行全栈升级。系统会先保存并创建整档保护备份，随后短暂停服并自动恢复；请等待服务器重新上线后再连接。")
+		if err != nil {
+			return &RuntimeUpdateValidationError{Code: "runtime_update_notice_failed", Message: "无法发送升级前游戏内通告：" + err.Error()}
+		}
+		_ = commandID // durable command creation is the delivery acknowledgement
+	}
+
+	activeSave := strings.TrimSpace(GetActiveSaveName(instance.DataDir))
+	if activeSave == "" {
+		return nil
+	}
+	if worldLoaded || status.OnlinePlayers > 0 {
+		if err := set(requiredRuntimePhaseSaving, "", "", false); err != nil {
+			return err
+		}
+		result, err := requestSaveNow(instance)
+		if err != nil {
+			return &RuntimeUpdateValidationError{Code: "runtime_update_save_failed", Message: "无法提交升级前保存：" + err.Error()}
+		}
+		_, err = waitForDurableSaveOutcome(ctx, instance.DataDir, result.CommandID, importDurableSaveOptions{
+			CommandTimeout: 3 * time.Minute,
+			PollInterval:   250 * time.Millisecond,
+			GetOutcome: func(dataDir, commandID string) (CommandOutcome, error) {
+				return d.importCommandOutcome(ctx, instance.ID, dataDir, commandID)
+			},
+		})
+		if err != nil {
+			return &RuntimeUpdateValidationError{Code: "runtime_update_save_failed", Message: "升级前保存未得到持久化确认：" + err.Error()}
+		}
+	}
+	if err := set(requiredRuntimePhaseBackingUp, "", "", false); err != nil {
+		return err
+	}
+	backupPath, err := BackupPreRuntimeUpdate(instance.DataDir, activeSave)
+	if err != nil {
+		return &RuntimeUpdateValidationError{Code: "runtime_update_backup_failed", Message: "整档保护备份失败：" + err.Error()}
+	}
+	status.BackupName = filepath.Base(backupPath)
+	return writeRequiredRuntimeUpdateStatus(instance.DataDir, *status)
+}
+
+func (d *Driver) waitRequiredRuntimeCommand(ctx context.Context, instance registry.Instance, commandID string, timeout time.Duration) error {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		outcome, err := d.importCommandOutcome(ctx, instance.ID, instance.DataDir, commandID)
+		if err != nil {
+			return err
+		}
+		switch outcome.Status {
+		case CommandStatusSucceeded, CommandStatusDispatched:
+			return nil
+		case CommandStatusFailed, CommandStatusExpired:
+			return fmt.Errorf("command status %s: %s", outcome.Status, outcome.Message)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return errors.New("command acknowledgement timeout")
+		case <-ticker.C:
+		}
+	}
+}
+
+// ReadRequiredRuntimeUpdateStatus exposes the durable coordinator result to
+// the HTTP aggregation layer without making it the authority for apply logic.
+func (d *Driver) ReadRequiredRuntimeUpdateStatus(instance registry.Instance) (RequiredRuntimeUpdateStatus, error) {
+	return readRequiredRuntimeUpdateStatus(instance.DataDir)
 }
 
 func waitRequiredRuntimePoll(ctx context.Context, interval time.Duration) error {

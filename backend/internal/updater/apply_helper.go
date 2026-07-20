@@ -69,6 +69,7 @@ type ApplyOptions struct {
 	OriginalDigest   string
 	CurrentContainer string
 	ComposeProject   string
+	ComposeService   string
 	ComposeFile      string
 	StateFile        string
 	BackupDir        string
@@ -92,6 +93,9 @@ type applyFailure struct{ code, message string }
 func (e applyFailure) Error() string { return e.message }
 
 func RunApply(ctx context.Context, opts ApplyOptions) error {
+	if strings.TrimSpace(opts.ComposeService) == "" {
+		opts.ComposeService = "panel"
+	}
 	executor := opts.Executor
 	if executor == nil {
 		executor = ExecDocker{}
@@ -142,7 +146,7 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 	if cmp, _ := CompareStableVersions(from, to); cmp >= 0 {
 		return failTerminal(PhaseRollbackFailed, CodeUpdateNotAvailable, "目标版本必须高于原版本", "helper 参数校验失败")
 	}
-	if !containerReferencePattern.MatchString(opts.CurrentContainer) || !composeProjectPattern.MatchString(opts.ComposeProject) {
+	if !containerReferencePattern.MatchString(opts.CurrentContainer) || !composeProjectPattern.MatchString(opts.ComposeProject) || !containerReferencePattern.MatchString(opts.ComposeService) {
 		return failTerminal(PhaseRollbackFailed, CodeComposeMetadataInvalid, "容器或 Compose 项目标识不合法", "helper 参数校验失败")
 	}
 	if err := secureApplyPaths(opts); err != nil {
@@ -209,7 +213,7 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		}
 		composeArgs := composeBaseArgs(opts.ComposeProject, opts.ComposeFile, envFile)
 		configCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		resolved, configErr := executor.Output(configCtx, append(composeArgs, "config", "--images", "panel")...)
+		resolved, configErr := executor.Output(configCtx, append(composeArgs, "config", "--images", opts.ComposeService)...)
 		cancel()
 		if configErr != nil || strings.TrimSpace(resolved) != selected {
 			return applyFailure{"deployment_update_failed", "Compose 配置未精确解析到目标镜像"}
@@ -219,7 +223,7 @@ func RunApply(ctx context.Context, opts ApplyOptions) error {
 		}
 		recreateAttempted = true
 		recreateCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-		err = executor.Run(recreateCtx, append(composeArgs, "up", "-d", "--pull", "always", "--force-recreate", "--no-deps", "panel")...)
+		err = executor.Run(recreateCtx, append(composeArgs, "up", "-d", "--pull", "always", "--force-recreate", "--no-deps", opts.ComposeService)...)
 		cancel()
 		if err != nil {
 			return applyFailure{CodeComposeRecreateFailed, "panel 服务重建失败"}
@@ -447,7 +451,7 @@ func rollbackApply(ctx context.Context, executor ApplyExecutor, opts ApplyOption
 	}
 	composeArgs := composeBaseArgs(opts.ComposeProject, opts.ComposeFile, envFile)
 	configCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	resolved, err := executor.Output(configCtx, append(composeArgs, "config", "--images", "panel")...)
+	resolved, err := executor.Output(configCtx, append(composeArgs, "config", "--images", opts.ComposeService)...)
 	cancel()
 	if err != nil || strings.TrimSpace(resolved) != opts.CurrentImage {
 		return errors.New("restored compose image mismatch")
@@ -459,7 +463,7 @@ func rollbackApply(ctx context.Context, executor ApplyExecutor, opts ApplyOption
 		return errors.New("restored image digest mismatch")
 	}
 	upCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	err = executor.Run(upCtx, append(composeArgs, "up", "-d", "--pull", "never", "--force-recreate", "--no-deps", "panel")...)
+	err = executor.Run(upCtx, append(composeArgs, "up", "-d", "--pull", "never", "--force-recreate", "--no-deps", opts.ComposeService)...)
 	cancel()
 	if err != nil {
 		return err

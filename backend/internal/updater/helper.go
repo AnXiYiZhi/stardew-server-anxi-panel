@@ -15,6 +15,7 @@ type DryRunOptions struct {
 	TargetVersion  string
 	CurrentImage   string
 	ComposeProject string
+	ComposeService string
 	ComposeFile    string
 	StateFile      string
 	Now            func() time.Time
@@ -45,6 +46,9 @@ func (e ExecDocker) Run(ctx context.Context, args ...string) error {
 }
 
 func RunDryRun(ctx context.Context, opts DryRunOptions) error {
+	if strings.TrimSpace(opts.ComposeService) == "" {
+		opts.ComposeService = "panel"
+	}
 	now := opts.Now
 	if now == nil {
 		now = time.Now
@@ -85,7 +89,7 @@ func RunDryRun(ctx context.Context, opts DryRunOptions) error {
 	if err != nil {
 		return fail(CodeImageNotAllowed, "无法生成可信升级镜像候选")
 	}
-	if !composeProjectPattern.MatchString(opts.ComposeProject) || !filepath.IsAbs(opts.ComposeFile) {
+	if !composeProjectPattern.MatchString(opts.ComposeProject) || !containerReferencePattern.MatchString(opts.ComposeService) || !filepath.IsAbs(opts.ComposeFile) {
 		return fail(CodeComposeMetadataInvalid, "Compose 项目参数不合法")
 	}
 	status.Phase = "running"
@@ -126,7 +130,7 @@ func RunDryRun(ctx context.Context, opts DryRunOptions) error {
 	}
 	defer os.RemoveAll(overrideDir)
 	overrideFile := filepath.Join(overrideDir, "docker-compose.updater.yml")
-	override := []byte("services:\n  panel:\n    image: " + selected + "\n")
+	override := []byte("services:\n  " + opts.ComposeService + ":\n    image: " + selected + "\n")
 	if err := os.WriteFile(overrideFile, override, 0o600); err != nil {
 		return fail("compose_validation_failed", "无法创建 Compose 校验覆盖文件")
 	}

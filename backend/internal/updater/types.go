@@ -37,17 +37,19 @@ const (
 )
 
 type Capability struct {
-	Supported        bool   `json:"supported"`
-	Reason           string `json:"reason"`
-	Code             string `json:"code"`
-	ComposeProject   string `json:"composeProject"`
-	ComposeFile      string `json:"composeFile"`
-	InstallDir       string `json:"installDir"`
-	CurrentContainer string `json:"currentContainer"`
-	CurrentImage     string `json:"currentImage"`
-	DataMount        string `json:"dataMount"`
-	DockerAvailable  bool   `json:"dockerAvailable"`
-	ComposeAvailable bool   `json:"composeAvailable"`
+	Supported          bool   `json:"supported"`
+	Reason             string `json:"reason"`
+	Code               string `json:"code"`
+	ComposeProject     string `json:"composeProject"`
+	ComposeService     string `json:"composeService"`
+	ComposeFile        string `json:"composeFile"`
+	InstallDir         string `json:"installDir"`
+	CurrentContainer   string `json:"currentContainer"`
+	CurrentImage       string `json:"currentImage"`
+	DataMount          string `json:"dataMount"`
+	DockerAvailable    bool   `json:"dockerAvailable"`
+	ComposeAvailable   bool   `json:"composeAvailable"`
+	ConversionRequired bool   `json:"conversionRequired,omitempty"`
 }
 
 type LogEntry struct {
@@ -71,23 +73,55 @@ type DryRunStatus struct {
 }
 
 type ApplyStatus struct {
-	UpdateID         string     `json:"updateId"`
-	Phase            string     `json:"phase"`
-	Progress         int        `json:"progress"`
-	FromVersion      string     `json:"fromVersion"`
-	ToVersion        string     `json:"toVersion"`
-	OriginalImage    string     `json:"originalImage"`
-	OriginalDigest   string     `json:"originalDigest"`
-	SelectedImage    string     `json:"selectedImage"`
-	SelectedDigest   string     `json:"selectedDigest"`
-	ErrorCode        string     `json:"errorCode"`
-	Error            string     `json:"error"`
-	Result           string     `json:"result"`
-	CleanupCompleted bool       `json:"cleanupCompleted,omitempty"`
-	Logs             []LogEntry `json:"logs"`
-	StartedAt        time.Time  `json:"startedAt"`
-	UpdatedAt        time.Time  `json:"updatedAt"`
-	FinishedAt       *time.Time `json:"finishedAt"`
+	UpdateID         string           `json:"updateId"`
+	Phase            string           `json:"phase"`
+	Progress         int              `json:"progress"`
+	FromVersion      string           `json:"fromVersion"`
+	ToVersion        string           `json:"toVersion"`
+	OriginalImage    string           `json:"originalImage"`
+	OriginalDigest   string           `json:"originalDigest"`
+	SelectedImage    string           `json:"selectedImage"`
+	SelectedDigest   string           `json:"selectedDigest"`
+	ErrorCode        string           `json:"errorCode"`
+	Error            string           `json:"error"`
+	Result           string           `json:"result"`
+	CleanupCompleted bool             `json:"cleanupCompleted,omitempty"`
+	Logs             []LogEntry       `json:"logs"`
+	StartedAt        time.Time        `json:"startedAt"`
+	UpdatedAt        time.Time        `json:"updatedAt"`
+	FinishedAt       *time.Time       `json:"finishedAt"`
+	FullStack        *FullStackStatus `json:"fullStack,omitempty"`
+}
+
+// FullStackStatus extends a successful Panel image replacement with the
+// required game-runtime reconciliation performed by the new Panel process.
+// It is deliberately separate from Phase: the helper remains the authority
+// for Panel rollback while this status describes the second, resumable stage.
+type FullStackStatus struct {
+	Phase            string                    `json:"phase"`
+	Progress         int                       `json:"progress"`
+	InstanceID       string                    `json:"instanceId,omitempty"`
+	RuntimeRequired  bool                      `json:"runtimeRequired"`
+	ServerWasRunning bool                      `json:"serverWasRunning,omitempty"`
+	OnlinePlayers    int                       `json:"onlinePlayers,omitempty"`
+	BackupName       string                    `json:"backupName,omitempty"`
+	ErrorCode        string                    `json:"errorCode,omitempty"`
+	Error            string                    `json:"error,omitempty"`
+	Result           string                    `json:"result,omitempty"`
+	UpdatedAt        string                    `json:"updatedAt,omitempty"`
+	FinishedAt       string                    `json:"finishedAt,omitempty"`
+	Instances        []FullStackInstanceStatus `json:"instances,omitempty"`
+}
+
+type FullStackInstanceStatus struct {
+	InstanceID       string `json:"instanceId"`
+	Phase            string `json:"phase"`
+	Progress         int    `json:"progress"`
+	ServerWasRunning bool   `json:"serverWasRunning,omitempty"`
+	OnlinePlayers    int    `json:"onlinePlayers,omitempty"`
+	BackupName       string `json:"backupName,omitempty"`
+	ErrorCode        string `json:"errorCode,omitempty"`
+	Error            string `json:"error,omitempty"`
 }
 
 func IsActiveApplyPhase(phase string) bool {

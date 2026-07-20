@@ -90,6 +90,12 @@ func (f *smapiWorkflowFakeDocker) ComposeUp(ctx context.Context, dir string) (pa
 		return paneldocker.CommandResult{}, errors.New("password=must-not-leak")
 	}
 	f.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}, {Service: "steam-auth", State: "running", Status: "Up"}}}
+	if !f.controlFailure || !f.stagingActive() {
+		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+		control := filepath.Join(f.dataDir, ".local-container", "control")
+		_ = os.MkdirAll(control, 0o700)
+		_ = os.WriteFile(filepath.Join(control, "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600)
+	}
 	return f.runtimeApplyFakeDocker.ComposeUp(ctx, dir)
 }
 

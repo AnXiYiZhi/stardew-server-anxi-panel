@@ -1,7 +1,9 @@
 package stardew_junimo
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -94,6 +96,14 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		_ = finish(RuntimeUpdateApplyFailedRolledBack, "backup_failed", "无法创建私有恢复材料；实例未修改。")
 		return err
 	}
+	manifest.ControlManifestPresent, manifest.ControlDLLPresent, err = backupRuntimeControlMod(instance.DataDir, manifest.ApplyID)
+	if err != nil {
+		_ = finish(RuntimeUpdateApplyFailedRolledBack, "control_backup_failed", "无法备份升级前的 Control Mod；实例未修改。")
+		return err
+	}
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return err
+	}
 	stored, err := d.store.GetInstance(ctx, instance.ID)
 	if err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "instance_reload_failed", "无法重新读取实例。")
@@ -106,6 +116,29 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		if err := lr.doStop(ctx, job); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "stop_failed", "安全停服失败。")
 		}
+	}
+	// Control is a host bind. Replace it only after the game process has fully
+	// stopped so a live CLR process can never observe a half-updated DLL.
+	if err := installSMAPIMod(instance.DataDir); err != nil {
+		now := time.Now().UTC().Format(time.RFC3339)
+		status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyFailedRolledBack, 100, "control_sync_failed", "Control Mod 同步失败；实例保持停止，禁止继续启动旧 DLL。"
+		status.UpdatedAt, status.FinishedAt, status.ServerRunning = now, now, false
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "error", Message: status.Error})
+		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+		d.updatePhase(ctx, instance.ID, storage.InstanceStateError, status.Error, "control_sync_failed", job.ID)
+		d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
+		return err
+	}
+	manifest.ControlUpdated = true
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		now := time.Now().UTC().Format(time.RFC3339)
+		status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyRollbackFailed, 100, "control_recovery_manifest_failed", "Control 已同步但恢复清单写入失败；实例保持停止并需要人工核对。"
+		status.UpdatedAt, status.FinishedAt, status.ServerRunning = now, now, false
+		status.ManualAction = "核对 Control manifest/DLL 与当前 Panel 内置版本和 SHA256；确认一致后再从 Panel 启动实例。"
+		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+		d.updatePhase(ctx, instance.ID, storage.InstanceStateError, status.Error, "control_recovery_manifest_failed", job.ID)
+		d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
+		return err
 	}
 	// Clone only after the existing lifecycle stop has quiesced steam-auth, so
 	// the saved session is a consistent volume snapshot.
@@ -134,7 +167,19 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 	manifest.JunimoModOriginalPresent, err = replaceJunimoServerMod(instance.DataDir, extractedDir, filepath.Join(recoveryDir, runtimeOriginalJunimoDir))
 	if err != nil {
-		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_replace_failed", "无法原子替换宿主 JunimoServer Mod。")
+		code := "junimo_mod_replace_failed"
+		if errors.Is(err, os.ErrPermission) {
+			code = "junimo_mod_directory_locked"
+		} else if errors.Is(err, os.ErrExist) {
+			code = "junimo_mod_backup_exists"
+		} else if errors.Is(err, os.ErrNotExist) {
+			code = "junimo_mod_directory_missing"
+		} else if strings.Contains(err.Error(), "move current JunimoServer") {
+			code = "junimo_mod_backup_rename_failed"
+		} else if strings.Contains(err.Error(), "activate target JunimoServer") {
+			code = "junimo_mod_activate_rename_failed"
+		}
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, code, "无法原子替换宿主 JunimoServer Mod。")
 	}
 	manifest.JunimoModReplaced = true
 	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
@@ -171,6 +216,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := setPhase(RuntimeUpdateApplyRecreatingServer, 75, "正在重建同一推荐版本对的 Junimo server。"); err != nil {
 		return err
 	}
+	(&lifecycleRunner{driver: d, lifecycle: docker, instance: stored}).clearRuntimeControlSnapshots(ctx, job)
 	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "server"); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "server_recreate_failed", "新版 server 重建失败。")
 	}
@@ -225,7 +271,7 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Cont
 	} else if changed {
 		_, _ = job.Info(ctx, "已补齐低资源启动调度权重与现有 Junimo 运行兼容配置。")
 	}
-	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
 	}
@@ -346,6 +392,53 @@ func createRuntimeRecoveryFiles(dataDir string, manifest runtimeUpdateRecoveryMa
 	return writeRuntimeUpdateRecoveryManifest(dataDir, manifest)
 }
 
+func backupRuntimeControlMod(dataDir, applyID string) (bool, bool, error) {
+	recoveryDir := runtimeUpdateRecoveryDir(dataDir, applyID)
+	if err := os.MkdirAll(recoveryDir, 0o700); err != nil {
+		return false, false, err
+	}
+	present := map[string]bool{}
+	for _, name := range []string{"manifest.json", "StardewAnxiPanel.Control.dll"} {
+		source := filepath.Join(smapiModDir(dataDir), name)
+		data, err := os.ReadFile(source)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false, false, err
+		}
+		if err := os.WriteFile(filepath.Join(recoveryDir, "original-control-"+name), data, 0o600); err != nil {
+			return false, false, err
+		}
+		present[name] = true
+	}
+	return present["manifest.json"], present["StardewAnxiPanel.Control.dll"], nil
+}
+
+func restoreRuntimeControlMod(dataDir string, manifest runtimeUpdateRecoveryManifest) error {
+	dir := smapiModDir(dataDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for name, present := range map[string]bool{"manifest.json": manifest.ControlManifestPresent, "StardewAnxiPanel.Control.dll": manifest.ControlDLLPresent} {
+		target := filepath.Join(dir, name)
+		if !present {
+			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(runtimeUpdateRecoveryDir(dataDir, manifest.ApplyID), "original-control-"+name))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func writeRuntimeTargetEnvAtomic(dataDir string, target sjconfig.RuntimeStackRecommendation, selected RuntimeUpdateSelectedPair) error {
 	envPath := filepath.Join(dataDir, ".env")
 	data, err := os.ReadFile(envPath)
@@ -415,6 +508,8 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 				lastFailure = "control_contract_not_ready"
 			} else if !runtimeInfoContractReady(ctx, docker, instance.DataDir, manifest.TargetServerVersion) {
 				lastFailure = "junimo_contract_not_ready"
+			} else if !runningControlMatchesManifest(instance.DataDir) {
+				lastFailure = "control_runtime_version_mismatch"
 			} else {
 				return nil
 			}
@@ -426,6 +521,50 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 		}
 	}
 	return errors.New(lastFailure)
+}
+
+func runningControlMatchesManifest(dataDir string) bool {
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		return false
+	}
+	raw, err := os.ReadFile(filepath.Join(dataDir, ".local-container", "control", "options.json"))
+	if err != nil {
+		return false
+	}
+	var options struct {
+		ControlModVersion string `json:"controlModVersion"`
+	}
+	if json.Unmarshal(raw, &options) != nil || strings.TrimSpace(options.ControlModVersion) != manifest.Control.Version {
+		return false
+	}
+	installedDLL, err := os.ReadFile(filepath.Join(smapiModDir(dataDir), "StardewAnxiPanel.Control.dll"))
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(installedDLL, smapiModDLL) && verifyEmbeddedControlManifest(manifest) == nil
+}
+
+func waitForRunningControlManifest(ctx context.Context, dataDir string, timeout time.Duration) bool {
+	if timeout <= 0 {
+		timeout = time.Minute
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if runningControlMatchesManifest(dataDir) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline.C:
+			return false
+		case <-ticker.C:
+		}
+	}
 }
 
 // runtimeInfoContractReady verifies the same FIFO-backed control path used by

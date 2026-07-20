@@ -43,12 +43,16 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
   const dryRun = dashboardData.updateDryRun
   const dryRunBusy = dashboardData.updateDryRunChecking || dryRun?.phase === 'starting' || dryRun?.phase === 'running'
   const applyActive = isPanelUpdateActive(apply)
-  const canApply = canStartPanelUpdate(user, status, dryRun, apply)
-  const updatePhases = [
-    'backing_up', 'pulling', 'recreating', 'waiting_health',
-    ...apply && ['rolling_back', 'failed_rolled_back', 'rollback_failed'].includes(apply.phase) ? ['rolling_back'] : [],
-  ]
-  const currentPhaseIndex = apply ? updatePhases.indexOf(apply.phase) : -1
+	const canApply = canStartPanelUpdate(user, status, dryRun, apply)
+	const onlineHumans = dashboardData.players?.players.filter((player) => player.status === 'online' && !player.isHost).length
+	const updatePhases = [
+		'backing_up', 'pulling', 'recreating', 'waiting_health',
+		'checking_runtime', 'notifying_players', 'saving_game', 'backing_up_save', 'updating_runtime', 'verifying_runtime', 'restoring_server',
+		...apply && ['rolling_back', 'failed_rolled_back', 'rollback_failed'].includes(apply.phase) ? ['rolling_back'] : [],
+	]
+	const effectivePhase = apply?.fullStack?.phase || apply?.phase || ''
+	const effectiveProgress = apply?.fullStack?.progress ?? apply?.progress ?? 0
+	const currentPhaseIndex = updatePhases.indexOf(effectivePhase)
   const closeDialog = () => {
     setConfirmApply(false)
     dashboardData.closeUpdateDialog()
@@ -88,8 +92,8 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
           <div className="sd-update-error">{status?.checkError || dashboardData.updateError}</div>
         ) : null}
 
-        <div className="sd-update-boundary">
-          <strong>游戏服务器不会停止。</strong>升级只会重启 Web 面板，页面会短暂离线；若新版本未通过健康检查，系统会自动恢复原版本。
+		<div className="sd-update-boundary">
+			<strong>这是一键全栈升级。</strong>Panel 更新后会检查全部实例的 Control 版本与 DLL hash；不匹配的运行中实例将保存、整档备份、停服、同步 Control、重启并验证 SMAPI 实际加载版本。Panel 健康失败会自动恢复旧容器。
         </div>
 
         <section className="sd-update-release-notes">
@@ -111,6 +115,7 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
                 {dryRun.capability.composeProject ? (
                   <dl>
                     <div><dt>Compose 项目</dt><dd>{dryRun.capability.composeProject}</dd></div>
+                    <div><dt>Compose 服务</dt><dd>{dryRun.capability.composeService || '—'}</dd></div>
                     <div><dt>当前容器</dt><dd>{dryRun.capability.currentContainer || '—'}</dd></div>
                     <div><dt>当前镜像</dt><dd>{dryRun.capability.currentImage || '—'}</dd></div>
                     <div><dt>目标镜像</dt><dd>{dryRun.targetImage || '检查中…'}</dd></div>
@@ -137,27 +142,46 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
           </span>
         </section>
 
+        {isAdmin && dryRun?.phase === 'succeeded' && dryRun.capability.conversionRequired ? (
+          <div className="sd-update-boundary">
+            <strong>将先转换为标准部署。</strong> 系统会反查当前容器、镜像、数据挂载与旧配置，备份 Compose、环境变量和旧镜像 digest，再由独立 helper 重建 Panel；新 Panel 健康检查失败会自动恢复旧容器。
+          </div>
+        ) : null}
+
         {isAdmin && dashboardData.updateDryRunError ? (
           <div className="sd-update-error">{dashboardData.updateDryRunError}</div>
         ) : null}
 
         {isAdmin && apply ? (
           <section className={`sd-update-apply sd-update-apply--${apply.phase}`} aria-live="polite">
-            <div><strong>{panelUpdatePhaseLabel(apply.phase)}</strong><span>{apply.progress}%</span></div>
+			<div><strong>{panelUpdatePhaseLabel(effectivePhase)}</strong><span>{effectiveProgress}%</span></div>
             <p>{withVersionPrefix(apply.fromVersion)} → {withVersionPrefix(apply.toVersion)}</p>
-            <progress max="100" value={apply.progress} />
+			<progress max="100" value={effectiveProgress} />
             <ol className="sd-update-timeline">
               {updatePhases.map((phase, index) => (
                 <li
                   key={phase}
-                  className={index < currentPhaseIndex ? 'is-done' : index === currentPhaseIndex ? 'is-active' : apply.phase === 'succeeded' ? 'is-done' : ''}
+				className={index < currentPhaseIndex ? 'is-done' : index === currentPhaseIndex ? 'is-active' : effectivePhase === 'succeeded' || effectivePhase === 'not_needed' ? 'is-done' : ''}
                 >
                   {panelUpdatePhaseLabel(phase)}
                 </li>
               ))}
             </ol>
-            {apply.result ? <p>{apply.result}</p> : null}
-            {apply.error ? <div className="sd-update-error">{apply.error}</div> : null}
+			{apply.fullStack?.result || apply.result ? <p>{apply.fullStack?.result || apply.result}</p> : null}
+			{apply.fullStack?.error || apply.error ? <div className="sd-update-error">{apply.fullStack?.error || apply.error}</div> : null}
+			{apply.fullStack?.instances?.length ? (
+				<details className="sd-update-environment-details">
+					<summary>查看全部实例同步状态</summary>
+					<dl>
+						{apply.fullStack.instances.map((instance) => (
+							<div key={instance.instanceId}>
+								<dt>{instance.instanceId}</dt>
+								<dd>{panelUpdatePhaseLabel(instance.phase)} · {instance.progress}%{instance.error ? ` · ${instance.error}` : ''}</dd>
+							</div>
+						))}
+					</dl>
+				</details>
+			) : null}
           </section>
         ) : null}
 
@@ -180,7 +204,7 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
                 disabled={!canApply || dashboardData.updateApplyStarting}
                 onClick={() => setConfirmApply(true)}
               >
-                {applyActive || dashboardData.updateApplyStarting ? '升级处理中…' : '立即升级并重启面板'}
+                {applyActive || dashboardData.updateApplyStarting ? '升级处理中…' : dryRun?.capability.conversionRequired ? '转换为标准部署并升级' : '立即升级并重启面板'}
               </button>
               <button
                 type="button"
@@ -203,7 +227,7 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
           <div className="sd-update-confirm-card">
             <p className="sd-update-dialog-kicker">SECOND CONFIRMATION</p>
             <h3 id="sd-update-confirm-title">确认升级并重启面板？</h3>
-            <p>将从 {withVersionPrefix(currentVersion)} 升级到 {withVersionPrefix(latestVersion)}。游戏服务器不会停止，但此页面会短暂离线，失败时自动恢复。</p>
+			<p>{onlineHumans !== undefined ? `当前有 ${onlineHumans} 名真人玩家在线。` : '当前在线真人玩家数量暂时无法确认。'} 本次升级会先保存并创建整档保护备份；若 Control 或运行栈不匹配，游戏服务器会停止并重启，在线玩家将断开连接。新 Panel 健康失败时自动恢复旧容器；Control 同步或实载验证失败时禁止实例继续带旧 DLL 启动。</p>
             <div>
               <button type="button" className="sd-update-dismiss" onClick={() => setConfirmApply(false)}>取消</button>
               <button

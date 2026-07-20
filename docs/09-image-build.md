@@ -1,3 +1,10 @@
+# v0.4.0 发布记录：一键全栈安全升级（2026-07-20）
+
+- `v0.4.0` 将 Panel 自更新扩展为可恢复的一键全栈升级：安全识别任意 Compose 服务名，并对飞牛残缺 labels 执行容器、Compose、镜像和数据挂载四方反查；无法证明一致的部署拒绝自动操作。
+- 飞牛式旧容器可由镜像内独立 `/app/panel-updater` 转换为标准 Compose。重建前备份数据库、Compose、环境变量、容器 inspect 和旧镜像 digest；新 Panel 健康、版本或 labels 验收失败时恢复旧容器、部署文件与数据库。
+- 新 Panel 会逐实例校验 Control 版本和 DLL SHA-256。不匹配时严格执行游戏内通告、保存、整档保护备份、停服安装、重新启动和 SMAPI 实载版本验证；同步失败的实例保持停止，禁止带旧 DLL 继续运行。状态持久化保证 Panel 自身重启后继续剩余步骤。
+- Docker Desktop 门禁已覆盖自定义 Compose 服务、成功升级、健康失败回滚、多旧容器连续转换、数据库 hash 恢复、`.125` stopped/running Control 更新、在线通告与保存证据，以及 `0.4.0` 候选镜像 health/version/OCI/helper/script smoke。annotated tag `v0.4.0` 继续触发 Docker Hub、阿里云 ACR、GHCR 的 `0.4.0/latest` 和 GitHub Release。
+
 # v0.3.13 发布记录：存档上传编码与删除一致性（2026-07-20）
 
 - `v0.3.13` 修复旧式中文 ZIP 路径名未规范化、历史非 UTF-8 目录经 JSON 变成 `�` 后无法寻址，以及删除已落盘成功却因后续清理报失败导致前端保留幽灵卡片的问题。新上传统一 UTF-8；遗留目录通过稳定公开身份执行备份、导出和删除，编码异常目录不允许激活。
@@ -835,3 +842,36 @@ docker run --rm `
 - Docker Desktop 门禁必须覆盖真正 `.121 -> .125 + Control 0.2.2` 和 `.125 old-Control -> .125 + Control 0.2.2` 的 stopped/running 四条链，断言运行 Control 版本、原状态恢复、目标健康和 CPU shares；源实例、game-data 与凭据保持只读/隔离。
 - tag 前继续执行 Control Docker .NET 6 契约/真实 Mod 编译、后端全量 test/vet/build、Docker integration、兼容矩阵远端制品、全部前端状态脚本与 production build、`run.sh` 测试，并构建 `stardew-server-anxi-panel:0.3.12-rc` 检查 health/version/OCI/updater。annotated tag `v0.3.12` 触发三仓镜像和 GitHub Release。
 - 本地发布结果：上述 Control 构建/契约、后端全量、Docker integration、兼容矩阵远端制品、9 个 Python 测试、`run.sh`、九项前端状态脚本与 production build 均通过；`0.3.12-rc` 返回 healthy、版本 0.3.12、数据库 ok，OCI version/revision/created 和 updater 可执行门禁通过。三个可选 server 镜像源不可达仅产生 warning，canonical digest 校验成功。
+
+# FNOS-COMPOSE-MIGRATION-1：旧飞牛容器一次性标准化脚本（2026-07-20）
+
+- 新增 `deploy/migrate-fnos.sh`，用于处理飞牛/NAS 通过“创建容器”或非标准 Compose 部署后，Panel 内置升级提示“当前容器的 Compose labels 不完整或不符合标准 panel 服务”的启动死锁。脚本必须在 Linux/NAS 宿主机 SSH 中运行，不得在 Panel 容器终端内运行。
+- 脚本枚举运行中、健康、OCI identity 或可信仓库匹配且能解析稳定 SemVer 的 Panel，自动选择最高版本；最高版本同名候选共享数据目录时取创建时间最新者，不同数据目录时停止并要求通过 `PANEL_CONTAINER` 明确选择。不可按容器名称或可变 `latest` tag 猜测版本。
+- 迁移仅支持可验证的 bind-mounted Panel 数据目录、标准 Docker Socket、单一逻辑 `8090/tcp` 发布端口、非 privileged/root 默认用户；默认 bridge 可直接迁移，合法的现有自定义/Compose 网络会作为 external network 原样复用，不删除或重建。额外挂载、host/container 网络模式、匿名卷或多个独立部署一律停止，不擅自丢弃现场配置。
+- 目标版本默认从 GitHub 最新稳定 Release 获取，也可通过 `TARGET_VERSION=x.y.z` 精确指定。镜像依次尝试阿里云 ACR、1ms、DaoCloud、GHCR、Docker Hub，拉取后必须校验 OCI title 和精确 version。
+- 事务顺序为：备份 `docker inspect` 与已有部署文件、生成并校验标准 Compose、旧容器改名保留并关闭自动重启、新容器创建、容器健康和 `/api/version` 精确验收、Compose canonical labels 验收。任何失败都会删除失败的新容器、恢复原部署文件、恢复旧容器名称/重启策略并启动旧容器；绝不删除 Panel 数据、游戏容器、volume、存档或 Mod。
+- 成功后的旧容器保持停止、`restart=no` 并保留，供管理员确认稳定后人工处理；不得再从飞牛旧项目启动/更新它。确认新版本稳定后可删除旧容器，但不能删除数据目录或新版仍作为 external 使用的旧网络。迁移只解决 Panel 部署/升级能力；运行中旧 Control 仍须登录新版 Panel 执行“运行组件升级”的受控保存、备份和游戏重启，禁止仅从飞牛直接重启游戏容器。
+- 国内加速命令：
+
+```bash
+curl -fL -o migrate-fnos.sh https://gh-proxy.com/https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/migrate-fnos.sh && chmod +x migrate-fnos.sh && sudo bash migrate-fnos.sh
+```
+
+- GitHub Release 命令：
+
+```bash
+curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/migrate-fnos.sh && chmod +x migrate-fnos.sh && sudo bash migrate-fnos.sh
+```
+
+- `anxinas.dpdns.org/migrate-fnos.sh` 当前尚未部署，文档不得提前给出该 404 地址；待自托管下载站真正同步该文件并通过 HTTP 校验后才可替换第三方 GitHub 加速入口。
+- `release.yml` 将脚本作为正式 Release asset 上传，并运行 `scripts/tests/test_migrate_fnos.sh`。本地 Docker `bash:5.2` 语法/函数和 ShellCheck 已通过；隔离 Docker 29 dind 中，真实旧 `0.3.7` 独立容器已通过 ACR `0.3.13` 成功迁移、健康/精确版本/labels 验收、旧容器停止保留和 result 落盘。另通过停止新 Panel 注入健康失败，确认原 `0.3.7` 名称、运行状态、`restart=no` 和部署文件全部恢复。发布前仍应补充中断和真实多候选容器矩阵。
+# FULL-STACK-UPDATE-2 发布门禁（2026-07-20）
+
+- 后端：`go test ./...`、`go vet ./...`，并设置 `PANEL_RUN_DOCKER_UPDATE_TEST=1` 运行 updater Docker integration；至少覆盖任意 Compose 服务名成功升级、新镜像健康失败自动回滚、非目标服务/游戏容器不被重建。
+- 飞牛转换：ShellCheck、`bash -n`、函数单测，以及隔离 Docker 中真实旧容器的成功转换和健康失败回滚。备份目录必须存在 Compose/环境、inspect、数据库和 `original-image-digest.txt`。
+- Control：覆盖所有实例聚合、运行中玩家通告、保存、整档备份、停服安装、实载版本验证、Panel 中断续跑，以及安装/实载失败后实例保持停止。
+- 前端：生产 build 和更新状态机测试；确认框必须明确在线人数、保存、整档备份、停服/重启和断线影响。
+- 候选镜像：检查 `/health`、`/api/version`、OCI version/title、`/app/panel-updater` 和 `/app/migrate-fnos.sh`。上述任一门禁失败时禁止 tag、push、release 或更新 `latest`。
+- 飞牛多部署真机必须至少连续转换两个旧容器，并断言第二次转换不改变第一次的新容器 ID；每个标准部署使用由旧容器名派生的独立 Compose project。
+- `.125` Control 真机须同时覆盖 stopped/running；running 必须看到通告命令成功、`GameLoop.Saved` 成功、非空 `preruntimeupdate` ZIP，最终 `options.json.controlModVersion` 与嵌入 DLL hash 一致并恢复原运行状态。
+- 本次 Docker Desktop 最终验收已完成：候选镜像内的独立 `/app/panel-updater convert` 将真实 `0.3.7` 飞牛式旧容器转换为 `0.3.13` 标准 Compose，持久化状态到达 `succeeded`，并保留非空 `container-inspect.json`、`environment.json`、`original-image-digest.txt`、数据库和迁移结果。故障注入在新容器切换后强制停止新 Panel，helper 以非零码结束并写入 `failed_rolled_back`；旧容器恢复原名称、端口、重启策略与健康状态，恢复后的数据库 SHA-256 与切换前保护副本完全一致。

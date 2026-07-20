@@ -112,10 +112,11 @@ func TestDockerIntegrationApplyUsesIsolatedComposeProject(t *testing.T) {
 	}
 	project := "panelapply" + suffix
 	panelContainer := project + "-panel"
+	panelService := "dashboard"
 	gameContainer := project + "-game"
 	composeFile := filepath.Join(installDir, "docker-compose.yml")
 	envFile := filepath.Join(installDir, ".env")
-	compose := fmt.Sprintf("services:\n  panel:\n    image: ${PANEL_IMAGE}\n    container_name: %s\n  game:\n    image: alpine:3.20\n    container_name: %s\n    command: [\"sleep\",\"3600\"]\n", panelContainer, gameContainer)
+	compose := fmt.Sprintf("services:\n  %s:\n    image: ${PANEL_IMAGE}\n    container_name: %s\n  game:\n    image: alpine:3.20\n    container_name: %s\n    command: [\"sleep\",\"3600\"]\n", panelService, panelContainer, gameContainer)
 	if err := os.WriteFile(composeFile, []byte(compose), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func TestDockerIntegrationApplyUsesIsolatedComposeProject(t *testing.T) {
 	}
 	if err := RunApply(context.Background(), ApplyOptions{
 		FromVersion: fromVersion, TargetVersion: toVersion, CurrentImage: oldImage, OriginalDigest: digest,
-		CurrentContainer: panelContainer, ComposeProject: project, ComposeFile: composeFile,
+		CurrentContainer: panelContainer, ComposeProject: project, ComposeService: panelService, ComposeFile: composeFile,
 		StateFile: stateFile, BackupDir: backupDir, DatabaseRelative: "panel.db", DataDir: dataDir,
 		HealthTimeout: 30 * time.Second, PollInterval: 500 * time.Millisecond, Executor: executor,
 	}); err != nil {

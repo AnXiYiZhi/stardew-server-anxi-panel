@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -173,14 +174,15 @@ func (c *Client) ComposeRestartServices(ctx context.Context, dir string, service
 // ComposeExecPipe runs `docker compose exec -T <service> <args>` with stdinData piped to the
 // process stdin.  The -T flag disables pseudo-TTY allocation so stdin can be redirected.
 func (c *Client) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (CommandResult, error) {
-	execArgs := append([]string{"compose", "exec", "-T", service}, args...)
+	project := strings.ToLower(filepath.Base(filepath.Clean(dir)))
+	execArgs := append([]string{"compose", "--project-name", project, "exec", "-T", service}, args...)
 	started := time.Now()
 	result := CommandResult{
 		WorkDir:  dir,
 		Args:     RedactArgs(append([]string{c.dockerPath}, execArgs...)),
 		ExitCode: -1,
 	}
-	if dir == "" {
+	if dir == "" || !composeProjectPattern.MatchString(project) {
 		result.DurationMS = time.Since(started).Milliseconds()
 		return result, CommandError{Op: "docker compose exec", Result: result, Err: ErrInvalidWorkDir}
 	}

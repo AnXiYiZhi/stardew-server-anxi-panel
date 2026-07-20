@@ -17,6 +17,13 @@ export const TERMINAL_PANEL_UPDATE_PHASES = new Set([
   'rollback_failed',
 ])
 
+const ACTIVE_FULL_STACK_PHASES = new Set([
+  'waiting_panel', 'checking_runtime', 'notifying_players', 'saving_game',
+  'backing_up_save', 'updating_runtime', 'verifying_runtime', 'restoring_server', 'rolling_back_runtime',
+])
+
+const TERMINAL_FULL_STACK_PHASES = new Set(['succeeded', 'not_needed', 'failed_safe', 'manual_action'])
+
 export type PanelUpdateTone = 'latest' | 'available' | 'working' | 'rollback' | 'restored' | 'error' | 'muted'
 
 export type PanelUpdateSurface = {
@@ -29,11 +36,14 @@ export type PanelUpdateSurface = {
 }
 
 export function isPanelUpdateActive(apply: PanelUpdateApplyStatus | null): boolean {
-  return Boolean(apply && ACTIVE_PANEL_UPDATE_PHASES.has(apply.phase))
+	return Boolean(apply && (ACTIVE_PANEL_UPDATE_PHASES.has(apply.phase)
+		|| apply.phase === 'succeeded' && apply.fullStack && ACTIVE_FULL_STACK_PHASES.has(apply.fullStack.phase)))
 }
 
 export function isPanelUpdateTerminal(apply: PanelUpdateApplyStatus | null): boolean {
-  return Boolean(apply && TERMINAL_PANEL_UPDATE_PHASES.has(apply.phase))
+	if (!apply || !TERMINAL_PANEL_UPDATE_PHASES.has(apply.phase)) return false
+	if (apply.phase !== 'succeeded' || !apply.fullStack) return true
+	return TERMINAL_FULL_STACK_PHASES.has(apply.fullStack.phase)
 }
 
 export function panelUpdatePhaseLabel(phase: string): string {
@@ -46,7 +56,19 @@ export function panelUpdatePhaseLabel(phase: string): string {
     case 'rolling_back': return '正在回滚'
     case 'succeeded': return '升级成功'
     case 'failed_rolled_back': return '升级失败，已恢复'
-    case 'rollback_failed': return '自动恢复未完成'
+		case 'rollback_failed': return '自动恢复未完成'
+		case 'waiting_panel': return '正在更新 Panel'
+		case 'checking_runtime': return '正在检查全部游戏实例'
+		case 'notifying_players': return '正在通告在线玩家'
+		case 'saving_game': return '正在保存游戏进度'
+		case 'backing_up_save': return '正在创建整档保护备份'
+		case 'updating_runtime': return '正在更新 Control 与运行栈'
+		case 'verifying_runtime': return '正在验证 SMAPI 实际加载版本'
+		case 'restoring_server': return '正在恢复服务器状态'
+		case 'rolling_back_runtime': return '正在恢复原运行栈'
+		case 'failed_safe': return '运行栈升级未完成，已安全停止或恢复'
+		case 'manual_action': return '运行栈需要人工恢复'
+		case 'not_needed': return '全栈已是目标版本'
     default: return '等待升级状态'
   }
 }
@@ -79,19 +101,20 @@ export function panelUpdateSurface(
   const target = applyOwnsTarget
     ? applyTarget || detectedTarget
     : detectedTarget || current
-  if (apply && ACTIVE_PANEL_UPDATE_PHASES.has(apply.phase)) {
-    if (apply.phase === 'rolling_back') {
+	if (apply && isPanelUpdateActive(apply)) {
+		if (apply.phase === 'rolling_back') {
       return {
         currentVersion: current, targetVersion: target,
         topbarText: '升级失败，正在恢复', mobileTopbarText: '恢复中', overviewText: '升级失败，正在恢复', tone: 'rollback',
       }
     }
-    const progress = Math.max(0, Math.min(100, Math.round(apply.progress || 0)))
-    return {
-      currentVersion: current, targetVersion: target,
-      topbarText: progress > 0 ? `正在升级 ${progress}%` : panelUpdatePhaseLabel(apply.phase),
-      mobileTopbarText: progress > 0 ? `升级 ${progress}%` : '升级中',
-      overviewText: '正在升级…', tone: 'working',
+		const progress = Math.max(0, Math.min(100, Math.round(apply.fullStack?.progress ?? apply.progress ?? 0)))
+		const effectivePhase = apply.fullStack?.phase || apply.phase
+		return {
+			currentVersion: current, targetVersion: target,
+			topbarText: progress > 0 ? `正在全栈升级 ${progress}%` : panelUpdatePhaseLabel(effectivePhase),
+			mobileTopbarText: progress > 0 ? `升级 ${progress}%` : '升级中',
+			overviewText: panelUpdatePhaseLabel(effectivePhase), tone: 'working',
     }
   }
   if (apply?.phase === 'failed_rolled_back' && terminalApplyMatchesCurrent && !detectedUpdateSupersedesTerminal) {

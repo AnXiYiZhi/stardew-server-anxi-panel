@@ -100,10 +100,17 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeStopServices(_ context.Context, _
 	}
 	return nil
 }
-func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, _ string, _ string, service string) error {
+func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, dataDir string, _ string, service string) error {
 	f.applyCall("up " + service)
 	if service == f.upErrorService {
 		return errors.New("injected up failure")
+	}
+	if service == "server" {
+		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+		_ = os.MkdirAll(filepath.Join(dataDir, ".local-container", "control"), 0o755)
+		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600)
+		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1,"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
+		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "players.json"), []byte(`{"players":[],"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
 	}
 	return nil
 }
@@ -178,10 +185,17 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	driver.runtimeUpdateAuthTimeout = 15 * time.Millisecond
 	driver.runtimeUpdateServerTimeout = 15 * time.Millisecond
 	driver.runtimeUpdateStopTimeout = 25 * time.Millisecond
+	if err := installSMAPIMod(instance.DataDir); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(instance.DataDir, ".local-container", "control"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	oldJunimoDir := junimoServerModDir(instance.DataDir)
@@ -410,6 +424,35 @@ func TestRequiredRuntimeUpdateFailureIsPersistedAndNotRetriedOnSamePanel(t *test
 	if len(fake.applyCalls) != before {
 		t.Fatalf("identical failed Panel/stack auto-retried: before=%d after=%d", before, len(fake.applyCalls))
 	}
+}
+
+func TestRequiredRuntimeUpdateResumesAfterPanelContextCancellation(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	driver.panelVersion = "0.3.5"
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(runtimeUpdateDryRunStatusPath(instance.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRequiredRuntimeUpdateStatus(instance.DataDir, RequiredRuntimeUpdateStatus{
+		SchemaVersion: 1, PanelVersion: driver.panelVersion, StackVersion: manifest.StackVersion,
+		Phase: requiredRuntimePhaseFailed, ErrorCode: "context_cancelled",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	driver.StartRequiredRuntimeUpdate(context.Background(), instance)
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		status, readErr := readRequiredRuntimeUpdateStatus(instance.DataDir)
+		if readErr == nil && status.Phase == requiredRuntimePhaseSucceeded {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	status, _ := readRequiredRuntimeUpdateStatus(instance.DataDir)
+	t.Fatalf("context-cancelled full-stack update did not resume: %#v", status)
 }
 
 func TestRequiredRuntimeUpdateRepairsTrustedLegacyCandidates(t *testing.T) {

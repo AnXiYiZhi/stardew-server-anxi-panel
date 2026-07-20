@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -138,19 +139,54 @@ func replaceJunimoServerMod(dataDir, extractedDir, backupDir string) (bool, erro
 	originalPresent := false
 	if _, err := os.Stat(targetDir); err == nil {
 		originalPresent = true
-		if err := os.Rename(targetDir, backupDir); err != nil {
+		if err := moveRuntimeModDirToBackup(targetDir, backupDir); err != nil {
 			return false, fmt.Errorf("move current JunimoServer to recovery: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
 		return false, err
 	}
-	if err := os.Rename(extractedDir, targetDir); err != nil {
+	if err := renameRuntimeModDir(extractedDir, targetDir, 15*time.Second); err != nil {
 		if originalPresent {
-			_ = os.Rename(backupDir, targetDir)
+			_ = renameRuntimeModDir(backupDir, targetDir, 15*time.Second)
 		}
 		return false, fmt.Errorf("activate target JunimoServer: %w", err)
 	}
 	return originalPresent, nil
+}
+
+func moveRuntimeModDirToBackup(source, target string) error {
+	err := renameRuntimeModDir(source, target, 15*time.Second)
+	if err == nil || runtime.GOOS != "windows" || !errors.Is(err, os.ErrPermission) {
+		return err
+	}
+	// Docker Desktop can retain a Windows directory rename handle briefly even
+	// after Compose removed the bind-mounted container. Preserve a complete
+	// recovery copy before deleting the quiescent source directory.
+	if copyErr := copyDir(source, target); copyErr != nil {
+		_ = os.RemoveAll(target)
+		return copyErr
+	}
+	if removeErr := os.RemoveAll(source); removeErr != nil {
+		_ = os.RemoveAll(target)
+		return removeErr
+	}
+	return nil
+}
+
+func renameRuntimeModDir(source, target string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		if err := os.Rename(source, target); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			return lastErr
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 func restoreRuntimeJunimoServerMod(dataDir, applyID string, originalPresent bool) error {
