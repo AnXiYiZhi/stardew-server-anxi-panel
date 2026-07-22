@@ -1,3 +1,16 @@
+# DOCS-PORTAL-SITEWIDE-1 接手记录（2026-07-22，completed）
+
+## 改了什么
+
+- 新增 `ThemeLayout.vue` 包装 VitePress 默认 Layout，按 base 后的路由识别 `guide/deploy/handbook/maintain/faq/changelog`，为所有非首页页面注入阅读进度、侧栏知识库品牌区、面包屑/栏目状态和统一帮助页尾；`config.ts` 补齐搜索、移动菜单、主题、返回顶部、跳正文和最后更新的中文文案。
+- `custom.css` 为所有 Markdown 结构建立栏目级设计系统：标题与步骤编号、列表、代码、表格、custom block、图片、目录、翻页和移动端；FAQ 与 changelog 有独立表达，深色主题使用相同结构的高对比配色。
+- 首页性能专项移除 6 张约 9.7 万像素卡片的 `backdrop-filter`、10.9 万像素 Hero 模糊动画、品牌图和按钮的额外毛玻璃，改为带 `contain` 的静态表面。计算样式复核结果从 1 个动画 + 8 个首页额外模糊/滤镜层降为 0 个动画、0 个元素滤镜、只剩全站共用导航模糊。
+
+## 影响文件、验证与下一步
+
+- 影响：`website/docs/.vitepress/theme/ThemeLayout.vue`、`theme/index.ts`、`theme/custom.css`、`.vitepress/config.ts`。`npm.cmd run docs:build` 通过；全部 26 个非首页路由无横向溢出、均有标题/栏目上下文/帮助卡，六类手机代表页无横向溢出，浅色/深色 console error/warn 为空。
+- 新增顶级栏目时必须同步 `ThemeLayout.vue` 的 `sections` 和 `custom.css` 的 `section-*` 变量；站点部署在 project base 下，路由识别必须继续先剥离 `site.base`。首页不要重新引入持续动画、大面积 `filter/backdrop-filter` 或覆盖整个首屏的固定半透明层。
+
 # DOCS-PORTAL-MODERN-1 接手记录（2026-07-22，completed）
 
 ## 改了什么

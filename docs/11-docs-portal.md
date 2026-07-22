@@ -2,9 +2,13 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；展示页现代化重构已在代码完成（2026-07-22，待随本次改动推送上线）**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已在代码完成（2026-07-22，待随本次改动推送上线）**。以下决策已和用户对齐：
 
 首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用网格、柔光与玻璃品牌图；入口区固定为 6 张三列卡，图标序号必须以带引号字符串保存。“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。首页下方保留四步开服路径和当前版本摘要；改版时必须同步检查浅色、深色、桌面和窄屏。
+
+非首页主题约定：`ThemeLayout.vue` 根据剥离 `site.base` 后的路由为六个栏目提供独立语义色，并统一注入阅读进度、知识库侧栏、面包屑/栏目徽标和帮助页尾。正文 Markdown 不需要为视觉效果添加一次性 HTML；标题、步骤、列表、代码、表格、提示块、图片和翻页均由 `custom.css` 自动接管。新增顶级栏目时同步扩展 `ThemeLayout.vue` 的 `sections` 与 `section-*` CSS 变量。
+
+性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
 线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前线上仍为推送前版本；本次现代化主题随 `website/**` 改动进入 GitHub Pages 工作流后更新）
 
