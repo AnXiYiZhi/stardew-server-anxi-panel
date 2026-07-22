@@ -2,11 +2,11 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；v0.4.1 更新首页发布信息和视觉层级（2026-07-20）**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；展示页现代化重构已在代码完成（2026-07-22，待随本次改动推送上线）**。以下决策已和用户对齐：
 
-首页自定义主题约定：顶部“快速上手”导航使用固定 30px 紧凑胶囊；“版本更新日志”卡是桌面第二行左侧的重点入口，使用品牌边框、渐变、阴影和“最新版本”角标，深色主题同步适配。卡片通过 `/changelog` 链接定位，调整 `index.md` features 顺序时仍需重新执行桌面/窄屏视觉验收。
+首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用网格、柔光与玻璃品牌图；入口区固定为 6 张三列卡，图标序号必须以带引号字符串保存。“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。首页下方保留四步开服路径和当前版本摘要；改版时必须同步检查浅色、深色、桌面和窄屏。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（内容已推送上线；本次新增的「深度文档」专区待推送后才会更新到线上）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前线上仍为推送前版本；本次现代化主题随 `website/**` 改动进入 GitHub Pages 工作流后更新）
 
 | 决策项 | 结论 |
 | --- | --- |

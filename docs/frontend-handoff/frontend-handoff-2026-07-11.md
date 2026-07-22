@@ -1,3 +1,15 @@
+# DOCS-PORTAL-MODERN-1 接手记录（2026-07-22，completed）
+
+## 改了什么
+
+- `website/docs/.vitepress/theme/custom.css` 从局部高亮扩展为全站设计系统，覆盖品牌变量、玻璃导航、首页网格/柔光 Hero、入口卡、操作路径、版本摘要，以及正文页的侧栏、目录、标题、代码块和表格；深色主题与 reduced-motion 均有独立处理。
+- `website/docs/index.md` 重写首屏产品主张，把 7 张默认功能卡收为 6 张序号入口，并新增四步开服路径与 v0.4.1 版本摘要。原有文档信息架构、路由和 GitHub Pages base 保持不变。
+
+## 影响文件、验证与下一步
+
+- 影响：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`。执行 `cd website && npm.cmd run docs:build` 通过；1440px 桌面、1280px 深色正文、390×844 手机均无横向溢出，console error/warn 为空。
+- 首页 features 图标必须写成带引号的字符串（如 `'01'`），否则 YAML 会把前导零转换掉。以后改当前版本时，同时更新首页 feature 说明、暖色角标、底部版本摘要和 changelog；新增卡片后重新核对 VitePress 的 3/4 列自动布局。
+
 # FE-SAVE-NAME-DELETE-1 接手记录（2026-07-20，completed）
 
 ## 改了什么
