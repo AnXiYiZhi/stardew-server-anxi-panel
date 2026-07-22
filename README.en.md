@@ -35,7 +35,7 @@ The intended user flow is:
     - A custom new save collects farm name, player name, map type, and initial settings in the panel, then produces a real initial save readable by Stardew/Junimo; upstream Junimo does not support complete custom creation.
     - An uploaded save is parsed first and previews game time, map, existing player names, and related metadata before the user confirms upload to the server.
 11. The backend runs `docker compose up -d`.
-12. The backend uses `attach-cli` to fetch the invite code and displays it in the panel.
+12. The backend reads `/tmp/invite-code.txt` inside the server container to fetch the invite code and displays it in the panel.
 13. Manage server status, commands, chat announcements, saves, mods, and panel users from the web UI.
 
 ## Architecture
@@ -66,7 +66,7 @@ React Frontend
   -> Go API
   -> jobs/state machine
   -> games/stardew_junimo driver
-  -> Docker Compose / mounted files / attach-cli / Junimo HTTP status
+  -> Docker Compose / mounted files / /tmp/invite-code.txt / Junimo HTTP status
   -> JunimoServer containers
 ```
 
