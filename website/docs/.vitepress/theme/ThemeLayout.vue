@@ -17,6 +17,7 @@ const sections = [
 ]
 
 const isHome = computed(() => frontmatter.value.layout === 'home')
+const releaseLabel = computed(() => JSON.stringify(String(frontmatter.value.release ?? '')))
 const sitePath = computed(() => {
   const base = site.value.base.replace(/\/$/, '')
   return base && route.path.startsWith(base) ? route.path.slice(base.length) || '/' : route.path
@@ -49,7 +50,10 @@ watch(() => route.path, () => requestAnimationFrame(updateProgress))
 </script>
 
 <template>
-  <DefaultTheme.Layout :class="['anxi-layout', sectionClass]">
+  <DefaultTheme.Layout
+    :class="['anxi-layout', sectionClass]"
+    :style="{ '--home-release-label': releaseLabel }"
+  >
     <template #layout-top>
       <div v-if="!isHome" class="reading-progress" aria-hidden="true">
         <span :style="{ width: `${progress}%` }" />

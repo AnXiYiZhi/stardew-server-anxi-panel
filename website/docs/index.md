@@ -1,5 +1,6 @@
 ---
 layout: home
+release: v0.4.2
 
 hero:
   name: Anxi Panel
