@@ -1496,4 +1496,4 @@ Multi Game Mode later
 - [x] 连续三次原生 `SQLITE_INTERRUPT` 主动退出交给 Docker 重建；成功查询或非 interrupt 错误重置连续计数。
 - [x] Docker Desktop 候选镜像、100 条扫描路径、持久卷重启、Linux 容器内 10 轮取消恢复、真实 `0.4.1 → 0.4.2` 升级引擎均通过。
 - [x] 后端全量 test/vet/build、updater/runtime Docker integration、兼容矩阵、脚本/ShellCheck、前端九项状态测试、Panel production build 与展示站 production build 通过。
-- [ ] tag 后执行正式远端镜像的一键升级闭环，核对 GitHub Release、Docker Hub/ACR/GHCR 精确 tag 与 Pages 展示站。
+- [x] tag 后正式远端一键升级闭环通过；GitHub Release、Docker Hub/ACR/GHCR 精确 tag（同一 `sha256:0204c2eef8da781e78048292c3352519f3d58f6eb592d6883747626695fb97f8`）与 Pages 展示站均已核对。

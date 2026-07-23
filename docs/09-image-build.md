@@ -897,4 +897,4 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - Docker Desktop 29.5.3 冷启动 smoke 覆盖未初始化状态、未知页面/API 404、创建管理员、100 条扫描路径、持久卷重启后初始化恢复。Linux 容器内真实取消查询后的恢复回归连续 10 轮通过。
 - 新增 opt-in `TestDockerIntegrationRealPanelCandidateUpgrade`，以真实 GHCR `0.4.1` 和本地 `0.4.2` 候选运行正式 `RunApply`；目标健康/版本、SQLite 数据卷、404 与游戏容器隔离全部通过。
 - tag 前门禁：兼容矩阵 validate/version/远端制品及 9 个 Python 单测；`run.sh`、`migrate-fnos.sh`、ShellCheck；后端全量 test/vet/build；updater 与 runtime Docker integration；前端九项状态脚本和 production build；VitePress production build，全部通过。
-- annotated tag `v0.4.2` 继续由 `.github/workflows/release.yml` 发布 Docker Hub、阿里云 ACR、GHCR 的 `0.4.2/latest` 和 GitHub Release。工作流成功后必须用真实 `0.4.1` Web 更新 API 完成一次远端一键升级，并核对镜像内驱动 build info。
+- annotated tag `v0.4.2` 已由 `.github/workflows/release.yml` 成功发布 Docker Hub、阿里云 ACR、GHCR 的 `0.4.2/latest` 和 GitHub Release。三仓精确镜像 OCI version/revision 与 image ID 一致；隔离 DinD 中真实 `0.4.1` Web 更新 API 已完成发现、dry-run、apply 和三项健康验收。发布镜像 `/app/panel` build info 确认 `modernc.org/sqlite v1.54.0`。
