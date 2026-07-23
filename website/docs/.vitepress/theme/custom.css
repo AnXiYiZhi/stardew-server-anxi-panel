@@ -381,7 +381,7 @@ body {
 }
 
 .VPFeatures .VPFeature[href*="/changelog"]::before {
-  content: "v0.4.1";
+  content: var(--home-release-label, "最新版本");
   position: absolute;
   top: 0;
   right: 0;
@@ -419,12 +419,15 @@ body {
 }
 
 .home-path {
+  --home-path-bg: #0d2a22;
+  --home-path-text: #f5fbf8;
+  --home-path-muted: #b9ccc5;
   margin: 0 !important;
   padding: 54px;
   border: 1px solid var(--anxi-line);
   border-radius: 28px;
-  background: var(--anxi-ink);
-  color: var(--vp-c-bg);
+  background: var(--home-path-bg);
+  color: var(--home-path-text);
 }
 
 .home-section-heading span,
@@ -438,14 +441,14 @@ body {
 .home-section-heading h2 {
   margin: 13px 0 0 !important;
   border: 0 !important;
-  color: var(--vp-c-bg) !important;
+  color: var(--home-path-text) !important;
   font-size: clamp(26px, 3vw, 40px) !important;
   letter-spacing: -0.04em;
 }
 
-.home-section-heading p {
+.anxi-layout .vp-doc .home-section-heading p {
   margin: 12px 0 0;
-  color: color-mix(in srgb, var(--vp-c-bg) 68%, transparent);
+  color: var(--home-path-muted);
 }
 
 .home-path-grid {
@@ -461,9 +464,9 @@ body {
   flex-direction: column;
   min-height: 146px;
   padding: 20px;
-  border: 1px solid color-mix(in srgb, var(--vp-c-bg) 14%, transparent);
+  border: 1px solid rgba(245, 251, 248, 0.17);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--vp-c-bg) 5%, transparent);
+  background: rgba(245, 251, 248, 0.055);
 }
 
 .home-path-grid div:not(:last-child)::after {
@@ -475,7 +478,7 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--anxi-ink);
+  background: var(--home-path-bg);
   color: #66dfb0;
   line-height: 25px;
   text-align: center;
@@ -486,15 +489,15 @@ body {
   font-size: 12px;
 }
 
-.home-path-grid strong {
+.anxi-layout .vp-doc .home-path-grid strong {
   margin-top: 24px;
-  color: var(--vp-c-bg);
+  color: var(--home-path-text);
   font-size: 16px;
 }
 
-.home-path-grid span {
+.anxi-layout .vp-doc .home-path-grid span {
   margin-top: 6px;
-  color: color-mix(in srgb, var(--vp-c-bg) 62%, transparent);
+  color: var(--home-path-muted);
   font-size: 12px;
 }
 

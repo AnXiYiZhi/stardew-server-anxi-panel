@@ -2312,3 +2312,8 @@ npm.cmd run dev
 - 展示站首页 CURRENT RELEASE 与版本更新卡已切换到 `v0.4.2`；更新日志说明启动初始化缓存、未知路径 404、SQLite 驱动 `v1.54.0`、取消恢复及连续中断退出保护。
 - 本次未修改 Panel 交互页面或升级状态机。九项前端状态脚本、TypeScript/Vite production build 与 VitePress production build 均通过。
 - GitHub Pages 部署工作流已成功；线上首页与 changelog 均确认包含 `v0.4.2`、SQLite 修复摘要和 `v1.54.0`。
+# DOCS-PORTAL-0.4.2-VISUAL：版本角标与首页对比度修复（2026-07-24）
+
+- 首页更新卡右上角版本不再硬编码在 CSS，改由 `index.md` frontmatter 的 `release` 通过主题变量传入伪元素；正文版本、CURRENT RELEASE 与角标仍需在发布时同步更新。
+- “从一台服务器，到朋友加入农场”流程区使用独立深色背景、主文字和次文字变量，并提高局部选择器优先级，避免全站 `.vp-doc p/strong` 规则覆盖后出现深色字叠深色底。
+- 影响：`website/docs/index.md`、`.vitepress/theme/{ThemeLayout.vue,custom.css}`；必须验证浅色/深色、桌面/窄屏和生产构建。

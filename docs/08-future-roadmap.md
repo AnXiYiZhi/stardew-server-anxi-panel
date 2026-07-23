@@ -1497,3 +1497,8 @@ Multi Game Mode later
 - [x] Docker Desktop 候选镜像、100 条扫描路径、持久卷重启、Linux 容器内 10 轮取消恢复、真实 `0.4.1 → 0.4.2` 升级引擎均通过。
 - [x] 后端全量 test/vet/build、updater/runtime Docker integration、兼容矩阵、脚本/ShellCheck、前端九项状态测试、Panel production build 与展示站 production build 通过。
 - [x] tag 后正式远端一键升级闭环通过；GitHub Release、Docker Hub/ACR/GHCR 精确 tag（同一 `sha256:0204c2eef8da781e78048292c3352519f3d58f6eb592d6883747626695fb97f8`）与 Pages 展示站均已核对。
+# DOCS-PORTAL-0.4.2-VISUAL（2026-07-24，completed）
+
+- [x] 更新卡版本角标从 CSS 硬编码迁移到首页 frontmatter，当前显示 `v0.4.2`。
+- [x] 修复首页深色四步流程区标题、副标题和步骤文字被全站正文颜色覆盖的问题。
+- [ ] Pages 部署后复核线上桌面与窄屏截图。
