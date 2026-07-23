@@ -2316,4 +2316,4 @@ npm.cmd run dev
 
 - 首页更新卡右上角版本不再硬编码在 CSS，改由 `index.md` frontmatter 的 `release` 通过主题变量传入伪元素；正文版本、CURRENT RELEASE 与角标仍需在发布时同步更新。
 - “从一台服务器，到朋友加入农场”流程区使用独立深色背景、主文字和次文字变量，并提高局部选择器优先级，避免全站 `.vp-doc p/strong` 规则覆盖后出现深色字叠深色底。
-- 影响：`website/docs/index.md`、`.vitepress/theme/{ThemeLayout.vue,custom.css}`；必须验证浅色/深色、桌面/窄屏和生产构建。
+- 影响：`website/docs/index.md`、`.vitepress/theme/{ThemeLayout.vue,custom.css}`。VitePress production build、浅色/深色 1440px、390px 单列、零横向溢出与 console 零 warning/error 均通过；Pages 线上计算样式和截图已复核。
