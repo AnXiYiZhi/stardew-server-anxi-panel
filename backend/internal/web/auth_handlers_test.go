@@ -86,6 +86,33 @@ func TestSetupLoginLogoutAndUserPermissions(t *testing.T) {
 	}
 }
 
+func TestSetupStateIsCachedAndUnknownPathsBypassStorage(t *testing.T) {
+	handler, store, _ := newTestHandlerWithStore(t)
+	if err := store.Close(); err != nil {
+		t.Fatalf("close storage: %v", err)
+	}
+
+	unknown, _ := doJSON(t, handler, http.MethodGet, "/wp-login.php", nil, nil)
+	if unknown.Code != http.StatusNotFound {
+		t.Fatalf("unknown path returned %d, want 404", unknown.Code)
+	}
+	unknownAPI, _ := doJSON(t, handler, http.MethodGet, "/api/unknown", nil, nil)
+	if unknownAPI.Code != http.StatusNotFound {
+		t.Fatalf("unknown API path returned %d, want 404", unknownAPI.Code)
+	}
+
+	status, _ := doJSON(t, handler, http.MethodGet, "/api/setup/status", nil, nil)
+	if status.Code != http.StatusOK {
+		t.Fatalf("cached setup status returned %d: %s", status.Code, status.Body.String())
+	}
+	assertJSONField(t, status.Body.Bytes(), "initialized", false)
+
+	protected, _ := doJSON(t, handler, http.MethodGet, "/api/auth/me", nil, nil)
+	if protected.Code != http.StatusServiceUnavailable {
+		t.Fatalf("protected route with cached setup state returned %d, want 503", protected.Code)
+	}
+}
+
 func TestLastAdminCannotBeDisabledOrDowngraded(t *testing.T) {
 	handler, closeStore := newTestHandler(t)
 	defer closeStore()

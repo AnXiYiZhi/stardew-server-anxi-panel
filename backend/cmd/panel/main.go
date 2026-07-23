@@ -34,7 +34,12 @@ func main() {
 	ctx := context.Background()
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	store, err := storage.Open(ctx, cfg)
+	store, err := storage.OpenWithOptions(ctx, cfg, storage.OpenOptions{
+		OnRepeatedInterrupt: func(count int) {
+			logger.Error("repeated SQLITE_INTERRUPT; terminating for Docker recovery", "consecutive_interrupts", count)
+			os.Exit(1)
+		},
+	})
 	if err != nil {
 		logger.Error("failed to open storage", "error", err)
 		os.Exit(1)
@@ -134,18 +139,23 @@ func main() {
 	})
 	go panelUpdater.ReconcileCompletedImageCleanup(signalCtx, cfg.Version)
 
+	handler, err := web.NewHandlerWithError(web.Deps{
+		Config:        cfg,
+		Store:         store,
+		Logger:        logger,
+		Docker:        dockerClient,
+		Jobs:          jobManager,
+		Registry:      driverRegistry,
+		UpdateChecker: updateChecker,
+		Updater:       panelUpdater,
+	})
+	if err != nil {
+		logger.Error("failed to initialize HTTP handler", "error", err)
+		os.Exit(1)
+	}
 	server := &http.Server{
-		Addr: cfg.Addr,
-		Handler: web.NewHandler(web.Deps{
-			Config:        cfg,
-			Store:         store,
-			Logger:        logger,
-			Docker:        dockerClient,
-			Jobs:          jobManager,
-			Registry:      driverRegistry,
-			UpdateChecker: updateChecker,
-			Updater:       panelUpdater,
-		}),
+		Addr:              cfg.Addr,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

@@ -39,7 +39,7 @@ features:
     linkText: 查看深度文档
   - icon: NEW
     title: 版本更新日志
-    details: 当前最新 v0.4.1。查看飞牛 OS 迁移脚本更新，以及从 v0.1.0 至今的完整更新记录。
+    details: 当前最新 v0.4.2。查看面板扫描路径与 SQLite 取消恢复修复，以及从 v0.1.0 至今的完整更新记录。
     link: /changelog
     linkText: 查看更新日志
   - icon: '05'
@@ -66,8 +66,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.1</strong>
-    <p>支持飞牛 OS 旧容器迁移，并持续完善一键全栈升级与恢复体验。</p>
+    <strong>v0.4.2</strong>
+    <p>修复扫描路径与 SQLite 请求取消后的连接恢复，并保留一键全栈安全升级能力。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

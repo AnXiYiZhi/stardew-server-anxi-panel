@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
@@ -74,10 +75,28 @@ type server struct {
 	metricsMu          sync.Mutex
 	metricsCache       map[string]resourceMetricsCacheEntry
 	metricsFlights     map[string]*resourceMetricsFlight
+	initialized        atomic.Bool
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
 func NewHandler(deps Deps) http.Handler {
+	handler, err := NewHandlerWithError(deps)
+	if err != nil {
+		logger := deps.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Error("failed to initialize HTTP handler", "error", err)
+		return recoverMiddleware(logger, requestLogMiddleware(logger, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		})))
+	}
+	return handler
+}
+
+// NewHandlerWithError reads setup state once while constructing the server and
+// returns an error if that startup read fails.
+func NewHandlerWithError(deps Deps) (http.Handler, error) {
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -130,18 +149,22 @@ func NewHandler(deps Deps) http.Handler {
 		s.registry = registry.New()
 	}
 
-	return recoverMiddleware(logger, requestLogMiddleware(logger, s))
+	initialized, err := s.store.AdminExists(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	s.initialized.Store(initialized)
+
+	return recoverMiddleware(logger, requestLogMiddleware(logger, s)), nil
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !isKnownRequestPath(r.URL.Path) {
+		writeError(w, http.StatusNotFound, "not_found", "resource not found")
+		return
+	}
 	if !s.isSetupAllowed(r) {
-		initialized, err := s.store.AdminExists(r.Context())
-		if err != nil {
-			s.logger.Error("failed to check setup status", "error", err)
-			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
-			return
-		}
-		if !initialized {
+		if !s.initialized.Load() {
 			writeError(w, http.StatusServiceUnavailable, "setup_required", "setup is required before using the panel")
 			return
 		}
@@ -267,6 +290,10 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 			s.handleInstanceByID(w, r)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			writeError(w, http.StatusNotFound, "not_found", "resource not found")
+			return
+		}
 		s.serveStatic(w, r)
 	}
 }
@@ -275,6 +302,62 @@ func (s *server) isSetupAllowed(r *http.Request) bool {
 	p := r.URL.Path
 	return p == "/health" || p == "/api/setup/status" || p == "/api/setup/admin" || p == "/api/version" ||
 		p == "/" || p == "/index.html" || strings.HasPrefix(p, "/assets/") || p == "/favicon.ico"
+}
+
+func isKnownRequestPath(p string) bool {
+	if p == "/health" || isKnownAPIPath(p) || p == "/" || p == "/index.html" ||
+		p == "/favicon.ico" || strings.HasPrefix(p, "/assets/") {
+		return true
+	}
+	switch p {
+	case "/instances/stardew",
+		"/instances/stardew/install",
+		"/instances/stardew/overview",
+		"/instances/stardew/server",
+		"/instances/stardew/saves",
+		"/instances/stardew/jobs",
+		"/instances/stardew/players",
+		"/instances/stardew/mods",
+		"/instances/stardew/diagnostics",
+		"/instances/stardew/settings":
+		return true
+	default:
+		return false
+	}
+}
+
+func isKnownAPIPath(p string) bool {
+	switch p {
+	case "/api/version",
+		"/api/system/update",
+		"/api/system/update/check",
+		"/api/system/update/capability",
+		"/api/system/update/dry-run",
+		"/api/system/update/apply",
+		"/api/setup/status",
+		"/api/setup/admin",
+		"/api/auth/login",
+		"/api/auth/logout",
+		"/api/auth/me",
+		"/api/settings/nexus",
+		"/api/settings/nexus/api-key",
+		"/api/users",
+		"/api/jobs",
+		"/api/jobs/error-logs",
+		"/api/jobs/test",
+		"/api/jobs/test-fail",
+		"/api/instances",
+		"/api/audit-logs",
+		"/api/health/diagnostics",
+		"/api/docker/status",
+		"/api/docker/ps",
+		"/api/docker/logs":
+		return true
+	default:
+		return strings.HasPrefix(p, "/api/users/") ||
+			strings.HasPrefix(p, "/api/jobs/") ||
+			strings.HasPrefix(p, "/api/instances/")
+	}
 }
 
 // isStaticAsset returns true for paths that refer to concrete static assets
@@ -297,9 +380,8 @@ func isStaticAsset(p string) bool {
 	return false
 }
 
-// serveStatic serves the embedded frontend build. For known asset paths it
-// returns 404 if the file is missing; for all other paths it falls back to
-// index.html so the SPA router can handle client-side routes.
+// serveStatic serves the embedded frontend build. ServeHTTP admits only known
+// SPA routes; missing concrete assets return 404.
 func (s *server) serveStatic(w http.ResponseWriter, r *http.Request) {
 	sub, err := fs.Sub(static.FS, "frontend_dist")
 	if err != nil {
