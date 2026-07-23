@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
-	_ "modernc.org/sqlite"
 )
 
 // Store wraps the panel SQLite database.
@@ -16,8 +15,22 @@ type Store struct {
 	db *sql.DB
 }
 
+// OpenOptions configures process-level handling for repeated SQLite failures.
+type OpenOptions struct {
+	// OnRepeatedInterrupt is called after three consecutive database operations
+	// end with SQLITE_INTERRUPT. Panel uses this to terminate the process so its
+	// Docker restart policy can replace a connection pool that cannot recover.
+	OnRepeatedInterrupt func(count int)
+}
+
 // Open creates required directories, opens SQLite, and applies connection settings.
 func Open(ctx context.Context, cfg config.Config) (*Store, error) {
+	return OpenWithOptions(ctx, cfg, OpenOptions{})
+}
+
+// OpenWithOptions creates required directories, opens SQLite, and applies
+// connection settings with an optional repeated-interrupt process guard.
+func OpenWithOptions(ctx context.Context, cfg config.Config, opts OpenOptions) (*Store, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
@@ -27,7 +40,8 @@ func Open(ctx context.Context, cfg config.Config) (*Store, error) {
 		return nil, fmt.Errorf("create database dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", cfg.DBPath)
+	driverName := registerObservedSQLiteDriver(newInterruptObserver(3, opts.OnRepeatedInterrupt))
+	db, err := sql.Open(driverName, cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}

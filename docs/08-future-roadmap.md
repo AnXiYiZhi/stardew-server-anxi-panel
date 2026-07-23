@@ -1,3 +1,10 @@
+# 2026-07-24 完成：Panel 扫描路径与 SQLite 取消恢复
+
+- [x] 初始化状态改为启动时读取一次并原子缓存，首个管理员事务成功后同步更新；请求路径不再逐次执行 `AdminExists`。
+- [x] 未注册页面/API 直接返回 404，SPA fallback 收窄到 Stardew 的明确前端路由。
+- [x] `modernc.org/sqlite` 升级到 `v1.54.0`，取消中的连接可由 `database/sql` 丢弃并在下一查询重建。
+- [x] 连续三次原生 `SQLITE_INTERRUPT` 主动退出进程，交给 Docker restart policy 恢复；真实取消后下一查询回归、全量 test/vet/build 已通过。
+
 # 2026-07-22 完成：全站文档设计系统与首页性能修复
 
 - [x] 27 个公开页面统一栏目色、阅读进度、面包屑、知识库侧栏、正文组件、右侧目录、帮助页尾、深色主题和移动端文档菜单。
@@ -1482,3 +1489,11 @@ Multi Game Mode later
 - [x] 多个旧 Panel 转换 project 隔离、确认后镜像 ID 防竞态复核。
 - [x] 多实例 API 端口内外分离与陈旧 Compose project 环境兼容。
 - [x] Docker Desktop `.125` stopped/running Control 实载矩阵及整档备份验证。
+# PANEL-SQLITE-INTERRUPT-1（2026-07-24，completed / v0.4.2 release）
+
+- [x] 启动初始化状态单次读取并缓存，首次管理员创建后同步更新；未知页面/API 在 SPA 与数据库前置检查前直接 404。
+- [x] SQLite 驱动升级到 `modernc.org/sqlite v1.54.0`，增加“取消一个真实查询后下一次查询必须成功”的回归测试。
+- [x] 连续三次原生 `SQLITE_INTERRUPT` 主动退出交给 Docker 重建；成功查询或非 interrupt 错误重置连续计数。
+- [x] Docker Desktop 候选镜像、100 条扫描路径、持久卷重启、Linux 容器内 10 轮取消恢复、真实 `0.4.1 → 0.4.2` 升级引擎均通过。
+- [x] 后端全量 test/vet/build、updater/runtime Docker integration、兼容矩阵、脚本/ShellCheck、前端九项状态测试、Panel production build 与展示站 production build 通过。
+- [ ] tag 后执行正式远端镜像的一键升级闭环，核对 GitHub Release、Docker Hub/ACR/GHCR 精确 tag 与 Pages 展示站。

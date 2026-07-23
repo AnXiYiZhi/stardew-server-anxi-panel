@@ -1,3 +1,9 @@
+# PANEL-SQLITE-INTERRUPT-1 容器恢复边界（2026-07-24）
+
+- Panel 连续收到三次原生 `SQLITE_INTERRUPT` 时以状态码 1 主动退出，避免单连接 SQLite 池永久停留在中断状态。标准 Compose 的 restart policy 负责重新启动同一 Panel 容器服务；这不是镜像升级，也不删除或重建数据库、volume、游戏容器、存档或 Mod。
+- 单个 HTTP 请求取消不会触发退出。`modernc.org/sqlite v1.54.0` 会把已中断的文件连接标记为不可复用，正常路径由 `database/sql` 丢弃该连接并让下一查询恢复；三次门限仅是连续原生中断仍未恢复时的最后保护。
+- 候选镜像 smoke 除 `/health` 与 `/api/version` 外，应补一个“取消长查询后下一次数据库查询成功”的回归；部署若显式禁用 Docker restart policy，则连续中断退出后需要管理员自行启动 Panel，不能宣称自动恢复。
+
 # v0.4.1 发布记录：飞牛 OS 迁移脚本更新（2026-07-20）
 
 - `v0.4.1` 发布 `migrate-fnos.sh` 修订 3：支持保留可验证的额外 bind mount 与具名 Docker volume；迁移后复核 Compose、四项 labels、服务对应容器 ID、镜像引用/digest 和可写数据挂载，成功输出 `ANXI_PANEL_WEB_UPDATE_READY`。
@@ -885,3 +891,10 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - 飞牛多部署真机必须至少连续转换两个旧容器，并断言第二次转换不改变第一次的新容器 ID；每个标准部署使用由旧容器名派生的独立 Compose project。
 - `.125` Control 真机须同时覆盖 stopped/running；running 必须看到通告命令成功、`GameLoop.Saved` 成功、非空 `preruntimeupdate` ZIP，最终 `options.json.controlModVersion` 与嵌入 DLL hash 一致并恢复原运行状态。
 - 本次 Docker Desktop 最终验收已完成：候选镜像内的独立 `/app/panel-updater convert` 将真实 `0.3.7` 飞牛式旧容器转换为 `0.3.13` 标准 Compose，持久化状态到达 `succeeded`，并保留非空 `container-inspect.json`、`environment.json`、`original-image-digest.txt`、数据库和迁移结果。故障注入在新容器切换后强制停止新 Panel，helper 以非零码结束并写入 `failed_rolled_back`；旧容器恢复原名称、端口、重启策略与健康状态，恢复后的数据库 SHA-256 与切换前保护副本完全一致。
+# v0.4.2 发布门禁与一键升级验证（2026-07-24）
+
+- 候选镜像：`ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.4.2`（本地构建）。镜像 `/api/version` 为 `0.4.2`，OCI title/version 正确；从 `/app/panel` 的 Go build info 确认 `modernc.org/sqlite v1.54.0`，不是只更新 `go.mod`。
+- Docker Desktop 29.5.3 冷启动 smoke 覆盖未初始化状态、未知页面/API 404、创建管理员、100 条扫描路径、持久卷重启后初始化恢复。Linux 容器内真实取消查询后的恢复回归连续 10 轮通过。
+- 新增 opt-in `TestDockerIntegrationRealPanelCandidateUpgrade`，以真实 GHCR `0.4.1` 和本地 `0.4.2` 候选运行正式 `RunApply`；目标健康/版本、SQLite 数据卷、404 与游戏容器隔离全部通过。
+- tag 前门禁：兼容矩阵 validate/version/远端制品及 9 个 Python 单测；`run.sh`、`migrate-fnos.sh`、ShellCheck；后端全量 test/vet/build；updater 与 runtime Docker integration；前端九项状态脚本和 production build；VitePress production build，全部通过。
+- annotated tag `v0.4.2` 继续由 `.github/workflows/release.yml` 发布 Docker Hub、阿里云 ACR、GHCR 的 `0.4.2/latest` 和 GitHub Release。工作流成功后必须用真实 `0.4.1` Web 更新 API 完成一次远端一键升级，并核对镜像内驱动 build info。

@@ -2307,3 +2307,8 @@ npm.cmd run dev
 - 更新详情根据 `capability.conversionRequired` 显示“转换为标准部署并升级”，并展示 Compose 项目、实际服务名及转换前备份/失败回滚边界。
 - 二次确认明确显示当前真人在线数量，并说明升级会保存、创建整档备份、按需停止和重启游戏服务器，在线连接会断开。
 - Panel 重启遮罩与进度条继续读取持久化的 `fullStack` 阶段；详情可展开查看全部实例的 Control 同步阶段、进度和错误，不会把 Panel 镜像成功误报为全栈升级完成。
+# DOCS-PORTAL-0.4.2：SQLite 修复发布展示（2026-07-24）
+
+- 展示站首页 CURRENT RELEASE 与版本更新卡已切换到 `v0.4.2`；更新日志说明启动初始化缓存、未知路径 404、SQLite 驱动 `v1.54.0`、取消恢复及连续中断退出保护。
+- 本次未修改 Panel 交互页面或升级状态机。九项前端状态脚本、TypeScript/Vite production build 与 VitePress production build 均通过。
+- 正式 tag 发布后必须确认 GitHub Pages 已由 main 分支最新提交构建，页面中的 `v0.4.2` 与 GitHub Release/三仓精确镜像一致。

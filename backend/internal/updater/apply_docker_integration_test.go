@@ -45,6 +45,136 @@ func (e isolatedDockerExecutor) Output(ctx context.Context, args ...string) (str
 	return e.ExecDocker.Output(ctx, args...)
 }
 
+func TestDockerIntegrationRealPanelCandidateUpgrade(t *testing.T) {
+	fromImage := strings.TrimSpace(os.Getenv("ANXI_PANEL_UPGRADE_FROM_IMAGE"))
+	fromVersion := strings.TrimSpace(os.Getenv("ANXI_PANEL_UPGRADE_FROM_VERSION"))
+	targetImage := strings.TrimSpace(os.Getenv("ANXI_PANEL_UPGRADE_TARGET_IMAGE"))
+	targetVersion := strings.TrimSpace(os.Getenv("ANXI_PANEL_UPGRADE_TARGET_VERSION"))
+	if fromImage == "" || fromVersion == "" || targetImage == "" || targetVersion == "" {
+		t.Skip("set ANXI_PANEL_UPGRADE_FROM_IMAGE, ANXI_PANEL_UPGRADE_FROM_VERSION, ANXI_PANEL_UPGRADE_TARGET_IMAGE and ANXI_PANEL_UPGRADE_TARGET_VERSION")
+	}
+	for label, image := range map[string]string{"from": fromImage, "target": targetImage} {
+		if err := ValidateTrustedImage(image); err != nil {
+			t.Fatalf("%s image is not a trusted exact tag: %v", label, err)
+		}
+		if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
+			t.Fatalf("%s image unavailable locally: %s", label, image)
+		}
+	}
+	for label, version := range map[string]string{"from": fromVersion, "target": targetVersion} {
+		normalized, err := NormalizeTargetVersion(version)
+		if err != nil || normalized != version {
+			t.Fatalf("invalid %s version %q", label, version)
+		}
+	}
+	if comparison, err := CompareStableVersions(fromVersion, targetVersion); err != nil || comparison >= 0 {
+		t.Fatalf("target version must be newer: from=%s target=%s err=%v", fromVersion, targetVersion, err)
+	}
+
+	suffix := strconv.FormatInt(time.Now().UnixNano()%1_000_000, 10)
+	root := t.TempDir()
+	installDir := filepath.Join(root, "deployment")
+	dataDir := filepath.Join(root, "data")
+	if err := os.MkdirAll(installDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	project := "panelrealupgrade" + suffix
+	panelContainer := project + "-panel"
+	gameContainer := project + "-game"
+	composeFile := filepath.Join(installDir, "docker-compose.yml")
+	envFile := filepath.Join(installDir, ".env")
+	hostDataDir := filepath.ToSlash(dataDir)
+	compose := fmt.Sprintf(
+		"services:\n  panel:\n    image: ${PANEL_IMAGE}\n    container_name: %s\n    volumes:\n      - \"%s:/data\"\n  game:\n    image: alpine:3.20\n    container_name: %s\n    command: [\"sleep\",\"3600\"]\n",
+		panelContainer, hostDataDir, gameContainer,
+	)
+	if err := os.WriteFile(composeFile, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envFile, []byte("PANEL_IMAGE="+fromImage+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"compose", "--project-name", project, "--env-file", envFile, "-f", composeFile}
+	t.Cleanup(func() {
+		_ = exec.Command("docker", append(base, "down", "--remove-orphans")...).Run()
+	})
+	if output, err := exec.Command("docker", append(base, "up", "-d")...).CombinedOutput(); err != nil {
+		t.Fatalf("start real previous panel: %v: %s", err, output)
+	}
+	if err := waitForPanel(context.Background(), ExecDocker{}, panelContainer, fromVersion, 90*time.Second, time.Second); err != nil {
+		t.Fatalf("previous panel did not become ready: %v", err)
+	}
+	gameIDBefore, err := exec.Command("docker", "inspect", "--format", "{{.Id}}", gameContainer).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(dataDir, "panel.db")
+	databaseBefore, err := os.ReadFile(databasePath)
+	if err != nil || len(databaseBefore) == 0 {
+		t.Fatalf("previous panel did not create its SQLite database: bytes=%d err=%v", len(databaseBefore), err)
+	}
+
+	backupDir := filepath.Join(dataDir, "updater", "backups", "real-candidate-upgrade")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFileAtomic(databasePath, filepath.Join(backupDir, "panel.db"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stateFile := filepath.Join(dataDir, "updater", "apply-status.json")
+	store := NewApplyStateStore(stateFile)
+	digest, err := ExecDocker{}.Output(context.Background(), "image", "inspect", "--format", "{{.Id}}", fromImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := store.Write(ApplyStatus{
+		UpdateID: "real-candidate-upgrade", Phase: PhaseBackingUp,
+		FromVersion: fromVersion, ToVersion: targetVersion,
+		OriginalImage: fromImage, OriginalDigest: digest,
+		StartedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	executor := isolatedDockerExecutor{
+		ExecDocker: ExecDocker{}, targetImage: targetImage,
+		allowedImageRMs: map[string]bool{},
+	}
+	if err := RunApply(context.Background(), ApplyOptions{
+		FromVersion: fromVersion, TargetVersion: targetVersion,
+		CurrentImage: fromImage, OriginalDigest: digest,
+		CurrentContainer: panelContainer, ComposeProject: project, ComposeService: "panel",
+		ComposeFile: composeFile, StateFile: stateFile, BackupDir: backupDir,
+		DatabaseRelative: "panel.db", DataDir: dataDir,
+		HealthTimeout: 90 * time.Second, PollInterval: time.Second, Executor: executor,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	status, err := store.Read()
+	if err != nil || status.Phase != PhaseSucceeded || status.SelectedImage != targetImage {
+		t.Fatalf("unexpected apply status: status=%+v err=%v", status, err)
+	}
+	gameIDAfter, err := exec.Command("docker", "inspect", "--format", "{{.Id}}", gameContainer).Output()
+	if err != nil || strings.TrimSpace(string(gameIDAfter)) != strings.TrimSpace(string(gameIDBefore)) {
+		t.Fatalf("game container changed: before=%s after=%s err=%v", gameIDBefore, gameIDAfter, err)
+	}
+	databaseAfter, err := os.ReadFile(databasePath)
+	if err != nil || len(databaseAfter) == 0 {
+		t.Fatalf("upgraded panel lost its SQLite database: bytes=%d err=%v", len(databaseAfter), err)
+	}
+	setupStatus, err := executor.Output(context.Background(), "exec", panelContainer, "wget", "-qO-", "http://127.0.0.1:8090/api/setup/status")
+	if err != nil || !strings.Contains(setupStatus, `"initialized":false`) {
+		t.Fatalf("upgraded panel cannot query preserved SQLite state: response=%q err=%v", setupStatus, err)
+	}
+	unknownStatus, err := executor.Output(context.Background(), "exec", panelContainer, "curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:8090/wp-login.php")
+	if err != nil || strings.TrimSpace(unknownStatus) != "404" {
+		t.Fatalf("unknown scanner path did not return 404: status=%q err=%v", unknownStatus, err)
+	}
+}
+
 func TestDockerIntegrationApplyUsesIsolatedComposeProject(t *testing.T) {
 	if os.Getenv("PANEL_RUN_DOCKER_UPDATE_TEST") != "1" {
 		t.Skip("set PANEL_RUN_DOCKER_UPDATE_TEST=1")

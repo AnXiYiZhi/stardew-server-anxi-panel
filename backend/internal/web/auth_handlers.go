@@ -39,23 +39,11 @@ type loginRequest struct {
 }
 
 func (s *server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
-	initialized, err := s.store.AdminExists(r.Context())
-	if err != nil {
-		s.logger.Error("failed to check setup status", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
-		return
-	}
-	writeJSON(w, http.StatusOK, setupStatusResponse{Initialized: initialized})
+	writeJSON(w, http.StatusOK, setupStatusResponse{Initialized: s.initialized.Load()})
 }
 
 func (s *server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
-	initialized, err := s.store.AdminExists(r.Context())
-	if err != nil {
-		s.logger.Error("failed to check setup status", "error", err)
-		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
-		return
-	}
-	if initialized {
+	if s.initialized.Load() {
 		writeError(w, http.StatusConflict, "already_initialized", "面板已经完成初始化")
 		return
 	}
@@ -101,6 +89,10 @@ func (s *server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
 		return
 	}
+	// CreateFirstAdminWithSession atomically establishes the initialized state.
+	// Publish it before follow-up instance setup so later requests match the
+	// database even if a subsequent, recoverable setup step fails.
+	s.initialized.Store(true)
 	if _, err := s.store.EnsureDefaultInstance(r.Context(), storage.EnsureDefaultInstanceParams{
 		ID:       s.config.DefaultInstanceID,
 		DriverID: s.config.DefaultDriverID,

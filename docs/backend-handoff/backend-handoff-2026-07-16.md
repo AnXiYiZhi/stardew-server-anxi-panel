@@ -1,3 +1,17 @@
+# PANEL-SQLITE-INTERRUPT-1 接手记录（2026-07-24，completed）
+
+## 改了什么
+
+- `web.NewHandlerWithError` 在 HTTP server 构造时读取一次管理员存在状态，`server.initialized` 用 `atomic.Bool` 服务 setup status 和初始化门禁；`CreateFirstAdminWithSession` 成功后立即发布新状态。未知路径在初始化门禁前返回 404，SPA 只允许明确的 Stardew 页面。
+- 存储连接改用 `sqlite_driver.go` 的观察包装器，保留 modernc driver 的连接、statement、rows 与 transaction 接口，并按原生错误码统计连续 `SQLITE_INTERRUPT`。生产 `cmd/panel` 在第三次连续中断时记录日志并 `os.Exit(1)`，让 Docker restart policy 恢复进程。
+- `modernc.org/sqlite` 从 `v1.29.10` 升为 `v1.54.0`（匹配 `modernc.org/libc v1.74.1`）；新版连接 `IsValid/ResetSession` 会淘汰被 interrupt 的文件连接。
+
+## 影响、验证与下一步
+
+- 主要文件：`backend/internal/web/{handler,auth_handlers}.go`、`backend/internal/storage/{db,sqlite_driver}.go`、`backend/cmd/panel/main.go`、`backend/go.{mod,sum}` 及对应回归测试。
+- 验证通过：真实递归查询取消后下一次 `SELECT 42` 成功；连续三个 SQLite code 9 触发恢复回调；关闭 SQLite 后未知页面/API 仍为 404、setup status 仍读缓存；`go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过。
+- 后续增加前端 Browser History 路由时，必须同步扩展 `isKnownRequestPath` 白名单，否则深链接会按安全默认返回 404。不要把初始化检查重新放回每请求中间件。连续中断门限只统计原生 code 9，普通 `context.Canceled` 不应导致进程退出。
+
 # SAVE-NAME-ENCODING-DELETE-1 接手记录（2026-07-20，completed）
 
 ## 改了什么
@@ -405,3 +419,16 @@
 - 验证：`go test ./...`、`go vet ./...`；Docker updater integration 覆盖非 `panel` 服务名、成功切换与健康失败回滚。发布前还须运行 legacy conversion 成功/失败注入和候选镜像 smoke。
 - 下一步注意：新增 required-runtime 阶段时同步更新 web 聚合和前端 phase 集合；不得绕开 `stardew_junimo` driver 在 API handler 内直接操作 Control 或游戏容器。
 - Docker Desktop 真机补充：双飞牛容器依次转换不会互相重建；健康失败恢复旧容器。真实 `.125` 的 stopped/running Control 0.2.1→0.2.2 均通过，running 路径验证了通告、`GameLoop.Saved`、整档备份、停服、更新、重启和实载版本。测试同时推动修复内部 8080/宿主 API 端口混用与 Windows bind 目录 rename 锁。
+# 2026-07-24 handoff：PANEL-SQLITE-INTERRUPT-1 / v0.4.2
+
+## 改了什么
+
+- `web.Handler` 在启动时读取一次初始化状态并用原子缓存服务后续请求；首次管理员创建成功后更新缓存。显式页面/API allowlist 在初始化检查前拒绝未知路径。
+- storage 使用可观测 SQLite driver；`modernc.org/sqlite` 升到 `v1.54.0`。连续原生 code 9 计数达到三次时主进程退出，交给 Docker restart policy 重建；其它结果清零。
+- 新增真实取消查询恢复回归和真实镜像 opt-in 升级测试，后者从 GHCR `0.4.1` 通过正式 `RunApply` 切到本地 `0.4.2` 候选。
+
+## 影响文件、验证与注意事项
+
+- 主要文件：`cmd/panel/main.go`、`internal/storage/{db,sqlite_driver,db_interrupt_test}.go`、`internal/web/{handler,auth_handlers,auth_handlers_test}.go`、`internal/updater/apply_docker_integration_test.go`。
+- Docker Desktop 29.5.3 已通过候选 smoke、100 条扫描、持久卷重启、真实升级；Linux 容器内取消恢复 10 轮通过。完整发布门禁包括 backend test/vet/build、两组 Docker integration、兼容矩阵、脚本/ShellCheck、前端/文档生产构建。
+- 只统计 SQLite 原生错误码 9，不按错误字符串猜测。不要把单次请求取消当成进程级故障；阈值保护依赖 Docker 部署的 restart policy。正式 tag 后仍需跑 Web API 端到端远端升级并核对三仓镜像。
