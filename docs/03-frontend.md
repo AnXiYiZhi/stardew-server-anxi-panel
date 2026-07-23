@@ -2311,4 +2311,4 @@ npm.cmd run dev
 
 - 展示站首页 CURRENT RELEASE 与版本更新卡已切换到 `v0.4.2`；更新日志说明启动初始化缓存、未知路径 404、SQLite 驱动 `v1.54.0`、取消恢复及连续中断退出保护。
 - 本次未修改 Panel 交互页面或升级状态机。九项前端状态脚本、TypeScript/Vite production build 与 VitePress production build 均通过。
-- 正式 tag 发布后必须确认 GitHub Pages 已由 main 分支最新提交构建，页面中的 `v0.4.2` 与 GitHub Release/三仓精确镜像一致。
+- GitHub Pages 部署工作流已成功；线上首页与 changelog 均确认包含 `v0.4.2`、SQLite 修复摘要和 `v1.54.0`。
