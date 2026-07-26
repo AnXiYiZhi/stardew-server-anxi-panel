@@ -4,8 +4,8 @@
 
 ## 一、部署前确认
 
-- 一台 Linux 服务器（云服务器）或支持 Docker 的 NAS（飞牛、群晖、绿联、威联通等）。
-- 已安装 Docker Engine 24+ 和 Docker Compose V2（或使用 NAS 自带的 Docker/Container Manager 应用）。
+- 一台 Linux 服务器（云服务器）、支持 Docker 的 NAS（飞牛、群晖、绿联、威联通等），或安装了 WSL2 与 Docker Desktop 的 x86_64 Windows 10/11 电脑。
+- Linux/NAS 已安装 Docker Engine 24+ 和 Docker Compose V2（或使用 NAS 自带的 Docker/Container Manager 应用）；Windows 已让 Docker Desktop 使用 WSL2 backend、Linux containers，并启用对应发行版的 WSL Integration。
 - 最低 2 核 2 GB 内存、20 GB 可用磁盘；推荐 2 核 4 GB 以上。详细配置建议见 [README 系统要求](../../README.md#系统要求)。
 - 云服务器需要能开放公网端口；NAS 家用场景至少要能在局域网访问。
 
@@ -30,6 +30,12 @@ curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/rele
 ```text
 http://服务器公网IP:8090
 ```
+
+### Windows + Docker Desktop
+
+Windows 用户先在 PowerShell 用 `wsl --version` 与 `wsl -l -v` 确认 WSL2，再进入已启用 Docker Desktop 集成的 WSL2 发行版。确认 `docker version`、`docker compose version` 可用后，在该 Linux 终端运行上面同一条部署命令，完成后访问 `http://localhost:8090`。
+
+Windows 支持的是 WSL2 + Docker Desktop 中的 Linux 容器，不是原生 `.exe` 或 Windows Service。建议把 `~/.anxi-panel` 留在 WSL2 Linux 文件系统中并保持 Docker Desktop 运行；长期 24 小时服务仍优先推荐 Linux/NAS。
 
 ## 三、NAS 图形化部署
 
