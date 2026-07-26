@@ -1134,3 +1134,8 @@ Panel 不接收 steam-auth-cn 的 `repository_dispatch`，也不根据 auth 发�
 - HTTP 更新契约和 `confirmFullStack=true` 不变。本次升级只替换 Panel 镜像；初始化缓存会在新容器启动时从原 `/data/panel.db` 重建。
 - 新增 opt-in 真实镜像测试 `TestDockerIntegrationRealPanelCandidateUpgrade`。提供旧版/目标精确镜像与版本后，它使用正式 `RunApply` 路径升级真实 Panel，并断言目标版本健康、SQLite 状态可查询、未知路径 404、数据文件非空及同 Compose 游戏容器 ID 不变。
 - Docker Desktop 已完成 `0.4.1 → 0.4.2` 候选升级引擎验收；正式发布后又在隔离 DinD Linux 宿主中由真实 `0.4.1` Web API 发现 GitHub Release、完成 dry-run、拉取 GHCR 精确镜像并 apply。终态 `succeeded`，新容器版本/健康、管理员初始化状态、404 与部署环境镜像引用全部正确。
+# 2026-07-26：v0.4.3 健康监控与一键升级联调验收（待发布）
+
+- `/health` 响应形状不变；Panel 内部每分钟调用同一个 `Store.Ping`，单次 5 秒。只有连续三次 SQLite 原生 code 9 才退出，成功/超时/其它错误清零，业务请求错误不参与计数。客户端仍按普通短时断线重连。
+- Docker Desktop 29.5.3 使用真实 GHCR `0.4.2` 和本地最终 `0.4.3` 候选执行正式 `RunApply`：终态 succeeded，目标 `/health`/版本/SQLite setup 状态/未知路径 404 正确，数据卷非空，隔离 game 容器 ID 未变化。
+- 候选 `restart: unless-stopped` 验证中 Panel PID `13602 → 13772`、RestartCount `0 → 1`，重启后 `/health` 恢复。Docker unhealthy 本身不触发 restart policy；进程退出是唯一恢复触发点，且没有游戏容器操作。

@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.2
+release: v0.4.3
 
 hero:
   name: Anxi Panel
@@ -40,7 +40,7 @@ features:
     linkText: 查看深度文档
   - icon: NEW
     title: 版本更新日志
-    details: 当前最新 v0.4.2。查看面板扫描路径与 SQLite 取消恢复修复，以及从 v0.1.0 至今的完整更新记录。
+    details: 当前最新 v0.4.3。查看 Panel 一分钟健康监控与 SQLite 中断自恢复修复，以及从 v0.1.0 至今的完整更新记录。
     link: /changelog
     linkText: 查看更新日志
   - icon: '05'
@@ -67,8 +67,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.2</strong>
-    <p>修复扫描路径与 SQLite 请求取消后的连接恢复，并保留一键全栈安全升级能力。</p>
+    <strong>v0.4.3</strong>
+    <p>新增一分钟健康监控；连续三次 SQLite interrupted (9) 时只重启 Panel。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

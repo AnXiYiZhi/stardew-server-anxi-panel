@@ -6,7 +6,11 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.4.2（最新版本）
+## v0.4.3（最新版本）
+
+**Panel 健康监控与精确自恢复**：Panel 启动一分钟后开始每分钟复用 `/health` 的 SQLite 探针，单次超时 5 秒。只有连续三次原生 `SQLITE_INTERRUPT`（code 9）才退出 Panel 主进程；成功、超时或其它错误都会清零，普通业务查询不参与计数。Docker 镜像健康检查同步为一分钟一次；容器变成 unhealthy 只用于展示状态，不会触发 restart policy，真正的恢复由 Panel 主进程退出后 `restart: unless-stopped` 仅拉起 Panel 完成，不会重启游戏容器。
+
+## v0.4.2
 
 **面板扫描与 SQLite 取消恢复修复**：初始化状态改为 Panel 启动时读取一次并缓存，未知页面或 API 直接返回 404，不再让网络扫描路径进入 SPA 和数据库检查。SQLite 驱动升级到 `modernc.org/sqlite v1.54.0`，请求取消后下一次查询可以自动换用健康连接；若仍连续出现三次原生 `SQLITE_INTERRUPT`，Panel 会主动退出并由 Docker 重启恢复。发布前通过 Docker Desktop 隔离容器、真实取消查询回归和 `v0.4.1 → v0.4.2` 一键升级验证。
 

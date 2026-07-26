@@ -84,7 +84,7 @@ EXPOSE 8090
 
 VOLUME ["/data"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=1m --timeout=5s --start-period=10s --retries=3 \
     CMD wget -qO- http://localhost:8090/health || exit 1
 
 ENTRYPOINT ["/app/panel"]

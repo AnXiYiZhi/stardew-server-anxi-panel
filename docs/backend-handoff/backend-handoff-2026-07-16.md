@@ -1,3 +1,17 @@
+# PANEL-HEALTH-WATCHDOG-1 接手记录（2026-07-26，completed，待发布 v0.4.3）
+
+## 改了什么
+
+- 新增 `cmd/panel/health_monitor.go`。首次探针在启动一分钟后执行，之后每分钟复用 `/health` 的 `Store.Ping`，每次最多 5 秒；只按 SQLite 原生 primary code 9 累计，成功、超时和其它错误都会清零，连续第三次才调用进程退出回调。
+- `cmd/panel/main.go` 改回普通 `storage.Open`，不再让任意业务数据库操作触发生产退出。门限到达后 `os.Exit(1)`，标准 Compose 的 `restart: unless-stopped` 只拉起 Panel；没有 Docker API 调用，也不会重启 Stardew/Junimo 容器。
+- Dockerfile HEALTHCHECK 从 30 秒调整为 1 分钟，timeout 仍为 5 秒、retries 仍为 3。Docker 把容器标记为 unhealthy 并不会执行 restart policy；真正触发恢复的是内部监控让主进程退出。
+
+## 影响、验证与下一步
+
+- 主要文件：`cmd/panel/{main,health_monitor,health_monitor_test}.go`、`internal/storage/sqlite_driver.go`、`Dockerfile`。HTTP 接口及 `/health` 响应形状没有变化。
+- 后端全量 test/vet/build、updater/runtime Docker integration 均通过。Docker Desktop 29.5.3 最终 `0.4.3` 候选的 image inspect 为 interval 60 秒、timeout 5 秒、retries 3；测试 Panel 退出后 RestartCount `0 → 1`、PID `13602 → 13772`，重启前后 `/health` 均返回 ok。Linux 容器回归连续 10 轮通过。
+- 真实 `0.4.2 → 0.4.3` updater apply 与旧 helper 清理续验通过；SQLite 数据、setup 状态、404 保留，隔离 game 容器 ID 不变。当前修改仍不属于已经发布的 `v0.4.2`，正式 `v0.4.3` tag 尚未创建。
+
 # PANEL-SQLITE-INTERRUPT-1 接手记录（2026-07-24，completed）
 
 ## 改了什么
