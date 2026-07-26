@@ -386,7 +386,7 @@ services:
 最低系统要求：
 
 ```text
-系统：Linux x86_64
+主要部署环境：Linux x86_64
 发行版：Ubuntu 20.04+ / Debian 11+ / CentOS 8+ / Rocky Linux 8+ / AlmaLinux 8+ / Alibaba Cloud Linux 3+
 Docker：Docker Engine 24+
 Compose：Docker Compose plugin v2+
@@ -407,6 +407,14 @@ CPU：2 核以上
 带宽：5 Mbps 以上
 Docker：Docker Engine 25+ / 26+ / 27+
 ```
+
+Windows 支持边界：
+
+- 支持 `x86_64` Windows 10/11 + WSL2 + Docker Desktop，以 Linux containers 方式运行 Panel 与 JunimoServer；这也是本项目在 Windows 上开发、构建镜像和执行 Docker 真机门禁的环境。
+- Docker Desktop 必须使用 WSL 2 based engine，并为实际运行命令的 WSL2 发行版启用 WSL Integration。先在 WSL2 终端确认 `docker version` 与 `docker compose version`，再运行 Linux 部署脚本。
+- 建议将安装目录和 bind-mounted 数据保存在 WSL2 Linux 文件系统的 `~/.anxi-panel`，不要放在 `/mnt/c`；Docker 官方也建议 Linux 容器 bind mount 使用 Linux 文件系统以获得更好的性能。
+- 当前不提供原生 Windows `.exe`、Windows Service 或 Windows containers 镜像。Docker Desktop 退出、Windows 注销/更新/休眠会中断服务，因此长期 24 小时部署仍优先推荐 Linux 云服务器或 NAS。
+- README 的产品截图 `docs/screenshots/anxi-panel-overview-v0.4.3.png` 来自 Docker Desktop 29.5.3 运行正式 `v0.4.3` 镜像、完成隔离管理员初始化后的真实未安装总览；不得再以 `docs/prototypes` 中的设计/实现基准图冒充实际运行截图。
 
 多人游玩推荐：
 
@@ -436,7 +444,7 @@ TCP 8080
 
 ## 一键启动脚本（推荐给用户）
 
-面向普通 Linux 云服务器用户，优先推荐使用 `deploy/run.sh` 的快速模式。默认部署方式是公网 IP + `8090` 端口直接访问面板，用户只需要在云服务器安全组中放行对应端口。脚本会在用户主目录生成运行目录：
+面向普通 Linux 云服务器用户，优先推荐使用 `deploy/run.sh` 的快速模式。Windows 用户可在已经启用 Docker Desktop WSL Integration 的 WSL2 Linux 终端运行同一脚本，不能从 PowerShell 直接执行。默认部署方式是公网 IP + `8090` 端口直接访问面板；Windows 本机访问使用 `http://localhost:8090`。脚本会在用户主目录生成运行目录：
 
 ```text
 ~/.anxi-panel

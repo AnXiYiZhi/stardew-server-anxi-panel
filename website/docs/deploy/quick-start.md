@@ -2,6 +2,8 @@
 
 Linux 云服务器用户优先使用一键启动脚本 `run.sh`。脚本会生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和 `~/.anxi-panel/data`，自动创建 `PANEL_SECRET`，首次启动时可自动选择可用镜像源，也可手动切换阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR、Docker Hub 官方或自定义镜像地址。
 
+Windows 10/11 用户也可以使用同一脚本，但需要先安装 WSL2 与 Docker Desktop，启用 Linux containers、WSL 2 backend 和对应发行版的 WSL Integration，然后从该 WSL2 发行版的 Linux 终端运行。项目不提供原生 Windows `.exe`。
+
 NAS 或特殊 Linux 环境中，如果 `$HOME` 不存在或不可写，脚本会自动把安装目录放到当前可写目录下的 `.anxi-panel`，例如在 `/vol1/1000/docker` 执行时会使用 `/vol1/1000/docker/.anxi-panel`。
 
 默认访问方式：
@@ -17,6 +19,8 @@ http://服务器IP:8090
 ```bash
 curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
 ```
+
+Windows 用户完成后访问 `http://localhost:8090`。建议把 `~/.anxi-panel` 保存在 WSL2 的 Linux 文件系统中，并保持 Docker Desktop 运行；不要从 PowerShell 直接执行这份 Bash 脚本。
 
 GitHub Release 安装：
 

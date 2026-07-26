@@ -11,13 +11,15 @@
   <p><a href="#-快速开始">快速开始</a> · <a href="https://anxiyizhi.github.io/stardew-server-anxi-panel/">完整文档</a> · <a href="https://anxiyizhi.github.io/stardew-server-anxi-panel/changelog">更新日志</a> · <a href="README.en.md">English</a></p>
 </div>
 
-![Stardew Anxi Panel 总览界面](docs/prototypes/overview-current-baseline-2026-07-04.png)
+![Docker Desktop 中运行的 Stardew Anxi Panel v0.4.3 真实总览界面](docs/screenshots/anxi-panel-overview-v0.4.3.png)
+
+> 上图来自 Windows 11 + WSL2 + Docker Desktop 29.5.3 中运行的正式 `v0.4.3` 镜像，展示刚完成管理员初始化、尚未安装游戏时的真实界面；不是产品原型或模拟数据。
 
 ## 🌱 这是什么
 
 Anxi Panel 是围绕 [JunimoServer](https://stardew-valley-dedicated-server.github.io/server/) 构建的星露谷物语专服管理面板。它把原本需要在终端里完成的 Docker 部署、Steam 登录、服务器控制和文件维护，整理成一套适合服主日常使用的中文 Web 界面。
 
-你只需要准备一台 Linux 云服务器或支持 Docker 的 NAS。部署面板后，在浏览器里创建管理员、安装游戏、选择农场存档，就可以把邀请码分享给朋友。
+你只需要准备一台 Linux 云服务器、支持 Docker 的 NAS，或安装了 WSL2 与 Docker Desktop 的 Windows 电脑。部署面板后，在浏览器里创建管理员、安装游戏、选择农场存档，就可以把邀请码分享给朋友。
 
 适合这些场景：
 
@@ -45,12 +47,12 @@ Anxi Panel 是围绕 [JunimoServer](https://stardew-valley-dedicated-server.gith
 
 ### 部署前准备
 
-- 一台 `x86_64` Linux 云服务器，或能够挂载 Docker Socket 的 NAS
-- Docker Engine 24+ 与 Docker Compose V2
+- 一台 `x86_64` Linux 云服务器、能够挂载 Docker Socket 的 NAS，或 Windows 10/11 + WSL2 + Docker Desktop
+- Linux/NAS 使用 Docker Engine 24+ 与 Docker Compose V2；Windows 使用 Docker Desktop 的 Linux containers + WSL2 backend
 - 最低 2 核 CPU、2 GB 内存、20 GB 可用空间；推荐 2 核 4 GB、40 GB SSD
 - 一个已经购买《星露谷物语》的 Steam 账号
 
-> 当前不支持 Windows 宿主机直接部署，也不支持 ARM 设备。更完整的配置建议请看[系统要求](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/requirements)。
+> Windows 目前不提供原生 `.exe` 或 Windows Service；支持方式是在 WSL2 + Docker Desktop 中运行 Linux 容器。ARM 设备暂不支持。长期 24 小时运行仍优先推荐 Linux 服务器或 NAS。更完整的配置建议请看[系统要求](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/requirements)。
 
 ### 一键部署（推荐）
 
@@ -73,7 +75,16 @@ http://你的服务器IP:8090
 3. 新建农场，或上传已有的多人存档。
 4. 启动服务器，复制邀请码给朋友。
 
-NAS、飞牛 OS 和手动 Compose 部署请直接查看[部署指南](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/requirements)。
+### Windows + Docker Desktop
+
+1. 在 Windows 10/11 安装并更新 WSL2 与 Docker Desktop。
+2. 在 Docker Desktop 中启用 **Use WSL 2 based engine**、切换到 **Linux containers**，并为使用的 WSL2 发行版开启 **WSL Integration**。
+3. 打开该 WSL2 发行版的终端，确认 `docker version` 和 `docker compose version` 可用。
+4. 在 WSL2 终端运行上面同一条一键部署命令，完成后访问 `http://localhost:8090`。
+
+建议把面板数据保存在 WSL2 的 Linux 文件系统中，并保持 Docker Desktop 运行。Windows 防火墙仍需按联机场景允许面板和游戏端口；系统重启或 Docker Desktop 退出期间，服务器也会停止。
+
+Windows、NAS、飞牛 OS 和手动 Compose 部署请直接查看[部署指南](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/requirements)。
 
 ## 🧭 日常管理
 
