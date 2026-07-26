@@ -1,4 +1,4 @@
-# PANEL-HEALTH-WATCHDOG-1 接手记录（2026-07-26，completed，待发布 v0.4.3）
+# PANEL-HEALTH-WATCHDOG-1 接手记录（2026-07-26，completed，已发布 v0.4.3）
 
 ## 改了什么
 
@@ -10,7 +10,7 @@
 
 - 主要文件：`cmd/panel/{main,health_monitor,health_monitor_test}.go`、`internal/storage/sqlite_driver.go`、`Dockerfile`。HTTP 接口及 `/health` 响应形状没有变化。
 - 后端全量 test/vet/build、updater/runtime Docker integration 均通过。Docker Desktop 29.5.3 最终 `0.4.3` 候选的 image inspect 为 interval 60 秒、timeout 5 秒、retries 3；测试 Panel 退出后 RestartCount `0 → 1`、PID `13602 → 13772`，重启前后 `/health` 均返回 ok。Linux 容器回归连续 10 轮通过。
-- 真实 `0.4.2 → 0.4.3` updater apply 与旧 helper 清理续验通过；SQLite 数据、setup 状态、404 保留，隔离 game 容器 ID 不变。当前修改仍不属于已经发布的 `v0.4.2`，正式 `v0.4.3` tag 尚未创建。
+- `v0.4.3` 已由 commit `6db97e685386` 正式发布。三仓精确 tag 均解析到 digest `sha256:e1ffb4132610607305ce2316e5f3683b6413765bc61057ffd019b2841d38e559`；正式镜像内 `modernc.org/sqlite` 为 `v1.54.0`。发布后再次执行真实 `0.4.2 → 0.4.3` updater apply，SQLite 数据、setup 状态、404 保留，隔离 game 容器 ID 不变。
 
 # PANEL-SQLITE-INTERRUPT-1 接手记录（2026-07-24，completed）
 

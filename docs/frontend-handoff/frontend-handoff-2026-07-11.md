@@ -1216,9 +1216,9 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - 用户截图确认更新卡正文已是 `v0.4.2`，但 CSS 伪元素仍硬编码 `v0.4.1`；现改由首页 frontmatter `release` 经 `ThemeLayout.vue` 的继承 CSS 变量提供角标内容。
 - 全站 `.anxi-layout .vp-doc p/strong` 位于首页规则之后且覆盖流程区局部颜色，造成深色底上的深色副标题/步骤标题。流程区现使用独立高对比变量和更高 specificity。
 - 影响文件：`website/docs/index.md`、`.vitepress/theme/{ThemeLayout.vue,custom.css}`。production build、浅/深色桌面、390px、零溢出与 console 均通过，Pages 线上角标和流程区计算颜色已确认。后续升级版本时修改 frontmatter、feature 说明、CURRENT RELEASE 和 changelog；不要把版本重新写进 CSS。
-# DOCS-PORTAL-0.4.3 接手记录（2026-07-26，待发布，QA passed）
+# DOCS-PORTAL-0.4.3 接手记录（2026-07-26，已发布，QA passed）
 
 - 首页 frontmatter、版本更新卡和 CURRENT RELEASE 已切换到 `v0.4.3`，changelog 新增 Panel 一分钟健康监控、连续三次 SQLite code 9 精确退出及 Docker unhealthy/restart policy 边界说明。
-- 本次 tag 会首次包含 `v0.4.2` 发布后提交的动态 release 角标与深色流程区高对比度修复。不要把版本号重新硬编码到 `custom.css`；继续由 `ThemeLayout.vue` 把 frontmatter `release` 注入 `--home-release-label`。
+- `v0.4.3` tag 已包含 `v0.4.2` 发布后提交的动态 release 角标与深色流程区高对比度修复。不要把版本号重新硬编码到 `custom.css`；继续由 `ThemeLayout.vue` 把 frontmatter `release` 注入 `--home-release-label`。
 - 影响文件：`website/docs/{index,changelog}.md`。验证需覆盖 production build、浅/深色桌面、390px 移动端、console、首页更新卡点击到 changelog；发布后还需确认 Pages 线上内容。
-- 本地 VitePress build 与 Browser QA 已完成：1440×900 浅/深、390×844、版本角标/流程区计算颜色、更新卡点击、changelog 首项、横向溢出和 console 全部通过。发布后只剩 Pages 线上复核。
+- 本地与 Pages 线上 Browser QA 均完成：1440×900 浅/深、390×844、版本角标/流程区计算颜色、更新卡点击、changelog 首项、横向溢出和 console 全部通过；线上首页显示 `v0.4.3`，无 error/warning。

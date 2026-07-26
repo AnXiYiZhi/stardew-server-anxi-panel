@@ -1,10 +1,10 @@
-# v0.4.3 发布门禁：Panel 健康监控与重启边界（2026-07-26，待发布）
+# v0.4.3 发布门禁：Panel 健康监控与重启边界（2026-07-26，已发布）
 
 - 镜像 HEALTHCHECK 每分钟请求一次 `/health`，单次超时 5 秒、连续三次失败后只把容器标记为 unhealthy。Docker restart policy 不会因为 unhealthy 自动重启；它只在容器主进程退出后生效。
 - Panel 同时运行独立的进程内健康监控：启动一分钟后首次执行，之后每分钟复用 `/health` 的 `Store.Ping`。只有连续三次探针返回 SQLite 原生 `SQLITE_INTERRUPT`（code 9）时，Panel 才以状态码 1 主动退出；成功、超时或其它错误都重置计数。标准 Compose 的 `restart: unless-stopped` 随后只重新启动 Panel，不操作数据库、volume、游戏容器、存档或 Mod。
-- Docker Desktop 29.5.3 已构建带最终版本号的 `ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.4.3` 本地候选：`/health`、`/api/version`、404、OCI title/version、interval `60000000000ns`、timeout `5000000000ns`、retries 3 均正确；主进程退出后 PID `13602 → 13772`、RestartCount `0 → 1`，重启后 `/health` 为 ok。
-- Linux `golang:1.25-alpine` 内取消查询后下一查询成功与健康门限回归连续 10 轮通过；正式 updater 的真实 `0.4.2 → 0.4.3` apply 成功，SQLite 数据卷、setup 状态和 404 保留，隔离 game 容器 ID 未改变；新 Panel 对旧 helper 成功状态的镜像清理续验也通过。
-- tag 前兼容矩阵/远端制品、9 个 Python 单测、脚本功能/ShellCheck、后端全量 test/vet/build、updater/runtime Docker integration、前端九项状态测试/build、VitePress build 与浅/深/390px Browser QA 全部通过。本节能力不在已发布的 `v0.4.2` 中，正式 tag 尚未创建。
+- Docker Desktop 29.5.3 已构建并复验最终候选与正式 `ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.4.3`：`/health`、`/api/version`、404、OCI title/version、interval `60000000000ns`、timeout `5000000000ns`、retries 3 均正确；正式镜像主进程退出后 PID `14558 → 14689`、RestartCount `0 → 1`，重启后 `/health` 为 ok。
+- Linux `golang:1.25-alpine` 内取消查询后下一查询成功与健康门限回归连续 10 轮通过；发布后正式 updater 的真实 `0.4.2 → 0.4.3` apply 再次成功，SQLite 数据卷、setup 状态和 404 保留，隔离 game 容器 ID 未改变；新 Panel 对旧 helper 成功状态的镜像清理续验也通过。
+- tag 前兼容矩阵/远端制品、9 个 Python 单测、脚本功能/ShellCheck、后端全量 test/vet/build、updater/runtime Docker integration、前端九项状态测试/build、VitePress build 与浅/深/390px Browser QA 全部通过。发布工作流 `30188473585`、兼容矩阵 `30188469333`、Pages 部署 `30188469313` 均成功；Docker Hub、阿里云 ACR、GHCR 的 `0.4.3` 均为 digest `sha256:e1ffb4132610607305ce2316e5f3683b6413765bc61057ffd019b2841d38e559`。
 
 # PANEL-SQLITE-INTERRUPT-1 容器恢复边界（2026-07-24）
 
