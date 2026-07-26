@@ -2317,3 +2317,9 @@ npm.cmd run dev
 - 首页更新卡右上角版本不再硬编码在 CSS，改由 `index.md` frontmatter 的 `release` 通过主题变量传入伪元素；正文版本、CURRENT RELEASE 与角标仍需在发布时同步更新。
 - “从一台服务器，到朋友加入农场”流程区使用独立深色背景、主文字和次文字变量，并提高局部选择器优先级，避免全站 `.vp-doc p/strong` 规则覆盖后出现深色字叠深色底。
 - 影响：`website/docs/index.md`、`.vitepress/theme/{ThemeLayout.vue,custom.css}`。VitePress production build、浅色/深色 1440px、390px 单列、零横向溢出与 console 零 warning/error 均通过；Pages 线上计算样式和截图已复核。
+# DOCS-PORTAL-0.4.3：健康监控发布展示（2026-07-26，待发布，QA passed）
+
+- 展示文档首页 `release`、版本更新卡、CURRENT RELEASE 与 changelog 已切换到 `v0.4.3`，说明一分钟 `/health` 同源 SQLite 探针、连续三次原生 code 9 才退出 Panel，以及 Docker unhealthy 本身不会自动重启的边界。
+- `v0.4.2` 后合入的首页角标动态版本与深色流程区高对比度修复会包含在本次 tag 中；版本号仍只由 frontmatter 传入 CSS 变量，不在 CSS 内硬编码。
+- 发布前验证要求：VitePress production build；浅色/深色桌面与 390px 移动端检查版本角标、流程标题/说明、无横向溢出及 console error/warn；点击版本更新卡进入 `/changelog` 并看到 `v0.4.3（最新版本）`。
+- 本地 VitePress build 与 Browser QA 已通过：1440×900 浅/深色、390×844 均无横向溢出或 console error/warn；角标计算内容为 `v0.4.3`，四步流程标题/说明高对比可读；点击更新卡后 URL 与 changelog 首项均正确。

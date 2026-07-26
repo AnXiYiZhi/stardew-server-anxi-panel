@@ -1,3 +1,10 @@
+# PANEL-HEALTH-WATCHDOG-1：一分钟健康监控与仅 Panel 自恢复（2026-07-26，completed）
+
+- Panel 启动独立的进程内健康监控：首次检查在启动一分钟后执行，之后每分钟复用 `/health` 的 `Store.Ping` 数据库探针，单次超时 5 秒。只有探针返回 SQLite 原生 `SQLITE_INTERRUPT`（primary code 9）才累计；成功、超时及其它错误都清零。连续第三次 code 9 时 Panel 记录错误并以状态码 1 退出。
+- 生产启动路径不再把任意业务数据库操作纳入退出计数。退出后只依赖标准 Compose 的 `restart: unless-stopped` 拉起 Panel；不调用 Docker API，不重启游戏容器。Docker HEALTHCHECK 同步为每分钟一次，但 unhealthy 只表达状态，本身不会触发 Docker 重启。
+- 新增 `cmd/panel/health_monitor_test.go`，覆盖成功/非 interrupt 清零、错误文本不冒充原生 code 9、第三次连续 interrupt 才触发且触发后停止。后端全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。
+- Docker Desktop 29.5.3 正式 `0.4.3` 候选验证：镜像 health interval=60 秒、timeout=5 秒、retries=3；`restart: unless-stopped` 下测试 Panel 主进程退出后 RestartCount `0 → 1`、PID `13602 → 13772`，重启前后 `/health` 均为 ok。Linux 容器内取消恢复和健康门限回归连续 10 轮通过；真实 `0.4.2 → 0.4.3` updater 一键升级、数据卷/404/游戏容器隔离与旧 helper 清理均通过。测试容器和卷已清理，正式 tag 尚未创建。
+
 # PANEL-SQLITE-INTERRUPT-1：扫描路径与 SQLite 取消恢复（2026-07-24，completed）
 
 - Panel HTTP server 构造时只执行一次 `AdminExists`，并用原子布尔值缓存初始化状态；普通请求和 `/api/setup/status` 不再重复查询 SQLite。首个管理员事务成功后立即把缓存更新为 `true`，后续默认实例准备失败也不会让内存状态与已提交的管理员记录相反。

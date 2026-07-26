@@ -55,9 +55,16 @@ func (o *interruptObserver) observe(err error) {
 	}
 }
 
-func isSQLiteInterrupt(err error) bool {
+// IsSQLiteInterrupt reports whether err contains SQLite's primary
+// SQLITE_INTERRUPT result code. Extended result codes are reduced to their
+// low byte before comparison.
+func IsSQLiteInterrupt(err error) bool {
 	var sqliteErr interface{ Code() int }
 	return errors.As(err, &sqliteErr) && sqliteErr.Code()&0xff == sqliteInterruptCode
+}
+
+func isSQLiteInterrupt(err error) bool {
+	return IsSQLiteInterrupt(err)
 }
 
 func registerObservedSQLiteDriver(observer *interruptObserver) string {

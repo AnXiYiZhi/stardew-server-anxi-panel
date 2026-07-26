@@ -34,12 +34,7 @@ func main() {
 	ctx := context.Background()
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	store, err := storage.OpenWithOptions(ctx, cfg, storage.OpenOptions{
-		OnRepeatedInterrupt: func(count int) {
-			logger.Error("repeated SQLITE_INTERRUPT; terminating for Docker recovery", "consecutive_interrupts", count)
-			os.Exit(1)
-		},
-	})
+	store, err := storage.Open(ctx, cfg)
 	if err != nil {
 		logger.Error("failed to open storage", "error", err)
 		os.Exit(1)
@@ -158,6 +153,21 @@ func main() {
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	healthMonitor := panelHealthMonitor{
+		interval: panelHealthCheckInterval,
+		timeout:  panelHealthCheckTimeout,
+		limit:    panelHealthInterruptLimit,
+		check:    store.Ping,
+		logger:   logger,
+		onLimit: func(count int, err error) {
+			logger.Error("three consecutive panel health probes returned SQLITE_INTERRUPT; terminating Panel for Docker recovery",
+				"consecutive_interrupts", count,
+				"error", err,
+			)
+			os.Exit(1)
+		},
+	}
+	go healthMonitor.run(signalCtx)
 
 	go func() {
 		logger.Info("stardew anxi panel listening", "addr", cfg.Addr, "data_dir", cfg.DataDir, "db_path", cfg.DBPath, "version", cfg.Version)

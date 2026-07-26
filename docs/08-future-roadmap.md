@@ -1,3 +1,9 @@
+# 2026-07-26 完成：Panel 一分钟健康监控与自恢复边界
+
+- [x] Panel 启动一分钟后开始每分钟复用 `/health` 的 SQLite `Ping`，单次超时 5 秒；只累计原生 `SQLITE_INTERRUPT` code 9，成功、超时与其它错误清零。
+- [x] 连续第三次 code 9 时只退出 Panel 主进程，由 `restart: unless-stopped` 拉起 Panel；不调用 Docker API 或操作游戏容器。镜像 HEALTHCHECK 同步改为一分钟，并记录 unhealthy 不会自动重启容器的边界。
+- [x] 后端全量 test/vet/build、Docker integration 与 Docker Desktop 29.5.3 正式 `0.4.3` 候选通过：60 秒/5 秒/3 retries 配置正确，测试 Panel 退出后 RestartCount `0 → 1`、PID 改变且 `/health` 恢复；Linux 回归连续 10 轮、真实 `0.4.2 → 0.4.3` 一键升级及游戏容器隔离均通过。尚未创建正式 tag。
+
 # 2026-07-24 完成：Panel 扫描路径与 SQLite 取消恢复
 
 - [x] 初始化状态改为启动时读取一次并原子缓存，首个管理员事务成功后同步更新；请求路径不再逐次执行 `AdminExists`。
