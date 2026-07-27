@@ -2,14 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；v0.4.4 游戏日回档修复展示已完成本地构建，待随 main 推送完成 Pages 线上复核**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；v0.4.4 游戏日回档修复展示已完成 Pages 发布与线上复核**。以下决策已和用户对齐：
 
 ## 2026-07-28：v0.4.4 游戏日回档连续性修复展示
 
 - 首页 frontmatter、更新卡、CURRENT RELEASE 与 changelog 已切换到 `v0.4.4`，说明后台即时消费保存事件以及旧版本缺失历史日不可重建的边界。
 - `handbook/saves.md`、`maintain/saves-backup.md` 已删除旧 `latest/scheduled/daily` 现实时间策略，改为当前按游戏日创建回档点、默认保留最近 5 日（可设 1–14）和保护备份隔离语义。
 - 版本角标仍由 `ThemeLayout.vue` 注入 `--home-release-label`；没有修改 `custom.css` 或建立第二份版本来源。发布验收需覆盖首页 → changelog，以及维护/手册两份存档页面的桌面和手机渲染。
-- 本地 `npm run docs:build` 已通过。应用内 Browser 在 1440×900 验证首页唯一 `v0.4.4` 链接进入 changelog、手册索引进入存档管理、日常维护进入存档与备份；390×844 验证存档手册无横向溢出。页面身份、非空、framework overlay、console error/warn 均通过；待 Pages 发布后复核线上首页版本和三页内容。
+- 本地 `npm run docs:build` 已通过。应用内 Browser 在 1440×900 验证首页唯一 `v0.4.4` 链接进入 changelog、手册索引进入存档管理、日常维护进入存档与备份；390×844 验证存档手册无横向溢出。页面身份、非空、framework overlay、console error/warn 均通过。Pages 工作流 `30293213908` 成功后，线上首页和存档手册再次确认已展示 `v0.4.4`、后台即时处理与历史缺失不可补齐边界。
 
 首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用网格、柔光与玻璃品牌图；入口区固定为 6 张三列卡，图标序号必须以带引号字符串保存。“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。首页下方保留四步开服路径和当前版本摘要；改版时必须同步检查浅色、深色、桌面和窄屏。
 
@@ -19,7 +19,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前线上仍为推送前版本；本次现代化主题随 `website/**` 改动进入 GitHub Pages 工作流后更新）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.4` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |

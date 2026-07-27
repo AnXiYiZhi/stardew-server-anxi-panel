@@ -10,6 +10,7 @@
 
 - 主要文件：`backend/cmd/panel/main.go`、`backend/internal/games/stardew_junimo/{driver,saves,saves_test}.go`。公开文档同时纠正了仍描述旧 `latest/scheduled/daily` 机制的两页内容。
 - 测试：连续模拟 7 日、全程不调用列表 API，最终只存在连续第 3–7 日五档；8 路并发维护只消费一个事件。后端全量 test/vet/build 通过，Docker Desktop 候选与正式发布结果见 `docs/09-image-build.md`。
+- `v0.4.4` 已正式发布：commit `d5d815d365cb`，三仓 digest 统一为 `sha256:446b168c8784b3c7e77c5006b85adcbe2c1b106e80992281a929a75108fd572a`；正式 GHCR 镜像实际启动后 `/health`、`/api/version` 和 OCI revision 均正确。生产实例仍须在升级后等待下一次 `GameLoop.Saved`，才能确认真实游戏链路开始连续生成。
 - 旧版本已经错过的历史日没有可恢复的旧磁盘内容，升级后不能伪造补齐；只能从下一次 Saved 起保持连续。若未来支持运行时新增实例，必须让调度目标动态刷新，而不是继续依赖启动时实例快照。
 
 # PANEL-HEALTH-WATCHDOG-1 接手记录（2026-07-26，completed，已发布 v0.4.3）
