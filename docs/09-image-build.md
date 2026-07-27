@@ -1,3 +1,11 @@
+# v0.4.4 发布门禁：游戏日回档即时消费（2026-07-28）
+
+- 候选镜像必须证明 Panel 启动后无需访问备份列表 API，也会在每个 `GameLoop.Saved` 事件后生成当日 `auto_<save>_<ordinal>.zip`；连续模拟 7 个游戏日后只能保留连续最近 5 日，不能只检查 ZIP 数量。
+- Docker Desktop 隔离验证使用独立 bind 数据目录、Panel 数据库和端口；直接写入 Control 事件与存档日期，逐日等待后台调度生成 ZIP。不得复用或修改本机现有游戏实例、存档和 volume。
+- Docker Desktop 29.5.3 已构建 `0.4.4-rc` 并用独立容器、volume、端口 `18094` 验证：第 1–7 日事件均在后台轮询后生成非空 ZIP，最后严格只剩 `000003..000007`；停掉 Panel 后排队第 8 日事件再启动，启动补扫立即生成 `000008` 并推进为 `000004..000008`。全程未请求备份列表 API，事件目录最终为空；`/api/version=0.4.4`、OCI title/version 正确。隔离容器和 volume 已清理。
+- 发布前继续执行后端全量 test/vet/build、updater/runtime Docker integration、兼容矩阵与脚本门禁、前端九项状态脚本和 production build、VitePress production build；候选镜像检查 `/health`、`/api/version=0.4.4`、OCI title/version 与自动回档链路。
+- annotated tag `v0.4.4` 沿用 `.github/workflows/release.yml` 发布 Docker Hub、阿里云 ACR、GHCR 的 `0.4.4/latest` 并创建 GitHub Release。远端生产实例升级前必须备份 Panel 数据与当前存档，升级后确认 Panel health/version 和下一次游戏日保存产生连续回档点。
+
 # v0.4.3 发布门禁：Panel 健康监控与重启边界（2026-07-26，已发布）
 
 - 镜像 HEALTHCHECK 每分钟请求一次 `/health`，单次超时 5 秒、连续三次失败后只把容器标记为 unhealthy。Docker restart policy 不会因为 unhealthy 自动重启；它只在容器主进程退出后生效。

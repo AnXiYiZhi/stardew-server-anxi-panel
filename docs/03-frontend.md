@@ -1,3 +1,10 @@
+# DOCS-PORTAL-0.4.4：游戏日回档修复展示（2026-07-28）
+
+- 展示文档首页 `release`、版本更新卡、CURRENT RELEASE 与 changelog 切换到 `v0.4.4`，面向用户解释“五档存在但日期跳日”的真实原因、后台每 2 秒即时消费和“历史缺失日无法反向补齐”的边界。
+- `website/docs/handbook/saves.md` 与 `maintain/saves-backup.md` 删除已经失效的 `latest/scheduled/daily` 三策略描述，改为当前“睡觉存档后创建回档点 + 保留最近 1–14 个游戏日（默认 5）”，并区分游戏日回档与不参与自动清理的手动/保护备份。
+- Panel React 前端和 HTTP 契约未改。验证要求为 VitePress production build、桌面与 390px 移动端页面身份/非空/无 overlay/console 健康、首页到 changelog 和存档手册导航交互。
+- 本地 VitePress build 与应用内 Browser QA 已通过：首页点击唯一 `v0.4.4` 链接进入 changelog，首项、根因和历史不可补齐边界均可见；存档手册与维护页的新策略文案可见且不含旧 `latest/scheduled` 文件名。1440×900 与 390×844 均无横向溢出、framework overlay 或 console error/warn。
+
 # DOCS-PORTAL-SITEWIDE-1：全站文档美感与滚动性能升级（2026-07-22，completed）
 
 - 27 个公开文档页面统一接入栏目级主题：新手指南、部署、深度手册、日常维护、FAQ、版本日志分别拥有语义色、面包屑、栏目徽标、阅读进度、知识库侧栏、右侧目录和帮助页尾；搜索、移动菜单、主题切换、返回顶部与更新时间文案全部中文化。

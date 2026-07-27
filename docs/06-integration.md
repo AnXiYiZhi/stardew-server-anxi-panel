@@ -1,3 +1,10 @@
+# SAVE-BACKUP-EAGER-MAINTENANCE-1 联调契约（2026-07-28，completed）
+
+- HTTP API 与 `BackupPolicy {gameSaveBackups,retainGameDays}` 形状不变；前端仍按 `kind=auto` 和 `gameDayOrdinal` 展示最近游戏日回档点。
+- 自动回档不再依赖 `GET /api/instances/:id/saves/backups` 被访问。Panel 启动即补扫 `save-events`，运行期间每 2 秒消费一次；列表接口保留原补扫调用以兼容混合版本和瞬时失败，但与后台消费者按实例串行。
+- 前端不能把列表响应中的 `maintenance.createdBackupNames` 当作唯一新增通知：正常情况下事件已被后台消费，因此该字段多数为空。权威数据仍是响应中的完整 `backups` 列表。
+- 已经被旧版本延迟消费并覆盖掉的历史游戏日无法从当前磁盘反向重建；升级只保证后续 `GameLoop.Saved` 及时形成对应游戏日 ZIP，不伪造缺失的旧回档点。
+
 # PANEL-SQLITE-INTERRUPT-1 HTTP 契约（2026-07-24，completed）
 
 - `/api/setup/status` 的响应形状仍为 `200 {"initialized":boolean}`，但值来自 Panel 启动时缓存；首个管理员创建成功后在同一进程内立即变为 `true`。前端无需改变初始化流程。

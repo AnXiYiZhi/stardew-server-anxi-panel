@@ -1,3 +1,10 @@
+# DOCS-PORTAL-0.4.4 接手记录（2026-07-28）
+
+- 公开首页与 changelog 更新为 `v0.4.4`；版本角标继续只读 `index.md` frontmatter 的 `release`，没有在 CSS 重新硬编码。
+- 两份存档公开文档已从旧现实时间三策略改成当前游戏日回档机制，并明确后台即时生成、默认连续保留五个游戏日、手动/保护备份不参与清理和历史缺失无法补齐。
+- 影响 `website/docs/{index,changelog}.md`、`website/docs/{handbook/saves,maintain/saves-backup}.md`。Panel React 代码未改；VitePress build 与 Browser 桌面/手机验收结果记录在 `docs/11-docs-portal.md`。
+- 本地 Browser 真实点击验证：首页 `v0.4.4` → changelog 导航成功；手册索引 → 存档管理、更新面板 → 存档与备份两条站内链路均成功。1440×900 和 390×844 无页面级横向溢出，相关页面 console error/warn 为 0。
+
 # DOCS-PORTAL-SITEWIDE-1 接手记录（2026-07-22，completed）
 
 ## 改了什么

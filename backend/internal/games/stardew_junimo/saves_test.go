@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -2222,6 +2223,120 @@ func TestRunBackupMaintenance_DoesNotTouchManualOrProtectionBackups(t *testing.T
 	}
 	if _, err := os.Stat(filepath.Join(backupsDir(dir), "auto_TestSave_000001.zip")); !os.IsNotExist(err) {
 		t.Fatalf("day 1 auto backup should have been pruned after 7 days with default retention 5")
+	}
+}
+
+func TestBackupMaintenanceSchedulerCapturesConsecutiveGameDaysWithoutListingAPI(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave")
+	eventDir := saveEventsDir(dir)
+	if err := os.MkdirAll(eventDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	driver := New(nil, nil, nil, nil)
+	driver.backupMaintenanceInterval = 5 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		driver.RunBackupMaintenanceScheduler(ctx, []registry.Instance{{
+			ID: "stardew", DriverID: DriverID, DataDir: dir,
+		}})
+	}()
+
+	for day := 1; day <= 7; day++ {
+		writeTestSaveGameDay(t, dir, "TestSave", 1, "spring", day)
+		event := saveEventFile{Type: "saved", SaveName: "TestSave", CreatedAt: time.Now().UTC()}
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eventPath := filepath.Join(eventDir, fmt.Sprintf("event-%d.json", day))
+		if err := os.WriteFile(eventPath, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		backupPath := filepath.Join(backupsDir(dir), fmt.Sprintf("auto_TestSave_%06d.zip", day))
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			if _, err := os.Stat(backupPath); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("game day %d was not backed up by scheduler", day)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("backup scheduler did not stop after cancellation")
+	}
+
+	entries, err := os.ReadDir(backupsDir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var autoNames []string
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "auto_TestSave_") {
+			autoNames = append(autoNames, entry.Name())
+		}
+	}
+	if got, want := strings.Join(autoNames, ","), "auto_TestSave_000003.zip,auto_TestSave_000004.zip,auto_TestSave_000005.zip,auto_TestSave_000006.zip,auto_TestSave_000007.zip"; got != want {
+		t.Fatalf("retained automatic game days = %q, want %q", got, want)
+	}
+}
+
+func TestRunBackupMaintenanceSerializesConcurrentConsumers(t *testing.T) {
+	dir := t.TempDir()
+	createTestSaveForBackup(t, dir, "TestSave")
+	eventDir := saveEventsDir(dir)
+	if err := os.MkdirAll(eventDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	event := saveEventFile{Type: "saved", SaveName: "TestSave", CreatedAt: time.Now().UTC()}
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(eventDir, "event.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	const consumers = 8
+	results := make(chan BackupMaintenanceResult, consumers)
+	errs := make(chan error, consumers)
+	var wg sync.WaitGroup
+	for i := 0; i < consumers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			result, err := RunBackupMaintenance(dir)
+			results <- result
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	consumed := 0
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent maintenance failed: %v", err)
+		}
+	}
+	for result := range results {
+		consumed += result.ConsumedEvents
+	}
+	if consumed != 1 {
+		t.Fatalf("concurrent consumers consumed %d events, want exactly 1", consumed)
+	}
+	if _, err := os.Stat(filepath.Join(backupsDir(dir), "auto_TestSave_000001.zip")); err != nil {
+		t.Fatalf("expected serialized automatic backup: %v", err)
 	}
 }
 

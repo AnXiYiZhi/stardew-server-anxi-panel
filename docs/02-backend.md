@@ -1,3 +1,10 @@
+# SAVE-BACKUP-EAGER-MAINTENANCE-1：游戏日回档即时消费（2026-07-28，completed）
+
+- 根因：Control 在每次 `GameLoop.Saved` 后都会写入独立 `save-events/*.json`，但 Panel 过去只在管理员请求备份列表时调用 `RunBackupMaintenance`。多天事件积压后，消费每个事件时都读取同一份“当前”存档，因而全部覆盖成最新游戏日的 `auto_<save>_<ordinal>.zip`；最终虽有五档，日期可能跨过很多游戏日。
+- Panel 启动后现在为所有 Stardew 实例启动独立维护循环：启动即补扫一次，之后每 2 秒消费事件。它不依赖浏览器打开存档页，也不轮询 Junimo API；权威触发仍是 Control 在存档落盘完成后产生的 `GameLoop.Saved` 文件事件。
+- `RunBackupMaintenance` 增加按规范化实例目录的进程内互斥，后台循环与 `GET .../saves/backups` 的兼容性补扫不会同时打包或争抢同一事件。失败事件保留等待下一轮，成功后才删除；手动、删除前、回档前、人物删除前、导入前和运行组件升级前保护备份仍不参与五档清理。
+- 回归测试连续模拟 7 个游戏日且从不请求备份列表，最终严格保留连续第 3–7 日五档；另以 8 个并发消费者证明单个事件只消费一次。后端全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 通过。
+
 # PANEL-HEALTH-WATCHDOG-1：一分钟健康监控与仅 Panel 自恢复（2026-07-26，completed）
 
 - Panel 启动独立的进程内健康监控：首次检查在启动一分钟后执行，之后每分钟复用 `/health` 的 `Store.Ping` 数据库探针，单次超时 5 秒。只有探针返回 SQLite 原生 `SQLITE_INTERRUPT`（primary code 9）才累计；成功、超时及其它错误都清零。连续第三次 code 9 时 Panel 记录错误并以状态码 1 退出。

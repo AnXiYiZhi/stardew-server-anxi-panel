@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.3
+release: v0.4.4
 
 hero:
   name: Anxi Panel
@@ -40,7 +40,7 @@ features:
     linkText: 查看深度文档
   - icon: NEW
     title: 版本更新日志
-    details: 当前最新 v0.4.3。查看 Panel 一分钟健康监控与 SQLite 中断自恢复修复，以及从 v0.1.0 至今的完整更新记录。
+    details: 当前最新 v0.4.4。修复游戏日回档延迟生成造成五档日期不连续的问题，并保留此前的健康自恢复能力。
     link: /changelog
     linkText: 查看更新日志
   - icon: '05'
@@ -67,8 +67,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.3</strong>
-    <p>新增一分钟健康监控；连续三次 SQLite interrupted (9) 时只重启 Panel。</p>
+    <strong>v0.4.4</strong>
+    <p>游戏保存事件由后台即时处理，最近五个游戏日回档点不再因页面未打开而跳日。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
