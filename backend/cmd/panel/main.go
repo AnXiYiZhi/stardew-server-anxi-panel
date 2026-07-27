@@ -106,6 +106,14 @@ func main() {
 		}
 		stardewDriver.StartRequiredRuntimeUpdate(signalCtx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt})
 	}
+	backupInstances := make([]registry.Instance, 0, len(instances))
+	for _, instance := range instances {
+		if instance.DriverID != stardewDriver.ID() {
+			continue
+		}
+		backupInstances = append(backupInstances, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt})
+	}
+	go stardewDriver.RunBackupMaintenanceScheduler(signalCtx, backupInstances)
 
 	restartScheduler := web.NewRestartScheduler(web.RestartSchedulerDeps{
 		Store:    store,

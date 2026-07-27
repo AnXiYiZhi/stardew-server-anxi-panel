@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -1708,6 +1709,8 @@ type saveEventFile struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+var backupMaintenanceLocks sync.Map
+
 func DefaultBackupPolicy() BackupPolicy {
 	return BackupPolicy{
 		GameSaveBackups: true,
@@ -2059,6 +2062,11 @@ func backupSaveAs(dataDir, saveName, backupName string) (string, error) {
 // policy enables it, creates/overwrites that save's auto game-day backup
 // point and prunes older game days beyond the configured retention.
 func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
+	lockValue, _ := backupMaintenanceLocks.LoadOrStore(filepath.Clean(dataDir), &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+
 	policy, err := ReadBackupPolicy(dataDir)
 	if err != nil {
 		return BackupMaintenanceResult{}, err
@@ -2087,6 +2095,46 @@ func RunBackupMaintenance(dataDir string) (BackupMaintenanceResult, error) {
 		result.ConsumedEvents++
 	}
 	return result, nil
+}
+
+// RunBackupMaintenanceScheduler consumes GameLoop.Saved events independently
+// from the backup-list API. A save event only records that the live save has
+// finished writing; delaying consumption until an administrator opens the
+// backups page lets several game days accumulate and makes every event observe
+// the same newest on-disk day. Polling the tiny event directory keeps each
+// day's ZIP point close to the authoritative Saved boundary.
+func (d *Driver) RunBackupMaintenanceScheduler(ctx context.Context, instances []registry.Instance) {
+	interval := d.backupMaintenanceInterval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	runOnce := func() {
+		for _, instance := range instances {
+			if instance.DriverID != "" && instance.DriverID != DriverID {
+				continue
+			}
+			result, err := RunBackupMaintenance(instance.DataDir)
+			if err != nil {
+				d.logger.Warn("save backup maintenance failed", "instance", instance.ID, "error", err)
+				continue
+			}
+			if result.ConsumedEvents > 0 {
+				d.logger.Info("save backup maintenance completed", "instance", instance.ID, "consumed_events", result.ConsumedEvents, "created_backups", len(result.CreatedBackupNames))
+			}
+		}
+	}
+
+	runOnce()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runOnce()
+		}
+	}
 }
 
 func readSaveEvent(path string) (saveEventFile, error) {

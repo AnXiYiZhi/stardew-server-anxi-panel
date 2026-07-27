@@ -1,3 +1,17 @@
+# SAVE-BACKUP-EAGER-MAINTENANCE-1 接手记录（2026-07-28，completed）
+
+## 改了什么
+
+- 根因在 `saves.go` 的调用时机：Control 每次 Saved 都正确写事件，但 `RunBackupMaintenance` 只由备份列表 GET 触发。积压几天后每个旧事件都读取当前存档日并覆盖同一个最新 ordinal，所以保留数量是 5，日期却不连续。
+- `Driver.RunBackupMaintenanceScheduler` 在 Panel 启动时立即运行一次，之后每 2 秒对启动时发现的所有 Stardew 实例消费事件。`cmd/panel/main.go` 用 `signalCtx` 管理生命周期，Panel 退出时调度器同步停止。
+- `RunBackupMaintenance` 以规范化 `dataDir` 对应的进程内 mutex 串行，避免后台任务和备份列表 GET 并发打包。没有修改 Control、Junimo API、备份文件命名、策略接口或前端状态结构。
+
+## 影响、验证与下一步
+
+- 主要文件：`backend/cmd/panel/main.go`、`backend/internal/games/stardew_junimo/{driver,saves,saves_test}.go`。公开文档同时纠正了仍描述旧 `latest/scheduled/daily` 机制的两页内容。
+- 测试：连续模拟 7 日、全程不调用列表 API，最终只存在连续第 3–7 日五档；8 路并发维护只消费一个事件。后端全量 test/vet/build 通过，Docker Desktop 候选与正式发布结果见 `docs/09-image-build.md`。
+- 旧版本已经错过的历史日没有可恢复的旧磁盘内容，升级后不能伪造补齐；只能从下一次 Saved 起保持连续。若未来支持运行时新增实例，必须让调度目标动态刷新，而不是继续依赖启动时实例快照。
+
 # PANEL-HEALTH-WATCHDOG-1 接手记录（2026-07-26，completed，已发布 v0.4.3）
 
 ## 改了什么

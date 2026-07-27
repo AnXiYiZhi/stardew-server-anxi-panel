@@ -98,6 +98,7 @@ type Driver struct {
 	runtimeUpdateAuthTimeout   time.Duration
 	runtimeUpdateServerTimeout time.Duration
 	runtimeUpdateStopTimeout   time.Duration
+	backupMaintenanceInterval  time.Duration
 	requiredRuntimeMu          sync.Mutex
 	requiredRuntimeRunning     map[string]bool
 }
@@ -125,6 +126,7 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		runtimeUpdateAuthTimeout:   90 * time.Second,
 		runtimeUpdateServerTimeout: 20 * time.Minute,
 		runtimeUpdateStopTimeout:   10 * time.Minute,
+		backupMaintenanceInterval:  2 * time.Second,
 		requiredRuntimeRunning:     make(map[string]bool),
 	}
 }

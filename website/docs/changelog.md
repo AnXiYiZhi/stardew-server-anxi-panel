@@ -6,7 +6,11 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.4.3（最新版本）
+## v0.4.4（最新版本）
+
+**游戏日回档连续性修复**：修复自动回档事件只有在管理员打开备份列表时才消费的问题。旧逻辑会让多天保存事件积压，并在集中处理时全部读取最新存档日期，导致看似保留了五档、实际游戏日期却相隔很多天。Panel 现在启动即补扫、运行中每 2 秒后台处理 `GameLoop.Saved` 事件，并串行化页面补扫与后台任务；每次睡觉保存都会及时形成对应游戏日回档点，默认稳定保留最近连续 5 个游戏日。已经被旧版本漏掉的历史日无法从当前磁盘反向重建，升级后从下一次保存起生效。
+
+## v0.4.3
 
 **Panel 健康监控与精确自恢复**：Panel 启动一分钟后开始每分钟复用 `/health` 的 SQLite 探针，单次超时 5 秒。只有连续三次原生 `SQLITE_INTERRUPT`（code 9）才退出 Panel 主进程；成功、超时或其它错误都会清零，普通业务查询不参与计数。Docker 镜像健康检查同步为一分钟一次；容器变成 unhealthy 只用于展示状态，不会触发 restart policy，真正的恢复由 Panel 主进程退出后 `restart: unless-stopped` 仅拉起 Panel 完成，不会重启游戏容器。
 
