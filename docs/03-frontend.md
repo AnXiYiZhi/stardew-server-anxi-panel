@@ -4,6 +4,7 @@
 - `website/docs/handbook/saves.md` 与 `maintain/saves-backup.md` 删除已经失效的 `latest/scheduled/daily` 三策略描述，改为当前“睡觉存档后创建回档点 + 保留最近 1–14 个游戏日（默认 5）”，并区分游戏日回档与不参与自动清理的手动/保护备份。
 - Panel React 前端和 HTTP 契约未改。验证要求为 VitePress production build、桌面与 390px 移动端页面身份/非空/无 overlay/console 健康、首页到 changelog 和存档手册导航交互。
 - 本地 VitePress build 与应用内 Browser QA 已通过：首页点击唯一 `v0.4.4` 链接进入 changelog，首项、根因和历史不可补齐边界均可见；存档手册与维护页的新策略文案可见且不含旧 `latest/scheduled` 文件名。1440×900 与 390×844 均无横向溢出、framework overlay 或 console error/warn。
+- Pages 工作流 `30293213908` 已成功。线上首页、`handbook/saves.html` 已通过应用内 Browser 复核，当前版本、后台及时消费、默认最近五个游戏日、保护备份隔离及历史缺失不可重建文案均已上线。
 
 # DOCS-PORTAL-SITEWIDE-1：全站文档美感与滚动性能升级（2026-07-22，completed）
 

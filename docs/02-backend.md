@@ -4,6 +4,7 @@
 - Panel 启动后现在为所有 Stardew 实例启动独立维护循环：启动即补扫一次，之后每 2 秒消费事件。它不依赖浏览器打开存档页，也不轮询 Junimo API；权威触发仍是 Control 在存档落盘完成后产生的 `GameLoop.Saved` 文件事件。
 - `RunBackupMaintenance` 增加按规范化实例目录的进程内互斥，后台循环与 `GET .../saves/backups` 的兼容性补扫不会同时打包或争抢同一事件。失败事件保留等待下一轮，成功后才删除；手动、删除前、回档前、人物删除前、导入前和运行组件升级前保护备份仍不参与五档清理。
 - 回归测试连续模拟 7 个游戏日且从不请求备份列表，最终严格保留连续第 3–7 日五档；另以 8 个并发消费者证明单个事件只消费一次。后端全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 通过。
+- `v0.4.4` 已由 commit `d5d815d365cb` 正式发布；Docker Hub、阿里云 ACR、GHCR 三仓精确 tag 的 OCI index digest 均为 `sha256:446b168c8784b3c7e77c5006b85adcbe2c1b106e80992281a929a75108fd572a`。从 GHCR 实际拉取的正式镜像通过 `/health`、`/api/version` 与 OCI version/revision 复核。
 
 # PANEL-HEALTH-WATCHDOG-1：一分钟健康监控与仅 Panel 自恢复（2026-07-26，completed）
 
