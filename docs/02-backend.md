@@ -8,6 +8,7 @@
 - 主要文件：`backend/internal/games/stardew_junimo/{config/runtime_stack.go,config/runtime_stack_manifest.json,smapi_archive.go,smapi_archive_test.go,smapi_archive_integration_test.go}`、`scripts/compatibility_matrix.py`。回归覆盖正常多 Range、半包后精确偏移续传、坏代理整包后切官方、连续无进展有界失败、非法 `Content-Range` 和最终 SHA 不匹配不落盘。
 - Docker Desktop Linux 容器从空缓存通过受审候选下载 `41,889,142` 字节耗时 `2m26s`，固定 SHA/ZIP、缓存 `0600` 和 `.part` 清理均通过；本地 `0.4.5` Panel 镜像 health/version、Docker/Compose 与隔离 volume 冒烟通过。
 - 发布工作流 `30369196944` 全绿；Docker Hub、阿里云 ACR、GHCR 的 `0.4.5/latest` OCI index digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`。从 ACR 重新拉取的正式镜像返回 `version=0.4.5`、`commit=09250ed68ce9`。
+- 发布后 Docker Desktop 使用 ACR 正式镜像分别执行 `0.4.4 → 0.4.5`、`0.4.3 → 0.4.5`、`0.3.13 → 0.4.5` 的生产 `RunApply`：三次均为 succeeded，目标 health/version、非空 SQLite 与 setup 查询、扫描路径 404 正确，同 Compose game 容器 ID 保持不变。确认 tag 后后端代码未变化后，再从空缓存执行真实 SMAPI 下载，`41,889,142` 字节耗时 56 秒并通过 SHA/ZIP、`0600`、无 `.part` 残留；半包续传、坏代理回退、无进展与错摘要专项全绿。
 
 # SAVE-BACKUP-EAGER-MAINTENANCE-1：游戏日回档即时消费（2026-07-28，completed）
 

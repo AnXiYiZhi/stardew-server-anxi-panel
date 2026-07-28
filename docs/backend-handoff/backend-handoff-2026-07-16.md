@@ -13,6 +13,7 @@
 - 回归覆盖正常分块、半包续传、坏代理切官方、连续无进展失败、`Content-Range` 解析与最终 SHA 拒绝；release workflow 新增真实下载 gate。
 - Docker Desktop Linux 容器真实冷缓存下载 `41,889,142` 字节耗时 `2m26s`，摘要/ZIP、缓存 `0600` 与临时文件清理均通过；本地 `0.4.5` Panel 镜像冒烟通过。发布后仍不得通过放宽 trusted hosts 或重新读取 `.env.SMAPI_DOWNLOAD_URLS` 绕过清单。
 - 发布工作流 `30369196944` 全绿；三仓 `0.4.5/latest` digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`。ACR 正式镜像回拉返回 `version=0.4.5`、`commit=09250ed68ce9`，隔离 health/version/Docker/Compose 冒烟通过。
+- 发布后补验 ACR 正式 `0.4.4/0.4.3/0.3.13 → 0.4.5` 三条生产 `RunApply`，目标 health/version、SQLite/setup、404 和 game 容器隔离均通过。随后以 tag 同代码重新执行真实空缓存 archive gate，40 MiB 下载耗时 56 秒，摘要/ZIP/`0600`/临时清理与全部续传/回退专项通过。
 
 # SAVE-BACKUP-EAGER-MAINTENANCE-1 接手记录（2026-07-28，completed）
 
