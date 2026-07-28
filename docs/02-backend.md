@@ -1,4 +1,4 @@
-# SMAPI-DOWNLOAD-RESUME-1：受审加速源分块续传（2026-07-28，implemented，v0.4.5 待发布）
+# SMAPI-DOWNLOAD-RESUME-1：受审加速源分块续传（2026-07-28，v0.4.5 released）
 
 - 真实国内主机复现表明，SMAPI 4.5.2 官方 installer 为 `41,889,142` 字节，GitHub release-assets 链路约 `40 KiB/s`；旧实现把整个响应放在单个 2 分钟 `http.Client.Timeout` 内，游戏本体 413150 与 SDK 1007 已成功后仍会稳定报 `context deadline exceeded while reading body`。同一实例连续 7 次失败，磁盘、内存、Docker 与 Steam 授权均不是根因。
 - `ensureRecommendedSMAPIArchive` 改为固定 2 MiB 的 HTTPS Range 下载。每个 Range 仍独立限制 2 分钟；响应在超时/断流前只要收到部分合法区间字节，下一次即从已写入偏移继续。只有连续 4 次完全无进展才失败，外层安装 job 的既有 2 小时总门限仍负责最终取消。
@@ -7,6 +7,7 @@
 - 同一候选超时/断流时先按偏移续传；连续 4 次无进展、Range 契约错误或整包校验失败才清空临时文件并切换下一候选，不跨来源拼接正式缓存。GitHub 官方始终为最后兜底。
 - 主要文件：`backend/internal/games/stardew_junimo/{config/runtime_stack.go,config/runtime_stack_manifest.json,smapi_archive.go,smapi_archive_test.go,smapi_archive_integration_test.go}`、`scripts/compatibility_matrix.py`。回归覆盖正常多 Range、半包后精确偏移续传、坏代理整包后切官方、连续无进展有界失败、非法 `Content-Range` 和最终 SHA 不匹配不落盘。
 - Docker Desktop Linux 容器从空缓存通过受审候选下载 `41,889,142` 字节耗时 `2m26s`，固定 SHA/ZIP、缓存 `0600` 和 `.part` 清理均通过；本地 `0.4.5` Panel 镜像 health/version、Docker/Compose 与隔离 volume 冒烟通过。
+- 发布工作流 `30369196944` 全绿；Docker Hub、阿里云 ACR、GHCR 的 `0.4.5/latest` OCI index digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`。从 ACR 重新拉取的正式镜像返回 `version=0.4.5`、`commit=09250ed68ce9`。
 
 # SAVE-BACKUP-EAGER-MAINTENANCE-1：游戏日回档即时消费（2026-07-28，completed）
 

@@ -1,11 +1,12 @@
-# v0.4.5 发布门禁：SMAPI 受审加速源分块续传（2026-07-28，待发布）
+# v0.4.5 发布记录：SMAPI 受审加速源分块续传（2026-07-28，已发布）
 
-- 当前正式 `0.4.4` 仍把 SMAPI 官方 installer 的整段 body 限制为 2 分钟；约 `40 KiB/s` 的国内链路会在 Stardew/SDK 已完成后稳定失败。下一版候选必须包含 `SMAPI-DOWNLOAD-RESUME-1`。
+- `0.4.4` 及更早版本仍把 SMAPI 官方 installer 的整段 body 限制为 2 分钟；约 `40 KiB/s` 的国内链路会在 Stardew/SDK 已完成后稳定失败。正式 `0.4.5` 已包含 `SMAPI-DOWNLOAD-RESUME-1`。
 - 固定候选顺序为 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub 官方`。清单校验必须拒绝缺项、换序、任意代理和额外 host；运行时整包摘要/ZIP 错误时必须清空该候选临时内容再切下一项。
 - Docker Desktop 已用 `golang:1.25-alpine` Linux 容器和生产 `ensureRecommendedSMAPIArchive` 从空缓存完成真实下载：`41,889,142` 字节、`2m26s`，固定 SHA/ZIP、缓存 `0600` 与无 `.part` 残留均通过；本地 `stardew-server-anxi-panel:0.4.5-local` health/version、Docker/Compose 和隔离 volume 冒烟通过。
 - 验收必须核对正式缓存模式 `0600`、大小、SHA256 `dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4`、SMAPI `4.5.2` 元数据、`INSTALL_REQUIRED_FILES_OK`，以及只有 Panel 常驻容器、无临时下载/安装容器残留。
 - 安全门禁必须保留：embed 精确候选模板、六项 redirect allowlist、严格 `206/Content-Range`、固定大小/SHA/ZIP 结构；`.env.SMAPI_DOWNLOAD_URLS` 仍不参与选择。
-- `.github/workflows/release.yml` 新增真实 SMAPI 下载 gate；发布前还需完成全量 test/vet/build、Docker integration、前端/脚本门禁。尚未推送或发布正式 `0.4.5` 镜像。
+- `.github/workflows/release.yml` 新增真实 SMAPI 下载 gate；工作流 `30369196944` 已完成全量 test/vet/build、Docker integration、前端/脚本门禁、三仓推送和 GitHub Release。Docker Hub、阿里云 ACR、GHCR 的 `0.4.5/latest` OCI index digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`。
+- 从 ACR 回拉精确 `0.4.5` 后，隔离 Docker Desktop 容器返回 `version=0.4.5`、`commit=09250ed68ce9`；health、未初始化空库、Docker `29.5.3` 与 Compose `2.27.0` 均通过，测试容器和 volume 已删除。
 
 # v0.4.4 发布门禁：游戏日回档即时消费（2026-07-28）
 
