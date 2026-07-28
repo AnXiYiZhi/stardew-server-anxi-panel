@@ -1,4 +1,4 @@
-# SMAPI-DOWNLOAD-RESUME-1 联调契约（2026-07-28，implemented，v0.4.5 待发布）
+# SMAPI-DOWNLOAD-RESUME-1 联调契约（2026-07-28，v0.4.5 released）
 
 - HTTP API、安装请求、job 类型和阶段名均不变；仍是 `steamcmd_downloading → smapi_installing → game_installed`，失败仍为 `smapi_install_failed`。前端不提交 URL、Range、SHA 或超时参数。
 - 后端按 embed 清单的固定顺序 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub 官方` 逐候选执行 2 MiB Range。网络读取中途超时但已有进展时从偏移继续；候选连续无进展或最终整包校验失败时清空临时文件并切下一项，因此页面可能在 `smapi_installing` 停留较久。

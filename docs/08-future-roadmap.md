@@ -1,10 +1,10 @@
-# 2026-07-28 实现：SMAPI 受审加速源分块续传（v0.4.5 待发布）
+# 2026-07-28 实现：SMAPI 受审加速源分块续传（v0.4.5 released）
 
 - [x] 在真实国内主机确认游戏和 SDK 正常、SMAPI 失败由 41.9 MiB 官方包在约 `40 KiB/s` 下超过整包 2 分钟客户端超时导致。
 - [x] 改为 2 MiB HTTPS Range；单段超时/断流后按实际收到字节继续，连续 4 次无进展才切换候选，保留安装 job 2 小时总门限。
 - [x] 恢复代码审核固定的 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub` 顺序；每项仍受精确 URL/host、固定大小、SHA-256 与 ZIP 安全结构硬门槛约束，`.env` 任意下载源不生效。
 - [x] Docker Desktop Linux 冷缓存完整下载 `41,889,142` 字节并验证摘要、ZIP、`0600` 与临时文件清理，耗时 `2m26s`；本地 `0.4.5` Panel 镜像冒烟通过。
-- [ ] 完成全量发布门禁并发布 `v0.4.5`；未完成前，现有 `0.4.4` 用户仍不包含本代码修复。
+- [x] `v0.4.5` 发布工作流 `30369196944` 全绿；三仓 `0.4.5/latest` digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`，ACR 正式镜像回拉 health/version 冒烟通过。
 
 # SAVE-BACKUP-EAGER-MAINTENANCE-1：游戏日回档连续性修复（2026-07-28，completed）
 
