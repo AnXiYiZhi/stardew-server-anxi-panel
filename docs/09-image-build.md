@@ -7,6 +7,8 @@
 - 安全门禁必须保留：embed 精确候选模板、六项 redirect allowlist、严格 `206/Content-Range`、固定大小/SHA/ZIP 结构；`.env.SMAPI_DOWNLOAD_URLS` 仍不参与选择。
 - `.github/workflows/release.yml` 新增真实 SMAPI 下载 gate；工作流 `30369196944` 已完成全量 test/vet/build、Docker integration、前端/脚本门禁、三仓推送和 GitHub Release。Docker Hub、阿里云 ACR、GHCR 的 `0.4.5/latest` OCI index digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`。
 - 从 ACR 回拉精确 `0.4.5` 后，隔离 Docker Desktop 容器返回 `version=0.4.5`、`commit=09250ed68ce9`；health、未初始化空库、Docker `29.5.3` 与 Compose `2.27.0` 均通过，测试容器和 volume 已删除。
+- 发布后真实升级复验使用 ACR 精确 tag：`0.4.4 → 0.4.5`、`0.4.3 → 0.4.5`、`0.3.13 → 0.4.5` 均通过生产 `RunApply`。每次目标版本/健康、非空 SQLite/setup 查询、扫描路径 404 正确，同 Compose game 容器 ID 未变化。
+- `v0.4.5` tag 后只有文档提交，后端/脚本/工作流代码无差异；升级路径通过后再次在 Docker Linux 空缓存运行正式 SMAPI archive gate，`41,889,142` 字节耗时 56 秒，SHA/ZIP、缓存 `0600` 与无 `.part` 残留通过。半包续传、坏代理切官方、连续无进展和错摘要拒绝专项全部通过。
 
 # v0.4.4 发布门禁：游戏日回档即时消费（2026-07-28）
 

@@ -5,6 +5,7 @@
 - [x] 恢复代码审核固定的 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub` 顺序；每项仍受精确 URL/host、固定大小、SHA-256 与 ZIP 安全结构硬门槛约束，`.env` 任意下载源不生效。
 - [x] Docker Desktop Linux 冷缓存完整下载 `41,889,142` 字节并验证摘要、ZIP、`0600` 与临时文件清理，耗时 `2m26s`；本地 `0.4.5` Panel 镜像冒烟通过。
 - [x] `v0.4.5` 发布工作流 `30369196944` 全绿；三仓 `0.4.5/latest` digest 均为 `sha256:a8155defc50690b8b1e90c95f5b107e818b5438c68c341f90f9ebf8b7be428ad`，ACR 正式镜像回拉 health/version 冒烟通过。
+- [x] 发布后补验 ACR 正式 `0.4.4/0.4.3/0.3.13 → 0.4.5` 三条 `RunApply` 路径，SQLite/setup/404 与旁路 game 容器 ID 均保持；升级后发布代码真实空缓存下载 40 MiB 和全部续传/回退专项通过。
 
 # SAVE-BACKUP-EAGER-MAINTENANCE-1：游戏日回档连续性修复（2026-07-28，completed）
 
