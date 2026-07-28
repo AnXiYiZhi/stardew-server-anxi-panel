@@ -2,7 +2,7 @@
 
 ## 工作开始前
 
-每次工作开始前先阅读 `docs/01-project-overview.md`，再按任务范围阅读：
+每次工作开始前先阅读 `docs/01-project-overview.md` 和 `.agents/error-notebook.md`，再按任务范围阅读：
 
 - 后端任务：`docs/02-backend.md` 和 `docs/backend-handoff/` 下最新的后端接手文档。
 - 前端任务：`docs/03-frontend.md` 和 `docs/frontend-handoff/` 下最新的前端接手文档。
@@ -23,3 +23,42 @@
 - 后期暂缓事项：更新 `docs/07-later-optimizations.md`。
 
 接手文档至少记录：改了什么、影响哪些接口/文件、如何验证、下一步注意事项。不要只更新 README；README 面向使用者，接手文档面向下一位维护者。
+
+## 正式版本与 Tag 发布硬门禁
+
+任何创建、移动或推送 `v*` tag，更新 `latest`，推送正式镜像，或创建 GitHub Release 的工作，都必须先完成以下门禁。没有完整证据时不得以“CI 应该会测”“单元测试已过”或“只改了一点”为理由提前打 tag。
+
+1. 发布前先在 `docs/09-image-build.md` 写出本版变更清单、受影响链路和故障矩阵。每个新增或修改功能至少覆盖：正常路径、边界输入、权限与安全、网络超时/断流、部分成功后的重试与幂等、进程或容器中断后的恢复、失败回滚、数据完整性、资源清理；不适用项要写明原因。
+2. 必须在本机 Docker Desktop 的 Linux containers 环境构建带精确候选版本、commit 和 build date 的最终候选镜像。测试只能使用唯一的隔离 Compose project、容器、网络、端口、bind 目录和 volume；不得复用生产实例、真实用户存档、长期凭据或现有唯一数据卷。
+3. 新功能必须在 Docker Desktop 中做真实端到端验证，不能只跑 mock/单元测试。涉及网络、第三方服务、Docker、文件系统、数据库、升级、回滚或重启时，至少一条主路径必须使用真实运行组件；不可稳定复现的故障使用可控代理/故障注入补齐。需要账号的测试使用专用测试账号，凭据不得进入日志、状态、镜像层、提交或文档。
+4. 必须验证新功能可能遇到的失败以及对应措施确实生效。例如：候选源失败后安全回退、下载断点续传、坏包拒绝、目标镜像 unhealthy 后回滚、Panel 中断后恢复、重复提交不重复执行、清理只删除本测试拥有的资源。只验证“成功一次”不允许发布。
+5. 必须使用当前最新正式版到候选版执行一次真实 Panel 一键更新完整链路：更新检查、dry-run、管理员确认、apply、预期断线重连、终态恢复。不能用手工改镜像 tag、直接 `docker compose up` 或只调用内部函数代替一键更新验收。
+6. 若本版涉及数据库迁移、部署格式、运行栈、长期数据或跨多个版本的兼容逻辑，还必须从受支持的代表性老版本直接升级到候选版。至少包含“上一正式版”和“受本次迁移影响的最老支持版本”；版本范围不明确时先查历史文档和迁移代码，不得猜测。
+7. 每条升级测试必须验证：目标 `/health` 与 `/api/version` 精确匹配；数据库、初始化状态、用户、实例、存档、Mod、备份和审计数据按影响范围保留；非目标游戏容器/volume 不被重建或删除；升级终态和备份可读；Panel 重启后状态仍正确。涉及 updater 的版本还必须注入目标失败并验证旧版本自动回滚。
+8. 升级成功后，必须在“升级得到的新 Panel”上再次执行本版新功能的真实验收，证明不是只有全新安装有效。新功能验证完成前不得把升级成功等同于发布成功。
+9. Tag 前完成项目已有全量门禁：后端 test/vet/build、前端状态测试与 production build、脚本测试/ShellCheck、兼容矩阵、Docker integration、文档或网站构建，以及本版新增的专项门禁。任一门禁失败先修复并重新跑受影响范围，禁止带失败 tag。
+10. Tag 推送后必须等待发布工作流成功，再从每个正式 registry 回拉精确版本，核对三仓 digest、OCI version/revision、`latest` 指向、GitHub Release 状态，并用回拉镜像完成隔离 health/version 冒烟。随后把 workflow ID、digest、测试矩阵、耗时、故障与清理结果写入 `docs/09-image-build.md`、对应接手文档和路线图。
+
+如果任何高风险场景因外部条件无法验证，停止发布并向用户说明阻塞项；不得擅自降低为“发布后再观察”。
+
+## 命令执行与编码错题本
+
+项目级错题本固定为 `.agents/error-notebook.md`。它是每次工作的必读输入，不是任务结束时可选的复盘。
+
+- 命令、Shell、工具选择、路径、权限、环境、编码、换行或引号导致非预期失败时，先判断根因，再修改执行方式；禁止不改变假设地重复同一失败命令。
+- 找到正确方式后，必须在继续同类操作前或至少在本次任务结束前更新错题本。记录日期、环境、错误命令或模式、症状/退出码、根因、正确命令或做法、预防检查和适用范围；所有密码、token、cookie、私有 URL 参数必须脱敏。
+- 已有同类条目时更新“最近复发/补充”，不要堆重复条目。某错误重复出现两次，必须把预防规则提升到 `AGENTS.md`、脚本、测试或自动门禁，不能只继续记笔记。
+- 产品测试按预期发现的业务失败不必逐条记；但测试命令写错、环境选错、乱码、误用 Shell、清理范围错误等执行问题必须记录。
+- 任务交付前检查本次是否出现新的执行类错误；若有但错题本未更新，任务不得标记完成。
+
+## Shell、工具与文件编码约定
+
+- Windows 上所有 PowerShell 命令使用 PowerShell 7：`pwsh -NoLogo -NoProfile -Command '& { ... }'`，禁止调用 `powershell.exe`。外层使用单引号脚本块，避免父 PowerShell 提前展开 `$变量`；路径操作优先 `-LiteralPath`。调用 `git`、`go`、`npm`、`docker`、`python` 等原生命令后显式检查 `$LASTEXITCODE`。
+- Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
+- Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。CI 使用 workflow 明确配置的 Python。
+- Docker 操作前先运行 `docker info`；Docker Desktop 未启动时先启动并轮询就绪。临时资源必须使用任务专属前缀/label，创建前查重，清理前核对归属；禁止 `docker system prune`、`docker volume prune` 或模糊批量删除。`golang:*-alpine` 中执行 Go 命令使用 `sh -c`，不要用可能重置 PATH 的 `sh -lc`。
+- Windows 上 `npm ci` 若因现有 `node_modules` 文件锁报 `EPERM`，不得强删目录或反复重试；改用与发布版本一致的 Node Linux 容器和独立 `node_modules` volume 完成门禁，再按精确名称清理测试 volume。
+- `rg` 在 Windows 上不要传递未由 Shell 展开的 `path/*` 或 `Dockerfile*`；使用 `rg -g '<glob>' <pattern> <root>`、明确目录或先用 `rg --files`。文本搜索优先 `rg`，文件列表优先 `rg --files`。
+- 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
+- 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
+- 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。发现 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
