@@ -23,8 +23,12 @@ func TestBuiltInRuntimeStackManifestIsValid(t *testing.T) {
 	}
 	wantServerImages := strings.Split(DefaultServerImageCandidates, ",")
 	wantAuthImages := strings.Split(DefaultSteamServiceImageCandidates, ",")
+	wantSMAPIURLs := strings.Split(DefaultSMAPIDownloadURLs, ",")
 	if !equalStrings(manifest.Server.Images, wantServerImages) || !equalStrings(manifest.SteamAuth.Images, wantAuthImages) {
 		t.Fatalf("matrix candidates must match install order: server=%v auth=%v", manifest.Server.Images, manifest.SteamAuth.Images)
+	}
+	if !equalStrings(manifest.SMAPI.URLs, wantSMAPIURLs) || manifest.SMAPI.DownloadURL != wantSMAPIURLs[len(wantSMAPIURLs)-1] {
+		t.Fatalf("SMAPI accelerators must match reviewed order and retain the official recommendation URL: urls=%v official=%q", manifest.SMAPI.URLs, manifest.SMAPI.DownloadURL)
 	}
 	for _, component := range []RuntimeStackManifestComponent{manifest.Server, manifest.SteamAuth} {
 		canonicalDigest := component.Digests[component.Images[0]]
@@ -97,6 +101,10 @@ func TestRuntimeStackManifestRejectsUnsafeComponents(t *testing.T) {
 		{"game app mismatch", func(m *RuntimeStackManifest) { m.Game.AppID = "1007" }},
 		{"game build invalid", func(m *RuntimeStackManifest) { m.Game.BuildID = "latest" }},
 		{"sdk build missing", func(m *RuntimeStackManifest) { m.SDK.BuildID = "" }},
+		{"unreviewed smapi mirror", func(m *RuntimeStackManifest) { m.SMAPI.URLs[0] = "https://mirror.example/smapi.zip" }},
+		{"smapi mirror order drift", func(m *RuntimeStackManifest) { m.SMAPI.URLs[0], m.SMAPI.URLs[1] = m.SMAPI.URLs[1], m.SMAPI.URLs[0] }},
+		{"smapi recommendation URL drift", func(m *RuntimeStackManifest) { m.SMAPI.DownloadURL = m.SMAPI.URLs[0] }},
+		{"unreviewed smapi host", func(m *RuntimeStackManifest) { m.SMAPI.TrustedHosts[0] = "mirror.example" }},
 		{"invalid update policy", func(m *RuntimeStackManifest) { m.RuntimeUpdatePolicy = "silent" }},
 	}
 	for _, tc := range tests {
@@ -114,6 +122,8 @@ func TestRuntimeStackManifestRejectsUnsafeComponents(t *testing.T) {
 			for image, digest := range base.SteamAuth.Digests {
 				manifest.SteamAuth.Digests[image] = digest
 			}
+			manifest.SMAPI.URLs = append([]string(nil), base.SMAPI.URLs...)
+			manifest.SMAPI.TrustedHosts = append([]string(nil), base.SMAPI.TrustedHosts...)
 			tc.mutate(&manifest)
 			if err := ValidateRuntimeStackManifest(manifest); err == nil {
 				t.Fatal("expected validation error")

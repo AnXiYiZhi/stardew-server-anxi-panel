@@ -1,3 +1,18 @@
+# SMAPI-DOWNLOAD-RESUME-1 接手记录（2026-07-28，implemented，v0.4.5 待发布）
+
+## 改了什么
+
+- 生产主机的 Stardew/SDK 均成功，SMAPI 4.5.2 官方包却以约 `40 KiB/s` 下载；旧 `netdns.NewClient(2*time.Minute)` 把 `41,889,142` 字节（约 40 MiB）整包限制在一次请求中，连续多次在读取 body 时超时。
+- `smapi_archive.go` 现在按 2 MiB 请求当前受审候选的 Range。单次请求超时或断流后保留已写入的区间前缀，下一请求从精确偏移继续；连续 4 次零字节进展才切换候选。没有改变安装 job 的 2 小时总门限、Junimo 安装容器或 SMAPI 更新 staging 流程。
+- embed 清单恢复固定 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub 官方`。Go/Python 都只接受按版本生成的精确 URL 序列与六项 host allowlist；实例 `.env` 地址仍不能参与选择。
+- 每段必须返回匹配的 `206/Content-Range`；最终继续核对固定大小、SHA-256 与 ZIP 安全结构。候选整包不合格时清空临时文件再切下一项，不跨源拼包。
+
+## 影响、验证与下一步
+
+- 影响文件：`backend/internal/games/stardew_junimo/{smapi_archive.go,smapi_archive_test.go}`；初装与 SMAPI 更新事务共用同一缓存函数，HTTP API、阶段名和前端请求体不变。
+- 回归覆盖正常分块、半包续传、坏代理切官方、连续无进展失败、`Content-Range` 解析与最终 SHA 拒绝；release workflow 新增真实下载 gate。
+- Docker Desktop Linux 容器真实冷缓存下载 `41,889,142` 字节耗时 `2m26s`，摘要/ZIP、缓存 `0600` 与临时文件清理均通过；本地 `0.4.5` Panel 镜像冒烟通过。发布后仍不得通过放宽 trusted hosts 或重新读取 `.env.SMAPI_DOWNLOAD_URLS` 绕过清单。
+
 # SAVE-BACKUP-EAGER-MAINTENANCE-1 接手记录（2026-07-28，completed）
 
 ## 改了什么

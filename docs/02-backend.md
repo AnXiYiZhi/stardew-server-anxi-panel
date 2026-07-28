@@ -1,3 +1,13 @@
+# SMAPI-DOWNLOAD-RESUME-1：受审加速源分块续传（2026-07-28，implemented，v0.4.5 待发布）
+
+- 真实国内主机复现表明，SMAPI 4.5.2 官方 installer 为 `41,889,142` 字节，GitHub release-assets 链路约 `40 KiB/s`；旧实现把整个响应放在单个 2 分钟 `http.Client.Timeout` 内，游戏本体 413150 与 SDK 1007 已成功后仍会稳定报 `context deadline exceeded while reading body`。同一实例连续 7 次失败，磁盘、内存、Docker 与 Steam 授权均不是根因。
+- `ensureRecommendedSMAPIArchive` 改为固定 2 MiB 的 HTTPS Range 下载。每个 Range 仍独立限制 2 分钟；响应在超时/断流前只要收到部分合法区间字节，下一次即从已写入偏移继续。只有连续 4 次完全无进展才失败，外层安装 job 的既有 2 小时总门限仍负责最终取消。
+- 每个响应必须是 `206 Partial Content`，且 `Content-Range` 的起止、总长度必须与请求和内嵌清单精确一致。下载完成后仍执行固定 `archiveBytes`、SHA-256、ZIP 路径/条目数/解压上限/压缩比及 Linux+Windows installer 唯一结构校验，通过后才原子替换私有缓存。
+- embed `runtime_stack_manifest.json` 固定候选顺序为 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub 官方`。Go 与 Python 发布门禁都按 SMAPI 版本拼出并逐项比对精确 URL 模板和六项 host allowlist；实例 `.env.SMAPI_DOWNLOAD_URLS` 仍不能新增、换序或覆盖下载目标。
+- 同一候选超时/断流时先按偏移续传；连续 4 次无进展、Range 契约错误或整包校验失败才清空临时文件并切换下一候选，不跨来源拼接正式缓存。GitHub 官方始终为最后兜底。
+- 主要文件：`backend/internal/games/stardew_junimo/{config/runtime_stack.go,config/runtime_stack_manifest.json,smapi_archive.go,smapi_archive_test.go,smapi_archive_integration_test.go}`、`scripts/compatibility_matrix.py`。回归覆盖正常多 Range、半包后精确偏移续传、坏代理整包后切官方、连续无进展有界失败、非法 `Content-Range` 和最终 SHA 不匹配不落盘。
+- Docker Desktop Linux 容器从空缓存通过受审候选下载 `41,889,142` 字节耗时 `2m26s`，固定 SHA/ZIP、缓存 `0600` 和 `.part` 清理均通过；本地 `0.4.5` Panel 镜像 health/version、Docker/Compose 与隔离 volume 冒烟通过。
+
 # SAVE-BACKUP-EAGER-MAINTENANCE-1：游戏日回档即时消费（2026-07-28，completed）
 
 - 根因：Control 在每次 `GameLoop.Saved` 后都会写入独立 `save-events/*.json`，但 Panel 过去只在管理员请求备份列表时调用 `RunBackupMaintenance`。多天事件积压后，消费每个事件时都读取同一份“当前”存档，因而全部覆盖成最新游戏日的 `auto_<save>_<ordinal>.zip`；最终虽有五档，日期可能跨过很多游戏日。
@@ -439,7 +449,7 @@ saves info __fifo_stage_probe__
 
 - Stardew 安装流程在游戏文件和 Steam SDK 均完成后，新增最后一步 `smapi_installing`：后端使用 JunimoServer 镜像启动一次性 `docker run --rm` 容器，挂载同一个 `<project>_game-data:/data/game` volume，在 `/data/game` 内安装 SMAPI 运行环境。
 - 该容器不是常驻服务，不新增需要用户维护的 compose service；它只用于稳定访问 Docker named volume 和复用 JunimoServer Linux 环境。若 `/data/game/StardewModdingAPI` 已存在且可执行，会直接跳过。
-- `.env` 新增默认项：`SMAPI_VERSION=4.5.2`，`SMAPI_DOWNLOAD_URLS=` 默认按 `gh.llkk.cc`、`github.dpik.top`、`ghfast.top`、GitHub 官方源依次兜底。安装器会逐个下载并用 `unzip -t` 校验，坏包不会继续使用。
+- `.env` 保留兼容字段 `SMAPI_VERSION=4.5.2` 与 `SMAPI_DOWNLOAD_URLS`，默认文本与 embed 清单的三个固定加速候选及官方兜底一致，但运行时仍只采用 embed 清单；用户修改 `.env` 不会改变 installer 选择。每个候选都执行 Range、固定大小、SHA-256 和 ZIP 安全结构校验。
 - SMAPI 安装失败时实例 phase 为 `smapi_install_failed`，任务失败但 Steam/SteamCMD 授权仍视为已通过；用户可复用保存凭据重试后续安装步骤。
 - 影响文件：`backend/internal/games/stardew_junimo/config/env.go`、`backend/internal/games/stardew_junimo/driver.go`、`backend/internal/games/stardew_junimo/installer.go`、`backend/internal/games/stardew_junimo/driver_test.go`。
 - 验证：`cd backend; go test ./internal/games/stardew_junimo`。
@@ -1532,12 +1542,12 @@ docker run --rm `
 - `RuntimeReadSMAPIMetadata` 只读挂载当前显式 `GAME_DATA_VOLUME`，从 `StardewModdingAPI.dll` 的 AssemblyInformationalVersion 与 launcher/deps/runtimeconfig/config 固定产物判断实际安装；`.env` 的 `SMAPI_VERSION` 只作配置线索。状态为 `up_to_date/update_available/missing/invalid/incompatible_game/incompatible_junimo/custom_or_unknown`。
 - `GET /runtime-components` 追加 `smapi`；另提供管理员 `GET /smapi-update`、`GET|POST /smapi-update/dry-run`、`GET|POST /smapi-update/apply`。POST 不接受 URL、版本、SHA、ZIP、image/service 或命令；apply 只接受严格 `{"confirm":true}`。
 - dry-run 精确核对 Stardew buildid、SDK buildid、Junimo tag、steam-auth-cn tag、内置 Control 版本/DLL/协议和 staging/空间能力；只读 `du` 当前 game-data，并返回 `requiredBytes/freeBytes` 的克隆与安装缓冲估算。不匹配时拒绝，绝不顺便更新游戏、SDK、Junimo 或 auth，也不创建 volume、不下载 installer、不停服。
-- apply 仅下载清单 URL，限制官方 GitHub Release/审核重定向域名、Content-Length/读取上限，校验精确大小和 SHA256；ZIP 检查条目数、路径、symlink/device、压缩比与总解压上限，并要求官方 Linux/Windows installer 各一份。安装始终调用官方 Linux installer，不手拼 SMAPI 布局。
+- apply 仅下载清单中的受审加速候选及官方兜底，限制精确 URL 模板/重定向域名、Range/Content-Length/读取上限，校验精确大小和 SHA256；ZIP 检查条目数、路径、symlink/device、压缩比与总解压上限，并要求官方 Linux/Windows installer 各一份。安装始终调用官方 Linux installer，不手拼 SMAPI 布局。
 - 当前 game-data 只读克隆至受控 `<project>_anxi-smapi-update-<24hex>` staging volume；在 staging 离线安装和精确验版后停服，才替换 host bind 的内置 Control，原子改写 `.env` 的 `GAME_DATA_VOLUME`，再启动完整推荐 stack。验收包括 SMAPI 精确版本、Junimo `/health`、server 日志中的 JunimoServer/Control 实际加载证据、commandResultVersion、status/players，以及 auth 服务接口可访问且契约可解析；不要求 Steam 已登录、ticket 或邀请码。
 - 失败切回旧 volume、按“原文件存在/不存在”精确恢复 Control，并用 rollback 专用启动路径避免 lifecycle 再次覆盖旧 Control，最后恢复原运行状态；成功也保留旧 game-data 作为恢复材料，只清除临时 recovery 文件。`rollback_failed` 保留两卷和人工恢复指引，禁止自动破坏性重试、`down -v` 或 volume prune。Panel 重启不续跑安装器，而按 recovery manifest 安全回滚。
 - `cmd/smapi-candidate` 供维护者查询 `Pathoschild/SMAPI` 正式 Release，默认过滤 draft/prerelease，下载官方 installer 并输出候选 JSON/SHA256；失败不覆盖上次结果，也不修改矩阵/git/tag。
 - 玩家完整同步包仅在缓存中存在精确推荐安装器且大小/SHA 匹配时携带它；所有 pack manifest 都记录推荐 `version/checksum/bundled`，增量 Mod 包保持 `bundled=false` 且无 `payload/smapi`，旧包不会被改写。
-- 新实例初装也先由 Panel 的受控 HTTP client 下载并完整执行同一 URL/重定向 allowlist、大小、SHA256 与 ZIP 校验，再以只读 bind 交给容器中的官方 installer；`.env` 的旧 `SMAPI_DOWNLOAD_URLS` 仅为兼容字段，不再决定下载目标，新默认值也只保留官方 GitHub URL。
+- 新实例初装也先由 Panel 的受控 HTTP client 下载并完整执行同一候选 URL/重定向 allowlist、Range、大小、SHA256 与 ZIP 校验，再以只读 bind 交给容器中的官方 installer；`.env` 的 `SMAPI_DOWNLOAD_URLS` 仅为兼容展示字段，不决定下载目标，其默认文本与 embed 固定候选顺序保持一致。
 
 ## 2026-07-14：统一兼容矩阵与发布门禁
 

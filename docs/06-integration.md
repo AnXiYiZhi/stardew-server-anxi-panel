@@ -1,3 +1,10 @@
+# SMAPI-DOWNLOAD-RESUME-1 联调契约（2026-07-28，implemented，v0.4.5 待发布）
+
+- HTTP API、安装请求、job 类型和阶段名均不变；仍是 `steamcmd_downloading → smapi_installing → game_installed`，失败仍为 `smapi_install_failed`。前端不提交 URL、Range、SHA 或超时参数。
+- 后端按 embed 清单的固定顺序 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub 官方` 逐候选执行 2 MiB Range。网络读取中途超时但已有进展时从偏移继续；候选连续无进展或最终整包校验失败时清空临时文件并切下一项，因此页面可能在 `smapi_installing` 停留较久。
+- 真实完成门槛仍是缓存固定大小/SHA/ZIP 结构验证、JunimoServer 一次性安装容器成功，以及 `INSTALL_REQUIRED_FILES_OK`。任何 `206/Content-Range` 不匹配、连续无进展或最终摘要错误都必须失败且不能留下正式缓存。
+- `.env.SMAPI_DOWNLOAD_URLS` 不参与安全下载选择；新增/替换代理必须随 Panel 代码修改 embed 精确 URL 模板、host allowlist、Go/Python 校验和发布门禁，不能由实例配置绕过。当前无新增前端状态或文案要求。
+
 # SAVE-BACKUP-EAGER-MAINTENANCE-1 联调契约（2026-07-28，completed）
 
 - HTTP API 与 `BackupPolicy {gameSaveBackups,retainGameDays}` 形状不变；前端仍按 `kind=auto` 和 `gameDayOrdinal` 展示最近游戏日回档点。

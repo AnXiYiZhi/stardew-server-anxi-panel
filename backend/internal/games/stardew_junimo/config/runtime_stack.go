@@ -117,7 +117,7 @@ func (component *SMAPIManifestComponent) UnmarshalJSON(data []byte) error {
 	}
 	*component = SMAPIManifestComponent(decoded)
 	if len(component.URLs) > 0 {
-		component.DownloadURL = strings.TrimSpace(component.URLs[0])
+		component.DownloadURL = strings.TrimSpace(component.URLs[len(component.URLs)-1])
 	}
 	return nil
 }
@@ -261,7 +261,7 @@ func normalizeRuntimeStackManifest(manifest *RuntimeStackManifest) {
 	manifest.Server.normalize()
 	manifest.SteamAuth.normalize()
 	if len(manifest.SMAPI.URLs) > 0 {
-		manifest.SMAPI.DownloadURL = strings.TrimSpace(manifest.SMAPI.URLs[0])
+		manifest.SMAPI.DownloadURL = strings.TrimSpace(manifest.SMAPI.URLs[len(manifest.SMAPI.URLs)-1])
 	}
 	manifest.Tested = manifest.Status == RuntimeMatrixStatusRecommended
 }
@@ -317,18 +317,20 @@ func validateSMAPIManifestComponent(component SMAPIManifestComponent) error {
 	if len(component.URLs) == 0 {
 		return errors.New("smapi urls are required")
 	}
-	component.DownloadURL = strings.TrimSpace(component.URLs[0])
 	if !validDottedVersion(component.Version) {
 		return errors.New("smapi version must be an exact dotted version")
 	}
-	if !strings.HasPrefix(component.DownloadURL, "https://github.com/Pathoschild/SMAPI/releases/download/"+component.Version+"/") ||
-		component.DownloadURL != "https://github.com/Pathoschild/SMAPI/releases/download/"+component.Version+"/SMAPI-"+component.Version+"-installer.zip" {
-		return errors.New("smapi urls[0] must be the exact official GitHub release installer")
+	expectedURLs := reviewedSMAPIInstallerURLs(component.Version)
+	if len(component.URLs) != len(expectedURLs) {
+		return errors.New("smapi urls must match the reviewed accelerator candidates")
 	}
-	for _, raw := range component.URLs {
-		if strings.TrimSpace(raw) != component.DownloadURL {
-			return errors.New("smapi mirror urls require an explicitly reviewed manifest validator")
+	for i, raw := range component.URLs {
+		if strings.TrimSpace(raw) != expectedURLs[i] {
+			return fmt.Errorf("smapi urls[%d] is not the reviewed accelerator candidate", i)
 		}
+	}
+	if component.DownloadURL != expectedURLs[len(expectedURLs)-1] {
+		return errors.New("smapi download URL must remain the exact official fallback")
 	}
 	if len(component.SHA256) != 64 || isHexDigest(strings.ToLower(component.SHA256)) == false {
 		return errors.New("smapi sha256 must be a lowercase 64-character digest")
@@ -339,15 +341,37 @@ func validateSMAPIManifestComponent(component SMAPIManifestComponent) error {
 	if component.ArchiveBytes <= 0 || component.MaxArchiveBytes < component.ArchiveBytes || component.MaxExtractBytes < component.MaxArchiveBytes {
 		return errors.New("smapi archive size limits are invalid")
 	}
-	if len(component.TrustedHosts) == 0 || component.TrustedHosts[0] != "github.com" {
-		return errors.New("smapi trustedHosts must include official GitHub first")
+	expectedHosts := reviewedSMAPITrustedHosts()
+	if len(component.TrustedHosts) != len(expectedHosts) {
+		return errors.New("smapi trustedHosts must match the reviewed accelerator hosts")
 	}
-	for _, host := range component.TrustedHosts {
-		if host != "github.com" && host != "objects.githubusercontent.com" && host != "release-assets.githubusercontent.com" {
+	for i, host := range component.TrustedHosts {
+		if strings.TrimSpace(host) != expectedHosts[i] {
 			return fmt.Errorf("untrusted smapi host %q", host)
 		}
 	}
 	return nil
+}
+
+func reviewedSMAPIInstallerURLs(version string) []string {
+	official := "https://github.com/Pathoschild/SMAPI/releases/download/" + version + "/SMAPI-" + version + "-installer.zip"
+	return []string{
+		"https://gh.llkk.cc/" + official,
+		"https://github.dpik.top/" + official,
+		"https://ghfast.top/" + official,
+		official,
+	}
+}
+
+func reviewedSMAPITrustedHosts() []string {
+	return []string{
+		"gh.llkk.cc",
+		"github.dpik.top",
+		"ghfast.top",
+		"github.com",
+		"objects.githubusercontent.com",
+		"release-assets.githubusercontent.com",
+	}
 }
 
 func validateControlManifestComponent(component ControlManifestComponent) error {
