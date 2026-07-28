@@ -5,6 +5,7 @@
 - 更新页披露 `v0.4.4/v0.4.3/v0.3.13 → v0.4.5` 的代表性生产一键升级验证，不能扩写成所有历史版本均已逐一验证。
 - 影响文件：`website/docs/{index,changelog}.md`、`website/docs/{handbook/install,faq/index,maintain/update}.md`。Panel React、API 与主题样式无变化。
 - `npm.cmd --prefix website run docs:build` 已通过。应用内 Browser 已真实点击首页版本卡进入 changelog、FAQ 进入安装手册 SMAPI 锚点；首页、changelog、FAQ、安装手册和更新页在 390×844 下均无横向溢出，无 framework overlay，console error/warn 为 0。
+- Pages 工作流 `30372623636` 已成功；线上五个目标页面逐一使用 cache-bust 请求复核为 HTTP 200，首页与 changelog 已显示 `v0.4.5`，FAQ/安装页/更新页均包含新增说明。
 
 # DOCS-PORTAL-0.4.4 接手记录（2026-07-28）
 

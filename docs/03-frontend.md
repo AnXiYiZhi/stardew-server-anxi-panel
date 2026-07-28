@@ -5,6 +5,7 @@
 - 更新面板页公开 `v0.4.4/v0.4.3/v0.3.13 → v0.4.5` 生产升级链路的代表性验证结果，并说明升级后的 SMAPI 新能力需要在安装页重试触发。
 - 影响 `website/docs/{index,changelog}.md`、`website/docs/handbook/install.md`、`website/docs/faq/index.md`、`website/docs/maintain/update.md`；Panel React 和 HTTP API 均未修改。
 - VitePress production build 通过；应用内 Browser 已验证桌面首页版本卡进入 changelog、FAQ 进入安装手册 SMAPI 锚点，首页与四个正文页在 390×844 下均无横向溢出，页面无 overlay，console error/warn 为 0。
+- Pages 工作流 `30372623636` 已成功；线上首页、changelog、FAQ、安装手册和更新页均返回 200，并命中 `v0.4.5` 与对应 SMAPI/老版本升级文案。
 
 # DOCS-PORTAL-0.4.4：游戏日回档修复展示（2026-07-28）
 
