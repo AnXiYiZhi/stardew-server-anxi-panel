@@ -1,3 +1,11 @@
+# DOCS-PORTAL-0.4.5 接手记录（2026-07-28）
+
+- GitHub Pages 首页、版本日志、安装手册、FAQ 和更新面板页同步到 `v0.4.5`；版本角标继续只读 `index.md` frontmatter 的 `release`，未修改主题 CSS。
+- 面向用户说明固定受审代理顺序、分块续传、连续无进展回退、最终完整性校验与 GitHub 官方兜底；明确旧版本 SMAPI 失败后升级 Panel 并执行“重新安装 / 修复”即可继续，不重复 Steam 认证或游戏/SDK 下载。
+- 更新页披露 `v0.4.4/v0.4.3/v0.3.13 → v0.4.5` 的代表性生产一键升级验证，不能扩写成所有历史版本均已逐一验证。
+- 影响文件：`website/docs/{index,changelog}.md`、`website/docs/{handbook/install,faq/index,maintain/update}.md`。Panel React、API 与主题样式无变化。
+- `npm.cmd --prefix website run docs:build` 已通过。应用内 Browser 已真实点击首页版本卡进入 changelog、FAQ 进入安装手册 SMAPI 锚点；首页、changelog、FAQ、安装手册和更新页在 390×844 下均无横向溢出，无 framework overlay，console error/warn 为 0。
+
 # DOCS-PORTAL-0.4.4 接手记录（2026-07-28）
 
 - 公开首页与 changelog 更新为 `v0.4.4`；版本角标继续只读 `index.md` frontmatter 的 `release`，没有在 CSS 重新硬编码。

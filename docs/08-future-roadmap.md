@@ -1,3 +1,10 @@
+# 2026-07-28 完成：GitHub Pages v0.4.5 展示同步
+
+- [x] 首页、CURRENT RELEASE 和 changelog 更新为 `v0.4.5`，公开说明 SMAPI 受审国内加速、分块续传、安全回退与 GitHub 官方兜底。
+- [x] 安装手册和 FAQ 增加旧版超时症状、升级后“重新安装 / 修复”恢复路线、最终安装包完整性校验与禁止任意代理的安全边界。
+- [x] 更新页同步代表性 `v0.4.4/v0.4.3/v0.3.13 → v0.4.5` 生产升级证据，并提示在升级得到的新 Panel 上重试 SMAPI 功能。
+- [x] VitePress production build、桌面两条真实导航和首页/四个正文页 390×844 响应式验收通过；无横向溢出、overlay 或 console error/warn。
+
 # 2026-07-28 实现：SMAPI 受审加速源分块续传（v0.4.5 released）
 
 - [x] 在真实国内主机确认游戏和 SDK 正常、SMAPI 失败由 41.9 MiB 官方包在约 `40 KiB/s` 下超过整包 2 分钟客户端超时导致。

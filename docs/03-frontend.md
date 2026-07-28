@@ -1,3 +1,11 @@
+# DOCS-PORTAL-0.4.5：SMAPI 加速与升级验证展示（2026-07-28）
+
+- 公开首页 `release`、版本卡、CURRENT RELEASE 与 changelog 更新为 `v0.4.5`，说明 SMAPI 受审国内加速源、2 MiB 分块续传、安全回退和 GitHub 官方兜底。
+- 安装手册与 FAQ 新增“游戏和 SDK 已完成但 SMAPI 失败”的直接恢复路线：先升级 Panel，再执行“重新安装 / 修复”；明确不会重复 Steam 认证或清空已下载游戏/SDK，也不允许通过 `.env` 注入任意代理。
+- 更新面板页公开 `v0.4.4/v0.4.3/v0.3.13 → v0.4.5` 生产升级链路的代表性验证结果，并说明升级后的 SMAPI 新能力需要在安装页重试触发。
+- 影响 `website/docs/{index,changelog}.md`、`website/docs/handbook/install.md`、`website/docs/faq/index.md`、`website/docs/maintain/update.md`；Panel React 和 HTTP API 均未修改。
+- VitePress production build 通过；应用内 Browser 已验证桌面首页版本卡进入 changelog、FAQ 进入安装手册 SMAPI 锚点，首页与四个正文页在 390×844 下均无横向溢出，页面无 overlay，console error/warn 为 0。
+
 # DOCS-PORTAL-0.4.4：游戏日回档修复展示（2026-07-28）
 
 - 展示文档首页 `release`、版本更新卡、CURRENT RELEASE 与 changelog 切换到 `v0.4.4`，面向用户解释“五档存在但日期跳日”的真实原因、后台每 2 秒即时消费和“历史缺失日无法反向补齐”的边界。

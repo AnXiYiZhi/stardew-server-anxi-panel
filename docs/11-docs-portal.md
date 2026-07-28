@@ -2,7 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；v0.4.4 游戏日回档修复展示已完成 Pages 发布与线上复核**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；本地展示内容已更新到 v0.4.5，等待本次 Pages 发布与线上复核**。以下决策已和用户对齐：
+
+## 2026-07-28：v0.4.5 SMAPI 加速与升级验证展示
+
+- 首页 frontmatter、版本更新卡、CURRENT RELEASE 和 changelog 切换到 `v0.4.5`；首页只保留用户能理解的“受审加速、续传、安全回退、官方兜底”，详细候选顺序和校验边界放在安装手册与版本日志。
+- `handbook/install.md`、`faq/index.md` 增加旧版 SMAPI 整包两分钟超时的症状和升级后“重新安装 / 修复”恢复路线；`maintain/update.md` 同步三个代表性老版本的一键升级验证，明确旁路游戏容器未重建。
+- 版本角标继续由 `ThemeLayout.vue` 读取首页 `release`，没有修改主题样式。发布验收覆盖首页 → changelog、FAQ → 安装手册 SMAPI 锚点，以及桌面/390px 的版本与长链接布局。
+- 本地 `npm.cmd --prefix website run docs:build` 已通过。应用内 Browser 桌面真实点击两条导航成功；首页、changelog、FAQ、安装手册和更新页在 390×844 下内容存在、无横向溢出、无 framework overlay，console error/warn 为 0。
 
 ## 2026-07-28：v0.4.4 游戏日回档连续性修复展示
 
@@ -19,7 +26,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.4` 文档）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（线上当前为 `v0.4.4`，本次变更发布后更新为 `v0.4.5`）
 
 | 决策项 | 结论 |
 | --- | --- |
