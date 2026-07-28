@@ -19,6 +19,7 @@ SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){2,3}$")
+SMAPI_CHUNK_BYTES = 2 * 1024 * 1024
 
 
 class MatrixError(ValueError):
@@ -36,6 +37,27 @@ def load(path: Path) -> dict:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise MatrixError(message)
+
+
+def reviewed_smapi_urls(version: str) -> list[str]:
+    official = f"https://github.com/Pathoschild/SMAPI/releases/download/{version}/SMAPI-{version}-installer.zip"
+    return [
+        "https://gh.llkk.cc/" + official,
+        "https://github.dpik.top/" + official,
+        "https://ghfast.top/" + official,
+        official,
+    ]
+
+
+def reviewed_smapi_hosts() -> list[str]:
+    return [
+        "gh.llkk.cc",
+        "github.dpik.top",
+        "ghfast.top",
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    ]
 
 
 def validate_image_component(name: str, component: object, strict: bool) -> None:
@@ -83,11 +105,8 @@ def validate(matrix: dict) -> None:
     require(isinstance(smapi, dict) and VERSION_RE.fullmatch(str(smapi.get("version", ""))) is not None, "smapi.version must be exact")
     require(HEX64_RE.fullmatch(str(smapi.get("sha256", ""))) is not None, "smapi.sha256 is invalid")
     urls = smapi.get("urls")
-    require(isinstance(urls, list) and urls, "smapi.urls is required")
-    official_path = f"/Pathoschild/SMAPI/releases/download/{smapi['version']}/SMAPI-{smapi['version']}-installer.zip"
-    for raw in urls:
-        parsed = urlparse(raw)
-        require(parsed.scheme == "https" and parsed.hostname == "github.com" and parsed.path == official_path, "SMAPI URL is not an exact official installer")
+    require(urls == reviewed_smapi_urls(smapi["version"]), "SMAPI URLs do not match the reviewed accelerator order")
+    require(smapi.get("trustedHosts") == reviewed_smapi_hosts(), "SMAPI trusted hosts do not match the reviewed accelerator hosts")
 
     control = matrix.get("controlMod")
     require(isinstance(control, dict) and VERSION_RE.fullmatch(str(control.get("version", ""))) is not None, "controlMod.version must be exact")
@@ -120,6 +139,34 @@ def required_remote_image(image: str) -> bool:
     return canonical_docker_hub or owned_mirror
 
 
+def download_smapi_candidate(smapi: dict, raw_url: str) -> None:
+    digest = hashlib.sha256()
+    expected_total = smapi["archiveBytes"]
+    offset = 0
+    while offset < expected_total:
+        end = min(offset + SMAPI_CHUNK_BYTES - 1, expected_total - 1)
+        expected_range = f"bytes {offset}-{end}/{expected_total}"
+        request = Request(
+            raw_url,
+            headers={
+                "User-Agent": "stardew-anxi-panel-release-gate/1",
+                "Range": f"bytes={offset}-{end}",
+            },
+        )
+        with urlopen(request, timeout=120) as response:
+            require(response.status == 206, f"SMAPI range returned HTTP {response.status}")
+            require(urlparse(response.geturl()).hostname in set(smapi["trustedHosts"]), "SMAPI redirect host is not trusted")
+            require(response.headers.get("Content-Range") == expected_range, "SMAPI Content-Range mismatch")
+            content_length = response.headers.get("Content-Length")
+            require(content_length is None or int(content_length) == end - offset + 1, "SMAPI range length header mismatch")
+            chunk = response.read(end - offset + 2)
+        require(len(chunk) == end - offset + 1, "SMAPI range body length mismatch")
+        digest.update(chunk)
+        offset += len(chunk)
+    require(offset == expected_total, f"SMAPI archive size mismatch: expected {expected_total}, got {offset}")
+    require(digest.hexdigest() == smapi["sha256"], "SMAPI SHA256 mismatch")
+
+
 def verify_remote_artifacts(matrix: dict) -> None:
     validate(matrix)
     require(matrix["status"] == "recommended", "remote verification requires the embedded recommended manifest")
@@ -141,20 +188,16 @@ def verify_remote_artifacts(matrix: dict) -> None:
             require(actual == matrix[name]["digests"][image], f"tag/digest mismatch for {image}: expected {matrix[name]['digests'][image]}, got {actual}")
 
     smapi = matrix["smapi"]
-    request = Request(smapi["urls"][0], headers={"User-Agent": "stardew-anxi-panel-release-gate/1"})
-    digest = hashlib.sha256()
-    total = 0
-    with urlopen(request, timeout=120) as response:
-        require(urlparse(response.geturl()).hostname in set(smapi["trustedHosts"]), "SMAPI redirect host is not trusted")
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            require(total <= smapi["maxArchiveBytes"], "SMAPI download exceeds maxArchiveBytes")
-            digest.update(chunk)
-    require(total == smapi["archiveBytes"], f"SMAPI archive size mismatch: expected {smapi['archiveBytes']}, got {total}")
-    require(digest.hexdigest() == smapi["sha256"], "SMAPI SHA256 mismatch")
+    candidate_errors = []
+    for raw_url in smapi["urls"]:
+        try:
+            download_smapi_candidate(smapi, raw_url)
+            break
+        except (OSError, MatrixError, ValueError) as exc:
+            candidate_errors.append(f"{urlparse(raw_url).hostname}: {exc}")
+            print(f"compatibility matrix warning: SMAPI candidate failed: {candidate_errors[-1]}", file=sys.stderr)
+    else:
+        raise MatrixError("all reviewed SMAPI candidates failed: " + "; ".join(candidate_errors))
 
     with tempfile.TemporaryDirectory(prefix="anxi-matrix-trace-") as directory:
         commands = (

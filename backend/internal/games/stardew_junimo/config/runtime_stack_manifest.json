@@ -59,11 +59,16 @@
   "smapi": {
     "version": "4.5.2",
     "sha256": "dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4",
-    "urls": ["https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip"],
+    "urls": [
+      "https://gh.llkk.cc/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
+      "https://github.dpik.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
+      "https://ghfast.top/https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip",
+      "https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer.zip"
+    ],
     "archiveBytes": 41889142,
     "maxArchiveBytes": 104857600,
     "maxExtractBytes": 536870912,
-    "trustedHosts": ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
+    "trustedHosts": ["gh.llkk.cc", "github.dpik.top", "ghfast.top", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
     "version": "0.2.2",

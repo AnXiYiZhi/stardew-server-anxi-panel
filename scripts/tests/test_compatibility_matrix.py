@@ -62,6 +62,16 @@ class CompatibilityMatrixTests(unittest.TestCase):
             with self.assertRaisesRegex(MATRIX.MatrixError, "status is invalid"):
                 MATRIX.validate(value)
 
+    def test_smapi_accelerators_and_hosts_are_exact(self):
+        value = copy.deepcopy(self.base)
+        value["smapi"]["urls"][0] = "https://mirror.example/smapi.zip"
+        with self.assertRaisesRegex(MATRIX.MatrixError, "reviewed accelerator order"):
+            MATRIX.validate(value)
+        value = copy.deepcopy(self.base)
+        value["smapi"]["trustedHosts"][0] = "mirror.example"
+        with self.assertRaisesRegex(MATRIX.MatrixError, "reviewed accelerator hosts"):
+            MATRIX.validate(value)
+
     def test_withdrawn_requires_fallback(self):
         value = copy.deepcopy(self.base)
         value["status"] = "withdrawn"

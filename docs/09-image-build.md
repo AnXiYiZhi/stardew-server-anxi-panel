@@ -1,3 +1,12 @@
+# v0.4.5 发布门禁：SMAPI 受审加速源分块续传（2026-07-28，待发布）
+
+- 当前正式 `0.4.4` 仍把 SMAPI 官方 installer 的整段 body 限制为 2 分钟；约 `40 KiB/s` 的国内链路会在 Stardew/SDK 已完成后稳定失败。下一版候选必须包含 `SMAPI-DOWNLOAD-RESUME-1`。
+- 固定候选顺序为 `gh.llkk.cc → github.dpik.top → ghfast.top → GitHub 官方`。清单校验必须拒绝缺项、换序、任意代理和额外 host；运行时整包摘要/ZIP 错误时必须清空该候选临时内容再切下一项。
+- Docker Desktop 已用 `golang:1.25-alpine` Linux 容器和生产 `ensureRecommendedSMAPIArchive` 从空缓存完成真实下载：`41,889,142` 字节、`2m26s`，固定 SHA/ZIP、缓存 `0600` 与无 `.part` 残留均通过；本地 `stardew-server-anxi-panel:0.4.5-local` health/version、Docker/Compose 和隔离 volume 冒烟通过。
+- 验收必须核对正式缓存模式 `0600`、大小、SHA256 `dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4`、SMAPI `4.5.2` 元数据、`INSTALL_REQUIRED_FILES_OK`，以及只有 Panel 常驻容器、无临时下载/安装容器残留。
+- 安全门禁必须保留：embed 精确候选模板、六项 redirect allowlist、严格 `206/Content-Range`、固定大小/SHA/ZIP 结构；`.env.SMAPI_DOWNLOAD_URLS` 仍不参与选择。
+- `.github/workflows/release.yml` 新增真实 SMAPI 下载 gate；发布前还需完成全量 test/vet/build、Docker integration、前端/脚本门禁。尚未推送或发布正式 `0.4.5` 镜像。
+
 # v0.4.4 发布门禁：游戏日回档即时消费（2026-07-28）
 
 - 候选镜像必须证明 Panel 启动后无需访问备份列表 API，也会在每个 `GameLoop.Saved` 事件后生成当日 `auto_<save>_<ordinal>.zip`；连续模拟 7 个游戏日后只能保留连续最近 5 日，不能只检查 ZIP 数量。
@@ -252,8 +261,8 @@
 
 - 面板镜像本身不内置 SMAPI。安装 Stardew 时，后端会在游戏文件和 Steam SDK 完成后，用已选择的 JunimoServer 镜像启动一次性 `docker run --rm` 容器，挂载 `<project>_game-data:/data/game` 并安装 SMAPI。
 - 这不是新增常驻容器，也不需要用户开放新端口；容器运行完自动删除。目的是稳定访问 Docker named volume，并复用 JunimoServer 镜像里的 Linux 运行环境。
-- 默认下载源写入实例 `.env`：`SMAPI_VERSION=4.5.2`，`SMAPI_DOWNLOAD_URLS=https://gh.llkk.cc/... , https://github.dpik.top/... , https://ghfast.top/... , https://github.com/...`。可在 `.env` 中覆盖为自建 OSS/CDN 地址。
-- 离线/企业部署若希望完全避免现场 GitHub 下载，建议把 SMAPI installer zip 放到自有对象存储/CDN，并把 `SMAPI_DOWNLOAD_URLS` 改为自有地址优先。
+- `.env` 虽保留 `SMAPI_VERSION` / `SMAPI_DOWNLOAD_URLS` 兼容字段并写入与 embed 相同的固定加速顺序，但 installer 下载只取 Panel embed 清单，运行时覆盖不会改变选择。每个受审候选使用 Range 分块续传并做最终大小/SHA/ZIP 校验。
+- 离线/企业部署如需完全避免现场 GitHub，应在部署前把经同一大小、SHA-256 与 ZIP 结构校验的 installer 放入实例私有 `.local-container/smapi-update/packages/SMAPI-<version>-installer.zip`；不要通过 `.env` 引入未审核下载域名。
 
 # ENV-BOM-NORMALIZE-1 Compose 启动前配置校验
 
@@ -763,7 +772,7 @@ docker run -d -p 9090:8090 ...
 - `.github/workflows/discover-smapi-candidate.yml` 只允许手动触发，以只读 contents 权限运行上述 CLI；成功候选保存为 `discovered` cache/artifact，失败时 summary 明确展示的只是上次候选且任务最终失败。workflow 不编辑推荐矩阵、不提交/推送、不打 tag、不发布 installer。
 - 正式镜像发布前必须运行后端全量测试、`go vet`、隔离 Docker integration、前端 build/状态测试，并在 release-candidate 环境跑真实安装/回滚长链路。Control hash 不匹配时先按既有 Docker/.NET 流程重建，严禁提交 `bin/obj`。
 - SMAPI 下载缓存位于实例私有 `.local-container/smapi-update/packages`，不打入仓库；它用于后续完整玩家同步包。不得把候选 JSON、installer ZIP 或实例恢复材料提交、打 tag 或发布为本次产物。
-- 新实例初装和后续升级都只能从 embed 清单取目标；旧 `.env` 的 `SMAPI_DOWNLOAD_URLS` 不再参与下载选择。初装先在 Panel 侧按 allowlist/SHA/ZIP 上限缓存，再只读 bind 给安装容器，避免容器内 curl 跟随到未审核域名。
+- 新实例初装和后续升级都只能从 embed 清单取固定加速候选及官方兜底；旧 `.env` 的 `SMAPI_DOWNLOAD_URLS` 不参与下载选择。初装先在 Panel 侧按 allowlist/Range/大小/SHA/ZIP 上限缓存，再只读 bind 给安装容器，避免容器内 curl 跟随到未审核域名。
 - 隔离 Docker 验证命令：`go test -tags=integration ./internal/docker -run 'TestRuntime(SMAPIIsolatedStagingCloneAndInstaller|ApplyIsolatedSteamSessionCloneRestore)' -count=1`。SMAPI 用唯一临时 volume 和临时 helper image 验证 clone、官方 installer CLI 边界与清理；它不使用真实实例，也不替代阶段八真实 RC 长链路。
 
 ## 2026-07-14：矩阵快照与发布 Environment
