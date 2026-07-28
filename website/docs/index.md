@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.4
+release: v0.4.5
 
 hero:
   name: Anxi Panel
@@ -40,7 +40,7 @@ features:
     linkText: 查看深度文档
   - icon: NEW
     title: 版本更新日志
-    details: 当前最新 v0.4.4。修复游戏日回档延迟生成造成五档日期不连续的问题，并保留此前的健康自恢复能力。
+    details: 当前最新 v0.4.5。恢复受审国内加速源，SMAPI 下载支持分块续传、安全回退与完整性校验。
     link: /changelog
     linkText: 查看更新日志
   - icon: '05'
@@ -67,8 +67,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.4</strong>
-    <p>游戏保存事件由后台即时处理，最近五个游戏日回档点不再因页面未打开而跳日。</p>
+    <strong>v0.4.5</strong>
+    <p>SMAPI 安装包按受审加速源优先下载，慢速或中断链路可续传，失败时安全切换并由 GitHub 官方兜底。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
