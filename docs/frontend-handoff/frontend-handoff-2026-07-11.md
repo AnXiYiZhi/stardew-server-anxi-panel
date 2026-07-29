@@ -4,6 +4,7 @@
 - `ThemeLayout.vue` 用 `MutationObserver` 监听 outline link 的 class 变化；active 超出中间 28%–72% 舒适区时，平滑滚到约 42% 高度。`prefers-reduced-motion` 改为即时移动；route/resize/卸载分别负责重连、校正和清理。
 - 影响文件仅 `website/docs/.vitepress/theme/ThemeLayout.vue`。不要改成 window 每次 scroll 都强制居中，否则会抢夺用户手动滚动目录；后续升级 VitePress 时需复核 `.VPDocAsideOutline`、`.outline-link.active` 类名和 active 更新契约。
 - 验证：`npm.cmd --prefix website run docs:build` 通过；1440×900 真实滚轮验证目录向下、向上、页底 active 可见与维护页往返恢复；点击 v0.3.13 锚点正确。390×844 目录保持隐藏，页面宽度等于 viewport，无 overlay，console error/warn 为 0。
+- Pages 工作流 `30423428794` 成功。线上 cache-bust 版本日志在 v0.1.x 区域目录达到最大滚动位置，向下/向上 active 均可见，console error/warn 为 0。
 
 # DOCS-PORTAL-0.4.5 接手记录（2026-07-28）
 

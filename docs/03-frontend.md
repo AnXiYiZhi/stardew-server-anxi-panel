@@ -4,6 +4,7 @@
 - `website/docs/.vitepress/theme/ThemeLayout.vue` 新增 active link 观察器：只在 active class 变化时检查位置，离开目录 28%–72% 舒适区才把当前项移动到约 42% 高度；尊重 `prefers-reduced-motion`，路由切换后重新连接，resize 时即时校正，卸载时清理 observer/animation frame。
 - 该实现不会监听目录自身滚动，也不会在 active 未变化时抢回用户手动查看的位置；短目录、隐藏的移动端目录和无需滚动的页面直接跳过。Panel React、HTTP API、Markdown 内容与主题 CSS 均未修改。
 - 验证：VitePress production build 通过；应用内 Browser 1440×900 真实滚轮从顶部滚至 v0.2.9 时目录 `scrollTop 0 → 241`，到 v0.1.14 时为 `495/496` 且 active 可见；反向滚动回 v0.2.9 时降为 `342`。目录点击、维护页往返后重新跟随均通过，390×844 无横向溢出、overlay 或 console error/warn。
+- Pages 工作流 `30423428794` 已成功；线上版本日志滚轮到 v0.1.9、反向到 v0.1.13 时目录均位于 `scrollTop=496` 且 active 可见，页面身份、非空、overlay 与 console 检查通过。
 
 # DOCS-PORTAL-0.4.5：SMAPI 加速与升级验证展示（2026-07-28）
 
