@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import DefaultTheme from 'vitepress/theme'
 import { useData, useRoute, withBase } from 'vitepress'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const route = useRoute()
 const { frontmatter, page, site } = useData()
 const progress = ref(0)
+let outlineObserver: MutationObserver | undefined
+let outlineFrame: number | undefined
 
 const sections = [
   { prefix: '/guide/', key: 'guide', label: '新手指南', eyebrow: 'GETTING STARTED', icon: '✦' },
@@ -35,18 +37,83 @@ const updateProgress = () => {
   progress.value = scrollable > 0 ? Math.min(100, Math.max(0, window.scrollY / scrollable * 100)) : 0
 }
 
-onMounted(() => {
+const keepActiveOutlineLinkVisible = (behavior: ScrollBehavior = 'smooth') => {
+  if (typeof document === 'undefined') return
+  if (outlineFrame !== undefined) window.cancelAnimationFrame(outlineFrame)
+
+  outlineFrame = window.requestAnimationFrame(() => {
+    outlineFrame = undefined
+    const outline = document.querySelector<HTMLElement>('.VPDocAsideOutline')
+    const activeLink = outline?.querySelector<HTMLElement>('.outline-link.active')
+    if (!outline || !activeLink || outline.clientHeight <= 0 || outline.scrollHeight <= outline.clientHeight) return
+
+    const outlineRect = outline.getBoundingClientRect()
+    const activeRect = activeLink.getBoundingClientRect()
+    const comfortTop = outlineRect.top + outline.clientHeight * 0.28
+    const comfortBottom = outlineRect.bottom - outline.clientHeight * 0.28
+    if (activeRect.top >= comfortTop && activeRect.bottom <= comfortBottom) return
+
+    const target = outline.scrollTop
+      + activeRect.top
+      - outlineRect.top
+      - (outline.clientHeight - activeRect.height) * 0.42
+    const maxScroll = outline.scrollHeight - outline.clientHeight
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    outline.scrollTo({
+      top: Math.min(maxScroll, Math.max(0, target)),
+      behavior: reducedMotion ? 'auto' : behavior,
+    })
+  })
+}
+
+const observeActiveOutlineLink = () => {
+  outlineObserver?.disconnect()
+  outlineObserver = undefined
+
+  nextTick(() => {
+    const outline = document.querySelector<HTMLElement>('.VPDocAsideOutline')
+    if (!outline) return
+
+    outlineObserver = new MutationObserver((mutations) => {
+      const activeLinkChanged = mutations.some((mutation) => (
+        mutation.type === 'attributes'
+        && mutation.target instanceof HTMLElement
+        && mutation.target.classList.contains('outline-link')
+      ))
+      if (activeLinkChanged) keepActiveOutlineLinkVisible()
+    })
+    outlineObserver.observe(outline, {
+      attributes: true,
+      attributeFilter: ['class'],
+      subtree: true,
+    })
+    keepActiveOutlineLinkVisible('auto')
+  })
+}
+
+const updateViewportState = () => {
   updateProgress()
+  keepActiveOutlineLinkVisible('auto')
+}
+
+onMounted(() => {
+  updateViewportState()
+  observeActiveOutlineLink()
   window.addEventListener('scroll', updateProgress, { passive: true })
-  window.addEventListener('resize', updateProgress, { passive: true })
+  window.addEventListener('resize', updateViewportState, { passive: true })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateProgress)
-  window.removeEventListener('resize', updateProgress)
+  window.removeEventListener('resize', updateViewportState)
+  outlineObserver?.disconnect()
+  if (outlineFrame !== undefined) window.cancelAnimationFrame(outlineFrame)
 })
 
-watch(() => route.path, () => requestAnimationFrame(updateProgress))
+watch(() => route.path, () => {
+  requestAnimationFrame(updateViewportState)
+  observeActiveOutlineLink()
+})
 </script>
 
 <template>
