@@ -2,13 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；v0.4.5 展示已发布；长目录自动跟随修复已完成本地验收，等待本次 Pages 发布**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；v0.4.5 展示与长目录自动跟随修复均已完成 Pages 发布和线上复核**。以下决策已和用户对齐：
 
 ## 2026-07-29：长目录 active 项自动跟随
 
 - 版本日志目录因自身 `overflow-y:auto`，正文滚到历史版本后只移动 active marker，目录仍停在原位置。主题现观察 `.outline-link.active` 变化，仅在 active 离开中部舒适区时调整目录 `scrollTop`，使当前版本持续可见并保留前后上下文。
 - 自动跟随尊重 reduced-motion；路由切换重连 observer，resize 重新校正，卸载清理资源。active 未变化时不干预目录自身滚动；短目录和移动端隐藏目录不执行。
 - 本地 build 通过。应用内 Browser 在 1440×900 验证 v0.2.9、v0.1.14、反向滚动、锚点点击和跨页面返回；390×844 验证无横向溢出、overlay 或 console error/warn。发布后需在线复核同一长目录路径。
+- Pages 工作流 `30423428794` 已成功。线上 cache-bust 页面滚轮向下至 v0.1.9、反向至 v0.1.13，目录 `scrollTop=496` 且 active 始终可见；页面身份、非空、overlay 和 console error/warn 均通过。
 
 ## 2026-07-28：v0.4.5 SMAPI 加速与升级验证展示
 
