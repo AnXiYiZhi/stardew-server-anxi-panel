@@ -1,3 +1,9 @@
+# 2026-07-29 完成：展示文档长目录自动跟随
+
+- [x] 定位版本日志 active marker 已更新但独立目录容器 `scrollTop` 不变的根因。
+- [x] 仅在 active 项离开目录中部舒适区时自动调整目录，支持向下/向上跟随、路由切换恢复和 reduced-motion，不持续抢夺手动目录滚动。
+- [x] VitePress production build、1440×900 长目录真实滚轮/点击/跨页回归及 390×844 移动端验收通过。
+
 # 2026-07-28 完成：GitHub Pages v0.4.5 展示同步
 
 - [x] 首页、CURRENT RELEASE 和 changelog 更新为 `v0.4.5`，公开说明 SMAPI 受审国内加速、分块续传、安全回退与 GitHub 官方兜底。
