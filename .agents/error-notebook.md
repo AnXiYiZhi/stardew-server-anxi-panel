@@ -82,6 +82,7 @@
 - 最近补充：同轮名称排序验收在搜索框仍为 `e2e.locala` 时就断言三张卡顺序，导致 `A-Z sort failed`。排序断言前必须先确认过滤条件确实清空且计数恢复为 `3 个`，不能只假设 `fill("")` 已触发受控输入更新。
 - 最近补充：当前 in-app Browser 的 `press("ControlOrMeta+A")` / `press("Control+A")` 没有选中全部文本，后续 Backspace 每次只删除一个字符。需要清空受控搜索框时，用产品等价的空白查询验证 `trim()` 后全量结果，或改用可确认生效的 DOM/CUA 输入方式；每次都必须从新快照确认输入值和结果数。
 - 最近补充：配置 Mod 页没有活动存档时，`0 / N` 搜索计数仍会更新，但内容区优先保留“请先选择一个存档”，不会显示普通列表分支的搜索空态。断言必须先识别页面前置状态，不能要求互斥分支同时出现。
+- 最近补充：2026-08-01 官网上线验收用静态 HTML 精确匹配 `class="VPFeature"` 得到 0，并把导航主题开关的两个通用 `.icon` 误算为 feature icon；真实卡片 class 是 `VPLink link no-icon VPFeature`。VitePress SSR/DOM 断言应限定 `.VPFeatures .VPFeature` 与 `.VPFeatures .VPFeature .icon`，或使用结构稳定的六个 `<article class="box">`，不要假设 class 属性只有一个 token。
 
 ## 2026-07-28：嵌套 PowerShell 提前展开变量
 
@@ -265,6 +266,7 @@
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
 
+- 最近复发/补充：2026-08-01 线上 changelog 导航把通用 Playwright 的 URL predicate 传给 Browser `waitForURL`，返回 `requires a url`。当前 Browser 只接受明确 URL 参数；点击后可直接读取 `tab.url()` 和目标 DOM，或传文档支持的精确 URL，不使用 predicate 回调。
 - 最近复发/补充：2026-07-29 在静态概念稿预览中误把 `domcontentloaded` 当成 `tab.playwright` 方法调用；同日在下半页 QA 又照搬通用 Playwright 的 `scrollIntoViewIfNeeded()`，均返回 `is not a function`。本次重构又误用 `iab.tabs.claim()` 与 `tab.playwright.screenshot()`，实际 API 分别是 `iab.user.claimTab()` 与 `tab.screenshot()`；并再次请求了不受支持的 `networkidle`。`goto()`/`reload()` 本身用于完成导航；其它交互先核对 Browser 客户端实际方法，不再凭通用 Playwright 记忆猜测。
 - 环境：Codex 应用内 Browser，对本地 VitePress 开发服务器做页面 QA。
 - 错误模式：按通用 Playwright 类型调用 `tab.playwright.waitForLoadState({state:"networkidle"})`。

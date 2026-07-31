@@ -1,9 +1,9 @@
-# DOCS-HOME-CARD-POLISH-1：官网首页入口卡去序号与视觉优化（2026-08-01，completed，待 Pages 复核）
+# DOCS-HOME-CARD-POLISH-1：官网首页入口卡去序号与视觉优化（2026-08-01，released）
 
 - 首页六张 feature 删除 `01/02/03/04/NEW/05` 全部 `icon` 配置，不留下空图标占位；原有六条路由与 CTA、快速上手“推荐”标记和由 frontmatter 驱动的 `v0.4.6` 版本角标保持不变。
 - 卡片沿用六个现有栏目语义色，改为顶部短强调线、轻量栏目色背景/边框/阴影和底部分隔 CTA；桌面卡高从 256px 收紧到 232px，390px 手机端为 210px，内容较长的版本卡可自然增高，flex 布局保证 CTA 始终贴底对齐。
 - hover 位移只对精细指针生效；新增键盘 `:focus-visible` 外框，深色主题使用独立高对比栏目色，`prefers-reduced-motion` 下卡片和箭头均不位移。未恢复首页大面积毛玻璃或持续动画。
-- 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`；Panel React、HTTP API、路由与用户文案均未改变。Docker Desktop Linux 中 Node 20 Alpine production build 通过；应用内 Browser 与隔离 Playwright 覆盖 1280px 浅色/深色、390×844、hover、键盘焦点、reduced-motion 和更新日志导航，六卡、零 icon、零横向溢出、零 overlay、console error/warn 为空。Pages 上线结果待推送后补记。
+- 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`；Panel React、HTTP API、路由与用户文案均未改变。Docker Desktop Linux 中 Node 20 Alpine production build 通过；应用内 Browser 与隔离 Playwright 覆盖 1280px 浅色/深色、390×844、hover、键盘焦点、reduced-motion 和更新日志导航，六卡、零 icon、零横向溢出、零 overlay、console error/warn 为空。Pages workflow `30655296293` 的 build/deploy 均成功，deployment `5696310887` 绑定提交 `c19b889`；线上桌面、390px 手机、深色主题、版本角标与 changelog 导航再次复核通过。
 
 # FE-MOD-LIST-SEARCH-1：已安装 Mod 搜索与排序（2026-07-31，completed，未发布）
 

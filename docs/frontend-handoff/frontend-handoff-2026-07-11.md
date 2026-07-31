@@ -1,4 +1,4 @@
-# DOCS-HOME-CARD-POLISH-1 接手记录（2026-08-01，completed，待 Pages 复核）
+# DOCS-HOME-CARD-POLISH-1 接手记录（2026-08-01，released）
 
 ## 改了什么
 
@@ -9,7 +9,7 @@
 ## 影响、验证与下一步
 
 - 产品影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`；没有修改 Hero/说明文案、站内路由、Panel React 或 HTTP API。
-- Docker Desktop Linux 的 Node 20 Alpine 隔离构建通过。应用内 Browser 与隔离 Playwright 验证 1280px 浅色/深色、390×844 手机单列、hover、键盘焦点、reduced-motion 与 changelog 导航；六卡、零 icon、无横向溢出/overlay，console error/warn 为空。Pages workflow 与线上结果待推送后补记。
+- Docker Desktop Linux 的 Node 20 Alpine 隔离构建通过。应用内 Browser 与隔离 Playwright 验证 1280px 浅色/深色、390×844 手机单列、hover、键盘焦点、reduced-motion 与 changelog 导航；六卡、零 icon、无横向溢出/overlay，console error/warn 为空。Pages workflow `30655296293` 的 build/deploy 均成功，deployment `5696310887` 精确绑定 `c19b889`；线上桌面/手机/深色复核仍为六卡、零 icon、无溢出和零 console/page error，版本入口正确进入 `v0.4.6` changelog。
 - 这些卡片是并列文档入口，不是顺序流程；后续不要为装饰重新加入序号 icon。新增 feature 时继续复核桌面三列、手机单列、CTA 对齐、深色主题和 reduced-motion。
 
 # DOCS-HOME-PATH-REMOVE-1 接手记录（2026-08-01，completed）
