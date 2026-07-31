@@ -12,7 +12,7 @@
 - 产品文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`。没有更改 VitePress 路由、版本角标来源、Panel 前端或接口。
 - Docker Desktop Linux Node 20 production build 通过。应用内 Browser 验证页面身份、非空、浅/深主题切换与 console；隔离 Chrome/Playwright 验证 1280px hover 时卡片上移 4px、越出 Features 4px仍可命中，390×844/320×568/768×1024 零横向溢出，reduced-motion 无动画。颜色对比最低为暗卡状态色 `6.15:1`。
 - Pages workflow `30659672364` 的 build `91252609607` 与 deploy `91252685043` 均成功；deployment `5697130212` 状态 `success`，environment URL 为正式站点并精确绑定 `81b5716`。线上 cache-bust 验证桌面浅/深主题、邀请卡与六入口均存在，1280px hover 的 `translateY(-4px)` 越出 Features 4px 后顶部仍可命中；390×844 首页与 768×1024 正文移动菜单零横向溢出，overlay 与 console error/warn 为空。后续不要恢复整块 Hero 实色底、全屏网格或放大的低分辨率 Logo；更换邀请卡结构时继续验证浅/深色、390px、键盘、reduced-motion 和首行卡 hover 越界。
-# FE-RESPONSIVE-VIEWPORT-1 全窗口矩阵接手记录（2026-08-01，completed，v0.4.7 candidate）
+# FE-RESPONSIVE-VIEWPORT-1 全窗口矩阵接手记录（2026-08-01，completed，v0.4.7 released）
 
 ## 改了什么
 
@@ -33,6 +33,8 @@
 - `test:responsive-layout` 已逐像素覆盖 280..3840 × 16 高度并包含 7680×4320；项目全部 11 项前端状态测试和 `npm run build` 通过。两个 workflow 已接入专项命令。
 - Browser：移动六页覆盖 280×653/320×480/480×320/820×1180/1366×768，桌面九页覆盖 280 强制桌面、769×500、1366×768、2560×720；认证页覆盖 280×653 至 2560×720。768/769 自动断点、双向壳切换、横屏确认/更新弹窗、低高度超长新建游戏弹窗均通过。
 - 结果：页面级横向溢出为 0，Shell/overlay 精确覆盖视口，外层 viewport scroll 始终 `[0,0]`，长内容由内部容器滚动，关键按钮至少 44px，console error/warn 为 0。用户已确认实体平板横竖屏滑动、浏览器全屏、底栏切页和输入法冒烟通过；按用户明确决定，不再等待曾复现问题的朋友电脑验收，该设备未复验保留为剩余风险。
+- 正式候选还完成了 320×568、390×844、768×1024、1024×768、1440×900、1920×1080 六视口真实登录矩阵；随后由正式 `0.4.6` 在 Web 内分别完成 unhealthy `failed_rolled_back/health_check_failed` 和精确候选成功升级。升级后的 Panel 重启及 390×844/1920×1080 新功能复验通过，非目标 game sentinel 与长期数据保持。
+- 发布证据：tag `619d18dafa76`；Release/compatibility/Pages workflow `30662967983/30662818759/30662818712` 均成功；Docker Hub、ACR、GHCR 的 `0.4.7/latest` digest 均为 `sha256:3f336863ae5ec45a1997edcfc0922269250d5763e8ada49a7ba43f81d59edd7f`，三仓精确镜像分别通过隔离 health/version smoke。
 
 ## 下一步注意事项
 

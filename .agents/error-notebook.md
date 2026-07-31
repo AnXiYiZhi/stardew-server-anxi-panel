@@ -29,6 +29,7 @@
 ## 2026-07-31：批量读取时假定可选文件存在
 
 - 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。同日 `v0.4.7` 发布审计又把不存在的 `frontend/README.md` 与 `backend/internal/version` 直接交给批量 `rg`，分别让主批次和子审计退出 1。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
+- 最近复发：2026-08-01 `v0.4.7` 门禁又凭惯例猜测仓库根 `go.mod`、`backend/internal/api`、`backend/internal/version`、根 `run.sh`、容器 HTTP 端口 `8080` 和 sentinel 文件 `/game/sentinel.txt`；权威位置实际为 `backend/go.mod`、已发现的具体包、容器 `8090` 与 `/game/sentinel`。路径、端口和容器内文件都必须先从 `rg --files`、Dockerfile/Compose、health 配置或 `find` 的只读结果取得，不能把常见命名当契约。
 - 最近复发：2026-07-31 发版探查时猜测官网工作流名为 `docs-pages.yml`，随后又把不存在的仓库根 `cmd` 传给 `rg`，导致并行诊断整批退出 1；已改为先用 `rg --files .github/workflows` 和 `rg --files backend` 获取真实路径（分别为 `docs.yml`、`backend/cmd/...`）。
 - 环境：Windows，PowerShell 7，仓库文件探查。
 - 错误模式：在并行 `Get-Content` / `rg` 命令里直接加入未经确认的 `setup_handlers.go`、`docker-compose.yml` 和 `compose.yml`。
@@ -91,6 +92,7 @@
 - 最近复发/补充：2026-08-01 官网 Hero 预览审计在 JavaScript 包装、PowerShell 与 `rg` 三层中直接拼接带引号的搜索命令，命令尚未得到有效结果便退出 1。多层调用先把搜索模式和真实文件路径分别固定，优先直接调用单层 `rg -e <pattern> <confirmed-path>`；需要较长 PowerShell 逻辑时使用独立的单引号脚本块，不在 JavaScript 普通字符串里继续嵌套。
 - 最近复发/补充：2026-07-31 在 `[pscustomobject]` 属性表达式中直接嵌入 `docker exec ...; $LASTEXITCODE -eq 0`，PowerShell 在执行前报缺少右括号。原生命令及退出码检查必须先单独执行并存入 `$sidecarExists`，再把变量放进对象；不要在属性值括号里混合语句分隔符。
 - 最近复发/补充：2026-07-29 参考研究子任务在 JavaScript 工具包装层中再次把 PowerShell 引号嵌进普通字符串，导致包装层 `SyntaxError`，命令尚未执行；改用 JavaScript template literal 包裹完整 `pwsh -Command '& { ... }'` 后成功。跨 JavaScript/PowerShell 两层时同时检查两层字符串边界。
+- 最近复发/补充：2026-08-01 发布门禁在 `functions.exec` JavaScript 包装层连续出现普通字符串闭合错误，另有 skill 分段读取数组与嵌套 `printf` 的 PowerShell 引号边界破裂；统一改为 JavaScript template literal 承载完整 PowerShell 单引号脚本块，并把复杂 `printf`/数组探针拆成独立调用。包装层语法失败时命令根本没有执行，不得原样重放。
 - 环境：Windows，外层 Shell 已是 PowerShell，再调用 `pwsh -Command "...$variable..."`。
 - 错误模式：在双引号命令字符串中定义并使用 `$latest`，父 PowerShell 先展开变量，子进程收到残缺表达式。
 - 症状：`ParserError`，提示 `You must provide a value expression following the '+' operator`。
@@ -122,6 +124,7 @@
 
 ## 2026-07-28：Windows `npm ci` 被 node_modules 文件锁阻断
 
+- 最近复发/补充：2026-08-01 前端和官网两次把宿主源码父目录只读挂到 `/work`，同时把 named volume 挂到 `/work/node_modules`；runc 在只读父挂载下无法创建子挂载点，容器尚未运行 npm 就失败。该问题已提升到 `AGENTS.md`：宿主源码固定只读挂 `/src`，任务专属可写 workspace volume 挂 `/work`，复制源码/lockfile 后再安装构建。
 - 环境：Windows 工作区，已有 `frontend/node_modules`。
 - 错误模式：直接在宿主重复 `npm ci`。
 - 症状：`EPERM: operation not permitted, rmdir ...node_modules...`。
@@ -161,6 +164,7 @@
 - 预防检查：先用一个只读 `docker image inspect` 小命令验证 template，再放入较长脚本。
 - 最近复发/补充：2026-07-31 验证测试 volume label 时把 `{{index .Labels \"...\"}}` 放进嵌套 PowerShell 双引号，Docker 再次收到反斜杠并报 `unexpected "\\"`；改用无内层引号的 `{{json .Labels}}` 后确认 ownership。
 - 最近复发/补充：2026-08-01 又把带字符串键的 `{{index .Config.Labels \"...\"}}` 放进 `docker exec ... sh -c` 的第三层引号，容器 Shell 报 `unterminated quoted string`。只执行一个容器内命令时应去掉 `sh -c`，从 PowerShell 直接传参，并一次输出 `{{json .Config.Labels}}` 后在外层解析。
+- 最近复发/补充：2026-08-01 后端门禁把 `docker --format` 的模板与相邻参数错误拼接，Docker 收到无效 format。复杂 inspect 不再拼接模板字符串：先输出完整 `docker inspect` JSON，再由 PowerShell `ConvertFrom-Json` 投影所需字段；只有单个无引号模板经过独立探针后才使用 `--format`。
 - 适用范围：Docker inspect、Compose format 和其它 Go-template CLI。
 
 ## 2026-07-31：PowerShell 插值变量后直接连接连字符
@@ -198,6 +202,7 @@
 
 ## 2026-07-28：并行门禁被单个命令构造错误吞掉输出
 
+- 最近复发/补充：2026-08-01 文档门禁批次中一个命令构造错误让其它已完成步骤的证据没有显示，随后不得不逐项重跑。多工具链并行固定使用 `Promise.allSettled` 或独立调用并给结果加标签，不能让一个调度错误吞掉其它门禁状态。
 - 环境：JavaScript `Promise.all` 并行调用多组 PowerShell 门禁。
 - 错误模式：一个复杂命令存在引号错误，`Promise.all` 立即拒绝，其他组结果未输出。
 - 症状：只得到顶层 `Script error`，难以判断哪组失败。
@@ -219,6 +224,7 @@
 ## 2026-07-28：猜测配置文件扩展名且忽略 PowerShell 非终止错误
 
 - 最近复发/补充：2026-07-29 重构隔离预览时再次直接读取不存在的 `docs/.vitepress/config.mts`；随后先用 `rg --files --hidden docs/.vitepress` 找到真实的 `config.ts`。2026-07-31 搜索前端 tooltip 时又把未经发现的 `frontend/src/components` 作为 `rg` 位置参数，产生 `os error 2`；同时后续成功输出掩盖了原生命令状态。今后所有多目录搜索先用 `rg --files <已确认根目录>` 发现路径，或只从已确认存在的共同父目录配合 `-g` 搜索，并在 `rg` 后立即保存、判断 `$LASTEXITCODE`。
+- 最近复发/补充：2026-08-01 一次组合读取对不存在路径产生 PowerShell non-terminating error，末尾显式 `exit 0` 又把它掩盖。只读发布脚本同样必须以 `$ErrorActionPreference=''Stop''` 开始，文件路径先发现后读取，成功分支才允许输出 0。
 - 环境：PowerShell 7，读取 VitePress 配置。
 - 错误模式：未先查看实际文件便读取 `website/docs/.vitepress/config.mts`，并在脚本末尾无条件 `exit 0`。
 - 症状：`Get-Content` 报路径不存在，但组合命令仍显示 exit 0，后续输出容易让人误以为所有输入都已读取。
@@ -230,6 +236,7 @@
 ## 2026-07-28：子目录工作目录与仓库根相对路径混用
 
 - 最近复发/补充：2026-08-01 在 `workdir=backend` 下对 `gofmt` 仍传入 `backend/internal/web/...`，随后又在仓库根直接运行 `go test ./backend/internal/web`；前者目标路径不存在，后者找不到根目录 `go.mod`。分别改用 `internal/web/...` 与 `go -C backend test ./internal/web` 后成功。组合命令必须在执行前把每个路径和模块根按实际 `workdir` 展开一次。
+- 最近复发/补充：2026-08-01 `v0.4.7` 门禁再次在仓库根假定存在 `go.mod`，实际 Go module 位于 `backend/`。执行 Go 命令前先以 `rg --files -g go.mod` 确认模块根，再选择 `workdir=backend` 或 `go -C backend`，不能从仓库语言类型推断根模块。
 - 环境：PowerShell 7，`shell_command` 的 `workdir` 设为 `website/`，同一脚本先构建站点再校验仓库文件。
 - 错误模式：构建完成后仍用 `AGENTS.md`、`docs/...` 等仓库根相对路径执行 `Resolve-Path`。
 - 症状：VitePress production build 已成功，后续编码校验却报 `Cannot find path 'AGENTS.md'`，整段命令最终 exit 1。
@@ -469,6 +476,46 @@
 - 正确做法：使用 `ConvertFrom-Json -AsHashtable` 保留所有 JSON 键，再按哈希表索引读取；只需定位版本时也可优先使用 Node/npm 自身或针对已确认路径的文本搜索。
 - 预防检查：解析 package-lock、映射表或其它可能包含空键/重复大小写键的 JSON 前，默认使用 `-AsHashtable`；解析失败不得误判为 JSON 损坏。
 - 适用范围：npm lockfile、工具生成的 JSON 映射和 PowerShell 元数据审计。
+
+## 2026-08-01：E2E 根据惯例猜测 HTTP 成功码
+
+- 环境：Docker Desktop fresh Panel setup/auth E2E。
+- 错误模式：未查看接口契约就断言 setup 成功必须返回 HTTP `201`。
+- 症状 / 退出码：真实接口按现有契约返回 `200`，脚本把成功请求误判为失败并重建了测试环境。
+- 根因：把 REST 创建操作的常见状态码当成项目权威契约。
+- 正确做法：先读取对应 handler/接口测试，或保存首个响应的状态与 body 后建立精确断言；本项目 setup 成功为 `200`。
+- 预防检查：E2E 的状态码、包裹层和字段路径全部来自代码/测试或首个只读响应，不从 HTTP 惯例猜测。
+- 适用范围：setup、登录、上传、异步 job 和更新接口。
+
+## 2026-08-01：容器级 `GIT_DIR/GIT_WORK_TREE` 污染子仓库
+
+- 环境：Windows linked worktree 挂入 Node/VitePress Linux 构建容器。
+- 错误模式：为让 VitePress 读取主工作树 Git 历史，在容器级全局导出 `GIT_DIR` 与 `GIT_WORK_TREE`，后续临时子仓库也继承这两个变量。
+- 症状 / 退出码：子仓库 Git 命令指向主工作树元数据，版本/lastUpdated 探针异常。
+- 根因：Git 环境变量对容器内所有后续 Git 进程生效，不只影响目标 VitePress 命令。
+- 正确做法：只在需要 Git 元数据的单个 `npm run docs:build` 命令前局部设置变量；操作任何子仓库前确认相关环境变量为空。
+- 预防检查：构建容器把 Git 环境视为命令级输入，禁止放到全局 `docker run -e`，除非该容器只运行唯一受控 Git 工作树。
+- 适用范围：linked worktree、VitePress `lastUpdated`、临时 clone 与多仓库构建容器。
+
+## 2026-08-01：Updater E2E 的 Compose 声明与运行元数据不一致
+
+- 环境：`v0.4.6 → v0.4.7` 真实 Web 一键升级的任务专属 DinD、Compose 与受控 HTTPS/registry fixture。
+- 错误模式：先把 Panel 数据声明为 named volume，使 Compose source 名称与 Docker inspect 的宿主解析路径无法四方一致；随后又让 Panel `depends_on` release fixture，导致 `docker compose config --images panel` 同时输出依赖镜像和 Panel 镜像。
+- 症状 / 退出码：第一次 dry-run 以 `compose_metadata_invalid` 安全拒绝；第一次 apply 则以“Compose 配置未精确解析到目标镜像”回滚，均未进入预期 unhealthy 健康超时。
+- 根因：测试 fixture 的部署形态不满足 updater 对 Compose 文件、服务、镜像和数据挂载精确反查的生产安全契约；`config --images <service>` 会纳入该服务依赖镜像。
+- 正确做法：验证受支持 bind 部署时使用任务专属 host bind 并设置 `PANEL_HOST_DATA_DIR`；release fixture 独立启动和 readiness，不作为 Panel 的 Compose dependency。每次修改 fixture 后重建旧 Panel labels、重算 Compose/`.env` 基线并执行全新 dry-run。
+- 预防检查：apply 前断言 `docker compose ... config --images <panel-service>` 只输出一个目标镜像，Compose 数据 source 与容器 inspect source 完全一致；安全拒绝不得误写为产品回滚失败。
+- 适用范围：Panel Web updater、DinD、本地 registry/HTTPS fixture 与 Compose 元数据门禁。
+
+## 2026-08-01：精简 DinD 的 Docker CLI 插件与弃用参数
+
+- 环境：Docker 29 精简容器，运行 compatibility/updater/runtime integration。
+- 错误模式：只设置 `DOCKER_CLI_PLUGIN_EXTRA_DIRS` 就假定 buildx/Compose 可发现，并继续使用已弃用的 `docker stop --time`。
+- 症状 / 退出码：Docker 29 未发现预期插件；停止命令产生 deprecated 警告，门禁工具链不稳定。
+- 根因：当前精简镜像的 CLI 插件发现路径与宿主假设不一致，参数也已更新。
+- 正确做法：先执行 `docker buildx version` 与 `docker compose version`；必要时把受控插件放入 `/root/.docker/cli-plugins`。停止容器使用 `docker stop --timeout <秒>`。
+- 预防检查：每个 DinD 门禁先探测 CLI/daemon/buildx/Compose 四项版本，不从环境变量存在推断插件已加载。
+- 适用范围：Docker 29 DinD、兼容矩阵、updater/runtime integration 和发布后回拉。
 
 ## 编码与换行快速检查
 

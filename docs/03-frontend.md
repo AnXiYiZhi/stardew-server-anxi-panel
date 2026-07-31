@@ -5,7 +5,7 @@
 - Hero 删除大面积实色容器、全屏网格、blob 与持续滤镜，只在邀请卡周围保留局部静态网格/柔光。浅色主 CTA 使用森林炭黑，深色 CTA 使用雾灰绿；暗色邀请卡使用暖石墨和小面积灰鼠尾草状态色，避免大块高饱和墨绿。Logo 继续复用站内 128px 原图，不放大成主视觉。
 - 入口卡 hover 裁切根因是 `.VPHomeFeatures` 的 `contain: paint` 与 `items -10px / item 10px` gutter 把首行顶边贴到绘制边界；现在 Features 只保留 `contain: layout style`，正文区继续 `layout paint style`，因此 `translateY(-4px)`、阴影与焦点轮廓可完整越界绘制。`<=959px` 继续使用移动导航，避免桌面菜单在平板宽度造成横向溢出。
 - 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`；未改变六张入口卡内容/路由、动态 `v0.4.6` 角标、Panel React 或 HTTP API。Docker Desktop Linux 的 Node 20 Alpine production build 已通过；应用内 Browser 与隔离 Chrome/Playwright 已覆盖浅色、深色、主题切换、桌面 hover、390/320/768px、reduced-motion、键盘路径、横向溢出和 console。Pages workflow `30659672364` 的 build/deploy 均成功，deployment `5697130212` 精确绑定提交 `81b5716`；线上桌面浅/深、1280px hover、390×844 首页和 768px 正文菜单再次通过，无横向溢出、overlay 或 console error/warn。
-# FE-RESPONSIVE-VIEWPORT-1：全窗口矩阵与平板/电脑浏览器布局修复（2026-08-01，completed，v0.4.7 candidate）
+# FE-RESPONSIVE-VIEWPORT-1：全窗口矩阵与平板/电脑浏览器布局修复（2026-08-01，completed，v0.4.7 released）
 
 - 支持边界明确为 `280 CSS px` 及以上；不是宣称枚举了世界上每一台设备。根因包括：只按 `768px` 分流导致 820/1024/1366 触控平板误进桌面壳；根 Shell 用 CSS 单位相除计算缩放、在部分浏览器失效；Safari flex 子滚动区尺寸不稳定；移动页固定 `480px` 上限；弹窗使用 viewport 单位却处在变换后的桌面壳内；以及桌面 `.sd-shell-viewport { overflow:hidden }` 仍可被浏览器程序化滚动，点击屏外控件后整套面板会上移，表现为全屏只剩一部分。
 - `responsive-layout.ts` 统一紧凑壳媒体条件、Shell 数值缩放与 OpsRail 收放迟滞：`<=768px` 手机，以及 `<=1366px` 且 `(hover:none) and (pointer:coarse)` 的触控设备默认进入紧凑壳。普通电脑窗口继续保留 9 路由桌面功能；紧凑壳“更多”可切到完整桌面版，桌面侧栏在自动紧凑条件仍成立时提供“适配版”返回入口。`useMediaQuery` 兼容旧 Safari 的 `addListener/removeListener`。
@@ -13,10 +13,11 @@
 - 紧凑壳显式锁定 `body/#root`、保留 `.sd-mshell-scroll` 为唯一纵向滚动区，路由切换归零；同时覆盖左右/底部 safe area、iOS 惯性滚动、`pan-x pan-y pinch-zoom`、16px 表单输入和 44px 关键触控热区。五个移动页面上限扩大到 `1120px`；280px 时底栏收为仅图标，玩家操作、控制页三按钮和模组/存档分页不会制造横向溢出。
 - 登录/初始化页在 `<=1106px`、近方形、`>=5/2` 超宽低高度或 `<=1366px` 粗指针设备上回退为真实文档流表单；1366×500、1920×500、2560×720 均可滚动到全部字段。移动/桌面确认框、更新详情、重连卡、新建游戏、存档/模组/安装弹窗改为相对可用容器限高并由弹窗内部滚动，滚动链被限制在弹窗内；重连与二次确认的窄屏分支继续保留四边 safe area，关闭/更新操作统一为至少 44px。
 - `NewGameCreator` 增加容器查询与旧浏览器 viewport fallback，窄容器切为单列、字段/宠物/地图网格收缩；`ModsPage` 在没有 `ResizeObserver` 时安全降级。QA 入口可渲染真实 `App` 的 login/setup/panel 状态，并为全部真实页面 API 提供一致 mock；两个发布 workflow 均执行响应式专项测试。
-- 公开文档首页的动态版本字段、版本卡和 changelog 已准备 `v0.4.7`，面向用户说明平板滑动、全屏裁切、横竖屏、低高度登录页与长弹窗修复；不改变官网 Hero、入口卡或站内路由。
+- 公开文档首页的动态版本字段、版本卡和 changelog 已随 `v0.4.7` 正式上线，面向用户说明平板滑动、全屏裁切、横竖屏、低高度登录页与长弹窗修复；不改变官网 Hero、入口卡或站内路由。
 - `test:responsive-layout` 逐像素扫描 `280..3840` 宽度 × 16 个高度（`240..2160`），另验 7680×4320、无效输入、切壳真值表、缩放锚点、OpsRail 迟滞和关键 CSS/CI 契约。项目现有 11 项前端测试与 production build 全部通过。
 - 应用内 Browser 实测：移动六页覆盖 280×653、320×480、480×320、820×1180、1366×768；桌面九页覆盖 280 极窄强制桌面、769×500、1366×768、2560×720；认证页覆盖 280×653 至 2560×720；另验 768/769 自动断点、完整/适配版双向切换、480×320 更新/玩家确认框和 769×500 超长新建游戏弹窗。所有目标均无页面级横向溢出，Shell 四边误差为 0，外层滚动保持 `[0,0]`，内部滚动尺寸可达，关键视口 console 无 error/warn。
 - Browser 无法真实模拟非零 safe-area、实体触摸惯性、虚拟键盘和厂商全屏栏。2026-08-01 用户已在实体平板完成横竖屏滑动、浏览器全屏、底栏切页与输入法冒烟并确认通过；用户明确不要求曾复现问题的朋友电脑另行验收，该设备未复验作为剩余风险保留，由本机桌面 Browser 矩阵与最终 Docker 候选真实页面补充覆盖。低于 280 CSS px、浏览器内核缺少基础 flex/grid/ES 模块能力不在支持承诺内。
+- 发布闭环：本机精确候选、`0.4.6 → 0.4.7` Web unhealthy 自动回滚与成功升级均通过；升级得到的新 Panel 已在 390×844 和 1920×1080 复验主滚动、全屏填充、横向溢出与 console。annotated tag 指向 `619d18dafa76`，Release/compatibility/Pages workflow 分别为 `30662967983/30662818759/30662818712`，三仓 `0.4.7/latest` OCI digest 统一为 `sha256:3f336863ae5ec45a1997edcfc0922269250d5763e8ada49a7ba43f81d59edd7f`。
 # DOCS-HOME-CARD-POLISH-1：官网首页入口卡去序号与视觉优化（2026-08-01，released）
 
 - 首页六张 feature 删除 `01/02/03/04/NEW/05` 全部 `icon` 配置，不留下空图标占位；原有六条路由与 CTA、快速上手“推荐”标记和由 frontmatter 驱动的 `v0.4.6` 版本角标保持不变。

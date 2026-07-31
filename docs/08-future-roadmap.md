@@ -6,7 +6,7 @@
 - [x] 修复首行入口卡 hover 被 Features paint containment 裁切，保留卡片位移、阴影、焦点轮廓和正文区 paint containment。
 - [x] Docker Desktop Node 20 production build、浅/深桌面、390/320/768px、主题切换、真实 hover、reduced-motion、键盘与 console 验收通过。
 - [x] Pages workflow `30659672364` 与 deployment `5697130212` 成功；线上桌面浅/深、真实 hover、390px 首页、768px 正文菜单、导航与 console 复核全部通过。
-# 2026-08-01 发布候选：全窗口矩阵与平板/电脑浏览器响应式修复（FE-RESPONSIVE-VIEWPORT-1，v0.4.7）
+# 2026-08-01 已发布：全窗口矩阵与平板/电脑浏览器响应式修复（FE-RESPONSIVE-VIEWPORT-1，v0.4.7）
 
 - [x] 修复 `768px` 单一分流遗漏触控平板：手机与 1366px 内粗指针/无 hover 平板进入紧凑壳，普通窄电脑保留完整桌面功能。
 - [x] 根 Shell 缩放改为 TypeScript 数值计算；wrapper 按真实内容盒在 resize/fullscreen 时重算。外层改为不可滚动裁剪并兼容归零，消除浏览器程序化滚动造成整屏上移/只显示一部分。
@@ -14,7 +14,9 @@
 - [x] 弹窗、OpsRail、新建游戏窄容器、280px 操作区和 ResizeObserver 缺失降级完成；桌面/紧凑路由切换只重置各自主滚动区。
 - [x] 专项测试逐像素扫描 280..3840 × 16 高度并覆盖 7680×4320；11 项前端测试、production build、移动六页/桌面九页/认证与弹窗 Browser 矩阵通过，console error/warn 为 0。
 - [x] 2026-08-01 用户确认实体平板的横竖屏滑动、浏览器全屏、底栏切页和输入法冒烟通过。用户明确不要求曾复现问题的朋友电脑另行验收；该设备未复验如实保留为剩余风险，由本机桌面 Browser 矩阵和最终 Docker 候选真实页面验收补充覆盖。
-- [x] 官网首页版本字段、CURRENT RELEASE 卡和 changelog 已准备 `v0.4.7` 响应式修复说明；正式发布状态与 workflow/digest 证据仍须在 tag 后回填。
+- [x] 官网首页版本字段、CURRENT RELEASE 卡和 changelog 已上线 `v0.4.7` 响应式修复说明。
+- [x] 正式 `0.4.6 → 0.4.7` Web 更新完成 unhealthy 自动回滚、重新 dry-run 后成功升级、Panel 重启恢复、数据/非目标游戏容器保护及升级后 390×844/1920×1080 响应式复验。
+- [x] annotated tag 精确指向 `619d18dafa76`；Release/compatibility/Pages workflow `30662967983/30662818759/30662818712` 成功，三仓 `0.4.7/latest` digest 统一为 `sha256:3f336863ae5ec45a1997edcfc0922269250d5763e8ada49a7ba43f81d59edd7f`，正式 Release、三仓独立 health/version smoke 与官网 HTTP 200 均已核验。
 # 2026-08-01 已发布：官网首页入口卡去序号与视觉优化
 
 - [x] 删除六张入口卡的全部序号/`NEW` icon，确认 DOM 中 icon 数量为 0 且没有遗留空白占位。
