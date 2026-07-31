@@ -2,6 +2,7 @@
 import DefaultTheme from 'vitepress/theme'
 import { useData, useRoute, withBase } from 'vitepress'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import HeroInviteCard from './HeroInviteCard.vue'
 
 const route = useRoute()
 const { frontmatter, page, site } = useData()
@@ -19,6 +20,7 @@ const sections = [
 ]
 
 const isHome = computed(() => frontmatter.value.layout === 'home')
+const showInviteHero = computed(() => isHome.value && frontmatter.value.heroInviteCard === true)
 const releaseLabel = computed(() => JSON.stringify(String(frontmatter.value.release ?? '')))
 const sitePath = computed(() => {
   const base = site.value.base.replace(/\/$/, '')
@@ -125,6 +127,18 @@ watch(() => route.path, () => {
       <div v-if="!isHome" class="reading-progress" aria-hidden="true">
         <span :style="{ width: `${progress}%` }" />
       </div>
+    </template>
+
+    <template v-if="showInviteHero" #home-hero-info-before>
+      <div class="home-hero-kicker">
+        <strong>Anxi Panel</strong>
+        <span aria-hidden="true" />
+        <small>开源自托管 · 中文优先</small>
+      </div>
+    </template>
+
+    <template v-if="showInviteHero" #home-hero-image>
+      <HeroInviteCard />
     </template>
 
     <template #sidebar-nav-before>

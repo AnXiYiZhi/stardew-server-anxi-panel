@@ -1,3 +1,11 @@
+# DOCS-HOME-HERO-INVITE-1：首页联机邀请 Hero 重构（2026-08-01，completed，待发布）
+
+- 首页 Hero 从“品牌名 + 大标题 + 发光 Logo”改为开放式双栏：左侧保留“一键部署你和朋友的专属联机服务器”和两个原 CTA，右侧新增 `HeroInviteCard.vue` 联机邀请票，直接展示“你 → 服务器 → 朋友”、邀请码、存档/Mod/玩家管理、Docker 自托管与数据自持语义。
+- `ThemeLayout.vue` 通过 VitePress 默认主题的 `home-hero-info-before`、`home-hero-image` slot 注入 kicker 与邀请卡，并由首页 frontmatter `heroInviteCard: true` 显式启用；没有 fork 默认 Layout，也没有用 DOM 注入。邀请卡是无交互 `aside`，标题/说明有关联，装饰图与连接图不进入可访问名称或 tab 顺序。
+- Hero 删除大面积实色容器、全屏网格、blob 与持续滤镜，只在邀请卡周围保留局部静态网格/柔光。浅色主 CTA 使用森林炭黑，深色 CTA 使用雾灰绿；暗色邀请卡使用暖石墨和小面积灰鼠尾草状态色，避免大块高饱和墨绿。Logo 继续复用站内 128px 原图，不放大成主视觉。
+- 入口卡 hover 裁切根因是 `.VPHomeFeatures` 的 `contain: paint` 与 `items -10px / item 10px` gutter 把首行顶边贴到绘制边界；现在 Features 只保留 `contain: layout style`，正文区继续 `layout paint style`，因此 `translateY(-4px)`、阴影与焦点轮廓可完整越界绘制。`<=959px` 继续使用移动导航，避免桌面菜单在平板宽度造成横向溢出。
+- 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`；未改变六张入口卡内容/路由、动态 `v0.4.6` 角标、Panel React 或 HTTP API。Docker Desktop Linux 的 Node 20 Alpine production build 已通过；应用内 Browser 与隔离 Chrome/Playwright 已覆盖浅色、深色、主题切换、桌面 hover、390/320/768px、reduced-motion、键盘路径、横向溢出和 console。Pages 发布与线上复核待本次推送完成后补录。
+
 # DOCS-HOME-CARD-POLISH-1：官网首页入口卡去序号与视觉优化（2026-08-01，released）
 
 - 首页六张 feature 删除 `01/02/03/04/NEW/05` 全部 `icon` 配置，不留下空图标占位；原有六条路由与 CTA、快速上手“推荐”标记和由 frontmatter 驱动的 `v0.4.6` 版本角标保持不变。

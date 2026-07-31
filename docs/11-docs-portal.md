@@ -2,7 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；全站文档设计系统与首页性能优化已上线；v0.4.5 展示与长目录自动跟随修复均已完成 Pages 发布和线上复核**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；全站文档设计系统、v0.4.6 展示、首页入口卡与长目录自动跟随均已上线；联机邀请 Hero 已完成本地验收，等待本次 Pages 发布**。以下决策已和用户对齐：
+
+## 2026-08-01：首页联机邀请 Hero（待 Pages 发布）
+
+- Hero 使用默认主题 `home-hero-info-before` / `home-hero-image` slot，在左侧产品主张之外增加右侧“专属联机邀请”票；票面直接说明部署后联机、邀请码、存档/Mod/玩家管理、Docker 自托管和数据自持。首页用 `heroInviteCard: true` 显式启用，其他页面不受影响。
+- 视觉从整块实色背景收敛为开放留白和邀请卡周围的局部静态网格。浅色主 CTA 为森林炭黑；暗色邀请卡为暖石墨，灰鼠尾草只用于状态点/图标。没有恢复持续 blur/filter、毛玻璃卡片或放大的 128px Logo。
+- `.VPHomeFeatures` 从 `contain: layout paint style` 改为 `contain: layout style`，修复入口卡 hover 上移 4px 时顶部被裁切；正文 `.VPHomeContent` 继续 paint containment。Docker Desktop Node 20 build、应用内 Browser 浅/深主题和隔离 Chrome 的真实 hover/390px 响应式均已通过，console error/warn 为空。
+- 影响 `website/docs/index.md` 与 `.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`；不改变公开路由、六张入口、`v0.4.6` 角标或 Panel 功能。Pages workflow、deployment 与线上 cache-bust 证据待成功后补入本节。
 
 ## 2026-07-29：长目录 active 项自动跟随
 
@@ -26,7 +33,7 @@
 - 版本角标仍由 `ThemeLayout.vue` 注入 `--home-release-label`；没有修改 `custom.css` 或建立第二份版本来源。发布验收需覆盖首页 → changelog，以及维护/手册两份存档页面的桌面和手机渲染。
 - 本地 `npm run docs:build` 已通过。应用内 Browser 在 1440×900 验证首页唯一 `v0.4.4` 链接进入 changelog、手册索引进入存档管理、日常维护进入存档与备份；390×844 验证存档手册无横向溢出。页面身份、非空、framework overlay、console error/warn 均通过。Pages 工作流 `30293213908` 成功后，线上首页和存档手册再次确认已展示 `v0.4.4`、后台即时处理与历史缺失不可补齐边界。
 
-首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用网格、柔光与玻璃品牌图；入口区固定为 6 张三列卡，图标序号必须以带引号字符串保存。“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。首页下方保留四步开服路径和当前版本摘要；改版时必须同步检查浅色、深色、桌面和窄屏。
+首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用开放式文字 + 联机邀请票，局部静态网格只围绕邀请卡。入口区固定为 6 张无序号的三列卡；“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。入口卡后直接承接当前版本摘要，不恢复已删除的四步流程区；改版时必须同步检查浅色、深色、桌面、390px、reduced-motion 与卡片 hover 越界。
 
 版本角标约定（2026-07-24）：暖色角标内容读取 `website/docs/index.md` frontmatter 的 `release`，禁止再在 `custom.css` 的 `content` 中写死版本。深色四步流程区使用 `--home-path-*` 独立高对比变量；局部 `p/strong/span` 选择器必须高于全站 `.vp-doc` 正文规则。
 
@@ -34,7 +41,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.5` 文档）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.6` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |

@@ -1,3 +1,18 @@
+# DOCS-HOME-HERO-INVITE-1 接手记录（2026-08-01，completed，待发布）
+
+## 改了什么
+
+- 首页 frontmatter 增加 `heroInviteCard: true`，Hero H1 固定为两行“一键部署你和朋友的 / 专属联机服务器”；原 `name` 与默认 `image` 删除，两个 CTA、tagline、六张入口卡及 `v0.4.6` 版本摘要保持不变。
+- `ThemeLayout.vue` 使用官方 `home-hero-info-before` 与 `home-hero-image` slot 注入品牌 kicker 和 `HeroInviteCard.vue`。邀请卡用现有 Logo、联机状态、玩家到服务器关系、三类能力和数据自持说明形成唯一右侧主视觉；无点击、无额外 tab stop，文本由语义化 `aside/dl` 提供。
+- `custom.css` 改为开放式 Hero；浅色按钮是低饱和森林炭黑，暗色按钮是雾灰绿，暗色邀请卡为暖石墨，不再铺满高饱和绿色。响应式在 959px 以下改为上下排列，639px 以下收紧字号与卡片，360px 以下 CTA 纵向堆叠；reduced-motion 取消入场和 hover 位移。
+- 首页入口卡首行 hover 曾被 `.VPHomeFeatures { contain: layout paint style; }` 裁切。只对 Features 移除 `paint`，保留 `layout style`；`.VPHomeContent` 继续 paint containment，卡片自身 `overflow:hidden`、gutter 和 `translateY(-4px)` 均不变。
+
+## 影响、验证与下一步
+
+- 产品文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`。没有更改 VitePress 路由、版本角标来源、Panel 前端或接口。
+- Docker Desktop Linux Node 20 production build 通过。应用内 Browser 验证页面身份、非空、浅/深主题切换与 console；隔离 Chrome/Playwright 验证 1280px hover 时卡片上移 4px、越出 Features 4px仍可命中，390×844/320×568/768×1024 零横向溢出，reduced-motion 无动画。颜色对比最低为暗卡状态色 `6.15:1`。
+- Pages 工作流、deployment ID 与线上 cache-bust 验收待发布成功后补录。后续不要恢复整块 Hero 实色底、全屏网格或放大的低分辨率 Logo；更换邀请卡结构时继续验证浅/深色、390px、键盘、reduced-motion 和首行卡 hover 越界。
+
 # DOCS-HOME-CARD-POLISH-1 接手记录（2026-08-01，released）
 
 ## 改了什么
