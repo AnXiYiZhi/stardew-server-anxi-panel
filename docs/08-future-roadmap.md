@@ -1,11 +1,11 @@
-# 2026-08-01 完成，待发布：官网首页联机邀请 Hero
+# 2026-08-01 已发布：官网首页联机邀请 Hero
 
 - [x] Hero 改为开放式双栏，保留“一键部署你和朋友的专属联机服务器”和原 CTA，右侧使用联机邀请票表达“你、服务器、朋友”和自托管能力。
 - [x] 使用 VitePress 官方 slot 与首页 frontmatter 门禁接入可访问邀请卡，不 fork Layout、不注入 DOM、不增加交互 tab stop。
 - [x] 移除大面积实色底与高饱和绿色，完成浅/深主题的森林炭黑、暖石墨与灰鼠尾草低饱和配色。
 - [x] 修复首行入口卡 hover 被 Features paint containment 裁切，保留卡片位移、阴影、焦点轮廓和正文区 paint containment。
 - [x] Docker Desktop Node 20 production build、浅/深桌面、390/320/768px、主题切换、真实 hover、reduced-motion、键盘与 console 验收通过。
-- [ ] Pages workflow 成功后完成线上桌面/手机/暗色/hover/导航复核，并补录 workflow 与 deployment 证据。
+- [x] Pages workflow `30659672364` 与 deployment `5697130212` 成功；线上桌面浅/深、真实 hover、390px 首页、768px 正文菜单、导航与 console 复核全部通过。
 
 # 2026-08-01 已发布：官网首页入口卡去序号与视觉优化
 
