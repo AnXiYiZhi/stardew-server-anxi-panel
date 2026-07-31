@@ -1,0 +1,52 @@
+.sd-mod-upload-guide {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid rgba(153, 105, 43, 0.48);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 226, 0.92), rgba(247, 225, 174, 0.78)),
+    #f5dfaa;
+  box-shadow: inset 0 0 0 1px rgba(255, 253, 232, 0.62);
+  color: #4b321b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.sd-mod-upload-guide-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.sd-mod-upload-guide-badge {
+  min-width: 43px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.sd-mod-upload-guide-row--supported .sd-mod-upload-guide-badge {
+  background: rgba(73, 145, 63, 0.13);
+  color: #2f7434;
+}
+
+.sd-mod-upload-guide-row--unsupported .sd-mod-upload-guide-badge {
+  background: rgba(164, 77, 46, 0.11);
+  color: #9a442f;
+}
+
+@media (max-width: 390px) {
+  .sd-mod-upload-guide {
+    padding: 8px;
+  }
+
+  .sd-mod-upload-guide-row {
+    gap: 6px;
+  }
+}

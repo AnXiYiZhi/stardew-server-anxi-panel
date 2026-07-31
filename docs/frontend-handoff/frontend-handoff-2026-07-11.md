@@ -1,3 +1,19 @@
+# FE-MOD-LIST-SEARCH-1 接手记录（2026-07-31，completed，未发布）
+
+## 改了什么
+
+- `mod-list-utils.ts` 统一桌面/手机的本地搜索和排序：默认 `installedAt` 降序，缺失/非法时间排后，支持名称正反序；搜索覆盖名称、普通 ID、UniqueID、文件夹、作者、包/来源名和 Nexus 数字 ID，并支持去常见分隔符匹配。
+- 桌面“添加模组”和“配置模组”共享查询/排序状态；移动端“服务器模组”使用相同选项。过滤只影响渲染，批量启停与统计继续使用完整列表。安装时间在卡片展示，旧记录显示未知。
+- 新增 `scripts/test-mod-list-utils.ts`、`npm run test:mod-list` 并接入两个 workflow。`package-lock.json` 同时把受公告影响的 PostCSS 8.5.15 更新到兼容安全补丁 8.5.25，最终 production audit 为 0。
+- 官网首页、changelog、维护页和深度 Mod 手册已准备 `v0.4.6` 文案，明确多 ZIP/单 ZIP 多 Mod、嵌套 ZIP 不递归、三类安装入口都记录时间以及旧 Mod 时间未知的兼容行为。
+
+## 影响、验证与下一步
+
+- 主要文件：`types.ts`、`games/stardew/mod-list-utils.ts`、桌面/手机 Mods 页面与 CSS、前端 package/workflow。后端可选字段契约见 `docs/06-integration.md`。
+- Docker Linux 中 `npm ci`、十项测试、audit 和 build 通过。Browser 在 1440×900/390×844 验证时间排序、UniqueID/Nexus ID 搜索、名称排序、空状态和配置页；无横向溢出、overlay、console error/warn。
+- Docker Desktop 候选 Panel 的真实登录态右侧栏已复验桌面与 390×844：一键下载项可按来源 Nexus ID `4242` 搜索，本地项可按 UniqueID 片段搜索，添加/配置页共享查询，默认最近安装与名称排序正确；Panel 重启后时间仍显示。手机/桌面均无横向溢出，console error/warn 为空。
+- 如后续增加“仅启用/仅禁用”等过滤，仍须让一键启停按钮基于完整列表计算，或明确改名并增加后端显式作用域，不能静默只操作可见结果。
+
 # DOCS-OUTLINE-FOLLOW-1 接手记录（2026-07-29，completed）
 
 - 根因：VitePress `useActiveAnchor` 只切换 `.outline-link.active` 并移动 marker；`section-changelog .VPDocAsideOutline` 是独立 `overflow-y:auto` 容器，框架不会替它更新 `scrollTop`。
@@ -1247,3 +1263,37 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - `v0.4.3` tag 已包含 `v0.4.2` 发布后提交的动态 release 角标与深色流程区高对比度修复。不要把版本号重新硬编码到 `custom.css`；继续由 `ThemeLayout.vue` 把 frontmatter `release` 注入 `--home-release-label`。
 - 影响文件：`website/docs/{index,changelog}.md`。验证需覆盖 production build、浅/深色桌面、390px 移动端、console、首页更新卡点击到 changelog；发布后还需确认 Pages 线上内容。
 - 本地与 Pages 线上 Browser QA 均完成：1440×900 浅/深、390×844、版本角标/流程区计算颜色、更新卡点击、changelog 首项、横向溢出和 console 全部通过；线上首页显示 `v0.4.3`，无 error/warning。
+
+# DOCS-PORTAL-DRAFT-REVERT-1 接手记录（2026-07-29，未发布草稿已撤回）
+
+## 改了什么
+
+- 用户要求取消本轮 GitHub Pages 重构并回到原本上线版本。四个已跟踪的 `website/` 文件已从 `HEAD` 恢复，两个未跟踪草稿文件 `DocsHome.vue`、`calm-docs.css` 已删除；没有提交、推送或发布。
+- 先前素材清理与本次门户回退分开处理：旧农舍 PNG、两张零引用手机顶栏图、两张纯历史原型基线图及三个失效 CSS URL 保持删除；原型脚本继续使用现行总览横幅素材。
+- 动态拼接的猫狗品种图仍由 `NewGameCreator.tsx` 使用，继续保留，不得因为没有完整文件名字面量而误删。
+
+## 影响与验证
+
+- 门户回退影响 `website/docs/.vitepress/{config.ts,theme/ThemeLayout.vue,theme/index.ts}` 与 `website/docs/index.md`；恢复后的文件内容哈希与 `HEAD` 一致，网站源码相对 Git 无差异。
+- VitePress production build 通过；线上页面标题、导航、六项功能入口、流程区和 `v0.4.5` 发布摘要与恢复源码一致。无 API、Panel 状态或正式发布变化。
+
+## 下一步注意事项
+
+- 仓库内不再存在该未发布首页草稿；后续任何新方向都从当前线上基线另建隔离预览，获得用户确认后才允许修改正式 `website/` 源码。
+- 不要恢复或再次导入已删除的农舍素材，也不要把 `.codex`、generated_images 或 visualizations 中的代理输出当作产品素材。
+
+# FE-MOD-UPLOAD-GUIDANCE-1 接手记录（2026-07-31）
+
+## 改了什么
+
+- 桌面 Mod 页顶部上传按钮外增加能力气泡，鼠标悬停或键盘聚焦时展示；按钮因服务器运行而禁用时，外层悬停仍可阅读能力说明，原有停服原因继续由按钮 `title` 保留。
+- 桌面与移动上传弹窗使用共享 `ModUploadGuidance` 说明牌，明确可一次选择一个或多个 ZIP，也可在一个 ZIP 中放多个 Mod 文件夹；同时说明 ZIP 套 ZIP 不会递归解压，并直接告诉用户先解压内层 ZIP、再单独上传。
+
+## 影响文件与验证
+
+- 影响 `frontend/src/games/stardew/ModUploadGuidance.{tsx,css}`、`pages/ModsPage.{tsx,css}`、`mobile/MobileModsPage.{tsx,css}`；未改变 `/api/instances/:id/mods/upload` 请求、响应或上传限制。
+- 已通过九项前端状态脚本与 `frontend` 的 `npm.cmd run build`。应用内 Browser 已验证桌面入口说明关联、弹窗常驻说明、打开弹窗时入口气泡不残留；390×844 移动弹窗宽度未超过视口，桌面/移动 console error/warn 均为空。Browser 指针模拟未触发 `:hover`，悬停行为由同一 CSS 规则和实际浏览器继续保障。
+
+## 下一步注意事项
+
+- 后端未来若新增递归解压 ZIP 中 ZIP 的能力，必须同步更新共享组件中的两行文案和入口气泡；在安全边界未改变前，不要把“递归目录扫描”表述为“递归解压压缩包”。

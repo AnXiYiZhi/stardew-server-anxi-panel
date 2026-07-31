@@ -852,6 +852,7 @@ export type ModInfo = {
   syncKind: ModSyncKind
   syncNote?: string
   builtIn?: boolean
+  installedAt?: string
   nexusSummary?: string
   updatedAt?: string
   endorsementCount?: number

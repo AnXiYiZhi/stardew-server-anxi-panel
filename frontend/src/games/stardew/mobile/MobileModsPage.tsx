@@ -11,6 +11,8 @@ import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModsListResult, NexusModSearchResult, NexusRequiredMod } from '../../../types'
 import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { modDisplayName } from '../mod-display'
+import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, type InstalledModSort } from '../mod-list-utils'
+import { MOD_UPLOAD_TOOLTIP, ModUploadGuidance } from '../ModUploadGuidance'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileModsPage.css'
 
@@ -159,13 +161,6 @@ function modExternalUrl(mod: ModInfo) {
   return nexusId > 0 ? `https://www.nexusmods.com/stardewvalley/mods/${nexusId}` : ''
 }
 
-function sortInstalledMods(mods: ModInfo[]) {
-  return [...mods].sort((a, b) => {
-    if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1
-    return modDisplayName(a).localeCompare(modDisplayName(b), 'zh-Hans')
-  })
-}
-
 function nexusModInstalledMatchInList(modList: ModInfo[] | undefined, modId: number) {
   if (!modList || modId <= 0) return null
   const match = modList.find((mod) => modNexusId(mod) === modId)
@@ -217,6 +212,8 @@ function NexusRequiredModsBadge({
 export function MobileModsPage({ user, instanceState, dashboardData }: MobileModsPageProps) {
   const restoredNexusSearch = readNexusSearchSessionState()
   const [activeTab, setActiveTab] = useState<MobileModsTab>('search')
+  const [installedQuery, setInstalledQuery] = useState('')
+  const [installedSort, setInstalledSort] = useState<InstalledModSort>('installed-desc')
   const [data, setData] = useState<ModsListResult | null>(dashboardData.mods)
   const [loading, setLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -255,10 +252,15 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
   const writeTitle = !isAdmin ? '仅管理员可用' : isRunning ? '服务器运行中，请先停止后操作' : ''
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
 
+  const allInstalledMods = useMemo(() => (
+    filterAndSortInstalledMods(data?.mods ?? [], '', installedSort)
+      .filter((mod) => !mod.builtIn && !modIsSystemRuntime(mod))
+  ), [data?.mods, installedSort])
   const installedMods = useMemo(() => (
-    sortInstalledMods(data?.mods ?? []).filter((mod) => !mod.builtIn && !modIsSystemRuntime(mod))
-  ), [data?.mods])
-  const visibleModCount = installedMods.length
+    filterAndSortInstalledMods(data?.mods ?? [], installedQuery, installedSort)
+      .filter((mod) => !mod.builtIn && !modIsSystemRuntime(mod))
+  ), [data?.mods, installedQuery, installedSort])
+  const visibleModCount = allInstalledMods.length
   const nexusTotalPages = Math.max(1, Math.ceil(nexusTotal / NEXUS_PAGE_SIZE))
 
   const loadMods = useCallback(async () => {
@@ -509,7 +511,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
             className="sd-btn-green sd-mmods-icon-btn"
             onClick={() => setShowUpload(true)}
             disabled={writeDisabled}
-            title={writeTitle || '上传 ZIP 包安装 Mod'}
+            title={writeTitle || MOD_UPLOAD_TOOLTIP}
           >
             上传
           </button>
@@ -665,11 +667,32 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
             {data?.restartRequired ? <span className="sd-tag sd-tag-red">需要重启</span> : null}
             {activeSaveName ? <span className="sd-tag sd-tag-gold">{activeSaveName}</span> : null}
           </div>
+          <div className="sd-mmods-installed-controls">
+            <input
+              className="sd-input"
+              type="search"
+              value={installedQuery}
+              onChange={(event) => setInstalledQuery(event.currentTarget.value)}
+              placeholder="搜索名称、ID、文件夹或 Nexus ID"
+              aria-label="搜索已安装模组"
+            />
+            <select
+              className="sd-input"
+              value={installedSort}
+              onChange={(event) => setInstalledSort(event.currentTarget.value as InstalledModSort)}
+              aria-label="已安装模组排序"
+            >
+              {INSTALLED_MOD_SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <span>{installedQuery.trim() ? `${installedMods.length} / ${visibleModCount} 个` : `${visibleModCount} 个`}</span>
+          </div>
           <div className="sd-mmods-bulk-actions">
             <button
               type="button"
               className="sd-btn-green"
-              disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || installedMods.every((mod) => mod.enabled || !mod.canToggle)}
+              disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || allInstalledMods.every((mod) => mod.enabled || !mod.canToggle)}
               onClick={() => void handleAllEnabledChange(true)}
             >
               {enableAllUpdating === true ? '正在全部启用…' : '一键启用全部'}
@@ -677,7 +700,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
             <button
               type="button"
               className="sd-btn-tan"
-              disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || installedMods.every((mod) => !mod.enabled || !mod.canToggle)}
+              disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || allInstalledMods.every((mod) => !mod.enabled || !mod.canToggle)}
               onClick={() => void handleAllEnabledChange(false)}
             >
               {enableAllUpdating === false ? '正在全部禁用…' : '一键禁用全部'}
@@ -687,8 +710,13 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
           {enableMessage ? <div className="sd-notice sd-notice--ok sd-mmods-notice">{enableMessage}</div> : null}
           {loading && !data ? (
             <div className="sd-mmods-empty">正在读取服务器模组...</div>
-          ) : installedMods.length === 0 ? (
+          ) : allInstalledMods.length === 0 ? (
             <div className="sd-mmods-empty">当前没有可展示的服务器模组。</div>
+          ) : installedMods.length === 0 ? (
+            <div className="sd-mmods-empty">
+              没有匹配的 Mod。可尝试名称、UniqueID、文件夹名或 Nexus 数字 ID。
+              <button className="sd-btn-tan" type="button" onClick={() => setInstalledQuery('')}>清空搜索</button>
+            </div>
           ) : (
             <div className="sd-mmods-installed-list">
               {installedMods.map((mod) => {
@@ -715,6 +743,7 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
                         <div className="sd-mmods-info-grid sd-mmods-installed-grid">
                           <span><b>版本</b>{mod.version || '—'}</span>
                           <span><b>文件夹</b>{mod.folderName || '—'}</span>
+                          <span><b>安装</b>{mod.installedAt ? formatDate(mod.installedAt) : '历史记录未知'}</span>
                           <span><b>更新</b>{mod.updatedAt ? formatDate(mod.updatedAt) : '—'}</span>
                           <span><b>同步</b>{SYNC_KIND_LABELS[mod.syncKind] ?? mod.syncKind}</span>
                         </div>
@@ -760,7 +789,8 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
           <div className="sd-panel sd-mmods-dialog">
             <h3>上传 Mod</h3>
             {uploadError ? <div className="sd-notice sd-notice--error sd-mmods-notice">{uploadError}</div> : null}
-            <p>上传一个或多个包含 SMAPI Mod 的 ZIP 文件。服务器停止时才能安装。</p>
+            <ModUploadGuidance />
+            <p className="sd-mmods-upload-stop-note">服务器停止时才能安装；安装完成后会在下次启动时加载。</p>
             <label className="sd-mmods-field">
               <span>选择 ZIP 文件</span>
               <input

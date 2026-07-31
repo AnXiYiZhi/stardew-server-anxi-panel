@@ -19,6 +19,17 @@
 - SPA fallback 只接受 `/`、`/index.html`、`/instances/stardew` 及 `/instances/stardew/{install,overview,server,saves,jobs,players,mods,diagnostics,settings}`。其它未知页面和未注册 API 统一返回 `404 {"error":{"code":"not_found",...}}`，不再返回 `index.html` 或在未初始化时误报 `503 setup_required`。
 - 请求取消可能返回既有的取消/网络错误，但不会污染下一次 SQLite 查询。若进程连续得到三次原生 `SQLITE_INTERRUPT`，连接池被视为无法恢复，Panel 主动退出并依赖部署的 Docker restart policy 恢复；客户端应按普通短时断线重连处理。
 
+# MOD-INSTALL-TIME-1 / FE-MOD-LIST-SEARCH-1 联调契约（2026-07-31，completed，未发布）
+
+- Docker Desktop 真实联调使用候选 Panel 的实际 setup/session、`POST /mods/upload`、`POST /mods/remote/install` + job 轮询、`GET /mods`、`DELETE /mods/:id` 和持久 volume。浏览器扩展一键下载路径返回的 Mod 与人工 ZIP 一样获得 `installedAt`；重启后 API 与 UI 时间不变。
+- 真实失败矩阵覆盖多 ZIP 部分成功回滚和 sidecar 原子提交失败：两者均不得留下 Mod 目录或孤立安装时间，旧记录保持可读。`/mods/remote/install` 的公网 HTTPS 下载、Content-Type、完整进度、ZIP 校验和 job `succeeded` 均来自真实运行组件，不是 API mock。
+
+- `GET /api/instances/:id/mods`、人工上传响应及所有返回 `ModInfo` 的接口新增可选字符串 `installedAt`，格式为 UTC RFC3339Nano。它表示 Panel 成功安装该物理 Mod 目录的时间；Nexus 上游更新时间仍是 `updatedAt`，两者不得混用。
+- 同一 ZIP 中导入的全部 Mod 使用完全相同的 `installedAt`；一次选择多个 ZIP 时每个成功 ZIP 各自提交。若后续 ZIP 或当前存档启用事务失败，已导入目录和安装时间一起回滚。
+- 人工上传和一键下载可以由不同 HTTP/job 入口完成；后端必须串行化 sidecar 读改写，两个不同 Mod 并发成功时两条时间都要保留。该互斥只保护小型补充元数据，不改变下载或 ZIP 处理的 job 并发模型。
+- 历史 Mod、手工复制目录或损坏/不匹配的补充记录可以没有 `installedAt`。前端必须兼容字段缺失，不能使用浏览器当前时间、文件夹顺序或 `updatedAt` 填充。
+- 搜索和排序在前端本地完成，不新增查询参数或服务端过滤接口。批量启用/禁用继续调用原接口并作用于完整第三方 Mod 集合，不能把当前搜索结果当请求范围。
+
 # SAVE-NAME-ENCODING-DELETE-1 联调契约（2026-07-20，completed）
 
 - `POST /api/instances/:id/saves/upload-preview` 对 GBK/GB18030 ZIP 路径名先转为 UTF-8，再返回 `saveName` 并持久化 pending token；前端不得自行重新解码名称。结构不完整、路径重复/冲突或名称不安全仍返回 `400 invalid_zip`。

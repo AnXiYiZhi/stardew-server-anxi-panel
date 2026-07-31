@@ -1,3 +1,11 @@
+# MOD-INSTALL-TIME-1：Mod 安装时间持久化（2026-07-31，completed，未发布）
+
+- `ModInfo` 新增可选 `installedAt`。所有人工 ZIP、Nexus 和远程安装路径继续统一经过 `stardew_junimo.uploadModZip`；每个成功 ZIP 在目录全部落盘后生成一次 UTC RFC3339Nano 时间，同一 ZIP 中的多个 Mod 共用该值。
+- 时间存入实例私有的 `.local-container/control/mod-install-times.json`，schema 固定为 1、文件上限 2 MiB、临时文件权限 `0600` 并同目录原子替换。同一 Panel 内的安装/删除 sidecar 读改写受互斥保护，人工上传和异步一键安装并发完成时不会互相覆盖。旧实例没有记录时字段省略，不根据目录 mtime 或 Nexus `updatedAt` 伪造历史安装时间。
+- 安装时间写入失败会删除本次刚移动的全部目录并让安装失败；远程幂等跳过已有 Mod 不刷新旧时间。删除单个 Mod、同包删除和多 ZIP 请求回滚都会清理对应 sidecar 项；损坏的补充元数据不会阻断既有 Mod 列表，后续安装则拒绝覆盖损坏文件。
+- 回归覆盖单/多 Mod 同批时间、两个入口并发安装不丢记录、重启式重新列表、sidecar 写失败回滚、远程幂等不刷新和删除清理。Linux Docker 全量 `go test ./... -count=1`、vet/build 与 Docker integration 已通过；本地候选镜像 smoke 见 `docs/09-image-build.md`。
+- Docker Desktop 真实 Panel HTTP E2E 另验证了深层目录 ZIP、本地第二包、浏览器扩展一键远程下载任务三者分别写入严格递增时间；Panel 容器重启后三值不变。有效包后接无 manifest 包会回滚目录和 sidecar；把 sidecar 路径注入为目录时，导入失败且新目录被删除；单 Mod 删除同步移除时间记录。
+
 # SMAPI-DOWNLOAD-RESUME-1：受审加速源分块续传（2026-07-28，v0.4.5 released）
 
 - 真实国内主机复现表明，SMAPI 4.5.2 官方 installer 为 `41,889,142` 字节，GitHub release-assets 链路约 `40 KiB/s`；旧实现把整个响应放在单个 2 分钟 `http.Client.Timeout` 内，游戏本体 413150 与 SDK 1007 已成功后仍会稳定报 `context deadline exceeded while reading body`。同一实例连续 7 次失败，磁盘、内存、Docker 与 Steam 授权均不是根因。

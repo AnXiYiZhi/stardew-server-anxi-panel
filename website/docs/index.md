@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.5
+release: v0.4.6
 
 hero:
   name: Anxi Panel
@@ -40,7 +40,7 @@ features:
     linkText: 查看深度文档
   - icon: NEW
     title: 版本更新日志
-    details: 当前最新 v0.4.5。恢复受审国内加速源，SMAPI 下载支持分块续传、安全回退与完整性校验。
+    details: 当前最新 v0.4.6。Mod 安装时间持久保存，已安装与配置列表支持模糊搜索和按时间或名称排序。
     link: /changelog
     linkText: 查看更新日志
   - icon: '05'
@@ -67,8 +67,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.5</strong>
-    <p>SMAPI 安装包按受审加速源优先下载，慢速或中断链路可续传，失败时安全切换并由 GitHub 官方兜底。</p>
+    <strong>v0.4.6</strong>
+    <p>最近安装的 Mod 默认排在最前；手动上传、Nexus 直连和浏览器扩展一键安装都会记录时间，并可按名称、ID 或来源模糊搜索。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
