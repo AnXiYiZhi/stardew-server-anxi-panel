@@ -1,3 +1,14 @@
+# 2026-07-31 发布候选：Mod 安装时间、搜索与排序（v0.4.6）
+
+- [x] 后端按实例原子持久化每个 Mod 的 UTC 安装时间；同 ZIP 同时间，历史目录不伪造，远程幂等不刷新。
+- [x] 覆盖安装时间写失败整批回滚、删除/同包删除/多 ZIP 回滚清理和损坏 sidecar 的可用性边界。
+- [x] 桌面添加/配置页与移动服务器模组页支持名称、ID、UniqueID、文件夹、作者、包名和 Nexus 数字 ID 模糊搜索。
+- [x] 默认最近安装优先，并提供名称 A–Z / Z–A；搜索不改变批量启停和统计的完整作用域。
+- [x] Docker Desktop Linux 全量 test/vet/build、十项前端测试、脚本/兼容矩阵/ShellCheck、Docker integration、文档构建、本地候选镜像 smoke 与双视口 Browser QA 通过。
+- [x] Docker Desktop 真实候选 Panel E2E 覆盖 setup/session、深层 ZIP、本地多次安装、浏览器扩展一键 HTTPS 下载、重启持久化、删除清理、多 ZIP 部分失败回滚和 sidecar 写失败回滚；实际右侧栏桌面/390×844 搜索排序验收通过。
+- [x] 官网首页、更新日志、维护页与深度手册同步 `v0.4.6` 的上传边界、持久安装时间、搜索与排序说明。
+- [ ] 完成精确候选全量门禁、`v0.4.5 → v0.4.6` 真实 Web 一键升级与旧版本兼容矩阵后，再创建 tag、更新 `latest` 并发布 Release。
+
 # 2026-07-29 完成：展示文档长目录自动跟随
 
 - [x] 定位版本日志 active marker 已更新但独立目录容器 `scrollTop` 不变的根因。
@@ -1540,3 +1551,16 @@ Multi Game Mode later
 - [x] 更新卡版本角标从 CSS 硬编码迁移到首页 frontmatter，当前显示 `v0.4.2`。
 - [x] 修复首页深色四步流程区标题、副标题和步骤文字被全站正文颜色覆盖的问题。
 - [x] Pages 部署成功；线上桌面计算值、截图、零横向溢出和 console 均已复核，窄屏布局沿本地同构产物验证为单列。
+
+# DOCS-PORTAL-DRAFT-REVERT-1（2026-07-29，completed / not published）
+
+- [x] 用户否决未发布首页草稿后，将 `website/` 精确恢复到当前线上版本并移除两个草稿主题文件。
+- [x] 删除本轮隔离预览和旧构建产物；右侧预览切回真实 GitHub Pages。
+- [x] VitePress production build、源码哈希、线上标题/导航/流程结构与 console 完成复核。
+- [x] 先前独立完成的无用素材清理保持不变，不随展示站回退恢复。
+
+# FE-MOD-UPLOAD-GUIDANCE-1（2026-07-31，completed）
+
+- [x] 桌面上传入口悬停/聚焦可见 ZIP 能力边界。
+- [x] 桌面与移动上传弹窗常驻展示多 ZIP、单 ZIP 多 Mod 文件夹和 ZIP 套 ZIP 处理方式。
+- [x] 两端复用共享文案组件，不改变现有上传 API 或后端解包逻辑。

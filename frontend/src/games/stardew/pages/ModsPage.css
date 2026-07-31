@@ -44,6 +44,59 @@
   align-items: center;
 }
 
+.sd-mods-upload-entry {
+  position: relative;
+  display: inline-flex;
+}
+
+.sd-mods-upload-tooltip {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 9px);
+  right: 0;
+  width: min(330px, 78vw);
+  padding: 8px 10px;
+  border: 1px solid #9c7137;
+  border-radius: 4px;
+  background: #fff3c9;
+  box-shadow: 0 5px 16px rgba(67, 36, 11, 0.26);
+  color: #4b321b;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+
+.sd-mods-upload-tooltip::before {
+  position: absolute;
+  right: 18px;
+  bottom: 100%;
+  width: 8px;
+  height: 8px;
+  border-top: 1px solid #9c7137;
+  border-left: 1px solid #9c7137;
+  background: #fff3c9;
+  content: '';
+  transform: translateY(4px) rotate(45deg);
+}
+
+.sd-mods-upload-entry:hover .sd-mods-upload-tooltip,
+.sd-mods-upload-entry:focus-within .sd-mods-upload-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-mods-upload-tooltip {
+    transition: none;
+  }
+}
+
 .sd-mods-running-hint {
   background: var(--sd-gold-light);
   border: 1px solid var(--sd-gold-border);
@@ -514,6 +567,36 @@
   gap: 6px;
   flex-wrap: wrap;
   min-width: 0;
+}
+
+.sd-mods-installed-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(132px, 172px) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.sd-mods-installed-search {
+  min-width: 0;
+}
+
+.sd-mods-installed-search .sd-input,
+.sd-mods-installed-sort {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sd-mods-installed-result-count {
+  color: var(--sd-brown-light);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.sd-mods-search-empty {
+  margin-bottom: 12px;
 }
 
 .sd-mods-search-footer {
@@ -2134,6 +2217,14 @@
 
   .sd-mods-nexus-connect-strip .sd-btn-tan {
     flex: 1 1 128px;
+  }
+
+  .sd-mods-installed-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(118px, 152px);
+  }
+
+  .sd-mods-installed-result-count {
+    grid-column: 1 / -1;
   }
 }
 

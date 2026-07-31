@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -104,6 +106,27 @@ func TestListMods_WithMods(t *testing.T) {
 	}
 	if len(mods) != 2 {
 		t.Fatalf("expected 2 mods, got %d", len(mods))
+	}
+}
+
+func TestListMods_CorruptInstallTimesRemainSupplemental(t *testing.T) {
+	dir := t.TempDir()
+	root := modsDir(dir)
+	createTestMod(t, root, "TestMod", "author.testmod", "Test Mod")
+	metadataPath := modInstallTimesFilePath(dir)
+	if err := os.MkdirAll(filepath.Dir(metadataPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadataPath, []byte(`{"schemaVersion":1,"mods":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mods, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods should keep working when supplemental install times are corrupt: %v", err)
+	}
+	if len(mods) != 1 || mods[0].InstalledAt != "" {
+		t.Fatalf("mods = %+v, want existing mod without fabricated install time", mods)
 	}
 }
 
@@ -332,11 +355,21 @@ func TestUploadModZip_ValidSingleMod(t *testing.T) {
 	if imported[0].Name != "Test Mod" {
 		t.Errorf("Name = %q, want Test Mod", imported[0].Name)
 	}
+	if _, err := time.Parse(time.RFC3339Nano, imported[0].InstalledAt); err != nil {
+		t.Fatalf("InstalledAt = %q, want persisted RFC3339 timestamp: %v", imported[0].InstalledAt, err)
+	}
 
 	// Verify file exists on disk.
 	manifestPath := filepath.Join(dir, ".local-container", "mods", "TestMod", "manifest.json")
 	if _, err := os.Stat(manifestPath); err != nil {
 		t.Fatalf("manifest not found on disk: %v", err)
+	}
+	listed, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods after upload: %v", err)
+	}
+	if len(listed) != 1 || listed[0].InstalledAt != imported[0].InstalledAt {
+		t.Fatalf("listed install time = %+v, want %q", listed, imported[0].InstalledAt)
 	}
 }
 
@@ -355,6 +388,65 @@ func TestUploadModZip_ValidMultipleMods(t *testing.T) {
 	}
 	if len(imported) != 2 {
 		t.Fatalf("expected 2 imported mods, got %d", len(imported))
+	}
+	if imported[0].InstalledAt == "" || imported[0].InstalledAt != imported[1].InstalledAt {
+		t.Fatalf("same archive install times = %q and %q, want same non-empty timestamp", imported[0].InstalledAt, imported[1].InstalledAt)
+	}
+}
+
+func TestUploadModZip_ConcurrentInstallsPreserveEveryInstallTime(t *testing.T) {
+	dir := t.TempDir()
+	archives := []string{
+		createModZip(t, map[string]string{
+			"First/manifest.json": `{"Name":"First","UniqueID":"author.first","Version":"1.0.0","Author":"Tester"}`,
+		}),
+		createModZip(t, map[string]string{
+			"Second/manifest.json": `{"Name":"Second","UniqueID":"author.second","Version":"1.0.0","Author":"Tester"}`,
+		}),
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, len(archives))
+	for _, archive := range archives {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := UploadModZip(dir, archive)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent UploadModZip: %v", err)
+		}
+	}
+
+	listed, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	if len(listed) != 2 || listed[0].InstalledAt == "" || listed[1].InstalledAt == "" {
+		t.Fatalf("listed mods = %+v, want both concurrent installs timestamped", listed)
+	}
+}
+
+func TestUploadModZip_InstallTimePersistenceFailureRollsBackFiles(t *testing.T) {
+	dir := t.TempDir()
+	metadataPath := modInstallTimesFilePath(dir)
+	if err := os.MkdirAll(metadataPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := createModZip(t, map[string]string{
+		"TestMod/manifest.json": `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`,
+	})
+
+	if _, err := UploadModZip(dir, zipPath); err == nil || !strings.Contains(err.Error(), "安装时间") {
+		t.Fatalf("UploadModZip error = %v, want install-time persistence failure", err)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "TestMod")); !os.IsNotExist(err) {
+		t.Fatalf("mod folder should be rolled back, stat err = %v", err)
 	}
 }
 
@@ -869,9 +961,11 @@ func TestUploadModZip_AllowsAlreadyInstalledWhenRemoteInstallIsIdempotent(t *tes
 	manifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
 
 	zipPath1 := createModZip(t, map[string]string{"Mod1/manifest.json": manifest})
-	if _, err := UploadModZip(dir, zipPath1); err != nil {
+	first, err := UploadModZip(dir, zipPath1)
+	if err != nil {
 		t.Fatalf("first upload: %v", err)
 	}
+	firstInstalledAt := first[0].InstalledAt
 
 	zipPath2 := createModZip(t, map[string]string{"Mod2/manifest.json": manifest})
 	imported, err := uploadModZip(dir, zipPath2, uploadModZipOptions{allowAlreadyInstalled: true})
@@ -883,6 +977,13 @@ func TestUploadModZip_AllowsAlreadyInstalledWhenRemoteInstallIsIdempotent(t *tes
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".local-container", "mods", "Mod2")); !os.IsNotExist(err) {
 		t.Fatalf("duplicate folder should not be imported, stat err = %v", err)
+	}
+	listed, err := ListMods(dir)
+	if err != nil {
+		t.Fatalf("ListMods: %v", err)
+	}
+	if len(listed) != 1 || listed[0].InstalledAt != firstInstalledAt {
+		t.Fatalf("idempotent skip changed install time: %+v, want %q", listed, firstInstalledAt)
 	}
 }
 
@@ -957,14 +1058,26 @@ func TestUploadModZip_RejectsExistingFolder(t *testing.T) {
 
 func TestDeleteMod_ByFolderName(t *testing.T) {
 	dir := t.TempDir()
-	root := filepath.Join(dir, ".local-container", "mods")
-	createTestMod(t, root, "TestMod", "author.test", "Test")
+	zipPath := createModZip(t, map[string]string{
+		"TestMod/manifest.json": `{"Name":"Test","UniqueID":"author.test","Version":"1.0.0","Author":"Tester"}`,
+	})
+	if _, err := UploadModZip(dir, zipPath); err != nil {
+		t.Fatalf("UploadModZip: %v", err)
+	}
+	root := modsDir(dir)
 
 	if err := DeleteMod(dir, "TestMod"); err != nil {
 		t.Fatalf("DeleteMod: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "TestMod")); !os.IsNotExist(err) {
 		t.Fatal("mod folder should have been deleted")
+	}
+	store, err := loadModInstallTimesStore(dir)
+	if err != nil {
+		t.Fatalf("loadModInstallTimesStore: %v", err)
+	}
+	if len(store.Mods) != 0 {
+		t.Fatalf("install-time entries = %+v, want empty after delete", store.Mods)
 	}
 }
 

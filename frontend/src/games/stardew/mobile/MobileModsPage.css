@@ -200,6 +200,31 @@
   gap: 10px;
 }
 
+.sd-mmods-installed-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.52fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.sd-mmods-installed-controls .sd-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sd-mmods-installed-controls > span {
+  grid-column: 1 / -1;
+  color: var(--sd-brown-light);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sd-mmods-empty .sd-btn-tan {
+  margin-top: 8px;
+}
+
 .sd-mmods-bulk-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -575,6 +600,15 @@
   color: #4a3320;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.sd-mmods-dialog .sd-mod-upload-guide {
+  margin-bottom: 10px;
+}
+
+.sd-mmods-dialog .sd-mmods-upload-stop-note {
+  margin-bottom: 10px;
+  font-size: 12px;
 }
 
 .sd-mmods-field {

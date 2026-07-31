@@ -4,8 +4,10 @@ import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
-import { modIsJunimoServer, modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
+import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { modDisplayName } from '../mod-display'
+import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, sortInstalledMods, type InstalledModSort } from '../mod-list-utils'
+import { MOD_UPLOAD_TOOLTIP, ModUploadGuidance } from '../ModUploadGuidance'
 import { routeToPath, type StardewPageProps } from '../stardew-routes'
 import { useModsManagement } from '../useModsManagement'
 
@@ -556,13 +558,6 @@ function modCountsForPlayerSync(mod: ModInfo) {
   return !mod.builtIn
 }
 
-function builtInRank(mod: ModInfo) {
-  if (modIsSmapi(mod)) return 0
-  if (modIsPanelControl(mod)) return 1
-  if (modIsJunimoServer(mod)) return 2
-  return 3
-}
-
 function modBundleKey(mod: ModInfo) {
   if (mod.packageKey) {
     return `package:${mod.packageKey}`
@@ -576,32 +571,6 @@ function modBundleKey(mod: ModInfo) {
   return ''
 }
 
-function modBundleRank(mod: ModInfo) {
-  if ((mod.nexusModId ?? 0) > 0) return 0
-  if (mod.originSource === 'nexus' && (mod.originNexusModId ?? 0) > 0) return 1
-  return 2
-}
-
-function sortInstalledMods(mods: ModInfo[]) {
-  return [...mods].sort((a, b) => {
-    if (a.builtIn !== b.builtIn) return a.builtIn ? -1 : 1
-    if (a.builtIn && b.builtIn) {
-      const rankDiff = builtInRank(a) - builtInRank(b)
-      if (rankDiff !== 0) return rankDiff
-    }
-    const bundleA = modBundleKey(a)
-    const bundleB = modBundleKey(b)
-    if (bundleA && bundleB && bundleA !== bundleB) return bundleA.localeCompare(bundleB)
-    if (bundleA && bundleA === bundleB) {
-      const rankDiff = modBundleRank(a) - modBundleRank(b)
-      if (rankDiff !== 0) return rankDiff
-    }
-    if (bundleA && !bundleB) return -1
-    if (!bundleA && bundleB) return 1
-    return modDisplayName(a).localeCompare(modDisplayName(b), 'zh-Hans')
-  })
-}
-
 function modBundleMembers(mods: ModInfo[], target: ModInfo) {
   const bundleKey = modBundleKey(target)
   if (!bundleKey) return [target]
@@ -613,6 +582,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const restoredNexusSearchState = readNexusSearchSessionState()
   const restoredNexusExtensionState = readNexusExtensionSessionState()
   const [activeTab, setActiveTab] = useState<ModWorkbenchTab>('download')
+  const [installedQuery, setInstalledQuery] = useState('')
+  const [installedSort, setInstalledSort] = useState<InstalledModSort>('installed-desc')
 
   const [nexusQuery, setNexusQuery] = useState(restoredNexusSearchState?.query ?? '')
   const [nexusLoading, setNexusLoading] = useState(false)
@@ -677,7 +648,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     syncSummary,
     syncPackagedClientRequired,
   } = useMemo(() => {
-    const sortedMods = sortInstalledMods(data?.mods ?? [])
+    const sortedMods = sortInstalledMods(data?.mods ?? [], installedSort)
     const visibleMods = sortedMods.filter((mod) => !modIsSystemRuntime(mod))
     let parseErrors = 0
     let serverOnly = 0
@@ -714,7 +685,11 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       syncSummary: { serverOnly, clientRequired, unknown },
       syncPackagedClientRequired: packagedClientRequired,
     }
-  }, [data?.mods])
+  }, [data?.mods, installedSort])
+  const filteredUserVisibleMods = useMemo(() => (
+    filterAndSortInstalledMods(data?.mods ?? [], installedQuery, installedSort)
+      .filter((mod) => !modIsSystemRuntime(mod))
+  ), [data?.mods, installedQuery, installedSort])
   const restartRequired = data?.restartRequired ?? false
   const deleteBundle = useMemo(() => (
     confirmDelete ? modBundleMembers(mods, confirmDelete) : []
@@ -723,6 +698,33 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     ? deleteBundle.filter((mod) => mod.folderName !== confirmDelete.folderName)
     : []
   const nexusTotalPages = Math.max(1, Math.ceil(nexusTotal / nexusPageSize))
+  const installedModControls = (
+    <div className="sd-mods-installed-controls">
+      <label className="sd-mods-installed-search">
+        <input
+          className="sd-input"
+          type="search"
+          value={installedQuery}
+          onChange={(event) => setInstalledQuery(event.currentTarget.value)}
+          placeholder="搜索名称、UniqueID、文件夹或 Nexus ID"
+          aria-label="搜索已安装模组"
+        />
+      </label>
+      <select
+        className="sd-input sd-mods-installed-sort"
+        value={installedSort}
+        onChange={(event) => setInstalledSort(event.currentTarget.value as InstalledModSort)}
+        aria-label="已安装模组排序"
+      >
+        {INSTALLED_MOD_SORT_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+      <span className="sd-mods-installed-result-count">
+        {installedQuery.trim() ? `${filteredUserVisibleMods.length} / ${userVisibleMods.length} 个` : `${userVisibleMods.length} 个`}
+      </span>
+    </div>
+  )
 
   const tabItems: Array<{ id: ModWorkbenchTab; label: string; hint: string; icon: string }> = [
     { id: 'download', label: '下载模组', hint: '搜索 N 站并准备安装', icon: '/assets/stardew/ui/install/icon_install_step_download_image2.png' },
@@ -1671,15 +1673,23 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           >
             {exportBusy ? '导出中…' : '导出 Mod 包'}
           </button>
-          <button
-            className="sd-btn-green"
-            disabled={writeDisabled}
-            onClick={() => { openUpload(); setActiveTab('installed') }}
-            type="button"
-            title={writeTitle || '上传 ZIP 包安装 Mod'}
-          >
-            上传 Mod
-          </button>
+          <div className="sd-mods-upload-entry">
+            <button
+              aria-describedby={showUpload ? undefined : 'sd-mods-upload-entry-help'}
+              className="sd-btn-green"
+              disabled={writeDisabled}
+              onClick={() => { openUpload(); setActiveTab('installed') }}
+              type="button"
+              title={writeTitle || undefined}
+            >
+              上传 Mod
+            </button>
+            {!showUpload ? (
+              <span id="sd-mods-upload-entry-help" className="sd-mods-upload-tooltip" role="tooltip">
+                {MOD_UPLOAD_TOOLTIP}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -1989,6 +1999,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 已安装模组
                 {loading && <span className="sd-mods-loading-tag">加载中…</span>}
               </div>
+              {installedModControls}
 
               {!loading && userVisibleMods.length === 0 ? (
                 <div className="sd-mods-empty">
@@ -2005,17 +2016,23 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                   <button
                     className="sd-btn-green"
                     disabled={writeDisabled}
-                    title={writeTitle || '上传 ZIP 包安装 Mod'}
+                    title={writeTitle || MOD_UPLOAD_TOOLTIP}
                     onClick={openUpload}
                     type="button"
                   >
                     上传 Mod
                   </button>
                 </div>
+              ) : !loading && filteredUserVisibleMods.length === 0 ? (
+                <div className="sd-mods-empty sd-mods-search-empty">
+                  <div className="sd-mods-empty-title">没有匹配的 Mod</div>
+                  <div className="sd-mods-empty-desc">可尝试名称、UniqueID、文件夹名或 Nexus 数字 ID。</div>
+                  <button className="sd-btn-tan" type="button" onClick={() => setInstalledQuery('')}>清空搜索</button>
+                </div>
               ) : (
                 <>
                   <div className="sd-mods-nexus-list">
-                    {userVisibleMods.map((mod) => {
+                    {filteredUserVisibleMods.map((mod) => {
                     const syncBusy = syncUpdating === mod.id
                     const requiredDependency = dependencyDisplay(mod)
                     const isBuiltIn = mod.builtIn === true
@@ -2085,6 +2102,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                               </span>
                             ) : null}
                             {syncBusy && <span className="sd-mods-loading-tag">更新中…</span>}
+                            {mod.installedAt ? <span className="sd-tag sd-tag-blue" title={mod.installedAt}>安装 {formatDate(mod.installedAt)}</span> : null}
                             {mod.parseError ? <span className="sd-mods-parse-error">解析失败：{mod.parseError}</span> : null}
                           </div>
                         )}
@@ -2104,6 +2122,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                   当前存档 Mod 启用状态
                   {activeSaveName ? <span className="sd-mods-loading-tag">{activeSaveName}</span> : null}
                 </div>
+                {installedModControls}
                 <div className="sd-mods-enable-actions">
                   <button
                     type="button"
@@ -2135,9 +2154,15 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     <div className="sd-mods-empty-title">当前没有可配置 Mod</div>
                     <div className="sd-mods-empty-desc">安装第三方 Mod 后可以在这里为当前存档启用或禁用。</div>
                   </div>
+                ) : filteredUserVisibleMods.length === 0 ? (
+                  <div className="sd-mods-empty sd-mods-settings-empty">
+                    <div className="sd-mods-empty-title">没有匹配的 Mod</div>
+                    <div className="sd-mods-empty-desc">可尝试名称、UniqueID、文件夹名或 Nexus 数字 ID。</div>
+                    <button className="sd-btn-tan" type="button" onClick={() => setInstalledQuery('')}>清空搜索</button>
+                  </div>
                 ) : (
                   <div className="sd-mods-enable-list">
-                    {userVisibleMods.map((mod) => {
+                    {filteredUserVisibleMods.map((mod) => {
                       const busy = enableUpdating === mod.id
                       const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy || enableAllUpdating !== null
                       const title = mod.enableNote || writeTitle || (mod.enabled ? '禁用此 Mod' : '启用此 Mod')
@@ -2147,7 +2172,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                           <div className="sd-mods-enable-main">
                             <span className="sd-mods-enable-name">{modDisplayName(mod)}</span>
                             <span className="sd-mods-enable-meta">
-                              {mod.uniqueId || mod.folderName}
+                              {mod.uniqueId || mod.folderName}{mod.installedAt ? ` · 安装 ${formatDate(mod.installedAt)}` : ''}
                             </span>
                             {requiredDependency ? (
                               <div className="sd-mods-enable-dependencies">
@@ -2213,10 +2238,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               <div className="sd-mods-list-error">{uploadError}</div>
             )}
 
-            <p className="sd-mods-upload-hint">
-              上传一个包含 SMAPI Mod 的 ZIP 文件。ZIP 内应包含一个或多个 Mod 文件夹，每个文件夹中有 manifest.json。
-              保持服务器停止完成修改，下次启动时会自动加载。
-            </p>
+            <ModUploadGuidance />
+            <p className="sd-mods-upload-hint">保持服务器停止完成修改，下次启动时会自动加载。</p>
 
             <label className="sd-mods-upload-label">
               选择 ZIP 文件

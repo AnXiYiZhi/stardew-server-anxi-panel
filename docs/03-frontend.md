@@ -1,3 +1,12 @@
+# FE-MOD-LIST-SEARCH-1：已安装 Mod 搜索与排序（2026-07-31，completed，未发布）
+
+- 桌面“添加模组/配置模组”和移动端“服务器模组”新增同一套搜索与排序。默认按后端 `installedAt` 从新到旧；无历史时间的旧 Mod 排在有记录项之后，再按名称稳定排序。可切换“名称 A–Z / Z–A”，内置组件在桌面继续固定置顶。
+- 搜索对名称、`id`、`uniqueId`、文件夹、作者、包名、来源名和 Nexus/来源 Nexus 数字 ID 做 NFKC、忽略大小写的多关键词子串匹配；同时忽略 ID 中的空格、点、横线、括号和冒号。空结果与真正没有安装 Mod 使用不同提示。
+- 搜索只改变展示列表；一键启用/禁用、统计、同步包和删除同包判断仍以完整列表为准，避免过滤后误只操作可见项。安装卡和移动卡显示安装时间，旧数据明确显示“历史记录未知”。
+- 新增 `test:mod-list` 并接入 compatibility/release workflow。Docker Linux 中十项前端脚本、production build 与 `npm audit --omit=dev` 均通过；锁文件将 PostCSS 从存在路径穿越公告的 `8.5.15` 升到安全兼容补丁 `8.5.25`。
+- 应用内 Browser 已验证 1440×900 与 390×844：默认时间顺序、UniqueID 去标点搜索、Nexus ID 搜索、名称正反序、配置页复用、旧数据兜底均正确；页面无横向溢出、overlay 或 console error/warn。
+- 随后在 Docker Desktop 候选 Panel 的真实登录态页面复验：桌面右侧栏与 390×844 手机视图均显示后端持久化时间；`4242` 命中浏览器扩展一键下载项，`e2e.localb/e2e.locala` 命中 UniqueID 片段，添加/配置页共享查询，名称排序与最近安装排序正确。Panel 重启后时间与顺序仍显示；桌面和手机 `scrollWidth=clientWidth`，console error/warn 为空。
+
 # DOCS-OUTLINE-FOLLOW-1：长目录自动跟随正文（2026-07-29，completed）
 
 - 展示文档版本日志的右侧目录原本只由 VitePress 更新 `.outline-link.active` 和 marker；项目又把该目录设成独立滚动容器，因此正文进入 v0.2.x/v0.1.x 后 active 项会落到容器可视区外，目录 `scrollTop` 仍保持 `0`。
@@ -324,7 +333,7 @@
 - 验证：`cd frontend; npm.cmd run build`。
 
 # FE-ASSET-RUNTIME-SLIM-1 前端运行素材与原型制品瘦身
-- `docs/prototypes/` 已从历史大图目录改为轻量索引目录：当前只保留 `README.md`、`overview-design-baseline-2026-06-30.png` 和 `overview-current-baseline-2026-07-04.png`。完整原型截图、当前实现截图和 `assets/ui-extracted` 提取工作区应作为 Release artifact、对象存储或单独设计仓库制品保存。
+- `docs/prototypes/` 已改为纯文字索引目录，不再在仓库保留历史原型或实现截图。完整原型截图、当前实现截图和 `assets/ui-extracted` 提取工作区如确有审计需要，应作为 Release artifact、对象存储或单独设计仓库制品保存。
 - 登录背景已回退为 PNG-only 加载，避免 AVIF/WebP 或重编码造成色调偏移；`background_login_farm_generated.png` 与 `background_login_home_image2.png` 保持原仓库色调。
 - 对 `frontend/public/assets` 中超过 300 KB 的运行 PNG 做了无损重压缩并做像素等价校验；右栏 9-slice、tile 等非登录背景素材只做无损压缩，不改变切片参数。
 - favicon 从单个 512px / 545 KB PNG 改为 `favicon.ico` 加 32/64/128 PNG，多尺寸图标位于 `frontend/public/favicon-*.png`，默认 `favicon.png` 收敛为 128px。
@@ -968,7 +977,7 @@
 
 # FE-TOPBAR-IMAGE2-REGEN-1 顶栏 image2 重生拆分素材
 
-- 按 `docs/prototypes/overview-design-baseline-2026-06-30.png` / `Top bar.png` 风格重新用 image2 生成顶栏拆分素材，替换上一批观感不合格的 topbar 资源；没有从原图按脚本坐标裁切，脚本仅用于生成图的 chroma-key 去底、尺寸归一化、预览和 alpha 校验。
+- 历史顶栏拆分素材曾按外部原型风格重新生成；本地基线图现已删除。脚本只负责生成图的 chroma-key 去底、尺寸归一化、预览和 alpha 校验，不得依赖仓库内历史截图。
 - 顶栏外壳继续保持三段式：`topbar_shell_left.png`、`topbar_shell_middle_tile.png`、`topbar_shell_right.png`。运行时左/右端 `background-size: auto 100%`，中段 `repeat-x`，不再把整条带控件的顶栏做 `100% 100%` 横向拉伸。
 - 控件改为独立资源：`topbar_status_button_9slice.png`、`topbar_save_frame_9slice.png`、`topbar_version_frame_9slice.png`、`topbar_user_frame_9slice.png`、`topbar_logout_button_9slice.png`，由 CSS `border-image` 渲染。农场、版本、用户、状态和登出文字仍由 React 前端渲染。
 - 独立图标新增/切换为 v2：`icon_topbar_chicken_image2_v2.png`、`icon_topbar_farm_image2_v2.png`、`icon_topbar_user_avatar_image2_v2.png`、`icon_topbar_leaf_image2_v2.png`、`icon_topbar_green_dot_image2_v2.png`、`icon_topbar_logout_image2_v2.png`、`icon_topbar_dropdown_arrow_image2_v2.png`。
@@ -2348,3 +2357,17 @@ npm.cmd run dev
 - `v0.4.3` tag 已包含 `v0.4.2` 后合入的首页角标动态版本与深色流程区高对比度修复；版本号仍只由 frontmatter 传入 CSS 变量，不在 CSS 内硬编码。
 - 发布前验证要求：VitePress production build；浅色/深色桌面与 390px 移动端检查版本角标、流程标题/说明、无横向溢出及 console error/warn；点击版本更新卡进入 `/changelog` 并看到 `v0.4.3（最新版本）`。
 - 本地 VitePress build 与 Browser QA 已通过：1440×900 浅/深色、390×844 均无横向溢出或 console error/warn；角标计算内容为 `v0.4.3`，四步流程标题/说明高对比可读；点击更新卡后 URL 与 changelog 首项均正确。Pages 发布后完成同项线上复核，首页版本、流程区、CURRENT RELEASE 与 changelog 均正确。
+
+# DOCS-PORTAL-DRAFT-REVERT-1：未发布首页草稿撤回（2026-07-29）
+
+- 用户否决本地 GitHub Pages 重构草稿后，`website/` 的四个已跟踪文件已恢复到当前 `HEAD`、远端 `main` 与线上 Pages 共用的版本；`DocsHome.vue` 和 `calm-docs.css` 已删除，未创建提交或发布。
+- 线上首页继续使用 VitePress 默认 Hero、六项功能入口、“从一台服务器，到朋友加入农场”流程区和 `CURRENT RELEASE v0.4.5`；本次撤回不改变任何 API、Panel 页面或发布状态。
+- 先前按用户要求完成的素材清理独立保留：旧农舍场景、两张零引用手机顶栏图、两张历史原型基线图及失效 CSS URL 仍保持删除；动态引用的宠物素材继续保留。
+- 验证：恢复后执行 VitePress production build，并核对线上首页与恢复源码的标题、导航和流程结构一致；本轮隔离预览及其构建产物一并清理。
+
+# FE-MOD-UPLOAD-GUIDANCE-1：Mod ZIP 结构提示（2026-07-31）
+
+- 桌面 Mod 页顶部“上传 Mod”入口增加悬停与键盘聚焦提示，明确支持一次选择一个或多个 ZIP，或者一个 ZIP 中包含多个 Mod 文件夹，但不支持 ZIP 中再嵌 ZIP。
+- 桌面和移动端上传弹窗共用常驻说明牌，以“支持 / 不支持”两行展示上传方式；遇到内层 ZIP 时应先解压，再作为独立 ZIP 上传。
+- 共享文案和说明组件位于 `games/stardew/ModUploadGuidance.tsx`，两端不再分别维护能力边界。接口、上传事务和后端解包逻辑均未修改。
+- 验证：九项前端状态脚本与 `npm.cmd run build` 全部通过；应用内 Browser 已确认桌面入口说明关联、弹窗常驻说明与打开时气泡收起，390×844 移动弹窗无横向溢出，桌面/移动 console error/warn 均为空。

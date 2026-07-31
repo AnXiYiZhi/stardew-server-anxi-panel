@@ -248,6 +248,7 @@ type ModInfo struct {
 	SyncKind         string `json:"syncKind"`
 	SyncNote         string `json:"syncNote,omitempty"`
 	BuiltIn          bool   `json:"builtIn,omitempty"`
+	InstalledAt      string `json:"installedAt,omitempty"`
 	NexusSummary     string `json:"nexusSummary,omitempty"`
 	UpdatedAt        string `json:"updatedAt,omitempty"`
 	EndorsementCount int    `json:"endorsementCount,omitempty"`

@@ -1,3 +1,18 @@
+# MOD-INSTALL-TIME-1 接手记录（2026-07-31，completed，未发布）
+
+## 改了什么
+
+- `registry.ModInfo` 增加可选 `installedAt`；`uploadModZip` 在所有目录移动成功后，将同一 ZIP 的 UTC RFC3339Nano 时间原子写入 `<dataDir>/.local-container/control/mod-install-times.json`。人工上传、Nexus 与远程复用安装都走该入口。
+- 新 sidecar schema=1、上限 2 MiB、临时文件 `0600`。安装和删除的读改写由进程内互斥串行，避免人工上传与异步一键安装并发完成时覆盖另一条记录。旧目录无记录时不伪造；条目的 UniqueID 与当前 manifest 不匹配或时间非法时不应用。列表读取补充元数据失败时保持 Mod 管理可用，新的安装不会覆盖损坏文件。
+- sidecar 提交失败会回滚本次移动目录；跨文件系统 copy 失败额外清理当前半目录。幂等跳过不刷新时间；删除、同包删除和 Web 多 ZIP 回滚通过 `DeleteMod` 清理记录。
+
+## 影响、验证与下一步
+
+- 主要文件：`registry/types.go`、`stardew_junimo/{mods.go,mod_install_times.go,mods_test.go}`；接口契约见 `docs/06-integration.md`。未增加数据库迁移，也没有绕过 Junimo driver 在 Web 层保存 Mod 状态。
+- 测试覆盖单/多 Mod、同批时间、并发安装不丢记录、重新列表、写失败回滚、幂等旧时间和删除清理；Docker Linux 全量 test/vet/build、Docker runtime/updater integration 与本地候选 health/version smoke 均通过。
+- Docker Desktop 真实 Panel E2E 已补齐：实际 HTTP setup/session、深层 ZIP、本地第二包、浏览器扩展一键公网 HTTPS 下载 job、重启、删除全部通过；一键下载与人工上传均返回并持久化 `installedAt`。多 ZIP 第二包失败和 sidecar 原子提交失败均验证目录/时间回滚，原数据保持完整。
+- 后续若支持手工重命名 Mod 文件夹，需要先设计 sidecar key 迁移；当前管理流程不提供重命名。不要把 Nexus `updatedAt` 当安装时间，也不要为历史 Mod 用目录 mtime 回填。
+
 # SMAPI-DOWNLOAD-RESUME-1 接手记录（2026-07-28，v0.4.5 released）
 
 ## 改了什么

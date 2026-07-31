@@ -1,3 +1,30 @@
+# v0.4.6 发布门禁：Mod 安装时间、搜索排序与上传说明（2026-07-31，candidate）
+
+- 变更范围：后端为手动上传、Nexus Premium 直连和浏览器扩展一键安装统一持久化 `installedAt`；前端已安装/配置列表默认最近安装优先，支持名称正反序及名称、文件夹、作者、`UniqueID`、包来源、Nexus Mod ID 模糊搜索；上传区明确多 ZIP、单 ZIP 多 Mod、任意外层目录和嵌套 ZIP 不递归解压的边界。官网首页、更新日志、维护页与深度手册同步 `v0.4.6`。
+- 正常路径：必须在 Docker Desktop Linux containers 中用最终 commit 构建精确 `0.4.6` 候选，真实完成 setup、手动多 ZIP/单 ZIP 多 Mod、浏览器扩展一键下载、列表搜索排序、重启持久化与删除清理；Nexus Premium 路径因需要专用 Premium 测试账号时可由共享导入函数的自动测试补齐，但不得把浏览器扩展测试误写为 Premium 实测。
+- 边界输入：覆盖任意目录深度、同 ZIP 多 manifest、多 ZIP、重复 `UniqueID`、旧 Mod 无历史时间、标点或分隔符搜索、空白搜索、中文/大小写规范化、嵌套 ZIP 明确不递归；同一批任一坏包必须整体回滚。
+- 权限与安全：写操作继续只允许管理员且要求停服；sidecar 限制 2 MiB、版本化 schema、临时文件 `0600` 和原子替换；ZIP 路径穿越、symlink、重复目标与非法 manifest 沿用现有拒绝门禁。搜索只作用于已返回的可见 Mod，不扩大接口权限或读取任意文件。
+- 网络超时/断流：本功能只有 Nexus 下载入口涉及网络，继续复用现有下载 job 的 HTTPS、大小/摘要、超时和失败清理；安装时间只在完整 ZIP 导入成功后提交，下载中断不得生成时间记录。手动上传和本地列表不依赖外网。
+- 部分成功、重试与幂等：同一 ZIP 的多个 Mod 使用同一时间；批次后续失败回滚先前移动目录及时间记录；重复提交已安装 `UniqueID` 只报告跳过，不刷新原安装时间；并发安装串行化 sidecar 读改写，不能互相覆盖时间；删除同时清理对应时间，重复删除保持现有 404/幂等边界。
+- 进程或容器中断后的恢复：时间 sidecar 与 Mod 目录同属实例长期数据，Panel/容器重启后排序不变；临时文件不作为权威状态，启动读取损坏 sidecar 时列表可用但新安装安全拒绝覆盖，防止静默丢历史。
+- 失败回滚：验证 ZIP 解包/manifest 失败、sidecar 路径不可写或被目录占用时不留下本批 Mod、时间或临时文件；更新器目标 unhealthy 必须自动恢复 `v0.4.5`，数据库、Mod、sidecar、Compose 和非目标容器保持原状。
+- 数据完整性：升级前后核对 SQLite 初始化/用户/实例、Mod 目录及 sidecar 字节、已安装与启用集合、备份和审计范围；`/health`、`/api/version`、OCI version/revision 必须精确。旧 Mod 不伪造文件时间，缺少 `installedAt` 时稳定排在新记录之后。
+- 资源清理：全部门禁使用 `v046-*` 专属 Compose project、容器、网络、端口、bind 目录和 volume，并以 ownership label 核对后精确删除；禁止复用真实用户存档、长期凭据、现有唯一卷或执行全局 prune。
+- 升级矩阵：在隔离 Docker-in-Docker 中运行正式 `v0.4.5 → 0.4.6` Web 更新完整链路（检查、dry-run、管理员确认、apply、断线重连、终态恢复），并从受 sidecar 新增影响的最老代表版本验证旧 Mod 无历史时间兼容；升级得到的新 Panel 必须再次执行上传、一键下载、搜索排序、重启和删除。候选镜像只通过本地镜像源提供，不在门禁完成前推送正式 registry tag。
+- Tag 前全量门禁：后端 test/vet/build、前端全部状态测试与 production build、兼容矩阵、脚本功能测试与 ShellCheck、Docker integration、VitePress build、候选 fresh/upgrade E2E 和桌面/390px Browser QA。任一失败先修复并重跑受影响范围。
+- Tag 后核验：等待 `release.yml`、兼容矩阵和 Pages 工作流成功；从 Docker Hub、阿里云 ACR、GHCR 回拉精确 `0.4.6`，核对三仓 digest、OCI version/revision、`latest`、GitHub Release，并逐一完成隔离 health/version smoke；把 workflow ID、digest、耗时、故障与清理结果回填本节。
+
+# MOD-INSTALL-TIME-1 本地 Docker Desktop 门禁（2026-07-31，completed，未发布）
+
+- 按用户要求只做本地候选，不创建/移动/push `v*` tag，不更新 `latest`，不推 registry 或 GitHub Release。最终候选为 `stardew-server-anxi-panel:mod-install-time-qa`，OCI version=`0.4.5-modtime-qa`、revision=`local-dirty-120a140ef38f`、created=`2026-07-31T07:47:19Z`，带测试 ownership label。
+- Docker Desktop 29.5.3 Linux containers 使用专属 `mod-install-time-20260731-*` 容器、缓存卷、fresh Panel 数据卷和端口。候选 fresh volume 返回 `/health=ok`、`/api/version=0.4.5-modtime-qa/local-dirty-120a140ef38f`、`initialized=false`，OCI title/version/revision 精确。
+- Linux 容器通过：后端 `go test ./... -count=1`、vet/build；前端 `npm ci`、十项状态/功能测试、`npm audit --omit=dev`（0 漏洞）和 production build；兼容清单 validate、10 项 Python unittest、`run.sh`/`migrate-fnos.sh` 语法与功能测试、ShellCheck、VitePress build。
+- Docker integration 通过 runtime staging、steam-session 克隆恢复、镜像删除保护、参数注入拒绝、updater 隔离 Compose 成功及 unhealthy 回滚。需要正式候选/旧正式镜像环境变量的 real-image upgrade/reconcile 用例按设计 skip；本轮不是发版，未伪造这些变量，也未运行正式升级/tag 后门禁。
+- 应用内 Browser 使用隔离本地 API fixture 验证 1440×900 与 390×844 的默认安装时间排序、旧数据兜底、UniqueID/Nexus ID 模糊搜索、名称正反序和配置页复用；无横向溢出、overlay 或 console error/warn。测试资源按 ownership 精确清理，不操作现有实例。
+- 追加真实 E2E 候选为 `stardew-server-anxi-panel:modtime-e2e-20260731`，OCI version=`0.4.5-modtime-e2e.20260731`、revision=`120a140ef38f`、created=`2026-07-31T10:33:59Z`。Docker Desktop 29.5.3 Linux containers 使用独立容器、network、端口 `127.0.0.1:18090` 和 fresh volume；health/version/setup 精确匹配。
+- 实际 Panel HTTP 完成初始化、本地深层 ZIP、浏览器扩展一键公网 HTTPS 下载 job、本地第二包、列表、容器重启和删除。三个时间严格递增且重启不变；多 ZIP 第二包无 manifest 与 sidecar 路径变目录两类失败均回滚新目录/时间并保留旧数据。
+- 右侧栏真实登录页面验证桌面与 390×844：默认最近安装、一键下载来源 Nexus ID `4242`、UniqueID 片段搜索、名称正反序、添加/配置页共享查询、安装时间显示均通过；两视口无横向溢出，overlay 未出现，console error/warn 为空。内置 Nexus Premium `/mods/nexus/install` 未使用真实专用 API Key；本轮真实一键下载覆盖浏览器扩展 `/mods/remote/install` 路径，二者的文件导入继续共享 `uploadModZip`。
+
 # v0.4.5 发布记录：SMAPI 受审加速源分块续传（2026-07-28，已发布）
 
 - `0.4.4` 及更早版本仍把 SMAPI 官方 installer 的整段 body 限制为 2 分钟；约 `40 KiB/s` 的国内链路会在 Stardew/SDK 已完成后稳定失败。正式 `0.4.5` 已包含 `SMAPI-DOWNLOAD-RESUME-1`。

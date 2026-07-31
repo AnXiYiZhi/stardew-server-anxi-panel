@@ -155,6 +155,7 @@ func ListMods(dataDir string) ([]registry.ModInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	mods = applyModInstallTimes(dataDir, mods)
 	return applyModDependencyStatus(mods), nil
 }
 
@@ -166,6 +167,7 @@ func ListModsWithState(dataDir, saveName string) ([]registry.ModInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	mods = applyModInstallTimes(dataDir, mods)
 	mods = ApplyModEnableProfile(dataDir, saveName, mods)
 	return applyModDependencyStatus(mods), nil
 }
@@ -701,6 +703,7 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		if err := os.Rename(src, dest); err != nil {
 			// Cross-filesystem fallback.
 			if err := copyDir(src, dest); err != nil {
+				_ = os.RemoveAll(dest)
 				// Rollback: remove all previously moved directories.
 				for _, d := range moved {
 					_ = os.RemoveAll(d)
@@ -716,6 +719,14 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		}
 		imported = append(imported, finalInfo)
 	}
+	installed, err := recordModInstallTimes(dataDir, imported, time.Now())
+	if err != nil {
+		for _, dest := range moved {
+			_ = os.RemoveAll(dest)
+		}
+		return nil, fmt.Errorf("持久化 Mod 安装时间失败，本次导入已回滚: %w", err)
+	}
+	imported = installed
 
 	if opts.inferNexusPackageOrigin {
 		groups := map[string][]registry.ModInfo{}
@@ -1159,6 +1170,7 @@ func DeleteMod(dataDir, modID string) error {
 		}
 	}
 	_ = DeleteInstalledNexusMetadata(dataDir, folders)
+	_ = deleteModInstallTimes(dataDir, folders)
 	return nil
 }
 
