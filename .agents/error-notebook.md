@@ -131,7 +131,7 @@
 - 根因：Windows PowerShell 与 Unix shell 的 glob 展开行为不同，`rg` 收到非法字面路径。
 - 正确做法：使用 `rg -g 'Dockerfile*' <pattern> .`、`rg -g '*_test.go' <pattern> <dir>`，或先 `rg --files` 再筛选。
 - 预防检查：命令参数中出现 `*` 时确认它属于 `rg -g`，而不是位置参数。
-- 最近复发/补充：2026-08-01 排查升级状态测试时再次把 `backend/internal/web/*_test.go` 作为位置参数传给 `rg`，命中同一 `os error 123`；立即改为 `rg -g '*_test.go' ... backend/internal/web`，未影响文件。该规则已在 `AGENTS.md` 固化，后续命令构造时先检查位置参数中不存在 `*`。
+- 最近复发/补充：2026-08-01 排查升级状态测试时再次把 `backend/internal/web/*_test.go` 作为位置参数传给 `rg`，命中同一 `os error 123`；发布记录检查又把 `docs/backend-handoff/*.md` 当位置参数，整条搜索退出 1。两次都改用 `rg -g '<glob>' ... <root>` 或先列文件；该规则已在 `AGENTS.md` 固化，后续命令构造时先检查位置参数中不存在 `*`。
 - 适用范围：Windows 上的仓库搜索和发布检查。
 
 ## 2026-07-28：嵌套 Go template 与 PowerShell 转义冲突
@@ -143,6 +143,7 @@
 - 正确做法：优先把完整 template 置于 PowerShell 单引号参数，或拆开检查字段；嵌套命令过深时避免一行完成所有 inspect。
 - 预防检查：先用一个只读 `docker image inspect` 小命令验证 template，再放入较长脚本。
 - 最近复发/补充：2026-07-31 验证测试 volume label 时把 `{{index .Labels \"...\"}}` 放进嵌套 PowerShell 双引号，Docker 再次收到反斜杠并报 `unexpected "\\"`；改用无内层引号的 `{{json .Labels}}` 后确认 ownership。
+- 最近复发/补充：2026-08-01 又把带字符串键的 `{{index .Config.Labels \"...\"}}` 放进 `docker exec ... sh -c` 的第三层引号，容器 Shell 报 `unterminated quoted string`。只执行一个容器内命令时应去掉 `sh -c`，从 PowerShell 直接传参，并一次输出 `{{json .Config.Labels}}` 后在外层解析。
 - 适用范围：Docker inspect、Compose format 和其它 Go-template CLI。
 
 ## 2026-07-31：PowerShell 插值变量后直接连接连字符
@@ -363,6 +364,46 @@
 - 正确做法：先用 `git hash-object <file>` 对比 `git rev-parse HEAD:<file>` 并检查局部 diff，再用 `git add --refresh -- <exact paths>` 只刷新目标路径的 stat 信息，不暂存内容。
 - 预防检查：脏工作树中验证局部恢复时，以路径限定 diff 和内容哈希为证据；不要用全仓 refresh 的退出码判断单组文件是否恢复成功。
 - 适用范围：保留用户其它修改时的精准回退、编码恢复和工作树状态校验。
+
+## 2026-08-01：把 PowerShell 自动变量当成任务变量
+
+- 环境：Windows，PowerShell 7，整理 Docker 候选镜像检查结果。
+- 错误模式：用 `$Host` 保存候选镜像检查对象。
+- 症状 / 退出码：PowerShell 报只读或常量变量不能覆盖，检查命令在赋值阶段退出。
+- 根因：`$Host` 是 PowerShell 内置自动变量，名称大小写不敏感；普通任务变量与系统变量冲突。
+- 正确做法：使用带任务语义且不可能与自动变量冲突的名称，例如 `$candidateHostInspect`、`$releaseImageInspect`。
+- 预防检查：新建 PowerShell 变量时避开 `$Host`、`$HOME`、`$PID`、`$Error` 等自动变量；候选镜像脚本统一使用 `candidate` / `release` 前缀。
+- 适用范围：PowerShell 发布检查、Docker 元数据收集与组合对象输出。
+
+## 2026-08-01：DinD registry mirror 保留了旧候选标签
+
+- 环境：Docker Desktop 中的任务专属 DinD，使用本地 registry mirror 验收同一候选版本号的重建镜像。
+- 错误模式：只在 DinD 中给新镜像打本地标签，未先核对并更新 mirror 中同名 `0.4.6` manifest，就让旧版 Panel 执行一键更新。
+- 症状 / 退出码：更新成功但目标 revision 仍为旧提交 `67ab93f`，旧的 42% 状态被复现；产品回滚逻辑本身没有异常。
+- 根因：updater 的 pull 请求命中 mirror 中较早推送的同版本 manifest；本地同名标签不能覆盖远端 mirror 返回的 manifest。
+- 正确做法：每次候选重建后先把精确镜像推送到任务 mirror，再分别 inspect 本地标签、mirror manifest 与实际启动容器的 image ID/revision，三者完全一致后才能记为候选验收。
+- 预防检查：同一候选版本号重建时把 digest/revision 一致性作为升级测试前置断言；任何不一致立即停止，不把旧镜像结果计入新候选证据。
+- 适用范围：DinD、一键更新 E2E、本地 registry mirror 与可变候选 tag 测试。
+
+## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
+
+- 环境：Windows，GitHub CLI，发布后同时轮询 Release、兼容矩阵和官网工作流。
+- 错误模式：把三个 `gh run view` 放在单次循环中，任何一次 API EOF 都直接终止整轮监控。
+- 症状 / 退出码：工作流仍正常运行，但 CLI 报 GitHub API `EOF` 并退出 1；稍后同一 run 查询成功。
+- 根因：远端 Actions 查询接口短暂断流，原轮询没有按 run 提供有界重试。
+- 正确做法：每个 workflow run ID 独立最多重试三次，只有权威 `status=completed` 且 `conclusion=success` 才放行；查询 EOF 不等同于工作流失败。
+- 预防检查：发布轮询固定记录 run ID，并把网络查询故障与工作流结论分开；重试耗尽才停止并报告外部阻塞。
+- 适用范围：`gh run view/list`、GitHub Release 状态和发布后证据收集。
+
+## 2026-08-01：删除共享测试网络前未断开保留 fixture
+
+- 环境：任务 DinD，HTTPS release fixture 同时加入 final、旧 gate 和旧 fix 三个隔离网络。
+- 错误模式：删除旧 Compose 容器后直接同时删除两个旧网络，没有先检查仍连接的共享 fixture endpoint。
+- 症状 / 退出码：旧容器和 volume 已删除，但 `docker network rm` 报 `active endpoints` 并退出 1；保留的 final 网络与 fixture 未受损。
+- 根因：fixture 为多个升级项目提供同一受控 HTTPS 服务，Compose 项目 down 不会自动移除它的手工跨网络连接。
+- 正确做法：先 inspect fixture 的精确网络拓扑，确认 final 网络仍存在，再对旧网络执行精确 `docker network disconnect <network> <fixture>`，最后删除旧网络。
+- 预防检查：删除任何测试网络前列出 endpoints；共享 fixture 必须先区分要保留和要断开的网络，禁止强制或模糊批量清理。
+- 适用范围：Docker/DinD 故障 fixture、跨 Compose 网络和发布测试资源清理。
 
 ## 编码与换行快速检查
 

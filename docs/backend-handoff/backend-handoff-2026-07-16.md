@@ -1,4 +1,4 @@
-# MOD-INSTALL-TIME-1 接手记录（2026-07-31，completed，未发布）
+# MOD-INSTALL-TIME-1 接手记录（2026-08-01，v0.4.6 已发布）
 
 ## 改了什么
 
@@ -11,6 +11,9 @@
 - 主要文件：`registry/types.go`、`stardew_junimo/{mods.go,mod_install_times.go,mods_test.go}`；接口契约见 `docs/06-integration.md`。未增加数据库迁移，也没有绕过 Junimo driver 在 Web 层保存 Mod 状态。
 - 测试覆盖单/多 Mod、同批时间、并发安装不丢记录、重新列表、写失败回滚、幂等旧时间和删除清理；Docker Linux 全量 test/vet/build、Docker runtime/updater integration 与本地候选 health/version smoke 均通过。
 - Docker Desktop 真实 Panel E2E 已补齐：实际 HTTP setup/session、深层 ZIP、本地第二包、浏览器扩展一键公网 HTTPS 下载 job、重启、删除全部通过；一键下载与人工上传均返回并持久化 `installedAt`。多 ZIP 第二包失败和 sidecar 原子提交失败均验证目录/时间回滚，原数据保持完整。
+- 发布阻塞修复：`fullStackInstanceStatus` 对 `uninitialized/admin_created` 直接返回 `not_needed/100`，全部实例均无需运行时同步时聚合状态也规范为 `not_needed/100`；专项单元测试覆盖单实例与真实 store 聚合。兼容矩阵的 required image/Git/SMAPI 网络访问加入有界重试与严格分块续传，未放宽 trusted host、digest、Range、大小、SHA 或 ancestry。
+- 精确候选 `0c83a257e11c` / image ID `sha256:dd7f97a4e005c8dc50820d676fb30c9e926f93d962bb4e34477782bb88b02940` 已在 Docker Desktop 完成 `v0.4.5` Web 一键更新的 unhealthy 自动回滚与成功更新；更新后重启、上传、一键远程安装、安装时间顺序和桌面/390px 搜索排序均通过，42% 状态未复现。真实 `v0.3.13 → v0.4.6` 生产 `RunApply` 也通过，非目标 game 容器与数据受保护。
+- 正式 tag、Release、兼容矩阵和官网部署均成功；Docker Hub、阿里云 ACR、GHCR 的 `0.4.6/latest` digest 统一为 `sha256:6fd03bb202e8083b3453e2351bd70251c1bc2fea0e5c0f779fc62d99af39e07f`。三仓精确 tag 回拉后的 OCI revision 均为 `0c83a257e11c`，各自独立 health/version smoke 通过；官网首页实际 HTTP 200 并展示 `v0.4.6`。
 - 后续若支持手工重命名 Mod 文件夹，需要先设计 sidecar key 迁移；当前管理流程不提供重命名。不要把 Nexus `updatedAt` 当安装时间，也不要为历史 Mod 用目录 mtime 回填。
 
 # SMAPI-DOWNLOAD-RESUME-1 接手记录（2026-07-28，v0.4.5 released）

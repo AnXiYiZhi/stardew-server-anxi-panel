@@ -1,8 +1,14 @@
-# v0.4.6 发布门禁：Mod 安装时间、搜索排序与上传说明（2026-07-31，candidate）
+# v0.4.6 发布记录：Mod 安装时间、搜索排序与上传说明（2026-08-01，已发布）
 
 - 2026-08-01 阻塞修复：未安装实例不再把全栈状态卡在 42%，`uninitialized/admin_created` 以及“全部实例无需同步”的聚合结果均为 `not_needed/100`。远程制品门禁为 required image inspect、Git traceability fetch 和 SMAPI Range 下载增加三轮有界重试；SMAPI 可保留已验证分块并轮换受审 URL，最终 SHA 不匹配则从另一来源整包重下。digest、trusted host、Range、大小、SHA 和 Git ancestry 均未放宽。
 - 代码级验证：后端专项和完整聚合测试通过；兼容矩阵 19 项测试覆盖跨源续传、截断、恶意重定向、重试耗尽、错摘要重新整包下载、镜像与 Git 重试。真实 `verify-remote-artifacts` 在 required Docker Hub 首次 TLS 握手超时、SMAPI offset `33,554,432` 处 SSL EOF 与 HTTP 429 后恢复，301 秒通过；生产 Go 空缓存下载 `41,889,142` 字节用时 87 秒并通过固定摘要/ZIP。
-- 当前全量门禁：Linux 后端第二轮 test/vet/build 全绿；首轮仅既有农场恢复测试在并行负载下碰到 5 秒边界，目标用例随后连续 10 次通过且完整后端重跑通过。前端十项状态测试和 production build、VitePress build、脚本功能/ShellCheck、兼容矩阵、updater 成功/回滚 integration 与 runtime Docker integration 全绿。此记录不是 tag 授权；仍需最终 commit 候选镜像、正式 v0.4.5 Web 升级/回滚和右侧栏 42% 消失的真实 QA。
+- 当前全量门禁：Linux 后端第二轮 test/vet/build 全绿；首轮仅既有农场恢复测试在并行负载下碰到 5 秒边界，目标用例随后连续 10 次通过且完整后端重跑通过。前端十项状态测试和 production build、VitePress build、脚本功能/ShellCheck、兼容矩阵、updater 成功/回滚 integration 与 runtime Docker integration 全绿。
+- 精确候选：commit `0c83a257e11cabac289a55f9b5f74a93c2a64e93`，本机镜像 `anxiyizhi/stardew-server-anxi-panel:0.4.6` 的 image ID=`sha256:dd7f97a4e005c8dc50820d676fb30c9e926f93d962bb4e34477782bb88b02940`，OCI version=`0.4.6`、revision=`0c83a257e11c`、created=`2026-07-31T16:51:04Z`。fresh 隔离容器的 `/health` 与 `/api/version` 精确通过，镜像 archive 导入任务 DinD 后 image ID 一致。
+- `v0.4.5 → v0.4.6` Web 一键更新：真实完成检查、dry-run、管理员确认、apply、预期断线重连和终态恢复。先把目标替换为 unhealthy fixture，约 205 秒后进入 `failed_rolled_back` 并自动恢复 `v0.4.5`；随后更新精确候选约 50 秒成功，版本/revision 精确，`.env`、事务备份与 SQLite 可读，非目标 game sentinel 容器 ID、volume 文件摘要和 Panel 数据均未变化。Panel 重启后状态继续为 `fullStack=not_needed/100`，`admin_created` 实例不再出现 42%。
+- 升级后新功能：在升级得到的 Panel 上实际上传本地 ZIP，并通过本地 HTTPS fixture 执行一键远程安装；两条 `installedAt` 严格递增且重启保留。右侧真实页面的桌面与 390×844 视口均通过 Nexus ID、名称模糊搜索、最近安装/A–Z/Z–A 排序，无横向溢出，console error/warn 为空；一键下载 Mod 默认排在稍早上传 Mod 前面。
+- 老版本矩阵：任务 DinD 内真实 `ghcr.io/...:0.3.13` 通过生产 `RunApply` 升级到上述精确候选，`TestDockerIntegrationRealPanelCandidateUpgrade` 用时 24.76 秒并通过数据库、健康版本和非目标容器保护断言。Tag 前门禁至此完成；正式发布状态仍须等待 tag workflow、三仓回拉、`latest`、GitHub Release 和正式镜像隔离 smoke 后才能记为已发布。
+- 正式发布：annotated tag `v0.4.6` 精确指向 `0c83a257e11cabac289a55f9b5f74a93c2a64e93`。Release workflow `30650678965` 用时约 5 分 9 秒、兼容矩阵 `30650677894` 用时约 1 分 56 秒、官网部署 `30650677818` 用时约 45 秒，三者结论均为 `success`；GitHub Release `Stardew Server Anxi Panel 0.4.6` 为正式非草稿版本，`run.sh`、`migrate-fnos.sh`、`repair-junimo-0.3.5.sh` 三项附件齐全。
+- 发布后回拉：Docker Hub、阿里云 ACR、GHCR 的 `0.4.6` 与 `latest` 六个 OCI index 均为 `sha256:6fd03bb202e8083b3453e2351bd70251c1bc2fea0e5c0f779fc62d99af39e07f`。三个精确版本分别 `docker pull` 后，本机 image ID、OCI version=`0.4.6`、revision=`0c83a257e11c`、created=`2026-07-31T17:22:17Z` 完全一致；三个独立容器均返回 `/health=ok`、`/api/version=0.4.6/0c83a257e11c`。官网 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 返回 HTTP 200 且首页包含 `v0.4.6`。
 - 变更范围：后端为手动上传、Nexus Premium 直连和浏览器扩展一键安装统一持久化 `installedAt`；前端已安装/配置列表默认最近安装优先，支持名称正反序及名称、文件夹、作者、`UniqueID`、包来源、Nexus Mod ID 模糊搜索；上传区明确多 ZIP、单 ZIP 多 Mod、任意外层目录和嵌套 ZIP 不递归解压的边界。官网首页、更新日志、维护页与深度手册同步 `v0.4.6`。
 - 正常路径：必须在 Docker Desktop Linux containers 中用最终 commit 构建精确 `0.4.6` 候选，真实完成 setup、手动多 ZIP/单 ZIP 多 Mod、浏览器扩展一键下载、列表搜索排序、重启持久化与删除清理；Nexus Premium 路径因需要专用 Premium 测试账号时可由共享导入函数的自动测试补齐，但不得把浏览器扩展测试误写为 Premium 实测。
 - 边界输入：覆盖任意目录深度、同 ZIP 多 manifest、多 ZIP、重复 `UniqueID`、旧 Mod 无历史时间、标点或分隔符搜索、空白搜索、中文/大小写规范化、嵌套 ZIP 明确不递归；同一批任一坏包必须整体回滚。
@@ -13,6 +19,7 @@
 - 失败回滚：验证 ZIP 解包/manifest 失败、sidecar 路径不可写或被目录占用时不留下本批 Mod、时间或临时文件；更新器目标 unhealthy 必须自动恢复 `v0.4.5`，数据库、Mod、sidecar、Compose 和非目标容器保持原状。
 - 数据完整性：升级前后核对 SQLite 初始化/用户/实例、Mod 目录及 sidecar 字节、已安装与启用集合、备份和审计范围；`/health`、`/api/version`、OCI version/revision 必须精确。旧 Mod 不伪造文件时间，缺少 `installedAt` 时稳定排在新记录之后。
 - 资源清理：全部门禁使用 `v046-*` 专属 Compose project、容器、网络、端口、bind 目录和 volume，并以 ownership label 核对后精确删除；禁止复用真实用户存档、长期凭据、现有唯一卷或执行全局 prune。
+- 实际清理：三仓回拉 smoke 的三个容器、volume、network，旧候选 fresh smoke、旧 Panel/HTTPS/website fixture，以及 DinD 内旧 gate/fix 项目均按精确名称和 ownership/Compose project 核对后删除。为满足用户继续查看真实操作页的要求，仅保留 `v046final-upgrade-panel`、game sentinel、受控 HTTPS fixture、registry 与其所属任务 DinD/网络/volume；它们只含专用测试账号和合成 Mod，不含真实存档或长期凭据，可在右侧页面不再需要时整组精确删除。
 - 升级矩阵：在隔离 Docker-in-Docker 中运行正式 `v0.4.5 → 0.4.6` Web 更新完整链路（检查、dry-run、管理员确认、apply、断线重连、终态恢复），并从受 sidecar 新增影响的最老代表版本验证旧 Mod 无历史时间兼容；升级得到的新 Panel 必须再次执行上传、一键下载、搜索排序、重启和删除。候选镜像只通过本地镜像源提供，不在门禁完成前推送正式 registry tag。
 - Tag 前全量门禁：后端 test/vet/build、前端全部状态测试与 production build、兼容矩阵、脚本功能测试与 ShellCheck、Docker integration、VitePress build、候选 fresh/upgrade E2E 和桌面/390px Browser QA。任一失败先修复并重跑受影响范围。
 - Tag 后核验：等待 `release.yml`、兼容矩阵和 Pages 工作流成功；从 Docker Hub、阿里云 ACR、GHCR 回拉精确 `0.4.6`，核对三仓 digest、OCI version/revision、`latest`、GitHub Release，并逐一完成隔离 health/version smoke；把 workflow ID、digest、耗时、故障与清理结果回填本节。
