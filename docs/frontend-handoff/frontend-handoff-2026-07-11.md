@@ -1,4 +1,4 @@
-# DOCS-HOME-HERO-INVITE-1 接手记录（2026-08-01，completed，待发布）
+# DOCS-HOME-HERO-INVITE-1 接手记录（2026-08-01，released）
 
 ## 改了什么
 
@@ -11,7 +11,7 @@
 
 - 产品文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`。没有更改 VitePress 路由、版本角标来源、Panel 前端或接口。
 - Docker Desktop Linux Node 20 production build 通过。应用内 Browser 验证页面身份、非空、浅/深主题切换与 console；隔离 Chrome/Playwright 验证 1280px hover 时卡片上移 4px、越出 Features 4px仍可命中，390×844/320×568/768×1024 零横向溢出，reduced-motion 无动画。颜色对比最低为暗卡状态色 `6.15:1`。
-- Pages 工作流、deployment ID 与线上 cache-bust 验收待发布成功后补录。后续不要恢复整块 Hero 实色底、全屏网格或放大的低分辨率 Logo；更换邀请卡结构时继续验证浅/深色、390px、键盘、reduced-motion 和首行卡 hover 越界。
+- Pages workflow `30659672364` 的 build `91252609607` 与 deploy `91252685043` 均成功；deployment `5697130212` 状态 `success`，environment URL 为正式站点并精确绑定 `81b5716`。线上 cache-bust 验证桌面浅/深主题、邀请卡与六入口均存在，1280px hover 的 `translateY(-4px)` 越出 Features 4px 后顶部仍可命中；390×844 首页与 768×1024 正文移动菜单零横向溢出，overlay 与 console error/warn 为空。后续不要恢复整块 Hero 实色底、全屏网格或放大的低分辨率 Logo；更换邀请卡结构时继续验证浅/深色、390px、键盘、reduced-motion 和首行卡 hover 越界。
 
 # DOCS-HOME-CARD-POLISH-1 接手记录（2026-08-01，released）
 
