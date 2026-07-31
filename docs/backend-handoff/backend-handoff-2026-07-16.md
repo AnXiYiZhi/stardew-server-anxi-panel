@@ -493,3 +493,9 @@
 - 主要文件：`cmd/panel/main.go`、`internal/storage/{db,sqlite_driver,db_interrupt_test}.go`、`internal/web/{handler,auth_handlers,auth_handlers_test}.go`、`internal/updater/apply_docker_integration_test.go`。
 - Docker Desktop 29.5.3 已通过候选 smoke、100 条扫描、持久卷重启、真实升级；Linux 容器内取消恢复 10 轮通过。完整发布门禁包括 backend test/vet/build、两组 Docker integration、兼容矩阵、脚本/ShellCheck、前端/文档生产构建。
 - 只统计 SQLite 原生错误码 9，不按错误字符串猜测。不要把单次请求取消当成进程级故障；阈值保护依赖 Docker 部署的 restart policy。正式 `v0.4.2` Web API 端到端升级已通过，三仓镜像同 digest，发布二进制 build info 已核对驱动版本。
+# FULL-STACK-UNINSTALLED-TERMINAL-1 / RELEASE-REMOTE-RETRY-1 接手记录（2026-08-01，completed，待发布）
+
+- 修复内容：`backend/internal/web/updater_handlers.go` 对 `uninitialized/admin_created` 直接产出 `not_needed/100`，全部实例均无需同步时顶层也产出相同终态，解决 v0.4.5→候选升级后未安装实例长期显示 42%。已安装实例的 inspection/coordinator 分支未放宽。
+- 发布门禁：`scripts/compatibility_matrix.py` 的 required image inspect、Git traceability fetch 与 SMAPI 分块下载均改为三轮有界重试。已验分块可跨受审 URL 续传；截断分块不计入 hash；最终 SHA 错误会从不同起始源整包重下。白名单、Range、大小、digest 与 ancestry 仍是硬失败。
+- 测试：`internal/web` 覆盖两个未安装状态和真实 Store 聚合；Python 共 19 项，新增跨源续传、截断、恶意重定向、重试耗尽、错摘要整包重下、镜像 inspect 重试与 Git fetch 边界。真实公网门禁在 Docker Hub TLS timeout、SMAPI 32 MiB 处 SSL EOF/429 后恢复并通过；生产 Go 空缓存下载及 updater/runtime Docker integration 均通过。
+- 下一步：必须以包含本修复的最终 commit 重建 `0.4.6`，重新执行 v0.4.5 Web 一键升级、unhealthy 回滚、升级后 Mod 功能和右侧栏终态 QA；在这些证据完成前不得 tag。不要通过把 `checking_runtime` 普遍改成成功、移除 trusted hosts 或跳过最终 SHA 来规避网络问题。

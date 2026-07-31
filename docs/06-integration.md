@@ -1165,3 +1165,8 @@ Panel 不接收 steam-auth-cn 的 `repository_dispatch`，也不根据 auth 发�
 - `/health` 响应形状不变；Panel 内部每分钟调用同一个 `Store.Ping`，单次 5 秒。只有连续三次 SQLite 原生 code 9 才退出，成功/超时/其它错误清零，业务请求错误不参与计数。客户端仍按普通短时断线重连。
 - Docker Desktop 29.5.3 先使用真实 GHCR `0.4.2` 和本地最终候选执行正式 `RunApply`，发布后又使用公开 GHCR `0.4.3` 精确 tag 复验：两次终态均为 succeeded，目标 `/health`/版本/SQLite setup 状态/未知路径 404 正确，数据卷非空，隔离 game 容器 ID 未变化。
 - 候选 `restart: unless-stopped` 验证中 Panel PID `13602 → 13772`、RestartCount `0 → 1`，重启后 `/health` 恢复。Docker unhealthy 本身不触发 restart policy；进程退出是唯一恢复触发点，且没有游戏容器操作。
+# 2026-08-01：未安装实例的全栈升级终态
+
+- Panel apply 主状态为 `succeeded` 且目标版本等于当前 Panel 时，后端才补充 `fullStack`。实例状态为 `uninitialized` 或 `admin_created` 时，`fullStack.instances[]` 返回 `phase=not_needed`、`progress=100`，且 `runtimeRequired=false`。
+- 如果全部实例都属于未安装、已是目标运行栈或 driver 无跟随升级要求，顶层 `fullStack` 同样返回 `phase=not_needed`、`progress=100`、`runtimeRequired=false`。前端应按终态展示，不再显示“正在全栈升级 42%”。
+- 已安装实例缺少当前 Panel 对应的 required-runtime 状态时仍返回 `checking_runtime`；`failed_safe` 与 `manual_action` 优先级不变，不能只按 Panel 主状态 `succeeded` 隐藏游戏运行栈失败。

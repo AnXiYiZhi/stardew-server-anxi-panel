@@ -1726,3 +1726,10 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - `modernc.org/sqlite` 已升级到 `v1.54.0`。真实长查询被 context 取消后，同一数据库的下一次 `SELECT 42` 必须成功；连续三次原生 `SQLITE_INTERRUPT` 才触发进程退出保护，任意成功或其它错误会重置计数。
 - Docker Desktop 29.5.3 已验证候选镜像冷启动、100 条扫描路径 404、容器重启后初始化缓存从持久 SQLite 恢复；Linux 容器内取消恢复测试连续 10 轮通过。
 - 真实 GHCR `0.4.1` 已通过项目 `RunApply` 升级到本地 `0.4.2` 候选镜像：三项健康验收、SQLite 数据卷查询、扫描路径 404 均成功，同 Compose 游戏容器 ID 未变化。
+# FULL-STACK-UNINSTALLED-TERMINAL-1 与 RELEASE-REMOTE-RETRY-1（2026-08-01，completed，待 v0.4.6 发布）
+
+- `/api/system/update/apply` 的全栈聚合现在先识别 `uninitialized` 与 `admin_created`。尚未安装游戏的实例直接返回实例级 `not_needed/100`，当全部实例均无需运行栈同步时，聚合结果同样为 `not_needed/100`，不再因缺少 required-runtime 状态文件长期停在 `checking_runtime/42`。
+- 已安装或正在维护的实例仍走 driver、运行栈 inspection 与 required-runtime 持久状态；该短路不把真实运行栈失败伪装成完成。回归覆盖两个未安装状态以及含默认实例的完整聚合响应。
+- `scripts/compatibility_matrix.py verify-remote-artifacts` 对必须存在的镜像 inspect、精确 Git 来源 fetch 和 SMAPI Range 下载加入三轮有界重试。SMAPI 每个已验证 2 MiB 分块完成后保留 offset/hash；单源 SSL EOF、429、超时或截断时只重试当前分块并轮换清单内受审源。最终 SHA 不匹配会丢弃本轮并从另一来源重新下载整包，绝不把错摘要结果放行。
+- 安全边界不变：镜像 tag 仍需匹配受审 digest；Git 仍 fetch 精确 revision/ref 并验证 ancestry；SMAPI 仍要求精确 URL 顺序、trusted host、`206`、`Content-Range`、长度、总字节数和 SHA256。重试耗尽仍返回失败，不降级为 warning。
+- 本机真实公网门禁在 Docker Hub 鉴权 TLS timeout 后重试成功，并在 SMAPI 32 MiB offset 遇到一个源 SSL EOF、另一个源 HTTP 429 后换源续传，最终 301 秒通过；生产 Go 下载器独立从空缓存下载 `41,889,142` 字节并在 87 秒内通过摘要与 ZIP 验收。

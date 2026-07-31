@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updatecheck"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updater"
@@ -21,6 +22,51 @@ type fakeUpdaterService struct {
 	applies    int
 	applyFrom  string
 	applyTo    string
+}
+
+func TestFullStackInstanceStatusSkipsUninstalledInstance(t *testing.T) {
+	s := &server{}
+	for _, state := range []string{storage.InstanceStateUninitialized, storage.InstanceStateAdminCreated} {
+		t.Run(state, func(t *testing.T) {
+			status := s.fullStackInstanceStatus(context.Background(), registry.Instance{ID: "stardew", State: state})
+			if status.Phase != "not_needed" || status.Progress != 100 || status.RuntimeRequired {
+				t.Fatalf("uninstalled full-stack status = %+v", status)
+			}
+			if status.InstanceID != "stardew" || status.Result == "" {
+				t.Fatalf("uninstalled full-stack details = %+v", status)
+			}
+		})
+	}
+}
+
+func TestEnrichFullStackStatusCompletesForUninstalledInstances(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	store, err := storage.Open(ctx, config.Config{
+		DataDir: dataDir, DBPath: filepath.Join(dataDir, "panel.db"), Secret: "test-secret", Version: "0.4.6",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.EnsureDefaultInstance(ctx, storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: storage.DefaultDriverID, DataDir: filepath.Join(dataDir, "instances", "stardew"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &server{config: config.Config{Version: "0.4.6"}, store: store, registry: registry.New()}
+	status := updater.ApplyStatus{Phase: updater.PhaseSucceeded, ToVersion: "v0.4.6"}
+	s.enrichFullStackUpdateStatus(ctx, &status)
+	if status.FullStack == nil || status.FullStack.Phase != "not_needed" || status.FullStack.Progress != 100 || status.FullStack.RuntimeRequired {
+		t.Fatalf("aggregate full-stack status = %+v", status.FullStack)
+	}
+	if len(status.FullStack.Instances) != 1 || status.FullStack.Instances[0].Phase != "not_needed" {
+		t.Fatalf("aggregate instance status = %+v", status.FullStack.Instances)
+	}
 }
 
 func (f *fakeUpdaterService) Capability(context.Context) updater.Capability { return f.capability }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updater"
 )
 
@@ -170,10 +171,17 @@ func (s *server) enrichFullStackUpdateStatus(ctx context.Context, status *update
 		}
 	}
 	aggregate.Progress = totalProgress / len(items)
+	if !aggregate.RuntimeRequired && aggregate.Phase == "succeeded" {
+		aggregate.Phase = "not_needed"
+		aggregate.Result = "Panel 更新完成；所有实例均无需同步游戏运行栈。"
+	}
 	status.FullStack = aggregate
 }
 
 func (s *server) fullStackInstanceStatus(ctx context.Context, instance registry.Instance) *updater.FullStackStatus {
+	if instance.State == storage.InstanceStateUninitialized || instance.State == storage.InstanceStateAdminCreated {
+		return &updater.FullStackStatus{Phase: "not_needed", Progress: 100, InstanceID: instance.ID, RuntimeRequired: false, Result: "Panel 已完成升级；当前实例尚未安装游戏，无需同步游戏运行栈。"}
+	}
 	driver, err := s.registry.Get(instance.DriverID)
 	if err != nil {
 		return &updater.FullStackStatus{Phase: "failed_safe", Progress: 40, InstanceID: instance.ID, RuntimeRequired: true, ErrorCode: "driver_unavailable", Error: "新 Panel 已启动，但无法加载游戏驱动；运行栈尚未修改。"}
