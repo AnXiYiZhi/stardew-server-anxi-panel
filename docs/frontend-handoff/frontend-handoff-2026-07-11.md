@@ -1,3 +1,15 @@
+# DOCS-HERO-COPY-1 接手记录（2026-08-01，completed）
+
+## 改了什么
+
+- 官网首页 Hero 主文案由“把开服这件事，变得像打开网页一样简单”调整为“一键部署你和朋友的专属联机服务器”，把核心利益点收敛到一键部署、专属服务器与朋友联机。
+- 只修改 `website/docs/index.md` 的 Hero 文案；未调整主题 CSS、按钮、图片、页面结构或站内链接。`docs/03-frontend.md` 同步记录当前文案。
+
+## 影响、验证与下一步
+
+- Node 24 Alpine 隔离容器完成 VitePress production build。应用内 Browser 在 `1280px` 桌面与 `390×844` 手机视口确认 H1 精确包含新文案，页面无横向溢出、framework overlay 或 console error/warn。
+- 实际点击首页“浏览完整手册”后进入 `/handbook/`，页面标题为“深度文档 | Anxi Panel 文档”。后续若再次调整 Hero 长度，至少复核 390px 下的断行与按钮首屏位置；本次无需修改字号或断点。
+
 # FE-MOD-LIST-SEARCH-1 接手记录（2026-07-31，completed，未发布）
 
 ## 改了什么
