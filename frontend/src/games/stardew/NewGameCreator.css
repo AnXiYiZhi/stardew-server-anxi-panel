@@ -61,8 +61,8 @@
 .ngc-prepare-button { justify-self:start; border:3px solid #6b300f; background:#718b32; color:#fff2a9; padding:4px 9px; font:inherit; font-size:12px; font-weight:900; cursor:pointer; box-shadow:inset 0 0 0 2px #a9bd58; }
 .ngc-select-modded-button { justify-self:start; border:3px solid #315f20; background:#718b32; color:#fff8c4; padding:5px 10px; font:inherit; font-size:12px; font-weight:900; cursor:pointer; }
 .ngc-modded-lock { color:#7b2c12; font-weight:900; -webkit-line-clamp:2 !important; }
-.ngc-prepare-overlay { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:20px; background:rgba(42,20,8,.72); }
-.ngc-prepare-dialog { width:min(520px,calc(100vw - 40px)); max-height:calc(100vh - 40px); overflow:auto; box-sizing:border-box; border:6px solid #743516; outline:3px solid #c58942; background:#f3d591; color:#451b0c; padding:22px; box-shadow:inset 0 0 0 4px #f9df9b,5px 6px 0 #321307; }
+.ngc-prepare-overlay { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:20px; box-sizing:border-box; background:rgba(42,20,8,.72); }
+.ngc-prepare-dialog { width:min(520px,100%); max-height:100%; overflow:auto; box-sizing:border-box; border:6px solid #743516; outline:3px solid #c58942; background:#f3d591; color:#451b0c; padding:22px; box-shadow:inset 0 0 0 4px #f9df9b,5px 6px 0 #321307; }
 .ngc-prepare-dialog h3 { margin:0 0 10px; }
 .ngc-prepare-dialog p { margin:7px 0; }
 .ngc-prepare-dialog ul { margin:12px 0; padding-left:22px; display:grid; gap:8px; }
@@ -96,3 +96,53 @@
 .ngc-map-panel span { position:absolute; left:0; right:0; bottom:0; padding:3px; background:#4f210cb3; font-size:12px; }
 @media (max-width: 1100px) { .ngc-game { transform:scale(.88); transform-origin:top left; margin-bottom:-85px; } }
 @media (max-width: 760px) { .ngc-game { transform:none; min-width:0; grid-template-columns:1fr; margin:0; } .ngc-main-panel { min-height:0; padding:28px; } .ngc-character-preview { position:static; width:auto; display:grid; grid-template-columns:130px 1fr 1fr; gap:10px; align-items:center; } .ngc-farmer-silhouette { min-height:100px; font-size:60px; } .ngc-map-panel { grid-template-columns:repeat(4,1fr); } .ngc-modded-catalog { margin-left:0; } .ngc-modded-grid { grid-template-columns:1fr; } }
+
+@container sd-main-scroll (max-width: 1100px) {
+  .ngc-game { transform:none; min-width:0; grid-template-columns:1fr; margin:0; }
+  .ngc-main-panel { min-height:0; padding:28px; }
+  .ngc-character-preview { position:static; width:auto; display:grid; grid-template-columns:130px 1fr 1fr; gap:10px; align-items:center; }
+  .ngc-farmer-silhouette { min-height:100px; font-size:60px; }
+  .ngc-map-panel { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .ngc-modded-catalog { margin-left:0; }
+  .ngc-modded-grid { grid-template-columns:1fr; }
+}
+
+@media (max-width: 760px) {
+  .ngc-main-panel { padding:14px; }
+  .ngc-side-panel { padding:16px 12px; }
+  .ngc-character-preview { grid-template-columns:1fr; }
+  .ngc-fields label { grid-template-columns:minmax(0,1fr); align-items:stretch; }
+  .ngc-pet-line { grid-template-columns:44px minmax(0,1fr) 44px !important; }
+  .ngc-pet-line > span { grid-column:1 / -1; }
+  .ngc-arrow { width:44px; height:44px; flex-basis:44px; }
+  .ngc-selected-farm { min-width:0; width:100%; }
+  .ngc-map-panel { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ngc-modded-heading { align-items:flex-start; flex-direction:column; }
+  .ngc-prepare-actions { flex-wrap:wrap; }
+}
+
+@container sd-main-scroll (max-width: 480px) {
+  .ngc-main-panel { padding:14px; }
+  .ngc-side-panel { padding:16px 12px; }
+  .ngc-character-preview { grid-template-columns:1fr; }
+  .ngc-fields label { grid-template-columns:minmax(0,1fr); align-items:stretch; }
+  .ngc-pet-line { grid-template-columns:44px minmax(0,1fr) 44px !important; }
+  .ngc-pet-line > span { grid-column:1 / -1; }
+  .ngc-arrow { width:44px; height:44px; flex-basis:44px; }
+  .ngc-selected-farm { min-width:0; width:100%; }
+  .ngc-map-panel { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ngc-modded-heading { align-items:flex-start; flex-direction:column; }
+  .ngc-prepare-actions { flex-wrap:wrap; }
+}
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 1366px) {
+    .ngc-game { transform:none; min-width:0; grid-template-columns:1fr; margin:0; }
+    .ngc-main-panel { min-height:0; padding:28px; }
+    .ngc-character-preview { position:static; width:auto; display:grid; grid-template-columns:130px 1fr 1fr; gap:10px; align-items:center; }
+    .ngc-farmer-silhouette { min-height:100px; font-size:60px; }
+    .ngc-map-panel { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .ngc-modded-catalog { margin-left:0; }
+    .ngc-modded-grid { grid-template-columns:1fr; }
+  }
+}

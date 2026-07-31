@@ -13,12 +13,14 @@ import { errorMessage } from './core/helpers'
 import { StardewPanel } from './games/stardew/StardewPanel'
 import { StardewMobileShell } from './games/stardew/StardewMobileShell'
 import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
+import { COMPACT_SHELL_MEDIA_QUERY } from './games/stardew/responsive-layout'
 import { useMediaQuery } from './hooks/useMediaQuery'
 
 type View = 'booting' | 'setup' | 'login' | 'stardew'
 
 function App() {
-  const isMobile = useMediaQuery('(max-width: 768px)')
+  const usesCompactShell = useMediaQuery(COMPACT_SHELL_MEDIA_QUERY)
+  const [desktopShellRequested, setDesktopShellRequested] = useState(false)
   const [view, setView] = useState<View>('booting')
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [setupForm, setSetupForm] = useState<SetupFormState>({ ...emptySetupForm })
@@ -104,6 +106,7 @@ function App() {
       setMessage(errorMessage(error))
     } finally {
       setCurrentUser(null)
+      setDesktopShellRequested(false)
       setLoginForm({ ...emptyLoginForm })
       setView('login')
       setBusy(false)
@@ -113,7 +116,19 @@ function App() {
   if (view === 'stardew' && currentUser) {
     return (
       <PanelUpdateProvider user={currentUser}>
-        {isMobile ? <StardewMobileShell user={currentUser} /> : <StardewPanel user={currentUser} onLogout={logout} />}
+        {usesCompactShell && !desktopShellRequested ? (
+          <StardewMobileShell
+            user={currentUser}
+            onLogout={logout}
+            onUseDesktop={() => setDesktopShellRequested(true)}
+          />
+        ) : (
+          <StardewPanel
+            user={currentUser}
+            onLogout={logout}
+            onUseCompact={usesCompactShell && desktopShellRequested ? () => setDesktopShellRequested(false) : undefined}
+          />
+        )}
       </PanelUpdateProvider>
     )
   }

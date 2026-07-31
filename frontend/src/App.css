@@ -16,11 +16,11 @@
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 280px;
   min-height: 100vh;
 }
 
-body:has(.sd-shell) {
+body.sd-desktop-shell-mounted {
   width: 100vw;
   height: 100vh;
   height: 100dvh;
@@ -28,7 +28,15 @@ body:has(.sd-shell) {
   overflow: hidden;
 }
 
-#root:has(.sd-shell) {
+body.sd-mobile-shell-mounted {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#root.sd-desktop-shell-mounted {
   width: 100vw;
   height: 100vh;
   height: 100dvh;
@@ -37,6 +45,15 @@ body:has(.sd-shell) {
   background: #000;
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+#root.sd-mobile-shell-mounted {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
 }
 
 button,
@@ -416,8 +433,8 @@ h3 {
   left: 50%;
   top: 50%;
   z-index: 1;
-  width: max(100vw, calc(100vh * 1.7778958555));
-  height: max(100vh, calc(100vw * 0.5627990431));
+  width: max(100vw, 177.68331562vh);
+  height: max(100vh, 56.27990431vw);
   max-width: none;
   padding: 0;
   border: 0;
@@ -746,15 +763,16 @@ h3 {
   }
 }
 
-/* ── LOGIN-MOBILE-FIX-1: 移动端登录/初始化页布局修复 ────────────────────────
+/* ── FE-RESPONSIVE-VIEWPORT-1: 紧凑视口登录/初始化页布局修复 ──────────────
    桌面 image2 大图版登录卡（.sd-auth-shell--image-login .sd-auth-card）靠固定
    16:9 比例的绝对定位 + 手工百分比坐标摆放输入框：卡片宽度按 max(100vw,
    100dvh*1.778) 计算，竖屏手机上会被撑到远超视口宽度（390px 宽视口下卡片实
    际宽度接近 1500px），再叠加 .sd-auth-shell 的 overflow:hidden 和固定
    min-height:100vh（内容绝对定位不参与流内高度，容器不会随内容增高），使内容
-   被裁切、错位，也无法滚动到被裁掉的部分。<=768px 时整体放弃这套坐标定位，
-   改回真实文档流的羊皮纸卡片，输入框/按钮按正常表单渲染。 */
-@media (max-width: 768px) {
+   被裁切、错位，也无法滚动到被裁掉的部分。窄屏、近方形视口和常见触控平板
+   整体放弃这套坐标定位，改回真实文档流的羊皮纸卡片，输入框/按钮按正常表单
+   渲染。登录页没有功能入口差异，因此也覆盖桌面端的窄窗口和近方形窗口。 */
+@media (max-width: 1106px), (max-aspect-ratio: 4 / 3), (min-aspect-ratio: 5 / 2), (max-width: 1366px) and (hover: none) and (pointer: coarse) {
   .sd-auth-shell {
     min-height: 100vh;
     min-height: 100dvh;

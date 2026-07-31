@@ -2,7 +2,7 @@
 
 .sd-mhome-wrap {
   width: 100%;
-  max-width: 480px;
+  max-width: var(--sd-mobile-content-max-width, 1120px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -61,6 +61,7 @@
 button.sd-mhome-status-item--version {
   width: 100%;
   min-width: 0;
+  min-height: 44px;
   color: inherit;
   font: inherit;
   text-align: left;
@@ -225,7 +226,11 @@ button.sd-mhome-status-item--version:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding:
+    calc(16px + env(safe-area-inset-top, 0px))
+    calc(16px + env(safe-area-inset-right, 0px))
+    calc(16px + env(safe-area-inset-bottom, 0px))
+    calc(16px + env(safe-area-inset-left, 0px));
   background: rgba(20, 10, 4, 0.6);
   box-sizing: border-box;
 }
@@ -233,6 +238,10 @@ button.sd-mhome-status-item--version:focus-visible {
 .sd-mhome-confirm-dialog {
   width: 100%;
   max-width: 340px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 16px;
 }
@@ -249,6 +258,7 @@ button.sd-mhome-status-item--version:focus-visible {
   font-size: 13px;
   line-height: 1.6;
   color: #4a3320;
+  overflow-wrap: anywhere;
 }
 
 .sd-mhome-confirm-actions {

@@ -2,7 +2,7 @@
 
 .sd-mplay-wrap {
   width: 100%;
-  max-width: 480px;
+  max-width: var(--sd-mobile-content-max-width, 1120px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -149,9 +149,12 @@
 }
 
 .sd-mplay-player-actions {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -170,7 +173,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding:
+    calc(16px + env(safe-area-inset-top, 0px))
+    calc(16px + env(safe-area-inset-right, 0px))
+    calc(16px + env(safe-area-inset-bottom, 0px))
+    calc(16px + env(safe-area-inset-left, 0px));
   background: rgba(20, 10, 4, 0.6);
   box-sizing: border-box;
 }
@@ -178,6 +185,10 @@
 .sd-mplay-confirm-dialog {
   width: 100%;
   max-width: 340px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 16px;
 }
@@ -194,6 +205,7 @@
   font-size: 13px;
   line-height: 1.6;
   color: #4a3320;
+  overflow-wrap: anywhere;
 }
 
 .sd-mplay-confirm-actions {

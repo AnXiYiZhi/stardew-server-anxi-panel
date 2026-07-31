@@ -1,11 +1,13 @@
-/* ── M0 移动端占位壳：仅在 max-width:768px 分流时挂载 ────────────────────── */
+/* ── 紧凑 Shell：手机及常见触控平板视口挂载 ───────────────────────────── */
 
 .sd-mshell {
   --sd-mobile-topbar-height: 58px;
   --sd-mobile-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px));
   --sd-mobile-main-frame-corner-size: 46px;
   --sd-mobile-main-frame-edge-thickness: 30px;
+  --sd-mobile-main-frame-half-edge-thickness: 15px;
   --sd-mobile-main-frame-center-tile-size: 192px;
+  --sd-mobile-content-max-width: 1120px;
   position: relative;
   width: 100%;
   height: 100vh;
@@ -19,6 +21,8 @@
   overflow: hidden;
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   padding-bottom: 0;
   image-rendering: pixelated;
 }
@@ -129,7 +133,7 @@
   z-index: 1;
   flex: 0 1 auto;
   min-width: 0;
-  min-height: 28px;
+  min-height: 44px;
   padding: 0 8px;
   overflow: hidden;
   border: 2px solid rgba(116, 66, 24, .72);
@@ -164,12 +168,13 @@
 }
 
 .sd-mshell-body {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: center;
-  padding: calc(var(--sd-mobile-main-frame-edge-thickness) / 2) 0 var(--sd-mobile-main-frame-edge-thickness);
+  padding: var(--sd-mobile-main-frame-half-edge-thickness) 0 var(--sd-mobile-main-frame-edge-thickness);
   box-sizing: border-box;
   overflow: hidden;
   overscroll-behavior: contain;
@@ -219,10 +224,11 @@
 }
 
 .sd-mshell-scroll {
-  flex: 1;
+  flex: 1 1 auto;
   width: 100%;
+  min-width: 0;
   min-height: 0;
-  max-height: 100%;
+  align-self: stretch;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -230,9 +236,19 @@
   box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
+  touch-action: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.sd-mshell input:not([type='checkbox']):not([type='radio']),
+.sd-mshell select,
+.sd-mshell textarea {
+  font-size: 16px;
+  font-size: max(16px, 1em);
 }
 
 .sd-mshell-scroll::-webkit-scrollbar {
@@ -261,10 +277,21 @@
   color: var(--sd-brown-light);
 }
 
+.sd-mshell-more-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.sd-mshell-more-actions > button {
+  width: 100%;
+  min-height: 44px;
+}
+
 .sd-mshell-tabbar {
   position: fixed;
-  left: 10px;
-  right: 10px;
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   z-index: 10;
   display: grid;
@@ -329,4 +356,57 @@
 
 .sd-mshell-tab:active {
   transform: scale(0.92);
+}
+
+@media (max-width: 319px) {
+  .sd-mshell-topbar {
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  .sd-mshell-brand {
+    max-width: 34%;
+    padding-left: 26px;
+    font-size: 12px;
+  }
+
+  .sd-mshell-brand::before {
+    width: 22px;
+    height: 22px;
+  }
+
+  .sd-mshell-status {
+    gap: 4px;
+    padding-inline: 5px;
+  }
+
+  .sd-mshell-status-text {
+    font-size: 10px;
+  }
+
+  .sd-mshell-update {
+    padding-inline: 5px;
+    font-size: 10px;
+  }
+
+  .sd-mshell-scroll {
+    padding-inline: 10px;
+  }
+
+  .sd-mshell-tabbar {
+    left: env(safe-area-inset-left, 0px);
+    right: env(safe-area-inset-right, 0px);
+    gap: 0;
+    padding-inline: 4px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .sd-mshell-tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }

@@ -437,6 +437,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
   z-index: 1000;
 }
 
@@ -444,13 +446,16 @@
   background: #1e1209;
   color: #e8d8b0;
   padding: 16px;
-  max-width: 92vw;
+  width: min(640px, 100%);
+  max-width: 100%;
   max-height: 92vh;
+  max-height: 100%;
   overflow: auto;
+  overscroll-behavior: contain;
   border: 2px solid #5a3c1d;
   display: grid;
   gap: 10px;
-  min-width: 320px;
+  min-width: 0;
 }
 
 .sd-install-qr-header {

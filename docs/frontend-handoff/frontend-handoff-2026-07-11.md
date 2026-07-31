@@ -12,7 +12,32 @@
 - 产品文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroInviteCard.vue,custom.css}`。没有更改 VitePress 路由、版本角标来源、Panel 前端或接口。
 - Docker Desktop Linux Node 20 production build 通过。应用内 Browser 验证页面身份、非空、浅/深主题切换与 console；隔离 Chrome/Playwright 验证 1280px hover 时卡片上移 4px、越出 Features 4px仍可命中，390×844/320×568/768×1024 零横向溢出，reduced-motion 无动画。颜色对比最低为暗卡状态色 `6.15:1`。
 - Pages workflow `30659672364` 的 build `91252609607` 与 deploy `91252685043` 均成功；deployment `5697130212` 状态 `success`，environment URL 为正式站点并精确绑定 `81b5716`。线上 cache-bust 验证桌面浅/深主题、邀请卡与六入口均存在，1280px hover 的 `translateY(-4px)` 越出 Features 4px 后顶部仍可命中；390×844 首页与 768×1024 正文移动菜单零横向溢出，overlay 与 console error/warn 为空。后续不要恢复整块 Hero 实色底、全屏网格或放大的低分辨率 Logo；更换邀请卡结构时继续验证浅/深色、390px、键盘、reduced-motion 和首行卡 hover 越界。
+# FE-RESPONSIVE-VIEWPORT-1 全窗口矩阵接手记录（2026-08-01，completed，v0.4.7 candidate）
 
+## 改了什么
+
+- 修复平板无法滑动、全屏只显示部分内容以及部分电脑浏览器根 Shell 尺寸失效，支持边界为 280 CSS px 及以上。手机 `<=768px` 与 `<=1366px` 无 hover/粗指针设备进入紧凑壳；普通窄电脑保留完整桌面壳。紧凑壳可进入完整桌面版，自动紧凑条件成立时桌面侧栏可切回“适配版”。
+- 根 Shell 缩放改为 `responsive-layout.ts` 的普通数值计算；wrapper 按实际内容盒驱动 ResizeObserver/resize/fullscreen 重算。外层改用 `overflow:clip` 并监听归零，修掉浏览器把隐藏容器程序化滚动后整套面板上移的直接回归；`.sd-main-scroll` 与 `.sd-mshell-scroll` 分别是桌面/紧凑壳唯一主滚动区，路由切换归零。
+- 紧凑壳覆盖四边 safe area、惯性滚动、双轴 pan/pinch、16px 输入和 44px 关键触控区；五个移动页最大内容宽扩大到 1120px，280px 底栏退化为仅图标。登录/初始化页在超宽低高度等危险比例使用可滚动文档流；弹窗限高改为相对可用容器内部滚动并限制 overscroll 链，窄屏重连/二次确认不会覆盖 safe area。
+- 新建游戏加入容器查询与 viewport fallback，玩家/控制/模组/存档操作区在 280px 可换行；OpsRail 可独立纵向滚动；缺失 ResizeObserver 时安全降级。QA 入口新增真实 App login/setup/panel 状态与完整 API mock。
+
+## 影响文件
+
+- 逻辑：`frontend/src/App.tsx`、`hooks/useMediaQuery.ts`、`games/stardew/{responsive-layout,StardewPanel,StardewMobileShell,NewGameCreator}.tsx`、`pages/ModsPage.tsx`、`qa-layout-main.tsx`。
+- 样式：`App.css`、桌面 Shell/更新/新建游戏、五个 `mobile/Mobile*Page.css` 及存档/模组/安装弹窗 CSS；QA viewport meta 同步生产。
+- 测试/CI：`frontend/scripts/test-responsive-layout.ts`、`frontend/package.json`、release/compatibility workflow。后端 API、鉴权和 Junimo 通信未改变。
+
+## 如何验证
+
+- `test:responsive-layout` 已逐像素覆盖 280..3840 × 16 高度并包含 7680×4320；项目全部 11 项前端状态测试和 `npm run build` 通过。两个 workflow 已接入专项命令。
+- Browser：移动六页覆盖 280×653/320×480/480×320/820×1180/1366×768，桌面九页覆盖 280 强制桌面、769×500、1366×768、2560×720；认证页覆盖 280×653 至 2560×720。768/769 自动断点、双向壳切换、横屏确认/更新弹窗、低高度超长新建游戏弹窗均通过。
+- 结果：页面级横向溢出为 0，Shell/overlay 精确覆盖视口，外层 viewport scroll 始终 `[0,0]`，长内容由内部容器滚动，关键按钮至少 44px，console error/warn 为 0。用户已确认实体平板横竖屏滑动、浏览器全屏、底栏切页和输入法冒烟通过；按用户明确决定，不再等待曾复现问题的朋友电脑验收，该设备未复验保留为剩余风险。
+
+## 下一步注意事项
+
+- 不要恢复 `body/window` 或 `.sd-shell-viewport` 滚动；桌面唯一主滚动区是 `.sd-main-scroll`，紧凑端是 `.sd-mshell-scroll`。`overflow:clip` 后面的 scroll 归零监听是旧浏览器 fallback，不能因现代 Chrome 看似不触发就删除。
+- 任务、诊断、安装和设置仍没有原生紧凑页面，但“更多”已提供完整桌面版入口；普通窄电脑继续默认桌面壳，不能无条件扩大纯宽度分流。桌面版选择只保持到本次 React 会话，刷新或退出后会恢复自动分流。
+- 不要把有限矩阵写成“所有设备数学证明”：公开支持从 280 CSS px 起；Browser 不能直接模拟非零 safe-area、真实触摸惯性、虚拟键盘和厂商全屏栏，实体平板验收记录与自动矩阵都必须保留。根 Shell 已不依赖单位相除，但装饰性 container unit 仍可能在旧内核有细微差异。
 # DOCS-HOME-CARD-POLISH-1 接手记录（2026-08-01，released）
 
 ## 改了什么
@@ -51,8 +76,7 @@
 
 - Node 24 Alpine 隔离容器完成 VitePress production build。应用内 Browser 在 `1280px` 桌面与 `390×844` 手机视口确认 H1 精确包含新文案，页面无横向溢出、framework overlay 或 console error/warn。
 - 实际点击首页“浏览完整手册”后进入 `/handbook/`，页面标题为“深度文档 | Anxi Panel 文档”。后续若再次调整 Hero 长度，至少复核 390px 下的断行与按钮首屏位置；本次无需修改字号或断点。
-
-# FE-MOD-LIST-SEARCH-1 接手记录（2026-07-31，completed，未发布）
+# FE-MOD-LIST-SEARCH-1 接手记录（2026-07-31，v0.4.6 released）
 
 ## 改了什么
 
