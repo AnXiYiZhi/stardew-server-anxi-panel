@@ -1,3 +1,10 @@
+# DOCS-HOME-CARD-POLISH-1：官网首页入口卡去序号与视觉优化（2026-08-01，completed，待 Pages 复核）
+
+- 首页六张 feature 删除 `01/02/03/04/NEW/05` 全部 `icon` 配置，不留下空图标占位；原有六条路由与 CTA、快速上手“推荐”标记和由 frontmatter 驱动的 `v0.4.6` 版本角标保持不变。
+- 卡片沿用六个现有栏目语义色，改为顶部短强调线、轻量栏目色背景/边框/阴影和底部分隔 CTA；桌面卡高从 256px 收紧到 232px，390px 手机端为 210px，内容较长的版本卡可自然增高，flex 布局保证 CTA 始终贴底对齐。
+- hover 位移只对精细指针生效；新增键盘 `:focus-visible` 外框，深色主题使用独立高对比栏目色，`prefers-reduced-motion` 下卡片和箭头均不位移。未恢复首页大面积毛玻璃或持续动画。
+- 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`；Panel React、HTTP API、路由与用户文案均未改变。Docker Desktop Linux 中 Node 20 Alpine production build 通过；应用内 Browser 与隔离 Playwright 覆盖 1280px 浅色/深色、390×844、hover、键盘焦点、reduced-motion 和更新日志导航，六卡、零 icon、零横向溢出、零 overlay、console error/warn 为空。Pages 上线结果待推送后补记。
+
 # FE-MOD-LIST-SEARCH-1：已安装 Mod 搜索与排序（2026-07-31，completed，未发布）
 
 - 桌面“添加模组/配置模组”和移动端“服务器模组”新增同一套搜索与排序。默认按后端 `installedAt` 从新到旧；无历史时间的旧 Mod 排在有记录项之后，再按名称稳定排序。可切换“名称 A–Z / Z–A”，内置组件在桌面继续固定置顶。
@@ -42,7 +49,7 @@
 # DOCS-PORTAL-MODERN-1：展示文档现代化重构（2026-07-22，completed）
 
 - 文档站建立独立的现代视觉系统：墨绿/薄荷/暖金品牌色、玻璃导航、网格与柔光背景、统一圆角和正文排版；浅色、深色主题使用同一语义变量，正文页侧栏、目录、标题、代码块与表格同步更新。
-- 首页 Hero 当前主文案为“一键部署你和朋友的专属联机服务器”，直接突出一键部署与朋友联机；同时保留开源/自托管/中文优先定位、6 张三列入口卡与当前版本摘要。原“准备环境 → 部署面板 → 创建世界 → 邀请朋友”操作路径区已按产品要求整块移除，并同步删除专属响应式样式。
+- 首页 Hero 当前主文案为“一键部署你和朋友的专属联机服务器”，直接突出一键部署与朋友联机；同时保留开源/自托管/中文优先定位、6 张无序号的三列入口卡与当前版本摘要。原“准备环境 → 部署面板 → 创建世界 → 邀请朋友”操作路径区已按产品要求整块移除，并同步删除专属响应式样式。
 - 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`。VitePress production build 通过；浏览器完成 1440px 桌面、1280px 深色正文和 390×844 手机检查，未出现横向溢出，console error/warn 为空。
 
 # DOCS-PORTAL-0.4.1：首页发布信息与视觉层级（2026-07-20，completed）

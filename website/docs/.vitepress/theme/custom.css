@@ -273,26 +273,61 @@ body {
 }
 
 .VPFeatures .VPFeature {
+  --feature-accent: #16835f;
+  --feature-accent-rgb: 22 131 95;
   position: relative;
-  min-height: 256px;
+  min-height: 232px;
   overflow: hidden;
-  border: 1px solid var(--anxi-line) !important;
-  border-radius: 20px !important;
+  border: 1px solid rgb(var(--feature-accent-rgb) / 0.16) !important;
+  border-radius: 18px !important;
   background: var(--anxi-surface) !important;
-  box-shadow: 0 12px 34px rgba(35, 55, 47, 0.055);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.72) inset,
+    0 20px 50px -38px rgb(var(--feature-accent-rgb) / 0.62),
+    0 8px 24px rgba(35, 55, 47, 0.045);
   contain: layout paint style;
-  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease !important;
+  transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease !important;
+}
+
+.VPFeatures .VPFeature::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 28px;
+  width: 46px;
+  height: 3px;
+  border-radius: 0 0 999px 999px;
+  background: var(--feature-accent);
+  box-shadow: 0 5px 16px rgb(var(--feature-accent-rgb) / 0.2);
+}
+
+.VPFeatures .VPFeature .box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 230px;
+  padding: 31px 28px 24px !important;
 }
 
 /* 首页滚动性能：大面积毛玻璃会让每一帧都重新合成背景。卡片改为近实色表面，
    保留透明层次，但不再使用 backdrop-filter。 */
 .VPHome .VPFeatures .VPFeature {
-  background: color-mix(in srgb, var(--vp-c-bg) 94%, rgb(22 131 95 / 0.06)) !important;
+  background:
+    radial-gradient(circle at 96% 4%, rgb(var(--feature-accent-rgb) / 0.095), transparent 38%),
+    color-mix(in srgb, var(--vp-c-bg) 97%, var(--feature-accent) 3%) !important;
   backdrop-filter: none !important;
 }
 
 .dark .VPHome .VPFeatures .VPFeature {
-  background: color-mix(in srgb, var(--vp-c-bg) 92%, rgb(89 213 165 / 0.08)) !important;
+  border-color: rgb(var(--feature-accent-rgb) / 0.24) !important;
+  background:
+    radial-gradient(circle at 96% 4%, rgb(var(--feature-accent-rgb) / 0.13), transparent 40%),
+    color-mix(in srgb, var(--vp-c-bg) 96%, var(--feature-accent) 4%) !important;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.045) inset,
+    0 22px 54px -40px rgb(var(--feature-accent-rgb) / 0.5),
+    0 10px 28px rgba(0, 0, 0, 0.18);
 }
 
 .VPHome .VPHero .image-src,
@@ -307,55 +342,80 @@ body {
   contain: layout paint style;
 }
 
-.VPFeatures .VPFeature:hover {
-  border-color: rgba(22, 131, 95, 0.28) !important;
-  box-shadow: 0 18px 42px rgba(35, 55, 47, 0.1);
-  transform: translateY(-5px);
-}
-
-.VPFeatures .VPFeature .icon {
-  width: auto !important;
-  min-width: 44px;
-  height: 28px !important;
-  padding: 0 9px;
-  border: 1px solid var(--anxi-line);
-  border-radius: 999px !important;
-  background: transparent !important;
-  color: var(--vp-c-brand-1);
-  font-size: 10px !important;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+.VPFeatures .VPFeature:focus-visible {
+  outline: 3px solid rgb(var(--feature-accent-rgb) / 0.22);
+  outline-offset: 3px;
 }
 
 .VPFeatures .VPFeature .title {
-  margin-top: 28px !important;
+  margin: 0 !important;
   color: var(--anxi-ink);
-  font-size: 20px !important;
+  font-size: 21px !important;
+  font-weight: 760 !important;
+  line-height: 1.35 !important;
   letter-spacing: -0.03em;
 }
 
 .VPFeatures .VPFeature .details {
-  padding-top: 12px !important;
+  margin: 0 !important;
+  padding: 13px 0 22px !important;
   color: var(--anxi-muted) !important;
   font-size: 14px !important;
-  line-height: 1.8 !important;
+  line-height: 1.75 !important;
 }
 
 .VPFeatures .VPFeature .link-text {
-  position: absolute;
-  right: 24px;
-  bottom: 22px;
-  left: 24px;
-  color: var(--vp-c-brand-1) !important;
-  font-size: 13px !important;
-  font-weight: 650;
+  position: static;
+  display: flex;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgb(var(--feature-accent-rgb) / 0.14);
+  letter-spacing: 0.01em;
 }
 
-/* 快速上手卡片 */
+.VPFeatures .VPFeature .link-text-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  color: var(--feature-accent) !important;
+  font-size: 13px !important;
+  font-weight: 680 !important;
+}
+
+.VPFeatures .VPFeature .link-text-icon {
+  transition: transform 0.24s ease;
+}
+
 .VPFeatures .VPFeature[href*="getting-started"] {
-  background:
-    linear-gradient(155deg, rgba(22, 131, 95, 0.13), transparent 62%),
-    var(--anxi-surface) !important;
+  --feature-accent: #16835f;
+  --feature-accent-rgb: 22 131 95;
+}
+
+.VPFeatures .VPFeature[href*="/deploy/"] {
+  --feature-accent: #3e70c9;
+  --feature-accent-rgb: 62 112 201;
+}
+
+.VPFeatures .VPFeature[href*="/maintain/"] {
+  --feature-accent: #c57628;
+  --feature-accent-rgb: 197 118 40;
+}
+
+.VPFeatures .VPFeature[href*="/handbook/"] {
+  --feature-accent: #7157c7;
+  --feature-accent-rgb: 113 87 199;
+}
+
+.VPFeatures .VPFeature[href*="/changelog"] {
+  --feature-accent: #a86f16;
+  --feature-accent-rgb: 168 111 22;
+}
+
+.VPFeatures .VPFeature[href*="/faq/"] {
+  --feature-accent: #bd5364;
+  --feature-accent-rgb: 189 83 100;
 }
 
 .VPFeatures .VPFeature[href*="getting-started"] h2.title::after {
@@ -374,42 +434,113 @@ body {
 
 /* 更新卡片使用暖色，和操作入口区分。 */
 .VPFeatures .VPFeature[href*="/changelog"] {
-  position: relative;
-  overflow: hidden;
-  border-color: rgba(217, 155, 53, 0.34) !important;
-  background: linear-gradient(145deg, rgba(243, 184, 79, 0.18), rgba(255, 255, 255, 0.03)) !important;
+  border-color: rgb(var(--feature-accent-rgb) / 0.3) !important;
+  background:
+    radial-gradient(circle at 94% 4%, rgb(var(--feature-accent-rgb) / 0.17), transparent 42%),
+    color-mix(in srgb, var(--vp-c-bg) 94%, var(--anxi-warm) 6%) !important;
 }
 
 .VPFeatures .VPFeature[href*="/changelog"]::before {
   content: var(--home-release-label, "最新版本");
   position: absolute;
-  top: 0;
-  right: 0;
-  padding: 4px 10px 5px;
-  border-bottom-left-radius: 10px;
-  background: var(--anxi-warm);
-  color: #3b2a0d;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  top: 17px;
+  right: 18px;
+  padding: 4px 9px 5px;
+  border: 1px solid rgb(var(--feature-accent-rgb) / 0.22);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vp-c-bg) 78%, var(--anxi-warm) 22%);
+  color: #765014;
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: 0.06em;
 }
 
 .VPFeatures .VPFeature[href*="/changelog"] .title {
   color: #9a6615;
 }
 
-.VPFeatures .VPFeature[href*="/changelog"]:hover {
-  border-color: rgba(217, 155, 53, 0.62) !important;
-  box-shadow: 0 18px 42px rgba(121, 84, 25, 0.13) !important;
-  transform: translateY(-5px);
-}
-
 .dark .VPFeatures .VPFeature[href*="/changelog"] {
-  background: linear-gradient(145deg, rgba(243, 184, 79, 0.14), rgba(28, 35, 32, 0.7)) !important;
+  background:
+    radial-gradient(circle at 94% 4%, rgb(var(--feature-accent-rgb) / 0.2), transparent 42%),
+    color-mix(in srgb, var(--vp-c-bg) 94%, var(--anxi-warm) 6%) !important;
 }
 
 .dark .VPFeatures .VPFeature[href*="/changelog"] .title {
   color: #f3c86f;
+}
+
+.dark .VPFeatures .VPFeature[href*="getting-started"] {
+  --feature-accent: #59d5a5;
+  --feature-accent-rgb: 89 213 165;
+}
+
+.dark .VPFeatures .VPFeature[href*="/deploy/"] {
+  --feature-accent: #8db6ff;
+  --feature-accent-rgb: 141 182 255;
+}
+
+.dark .VPFeatures .VPFeature[href*="/maintain/"] {
+  --feature-accent: #f0ad69;
+  --feature-accent-rgb: 240 173 105;
+}
+
+.dark .VPFeatures .VPFeature[href*="/handbook/"] {
+  --feature-accent: #b9a8ff;
+  --feature-accent-rgb: 185 168 255;
+}
+
+.dark .VPFeatures .VPFeature[href*="/changelog"] {
+  --feature-accent: #f1c46d;
+  --feature-accent-rgb: 241 196 109;
+}
+
+.dark .VPFeatures .VPFeature[href*="/faq/"] {
+  --feature-accent: #ff9eac;
+  --feature-accent-rgb: 255 158 172;
+}
+
+.dark .VPFeatures .VPFeature[href*="/changelog"]::before {
+  border-color: rgb(var(--feature-accent-rgb) / 0.24);
+  background: rgb(var(--feature-accent-rgb) / 0.14);
+  color: #f3c86f;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .VPHome .VPFeatures .VPFeature:hover {
+    border-color: rgb(var(--feature-accent-rgb) / 0.4) !important;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.78) inset,
+      0 26px 58px -36px rgb(var(--feature-accent-rgb) / 0.58),
+      0 14px 30px rgba(35, 55, 47, 0.075);
+    transform: translateY(-4px);
+  }
+
+  .dark .VPHome .VPFeatures .VPFeature:hover {
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.07) inset,
+      0 28px 60px -38px rgb(var(--feature-accent-rgb) / 0.52),
+      0 15px 34px rgba(0, 0, 0, 0.24);
+  }
+
+  .VPHome .VPFeatures .VPFeature:hover .link-text-icon {
+    transform: translateX(3px);
+  }
+
+  .VPHome .VPFeatures .VPFeature[href*="/changelog"]:hover {
+    border-color: rgb(var(--feature-accent-rgb) / 0.55) !important;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.78) inset,
+      0 28px 60px -36px rgb(var(--feature-accent-rgb) / 0.55),
+      0 14px 30px rgba(80, 55, 20, 0.085) !important;
+  }
+
+  .dark .VPHome .VPFeatures .VPFeature[href*="/changelog"]:hover {
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.07) inset,
+      0 28px 60px -36px rgb(var(--feature-accent-rgb) / 0.48),
+      0 15px 34px rgba(0, 0, 0, 0.24) !important;
+  }
 }
 
 /* ===== 首页后续内容 ===== */
@@ -583,7 +714,16 @@ body {
   }
 
   .VPFeatures .VPFeature {
-    min-height: 226px;
+    min-height: 210px;
+  }
+
+  .VPFeatures .VPFeature::after {
+    left: 24px;
+  }
+
+  .VPFeatures .VPFeature .box {
+    min-height: 208px;
+    padding: 28px 24px 21px !important;
   }
 
   .VPHomeContent .vp-doc {
@@ -606,6 +746,9 @@ body {
   html { scroll-behavior: auto; }
   .VPHero .image-bg { animation: none; }
   .VPFeatures .VPFeature { transition: none !important; }
+  .VPFeatures .VPFeature .link-text-icon { transition: none; }
+  .VPHome .VPFeatures .VPFeature:hover,
+  .VPHome .VPFeatures .VPFeature:hover .link-text-icon { transform: none !important; }
 }
 
 /* ===== 全站文档体验 2.0 ===== */
