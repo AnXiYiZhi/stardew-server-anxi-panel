@@ -50,20 +50,6 @@ features:
     linkText: 查看常见问题
 ---
 
-<section class="home-path" aria-labelledby="home-path-title">
-  <div class="home-section-heading">
-    <span>START HERE</span>
-    <h2 id="home-path-title">从一台服务器，到朋友加入农场</h2>
-    <p>文档按真实操作顺序组织，不需要先理解 Docker 的全部细节。</p>
-  </div>
-  <div class="home-path-grid">
-    <div><b>01</b><strong>准备环境</strong><span>确认配置、系统与端口</span></div>
-    <div><b>02</b><strong>部署面板</strong><span>运行脚本或 NAS Compose</span></div>
-    <div><b>03</b><strong>创建世界</strong><span>安装游戏并选择存档</span></div>
-    <div><b>04</b><strong>邀请朋友</strong><span>获取邀请码，开始联机</span></div>
-  </div>
-</section>
-
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
