@@ -26,6 +26,7 @@
 - 逻辑：`frontend/src/App.tsx`、`hooks/useMediaQuery.ts`、`games/stardew/{responsive-layout,StardewPanel,StardewMobileShell,NewGameCreator}.tsx`、`pages/ModsPage.tsx`、`qa-layout-main.tsx`。
 - 样式：`App.css`、桌面 Shell/更新/新建游戏、五个 `mobile/Mobile*Page.css` 及存档/模组/安装弹窗 CSS；QA viewport meta 同步生产。
 - 测试/CI：`frontend/scripts/test-responsive-layout.ts`、`frontend/package.json`、release/compatibility workflow。后端 API、鉴权和 Junimo 通信未改变。
+- 发布展示：`website/docs/index.md`、`website/docs/changelog.md` 更新当前版本与用户可见变更；不修改官网主题组件和导航结构。
 
 ## 如何验证
 

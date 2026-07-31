@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.6
+release: v0.4.7
 heroInviteCard: true
 
 hero:
@@ -32,7 +32,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.6。Mod 安装时间持久保存，已安装与配置列表支持模糊搜索和按时间或名称排序。
+    details: 当前最新 v0.4.7。修复平板无法滑动、全屏只显示部分内容，并让各种窗口尺寸拥有稳定的内部滚动与自适应布局。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -44,8 +44,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.6</strong>
-    <p>最近安装的 Mod 默认排在最前；手动上传、Nexus 直连和浏览器扩展一键安装都会记录时间，并可按名称、ID 或来源模糊搜索。</p>
+    <strong>v0.4.7</strong>
+    <p>平板、手机和电脑窗口现在会按真实可用空间适配；滑动、全屏、横竖屏、低高度登录页与长弹窗不再被外层裁切。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

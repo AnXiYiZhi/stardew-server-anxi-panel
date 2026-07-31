@@ -1,6 +1,6 @@
 # v0.4.7 发布门禁：全窗口响应式与平板全屏/滚动修复（2026-08-01，candidate）
 
-- 变更范围：本版只发布 `FE-RESPONSIVE-VIEWPORT-1`。前端按视口真实内容盒计算桌面 Shell 缩放，修复隐藏外层被程序化滚动后全屏只剩一部分；手机及 1366px 内粗指针/无 hover 设备自动进入紧凑壳，主滚动、safe area、低高度认证页、弹窗内部滚动、44px 触控区、280px 操作区和旧浏览器回退统一收口。新增逐像素响应式测试并接入 release/compatibility workflow。后端 API、鉴权、数据库 schema、Junimo 运行栈、Compose 格式与长期数据均未改变。
+- 变更范围：本版只发布 `FE-RESPONSIVE-VIEWPORT-1`。前端按视口真实内容盒计算桌面 Shell 缩放，修复隐藏外层被程序化滚动后全屏只剩一部分；手机及 1366px 内粗指针/无 hover 设备自动进入紧凑壳，主滚动、safe area、低高度认证页、弹窗内部滚动、44px 触控区、280px 操作区和旧浏览器回退统一收口。新增逐像素响应式测试并接入 release/compatibility workflow；官网首页和 changelog 同步 `v0.4.7` 用户说明。后端 API、鉴权、数据库 schema、Junimo 运行栈、Compose 格式与长期数据均未改变。
 - 正常路径：最终候选必须在 Docker Desktop Linux containers 中以精确 `0.4.7`、最终 commit 和 UTC build date 构建；fresh Panel 完成 setup、登录、九路由桌面壳和紧凑壳主页面访问。桌面验证滚动、窗口缩放和浏览器全屏；紧凑壳验证横竖屏、底栏切页、长内容滑动、完整/适配版切换、输入框与更新/确认弹窗。真实候选页面不能只由 `qa-layout.html` mock 代替。
 - 边界输入：公开支持从 `280 CSS px` 起。自动门禁逐宽度扫描 `280..3840` × 16 个高度 `240..2160`，另验 7680×4320、768/769 分界、1366px 粗指针条件、超宽低高度认证页、280px 图标底栏、低高度 OpsRail、新建游戏窄容器和无 `ResizeObserver`/旧 `MediaQueryList` 回退。低于 280px 与缺少基础 flex/grid/ES module 的内核不在承诺内。
 - 权限与安全：本版不改变 session、角色、管理员权限、CSRF/同源请求或后端路由。未登录真实根页面必须继续显示登录/初始化流程，普通用户不能因切壳获得管理员操作；QA harness 只返回合成 mock 数据，不能作为真实鉴权成功证据，也不能访问真实实例数据。生产 build、现有鉴权测试和真实候选登录必须通过。

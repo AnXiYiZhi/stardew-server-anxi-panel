@@ -28,7 +28,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
-- 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
+- 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。同日 `v0.4.7` 发布审计又把不存在的 `frontend/README.md` 与 `backend/internal/version` 直接交给批量 `rg`，分别让主批次和子审计退出 1。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
 - 最近复发：2026-07-31 发版探查时猜测官网工作流名为 `docs-pages.yml`，随后又把不存在的仓库根 `cmd` 传给 `rg`，导致并行诊断整批退出 1；已改为先用 `rg --files .github/workflows` 和 `rg --files backend` 获取真实路径（分别为 `docs.yml`、`backend/cmd/...`）。
 - 环境：Windows，PowerShell 7，仓库文件探查。
 - 错误模式：在并行 `Get-Content` / `rg` 命令里直接加入未经确认的 `setup_handlers.go`、`docker-compose.yml` 和 `compose.yml`。
@@ -101,7 +101,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
-- 最近复发：2026-07-28；本机同时缺少可调用的 `py` launcher，完成 `Get-Command python` 探针后应直接加载工作区依赖并使用返回的精确解释器路径，不再尝试 `py -3`。
+- 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
 - 环境：Windows，`python` 指向不可用的 Store alias。
 - 错误模式：直接运行 `python ...; Write-Output ...`，未在 Python 后立即检查 `$LASTEXITCODE`。
 - 症状：Python 返回 `9009`；因为最后的 PowerShell 输出成功，整段命令表面 exit 0。
@@ -267,7 +267,7 @@
 - 根因：没有先从文件读取精确锚点，且使用了不必要的长上下文。
 - 正确做法：先用 `rg -n --fixed-strings` 定位原文；补丁只保留稳定、最短的精确上下文。
 - 预防检查：涉及长中文行或多文件补丁时，不凭聊天上下文重打原文，先读取实际文件。
-- 最近复发/补充：2026-07-29 为隔离 VitePress 预览一次补四个文件时，CSS 的重复选择器让长补丁锚点校验失败。后续按文件拆分补丁，并让每个 CSS 补丁携带唯一的相邻声明。
+- 最近复发/补充：2026-08-01 合并 `v0.4.7` 响应式补丁时凭旧工作树猜测 `SavesPage.css` overlay 的背景声明，导致最小补丁仍因上下文不一致失败；随后一个多文件文档补丁漏写第二个 `*** Update File`，让 handoff 的锚点被错误套到 `docs/03-frontend.md` 并再次校验失败。读取目标 release worktree 精确行、为每个目标显式声明文件后应用成功。补丁上下文必须来自将被修改的那一个 worktree，多文件补丁须逐段核对目标声明。
 - 适用范围：所有 `apply_patch` 修改，尤其是长行、编码敏感文件和多文件补丁。
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
@@ -322,6 +322,7 @@
 - 根因：正则本身的单引号字符与外层单引号脚本块冲突，反斜杠不是 PowerShell 的通用引号转义符。
 - 正确做法：把匹配条件简化为不含引号字符类的稳定标记（本次直接匹配 `modulepreload` 所在 link），HTML 注入属性使用无需引号的合法静态写法；复杂替换再拆到独立脚本文件。
 - 预防检查：嵌套 `pwsh -Command '& { ... }'` 内禁止直接出现未隔离的单引号；正则需要单双引号字符类时改用独立 `.ps1` 或先构造字符串变量。
+- 最近复发/补充：2026-08-01 发布历史子审计在嵌套 `pwsh` 的 `rg` 双引号模式中使用反斜杠转义字面双引号，PowerShell 没有按预期转义并把后半模式当成命令；后续拆成不含字面引号的独立 `rg` 调用。反斜杠不能替代 PowerShell 的引号边界设计。
 - 适用范围：PowerShell 中的 HTML、JSON、正则批量重写与嵌套命令调用。
 
 ## 2026-07-29：项目外 VitePress 副本无法从原 CLI 路径解析依赖
@@ -409,6 +410,7 @@
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
 - 最近复发/补充：2026-08-01 官网 Hero 发布审计把多项 GitHub API 只读查询放进同一批调用，网络等待最终以 `124` 超时退出；远端 main SHA 另由 `git ls-remote` 成功确认。后续按目标 commit 分拆 `gh run list/view` 与 deployments 查询，每项使用有界重试并保存已成功证据，不把整批超时误判为 Actions 失败，也不原样重放同一批长命令。
+- 最近复发/补充：2026-08-01 `v0.4.7` 门禁审计把 `gh` 原生输出直接管道到 `Select-Object -First`，下游提前关闭后让 `gh` 报 broken pipe。需要截取展示时先用 `@(...)` 完整收集原生命令输出并立即保存 `$LASTEXITCODE`，成功后再切片；不得让展示层提前终止权威查询进程。
 - 环境：Windows，GitHub CLI，发布后同时轮询 Release、兼容矩阵和官网工作流。
 - 错误模式：把三个 `gh run view` 放在单次循环中，任何一次 API EOF 都直接终止整轮监控。
 - 症状 / 退出码：工作流仍正常运行，但 CLI 报 GitHub API `EOF` 并退出 1；稍后同一 run 查询成功。
