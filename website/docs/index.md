@@ -4,7 +4,7 @@ release: v0.4.6
 
 hero:
   name: Anxi Panel
-  text: 把开服这件事，变得像打开网页一样简单
+  text: 一键部署你和朋友的专属联机服务器
   tagline: 为星露谷物语专服打造的中文管理面板。部署、存档、Mod 与日常维护，一处完成。
   image:
     src: /logo.png

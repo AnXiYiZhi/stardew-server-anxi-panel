@@ -405,6 +405,36 @@
 - 预防检查：删除任何测试网络前列出 endpoints；共享 fixture 必须先区分要保留和要断开的网络，禁止强制或模糊批量清理。
 - 适用范围：Docker/DinD 故障 fixture、跨 Compose 网络和发布测试资源清理。
 
+## 2026-08-01：只检查 `node_modules` 目录存在就直接运行 VitePress
+
+- 环境：Windows，官网发布工作树，`website/node_modules` 由先前隔离测试留下空目录。
+- 错误模式：`Test-Path website/node_modules` 返回 true 后，直接运行 `npm.cmd --prefix website run docs:build`。
+- 症状 / 退出码：npm script 启动，但 Windows 报 `vitepress is not recognized` 并退出 1；项目源码未进入构建。
+- 根因：目录存在不代表依赖已安装，空目录没有 `.bin/vitepress`；此前只验证了路径而没有验证所需可执行文件。
+- 正确做法：先检查 `website/node_modules/.bin/vitepress*`；缺失时使用 Node Linux 容器和任务专属 `node_modules` volume 执行 `npm ci` 与 build，不在 Windows 上反复安装或强删目录。
+- 预防检查：所有前端构建探针以具体 CLI 文件或 `npm exec <tool> --version` 为准，不能以 `node_modules` 目录存在作为 readiness。
+- 适用范围：VitePress、Vite、TypeScript 与其它依赖 `.bin` CLI 的 npm 项目。
+
+## 2026-08-01：VitePress preview readiness 忽略配置的 base path
+
+- 环境：Docker Desktop，VitePress production preview 映射到 `127.0.0.1:18120`。
+- 错误模式：服务启动后轮询 `http://127.0.0.1:18120/`，没有读取控制台输出中的 `/stardew-server-anxi-panel/` base。
+- 症状 / 退出码：preview 容器持续正常运行并明确输出真实地址，但 readiness 在 60 秒后退出 1。
+- 根因：把端口可用与站点根路径混为一谈；GitHub Pages 子路径部署的首页不在 `/`。
+- 正确做法：从 VitePress config 或启动输出确认 base，并轮询 `http://127.0.0.1:<port><base>/`；失败前先读取服务日志区分路由错误和进程错误。
+- 预防检查：所有静态站预览在启动前记录 `base` 与完整 target URL，Browser 和 HTTP readiness 使用同一地址。
+- 适用范围：VitePress/GitHub Pages 子路径、反向代理前缀和其它非根路径静态站。
+
+## 2026-08-01：组合工具结果误按 `.output` 字段读取
+
+- 环境：`functions.exec` 中并行调用多个 `shell_command` 并组合输出。
+- 错误模式：假定嵌套工具结果始终有 `.output`，把四个成功结果拼接为 `undefined`。
+- 症状 / 退出码：底层命令均退出 0，但汇总层没有显示正文，需要重新读取。
+- 根因：嵌套工具返回值是可直接序列化的结果对象，当前调用形态不保证 `.output` 属性。
+- 正确做法：把每个结果直接传给 `text(result)`；需要字段投影时先输出一次结果结构再访问已确认的属性。
+- 预防检查：新的工具组合第一次调用不猜返回 schema；避免在未验证字段上使用空值回退掩盖结构错误。
+- 适用范围：`functions.exec` 编排 shell、MCP 与其它嵌套工具结果。
+
 ## 编码与换行快速检查
 
 - 2026-08-01 补充：检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索，否则会把文档中用于解释旧乱码问题的合法 `�` 示例误判为新引入乱码。应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行；发现命中后再回到原文件确认语义。
