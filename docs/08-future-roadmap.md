@@ -7,6 +7,8 @@
 - [x] Docker Desktop Linux 全量 test/vet/build、十项前端测试、脚本/兼容矩阵/ShellCheck、Docker integration、文档构建、本地候选镜像 smoke 与双视口 Browser QA 通过。
 - [x] Docker Desktop 真实候选 Panel E2E 覆盖 setup/session、深层 ZIP、本地多次安装、浏览器扩展一键 HTTPS 下载、重启持久化、删除清理、多 ZIP 部分失败回滚和 sidecar 写失败回滚；实际右侧栏桌面/390×844 搜索排序验收通过。
 - [x] 官网首页、更新日志、维护页与深度手册同步 `v0.4.6` 的上传边界、持久安装时间、搜索与排序说明。
+- [x] 修复未安装游戏实例在 Panel 升级成功后仍停留 `fullStack=checking_runtime/42`；实例与聚合均返回 `not_needed/100`，专项回归通过。
+- [x] 加固远程制品门禁的镜像/Git 有界重试与 SMAPI 跨受审源分块续传；真实公网在 TLS timeout、SSL EOF 与 429 故障后恢复并通过，安全校验未放宽。
 - [ ] 完成精确候选全量门禁、`v0.4.5 → v0.4.6` 真实 Web 一键升级与旧版本兼容矩阵后，再创建 tag、更新 `latest` 并发布 Release。
 
 # 2026-07-29 完成：展示文档长目录自动跟随

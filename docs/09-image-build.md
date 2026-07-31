@@ -1,5 +1,8 @@
 # v0.4.6 发布门禁：Mod 安装时间、搜索排序与上传说明（2026-07-31，candidate）
 
+- 2026-08-01 阻塞修复：未安装实例不再把全栈状态卡在 42%，`uninitialized/admin_created` 以及“全部实例无需同步”的聚合结果均为 `not_needed/100`。远程制品门禁为 required image inspect、Git traceability fetch 和 SMAPI Range 下载增加三轮有界重试；SMAPI 可保留已验证分块并轮换受审 URL，最终 SHA 不匹配则从另一来源整包重下。digest、trusted host、Range、大小、SHA 和 Git ancestry 均未放宽。
+- 代码级验证：后端专项和完整聚合测试通过；兼容矩阵 19 项测试覆盖跨源续传、截断、恶意重定向、重试耗尽、错摘要重新整包下载、镜像与 Git 重试。真实 `verify-remote-artifacts` 在 required Docker Hub 首次 TLS 握手超时、SMAPI offset `33,554,432` 处 SSL EOF 与 HTTP 429 后恢复，301 秒通过；生产 Go 空缓存下载 `41,889,142` 字节用时 87 秒并通过固定摘要/ZIP。
+- 当前全量门禁：Linux 后端第二轮 test/vet/build 全绿；首轮仅既有农场恢复测试在并行负载下碰到 5 秒边界，目标用例随后连续 10 次通过且完整后端重跑通过。前端十项状态测试和 production build、VitePress build、脚本功能/ShellCheck、兼容矩阵、updater 成功/回滚 integration 与 runtime Docker integration 全绿。此记录不是 tag 授权；仍需最终 commit 候选镜像、正式 v0.4.5 Web 升级/回滚和右侧栏 42% 消失的真实 QA。
 - 变更范围：后端为手动上传、Nexus Premium 直连和浏览器扩展一键安装统一持久化 `installedAt`；前端已安装/配置列表默认最近安装优先，支持名称正反序及名称、文件夹、作者、`UniqueID`、包来源、Nexus Mod ID 模糊搜索；上传区明确多 ZIP、单 ZIP 多 Mod、任意外层目录和嵌套 ZIP 不递归解压的边界。官网首页、更新日志、维护页与深度手册同步 `v0.4.6`。
 - 正常路径：必须在 Docker Desktop Linux containers 中用最终 commit 构建精确 `0.4.6` 候选，真实完成 setup、手动多 ZIP/单 ZIP 多 Mod、浏览器扩展一键下载、列表搜索排序、重启持久化与删除清理；Nexus Premium 路径因需要专用 Premium 测试账号时可由共享导入函数的自动测试补齐，但不得把浏览器扩展测试误写为 Premium 实测。
 - 边界输入：覆盖任意目录深度、同 ZIP 多 manifest、多 ZIP、重复 `UniqueID`、旧 Mod 无历史时间、标点或分隔符搜索、空白搜索、中文/大小写规范化、嵌套 ZIP 明确不递归；同一批任一坏包必须整体回滚。

@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -20,6 +21,10 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){2,3}$")
 SMAPI_CHUNK_BYTES = 2 * 1024 * 1024
+SMAPI_REQUEST_TIMEOUT_SECONDS = 120
+SMAPI_RETRY_ROUNDS = 3
+SMAPI_RETRY_BASE_SECONDS = 1
+REMOTE_COMMAND_RETRY_ROUNDS = 3
 
 
 class MatrixError(ValueError):
@@ -139,32 +144,143 @@ def required_remote_image(image: str) -> bool:
     return canonical_docker_hub or owned_mirror
 
 
-def download_smapi_candidate(smapi: dict, raw_url: str) -> None:
+def inspect_remote_image(
+    image: str,
+    expected_digest: str,
+    *,
+    required: bool,
+    run=subprocess.run,
+    sleep=time.sleep,
+    retry_rounds: int = REMOTE_COMMAND_RETRY_ROUNDS,
+) -> bool:
+    attempts = retry_rounds if required else 1
+    errors = []
+    for attempt in range(attempts):
+        try:
+            completed = run(
+                ["docker", "buildx", "imagetools", "inspect", image],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            completed = subprocess.CompletedProcess([], 124, "", "command timed out after 120 seconds")
+        if completed.returncode == 0:
+            actual = digest_from_imagetools(completed.stdout)
+            require(actual == expected_digest, f"tag/digest mismatch for {image}: expected {expected_digest}, got {actual}")
+            return True
+        errors.append(completed.stderr.strip())
+        if attempt + 1 < attempts:
+            print(f"compatibility matrix warning: required image inspect failed, retrying: {image}: {errors[-1]}", file=sys.stderr)
+            sleep(SMAPI_RETRY_BASE_SECONDS * (2**attempt))
+    if required:
+        raise MatrixError(f"cannot inspect required image {image} after {attempts} attempts: " + "; ".join(errors))
+    return False
+
+
+def run_traceability_command(
+    command: list[str],
+    *,
+    run=subprocess.run,
+    sleep=time.sleep,
+    retry_rounds: int = REMOTE_COMMAND_RETRY_ROUNDS,
+) -> None:
+    errors = []
+    for attempt in range(retry_rounds):
+        try:
+            completed = run(command, check=False, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            completed = subprocess.CompletedProcess([], 124, "", "command timed out after 180 seconds")
+        if completed.returncode == 0:
+            return
+        errors.append(completed.stderr.strip())
+        if attempt + 1 < retry_rounds:
+            print(f"compatibility matrix warning: auth traceability fetch failed, retrying: {errors[-1]}", file=sys.stderr)
+            sleep(SMAPI_RETRY_BASE_SECONDS * (2**attempt))
+    raise MatrixError(f"auth upstream traceability fetch failed after {retry_rounds} attempts: " + "; ".join(errors))
+
+
+def download_smapi_archive(
+    smapi: dict,
+    *,
+    open_url=urlopen,
+    sleep=time.sleep,
+    retry_rounds: int = SMAPI_RETRY_ROUNDS,
+) -> None:
+    integrity_errors = []
+    for integrity_attempt in range(len(smapi["urls"])):
+        actual_digest = download_smapi_archive_attempt(
+            smapi,
+            open_url=open_url,
+            sleep=sleep,
+            retry_rounds=retry_rounds,
+            preferred_source=integrity_attempt,
+        )
+        if actual_digest == smapi["sha256"]:
+            return
+        failure = f"attempt {integrity_attempt + 1}: expected {smapi['sha256']}, got {actual_digest}"
+        integrity_errors.append(failure)
+        print(f"compatibility matrix warning: SMAPI integrity mismatch, restarting from another source: {failure}", file=sys.stderr)
+    raise MatrixError("SMAPI SHA256 mismatch after fresh downloads: " + "; ".join(integrity_errors))
+
+
+def download_smapi_archive_attempt(
+    smapi: dict,
+    *,
+    open_url,
+    sleep,
+    retry_rounds: int,
+    preferred_source: int,
+) -> str:
     digest = hashlib.sha256()
     expected_total = smapi["archiveBytes"]
+    raw_urls = smapi["urls"]
+    trusted_hosts = set(smapi["trustedHosts"])
     offset = 0
     while offset < expected_total:
         end = min(offset + SMAPI_CHUNK_BYTES - 1, expected_total - 1)
         expected_range = f"bytes {offset}-{end}/{expected_total}"
-        request = Request(
-            raw_url,
-            headers={
-                "User-Agent": "stardew-anxi-panel-release-gate/1",
-                "Range": f"bytes={offset}-{end}",
-            },
-        )
-        with urlopen(request, timeout=120) as response:
-            require(response.status == 206, f"SMAPI range returned HTTP {response.status}")
-            require(urlparse(response.geturl()).hostname in set(smapi["trustedHosts"]), "SMAPI redirect host is not trusted")
-            require(response.headers.get("Content-Range") == expected_range, "SMAPI Content-Range mismatch")
-            content_length = response.headers.get("Content-Length")
-            require(content_length is None or int(content_length) == end - offset + 1, "SMAPI range length header mismatch")
-            chunk = response.read(end - offset + 2)
-        require(len(chunk) == end - offset + 1, "SMAPI range body length mismatch")
+        chunk = None
+        chunk_errors = []
+        for retry_round in range(retry_rounds):
+            for source_delta in range(len(raw_urls)):
+                source_index = (preferred_source + source_delta) % len(raw_urls)
+                raw_url = raw_urls[source_index]
+                request = Request(
+                    raw_url,
+                    headers={
+                        "User-Agent": "stardew-anxi-panel-release-gate/1",
+                        "Range": f"bytes={offset}-{end}",
+                    },
+                )
+                try:
+                    with open_url(request, timeout=SMAPI_REQUEST_TIMEOUT_SECONDS) as response:
+                        require(response.status == 206, f"SMAPI range returned HTTP {response.status}")
+                        require(urlparse(response.geturl()).hostname in trusted_hosts, "SMAPI redirect host is not trusted")
+                        require(response.headers.get("Content-Range") == expected_range, "SMAPI Content-Range mismatch")
+                        content_length = response.headers.get("Content-Length")
+                        require(content_length is None or int(content_length) == end - offset + 1, "SMAPI range length header mismatch")
+                        candidate = response.read(end - offset + 2)
+                    require(len(candidate) == end - offset + 1, "SMAPI range body length mismatch")
+                except (OSError, MatrixError, ValueError) as exc:
+                    failure = f"{urlparse(raw_url).hostname} round {retry_round + 1} at byte {offset}: {exc}"
+                    chunk_errors.append(failure)
+                    print(f"compatibility matrix warning: SMAPI candidate failed: {failure}", file=sys.stderr)
+                    continue
+                chunk = candidate
+                preferred_source = source_index
+                break
+            if chunk is not None:
+                break
+            if retry_round + 1 < retry_rounds:
+                sleep(SMAPI_RETRY_BASE_SECONDS * (2**retry_round))
+        if chunk is None:
+            raise MatrixError(f"all reviewed SMAPI candidates failed at byte {offset}: " + "; ".join(chunk_errors))
         digest.update(chunk)
         offset += len(chunk)
     require(offset == expected_total, f"SMAPI archive size mismatch: expected {expected_total}, got {offset}")
-    require(digest.hexdigest() == smapi["sha256"], "SMAPI SHA256 mismatch")
+    return digest.hexdigest()
 
 
 def verify_remote_artifacts(matrix: dict) -> None:
@@ -172,32 +288,10 @@ def verify_remote_artifacts(matrix: dict) -> None:
     require(matrix["status"] == "recommended", "remote verification requires the embedded recommended manifest")
     for name in ("server", "steamAuth"):
         for image in matrix[name]["images"]:
-            completed = subprocess.run(
-                ["docker", "buildx", "imagetools", "inspect", image],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if completed.returncode != 0:
-                if required_remote_image(image):
-                    raise MatrixError(f"cannot inspect required image {image}: {completed.stderr.strip()}")
+            if not inspect_remote_image(image, matrix[name]["digests"][image], required=required_remote_image(image)):
                 print(f"compatibility matrix warning: optional mirror unavailable: {image}", file=sys.stderr)
-                continue
-            actual = digest_from_imagetools(completed.stdout)
-            require(actual == matrix[name]["digests"][image], f"tag/digest mismatch for {image}: expected {matrix[name]['digests'][image]}, got {actual}")
 
-    smapi = matrix["smapi"]
-    candidate_errors = []
-    for raw_url in smapi["urls"]:
-        try:
-            download_smapi_candidate(smapi, raw_url)
-            break
-        except (OSError, MatrixError, ValueError) as exc:
-            candidate_errors.append(f"{urlparse(raw_url).hostname}: {exc}")
-            print(f"compatibility matrix warning: SMAPI candidate failed: {candidate_errors[-1]}", file=sys.stderr)
-    else:
-        raise MatrixError("all reviewed SMAPI candidates failed: " + "; ".join(candidate_errors))
+    download_smapi_archive(matrix["smapi"])
 
     with tempfile.TemporaryDirectory(prefix="anxi-matrix-trace-") as directory:
         commands = (
@@ -206,8 +300,7 @@ def verify_remote_artifacts(matrix: dict) -> None:
             ["git", "-C", directory, "fetch", "--quiet", "--no-tags", "--depth=1", "https://github.com/stardew-valley-dedicated-server/server.git", f"+{matrix['steamAuth']['upstreamRef']}:refs/verify/upstream"],
         )
         for command in commands:
-            completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
-            require(completed.returncode == 0, f"auth upstream traceability fetch failed: {completed.stderr.strip()}")
+            run_traceability_command(command)
         ancestry = subprocess.run(
             ["git", "-C", directory, "merge-base", "--is-ancestor", "refs/verify/upstream", "refs/verify/auth-source"],
             check=False,
