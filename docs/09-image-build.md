@@ -1,3 +1,20 @@
+# v0.4.7 发布门禁：全窗口响应式与平板全屏/滚动修复（2026-08-01，candidate）
+
+- 变更范围：本版只发布 `FE-RESPONSIVE-VIEWPORT-1`。前端按视口真实内容盒计算桌面 Shell 缩放，修复隐藏外层被程序化滚动后全屏只剩一部分；手机及 1366px 内粗指针/无 hover 设备自动进入紧凑壳，主滚动、safe area、低高度认证页、弹窗内部滚动、44px 触控区、280px 操作区和旧浏览器回退统一收口。新增逐像素响应式测试并接入 release/compatibility workflow。后端 API、鉴权、数据库 schema、Junimo 运行栈、Compose 格式与长期数据均未改变。
+- 正常路径：最终候选必须在 Docker Desktop Linux containers 中以精确 `0.4.7`、最终 commit 和 UTC build date 构建；fresh Panel 完成 setup、登录、九路由桌面壳和紧凑壳主页面访问。桌面验证滚动、窗口缩放和浏览器全屏；紧凑壳验证横竖屏、底栏切页、长内容滑动、完整/适配版切换、输入框与更新/确认弹窗。真实候选页面不能只由 `qa-layout.html` mock 代替。
+- 边界输入：公开支持从 `280 CSS px` 起。自动门禁逐宽度扫描 `280..3840` × 16 个高度 `240..2160`，另验 7680×4320、768/769 分界、1366px 粗指针条件、超宽低高度认证页、280px 图标底栏、低高度 OpsRail、新建游戏窄容器和无 `ResizeObserver`/旧 `MediaQueryList` 回退。低于 280px 与缺少基础 flex/grid/ES module 的内核不在承诺内。
+- 权限与安全：本版不改变 session、角色、管理员权限、CSRF/同源请求或后端路由。未登录真实根页面必须继续显示登录/初始化流程，普通用户不能因切壳获得管理员操作；QA harness 只返回合成 mock 数据，不能作为真实鉴权成功证据，也不能访问真实实例数据。生产 build、现有鉴权测试和真实候选登录必须通过。
+- 网络超时/断流：响应式逻辑本身不增加外网请求；资源加载、SSE/轮询和 Panel 更新仍沿用现有契约。发布 E2E 必须走 `0.4.6 → 0.4.7` Web 检查、dry-run、管理员确认、apply、预期断线重连和终态恢复；断线页、重连成功弹窗与低高度/窄屏布局均要可操作。
+- 部分成功、重试与幂等：resize、`ResizeObserver`、`fullscreenchange` 和路由切换可以重复触发，rAF 计算、scroll 归零与监听清理不得累积或改变服务端状态；Shell 双向切换只影响当前 React 会话。升级 apply 的重复提交、活动任务与历史 dry-run 继续由后端现有幂等/冲突门禁处理，本版不放宽。
+- 进程或容器中断后的恢复：页面刷新或 Panel 重启后按当前媒体条件重新选择壳并从权威 API 恢复数据；不持久化像素缩放或滚动偏移。候选容器重启后 `/health`、`/api/version`、setup/session、路由和主滚动仍须正常，更新状态必须保持可恢复。
+- 失败回滚：先把更新目标替换为同版本标识的 unhealthy fixture，必须进入 `failed_rolled_back` 并恢复精确 `0.4.6`；旧 SQLite、setup、用户、实例、Compose、环境文件、Panel 数据、非目标 game sentinel 容器和测试 volume 内容均保持。随后换回精确候选并完成成功升级；不得用手工改 tag 或直接 `compose up` 代替 Web apply。
+- 数据完整性：本版无迁移，但仍核对升级前后 SQLite 可读、初始化状态、管理员、实例、存档/Mod/备份与审计代表数据、事务备份和非目标容器 ID/volume hash；目标 `/health`、`/api/version` 及 OCI version/revision/created 必须精确。升级后重启 Panel 再做真实页面响应式验收，证明不是只有 fresh 安装有效。
+- 资源清理：所有本轮资源使用 `v047-*` 专属 Compose project、容器、网络、唯一环回端口、bind 目录和 volume，并带 ownership label；清理前逐项核对归属，只删除本轮精确资源。不得复用或清理现存 `v046final-*` 验收资源、真实用户数据、长期凭据、41792 平板 QA 服务或执行任何全局 prune。
+- 设备证据与剩余风险：应用内 Browser 已覆盖移动六页、桌面九页、认证页、断点和弹窗矩阵；用户于 2026-08-01 确认实体平板横竖屏滑动、浏览器全屏、底栏切页与输入法冒烟通过。用户明确不要求曾复现问题的朋友电脑另行验收，该设备未复验如实保留为剩余风险；本机桌面 Browser 矩阵与最终 Docker 候选真实登录页补充覆盖。Browser 仍不能直接制造所有厂商非零 safe-area 或浏览器栏组合。
+- 升级矩阵：必须完成最新正式版 `0.4.6 → 0.4.7` 全套 Web 成功与 unhealthy 回滚，并在升级得到的新 Panel 上复验本版 UI。由于本版没有数据库迁移、部署格式、运行栈、长期数据或跨版本兼容逻辑变化，更老版本直升专项标记为不适用；若候选范围扩入任何上述变化，必须补跑至少 `0.3.13 → 0.4.7` 代表矩阵后才能 tag。
+- Tag 前全量门禁：后端 `go test ./... -count=1`、vet/build；前端全部状态脚本、`test:responsive-layout`、audit 与 production build；兼容矩阵 validate/unit/远程制品；`run.sh`/迁移脚本功能测试、语法与 ShellCheck；updater 成功/回滚和 runtime Docker integration；VitePress build；候选 fresh/upgrade E2E；真实候选桌面/紧凑 Browser QA。任一失败先修复并重跑受影响范围。
+- Tag 后核验：annotated `v0.4.7` 只能指向完成上述门禁的最终 commit。等待 Release、compatibility 和 Pages 工作流成功；分别从 Docker Hub、阿里云 ACR、GHCR 回拉 `0.4.7` 与 `latest`，核对六个 OCI index digest、version/revision/created、GitHub Release 正式状态及三项附件，并让三个精确镜像各自完成隔离 health/version smoke。最后把 workflow ID、digest、耗时、故障、清理和官网 HTTP/版本证据回填本节、前端接手文档与路线图。
+
 # v0.4.6 发布记录：Mod 安装时间、搜索排序与上传说明（2026-08-01，已发布）
 
 - 2026-08-01 阻塞修复：未安装实例不再把全栈状态卡在 42%，`uninitialized/admin_created` 以及“全部实例无需同步”的聚合结果均为 `not_needed/100`。远程制品门禁为 required image inspect、Git traceability fetch 和 SMAPI Range 下载增加三轮有界重试；SMAPI 可保留已验证分块并轮换受审 URL，最终 SHA 不匹配则从另一来源整包重下。digest、trusted host、Range、大小、SHA 和 Git ancestry 均未放宽。

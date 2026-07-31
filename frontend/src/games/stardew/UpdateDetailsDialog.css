@@ -4,15 +4,20 @@
   z-index: 1200;
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding:
+    calc(18px + env(safe-area-inset-top, 0px))
+    calc(18px + env(safe-area-inset-right, 0px))
+    calc(18px + env(safe-area-inset-bottom, 0px))
+    calc(18px + env(safe-area-inset-left, 0px));
   background: rgba(24, 12, 7, 0.66);
   backdrop-filter: blur(2px);
 }
 
 .sd-update-dialog {
-  width: min(520px, calc(100vw - 28px));
-  max-height: calc(100dvh - 36px);
+  width: min(520px, 100%);
+  max-height: 100%;
   overflow: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 22px;
   color: #3b220f;
@@ -26,7 +31,7 @@
 .sd-update-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .sd-update-dialog-kicker { margin: 0 0 3px; color: #9a6128; font-size: 10px; font-weight: 900; letter-spacing: 1.4px; }
 .sd-update-dialog h2 { margin: 0; font-size: 22px; }
-.sd-update-close { width: 34px; height: 34px; border: 2px solid #74401d; border-radius: 6px; color: #fff5d1; background: #9b5228; font-size: 24px; line-height: 1; cursor: pointer; }
+.sd-update-close { width: 44px; height: 44px; flex: 0 0 44px; border: 2px solid #74401d; border-radius: 6px; color: #fff5d1; background: #9b5228; font-size: 24px; line-height: 1; cursor: pointer; }
 
 .sd-update-state { display: flex; align-items: center; gap: 9px; margin: 18px 0 14px; padding: 10px 12px; border: 2px solid #aa7a3c; border-radius: 7px; background: rgba(255,255,255,.42); font-weight: 900; }
 .sd-update-state-dot { width: 13px; height: 13px; border-radius: 3px; background: #c19037; box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); }
@@ -70,7 +75,7 @@
 .sd-update-dry-run-log--warn { color: #8d5c17; }
 .sd-update-dry-run-log--error { color: #963c32; }
 .sd-update-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 9px; margin-top: 18px; }
-.sd-update-actions a, .sd-update-actions button { min-height: 38px; box-sizing: border-box; padding: 8px 13px; border: 2px solid #73401d; border-radius: 6px; font: inherit; font-size: 12px; font-weight: 900; text-decoration: none; cursor: pointer; }
+.sd-update-actions a, .sd-update-actions button { min-height: 44px; box-sizing: border-box; padding: 8px 13px; border: 2px solid #73401d; border-radius: 6px; font: inherit; font-size: 12px; font-weight: 900; text-decoration: none; cursor: pointer; }
 .sd-update-release { margin-right: auto; color: #fff7d5; background: #41749a; }
 .sd-update-refresh { color: #fff7d5; background: #4d8a32; }
 .sd-update-environment { color: #3e2a13; background: linear-gradient(#f4cd67, #d69b32); }
@@ -92,18 +97,25 @@
 .sd-update-dismiss { color: #4a2a13; background: #e7bf78; }
 .sd-update-actions button:disabled { cursor: wait; opacity: .65; }
 .sd-update-user-note { margin-right: auto; color: #805827; font-size: 11px; }
-.sd-update-confirm { position: fixed; inset: 0; z-index: 1210; display: grid; place-items: center; padding: 18px; background: rgba(30,15,8,.72); }
-.sd-update-confirm-card { width: min(420px, 100%); box-sizing: border-box; padding: 22px; border: 3px solid #75421f; border-radius: 8px; background: linear-gradient(#fff1c5, #efcf8b); box-shadow: 0 0 0 3px #ce8e39, 0 12px 28px rgba(0,0,0,.45); }
+.sd-update-confirm { position: fixed; inset: 0; z-index: 1210; display: grid; place-items: center; padding: calc(18px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) calc(18px + env(safe-area-inset-left, 0px)); background: rgba(30,15,8,.72); }
+.sd-update-confirm-card { width: min(420px, 100%); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: 22px; border: 3px solid #75421f; border-radius: 8px; background: linear-gradient(#fff1c5, #efcf8b); box-shadow: 0 0 0 3px #ce8e39, 0 12px 28px rgba(0,0,0,.45); }
 .sd-update-confirm-card h3 { margin: 0; font-size: 19px; }
 .sd-update-confirm-card p:not(.sd-update-dialog-kicker) { color: #68441f; font-size: 13px; line-height: 1.65; }
 .sd-update-confirm-card > div { display: flex; justify-content: flex-end; gap: 10px; }
-.sd-update-confirm-card button { min-height: 40px; padding: 8px 14px; border: 2px solid #73401d; border-radius: 6px; font-weight: 900; cursor: pointer; }
+.sd-update-confirm-card button { min-height: 44px; padding: 8px 14px; border: 2px solid #73401d; border-radius: 6px; font-weight: 900; cursor: pointer; }
 
 @keyframes sd-update-pulse { 50% { filter: brightness(1.35); transform: translateY(-1px); } }
 
 @media (max-width: 560px) {
-  .sd-update-overlay { padding: 10px; align-items: end; }
-  .sd-update-dialog { width: 100%; max-height: calc(100dvh - 20px); padding: 18px 15px; border-radius: 10px 10px 5px 5px; }
+  .sd-update-overlay {
+    padding:
+      calc(10px + env(safe-area-inset-top, 0px))
+      calc(10px + env(safe-area-inset-right, 0px))
+      calc(10px + env(safe-area-inset-bottom, 0px))
+      calc(10px + env(safe-area-inset-left, 0px));
+    align-items: end;
+  }
+  .sd-update-dialog { width: 100%; max-height: 100%; padding: 18px 15px; border-radius: 10px 10px 5px 5px; }
   .sd-update-dialog h2 { font-size: 19px; }
   .sd-update-details > div { grid-template-columns: 88px minmax(0, 1fr); }
   .sd-update-actions { display: grid; grid-template-columns: 1fr 1fr; }

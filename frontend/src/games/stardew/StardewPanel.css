@@ -1,14 +1,19 @@
 /* ── Stardew Shell 整体布局 ─────────────────────────────────────────────── */
 
+.sd-shell-viewport {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overflow: clip;
+  background: #000;
+}
+
 .sd-shell {
-  --sd-design-width: 1536px;
-  --sd-design-height: 1024px;
-  --sd-min-ui-scale: 0.72;
-  --sd-ui-fluid-scale: min(
-    calc(100vw / var(--sd-design-width)),
-    calc(100dvh / var(--sd-design-height))
-  );
-  --sd-ui-scale: max(var(--sd-min-ui-scale), var(--sd-ui-fluid-scale));
+  --sd-ui-scale: 1;
+  --sd-shell-layout-width: 100vw;
+  --sd-shell-layout-height: 100vh;
   --sd-topbar-height: clamp(62px, 4.8vw, 80px);
   --sd-sidebar-width: clamp(196px, 14vw, 216px);
   --sd-opsrail-width: clamp(268px, 19vw, 300px);
@@ -18,9 +23,8 @@
     var(--sd-sidebar-width)
     minmax(0, 1fr)
     var(--sd-opsrail-width);
-  width: calc(100% / var(--sd-ui-scale));
-  height: calc(100vh / var(--sd-ui-scale));
-  height: calc(100dvh / var(--sd-ui-scale));
+  width: var(--sd-shell-layout-width);
+  height: var(--sd-shell-layout-height);
   min-height: 0;
   overflow: hidden;
   background: #000;
@@ -812,6 +816,9 @@
   overflow-x: hidden;
   box-sizing: border-box;
   overscroll-behavior: contain;
+  touch-action: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -1288,6 +1295,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
   z-index: 200;
 }
 
@@ -1299,7 +1308,9 @@
   max-width: 320px;
   width: 90%;
   max-height: 90vh;
+  max-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 12px;
 }
@@ -2252,7 +2263,7 @@
   position: relative;
   z-index: 2;
   display: grid;
-  /* 行高随内容：与左侧栏按钮一致，只随栏宽缩放，不随窗口高度拉伸，也不滚动 */
+  /* 行高随内容：与左侧栏按钮一致，只随栏宽缩放；低高度窗口由 stack 自身滚动 */
   grid-auto-rows: min-content;
   align-content: start;
   gap: clamp(10px, 1.5vh, 18px);
@@ -2260,12 +2271,21 @@
   height: calc(100% - 100cqi * 143 / 1743);
   min-height: 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: auto;
+  touch-action: pan-y pinch-zoom;
+  scrollbar-width: none;
   /* Top clearance follows the rotated top beam and vine depth. */
   padding:
     calc(100cqi * 238 / 1684 + clamp(12px, 2vh, 20px))
     calc(100cqi * 92 / 1277)
     clamp(6px, 1vh, 12px);
+}
+
+.sd-opsrail-stack::-webkit-scrollbar {
+  display: none;
 }
 
 /* 卡片九宫格：三张素材各带不同的透明边距，切片值必须 = 边距 + 木框厚度。

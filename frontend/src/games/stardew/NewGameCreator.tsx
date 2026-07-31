@@ -244,7 +244,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
           <label>名字<input required maxLength={100} value={cfg.farmerName ?? ''} onChange={(event) => set('farmerName', event.target.value)} /></label>
           <label>农场名字<input required maxLength={100} value={cfg.farmName} onChange={(event) => set('farmName', event.target.value)} /><span>农场</span></label>
           <label>最喜欢<br />的东西<input maxLength={100} value={cfg.favoriteThing ?? ''} onChange={(event) => set('favoriteThing', event.target.value)} /></label>
-          <label className="ngc-pet-line">动物偏好
+          <label className="ngc-pet-line"><span>动物偏好</span>
             <ArrowButton direction="left" label="上一种宠物" onClick={() => updatePet(-1)} />
             <strong className="ngc-pet-choice"><img src={selectedPet.asset} alt="宠物预览" /></strong>
             <ArrowButton direction="right" label="下一种宠物" onClick={() => updatePet(1)} />

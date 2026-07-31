@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useLayoutEffect, useRef, useState } from 'react'
 import type { CurrentUser } from '../../types'
 import { stateLabel } from '../../core/helpers'
 import { useStardewDashboardData } from './useStardewDashboardData'
@@ -28,6 +28,8 @@ type MobileTabKey = 'overview' | 'server' | 'players' | 'mods' | 'saves' | 'more
 
 type StardewMobileShellProps = {
   user: CurrentUser
+  onLogout?: () => void
+  onUseDesktop?: () => void
 }
 
 const MOBILE_TABS: { key: MobileTabKey; label: string; icon: string }[] = [
@@ -38,6 +40,8 @@ const MOBILE_TABS: { key: MobileTabKey; label: string; icon: string }[] = [
   { key: 'saves', label: '存档', icon: '/assets/stardew/ui/icons/icon_nav_saves_chest_image2.png' },
   { key: 'more', label: '更多', icon: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png' },
 ]
+
+const MOBILE_SHELL_MOUNTED_CLASS = 'sd-mobile-shell-mounted'
 
 function mobileStatusText(state: string | undefined, loading: boolean): string {
   if (loading || !state) return '初始化中'
@@ -53,9 +57,28 @@ function mobileStatusDotClass(state: string | undefined, loading: boolean): stri
   return 'sd-dot sd-dot-yellow'
 }
 
-export function StardewMobileShell({ user }: StardewMobileShellProps) {
+export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobileShellProps) {
   const dashboardData = useStardewDashboardData()
   const [activeTab, setActiveTab] = useState<MobileTabKey>('overview')
+  const mainScrollRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const appRoot = document.getElementById('root')
+    document.body.classList.add(MOBILE_SHELL_MOUNTED_CLASS)
+    appRoot?.classList.add(MOBILE_SHELL_MOUNTED_CLASS)
+
+    return () => {
+      document.body.classList.remove(MOBILE_SHELL_MOUNTED_CLASS)
+      appRoot?.classList.remove(MOBILE_SHELL_MOUNTED_CLASS)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    const mainScroll = mainScrollRef.current
+    if (!mainScroll) return
+    mainScroll.scrollTop = 0
+    mainScroll.scrollLeft = 0
+  }, [activeTab])
 
   const statusText = mobileStatusText(dashboardData.instanceState?.state, dashboardData.loading)
   const statusDotClass = mobileStatusDotClass(dashboardData.instanceState?.state, dashboardData.loading)
@@ -80,7 +103,7 @@ export function StardewMobileShell({ user }: StardewMobileShellProps) {
       </header>
 
       <main className="sd-mshell-body">
-        <div className="sd-mshell-scroll">
+        <div ref={mainScrollRef} className="sd-mshell-scroll" tabIndex={0} aria-label="面板主内容">
         <Suspense fallback={<MobilePageLoadingFallback />}>
         {activeTab === 'overview' ? (
           <MobileHomePage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
@@ -94,8 +117,16 @@ export function StardewMobileShell({ user }: StardewMobileShellProps) {
           <MobileSavesPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
         ) : (
           <section className="sd-mshell-card sd-panel">
-            <p className="sd-mshell-card-title">移动端面板建设中</p>
-            <p className="sd-mshell-card-hint">更完整的移动端体验正在开发中，敬请期待</p>
+            <p className="sd-mshell-card-title">更多功能</p>
+            <p className="sd-mshell-card-hint">任务日志、诊断、安装和设置可在完整桌面版中使用。</p>
+            <div className="sd-mshell-more-actions">
+              <button type="button" className="sd-btn-green" onClick={onUseDesktop} disabled={!onUseDesktop}>
+                切换到完整桌面版
+              </button>
+              <button type="button" className="sd-btn-delete" onClick={onLogout} disabled={!onLogout}>
+                退出登录
+              </button>
+            </div>
           </section>
         )}
         </Suspense>

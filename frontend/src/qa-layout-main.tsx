@@ -1,14 +1,19 @@
-// 临时 QA harness：mock fetch + 真实 StardewPanel 全壳，用于布局对比截图。用完删除。
-import { StrictMode } from 'react'
+// QA harness：mock fetch + 真实桌面/紧凑 Stardew Shell，用于状态与响应式布局回归。
+import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import App from './App'
 import './App.css'
 import './games/stardew/stardew-theme.css'
 import { StardewPanel } from './games/stardew/StardewPanel'
 import { StardewMobileShell } from './games/stardew/StardewMobileShell'
 import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
+import { COMPACT_SHELL_MEDIA_QUERY } from './games/stardew/responsive-layout'
+import { useMediaQuery } from './hooks/useMediaQuery'
 import type { CurrentUser } from './types'
 
 const params = new URLSearchParams(location.search)
+const SURFACE = params.get('surface') === 'app' ? 'app' : 'shell'
+const AUTH = params.get('auth') || 'panel'
 const STATE = params.get('state') || 'running'
 const SHELL = params.get('shell') || 'desktop'
 const UPDATE = params.get('update') || 'latest'
@@ -99,7 +104,24 @@ const audit = {
   logs: Array.from({ length: 7 }, (_, i) => ({ id: 200 - i, actorUserId: 1, actorName: i % 2 ? 'junimo' : '管理员', action: ['登录面板', '更新用户角色', '安装模组', '修改服务器配置', '备份存档', '登录面板', '清理日志'][i], targetType: 'system', targetId: '—', metadataJson: '{}', ipAddress: '127.0.0.1', userAgent: '', createdAt: iso(i * 30) })),
 }
 
-const commands = { commands: [ { name: 'help', description: '显示帮助' }, { name: 'save', description: '保存存档' } ] }
+const consoleCommands = { commands: [ { name: 'help', description: '显示帮助' }, { name: 'save', description: '保存存档' } ] }
+const controlCommandHistory = {
+  commands: [
+    {
+      commandId: 'cmd_qa_broadcast_01', instanceId: 'stardew', commandType: 'broadcast',
+      targetType: 'server', targetLabel: '全服', actorUserId: 1, actorUsername: '管理员',
+      status: 'succeeded', resultSupported: true, resultMessage: '消息已交给游戏聊天系统。',
+      submittedAt: iso(12), completedAt: iso(12), updatedAt: iso(12),
+    },
+    {
+      commandId: 'cmd_qa_warp_home_02', instanceId: 'stardew', commandType: 'warp-home',
+      targetType: 'player', targetId: '3c2e9d55', targetLabel: '小鸡快跑', actorUserId: 1,
+      actorUsername: '管理员', status: 'failed', resultSupported: true,
+      errorCode: 'player_not_found', resultMessage: '目标玩家当前不在线。',
+      submittedAt: iso(32), completedAt: iso(31), updatedAt: iso(31),
+    },
+  ],
+}
 const backups = {
   backups: Array.from({ length: 5 }, (_, i) => {
     const gameDay = 12 - i
@@ -272,7 +294,8 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/settings\/nexus$/, nexusSettings],
   [/\/api\/users$/, users],
   [/\/api\/audit-logs/, audit],
-  [/\/commands$/, commands],
+  [/\/control-commands$/, controlCommandHistory],
+  [/\/commands$/, consoleCommands],
   [/\/install-options$/, { imageTagOptions: [{ tag: '1.6.15', label: 'v1.6.15 (Stable)', recommended: true, isLatest: true }, { tag: '1.6.14', label: 'v1.6.14', recommended: false }] }],
   [/\/auth\/me$/, { user: { id: 1, username: '管理员', role: 'admin', isSuperAdmin: true } }],
 ]
@@ -283,6 +306,16 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
   const path = url.split('?')[0]
+  if (SURFACE === 'app' && path.endsWith('/api/setup/status')) {
+    if (AUTH === 'error') return jsonRes({ code: 'qa_boot_failed', message: 'QA 启动状态读取失败' }, 503)
+    return jsonRes({ initialized: AUTH !== 'setup' })
+  }
+  if (SURFACE === 'app' && path.endsWith('/api/auth/me')) {
+    if (AUTH === 'login' || AUTH === 'error') {
+      return jsonRes({ code: 'unauthorized', message: '未登录' }, 401)
+    }
+    return jsonRes({ user: { id: 1, username: '管理员', role: 'admin', isSuperAdmin: true } })
+  }
   if (JUNIMO_WORKFLOW === 'race-retry' && path.endsWith('/junimo-update/dry-run')) {
     if (method === 'POST') {
       recordQAJunimoEvent('dry-run:POST')
@@ -366,10 +399,29 @@ if (SAVE_IMPORT_QA) {
 
 const mockUser: CurrentUser = { id: 1, username: ROLE === 'admin' ? '管理员' : '普通玩家', role: ROLE, isSuperAdmin: ROLE === 'admin' }
 
+function QALayout() {
+  const automaticallyCompact = useMediaQuery(COMPACT_SHELL_MEDIA_QUERY)
+  const [desktopShellRequested, setDesktopShellRequested] = useState(false)
+  const useCompactShell =
+    !desktopShellRequested && (SHELL === 'mobile' || (SHELL === 'auto' && automaticallyCompact))
+
+  return (
+    <PanelUpdateProvider user={mockUser}>
+      {useCompactShell ? (
+        <StardewMobileShell user={mockUser} onLogout={() => {}} onUseDesktop={() => setDesktopShellRequested(true)} />
+      ) : (
+        <StardewPanel
+          user={mockUser}
+          onLogout={() => {}}
+          onUseCompact={automaticallyCompact && desktopShellRequested ? () => setDesktopShellRequested(false) : undefined}
+        />
+      )}
+    </PanelUpdateProvider>
+  )
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <PanelUpdateProvider user={mockUser}>
-      {SHELL === 'mobile' ? <StardewMobileShell user={mockUser} /> : <StardewPanel user={mockUser} onLogout={() => {}} />}
-    </PanelUpdateProvider>
+    {SURFACE === 'app' ? <App /> : <QALayout />}
   </StrictMode>,
 )

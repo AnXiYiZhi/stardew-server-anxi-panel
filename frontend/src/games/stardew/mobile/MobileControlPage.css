@@ -2,7 +2,7 @@
 
 .sd-mctrl-wrap {
   width: 100%;
-  max-width: 480px;
+  max-width: var(--sd-mobile-content-max-width, 1120px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -201,7 +201,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding:
+    calc(16px + env(safe-area-inset-top, 0px))
+    calc(16px + env(safe-area-inset-right, 0px))
+    calc(16px + env(safe-area-inset-bottom, 0px))
+    calc(16px + env(safe-area-inset-left, 0px));
   background: rgba(20, 10, 4, 0.6);
   box-sizing: border-box;
 }
@@ -209,8 +213,10 @@
 .sd-mctrl-dialog {
   width: 100%;
   max-width: 400px;
-  max-height: 88vh;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 16px;
 }
@@ -321,6 +327,7 @@
 
 .sd-mctrl-dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 12px;
@@ -338,4 +345,25 @@
 .sd-btn-green.sd-mctrl-dialog-btn,
 .sd-btn-delete.sd-mctrl-dialog-btn {
   min-width: 72px;
+}
+
+@media (max-width: 319px) {
+  .sd-mctrl-dialog-overlay {
+    padding:
+      calc(8px + env(safe-area-inset-top, 0px))
+      calc(8px + env(safe-area-inset-right, 0px))
+      calc(8px + env(safe-area-inset-bottom, 0px))
+      calc(8px + env(safe-area-inset-left, 0px));
+  }
+
+  .sd-mctrl-dialog {
+    padding: 12px;
+  }
+
+  .sd-btn-tan.sd-mctrl-dialog-btn,
+  .sd-btn-green.sd-mctrl-dialog-btn,
+  .sd-btn-delete.sd-mctrl-dialog-btn {
+    flex: 1 1 100px;
+    min-width: 0;
+  }
 }

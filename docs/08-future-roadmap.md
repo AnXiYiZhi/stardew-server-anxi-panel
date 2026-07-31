@@ -6,7 +6,14 @@
 - [x] 修复首行入口卡 hover 被 Features paint containment 裁切，保留卡片位移、阴影、焦点轮廓和正文区 paint containment。
 - [x] Docker Desktop Node 20 production build、浅/深桌面、390/320/768px、主题切换、真实 hover、reduced-motion、键盘与 console 验收通过。
 - [x] Pages workflow `30659672364` 与 deployment `5697130212` 成功；线上桌面浅/深、真实 hover、390px 首页、768px 正文菜单、导航与 console 复核全部通过。
+# 2026-08-01 发布候选：全窗口矩阵与平板/电脑浏览器响应式修复（FE-RESPONSIVE-VIEWPORT-1，v0.4.7）
 
+- [x] 修复 `768px` 单一分流遗漏触控平板：手机与 1366px 内粗指针/无 hover 平板进入紧凑壳，普通窄电脑保留完整桌面功能。
+- [x] 根 Shell 缩放改为 TypeScript 数值计算；wrapper 按真实内容盒在 resize/fullscreen 时重算。外层改为不可滚动裁剪并兼容归零，消除浏览器程序化滚动造成整屏上移/只显示一部分。
+- [x] 登录页危险比例使用可滚动文档流；紧凑壳修复 Safari flex 滚动、四边 safe area、16px 输入和 44px 触控区，五个移动页面上限从 480px 扩到 1120px，并支持完整/适配版双向切换。
+- [x] 弹窗、OpsRail、新建游戏窄容器、280px 操作区和 ResizeObserver 缺失降级完成；桌面/紧凑路由切换只重置各自主滚动区。
+- [x] 专项测试逐像素扫描 280..3840 × 16 高度并覆盖 7680×4320；11 项前端测试、production build、移动六页/桌面九页/认证与弹窗 Browser 矩阵通过，console error/warn 为 0。
+- [x] 2026-08-01 用户确认实体平板的横竖屏滑动、浏览器全屏、底栏切页和输入法冒烟通过。用户明确不要求曾复现问题的朋友电脑另行验收；该设备未复验如实保留为剩余风险，由本机桌面 Browser 矩阵和最终 Docker 候选真实页面验收补充覆盖。
 # 2026-08-01 已发布：官网首页入口卡去序号与视觉优化
 
 - [x] 删除六张入口卡的全部序号/`NEW` icon，确认 DOM 中 icon 数量为 0 且没有遗留空白占位。
@@ -802,7 +809,7 @@
 - `FE-INSTALL-PROTOTYPE-IMAGE2-1` completed：安装页已按 image2 `08-install - 副本.png` 原型重皮肤为顶部状态横幅、五步安装时间线、安装配置/Steam 认证/安装日志三栏工作区。原型图未作为运行时资源；纸张纹理、边框、分隔线、步骤卡、进度条和日志终端均为 CSS 实现，按钮继续复用既有 PNG 按钮体系。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器临时 QA 覆盖 1280x900 认证态、未安装态点击展开表单、390x760 窄屏无横向溢出，console error/warn 为空。
 
 # FE-OPSRAIL-AUTO-COLLAPSE-1 状态
-- `FE-OPSRAIL-AUTO-COLLAPSE-1` completed：Stardew Shell 已按主内容预计宽度自动收起右侧 OpsRail，展开态主内容低于 `820px` 收起、收起后高于 `880px` 再展开；总览页 1180px 响应式规则补为 `.sd-main-scroll` 容器查询，避免窗口缩放时中间内容被右栏挤压后仍按桌面布局排布。已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器 QA 覆盖 1200x760 自动收起、1200→1600 无刷新自动展开、390x760 移动布局，均无横向溢出且 console error/warn 为空。
+- `FE-OPSRAIL-AUTO-COLLAPSE-1` completed：Stardew Shell 已按主内容预计宽度自动收起右侧 OpsRail，首次实现使用 `820/880px` 历史阈值；当前已由顶部 `FE-RESPONSIVE-VIEWPORT-1` 按数值缩放后的实际主内容宽改为 `400/460px`，维护时以 `responsive-layout.ts` 为准。总览页 1180px 响应式规则补为 `.sd-main-scroll` 容器查询，避免窗口缩放时中间内容被右栏挤压后仍按桌面布局排布。首次实现已验证 `cd frontend; npm.cmd run build` 通过；内置浏览器 QA 覆盖 1200x760 自动收起、1200→1600 无刷新自动展开、390x760 移动布局，均无横向溢出且 console error/warn 为空。
 
 # FE-OVERVIEW-PROTOTYPE-IMAGE2-1 状态
 - `FE-OVERVIEW-PROTOTYPE-IMAGE2-1` completed：总览页已按 image2 原型重皮肤为农场横幅 + 羊皮纸控制台 + 四摘要卡 + 三列清单结构；页面背景、纸纹、卡片、分隔线、绿屏邀请码和状态标签均由 CSS 实现，未把原型图作为运行时资源。按钮和小图标复用现有 Stardew PNG/图标素材，业务逻辑/API/权限不变。已验证 `cd frontend; npm.cmd run build` 通过，并用内置浏览器临时 QA 页检查 1280x900 与 390x760 无横向溢出、按钮文字不溢出、console error/warn 为空。
@@ -1046,7 +1053,7 @@ Multi Game Mode later
 - Mod 依赖缺失/版本检查和更新提示。
 - Nexus 多文件选择、权限差异提示和 OAuth/非 Premium 下载体验优化。
 - 设置页中的审计过滤、会话管理、安全策略。
-- 更完整的移动端导航和表格卡片化：M0（识别移动端 + 占位壳分流）、M2（总览 Tab 真实化，见 `MOBILE-HOME-M2-1`）、M3（控制 Tab 真实化，见 `MOBILE-CONTROL-M3-1`）、M4（玩家 Tab 真实化，见 `MOBILE-PLAYERS-M4-1`）已完成；`任务`/`更多` 两个 Tab 仍是占位，控制台命令执行、玩家踢出/封禁操作未搬到移动端（均不在已完成里程碑范围内），详见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md` 的 `MOBILE-PLAYERS-M4-1` 小节“下一步注意事项”。
+- 更完整的紧凑端导航和表格卡片化：总览、控制、玩家、模组、存档已是真实页面；“更多”已提供完整桌面版和退出登录。任务、诊断、安装与设置仍没有原生紧凑页面，当前通过完整桌面版进入；后续若补原生页面，继续复用既有 API/权限，不在前端另造 Stardew 逻辑。
 
 ## 长期路线
 
@@ -1190,7 +1197,7 @@ Multi Game Mode later
 - `FE-ASSET-TOP-BAR-CHICKEN-1` completed：已生成并入库顶栏左侧品牌鸡图标素材 `icon_topbar_chicken_image2.png`。素材为透明 PNG，只保留白色鸡本体、红色鸡冠、黄色喙、橙色脚、像素描边、阴影和高光，不含品牌文字、顶栏木质背景或其它 UI 元素；当前仅入库生产素材，尚未接入 Shell。
 
 # FE-SHELL-SCALE-1 状态
-- `FE-SHELL-SCALE-1` completed：Stardew Shell 已接入全局等比缩放。以 `1536x1024` 为设计基准，`.sd-shell` 计算 `--sd-ui-scale = max(0.72, min(100vw/1536, 100dvh/1024))`，使用反向宽高 + `transform: scale(...)` 让整套 UI 填满当前浏览器可视区；右 OpsRail 隐藏阈值下放到最小全布局之后，`StardewPanel.tsx` 自动折叠估算同步按新 scale/栏宽计算。已验证前端构建通过，并用临时 HTTP QA 页确认 760x504 为最小三栏基准、1920x1080 可继续等比放大且无页面溢出。
+- `FE-SHELL-SCALE-1` completed：Stardew Shell 首次接入全局等比缩放时，以 `1536x1024` 为设计基准并在 CSS 中计算 `--sd-ui-scale = max(0.72, min(100vw/1536, 100dvh/1024))`。该单位相除方案已被顶部 `FE-RESPONSIVE-VIEWPORT-1` 的 TypeScript 数值计算替代，不能从此历史条目恢复；当前仍使用逻辑宽高 + `transform: scale(...)` 填满可用视口。首次实现已验证前端构建通过，并用临时 HTTP QA 页确认 760x504 为最小三栏基准、1920x1080 可继续等比放大且无页面溢出。
 
 # FE-ASSET-TOP-BAR-BRAND-GLOW-1 状态
 - `FE-ASSET-TOP-BAR-BRAND-GLOW-1` completed：已生成并入库顶栏品牌文字暖黄色发光/阴影占位素材 `topbar_brand_text_glow_placeholder_image2.png`。素材为透明 PNG，不含实际文字、鸡图标或木质顶栏背景，仅供前端动态渲染品牌文字时作为底层光效；当前仅入库生产素材，尚未接入 Shell。

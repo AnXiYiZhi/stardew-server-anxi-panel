@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type {
   CurrentUser,
   InstanceState,
@@ -15,6 +16,7 @@ import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } f
 import { useStardewDashboardData } from './useStardewDashboardData'
 import { UpdateDetailsDialog } from './UpdateDetailsDialog'
 import { panelUpdateSurface } from './panel-update-machine'
+import { calculateShellViewport, shouldAutoCollapseOpsRail } from './responsive-layout'
 import './StardewPanel.css'
 
 const InstallPage = lazy(() => import('./pages/InstallPage').then((m) => ({ default: m.InstallPage })))
@@ -98,40 +100,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_JOB_DURATION_MS = 60_000
 const REMOTE_INSTALL_JOB_TYPES = new Set(['mod_remote_install', 'mod_nexus_install'])
 const DOWNLOAD_PROGRESS_RE = /下载进度：已下载[\s\S]*?[（(]\s*([0-9]+(?:\.[0-9]+)?)%\s*[）)]/
-const SHELL_DESIGN_WIDTH = 1536
-const SHELL_DESIGN_HEIGHT = 1024
-const SHELL_MIN_UI_SCALE = 0.72
-const OPS_RAIL_COLLAPSE_MAIN_WIDTH = 400
-const OPS_RAIL_EXPAND_MAIN_WIDTH = 460
 const OPS_RAIL_METRICS_REFRESH_MS = 2000
+const DESKTOP_SHELL_MOUNTED_CLASS = 'sd-desktop-shell-mounted'
 const GAME_INSTALLED_STATES = new Set(['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'])
 const ACTIVE_INSTALL_JOB_STATUSES = new Set(['queued', 'running'])
-
-function clampNumber(min: number, value: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
-}
-
-function shellUiScale(shellWidth: number): number {
-  const viewportHeight = window.innerHeight || SHELL_DESIGN_HEIGHT
-  return Math.max(
-    SHELL_MIN_UI_SCALE,
-    Math.min(shellWidth / SHELL_DESIGN_WIDTH, viewportHeight / SHELL_DESIGN_HEIGHT),
-  )
-}
-
-function expandedMainWidthForShell(shellWidth: number): number {
-  const scale = shellUiScale(shellWidth)
-  const sidebarWidth = clampNumber(196, shellWidth * 0.14, 216) * scale
-  const opsRailWidth = clampNumber(268, shellWidth * 0.19, 300) * scale
-  return shellWidth - sidebarWidth - opsRailWidth
-}
-
-function shouldAutoCollapseOpsRail(shellWidth: number, currentlyCollapsed: boolean): boolean {
-  if (shellWidth <= 720) return false
-  const expandedMainWidth = expandedMainWidthForShell(shellWidth)
-  const threshold = currentlyCollapsed ? OPS_RAIL_EXPAND_MAIN_WIDTH : OPS_RAIL_COLLAPSE_MAIN_WIDTH
-  return expandedMainWidth < threshold
-}
 
 function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -546,18 +518,24 @@ function topbarStatusDotClassName(state: string | undefined, loading: boolean): 
 export function StardewPanel({
   user,
   onLogout,
+  onUseCompact,
 }: {
   user: CurrentUser
   onLogout: () => void
+  onUseCompact?: () => void
 }) {
   const [route, setRoute] = useState<StardewRoute>(() =>
     parseRoute(window.location.pathname),
   )
   const [saveActionRequest, setSaveActionRequest] = useState<StardewSaveActionRequest | null>(null)
-  const [opsRailAutoCollapsed, setOpsRailAutoCollapsed] = useState(() =>
-    shouldAutoCollapseOpsRail(window.innerWidth, false),
+  const [shellViewport, setShellViewport] = useState(() =>
+    calculateShellViewport(window.innerWidth, window.innerHeight),
   )
-  const shellRef = useRef<HTMLDivElement | null>(null)
+  const [opsRailAutoCollapsed, setOpsRailAutoCollapsed] = useState(() =>
+    shouldAutoCollapseOpsRail(window.innerWidth, window.innerHeight, false),
+  )
+  const shellViewportRef = useRef<HTMLDivElement | null>(null)
+  const mainScrollRef = useRef<HTMLDivElement | null>(null)
 
   const dashboardData = useStardewDashboardData()
   const { instanceState, jobs, versionInfo, saves } = dashboardData
@@ -565,10 +543,42 @@ export function StardewPanel({
   const [showMissingGameInstallPrompt, setShowMissingGameInstallPrompt] = useState(false)
   const [railMetric, setRailMetric] = useState<ResourceMetricSample | null>(null)
 
+  useLayoutEffect(() => {
+    const appRoot = document.getElementById('root')
+    document.body.classList.add(DESKTOP_SHELL_MOUNTED_CLASS)
+    appRoot?.classList.add(DESKTOP_SHELL_MOUNTED_CLASS)
+
+    return () => {
+      document.body.classList.remove(DESKTOP_SHELL_MOUNTED_CLASS)
+      appRoot?.classList.remove(DESKTOP_SHELL_MOUNTED_CLASS)
+    }
+  }, [])
+
   useEffect(() => {
     const onPop = () => setRoute(parseRoute(window.location.pathname))
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useLayoutEffect(() => {
+    const mainScroll = mainScrollRef.current
+    if (!mainScroll) return
+    mainScroll.scrollTop = 0
+    mainScroll.scrollLeft = 0
+  }, [route])
+
+  useLayoutEffect(() => {
+    const shellViewport = shellViewportRef.current
+    if (!shellViewport) return
+
+    const lockViewportOrigin = () => {
+      if (shellViewport.scrollTop !== 0) shellViewport.scrollTop = 0
+      if (shellViewport.scrollLeft !== 0) shellViewport.scrollLeft = 0
+    }
+
+    lockViewportOrigin()
+    shellViewport.addEventListener('scroll', lockViewportOrigin, { passive: true })
+    return () => shellViewport.removeEventListener('scroll', lockViewportOrigin)
   }, [])
 
   useEffect(() => {
@@ -585,14 +595,26 @@ export function StardewPanel({
     setInstallPromptPending(false)
   }, [dashboardData.loading, installPromptPending, instanceState, jobs, route])
 
-  useEffect(() => {
-    const shell = shellRef.current
-    if (!shell) return
+  useLayoutEffect(() => {
+    const shellViewportElement = shellViewportRef.current
+    if (!shellViewportElement) return
 
     let frameId: number | null = null
     const measure = () => {
-      const shellWidth = shell.getBoundingClientRect().width || window.innerWidth
-      setOpsRailAutoCollapsed((current) => shouldAutoCollapseOpsRail(shellWidth, current))
+      const viewportRect = shellViewportElement.getBoundingClientRect()
+      const viewportWidth = viewportRect.width || window.innerWidth
+      const viewportHeight = viewportRect.height || window.innerHeight
+      const nextViewport = calculateShellViewport(viewportWidth, viewportHeight)
+      setShellViewport((current) =>
+        current.scale === nextViewport.scale &&
+        current.layoutWidth === nextViewport.layoutWidth &&
+        current.layoutHeight === nextViewport.layoutHeight
+          ? current
+          : nextViewport,
+      )
+      setOpsRailAutoCollapsed((current) =>
+        shouldAutoCollapseOpsRail(viewportWidth, viewportHeight, current),
+      )
       frameId = null
     }
     const scheduleMeasure = () => {
@@ -602,13 +624,15 @@ export function StardewPanel({
 
     const resizeObserver =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleMeasure)
-    resizeObserver?.observe(shell)
+    resizeObserver?.observe(shellViewportElement)
     window.addEventListener('resize', scheduleMeasure)
-    scheduleMeasure()
+    document.addEventListener('fullscreenchange', scheduleMeasure)
+    measure()
 
     return () => {
       resizeObserver?.disconnect()
       window.removeEventListener('resize', scheduleMeasure)
+      document.removeEventListener('fullscreenchange', scheduleMeasure)
       if (frameId != null) window.cancelAnimationFrame(frameId)
     }
   }, [])
@@ -739,13 +763,20 @@ export function StardewPanel({
   const topbarStatusUsesGreenIcon = topbarStatusDotClass.includes('sd-dot-green')
   const topbarStatusClassName = `sd-topbar-status sd-topbar-status-${instanceState?.state ?? 'unknown'}`
   const shellClassName = `sd-shell${opsRailAutoCollapsed ? ' sd-shell--opsrail-auto-collapsed' : ''}`
+  const shellStyle = {
+    '--sd-ui-scale': String(shellViewport.scale),
+    '--sd-shell-layout-width': `${shellViewport.layoutWidth}px`,
+    '--sd-shell-layout-height': `${shellViewport.layoutHeight}px`,
+  } as CSSProperties
 
   return (
-    <div
-      ref={shellRef}
-      className={shellClassName}
-      data-opsrail-collapsed={opsRailAutoCollapsed ? 'auto' : undefined}
-    >
+    <div ref={shellViewportRef} className="sd-shell-viewport">
+      <div
+        className={shellClassName}
+        style={shellStyle}
+        data-ui-scale={shellViewport.scale}
+        data-opsrail-collapsed={opsRailAutoCollapsed ? 'auto' : undefined}
+      >
       {/* ── 顶部状态栏 ──────────────────────────────────────── */}
       <header className="sd-topbar" aria-label="Stardew Anxi Panel top bar">
         <div className="sd-topbar-bg" aria-hidden="true">
@@ -883,12 +914,29 @@ export function StardewPanel({
               </button>
             </div>
           ))}
+          {onUseCompact ? (
+            <div className="sd-nav-row">
+              <button
+                className="sd-nav-item sd-nav-item-layout"
+                aria-label="切回适配版"
+                title="切回适配版"
+                onClick={onUseCompact}
+              >
+                <img
+                  className="sd-nav-icon"
+                  src="/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png"
+                  alt=""
+                />
+                <span className="sd-nav-label">适配版</span>
+              </button>
+            </div>
+          ) : null}
         </div>
       </nav>
 
       {/* ── 主内容区 ─────────────────────────────────────────── */}
       <main className="sd-main">
-        <div className="sd-main-scroll">
+        <div ref={mainScrollRef} className="sd-main-scroll" tabIndex={0} aria-label="面板主内容">
           <Suspense fallback={<PageLoadingFallback />}>{renderPage()}</Suspense>
         </div>
       </main>
@@ -1016,6 +1064,7 @@ export function StardewPanel({
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   )
 }

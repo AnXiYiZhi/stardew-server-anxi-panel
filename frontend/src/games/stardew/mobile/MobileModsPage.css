@@ -2,7 +2,7 @@
 
 .sd-mmods-wrap {
   width: 100%;
-  max-width: 480px;
+  max-width: var(--sd-mobile-content-max-width, 1120px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -65,7 +65,7 @@
 
 .sd-mmods-subtab {
   min-width: 0;
-  min-height: 38px;
+  min-height: 44px;
   border: none;
   border-radius: 7px;
   background: rgba(255, 239, 190, 0.1);
@@ -148,7 +148,7 @@
 .sd-btn-green.sd-mmods-search-btn {
   flex-shrink: 0;
   min-width: 64px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 10px;
   border-radius: 7px;
   font-size: 12px;
@@ -169,7 +169,7 @@
 }
 
 .sd-mmods-quick-tag {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 9px;
   border: 1px solid rgba(160, 108, 44, 0.48);
   border-radius: 999px;
@@ -363,7 +363,7 @@
 }
 
 .sd-mmods-required-summary {
-  min-height: 32px;
+  min-height: 44px;
   border: none;
   cursor: pointer;
 }
@@ -403,7 +403,7 @@
 
 .sd-mmods-card-actions button {
   width: auto;
-  min-height: 36px;
+  min-height: 44px;
   min-width: 0;
 }
 
@@ -422,7 +422,7 @@
 
 .sd-mmods-pager > button,
 .sd-mmods-page-jump button {
-  min-height: 36px;
+  min-height: 44px;
   min-width: 0;
   padding: 0 7px;
   font-size: 11px;
@@ -574,7 +574,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding:
+    calc(16px + env(safe-area-inset-top, 0px))
+    calc(16px + env(safe-area-inset-right, 0px))
+    calc(16px + env(safe-area-inset-bottom, 0px))
+    calc(16px + env(safe-area-inset-left, 0px));
   background: rgba(20, 10, 4, 0.6);
   box-sizing: border-box;
 }
@@ -582,8 +586,10 @@
 .sd-mmods-dialog {
   width: 100%;
   max-width: 400px;
-  max-height: 88vh;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-sizing: border-box;
   padding: 16px;
 }

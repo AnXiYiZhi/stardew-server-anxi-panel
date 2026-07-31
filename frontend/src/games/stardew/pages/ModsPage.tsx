@@ -844,16 +844,17 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     }
 
     scheduleMeasure()
-    const resizeObserver = new ResizeObserver(scheduleMeasure)
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleMeasure)
     const list = nexusResultsListRef.current
     const scrollViewport = list?.closest('.sd-main-scroll') as HTMLElement | null
-    if (list) resizeObserver.observe(list)
-    if (scrollViewport) resizeObserver.observe(scrollViewport)
+    if (list) resizeObserver?.observe(list)
+    if (scrollViewport) resizeObserver?.observe(scrollViewport)
     window.addEventListener('resize', scheduleMeasure)
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame)
-      resizeObserver.disconnect()
+      resizeObserver?.disconnect()
       window.removeEventListener('resize', scheduleMeasure)
     }
   }, [

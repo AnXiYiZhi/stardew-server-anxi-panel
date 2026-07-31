@@ -17,6 +17,7 @@
     "test:farm-catalog": "node --experimental-strip-types scripts/test-farm-catalog-state.ts",
     "test:save-import": "node --experimental-strip-types scripts/test-save-import.ts",
     "test:mod-list": "node --experimental-strip-types scripts/test-mod-list-utils.ts",
+    "test:responsive-layout": "node --experimental-strip-types scripts/test-responsive-layout.ts",
     "preview": "vite preview"
   },
   "dependencies": {

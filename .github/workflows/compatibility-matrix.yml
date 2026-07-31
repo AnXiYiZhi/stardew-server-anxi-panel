@@ -53,6 +53,7 @@ jobs:
           npm run test:farm-catalog
           npm run test:save-import
           npm run test:mod-list
+          npm run test:responsive-layout
           npm run build
       - name: Isolated Docker integration
         working-directory: backend
