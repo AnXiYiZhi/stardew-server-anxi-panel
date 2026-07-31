@@ -1,3 +1,16 @@
+# DOCS-HOME-PATH-REMOVE-1 接手记录（2026-08-01，completed）
+
+## 改了什么
+
+- 官网首页删除整块“START HERE / 从一台服务器，到朋友加入农场”四步流程区域；后续 `CURRENT RELEASE` 版本卡直接承接 6 张入口卡。
+- 同步删除 `custom.css` 中仅由该区域使用的 `.home-path`、`.home-section-heading`、`.home-path-grid` 及桌面/移动断点规则，没有留下隐藏占位或无引用样式。
+
+## 影响、验证与下一步
+
+- 影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`；未修改 Hero、入口卡、版本卡内容或站内链接。
+- Node 24 Alpine 隔离容器完成 VitePress production build。应用内 Browser 在 1280px 与 390×844 确认目标文本和 `.home-path` 节点均为 0，入口卡到版本卡间距为 22px，页面无横向溢出、overlay 或 console error/warn；“查看本次更新”仍进入 changelog。
+- 后续若需要增加新首页模块，应从用户当前需要的单一行动出发，不恢复这块四步说明；新增模块仍须同时验证桌面三列卡尾部与手机单列卡尾部的衔接。
+
 # DOCS-HERO-COPY-1 接手记录（2026-08-01，completed）
 
 ## 改了什么

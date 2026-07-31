@@ -418,87 +418,11 @@ body {
   padding: 48px 24px 96px !important;
 }
 
-.home-path {
-  --home-path-bg: #0d2a22;
-  --home-path-text: #f5fbf8;
-  --home-path-muted: #b9ccc5;
-  margin: 0 !important;
-  padding: 54px;
-  border: 1px solid var(--anxi-line);
-  border-radius: 28px;
-  background: var(--home-path-bg);
-  color: var(--home-path-text);
-}
-
-.home-section-heading span,
 .home-note-kicker {
   color: #66dfb0;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.16em;
-}
-
-.home-section-heading h2 {
-  margin: 13px 0 0 !important;
-  border: 0 !important;
-  color: var(--home-path-text) !important;
-  font-size: clamp(26px, 3vw, 40px) !important;
-  letter-spacing: -0.04em;
-}
-
-.anxi-layout .vp-doc .home-section-heading p {
-  margin: 12px 0 0;
-  color: var(--home-path-muted);
-}
-
-.home-path-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-top: 42px;
-}
-
-.home-path-grid div {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 146px;
-  padding: 20px;
-  border: 1px solid rgba(245, 251, 248, 0.17);
-  border-radius: 16px;
-  background: rgba(245, 251, 248, 0.055);
-}
-
-.home-path-grid div:not(:last-child)::after {
-  content: "→";
-  position: absolute;
-  z-index: 2;
-  top: 50%;
-  right: -19px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--home-path-bg);
-  color: #66dfb0;
-  line-height: 25px;
-  text-align: center;
-}
-
-.home-path-grid b {
-  color: #66dfb0;
-  font-size: 12px;
-}
-
-.anxi-layout .vp-doc .home-path-grid strong {
-  margin-top: 24px;
-  color: var(--home-path-text);
-  font-size: 16px;
-}
-
-.anxi-layout .vp-doc .home-path-grid span {
-  margin-top: 6px;
-  color: var(--home-path-muted);
-  font-size: 12px;
 }
 
 .home-note {
@@ -613,13 +537,6 @@ body {
     max-height: 132px !important;
   }
 
-  .home-path-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .home-path-grid div::after {
-    display: none;
-  }
 }
 
 @media (max-width: 639px) {
@@ -671,24 +588,6 @@ body {
 
   .VPHomeContent .vp-doc {
     padding: 32px 20px 68px !important;
-  }
-
-  .home-path {
-    padding: 30px 22px;
-    border-radius: 22px;
-  }
-
-  .home-path-grid {
-    grid-template-columns: 1fr;
-    margin-top: 28px;
-  }
-
-  .home-path-grid div {
-    min-height: 118px;
-  }
-
-  .home-path-grid strong {
-    margin-top: 16px;
   }
 
   .home-note {
