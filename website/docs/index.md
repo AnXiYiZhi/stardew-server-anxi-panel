@@ -1,14 +1,11 @@
 ---
 layout: home
 release: v0.4.6
+heroInviteCard: true
 
 hero:
-  name: Anxi Panel
-  text: 一键部署你和朋友的专属联机服务器
+  text: 一键部署你和朋友的<br>专属联机服务器
   tagline: 为星露谷物语专服打造的中文管理面板。部署、存档、Mod 与日常维护，一处完成。
-  image:
-    src: /logo.png
-    alt: Anxi Panel
   actions:
     - theme: brand
       text: 快速上手

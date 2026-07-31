@@ -50,6 +50,7 @@
 
 ## 2026-07-31：右侧栏截图方法层级用错
 
+- 最近复发/补充：2026-08-01 验证官网入口卡 hover 裁切时，直接调用 Browser locator 的 `.hover()`，运行时返回 `is not a function`。当前 locator 原型只有 click/fill/press 等交互，没有 hover；以后先核对原型或文档。需要真实 CSS `:hover` 验收时，右侧 Browser 继续承担可见预览与页面健康检查，悬停动作改用工作区 Playwright + 已验证的本机 Chrome，并明确记录这是能力缺口下的补充验证。
 - 最近复发/补充：2026-08-01 官网卡片响应式验收连续猜测 `tab.setViewportSize()` 与 `tab.playwright.setViewportSize()`，两者都返回 `is not a function`；当前运行时方法清单确认没有视口缩放能力。已把规则提升到 `AGENTS.md`：Browser 先做真实桌面验收，窄屏改用隔离 Playwright context，不再试探不存在的方法。
 - 环境：Codex in-app Browser，本地 Panel UI E2E。
 - 错误模式：按通用前端测试说明调用 `tab.playwright.screenshot(...)`。
@@ -86,6 +87,8 @@
 
 ## 2026-07-28：嵌套 PowerShell 提前展开变量
 
+- 最近复发/补充：2026-08-01 Hero 配色预览验证把 `sh -c`、`grep` 模式和 PowerShell 双引号再次嵌入同一条命令，脚本在有效诊断前退出 1。已改为让 `docker exec` 直接调用 `grep`，模式使用 PowerShell 单引号参数，只有确实需要容器 shell 展开时才引入 `sh -c`。
+- 最近复发/补充：2026-08-01 官网 Hero 预览审计在 JavaScript 包装、PowerShell 与 `rg` 三层中直接拼接带引号的搜索命令，命令尚未得到有效结果便退出 1。多层调用先把搜索模式和真实文件路径分别固定，优先直接调用单层 `rg -e <pattern> <confirmed-path>`；需要较长 PowerShell 逻辑时使用独立的单引号脚本块，不在 JavaScript 普通字符串里继续嵌套。
 - 最近复发/补充：2026-07-31 在 `[pscustomobject]` 属性表达式中直接嵌入 `docker exec ...; $LASTEXITCODE -eq 0`，PowerShell 在执行前报缺少右括号。原生命令及退出码检查必须先单独执行并存入 `$sidecarExists`，再把变量放进对象；不要在属性值括号里混合语句分隔符。
 - 最近复发/补充：2026-07-29 参考研究子任务在 JavaScript 工具包装层中再次把 PowerShell 引号嵌进普通字符串，导致包装层 `SyntaxError`，命令尚未执行；改用 JavaScript template literal 包裹完整 `pwsh -Command '& { ... }'` 后成功。跨 JavaScript/PowerShell 两层时同时检查两层字符串边界。
 - 环境：Windows，外层 Shell 已是 PowerShell，再调用 `pwsh -Command "...$variable..."`。
@@ -182,6 +185,9 @@
 
 ## 2026-07-31：精简 Node Alpine 缺少 VitePress `lastUpdated` 所需 Git
 
+- 最近复发/补充：2026-08-01 修正 linked worktree 的 Git 元数据后，最终干净构建仍把整个源码挂成只读；Vite 加载 `config.ts` 时需要在同目录短暂写入 `config.ts.timestamp-*.mjs`，因此以 `EROFS` 退出。Vite/VitePress 构建不能只给 `dist` 与 `node_modules` 写权限；真正需要只读宿主源码时，应先复制到任务专属可写 volume，再构建并精确清理，或直接使用已配置的 GitHub Pages CI。不要在只读源码挂载上继续补零散写目录。
+- 最近复发/补充：2026-08-01 官网 Hero 最终干净构建把 Windows linked worktree 只读挂到 `/repo`，其 `.git` 文件仍指向 `E:/.../.git/worktrees/...`，容器内 `git -C /repo` 报 `not a git repository`，尚未进入 npm 构建。linked worktree 跨 Windows/Linux 挂载时必须同时只读挂载主仓库 `.git`，并显式设置容器内 `GIT_DIR=/git-common/worktrees/<name>`、`GIT_WORK_TREE=/repo`；不能认为挂入工作树目录就自动获得可解析的 Git 元数据。
+- 最近复发/补充：2026-08-01 官网 Hero 增量预览复用了保存 `/work` 的依赖 volume，却换成新的临时 Node Alpine 构建容器，误以为首次容器执行过的 `apk add git` 也会随 volume 保留；增量 build 再次以 `spawn git ENOENT` 失败。系统包属于容器层而非工作 volume，每一个新的构建容器都必须先安装并探测 `git --version`，不能从复用 `node_modules` 推断 Git 仍存在。
 - 环境：`node:24-alpine` Docker 容器运行 `npm run docs:build`。
 - 错误模式：只安装 npm 依赖，未安装系统 `git`。
 - 症状 / 退出码：VitePress 处理 `docs/changelog.md` 时以 `spawn git ENOENT` 失败。
@@ -402,6 +408,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-01 官网 Hero 发布审计把多项 GitHub API 只读查询放进同一批调用，网络等待最终以 `124` 超时退出；远端 main SHA 另由 `git ls-remote` 成功确认。后续按目标 commit 分拆 `gh run list/view` 与 deployments 查询，每项使用有界重试并保存已成功证据，不把整批超时误判为 Actions 失败，也不原样重放同一批长命令。
 - 环境：Windows，GitHub CLI，发布后同时轮询 Release、兼容矩阵和官网工作流。
 - 错误模式：把三个 `gh run view` 放在单次循环中，任何一次 API EOF 都直接终止整轮监控。
 - 症状 / 退出码：工作流仍正常运行，但 CLI 报 GitHub API `EOF` 并退出 1；稍后同一 run 查询成功。
@@ -422,6 +429,7 @@
 
 ## 2026-08-01：只检查 `node_modules` 目录存在就直接运行 VitePress
 
+- 最近复发/补充：2026-08-01 修复首页卡片 hover 裁切时，仍尝试从宿主 `website/node_modules/vitepress` 读取上游样式；该目录在当前工作树中为空，探针按预期立即停止。此工作树的可用依赖只在任务专属 Docker volume `/work/node_modules`，需要核对依赖源码时应从已验证的预览容器读取，不能再把宿主目录当作依赖来源。
 - 环境：Windows，官网发布工作树，`website/node_modules` 由先前隔离测试留下空目录。
 - 错误模式：`Test-Path website/node_modules` 返回 true 后，直接运行 `npm.cmd --prefix website run docs:build`。
 - 症状 / 退出码：npm script 启动，但 Windows 报 `vitepress is not recognized` 并退出 1；项目源码未进入构建。
@@ -449,6 +457,16 @@
 - 正确做法：把每个结果直接传给 `text(result)`；需要字段投影时先输出一次结果结构再访问已确认的属性。
 - 预防检查：新的工具组合第一次调用不猜返回 schema；避免在未验证字段上使用空值回退掩盖结构错误。
 - 适用范围：`functions.exec` 编排 shell、MCP 与其它嵌套工具结果。
+
+## 2026-08-01：`ConvertFrom-Json` 读取 package-lock 的空字符串键失败
+
+- 环境：Windows，PowerShell 7，只读检查 npm `package-lock.json`。
+- 错误模式：把包含 `packages[""]` 根包条目的 lockfile 直接管道到默认 `ConvertFrom-Json`，并按 `PSCustomObject` 读取。
+- 症状 / 退出码：JSON 合法，但空字符串属性名无法转换为普通对象属性，命令退出 1；依赖版本尚未完成核对。
+- 根因：npm lockfile 使用空字符串键表示项目根包，PowerShell 默认对象投影不能可靠承载该键。
+- 正确做法：使用 `ConvertFrom-Json -AsHashtable` 保留所有 JSON 键，再按哈希表索引读取；只需定位版本时也可优先使用 Node/npm 自身或针对已确认路径的文本搜索。
+- 预防检查：解析 package-lock、映射表或其它可能包含空键/重复大小写键的 JSON 前，默认使用 `-AsHashtable`；解析失败不得误判为 JSON 损坏。
+- 适用范围：npm lockfile、工具生成的 JSON 映射和 PowerShell 元数据审计。
 
 ## 编码与换行快速检查
 
