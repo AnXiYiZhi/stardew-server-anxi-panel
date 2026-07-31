@@ -1,3 +1,17 @@
+# DOCS-HOME-CARD-POLISH-1 接手记录（2026-08-01，completed，待 Pages 复核）
+
+## 改了什么
+
+- 官网首页六张入口卡全部移除序号/`NEW` icon，不保留空占位；六条原路由与 CTA、快速上手“推荐”和动态 `v0.4.6` 版本角标继续保留。
+- `custom.css` 复用 guide/deploy/maintain/handbook/changelog/faq 六个栏目色，建立顶部短强调线、轻量色洗、细边框/阴影和底部 CTA 分隔；卡片高度与间距收紧，桌面三列和手机单列均由 flex 保持 CTA 对齐。
+- hover 仅在 fine pointer 下产生轻微位移；键盘焦点可见，深色主题有独立对比色，reduced-motion 下卡片及箭头都不位移。
+
+## 影响、验证与下一步
+
+- 产品影响文件：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`；没有修改 Hero/说明文案、站内路由、Panel React 或 HTTP API。
+- Docker Desktop Linux 的 Node 20 Alpine 隔离构建通过。应用内 Browser 与隔离 Playwright 验证 1280px 浅色/深色、390×844 手机单列、hover、键盘焦点、reduced-motion 与 changelog 导航；六卡、零 icon、无横向溢出/overlay，console error/warn 为空。Pages workflow 与线上结果待推送后补记。
+- 这些卡片是并列文档入口，不是顺序流程；后续不要为装饰重新加入序号 icon。新增 feature 时继续复核桌面三列、手机单列、CTA 对齐、深色主题和 reduced-motion。
+
 # DOCS-HOME-PATH-REMOVE-1 接手记录（2026-08-01，completed）
 
 ## 改了什么
@@ -87,7 +101,7 @@
 ## 影响文件、验证与下一步
 
 - 影响：`website/docs/index.md`、`website/docs/.vitepress/theme/custom.css`。执行 `cd website && npm.cmd run docs:build` 通过；1440px 桌面、1280px 深色正文、390×844 手机均无横向溢出，console error/warn 为空。
-- 首页 features 图标必须写成带引号的字符串（如 `'01'`），否则 YAML 会把前导零转换掉。以后改当前版本时，同时更新首页 feature 说明、暖色角标、底部版本摘要和 changelog；新增卡片后重新核对 VitePress 的 3/4 列自动布局。
+- 首页 6 张 feature 当前刻意不配置 icon，避免恢复无意义的序号胶囊。以后改当前版本时，同时更新首页 feature 说明、动态版本角标、底部版本摘要和 changelog；新增卡片后重新核对 VitePress 的桌面自动列布局与手机单列 CTA。
 
 # FE-SAVE-NAME-DELETE-1 接手记录（2026-07-20，completed）
 

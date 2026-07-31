@@ -17,6 +17,7 @@
 
 ## 2026-07-31：测试辅助镜像被 Docker Desktop 镜像源拒绝
 
+- 最近复发/补充：2026-08-01 官网预览首次使用 `node:20-alpine` 时，把镜像拉取与构建放在同一个 3 分钟命令中；外层超时后 daemon 才完成拉取并延迟创建同名容器，立刻重用名称触发 conflict。正确做法是先单独 `docker pull`/`docker image inspect` 并等待结束，再创建构建容器；超时后先轮询精确容器名与标签，确认不存在且镜像就绪后才能重试。
 - 环境：Windows，Docker Desktop Linux containers，daemon 配置了第三方 registry mirror。
 - 错误模式：直接运行本机没有缓存的 `nginx:1.27-alpine` 作为一次性 HTTPS fixture。
 - 症状 / 退出码：pull manifest 经镜像源返回 `403 Forbidden`，`docker run` 退出 1。
@@ -27,7 +28,8 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
-- 最近复发：同日发版探查时猜测官网工作流名为 `docs-pages.yml`，随后又把不存在的仓库根 `cmd` 传给 `rg`，导致并行诊断整批退出 1；已改为先用 `rg --files .github/workflows` 和 `rg --files backend` 获取真实路径（分别为 `docs.yml`、`backend/cmd/...`）。
+- 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
+- 最近复发：2026-07-31 发版探查时猜测官网工作流名为 `docs-pages.yml`，随后又把不存在的仓库根 `cmd` 传给 `rg`，导致并行诊断整批退出 1；已改为先用 `rg --files .github/workflows` 和 `rg --files backend` 获取真实路径（分别为 `docs.yml`、`backend/cmd/...`）。
 - 环境：Windows，PowerShell 7，仓库文件探查。
 - 错误模式：在并行 `Get-Content` / `rg` 命令里直接加入未经确认的 `setup_handlers.go`、`docker-compose.yml` 和 `compose.yml`。
 - 症状 / 退出码：目标文件不存在使整个批次退出 1，并掩盖同批其它有效输出。
@@ -48,6 +50,7 @@
 
 ## 2026-07-31：右侧栏截图方法层级用错
 
+- 最近复发/补充：2026-08-01 官网卡片响应式验收连续猜测 `tab.setViewportSize()` 与 `tab.playwright.setViewportSize()`，两者都返回 `is not a function`；当前运行时方法清单确认没有视口缩放能力。已把规则提升到 `AGENTS.md`：Browser 先做真实桌面验收，窄屏改用隔离 Playwright context，不再试探不存在的方法。
 - 环境：Codex in-app Browser，本地 Panel UI E2E。
 - 错误模式：按通用前端测试说明调用 `tab.playwright.screenshot(...)`。
 - 症状 / 退出码：运行时返回 `tab.playwright.screenshot is not a function`；页面和会话未受影响。
@@ -55,6 +58,16 @@
 - 正确做法：以所选 Browser 的运行时文档为准，调用 `tab.screenshot({ fullPage: false })`，需要 DOM 操作时才使用 `tab.playwright`。
 - 预防检查：调用可选浏览器能力前先对照本次选中 Browser 的 API Reference，不从相邻技能示例推断方法层级。
 - 适用范围：Codex in-app Browser 截图与视觉 QA。
+
+## 2026-08-01：工作区 Playwright 与缓存 Chromium revision 不匹配
+
+- 环境：Windows，Codex 工作区依赖中的 Playwright，本地响应式补充验收。
+- 错误模式：只确认 `%LOCALAPPDATA%\ms-playwright` 目录存在后直接调用 `chromium.launch()`；失败调用之后又假定未初始化的顶层变量仍可直接赋值。
+- 症状 / 退出码：Playwright 查找 `chromium_headless_shell-1200` 时提示精确可执行文件不存在；下一次调用因变量未定义立即失败，页面均未打开。
+- 根因：缓存根目录存在不代表当前 Playwright 所需 revision 已安装；失败表达式后的变量绑定也不保证可复用。
+- 正确做法：先用 `Test-Path -LiteralPath` 核对精确浏览器路径；本机已有 Chrome 时显式传入已验证的 `executablePath`。工具调用抛错后使用新的 `var` 绑定或重新声明，不依赖失败调用的部分初始化状态。
+- 预防检查：启动前同时验证 Playwright 包与目标 browser executable；启动失败后先确认各绑定是否存在，再继续后续步骤。
+- 适用范围：工作区 Playwright/Chromium 回归、截图与响应式 QA。
 
 ## 2026-07-31：UI E2E 断言使用错误的计数文案
 
