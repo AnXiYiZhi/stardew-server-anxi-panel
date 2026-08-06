@@ -106,6 +106,7 @@
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
+- 最近复发/补充：2026-08-06 为隔离 SQLite fixture 查询解释器时，明知同一错题仍先运行无可靠输出的 `python --version`，随后又猜测 `py -3` 可用而得到 command not found。正确入口仍是先调用 workspace dependency loader，再使用返回的精确 Python 路径；本轮没有继续尝试 Store alias。
 - 环境：Windows，`python` 指向不可用的 Store alias。
 - 错误模式：直接运行 `python ...; Write-Output ...`，未在 Python 后立即检查 `$LASTEXITCODE`。
 - 症状：Python 返回 `9009`；因为最后的 PowerShell 输出成功，整段命令表面 exit 0。
@@ -657,6 +658,7 @@
 - 根因：浏览器交互有逐项往返与懒加载成本，单次批次超出工具时限；失败执行中的顶层绑定不具备事务语义。
 - 正确做法：每次只扫描一个视口的有限路由，显式给 60 秒上限；长工具 cell 用 `wait` 续取。失败后重新确认运行时与绑定，只用新变量名恢复，不猜测半初始化状态。
 - 预防检查：批量 Browser QA 先用一个视口测量耗时，再按不超过约 10 次交互拆批；不要把扩大 timeout 当成无限批处理许可。
+- 最近复发/补充：2026-08-06 在约一小时 Docker 构建与升级后直接复用裸 `browser` 变量，Node kernel 已不再保留该绑定并返回 `browser is not defined`。长外部阶段或新用户续令后，浏览器工作必须先重跑幂等 bootstrap：检查 `globalThis.agent?.browsers` 与 `globalThis.browser`，缺失时重新选择同一 URL 对应 browser，再创建 tab；不能只依据先前文档所述的 browser handle 生命周期推断 REPL 变量仍存在。
 - 适用范围：应用内 Browser 的多路由、多尺寸与多主题矩阵。
 
 ## 2026-08-01：QA mock 路由与真实前端契约漂移
@@ -1042,6 +1044,26 @@
 - 正确做法：执行创建、更新或清理 Docker 资源的每个独立阶段前重新运行 `docker info`；若引擎退出，先确认任务资源未变，再从已验证的 Docker Desktop 路径启动并做有上限 readiness 轮询，最后重新执行带精确 ownership 断言的操作。
 - 预防检查：不要跨长时间浏览器/人工测试复用 Docker readiness 结论；所有破坏性 Docker 脚本把 `docker info` 作为第一条 fail-fast 探针。
 - 适用范围：长运行发布门禁、Docker Desktop 中断恢复与任务资源清理。
+
+## 2026-08-06：最终 updater 包装器猜错 tag 前缀并手写 JSON 转义
+
+- 环境：PowerShell 7、DinD 内正式 `0.4.7 → 0.4.8` Web 一键更新。
+- 错误模式：先把更新检查响应的 `latestVersion` 猜成 `0.4.8`，实际公开契约保留 tag 前缀为 `v0.4.8`；随后又把 apply 确认体手写成多层转义 JSON 字符串。
+- 症状 / 退出码：第一次包装断言在 check 成功后误报 mismatch，dry-run 尚未启动；第二次 PowerShell 在发 HTTP 前报 positional parameter 无法接受 `confirmFullStack` 片段，apply 尚未发送，容器和数据均未变化。
+- 根因：没有把真实 check 响应的目标字段直接传给下一阶段，并把 PowerShell、JSON 与外层命令的引号规则叠加在手写字符串中。
+- 正确做法：先读取脱敏后的真实响应结构，断言 `latestVersion=v0.4.8` 后把该字段原样作为 dry-run target；所有 JSON 请求体用 PowerShell 对象加 `ConvertTo-Json -Compress` 生成，禁止手写多层转义。
+- 预防检查：发布 API 包装器只规范化用于比较的版本，不能擅自改写接口字段；任何写请求先在本地构造 body 变量，再传给 `Invoke-RestMethod`，确保失败发生前能够区分客户端解析与服务端响应。
+- 适用范围：Panel updater check/dry-run/apply、PowerShell HTTP E2E 与带 `v` 前缀的 tag 契约。
+
+## 2026-08-06：隔离玩家 fixture 复制和 Compose 状态模拟不够精确
+
+- 环境：最终候选升级后的真实玩家 Mod API/页面验收，所有数据位于任务专属 DinD bind。
+- 错误模式：用 `Copy-Item -Recurse` 把已有 `control` 目录本身复制到已存在目标，产生非终止 `item already exists`；又手工给普通容器添加部分 `com.docker.compose.*` label，假定正式 `docker compose ps` 会把它识别为实例 server。
+- 症状 / 退出码：fixture 文件实际到位且命令最终退出 0，但输出包含三个复制错误；手工 label 容器保持运行，Panel 重启校验仍把实例写成 `container_stopped`。
+- 根因：PowerShell 的目录复制目标语义与预期的“复制目录内容”不同，且 Compose 资源身份不只由少数手写 label 决定；正式 CLI 只识别由同 project 创建的完整资源元数据。
+- 正确做法：已存在目标应逐个复制源目录内容并使用 `-ErrorAction Stop`，随后核对精确文件清单；实例运行夹具使用任务专属最小 Compose 文件和相同 project name 创建 `server` service，再让真实 Panel 重启并从 SQLite 与 Compose 双重状态恢复。
+- 预防检查：fixture 准备阶段对 PowerShell 非终止错误启用 fail-fast；不要手造 Compose ownership label，先用正式 `docker compose ... ps --format json` 验证目标 service 能被实际实例配置发现。
+- 适用范围：Docker/Compose 状态模拟、Control sidecar fixture、Windows 目录复制和升级后功能验收。
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
