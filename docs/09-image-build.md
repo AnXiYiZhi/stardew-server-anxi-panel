@@ -1,3 +1,21 @@
+# v0.4.8 发布门禁：玩家 Mod 自报、比较与详情页（2026-08-06，candidate）
+
+- 候选范围：Control `0.3.0` 在标准 IP/SMAPI peer 事件中按 `uniqueMultiplayerId` 采集客户端自报的游戏、SMAPI 与 Mod 清单，原子写入独立 `player-mod-contexts.json`；Go 后端以服务器进程实际 `options.json.loadedMods` 为基线提供 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`；桌面和移动端提供只读详情、四组比较、CJB 明示风险及 unavailable/pending/stale/error 状态。本版同时清理确认未引用的旧原型图和前端生成素材，并为真实 Panel 增加 `shell=mobile` 预览参数。未修改 Junimo/SMAPI 上游，不实现 Steam SDR 桥，不改变加入、认证、踢出、封禁或自动拦截流程。
+- 受影响链路：`SMAPI peer event → Control 输入规范化/生命周期 → 原子 sidecar → stardew_junimo driver → Web 鉴权接口 → TypeScript 状态归一化 → 桌面/移动共享详情`。服务器比较集合只能来自当前运行进程的 `loadedMods`；磁盘 `ModInfo/syncKind` 只补名称和分类。`Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control` 必须完全退出比较和统计；普通 `server_only` 可作信息展示但不得进入“玩家缺少 Mod”。
+- 正常路径：新鲜隔离实例必须验证 host/玩家列表不受影响，真实 PC+SMAPI 通过 IP 加入并写出 `reported`，ID/名称/版本准确；接口和桌面/移动详情按“玩家额外安装 → 玩家缺少 Mod → 版本不同 → 匹配”展示。两条官方 CJB ID 必须只显示红色且带文字的“检测到 CJB 作弊”，玩家仍可正常加入且没有任何管理请求。
+- 边界输入：覆盖 `mods:null` 与真实 `mods:[]` 的严格区别、pending 超时、unavailable、stale、断线/重连/重启、多玩家隔离、旧 ID 不串号、大小写重复 UniqueID、控制字符、超长 playerId/UniqueID/name/version、超过 1024 个不同 Mod 与超过 2048 个原始条目的整份拒绝。前端覆盖重复项、256 字名称、超长版本、空组、分批展开、280px 窄屏和无横向溢出。
+- 权限与安全：详情接口继续要求登录并受实例可见性约束；未知实例/玩家/非法 ID 必须返回稳定错误且不能回退到其它玩家。客户端字符串和清单始终按不可信自报处理；CJB 仅按 `CJBok.CheatsMenu` / `CJBok.ItemSpawner` 大小写不敏感精确匹配，修改 manifest ID 可绕过提示。接口、Control 和 UI 不允许新增 kick、ban、拒绝连接、自动处罚或任意文件读取。
+- 网络超时/断流：采集链路不新增外网请求；SMAPI peer 未在 10 秒内提供完整 context 时安全转为 `unavailable + mods:null`，不得断开玩家。Web 请求失败与比较基准不可用各自显示可重试错误，不得降级为“0 个 Mod”“完全一致”或“安全”。Steam SDR 和不提供标准 peer context 的客户端明确不在本阶段支持范围。
+- 部分成功、重试与幂等：同一 playerId 重复连接/事件按规范化 ID 覆盖同一记录，重复 UniqueID 去重；超量或损坏整份报告不得保留部分清单。断线只转 stale 并保留最后报告，重连先 pending 再以新 `reportedAt` 替换；重复读取接口不得改 sidecar、玩家、Mod 或管理状态。Control 原子临时文件必须 replace 成功后才成为权威记录。
+- 进程或容器中断后的恢复：Control 启动把上个进程遗留记录统一标为 stale；Panel/游戏容器重启后旧清单不得伪装成当前 reported。候选必须覆盖服务器重启、Panel 重启、连接后等待 context、断线与重连；sidecar 临时文件不能被当成权威数据，损坏/超限文件只导致 unavailable，不影响加入或玩家列表。
+- 失败回滚：本功能只读且没有跨资源写事务，失败时产品回退是保持玩家连接、返回 unavailable/error 并保留最后有效 sidecar；不得通过踢出或清空玩家状态“修复”。Panel `v0.4.7 → 0.4.8` 更新目标 unhealthy/版本错误时仍必须由 updater 自动回滚到 `v0.4.7`，SQLite、实例目录、存档、Mod、游戏容器和旧 Control 保持可读且非目标容器 ID 不变。
+- 数据完整性：嵌入 Control DLL、两份 manifest 与 `runtime_stack_manifest.json.controlMod.dllSha256` 必须一致；新鲜 C# 真实 game-data 编译、契约测试和实际加载日志同时通过。升级前后核对 `/health`、`/api/version`、OCI version/revision、SQLite 初始化/用户/实例、活动存档、Mod 集合、备份、审计、game container ID 和 player context schema；完整清单不得进入高频 `players.json` 或列表 API。
+- 资源清理：所有 tag 前真实门禁使用唯一 `v048-player-mod-release-*` Compose project、容器、网络、端口、bind 目录和 volumes，创建前查重并打 ownership label；不得复用当前 `sap-player-mod-live-20260806` 实例、用户存档、长期凭据或既有唯一卷。结束时只按精确名称和 label 清理本轮资源，禁止 prune；本机真实游戏安装只允许作为只读源复制到隔离环境。
+- 升级矩阵：使用正式 `v0.4.7` 和本地精确 `0.4.8` 候选在隔离 DinD/Compose 中执行 Web 更新检查、dry-run、管理员确认、apply、预期断线重连和终态恢复；注入 unhealthy 目标验证自动回滚。成功升级得到的新 Panel 必须再次验证玩家 Mod 静态路由、API、Control manifest/hash、旧长期数据保留和新功能真实/受控 fixture 主路径，不能以 fresh 安装替代。
+- 真机矩阵与限制：已存在的隔离证据只有 PC+SMAPI 4.5.2/游戏 1.6.15 标准 IP 加入、真实三个 Mod、断线、重连和服务器重启；本次候选必须重新核对其证据或在新隔离实例复跑。PC 原版、两种官方 CJB、Android/iOS 官方客户端和 Android 实验性 SMAPI若缺少实体环境，必须逐项记录“未验证”及安全 unavailable 边界，不能猜测支持；其中 Android 实验性 SMAPI不属于承诺支持。任何测试都不得使用真实用户存档。
+- Tag 前全量门禁：Control Docker .NET 6 契约与真实引用编译；后端 `go test ./... -count=1`、vet、build；前端全部 12 项状态测试、TypeScript 与 production build；兼容矩阵 validate/版本/远端制品及 Python 测试；`run.sh`、`migrate-fnos.sh`、ShellCheck；updater/runtime Docker integration；VitePress production build；精确候选 fresh/upgrade/rollback E2E；桌面、390px 手机和 280px 窄屏 Browser QA。任一失败先修复并重新跑受影响范围，证据不完整时禁止 tag。
+- Tag 后核验：等待 release、compatibility-matrix、Pages 工作流成功；从 Docker Hub、阿里云 ACR、GHCR 回拉精确 `0.4.8`，核对三仓 digest、OCI version/revision、`latest`、GitHub Release 与 release assets，并分别完成隔离 `/health`、`/api/version`、未初始化数据库和 Docker/Compose smoke。随后更新公开展示站首页、更新日志、玩家手册与维护说明，完成 production build、桌面/手机视觉和线上 HTTP/文案复核，再把 workflow ID、digest、耗时、故障与清理结果回填本节。
+
 # v0.4.7 发布记录：全窗口响应式与平板全屏/滚动修复（2026-08-01，已发布）
 
 - 变更范围：本版只发布 `FE-RESPONSIVE-VIEWPORT-1`。前端按视口真实内容盒计算桌面 Shell 缩放，修复隐藏外层被程序化滚动后全屏只剩一部分；手机及 1366px 内粗指针/无 hover 设备自动进入紧凑壳，主滚动、safe area、低高度认证页、弹窗内部滚动、44px 触控区、280px 操作区和旧浏览器回退统一收口。新增逐像素响应式测试并接入 release/compatibility workflow；官网首页和 changelog 同步 `v0.4.7` 用户说明。后端 API、鉴权、数据库 schema、Junimo 运行栈、Compose 格式与长期数据均未改变。
