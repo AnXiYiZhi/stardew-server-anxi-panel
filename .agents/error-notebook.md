@@ -1043,6 +1043,16 @@
 - 预防检查：不要跨长时间浏览器/人工测试复用 Docker readiness 结论；所有破坏性 Docker 脚本把 `docker info` 作为第一条 fail-fast 探针。
 - 适用范围：长运行发布门禁、Docker Desktop 中断恢复与任务资源清理。
 
+## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
+
+- 环境：PowerShell 7、最终候选镜像 OCI label 核验。
+- 错误模式：把 `ConvertFrom-Json` 得到的 `org.opencontainers.image.created` 直接与原始 ISO 8601 字符串做 `-ne` 比较。
+- 症状 / 退出码：镜像 JSON 中实际值为预期的 `2026-08-06T14:04:14Z`，但断言抛出 build date mismatch；独立类型探针显示属性类型已经是 `System.DateTime`，默认字符串化会变成本地格式。
+- 根因：PowerShell 7 的 `ConvertFrom-Json` 会自动识别 ISO 日期字符串；类型转换后的 DateTime 与原始字符串不能作为严格文本相等比较。
+- 正确做法：先确认属性类型；日期字段统一转为 UTC，并用 `.ToString("yyyy-MM-ddTHH:mm:ssZ", [Globalization.CultureInfo]::InvariantCulture)` 规范化后比较。若需要保留原始 JSON 文本语义，改用不会自动日期转换的解析方式。
+- 预防检查：发布断言中的版本、commit 作为字符串比较，ISO 时间先做显式类型与 UTC 规范化；断言失败时先输出值与 `.GetType().FullName`，不要把类型差异误报为镜像元数据错误。
+- 适用范围：PowerShell 7 的 Docker inspect、HTTP JSON 与任何 ISO 时间字段核验。
+
 ## 编码与换行快速检查
 
 - 2026-08-01 补充：检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索，否则会把文档中用于解释旧乱码问题的合法 `�` 示例误判为新引入乱码。应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行；发现命中后再回到原文件确认语义。
