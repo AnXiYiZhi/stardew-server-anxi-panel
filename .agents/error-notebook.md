@@ -28,6 +28,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
+- 最近复发/补充：2026-08-06 为 `v0.4.8` 插入发布门禁时，沿用旧工作树中 `docs/09-image-build.md` 以 `v0.4.6` 开头的假设；重放到 `v0.4.7` 基线后真实首标题已是 `v0.4.7` 发布记录，`apply_patch` 因上下文不存在而安全失败。跨基线整合后修改长期文档前必须重新读取目标文件当前首段或精确锚点，不能继续使用重放前的文件结构。
 - 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。同日 `v0.4.7` 发布审计又把不存在的 `frontend/README.md` 与 `backend/internal/version` 直接交给批量 `rg`，分别让主批次和子审计退出 1。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
 - 最近复发：2026-08-01 `v0.4.7` 门禁又凭惯例猜测仓库根 `go.mod`、`backend/internal/api`、`backend/internal/version`、根 `run.sh`、容器 HTTP 端口 `8080` 和 sentinel 文件 `/game/sentinel.txt`；权威位置实际为 `backend/go.mod`、已发现的具体包、容器 `8090` 与 `/game/sentinel`。路径、端口和容器内文件都必须先从 `rg --files`、Dockerfile/Compose、health 配置或 `find` 的只读结果取得，不能把常见命名当契约。
 - 最近复发：2026-07-31 发版探查时猜测官网工作流名为 `docs-pages.yml`，随后又把不存在的仓库根 `cmd` 传给 `rg`，导致并行诊断整批退出 1；已改为先用 `rg --files .github/workflows` 和 `rg --files backend` 获取真实路径（分别为 `docs.yml`、`backend/cmd/...`）。
