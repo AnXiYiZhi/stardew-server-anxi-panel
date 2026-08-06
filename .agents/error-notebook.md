@@ -956,6 +956,16 @@
 - 预防检查：短命容器执行需要外网的语言工具链前先规划任务专属缓存；网络失败重试必须改变为可续用缓存且限制次数，不能原样重建空容器。
 - 适用范围：容器化 Go/npm/Python 依赖准备与长耗时发布门禁。
 
+## 2026-08-06：BuildKit 默认网络同时损坏 Go ZIP 与 Alpine 包校验
+
+- 环境：Docker Desktop Linux、v0.4.8 精确候选多阶段 Docker build。
+- 错误模式：直接使用 BuildKit 默认网络获取全新的 Go modules 与 Alpine apk 包，未先验证该网络路径本轮传输稳定性。
+- 症状 / 退出码：`go mod download` 对多个 ZIP 同时报 `unexpected EOF`，并行 `apk add` 报 `docker-cli-26.1.5-r0: UNTRUSTED signature`；build 退出 1，最终镜像 tag 未创建。
+- 根因：同一次构建中两个独立生态都出现内容截断/校验失败，证据指向 Docker build 默认网络路径的瞬时传输损坏，而非 Go 依赖声明或 Alpine 包本身。
+- 正确做法：确认失败构建没有留下候选 tag，保留成功 BuildKit layer cache，下一次显式使用 Docker Desktop 支持的 `docker build --network=host` 重新获取失败层；仍失败则停止发布并检查代理/CA，不能关闭签名或摘要校验。
+- 预防检查：候选构建必须检查完整退出码和最终 OCI 标签，出现签名/摘要异常禁止使用 `--allow-untrusted`；网络路径变更后才允许有界重试。
+- 适用范围：正式 Docker 多阶段构建中的 apk、Go modules、npm 依赖与其它外部制品。
+
 ## 编码与换行快速检查
 
 - 2026-08-01 补充：检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索，否则会把文档中用于解释旧乱码问题的合法 `�` 示例误判为新引入乱码。应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行；发现命中后再回到原文件确认语义。
