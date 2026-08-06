@@ -169,6 +169,7 @@
 - 最近复发/补充：2026-07-31 验证测试 volume label 时把 `{{index .Labels \"...\"}}` 放进嵌套 PowerShell 双引号，Docker 再次收到反斜杠并报 `unexpected "\\"`；改用无内层引号的 `{{json .Labels}}` 后确认 ownership。
 - 最近复发/补充：2026-08-01 又把带字符串键的 `{{index .Config.Labels \"...\"}}` 放进 `docker exec ... sh -c` 的第三层引号，容器 Shell 报 `unterminated quoted string`。只执行一个容器内命令时应去掉 `sh -c`，从 PowerShell 直接传参，并一次输出 `{{json .Config.Labels}}` 后在外层解析。
 - 最近复发/补充：2026-08-01 后端门禁把 `docker --format` 的模板与相邻参数错误拼接，Docker 收到无效 format。复杂 inspect 不再拼接模板字符串：先输出完整 `docker inspect` JSON，再由 PowerShell `ConvertFrom-Json` 投影所需字段；只有单个无引号模板经过独立探针后才使用 `--format`。
+- 最近复发/补充：2026-08-06 最终候选镜像已经成功构建后，尾部 OCI 核验再次使用 `docker image inspect --format` 与带反斜杠的 `index .Config.Labels`，同样报 template operand 解析错误。镜像本身随后通过完整 JSON 投影核对正确；鉴于同类错误再次复发，规则已提升到 `AGENTS.md`：复杂 Docker inspect 一律读取 JSON 后投影，禁止嵌套带引号的 Go template。
 - 适用范围：Docker inspect、Compose format 和其它 Go-template CLI。
 
 ## 2026-07-31：PowerShell 插值变量后直接连接连字符
@@ -280,6 +281,7 @@
 - 预防检查：涉及长中文行或多文件补丁时，不凭聊天上下文重打原文，先读取实际文件。
 - 最近复发/补充：2026-08-01 合并 `v0.4.7` 响应式补丁时凭旧工作树猜测 `SavesPage.css` overlay 的背景声明，导致最小补丁仍因上下文不一致失败；随后一个多文件文档补丁漏写第二个 `*** Update File`，让 handoff 的锚点被错误套到 `docs/03-frontend.md` 并再次校验失败。读取目标 release worktree 精确行、为每个目标显式声明文件后应用成功。补丁上下文必须来自将被修改的那一个 worktree，多文件补丁须逐段核对目标声明。
 - 最近复发/补充：2026-08-06 在同一补丁中依次更新 Compose、删除临时 env、再更新错题本时，把第二个文件声明放进尚未结束的 hunk，`apply_patch` 报 `Unexpected line found in update hunk` 并零修改退出。多种 patch operation 混合时每个文件段必须先正常结束；更稳妥的是把 update/delete/文档补记拆成独立补丁并逐个检查返回。
+- 最近复发/补充：2026-08-06 补记候选镜像 inspect 错误时，从聊天摘要重打了含多层反斜杠的旧行作为上下文，实际文件中的转义数量不同，`apply_patch` 校验失败且零修改；随后构造补丁时又漏了上下文原文本身的 Markdown 列表短横线，第二次校验仍失败。应先读取文件原文，再选不含易变转义的邻近稳定行作最小锚点；补丁正文行需明确区分 patch marker 与文件原有字符。
 - 适用范围：所有 `apply_patch` 修改，尤其是长行、编码敏感文件和多文件补丁。
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
