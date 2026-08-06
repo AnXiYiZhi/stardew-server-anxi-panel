@@ -13,13 +13,18 @@ import { errorMessage } from './core/helpers'
 import { StardewPanel } from './games/stardew/StardewPanel'
 import { StardewMobileShell } from './games/stardew/StardewMobileShell'
 import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
-import { COMPACT_SHELL_MEDIA_QUERY } from './games/stardew/responsive-layout'
+import {
+  COMPACT_SHELL_MEDIA_QUERY,
+  shouldForceCompactShell,
+} from './games/stardew/responsive-layout'
 import { useMediaQuery } from './hooks/useMediaQuery'
 
 type View = 'booting' | 'setup' | 'login' | 'stardew'
 
 function App() {
-  const usesCompactShell = useMediaQuery(COMPACT_SHELL_MEDIA_QUERY)
+  const automaticallyUsesCompactShell = useMediaQuery(COMPACT_SHELL_MEDIA_QUERY)
+  const [forceCompactShell] = useState(() => shouldForceCompactShell(window.location.search))
+  const usesCompactShell = forceCompactShell || automaticallyUsesCompactShell
   const [desktopShellRequested, setDesktopShellRequested] = useState(false)
   const [view, setView] = useState<View>('booting')
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -33,6 +38,12 @@ function App() {
     boot()
     void getVersion().then(setVersionInfo).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    document.title = forceCompactShell
+      ? 'Stardew Anxi Panel · 手机端'
+      : 'Stardew Anxi Panel'
+  }, [forceCompactShell])
 
   async function boot() {
     setMessage('')

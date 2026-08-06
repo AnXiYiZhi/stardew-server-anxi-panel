@@ -10,6 +10,7 @@ import {
   calculateShellViewport,
   expandedMainWidthForShell,
   shouldAutoCollapseOpsRail,
+  shouldForceCompactShell,
   shouldUseCompactShell,
 } from '../src/games/stardew/responsive-layout.ts'
 
@@ -46,6 +47,11 @@ assert.match(COMPACT_SHELL_MEDIA_QUERY, /max-width: 768px/)
 assert.match(COMPACT_SHELL_MEDIA_QUERY, /hover: none/)
 assert.match(COMPACT_SHELL_MEDIA_QUERY, /pointer: coarse/)
 assert.match(COMPACT_SHELL_MEDIA_QUERY, /max-width: 1366px/)
+assert.equal(shouldForceCompactShell('?shell=mobile'), true)
+assert.equal(shouldForceCompactShell('?playerId=123&shell=mobile'), true)
+assert.equal(shouldForceCompactShell('?shell=desktop'), false)
+assert.equal(shouldForceCompactShell('?shell=MOBILE'), false)
+assert.equal(shouldForceCompactShell(''), false)
 
 for (const [width, hoverNone, pointerCoarse, expected] of [
   [767, false, false, true],

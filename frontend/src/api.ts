@@ -55,6 +55,7 @@ import type {
   SaveImportHostHandling,
   SaveImportJobResponse,
   StardewPlayersResponse,
+  PlayerModDetailsResult,
   UploadPreviewResult,
   UsersResponse,
 } from './types'
@@ -191,6 +192,17 @@ export function getInstanceMetrics(instanceId = defaultInstanceId) {
 
 export function getInstancePlayers(instanceId = defaultInstanceId) {
   return request<StardewPlayersResponse>(`/api/instances/${encodeURIComponent(instanceId)}/players`)
+}
+
+export function getPlayerModDetails(
+  uniqueMultiplayerId: string,
+  instanceId = defaultInstanceId,
+  signal?: AbortSignal,
+) {
+  return request<PlayerModDetailsResult>(
+    `/api/instances/${encodeURIComponent(instanceId)}/players/${encodeURIComponent(uniqueMultiplayerId)}/mods`,
+    { signal },
+  )
 }
 
 export function getJobs() {

@@ -164,6 +164,27 @@
   padding-inline: 10px;
 }
 
+.sd-mplay-player-mods-btn {
+  min-width: 112px;
+  color: #315c2b;
+}
+
+.sd-mplay-player-mods-btn--cjb {
+  border-color: #981f1f;
+  background: #ffe0d6;
+  color: #811717;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.sd-mplay-detail-view {
+  padding-bottom: 8px;
+}
+
+.sd-mplay-detail-view .sd-pmods {
+  max-width: 100%;
+}
+
 /* 确认弹窗 */
 
 .sd-mplay-confirm-overlay {

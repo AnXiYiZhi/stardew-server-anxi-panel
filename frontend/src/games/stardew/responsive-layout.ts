@@ -36,6 +36,10 @@ export function shouldUseCompactShell(
   )
 }
 
+export function shouldForceCompactShell(search: string): boolean {
+  return new URLSearchParams(search).get('shell') === 'mobile'
+}
+
 export function calculateShellViewport(viewportWidth: number, viewportHeight: number): ShellViewport {
   const width = positiveFiniteOr(viewportWidth, SHELL_DESIGN_WIDTH)
   const height = positiveFiniteOr(viewportHeight, SHELL_DESIGN_HEIGHT)

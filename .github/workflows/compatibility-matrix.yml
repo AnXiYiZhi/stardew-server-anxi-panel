@@ -54,6 +54,7 @@ jobs:
           npm run test:save-import
           npm run test:mod-list
           npm run test:responsive-layout
+          npm run test:player-mods
           npm run build
       - name: Isolated Docker integration
         working-directory: backend

@@ -1,3 +1,59 @@
+# PLAYER-MOD-BUILTIN-FILTER-1 接手记录（2026-08-06，completed，未发布）
+
+## 改了什么、影响与验证
+
+- `player_mods.go` 的服务器基线和客户端比较 map 现在统一按 UniqueID 忽略 `Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control`。这三类面板自带运行组件不再出现在 `serverContext.loadedMods`、items 或 summary；旧虚拟 SMAPI 版本比较已取消，双方 `apiVersion` 元数据仍保留。
+- comparison item 排序改为 `client_only → missing_on_client → version_mismatch → match`。普通第三方 `server_only` 规则不变：未上报不生成缺失，双方上报时仍可作服务器专用信息。
+- 影响 `player_mods.go`、`player_mods_test.go` 与 Web API 契约测试；定向测试及最终 `go test ./...`、`go vet ./...`、`go build ./...` 通过。Control Mod、sidecar schema、玩家连接/认证和所有管理通道均未修改。
+- 下一步若再增加面板运行组件，应把其官方 UniqueID 同时加入后端 allowlist 与前端兼容过滤，并补大小写回归；不要按模糊名称过滤普通玩家 Mod。
+
+# PLAYER-MOD-CJB-LIST-1 接手记录（2026-08-06，completed，未发布）
+
+## 改了什么与影响
+
+- `PlayerInfo` 新增可选 `modRiskFlags`。`persistPlayerRoster` 的统一收尾一次读取 `player-mod-contexts.json`，复用详情接口的文件上限和单条规范化校验，按联机 ID 只补 `cjb` 标记；完整 Mod 数组仍不进入 `GET /players`。
+- `player_mods.go` 把 sidecar 文件读取与单玩家条目规范化拆为可复用 helper，详情接口行为、`mods:null`、比较结果和错误边界不变。stale 记录可继续带最后一次自报检测标记，但 UI 必须把它当自报提示，不能当处罚依据。
+- 影响 `players.go`、`player_mods.go`、`players_test.go` 与玩家 API 契约；没有修改 Control Mod、Junimo/SMAPI 上游、玩家连接、认证、踢出或封禁链路。
+
+## 如何验证与下一步
+
+- 定向 `go test ./internal/games/stardew_junimo ./internal/web` 通过；测试断言玩家响应只含 `modRiskFlags:["cjb"]`，不泄漏 CJB 名称或 `mods` 字段。
+- 后续若增加其它风险类别，仍须保持小型 allowlist 标记，不能把客户端完整清单复制到玩家轮询响应，也不能让标记参与自动管理。
+
+# PLAYER-MOD-COMPAT-1 第三阶段接手记录（2026-08-06，PC+SMAPI 真机部分通过，其余受限，未发布）
+
+## 改了什么
+
+- 新增 `PlayerModContextLifecycle`，Control 的 `PeerContextReceived/PeerConnected/PeerDisconnected` 与 pending 超时使用同一组可测试状态转换。实际行为保持只读：连接写 pending、完整 SMAPI context 写 reported、10 秒无 context 写 unavailable、断线和启动恢复写 stale，重连会先清掉旧 Mod 数组再等待新报告。
+- C# 契约补齐乱序事件、原版/移动 unavailable、断线重连、进程重启、多玩家隔离、两种 CJB、重复/超长/超量字段；Go 补齐读取端二次限制、server_only 信息展示/缺失排除和 Mod peer handler 不得进入 kick/ban/命令通道的回归。
+- Web 增加真实 loopback TCP 测试，以真实 handler、SQLite、临时实例文件验证四类 context、两种 CJB 和未知 ID 隔离；Docker ps 仅用测试替身。接口契约、Control 版本 `0.3.0` 和 sidecar schema 均未改变。
+- 本机随后用 Steam Stardew `1.6.15` / SMAPI `4.5.2` 真实加入隔离 Junimo server。Control 收到 Content Patcher `2.9.0`、Farm Type Manager `1.26.1`、Save Backup `4.5.2`，详情 API 的版本/分组准确；主动断线 stale、同 ID 重连新 reportedAt、server 重启后旧记录 stale 均通过，全程没有管理动作。
+
+## 影响文件、验证与下一步
+
+- 主要影响 `smapi-mod-src/{ModEntry,PlayerModContexts}.cs`、C# `Program.cs`、`player_mods_test.go`、`players_mods_handlers_test.go`、嵌入 DLL、运行栈清单和联调文档。真实 game-data 编译 0 errors、1 个既有 analyzer warning；当前已提升并完成真实 LAN 联调的嵌入 DLL SHA256 为 `b15479eda376f386fdadc1cc9d0c31815cabc0a919d0655debe6d7117352c05a`，与 runtime manifest 一致。不同容器项目路径的最终 fresh build 仍通过但字节摘要不同，不宣称跨路径 reproducible build；若要以 fresh SHA 作为门禁，必须固定 SDK digest、PathMap、restore 与项目挂载路径。
+- Docker C# 契约、`go test ./... -count=1`、`go vet ./...`、`go build ./...`、玩家 Mod 定向 verbose 测试、前端 12 项状态脚本、独立 TypeScript 检查与 production build 全部通过；源码/嵌入/运行栈三方 SHA 一致。
+- 自动化隔离编译使用 `sap-pmods-p3-*`；真机联调使用 `%LOCALAPPDATA%/Temp/sap-player-mod-real-20260806`、独立端口、克隆 game-data volume 与新建测试存档，不挂或复用用户存档/设置。没有启动、停止或修改宿主既有 Stardew 实例。
+- 注意一次隔离缺口：driver 的最终 Compose project 仍为实例 basename `stardew`，未继承任务 Panel project，导致 steam-auth 复用了 2026-07-06 已存在的 `stardew_steam-session`。没有读取 token 内容，清理时保留旧卷；LAN peer context 不依赖邀请码，因此功能证据仍有效，但不能宣称认证卷完全隔离。以后启动真实组件前必须检查最终 project、network 和全部 named volume，而不能只查任务 label。
+- 下一位维护者仍需按 `docs/06-integration.md` 补 PC 原版、两种官方 CJB、Android/iOS、多个远端玩家并发与真实登录页面视觉；记录平台/游戏/SMAPI/Mod 版本、连接方式、Control 日志和截图。没有 Android 实验性 SMAPI 环境时继续写“未验证”，不要推断支持。
+- ModContext 是客户端自报；只按官方 UniqueID 标 CJB，改 manifest ID 可绕过。不要据此自动踢出、封禁或拦截；Steam SDR 兼容仍不在本阶段。
+
+# PLAYER-MOD-CONTEXT-1 接手记录（2026-08-06，completed，未发布）
+
+## 改了什么
+
+- Control `0.3.0` 新增 `PlayerModContexts.cs` 纯契约和三类 Multiplayer event 接线。`PeerContextReceived` 使用 `peer.PlayerID/HasSmapi/GameVersion/ApiVersion/Mods` 生成完整报告；`PeerConnected` 在没有先到上下文时生成 pending，10 秒后变 unavailable；`PeerDisconnected` 变 stale。历史文件在新进程载入时统一 stale，sidecar 独立为 `control/player-mod-contexts.json`，原子替换，不增加 `players.json` 高频体积。
+- 输入边界固定为 512 个玩家、1024 个唯一 Mod、2048 个原始条目与 32/256/256/64 字符；控制字符被移除，UniqueID 大小写不敏感去重。过量报告不截断后比较，而是 unavailable + `mods:null`。Control `options.json` 同时新增实际 `gameVersion/apiVersion`，schema 仍兼容为 2。
+- Go 新增 `player_mods.go`：安全读取 4 MiB sidecar 和 2 MiB options，以 `options.loadedMods` 建服务器 map，再用物理 `ModInfo`/`syncKind` 只补元数据。新增任意登录用户可读的 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`；非法 ID 返回 `400 invalid_player`。
+- 比较 items 使用 `match/missing_on_client/client_only/version_mismatch`，整体不可比较时为 `comparison.status=unavailable`。只对实际 loaded + client_required 生成 missing；server_only/unknown 不生成 missing。后续已取消虚拟 SMAPI item，并统一过滤 SMAPI、JunimoHost.Server 与面板 Control；两条官方 CJB UniqueID 只增加 `riskFlags:["cjb"]`，没有任何管理副作用。
+
+## 影响、验证与下一步
+
+- 影响文件：`embedded/smapi-mod-src/{ModEntry,ControlContract,PlayerModContexts}.cs`、`smapi-mod-contract-tests`、两份 manifest、嵌入 DLL、`config/runtime_stack_manifest.json`、`player_mods{,_test}.go`、`players_handlers.go`、`instance_handlers.go`、`players_mods_handlers_test.go` 和四份长期文档。Control 版本 `0.3.0`，第三阶段重编译后的嵌入 DLL SHA256 `b15479eda376f386fdadc1cc9d0c31815cabc0a919d0655debe6d7117352c05a`。
+- Docker .NET 6 纯契约测试通过；以只读 `stardew_game-data` 实际 SMAPI/game 引用执行 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`，0 errors、1 个既有 analyzer/compiler warning。定向 `go test ./internal/games/stardew_junimo ./internal/web -count=1` 通过；最终 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过。最终源码 DLL、嵌入 DLL 与运行栈清单三方 SHA256 一致。
+- 现有运行实例必须通过受控运行组件同步并重启 server 才会加载 Control `0.3.0`；只替换宿主 DLL 而不重启的旧进程不会产生新 sidecar。前端页面属于下一阶段，本阶段不要开始 UI。
+- 仍无法取得当前 ModContext 的边界：未安装 SMAPI 的客户端；peer context 握手未完成/中断或字段超限的客户端；Steam SDR/其它未把标准 SMAPI context 送达服务端的链路（本阶段没有兼容桥）；更新前旧 Control 进程；已断开玩家（只保留 stale 历史）；以及 headless host 本身（不是远端 peer）。这些情况必须展示 unavailable/pending/stale，不能把 `mods:null` 解释成“没有 Mod”。
+
 # MOD-INSTALL-TIME-1 接手记录（2026-08-01，v0.4.6 已发布）
 
 ## 改了什么

@@ -5,6 +5,7 @@ import type { StardewPageProps } from '../stardew-routes'
 import type { InstancePasswordStatus } from '../../../types'
 import { formatStardewLocation, rawStardewLocation, readableStardewLocation, type StardewLocationLike } from '../location-format'
 import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
+import { hasPlayerCjbRisk, playerModActionLabel } from '../player-mod-details'
 
 const PLAYER_EVENTS_PAGE_SIZE = 2
 
@@ -198,7 +199,7 @@ function isWaitingPlayerStatus(status?: string): boolean {
 
 type KickTarget = { uniqueMultiplayerId: string; name: string }
 
-export function PlayersPage({ user, instanceState, dashboardData }: StardewPageProps) {
+export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
   const [eventsPage, setEventsPage] = useState(1)
   const [warpHomeConfirmTarget, setWarpHomeConfirmTarget] = useState<KickTarget | null>(null)
   const [warpHomeBusyId, setWarpHomeBusyId] = useState<string | null>(null)
@@ -603,7 +604,19 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                       <strong>{player.name}</strong>
                       {player.isHost && <span className="sd-player-host-chip">主机</span>}
                     </span>
-                    <small>{shortId(player.uniqueMultiplayerId)}</small>
+                    <span className="sd-players-id-row">
+                      <small>{shortId(player.uniqueMultiplayerId)}</small>
+                      {player.uniqueMultiplayerId ? (
+                        <button
+                          className={`sd-players-mods-link${hasPlayerCjbRisk(player) ? ' sd-players-mods-link--cjb' : ''}`}
+                          type="button"
+                          onClick={() => onNavigate('player-mods', { playerId: player.uniqueMultiplayerId })}
+                          aria-label={hasPlayerCjbRisk(player) ? '检测到 CJB 作弊，查看上报 Mod' : undefined}
+                        >
+                          {playerModActionLabel(player)}
+                        </button>
+                      ) : null}
+                    </span>
                   </span>
                 </span>
                 <span title={rawStardewLocation(player)}>{formatPlayerLocation(player)}</span>
@@ -747,7 +760,12 @@ export function PlayersPage({ user, instanceState, dashboardData }: StardewPageP
                 <div className="sd-players-table-row" key={player.uniqueMultiplayerId || player.name}>
                   <span className="sd-players-name-cell">
                     <span className="sd-players-avatar" aria-hidden="true">{player.name.slice(0, 1).toUpperCase()}</span>
-                    <strong>{player.name}</strong>
+                    <span className="sd-players-name-copy">
+                      <strong>{player.name}</strong>
+                      {hasPlayerCjbRisk(player) ? (
+                        <span className="sd-players-cjb-alert" role="status">检测到 CJB 作弊</span>
+                      ) : null}
+                    </span>
                   </span>
                   <span>{shortId(player.uniqueMultiplayerId)}</span>
                   <span className="sd-players-row-actions">

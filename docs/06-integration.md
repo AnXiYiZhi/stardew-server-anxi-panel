@@ -1,3 +1,90 @@
+# PLAYER-MOD-PRESENTATION-2 联调契约（2026-08-06，completed，未发布）
+
+- 详情接口不再把面板自带运行组件纳入比较：`Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control` 必须从 `serverContext.loadedMods`、comparison items 和 summary 排除。玩家/服务器 `apiVersion` 字段继续返回，但不再合成虚拟 SMAPI 比较项。
+- 可见结果顺序固定为 `client_only / missing_on_client / version_mismatch / match`；前端对应文案为“玩家额外安装 / 玩家缺少 Mod / 版本不同 / 匹配”。前端还按相同三条 UniqueID 做兼容过滤，避免混合版本缓存重新显示内置项。
+- CJB 横幅只显示“检测到该玩家使用了 CJB 作弊工具”，条目只显示“检测到 CJB 作弊”；不再显示两段解释。只读、不处罚和客户端自报边界仍是接口安全约束，只是不在这两个 UI 位置重复文案。
+- 桌面/390×844 手机 QA 已验证分组次序、内置项与旧解释均不存在，手机 root/body 无横向溢出；后端全量 test/vet/build、前端状态/响应式测试、TypeScript 与 production build 通过。该验收使用隔离 fixture，不替代尚未完成的实体 CJB/移动客户端联机。
+
+# PLAYER-MOD-CJB-LIST-1 列表提示联调契约（2026-08-06，completed，未发布）
+
+- `GET /api/instances/:id/players` 的玩家项可带 `"modRiskFlags":["cjb"]`。这是后端从独立 `player-mod-contexts.json` 提取的轻量标记；响应不包含 `mods`，完整清单仍只能通过 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods` 获取。
+- 字段缺失或空数组表示没有可展示的 CJB 标记，不能反推“安全”。存在 `cjb` 时，桌面/手机玩家列表按钮显示“检测到 CJB 作弊”，桌面与手机待认证卡同样显示文字徽标；详情横幅显示“检测到该玩家使用了 CJB 作弊工具”。
+- 标记来源始终是客户端自报，stale 可保留最后一次检测结果；修改 manifest UniqueID、未上报或不兼容链路仍可能绕过。所有提示均只读，不改变加入、批准、踢出、封禁或自动拦截逻辑。
+- 隔离 QA 已覆盖 desktop reported 列表/待认证/详情及 390×844 mobile 总览/列表/详情，手机 root/body 横向溢出为 0；Go 测试覆盖高频玩家响应不泄漏完整 Mod 数据。
+
+# PLAYER-MOD-COMPAT-1 第三阶段联调矩阵（2026-08-06，PC+SMAPI 单客户端真机通过，其余实体矩阵受限，未发布）
+
+证据等级必须分开记录：C# 契约测试验证 Control 实际复用的状态转换；Go loopback 测试通过真实 HTTP handler、SQLite 与隔离文件系统；真实 game-data 编译验证 SMAPI/game API 可用。2026-08-06 又增加一台本机真实 Stardew `1.6.15` + SMAPI `4.5.2` 客户端的标准 LAN/IP 联机证据，但它仍不能替代原版、CJB、移动端或多客户端矩阵。
+
+| 场景 | 当前证据 | 结论 |
+| --- | --- | --- |
+| PC 原版经 IP 加入 | pending→10 秒 unavailable、`mods:null`、HTTP/UI 禁止 0/一致/安全已自动化 | 实体 PC 加入与不断线未验证；不得宣称真机通过 |
+| PC + SMAPI 经 IP 加入 | 本机真实客户端加入 `127.0.0.1:24682`；reported，Content Patcher 2.9.0、Farm Type Manager 1.26.1、Save Backup 4.5.2 的 ID/名称/版本均准确；游戏/SMAPI 为 1.6.15/4.5.2 | 单客户端真机通过；加入和保持在线正常，无管理动作 |
+| 官方 CJB Cheats Menu | 官方 ID、红色文字提示、只读采集路径与无管理调用回归通过 | 实体客户端正常加入未验证；不会自动踢出/封禁 |
+| 官方 CJB Item Spawner | 与 Cheats Menu 相同，单独 fixture 通过 | 实体客户端正常加入未验证；不会自动踢出/封禁 |
+| 缺少/额外/版本不同 | Go loadedMods 比较和前端分组 fixture 通过 | 自动化通过 |
+| server_only | 未上报时不生成 missing；若客户端也上报，可作为“服务器专用”match 展示 | 自动化通过 |
+| Android/iOS 官方客户端 | unavailable/null 与页面稳定状态已覆盖 | 本机无真实移动客户端，IP 加入、不报错/不断线均未验证 |
+| Android 实验性 SMAPI | 无可用真实环境 | 未验证，不推断支持 |
+| 等待、断线、重连、重启、多玩家 | 同一真实客户端主动断线后 stale；重连同一 ID 生成新 reportedAt 并恢复 reported；隔离 server 受控重启成功且旧记录为 stale。pending/unavailable、多 ID 隔离仍有 C# 回归 | 单客户端断线/重连/server 重启真机通过；多个远端玩家同时在线未验证 |
+| 异常/重复/超长字段 | C# 采集端与 Go 读取端双层长度、控制字符、大小写去重、数量上限回归，前端长文案/重复归组通过 | 自动化通过 |
+
+真机联调另启动了任务临时根目录中的真实 Panel/Junimo server：根目录 `%LOCALAPPDATA%/Temp/sap-player-mod-real-20260806`，游戏端口 `24682/udp`，Panel `18766/tcp`，使用从 `stardew_game-data` 只读克隆出的独立 game-data volume 和新建的 `ModContextLab` 测试存档；没有挂载或复用用户存档/设置，也没有修改既有实例。该次旧口径抓取为虚拟 SMAPI 与 Save Backup match、Content Patcher/Farm Type Manager client_only；按当前契约应隐藏 SMAPI/Control/Junimo，只保留用户 Mod 比较。production dist 的静态详情路径实际返回 HTTP 200；本轮隔离 QA 已补桌面/手机视觉，但仍不是实体 CJB/移动客户端真机证据。
+
+隔离例外必须保留：游戏 driver 的最终 Compose project 是实例目录 basename `stardew`，没有继承任务的 Panel project 名；启动前只检查任务 label/端口，遗漏了创建于 2026-07-06 的既有 `stardew_steam-session`，本次 steam-auth 因而复用了该卷。未读取其中 token 内容，清理时也不得删除该旧卷。LAN/IP ModContext 证据不依赖邀请码，仍可用于验证本功能，但认证卷完全隔离与专用测试凭据没有得到证明，后续真实矩阵必须在启动前预检最终 project/network/全部 volume 名。
+
+Mod 清单始终是客户端通过 SMAPI peer context 自报，不是服务端对客户端文件系统的可信审计。CJB 只按 `CJBok.CheatsMenu` / `CJBok.ItemSpawner` 不区分大小写精确提示；修改 manifest UniqueID、使用未上报/不兼容链路或篡改客户端都可能绕过。该功能只用于人工参考，不能作为自动处罚依据。
+
+# PLAYER-MOD-CONTEXT-1 / FE-PLAYER-MOD-VIEW-1 联调契约（2026-08-06，前后端两阶段完成，未发布）
+
+本阶段只提供登录态只读接口，不新增前端页面，也不会拦截、踢出或封禁玩家：
+
+```http
+GET /api/instances/:id/players/:uniqueMultiplayerId/mods
+```
+
+- `uniqueMultiplayerId` 是带可选负号的十进制字符串，最长 32 个字符；非法值返回 `400 invalid_player`，未登录返回 `401`，非 GET 返回 `405 method_not_allowed`。
+- 有可比较上报时返回 `200`。`contextStatus` 为 `reported`，`mods` 是玩家实际上报的数组（真实“零 Mod”才是 `[]`）；`serverContext.loadedMods` 只来自该服务器进程实际生成的 `options.json.loadedMods`，物理 Mod 扫描只用现有 `ModInfo/syncKind` 补名称和分类，不能把未加载目录加入比较基线。
+- `comparison.items[].result` 只会是 `match / missing_on_client / client_only / version_mismatch`。`missing_on_client` 仅针对实际加载、启用且 `syncKind=client_required` 的服务器 Mod；`server_only` 和无法确认分类的条目不得因客户端未上报而产生缺失告警。
+- 面板自带的 `SMAPI`、`JunimoHost.Server`、`StardewAnxiPanel.Control` 不参与玩家 Mod 比较；服务端和 peer 的 `apiVersion` 仍作为上下文元数据返回。普通 Mod 版本沿用后端规范化比较，因此例如 `1.0` 与 `1.0.0` 等价。
+- 玩家清单里不区分大小写精确命中 `CJBok.CheatsMenu` 或 `CJBok.ItemSpawner` 时，相关 item 和顶层都包含 `riskFlags:["cjb"]`。这是只读提示，不触发任何管理操作。
+
+可比较响应核心形状：
+
+```json
+{
+  "instanceId": "...",
+  "uniqueMultiplayerId": "-3583227484444031316",
+  "hasSmapi": true,
+  "gameVersion": "1.6.15",
+  "apiVersion": "4.3.2",
+  "mods": [{"uniqueId":"Example.Mod","name":"Example","version":"1.0.0"}],
+  "contextStatus": "reported",
+  "reportedAt": "2026-08-06T12:00:00Z",
+  "updatedAt": "2026-08-06T12:00:00Z",
+  "serverContext": {
+    "gameVersion": "1.6.15",
+    "apiVersion": "4.3.2",
+    "generatedAt": "2026-08-06T12:00:00Z",
+    "loadedMods": []
+  },
+  "comparison": {"status":"available","items":[],"summary":{"match":0,"missingOnClient":0,"clientOnly":0,"versionMismatch":0}},
+  "riskFlags": [],
+  "message": ""
+}
+```
+
+- 未收到可靠清单、Control 尚在等待、客户端无 SMAPI、玩家已断开、实例未运行、sidecar 损坏或运行态基线不可读时仍返回 `200`，但 `comparison.status="unavailable"`，并由 `contextStatus/message` 说明原因。`pending` 和 `unavailable` 必须返回 `mods:null`，不得用 `[]` 冒充“没有 Mod”；`stale` 可以保留最后一次清单供展示，但禁止继续比较。
+- Control 独立原子写入 `control/player-mod-contexts.json`，完整清单不会进入高频 `players.json`。它只监听标准 SMAPI peer 上下文；未触发该上下文的客户端（包括当前未实现的 Steam SDR 兼容路径）、无 SMAPI 客户端、超限或不可信上报、以及上下文超时/断开的玩家都只能得到 unavailable/pending/stale，前端不得据此推断其没有 Mod。
+
+前端消费约定：
+
+- 静态详情路由为 `/instances/stardew/player-mods?playerId=<uniqueMultiplayerId>`；SPA 只白名单该精确 pathname，playerId 由前端 URL 编码后传给上述只读 API。桌面玩家表和移动玩家卡只在 ID 存在时展示入口。
+- pending、unavailable、stale、comparison unavailable 与 HTTP error 必须区分。客户端清单 unavailable 使用固定解释，不显示统计；只有 `comparison.status="available"` 才渲染四项统计与分组。当前 stale 响应的 comparison 为 unavailable，只能提示最后记录过期。
+- 页面按不区分大小写的 UniqueID 去重并过滤三类面板内置组件，再从可见 items 计算统计；异常的 `server_only + missing_on_client` 在前端也会被丢弃。普通服务器专用条目可以在 match/version mismatch 组显示“服务器专用”，但不得成为玩家缺少 Mod 告警。
+- CJB 总横幅和对应条目都包含明确文字标签，但不再附加解释段落。桌面和移动复用 `PlayerModsDetail`，移动端在 `MobilePlayersPage` 内切换列表/详情并提供返回按钮。
+- API 加载失败只提供重试；不影响玩家加入、认证和已有管理按钮。页面不会提交踢出、封禁、批准认证或其它写请求。
+
 # SMAPI-DOWNLOAD-RESUME-1 联调契约（2026-07-28，v0.4.5 released）
 
 - HTTP API、安装请求、job 类型和阶段名均不变；仍是 `steamcmd_downloading → smapi_installing → game_installed`，失败仍为 `smapi_install_failed`。前端不提交 URL、Range、SHA 或超时参数。

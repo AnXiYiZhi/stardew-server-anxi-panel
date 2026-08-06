@@ -8,6 +8,7 @@ export type StardewRoute =
   | 'saves'
   | 'jobs'
   | 'players'
+  | 'player-mods'
   | 'mods'
   | 'diagnostics'
   | 'settings'
@@ -16,6 +17,7 @@ export type StardewSaveAction = 'new' | 'upload'
 
 export type StardewNavigateOptions = {
   saveAction?: StardewSaveAction
+  playerId?: string
 }
 
 export type StardewSaveActionRequest = {
@@ -96,6 +98,7 @@ const VALID_ROUTES: StardewRoute[] = [
   'saves',
   'jobs',
   'players',
+  'player-mods',
   'mods',
   'diagnostics',
   'settings',
@@ -108,6 +111,9 @@ export function parseRoute(pathname: string): StardewRoute {
   return VALID_ROUTES.find((r) => r === suffix) ?? 'overview'
 }
 
-export function routeToPath(route: StardewRoute): string {
-  return `${ROUTE_BASE}/${route}`
+export function routeToPath(route: StardewRoute, options?: StardewNavigateOptions): string {
+  const path = `${ROUTE_BASE}/${route}`
+  if (route !== 'player-mods' || !options?.playerId) return path
+  const query = new URLSearchParams({ playerId: options.playerId })
+  return `${path}?${query.toString()}`
 }

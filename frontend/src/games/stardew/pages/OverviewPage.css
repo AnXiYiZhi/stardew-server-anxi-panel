@@ -21,7 +21,6 @@
 .sd-ov-banner-bg {
   position: absolute;
   inset: 0;
-  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
   background-size: auto 100%;
   background-position: right center;
   background-color: #87c8e0;
@@ -391,7 +390,6 @@
 }
 
 .sd-ov-banner-bg::after {
-  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
   background-repeat: no-repeat;
   background-position: center bottom;
   background-size: auto min(92%, 188px);

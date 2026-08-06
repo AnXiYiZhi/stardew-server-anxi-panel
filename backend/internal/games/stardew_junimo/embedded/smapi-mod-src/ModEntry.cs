@@ -14,6 +14,7 @@ public sealed class ModEntry : Mod
 {
     private static readonly TimeSpan SaveCommandTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PauseErrorLogInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PlayerModContextPendingTimeout = TimeSpan.FromSeconds(10);
 
     private string controlDir = "";
     private string commandDir = "";
@@ -23,6 +24,7 @@ public sealed class ModEntry : Mod
     private readonly PasswordProtectionBridge passwordBridge = new();
     private readonly WarpHomeBridge warpHomeBridge = new();
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
+    private readonly Dictionary<string, PlayerModContext> playerModContexts = new(StringComparer.Ordinal);
     private bool panelCustomizationApplied;
     private PauseReason lastForcedPauseReason;
     private DateTimeOffset lastPauseErrorLogAt = DateTimeOffset.MinValue;
@@ -43,6 +45,7 @@ public sealed class ModEntry : Mod
         commandResultDir = Path.Combine(controlDir, "command-results");
         Directory.CreateDirectory(commandDir);
         Directory.CreateDirectory(commandResultDir);
+        LoadPlayerModContexts();
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.GameLoop.SaveCreating += OnSaveCreating;
@@ -50,6 +53,9 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.Saved += OnSaved;
         helper.Events.GameLoop.UpdateTicking += OnUpdateTicking;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        helper.Events.Multiplayer.PeerContextReceived += OnPeerContextReceived;
+        helper.Events.Multiplayer.PeerConnected += OnPeerConnected;
+        helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
 
         helper.ConsoleCommands.Add("sap_status", "Write a Stardew Anxi Panel status snapshot.", (_, _) =>
         {
@@ -57,6 +63,52 @@ public sealed class ModEntry : Mod
         });
 
         WriteStatus("booting", "SMAPI control mod loaded.");
+    }
+
+    private void OnPeerContextReceived(object? sender, PeerContextReceivedEventArgs e)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var playerId = e.Peer.PlayerID.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var mods = e.Peer.Mods?.Select(mod => new PlayerReportedMod
+        {
+            UniqueId = mod.ID,
+            Name = mod.Name,
+            Version = mod.Version?.ToString() ?? "",
+        });
+        if (!PlayerModContextLifecycle.Report(
+            playerModContexts,
+            playerId,
+            e.Peer.HasSmapi,
+            e.Peer.GameVersion?.ToString(),
+            e.Peer.ApiVersion?.ToString(),
+            mods,
+            now))
+        {
+            return;
+        }
+        WritePlayerModContexts(now);
+    }
+
+    private void OnPeerConnected(object? sender, PeerConnectedEventArgs e)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var playerId = e.Peer.PlayerID.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!PlayerModContextLifecycle.Connect(playerModContexts, playerId, e.Peer.HasSmapi, now))
+        {
+            return;
+        }
+        WritePlayerModContexts(now);
+    }
+
+    private void OnPeerDisconnected(object? sender, PeerDisconnectedEventArgs e)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var playerId = e.Peer.PlayerID.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!PlayerModContextLifecycle.Disconnect(playerModContexts, playerId, e.Peer.HasSmapi, now))
+        {
+            return;
+        }
+        WritePlayerModContexts(now);
     }
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
@@ -141,6 +193,7 @@ public sealed class ModEntry : Mod
 		if (farmCatalogRequest is not null && !runtimeFarmCatalogReady)
 			WritePanelOptions();
         WritePlayers();
+        ExpirePendingPlayerModContexts();
         ConsumeCommands();
 
         var timedOutSave = pendingSaveCommands.Expire(DateTimeOffset.UtcNow);
@@ -403,6 +456,8 @@ public sealed class ModEntry : Mod
 				TransactionId = farmCatalogRequest?.TransactionId ?? "",
 				GeneratedAt = generatedAt,
 				ControlModVersion = ModManifest.Version.ToString(),
+				GameVersion = Game1.version ?? "",
+				ApiVersion = Constants.ApiVersion.ToString(),
 				LoadedMods = loadedMods,
 				ModFingerprint = NewGameControlContract.ComputeModFingerprint(loadedMods),
                 Genders = new[] { Option("male", "男"), Option("female", "女") },
@@ -584,6 +639,53 @@ public sealed class ModEntry : Mod
             UpdatedAt = DateTimeOffset.UtcNow,
             SaveId = Context.IsWorldReady ? Game1.GetSaveGameName() : "",
             Players = players,
+        });
+    }
+
+    private string PlayerModContextsPath()
+        => Path.Combine(controlDir, "player-mod-contexts.json");
+
+    private void LoadPlayerModContexts()
+    {
+        var path = PlayerModContextsPath();
+        try
+        {
+            if (!File.Exists(path))
+                return;
+            var info = new FileInfo(path);
+            if (info.Length > PlayerModContextContract.MaxContextFileBytes)
+            {
+                Monitor.Log("Ignoring oversized player mod context file.", LogLevel.Warn);
+                return;
+            }
+            var raw = JsonSerializer.Deserialize<PlayerModContextsFile>(File.ReadAllText(path), ContractJson.Options);
+            var normalized = PlayerModContextContract.NormalizeLoadedFile(raw, DateTimeOffset.UtcNow);
+            foreach (var entry in normalized.Players)
+                playerModContexts[entry.Key] = entry.Value;
+            if (playerModContexts.Count > 0)
+                WritePlayerModContexts(normalized.UpdatedAt);
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Failed to read player mod contexts: {ex.Message}", LogLevel.Warn);
+            playerModContexts.Clear();
+        }
+    }
+
+    private void ExpirePendingPlayerModContexts()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (PlayerModContextLifecycle.ExpirePending(playerModContexts, now, PlayerModContextPendingTimeout))
+            WritePlayerModContexts(now);
+    }
+
+    private void WritePlayerModContexts(DateTimeOffset now)
+    {
+        PlayerModContextContract.PruneOldest(playerModContexts);
+        WriteJsonAtomic(PlayerModContextsPath(), new PlayerModContextsFile
+        {
+            UpdatedAt = now,
+            Players = playerModContexts.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
         });
     }
 

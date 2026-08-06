@@ -1,3 +1,40 @@
+# FE-PLAYER-MOD-PRESENTATION-2：玩家比较顺序与内置项过滤（2026-08-06，completed，未发布）
+
+- 详情统计和分组统一改为“玩家额外安装”第一、“玩家缺少 Mod”第二，之后是“版本不同”和“匹配”；条目结果徽标使用同一套新文案。
+- CJB 总横幅只保留“检测到该玩家使用了 CJB 作弊工具”，CJB 条目只保留“检测到 CJB 作弊”文字徽标；移除用户指定的两段自报/不自动处理说明。列表、待认证卡和详情仍只有只读提示，没有新增任何踢出、封禁或拦截请求。
+- `player-mod-details.ts` 增加前端防御过滤，大小写不敏感丢弃 `Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control`，兼容旧接口或缓存数据。其它第三方 `server_only` 仍可作为服务器专用信息显示，但不会进入玩家缺少。
+- `test:player-mods`、`test:responsive-layout`、独立 TypeScript 检查和 production build 通过；Browser 在桌面与 390×844 手机详情验证新顺序、三类内置项和两段旧说明均不存在，手机 root/body 宽度均为 390，无横向溢出。
+
+# FE-PLAYER-MOD-CJB-LABEL-1：列表与详情显式 CJB 检测提示（2026-08-06，completed，未发布）
+
+- `StardewPlayerInfo` 新增可选 `modRiskFlags`；`player-mod-details.ts` 统一大小写不敏感的 `cjb` 判断和“检测到 CJB 作弊”动作文案。未返回字段、空数组或未知 flag 都保持普通“查看上报 Mod”。
+- 桌面玩家列表命中时把“查看上报 Mod”改成红色文字按钮“检测到 CJB 作弊”，仍进入原只读详情；桌面待认证玩家卡在姓名下显示同文案红色徽标。手机玩家列表按钮与手机总览的待认证卡同步，触控按钮继续保持至少 44px。
+- 详情横幅标题为“检测到该玩家使用了 CJB 作弊工具”，条目徽标为“检测到 CJB 作弊”；当前已按后续反馈移除两段解释，仅保留直接文字检测提示、边框和红色视觉。
+- QA fixture 为普通在线玩家和待认证玩家补 `modRiskFlags:["cjb"]`。`test:player-mods`、`test:responsive-layout`、独立 TypeScript 检查和 production build 通过；桌面及 390×844 手机 Browser 回归覆盖列表、待认证卡、详情与零横向溢出。
+
+# FE-PLAYER-MOD-COMPAT-1：玩家 Mod 详情第三阶段收尾（2026-08-06，真实 PC+SMAPI 数据通过，页面真机矩阵受限，未发布）
+
+- `test-player-mod-details.ts` 的兼容矩阵扩展到 PC 原版、Android/iOS 官方客户端共享的 `unavailable + mods:null` 解释；明确断言不显示“0 个 Mod”“完全一致”或“安全”。pending、stale、HTTP 失败继续是互不混淆的状态。
+- 比较分组现在用完整 fixture 回归 match、client_required 缺失、版本不同、玩家额外安装和可选的普通 server_only match；防御层会丢弃任何错误标成 `missing_on_client + server_only` 的条目以及三类面板内置组件。大小写重复 ID 保留风险等级更高项，256 字名称与超长版本不会破坏状态归组。
+- 两条官方 CJB UniqueID 分别验证，改成其它 manifest UniqueID 的条目不会命中。这既是预期边界，也意味着客户端修改 manifest ID 可绕过提示；页面只显示红色文字横幅/徽标，不发送踢出、封禁或拦截请求。
+- 阶段二的 1365×900/280×740 Browser 证据继续有效；本阶段只增加状态回归与生产门禁，不改布局。最终 12 项前端状态脚本、独立 `npx tsc -b` 和 production build 通过。
+- 本机真实 PC+SMAPI 客户端经 IP 加入后，详情 API 返回 `reported`、三个真实 Mod、`match=2 / missingOnClient=0 / clientOnly=2 / versionMismatch=0`；主动断线、重连和 server 重启分别得到 stale、新 reportedAt、重启后 stale。把 production dist 嵌入测试 Panel 后，`/instances/stardew/player-mods?playerId=...` 静态路由实际返回 `200 text/html`。应用内 Browser 本轮被本地地址策略拦截，因此没有把“真实 API + 路由 200”写成实际登录后页面视觉通过；PC 原版/CJB/移动端页面仍需真机补验。
+
+# FE-PLAYER-MOD-VIEW-1：玩家 Mod 上报详情（2026-08-06，completed，未发布）
+
+- 桌面玩家名册为每个存在 `uniqueMultiplayerId` 的玩家提供“查看上报 Mod”，进入静态路由 `/instances/stardew/player-mods?playerId=...`；侧栏继续把该详情视为“玩家”区域。后端 SPA 白名单同步加入精确路径，未知子路径仍返回 404。
+- `PlayerModsDetail` 是桌面 `PlayerModsPage` 与移动 `MobilePlayersPage` 详情子视图的共享主体。移动端从玩家卡进入后可返回列表；直接以该路径打开紧凑壳时会落到玩家 Tab。该功能只读，不改变加入、认证、踢出、封禁或拦截流程。
+- 页面依次展示玩家姓名/在线状态、上报时间、游戏与 SMAPI 版本、CJB 红色文字警示、四项比较统计和 player extra/missing/version mismatch/match 分组。条目显示服务器/客户端版本及 syncKind；`server_only` 有“服务器专用”徽标，并在防御性归一化中永远不会进入“玩家缺少 Mod”。
+- CJB 仅按两条官方 UniqueID（不区分大小写）标记。总横幅和条目都包含明确 CJB 文字，不能只依靠红色；按后续反馈不再附加解释段落。前端按 UniqueID 不区分大小写去重并过滤三类面板内置组件；每组超过 60 项时分批展开，避免一次渲染超大清单。
+- `pending`、`stale`、客户端未上报、服务器比较基准不可用和 HTTP 失败分别使用独立状态。`unavailable` 固定显示“该客户端未上报 Mod 清单，常见于原版 PC、手机、平板或不兼容的 SMAPI；这不代表客户端一定没有 Mod。”且不渲染统计、“0 个 Mod”“完全一致”或“安全”。`stale` 只展示后端允许的最后记录；当前第一阶段契约返回 comparison unavailable，因此不显示比较统计。
+- 新增 `PlayerModDetailsResult` 等 TypeScript 类型、`getPlayerModDetails` API、`player-mod-details.ts` 纯状态/去重逻辑和 `test:player-mods`，并接入 compatibility/release workflow。项目 12 项前端状态测试、独立 `tsc -b`、production build 通过；Go Web/driver 测试通过。应用内 Browser 验证 1365×900 桌面及 280×740 移动入口/返回、长名称/长版本、重复 CJB、窄屏无横向溢出和四类状态，console error 为 0。
+
+# 2026-08-06：真实 Panel 手机预览入口
+
+- 正式前端入口支持在现有路由查询参数中加入 `shell=mobile`，例如 `/instances/stardew/players?shell=mobile`。该参数只强制选择现有 `StardewMobileShell`，不使用 QA mock、不改变 API、鉴权或玩家加入流程；标签标题显示“Stardew Anxi Panel · 手机端”，便于与同开的桌面标签区分。
+- 手机预览选择在当前页面生命周期内保持；移动端内部使用 History API 切换玩家列表/Mod 详情时，即使后续 URL 查询只剩 `playerId`，当前标签也不会退回桌面 Shell。刷新时需要 URL 仍包含 `shell=mobile`。
+- `shell=mobile` 仍保留页面内“完整版”切换能力；没有该参数时继续完全遵循 `COMPACT_SHELL_MEDIA_QUERY`，不改变真实手机和桌面端的自动适配。
+
 # DOCS-HOME-HERO-INVITE-1：首页联机邀请 Hero 重构（2026-08-01，released）
 
 - 首页 Hero 从“品牌名 + 大标题 + 发光 Logo”改为开放式双栏：左侧保留“一键部署你和朋友的专属联机服务器”和两个原 CTA，右侧新增 `HeroInviteCard.vue` 联机邀请票，直接展示“你 → 服务器 → 朋友”、邀请码、存档/Mod/玩家管理、Docker 自托管与数据自持语义。

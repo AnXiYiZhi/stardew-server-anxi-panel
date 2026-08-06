@@ -27,6 +27,7 @@ const ServerControlPage = lazy(() =>
 const SavesPage = lazy(() => import('./pages/SavesPage').then((m) => ({ default: m.SavesPage })))
 const JobsLogsPage = lazy(() => import('./pages/JobsLogsPage').then((m) => ({ default: m.JobsLogsPage })))
 const PlayersPage = lazy(() => import('./pages/PlayersPage').then((m) => ({ default: m.PlayersPage })))
+const PlayerModsPage = lazy(() => import('./pages/PlayerModsPage').then((m) => ({ default: m.PlayerModsPage })))
 const ModsPage = lazy(() => import('./pages/ModsPage').then((m) => ({ default: m.ModsPage })))
 const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then((m) => ({ default: m.DiagnosticsPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
@@ -527,6 +528,7 @@ export function StardewPanel({
   const [route, setRoute] = useState<StardewRoute>(() =>
     parseRoute(window.location.pathname),
   )
+  const [locationSearch, setLocationSearch] = useState(() => window.location.search)
   const [saveActionRequest, setSaveActionRequest] = useState<StardewSaveActionRequest | null>(null)
   const [shellViewport, setShellViewport] = useState(() =>
     calculateShellViewport(window.innerWidth, window.innerHeight),
@@ -555,7 +557,10 @@ export function StardewPanel({
   }, [])
 
   useEffect(() => {
-    const onPop = () => setRoute(parseRoute(window.location.pathname))
+    const onPop = () => {
+      setRoute(parseRoute(window.location.pathname))
+      setLocationSearch(window.location.search)
+    }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
@@ -565,7 +570,7 @@ export function StardewPanel({
     if (!mainScroll) return
     mainScroll.scrollTop = 0
     mainScroll.scrollLeft = 0
-  }, [route])
+  }, [locationSearch, route])
 
   useLayoutEffect(() => {
     const shellViewport = shellViewportRef.current
@@ -694,9 +699,11 @@ export function StardewPanel({
     } else if (next !== 'saves') {
       setSaveActionRequest(null)
     }
-    if (next === route) return
-    window.history.pushState(null, '', routeToPath(next))
+    const nextPath = routeToPath(next, options)
+    if (`${window.location.pathname}${window.location.search}` === nextPath) return
+    window.history.pushState(null, '', nextPath)
     setRoute(next)
+    setLocationSearch(new URL(nextPath, window.location.origin).search)
   }
 
   const pageProps = { user, instanceState, dashboardData, onNavigate: navigate, saveActionRequest, onLogout }
@@ -715,6 +722,13 @@ export function StardewPanel({
         return <JobsLogsPage {...pageProps} />
       case 'players':
         return <PlayersPage {...pageProps} />
+      case 'player-mods':
+        return (
+          <PlayerModsPage
+            {...pageProps}
+            playerId={new URLSearchParams(locationSearch).get('playerId') ?? ''}
+          />
+        )
       case 'mods':
         return <ModsPage {...pageProps} />
       case 'diagnostics':
@@ -902,9 +916,9 @@ export function StardewPanel({
           {NAV_ENTRIES.map((entry) => (
             <div className="sd-nav-row" key={entry.route}>
               <button
-                className={`sd-nav-item${route === entry.route ? ' active' : ''}`}
+                className={`sd-nav-item${route === entry.route || (route === 'player-mods' && entry.route === 'players') ? ' active' : ''}`}
                 data-route={entry.route}
-                aria-current={route === entry.route ? 'page' : undefined}
+                aria-current={route === entry.route || (route === 'player-mods' && entry.route === 'players') ? 'page' : undefined}
                 aria-label={entry.label}
                 title={entry.label}
                 onClick={() => navigate(entry.route)}

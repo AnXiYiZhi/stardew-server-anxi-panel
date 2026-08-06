@@ -4,8 +4,7 @@ Full prototype screenshots and extraction workspaces were moved out of the main 
 
 ## Kept In Repo
 
-- `overview-design-baseline-2026-06-30.png` - downscaled overview design baseline from the original image2 prototype pass.
-- `overview-current-baseline-2026-07-04.png` - downscaled overview implementation baseline from the current-frontend-code capture pass.
+No local prototype images are retained. This directory is a text-only pointer.
 
 ## External Artifacts
 

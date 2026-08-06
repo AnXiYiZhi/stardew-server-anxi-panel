@@ -3,8 +3,11 @@ import { approvePlayerAuth, banPlayer, deleteFarmhand, getInstancePasswordStatus
 import { errorMessage, formatDate } from '../../../core/helpers'
 import type { InstancePasswordStatus, StardewPlayerInfo } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
+import { routeToPath } from '../stardew-routes'
 import { formatStardewLocation } from '../location-format'
 import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
+import { PlayerModsDetail } from '../PlayerModsDetail'
+import { hasPlayerCjbRisk, playerModActionLabel } from '../player-mod-details'
 import './MobilePlayersPage.css'
 
 type MobilePlayersPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
@@ -59,6 +62,11 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
   const [approveMessage, setApproveMessage] = useState<string | null>(null)
   const [approveConfirmed, setApproveConfirmed] = useState(false)
   const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(() =>
+    window.location.pathname.endsWith('/player-mods')
+      ? new URLSearchParams(window.location.search).get('playerId')
+      : null,
+  )
 
   const [banConfirmTarget, setBanConfirmTarget] = useState<PlayerTarget | null>(null)
   const [banBusyId, setBanBusyId] = useState<string | null>(null)
@@ -111,6 +119,18 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
       .catch(() => { if (!cancelled) setPasswordStatus(null) })
     return () => { cancelled = true }
   }, [isRunning])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setSelectedPlayerId(
+        window.location.pathname.endsWith('/player-mods')
+          ? new URLSearchParams(window.location.search).get('playerId')
+          : null,
+      )
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   async function handleConfirmKick() {
     const target = kickConfirmTarget
@@ -222,6 +242,25 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
   const isPlayerActionBusy = (playerId: string) =>
     warpHomeBusyId === playerId || kickBusyId === playerId || approveBusyId === playerId || banBusyId === playerId || deleteBusyId === playerId
 
+  function openPlayerMods(playerId: string) {
+    window.history.pushState(null, '', routeToPath('player-mods', { playerId }))
+    setSelectedPlayerId(playerId)
+  }
+
+  function closePlayerMods() {
+    window.history.replaceState(null, '', routeToPath('players'))
+    setSelectedPlayerId(null)
+  }
+
+  if (selectedPlayerId) {
+    const selectedPlayer = playerRows.find((player) => player.uniqueMultiplayerId === selectedPlayerId)
+    return (
+      <div className="sd-mplay-wrap sd-mplay-detail-view">
+        <PlayerModsDetail playerId={selectedPlayerId} player={selectedPlayer} onBack={closePlayerMods} />
+      </div>
+    )
+  }
+
   return (
     <div className="sd-mplay-wrap">
       <section className="sd-panel sd-mplay-card">
@@ -271,6 +310,16 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
                     {playerLocationText(player)}
                   </span>
                   <div className="sd-mplay-player-actions">
+                    {player.uniqueMultiplayerId ? (
+                      <button
+                        type="button"
+                        className={`sd-btn-tan sd-mplay-player-action-btn sd-mplay-player-mods-btn${hasPlayerCjbRisk(player) ? ' sd-mplay-player-mods-btn--cjb' : ''}`}
+                        onClick={() => openPlayerMods(player.uniqueMultiplayerId || '')}
+                        aria-label={hasPlayerCjbRisk(player) ? '检测到 CJB 作弊，查看上报 Mod' : undefined}
+                      >
+                        {playerModActionLabel(player)}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="sd-btn-green sd-mplay-player-action-btn"

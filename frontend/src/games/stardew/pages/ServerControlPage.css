@@ -148,12 +148,6 @@
   aspect-ratio: 4 / 3;
   min-height: 98px;
   opacity: 0.36;
-  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
-  background-repeat: no-repeat;
-  background-position: center bottom;
-  background-size: contain;
-  image-rendering: pixelated;
-  filter: sepia(0.52) saturate(0.62) opacity(0.9);
 }
 
 .sd-server-state-readout {

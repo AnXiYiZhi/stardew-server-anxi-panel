@@ -59,7 +59,11 @@ function mobileStatusDotClass(state: string | undefined, loading: boolean): stri
 
 export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobileShellProps) {
   const dashboardData = useStardewDashboardData()
-  const [activeTab, setActiveTab] = useState<MobileTabKey>('overview')
+  const [activeTab, setActiveTab] = useState<MobileTabKey>(() =>
+    window.location.pathname.endsWith('/player-mods') || window.location.pathname.endsWith('/players')
+      ? 'players'
+      : 'overview',
+  )
   const mainScrollRef = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {

@@ -317,6 +317,7 @@ func isKnownRequestPath(p string) bool {
 		"/instances/stardew/saves",
 		"/instances/stardew/jobs",
 		"/instances/stardew/players",
+		"/instances/stardew/player-mods",
 		"/instances/stardew/mods",
 		"/instances/stardew/diagnostics",
 		"/instances/stardew/settings":
