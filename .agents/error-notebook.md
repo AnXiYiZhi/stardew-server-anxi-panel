@@ -154,6 +154,7 @@
 - 正确做法：使用 `rg -g 'Dockerfile*' <pattern> .`、`rg -g '*_test.go' <pattern> <dir>`，或先 `rg --files` 再筛选。
 - 预防检查：命令参数中出现 `*` 时确认它属于 `rg -g`，而不是位置参数。
 - 最近复发/补充：2026-08-01 排查升级状态测试时再次把 `backend/internal/web/*_test.go` 作为位置参数传给 `rg`，命中同一 `os error 123`；发布记录检查又把 `docs/backend-handoff/*.md` 当位置参数，整条搜索退出 1。两次都改用 `rg -g '<glob>' ... <root>` 或先列文件；该规则已在 `AGENTS.md` 固化，后续命令构造时先检查位置参数中不存在 `*`。
+- 最近复发/补充：2026-08-06 定位玩家 Mod `syncKind` fixture 时又把 `backend/internal/games/stardew_junimo/*test.go` 作为位置参数传给 `rg`。这是规则固化后的再次复发；同类检索一律先写成 `rg -g '*_test.go' <pattern> backend/internal/games/stardew_junimo`，命令提交前把所有含 `*` 的参数逐个核对为紧跟 `-g` 的值。
 - 适用范围：Windows 上的仓库搜索和发布检查。
 
 ## 2026-07-28：嵌套 Go template 与 PowerShell 转义冲突
@@ -278,6 +279,7 @@
 - 正确做法：先用 `rg -n --fixed-strings` 定位原文；补丁只保留稳定、最短的精确上下文。
 - 预防检查：涉及长中文行或多文件补丁时，不凭聊天上下文重打原文，先读取实际文件。
 - 最近复发/补充：2026-08-01 合并 `v0.4.7` 响应式补丁时凭旧工作树猜测 `SavesPage.css` overlay 的背景声明，导致最小补丁仍因上下文不一致失败；随后一个多文件文档补丁漏写第二个 `*** Update File`，让 handoff 的锚点被错误套到 `docs/03-frontend.md` 并再次校验失败。读取目标 release worktree 精确行、为每个目标显式声明文件后应用成功。补丁上下文必须来自将被修改的那一个 worktree，多文件补丁须逐段核对目标声明。
+- 最近复发/补充：2026-08-06 在同一补丁中依次更新 Compose、删除临时 env、再更新错题本时，把第二个文件声明放进尚未结束的 hunk，`apply_patch` 报 `Unexpected line found in update hunk` 并零修改退出。多种 patch operation 混合时每个文件段必须先正常结束；更稳妥的是把 update/delete/文档补记拆成独立补丁并逐个检查返回。
 - 适用范围：所有 `apply_patch` 修改，尤其是长行、编码敏感文件和多文件补丁。
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
@@ -874,10 +876,13 @@
 - 预防检查：涉及浏览器非 DOM 能力（视口、可见性等）时先读对应 `docs/capabilities/browser/*.md`；不要把原生 Playwright API 直接外推到内置浏览器包装层。
 - 最近补充：切换到移动壳后又沿用桌面页标题 `玩家管理` 做 `waitFor`，导致 locator 超时；移动页实际以“在线玩家”区域开头。跨桌面/移动验收应先读当前语义树，或等待两端共有的稳定控件，不应假定标题复用。
 - 最近补充：打开真实 Panel 登录页后把预期标题猜成“登录面板”，实际页面唯一 heading 仍是产品名 `Stardew Anxi Panel`，表单由“用户名 / 密码 显示密码 / 登录”控件区分。首次进入真实状态页应先取语义快照，再等待快照中确实存在的控件。
+- 最近补充：语义快照把密码输入框显示成 `textbox "密码 显示密码"`，但这不是 `getByLabel("密码 显示密码")` 可用的真实 label；直接照抄组合后的可访问名称会得到 `no_matches`。登录表单应先用已确认的唯一 `input[type="password"]` 定位，或读取可交互 DOM 后使用真实 label，不能把快照的聚合文本反推成 label 绑定。
 - 适用范围：Codex in-app Browser 响应式测试与临时视口覆盖。
 
 ## 2026-08-06：按资源名猜测不存在的 Web handler 文件
 
+- 最近复发/补充：2026-08-06 核对玩家 Mod 详情姓名来源时，直接猜成 `frontend/src/components/PlayerModsDetail.tsx`、`pages/PlayerModsPage.tsx` 和 `pages/mobile/MobilePlayersPage.tsx`，实际组件布局并不在这些路径，`rg` 对三个目标报不存在。前端同样必须先 `rg --files frontend/src | Select-String 'PlayerMods|MobilePlayers'`，不能从导出名推断目录。
+- 最近复发/补充：2026-08-06 定位 Panel 更新检查器时把已存在的 `backend/internal/updatecheck` 简写成不存在的 `backend/internal/update` 并和其它路径一起传给 `rg`，导致检索退出 2。应先用 `rg --files backend/internal | Select-String update` 确认包名，再搜索精确目录；Go import 名不能按业务简称猜测。
 - 环境：PowerShell 7，准备真实隔离 Panel 的存档选择 API。
 - 错误模式：直接把存档 handler 文件猜成 `backend/internal/web/saves_handlers.go` 并传给 `rg`。
 - 症状 / 退出码：`rg` 报目标文件不存在；同命令对已确认文件的搜索仍返回结果，未修改运行环境。
@@ -965,6 +970,76 @@
 - 正确做法：确认失败构建没有留下候选 tag，保留成功 BuildKit layer cache，下一次显式使用 Docker Desktop 支持的 `docker build --network=host` 重新获取失败层；仍失败则停止发布并检查代理/CA，不能关闭签名或摘要校验。
 - 预防检查：候选构建必须检查完整退出码和最终 OCI 标签，出现签名/摘要异常禁止使用 `--allow-untrusted`；网络路径变更后才允许有界重试。
 - 适用范围：正式 Docker 多阶段构建中的 apk、Go modules、npm 依赖与其它外部制品。
+
+## 2026-08-06：在 Panel 初始化前访问受保护 SPA 路由
+
+- 环境：v0.4.8 精确候选 fresh 容器，`/health`、`/api/version` 与 `/api/setup/status` 已通过。
+- 错误模式：尚未 `POST /api/setup/admin` 就请求 `/instances/stardew/player-mods`，并错误期待静态 HTML 200。
+- 症状 / 退出码：服务按初始化门禁正确返回 `503 setup_required`，smoke 脚本因断言主动退出；任务容器和 fresh volume 保留可继续，未创建游戏容器或写用户数据。
+- 根因：混淆了“后端 SPA 路径白名单”与“初始化前公开路径”；白名单只允许初始化后由 SPA 接管，不会绕过 setup middleware。
+- 正确做法：fresh smoke 先验证未初始化状态，再创建任务专用管理员并保持会话，之后访问 `/instances/stardew/player-mods?playerId=...`；初始化前只检查明确公开的 health/version/setup 端点。
+- 预防检查：真实 HTTP 脚本按 middleware 顺序排列：public readiness → setup → auth → protected SPA/API；不要由静态路由白名单推断公开权限。
+- 适用范围：Panel fresh 安装、浏览器直达路由和鉴权 E2E。
+
+## 2026-08-06：从 Windows Compose CLI 生成 Linux updater 不可验证的路径标签
+
+- 环境：Docker Desktop Linux、Windows 宿主 `docker compose`、真实 Web 一键更新 harness。
+- 错误模式：从 `E:\...` 工作目录直接启动 Compose，导致容器 label `com.docker.compose.project.config_files/working_dir` 保存 Windows 盘符路径；Panel 内 Linux `filepath.IsAbs` 无法把它认作安全绝对路径。
+- 症状 / 退出码：更新检查成功，但 dry-run 返回 `unsupported / compose_metadata_invalid / Compose config_files 不是可验证的绝对路径`；updater 未拉取、停止或重建任何容器。
+- 根因：Compose 元数据由调用方路径语义决定；Windows 盘符对 Linux Panel 不是可反向校验的部署路径。
+- 正确做法：用任务专属 Docker CLI 容器挂 Docker Socket，并把 Windows harness bind 到 Docker Desktop 可见的同一 Linux 绝对路径 `/run/desktop/mnt/host/e/...`，从该工作目录执行 Compose；Compose 文件内 host install/compose/data 也使用同一路径。
+- 预防检查：Web updater E2E 启动后先 inspect `config_files/working_dir`，要求 Linux 绝对路径，再调用 dry-run；不能通过放宽路径校验解决测试环境问题。
+- 适用范围：Windows Docker Desktop 上由 Linux 容器反向管理 Compose 的 updater/runtime 集成测试。
+
+## 2026-08-06：Web apply 只等待目标版本而未先读 updater 终态
+
+- 环境：隔离 `0.4.7 → 0.4.8` Web 更新故障注入，pre-tag 远端目标镜像按预期不存在。
+- 错误模式：apply 后外层脚本只轮询 `/health` 与目标 `/api/version`，没有在旧 Panel 恢复后立即读取 `/api/system/update/apply`；更新器 19 秒已写 `failed_rolled_back`，脚本却继续等待约四分钟并最终打印大量无意义健康日志。
+- 症状 / 退出码：产品已安全回滚且旧 Panel healthy，但测试包装脚本直到目标版本超时才退出 1；状态证据明确为 `image_pull_failed / failed_rolled_back`，没有产品数据损失。
+- 根因：把“等待成功版本”误作所有终态的唯一观测通道，漏掉失败回滚后旧版本同样会健康。
+- 正确做法：断线重连循环同时尝试登录/读取 apply status；一旦 phase 为 `succeeded`、`failed_rolled_back` 或 `rollback_failed` 立即结束并按预期分支断言。pre-tag 成功路径改在任务专属 DinD daemon 内提供受控可信 registry，不让正式 helper 跳过 pull，也不提前推远端镜像。
+- 预防检查：异步升级轮询必须列出全部终态并 fail fast；诊断日志仅在最终失败时截取有限 tail，不能在已知终态后继续刷 health。
+- 适用范围：Panel Web updater、断线重连与自动回滚 E2E。
+
+## 2026-08-06：假定 DinD insecure-registry 会覆盖无端口 HTTPS 引用
+
+- 环境：任务专属 DinD、外层私有 registry 监听 443、目标引用固定为受信任的 `ghcr.io/anxiyizhi/...:0.4.8`。
+- 错误模式：给 dockerd 传 `--insecure-registry=ghcr.io:443` 后，假定对规范化为无端口 `ghcr.io` 的 push 会自动改走 HTTP。
+- 症状 / 退出码：四个镜像通过 TCP load 后 ID/size 均正确，但 push 仍发起 HTTPS，registry 返回纯 HTTP，报 `server gave HTTP response to HTTPS client` 并退出 1；registry 未收到正式 manifest。
+- 根因：daemon 对该无端口 registry 引用未应用预期的 insecure 匹配；测试不能依赖模糊的端口规范化。
+- 正确做法：为隔离 registry 签发 SAN=`ghcr.io` 的短期 TLS 证书，把测试 CA 只读挂到该任务 DinD 的 `/etc/docker/certs.d/ghcr.io/ca.crt`，registry 本身启用 TLS；保留 DinD data volume，重启 daemon 后复核已加载镜像再 push。
+- 预防检查：受控 registry 首次使用先执行最小 `/v2/` TLS/push 探针；正式 updater 测试不得使用 `--tls-verify=false`、全局 hosts/CA 或 Docker Desktop daemon 配置变更。
+- 适用范围：隔离 registry、DinD 与可信仓库名的 pre-release 更新测试。
+
+## 2026-08-06：测试用 depends_on 改变 Compose 目标镜像解析语义
+
+- 环境：DinD 内正式 0.4.7 helper、Compose 2.27、panel 与 TLS Release mock 同属一个测试 Compose。
+- 错误模式：为启动顺序方便给 `panel` 增加 `depends_on: mock-release`，没有先验证生产 updater 使用的 `docker compose config --images panel` 输出。
+- 症状 / 退出码：候选从隔离 registry 拉取成功且 digest 精确，但 `config --images panel` 同时输出候选和 `python:3.13-alpine` 依赖镜像，updater 以 `deployment_update_failed / Compose 配置未精确解析到目标镜像` 安全回滚。
+- 根因：测试 Compose 比生产部署多了服务依赖，改变了旧版 Compose 对指定服务的 image 展开结果，触发了正确的单镜像安全断言。
+- 正确做法：移除 panel 的 `depends_on`，保留 mock 的网络别名；测试脚本先单独确认 mock running，再发起更新检查。正式 apply 前用候选 env 复刻 helper 命令，要求 `config --images panel` 只输出一行精确目标。
+- 预防检查：E2E harness 的服务关系必须与生产部署契约一致；添加依赖、profile 或 extends 后先验证 updater 使用的精确 Compose 子命令输出。
+- 适用范围：Panel Web updater 的 Compose harness 与多服务隔离环境。
+
+## 2026-08-06：在复合 if 中直接用数组子表达式统计 null 属性
+
+- 环境：PowerShell 7，验证玩家列表 `modRiskFlags` 的空值契约。
+- 错误模式：在同一 `if` 中写 `@($vanillaList[0].modRiskFlags).Count -ne 0`，把索引、属性访问、数组子表达式和逻辑短路压成一行。
+- 症状 / 退出码：实际脱敏响应明确为 Vanilla Player、`RiskFlags=null`、单独计算 `RiskCount=0`，但复合断言仍错误进入失败分支；产品 API 与 CJB 玩家断言均正常。
+- 根因：复杂 PowerShell 表达式的 null/数组绑定不够透明，不应作为发布证据的唯一断言写法。
+- 正确做法：先把目标行数量与风险数量分别存入标量；风险数量使用 `if ($null -eq $value) { 0 } else { @($value).Count }`，再做简单数值比较。
+- 预防检查：JSON 中允许 null/array 双形态的字段先显式规范化；发布脚本避免在一个条件内混合索引、属性、`@()` 与 `.Count`。
+- 适用范围：PowerShell 对 JSON 空数组、null 和可选集合字段的 E2E 断言。
+
+## 2026-08-06：长时间发布验收中 Docker Desktop 被外部退出
+
+- 环境：Windows 11、Docker Desktop Linux containers、v0.4.8 隔离发布资源清理。
+- 错误模式：沿用数分钟前成功的 Docker 状态，在破坏性清理前没有重新执行 `docker info` 就直接进入容器 ownership 检查。
+- 症状 / 退出码：首个 `docker inspect` 报 Linux engine named pipe 不存在；脚本在任何 `docker rm` 或 network 删除前立即退出，任务资源和用户资源均未变化。
+- 根因：长时间浏览器验收期间 Docker Desktop 进程被外部退出；早先的 readiness 不能代表随后清理时仍可用。
+- 正确做法：执行创建、更新或清理 Docker 资源的每个独立阶段前重新运行 `docker info`；若引擎退出，先确认任务资源未变，再从已验证的 Docker Desktop 路径启动并做有上限 readiness 轮询，最后重新执行带精确 ownership 断言的操作。
+- 预防检查：不要跨长时间浏览器/人工测试复用 Docker readiness 结论；所有破坏性 Docker 脚本把 `docker info` 作为第一条 fail-fast 探针。
+- 适用范围：长运行发布门禁、Docker Desktop 中断恢复与任务资源清理。
 
 ## 编码与换行快速检查
 
