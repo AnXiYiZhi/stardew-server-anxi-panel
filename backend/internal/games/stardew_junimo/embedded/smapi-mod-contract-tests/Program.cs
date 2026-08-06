@@ -181,6 +181,146 @@ request.TransactionId = otherSave.Id;
 if (NewGameControlContract.IsFreshCatalogRequest(request, now))
     throw new InvalidOperationException("mismatched catalog request was accepted");
 
+var pendingContext = PlayerModContextContract.Pending("123", false, now);
+var pendingJson = System.Text.Json.JsonSerializer.Serialize(pendingContext, ContractJson.Options);
+if (!pendingJson.Contains("\"mods\": null", StringComparison.Ordinal)
+    || pendingContext.ContextStatus != PlayerModContextStatuses.Pending)
+{
+    throw new InvalidOperationException("pending player context must publish mods:null");
+}
+
+var rawReportedMods = Enumerable.Range(0, PlayerModContextContract.MaxModsPerPlayer)
+    .Select(index => new PlayerReportedMod
+    {
+        UniqueId = $"Example.Mod.{index}",
+        Name = index == 0 ? "  Unsafe\r\nName  " : new string('n', PlayerModContextContract.MaxNameChars + 10),
+        Version = " 1.0.0\u0000 ",
+    })
+    .Prepend(new PlayerReportedMod { UniqueId = "example.mod.0", Name = "duplicate", Version = "9.9.9" })
+    .ToArray();
+var reportedContext = PlayerModContextContract.Reported("123", true, " 1.6.15 ", " 4.5.2 ", rawReportedMods, now);
+if (reportedContext.ContextStatus != PlayerModContextStatuses.Reported
+    || reportedContext.Mods is null
+    || reportedContext.Mods.Length != PlayerModContextContract.MaxModsPerPlayer
+    || reportedContext.Mods.Count(mod => string.Equals(mod.UniqueId, "Example.Mod.0", StringComparison.OrdinalIgnoreCase)) != 1
+    || reportedContext.Mods[0].Name.Contains('\r')
+    || reportedContext.Mods[0].Name.Contains('\n')
+    || reportedContext.Mods.Any(mod => mod.Name.Length > PlayerModContextContract.MaxNameChars)
+    || reportedContext.Mods.Any(mod => mod.Version.Contains('\u0000')))
+{
+    throw new InvalidOperationException("reported player mods were not bounded, normalized, and deduplicated");
+}
+var excessiveContext = PlayerModContextContract.Reported(
+    "124",
+    true,
+    "1.6.15",
+    "4.5.2",
+    Enumerable.Range(0, PlayerModContextContract.MaxModsPerPlayer + 1)
+        .Select(index => new PlayerReportedMod { UniqueId = $"Excess.Mod.{index}", Name = "excess", Version = "1.0.0" }),
+    now);
+if (excessiveContext.ContextStatus != PlayerModContextStatuses.Unavailable || excessiveContext.Mods is not null)
+    throw new InvalidOperationException("an excessive player mod report must become unavailable instead of being partially compared");
+var emptyReported = PlayerModContextContract.Reported("456", true, "1.6.15", "4.5.2", Array.Empty<PlayerReportedMod>(), now);
+var emptyReportedJson = System.Text.Json.JsonSerializer.Serialize(emptyReported, ContractJson.Options);
+if (!emptyReportedJson.Contains("\"mods\": []", StringComparison.Ordinal))
+    throw new InvalidOperationException("a genuinely reported empty mod list must remain distinct from mods:null");
+var unavailableContext = PlayerModContextContract.Reported("789", false, null, null, null, now);
+if (unavailableContext.ContextStatus != PlayerModContextStatuses.Unavailable || unavailableContext.Mods is not null)
+    throw new InvalidOperationException("an unavailable context must not invent an empty mod list");
+var staleContext = PlayerModContextContract.Stale(reportedContext, "123", true, now.AddSeconds(1));
+if (staleContext.ContextStatus != PlayerModContextStatuses.Stale
+    || staleContext.Mods?.Length != reportedContext.Mods.Length
+    || staleContext.ReportedAt != reportedContext.ReportedAt)
+{
+    throw new InvalidOperationException("disconnect did not preserve the last report as stale");
+}
+
+var lifecycle = new Dictionary<string, PlayerModContext>(StringComparer.Ordinal);
+if (!PlayerModContextLifecycle.Connect(lifecycle, "100", false, now)
+    || lifecycle["100"].ContextStatus != PlayerModContextStatuses.Pending
+    || lifecycle["100"].Mods is not null)
+{
+    throw new InvalidOperationException("a vanilla/mobile peer did not enter pending with mods:null");
+}
+if (PlayerModContextLifecycle.ExpirePending(lifecycle, now.AddSeconds(9), TimeSpan.FromSeconds(10)))
+    throw new InvalidOperationException("a pending peer expired before the configured timeout");
+if (!PlayerModContextLifecycle.ExpirePending(lifecycle, now.AddSeconds(10), TimeSpan.FromSeconds(10))
+    || lifecycle["100"].ContextStatus != PlayerModContextStatuses.Unavailable
+    || lifecycle["100"].Mods is not null)
+{
+    throw new InvalidOperationException("a peer without ModContext did not become unavailable with mods:null");
+}
+
+var cheatsMods = new[]
+{
+    new PlayerReportedMod { UniqueId = "CJBok.CheatsMenu", Name = "CJB Cheats Menu", Version = "1.37.2" },
+    new PlayerReportedMod { UniqueId = "cjbOK.cheatsmenu", Name = "duplicate must be ignored", Version = "9.9.9" },
+    new PlayerReportedMod { UniqueId = "Example.Client", Name = "Client Mod", Version = "2.1.0" },
+};
+if (!PlayerModContextLifecycle.Connect(lifecycle, "200", true, now)
+    || !PlayerModContextLifecycle.Report(lifecycle, "200", true, "1.6.15", "4.5.2", cheatsMods, now.AddSeconds(1))
+    || lifecycle["200"].ContextStatus != PlayerModContextStatuses.Reported
+    || lifecycle["200"].Mods?.Length != 2
+    || lifecycle["200"].Mods?.Single(mod => mod.UniqueId == "CJBok.CheatsMenu").Version != "1.37.2")
+{
+    throw new InvalidOperationException("a SMAPI peer report did not preserve exact normalized IDs, names, and versions");
+}
+
+if (!PlayerModContextLifecycle.Report(
+        lifecycle,
+        "201",
+        true,
+        "1.6.15",
+        "4.5.2",
+        new[] { new PlayerReportedMod { UniqueId = "CJBok.ItemSpawner", Name = "CJB Item Spawner", Version = "2.5.1" } },
+        now.AddSeconds(2))
+    || PlayerModContextLifecycle.Connect(lifecycle, "201", true, now.AddSeconds(3))
+    || lifecycle["201"].ContextStatus != PlayerModContextStatuses.Reported)
+{
+    throw new InvalidOperationException("PeerContextReceived-before-PeerConnected ordering lost a fresh Item Spawner report");
+}
+
+if (!PlayerModContextLifecycle.Disconnect(lifecycle, "200", true, now.AddSeconds(4))
+    || lifecycle["200"].ContextStatus != PlayerModContextStatuses.Stale
+    || lifecycle["200"].Mods?.Any(mod => mod.UniqueId == "CJBok.CheatsMenu") != true
+    || lifecycle["201"].Mods?.Single().UniqueId != "CJBok.ItemSpawner")
+{
+    throw new InvalidOperationException("disconnect did not stale only the target player's last report");
+}
+if (!PlayerModContextLifecycle.Connect(lifecycle, "200", true, now.AddSeconds(5))
+    || lifecycle["200"].ContextStatus != PlayerModContextStatuses.Pending
+    || lifecycle["200"].Mods is not null
+    || !PlayerModContextLifecycle.Report(
+        lifecycle,
+        "200",
+        true,
+        "1.6.15",
+        "4.5.2",
+        new[] { new PlayerReportedMod { UniqueId = "Example.Reconnected", Name = "Reconnected", Version = "3.0.0" } },
+        now.AddSeconds(6))
+    || lifecycle["200"].Mods?.Single().UniqueId != "Example.Reconnected"
+    || lifecycle["201"].Mods?.Single().UniqueId != "CJBok.ItemSpawner")
+{
+    throw new InvalidOperationException("reconnect did not clear the old player report or isolated peer contexts crossed players");
+}
+
+var restarted = PlayerModContextContract.NormalizeLoadedFile(
+    new PlayerModContextsFile
+    {
+        SchemaVersion = PlayerModContextContract.SchemaVersion,
+        UpdatedAt = now.AddSeconds(6),
+        Players = lifecycle,
+    },
+    now.AddSeconds(7));
+if (restarted.Players.Count != lifecycle.Count
+    || restarted.Players.Values.Any(context => context.ContextStatus != PlayerModContextStatuses.Stale)
+    || restarted.Players["100"].Mods is not null
+    || restarted.Players["200"].Mods?.Single().UniqueId != "Example.Reconnected"
+    || restarted.Players["201"].Mods?.Single().UniqueId != "CJBok.ItemSpawner")
+{
+    throw new InvalidOperationException("server restart did not stale contexts without crossing or inventing player reports");
+}
+
 var atomicDir = Path.Combine(Path.GetTempPath(), "sap-contract-" + Guid.NewGuid().ToString("N"));
 var atomicPath = Path.Combine(atomicDir, "options.json");
 try

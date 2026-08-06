@@ -495,6 +495,7 @@ export type StardewPlayerInfo = {
   totalMoneyEarned?: number
   walletMode?: 'shared' | 'separate' | string
   lastSeen?: string
+  modRiskFlags?: string[]
   isAuthenticated?: boolean | null
   saveCharacterPresent?: boolean
   canDeleteCharacter?: boolean
@@ -528,6 +529,74 @@ export type StardewPlayersResponse = {
   parseStatus: 'exact' | 'partial' | 'unavailable' | string
   message?: string
   updatedAt: string
+}
+
+export type PlayerModContextStatus = 'reported' | 'pending' | 'unavailable' | 'stale' | string
+
+export type PlayerModComparisonResult =
+  | 'match'
+  | 'missing_on_client'
+  | 'client_only'
+  | 'version_mismatch'
+  | string
+
+export type PlayerReportedMod = {
+  uniqueId: string
+  name: string
+  version: string
+}
+
+export type PlayerServerMod = PlayerReportedMod & {
+  syncKind: ModSyncKind | string
+  enabled: boolean
+  builtIn?: boolean
+}
+
+export type PlayerModServerContext = {
+  gameVersion?: string
+  apiVersion?: string
+  generatedAt: string
+  loadedMods: PlayerServerMod[]
+}
+
+export type PlayerModComparisonItem = {
+  result: PlayerModComparisonResult
+  uniqueId: string
+  name: string
+  serverVersion?: string
+  clientVersion?: string
+  syncKind?: ModSyncKind | string
+  riskFlags: string[]
+}
+
+export type PlayerModComparisonSummary = {
+  match: number
+  missingOnClient: number
+  clientOnly: number
+  versionMismatch: number
+}
+
+export type PlayerModComparison = {
+  status: 'available' | 'unavailable' | string
+  unavailableReason?: string
+  items: PlayerModComparisonItem[]
+  summary: PlayerModComparisonSummary
+}
+
+export type PlayerModDetailsResult = {
+  instanceId: string
+  uniqueMultiplayerId: string
+  hasSmapi: boolean
+  gameVersion?: string
+  apiVersion?: string
+  mods: PlayerReportedMod[] | null
+  contextStatus: PlayerModContextStatus
+  reportedAt: string | null
+  updatedAt?: string
+  serverContext: PlayerModServerContext | null
+  comparison: PlayerModComparison
+  riskFlags: string[]
+  message?: string
 }
 
 export type InstallJobResponse = {

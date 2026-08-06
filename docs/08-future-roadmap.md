@@ -1,3 +1,49 @@
+# 2026-08-06 完成：玩家 Mod 比较展示收敛（PLAYER-MOD-BUILTIN-FILTER-1 / FE-PLAYER-MOD-PRESENTATION-2，未发布）
+
+- [x] 比较与前端兼容层统一隐藏 `Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control`；三类内置组件不再产生任何统计或分组提示。
+- [x] 统计/分组调整为“玩家额外安装”第一、“玩家缺少 Mod”第二，随后“版本不同 / 匹配”；后端 items 同步按该结果顺序排序。
+- [x] CJB 总横幅和条目移除两段解释，只保留明确 CJB 文字检测提示；没有改变玩家加入、认证、踢出、封禁或自动拦截。
+- [x] Go 全量 test/vet/build、前端状态/响应式测试、TypeScript、production build 与桌面/390px Browser QA 通过。未发布、不打 Tag。
+
+# 2026-08-06 完成：玩家列表与待认证卡 CJB 显式提示（PLAYER-MOD-CJB-LIST-1 / FE-PLAYER-MOD-CJB-LABEL-1，未发布）
+
+- [x] 高频 `GET /players` 只增加轻量 `modRiskFlags:["cjb"]`，不复制完整 Mod 清单；损坏/超限上下文不生成标记。
+- [x] 桌面与手机玩家列表把命中项显示为“检测到 CJB 作弊”；桌面和手机待认证卡同步显示文字徽标；详情横幅改为“检测到该玩家使用了 CJB 作弊工具”。
+- [x] 保留客户端自报与可绕过边界，未改变加入、认证批准、踢出、封禁或自动拦截。Go 定向测试、前端状态/响应式测试、TypeScript、production build 和桌面/390px QA 通过。
+- [ ] 两种官方 CJB 的真实客户端联机仍未完成；本次 QA fixture 和契约测试不能替代实体客户端验证，不发布、不打 Tag。
+
+# 2026-08-06 收尾：玩家 Mod 查看第三阶段（PLAYER-MOD-COMPAT-1，未发布）
+
+- [x] Control peer 事件共用可测试生命周期，补齐 pending 超时、context/connected 次序、断线、重连、服务端重启、多玩家隔离和旧上下文不串号回归。
+- [x] 补齐异常/重复/超长/超量输入、两种 CJB、四种比较结果、面板内置组件过滤、server_only、只读无管理调用和真实 loopback HTTP/SQLite/文件系统联调。
+- [x] 使用只读真实 game-data 编译 Control 并更新嵌入 DLL/运行栈 SHA；前端兼容 fixture 覆盖 unavailable 禁用统计、不同状态、完整分组、重复与长字段。
+- [x] 明确记录清单是客户端自报；修改 CJB manifest UniqueID 可绕过提示，不能把该功能当自动处罚依据。本阶段不改加入流程、不实现 SDR 桥、不发布、不打 Tag。
+- [x] 本机 PC + Stardew 1.6.15 + SMAPI 4.5.2 已通过标准 LAN/IP 加入隔离服：reported 三个真实 Mod，比较分组正确，主动断线 stale、同 ID 重连新 reportedAt、server 重启后旧 context stale 均通过；无踢出/封禁/拦截。
+- [ ] 实体 PC 原版、两种官方 CJB、Android/iOS 官方客户端、Android 实验性 SMAPI和多个远端玩家同时在线仍未验证。单一 PC+SMAPI 结果不能勾掉这些真机门禁；真实登录后的详情页面视觉也仍待补。
+
+# 2026-08-06 完成：玩家 Mod 查看第二阶段（FE-PLAYER-MOD-VIEW-1，未发布）
+
+- [x] 桌面玩家表为有 uniqueMultiplayerId 的玩家增加“查看上报 Mod”，新增 `/instances/stardew/player-mods?playerId=...` 路由、页面 switch 和后端 SPA 精确白名单。
+- [x] 桌面/移动共用详情主体；移动玩家页完成列表/详情子视图与返回。姓名/状态/上报时间/游戏和 SMAPI 版本、CJB 警示、四项统计和分组顺序已固定。
+- [x] unavailable 固定解释并隐藏统计；pending、stale、比较基准不可用、HTTP error 各自独立。CJB 横幅与条目均有红色文字标签；后续已按反馈移除附加解释段落。
+- [x] 大小写不敏感去重、长名称/版本折行、每组分批展开、空/加载/重试及 280px 窄屏完成；server_only 只作服务器专用展示且有前端缺失防线。
+- [x] 12 项前端状态测试、TypeScript、production build、Go driver/Web 测试和 1365×900/280×740 Browser 验收通过；未增加踢出、封禁、拦截，未开展发布或 Tag。
+- [ ] 标准 peer 上下文以外的 Steam SDR、原版 PC、手机/平板与不兼容 SMAPI 仍可能没有 ModContext；后续若做兼容采集需单独设计，不能由页面猜测。
+
+# 2026-08-06 完成：玩家 Mod 查看第一阶段（PLAYER-MOD-CONTEXT-1，未发布）
+
+- [x] Control `0.3.0` 监听标准 IP SMAPI peer context/连接/断开事件，以 uniqueMultiplayerId 原子写独立 `player-mod-contexts.json`；reported/pending/unavailable/stale 与 `mods:null`/真实空数组语义已固定。
+- [x] 客户端字符串、数量与重复 UniqueID 完成边界、规范化和大小写不敏感去重；超量上下文整体 unavailable，不用部分清单比较。
+- [x] 新增 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`，以实际 `options.json.loadedMods` 为服务器基线并用 ModInfo/syncKind 补元数据；match、missing_on_client、client_only、version_mismatch、unavailable 已覆盖。
+- [x] server_only 不误报缺少；后续已从玩家比较中完全移除 SMAPI、Junimo 与面板 Control 三类内置运行组件；两条官方 CJB UniqueID 只返回 `riskFlags:["cjb"]`，不踢出、不封禁、不拦截。
+- [x] C# 契约、真实引用编译、嵌入 DLL、Go 比较器单元测试与 HTTP 接口测试完成；未修改 Junimo/SMAPI 上游，未实现 Steam SDR 桥。
+- [x] 第二阶段桌面/移动详情已完成；`mods:null` 解释为“未取得清单”，pending/unavailable/stale 不会显示成“玩家没有 Mod”。
+
+# 2026-08-06 已完成：真实 Panel 手机侧栏预览
+
+- [x] 正式前端路由可通过 `shell=mobile` 强制复用现有移动 Shell，方便在桌面侧栏并排检查真实玩家与 Mod 数据；不引入 mock、后端接口或管理动作。
+- [x] 保持默认媒体查询适配与“完整版”手动切换，增加查询解析状态测试和 production build 门禁。
+
 # 2026-08-01 已发布：官网首页联机邀请 Hero
 
 - [x] Hero 改为开放式双栏，保留“一键部署你和朋友的专属联机服务器”和原 CTA，右侧使用联机邀请票表达“你、服务器、朋友”和自托管能力。

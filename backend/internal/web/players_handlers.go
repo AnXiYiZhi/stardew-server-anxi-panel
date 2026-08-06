@@ -13,6 +13,10 @@ type playerLister interface {
 	ListPlayers(ctx context.Context, instance registry.Instance) (*sj.PlayersResult, error)
 }
 
+type playerModDetailsReader interface {
+	GetPlayerModDetails(ctx context.Context, instance registry.Instance, uniqueMultiplayerID string) (*sj.PlayerModDetailsResult, error)
+}
+
 type playerKicker interface {
 	KickPlayer(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*sj.CommandRunResult, error)
 }
@@ -372,6 +376,40 @@ func (s *server) handlePlayersList(w http.ResponseWriter, r *http.Request, insta
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "players_failed", sanitizeErrorMsg(err, "读取在线玩家失败"))
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handlePlayerModDetails handles GET /api/instances/:id/players/:uniqueMultiplayerId/mods.
+func (s *server) handlePlayerModDetails(w http.ResponseWriter, r *http.Request, instanceID, uniqueMultiplayerID string) {
+	if _, ok := s.requireAuth(w, r); !ok {
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	instance, ok = s.reconcileInstanceState(w, r, instance)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	reader, supported := driver.(playerModDetailsReader)
+	if !supported {
+		writeError(w, http.StatusNotImplemented, "not_supported", "该 driver 不支持玩家 Mod 详情读取")
+		return
+	}
+	result, err := reader.GetPlayerModDetails(r.Context(), makeRegistryInstance(instance), uniqueMultiplayerID)
+	if err != nil {
+		if ce, ok := err.(*sj.CommandError); ok {
+			writeError(w, http.StatusBadRequest, ce.Code, ce.Message)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "player_mods_failed", sanitizeErrorMsg(err, "读取玩家 Mod 详情失败"))
 		return
 	}
 	writeJSON(w, http.StatusOK, result)

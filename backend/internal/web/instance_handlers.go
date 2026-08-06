@@ -190,6 +190,15 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handlePlayersList(w, r, instanceID)
 		return
 	}
+	// GET /api/instances/:id/players/:uniqueMultiplayerId/mods
+	if len(parts) == 4 && parts[1] == "players" && parts[3] == "mods" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handlePlayerModDetails(w, r, instanceID, parts[2])
+		return
+	}
 	// POST /api/instances/:id/players/kick
 	if len(parts) == 3 && parts[1] == "players" && parts[2] == "kick" {
 		if r.Method != http.MethodPost {

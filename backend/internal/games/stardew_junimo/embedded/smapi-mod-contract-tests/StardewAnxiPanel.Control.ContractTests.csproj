@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../smapi-mod-src/ControlContract.cs" Link="ControlContract.cs" />
+    <Compile Include="../smapi-mod-src/PlayerModContexts.cs" Link="PlayerModContexts.cs" />
     <Compile Include="../smapi-mod-src/PlayerCommandOutcomes.cs" Link="PlayerCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/DeferredCommandOutcomes.cs" Link="DeferredCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/PausePolicy.cs" Link="PausePolicy.cs" />

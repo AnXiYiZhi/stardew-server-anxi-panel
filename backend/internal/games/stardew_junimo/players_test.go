@@ -2,9 +2,12 @@ package stardew_junimo
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
@@ -215,6 +218,73 @@ func TestListPlayersPrefersControlFile(t *testing.T) {
 	}
 	if result.Players[0].WalletMode != "separate" {
 		t.Fatalf("wallet mode = %q, want separate", result.Players[0].WalletMode)
+	}
+}
+
+func TestListPlayersAddsCompactCJBFlagWithoutEmbeddingMods(t *testing.T) {
+	dir := t.TempDir()
+	control := filepath.Join(dir, ".local-container", "control")
+	if err := os.MkdirAll(control, 0o755); err != nil {
+		t.Fatalf("mkdir control: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(control, "players.json"), []byte(`{
+  "updatedAt": "2026-08-06T10:49:18Z",
+  "saveId": "test",
+  "players": [
+    {"name": "CJB Player", "uniqueMultiplayerId": "2", "isAuthenticated": false},
+    {"name": "Vanilla Player", "uniqueMultiplayerId": "3", "modRiskFlags": ["cjb"]}
+  ]
+}`), 0o644); err != nil {
+		t.Fatalf("write players.json: %v", err)
+	}
+	reportedAt := time.Date(2026, 8, 6, 10, 49, 20, 0, time.UTC)
+	writePlayerModContexts(t, dir, controlPlayerModContextsFile{
+		SchemaVersion: playerModContextsSchemaVersion,
+		UpdatedAt:     reportedAt,
+		Players: map[string]controlPlayerModContext{
+			"2": {
+				UniqueMultiplayerID: "2",
+				HasSmapi:            true,
+				APIVersion:          "4.5.2",
+				Mods:                []PlayerReportedMod{{UniqueID: "CJBoK.CheatsMenu", Name: "CJB Cheats Menu", Version: "1.37.4"}},
+				ContextStatus:       PlayerModContextReported,
+				ReportedAt:          &reportedAt,
+				UpdatedAt:           reportedAt,
+			},
+			"3": {
+				UniqueMultiplayerID: "3",
+				HasSmapi:            true,
+				APIVersion:          "4.5.2",
+				Mods:                []PlayerReportedMod{},
+				ContextStatus:       PlayerModContextReported,
+				ReportedAt:          &reportedAt,
+				UpdatedAt:           reportedAt,
+			},
+		},
+	})
+
+	d := newTestDriver(&fakeConsoleDocker{})
+	instance := makeRunningInstance()
+	instance.DataDir = dir
+	result, err := d.ListPlayers(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("ListPlayers returned error: %v", err)
+	}
+	if len(result.Players) != 2 {
+		t.Fatalf("players = %+v", result.Players)
+	}
+	if result.Players[0].Name != "CJB Player" || len(result.Players[0].ModRiskFlags) != 1 || result.Players[0].ModRiskFlags[0] != playerModRiskCJB {
+		t.Fatalf("CJB player flags = %+v", result.Players[0])
+	}
+	if len(result.Players[1].ModRiskFlags) != 0 {
+		t.Fatalf("vanilla player flags = %+v", result.Players[1].ModRiskFlags)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "CJB Cheats Menu") || strings.Contains(string(encoded), `"mods"`) {
+		t.Fatalf("players response leaked full Mod data: %s", encoded)
 	}
 }
 

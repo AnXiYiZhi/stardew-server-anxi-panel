@@ -1,3 +1,70 @@
+# FE-PLAYER-MOD-PRESENTATION-2 接手记录（2026-08-06，completed，未发布）
+
+## 改了什么、影响与验证
+
+- `PlayerModsDetail` 的统计/分组顺序改为“玩家额外安装 → 玩家缺少 Mod → 版本不同 → 匹配”，结果徽标同步改名。CJB 横幅和条目删除两段解释，只保留“检测到该玩家使用了 CJB 作弊工具”与“检测到 CJB 作弊”直接文字提示。
+- `player-mod-details.ts` 防御性过滤 `Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control`，所以旧后端或 QA 缓存返回这些条目也不会进入统计/分组。普通第三方 `server_only` 防线不变。
+- 影响 `PlayerModsDetail.tsx/.css`、`player-mod-details.ts`、状态测试与 QA fixture。`npm run test:player-mods`、`npm run test:responsive-layout`、`npx tsc -b` 和 production build 通过；桌面与 390×844 手机 Browser 均验证新顺序、旧说明/三类内置项不存在，手机无横向溢出。
+- UI 仍只读；CJB 清单仍是可绕过的客户端自报，不能升级为自动管理。后续修改组名或顺序时必须桌面/移动共用同一主体，避免两端漂移。
+
+# FE-PLAYER-MOD-CJB-LABEL-1 接手记录（2026-08-06，completed，未发布）
+
+## 改了什么与影响
+
+- 玩家列表 API 的可选 `modRiskFlags` 已进入 `StardewPlayerInfo`。桌面/手机列表共用 `hasPlayerCjbRisk` 与 `playerModActionLabel`：命中时原“查看上报 Mod”按钮显示“检测到 CJB 作弊”；桌面待认证卡和手机总览待认证卡显示同文案红色徽标。
+- 共享详情 `PlayerModsDetail` 的总横幅改成“检测到该玩家使用了 CJB 作弊工具”，CJB 条目徽标同步改为“检测到 CJB 作弊”。后续已按反馈移除两段解释；原详情路由/API 与只读行为不变。
+- 影响 `types.ts`、`player-mod-details.ts`、`PlayerModsDetail.tsx`、桌面/手机玩家页与 CSS、手机总览、QA fixture 和状态测试。没有增加管理请求，也没有改变认证批准流程。
+
+## 如何验证与下一步
+
+- `npm run test:player-mods`、`npm run test:responsive-layout`、`npx tsc -b`、production build 通过。Browser 在桌面玩家列表/待认证卡/详情及 390×844 手机总览/玩家列表/详情均看到显式文案，手机 root/body 横向溢出为 0。
+- `modRiskFlags` 可能来自 stale 的最后有效自报；不要把徽标改成“服务端确认作弊”，也不要据此自动禁入。修改 CJB manifest ID 仍可能绕过。
+
+# FE-PLAYER-MOD-COMPAT-1 第三阶段接手记录（2026-08-06，真实 PC+SMAPI 数据通过，页面矩阵受限，未发布）
+
+## 改了什么、影响与验证
+
+- 页面实现未改动；扩展 `scripts/test-player-mod-details.ts` 的兼容 fixture，覆盖 PC 原版/Android/iOS 的统一 unavailable 解释、pending/stale/请求失败、四组比较、server_only 防线、两种 CJB、篡改 UniqueID 不命中、大小写重复、256 字名称和超长版本。
+- `unavailable` 必须继续隐藏全部统计并禁止“0 个 Mod”“完全一致”“安全”；只有 `reported + comparison.available` 才展示数字。CJB 仍同时依赖红色视觉和明确 CJB 文字，不附加解释段落。
+- 阶段二 Browser 的桌面/280px 证据继续有效。本阶段 12 项状态测试、独立 TypeScript 检查与 production build 通过。本机真实 PC+SMAPI 联机后，接口准确返回三个真实 Mod、两项 match/两项 client_only/零缺失/零版本差异，并经历 stale、重连新 reportedAt 和 server 重启 stale；production dist 嵌入测试 Panel 后详情静态路由返回 `200 text/html`。
+
+## 下一步注意事项
+
+- 应用内 Browser 本轮被本地地址策略拦截，因此没有实际打开真实登录后的详情页；不要把真实 API/路由 200 写成页面视觉通过。下一位仍需从桌面按钮和移动列表分别进入详情，补 PC 原版/CJB/移动端、pending/unavailable、新旧玩家与多玩家视觉；Android 实验性 SMAPI 没有环境就保持未验证。
+- 清单为客户端自报，改 CJB manifest UniqueID 可绕过；前端不得升级为自动处罚。接口/路由没有变化，不要新增轮询式管理请求或自行从 `mods:null` 推断零项。
+
+# FE-PLAYER-MOD-VIEW-1 玩家 Mod 详情接手记录（2026-08-06，completed，未发布）
+
+## 改了什么
+
+- 新增桌面静态详情 `/instances/stardew/player-mods?playerId=...`。桌面玩家表只有存在联机 ID 才显示“查看上报 Mod”；详情路由仍点亮玩家侧栏。`StardewPanel` 同步跟踪 search，使同一路由不同 playerId 和浏览器前进/后退可重渲染。
+- `PlayerModsDetail.tsx/.css` 共用姓名/状态/版本、CJB 文字警示、统计、分组、加载/空/失败状态和响应式布局；桌面由 `pages/PlayerModsPage.tsx` 包装，移动 `MobilePlayersPage` 维护“列表/Mod 详情”子视图与返回按钮。移动壳从详情路径打开时初始选择玩家 Tab。
+- 类型/API 位于 `types.ts` 与 `api.ts`；`player-mod-details.ts` 负责状态解释、官方 CJB ID 判断、大小写不敏感去重及 `server_only` 缺失防线。页面只读，不新增任何管理请求。
+
+## 影响文件与接口
+
+- 前端入口与路由：`games/stardew/{stardew-routes,StardewPanel,StardewMobileShell}.tsx`、`pages/{PlayersPage,PlayerModsPage}.tsx`、`mobile/MobilePlayersPage.tsx` 及对应 CSS。
+- 共享详情与测试：`games/stardew/{PlayerModsDetail,player-mod-details}.*`、`scripts/test-player-mod-details.ts`、`qa-layout-main.tsx`、`package.json`。
+- 后端仅修改 `internal/web/handler.go` 的 SPA 精确白名单并新增路径单测；数据继续读取第一阶段的 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`，没有修改比较或玩家连接流程。
+
+## 如何验证
+
+- 通过全部 12 项前端状态脚本、独立 `npx.cmd tsc -b`、`npm.cmd run build`；`go test ./internal/games/stardew_junimo ./internal/web` 通过。
+- 应用内 Browser：桌面从玩家名册进入，URL 精确携带 playerId；CJB 重复项去重为 1。后续 390×844 复验确认三类面板内置组件隐藏、普通 user Mod 的玩家缺少计数仍为 1，移动详情无根级横向溢出，长名称/版本正常换行。
+- `unavailable` 精确文案存在且统计/“0 个 Mod”/“完全一致”/“安全”均不存在；pending、stale、HTTP error 使用不同提示，error 有重试。console error 为 0，QA 端口已释放。
+
+## 下一步注意事项
+
+- `mods:null` 永远是“没有取得可靠清单”，不能转换成 `[]`；只有 comparison available 才能显示统计。当前 stale 不可比较，不要用缓存项自行计算“仍一致”。
+- 不得把 `server_only` 缺失放入警告，也不得把 CJB 提示升级为踢出、封禁或自动拦截。后端 summary 只作契约参考，当前 UI 从去重后的 items 计算可见统计以避免重复条目误计数。
+- 标准 IP peer context 之外、Steam SDR、原版/移动端或不兼容 SMAPI 仍可能无法提供 ModContext；这是数据边界，不是前端错误。后续若扩展详情必须继续复用共享主体和这组状态测试。
+
+# 2026-08-06：真实移动端侧栏预览
+
+- `frontend/src/App.tsx` 现在识别 `shell=mobile`，可在桌面宽度的 Codex 侧栏或普通浏览器中打开真实、已登录的 `StardewMobileShell`，不再依赖会在控制结束后复原的临时 viewport 模拟；强制手机标签会以“Stardew Anxi Panel · 手机端”作为标题。
+- 查询解析集中在 `frontend/src/games/stardew/responsive-layout.ts` 的 `shouldForceCompactShell`，边界用 `frontend/scripts/test-responsive-layout.ts` 覆盖。仅精确的小写 `mobile` 生效，其它值不改变自动适配。
+- 验证：运行 `npm run test:responsive-layout` 与 `npm run build`，然后同时打开 `/instances/stardew/players` 和 `/instances/stardew/players?shell=mobile`，前者应为桌面 Shell，后者应出现“移动端主导航”。
+
 # DOCS-HOME-HERO-INVITE-1 接手记录（2026-08-01，released）
 
 ## 改了什么

@@ -301,7 +301,7 @@ def auth_page(kind: str) -> Image.Image:
             d.ellipse((xx, yy, xx + 22, yy + 14), fill="#5fab46")
             d.line((xx + 11, yy + 14, xx + 11, yy + 30), fill="#387a2e", width=3)
 
-    scene = load("sprites/sprite_farmhouse_scene.png").resize((560, 250), Image.Resampling.NEAREST)
+    scene = load("sprites/overview_banner_scene_image2.png").resize((560, 250), Image.Resampling.NEAREST)
     im.alpha_composite(scene, (160, 420))
     im.alpha_composite(load("sprites/sprite_tree.png", (145, 178)), (92, 450))
     im.alpha_composite(load("sprites/sprite_chest.png", (82, 82)), (670, 606))
@@ -333,7 +333,7 @@ def auth_page(kind: str) -> Image.Image:
 def overview() -> Image.Image:
     im, d = shell("overview", "总览", "把服务器状态、邀请码、存档、模组与最近任务压缩在第一屏，适合日常一眼巡检。")
     x, y = SIDE + MARGIN, TOP + 128
-    scene = load("sprites/sprite_farmhouse_scene.png").resize((900, 145), Image.Resampling.NEAREST)
+    scene = load("sprites/overview_banner_scene_image2.png").resize((900, 145), Image.Resampling.NEAREST)
     im.alpha_composite(scene, (x, y))
     d.rectangle((x, y, x + 900, y + 145), outline="#7a4a22", width=4)
     d.rectangle((x, y, x + 900, y + 145), fill=(246, 223, 170, 88))

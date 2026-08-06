@@ -47,8 +47,10 @@ public sealed class PanelOptions
     public string Source { get; set; } = "smapi";
 	public string RequestId { get; set; } = "";
 	public string TransactionId { get; set; } = "";
-    public DateTimeOffset GeneratedAt { get; set; }
+	public DateTimeOffset GeneratedAt { get; set; }
 	public string ControlModVersion { get; set; } = "";
+	public string GameVersion { get; set; } = "";
+	public string ApiVersion { get; set; } = "";
 	public LoadedModItem[] LoadedMods { get; set; } = Array.Empty<LoadedModItem>();
 	public string ModFingerprint { get; set; } = "";
     public OptionItem[] Genders { get; set; } = Array.Empty<OptionItem>();

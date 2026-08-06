@@ -58,7 +58,7 @@ jobs:
           (cd backend && PANEL_RUN_SMAPI_DOWNLOAD_TEST=1 go test -tags=integration ./internal/games/stardew_junimo -run '^TestSMAPIArchiveRealDownload$' -count=1 -v)
           (cd backend && PANEL_RUN_DOCKER_UPDATE_TEST=1 go test ./internal/updater -run '^TestDockerIntegration' -count=1)
           (cd backend && go test -tags=integration ./internal/docker)
-          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:farm-catalog && npm run test:save-import && npm run test:mod-list && npm run test:responsive-layout && npm run build)
+          (cd frontend && npm ci && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:farm-catalog && npm run test:save-import && npm run test:mod-list && npm run test:responsive-layout && npm run test:player-mods && npm run build)
 
       - name: Prepare release metadata
         id: meta

@@ -10,6 +10,7 @@ import type { InstancePasswordStatus, SaveInfo } from '../../../types'
 import { errorMessage, stateLabel } from '../../../core/helpers'
 import type { StardewDashboardData, StardewPageProps } from '../stardew-routes'
 import { panelUpdateSurface, } from '../panel-update-machine'
+import { hasPlayerCjbRisk } from '../player-mod-details'
 import './MobileHomePage.css'
 
 type MobileHomePageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
@@ -468,7 +469,12 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
           <div className="sd-mhome-pending-list">
             {pendingAuthPlayers.map((player) => (
               <div className="sd-mhome-pending-row" key={player.uniqueMultiplayerId || player.name}>
-                <span className="sd-mhome-pending-name">{player.name}</span>
+                <span className="sd-mhome-pending-copy">
+                  <span className="sd-mhome-pending-name">{player.name}</span>
+                  {hasPlayerCjbRisk(player) ? (
+                    <span className="sd-mhome-pending-cjb" role="status">检测到 CJB 作弊</span>
+                  ) : null}
+                </span>
                 <button
                   type="button"
                   className="sd-btn-green sd-mhome-approve-btn"

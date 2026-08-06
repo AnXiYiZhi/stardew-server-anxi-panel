@@ -540,7 +540,6 @@
 
 .sd-saves-active-art {
   min-height: 116px;
-  background-image: url('/assets/stardew/ui/sprites/sprite_farmhouse_scene.png');
   background-size: cover;
   background-position: center;
   border: 1px solid #9a6a30;

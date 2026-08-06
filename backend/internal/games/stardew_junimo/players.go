@@ -39,6 +39,10 @@ type PlayerInfo struct {
 	TotalMoneyEarned    *int64 `json:"totalMoneyEarned,omitempty"`
 	WalletMode          string `json:"walletMode,omitempty"`
 	LastSeen            string `json:"lastSeen,omitempty"`
+	// ModRiskFlags contains compact, read-only risk markers derived from the
+	// player's last bounded ModContext report. It intentionally never embeds
+	// the full client Mod list in the high-frequency players response.
+	ModRiskFlags []string `json:"modRiskFlags,omitempty"`
 	// IsAuthenticated reflects JunimoServer's password-protection state for this
 	// player (nil when the control mod doesn't support it or the query failed,
 	// which is distinct from "known to be unauthenticated"). Always nil/omitted
@@ -169,8 +173,14 @@ func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*
 // JSON and save XML as observation sources. Storage failures are deliberately
 // non-fatal: player status remains available even when persistence is degraded.
 func (d *Driver) persistPlayerRoster(ctx context.Context, instance registry.Instance, result *PlayersResult) *PlayersResult {
+	if result == nil {
+		return result
+	}
+	defer func() {
+		markPlayerModRiskFlags(instance.DataDir, result.Players)
+	}()
 	store, ok := d.store.(playerRosterStore)
-	if !ok || result == nil {
+	if !ok {
 		return result
 	}
 	stableID, baseID, fullID := resolveStableSaveIdentity(instance.DataDir, result.SaveID)

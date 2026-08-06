@@ -18,6 +18,7 @@
     "test:save-import": "node --experimental-strip-types scripts/test-save-import.ts",
     "test:mod-list": "node --experimental-strip-types scripts/test-mod-list-utils.ts",
     "test:responsive-layout": "node --experimental-strip-types scripts/test-responsive-layout.ts",
+    "test:player-mods": "node --experimental-strip-types scripts/test-player-mod-details.ts",
     "preview": "vite preview"
   },
   "dependencies": {

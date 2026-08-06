@@ -22,6 +22,7 @@ const JUNIMO_WORKFLOW = params.get('junimoWorkflow') || ''
 const JUNIMO_CONFIG = params.get('junimoConfig') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
+const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
 if (JUNIMO_WORKFLOW === 'race-retry') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
@@ -29,10 +30,10 @@ const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString
 
 const players = [
   { name: 'AnxiPlayer', role: 'host', isHost: true, locationDisplayName: '农场 · 春季 12 日', tileX: 64, tileY: 11, uniqueMultiplayerId: '7f9a2b10', status: 'online', ping: 36, farmMoney: 128640, personalMoney: 28230, onlineSeconds: 8000 },
-  { name: '小鸡快跑', locationDisplayName: '温室', tileX: 12, tileY: 30, uniqueMultiplayerId: '3c2e9d55', status: 'online', ping: 48, farmMoney: 52310, personalMoney: 41780, onlineSeconds: 6420 },
+  { name: '小鸡快跑', locationDisplayName: '温室', tileX: 12, tileY: 30, uniqueMultiplayerId: '3c2e9d55', status: 'online', ping: 48, farmMoney: 52310, personalMoney: 41780, onlineSeconds: 6420, modRiskFlags: ['cjb'] },
   { name: '星露谷旅人', locationDisplayName: '矿洞湖', uniqueMultiplayerId: 'a1b7c3f8', status: 'online', ping: 62, farmMoney: 34820, personalMoney: 29150, onlineSeconds: 3480 },
   { name: 'WinterBreeze', locationDisplayName: '等待加入…', uniqueMultiplayerId: 'd4e5f6a1', status: 'waiting', ping: null },
-  { name: 'PendingGuest', locationDisplayName: '登录中…', uniqueMultiplayerId: 'f2a8c410', status: 'online', isAuthenticated: false, ping: 50 },
+  { name: 'PendingGuest', locationDisplayName: '登录中…', uniqueMultiplayerId: 'f2a8c410', status: 'online', isAuthenticated: false, ping: 50, modRiskFlags: ['cjb'] },
 ]
 
 const recentPlayerEvents = [
@@ -43,6 +44,35 @@ const recentPlayerEvents = [
   { id: 'evt-5', type: 'joined', playerName: 'JunimoGuest', uniqueMultiplayerId: 'e7f8a9b0', locationDisplayName: '鹈鹕镇', at: iso(2880), message: 'JunimoGuest 加入了服务器。' },
   { id: 'evt-6', type: 'left', playerName: 'JunimoGuest', uniqueMultiplayerId: 'e7f8a9b0', locationDisplayName: '鹈鹕镇', at: iso(2940), message: 'JunimoGuest 离开了服务器。' },
 ]
+
+const playerModItems = [
+  { result: 'version_mismatch', uniqueId: 'Pathoschild.SMAPI', name: 'SMAPI', serverVersion: '4.1.10', clientVersion: '4.1.9-beta-build-with-a-very-long-version-suffix', syncKind: 'client_required', riskFlags: [] },
+  { result: 'missing_on_client', uniqueId: 'Pathoschild.ContentPatcher', name: 'Content Patcher', serverVersion: '2.6.3', syncKind: 'client_required', riskFlags: [] },
+  { result: 'match', uniqueId: 'AnXiYiZhi.StardewAnxiPanel.Control', name: 'Stardew Anxi Panel Control', serverVersion: '1.0.0', clientVersion: '1.0.0', syncKind: 'server_only', riskFlags: [] },
+  { result: 'client_only', uniqueId: 'JunimoHost.Server', name: 'JunimoServer', clientVersion: '1.5.0', riskFlags: [] },
+  { result: 'match', uniqueId: 'Example.SharedUtility', name: '超长名称测试 Mod（用于验证窄屏下可以自然折行而不撑破页面）', serverVersion: '1.0.0', clientVersion: '1.0.0', syncKind: 'client_required', riskFlags: [] },
+  { result: 'client_only', uniqueId: 'CJBok.CheatsMenu', name: 'CJB Cheats Menu', clientVersion: '1.37.4', riskFlags: ['cjb'] },
+  { result: 'client_only', uniqueId: 'CJBOK.CHEATSMENU', name: '重复的 CJB 条目', clientVersion: '1.37.4', riskFlags: ['cjb'] },
+  { result: 'client_only', uniqueId: 'Example.ClientQualityOfLife', name: 'Client Quality of Life', clientVersion: '2026.08.06-preview+build.1234567890', riskFlags: [] },
+]
+
+const playerModDetails = PLAYER_MOD_STATE === 'pending' || PLAYER_MOD_STATE === 'unavailable'
+  ? {
+      instanceId: 'stardew', uniqueMultiplayerId: '3c2e9d55', hasSmapi: PLAYER_MOD_STATE === 'pending',
+      mods: null, contextStatus: PLAYER_MOD_STATE, reportedAt: null, serverContext: null,
+      comparison: { status: 'unavailable', unavailableReason: 'context_not_reported', items: [], summary: { match: 0, missingOnClient: 0, clientOnly: 0, versionMismatch: 0 } },
+      riskFlags: [],
+    }
+  : {
+      instanceId: 'stardew', uniqueMultiplayerId: '3c2e9d55', hasSmapi: true,
+      gameVersion: '1.6.15', apiVersion: '4.1.9-beta-build-with-a-very-long-version-suffix',
+      mods: [], contextStatus: PLAYER_MOD_STATE === 'stale' ? 'stale' : 'reported', reportedAt: iso(5), updatedAt: iso(1),
+      serverContext: { gameVersion: '1.6.15', apiVersion: '4.1.10', generatedAt: iso(1), loadedMods: [] },
+      comparison: PLAYER_MOD_STATE === 'stale'
+        ? { status: 'unavailable', unavailableReason: 'stale', items: [], summary: { match: 0, missingOnClient: 0, clientOnly: 0, versionMismatch: 0 } }
+        : { status: 'available', items: playerModItems, summary: { match: 2, missingOnClient: 1, clientOnly: 4, versionMismatch: 1 } },
+      riskFlags: ['cjb'],
+    }
 
 const jobs = [
   { id: 'job_01JH8A3K7M2QZ8S1', type: 'save_auto', displayName: '存档自动保存', status: 'running', targetType: 'instance', targetId: 'stardew', createdBy: 1, createdAt: iso(3), startedAt: iso(3), finishedAt: null, errorMessage: null, updatedAt: iso(0) },
@@ -264,6 +294,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/api\/version$/, { version: APPLY === 'succeeded' ? '0.1.15' : '0.1.14', commit: '3f7a9c2', buildDate: '2025-05-21 14:28:36' }],
   [/\/state$/, { instanceId: 'stardew', driverId: 'stardew_junimo', name: 'AnxiFarm', state: STATE, stateMessage: null, driverPhase: STATE, updatedAt: iso(2) }],
   [/\/metrics$/, metrics],
+  [/\/players\/[^/]+\/mods$/, playerModDetails],
   [/\/players$/, { instanceId: 'stardew', state: STATE, source: 'junimo', onlineCount: 3, maxPlayers: 12, players, parseStatus: 'exact', updatedAt: iso(0), recentEvents: recentPlayerEvents, rawInfo: JSON.stringify({ server: 'AnxiFarm', uptime: '2天 4小时 12分', version: '1.6.15 (Stardew Valley)', players_online: 3, max_players: 8, junimo_note: '此信息为 Junimo 协议原始输出，用于调试与集成。', timestamp: '2025-05-21T14:28:36+08:00' }, null, 2) }],
   [/\/jobs$/, { jobs }],
   [/\/jobs\/[^/]+\/logs/, { logs: Array.from({ length: 16 }, (_, i) => ({ jobId: 'x', sequence: 2042 + i, level: i === 4 ? 'WARN' : 'INFO', message: `复制存档文件… (${i + 1}/16)`, timestamp: iso(0) })) }],
@@ -370,6 +401,9 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (url.includes('/api/version') && applyFetchCount > 4) return jsonRes({ version: '0.1.15', commit: 'new-build', buildDate: now.toISOString() })
   }
   if (url.includes('/api/')) {
+    if (PLAYER_MOD_STATE === 'error' && /\/players\/[^/]+\/mods$/.test(path)) {
+      return jsonRes({ code: 'player_mod_context_read_failed', message: 'QA 模拟：玩家 Mod 上下文读取失败' }, 503)
+    }
     for (const [re, body] of routes) {
       if (re.test(url.split('?')[0]) || re.test(url)) return jsonRes(body)
     }
