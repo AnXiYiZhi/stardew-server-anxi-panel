@@ -89,6 +89,7 @@
 
 ## 2026-07-28：嵌套 PowerShell 提前展开变量
 
+- 最近复发/补充：2026-08-06 在 PowerShell 参数中嵌入 `sh -c` 的 Bash 重试变量 `$attempt`，错误地使用反斜杠尝试保护变量；PowerShell 仍提前展开并让 Bash 收到残缺条件。改为三段不含变量的显式 `go mod download || (sleep 5 && go mod download) ...`，跨 Shell 命令优先消除变量与转义，而不是叠加转义层。
 - 最近复发/补充：2026-08-01 Hero 配色预览验证把 `sh -c`、`grep` 模式和 PowerShell 双引号再次嵌入同一条命令，脚本在有效诊断前退出 1。已改为让 `docker exec` 直接调用 `grep`，模式使用 PowerShell 单引号参数，只有确实需要容器 shell 展开时才引入 `sh -c`。
 - 最近复发/补充：2026-08-01 官网 Hero 预览审计在 JavaScript 包装、PowerShell 与 `rg` 三层中直接拼接带引号的搜索命令，命令尚未得到有效结果便退出 1。多层调用先把搜索模式和真实文件路径分别固定，优先直接调用单层 `rg -e <pattern> <confirmed-path>`；需要较长 PowerShell 逻辑时使用独立的单引号脚本块，不在 JavaScript 普通字符串里继续嵌套。
 - 最近复发/补充：2026-07-31 在 `[pscustomobject]` 属性表达式中直接嵌入 `docker exec ...; $LASTEXITCODE -eq 0`，PowerShell 在执行前报缺少右括号。原生命令及退出码检查必须先单独执行并存入 `$sidecarExists`，再把变量放进对象；不要在属性值括号里混合语句分隔符。
@@ -157,6 +158,7 @@
 
 ## 2026-07-28：嵌套 Go template 与 PowerShell 转义冲突
 
+- 最近复发/补充：2026-08-06 核对 `v0.4.8` 任务专属 volume ownership 时，又在外层单引号 PowerShell 脚本中使用带转义引号的 `{{index .Labels \"...\"}}`，Docker 返回 `unexpected "\\" in operand`；脚本在任何卷删除前退出。后续 ownership 一律读取完整 `docker volume inspect` JSON 后访问 `.Labels`，不在嵌套命令中拼带引号的 Go template。
 - 环境：PowerShell 调用 `docker image inspect --format`。
 - 错误模式：在多层双引号中对 Go template 的引号再次加反斜杠。
 - 症状：`template parsing error: unexpected "\\" in operand`。
@@ -893,6 +895,66 @@
 - 正确做法：对首次使用的真实 API 先执行一次只读请求并查看脱敏 JSON 结构，再写有上限的终态轮询；状态为空应立即 fail fast，不能继续等待。
 - 预防检查：轮询第一轮同时验证 job ID 和 status 非空、状态属于已知集合；未知结构立即停止并回到 handler/类型契约。
 - 适用范围：Panel jobs、更新状态以及其它带包装对象的异步 API。
+
+## 2026-08-06：隔离前端副本遗漏仓库级测试依赖
+
+- 环境：Docker Desktop、`node:24-alpine`、任务专属前端工作卷。
+- 错误模式：只把 `frontend/` 复制到 `/work` 后运行 `test:responsive-layout`，没有先核对脚本还会读取仓库根 `.github/workflows/release.yml` 与 `compatibility-matrix.yml`。首次准备补记时又只在工具编排层构造补丁字符串并输出占位文本，忘记实际调用 `apply_patch`；文件未变化后才立即纠正。
+- 症状 / 退出码：前 10 项状态测试通过，`test:responsive-layout` 读取 `/.github/workflows/release.yml` 返回 `ENOENT`，容器退出 1；产品源码未报断言或编译错误。占位工具调用退出 0 但没有产生预期文档差异。
+- 根因：隔离副本的目录层级与测试通过 `import.meta.url` 解析的仓库相对路径不一致；同时没有在补丁工具返回后检查真实修改结果。
+- 正确做法：把完整仓库复制到任务卷的 `/work/repo`，从 `/work/repo/frontend` 运行 `npm ci`、全部状态测试和 build；补丁调用必须检查 `apply_patch` 的返回并用 `git diff`/`rg` 确认目标文本实际落盘。
+- 预防检查：容器化子项目门禁前搜索测试脚本的 `../`、仓库根配置和 fixture 引用；复制边界必须包含全部运行时读取项，不能只看 npm 工作目录。
+- 适用范围：前端/网站/脚本在隔离容器中的仓库级测试和工具编排后的落盘验证。
+
+## 2026-08-06：把 Go 模块内路径误当成仓库根路径
+
+- 环境：PowerShell 7，在仓库根定位 updater Docker integration 发布门禁。
+- 错误模式：把模块内目录写成 `internal/updater` 传给 `rg`，没有先确认 Go 模块实际位于 `backend/`。
+- 症状 / 退出码：`rg` 报 `internal/updater` 不存在并退出 2；只读检索中止，没有修改源码或运行环境。
+- 根因：混用了 `backend` 模块根相对路径和仓库根相对路径。
+- 正确做法：从仓库根使用 `backend/internal/updater`，或先把工作目录切到 `backend` 再使用 `internal/updater`；未知路径先通过 `rg --files backend` 确认。
+- 预防检查：发布门禁命令涉及 Go 包时，先确认命令工作目录与 `go.mod` 位置；源码检索的第一个目标用 `Test-Path -LiteralPath` 或 `rg --files` 验证。
+- 适用范围：多子项目仓库中的 Go 测试、格式化、源码检索与发布脚本。
+
+## 2026-08-06：漏传 compatibility_matrix 子命令的位置参数
+
+- 环境：PowerShell 7、项目固定 Python 3.12，执行 v0.4.8 远端制品发布门禁。
+- 错误模式：只调用 `scripts/compatibility_matrix.py verify-remote-artifacts`，没有先查看 argparse 契约，也没有传 runtime manifest。
+- 症状 / 退出码：argparse 立即提示缺少必需的 `path` 并退出 1；没有发起网络请求或修改任何资源。
+- 根因：把带位置参数的子命令误记成无参数全局校验入口。
+- 正确做法：按 release workflow 使用 `python scripts/compatibility_matrix.py verify-remote-artifacts backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json`。
+- 预防检查：不熟悉的脚本子命令先运行 `--help` 或直接复用 `.github/workflows/release.yml` 的精确命令；发布门禁不得凭记忆省略参数。
+- 适用范围：兼容矩阵校验器及其它 argparse 子命令式发布脚本。
+
+## 2026-08-06：凭记忆填写 Go 专项测试名且漏掉 build tag
+
+- 环境：PowerShell 7、Go 1.26，执行 SMAPI 真实下载发布门禁。
+- 错误模式：用不存在的 `TestDownloadSMAPIArchiveFromReviewedAccelerator` 作为 `-run`，并漏掉测试文件要求的 `-tags=integration`。
+- 症状 / 退出码：`go test` 退出 0，但明确打印 `warning: no tests to run`，实际没有下载任何字节，因此不能作为门禁证据。
+- 根因：没有先读取 `smapi_archive_integration_test.go` 的函数名与文件头 build constraint。
+- 正确做法：设置 `PANEL_RUN_SMAPI_DOWNLOAD_TEST=1`，使用 `go test -tags=integration ./internal/games/stardew_junimo -run '^TestSMAPIArchiveRealDownload$' -count=1 -v`，并要求输出实际下载字节数。
+- 预防检查：专项 `-run` 前先用 `go test <同样 tags> <pkg> -list '<pattern>'` 或读取测试声明；任何 `no tests to run` 都视为失败并立即纠正。
+- 适用范围：带 build tag 或 opt-in 环境变量的 Go integration 门禁。
+
+## 2026-08-06：在 Windows 文件系统执行 Linux 权限位发布断言
+
+- 环境：Windows 宿主 Go 1.26，SMAPI 真实下载 integration 测试使用 `t.TempDir()`。
+- 错误模式：直接在 Windows 上运行同时断言缓存文件 POSIX `0600` 的生产 Linux 门禁。
+- 症状 / 退出码：真实下载约 331 秒并完成内容校验，但 `os.Stat().Mode().Perm()` 在 Windows ACL 语义下报告 `0666`，测试退出 1；这不能证明 Linux 容器中的产品权限实现失败。
+- 根因：把跨平台内容/摘要验证与只在 Linux 目标文件系统有意义的权限位验证放在了错误宿主环境。
+- 正确做法：使用与 Dockerfile 一致的 `golang:1.25-alpine` 任务专属 Linux 容器，从空容器缓存运行同一个 `-tags=integration` 测试，要求实际字节数、固定摘要、`0600` 和无 `.part` 残留同时通过。
+- 预防检查：发布测试包含 `chmod`、`Mode().Perm()`、UID/GID、符号链接或 Unix socket 时，先选择目标 Linux 环境；Windows 宿主仅可做不依赖 POSIX 元数据的补充测试。
+- 适用范围：Docker Linux 产品的 Go 文件权限、原子写入和下载缓存门禁。
+
+## 2026-08-06：短命 Go 容器网络失败后丢失模块下载进度
+
+- 环境：Docker Desktop、`golang:1.25-alpine`、只读源码 bind，首次在 Linux 重跑 SMAPI 下载门禁。
+- 错误模式：未给短命 `--rm` 容器挂任务专属 `GOMODCACHE/GOCACHE`；`proxy.golang.org` 下载 `modernc.org/sqlite` 元数据发生一次 `unexpected EOF` 后容器退出，已获取依赖缓存也随之丢失。
+- 症状 / 退出码：Go package setup 退出 1，`TestSMAPIArchiveRealDownload` 尚未开始，产品下载逻辑未被执行。
+- 根因：发布测试的外网依赖准备没有持久进度与有界重试，瞬时网络断流被放大为从零开始。
+- 正确做法：创建带发布 ownership label 的唯一 Go module/build cache volume，先在同一缓存上对 `go mod download` 做有上限重试，再运行目标测试；完成后按 label 精确核对和清理 volume。
+- 预防检查：短命容器执行需要外网的语言工具链前先规划任务专属缓存；网络失败重试必须改变为可续用缓存且限制次数，不能原样重建空容器。
+- 适用范围：容器化 Go/npm/Python 依赖准备与长耗时发布门禁。
 
 ## 编码与换行快速检查
 
