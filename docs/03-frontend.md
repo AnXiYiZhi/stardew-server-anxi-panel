@@ -2,7 +2,7 @@
 
 - 桌面与手机共用玩家 Mod 详情主体、CJB 显式文字提示、四组顺序、pending/stale/unavailable/error 与 280px 窄屏能力已随 `v0.4.8` 发布；发布镜像 version/revision/created 与三仓回拉证据见 `docs/09-image-build.md`。
 - 官网同步并入此前隔离评审的任务型门户：新增 `DocsHome.vue`，首页按“没有服务器 / Linux / NAS / Windows”选择路径，导航收敛为任务入口，FAQ 和手册按用户任务重排；首页/更新日志/玩家手册已更新为 `v0.4.8` 玩家 Mod 能力和客户端自报边界。
-- Linux Node 24 全新依赖卷的 VitePress production build 已通过。GitHub Pages 发布与线上桌面/手机复核将在本次文档提交推送后记录；旧 `docs-portal-redesign` worktree 在确认语义全部进入 `main` 后删除。
+- Linux Node 24 全新依赖卷的 VitePress production build 已通过。Pages workflow `31150162173` build/deploy 成功；线上首页、changelog、玩家手册在 1440×900 与 390×844 复核版本、玩家 Mod/CJB/自报边界、无横向溢出且 console warn/error 为 0。旧 `docs-portal-redesign` 的有效内容进入 `main` 后，连同其它历史 worktree/非 main 分支已清理。
 - 页面仍不改变玩家加入、认证或管理动作。实体 PC 原版、官方 CJB 与移动客户端联机尚未验证；UI fixture 只证明状态与布局稳定，不证明对应实体平台支持。
 
 # FE-PLAYER-MOD-PRESENTATION-2：玩家比较顺序与内置项过滤（2026-08-06，completed，v0.4.8 released）

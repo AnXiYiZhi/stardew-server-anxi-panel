@@ -1,7 +1,7 @@
 # v0.4.8 玩家 Mod 前端与门户发布交接（2026-08-07，released）
 
 - 玩家列表/待认证 CJB 文字提示、桌面静态详情、手机列表/详情子视图、四组比较、内置项过滤与 unavailable 边界已随 `v0.4.8` 发布。release/compatibility workflow `31117969497/31117949897` 成功，三仓正式镜像已分别完成 health/version smoke。
-- 用户要求所有历史工作收敛到 `main` 后，`docs-portal-redesign` 的 `DocsHome.vue`、任务导航、FAQ/手册重排和事实修正已语义合并；首页、changelog、玩家手册显示 v0.4.8 玩家 Mod 能力。Node 24 VitePress production build 通过，Pages/线上证据在本次文档提交后补记。
+- 用户要求所有历史工作收敛到 `main` 后，`docs-portal-redesign` 的 `DocsHome.vue`、任务导航、FAQ/手册重排和事实修正已语义合并；首页、changelog、玩家手册显示 v0.4.8 玩家 Mod 能力。Node 24 VitePress production build、Pages `31150162173`、提交后 compatibility `31150162180` 和线上 1440×900/390×844 复核均通过；历史 worktree 与非 main 分支已清理。
 - 后续维护必须继续共用 `PlayerModsDetail`，保持 CJB 明文、不以颜色独立表达、不把 `mods:null` 当零项、不把 `server_only` 放进玩家缺少。实体 PC 原版/CJB/移动客户端仍未验证。
 
 # FE-PLAYER-MOD-PRESENTATION-2 接手记录（2026-08-06，completed，v0.4.8 released）

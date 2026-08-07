@@ -3,7 +3,7 @@
 - [x] `v0.4.8` annotated tag 指向 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`；Release/compatibility workflow `31117969497/31117949897` 最终成功，GitHub Release 为正式版且三项脚本附件齐全。
 - [x] Docker Hub、阿里云 ACR、GHCR 的 `0.4.8/latest` 六个 index digest 统一为 `sha256:5381009b807ad2c632075332e3538297b5069eff2f2b1b133ff7fffd2ac38f90`；三个精确镜像分别通过 isolated health/version smoke。
 - [x] 玩家 Mod 第一至三阶段、列表 CJB 提示、内置项过滤与桌面/手机详情已发布；保持只读、自报、可绕过和不自动处罚边界。
-- [x] 用户明确要求把历史分支/worktree 全部收敛到 `main`；任务型门户草稿已语义合并，官网首页、changelog 与玩家手册更新为 v0.4.8。Pages 与最终线上复核在本次 main 文档提交后完成。
+- [x] 用户明确要求把历史分支/worktree 全部收敛到 `main`；任务型门户草稿已语义合并，官网首页、changelog 与玩家手册更新为 v0.4.8。Pages workflow `31150162173`、提交后兼容矩阵 `31150162180` 与桌面/390px 线上复核均通过；三个历史 worktree、五条非 main 本地分支和全部 `v048-*` 隔离资源已精确清理。
 - [ ] PC 原版、官方两种 CJB、Android/iOS 官方客户端、Android 实验性 SMAPI及多个真实远端玩家并发仍未做实体联机；不把自动化/fixture 记成真机支持。
 
 # 2026-08-06 完成：玩家 Mod 比较展示收敛（PLAYER-MOD-BUILTIN-FILTER-1 / FE-PLAYER-MOD-PRESENTATION-2，v0.4.8 released）
