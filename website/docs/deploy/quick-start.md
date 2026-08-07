@@ -1,4 +1,6 @@
-# 一键脚本部署
+# run.sh 命令参考
+
+第一次安装请优先按 [部署面板](/guide/deploy) 的精简步骤操作。本页是安装目录、固定版本、更新和维护命令的完整参考，避免首次用户被所有菜单项同时打断。
 
 Linux 云服务器用户优先使用一键启动脚本 `run.sh`。脚本会生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和 `~/.anxi-panel/data`，自动创建 `PANEL_SECRET`，首次启动时可自动选择可用镜像源，也可手动切换阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR、Docker Hub 官方或自定义镜像地址。
 
@@ -12,7 +14,7 @@ NAS 或特殊 Linux 环境中，如果 `$HOME` 不存在或不可写，脚本会
 http://服务器IP:8090
 ```
 
-## 安装
+## 安装入口
 
 国内加速安装：
 

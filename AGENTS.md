@@ -63,6 +63,7 @@
 - Windows 上所有 PowerShell 命令使用 PowerShell 7：`pwsh -NoLogo -NoProfile -Command '& { ... }'`，禁止调用 `powershell.exe`。外层使用单引号脚本块，避免父 PowerShell 提前展开 `$变量`；路径操作优先 `-LiteralPath`。调用 `git`、`go`、`npm`、`docker`、`python` 等原生命令后显式检查 `$LASTEXITCODE`。退出语句必须写成带空格的 `exit $LASTEXITCODE`；禁止写成会被解析为命令名的 `exit$LASTEXITCODE`。
 - 原生命令失败后若还要运行 `docker logs`、`inspect` 等诊断，必须先把原始 `$LASTEXITCODE` 保存到任务专属变量，诊断完成后退出该保存值；不得在其它原生命令之后再直接 `exit $LASTEXITCODE`。长运行服务先做有上限 readiness 轮询。
 - Docker `inspect` 需要读取嵌套 label、数组或多个字段时，必须输出完整 JSON 并由 PowerShell `ConvertFrom-Json` 投影；禁止在多层 PowerShell 命令中拼接带引号或反斜杠的 Go template。只有经过独立探针的单个无引号字段才可使用 `--format`。
+- PowerShell 通过 `ConvertFrom-Json` 或 `Invoke-RestMethod` 读取 ISO 8601 时间时，不得直接与原始字符串比较；先确认值类型，统一转为 UTC 并以不变区域格式规范化，再做精确断言。
 - PowerShell 的语句形式 `foreach (...) { ... }`、`if (...) { ... }` 不能直接接管道；需要继续传给 `Format-Table`、`ConvertTo-Json` 等命令时，先用 `@(...)` 收集输出，或改用 `ForEach-Object`。工具调用中的单行批处理默认使用 `ForEach-Object`，不要写语句式 `foreach` 后再接管道。
 - Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
 - Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。CI 使用 workflow 明确配置的 Python。
@@ -77,3 +78,4 @@
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。发现 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
+- 跨 worktree 整合旧差异时先用 `git diff --ignore-space-at-eol` 去除换行噪声；不得把带行号的原始 Git hunk header 直接重放给 `apply_patch`。对已在 `main` 变化的文件必须重新读取当前上下文并做语义合并，禁止用整文件覆盖掩掉新版本内容。

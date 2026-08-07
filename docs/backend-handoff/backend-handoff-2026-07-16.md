@@ -1,4 +1,10 @@
-# PLAYER-MOD-BUILTIN-FILTER-1 接手记录（2026-08-06，completed，未发布）
+# v0.4.8 玩家 Mod 后端发布交接（2026-08-07，released）
+
+- 玩家 Mod 采集、比较接口、列表轻量 CJB 标记、三类内置运行组件过滤和 Control `0.3.0` 已随 `v0.4.8` 发布。tag commit 为 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`；release/compatibility workflow `31117969497/31117949897` 最终成功。
+- 三仓 `0.4.8/latest` digest 统一为 `sha256:5381009b807ad2c632075332e3538297b5069eff2f2b1b133ff7fffd2ac38f90`，三个精确镜像已分别通过 `/health` 与 `/api/version`。完整升级、回滚、数据保护与发布故障证据见 `docs/09-image-build.md`。
+- 接口、sidecar schema 与限制不变；尚需真机补 PC 原版、官方 CJB、Android/iOS、Android 实验性 SMAPI和真实多玩家并发。清单始终是可篡改的客户端自报，不能用于自动管理。
+
+# PLAYER-MOD-BUILTIN-FILTER-1 接手记录（2026-08-06，completed，v0.4.8 released）
 
 ## 改了什么、影响与验证
 
@@ -7,7 +13,7 @@
 - 影响 `player_mods.go`、`player_mods_test.go` 与 Web API 契约测试；定向测试及最终 `go test ./...`、`go vet ./...`、`go build ./...` 通过。Control Mod、sidecar schema、玩家连接/认证和所有管理通道均未修改。
 - 下一步若再增加面板运行组件，应把其官方 UniqueID 同时加入后端 allowlist 与前端兼容过滤，并补大小写回归；不要按模糊名称过滤普通玩家 Mod。
 
-# PLAYER-MOD-CJB-LIST-1 接手记录（2026-08-06，completed，未发布）
+# PLAYER-MOD-CJB-LIST-1 接手记录（2026-08-06，completed，v0.4.8 released）
 
 ## 改了什么与影响
 
@@ -20,7 +26,7 @@
 - 定向 `go test ./internal/games/stardew_junimo ./internal/web` 通过；测试断言玩家响应只含 `modRiskFlags:["cjb"]`，不泄漏 CJB 名称或 `mods` 字段。
 - 后续若增加其它风险类别，仍须保持小型 allowlist 标记，不能把客户端完整清单复制到玩家轮询响应，也不能让标记参与自动管理。
 
-# PLAYER-MOD-COMPAT-1 第三阶段接手记录（2026-08-06，PC+SMAPI 真机部分通过，其余受限，未发布）
+# PLAYER-MOD-COMPAT-1 第三阶段接手记录（2026-08-06，PC+SMAPI 真机部分通过，其余受限，v0.4.8 released）
 
 ## 改了什么
 
@@ -38,7 +44,7 @@
 - 下一位维护者仍需按 `docs/06-integration.md` 补 PC 原版、两种官方 CJB、Android/iOS、多个远端玩家并发与真实登录页面视觉；记录平台/游戏/SMAPI/Mod 版本、连接方式、Control 日志和截图。没有 Android 实验性 SMAPI 环境时继续写“未验证”，不要推断支持。
 - ModContext 是客户端自报；只按官方 UniqueID 标 CJB，改 manifest ID 可绕过。不要据此自动踢出、封禁或拦截；Steam SDR 兼容仍不在本阶段。
 
-# PLAYER-MOD-CONTEXT-1 接手记录（2026-08-06，completed，未发布）
+# PLAYER-MOD-CONTEXT-1 接手记录（2026-08-06，completed，v0.4.8 released）
 
 ## 改了什么
 

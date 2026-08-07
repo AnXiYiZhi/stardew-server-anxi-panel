@@ -105,6 +105,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
+- 最近复发/补充：2026-08-01 查询本地 UI 动效数据库时，虽先获得 `Get-Command python` 结果，但没有先执行版本探针便把多个查询放进同一命令；Windows Store alias 以 `9009` 失败且无有效输出。应先单独确认版本，发现 alias 后立即加载工作区依赖，再使用返回的精确 `python.exe`；不要把解释器探针与实际查询合并。
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
 - 最近复发/补充：2026-08-06 为隔离 SQLite fixture 查询解释器时，明知同一错题仍先运行无可靠输出的 `python --version`，随后又猜测 `py -3` 可用而得到 command not found。正确入口仍是先调用 workspace dependency loader，再使用返回的精确 Python 路径；本轮没有继续尝试 Store alias。
 - 环境：Windows，`python` 指向不可用的 Store alias。
@@ -229,6 +230,7 @@
 
 ## 2026-07-28：猜测配置文件扩展名且忽略 PowerShell 非终止错误
 
+- 最近复发/补充：2026-07-29 在 `rg` 位置参数中写入仓库不存在的 `internal`、`cmd` 目录，导致已有匹配结果后仍以路径错误结束。多目录搜索必须先用 `rg --files` 或 `Test-Path` 验证目录，只传当前仓库实际存在的根目录。
 - 最近复发/补充：2026-07-29 重构隔离预览时再次直接读取不存在的 `docs/.vitepress/config.mts`；随后先用 `rg --files --hidden docs/.vitepress` 找到真实的 `config.ts`。2026-07-31 搜索前端 tooltip 时又把未经发现的 `frontend/src/components` 作为 `rg` 位置参数，产生 `os error 2`；同时后续成功输出掩盖了原生命令状态。今后所有多目录搜索先用 `rg --files <已确认根目录>` 发现路径，或只从已确认存在的共同父目录配合 `-g` 搜索，并在 `rg` 后立即保存、判断 `$LASTEXITCODE`。
 - 最近复发/补充：2026-08-01 一次组合读取对不存在路径产生 PowerShell non-terminating error，末尾显式 `exit 0` 又把它掩盖。只读发布脚本同样必须以 `$ErrorActionPreference=''Stop''` 开始，文件路径先发现后读取，成功分支才允许输出 0。
 - 环境：PowerShell 7，读取 VitePress 配置。
@@ -274,6 +276,8 @@
 
 ## 2026-07-28：`apply_patch` 使用了未经核对的长上下文
 
+- 最近复发/补充：2026-07-29 手工转写 Markdown 链接上下文时把半角结尾写成全角字符，随后又用不完整的文件尾上下文追加 CSS，两次均安全校验失败。补丁上下文必须从实际文件复制，包含链接、全角标点或文件尾追加时按文件拆小处理。
+- 最近复发/补充：2026-08-06 把旧 worktree 的原始 `git diff` 直接包装给 `apply_patch` 时，同时带入了整文件 CRLF 差异和带行号的 `@@ -x,y +x,y @@` hunk header，补丁解析失败；只去掉换行噪声后仍因编号 header 再失败。正确做法是用 `git diff --ignore-space-at-eol` 获取语义差异，把 hunk header 规范为裸 `@@` 后再交给 `apply_patch`；与当前 `main` 重叠的文件必须重新读取当前上下文并人工合并，不能把旧基线 patch 强套到新文件。
 - 环境：Windows 工作区，使用 `apply_patch` 同时更新错题本和 `AGENTS.md`。
 - 错误模式：手工重写完整相邻行作为补丁上下文，其中漏掉原文空格。
 - 症状 / 退出码：`apply_patch verification failed`，补丁未产生任何修改。
@@ -287,6 +291,8 @@
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
 
+- 最近复发/补充：2026-08-01 Browser 的只读 `evaluate` 中，SVG 元素代理不提供 `getBBox()`，调用返回 `TypeError`。SVG 视觉校验改用 `getBoundingClientRect()`、静态 `viewBox`/路径坐标和截图联合判断；调用非基础 DOM 方法前先确认当前代理实际支持。
+- 最近复发/补充：2026-07-29 本地预览后期进入 `ERR_CONNECTION_REFUSED` 错误页，Browser 随即因 `data:` 错误页 URL 策略拒绝 reload/close 链。此时不得继续尝试替代浏览器或 CDP 绕过；保留此前证据、精确停止 dev server，并以 production build 作为最终非视觉门禁。同轮还误把通用 Playwright 的 `setViewportSize`、对象形式 `waitForURL` 和代理元素原生 `click()` 套到封装 API；响应式尺寸与交互必须使用当前 Browser 暴露的 viewport 与 locator 能力。
 - 最近复发/补充：2026-08-01 线上 changelog 导航把通用 Playwright 的 URL predicate 传给 Browser `waitForURL`，返回 `requires a url`。当前 Browser 只接受明确 URL 参数；点击后可直接读取 `tab.url()` 和目标 DOM，或传文档支持的精确 URL，不使用 predicate 回调。
 - 最近复发/补充：2026-07-29 在静态概念稿预览中误把 `domcontentloaded` 当成 `tab.playwright` 方法调用；同日在下半页 QA 又照搬通用 Playwright 的 `scrollIntoViewIfNeeded()`，均返回 `is not a function`。本次重构又误用 `iab.tabs.claim()` 与 `tab.playwright.screenshot()`，实际 API 分别是 `iab.user.claimTab()` 与 `tab.screenshot()`；并再次请求了不受支持的 `networkidle`。`goto()`/`reload()` 本身用于完成导航；其它交互先核对 Browser 客户端实际方法，不再凭通用 Playwright 记忆猜测。
 - 环境：Codex 应用内 Browser，对本地 VitePress 开发服务器做页面 QA。
@@ -299,6 +305,7 @@
 
 ## 2026-07-29：前台临时 HTTP 服务超时后仍占用端口
 
+- 最近复发/补充：2026-07-29 用内层 1 秒命令超时启动 VitePress，期望外层工具返回可续用 cell，结果常驻服务被直接以 124 终止。长运行服务要给命令本身足够超时，只用外层 yield 提前取得 session/cell；结束时再精确终止并核对端口。
 - 最近复发/补充：2026-08-01 在任务 DinD 内执行 `apk add --no-cache go` 时外层工具 304 秒超时，但容器内 `apk` 仍继续运行并最终成功安装 Go；不能在未复查进程/`command -v go` 的情况下重复安装或直接删除容器。本轮先读取精确 PID，下一次检查时进程已自然结束，再以 `go version` 确认结果。2026-07-31 的 Vite 子进程案例同样说明超时只代表等待结束，不代表派生工作已停止。
 - 环境：Windows，`shell_command` 直接运行 Python `http.server` 作为本地效果图预览服务。
 - 错误模式：短超时返回后直接假设服务已停止，又尝试在相同端口启动第二个服务。
@@ -881,6 +888,8 @@
 - 最近补充：切换到移动壳后又沿用桌面页标题 `玩家管理` 做 `waitFor`，导致 locator 超时；移动页实际以“在线玩家”区域开头。跨桌面/移动验收应先读当前语义树，或等待两端共有的稳定控件，不应假定标题复用。
 - 最近补充：打开真实 Panel 登录页后把预期标题猜成“登录面板”，实际页面唯一 heading 仍是产品名 `Stardew Anxi Panel`，表单由“用户名 / 密码 显示密码 / 登录”控件区分。首次进入真实状态页应先取语义快照，再等待快照中确实存在的控件。
 - 最近补充：语义快照把密码输入框显示成 `textbox "密码 显示密码"`，但这不是 `getByLabel("密码 显示密码")` 可用的真实 label；直接照抄组合后的可访问名称会得到 `no_matches`。登录表单应先用已确认的唯一 `input[type="password"]` 定位，或读取可交互 DOM 后使用真实 label，不能把快照的聚合文本反推成 label 绑定。
+- 最近补充：2026-08-07 验收 VitePress 展示站时，先把主题开关猜成按钮“主题模式”，实际语义角色/名称是 `switch "切换为深色主题"`；又用 exact heading `v0.4.8（最新版本）` 定位，实际可访问名称还包含 permalink 文本。VitePress 页面必须先读取当前 `domSnapshot()`，按已观察到的 role/name 操作；含标题永久链接时优先用正文投影或非 exact 文本，不猜组合后的可访问名称。
+- 最近补充：同轮把页面求值误写成不存在的 `tab.playwright.dom.evaluate(...)`；当前 Browser 的页面级只读求值是 `tab.playwright.evaluate(...)`，语义树读取则是 `tab.playwright.domSnapshot()`。Browser 子接口的层级必须以已读 API Reference 和本轮已验证调用为准，首次失败后不得继续在相邻对象上试探。
 - 适用范围：Codex in-app Browser 响应式测试与临时视口覆盖。
 
 ## 2026-08-06：按资源名猜测不存在的 Web handler 文件
@@ -1065,8 +1074,19 @@
 - 预防检查：fixture 准备阶段对 PowerShell 非终止错误启用 fail-fast；不要手造 Compose ownership label，先用正式 `docker compose ... ps --format json` 验证目标 service 能被实际实例配置发现。
 - 适用范围：Docker/Compose 状态模拟、Control sidecar fixture、Windows 目录复制和升级后功能验收。
 
+## 2026-08-07：把本地候选完整 revision 契约套到正式镜像
+
+- 环境：Docker Desktop，回拉 `v0.4.8` 三仓正式镜像后核对 OCI labels。
+- 错误模式：沿用本地候选的 40 位 `org.opencontainers.image.revision` 预期，直接断言正式镜像也必须是完整 SHA。
+- 症状 / 退出码：六个 tag 的 pull、digest、version、created 和实际 revision 都一致，但组合脚本末尾因 revision 为 `0c5e2c434a92` 而退出 1。
+- 根因：发布 workflow 的 `Prepare release metadata` 明确使用 `${GITHUB_SHA::12}`，正式镜像契约是 12 位 revision；本地候选构建使用完整 SHA，二者不能互套。
+- 正确做法：先读取当前 release workflow 的 metadata 生成逻辑；正式镜像 revision 与预期 12 位 SHA 比较，annotated tag/远端 main 则另用完整 40 位提交核对。
+- 预防检查：发布断言把 tag commit、构建参数和 OCI label 分为独立字段，每个预期都来自当前 workflow，不从上一阶段镜像或上一版本猜测长度。
+- 适用范围：正式镜像回拉、OCI 元数据、SBOM/provenance 与 release workflow 审计。
+
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-06 最终一键升级验收通过 `Invoke-RestMethod` 读取 `/api/version` 后，又把自动转换成 `System.DateTime` 的 `buildDate` 与原始 OCI 字符串直接比较，产生第二次虚假 mismatch。HTTP JSON 与 `ConvertFrom-Json` 一样必须先检查类型、转 UTC 并格式化后比较；该预防规则已提升到 `AGENTS.md`。
 - 环境：PowerShell 7、最终候选镜像 OCI label 核验。
 - 错误模式：把 `ConvertFrom-Json` 得到的 `org.opencontainers.image.created` 直接与原始 ISO 8601 字符串做 `-ne` 比较。
 - 症状 / 退出码：镜像 JSON 中实际值为预期的 `2026-08-06T14:04:14Z`，但断言抛出 build date mismatch；独立类型探针显示属性类型已经是 `System.DateTime`，默认字符串化会变成本地格式。
@@ -1078,6 +1098,7 @@
 ## 编码与换行快速检查
 
 - 2026-08-01 补充：检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索，否则会把文档中用于解释旧乱码问题的合法 `�` 示例误判为新引入乱码。应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行；发现命中后再回到原文件确认语义。
+- 最近复发/补充：2026-08-07 发布后文档审计再次对所有 changed file 的完整内容搜索 U+FFFD，误报错题本的规则示例与 `docs/09-image-build.md` 的历史乱码说明。已改回只检查 `git diff --unified=0` 中本次新增行；命中历史正文不能作为失败依据。
 - 默认：UTF-8 无 BOM。
 - `.env`：必须 UTF-8 无 BOM。
 - `.sh`：UTF-8、LF，并运行 `bash -n` 与 ShellCheck。
