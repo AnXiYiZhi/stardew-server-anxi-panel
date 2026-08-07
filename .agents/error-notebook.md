@@ -504,6 +504,7 @@
 
 ## 2026-08-01：容器级 `GIT_DIR/GIT_WORK_TREE` 污染子仓库
 
+- 最近复发/补充：2026-08-07 官网恢复构建为了给 VitePress 提供 `lastUpdated`，把宿主完整 `.git` 复制到任务 volume；对象库复制超过三分钟，构建尚未开始。无需写入 Git 元数据时，不复制 `.git`；源码复制到可写 volume 后，只对 `npm run docs:build` 单条命令局部设置只读宿主 `GIT_DIR=/repo/.git`、`GIT_WORK_TREE=/repo`。
 - 环境：Windows linked worktree 挂入 Node/VitePress Linux 构建容器。
 - 错误模式：为让 VitePress 读取主工作树 Git 历史，在容器级全局导出 `GIT_DIR` 与 `GIT_WORK_TREE`，后续临时子仓库也继承这两个变量。
 - 症状 / 退出码：子仓库 Git 命令指向主工作树元数据，版本/lastUpdated 探针异常。
@@ -524,6 +525,7 @@
 
 ## 2026-08-01：精简 DinD 的 Docker CLI 插件与弃用参数
 
+- 最近复发/补充：2026-08-07 清理上述官网恢复容器时再次使用 `docker stop --time 5`，Docker 29 明确输出弃用警告。后续宿主与 DinD 停止命令统一使用 `docker stop --timeout <秒>`，不得因为旧参数仍返回 0 就继续保留。
 - 环境：Docker 29 精简容器，运行 compatibility/updater/runtime integration。
 - 错误模式：只设置 `DOCKER_CLI_PLUGIN_EXTRA_DIRS` 就假定 buildx/Compose 可发现，并继续使用已弃用的 `docker stop --time`。
 - 症状 / 退出码：Docker 29 未发现预期插件；停止命令产生 deprecated 警告，门禁工具链不稳定。

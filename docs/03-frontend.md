@@ -1,8 +1,14 @@
+# 2026-08-07 官网隔离改版撤回（DOCS-PORTAL-RESTORE-1，completed）
+
+- `6f34b8a` 曾错误地把未获发布授权的 `docs-portal-redesign` 隔离 worktree 合入官网；用户要求修复后，站点主题、导航、FAQ、部署/首次登录/手册索引等文件已精确恢复到 `v0.4.8` 发布提交 `0c5e2c4` 的正式官网版本，删除 `DocsHome.vue`。
+- 官网只保留本版必要变化：`index.md` 的 v0.4.8 版本卡、`changelog.md` 的玩家 Mod 发布说明，以及 `handbook/players.md` 的上报清单/CJB/unavailable 边界。Panel 前端、API、Release 和镜像均未回退。
+- Node 24 全新依赖卷 production build 通过；本地 1440×900、390×844 Browser 验证原 Hero、联机邀请卡、六张入口和旧 FAQ 恢复，v0.4.8 内容仍在，无横向溢出或 console warn/error。Pages 与线上复核在修复提交推送后补记。
+
 # v0.4.8 发布收口：玩家 Mod 页面与公开展示（2026-08-07，released）
 
 - 桌面与手机共用玩家 Mod 详情主体、CJB 显式文字提示、四组顺序、pending/stale/unavailable/error 与 280px 窄屏能力已随 `v0.4.8` 发布；发布镜像 version/revision/created 与三仓回拉证据见 `docs/09-image-build.md`。
-- 官网同步并入此前隔离评审的任务型门户：新增 `DocsHome.vue`，首页按“没有服务器 / Linux / NAS / Windows”选择路径，导航收敛为任务入口，FAQ 和手册按用户任务重排；首页/更新日志/玩家手册已更新为 `v0.4.8` 玩家 Mod 能力和客户端自报边界。
-- Linux Node 24 全新依赖卷的 VitePress production build 已通过。Pages workflow `31150162173` build/deploy 成功；线上首页、changelog、玩家手册在 1440×900 与 390×844 复核版本、玩家 Mod/CJB/自报边界、无横向溢出且 console warn/error 为 0。旧 `docs-portal-redesign` 的有效内容进入 `main` 后，连同其它历史 worktree/非 main 分支已清理。
+- 2026-08-07 曾误把隔离评审的任务型门户发布到 Pages；该视觉/信息架构改版随后按用户要求撤回。官网继续使用发布前的 Hero、联机邀请卡、六入口和原导航，只更新 `v0.4.8` 玩家 Mod 的版本卡、日志与玩家手册。
+- 玩家 Mod 页面本身的 Linux Node 24 production build 与发布门禁仍有效；隔离门户的 Pages `31150162173` 仅作为误发布历史记录，不再代表当前官网目标状态。
 - 页面仍不改变玩家加入、认证或管理动作。实体 PC 原版、官方 CJB 与移动客户端联机尚未验证；UI fixture 只证明状态与布局稳定，不证明对应实体平台支持。
 
 # FE-PLAYER-MOD-PRESENTATION-2：玩家比较顺序与内置项过滤（2026-08-06，completed，v0.4.8 released）

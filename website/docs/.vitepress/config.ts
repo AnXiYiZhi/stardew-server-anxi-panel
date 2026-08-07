@@ -12,27 +12,20 @@ export default defineConfig({
   themeConfig: {
     logo: '/logo.png',
     nav: [
-      { text: '开始开服', link: '/guide/getting-started' },
-      { text: '使用面板', link: '/handbook/' },
-      { text: '存档和 Mod', link: '/handbook/saves' },
-      { text: '排障', link: '/faq/' },
-      {
-        text: '参考',
-        items: [
-          { text: '系统要求', link: '/deploy/requirements' },
-          { text: '端口与安全组', link: '/deploy/ports' },
-          { text: '更新面板', link: '/maintain/update' },
-          { text: '版本更新日志', link: '/changelog' },
-          { text: '上游已知问题', link: '/faq/known-issues' }
-        ]
-      }
+      { text: '首页', link: '/' },
+      { text: '快速上手', link: '/guide/getting-started' },
+      { text: '部署指南', link: '/deploy/requirements' },
+      { text: '日常维护', link: '/maintain/update' },
+      { text: '深度文档', link: '/handbook/' },
+      { text: '更新日志', link: '/changelog' },
+      { text: '常见问题', link: '/faq/' }
     ],
     sidebar: {
       '/guide/': [
         {
-          text: '开始开服',
+          text: '新手指南',
           items: [
-            { text: '选择你的起点', link: '/guide/getting-started' },
+            { text: '快速上手', link: '/guide/getting-started' },
             { text: '服务器选择', link: '/guide/choose-server' },
             { text: '部署安装', link: '/guide/deploy' },
             { text: '首次进入面板', link: '/guide/first-login' }
@@ -41,7 +34,7 @@ export default defineConfig({
       ],
       '/deploy/': [
         {
-          text: '部署方式',
+          text: '部署',
           items: [
             { text: '系统要求', link: '/deploy/requirements' },
             { text: '一键脚本部署', link: '/deploy/quick-start' },
@@ -63,7 +56,7 @@ export default defineConfig({
       ],
       '/handbook/': [
         {
-          text: '使用面板',
+          text: '深度文档',
           items: [
             { text: '总览', link: '/handbook/' },
             { text: '界面总览', link: '/handbook/ui' },
