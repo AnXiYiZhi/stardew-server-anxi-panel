@@ -1,4 +1,10 @@
-# FE-PLAYER-MOD-PRESENTATION-2 接手记录（2026-08-06，completed，未发布）
+# v0.4.8 玩家 Mod 前端与门户发布交接（2026-08-07，released）
+
+- 玩家列表/待认证 CJB 文字提示、桌面静态详情、手机列表/详情子视图、四组比较、内置项过滤与 unavailable 边界已随 `v0.4.8` 发布。release/compatibility workflow `31117969497/31117949897` 成功，三仓正式镜像已分别完成 health/version smoke。
+- 用户要求所有历史工作收敛到 `main` 后，`docs-portal-redesign` 的 `DocsHome.vue`、任务导航、FAQ/手册重排和事实修正已语义合并；首页、changelog、玩家手册显示 v0.4.8 玩家 Mod 能力。Node 24 VitePress production build 通过，Pages/线上证据在本次文档提交后补记。
+- 后续维护必须继续共用 `PlayerModsDetail`，保持 CJB 明文、不以颜色独立表达、不把 `mods:null` 当零项、不把 `server_only` 放进玩家缺少。实体 PC 原版/CJB/移动客户端仍未验证。
+
+# FE-PLAYER-MOD-PRESENTATION-2 接手记录（2026-08-06，completed，v0.4.8 released）
 
 ## 改了什么、影响与验证
 
@@ -7,7 +13,7 @@
 - 影响 `PlayerModsDetail.tsx/.css`、`player-mod-details.ts`、状态测试与 QA fixture。`npm run test:player-mods`、`npm run test:responsive-layout`、`npx tsc -b` 和 production build 通过；桌面与 390×844 手机 Browser 均验证新顺序、旧说明/三类内置项不存在，手机无横向溢出。
 - UI 仍只读；CJB 清单仍是可绕过的客户端自报，不能升级为自动管理。后续修改组名或顺序时必须桌面/移动共用同一主体，避免两端漂移。
 
-# FE-PLAYER-MOD-CJB-LABEL-1 接手记录（2026-08-06，completed，未发布）
+# FE-PLAYER-MOD-CJB-LABEL-1 接手记录（2026-08-06，completed，v0.4.8 released）
 
 ## 改了什么与影响
 
@@ -20,7 +26,7 @@
 - `npm run test:player-mods`、`npm run test:responsive-layout`、`npx tsc -b`、production build 通过。Browser 在桌面玩家列表/待认证卡/详情及 390×844 手机总览/玩家列表/详情均看到显式文案，手机 root/body 横向溢出为 0。
 - `modRiskFlags` 可能来自 stale 的最后有效自报；不要把徽标改成“服务端确认作弊”，也不要据此自动禁入。修改 CJB manifest ID 仍可能绕过。
 
-# FE-PLAYER-MOD-COMPAT-1 第三阶段接手记录（2026-08-06，真实 PC+SMAPI 数据通过，页面矩阵受限，未发布）
+# FE-PLAYER-MOD-COMPAT-1 第三阶段接手记录（2026-08-06，真实 PC+SMAPI 数据通过，页面矩阵受限，v0.4.8 released）
 
 ## 改了什么、影响与验证
 
@@ -33,7 +39,7 @@
 - 应用内 Browser 本轮被本地地址策略拦截，因此没有实际打开真实登录后的详情页；不要把真实 API/路由 200 写成页面视觉通过。下一位仍需从桌面按钮和移动列表分别进入详情，补 PC 原版/CJB/移动端、pending/unavailable、新旧玩家与多玩家视觉；Android 实验性 SMAPI 没有环境就保持未验证。
 - 清单为客户端自报，改 CJB manifest UniqueID 可绕过；前端不得升级为自动处罚。接口/路由没有变化，不要新增轮询式管理请求或自行从 `mods:null` 推断零项。
 
-# FE-PLAYER-MOD-VIEW-1 玩家 Mod 详情接手记录（2026-08-06，completed，未发布）
+# FE-PLAYER-MOD-VIEW-1 玩家 Mod 详情接手记录（2026-08-06，completed，v0.4.8 released）
 
 ## 改了什么
 

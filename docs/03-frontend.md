@@ -1,18 +1,25 @@
-# FE-PLAYER-MOD-PRESENTATION-2：玩家比较顺序与内置项过滤（2026-08-06，completed，未发布）
+# v0.4.8 发布收口：玩家 Mod 页面与公开展示（2026-08-07，released）
+
+- 桌面与手机共用玩家 Mod 详情主体、CJB 显式文字提示、四组顺序、pending/stale/unavailable/error 与 280px 窄屏能力已随 `v0.4.8` 发布；发布镜像 version/revision/created 与三仓回拉证据见 `docs/09-image-build.md`。
+- 官网同步并入此前隔离评审的任务型门户：新增 `DocsHome.vue`，首页按“没有服务器 / Linux / NAS / Windows”选择路径，导航收敛为任务入口，FAQ 和手册按用户任务重排；首页/更新日志/玩家手册已更新为 `v0.4.8` 玩家 Mod 能力和客户端自报边界。
+- Linux Node 24 全新依赖卷的 VitePress production build 已通过。GitHub Pages 发布与线上桌面/手机复核将在本次文档提交推送后记录；旧 `docs-portal-redesign` worktree 在确认语义全部进入 `main` 后删除。
+- 页面仍不改变玩家加入、认证或管理动作。实体 PC 原版、官方 CJB 与移动客户端联机尚未验证；UI fixture 只证明状态与布局稳定，不证明对应实体平台支持。
+
+# FE-PLAYER-MOD-PRESENTATION-2：玩家比较顺序与内置项过滤（2026-08-06，completed，v0.4.8 released）
 
 - 详情统计和分组统一改为“玩家额外安装”第一、“玩家缺少 Mod”第二，之后是“版本不同”和“匹配”；条目结果徽标使用同一套新文案。
 - CJB 总横幅只保留“检测到该玩家使用了 CJB 作弊工具”，CJB 条目只保留“检测到 CJB 作弊”文字徽标；移除用户指定的两段自报/不自动处理说明。列表、待认证卡和详情仍只有只读提示，没有新增任何踢出、封禁或拦截请求。
 - `player-mod-details.ts` 增加前端防御过滤，大小写不敏感丢弃 `Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control`，兼容旧接口或缓存数据。其它第三方 `server_only` 仍可作为服务器专用信息显示，但不会进入玩家缺少。
 - `test:player-mods`、`test:responsive-layout`、独立 TypeScript 检查和 production build 通过；Browser 在桌面与 390×844 手机详情验证新顺序、三类内置项和两段旧说明均不存在，手机 root/body 宽度均为 390，无横向溢出。
 
-# FE-PLAYER-MOD-CJB-LABEL-1：列表与详情显式 CJB 检测提示（2026-08-06，completed，未发布）
+# FE-PLAYER-MOD-CJB-LABEL-1：列表与详情显式 CJB 检测提示（2026-08-06，completed，v0.4.8 released）
 
 - `StardewPlayerInfo` 新增可选 `modRiskFlags`；`player-mod-details.ts` 统一大小写不敏感的 `cjb` 判断和“检测到 CJB 作弊”动作文案。未返回字段、空数组或未知 flag 都保持普通“查看上报 Mod”。
 - 桌面玩家列表命中时把“查看上报 Mod”改成红色文字按钮“检测到 CJB 作弊”，仍进入原只读详情；桌面待认证玩家卡在姓名下显示同文案红色徽标。手机玩家列表按钮与手机总览的待认证卡同步，触控按钮继续保持至少 44px。
 - 详情横幅标题为“检测到该玩家使用了 CJB 作弊工具”，条目徽标为“检测到 CJB 作弊”；当前已按后续反馈移除两段解释，仅保留直接文字检测提示、边框和红色视觉。
 - QA fixture 为普通在线玩家和待认证玩家补 `modRiskFlags:["cjb"]`。`test:player-mods`、`test:responsive-layout`、独立 TypeScript 检查和 production build 通过；桌面及 390×844 手机 Browser 回归覆盖列表、待认证卡、详情与零横向溢出。
 
-# FE-PLAYER-MOD-COMPAT-1：玩家 Mod 详情第三阶段收尾（2026-08-06，真实 PC+SMAPI 数据通过，页面真机矩阵受限，未发布）
+# FE-PLAYER-MOD-COMPAT-1：玩家 Mod 详情第三阶段收尾（2026-08-06，真实 PC+SMAPI 数据通过，页面真机矩阵受限，v0.4.8 released）
 
 - `test-player-mod-details.ts` 的兼容矩阵扩展到 PC 原版、Android/iOS 官方客户端共享的 `unavailable + mods:null` 解释；明确断言不显示“0 个 Mod”“完全一致”或“安全”。pending、stale、HTTP 失败继续是互不混淆的状态。
 - 比较分组现在用完整 fixture 回归 match、client_required 缺失、版本不同、玩家额外安装和可选的普通 server_only match；防御层会丢弃任何错误标成 `missing_on_client + server_only` 的条目以及三类面板内置组件。大小写重复 ID 保留风险等级更高项，256 字名称与超长版本不会破坏状态归组。
@@ -20,7 +27,7 @@
 - 阶段二的 1365×900/280×740 Browser 证据继续有效；本阶段只增加状态回归与生产门禁，不改布局。最终 12 项前端状态脚本、独立 `npx tsc -b` 和 production build 通过。
 - 本机真实 PC+SMAPI 客户端经 IP 加入后，详情 API 返回 `reported`、三个真实 Mod、`match=2 / missingOnClient=0 / clientOnly=2 / versionMismatch=0`；主动断线、重连和 server 重启分别得到 stale、新 reportedAt、重启后 stale。把 production dist 嵌入测试 Panel 后，`/instances/stardew/player-mods?playerId=...` 静态路由实际返回 `200 text/html`。应用内 Browser 本轮被本地地址策略拦截，因此没有把“真实 API + 路由 200”写成实际登录后页面视觉通过；PC 原版/CJB/移动端页面仍需真机补验。
 
-# FE-PLAYER-MOD-VIEW-1：玩家 Mod 上报详情（2026-08-06，completed，未发布）
+# FE-PLAYER-MOD-VIEW-1：玩家 Mod 上报详情（2026-08-06，completed，v0.4.8 released）
 
 - 桌面玩家名册为每个存在 `uniqueMultiplayerId` 的玩家提供“查看上报 Mod”，进入静态路由 `/instances/stardew/player-mods?playerId=...`；侧栏继续把该详情视为“玩家”区域。后端 SPA 白名单同步加入精确路径，未知子路径仍返回 404。
 - `PlayerModsDetail` 是桌面 `PlayerModsPage` 与移动 `MobilePlayersPage` 详情子视图的共享主体。移动端从玩家卡进入后可返回列表；直接以该路径打开紧凑壳时会落到玩家 Tab。该功能只读，不改变加入、认证、踢出、封禁或拦截流程。

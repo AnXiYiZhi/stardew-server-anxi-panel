@@ -1,18 +1,25 @@
-# PLAYER-MOD-PRESENTATION-2 联调契约（2026-08-06，completed，未发布）
+# v0.4.8 玩家 Mod 联调发布结论（2026-08-07，released）
+
+- 发布接口为 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`；`context.status` 为 `reported/pending/unavailable/stale`，未取得清单时 `mods:null`。comparison item 只使用 `match/missing_on_client/client_only/version_mismatch`，比较不可用由 `comparison.status=unavailable` 表示。
+- `missing_on_client` 只统计服务器实际加载、启用且 `client_required` 的 Mod；`server_only` 不告警，SMAPI、Junimo Controller、Anxi Panel Control 不参与普通比较。前端顺序固定为玩家额外安装、玩家缺少 Mod、版本不同、匹配。
+- CJB 只按两条官方 UniqueID 不区分大小写提示，列表和详情均有明确文字，但没有管理操作。清单是客户端自报，修改 manifest ID 可绕过；此功能不能作为自动处罚依据。
+- `v0.4.7 → v0.4.8` 真实 Web 更新、unhealthy 自动回滚、升级后 API/UI fixture、三仓正式镜像回拉和独立 health/version smoke 均完成。尚未具备的实体客户端矩阵继续按下表记录为未验证。
+
+# PLAYER-MOD-PRESENTATION-2 联调契约（2026-08-06，completed，v0.4.8 released）
 
 - 详情接口不再把面板自带运行组件纳入比较：`Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control` 必须从 `serverContext.loadedMods`、comparison items 和 summary 排除。玩家/服务器 `apiVersion` 字段继续返回，但不再合成虚拟 SMAPI 比较项。
 - 可见结果顺序固定为 `client_only / missing_on_client / version_mismatch / match`；前端对应文案为“玩家额外安装 / 玩家缺少 Mod / 版本不同 / 匹配”。前端还按相同三条 UniqueID 做兼容过滤，避免混合版本缓存重新显示内置项。
 - CJB 横幅只显示“检测到该玩家使用了 CJB 作弊工具”，条目只显示“检测到 CJB 作弊”；不再显示两段解释。只读、不处罚和客户端自报边界仍是接口安全约束，只是不在这两个 UI 位置重复文案。
 - 桌面/390×844 手机 QA 已验证分组次序、内置项与旧解释均不存在，手机 root/body 无横向溢出；后端全量 test/vet/build、前端状态/响应式测试、TypeScript 与 production build 通过。该验收使用隔离 fixture，不替代尚未完成的实体 CJB/移动客户端联机。
 
-# PLAYER-MOD-CJB-LIST-1 列表提示联调契约（2026-08-06，completed，未发布）
+# PLAYER-MOD-CJB-LIST-1 列表提示联调契约（2026-08-06，completed，v0.4.8 released）
 
 - `GET /api/instances/:id/players` 的玩家项可带 `"modRiskFlags":["cjb"]`。这是后端从独立 `player-mod-contexts.json` 提取的轻量标记；响应不包含 `mods`，完整清单仍只能通过 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods` 获取。
 - 字段缺失或空数组表示没有可展示的 CJB 标记，不能反推“安全”。存在 `cjb` 时，桌面/手机玩家列表按钮显示“检测到 CJB 作弊”，桌面与手机待认证卡同样显示文字徽标；详情横幅显示“检测到该玩家使用了 CJB 作弊工具”。
 - 标记来源始终是客户端自报，stale 可保留最后一次检测结果；修改 manifest UniqueID、未上报或不兼容链路仍可能绕过。所有提示均只读，不改变加入、批准、踢出、封禁或自动拦截逻辑。
 - 隔离 QA 已覆盖 desktop reported 列表/待认证/详情及 390×844 mobile 总览/列表/详情，手机 root/body 横向溢出为 0；Go 测试覆盖高频玩家响应不泄漏完整 Mod 数据。
 
-# PLAYER-MOD-COMPAT-1 第三阶段联调矩阵（2026-08-06，PC+SMAPI 单客户端真机通过，其余实体矩阵受限，未发布）
+# PLAYER-MOD-COMPAT-1 第三阶段联调矩阵（2026-08-06，PC+SMAPI 单客户端真机通过，其余实体矩阵受限，v0.4.8 released）
 
 证据等级必须分开记录：C# 契约测试验证 Control 实际复用的状态转换；Go loopback 测试通过真实 HTTP handler、SQLite 与隔离文件系统；真实 game-data 编译验证 SMAPI/game API 可用。2026-08-06 又增加一台本机真实 Stardew `1.6.15` + SMAPI `4.5.2` 客户端的标准 LAN/IP 联机证据，但它仍不能替代原版、CJB、移动端或多客户端矩阵。
 
@@ -35,7 +42,7 @@
 
 Mod 清单始终是客户端通过 SMAPI peer context 自报，不是服务端对客户端文件系统的可信审计。CJB 只按 `CJBok.CheatsMenu` / `CJBok.ItemSpawner` 不区分大小写精确提示；修改 manifest UniqueID、使用未上报/不兼容链路或篡改客户端都可能绕过。该功能只用于人工参考，不能作为自动处罚依据。
 
-# PLAYER-MOD-CONTEXT-1 / FE-PLAYER-MOD-VIEW-1 联调契约（2026-08-06，前后端两阶段完成，未发布）
+# PLAYER-MOD-CONTEXT-1 / FE-PLAYER-MOD-VIEW-1 联调契约（2026-08-06，前后端两阶段完成，v0.4.8 released）
 
 本阶段只提供登录态只读接口，不新增前端页面，也不会拦截、踢出或封禁玩家：
 

@@ -1,18 +1,25 @@
-# PLAYER-MOD-BUILTIN-FILTER-1：玩家 Mod 比较隐藏面板内置组件（2026-08-06，completed，未发布）
+# v0.4.8 发布收口：玩家 Mod 服务端链路（2026-08-07，released）
+
+- annotated tag `v0.4.8` 精确指向 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`。Release workflow `31117969497` 第三次尝试在 GitHub Actions 恢复后用时 6 分 10 秒成功；compatibility run `31117949897` 的第二次尝试用时约 2 分 03 秒成功，远端 backend、frontend 与 isolated Docker integration 均实际执行通过。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.8/latest` 六个 OCI index digest 均为 `sha256:5381009b807ad2c632075332e3538297b5069eff2f2b1b133ff7fffd2ac38f90`；version=`0.4.8`、revision=`0c5e2c434a92`、created=`2026-08-07T04:50:35Z`。三个 registry 的精确镜像分别启动并通过 `/health` 与 `/api/version`。
+- 接口契约保持 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`，列表仅带轻量 `modRiskFlags`，完整清单仍只在独立 sidecar 与详情响应中。发布没有新增加入拦截、踢出、封禁或自动处罚，也没有实现 Steam SDR 桥。
+- 真机证据仍仅覆盖 PC + Stardew 1.6.15 + SMAPI 4.5.2 的标准 IP reported、断线、重连和服务器重启；PC 原版、两种官方 CJB、Android/iOS、Android 实验性 SMAPI及多个真实远端玩家并发未验证，不能由 fixture 外推。
+
+# PLAYER-MOD-BUILTIN-FILTER-1：玩家 Mod 比较隐藏面板内置组件（2026-08-06，completed，v0.4.8 released）
 
 - `GET /api/instances/:id/players/:uniqueMultiplayerId/mods` 的比较层现在按 UniqueID 大小写不敏感忽略 `Pathoschild.SMAPI`、`JunimoHost.Server` 和 `AnXiYiZhi.StardewAnxiPanel.Control`。它们不再进入 `serverContext.loadedMods`、comparison items 或 summary，也不会产生匹配、玩家缺少、玩家额外安装或版本不同提示。
 - `apiVersion` 仍保留在玩家/服务器上下文元数据中，供详情页显示实际 SMAPI 版本；只是取消原来的虚拟 SMAPI match/version_mismatch 条目。其它第三方 `server_only` 仍遵守“缺失不告警、双方都有时可作服务器专用信息”的既有规则。
 - 比较 items 的稳定顺序改为 `client_only → missing_on_client → version_mismatch → match`。该调整只影响只读展示，不改变 ModContext 采集、玩家加入、认证、踢出、封禁或拦截链路。
 - 影响 `player_mods.go`、driver/API 契约测试；定向测试及最终 `go test ./...`、`go vet ./...`、`go build ./...` 全部通过。没有修改 Control DLL、Junimo/SMAPI 上游或 sidecar schema。
 
-# PLAYER-MOD-CJB-LIST-1：玩家名册 CJB 轻量提示（2026-08-06，completed，未发布）
+# PLAYER-MOD-CJB-LIST-1：玩家名册 CJB 轻量提示（2026-08-06，completed，v0.4.8 released）
 
 - `GET /api/instances/:id/players` 的每个玩家新增可选 `modRiskFlags:string[]`；当前只可能包含 `"cjb"`。字段来自该联机 ID 最后一份通过既有上限、状态、ID 和去重校验的 `player-mod-contexts.json`，不会把 `mods` 或比较 items 塞进高频玩家响应。
 - `ListPlayers` 在完成在线快照、SQLite 名册合并和人物 capability 后，一次读取 sidecar 并按 `uniqueMultiplayerId` 补轻量标记；损坏、超限、未知 ID 或无报告时省略字段。`stale` 历史仍可保留上次检测标记，因此它表示“最近一次有效客户端自报命中”，不是服务端文件审计或当前在线事实。
 - 该字段只供列表/待认证卡片显示，不进入批准、踢出、封禁、连接拒绝或其它管理判断。官方 ID 与绕过边界仍为 `CJBok.CheatsMenu` / `CJBok.ItemSpawner` 的不区分大小写精确匹配；修改 manifest ID 仍可绕过。
 - `TestListPlayersAddsCompactCJBFlagWithoutEmbeddingMods` 覆盖 CJB/非 CJB 两名玩家、大小写匹配、JSON 字段与完整 Mod 信息不泄漏；定向 driver/Web 测试通过。
 
-# PLAYER-MOD-COMPAT-1：玩家 Mod 查看第三阶段（2026-08-06，PC+SMAPI 真机部分通过，其余矩阵受限，未发布）
+# PLAYER-MOD-COMPAT-1：玩家 Mod 查看第三阶段（2026-08-06，PC+SMAPI 真机部分通过，其余矩阵受限，v0.4.8 released）
 
 - `PlayerModContextLifecycle` 现在承载 Control peer 事件实际共用的连接、完整上报、断线和 pending 超时转换；`ModEntry` 的三个玩家 Mod 事件处理器只调用该只读生命周期并原子写 sidecar。契约测试直接覆盖 context 先于 connected、原版/移动端 pending→unavailable、reported→stale→重连 pending→新 reported、进程重启统一 stale、多玩家隔离和旧清单不串号。
 - C# 边界补充两条官方 CJB 的精确 ID/名称/版本、大小写重复 ID、超长/控制字符、超量整份拒绝。Go 补充后端再次规范化与去重、1024 上限拒绝、`server_only` 缺失不告警但客户端确有上报时可作 match 展示，以及 peer 采集处理器不得引用 `Game1.server`、kick、ban 或命令目录的静态回归检查。
@@ -24,7 +31,7 @@
 - 隔离限制：driver 的游戏 Compose project 实际仍取实例目录 basename `stardew`，没有继承任务的 Panel project 名，因此 steam-auth 复用了创建于 2026-07-06 的既有 `stardew_steam-session` volume。测试没有读取 token 内容，清理时保留该旧卷；标准 LAN/IP peer context 结果不依赖邀请码，但本次不能宣称认证卷完全隔离。
 - 尚未有条件完成 PC 原版、两种官方 CJB、Android/iOS 官方客户端、Android 实验性 SMAPI以及多个远端玩家同时在线；这些继续明确为未验证，不能从上述单一 SMAPI 客户端结果外推。实体页面视觉联调也未由真实客户端握手替代。详见 `docs/06-integration.md`。本阶段未实现 Steam SDR 桥，也未发布或打 Tag。
 
-# PLAYER-MOD-CONTEXT-1：玩家 Mod 查看第一阶段（2026-08-06，completed，未发布）
+# PLAYER-MOD-CONTEXT-1：玩家 Mod 查看第一阶段（2026-08-06，completed，v0.4.8 released）
 
 - Control Mod `0.3.0` 在标准 IP 联机链路订阅 SMAPI `PeerContextReceived`、`PeerConnected`、`PeerDisconnected`：以 `uniqueMultiplayerId` 保存 `hasSmapi/gameVersion/apiVersion/mods/contextStatus/reportedAt`。连接但尚无完整上下文先记 `pending`，10 秒后仍未收到则记 `unavailable`；断开记 `stale` 并保留最后一份完整报告。Control 启动时会把上个进程留下的记录统一转为 stale，绝不把旧清单当成当前在线事实。
 - 独立 sidecar 为 `<dataDir>/.local-container/control/player-mod-contexts.json`，schema=1，继续复用 Control 既有同目录临时文件 + replace 原子写。完整 Mod 数组不进入每 120 tick 刷新的 `players.json`。`pending/unavailable` 与所有没有真正上报清单的记录固定为 `mods:null`；只有收到完整 peer context 才允许 `reported`，真实报告零项时才写 `mods:[]`。

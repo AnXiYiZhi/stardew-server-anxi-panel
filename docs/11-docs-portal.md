@@ -2,7 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；全站文档设计系统、v0.4.6 展示、首页入口卡、联机邀请 Hero 与长目录自动跟随均已完成 Pages 发布和线上复核**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；任务型首页、五项导航、按设备开服路径、FAQ/手册重排与 v0.4.8 玩家 Mod 展示已合并到 `main`，等待本次 Pages 部署后的最终线上复核**。以下决策已和用户对齐：
+
+## 2026-08-07：任务型门户与 v0.4.8 展示合并
+
+- 用户明确要求把所有历史分支/worktree 的有效内容收敛到 `main`，因此 2026-07-29 隔离评审的 `docs-portal-redesign` 获得发布授权；不再保留“用户确认前不得提交”的旧草稿约束。
+- 首页改用代码原生 `DocsHome.vue`，桌面按“我还没有服务器 / Linux / NAS / Windows”四宫格、手机同序单列；导航收敛为开始开服、使用面板、存档和 Mod、排障、参考。国内 HTTP 与 GitHub HTTPS 两条安装命令继续保留。
+- FAQ 改为按现象折叠，手册按任务重排，并纠正首次存档顺序、临时封禁、模组农场、Docker Socket 与停服修改 Mod 的事实。首页版本、changelog 和玩家手册同步 v0.4.8 的玩家 Mod 查看、自报边界及 CJB 只读提示。
+- 影响只在 `website/` 与长期文档，不改变 Panel API 或玩家流程。Linux Node 24 全新依赖卷 production build 已通过；Pages workflow、线上 HTTP、桌面/手机布局、深色模式和 console 证据将在本次 `main` 提交部署后补记。
 
 ## 2026-08-01：首页联机邀请 Hero（已发布）
 
