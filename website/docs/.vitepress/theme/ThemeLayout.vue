@@ -11,12 +11,12 @@ let outlineObserver: MutationObserver | undefined
 let outlineFrame: number | undefined
 
 const sections = [
-  { prefix: '/guide/', key: 'guide', label: '开始开服', eyebrow: 'START HERE', icon: '开' },
-  { prefix: '/deploy/', key: 'deploy', label: '部署参考', eyebrow: 'DEPLOY', icon: '部' },
-  { prefix: '/handbook/', key: 'handbook', label: '使用面板', eyebrow: 'PANEL GUIDE', icon: '用' },
-  { prefix: '/maintain/', key: 'maintain', label: '日常维护', eyebrow: 'MAINTAIN', icon: '护' },
-  { prefix: '/faq/', key: 'faq', label: '按现象排障', eyebrow: 'TROUBLESHOOT', icon: '查' },
-  { prefix: '/changelog', key: 'changelog', label: '版本更新', eyebrow: 'RELEASES', icon: '版' },
+  { prefix: '/guide/', key: 'guide', label: '新手指南', eyebrow: 'GETTING STARTED', icon: '✦' },
+  { prefix: '/deploy/', key: 'deploy', label: '部署指南', eyebrow: 'DEPLOYMENT', icon: '⬡' },
+  { prefix: '/handbook/', key: 'handbook', label: '深度文档', eyebrow: 'HANDBOOK', icon: '◫' },
+  { prefix: '/maintain/', key: 'maintain', label: '日常维护', eyebrow: 'OPERATIONS', icon: '⌁' },
+  { prefix: '/faq/', key: 'faq', label: '问题排查', eyebrow: 'TROUBLESHOOTING', icon: '?' },
+  { prefix: '/changelog', key: 'changelog', label: '版本更新', eyebrow: 'RELEASE NOTES', icon: '↗' },
 ]
 
 const isHome = computed(() => frontmatter.value.layout === 'home')

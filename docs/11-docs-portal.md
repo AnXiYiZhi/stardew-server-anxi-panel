@@ -2,11 +2,17 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；任务型首页、五项导航、按设备开服路径、FAQ/手册重排与 v0.4.8 玩家 Mod 展示已合并到 `main`，Pages 与线上桌面/手机复核通过**。以下决策已和用户对齐：
+状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航，仅更新 v0.4.8 玩家 Mod 内容**。以下决策已和用户对齐：
 
-## 2026-08-07：任务型门户与 v0.4.8 展示合并
+## 2026-08-07：撤回误发布的任务型隔离改版
 
-- 用户明确要求把所有历史分支/worktree 的有效内容收敛到 `main`，因此 2026-07-29 隔离评审的 `docs-portal-redesign` 获得发布授权；不再保留“用户确认前不得提交”的旧草稿约束。
+- `docs-portal-redesign` 原本是本地隔离评审内容，不应因“清理分支/worktree”被解释为官网发布授权。误合并提交为 `6f34b8a`；修复以 `v0.4.8` 发布提交 `0c5e2c4` 的网站树为基线恢复全部非玩家 Mod 文件，并删除 `DocsHome.vue`。
+- 当前仅保留三处正式内容差异：首页 v0.4.8 版本卡、changelog 玩家 Mod 发布说明、玩家手册的上报 Mod/CJB/unavailable 边界。Panel API、前端详情页、Release、tag 和镜像不受影响。
+- Node 24 全新依赖卷 VitePress build 通过；本地 1440×900 与 390×844 验证原 Hero、联机邀请卡、六入口、原 FAQ 和 v0.4.8 内容，无横向溢出、overlay 或 console warn/error。修复提交的 Pages/线上结果后续补记。
+
+## 2026-08-07：任务型门户与 v0.4.8 展示误合并（已撤回）
+
+- 当时错误地把“所有历史分支/worktree 的有效内容收敛到 `main`”解释成 2026-07-29 隔离评审的 `docs-portal-redesign` 获得发布授权；用户随后明确否定这一解释，以下改版已全部撤回。
 - 首页改用代码原生 `DocsHome.vue`，桌面按“我还没有服务器 / Linux / NAS / Windows”四宫格、手机同序单列；导航收敛为开始开服、使用面板、存档和 Mod、排障、参考。国内 HTTP 与 GitHub HTTPS 两条安装命令继续保留。
 - FAQ 改为按现象折叠，手册按任务重排，并纠正首次存档顺序、临时封禁、模组农场、Docker Socket 与停服修改 Mod 的事实。首页版本、changelog 和玩家手册同步 v0.4.8 的玩家 Mod 查看、自报边界及 CJB 只读提示。
 - 影响只在 `website/` 与长期文档，不改变 Panel API 或玩家流程。Linux Node 24 全新依赖卷 production build 已通过；Pages workflow `31150162173` build/deploy 成功，同提交 compatibility workflow `31150162180` 成功。线上首页、changelog 与玩家手册在 1440×900、390×844 下无横向溢出，版本与玩家 Mod/CJB/自报/未上报边界正确，console warn/error 为 0。
