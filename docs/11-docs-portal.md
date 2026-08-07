@@ -2,14 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 全部完成并已上线；任务型首页、五项导航、按设备开服路径、FAQ/手册重排与 v0.4.8 玩家 Mod 展示已合并到 `main`，等待本次 Pages 部署后的最终线上复核**。以下决策已和用户对齐：
+状态：**步骤 1-8 全部完成并已上线；任务型首页、五项导航、按设备开服路径、FAQ/手册重排与 v0.4.8 玩家 Mod 展示已合并到 `main`，Pages 与线上桌面/手机复核通过**。以下决策已和用户对齐：
 
 ## 2026-08-07：任务型门户与 v0.4.8 展示合并
 
 - 用户明确要求把所有历史分支/worktree 的有效内容收敛到 `main`，因此 2026-07-29 隔离评审的 `docs-portal-redesign` 获得发布授权；不再保留“用户确认前不得提交”的旧草稿约束。
 - 首页改用代码原生 `DocsHome.vue`，桌面按“我还没有服务器 / Linux / NAS / Windows”四宫格、手机同序单列；导航收敛为开始开服、使用面板、存档和 Mod、排障、参考。国内 HTTP 与 GitHub HTTPS 两条安装命令继续保留。
 - FAQ 改为按现象折叠，手册按任务重排，并纠正首次存档顺序、临时封禁、模组农场、Docker Socket 与停服修改 Mod 的事实。首页版本、changelog 和玩家手册同步 v0.4.8 的玩家 Mod 查看、自报边界及 CJB 只读提示。
-- 影响只在 `website/` 与长期文档，不改变 Panel API 或玩家流程。Linux Node 24 全新依赖卷 production build 已通过；Pages workflow、线上 HTTP、桌面/手机布局、深色模式和 console 证据将在本次 `main` 提交部署后补记。
+- 影响只在 `website/` 与长期文档，不改变 Panel API 或玩家流程。Linux Node 24 全新依赖卷 production build 已通过；Pages workflow `31150162173` build/deploy 成功，同提交 compatibility workflow `31150162180` 成功。线上首页、changelog 与玩家手册在 1440×900、390×844 下无横向溢出，版本与玩家 Mod/CJB/自报/未上报边界正确，console warn/error 为 0。
 
 ## 2026-08-01：首页联机邀请 Hero（已发布）
 
@@ -48,11 +48,11 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.6` 文档）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.8` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |
-| 仓库位置 | 同仓库子目录 `website/`，随主仓库一起走 PR 流程 |
+| 仓库位置 | 同仓库子目录 `website/`，只随本地/远端 `main` 单主线维护 |
 | 部署方式 | GitHub Actions 构建 + GitHub Pages 托管，免费 |
 | 访问域名 | 先用 GitHub Pages 默认域名，后续可换绑自定义域名 |
 | 语言范围 | 先做中文单语，预留后续接入双语的结构空间 |
