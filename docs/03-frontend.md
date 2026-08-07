@@ -2,7 +2,7 @@
 
 - `6f34b8a` 曾错误地把未获发布授权的 `docs-portal-redesign` 隔离 worktree 合入官网；用户要求修复后，站点主题、导航、FAQ、部署/首次登录/手册索引等文件已精确恢复到 `v0.4.8` 发布提交 `0c5e2c4` 的正式官网版本，删除 `DocsHome.vue`。
 - 官网只保留本版必要变化：`index.md` 的 v0.4.8 版本卡、`changelog.md` 的玩家 Mod 发布说明，以及 `handbook/players.md` 的上报清单/CJB/unavailable 边界。Panel 前端、API、Release 和镜像均未回退。
-- Node 24 全新依赖卷 production build 通过；本地 1440×900、390×844 Browser 验证原 Hero、联机邀请卡、六张入口和旧 FAQ 恢复，v0.4.8 内容仍在，无横向溢出或 console warn/error。Pages 与线上复核在修复提交推送后补记。
+- Node 24 全新依赖卷 production build 通过；Pages workflow `31152244079` 的 build/deploy 成功。线上 1440×900、390×844 Browser 验证原 Hero、联机邀请卡、六张入口和旧 FAQ 恢复，v0.4.8 内容仍在，无横向溢出或 console warn/error。
 
 # v0.4.8 发布收口：玩家 Mod 页面与公开展示（2026-08-07，released）
 

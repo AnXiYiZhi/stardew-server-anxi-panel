@@ -1,7 +1,7 @@
 # 官网隔离改版撤回交接（2026-08-07，completed）
 
 - `6f34b8a` 误将 `docs-portal-redesign` 隔离稿发布到官网；修复已把所有非玩家 Mod 站点文件恢复到 release commit `0c5e2c4`，删除 `DocsHome.vue`，只保留首页 v0.4.8 版本卡、changelog 和玩家手册新增内容。
-- Node 24 VitePress build 与本地 1440×900/390×844 Browser 通过：原 Hero、联机邀请卡、六入口、原 FAQ 恢复，v0.4.8/CJB/unavailable 内容存在，无溢出或 console warn/error。不要再次从已删除 worktree 或 `6f34b8a` 恢复任务型门户。
+- Node 24 VitePress build、Pages `31152244079` 与线上 1440×900/390×844 Browser 通过：原 Hero、联机邀请卡、六入口、原 FAQ 恢复，v0.4.8/CJB/unavailable 内容存在，无溢出或 console warn/error。不要再次从已删除 worktree 或 `6f34b8a` 恢复任务型门户。
 
 # v0.4.8 玩家 Mod 前端与门户发布交接（2026-08-07，released）
 

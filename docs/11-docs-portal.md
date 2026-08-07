@@ -8,7 +8,7 @@
 
 - `docs-portal-redesign` 原本是本地隔离评审内容，不应因“清理分支/worktree”被解释为官网发布授权。误合并提交为 `6f34b8a`；修复以 `v0.4.8` 发布提交 `0c5e2c4` 的网站树为基线恢复全部非玩家 Mod 文件，并删除 `DocsHome.vue`。
 - 当前仅保留三处正式内容差异：首页 v0.4.8 版本卡、changelog 玩家 Mod 发布说明、玩家手册的上报 Mod/CJB/unavailable 边界。Panel API、前端详情页、Release、tag 和镜像不受影响。
-- Node 24 全新依赖卷 VitePress build 通过；本地 1440×900 与 390×844 验证原 Hero、联机邀请卡、六入口、原 FAQ 和 v0.4.8 内容，无横向溢出、overlay 或 console warn/error。修复提交的 Pages/线上结果后续补记。
+- Node 24 全新依赖卷 VitePress build 通过；Pages workflow `31152244079` 的 build（22 秒）与 deploy（8 秒）成功。线上 1440×900 与 390×844 验证原 Hero、联机邀请卡、六入口、原 FAQ 和 v0.4.8 内容，无横向溢出、overlay 或 console warn/error；两张 Logo 图片均完成加载且 `naturalWidth=128`。
 
 ## 2026-08-07：任务型门户与 v0.4.8 展示误合并（已撤回）
 

@@ -3,7 +3,7 @@
 - [x] `v0.4.8` annotated tag 指向 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`；Release/compatibility workflow `31117969497/31117949897` 最终成功，GitHub Release 为正式版且三项脚本附件齐全。
 - [x] Docker Hub、阿里云 ACR、GHCR 的 `0.4.8/latest` 六个 index digest 统一为 `sha256:5381009b807ad2c632075332e3538297b5069eff2f2b1b133ff7fffd2ac38f90`；三个精确镜像分别通过 isolated health/version smoke。
 - [x] 玩家 Mod 第一至三阶段、列表 CJB 提示、内置项过滤与桌面/手机详情已发布；保持只读、自报、可绕过和不自动处罚边界。
-- [x] 历史分支/worktree 已收敛并清理，但任务型门户草稿不属于玩家 Mod 发布授权范围；`6f34b8a` 的误发布已按用户要求撤回。官网恢复 `0c5e2c4` 的正式布局，只保留 v0.4.8 版本卡、更新日志与玩家 Mod 手册；本地 production build、1440×900/390×844 视觉与状态复核通过，线上复核待修复提交部署后补记。
+- [x] 历史分支/worktree 已收敛并清理，但任务型门户草稿不属于玩家 Mod 发布授权范围；`6f34b8a` 的误发布已按用户要求撤回。官网恢复 `0c5e2c4` 的正式布局，只保留 v0.4.8 版本卡、更新日志与玩家 Mod 手册；本地 production build、Pages `31152244079` 与线上 1440×900/390×844 视觉和状态复核通过。
 - [ ] PC 原版、官方两种 CJB、Android/iOS 官方客户端、Android 实验性 SMAPI及多个真实远端玩家并发仍未做实体联机；不把自动化/fixture 记成真机支持。
 
 # 2026-08-06 完成：玩家 Mod 比较展示收敛（PLAYER-MOD-BUILTIN-FILTER-1 / FE-PLAYER-MOD-PRESENTATION-2，v0.4.8 released）
