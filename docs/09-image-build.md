@@ -1,6 +1,6 @@
 # v0.4.8 发布记录：玩家 Mod 自报、比较与详情页（2026-08-07，已发布）
 
-- 官网误发布修复：发布完成后的 `6f34b8a` 错误合入未授权的本地 `docs-portal-redesign` 隔离稿；2026-08-07 按用户要求以 tag commit `0c5e2c4` 的正式网站树恢复主题、导航、FAQ 与指南，只保留 v0.4.8 版本卡、changelog 和玩家手册。Node 24 production build、本地桌面/手机视觉及无溢出/console 检查通过；这不移动 `v0.4.8` tag，不重发镜像，也不回退 Panel 功能。
+- 官网误发布修复：发布完成后的 `6f34b8a` 错误合入未授权的本地 `docs-portal-redesign` 隔离稿；2026-08-07 按用户要求以 tag commit `0c5e2c4` 的正式网站树恢复主题、导航、FAQ 与指南，只保留 v0.4.8 版本卡、changelog 和玩家手册。Node 24 production build、Pages `31152244079`、线上桌面/手机视觉及无溢出/console 检查通过；这不移动 `v0.4.8` tag，不重发镜像，也不回退 Panel 功能。
 
 - 候选范围：Control `0.3.0` 在标准 IP/SMAPI peer 事件中按 `uniqueMultiplayerId` 采集客户端自报的游戏、SMAPI 与 Mod 清单，原子写入独立 `player-mod-contexts.json`；Go 后端以服务器进程实际 `options.json.loadedMods` 为基线提供 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`；桌面和移动端提供只读详情、四组比较、CJB 明示风险及 unavailable/pending/stale/error 状态。本版同时清理确认未引用的旧原型图和前端生成素材，并为真实 Panel 增加 `shell=mobile` 预览参数。未修改 Junimo/SMAPI 上游，不实现 Steam SDR 桥，不改变加入、认证、踢出、封禁或自动拦截流程。
 - 受影响链路：`SMAPI peer event → Control 输入规范化/生命周期 → 原子 sidecar → stardew_junimo driver → Web 鉴权接口 → TypeScript 状态归一化 → 桌面/移动共享详情`。服务器比较集合只能来自当前运行进程的 `loadedMods`；磁盘 `ModInfo/syncKind` 只补名称和分类。`Pathoschild.SMAPI`、`JunimoHost.Server`、`AnXiYiZhi.StardewAnxiPanel.Control` 必须完全退出比较和统计；普通 `server_only` 可作信息展示但不得进入“玩家缺少 Mod”。
