@@ -1,3 +1,11 @@
+# RUNTIME-UPDATE-DIAGNOSE-REPAIR-2：检测、修复并继续升级（2026-08-09，completed，未发布）
+
+- `StartRuntimeUpdateRepair` 不再把“修复完成”定义为只恢复旧版本。一次确认现在闭环执行：只读故障分类 → 已知修复 → 修复验收 → 与普通升级相同的完整 dry-run → 升级前保存/整档备份 → 新 apply 事务 → 目标验收或自动回滚。最终只有目标验收通过才是 `succeeded`；修复后预检或重试升级失败则明确失败，不把“已回到旧版”冒充升级成功。
+- 当前闭集检测器覆盖两类历史问题：`rollback_failed` 必须精确匹配 status/manifest 的实例、apply ID、版本对、Compose project、目标 digest/image ID 和事务资源名，并验证原 `.env`、Compose、Control 文件是非 symlink 普通文件且 SHA-256 一致；`repairable/legacy_candidates` 必须证明主镜像仍在可信仓库、`IMAGE_VERSION` 与主 server tag 一致、候选只来自当前/历史可信仓库，才允许私有备份后原子规范化。自定义镜像、损坏状态、未知候选或材料漂移一律停止。
+- 修复后 dry-run 重新检查内置 tested manifest、Docker/Compose、Compose 服务模型、当前镜像、steam-session volume、可信目标候选/digest 和目标 Compose 覆盖；apply 关键预检再按实际运行容器 image ID、配置 tag 与 Control 版本/DLL 内容生成 `change_plan`。这次生产故障对应“server/auth 已是目标、只有 Control 不一致”，因此计划只更新 Control/server，不再停止或重建未变化 auth。
+- 新增持久化 `resuming_upgrade`、`resumeAfterRepair` 与 `repairSourceApplyId`。Panel 在“原版本已修好但尚未创建新事务”、完整预检中、或新事务 mutation 前退出时，启动恢复会继续同一闭环；新事务恢复清单没有 mutation intent 时继续同一个 apply，首个 write-ahead mutation intent 持久化后才切换到普通事务回滚语义。修复次数跨重新升级事务保留，最多三次。
+- 主要影响 `runtime_update_repair.go`、apply/recovery 状态机、已知配置修复 helper、required runtime 终态同步及专项测试。数据库、存档、game-data 和认证数据格式不变；此入口仍只覆盖 Junimo server/auth/Control，不处理 Panel helper、SMAPI staging 或未来 game/SDK apply。
+
 # RUNTIME-UPDATE-WAL-REPAIR-1：跨版本升级事务与一键安全恢复（2026-08-08，completed，未发布）
 
 - required runtime apply 的恢复清单升级为 schema 3。停服、Control 同步、认证快照创建、Junimo Mod 替换、`.env` 切换、auth/server 重建等每个会改变实例的步骤都先持久化 write-ahead intent，再执行 Docker 或文件操作；Panel 在调用已经到达 Docker daemon、但完成标记尚未落盘的窗口退出时，也按“可能已发生”执行幂等回滚和精确资源清理。

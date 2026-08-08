@@ -83,30 +83,36 @@ http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --out
 
 status_url="$PANEL_URL/api/instances/$INSTANCE_ID/junimo-update/apply"
 repair_url="$PANEL_URL/api/instances/$INSTANCE_ID/junimo-update/repair"
+update_url="$PANEL_URL/api/instances/$INSTANCE_ID/junimo-update"
 http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" "$status_url")" || die "读取升级状态失败。"
 [[ "$http_code" == "200" ]] || die "读取升级状态失败（HTTP $http_code）。"
 phase="$(sed -n 's/.*"phase":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
 apply_id="$(sed -n 's/.*"applyId":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
 rollback_code="$(sed -n 's/.*"rollbackCode":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
 yellow "当前状态：${phase:-unknown}  applyId=${apply_id:-none}  rollback=${rollback_code:-none}"
+http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" "$update_url")" || die "读取运行组件诊断失败。"
+[[ "$http_code" == "200" ]] || die "读取运行组件诊断失败（HTTP $http_code）。"
+repairable="$(sed -n 's/.*"repairable":\(true\|false\).*/\1/p' "$response_file" | head -n1)"
+repair_code="$(sed -n 's/.*"repairCode":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
+yellow "已知配置诊断：repairable=${repairable:-false}  code=${repair_code:-none}"
 
 if [[ "$ACTION" == "check" ]]; then
-  if [[ "$phase" == "rollback_failed" ]]; then
-    yellow "存在可提交给后端校验的一键恢复事务。"
+	if [[ "$phase" == "rollback_failed" || "$repairable" == "true" ]]; then
+		yellow "存在可提交给后端闭集检测的已知修复状态。"
   else
-    green "当前没有 rollback_failed 恢复锁。"
+		green "当前没有 rollback_failed 或已知可修复配置。"
   fi
   exit 0
 fi
-[[ "$phase" == "rollback_failed" ]] || die "当前状态不是 rollback_failed；脚本不会创建或猜测新的恢复事务。"
+[[ "$phase" == "rollback_failed" || "$repairable" == "true" ]] || die "当前状态不匹配任何已知安全修复规则；脚本不会创建或猜测修复策略。"
 printf '{"confirm":true}\n' >"$confirm_file"
-http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$confirm_file" "$repair_url")" || die "提交一键安全恢复失败。"
+http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$confirm_file" "$repair_url")" || die "提交检测、修复并升级失败。"
 [[ "$http_code" == "202" ]] || {
   error_code="$(sed -n 's/.*"code":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
   die "后端拒绝修复（HTTP $http_code，${error_code:-unknown}）；实例未被脚本直接修改。"
 }
 
-green "后端已接受安全恢复；正在等待原版本验收。"
+green "后端已接受任务；将依次完成故障识别、已知修复、原版本验收、完整升级预检和重新升级。"
 deadline=$((SECONDS + REPAIR_TIMEOUT_SECONDS))
 while (( SECONDS < deadline )); do
   sleep 3
@@ -120,16 +126,21 @@ while (( SECONDS < deadline )); do
   }
   phase="$(sed -n 's/.*"phase":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
   case "$phase" in
-    failed_rolled_back)
-      green "一键安全恢复完成：原运行组件、认证卷、配置和运行状态已通过验收。"
+    succeeded)
+      green "检测、修复并升级完成：目标运行组件及运行状态已通过验收。"
       exit 0
+      ;;
+    failed_rolled_back)
+      error_code="$(sed -n 's/.*"errorCode":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
+      die "已恢复到安全旧版本，但修复后的检测或重新升级仍未成功（${error_code:-unknown}）；请导出支持包。"
       ;;
     rollback_failed)
       rollback_code="$(sed -n 's/.*"rollbackCode":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
       die "安全恢复仍未完成（${rollback_code:-unknown}）；恢复材料已保留，脚本不会绕过后端继续操作。"
       ;;
-    rolling_back) yellow "安全恢复进行中……" ;;
-    *) yellow "等待恢复终态，当前阶段：${phase:-unknown}" ;;
+    rolling_back) yellow "正在按检测结果恢复原版本……" ;;
+    resuming_upgrade) yellow "已知修复已通过，正在重新执行完整升级预检……" ;;
+    *) yellow "等待最终升级终态，当前阶段：${phase:-unknown}" ;;
   esac
 done
-die "等待安全恢复超时；任务可能仍在 Panel 后台运行，请稍后执行 check。"
+die "等待检测、修复并升级超时；任务可能仍在 Panel 后台运行，请稍后执行 check。"

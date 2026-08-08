@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export ANXI_MIGRATE_LIBRARY=1
+# shellcheck disable=SC1091 # ROOT_DIR is resolved dynamically by this test harness.
 source "$ROOT_DIR/deploy/migrate-fnos.sh"
 
 [[ "$(normalize_version v0.3.13)" == "0.3.13" ]]

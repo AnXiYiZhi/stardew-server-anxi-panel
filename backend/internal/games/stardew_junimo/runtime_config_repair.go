@@ -42,7 +42,14 @@ func (d *Driver) RepairRuntimeStackConfig(ctx context.Context, instance registry
 	if len(active) > 0 {
 		return RuntimeStackConfigRepairResult{}, &RuntimeUpdateValidationError{Code: "runtime_update_busy", Message: "实例存在安装、生命周期或组件升级任务，请等待任务结束。"}
 	}
+	return d.repairKnownRuntimeStackConfig(instance)
+}
 
+// repairKnownRuntimeStackConfig applies only the closed, driver-owned repair
+// plan produced by PlanRuntimeStackConfigRepair. The public entry point checks
+// job conflicts first; the runtime repair coordinator already owns that exact
+// instance job and calls this helper after restoring the original stack.
+func (d *Driver) repairKnownRuntimeStackConfig(instance registry.Instance) (RuntimeStackConfigRepairResult, error) {
 	installed := instance.State != storage.InstanceStateUninitialized && instance.State != storage.InstanceStateAdminCreated
 	plan := sjconfig.PlanRuntimeStackConfigRepair(instance.DataDir, installed)
 	if !plan.Repairable {

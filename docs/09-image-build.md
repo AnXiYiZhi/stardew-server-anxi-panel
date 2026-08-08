@@ -1,3 +1,38 @@
+# RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 Docker/发布门禁（2026-08-09，未发布）
+
+## 变更与检测/修复矩阵
+
+- 本版把原“一键安全恢复”升级为持久化“检测、修复并升级”。面板按钮和 `repair-junimo-upgrade.sh` 均先从后端读取 apply/stack 状态，只向严格 repair API 提交确认；后端拥有 detector、修复计划、恢复材料和目标版本权威。
+- 本次生产问题的检测证据为：配置 tag 和运行容器 image ID 表明 server/auth 已匹配目标，Panel-owned Control 运行版本或 DLL 内容不匹配；apply change plan 因此只同步 Control/重建 server，未变化 auth 不 stop、不重建、不做 session 快照或网络 readiness。该判断现在由 `InspectManagedRuntimeStack + runtimeUpdateApplyPreflight` 每次实时重算，不依赖人工看日志。
+
+| 故障分类 | 自动检测条件 | 修复动作 | 修复后必须通过 |
+| --- | --- | --- | --- |
+| 回滚事务失败 | `rollback_failed`；status/manifest 的实例、apply ID、版本对、project、目标 image/digest 与事务资源精确一致；恢复文件为普通非 symlink 且 SHA-256 一致 | 按 immutable 原 image IDs 幂等恢复 env/Compose/Control/Junimo/auth volume/server 与原运行状态；精确清理本事务资源 | 原 server 版本/health/info/Control 契约、auth（若变化）、原运行/停止状态 |
+| 历史可信候选配置 | 主 server/auth 均属可信仓库；`IMAGE_VERSION` 与主 server tag 一致；候选项只来自当前/历史可信仓库且仅存在仓库或 tag 漂移 | 0600 私有备份原 `.env`；原子规范化两个候选列表；失败恢复原文件 | `InspectRuntimeStack` 只能得到 `update_available` 或 `up_to_date` |
+| 未知或不可信状态 | 自定义主镜像、未知候选、损坏 status/manifest、摘要漂移、未知 Compose/project、缺失认证卷 | 不修复、不覆盖、不猜测；保留现场 | 返回稳定 409/失败码并可导出支持包 |
+| 修复后升级 | 上述修复验收已通过 | 重新执行普通完整 dry-run；有活动存档时通告、保存、整档备份；创建新 apply ID 并按实时 change plan 升级 | manifest/Docker/Compose/current image/volume/target digest/Compose override、目标 health/API/SMAPI/Control、原运行状态 |
+| 修复后再次失败 | dry-run、保存/备份或新 target 验收失败 | mutation 前停止并保留旧版，或 mutation 后走普通自动回滚；只有新回滚也失败时再次显示 repair | `failed_rolled_back` 必须是旧版安全且脚本退出非零；`succeeded` 才是最终成功 |
+| Panel 中断 | `resuming_upgrade` 或 `resumeAfterRepair=true` | 旧事务材料仍在则重复幂等恢复；已清理则重跑检测/dry-run；新事务无 mutation 则重启 apply；有 intent 则普通回滚 | 续跑不需要浏览器存活，repair source 与尝试次数保留，最多三次 |
+
+## 本轮故障与发布矩阵
+
+- 正常路径：可信旧候选直接点击 repair；partial rollback 首次失败后点击 repair；两者都必须经新 dry-run 和新 apply 达到 `succeeded`。
+- 边界/安全：严格 body/管理员权限、材料篡改零 Docker mutation、自定义镜像拒绝、三次上限、未知状态 fail closed；脚本只接受 Panel URL/实例/管理员凭据文件，不接收镜像、路径、命令或策略。
+- 网络/断流：修复后 dry-run 拉取失败不得开始 mutation；新 target 网络/health 失败必须自动回滚；Panel 在修复清理后和新 manifest mutation 前重启必须自动续跑。
+- 数据/恢复：存在活动存档时重新保存和整档备份；steam-session、game-data、用户 Mod、SQLite、非目标容器/volume 保留；清理只按 source/new apply 精确所有权。
+- 资源/不适用：本入口不操作 Panel updater、SMAPI staging 或 game/SDK staging；这些链路不能因本测试通过而标记完成。
+
+## 当前验证状态
+
+- 已通过专项 Go：rollback 修复后升级成功、修复后 target 再失败安全回滚、历史可信候选直接检测/修复/升级、`resuming_upgrade` 在旧恢复目录清理后重启继续、新 retry manifest 已持久化但 mutation 尚未开始时重启继续同一 apply、诊断 checks/repair source 保留、材料篡改拒绝。
+- 2026-08-09 全量代码门禁通过；补完 no-mutation 中断窗口后再次完整执行后端 test/vet/build，聚合用时 67.9 秒，`stardew_junimo` 56.770 秒、Web 40.283 秒。前端 12 项状态测试与 TypeScript production build 合计 18.4 秒；Git Bash 5.2 的两个脚本 `bash -n`/功能测试 8.2 秒；ShellCheck 0.10.0 官方发布脚本清单通过。兼容矩阵由 Python 3.12.13 验证 manifest 并通过 19 项测试；Docker integration `go test -tags=integration ./internal/docker -count=1` 14.226 秒。
+- 其余不依赖真实 Junimo 故障夹具的正式门禁也已补齐：`test_run_sh_update.sh` 2.8 秒通过；panel version 契约和远程兼容产物验证 78.7 秒通过（两个可选 server mirror、一个可选 auth mirror及一次下载候选 SSL EOF 仅产生预期 warning，required 来源最终成功）；Linux `golang:1.25-alpine` 从真实上游下载 41,889,142 字节 SMAPI 包并验证摘要、`0600` 与无 `.part`，60.85 秒通过。Windows 宿主曾因 NTFS 权限语义报告 `0666`，未修改断言，已按错题本切回 Linux 复验。updater Docker integration 的隔离成功链 15.27 秒、目标失败自动回滚链 25.24 秒通过；真实旧版到候选及新 Panel helper reconcile 因未提供正式精确镜像环境变量而明确 skip，继续属于发布阻塞。Node 20 + Git 的 VitePress build 6.67 秒通过。
+- 补完 no-mutation 中断窗口后，Docker Desktop Linux 29.5.3 重新构建最终隔离候选 `stardew-anxi-panel:diag-repair-final-20260809`：version=`0.4.9-diagnose-repair.dev.2`、revision=`91e7497fcfc101fc85f9cead7ab938f75cd0e824-dirty`、build date=`2026-08-08T18:09:43Z`，image ID/manifest digest=`sha256:c6fa33d732cee389cf57c4a8c550baf2f598b53b9bf3ffb9dba9d460bf1d270f`，构建 33.4 秒。任务专属容器、network、volume 与 loopback 端口验证 Docker health=`healthy`、`/health=ok`、`/api/version` 精确匹配；镜像内 `/app/repair-junimo-upgrade.sh` `bash -n` 通过且与源码 SHA-256 同为 `ae80598f66a6c13ab071e9e453becd47c8327a2ab134703eac690ccd0da4a088`。容器重启后 `/health`、精确 version 与 data volume 中 `setup.initialized=true` 仍保持。前一版 `.dev.1` 只作为中途证据，已由本最终候选替代。
+- 候选真实 HTTP 接口验证：未初始化时 repair 写入口被 setup gate 以 503 拒绝；初始化任务专属管理员后，携带 caller-controlled `strategy` 的请求被 strict body 以 400 拒绝，严格 `{"confirm":true}` 才进入实例查询并因测试实例不存在返回 404。测试凭据只存在任务专属临时 data volume，未写日志、镜像层、提交或文档。
+- UI 在同一 Docker Desktop 的任务专属 `node:22-alpine` QA 容器运行，源码只读 bind、`node_modules` 独立 volume、端口 18094；无代理 headless Chrome 原生 DevTools 实际点击“诊断”与“检测、修复并升级”，连续观察 `rollback_failed → rolling_back → resuming_upgrade → succeeded`，并展开核对 `repair_failure_state`、`repair_manifest`、`repair_materials`、`repair_original_runtime`、`repair_upgrade_preflight`、`change_plan`、`修复源 qa-junimo-apply`，console error/warn 为 0。Codex Browser 插件对本机 URL 返回 `ERR_BLOCKED_BY_CLIENT`，按前端测试技能记录后才改用不安装依赖的本机 Chrome；正式候选镜像按设计不包含开发 QA harness，真实 health/version/API 仍由上一个容器验证。
+- 每轮验证完成后均重新执行 `docker info`，逐项核对 owner label 和精确资源集合。中途候选/QA 清理了 2 个容器、1 个 network、5 个临时 volume；最终 `.dev.2` 又精确清理 1 个容器、1 个 network、1 个 data volume 和本地候选 tag。18093、18094、18095、19223 均无 listener，两个 owner filter 均返回空。截图留在任务专属系统临时目录用于本次交接；未执行任何 prune，未触碰其它容器、镜像或 volume。
+- 当前仍未创建/移动 tag，未更新 `latest`，未推送正式镜像或 GitHub Release。发布硬阻塞仍是缺少不含用户存档/长期凭据、可制造真实 `rollback_failed` 的完整 Junimo 游戏夹具；因此本轮不能把故障注入编排测试、真实 Docker 原语和 mock UI 串联冒充“最新正式版/最老受影响版 → 候选”的真实 Panel 一键升级及修复 E2E，也不能降低门禁提前打 tag。
+
 # RUNTIME-UPDATE-WAL-REPAIR-1 Docker/发布门禁（2026-08-08，未发布）
 
 ## 变更范围与受影响链路
@@ -21,11 +56,11 @@
 | 资源清理 | 成功/回滚终态未持久化前不得删 snapshot、旧 image 或 recovery；重启只清理本 apply 精确拥有的资源 | terminal status 先写；snapshot create intent 覆盖 daemon 已创建但返回前崩溃窗口；terminal 启动清理和精确卷名单测通过 |
 | 不适用 | 本版无数据库迁移、部署格式变化或 GAME_DATA_VOLUME 切换 | 数据库迁移/SMAPI staging/game+SDK apply 故障不由本 repair 处理；其独立风险见 `docs/07-later-optimizations.md` |
 
-## 一键安全恢复用法
+## 旧版一键安全恢复用法（已由上方闭环取代）
 
 1. 先下载对应正式 Release 的 `repair-junimo-upgrade.sh` 到 NAS/Linux 宿主机并检查文件；不要把脚本粘进 Panel 容器终端，也不要给它 Docker socket。
 2. 只检查、不修改：`PANEL_URL=http://127.0.0.1:8090 bash repair-junimo-upgrade.sh check`。
-3. repair：交互终端直接运行 `PANEL_URL=http://127.0.0.1:8090 bash repair-junimo-upgrade.sh repair`；自动化环境把管理员密码放入权限受控的普通文件，再设置 `PANEL_PASSWORD_FILE=/path/to/file`。脚本会提交后端校验并等待 `failed_rolled_back`，不会自行执行 Compose/volume 命令。
+3. repair：交互终端直接运行 `PANEL_URL=http://127.0.0.1:8090 bash repair-junimo-upgrade.sh repair`；自动化环境把管理员密码放入权限受控的普通文件，再设置 `PANEL_PASSWORD_FILE=/path/to/file`。新脚本会同时识别 `rollback_failed` 与后端声明的 `repairable` 配置，并等待最终 `succeeded`；`failed_rolled_back` 退出非零，不会自行执行 Compose/volume 命令。
 4. 若返回 `recovery_material_invalid/recovery_state_uncertain` 或三次耗尽，停止操作并保留实例目录和任务精确卷；不能通过改 JSON、改 tag 或 `volume prune` 绕过。
 
 ## 当前验证证据与发布状态

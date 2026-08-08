@@ -35,6 +35,7 @@ const (
 	RuntimeUpdateApplyRestoringState   = "restoring_state"
 	RuntimeUpdateApplySucceeded        = "succeeded"
 	RuntimeUpdateApplyRollingBack      = "rolling_back"
+	RuntimeUpdateApplyResumingUpgrade  = "resuming_upgrade"
 	RuntimeUpdateApplyFailedRolledBack = "failed_rolled_back"
 	RuntimeUpdateApplyRollbackFailed   = "rollback_failed"
 )
@@ -78,31 +79,33 @@ func (d *Driver) auditRuntimeUpdateTerminal(ctx context.Context, instanceID stri
 }
 
 type RuntimeUpdateApplyStatus struct {
-	CreatedBy        int64                               `json:"-"`
-	ApplyID          string                              `json:"applyId,omitempty"`
-	JobID            string                              `json:"jobId,omitempty"`
-	Phase            string                              `json:"phase"`
-	Progress         int                                 `json:"progress"`
-	Download         *RuntimeUpdateDownloadProgress      `json:"download,omitempty"`
-	Current          sjconfig.RuntimeStackCurrent        `json:"current"`
-	Target           sjconfig.RuntimeStackRecommendation `json:"target"`
-	Selected         RuntimeUpdateSelectedPair           `json:"selected"`
-	Checks           []RuntimeUpdateDryRunCheck          `json:"checks"`
-	Warnings         []string                            `json:"warnings"`
-	Logs             []RuntimeUpdateDryRunLog            `json:"logs"`
-	ServerWasRunning bool                                `json:"serverWasRunning"`
-	ServerRunning    bool                                `json:"serverRunning"`
-	ErrorCode        string                              `json:"errorCode,omitempty"`
-	Error            string                              `json:"error,omitempty"`
-	CauseCode        string                              `json:"causeCode,omitempty"`
-	CauseError       string                              `json:"causeError,omitempty"`
-	RollbackCode     string                              `json:"rollbackCode,omitempty"`
-	RollbackError    string                              `json:"rollbackError,omitempty"`
-	RepairAttempts   int                                 `json:"repairAttempts,omitempty"`
-	ManualAction     string                              `json:"manualAction,omitempty"`
-	StartedAt        string                              `json:"startedAt,omitempty"`
-	UpdatedAt        string                              `json:"updatedAt,omitempty"`
-	FinishedAt       string                              `json:"finishedAt,omitempty"`
+	CreatedBy           int64                               `json:"-"`
+	ApplyID             string                              `json:"applyId,omitempty"`
+	JobID               string                              `json:"jobId,omitempty"`
+	Phase               string                              `json:"phase"`
+	Progress            int                                 `json:"progress"`
+	Download            *RuntimeUpdateDownloadProgress      `json:"download,omitempty"`
+	Current             sjconfig.RuntimeStackCurrent        `json:"current"`
+	Target              sjconfig.RuntimeStackRecommendation `json:"target"`
+	Selected            RuntimeUpdateSelectedPair           `json:"selected"`
+	Checks              []RuntimeUpdateDryRunCheck          `json:"checks"`
+	Warnings            []string                            `json:"warnings"`
+	Logs                []RuntimeUpdateDryRunLog            `json:"logs"`
+	ServerWasRunning    bool                                `json:"serverWasRunning"`
+	ServerRunning       bool                                `json:"serverRunning"`
+	ErrorCode           string                              `json:"errorCode,omitempty"`
+	Error               string                              `json:"error,omitempty"`
+	CauseCode           string                              `json:"causeCode,omitempty"`
+	CauseError          string                              `json:"causeError,omitempty"`
+	RollbackCode        string                              `json:"rollbackCode,omitempty"`
+	RollbackError       string                              `json:"rollbackError,omitempty"`
+	RepairAttempts      int                                 `json:"repairAttempts,omitempty"`
+	RepairSourceApplyID string                              `json:"repairSourceApplyId,omitempty"`
+	ResumeAfterRepair   bool                                `json:"resumeAfterRepair,omitempty"`
+	ManualAction        string                              `json:"manualAction,omitempty"`
+	StartedAt           string                              `json:"startedAt,omitempty"`
+	UpdatedAt           string                              `json:"updatedAt,omitempty"`
+	FinishedAt          string                              `json:"finishedAt,omitempty"`
 }
 
 type runtimeUpdateRecoveryManifest struct {
@@ -293,8 +296,15 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 	if status.Phase == RuntimeUpdateApplyRollbackFailed {
 		return nil
 	}
+	runtimeDocker, dockerOK := d.docker.(RuntimeUpdateApplyDockerService)
 	manifest, err := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) && status.ResumeAfterRepair && runtimeUpdateApplyPreMutationPhase(status.Phase) {
+			if !dockerOK {
+				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用，无法继续修复后的升级复检。")
+			}
+			return d.recoverRuntimeUpdateAfterRepair(ctx, runtimeDocker, instance, status, status.Phase == RuntimeUpdateApplyResumingUpgrade)
+		}
 		if errors.Is(err, os.ErrNotExist) && runtimeUpdateApplyPreMutationPhase(status.Phase) {
 			return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, instance, status)
 		}
@@ -304,11 +314,30 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复清单与实例或该事务记录的版本对不一致。")
 	}
 	if !runtimeUpdateMutationStarted(manifest) {
+		if status.ResumeAfterRepair {
+			if !dockerOK {
+				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用，无法继续修复后的升级复检。")
+			}
+			if err := os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID)); err != nil {
+				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "无法清理尚未发生实例修改的重试恢复目录。")
+			}
+			return d.recoverRuntimeUpdateAfterRepair(ctx, runtimeDocker, instance, status, status.Phase == RuntimeUpdateApplyResumingUpgrade)
+		}
 		return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, instance, status)
 	}
-	runtimeDocker, ok := d.docker.(RuntimeUpdateApplyDockerService)
-	if !ok {
+	if !dockerOK {
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用。")
+	}
+	if status.ResumeAfterRepair {
+		// A repaired retry deliberately keeps this marker while its recovery
+		// manifest still has no mutation intent, so a restart can continue the
+		// same apply. Once an intent is durable, the runner clears its in-memory
+		// marker; if the prior status write still has true, normal transaction
+		// rollback is safer than starting another upgrade over a partial change.
+		status.ResumeAfterRepair = false
+		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+			return err
+		}
 	}
 	if err := validateRuntimeUpdateRecoveryMaterials(instance.DataDir, manifest); err != nil {
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复材料不完整或校验失败，已拒绝自动修改实例。")
@@ -343,7 +372,7 @@ func validRuntimeUpdateRecoveryManifest(instance registry.Instance, status Runti
 }
 
 func runtimeUpdateApplyPreMutationPhase(phase string) bool {
-	return phase == RuntimeUpdateApplyChecking || phase == RuntimeUpdateApplyPulling || phase == RuntimeUpdateApplyBackingUp
+	return phase == RuntimeUpdateApplyChecking || phase == RuntimeUpdateApplyPulling || phase == RuntimeUpdateApplyBackingUp || phase == RuntimeUpdateApplyResumingUpgrade
 }
 
 func (d *Driver) finishRuntimeUpdateRecoveryBeforeChange(ctx context.Context, instance registry.Instance, status RuntimeUpdateApplyStatus) error {

@@ -15,6 +15,46 @@
 适用范围：
 ```
 
+## 2026-08-09：切换工作目录后仍重复仓库路径前缀
+
+- 环境：Windows，PowerShell 7，从仓库根切换到 `backend` 作为命令工作目录。
+- 错误模式：`workdir` 已是 `backend`，仍向 `gofmt` 传入 `backend/internal/...`。
+- 症状 / 退出码：2026-08-09 同一任务后段补中断窗口测试时再次出现 `GetFileAttributesEx ... The system cannot find the path specified`，退出 1；两次命令都在格式化前失败，源码未发生变化。该规则已提升为 `AGENTS.md` 的路径/工作目录硬检查，后续命令必须先对第一个文件运行 `Test-Path`，不能只在错题本记忆。
+- 根因：命令路径按仓库根编写，但执行器工作目录已下沉一层。
+- 正确做法：在 `backend` 工作目录使用 `internal/...`，或回到仓库根再使用 `backend/internal/...`；提交命令前把 `workdir + 参数路径` 拼成一次实际绝对路径核对。
+- 预防检查：所有带显式 `workdir` 的命令先检查首个文件参数是否重复该目录名；批量格式化前用一个目标文件的 `Test-Path -LiteralPath` 探针。
+- 适用范围：Go 格式化/测试、Node 构建和任何在子目录执行的文件型命令。
+
+## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
+
+- 环境：Windows，PowerShell 7，系统同时存在 `C:\Windows\System32\bash.exe` 和独立 Git for Windows。
+- 错误模式：未探测来源就直接调用 `bash -n`，命令命中 WSL 转发器。
+- 症状 / 退出码：`CreateProcessCommon ... execvpe(/bin/bash) failed: No such file or directory`，退出 1；脚本没有执行。
+- 根因：当前 PATH 的 `bash.exe` 不是 Git Bash，且 WSL 没有可运行的 Linux 发行版。
+- 正确做法：先由 `Get-Command git` 定位 Git for Windows 根目录，再验证并调用其精确 `bin\bash.exe`；本机当前验证路径为 `D:\Code\CodeTools\Git\bin\bash.exe`。
+- 预防检查：Windows 上任何 Bash 门禁先输出 `Get-Command bash -All` 并运行精确解释器的 `--version`；不得把 WSL 转发器存在等同于 Linux shell 可用。
+- 适用范围：Bash 语法、功能测试、ShellCheck 包装脚本与发布资产测试。
+
+## 2026-08-09：并行工具包装在单项异常时丢失其它结果
+
+- 环境：Codex `functions.exec`，JavaScript `Promise.all` 并行三个 PowerShell 门禁。
+- 错误模式：把 Docker integration、ShellCheck 镜像探测和 Python 兼容矩阵放入同一个 `Promise.all`，其中一项在包装层异常后整次调用只返回通用 `Script error`。
+- 症状 / 退出码：约 1 秒退出 1，没有任何子任务输出，无法判断各门禁是否真正启动或完成。
+- 根因：并行组合没有为每个 nested tool call 单独捕获异常，单项 rejection 使聚合脚本提前失败并遮蔽其它返回值。
+- 正确做法：高价值长门禁单独调用；确需并行时为每项包 `try/catch` 并输出任务名、返回对象或异常，不能用裸 `Promise.all` 聚合。
+- 预防检查：并行前确认每个命令已单独探针通过；任何一项涉及不确定解释器/镜像时先拆开，避免丢失真实测试证据。
+- 适用范围：多工具并行测试、构建、网络探针和发布门禁。
+
+## 2026-08-09：ShellCheck 动态绝对 source 不能靠相对 source 指令消除 SC1091
+
+- 环境：Docker Desktop，`koalaman/shellcheck-alpine:v0.10.0`，仓库只读挂载到 `/work`。
+- 错误模式：先把不属于正式 workflow 的 `deploy/run.sh` 加入门禁产生既有提示；随后给 `$ROOT_DIR/deploy/migrate-fnos.sh` 增加相对 `source=` 指令，但正式输入路径与 ShellCheck 解析后的路径仍不被视为同一输入。
+- 症状 / 退出码：两次均退出 1，第二次仍为 `SC1091 Not following`；本次新增 repair 脚本没有告警。
+- 根因：第一次没有精确复制 release workflow 文件清单；第二次误以为动态绝对 source 可由相对 `source=` 自动关联已列输入。
+- 正确做法：严格复制 workflow 的四个 ShellCheck 输入；对测试 harness 已验证的动态 `$ROOT_DIR` source 在该行使用带原因的 `disable=SC1091`，功能测试继续实际执行被 source 脚本。
+- 预防检查：发布门禁先从 workflow 逐字取得文件和参数；第三方 lint 镜像先 inspect；动态 source 的功能正确性由真实 Bash 测试负责，静态抑制必须局部且解释原因。
+- 适用范围：ShellCheck 容器门禁和基于仓库根动态定位的 Bash 测试 harness。
+
 ## 2026-08-08：生产 SSH 诊断的运行时依赖、对象发现与多层转义
 
 - 环境：Windows，PowerShell 7，Codex 工作区依赖 Python，通过 OpenSSH 连接 Linux 生产主机。
@@ -38,6 +78,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
+- 最近复发/补充：2026-08-09 第二次把不存在的仓库根 `package.json` 混进前端 Playwright 依赖探针，使只读命令在输出能力检查前退出；本项目 Node 清单位于 `frontend/package.json` 与 `website/package.json`。该规则已提升到 `AGENTS.md` 的“先用 `rg --files`”硬规则，Node 门禁或依赖检查必须先用 `rg --files -g 'package.json' .` 选择任务对应的真实清单，不得把“常见根清单”列为可选输入。
 - 最近复发/补充：2026-08-08 排查运行组件升级测试时，第四次把未由 PowerShell 展开的 `runtime_update*go` 直接作为 `rg` 路径传入，Windows 返回路径语法错误。此类搜索必须使用已存在目录配合 `rg -g 'runtime_update*go' ... <root>` 或先运行 `rg --files`；项目 `AGENTS.md` 已有同一硬规则，后续命令提交前必须机械检查所有含 `*` 的参数只能紧跟 `-g`，不得继续用通配路径参数试探。
 - 最近复发/补充：2026-08-06 为 `v0.4.8` 插入发布门禁时，沿用旧工作树中 `docs/09-image-build.md` 以 `v0.4.6` 开头的假设；重放到 `v0.4.7` 基线后真实首标题已是 `v0.4.7` 发布记录，`apply_patch` 因上下文不存在而安全失败。跨基线整合后修改长期文档前必须重新读取目标文件当前首段或精确锚点，不能继续使用重放前的文件结构。
 - 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。同日 `v0.4.7` 发布审计又把不存在的 `frontend/README.md` 与 `backend/internal/version` 直接交给批量 `rg`，分别让主批次和子审计退出 1。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
@@ -167,7 +208,7 @@
 - 根因：Windows PowerShell 与 Unix shell 的 glob 展开行为不同，`rg` 收到非法字面路径。
 - 正确做法：使用 `rg -g 'Dockerfile*' <pattern> .`、`rg -g '*_test.go' <pattern> <dir>`，或先 `rg --files` 再筛选。
 - 预防检查：命令参数中出现 `*` 时确认它属于 `rg -g`，而不是位置参数。
-- 最近复发/补充：2026-08-01 排查升级状态测试时再次把 `backend/internal/web/*_test.go` 作为位置参数传给 `rg`，命中同一 `os error 123`；发布记录检查又把 `docs/backend-handoff/*.md` 当位置参数，整条搜索退出 1。两次都改用 `rg -g '<glob>' ... <root>` 或先列文件；该规则已在 `AGENTS.md` 固化，后续命令构造时先检查位置参数中不存在 `*`。
+- 最近复发/补充：2026-08-09 候选镜像资源探针再次把 `Dockerfile*` 作为位置参数；`rg` 在输出其它明确目录的命中后仍以非零退出，导致整条只读探针提前停止，未创建或删除 Docker 资源。已改用 `rg -g 'Dockerfile*' ... .`；该规则已在 `AGENTS.md` 固化，后续命令构造时必须机械检查所有含 `*` 的参数只能紧跟 `-g`，不得因同时提供了有效目录就忽略非法通配路径。2026-08-01 也曾在升级状态测试与发布记录检查中复发同类问题。
 - 最近复发/补充：2026-08-06 定位玩家 Mod `syncKind` fixture 时又把 `backend/internal/games/stardew_junimo/*test.go` 作为位置参数传给 `rg`。这是规则固化后的再次复发；同类检索一律先写成 `rg -g '*_test.go' <pattern> backend/internal/games/stardew_junimo`，命令提交前把所有含 `*` 的参数逐个核对为紧跟 `-g` 的值。
 - 适用范围：Windows 上的仓库搜索和发布检查。
 
@@ -208,7 +249,7 @@
 
 ## 2026-07-31：精简 Node Alpine 缺少 VitePress `lastUpdated` 所需 Git
 
-- 最近复发/补充：2026-08-01 修正 linked worktree 的 Git 元数据后，最终干净构建仍把整个源码挂成只读；Vite 加载 `config.ts` 时需要在同目录短暂写入 `config.ts.timestamp-*.mjs`，因此以 `EROFS` 退出。Vite/VitePress 构建不能只给 `dist` 与 `node_modules` 写权限；真正需要只读宿主源码时，应先复制到任务专属可写 volume，再构建并精确清理，或直接使用已配置的 GitHub Pages CI。不要在只读源码挂载上继续补零散写目录。
+- 最近复发/补充：2026-08-09 候选收口又把官网源码整体只读挂载进 Node 20 容器，即使把输出改到 `/tmp/docs-dist`，Vite 加载 `config.ts` 仍因无法创建 `config.ts.timestamp-*.mjs` 以 `EROFS` 退出。已改为在容器内把网站复制到任务专属可写目录，并只读复用宿主 Git 对象库；Vite/VitePress 构建不能只给 `dist` 与 `node_modules` 写权限。2026-08-01 的 linked worktree 构建也曾命中同一问题；不要在只读源码挂载上继续补零散写目录。
 - 最近复发/补充：2026-08-01 官网 Hero 最终干净构建把 Windows linked worktree 只读挂到 `/repo`，其 `.git` 文件仍指向 `E:/.../.git/worktrees/...`，容器内 `git -C /repo` 报 `not a git repository`，尚未进入 npm 构建。linked worktree 跨 Windows/Linux 挂载时必须同时只读挂载主仓库 `.git`，并显式设置容器内 `GIT_DIR=/git-common/worktrees/<name>`、`GIT_WORK_TREE=/repo`；不能认为挂入工作树目录就自动获得可解析的 Git 元数据。
 - 最近复发/补充：2026-08-01 官网 Hero 增量预览复用了保存 `/work` 的依赖 volume，却换成新的临时 Node Alpine 构建容器，误以为首次容器执行过的 `apk add git` 也会随 volume 保留；增量 build 再次以 `spawn git ENOENT` 失败。系统包属于容器层而非工作 volume，每一个新的构建容器都必须先安装并探测 `git --version`，不能从复用 `node_modules` 推断 Git 仍存在。
 - 环境：`node:24-alpine` Docker 容器运行 `npm run docs:build`。
@@ -715,6 +756,16 @@
 - 预防检查：新增/改名 API 时把 QA mock 与对应页面纳入同一测试；响应式脚本不能只验证容器宽度，还要覆盖所有路由实际挂载。
 - 适用范围：前端 QA 入口、MSW/fetch mock 与浏览器矩阵。
 
+## 2026-08-09：把开发专用 QA 入口误当成正式镜像资产
+
+- 环境：Docker Desktop 正式候选镜像与 `frontend/qa-layout.html` 升级修复流程验收。
+- 错误模式：候选容器 health/version 已通过后，直接把源码树中的 `/qa-layout.html` 当成正式前端构建会发布的页面；Browser 插件先对本机 URL 返回 `ERR_BLOCKED_BY_CLIENT`，切到无代理 headless Chrome 后才得到真实 `404 not_found`。
+- 症状 / 退出码：原生 Chrome CDP 脚本等待 Stardew 导航超时，页面正文是 API 风格的 `resource not found`；候选容器、数据与源码均未变化。
+- 根因：Vite 的开发 QA harness 不属于 production build 输出，正式镜像只包含真实应用入口；浏览器插件的客户端拦截又暂时掩盖了真实 HTTP 响应。
+- 正确做法：正式候选容器验证真实 health/version/API/嵌入脚本；需要 mock 状态交互时，在同一 Docker Desktop 中另起带任务专属端口、网络、只读源码 bind 与独立 `node_modules` volume 的 Vite QA 容器，再由无代理浏览器访问。先用 HTTP 探针确认目标入口返回 HTML，不得从源码文件存在推断镜像包含该资产。
+- 预防检查：浏览器 E2E 前为目标 URL 增加状态码、Content-Type 与页面标志探针；明确区分 production 资产、测试 harness 和真实后端夹具。
+- 适用范围：候选镜像 UI 验收、Vite 多入口、Docker Desktop 前端 QA 与 Browser 插件本机访问失败诊断。
+
 ## 2026-08-01：PowerShell cmdlet 与 Unix 条件语法混写
 
 - 环境：PowerShell 7 仓库审计子任务。
@@ -996,6 +1047,7 @@
 - 环境：Windows 宿主 Go 1.26，SMAPI 真实下载 integration 测试使用 `t.TempDir()`。
 - 错误模式：直接在 Windows 上运行同时断言缓存文件 POSIX `0600` 的生产 Linux 门禁。
 - 症状 / 退出码：真实下载约 331 秒并完成内容校验，但 `os.Stat().Mode().Perm()` 在 Windows ACL 语义下报告 `0666`，测试退出 1；这不能证明 Linux 容器中的产品权限实现失败。
+- 最近复发/补充：2026-08-09 候选收口再次在 Windows 宿主直接启动同一测试，下载 5.65 秒后因 `cache mode=0666, want 0600` 退出 1。未改产品或断言；立即改回任务专属 `golang:1.25-alpine`、独立 Linux cache volume 执行。发布门禁命令编排应把该测试固定封装进 Linux 容器，不能只依靠人工记忆选择环境。
 - 根因：把跨平台内容/摘要验证与只在 Linux 目标文件系统有意义的权限位验证放在了错误宿主环境。
 - 正确做法：使用与 Dockerfile 一致的 `golang:1.25-alpine` 任务专属 Linux 容器，从空容器缓存运行同一个 `-tags=integration` 测试，要求实际字节数、固定摘要、`0600` 和无 `.part` 残留同时通过。
 - 预防检查：发布测试包含 `chmod`、`Mode().Perm()`、UID/GID、符号链接或 Unix socket 时，先选择目标 Linux 环境；Windows 宿主仅可做不依赖 POSIX 元数据的补充测试。
