@@ -1,3 +1,14 @@
+# RUNTIME-UPDATE-PRESERVE-AUTH-1 Docker 验证记录（2026-08-08，未发布）
+
+- 变更范围：runtime apply 根据 current/target tag 与 image ID 选择 server/auth 操作；Control-only 只重启 server，保留健康 auth 容器和认证卷。auth 真正变化时等待由 90 秒扩大为 10 分钟。新增 `compose up --no-recreate` 与闭集 CPU shares 原地更新；公开 API、数据库、镜像清单和部署格式不变。
+- 正常路径：Docker Desktop Linux 29.5.3 使用只读 `save-import-local-rich` 测试源（server `.125`、auth `.2`、Control `0.2.0`）复制出唯一 `anxirealupgrade*` project、game-data 与空 steam-session；`TestRequiredRuntimeRealControlUpgradeOptIn` stopped 42.38 秒、running 65.34 秒，合计 107.72 秒全部通过。运行态 auth ID 不变，Control 0.3.0 实载，server/auth shares=768/256，最终状态恢复。
+- 边界/网络：单元故障注入让 auth readiness 始终报错，Control-only 仍成功，证明未变化 auth 不再依赖 Steam 出站链路。真实 auth 变更仍必须经过 readiness；10 分钟预算覆盖生产观察到约 400 秒的五轮退避。没有把未登录/ticket 当硬失败。
+- 权限与安全：新增 Docker 方法继续限定合法 Compose project、`server/steam-auth` 服务闭集和固定 shares 768/256；不接受任意容器、权重或 shell。测试凭据在复制 `.env` 时清空，未读取源 steam-session 内容。
+- 部分成功、重试与幂等：同 digest/tag 重跑不会重建 auth；原地 shares update 可重复执行。首轮运行态真机测试因保留容器仍为 shares=0 安全失败，加入原地 update 后同一完整用例重跑通过；未以修改断言掩盖缺口。
+- 中断/恢复与回滚：恢复 manifest schema 2 持久化 change plan/snapshot 状态；schema 1 按旧全量事务保守恢复。Control-only 回滚只处理 server/Control/config，不停止、不恢复卷、不重建 auth；auth 变化仍保留快照和成对恢复材料。
+- 数据完整性与资源清理：测试使用复制实例和克隆 game-data，源实例/卷只读，steam-session 为空且唯一；Go integration cleanup 只按精确 project/volume 删除本轮资源，不执行 prune、不触碰已有容器或长期卷。后端全量 `go test ./... -count=1` 用时 63.4 秒，vet/build 通过；发布候选门禁仍未执行。
+- 发布状态：本节是代码和真机修复证据，不是正式候选记录；未打 tag、未推送镜像、未修改 latest。进入发布时仍须构建带精确 version/revision/date 的候选镜像，执行 Panel Web 一键升级、失败回滚、老版本矩阵、全量门禁及 tag 后三仓回拉。
+
 # v0.4.8 发布记录：玩家 Mod 自报、比较与详情页（2026-08-07，已发布）
 
 - 官网误发布修复：发布完成后的 `6f34b8a` 错误合入未授权的本地 `docs-portal-redesign` 隔离稿；2026-08-07 按用户要求以 tag commit `0c5e2c4` 的正式网站树恢复主题、导航、FAQ 与指南，只保留 v0.4.8 版本卡、changelog 和玩家手册。Node 24 production build、Pages `31152244079`、线上桌面/手机视觉及无溢出/console 检查通过；这不移动 `v0.4.8` tag，不重发镜像，也不回退 Panel 功能。

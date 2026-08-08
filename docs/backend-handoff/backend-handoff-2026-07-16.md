@@ -1,3 +1,18 @@
+# RUNTIME-UPDATE-PRESERVE-AUTH-1 接手记录（2026-08-08，completed，未发布）
+
+## 改了什么
+
+- required runtime apply 不再把“版本对推荐”误解为“两个容器都必须重建”。恢复清单 schema 2 按当前/目标 tag 和 immutable image ID 分别记录 server/auth change plan；旧 schema 1 继续按全量变更保守处理。
+- auth 未变化且原来运行时：只停止 server，保留 auth 容器与 steam-session，不发起 Steam readiness 请求；通过 image ID、容器状态和 health 验收，再原地更新 CPU shares=256。auth 未变化但原来停止时使用 `compose up --no-recreate` 启动现有容器做验收。server 未变化时跳过 JunimoServer Mod 提取/替换，但仍重建 server 以加载新 Control。
+- auth 真正变化时原快照、重建、readiness 和回滚边界保持；auth 等待由 90 秒增至 10 分钟。回滚只停止/恢复实际变更的 auth，Control-only 失败不会因同一 Steam 网络故障再次把回滚升级成 `rollback_failed`。
+
+## 影响、验证与下一步
+
+- 主要文件：`runtime_update_apply{,_runner,_test}.go`、`runtime_update_rollback.go`、`driver.go`、`internal/docker/runtime_apply{,_test}.go` 和真实 required runtime integration。公开 HTTP/JSON、数据库、manifest 推荐版本均不变；新恢复 manifest 字段只位于实例私有恢复目录。
+- 单元测试覆盖 Control-only + auth readiness 注入失败、auth 容器不 stop/up、无认证卷快照、server 独立重启、原地资源权重和 10 分钟默认预算；既有成对升级/回滚测试保持通过，最终全量 `go test ./... -count=1`、vet、build 全绿。
+- Docker Desktop 真机从只读 `.125/auth .2/Control 0.2.0` 测试源复制到唯一临时 project、game-data 和 steam-session，stopped/running 两条链均通过。运行态 auth ID 不变，Control 0.3.0、server/auth CPU shares 768/256、最终健康和原状态均通过；首轮测试发现保留容器未应用新 shares，加入原地 `docker update` 后同用例完整重跑通过。
+- 后续发布前仍须按 `docs/09-image-build.md` 构建精确候选镜像并跑完整 Web 一键更新/回滚和正式发布门禁；本次未创建 tag、未更新 latest、未发布镜像。
+
 # v0.4.8 玩家 Mod 后端发布交接（2026-08-07，released）
 
 - 玩家 Mod 采集、比较接口、列表轻量 CJB 标记、三类内置运行组件过滤和 Control `0.3.0` 已随 `v0.4.8` 发布。tag commit 为 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`；release/compatibility workflow `31117969497/31117949897` 最终成功。

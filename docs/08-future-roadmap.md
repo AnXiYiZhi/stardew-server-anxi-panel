@@ -1,3 +1,11 @@
+# 2026-08-08 完成：运行组件升级保留未变化 Auth（RUNTIME-UPDATE-PRESERVE-AUTH-1，未发布）
+
+- [x] 修复 Control-only 升级仍停止、快照和重建 steam-auth 的缺陷；按 tag + immutable image ID 只操作真正变化的组件。
+- [x] 未变化且运行中的 auth 容器 ID/会话保持，跳过 Steam readiness 网络链；CPU shares 通过原地 update 同步为 256，server 独立重启并加载新 Control。
+- [x] 真正 auth 升级的等待预算从 90 秒增至 10 分钟；旧恢复 schema 按全量变更保守兼容，失败回滚不再触碰未变化 auth。
+- [x] 单元/专项测试及 Docker Desktop stopped/running 真机 Control `0.2.0 → 0.3.0` 通过；运行态 auth ID 不变、Control 实载、资源权重和最终状态均验证。
+- [ ] 尚未创建候选镜像、执行正式 Web Panel 一键升级矩阵或发布 tag；若进入发布流程，必须完成 `docs/09-image-build.md` 的全部门禁。
+
 # 2026-08-07 已发布：玩家 Mod 查看；官网恢复正式布局（v0.4.8）
 
 - [x] `v0.4.8` annotated tag 指向 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`；Release/compatibility workflow `31117969497/31117949897` 最终成功，GitHub Release 为正式版且三项脚本附件齐全。
