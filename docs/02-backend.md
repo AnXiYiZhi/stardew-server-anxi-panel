@@ -1,3 +1,11 @@
+# RUNTIME-UPDATE-PRESERVE-AUTH-1：运行组件按差异升级（2026-08-08，completed，未发布）
+
+- 生产 `0.4.5 → 0.4.8` 后的 required runtime 同步暴露出事务缺陷：server/auth 已是 `.125 / 1.5.0-anxi.2`、仅 Control 需要 `0.2.2 → 0.3.0` 时，旧实现仍停止整个 Compose、快照认证卷并 `--force-recreate` steam-auth。目标认证在网络退避约 400 秒后才恢复，而默认 auth 验收只有 90 秒；目标与回滚先后超时，最终落入 `rollback_failed`。
+- `runtimeUpdateRecoveryManifest` schema 2 记录 server/auth 是否真正变更及是否创建认证快照；schema 1 仍按旧事务保守恢复。Control-only 或其它 auth digest/tag 未变化的升级只停止并重建 server，不替换 JunimoServer Mod、不创建/恢复 steam-session 快照，也不调用 Steam readiness 网络接口；只核对原 auth 容器 image ID、running/healthy，并以 `docker update --cpu-shares 256` 原地同步资源权重，容器 ID 和会话保持。
+- auth 版本或 image ID 真正变化时仍执行停止、私有卷快照、强制重建、服务接口验收及成对回滚，默认 auth 验收窗口由 90 秒提高到 10 分钟，覆盖当前镜像的五轮连接退避。server 冷启动 20 分钟、停止重试 10 分钟和总 job 2 小时不变。
+- 新增 `RuntimeComposeUpServicePreserve`（`compose up --no-recreate`）和受闭集约束的 `RuntimeUpdateServiceCPUShares`；服务名仍只允许 `server/steam-auth`，权重只接受 server=768、auth=256。公开 API、数据库和运行栈清单未改变。
+- 自动测试以 auth readiness 强制失败证明 Control-only 不再进入网络探针，并断言无 auth stop/up、无认证卷快照/恢复、仅 server stop/up；最终 `go test ./... -count=1`（63.4 秒）、`go vet ./...`、`go build ./...` 全部通过。Docker Desktop 使用只读 `.125 + auth .2 + Control 0.2.0` 夹具复制出两个唯一隔离 project/volume，停止态与运行态真实升级均成功；运行态 auth 容器 ID 前后完全一致、CPU shares=256、server=768，Control 0.3.0 实载且原运行状态恢复。
+
 # v0.4.8 发布收口：玩家 Mod 服务端链路（2026-08-07，released）
 
 - annotated tag `v0.4.8` 精确指向 `0c5e2c434a92e8c9a69f839b39f86508cccf9a77`。Release workflow `31117969497` 第三次尝试在 GitHub Actions 恢复后用时 6 分 10 秒成功；compatibility run `31117949897` 的第二次尝试用时约 2 分 03 秒成功，远端 backend、frontend 与 isolated Docker integration 均实际执行通过。

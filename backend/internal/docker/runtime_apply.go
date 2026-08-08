@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -89,6 +90,48 @@ func (c *Client) RuntimeComposeUpService(ctx context.Context, dir, project, serv
 	_, err := c.run(ctx, "docker compose up runtime service", dir, c.timeouts.Up,
 		"compose", "--project-name", project, "up", "-d", "--no-deps", "--force-recreate", "--pull", "never", service)
 	c.invalidateComposePs(dir)
+	return err
+}
+
+// RuntimeComposeUpServicePreserve starts an unchanged runtime service without
+// replacing an existing container. If no container exists, Compose may create
+// one from the already inspected, pinned configuration.
+func (c *Client) RuntimeComposeUpServicePreserve(ctx context.Context, dir, project, service string) error {
+	if !composeProjectPattern.MatchString(project) || !validRuntimeServices([]string{service}) {
+		return errors.New("invalid runtime compose preserve request")
+	}
+	c.invalidateComposePs(dir)
+	_, err := c.run(ctx, "docker compose preserve runtime service", dir, c.timeouts.Up,
+		"compose", "--project-name", project, "up", "-d", "--no-deps", "--no-recreate", "--pull", "never", service)
+	c.invalidateComposePs(dir)
+	return err
+}
+
+// RuntimeUpdateServiceCPUShares applies the standard Compose scheduling weight
+// in place, preserving the container identity and all auth process/session
+// state. Only the two reviewed runtime values are accepted.
+func (c *Client) RuntimeUpdateServiceCPUShares(ctx context.Context, dir, project, service string, shares int64) error {
+	want := int64(0)
+	switch service {
+	case "server":
+		want = 768
+	case "steam-auth":
+		want = 256
+	}
+	if !composeProjectPattern.MatchString(project) || shares != want || want == 0 {
+		return errors.New("invalid runtime cpu shares update")
+	}
+	ps, err := c.run(ctx, "docker compose ps runtime service", dir, c.timeouts.Ps,
+		"compose", "--project-name", project, "ps", "-q", service)
+	if err != nil {
+		return err
+	}
+	containerID := strings.TrimSpace(ps.Stdout)
+	if !runtimeContainerIDPattern.MatchString(containerID) {
+		return errors.New("runtime service container not found")
+	}
+	_, err = c.run(ctx, "update runtime service cpu shares", dir, c.timeouts.Ps,
+		"update", "--cpu-shares", fmt.Sprintf("%d", shares), containerID)
 	return err
 }
 

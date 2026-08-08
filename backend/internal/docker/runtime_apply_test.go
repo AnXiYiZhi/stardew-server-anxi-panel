@@ -12,6 +12,12 @@ func TestRuntimeApplyDockerContractRejectsInjectedArguments(t *testing.T) {
 	if err := client.RuntimeComposeUpService(ctx, t.TempDir(), "safe_project", "server;docker compose down -v"); err == nil {
 		t.Fatal("injected service accepted")
 	}
+	if err := client.RuntimeComposeUpServicePreserve(ctx, t.TempDir(), "safe_project", "steam-auth;docker compose down -v"); err == nil {
+		t.Fatal("injected preserved service accepted")
+	}
+	if err := client.RuntimeUpdateServiceCPUShares(ctx, t.TempDir(), "safe_project", "steam-auth", 768); err == nil {
+		t.Fatal("invalid auth cpu shares accepted")
+	}
 	if err := client.RuntimeComposeStopServices(ctx, t.TempDir(), "safe_project", "server", "server"); err == nil {
 		t.Fatal("duplicate service accepted")
 	}

@@ -123,7 +123,7 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		inviteCodeCache:            make(map[string]inviteCodeCacheEntry),
 		inviteCodeFlights:          make(map[string]*inviteCodeFlight),
 		runtimeUpdatePollInterval:  2 * time.Second,
-		runtimeUpdateAuthTimeout:   90 * time.Second,
+		runtimeUpdateAuthTimeout:   10 * time.Minute,
 		runtimeUpdateServerTimeout: 20 * time.Minute,
 		runtimeUpdateStopTimeout:   10 * time.Minute,
 		backupMaintenanceInterval:  2 * time.Second,

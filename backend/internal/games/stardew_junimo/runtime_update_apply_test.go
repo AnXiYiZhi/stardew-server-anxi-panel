@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,6 +113,17 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, data
 		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1,"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
 		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "players.json"), []byte(`{"players":[],"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
 	}
+	return nil
+}
+func (f *runtimeApplyFakeDocker) RuntimeComposeUpServicePreserve(_ context.Context, dataDir string, _ string, service string) error {
+	f.applyCall("up preserve " + service)
+	if service == f.upErrorService {
+		return errors.New("injected preserve up failure")
+	}
+	return nil
+}
+func (f *runtimeApplyFakeDocker) RuntimeUpdateServiceCPUShares(_ context.Context, _ string, _ string, service string, shares int64) error {
+	f.applyCall(fmt.Sprintf("cpu shares %s %d", service, shares))
 	return nil
 }
 func (f *runtimeApplyFakeDocker) targetConfigured(dataDir string) bool {
@@ -271,6 +283,55 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	}
 }
 
+func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	// The incident was triggered by a slow/offline Steam login path. A healthy,
+	// unchanged auth container must not be re-probed through that network path.
+	fake.authProbeErrorTarget = true
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"IMAGE_VERSION":                  manifest.Server.Tag,
+		"SERVER_IMAGE":                   manifest.Server.TrustedCandidates[0],
+		"SERVER_IMAGE_CANDIDATES":        strings.Join(manifest.Server.TrustedCandidates, ","),
+		"STEAM_SERVICE_IMAGE":            manifest.SteamAuth.TrustedCandidates[0],
+		"STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(manifest.SteamAuth.TrustedCandidates, ","),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"0.2.2"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || inspection.Code != "control_update_available" {
+		t.Fatalf("control-only fixture=%+v", inspection)
+	}
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeApply(t, driver, instance)
+	if status.Phase != RuntimeUpdateApplySucceeded {
+		t.Fatalf("control-only phase=%s code=%s error=%s", status.Phase, status.ErrorCode, status.Error)
+	}
+	calls := strings.Join(fake.applyCalls, "\n")
+	for _, forbidden := range []string{"stop server,steam-auth", "up steam-auth", "up preserve steam-auth", "volume create snapshot", "volume clone snapshot", "volume restore snapshot"} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("control-only update mutated unchanged auth via %q: %s", forbidden, calls)
+		}
+	}
+	if !strings.Contains(calls, "stop server") || !strings.Contains(calls, "up server") {
+		t.Fatalf("control-only update did not restart server: %s", calls)
+	}
+	if !strings.Contains(calls, "cpu shares steam-auth 256") {
+		t.Fatalf("preserved auth did not receive in-place resource weight: %s", calls)
+	}
+	if status.Selected.SteamAuth.ImageID == "" || status.Selected.Server.ImageID == "" {
+		t.Fatalf("selected immutable image IDs missing: %+v", status.Selected)
+	}
+}
+
 func TestRuntimeUpdateApplyImageCleanupFailureIsWarning(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
 	fake.removeImageError = true
@@ -319,7 +380,7 @@ func TestRuntimeUpdateApplyStopsAuthBeforeSnapshotWhenOnlyAuthIsRunning(t *testi
 		t.Fatalf("status=%#v", status)
 	}
 	calls := strings.Join(fake.applyCalls, "\n")
-	stopAt, cloneAt := strings.Index(calls, "compose down"), strings.Index(calls, "volume clone snapshot")
+	stopAt, cloneAt := strings.Index(calls, "stop steam-auth"), strings.Index(calls, "volume clone snapshot")
 	if stopAt < 0 || cloneAt < 0 || stopAt > cloneAt {
 		t.Fatalf("auth was not quiesced before snapshot:\n%s", calls)
 	}
@@ -626,6 +687,9 @@ func TestRuntimeUpdateRollbackRetriesTransientDockerStopTimeout(t *testing.T) {
 
 func TestRuntimeUpdateDefaultTimeoutsCoverSlowColdStart(t *testing.T) {
 	driver := New(nil, nil, nil, nil)
+	if driver.runtimeUpdateAuthTimeout < 10*time.Minute {
+		t.Fatalf("auth verification timeout=%v, want at least 10m", driver.runtimeUpdateAuthTimeout)
+	}
 	if driver.runtimeUpdateServerTimeout < 20*time.Minute {
 		t.Fatalf("server verification timeout=%v, want at least 20m", driver.runtimeUpdateServerTimeout)
 	}

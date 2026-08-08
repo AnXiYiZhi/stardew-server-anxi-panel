@@ -43,6 +43,8 @@ type RuntimeUpdateApplyDockerService interface {
 	LifecycleDockerService
 	RuntimeComposeStopServices(context.Context, string, string, ...string) error
 	RuntimeComposeUpService(context.Context, string, string, string) error
+	RuntimeComposeUpServicePreserve(context.Context, string, string, string) error
+	RuntimeUpdateServiceCPUShares(context.Context, string, string, string, int64) error
 	RuntimeServiceInspect(context.Context, string, string, string) (paneldocker.RuntimeServiceMetadata, error)
 	RuntimeSteamAuthReady(context.Context, string, string) (paneldocker.RuntimeSteamReady, error)
 	RuntimeServerHealth(context.Context, string, string) error
@@ -110,6 +112,9 @@ type runtimeUpdateRecoveryManifest struct {
 	SnapshotVolume           string                     `json:"snapshotVolume"`
 	ServerWasRunning         bool                       `json:"serverWasRunning"`
 	AuthWasRunning           bool                       `json:"authWasRunning"`
+	ServerImageChanged       bool                       `json:"serverImageChanged,omitempty"`
+	AuthImageChanged         bool                       `json:"authImageChanged,omitempty"`
+	AuthSnapshotCreated      bool                       `json:"authSnapshotCreated,omitempty"`
 	OriginalState            string                     `json:"originalState"`
 	OriginalServer           RuntimeUpdateSelectedImage `json:"originalServer"`
 	OriginalAuth             RuntimeUpdateSelectedImage `json:"originalAuth"`
@@ -125,6 +130,18 @@ type runtimeUpdateRecoveryManifest struct {
 	ControlManifestPresent   bool                       `json:"controlManifestPresent"`
 	ControlDLLPresent        bool                       `json:"controlDllPresent"`
 	ControlUpdated           bool                       `json:"controlUpdated"`
+}
+
+func runtimeUpdateServerChanged(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.SchemaVersion < 2 || manifest.ServerImageChanged
+}
+
+func runtimeUpdateAuthChanged(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.SchemaVersion < 2 || manifest.AuthImageChanged
+}
+
+func runtimeUpdateAuthSnapshotCreated(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.SchemaVersion < 2 || manifest.AuthSnapshotCreated
 }
 
 func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
@@ -236,7 +253,7 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 
 func validRuntimeUpdateRecoveryManifest(instance registry.Instance, status RuntimeUpdateApplyStatus, manifest runtimeUpdateRecoveryManifest) bool {
 	recommendation, err := sjconfig.BuiltInRuntimeStackManifest()
-	if err != nil || manifest.SchemaVersion != 1 || manifest.ApplyID != status.ApplyID || manifest.Project != strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir))) {
+	if err != nil || manifest.SchemaVersion != 1 && manifest.SchemaVersion != 2 || manifest.ApplyID != status.ApplyID || manifest.Project != strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir))) {
 		return false
 	}
 	expectedSnapshot := manifest.Project + "_anxi-junimo-update-" + strings.TrimPrefix(manifest.ApplyID, "apply_") + "-steam-session"

@@ -46,7 +46,9 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，但原 server/auth 版本对、认证卷与运行状态已恢复。"})
 	_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
 	d.auditRuntimeUpdateTerminal(ctx, instance.ID, *status)
-	_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume)
+	if runtimeUpdateAuthSnapshotCreated(manifest) {
+		_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume)
+	}
 	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
 	return errors.New(causeMessage)
 }
@@ -85,7 +87,11 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 
 func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) (resultErr error) {
 	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated || manifest.JunimoModReplaced || manifest.ControlUpdated {
-		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+		services := []string{"server"}
+		if runtimeUpdateAuthChanged(manifest) || manifest.AuthRecreated {
+			services = append(services, "steam-auth")
+		}
+		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, services...); err != nil {
 			return fmt.Errorf("stop new runtime pair: %w", err)
 		}
 	}
@@ -121,16 +127,18 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 			resultErr = fmt.Errorf("%v; %w", resultErr, restoreErr)
 		}
 	}()
-	if manifest.AuthRecreated {
+	if runtimeUpdateAuthChanged(manifest) && manifest.AuthRecreated && runtimeUpdateAuthSnapshotCreated(manifest) {
 		if err := docker.RuntimeRestoreVolume(ctx, instance.DataDir, manifest.SnapshotVolume, manifest.SteamSessionVolume, manifest.OriginalServer.Image); err != nil {
 			return fmt.Errorf("restore steam session: %w", err)
 		}
 	}
-	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "steam-auth"); err != nil {
-		return fmt.Errorf("recreate old auth: %w", err)
-	}
-	if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.OriginalAuth.ImageID); err != nil {
-		return fmt.Errorf("verify old auth: %w", err)
+	if runtimeUpdateAuthChanged(manifest) {
+		if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "steam-auth"); err != nil {
+			return fmt.Errorf("recreate old auth: %w", err)
+		}
+		if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.OriginalAuth.ImageID); err != nil {
+			return fmt.Errorf("verify old auth: %w", err)
+		}
 	}
 	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "server"); err != nil {
 		return fmt.Errorf("recreate old server: %w", err)

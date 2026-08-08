@@ -47,8 +47,8 @@ func TestRequiredRuntimeReal121To125OptIn(t *testing.T) {
 // TestRequiredRuntimeRealControlUpgradeOptIn covers the Panel-upgrade case in
 // which server/auth are already current but the running Control Mod reported by
 // options.json is older than the embedded recommendation. Prepare synchronizes
-// the new files, and the required runtime transaction must restart the exact
-// same image pair so the game actually loads them.
+// the new files, and the required runtime transaction must restart only server
+// so the game loads them while the healthy, unchanged auth container survives.
 func TestRequiredRuntimeRealControlUpgradeOptIn(t *testing.T) {
 	sourceDir := strings.TrimSpace(os.Getenv("ANXI_REAL_CONTROL_UPGRADE_SOURCE_INSTANCE"))
 	sourceGameVolume := strings.TrimSpace(os.Getenv("ANXI_REAL_CONTROL_UPGRADE_SOURCE_GAME_VOLUME"))
@@ -260,6 +260,10 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 		run("compose", "--project-name", project, "--project-directory", dataDir, "up", "-d")
 		waitForFreshRealControl(t, dataDir, startedAt)
 	}
+	authContainerBefore := ""
+	if initialState == storage.InstanceStateRunning {
+		authContainerBefore = strings.TrimSpace(run("inspect", "--format", "{{.Id}}", project+"-steam-auth-1"))
+	}
 
 	store, err := storage.Open(ctx, appconfig.Config{DataDir: dataDir, DBPath: filepath.Join(dataDir, "panel-e2e.db")})
 	if err != nil {
@@ -296,6 +300,16 @@ func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, in
 	if required.Phase != requiredRuntimePhaseSucceeded {
 		apply, _ := driver.RuntimeUpdateApplyStatus(instance)
 		t.Fatalf("required upgrade phase=%s code=%s error=%s apply=%+v", required.Phase, required.ErrorCode, required.Error, apply)
+	}
+	apply, err := driver.RuntimeUpdateApplyStatus(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initialState == storage.InstanceStateRunning && apply.Current.SteamAuth.Tag == apply.Target.SteamAuth.Tag {
+		authContainerAfter := strings.TrimSpace(run("inspect", "--format", "{{.Id}}", project+"-steam-auth-1"))
+		if authContainerBefore == "" || authContainerAfter != authContainerBefore {
+			t.Fatalf("unchanged running steam-auth container was replaced: before=%s after=%s", authContainerBefore, authContainerAfter)
+		}
 	}
 	if initialState == storage.InstanceStateRunning {
 		if required.BackupName == "" {

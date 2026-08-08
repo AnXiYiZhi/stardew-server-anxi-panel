@@ -1,3 +1,10 @@
+# RUNTIME-UPDATE-PRESERVE-AUTH-1 联调契约（2026-08-08，completed，未发布）
+
+- required runtime 状态/API shape 不变。apply 仍使用既有 phase；内部根据 current/target tag + image ID 生成 change plan。server/auth 均相同而 Control 旧时，前端仍看到完整维护进度和最终 `succeeded`，但实际 Docker 操作只重启 server。
+- auth 未变化的运行态升级必须保持 steam-auth container ID，禁止 stop、force-recreate、steam-session snapshot/restore 和 Steam readiness 网络探针；只允许校验容器 image ID/running/healthy，并原地设置 cpu shares=256。server 必须重启并实载推荐 Control，最终 `/health/status/info` 仍按原契约验收。
+- auth 真正变化时继续走快照、重建、最多 10 分钟 readiness 与自动回滚；Steam 登录/ticket 仍是能力而非硬门槛。Control-only 失败回滚不得重建未变化 auth，也不得把同一出站网络故障放大为 auth rollback failure。
+- Docker Desktop 实测覆盖 stopped/running 两条 Control `0.2.0 → 0.3.0` 链；每条使用复制的独立 instance/game-data/steam-session，凭据清空。运行态 auth ID 不变、shares=256，server shares=768、Control 0.3.0 实载、状态恢复；首轮 shares=0 的失败属于有效产品缺口，修复后同一真机矩阵完整通过。
+
 # v0.4.8 玩家 Mod 联调发布结论（2026-08-07，released）
 
 - 发布接口为 `GET /api/instances/:id/players/:uniqueMultiplayerId/mods`；`context.status` 为 `reported/pending/unavailable/stale`，未取得清单时 `mods:null`。comparison item 只使用 `match/missing_on_client/client_only/version_mismatch`，比较不可用由 `comparison.status=unavailable` 表示。
