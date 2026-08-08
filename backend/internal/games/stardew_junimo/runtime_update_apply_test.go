@@ -685,6 +685,7 @@ func TestRuntimeUpdateRepairRetriesPartialRollbackIdempotently(t *testing.T) {
 	}
 
 	fake.restoreError = false
+	fake.authProbeErrorTarget = false
 	started, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -693,8 +694,15 @@ func TestRuntimeUpdateRepairRetriesPartialRollbackIdempotently(t *testing.T) {
 		t.Fatalf("unexpected repair start: %#v", started)
 	}
 	repaired := waitRuntimeApply(t, driver, instance)
-	if repaired.Phase != RuntimeUpdateApplyFailedRolledBack || repaired.RepairAttempts != 1 || repaired.ManualAction != "" {
-		t.Fatalf("partial rollback was not repaired idempotently: %#v", repaired)
+	if repaired.Phase != RuntimeUpdateApplySucceeded || repaired.RepairAttempts != 1 || repaired.ManualAction != "" {
+		t.Fatalf("partial rollback was not repaired and upgraded: %#v", repaired)
+	}
+	if repaired.ApplyID == failed.ApplyID || repaired.RepairSourceApplyID != failed.ApplyID {
+		t.Fatalf("repair retry transaction was not linked: failed=%s repaired=%#v", failed.ApplyID, repaired)
+	}
+	checks, _ := json.Marshal(repaired.Checks)
+	if !bytes.Contains(checks, []byte(`"repair_materials"`)) || !bytes.Contains(checks, []byte(`"repair_upgrade_preflight"`)) || !bytes.Contains(checks, []byte(`"change_plan"`)) {
+		t.Fatalf("repair diagnostics were not retained: %s", checks)
 	}
 	if _, err := os.Stat(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("successful repair did not remove owned recovery directory: %v", err)
@@ -703,6 +711,150 @@ func TestRuntimeUpdateRepairRetriesPartialRollbackIdempotently(t *testing.T) {
 		t.Fatal("completed repair was not idempotently rejected")
 	} else if validation, ok := IsRuntimeUpdateValidationError(err); !ok || validation.Code != "runtime_repair_not_needed" {
 		t.Fatalf("repeat repair error=%v", err)
+	}
+}
+
+func TestRuntimeUpdateRepairRetryFailureKeepsOriginalRuntimeSafe(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	fake.authProbeErrorTarget = true
+	fake.restoreError = true
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	failed := waitRuntimeApply(t, driver, instance)
+	fake.restoreError = false
+	if _, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	final := waitRuntimeApply(t, driver, instance)
+	if final.Phase != RuntimeUpdateApplyFailedRolledBack || final.ApplyID == failed.ApplyID || final.RepairSourceApplyID != failed.ApplyID || final.RepairAttempts != 1 {
+		t.Fatalf("repair retry failure did not close safely: failed=%#v final=%#v", failed, final)
+	}
+	if final.ResumeAfterRepair || final.ServerRunning {
+		t.Fatalf("safe terminal state retained a resume marker or wrong stopped state: %#v", final)
+	}
+}
+
+func TestRuntimeUpdateRepairDetectsKnownLegacyConfigAndCompletesUpgrade(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"SERVER_IMAGE_CANDIDATES": "dockerproxy.net/sdvd/server:" + values["IMAGE_VERSION"] + ",docker.m.daocloud.io/sdvd/server:" + values["IMAGE_VERSION"],
+	}); err != nil {
+		t.Fatal(err)
+	}
+	started, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Phase != RuntimeUpdateApplyResumingUpgrade || started.RepairAttempts != 1 || !started.ResumeAfterRepair {
+		t.Fatalf("known config diagnosis did not start the repair workflow: %#v", started)
+	}
+	final := waitRuntimeApply(t, driver, instance)
+	if final.Phase != RuntimeUpdateApplySucceeded || final.RepairSourceApplyID != started.ApplyID || final.ApplyID == started.ApplyID {
+		t.Fatalf("known config repair did not complete a fresh upgrade: started=%#v final=%#v", started, final)
+	}
+	checks, _ := json.Marshal(final.Checks)
+	if !bytes.Contains(checks, []byte(`"known_issue_detection"`)) || !bytes.Contains(checks, []byte(`"known_legacy_config_repaired"`)) || !bytes.Contains(checks, []byte(`"repair_upgrade_preflight"`)) {
+		t.Fatalf("known config diagnostic trail missing: %s", checks)
+	}
+}
+
+func TestRuntimeUpdateRepairResumeAfterCleanupRestartsFullDetection(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"SERVER_IMAGE_CANDIDATES": "dockerproxy.net/sdvd/server:" + values["IMAGE_VERSION"] + ",docker.m.daocloud.io/sdvd/server:" + values["IMAGE_VERSION"],
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	if !inspection.Repairable {
+		t.Fatalf("historical trusted candidate failure was not detected: %#v", inspection)
+	}
+	sourceID := "apply_" + strings.Repeat("9", 24)
+	status := RuntimeUpdateApplyStatus{
+		ApplyID: sourceID, Phase: RuntimeUpdateApplyResumingUpgrade, Current: inspection.Current, Target: inspection.Recommended,
+		Checks: []RuntimeUpdateDryRunCheck{{Name: "repair_original_runtime", Status: "ok", Message: "restored"}}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
+		RepairAttempts: 1, RepairSourceApplyID: sourceID, ResumeAfterRepair: true,
+	}
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	final := waitRuntimeApply(t, driver, instance)
+	if final.Phase != RuntimeUpdateApplySucceeded || final.ApplyID == sourceID || final.RepairSourceApplyID != sourceID || final.ResumeAfterRepair {
+		t.Fatalf("post-repair restart did not resume detection and upgrade: %#v", final)
+	}
+	backups, err := filepath.Glob(filepath.Join(instance.DataDir, ".local-container", "junimo-update", "config-repair", "*", "original.env"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("historical config repair did not create its private backup: %v %v", backups, err)
+	}
+	checks, _ := json.Marshal(final.Checks)
+	if !bytes.Contains(checks, []byte(`"known_legacy_config_repaired"`)) {
+		t.Fatalf("historical repair diagnosis was not retained: %s", checks)
+	}
+}
+
+func TestRuntimeUpdateRepairResumeAfterRetryManifestBeforeMutation(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	applyID := "apply_" + strings.Repeat("8", 24)
+	sourceID := "apply_" + strings.Repeat("7", 24)
+	target := RuntimeUpdateSelectedPair{
+		Server:    RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
+		SteamAuth: RuntimeUpdateSelectedImage{Image: inspection.Recommended.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
+	}
+	project := strings.ToLower(filepath.Base(instance.DataDir))
+	manifest := runtimeUpdateRecoveryManifest{
+		SchemaVersion: 3, ApplyID: applyID, Project: project, SteamSessionVolume: "stardew_steam-session",
+		SnapshotVolume: project + "_anxi-junimo-update-" + strings.Repeat("8", 24) + "-steam-session",
+		OriginalState:  storage.InstanceStateStopped,
+		OriginalServer: RuntimeUpdateSelectedImage{Image: inspection.Current.Server.Image, Digest: "sha256:" + strings.Repeat("b", 64), ImageID: "sha256:" + strings.Repeat("b", 64)},
+		OriginalAuth:   RuntimeUpdateSelectedImage{Image: inspection.Current.SteamAuth.Image, Digest: "sha256:" + strings.Repeat("c", 64), ImageID: "sha256:" + strings.Repeat("c", 64)},
+		Target:         target, OriginalServerVersion: inspection.Current.Server.Tag, TargetServerVersion: inspection.Recommended.Server.Tag,
+		ServerImageChanged: true, AuthImageChanged: true,
+	}
+	if err := createRuntimeRecoveryFiles(instance.DataDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.ControlManifestPresent, manifest.ControlDLLPresent, _ = backupRuntimeControlMod(instance.DataDir, applyID)
+	manifest.OriginalEnvSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original.env"))
+	manifest.OriginalComposeSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-compose.yml"))
+	manifest.OriginalControlJSONSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-manifest.json"))
+	manifest.OriginalControlDLLSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-StardewAnxiPanel.Control.dll"))
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	status := RuntimeUpdateApplyStatus{
+		ApplyID: applyID, Phase: RuntimeUpdateApplyBackingUp, Current: inspection.Current, Target: inspection.Recommended, Selected: target,
+		Checks: []RuntimeUpdateDryRunCheck{{Name: "repair_upgrade_preflight", Status: "ok", Message: "passed"}}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
+		RepairAttempts: 1, RepairSourceApplyID: sourceID, ResumeAfterRepair: true,
+	}
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		t.Fatal(err)
+	}
+	before := len(fake.applyCalls)
+	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	final := waitRuntimeApply(t, driver, instance)
+	if final.Phase != RuntimeUpdateApplySucceeded || final.ApplyID != applyID || final.RepairSourceApplyID != sourceID || final.ResumeAfterRepair {
+		t.Fatalf("no-mutation retry restart did not continue the same upgrade: %#v", final)
+	}
+	if len(fake.applyCalls) == before {
+		t.Fatal("no-mutation retry restart did not execute the recovered apply")
+	}
+	if _, err := os.Stat(runtimeUpdateRecoveryDir(instance.DataDir, applyID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("successful recovered retry did not clean its recovery directory: %v", err)
 	}
 }
 

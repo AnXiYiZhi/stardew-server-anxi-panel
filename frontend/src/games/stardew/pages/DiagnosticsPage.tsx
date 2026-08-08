@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, repairJunimoUpdateConfig, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, startJunimoUpdateRepair, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply } from '../../../api'
+import { getHealthDiagnostics, downloadSupportBundle, getInstanceMetrics, getComposePs, getJunimoUpdate, getJunimoUpdateDryRun, startJunimoUpdateDryRun, getJunimoUpdateApply, startJunimoUpdateApply, startJunimoUpdateRepair, getRuntimeComponents, getRuntimeComponentsPreflight, startRuntimeComponentsPreflight, getSMAPIUpdate, getSMAPIUpdateDryRun, startSMAPIUpdateDryRun, getSMAPIUpdateApply, startSMAPIUpdateApply } from '../../../api'
 import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
@@ -711,11 +711,8 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     setJunimoDryRunError(null)
     try {
       if (junimoConfigRepairable) {
-        const repaired = await repairJunimoUpdateConfig()
-        setJunimoUpdate(repaired)
-        if (!repaired.available && repaired.status !== 'update_available') {
-          throw new Error('旧候选配置已处理，但复检后没有得到可升级状态；已停止后续操作。')
-        }
+				setJunimoApply(await startJunimoUpdateRepair())
+				return
       }
       const result = await startJunimoUpdateDryRun()
       setJunimoDryRun(result)
@@ -729,7 +726,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
 
   async function handleJunimoRepair() {
     if (junimoApply?.phase !== 'rollback_failed' || junimoApplyBusy) return
-    if (!window.confirm('执行一键安全恢复？\n\n系统只会使用上次升级前已保留并校验通过的私有材料，幂等重试原版本回滚；不会选择新镜像、删除存档或清空认证卷。')) return
+    if (!window.confirm('执行“检测、修复并升级”？\n\n系统会先识别上次失败步骤，校验事务清单和恢复材料；只执行已知且可验证的修复。原版本恢复验收通过后，会重新检查旧版配置、运行容器与镜像 digest，并执行一次完整升级预检；全部通过才继续升级。未知问题会停止并保留现场，不会删除存档或清空认证卷。')) return
     setJunimoApplyBusy(true)
     setJunimoApplyError(null)
     try {
@@ -1040,7 +1037,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             <div className={`sd-diag-apply sd-diag-apply--${junimoApply?.phase ?? 'idle'}`} aria-label="Junimo 运行组件升级执行状态">
               <div className="sd-diag-dry-run-head"><strong>{junimoApplyPhaseLabel(junimoApply?.phase)}</strong><span>{junimoApply?.progress ?? 0}%</span></div>
               <progress className="sd-diag-dry-run-progress" max={100} value={junimoApply?.progress ?? 0} />
-              {junimoApply?.applyId ? <div className="sd-diag-dry-run-meta">applyId {junimoApply.applyId} · jobId {junimoApply.jobId || '—'} · 升级前 {junimoApply.serverWasRunning ? '运行' : '停止'}</div> : null}
+              {junimoApply?.applyId ? <div className="sd-diag-dry-run-meta">applyId {junimoApply.applyId} · jobId {junimoApply.jobId || '—'} · 升级前 {junimoApply.serverWasRunning ? '运行' : '停止'}{junimoApply.repairSourceApplyId ? ` · 修复源 ${junimoApply.repairSourceApplyId}` : ''}</div> : null}
               {junimoApply?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>成对目标</strong><span>{junimoApply.target.stackVersion} · server {junimoApply.target.server.tag} + steam-auth-cn {junimoApply.target.steamAuth.tag}</span></div> : null}
               {junimoApply?.phase === 'succeeded' ? <div className="sd-diag-dry-run-check sd-diag-dry-run-check--ok"><span>完成</span><strong>成对升级成功</strong><p>Steam 认证与运行链路已验证，实例已恢复升级前运行状态。</p></div> : null}
               {junimoApply?.phase === 'failed_rolled_back' ? <div className="sd-diag-dry-run-warning">升级未通过验收，但 server/auth、认证卷与运行状态已自动回滚。</div> : null}
@@ -1095,7 +1092,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
                 <div className="sd-diag-maintenance-copy">
                   <strong>{junimoApply?.phase === 'rollback_failed' ? 'Junimo 服务组件可安全恢复' : junimoConfigRepairable ? 'Junimo 配置可自动修复并升级' : junimoNeedsReview ? 'Junimo 版本状态需要检查' : 'Junimo 服务组件有推荐更新'}</strong>
                   <p>{junimoApply?.phase === 'rollback_failed'
-                    ? '上次升级未能确认安全回滚。点击一次即可校验恢复材料并幂等重试原版本回滚；不会接受自定义恢复参数。'
+                    ? '上次升级未能确认安全回滚。点击一次会先诊断失败事务和恢复材料，执行对应的已知修复；修复验收通过后重新跑完整预检并继续升级。未知问题会保留现场。'
                     : junimoConfigRepairable
                       ? `${junimoUpdate?.repairReason || '检测到可信旧版候选配置。'} 点击一次即可先备份、修复并继续完成升级；不会覆盖自定义主镜像。`
                     : junimoNeedsReview
@@ -1103,7 +1100,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
                       : `${junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '当前版本'} → ${junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '推荐版本'}。${junimoUpdate?.recommended.runtimeUpdatePolicy === 'required' ? '当前 Panel 强制使用此版本，系统会自动完成升级，无需再次确认。' : '点击一次即可自动校验、下载、安装和验收；不升级仍可继续使用。'}`}</p>
                 </div>
                 {isAdmin ? (junimoApply?.phase === 'rollback_failed'
-                  ? <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoApplyBusy || (junimoApply.repairAttempts ?? 0) >= 3} onClick={handleJunimoRepair}>{junimoApplyBusy ? '恢复中…' : (junimoApply.repairAttempts ?? 0) >= 3 ? '已停止重试' : '一键安全恢复'}</button>
+                  ? <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoApplyBusy || (junimoApply.repairAttempts ?? 0) >= 3} onClick={handleJunimoRepair}>{junimoApplyBusy ? '检测修复中…' : (junimoApply.repairAttempts ?? 0) >= 3 ? '已停止重试' : '检测、修复并升级'}</button>
                   : junimoNeedsReview
                     ? null
                     : <button className="sd-btn-green sd-btn--sm" type="button" disabled={junimoUpgradeBusy} onClick={handleJunimoUpgrade}>{junimoUpgradeBusy ? '升级进行中…' : junimoConfigRepairable ? '修复并升级' : '立即升级'}</button>) : <span className="sd-diag-maintenance-role-note">请联系管理员</span>}

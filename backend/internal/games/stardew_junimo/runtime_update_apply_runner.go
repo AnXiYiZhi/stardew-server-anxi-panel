@@ -21,10 +21,10 @@ import (
 )
 
 type runtimeUpdatePreflight struct {
-	project, volume              string
-	originalServer, originalAuth RuntimeUpdateSelectedImage
-	target                       RuntimeUpdateSelectedPair
-	authWasRunning               bool
+	project, volume                string
+	originalServer, originalAuth   RuntimeUpdateSelectedImage
+	target                         RuntimeUpdateSelectedPair
+	authWasRunning, controlChanged bool
 }
 
 func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status RuntimeUpdateApplyStatus, recovery *runtimeUpdateRecoveryManifest) error {
@@ -39,6 +39,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		now := time.Now().UTC().Format(time.RFC3339)
 		status.Phase, status.Progress, status.UpdatedAt, status.FinishedAt = phase, 100, now, now
 		status.ErrorCode, status.Error = code, paneldocker.RedactString(message)
+		status.ResumeAfterRepair = false
 		level := "error"
 		if phase == RuntimeUpdateApplySucceeded {
 			level = "info"
@@ -61,7 +62,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 			_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
 			return nil
 		}
-		if status.RepairAttempts > 0 && status.Phase == RuntimeUpdateApplyRollingBack {
+		if status.RepairAttempts > 0 && (status.Phase == RuntimeUpdateApplyRollingBack || status.Phase == RuntimeUpdateApplyResumingUpgrade) {
 			return d.runRuntimeUpdateRepair(ctx, job, docker, instance, status, *recovery)
 		}
 		if (!runtimeUpdateAuthChanged(*recovery) || runtimeUpdateAuthMayHaveBeenRecreated(*recovery)) && runtimeUpdateServerMayHaveBeenRecreated(*recovery) && (status.Phase == RuntimeUpdateApplyVerifyingServer || status.Phase == RuntimeUpdateApplyRestoringState) {
@@ -104,6 +105,20 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 
 	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 3, ApplyID: status.ApplyID, ActorID: status.CreatedBy, Project: preflight.project, SteamSessionVolume: preflight.volume, SnapshotVolume: preflight.project + "_anxi-junimo-update-" + strings.TrimPrefix(status.ApplyID, "apply_") + "-steam-session", ServerWasRunning: status.ServerWasRunning, AuthWasRunning: preflight.authWasRunning, ServerImageChanged: preflight.originalServer.ImageID != preflight.target.Server.ImageID || status.Current.Server.Tag != status.Target.Server.Tag, AuthImageChanged: preflight.originalAuth.ImageID != preflight.target.SteamAuth.ImageID || status.Current.SteamAuth.Tag != status.Target.SteamAuth.Tag, OriginalState: instance.State, OriginalServer: preflight.originalServer, OriginalAuth: preflight.originalAuth, Target: preflight.target, OriginalServerVersion: status.Current.Server.Tag, TargetServerVersion: status.Target.Server.Tag}
+	changePlan := []string{}
+	if preflight.controlChanged {
+		changePlan = append(changePlan, "Control")
+	}
+	if runtimeUpdateServerChanged(manifest) {
+		changePlan = append(changePlan, "server")
+	}
+	if runtimeUpdateAuthChanged(manifest) {
+		changePlan = append(changePlan, "steam-auth-cn")
+	}
+	if len(changePlan) == 0 {
+		changePlan = append(changePlan, "配置与控制契约复核")
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "change_plan", Status: "ok", Message: "已按当前 tag 与实际 image ID 计算差异组件：" + strings.Join(changePlan, "、") + "；未变化的认证服务不会重建。"})
 	if err := setPhase(RuntimeUpdateApplyBackingUp, 30, "正在创建私有恢复材料并计算需要更新的运行组件。"); err != nil {
 		return err
 	}
@@ -160,6 +175,11 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 			_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
 			return err
 		}
+		// From this durable mutation intent onward, a restart must use the
+		// transaction's normal rollback path rather than start a second retry.
+		// The on-disk resume marker may still be true until the next status write;
+		// RecoverRuntimeUpdateApply explicitly treats that combination as rollback.
+		status.ResumeAfterRepair = false
 		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, servicesToStop...); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "stop_failed", "安全停服失败。")
 		}
@@ -174,6 +194,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在同步 Control 前持久化恢复意图。")
 	}
+	status.ResumeAfterRepair = false
 	// Control is a host bind. Replace it only after the game process has fully
 	// stopped so a live CLR process can never observe a half-updated DLL.
 	if err := installSMAPIMod(instance.DataDir); err != nil {
@@ -482,7 +503,7 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Cont
 			status.Warnings = append(status.Warnings, fmt.Sprintf("检测到低资源 Docker 主机（%d CPU，%.1f GiB 内存）；server 冷启动验收会持续等待最多 %v。若宿主机禁用换页，请先在宿主机配置可用 swap/swappiness。", capacity.CPUs, float64(capacity.MemoryBytes)/(1024*1024*1024), d.runtimeUpdateServerTimeout))
 		}
 	}
-	return runtimeUpdatePreflight{project: project, volume: compose.SteamSessionVolume, originalServer: server, originalAuth: auth, target: RuntimeUpdateSelectedPair{Server: targetServer, SteamAuth: targetAuth}, authWasRunning: authWasRunning}, nil
+	return runtimeUpdatePreflight{project: project, volume: compose.SteamSessionVolume, originalServer: server, originalAuth: auth, target: RuntimeUpdateSelectedPair{Server: targetServer, SteamAuth: targetAuth}, authWasRunning: authWasRunning, controlChanged: !runningControlMatchesManifest(instance.DataDir)}, nil
 }
 
 func currentRuntimeImage(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, service, configuredImage string, running bool) (RuntimeUpdateSelectedImage, error) {

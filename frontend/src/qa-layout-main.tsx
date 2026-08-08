@@ -23,7 +23,7 @@ const JUNIMO_CONFIG = params.get('junimoConfig') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
-if (JUNIMO_WORKFLOW === 'race-retry') window.confirm = () => true
+if (JUNIMO_WORKFLOW === 'race-retry' || JUNIMO_WORKFLOW === 'rollback-failed') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
 const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString()
@@ -266,6 +266,9 @@ let qaRaceDryRun: QAJunimoWorkflow = junimoDryRunWorkflow
 let qaRaceApply: QAJunimoWorkflow = junimoApplyWorkflow
 let qaRaceDryRunGets = 0
 let qaRaceApplyGets = 0
+let qaRepairApply: QAJunimoWorkflow = junimoApplyWorkflow
+let qaRepairStarted = false
+let qaRepairApplyGets = 0
 
 function recordQAJunimoEvent(event: string) {
   qaJunimoEvents.push(event)
@@ -383,6 +386,40 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       qaRaceApply = { ...qaRaceApply, phase: 'succeeded', progress: 100, updatedAt: '2026-07-14T15:47:33Z', finishedAt: '2026-07-14T15:47:33Z' }
     }
     return jsonRes(qaRaceApply)
+  }
+  if (JUNIMO_WORKFLOW === 'rollback-failed' && path.endsWith('/junimo-update/repair') && method === 'POST') {
+    recordQAJunimoEvent('repair:POST')
+    qaRepairStarted = true
+    qaRepairApply = {
+      ...junimoApplyWorkflow, phase: 'rolling_back', progress: 90, repairAttempts: 1,
+      checks: [
+        { name: 'repair_failure_state', status: 'ok', message: '已锁定失败事务。' },
+        { name: 'repair_manifest', status: 'ok', message: '恢复清单与事务一致。' },
+        { name: 'repair_materials', status: 'ok', message: '恢复材料摘要一致。' },
+      ],
+    }
+    return jsonRes(qaRepairApply, 202)
+  }
+  if (JUNIMO_WORKFLOW === 'rollback-failed' && path.endsWith('/junimo-update/apply')) {
+    if (qaRepairStarted) {
+      recordQAJunimoEvent('repair-apply:GET')
+      qaRepairApplyGets += 1
+      if (qaRepairApplyGets === 1) {
+        qaRepairApply = { ...qaRepairApply, phase: 'resuming_upgrade', progress: 35 }
+      } else {
+        qaRepairApply = {
+          ...qaRepairApply, applyId: 'qa-junimo-retry', repairSourceApplyId: 'qa-junimo-apply', phase: 'succeeded', progress: 100,
+          resumeAfterRepair: false,
+          checks: [
+            ...(qaRepairApply.checks as unknown[]),
+            { name: 'repair_original_runtime', status: 'ok', message: '原版本恢复验收通过。' },
+            { name: 'repair_upgrade_preflight', status: 'ok', message: '完整升级预检通过。' },
+            { name: 'change_plan', status: 'ok', message: '仅更新 Control；未重建认证服务。' },
+          ],
+        }
+      }
+    }
+    return jsonRes(qaRepairApply)
   }
   if (APPLY === 'offline' && url.includes('/api/system/update/apply')) {
     applyFetchCount += 1

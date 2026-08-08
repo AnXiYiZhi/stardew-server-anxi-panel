@@ -33,7 +33,7 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 		status.ErrorCode = "rollback_failed"
 		status.Error = "升级验收失败，且自动回滚未能完成；私有恢复材料已保留。"
 		status.RollbackCode, status.RollbackError = rollbackCode, rollbackMessage
-		status.ManualAction = "请先排除 Docker、磁盘空间或文件锁故障，再使用面板或 repair-junimo-upgrade.sh 执行一键安全恢复；系统只会重试同一份已校验的原版本回滚。"
+		status.ManualAction = "请使用面板或 repair-junimo-upgrade.sh 执行“检测、修复并升级”；系统会先识别该事务与恢复材料，只执行已知修复，恢复验收和完整预检通过后才重新升级。"
 		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "error", Message: status.Error})
 		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
 		d.auditRuntimeUpdateTerminal(ctx, instance.ID, *status)

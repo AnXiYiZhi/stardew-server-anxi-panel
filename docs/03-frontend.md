@@ -1,3 +1,10 @@
+# FE-RUNTIME-UPDATE-DIAGNOSE-REPAIR-2：检测、修复并升级（2026-08-09，completed，未发布）
+
+- `rollback_failed` 的管理员按钮改为“检测、修复并升级”。确认框明确展示执行顺序：识别失败事务与恢复材料 → 只执行已知修复 → 验收旧版本 → 检测历史旧配置 → 完整升级预检 → 继续升级；未知问题保留现场，不删除存档或清空认证卷。
+- 原“可信旧候选配置”的“修复并升级”也改走同一个后端持久化 repair job，不再依赖浏览器先调 `repair-config`、再启动 dry-run、再靠内存 ref 提交 apply。页面刷新或浏览器关闭不会丢失“修复后继续升级”的意图。
+- apply 新增 `resuming_upgrade` 标签“修复通过，正在重新预检”，展示 `repairSourceApplyId` 和后端产生的诊断/复检 checks；`succeeded` 才表示升级完成，`failed_rolled_back` 表示重新升级失败但旧版安全，不再显示成修复成功。
+- 按钮仍只对管理员开放，严格提交 `{"confirm":true}`，最多三次；前端不接收或发送镜像、路径、apply ID、Docker 命令或修复策略。
+
 # FE-RUNTIME-UPDATE-REPAIR-1：升级失败一键安全恢复（2026-08-08，completed，未发布）
 
 - 版本维护在 Junimo apply 为 `rollback_failed` 时不再只显示“人工处理”。管理员看到“一键安全恢复”，确认框明确只使用上次升级前的已校验私有材料，不选择新镜像、不删除存档、不清空认证卷；普通用户仍只看到联系管理员。

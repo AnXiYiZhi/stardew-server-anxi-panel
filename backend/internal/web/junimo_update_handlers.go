@@ -184,7 +184,7 @@ func (s *server) handleInstanceJunimoUpdateRepair(w http.ResponseWriter, r *http
 	}
 	repairer, ok := driver.(junimoUpdateRepairDriver)
 	if !ok {
-		writeError(w, http.StatusConflict, "unsupported/driver", "实例 driver 不支持 Junimo 升级安全恢复")
+		writeError(w, http.StatusConflict, "unsupported/driver", "实例 driver 不支持 Junimo 升级检测与修复")
 		return
 	}
 	status, err := repairer.StartRuntimeUpdateRepair(r.Context(), makeRegistryInstance(instance), actor.User.ID)
@@ -194,7 +194,7 @@ func (s *server) handleInstanceJunimoUpdateRepair(w http.ResponseWriter, r *http
 			return
 		}
 		s.logger.Error("failed to start Junimo update repair", "instance", instance.ID, "error", err)
-		writeError(w, http.StatusInternalServerError, "runtime_repair_start_failed", "启动 Junimo 升级安全恢复失败")
+		writeError(w, http.StatusInternalServerError, "runtime_repair_start_failed", "启动 Junimo 升级检测、修复与续跑失败")
 		return
 	}
 	s.auditLog(r, &actor, "junimo_runtime_update_repair_started", "instance", instance.ID, auditMetadata("applyId", status.ApplyID, "repairAttempt", strconv.Itoa(status.RepairAttempts)))

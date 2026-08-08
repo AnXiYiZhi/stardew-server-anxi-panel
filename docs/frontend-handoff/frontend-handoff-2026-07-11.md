@@ -1,3 +1,9 @@
+# FE-RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 接手记录（2026-08-09，completed，未发布）
+
+- Diagnostics 的两个已知故障入口统一为“检测、修复并升级”：`rollback_failed` 和 `repairable/legacy_candidates` 都只 POST 严格 repair API，并轮询持久化 apply 状态；浏览器不再自己串联 config repair/dry-run/apply。
+- 页面新增 `resuming_upgrade`，显示修复源 apply ID 和后端 checks。确认框说明未知问题会停住；只有 `succeeded` 是完成，修复后 `failed_rolled_back` 仍显示重新升级失败但旧版安全。
+- 影响 `DiagnosticsPage.tsx`、`types.ts`、Junimo 状态 helper/测试和 QA fixture。按钮仍为管理员专属、三次上限、无恢复路径/镜像/命令输入；Docker Desktop QA 容器中已由无代理 Chrome 实际点击并观察四阶段、展开核对修复源和六项 checks，console error/warn 为 0。Codex Browser 插件本机 URL 被客户端拦截，准确 fallback 原因、截图和候选镜像证据见 `docs/09-image-build.md`。
+
 # FE-RUNTIME-UPDATE-REPAIR-1 接手记录（2026-08-08，completed，未发布）
 
 ## 改了什么、影响与验证

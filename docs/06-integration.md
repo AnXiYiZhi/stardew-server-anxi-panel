@@ -1,3 +1,10 @@
+# RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 联调契约（2026-08-09，completed，未发布）
+
+- `POST /api/instances/:id/junimo-update/repair` 现在是持久化“检测、修复并继续升级”入口，可在两种后端已证明的状态接受：精确 `rollback_failed` 事务，或 `GET /junimo-update` 返回 `repairable=true` 的可信历史候选配置。其它状态返回 `runtime_repair_not_needed`；损坏状态/材料、未知配置、任务冲突与三次耗尽继续 409，权限和严格 body 不变。
+- 状态序列为 `rolling_back`（有失败事务时）→ `resuming_upgrade`（已恢复，正在识别历史配置和完整 dry-run）→ 新 `applyId` 的普通 apply phases → `succeeded|failed_rolled_back|rollback_failed`。`repairSourceApplyId` 关联首次检测事务，`resumeAfterRepair` 只用于后端崩溃恢复；前端不得据此自行重放 POST。
+- `checks` 会保留 `repair_failure_state/repair_manifest/repair_materials/repair_original_runtime`，历史配置命中时增加 `known_issue_detection/known_legacy_config_repaired`，完整预检通过后增加 `retry_*`、`repair_upgrade_preflight` 和按实际 image ID/tag/Control 内容生成的 `change_plan`。这些是脱敏诊断证据，不包含恢复路径、token 或任意命令。
+- repair job 在重新 apply 前再次执行在线玩家通告、存档持久化确认和整档保护备份（存在活动存档时）。修复后的 dry-run 或维护门禁失败会收敛到 `failed_rolled_back` 并保持旧版本可用；脚本此时退出非零，只有 `succeeded` 返回成功。
+
 # RUNTIME-UPDATE-WAL-REPAIR-1 联调契约（2026-08-08，completed，未发布）
 
 - 新增管理员接口 `POST /api/instances/:id/junimo-update/repair`。请求体必须严格为 `{"confirm":true}`；匿名返回 401、普通用户 403，额外的 image/tag/path/applyId/command/strategy 字段返回 400，当前不是 `rollback_failed`、材料不一致、任务冲突或三次耗尽返回 409，接受后返回 202 与原 `RuntimeUpdateApplyStatus` shape。

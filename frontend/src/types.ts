@@ -257,7 +257,7 @@ export type JunimoUpdateDryRunStatus = {
 export type JunimoUpdateApplyPhase =
   | 'idle' | 'checking' | 'pulling' | 'backing_up' | 'stopping' | 'writing_config'
   | 'recreating_auth' | 'verifying_auth' | 'recreating_server' | 'verifying_server'
-  | 'restoring_state' | 'succeeded' | 'rolling_back' | 'failed_rolled_back' | 'rollback_failed'
+  | 'restoring_state' | 'succeeded' | 'rolling_back' | 'resuming_upgrade' | 'failed_rolled_back' | 'rollback_failed'
 
 export type JunimoUpdateApplyStatus = {
   applyId?: string
@@ -280,6 +280,8 @@ export type JunimoUpdateApplyStatus = {
   rollbackCode?: string
   rollbackError?: string
   repairAttempts?: number
+  repairSourceApplyId?: string
+  resumeAfterRepair?: boolean
   manualAction?: string
   startedAt?: string
   updatedAt?: string

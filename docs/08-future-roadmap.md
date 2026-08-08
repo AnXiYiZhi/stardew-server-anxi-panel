@@ -1,3 +1,12 @@
+# 2026-08-09 完成：已知升级故障检测、修复与续跑闭环（RUNTIME-UPDATE-DIAGNOSE-REPAIR-2，未发布）
+
+- [x] `rollback_failed` 与可信历史候选配置统一进入后端持久化 repair job；按钮不再只恢复旧版，也不依赖浏览器串联多个请求。
+- [x] 修复前记录事务/清单/材料诊断，修复后重新执行普通完整 dry-run、运行时差异计划、存档保存/整档备份与全新 apply；仅目标验收通过记为成功。
+- [x] `resuming_upgrade + resumeAfterRepair + repairSourceApplyId` 覆盖修复完成到新事务 mutation 前的 Panel 中断窗口；次数跨续跑事务保留且最多三次。
+- [x] 未知/自定义状态继续 fail closed；自动修复规则必须是代码内闭集，并有备份、复检、失败回滚和故障注入测试后才能扩展。
+- [ ] 该闭环仅覆盖 Junimo runtime。SMAPI staging、Panel helper 与未来 game/SDK apply 仍按 `UPGRADE-RECOVERY-UNIFICATION-1` 分别实现，不得复用不匹配的恢复材料。
+- [ ] 尚未发布；候选 Docker、完整门禁与正式发布状态以 `docs/09-image-build.md` 为准。
+
 # 2026-08-08 完成：跨版本运行组件恢复与一键修复（RUNTIME-UPDATE-WAL-REPAIR-1，未发布）
 
 - [x] schema 3 为所有实例 mutation 增加 write-ahead intent；重启恢复按“操作可能已到达 Docker”保守、幂等回滚，消除完成标记落盘前的崩溃窗口。

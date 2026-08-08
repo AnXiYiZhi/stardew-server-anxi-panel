@@ -1,3 +1,12 @@
+# RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 接手记录（2026-08-09，completed，未发布）
+
+## 改了什么、影响与验证
+
+- repair API 现在接受精确 `rollback_failed` 或 `repairable/legacy_candidates`，并在同一个实例 job 内完成诊断、受限修复、旧版验收、完整 dry-run、升级前保存/整档备份和新 apply；目标未验收成功就不返回成功。
+- 新状态字段/阶段为 `resuming_upgrade`、`repairSourceApplyId`、`resumeAfterRepair`。恢复逻辑覆盖旧恢复目录仍在、旧目录已清、新 apply 尚无 manifest、以及新 manifest 已写但 mutation 未开始四个窗口；mutation intent 发生后回到原 write-ahead rollback 规则。
+- detector 闭集为事务 status/manifest/material SHA 与历史可信候选配置；修复后 apply preflight 使用运行容器 image ID、配置 tag 和 Control 文件/运行版本生成 change plan。自定义镜像、未知 Compose、损坏状态或摘要漂移继续拒绝。
+- 核心测试覆盖 partial rollback 修复后升级成功、修复后目标再失败并安全回滚、历史配置入口、旧恢复目录已清/新 retry manifest 无 mutation 两个重启续跑窗口和诊断 checks 保留。全量 Go/vet/build、脚本、兼容矩阵、Docker integration 与精确候选镜像 health/version/API/内置脚本均已通过；候选 metadata、SHA 和 UI 串联证据见 `docs/09-image-build.md`。仍不可把本入口用于 SMAPI、Panel 自更新或 game-data staging，也不能在缺少无用户数据的真实 Junimo 故障夹具时提前发布。
+
 # RUNTIME-UPDATE-WAL-REPAIR-1 接手记录（2026-08-08，completed，未发布）
 
 ## 改了什么
