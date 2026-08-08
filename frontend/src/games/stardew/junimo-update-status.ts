@@ -56,7 +56,7 @@ export function junimoApplyPhaseLabel(phase?: JunimoUpdateApplyPhase): string {
     idle: '尚未执行升级', checking: '重新预检', pulling: '拉取版本对', backing_up: '保护认证卷', stopping: '安全停服',
     writing_config: '原子写入配置', recreating_auth: '重建 steam-auth-cn', verifying_auth: '验证 Steam 登录',
     recreating_server: '重建 Junimo server', verifying_server: '验证运行链路', restoring_state: '恢复原运行状态',
-    succeeded: '升级成功', rolling_back: '正在成对回滚', failed_rolled_back: '升级失败，已成功回滚', rollback_failed: '自动回滚失败，需人工处理',
+    succeeded: '升级成功', rolling_back: '正在成对回滚', failed_rolled_back: '升级失败，已成功回滚', rollback_failed: '自动回滚失败，可一键安全恢复',
   }
   return labels[phase ?? 'idle']
 }

@@ -126,21 +126,23 @@ func TestJunimoUpdateApplyPermissions(t *testing.T) {
 		t.Fatalf("create player: %s", created.Body.String())
 	}
 	_, playerCookie := doJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]string{"username": "player", "password": "player-password"}, nil)
-	for _, test := range []struct {
-		name   string
-		cookie *http.Cookie
-		want   int
-	}{{"anonymous", nil, http.StatusUnauthorized}, {"ordinary user", playerCookie, http.StatusForbidden}} {
-		t.Run(test.name, func(t *testing.T) {
-			response, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/junimo-update/apply", map[string]bool{"confirm": true}, test.cookie)
-			if response.Code != test.want {
-				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-			}
-		})
-	}
-	response, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/junimo-update/apply", map[string]bool{"confirm": true}, adminCookie)
-	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "driver_not_registered") {
-		t.Fatalf("admin was not authorized to reach driver contract: %d %s", response.Code, response.Body.String())
+	for _, endpoint := range []string{"/api/instances/stardew/junimo-update/apply", "/api/instances/stardew/junimo-update/repair"} {
+		for _, test := range []struct {
+			name   string
+			cookie *http.Cookie
+			want   int
+		}{{"anonymous", nil, http.StatusUnauthorized}, {"ordinary user", playerCookie, http.StatusForbidden}} {
+			t.Run(endpoint+test.name, func(t *testing.T) {
+				response, _ := doJSON(t, handler, http.MethodPost, endpoint, map[string]bool{"confirm": true}, test.cookie)
+				if response.Code != test.want {
+					t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+				}
+			})
+		}
+		response, _ := doJSON(t, handler, http.MethodPost, endpoint, map[string]bool{"confirm": true}, adminCookie)
+		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "driver_not_registered") {
+			t.Fatalf("admin was not authorized to reach driver contract: %d %s", response.Code, response.Body.String())
+		}
 	}
 }
 

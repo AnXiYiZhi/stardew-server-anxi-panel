@@ -194,16 +194,43 @@ func restoreRuntimeJunimoServerMod(dataDir, applyID string, originalPresent bool
 	targetDir := junimoServerModDir(dataDir)
 	originalDir := filepath.Join(recoveryDir, runtimeOriginalJunimoDir)
 	discardedDir := filepath.Join(recoveryDir, "failed-target-junimo-server")
-	_ = os.RemoveAll(discardedDir)
-	if _, err := os.Stat(targetDir); err == nil {
+	if !originalPresent {
+		if _, err := os.Stat(targetDir); errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		_ = os.RemoveAll(discardedDir)
 		if err := os.Rename(targetDir, discardedDir); err != nil {
 			return fmt.Errorf("move failed target JunimoServer aside: %w", err)
 		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if !originalPresent {
 		return nil
+	}
+	originalInfo, originalErr := os.Stat(originalDir)
+	targetInfo, targetErr := os.Stat(targetDir)
+	_, discardedErr := os.Stat(discardedDir)
+	if errors.Is(originalErr, os.ErrNotExist) {
+		// A prior rollback invocation moves the failed target aside before moving
+		// the original directory back. This pair is durable evidence that the
+		// restoration already completed, so repeated repair is a no-op.
+		if targetErr == nil && targetInfo.IsDir() && discardedErr == nil {
+			return nil
+		}
+		return errors.New("original JunimoServer recovery directory is missing")
+	}
+	if originalErr != nil || !originalInfo.IsDir() {
+		return errors.New("original JunimoServer recovery directory is invalid")
+	}
+	_ = os.RemoveAll(discardedDir)
+	if targetErr == nil {
+		if !targetInfo.IsDir() {
+			return errors.New("active JunimoServer path is not a directory")
+		}
+		if err := os.Rename(targetDir, discardedDir); err != nil {
+			return fmt.Errorf("move failed target JunimoServer aside: %w", err)
+		}
+	} else if !errors.Is(targetErr, os.ErrNotExist) {
+		return targetErr
 	}
 	if err := os.Rename(originalDir, targetDir); err != nil {
 		_ = os.Rename(discardedDir, targetDir)

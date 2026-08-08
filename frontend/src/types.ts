@@ -279,6 +279,7 @@ export type JunimoUpdateApplyStatus = {
   causeError?: string
   rollbackCode?: string
   rollbackError?: string
+  repairAttempts?: number
   manualAction?: string
   startedAt?: string
   updatedAt?: string

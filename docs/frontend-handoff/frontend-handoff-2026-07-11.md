@@ -1,3 +1,12 @@
+# FE-RUNTIME-UPDATE-REPAIR-1 接手记录（2026-08-08，completed，未发布）
+
+## 改了什么、影响与验证
+
+- Diagnostics 版本维护卡在 Junimo `rollback_failed` 时为管理员显示“一键安全恢复”，确认后只提交严格 `{"confirm":true}`；普通用户没有写入口。202 后继续复用 apply polling，显示首次失败、回滚步骤、`repairAttempts` 和最终恢复结果，三次后禁用按钮。
+- `api.ts` 新增 `startJunimoUpdateRepair`，`types.ts` 增加可选 `repairAttempts`；状态标签改为“自动回滚失败，可一键安全恢复”。没有加入浏览器自动重放、恢复路径/镜像选择或 Docker 命令。
+- 影响 `DiagnosticsPage.tsx`、`junimo-update-status.ts`、API/types 和 `test-junimo-update-status.ts`。状态测试、TypeScript/production build 与 Docker 候选验证记录在 `docs/09-image-build.md`。
+- 后续如给 SMAPI 增加 repair，必须复用相同“只在后端已有 rollback_failed 事务时显示、严格确认、次数有界”的模式，但不能把两个状态文件或接口混用。
+
 # 官网隔离改版撤回交接（2026-08-07，completed）
 
 - `6f34b8a` 误将 `docs-portal-redesign` 隔离稿发布到官网；修复已把所有非玩家 Mod 站点文件恢复到 release commit `0c5e2c4`，删除 `DocsHome.vue`，只保留首页 v0.4.8 版本卡、changelog 和玩家手册新增内容。

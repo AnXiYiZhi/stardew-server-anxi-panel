@@ -1,5 +1,13 @@
 # 后期优化文档
 
+## UPGRADE-RECOVERY-UNIFICATION-1：其余升级链的一键恢复（高优先级，2026-08-08）
+
+- 本次 `RUNTIME-UPDATE-WAL-REPAIR-1` 已覆盖旧 Panel 升级最常触发的 required Junimo server/steam-auth/Control 同步：自动回滚失败可由面板或 `repair-junimo-upgrade.sh` 校验后幂等重试。
+- SMAPI staging 是独立的 game-data volume 事务。它已有 Panel 重启自动回滚、旧卷保留和失败 staging 隔离，但最终 `rollback_failed` 仍只给人工指引；后续应增加 schema 2 write-ahead intent、恢复文件摘要、尝试上限、严格 repair API 和同一宿主脚本入口，并用真实 staging 卷注入切换后启动失败/Panel 中断验证。
+- Panel 自更新由外置 `panel-updater` helper 执行；目标 Panel 可能不可达，所以不能简单复用面板 API。后续一键恢复必须由宿主脚本读取并校验 updater 私有事务、Compose labels、旧 image digest、数据库备份和原容器保留状态，再调用受限 helper 子命令；不得让脚本接受任意容器、路径或镜像，也不得把 `docker compose down -v` 当修复。
+- GAME-RUNTIME-UPDATE-2 尚未开放 apply，当前只有只读预检，因此没有“回滚失败”入口。未来实现 game/SDK staging 时必须从第一版就复用 write-ahead、终态先提交、精确资源所有权与一键安全恢复契约。
+- 统一入口完成前，用户文档和 UI 必须标清适用链路；不得把 Junimo repair 脚本宣传成 SMAPI、Panel 部署或任意 Docker 数据恢复工具。
+
 ## GAME-RUNTIME-UPDATE-2 阶段六执行能力（暂缓，2026-07-14）
 
 - GAME-RUNTIME-VERSION-1 只完成 App 413150/1007 的推荐矩阵、ACF 检测、提示和只读预检。阶段六才可设计 staging volume 创建、Steam depot 下载/validate、game+SDK 成对切换、停服窗口、Junimo/SMAPI/steam-auth 联合健康验收和失败回滚。

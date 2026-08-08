@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -97,6 +98,7 @@ type RuntimeUpdateApplyStatus struct {
 	CauseError       string                              `json:"causeError,omitempty"`
 	RollbackCode     string                              `json:"rollbackCode,omitempty"`
 	RollbackError    string                              `json:"rollbackError,omitempty"`
+	RepairAttempts   int                                 `json:"repairAttempts,omitempty"`
 	ManualAction     string                              `json:"manualAction,omitempty"`
 	StartedAt        string                              `json:"startedAt,omitempty"`
 	UpdatedAt        string                              `json:"updatedAt,omitempty"`
@@ -130,7 +132,24 @@ type runtimeUpdateRecoveryManifest struct {
 	ControlManifestPresent   bool                       `json:"controlManifestPresent"`
 	ControlDLLPresent        bool                       `json:"controlDllPresent"`
 	ControlUpdated           bool                       `json:"controlUpdated"`
+	MutationStarted          bool                       `json:"mutationStarted,omitempty"`
+	StopIntent               bool                       `json:"stopIntent,omitempty"`
+	ControlUpdateIntent      bool                       `json:"controlUpdateIntent,omitempty"`
+	AuthSnapshotCreateIntent bool                       `json:"authSnapshotCreateIntent,omitempty"`
+	AuthSnapshotVolumeMade   bool                       `json:"authSnapshotVolumeMade,omitempty"`
+	JunimoModReplaceIntent   bool                       `json:"junimoModReplaceIntent,omitempty"`
+	ConfigWriteIntent        bool                       `json:"configWriteIntent,omitempty"`
+	AuthRecreateIntent       bool                       `json:"authRecreateIntent,omitempty"`
+	AuthServiceStartIntent   bool                       `json:"authServiceStartIntent,omitempty"`
+	ServerRecreateIntent     bool                       `json:"serverRecreateIntent,omitempty"`
+	LastIntent               string                     `json:"lastIntent,omitempty"`
+	OriginalEnvSHA256        string                     `json:"originalEnvSha256,omitempty"`
+	OriginalComposeSHA256    string                     `json:"originalComposeSha256,omitempty"`
+	OriginalControlJSONSHA   string                     `json:"originalControlManifestSha256,omitempty"`
+	OriginalControlDLLSHA    string                     `json:"originalControlDllSha256,omitempty"`
 }
+
+var runtimeUpdateApplyIDPattern = regexp.MustCompile(`^apply_[a-f0-9]{24}$`)
 
 func runtimeUpdateServerChanged(manifest runtimeUpdateRecoveryManifest) bool {
 	return manifest.SchemaVersion < 2 || manifest.ServerImageChanged
@@ -142,6 +161,43 @@ func runtimeUpdateAuthChanged(manifest runtimeUpdateRecoveryManifest) bool {
 
 func runtimeUpdateAuthSnapshotCreated(manifest runtimeUpdateRecoveryManifest) bool {
 	return manifest.SchemaVersion < 2 || manifest.AuthSnapshotCreated
+}
+
+func runtimeUpdateAuthSnapshotVolumeCreated(manifest runtimeUpdateRecoveryManifest) bool {
+	if manifest.SchemaVersion < 3 {
+		return runtimeUpdateAuthSnapshotCreated(manifest)
+	}
+	// The Docker volume may already exist when the process is interrupted after
+	// the create call reached the daemon but before its completion flag was
+	// persisted. Removing this transaction-owned exact name is idempotent.
+	return manifest.AuthSnapshotCreateIntent || manifest.AuthSnapshotVolumeMade || manifest.AuthSnapshotCreated
+}
+
+func runtimeUpdateMutationStarted(manifest runtimeUpdateRecoveryManifest) bool {
+	// Schema 1/2 persisted completion flags after several mutations. Once their
+	// recovery manifest exists, conservatively roll back instead of assuming an
+	// absent completion flag proves that nothing happened.
+	return manifest.SchemaVersion < 3 || manifest.MutationStarted
+}
+
+func runtimeUpdateControlMayHaveChanged(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.ControlUpdated || manifest.SchemaVersion >= 3 && manifest.ControlUpdateIntent
+}
+
+func runtimeUpdateJunimoModMayHaveChanged(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.JunimoModReplaced || manifest.SchemaVersion >= 3 && manifest.JunimoModReplaceIntent
+}
+
+func runtimeUpdateAuthMayHaveBeenRecreated(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.AuthRecreated || manifest.SchemaVersion >= 3 && manifest.AuthRecreateIntent
+}
+
+func runtimeUpdateAuthServiceMayHaveStarted(manifest runtimeUpdateRecoveryManifest) bool {
+	return runtimeUpdateAuthMayHaveBeenRecreated(manifest) || manifest.SchemaVersion >= 3 && manifest.AuthServiceStartIntent
+}
+
+func runtimeUpdateServerMayHaveBeenRecreated(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.ServerRecreated || manifest.SchemaVersion >= 3 && manifest.ServerRecreateIntent
 }
 
 func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
@@ -213,31 +269,49 @@ func (d *Driver) RuntimeUpdateApplyStatus(instance registry.Instance) (RuntimeUp
 }
 
 // RecoverRuntimeUpdateApply resumes a persisted non-terminal apply after the
-// generic jobs recovery has released its database lock. It never guesses when
-// the private recovery manifest is missing.
+// generic jobs recovery has released its database lock. A missing manifest is
+// treated as safe only in phases that precede every instance mutation.
 func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registry.Instance) error {
 	status, err := readRuntimeUpdateApplyStatus(instance.DataDir)
-	if errors.Is(err, os.ErrNotExist) || err == nil && runtimeUpdateApplyTerminal(status.Phase) {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	runtimeDocker, ok := d.docker.(RuntimeUpdateApplyDockerService)
-	if !ok {
-		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用。")
+	if status.Phase == RuntimeUpdateApplySucceeded || status.Phase == RuntimeUpdateApplyFailedRolledBack {
+		manifest, manifestErr := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
+		if manifestErr != nil || !validRuntimeUpdateRecoveryManifest(instance, status, manifest) {
+			return nil
+		}
+		if runtimeDocker, ok := d.docker.(RuntimeUpdateApplyDockerService); ok && runtimeUpdateAuthSnapshotVolumeCreated(manifest) {
+			_ = runtimeDocker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume)
+		}
+		_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
+		return nil
+	}
+	if status.Phase == RuntimeUpdateApplyRollbackFailed {
+		return nil
 	}
 	manifest, err := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
 	if err != nil {
-		if status.Phase == RuntimeUpdateApplyChecking || status.Phase == RuntimeUpdateApplyPulling {
-			status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyFailedRolledBack, 100, "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。"
-			status.UpdatedAt, status.FinishedAt = time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)
-			return writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+		if errors.Is(err, os.ErrNotExist) && runtimeUpdateApplyPreMutationPhase(status.Phase) {
+			return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, instance, status)
 		}
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复材料缺失，已禁止猜测性恢复。")
 	}
 	if !validRuntimeUpdateRecoveryManifest(instance, status, manifest) {
-		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复清单与实例或内置推荐版本对不一致。")
+		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复清单与实例或该事务记录的版本对不一致。")
+	}
+	if !runtimeUpdateMutationStarted(manifest) {
+		return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, instance, status)
+	}
+	runtimeDocker, ok := d.docker.(RuntimeUpdateApplyDockerService)
+	if !ok {
+		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用。")
+	}
+	if err := validateRuntimeUpdateRecoveryMaterials(instance.DataDir, manifest); err != nil {
+		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复材料不完整或校验失败，已拒绝自动修改实例。")
 	}
 	status.CreatedBy = manifest.ActorID
 	job, err := d.jobs.Start(ctx, jobs.Spec{Type: RuntimeUpdateApplyJobType, DisplayName: "恢复 Junimo 运行组件升级", TargetType: "instance", TargetID: instance.ID, CreatedBy: manifest.ActorID, Timeout: 2 * time.Hour, Run: func(runCtx context.Context, jobCtx *jobs.Context) error {
@@ -252,18 +326,41 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 }
 
 func validRuntimeUpdateRecoveryManifest(instance registry.Instance, status RuntimeUpdateApplyStatus, manifest runtimeUpdateRecoveryManifest) bool {
-	recommendation, err := sjconfig.BuiltInRuntimeStackManifest()
-	if err != nil || manifest.SchemaVersion != 1 && manifest.SchemaVersion != 2 || manifest.ApplyID != status.ApplyID || manifest.Project != strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir))) {
+	if manifest.SchemaVersion < 1 || manifest.SchemaVersion > 3 || !runtimeUpdateApplyIDPattern.MatchString(manifest.ApplyID) || manifest.ApplyID != status.ApplyID || manifest.Project != strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir))) {
 		return false
 	}
 	expectedSnapshot := manifest.Project + "_anxi-junimo-update-" + strings.TrimPrefix(manifest.ApplyID, "apply_") + "-steam-session"
-	return manifest.SnapshotVolume == expectedSnapshot &&
-		containsString(recommendation.Server.TrustedCandidates, manifest.Target.Server.Image) &&
-		containsString(recommendation.SteamAuth.TrustedCandidates, manifest.Target.SteamAuth.Image) &&
+	if manifest.SchemaVersion >= 3 && (manifest.OriginalServerVersion != status.Current.Server.Tag || manifest.TargetServerVersion != status.Target.Server.Tag) {
+		return false
+	}
+	return manifest.SnapshotVolume == expectedSnapshot && manifest.Target == status.Selected &&
+		containsString(status.Target.Server.TrustedCandidates, manifest.Target.Server.Image) &&
+		containsString(status.Target.SteamAuth.TrustedCandidates, manifest.Target.SteamAuth.Image) &&
 		runtimeImageDigestPattern.MatchString(manifest.Target.Server.Digest) && runtimeImageDigestPattern.MatchString(manifest.Target.SteamAuth.Digest) &&
 		runtimeImageDigestPattern.MatchString(manifest.Target.Server.ImageID) && runtimeImageDigestPattern.MatchString(manifest.Target.SteamAuth.ImageID) &&
 		runtimeImageDigestPattern.MatchString(manifest.OriginalServer.Digest) && runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.Digest) &&
 		runtimeImageDigestPattern.MatchString(manifest.OriginalServer.ImageID) && runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.ImageID)
+}
+
+func runtimeUpdateApplyPreMutationPhase(phase string) bool {
+	return phase == RuntimeUpdateApplyChecking || phase == RuntimeUpdateApplyPulling || phase == RuntimeUpdateApplyBackingUp
+}
+
+func (d *Driver) finishRuntimeUpdateRecoveryBeforeChange(ctx context.Context, instance registry.Instance, status RuntimeUpdateApplyStatus) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	status.Phase, status.Progress = RuntimeUpdateApplyFailedRolledBack, 100
+	status.ErrorCode, status.Error = "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。"
+	status.ServerRunning, status.ManualAction = status.ServerWasRunning, ""
+	status.UpdatedAt, status.FinishedAt = now, now
+	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: status.Error})
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		return err
+	}
+	d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
+	if runtimeUpdateApplyIDPattern.MatchString(status.ApplyID) {
+		_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, status.ApplyID))
+	}
+	return nil
 }
 
 func containsString(values []string, value string) bool {
@@ -294,7 +391,7 @@ func (d *Driver) markRuntimeUpdateRecoveryUncertain(instance registry.Instance, 
 func newRuntimeApplyID() string {
 	var value [12]byte
 	if _, err := rand.Read(value[:]); err != nil {
-		return fmt.Sprintf("apply_%d", time.Now().UnixNano())
+		return fmt.Sprintf("apply_%024x", uint64(time.Now().UnixNano()))
 	}
 	return "apply_" + hex.EncodeToString(value[:])
 }

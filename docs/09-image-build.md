@@ -1,3 +1,43 @@
+# RUNTIME-UPDATE-WAL-REPAIR-1 Docker/发布门禁（2026-08-08，未发布）
+
+## 变更范围与受影响链路
+
+- 本版修改 Panel 在旧正式版升级后执行 required Junimo runtime 同步时的事务恢复：manifest schema 3 write-ahead intent、跨 Panel 版本的持久化事务校验、恢复材料 SHA-256、终态先提交后清理、幂等 rollback retry、管理员 repair API/页面和 `repair-junimo-upgrade.sh`。
+- 受影响链路为 `Panel 启动/全栈协调 → Junimo dry-run/apply → server/auth/Control 差异升级 → target verification → rollback/restart recovery → terminal cleanup`。数据库 schema、存档、game-data、Mod 用户目录、Panel 自更新 helper 和 SMAPI staging 格式没有改变。
+- `deploy/repair-junimo-upgrade.sh` 已复制到候选镜像 `/app/repair-junimo-upgrade.sh`，并作为后续 GitHub Release asset。脚本只登录 Panel 并调用严格 repair API，不直接挂载/调用 Docker；因此 Panel API 完全不可达时不能用于修复 Panel 容器自身。
+
+## 故障矩阵
+
+| 类别 | 必须成立的行为 | 本版机制/验证状态 |
+| --- | --- | --- |
+| 正常路径 | stopped/running、Control-only 与真正 auth 变更都只操作差异组件，目标健康后恢复原运行状态 | 既有 stopped/running Docker Desktop Control-only 真机通过；本版候选 Docker 回归见下方当前证据 |
+| 边界输入 | apply ID、project、snapshot 名、target pair 和原/目标版本必须精确；旧事务不因新 Panel 推荐版本变化失效 | `apply_[a-f0-9]{24}`、事务 `Target == Selected`、持久化 trusted candidates、image digest/ID 检查；跨版本事务与漂移拒绝单测通过 |
+| 权限与安全 | 只有管理员可 repair；请求不得注入路径、镜像、命令或策略；恢复材料不可被 symlink/篡改替换 | 401/403、严格 `{"confirm":true}`、schema 3 SHA-256/regular-file 校验、篡改材料零 Docker mutation 单测通过；脚本密码不进入 argv/日志 |
+| 网络超时/断流 | 镜像拉取、auth readiness、server 冷启动和脚本轮询有界；网络失败触发原版本回滚，不放宽 digest/health | auth 10 分钟、server 20 分钟、stop 10 分钟、job 2 小时；脚本 connect/max/总等待均有界；真实网络异常仍需按发布候选矩阵重跑 |
+| 部分成功后的重试与幂等 | 回滚在 Mod 已恢复、配置已恢复或容器已重建后失败，重复执行不得丢原材料或重复选择目标 | Junimo restore 识别 durable partial state；repair 只重试同一 manifest，最多三次；认证卷恢复注入首次失败、第二次成功单测通过 |
+| 进程/容器中断后的恢复 | 每个 mutation 调用可能已到达 Docker 但完成标记未写时仍可恢复；纯备份阶段重启不得要求人工 | stop/Control/snapshot/Junimo/config/auth/server write-ahead intents；备份阶段无 manifest 自动 `failed_rolled_back`；schema 3 intent 重启单测通过 |
+| 失败回滚 | target 验收失败自动回滚；rollback_failed 保留材料并可一键安全恢复；材料不可信时拒绝猜测 | 原 rollback 路径保留；repair API/页面/脚本新增；摘要漂移返回 `recovery_material_invalid`，三次失败后停止自动操作 |
+| 数据完整性 | 原 `.env`、Compose、Control、server/auth image IDs、steam-session 和原运行状态必须精确恢复；不触碰存档/game-data | 四类文件备份/摘要、immutable image ID pin/volume helper、原状态验收；真实 volume 与候选链路仍需下方 Docker 门禁给证据 |
+| 资源清理 | 成功/回滚终态未持久化前不得删 snapshot、旧 image 或 recovery；重启只清理本 apply 精确拥有的资源 | terminal status 先写；snapshot create intent 覆盖 daemon 已创建但返回前崩溃窗口；terminal 启动清理和精确卷名单测通过 |
+| 不适用 | 本版无数据库迁移、部署格式变化或 GAME_DATA_VOLUME 切换 | 数据库迁移/SMAPI staging/game+SDK apply 故障不由本 repair 处理；其独立风险见 `docs/07-later-optimizations.md` |
+
+## 一键安全恢复用法
+
+1. 先下载对应正式 Release 的 `repair-junimo-upgrade.sh` 到 NAS/Linux 宿主机并检查文件；不要把脚本粘进 Panel 容器终端，也不要给它 Docker socket。
+2. 只检查、不修改：`PANEL_URL=http://127.0.0.1:8090 bash repair-junimo-upgrade.sh check`。
+3. repair：交互终端直接运行 `PANEL_URL=http://127.0.0.1:8090 bash repair-junimo-upgrade.sh repair`；自动化环境把管理员密码放入权限受控的普通文件，再设置 `PANEL_PASSWORD_FILE=/path/to/file`。脚本会提交后端校验并等待 `failed_rolled_back`，不会自行执行 Compose/volume 命令。
+4. 若返回 `recovery_material_invalid/recovery_state_uncertain` 或三次耗尽，停止操作并保留实例目录和任务精确卷；不能通过改 JSON、改 tag 或 `volume prune` 绕过。
+
+## 当前验证证据与发布状态
+
+- Go 专项目前通过：部分 rollback 首次认证卷恢复失败后 repair 幂等成功；`original.env` 摘要篡改在零 Docker mutation 下拒绝；Control write-ahead intent 重启恢复；备份阶段无 manifest 安全终止；事务使用持久化候选跨 Panel 版本有效；snapshot create intent 保留精确清理所有权。
+- 2026-08-09 收口全量门禁通过：`go test ./... -count=1` 51.6 秒、`go vet ./...` 5.5 秒、`go build ./...` 8.3 秒；前端 12 项状态/响应式测试 8.2 秒、TypeScript + production build 10.5 秒；Bash 5.2 `bash -n` + 脚本功能测试 2.8 秒、ShellCheck 0.10.0 2.3 秒。Web 权限测试覆盖 repair 的匿名/普通用户拒绝，strict confirmation 单测拒绝 image/tag/service/command 注入。
+- Docker Desktop 29.5.3 的真实低层门禁 11.886 秒通过：steam-session volume 创建/克隆/恢复、精确旧 image ID 与容器引用保护、无 Node 镜像 inspect/auth probe、SMAPI staging 克隆/installer、server health 及 runtime/SMAPI 参数注入拒绝。测试只使用自身临时容器/卷，未触碰生产实例或长期 volume。
+- 本地候选 `stardew-anxi-panel:wal-repair-20260808` 以 version=`0.4.9-wal-repair.dev.1`、revision=`4d8ea24cb141-dirty`、created=`2026-08-08T15:56:17Z` 构建；image ID/manifest digest=`sha256:96c6d1f00f616ae5a3bb9957d74df80d4f7d9d8c17e5b9b0f2df8c2e134ada9e`。前两次构建分别遇到 Go ZIP EOF 和 Alpine index SSL EOF，未生成 tag；官方 Alpine host-network 探针完整通过后第三次有界构建用时 36.6 秒成功，没有关闭 TLS、APK 签名或 Go 校验。
+- 候选隔离运行验证 `/health`、`/api/version`，镜像内 `/app/repair-junimo-upgrade.sh` `bash -n`，HTTP repair 匿名 401、额外 image 字段 400、无可恢复事务 409；重启后容器 loopback `/health`/version 与持久 volume `setup.initialized=true` 均通过。宿主随机 published port 在 `docker restart` 后出现响应回程卡住，但容器日志和独立 loopback 请求均确认 Panel 正常，按环境问题记录于错题本，未误写为产品失败。嵌入脚本与源码 SHA-256 均为 `6e8140ffded33b7a241e4ff160b8f29111025cdf8eea965ee4273d828cff30c5`。
+- 所有 `walrepair-*` 测试容器和 volume 已按 ownership label/精确名称删除，候选本地 tag 也在确认无容器引用后删除；未执行 prune。由于没有可公开复用、包含完整真实游戏但不含用户存档/凭据的专用夹具，本轮没有把真实 Junimo 游戏容器制造成 `rollback_failed` 再点击 repair；编排由故障注入单测覆盖，Docker volume/容器原语由上述真实 integration 覆盖。这一缺口在正式发布前仍是阻塞项，不能用本轮证据冒充完整旧版 Web 升级 E2E。
+- 本次没有创建或移动 tag、没有更新 `latest`、没有推送正式镜像或 GitHub Release。若决定发版，仍必须从最新正式版和受本次跨版本恢复影响的代表老版本完成真实 Web 一键更新、目标失败回滚、Panel 中断恢复、升级后 repair/新功能验收及 AGENTS.md 全部发布门禁。
+
 # RUNTIME-UPDATE-PRESERVE-AUTH-1 Docker 验证记录（2026-08-08，未发布）
 
 - 变更范围：runtime apply 根据 current/target tag 与 image ID 选择 server/auth 操作；Control-only 只重启 server，保留健康 auth 容器和认证卷。auth 真正变化时等待由 90 秒扩大为 10 分钟。新增 `compose up --no-recreate` 与闭集 CPU shares 原地更新；公开 API、数据库、镜像清单和部署格式不变。

@@ -1,3 +1,11 @@
+# RUNTIME-UPDATE-WAL-REPAIR-1 联调契约（2026-08-08，completed，未发布）
+
+- 新增管理员接口 `POST /api/instances/:id/junimo-update/repair`。请求体必须严格为 `{"confirm":true}`；匿名返回 401、普通用户 403，额外的 image/tag/path/applyId/command/strategy 字段返回 400，当前不是 `rollback_failed`、材料不一致、任务冲突或三次耗尽返回 409，接受后返回 202 与原 `RuntimeUpdateApplyStatus` shape。
+- repair 不执行新的检查/下载/升级，也不接受前端选择恢复对象。后端从实例私有 status + manifest 取得唯一 apply ID、原 image IDs、原配置和快照卷，校验 schema 3 SHA-256 后启动同一个实例级 job 锁；响应新增可选 `repairAttempts`。
+- 前端只在 `rollback_failed` 显示管理员按钮；202 后按 `GET /api/instances/:id/junimo-update/apply` 轮询 `rolling_back → failed_rolled_back|rollback_failed`。页面刷新或 Panel 在 repair 中重启时，`repairAttempts>0 + rolling_back` 会从持久化清单继续同一次幂等回滚。
+- Release asset `/app/repair-junimo-upgrade.sh` 只调用上述登录、状态和 repair API。它不挂 Docker socket、不拼接 Compose 命令、不读取恢复目录；交互式密码不回显，非交互仅接受普通文件 `PANEL_PASSWORD_FILE`，临时 cookie/JSON 权限 0600 并在退出时清理。
+- 这是 required Junimo server/steam-auth/Control 运行组件升级的恢复入口，不改变 Panel 自更新或 SMAPI staging 的接口。独立升级链的剩余差异记录在 `docs/07-later-optimizations.md`，不得把本接口宣传成任意 Docker 故障修复器。
+
 # RUNTIME-UPDATE-PRESERVE-AUTH-1 联调契约（2026-08-08，completed，未发布）
 
 - required runtime 状态/API shape 不变。apply 仍使用既有 phase；内部根据 current/target tag + image ID 生成 change plan。server/auth 均相同而 Control 旧时，前端仍看到完整维护进度和最终 `succeeded`，但实际 Docker 操作只重启 server。

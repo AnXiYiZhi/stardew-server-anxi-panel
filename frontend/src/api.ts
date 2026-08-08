@@ -151,6 +151,13 @@ export function startJunimoUpdateApply(instanceId = defaultInstanceId) {
   })
 }
 
+export function startJunimoUpdateRepair(instanceId = defaultInstanceId) {
+  return request<JunimoUpdateApplyStatus>(`/api/instances/${encodeURIComponent(instanceId)}/junimo-update/repair`, {
+    method: 'POST',
+    body: { confirm: true },
+  })
+}
+
 export function getRuntimeComponents(instanceId = defaultInstanceId) {
   return request<RuntimeComponentsInfo>(`/api/instances/${encodeURIComponent(instanceId)}/runtime-components`)
 }

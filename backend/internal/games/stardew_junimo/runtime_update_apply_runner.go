@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,19 +54,31 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 
 	if recovery != nil {
-		if !recovery.ConfigWritten {
+		if !runtimeUpdateMutationStarted(*recovery) {
+			if err := finish(RuntimeUpdateApplyFailedRolledBack, "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。"); err != nil {
+				return err
+			}
 			_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
-			return finish(RuntimeUpdateApplyFailedRolledBack, "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。")
+			return nil
 		}
-		if (!runtimeUpdateAuthChanged(*recovery) || recovery.AuthRecreated) && recovery.ServerRecreated && (status.Phase == RuntimeUpdateApplyVerifyingServer || status.Phase == RuntimeUpdateApplyRestoringState) {
+		if status.RepairAttempts > 0 && status.Phase == RuntimeUpdateApplyRollingBack {
+			return d.runRuntimeUpdateRepair(ctx, job, docker, instance, status, *recovery)
+		}
+		if (!runtimeUpdateAuthChanged(*recovery) || runtimeUpdateAuthMayHaveBeenRecreated(*recovery)) && runtimeUpdateServerMayHaveBeenRecreated(*recovery) && (status.Phase == RuntimeUpdateApplyVerifyingServer || status.Phase == RuntimeUpdateApplyRestoringState) {
 			if err := d.verifyRuntimeTarget(ctx, docker, instance, *recovery); err == nil {
 				if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, *recovery); err == nil {
-					if runtimeUpdateAuthSnapshotCreated(*recovery) {
-						_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, recovery.Project, recovery.SnapshotVolume)
+					if err := finish(RuntimeUpdateApplySucceeded, "", "Panel 重启后已继续完成验收，Junimo 运行组件成对升级成功。"); err != nil {
+						return err
 					}
-					_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
+					if runtimeUpdateAuthSnapshotVolumeCreated(*recovery) {
+						if err := docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, recovery.Project, recovery.SnapshotVolume); err != nil {
+							status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；Panel 下次启动会继续按事务精确名称清理。")
+						}
+					}
 					cleanupOldRuntimeImages(ctx, docker, instance.DataDir, *recovery, &status)
-					return finish(RuntimeUpdateApplySucceeded, "", "Panel 重启后已继续完成验收，Junimo 运行组件成对升级成功。")
+					_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+					_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
+					return nil
 				}
 			}
 		}
@@ -90,7 +103,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		return err
 	}
 
-	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 2, ApplyID: status.ApplyID, ActorID: status.CreatedBy, Project: preflight.project, SteamSessionVolume: preflight.volume, SnapshotVolume: preflight.project + "_anxi-junimo-update-" + strings.TrimPrefix(status.ApplyID, "apply_") + "-steam-session", ServerWasRunning: status.ServerWasRunning, AuthWasRunning: preflight.authWasRunning, ServerImageChanged: preflight.originalServer.ImageID != preflight.target.Server.ImageID || status.Current.Server.Tag != status.Target.Server.Tag, AuthImageChanged: preflight.originalAuth.ImageID != preflight.target.SteamAuth.ImageID || status.Current.SteamAuth.Tag != status.Target.SteamAuth.Tag, OriginalState: instance.State, OriginalServer: preflight.originalServer, OriginalAuth: preflight.originalAuth, Target: preflight.target, OriginalServerVersion: status.Current.Server.Tag, TargetServerVersion: status.Target.Server.Tag}
+	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 3, ApplyID: status.ApplyID, ActorID: status.CreatedBy, Project: preflight.project, SteamSessionVolume: preflight.volume, SnapshotVolume: preflight.project + "_anxi-junimo-update-" + strings.TrimPrefix(status.ApplyID, "apply_") + "-steam-session", ServerWasRunning: status.ServerWasRunning, AuthWasRunning: preflight.authWasRunning, ServerImageChanged: preflight.originalServer.ImageID != preflight.target.Server.ImageID || status.Current.Server.Tag != status.Target.Server.Tag, AuthImageChanged: preflight.originalAuth.ImageID != preflight.target.SteamAuth.ImageID || status.Current.SteamAuth.Tag != status.Target.SteamAuth.Tag, OriginalState: instance.State, OriginalServer: preflight.originalServer, OriginalAuth: preflight.originalAuth, Target: preflight.target, OriginalServerVersion: status.Current.Server.Tag, TargetServerVersion: status.Target.Server.Tag}
 	if err := setPhase(RuntimeUpdateApplyBackingUp, 30, "正在创建私有恢复材料并计算需要更新的运行组件。"); err != nil {
 		return err
 	}
@@ -103,12 +116,32 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		_ = finish(RuntimeUpdateApplyFailedRolledBack, "control_backup_failed", "无法备份升级前的 Control Mod；实例未修改。")
 		return err
 	}
+	if manifest.OriginalEnvSHA256, err = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID), "original.env")); err != nil {
+		return err
+	}
+	if manifest.OriginalComposeSHA256, err = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID), "original-compose.yml")); err != nil {
+		return err
+	}
+	if manifest.ControlManifestPresent {
+		if manifest.OriginalControlJSONSHA, err = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID), "original-control-manifest.json")); err != nil {
+			return err
+		}
+	}
+	if manifest.ControlDLLPresent {
+		if manifest.OriginalControlDLLSHA, err = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID), "original-control-StardewAnxiPanel.Control.dll")); err != nil {
+			return err
+		}
+	}
 	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
 		return err
 	}
 	stored, err := d.store.GetInstance(ctx, instance.ID)
 	if err != nil {
-		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "instance_reload_failed", "无法重新读取实例。")
+		if finishErr := finish(RuntimeUpdateApplyFailedRolledBack, "instance_reload_failed", "无法重新读取实例；实例未修改。"); finishErr != nil {
+			return finishErr
+		}
+		_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
+		return err
 	}
 	servicesToStop := []string{}
 	if manifest.ServerWasRunning {
@@ -121,6 +154,12 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		if err := setPhase(RuntimeUpdateApplyStopping, 40, "正在按组件差异安全停止需要更新的运行服务。"); err != nil {
 			return err
 		}
+		manifest.MutationStarted, manifest.StopIntent, manifest.LastIntent = true, true, "stop_services"
+		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+			_ = finish(RuntimeUpdateApplyFailedRolledBack, "recovery_manifest_failed", "无法在停服前持久化恢复意图；实例未修改。")
+			_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
+			return err
+		}
 		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, servicesToStop...); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "stop_failed", "安全停服失败。")
 		}
@@ -128,34 +167,35 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 			d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件升级中，游戏服务已停止", "runtime_update_stopped", job.ID)
 		}
 	}
+	if !manifest.MutationStarted {
+		manifest.MutationStarted, manifest.LastIntent = true, "control_update"
+	}
+	manifest.ControlUpdateIntent, manifest.LastIntent = true, "control_update"
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在同步 Control 前持久化恢复意图。")
+	}
 	// Control is a host bind. Replace it only after the game process has fully
 	// stopped so a live CLR process can never observe a half-updated DLL.
 	if err := installSMAPIMod(instance.DataDir); err != nil {
-		now := time.Now().UTC().Format(time.RFC3339)
-		status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyFailedRolledBack, 100, "control_sync_failed", "Control Mod 同步失败；实例保持停止，禁止继续启动旧 DLL。"
-		status.UpdatedAt, status.FinishedAt, status.ServerRunning = now, now, false
-		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "error", Message: status.Error})
-		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
-		d.updatePhase(ctx, instance.ID, storage.InstanceStateError, status.Error, "control_sync_failed", job.ID)
-		d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
-		return err
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "control_sync_failed", "Control Mod 同步失败。")
 	}
 	manifest.ControlUpdated = true
 	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
-		now := time.Now().UTC().Format(time.RFC3339)
-		status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyRollbackFailed, 100, "control_recovery_manifest_failed", "Control 已同步但恢复清单写入失败；实例保持停止并需要人工核对。"
-		status.UpdatedAt, status.FinishedAt, status.ServerRunning = now, now, false
-		status.ManualAction = "核对 Control manifest/DLL 与当前 Panel 内置版本和 SHA256；确认一致后再从 Panel 启动实例。"
-		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
-		d.updatePhase(ctx, instance.ID, storage.InstanceStateError, status.Error, "control_recovery_manifest_failed", job.ID)
-		d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
-		return err
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "control_recovery_manifest_failed", "Control 已同步但恢复清单写入失败。")
 	}
 	if runtimeUpdateAuthChanged(manifest) {
 		// Clone only after steam-auth has quiesced. An unchanged running auth
 		// container is deliberately left untouched and needs no session snapshot.
+		manifest.AuthSnapshotCreateIntent, manifest.LastIntent = true, "create_auth_snapshot"
+		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在创建认证快照前持久化恢复意图。")
+		}
 		if err := docker.RuntimeCreateSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_snapshot_create_failed", "无法创建 Steam 认证卷临时快照。")
+		}
+		manifest.AuthSnapshotVolumeMade = true
+		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "认证快照卷已创建但恢复清单写入失败。")
 		}
 		if err := docker.RuntimeCloneVolume(ctx, instance.DataDir, manifest.SteamSessionVolume, manifest.SnapshotVolume, manifest.Target.Server.Image); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_snapshot_failed", "Steam 认证卷保护失败。")
@@ -182,7 +222,17 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
 		}
-		manifest.JunimoModOriginalPresent, err = replaceJunimoServerMod(instance.DataDir, extractedDir, filepath.Join(recoveryDir, runtimeOriginalJunimoDir))
+		if _, statErr := os.Stat(junimoServerModDir(instance.DataDir)); statErr == nil {
+			manifest.JunimoModOriginalPresent = true
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_directory_invalid", "无法确认宿主 JunimoServer Mod 原始状态。")
+		}
+		manifest.JunimoModReplaceIntent, manifest.LastIntent = true, "replace_junimo_mod"
+		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在替换 JunimoServer Mod 前持久化恢复意图。")
+		}
+		var originalPresent bool
+		originalPresent, err = replaceJunimoServerMod(instance.DataDir, extractedDir, filepath.Join(recoveryDir, runtimeOriginalJunimoDir))
 		if err != nil {
 			code := "junimo_mod_replace_failed"
 			if errors.Is(err, os.ErrPermission) {
@@ -198,10 +248,17 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 			}
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, code, "无法原子替换宿主 JunimoServer Mod。")
 		}
+		if originalPresent != manifest.JunimoModOriginalPresent {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_original_state_changed", "JunimoServer Mod 在升级期间被外部修改。")
+		}
 		manifest.JunimoModReplaced = true
 		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "恢复清单写入失败。")
 		}
+	}
+	manifest.ConfigWriteIntent, manifest.LastIntent = true, "write_target_config"
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在写入目标配置前持久化恢复意图。")
 	}
 	if err := writeRuntimeTargetEnvAtomic(instance.DataDir, status.Target, status.Selected); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "env_write_failed", "实例 .env 原子更新失败。")
@@ -219,11 +276,19 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		return err
 	}
 	if runtimeUpdateAuthChanged(manifest) {
+		manifest.AuthRecreateIntent, manifest.LastIntent = true, "recreate_auth"
+		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在重建 steam-auth-cn 前持久化恢复意图。")
+		}
 		if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "steam-auth"); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_recreate_failed", "新版 steam-auth-cn 重建失败。")
 		}
 		manifest.AuthRecreated = true
 	} else if !manifest.AuthWasRunning {
+		manifest.AuthServiceStartIntent, manifest.LastIntent = true, "start_preserved_auth"
+		if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在启动保留的 steam-auth-cn 前持久化恢复意图。")
+		}
 		if err := docker.RuntimeComposeUpServicePreserve(ctx, instance.DataDir, manifest.Project, "steam-auth"); err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_start_failed", "未变化的 steam-auth-cn 无法启动用于验收。")
 		}
@@ -233,7 +298,9 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "auth_resource_update_failed", "未变化的 steam-auth-cn 无法原地应用资源权重。")
 		}
 	}
-	_ = writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest)
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "steam-auth-cn 已启动但恢复清单写入失败。")
+	}
 	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "正在验证 steam-auth-cn 容器与服务接口。"); err != nil {
 		return err
 	}
@@ -254,11 +321,17 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		return err
 	}
 	(&lifecycleRunner{driver: d, lifecycle: docker, instance: stored}).clearRuntimeControlSnapshots(ctx, job)
+	manifest.ServerRecreateIntent, manifest.LastIntent = true, "recreate_server"
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "无法在重建 Junimo server 前持久化恢复意图。")
+	}
 	if err := docker.RuntimeComposeUpService(ctx, instance.DataDir, manifest.Project, "server"); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "server_recreate_failed", "新版 server 重建失败。")
 	}
 	manifest.ServerRecreated = true
-	_ = writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest)
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "Junimo server 已重建但恢复清单写入失败。")
+	}
 	if err := setPhase(RuntimeUpdateApplyVerifyingServer, 85, "正在验证容器、Junimo、SMAPI 与控制契约。"); err != nil {
 		return err
 	}
@@ -273,14 +346,34 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "restore_state_failed", "无法恢复升级前运行状态。")
 	}
-	if runtimeUpdateAuthSnapshotCreated(manifest) {
+	if err := finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。"); err != nil {
+		return err
+	}
+	if runtimeUpdateAuthSnapshotVolumeCreated(manifest) {
 		if err := docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume); err != nil {
-			status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；请人工检查私有快照卷。")
+			status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；Panel 下次启动会继续按事务精确名称清理。")
 		}
 	}
-	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
 	cleanupOldRuntimeImages(ctx, docker, instance.DataDir, manifest, &status)
-	return finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。")
+	_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
+	return nil
+}
+
+func runtimeRecoveryFileSHA256(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("runtime recovery material is not a regular file")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:]), nil
 }
 
 func cleanupOldRuntimeImages(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir string, manifest runtimeUpdateRecoveryManifest, status *RuntimeUpdateApplyStatus) {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
@@ -21,6 +22,10 @@ type junimoUpdateDryRunDriver interface {
 type junimoUpdateApplyDriver interface {
 	StartRuntimeUpdateApply(context.Context, registry.Instance, int64) (sj.RuntimeUpdateApplyStatus, error)
 	RuntimeUpdateApplyStatus(registry.Instance) (sj.RuntimeUpdateApplyStatus, error)
+}
+
+type junimoUpdateRepairDriver interface {
+	StartRuntimeUpdateRepair(context.Context, registry.Instance, int64) (sj.RuntimeUpdateApplyStatus, error)
 }
 
 type junimoUpdateConfigRepairDriver interface {
@@ -154,6 +159,46 @@ func (s *server) handleInstanceJunimoUpdateApply(w http.ResponseWriter, r *http.
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	}
+}
+
+func (s *server) handleInstanceJunimoUpdateRepair(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !acceptStrictApplyConfirmation(r.Body) {
+		writeError(w, http.StatusBadRequest, "repair_confirmation_required", "请求体必须严格为 {\"confirm\":true}，且不得包含路径、镜像或恢复策略")
+		return
+	}
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	repairer, ok := driver.(junimoUpdateRepairDriver)
+	if !ok {
+		writeError(w, http.StatusConflict, "unsupported/driver", "实例 driver 不支持 Junimo 升级安全恢复")
+		return
+	}
+	status, err := repairer.StartRuntimeUpdateRepair(r.Context(), makeRegistryInstance(instance), actor.User.ID)
+	if err != nil {
+		if validation, yes := sj.IsRuntimeUpdateValidationError(err); yes {
+			writeError(w, http.StatusConflict, validation.Code, validation.Message)
+			return
+		}
+		s.logger.Error("failed to start Junimo update repair", "instance", instance.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "runtime_repair_start_failed", "启动 Junimo 升级安全恢复失败")
+		return
+	}
+	s.auditLog(r, &actor, "junimo_runtime_update_repair_started", "instance", instance.ID, auditMetadata("applyId", status.ApplyID, "repairAttempt", strconv.Itoa(status.RepairAttempts)))
+	writeJSON(w, http.StatusAccepted, status)
 }
 
 func acceptStrictApplyConfirmation(body io.ReadCloser) bool {

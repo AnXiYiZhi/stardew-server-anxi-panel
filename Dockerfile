@@ -76,6 +76,7 @@ RUN apk add --no-cache \
 COPY --from=backend-builder /app/panel /app/panel
 COPY --from=backend-builder /app/panel-updater /app/panel-updater
 COPY deploy/migrate-fnos.sh /app/migrate-fnos.sh
+COPY deploy/repair-junimo-upgrade.sh /app/repair-junimo-upgrade.sh
 COPY --from=extension-builder /work/browser-extensions/ /app/browser-extensions/
 
 RUN mkdir -p /data

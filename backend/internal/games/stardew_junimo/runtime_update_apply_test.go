@@ -1,6 +1,7 @@
 package stardew_junimo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -668,6 +669,68 @@ func TestRuntimeUpdateApplyFailuresRollbackPairAndState(t *testing.T) {
 	}
 }
 
+func TestRuntimeUpdateRepairRetriesPartialRollbackIdempotently(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	fake.authProbeErrorTarget = true
+	fake.restoreError = true
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	failed := waitRuntimeApply(t, driver, instance)
+	if failed.Phase != RuntimeUpdateApplyRollbackFailed || failed.RollbackCode != "rollback_restore_auth_volume_failed" {
+		t.Fatalf("expected injected rollback failure, got %#v", failed)
+	}
+	if _, err := os.Stat(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID), "failed-target-junimo-server")); err != nil {
+		t.Fatalf("first partial rollback did not leave deterministic Junimo evidence: %v", err)
+	}
+
+	fake.restoreError = false
+	started, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Phase != RuntimeUpdateApplyRollingBack || started.RepairAttempts != 1 {
+		t.Fatalf("unexpected repair start: %#v", started)
+	}
+	repaired := waitRuntimeApply(t, driver, instance)
+	if repaired.Phase != RuntimeUpdateApplyFailedRolledBack || repaired.RepairAttempts != 1 || repaired.ManualAction != "" {
+		t.Fatalf("partial rollback was not repaired idempotently: %#v", repaired)
+	}
+	if _, err := os.Stat(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("successful repair did not remove owned recovery directory: %v", err)
+	}
+	if _, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0); err == nil {
+		t.Fatal("completed repair was not idempotently rejected")
+	} else if validation, ok := IsRuntimeUpdateValidationError(err); !ok || validation.Code != "runtime_repair_not_needed" {
+		t.Fatalf("repeat repair error=%v", err)
+	}
+}
+
+func TestRuntimeUpdateRepairRejectsTamperedMaterialWithoutMutation(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	fake.authProbeErrorTarget = true
+	fake.restoreError = true
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	failed := waitRuntimeApply(t, driver, instance)
+	if failed.Phase != RuntimeUpdateApplyRollbackFailed {
+		t.Fatalf("phase=%s", failed.Phase)
+	}
+	backup := filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID), "original.env")
+	if err := os.WriteFile(backup, []byte("SERVER_IMAGE=untrusted.example/tampered:latest\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := len(fake.applyCalls)
+	_, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
+	if validation, ok := IsRuntimeUpdateValidationError(err); !ok || validation.Code != "recovery_material_invalid" {
+		t.Fatalf("tampered material was not rejected: %v", err)
+	}
+	if len(fake.applyCalls) != before {
+		t.Fatalf("tampered material caused Docker mutation: before=%d calls=%v", before, fake.applyCalls[before:])
+	}
+}
+
 func TestRuntimeUpdateRollbackRetriesTransientDockerStopTimeout(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	fake.serverHealthFailTarget = true
@@ -738,6 +801,118 @@ func TestRuntimeUpdateApplyRestartRecoveryDoesNotGuess(t *testing.T) {
 	restored, _ := driver.RuntimeUpdateApplyStatus(instance)
 	if restored.Phase != RuntimeUpdateApplyRollbackFailed || restored.ManualAction == "" {
 		t.Fatalf("uncertain recovery guessed: %#v", restored)
+	}
+}
+
+func TestRuntimeUpdateApplyRestartBeforeManifestFinishesWithoutDockerMutation(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	status := RuntimeUpdateApplyStatus{
+		ApplyID: "apply_" + strings.Repeat("e", 24), Phase: RuntimeUpdateApplyBackingUp,
+		ServerWasRunning: true, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
+	}
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		t.Fatal(err)
+	}
+	before := len(fake.applyCalls)
+	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := driver.RuntimeUpdateApplyStatus(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_before_change" || !restored.ServerRunning || restored.ManualAction != "" {
+		t.Fatalf("pre-mutation restart was not finalized safely: %#v", restored)
+	}
+	if len(fake.applyCalls) != before {
+		t.Fatalf("pre-mutation recovery touched Docker: %v", fake.applyCalls[before:])
+	}
+}
+
+func TestRuntimeUpdateRecoveryManifestUsesPersistedTransactionAcrossPanelVersions(t *testing.T) {
+	_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	status := RuntimeUpdateApplyStatus{
+		ApplyID: "apply_" + strings.Repeat("f", 24), Current: inspection.Current, Target: inspection.Recommended,
+	}
+	status.Target.Server.TrustedCandidates = []string{"registry.example.invalid/server:old-transaction"}
+	status.Target.SteamAuth.TrustedCandidates = []string{"registry.example.invalid/auth:old-transaction"}
+	status.Selected = RuntimeUpdateSelectedPair{
+		Server:    RuntimeUpdateSelectedImage{Image: status.Target.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("b", 64)},
+		SteamAuth: RuntimeUpdateSelectedImage{Image: status.Target.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("c", 64), ImageID: "sha256:" + strings.Repeat("d", 64)},
+	}
+	project := strings.ToLower(filepath.Base(instance.DataDir))
+	manifest := runtimeUpdateRecoveryManifest{
+		SchemaVersion: 3, ApplyID: status.ApplyID, Project: project,
+		SnapshotVolume: project + "_anxi-junimo-update-" + strings.Repeat("f", 24) + "-steam-session",
+		Target:         status.Selected, OriginalServerVersion: status.Current.Server.Tag, TargetServerVersion: status.Target.Server.Tag,
+		OriginalServer: RuntimeUpdateSelectedImage{Image: "old/server", Digest: "sha256:" + strings.Repeat("e", 64), ImageID: "sha256:" + strings.Repeat("e", 64)},
+		OriginalAuth:   RuntimeUpdateSelectedImage{Image: "old/auth", Digest: "sha256:" + strings.Repeat("f", 64), ImageID: "sha256:" + strings.Repeat("f", 64)},
+	}
+	if !validRuntimeUpdateRecoveryManifest(instance, status, manifest) {
+		t.Fatal("a transaction valid under its persisted recommendation was coupled to the current Panel manifest")
+	}
+	manifest.Target.Server.ImageID = "sha256:" + strings.Repeat("0", 64)
+	if validRuntimeUpdateRecoveryManifest(instance, status, manifest) {
+		t.Fatal("manifest target drift from persisted selected pair was accepted")
+	}
+}
+
+func TestRuntimeUpdateSnapshotCreateIntentOwnsPossibleCrashWindowVolume(t *testing.T) {
+	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 3, AuthSnapshotCreateIntent: true}
+	if !runtimeUpdateAuthSnapshotVolumeCreated(manifest) {
+		t.Fatal("write-ahead create intent did not retain cleanup ownership")
+	}
+}
+
+func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	applyID := "apply_" + strings.Repeat("d", 24)
+	target := RuntimeUpdateSelectedPair{
+		Server:    RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
+		SteamAuth: RuntimeUpdateSelectedImage{Image: inspection.Recommended.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
+	}
+	manifest := runtimeUpdateRecoveryManifest{
+		SchemaVersion: 3, ApplyID: applyID, Project: strings.ToLower(filepath.Base(instance.DataDir)), SteamSessionVolume: "stardew_steam-session",
+		SnapshotVolume: strings.ToLower(filepath.Base(instance.DataDir)) + "_anxi-junimo-update-" + strings.Repeat("d", 24) + "-steam-session",
+		OriginalState:  storage.InstanceStateStopped, OriginalServer: RuntimeUpdateSelectedImage{Image: inspection.Current.Server.Image, Digest: "sha256:" + strings.Repeat("b", 64), ImageID: "sha256:" + strings.Repeat("b", 64)},
+		OriginalAuth: RuntimeUpdateSelectedImage{Image: inspection.Current.SteamAuth.Image, Digest: "sha256:" + strings.Repeat("c", 64), ImageID: "sha256:" + strings.Repeat("c", 64)},
+		Target:       target, OriginalServerVersion: inspection.Current.Server.Tag, TargetServerVersion: inspection.Recommended.Server.Tag,
+		ServerImageChanged: true, AuthImageChanged: true, MutationStarted: true, StopIntent: true, ControlUpdateIntent: true, LastIntent: "control_update",
+	}
+	if err := createRuntimeRecoveryFiles(instance.DataDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.ControlManifestPresent, manifest.ControlDLLPresent, _ = backupRuntimeControlMod(instance.DataDir, applyID)
+	manifest.OriginalEnvSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original.env"))
+	manifest.OriginalComposeSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-compose.yml"))
+	manifest.OriginalControlJSONSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-manifest.json"))
+	manifest.OriginalControlDLLSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-StardewAnxiPanel.Control.dll"))
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	originalControl, err := os.ReadFile(filepath.Join(smapiModDir(instance.DataDir), "StardewAnxiPanel.Control.dll"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(smapiModDir(instance.DataDir), "StardewAnxiPanel.Control.dll"), []byte("interrupted target control"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status := RuntimeUpdateApplyStatus{ApplyID: applyID, Phase: RuntimeUpdateApplyStopping, Current: inspection.Current, Target: inspection.Recommended, Selected: target, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}}
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	restored := waitRuntimeApply(t, driver, instance)
+	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_recovery" {
+		t.Fatalf("write-ahead recovery did not roll back: %#v", restored)
+	}
+	gotControl, err := os.ReadFile(filepath.Join(smapiModDir(instance.DataDir), "StardewAnxiPanel.Control.dll"))
+	if err != nil || !bytes.Equal(gotControl, originalControl) {
+		t.Fatalf("Control was not restored after interrupted intent: equal=%v err=%v", bytes.Equal(gotControl, originalControl), err)
 	}
 }
 
