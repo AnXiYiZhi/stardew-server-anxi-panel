@@ -15,6 +15,16 @@
 适用范围：
 ```
 
+## 2026-08-08：生产 SSH 诊断的运行时依赖、对象发现与多层转义
+
+- 环境：Windows，PowerShell 7，Codex 工作区依赖 Python，通过 OpenSSH 连接 Linux 生产主机。
+- 错误模式：沿用旧工作区运行时曾自带 `paramiko` 的假设；根据历史名称使用不存在的容器；把游戏 API 的宿主端口误当成 Panel API 端口，并猜测容器内监听端口；在 JavaScript template literal 中嵌入 sed `\\1` 反向引用；未先查 SQLite schema 就查询猜测列；在 PowerShell 中未引用带 `^{commit}` 的 Git revision；把可选 `grep`/`cat` 无命中当成整批失败。
+- 症状 / 退出码：`ModuleNotFoundError: paramiko`；Docker `No such container`；对错误端口请求 `/api/version` 返回 404、容器内错误端口拒绝连接；包装层报告 octal escape `SyntaxError`；SQLite `no such column`；PowerShell/Git 错解 revision；核心健康检查均通过后仍因诊断尾部退出 1。以上失败均发生在只读探针或受保护脚本的前置/尾部，没有越过保存、停服、文件替换门禁。
+- 根因：工作区依赖版本变化、复用历史对象名、跨 JavaScript/PowerShell/Bash 三层转义、以及把可选诊断当成权威契约。
+- 正确做法：先调用 workspace dependency loader 并实测模块；缺少 Paramiko 时使用系统 OpenSSH + 任务专属 `SSH_ASKPASS`，密码只以临时脱敏脚本提供并在任务结束删除。容器名先从 `docker ps -a` 取得；HTTP 探针先读取 Panel 容器完整 inspect JSON，并从 `NetworkSettings.Ports` 与 `PANEL_ADDR` 确定宿主/容器端口。远端长脚本整体 UTF-8 base64 后交给 Bash，避免反向引用跨层。SQLite 先 `PRAGMA table_info`，Git revision 使用显式引用/`--verify`，可选文件先 `test -e`，可选筛选命令追加明确的无命中分支。
+- 预防检查：生产命令前依次确认解释器/模块、SSH 登录、实际容器列表、文件存在性和数据库 schema；关键动作与可选日志筛选拆成两次调用，避免尾部诊断覆盖真实成功状态。
+- 适用范围：Windows 到 Linux 的生产 SSH 运维、Docker/Compose 故障恢复、SQLite 状态核验和跨 Shell 包装命令。
+
 ## 2026-07-31：测试辅助镜像被 Docker Desktop 镜像源拒绝
 
 - 最近复发/补充：2026-08-01 官网预览首次使用 `node:20-alpine` 时，把镜像拉取与构建放在同一个 3 分钟命令中；外层超时后 daemon 才完成拉取并延迟创建同名容器，立刻重用名称触发 conflict。正确做法是先单独 `docker pull`/`docker image inspect` 并等待结束，再创建构建容器；超时后先轮询精确容器名与标签，确认不存在且镜像就绪后才能重试。
