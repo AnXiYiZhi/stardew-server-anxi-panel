@@ -1,3 +1,19 @@
+# RUNTIME-UPDATE-WAL-REPAIR-1 接手记录（2026-08-08，completed，未发布）
+
+## 改了什么
+
+- required runtime recovery manifest 升为 schema 3；stop、Control、snapshot、Junimo、config、auth/server 等每个 mutation 都先写 intent。崩溃发生在 Docker 调用返回与完成标志落盘之间时，恢复仍会处理“可能已发生”的动作。
+- pre-mutation 无 manifest 重启直接终止为安全回滚；成功和回滚成功先写 terminal status，再清 snapshot/旧 image/recovery。恢复版本信任绑定 status 中该事务的 Target/Selected，不再绑定新 Panel 当前内置推荐版本。
+- `runtime_update_repair.go` 新增最多三次的幂等 rollback retry；schema 3 对 env/Compose/Control 备份做 SHA-256 和 regular-file/symlink 校验。认证卷 helper 使用原 immutable image ID，Junimo Mod restore 可从部分成功点重复执行。
+- Web 新增严格管理员 `POST /api/instances/:id/junimo-update/repair`；`deploy/repair-junimo-upgrade.sh` 只走 API，已接入 Dockerfile、release asset、脚本功能测试和 ShellCheck。
+
+## 影响文件、验证与下一步
+
+- 核心文件：`runtime_update_apply.go`、`runtime_update_apply_runner.go`、`runtime_update_repair.go`、`runtime_update_rollback.go`、`junimo_mod_runtime.go`、`junimo_update_handlers.go` 及对应测试。JSON 只增加 `repairAttempts`；数据库和实例部署格式不变。
+- 自动测试覆盖部分回滚第二次成功、材料摘要漂移零 Docker mutation、schema 3 Control intent 重启、备份阶段无 manifest 重启、跨 Panel 推荐版本恢复和快照 create crash window 所有权。完整 Go、Docker 与脚本证据见 `docs/09-image-build.md`。
+- 后续不要重新把 current built-in manifest 当作旧事务恢复的唯一信任源；事务必须自洽绑定其持久化 status。新增 mutation 必须先加 intent，再加幂等 rollback 和中断测试。
+- 当前一键入口仅覆盖 required Junimo runtime。SMAPI staging 和 Panel helper 的极端 rollback_failed 统一入口仍在 `UPGRADE-RECOVERY-UNIFICATION-1`，不可由本接口代替。正式发版仍需完整旧正式版升级矩阵，本次未 tag。
+
 # RUNTIME-UPDATE-PRESERVE-AUTH-1 接手记录（2026-08-08，completed，未发布）
 
 ## 改了什么

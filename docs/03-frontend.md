@@ -1,3 +1,10 @@
+# FE-RUNTIME-UPDATE-REPAIR-1：升级失败一键安全恢复（2026-08-08，completed，未发布）
+
+- 版本维护在 Junimo apply 为 `rollback_failed` 时不再只显示“人工处理”。管理员看到“一键安全恢复”，确认框明确只使用上次升级前的已校验私有材料，不选择新镜像、不删除存档、不清空认证卷；普通用户仍只看到联系管理员。
+- 请求固定为 `POST /api/instances/stardew/junimo-update/repair` 和严格 `{"confirm":true}`。返回 `rolling_back` 后复用原 apply 状态轮询；终态 `failed_rolled_back` 显示原版本已恢复，再次失败保留首次失败/回滚失败原因和尝试次数。达到三次时按钮变为“已停止重试”。
+- `JunimoUpdateApplyStatus` 只新增可选 `repairAttempts`，老后端或旧状态没有该字段时按 0 处理。页面不暴露恢复目录、镜像 digest 或 Docker 命令，也不在浏览器自动重放 repair POST。
+- 影响 `api.ts`、`types.ts`、`DiagnosticsPage.tsx`、Junimo 状态文案与状态测试；production build 和 Docker 候选页面验证见 `docs/09-image-build.md`。
+
 # 2026-08-07 官网隔离改版撤回（DOCS-PORTAL-RESTORE-1，completed）
 
 - `6f34b8a` 曾错误地把未获发布授权的 `docs-portal-redesign` 隔离 worktree 合入官网；用户要求修复后，站点主题、导航、FAQ、部署/首次登录/手册索引等文件已精确恢复到 `v0.4.8` 发布提交 `0c5e2c4` 的正式官网版本，删除 `DocsHome.vue`。

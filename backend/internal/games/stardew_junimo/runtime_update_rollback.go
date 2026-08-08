@@ -33,7 +33,7 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 		status.ErrorCode = "rollback_failed"
 		status.Error = "升级验收失败，且自动回滚未能完成；私有恢复材料已保留。"
 		status.RollbackCode, status.RollbackError = rollbackCode, rollbackMessage
-		status.ManualAction = "停止对该实例执行更新操作，保留 .local-container/junimo-update/recovery 下的私有材料，并由管理员核对原镜像 digest、.env、Compose 与 steam-session 快照后人工恢复。"
+		status.ManualAction = "请先排除 Docker、磁盘空间或文件锁故障，再使用面板或 repair-junimo-upgrade.sh 执行一键安全恢复；系统只会重试同一份已校验的原版本回滚。"
 		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "error", Message: status.Error})
 		_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
 		d.auditRuntimeUpdateTerminal(ctx, instance.ID, *status)
@@ -44,9 +44,11 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	status.ManualAction = ""
 	status.ServerRunning = manifest.ServerWasRunning
 	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，但原 server/auth 版本对、认证卷与运行状态已恢复。"})
-	_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, *status); err != nil {
+		return fmt.Errorf("persist successful rollback status: %w", err)
+	}
 	d.auditRuntimeUpdateTerminal(ctx, instance.ID, *status)
-	if runtimeUpdateAuthSnapshotCreated(manifest) {
+	if runtimeUpdateAuthSnapshotVolumeCreated(manifest) {
 		_ = docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume)
 	}
 	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
@@ -66,6 +68,8 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 		return "rollback_restore_compose_failed", "无法恢复升级前的 Compose 配置。"
 	case strings.HasPrefix(message, "restore JunimoServer mod:"):
 		return "rollback_restore_junimo_mod_failed", "无法恢复升级前的 JunimoServer Mod。"
+	case strings.HasPrefix(message, "restore Control mod:"):
+		return "rollback_restore_control_mod_failed", "无法恢复升级前的 Control Mod。"
 	case strings.HasPrefix(message, "pin original runtime images:"):
 		return "rollback_pin_images_failed", "无法固定升级前的 server/auth 镜像。"
 	case strings.HasPrefix(message, "restore steam session:"):
@@ -86,9 +90,9 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 }
 
 func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) (resultErr error) {
-	if manifest.ConfigWritten || manifest.AuthRecreated || manifest.ServerRecreated || manifest.JunimoModReplaced || manifest.ControlUpdated {
+	if runtimeUpdateMutationStarted(manifest) {
 		services := []string{"server"}
-		if runtimeUpdateAuthChanged(manifest) || manifest.AuthRecreated {
+		if runtimeUpdateAuthChanged(manifest) || runtimeUpdateAuthServiceMayHaveStarted(manifest) {
 			services = append(services, "steam-auth")
 		}
 		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, services...); err != nil {
@@ -101,12 +105,12 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 	if err := restoreRuntimeRecoveryFile(instance.DataDir, manifest.ApplyID, "original-compose.yml", "docker-compose.yml"); err != nil {
 		return fmt.Errorf("restore compose: %w", err)
 	}
-	if manifest.JunimoModReplaced {
+	if runtimeUpdateJunimoModMayHaveChanged(manifest) {
 		if err := restoreRuntimeJunimoServerMod(instance.DataDir, manifest.ApplyID, manifest.JunimoModOriginalPresent); err != nil {
 			return fmt.Errorf("restore JunimoServer mod: %w", err)
 		}
 	}
-	if manifest.ControlUpdated {
+	if runtimeUpdateControlMayHaveChanged(manifest) {
 		if err := restoreRuntimeControlMod(instance.DataDir, manifest); err != nil {
 			return fmt.Errorf("restore Control mod: %w", err)
 		}
@@ -127,8 +131,8 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 			resultErr = fmt.Errorf("%v; %w", resultErr, restoreErr)
 		}
 	}()
-	if runtimeUpdateAuthChanged(manifest) && manifest.AuthRecreated && runtimeUpdateAuthSnapshotCreated(manifest) {
-		if err := docker.RuntimeRestoreVolume(ctx, instance.DataDir, manifest.SnapshotVolume, manifest.SteamSessionVolume, manifest.OriginalServer.Image); err != nil {
+	if runtimeUpdateAuthChanged(manifest) && runtimeUpdateAuthMayHaveBeenRecreated(manifest) && runtimeUpdateAuthSnapshotCreated(manifest) {
+		if err := docker.RuntimeRestoreVolume(ctx, instance.DataDir, manifest.SnapshotVolume, manifest.SteamSessionVolume, manifest.OriginalServer.ImageID); err != nil {
 			return fmt.Errorf("restore steam session: %w", err)
 		}
 	}

@@ -162,6 +162,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceJunimoUpdateApply(w, r, instanceID)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "junimo-update" && parts[2] == "repair" {
+		s.handleInstanceJunimoUpdateRepair(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "junimo-update" && parts[2] == "repair-config" {
 		s.handleInstanceJunimoUpdateConfigRepair(w, r, instanceID)
 		return

@@ -1,3 +1,12 @@
+# RUNTIME-UPDATE-WAL-REPAIR-1：跨版本升级事务与一键安全恢复（2026-08-08，completed，未发布）
+
+- required runtime apply 的恢复清单升级为 schema 3。停服、Control 同步、认证快照创建、Junimo Mod 替换、`.env` 切换、auth/server 重建等每个会改变实例的步骤都先持久化 write-ahead intent，再执行 Docker 或文件操作；Panel 在调用已经到达 Docker daemon、但完成标记尚未落盘的窗口退出时，也按“可能已发生”执行幂等回滚和精确资源清理。
+- `checking/pulling/backing_up` 且没有恢复清单时现在直接收敛为 `failed_rolled_back/panel_restart_before_change`，不要求 Docker 可用，也不再把“尚未修改实例”的重启误报为人工恢复。目标验收成功和回滚成功都先持久化终态，再清理认证快照、旧镜像和恢复目录；终态写入失败则保留全部材料供下次启动继续。
+- 恢复校验改为绑定该事务已持久化的 `Target/Selected`，不再要求它仍等于新 Panel 当前内置推荐版本。因此旧 Panel 发起事务、随后 Panel 版本变化时，仍可对原事务完成验收或回滚；目标 image/digest/image ID、原版本和 apply ID 必须与持久化状态精确一致。
+- 私有 `original.env`、Compose、Control manifest/DLL 在 schema 3 中记录 SHA-256，恢复前拒绝缺失、symlink、非普通文件或摘要漂移。认证卷回滚使用升级前捕获的 immutable image ID；快照卷只按经过校验的 `project + applyId` 精确名称清理。
+- `rollback_failed` 新增 `StartRuntimeUpdateRepair`：只重试同一份恢复清单中的原版本回滚，不接受调用方提供路径、镜像、apply ID、命令或策略；最多三次，成功后进入 `failed_rolled_back`，失败继续保留恢复目录和 volume。Junimo Mod 回滚已改成可重复调用，能够识别“失败目标已移开、原目录已恢复”的部分成功状态。
+- 主要影响 `runtime_update_apply{,_runner,_repair,_rollback}.go`、`junimo_mod_runtime.go`、Web repair handler 和专项测试。公开状态只新增可选 `repairAttempts`；数据库 schema、存档、game-data 与普通 Steam 登录数据格式不变。Docker Desktop 和全量门禁证据记录在 `docs/09-image-build.md`。
+
 # RUNTIME-UPDATE-PRESERVE-AUTH-1：运行组件按差异升级（2026-08-08，completed，未发布）
 
 - 生产 `0.4.5 → 0.4.8` 后的 required runtime 同步暴露出事务缺陷：server/auth 已是 `.125 / 1.5.0-anxi.2`、仅 Control 需要 `0.2.2 → 0.3.0` 时，旧实现仍停止整个 Compose、快照认证卷并 `--force-recreate` steam-auth。目标认证在网络退避约 400 秒后才恢复，而默认 auth 验收只有 90 秒；目标与回滚先后超时，最终落入 `rollback_failed`。

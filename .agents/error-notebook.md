@@ -38,7 +38,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
-- 最近复发/补充：2026-08-08 排查运行组件升级测试时，两次把未由 PowerShell 展开的 `runtime_update_*_test.go` / `*.go` 直接作为 `rg` 路径传入，Windows 返回路径语法错误。此类搜索必须使用已存在目录配合 `rg -g 'runtime_update_*_test.go' ... <root>` 或先运行 `rg --files`；项目 `AGENTS.md` 已有同一硬规则，后续不得继续用通配路径参数试探。
+- 最近复发/补充：2026-08-08 排查运行组件升级测试时，第四次把未由 PowerShell 展开的 `runtime_update*go` 直接作为 `rg` 路径传入，Windows 返回路径语法错误。此类搜索必须使用已存在目录配合 `rg -g 'runtime_update*go' ... <root>` 或先运行 `rg --files`；项目 `AGENTS.md` 已有同一硬规则，后续命令提交前必须机械检查所有含 `*` 的参数只能紧跟 `-g`，不得继续用通配路径参数试探。
 - 最近复发/补充：2026-08-06 为 `v0.4.8` 插入发布门禁时，沿用旧工作树中 `docs/09-image-build.md` 以 `v0.4.6` 开头的假设；重放到 `v0.4.7` 基线后真实首标题已是 `v0.4.7` 发布记录，`apply_patch` 因上下文不存在而安全失败。跨基线整合后修改长期文档前必须重新读取目标文件当前首段或精确锚点，不能继续使用重放前的文件结构。
 - 最近复发：2026-08-01 首页卡片预览时猜测 VitePress 配置为 `config.mts`，只读审计又误查不存在的仓库根 `package.json`；实际文件分别是 `website/docs/.vitepress/config.ts` 与 `website/package.json`。同日 `v0.4.7` 发布审计又把不存在的 `frontend/README.md` 与 `backend/internal/version` 直接交给批量 `rg`，分别让主批次和子审计退出 1。继续前先用 `rg --files` 获取真实路径，并对可选路径使用 `Test-Path`。
 - 最近复发：2026-08-01 `v0.4.7` 门禁又凭惯例猜测仓库根 `go.mod`、`backend/internal/api`、`backend/internal/version`、根 `run.sh`、容器 HTTP 端口 `8080` 和 sentinel 文件 `/game/sentinel.txt`；权威位置实际为 `backend/go.mod`、已发现的具体包、容器 `8090` 与 `/game/sentinel`。路径、端口和容器内文件都必须先从 `rg --files`、Dockerfile/Compose、health 配置或 `find` 的只读结果取得，不能把常见命名当契约。
@@ -277,7 +277,7 @@
 
 ## 2026-07-28：PowerShell `foreach` 语句直接接管道
 
-- 最近复发：2026-07-29；读取新任务 skill 时又在行数统计中写成 `foreach (...) { ... } | Format-Table`。数组子表达式规则虽已提升到 `AGENTS.md` 仍复发，因此进一步规定工具单行批处理默认使用 `ForEach-Object`，避免语句式 `foreach` 进入管道。2026-07-31 最终编码审计再次写成 `foreach (...) { ... } | ConvertTo-Json`，命令在执行前被同一 ParserError 拒绝；改为 `$results = @(foreach (...) { ... })` 后再管道输出。
+- 最近复发：2026-08-08；卷元数据探针再次写成 `foreach (...) { ... } | ConvertTo-Json`，在任何 Docker inspect 执行前触发同一 ParserError。数组子表达式规则虽已提升到 `AGENTS.md` 仍复发，工具单行批处理必须默认使用 `ForEach-Object`；确需语句式循环时先赋值 `$results = @(foreach (...) { ... })`，再单独传入管道。此前 2026-07-29 与 2026-07-31 已出现同类错误。
 - 环境：PowerShell 7，组合对象后用 `Format-Table` 展示。
 - 错误模式：`foreach (...) { ... } | Format-Table`。
 - 症状 / 退出码：`ParserError: An empty pipe element is not allowed`，退出码 `1`。
@@ -285,6 +285,29 @@
 - 正确做法：使用 `@(foreach (...) { ... }) | Format-Table`，或改为 `$items | ForEach-Object { ... } | Format-Table`。
 - 预防检查：管道左侧若是 `foreach`、`if` 等语句，先显式包装为数组子表达式。
 - 适用范围：PowerShell 中的批量状态检查与格式化输出。
+
+## 2026-08-08：未固定搜索结果基数就参与整数运算
+
+- 环境：PowerShell 7，按 `Select-String` 返回行号切片查看 TypeScript 上下文。
+- 错误模式：把可能返回零个或多个结果的 `.LineNumber` 直接强转或参与 `- 12`，第一次得到对象数组而无法做减法，第二次因搜索模式写错得到 `0` 并把负数传给 `Select-Object -Skip`。
+- 症状 / 退出码：分别报 `System.Object[] does not contain a method named op_Subtraction` 与 `Skip -8 is less than the minimum allowed range`；均为只读命令，未修改文件。
+- 根因：没有在算术前确认搜索恰好命中一条，也没有给切片起点设置下界。
+- 正确做法：优先使用 `rg -n -C <n> <pattern> <confirmed-file>`；确需 PowerShell 切片时先 `Select-Object -First 1`，检查结果非空，再以 `[Math]::Max(0, [int]$lineNumber - <n>)` 计算起点。
+- 预防检查：任何用于 `-Skip`、数组索引或减法的搜索结果必须先固定为单个标量、检查非空并做上下界约束。
+- 适用范围：PowerShell 的日志、源码和文档上下文切片。
+
+## 2026-08-08：Docker Desktop 容器重启后宿主随机端口响应链路卡住
+
+- 环境：PowerShell 7、Docker Desktop，候选 Panel 容器使用随机宿主端口并在同一脚本中执行 `docker restart`。
+- 错误模式：重启前后都由同一 PowerShell 进程反复调用 `Invoke-RestMethod`；容器日志已记录重启后 `/health` 200，但客户端复用旧连接后长时间不返回，`-TimeoutSec 3` 没有按预期限制连接池等待，90 秒 readiness 被误判失败。
+- 症状 / 退出码：API 的 401/400/409 边界此前均通过，重启后服务也实际响应 health，但 harness 抛出 `candidate Panel readiness timed out`；finally 按 ownership label 精确清理了本轮容器和 volume。
+- 最近复发/更正：2026-08-09 即使每轮改用独立 `curl.exe --connect-timeout 2 --max-time 3` 进程，同一随机宿主端口在 `docker restart` 后仍出现相同现象：容器日志两次记录 `/health` 微秒级完成，宿主客户端却约 60 秒后才发下一次请求。由此排除仅是 .NET 连接池复用，问题位于本轮 Docker Desktop published-port/NAT 返回链或其与宿主客户端的组合。
+- 根因：容器重启切断既有连接后，本轮 Docker Desktop 随机发布端口的响应返回链路卡住；服务端内部 HTTP 已正常处理，不能把宿主 NAT 卡顿当成 Panel readiness 失败。
+- 正确做法：重启恢复的权威 readiness 先用 `docker exec <owned-container> wget -qO- http://127.0.0.1:8090/health` 和同容器 `/api/version`/`/api/setup/status` 验证进程与持久卷；需要证明宿主重连时改为受控重建容器或重新发布端口后再测。始终结合容器日志，不能因 NAT 回程卡住误报产品。
+- 预防检查：Docker Desktop 的 restart E2E 同时设计容器内 readiness 与宿主 published-port 探针；两者分歧时保留分层证据，不重复等待同一失效 NAT 映射。
+- 适用范围：Panel updater 断线重连、Docker restart、容器替换后的 health/version 验收。
+
+- 最近复发/补充：2026-08-09 改用 curl 重跑时，把临时 cookie/JSON 目录的递归删除也塞进同一条长 E2E 命令，工具安全策略在执行前拒绝整条脚本。该验证其实只需公开 setup 持久化，不需要 cookie 文件；改为 PowerShell 内存请求创建测试管理员、重启后用独立 curl 读取公开 health/version/setup，完全取消临时目录和递归删除。策略拒绝表示命令未执行，不得假设容器或 volume 已创建。
 
 ## 2026-07-28：`apply_patch` 使用了未经核对的长上下文
 
@@ -990,6 +1013,8 @@
 
 ## 2026-08-06：BuildKit 默认网络同时损坏 Go ZIP 与 Alpine 包校验
 
+- 最近复发/补充：2026-08-08 构建 WAL/repair 本地候选时再次直接使用 BuildKit 默认网络，`go mod download` 对 `x/text`、`modernc/sqlite` 和 `modernc/libc` 同时报 `unexpected EOF`；前端层成功但最终 tag 未生成。先用精确 `docker image ls --filter reference=...` 确认没有误产物，再按本条既定做法改用 `docker build --network=host` 复用已成功 layer 并只重取失败依赖；不得原样重复默认网络构建。
+- 最近复发/补充：同日 host 网络构建的 Go 层恢复，但 Alpine index 又因 SSL EOF 缺包退出；随后可达性探针把 `apk update` 输出重定向到 `--rm` 容器内临时文件，只在成功分支 grep，失败时容器随即删除且没有诊断输出。网络探针必须直接保留 stderr/stdout，或先保存退出码、打印日志后再退出原值；不能把唯一故障证据留在即将删除的容器里。
 - 环境：Docker Desktop Linux、v0.4.8 精确候选多阶段 Docker build。
 - 错误模式：直接使用 BuildKit 默认网络获取全新的 Go modules 与 Alpine apk 包，未先验证该网络路径本轮传输稳定性。
 - 症状 / 退出码：`go mod download` 对多个 ZIP 同时报 `unexpected EOF`，并行 `apk add` 报 `docker-cli-26.1.5-r0: UNTRUSTED signature`；build 退出 1，最终镜像 tag 未创建。
@@ -1109,8 +1134,19 @@
 - 预防检查：发布断言中的版本、commit 作为字符串比较，ISO 时间先做显式类型与 UTC 规范化；断言失败时先输出值与 `.GetType().FullName`，不要把类型差异误报为镜像元数据错误。
 - 适用范围：PowerShell 7 的 Docker inspect、HTTP JSON 与任何 ISO 时间字段核验。
 
+## 2026-08-08：打印 `.env` 时使用不完整的敏感字段黑名单
+
+- 环境：PowerShell 7，只读核对本地 Docker Desktop 升级夹具的版本配置。
+- 错误模式：先读取完整 `.env` 再用少量字段名替换脱敏，只覆盖 Steam 密码、refresh token、API key 和 VNC 密码，遗漏用户名及 server password 等同样不应输出的字段。
+- 症状 / 退出码：命令成功但工具输出包含不必要的账号标识和服务口令；没有写入文件或提交。
+- 根因：使用敏感字段黑名单，错误假设已枚举所有秘密；升级检查实际只需要版本、镜像和候选字段。
+- 正确做法：不得输出完整 `.env`；只用 `sjconfig.ReadEnvFile` 后挑选明确的非敏感白名单键，或用锚定键名的逐项读取。任何凭据/账号存在的文件默认整体敏感。
+- 预防检查：命令中出现 `Get-Content ... .env`、`cat .env` 或打印完整环境时直接停止，改为非敏感字段白名单；用户名、password、secret、token、key、cookie、ticket 一律不进工具输出。
+- 适用范围：Panel/实例 `.env`、Docker inspect Env、支持包、部署迁移与真实升级夹具。
+
 ## 编码与换行快速检查
 
+- 最近复发/补充：2026-08-08 首轮批量读取中文文档时沿用 PowerShell 7 默认控制台输出编码，工具侧显示乱码；文件无 BOM、`git status` 为空，确认只是只读显示链路。后续中文读取先同时设置 `$OutputEncoding=[System.Text.UTF8Encoding]::new($false)` 与 `[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)`，并对 `Get-Content` 显式使用 `-Encoding UTF8`；乱码出现时先核对 Git 状态和文件字节，不得把显示问题误判为文件损坏。
 - 最近复发/补充：2026-08-08 最终审计再次扫描了整个已修改错题本，误把本条用于解释旧乱码问题的合法 `�` 示例判为新乱码。检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索；应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行，发现命中后再回到原文件确认语义。
 - 最近复发/补充：2026-08-07 发布后文档审计再次对所有 changed file 的完整内容搜索 U+FFFD，误报错题本的规则示例与 `docs/09-image-build.md` 的历史乱码说明。已改回只检查 `git diff --unified=0` 中本次新增行；命中历史正文不能作为失败依据。
 - 默认：UTF-8 无 BOM。

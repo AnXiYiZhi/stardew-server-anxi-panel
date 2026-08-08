@@ -1,3 +1,12 @@
+# 2026-08-08 完成：跨版本运行组件恢复与一键修复（RUNTIME-UPDATE-WAL-REPAIR-1，未发布）
+
+- [x] schema 3 为所有实例 mutation 增加 write-ahead intent；重启恢复按“操作可能已到达 Docker”保守、幂等回滚，消除完成标记落盘前的崩溃窗口。
+- [x] 未修改实例的备份阶段重启自动收敛；成功/回滚终态先提交再清理；事务校验绑定持久化推荐版本，不因新 Panel 当前推荐版本变化而拒绝旧事务恢复。
+- [x] schema 3 恢复文件 SHA-256、精确 apply ID/卷名、immutable helper image ID、幂等 Junimo restore 和三次有界 repair 已实现；篡改材料在任何 Docker mutation 前拒绝。
+- [x] Panel 管理员“一键安全恢复”、严格 repair API 和 `repair-junimo-upgrade.sh` 已实现；脚本不直接操作 Docker，Release workflow 会执行功能测试/ShellCheck并附加该资产。
+- [ ] 本项只覆盖旧 Panel 升级后触发的 required Junimo runtime 同步。SMAPI staging 与 Panel helper 自更新各自已有自动回滚，但各自的极端 `rollback_failed` 仍需统一成受校验的一键恢复入口；见 `docs/07-later-optimizations.md`，不能误记为已解决。
+- [ ] 尚未打 tag 或发布镜像；正式发布前仍须完成 `docs/09-image-build.md` 中的旧正式版到候选版 Web 一键升级、目标失败回滚和发布后回拉门禁。
+
 # 2026-08-08 完成：运行组件升级保留未变化 Auth（RUNTIME-UPDATE-PRESERVE-AUTH-1，未发布）
 
 - [x] 修复 Control-only 升级仍停止、快照和重建 steam-auth 的缺陷；按 tag + immutable image ID 只操作真正变化的组件。
