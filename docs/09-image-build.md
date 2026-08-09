@@ -1,3 +1,10 @@
+# v0.4.9 官网展示文档发布（2026-08-09，Pages 发布中）
+
+- 范围仅为 `website/docs/index.md` 与 `website/docs/changelog.md`：首页 release、版本卡和摘要切换为 v0.4.9，更新日志置顶加入升级检测、三类一键修复、最多三次、失败回滚、未知状态脱敏支持包、重启续跑和 auth 保留说明。没有修改 Panel 镜像、API、tag、Release、主题组件、导航或依赖。
+- 与 Pages 一致的 Node 20 Alpine 隔离副本执行全新 `npm ci` 和 `npm run docs:build` 成功，VitePress 1.6.4 构建本体 3.12 秒；源码不存在仍把 v0.4.8 标成最新的 frontmatter、版本卡或 changelog 标题。`npm audit` 报告既有 2 moderate/3 high，本次未改 lockfile、未自动升级依赖，另行评估而不混入文档发布。
+- 应用内 Browser 默认桌面验证首页 `v0.4.9` 与摘要可见、标题/URL 正确、无 framework overlay/console warn/error；点击“查看本次更新”实际进入 `/stardew-server-anxi-panel/changelog.html`，三类修复、脱敏支持包和 v0.4.8 历史均存在。390×844 首页和 changelog 的 document/body `scrollWidth == clientWidth == 375`，无横向溢出，普通视口截图渲染正常。
+- 待推送 `main` 后记录 Pages workflow、线上 URL/页面身份、首页到 changelog 跳转、桌面/手机 console 与资源清理结果；未得到成功终态前不标记官网已发布。
+
 # v0.4.9 发布门禁：升级故障目录与一键修复（2026-08-09，已发布）
 
 - 目标正式版本为 `v0.4.9`；上一正式版为 `v0.4.8`。本版修改跨 Panel 版本的 Junimo runtime 检测、恢复、重试和升级闭环，因此除 `v0.4.8 → v0.4.9` 真实 Web 一键升级外，还按 runtime manifest 的 `minimumPanelVersion=0.3.2` 执行 `v0.3.2 → v0.4.9` 代表老版本直升。

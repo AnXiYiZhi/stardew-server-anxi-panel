@@ -15,6 +15,16 @@
 适用范围：
 ```
 
+## 2026-08-09：GitHub HTTPS fetch 短暂 TLS 握手失败
+
+- 环境：Windows PowerShell 7、Git for Windows schannel，官网文档提交前同步 `origin/main`。
+- 错误模式：首次单次 `git fetch origin main` 遇到外部链路握手中断；该命令位于 commit/push 前，因此没有产生部分提交或远端写入。
+- 症状 / 退出码：Git 报 `schannel: failed to receive handshake, SSL/TLS connection failed` 并退出 1；几秒后同一精确 fetch 成功。
+- 根因：GitHub HTTPS/TLS 瞬时断流，不是仓库分歧、凭据或证书配置错误。
+- 正确做法：保持 TLS 校验，对同一只读 fetch 使用有间隔、最多四次的有界重试；成功后仍比较本地 HEAD 与 `origin/main`，不能因网络恢复而跳过分歧检查。重试耗尽则停止提交/推送并报告外部阻塞。
+- 预防检查：发布与官网推送前把 fetch、HEAD 对比、commit、push 拆开；fetch 失败时先确认没有写操作发生，不关闭 `sslVerify` 或改用不安全协议。
+- 适用范围：GitHub `git fetch/ls-remote`、提交前远端同步及其它 schannel HTTPS 操作。
+
 ## 2026-08-09：发布夹具把多层 Shell、JSON 和文本工具塞进单行命令
 
 - 环境：Windows PowerShell 7 → `docker exec` → Linux `sh`，验证 `v0.4.9` 受控 HTTPS Release、支持包和升级后哨兵。
@@ -423,6 +433,7 @@
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
 
+- 最近复发/补充：2026-08-09 v0.4.9 官网 QA 再次按技能示例请求 `networkidle`，当前后端仍明确拒绝；改为 `domcontentloaded` 后等待首页 `v0.4.9` 可见并读取 DOM/console。随后 `expectNavigation` 又传入正则 URL，动作实际已完成但包装器报 `requires a url`；先读取 `tab.url()` 发现已到目标页，再按目标 DOM 验证，没有盲目重复点击。两项规则已提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-01 Browser 的只读 `evaluate` 中，SVG 元素代理不提供 `getBBox()`，调用返回 `TypeError`。SVG 视觉校验改用 `getBoundingClientRect()`、静态 `viewBox`/路径坐标和截图联合判断；调用非基础 DOM 方法前先确认当前代理实际支持。
 - 最近复发/补充：2026-07-29 本地预览后期进入 `ERR_CONNECTION_REFUSED` 错误页，Browser 随即因 `data:` 错误页 URL 策略拒绝 reload/close 链。此时不得继续尝试替代浏览器或 CDP 绕过；保留此前证据、精确停止 dev server，并以 production build 作为最终非视觉门禁。同轮还误把通用 Playwright 的 `setViewportSize`、对象形式 `waitForURL` 和代理元素原生 `click()` 套到封装 API；响应式尺寸与交互必须使用当前 Browser 暴露的 viewport 与 locator 能力。
 - 最近复发/补充：2026-08-01 线上 changelog 导航把通用 Playwright 的 URL predicate 传给 Browser `waitForURL`，返回 `requires a url`。当前 Browser 只接受明确 URL 参数；点击后可直接读取 `tab.url()` 和目标 DOM，或传文档支持的精确 URL，不使用 predicate 回调。
@@ -451,6 +462,7 @@
 
 ## 2026-07-29：Browser 窄屏 `fullPage` 截图出现空白与固定栏重复
 
+- 最近复发/补充：2026-08-09 v0.4.9 官网 390×844 首页 `fullPage` 截图再次把固定导航和首屏内容重复拼接，页面 DOM、普通视口渲染及 root/body 宽度度量均正常。该现象不能算产品布局失败；窄屏证据固定使用普通视口截图，并以 `document/body scrollWidth <= clientWidth` 断言无横向溢出，规则已提升到 `AGENTS.md`。
 - 最近复发/补充：2026-07-29 将临时 390×844 viewport `reset()` 回默认尺寸后，首张普通视口截图右侧出现黑块，DOM 同时报告默认宽度与无横向溢出；对 tab 执行一次 `reload()` 后渲染面恢复正常。以后恢复默认 viewport 后先 reload，再截最终交付图。
 - 环境：Codex 应用内 Browser，临时 viewport 切换到 390×844 后截取静态响应式页面。
 - 错误模式：只凭 `screenshot({fullPage:true})` 的结果判断窄屏页面没有渲染。

@@ -1,4 +1,10 @@
-# FE-RUNTIME-UPDATE-REPAIR-CATALOG-3：按钮直接说明修复方法（2026-08-09，completed，未发布）
+# DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，completed，待 Pages 发布）
+
+- 官网首页 frontmatter、版本入口卡和当前版本说明统一由 `v0.4.8` 更新为 `v0.4.9`，摘要面向普通管理员说明“先检测原因，再按具体方法修复并继续升级”；没有改变 Hero、联机邀请卡、六入口、导航或视觉主题。
+- `website/docs/changelog.md` 置顶新增 v0.4.9 用户可见说明，覆盖三类自动处理、最多三次、失败回滚、未知状态 fail closed、脱敏支持包、Panel 重启续跑和未变化 auth 保留；v0.4.8 及更早历史完整保留。
+- 影响仅限 VitePress 展示文档，不修改 Panel 前端/API、镜像、tag 或 Release。Node 20 Linux 全新 `npm ci` 与 production build 通过；应用内 Browser 在默认桌面和 390×844 手机验证首页、点击进入更新日志、正文内容、历史版本保留、无横向溢出与 console warn/error=0。Pages workflow/线上证据将在发布后补齐。
+
+# FE-RUNTIME-UPDATE-REPAIR-CATALOG-3：按钮直接说明修复方法（2026-08-09，completed，v0.4.9 released）
 
 - Diagnostics 直接消费后端 `repairPlan`，维护卡同时显示“检测”和“处理”说明；按钮文字由同一计划给出，不再只有笼统“一键修复”。当前可执行按钮为“修复：恢复旧版后升级”“修复：规范配置并升级”“修复：重新预检并升级”。
 - 不能安全自动修改时，页面显示“保留现场并导出支持包”并复用既有脱敏诊断包导出；已有事务尚未结束时显示禁用的“等待自动恢复”；推荐矩阵撤回或不安全时显示禁用的“等待安全版本”。按钮本身因此同时表达动作和处理方法。

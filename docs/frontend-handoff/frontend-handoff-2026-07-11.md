@@ -1,4 +1,10 @@
-# FE-RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，未发布）
+# DOCS-PORTAL-V049-1 接手记录（2026-08-09，completed，待 Pages 发布）
+
+- 官网沿用当前正式布局，只把 `website/docs/index.md` 的 release/版本卡/摘要和 `website/docs/changelog.md` 的最新条目更新到 v0.4.9。首页文案链接到现有 `/changelog`，没有新增组件、脚本、依赖、路由或图片。
+- changelog 面向用户准确描述 rollback 恢复、可信旧候选规范化、安全重试、三次上限、未知状态支持包、重启续跑和 auth 保留边界；不暴露 recovery 路径、镜像选择或内部 Docker 命令。
+- Node 20 Alpine 隔离副本执行全新 `npm ci` 和 production build 通过；应用内 Browser 默认桌面首页与 changelog 页面身份、非空白、无 overlay、console health 均通过，首页“查看本次更新”实际进入 `/changelog.html`。390×844 首页/日志 root/body 无横向溢出，三类修复、支持包和 v0.4.8 历史均存在。仅剩 Pages workflow 与线上回归，完成证据见 `docs/09-image-build.md`。
+
+# FE-RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
 
 - `types.ts` 增加 `JunimoUpdateRepairPlan`；`DiagnosticsPage.tsx` 只渲染后端给定的检测、方法、步骤和按钮文字。三个自动按钮分别是“修复：恢复旧版后升级”“修复：规范配置并升级”“修复：重新预检并升级”，不安全/未知情况变成“保留现场并导出支持包”，运行中/矩阵不安全显示等待按钮。
 - repair 仍只提交严格确认并轮询已有 apply；export 复用支持包；wait 不发请求。正常“立即升级”只在没有计划时显示。`qa-layout-main.tsx` 的 rollback/config fixture 同步了契约。
