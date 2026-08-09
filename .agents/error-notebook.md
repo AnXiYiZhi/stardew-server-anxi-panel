@@ -58,8 +58,9 @@
 适用范围：
 ```
 
-## 2026-08-09：GitHub HTTPS fetch 短暂 TLS 握手失败
+## 2026-08-09：GitHub HTTPS fetch/push 短暂 TLS 握手失败
 
+- 最近复发/补充：2026-08-09 GitHub device OAuth 恢复后，推送纯错题本文档提交时第一次 `git push origin main` 同样报 Schannel TLS 握手失败；本地 commit 已完成，远端是否接受未知，不能直接原样连推。正确续接是先以有界 `git ls-remote origin refs/heads/main` 核对远端 SHA：若已是本地 HEAD 则不再 push；若仍是已知父提交且分歧为纯 fast-forward，才对同一精确 push 最多重试四次，成功后 fetch 并断言 `origin/main == HEAD`。
 - 环境：Windows PowerShell 7、Git for Windows schannel，官网文档提交前同步 `origin/main`。
 - 错误模式：首次单次 `git fetch origin main` 遇到外部链路握手中断；该命令位于 commit/push 前，因此没有产生部分提交或远端写入。
 - 症状 / 退出码：Git 报 `schannel: failed to receive handshake, SSL/TLS connection failed` 并退出 1；几秒后同一精确 fetch 成功。
