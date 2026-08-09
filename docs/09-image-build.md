@@ -1,9 +1,9 @@
-# v0.4.9 官网展示文档发布（2026-08-09，Pages 发布中）
+# v0.4.9 官网展示文档发布（2026-08-09，已发布）
 
 - 范围仅为 `website/docs/index.md` 与 `website/docs/changelog.md`：首页 release、版本卡和摘要切换为 v0.4.9，更新日志置顶加入升级检测、三类一键修复、最多三次、失败回滚、未知状态脱敏支持包、重启续跑和 auth 保留说明。没有修改 Panel 镜像、API、tag、Release、主题组件、导航或依赖。
 - 与 Pages 一致的 Node 20 Alpine 隔离副本执行全新 `npm ci` 和 `npm run docs:build` 成功，VitePress 1.6.4 构建本体 3.12 秒；源码不存在仍把 v0.4.8 标成最新的 frontmatter、版本卡或 changelog 标题。`npm audit` 报告既有 2 moderate/3 high，本次未改 lockfile、未自动升级依赖，另行评估而不混入文档发布。
 - 应用内 Browser 默认桌面验证首页 `v0.4.9` 与摘要可见、标题/URL 正确、无 framework overlay/console warn/error；点击“查看本次更新”实际进入 `/stardew-server-anxi-panel/changelog.html`，三类修复、脱敏支持包和 v0.4.8 历史均存在。390×844 首页和 changelog 的 document/body `scrollWidth == clientWidth == 375`，无横向溢出，普通视口截图渲染正常。
-- 待推送 `main` 后记录 Pages workflow、线上 URL/页面身份、首页到 changelog 跳转、桌面/手机 console 与资源清理结果；未得到成功终态前不标记官网已发布。
+- 提交 `705aa8063b14d6f65e776cc2a39508bbe95ee0f7` 推送 `main` 后，Pages workflow `31305028853` 与 compatibility workflow `31305028888` 均为 `completed/success`。线上 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 默认桌面和 390×844 手机再次验证：`v0.4.9` 首页卡/摘要可见，“查看本次更新”进入 `/changelog.html`，三类修复、支持包及 v0.4.8 历史存在，document/body 无横向溢出，console warn/error=0。任务预览容器先核对 owner 后精确删除，18110 无 listener；Browser 标签已 finalize，未遗留测试 volume/network，也未执行 prune。
 
 # v0.4.9 发布门禁：升级故障目录与一键修复（2026-08-09，已发布）
 

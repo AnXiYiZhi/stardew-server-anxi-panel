@@ -1,9 +1,9 @@
-# 2026-08-09 完成：官网展示 v0.4.9（DOCS-PORTAL-V049-1，待 Pages 发布）
+# 2026-08-09 已发布：官网展示 v0.4.9（DOCS-PORTAL-V049-1）
 
 - [x] 首页 release、版本卡和摘要更新为 v0.4.9；保持既有 Hero、联机邀请卡、六入口、导航和视觉主题。
 - [x] 更新日志置顶新增三类升级修复、最多三次、失败回滚、未知状态支持包、重启续跑和 auth 保留说明；历史版本条目完整保留。
 - [x] 本机 Node 20 VitePress production build、桌面/390×844 Browser、首页到更新日志跳转、无横向溢出和 console health 已通过。
-- [ ] 推送 `main` 后等待 Pages workflow 成功并完成线上首页/更新日志复核。
+- [x] Pages workflow `31305028853`、compatibility workflow `31305028888` 成功；线上桌面/390×844 首页与更新日志、点击路径、无横向溢出和 console health 均通过。
 
 # 2026-08-09 已发布：升级故障目录和具体修复按钮（RUNTIME-UPDATE-REPAIR-CATALOG-3，v0.4.9 released）
 
