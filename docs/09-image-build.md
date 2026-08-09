@@ -1,13 +1,13 @@
-# v0.4.10 发布门禁：弹窗拉伸与 Steam 认证等待（2026-08-09，执行中）
+# v0.4.10 发布门禁：弹窗拉伸与 Steam 认证等待（2026-08-09，已发布）
 
 - 目标正式版本为 `v0.4.10`，上一正式版为 `v0.4.9`。本版同时发布 FE-MODAL-HEIGHT-GUARD-1、FE-NEW-GAME-MODAL-LAYOUT-1、RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 与 FE-STEAM-AUTH-WAIT-VISIBILITY-1。
 - 运行栈验收语义发生变化，因此除 `v0.4.9 → v0.4.10` 正式 Web 一键升级外，还必须从 runtime manifest 支持下限 `v0.3.2` 直升候选；两条链都要验证 Panel health/version、数据库与初始化、用户/实例/存档/Mod/备份/审计哨兵、非目标游戏容器/volume、终态重启恢复及升级后新功能。
-- 本节是 tag 前门禁记录。候选 commit、镜像 ID、完整测试耗时、升级事务、回滚证据、workflow ID、三仓 digest 与 Release 资产摘要必须在各阶段完成后回填；任何失败未闭环前不得创建或推送 `v0.4.10`。
+- 本节已完成 tag 前门禁和 tag 后发布收口。annotated tag `v0.4.10` 固定指向 `7d9d0e267d942952701bc14ac19d032951d2dfd7`；正式 Release、三仓 `0.4.10/latest`、回拉隔离冒烟和 Release 资产均已核验，证据见下文。
 
 ## 变更清单、受影响链路与故障矩阵
 
 - 前端弹窗链路：危险确认框、Steam 二维码和存档/新建游戏宽弹窗统一获得同时受 viewport 与 overlay 约束的有效高度，并用 `border-box` 把 padding/border 纳入限宽限高；新建游戏 1100/480px 容器查询只读取 `ngc-modal` 自身宽度，不再被桌面侧栏后的 `sd-main-scroll` 错误触发。
-- 认证升级链路：`recreating_auth → verifying_auth → recreating_server → verifying_server` 不再把 Steam 在线相关 Docker health 当硬门槛；只要求 steam-auth 容器 running、目标 image ID 匹配、`/steam/ready` 命中受支持的 HTTP/schema 合约。HTTP 200 接受 legacy/current schema，current `accounts` 必须是 JSON array；真实 auth 镜像的 HTTP 503 只接受精确 legacy `ready=false` 离线合约。HTTP 500、其它状态、503 current/畸形 schema、接口不可达或 digest 漂移均 fail closed 并回滚。
+- 认证升级链路：`recreating_auth → verifying_auth → recreating_server → verifying_server` 不再把 Steam 在线相关 Docker health 当硬门槛；只要求 steam-auth 容器 running、目标 image ID 匹配、`/steam/ready` 命中受支持的 HTTP/schema 合约。HTTP 200 接受 legacy/current schema，current `accounts` 必须是 JSON array；真实 auth 镜像的 HTTP 503 只接受受支持的 legacy `ready=false` 离线 schema。HTTP 500、其它状态、503 current/畸形 schema、接口不可达或 digest 漂移均 fail closed 并回滚。
 - 状态展示链路：`verifying_auth` 继续使用既有 apply `phase/progress/updatedAt`，用户卡与技术详情显示“正在尝试 Steam 连接”、累计等待、自动刷新及“不是卡死”，不新增 API 字段。读屏实时区域只播报静态阶段标题，持续变化的等待秒数不进入 live region，避免每 1.8 秒重复播报。
 - 发布工作流同步加入真实 unhealthy/logged-out auth integration，保证 tag workflow 不能只跑 mock 单测就发布。
 - 安装入口供应链：用户文档只允许从官方 GitHub Release HTTPS 下载 `run.sh` 后执行；仅支持 HTTP 的镜像不再作为可执行脚本入口。HTTP 200/长度不能替代传输完整性，后续只有在镜像提供可信 HTTPS 或独立签名/摘要校验后才能恢复推荐。
@@ -24,7 +24,7 @@
 | auth digest 不匹配 | 立即 `auth_digest_mismatch`，禁止继续 server 重建 | Go 回归与回滚状态检查 |
 | 部分成功、重复探测与幂等 | `/steam/ready` 只读；最终目标复验走同一门槛 | 同一事务重复状态读取不产生额外 mutation |
 | Panel/容器中断 | 沿用 schema 3 write-ahead 恢复或回滚，不猜阶段 | 既有全量恢复测试 + 候选升级后重启终态 |
-| 失败回滚与数据完整性 | 不删除 game-data、steam-session、存档、Mod、备份；非目标容器不重建 | unhealthy 目标自动回滚、哨兵摘要与容器 ID/volume 核对 |
+| 失败回滚与数据完整性 | 不删除 game-data、steam-session、存档、Mod、备份；非目标容器不重建 | Panel 自更新 unhealthy 候选自动回滚、哨兵摘要与容器 ID/volume 核对 |
 | 权限与安全 | 状态、日志、文档不含 Steam 账号/密码/token/ticket；匿名升级接口仍拒绝 | diff/支持包/接口权限检查；测试只用专用本地账号 |
 | 安装脚本供应链 | 不从 HTTP 下载后直接执行；只使用官方 Release HTTPS | README、用户指南、官网命令检索；HTTP 可执行入口为 0 |
 | 桌面宽弹窗 | 以弹窗自身宽度保持三栏，边框/内边距不撑破 overlay | 1180×1063 三列尺寸、交互、无横向溢出 |
@@ -33,7 +33,7 @@
 | 前端/官网依赖安全 | 所有有稳定补丁的 high 均修复；官网唯一无修复 high 限定为不发布的 dev server | 两个空 volume npm ci/audit、前端 high/critical=0；官网 production=0、critical=0、静态 build 通过 |
 | 资源清理 | 只清理本测试唯一 project/label/端口/volume/image | 每轮终态精确查询为空，禁止任何 system/volume prune |
 
-- 补齐 `border-box` 后的浏览器几何回归：769×240 与 280×653 长 Joja 确认框四边均在 overlay 内，root/body 横向溢出为 0、console warn/error 为 0；769×240 卡片内部可从 `scrollTop=0` 滚到 `93`。二维码真实内容仍必须在精确候选安装态验收，不能用 CSS 断言提前关闭该门禁。
+- 补齐 `border-box` 后的浏览器几何回归：769×240 与 280×653 长 Joja 确认框四边均在 overlay 内，root/body 横向溢出为 0、console warn/error 为 0；769×240 卡片 `scrollHeight=303 > clientHeight=210`，可从 `scrollTop=0` 滚到 `93`。升级得到的 v0.4.10 Panel 又用合成、非敏感 Steam QR URL 实测 769×240 与 280×653 二维码弹窗：卡片四边均在 overlay 内且无横向溢出，低高度内部 `maxScrollTop=225` 并可滚到底，280×653 完整装入，关闭交互与 console 均正常。
 
 ## Tag 前代码、依赖与公网制品门禁证据（候选构建前）
 
@@ -41,13 +41,27 @@
 - 真实 SMAPI 空 Linux 缓存下载 41,889,142 字节并完成摘要、ZIP、0600 和临时文件清理；测试本体 7.25 秒。updater 隔离 Compose 成功、失败回滚与 helper 清理基础集 34.641 秒通过；精确正式候选直升在候选镜像生成后补跑。
 - 兼容矩阵 validate、panel version、19 项 Python 测试通过；`verify-remote-artifacts` 在可选镜像源、Docker Hub、SMAPI 分块及 Git TLS 有界恢复后 120.3 秒通过。三个 Bash 功能脚本与语法 2.7 秒、正式 ShellCheck 2.4 秒通过。
 - 前端在唯一空 Node 24 volume 全新 `npm ci` 后 production audit 0、12 项状态/响应式测试及 build 全部通过，总计 30.1 秒（build 1.55 秒）；任务容器/volume 已按精确 label 清理。官网空 volume 的 production audit 为 0、完整 audit critical=0；剩余 Vite dev-server 1 high + 2 moderate 无稳定修复且不进入静态产物，修正可写配置边界后 VitePress build 本体 4.48 秒、整轮 47.9 秒通过，任务容器/volume 已清理。
-- 当前证据只完成候选构建前门禁。Tag 前硬阻塞仍包括：精确 commit/image metadata、fresh smoke、`v0.4.9`/`v0.3.2` 一键升级、unhealthy 回滚、升级后 UI 与同步干净 `main`。Tag 推送后还必须等待 Release workflow 成功并完成三仓回拉/Release 资产/隔离冒烟；这些后置门禁未完成前不得宣告正式发布完成。
+- 候选构建前门禁、精确候选、fresh smoke、两条代表版本升级、Panel 自更新 unhealthy 候选自动回滚、升级后 UI、同步干净 `main`、tag workflow、三仓回拉、Release 资产和隔离冒烟现已全部完成；正式发布证据如下。
+
+## 正式候选、真实升级与升级后功能证据
+
+- 最终候选提交为 `7d9d0e267d942952701bc14ac19d032951d2dfd7`。本机 Docker Desktop Linux 候选 `anxi-v0410-candidate:7d9d0e2` 的 image ID 为 `sha256:846435294a70844a6a0d00a65e7bb496bac2d47465141eac2e6d50f9973d2d1b`，内嵌 version=`0.4.10`、完整 revision=`7d9d0e267d942952701bc14ac19d032951d2dfd7`、created=`2026-08-09T15:39:43Z`；fresh health/version/restart 通过。tag 前 `main` 工作树干净且与 `origin/main` 同步，compatibility workflow `31321583191` 在同一 SHA 成功。
+- 正式 Web 一键升级门禁使用唯一任务 DinD、受控 TLS `api.github.com` Release endpoint 和受控 TLS `ghcr.io` registry，全程走 setup/login cookie、update check、capability、dry-run、管理员 apply、断线重连与 apply 终态，而不是直接调用 updater。`v0.4.9` 的 Panel 自更新 unhealthy 候选事务 `6453365330c7` 用时 2 分 14 秒，实际观察到目标容器 `running + unhealthy` 且容器内 health/version 为目标构建，最终精确为 `failed_rolled_back / health_check_failed` 并恢复旧镜像；同一受控 registry 的 `0.4.10` 镜像引用切回健康候选后，新事务 `33d98c68a74f` 用时 12 秒成功并通过重启，Git tag 从未移动。`v0.3.2` 按历史空 apply body 契约执行事务 `d6a33fe33ce8`，10 秒成功并通过重启。完整夹具 3 分 49 秒，Release fixture 命中 12 次、目标 registry manifest 命中 16 次。
+- 两条升级链和失败回滚均检查 live/backup SQLite `PRAGMA integrity_check`、迁移集合、初始化、用户、实例与审计；Panel/Mod/save/有效 ZIP backup 文件哨兵摘要保持不变。每个 updater backup 的数据库、Compose、deployment env 与 manifest 均可读；非目标 game container 的 ID/StartedAt、volume inspect 字段、挂载和 sentinel 均未变化，没有第二个 game 或残留 updater helper。
+- 在上述升级得到的新 v0.4.10 前端 bundle 上复验 `verifying_auth`：769×240 的累计等待从 664 秒增至 666 秒，280×653 从 667 秒增至 669 秒；两视口均只有一个 `role=status`，标题为“正在尝试 Steam 连接”，动态秒数和技术详情不在 live region，root/body 无横向溢出且 console error/warn 为 0。二维码弹窗的真实 DOM、aria-modal、data image、内部滚动和关闭交互也在同一升级后 bundle 上通过；测试二维码为合成 URL，不含真实 Steam token。
+
+## Tag、Release、三仓与资产核验
+
+- annotated tag `v0.4.10` 的 peeled commit 精确为 `7d9d0e267d942952701bc14ac19d032951d2dfd7`，未移动历史 tag。Release workflow `31325589153` / job `93275302795` 于 `2026-08-09T17:07:48Z` 开始，`17:13:50Z` 成功结束；总耗时 6 分 02 秒，job 5 分 59 秒，其中 release gates 3 分 34 秒、镜像 build/push 1 分 39 秒。GitHub Release `Stardew Server Anxi Panel 0.4.10` 于 `17:13:42Z` 发布，非 draft/prerelease；自动正文因 tag message 缺少详情而错误回退到最后一个文档提交，发布后按真实变更修正 Release 正文，没有移动 tag。
+- workflow 推送和发布后独立远端查询一致：Docker Hub、阿里云 ACR、GHCR 的 `0.4.10` 与 `latest` 六个 OCI index digest 均为 `sha256:c37ad8e8d1498f377900b8a82e2ad1de761df23a06f1cb298ae349a362b111df`，linux/amd64 manifest 均为 `sha256:7534a30c283e9497ee6533dae4dc82f443779700ee90eb72858dfc49d43d9070`；OCI version=`0.4.10`、revision=`7d9d0e267d94`、created=`2026-08-09T17:11:52Z`。三个精确版本均按不可变 index digest 实际回拉，以独立容器/network/volume/端口启动并在首次和 restart 后返回 Docker health=`healthy`、`/health=ok`、database=`ok`、精确 `/api/version` 与 fresh setup；三个仓库结果完全一致。
+- Release 的四项 HTTPS 资产均重新下载并按字节复算 SHA-256：`run.sh` 30,437 B / `8f0040c11661f2e3f4060c66bf8ba205a33aa46fc65e3dec7cbf15b864c7387a`，`migrate-fnos.sh` 34,269 B / `90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`，`repair-junimo-0.3.5.sh` 14,413 B / `38d06d09e5c17db3145ec3b938f4d6844d1f2f058c73fa5bc72c804335eee47b`，`repair-junimo-upgrade.sh` 8,521 B / `4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`；`releases/latest/download/run.sh` 与精确版本资产同为 30,437 B 和相同摘要。
+- 正式 Web E2E、升级后 UI 与三仓回拉的任务容器、network、volume、bind、临时脚本和端口均按精确 owner 清理；三仓冒烟端口 `18150/18151/18152` 无 listener，未执行任何 `system prune`、`volume prune` 或模糊删除。正式回拉内容保留在 Docker Desktop 内容存储中，不删除用户已有镜像 tag。
 
 ## 不适用项与保留边界
 
 - 本版没有数据库 migration、部署格式、存档格式、Mod 格式或公开 API shape 变化；无需新增迁移脚本，但仍必须验证代表老版本数据完整保留。
 - Steam 是否在线是联机邀请码能力，不再是 Panel/运行栈升级成功条件；这不等于忽略认证服务本身，接口不可解析仍是硬失败。
-- 前端布局修复不改变表单字段、创建请求、危险确认动作或 Steam 二维码内容；二维码真实阶段若候选夹具无法稳定进入，至少保留源码断言并在正式候选的安装流程中复核 overlay 尺寸。
+- 前端布局修复不改变表单字段、创建请求、危险确认动作或 Steam 二维码内容；真实安装页面使用合成 QR URL 完成 overlay 几何、内部滚动、data image 与关闭交互复核，不记录或截图真实 Steam token。
 
 # 历史记录：安装入口协议统一为 HTTP（2026-08-09，已撤销）
 

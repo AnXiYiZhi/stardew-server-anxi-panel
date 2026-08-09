@@ -1811,9 +1811,10 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 安全边界不变：镜像 tag 仍需匹配受审 digest；Git 仍 fetch 精确 revision/ref 并验证 ancestry；SMAPI 仍要求精确 URL 顺序、trusted host、`206`、`Content-Range`、长度、总字节数和 SHA256。重试耗尽仍返回失败，不降级为 warning。
 - 本机真实公网门禁在 Docker Hub 鉴权 TLS timeout 后重试成功，并在 SMAPI 32 MiB offset 遇到一个源 SSL EOF、另一个源 HTTP 429 后换源续传，最终 301 秒通过；生产 Go 下载器独立从空缓存下载 `41,889,142` 字节并在 87 秒内通过摘要与 ZIP 验收。
 
-# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1（2026-08-09，completed，待发布）
+# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1（2026-08-09，released in v0.4.10）
 
 - 运行栈升级的 steam-auth 验收不再等待容器 Docker health 变为 `healthy`。该 health 会把 Steam 在线登录纳入结果，生产环境曾因此让未变化的 auth 在 `verifying_auth` 停留约 4 分 13 秒。
 - 新硬门槛为：目标容器处于 running、镜像 ID 精确匹配、容器内 `/steam/ready` 命中受支持 HTTP/schema 合约。HTTP 200 的 legacy `ready` 合约仍兼容；current `status/logged_in/accounts` 合约要求 `accounts` 是 JSON array。真实 auth 镜像未配置账号时返回 HTTP 503，只对白名单 legacy `ready=false` 离线 body 放行。未登录或无 ticket 只追加能力警告，不阻塞 LAN 模式或运行栈升级。
 - 新版、未变化版以及最终目标复验统一走同一接口验收；HTTP 500/其它状态、503 current/畸形 schema、接口不可达、current schema 损坏或 digest 不匹配仍按原事务回滚，不把真实 auth 服务故障伪装成成功。
 - 新增 Docker integration fixture：真实容器 health 固定 `unhealthy`，真实 HTTP 接口返回未登录，验收仍成功；另用真实容器删除 ready 文件产生 HTTP 404，确认 fail closed。单元覆盖 500 合法 JSON、503 current/ready=true 与 `accounts=null/number/object` 均拒绝，并固定真实 503 `ready=false` 合约。
+- 正式发布的真实 Web updater 另从 v0.4.9 注入 Panel 自更新候选 `HEALTHCHECK=false`，等待完整 120 秒后精确收敛为 `failed_rolled_back / health_check_failed`；切回健康 Panel 候选后升级成功。该回滚故障与上方“steam-auth unhealthy 但接口合法时继续”是两条独立证据。v0.3.2 历史 apply body 兼容链也成功，数据、事务备份、非目标 game container/volume 与重启状态均通过。tag `v0.4.10`、Release workflow `31325589153` 和三仓回拉证据见 `docs/09-image-build.md`。

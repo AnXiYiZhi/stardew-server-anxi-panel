@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.9
+release: v0.4.10
 heroInviteCard: true
 
 hero:
@@ -32,7 +32,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.9。升级异常会先检测原因，再提供对应的一键修复与续跑；无法安全自动处理时保留现场并导出脱敏支持包。
+    details: 当前最新 v0.4.10。升级等待 Steam 连接时会显示累计用时和自动刷新提示；低高度、窄屏弹窗也不会再越出页面。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -44,8 +44,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.9</strong>
-    <p>升级遇到回滚失败、旧候选配置或安全回滚后的可重试故障时，面板会显示检测依据和具体修复方法，并在管理员确认后完成修复、重新预检和继续升级。</p>
+    <strong>v0.4.10</strong>
+    <p>升级正在连接 Steam 时会持续显示等待时间和自动刷新说明，不再让人误以为卡死；确认框、二维码和新建游戏弹窗在窄屏或低高度下也会保持在页面内。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

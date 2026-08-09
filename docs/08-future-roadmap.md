@@ -1,14 +1,14 @@
-# 2026-08-09 执行中：安装脚本供应链收口（DOCS-INSTALL-HTTPS-2）
+# 2026-08-09 完成：安装脚本供应链收口（DOCS-INSTALL-HTTPS-2）
 
 - [x] README、用户指南、官网部署页和镜像文档只推荐官方 GitHub Release HTTPS，不再从仅支持 HTTP 的镜像下载后直接执行脚本。
 - [x] 明确 HTTP 200/长度不能代替完整性；国内网络不稳定时使用浏览器打开官方 Release 手工下载，未来镜像需可信 HTTPS 或独立签名/摘要才能恢复推荐。
-- [ ] 最终 main/官网上线后复核所有当前用户入口不含 HTTP 可执行命令，GitHub Release `run.sh` 资产可通过 HTTPS 下载。
+- [x] 最终 main 活动用户入口中的 HTTP 可执行命令为 0；GitHub Release 与 `latest` 的 `run.sh` 均通过 HTTPS 下载为 30,437 B，SHA-256 同为 `8f0040c11661f2e3f4060c66bf8ba205a33aa46fc65e3dec7cbf15b864c7387a`。
 
 # 2026-08-09 完成：弹窗高度约束隐患修复（FE-MODAL-HEIGHT-GUARD-1）
 
 - [x] 通用危险操作确认框与 Steam 二维码弹窗把会相互覆盖的双 `max-height` 声明合并为 `min(90/92vh, 100%)`，并用 `border-box` 把 padding/border 纳入限宽限高，恢复视口比例上限并保留内部滚动。
 - [x] 响应式测试同时固定通用确认框、存档弹窗和二维码弹窗的有效高度约束；全部 12 项前端状态测试与 production build 通过。
-- [x] 1180×900、769×500 删除确认框/新建游戏验收通过；769×240、280×653 长 Joja 确认框也完全位于 overlay 内且无页面横溢出，低高度内部滚动 `scrollTop 0→93`，console warn/error 为 0。二维码阶段因 QA fixture 未覆盖，保留到精确候选真实安装态复核。
+- [x] 1180×900、769×500 删除确认框/新建游戏验收通过；769×240、280×653 长 Joja 确认框也完全位于 overlay 内且无页面横溢出，低高度内部滚动 `scrollTop 0→93`。升级后的 v0.4.10 bundle 又通过两视口二维码弹窗实测：769×240 内部 `maxScrollTop=225` 并可滚到底，280×653 完整装入，四边、关闭交互和 console 均正常。
 
 # 2026-08-09 完成：新建游戏弹窗错误拉伸修复（FE-NEW-GAME-MODAL-LAYOUT-1）
 
@@ -21,15 +21,16 @@
 - [x] 历史证据：当时曾统一到明文 HTTP，并验证端点/页面一致性；这不能证明脚本完整性。
 - [x] 撤销结论：当前用户入口已恢复为官方 GitHub Release HTTPS，旧 HTTP 地址不得作为可执行脚本来源。
 
-# 2026-08-09 执行中：v0.4.10 正式发布
+# 2026-08-09 已发布：v0.4.10
 
 - [x] 弹窗高度、独立容器查询、Steam auth 离线验收和等待可见性代码/专项测试完成。
 - [x] 洁净前端依赖审计发现并修复 `nanoid <3.3.17` high advisory；空 volume 复验 audit high/critical 必须为 0。
 - [x] 官网 lockfile 同步修复 `nanoid` 与 `postcss` high advisories；VitePress 1.x 稳定链无修复的 1 high + 2 moderate dev-server 公告明确限定为不发布、不暴露的构建期工具，2.0 alpha 不进入正式依赖。
-- [ ] 精确候选的全量代码/脚本/兼容矩阵/文档门禁完成。
-- [ ] `v0.4.9` 与支持下限 `v0.3.2` 到候选的一键升级、unhealthy 回滚和升级后新功能 QA 完成。
-- [ ] 同步干净 `main`，创建并推送 `v0.4.10` annotated tag，Release workflow 成功。
-- [ ] 三仓 `0.4.10/latest` digest/OCI、GitHub Release 资产与回拉隔离冒烟完成；官网更新为 v0.4.10。
+- [x] 精确候选的全量代码/脚本/兼容矩阵/文档门禁完成；候选提交为 `7d9d0e267d942952701bc14ac19d032951d2dfd7`，compatibility workflow `31321583191` 成功。
+- [x] `v0.4.9` 与支持下限 `v0.3.2` 的真实 Web 一键升级、Panel 自更新 unhealthy 候选自动回滚、数据/非目标资源保护、重启和升级后认证等待/二维码 QA 完成；steam-auth unhealthy + 合法离线接口的成功链由独立 runtime Docker integration 覆盖。
+- [x] 从同步且干净的 `main` 创建并推送 annotated tag `v0.4.10`；Release workflow `31325589153` 成功，GitHub Release 已发布并补正详细说明。
+- [x] 三仓 `0.4.10/latest` 六个引用统一为 index `sha256:c37ad8e8d1498f377900b8a82e2ad1de761df23a06f1cb298ae349a362b111df`、amd64 manifest `sha256:7534a30c283e9497ee6533dae4dc82f443779700ee90eb72858dfc49d43d9070`；三个精确版本均通过回拉 health/version/restart 冒烟，四项 Release 资产摘要通过。
+- [ ] 官网源码已切换为 v0.4.10；等待本次 post-release 文档提交触发 Pages 后完成线上桌面/手机与 changelog 复核。
 
 # 2026-08-09 已发布：官网展示 v0.4.9（DOCS-PORTAL-V049-1）
 
@@ -1736,10 +1737,10 @@ Multi Game Mode later
 - [x] 桌面与移动上传弹窗常驻展示多 ZIP、单 ZIP 多 Mod 文件夹和 ZIP 套 ZIP 处理方式。
 - [x] 两端复用共享文案组件，不改变现有上传 API 或后端解包逻辑。
 
-# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 / FE-STEAM-AUTH-WAIT-VISIBILITY-1（2026-08-09，completed，待发布）
+# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 / FE-STEAM-AUTH-WAIT-VISIBILITY-1（2026-08-09，released in v0.4.10）
 
 - [x] 运行栈升级以 steam-auth 容器 running、目标 digest 和可解析服务接口为硬门槛，不再等待 Steam 在线相关 Docker health。
 - [x] Steam 未登录或无 ticket 降级为后台重试能力警告，接口故障与 digest 错误继续失败并回滚。
 - [x] 前端认证阶段显示“正在尝试 Steam 连接”、累计等待、自动重试和“不是卡死”。
 - [x] 探针校验 HTTP status，current `accounts` 必须是数组；只对白名单 HTTP 503 + legacy `ready=false` 离线合约放行，500、503 current/畸形 schema 和真实 Docker 404 均 fail closed。动态计时从读屏 live region 隔离，避免轮询重复播报。
-- [x] 后端全量 test/vet/build、前端全部 12 个状态脚本与 production build、Docker Desktop unhealthy/offline 实机 fixture，以及桌面/390px Browser QA 已通过；正式发布仍须重新执行完整候选镜像与一键升级门禁。
+- [x] 后端全量 test/vet/build、前端全部 12 个状态脚本与 production build、Docker Desktop unhealthy/offline 实机、正式 Web 升级/回滚，以及升级后 769×240/280×653 Browser QA 已通过；tag、Release workflow、三仓回拉与隔离冒烟均已完成。

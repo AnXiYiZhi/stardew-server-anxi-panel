@@ -71,6 +71,8 @@
 
 ## 2026-08-09：发布夹具把多层 Shell、JSON 和文本工具塞进单行命令
 
+- 最近复发/补充：2026-08-10 `v0.4.10` Web updater 夹具的初版把 Nginx exact location、registry 转发、TLS gateway 与访问日志选项一次性拼出；先后出现 `try_files` 路径导致 403、`access_log flush=1s` 缺少 buffer 令 Nginx 退出、默认绝对重定向丢失宿主映射端口，以及只把 DNS 映射加到 DinD/Panel 单侧导致真实 check/pull 绕过 fixture。正确恢复是每层先独立 `nginx -t`、TLS/SAN/JSON、registry push→删引用→pull 和 Panel/Dockerd 两条 DNS 路径探针，再启动产品事务；同域名 gateway 必须同时服务 dockerd 的 host 映射和 Panel 的 host-gateway/网络入口，反向代理 QA 入口显式 `absolute_redirect off`，不能只凭一次外层 curl 200 放行。
+- 同轮第一次读取正式旧镜像状态时 Docker health 仍为 `starting`，夹具把固定 sleep 当成 readiness；改为有界轮询完整 container inspect 到 `healthy|unhealthy` 后再开始事务。时间敏感门禁必须等待权威状态，而不是根据本机上一次耗时猜固定秒数。
 - 最近复发/补充：2026-08-09 `v0.4.10` 核对真实 auth HTTP 合约时，把 Bash `/dev/tcp` 的 `>&3` 和带 CRLF 的请求直接嵌入 `pwsh -Command`，PowerShell 在容器创建前报重定向语法错误；随后又把创建、轮询、输出和 finally 清理塞进同一个包装命令，第二次无诊断退出 1。确认精确容器名不存在后，改用 `apply_patch` 创建任务专属 LF Bash 探针，并把容器创建、读取、清理拆为独立命令，成功取得无凭据的 HTTP 503 `ready=false` 合约并精确清理脚本/容器。
 - 环境：Windows PowerShell 7 → `docker exec` → Linux `sh`，验证 `v0.4.9` 受控 HTTPS Release、支持包和升级后哨兵。
 - 错误模式：先后内联 Python `-c` URL/CA、JSON/正则、`find -printf`、`cut -d ' '`，并猜测 BusyBox `wget --ca-certificate` 可用；引号在 PowerShell、Docker argv 和容器 shell 之间被剥离或重新解释。
@@ -92,6 +94,8 @@
 
 ## 2026-08-09：正式镜像回拉与 manifest 查询未统一使用有界网络重试
 
+- 最近复发/补充：2026-08-10 发布后已按 index digest 回拉 Docker Hub 镜像，却在 `docker run` 时改用未登记为本地引用的 amd64 manifest digest；Docker daemon 重新向配置的镜像代理发 HEAD 并收到 403，容器未创建，夹具按 owner 清理。正确做法是远端分别核对 index/amd64 manifest，实际 pull/run 使用已回拉的不可变 index 引用；Docker Desktop containerd image store 的 `.Id` 可能呈现 index，不得把它再描述成 config digest。修正后 Docker Hub、ACR、GHCR 三组 health/version/restart 冒烟均通过。
+- 最近复发/补充：2026-08-10 post-release 文档独立复核再次在 Docker Hub `0.4.10` 的 OAuth token 阶段遇到一次 EOF；没有把它解释成 tag 缺失或重新发布，按既有逐引用有界重试后同一 index/amd64 manifest 查询成功。每个审查者和每个发布阶段都要实际使用同一重试模板，不能因为主流程已成功就假定后续只读复核不会断流。
 - 环境：Docker Desktop，发布后核验 Docker Hub、阿里云 ACR、GHCR 的 `0.4.9/latest` 六个引用。
 - 错误模式：首次把单次 `docker pull`/`docker buildx imagetools inspect` 结果直接当作 registry 终态，没有先放进逐引用的有界重试包装。
 - 症状 / 退出码：GHCR 短暂出现 TLS handshake timeout、EOF 和 auth EOF，Docker Hub `latest` 的首次 manifest 查询失败；同一精确引用稍后成功，六个 digest/labels 最终完全一致。
@@ -185,6 +189,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
+- 最近复发/补充：2026-08-10 最终只读审查与主流程仍多次猜测不存在的 `backend/internal/app`、`backend/internal/games/stardew_junimo/config/paths.go`、`frontend/tests`、`backend/internal/updater/docker_executor.go`、`backend/internal/web/setup_handlers.go` 等路径，并把 `docker-compose*.yml`、`backend/internal/web/*.go` 等未展开 glob 传给 Windows `rg`。同轮文档清单还把 `rg --files` 输出的反斜杠直接和正斜杠常量比较，误报 0 文件。该类复发已经提升到 `AGENTS.md`；执行前必须用 `rg --files`/`Test-Path -LiteralPath` 取得精确路径，通配只放 `-g`，跨平台比较前统一目录分隔符或直接逐项 Test-Path。
 - 最近复发/补充：2026-08-09 `v0.4.10` 收口先把 Diagnostics 页面猜成不存在的 `frontend/src/pages/DiagnosticsPage.tsx`，又在 `backend` 工作目录把仓库根的 `docs` 直接作为 `rg` 目标；前者产生 PowerShell 非终止路径错误但外层退出 0，后者令 `rg` 退出 1。只读复核子任务还先后把不存在的 `backend/internal/web/router.go`、`client.go`、`command.go`、`stardew-routes.tsx` 混入路径。后续已先用 `rg --files` 确认精确文件，并把跨后端/文档搜索统一放在仓库根；必需文件读取必须设置 `$ErrorActionPreference = 'Stop'`，不能让后续成功掩盖首个路径错误。
 - 最近复发/补充：2026-08-09 本次同类弹窗审计把实际位于 `frontend/src/games/stardew/SavesSection.tsx` 的组件又猜成不存在的 `frontend/src/games/stardew/components/SavesSection.tsx`；同一批后续 `rg` 成功导致外层最终仍显示退出 0。组件路径必须先由 `rg --files frontend/src | rg 'SavesSection'` 取得，多个原生命令连续执行时还要在每次调用后立即检查并保存 `$LASTEXITCODE`，不能只看脚本末尾退出码。
 - 最近复发/补充：2026-08-09 排查新建游戏弹窗时，先把实际位于 `frontend/src/qa-layout-main.tsx` 的文件猜成 `frontend/src/games/stardew/qa-layout-main.tsx`，随后又把未展开的 `frontend/src/games/stardew/*.css` 作为 Windows `rg` 位置参数，分别产生 `Get-Content` 路径错误和 `os error 123`；第一次还因 PowerShell 非终止错误被后续成功输出掩成 exit 0。正确做法是先用 `rg --files frontend` 发现精确路径，通配筛选只写成 `rg -g '*.css' <pattern> <confirmed-root>`，必需读取脚本开头设置 `$ErrorActionPreference = 'Stop'`。
@@ -237,6 +242,7 @@
 
 ## 2026-07-31：UI E2E 断言使用错误的计数文案
 
+- 最近复发/补充：2026-08-10 v0.4.10 官网 production build 已成功，产物断言却沿用 Panel 页面里的精确短语“不是卡死”，而首页源码实际写的是“不再让人误以为卡死”，造成一次假失败。修正后按源码真实稳定文案和 changelog 标题复核通过。静态产物文案门禁也必须先读取当前源码/DOM，不能把相邻页面的同义提示当成精确契约。
 - 环境：Codex in-app Browser，已安装 Mod 搜索。
 - 错误模式：搜索命中断言要求 DOM 含 `1 个`，实际过滤计数文案是 `1 / 3 个`。
 - 症状 / 退出码：搜索结果正确只剩 Nexus 4242 卡片，但测试先报 `Nexus ID filter failed`。
@@ -271,6 +277,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
+- 最近复发/补充：2026-08-10 官网反馈墙方案讨论调用本地 UI 规则检索时，虽然先取得 `Get-Command python`，仍把版本探针和实际查询合并在同一命令中；Windows Store alias 以 `9009` 退出，查询未执行且项目文件未变化。后续同类只读设计检索也必须先调用 workspace dependency loader，使用其返回的精确 Python 路径单独完成版本探针，再运行查询，不能继续把 `Get-Command` 成功当成解释器可用。
 - 最近复发/补充：2026-08-01 查询本地 UI 动效数据库时，虽先获得 `Get-Command python` 结果，但没有先执行版本探针便把多个查询放进同一命令；Windows Store alias 以 `9009` 失败且无有效输出。应先单独确认版本，发现 alias 后立即加载工作区依赖，再使用返回的精确 `python.exe`；不要把解释器探针与实际查询合并。
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
 - 最近复发/补充：2026-08-09 发布兼容矩阵仍先把 `Get-Command python` 返回的 Windows Store alias 当真实解释器，版本探针以 `9009` 退出；诊断时又未先验证便调用不存在的 `py -3`。同日 `v0.4.10` 门禁再次把 `Get-Command python` 与版本探针拼在一条命令中，Store alias 令命令在实际矩阵前退出；确认 `py` 也不存在后停止重试，并通过 workspace dependency loader 取得精确 Python。Windows 发布门禁开始前必须先加载工作区依赖，不能因为 `Get-Command` 返回 Application 就认为解释器可运行。
@@ -305,6 +312,7 @@
 
 ## 2026-07-28：Windows `npm ci` 被 node_modules 文件锁阻断
 
+- 最近复发/补充：2026-08-10 Web E2E 清理任务 archive 时，Windows 在 Docker image load 结束后短暂持有 `images.tar`，第一次精确 `RemoveAll` 失败；没有扩大删除范围或强杀进程，改为验证目标仍位于任务 `.work`、Docker 资源已终态后对同一精确路径做有界退避重试并成功。Windows 文件锁恢复只能重试已验证的任务文件，不能升级为递归清理工作区。
 - 最近复发/补充：2026-08-01 前端和官网两次把宿主源码父目录只读挂到 `/work`，同时把 named volume 挂到 `/work/node_modules`；runc 在只读父挂载下无法创建子挂载点，容器尚未运行 npm 就失败。该问题已提升到 `AGENTS.md`：宿主源码固定只读挂 `/src`，任务专属可写 workspace volume 挂 `/work`，复制源码/lockfile 后再安装构建。
 - 环境：Windows 工作区，已有 `frontend/node_modules`。
 - 错误模式：直接在宿主重复 `npm ci`。
@@ -564,6 +572,7 @@
 
 ## 2026-07-29：前台临时 HTTP 服务超时后仍占用端口
 
+- 最近复发/补充：2026-08-10 三仓回拉 Go 夹具把内层 `shell_command` timeout 设为 1 秒，希望由外层 yield 返回 cell；实际命令在约 5 秒以 124 被终止，不能判断 Go 子进程是否仍在。没有直接重跑，而是先按 `anxi.test.owner` 查询 container/volume/network，并核对 18150–18152 均无 listener，再把命令 timeout 改为 10 分钟、只用 `functions.exec` yield/wait 续取。长任务的“命令执行上限”和“提前返回控制权”必须分开配置。
 - 最近复发/补充：2026-08-09 正式发布门禁两次用同一个 `functions.exec` 的 `Promise.all` 并发启动多个长运行 `shell_command`；其中一个子调用异常后编排层在约 1 秒内返回失败，但两组 `go test ./...` 仍成为后台孤儿进程，前端容器一度进入 `Dead`，输出也无法作为门禁证据。第二次前未确认第一次的宿主进程终态，造成重复后端门禁。后续正式门禁必须逐项用可等待的单独调用运行；编排调用异常后先查精确 PID、容器与 volume，不得再次提交同一门禁。该规则已同步提升到 `AGENTS.md`。
 - 最近复发/补充：同轮清理已确认归属的重复后端门禁时，进程在检查与 `Stop-Process -ErrorAction Stop` 之间自然退出，命令报 “Cannot find a process”。清理长运行进程须在停止前再次读取目标，使用幂等的 `Get-Process ... -ErrorAction SilentlyContinue | Stop-Process`，随后复查；不得把正常的退出竞态误判为产品失败。
 - 最近复发/补充：2026-07-29 用内层 1 秒命令超时启动 VitePress，期望外层工具返回可续用 cell，结果常驻服务被直接以 124 终止。长运行服务要给命令本身足够超时，只用外层 yield 提前取得 session/cell；结束时再精确终止并核对端口。
@@ -601,6 +610,8 @@
 
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
+- 最近复发/补充：2026-08-10 发布后六仓引用汇总把字面量属性写成 `$digestLine.Substring('Digest:' .Length)`，PowerShell 在任何远端查询前报 `Missing ')' in method call`；同轮只读审查还用多层转义 `rg` 正则搜索 package version，落成无效 `(?:\)`。修正为已知固定前缀 `.Substring(7)`，包元数据改用 `ConvertFrom-Json -AsHashtable`/Node JSON.parse 或 `Select-String -SimpleMatch`；不要在发布命令行里对字面字符串属性和多层正则继续做语法猜测。
+- 最近复发/补充：2026-08-10 post-release Markdown 审查把三反引号 fence 直接嵌入 `pwsh -Command` 双引号，PowerShell 把反引号当转义符并在执行搜索前解析失败。字面 fence 使用 `$fence = [string]::new([char]96, 3)` 后 `Select-String -SimpleMatch $fence`，或放入任务脚本；禁止在多层 PowerShell 命令中直接写反引号序列。
 - 最近复发/补充：2026-08-09 最终发布只读审查又在外层单引号脚本块中直接嵌入含单引号字符类的 `rg` 正则，PowerShell 在执行搜索前即报 `ParserError`。后续拆成不含单引号的固定模式分别搜索；此类需求必须优先 `rg -F`/多次固定模式，复杂正则写入经审查的任务脚本，不能继续挤进嵌套命令行。
 - 最近复发/补充：2026-08-09 为搜索错题本中的字面 `$_`，在嵌套 `pwsh` 的双引号正则里混用反斜杠，PowerShell 先处理自动变量后让 `rg` 收到不完整的分组并报 `unclosed group`。字面特殊字符优先使用单层 `rg -F`；若外层脚本的引号边界仍冲突，就搜索不含特殊字符的稳定中文标题或拆成独立命令。
 - 环境：Windows，外层命令通过 `pwsh -Command '& { ... }'` 克隆线上静态页面。
@@ -696,6 +707,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-10 Release workflow 已成功后，首次 `gh run view 31325589153 --json ...` 仍在 GitHub API 读取阶段报 EOF；没有把它当成 workflow 失败，也没有重复触发发布。后续按固定 run ID 将 run/release 查询拆开并最多三次有界重试，取得 `completed/success` 和正式资产元数据。发布写操作绝不能因查询 EOF 重放，先区分“权威任务仍在运行/已结束”和“客户端读取失败”。
 - 最近复发/补充：2026-08-09 `v0.4.10` 最终 main 推送后首次调用 `gh auth status`，发现 Windows keyring 中 `AnXiYiZhi` 的旧 token 已失效并退出 1；没有擅自刷新、退出或改写用户凭据。随后 GitHub 官方匿名 REST API 又因共享出口 rate limit 立即返回 403，不能把匿名 API 当作稳定无限额回退；改从公开 Actions HTML 精确读取 commit/run ID 与状态。用户明确要求重新申请登录后才启动 GitHub 官方 device OAuth，token 只回存系统 keyring、Git 协议保持 HTTPS且未创建 SSH key。登录后遇到单次 Actions API EOF 时仍按固定 run ID 有界重试，不能把“已登录”误解为网络不会断流；任何设备码/token 都不得写入错题本、提交或日志摘要。
 - 最近复发/补充：2026-08-09 核对 Junimo `.126` 镜像元数据时，`docker buildx imagetools inspect` 获取 Docker Hub OAuth token 报 `EOF`，随后 `Invoke-RestMethod` 也遇到 transport EOF；改用 Registry v2 的 token/manifest/config 三段只读请求，并给 `curl.exe` 配置有界 `--retry 3 --retry-all-errors`。Windows Schannel 又因吊销服务器离线报 `CRYPT_E_REVOCATION_OFFLINE`，正确回退是增加 `--ssl-revoke-best-effort`（仍校验证书，只把离线吊销检查降为 best effort），不得使用 `-k`。镜像身份最终必须从 OCI config 的 `org.opencontainers.image.revision` 与 Docker Hub tag digest 交叉确认，不能仅按推送时间猜 revision。
 - 最近复发/补充：2026-08-09 `v0.4.9` Release 首次 `gh run watch` 因 GitHub API EOF 退出，workflow 本身继续运行并最终成功；改为按固定 run ID 有界轮询 `gh run view`，每次独立读取 status/conclusion。发布证据只能来自最终 `completed/success`，网络查询失败不能冒充 workflow 失败或成功。
@@ -742,6 +754,7 @@
 
 ## 2026-08-01：组合工具结果误按 `.output` 字段读取
 
+- 最近复发/补充：2026-08-09 `functions.exec` 汇总一次嵌套调用时又按未确认结构解构字符串结果，输出退化成字符索引对象；底层操作本身未失败。正确做法仍是第一次直接 `text(result)` 查看真实形状，再对已经确认的对象字段投影，不能用 JavaScript 解构猜测字符串/对象联合返回。
 - 环境：`functions.exec` 中并行调用多个 `shell_command` 并组合输出。
 - 错误模式：假定嵌套工具结果始终有 `.output`，把四个成功结果拼接为 `undefined`。
 - 症状 / 退出码：底层命令均退出 0，但汇总层没有显示正文，需要重新读取。
@@ -752,6 +765,7 @@
 
 ## 2026-08-01：`ConvertFrom-Json` 读取 package-lock 的空字符串键失败
 
+- 最近复发/补充：2026-08-10 最终审查再次用默认 `ConvertFrom-Json` 解析两份 npm lockfile；空字符串根键触发非终止错误后脚本仍继续，存在沿用旧变量形成假成功的风险。已改为 `$ErrorActionPreference='Stop'` + `ConvertFrom-Json -AsHashtable` 并重新确认两份 lockfileVersion=3 与补丁版本；解析命令不得把非终止错误和后续成功输出混成有效证据。
 - 最近复发/补充：2026-08-09 `v0.4.10` 提交前同时解析 frontend/website lockfile 时又使用默认 `ConvertFrom-Json`；两次都因 `packages[""]` 报非终止错误，后续 `git status/diff` 成功还令整段表面退出 0。改用 `$ErrorActionPreference=''Stop''` 和 `ConvertFrom-Json -AsHashtable` 后精确确认 lockfileVersion=3、两份 nanoid=3.3.17、website postcss=8.5.25。lockfile 解析命令必须从模板上固定 `-AsHashtable`，不得继续依赖人工记忆。
 - 环境：Windows，PowerShell 7，只读检查 npm `package-lock.json`。
 - 错误模式：把包含 `packages[""]` 根包条目的 lockfile 直接管道到默认 `ConvertFrom-Json`，并按 `PSCustomObject` 读取。
@@ -930,6 +944,7 @@
 
 ## 2026-08-01：Browser Node REPL 一次批量执行过多视口交互
 
+- 最近复发/补充：2026-08-10 升级后 UI 复验时先在普通 Node REPL 直接 `import('playwright')` / `import('playwright-core')`，当前缓存包的 ESM/default export 形态不兼容而失败；随后 fixture 的首次计时又在轮询前读取、把 `role=status` accessible name 当 DOM 文本，并在 280px 忽略生产移动壳。正确做法是使用 workspace loader 返回的精确 Node 与已验证 CJS 入口，等待目标 DOM 后读 `textContent`，窄屏先实际点击“更多 → 切换到完整桌面版”；最终四组计时/QR 几何用例全部重跑通过。
 - 环境：Codex 应用内 Browser，经持久 Node REPL 扫描响应式路由矩阵。
 - 错误模式：把 90 次、随后 27 次点击/等待/度量塞进单次默认 30 秒调用，并在失败调用后继续假定所有顶层绑定都已完成初始化。
 - 症状：调用到 30 秒超时并重置运行时；后续读取半初始化变量时报未定义，已完成的局部结果也无法可靠交付。
@@ -1151,6 +1166,7 @@
 
 ## 2026-08-06：切到子目录后仍给 gofmt 传仓库根相对路径
 
+- 最近复发/补充：2026-08-10 三仓 smoke 临时 Go 文件命名为 `.codex-v0410-registry-smoke.go`；`gofmt` 可处理，但 `go run` 会忽略以点开头的 Go 源文件并报当前目录无 Go 文件。任务脚本应使用普通、唯一且预检不存在的文件名，执行完成后再用 `apply_patch` 删除；不要把“隐藏临时文件”惯例套给 Go package/file discovery。
 - 环境：PowerShell 7，`workdir=backend`，玩家 Mod 比较改动后的 Go 格式化。
 - 错误模式：工作目录已经是 `backend`，仍把 `backend/internal/...` 传给 `gofmt -w`。
 - 症状 / 退出码：三个目标都报 `GetFileAttributesEx ... The system cannot find the path specified`；`gofmt` 未修改文件，后续测试因显式退出没有执行。
@@ -1385,6 +1401,7 @@
 
 ## 2026-08-08：打印 `.env` 时使用不完整的敏感字段黑名单
 
+- 最近复发/补充：2026-08-10 Web E2E 诊断时为检查生成的 Nginx 配置而输出整段文件，其中意外包含隔离测试会话的合成 cookie。虽然该 cookie 不属于生产、已随 fixture 销毁且未写入提交，仍违反最小输出原则。生成配置、HTTP header 与访问日志默认按敏感文件处理；诊断只投影 server/location/upstream 等白名单字段，cookie/Authorization/set-cookie/token 即使是合成值也不得进入工具输出。
 - 环境：PowerShell 7，只读核对本地 Docker Desktop 升级夹具的版本配置。
 - 错误模式：先读取完整 `.env` 再用少量字段名替换脱敏，只覆盖 Steam 密码、refresh token、API key 和 VNC 密码，遗漏用户名及 server password 等同样不应输出的字段。
 - 症状 / 退出码：命令成功但工具输出包含不必要的账号标识和服务口令；没有写入文件或提交。

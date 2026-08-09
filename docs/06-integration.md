@@ -1,8 +1,9 @@
-# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 联调契约（2026-08-09，completed，待发布）
+# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 联调契约（2026-08-09，released in v0.4.10）
 
 - required runtime apply 的 `verifying_auth` 硬门槛为 steam-auth 容器 running、目标 image ID 精确匹配，以及容器内 `GET /steam/ready` 命中受支持 HTTP/schema 合约；Docker health、Steam 登录和 ticket 不再是升级成功条件。
 - HTTP 200 legacy schema 要求 `ready:boolean`，`has_ticket` 可选；current schema 要求 `status=ok`、`logged_in:boolean`、`accounts:array`。真实镜像未配置账号的 HTTP 503 只接受 legacy `ready=false`；HTTP 500/其它状态、503 current/畸形 schema、坏 JSON、`accounts=null/number/object`、接口不可达和 image ID 漂移均不得继续 server 重建，必须进入原事务失败/回滚链。
 - 前端继续只消费既有 `phase/progress/updatedAt`。`verifying_auth` 显示“正在尝试 Steam 连接”和累计等待；读屏 live region 只宣布阶段标题，动态秒数不重复播报。无新增 API 字段、权限或凭据暴露。
+- 发布联调证据：v0.4.9 与 v0.3.2 均通过真实 Web check/dry-run/apply 升级到精确 v0.4.10；Panel 自更新候选 `HEALTHCHECK=false` 会自动回滚，健康 Panel 候选重试成功，Panel restart 和数据/非目标资源保护通过。另一个 runtime Docker integration 独立证明 steam-auth Docker health=unhealthy 但 `/steam/ready` 命中合法离线 schema 时升级继续。在升级得到的新 Panel 上，769×240 与 280×653 的 `verifying_auth` 计时跨轮询增长、唯一 live headline 和二维码 overlay 几何/滚动/关闭交互均通过。完整事务 ID、耗时、镜像摘要与清理见 `docs/09-image-build.md`。
 
 # RUNTIME-UPDATE-REPAIR-CATALOG-3 联调契约（2026-08-09，completed，未发布）
 
