@@ -31,7 +31,7 @@ PANEL_URL="${PANEL_URL%/}"
 
 task_tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/anxi-junimo-repair.XXXXXX")"
 chmod 700 "$task_tmp_dir"
-# shellcheck disable=SC2317 # invoked through EXIT/INT/TERM traps
+# shellcheck disable=SC2317,SC2329 # invoked through EXIT/INT/TERM traps
 cleanup() { rm -rf -- "$task_tmp_dir"; }
 trap cleanup EXIT INT TERM
 cookie_file="$task_tmp_dir/cookies.txt"

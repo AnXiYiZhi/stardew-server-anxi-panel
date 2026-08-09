@@ -1,9 +1,13 @@
-# RUNTIME-UPDATE-REPAIR-CATALOG-3 Docker/发布门禁（2026-08-09，未发布）
+# v0.4.9 发布门禁：升级故障目录与一键修复（2026-08-09，发布中）
+
+- 目标正式版本为 `v0.4.9`；上一正式版为 `v0.4.8`。本版修改跨 Panel 版本的 Junimo runtime 检测、恢复、重试和升级闭环，因此除 `v0.4.8 → v0.4.9` 真实 Web 一键升级外，还按 runtime manifest 的 `minimumPanelVersion=0.3.2` 执行 `v0.3.2 → v0.4.9` 代表老版本直升。
+- Tag 前必须完成精确候选 fresh smoke、`v0.4.8` Web 检查/dry-run/确认/apply/断线重连/终态恢复、同链路 unhealthy 目标自动回滚、`v0.3.2` 直升、Panel 重启恢复、长期数据与非目标容器保护，以及升级得到的新 Panel 上的 repair plan/支持包真实验收。当前尚未创建 tag、更新 `latest` 或推送正式仓库。
 
 ## 变更清单、受影响链路与故障矩阵
 
 - 本版新增由后端统一生成的 `repairPlan`。链路为 `GET 只读检测 → 页面/脚本展示 detection、method、steps、buttonLabel → 管理员确认 → POST 锁内重新检测 → 受限修复 → 完整 dry-run/保存/备份 → 新 apply → 目标验收或自动回滚`。数据库、实例部署格式、存档、Mod、game-data 与 steam-session 公开格式不变。
 - 按钮直接描述修复方法：回滚失败为“修复：恢复旧版后升级”，可信旧候选为“修复：规范配置并升级”，安全回滚后的可重试故障为“修复：重新预检并升级”。不能证明安全时不提供自动修复，改为“保留现场并导出支持包”；任务仍在恢复或矩阵暂不安全时只显示等待。
+- `deploy/repair-junimo-upgrade.sh` 的 trap cleanup 同时标注 ShellCheck `SC2317/SC2329`，兼容正式工作流可能使用的 0.10/0.11 规则集；只改变静态分析声明，不改变临时目录权限、清理动作或 API 行为。
 
 | 故障/边界 | 只读检测依据 | 页面按钮与处理方法 | 验证/安全终态 |
 | --- | --- | --- | --- |
@@ -31,8 +35,10 @@
 
 ## 当前验证证据
 
-- 后端最终全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 通过；专项新增 safe retry 成功、活动事务优先等待，以及损坏状态、自定义镜像、恢复材料篡改和三次耗尽 fail-closed。`go test -tags=integration ./internal/docker -count=1` 通过（11.532 秒）。
-- 前端 12 项状态测试和 production build 通过；Bash 5.2 `bash -n`、`scripts/tests/test_repair_junimo_upgrade.sh` 与 ShellCheck 0.10.0 通过。脚本 `check` 已覆盖 rollback/config/safe retry 的按钮和方法输出。
+- 后端最终全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 通过；专项新增 safe retry 成功、活动事务优先等待，以及损坏状态、自定义镜像、恢复材料篡改和三次耗尽 fail-closed。正式发布无缓存 test/vet/build 复验合计 50.88 秒通过；`go test -tags=integration ./internal/docker -count=1` 用时 10.697 秒通过。
+- 前端 12 项状态测试和 production build 在 Node 24 Linux 隔离依赖卷中用时 17.88 秒通过；Bash 语法及三项脚本功能测试用时 2.53 秒通过，ShellCheck 0.11.0 精确使用 workflow 清单通过。脚本 `check` 已覆盖 rollback/config/safe retry 的按钮和方法输出。
+- 兼容矩阵 validate、`0.4.9` panel version 契约和 19 项 Python 测试通过；真实远程制品固定来源/摘要校验用时 93.34 秒通过，多个可选镜像源不可达、SMAPI 候选 SSL EOF 和 Git traceability TLS 重试均由既有回退吸收。Linux `golang:1.25-alpine` 真实下载 41,889,142 字节 SMAPI 包并验证摘要/权限/无 `.part`，测试本体 5.84 秒通过。
+- updater Docker integration 的独立 Compose 成功链 14.60 秒、目标 unhealthy 自动回滚链 22.84 秒通过；真实旧版到候选和新 Panel helper reconcile 因正式精确候选尚未构建而按环境门禁明确 skip，继续由下方精确候选阶段补齐，不能把 skip 计为通过。
 - Docker Desktop Linux 29.5.3 最终构建隔离候选 `stardew-anxi-panel:repair-catalog-final-20260809`：version=`0.4.9-repair-catalog.dev.3`、revision=`5be8664b19e487819412e455201a83cdc86a4ff7-dirty-repair-catalog`、created=`2026-08-09T05:57:53Z`，image ID=`sha256:d4376de1fcaf1ba083c3ba28b291d4bf324a0d60860ef7aa9ee551d0c19e38dc`。任务专属容器/网络/volume/`127.0.0.1:18097` 验证 Docker health=`healthy`、`/health` 与 `/api/version` 精确匹配；初始化后重启仍保持 `setup.initialized=true` 和相同版本。
 - 候选真实接口验证匿名 repair=401、带调用方 `strategy`=400、严格确认对不存在实例=404；测试管理员密码只存在内存和任务专属临时数据卷。镜像内 `/app/repair-junimo-upgrade.sh` 与源码 SHA-256 均为 `910d9df8dcf67818e1b3e7c5a7591bce33e7defe41fcc615d00327e2f0955042`。
 - 候选真实支持包下载返回 200/`application/zip`，条目为 `version.json`、`health.json`、`instance-state.json`、`junimo-update.json`、`jobs.json`、`audit-logs.json`、`compose-ps.json`、脱敏 `docker-compose.yml` 和 `server-logs.txt`；新增条目包含 `inspection/repairPlan`，未出现 recovery 路径或原备份文件名。专项单测另以 apply 状态伪密码证明整项 JSON 会脱敏。

@@ -171,6 +171,7 @@
 
 - 最近复发/补充：2026-08-01 查询本地 UI 动效数据库时，虽先获得 `Get-Command python` 结果，但没有先执行版本探针便把多个查询放进同一命令；Windows Store alias 以 `9009` 失败且无有效输出。应先单独确认版本，发现 alias 后立即加载工作区依赖，再使用返回的精确 `python.exe`；不要把解释器探针与实际查询合并。
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
+- 最近复发/补充：2026-08-09 发布兼容矩阵仍先把 `Get-Command python` 返回的 Windows Store alias 当真实解释器，版本探针以 `9009` 退出；诊断时又未先验证便调用不存在的 `py -3`。随后停止重试并通过 workspace dependency loader 取得精确 Python。Windows 发布门禁开始前必须先加载工作区依赖，不能因为 `Get-Command` 返回 Application 就认为解释器可运行。
 - 最近复发/补充：2026-08-06 为隔离 SQLite fixture 查询解释器时，明知同一错题仍先运行无可靠输出的 `python --version`，随后又猜测 `py -3` 可用而得到 command not found。正确入口仍是先调用 workspace dependency loader，再使用返回的精确 Python 路径；本轮没有继续尝试 Store alias。
 - 环境：Windows，`python` 指向不可用的 Store alias。
 - 错误模式：直接运行 `python ...; Write-Output ...`，未在 Python 后立即检查 `$LASTEXITCODE`。
@@ -296,6 +297,7 @@
 ## 2026-07-28：猜测配置文件扩展名且忽略 PowerShell 非终止错误
 
 - 最近复发/补充：2026-08-09 候选运行参数检查时，又把不存在的仓库根 `docker-compose.yml` 与真实 `deploy/docker-compose.yml` 一起交给 `rg`；有效结果后仍出现路径错误，且包装脚本未检查 `rg` 的退出码。容器参数随后只从已确认的 `deploy/docker-compose.yml` 读取。多根搜索必须先发现路径，并在原生命令后立即检查 `$LASTEXITCODE`，不能让后续成功输出掩盖错误。
+- 最近复发/补充：2026-08-09 发布 ShellCheck 已从工作流读取到精确测试路径，却在手工转写时把 `test_migrate_fnos.sh`、`test_repair_junimo_upgrade.sh` 的下划线误成连字符，功能测试已通过但 ShellCheck 因两个输入不存在退出 1。发布门禁应复制工作流原命令或先用 `Test-Path`/`rg --files` 校验整组参数，不能凭视觉记忆重输相似文件名。
 - 最近复发/补充：2026-08-09 盘点升级错误码时，把不存在的仓库根 `tests/` 与已确认的 `backend/frontend/deploy/docs` 一起作为 `rg` 位置参数；虽然命中了大量有效结果，`rg` 仍因 `tests` 不存在以退出码 1 结束。随后又按惯例猜测脚本测试名为 `deploy/test-repair-junimo-upgrade.sh`，实际测试文件位于其它已命名脚本，检索再次退出 1。多根、具体测试文件和脚本名都必须先用 `Test-Path -LiteralPath` 或 `rg --files` 验证；如果测试位于模块内部，应搜索已确认的模块目录并用 `-g '*_test.go'` 限定，不能凭常见仓库布局补根目录或测试文件名。
 - 最近复发/补充：2026-07-29 在 `rg` 位置参数中写入仓库不存在的 `internal`、`cmd` 目录，导致已有匹配结果后仍以路径错误结束。多目录搜索必须先用 `rg --files` 或 `Test-Path` 验证目录，只传当前仓库实际存在的根目录。
 - 最近复发/补充：2026-07-29 重构隔离预览时再次直接读取不存在的 `docs/.vitepress/config.mts`；随后先用 `rg --files --hidden docs/.vitepress` 找到真实的 `config.ts`。2026-07-31 搜索前端 tooltip 时又把未经发现的 `frontend/src/components` 作为 `rg` 位置参数，产生 `os error 2`；同时后续成功输出掩盖了原生命令状态。今后所有多目录搜索先用 `rg --files <已确认根目录>` 发现路径，或只从已确认存在的共同父目录配合 `-g` 搜索，并在 `rg` 后立即保存、判断 `$LASTEXITCODE`。
@@ -395,6 +397,8 @@
 
 ## 2026-07-29：前台临时 HTTP 服务超时后仍占用端口
 
+- 最近复发/补充：2026-08-09 正式发布门禁两次用同一个 `functions.exec` 的 `Promise.all` 并发启动多个长运行 `shell_command`；其中一个子调用异常后编排层在约 1 秒内返回失败，但两组 `go test ./...` 仍成为后台孤儿进程，前端容器一度进入 `Dead`，输出也无法作为门禁证据。第二次前未确认第一次的宿主进程终态，造成重复后端门禁。后续正式门禁必须逐项用可等待的单独调用运行；编排调用异常后先查精确 PID、容器与 volume，不得再次提交同一门禁。该规则已同步提升到 `AGENTS.md`。
+- 最近复发/补充：同轮清理已确认归属的重复后端门禁时，进程在检查与 `Stop-Process -ErrorAction Stop` 之间自然退出，命令报 “Cannot find a process”。清理长运行进程须在停止前再次读取目标，使用幂等的 `Get-Process ... -ErrorAction SilentlyContinue | Stop-Process`，随后复查；不得把正常的退出竞态误判为产品失败。
 - 最近复发/补充：2026-07-29 用内层 1 秒命令超时启动 VitePress，期望外层工具返回可续用 cell，结果常驻服务被直接以 124 终止。长运行服务要给命令本身足够超时，只用外层 yield 提前取得 session/cell；结束时再精确终止并核对端口。
 - 最近复发/补充：2026-08-01 在任务 DinD 内执行 `apk add --no-cache go` 时外层工具 304 秒超时，但容器内 `apk` 仍继续运行并最终成功安装 Go；不能在未复查进程/`command -v go` 的情况下重复安装或直接删除容器。本轮先读取精确 PID，下一次检查时进程已自然结束，再以 `go version` 确认结果。2026-07-31 的 Vite 子进程案例同样说明超时只代表等待结束，不代表派生工作已停止。
 - 环境：Windows，`shell_command` 直接运行 Python `http.server` 作为本地效果图预览服务。
@@ -996,6 +1000,7 @@
 
 ## 2026-08-06：按资源名猜测不存在的 Web handler 文件
 
+- 最近复发/补充：2026-08-09 本轮发布审计先后把更新检查器猜成不存在的 `backend/internal/updatecheck/checker.go`，又把 DNS client 猜成不存在的 `backend/internal/netdns/client.go`；实际文件分别为 `service.go` 与 `netdns.go`。即使包目录已确认，也必须先 `rg --files <package-dir>` 再读取具体文件，不能继续由类型名或职责猜文件名。
 - 最近复发/补充：2026-08-06 核对玩家 Mod 详情姓名来源时，直接猜成 `frontend/src/components/PlayerModsDetail.tsx`、`pages/PlayerModsPage.tsx` 和 `pages/mobile/MobilePlayersPage.tsx`，实际组件布局并不在这些路径，`rg` 对三个目标报不存在。前端同样必须先 `rg --files frontend/src | Select-String 'PlayerMods|MobilePlayers'`，不能从导出名推断目录。
 - 最近复发/补充：2026-08-06 定位 Panel 更新检查器时把已存在的 `backend/internal/updatecheck` 简写成不存在的 `backend/internal/update` 并和其它路径一起传给 `rg`，导致检索退出 2。应先用 `rg --files backend/internal | Select-String update` 确认包名，再搜索精确目录；Go import 名不能按业务简称猜测。
 - 环境：PowerShell 7，准备真实隔离 Panel 的存档选择 API。
