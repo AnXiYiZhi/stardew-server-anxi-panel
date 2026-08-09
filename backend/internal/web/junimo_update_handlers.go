@@ -52,9 +52,10 @@ type junimoUpdateApplyRequest struct {
 
 type junimoUpdateResponse struct {
 	sjconfig.RuntimeStackInspection
-	ReleaseNotes      []string `json:"releaseNotes"`
-	ServerRunning     bool     `json:"serverRunning"`
-	SteamAuthLoggedIn bool     `json:"steamAuthLoggedIn"`
+	ReleaseNotes      []string                    `json:"releaseNotes"`
+	ServerRunning     bool                        `json:"serverRunning"`
+	SteamAuthLoggedIn bool                        `json:"steamAuthLoggedIn"`
+	RepairPlan        *sj.RuntimeUpdateRepairPlan `json:"repairPlan,omitempty"`
 }
 
 type junimoUpdateConfigRepairResponse struct {
@@ -505,5 +506,6 @@ func (s *server) handleInstanceJunimoUpdate(w http.ResponseWriter, r *http.Reque
 		ReleaseNotes:           inspection.Recommended.ReleaseNotes,
 		ServerRunning:          instance.State == storage.InstanceStateRunning,
 		SteamAuthLoggedIn:      sjconfig.SteamAuthLoggedIn(instance.DataDir),
+		RepairPlan:             sj.DetectRuntimeUpdateRepairPlan(makeRegistryInstance(instance)),
 	})
 }

@@ -44,8 +44,13 @@ func TestJunimoUpdateConfigRepairBacksUpNormalizesAndRechecks(t *testing.T) {
 	}
 
 	before, _ := doJSON(t, handler, http.MethodGet, "/api/instances/stardew/junimo-update", nil, adminCookie)
-	if before.Code != http.StatusOK || !strings.Contains(before.Body.String(), `"repairable":true`) || !strings.Contains(before.Body.String(), `"repairCode":"repairable/legacy_candidates"`) {
+	if before.Code != http.StatusOK || !strings.Contains(before.Body.String(), `"repairable":true`) || !strings.Contains(before.Body.String(), `"repairCode":"repairable/legacy_candidates"`) ||
+		!strings.Contains(before.Body.String(), `"actionAvailable":true`) || !strings.Contains(before.Body.String(), `"buttonLabel":"修复：规范配置并升级"`) ||
+		!strings.Contains(before.Body.String(), `"method":"私有备份原 .env，仅规范化可信候选镜像列表；复检通过后执行完整预检并继续升级。"`) {
 		t.Fatalf("repairable inspection = %d: %s", before.Code, before.Body.String())
+	}
+	if strings.Contains(before.Body.String(), "repair-secret-must-not-leak") {
+		t.Fatalf("repair plan response leaked secret: %s", before.Body.String())
 	}
 	injected, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/junimo-update/repair-config", map[string]string{"image": "evil.invalid/server:latest"}, adminCookie)
 	if injected.Code != http.StatusBadRequest || !strings.Contains(injected.Body.String(), "config_repair_body_not_allowed") {

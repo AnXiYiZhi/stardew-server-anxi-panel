@@ -11,6 +11,7 @@ import (
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -49,19 +50,22 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 	// 3. Instance state
 	s.addInstanceStateBundle(ctx, zw, instance)
 
-	// 4. Recent jobs summary
+	// 4. Junimo update diagnosis and public apply status
+	s.addJunimoUpdateBundle(zw, instance)
+
+	// 5. Recent jobs summary
 	s.addJobsBundle(ctx, zw)
 
-	// 5. Recent audit logs (redacted)
+	// 6. Recent audit logs (redacted)
 	s.addAuditLogsBundle(ctx, zw)
 
-	// 6. Docker compose ps
+	// 7. Docker compose ps
 	s.addComposePsBundle(ctx, zw, instance.DataDir)
 
-	// 7. Compose config summary (no secrets)
+	// 8. Compose config summary (no secrets)
 	s.addComposeConfigBundle(zw, instance.DataDir)
 
-	// 8. Server logs tail (redacted)
+	// 9. Server logs tail (redacted)
 	s.addServerLogsBundle(ctx, zw, instance.DataDir)
 
 	if err := zw.Close(); err != nil {
@@ -130,6 +134,24 @@ func (s *server) addInstanceStateBundle(ctx context.Context, zw *zip.Writer, ins
 		"updatedAt":    instance.UpdatedAt,
 	}
 	writeJSONToZip(zw, "instance-state.json", stateData)
+}
+
+func (s *server) addJunimoUpdateBundle(zw *zip.Writer, instance storage.Instance) {
+	registryInstance := makeRegistryInstance(instance)
+	payload := map[string]any{
+		"inspection": sj.InspectManagedRuntimeStack(instance.DataDir, instance.State),
+		"repairPlan": sj.DetectRuntimeUpdateRepairPlan(registryInstance),
+	}
+	if driver, err := s.registry.Get(instance.DriverID); err == nil {
+		if reader, ok := driver.(junimoUpdateApplyDriver); ok {
+			if status, statusErr := reader.RuntimeUpdateApplyStatus(registryInstance); statusErr == nil {
+				payload["applyStatus"] = status
+			} else {
+				payload["applyStatusAvailable"] = false
+			}
+		}
+	}
+	writeRedactedJSONToZip(zw, "junimo-update.json", payload)
 }
 
 func (s *server) addJobsBundle(ctx context.Context, zw *zip.Writer) {
@@ -255,6 +277,15 @@ func writeJSONToZip(zw *zip.Writer, name string, v any) {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	enc.Encode(v)
+}
+
+func writeRedactedJSONToZip(zw *zip.Writer, name string, v any) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		writeJSONToZip(zw, name, map[string]string{"error": "诊断数据序列化失败"})
+		return
+	}
+	writeStringToZip(zw, name, paneldocker.RedactString(string(data))+"\n")
 }
 
 // writeStringToZip writes a plain string to a zip entry.

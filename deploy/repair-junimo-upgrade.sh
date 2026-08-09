@@ -94,17 +94,35 @@ http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --out
 [[ "$http_code" == "200" ]] || die "读取运行组件诊断失败（HTTP $http_code）。"
 repairable="$(sed -n 's/.*"repairable":\(true\|false\).*/\1/p' "$response_file" | head -n1)"
 repair_code="$(sed -n 's/.*"repairCode":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
-yellow "已知配置诊断：repairable=${repairable:-false}  code=${repair_code:-none}"
+plan_available="$(sed -n 's/.*"actionAvailable":\(true\|false\).*/\1/p' "$response_file" | head -n1)"
+plan_action="$(sed -n 's/.*"action":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
+plan_button="$(sed -n 's/.*"buttonLabel":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
+plan_method="$(sed -n 's/.*"method":"\([^"]*\)".*/\1/p' "$response_file" | head -n1)"
+yellow "后端检测：action=${plan_action:-none}  repairable=${plan_available:-false}  config=${repair_code:-none}"
+if [[ -n "$plan_button" || -n "$plan_method" ]]; then
+  yellow "对应按钮：${plan_button:-无}"
+  yellow "修复方法：${plan_method:-后端未返回说明}"
+fi
+
+known_repair=false
+if [[ "$plan_available" == "true" ]]; then
+  known_repair=true
+elif [[ -z "$plan_available" && ( "$phase" == "rollback_failed" || "$repairable" == "true" ) ]]; then
+  # 兼容尚未返回 repairPlan 的旧 Panel；POST 仍会由后端重新检测并拒绝未知策略。
+  known_repair=true
+fi
 
 if [[ "$ACTION" == "check" ]]; then
-	if [[ "$phase" == "rollback_failed" || "$repairable" == "true" ]]; then
-		yellow "存在可提交给后端闭集检测的已知修复状态。"
+  if [[ "$known_repair" == "true" ]]; then
+    yellow "存在可提交给后端闭集检测的已知修复状态。"
+  elif [[ -n "$plan_method" ]]; then
+    yellow "当前不允许自动修复。应对方法：$plan_method"
   else
-		green "当前没有 rollback_failed 或已知可修复配置。"
+    green "当前没有需要执行的一键修复方案。"
   fi
   exit 0
 fi
-[[ "$phase" == "rollback_failed" || "$repairable" == "true" ]] || die "当前状态不匹配任何已知安全修复规则；脚本不会创建或猜测修复策略。"
+[[ "$known_repair" == "true" ]] || die "当前状态不允许自动修复。${plan_method:-脚本不会创建或猜测修复策略。}"
 printf '{"confirm":true}\n' >"$confirm_file"
 http_code="$(curl --silent --show-error --connect-timeout 10 --max-time 30 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$confirm_file" "$repair_url")" || die "提交检测、修复并升级失败。"
 [[ "$http_code" == "202" ]] || {

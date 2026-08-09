@@ -213,6 +213,20 @@ export type JunimoUpdateInfo = {
   releaseNotes: string[]
   serverRunning: boolean
   steamAuthLoggedIn: boolean
+  repairPlan?: JunimoUpdateRepairPlan
+}
+
+export type JunimoUpdateRepairPlan = {
+  actionAvailable: boolean
+  action: 'repair' | 'export' | 'wait'
+  code: string
+  title: string
+  detection: string
+  method: string
+  buttonLabel: string
+  steps: string[]
+  attempts: number
+  maxAttempts: number
 }
 
 export type JunimoConfigRepairResult = JunimoUpdateInfo & {

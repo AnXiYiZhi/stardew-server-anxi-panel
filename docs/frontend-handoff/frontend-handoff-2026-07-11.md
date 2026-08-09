@@ -1,3 +1,10 @@
+# FE-RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，未发布）
+
+- `types.ts` 增加 `JunimoUpdateRepairPlan`；`DiagnosticsPage.tsx` 只渲染后端给定的检测、方法、步骤和按钮文字。三个自动按钮分别是“修复：恢复旧版后升级”“修复：规范配置并升级”“修复：重新预检并升级”，不安全/未知情况变成“保留现场并导出支持包”，运行中/矩阵不安全显示等待按钮。
+- repair 仍只提交严格确认并轮询已有 apply；export 复用支持包；wait 不发请求。正常“立即升级”只在没有计划时显示。`qa-layout-main.tsx` 的 rollback/config fixture 同步了契约。
+- Docker Desktop Vite 容器经 Codex Browser 实际点击 rollback 修复，事件为 `repair:POST,repair-apply:GET,repair-apply:GET`，最终成功且 console warn/error 为 0；配置修复、安全重试、未知故障导出和活动事务等待按钮也已逐一匹配，export 在 `up_to_date` 状态下仍可见，wait 确认为禁用。前端 12 项状态脚本和 production build 通过。
+- 后续 UI 不应按 `phase/errorCode` 再造映射；增加新错误时由后端返回新计划，前端只需保持通用动作渲染与权限边界。
+
 # FE-RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 接手记录（2026-08-09，completed，未发布）
 
 - Diagnostics 的两个已知故障入口统一为“检测、修复并升级”：`rollback_failed` 和 `repairable/legacy_candidates` 都只 POST 严格 repair API，并轮询持久化 apply 状态；浏览器不再自己串联 config repair/dry-run/apply。

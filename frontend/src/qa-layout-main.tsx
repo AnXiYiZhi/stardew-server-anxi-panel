@@ -20,10 +20,11 @@ const UPDATE = params.get('update') || 'latest'
 const APPLY = params.get('apply') || ''
 const JUNIMO_WORKFLOW = params.get('junimoWorkflow') || ''
 const JUNIMO_CONFIG = params.get('junimoConfig') || ''
+const JUNIMO_REPAIR = params.get('junimoRepair') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
-if (JUNIMO_WORKFLOW === 'race-retry' || JUNIMO_WORKFLOW === 'rollback-failed') window.confirm = () => true
+if (JUNIMO_WORKFLOW === 'race-retry' || JUNIMO_WORKFLOW === 'rollback-failed' || JUNIMO_CONFIG === 'repairable') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
 const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString()
@@ -195,13 +196,50 @@ const dryRunStatus = {
   capability: { supported: true, reason: '标准 Compose 部署可安全升级', code: 'supported', composeProject: 'anxi-panel', composeFile: '', installDir: '', currentContainer: 'anxi-panel', currentImage: 'ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.1.14', dataMount: '', dockerAvailable: true, composeAvailable: true },
   logs: [], startedAt: iso(3), updatedAt: iso(0), finishedAt: iso(0), errorCode: '', error: '',
 }
+const junimoRepairPlan = JUNIMO_CONFIG === 'repairable' ? {
+  actionAvailable: true, action: 'repair', code: 'repairable/legacy_candidates',
+  title: '检测到可证明来源的历史候选配置',
+  detection: '检测到可信旧版候选列表；主镜像与版本字段一致。',
+  method: '私有备份原 .env，仅规范化可信候选镜像列表；复检通过后执行完整预检并继续升级。',
+  buttonLabel: '修复：规范配置并升级',
+  steps: ['确认主镜像与版本一致', '备份并规范配置', '完整预检后升级'], attempts: 0, maxAttempts: 3,
+} : JUNIMO_WORKFLOW === 'rollback-failed' ? {
+  actionAvailable: true, action: 'repair', code: 'repair/rollback_failed',
+  title: '自动回滚未完成，但原事务材料可验证',
+  detection: '已精确匹配 rollback_failed 状态、恢复清单和全部私有备份摘要。',
+  method: '按原事务清单幂等恢复旧版并验收；成功后重新检测配置、执行完整预检，再创建新的升级事务。',
+  buttonLabel: '修复：恢复旧版后升级',
+  steps: ['校验恢复材料', '恢复并验收旧版', '完整预检后创建新升级事务'], attempts: 0, maxAttempts: 3,
+} : JUNIMO_REPAIR === 'safe-retry' ? {
+  actionAvailable: true, action: 'repair', code: 'repair/safe_retry',
+  title: '上次失败已安全恢复旧版，可重新检测后重试',
+  detection: '旧版本和原运行状态已经验收，目标仍是当前推荐版本。',
+  method: '重新检查 Docker、镜像 digest 与健康状态后，以新事务重试升级。',
+  buttonLabel: '修复：重新预检并升级',
+  steps: ['核对旧版终态', '完整重新预检', '以新事务升级'], attempts: 1, maxAttempts: 3,
+} : JUNIMO_REPAIR === 'export' ? {
+  actionAvailable: false, action: 'export', code: 'recovery_state_uncertain',
+  title: '升级状态文件无法安全读取',
+  detection: '持久化状态 JSON 损坏，无法证明事务阶段。',
+  method: '保留实例目录和恢复材料，不覆盖状态文件；导出支持包后人工核对。',
+  buttonLabel: '保留现场并导出支持包',
+  steps: ['停止自动修改', '保留恢复材料', '导出脱敏支持包'], attempts: 0, maxAttempts: 3,
+} : JUNIMO_REPAIR === 'wait' ? {
+  actionAvailable: false, action: 'wait', code: 'runtime_update_in_progress',
+  title: '升级或启动恢复仍在进行',
+  detection: '持久状态仍处于非终态。',
+  method: '等待当前任务进入终态；不要并发创建第二个修复事务。',
+  buttonLabel: '等待自动恢复',
+  steps: ['等待当前任务', '由 Panel 自动续跑或回滚'], attempts: 0, maxAttempts: 3,
+} : undefined
 const junimoUpdate = {
-  available: JUNIMO_CONFIG !== 'repairable', supported: JUNIMO_CONFIG !== 'repairable', repairable: JUNIMO_CONFIG === 'repairable',
-  status: JUNIMO_CONFIG === 'repairable' ? 'invalid_config' : 'update_available',
+  available: JUNIMO_REPAIR === 'safe-retry' || (!JUNIMO_REPAIR && JUNIMO_CONFIG !== 'repairable'), supported: JUNIMO_CONFIG !== 'repairable', repairable: JUNIMO_CONFIG === 'repairable',
+  status: JUNIMO_REPAIR === 'export' ? 'up_to_date' : JUNIMO_REPAIR === 'wait' ? 'withdrawn' : JUNIMO_CONFIG === 'repairable' ? 'invalid_config' : 'update_available',
   code: JUNIMO_CONFIG === 'repairable' ? 'invalid_config/image_candidates' : 'update_available',
   reason: JUNIMO_CONFIG === 'repairable' ? '实例运行组件候选镜像配置无效或 tag 不一致。' : '',
   repairCode: JUNIMO_CONFIG === 'repairable' ? 'repairable/legacy_candidates' : undefined,
   repairReason: JUNIMO_CONFIG === 'repairable' ? '检测到可信旧版候选列表；可先私有备份原配置，再规范化为当前版本的可信候选并继续升级。' : undefined,
+  repairPlan: junimoRepairPlan,
   current: {
     server: { image: 'dockerproxy.net/sdvd/server:1.5.0-preview.121', tag: '1.5.0-preview.121' },
     steamAuth: { image: 'docker.1ms.run/anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2', tag: '1.5.0-anxi.2' },
@@ -387,7 +425,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     return jsonRes(qaRaceApply)
   }
-  if (JUNIMO_WORKFLOW === 'rollback-failed' && path.endsWith('/junimo-update/repair') && method === 'POST') {
+  if ((JUNIMO_WORKFLOW === 'rollback-failed' || JUNIMO_CONFIG === 'repairable') && path.endsWith('/junimo-update/repair') && method === 'POST') {
     recordQAJunimoEvent('repair:POST')
     qaRepairStarted = true
     qaRepairApply = {
@@ -400,7 +438,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     return jsonRes(qaRepairApply, 202)
   }
-  if (JUNIMO_WORKFLOW === 'rollback-failed' && path.endsWith('/junimo-update/apply')) {
+  if ((JUNIMO_WORKFLOW === 'rollback-failed' || JUNIMO_CONFIG === 'repairable') && path.endsWith('/junimo-update/apply')) {
     if (qaRepairStarted) {
       recordQAJunimoEvent('repair-apply:GET')
       qaRepairApplyGets += 1

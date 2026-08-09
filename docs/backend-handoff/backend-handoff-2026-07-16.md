@@ -1,3 +1,13 @@
+# RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，未发布）
+
+## 改了什么、影响文件、验证与下一步
+
+- `runtime_update_repair.go` 新增公开 `RuntimeUpdateRepairPlan` 和唯一 detector；Web GET 通过 `junimo_update_handlers.go` 返回该计划，POST 在实例锁内复用 detector 后才执行。闭集修复含 `rollback_failed`、`legacy_candidates`、`safe_retry`；手工导出含状态/清单/材料异常、自定义/歧义配置和次数耗尽；非终态/不安全矩阵只等待。
+- 已知配置修复 helper 泛化为同一持久化 repair runner。safe retry 不重放旧步骤，先核对旧版与同一目标，再做完整 diagnostics/dry-run、保存/备份和新 apply；最多三次，目标失败仍走普通自动回滚。影响对应 apply/Web 单测，数据库、存档和实例格式不变。
+- 全量 `go test ./... -count=1`、vet、build、Docker integration、脚本语法/功能/ShellCheck、前端状态/build、Docker Desktop 候选 health/version/restart/API 与浏览器点击均通过。具体镜像和故障矩阵见 `docs/09-image-build.md`。
+- `support_bundle.go` 新增 `junimo-update.json`：公开 inspection、repair plan 和可读取的 apply status 先序列化、再统一脱敏；没有遍历或读取 recovery manifest/目录/原文件。`support_bundle_test.go` 使用 apply 状态伪密码和既有存档/事务/恢复诱饵验证全部不泄露。
+- 后续增加新错误时，必须只扩展 detector 与受限执行器并补材料漂移、重启、部分成功、回滚和 Docker 故障注入测试；不要在 handler、页面或脚本中复制判断，也不要把该目录用于 SMAPI/Panel updater。
+
 # RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 接手记录（2026-08-09，completed，未发布）
 
 ## 改了什么、影响与验证

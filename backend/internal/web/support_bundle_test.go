@@ -35,6 +35,13 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(instanceDir, "docker-compose.yml"), []byte("services:\n  server:\n    environment:\n      STEAM_PASSWORD: compose-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	updateDir := filepath.Join(instanceDir, ".local-container", "junimo-update")
+	if err := os.MkdirAll(updateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(updateDir, "apply-status.json"), []byte(`{"phase":"failed_rolled_back","error":"STEAM_PASSWORD=apply-secret","checks":[],"warnings":[],"logs":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	transactionDir := filepath.Join(instanceDir, ".local-container", "control", "new-game-transactions", "tx-secret")
 	if err := os.MkdirAll(transactionDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -83,13 +90,13 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 		}
 		contents.Write(data)
 	}
-	for _, name := range []string{"version.json", "health.json", "instance-state.json", "jobs.json", "audit-logs.json", "compose-ps.json", "server-logs.txt"} {
+	for _, name := range []string{"version.json", "health.json", "instance-state.json", "junimo-update.json", "jobs.json", "audit-logs.json", "compose-ps.json", "server-logs.txt"} {
 		if !names[name] {
 			t.Fatalf("support bundle missing %s; entries=%v", name, names)
 		}
 	}
 	serialized := strings.ToLower(contents.String())
-	for _, secret := range []string{"super-secret", "recovery-secret", "ticket-secret", "do-not-export-recovery-secret", "compose-secret", "transaction-secret", "save-content-secret"} {
+	for _, secret := range []string{"super-secret", "recovery-secret", "ticket-secret", "apply-secret", "do-not-export-recovery-secret", "compose-secret", "transaction-secret", "save-content-secret"} {
 		if strings.Contains(serialized, secret) {
 			t.Fatalf("support bundle leaked %q", secret)
 		}
