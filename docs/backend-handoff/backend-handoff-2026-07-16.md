@@ -1,4 +1,4 @@
-# RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 发布中）
+# RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
 
 ## 改了什么、影响文件、验证与下一步
 
@@ -8,6 +8,8 @@
 - `support_bundle.go` 新增 `junimo-update.json`：公开 inspection、repair plan 和可读取的 apply status 先序列化、再统一脱敏；没有遍历或读取 recovery manifest/目录/原文件。`support_bundle_test.go` 使用 apply 状态伪密码和既有存档/事务/恢复诱饵验证全部不泄露。
 - 后续增加新错误时，必须只扩展 detector 与受限执行器并补材料漂移、重启、部分成功、回滚和 Docker 故障注入测试；不要在 handler、页面或脚本中复制判断，也不要把该目录用于 SMAPI/Panel updater。
 - 正式发布矩阵以 `v0.4.8` 为上一正式版、以 runtime manifest 支持下限 `v0.3.2` 为受影响最老代表版本；必须从 Web API 完整走检查、dry-run、管理员确认、apply、断线重连、终态恢复，并在升级得到的新 Panel 上复验 repair plan 与支持包。ShellCheck 0.11 的 trap 间接调用规则已通过 `SC2317/SC2329` 双版本声明兼容。
+- `v0.4.9` 已从同步且干净的 `main` 提交 `6f3e4a28f6c5f983f0f891079fb0b7478bd5c1a9` 发布。官方 `v0.4.8` 和支持下限 `v0.3.2` 到精确候选的升级、Web 成功链、unhealthy 自动回滚、升级后重启/repair plan/支持包、数据与非目标容器保护均通过；Release/compatibility workflow `31299979401/31298881696` 成功。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.9/latest` 六个引用统一为 index digest `sha256:e8fa5386b17d778612365bfa419b5ad5e2f447bb557856580efe262fea6f505f`，三个精确镜像分别通过隔离 health/version/setup 冒烟。发布后任务容器、volume、network 和端口已精确清理；完整时序、资产摘要及故障矩阵见 `docs/09-image-build.md`。
 
 # RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 接手记录（2026-08-09，completed，未发布）
 
