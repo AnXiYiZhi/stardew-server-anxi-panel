@@ -552,6 +552,7 @@
 - 预防检查：涉及长中文行或多文件补丁时，不凭聊天上下文重打原文，先读取实际文件。
 - 最近复发/补充：2026-08-01 合并 `v0.4.7` 响应式补丁时凭旧工作树猜测 `SavesPage.css` overlay 的背景声明，导致最小补丁仍因上下文不一致失败；随后一个多文件文档补丁漏写第二个 `*** Update File`，让 handoff 的锚点被错误套到 `docs/03-frontend.md` 并再次校验失败。读取目标 release worktree 精确行、为每个目标显式声明文件后应用成功。补丁上下文必须来自将被修改的那一个 worktree，多文件补丁须逐段核对目标声明。
 - 最近复发/补充：2026-08-06 在同一补丁中依次更新 Compose、删除临时 env、再更新错题本时，把第二个文件声明放进尚未结束的 hunk，`apply_patch` 报 `Unexpected line found in update hunk` 并零修改退出。多种 patch operation 混合时每个文件段必须先正常结束；更稳妥的是把 update/delete/文档补记拆成独立补丁并逐个检查返回。
+- 最近复发/补充：2026-08-10 滚动契约测试脚本与错题本合并补丁再次把第二个 `*** Update File` 放进未正常结束的首个 hunk，`apply_patch` 以同一 `Unexpected line found in update hunk` 零修改退出。随后按文件拆成两个补丁并各自核对成功；该重复错误已提升到 `AGENTS.md`，多文件或混合操作默认拆分，绝不在一个未闭合 hunk 中切换文件声明。
 - 最近复发/补充：2026-08-06 补记候选镜像 inspect 错误时，从聊天摘要重打了含多层反斜杠的旧行作为上下文，实际文件中的转义数量不同，`apply_patch` 校验失败且零修改；随后构造补丁时又漏了上下文原文本身的 Markdown 列表短横线，第二次校验仍失败。应先读取文件原文，再选不含易变转义的邻近稳定行作最小锚点；补丁正文行需明确区分 patch marker 与文件原有字符。
 - 适用范围：所有 `apply_patch` 修改，尤其是长行、编码敏感文件和多文件补丁。
 
@@ -561,6 +562,7 @@
 - 最近复发/补充：2026-08-01 Browser 的只读 `evaluate` 中，SVG 元素代理不提供 `getBBox()`，调用返回 `TypeError`。SVG 视觉校验改用 `getBoundingClientRect()`、静态 `viewBox`/路径坐标和截图联合判断；调用非基础 DOM 方法前先确认当前代理实际支持。
 - 最近复发/补充：2026-07-29 本地预览后期进入 `ERR_CONNECTION_REFUSED` 错误页，Browser 随即因 `data:` 错误页 URL 策略拒绝 reload/close 链。此时不得继续尝试替代浏览器或 CDP 绕过；保留此前证据、精确停止 dev server，并以 production build 作为最终非视觉门禁。同轮还误把通用 Playwright 的 `setViewportSize`、对象形式 `waitForURL` 和代理元素原生 `click()` 套到封装 API；响应式尺寸与交互必须使用当前 Browser 暴露的 viewport 与 locator 能力。
 - 最近复发/补充：2026-08-01 线上 changelog 导航把通用 Playwright 的 URL predicate 传给 Browser `waitForURL`，返回 `requires a url`。当前 Browser 只接受明确 URL 参数；点击后可直接读取 `tab.url()` 和目标 DOM，或传文档支持的精确 URL，不使用 predicate 回调。
+- 最近复发/补充：2026-08-10 首页更新入口改为普通文档导航后，Playwright 仍沿用 SPA 时代的 `**/changelog.html` 预期；实际相对 href `./changelog` 在本地预览保留为扩展名省略的 `/changelog`，页面已经成功导航但等待 10 秒超时。修正主契约脚本后，未同步修正 A/B 比较脚本便原样重跑，又以同一 `.html` 等待超时，违反“改变假设后才能重试”的规则。GitHub Pages 的 `/changelog` 与 `/changelog.html` 都返回 200；所有相关脚本必须一起从当前 href/导航模式解析目标，不能残留旧 SPA 规范化路径。
 - 最近复发/补充：2026-07-29 在静态概念稿预览中误把 `domcontentloaded` 当成 `tab.playwright` 方法调用；同日在下半页 QA 又照搬通用 Playwright 的 `scrollIntoViewIfNeeded()`，均返回 `is not a function`。本次重构又误用 `iab.tabs.claim()` 与 `tab.playwright.screenshot()`，实际 API 分别是 `iab.user.claimTab()` 与 `tab.screenshot()`；并再次请求了不受支持的 `networkidle`。`goto()`/`reload()` 本身用于完成导航；其它交互先核对 Browser 客户端实际方法，不再凭通用 Playwright 记忆猜测。
 - 环境：Codex 应用内 Browser，对本地 VitePress 开发服务器做页面 QA。
 - 错误模式：按通用 Playwright 类型调用 `tab.playwright.waitForLoadState({state:"networkidle"})`。
@@ -588,6 +590,7 @@
 ## 2026-07-29：Browser 窄屏 `fullPage` 截图出现空白与固定栏重复
 
 - 最近复发/补充：2026-08-09 v0.4.9 官网 390×844 首页 `fullPage` 截图再次把固定导航和首屏内容重复拼接，页面 DOM、普通视口渲染及 root/body 宽度度量均正常。该现象不能算产品布局失败；窄屏证据固定使用普通视口截图，并以 `document/body scrollWidth <= clientWidth` 断言无横向溢出，规则已提升到 `AGENTS.md`。
+- 最近复发/补充：2026-08-10 v0.4.10 Pages 终验在 `domcontentloaded` 和目标文字刚可见后立即截普通视口图，命中了首页 0.32 秒入场动画的低 opacity 过渡帧；从页尾链接进入 changelog 时又命中 `html { scroll-behavior:smooth }` 尚未回顶的中间帧，页面指标全绿但截图看似发灰或停在历史版本。复测记录 opacity/scrollY 时间线，确认桌面约 0.5 秒、手机约 1.7 秒后稳定回到顶部且视觉正常。带动画或平滑路由的最终截图必须等待字体、目标 DOM 与过渡/滚动稳定，不能把“元素已可见”当成视觉稳定。
 - 最近复发/补充：2026-07-29 将临时 390×844 viewport `reset()` 回默认尺寸后，首张普通视口截图右侧出现黑块，DOM 同时报告默认宽度与无横向溢出；对 tab 执行一次 `reload()` 后渲染面恢复正常。以后恢复默认 viewport 后先 reload，再截最终交付图。
 - 环境：Codex 应用内 Browser，临时 viewport 切换到 390×844 后截取静态响应式页面。
 - 错误模式：只凭 `screenshot({fullPage:true})` 的结果判断窄屏页面没有渲染。
@@ -611,6 +614,7 @@
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
 - 最近复发/补充：2026-08-10 发布后六仓引用汇总把字面量属性写成 `$digestLine.Substring('Digest:' .Length)`，PowerShell 在任何远端查询前报 `Missing ')' in method call`；同轮只读审查还用多层转义 `rg` 正则搜索 package version，落成无效 `(?:\)`。修正为已知固定前缀 `.Substring(7)`，包元数据改用 `ConvertFrom-Json -AsHashtable`/Node JSON.parse 或 `Select-String -SimpleMatch`；不要在发布命令行里对字面字符串属性和多层正则继续做语法猜测。
+- 最近复发/补充：2026-08-10 线上 VitePress 资产只读探针又把含双引号字符类的 regex 直接嵌入 `pwsh -Command`，在发起 HTTP 请求前触发 `ParserError: Missing ')'`；最终 diff 审查随后又以含单双引号字符类的内联 regex 复发一次。两次均改用多次 `rg -F` / `Select-String -SimpleMatch` 或不含嵌套引号的精确模式后成功。该错误已经反复出现，规则提升到 `AGENTS.md`：多层 PowerShell 文本检索不得重新内联含单双引号、反引号或复杂字符类的 regex。
 - 最近复发/补充：2026-08-10 post-release Markdown 审查把三反引号 fence 直接嵌入 `pwsh -Command` 双引号，PowerShell 把反引号当转义符并在执行搜索前解析失败。字面 fence 使用 `$fence = [string]::new([char]96, 3)` 后 `Select-String -SimpleMatch $fence`，或放入任务脚本；禁止在多层 PowerShell 命令中直接写反引号序列。
 - 最近复发/补充：2026-08-09 最终发布只读审查又在外层单引号脚本块中直接嵌入含单引号字符类的 `rg` 正则，PowerShell 在执行搜索前即报 `ParserError`。后续拆成不含单引号的固定模式分别搜索；此类需求必须优先 `rg -F`/多次固定模式，复杂正则写入经审查的任务脚本，不能继续挤进嵌套命令行。
 - 最近复发/补充：2026-08-09 为搜索错题本中的字面 `$_`，在嵌套 `pwsh` 的双引号正则里混用反斜杠，PowerShell 先处理自动变量后让 `rg` 收到不完整的分组并报 `unclosed group`。字面特殊字符优先使用单层 `rg -F`；若外层脚本的引号边界仍冲突，就搜索不含特殊字符的稳定中文标题或拆成独立命令。
@@ -642,10 +646,15 @@
 - 正确做法：定位失败后先刷新 DOM snapshot，并用只读 DOM 投影确认稳定属性；本项目顶栏使用已确认的 `.VPNavBarMenu a[href="..."]`，操作前继续检查唯一性。
 - 预防检查：可访问性名称用于 `getByRole(..., {name})`，只有实际 DOM 明确存在对应属性时才把它改写成 CSS 属性选择器。
 - 最近复发/补充：2026-07-29 首页像素元素终验时，用正则 `/Anxi Panel/` 匹配包含多个嵌套文本的 hero heading，Browser role selector 超时；随后 `.VPHero h1.heading` 的 locator evaluate 也超时，说明问题不只在可访问性名称。对纯滚动截图改用页面级安全 `window.scrollTo()`，locator 留给必须作用于具体控件的交互。
+- 最近复发/补充：2026-08-10 VitePress 滚动契约补测猜测 H1 的精确可访问名称就是 `版本更新日志`，`getByRole('heading', {name, exact:true})` 等待 30 秒超时；页面路由本身已成功。改用已确认的 `.vp-doc h1` 并以 `hasText` 核对标题，不再把可见文本等同于 exact accessible name；等待目标必须先从 DOM/快照确认稳定定位契约。
+- 同轮 hash 目标已经定位到视口顶部后，测试立即同步断言右侧目录 `.outline-link.active`，命中 MutationObserver/下一帧尚未更新的窗口并得到 `null`；页面滚动与 hash 均正确。改为先确认目录实际可见，再有界等待 active href 匹配目标后检查它位于目录容器内；异步派生状态不能用主状态刚成立的同一瞬间值判断失败。
 - 适用范围：Browser/Playwright 的导航、按钮和复合组件定位。
 
 ## 2026-07-29：通过 `Start-Process` 派生本地开发服务器被策略拦截
 
+- 最近复发/补充：2026-08-10 v0.4.10 官网 CSS 修复本地验收又在嵌套 `pwsh` 中使用 `Start-Process npm.cmd`、隐藏窗口和日志重定向，命令再次在执行前被策略拒绝，端口/进程均未创建。该错误已重复，预防规则提升到 `AGENTS.md`：Windows 本地预览直接作为可等待的 `shell_command` cell 运行，禁止再用 `Start-Process` 后台派生。
+- 同轮终止可等待 cell 后，VitePress 子进程仍监听 4187；首次清理前把整条后代统一要求匹配 `docs:preview|vitepress preview`，但叶子真实 argv 为 `vitepress.js preview docs`，归属检查安全失败且未停止进程。正确做法是分别核对根进程的 `npm.cmd run docs:preview`、叶子绝对工作区 `vitepress.js preview docs`、固定端口及完整 ParentProcessId 链，再按精确 PID 自底向上停止并复查 listener；不要用一个过窄字符串模式替代进程树归属。
+- 第二轮本地预览调用 `functions.wait(terminate=true)` 本身等待 124 秒后以 124 超时，VitePress 仍监听 4187；没有把“已请求终止”当成实际清理。随后只读取得监听 PID 与五级 ParentProcessId/argv，确认完整任务归属后自底向上停止并复查 `-State Listen` 为 0。任何 cell terminate/timeout 结果都不是子进程退出证据，必须按端口和进程树复核。
 - 环境：Codex Windows `shell_command`，准备启动 VitePress 本地开发服务器。
 - 错误模式：在嵌套 `pwsh` 中用 `Start-Process npm.cmd`、重定向日志并隐藏窗口。
 - 症状 / 退出码：命令在执行前被工具策略拒绝，没有创建进程或日志。
@@ -708,6 +717,7 @@
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
 - 最近复发/补充：2026-08-10 Release workflow 已成功后，首次 `gh run view 31325589153 --json ...` 仍在 GitHub API 读取阶段报 EOF；没有把它当成 workflow 失败，也没有重复触发发布。后续按固定 run ID 将 run/release 查询拆开并最多三次有界重试，取得 `completed/success` 和正式资产元数据。发布写操作绝不能因查询 EOF 重放，先区分“权威任务仍在运行/已结束”和“客户端读取失败”。
+- 最近复发/补充：2026-08-10 post-release 收口审查读取 compatibility run `31326926808` 时再次单次 EOF；同轮 `gh run list --commit 3457efe` 对短 SHA 返回空数组，改用完整 `3457efea561f5fbb865eab440576e91cf2de6ec1` 才取得 Pages 与 compatibility 两条 run。固定 run ID 的 EOF 继续有界重试；按 commit 查询 workflow 必须使用完整 40 位 SHA，短 SHA 空结果不能解释成“未触发”。
 - 最近复发/补充：2026-08-09 `v0.4.10` 最终 main 推送后首次调用 `gh auth status`，发现 Windows keyring 中 `AnXiYiZhi` 的旧 token 已失效并退出 1；没有擅自刷新、退出或改写用户凭据。随后 GitHub 官方匿名 REST API 又因共享出口 rate limit 立即返回 403，不能把匿名 API 当作稳定无限额回退；改从公开 Actions HTML 精确读取 commit/run ID 与状态。用户明确要求重新申请登录后才启动 GitHub 官方 device OAuth，token 只回存系统 keyring、Git 协议保持 HTTPS且未创建 SSH key。登录后遇到单次 Actions API EOF 时仍按固定 run ID 有界重试，不能把“已登录”误解为网络不会断流；任何设备码/token 都不得写入错题本、提交或日志摘要。
 - 最近复发/补充：2026-08-09 核对 Junimo `.126` 镜像元数据时，`docker buildx imagetools inspect` 获取 Docker Hub OAuth token 报 `EOF`，随后 `Invoke-RestMethod` 也遇到 transport EOF；改用 Registry v2 的 token/manifest/config 三段只读请求，并给 `curl.exe` 配置有界 `--retry 3 --retry-all-errors`。Windows Schannel 又因吊销服务器离线报 `CRYPT_E_REVOCATION_OFFLINE`，正确回退是增加 `--ssl-revoke-best-effort`（仍校验证书，只把离线吊销检查降为 best effort），不得使用 `-k`。镜像身份最终必须从 OCI config 的 `org.opencontainers.image.revision` 与 Docker Hub tag digest 交叉确认，不能仅按推送时间猜 revision。
 - 最近复发/补充：2026-08-09 `v0.4.9` Release 首次 `gh run watch` 因 GitHub API EOF 退出，workflow 本身继续运行并最终成功；改为按固定 run ID 有界轮询 `gh run view`，每次独立读取 status/conclusion。发布证据只能来自最终 `completed/success`，网络查询失败不能冒充 workflow 失败或成功。
@@ -924,6 +934,7 @@
 
 ## 2026-08-01：协作等待参数低于工具最小值
 
+- 最近复发/补充：2026-08-10 等待最终审查代理时再次把 `wait_agent.timeout_ms` 写为 `1000`，工具在执行前按同一最小值校验拒绝；随后改为 `10000`。这是第二次同类错误，规则已提升到 `AGENTS.md`：协作即时状态用 `list_agents`，需要等待时 `timeout_ms` 不得低于 10000。
 - 环境：Codex 多代理协作，轮询响应式审查代理结果。
 - 错误模式：调用 `wait_agent` 时把 `timeout_ms` 写成 `1000`。
 - 症状 / 退出码：工具在执行前拒绝参数，并明确要求最小 `10000ms`；代理状态未受影响。
@@ -931,6 +942,16 @@
 - 正确做法：`wait_agent` 使用 `timeout_ms >= 10000`；只需要即时状态时用 `list_agents`，需要催办则用 `send_message`。
 - 预防检查：协作工具的超时参数按 schema 范围填写，不用试错探测边界。
 - 适用范围：`wait_agent` 和其它声明了最小/最大时长的协作工具。
+
+## 2026-08-10：用 PowerShell `-like` 检查 Git porcelain 时把问号当成字面量
+
+- 环境：PowerShell 7，v0.4.10 最终文档提交前的工作树卫生检查。
+- 错误模式：使用 `$status | Where-Object { $_ -like '?? *' }` 识别 `git status --short` 的未跟踪前缀，误以为模式中的两个问号是字面量。
+- 症状 / 退出码：检查把正常的 ` M <path>` 也归为未跟踪文件并主动退出 1；随后只读运行 `git status --short --untracked-files=all` 确认实际仍只有 7 个已跟踪文档修改，没有未跟踪项，未发生暂存或清理。
+- 根因：PowerShell `-like` 中 `?` 表示任意单个字符，`?? *` 会匹配任意两个字符加空格开头的 porcelain 状态行，并不等于 Git 的字面 `?? ` 前缀。
+- 正确做法：固定前缀使用 `$_.StartsWith('?? ')`；只有确需正则时才使用锚定并转义的 `'^\?\? '`。任何清理前先输出并核对精确路径，不根据误分类结果删除文件。
+- 预防检查：解析 Git porcelain、Docker label 或其它机器状态前缀时优先使用 `StartsWith`/精确相等，不用 `-like` 表达字面通配字符；分类异常时单独重读原始状态后再决定动作。
+- 适用范围：PowerShell 对 `git status --short`、双问号标记及其它含 `*`/`?` 字面字符的状态解析。
 
 ## 2026-08-01：只读取子进程 stdout 前缀后等待导致管道死锁
 
@@ -1431,6 +1452,7 @@
 
 ## 编码与换行快速检查
 
+- 最近复发/补充：2026-08-10 v0.4.10 官网收口审计又对全部 changed file 完整正文搜索 U+FFFD，命中本节在 `HEAD` 中已经存在的合法示例后组合命令退出 1；按 `HEAD` 对照确认不是本次引入。正确复核改为 `git diff --unified=0 --no-color` 后只检查单个 `+` 开头且排除 `+++` 文件头的新增行；该规则因多次复发已提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-09 新建游戏弹窗收口再次对全部已修改文件直接执行 U+FFFD 搜索，命中了本节合法示例并让组合命令退出 1；同日升级修复目录审计已经出现相同误报。本次 Steam 升级等待修复又扫描完整的 `docs/09-image-build.md` 和错题本，分别命中历史乱码说明与本节合法示例；确认均为既有语义文本、无 BOM，未做整文件重编码。源码格式与 `git diff --check` 实际通过。此检查必须先生成 `git diff --unified=0`，只过滤单个 `+` 的新增行并排除 `+++` 文件头，禁止再次扫描完整历史文件。
 - 最近复发/补充：2026-08-08 首轮批量读取中文文档时沿用 PowerShell 7 默认控制台输出编码，工具侧显示乱码；文件无 BOM、`git status` 为空，确认只是只读显示链路。后续中文读取先同时设置 `$OutputEncoding=[System.Text.UTF8Encoding]::new($false)` 与 `[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)`，并对 `Get-Content` 显式使用 `-Encoding UTF8`；乱码出现时先核对 Git 状态和文件字节，不得把显示问题误判为文件损坏。
 - 最近复发/补充：2026-08-08 最终审计再次扫描了整个已修改错题本，误把本条用于解释旧乱码问题的合法 `�` 示例判为新乱码。检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索；应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行，发现命中后再回到原文件确认语义。

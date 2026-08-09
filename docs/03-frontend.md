@@ -27,7 +27,8 @@
 - 发布洁净安装发现 `nanoid 3.3.16` 命中 high advisory `GHSA-2v37-7h3g-55p8`；`package-lock.json` 在 PostCSS 允许范围内精确升级到修复版 `3.3.17`，不改变直接依赖声明或运行时 API。正式候选要求 production audit high/critical 为 0。
 - compatibility 与 release workflow 在 `npm ci` 后新增 `npm audit --omit=dev --audit-level=high`，lockfile 回退将直接阻止兼容矩阵或 tag 发布。
 - 精确候选已完成 1180×1063 桌面三栏、769×500 低高度单列与长确认框；正式 Web 升级得到的新 Panel 又在 769×240/280×653 验证认证等待和 Steam 二维码 overlay。认证计时分别由 664→666 秒、667→669 秒，均只有一个静态 `role=status`，动态秒数不进入 live region；两视口 root/body 无横向溢出、console error/warn 为 0。全部 12 项状态脚本与 production build 已重跑。
-- tag `v0.4.10`、Release workflow `31325589153`、三仓回拉和 Release 资产均完成；官网首页与 changelog 源码已切换到 v0.4.10，Pages/线上复核在 post-release 提交后收口。
+- tag `v0.4.10`、Release workflow `31325589153`、三仓回拉和 Release 资产均完成；官网首页与 changelog 已随 post-release 提交 `3457efea561f5fbb865eab440576e91cf2de6ec1` 上线。Pages `31326926817`、deployment `5821195957` 和 compatibility `31326926808` 均成功；线上 1440×900、390×844 首页到更新日志点击路径、最新/历史版本、无横向溢出及 console/page/request health 全部通过。
+- 线上视觉终验最初在 Hero 入场和 changelog 平滑回顶中间帧截到发灰/历史位置；记录 opacity/scrollY 时间线并等待稳定后，桌面与手机都正确显示日志顶部，普通发布路径 console/page/request health 为 0，因此未为截图时序改动导航语义。额外的极快历史切换压力序列可触发 VitePress 1.6.4 默认 outline 空引用，当前线上正式 CSS 同样复现；普通文档导航虽然绕开竞态，却会丢失浏览器返回时的首页滚动位置，故未采用，后续单独跟踪。
 
 # DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，released）
 

@@ -1,5 +1,12 @@
 # 后期优化文档
 
+## DOCS-PORTAL-VITEPRESS-OUTLINE-RACE-1：官网快速历史切换竞态（暂缓，2026-08-10）
+
+- v0.4.10 发布后线上终验的普通路径已经通过：桌面/手机从首页进入 changelog，等待 Hero 入场与全局 smooth 回顶稳定后均位于日志顶部，无横向溢出、framework overlay、console/page/request 错误。
+- 额外压力序列“首页页尾进入 changelog → 浏览器返回 → 立即再次进入或点击目录锚点”偶发触发 VitePress 1.6.4 默认 outline chunk 的 `null.querySelector` / `null.style` pageerror。A/B 在当前线上正式 CSS 也能复现，因此不是 v0.4.10 Panel、弹窗布局或候选发布引入；目标 hash、页面滚动和内容仍能完成。
+- 不使用 `target="_self"` 强制普通文档导航作为修复：虽然它能绕开 SPA 竞态并即时从顶部加载，但实测浏览器返回后首页从原页尾 `scrollY=609` 变为 `0`，破坏历史滚动恢复。也不直接 patch `node_modules` 或添加重复 `window.scrollTo` watcher。
+- 后续只在 VitePress 稳定版包含上游空引用防护，或能以自有 outline guard 保持 popstate、hash、目录 active、reduced-motion 和无 pageerror 的情况下处理。门槛至少覆盖 1440×900/390×844 普通点击、返回位置恢复、快速二次进入、hash/右侧目录跟随、console/pageerror/request failure 和 production build。
+
 ## UPGRADE-RECOVERY-UNIFICATION-1：其余升级链的一键恢复（高优先级，2026-08-08）
 
 - `RUNTIME-UPDATE-REPAIR-CATALOG-3` 已把 required Junimo server/steam-auth/Control 收口为“闭集检测 → 对应修复方法 → 完整复检 → 自动续跑升级”，当前自动规则覆盖精确 rollback 事务、可信历史候选配置和 `failed_rolled_back` 后同目标安全重试；未知/不可信状态切换到导出支持包或等待，不做猜测性修改。今后新增历史故障不得靠通用 shell 猜测；必须增加稳定错误码、只读 detector、受限 repair plan、私有备份、修复后断言、幂等/中断测试和 Docker 故障注入，才可进入同一按钮。

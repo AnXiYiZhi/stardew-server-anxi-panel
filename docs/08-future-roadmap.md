@@ -30,7 +30,7 @@
 - [x] `v0.4.9` 与支持下限 `v0.3.2` 的真实 Web 一键升级、Panel 自更新 unhealthy 候选自动回滚、数据/非目标资源保护、重启和升级后认证等待/二维码 QA 完成；steam-auth unhealthy + 合法离线接口的成功链由独立 runtime Docker integration 覆盖。
 - [x] 从同步且干净的 `main` 创建并推送 annotated tag `v0.4.10`；Release workflow `31325589153` 成功，GitHub Release 已发布并补正详细说明。
 - [x] 三仓 `0.4.10/latest` 六个引用统一为 index `sha256:c37ad8e8d1498f377900b8a82e2ad1de761df23a06f1cb298ae349a362b111df`、amd64 manifest `sha256:7534a30c283e9497ee6533dae4dc82f443779700ee90eb72858dfc49d43d9070`；三个精确版本均通过回拉 health/version/restart 冒烟，四项 Release 资产摘要通过。
-- [ ] 官网源码已切换为 v0.4.10；等待本次 post-release 文档提交触发 Pages 后完成线上桌面/手机与 changelog 复核。
+- [x] 官网 v0.4.10 已由 post-release 提交 `3457efea561f5fbb865eab440576e91cf2de6ec1` 上线；Pages `31326926817`、deployment `5821195957` 与 compatibility `31326926808` 均成功。线上 1440×900/390×844 首页、点击更新日志、v0.4.10 最新/v0.4.9 历史、无横向溢出及 console/page/request health 全部通过；最终截图等待 Hero 入场与平滑回顶稳定后视觉正常。极快历史切换可触发的 VitePress 1.6.4 outline 竞态属于既有官网框架项，另记 `docs/07-later-optimizations.md`，不冒险混入本版发布收口。
 
 # 2026-08-09 已发布：官网展示 v0.4.9（DOCS-PORTAL-V049-1）
 

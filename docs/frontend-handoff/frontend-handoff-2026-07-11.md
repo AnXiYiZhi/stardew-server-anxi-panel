@@ -55,7 +55,8 @@
 - 官网 `package-lock.json` 的 `nanoid 3.3.15 / postcss 8.5.16` 同样升级到 `3.3.17 / 8.5.25`，清除有补丁的 high。VitePress 稳定 latest 1.6.4 仍聚合 1 high + 2 moderate，只影响不会发布的 Vite dev server且无稳定修复；2.0 尚为 alpha。发布验证要求 production audit 0、critical 0 与静态 `docs:build`，禁止把 `docs:dev` 暴露公网。
 - 空 Node 24 volume 的前端 production audit 0、12 项状态测试和 build 已通过；官网 production audit 0、critical 0 和 VitePress 静态 build 已通过。两个任务 volume 与相关容器已精确清理。
 - 升级后 QA：769×240 的 `verifying_auth` 计时 664→666 秒，280×653 为 667→669 秒；两视口全局 `role=status` 均只有静态标题，动态计时不在 live region，root/body 无横向溢出、console error/warn 为 0。二维码弹窗同样在两视口完成 card/overlay 包含、内部滚动、data image、aria-modal 和关闭交互。
-- tag `v0.4.10`、Release workflow `31325589153`、三仓回拉与四项 Release 资产已完成；官网源码现已更新到 v0.4.10，Pages/线上复核由 post-release 文档提交继续收口。
+- tag `v0.4.10`、Release workflow `31325589153`、三仓回拉与四项 Release 资产已完成；官网 v0.4.10 已由 post-release 提交 `3457efea561f5fbb865eab440576e91cf2de6ec1` 上线。Pages `31326926817`、deployment `5821195957` 和 compatibility `31326926808` 均成功；线上 1440×900、390×844 首页与更新日志、实际点击、最新/历史版本、横向溢出和 console/page/request health 已全部复核。
+- 线上视觉终验最初在 Hero 入场和平滑回顶中间帧截到发灰/历史位置；等待 opacity/scrollY 稳定后，1440×900 与 390×844 均正确显示日志顶部，普通发布路径 console/page/request health 为 0，未因测试截图时序改变导航语义。额外的极快历史切换压力序列可触发 VitePress 1.6.4 默认 outline 空引用，当前线上正式 CSS 同样复现；尝试普通文档导航会丢失 back scroll，已撤回。后续只在稳定 VitePress 升级或经评审的 outline guard 中处理，见 `docs/07-later-optimizations.md`。
 
 # FE-RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
 
