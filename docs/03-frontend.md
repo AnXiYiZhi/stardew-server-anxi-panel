@@ -1,8 +1,8 @@
-# DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，completed，待 Pages 发布）
+# DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，released）
 
 - 官网首页 frontmatter、版本入口卡和当前版本说明统一由 `v0.4.8` 更新为 `v0.4.9`，摘要面向普通管理员说明“先检测原因，再按具体方法修复并继续升级”；没有改变 Hero、联机邀请卡、六入口、导航或视觉主题。
 - `website/docs/changelog.md` 置顶新增 v0.4.9 用户可见说明，覆盖三类自动处理、最多三次、失败回滚、未知状态 fail closed、脱敏支持包、Panel 重启续跑和未变化 auth 保留；v0.4.8 及更早历史完整保留。
-- 影响仅限 VitePress 展示文档，不修改 Panel 前端/API、镜像、tag 或 Release。Node 20 Linux 全新 `npm ci` 与 production build 通过；应用内 Browser 在默认桌面和 390×844 手机验证首页、点击进入更新日志、正文内容、历史版本保留、无横向溢出与 console warn/error=0。Pages workflow/线上证据将在发布后补齐。
+- 影响仅限 VitePress 展示文档，不修改 Panel 前端/API、镜像、tag 或 Release。Node 20 Linux 全新 `npm ci` 与 production build 通过；Pages workflow `31305028853` 和 compatibility workflow `31305028888` 成功。线上默认桌面和 390×844 手机验证首页、点击进入更新日志、正文内容、历史版本保留、无横向溢出与 console warn/error=0。
 
 # FE-RUNTIME-UPDATE-REPAIR-CATALOG-3：按钮直接说明修复方法（2026-08-09，completed，v0.4.9 released）
 
