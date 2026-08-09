@@ -1,7 +1,7 @@
-# DOCS-INSTALL-HTTP-1 接手记录（2026-08-09，待验证）
+# DOCS-INSTALL-HTTP-1 接手记录（2026-08-09，completed）
 
 - `README.md`、`docs/user-guide/getting-started.md` 和 `docs/09-image-build.md` 的国内加速安装地址统一为 `http://anxinas.dpdns.org/run.sh`；`website/docs/guide/deploy.md` 与 `website/docs/deploy/quick-start.md` 已经是正确 HTTP，无需改动。
-- 本次没有变更 VitePress 页面源码、组件、依赖或 Panel 功能。交付前检查同域名 HTTPS 残留、HTTP 端点只读响应、GitHub README 渲染/复制内容及推送后的兼容矩阵。
+- 本次没有变更 VitePress 页面源码、组件、依赖或 Panel 功能。同域名 HTTPS 残留为 0；HTTP 端点只读返回 200/27,427 字节且未执行；GitHub README 线上正文与 `clipboard-copy value` 均为完整 HTTP 命令，console warn/error 为 0；compatibility workflow `31305603385` 成功。
 
 # DOCS-PORTAL-V049-1 接手记录（2026-08-09，released）
 

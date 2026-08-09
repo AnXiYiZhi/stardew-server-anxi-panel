@@ -1,7 +1,7 @@
-# 安装入口协议统一为 HTTP（2026-08-09，待验证）
+# 安装入口协议统一为 HTTP（2026-08-09，已完成）
 
 - GitHub README、新手使用指南和本文中的国内加速安装命令统一使用项目实际分发入口 `http://anxinas.dpdns.org/run.sh`；官网部署页原本已经使用 HTTP。本次只修正文档，不修改安装脚本、Panel、镜像、tag 或 Release。
-- 验证目标：仓库不再残留该域名的错误 HTTPS 脚本地址；只读取远端脚本验证 HTTP 响应，不执行下载内容；推送后核对 GitHub README 渲染和复制内容，并等待兼容矩阵成功。
+- 仓库检索确认该域名的错误 HTTPS 脚本地址为 0；HTTP 端点只读下载返回 200、`application/octet-stream` 和 27,427 字节，未执行下载内容。提交 `55effaffb7f6bdae6091e8fef3eba5e017000e07` 推送 `main` 后，GitHub README 线上正文只含 HTTP、不含同域名 HTTPS，代码块的 `clipboard-copy value` 精确等于完整 HTTP 命令，console warn/error 为 0；compatibility workflow `31305603385` 成功。
 
 # v0.4.9 官网展示文档发布（2026-08-09，已发布）
 

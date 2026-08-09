@@ -1,7 +1,7 @@
-# DOCS-INSTALL-HTTP-1：GitHub 安装命令协议修正（2026-08-09，待验证）
+# DOCS-INSTALL-HTTP-1：GitHub 安装命令协议修正（2026-08-09，completed）
 
 - GitHub README 与新手使用指南的国内加速命令改为项目实际入口 `http://anxinas.dpdns.org/run.sh`，与已经正确使用 HTTP 的官网部署页保持一致。
-- 影响仅限 Markdown 展示与复制内容，不修改页面组件、Panel 前端/API、安装脚本、镜像、tag 或 Release。推送后需在 GitHub README 核对渲染文本与复制按钮内容。
+- 影响仅限 Markdown 展示与复制内容，不修改页面组件、Panel 前端/API、安装脚本、镜像、tag 或 Release。仓库 HTTPS 残留为 0，HTTP 端点返回 200；GitHub README 线上正文与复制载荷均为完整 HTTP 命令、console warn/error 为 0，compatibility workflow `31305603385` 成功。
 
 # DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，released）
 
