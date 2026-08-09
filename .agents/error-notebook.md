@@ -695,6 +695,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-09 `v0.4.10` 最终 main 推送后首次调用 `gh auth status`，发现 Windows keyring 中 `AnXiYiZhi` 的旧 token 已失效并退出 1；没有尝试刷新、退出或改写用户凭据。公开仓库的 Actions 状态应改用 GitHub 官方匿名 REST API 按最终 commit 查询；需要创建 Release/上传资产等写操作时，必须先确认 tag 工作流自身可完成，或由用户显式恢复 CLI 登录，不能把无效本机 token 写进脚本/日志/文档。
 - 最近复发/补充：2026-08-09 核对 Junimo `.126` 镜像元数据时，`docker buildx imagetools inspect` 获取 Docker Hub OAuth token 报 `EOF`，随后 `Invoke-RestMethod` 也遇到 transport EOF；改用 Registry v2 的 token/manifest/config 三段只读请求，并给 `curl.exe` 配置有界 `--retry 3 --retry-all-errors`。Windows Schannel 又因吊销服务器离线报 `CRYPT_E_REVOCATION_OFFLINE`，正确回退是增加 `--ssl-revoke-best-effort`（仍校验证书，只把离线吊销检查降为 best effort），不得使用 `-k`。镜像身份最终必须从 OCI config 的 `org.opencontainers.image.revision` 与 Docker Hub tag digest 交叉确认，不能仅按推送时间猜 revision。
 - 最近复发/补充：2026-08-09 `v0.4.9` Release 首次 `gh run watch` 因 GitHub API EOF 退出，workflow 本身继续运行并最终成功；改为按固定 run ID 有界轮询 `gh run view`，每次独立读取 status/conclusion。发布证据只能来自最终 `completed/success`，网络查询失败不能冒充 workflow 失败或成功。
 - 最近复发/补充：2026-08-01 官网 Hero 发布审计把多项 GitHub API 只读查询放进同一批调用，网络等待最终以 `124` 超时退出；远端 main SHA 另由 `git ls-remote` 成功确认。后续按目标 commit 分拆 `gh run list/view` 与 deployments 查询，每项使用有界重试并保存已成功证据，不把整批超时误判为 Actions 失败，也不原样重放同一批长命令。
