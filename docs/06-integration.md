@@ -1,3 +1,10 @@
+# RUNTIME-UPDATE-REPAIR-CATALOG-3 联调契约（2026-08-09，completed，未发布）
+
+- `GET /api/instances/:id/junimo-update` 可返回可选 `repairPlan`：`actionAvailable:boolean`、`action:repair|export|wait`、稳定 `code`、`title`、`detection`、`method`、`buttonLabel`、`steps[]`、`attempts/maxAttempts`。它是后端当前快照的只读判断，不代表浏览器可以缓存后稍后盲目执行。
+- `action=repair && actionAvailable=true` 才可提交严格 `POST .../repair {"confirm":true}`。后端在实例锁内用同一 detector 重判并二次验证材料；当前三类为 `repair/rollback_failed`、`repairable/legacy_candidates` 与 `repair/safe_retry`。计划变化、并发任务、材料漂移或次数耗尽均拒绝，而不是执行旧的前端选择。
+- `action=export` 表示零自动 mutation：按钮调用支持包导出，供人工核对损坏状态/清单、材料摘要、自定义镜像、配置歧义或三次耗尽。ZIP 的 `junimo-update.json` 白名单条目包含公开 `inspection + repairPlan + applyStatus` 并整体脱敏，不包含 recovery manifest/目录/原文件；`action=wait` 不提交写请求，用于持久事务非终态或推荐矩阵暂不可用。
+- 前端必须展示后端 `detection + method`，并把 `buttonLabel` 作为实际按钮文案；脚本 `check` 也输出同一按钮和修复方法。这样网页、脚本和执行端不会各维护一套可能漂移的故障判断。
+
 # RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 联调契约（2026-08-09，completed，未发布）
 
 - `POST /api/instances/:id/junimo-update/repair` 现在是持久化“检测、修复并继续升级”入口，可在两种后端已证明的状态接受：精确 `rollback_failed` 事务，或 `GET /junimo-update` 返回 `repairable=true` 的可信历史候选配置。其它状态返回 `runtime_repair_not_needed`；损坏状态/材料、未知配置、任务冲突与三次耗尽继续 409，权限和严格 body 不变。

@@ -1,3 +1,11 @@
+# RUNTIME-UPDATE-REPAIR-CATALOG-3：升级故障目录与对应修复方案（2026-08-09，completed，未发布）
+
+- `DetectRuntimeUpdateRepairPlan` 成为 `GET /junimo-update` 展示与 `POST /junimo-update/repair` 执行共用的唯一只读检测目录。返回字段包含稳定 `code`、检测证据 `detection`、具体 `method`、操作 `steps`、后端给定的 `buttonLabel`、尝试次数和 `repair|export|wait` 动作；前端不再按错误文案自行猜修复方式。
+- 闭集自动修复扩大为三类：校验通过的 `rollback_failed` 按原事务幂等恢复旧版再升级；可信 `repairable/legacy_candidates` 私有备份并规范候选配置再升级；已到 `failed_rolled_back` 且当前仍是同一旧版本对时执行 `repair/safe_retry`，重新检查 Docker/Compose、磁盘、目标 digest 和健康状态，以新 apply ID 重试并保留自动回滚。
+- 其它情况都有明确但不越权的应对：损坏/不可读状态、清单不匹配、恢复材料缺失或摘要漂移、自定义镜像、主 tag 歧义、未知候选和三次耗尽只允许保留现场并导出支持包；已有非终态任务显示等待自动恢复；撤回或非推荐矩阵显示等待安全版本。以上动作不会覆盖配置或猜测镜像。
+- `StartRuntimeUpdateRepair` 在持锁后重新调用同一 detector，并只接受 `actionAvailable=true` 的计划；执行前仍二次验证状态/清单/材料，修复后统一进入 `resuming_upgrade`、完整 dry-run、保存/整档备份和新事务。专项测试覆盖安全重试成功、损坏状态、自定义镜像、材料篡改、次数耗尽和 API 不泄露敏感内容。
+- 支持包新增白名单条目 `junimo-update.json`，包含当前公开运行栈检查、`repairPlan` 和可读取时的公开 apply 状态，整项 JSON 再经过统一脱敏。它不读取恢复 manifest/目录或原备份文件；专项测试把伪密码写入 apply status，确认 ZIP 不泄露该值、存档、事务快照或私有恢复材料。
+
 # RUNTIME-UPDATE-DIAGNOSE-REPAIR-2：检测、修复并继续升级（2026-08-09，completed，未发布）
 
 - `StartRuntimeUpdateRepair` 不再把“修复完成”定义为只恢复旧版本。一次确认现在闭环执行：只读故障分类 → 已知修复 → 修复验收 → 与普通升级相同的完整 dry-run → 升级前保存/整档备份 → 新 apply 事务 → 目标验收或自动回滚。最终只有目标验收通过才是 `succeeded`；修复后预检或重试升级失败则明确失败，不把“已回到旧版”冒充升级成功。

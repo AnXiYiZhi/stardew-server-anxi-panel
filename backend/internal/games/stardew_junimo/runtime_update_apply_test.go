@@ -683,6 +683,10 @@ func TestRuntimeUpdateRepairRetriesPartialRollbackIdempotently(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID), "failed-target-junimo-server")); err != nil {
 		t.Fatalf("first partial rollback did not leave deterministic Junimo evidence: %v", err)
 	}
+	plan := DetectRuntimeUpdateRepairPlan(instance)
+	if plan == nil || !plan.ActionAvailable || plan.Code != "repair/rollback_failed" || plan.ButtonLabel != "修复：恢复旧版后升级" {
+		t.Fatalf("rollback repair plan = %#v", plan)
+	}
 
 	fake.restoreError = false
 	fake.authProbeErrorTarget = false
@@ -735,6 +739,115 @@ func TestRuntimeUpdateRepairRetryFailureKeepsOriginalRuntimeSafe(t *testing.T) {
 	}
 }
 
+func TestRuntimeUpdateRepairRetriesSafelyRolledBackFailure(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	fake.serverHealthFailTarget = true
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	failed := waitRuntimeApply(t, driver, instance)
+	if failed.Phase != RuntimeUpdateApplyFailedRolledBack {
+		t.Fatalf("expected safe rollback, got %#v", failed)
+	}
+	plan := DetectRuntimeUpdateRepairPlan(instance)
+	if plan == nil || !plan.ActionAvailable || plan.Code != "repair/safe_retry" || plan.ButtonLabel != "修复：重新预检并升级" {
+		t.Fatalf("safe retry plan = %#v", plan)
+	}
+	fake.serverHealthFailTarget = false
+	started, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Phase != RuntimeUpdateApplyResumingUpgrade || started.RepairSourceApplyID != failed.ApplyID || started.RepairAttempts != 1 {
+		t.Fatalf("safe retry start = %#v", started)
+	}
+	final := waitRuntimeApply(t, driver, instance)
+	if final.Phase != RuntimeUpdateApplySucceeded || final.ApplyID == failed.ApplyID || final.RepairSourceApplyID != failed.ApplyID || final.RepairAttempts != 1 {
+		t.Fatalf("safe retry final = %#v", final)
+	}
+	checks, _ := json.Marshal(final.Checks)
+	if !bytes.Contains(checks, []byte(`"repair_plan"`)) || !bytes.Contains(checks, []byte(`"repair_upgrade_preflight"`)) {
+		t.Fatalf("safe retry diagnostic trail missing: %s", checks)
+	}
+}
+
+func TestRuntimeUpdateRepairPlanCatalogFailsClosed(t *testing.T) {
+	t.Run("corrupt status", func(t *testing.T) {
+		_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+		if err := os.MkdirAll(filepath.Dir(runtimeUpdateApplyStatusPath(instance.DataDir)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(runtimeUpdateApplyStatusPath(instance.DataDir), []byte("{broken"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		plan := DetectRuntimeUpdateRepairPlan(instance)
+		if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "recovery_state_uncertain" {
+			t.Fatalf("corrupt-state plan = %#v", plan)
+		}
+	})
+
+	t.Run("custom image", func(t *testing.T) {
+		_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+		values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+			"SERVER_IMAGE":            "custom.invalid/server:" + values["IMAGE_VERSION"],
+			"SERVER_IMAGE_CANDIDATES": "custom.invalid/server:" + values["IMAGE_VERSION"],
+		}); err != nil {
+			t.Fatal(err)
+		}
+		plan := DetectRuntimeUpdateRepairPlan(instance)
+		if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "unsupported/custom_images" || !strings.Contains(plan.Method, "自定义镜像") {
+			t.Fatalf("custom-image plan = %#v", plan)
+		}
+	})
+
+	t.Run("attempts exhausted", func(t *testing.T) {
+		_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		status := RuntimeUpdateApplyStatus{
+			ApplyID: "apply_" + strings.Repeat("d", 24), Phase: RuntimeUpdateApplyFailedRolledBack,
+			Current: inspection.Current, Target: inspection.Recommended, RepairAttempts: runtimeUpdateRepairAttemptLimit,
+			Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
+		}
+		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+			t.Fatal(err)
+		}
+		plan := DetectRuntimeUpdateRepairPlan(instance)
+		if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "runtime_repair_exhausted" || plan.Attempts != runtimeUpdateRepairAttemptLimit {
+			t.Fatalf("exhausted plan = %#v", plan)
+		}
+	})
+
+	t.Run("active recovery takes precedence over config repair", func(t *testing.T) {
+		_, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+		values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+			"SERVER_IMAGE_CANDIDATES": "dockerproxy.net/sdvd/server:" + values["IMAGE_VERSION"] + ",docker.m.daocloud.io/sdvd/server:" + values["IMAGE_VERSION"],
+		}); err != nil {
+			t.Fatal(err)
+		}
+		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+		status := RuntimeUpdateApplyStatus{
+			ApplyID: "apply_" + strings.Repeat("e", 24), Phase: RuntimeUpdateApplyResumingUpgrade,
+			Current: inspection.Current, Target: inspection.Recommended,
+			Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
+		}
+		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+			t.Fatal(err)
+		}
+		plan := DetectRuntimeUpdateRepairPlan(instance)
+		if plan == nil || plan.ActionAvailable || plan.Action != "wait" || plan.Code != "runtime_update_in_progress" || plan.ButtonLabel != "等待自动恢复" {
+			t.Fatalf("active-recovery plan = %#v", plan)
+		}
+	})
+}
+
 func TestRuntimeUpdateRepairDetectsKnownLegacyConfigAndCompletesUpgrade(t *testing.T) {
 	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
@@ -745,6 +858,10 @@ func TestRuntimeUpdateRepairDetectsKnownLegacyConfigAndCompletesUpgrade(t *testi
 		"SERVER_IMAGE_CANDIDATES": "dockerproxy.net/sdvd/server:" + values["IMAGE_VERSION"] + ",docker.m.daocloud.io/sdvd/server:" + values["IMAGE_VERSION"],
 	}); err != nil {
 		t.Fatal(err)
+	}
+	plan := DetectRuntimeUpdateRepairPlan(instance)
+	if plan == nil || !plan.ActionAvailable || plan.Code != "repairable/legacy_candidates" || plan.ButtonLabel != "修复：规范配置并升级" {
+		t.Fatalf("legacy config plan = %#v", plan)
 	}
 	started, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
 	if err != nil {
@@ -872,6 +989,10 @@ func TestRuntimeUpdateRepairRejectsTamperedMaterialWithoutMutation(t *testing.T)
 	backup := filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, failed.ApplyID), "original.env")
 	if err := os.WriteFile(backup, []byte("SERVER_IMAGE=untrusted.example/tampered:latest\n"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	plan := DetectRuntimeUpdateRepairPlan(instance)
+	if plan == nil || plan.ActionAvailable || plan.Action != "export" || plan.Code != "recovery_material_invalid" {
+		t.Fatalf("tampered material plan = %#v", plan)
 	}
 	before := len(fake.applyCalls)
 	_, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)

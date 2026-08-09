@@ -2,7 +2,7 @@
 
 ## UPGRADE-RECOVERY-UNIFICATION-1：其余升级链的一键恢复（高优先级，2026-08-08）
 
-- `RUNTIME-UPDATE-DIAGNOSE-REPAIR-2` 已把 required Junimo server/steam-auth/Control 收口为“闭集检测 → 已知修复 → 完整复检 → 自动续跑升级”，当前规则覆盖精确 rollback 事务和可信历史候选配置。今后新增历史故障不得靠通用 shell 猜测；必须增加稳定错误码、只读 detector、受限 repair plan、私有备份、修复后断言、幂等/中断测试和 Docker 故障注入，才可进入同一按钮。
+- `RUNTIME-UPDATE-REPAIR-CATALOG-3` 已把 required Junimo server/steam-auth/Control 收口为“闭集检测 → 对应修复方法 → 完整复检 → 自动续跑升级”，当前自动规则覆盖精确 rollback 事务、可信历史候选配置和 `failed_rolled_back` 后同目标安全重试；未知/不可信状态切换到导出支持包或等待，不做猜测性修改。今后新增历史故障不得靠通用 shell 猜测；必须增加稳定错误码、只读 detector、受限 repair plan、私有备份、修复后断言、幂等/中断测试和 Docker 故障注入，才可进入同一按钮。
 - SMAPI staging 是独立的 game-data volume 事务。它已有 Panel 重启自动回滚、旧卷保留和失败 staging 隔离，但最终 `rollback_failed` 仍只给人工指引；后续应增加 schema 2 write-ahead intent、恢复文件摘要、尝试上限、严格 repair API 和同一宿主脚本入口，并用真实 staging 卷注入切换后启动失败/Panel 中断验证。
 - Panel 自更新由外置 `panel-updater` helper 执行；目标 Panel 可能不可达，所以不能简单复用面板 API。后续一键恢复必须由宿主脚本读取并校验 updater 私有事务、Compose labels、旧 image digest、数据库备份和原容器保留状态，再调用受限 helper 子命令；不得让脚本接受任意容器、路径或镜像，也不得把 `docker compose down -v` 当修复。
 - GAME-RUNTIME-UPDATE-2 尚未开放 apply，当前只有只读预检，因此没有“回滚失败”入口。未来实现 game/SDK staging 时必须从第一版就复用 write-ahead、终态先提交、精确资源所有权与一键安全恢复契约。

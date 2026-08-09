@@ -33,6 +33,8 @@ case "$url" in
       printf '{"phase":"succeeded","applyId":"apply_bbbbbbbbbbbbbbbbbbbbbbbb","repairSourceApplyId":"apply_aaaaaaaaaaaaaaaaaaaaaaaa","repairAttempts":1}' >"$output"
 		elif [[ "${FAKE_KNOWN_CONFIG:-0}" == "1" ]]; then
 			printf '{"phase":"failed_rolled_back","applyId":"apply_aaaaaaaaaaaaaaaaaaaaaaaa"}' >"$output"
+		elif [[ "${FAKE_SAFE_RETRY:-0}" == "1" ]]; then
+			printf '{"phase":"failed_rolled_back","applyId":"apply_aaaaaaaaaaaaaaaaaaaaaaaa","errorCode":"server_recreate_failed"}' >"$output"
     else
       printf '{"phase":"rollback_failed","applyId":"apply_aaaaaaaaaaaaaaaaaaaaaaaa","rollbackCode":"rollback_restore_auth_volume_failed"}' >"$output"
     fi
@@ -52,9 +54,11 @@ case "$url" in
     ;;
   */junimo-update)
 		if [[ "${FAKE_KNOWN_CONFIG:-0}" == "1" ]]; then
-			printf '{"repairable":true,"repairCode":"repairable/legacy_candidates"}' >"$output"
+			printf '{"repairable":true,"repairCode":"repairable/legacy_candidates","repairPlan":{"actionAvailable":true,"action":"repair","buttonLabel":"修复：规范配置并升级","method":"私有备份原 .env 后规范候选并完整预检。"}}' >"$output"
+		elif [[ "${FAKE_SAFE_RETRY:-0}" == "1" ]]; then
+			printf '{"repairable":false,"repairPlan":{"actionAvailable":true,"action":"repair","buttonLabel":"修复：重新预检并升级","method":"重新检查 Docker、镜像和健康状态后以新事务重试。"}}' >"$output"
 		else
-			printf '{"repairable":false}' >"$output"
+			printf '{"repairable":false,"repairPlan":{"actionAvailable":true,"action":"repair","buttonLabel":"修复：恢复旧版后升级","method":"按已校验事务材料恢复旧版并验收，再完整预检升级。"}}' >"$output"
 		fi
 		printf '200'
 		;;
@@ -73,12 +77,15 @@ run_script() {
     PANEL_USERNAME="admin" \
     PANEL_PASSWORD_FILE="$test_root/password" \
     FAKE_REPAIR_STATE="$test_root/state" \
-    FAKE_REPAIR_REJECT="${FAKE_REPAIR_REJECT:-0}" \
+		FAKE_REPAIR_REJECT="${FAKE_REPAIR_REJECT:-0}" \
 		FAKE_KNOWN_CONFIG="${FAKE_KNOWN_CONFIG:-0}" \
+		FAKE_SAFE_RETRY="${FAKE_SAFE_RETRY:-0}" \
     bash "$repo_root/deploy/repair-junimo-upgrade.sh" "$@"
 }
 
-run_script check >/dev/null
+run_script check >"$test_root/check.out"
+grep -q '对应按钮：修复：恢复旧版后升级' "$test_root/check.out" || { echo "rollback repair button was not reported" >&2; exit 1; }
+grep -q '修复方法：按已校验事务材料恢复旧版并验收' "$test_root/check.out" || { echo "rollback repair method was not reported" >&2; exit 1; }
 [[ ! -e "$test_root/state/repair-body" ]] || { echo "check unexpectedly submitted repair" >&2; exit 1; }
 
 run_script repair >/dev/null
@@ -94,5 +101,12 @@ grep -q 'recovery_material_invalid' "$test_root/rejected.out" || { echo "backend
 rm -f -- "$test_root/state/repaired" "$test_root/state/repair-body"
 FAKE_KNOWN_CONFIG=1 run_script repair >/dev/null
 [[ "$(tr -d '\r\n' <"$test_root/state/repair-body")" == '{"confirm":true}' ]] || { echo "known config repair body was not strict confirmation" >&2; exit 1; }
+
+rm -f -- "$test_root/state/repaired" "$test_root/state/repair-body"
+FAKE_SAFE_RETRY=1 run_script check >"$test_root/safe-retry.out"
+grep -q '对应按钮：修复：重新预检并升级' "$test_root/safe-retry.out" || { echo "safe retry button was not reported" >&2; exit 1; }
+grep -q '修复方法：重新检查 Docker、镜像和健康状态后以新事务重试' "$test_root/safe-retry.out" || { echo "safe retry method was not reported" >&2; exit 1; }
+FAKE_SAFE_RETRY=1 run_script repair >/dev/null
+[[ "$(tr -d '\r\n' <"$test_root/state/repair-body")" == '{"confirm":true}' ]] || { echo "safe retry body was not strict confirmation" >&2; exit 1; }
 
 echo "repair-junimo-upgrade script tests passed"

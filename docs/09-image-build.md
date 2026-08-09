@@ -1,3 +1,45 @@
+# RUNTIME-UPDATE-REPAIR-CATALOG-3 Docker/发布门禁（2026-08-09，未发布）
+
+## 变更清单、受影响链路与故障矩阵
+
+- 本版新增由后端统一生成的 `repairPlan`。链路为 `GET 只读检测 → 页面/脚本展示 detection、method、steps、buttonLabel → 管理员确认 → POST 锁内重新检测 → 受限修复 → 完整 dry-run/保存/备份 → 新 apply → 目标验收或自动回滚`。数据库、实例部署格式、存档、Mod、game-data 与 steam-session 公开格式不变。
+- 按钮直接描述修复方法：回滚失败为“修复：恢复旧版后升级”，可信旧候选为“修复：规范配置并升级”，安全回滚后的可重试故障为“修复：重新预检并升级”。不能证明安全时不提供自动修复，改为“保留现场并导出支持包”；任务仍在恢复或矩阵暂不安全时只显示等待。
+
+| 故障/边界 | 只读检测依据 | 页面按钮与处理方法 | 验证/安全终态 |
+| --- | --- | --- | --- |
+| `rollback_failed` | status/manifest 的实例、apply ID、版本对、project、资源名、原 image IDs 与备份 SHA-256 全部一致 | 修复：恢复旧版后升级 | 幂等恢复并验收旧版，重新预检/备份后新事务升级；材料漂移时零 mutation |
+| 历史候选配置 | 主镜像可信、`IMAGE_VERSION` 与 server tag 一致、候选仅来自固定当前/历史可信仓库 | 修复：规范配置并升级 | 0600 私有备份、原子写入、复检；失败恢复原 `.env` |
+| `failed_rolled_back` 安全重试 | 旧版已经验收、当前仍是同一旧版本对、目标仍是当前推荐且可升级 | 修复：重新预检并升级 | 不重放旧事务；按错误码重查重启/磁盘文件/Docker/网络健康，以新 apply ID 重试并继续自动回滚 |
+| 状态 JSON 损坏/不可读 | status 解析失败或缺关键字段 | 保留现场并导出支持包 | 不覆盖状态，不猜事务阶段 |
+| 清单不匹配/缺失 | instance/apply/target/project/资源名不能精确绑定 | 保留现场并导出支持包 | 不猜旧镜像、卷或恢复路径 |
+| 私有材料缺失/篡改/symlink | ordinary-file 与 SHA-256 校验失败 | 保留现场并导出支持包 | 在任何 Docker mutation 前拒绝 |
+| 自定义镜像/主 tag 歧义/未知候选/不可读 `.env` | `unsupported/custom_images` 或 `invalid_config/*` | 保留现场并导出支持包 | 保持用户配置，要求人工确认来源，不自动覆盖 |
+| 同一目标连续三次失败 | `attempts >= maxAttempts` | 保留现场并导出支持包 | 停止循环重试，保留全部证据 |
+| 升级/启动恢复仍是非终态 | persisted phase 非 terminal | 等待自动恢复（禁用） | 不并发创建第二事务，依赖 WAL 自动续跑/回滚 |
+| 推荐矩阵撤回/不推荐 | `withdrawn` / `not_recommended` | 等待安全版本（禁用） | 不修改实例，等待新的 tested manifest |
+| 正常可升级/已最新/未安装 | `update_available` / `up_to_date` / `not_installed` 且无已知故障 | 普通升级、无修复按钮 | 不误把正常状态归类为故障 |
+
+## 发布故障维度
+
+- 正常路径：三类 repair 都必须走同一持久化 runner；当前 Go 覆盖 rollback、legacy config 和 safe retry 成功，浏览器实际完成 rollback 按钮链路。
+- 边界输入、权限与安全：GET 计划不含私有路径/凭据；POST 只接受管理员严格 `{"confirm":true}`，匿名 401，调用方注入 `strategy` 为 400；自定义/歧义/材料漂移 fail closed。
+- 网络超时/断流：下载、digest 和目标 health 失败在 `failed_rolled_back` 后可重新预检；新事务仍使用既有有界网络等待和自动回滚。没有把“重试”改成跳过摘要或健康检查。
+- 部分成功、幂等与中断恢复：rollback 继续使用 schema 3 write-ahead 与幂等材料；safe retry 使用全新 apply ID。`resuming_upgrade`、新 manifest mutation 前中断与 Panel restart 继续由既有专项测试覆盖；浏览器关闭不会丢任务。
+- 失败回滚与数据完整性：修复后 target 失败仍回滚旧版；活动存档重新保存并整档备份；不删除 game-data、用户 Mod、steam-session 或非目标容器/volume。三次失败停止自动操作。
+- 资源清理：自动代码只按校验后的 apply/project/volume 所有权清理。本机验证也只清理 `repair-catalog-20260809`/`repairplan` 标签的任务资源，未运行任何 prune。
+- 不适用项：本版没有数据库 migration、部署格式或长期数据格式变化；本目录只处理 Junimo server/auth/Control，不宣称覆盖 SMAPI staging、Panel updater 或未来 game/SDK apply。
+
+## 当前验证证据
+
+- 后端最终全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 通过；专项新增 safe retry 成功、活动事务优先等待，以及损坏状态、自定义镜像、恢复材料篡改和三次耗尽 fail-closed。`go test -tags=integration ./internal/docker -count=1` 通过（11.532 秒）。
+- 前端 12 项状态测试和 production build 通过；Bash 5.2 `bash -n`、`scripts/tests/test_repair_junimo_upgrade.sh` 与 ShellCheck 0.10.0 通过。脚本 `check` 已覆盖 rollback/config/safe retry 的按钮和方法输出。
+- Docker Desktop Linux 29.5.3 最终构建隔离候选 `stardew-anxi-panel:repair-catalog-final-20260809`：version=`0.4.9-repair-catalog.dev.3`、revision=`5be8664b19e487819412e455201a83cdc86a4ff7-dirty-repair-catalog`、created=`2026-08-09T05:57:53Z`，image ID=`sha256:d4376de1fcaf1ba083c3ba28b291d4bf324a0d60860ef7aa9ee551d0c19e38dc`。任务专属容器/网络/volume/`127.0.0.1:18097` 验证 Docker health=`healthy`、`/health` 与 `/api/version` 精确匹配；初始化后重启仍保持 `setup.initialized=true` 和相同版本。
+- 候选真实接口验证匿名 repair=401、带调用方 `strategy`=400、严格确认对不存在实例=404；测试管理员密码只存在内存和任务专属临时数据卷。镜像内 `/app/repair-junimo-upgrade.sh` 与源码 SHA-256 均为 `910d9df8dcf67818e1b3e7c5a7591bce33e7defe41fcc615d00327e2f0955042`。
+- 候选真实支持包下载返回 200/`application/zip`，条目为 `version.json`、`health.json`、`instance-state.json`、`junimo-update.json`、`jobs.json`、`audit-logs.json`、`compose-ps.json`、脱敏 `docker-compose.yml` 和 `server-logs.txt`；新增条目包含 `inspection/repairPlan`，未出现 recovery 路径或原备份文件名。专项单测另以 apply 状态伪密码证明整项 JSON 会脱敏。
+- 同一 Docker Desktop 的只读源码 Vite QA 容器由 Codex Browser 实际点击“修复：恢复旧版后升级”，事件为 `repair:POST,repair-apply:GET,repair-apply:GET`，最终显示升级成功；另行验证配置修复、安全重试、未知故障导出和活动事务等待按钮，console warn/error 均为 0。
+- 每轮验收后先核对 owner label，再精确删除本任务容器、volume、network 和本地开发候选 tag；最终 `18096/18097` 无 listener，任务资源查询为空。没有执行 prune，也没有触碰其它容器、volume、network 或镜像。
+- 当前未创建或移动 tag、未更新 `latest`、未推送正式镜像/GitHub Release。正式发布仍必须重建干净 main 的精确候选，并完成最新正式版和最老受影响版到候选的真实 Panel 一键升级/故障注入/回拉门禁；本开发候选和 UI fixture 不能替代该发布证据。
+
 # RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 Docker/发布门禁（2026-08-09，未发布）
 
 ## 变更与检测/修复矩阵

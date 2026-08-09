@@ -18,11 +18,233 @@ import (
 
 const runtimeUpdateRepairAttemptLimit = 3
 
+type RuntimeUpdateRepairPlan struct {
+	ActionAvailable bool     `json:"actionAvailable"`
+	Action          string   `json:"action"`
+	Code            string   `json:"code"`
+	Title           string   `json:"title"`
+	Detection       string   `json:"detection"`
+	Method          string   `json:"method"`
+	ButtonLabel     string   `json:"buttonLabel"`
+	Steps           []string `json:"steps"`
+	Attempts        int      `json:"attempts"`
+	MaxAttempts     int      `json:"maxAttempts"`
+}
+
+// DetectRuntimeUpdateRepairPlan is the single read-only catalog used by both
+// the maintenance UI and StartRuntimeUpdateRepair. Returning a plan does not
+// imply that it is safe to mutate the instance: ActionAvailable is true only
+// for a closed, driver-owned repair path whose inputs can be revalidated.
+func DetectRuntimeUpdateRepairPlan(instance registry.Instance) *RuntimeUpdateRepairPlan {
+	status, statusErr := readRuntimeUpdateApplyStatus(instance.DataDir)
+	if statusErr != nil && !errors.Is(statusErr, os.ErrNotExist) {
+		return manualRuntimeUpdateRepairPlan(
+			"recovery_state_uncertain",
+			"升级状态文件无法安全读取",
+			"检测到持久化升级状态缺失字段、JSON 损坏或文件不可读，无法证明实例处于哪个事务阶段。",
+			"保留实例目录和恢复材料，不覆盖状态文件；导出支持包后人工核对。",
+		)
+	}
+
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	if statusErr == nil && status.Phase == RuntimeUpdateApplyRollbackFailed {
+		if status.RepairAttempts >= runtimeUpdateRepairAttemptLimit {
+			return exhaustedRuntimeUpdateRepairPlan(status.RepairAttempts)
+		}
+		manifest, err := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
+		if err != nil || !validRuntimeUpdateRecoveryManifest(instance, status, manifest) {
+			return manualRuntimeUpdateRepairPlan(
+				"recovery_state_uncertain",
+				"恢复事务无法精确匹配",
+				"rollback_failed 状态与恢复清单的实例、apply ID、版本对、Compose project 或事务资源名不一致。",
+				"保留现场并导出支持包；人工核对事务归属，禁止猜测旧镜像或恢复路径。",
+			)
+		}
+		if err := validateRuntimeUpdateRecoveryMaterials(instance.DataDir, manifest); err != nil {
+			return manualRuntimeUpdateRepairPlan(
+				"recovery_material_invalid",
+				"私有恢复材料校验失败",
+				"原 .env、Compose 或 Control 备份缺失、不是普通文件，或 SHA-256 与事务清单不一致。",
+				"停止自动修改并保留材料；导出支持包后从可信备份人工恢复。",
+			)
+		}
+		return &RuntimeUpdateRepairPlan{
+			ActionAvailable: true,
+			Action:          "repair",
+			Code:            "repair/rollback_failed",
+			Title:           "自动回滚未完成，但原事务材料可验证",
+			Detection:       "已精确匹配 rollback_failed 状态、恢复清单、原版本镜像标识和全部私有备份摘要。",
+			Method:          "按原事务清单幂等恢复旧版并验收；成功后重新检测配置、执行完整预检，再创建新的升级事务。",
+			ButtonLabel:     "修复：恢复旧版后升级",
+			Steps: []string{
+				"校验事务归属与恢复材料 SHA-256",
+				"幂等恢复旧版配置、Mod、认证卷和容器",
+				"验收旧版镜像、认证、Control 与运行状态",
+				"重新检测配置并执行完整 dry-run",
+				"保存与备份通过后创建新的升级事务",
+			},
+			Attempts:    status.RepairAttempts,
+			MaxAttempts: runtimeUpdateRepairAttemptLimit,
+		}
+	}
+
+	if !runtimeUpdateApplyTerminal(status.Phase) && status.Phase != "" && status.Phase != "idle" {
+		return waitRuntimeUpdateRepairPlan()
+	}
+
+	attempts := runtimeUpdateRepairAttempts(status, inspection)
+	if inspection.Repairable {
+		if attempts >= runtimeUpdateRepairAttemptLimit {
+			return exhaustedRuntimeUpdateRepairPlan(attempts)
+		}
+		return &RuntimeUpdateRepairPlan{
+			ActionAvailable: true,
+			Action:          "repair",
+			Code:            inspection.RepairCode,
+			Title:           "检测到可证明来源的历史候选配置",
+			Detection:       inspection.RepairReason,
+			Method:          "私有备份原 .env，仅规范化可信候选镜像列表；复检通过后执行完整预检并继续升级。",
+			ButtonLabel:     "修复：规范配置并升级",
+			Steps: []string{
+				"确认主镜像、主 tag 与 IMAGE_VERSION 一致",
+				"确认候选项只来自当前或固定历史可信仓库",
+				"私有备份原 .env 并原子写入规范候选列表",
+				"重新检查运行栈并执行完整 dry-run",
+				"保存与备份通过后创建新的升级事务",
+			},
+			Attempts:    attempts,
+			MaxAttempts: runtimeUpdateRepairAttemptLimit,
+		}
+	}
+
+	if statusErr == nil && status.Phase == RuntimeUpdateApplyFailedRolledBack &&
+		status.Target.StackVersion != "" && status.Target.StackVersion == inspection.Recommended.StackVersion &&
+		status.Current.Server.Tag == inspection.Current.Server.Tag && status.Current.SteamAuth.Tag == inspection.Current.SteamAuth.Tag &&
+		inspection.Status == sjconfig.RuntimeStackStatusUpdateAvailable {
+		if attempts >= runtimeUpdateRepairAttemptLimit {
+			return exhaustedRuntimeUpdateRepairPlan(attempts)
+		}
+		detection, method := safeRetryRuntimeUpdateGuidance(status.ErrorCode)
+		return &RuntimeUpdateRepairPlan{
+			ActionAvailable: true,
+			Action:          "repair",
+			Code:            "repair/safe_retry",
+			Title:           "上次失败已安全恢复旧版，可重新检测后重试",
+			Detection:       detection,
+			Method:          method,
+			ButtonLabel:     "修复：重新预检并升级",
+			Steps: []string{
+				"确认上次终态为 failed_rolled_back 且当前仍是同一旧版本对",
+				"重新检查 Docker、Compose、磁盘、当前镜像 ID 与目标 digest",
+				"重新拉取或复用已验签目标并验证覆盖配置",
+				"完成游戏保存与整档保护备份",
+				"以新 apply ID 重试；失败时再次自动回滚",
+			},
+			Attempts:    attempts,
+			MaxAttempts: runtimeUpdateRepairAttemptLimit,
+		}
+	}
+
+	switch inspection.Status {
+	case sjconfig.RuntimeStackStatusUpToDate, sjconfig.RuntimeStackStatusUpdateAvailable, sjconfig.RuntimeStackStatusNotInstalled:
+		return nil
+	case sjconfig.RuntimeStackStatusWithdrawn, sjconfig.RuntimeStackStatusNotRecommended:
+		return &RuntimeUpdateRepairPlan{
+			Action:      "wait",
+			Code:        inspection.Code,
+			Title:       "当前推荐矩阵不允许继续升级",
+			Detection:   inspection.Reason,
+			Method:      "保持当前实例不变，等待 Panel 提供新的已测试兼容矩阵。",
+			ButtonLabel: "等待安全版本",
+			Steps:       []string{"不修改实例", "等待新的已测试兼容矩阵", "再次检查版本维护页"},
+			MaxAttempts: runtimeUpdateRepairAttemptLimit,
+		}
+	default:
+		return manualRuntimeUpdateRepairPlan(
+			inspection.Code,
+			"当前运行栈无法自动修复",
+			inspection.Reason,
+			manualRuntimeStackMethod(inspection.Code),
+		)
+	}
+}
+
+func runtimeUpdateRepairAttempts(status RuntimeUpdateApplyStatus, inspection sjconfig.RuntimeStackInspection) int {
+	if status.Target.StackVersion == "" || status.Target.StackVersion != inspection.Recommended.StackVersion {
+		return 0
+	}
+	return status.RepairAttempts
+}
+
+func manualRuntimeUpdateRepairPlan(code, title, detection, method string) *RuntimeUpdateRepairPlan {
+	return &RuntimeUpdateRepairPlan{
+		Action:      "export",
+		Code:        code,
+		Title:       title,
+		Detection:   detection,
+		Method:      method,
+		ButtonLabel: "保留现场并导出支持包",
+		Steps:       []string{"停止自动修改", "保留实例与私有恢复材料", "导出脱敏支持包供人工核对"},
+		MaxAttempts: runtimeUpdateRepairAttemptLimit,
+	}
+}
+
+func exhaustedRuntimeUpdateRepairPlan(attempts int) *RuntimeUpdateRepairPlan {
+	plan := manualRuntimeUpdateRepairPlan(
+		"runtime_repair_exhausted",
+		"同一目标的自动修复已停止",
+		"同一恢复目标已经连续执行 3 次受限修复，仍未得到可验收终态。",
+		"停止继续重试并保留全部材料；导出支持包后排查 Docker、磁盘、文件锁或目标镜像健康问题。",
+	)
+	plan.Attempts = attempts
+	return plan
+}
+
+func waitRuntimeUpdateRepairPlan() *RuntimeUpdateRepairPlan {
+	return &RuntimeUpdateRepairPlan{
+		Action:      "wait",
+		Code:        "runtime_update_in_progress",
+		Title:       "升级或启动恢复仍在进行",
+		Detection:   "持久状态仍处于非终态；Panel 重启后会按 write-ahead 恢复规则自动续跑或回滚。",
+		Method:      "等待当前任务进入终态；不要并发创建第二个修复事务。",
+		ButtonLabel: "等待自动恢复",
+		Steps:       []string{"等待当前任务", "由 Panel 自动续跑或回滚", "进入终态后重新检测"},
+		MaxAttempts: runtimeUpdateRepairAttemptLimit,
+	}
+}
+
+func safeRetryRuntimeUpdateGuidance(code string) (string, string) {
+	switch code {
+	case "panel_restart_before_change", "panel_restart_recovery":
+		return "上次升级被 Panel 或容器重启中断，但旧版本已经恢复并验收，当前版本对仍与事务起点一致。", "重新读取实时状态和镜像标识，执行完整预检后以新事务重试；不会重放旧事务中的未知步骤。"
+	case "backup_failed", "control_backup_failed", "recovery_manifest_failed", "env_write_failed", "instance_reload_failed":
+		return "上次升级因磁盘、文件写入或恢复清单持久化失败而结束，实例未修改或已经成功恢复旧版。", "重新校验磁盘空间、目录权限、普通文件与原子写入条件；全部通过后重新备份并以新事务升级。"
+	case "stop_failed", "auth_recreate_failed", "auth_start_failed", "server_recreate_failed", "restore_state_failed":
+		return "上次 Docker/Compose 生命周期操作失败，但自动回滚已经恢复并验收旧版运行栈。", "重新检查 Docker daemon、Compose project、容器和资源状态，完整预检通过后以新事务重试。"
+	default:
+		return "上次目标下载、摘要或健康验收失败，但 failed_rolled_back 终态已确认旧版本对和原运行状态恢复。", "重新检查网络、目标 digest、实际容器 image ID、认证和 Junimo/Control 健康；完整预检通过后以新事务重试。"
+	}
+}
+
+func manualRuntimeStackMethod(code string) string {
+	switch code {
+	case "unsupported/custom_images":
+		return "保留自定义镜像与候选配置；导出支持包后由管理员确认镜像来源和兼容关系，Panel 不自动覆盖。"
+	case "invalid_config/server_version_mismatch":
+		return "人工确认 IMAGE_VERSION 与 SERVER_IMAGE tag 哪一个才是真实来源；消除歧义后重新检测，Panel 不替用户选择。"
+	case "invalid_config/image_reference", "invalid_config/image_candidates":
+		return "人工核对镜像引用和候选列表；未知仓库或混合 tag 不会被自动改写，先导出支持包保留证据。"
+	case "invalid_config/read_env", "invalid_config/missing_env":
+		return "从可信实例备份恢复可读的 .env，并核对文件权限与编码；在来源不明时不要生成替代配置。"
+	default:
+		return "保留当前配置和运行现场，导出支持包后按检测代码人工核对；Panel 不执行猜测性修改。"
+	}
+}
+
 // StartRuntimeUpdateRepair diagnoses and repairs only driver-owned known
-// failure states: either an exact rollback_failed transaction or a closed
-// legacy-config repair plan. It then reruns the full dry-run and starts a fresh
-// apply transaction. It never accepts an image, path, apply ID, or strategy
-// from the caller.
+// failure states from DetectRuntimeUpdateRepairPlan. It then reruns the full
+// dry-run and starts a fresh apply transaction. It never accepts an image,
+// path, apply ID, or strategy from the caller.
 func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
 	if d.jobs == nil || d.store == nil {
 		return RuntimeUpdateApplyStatus{}, errors.New("runtime update repair service is not configured")
@@ -37,19 +259,20 @@ func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry
 
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	plan := DetectRuntimeUpdateRepairPlan(instance)
+	if plan == nil {
+		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_not_needed", Message: "当前没有需要执行的一键修复方案。"}
+	}
+	if !plan.ActionAvailable {
+		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: plan.Code, Message: plan.Method}
+	}
 	status, err := readRuntimeUpdateApplyStatus(instance.DataDir)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "recovery_state_uncertain", Message: "现有升级状态文件损坏或无法读取；已拒绝覆盖现场。"}
-	}
-	if err != nil || status.Phase != RuntimeUpdateApplyRollbackFailed {
+	if plan.Code != "repair/rollback_failed" {
 		inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
-		if !inspection.Repairable {
-			return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_not_needed", Message: "当前没有已知且可证明安全的 Junimo 升级修复方案。"}
-		}
-		return d.startKnownRuntimeConfigRepair(ctx, runtimeDocker, instance, createdBy, status, inspection)
+		return d.startKnownRuntimeRepairPlan(ctx, runtimeDocker, instance, createdBy, status, inspection, *plan)
 	}
-	if status.RepairAttempts >= runtimeUpdateRepairAttemptLimit {
-		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_exhausted", Message: "同一恢复事务已连续失败 3 次；已停止自动操作并保留全部恢复材料。"}
+	if err != nil {
+		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "recovery_state_uncertain", Message: "升级状态在检测后发生变化；请刷新后重试。"}
 	}
 	manifest, err := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
 	if err != nil || !validRuntimeUpdateRecoveryManifest(instance, status, manifest) {
@@ -113,8 +336,8 @@ func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry
 	return status, nil
 }
 
-func (d *Driver) startKnownRuntimeConfigRepair(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, createdBy int64, previous RuntimeUpdateApplyStatus, inspection sjconfig.RuntimeStackInspection) (RuntimeUpdateApplyStatus, error) {
-	if previous.RepairAttempts >= runtimeUpdateRepairAttemptLimit {
+func (d *Driver) startKnownRuntimeRepairPlan(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, createdBy int64, previous RuntimeUpdateApplyStatus, inspection sjconfig.RuntimeStackInspection, plan RuntimeUpdateRepairPlan) (RuntimeUpdateApplyStatus, error) {
+	if plan.Attempts >= runtimeUpdateRepairAttemptLimit {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_exhausted", Message: "同一实例的自动修复已连续尝试 3 次；已停止自动操作。"}
 	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
@@ -126,17 +349,21 @@ func (d *Driver) startKnownRuntimeConfigRepair(ctx context.Context, docker Runti
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	sourceID := newRuntimeApplyID()
+	repairSourceID := previous.ApplyID
+	if !runtimeUpdateApplyIDPattern.MatchString(repairSourceID) {
+		repairSourceID = sourceID
+	}
 	status := RuntimeUpdateApplyStatus{
 		CreatedBy: createdBy, ApplyID: sourceID, Phase: RuntimeUpdateApplyResumingUpgrade, Progress: 5,
 		Current: inspection.Current, Target: inspection.Recommended,
 		Checks: []RuntimeUpdateDryRunCheck{
-			{Name: "known_issue_detection", Status: "ok", Message: "已将当前错误匹配到 Panel 内置的闭集诊断规则。"},
-			{Name: "known_legacy_config", Status: "warning", Message: inspection.RepairReason},
+			{Name: "known_issue_detection", Status: "ok", Message: plan.Detection},
+			{Name: "repair_plan", Status: "warning", Message: plan.Method},
 		},
-		Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{{At: now, Level: "warning", Message: "检测到可信旧版候选配置；将先私有备份并原子修复，复检通过后执行完整预检与升级。"}},
+		Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{{At: now, Level: "warning", Message: "已命中修复方案“" + plan.Title + "”；将按后端固定步骤执行，复检通过后再升级。"}},
 		ServerWasRunning: instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting,
 		ServerRunning:    instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting,
-		RepairAttempts:   previous.RepairAttempts + 1, RepairSourceApplyID: sourceID, ResumeAfterRepair: true,
+		RepairAttempts:   plan.Attempts + 1, RepairSourceApplyID: repairSourceID, ResumeAfterRepair: true,
 		StartedAt: now, UpdatedAt: now,
 	}
 	gate := make(chan struct{})

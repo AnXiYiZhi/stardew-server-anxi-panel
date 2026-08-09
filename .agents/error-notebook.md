@@ -15,6 +15,17 @@
 适用范围：
 ```
 
+## 2026-08-09：用原生命令输出真值判断 Docker 资源是否存在
+
+- 最近复发/补充：同一 UI QA 启动随后把 PowerShell 变量写进未加引号的 Docker 复合参数 `--mount type=volume,source=$volumeName,target=...`；PowerShell 把该 token 原样传递，Docker 尝试创建字面量 `$volumeName` 并以 125 拒绝。卷已按精确名称/owner 创建，容器未创建。含变量的 `--mount`、`--label`、`--env` 等 `key=value,...` 参数必须先组成完整字符串变量或使用双引号包住整个参数，例如 `--mount "type=volume,source=$volumeName,target=/path"`，不能假定未引用 token 内会插值。
+- 环境：PowerShell 7、Docker Desktop，创建任务专属 UI QA 容器前查重。
+- 错误模式：写成 `if (docker container inspect <name> 2>$null) { ... }`，直接把原生命令的标准输出当 PowerShell 布尔值，没有读取 `$LASTEXITCODE`。
+- 症状 / 退出码：目标容器实际不存在，但 Docker 对失败 inspect 输出的 `[]` 被 PowerShell 当作真值，脚本误报“container already exists”并在创建任何资源前退出 1。
+- 根因：PowerShell 条件判断的是命令输出对象，不是原生命令退出码；Docker 的失败输出仍可能含非空 JSON 文本。
+- 正确做法：先执行 `docker container inspect <name> *> $null`，立即保存 `$LASTEXITCODE`；退出码 0 表示存在，1 表示不存在，其它值先诊断 Docker。volume/network/image 查重同样按退出码判断，不能按输出真值。
+- 预防检查：所有 Docker 资源查重都拆成“执行 → 保存退出码 → 分支”三步；创建前再核对精确 owner label，禁止用 `if (docker ...)`。
+- 适用范围：PowerShell 中的 Docker container/volume/network/image inspect、任务资源创建与清理。
+
 ## 2026-08-09：切换工作目录后仍重复仓库路径前缀
 
 - 环境：Windows，PowerShell 7，从仓库根切换到 `backend` 作为命令工作目录。
@@ -279,10 +290,13 @@
 - 根因：`git diff --no-index` 用 `0` 表示无差异、`1` 表示有差异、`>1` 才表示错误；PowerShell 保留了最后一个原生命令的 `$LASTEXITCODE`。
 - 正确做法：命令后立即保存并判断退出码；`if ($diffExit -gt 1) { exit $diffExit }`，完成剩余校验后显式 `exit 0`。只需查看仓库已跟踪差异时直接使用 `git diff`。
 - 预防检查：使用“非零但属于正常结果”的 CLI（如 `git diff --no-index`、无匹配的 `rg`）时，提前写明允许的退出码并在脚本末尾确定最终退出码。
+- 最近复发/补充：2026-08-09 核对 required runtime 自动升级时，先成功读取目标代码，随后把一个可能无命中的补充 `rg` 放在组合命令末尾；模式使用 snake_case，而目标文件只含 Go 常量名，`rg` 正常返回 1，却让整条只读命令被标记失败。补充检索必须立即保存退出码并仅在 `>1` 时失败，或在已完整读取目标文件时省略猜测性搜索，不能让“无命中”覆盖前序成功证据。
 - 适用范围：差异审查、搜索探针和所有带预期非零状态的组合校验脚本。
 
 ## 2026-07-28：猜测配置文件扩展名且忽略 PowerShell 非终止错误
 
+- 最近复发/补充：2026-08-09 候选运行参数检查时，又把不存在的仓库根 `docker-compose.yml` 与真实 `deploy/docker-compose.yml` 一起交给 `rg`；有效结果后仍出现路径错误，且包装脚本未检查 `rg` 的退出码。容器参数随后只从已确认的 `deploy/docker-compose.yml` 读取。多根搜索必须先发现路径，并在原生命令后立即检查 `$LASTEXITCODE`，不能让后续成功输出掩盖错误。
+- 最近复发/补充：2026-08-09 盘点升级错误码时，把不存在的仓库根 `tests/` 与已确认的 `backend/frontend/deploy/docs` 一起作为 `rg` 位置参数；虽然命中了大量有效结果，`rg` 仍因 `tests` 不存在以退出码 1 结束。随后又按惯例猜测脚本测试名为 `deploy/test-repair-junimo-upgrade.sh`，实际测试文件位于其它已命名脚本，检索再次退出 1。多根、具体测试文件和脚本名都必须先用 `Test-Path -LiteralPath` 或 `rg --files` 验证；如果测试位于模块内部，应搜索已确认的模块目录并用 `-g '*_test.go'` 限定，不能凭常见仓库布局补根目录或测试文件名。
 - 最近复发/补充：2026-07-29 在 `rg` 位置参数中写入仓库不存在的 `internal`、`cmd` 目录，导致已有匹配结果后仍以路径错误结束。多目录搜索必须先用 `rg --files` 或 `Test-Path` 验证目录，只传当前仓库实际存在的根目录。
 - 最近复发/补充：2026-07-29 重构隔离预览时再次直接读取不存在的 `docs/.vitepress/config.mts`；随后先用 `rg --files --hidden docs/.vitepress` 找到真实的 `config.ts`。2026-07-31 搜索前端 tooltip 时又把未经发现的 `frontend/src/components` 作为 `rg` 位置参数，产生 `os error 2`；同时后续成功输出掩盖了原生命令状态。今后所有多目录搜索先用 `rg --files <已确认根目录>` 发现路径，或只从已确认存在的共同父目录配合 `-g` 搜索，并在 `rg` 后立即保存、判断 `$LASTEXITCODE`。
 - 最近复发/补充：2026-08-01 一次组合读取对不存在路径产生 PowerShell non-terminating error，末尾显式 `exit 0` 又把它掩盖。只读发布脚本同样必须以 `$ErrorActionPreference=''Stop''` 开始，文件路径先发现后读取，成功分支才允许输出 0。
@@ -1137,6 +1151,7 @@
 
 ## 2026-08-06：长时间发布验收中 Docker Desktop 被外部退出
 
+- 最近复发/补充：2026-08-09 repair plan 页面 QA 中，任务容器已启动且宿主 HTTP readiness 为 200；应用内浏览器导航等待约一分钟后，后续只读 `docker inspect` 发现 Linux engine named pipe 已消失。没有执行容器/卷清理或其它 mutation。浏览器验证超过一分钟后，继续任何 Docker 读取或清理前都必须重新 `docker info`；连接拒绝要同时区分浏览器本机访问策略与 Docker daemon 已退出，不能只按页面错误归因。
 - 环境：Windows 11、Docker Desktop Linux containers、v0.4.8 隔离发布资源清理。
 - 错误模式：沿用数分钟前成功的 Docker 状态，在破坏性清理前没有重新执行 `docker info` 就直接进入容器 ownership 检查。
 - 症状 / 退出码：首个 `docker inspect` 报 Linux engine named pipe 不存在；脚本在任何 `docker rm` 或 network 删除前立即退出，任务资源和用户资源均未变化。
@@ -1198,6 +1213,7 @@
 
 ## 编码与换行快速检查
 
+- 最近复发/补充：2026-08-09 升级修复目录最终审计又对全部已修改文件直接执行 U+FFFD 搜索，命中了本节合法示例和历史版本说明并让组合命令退出 1；源码格式与 `git diff --check` 实际已通过。此检查以后必须先生成 `git diff --unified=0`，只过滤单个 `+` 的新增行并排除 `+++` 文件头，禁止再次扫描完整历史文件。
 - 最近复发/补充：2026-08-08 首轮批量读取中文文档时沿用 PowerShell 7 默认控制台输出编码，工具侧显示乱码；文件无 BOM、`git status` 为空，确认只是只读显示链路。后续中文读取先同时设置 `$OutputEncoding=[System.Text.UTF8Encoding]::new($false)` 与 `[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)`，并对 `Get-Content` 显式使用 `-Encoding UTF8`；乱码出现时先核对 Git 状态和文件字节，不得把显示问题误判为文件损坏。
 - 最近复发/补充：2026-08-08 最终审计再次扫描了整个已修改错题本，误把本条用于解释旧乱码问题的合法 `�` 示例判为新乱码。检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索；应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行，发现命中后再回到原文件确认语义。
 - 最近复发/补充：2026-08-07 发布后文档审计再次对所有 changed file 的完整内容搜索 U+FFFD，误报错题本的规则示例与 `docs/09-image-build.md` 的历史乱码说明。已改回只检查 `git diff --unified=0` 中本次新增行；命中历史正文不能作为失败依据。
