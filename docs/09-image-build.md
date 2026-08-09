@@ -1,3 +1,37 @@
+# v0.4.10 发布门禁：弹窗拉伸与 Steam 认证等待（2026-08-09，执行中）
+
+- 目标正式版本为 `v0.4.10`，上一正式版为 `v0.4.9`。本版同时发布 FE-MODAL-HEIGHT-GUARD-1、FE-NEW-GAME-MODAL-LAYOUT-1、RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 与 FE-STEAM-AUTH-WAIT-VISIBILITY-1。
+- 运行栈验收语义发生变化，因此除 `v0.4.9 → v0.4.10` 正式 Web 一键升级外，还必须从 runtime manifest 支持下限 `v0.3.2` 直升候选；两条链都要验证 Panel health/version、数据库与初始化、用户/实例/存档/Mod/备份/审计哨兵、非目标游戏容器/volume、终态重启恢复及升级后新功能。
+- 本节是 tag 前门禁记录。候选 commit、镜像 ID、完整测试耗时、升级事务、回滚证据、workflow ID、三仓 digest 与 Release 资产摘要必须在各阶段完成后回填；任何失败未闭环前不得创建或推送 `v0.4.10`。
+
+## 变更清单、受影响链路与故障矩阵
+
+- 前端弹窗链路：危险确认框、Steam 二维码和存档/新建游戏宽弹窗统一获得同时受 viewport 与 overlay 约束的有效高度；新建游戏 1100/480px 容器查询只读取 `ngc-modal` 自身宽度，不再被桌面侧栏后的 `sd-main-scroll` 错误触发。
+- 认证升级链路：`recreating_auth → verifying_auth → recreating_server → verifying_server` 不再把 Steam 在线相关 Docker health 当硬门槛；只要求 steam-auth 容器 running、目标 image ID 匹配、`/steam/ready` 可解析。未登录/无 ticket 写 warning 并后台重试；接口不可达、坏响应和 digest 漂移仍失败回滚。
+- 状态展示链路：`verifying_auth` 继续使用既有 apply `phase/progress/updatedAt`，用户卡与技术详情显示“正在尝试 Steam 连接”、累计等待、自动刷新及“不是卡死”，不新增 API 字段。
+- 发布工作流同步加入真实 unhealthy/logged-out auth integration，保证 tag workflow 不能只跑 mock 单测就发布。
+
+| 场景 | 预期措施与门槛 | 发布证据要求 |
+| --- | --- | --- |
+| 正常 auth 已在线 | running + digest + 可解析接口通过，升级继续 | 单测、Docker integration、真实候选升级 |
+| Docker health unhealthy、Steam 未登录/无 ticket | 不等待在线登录；追加后台重试 warning | 真实容器固定 unhealthy 且接口返回 logged-out，必须在 auth timeout 前成功 |
+| auth 接口超时/断流/坏 JSON | 有界轮询后 `auth_service_not_ready`，按事务回滚 | 故障注入与旧版恢复/状态终态检查 |
+| auth digest 不匹配 | 立即 `auth_digest_mismatch`，禁止继续 server 重建 | Go 回归与回滚状态检查 |
+| 部分成功、重复探测与幂等 | `/steam/ready` 只读；最终目标复验走同一门槛 | 同一事务重复状态读取不产生额外 mutation |
+| Panel/容器中断 | 沿用 schema 3 write-ahead 恢复或回滚，不猜阶段 | 既有全量恢复测试 + 候选升级后重启终态 |
+| 失败回滚与数据完整性 | 不删除 game-data、steam-session、存档、Mod、备份；非目标容器不重建 | unhealthy 目标自动回滚、哨兵摘要与容器 ID/volume 核对 |
+| 权限与安全 | 状态、日志、文档不含 Steam 账号/密码/token/ticket；匿名升级接口仍拒绝 | diff/支持包/接口权限检查；测试只用专用本地账号 |
+| 桌面宽弹窗 | 以弹窗自身宽度保持三栏，边框/内边距不撑破 overlay | 1180×1063 三列尺寸、交互、无横向溢出 |
+| 窄屏/低高度弹窗 | 预期切单列，内容只在弹窗内部滚动；确认框/QR 不越界 | 769×500、390×844 普通视口截图与 root/body 宽度 |
+| 网络与远程制品 | 受审镜像/SMAPI/Git 候选仍有界重试、摘要与来源 fail closed | compatibility remote artifacts 与真实 SMAPI 下载 |
+| 资源清理 | 只清理本测试唯一 project/label/端口/volume/image | 每轮终态精确查询为空，禁止任何 system/volume prune |
+
+## 不适用项与保留边界
+
+- 本版没有数据库 migration、部署格式、存档格式、Mod 格式或公开 API shape 变化；无需新增迁移脚本，但仍必须验证代表老版本数据完整保留。
+- Steam 是否在线是联机邀请码能力，不再是 Panel/运行栈升级成功条件；这不等于忽略认证服务本身，接口不可解析仍是硬失败。
+- 前端布局修复不改变表单字段、创建请求、危险确认动作或 Steam 二维码内容；二维码真实阶段若候选夹具无法稳定进入，至少保留源码断言并在正式候选的安装流程中复核 overlay 尺寸。
+
 # 安装入口协议统一为 HTTP（2026-08-09，已完成）
 
 - GitHub README、新手使用指南和本文中的国内加速安装命令统一使用项目实际分发入口 `http://anxinas.dpdns.org/run.sh`；官网部署页原本已经使用 HTTP。本次只修正文档，不修改安装脚本、Panel、镜像、tag 或 Release。
@@ -1173,3 +1207,11 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - 新增 opt-in `TestDockerIntegrationRealPanelCandidateUpgrade`，以真实 GHCR `0.4.1` 和本地 `0.4.2` 候选运行正式 `RunApply`；目标健康/版本、SQLite 数据卷、404 与游戏容器隔离全部通过。
 - tag 前门禁：兼容矩阵 validate/version/远端制品及 9 个 Python 单测；`run.sh`、`migrate-fnos.sh`、ShellCheck；后端全量 test/vet/build；updater 与 runtime Docker integration；前端九项状态脚本和 production build；VitePress production build，全部通过。
 - annotated tag `v0.4.2` 已由 `.github/workflows/release.yml` 成功发布 Docker Hub、阿里云 ACR、GHCR 的 `0.4.2/latest` 和 GitHub Release。三仓精确镜像 OCI version/revision 与 image ID 一致；隔离 DinD 中真实 `0.4.1` Web 更新 API 已完成发现、dry-run、apply 和三项健康验收。发布镜像 `/app/panel` build info 确认 `modernc.org/sqlite v1.54.0`。
+
+# Steam 在线等待解耦专项验证（2026-08-09，非发布记录）
+
+- 变更链路：运行栈 apply `recreating_auth → verifying_auth → recreating_server`；auth 验收从 Docker health 改为容器 running + 精确 image ID + 可解析 `/steam/ready`，前端消费原有 phase/updatedAt 展示等待详情。
+- 故障矩阵：正常已登录接口通过；边界未登录/无 ticket 通过并警告；Steam 外网波动由 auth 后台重试且不阻塞升级；接口超时/断流/坏 JSON 仍失败回滚；digest 不匹配仍立即失败；重复目标复验使用同一幂等只读探针；Panel/容器中断恢复、认证卷快照、失败回滚和数据完整性逻辑未改；不读取或记录账号凭据；测试仅创建唯一前缀容器/镜像并精确清理。
+- Docker Desktop 29.5.3 Linux containers 实机 fixture 将 healthcheck 固定为失败，同时由真实容器 HTTP 服务返回 `{"ready":false,"has_ticket":false}`。`TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth` 12.53 秒通过；旧实现会等待 auth timeout。清理后 `anxiauthoffline*` 容器和镜像均为空。
+- 代码门禁：后端全量 `go test ./...`、`go vet ./...`、`go build ./...`；前端全部 12 个 `test:*` 脚本与 `npm run build` 均通过。Browser 桌面与 390×844 窄屏提示可见，窄屏 root/body 无横向溢出，console error/warn 为空。
+- 本轮没有构建正式候选镜像、没有打 tag 或推送 registry。发布前仍须按本文件总门禁从最新正式版执行 Panel 一键升级、升级后功能复验、目标失败回滚和全量门禁，不能把本专项测试替代正式发布验收。

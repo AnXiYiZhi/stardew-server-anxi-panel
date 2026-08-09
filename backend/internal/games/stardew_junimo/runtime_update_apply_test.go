@@ -25,6 +25,7 @@ type runtimeApplyFakeDocker struct {
 	applyMu                sync.Mutex
 	applyCalls             []string
 	authReady, authTicket  bool
+	authHealth             string
 	authFailTarget         bool
 	authProbeErrorTarget   bool
 	inviteUnavailable      bool
@@ -39,7 +40,7 @@ type runtimeApplyFakeDocker struct {
 }
 
 func newRuntimeApplyFakeDocker(dataDir string) *runtimeApplyFakeDocker {
-	return &runtimeApplyFakeDocker{runtimeUpdateFakeDocker: newRuntimeUpdateFakeDocker(dataDir), authReady: true, authTicket: true}
+	return &runtimeApplyFakeDocker{runtimeUpdateFakeDocker: newRuntimeUpdateFakeDocker(dataDir), authReady: true, authTicket: true, authHealth: "healthy"}
 }
 func (f *runtimeApplyFakeDocker) applyCall(call string) {
 	f.applyMu.Lock()
@@ -143,7 +144,11 @@ func (f *runtimeApplyFakeDocker) RuntimeServiceInspect(_ context.Context, dataDi
 	if f.targetConfigured(dataDir) && f.digestMismatchService == service {
 		digest = "sha256:" + strings.Repeat("d", 64)
 	}
-	return paneldocker.RuntimeServiceMetadata{ContainerID: strings.Repeat("a", 12), ImageID: digest, State: "running", Health: "healthy"}, nil
+	health := "healthy"
+	if service == "steam-auth" {
+		health = f.authHealth
+	}
+	return paneldocker.RuntimeServiceMetadata{ContainerID: strings.Repeat("a", 12), ImageID: digest, State: "running", Health: health}, nil
 }
 func (f *runtimeApplyFakeDocker) RuntimeSteamAuthReady(_ context.Context, dataDir, _ string) (paneldocker.RuntimeSteamReady, error) {
 	if f.targetConfigured(dataDir) && f.authProbeErrorTarget {
@@ -286,9 +291,13 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 
 func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
-	// The incident was triggered by a slow/offline Steam login path. A healthy,
-	// unchanged auth container must not be re-probed through that network path.
-	fake.authProbeErrorTarget = true
+	// The incident was triggered by Docker health waiting for a slow/offline
+	// Steam login. The service API is already reachable and must be enough for
+	// an unchanged auth container even while its online capability is degraded.
+	fake.authHealth = "unhealthy"
+	fake.authFailTarget = true
+	fake.authReady = false
+	fake.authTicket = false
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		t.Fatal(err)
@@ -327,6 +336,9 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	}
 	if !strings.Contains(calls, "cpu shares steam-auth 256") {
 		t.Fatalf("preserved auth did not receive in-place resource weight: %s", calls)
+	}
+	if !strings.Contains(strings.Join(status.Warnings, "\n"), "后台继续尝试连接 Steam") {
+		t.Fatalf("offline Steam retry warning missing: %#v", status.Warnings)
 	}
 	if status.Selected.SteamAuth.ImageID == "" || status.Selected.Server.ImageID == "" {
 		t.Fatalf("selected immutable image IDs missing: %+v", status.Selected)

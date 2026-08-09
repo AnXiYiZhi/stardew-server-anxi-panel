@@ -4,7 +4,7 @@ import type { HealthCheck } from '../../../api'
 import { errorMessage } from '../../../core/helpers'
 import type { StardewPageProps } from '../stardew-routes'
 import type { ComposeService, JunimoUpdateApplyStatus, JunimoUpdateDryRunStatus, JunimoUpdateInfo, ResourceMetricSample, RuntimeComponentsInfo, RuntimeComponentsPreflight, SMAPIUpdateInfo, SMAPIUpdateWorkflowStatus } from '../../../types'
-import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../junimo-update-status'
+import { junimoApplyActive, junimoApplyPhaseLabel, junimoApplyWaitingNotice, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../junimo-update-status'
 import { runtimeComponentsStatusLabel } from '../runtime-components-status'
 import { shouldShowSMAPIUpdate, smapiPhaseActive, smapiPhaseLabel, smapiStatusLabel } from '../smapi-update-status'
 import { preferDryRunWorkflow, shouldStartRequestedApply } from '../component-update-flow'
@@ -138,9 +138,10 @@ type UserUpdateProgressProps = {
   download?: { component: string; image?: string; doneLayers: number; totalLayers: number; percent: number }
   tone?: 'active' | 'success' | 'warning' | 'error'
   error?: string
+  detail?: string
 }
 
-function UserUpdateProgress({ headline, progress, currentStep, steps = ['校验', '下载', '安装', '验收'], download, tone = 'active', error }: UserUpdateProgressProps) {
+function UserUpdateProgress({ headline, progress, currentStep, steps = ['校验', '下载', '安装', '验收'], download, tone = 'active', error, detail }: UserUpdateProgressProps) {
   const safeProgress = Math.max(0, Math.min(100, Math.round(progress)))
   return (
     <div className={`sd-diag-user-progress is-${tone}`}>
@@ -150,6 +151,7 @@ function UserUpdateProgress({ headline, progress, currentStep, steps = ['校验'
         {steps.map((step, index) => <span className={index < currentStep ? 'is-done' : index === currentStep ? 'is-active' : ''} key={step}>{index < currentStep ? '✓ ' : ''}{step}</span>)}
       </div>
       {download ? <div className="sd-diag-user-download"><strong>镜像下载</strong><span>{download.component} · {download.doneLayers}/{download.totalLayers || '—'} 层 · {download.percent}%</span></div> : null}
+      {detail ? <div className="sd-diag-user-progress-detail" role="status">{detail}</div> : null}
       {error ? <div className="sd-diag-user-progress-error">{error}</div> : null}
     </div>
   )
@@ -164,7 +166,7 @@ function junimoUserPhase(dryRun: JunimoUpdateDryRunStatus | null, apply: JunimoU
     const error = apply.phase === 'rollback_failed'
       ? `升级失败：${apply.causeError || apply.error || '当前版本未保留具体的首次失败原因'}；回滚失败：${apply.rollbackError || '当前版本未记录具体回滚步骤，请保留恢复材料。'}`
       : apply.phase === 'failed_rolled_back' ? `新版本未通过验收，已恢复原版本。${apply.causeError || apply.error || ''}` : undefined
-    return { headline: junimoApplyPhaseLabel(apply.phase), progress: 25 + apply.progress * 0.75, currentStep, tone, error, download: apply.download }
+    return { headline: junimoApplyPhaseLabel(apply.phase), progress: 25 + apply.progress * 0.75, currentStep, tone, error, detail: junimoApplyWaitingNotice(apply.phase, apply.updatedAt), download: apply.download }
   }
   const currentStep = dryRun?.phase === 'pulling_server' || dryRun?.phase === 'pulling_auth' ? 1 : dryRun?.phase === 'succeeded' ? 1 : 0
   const tone: NonNullable<UserUpdateProgressProps['tone']> = dryRun?.phase === 'failed' || dryRun?.phase === 'unsupported' ? 'error' : 'active'
@@ -1034,6 +1036,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             <div className={`sd-diag-apply sd-diag-apply--${junimoApply?.phase ?? 'idle'}`} aria-label="Junimo 运行组件升级执行状态">
               <div className="sd-diag-dry-run-head"><strong>{junimoApplyPhaseLabel(junimoApply?.phase)}</strong><span>{junimoApply?.progress ?? 0}%</span></div>
               <progress className="sd-diag-dry-run-progress" max={100} value={junimoApply?.progress ?? 0} />
+              {junimoApplyWaitingNotice(junimoApply?.phase, junimoApply?.updatedAt) ? <div className="sd-diag-dry-run-waiting" role="status">{junimoApplyWaitingNotice(junimoApply?.phase, junimoApply?.updatedAt)}</div> : null}
               {junimoApply?.applyId ? <div className="sd-diag-dry-run-meta">applyId {junimoApply.applyId} · jobId {junimoApply.jobId || '—'} · 升级前 {junimoApply.serverWasRunning ? '运行' : '停止'}{junimoApply.repairSourceApplyId ? ` · 修复源 ${junimoApply.repairSourceApplyId}` : ''}</div> : null}
               {junimoApply?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>成对目标</strong><span>{junimoApply.target.stackVersion} · server {junimoApply.target.server.tag} + steam-auth-cn {junimoApply.target.steamAuth.tag}</span></div> : null}
               {junimoApply?.phase === 'succeeded' ? <div className="sd-diag-dry-run-check sd-diag-dry-run-check--ok"><span>完成</span><strong>成对升级成功</strong><p>Steam 认证与运行链路已验证，实例已恢复升级前运行状态。</p></div> : null}

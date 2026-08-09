@@ -671,6 +671,28 @@
   line-height: 1.5;
 }
 
+.sd-diag-user-progress-detail,
+.sd-diag-dry-run-waiting {
+  color: #6e490b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.sd-diag-user-progress-detail {
+  padding: 9px 10px;
+  border-left: 4px solid #c48724;
+  border-radius: 4px;
+  background: rgba(255, 235, 178, 0.52);
+}
+
+.sd-diag-dry-run-waiting {
+  margin: 8px 0 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 235, 178, 0.5);
+}
+
 .sd-diag-maintenance-details {
   order: 99;
   overflow: hidden;

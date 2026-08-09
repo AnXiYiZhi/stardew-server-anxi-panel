@@ -345,13 +345,13 @@
 }
 
 .sd-saves-modal-card {
+  box-sizing: border-box;
   background: #f8f0d8;
   border: 3px solid #3d2510;
   padding: 14px 18px;
   max-width: 640px;
   width: min(640px, 100%);
-  max-height: 90vh;
-  max-height: 100%;
+  max-height: min(90vh, 100%);
   overflow-y: auto;
   overscroll-behavior: contain;
   display: grid;
@@ -359,6 +359,8 @@
 }
 
 .sd-saves-modal-card-wide {
+  container-name: ngc-modal;
+  container-type: inline-size;
   width: 100%;
   max-width: 1200px;
   overflow-x: auto;

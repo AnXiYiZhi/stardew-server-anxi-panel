@@ -1293,3 +1293,9 @@ Panel 不接收 steam-auth-cn 的 `repository_dispatch`，也不根据 auth 发�
 - Panel apply 主状态为 `succeeded` 且目标版本等于当前 Panel 时，后端才补充 `fullStack`。实例状态为 `uninitialized` 或 `admin_created` 时，`fullStack.instances[]` 返回 `phase=not_needed`、`progress=100`，且 `runtimeRequired=false`。
 - 如果全部实例都属于未安装、已是目标运行栈或 driver 无跟随升级要求，顶层 `fullStack` 同样返回 `phase=not_needed`、`progress=100`、`runtimeRequired=false`。前端应按终态展示，不再显示“正在全栈升级 42%”。
 - 已安装实例缺少当前 Panel 对应的 required-runtime 状态时仍返回 `checking_runtime`；`failed_safe` 与 `manual_action` 优先级不变，不能只按 Panel 主状态 `succeeded` 隐藏游戏运行栈失败。
+
+# 2026-08-09：Steam 认证在线能力与升级验收解耦
+
+- `GET /api/instances/stardew/junimo-update/apply` 响应形状不变；前端继续使用 `phase`、`progress`、`updatedAt`。当 `phase=verifying_auth` 时，`updatedAt` 作为当前阶段起点显示累计等待时间和自动重试说明。
+- 后端不再使用 steam-auth Docker health 判断运行栈升级是否可接受，因为该 health 可能等待外部 Steam 在线连接。容器 running、目标 digest 匹配且 `/steam/ready` 合法即通过；响应中的未登录/无 ticket 是 warning，不是失败。
+- 如果 `/steam/ready` 在有界超时内始终不可达或不可解析，仍返回 `auth_service_not_ready` 并进入原有回滚链路。前端提示“正在尝试连接”不改变失败、回滚或终态契约。

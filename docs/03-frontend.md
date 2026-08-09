@@ -1,7 +1,26 @@
+# FE-MODAL-HEIGHT-GUARD-1：弹窗高度约束隐患修复（2026-08-09，completed）
+
+- 通用危险操作确认框与 Steam 二维码弹窗原先都连续声明了 `90/92vh` 和 `100%` 两个 `max-height`，后一个声明会直接覆盖前一个，导致视口比例上限成为无效 CSS。现在分别收敛为 `min(90vh, 100%)` 与 `min(92vh, 100%)`，同时受视口和遮罩可用高度约束，超长内容继续在弹窗内部滚动。
+- 影响 `StardewPanel.css`、`pages/InstallPage.css` 和 `scripts/test-responsive-layout.ts`；不改变确认动作、二维码生成、Steam 认证、安装任务或后端接口。响应式测试同时固定通用确认框、存档弹窗和二维码弹窗的单一有效高度声明。
+- 验证：全部 12 项前端状态测试与 production build 通过。应用内 Browser 在 1180×900、769×500 实际打开删除确认框，计算高度分别为 `min(810px, 100%)`、`min(450px, 100%)`，均完整位于遮罩内且 document 横向溢出为 0；新建游戏窗口保持三栏并完成小屋 0→1 交互，console warn/error 为 0。现有 QA fixture 不提供可进入的 Steam 二维码阶段，该弹窗由源码断言与 production build 覆盖。
+
+# FE-NEW-GAME-MODAL-LAYOUT-1：新建游戏弹窗错误拉伸修复（2026-08-09，completed）
+
+- 根因是 `NewGameCreator.css` 的容器查询绑定到页面级 `sd-main-scroll`。弹窗虽然以 fixed overlay 覆盖视口，仍是主内容容器的后代；在桌面视口中，只要扣除侧栏后的主内容宽度小于 1100px，三栏新建游戏界面就会被误切成单列，表现为联机设置、角色表单和农场选择纵向拉长。
+- 宽版存档弹窗现在建立独立 `ngc-modal` inline-size 容器；新建游戏的 1100px/480px 响应式查询只读取弹窗自身内容宽度，不再继承页面断点。基础弹窗统一使用 `border-box`，并把重复覆盖的高度限制收敛为 `min(90vh, 100%)`，避免 `width:100%` 再叠加边框和内边距造成横向撑宽。
+- 影响 `pages/SavesPage.css`、`NewGameCreator.css` 和 `scripts/test-responsive-layout.ts`；不改变 React 表单、创建 API、字段默认值或 Junimo 通信。专项测试固定独立容器、断点归属、border-box 和旧 `sd-main-scroll` 查询不得回归。
+- 验证：全部 12 项前端状态测试（含 `test:responsive-layout`）与 production build 通过。应用内 Browser 在 1180×1063 实际打开弹窗，确认三列为 `245px / 657px / 220px`、三栏顶边对齐、文档横向溢出为 0；点击“增加联机小屋”后 0→1。769×500 自动切为单列并在弹窗内部纵向滚动，console warn/error 为 0。
+
 # DOCS-INSTALL-HTTP-1：GitHub 安装命令协议修正（2026-08-09，completed）
 
 - GitHub README 与新手使用指南的国内加速命令改为项目实际入口 `http://anxinas.dpdns.org/run.sh`，与已经正确使用 HTTP 的官网部署页保持一致。
 - 影响仅限 Markdown 展示与复制内容，不修改页面组件、Panel 前端/API、安装脚本、镜像、tag 或 Release。仓库 HTTPS 残留为 0，HTTP 端点返回 200；GitHub README 线上正文与复制载荷均为完整 HTTP 命令、console warn/error 为 0，compatibility workflow `31305603385` 成功。
+
+# RELEASE-V0.4.10-FRONTEND-1（2026-08-09，执行中）
+
+- `v0.4.10` 将一并发布弹窗有效高度约束、新建游戏弹窗独立容器查询，以及 Steam 认证阶段等待提示。公开 API、表单字段和操作权限不变。
+- tag 前必须用精确候选完成 1180×1063 桌面三栏、769×500 低高度单列、390×844 完整面板认证等待、危险确认框及 Steam 二维码 overlay 复核；全部 12 项状态脚本与 production build 重新执行。
+- 发布后官网首页和 changelog 才切换到 `v0.4.10`，避免在正式 tag/三仓镜像可用前把未发布版本标成 latest。
 
 # DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，released）
 
@@ -2480,3 +2499,9 @@ npm.cmd run dev
 - 桌面和移动端上传弹窗共用常驻说明牌，以“支持 / 不支持”两行展示上传方式；遇到内层 ZIP 时应先解压，再作为独立 ZIP 上传。
 - 共享文案和说明组件位于 `games/stardew/ModUploadGuidance.tsx`，两端不再分别维护能力边界。接口、上传事务和后端解包逻辑均未修改。
 - 验证：九项前端状态脚本与 `npm.cmd run build` 全部通过；应用内 Browser 已确认桌面入口说明关联、弹窗常驻说明与打开时气泡收起，390×844 移动弹窗无横向溢出，桌面/移动 console error/warn 均为空。
+
+# FE-STEAM-AUTH-WAIT-VISIBILITY-1（2026-08-09，completed，待发布）
+
+- Junimo apply 的 `verifying_auth` 标题改为“正在尝试 Steam 连接”，用户维护卡与展开后的技术详情同时显示阶段累计等待时长、Steam 网络波动会自动重试、升级只等待认证接口可用以及“页面会自动刷新，不是卡死”。
+- 等待时长从 apply `updatedAt`（阶段切换时写入）计算；现有 1.8 秒状态轮询会持续触发刷新，无需新增 API 字段或额外定时器。
+- 状态脚本覆盖 4 分 7 秒格式和非认证阶段不展示。应用内 Browser 已用真实本地 Panel/Vite 和持久 `verifying_auth` fixture 验证桌面与 390×844 完整面板；两处提示可见，root/body `scrollWidth == clientWidth == 390`，console error/warn 为空。

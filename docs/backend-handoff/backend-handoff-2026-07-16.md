@@ -1,3 +1,9 @@
+# RELEASE-V0.4.10-BACKEND-1 接手记录（2026-08-09，执行中）
+
+- 目标 tag `v0.4.10`，上一正式版 `v0.4.9`，代表老版本 `v0.3.2`。后端发布内容是 steam-auth 验收由 Docker health 切换为 running + digest + 可解析接口；联机登录能力降级为 warning，接口或 digest 故障仍回滚。
+- `.github/workflows/release.yml` 已加入 `TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth`，确保正式 tag 在真实 Docker unhealthy/logged-out fixture 上复验。
+- 完整候选、两条一键升级、unhealthy 回滚、升级后新功能、workflow 与三仓证据完成前不得把本节改成 released。
+
 # RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
 
 ## 改了什么、影响文件、验证与下一步
@@ -617,3 +623,10 @@
 - 发布门禁：`scripts/compatibility_matrix.py` 的 required image inspect、Git traceability fetch 与 SMAPI 分块下载均改为三轮有界重试。已验分块可跨受审 URL 续传；截断分块不计入 hash；最终 SHA 错误会从不同起始源整包重下。白名单、Range、大小、digest 与 ancestry 仍是硬失败。
 - 测试：`internal/web` 覆盖两个未安装状态和真实 Store 聚合；Python 共 19 项，新增跨源续传、截断、恶意重定向、重试耗尽、错摘要整包重下、镜像 inspect 重试与 Git fetch 边界。真实公网门禁在 Docker Hub TLS timeout、SMAPI 32 MiB 处 SSL EOF/429 后恢复并通过；生产 Go 空缓存下载及 updater/runtime Docker integration 均通过。
 - 下一步：必须以包含本修复的最终 commit 重建 `0.4.6`，重新执行 v0.4.5 Web 一键升级、unhealthy 回滚、升级后 Mod 功能和右侧栏终态 QA；在这些证据完成前不得 tag。不要通过把 `checking_runtime` 普遍改成成功、移除 trusted hosts 或跳过最终 SHA 来规避网络问题。
+
+# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 接手记录（2026-08-09，completed，待发布）
+
+- 改动：`runtime_update_apply_runner.go` 的 `waitRuntimeAuth` 在容器 running 后直接探测 `/steam/ready`，不再先要求 Docker health；删除只检查容器 health 的旁路，auth 新旧版本和最终复验统一使用服务接口。未登录/无 ticket 写 warning，接口不可用与 digest 不匹配仍触发回滚。
+- 影响：运行栈 apply/恢复验证和 `steam_auth_ready` 检查文案；无 API 路由或 JSON shape 变化，无认证卷、Compose 重建顺序或凭据处理变化。
+- 验证：三个 Go 聚焦回归通过；新增 build-tag integration 在 Docker Desktop 29.5.3 中用真实 unhealthy 容器和 logged-out HTTP 响应通过，任务资源清理为空；本次最终差异的后端全量 `go test ./...`、`go vet ./...`、`go build ./...` 均通过。
+- 下一步：正式候选必须复跑上一正式版到候选版的一键升级，并同时覆盖接口始终不可达的回滚注入。不要重新把 Steam 登录/ticket 或 auth Docker health 提升为升级硬门槛。

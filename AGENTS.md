@@ -60,6 +60,13 @@
 
 ## Shell、工具与文件编码约定
 
+### 生产 SSH
+
+- Windows 当前用户已持久安装 `Posh-SSH 3.2.7`，模块路径为 `C:\Users\anxi\Documents\PowerShell\Modules\Posh-SSH\3.2.7`。连接飞牛服务器时优先在 PowerShell 7 中使用 `New-SSHSession`、`Invoke-SSHCommand` 和 `Remove-SSHSession`，不要再临时安装 Paramiko、Plink 或其它 SSH 客户端。
+- 飞牛连接参数固定为主机 `121.40.29.22`、端口 `22000`、用户 `cz`。只使用用户在当前会话明确提供的密码构造内存中的 `SecureString`/`PSCredential`；密码不得写入本文件、脚本、PowerShell profile、环境持久化、日志或 Git。每次操作必须在 `finally` 中关闭 SSH session。
+- 默认采用用户名密码认证。除非用户在当次请求中明确要求，不得创建本机 SSH 密钥、上传公钥、修改服务器 `authorized_keys` 或切换为密钥认证。首次主机指纹只允许在已核对目标主机时用 `-AcceptKey` 接受，后续不得绕过主机密钥校验。
+- 普通只读或非交互命令使用 `Invoke-SSHCommand`；必须输入 `sudo` 密码时使用受控 `New-SSHShellStream`，密码只写入该会话流且不得回显或拼进远端命令行。传给 SSH 的 PowerShell 双引号字符串中禁止出现远端 `$变量`、`$()` 或反引号命令替换；简单探针改用不需要远端插值的独立命令，复杂远端诊断写任务专属脚本或使用 UTF-8 base64 载荷，避免 `pwsh → SSH → sh` 多层转义。
+
 - Windows 上所有 PowerShell 命令使用 PowerShell 7：`pwsh -NoLogo -NoProfile -Command '& { ... }'`，禁止调用 `powershell.exe`。外层使用单引号脚本块，避免父 PowerShell 提前展开 `$变量`；路径操作优先 `-LiteralPath`。调用 `git`、`go`、`npm`、`docker`、`python` 等原生命令后显式检查 `$LASTEXITCODE`。退出语句必须写成带空格的 `exit $LASTEXITCODE`；禁止写成会被解析为命令名的 `exit$LASTEXITCODE`。
 - 原生命令失败后若还要运行 `docker logs`、`inspect` 等诊断，必须先把原始 `$LASTEXITCODE` 保存到任务专属变量，诊断完成后退出该保存值；不得在其它原生命令之后再直接 `exit $LASTEXITCODE`。长运行服务先做有上限 readiness 轮询。
 - Docker `inspect` 需要读取嵌套 label、数组或多个字段时，必须输出完整 JSON 并由 PowerShell `ConvertFrom-Json` 投影；禁止在多层 PowerShell 命令中拼接带引号或反斜杠的 Go template。只有经过独立探针的单个无引号字段才可使用 `--format`。
@@ -78,6 +85,7 @@
 - 容器内测试调用宿主 Docker 时，daemon 看不到调用方容器私有的 `t.TempDir()`/`/tmp`。凡测试会把临时路径作为二级容器 bind source，必须改在带所需工具链的任务专属 DinD 容器内执行，或使用双方明确共享的宿主 bind；不能仅挂 Docker Socket后假定路径可见。
 - Windows Docker Desktop 向 DinD 预加载镜像时，优先为任务容器绑定唯一环回 TCP 端口，并用宿主 CLI `docker -H ... image load -i`；若使用 `docker cp`，即使退出 0 也必须立即在目标端核对存在、大小和摘要，不能仅凭退出码继续。
 - `rg` 在 Windows 上不要传递未由 Shell 展开的 `path/*` 或 `Dockerfile*`；使用 `rg -g '<glob>' <pattern> <root>`、明确目录或先用 `rg --files`。文本搜索优先 `rg`，文件列表优先 `rg --files`。
+- Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。发现 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
