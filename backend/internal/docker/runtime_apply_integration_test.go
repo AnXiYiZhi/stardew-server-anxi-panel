@@ -143,6 +143,10 @@ func TestRuntimeInspectAndAuthProbeWithoutNode(t *testing.T) {
 	if err != nil || !ready.Ready || !ready.HasTicket {
 		t.Fatalf("ready=%+v err=%v", ready, err)
 	}
+	run("compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "rm", "/www/steam/ready")
+	if _, err := client.RuntimeSteamAuthReady(ctx, workDir, project); err == nil {
+		t.Fatal("HTTP 404 auth response was accepted")
+	}
 }
 
 // Opt-in release acceptance against the reviewed runtime images. It does not

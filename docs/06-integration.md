@@ -1,3 +1,9 @@
+# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 联调契约（2026-08-09，completed，待发布）
+
+- required runtime apply 的 `verifying_auth` 硬门槛为 steam-auth 容器 running、目标 image ID 精确匹配，以及容器内 `GET /steam/ready` 命中受支持 HTTP/schema 合约；Docker health、Steam 登录和 ticket 不再是升级成功条件。
+- HTTP 200 legacy schema 要求 `ready:boolean`，`has_ticket` 可选；current schema 要求 `status=ok`、`logged_in:boolean`、`accounts:array`。真实镜像未配置账号的 HTTP 503 只接受 legacy `ready=false`；HTTP 500/其它状态、503 current/畸形 schema、坏 JSON、`accounts=null/number/object`、接口不可达和 image ID 漂移均不得继续 server 重建，必须进入原事务失败/回滚链。
+- 前端继续只消费既有 `phase/progress/updatedAt`。`verifying_auth` 显示“正在尝试 Steam 连接”和累计等待；读屏 live region 只宣布阶段标题，动态秒数不重复播报。无新增 API 字段、权限或凭据暴露。
+
 # RUNTIME-UPDATE-REPAIR-CATALOG-3 联调契约（2026-08-09，completed，未发布）
 
 - `GET /api/instances/:id/junimo-update` 可返回可选 `repairPlan`：`actionAvailable:boolean`、`action:repair|export|wait`、稳定 `code`、`title`、`detection`、`method`、`buttonLabel`、`steps[]`、`attempts/maxAttempts`。它是后端当前快照的只读判断，不代表浏览器可以缓存后稍后盲目执行。

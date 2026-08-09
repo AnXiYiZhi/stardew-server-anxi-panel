@@ -1301,6 +1301,7 @@
 }
 
 .sd-confirm-dialog {
+  box-sizing: border-box;
   background: #f8f0d8;
   border: 3px solid #3d2510;
   border-radius: 2px;

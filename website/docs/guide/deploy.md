@@ -4,17 +4,13 @@
 
 ## 一键部署（Linux 云服务器推荐）
 
-国内加速安装：
-
-```bash
-curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
-```
-
-GitHub Release 安装（海外服务器或国内加速不可用时）：
+官方 GitHub Release 安装（推荐）：
 
 ```bash
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
+
+> 当前国内脚本镜像只提供 HTTP，无法证明脚本在传输途中未被篡改，因此不再推荐下载后直接执行。GitHub 访问不稳定时，请在浏览器打开本项目官方 Release，下载 `run.sh` 后再运行；不要执行来源不明或仅经 HTTP 传输的安装脚本。
 
 运行后会出现菜单：
 

@@ -2,18 +2,24 @@
 
 ## 改了什么与影响
 
-- `.sd-confirm-dialog` 的重复 `max-height:90vh/100%` 合并为 `min(90vh, 100%)`；`.sd-install-qr-card` 的重复 `92vh/100%` 合并为 `min(92vh, 100%)`。两类弹窗现在不会因为级联覆盖而丢失视口比例上限，内容溢出仍由原有 `overflow-y:auto` / `overflow:auto` 承接。
+- `.sd-confirm-dialog` 的重复 `max-height:90vh/100%` 合并为 `min(90vh, 100%)`；`.sd-install-qr-card` 的重复 `92vh/100%` 合并为 `min(92vh, 100%)`。两类卡片显式使用 `box-sizing:border-box`，padding/border 不再加到 100% 限高/限宽之外；内容溢出仍由原有 `overflow-y:auto` / `overflow:auto` 承接。
 - 影响 `frontend/src/games/stardew/StardewPanel.css`、`pages/InstallPage.css` 和 `scripts/test-responsive-layout.ts`。没有修改弹窗 JSX、危险操作确认逻辑、Steam 二维码数据或安装 API。
 
 ## 如何验证
 
 - 全部 12 项前端状态测试与 `npm.cmd run build` 通过。
-- QA App stopped fixture 在 1180×900 与 769×500 打开存档删除确认框，计算 `max-height` 分别为 `min(810px, 100%)`、`min(450px, 100%)`，卡片四边均在 overlay 内，root `scrollWidth === clientWidth`；随后重新打开新建游戏并把初始小屋从 0 增至 1，三栏布局、内部滚动和 console health 正常。
-- Steam 二维码阶段未包含在当前 QA fixture，二维码弹窗以 CSS 源码回归断言和 production build 验证；若后续为安装页补 QR fixture，应再增加真实长链接与低高度视口的交互截图。
+- QA App 除既有 1180×900、769×500 删除确认框/新建游戏验收外，又在 769×240 与 280×653 打开长 Joja 确认框。两视口卡片四边都在 overlay 内、root/body 无横向溢出、console warn/error 为 0；769×240 卡片 `scrollHeight=303 > clientHeight=210`，滚轮交互使内部 `scrollTop 0→93`，证明低高度内容可达且不把页面撑高。
+- Steam 二维码阶段未包含在当前 QA fixture，二维码弹窗以 CSS 源码回归断言和 production build 验证；精确候选安装态必须再以真实 QR 内容和低高度视口完成几何/滚动截图。
 
 ## 下一步注意事项
 
 - 桌面 overlay 内的高度上限统一使用 `min(<viewport cap>, 100%)`；不要再用连续两条同属性声明表达“同时满足”，因为普通 CSS 级联只会保留后一条。移动端现有 `100vh` → `100dvh` 是兼容回退，不属于这一问题。
+
+# DOCS-INSTALL-HTTPS-2 接手记录（2026-08-09，completed，待发布）
+
+- README、`docs/user-guide/getting-started.md`、官网 `guide/deploy` / `deploy/quick-start` 及 `docs/09-image-build.md` 的活动安装命令统一为官方 GitHub Release HTTPS。仅支持 HTTP 的 `anxinas.dpdns.org` 不再作为下载后直接执行入口；旧 `DOCS-INSTALL-HTTP-1` 记录只保留历史背景。
+- 安装脚本会操作 Docker 与宿主配置，HTTP 200/长度不能抵御中间人替换。国内网络不稳定时引导用户从浏览器打开官方 Release 手工下载 `run.sh`；未来只有可信 HTTPS 或独立签名/摘要校验才能恢复镜像推荐。
+- 未修改脚本内容、镜像选择、Panel API 或安装事务。发布前后都要检索活动文档中的 HTTP 可执行入口为 0，并验证 Release `run.sh` HTTPS 资产和官网静态 build。
 
 # FE-NEW-GAME-MODAL-LAYOUT-1 接手记录（2026-08-09，completed）
 
@@ -45,6 +51,9 @@
 # RELEASE-V0.4.10-FRONTEND-1 接手记录（2026-08-09，执行中）
 
 - 发布范围：FE-MODAL-HEIGHT-GUARD-1、FE-NEW-GAME-MODAL-LAYOUT-1、FE-STEAM-AUTH-WAIT-VISIBILITY-1。需要在精确候选上重做桌面/低高度/390px 页面 QA，不以源码 fixture 的单次通过替代升级后验收。
+- 全新 Node 24 `npm ci` 报告 `nanoid 3.3.16` 命中 `GHSA-2v37-7h3g-55p8` high advisory；lockfile 已在 PostCSS 的 `^3.3.16` 范围内精确更新为修复版 `3.3.17`。后续发布门禁须同时跑 `npm audit --omit=dev --audit-level=high`，不能只因 Vite/PostCSS 属于构建工具就忽略已知 high。
+- 官网 `package-lock.json` 的 `nanoid 3.3.15 / postcss 8.5.16` 同样升级到 `3.3.17 / 8.5.25`，清除有补丁的 high。VitePress 稳定 latest 1.6.4 仍聚合 1 high + 2 moderate，只影响不会发布的 Vite dev server且无稳定修复；2.0 尚为 alpha。发布验证要求 production audit 0、critical 0 与静态 `docs:build`，禁止把 `docs:dev` 暴露公网。
+- 空 Node 24 volume 的前端 production audit 0、12 项状态测试和 build 已通过；官网 production audit 0、critical 0 和 VitePress 静态 build 已通过。两个任务 volume 与相关容器已精确清理；精确候选升级后的桌面/低高度/390px 页面 QA 仍待执行。
 - 官网仍保持 v0.4.9，待 `v0.4.10` Release 与三仓镜像成功后再更新首页/changelog 并验证 Pages。
 
 # FE-RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
@@ -1532,9 +1541,9 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 ## 改动与影响
 
-- `junimo-update-status.ts` 新增纯函数 `junimoApplyWaitingNotice`，认证阶段标题改为“正在尝试 Steam 连接”；`DiagnosticsPage.tsx/.css` 在用户进度卡和技术详情中展示累计等待、自动重试、验收边界和“不是卡死”。接口保持使用现有 `phase/updatedAt`。
+- `junimo-update-status.ts` 新增纯函数 `junimoApplyWaitingNotice`，认证阶段标题改为“正在尝试 Steam 连接”；`DiagnosticsPage.tsx/.css` 在用户进度卡和技术详情中展示累计等待、自动重试、验收边界和“不是卡死”。接口保持使用现有 `phase/updatedAt`。唯一 `role=status` 只包住阶段标题，动态计时和重复技术详情不进入 live region，避免 1.8 秒轮询导致读屏重复播报。
 
 ## 验证与下一步
 
-- `test-junimo-update-status.ts` 覆盖分钟/秒格式及非认证阶段；应用内 Browser 用本地 Panel/Vite fixture 验证桌面与 390×844 完整面板，提示可见、无横向溢出、console error/warn 为空。`package.json` 中全部 12 个 `test:*` 脚本与 production build 均通过。
+- `test-junimo-update-status.ts` 覆盖分钟/秒格式、非认证阶段和 live-region 单一归属；应用内 Browser 用本地 Panel/Vite fixture 验证桌面与 390×844 完整面板，提示可见、无横向溢出、console error/warn 为空。正式候选仍须重跑全部 12 个 `test:*` 脚本、production build 与升级后页面 QA。
 - 后端若以后拆分新的 Steam 等待 phase，应同步扩展纯函数和状态测试；不要只更换标题而移除 elapsed/自动刷新说明，也不要把“正在尝试连接”表述成升级必须等到 Steam 登录成功。

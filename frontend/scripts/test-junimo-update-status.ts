@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { junimoApplyActive, junimoApplyPhaseLabel, junimoApplyWaitingNotice, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../src/games/stardew/junimo-update-status.ts'
+
+const diagnosticsSource = readFileSync(new URL('../src/games/stardew/pages/DiagnosticsPage.tsx', import.meta.url), 'utf8')
 
 assert.equal(junimoUpdateStatusLabel('up_to_date'), '推荐版本对已匹配')
 assert.equal(junimoUpdateStatusLabel('update_available'), 'Junimo 运行组件可更新')
@@ -27,5 +30,9 @@ assert.equal(junimoMaintenanceNeedsAttention(undefined, false, undefined, true),
 assert.equal(junimoApplyActive('succeeded'), false)
 assert.equal(junimoApplyActive('failed_rolled_back'), false)
 assert.equal(junimoApplyActive('rollback_failed'), false)
+assert.equal(diagnosticsSource.match(/role="status"/g)?.length, 1, 'only the phase headline should be announced as live status')
+assert.match(diagnosticsSource, /<strong role="status">\{headline\}<\/strong>/)
+assert.doesNotMatch(diagnosticsSource, /sd-diag-user-progress-detail" role="status"/)
+assert.doesNotMatch(diagnosticsSource, /sd-diag-dry-run-waiting" role="status"/)
 
 console.log('junimo update status tests passed')
