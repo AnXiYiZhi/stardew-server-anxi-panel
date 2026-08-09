@@ -1,3 +1,8 @@
+# 安装入口协议统一为 HTTP（2026-08-09，待验证）
+
+- GitHub README、新手使用指南和本文中的国内加速安装命令统一使用项目实际分发入口 `http://anxinas.dpdns.org/run.sh`；官网部署页原本已经使用 HTTP。本次只修正文档，不修改安装脚本、Panel、镜像、tag 或 Release。
+- 验证目标：仓库不再残留该域名的错误 HTTPS 脚本地址；只读取远端脚本验证 HTTP 响应，不执行下载内容；推送后核对 GitHub README 渲染和复制内容，并等待兼容矩阵成功。
+
 # v0.4.9 官网展示文档发布（2026-08-09，已发布）
 
 - 范围仅为 `website/docs/index.md` 与 `website/docs/changelog.md`：首页 release、版本卡和摘要切换为 v0.4.9，更新日志置顶加入升级检测、三类一键修复、最多三次、失败回滚、未知状态脱敏支持包、重启续跑和 auth 保留说明。没有修改 Panel 镜像、API、tag、Release、主题组件、导航或依赖。
@@ -725,7 +730,7 @@ TCP 8080
 国内加速安装：
 
 ```bash
-curl -fsSL -o run.sh https://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
 ```
 
 GitHub Release 安装：
