@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.8
+release: v0.4.9
 heroInviteCard: true
 
 hero:
@@ -32,7 +32,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.8。新增玩家上报 Mod 详情、差异分组和 CJB 明示提醒；清单仅供人工参考，不会自动处罚玩家。
+    details: 当前最新 v0.4.9。升级异常会先检测原因，再提供对应的一键修复与续跑；无法安全自动处理时保留现场并导出脱敏支持包。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -44,8 +44,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.8</strong>
-    <p>桌面和手机玩家页现在可以查看客户端上报的 Mod，并区分玩家额外安装、玩家缺少、版本不同与匹配；CJB 只作明确提示，不会自动踢出或封禁。</p>
+    <strong>v0.4.9</strong>
+    <p>升级遇到回滚失败、旧候选配置或安全回滚后的可重试故障时，面板会显示检测依据和具体修复方法，并在管理员确认后完成修复、重新预检和继续升级。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
