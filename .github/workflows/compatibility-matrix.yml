@@ -43,6 +43,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm audit --omit=dev --audit-level=high
           npm run test:command-results
           npm run test:update-status
           npm run test:panel-update

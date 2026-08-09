@@ -443,6 +443,7 @@
 }
 
 .sd-install-qr-card {
+  box-sizing: border-box;
   background: #1e1209;
   color: #e8d8b0;
   padding: 16px;

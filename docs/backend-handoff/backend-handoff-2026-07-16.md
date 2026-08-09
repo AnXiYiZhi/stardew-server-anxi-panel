@@ -3,6 +3,7 @@
 - 目标 tag `v0.4.10`，上一正式版 `v0.4.9`，代表老版本 `v0.3.2`。后端发布内容是 steam-auth 验收由 Docker health 切换为 running + digest + 可解析接口；联机登录能力降级为 warning，接口或 digest 故障仍回滚。
 - `.github/workflows/release.yml` 已加入 `TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth`，确保正式 tag 在真实 Docker unhealthy/logged-out fixture 上复验。
 - 完整候选、两条一键升级、unhealthy 回滚、升级后新功能、workflow 与三仓证据完成前不得把本节改成 released。
+- 候选构建前最终差异已通过后端全量 test/vet/build、完整 runtime Docker integration、真实官方 `.125 / auth .2` 无凭据 503 offline 合约和 unhealthy/logged-out 专项；公网兼容矩阵在有界网络恢复后通过。精确候选直升与 Web E2E 仍按 `docs/09-image-build.md` 待执行。
 
 # RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
 
@@ -626,7 +627,7 @@
 
 # RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 接手记录（2026-08-09，completed，待发布）
 
-- 改动：`runtime_update_apply_runner.go` 的 `waitRuntimeAuth` 在容器 running 后直接探测 `/steam/ready`，不再先要求 Docker health；删除只检查容器 health 的旁路，auth 新旧版本和最终复验统一使用服务接口。未登录/无 ticket 写 warning，接口不可用与 digest 不匹配仍触发回滚。
+- 改动：`runtime_update_apply_runner.go` 的 `waitRuntimeAuth` 在容器 running 后直接探测 `/steam/ready`，不再先要求 Docker health；删除只检查容器 health 的旁路，auth 新旧版本和最终复验统一使用服务接口。`runtime_apply.go` 保留并校验 HTTP status：200 接受受支持 schema，真实镜像的 503 仅接受 legacy `ready=false`；current `accounts` 必须是 array。未登录/无 ticket 写 warning，其它状态、坏 schema、接口不可用与 digest 不匹配仍触发回滚。
 - 影响：运行栈 apply/恢复验证和 `steam_auth_ready` 检查文案；无 API 路由或 JSON shape 变化，无认证卷、Compose 重建顺序或凭据处理变化。
-- 验证：三个 Go 聚焦回归通过；新增 build-tag integration 在 Docker Desktop 29.5.3 中用真实 unhealthy 容器和 logged-out HTTP 响应通过，任务资源清理为空；本次最终差异的后端全量 `go test ./...`、`go vet ./...`、`go build ./...` 均通过。
+- 验证：聚焦单元覆盖 HTTP 500、503 current/ready=true 以及 current `accounts=null/number/object` 拒绝，并固定真实 503 `ready=false` 合约；Docker integration 同时验证 200 ready 成功和真实 404 fail closed。真实官方 auth 镜像专项必须在无凭据状态直接接受其 503 offline body，不得等待 Docker health。
 - 下一步：正式候选必须复跑上一正式版到候选版的一键升级，并同时覆盖接口始终不可达的回滚注入。不要重新把 Steam 登录/ticket 或 auth Docker health 提升为升级硬门槛。

@@ -70,6 +70,7 @@
 
 ## 2026-08-09：发布夹具把多层 Shell、JSON 和文本工具塞进单行命令
 
+- 最近复发/补充：2026-08-09 `v0.4.10` 核对真实 auth HTTP 合约时，把 Bash `/dev/tcp` 的 `>&3` 和带 CRLF 的请求直接嵌入 `pwsh -Command`，PowerShell 在容器创建前报重定向语法错误；随后又把创建、轮询、输出和 finally 清理塞进同一个包装命令，第二次无诊断退出 1。确认精确容器名不存在后，改用 `apply_patch` 创建任务专属 LF Bash 探针，并把容器创建、读取、清理拆为独立命令，成功取得无凭据的 HTTP 503 `ready=false` 合约并精确清理脚本/容器。
 - 环境：Windows PowerShell 7 → `docker exec` → Linux `sh`，验证 `v0.4.9` 受控 HTTPS Release、支持包和升级后哨兵。
 - 错误模式：先后内联 Python `-c` URL/CA、JSON/正则、`find -printf`、`cut -d ' '`，并猜测 BusyBox `wget --ca-certificate` 可用；引号在 PowerShell、Docker argv 和容器 shell 之间被剥离或重新解释。
 - 症状 / 退出码：Python 收到残缺参数，PowerShell 把 `|`/引号解析为自身语法，容器 shell 报 JSON/正则语法错误，BusyBox wget 报未知选项；这些失败均发生在只读探针或测试断言，产品事务未被错误触发。
@@ -183,6 +184,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
+- 最近复发/补充：2026-08-09 `v0.4.10` 收口先把 Diagnostics 页面猜成不存在的 `frontend/src/pages/DiagnosticsPage.tsx`，又在 `backend` 工作目录把仓库根的 `docs` 直接作为 `rg` 目标；前者产生 PowerShell 非终止路径错误但外层退出 0，后者令 `rg` 退出 1。只读复核子任务还先后把不存在的 `backend/internal/web/router.go`、`client.go`、`command.go`、`stardew-routes.tsx` 混入路径。后续已先用 `rg --files` 确认精确文件，并把跨后端/文档搜索统一放在仓库根；必需文件读取必须设置 `$ErrorActionPreference = 'Stop'`，不能让后续成功掩盖首个路径错误。
 - 最近复发/补充：2026-08-09 本次同类弹窗审计把实际位于 `frontend/src/games/stardew/SavesSection.tsx` 的组件又猜成不存在的 `frontend/src/games/stardew/components/SavesSection.tsx`；同一批后续 `rg` 成功导致外层最终仍显示退出 0。组件路径必须先由 `rg --files frontend/src | rg 'SavesSection'` 取得，多个原生命令连续执行时还要在每次调用后立即检查并保存 `$LASTEXITCODE`，不能只看脚本末尾退出码。
 - 最近复发/补充：2026-08-09 排查新建游戏弹窗时，先把实际位于 `frontend/src/qa-layout-main.tsx` 的文件猜成 `frontend/src/games/stardew/qa-layout-main.tsx`，随后又把未展开的 `frontend/src/games/stardew/*.css` 作为 Windows `rg` 位置参数，分别产生 `Get-Content` 路径错误和 `os error 123`；第一次还因 PowerShell 非终止错误被后续成功输出掩成 exit 0。正确做法是先用 `rg --files frontend` 发现精确路径，通配筛选只写成 `rg -g '*.css' <pattern> <confirmed-root>`，必需读取脚本开头设置 `$ErrorActionPreference = 'Stop'`。
 - 最近复发/补充：2026-08-09 第二次把不存在的仓库根 `package.json` 混进前端 Playwright 依赖探针，使只读命令在输出能力检查前退出；本项目 Node 清单位于 `frontend/package.json` 与 `website/package.json`。该规则已提升到 `AGENTS.md` 的“先用 `rg --files`”硬规则，Node 门禁或依赖检查必须先用 `rg --files -g 'package.json' .` 选择任务对应的真实清单，不得把“常见根清单”列为可选输入。
@@ -270,7 +272,7 @@
 
 - 最近复发/补充：2026-08-01 查询本地 UI 动效数据库时，虽先获得 `Get-Command python` 结果，但没有先执行版本探针便把多个查询放进同一命令；Windows Store alias 以 `9009` 失败且无有效输出。应先单独确认版本，发现 alias 后立即加载工作区依赖，再使用返回的精确 `python.exe`；不要把解释器探针与实际查询合并。
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
-- 最近复发/补充：2026-08-09 发布兼容矩阵仍先把 `Get-Command python` 返回的 Windows Store alias 当真实解释器，版本探针以 `9009` 退出；诊断时又未先验证便调用不存在的 `py -3`。随后停止重试并通过 workspace dependency loader 取得精确 Python。Windows 发布门禁开始前必须先加载工作区依赖，不能因为 `Get-Command` 返回 Application 就认为解释器可运行。
+- 最近复发/补充：2026-08-09 发布兼容矩阵仍先把 `Get-Command python` 返回的 Windows Store alias 当真实解释器，版本探针以 `9009` 退出；诊断时又未先验证便调用不存在的 `py -3`。同日 `v0.4.10` 门禁再次把 `Get-Command python` 与版本探针拼在一条命令中，Store alias 令命令在实际矩阵前退出；确认 `py` 也不存在后停止重试，并通过 workspace dependency loader 取得精确 Python。Windows 发布门禁开始前必须先加载工作区依赖，不能因为 `Get-Command` 返回 Application 就认为解释器可运行。
 - 最近复发/补充：2026-08-06 为隔离 SQLite fixture 查询解释器时，明知同一错题仍先运行无可靠输出的 `python --version`，随后又猜测 `py -3` 可用而得到 command not found。正确入口仍是先调用 workspace dependency loader，再使用返回的精确 Python 路径；本轮没有继续尝试 Store alias。
 - 环境：Windows，`python` 指向不可用的 Store alias。
 - 错误模式：直接运行 `python ...; Write-Output ...`，未在 Python 后立即检查 `$LASTEXITCODE`。
@@ -279,6 +281,16 @@
 - 正确做法：先执行 `Get-Command python` 和版本探针；不可用时使用工作区依赖返回的精确 `python.exe`。每个关键原生命令后立即 `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`。
 - 预防检查：任何 Python 门禁开始前打印或记录解释器路径与版本。
 - 适用范围：兼容矩阵、文档/制品脚本和本地 Python 测试。
+
+## 2026-08-09：把可用 Python 解释器误当成已安装 PyYAML
+
+- 环境：Windows PowerShell 7，工作区依赖提供的 Python 3.12.13，提交前只读 GitHub workflow 语法审查。
+- 错误模式：未探测模块便直接 `import yaml`，假定工作区 Python 捆绑 PyYAML。
+- 症状 / 退出码：解释器正常启动，但以 `ModuleNotFoundError: No module named 'yaml'` 退出 1；workflow 和仓库文件未修改。
+- 根因：只验证了解释器存在，没有验证任务所需第三方模块；可运行 Python 不代表任意解析库已安装。
+- 正确做法：先用 `importlib.util.find_spec('yaml')` 探测；缺少模块时使用项目已有解析/CI 门禁或只审查最小 YAML 差异，不为一次只读探针临时污染全局环境。
+- 预防检查：任何临时 Python `import` 在命令构造前确认属于标准库还是已探测的工作区依赖。
+- 适用范围：YAML、文档、图像、表格等依赖第三方 Python 包的只读发布探针。
 
 ## 2026-07-28：Alpine 登录 Shell 重置 Go PATH
 
@@ -325,6 +337,7 @@
 
 ## 2026-08-09：工具工作目录与命令内路径重复
 
+- 最近复发/补充：2026-08-09 `v0.4.10` fail-closed 修复先在仓库根成功执行 `gofmt`，随后同一脚本仍从仓库根运行 `go test ./internal/docker`，Go 明确报告根目录没有 module 并退出 1，测试未启动。格式化与测试即使操作同一批文件，也必须拆到各自权威工作目录：仓库根可传 `backend/...` 给 `gofmt`，Go 命令必须 `Set-Location backend` 或将工具 `workdir` 设为 `backend`。
 - 环境：Windows 11、PowerShell 7、Codex `shell_command`。
 - 错误模式：把工具 `workdir` 设为 `.../backend`，同时仍向 `gofmt` 传入 `backend/internal/...`，后续还计划从同一目录执行只存在于前端目录的 npm 脚本。
 - 症状：`gofmt` 报 `GetFileAttributesEx ... The system cannot find the path specified`，退出码 1；测试没有开始，文件没有改写。首次补记时又猜错了错题本标题上下文，`apply_patch` 校验失败；读取实际上下文后再精确追加。
@@ -587,6 +600,7 @@
 
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
+- 最近复发/补充：2026-08-09 最终发布只读审查又在外层单引号脚本块中直接嵌入含单引号字符类的 `rg` 正则，PowerShell 在执行搜索前即报 `ParserError`。后续拆成不含单引号的固定模式分别搜索；此类需求必须优先 `rg -F`/多次固定模式，复杂正则写入经审查的任务脚本，不能继续挤进嵌套命令行。
 - 最近复发/补充：2026-08-09 为搜索错题本中的字面 `$_`，在嵌套 `pwsh` 的双引号正则里混用反斜杠，PowerShell 先处理自动变量后让 `rg` 收到不完整的分组并报 `unclosed group`。字面特殊字符优先使用单层 `rg -F`；若外层脚本的引号边界仍冲突，就搜索不含特殊字符的稳定中文标题或拆成独立命令。
 - 环境：Windows，外层命令通过 `pwsh -Command '& { ... }'` 克隆线上静态页面。
 - 错误模式：在内部双引号正则中写入同时匹配单双引号的字符类，导致单引号提前破坏外层脚本边界。
@@ -736,6 +750,7 @@
 
 ## 2026-08-01：`ConvertFrom-Json` 读取 package-lock 的空字符串键失败
 
+- 最近复发/补充：2026-08-09 `v0.4.10` 提交前同时解析 frontend/website lockfile 时又使用默认 `ConvertFrom-Json`；两次都因 `packages[""]` 报非终止错误，后续 `git status/diff` 成功还令整段表面退出 0。改用 `$ErrorActionPreference=''Stop''` 和 `ConvertFrom-Json -AsHashtable` 后精确确认 lockfileVersion=3、两份 nanoid=3.3.17、website postcss=8.5.25。lockfile 解析命令必须从模板上固定 `-AsHashtable`，不得继续依赖人工记忆。
 - 环境：Windows，PowerShell 7，只读检查 npm `package-lock.json`。
 - 错误模式：把包含 `packages[""]` 根包条目的 lockfile 直接管道到默认 `ConvertFrom-Json`，并按 `PSCustomObject` 读取。
 - 症状 / 退出码：JSON 合法，但空字符串属性名无法转换为普通对象属性，命令退出 1；依赖版本尚未完成核对。
@@ -756,7 +771,7 @@
 
 ## 2026-08-01：容器级 `GIT_DIR/GIT_WORK_TREE` 污染子仓库
 
-- 最近复发/补充：2026-08-07 官网恢复构建为了给 VitePress 提供 `lastUpdated`，把宿主完整 `.git` 复制到任务 volume；对象库复制超过三分钟，构建尚未开始。无需写入 Git 元数据时，不复制 `.git`；源码复制到可写 volume 后，只对 `npm run docs:build` 单条命令局部设置只读宿主 `GIT_DIR=/repo/.git`、`GIT_WORK_TREE=/repo`。
+- 最近复发/补充：2026-08-07 官网恢复构建为了给 VitePress 提供 `lastUpdated`，把宿主完整 `.git` 复制到任务 volume；对象库复制超过三分钟，构建尚未开始。2026-08-09 `v0.4.10` 门禁在已有同条规则后再次复制 `.git`，四分钟时 volume 只有部分 Git 元数据且 `website` 仍为空；终止 cell 后还留下挂载该唯一 volume 的运行中 `--rm` 容器。核对精确 mount/image 后停止容器，自动删除存在短暂竞态；下一次只复制 `website`，并仅对 `npm run docs:build` 局部设置只读宿主 `GIT_DIR=/src/.git`、`GIT_WORK_TREE=/work/repo`，4.19 秒完成构建。无需写入 Git 元数据时禁止复制 `.git`。
 - 环境：Windows linked worktree 挂入 Node/VitePress Linux 构建容器。
 - 错误模式：为让 VitePress 读取主工作树 Git 历史，在容器级全局导出 `GIT_DIR` 与 `GIT_WORK_TREE`，后续临时子仓库也继承这两个变量。
 - 症状 / 退出码：子仓库 Git 命令指向主工作树元数据，版本/lastUpdated 探针异常。
@@ -1375,6 +1390,25 @@
 - 正确做法：不得输出完整 `.env`；只用 `sjconfig.ReadEnvFile` 后挑选明确的非敏感白名单键，或用锚定键名的逐项读取。任何凭据/账号存在的文件默认整体敏感。
 - 预防检查：命令中出现 `Get-Content ... .env`、`cat .env` 或打印完整环境时直接停止，改为非敏感字段白名单；用户名、password、secret、token、key、cookie、ticket 一律不进工具输出。
 - 适用范围：Panel/实例 `.env`、Docker inspect Env、支持包、部署迁移与真实升级夹具。
+
+## 2026-08-09：洁净前端门禁复用了既有任务资源名
+
+- 环境：PowerShell 7、Docker Desktop、Node 24 Alpine，准备全新 volume 的前端正式门禁。
+- 错误模式：任务名只使用版本和日期，没有加入本轮唯一后缀；预检发现同名任务容器后按设计立即退出 1，`npm ci` 与产品测试均未开始。随后诊断又在数组字面量内直接混写逗号与字符串加法，`@($taskName,$taskName + '-modules',...)` 被 PowerShell 按非预期优先级拆分，首次输出了错误的 volume 名。
+- 根因：把“描述性名称”误当成“唯一名称”，且没有把派生资源名先分别赋值再组成数组。
+- 正确做法：先核对精确容器/volume 的状态与 ownership，确认受控旧资源已清理后改用唯一 `-r2` 后缀；派生名先赋给 `$modulesVolume`、`$distVolume`，再使用 `@($modulesVolume,$distVolume)`。最终空 volume 门禁 30.1 秒完整通过并按精确 label 清理。
+- 预防检查：正式隔离资源名必须包含任务版本、用途和本轮唯一 nonce/retry 后缀；任何已存在资源都先停止并核对归属，不复用。PowerShell 数组元素含运算表达式时先单独赋值或加圆括号，不能依赖逗号与 `+` 的解析优先级。
+- 适用范围：Docker 测试容器、network、volume、端口及所有由基础名派生的清理清单。
+
+## 2026-08-09：VitePress 源码只读挂载未覆盖配置临时文件
+
+- 环境：Docker Desktop、`node:20-alpine`、仓库只读 bind、独立 website `node_modules`/dist volume。
+- 错误模式：认为 VitePress production build 只写最终 `docs/.vitepress/dist`，因此仅给 dist 单独可写 volume，其余源码保持只读。
+- 症状 / 退出码：`npm ci`、production audit 和 critical audit 已完成；`vitepress build docs` 在载入配置时尝试创建 `.vitepress/config.ts.timestamp-*.mjs`，因 `EROFS` 退出 1。产品 TypeScript/Markdown 尚未进入构建失败，任务资源已按精确 label 清理。
+- 根因：Vite 会把临时编译后的配置模块写在源配置同目录，而不是 dist 或 node_modules；只核对最终输出目录不足以设计只读挂载。
+- 正确做法：把完整 `website/docs/.vitepress` 先复制到任务专属可写 volume，再覆盖挂载回只读仓库的同一路径；这样 config/theme 与最终 dist 都在隔离 volume 中，仓库其余部分和 `.git` 仍只读。重跑前先检查旧容器/volume 已不存在。
+- 预防检查：前端静态生成器采用只读源码门禁前，先探测配置加载阶段的临时文件位置；Vite/VitePress 的可写边界至少包含整个配置目录，不能只挂最终 dist。
+- 适用范围：Vite、VitePress 及会把 timestamp/bundled config 写回配置目录的构建工具。
 
 ## 编码与换行快速检查
 

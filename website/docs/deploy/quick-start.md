@@ -14,21 +14,15 @@ http://服务器IP:8090
 
 ## 安装
 
-国内加速安装：
-
-```bash
-curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
-```
-
-Windows 用户完成后访问 `http://localhost:8090`。建议把 `~/.anxi-panel` 保存在 WSL2 的 Linux 文件系统中，并保持 Docker Desktop 运行；不要从 PowerShell 直接执行这份 Bash 脚本。
-
-GitHub Release 安装：
+官方 GitHub Release 安装（推荐）：
 
 ```bash
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
 
-如果 GitHub 访问不稳定，优先使用国内加速安装地址。加速地址只需要提供最新的 `run.sh` 静态文件；面板镜像本身仍由脚本自动从阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR 或 Docker Hub 候选源拉取。
+Windows 用户完成后访问 `http://localhost:8090`。建议把 `~/.anxi-panel` 保存在 WSL2 的 Linux 文件系统中，并保持 Docker Desktop 运行；不要从 PowerShell 直接执行这份 Bash 脚本。
+
+当前国内脚本镜像只提供 HTTP，无法证明脚本在传输途中未被篡改，因此不再推荐下载后直接执行。GitHub 访问不稳定时，请在浏览器打开本项目官方 Release，下载 `run.sh` 后再运行；不要执行来源不明或仅经 HTTP 传输的安装脚本。面板镜像仍由脚本自动从阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR 或 Docker Hub 候选源拉取。
 
 固定版本安装：
 

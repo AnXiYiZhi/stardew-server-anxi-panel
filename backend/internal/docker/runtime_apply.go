@@ -15,6 +15,8 @@ var runtimeSnapshotVolumePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*_anxi
 const runtimeAuthReadyProbe = `set -eu
 exec 3<>/dev/tcp/127.0.0.1/3001
 printf 'GET /steam/ready HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+IFS= read -r status <&3
+printf '%s\n' "$status"
 while IFS= read -r line <&3; do [ "$line" = $'\r' ] && break; done
 cat <&3`
 
@@ -38,6 +40,14 @@ type RuntimeServiceMetadata struct {
 type RuntimeSteamReady struct {
 	Ready     bool `json:"ready"`
 	HasTicket bool `json:"hasTicket"`
+}
+
+type runtimeSteamReadyEnvelope struct {
+	Ready     json.RawMessage `json:"ready"`
+	HasTicket json.RawMessage `json:"has_ticket"`
+	Status    json.RawMessage `json:"status"`
+	LoggedIn  json.RawMessage `json:"logged_in"`
+	Accounts  json.RawMessage `json:"accounts"`
 }
 
 type RuntimeHostCapacity struct {
@@ -185,18 +195,45 @@ func (c *Client) RuntimeSteamAuthReady(ctx context.Context, dir, project string)
 	if err != nil {
 		return RuntimeSteamReady{}, err
 	}
-	return parseRuntimeSteamReadyResponse(result.Stdout)
+	return parseRuntimeSteamReadyHTTPResponse(result.Stdout)
+}
+
+func parseRuntimeSteamReadyHTTPResponse(output string) (RuntimeSteamReady, error) {
+	statusLine, body, ok := strings.Cut(output, "\n")
+	statusFields := strings.Fields(strings.TrimSpace(statusLine))
+	if !ok || len(statusFields) < 2 || (statusFields[0] != "HTTP/1.0" && statusFields[0] != "HTTP/1.1") {
+		return RuntimeSteamReady{}, errors.New("invalid steam auth ready HTTP response")
+	}
+	if statusFields[1] == "503" {
+		return parseRuntimeSteamUnavailableResponse(body)
+	}
+	if statusFields[1] != "200" {
+		return RuntimeSteamReady{}, errors.New("steam auth ready endpoint returned an unsupported HTTP status")
+	}
+	return parseRuntimeSteamReadyResponse(body)
+}
+
+func parseRuntimeSteamUnavailableResponse(output string) (RuntimeSteamReady, error) {
+	unavailable, err := decodeRuntimeSteamReadyEnvelope(output)
+	if err != nil || unavailable.Ready == nil || unavailable.Status != nil || unavailable.LoggedIn != nil || unavailable.Accounts != nil {
+		return RuntimeSteamReady{}, errors.New("invalid steam auth unavailable response")
+	}
+	ready, err := decodeRuntimeSteamBool(unavailable.Ready)
+	if err != nil || ready {
+		return RuntimeSteamReady{}, errors.New("invalid steam auth unavailable response")
+	}
+	if unavailable.HasTicket != nil {
+		hasTicket, err := decodeRuntimeSteamBool(unavailable.HasTicket)
+		if err != nil || hasTicket {
+			return RuntimeSteamReady{}, errors.New("invalid steam auth unavailable response")
+		}
+	}
+	return RuntimeSteamReady{Ready: false, HasTicket: false}, nil
 }
 
 func parseRuntimeSteamReadyResponse(output string) (RuntimeSteamReady, error) {
-	var ready struct {
-		Ready     *bool           `json:"ready"`
-		HasTicket *bool           `json:"has_ticket"`
-		Status    *string         `json:"status"`
-		LoggedIn  *bool           `json:"logged_in"`
-		Accounts  json.RawMessage `json:"accounts"`
-	}
-	if err := json.Unmarshal([]byte(output), &ready); err != nil {
+	ready, err := decodeRuntimeSteamReadyEnvelope(output)
+	if err != nil {
 		return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
 	}
 	// Keep accepting the original ready/has_ticket contract, but also accept
@@ -204,16 +241,60 @@ func parseRuntimeSteamReadyResponse(output string) (RuntimeSteamReady, error) {
 	// and ticket availability are capabilities for online play, not hard
 	// runtime-upgrade acceptance requirements.
 	if ready.Ready != nil {
+		if ready.Status != nil || ready.LoggedIn != nil || ready.Accounts != nil {
+			return RuntimeSteamReady{}, errors.New("mixed steam auth ready response")
+		}
+		legacyReady, err := decodeRuntimeSteamBool(ready.Ready)
+		if err != nil {
+			return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
+		}
 		hasTicket := false
 		if ready.HasTicket != nil {
-			hasTicket = *ready.HasTicket
+			hasTicket, err = decodeRuntimeSteamBool(ready.HasTicket)
+			if err != nil {
+				return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
+			}
 		}
-		return RuntimeSteamReady{Ready: *ready.Ready, HasTicket: hasTicket}, nil
+		return RuntimeSteamReady{Ready: legacyReady, HasTicket: hasTicket}, nil
 	}
-	if ready.Status == nil || !strings.EqualFold(strings.TrimSpace(*ready.Status), "ok") || ready.LoggedIn == nil || ready.Accounts == nil || !json.Valid(ready.Accounts) {
+	if ready.HasTicket != nil || ready.Status == nil || ready.LoggedIn == nil || ready.Accounts == nil {
 		return RuntimeSteamReady{}, errors.New("incomplete steam auth ready response")
 	}
+	var status string
+	if isRuntimeSteamNull(ready.Status) || json.Unmarshal(ready.Status, &status) != nil || !strings.EqualFold(strings.TrimSpace(status), "ok") {
+		return RuntimeSteamReady{}, errors.New("invalid steam auth status response")
+	}
+	if _, err := decodeRuntimeSteamBool(ready.LoggedIn); err != nil {
+		return RuntimeSteamReady{}, errors.New("invalid steam auth logged-in response")
+	}
+	var accounts []json.RawMessage
+	if !strings.HasPrefix(strings.TrimSpace(string(ready.Accounts)), "[") || json.Unmarshal(ready.Accounts, &accounts) != nil {
+		return RuntimeSteamReady{}, errors.New("invalid steam auth accounts response")
+	}
 	return RuntimeSteamReady{Ready: true, HasTicket: false}, nil
+}
+
+func decodeRuntimeSteamReadyEnvelope(output string) (runtimeSteamReadyEnvelope, error) {
+	var envelope runtimeSteamReadyEnvelope
+	if err := json.Unmarshal([]byte(output), &envelope); err != nil {
+		return runtimeSteamReadyEnvelope{}, err
+	}
+	return envelope, nil
+}
+
+func decodeRuntimeSteamBool(raw json.RawMessage) (bool, error) {
+	if raw == nil || isRuntimeSteamNull(raw) {
+		return false, errors.New("missing steam auth boolean")
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, err
+	}
+	return value, nil
+}
+
+func isRuntimeSteamNull(raw json.RawMessage) bool {
+	return strings.EqualFold(strings.TrimSpace(string(raw)), "null")
 }
 
 func (c *Client) RuntimeServerHealth(ctx context.Context, dir, project string) error {

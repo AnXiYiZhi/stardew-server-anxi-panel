@@ -6,25 +6,42 @@
 
 ## 变更清单、受影响链路与故障矩阵
 
-- 前端弹窗链路：危险确认框、Steam 二维码和存档/新建游戏宽弹窗统一获得同时受 viewport 与 overlay 约束的有效高度；新建游戏 1100/480px 容器查询只读取 `ngc-modal` 自身宽度，不再被桌面侧栏后的 `sd-main-scroll` 错误触发。
-- 认证升级链路：`recreating_auth → verifying_auth → recreating_server → verifying_server` 不再把 Steam 在线相关 Docker health 当硬门槛；只要求 steam-auth 容器 running、目标 image ID 匹配、`/steam/ready` 可解析。未登录/无 ticket 写 warning 并后台重试；接口不可达、坏响应和 digest 漂移仍失败回滚。
-- 状态展示链路：`verifying_auth` 继续使用既有 apply `phase/progress/updatedAt`，用户卡与技术详情显示“正在尝试 Steam 连接”、累计等待、自动刷新及“不是卡死”，不新增 API 字段。
+- 前端弹窗链路：危险确认框、Steam 二维码和存档/新建游戏宽弹窗统一获得同时受 viewport 与 overlay 约束的有效高度，并用 `border-box` 把 padding/border 纳入限宽限高；新建游戏 1100/480px 容器查询只读取 `ngc-modal` 自身宽度，不再被桌面侧栏后的 `sd-main-scroll` 错误触发。
+- 认证升级链路：`recreating_auth → verifying_auth → recreating_server → verifying_server` 不再把 Steam 在线相关 Docker health 当硬门槛；只要求 steam-auth 容器 running、目标 image ID 匹配、`/steam/ready` 命中受支持的 HTTP/schema 合约。HTTP 200 接受 legacy/current schema，current `accounts` 必须是 JSON array；真实 auth 镜像的 HTTP 503 只接受精确 legacy `ready=false` 离线合约。HTTP 500、其它状态、503 current/畸形 schema、接口不可达或 digest 漂移均 fail closed 并回滚。
+- 状态展示链路：`verifying_auth` 继续使用既有 apply `phase/progress/updatedAt`，用户卡与技术详情显示“正在尝试 Steam 连接”、累计等待、自动刷新及“不是卡死”，不新增 API 字段。读屏实时区域只播报静态阶段标题，持续变化的等待秒数不进入 live region，避免每 1.8 秒重复播报。
 - 发布工作流同步加入真实 unhealthy/logged-out auth integration，保证 tag workflow 不能只跑 mock 单测就发布。
+- 安装入口供应链：用户文档只允许从官方 GitHub Release HTTPS 下载 `run.sh` 后执行；仅支持 HTTP 的镜像不再作为可执行脚本入口。HTTP 200/长度不能替代传输完整性，后续只有在镜像提供可信 HTTPS 或独立签名/摘要校验后才能恢复推荐。
+- 洁净 `npm ci` 发现 GitHub Reviewed high advisory `GHSA-2v37-7h3g-55p8`；Vite/PostCSS 的传递依赖 `nanoid` 从 `3.3.16` 精确锁定到修复版 `3.3.17`。必须在空 Node volume 重新 `npm ci`、`npm audit --omit=dev --audit-level=high`、12 项状态测试和 production build，audit high/critical 必须为 0。
+- `compatibility-matrix.yml` 与 `release.yml` 均把前端 production audit 加入 `npm ci` 后的正式门禁，避免 lockfile 后续回退时只有本地审计能发现。
+- 官网洁净依赖审计同样发现旧 lockfile 的 `nanoid 3.3.15`，并发现 `postcss 8.5.16` 命中 source-map path traversal high advisory；分别锁定修复版 `3.3.17`、`8.5.25`。npm 当前稳定 `vitepress latest=1.6.4`，其 Vite 5/esbuild 0.21.5 链仍报告 1 high + 2 moderate 的开发服务器读取/路径绕过公告且无稳定修复；2.0 只有 alpha，不作为正式发布依赖。正式产物只执行 build/发布静态文件，不运行或暴露 Vite/VitePress dev server，因此记录为不适用运行时边界，不能把完整 dev audit 误报为 0。
 
 | 场景 | 预期措施与门槛 | 发布证据要求 |
 | --- | --- | --- |
 | 正常 auth 已在线 | running + digest + 可解析接口通过，升级继续 | 单测、Docker integration、真实候选升级 |
 | Docker health unhealthy、Steam 未登录/无 ticket | 不等待在线登录；追加后台重试 warning | 真实容器固定 unhealthy 且接口返回 logged-out，必须在 auth timeout 前成功 |
 | auth 接口超时/断流/坏 JSON | 有界轮询后 `auth_service_not_ready`，按事务回滚 | 故障注入与旧版恢复/状态终态检查 |
+| auth HTTP 500/其它状态或 current schema `accounts` 非数组 | 即使响应体含 `ready/status=ok` 也拒绝；仅白名单 HTTP 503 + legacy `ready=false` | 单元 500、503 current/畸形 schema、坏 accounts + 真实 Docker 404/503 探针 |
 | auth digest 不匹配 | 立即 `auth_digest_mismatch`，禁止继续 server 重建 | Go 回归与回滚状态检查 |
 | 部分成功、重复探测与幂等 | `/steam/ready` 只读；最终目标复验走同一门槛 | 同一事务重复状态读取不产生额外 mutation |
 | Panel/容器中断 | 沿用 schema 3 write-ahead 恢复或回滚，不猜阶段 | 既有全量恢复测试 + 候选升级后重启终态 |
 | 失败回滚与数据完整性 | 不删除 game-data、steam-session、存档、Mod、备份；非目标容器不重建 | unhealthy 目标自动回滚、哨兵摘要与容器 ID/volume 核对 |
 | 权限与安全 | 状态、日志、文档不含 Steam 账号/密码/token/ticket；匿名升级接口仍拒绝 | diff/支持包/接口权限检查；测试只用专用本地账号 |
+| 安装脚本供应链 | 不从 HTTP 下载后直接执行；只使用官方 Release HTTPS | README、用户指南、官网命令检索；HTTP 可执行入口为 0 |
 | 桌面宽弹窗 | 以弹窗自身宽度保持三栏，边框/内边距不撑破 overlay | 1180×1063 三列尺寸、交互、无横向溢出 |
 | 窄屏/低高度弹窗 | 预期切单列，内容只在弹窗内部滚动；确认框/QR 不越界 | 769×500、390×844 普通视口截图与 root/body 宽度 |
 | 网络与远程制品 | 受审镜像/SMAPI/Git 候选仍有界重试、摘要与来源 fail closed | compatibility remote artifacts 与真实 SMAPI 下载 |
+| 前端/官网依赖安全 | 所有有稳定补丁的 high 均修复；官网唯一无修复 high 限定为不发布的 dev server | 两个空 volume npm ci/audit、前端 high/critical=0；官网 production=0、critical=0、静态 build 通过 |
 | 资源清理 | 只清理本测试唯一 project/label/端口/volume/image | 每轮终态精确查询为空，禁止任何 system/volume prune |
+
+- 补齐 `border-box` 后的浏览器几何回归：769×240 与 280×653 长 Joja 确认框四边均在 overlay 内，root/body 横向溢出为 0、console warn/error 为 0；769×240 卡片内部可从 `scrollTop=0` 滚到 `93`。二维码真实内容仍必须在精确候选安装态验收，不能用 CSS 断言提前关闭该门禁。
+
+## Tag 前代码、依赖与公网制品门禁证据（候选构建前）
+
+- 后端最终差异执行 `go test ./... -count=1` 64.8 秒（`stardew_junimo` 59.223 秒、Web 40.235 秒）、`go vet ./...` 1.5 秒、`go build ./...` 2.6 秒，全部通过。完整 `internal/docker` integration 12.048 秒通过；真实 `.125 / auth .2` 无凭据合约 2.71 秒通过；真实 HTTP 503 + Docker unhealthy/offline auth 不等待 health 专项 11.64 秒通过。
+- 真实 SMAPI 空 Linux 缓存下载 41,889,142 字节并完成摘要、ZIP、0600 和临时文件清理；测试本体 7.25 秒。updater 隔离 Compose 成功、失败回滚与 helper 清理基础集 34.641 秒通过；精确正式候选直升在候选镜像生成后补跑。
+- 兼容矩阵 validate、panel version、19 项 Python 测试通过；`verify-remote-artifacts` 在可选镜像源、Docker Hub、SMAPI 分块及 Git TLS 有界恢复后 120.3 秒通过。三个 Bash 功能脚本与语法 2.7 秒、正式 ShellCheck 2.4 秒通过。
+- 前端在唯一空 Node 24 volume 全新 `npm ci` 后 production audit 0、12 项状态/响应式测试及 build 全部通过，总计 30.1 秒（build 1.55 秒）；任务容器/volume 已按精确 label 清理。官网空 volume 的 production audit 为 0、完整 audit critical=0；剩余 Vite dev-server 1 high + 2 moderate 无稳定修复且不进入静态产物，修正可写配置边界后 VitePress build 本体 4.48 秒、整轮 47.9 秒通过，任务容器/volume 已清理。
+- 当前证据只完成候选构建前门禁。Tag 前硬阻塞仍包括：精确 commit/image metadata、fresh smoke、`v0.4.9`/`v0.3.2` 一键升级、unhealthy 回滚、升级后 UI 与同步干净 `main`。Tag 推送后还必须等待 Release workflow 成功并完成三仓回拉/Release 资产/隔离冒烟；这些后置门禁未完成前不得宣告正式发布完成。
 
 ## 不适用项与保留边界
 
@@ -32,10 +49,10 @@
 - Steam 是否在线是联机邀请码能力，不再是 Panel/运行栈升级成功条件；这不等于忽略认证服务本身，接口不可解析仍是硬失败。
 - 前端布局修复不改变表单字段、创建请求、危险确认动作或 Steam 二维码内容；二维码真实阶段若候选夹具无法稳定进入，至少保留源码断言并在正式候选的安装流程中复核 overlay 尺寸。
 
-# 安装入口协议统一为 HTTP（2026-08-09，已完成）
+# 历史记录：安装入口协议统一为 HTTP（2026-08-09，已撤销）
 
-- GitHub README、新手使用指南和本文中的国内加速安装命令统一使用项目实际分发入口 `http://anxinas.dpdns.org/run.sh`；官网部署页原本已经使用 HTTP。本次只修正文档，不修改安装脚本、Panel、镜像、tag 或 Release。
-- 仓库检索确认该域名的错误 HTTPS 脚本地址为 0；HTTP 端点只读下载返回 200、`application/octet-stream` 和 27,427 字节，未执行下载内容。提交 `55effaffb7f6bdae6091e8fef3eba5e017000e07` 推送 `main` 后，GitHub README 线上正文只含 HTTP、不含同域名 HTTPS，代码块的 `clipboard-copy value` 精确等于完整 HTTP 命令，console warn/error 为 0；compatibility workflow `31305603385` 成功。
+- 本节方案已在 `v0.4.10` 发布门禁中撤销：HTTP 200 与字节数不能抵御中间人替换，当前用户入口统一回到官方 GitHub Release HTTPS。以下仅保留当时问题背景，不再代表有效安装建议。
+> 以下两点仅记录已撤销方案的历史证据，不得复制为当前安装指令：当时曾把入口指向明文 HTTP 镜像，并只验证 200、内容类型与字节数；提交 `55effaffb7f6bdae6091e8fef3eba5e017000e07` 及 compatibility workflow `31305603385` 只证明旧页面一致性，不能证明脚本传输完整性。当前有效命令以本文件顶部供应链说明和官方 GitHub Release HTTPS 为准。
 
 # v0.4.9 官网展示文档发布（2026-08-09，已发布）
 
@@ -761,17 +778,13 @@ TCP 8080
 
 用户首次启动：
 
-国内加速安装：
-
-```bash
-curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
-```
-
-GitHub Release 安装：
+官方 GitHub Release 安装（推荐）：
 
 ```bash
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
+
+当前仅提供 HTTP 的镜像不得作为“下载后直接执行”入口；GitHub 访问不稳定时应从浏览器打开官方 Release 手工下载 `run.sh`，不得用 HTTP 200/长度代替完整性校验。
 
 如果直接从仓库文件启动：
 

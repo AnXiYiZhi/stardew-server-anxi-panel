@@ -26,8 +26,35 @@ func TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth(t *testing.T) {
 	workDir := t.TempDir()
 	composePath := filepath.Join(workDir, "docker-compose.yml")
 
-	build := exec.CommandContext(ctx, "docker", "build", "-t", image, "-")
-	build.Stdin = strings.NewReader("FROM alpine:3.20\nRUN apk add --no-cache bash python3 && mkdir -p /www/steam && printf '{\"ready\":false,\"has_ticket\":false}' > /www/steam/ready\nHEALTHCHECK --interval=100ms --timeout=1s --retries=1 CMD false\nENTRYPOINT [\"python3\",\"-m\",\"http.server\",\"3001\",\"--directory\",\"/www\"]\n")
+	authServer := `from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+body = b'{"ready":false,"error":"Account 0 not configured"}'
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/steam/ready":
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(503)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        pass
+
+ThreadingHTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
+`
+	if err := os.WriteFile(filepath.Join(workDir, "auth-server.py"), []byte(authServer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dockerfile := "FROM alpine:3.20\nRUN apk add --no-cache bash python3\nCOPY auth-server.py /auth-server.py\nHEALTHCHECK --interval=100ms --timeout=1s --retries=1 CMD false\nENTRYPOINT [\"python3\",\"/auth-server.py\"]\n"
+	if err := os.WriteFile(filepath.Join(workDir, "Dockerfile"), []byte(dockerfile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	build := exec.CommandContext(ctx, "docker", "build", "-t", image, workDir)
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build offline auth fixture: %v: %s", err, output)
 	}
