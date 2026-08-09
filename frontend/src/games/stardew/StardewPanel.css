@@ -1307,8 +1307,7 @@
   padding: 18px 22px;
   max-width: 320px;
   width: 90%;
-  max-height: 90vh;
-  max-height: 100%;
+  max-height: min(90vh, 100%);
   overflow-y: auto;
   overscroll-behavior: contain;
   display: grid;

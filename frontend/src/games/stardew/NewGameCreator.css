@@ -97,7 +97,7 @@
 @media (max-width: 1100px) { .ngc-game { transform:scale(.88); transform-origin:top left; margin-bottom:-85px; } }
 @media (max-width: 760px) { .ngc-game { transform:none; min-width:0; grid-template-columns:1fr; margin:0; } .ngc-main-panel { min-height:0; padding:28px; } .ngc-character-preview { position:static; width:auto; display:grid; grid-template-columns:130px 1fr 1fr; gap:10px; align-items:center; } .ngc-farmer-silhouette { min-height:100px; font-size:60px; } .ngc-map-panel { grid-template-columns:repeat(4,1fr); } .ngc-modded-catalog { margin-left:0; } .ngc-modded-grid { grid-template-columns:1fr; } }
 
-@container sd-main-scroll (max-width: 1100px) {
+@container ngc-modal (max-width: 1100px) {
   .ngc-game { transform:none; min-width:0; grid-template-columns:1fr; margin:0; }
   .ngc-main-panel { min-height:0; padding:28px; }
   .ngc-character-preview { position:static; width:auto; display:grid; grid-template-columns:130px 1fr 1fr; gap:10px; align-items:center; }
@@ -121,7 +121,7 @@
   .ngc-prepare-actions { flex-wrap:wrap; }
 }
 
-@container sd-main-scroll (max-width: 480px) {
+@container ngc-modal (max-width: 480px) {
   .ngc-main-panel { padding:14px; }
   .ngc-side-panel { padding:16px 12px; }
   .ngc-character-preview { grid-template-columns:1fr; }

@@ -1,8 +1,28 @@
+# 2026-08-09 完成：弹窗高度约束隐患修复（FE-MODAL-HEIGHT-GUARD-1）
+
+- [x] 通用危险操作确认框与 Steam 二维码弹窗把会相互覆盖的双 `max-height` 声明合并为 `min(90/92vh, 100%)`，恢复视口比例上限并保留内部滚动。
+- [x] 响应式测试同时固定通用确认框、存档弹窗和二维码弹窗的有效高度约束；全部 12 项前端状态测试与 production build 通过。
+- [x] 1180×900、769×500 Browser 验证删除确认框完全位于 overlay 内、document 无横向溢出；新建游戏三栏和小屋 0→1 交互无回归，console warn/error 为 0。二维码阶段因 QA fixture 未覆盖，保留源码断言与后续真实状态复核项。
+
+# 2026-08-09 完成：新建游戏弹窗错误拉伸修复（FE-NEW-GAME-MODAL-LAYOUT-1）
+
+- [x] 把新建游戏 1100px/480px 容器查询从页面级 `sd-main-scroll` 隔离到宽版弹窗自身的 `ngc-modal`，桌面三栏不再被侧栏后的主内容宽度误降级为单列。
+- [x] 弹窗补齐 border-box 和有效的 90vh 高度上限，避免 100% 宽度叠加边框/内边距造成横向撑宽；窄屏继续在弹窗内部滚动。
+- [x] 全部 12 项前端状态测试、production build、1180×1063 桌面三栏交互和 769×500 窄屏单列 Browser QA 通过；两个视口 document overflow 为 0、console warn/error 为 0。
+
 # 2026-08-09 完成：GitHub 安装命令协议修正（DOCS-INSTALL-HTTP-1）
 
 - [x] GitHub README、新手使用指南和镜像文档中的国内加速脚本地址统一为 `http://anxinas.dpdns.org/run.sh`；官网部署页原本已经正确。
 - [x] 同域名错误 HTTPS 地址已清零；HTTP 端点只读返回 200/27,427 字节，未执行脚本。
 - [x] 推送 `main` 后 GitHub README 线上正文与复制载荷均为完整 HTTP 命令，console warn/error 为 0；compatibility workflow `31305603385` 成功。
+
+# 2026-08-09 执行中：v0.4.10 正式发布
+
+- [x] 弹窗高度、独立容器查询、Steam auth 离线验收和等待可见性代码/专项测试完成。
+- [ ] 精确候选的全量代码/脚本/兼容矩阵/文档门禁完成。
+- [ ] `v0.4.9` 与支持下限 `v0.3.2` 到候选的一键升级、unhealthy 回滚和升级后新功能 QA 完成。
+- [ ] 同步干净 `main`，创建并推送 `v0.4.10` annotated tag，Release workflow 成功。
+- [ ] 三仓 `0.4.10/latest` digest/OCI、GitHub Release 资产与回拉隔离冒烟完成；官网更新为 v0.4.10。
 
 # 2026-08-09 已发布：官网展示 v0.4.9（DOCS-PORTAL-V049-1）
 
@@ -1708,3 +1728,10 @@ Multi Game Mode later
 - [x] 桌面上传入口悬停/聚焦可见 ZIP 能力边界。
 - [x] 桌面与移动上传弹窗常驻展示多 ZIP、单 ZIP 多 Mod 文件夹和 ZIP 套 ZIP 处理方式。
 - [x] 两端复用共享文案组件，不改变现有上传 API 或后端解包逻辑。
+
+# RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 / FE-STEAM-AUTH-WAIT-VISIBILITY-1（2026-08-09，completed，待发布）
+
+- [x] 运行栈升级以 steam-auth 容器 running、目标 digest 和可解析服务接口为硬门槛，不再等待 Steam 在线相关 Docker health。
+- [x] Steam 未登录或无 ticket 降级为后台重试能力警告，接口故障与 digest 错误继续失败并回滚。
+- [x] 前端认证阶段显示“正在尝试 Steam 连接”、累计等待、自动重试和“不是卡死”。
+- [x] 后端全量 test/vet/build、前端全部 12 个状态脚本与 production build、Docker Desktop unhealthy/offline 实机 fixture，以及桌面/390px Browser QA 已通过；正式发布仍须重新执行完整候选镜像与一键升级门禁。

@@ -322,20 +322,16 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "steam-auth-cn 已启动但恢复清单写入失败。")
 	}
-	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "正在验证 steam-auth-cn 容器与服务接口。"); err != nil {
+	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "steam-auth-cn 正在启动并尝试连接 Steam；升级只等待认证接口可用，不要求 Steam 已登录。"); err != nil {
 		return err
 	}
-	if runtimeUpdateAuthChanged(manifest) {
-		authState, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID)
-		if err != nil {
-			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "新版 steam-auth-cn 认证验证失败。")
-		}
-		status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: "新版 steam-auth-cn 容器运行、服务接口可解析，且镜像 digest 匹配目标。"})
-		if !authState.Ready || !authState.HasTicket {
-			status.Warnings = append(status.Warnings, "steam-auth-cn 当前未建立完整 Steam 在线会话；这不影响局域网模式或本次升级验收，需要邀请码时可稍后登录 Steam。")
-		}
-	} else if err := d.waitRuntimeAuthContainer(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
-		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "未变化的 steam-auth-cn 容器验证失败。")
+	authState, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID)
+	if err != nil {
+		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), "steam-auth-cn 认证服务接口验证失败。")
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: "steam-auth-cn 容器运行、服务接口可解析，且镜像 digest 匹配目标；Docker health 不再把 Steam 在线登录作为升级硬门槛。"})
+	if !authState.Ready || !authState.HasTicket {
+		status.Warnings = append(status.Warnings, "steam-auth-cn 当前未建立完整 Steam 在线会话，服务会在后台继续尝试连接 Steam；这不影响局域网模式或本次升级验收，需要邀请码时可稍后登录 Steam。")
 	}
 
 	if err := setPhase(RuntimeUpdateApplyRecreatingServer, 75, "正在重建同一推荐版本对的 Junimo server。"); err != nil {
@@ -623,7 +619,7 @@ func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyD
 		if err == nil && metadata.ImageID != imageID {
 			return last, errors.New("auth_digest_mismatch")
 		}
-		if err == nil && strings.EqualFold(metadata.State, "running") && (metadata.Health == "" || strings.EqualFold(metadata.Health, "healthy")) {
+		if err == nil && strings.EqualFold(metadata.State, "running") {
 			last, err = docker.RuntimeSteamAuthReady(ctx, dataDir, project)
 			if err == nil {
 				return last, nil
@@ -638,31 +634,8 @@ func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyD
 	return last, errors.New("auth_service_not_ready")
 }
 
-func (d *Driver) waitRuntimeAuthContainer(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string) error {
-	deadline := time.Now().Add(d.runtimeUpdateAuthTimeout)
-	for time.Now().Before(deadline) {
-		metadata, err := docker.RuntimeServiceInspect(ctx, dataDir, project, "steam-auth")
-		if err == nil && metadata.ImageID != imageID {
-			return errors.New("auth_digest_mismatch")
-		}
-		if err == nil && strings.EqualFold(metadata.State, "running") && (metadata.Health == "" || strings.EqualFold(metadata.Health, "healthy")) {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(d.runtimeUpdatePollInterval):
-		}
-	}
-	return errors.New("auth_container_not_ready")
-}
-
 func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
-	if runtimeUpdateAuthChanged(manifest) {
-		if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
-			return err
-		}
-	} else if err := d.waitRuntimeAuthContainer(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+	if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(d.runtimeUpdateServerTimeout)

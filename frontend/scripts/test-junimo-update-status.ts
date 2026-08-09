@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { junimoApplyActive, junimoApplyPhaseLabel, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../src/games/stardew/junimo-update-status.ts'
+import { junimoApplyActive, junimoApplyPhaseLabel, junimoApplyWaitingNotice, junimoDryRunActive, junimoDryRunPhaseLabel, junimoMaintenanceNeedsAttention, junimoPairMatches, junimoUpdateStatusLabel } from '../src/games/stardew/junimo-update-status.ts'
 
 assert.equal(junimoUpdateStatusLabel('up_to_date'), '推荐版本对已匹配')
 assert.equal(junimoUpdateStatusLabel('update_available'), 'Junimo 运行组件可更新')
@@ -12,7 +12,9 @@ assert.equal(junimoDryRunPhaseLabel('pulling_server'), '正在检查或拉取 se
 assert.equal(junimoDryRunPhaseLabel('succeeded'), '升级预检通过')
 assert.equal(junimoDryRunActive('validating_compose'), true)
 assert.equal(junimoDryRunActive('failed'), false)
-assert.equal(junimoApplyPhaseLabel('verifying_auth'), '验证 Steam 登录')
+assert.equal(junimoApplyPhaseLabel('verifying_auth'), '正在尝试 Steam 连接')
+assert.equal(junimoApplyWaitingNotice('verifying_auth', '2026-08-09T10:00:00Z', new Date('2026-08-09T10:04:07Z').getTime()), 'steam-auth-cn 正在启动并尝试连接 Steam，已等待 4 分 7 秒。Steam 网络波动时会自动重试；升级只等待认证接口可用，不要求 Steam 已登录。页面会自动刷新，不是卡死。')
+assert.equal(junimoApplyWaitingNotice('verifying_server', '2026-08-09T10:00:00Z'), undefined)
 assert.equal(junimoApplyPhaseLabel('failed_rolled_back'), '升级失败，已成功回滚')
 assert.equal(junimoApplyPhaseLabel('rollback_failed'), '自动回滚失败，可检测修复后重试')
 assert.equal(junimoApplyPhaseLabel('resuming_upgrade'), '修复通过，正在重新预检')

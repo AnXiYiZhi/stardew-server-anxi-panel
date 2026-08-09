@@ -1,3 +1,36 @@
+# FE-MODAL-HEIGHT-GUARD-1 接手记录（2026-08-09，completed）
+
+## 改了什么与影响
+
+- `.sd-confirm-dialog` 的重复 `max-height:90vh/100%` 合并为 `min(90vh, 100%)`；`.sd-install-qr-card` 的重复 `92vh/100%` 合并为 `min(92vh, 100%)`。两类弹窗现在不会因为级联覆盖而丢失视口比例上限，内容溢出仍由原有 `overflow-y:auto` / `overflow:auto` 承接。
+- 影响 `frontend/src/games/stardew/StardewPanel.css`、`pages/InstallPage.css` 和 `scripts/test-responsive-layout.ts`。没有修改弹窗 JSX、危险操作确认逻辑、Steam 二维码数据或安装 API。
+
+## 如何验证
+
+- 全部 12 项前端状态测试与 `npm.cmd run build` 通过。
+- QA App stopped fixture 在 1180×900 与 769×500 打开存档删除确认框，计算 `max-height` 分别为 `min(810px, 100%)`、`min(450px, 100%)`，卡片四边均在 overlay 内，root `scrollWidth === clientWidth`；随后重新打开新建游戏并把初始小屋从 0 增至 1，三栏布局、内部滚动和 console health 正常。
+- Steam 二维码阶段未包含在当前 QA fixture，二维码弹窗以 CSS 源码回归断言和 production build 验证；若后续为安装页补 QR fixture，应再增加真实长链接与低高度视口的交互截图。
+
+## 下一步注意事项
+
+- 桌面 overlay 内的高度上限统一使用 `min(<viewport cap>, 100%)`；不要再用连续两条同属性声明表达“同时满足”，因为普通 CSS 级联只会保留后一条。移动端现有 `100vh` → `100dvh` 是兼容回退，不属于这一问题。
+
+# FE-NEW-GAME-MODAL-LAYOUT-1 接手记录（2026-08-09，completed）
+
+## 改了什么与影响
+
+- 新建游戏的响应式容器从页面级 `sd-main-scroll` 改为宽版弹窗自己提供的 `ngc-modal`；桌面弹窗不再因侧栏压缩主内容区而误判成单列。`sd-saves-modal-card` 同时补 `box-sizing:border-box`，高度上限收敛为 `min(90vh, 100%)`。
+- 影响 `frontend/src/games/stardew/pages/SavesPage.css`、`NewGameCreator.css`、`scripts/test-responsive-layout.ts`。没有改变 `SavesSection.tsx`、新建存档请求、表单字段、Mod 农场目录或后端接口。
+
+## 如何验证
+
+- 全部 12 项前端状态测试（含 `npm.cmd run test:responsive-layout`）和 `npm.cmd run build` 通过。
+- 应用内 Browser 使用 QA App stopped fixture：1180×1063 打开“存档 → 新建游戏”后为左侧联机设置/中间角色表单/右侧农场选择三栏，顶边对齐、root/body 无横向溢出，增加小屋 0→1；769×500 为预期单列且只在弹窗内部滚动。两个视口均无 console warn/error。
+
+## 下一步注意事项
+
+- 新建游戏断点必须继续查询 `ngc-modal` 自身，不能重新绑定 `sd-main-scroll`；若弹窗外复用 `NewGameCreator`，调用方也要提供同名 inline-size 容器或明确设计新的容器名。调整宽版弹窗 padding/border 时要同时复核 1100px 临界值。
+
 # DOCS-INSTALL-HTTP-1 接手记录（2026-08-09，completed）
 
 - `README.md`、`docs/user-guide/getting-started.md` 和 `docs/09-image-build.md` 的国内加速安装地址统一为 `http://anxinas.dpdns.org/run.sh`；`website/docs/guide/deploy.md` 与 `website/docs/deploy/quick-start.md` 已经是正确 HTTP，无需改动。
@@ -8,6 +41,11 @@
 - 官网沿用当前正式布局，只把 `website/docs/index.md` 的 release/版本卡/摘要和 `website/docs/changelog.md` 的最新条目更新到 v0.4.9。首页文案链接到现有 `/changelog`，没有新增组件、脚本、依赖、路由或图片。
 - changelog 面向用户准确描述 rollback 恢复、可信旧候选规范化、安全重试、三次上限、未知状态支持包、重启续跑和 auth 保留边界；不暴露 recovery 路径、镜像选择或内部 Docker 命令。
 - Node 20 Alpine 隔离副本执行全新 `npm ci` 和 production build 通过；Pages `31305028853`、compatibility `31305028888` 均成功。线上默认桌面首页与 changelog 页面身份、非空白、无 overlay、console health 均通过，首页“查看本次更新”实际进入 `/changelog.html`；390×844 首页/日志 root/body 无横向溢出，三类修复、支持包和 v0.4.8 历史均存在。完整证据见 `docs/09-image-build.md`。
+
+# RELEASE-V0.4.10-FRONTEND-1 接手记录（2026-08-09，执行中）
+
+- 发布范围：FE-MODAL-HEIGHT-GUARD-1、FE-NEW-GAME-MODAL-LAYOUT-1、FE-STEAM-AUTH-WAIT-VISIBILITY-1。需要在精确候选上重做桌面/低高度/390px 页面 QA，不以源码 fixture 的单次通过替代升级后验收。
+- 官网仍保持 v0.4.9，待 `v0.4.10` Release 与三仓镜像成功后再更新首页/changelog 并验证 Pages。
 
 # FE-RUNTIME-UPDATE-REPAIR-CATALOG-3 接手记录（2026-08-09，completed，v0.4.9 released）
 
@@ -1489,3 +1527,14 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - 后端未来若新增递归解压 ZIP 中 ZIP 的能力，必须同步更新共享组件中的两行文案和入口气泡；在安全边界未改变前，不要把“递归目录扫描”表述为“递归解压压缩包”。
+
+# FE-STEAM-AUTH-WAIT-VISIBILITY-1 接手记录（2026-08-09，completed，待发布）
+
+## 改动与影响
+
+- `junimo-update-status.ts` 新增纯函数 `junimoApplyWaitingNotice`，认证阶段标题改为“正在尝试 Steam 连接”；`DiagnosticsPage.tsx/.css` 在用户进度卡和技术详情中展示累计等待、自动重试、验收边界和“不是卡死”。接口保持使用现有 `phase/updatedAt`。
+
+## 验证与下一步
+
+- `test-junimo-update-status.ts` 覆盖分钟/秒格式及非认证阶段；应用内 Browser 用本地 Panel/Vite fixture 验证桌面与 390×844 完整面板，提示可见、无横向溢出、console error/warn 为空。`package.json` 中全部 12 个 `test:*` 脚本与 production build 均通过。
+- 后端若以后拆分新的 Steam 等待 phase，应同步扩展纯函数和状态测试；不要只更换标题而移除 elapsed/自动刷新说明，也不要把“正在尝试连接”表述成升级必须等到 Steam 登录成功。

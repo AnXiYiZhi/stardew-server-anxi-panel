@@ -54,9 +54,17 @@ export function junimoMaintenanceNeedsAttention(
 export function junimoApplyPhaseLabel(phase?: JunimoUpdateApplyPhase): string {
   const labels: Record<JunimoUpdateApplyPhase, string> = {
     idle: '尚未执行升级', checking: '重新预检', pulling: '拉取版本对', backing_up: '保护认证卷', stopping: '安全停服',
-    writing_config: '原子写入配置', recreating_auth: '重建 steam-auth-cn', verifying_auth: '验证 Steam 登录',
+    writing_config: '原子写入配置', recreating_auth: '重建 steam-auth-cn', verifying_auth: '正在尝试 Steam 连接',
     recreating_server: '重建 Junimo server', verifying_server: '验证运行链路', restoring_state: '恢复原运行状态',
     succeeded: '升级成功', rolling_back: '正在按检测结果修复', resuming_upgrade: '修复通过，正在重新预检', failed_rolled_back: '升级失败，已成功回滚', rollback_failed: '自动回滚失败，可检测修复后重试',
   }
   return labels[phase ?? 'idle']
+}
+
+export function junimoApplyWaitingNotice(phase?: JunimoUpdateApplyPhase, updatedAt?: string, now = Date.now()): string | undefined {
+  if (phase !== 'verifying_auth') return undefined
+  const phaseStartedAt = updatedAt ? new Date(updatedAt).getTime() : Number.NaN
+  const elapsedSeconds = Number.isFinite(phaseStartedAt) ? Math.max(0, Math.round((now - phaseStartedAt) / 1000)) : 0
+  const elapsed = elapsedSeconds >= 60 ? `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒` : `${elapsedSeconds} 秒`
+  return `steam-auth-cn 正在启动并尝试连接 Steam，已等待 ${elapsed}。Steam 网络波动时会自动重试；升级只等待认证接口可用，不要求 Steam 已登录。页面会自动刷新，不是卡死。`
 }
