@@ -4,6 +4,7 @@
 
 ## 2026-08-09：`apply_patch` 使用过长且手写的上下文
 
+- 最近复发/补充：2026-08-10 最终收口已推送后补记 GitHub API EOF 时，又从终端输出手抄两条很长的列表上下文，其中一处漏掉空格，`apply_patch` 以 `verification failed` 安全零修改退出。随后改为分别使用稳定标题和最小邻接行插入，不能因为内容只是文档就放宽精确上下文要求。
 - 最近复发/补充：2026-08-09 弹窗高度文档补丁在工具调用显示长期 running 后被 turn 中断，等待终态时相同补丁最终落盘两次，造成三份文档顶部段落重复。恢复被中断的写操作后必须先用唯一标题计数和 `git diff --check` 核对实际终态，不能根据中断提示猜测“未写入”或直接重放；发现重复后用最小精确补丁去重。
 - 环境：Windows 工作区，向已有用户修改的 `AGENTS.md` 插入生产 SSH 约定。
 - 错误模式：补丁除锚点外还手写复制整条后续长行，其中漏掉一个空格。
@@ -716,6 +717,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-10 最终证据提交 `3179223b3986288ca9f3e2012c91d33f7b09454c` 推送成功后，首次用完整 SHA 执行 `gh run list --commit ...` 仍在约 16 秒后以 `unexpected EOF` 退出 1；没有重放 push，也没有把查询失败解释成 workflow 未触发。改为同一只读查询最多三次、每次独立保存退出码的有界重试后，确认 compatibility run `31328478268` 已进入 `in_progress`。
 - 最近复发/补充：2026-08-10 Release workflow 已成功后，首次 `gh run view 31325589153 --json ...` 仍在 GitHub API 读取阶段报 EOF；没有把它当成 workflow 失败，也没有重复触发发布。后续按固定 run ID 将 run/release 查询拆开并最多三次有界重试，取得 `completed/success` 和正式资产元数据。发布写操作绝不能因查询 EOF 重放，先区分“权威任务仍在运行/已结束”和“客户端读取失败”。
 - 最近复发/补充：2026-08-10 post-release 收口审查读取 compatibility run `31326926808` 时再次单次 EOF；同轮 `gh run list --commit 3457efe` 对短 SHA 返回空数组，改用完整 `3457efea561f5fbb865eab440576e91cf2de6ec1` 才取得 Pages 与 compatibility 两条 run。固定 run ID 的 EOF 继续有界重试；按 commit 查询 workflow 必须使用完整 40 位 SHA，短 SHA 空结果不能解释成“未触发”。
 - 最近复发/补充：2026-08-09 `v0.4.10` 最终 main 推送后首次调用 `gh auth status`，发现 Windows keyring 中 `AnXiYiZhi` 的旧 token 已失效并退出 1；没有擅自刷新、退出或改写用户凭据。随后 GitHub 官方匿名 REST API 又因共享出口 rate limit 立即返回 403，不能把匿名 API 当作稳定无限额回退；改从公开 Actions HTML 精确读取 commit/run ID 与状态。用户明确要求重新申请登录后才启动 GitHub 官方 device OAuth，token 只回存系统 keyring、Git 协议保持 HTTPS且未创建 SSH key。登录后遇到单次 Actions API EOF 时仍按固定 run ID 有界重试，不能把“已登录”误解为网络不会断流；任何设备码/token 都不得写入错题本、提交或日志摘要。
