@@ -1,4 +1,4 @@
-# 2026-08-09 完成：升级故障目录和具体修复按钮（RUNTIME-UPDATE-REPAIR-CATALOG-3，v0.4.9 发布中）
+# 2026-08-09 已发布：升级故障目录和具体修复按钮（RUNTIME-UPDATE-REPAIR-CATALOG-3，v0.4.9 released）
 
 - [x] GET 检测与 POST 执行统一使用后端 `RuntimeUpdateRepairPlan`；错误码、证据、方法、步骤、按钮、动作和三次上限由一个闭集目录产生。
 - [x] 自动闭环覆盖 rollback 恢复、可信旧候选规范化、`failed_rolled_back` 安全重试三类；所有路径都重新执行完整预检、备份、新事务和失败自动回滚。
@@ -6,7 +6,7 @@
 - [x] 面板按钮直接写修复方法，脚本 `check` 同步输出相同方法；Go、前端、Bash/ShellCheck、Docker integration、Docker 候选镜像和浏览器点击验收通过。
 - [x] 支持包新增脱敏 `junimo-update.json`，把 detector、repair plan 和公开 apply 终态随包带出，同时继续排除恢复清单/备份、存档、session 和凭据。
 - [ ] 这仍是 Junimo runtime 的闭集目录；SMAPI、Panel updater 与未来 game/SDK 必须各自增加同等级 detector/repair plan，不能共享不匹配的事务材料。
-- [ ] `v0.4.9` 正式发布门禁正在执行：全量代码/脚本/远程制品和基础 Docker integration 已通过；仍须完成精确候选、`v0.4.8` Web 成功与 unhealthy 回滚、`v0.3.2` 直升、tag workflow、三仓回拉和 release assets 核验。
+- [x] `v0.4.9` 已从提交 `6f3e4a28f6c5f983f0f891079fb0b7478bd5c1a9` 发布；精确候选、`v0.4.8` Web 成功与 unhealthy 自动回滚、`v0.3.2` 直升、发布工作流、三仓 `0.4.9/latest` 回拉、Release 资产和发布后隔离冒烟全部通过。三仓统一 digest 为 `sha256:e8fa5386b17d778612365bfa419b5ad5e2f447bb557856580efe262fea6f505f`。
 
 # 2026-08-09 完成：已知升级故障检测、修复与续跑闭环（RUNTIME-UPDATE-DIAGNOSE-REPAIR-2，未发布）
 

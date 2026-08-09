@@ -15,6 +15,46 @@
 适用范围：
 ```
 
+## 2026-08-09：发布夹具把多层 Shell、JSON 和文本工具塞进单行命令
+
+- 环境：Windows PowerShell 7 → `docker exec` → Linux `sh`，验证 `v0.4.9` 受控 HTTPS Release、支持包和升级后哨兵。
+- 错误模式：先后内联 Python `-c` URL/CA、JSON/正则、`find -printf`、`cut -d ' '`，并猜测 BusyBox `wget --ca-certificate` 可用；引号在 PowerShell、Docker argv 和容器 shell 之间被剥离或重新解释。
+- 症状 / 退出码：Python 收到残缺参数，PowerShell 把 `|`/引号解析为自身语法，容器 shell 报 JSON/正则语法错误，BusyBox wget 报未知选项；这些失败均发生在只读探针或测试断言，产品事务未被错误触发。
+- 根因：把多个语言的词法规则叠在同一个命令字符串里，并在没有能力探针时按 GNU 工具参数猜测精简镜像实现。本项目同类跨层转义已多次复发。
+- 正确做法：能直接 `docker exec <container> <command> <arg...>` 就不引入 `sh -c`；复杂 Python/JSON/文件枚举写入任务专属脚本再执行，数据通过文件或环境变量传入。先运行 `--help`/版本探针确认 BusyBox、GNU 和 OpenSSL 功能，使用结构化 JSON 解析与原生命令退出码，不用文本引号拼协议。
+- 预防检查：命令同时出现 `pwsh`、`docker exec`、`sh -c` 且包含引号/管道/JSON/正则时停止内联；该规则已因重复出现提升到 `AGENTS.md`。
+- 适用范围：Docker Desktop 发布 E2E、DinD、远端 SSH、支持包和任何跨 PowerShell/Linux Shell 的测试夹具。
+
+## 2026-08-09：测试根证书缺少 CA 约束
+
+- 环境：任务专属 DinD、Python/OpenSSL 3 HTTPS fixture、受控 registry/release 域名。
+- 错误模式：只生成自签名证书和签发 server certificate，未给根证书加入 critical `basicConstraints=CA:TRUE` 与 `keyUsage=keyCertSign,cRLSign`，便把它作为客户端信任锚。
+- 症状 / 退出码：域名、SAN 和挂载路径均正确，但 Python TLS 报 `CERTIFICATE_VERIFY_FAILED: invalid CA certificate`；Docker/Panel 尚未开始升级 mutation。
+- 根因：OpenSSL 3 的链验证要求签发者具备明确 CA 能力；“自签名”本身不等于合法 CA。
+- 正确做法：生成测试 CA 时显式加入 `basicConstraints=critical,CA:TRUE` 和 `keyUsage=critical,keyCertSign,cRLSign`；server 证书使用 `CA:FALSE`、serverAuth 与精确 SAN。启动服务前执行 `openssl verify -CAfile <ca> <server-cert>`，通过后才挂入任务容器。
+- 预防检查：TLS fixture readiness 必须依次核对证书扩展、链验证、SAN、服务端 `/v2/` 或 release endpoint；不得用关闭验证替代修复证书链。
+- 适用范围：受控 HTTPS Release、私有 registry、DinD 和其它本机 TLS 故障注入。
+
+## 2026-08-09：正式镜像回拉与 manifest 查询未统一使用有界网络重试
+
+- 环境：Docker Desktop，发布后核验 Docker Hub、阿里云 ACR、GHCR 的 `0.4.9/latest` 六个引用。
+- 错误模式：首次把单次 `docker pull`/`docker buildx imagetools inspect` 结果直接当作 registry 终态，没有先放进逐引用的有界重试包装。
+- 症状 / 退出码：GHCR 短暂出现 TLS handshake timeout、EOF 和 auth EOF，Docker Hub `latest` 的首次 manifest 查询失败；同一精确引用稍后成功，六个 digest/labels 最终完全一致。
+- 根因：外部 registry/CDN 链路瞬时断流，不是 manifest 缺失或摘要漂移；单次查询无法区分暂态网络故障和权威发布失败。
+- 正确做法：每个精确引用独立最多三次 pull/inspect，保留每次退出码与错误；每次成功后仍必须核对 digest、version、revision、created，并用实际回拉镜像冒烟。重试不得关闭 TLS、认证、签名或摘要校验。
+- 预防检查：发布后六引用清单逐项记录 attempts 和最终 digest；只有重试耗尽或成功结果不一致才阻塞发布。
+- 适用范围：多 registry 正式镜像、Buildx manifest 查询、发布后回拉和网络抖动恢复。
+
+## 2026-08-09：把旧部署的 `PANEL_VERSION` 当作 updater 成功权威字段
+
+- 环境：官方 `v0.4.8 → v0.4.9` Web 一键更新，正式 Compose `.env` 同时存在 `PANEL_IMAGE` 与历史 `PANEL_VERSION`。
+- 错误模式：在目标 `/health`、`/api/version`、容器 image/revision 和 apply 终态均正确后，额外断言 updater 必须把非权威 `PANEL_VERSION` 文本同步改为目标版本。
+- 症状 / 退出码：产品已成功运行精确 `0.4.9` 候选，测试包装器却因 `.env` 中旧信息字段仍为 `0.4.8` 虚假失败；数据与运行容器均正常。
+- 根因：当前 updater 契约只原子切换权威 `PANEL_IMAGE`；构建注入的 API/OCI metadata 决定运行版本，`run.sh` 后续也会重新解析最新镜像。测试把历史兼容字段误当作 apply 契约。
+- 正确做法：升级成功断言以 apply terminal status、`PANEL_IMAGE`、实际容器 image ID、`/health`、`/api/version` 和 OCI revision/date 为准；只在代码/部署契约明确要求时检查 `PANEL_VERSION`，不要自行增加写入要求。
+- 预防检查：升级夹具每个 `.env` 字段先追踪读取者与写入者；信息字段、兼容字段和权威选择字段必须分开记录。
+- 适用范围：Panel updater、Compose `.env` 兼容、旧版直升和运行版本核验。
+
 ## 2026-08-09：用原生命令输出真值判断 Docker 资源是否存在
 
 - 最近复发/补充：同一 UI QA 启动随后把 PowerShell 变量写进未加引号的 Docker 复合参数 `--mount type=volume,source=$volumeName,target=...`；PowerShell 把该 token 原样传递，Docker 尝试创建字面量 `$volumeName` 并以 125 拒绝。卷已按精确名称/owner 创建，容器未创建。含变量的 `--mount`、`--label`、`--env` 等 `key=value,...` 参数必须先组成完整字符串变量或使用双引号包住整个参数，例如 `--mount "type=volume,source=$volumeName,target=/path"`，不能假定未引用 token 内会插值。
@@ -525,6 +565,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-09 `v0.4.9` Release 首次 `gh run watch` 因 GitHub API EOF 退出，workflow 本身继续运行并最终成功；改为按固定 run ID 有界轮询 `gh run view`，每次独立读取 status/conclusion。发布证据只能来自最终 `completed/success`，网络查询失败不能冒充 workflow 失败或成功。
 - 最近复发/补充：2026-08-01 官网 Hero 发布审计把多项 GitHub API 只读查询放进同一批调用，网络等待最终以 `124` 超时退出；远端 main SHA 另由 `git ls-remote` 成功确认。后续按目标 commit 分拆 `gh run list/view` 与 deployments 查询，每项使用有界重试并保存已成功证据，不把整批超时误判为 Actions 失败，也不原样重放同一批长命令。
 - 最近复发/补充：2026-08-01 `v0.4.7` 门禁审计把 `gh` 原生输出直接管道到 `Select-Object -First`，下游提前关闭后让 `gh` 报 broken pipe。需要截取展示时先用 `@(...)` 完整收集原生命令输出并立即保存 `$LASTEXITCODE`，成功后再切片；不得让展示层提前终止权威查询进程。
 - 环境：Windows，GitHub CLI，发布后同时轮询 Release、兼容矩阵和官网工作流。
@@ -1197,6 +1238,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-09 候选 metadata 核验再次把 JSON 自动转换的 `DateTime` 与原始 ISO 文本直接比较，显示值相同却误报；同轮 rollback 断言又反向假定 `StartedAt` 必然是 `DateTime`，实际为 string 后直接调用 `.ToUniversalTime()` 失败。统一规范化 helper 必须先按运行时类型分支：`DateTime` 直接转 UTC，string 用 invariant `DateTimeOffset::Parse` 后转 UTC，最后格式化比较；不得假定解析器总返回同一类型。
 - 最近复发/补充：2026-08-06 最终一键升级验收通过 `Invoke-RestMethod` 读取 `/api/version` 后，又把自动转换成 `System.DateTime` 的 `buildDate` 与原始 OCI 字符串直接比较，产生第二次虚假 mismatch。HTTP JSON 与 `ConvertFrom-Json` 一样必须先检查类型、转 UTC 并格式化后比较；该预防规则已提升到 `AGENTS.md`。
 - 环境：PowerShell 7、最终候选镜像 OCI label 核验。
 - 错误模式：把 `ConvertFrom-Json` 得到的 `org.opencontainers.image.created` 直接与原始 ISO 8601 字符串做 `-ne` 比较。

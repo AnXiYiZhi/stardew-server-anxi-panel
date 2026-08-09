@@ -1,7 +1,7 @@
-# v0.4.9 发布门禁：升级故障目录与一键修复（2026-08-09，发布中）
+# v0.4.9 发布门禁：升级故障目录与一键修复（2026-08-09，已发布）
 
 - 目标正式版本为 `v0.4.9`；上一正式版为 `v0.4.8`。本版修改跨 Panel 版本的 Junimo runtime 检测、恢复、重试和升级闭环，因此除 `v0.4.8 → v0.4.9` 真实 Web 一键升级外，还按 runtime manifest 的 `minimumPanelVersion=0.3.2` 执行 `v0.3.2 → v0.4.9` 代表老版本直升。
-- Tag 前必须完成精确候选 fresh smoke、`v0.4.8` Web 检查/dry-run/确认/apply/断线重连/终态恢复、同链路 unhealthy 目标自动回滚、`v0.3.2` 直升、Panel 重启恢复、长期数据与非目标容器保护，以及升级得到的新 Panel 上的 repair plan/支持包真实验收。当前尚未创建 tag、更新 `latest` 或推送正式仓库。
+- 上述门禁均已完成。annotated tag `v0.4.9` 固定指向 `6f3e4a28f6c5f983f0f891079fb0b7478bd5c1a9`；Release workflow `31299979401`、该提交的 compatibility workflow `31298881696` 均成功，GitHub Release、三个 registry 的 `0.4.9/latest` 和四项 Release 脚本资产已经正式发布。
 
 ## 变更清单、受影响链路与故障矩阵
 
@@ -38,13 +38,16 @@
 - 后端最终全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 通过；专项新增 safe retry 成功、活动事务优先等待，以及损坏状态、自定义镜像、恢复材料篡改和三次耗尽 fail-closed。正式发布无缓存 test/vet/build 复验合计 50.88 秒通过；`go test -tags=integration ./internal/docker -count=1` 用时 10.697 秒通过。
 - 前端 12 项状态测试和 production build 在 Node 24 Linux 隔离依赖卷中用时 17.88 秒通过；Bash 语法及三项脚本功能测试用时 2.53 秒通过，ShellCheck 0.11.0 精确使用 workflow 清单通过。脚本 `check` 已覆盖 rollback/config/safe retry 的按钮和方法输出。
 - 兼容矩阵 validate、`0.4.9` panel version 契约和 19 项 Python 测试通过；真实远程制品固定来源/摘要校验用时 93.34 秒通过，多个可选镜像源不可达、SMAPI 候选 SSL EOF 和 Git traceability TLS 重试均由既有回退吸收。Linux `golang:1.25-alpine` 真实下载 41,889,142 字节 SMAPI 包并验证摘要/权限/无 `.part`，测试本体 5.84 秒通过。
-- updater Docker integration 的独立 Compose 成功链 14.60 秒、目标 unhealthy 自动回滚链 22.84 秒通过；真实旧版到候选和新 Panel helper reconcile 因正式精确候选尚未构建而按环境门禁明确 skip，继续由下方精确候选阶段补齐，不能把 skip 计为通过。
+- updater Docker integration 的独立 Compose 成功链 14.60 秒、目标 unhealthy 自动回滚链 22.84 秒通过，runtime Docker integration 10.697 秒和候选 helper reconcile 11.68 秒通过。正式精确候选随后完成官方 `v0.4.8 → v0.4.9`（16.78 秒）及 runtime 支持下限 `v0.3.2 → v0.4.9`（16.65 秒）真实直升，两条链均核对目标 health/version、持久状态和非目标资源保护。
 - Docker Desktop Linux 29.5.3 最终构建隔离候选 `stardew-anxi-panel:repair-catalog-final-20260809`：version=`0.4.9-repair-catalog.dev.3`、revision=`5be8664b19e487819412e455201a83cdc86a4ff7-dirty-repair-catalog`、created=`2026-08-09T05:57:53Z`，image ID=`sha256:d4376de1fcaf1ba083c3ba28b291d4bf324a0d60860ef7aa9ee551d0c19e38dc`。任务专属容器/网络/volume/`127.0.0.1:18097` 验证 Docker health=`healthy`、`/health` 与 `/api/version` 精确匹配；初始化后重启仍保持 `setup.initialized=true` 和相同版本。
 - 候选真实接口验证匿名 repair=401、带调用方 `strategy`=400、严格确认对不存在实例=404；测试管理员密码只存在内存和任务专属临时数据卷。镜像内 `/app/repair-junimo-upgrade.sh` 与源码 SHA-256 均为 `910d9df8dcf67818e1b3e7c5a7591bce33e7defe41fcc615d00327e2f0955042`。
 - 候选真实支持包下载返回 200/`application/zip`，条目为 `version.json`、`health.json`、`instance-state.json`、`junimo-update.json`、`jobs.json`、`audit-logs.json`、`compose-ps.json`、脱敏 `docker-compose.yml` 和 `server-logs.txt`；新增条目包含 `inspection/repairPlan`，未出现 recovery 路径或原备份文件名。专项单测另以 apply 状态伪密码证明整项 JSON 会脱敏。
 - 同一 Docker Desktop 的只读源码 Vite QA 容器由 Codex Browser 实际点击“修复：恢复旧版后升级”，事件为 `repair:POST,repair-apply:GET,repair-apply:GET`，最终显示升级成功；另行验证配置修复、安全重试、未知故障导出和活动事务等待按钮，console warn/error 均为 0。
 - 每轮验收后先核对 owner label，再精确删除本任务容器、volume、network 和本地开发候选 tag；最终 `18096/18097` 无 listener，任务资源查询为空。没有执行 prune，也没有触碰其它容器、volume、network 或镜像。
-- 当前未创建或移动 tag、未更新 `latest`、未推送正式镜像/GitHub Release。正式发布仍必须重建干净 main 的精确候选，并完成最新正式版和最老受影响版到候选的真实 Panel 一键升级/故障注入/回拉门禁；本开发候选和 UI fixture 不能替代该发布证据。
+- 干净 `main` 的最终候选 `stardew-anxi-panel:0.4.9-candidate-6f3e4a2` 使用 version=`0.4.9`、完整 revision=`6f3e4a28f6c5f983f0f891079fb0b7478bd5c1a9`、created=`2026-08-09T06:26:46Z` 构建，image ID=`sha256:333b5f5e3d44f528bb7d4925475d15293a8cb4d7a4680b3a517a6da0240b0bcf`。fresh health/version/setup/restart/support ZIP 均通过，镜像内 repair 脚本与发布源码摘要同为 `4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`。
+- 隔离 DinD 中用官方 `v0.4.8` Panel、受控 HTTPS Release 和 TLS registry 完成真实 Web 一键更新。unhealthy 目标事务 `1b37b0584eba` 在 143.21 秒收敛为 `failed_rolled_back` 并恢复官方 `0.4.8`；健康目标事务 `7da04fbbe918` 在 8.95 秒到达 `succeeded`。升级后重启仍保留终态，管理员、初始化、默认实例、审计以及 panel/Mod/save/backup 哨兵均保持；非目标游戏容器 ID、StartedAt 和内容摘要不变。新 Panel 上支持包包含脱敏 `junimo-update.json`，repair 严格请求注入被 400 拒绝。
+- 正式 workflow 产出的 Docker Hub、阿里云 ACR、GHCR 六个 `0.4.9/latest` 引用统一为 OCI index digest `sha256:e8fa5386b17d778612365bfa419b5ad5e2f447bb557856580efe262fea6f505f`，amd64 manifest 为 `sha256:fc369eaa9995a35b52814dda52db4b98912eb91765c1f78c26ec3f6d649f4281`；OCI version=`0.4.9`、revision=`6f3e4a28f6c5`、created=`2026-08-09T06:59:39Z`。六个引用全部实际回拉；三仓精确版本分别以隔离容器通过 Docker health、`/health`、`/api/version`、fresh setup 和伪登录 404 冒烟。GHCR/Hub 查询遇到的短暂 TLS EOF/handshake timeout 仅由有界重试恢复，未关闭 TLS、摘要或签名校验。
+- GitHub Release `Stardew Server Anxi Panel 0.4.9` 于 `2026-08-09T07:01:13Z` 发布，四项资产摘要分别为 `migrate-fnos.sh=90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`、`repair-junimo-0.3.5.sh=38d06d09e5c17db3145ec3b938f4d6844d1f2f058c73fa5bc72c804335eee47b`、`repair-junimo-upgrade.sh=4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`、`run.sh=8f0040c11661f2e3f4060c66bf8ba205a33aa46fc65e3dec7cbf15b864c7387a`。发布后 smoke 的三个容器、三个数据卷和网络先核对 `anxi.test.owner=v049post` 再精确删除，18101–18103 无 listener，未执行 prune。
 
 # RUNTIME-UPDATE-DIAGNOSE-REPAIR-2 Docker/发布门禁（2026-08-09，未发布）
 
