@@ -1,3 +1,9 @@
+# 2026-08-09 进行中：GitHub 安装命令协议修正（DOCS-INSTALL-HTTP-1）
+
+- [x] GitHub README、新手使用指南和镜像文档中的国内加速脚本地址统一为 `http://anxinas.dpdns.org/run.sh`；官网部署页原本已经正确。
+- [ ] 验证同域名错误 HTTPS 地址已清零，HTTP 端点可读取且不执行脚本。
+- [ ] 推送 `main` 后核对 GitHub README 渲染/复制内容，并等待兼容矩阵成功。
+
 # 2026-08-09 已发布：官网展示 v0.4.9（DOCS-PORTAL-V049-1）
 
 - [x] 首页 release、版本卡和摘要更新为 v0.4.9；保持既有 Hero、联机邀请卡、六入口、导航和视觉主题。

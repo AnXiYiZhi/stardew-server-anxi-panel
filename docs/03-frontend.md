@@ -1,3 +1,8 @@
+# DOCS-INSTALL-HTTP-1：GitHub 安装命令协议修正（2026-08-09，待验证）
+
+- GitHub README 与新手使用指南的国内加速命令改为项目实际入口 `http://anxinas.dpdns.org/run.sh`，与已经正确使用 HTTP 的官网部署页保持一致。
+- 影响仅限 Markdown 展示与复制内容，不修改页面组件、Panel 前端/API、安装脚本、镜像、tag 或 Release。推送后需在 GitHub README 核对渲染文本与复制按钮内容。
+
 # DOCS-PORTAL-V049-1：官网展示 v0.4.9（2026-08-09，released）
 
 - 官网首页 frontmatter、版本入口卡和当前版本说明统一由 `v0.4.8` 更新为 `v0.4.9`，摘要面向普通管理员说明“先检测原因，再按具体方法修复并继续升级”；没有改变 Hero、联机邀请卡、六入口、导航或视觉主题。
