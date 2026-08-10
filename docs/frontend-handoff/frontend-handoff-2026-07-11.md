@@ -42,7 +42,7 @@
 - `README.md`、`docs/user-guide/getting-started.md` 和 `docs/09-image-build.md` 的国内加速安装地址统一为 `http://anxinas.dpdns.org/run.sh`；`website/docs/guide/deploy.md` 与 `website/docs/deploy/quick-start.md` 已经是正确 HTTP，无需改动。
 - 本次没有变更 VitePress 页面源码、组件、依赖或 Panel 功能。同域名 HTTPS 残留为 0；HTTP 端点只读返回 200/27,427 字节且未执行；GitHub README 线上正文与 `clipboard-copy value` 均为完整 HTTP 命令，console warn/error 为 0；compatibility workflow `31305603385` 成功。
 
-# DOCS-HOME-QQ-COMMUNITY-1 接手记录（2026-08-10，completed，未发布）
+# DOCS-HOME-QQ-COMMUNITY-1 接手记录（2026-08-10，released）
 
 ## 改了什么、影响与验证
 
@@ -55,7 +55,8 @@
 - 平板紧凑跟进：`640–959px` 的无侧栏顶栏单独使用 `max-width:640px`，870px 下实际宽度 793→640px，搜索按钮到汉堡菜单的可见空档 416→263px；Hero 顶部 padding 同时从 `calc(nav + 20px)` 收到 `var(--vp-nav-height)`，稳定后的导航到品牌行间距为 50px。`<=639px` 手机仍使用原顶栏和 Hero 间距，`>=960px` 仍使用 1180px 完整导航。
 - 顶栏垂直留白跟进：870×760 下控件在 `.VPNavBar` 的 64px 内本已居中，但 `.VPSkipLink.visually-hidden` 计算结果仍为 `position:relative;height:16px`，先占普通流再把 `.VPNav` 推到 `y=16`。`custom.css` 现让 `.VPSkipLink` 始终绝对定位，1px 隐藏尺寸和裁切只作用于 `:not(:focus)`；正常态导航为 `y=0..64`，Logo 上下间距 19.5/20.5px、搜索 12/12px、汉堡线组 25/25px。locator 键盘聚焦后链接为 80×40px、文本可见、导航仍为 `y=0..64`，保留跳转正文的可访问性。
 - 验证：`npm.cmd --prefix website run docs:build` 通过。应用内 Browser 1440×900 下卡片为 456×72，390×844 下为 299×68，均位于按钮后且 root/body 横向溢出为 0；浅/深主题、文档页尾、键盘/触控语义和 console/overlay 通过。实际点击新开标题“QQ群”的 `qun.qq.com` 标签，完整 URL 与用户提供值相等，原首页保持不变。平板补测 640/768/870/959px 的 main/加群卡/邀请卡中心完全一致；顶栏补测 390/640/768/870/959/960/1024/1440/1700px 的标题、搜索与菜单无重叠或溢出，959px 汉堡菜单可开合，console warn/error 为 0。
-- 下一步：发布前仍按普通官网改动走 `main`、Pages 与线上桌面/390px 复核；若群邀请失效，只更新 `community.ts`，不要在组件或 Markdown 复制第二份链接。
+- 发布：提交 `63aff0380de337faf57a9a6bcac1323b6e3593f6` 经 Pages workflow `31388822404` 成功部署。线上 1280×720、870×760、390×844 的页面身份、非空、overlay、console、root/body overflow、顶栏对称留白和卡片文字左对齐均通过；真实点击打开标题“QQ群”的精确目标。
+- 下一步：若群邀请失效，只更新 `community.ts`，不要在组件或 Markdown 复制第二份链接；后续官网变更继续走 `main`、Pages 与线上桌面/390px 复核。
 
 # DOCS-PORTAL-V049-1 接手记录（2026-08-09，released）
 

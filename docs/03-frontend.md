@@ -1,4 +1,4 @@
-# DOCS-HOME-QQ-COMMUNITY-1：首页 QQ 群沟通入口（2026-08-10，completed，未发布）
+# DOCS-HOME-QQ-COMMUNITY-1：首页 QQ 群沟通入口（2026-08-10，released）
 
 - 官网不新增独立沟通页面、顶栏入口或第七张功能卡；首页通过 VitePress 官方 `home-hero-actions-after` slot，在 Hero 两个主按钮正下方增加整卡可点击的“加入交流群”入口，直接打开用户提供的 QQ 官方加群链接。卡片文案聚焦部署求助、故障反馈与功能建议，原联机邀请卡和六入口保持不变。
 - `HeroCommunityCard.vue` 使用语义化外链、内联 SVG、至少 44px 的触控目标、键盘焦点、细指针 hover、深色主题与 reduced-motion 适配；群链接集中在 `community.ts`，文档正文页原“反馈问题”页尾同步改为“加群反馈”，避免维护两份地址。
@@ -8,6 +8,7 @@
 - 顶栏宽度跟进：无侧栏页面在 `>=960px` 将 `.VPNavBar .container` 从 VitePress 默认 `1376px` 收到 `1180px`，与 Hero 容器左右边界完全一致；顶栏背景、64px 高度和触控区域不变。390/959/960/1024/1440/1700px 复核标题、搜索、菜单无重叠或横向溢出，959px 汉堡菜单可正常开合，console warn/error 为 0。
 - 平板紧凑跟进：用户在约 870px 的折叠导航截图中继续指出搜索到汉堡之间和导航下方过空。640–959px 无侧栏顶栏现限制为 640px，870px 下容器由 793px 收到 640px、可见空档由 416px 收到 263px；同档 Hero 顶部 padding 从 `nav + 20px` 收到 `nav`，导航到品牌行稳定为 50px。390/640/768/870/959/960/1700px 无控件重叠、溢出或轴线回归，959px 菜单开合及 console health 通过。
 - 顶栏垂直留白跟进：用户在 870×760 指出顶栏上宽下窄。实测控件自身已在 64px 顶栏内居中，真正原因是隐藏态 `.VPSkipLink` 仍以 `position:relative` 占据 16px 普通流高度，将整条导航下推。`custom.css` 现让跳转链接始终绝对定位，仅在非聚焦态应用 1px 隐藏裁切；正常态导航从 `y=0` 开始，Logo 上下间距为 19.5/20.5px、搜索框 12/12px、汉堡图标 25/25px。键盘聚焦后“跳到正文”仍以 80×40px 显示且导航不移位；390/640/768/870/959/960/1700px 无重叠或横向溢出。
+- 发布：提交 `63aff0380de337faf57a9a6bcac1323b6e3593f6` 已推送 `origin/main`，Pages workflow `31388822404` 的 build/deploy 均成功。线上 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 在 1280×720、870×760、390×844 复核页面身份、加群卡、顶栏上下留白和响应式布局，root/body 横向溢出、framework overlay、console warn/error 均为 0；实际点击“加入交流群”打开标题“QQ群”的用户标签，目标 URL 与集中常量精确一致。
 
 # FE-MODAL-HEIGHT-GUARD-1：弹窗高度约束隐患修复（2026-08-09，completed）
 

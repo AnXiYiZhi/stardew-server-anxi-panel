@@ -721,6 +721,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-10 官网 Pages workflow `31388822404` 已明确 completed/success 后，补查仓库 Pages `html_url` 的 `gh api repos/.../pages` 单次返回 `EOF`。没有重复 push 或重触发 workflow；正式地址改从仓库 README 与既有门户文档的同一权威 URL 取得，并直接完成线上 Browser 验收。工作流成功与附加元数据查询断流必须分开判断，发布写操作不能因只读 EOF 重放。
 - 最近复发/补充：2026-08-10 最终证据提交 `3179223b3986288ca9f3e2012c91d33f7b09454c` 推送成功后，首次用完整 SHA 执行 `gh run list --commit ...` 仍在约 16 秒后以 `unexpected EOF` 退出 1；没有重放 push，也没有把查询失败解释成 workflow 未触发。改为同一只读查询最多三次、每次独立保存退出码的有界重试后，确认 compatibility run `31328478268` 已进入 `in_progress`。
 - 最近复发/补充：2026-08-10 Release workflow 已成功后，首次 `gh run view 31325589153 --json ...` 仍在 GitHub API 读取阶段报 EOF；没有把它当成 workflow 失败，也没有重复触发发布。后续按固定 run ID 将 run/release 查询拆开并最多三次有界重试，取得 `completed/success` 和正式资产元数据。发布写操作绝不能因查询 EOF 重放，先区分“权威任务仍在运行/已结束”和“客户端读取失败”。
 - 最近复发/补充：2026-08-10 post-release 收口审查读取 compatibility run `31326926808` 时再次单次 EOF；同轮 `gh run list --commit 3457efe` 对短 SHA 返回空数组，改用完整 `3457efea561f5fbb865eab440576e91cf2de6ec1` 才取得 Pages 与 compatibility 两条 run。固定 run ID 的 EOF 继续有界重试；按 commit 查询 workflow 必须使用完整 40 位 SHA，短 SHA 空结果不能解释成“未触发”。
