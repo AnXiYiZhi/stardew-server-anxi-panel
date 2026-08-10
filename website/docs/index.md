@@ -2,6 +2,7 @@
 layout: home
 release: v0.4.10
 heroInviteCard: true
+heroCommunityCard: true
 
 hero:
   text: 一键部署你和朋友的<br>专属联机服务器

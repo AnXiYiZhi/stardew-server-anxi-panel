@@ -1,3 +1,14 @@
+# DOCS-HOME-QQ-COMMUNITY-1：首页 QQ 群沟通入口（2026-08-10，completed，未发布）
+
+- 官网不新增独立沟通页面、顶栏入口或第七张功能卡；首页通过 VitePress 官方 `home-hero-actions-after` slot，在 Hero 两个主按钮正下方增加整卡可点击的“加入交流群”入口，直接打开用户提供的 QQ 官方加群链接。卡片文案聚焦部署求助、故障反馈与功能建议，原联机邀请卡和六入口保持不变。
+- `HeroCommunityCard.vue` 使用语义化外链、内联 SVG、至少 44px 的触控目标、键盘焦点、细指针 hover、深色主题与 reduced-motion 适配；群链接集中在 `community.ts`，文档正文页原“反馈问题”页尾同步改为“加群反馈”，避免维护两份地址。
+- 影响 `website/docs/index.md`、`.vitepress/theme/{ThemeLayout.vue,HeroCommunityCard.vue,community.ts}`；不新增路由、依赖、图片，不改变 Panel 前端、API 或 GitHub Issues。`npm.cmd --prefix website run docs:build` 通过；应用内 Browser 验证 1440×900、390×844、深色主题、页尾入口和真实新标签跳转，root/body 横向溢出、framework overlay、console warn/error 均为 0，QQ 目标地址与提供值完全一致。
+- 平板跟进：用户在约 870×710 发现纵向 Hero 视觉偏斜。根因是 `max-width:959px` 已让 VitePress 标题/按钮居中，却仍让 `.container` 以 `align-items:flex-start` 放置宽度 560px 的 main，导致文案中心 `352px`、邀请卡中心 `428px`。`custom.css` 现仅在 `640–959px` 把 main、品牌行、按钮、加群卡和邀请卡统一到容器中心；390px 手机与 `>=960px` 双栏不变。Browser 复核 640/768/870/959px 中心差为 0，390/1024/1440px 无回归，全部 root/body 横向溢出、overlay、console warn/error 为 0。
+- 首屏节奏跟进：按用户宽屏截图把桌面 Hero 顶部 padding 从 `nav + 66px` 收到 `nav + 26px`，主内容和 Features 整体上移 40px，导航下沿到品牌行由 120px 收到 80px；640–959px 只从 `nav + 36px` 收到 `nav + 20px`，上移 16px，`<=639px` 手机保持原值。390/870/1440/1700px Browser 复核无溢出或 overlay，平板轴线和菜单开合不回归，console warn/error 为 0。
+- 顶栏宽度跟进：无侧栏页面在 `>=960px` 将 `.VPNavBar .container` 从 VitePress 默认 `1376px` 收到 `1180px`，与 Hero 容器左右边界完全一致；顶栏背景、64px 高度和触控区域不变。390/959/960/1024/1440/1700px 复核标题、搜索、菜单无重叠或横向溢出，959px 汉堡菜单可正常开合，console warn/error 为 0。
+- 平板紧凑跟进：用户在约 870px 的折叠导航截图中继续指出搜索到汉堡之间和导航下方过空。640–959px 无侧栏顶栏现限制为 640px，870px 下容器由 793px 收到 640px、可见空档由 416px 收到 263px；同档 Hero 顶部 padding 从 `nav + 20px` 收到 `nav`，导航到品牌行稳定为 50px。390/640/768/870/959/960/1700px 无控件重叠、溢出或轴线回归，959px 菜单开合及 console health 通过。
+- 顶栏垂直留白跟进：用户在 870×760 指出顶栏上宽下窄。实测控件自身已在 64px 顶栏内居中，真正原因是隐藏态 `.VPSkipLink` 仍以 `position:relative` 占据 16px 普通流高度，将整条导航下推。`custom.css` 现让跳转链接始终绝对定位，仅在非聚焦态应用 1px 隐藏裁切；正常态导航从 `y=0` 开始，Logo 上下间距为 19.5/20.5px、搜索框 12/12px、汉堡图标 25/25px。键盘聚焦后“跳到正文”仍以 80×40px 显示且导航不移位；390/640/768/870/959/960/1700px 无重叠或横向溢出。
+
 # FE-MODAL-HEIGHT-GUARD-1：弹窗高度约束隐患修复（2026-08-09，completed）
 
 - 通用危险操作确认框与 Steam 二维码弹窗原先都连续声明了 `90/92vh` 和 `100%` 两个 `max-height`，后一个声明会直接覆盖前一个，导致视口比例上限成为无效 CSS。现在分别收敛为 `min(90vh, 100%)` 与 `min(92vh, 100%)`，并显式使用 `box-sizing:border-box`，让 content、padding 与 border 共同受视口/遮罩可用宽高约束；超长内容继续在弹窗内部滚动。

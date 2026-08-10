@@ -220,6 +220,9 @@
 
 ## 2026-07-31：右侧栏截图方法层级用错
 
+- 最近复发/补充：2026-08-10 连续完成 Browser tab finalize/claim 后复用旧的 viewport capability 句柄，`set({width:1700})` 没有报错，但页面仍保持约 857px 宽，第一次顶栏度量因此落在平板断点。发现 `clientWidth` 与目标不符后重新从当前 browser 获取 viewport capability，再设置得到 `innerWidth=1700/clientWidth=1685`。跨 finalize 或重新 claim tab 后做响应式 QA，必须重新获取可选 capability，并在正式度量前核对 `innerWidth/clientWidth` 与 menu breakpoint，不能只信 `set()` 无异常。
+- 最近复发/补充：2026-08-10 验证 `target="_blank"` 的 QQ 外链时，只检查 `browser.tabs.list()` 并主动抛出“没有新标签”；实际新开的用户标签在 `browser.user.openTabs()` 中，标题与目标 URL 都已正确。外链新标签验收应先检查 session tabs，再检查 user open tabs，并把 `openTabs()` 返回的完整对象传给 `browser.user.claimTab()`；不得把“未自动纳入当前控制会话”误报为产品没有打开。
+- 最近复发/补充：2026-08-10 在 Browser 只读页面求值里使用 `HTMLAnchorElement` / `HTMLElement` 的 `instanceof`，隔离求值作用域没有暴露可用构造器，返回 `TypeError`；随后沿用失败初始化的变量名又得到未定义。页面和应用状态未受影响。DOM 度量只做 `null`/`tagName` 检查并直接读取标准属性；求值抛错后使用新的绑定名，不假定失败表达式留下可复用变量。
 - 最近复发/补充：2026-08-09 在 Browser 的只读页面求值里使用 `element instanceof HTMLElement`，隔离求值作用域没有暴露可用的 `HTMLElement` 构造器，返回 `TypeError`；随后沿用失败初始化的变量名又得到未定义。页面和应用状态未受影响。此类 DOM 度量只做 `null` 检查并直接读取标准属性；Browser 求值抛错后使用新的绑定名，不假定失败表达式留下了可复用变量。
 - 最近复发/补充：2026-08-01 验证官网入口卡 hover 裁切时，直接调用 Browser locator 的 `.hover()`，运行时返回 `is not a function`。当前 locator 原型只有 click/fill/press 等交互，没有 hover；以后先核对原型或文档。需要真实 CSS `:hover` 验收时，右侧 Browser 继续承担可见预览与页面健康检查，悬停动作改用工作区 Playwright + 已验证的本机 Chrome，并明确记录这是能力缺口下的补充验证。
 - 最近复发/补充：2026-08-01 官网卡片响应式验收连续猜测 `tab.setViewportSize()` 与 `tab.playwright.setViewportSize()`，两者都返回 `is not a function`；当前运行时方法清单确认没有视口缩放能力。已把规则提升到 `AGENTS.md`：Browser 先做真实桌面验收，窄屏改用隔离 Playwright context，不再试探不存在的方法。
@@ -278,7 +281,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
-- 最近复发/补充：2026-08-10 官网反馈墙方案讨论调用本地 UI 规则检索时，虽然先取得 `Get-Command python`，仍把版本探针和实际查询合并在同一命令中；Windows Store alias 以 `9009` 退出，查询未执行且项目文件未变化。后续同类只读设计检索也必须先调用 workspace dependency loader，使用其返回的精确 Python 路径单独完成版本探针，再运行查询，不能继续把 `Get-Command` 成功当成解释器可用。
+- 最近复发/补充：2026-08-10 官网反馈墙方案讨论调用本地 UI 规则检索时，虽然先取得 `Get-Command python`，仍把版本探针和实际查询合并在同一命令中；同日平板 Hero 对齐修复又先试 Store alias、再猜测不存在的 `py -3`，两次均未产生项目修改，随后才从 workspace dependency loader 取得精确 Python 并完成查询。后续同类只读设计检索必须先调用 dependency loader，使用其返回的精确 Python 路径单独完成版本探针和查询，不能继续把 `Get-Command` 成功当成解释器可用，也不能猜测 `py` launcher。
 - 最近复发/补充：2026-08-01 查询本地 UI 动效数据库时，虽先获得 `Get-Command python` 结果，但没有先执行版本探针便把多个查询放进同一命令；Windows Store alias 以 `9009` 失败且无有效输出。应先单独确认版本，发现 alias 后立即加载工作区依赖，再使用返回的精确 `python.exe`；不要把解释器探针与实际查询合并。
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
 - 最近复发/补充：2026-08-09 发布兼容矩阵仍先把 `Get-Command python` 返回的 Windows Store alias 当真实解释器，版本探针以 `9009` 退出；诊断时又未先验证便调用不存在的 `py -3`。同日 `v0.4.10` 门禁再次把 `Get-Command python` 与版本探针拼在一条命令中，Store alias 令命令在实际矩阵前退出；确认 `py` 也不存在后停止重试，并通过 workspace dependency loader 取得精确 Python。Windows 发布门禁开始前必须先加载工作区依赖，不能因为 `Get-Command` 返回 Application 就认为解释器可运行。
@@ -449,6 +452,7 @@
 ## 2026-07-28：并行门禁被单个命令构造错误吞掉输出
 
 - 最近复发/补充：2026-08-01 文档门禁批次中一个命令构造错误让其它已完成步骤的证据没有显示，随后不得不逐项重跑。多工具链并行固定使用 `Promise.allSettled` 或独立调用并给结果加标签，不能让一个调度错误吞掉其它门禁状态。
+- 最近复发/补充：2026-08-10 官网最终编码审计把两个“无 U+FFFD 命中即退出 1”的 `rg` 与 BOM 检查放进裸 `Promise.all`；预期的无匹配状态触发聚合拒绝，只返回顶层 `Script error`，三个子结果均不可作为证据。负向搜索必须先把 `rg` 的退出码 1 规范化为成功并输出明确计数，或使用 `Promise.allSettled` 保留每项结果；不能把“未命中即通过”的命令裸并发。
 - 环境：JavaScript `Promise.all` 并行调用多组 PowerShell 门禁。
 - 错误模式：一个复杂命令存在引号错误，`Promise.all` 立即拒绝，其他组结果未输出。
 - 症状：只得到顶层 `Script error`，难以判断哪组失败。
@@ -591,7 +595,7 @@
 ## 2026-07-29：Browser 窄屏 `fullPage` 截图出现空白与固定栏重复
 
 - 最近复发/补充：2026-08-09 v0.4.9 官网 390×844 首页 `fullPage` 截图再次把固定导航和首屏内容重复拼接，页面 DOM、普通视口渲染及 root/body 宽度度量均正常。该现象不能算产品布局失败；窄屏证据固定使用普通视口截图，并以 `document/body scrollWidth <= clientWidth` 断言无横向溢出，规则已提升到 `AGENTS.md`。
-- 最近复发/补充：2026-08-10 v0.4.10 Pages 终验在 `domcontentloaded` 和目标文字刚可见后立即截普通视口图，命中了首页 0.32 秒入场动画的低 opacity 过渡帧；从页尾链接进入 changelog 时又命中 `html { scroll-behavior:smooth }` 尚未回顶的中间帧，页面指标全绿但截图看似发灰或停在历史版本。复测记录 opacity/scrollY 时间线，确认桌面约 0.5 秒、手机约 1.7 秒后稳定回到顶部且视觉正常。带动画或平滑路由的最终截图必须等待字体、目标 DOM 与过渡/滚动稳定，不能把“元素已可见”当成视觉稳定。
+- 最近复发/补充：2026-08-10 v0.4.10 Pages 终验在 `domcontentloaded` 和目标文字刚可见后立即截普通视口图，命中了首页 0.32 秒入场动画的低 opacity 过渡帧；从页尾链接进入 changelog 时又命中 `html { scroll-behavior:smooth }` 尚未回顶的中间帧，页面指标全绿但截图看似发灰或停在历史版本。复测记录 opacity/scrollY 时间线，确认桌面约 0.5 秒、手机约 1.7 秒后稳定回到顶部且视觉正常。同日平板 Hero 对齐 QA 用固定 180ms 判断导航菜单关闭，过渡尚未结束时短暂得到假失败；改为对 `.VPNavScreen` 使用 `waitFor({state:"hidden"})` 后开合均通过。带动画或平滑路由的最终断言必须等待目标状态，而不是用拍脑袋的短延迟或把“元素已可见”当成视觉稳定。
 - 最近复发/补充：2026-07-29 将临时 390×844 viewport `reset()` 回默认尺寸后，首张普通视口截图右侧出现黑块，DOM 同时报告默认宽度与无横向溢出；对 tab 执行一次 `reload()` 后渲染面恢复正常。以后恢复默认 viewport 后先 reload，再截最终交付图。
 - 环境：Codex 应用内 Browser，临时 viewport 切换到 390×844 后截取静态响应式页面。
 - 错误模式：只凭 `screenshot({fullPage:true})` 的结果判断窄屏页面没有渲染。
@@ -1211,6 +1215,8 @@
 - 最近补充：语义快照把密码输入框显示成 `textbox "密码 显示密码"`，但这不是 `getByLabel("密码 显示密码")` 可用的真实 label；直接照抄组合后的可访问名称会得到 `no_matches`。登录表单应先用已确认的唯一 `input[type="password"]` 定位，或读取可交互 DOM 后使用真实 label，不能把快照的聚合文本反推成 label 绑定。
 - 最近补充：2026-08-07 验收 VitePress 展示站时，先把主题开关猜成按钮“主题模式”，实际语义角色/名称是 `switch "切换为深色主题"`；又用 exact heading `v0.4.8（最新版本）` 定位，实际可访问名称还包含 permalink 文本。VitePress 页面必须先读取当前 `domSnapshot()`，按已观察到的 role/name 操作；含标题永久链接时优先用正文投影或非 exact 文本，不猜组合后的可访问名称。
 - 最近补充：同轮把页面求值误写成不存在的 `tab.playwright.dom.evaluate(...)`；当前 Browser 的页面级只读求值是 `tab.playwright.evaluate(...)`，语义树读取则是 `tab.playwright.domSnapshot()`。Browser 子接口的层级必须以已读 API Reference 和本轮已验证调用为准，首次失败后不得继续在相邻对象上试探。
+- 最近复发/补充：2026-08-10 顶栏垂直留白复测先误用 `tab.locator(...)`，当前封装的 locator 位于 `tab.playwright.locator(...)`；随后又在页面代理元素上调用不受支持的原生 `focus()`。检查运行时原型后改用已暴露的 locator `press("ArrowDown")` 让跳转链接获得真实键盘焦点。DOM 查询、交互和 Tab 级导航/截图必须继续按对象层级区分，页面代理元素不假定拥有原生方法。
+- 最近复发/补充：同轮尝试把持久 Node REPL 中的 `tabletCompactTab` 直接写进新的 `functions.exec` V8 isolate，调用 `codex_app__open_in_codex` 前即报 `ReferenceError`。两种 JavaScript 运行时不共享绑定；需要跨运行时传值时，先让 Node REPL 输出可序列化的 `tab.id`，再把字面值传给普通工具，不能引用另一 isolate 的变量名。
 - 适用范围：Codex in-app Browser 响应式测试与临时视口覆盖。
 
 ## 2026-08-06：按资源名猜测不存在的 Web handler 文件
@@ -1454,7 +1460,7 @@
 
 ## 编码与换行快速检查
 
-- 最近复发/补充：2026-08-10 v0.4.10 官网收口审计又对全部 changed file 完整正文搜索 U+FFFD，命中本节在 `HEAD` 中已经存在的合法示例后组合命令退出 1；按 `HEAD` 对照确认不是本次引入。正确复核改为 `git diff --unified=0 --no-color` 后只检查单个 `+` 开头且排除 `+++` 文件头的新增行；该规则因多次复发已提升到 `AGENTS.md`。
+- 最近复发/补充：2026-08-10 v0.4.10 官网收口审计又对全部 changed file 完整正文搜索 U+FFFD，命中本节在 `HEAD` 中已经存在的合法示例后组合命令退出 1；同日 `DOCS-HOME-QQ-COMMUNITY-1` 收口时再次错误复用完整文件扫描并命中同一历史示例。两次均按 `HEAD` 对照确认不是本次引入。正确复核固定为 `git diff --unified=0 --no-color` 后只检查单个 `+` 开头且排除 `+++` 文件头的新增行；该规则因多次复发已提升到 `AGENTS.md`，收口命令不得再组合完整文件 U+FFFD 扫描。
 - 最近复发/补充：2026-08-09 新建游戏弹窗收口再次对全部已修改文件直接执行 U+FFFD 搜索，命中了本节合法示例并让组合命令退出 1；同日升级修复目录审计已经出现相同误报。本次 Steam 升级等待修复又扫描完整的 `docs/09-image-build.md` 和错题本，分别命中历史乱码说明与本节合法示例；确认均为既有语义文本、无 BOM，未做整文件重编码。源码格式与 `git diff --check` 实际通过。此检查必须先生成 `git diff --unified=0`，只过滤单个 `+` 的新增行并排除 `+++` 文件头，禁止再次扫描完整历史文件。
 - 最近复发/补充：2026-08-08 首轮批量读取中文文档时沿用 PowerShell 7 默认控制台输出编码，工具侧显示乱码；文件无 BOM、`git status` 为空，确认只是只读显示链路。后续中文读取先同时设置 `$OutputEncoding=[System.Text.UTF8Encoding]::new($false)` 与 `[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)`，并对 `Get-Content` 显式使用 `-Encoding UTF8`；乱码出现时先核对 Git 状态和文件字节，不得把显示问题误判为文件损坏。
 - 最近复发/补充：2026-08-08 最终审计再次扫描了整个已修改错题本，误把本条用于解释旧乱码问题的合法 `�` 示例判为新乱码。检查 U+FFFD 时不能对“本次修改过的整个历史文件”直接搜索；应先跑 `git diff --check`，再只检查 `git diff --unified=0` 中以单个 `+` 开头的新增行，发现命中后再回到原文件确认语义。

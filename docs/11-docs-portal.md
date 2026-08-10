@@ -2,7 +2,18 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航，仅更新 v0.4.8 玩家 Mod 内容**。以下决策已和用户对齐：
+状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前已发布官网保留原 Hero、联机邀请卡、六入口和原导航并展示 v0.4.10；2026-08-10 已在本地完成首页 QQ 群沟通入口，尚未发布**。以下决策已和用户对齐：
+
+## 2026-08-10：首页 QQ 群沟通入口（本地完成，未发布）
+
+- 不新增独立沟通页面、顶栏入口或第七张功能卡；首页使用默认主题 `home-hero-actions-after` slot，在两个 Hero CTA 正下方增加紧凑横向卡片，整卡直接打开用户提供的 QQ 官方加群链接。原联机邀请票、六入口、导航和版本区不变。
+- 群链接集中在 `.vitepress/theme/community.ts`；首页 `HeroCommunityCard.vue` 与非首页统一帮助页尾共同引用，后者从 GitHub Issues “反馈问题”改为“加群反馈”。外链使用 `_blank` + `noopener noreferrer`，卡片包含内联 SVG、44px 触控目标、键盘焦点、深色主题、窄屏和 reduced-motion 适配。
+- 影响 `website/docs/index.md` 与 `.vitepress/theme/{ThemeLayout.vue,HeroCommunityCard.vue,community.ts,custom.css}`，无新路由、依赖或图片。production build 通过；应用内 Browser 覆盖 1440×900、390×844、深色主题、正文页尾和真实新标签跳转，横向溢出、overlay、console warn/error 均为 0，QQ 目标完整地址精确一致。
+- 平板断点随后按用户约 870×710 截图修正：VitePress 默认居中文案与自定义 flex-start main 曾产生 76px 中心差；`custom.css` 只在 640–959px 统一 Hero main、品牌行、按钮、加群卡和邀请卡的中心线。640/768/870/959px 中心差实测为 0，390/1024/1440px 原布局无回归。
+- 宽屏首屏随后按用户截图收紧：桌面 Hero 顶部空间减少 40px，导航到品牌行由 120px 收到 80px；平板减少 16px并保持 70px，手机仍为 55px。390/870/1440/1700px 均无横向溢出、overlay 或菜单交互回归。
+- 宽屏顶栏随后与正文统一：`>=960px` 的无侧栏顶栏容器从默认 1376px 收到 1180px，与 Hero/Features 使用同一左右边界；背景和高度不变。390/959/960/1024/1440/1700px 下标题、搜索、菜单无重叠或溢出，折叠菜单交互正常。
+- 平板折叠顶栏继续按约 870px 截图收紧：640–959px 容器限制为 640px，搜索到汉堡空档由 416px 收到 263px；Hero 与导航间距收至 50px。390/640/768/870/959/960/1700px 无重叠、横向溢出或交互回归。
+- 顶栏上下留白继续按 870×760 截图修正：不是控件内部偏移，而是隐藏态 `.VPSkipLink` 仍占 16px 普通流高度。跳转链接现始终绝对定位、只在非聚焦态裁切，64px 导航从页面 `y=0` 开始；Logo、搜索框和汉堡图标上下间距对等，键盘聚焦时“跳到正文”仍正常显示且不推动导航。390/640/768/870/959/960/1700px 无重叠或横向溢出。
 
 ## 2026-08-07：撤回误发布的任务型隔离改版
 
@@ -46,11 +57,11 @@
 - 版本角标仍由 `ThemeLayout.vue` 注入 `--home-release-label`；没有修改 `custom.css` 或建立第二份版本来源。发布验收需覆盖首页 → changelog，以及维护/手册两份存档页面的桌面和手机渲染。
 - 本地 `npm run docs:build` 已通过。应用内 Browser 在 1440×900 验证首页唯一 `v0.4.4` 链接进入 changelog、手册索引进入存档管理、日常维护进入存档与备份；390×844 验证存档手册无横向溢出。页面身份、非空、framework overlay、console error/warn 均通过。Pages 工作流 `30293213908` 成功后，线上首页和存档手册再次确认已展示 `v0.4.4`、后台即时处理与历史缺失不可补齐边界。
 
-首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用开放式文字 + 联机邀请票，局部静态网格只围绕邀请卡。入口区固定为 6 张无序号的三列卡；“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。入口卡后直接承接当前版本摘要，不恢复已删除的四步流程区；改版时必须同步检查浅色、深色、桌面、390px、reduced-motion 与卡片 hover 越界。
+首页自定义主题约定：全站使用墨绿/薄荷/暖金语义变量；顶部“快速上手”导航使用固定 30px 胶囊；Hero 使用开放式文字 + 联机邀请票，局部静态网格只围绕邀请卡，两个主 CTA 下方只保留一个紧凑的 QQ 群沟通入口。入口区固定为 6 张无序号的三列卡；“版本更新日志”通过 `/changelog` 链接定位并使用暖色版本角标。入口卡后直接承接当前版本摘要，不恢复已删除的四步流程区；改版时必须同步检查浅色、深色、桌面、390px、reduced-motion 与卡片 hover 越界。
 
 版本角标约定（2026-07-24）：暖色角标内容读取 `website/docs/index.md` frontmatter 的 `release`，禁止再在 `custom.css` 的 `content` 中写死版本。深色四步流程区使用 `--home-path-*` 独立高对比变量；局部 `p/strong/span` 选择器必须高于全站 `.vp-doc` 正文规则。
 
-非首页主题约定：`ThemeLayout.vue` 根据剥离 `site.base` 后的路由为六个栏目提供独立语义色，并统一注入阅读进度、知识库侧栏、面包屑/栏目徽标和帮助页尾。正文 Markdown 不需要为视觉效果添加一次性 HTML；标题、步骤、列表、代码、表格、提示块、图片和翻页均由 `custom.css` 自动接管。新增顶级栏目时同步扩展 `ThemeLayout.vue` 的 `sections` 与 `section-*` CSS 变量。
+非首页主题约定：`ThemeLayout.vue` 根据剥离 `site.base` 后的路由为六个栏目提供独立语义色，并统一注入阅读进度、知识库侧栏、面包屑/栏目徽标和帮助页尾；帮助页尾的“加群反馈”与首页共用 `community.ts`，不得复制群链接。正文 Markdown 不需要为视觉效果添加一次性 HTML；标题、步骤、列表、代码、表格、提示块、图片和翻页均由 `custom.css` 自动接管。新增顶级栏目时同步扩展 `ThemeLayout.vue` 的 `sections` 与 `section-*` CSS 变量。
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 

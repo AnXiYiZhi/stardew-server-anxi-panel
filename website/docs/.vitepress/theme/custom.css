@@ -82,6 +82,28 @@ body {
   border-bottom: 1px solid transparent;
 }
 
+/* VitePress 的跳转链接只在键盘聚焦时显示，且不参与顶栏常规排版。 */
+.VPSkipLink {
+  position: absolute !important;
+}
+
+.VPSkipLink:not(:focus) {
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+@media (min-width: 960px) {
+  .VPNavBar:not(.has-sidebar) .container {
+    max-width: 1180px !important;
+  }
+}
+
 .VPNavBarTitle .title {
   font-weight: 750;
   letter-spacing: -0.02em;
@@ -150,7 +172,7 @@ body {
 }
 
 .VPHero {
-  padding: calc(var(--vp-nav-height) + 66px) 24px 70px !important;
+  padding: calc(var(--vp-nav-height) + 26px) 24px 70px !important;
 }
 
 .VPHero .container {
@@ -726,7 +748,7 @@ body {
   }
 
   .VPHero {
-    padding: calc(var(--vp-nav-height) + 36px) 24px 50px !important;
+    padding: var(--vp-nav-height) 24px 50px !important;
   }
 
   .VPHero .container {
@@ -757,6 +779,31 @@ body {
 
   .VPHero .image-container {
     width: min(420px, 100%) !important;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 959px) {
+  .VPNavBar:not(.has-sidebar) .container {
+    max-width: 640px !important;
+  }
+
+  .VPHero .container {
+    align-items: center !important;
+  }
+
+  .VPHero .main {
+    width: 100%;
+    text-align: center;
+  }
+
+  .home-hero-kicker,
+  .VPHero .actions {
+    justify-content: center !important;
+  }
+
+  .VPHero .tagline,
+  .VPHero .hero-community-card {
+    margin-inline: auto;
   }
 }
 

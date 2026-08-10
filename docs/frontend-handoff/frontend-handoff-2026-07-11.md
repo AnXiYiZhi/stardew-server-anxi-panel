@@ -42,6 +42,21 @@
 - `README.md`、`docs/user-guide/getting-started.md` 和 `docs/09-image-build.md` 的国内加速安装地址统一为 `http://anxinas.dpdns.org/run.sh`；`website/docs/guide/deploy.md` 与 `website/docs/deploy/quick-start.md` 已经是正确 HTTP，无需改动。
 - 本次没有变更 VitePress 页面源码、组件、依赖或 Panel 功能。同域名 HTTPS 残留为 0；HTTP 端点只读返回 200/27,427 字节且未执行；GitHub README 线上正文与 `clipboard-copy value` 均为完整 HTTP 命令，console warn/error 为 0；compatibility workflow `31305603385` 成功。
 
+# DOCS-HOME-QQ-COMMUNITY-1 接手记录（2026-08-10，completed，未发布）
+
+## 改了什么、影响与验证
+
+- `website/docs/index.md` 增加 `heroCommunityCard: true`；`ThemeLayout.vue` 通过官方 `home-hero-actions-after` slot，把 `HeroCommunityCard.vue` 放在首页 Hero 两个 CTA 正下方。整卡直接打开 QQ 官方加群链接，不创建独立路由、顶栏项或第七张功能卡，右侧联机邀请票、六入口和版本区保持原结构。
+- `community.ts` 是群链接的唯一来源；非首页统一帮助页尾原 GitHub Issues 外链改为“加群反馈”。两个入口均使用 `_blank` 与 `noopener noreferrer`。卡片采用内联 SVG、44px 触控目标、`focus-visible`、细指针 hover、深色主题、390px/359px 窄屏和 reduced-motion 规则，无新增依赖或图片。
+- 产品文件：`website/docs/index.md`、`website/docs/.vitepress/theme/{ThemeLayout.vue,HeroCommunityCard.vue,community.ts,custom.css}`。只影响公开文档门户展示，不改变 Panel React、后端 API、GitHub Issues 内容或发布流程。
+- 平板跟进：约 870×710 时默认主题已经把标题、tagline 和 actions 居中，但自定义 `max-width:959px` 规则仍把 main 靠左，文案中心为 `352px`、邀请卡中心为 `428px`。新增仅作用于 `640–959px` 的对齐规则：容器子项、main、品牌行、actions 与加群卡共用邀请卡中心；不把这一规则泄漏到 `<=639px` 手机或 `>=960px` 双栏。
+- 首屏节奏跟进：桌面 `.VPHero` 顶部 padding 从 `calc(nav + 66px)` 改为 `calc(nav + 26px)`，Hero 与 Features 同步上移 40px；640–959px 从 `nav + 36px` 收到 `nav + 20px`，上移 16px；手机的 `nav + 24px` 不变。1700×1100 下导航到品牌行从 120px 收到 80px，870×710 为 70px，390×844 仍为 55px。
+- 顶栏宽度跟进：`custom.css` 仅对 `>=960px` 且无侧栏的 `.VPNavBar .container` 设置 `max-width:1180px`，取代默认 1376px；1700px 下顶栏与 Hero 均为 `253–1433px`，Logo 与菜单各向中间收约 98px。顶栏背景、导航高度、正文侧栏页面和 `<=959px` 折叠菜单不变。
+- 平板紧凑跟进：`640–959px` 的无侧栏顶栏单独使用 `max-width:640px`，870px 下实际宽度 793→640px，搜索按钮到汉堡菜单的可见空档 416→263px；Hero 顶部 padding 同时从 `calc(nav + 20px)` 收到 `var(--vp-nav-height)`，稳定后的导航到品牌行间距为 50px。`<=639px` 手机仍使用原顶栏和 Hero 间距，`>=960px` 仍使用 1180px 完整导航。
+- 顶栏垂直留白跟进：870×760 下控件在 `.VPNavBar` 的 64px 内本已居中，但 `.VPSkipLink.visually-hidden` 计算结果仍为 `position:relative;height:16px`，先占普通流再把 `.VPNav` 推到 `y=16`。`custom.css` 现让 `.VPSkipLink` 始终绝对定位，1px 隐藏尺寸和裁切只作用于 `:not(:focus)`；正常态导航为 `y=0..64`，Logo 上下间距 19.5/20.5px、搜索 12/12px、汉堡线组 25/25px。locator 键盘聚焦后链接为 80×40px、文本可见、导航仍为 `y=0..64`，保留跳转正文的可访问性。
+- 验证：`npm.cmd --prefix website run docs:build` 通过。应用内 Browser 1440×900 下卡片为 456×72，390×844 下为 299×68，均位于按钮后且 root/body 横向溢出为 0；浅/深主题、文档页尾、键盘/触控语义和 console/overlay 通过。实际点击新开标题“QQ群”的 `qun.qq.com` 标签，完整 URL 与用户提供值相等，原首页保持不变。平板补测 640/768/870/959px 的 main/加群卡/邀请卡中心完全一致；顶栏补测 390/640/768/870/959/960/1024/1440/1700px 的标题、搜索与菜单无重叠或溢出，959px 汉堡菜单可开合，console warn/error 为 0。
+- 下一步：发布前仍按普通官网改动走 `main`、Pages 与线上桌面/390px 复核；若群邀请失效，只更新 `community.ts`，不要在组件或 Markdown 复制第二份链接。
+
 # DOCS-PORTAL-V049-1 接手记录（2026-08-09，released）
 
 - 官网沿用当前正式布局，只把 `website/docs/index.md` 的 release/版本卡/摘要和 `website/docs/changelog.md` 的最新条目更新到 v0.4.9。首页文案链接到现有 `/changelog`，没有新增组件、脚本、依赖、路由或图片。
