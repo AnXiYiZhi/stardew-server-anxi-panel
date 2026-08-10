@@ -56,6 +56,7 @@
 - 顶栏垂直留白跟进：870×760 下控件在 `.VPNavBar` 的 64px 内本已居中，但 `.VPSkipLink.visually-hidden` 计算结果仍为 `position:relative;height:16px`，先占普通流再把 `.VPNav` 推到 `y=16`。`custom.css` 现让 `.VPSkipLink` 始终绝对定位，1px 隐藏尺寸和裁切只作用于 `:not(:focus)`；正常态导航为 `y=0..64`，Logo 上下间距 19.5/20.5px、搜索 12/12px、汉堡线组 25/25px。locator 键盘聚焦后链接为 80×40px、文本可见、导航仍为 `y=0..64`，保留跳转正文的可访问性。
 - 验证：`npm.cmd --prefix website run docs:build` 通过。应用内 Browser 1440×900 下卡片为 456×72，390×844 下为 299×68，均位于按钮后且 root/body 横向溢出为 0；浅/深主题、文档页尾、键盘/触控语义和 console/overlay 通过。实际点击新开标题“QQ群”的 `qun.qq.com` 标签，完整 URL 与用户提供值相等，原首页保持不变。平板补测 640/768/870/959px 的 main/加群卡/邀请卡中心完全一致；顶栏补测 390/640/768/870/959/960/1024/1440/1700px 的标题、搜索与菜单无重叠或溢出，959px 汉堡菜单可开合，console warn/error 为 0。
 - 发布：提交 `63aff0380de337faf57a9a6bcac1323b6e3593f6` 经 Pages workflow `31388822404` 成功部署。线上 1280×720、870×760、390×844 的页面身份、非空、overlay、console、root/body overflow、顶栏对称留白和卡片文字左对齐均通过；真实点击打开标题“QQ群”的精确目标。
+- 桌面首屏二次收紧（本地完成，未发布）：`custom.css` 的桌面 Hero padding 从 `calc(nav + 26px) 24px 70px` 收到 `calc(nav + 10px) 24px 50px`，同一 `min-width:960px` 档让 `.VPHomeFeatures` 上提 12px。1700×1100 实测顶栏下沿到品牌行 `72.36→48px`，加群卡下沿到首张功能卡 `87.64→64px`；390/959px 继续命中原手机/平板覆盖，960/1024/1700px root/body overflow 与 overlay 为 0，959px 汉堡菜单开/关状态正确，console warn/error 为 0。
 - 下一步：若群邀请失效，只更新 `community.ts`，不要在组件或 Markdown 复制第二份链接；后续官网变更继续走 `main`、Pages 与线上桌面/390px 复核。
 
 # DOCS-PORTAL-V049-1 接手记录（2026-08-09，released）

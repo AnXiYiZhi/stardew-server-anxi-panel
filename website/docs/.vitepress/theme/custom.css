@@ -102,6 +102,10 @@ body {
   .VPNavBar:not(.has-sidebar) .container {
     max-width: 1180px !important;
   }
+
+  .VPHomeFeatures {
+    margin-top: -12px !important;
+  }
 }
 
 .VPNavBarTitle .title {
@@ -172,7 +176,7 @@ body {
 }
 
 .VPHero {
-  padding: calc(var(--vp-nav-height) + 26px) 24px 70px !important;
+  padding: calc(var(--vp-nav-height) + 10px) 24px 50px !important;
 }
 
 .VPHero .container {

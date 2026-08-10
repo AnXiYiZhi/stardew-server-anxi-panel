@@ -9,6 +9,7 @@
 - 平板紧凑跟进：用户在约 870px 的折叠导航截图中继续指出搜索到汉堡之间和导航下方过空。640–959px 无侧栏顶栏现限制为 640px，870px 下容器由 793px 收到 640px、可见空档由 416px 收到 263px；同档 Hero 顶部 padding 从 `nav + 20px` 收到 `nav`，导航到品牌行稳定为 50px。390/640/768/870/959/960/1700px 无控件重叠、溢出或轴线回归，959px 菜单开合及 console health 通过。
 - 顶栏垂直留白跟进：用户在 870×760 指出顶栏上宽下窄。实测控件自身已在 64px 顶栏内居中，真正原因是隐藏态 `.VPSkipLink` 仍以 `position:relative` 占据 16px 普通流高度，将整条导航下推。`custom.css` 现让跳转链接始终绝对定位，仅在非聚焦态应用 1px 隐藏裁切；正常态导航从 `y=0` 开始，Logo 上下间距为 19.5/20.5px、搜索框 12/12px、汉堡图标 25/25px。键盘聚焦后“跳到正文”仍以 80×40px 显示且导航不移位；390/640/768/870/959/960/1700px 无重叠或横向溢出。
 - 发布：提交 `63aff0380de337faf57a9a6bcac1323b6e3593f6` 已推送 `origin/main`，Pages workflow `31388822404` 的 build/deploy 均成功。线上 `https://anxiyizhi.github.io/stardew-server-anxi-panel/` 在 1280×720、870×760、390×844 复核页面身份、加群卡、顶栏上下留白和响应式布局，root/body 横向溢出、framework overlay、console warn/error 均为 0；实际点击“加入交流群”打开标题“QQ群”的用户标签，目标 URL 与集中常量精确一致。
+- 桌面首屏二次收紧（本地完成，未发布）：按用户 1700×1100 截图继续压缩顶栏到品牌行、加群卡到功能卡两段留白。`>=960px` 的 Hero padding 从 `nav + 26px / 70px` 收到 `nav + 10px / 50px`，并让 `.VPHomeFeatures` 上提 12px；实测两段空档分别由约 `72.36→48px`、`87.64→64px`。390/959px 继续使用原手机/平板规则，960/1024/1700px 无横向溢出或 overlay，959px 折叠菜单开合正常，console warn/error 为 0。
 
 # FE-MODAL-HEIGHT-GUARD-1：弹窗高度约束隐患修复（2026-08-09，completed）
 
