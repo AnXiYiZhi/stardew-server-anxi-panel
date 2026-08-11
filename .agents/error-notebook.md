@@ -2,6 +2,17 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-11：历史改写验证混用了宽泛关键字和不稳定内联解析
+
+- 最近复发/补充：同轮首次推送把 PowerShell 参数写成 `git push --force-with-lease=('refs/heads/main:' + $expectedRemote) ...`；PowerShell 把选项和值拆开，Git 将 lease 值误当成远端仓库并在任何远端写入前退出 1。重新 `ls-remote` 确认 `origin/main` 仍为预期旧 SHA 后，正确做法是先构造完整单参数 `$leaseArg = "--force-with-lease=refs/heads/main:$expectedRemote"`，再执行 `git push $leaseArg origin ...`；带动态值的原生 CLI 长选项不要在调用位置混用 `=` 与 PowerShell 表达式。
+- 环境：Windows PowerShell 7，删除两条历史提交中的 Claude `Co-Authored-By` 尾注后验证 196 条 `main` 提交。
+- 错误模式：先用 `--grep=claude` 把正文提到 `CLAUDE.md` 的普通提交误报为作者尾注残留；随后在长内联命令中按猜测的 `range-diff` 行形和 PowerShell `-split` 空字段语义统计提交，并把 `git rev-list` 直接接到 `Select-Object -First`。
+- 症状 / 退出码：源码树哈希、提交数和两条目标新 SHA 已正确，但三版验证包装器分别因宽泛命中、统计为零/数量不符、元数据字段或父映射解析失败而退出 1；管道提前关闭的一次探针还没有留下有效输出。仓库历史在这些只读验证失败中没有继续变化。
+- 根因：把“Claude 字样”与精确共同作者 trailer 混为一谈，又把提交图、消息、空父字段和原生进程输出压进多层单行解析；展示层截断还可能提前关闭 Git stdout。
+- 正确做法：作者残留只匹配精确 `Co-Authored-By: Claude ...` / `noreply@anthropic.com` 尾注，并分别检查 Git author/committer；复杂历史验证写任务专属 PowerShell 脚本，完整收集 `rev-list` 后再索引，用明确分隔符和普通 hashtable 比较旧新 tree、父拓扑、作者/提交者元数据及规范化消息，最后用 `range-diff` 只作人工复核。
+- 预防检查：历史重写推送前固定验证：工作树状态、HEAD tree、提交数、精确 trailer、author/committer、逐提交 tree/父图/元数据/消息；不要把文件名或文档正文中的同名字符串当成作者证据，也不要从工具显示文本反推 `range-diff` 的机器接口。
+- 适用范围：`filter-branch`、rebase、提交消息清洗、敏感历史改写和所有需要证明“只改消息、不改补丁”的 Git 验证。
+
 ## 2026-08-09：`apply_patch` 使用过长且手写的上下文
 
 - 最近复发/补充：2026-08-10 最终收口已推送后补记 GitHub API EOF 时，又从终端输出手抄两条很长的列表上下文，其中一处漏掉空格，`apply_patch` 以 `verification failed` 安全零修改退出。随后改为分别使用稳定标题和最小邻接行插入，不能因为内容只是文档就放宽精确上下文要求。
