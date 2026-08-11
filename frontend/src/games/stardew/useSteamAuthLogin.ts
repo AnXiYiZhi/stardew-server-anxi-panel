@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { steamAuthLogin } from '../../api'
+import { ApiError, steamAuthLogin } from '../../api'
 import { errorMessage } from '../../core/helpers'
 import { routeToPath } from './stardew-routes'
 import type { StardewDashboardData, StardewNavigateOptions, StardewRoute } from './stardew-routes'
@@ -24,6 +24,11 @@ export function useSteamAuthLogin({ instanceState, onNavigate }: UseSteamAuthLog
       if (onNavigate) onNavigate('install')
       else window.location.href = routeToPath('install')
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'install_in_progress') {
+        if (onNavigate) onNavigate('install')
+        else window.location.href = routeToPath('install')
+        return
+      }
       setMessage(errorMessage(error))
     } finally {
       setBusy(false)

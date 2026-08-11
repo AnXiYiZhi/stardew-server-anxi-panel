@@ -181,14 +181,22 @@ func TestFreshInstall125ReachesSteamLoginOptIn(t *testing.T) {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
+	absentSince := time.Time{}
 	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); {
 		output, psErr := exec.Command("docker", "ps", "-aq", "--filter", "volume="+project+"_game-data").CombinedOutput()
 		if psErr == nil && strings.TrimSpace(string(output)) == "" {
-			return
+			if absentSince.IsZero() {
+				absentSince = time.Now()
+			}
+			if time.Since(absentSince) >= 3*time.Second {
+				return
+			}
+		} else {
+			absentSince = time.Time{}
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	t.Fatal("Steam login container did not stop after install job cancellation")
+	t.Fatal("Steam login container did not remain absent after install job cancellation")
 }
 
 func runRequiredRuntimeRealUpgrade(t *testing.T, sourceDir, sourceGameVolume, initialState string) {

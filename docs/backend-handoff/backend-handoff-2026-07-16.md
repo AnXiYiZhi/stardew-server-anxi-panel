@@ -1,3 +1,31 @@
+# INSTALL-FIRST-RUN-CONSISTENCY-1 接手记录（2026-08-11，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `backend/migrations/012_exclusive_stardew_install_jobs.sql` 清理历史重复活动安装 owner 并创建 active install partial unique index；`storage/jobs.go` 新增 `ActiveJobExistsError` 与事务型 `CreateExclusiveJob`，`jobs.Spec.Exclusive` 由 Stardew `Driver.Install` 启用。`install_handlers.go` 将冲突映射为 HTTP 409 `install_in_progress`，details 只包含已有 `jobId`，没有凭据。
+- `storage/instances.go` 新增 `UpdateInstanceStateForActiveJob`；`driver.updatePhase` 对有 job ID 的生产 store 做 active target 条件更新，终态任务的迟到写入返回 `ErrJobNotActive` 并只记 debug。`jobs.Manager.RecoverInterruptedJobs` 在批量 fail 前由仍 active 的 install owner 写中断状态。
+- 新文件 `smapi_bundled_sync.go` 用当前 server image 的 `/bin/sh` 只读挂载 current game-data volume，把实际 `/data/game/Mods` 复制到 host sibling staging，做 manifest/UniqueID/版本/必需组件/symlink/类型/大小校验与全树 SHA-256；相同树 no-op，变化树原子替换 `.local-container/mods/smapi`。发布恢复识别仅限 Panel-owned `.smapi-sync-*` / `.smapi-backup-*`：清理中断 staging，destination 缺失时恢复最近有效 backup，避免进程死在 old→backup 后留下空 managed namespace。调用点是 `installer.completeInstall`、首次 `lifecycle.doStart` 事务创建前、SMAPI apply switch 后及 rollback 切回旧卷后；安装器和最终 volume 校验都把 ConsoleCommands/SaveBackup manifest 视为必需文件，旧状态只有 SMAPI 可执行文件但缺支持 Mod 时不会被误判完整。
+- `runtime_farm_catalog.go` 现在把 managed smapi 目录内所有有效 manifest 加入 ExpectedFingerprint，仍保留当前两个官方支持 Mod 的顶层兼容 fallback/隔离规则。失败 phase/code 为 `smapi_bundled_sync_failed`。
+- `backend/internal/docker/tty_run_unix.go` 为每次 Steam auth Compose one-off 指定随机唯一容器名；context 取消/超时时只按该精确名字强制删除，并要求连续 3 秒确认缺席。不能在第一次 list 为空时返回，因为前台 `docker compose run --rm` 被杀后 daemon 仍可能晚到创建 `Created` 容器。此修复不改变正常安装、认证 volume 或 Windows Engine API 路径。
+
+## 如何验证
+
+- `go test ./internal/storage`：exclusive 并发 12 请求、历史重复 owner 迁移和 partial index。
+- `go test ./internal/jobs`：Manager 返回现有 owner、取消后可再次创建、启动恢复顺序。
+- `go test ./internal/web -run TestWriteActiveInstallConflict`：409 code/message/details.jobId。
+- `go test ./internal/games/stardew_junimo`：物化、幂等、坏 staging 保留旧目录、中断 backup/stage 恢复、未来 bundled manifest 指纹及同步失败早于 new-game transaction；全包已通过。最终后端 `go test ./... -count=1`（65.8 秒）、vet、build 全绿，前端 13 项状态测试和 production build 通过。
+- 真实 Docker 专项以精确 `dockerproxy.net/sdvd/server:1.5.0-preview.125` 创建唯一临时 game-data volume，第一次 sync 发布两个 support manifest、第二次 tree digest no-op；测试后 `anxi-smapi-sync-*` 容器/卷均为 0。本轮没有发布；升级得到的 Panel Web 首次建档、SMAPI staging apply/rollback 和 Panel crash 窗口仍必须在最终候选与唯一隔离资源中完成后才能打 tag。
+- `TestFreshInstall125ReachesSteamLoginOptIn` 使用真实 `.125/auth .2`、空凭据与 QR 登录复现取消泄漏。第一版只在首次观察不到容器时返回，发布外层随后抓到 daemon 晚到的 `Created` one-off 和两个无法删除的案例卷；测试本身也改为 job 终态后连续 3 秒确认缺席。修正后的真实测试 9.78 秒通过，外层案例 container/volume 为 0；Linux `internal/docker` 新增可控晚到创建单测并通过。最终候选还要重跑完整门禁。
+- 稳定缺席修复后的 Windows 后端全量 59 秒、vet/build 通过；Linux 全量空缓存结构化复跑 77.6 秒、vet/build 通过，任务容器和缓存卷均清理。一次普通文本 Linux 全量的 Web 包失败输出被正常 HTTP 日志截断，随后定向 Web 包与结构化全量均通过；该次无断言非零不算通过证据，执行方式已记入错题本。
+- `TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn` 只读克隆历史测试所有的完整 game-data 到唯一任务卷，以空 saves bind/空 Steam 凭据运行真实 Junimo/SMAPI；两轮分别 71.78/60.04 秒创建唯一可解析活动存档。job log 的物化 sequence 9 早于事务快照 sequence 10，两个 support manifest 非空且终态无 `.smapi-*` owned artifact，第二轮 Stop 后容器归零；源卷未被写入。补丁后的 Windows 全量 59.8 秒、Linux 全量 54.2 秒与双方 vet/build 通过；最终候选仍要在升级得到的 Panel Web 上复验首存。
+
+## 下一步注意事项
+
+- 任何新安装入口都必须走 `Exclusive:true`，不得先 list 再无约束 CreateJob；任何异步实例阶段写入必须传真实 job ID。不要把 409 转成通用 500，也不要自动取消旧安装后重开。
+- server image 若改变 `/data/game/Mods` 或 entrypoint `init_mods` 契约，必须同时更新 sync helper、真实 Docker fixture 和指纹测试。目标命名空间只允许 managed `smapi`，不能扩展删除范围到玩家顶层 Mods。
+- 迁移新增数据库约束，后续发版属于受数据库迁移影响的版本，必须执行上一正式版和最老受支持代表版本的一键升级、数据保持、重启恢复与回滚验证。
+- TTY 取消清理必须保留随机精确名字、20 秒总边界和连续 3 秒缺席窗口；禁止退回按 project、service 或 volume 宽泛删除，也不能只杀 Docker CLI、看到一次空结果或假定 `--rm` 已在 daemon 生效。对应真实测试必须在 job 终态后另做稳定缺席检查，并让外层确认测试 volume 可删除。
+
 # RELEASE-V0.4.10-BACKEND-1 接手记录（2026-08-09，released）
 
 - tag `v0.4.10` 已从同步且干净的 `main` 提交 `7d9d0e267d942952701bc14ac19d032951d2dfd7` 发布；上一正式版 `v0.4.9`、代表老版本 `v0.3.2`。后端发布内容是 steam-auth 验收由 Docker health 切换为 running + digest + 可解析接口；联机登录能力降级为 warning，接口或 digest 故障仍回滚。

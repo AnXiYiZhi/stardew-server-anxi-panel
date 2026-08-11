@@ -1,3 +1,12 @@
+# INSTALL-FIRST-RUN-CONSISTENCY-1：安装排他与首次建档 SMAPI 物化（2026-08-11，completed，未发布）
+
+- `jobs.Spec.Exclusive` 与 `Store.CreateExclusiveJob` 为同一 `type + target` 提供原子创建语义；迁移 `012_exclusive_stardew_install_jobs.sql` 先把历史重复活动安装任务中较旧者标记失败，再创建仅覆盖 `stardew_install + queued/running` 的 partial unique index。重复安装或 Steam 授权请求返回 `409 install_in_progress`，`error.details.jobId` 指向已有任务，调用方应继续观察它而不是创建第二个 runner。
+- 实例阶段写入新增 `UpdateInstanceStateForActiveJob`：只有目标为该实例且仍处于 queued/running 的任务才能更新。`updatePhase` 对带 job ID 的生产任务使用该持久化 owner 校验，终态或历史任务的迟到写入被忽略；明确没有任务上下文的既有同步维护路径继续使用普通更新。Panel 启动恢复在任务仍为 active 时先写 `install_interrupted`，再统一终结中断任务。
+- `Driver.EnsureManagedSMAPIBundledMods` 使用精确 server image 和当前 `GAME_DATA_VOLUME`，只读复制 `/data/game/Mods` 到同文件系统 staging，校验 manifest、必需 SMAPI 支持组件、重复 UniqueID、symlink/非普通文件和 512 MiB 上限，树摘要相同时不替换，变化时原子发布到 `.local-container/mods/smapi` 并保留失败恢复语义。下次执行会清理精确的遗留 `.smapi-sync-*`，并在 destination 缺失时恢复最近的有效 `.smapi-backup-*`，覆盖 Panel 在 old→backup→new 原子发布窗口中断的恢复。它在安装成功标记前、首次建档事务/Mod 指纹前、SMAPI staging 切换后和回滚切回旧卷后执行；安装完整性校验现在要求两个官方支持 Mod manifest，已有 SMAPI 可执行文件但缺 manifest 时会重新运行安装器而不是错误跳过。
+- Linux `RunSteamAuthTTY` 的 Compose one-off 现在带随机唯一 `anxi-steam-auth-<hex>` 名称。job context 取消或超时时，前台 Docker CLI 退出后按该精确名字有界执行 `docker container rm -f`；清理不能在第一次“尚不存在”时返回，必须连续 3 秒确认精确容器缺席，以覆盖 Docker daemon 在 CLI 被取消后才完成 create 的竞态。正常结束继续依赖 `--rm`。这是容器级清理，不按 Compose project/volume 批量删除，steam-session/game-data 的持久化边界不变。
+- 预期 Mod 指纹现在包含 managed `smapi` 命名空间内所有有效 manifest，而不只硬编码当前两个组件；顶层旧版 ConsoleCommands/SaveBackup 仍只作为兼容 fallback/重复隔离对象。首次创建不再依赖 server entrypoint 启动后才执行的 `init_mods` 副作用。
+- 自动测试覆盖并发 12 请求只有一个 owner、409 已有任务契约、终态任务迟到写入拒绝、历史重复任务迁移、首次物化/幂等/坏 staging 不覆盖、中断 backup/stage 恢复、未来内置 manifest 进入指纹，以及同步失败发生在新建存档事务创建之前。真实 Docker gate 使用精确 `.125` server image 与唯一临时 game-data volume 验证首次物化、第二次 no-op 和 old→backup 中断恢复；`TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn` 又以只读克隆的完整游戏卷和空 saves bind 两次创建真实唯一首存，日志 sequence 9 的物化严格早于 sequence 10 的事务快照，分别 71.78/60.04 秒成功且存档可解析，第二轮 Stop 后容器归零。无账号首次安装真实进入 QR 后取消：门禁先抓到“第一次为空后 daemon 晚到 Created 容器”的竞态，加入生产清理和测试各自连续 3 秒缺席窗口后，真实测试 9.78 秒通过，外层再确认案例 container/volume 为 0。最终候选仍必须按 `docs/09-image-build.md` 重跑两条 Web 升级、升级后首次建档、故障回滚和中断矩阵。
+
 # RUNTIME-UPDATE-REPAIR-CATALOG-3：升级故障目录与对应修复方案（2026-08-09，completed，未发布）
 
 - `DetectRuntimeUpdateRepairPlan` 成为 `GET /junimo-update` 展示与 `POST /junimo-update/repair` 执行共用的唯一只读检测目录。返回字段包含稳定 `code`、检测证据 `detection`、具体 `method`、操作 `steps`、后端给定的 `buttonLabel`、尝试次数和 `repair|export|wait` 动作；前端不再按错误文案自行猜修复方式。

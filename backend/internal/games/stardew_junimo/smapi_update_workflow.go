@@ -428,6 +428,11 @@ func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, 
 	if err := writeSMAPIRecoveryManifest(instance.DataDir, recovery); err != nil {
 		return err
 	}
+	if _, err := d.EnsureManagedSMAPIBundledMods(ctx, instance.DataDir, image, func(line string) {
+		_, _ = jobCtx.Info(context.Background(), "[smapi-sync] "+paneldocker.RedactString(line))
+	}); err != nil {
+		return fmt.Errorf("sync bundled mods from upgraded SMAPI volume: %w", err)
+	}
 	if err := set(SMAPIApplyStarting, 82, "启动完整推荐 stack 进行验收。"); err != nil {
 		return err
 	}
@@ -547,6 +552,11 @@ func (d *Driver) rollbackSMAPIUpdate(ctx context.Context, jobCtx *jobs.Context, 
 		}
 		if err := switchGameDataVolumeAtomic(instance.DataDir, recovery.OriginalVolume); err != nil {
 			return d.markSMAPIRollbackFailed(instance.DataDir, status, err)
+		}
+		if _, err := d.EnsureManagedSMAPIBundledMods(ctx, instance.DataDir, gameInstallImage(instance.DataDir), func(line string) {
+			_, _ = jobCtx.Info(context.Background(), "[smapi-sync] "+paneldocker.RedactString(line))
+		}); err != nil {
+			return d.markSMAPIRollbackFailed(instance.DataDir, status, fmt.Errorf("restore bundled mods from original SMAPI volume: %w", err))
 		}
 	}
 	if err := restoreControlMod(instance.DataDir, recovery); err != nil {

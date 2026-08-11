@@ -60,7 +60,7 @@ jobs:
           (cd backend && go test -tags=integration ./internal/games/stardew_junimo -run '^TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth$' -count=1 -v)
           (cd backend && PANEL_RUN_DOCKER_UPDATE_TEST=1 go test ./internal/updater -run '^TestDockerIntegration' -count=1)
           (cd backend && go test -tags=integration ./internal/docker)
-          (cd frontend && npm ci && npm audit --omit=dev --audit-level=high && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:farm-catalog && npm run test:save-import && npm run test:mod-list && npm run test:responsive-layout && npm run test:player-mods && npm run build)
+          (cd frontend && npm ci && npm audit --omit=dev --audit-level=high && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:install-state && npm run test:farm-catalog && npm run test:save-import && npm run test:mod-list && npm run test:responsive-layout && npm run test:player-mods && npm run build)
 
       - name: Prepare release metadata
         id: meta

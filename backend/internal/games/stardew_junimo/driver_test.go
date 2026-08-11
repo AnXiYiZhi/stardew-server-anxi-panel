@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -49,6 +50,10 @@ type fakeDocker struct {
 	smapiRuns            int
 	smapiLines           []string
 	smapiOpts            paneldocker.ContainerTTYRunOpts
+	bundledSyncRuns      int
+	bundledSyncCode      int
+	bundledSyncErr       error
+	bundledSyncMods      []runtimeLoadedMod
 	verifyRuns           int
 	verifyCode           int
 	verifyErr            error
@@ -160,6 +165,42 @@ func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.Contain
 		}
 		return f.verifyCode, f.verifyErr
 	}
+	if strings.Contains(command, smapiBundledSyncMarker) {
+		f.bundledSyncRuns++
+		if f.bundledSyncErr != nil || f.bundledSyncCode != 0 {
+			return f.bundledSyncCode, f.bundledSyncErr
+		}
+		stage := ""
+		for _, bind := range opts.Binds {
+			if strings.HasSuffix(bind, ":/managed") {
+				stage = strings.TrimSuffix(bind, ":/managed")
+				break
+			}
+		}
+		if stage == "" {
+			return 1, errors.New("missing SMAPI bundled staging bind")
+		}
+		mods := f.bundledSyncMods
+		if len(mods) == 0 {
+			mods = []runtimeLoadedMod{
+				{UniqueID: consoleCommandsID, Version: "4.5.2"},
+				{UniqueID: saveBackupID, Version: "4.5.2"},
+			}
+		}
+		for index, mod := range mods {
+			folder := fmt.Sprintf("Bundled-%d", index+1)
+			dir := filepath.Join(stage, folder)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return 1, err
+			}
+			manifest := fmt.Sprintf(`{"Name":%q,"UniqueID":%q,"Version":%q}`, mod.UniqueID, mod.UniqueID, mod.Version)
+			if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
+				return 1, err
+			}
+		}
+		lineHandler(smapiBundledSyncMarker + ": copy complete")
+		return 0, nil
+	}
 	if strings.Contains(command, "SMAPI") || strings.Contains(command, "smapi") {
 		f.smapiRuns++
 		f.smapiOpts = opts
@@ -223,6 +264,10 @@ func (f *fakeStore) UpdateInstanceState(_ context.Context, p storage.UpdateInsta
 	f.instance.DriverPhase = p.DriverPhase
 	f.instance.DriverPayload = p.DriverPayload
 	return f.instance, nil
+}
+
+func (f *fakeStore) UpdateInstanceStateForActiveJob(_ context.Context, p storage.UpdateInstanceStateForActiveJobParams) (storage.Instance, error) {
+	return f.UpdateInstanceState(context.Background(), p.UpdateInstanceStateParams)
 }
 
 func TestDriverIdentity(t *testing.T) {
@@ -922,6 +967,8 @@ func TestDriverInstallFailsWhenRequiredGameRuntimeFilesAreMissing(t *testing.T) 
 		"appmanifest_413150.acf",
 		"StardewModdingAPI",
 		"StardewModdingAPI.dll",
+		"Mods/ConsoleCommands/manifest.json",
+		"Mods/SaveBackup/manifest.json",
 		"appmanifest_1007.acf",
 		"steamclient.so",
 	} {

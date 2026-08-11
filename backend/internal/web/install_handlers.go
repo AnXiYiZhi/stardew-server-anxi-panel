@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -171,6 +172,10 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		ForceReauth:   body.ForceReauth,
 	})
 	if err != nil {
+		if activeJobID, handled := writeActiveInstallConflict(w, err, "该实例已有安装任务正在进行。"); handled {
+			s.logger.Info("install request attached to active job", "instance", instanceID, "job_id", activeJobID)
+			return
+		}
 		s.logger.Error("install failed to start", "instance", instanceID, "error", err)
 		writeError(w, http.StatusInternalServerError, "install_failed", sanitizeErrorMsg(err, "安装任务启动失败"))
 		return
@@ -227,6 +232,10 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 		AuthLoginOnly: true,
 	})
 	if err != nil {
+		if activeJobID, handled := writeActiveInstallConflict(w, err, "该实例已有安装或 Steam 授权任务正在进行。"); handled {
+			s.logger.Info("steam-auth login attached to active install job", "instance", instanceID, "job_id", activeJobID)
+			return
+		}
 		s.logger.Error("steam-auth login failed to start", "instance", instanceID, "error", err)
 		writeError(w, http.StatusInternalServerError, "auth_login_failed", sanitizeErrorMsg(err, "登录授权任务启动失败"))
 		return
@@ -234,6 +243,15 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 	s.logger.Info("steam-auth login job started", "instance", instanceID, "job_id", job.ID, "actor", actor.User.ID)
 	s.auditLog(r, &actor, "instance_steam_auth_login", "instance", instanceID, auditMetadata("jobId", job.ID))
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
+}
+
+func writeActiveInstallConflict(w http.ResponseWriter, err error, message string) (string, bool) {
+	var activeJob *storage.ActiveJobExistsError
+	if !errors.As(err, &activeJob) {
+		return "", false
+	}
+	writeErrorWithDetails(w, http.StatusConflict, "install_in_progress", message, map[string]string{"jobId": activeJob.Job.ID})
+	return activeJob.Job.ID, true
 }
 
 // steamGuardInputBody is the JSON body for POST …/steam-guard/input.

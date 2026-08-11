@@ -51,6 +51,7 @@ jobs:
           npm run test:component-update-flow
           npm run test:runtime-components
           npm run test:smapi-update
+          npm run test:install-state
           npm run test:farm-catalog
           npm run test:save-import
           npm run test:mod-list

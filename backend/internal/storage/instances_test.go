@@ -112,3 +112,52 @@ func TestListAndGetInstances(t *testing.T) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 }
+
+func TestUpdateInstanceStateForActiveJobRejectsTerminalOwner(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+
+	_, err := store.EnsureDefaultInstance(context.Background(), EnsureDefaultInstanceParams{
+		ID: DefaultInstanceID, DriverID: DefaultDriverID, Name: "Stardew Valley",
+		DataDir: filepath.Join(t.TempDir(), "instances", "stardew"),
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	job, err := store.CreateExclusiveJob(context.Background(), CreateJobParams{
+		Type: "stardew_install", TargetType: "instance", TargetID: DefaultInstanceID,
+	})
+	if err != nil {
+		t.Fatalf("create install job: %v", err)
+	}
+	params := UpdateInstanceStateForActiveJobParams{
+		JobID: job.ID,
+		UpdateInstanceStateParams: UpdateInstanceStateParams{
+			ID: DefaultInstanceID, State: InstanceStateSteamAuthRunning,
+			StateMessage: "owned update", DriverPhase: "steam_auth_running",
+		},
+	}
+	updated, err := store.UpdateInstanceStateForActiveJob(context.Background(), params)
+	if err != nil {
+		t.Fatalf("update from active owner: %v", err)
+	}
+	if updated.DriverPhase != "steam_auth_running" {
+		t.Fatalf("active owner phase = %s", updated.DriverPhase)
+	}
+
+	if _, err := store.FinishJob(context.Background(), job.ID); err != nil {
+		t.Fatalf("finish install job: %v", err)
+	}
+	params.State = InstanceStateGameInstalled
+	params.DriverPhase = "game_installed"
+	if _, err := store.UpdateInstanceStateForActiveJob(context.Background(), params); !errors.Is(err, ErrJobNotActive) {
+		t.Fatalf("terminal owner update error = %v, want ErrJobNotActive", err)
+	}
+	preserved, err := store.GetInstance(context.Background(), DefaultInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved.DriverPhase != "steam_auth_running" {
+		t.Fatalf("terminal owner overwrote phase: %s", preserved.DriverPhase)
+	}
+}

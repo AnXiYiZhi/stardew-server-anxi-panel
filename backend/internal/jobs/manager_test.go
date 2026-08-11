@@ -163,6 +163,40 @@ func TestManagerCancelActiveFiltersTarget(t *testing.T) {
 	waitForJobStatus(t, store, second.ID, storage.JobStatusCanceled)
 }
 
+func TestManagerExclusiveJobReturnsCurrentOwner(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	started := make(chan struct{})
+	first, err := manager.Start(context.Background(), Spec{
+		Type: "stardew_install", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		Exclusive: true, Timeout: 3 * time.Second,
+		Run: func(ctx context.Context, _ *Context) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+	if err != nil {
+		t.Fatalf("start first exclusive job: %v", err)
+	}
+	<-started
+
+	_, err = manager.Start(context.Background(), Spec{
+		Type: "stardew_install", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		Exclusive: true, Run: func(context.Context, *Context) error { return nil },
+	})
+	var active *storage.ActiveJobExistsError
+	if !errors.As(err, &active) || active.Job.ID != first.ID {
+		t.Fatalf("second start error = %v, active=%#v, want owner %s", err, active, first.ID)
+	}
+
+	if err := manager.Cancel(context.Background(), first.ID); err != nil {
+		t.Fatalf("cancel first job: %v", err)
+	}
+	waitForJobStatus(t, store, first.ID, storage.JobStatusCanceled)
+}
+
 func TestManagerRecoverInterruptedInstallMarksInstanceError(t *testing.T) {
 	manager, store, closeStore := newJobsTestManager(t)
 	defer closeStore()

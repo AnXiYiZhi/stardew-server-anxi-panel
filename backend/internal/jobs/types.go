@@ -20,6 +20,7 @@ type Spec struct {
 	DisplayName string
 	TargetType  string
 	TargetID    string
+	Exclusive   bool
 	CreatedBy   int64
 	Payload     string
 	Timeout     time.Duration

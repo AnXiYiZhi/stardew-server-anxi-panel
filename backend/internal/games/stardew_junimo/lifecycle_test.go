@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -664,6 +665,62 @@ func newLifecycleTestStore(t *testing.T) *storage.Store {
 		t.Fatalf("migrate storage: %v", err)
 	}
 	return store
+}
+
+func TestNewGameStopsBeforeTransactionWhenSMAPIBundledSyncFails(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "stardew")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := newLifecycleTestStore(t)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: storage.DefaultDriverID, Name: "Stardew Valley", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateStopped, StateMessage: "stopped", DriverPhase: "stopped",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeConsoleDocker{runContainerFunc: func(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, _ func(string)) (int, error) {
+		command := strings.Join(opts.Command, " ")
+		if strings.Contains(command, "anxi-install-verify") {
+			return 0, nil
+		}
+		if strings.Contains(command, smapiBundledSyncMarker) {
+			return smapiBundledSourceMissing, nil
+		}
+		return 1, fmt.Errorf("unexpected one-shot command: %s", command)
+	}}
+	manager := jobs.NewManager(store, slog.Default())
+	driver := New(fake, slog.Default(), manager, store)
+	config := registry.NewGameConfig{
+		FarmName: "FirstFarm", FarmType: "standard", StartingCabins: 1, MaxPlayers: 4,
+		CabinLayout: "nearby", ProfitMargin: "100", MoneyMode: "shared",
+	}
+	runner := &lifecycleRunner{
+		driver: driver, lifecycle: fake, instance: instance, operation: "start", newGame: true, newGameConfig: &config,
+	}
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID, Timeout: 5 * time.Second, Run: runner.run,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.DriverPhase != "smapi_bundled_sync_failed" {
+		t.Fatalf("driver phase = %s, want smapi_bundled_sync_failed", updated.DriverPhase)
+	}
+	if _, err := os.Stat(newGameTransactionsDir(dataDir)); !os.IsNotExist(err) {
+		t.Fatalf("new-game transaction should not start before SMAPI sync succeeds: %v", err)
+	}
 }
 
 // TestDoRestoreAndRestart_StoppedSkipsStopAndStart verifies that when the

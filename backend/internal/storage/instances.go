@@ -37,6 +37,13 @@ type UpdateInstanceStateParams struct {
 	DriverPayload string
 }
 
+type UpdateInstanceStateForActiveJobParams struct {
+	UpdateInstanceStateParams
+	JobID string
+}
+
+var ErrJobNotActive = errors.New("job does not own active instance state")
+
 func (s *Store) EnsureDefaultInstance(ctx context.Context, params EnsureDefaultInstanceParams) (Instance, error) {
 	id := params.ID
 	if id == "" {
@@ -139,6 +146,46 @@ func (s *Store) UpdateInstanceState(ctx context.Context, params UpdateInstanceSt
 		RETURNING id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at
 	`, params.State, nullString(params.StateMessage), driverPhase, driverPayload, params.ID)
 	return scanInstanceRow(row)
+}
+
+// UpdateInstanceStateForActiveJob applies an instance transition only while
+// the supplied job is queued/running and targets that instance. This turns the
+// active job row into a durable write lease and blocks late writes from stale
+// or already-terminal runners.
+func (s *Store) UpdateInstanceStateForActiveJob(ctx context.Context, params UpdateInstanceStateForActiveJobParams) (Instance, error) {
+	if !IsValidInstanceState(params.State) {
+		return Instance{}, ErrInvalidStateTransition
+	}
+	if params.JobID == "" {
+		return Instance{}, ErrJobNotActive
+	}
+	driverPhase := params.DriverPhase
+	if driverPhase == "" {
+		driverPhase = DefaultDriverPhase
+	}
+	driverPayload := params.DriverPayload
+	if driverPayload == "" {
+		driverPayload = "{}"
+	}
+	row := s.db.QueryRowContext(ctx, `
+		UPDATE instances
+		SET state = ?, state_message = ?, driver_phase = ?, driver_payload = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE id = ?
+		  AND EXISTS (
+		      SELECT 1
+		      FROM jobs
+		      WHERE jobs.id = ?
+		        AND jobs.target_type = 'instance'
+		        AND jobs.target_id = instances.id
+		        AND jobs.status IN (?, ?)
+		  )
+		RETURNING id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at
+	`, params.State, nullString(params.StateMessage), driverPhase, driverPayload, params.ID, params.JobID, JobStatusQueued, JobStatusRunning)
+	instance, err := scanInstanceRow(row)
+	if errors.Is(err, ErrNotFound) {
+		return Instance{}, ErrJobNotActive
+	}
+	return instance, err
 }
 
 func scanInstanceRow(row *sql.Row) (Instance, error) {

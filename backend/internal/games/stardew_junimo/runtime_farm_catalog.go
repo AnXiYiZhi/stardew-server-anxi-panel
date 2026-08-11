@@ -127,26 +127,12 @@ func expectedRuntimeModFingerprint(dataDir string) (string, error) {
 
 func bundledSMAPIRuntimeLoadedMods(dataDir string) ([]runtimeLoadedMod, error) {
 	root := filepath.Join(modsDir(dataDir), "smapi")
-	entries, err := os.ReadDir(root)
+	loaded, err := managedSMAPIRuntimeLoadedMods(root)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read bundled SMAPI runtime mods: %w", err)
-	}
-	loaded := make([]runtimeLoadedMod, 0, len(smapiBundledSupportUniqueIDs))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		mod := readModInfo(filepath.Join(root, entry.Name()), entry.Name())
-		if mod.ParseError != "" || !isBundledSMAPILoadedMod(mod.UniqueID) {
-			continue
-		}
-		loaded = append(loaded, runtimeLoadedMod{
-			UniqueID: strings.TrimSpace(mod.UniqueID),
-			Version:  strings.TrimSpace(mod.Version),
-		})
 	}
 	return loaded, nil
 }

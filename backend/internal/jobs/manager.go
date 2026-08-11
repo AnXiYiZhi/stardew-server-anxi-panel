@@ -40,6 +40,14 @@ func (m *Manager) RecoverInterruptedJobs(ctx context.Context) error {
 		return err
 	}
 	const message = "面板重启前任务未完成，已标记为失败。"
+	// An interrupted install still owns its state while its job is active. Mark
+	// the instance before terminalizing the jobs so the same owner check used by
+	// normal runners also protects recovery from stale historical jobs.
+	for _, job := range interrupted {
+		if job.Type == "stardew_install" && job.TargetType == "instance" && job.TargetID != "" {
+			m.markInterruptedInstallInstance(ctx, job, message)
+		}
+	}
 	count, err := m.store.FailInterruptedJobs(ctx, message)
 	if err != nil {
 		return err
@@ -47,9 +55,6 @@ func (m *Manager) RecoverInterruptedJobs(ctx context.Context) error {
 	for _, job := range interrupted {
 		if _, err := m.store.AppendJobLog(ctx, job.ID, storage.JobLogLevelError, message); err != nil {
 			m.logger.Error("failed to append interrupted job log", "job_id", job.ID, "error", err)
-		}
-		if job.Type == "stardew_install" && job.TargetType == "instance" && job.TargetID != "" {
-			m.markInterruptedInstallInstance(ctx, job, message)
 		}
 	}
 	if count > 0 {
@@ -71,12 +76,15 @@ func (m *Manager) markInterruptedInstallInstance(ctx context.Context, job storag
 	if payload == "" {
 		payload = "{}"
 	}
-	if _, err := m.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
-		ID:            job.TargetID,
-		State:         storage.InstanceStateError,
-		StateMessage:  message,
-		DriverPhase:   "install_interrupted",
-		DriverPayload: payload,
+	if _, err := m.store.UpdateInstanceStateForActiveJob(ctx, storage.UpdateInstanceStateForActiveJobParams{
+		JobID: job.ID,
+		UpdateInstanceStateParams: storage.UpdateInstanceStateParams{
+			ID:            job.TargetID,
+			State:         storage.InstanceStateError,
+			StateMessage:  message,
+			DriverPhase:   "install_interrupted",
+			DriverPayload: payload,
+		},
 	}); err != nil {
 		m.logger.Warn("failed to mark interrupted install instance", "instance", job.TargetID, "job_id", job.ID, "error", err)
 	}
@@ -104,14 +112,21 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {
 		return storage.Job{}, fmt.Errorf("job runner is required")
 	}
 
-	job, err := m.store.CreateJob(ctx, storage.CreateJobParams{
+	createParams := storage.CreateJobParams{
 		Type:        spec.Type,
 		DisplayName: spec.DisplayName,
 		TargetType:  spec.TargetType,
 		TargetID:    spec.TargetID,
 		CreatedBy:   spec.CreatedBy,
 		Payload:     spec.Payload,
-	})
+	}
+	var job storage.Job
+	var err error
+	if spec.Exclusive {
+		job, err = m.store.CreateExclusiveJob(ctx, createParams)
+	} else {
+		job, err = m.store.CreateJob(ctx, createParams)
+	}
 	if err != nil {
 		return storage.Job{}, err
 	}

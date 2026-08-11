@@ -715,6 +715,21 @@ func (r *installRunner) completeInstall(ctx context.Context, jobCtx *jobs.Contex
 		return fmt.Errorf("install smapi runtime: %w", err)
 	}
 	imageRef := gameInstallImage(r.instance.DataDir)
+	_, _ = jobCtx.Info(context.Background(), "正在同步 SMAPI 内置支持 Mod，确保首次启动前运行目录完整...")
+	changed, err := r.driver.EnsureManagedSMAPIBundledMods(ctx, r.instance.DataDir, imageRef, func(line string) {
+		_, _ = jobCtx.Info(context.Background(), "[smapi-sync] "+paneldocker.RedactString(line))
+	})
+	if err != nil {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"SMAPI 内置支持 Mod 同步失败，请检查任务日志后重试。", "smapi_bundled_sync_failed", jobCtx.ID)
+		_, _ = jobCtx.Error(context.Background(), "SMAPI 内置支持 Mod 同步失败："+paneldocker.RedactString(err.Error()))
+		return fmt.Errorf("sync SMAPI bundled runtime mods: %w", err)
+	}
+	if changed {
+		_, _ = jobCtx.Info(context.Background(), "SMAPI 内置支持 Mod 已在首次启动前完成物化。")
+	} else {
+		_, _ = jobCtx.Info(context.Background(), "SMAPI 内置支持 Mod 已是最新，无需替换。")
+	}
 	_, _ = jobCtx.Info(context.Background(), "正在验证 Stardew、SMAPI 与 Steam SDK 运行文件...")
 	ok, err := r.driver.verifyGameDataVolume(ctx, r.instance.DataDir, imageRef, func(line string) {
 		_, _ = jobCtx.Info(context.Background(), "[verify] "+paneldocker.RedactString(line))
@@ -1271,7 +1286,7 @@ func (r *installRunner) buildSMAPIInstallOpts(imageRef, archivePath string) pane
 game_dir="/data/game"
 smapi_bin="${game_dir}/StardewModdingAPI"
 version="${SMAPI_VERSION:-4.5.2}"
-if [ -x "${smapi_bin}" ]; then
+if [ -x "${smapi_bin}" ] && [ -f "${game_dir}/Mods/ConsoleCommands/manifest.json" ] && [ -f "${game_dir}/Mods/SaveBackup/manifest.json" ]; then
   echo "SMAPI already installed at ${smapi_bin}, skipping."
   exit 0
 fi

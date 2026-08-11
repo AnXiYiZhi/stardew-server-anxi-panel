@@ -65,12 +65,14 @@ export const defaultInstanceId = 'stardew'
 export class ApiError extends Error {
   code: string
   status: number
+  details?: unknown
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, details?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -1016,12 +1018,13 @@ export function getHealthDiagnostics() {
 async function toApiError(response: Response): Promise<ApiError> {
   try {
     const payload = (await response.json()) as {
-      error?: { code?: string; message?: string }
+      error?: { code?: string; message?: string; details?: unknown }
     }
     return new ApiError(
       response.status,
       payload.error?.code ?? 'request_failed',
       payload.error?.message ?? '请求失败',
+      payload.error?.details,
     )
   } catch {
     return new ApiError(response.status, 'request_failed', '请求失败')

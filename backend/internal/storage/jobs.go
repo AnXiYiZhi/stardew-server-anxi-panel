@@ -25,6 +25,20 @@ const (
 var ErrInvalidJobStatus = errors.New("invalid job status")
 var ErrActiveJobsExist = errors.New("active jobs exist")
 
+// ActiveJobExistsError identifies the active job which owns an exclusive
+// target operation. Callers can attach to Job instead of starting a duplicate.
+type ActiveJobExistsError struct {
+	Job Job
+}
+
+func (e *ActiveJobExistsError) Error() string {
+	return fmt.Sprintf("active job %s already exists for %s %s", e.Job.ID, e.Job.TargetType, e.Job.TargetID)
+}
+
+func (e *ActiveJobExistsError) Unwrap() error {
+	return ErrActiveJobsExist
+}
+
 type Job struct {
 	ID           string
 	Type         string
@@ -89,6 +103,68 @@ func (s *Store) CreateJob(ctx context.Context, params CreateJobParams) (Job, err
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 	`, id, params.Type, nullStringParam(params.DisplayName), JobStatusQueued, params.TargetType, params.TargetID, optionalCreatedBy(params.CreatedBy), nullStringParam(params.Payload))
+	return scanJobRow(row)
+}
+
+// CreateExclusiveJob atomically creates a job only when no queued/running job
+// with the same type and target exists. The database partial unique index is a
+// second line of defense against callers from another Panel process.
+func (s *Store) CreateExclusiveJob(ctx context.Context, params CreateJobParams) (Job, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Job{}, fmt.Errorf("begin exclusive job transaction: %w", err)
+	}
+	defer rollback(tx)
+
+	existing, err := findActiveJob(ctx, tx, params.Type, params.TargetType, params.TargetID)
+	if err == nil {
+		return Job{}, &ActiveJobExistsError{Job: existing}
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return Job{}, err
+	}
+
+	id, err := NewJobID()
+	if err != nil {
+		return Job{}, err
+	}
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO jobs (id, type, display_name, status, target_type, target_id, created_by, payload)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
+	`, id, params.Type, nullStringParam(params.DisplayName), JobStatusQueued, params.TargetType, params.TargetID, optionalCreatedBy(params.CreatedBy), nullStringParam(params.Payload))
+	job, err := scanJobRow(row)
+	if err != nil {
+		// A different process may have won after our preflight query. Roll back
+		// this transaction and return its active job when it is now visible.
+		_ = tx.Rollback()
+		if active, findErr := s.findActiveJob(ctx, params.Type, params.TargetType, params.TargetID); findErr == nil {
+			return Job{}, &ActiveJobExistsError{Job: active}
+		}
+		return Job{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Job{}, fmt.Errorf("commit exclusive job transaction: %w", err)
+	}
+	return job, nil
+}
+
+type jobQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (s *Store) findActiveJob(ctx context.Context, jobType, targetType, targetID string) (Job, error) {
+	return findActiveJob(ctx, s.db, jobType, targetType, targetID)
+}
+
+func findActiveJob(ctx context.Context, queryer jobQueryer, jobType, targetType, targetID string) (Job, error) {
+	row := queryer.QueryRowContext(ctx, `
+		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
+		FROM jobs
+		WHERE type = ? AND target_type = ? AND target_id = ? AND status IN (?, ?)
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1
+	`, jobType, targetType, targetID, JobStatusQueued, JobStatusRunning)
 	return scanJobRow(row)
 }
 

@@ -77,6 +77,10 @@ type StateStore interface {
 	UpdateInstanceState(ctx context.Context, params storage.UpdateInstanceStateParams) (storage.Instance, error)
 }
 
+type activeJobStateStore interface {
+	UpdateInstanceStateForActiveJob(ctx context.Context, params storage.UpdateInstanceStateForActiveJobParams) (storage.Instance, error)
+}
+
 // Driver implements registry.GameDriver for Stardew Valley / JunimoServer.
 type Driver struct {
 	docker       DockerService
@@ -335,6 +339,7 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 		Type:       "stardew_install",
 		TargetType: "instance",
 		TargetID:   req.Instance.ID,
+		Exclusive:  true,
 		CreatedBy:  req.ActorID,
 		Timeout:    installJobTimeout,
 		Run:        runner.run,
@@ -629,6 +634,8 @@ require_file "/data/game/Stardew Valley.dll" StardewValleyDLL
 require_file /data/game/steamapps/appmanifest_413150.acf StardewManifest
 require_exec /data/game/StardewModdingAPI StardewModdingAPI
 require_file /data/game/StardewModdingAPI.dll StardewModdingAPIDLL
+require_file /data/game/Mods/ConsoleCommands/manifest.json SMAPIConsoleCommands
+require_file /data/game/Mods/SaveBackup/manifest.json SMAPISaveBackup
 require_file /data/game/.steam-sdk/steamapps/appmanifest_1007.acf SteamSDKManifest
 if ! find /data/game/.steam-sdk -type f -name steamclient.so -print -quit | grep -q .; then
   missing="${missing} SteamClientLibrary"
@@ -674,14 +681,40 @@ func (d *Driver) updatePhase(ctx context.Context, instanceID, state, message, ph
 			existing = inst.DriverPayload
 		}
 	}
-	_, err := d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
-		ID:            instanceID,
-		State:         state,
-		StateMessage:  message,
-		DriverPhase:   phase,
-		DriverPayload: existing,
+	if jobID == "" {
+		_, err := d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+			ID: instanceID, State: state, StateMessage: message, DriverPhase: phase, DriverPayload: existing,
+		})
+		if err != nil {
+			d.logger.Warn("failed to update instance state", "instance", instanceID, "state", state, "error", err)
+		}
+		return
+	}
+	ownedStore, supportsOwnedUpdates := d.store.(activeJobStateStore)
+	if !supportsOwnedUpdates {
+		_, err := d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+			ID: instanceID, State: state, StateMessage: message, DriverPhase: phase, DriverPayload: existing,
+		})
+		if err != nil {
+			d.logger.Warn("failed to update instance state", "instance", instanceID, "state", state, "error", err)
+		}
+		return
+	}
+	_, err := ownedStore.UpdateInstanceStateForActiveJob(ctx, storage.UpdateInstanceStateForActiveJobParams{
+		JobID: jobID,
+		UpdateInstanceStateParams: storage.UpdateInstanceStateParams{
+			ID:            instanceID,
+			State:         state,
+			StateMessage:  message,
+			DriverPhase:   phase,
+			DriverPayload: existing,
+		},
 	})
 	if err != nil {
+		if errors.Is(err, storage.ErrJobNotActive) {
+			d.logger.Debug("ignored stale job instance state update", "instance", instanceID, "job_id", jobID, "state", state, "phase", phase)
+			return
+		}
 		d.logger.Warn("failed to update instance state", "instance", instanceID, "state", state, "error", err)
 	}
 }

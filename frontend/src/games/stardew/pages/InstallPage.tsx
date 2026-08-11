@@ -4,6 +4,7 @@ import * as QRCode from 'qrcode'
 import type { ImageTagOption, Job, JobLog } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import {
+  ApiError,
   createJobEventSource,
   getInstallOptions,
   getJob,
@@ -21,6 +22,7 @@ import {
   extractSteamDownloadProgress,
   hasSteamSdkDownloadStarted,
 } from '../install-helpers'
+import { canonicalInstallJobs, logsDescribeActiveInstall } from '../install-state'
 import { useSteamAuthLogin } from '../useSteamAuthLogin'
 
 // ── 进度工具 ──────────────────────────────────────────────────────────────────
@@ -281,7 +283,7 @@ function calcStepStatuses(
   const s4: StepStatus =
     installed ? 'done'
     : isDownloadPhase ? 'active'
-    : phase === 'download_failed' || phase === 'post_auth_failed' || phase === 'smapi_install_failed' ? 'error'
+    : phase === 'download_failed' || phase === 'post_auth_failed' || phase === 'smapi_install_failed' || phase === 'smapi_bundled_sync_failed' ? 'error'
     : 'pending'
   const s5: StepStatus = installed ? 'done' : 'pending'
   return [s1, s2, s3, s4, s5]
@@ -289,6 +291,7 @@ function calcStepStatuses(
 
 function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, state: string): string {
   if (phase === 'smapi_install_failed') return 'SMAPI 运行环境安装失败，请检查任务日志后重试'
+  if (phase === 'smapi_bundled_sync_failed') return 'SMAPI 内置支持 Mod 同步失败，请检查任务日志后重试'
   if (['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'].includes(state)) return '安装完成'
   if (phase === 'download_failed') return '游戏文件下载失败，请检查网络/磁盘后重试'
   if (phase === 'post_auth_failed') return 'Steam 认证已成功，后续安装步骤失败，请使用已保存凭据重试'
@@ -387,12 +390,10 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     'steamcmd_auth_running', 'steamcmd_guard_choice_required', 'steamcmd_guard_required',
     'steamcmd_guard_mobile_required', 'steamcmd_downloading', 'smapi_installing',
   ]
-  const activeInstallJob = dashboardData.jobs.find(
-    (j) => j.type === 'stardew_install' && !isTerminalJobStatus(j.status),
-  )
-  const latestInstallJob = installJob ?? dashboardData.jobs.find((j) => j.type === 'stardew_install') ?? null
-  const hasActiveInstallJob = activeInstallJob !== undefined
-    || (installJob !== null && !isTerminalJobStatus(installJob.status))
+  const installJobs = canonicalInstallJobs(dashboardData.jobs, installJob)
+  const activeInstallJob = installJobs.active
+  const latestInstallJob = activeInstallJob ?? installJobs.selected ?? installJobs.latest
+  const hasActiveInstallJob = activeInstallJob !== null
   const staleInstallingPhase = !isInstalled
     && INSTALLING_PHASES.includes(phase)
     && !hasActiveInstallJob
@@ -403,7 +404,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     || state === 'error'
     || staleInstallingPhase
     || authSucceededInLogs
-    || ['pull_failed', 'install_timeout', 'steam_auth_connection_failed', 'install_interrupted', 'download_failed', 'post_auth_failed'].includes(basePhase)
+    || ['pull_failed', 'install_timeout', 'steam_auth_connection_failed', 'install_interrupted', 'download_failed', 'post_auth_failed', 'smapi_bundled_sync_failed'].includes(basePhase)
   const isInstalling = hasActiveInstallJob
     || (!staleInstallingPhase && !isInstalled && INSTALLING_PHASES.includes(phase))
 
@@ -510,11 +511,28 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
       dashboardData.refreshJobs()
       dashboardData.refreshInstanceState()
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'install_in_progress') {
+        const jobId = typeof err.details === 'object' && err.details !== null && 'jobId' in err.details
+          ? String((err.details as { jobId?: unknown }).jobId ?? '')
+          : ''
+        if (jobId) {
+          if (jobId !== installJobId) {
+            setInstallJobId(jobId)
+            setInstallJob(null)
+            setLogs([])
+            setSseError('')
+          }
+          setShowForm(false)
+          dashboardData.refreshJobs()
+          dashboardData.refreshInstanceState()
+          return
+        }
+      }
       setInstallError(errorMessage(err))
     } finally {
       setInstallBusy(false)
     }
-  }, [isAdmin, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData])
+  }, [isAdmin, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData, installJobId])
 
   // ── Steam Guard ───────────────────────────────────────────────────────────────
   const [guardInput, setGuardInput] = useState('')
@@ -572,27 +590,30 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const [qrImageError, setQrImageError] = useState('')
 
   // ── 计算值 ───────────────────────────────────────────────────────────────────
-  const pullProgress = extractPullProgress(logs)
+  const activeInstallLogs = logsDescribeActiveInstall(activeInstallJob, installJobId) ? logs : []
+  const pullProgress = extractPullProgress(activeInstallLogs)
   const installJobType = latestInstallJob?.type ?? (installJobId ? 'stardew_install' : undefined)
-  const steamGameProgress = extractSteamDownloadProgress(logs, installJobType, 'game')
-  const steamSdkProgress = extractSteamDownloadProgress(logs, installJobType, 'sdk')
-  const steamCMDClientProgress = extractSteamDownloadProgress(logs, installJobType, 'steamcmd_update')
-  const logAuthPhase = inferLatestSteamAuthLogPhase(logs)
+  const steamGameProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'game')
+  const steamSdkProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'sdk')
+  const steamCMDClientProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'steamcmd_update')
+  const logAuthPhase = inferLatestSteamAuthLogPhase(activeInstallLogs)
   const logDownloadPhase = logAuthPhase === 'smapi_installing'
     ? 'smapi_installing'
     : logAuthPhase === 'steamcmd_downloading'
       ? 'steamcmd_downloading'
     : logAuthPhase?.startsWith('steamcmd_guard')
       ? null
-      : hasSteamSdkDownloadStarted(logs, installJobType) || steamSdkProgress
-        ? 'steam_sdk_downloading'
-        : steamGameProgress || logsShowSteamGameDownloadStarted(logs)
+        : hasSteamSdkDownloadStarted(activeInstallLogs, installJobType) || steamSdkProgress
+          ? 'steam_sdk_downloading'
+        : steamGameProgress || logsShowSteamGameDownloadStarted(activeInstallLogs)
           ? 'game_downloading'
           : null
-  const qrPayload = extractQrPayload(logs)
+  const qrPayload = extractQrPayload(activeInstallLogs)
   const qrUrl = qrPayload?.url ?? ''
   const qrText = qrPayload?.art ?? ''
-  const basePhaseIsFailure = AUTH_FAILED_PHASES.includes(basePhase) || basePhase === 'smapi_install_failed'
+  const basePhaseIsFailure = AUTH_FAILED_PHASES.includes(basePhase)
+    || basePhase === 'smapi_install_failed'
+    || basePhase === 'smapi_bundled_sync_failed'
   const logQrPhaseIsCurrent = logAuthPhase === 'steam_qr_required' &&
     optimisticPhase !== 'steam_guard_required' &&
     optimisticPhase !== 'steam_guard_mobile_required' &&
@@ -623,7 +644,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     authSucceededInLogs ||
     effectivePhase === 'download_failed' ||
     effectivePhase === 'post_auth_failed' ||
-    effectivePhase === 'smapi_install_failed'
+    effectivePhase === 'smapi_install_failed' ||
+    effectivePhase === 'smapi_bundled_sync_failed'
   )
   const steamCMDRecoverable = canDirectRetry && (
     effectivePhase === 'steamcmd_failed' ||
@@ -637,7 +659,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const needsQrCode = effectivePhase === 'steam_qr_required'
   const stepStatuses = calcStepStatuses(state, effectivePhase, authFailed, isInstalling)
   const showProgress = isInstalling || isInstalled || authFailed
-    || ['pull_failed', 'install_timeout', 'download_failed', 'post_auth_failed', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed', 'smapi_install_failed'].includes(effectivePhase)
+    || ['pull_failed', 'install_timeout', 'download_failed', 'post_auth_failed', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed', 'smapi_install_failed', 'smapi_bundled_sync_failed'].includes(effectivePhase)
   const progressLabel = phaseLabel(effectivePhase, isInstalling, authFailed, state)
   const selectedOption = imageTagOptions.find((o) => o.tag === imageTag)
   const steamDownloadProgress = effectivePhase === 'steam_sdk_downloading'

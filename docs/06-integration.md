@@ -1,3 +1,23 @@
+# INSTALL-FIRST-RUN-CONSISTENCY-1 联调契约（2026-08-11，completed，未发布）
+
+## 重复安装与授权请求
+
+- `POST /api/instances/:id/install` 和 `POST /api/instances/:id/steam-auth/login` 在同一实例已有 queued/running `stardew_install` 时返回 HTTP 409：`{"error":{"code":"install_in_progress","message":"...","details":{"jobId":"job_..."}}}`。这不是一次新失败；前端必须接管 `details.jobId`、刷新 jobs/instance state 并连接该任务日志。
+- 同一安装任务的状态具有单调性。前端按 job ID 合并 jobs 列表与详情：terminal 胜过 queued/running；实例状态决定已安装等最终事实；仅当前 active job 的日志可补充阶段与进度。历史日志不得重新生成当前下载/认证状态。
+
+## 安装/二维码认证取消后的资源终态
+
+- Web 取消 job 或 Panel 关闭导致安装 context 取消时，Linux 后端会在前台 `docker compose run` 退出后按该次随机唯一容器名删除 auth one-off。调用方可先看到 job 进入 canceled；30 秒内同一名字的容器必须不存在，不能继续刷新 QR。
+- 清理只针对本次 auth one-off，不删除 `GAME_DATA_VOLUME`、steam-session 或其它 Compose service。重复点击仍按活动 owner 契约返回同一 job；取消终态释放 partial unique index 后才允许新的安装任务。
+- 发布联调使用无真实账号的 QR 路径：首次安装到 `auth_method_required`，输入 `2` 到 `steam_qr_required`，取消 job 后验证任务终态和容器消失。修复后的真实 `.125/auth .2` 测试 3.48 秒通过，案例 network/volume 由测试清理为 0。
+
+## 首次建档前 SMAPI 运行目录
+
+- 安装任务只有在 `/data/game/Mods` 已经通过受控 one-shot container 物化并验证到 `.local-container/mods/smapi` 后，才能写 `game_installed`。新建存档在事务快照、Mod 选择和 `ExpectedFingerprint` 计算前再次幂等同步；同步失败返回事务码/driver phase `smapi_bundled_sync_failed`，不得启动 server 或留下 new-game transaction。
+- 同步源是当前 `GAME_DATA_VOLUME` 中实际安装的 SMAPI Mods，目标只限 Panel 管理的 `mods/smapi` 命名空间。用户顶层 Mod、disabled 目录和存档不在替换范围。SMAPI 升级切换与自动回滚也必须分别从新卷/旧卷同步，确保 entrypoint 后续 `init_mods` 不改变预检集合。
+- 联调主验收为全新实例一次完成：并发双提交只返回一个 owner → 安装终态页面无历史下载卡 → 不重试直接第一次创建存档成功 → Panel/server 重启后指纹与存档保持。正式发版还要注入复制失败、坏 manifest、Panel 中断、Compose 启动失败和 SMAPI staging 回滚。
+- 已完成的真实 Docker helper 专项使用当前精确 server `.125` 镜像和唯一临时 game-data volume，验证 server 启动前首次发布两个 manifest、第二次幂等不替换且清理无残留。新增真实生命周期 gate 以空 saves bind 启动 Junimo/SMAPI 并两次创建唯一首存，分别 71.78/60.04 秒成功；job log 明确物化 sequence 9 早于事务快照 sequence 10，存档可解析、为活动存档且无 owned staging 残留，第二轮 Stop 后容器归零。最终候选仍要在由 `v0.4.10`/`v0.3.2` 升级得到的 Panel Web 链路上复验一次，不能只以 driver 级真实生命周期代替升级后验收。
+
 # RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 联调契约（2026-08-09，released in v0.4.10）
 
 - required runtime apply 的 `verifying_auth` 硬门槛为 steam-auth 容器 running、目标 image ID 精确匹配，以及容器内 `GET /steam/ready` 命中受支持 HTTP/schema 合约；Docker health、Steam 登录和 ticket 不再是升级成功条件。

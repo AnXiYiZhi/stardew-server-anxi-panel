@@ -1,3 +1,10 @@
+# FE-INSTALL-AUTHORITY-1：安装终态单调合并与已有任务接管（2026-08-11，completed，未发布）
+
+- `install-state.ts` 将 dashboard job 列表与详情轮询按 job ID 合并；同一任务只要任一来源观察到 succeeded/failed/canceled，迟到的 queued/running 快照就不能把它复活。页面从合并结果派生唯一 active/latest/selected 安装任务，不再用 `installJob ?? dashboardJob` 的到达顺序决定当前状态。
+- 安装日志只有在 `selectedJobId === activeJob.id` 时才能推断 Steam 认证、SteamCMD 下载、SMAPI 安装和进度。终态任务日志仍保留在日志窗口用于审计，但不能覆盖实例 `game_installed` 或重新显示下载卡片。
+- `ApiError` 保留后端可选 `details`；安装接口返回 `409 install_in_progress + details.jobId` 时，安装页接管已有任务，只有任务 ID 变化时才清空旧详情/日志，同一任务重复提交不会断开当前日志流；Steam 授权入口则直接导航到安装页观察同一任务，不把正常去重显示成失败。
+- 新增 `test:install-state`，覆盖 dashboard 已成功而详情仍 running、详情终态而 dashboard 仍 running、新活动任务与旧历史日志隔离、日志必须匹配活动任务 ID。最终全部 13 项前端状态测试和 `tsc -b && vite build` 已通过；正式发布前还要在真实首次安装页面复核重复点击、完成后刷新及历史日志切换。
+
 # DOCS-HOME-QQ-COMMUNITY-1：首页 QQ 群沟通入口（2026-08-10，released）
 
 - 官网不新增独立沟通页面、顶栏入口或第七张功能卡；首页通过 VitePress 官方 `home-hero-actions-after` slot，在 Hero 两个主按钮正下方增加整卡可点击的“加入交流群”入口，直接打开用户提供的 QQ 官方加群链接。卡片文案聚焦部署求助、故障反馈与功能建议，原联机邀请卡和六入口保持不变。

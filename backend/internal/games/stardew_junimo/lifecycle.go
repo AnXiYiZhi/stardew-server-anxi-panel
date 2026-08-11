@@ -393,6 +393,17 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		if cfgErr != nil {
 			return &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "新建存档任务配置无效", Cause: cfgErr}
 		}
+		changed, syncErr := r.driver.EnsureManagedSMAPIBundledMods(ctx, r.instance.DataDir, imageRef, func(line string) {
+			_, _ = jobCtx.Info(context.Background(), "[smapi-sync] "+paneldocker.RedactString(line))
+		})
+		if syncErr != nil {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateStopped,
+				"SMAPI 内置支持 Mod 同步失败，已阻止创建存档", "smapi_bundled_sync_failed", jobCtx.ID)
+			return &NewGameTransactionError{Code: "smapi_bundled_sync_failed", Message: "创建存档前同步 SMAPI 内置支持 Mod 失败", Cause: syncErr}
+		}
+		if changed {
+			_, _ = jobCtx.Info(ctx, "已在事务快照和 Mod 指纹计算前物化 SMAPI 内置支持 Mod。")
+		}
 		farmType, farmTypeErr := NormalizeNewGameFarmType(cfg.FarmType)
 		if farmTypeErr != nil {
 			return &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "新建存档 FarmType 无效", Cause: farmTypeErr}

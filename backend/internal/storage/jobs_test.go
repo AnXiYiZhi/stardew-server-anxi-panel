@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
@@ -110,6 +112,129 @@ func TestJobPayloadPersists(t *testing.T) {
 	}
 	if !loaded.Payload.Valid || loaded.Payload.String != `{"farmType":"standard","farmName":"Farm"}` {
 		t.Fatalf("payload = %#v", loaded.Payload)
+	}
+}
+
+func TestCreateExclusiveJobReturnsExistingActiveJob(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+
+	params := CreateJobParams{Type: "stardew_install", TargetType: "instance", TargetID: DefaultInstanceID}
+	first, err := store.CreateExclusiveJob(context.Background(), params)
+	if err != nil {
+		t.Fatalf("create first exclusive job: %v", err)
+	}
+	_, err = store.CreateExclusiveJob(context.Background(), params)
+	var active *ActiveJobExistsError
+	if !errors.As(err, &active) {
+		t.Fatalf("second exclusive job error = %v, want ActiveJobExistsError", err)
+	}
+	if active.Job.ID != first.ID {
+		t.Fatalf("active job id = %s, want %s", active.Job.ID, first.ID)
+	}
+	if !errors.Is(err, ErrActiveJobsExist) {
+		t.Fatalf("error %v does not unwrap to ErrActiveJobsExist", err)
+	}
+
+	if _, err := store.FinishJob(context.Background(), first.ID); err != nil {
+		t.Fatalf("finish first exclusive job: %v", err)
+	}
+	if _, err := store.CreateExclusiveJob(context.Background(), params); err != nil {
+		t.Fatalf("create exclusive job after terminal state: %v", err)
+	}
+}
+
+func TestCreateExclusiveJobConcurrentRequestsHaveOneWinner(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+
+	const callers = 12
+	start := make(chan struct{})
+	results := make(chan error, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := store.CreateExclusiveJob(context.Background(), CreateJobParams{
+				Type: "stardew_install", TargetType: "instance", TargetID: DefaultInstanceID,
+			})
+			results <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	winners := 0
+	conflicts := 0
+	for err := range results {
+		switch {
+		case err == nil:
+			winners++
+		case errors.Is(err, ErrActiveJobsExist):
+			conflicts++
+		default:
+			t.Fatalf("unexpected exclusive create error: %v", err)
+		}
+	}
+	if winners != 1 || conflicts != callers-1 {
+		t.Fatalf("winners=%d conflicts=%d, want 1/%d", winners, conflicts, callers-1)
+	}
+}
+
+func TestExclusiveInstallMigrationRetiresLegacyDuplicateOwners(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.db.ExecContext(context.Background(), `
+		CREATE TABLE schema_migrations (
+			version TEXT PRIMARY KEY,
+			applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+		)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []string{
+		"001_foundation.sql", "002_auth.sql", "003_jobs_state.sql", "004_instances.sql",
+		"005_super_admin.sql", "006_restart_schedules.sql", "007_job_display_name.sql",
+		"008_player_roster.sql", "009_control_commands.sql", "010_job_payload.sql",
+		"011_player_roster_character_delete.sql",
+	} {
+		if err := store.applyMigration(context.Background(), version); err != nil {
+			t.Fatalf("apply legacy migration %s: %v", version, err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := store.CreateJob(context.Background(), CreateJobParams{
+			Type: "stardew_install", TargetType: "instance", TargetID: DefaultInstanceID,
+		}); err != nil {
+			t.Fatalf("seed duplicate active install %d: %v", i, err)
+		}
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("apply exclusive install migration: %v", err)
+	}
+	active, err := store.ListActiveJobs(context.Background(), ListActiveJobsFilter{
+		TargetType: "instance", TargetID: DefaultInstanceID, Types: []string{"stardew_install"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("active installs after migration = %d, want 1", len(active))
+	}
+	if _, err := store.CreateJob(context.Background(), CreateJobParams{
+		Type: "stardew_install", TargetType: "instance", TargetID: DefaultInstanceID,
+	}); err == nil {
+		t.Fatal("partial unique index should reject another active install")
 	}
 }
 

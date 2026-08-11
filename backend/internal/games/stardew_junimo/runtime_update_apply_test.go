@@ -237,7 +237,10 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 func waitRuntimeApply(t *testing.T, driver *Driver, instance registry.Instance) RuntimeUpdateApplyStatus {
 	t.Helper()
 	time.Sleep(250 * time.Millisecond)
-	deadline := time.Now().Add(8 * time.Second)
+	// A clean Linux release gate compiles and exercises several SQLite-heavy
+	// packages at once. Leave enough scheduling headroom for the async job to
+	// start; the injected apply path itself still uses millisecond timeouts.
+	deadline := time.Now().Add(20 * time.Second)
 	var last RuntimeUpdateApplyStatus
 	for time.Now().Before(deadline) {
 		status, err := driver.RuntimeUpdateApplyStatus(instance)

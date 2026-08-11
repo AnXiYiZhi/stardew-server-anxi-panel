@@ -1,3 +1,58 @@
+# v0.4.11 发布门禁：安装排他、终态一致性与首次建档（2026-08-11，候选中）
+
+- 目标正式版本为 `v0.4.11`，上一正式版为 `v0.4.10`。本版发布 `INSTALL-FIRST-RUN-CONSISTENCY-1`、`FE-INSTALL-AUTHORITY-1` 与 `AUTH-CANCEL-RESOURCE-CLEANUP-1`：同一实例安装任务只有一个持久 owner，终态安装不会被迟到状态或旧日志复活，SMAPI 内置支持 Mod 在首次 server entrypoint 之前完成原子物化，二维码认证取消/超时不会遗留 Compose one-off 容器。
+- 本版新增数据库迁移 `012_exclusive_stardew_install_jobs.sql`，并改变安装、Steam 授权、首次创建存档、SMAPI 升级/回滚及安装页状态合并链路。因此除 `v0.4.10 → v0.4.11` 正式 Web 一键升级外，还必须从 runtime manifest 最低支持版 `v0.3.2` 直升候选；两条链都要验证数据库迁移、初始化、用户、实例、存档、Mod、备份、审计、非目标容器/volume、Panel 重启恢复和升级后第一次建档。
+- 当前仅进入候选门禁，尚未创建或推送 `v0.4.11` tag，未更新 `latest`，未发布正式镜像或 GitHub Release。以下矩阵和证据全部完成前不得打 tag。
+
+## 变更清单与受影响链路
+
+- 安装 owner：`jobs.Spec.Exclusive → Store.CreateExclusiveJob → jobs partial unique index` 形成跨 goroutine/进程的活动任务排他。重复安装和 Steam 授权返回 `409 install_in_progress + details.jobId`；任务终态后允许重试。实例阶段写入以 queued/running job row 作为持久 lease，历史 runner 的迟到写入返回 `ErrJobNotActive` 并忽略。
+- 安装终态 UI：dashboard jobs 与详情按 job ID 合并，terminal 快照单调胜过 queued/running；仅当前 active job 的日志可以推导下载、认证、QR 和进度。重复提交若返回同一 job ID，保留现有 SSE/日志；返回另一 ID 才切换观察对象。
+- SMAPI 首次物化：当前 `GAME_DATA_VOLUME` 以只读方式挂入精确 server image 的 one-shot container，把实际 `/data/game/Mods` 复制到 Panel 管理 staging。manifest、必需组件、重复 UniqueID、版本、symlink/文件类型和 512 MiB 上限通过后才原子替换 `.local-container/mods/smapi`；相同全树 SHA-256 为 no-op。安装成功、首次建档事务/指纹、SMAPI staging 切换和 rollback 切回旧卷都使用同一 helper。
+- 中断恢复：Panel 启动先由仍 active 的安装 owner 写 `install_interrupted`，再终结任务；SMAPI 发布下次执行会清理精确 `.smapi-sync-*`，并在 destination 缺失时恢复最近的有效 `.smapi-backup-*`。用户 Mod、存档、disabled 目录和其它 Docker 资源不在清理范围。
+- 认证取消清理：Linux `RunSteamAuthTTY` 为每次 `docker compose run` 分配随机唯一 `anxi-steam-auth-<hex>` 名称；job context 取消或超时时，在前台 Docker CLI 退出后只查询并强制删除该精确名字。第一次 list 为空不能代表 daemon 不会晚到 create，生产清理必须在 20 秒边界内连续 3 秒确认精确容器缺席；正常完成仍由 `--rm` 清理，不按 project、volume 或模糊前缀删除其它容器。
+- 发布工作流：`release.yml` 与 `compatibility-matrix.yml` 纳入 `test:install-state`，避免新状态机只在维护者本机验证。
+
+## 故障矩阵
+
+| 场景 | 预期措施与门槛 | 发布证据要求 |
+| --- | --- | --- |
+| 单次正常安装 | 只有一个 job owner；SMAPI 支持 Mod 物化并完成 volume 完整性校验后才写 `game_installed` | 后端全量、真实 Panel 安装链和候选镜像日志/终态 |
+| 同实例并发安装/授权 | 数据库 partial unique index 保证一个 winner；其它请求 409 并返回同一 `jobId`，不启动第二 runner | 12 路 storage 并发、Web 409、真实 Panel 双提交与 job/日志基数 |
+| 跨进程竞争与历史重复活动任务 | 原子 insert/index 拒绝第二 owner；迁移只保留最新活动安装，较旧者标记 failed | migration fixture、并发 storage 测试、升级后 index/任务状态查询 |
+| 终态后迟到写入 | terminal job 不能再更新实例；前端 terminal 不被迟到 running 或历史日志复活 | `ErrJobNotActive`、Manager/driver 回归、前端 install-state 测试与真实页面刷新 |
+| 任务终态后重试 | succeeded/failed/canceled 释放活动唯一约束，新请求可创建新 job；旧 ID 日志只作审计 | storage retry、真实失败后重试和新旧 ID/SSE 观察 |
+| SMAPI 正常首次物化 | 当前 game-data volume 两个官方支持 Mod 和未来合法 bundled Mod 全量发布，预检与 entrypoint 实载集合一致 | unit + 真实 Docker helper + 真实第一次创建存档 |
+| 相同树重复执行 | 全树摘要一致时 no-op，不改变目录 inode/内容，不重复堆积 backup/stage | unit、真实 Docker 二次同步和资源基数 |
+| 缺失/坏 manifest、重复 ID、空版本 | staging fail closed，当前 managed tree 保持不变，不启动 server 或创建 transaction | unit 故障注入、API phase/code、原目录摘要 |
+| symlink、非普通文件、超 512 MiB | 拒绝发布，不能越出 staging 读取或覆盖用户路径 | unit/受控文件树故障注入；不适合大文件实写时使用稀疏文件并核对上限 |
+| Docker/image/volume 不可用、copy 非零退出 | `smapi_bundled_sync_failed`，现有 tree 和存档不变；修复环境后同一操作可安全重试 | fake/真实 Docker 故障、日志脱敏、重试成功 |
+| Panel 在 stage 后中断 | 下次执行只清理精确 `.smapi-sync-*`，重新从权威 volume 构建 | unit 中断夹具、真实 Docker orphan staging 恢复 |
+| Panel 在 old→backup 后中断 | destination 缺失时恢复有效 sibling backup，再幂等同步；坏 backup 不被发布 | unit + 真实 Docker rename 故障夹具、最终无 owned artifact |
+| 发布 rename/清理部分成功 | rename 失败立即恢复旧 tree；恢复也失败时保留并报告精确 backup 路径，不继续建档 | unit 故障注入或文件系统代理、摘要与可恢复材料检查 |
+| 新建存档事务失败/Compose 启动失败 | SMAPI 同步必须早于事务快照和 ExpectedFingerprint；失败不得留下 transaction，后续 server 失败走既有回滚 | lifecycle 测试、真实第一次建档失败注入、存档/事务目录基数 |
+| SMAPI staging 升级失败/回滚 | 新卷切换后同步新 bundled tree；验收失败切回旧卷并同步旧 tree，不混用版本 | SMAPI update/rollback 测试、代表老版本升级后实载指纹 |
+| Panel/容器重启恢复 | active 安装终结为 `install_interrupted`，实例状态与 job 一致；重启后不会恢复历史下载卡 | Manager recovery、候选 Panel restart、页面/job/API 复核 |
+| QR 登录取消、超时或 Panel 停止 | 取消前台 Compose CLI 后按本次随机精确容器名删除 one-off auth，并连续 3 秒确认缺席以吸收 daemon 晚到 create；game-data/steam-session 是否保留仍由安装语义决定 | 可控晚到创建单测、真实 `.125/auth .2` 到 QR 后 cancel、job 终态后稳定缺席、案例容器/volume 归零 |
+| 权限与安全 | 未登录 401、非管理员安装/授权 403；响应/log/support bundle 不含 Steam 密码、token、二维码或 session 内容 | Web 权限回归、脱敏扫描、测试仅用专用凭据且不写入制品 |
+| 网络超时/断流 | 沿用有界镜像/Steam/SMAPI 下载重试；失败不会绕过完整性校验或留下假 installed | 远程制品门禁、真实 SMAPI 下载、受控断流/坏包回退 |
+| 数据完整性 | 数据库 `integrity_check`、迁移集合、用户/实例/存档/Mod/备份/审计哨兵在升级、失败回滚和重启后保持 | `v0.4.10`、`v0.3.2` 两条升级链的 live/backup 摘要 |
+| 非目标资源与清理 | 不重建/删除非目标 game container/volume；只删除本测试唯一 label/prefix 资源，不执行 prune | 前后容器 ID/StartedAt/volume inspect；终态容器/network/volume/端口为零 |
+| 官网与发布产物 | 官网首页/changelog/安装/存档手册展示 v0.4.11 与恢复边界；三仓精确版/latest、Release 资产和 OCI metadata 一致 | VitePress 洁净 build、桌面/手机线上 QA、三仓回拉 digest/health/version |
+
+## 候选与发布证据
+
+- 候选提交前代码门禁已通过：后端 `go test ./... -count=1` 53.4 秒（`stardew_junimo` 49.258 秒、Web 33.564 秒）、`go vet ./...` 1.3 秒、`go build ./...` 2.4 秒；`internal/docker` integration 26.380 秒、真实 auth unhealthy/offline acceptance 6.357 秒、updater Docker integration 38.579 秒。
+- SMAPI 专项已通过：精确 `.125` server image 的真实 Docker bundled sync 3.679 秒，覆盖首次发布、相同树 no-op、模拟 old→backup 中断恢复和 owned artifact 清零；Linux `golang:1.25-alpine` 空任务缓存真实下载 41,889,142 字节，11 秒完成摘要、ZIP、`0600` 和临时文件清理。Windows 权限语义的无效试跑已按错题本纠正，不作为产品失败或发布证据。
+- compatibility manifest validate、panel version `0.4.11`、19 项 Python 测试和 remote artifacts 78.6 秒通过；三个 Bash 功能脚本、`bash -n` 与正式 ShellCheck 输入全部通过。前端唯一 Node 24 Linux 空卷执行 `npm ci`、production audit=0、13 项状态/响应式测试和 production build，正确完整仓库挂载的整轮为 31.3 秒，任务 container/volume 已清理。
+- pre-final 候选 `fca8c01483a2efd9d6bd05db25a4d99015df36ed` 已完成 fresh health/version/restart；隔离 DinD 内 `v0.4.10` 先对 unhealthy `0.4.11` 收敛为 `failed_rolled_back / health_check_failed`，再对健康候选成功，`v0.3.2` 依历史空 apply body 直升成功。两条链的 live/backup SQLite integrity、迁移 012、用户/实例/审计、存档/Mod/备份哨兵、非目标 container ID/StartedAt/volume 及 Panel restart 均通过；升级后的候选双提交返回同一活动 job 的 `409 install_in_progress`。
+- 追加取消清理与文档后的临时候选 `3628358482231b0a8245533a4237a63daa324a22`（build date `2026-08-11T17:08:42Z`）完成 fresh health/version/restart；`v0.4.10` unhealthy 自动回滚后健康升级成功，`v0.3.2` 直升、迁移、重复安装 409、备份/哨兵/非目标资源及重启恢复均通过。升级得到的 Panel 又以真实 1.96 GiB game-data 创建活动存档 `Upgrade Gate Final`，SMAPI 物化 sequence 9 早于事务 sequence 10，Panel 重启不重建 server/auth 容器。该候选随后被更严格的取消资源门禁淘汰，不得用于 tag。
+- 无账号真实首次安装 gate 使用 `.125` server/auth 正式组件到达 QR 后取消。第一版精确删除测试 3.48 秒即返回，但更外层资源审计随后复现一个 daemon 晚到的 `Created` auth one-off 和两个仍被占用的案例卷，证明“一次为空”不是清理终态。生产清理改为连续 3 秒缺席窗口，真实测试也在 job 终态后另做连续 3 秒确认；修正后的源代码真实 gate 9.78 秒通过，外层复核案例 container/volume 为 0。早期 3.48 秒结果不再作为发布证据。
+- 稳定缺席修复后的 Windows 后端全量 59 秒、vet 0.5 秒、build 1.8 秒通过；Linux `internal/docker` 晚到创建单测通过，Linux 全量以 JSON 事件过滤的空缓存复跑 77.6 秒通过，vet 26.3 秒、build 3.4 秒通过且任务容器/缓存卷为 0。此前一轮 Linux `internal/web` 包级非零的普通文本输出被正常 HTTP 日志截断，按错题本改用结构化失败投影后定向包和完整全量均通过；那次无具体断言的非零不作为通过证据。
+- 真实首次建档 gate 只读克隆历史测试所有的完整 game-data volume 到唯一任务卷，以空 saves bind、空 Steam 凭据和当前 `.125/auth .2` 运行栈启动 Junimo/SMAPI；两轮分别 71.78/60.04 秒创建唯一活动存档 `Release Gate`，存档元数据可解析。job log 中 SMAPI 物化为 sequence 9、建档事务准备为 sequence 10，两个 support manifest 均非空，成功终态无 `.smapi-*` staging/backup 残留，第二轮还经 driver Stop 证明 Compose 容器归零；源卷从未可写挂载。
+- 取消清理与首次建档补丁后的 Windows 后端全量为 59.8 秒，vet/build 通过；Linux 冷缓存全量首次暴露异步 apply 测试 8 秒观察窗不足，目标子例在同一 Linux 环境连续 5 次约 3.18 秒通过。测试观察窗改为 20 秒后受影响包 44.631 秒、Linux 全量 54.2 秒及 vet/build 全绿，产品注入超时仍保持毫秒级。
+- 待完成：将稳定缺席修复、测试、文档和错题本纳入最终精确 commit/build date 候选，重新执行后端全量、fresh smoke、两条 Web 升级、升级后真实首次建档与真实 QR cancel；随后才可同步 `main`、tag workflow、三仓回拉、Release 资产和官网线上复核。
+
 # v0.4.10 发布门禁：弹窗拉伸与 Steam 认证等待（2026-08-09，已发布）
 
 - 目标正式版本为 `v0.4.10`，上一正式版为 `v0.4.9`。本版同时发布 FE-MODAL-HEIGHT-GUARD-1、FE-NEW-GAME-MODAL-LAYOUT-1、RUNTIME-AUTH-OFFLINE-ACCEPTANCE-1 与 FE-STEAM-AUTH-WAIT-VISIBILITY-1。
