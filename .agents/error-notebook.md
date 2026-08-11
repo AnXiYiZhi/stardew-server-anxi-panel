@@ -4,6 +4,7 @@
 
 ## 2026-08-11：`functions.exec` 中的 Web 查询对象键名拼写错误
 
+- 最近复发/补充：同轮随后打开三份已取得的官方文档时，又把合法的 `{ref_id: "..."}` 误写成 `{ref_id": "..."}`，再次在执行前触发同一语法错误。该模式已重复两次，预防规则同步提升到 `AGENTS.md`：`web__run` 对象数组只允许从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 环境：Codex `functions.exec` JavaScript 编排，调用官方阿里云文档 Web 搜索。
 - 错误模式：第二个查询对象把合法的 `q:` 误写成 `q":`，导致 JavaScript 在工具调用前解析失败。
 - 症状 / 退出码：编排层立即返回 `SyntaxError: Unexpected string`，没有发出网络请求，也没有产生外部写入。
