@@ -2,13 +2,14 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；本次 post-release 内容把版本更新到 v0.4.11，并补齐安装去重、终态一致性、首次建档 SMAPI 准备和认证取消清理说明。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航并已展示 v0.4.11，安装去重、终态一致性、首次建档 SMAPI 准备和认证取消清理说明均已上线。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
 
-## 2026-08-12：官网展示 v0.4.11（post-release 收口中）
+## 2026-08-12：官网展示 v0.4.11（已发布）
 
 - 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 统一切换为 v0.4.11；更新日志置顶新增用户可理解的安装任务去重、迟到状态不复活、首次建档前 SMAPI 原子准备和 QR 取消清理边界，v0.4.10 降为历史条目。
 - `handbook/install.md` 说明重复提交会接管同一任务、取消认证只清理本次 one-off；`handbook/saves.md` 说明首次建档前的组件校验、原子发布和安全重试；FAQ 增加对应症状入口。没有新增主题组件、路由、依赖、图片或 Panel API。
-- 发布门槛：VitePress production build、production audit、桌面/390px 首页与 changelog 实际点击、安装/存档新增文字、无横向溢出、framework overlay、console/page/request error；Pages 与 compatibility workflow 成功后再把本节改为“已发布”并记录 workflow/deployment。
+- 全新 Node 20 Linux volume 的 production audit=0、critical audit=0，VitePress build 6.88 秒通过。应用内 Browser 本地预览在 1440×900 与 390×844 验证首页、实际点击更新日志、v0.4.11 最新/v0.4.10 历史、安装/存档新增文字；root/body 无横向溢出，framework overlay 与 console warn/error 为 0。
+- post-release 提交 `e3d40b155dd29cefe1fc9410675bbc91eb91d455` 经 Pages workflow `31523817426`（42 秒）与 deployment `5856456646` 成功上线；同提交 compatibility `31523817397`（1 分 42 秒）成功。线上首页、changelog、安装、存档四个公开 URL 均 HTTP 200 且 SSR 正文命中 v0.4.11 精确内容。由于本地 Browser 检查后过早 finalize，本 turn 没有伪造线上 Browser 截图；执行问题与下次正确时序已记入错题本。
 
 ## 2026-08-10：首页 QQ 群沟通入口（已发布）
 
@@ -73,7 +74,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.8` 文档）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.11` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |

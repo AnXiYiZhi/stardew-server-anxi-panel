@@ -10,7 +10,7 @@
 ## 如何验证与下一步
 
 - `npm run test:install-state` 已覆盖终态胜过迟到 running、新 active 与旧 selected 隔离、日志 ID 必须匹配；全部 13 项前端状态测试与 `npm run build` 在本机洁净 Node 24 环境和 tag Release workflow 中通过。
-- 正式升级后真实双提交由后端返回同一活动 owner 的 202/409，前端使用 `details.jobId` 接管同一任务；成功终态即使历史日志含 `steamcmd_downloading` 也不能复活下载卡。该契约已随 tag `v0.4.11` 发布，Release workflow `31521478699` 和三仓回拉通过；官网 v0.4.11 内容及线上 QA 随本次 post-release 提交收口。
+- 正式升级后真实双提交由后端返回同一活动 owner 的 202/409，前端使用 `details.jobId` 接管同一任务；成功终态即使历史日志含 `steamcmd_downloading` 也不能复活下载卡。该契约已随 tag `v0.4.11` 发布，Release workflow `31521478699` 和三仓回拉通过。官网 post-release 提交 `e3d40b155dd29cefe1fc9410675bbc91eb91d455` 经 Pages `31523817426` / deployment `5856456646` 上线，compatibility `31523817397` 成功；本地桌面/手机 Browser 与线上四页 HTTP/SSR 内容均通过，线上视觉证据缺口已如实记录在 `docs/09-image-build.md`。
 - 后续如果增加“查看历史任务”交互，selected 只能控制日志窗口，不能重新成为 active。不要重新引入 `detailJob ?? dashboardJob` 到达顺序优先级，也不要让日志单独决定最终状态。
 
 # FE-MODAL-HEIGHT-GUARD-1 接手记录（2026-08-09，completed）

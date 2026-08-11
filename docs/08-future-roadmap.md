@@ -9,7 +9,7 @@
 - [x] 真实生命周期以只读克隆的完整 game-data、空 saves bind 和空 Steam 凭据两次完成第一次建档：分别 71.78/60.04 秒创建唯一可解析活动存档，job log 的 SMAPI 物化 sequence 9 早于事务快照 sequence 10，成功终态无 owned staging 残留，第二轮 Stop 后容器归零。
 - [x] 最终候选 `ef2580d2e58b170b5e5aa0079496f969228dd3f6` 已完成 `v0.4.10` unhealthy 自动回滚后健康升级、`v0.3.2` 直升、迁移/数据/非目标资源/重启、升级后 1.96 GiB 真实首次建档及最终 QR cancel。main compatibility `31521174829`、Release workflow `31521478699` 成功；annotated tag `v0.4.11` 未移动。
 - [x] Docker Hub、阿里云 ACR、GHCR 的 `0.4.11/latest` 六个引用统一为 OCI index `sha256:7c2fea3496ac1ec4afa2ae50f1087f469151e46b18a9c202bd7d4e70f16bb86e`、amd64 manifest `sha256:f916037c571eac6962a4f6448e08c425e8e0b8956679835808d4e2c10f78d02c`；三个精确引用均通过独立首次启动/重启 health、SQLite、版本和 fresh setup 冒烟，四项 Release 资产与 tag 源文件摘要一致。
-- [ ] 官网 v0.4.11 内容、Pages/compatibility workflow 与线上桌面/390px 验收在本次 post-release 收口提交完成后补记；Panel tag 和正式镜像不依赖此文档提交，也不会移动。
+- [x] 官网 v0.4.11 已由 post-release 提交 `e3d40b155dd29cefe1fc9410675bbc91eb91d455` 上线；Pages `31523817426`、deployment `5856456646` 与 compatibility `31523817397` 均成功。本地 Browser 的 1440×900/390×844 首页、实际点击更新日志、最新/历史、安装/存档内容、无横向溢出、overlay 与 console health 通过；线上四个公开 URL HTTP 200 且 SSR 正文精确命中 v0.4.11。线上 Browser 截图因会话过早 finalize 未伪报，执行问题已记入错题本。
 
 # 2026-08-10 完成：官网首页 QQ 群沟通入口（DOCS-HOME-QQ-COMMUNITY-1）
 

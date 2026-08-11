@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-12：Pages 就绪前提前 finalize 本地 Browser 会话
+
+- 环境：应用内 Browser，本地 VitePress 与随后 GitHub Pages post-release 验收处于同一代理 turn。
+- 错误模式：本地桌面/手机验收结束后立即执行 `browser.tabs.finalize({keep:[]})`，随后才等待 Pages workflow；Browser 文档要求 finalize 是本 turn 的最后一个浏览器动作，因此线上部署成功后不能再用同一 Browser 做视觉复核。
+- 症状 / 退出码：本地 1440×900、390×844 视觉/DOM/console 证据完整，Pages/deployment 成功且四个线上 URL 的 HTTP/SSR 内容通过，但本 turn 没有追加线上 Browser 截图；没有影响网站、浏览器用户标签或外部状态。
+- 根因：把“本地预览结束”误当成“本轮所有浏览器工作结束”，没有把异步 Pages 部署纳入 Browser 会话生命周期。
+- 正确做法：需要本地与线上两阶段 QA 时，先完成本地检查并关闭预览，但保留 Browser tab/session；等待 Pages 成功后在同一会话完成线上桌面/手机检查，最后一次性 reset viewport + finalize。
+- 预防检查：调用 finalize 前列出所有仍待完成的浏览器阶段；只要还有部署、异步生成或线上复核，就不要 finalize。
+- 适用范围：VitePress/Pages、Vite/静态托管及所有“本地预览 → CI 部署 → 线上复核”的同 turn 工作流。
+
 ## 2026-08-12：空数据库真实生命周期夹具使用不存在的用户 ID
 
 - 环境：PowerShell 7、Docker Desktop Linux containers、v0.4.11 真实首次建档 opt-in 集成测试。

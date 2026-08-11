@@ -4,6 +4,7 @@
 - 安装日志只有在 `selectedJobId === activeJob.id` 时才能推断 Steam 认证、SteamCMD 下载、SMAPI 安装和进度。终态任务日志仍保留在日志窗口用于审计，但不能覆盖实例 `game_installed` 或重新显示下载卡片。
 - `ApiError` 保留后端可选 `details`；安装接口返回 `409 install_in_progress + details.jobId` 时，安装页接管已有任务，只有任务 ID 变化时才清空旧详情/日志，同一任务重复提交不会断开当前日志流；Steam 授权入口则直接导航到安装页观察同一任务，不把正常去重显示成失败。
 - 新增 `test:install-state`，覆盖 dashboard 已成功而详情仍 running、详情终态而 dashboard 仍 running、新活动任务与旧历史日志隔离、日志必须匹配活动任务 ID。全部 13 项前端状态测试和 `tsc -b && vite build` 在本机洁净 Node 24 环境与 tag Release workflow 中通过；升级后真实双提交由后端返回同一 owner 的 `409 + jobId`，页面契约固定为接管该任务而不是显示第二个失败卡。该修复已随 `v0.4.11` 发布，tag、三仓与升级链证据见 `docs/09-image-build.md`。
+- 官网同步把首页、更新日志、安装手册、存档手册与 FAQ 更新到 v0.4.11；post-release 提交 `e3d40b155dd29cefe1fc9410675bbc91eb91d455` 的 Pages `31523817426` / deployment `5856456646` 和 compatibility `31523817397` 均成功。本地 1440×900/390×844 Browser 与线上四页 HTTP/SSR 内容验收见 `docs/11-docs-portal.md`；本轮线上 Browser 截图缺口没有伪报。
 
 # DOCS-HOME-QQ-COMMUNITY-1：首页 QQ 群沟通入口（2026-08-10，released）
 
