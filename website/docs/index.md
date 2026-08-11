@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.10
+release: v0.4.11
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.10。升级等待 Steam 连接时会显示累计用时和自动刷新提示；低高度、窄屏弹窗也不会再越出页面。
+    details: 当前最新 v0.4.11。重复安装会自动回到同一任务，完成状态不再被旧日志覆盖；首次建档前也会完整准备 SMAPI 支持组件。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.10</strong>
-    <p>升级正在连接 Steam 时会持续显示等待时间和自动刷新说明，不再让人误以为卡死；确认框、二维码和新建游戏弹窗在窄屏或低高度下也会保持在页面内。</p>
+    <strong>v0.4.11</strong>
+    <p>同一实例只会运行一个安装或授权任务，重复点击会继续原任务；任务终态不会被迟到状态复活，首次建档前会先安全准备 SMAPI 内置支持 Mod，取消二维码登录也不会遗留一次性容器。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

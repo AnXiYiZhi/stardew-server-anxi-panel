@@ -1,4 +1,4 @@
-# INSTALL-FIRST-RUN-CONSISTENCY-1 接手记录（2026-08-11，completed，未发布）
+# INSTALL-FIRST-RUN-CONSISTENCY-1 接手记录（2026-08-11，released in v0.4.11）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -14,10 +14,14 @@
 - `go test ./internal/jobs`：Manager 返回现有 owner、取消后可再次创建、启动恢复顺序。
 - `go test ./internal/web -run TestWriteActiveInstallConflict`：409 code/message/details.jobId。
 - `go test ./internal/games/stardew_junimo`：物化、幂等、坏 staging 保留旧目录、中断 backup/stage 恢复、未来 bundled manifest 指纹及同步失败早于 new-game transaction；全包已通过。最终后端 `go test ./... -count=1`（65.8 秒）、vet、build 全绿，前端 13 项状态测试和 production build 通过。
-- 真实 Docker 专项以精确 `dockerproxy.net/sdvd/server:1.5.0-preview.125` 创建唯一临时 game-data volume，第一次 sync 发布两个 support manifest、第二次 tree digest no-op；测试后 `anxi-smapi-sync-*` 容器/卷均为 0。本轮没有发布；升级得到的 Panel Web 首次建档、SMAPI staging apply/rollback 和 Panel crash 窗口仍必须在最终候选与唯一隔离资源中完成后才能打 tag。
-- `TestFreshInstall125ReachesSteamLoginOptIn` 使用真实 `.125/auth .2`、空凭据与 QR 登录复现取消泄漏。第一版只在首次观察不到容器时返回，发布外层随后抓到 daemon 晚到的 `Created` one-off 和两个无法删除的案例卷；测试本身也改为 job 终态后连续 3 秒确认缺席。修正后的真实测试 9.78 秒通过，外层案例 container/volume 为 0；Linux `internal/docker` 新增可控晚到创建单测并通过。最终候选还要重跑完整门禁。
+- 真实 Docker 专项以精确 `dockerproxy.net/sdvd/server:1.5.0-preview.125` 创建唯一临时 game-data volume，第一次 sync 发布两个 support manifest、第二次 tree digest no-op；测试后 `anxi-smapi-sync-*` 容器/卷均为 0。最终候选又完成 SMAPI apply/rollback、中断恢复、两条真实 Web 升级及升级后首次建档，不能只以单元测试替代这些发布证据。
+- `TestFreshInstall125ReachesSteamLoginOptIn` 使用真实 `.125/auth .2`、空凭据与 QR 登录复现取消泄漏。第一版只在首次观察不到容器时返回，发布外层随后抓到 daemon 晚到的 `Created` one-off 和两个无法删除的案例卷；测试本身也改为 job 终态后连续 3 秒确认缺席。最终 tag 源码真实测试 9.64 秒通过，外层案例 container/volume 为 0；Linux `internal/docker` 可控晚到创建单测和全量门禁均通过。
 - 稳定缺席修复后的 Windows 后端全量 59 秒、vet/build 通过；Linux 全量空缓存结构化复跑 77.6 秒、vet/build 通过，任务容器和缓存卷均清理。一次普通文本 Linux 全量的 Web 包失败输出被正常 HTTP 日志截断，随后定向 Web 包与结构化全量均通过；该次无断言非零不算通过证据，执行方式已记入错题本。
-- `TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn` 只读克隆历史测试所有的完整 game-data 到唯一任务卷，以空 saves bind/空 Steam 凭据运行真实 Junimo/SMAPI；两轮分别 71.78/60.04 秒创建唯一可解析活动存档。job log 的物化 sequence 9 早于事务快照 sequence 10，两个 support manifest 非空且终态无 `.smapi-*` owned artifact，第二轮 Stop 后容器归零；源卷未被写入。补丁后的 Windows 全量 59.8 秒、Linux 全量 54.2 秒与双方 vet/build 通过；最终候选仍要在升级得到的 Panel Web 上复验首存。
+- `TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn` 只读克隆历史测试所有的完整 game-data 到唯一任务卷，以空 saves bind/空 Steam 凭据运行真实 Junimo/SMAPI；两轮分别 71.78/60.04 秒创建唯一可解析活动存档。job log 的物化 sequence 9 早于事务快照 sequence 10，两个 support manifest 非空且终态无 `.smapi-*` owned artifact，第二轮 Stop 后容器归零；源卷未被写入。最终候选在由 v0.4.10 升级得到的 Panel Web 上再以 1.96 GiB game-data 创建 `Tag Release Gate` 并通过 Panel restart、存档可读和 server/auth ID 保持。
+
+## 正式发布结果
+
+- tag `v0.4.11` 固定指向 `ef2580d2e58b170b5e5aa0079496f969228dd3f6`；compatibility `31521174829` 与 Release workflow `31521478699` 成功。三仓 `0.4.11/latest` 统一 index digest=`sha256:7c2fea3496ac1ec4afa2ae50f1087f469151e46b18a9c202bd7d4e70f16bb86e`、amd64 manifest=`sha256:f916037c571eac6962a4f6448e08c425e8e0b8956679835808d4e2c10f78d02c`，三个精确镜像均通过首次启动/重启 health、SQLite、版本与 fresh setup 冒烟。Release 资产、事务时序和清理记录见 `docs/09-image-build.md`。
 
 ## 下一步注意事项
 

@@ -1,13 +1,15 @@
-# 2026-08-11 完成：安装、认证清理与首次建档状态一致性（INSTALL-FIRST-RUN-CONSISTENCY-1 / FE-INSTALL-AUTHORITY-1 / AUTH-CANCEL-RESOURCE-CLEANUP-1，未发布）
+# 2026-08-11 已发布：v0.4.11 安装、认证清理与首次建档状态一致性（INSTALL-FIRST-RUN-CONSISTENCY-1 / FE-INSTALL-AUTHORITY-1 / AUTH-CANCEL-RESOURCE-CLEANUP-1）
 
 - [x] 同一实例活动 `stardew_install` 具备数据库 partial unique index、原子 job 创建和 409 已有任务 ID 契约；历史任务失去 active owner 后不能覆盖实例阶段。
 - [x] SMAPI 内置 Mods 在安装成功前和首次建档事务/指纹前由 Junimo driver 从实际 game-data volume 原子物化；SMAPI staging 升级及回滚同步同一生命周期。
-- [x] SMAPI 发布中断恢复只处理 Panel-owned `.smapi-sync-*` / `.smapi-backup-*`：清理孤立 staging，destination 缺失时恢复最近有效 backup；单元中断夹具已通过，正式候选仍需重跑真实 Docker 中断矩阵。
+- [x] SMAPI 发布中断恢复只处理 Panel-owned `.smapi-sync-*` / `.smapi-backup-*`：清理孤立 staging，destination 缺失时恢复最近有效 backup；单元中断夹具、真实 Docker helper、失败回滚和升级后首次建档矩阵均已通过。
 - [x] 安装页按 job ID 单调合并 dashboard/detail，terminal 不被迟到 running 复活；只有当前 active job 的日志能影响当前阶段，409 自动接管已有任务。
 - [x] Linux Steam auth one-off 使用随机精确容器名；真实 `.125/auth .2` 无账号流程进入 QR 后取消。首次精确删除仍暴露“先观察为空、随后 daemon 晚到 Created 容器”的竞态；生产清理与真实测试均改为连续 3 秒缺席窗口后，测试 9.78 秒通过，外层复核案例 container/volume 为 0。
 - [x] 存储并发、迁移、owner CAS、Web 409、SMAPI staging/指纹/事务顺序和前端状态纯函数测试已补；后端全量 test/vet/build、前端 13 项状态测试/build 通过，精确 `.125` server 镜像的真实 Docker 首次 sync/幂等/清理专项通过。
 - [x] 真实生命周期以只读克隆的完整 game-data、空 saves bind 和空 Steam 凭据两次完成第一次建档：分别 71.78/60.04 秒创建唯一可解析活动存档，job log 的 SMAPI 物化 sequence 9 早于事务快照 sequence 10，成功终态无 owned staging 残留，第二轮 Stop 后容器归零。
-- [ ] 正式发布前把新增取消清理与真实首存 gate 纳入最终精确候选，重跑 SMAPI 升级/回滚、Panel/容器中断和失败清理矩阵，并按数据库迁移要求从上一正式版与受影响最老支持版本执行完整 Panel 一键升级及升级后首次建档。本条是发布门禁，不表示本功能代码未完成。
+- [x] 最终候选 `ef2580d2e58b170b5e5aa0079496f969228dd3f6` 已完成 `v0.4.10` unhealthy 自动回滚后健康升级、`v0.3.2` 直升、迁移/数据/非目标资源/重启、升级后 1.96 GiB 真实首次建档及最终 QR cancel。main compatibility `31521174829`、Release workflow `31521478699` 成功；annotated tag `v0.4.11` 未移动。
+- [x] Docker Hub、阿里云 ACR、GHCR 的 `0.4.11/latest` 六个引用统一为 OCI index `sha256:7c2fea3496ac1ec4afa2ae50f1087f469151e46b18a9c202bd7d4e70f16bb86e`、amd64 manifest `sha256:f916037c571eac6962a4f6448e08c425e8e0b8956679835808d4e2c10f78d02c`；三个精确引用均通过独立首次启动/重启 health、SQLite、版本和 fresh setup 冒烟，四项 Release 资产与 tag 源文件摘要一致。
+- [ ] 官网 v0.4.11 内容、Pages/compatibility workflow 与线上桌面/390px 验收在本次 post-release 收口提交完成后补记；Panel tag 和正式镜像不依赖此文档提交，也不会移动。
 
 # 2026-08-10 完成：官网首页 QQ 群沟通入口（DOCS-HOME-QQ-COMMUNITY-1）
 

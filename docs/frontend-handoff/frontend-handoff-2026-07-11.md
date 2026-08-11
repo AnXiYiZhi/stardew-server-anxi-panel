@@ -1,4 +1,4 @@
-# FE-INSTALL-AUTHORITY-1 接手记录（2026-08-11，completed，未发布）
+# FE-INSTALL-AUTHORITY-1 接手记录（2026-08-11，released in v0.4.11）
 
 ## 改了什么、影响哪些文件
 
@@ -9,8 +9,8 @@
 
 ## 如何验证与下一步
 
-- `npm run test:install-state` 已覆盖终态胜过迟到 running、新 active 与旧 selected 隔离、日志 ID 必须匹配；最终全部 13 项前端状态测试与 `npm run build` 已通过。
-- 发布前用真实安装页复核：快速双击安装只跟踪一个 job；成功终态即使日志含 `steamcmd_downloading` 也不显示下载卡；刷新、SSE finished、dashboard/detail 到达顺序颠倒都保持完成；已有授权任务点击登录应跳到同一日志。
+- `npm run test:install-state` 已覆盖终态胜过迟到 running、新 active 与旧 selected 隔离、日志 ID 必须匹配；全部 13 项前端状态测试与 `npm run build` 在本机洁净 Node 24 环境和 tag Release workflow 中通过。
+- 正式升级后真实双提交由后端返回同一活动 owner 的 202/409，前端使用 `details.jobId` 接管同一任务；成功终态即使历史日志含 `steamcmd_downloading` 也不能复活下载卡。该契约已随 tag `v0.4.11` 发布，Release workflow `31521478699` 和三仓回拉通过；官网 v0.4.11 内容及线上 QA 随本次 post-release 提交收口。
 - 后续如果增加“查看历史任务”交互，selected 只能控制日志窗口，不能重新成为 active。不要重新引入 `detailJob ?? dashboardJob` 到达顺序优先级，也不要让日志单独决定最终状态。
 
 # FE-MODAL-HEIGHT-GUARD-1 接手记录（2026-08-09，completed）

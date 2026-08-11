@@ -1,8 +1,8 @@
-# v0.4.11 发布门禁：安装排他、终态一致性与首次建档（2026-08-11，候选中）
+# v0.4.11 发布门禁：安装排他、终态一致性与首次建档（2026-08-11，已发布）
 
 - 目标正式版本为 `v0.4.11`，上一正式版为 `v0.4.10`。本版发布 `INSTALL-FIRST-RUN-CONSISTENCY-1`、`FE-INSTALL-AUTHORITY-1` 与 `AUTH-CANCEL-RESOURCE-CLEANUP-1`：同一实例安装任务只有一个持久 owner，终态安装不会被迟到状态或旧日志复活，SMAPI 内置支持 Mod 在首次 server entrypoint 之前完成原子物化，二维码认证取消/超时不会遗留 Compose one-off 容器。
 - 本版新增数据库迁移 `012_exclusive_stardew_install_jobs.sql`，并改变安装、Steam 授权、首次创建存档、SMAPI 升级/回滚及安装页状态合并链路。因此除 `v0.4.10 → v0.4.11` 正式 Web 一键升级外，还必须从 runtime manifest 最低支持版 `v0.3.2` 直升候选；两条链都要验证数据库迁移、初始化、用户、实例、存档、Mod、备份、审计、非目标容器/volume、Panel 重启恢复和升级后第一次建档。
-- 当前仅进入候选门禁，尚未创建或推送 `v0.4.11` tag，未更新 `latest`，未发布正式镜像或 GitHub Release。以下矩阵和证据全部完成前不得打 tag。
+- 本节已完成 tag 前门禁与 tag 后收口。annotated tag `v0.4.11` 固定指向 `ef2580d2e58b170b5e5aa0079496f969228dd3f6`；正式 Release、三仓 `0.4.11/latest`、四项资产与回拉隔离冒烟均已核验，tag 未移动。
 
 ## 变更清单与受影响链路
 
@@ -51,7 +51,12 @@
 - 稳定缺席修复后的 Windows 后端全量 59 秒、vet 0.5 秒、build 1.8 秒通过；Linux `internal/docker` 晚到创建单测通过，Linux 全量以 JSON 事件过滤的空缓存复跑 77.6 秒通过，vet 26.3 秒、build 3.4 秒通过且任务容器/缓存卷为 0。此前一轮 Linux `internal/web` 包级非零的普通文本输出被正常 HTTP 日志截断，按错题本改用结构化失败投影后定向包和完整全量均通过；那次无具体断言的非零不作为通过证据。
 - 真实首次建档 gate 只读克隆历史测试所有的完整 game-data volume 到唯一任务卷，以空 saves bind、空 Steam 凭据和当前 `.125/auth .2` 运行栈启动 Junimo/SMAPI；两轮分别 71.78/60.04 秒创建唯一活动存档 `Release Gate`，存档元数据可解析。job log 中 SMAPI 物化为 sequence 9、建档事务准备为 sequence 10，两个 support manifest 均非空，成功终态无 `.smapi-*` staging/backup 残留，第二轮还经 driver Stop 证明 Compose 容器归零；源卷从未可写挂载。
 - 取消清理与首次建档补丁后的 Windows 后端全量为 59.8 秒，vet/build 通过；Linux 冷缓存全量首次暴露异步 apply 测试 8 秒观察窗不足，目标子例在同一 Linux 环境连续 5 次约 3.18 秒通过。测试观察窗改为 20 秒后受影响包 44.631 秒、Linux 全量 54.2 秒及 vet/build 全绿，产品注入超时仍保持毫秒级。
-- 待完成：将稳定缺席修复、测试、文档和错题本纳入最终精确 commit/build date 候选，重新执行后端全量、fresh smoke、两条 Web 升级、升级后真实首次建档与真实 QR cancel；随后才可同步 `main`、tag workflow、三仓回拉、Release 资产和官网线上复核。
+- 最终 tag 候选为 `ef2580d2e58b170b5e5aa0079496f969228dd3f6`，本机候选 build date=`2026-08-11T17:58:15Z`、OCI index ID=`sha256:dd6c25d97c4c3b3fc181c4766a6a4a280d3b6af822f967e189d5d8eba8585af6`，内嵌 version=`0.4.11`、完整 revision 与提交一致；fresh health/version/restart 通过。Windows 后端全量 test/vet/build 与 Linux JSON 结构化全量 test/vet/build 复跑通过，最终 tag 源码真实 QR cancel gate 9.64 秒通过并连续确认 one-off 缺席。
+- 最终隔离一键升级夹具以唯一 DinD/受控 Release+registry 完成 `v0.4.10 → ef2580d`：unhealthy 目标先精确收敛为 `failed_rolled_back / health_check_failed` 并恢复 0.4.10，健康目标随后升级到精确 0.4.11；`v0.3.2 → ef2580d` 使用历史空 apply body 成功。两条链均验证 SQLite integrity、迁移 012/index、初始化、用户/实例/审计、存档/Mod/备份哨兵、可读事务备份、非目标容器/volume 不变及 Panel restart。升级后的 Panel 双安装请求返回同一活动 job 的 202/409；再以真实 1.96 GiB game-data 创建活动存档 `Tag Release Gate`，SMAPI 物化 sequence 9 早于事务 sequence 10，重启后存档可读且 server/auth 容器 ID 不变。
+- tag 前本地 `main` 干净且与 `origin/main` 同步；同一提交的 compatibility workflow `31521174829` / job `93878270277` 1 分 36 秒成功。annotated tag 推送后 Release workflow `31521478699` / job `93879265541` 于 `2026-08-11T18:12:11Z` 开始、`18:19:03Z` 成功结束；job 6 分 52 秒、run 7 分 03 秒，其中 release gates 3 分 40 秒、镜像 build/push 2 分 23 秒。GitHub Release `Stardew Server Anxi Panel 0.4.11` 于 `18:18:54Z` 发布，非 draft/prerelease，自动简略正文随后按真实用户变更补为完整中文说明，没有移动 tag。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.11` 与 `latest` 六个远端引用统一为 OCI index `sha256:7c2fea3496ac1ec4afa2ae50f1087f469151e46b18a9c202bd7d4e70f16bb86e`、linux/amd64 manifest `sha256:f916037c571eac6962a4f6448e08c425e8e0b8956679835808d4e2c10f78d02c`；OCI version=`0.4.11`、revision=`ef2580d2e58b`、created=`2026-08-11T18:16:22Z`。三个精确引用分别实际回拉，以独立容器/network/volume 启动；首次及 restart 后均 Docker health=`healthy`、`/health.status=ok`、`database.status=ok`、`/api/version=0.4.11@ef2580d2e58b`、fresh setup 未初始化，任务容器/network/volume 终态均为 0。
+- 四项 Release 资产实际下载后与 tag 源文件逐字节一致：`run.sh` 30,437 B / `8f0040c11661f2e3f4060c66bf8ba205a33aa46fc65e3dec7cbf15b864c7387a`，`migrate-fnos.sh` 34,269 B / `90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`，`repair-junimo-0.3.5.sh` 14,413 B / `38d06d09e5c17db3145ec3b938f4d6844d1f2f058c73fa5bc72c804335eee47b`，`repair-junimo-upgrade.sh` 8,521 B / `4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`。
+- 本次测试仅清理唯一任务标签/前缀的容器、网络、volume、候选镜像与隔离 bind；未使用任何 prune，真实来源卷从未可写。空的本地资产下载目录不进入 Git，四个临时下载文件与 Release 说明文件已由精确补丁删除。官网 v0.4.11 的本机构建、Pages workflow、线上桌面/手机 QA 将在 post-release 提交后追加，不把未完成的官网证据伪写为已完成。
 
 # v0.4.10 发布门禁：弹窗拉伸与 Steam 认证等待（2026-08-09，已发布）
 

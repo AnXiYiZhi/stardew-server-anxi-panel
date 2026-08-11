@@ -85,6 +85,7 @@
 - `TestSMAPIArchiveRealDownload` 会断言 Linux `0600` 权限，正式发布门禁只能在任务专属 Linux 容器与独立 Go module/build cache 中运行；禁止先在 Windows 宿主试跑并把必然的 `0666` 当成产品失败。其它涉及 `Mode().Perm()`、UID/GID、symlink 或 Unix socket 的发布测试同样先选择目标 Linux 文件系统。
 - 应用内 Browser 验证本地 Vite/VitePress 时使用 `domcontentloaded` 后等待唯一可见 DOM，不使用当前后端不支持的 `networkidle`；导航断言只传文档支持的精确 URL，不能传正则/predicate。静态站的精确目标必须从当前 DOM `href` 与实际 SPA/普通文档路由模式解析，不得硬编码 `.html` 规范化假设；主测试与 A/B/补充脚本共用同一目标契约。窄屏固定导航页面不得用 `fullPage` 拼接截图判断渲染，必须结合普通视口截图与 root/body `scrollWidth <= clientWidth` 度量。
 - 精简容器运行项目门禁前必须核对子进程依赖：VitePress `lastUpdated` 构建使用 Node Alpine 时先安装 `git`；兼容矩阵需要 Docker CLI 与 buildx，updater/runtime Docker integration 需要 Docker CLI 与 Compose；挂载任务允许的 Docker Socket 后仍必须先通过相应 `docker version`、`docker buildx version`、`docker compose version` 探针。第三方 lint 镜像首次使用前先 inspect Entrypoint/Cmd，ShellCheck 命令必须显式调用 `shellcheck`。
+- VitePress/Vite 构建会在 `.vitepress` 配置目录创建 `config.ts.timestamp-*.mjs`；禁止再使用“完整源码只读 bind，仅给 `node_modules`/cache/dist 写卷”的门禁形态。使用任务副本，或允许配置目录临时可写并在构建后用 Git 状态确认只剩预期修改；产物、缓存和依赖仍用任务专属 volume 隔离。
 - Control Mod 真实 C# 编译必须复用项目已验证的标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 输出路径；不得在含既有 `bin/obj` 的源码树上改写 `BaseIntermediateOutputPath`/`BaseOutputPath`，否则旧生成源码会重新进入编译。需要只读源码隔离时先制作排除 `bin/obj` 的任务副本；一次性 SDK 容器没有已验证 NuGet 缓存时不得强制 `--network none` 后假定 restore 可用。
 - 容器内测试调用宿主 Docker 时，daemon 看不到调用方容器私有的 `t.TempDir()`/`/tmp`。凡测试会把临时路径作为二级容器 bind source，必须改在带所需工具链的任务专属 DinD 容器内执行，或使用双方明确共享的宿主 bind；不能仅挂 Docker Socket后假定路径可见。
 - Windows Docker Desktop 向 DinD 预加载镜像时，优先为任务容器绑定唯一环回 TCP 端口，并用宿主 CLI `docker -H ... image load -i`；若使用 `docker cp`，即使退出 0 也必须立即在目标端核对存在、大小和摘要，不能仅凭退出码继续。
@@ -93,5 +94,6 @@
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。U+FFFD 审计只检查 `git diff --unified=0` 中单个 `+` 开头且排除 `+++` 文件头的本次新增行，不得扫描整个历史文件后把合法示例误报为新乱码；BOM 仍检查完整变更文件。发现新增 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
+- 发布说明与 Release 资产验收不得把外部更新、下载、校验和 `Remove-Item` 清理合在同一长 Shell cell；先独立完成并确认校验结果。工作区内任务专属的已知文本临时文件使用精确 `apply_patch` 删除，不用动态循环或递归 Shell 删除；空目录不进入 Git，可在不扩大删除权限的前提下保留。
 - `apply_patch` 的多文件或 update/delete 混合操作默认拆成独立补丁；确需多文件时必须先结束当前 hunk，再写下一个 `*** Update File`/`*** Delete File` 声明。出现 `Unexpected line found in update hunk` 时视为零修改，先检查实际 diff，再按文件拆分，禁止原样重放。
 - 跨 worktree 整合旧差异时先用 `git diff --ignore-space-at-eol` 去除换行噪声；不得把带行号的原始 Git hunk header 直接重放给 `apply_patch`。对已在 `main` 变化的文件必须重新读取当前上下文并做语义合并，禁止用整文件覆盖掩掉新版本内容。
