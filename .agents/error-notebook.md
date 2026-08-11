@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-11：`functions.exec` 中的 Web 查询对象键名拼写错误
+
+- 环境：Codex `functions.exec` JavaScript 编排，调用官方阿里云文档 Web 搜索。
+- 错误模式：第二个查询对象把合法的 `q:` 误写成 `q":`，导致 JavaScript 在工具调用前解析失败。
+- 症状 / 退出码：编排层立即返回 `SyntaxError: Unexpected string`，没有发出网络请求，也没有产生外部写入。
+- 根因：手写相邻的多个查询对象时混入了 JSON 键名引号，但外层实际是 JavaScript 对象字面量。
+- 正确做法：沿用已验证的 `{q: "..."}` 形态，并在调用前逐个检查数组元素的键名与冒号位置；本次后续直接使用已取得的官方 ECS 公网带宽与 VPC 文档，不重复无必要的价格查询。
+- 预防检查：`web__run` 多查询调用先保持对象结构一致，只替换字符串值；解析错误发生时先检查 JavaScript 语法，不把它误判为 Web 服务失败。
+- 适用范围：`functions.exec` 中所有 `web__run` 的 `search_query`、`open` 等对象数组编排。
+
 ## 2026-08-11：历史改写验证混用了宽泛关键字和不稳定内联解析
 
 - 最近复发/补充：同轮首次推送把 PowerShell 参数写成 `git push --force-with-lease=('refs/heads/main:' + $expectedRemote) ...`；PowerShell 把选项和值拆开，Git 将 lease 值误当成远端仓库并在任何远端写入前退出 1。重新 `ls-remote` 确认 `origin/main` 仍为预期旧 SHA 后，正确做法是先构造完整单参数 `$leaseArg = "--force-with-lease=refs/heads/main:$expectedRemote"`，再执行 `git push $leaseArg origin ...`；带动态值的原生 CLI 长选项不要在调用位置混用 `=` 与 PowerShell 表达式。
