@@ -22,7 +22,7 @@ NAS 用户通常没有 SSH 习惯，可以直接用飞牛 / 群晖 / 绿联 / �
 ```yaml
 services:
   anxi-panel:
-    image: crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:latest
+    image: ${PANEL_IMAGE:-crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:latest}
     container_name: anxi-panel
     restart: unless-stopped
     ports:
@@ -41,6 +41,8 @@ services:
 ::: warning 重要
 上面两处 `/vol1/1000/docker/anxi-panel/data` 必须保持一致。因为面板会通过 Docker Socket 在宿主机上继续创建 JunimoServer、SteamCMD 等游戏容器，数据目录必须同时对"面板容器"和"NAS 宿主机 Docker"可见。
 :::
+
+这份单文件配置不要求你另外创建 `.env`。包含图形化 Compose 自动标准化修复的 Panel 在以后第一次点击 Web 一键升级时，会先核对当前容器、Compose、镜像、数据目录、端口和挂载；满足安全条件后自动备份旧部署，生成标准 `.env + ${PANEL_IMAGE}` 配置，再继续升级。整个过程失败会恢复旧 Panel，不需要手工补部署文件。
 
 2. 项目名称填写 `anxi-panel`。
 3. 把 `PANEL_SECRET` 改成一串较长随机字符，例如 32 位以上字母数字组合。

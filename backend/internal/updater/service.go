@@ -262,7 +262,7 @@ func (s *Service) StartDryRun(ctx context.Context, targetVersion string) (DryRun
 		finished := s.now().UTC()
 		status.Phase, status.TargetImage = "succeeded", "trusted candidates for "+normalized
 		status.UpdatedAt, status.FinishedAt = finished, &finished
-		status.Logs = append(status.Logs, LogEntry{At: finished, Level: "info", Message: "飞牛旧容器转换前置检查通过；独立 helper 将再次核对完整容器配置、拉取目标镜像并执行可回滚切换"})
+		status.Logs = append(status.Logs, LogEntry{At: finished, Level: "info", Message: "部署标准化前置检查通过；独立 helper 将再次核对完整容器配置、拉取目标镜像并执行可回滚切换"})
 		if err := s.store.Write(status); err != nil {
 			return DryRunStatus{}, err
 		}

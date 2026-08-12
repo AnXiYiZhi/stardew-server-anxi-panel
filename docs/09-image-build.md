@@ -1,3 +1,37 @@
+# PANEL-UPDATE-GRAPHICAL-COMPOSE-1 发布门禁：图形化 Compose 自动标准化（2026-08-12，未发布）
+
+## 变更清单与受影响链路
+
+- 部署能力链从“Compose 身份反查成功即支持直接 apply”改为“身份反查成功后还必须证明部署目录 `.env` 可显式解析，且目标 service 的 image 精确受 `PANEL_IMAGE` 控制”。探针在当前可信 Panel 镜像的隔离、无网络 runner 内执行，只输出解析后的单一 image，不读取或记录 env 内容。
+- 完整 Compose labels 但缺 `.env`、坏 env 或写死 image 的安全 NAS 部署不再进入普通 apply 后报 `deployment_backup_failed`；能力返回 `conversionRequired=true`，Web 一键升级复用 `/app/panel-updater convert` 与 `/app/migrate-fnos.sh`，在数据库在线备份后标准化部署并切到精确目标版本。身份歧义或特殊权限/挂载仍拒绝。
+- Go 标准化前置检查允许额外 bind/volume 且要求目标唯一、非根目录；迁移脚本继续负责 RW、propagation、volume name、tmpfs、设备和网络的权威二次校验。NAS Compose 未覆盖镜像 `VOLUME /data` 时产生的匿名 volume 必须作为 external volume 保留，不能删除或误当用户数据卷清理。
+- 标准 `.env` 中缺少 `PANEL_IMAGE=`、但 Compose 已被探针证明消费该变量时，apply 备份后原子追加精确目标；已有键仍只改值。正式镜像必须继续包含 docker-cli、Compose plugin、`/app/panel-updater` 和 `/app/migrate-fnos.sh`。
+
+## 故障矩阵
+
+| 场景 | 预期措施与发布证据 |
+| --- | --- |
+| 标准 `.env + ${PANEL_IMAGE}` | capability 直接 supported、conversionRequired=false；dry-run/apply 成功且不重写 Compose 结构 |
+| 图形化 Compose 无 `.env`、image 写死 | 身份先唯一反查，再返回 conversionRequired=true；Web 一键完成备份、标准化、精确目标切换和断线恢复 |
+| `.env` 存在但无 `PANEL_IMAGE` | Compose 确实消费变量时原子追加并成功；不消费时进入安全转换或 unsupported，不能在 pull/recreate 后才发现 |
+| service label/容器 ID/镜像/数据挂载漂移 | fail closed 为 compose_metadata_invalid；不得借标准化覆盖有歧义的声明 Compose |
+| privileged、自定义 user、缺 Socket、非 bind 数据目录、根/重复/不可保真挂载 | 修改前 unsupported；错误指向具体 env/image 契约及安全标准化失败，不创建 helper cutover |
+| 额外匿名 `/data` volume、合法 bind/具名 volume | 二次 inspect 后按 external 语义保留；新旧容器核对相同目标、RW/propagation/name，非目标 volume 不删除 |
+| 目标 registry 超时/断流/部分候选失败 | 按可信候选有界回退；全部失败时旧容器仍运行、数据库/部署不变，可幂等重试 |
+| 目标 unhealthy、版本不符、labels/config/image ID 不符 | 删除失败新容器，恢复原 Compose/env/数据库、旧容器名称与 restart policy，并重新通过旧版 health/version |
+| helper/Panel 在备份、文件替换、旧容器 rename/stop、新容器启动后中断 | 从持久 apply/fnos-migration 材料恢复；至少分别注入一次，终态只能 succeeded、failed_rolled_back 或 rollback_failed，不猜测成功 |
+| 重复点击或失败后重试 | active apply 继续拒绝并返回同一任务；安全终态修正条件后使用新 update ID，旧备份不覆盖新事务 |
+| 数据完整性与资源清理 | SQLite、初始化、用户、实例、存档、Mod、备份、审计保持；游戏容器/volume ID 不变；只清理本事务拥有的失败新 Panel/临时文件，旧容器按迁移契约保留 |
+| 权限与敏感信息 | 仅管理员可 dry-run/apply 且必须 confirmFullStack；`.env`/inspect/secret 不进入公开日志、状态、支持包、镜像层或命令参数 |
+
+## 当前验证与后续正式版本要求
+
+- 已完成 updater 专项 Go 契约测试：变量探针、显式 env 失败、写死 image、安全/不安全标准化、service label 漂移、额外匿名 volume、conversion helper 参数和 env 缺键追加。后端 `go test ./... -count=1`（14 个包）、`go vet ./...`、`go build ./...`，迁移脚本 `bash -n`/功能测试/ShellCheck，前端 panel-update/update-status 状态测试与 production build，以及 VitePress production build 均通过。
+- Docker Desktop Linux 29.5.3 构建未发布测试候选 `anxi-panel-graphical-e2e:0.4.10`（image ID `sha256:882c8acd175659b67caee50d42fc97ae99d1c52e1d0838e2c540b9c77068a75f`），在唯一 DinD 中用完整 Compose labels、无 `.env`、写死 image、宿主绝对路径 bind 和镜像声明产生的匿名 `/data` volume 创建反馈同款旧 Panel。真实 Web check、dry-run、`confirmFullStack` apply、断线重连在 79.3 秒内升级到正式 `0.4.11`（image ID `sha256:7c2fea3496ac1ec4afa2ae50f1087f469151e46b18a9c202bd7d4e70f16bb86e`）并进入 `succeeded`；标准 `.env + image: ${PANEL_IMAGE}` 自动生成，project 变为 `anxi-panel-anxi-panel-graphical-e2e`，游戏容器 ID与匿名 volume `7dad24607ba6c957236457ec5389d31060dc44a0a92a91e61474097a35193423` 保持，旧 Panel 停止保留。
+- 前两轮隔离环境的非受控转换尝试均收敛为 `failed_rolled_back` 且旧 `0.4.10` 重新 healthy；同一迁移脚本在恢复现场成功，第三个全新 DinD 的完整 Web 请求成功。这两次失败未做受控注入，不能归因或充当目标失败门禁证据。全部三轮任务 container/network/volume、临时 tar/脚本和测试候选镜像都已按精确 owner/name 清理；未使用 prune，未触碰宿主其它 Panel/游戏资源。功能仍未发布、未创建 tag、未更新 latest。
+- 下一正式版本前仍须注入目标 unhealthy/版本不符及 helper 在文件替换、旧容器停止和新容器启动窗口的中断，验证上述回滚/恢复矩阵；随后执行兼容矩阵、Docker updater integration、精确候选镜像与上一正式版/最老受影响版升级等完整发布门禁。当前成功 E2E 不能替代这些尚未完成的正式发布证据。
+- 若本版发布，代码或文档继续变化后须重跑受影响门禁，并按本文件总门禁补齐兼容矩阵、Docker updater integration、精确正式候选 health/version/OCI、上一正式版及受影响最老支持版升级、三仓回拉与 digest 核验。
+
 # v0.4.11 发布门禁：安装排他、终态一致性与首次建档（2026-08-11，已发布）
 
 - 目标正式版本为 `v0.4.11`，上一正式版为 `v0.4.10`。本版发布 `INSTALL-FIRST-RUN-CONSISTENCY-1`、`FE-INSTALL-AUTHORITY-1` 与 `AUTH-CANCEL-RESOURCE-CLEANUP-1`：同一实例安装任务只有一个持久 owner，终态安装不会被迟到状态或旧日志复活，SMAPI 内置支持 Mod 在首次 server entrypoint 之前完成原子物化，二维码认证取消/超时不会遗留 Compose one-off 容器。
@@ -746,7 +780,7 @@ docker compose up -d
 ```yaml
 services:
   anxi-panel:
-    image: crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:latest
+    image: ${PANEL_IMAGE:-crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel:latest}
     container_name: anxi-panel
     restart: unless-stopped
     ports:
@@ -763,6 +797,7 @@ services:
 ```
 
 - 上例中的 `/vol1/1000/docker/anxi-panel/data` 只是示例路径，实际部署时必须替换成 NAS 图形界面显示的宿主机绝对路径，并保持 volume 左右路径和 `PANEL_DATA_DIR` 一致。
+- 只粘贴单个 Compose、没有单独 `.env` 也可以首次启动。包含本修复的 Panel 在后续第一次 Web 一键升级时，会先证明容器/Compose/镜像/数据挂载唯一一致；满足安全边界后自动备份并转换成标准 `.env + ${PANEL_IMAGE}` 部署，再继续升级。用户不需要手工补文件；特殊权限、挂载或身份歧义会在修改前明确拒绝。
 - 上例只在 `anxi-panel` 服务里绑定 `8090`，因为它只是面板容器。`24642/udp`、`27015/udp` 和 `5800/tcp` 由面板后续创建的 JunimoServer 游戏容器绑定，不要写进 `anxi-panel` 的 `ports`，否则面板容器会提前占用游戏端口。
 - NAS 防火墙/路由器端口：面板 `TCP 8090`，游戏 `UDP 24642`，查询 `UDP 27015`，VNC `TCP 5800` 按需；不要开放 `TCP 8080`。
 - 低配 NAS 口径：i3 M380 / 2 核 4 线程 / 6 GB DDR3 / HDD 可跑 1-2 人自用，3-4 人原版或少量 Mod 可尝试，5 人以上或大量 Mod 不建议。

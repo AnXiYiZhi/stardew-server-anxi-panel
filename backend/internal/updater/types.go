@@ -10,6 +10,8 @@ const (
 	CodeDockerSocketMissing    = "docker_socket_missing"
 	CodeComposeLabelsMissing   = "compose_labels_missing"
 	CodeComposeMetadataInvalid = "compose_metadata_invalid"
+	CodeDeploymentEnvInvalid   = "deployment_env_invalid"
+	CodeComposeImageUnmanaged  = "compose_image_unmanaged"
 	CodeDataMountMissing       = "data_mount_missing"
 	CodeImageNotAllowed        = "image_not_allowed"
 	CodeInvalidTargetVersion   = "invalid_target_version"

@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-12：向 DinD 外层容器 `/tmp` 复制脚本只信任 `docker cp` 退出码
+
+- 环境：PowerShell 7、Docker Desktop、任务专属 `docker:29-dind` privileged 外层容器。
+- 错误模式：把任务脚本复制到外层 DinD 的 `/tmp`，只在同一包装命令后续用 `test -f` 才发现目标不存在；`docker cp` 本身退出 0 且无报错。改用相同容器的 `/root/<task>.sh` 后文件可见。
+- 症状 / 退出码：两次 `/tmp` 目标都由后续 `sha256sum`/`test -f` 以文件不存在退出 1，E2E 尚未启动；复制到 `/root` 后立即核对字节数与 SHA-256 一致，脚本正常运行。
+- 根因：把 `docker cp` 成功退出等同于目标在该 DinD 运行视图中可读，并选择了未验证的临时目录；当前镜像只声明 `/var/lib/docker` volume，不能从退出码反推出 `/tmp` 的实际可见性或持久边界。
+- 正确做法：任务脚本复制到已探针可写、可读的 `/root/<unique-name>`；复制后在任何执行前同时核对 `test -f`、字节数和 SHA-256。若目标必须是 `/tmp`，先独立创建哨兵并从同一 `docker exec` 视图验证，不通过就停止。
+- 预防检查：跨宿主/容器复制的退出码只证明 CLI 请求完成；接收侧必须立即做存在性、大小与摘要三项复核，不能等正式命令报缺文件。
+- 适用范围：DinD 预加载脚本/证书/fixture、`docker cp` 和其它跨文件系统复制。
+
 ## 2026-08-12：Pages 就绪前提前 finalize 本地 Browser 会话
 
 - 环境：应用内 Browser，本地 VitePress 与随后 GitHub Pages post-release 验收处于同一代理 turn。
@@ -56,6 +66,7 @@
 
 ## 2026-08-11：仓库文本检索误用了不存在的顶层目录
 
+- 最近复发/补充：2026-08-12 排查 Panel 自动更新时，把未先由 `rg --files` 或 `Test-Path` 确认的 `backend/internal/versioninfo` 与多个有效目录一起传给 `rg`；有效目录先产生大量命中，命令最后仍因不存在路径退出 2。随后又猜测不存在的 `backend/internal/web/setup_handlers.go` 和 `backend/internal/updatecheck/types.go`；实际 updatecheck 类型位于 `service.go`，前一个 updater 文件已输出但组合命令仍失败。后续跨模块检索或读取只使用已经列出的实际路径，候选目录和文件不得混入正式命令参数。
 - 最近复发/补充：同日诊断创建存档失败时，在已确认的 `backend`、`deploy` 之外又把猜测的顶层 `cmd` 和根目录 `docker-compose.yml` 一并传给 `rg`；随后解释 SMAPI 首次落盘时又把不存在的顶层 `config` 混入多根检索。两次都是有效路径已返回命中、但 `rg` 因无效目标退出 2。后续多目标检索必须先以 `rg --files` 得到实际文件集，或只传已经由 `Test-Path` 验证的根目录；不得因前半段有输出而忽略原生命令非零退出码。
 - 环境：Windows PowerShell 7，在当前仓库定位首次安装阶段文案和后端实现。
 - 错误模式：未先读取仓库目录结构，直接把后端源码目录猜成 `internal`，并与多个 `rg` 检索放在同一命令中。
@@ -157,6 +168,7 @@
 
 ## 2026-08-09：发布夹具把多层 Shell、JSON 和文本工具塞进单行命令
 
+- 最近复发/补充：2026-08-12 图形化 Compose DinD 诊断又在未探测 BusyBox `find` 能力时使用 GNU `-printf`，命令退出 1；没有产品写入。改为 BusyBox 已支持的 `find ... -type f -print` 后取得所需文件清单。精简容器的文件枚举默认只用 POSIX/BusyBox 已探测动作，不得因宿主习惯继续猜 GNU 扩展。
 - 最近复发/补充：2026-08-10 `v0.4.10` Web updater 夹具的初版把 Nginx exact location、registry 转发、TLS gateway 与访问日志选项一次性拼出；先后出现 `try_files` 路径导致 403、`access_log flush=1s` 缺少 buffer 令 Nginx 退出、默认绝对重定向丢失宿主映射端口，以及只把 DNS 映射加到 DinD/Panel 单侧导致真实 check/pull 绕过 fixture。正确恢复是每层先独立 `nginx -t`、TLS/SAN/JSON、registry push→删引用→pull 和 Panel/Dockerd 两条 DNS 路径探针，再启动产品事务；同域名 gateway 必须同时服务 dockerd 的 host 映射和 Panel 的 host-gateway/网络入口，反向代理 QA 入口显式 `absolute_redirect off`，不能只凭一次外层 curl 200 放行。
 - 同轮第一次读取正式旧镜像状态时 Docker health 仍为 `starting`，夹具把固定 sleep 当成 readiness；改为有界轮询完整 container inspect 到 `healthy|unhealthy` 后再开始事务。时间敏感门禁必须等待权威状态，而不是根据本机上一次耗时猜固定秒数。
 - 最近复发/补充：2026-08-09 `v0.4.10` 核对真实 auth HTTP 合约时，把 Bash `/dev/tcp` 的 `>&3` 和带 CRLF 的请求直接嵌入 `pwsh -Command`，PowerShell 在容器创建前报重定向语法错误；随后又把创建、轮询、输出和 finally 清理塞进同一个包装命令，第二次无诊断退出 1。确认精确容器名不存在后，改用 `apply_patch` 创建任务专属 LF Bash 探针，并把容器创建、读取、清理拆为独立命令，成功取得无凭据的 HTTP 503 `ready=false` 合约并精确清理脚本/容器。
@@ -224,6 +236,7 @@
 
 ## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
 
+- 最近复发/补充：2026-08-12 图形化 Compose E2E 脚本终验再次直接调用 PATH 中的 `bash -n`，命中同一个 WSL 转发器并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行。随后按本条使用已验证的 `D:\Code\CodeTools\Git\bin\bash.exe -n`，并在独立 `koalaman/shellcheck-alpine:v0.10.0` 容器显式调用 `shellcheck` 后通过。该错误已经进入 `AGENTS.md` 仍复发，后续 Windows Bash 命令模板必须直接从精确 Git Bash 路径开始，不能先试 PATH。
 - 环境：Windows，PowerShell 7，系统同时存在 `C:\Windows\System32\bash.exe` 和独立 Git for Windows。
 - 错误模式：未探测来源就直接调用 `bash -n`，命令命中 WSL 转发器。
 - 症状 / 退出码：`CreateProcessCommon ... execvpe(/bin/bash) failed: No such file or directory`，退出 1；脚本没有执行。
@@ -445,6 +458,8 @@
 - 最近复发/补充：2026-08-11 讨论首次安装、安装状态与新建存档三个缺陷的测试覆盖时，再次把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 的位置参数并得到 `os error 123`；该次只读检索未修改业务文件。后续测试检索必须写成 `rg -g '*_test.go' <pattern> backend/internal/games/stardew_junimo`，提交命令前继续机械检查每个含 `*` 的参数只能作为 `-g` 的值。
 - 最近复发/补充：2026-08-11 因补记候选冒烟错题而需要重建精确镜像时，又把 `Dockerfile*` 与有效目录一起作为 `rg` 的位置参数，已先输出其它命中但最终仍因 `os error 123` 退出 1；没有触发构建或资源写入。后续读取构建参数只使用明确的 `Dockerfile` 路径，确需多个 Dockerfile 时才使用 `rg -g 'Dockerfile*' <pattern> .`。
 - 最近复发/补充：2026-08-12 v0.4.11 最终 SHA 冻结后检查构建参数时，再次把 `Dockerfile*` 与有效目录并列传给 `rg`；命令虽先打印部分有效命中，最终仍以 Windows `os error 123` 失败，构建尚未开始且资源未变化。正式发布命令清单中涉及 Dockerfile 的检索固定为明确根文件 `Dockerfile`；只有确需多文件时才使用 `rg -g 'Dockerfile*' <pattern> .`，不得从 Bash 习惯复制裸通配位置参数。
+- 最近复发/补充：2026-08-12 排查 Panel 自动更新测试覆盖时，把 `backend/internal/updater/*_test.go` 作为位置参数传给 `rg`，在先输出明确文件命中后仍以 `os error 123` 失败；未修改产品文件或运行 Docker。随即改为 `rg -g '*_test.go' <pattern> backend/internal/updater`。Windows 检索命令提交前仍需机械检查：任何包含 `*` 的参数必须是 `-g` 的值。
+- 最近复发/补充：2026-08-12 诊断浏览器扩展重复创建 Mod 安装任务时，把 `backend/internal/web/*_test.go` 和 `backend/internal/games/stardew_junimo/*_test.go` 直接作为 Windows `rg` 位置参数，得到 `os error 123`；该次只读检索没有修改产品或运行状态。随即改为 `rg -g '*_test.go' <pattern> backend/internal/web backend/internal/games/stardew_junimo`。即使只是诊断搜索，提交命令前也必须机械确认所有含 `*` 的参数只出现在 `-g` 后。
 - 适用范围：Windows 上的仓库搜索和发布检查。
 
 ## 2026-08-09：工具工作目录与命令内路径重复
@@ -461,6 +476,7 @@
 
 ## 2026-08-09：按测试文件名猜测 npm script
 
+- 最近复发/补充：2026-08-12 修改 NAS 部署文档后，未先读取 `website/package.json` 就按常见命名执行 `npm run build`，npm 返回 `Missing script`；真实门禁为 `npm run docs:build`。文档站与前端虽都使用 npm，但脚本命名不同，任何 package 的门禁都必须从该目录当前 `package.json.scripts` 读取，不能沿用另一个 package 的习惯命令。
 - 环境：Windows 11、PowerShell 7、frontend npm scripts。
 - 错误命令：`npm run test:junimo-update-status`。
 - 症状：npm 返回 `Missing script`，并提示真实脚本为 `test:junimo-update`；没有测试开始，也没有文件改写。

@@ -1,3 +1,10 @@
+# 2026-08-12 完成：图形化 Compose 一键升级自动标准化（PANEL-UPDATE-GRAPHICAL-COMPOSE-1，未发布）
+
+- [x] Compose 身份反查之后新增持久 `PANEL_IMAGE` 契约探针；缺 `.env`、坏 env 或写死 image 不再被 dry-run 误判为可直接升级。
+- [x] 满足 bind 数据目录、Docker Socket、端口、权限、secret 和挂载保真边界的完整-label NAS 图形化部署返回 `conversionRequired=true`，复用现有独立 helper、部署/数据库备份、旧容器保留、健康/版本/labels 验收与自动回滚，一键流程和前端 API 不变。
+- [x] 自动标准化允许并保留可验证的额外 bind/volume，覆盖图形化部署因镜像声明产生的匿名 `/data` volume；tmpfs、设备、根目标、重复目标、privileged、自定义 user 和身份歧义继续 fail closed。
+- [x] 专项 Go 契约覆盖标准/缺 env/写死 image、安全与不安全转换、service label 漂移、匿名 volume、helper conversion 参数和 `.env` 缺键追加；独立 DinD 已按反馈夹具从 Web 一次完成 `0.4.10 → 0.4.11` 自动标准化，非目标游戏容器 ID/匿名 volume 保持且旧 Panel 停止保留。受控目标失败与中断矩阵仍作为本功能下一正式版本发布硬门禁记录在 `docs/09-image-build.md`。
+
 # 2026-08-11 已发布：v0.4.11 安装、认证清理与首次建档状态一致性（INSTALL-FIRST-RUN-CONSISTENCY-1 / FE-INSTALL-AUTHORITY-1 / AUTH-CANCEL-RESOURCE-CLEANUP-1）
 
 - [x] 同一实例活动 `stardew_install` 具备数据库 partial unique index、原子 job 创建和 409 已有任务 ID 契约；历史任务失去 active owner 后不能覆盖实例阶段。

@@ -1,3 +1,11 @@
+# PANEL-UPDATE-GRAPHICAL-COMPOSE-1 联调契约（2026-08-12，completed，未发布）
+
+- `GET /api/system/update/capability` 与 dry-run/apply 的 JSON shape 不变。完整 Compose labels 的图形化 NAS 部署若缺少可持久化 `.env`，或当前 service 的 `image` 不随 `PANEL_IMAGE` 变化，但容器、项目、服务、镜像、数据挂载及迁移安全边界均可证明，响应现在为 `supported=true`、`code=supported`、`conversionRequired=true`；前端继续显示“将先转换为标准部署”和“转换为标准部署并升级”。
+- dry-run 对 conversion 路径只完成身份、目标版本、可信镜像候选和安全标准化前置检查，不停止或重建容器。apply 仍只接受严格 `{"confirmFullStack":true}`；独立 helper 二次 inspect 后备份 SQLite/Compose/容器环境/旧 digest，生成 `.env + image: ${PANEL_IMAGE}`，切换成功后由新 Panel 继续既有全实例运行栈协调。
+- Compose service label 与实际 resolver 结果不一致、容器无法唯一反查、privileged/自定义 user、缺 Docker Socket/非 bind 数据目录、危险或不可保真的额外挂载等情况不得因为“缺 `.env`”而自动迁移；返回 unsupported 和具体 `deployment_env_invalid|compose_image_unmanaged` 原因。前端不得按错误字符串自行把 unsupported 改成可执行。
+- 标准部署探针使用无网络 runner 和固定不可拉取 image 字符串，仅执行 `docker compose config --images`；不访问 registry、不读取 Docker credentials、不把 `.env` 内容或 `PANEL_SECRET` 写入状态/日志。图形化部署常见的镜像声明匿名 `/data` volume 可作为 external volume 保留，非目标游戏容器和 volume 不参与标准化。
+- 真实联调已用无 `.env`、写死 image、完整 Compose labels、宿主绝对路径 bind 和匿名 `/data` volume 的 `0.4.10` 夹具验证：dry-run 返回 `supported=true + conversionRequired=true`，一次 `confirmFullStack` apply 经断线重连到 `0.4.11/succeeded`，标准 `.env`/Compose 自动落盘，游戏容器 ID 和匿名 volume 保持、旧 Panel 停止保留。前端无需新增分支或临时操作说明。
+
 # INSTALL-FIRST-RUN-CONSISTENCY-1 联调契约（2026-08-11，released in v0.4.11）
 
 ## 重复安装与授权请求

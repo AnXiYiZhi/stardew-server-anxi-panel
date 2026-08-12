@@ -181,6 +181,24 @@ func prepareApplyTest(t *testing.T, scenario *applyScenarioExecutor) (ApplyOptio
 	}, store, envFile, filepath.Join(dataDir, "panel.db")
 }
 
+func TestUpdateEnvImageAppendsMissingPanelImage(t *testing.T) {
+	envFile := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(envFile, []byte("PANEL_SECRET=preserved\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	image := "ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.4.12"
+	if err := updateEnvImage(envFile, image); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(updated) != "PANEL_SECRET=preserved\nPANEL_IMAGE="+image+"\n" {
+		t.Fatalf("unexpected env update: %q", updated)
+	}
+}
+
 func TestApplySuccess(t *testing.T) {
 	executor := &applyScenarioExecutor{}
 	opts, store, envFile, _ := prepareApplyTest(t, executor)

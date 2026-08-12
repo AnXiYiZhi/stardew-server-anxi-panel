@@ -1,3 +1,19 @@
+# PANEL-UPDATE-GRAPHICAL-COMPOSE-1 接手记录（2026-08-12，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `updater.DockerCLI.ResolveComposeDeployment` 在完成容器/Compose/service/image/data mount 反查后，使用隔离 runner 显式 `--env-file <install>/.env` 并把进程级 `PANEL_IMAGE` 设置为固定不可拉取探针；目标 service 的 `config --images` 必须精确跟随探针。缺 `.env`/坏 env 返回 `deployment_env_invalid`，写死或使用其它 image 变量返回 `compose_image_unmanaged`。
+- `DetectCapability` 只对“身份已经唯一解析、仅持久镜像契约不合格”的部署尝试既有安全标准化；service label 不一致、Compose 反查失败仍 fail closed。安全图形化 Compose 返回现有 `conversionRequired=true`，前端已有说明、按钮和确认流程可直接复用；apply spec 会启动 `panel-updater convert`，无需新增 API 或前端状态。
+- `legacyConversionCapability` 取消与脚本能力不一致的“挂载总数必须为 2”限制，改为核心数据/Socket 唯一、额外目标唯一且仅 bind/volume；脚本仍在切换前验证 RW、propagation、name、tmpfs/device/network。这样 NAS 示例中未覆盖镜像声明 `/data` 而产生的匿名 volume 会按 external volume 保留。
+- `updateEnvImage` 对已证明 Compose 消费 `PANEL_IMAGE`、但 `.env` 尚无该键的部署原子追加目标值；已有键仍原位更新。影响文件：`internal/updater/{types,deployment,docker_cli,service,legacy_conversion,apply_helper}.go` 及 `*_test.go`。
+
+## 如何验证、下一步注意事项
+
+- Go 专项覆盖：标准变量契约成功、显式 env 不可用、硬编码 image、完整 labels 的安全自动转换、privileged 拒绝、service label 漂移不转换、匿名 `/data` volume 保留、conversion helper 参数和 env 缺键追加。运行 `go test ./internal/updater -count=1`。
+- Docker Desktop 独立 DinD 已创建完整 Compose labels、写死 image、无 `.env`、宿主绝对路径数据 bind 和额外匿名 `/data` volume 的 `0.4.10` 夹具，并从真实 Web API 完成 check、dry-run、`confirmFullStack` apply、预期断线重连和正式 `0.4.11` 终态恢复。结果为 `succeeded`；生成 `.env + image: ${PANEL_IMAGE}`，新 project=`anxi-panel-anxi-panel-graphical-e2e`，游戏容器 ID 与匿名 volume 精确不变，旧 Panel 停止保留，任务 DinD/container/network/volume/镜像已按唯一 owner 精确清理。
+- 前两轮隔离环境的非受控转换尝试返回 `failed_rolled_back`，旧 `0.4.10` 都自动恢复并重新 healthy；同一迁移脚本在恢复现场成功，精确目标镜像核对 digest 后，第三个全新 DinD 的完整 Web 请求 79.3 秒闭环成功。非受控失败不能归因成产品故障注入证据，但证明这两次没有把原部署留在半切换状态；下一正式版本仍须补受控 unhealthy/版本不符和 helper 中断矩阵。
+- 不要把任意 Compose 解析错误映射为 conversion：只有 resolver 已返回唯一 service 的 `composeUpdateContractError` 可以进入标准化。不要在主 Panel 进程直接编辑宿主 Compose；所有备份、生成、rename、重建和恢复继续由独立 helper 与 `migrate-fnos.sh` 完成。
+
 # INSTALL-FIRST-RUN-CONSISTENCY-1 接手记录（2026-08-11，released in v0.4.11）
 
 ## 改了什么、影响哪些接口/文件

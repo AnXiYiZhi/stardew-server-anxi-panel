@@ -18,6 +18,8 @@ var (
 	composeProjectPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 )
 
+const panelImageContractProbe = "registry.invalid/anxi-panel/panel-image-contract-probe:never"
+
 type MountInfo struct {
 	Type        string `json:"Type"`
 	Source      string `json:"Source"`
@@ -81,13 +83,17 @@ type ApplyHelperSpec struct {
 }
 
 type DockerCLI struct {
-	Path    string
-	Timeout time.Duration
+	Path           string
+	Timeout        time.Duration
+	commandForTest func(context.Context, time.Duration, ...string) ([]byte, error)
 }
 
 func NewDockerCLI() *DockerCLI { return &DockerCLI{Path: "docker", Timeout: 20 * time.Second} }
 
 func (d *DockerCLI) command(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
+	if d.commandForTest != nil {
+		return d.commandForTest(ctx, timeout, args...)
+	}
 	if timeout <= 0 {
 		timeout = d.Timeout
 	}
@@ -163,9 +169,10 @@ func (d *DockerCLI) ResolveComposeDeployment(ctx context.Context, project, compo
 		return "", errors.New("invalid compose identity")
 	}
 	installDir := filepath.Dir(composeFile)
-	runner := []string{"run", "--rm", "--network", "none", "--entrypoint", "docker",
+	runnerBase := []string{"run", "--rm", "--network", "none", "--entrypoint", "docker",
 		"--mount", "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock",
-		"--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,readonly", installDir, installDir), container.Image}
+		"--mount", fmt.Sprintf("type=bind,src=%s,dst=%s,readonly", installDir, installDir)}
+	runner := append(append([]string{}, runnerBase...), container.Image)
 	baseArgs := []string{"compose", "--project-name", project}
 	if envFile := filepath.Join(filepath.Dir(composeFile), ".env"); fileExists(envFile) {
 		baseArgs = append(baseArgs, "--env-file", envFile)
@@ -219,6 +226,21 @@ func (d *DockerCLI) ResolveComposeDeployment(ctx context.Context, project, compo
 	}
 	if matched == "" {
 		return "", errors.New("compose service not found")
+	}
+	probeRunner := append(append([]string{}, runnerBase...), "--env", "PANEL_IMAGE="+panelImageContractProbe, container.Image)
+	probeArgs := []string{"compose", "--project-name", project, "--env-file", filepath.Join(installDir, ".env"), "-f", composeFile, "config", "--images", matched}
+	resolvedProbeImage, probeErr := d.command(ctx, 2*time.Minute, append(probeRunner, probeArgs...)...)
+	if probeErr != nil {
+		return matched, composeUpdateContractError{
+			code:   CodeDeploymentEnvInvalid,
+			reason: "部署目录缺少可读取的 .env，或该文件无法用于 Compose 解析，当前部署不能持久化面板镜像切换",
+		}
+	}
+	if strings.TrimSpace(string(resolvedProbeImage)) != panelImageContractProbe {
+		return matched, composeUpdateContractError{
+			code:   CodeComposeImageUnmanaged,
+			reason: "Compose 中当前 Panel 服务的 image 未由 PANEL_IMAGE 管理，直接升级无法持久化目标镜像",
+		}
 	}
 	return matched, nil
 }

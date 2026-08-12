@@ -66,7 +66,7 @@ func RunLegacyConversion(ctx context.Context, opts LegacyConversionOptions) erro
 		return fail(PhaseFailedRolledBack, CodeDatabaseBackupFailed, "数据库恢复参数不安全", "当前容器未修改")
 	}
 	status.Phase, status.Progress, status.UpdatedAt = PhaseRecreating, 45, now().UTC()
-	status.Logs = append(status.Logs, LogEntry{At: status.UpdatedAt, Level: "info", Message: "独立 helper 正在把飞牛旧容器转换为标准 Compose 部署"})
+	status.Logs = append(status.Logs, LogEntry{At: status.UpdatedAt, Level: "info", Message: "独立 helper 正在把当前容器转换为可持续一键升级的标准 Compose 部署"})
 	if err := store.Write(status); err != nil {
 		return err
 	}

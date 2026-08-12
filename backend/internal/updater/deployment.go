@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 )
@@ -25,6 +26,13 @@ type DetectOptions struct {
 type composeDeploymentResolver interface {
 	ResolveComposeDeployment(context.Context, string, string, ContainerInfo, string, string) (string, error)
 }
+
+type composeUpdateContractError struct {
+	code   string
+	reason string
+}
+
+func (e composeUpdateContractError) Error() string { return e.reason }
 
 func DetectCapability(ctx context.Context, docker DockerRuntime, opts DetectOptions) Capability {
 	if !docker.Available(ctx) {
@@ -98,9 +106,24 @@ func DetectCapability(ctx context.Context, docker DockerRuntime, opts DetectOpti
 		return base
 	}
 	resolvedService, err := resolver.ResolveComposeDeployment(ctx, base.ComposeProject, base.ComposeFile, info, opts.ContainerDataDir, dataMount)
-	if err != nil || service != "" && service != resolvedService {
+	if service != "" && service != resolvedService {
 		base.Code, base.Reason = CodeComposeMetadataInvalid, "容器、Compose 文件、服务、镜像和数据挂载无法全部反向匹配"
 		return base
+	}
+	if err != nil {
+		var contractErr composeUpdateContractError
+		if !errors.As(err, &contractErr) || resolvedService == "" {
+			base.Code, base.Reason = CodeComposeMetadataInvalid, "容器、Compose 文件、服务、镜像和数据挂载无法全部反向匹配"
+			return base
+		}
+		conversion := legacyConversionCapability(base, info, opts.ContainerDataDir, dataMount)
+		if conversion.Supported && conversion.ConversionRequired {
+			conversion.Reason = contractErr.reason + "；已确认当前容器满足安全标准化条件，一键升级将自动备份旧部署并转换为 PANEL_IMAGE 管理的标准 Compose"
+			return conversion
+		}
+		conversion.Code = contractErr.code
+		conversion.Reason = contractErr.reason + "；当前容器未通过安全标准化前置检查，无法自动修改部署"
+		return conversion
 	}
 	base.ComposeService = resolvedService
 	if strings.TrimSpace(base.CurrentImage) == "" {
@@ -124,7 +147,7 @@ func legacyConversionCapability(base Capability, info ContainerInfo, dataDestina
 	}
 	ports := info.PortBindings["8090/tcp"]
 	if data.Type != "bind" || !filepath.IsAbs(dataMount) || filepath.Clean(dataMount) == string(filepath.Separator) ||
-		socket.Type != "bind" || filepath.Clean(socket.Source) != filepath.Clean("/var/run/docker.sock") || len(info.Mounts) != 2 ||
+		socket.Type != "bind" || filepath.Clean(socket.Source) != filepath.Clean("/var/run/docker.sock") || !conversionMountsSafe(info.Mounts, dataDestination) ||
 		info.Privileged || strings.TrimSpace(info.User) != "" || !hasSecret || len(ports) == 0 || strings.TrimSpace(info.Image) == "" {
 		base.Code, base.Reason = CodeComposeMetadataInvalid, "非标准部署未通过安全转换前置检查；容器、端口、权限、环境或挂载存在无法保真的配置"
 		return base
@@ -138,6 +161,24 @@ func legacyConversionCapability(base Capability, info ContainerInfo, dataDestina
 	base.InstallDir, base.ComposeFile = installDir, filepath.Join(installDir, "docker-compose.yml")
 	base.Reason = "检测到可安全转换的飞牛非标准部署；升级时将由独立 helper 生成标准 Compose，并保留旧容器用于自动回滚"
 	return base
+}
+
+func conversionMountsSafe(mounts []MountInfo, dataDestination string) bool {
+	seenDestinations := map[string]bool{}
+	for _, mount := range mounts {
+		destination := filepath.Clean(strings.TrimSpace(mount.Destination))
+		if destination == "." || destination == string(filepath.Separator) || strings.TrimSpace(mount.Source) == "" || seenDestinations[destination] {
+			return false
+		}
+		seenDestinations[destination] = true
+		if destination == filepath.Clean(dataDestination) || destination == filepath.Clean("/var/run/docker.sock") {
+			continue
+		}
+		if mount.Type != "bind" && mount.Type != "volume" {
+			return false
+		}
+	}
+	return true
 }
 
 func legacyComposeProject(containerName string) string {

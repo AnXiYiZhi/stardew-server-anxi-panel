@@ -18,6 +18,7 @@ type fakeRuntime struct {
 	applySpecs          []ApplyHelperSpec
 	digestErr           error
 	applyStartErr       error
+	resolveService      string
 	resolveErr          error
 }
 
@@ -28,7 +29,7 @@ func (f *fakeRuntime) InspectContainer(context.Context, string) (ContainerInfo, 
 }
 func (f *fakeRuntime) ResolveComposeDeployment(_ context.Context, _ string, _ string, info ContainerInfo, _ string, _ string) (string, error) {
 	if f.resolveErr != nil {
-		return "", f.resolveErr
+		return f.resolveService, f.resolveErr
 	}
 	service := strings.TrimSpace(info.Labels[labelService])
 	if service == "" {
@@ -51,6 +52,22 @@ func TestDockerContractNeverConvertsDeclaredComposeWhenReverseCheckFails(t *test
 	capability := DetectCapability(context.Background(), runtime, DetectOptions{ContainerRef: info.ID, ContainerDataDir: "/data"})
 	if capability.Supported || capability.ConversionRequired || capability.Code != CodeComposeMetadataInvalid {
 		t.Fatalf("declared Compose mismatch was incorrectly converted: %+v", capability)
+	}
+}
+
+func TestDockerContractNeverConvertsDeclaredComposeServiceMismatch(t *testing.T) {
+	installDir := t.TempDir()
+	composeFile := filepath.Join(installDir, "docker-compose.yml")
+	dataMount := filepath.Join(installDir, "data")
+	info := safeConversionContainer(composeFile, dataMount)
+	info.Labels[labelService] = "dashboard"
+	runtime := &fakeRuntime{
+		dockerOK: true, composeOK: true, info: info, resolveService: "panel",
+		resolveErr: composeUpdateContractError{code: CodeDeploymentEnvInvalid, reason: "missing deployment env"},
+	}
+	capability := DetectCapability(context.Background(), runtime, DetectOptions{ContainerRef: info.ID, ContainerDataDir: "/data"})
+	if capability.Supported || capability.ConversionRequired || capability.Code != CodeComposeMetadataInvalid {
+		t.Fatalf("declared Compose service mismatch was incorrectly converted: %+v", capability)
 	}
 }
 func (f *fakeRuntime) StartHelper(_ context.Context, spec HelperSpec) error {
@@ -79,6 +96,37 @@ func standardContainer(composeFile, dataMount string) ContainerInfo {
 	}
 }
 
+func safeConversionContainer(composeFile, dataMount string) ContainerInfo {
+	info := standardContainer(composeFile, dataMount)
+	info.Mounts[0].Source = "/var/run/docker.sock"
+	info.Env = []string{"PANEL_SECRET=secret", "PANEL_DATA_DIR=/data"}
+	info.PortBindings = map[string][]struct {
+		HostIP   string `json:"HostIp"`
+		HostPort string `json:"HostPort"`
+	}{"8090/tcp": {{HostIP: "0.0.0.0", HostPort: "8090"}}}
+	return info
+}
+
+func TestConversionMountsSafeAllowsPreservableGraphicalComposeVolume(t *testing.T) {
+	mounts := []MountInfo{
+		{Type: "bind", Source: "/var/run/docker.sock", Destination: "/var/run/docker.sock"},
+		{Type: "bind", Source: "/vol1/1000/docker/anxi-panel/data", Destination: "/vol1/1000/docker/anxi-panel/data"},
+		{Type: "volume", Source: "/var/lib/docker/volumes/anonymous/_data", Destination: "/data"},
+	}
+	if !conversionMountsSafe(mounts, "/vol1/1000/docker/anxi-panel/data") {
+		t.Fatal("preservable graphical Compose mounts were rejected")
+	}
+	for _, unsafe := range [][]MountInfo{
+		append(append([]MountInfo{}, mounts...), MountInfo{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"}),
+		append(append([]MountInfo{}, mounts...), MountInfo{Type: "bind", Source: "/other", Destination: "/data"}),
+		append(append([]MountInfo{}, mounts...), MountInfo{Type: "bind", Source: "/host", Destination: "/"}),
+	} {
+		if conversionMountsSafe(unsafe, "/vol1/1000/docker/anxi-panel/data") {
+			t.Fatalf("unsafe mounts were accepted: %+v", unsafe)
+		}
+	}
+}
+
 func dockerSocketPath() string {
 	if filepath.Separator == '\\' {
 		return `C:\var\run\docker.sock`
@@ -100,6 +148,49 @@ func TestDockerContractDetectsStandardComposeLabels(t *testing.T) {
 	}
 }
 
+func TestDockerContractOffersConversionForResolvedComposeWithoutUpdaterContract(t *testing.T) {
+	installDir := t.TempDir()
+	composeFile := filepath.Join(installDir, "docker-compose.yml")
+	dataMount := filepath.Join(installDir, "data")
+	info := safeConversionContainer(composeFile, dataMount)
+	containerDataDir := "/vol1/1000/docker/anxi-panel/data"
+	info.Mounts[1].Destination = containerDataDir
+	info.Mounts = append(info.Mounts, MountInfo{Type: "volume", Source: "/var/lib/docker/volumes/anonymous/_data", Destination: "/data"})
+	runtime := &fakeRuntime{
+		dockerOK: true, composeOK: true, info: info, resolveService: "panel",
+		resolveErr: composeUpdateContractError{code: CodeDeploymentEnvInvalid, reason: "missing deployment env"},
+	}
+	capability := DetectCapability(context.Background(), runtime, DetectOptions{ContainerRef: info.ID, ContainerDataDir: containerDataDir})
+	if !capability.Supported || !capability.ConversionRequired || capability.Code != CodeSupported {
+		t.Fatalf("resolved graphical Compose was not offered safe conversion: %+v", capability)
+	}
+	if capability.ComposeProject != "anxi-panel-anxi-panel" || capability.ComposeService != "panel" || capability.ComposeFile != composeFile {
+		t.Fatalf("unexpected conversion identity: %+v", capability)
+	}
+	if !strings.Contains(capability.Reason, "missing deployment env") || !strings.Contains(capability.Reason, "安全标准化") {
+		t.Fatalf("conversion reason is not actionable: %+v", capability)
+	}
+}
+
+func TestDockerContractRejectsUnsafeResolvedComposeWithoutUpdaterContract(t *testing.T) {
+	installDir := t.TempDir()
+	composeFile := filepath.Join(installDir, "docker-compose.yml")
+	dataMount := filepath.Join(installDir, "data")
+	info := safeConversionContainer(composeFile, dataMount)
+	info.Privileged = true
+	runtime := &fakeRuntime{
+		dockerOK: true, composeOK: true, info: info, resolveService: "panel",
+		resolveErr: composeUpdateContractError{code: CodeComposeImageUnmanaged, reason: "hard-coded image"},
+	}
+	capability := DetectCapability(context.Background(), runtime, DetectOptions{ContainerRef: info.ID, ContainerDataDir: "/data"})
+	if capability.Supported || capability.ConversionRequired || capability.Code != CodeComposeImageUnmanaged {
+		t.Fatalf("unsafe graphical Compose was accepted: %+v", capability)
+	}
+	if !strings.Contains(capability.Reason, "hard-coded image") || !strings.Contains(capability.Reason, "无法自动修改部署") {
+		t.Fatalf("unsupported reason is not actionable: %+v", capability)
+	}
+}
+
 func TestDockerContractAcceptsNonPanelServiceAfterReverseResolution(t *testing.T) {
 	composeFile := filepath.Join(t.TempDir(), "compose.yml")
 	dataMount := filepath.Join(t.TempDir(), "data")
@@ -114,14 +205,8 @@ func TestDockerContractAcceptsNonPanelServiceAfterReverseResolution(t *testing.T
 
 func TestDockerContractAcceptsSafeFNOSContainerAsConversion(t *testing.T) {
 	dataMount := filepath.Join(t.TempDir(), "panel-data")
-	info := standardContainer(filepath.Join(t.TempDir(), "missing.yml"), dataMount)
+	info := safeConversionContainer(filepath.Join(t.TempDir(), "missing.yml"), dataMount)
 	info.Labels = map[string]string{}
-	info.Mounts[0].Source = "/var/run/docker.sock"
-	info.Env = []string{"PANEL_SECRET=secret", "PANEL_DATA_DIR=/data"}
-	info.PortBindings = map[string][]struct {
-		HostIP   string `json:"HostIp"`
-		HostPort string `json:"HostPort"`
-	}{"8090/tcp": {{HostIP: "0.0.0.0", HostPort: "8090"}}}
 	runtime := &fakeRuntime{dockerOK: true, composeOK: true, info: info}
 	capability := DetectCapability(context.Background(), runtime, DetectOptions{ContainerRef: info.ID, ContainerDataDir: "/data"})
 	if !capability.Supported || !capability.ConversionRequired || capability.ComposeService != "panel" || capability.ComposeProject != "anxi-panel-anxi-panel" {

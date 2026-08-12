@@ -56,6 +56,23 @@ func TestApplyServiceCreatesBackupBeforeStartingHelper(t *testing.T) {
 	}
 }
 
+func TestApplyServiceStartsConversionForResolvedGraphicalCompose(t *testing.T) {
+	database := &fakeDatabaseBackupper{}
+	service, runtime := newApplyServiceTest(t, database)
+	composeFile := runtime.info.Labels[labelConfigFiles]
+	runtime.info = safeConversionContainer(composeFile, service.dataDir)
+	runtime.resolveService = "panel"
+	runtime.resolveErr = composeUpdateContractError{code: CodeComposeImageUnmanaged, reason: "hard-coded image"}
+
+	status, err := service.StartApply(context.Background(), "0.1.14", "v0.1.15")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Phase != PhaseBackingUp || database.calls != 1 || len(runtime.applySpecs) != 1 || !runtime.applySpecs[0].Conversion {
+		t.Fatalf("status=%+v backupCalls=%d helper=%+v", status, database.calls, runtime.applySpecs)
+	}
+}
+
 func TestApplyServiceDatabaseBackupFailurePreventsHelper(t *testing.T) {
 	database := &fakeDatabaseBackupper{err: errors.New("disk full")}
 	service, runtime := newApplyServiceTest(t, database)

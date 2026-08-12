@@ -485,7 +485,12 @@ func updateEnvImage(path, image string) error {
 		}
 	}
 	if !found {
-		return errors.New("PANEL_IMAGE missing")
+		if len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines[len(lines)-1] = "PANEL_IMAGE=" + image
+			lines = append(lines, "")
+		} else {
+			lines = append(lines, "PANEL_IMAGE="+image)
+		}
 	}
 	return writeFileAtomic(path, []byte(strings.Join(lines, "\n")), 0o600)
 }

@@ -1,3 +1,11 @@
+# PANEL-UPDATE-GRAPHICAL-COMPOSE-1：图形化 Compose 一键升级自动标准化（2026-08-12，completed，未发布）
+
+- Panel 自更新的部署反查新增持久镜像契约探针：在隔离、无网络 helper 中显式加载部署目录 `.env`，临时注入不会被拉取的 `PANEL_IMAGE` 探针值，并要求 `docker compose config --images <service>` 精确解析到该值。探针只在容器 ID、Compose project/service、当前镜像和数据挂载已经全部反查一致后执行，不把 Compose label 漂移或服务歧义降级为自动迁移。
+- 完整 Compose labels 但缺少可用 `.env`，或服务 `image` 写死、没有由 `PANEL_IMAGE` 管理时，不再错误返回“可直接升级”后于 helper 备份阶段报 `deployment_backup_failed`。满足既有安全边界的 NAS 图形化部署会返回 `conversionRequired=true`，管理员仍只需执行同一个环境检查和一键升级；独立 helper 备份数据库、原 Compose、容器环境/inspect 和旧镜像 digest，生成标准 `.env + image: ${PANEL_IMAGE}` 后切换，目标健康/版本/Compose labels 任一失败都恢复旧容器和原部署文件。
+- Go 前置检查继续要求 bind 数据目录、Docker Socket、8090 映射、非 privileged、默认 user、非空 `PANEL_SECRET` 和可信当前镜像。额外挂载不再被错误限制为总数恰好两个；只允许类型为 bind/volume、目标唯一且非根目录的可保真候选，迁移脚本在切换前仍用完整 inspect 二次校验读写属性、propagation、volume name、设备、tmpfs 和网络。图形化部署因镜像 `VOLUME /data` 产生的额外匿名 `/data` volume 因此可以被保留，而不是阻断标准化。
+- 已经存在 `.env` 且 Compose 使用 `${PANEL_IMAGE:-...}`、但文件尚无 `PANEL_IMAGE=` 时，apply 会在备份后原子追加目标值，避免可验证的变量契约仍因缺键失败。新增稳定错误码 `deployment_env_invalid`、`compose_image_unmanaged` 只用于无法安全标准化时的明确拒绝；API shape、管理员权限和 `confirmFullStack=true` 不变。
+- 主要影响 `internal/updater/{deployment,docker_cli,service,legacy_conversion,apply_helper,types}.go` 及契约测试。专项测试覆盖标准变量部署、缺 `.env`、写死 image、安全/不安全转换、Compose service label 漂移、额外匿名 volume、apply helper conversion 参数和缺键追加。Docker Desktop 独立 DinD 已按反馈原样完成真实 Web `0.4.10 → 0.4.11`：无 `.env`、写死 image、完整 labels 和额外匿名 `/data` volume 均被自动标准化，游戏容器 ID、匿名 volume、数据库和管理员会话保持，旧 Panel 停止保留；下一正式版本仍须按 `docs/09-image-build.md` 补齐受控目标失败、中断恢复和完整发布门禁。
+
 # INSTALL-FIRST-RUN-CONSISTENCY-1：安装排他与首次建档 SMAPI 物化（2026-08-11，released in v0.4.11）
 
 - `jobs.Spec.Exclusive` 与 `Store.CreateExclusiveJob` 为同一 `type + target` 提供原子创建语义；迁移 `012_exclusive_stardew_install_jobs.sql` 先把历史重复活动安装任务中较旧者标记失败，再创建仅覆盖 `stardew_install + queued/running` 的 partial unique index。重复安装或 Steam 授权请求返回 `409 install_in_progress`，`error.details.jobId` 指向已有任务，调用方应继续观察它而不是创建第二个 runner。
