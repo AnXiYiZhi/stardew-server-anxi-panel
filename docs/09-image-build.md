@@ -885,7 +885,7 @@ TCP 8080
 - 使用宿主机目录 `~/.anxi-panel/data` 持久化面板数据，并把容器内 `PANEL_DATA_DIR` 设置为同一个绝对路径，确保面板容器通过宿主机 Docker socket 编排游戏容器时，bind mount 路径在宿主机和面板容器中一致。
 - 挂载 `/var/run/docker.sock`，让面板继续按现有设计控制 JunimoServer 容器。
 - NAS 或特殊 Linux 环境中，如果 `$HOME` 不存在或不可写，默认安装目录会回退到当前可写目录下的 `.anxi-panel`，避免飞牛等系统中 `/home/<user>` 不存在时 `mkdir` 失败。用户也可以显式设置 `INSTALL_DIR=/vol1/1000/docker/.anxi-panel` 指定安装目录。
-- 菜单 `[9] 设置虚拟内存` 会优先通过 `/proc/swaps` 判断 `/swapfile` 是否已启用，并兼容 `swapon` / `mkswap` 位于 `/sbin` 或 `/usr/sbin` 的 NAS 环境；如已有 `/swapfile` 但未启用，会先尝试移除后重建，避免直接覆盖导致 `Text file busy`。
+- 菜单 `[9] 设置虚拟内存` 会优先通过 `/proc/swaps` 判断 `/swapfile` 是否已启用，并兼容 `swapon` / `mkswap` 位于 `/sbin` 或 `/usr/sbin` 的 NAS 环境；如已有 `/swapfile` 但未启用，会先尝试移除后重建，避免直接覆盖导致 `Text file busy`。无论是复用已启用的 `/swapfile` 还是新建 swap，脚本都会立即把宿主 `vm.swappiness` 设为 `60` 并持久化；优先写 `/etc/sysctl.d/99-zz-stardew-anxi-panel-swappiness.conf`，同时规范化 `/etc/sysctl.conf` 中已有的冲突值，无 `sysctl.d` 时直接安全更新 `/etc/sysctl.conf`。运行值或持久化校验失败时命令明确失败，不把“swap 已启用”误报成完整成功。
 
 用户首次启动：
 

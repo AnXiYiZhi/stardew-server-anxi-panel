@@ -311,6 +311,7 @@ install_docker() {
       fi
     fi
     if [[ -z "$codename" ]]; then
+      # shellcheck disable=SC1091 # fixed system path on apt-based Linux hosts
       codename="$(. /etc/os-release && printf "%s" "${UBUNTU_CODENAME:-}")"
     fi
     if [[ -z "$codename" ]]; then
@@ -816,8 +817,107 @@ update_script() {
   exit 1
 }
 
+replace_root_file_from_local() {
+  local source="$1"
+  local destination="$2"
+  local mode="$3"
+  local staged="${destination}.anxi-panel.$$"
+
+  if ! run_as_root mkdir -p "$(dirname "$destination")"; then
+    return 1
+  fi
+  if run_as_root test -e "$staged"; then
+    red "检测到未清理的临时配置文件：$staged"
+    return 1
+  fi
+  if ! run_as_root tee "$staged" <"$source" >/dev/null || \
+    ! run_as_root chmod "$mode" "$staged" || \
+    ! run_as_root mv -f "$staged" "$destination"; then
+    run_as_root rm -f "$staged" || true
+    return 1
+  fi
+}
+
+write_swappiness_sysctl_conf() {
+  local path="$1"
+  local target="$2"
+  local tmp
+
+  tmp="$(mktemp)"
+  if run_as_root test -f "$path"; then
+    if ! run_as_root awk \
+      '!/^[[:space:]]*vm[.]swappiness[[:space:]]*=/' \
+      "$path" >"$tmp"; then
+      rm -f "$tmp"
+      red "无法读取现有 sysctl 配置：$path"
+      return 1
+    fi
+  fi
+  printf "%s\n" "vm.swappiness = ${target}" >>"$tmp"
+  if ! replace_root_file_from_local "$tmp" "$path" 0644; then
+    rm -f "$tmp"
+    red "无法写入 swappiness 持久化配置：$path"
+    return 1
+  fi
+  rm -f "$tmp"
+}
+
+configure_swappiness() {
+  local target="60"
+  local proc_path="${1:-/proc/sys/vm/swappiness}"
+  local sysctl_conf="${2:-/etc/sysctl.conf}"
+  local sysctl_dropin_dir="${3:-/etc/sysctl.d}"
+  local persist_path tmp
+
+  if ! run_as_root test -e "$proc_path"; then
+    red "当前系统不提供 vm.swappiness，无法完成虚拟内存调优。"
+    return 1
+  fi
+  if ! printf "%s\n" "$target" | run_as_root tee "$proc_path" >/dev/null; then
+    red "无法把 vm.swappiness 设置为 ${target}。"
+    return 1
+  fi
+  if [[ "$(run_as_root cat "$proc_path")" != "$target" ]]; then
+    red "vm.swappiness 运行值校验失败。"
+    return 1
+  fi
+
+  if run_as_root test -d "$sysctl_dropin_dir"; then
+    persist_path="$sysctl_dropin_dir/99-zz-stardew-anxi-panel-swappiness.conf"
+    tmp="$(mktemp)"
+    printf "%s\n%s\n" \
+      "# Managed by Stardew Server Anxi Panel run.sh" \
+      "vm.swappiness = ${target}" >"$tmp"
+    if ! replace_root_file_from_local "$tmp" "$persist_path" 0644; then
+      rm -f "$tmp"
+      red "无法写入 swappiness 持久化配置：$persist_path"
+      return 1
+    fi
+    rm -f "$tmp"
+    if run_as_root test -f "$sysctl_conf" && run_as_root grep -qE \
+      '^[[:space:]]*vm[.]swappiness[[:space:]]*=' "$sysctl_conf"; then
+      write_swappiness_sysctl_conf "$sysctl_conf" "$target"
+    fi
+  else
+    persist_path="$sysctl_conf"
+    write_swappiness_sysctl_conf "$persist_path" "$target"
+  fi
+
+  if ! run_as_root grep -qE \
+    '^[[:space:]]*vm[.]swappiness[[:space:]]*=[[:space:]]*60[[:space:]]*$' \
+    "$persist_path"; then
+    red "swappiness 持久化配置校验失败：$persist_path"
+    return 1
+  fi
+  green "vm.swappiness 已设置为 60，并持久化到：$persist_path"
+}
+
 setup_swap() {
   local size_gb="${1:-}"
+  local proc_swaps_path="${2:-/proc/swaps}"
+  local swappiness_proc_path="${3:-/proc/sys/vm/swappiness}"
+  local sysctl_conf_path="${4:-/etc/sysctl.conf}"
+  local sysctl_dropin_dir="${5:-/etc/sysctl.d}"
   if [[ -z "$size_gb" && -t 0 ]]; then
     read -r -p "请输入虚拟内存大小 GB [默认 2]: " size_gb
   fi
@@ -827,6 +927,13 @@ setup_swap() {
     exit 1
   fi
 
+  if [[ -r "$proc_swaps_path" ]] && grep -qE '^/swapfile[[:space:]]' "$proc_swaps_path"; then
+    green "虚拟内存已启用："
+    cat "$proc_swaps_path"
+    configure_swappiness "$swappiness_proc_path" "$sysctl_conf_path" "$sysctl_dropin_dir"
+    return
+  fi
+
   local swapon_cmd mkswap_cmd
   swapon_cmd="$(find_command swapon /sbin/swapon /usr/sbin/swapon || true)"
   mkswap_cmd="$(find_command mkswap /sbin/mkswap /usr/sbin/mkswap || true)"
@@ -834,12 +941,6 @@ setup_swap() {
     red "当前系统缺少 swapon/mkswap，无法通过脚本设置虚拟内存。"
     yellow "飞牛 NAS 可在系统设置里检查是否支持 swap，或手动安装 util-linux 后重试。"
     exit 1
-  fi
-
-  if [[ -r /proc/swaps ]] && grep -qE '^/swapfile[[:space:]]' /proc/swaps; then
-    green "虚拟内存已启用："
-    cat /proc/swaps
-    return
   fi
 
   if [[ -e /swapfile ]]; then
@@ -865,9 +966,10 @@ setup_swap() {
   if ! grep -q '^/swapfile ' /etc/fstab; then
     printf "/swapfile none swap sw 0 0\n" | run_as_root tee -a /etc/fstab >/dev/null
   fi
+  configure_swappiness "$swappiness_proc_path" "$sysctl_conf_path" "$sysctl_dropin_dir"
   green "虚拟内存已启用。"
-  if [[ -r /proc/swaps ]]; then
-    cat /proc/swaps
+  if [[ -r "$proc_swaps_path" ]]; then
+    cat "$proc_swaps_path"
   else
     "$swapon_cmd" --show || true
   fi

@@ -2,6 +2,66 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-13：用工作区 Python 解析 YAML 前未探测 PyYAML
+
+- 环境：Windows PowerShell 7、工作区 bundled Python 3.12，验证 `.github/workflows/release.yml` 的小范围命令清单修改。
+- 错误模式：确认 Python 解释器可用后，直接假设环境已安装 `yaml` 模块并执行 `import yaml`。
+- 症状 / 退出码：解释器以 `ModuleNotFoundError: No module named 'yaml'` 退出 1；workflow、依赖和工作区均未被该只读命令修改。
+- 根因：把“有工作区 Python”误当成“包含任意第三方解析库”，没有先做模块能力探针，也没有评估本次仅修改 YAML block scalar、可由精确差异和现有 CI 结构复核。
+- 正确做法：需要特定第三方模块时先用只读 import 探针，缺失后使用仓库已声明的解析器/actionlint 或隔离工具；不得为一次小型验证直接污染工作区依赖。本次改用精确 workflow diff、Bash/ShellCheck 门禁和现有缩进契约复核，不伪称已用 PyYAML 解析。
+- 预防检查：运行 Python 验证器前同时确认解释器和所需模块；工具缺失应降级到已验证的现有门禁，不能把依赖缺失误判为产品或 YAML 失败。
+- 适用范围：YAML/TOML/XML 等依赖第三方 Python 包的本地验证。
+
+## 2026-08-13：生产容器诊断输出完整 `docker inspect`，暴露环境变量凭据
+
+- 环境：生产 Ubuntu 22.04，经 Posh-SSH 诊断 Steam 认证辅助容器的健康检查失败。
+- 错误模式：为查看 health、restart count 和网络信息，直接输出完整 `docker inspect stardew-steam-auth-1`；结果同时包含 `Config.Env` 中的账号凭据。
+- 症状 / 退出码：命令成功且只读，但敏感值进入本次工具输出；没有写入工作区、远端日志或 Git，最终交付不得复述该值。
+- 根因：只考虑了 Go template 的多层引号风险，没有在生产诊断前按最小披露原则列出允许字段；容器 inspect JSON 天然可能携带密码、token 和 API key。
+- 正确做法：远端先用任务专属 Python/`jq` 从 inspect JSON 投影严格白名单字段，例如 State、Health、RestartCount、Image、NetworkSettings.Ports；任何时候都不输出 `Config.Env`、Mount secret 内容或 labels 中的私有参数。
+- 预防检查：对生产容器执行 inspect 前先明确所需字段并检查投影代码不存在 `Env`；需要环境变量名时也只输出脱敏后的键名，不输出值。
+- 适用范围：生产 Docker/Compose、Kubernetes workload 描述、systemd environment 和所有可能内嵌凭据的运行时元数据。
+
+## 2026-08-13：持久化 sysctl 验收把等号空格格式写死
+
+- 环境：生产 Ubuntu 22.04，经 Posh-SSH 对已设置的 `vm.swappiness=60` 做只读终态检查。
+- 错误模式：使用 `grep -F "vm.swappiness=60" /etc/sysctl.conf`，但实际合法配置是 `vm.swappiness = 60`。
+- 症状 / 退出码：此前存档、Panel、swap 大小与运行值检查全部通过，包装器在该 grep 处退出 1，导致后续 UDP 监听探针没有执行；配置本身未改变。
+- 根因：把 sysctl 配置的文本排版当成语义契约，没有允许键、等号和值之间的合法空白。
+- 正确做法：持久化文件使用锚定键名并允许空白的匹配，运行态独立用 `sysctl -n vm.swappiness` 断言整数值；关键探针拆开检查，避免一个格式误判跳过后续验证。
+- 预防检查：配置文件验收优先使用对应解析器或语义命令；必须文本匹配时覆盖合法空白、注释与重复键，并核对最终生效值。
+- 适用范围：sysctl、fstab、ini、Compose env 与其它允许等价排版的配置文件。
+
+## 2026-08-13：把新档首次 XML 落盘误当成角色定制的终态
+
+- 环境：生产 Ubuntu 22.04、JunimoServer preview.125、Control 0.3.0，对无人使用的春 1 日新档做一次性运维修复。
+- 错误模式：修正了重复 `/newgame` 风险后，脚本只允许启动流程自动建档，但一看到主 XML 可解析且角色仍为默认 `Server` 就立刻判失败并回滚。
+- 症状 / 退出码：自动流程只生成一个新存档，loader 已指向它；脚本在 Control 同秒刚写出 `save-loaded` 时退出 1，并按设计恢复原可运行存档。失败尝试与原档均完整备份，无玩家进度丢失、无重复建档命令。
+- 根因：Stardew 首次创建会先把默认角色写入 XML，Control 的 `ApplyPanelCharacterCustomization` 在 `SaveLoaded` 事件中才把角色名、喜爱物等改到运行内存；这次内存定制尚未来得及通过下一次 `GameLoop.Saved` 持久化，脚本便把中间态当成最终不一致。
+- 正确做法：先等待 Control 对同一 transaction/save 报 `save-loaded`，再由 `players.json` 验证内存主机已经是期望角色；随后预留唯一 command ID、只提交一次 `save-now`，等待同 ID 的 `succeeded`/`GameLoop.Saved` 回执，最后重新解析主 XML 与 SaveGameInfo 验证磁盘身份和哈希变化。
+- 预防检查：首次建档验收必须区分“初始 XML 可读”“Control 内存定制完成”“定制后保存得到 durable result”三个阶段；在 durable save 前不得依据默认角色 XML 提前失败或停止容器。
+- 适用范围：Panel 新建存档、角色定制、首次启动自动建档与任何在 `SaveLoaded` 后修改世界再落盘的流程。
+
+## 2026-08-13：运维建档脚本只以完整 XML 判断启动期建档，错过 gameloader 先行更新
+
+- 环境：生产 Ubuntu 22.04、JunimoServer preview.125、Panel 0.4.11，对无有效存档实例做一次性无重装恢复。
+- 错误模式：脚本在 Junimo API 就绪时只检查是否已有“主 XML + SaveGameInfo”完整目录；启动期自动建档已先把 gameloader 改为新 ID，但目录/XML 尚未出现，脚本仍按 write-ahead 标记调用了一次 `/newgame`。
+- 症状 / 退出码：日志先出现 `Save set to load: ...748...`，同秒单次 POST 又生成并完整保存 `...832...`；最终只有 `...832...` 一个目录，主 XML 约 3 MiB、SaveGameInfo 非空、Control `save-loaded` 与 gameloader 都精确指向它，未遗留 `...748...` 目录，也没有重复 POST 或数据删除。
+- 根因：把“尚无完整有效存档”误当成“启动流程尚未开始建档”，没有把 gameloader 从空值变为新 ID 视为不可逆进度，也没有在 API 刚就绪后留出目录落盘观察窗口。
+- 正确做法：建档前同时快照目录集合与 gameloader；只要出现新目录、gameloader 指向新的非空 ID、Control 状态进入建档阶段三者任一项，就跳过 POST 并只观察结果。即使三者都未出现，API 就绪后仍先等待有界稳定窗口，再写 command-called intent 并最多调用一次。
+- 预防检查：任何 `/newgame` 运维或测试夹具必须记录启动前 loader/目录集合，并覆盖“loader 先更新、目录后出现”的竞态；终态同时断言唯一有效目录、无额外临时目录、loader/Control/API 三方一致。
+- 适用范围：Junimo 新建存档、首次启动自动建档、崩溃恢复和手工运维修复。
+
+## 2026-08-13：把不兼容的 `swapon --show` 选项组合放进多探针 SSH 命令
+
+- 环境：PowerShell 7、Posh-SSH 3.2.7、Ubuntu 22.04 / util-linux，对生产主机做只读 swap 审计。
+- 错误模式：使用 `swapon --show --bytes --output=NAME,TYPE,SIZE,USED,PRIO`，当前版本把该组合解析为互斥的 output-all/output 参数并报错；同一远端命令后续探针仍成功，外层没有保留该子命令的非零状态。
+- 症状 / 退出码：输出 `swapon: option '--output-all' doesn't allow an argument`，没有更改 swap、fstab、容器或存档；`free`、systemd swap unit 和 fstab 仍确认现有 `/swapfile` 已启用。
+- 根因：未先用 `swapon --help` 探测目标版本支持的参数组合，又把可能失败的原生命令与其它成功探针放在同一 SSH shell 中，导致最终退出码被掩盖。
+- 正确做法：分别执行无参数 `swapon --show`、`stat /swapfile`、`free -b` 与 `systemctl status swapfile.swap`；需要机器可读字段时先读取 `swapon --help`，再使用该版本明确支持的单一输出形式。每条关键探针独立检查退出码。
+- 预防检查：生产配置变更前的能力探针必须单独运行；不得把未验证的组合选项混入长命令后只看整体成功。
+- 适用范围：Linux swap 审计、util-linux 版本差异和所有经 SSH 执行的多探针诊断。
+
 ## 2026-08-12：向 DinD 外层容器 `/tmp` 复制脚本只信任 `docker cp` 退出码
 
 - 环境：PowerShell 7、Docker Desktop、任务专属 `docker:29-dind` privileged 外层容器。
@@ -68,6 +128,10 @@
 
 - 最近复发/补充：2026-08-12 排查 Panel 自动更新时，把未先由 `rg --files` 或 `Test-Path` 确认的 `backend/internal/versioninfo` 与多个有效目录一起传给 `rg`；有效目录先产生大量命中，命令最后仍因不存在路径退出 2。随后又猜测不存在的 `backend/internal/web/setup_handlers.go` 和 `backend/internal/updatecheck/types.go`；实际 updatecheck 类型位于 `service.go`，前一个 updater 文件已输出但组合命令仍失败。后续跨模块检索或读取只使用已经列出的实际路径，候选目录和文件不得混入正式命令参数。
 - 最近复发/补充：同日诊断创建存档失败时，在已确认的 `backend`、`deploy` 之外又把猜测的顶层 `cmd` 和根目录 `docker-compose.yml` 一并传给 `rg`；随后解释 SMAPI 首次落盘时又把不存在的顶层 `config` 混入多根检索。两次都是有效路径已返回命中、但 `rg` 因无效目标退出 2。后续多目标检索必须先以 `rg --files` 得到实际文件集，或只传已经由 `Test-Path` 验证的根目录；不得因前半段有输出而忽略原生命令非零退出码。
+- 最近复发/补充：2026-08-13 读取任务数据库迁移 schema 时，把首个迁移文件猜成不存在的 `backend/migrations/001_initial.sql`，同一命令后续检索仍有输出并掩盖了 `Get-Content` 的非终止错误；远端和产品文件均未改变。随即先用 `rg --files backend/migrations` 确认真实文件为 `001_foundation.sql`。后续批量读取文件前必须使用已列出的精确路径，并让每个读取错误终止包装命令，不能由后续成功命令掩盖。
+- 最近复发/补充：同日比对线上 Control 版本时，又把未确认存在的 `backend/embedded` 与有效的 `backend/internal`、`deploy` 并列传给 `rg`，有效目录已显示要求 `control-0.3.0`，命令仍因无效路径退出；没有远端或产品状态变化。规则已连续复发：任何多根检索都先从 `rg --files` 取得实际文件集，只把已验证目录传给正式查询，不能附带基于常见布局猜测的候选目录。
+- 最近复发/补充：紧接着读取已确认的 `runtime_stack_manifest.json` 后，又猜测 Control 内嵌制品位于不存在的 `config/embedded/control`，导致后续 `Get-FileHash` 和 `Get-Content` 非终止报错；精确要求已由清单成功读取，远端未改变。该规则已在 `AGENTS.md` 固化但同轮再次违反；本轮后续不再推导任何源码路径，只使用 `rg --files` 返回值或已经成功读取的清单字段，包装器内文件读取统一加 `-ErrorAction Stop`。
+- 最近复发/补充：同日修复 `run.sh` 的 swappiness 时，又把未确认存在的 `docs-site` 与有效的 `README.md`、`docs`、`deploy` 一并交给 `rg`；有效路径已输出大量命中，但命令最终因 `docs-site` 不存在退出 2，没有产生文件或远端状态变更。随后只对已确认路径分别检索。该规则已多次复发，后续任何多根 `rg` 调用前必须先用 `rg --files` 或 `Test-Path` 生成实际目标集合，不再手写候选目录。
 - 环境：Windows PowerShell 7，在当前仓库定位首次安装阶段文案和后端实现。
 - 错误模式：未先读取仓库目录结构，直接把后端源码目录猜成 `internal`，并与多个 `rg` 检索放在同一命令中。
 - 症状 / 退出码：前一个前端检索已命中，随后 `rg` 报 `internal: 系统找不到指定的文件`，包装命令退出 1；没有文件或远端状态变更。
@@ -237,6 +301,7 @@
 ## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
 
 - 最近复发/补充：2026-08-12 图形化 Compose E2E 脚本终验再次直接调用 PATH 中的 `bash -n`，命中同一个 WSL 转发器并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行。随后按本条使用已验证的 `D:\Code\CodeTools\Git\bin\bash.exe -n`，并在独立 `koalaman/shellcheck-alpine:v0.10.0` 容器显式调用 `shellcheck` 后通过。该错误已经进入 `AGENTS.md` 仍复发，后续 Windows Bash 命令模板必须直接从精确 Git Bash 路径开始，不能先试 PATH。
+- 最近复发/补充：2026-08-13 为生产 swap 扩容脚本做本地语法检查时，虽然先调用了 `Get-Command bash`，却没有验证其来源和 `--version` 就执行，仍命中 WSL 转发器并以同一 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，生产主机未变化。后续直接验证并使用已记录的精确 Git Bash 路径，禁止把“命令存在”当成“解释器可用”。
 - 环境：Windows，PowerShell 7，系统同时存在 `C:\Windows\System32\bash.exe` 和独立 Git for Windows。
 - 错误模式：未探测来源就直接调用 `bash -n`，命令命中 WSL 转发器。
 - 症状 / 退出码：`CreateProcessCommon ... execvpe(/bin/bash) failed: No such file or directory`，退出 1；脚本没有执行。
@@ -395,6 +460,7 @@
 - 最近复发：2026-08-01；`v0.4.7` 发布工具链探针用未静默分支的 `Get-Command python` 结束了整批命令，阻止后续 GitHub CLI 探针。确认宿主解释器不可用后，改为加载工作区依赖并使用返回的精确 Python 3.12.13 路径；可选命令探针必须用 `-ErrorAction SilentlyContinue` 并显式分支，不能让缺失项中断其它独立检查。同轮子审计因 workspace dependency loader 暂无流式输出而提前终止；主流程直接调用并等待权威返回后成功取得解释器，不能把“暂时无增量输出”当成 loader 失败。
 - 最近复发/补充：2026-08-09 发布兼容矩阵仍先把 `Get-Command python` 返回的 Windows Store alias 当真实解释器，版本探针以 `9009` 退出；诊断时又未先验证便调用不存在的 `py -3`。同日 `v0.4.10` 门禁再次把 `Get-Command python` 与版本探针拼在一条命令中，Store alias 令命令在实际矩阵前退出；确认 `py` 也不存在后停止重试，并通过 workspace dependency loader 取得精确 Python。Windows 发布门禁开始前必须先加载工作区依赖，不能因为 `Get-Command` 返回 Application 就认为解释器可运行。
 - 最近复发/补充：2026-08-06 为隔离 SQLite fixture 查询解释器时，明知同一错题仍先运行无可靠输出的 `python --version`，随后又猜测 `py -3` 可用而得到 command not found。正确入口仍是先调用 workspace dependency loader，再使用返回的精确 Python 路径；本轮没有继续尝试 Store alias。
+- 最近复发/补充：2026-08-13 为生产存档恢复运维脚本做本地 `py_compile` 时，再次把 `Get-Command python` 返回值当作可执行解释器；版本探针无有效输出并退出，脚本没有执行或发送，生产主机只保留此前已成功验证的 swap 变更。后续立即使用 workspace dependency loader 返回的精确 Python 路径，不重试 Store alias，也不猜测 `py` launcher。
 - 环境：Windows，`python` 指向不可用的 Store alias。
 - 错误模式：直接运行 `python ...; Write-Output ...`，未在 Python 后立即检查 `$LASTEXITCODE`。
 - 症状：Python 返回 `9009`；因为最后的 PowerShell 输出成功，整段命令表面 exit 0。
@@ -460,6 +526,7 @@
 - 最近复发/补充：2026-08-12 v0.4.11 最终 SHA 冻结后检查构建参数时，再次把 `Dockerfile*` 与有效目录并列传给 `rg`；命令虽先打印部分有效命中，最终仍以 Windows `os error 123` 失败，构建尚未开始且资源未变化。正式发布命令清单中涉及 Dockerfile 的检索固定为明确根文件 `Dockerfile`；只有确需多文件时才使用 `rg -g 'Dockerfile*' <pattern> .`，不得从 Bash 习惯复制裸通配位置参数。
 - 最近复发/补充：2026-08-12 排查 Panel 自动更新测试覆盖时，把 `backend/internal/updater/*_test.go` 作为位置参数传给 `rg`，在先输出明确文件命中后仍以 `os error 123` 失败；未修改产品文件或运行 Docker。随即改为 `rg -g '*_test.go' <pattern> backend/internal/updater`。Windows 检索命令提交前仍需机械检查：任何包含 `*` 的参数必须是 `-g` 的值。
 - 最近复发/补充：2026-08-12 诊断浏览器扩展重复创建 Mod 安装任务时，把 `backend/internal/web/*_test.go` 和 `backend/internal/games/stardew_junimo/*_test.go` 直接作为 Windows `rg` 位置参数，得到 `os error 123`；该次只读检索没有修改产品或运行状态。随即改为 `rg -g '*_test.go' <pattern> backend/internal/web backend/internal/games/stardew_junimo`。即使只是诊断搜索，提交命令前也必须机械确认所有含 `*` 的参数只出现在 `-g` 后。
+- 最近复发/补充：2026-08-13 SSH 诊断前检索部署文档时，又把 `README*` 作为 Windows `rg` 的位置参数，与有效目录并列后得到 `os error 123`；命令已返回其它文档命中，但整体检索不算成功，且没有修改远端状态。后续 README 检索固定使用明确文件名，或先以 `rg --files -g 'README*'` 取得文件集，不再把裸通配符传给位置参数。
 - 适用范围：Windows 上的仓库搜索和发布检查。
 
 ## 2026-08-09：工具工作目录与命令内路径重复

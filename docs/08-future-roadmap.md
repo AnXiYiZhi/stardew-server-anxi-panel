@@ -1776,3 +1776,10 @@ Multi Game Mode later
 - [x] 前端认证阶段显示“正在尝试 Steam 连接”、累计等待、自动重试和“不是卡死”。
 - [x] 探针校验 HTTP status，current `accounts` 必须是数组；只对白名单 HTTP 503 + legacy `ready=false` 离线合约放行，500、503 current/畸形 schema 和真实 Docker 404 均 fail closed。动态计时从读屏 live region 隔离，避免轮询重复播报。
 - [x] 后端全量 test/vet/build、前端全部 12 个状态脚本与 production build、Docker Desktop unhealthy/offline 实机、正式 Web 升级/回滚，以及升级后 769×240/280×653 Browser QA 已通过；tag、Release workflow、三仓回拉与隔离冒烟均已完成。
+
+# RUN-SH-SWAPPINESS-1（2026-08-13，completed / not released）
+
+- [x] 确认 `deploy/run.sh swap` 过去只创建并启用 `/swapfile`，没有设置 `vm.swappiness`；已有 `/swapfile` 时的提前返回也不会补齐调优，因此低内存主机即使有 swap 仍可能长期保持 `swappiness=0`。
+- [x] 新旧两条路径现在都立即设置并验证 `vm.swappiness=60`，通过 `sysctl.d` 管理文件持久化，并规范化 `/etc/sysctl.conf` 中已有冲突值；缺少 `sysctl.d` 的系统安全回退到 `/etc/sysctl.conf`。
+- [x] 新增 `scripts/tests/test_run_sh_swap.sh`，覆盖运行态写入、drop-in、既有冲突值、无 `sysctl.d` 回退、幂等重跑、已启用 swap 的补修和缺少内核参数时安全失败；Git Bash、Linux `bash:5.2`、`bash -n` 与 ShellCheck 0.10.0 通过。
+- [x] Release workflow 已纳入 swap 专项测试，并把 `deploy/run.sh` 与两个 run.sh 测试脚本加入 ShellCheck；本任务未创建 tag、未推送镜像或更新 `latest`。
