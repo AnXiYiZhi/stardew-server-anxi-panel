@@ -7,6 +7,7 @@
 - Nexus 幂等必须在真实候选 Panel 上覆盖 20 路同 key、不同 fileId、首次响应丢失、Panel 重启和终态复用；权威断言是 SQLite 只有一个 owner/job 且 runner/下载调用不重复，不能只看扩展 singleflight。
 - 升级矩阵至少包含上一正式版 `v0.4.14` 与本次 migration/运行栈支持边界 `v0.3.2`，两者都必须使用 Panel Web 一键更新完整链；目标 unhealthy/版本错误必须恢复原版。升级后新 Panel 再执行三项新功能，其中首次上传必须从空 saves/无 gameloader pointer 开始；同时验证 SQLite、用户、实例、存档、Mod、备份、审计与非目标 Docker 资源保留。
 - tag 前还须执行 Release workflow 的精确全量命令：兼容清单与远程制品、脚本功能/语法/ShellCheck、Linux Go test/vet/build 与 integration、SMAPI 真实下载、前端全量测试/audit/build、网站 audit/build、候选 fresh/restart 和镜像内 helper/扩展包检查。
+- `.dockerignore` 现在明确排除任务级 `.agents` 目录；本地/CI build context 不再发送错题本、发布夹具、临时 ZIP 或 E2E 脚本。正式镜像仍只由 Dockerfile 的 frontend/browser-extension/backend/deploy 精确 COPY 组成，排除项不改变运行产物。
 - tag 后等待 Release workflow 成功，再从 Docker Hub、ACR、GHCR 回拉 `0.4.15`，核对三仓 digest、OCI version/revision、latest 与 GitHub Release/四项资产，并逐仓执行隔离 health/version/restart；最终 workflow ID、digest、耗时、故障和清理结果必须回写本文件及接手/路线文档。
 
 # SAVE-IMPORT-FIRST-UPLOAD-1 候选门禁（2026-08-13，代码完成、未发布）

@@ -1,4 +1,5 @@
 .git
+.agents
 .gocache
 data
 frontend/node_modules
