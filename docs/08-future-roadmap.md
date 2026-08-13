@@ -19,10 +19,13 @@
 # 2026-08-13 完成：无存档实例可直接上传现有存档（SAVE-IMPORT-FIRST-UPLOAD-1，未发布）
 
 - [x] 将“从未启动导致宿主 JunimoServer Mod 尚未物化”与真实版本不兼容分流：精确 `.125` image 在上传接管前复用 lifecycle 原子同步；新增 `save_import_runtime_prepare_failed`，不再误提示用户升级。
+- [x] 修复标准 Compose 下 Panel `/data/...` 与宿主 `PANEL_HOST_DATA_DIR/...` 不同名导致二级容器挂错目录：Junimo/SMAPI helper bind 统一经过数据根内受限映射，实例 Compose 的受管 `.local-container` bind 改用自动写入的 `${INSTANCE_HOST_DATA_DIR}`，旧相对路径在 Prepare/runtime recovery 原子迁移；越界或配置不完整 fail closed，旧同路径部署保持兼容。
 - [x] 空 saves/无 gameloader 时从只读目标创建 operation-owned bootstrap 维护世界，目标与 preimport 指纹保持；已有活动存档路径不变。
 - [x] journal 固定 bootstrap 身份、指纹、发布 ownership 和清理状态；提交前取消、重复 staging、同名碰撞零删除、发布/ownership 崩溃窗、目标 pointer 门禁和完成清理均 fail closed，异常进入 recovery 而非误报 completed。
 - [x] Web 稳定错误映射、前端通用/导入专用提示及 `test:save-import` 已更新；Go 专项、相关包全量测试和前端 production build 已通过。
-- [ ] 按 `docs/09-image-build.md` 用最终 SHA 构建 `0.4.15` 候选，完成真实空实例 Web 上传、故障注入、v0.4.14/v0.3.2 升级后复验和正式发布收口；完成前不创建或推送 tag。
+- [x] `eaae88f` 同路径独立候选真实空实例 Web 上传已通过 runtime-prepare 故障同 token 重试、bootstrap 创建/清理、自动解绑、durable save、preimport、Panel 重启与资源归零；标准 Compose 的 v0.4.14→候选升级、数据/非目标资源保留和重启也已通过，并由升级后 409 定位上述 host bind 缺口。
+- [x] 代码等价 `5fc7e4c` 候选已从 v0.4.14/v0.3.2 Web 一键升级后完成标准 Compose 空实例上传、同 token runtime 恢复、自动解绑、Panel 重启与数据/非目标资源保留；v0.4.14 unhealthy 自动回滚也通过。
+- [ ] 官网 docs-only 提交并入后修复已 rebase 为 `967647d`/`fd04ff0`；按 `docs/09-image-build.md` 从最终 SHA 重建精确 `0.4.15` 候选，重跑 fresh、两条升级后功能、unhealthy 回滚和正式发布收口。完成前不创建或推送 tag。
 
 # 2026-08-13 完成：Nexus 扩展重复提交持久幂等（NEXUS-EXT-IDEMPOTENCY-1，未发布）
 
@@ -30,7 +33,9 @@
 - [x] background/panel bridge 使用无 TTL 的 in-flight singleflight，失败立即释放并保留可重试 capture；两条 POST 路径统一发送 Idempotency-Key。
 - [x] migration 013 与 jobs 创建层按 type/target/key 原子绑定原 job，重复 HTTP 返回 `202 {jobId,deduped:true}`，包括任务已经终态或首次响应丢失的情况。
 - [x] Node VM 覆盖 20 路扩展并发、bridge、同 worker 失败重试/worker 重启和不同或未知文件身份；Go 覆盖 12 路存储并发、Manager 单 runner、HTTP 复用与非法 key。compatibility/release workflow 已纳入扩展专项。
-- [ ] 下一正式版本仍需按 `docs/09-image-build.md` 在隔离 Docker 候选上执行真实浏览器扩展 → Panel → job → CDN ZIP 链，并注入 POST 响应断流/Panel 重启后以同 key 取回原任务；本任务没有创建 tag 或发布镜像。
+- [x] `eaae88f` 候选已完成真实 Chromium unpacked 0.1.3 → Panel bridge → job 链：20 路同 capture 为 1 owner/19 shared、Panel 1 job，关闭/重开浏览器后 requestId/job 保持；独立候选在调用方丢弃首次响应和 Panel 活动重启后 20 路/终态重放仍只复用原 job、runner=1，受控失败无 Mod 残留且 key 不入 audit/log。
+- [x] v0.4.14/v0.3.2 Web 升级得到的新 Panel 已复验同 key 重放、Panel 重启和单 runner；本次受控 Nexus-CDN 形态 URL只验证提交/失败清理，不宣称使用生产 Nexus 登录完成真实 ZIP 下载。
+- [ ] 最终 rebase 后 SHA 的精确候选仍须重跑该复验并完成 tag 前/后发布收口。
 
 # 2026-08-13 完成：上传存档切换玩家主机后自动解绑（SAVE-IMPORT-AUTO-UNCLAIM-1，未发布）
 
@@ -39,7 +44,8 @@
 - [x] Panel 同时验证 Control 动作结果与 Junimo diagnostics 的 total/customized/bound 计数；零绑定前不进入 completed，旧 Control/DLL、错档、玩家在线或证据缺失均 fail closed。
 - [x] 候选真实 Web 首次上传捕获 command history 与 durable gate 竞争：未完成导入的精确 save-now 结果现在由 journal 所有权保护，后台不得提前脱敏归档/删除；事务完成后才恢复普通归档，专项测试覆盖保护与释放。
 - [x] C# 契约、真实 game-data 编译、Linux Go 全量 test/vet/build通过；Docker Desktop 隔离真机把 2 个角色中的 1 个绑定降为 0，磁盘 hash 改变且重启后仍为 0，角色数和 customized 数保持。
-- [ ] 下一正式版本按 docs/09-image-build.md 完成精确候选、完整 UI→导入事务故障矩阵、代表老版本 Web 一键升级/回滚、升级后复验和 tag 后三仓收口；本任务未发布。
+- [x] 代码等价候选已完成 v0.4.14/v0.3.2 Web 升级后真实 UI→导入、2/1/0 自动解绑、Panel 重启与 unhealthy 回滚。
+- [ ] 最终 rebase 后 SHA 仍需重建精确候选、重复关键链并完成 tag 后三仓收口；本任务尚未发布。
 
 # 2026-08-13 已发布：v0.4.14 启动误判、安装错误映射与新建档耐久
 

@@ -2,6 +2,60 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-14：远程 Shell 变量被 PowerShell 双引号命令提前解析
+
+- 环境：Windows PowerShell 7、Posh-SSH 3.2.7，对生产 Linux 主机做只读 VNC/日志诊断。
+- 错误模式：把含远程 `$DATA_ROOT`、Shell 引号和 `find` 条件的复合命令直接写进 PowerShell 双引号字符串。
+- 症状 / 退出码：PowerShell 在建立 SSH 会话前报 `ParserError: Unexpected token`；远程命令未发出，服务器和仓库当时均未变化。
+- 根因：违反生产 SSH 已有规则，让 PowerShell 和远程 Shell 同时解释一段多层引号文本，导致本地语法先失败。
+- 正确做法：复杂远程诊断使用任务专属 Shell 脚本内容的 UTF-8 Base64 载荷，远程解码后交给 `sh`；PowerShell 命令行不再出现远程 `$variable`。
+- 预防检查：Posh-SSH 调用发送前机械检查远程文本是否含 `$`、`$()`、反引号或多层引号；命中任一项就改用 Base64 脚本载荷，不再内联。
+- 适用范围：Windows `pwsh` → Posh-SSH → Linux `sh` 的所有生产诊断与维护。
+
+## 2026-08-14：把 Panel 容器的 `/data` mount 自动当成当前实例数据源
+
+- 最近复发/补充：诊断 VNC 连接时用宽泛的 `connect` 过滤服务日志，命中了 JunimoServer 含真实邀请码的“Connected to game session”行；虽未写入文件或服务器，已不符合生产日志脱敏要求。后续不再输出宽泛连接日志；必须先将 `Invite code:`、API key、token、session、VNC 密码、平台 ID 统一替换成 `<redacted>`，再输出只与目标子系统相关的固定行。
+- 最近复发/补充：同轮为找 SMAPI 日志使用了 `-iname '*log*'`，在游戏数据卷中大量命中 `Log Cabin`、`Dialogue` 等资源文件，输出被无关内容淹没，但仍为只读。SMAPI 日志诊断必须只匹配固定的 `ErrorLogs/SMAPI-latest.txt`、`SMAPI-crash.txt` 或先确认的目录，不对整个游戏卷使用模糊 `*log*`。
+- 最近复发/补充：首次 mount 投影还输出了匿名 volume 的完整 hash；虽不含业务凭据，仍违反生产投影最小化规则。后续只输出 mount 类型/目标/是否可写和脱敏的已命名卷；匿名 source 只报数量或 `<anonymous-volume>`，不再回显完整 ID。
+- 环境：114 生产 Panel 0.4.14，容器同时存在匿名 `/data` volume 和同路径 `/root/.anxi-panel/data` bind。
+- 错误模式：只按 mount destination=`/data` 投影宿主 source，随后硬断言其下必须存在 `instances/stardew`。
+- 症状 / 退出码：安全 `test -d` 退出 1，后续 `find` 未执行；只读 mount 投影成功，服务器未修改。
+- 根因：图形化/历史部署可保留 image `VOLUME /data` 产生的匿名卷，而实际 `DATA_DIR` 可指向另一同路径 bind；仅由 mount target 不能推导活跃数据根。
+- 正确做法：先从脱敏的 `DATA_DIR`/`PANEL_HOST_DATA_DIR` 环境键和 mount 对照得到候选，再用实例目录、Compose 和 SQLite 文件存在性交叉验证；某候选不匹配时停在只读诊断，不扩大搜索或写入。
+- 预防检查：生产容器同时有多个数据 mount 时，禁止直接 `select(.Destination==\"/data\")`后当作权威宿主根；必须投影全部非敏感 mount 和数据目录环境键。
+- 适用范围：Panel 图形化 Compose、遗留匿名 volume、同路径 bind 与生产日志/数据诊断。
+
+## 2026-08-13：复杂 Git 临时索引编排以内联 Shell 发送时被策略拒绝
+
+- 环境：Codex Desktop、PowerShell 7、共享脏工作树；需要从已提交文档变更构造不含后端父提交的纯文档 `main` 提交。
+- 错误模式：把临时 index、`commit-tree`、精确清理与 push 组合成一段较长的内联 `shell_command`。
+- 症状 / 退出码：执行策略在 PowerShell 启动前拒绝整条命令；临时 index、Git refs、工作树和远端均未变化。
+- 根因：复杂且同时包含 Git 底层对象操作、环境变量与清理动作的内联命令不可充分审计，触发执行策略拦截。
+- 正确做法：用 `apply_patch` 创建任务专属 `.ps1`，在脚本中逐项断言基线、13 个允许路径、临时 index、`diff --check` 与远端终态；以 `pwsh -NoLogo -NoProfile -File` 执行成功后，再用 `apply_patch` 精确删除脚本。
+- 预防检查：复杂 Git 编排一开始就落成任务脚本，不在工具调用内嵌多层 PowerShell；任何策略拒绝均视为零执行，先核对 refs 和临时文件再改变执行形态。
+- 适用范围：共享工作树中的纯路径发布、临时 Git index、`git commit-tree` 与受保护的直接 `main` 推送。
+
+## 2026-08-13：首次直接长等待活跃任务在编排层解析失败
+
+- 环境：Codex Desktop 任务协调，单目标 `wait_threads`，目标任务仍在执行 v0.4.15 发布门禁。
+- 错误模式：读取过一次超长且被截断的任务详情后，未先取得等待 cursor，直接以 120 秒调用单目标等待。
+- 症状 / 退出码：工具在等待开始前返回 `SyntaxError: Invalid or unexpected token`；仓库、暂存区、远端和目标任务状态均未变化。
+- 最近复发/补充：随后按预案改用 `timeoutMs: 0` 的单目标紧凑快照，仍在等待前返回同一解析错误，证明不是等待时长或缺少 cursor 单独造成。按“两次同类编排解析错误即停止改写重放”的规则，本轮不再调用 `wait_threads`；已成功发送的协调消息保留，后续只用 `list_threads` 的紧凑状态观察目标是否结束。
+- 根因：编排层没有成功解析本次等待调用/返回，不是目标任务失败；当前没有证据把它归因于发布流程。
+- 正确做法：停止原样长等待，先用 `timeoutMs: 0` 获取紧凑快照和 cursor；后续只带最新 `afterCursor` 做单目标有界等待，避免重复交付超长历史状态。
+- 预防检查：跨任务协调优先从 compact snapshot 建立 cursor；编排解析错误不能当作目标任务终态，也不能触发重复发布或 Git 操作。
+- 适用范围：Codex Desktop `wait_threads`、长任务协作与共享工作区发布协调。
+
+## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
+
+- 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。
+- 错误模式：手写 `git apply --cached` 补丁时沿用原始 diff 的 `@@ -1098,9 +1104,16 @@`，却遗漏 hunk 末尾作为第 9 条旧行的下一段代码围栏上下文。
+- 症状 / 退出码：`git apply --cached --check` 在应用前报 `corrupt patch at line 56`、退出 1；暂存区保持为空，工作树文件未变化。
+- 根因：手工复制 hunk 时只数了可见变更和前后空行，没有按前缀逐行核对旧侧/新侧计数。
+- 正确做法：先对补丁逐行编号，分别统计空格/`-`/`+` 前缀；补回遗漏的上下文代码围栏后再次只运行 `git apply --cached --check`，通过才允许真正写入 index。
+- 预防检查：混合工作树的 partial staging patch 必须先做零修改 `--check`；任何 `corrupt patch` 都先核对 hunk 计数与 EOF 上下文，不直接执行真实 `git apply` 或改用整文件暂存。
+- 适用范围：`git apply --cached`、手工摘取 hunk、共享脏工作树中的精确暂存。
+
 ## 2026-08-13：等待 workflow 时 GitHub API TLS 握手超时
 
 - 环境：PowerShell 7、GitHub CLI，只读查询 `v0.4.14` Release workflow 状态。
@@ -264,6 +318,7 @@
 
 ## 2026-08-13：Web 工具拒绝直接打开精确 GitHub Pages URL
 
+- 最近复发/补充：2026-08-13 拆分 Windows 部署专页时，把已知 Microsoft WSL 安装文档 URL 直接交给 Web `open`，Docker 两个官方地址正常返回，但 Microsoft 地址在取页前被同一安全门禁拒绝。没有重放直接打开；改为限定 `learn.microsoft.com` 的搜索查询取得官方结果，再从搜索结果读取主来源。对不同域名不能从同批其它 URL 成功推断精确 `open` 一定可用。
 - 环境：Codex Web 工具，v0.4.14 post-release GitHub Pages 线上 HTTP 验收。
 - 错误模式：把已知的两个精确 Pages URL 直接提交给 Web `open`。
 - 症状 / 退出码：两次请求都在取页前返回不可重试的 `URL is not safe to open`；没有访问页面、没有外部写入，也没有继续改写后重放同一工具形态。
@@ -316,6 +371,7 @@
 
 ## 2026-08-11：仓库文本检索误用了不存在的顶层目录
 
+- 最近复发/补充：2026-08-13 生产 VNC 5800 根因已在远端确认后，为核对本地 Compose 模板又把不存在的顶层 `internal` 与有效的 `docs`、`deploy`、`frontend` 一起传给 `rg`；前序文档与前端命中已输出，但命令最终因 `internal` 不存在退出 1，没有新增远端操作或产品文件修改。随后停止猜路径，改为先用仓库根 `rg --files` 发现真实 `backend/internal/...` 文件，再按精确命中读取。
 - 最近复发/补充：2026-08-13 核对邀请码持久化实现时，把不存在的 `backend/internal/store` 与真实的 `backend/internal/storage` 候选混入同一条 `rg`，有效路径先返回命中，后续 `Select-Object` 又让包装命令表面退出 0。没有文件或远端状态变化。随后只从已确认的 `backend/internal/storage` 读取；以后即使是只读候选搜索，也必须先用 `rg --files backend/internal` 发现实际包名，并在接管道前保存和检查 `rg` 的原始退出码。
 - 最近复发/补充：2026-08-12 排查 Panel 自动更新时，把未先由 `rg --files` 或 `Test-Path` 确认的 `backend/internal/versioninfo` 与多个有效目录一起传给 `rg`；有效目录先产生大量命中，命令最后仍因不存在路径退出 2。随后又猜测不存在的 `backend/internal/web/setup_handlers.go` 和 `backend/internal/updatecheck/types.go`；实际 updatecheck 类型位于 `service.go`，前一个 updater 文件已输出但组合命令仍失败。后续跨模块检索或读取只使用已经列出的实际路径，候选目录和文件不得混入正式命令参数。
 - 最近复发/补充：同日诊断创建存档失败时，在已确认的 `backend`、`deploy` 之外又把猜测的顶层 `cmd` 和根目录 `docker-compose.yml` 一并传给 `rg`；随后解释 SMAPI 首次落盘时又把不存在的顶层 `config` 混入多根检索。两次都是有效路径已返回命中、但 `rg` 因无效目标退出 2。后续多目标检索必须先以 `rg --files` 得到实际文件集，或只传已经由 `Test-Path` 验证的根目录；不得因前半段有输出而忽略原生命令非零退出码。
@@ -458,6 +514,7 @@
 
 ## 2026-08-09：正式镜像回拉与 manifest 查询未统一使用有界网络重试
 
+- 最近复发/补充：2026-08-13 v0.4.15 Web 升级夹具准备时，任务 DinD 首次 `pull nginx:alpine` 在 `registry-1.docker.io/v2/` 返回 EOF，1.7 秒退出 1；registry 镜像已完成、gateway/Panel 尚未创建。保持 TLS/摘要校验，对该精确引用按最多三次独立重试并在成功后 inspect，不能把准备期暂态 EOF 记为产品升级失败。
 - 最近复发/补充：2026-08-10 发布后已按 index digest 回拉 Docker Hub 镜像，却在 `docker run` 时改用未登记为本地引用的 amd64 manifest digest；Docker daemon 重新向配置的镜像代理发 HEAD 并收到 403，容器未创建，夹具按 owner 清理。正确做法是远端分别核对 index/amd64 manifest，实际 pull/run 使用已回拉的不可变 index 引用；Docker Desktop containerd image store 的 `.Id` 可能呈现 index，不得把它再描述成 config digest。修正后 Docker Hub、ACR、GHCR 三组 health/version/restart 冒烟均通过。
 - 最近复发/补充：2026-08-10 post-release 文档独立复核再次在 Docker Hub `0.4.10` 的 OAuth token 阶段遇到一次 EOF；没有把它解释成 tag 缺失或重新发布，按既有逐引用有界重试后同一 index/amd64 manifest 查询成功。每个审查者和每个发布阶段都要实际使用同一重试模板，不能因为主流程已成功就假定后续只读复核不会断流。
 - 环境：Docker Desktop，发布后核验 Docker Hub、阿里云 ACR、GHCR 的 `0.4.9/latest` 六个引用。
@@ -502,6 +559,7 @@
 
 ## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
 
+- 最近复发/补充：2026-08-14 修复生产 VNC 端口前为任务脚本做语法检查，仍只用 `Get-Command bash` 取得 PATH 首项并直接执行，再次命中 WSL 转发器、以 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，远端 Compose 和容器均未变化。随后固定使用本条已验证的 `D:\Code\CodeTools\Git\bin\bash.exe`，先执行 `--version` 再执行 `-n`；已知精确路径存在时不得重新从 PATH 选择解释器。
 - 最近复发/补充：2026-08-12 图形化 Compose E2E 脚本终验再次直接调用 PATH 中的 `bash -n`，命中同一个 WSL 转发器并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行。随后按本条使用已验证的 `D:\Code\CodeTools\Git\bin\bash.exe -n`，并在独立 `koalaman/shellcheck-alpine:v0.10.0` 容器显式调用 `shellcheck` 后通过。该错误已经进入 `AGENTS.md` 仍复发，后续 Windows Bash 命令模板必须直接从精确 Git Bash 路径开始，不能先试 PATH。
 - 最近复发/补充：2026-08-13 为生产 swap 扩容脚本做本地语法检查时，虽然先调用了 `Get-Command bash`，却没有验证其来源和 `--version` 就执行，仍命中 WSL 转发器并以同一 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，生产主机未变化。后续直接验证并使用已记录的精确 Git Bash 路径，禁止把“命令存在”当成“解释器可用”。
 - 最近复发/补充：同日正式脚本门禁又只打印 `Get-Command bash` 后直接执行，第三次命中 `C:\Windows\System32\bash.exe` 的无发行版 WSL 转发器；脚本完全未运行。预期的常见 Git 安装路径也不存在，本轮最终直接使用只读挂载的 `bash:5.2` Linux 容器完成四项功能测试与 `bash -n`，不再继续猜宿主路径。
@@ -559,7 +617,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
-- 最近复发/补充：2026-08-13 继续 v0.4.15 首次上传 E2E 时，多次把仓库根不存在的 `internal`、`backend/internal/registry`、猜测的 `backend/internal/storage/migrations/009_control_commands.sql` 混入已确认路径；还再次把 `Dockerfile*`、`save_import*`、`runtime*` 作为 Windows `rg` 位置参数。部分组合命令已输出有效内容后仍以 1/`os error 123` 结束，产品和测试资源未被修改。此规则已在 AGENTS 提升但仍复发：余下发布检索只传 `rg --files`/前一次命中返回的精确路径，通配只能作为 `-g` 的值；不得在同一读取批次补猜惯例文件。
+- 最近复发/补充：2026-08-13 继续 v0.4.15 首次上传 E2E 时，多次把仓库根不存在的 `internal`、`backend/internal/registry`、猜测的 `backend/internal/storage/migrations/009_control_commands.sql` 混入已确认路径；还再次把 `Dockerfile*`、`save_import*`、`runtime*` 作为 Windows `rg` 位置参数。准备 Web 一键升级夹具时又把 `.agents/v0415-*.ps1` 作为 Windows 位置参数，前序接口检索虽有有效输出，最后仍以 `os error 123` 结束；产品和测试资源均未修改。此规则已在 AGENTS 提升但仍复发：余下发布检索只传 `rg --files`/前一次命中返回的精确路径，通配只能作为 `-g` 的值；不得在同一读取批次补猜惯例文件。
 - 最近复发/补充：2026-08-13 `v0.4.15` Control 门禁探针已由 `rg --files` 明确输出 `StardewAnxiPanel.Control.ContractTests.csproj`，随后仍手写成不存在的 `SmapiModContractTests.csproj`，只读 `Get-Content` 退出 1；产品文件未变。发现命令的原始路径输出必须直接复制为后续参数，禁止把长文件名按语义缩写或重新拼接。
 - 最近复发/补充：2026-08-13 `v0.4.15` 自动解绑代码审查时，又把 `backend/internal/games/stardew_junimo/save_import_*.go` 作为 Windows `rg` 位置参数；`rg` 报 `os error 123`，同一组合命令后续 `Get-Content` 成功并把最终退出码掩成 0，没有写入。后续同目录通配检索固定使用 `rg -g 'save_import_*.go' <pattern> backend/internal/games/stardew_junimo`，并在转入其它原生命令前保存/检查 `rg` 的退出码。
 - 最近复发/补充：2026-08-13 准备 `v0.4.15` 发布时，读取已确认的 Dockerfile、release/compatibility workflow 后又按惯例追加不存在的 `.github/workflows/docker-integration.yml`；前三个文件输出有效，但组合命令最终以路径不存在退出 1，没有写入。实际 Docker integration 已接在现有 Compatibility/Release workflow；后续工作流读取必须先用 `rg --files .github/workflows` 取得真实清单，不能按门禁名称猜独立文件。
@@ -748,6 +806,7 @@
 - 最近复发/补充：同日恢复 owner 线性化审计时，又把 `backend/internal/web/*_test.go` 直接传给 Windows `rg`，立即返回 `os error 123`；只读命令未修改文件，随后改为 `rg ... backend/internal/web -g '*_test.go'` 成功。此类错误已多次违反 AGENTS 硬规则；余下任务所有 `rg` 命令在发送前按字面检查：位置参数不得含 `*`/`?`，通配值只能紧跟 `-g`。
 - 最近复发/补充：2026-08-13 收口运行栈 owner guard 时又把 `backend/internal/games/stardew_junimo/smapi*` 当作位置参数；已从明确目录输出大量命中后仍以 `os error 123` 失败，未修改产品或运行状态。此后同目录检索只传 `backend/internal/games/stardew_junimo`，并用 `-g 'smapi*.go'` 过滤；不得因同命令已有有效输出就忽略整体非零状态。
 - 最近复发/补充：2026-08-13 继续正式发布门禁、复核 Web updater 路由时，连续两次把 `backend/internal/web/*_test.go` / `*_handlers.go` 放进 Windows `rg` 位置参数；前面的明确文件命中有效，但命令最终均以 `os error 123` 退出，未修改文件或运行资源。后续发布检索命令发送前增加最后一道字面检查：位置参数列表只能是无通配符的明确文件或目录；本目录测试/handler 过滤固定写成 `rg -g '*_test.go' ... backend/internal/web` 与 `rg -g '*_handlers.go' ... backend/internal/web`。
+- 最近复发/补充：2026-08-13 恢复部署页国内加速卡片时，又把 `README*.md` 与明确的 `docs`、`website` 目录一起作为 Windows `rg` 位置参数；其它目录已返回有效命中，但命令最终仍以 `os error 123` 退出，且未修改产品文件。README 范围检索固定改为 `rg -g 'README*.md' <pattern> .`，本任务余下检索继续机械检查每个含 `*` 的参数必须紧跟 `-g`。
 - 最近复发/补充：同一 helper 实现已把工作目录设为 `<repo>/backend`，仍向 `gofmt` 传入带 `backend/` 前缀的路径，导致两个 `GetFileAttributesEx ... path not found`；同一 Shell cell 后续 `go test` 成功又让包装器最终退出 0，未格式化的产品文件仍可编译。2026-08-13 最终身份收敛修复后又用分号把 `gofmt` 与 `go test` 放进同一 cell，虽然两者本次均成功，仍会在未来让前者失败被后者掩盖。正确做法是仓库根使用 `backend/internal/...`，或 backend 工作目录使用 `internal/...`；格式化、测试必须拆成独立 cell，且每个原生命令后立即检查 `$LASTEXITCODE`，不能让后续成功掩盖首个失败。
 - 最近复发/补充：随后扩展 progress 候选过滤时，`matchesDirs` 局部闭包的 `for` 块漏写右花括号，`gofmt` 在 `new_game_progress.go:293` 以 `expected '}', found 'EOF'` 退出 2；测试尚未启动。已按报错行读取最小上下文并补齐括号。新增 Go helper 每次补丁后先单独运行 `gofmt` 并检查退出码，再启动测试，禁止在未格式化中间态叠加后续改动。
 - 适用范围：Windows 上的仓库搜索和发布检查。
@@ -940,6 +999,9 @@
 
 ## 2026-07-28：PowerShell `foreach` 语句直接接管道
 
+- 最近复发/补充：2026-08-13 生产 SSH 只读诊断包装器把 `try { ... foreach (...) ... } finally { ... }` 整体直接接到 `ConvertTo-Json`，PowerShell 在建立 SSH 会话前报 `An empty pipe element is not allowed`，远端未收到命令。修正为在 `try` 内把各项结果收集到 `$rows = @(...)`，`finally` 只关闭会话，退出 `try/finally` 后再单独执行 `$rows | ConvertTo-Json`；机械审查 `} |` 必须覆盖 `try/finally` 等所有语句块，不只检查 `foreach`。
+- 最近复发/补充：2026-08-13 官网 Pages 上线后做多路由 HTTP 文本探针时，再次把语句式 `foreach` 结果直接接到 `ConvertTo-Json`，解析阶段报 `An empty pipe element is not allowed`；请求尚未发出，线上和本地均未变化。随后改为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json` 并成功完成核验。即使只是只读网络探针，单行批处理也必须机械遵守本条规则。
+- 最近复发/补充：2026-08-13 清理已通过的一键升级夹具前，又把镜像 inspect 投影的语句式 `foreach` 直接接到 `ConvertTo-Json`，PowerShell 在执行任何 Docker 命令前报相同 ParserError。后续清理投影固定先写 `$items = @(foreach (...) { ... })`，再单独序列化；正式发布余下单行命令必须机械审查 `} |` 形态。
 - 最近复发/补充：2026-08-13 核对 Control DLL 与清单 SHA 时，又把产生 `[pscustomobject]` 的 `foreach ($path in $paths) { ... }` 直接接到 `ConvertTo-Json`，解析阶段报 `An empty pipe element is not allowed`，文件尚未读写。立即改为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json`。本规则已提升到 `AGENTS.md`，后续 PowerShell 批处理不再为“只输出对象”例外。
 - 最近复发/补充：同日探测 Git Bash 候选路径时再次把语句式 `foreach` 直接接到 `ConvertTo-Json`，在任何文件探针前触发相同 ParserError。修正为 `$candidates | ForEach-Object { ... } | ConvertTo-Json`；工具单行批处理必须机械使用 `ForEach-Object`，不再手写语句式循环后接管道。
 - 最近复发/补充：2026-08-12 检查 QR 取消测试遗留 volume 时，又把语句式 `foreach ($name in $names) { ... }` 直接接到 `Format-Table`，在任何 Docker inspect 前报 `An empty pipe element is not allowed`；资源没有变化。已改为 `$rows = @(foreach (...) { ... })` 后单独格式化。该语法规则已在 `AGENTS.md`，发布诊断仍必须机械遵守，不能因循环体只生成对象就省略数组收集。
@@ -998,10 +1060,12 @@
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
 
 - 最近复发/补充：2026-08-12 v0.4.11 本地官网点击 `<a href="./changelog">查看本次更新 →</a>` 时，先把预期 URL 硬编码为无扩展名 `/changelog`；点击实际完成并规范化到 `/changelog.html`，但 `expectNavigation` 等待错误目标 3 秒超时。读取 tab URL/H1/H2 证明页面已经正确进入日志，未重复点击。相对 Markdown href 在 VitePress router 下可能规范化；这类入口优先等待唯一目标 DOM，再读取实际 URL，不能只把源码 `getAttribute` 机械拼成等待值。
+- 最近复发/补充：2026-08-13 Windows 部署专页 QA 从当前页面点击侧栏“系统要求”，已从实际 `href` 解析出精确 `.html` URL 并成功完成 SPA 跳转，但 `expectNavigation` 仍等满 10 秒超时。立即读取 `tab.url()`、title 和 DOM 证明目标页已就绪，未重复点击；VitePress 内部路由可能不产生 Browser 包装器期望的传统 navigation 事件，点击后的权威证据应以目标唯一 DOM 与实际 URL 为准，不能把 `expectNavigation` 超时直接当成点击失败。
 - 最近复发/补充：2026-08-13 NAS 文档本地预览 readiness 直接请求 `/deploy/nas`，遗漏配置中的 Pages base `/stardew-server-anxi-panel/`，命中 VitePress 404。随后虽改为请求正确 base 首页，却又假定首页 SSR 必然包含 NAS 侧栏链接；首页只链接系统要求，因此探针再次安全失败。服务监听和构建均正常；最终从构建产物发现精确 HTML 路径，再读取目标页自身链接。VitePress 本地预览不能从源码相对路径假定站点根，HTTP 探针也不能假定其它路由的链接必然出现在首页。
 - 最近复发/补充：2026-08-13 NAS 文档 Browser QA 用 `getByRole('heading', {name: 'NAS 图形化部署（进阶）', exact: true})` 等待 H1；VitePress 把标题锚点的 `Permalink to ...` 一并纳入 accessible name，页面已正确渲染却没有精确匹配。随后先读 DOM snapshot 确认标题结构，再用唯一 `main h1` 读取可见文本或使用非精确 role 匹配；正文标题存在内嵌 permalink 时不要假设 accessible name 等于肉眼标题。
 - 最近复发/补充：2026-08-09 v0.4.9 官网 QA 再次按技能示例请求 `networkidle`，当前后端仍明确拒绝；改为 `domcontentloaded` 后等待首页 `v0.4.9` 可见并读取 DOM/console。随后 `expectNavigation` 又传入正则 URL，动作实际已完成但包装器报 `requires a url`；先读取 `tab.url()` 发现已到目标页，再按目标 DOM 验证，没有盲目重复点击。两项规则已提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-01 Browser 的只读 `evaluate` 中，SVG 元素代理不提供 `getBBox()`，调用返回 `TypeError`。SVG 视觉校验改用 `getBoundingClientRect()`、静态 `viewBox`/路径坐标和截图联合判断；调用非基础 DOM 方法前先确认当前代理实际支持。
+- 最近复发/补充：2026-08-13 部署卡片 QA 在 Browser 的只读 `evaluate` 中对投影元素调用 `compareDocumentPosition()`，当前受限 DOM 代理没有该方法并返回 `TypeError`；页面已加载且没有状态变化。元素上下顺序改用双方 `getBoundingClientRect().top` 和可见文本联合断言，后续不再把非基础 Node 原型方法当成代理必备能力。
 - 最近复发/补充：2026-07-29 本地预览后期进入 `ERR_CONNECTION_REFUSED` 错误页，Browser 随即因 `data:` 错误页 URL 策略拒绝 reload/close 链。此时不得继续尝试替代浏览器或 CDP 绕过；保留此前证据、精确停止 dev server，并以 production build 作为最终非视觉门禁。同轮还误把通用 Playwright 的 `setViewportSize`、对象形式 `waitForURL` 和代理元素原生 `click()` 套到封装 API；响应式尺寸与交互必须使用当前 Browser 暴露的 viewport 与 locator 能力。
 - 最近复发/补充：2026-08-10 官网留白调整中，第一次本地测量后旧 5177 dev server 自然退出；随后 reload 的可见元素等待超时，又在错误页上直接读取 DOM，触发 Browser URL policy 拒绝。正确恢复是先停止页面调用，用 `Get-NetTCPConnection -State Listen -LocalPort 5177` 确认无监听，再按项目约定直接启动可等待的 VitePress cell、核对精确 PID/命令行，最后从同一 Browser 新建标签访问原本允许的本地 URL；不得在 `data:` 错误页继续 reload、snapshot 或换浏览器绕过。
 - 最近复发/补充：2026-08-01 线上 changelog 导航把通用 Playwright 的 URL predicate 传给 Browser `waitForURL`，返回 `requires a url`。当前 Browser 只接受明确 URL 参数；点击后可直接读取 `tab.url()` 和目标 DOM，或传文档支持的精确 URL，不使用 predicate 回调。
@@ -1108,7 +1172,7 @@
 - 最近复发/补充：2026-08-10 v0.4.10 官网 CSS 修复本地验收又在嵌套 `pwsh` 中使用 `Start-Process npm.cmd`、隐藏窗口和日志重定向，命令再次在执行前被策略拒绝，端口/进程均未创建。该错误已重复，预防规则提升到 `AGENTS.md`：Windows 本地预览直接作为可等待的 `shell_command` cell 运行，禁止再用 `Start-Process` 后台派生。
 - 同轮终止可等待 cell 后，VitePress 子进程仍监听 4187；首次清理前把整条后代统一要求匹配 `docs:preview|vitepress preview`，但叶子真实 argv 为 `vitepress.js preview docs`，归属检查安全失败且未停止进程。正确做法是分别核对根进程的 `npm.cmd run docs:preview`、叶子绝对工作区 `vitepress.js preview docs`、固定端口及完整 ParentProcessId 链，再按精确 PID 自底向上停止并复查 listener；不要用一个过窄字符串模式替代进程树归属。
 - 最近复发/补充：2026-08-13 NAS 文档预览清理时，已读到监听叶子为 `vitepress.js preview docs`，却仍用拼错且过窄的单个 `-like '*...*nodes*'` 模式验证，安全断言拒绝停止且进程未变。随后按本条既有规则读取监听 PID 的完整父进程链，分别核对工作区、`vitepress.js`、`preview docs` 和精确端口，再自底向上幂等停止；不得把多个条件压成未经探针的通配字符串。
-- 第二轮本地预览调用 `functions.wait(terminate=true)` 本身等待 124 秒后以 124 超时，VitePress 仍监听 4187；没有把“已请求终止”当成实际清理。随后只读取得监听 PID 与五级 ParentProcessId/argv，确认完整任务归属后自底向上停止并复查 `-State Listen` 为 0。任何 cell terminate/timeout 结果都不是子进程退出证据，必须按端口和进程树复核。
+- 第二轮本地预览调用 `functions.wait(terminate=true)` 本身等待 124 秒后以 124 超时，VitePress 仍监听 4187；没有把“已请求终止”当成实际清理。2026-08-13 部署卡片 QA 清理 18120 预览时同一形态再次等待 124 秒并以 124 退出，精确端口仍由工作区 `vitepress.js preview docs --host 127.0.0.1 --port 18120` 监听；没有原样重试。两次均改为只读取得监听 PID 与完整 ParentProcessId/argv，确认任务归属后自底向上停止并复查 `-State Listen` 为 0。任何 cell terminate/timeout 结果都不是子进程退出证据，必须按端口和进程树复核。
 - 环境：Codex Windows `shell_command`，准备启动 VitePress 本地开发服务器。
 - 错误模式：在嵌套 `pwsh` 中用 `Start-Process npm.cmd`、重定向日志并隐藏窗口。
 - 症状 / 退出码：命令在执行前被工具策略拒绝，没有创建进程或日志。
@@ -1561,6 +1625,7 @@
 
 ## 2026-08-06：宿主 dotnet 存在但没有 SDK
 
+- 最近复发/补充：2026-08-14 内层 daemon 中看到名为 `stardew_game-data` 的 volume 后直接当成真实编译引用；restore/契约成功，ModBuildConfig 随后明确报告 `/game` 缺少 Stardew Valley 文件。只读对照确认权威基线实际是 outer DinD 已挂载的 `/fixtures/game-data`，其中存在 `Stardew Valley.dll`；inner daemon 应使用该宿主绝对路径的只读 bind，不能由相似 volume 名推断内容。
 - 最近复发/补充：2026-08-13 自动解绑 Control 契约测试再次先用 `Get-Command dotnet` 后执行宿主 `dotnet --version`；入口存在但仍只有 runtime，命令以 `No .NET SDKs were found` 退出，未加载项目或修改文件。本条已明确要求本仓库直接使用 SDK 容器；后续不得再把宿主探针作为 C# 门禁前置尝试。
 - 最近复发/补充：2026-08-13 Control 0.3.1 最终门禁又直接执行宿主 `dotnet run`，立即得到 `No .NET SDKs were found`；源码与制品未变化。随后检查 Docker Desktop、已 inspect 的 SDK 6.0 镜像和真实 `stardew_game-data` 卷，在保持 `smapi-mod-src` 兄弟目录名的容器临时副本中完成契约测试与真实程序集 0 error 编译。后续本仓库 C# 门禁不再先试宿主 dotnet，直接按既有容器流程执行。
 - 最近复发/补充：2026-08-13 为最终 Control Mod 构建制作 `/tmp` 隔离副本时，把源码兄弟目录改名成 `/tmp/control-src`，而契约项目仍通过 `../smapi-mod-src/*.cs` 引用源码；真实 Mod 已 0 error 编译并复制 DLL，但随后契约编译以 `CS2001` 失败。隔离副本不仅要包含依赖文件，还必须保持项目文件声明的相对目录拓扑；本轮修正为 `/tmp/smapi-mod-src` 与 `/tmp/control-contract` 两个兄弟目录后再重跑完整门禁。
@@ -1606,6 +1671,7 @@
 
 ## 2026-08-06：重定向 MSBuild 中间目录后旧 obj 被重新纳入编译
 
+- 最近复发/补充：2026-08-14 制作 Control 任务副本时先用 `cp -a` 整目录复制，宿主忽略但实际存在的 `bin/obj` 也被带入；随后虽由本轮 restore 覆盖部分内容，该副本仍不符合正式隔离要求。修正为新建 `r2` volume，只精确复制 `*.cs`、两个 csproj 与 manifest，并在 restore 前断言四个 `bin/obj` 路径均不存在。
 - 最近复发/补充：2026-08-13 v0.4.15 Control 0.3.2 正式编译直接把含项目文件的 `/src` 只读挂载，却没有为标准 `/src/obj` 与 `/src/bin` 提供可写任务空间；NuGet restore 在创建 `obj/*.tmp` 时以 EROFS 退出，编译未开始。随后运行相邻 ContractTests 时又只读挂载 `/tests` 而遗漏相同的 `obj/bin`，同样在 restore 前 EROFS；产品契约断言均未执行。后续每个 .NET 项目都保持标准命令，并分别用两个精确 owner volume 覆盖该项目根的 `obj/bin`，既隐藏宿主既有生成目录又允许标准输出；不再重定向 Base 路径。
 - 环境：PowerShell 7、只读源码 bind、`mcr.microsoft.com/dotnet/sdk:6.0`、真实只读 SMAPI game-data。
 - 错误模式：为避免写源码目录，把 `BaseIntermediateOutputPath` 指到 `/tmp/obj`，但源码树保留了先前标准构建生成的 `obj/`。
@@ -1618,6 +1684,7 @@
 
 ## 2026-08-06：真实 Control build 在无 NuGet 缓存时禁网 restore
 
+- 最近复发/补充：2026-08-14 使用联网 .NET 6 SDK 与任务 NuGet volume 构建 Control 0.3.2 时，纯契约测试先通过，但真实项目 restore 获取 `repository-signatures/5.0.0/index.json` 报 `NU1301`；编译尚未开始、内嵌 DLL 未修改。NuGet 签名元数据也是发布依赖，失败后不得加 `--ignore-failed-sources` 或关闭签名；先从同一 SDK/网络探测精确 HTTPS endpoint，再复用任务 cache 有界重试。
 - 环境：`mcr.microsoft.com/dotnet/sdk:6.0`，真实 game-data 只读 volume，容器使用 `--network none`。
 - 错误模式：契约项目离线成功后，直接假定真实 Control 项目也不需要联网 restore。
 - 症状 / 退出码：`NU1301 Unable to load the service index for https://api.nuget.org/v3/index.json`，构建在 restore 阶段失败。
@@ -1639,6 +1706,7 @@
 
 ## 2026-08-06：把不同构建路径下的 .NET DLL 当成字节可复现
 
+- 最近复发/补充：2026-08-14 同一 v0.4.15 全量门禁再次把干净 `/work/smapi-mod-src` 的成功 SDK 6 产物 `e19f61...` 强制等于 embedded/manifest `a62e52...`，导致 0 errors 编译后脚本主动退出 1。错题本和 AGENTS 已明确“标准编译成功，不做跨路径 SHA 等同”；后续只断言 fresh build 文件非空并记录摘要，权威哈希只比较 embedded 与 `controlMod.dllSha256`，真实行为沿用候选 E2E。
 - 最近复发/补充：2026-08-13 `v0.4.15` 发布门禁把 `/work` 新鲜构建的 Control 0.3.2 摘要 `67393f...` 与先前在另一项目路径构建并已真机验证的嵌入摘要 `a62e52...` 直接比较，误报源码/二进制漂移；第二次同路径构建仍稳定为 `67393f...`，说明本轮编译本身可重复，但不能跨路径外推。随后恢复既有三段权威：嵌入 DLL 与 runtime manifest 精确相等、新鲜源码以标准命令 0 error 编译、嵌入 DLL 的目标元数据与真实运行行为单独验证；未用不同路径产物覆盖已验证 DLL。正式全量门禁稍后又分别用 SDK 8/SDK 6 的 `/src` 构建摘要 `1019d6...`/`91d9fc...` 与 embedded 直接比较并再次虚假失败；源码两次均 0 error，SDK 6 仅既有 analyzer/compiler warning，embedded 与 manifest 仍精确为 `a62e52...`。后续本轮不再执行 fresh-DLL 对 embedded 的跨路径摘要断言，只运行上述三段权威。
 - 环境：同一 Control C# 源码、`mcr.microsoft.com/dotnet/sdk:6.0`、真实 game-data，分别以 `/src/smapi-mod-src` 与 `/src` 作为项目路径构建。
 - 错误模式：用新鲜复编译 DLL 的 SHA-256 与先前已提升、已真实运行的嵌入 DLL 做硬相等，并把不等直接视为源码/嵌入漂移。
@@ -1806,6 +1874,8 @@
 
 ## 2026-08-06：BuildKit 默认网络同时损坏 Go ZIP 与 Alpine 包校验
 
+- 最近复发/补充：2026-08-13 runtime Docker integration 的隔离 SMAPI helper 在默认网络执行 `apk add --no-cache unzip` 时，main index 发生 SSL `unexpected eof`，apk 把该源标为 permission denied，随后报 `unzip (no such package)`；其它 integration 用例通过，目标 SMAPI helper 尚未构建。必须先用同一 builder/default network/精确 RUN 指令完成受校验 cache 预热，再重跑完整 `internal/docker` integration；不能把“package 不存在”误判成依赖声明错误或改为不校验来源。
+- 最近复发/补充：2026-08-13 `5fc7e4c` 候选已显式使用 host 网络，但冷的 backend `go mod download` 仍对 `modernc.org/sqlite` 与 `modernc.org/libc` ZIP 同时报 `unexpected EOF`；frontend 与 extension 层成功，最终候选 tag 不存在。host 网络只能避开一类转发问题，不能保证外部传输不瞬断；重试前须先对精确 Go proxy 制品做独立可达性/完整响应探针，保留成功 BuildKit 层，并限制为有界重试，若同类失败再次出现则停止发布检查代理/CA。
 - 最近复发/补充：2026-08-08 构建 WAL/repair 本地候选时再次直接使用 BuildKit 默认网络，`go mod download` 对 `x/text`、`modernc/sqlite` 和 `modernc/libc` 同时报 `unexpected EOF`；前端层成功但最终 tag 未生成。先用精确 `docker image ls --filter reference=...` 确认没有误产物，再按本条既定做法改用 `docker build --network=host` 复用已成功 layer 并只重取失败依赖；不得原样重复默认网络构建。
 - 最近复发/补充：同日 host 网络构建的 Go 层恢复，但 Alpine index 又因 SSL EOF 缺包退出；随后可达性探针把 `apk update` 输出重定向到 `--rm` 容器内临时文件，只在成功分支 grep，失败时容器随即删除且没有诊断输出。网络探针必须直接保留 stderr/stdout，或先保存退出码、打印日志后再退出原值；不能把唯一故障证据留在即将删除的容器里。
 - 环境：Docker Desktop Linux、v0.4.8 精确候选多阶段 Docker build。
@@ -1957,6 +2027,7 @@
 
 ## 2026-08-09：VitePress 源码只读挂载未覆盖配置临时文件
 
+- 最近复发/补充：2026-08-13 v0.4.15 发布门禁已在 `AGENTS.md` 明示该规则后，仍把 outer DinD 的只读 `/src` 作为 inner Node 容器的 `/repo`，只给 `node_modules` 和 dist 写卷；production audit=0 后再次在 `config.ts.timestamp-*.mjs` 报 EROFS。不能根据 inner 命令未写 `:ro` 推断路径可写，bind source 自身来自 outer readonly mount 时权限仍只读；必须先复制到任务专属可写 repo volume，并单独以只读 nested bind 提供 `.git`。
 - 最近复发/补充：2026-08-12 v0.4.11 官网 post-release 洁净门禁再次把完整仓库只读挂载，只给 `node_modules`、cache 和 dist 独立卷；production/critical audit 已通过，构建仍在同一 `config.ts.timestamp-*.mjs` 位置报 `EROFS`。`finally` 清理容器/卷为 0，工作树没有构建残留。改为仓库可写 bind、输出与依赖独立卷后 6.88 秒构建成功，Git 状态只含预期文档修改。该错误重复后已提升到 `AGENTS.md`：VitePress 构建必须给配置目录可写空间，不能再设计“源码整体只读 + 只写 dist/cache”。
 - 环境：Docker Desktop、`node:20-alpine`、仓库只读 bind、独立 website `node_modules`/dist volume。
 - 错误模式：认为 VitePress production build 只写最终 `docs/.vitepress/dist`，因此仅给 dist 单独可写 volume，其余源码保持只读。
@@ -2118,6 +2189,26 @@
 - 预防检查：发布脚本禁止出现手写 40 位候选 SHA；所有完整 revision 必须直接来自 Git 命令或已验证的 tag/ref 解析结果。
 - 适用范围：Docker build args、workflow commit 查询、OCI revision、tag/source 和发布证据。
 
+## 2026-08-13：用另一类镜像 archive 大小硬编码当前候选下限
+
+- 环境：PowerShell 7，Docker Desktop 将 v0.4.15 候选 `docker save` 后通过唯一 TCP endpoint 预加载到 DinD。
+- 错误模式：沿用此前 579 MB archive 的经验，要求当前候选 tar 必须大于 500 MB；实际 runtime image 与 tar 都约 62.7 MB。
+- 症状 / 退出码：`docker save` 成功后包装器在大小断言退出 1，DinD load 尚未开始，archive 原样保留。随后没有重复导出，而是用 `tar -tf` 确认 manifest/index、目标 tag 的 OCI version/revision 与非零大小，再加载并在远端核对身份，最后删除精确 archive。
+- 根因：把不同镜像/保存集合的历史字节数当成当前 archive 格式契约；压缩层、附带 tag 和 image 内容都会改变大小。
+- 正确做法：archive 完整性检查使用生成命令退出码、非零合理最小值、tar/OCI 结构和目标 tag/标签；加载后再以远端 image inspect 与运行 API 验收。若项目需要字节精确，应先由同次生成记录 SHA-256，而不是猜大小。
+- 预防检查：发布脚本不得复制其它版本或其它 image set 的固定 archive 大小；阈值必须来自当前明确格式规范或同次权威元数据。
+- 适用范围：Docker save/load、Release 资产、离线包和跨 daemon 传输。
+
+## 2026-08-13：复用已运行旧候选的 game-data 测试卷并要求字节数不变
+
+- 环境：隔离 DinD，真实 Stardew server 使用任务专属 game-data clone 完成存档导入。
+- 错误模式：准备新候选重跑时直接复用旧候选已经读写挂载过的 clone，并断言它仍等于只读源的原始字节数。
+- 症状 / 退出码：预跑断言发现 clone 比源多 144,471 B 后退出，新的 Panel/E2E 尚未启动；源 fixture 仍为外层只读 mount。核对 clone owner 与零 attach 后精确删除重建，使用 `/fixtures/game-data:ro` bind 向新 volume 复制，最终重新等于 1,959,640,718 B。
+- 根因：game-data 是 server 的可写运行卷，真实启动可能生成缓存或运行文件；任务隔离不等于每轮测试后字节不变。
+- 正确做法：每条需要相同基线的候选/升级链都从只读源派生新的任务卷，或在 owner/attach 断言后重建同名任务卷；测试后把变化视为 clone 内预期运行状态，不污染源。
+- 预防检查：重跑真实组件前把 bind/volume 分类为只读 fixture、一次性可写 clone、持久升级数据；可写 clone 不允许跨候选作为“全新基线”复用。
+- 适用范围：游戏数据、数据库、认证缓存和任何真实服务会写入的 Docker 测试卷。
+
 ## 2026-08-13：外层只读 volume mount 名被误当成 DinD 内同名 volume
 
 - 环境：Docker Desktop 外层 DinD，宿主 volume 只读挂到外层 `/fixtures/steam-session`，再由内层 daemon 创建复制容器。
@@ -2127,6 +2218,214 @@
 - 正确做法：内层复制容器必须使用外层 daemon 可见的 bind source `/fixtures/steam-session`，目标才使用内层任务 volume；复制后分别以字节/条目数核对外层 bind source 与内层 target。
 - 预防检查：画清 daemon 边界；任何 volume 名只属于创建它的 daemon。socket/DinD 二级容器的 source 必须先证明对目标 daemon 可见，不能因名字相同推断共享。
 - 适用范围：DinD、Docker Socket 测试、二级容器 bind 与跨 daemon 数据预加载。
+
+## 2026-08-13：把内层 DinD 的 published port 当成 Windows 宿主端口
+
+- 最近复发/补充：同日启动 Web 升级夹具前，又用 Windows `Get-NetTCPConnection -LocalPort 18097` 判断内层 Panel 是否残留。外层 DinD 自身一直发布宿主 `18097 -> outer:18097`，因此即使内层零 Panel，宿主转发器仍合法监听并让前置断言退出 1；夹具没有创建。内层服务冲突必须向 `tcp://127.0.0.1:23791` 查询精确 `publish=18097`、容器名和 owner，宿主监听只能证明外层固定映射存在。
+
+- 环境：Docker Desktop 外层 DinD，内层 daemon 运行 registry 并发布 `127.0.0.1:5000:5000`。
+- 错误模式：registry 启动后从 Windows 宿主用 `Invoke-WebRequest http://127.0.0.1:5000/v2/` 做 readiness。
+- 症状 / 退出码：31.4 秒后宿主探针超时退出 1；registry 容器仍按 owner 运行，数据卷已创建，Panel/updater 尚未启动。
+- 根因：内层 daemon 的 `-p` 绑定在承载 dockerd 的外层 DinD 网络命名空间；除非外层容器再把该端口发布到 Windows，宿主 loopback 不可见。
+- 正确做法：registry/gateway 内层服务从外层容器的 `127.0.0.1:<port>` 探测；只有外层 `docker inspect NetworkSettings.Ports` 明确映射的 18097/23791 才从 Windows 宿主访问。
+- 预防检查：每个测试端口记录发布层级（内层容器→外层 namespace→Windows）；readiness 调用方必须位于端口实际绑定的 namespace，不能仅因地址相同推断可达。
+- 适用范围：DinD registry、TLS gateway、Panel、Docker Socket 二级容器与嵌套端口转发。
+
+## 2026-08-13：用命令行关键词查残留进程时把探针自身也算进去
+
+- 环境：PowerShell 7，清理任务专属 Playwright profile/cache 前检查残留 Chromium。
+- 错误模式：对全部 `Win32_Process.CommandLine` 搜索 profile 路径，没有先限制进程名；执行探针的 `pwsh.exe` 命令行本身包含该路径。
+- 症状 / 退出码：安全断言报告 2 个 owned process 并退出 1，零文件被删除；只读投影确认两者都是当前/父 PowerShell，不是浏览器。
+- 根因：搜索词作为探针参数必然出现在探针自身命令行，形成自匹配。
+- 正确做法：先把进程限定为 `chrome.exe`/目标 Chromium 可执行名，再核对其 command line 是否包含精确 profile；清理目标仍逐一验证绝对路径。
+- 预防检查：基于命令行的进程归属断言必须同时使用可执行文件名、任务唯一参数和父子/启动时间中的至少两项，禁止仅凭“包含搜索词”。
+- 适用范围：本地预览、Playwright/Chrome、后台 helper、端口与任务进程清理。
+
+## 2026-08-13：发现 Playwright 包后直接假定其浏览器二进制也已安装
+
+- 环境：Codex workspace dependencies 提供 Node 24 与 `playwright` 1.62.1，Windows 本机扩展真实浏览器 E2E。
+- 错误模式：只确认 `node_modules/playwright/package.json` 存在，就把 `chromium.executablePath()` 直接传给 `launchPersistentContext`。
+- 症状 / 退出码：3.5 秒内退出 1，报记录的 `ms-playwright/chromium-1234/chrome-win64/chrome.exe` 不存在；临时 profile 未形成有效会话，候选 Panel 没有收到浏览器提交。
+- 根因：Playwright npm 包与下载的浏览器是独立资源；workspace runtime 只保证库可导入，不保证对应浏览器 cache 已安装。
+- 正确做法：启动前同时探测库版本和 `chromium.executablePath()` 的真实文件；缺失时优先使用已验证支持 unpacked extension 参数的现有浏览器，或在任务专属 cache/container 安装匹配版本，不修改项目依赖。
+- 预防检查：所有 Playwright 发布夹具把“库可导入、浏览器可执行文件存在、版本/通道支持目标能力”作为三个独立前置探针。
+- 适用范围：Playwright、Puppeteer、浏览器扩展 E2E、CI browser cache 与 Codex bundled runtime。
+- 最近复发/补充：同日改用本机 Google Chrome 品牌版并传入 unpacked extension 参数后，浏览器上下文 16.8 秒内自行关闭且没有 service worker；候选 Panel 仍未收到浏览器提交。该通道没有目标能力，不继续重试，改为把与 Playwright 1.62.1 匹配的开源 Chromium 安装到任务专属临时 cache。
+
+## 2026-08-13：原始 HTTP 注入写完请求后立即关闭未读响应的 TCP
+
+- 环境：PowerShell 7 `TcpClient`，通过隔离 DinD 端口模拟“服务端受理、客户端未收到响应”的远程 Mod 安装。
+- 错误模式：先在写完 HTTP body 后立即 `Close()`；改成 `Socket.Shutdown(Send)` 半关闭后仍把原始 socket 写入视为已形成有效 HTTP 请求。
+- 症状 / 退出码：两种形态都在两分钟内没有产生远程安装任务，API、任务列表和 Panel 聚合日志一致，脚本退出 1；产品请求没有进入 handler。每次均按 owner 销毁 Panel 与精确数据目录后重建。
+- 根因：完全关闭可能触发 RST/请求取消；而穿过宿主端口映射与 DinD 二级端口映射的手写 HTTP 字节也没有客户端协议层证据。`Flush()`/半关闭只证明本机 socket 状态，不证明 Go handler 已解析并持久化。
+- 正确做法：使用标准 `HttpClient.SendAsync(..., ResponseHeadersRead)` 发起请求但不观察返回任务；通过独立已认证 API 观察到服务端任务持久化后销毁 client/request，模拟调用方丢弃响应。若必须验证 TCP 级断流，另建可观测的受控代理并以代理转发计数和服务端提交点双重确认。
+- 预防检查：断流注入必须先定义可观察的服务端提交点；不能把“本机写成功”当成“服务端受理”。注入失败先查任务/审计/聚合日志三方证据，禁止盲目重放。
+- 适用范围：HTTP 幂等、响应丢失、上传中断、代理断流与重试 E2E。
+
+## 2026-08-13：把 Junimo `prepare` 误当成已安装实例的 `stopped`
+
+- 环境：隔离候选 Panel，合成管理员完成 setup 后调用 `/prepare`，没有安装游戏或启动 server。
+- 错误模式：测试继续调用 `/stop` 并等待实例状态必须变为 `stopped`，把脚手架准备与完整游戏生命周期混为一谈。
+- 症状 / 退出码：Panel 与数据库持续健康、无 Compose 子容器，但两分钟后夹具断言退出 1；远程 Mod 安装请求尚未发出。按 owner 删除候选 Panel 与精确任务数据后重建，不复用合成管理员。
+- 根因：`prepare` 只生成 Junimo/Compose 脚手架；未安装实例保留准备阶段状态。远程 Mod 离线变更的实际前置条件是实例不处于 `running/starting`，并不要求精确 `stopped`。
+- 正确做法：Nexus 幂等 E2E 在 `/prepare` 后读取真实 state，仅断言非活动状态，再测试远程安装；需要验证 stop 生命周期时必须先使用完整已安装夹具。
+- 预防检查：E2E 状态断言从 handler/driver 契约和 API 返回读取，不从操作名称推断状态迁移；新夹具先投影 state/phase 和子容器计数。
+- 适用范围：Junimo prepare/install/start/stop、首次安装与离线 Mod/存档操作。
+
+## 2026-08-13：把宿主外层 DinD 容器名传给内层 daemon
+
+- 环境：Windows PowerShell 7，宿主 Docker Desktop 外层 `docker:29-dind`，宿主通过唯一 TCP 端口访问其内层 daemon。
+- 错误模式：Nexus E2E 脚本统一使用 `docker -H tcp://127.0.0.1:<port>`，却用它执行 `docker exec <外层 DinD 容器> mkdir ...`。
+- 症状 / 退出码：脚本首个准备命令退出 1，内层 daemon 报 `No such container`；宿主检查显示外层容器实际仍在运行，产品容器、数据、网络和 volume 尚未创建。
+- 根因：把“承载 daemon 的宿主容器”和“daemon 管理的内层容器”混在同一 Docker 命名空间；TCP endpoint 只能看到内层资源。
+- 正确做法：外层文件系统准备使用宿主 `docker exec <outer>`；候选 Panel、测试容器、内层 volume 使用带 `-H` 的独立包装器。续跑前分别探测宿主外层容器和内层 daemon/image。
+- 预防检查：DinD 测试脚本显式命名 `Invoke-HostDocker` 与 `Invoke-InnerDocker`（或等价包装器），每个资源在设计时标出所属 daemon；禁止用容器名相同与否推断跨 daemon 可见。
+- 适用范围：DinD、Docker context、远端 daemon、Socket 嵌套测试和发布清理。
+
+## 2026-08-13：对 POSIX `sh` 发布夹具硬调用容器内不存在的 `bash`
+
+- 最近复发/补充：2026-08-14 兼容矩阵使用 `python:3.12-alpine` 并挂载 Docker CLI/Buildx，却只探测 Python 与 Docker，未先探测脚本 `verify-remote-artifacts` 调用的 `git`；清单步骤出现预期可选镜像 warning 后在 ancestry 检查报 `[Errno 2] No such file or directory: 'git'`。精简工具容器必须从目标脚本的真实 subprocess 调用补齐全部依赖，并在开始远程长链前逐个 `command -v`。
+- 环境：Docker Desktop 隔离 DinD 门禁容器，升级夹具声明 `#!/bin/sh` 并只使用 POSIX 语法。
+- 错误模式：未探测解释器就执行 `bash -n /src/.agents/v0415-web-upgrade-fixture.sh`。
+- 症状 / 退出码：容器返回 `sh: bash: not found`、退出 127；脚本未执行，未创建 Panel、volume 或其它产品资源。
+- 根因：把宿主/其它测试镜像的 Bash 能力错误投射到精简 DinD 容器；目标脚本本来只要求 BusyBox `sh`。
+- 正确做法：先按 shebang 选择并探测解释器，本夹具使用现有的 `sh -n`；ShellCheck 使用独立且已核对 Entrypoint 的 lint 镜像，不为语法检查临时改变运行容器。
+- 预防检查：精简容器内调用 `bash`、`python`、`openssl`、`git` 等工具前必须 `command -v`；脚本门禁的解释器必须与 shebang 和实际部署环境一致。
+- 适用范围：DinD、Alpine/BusyBox、容器化脚本门禁与发布夹具。
+
+## 2026-08-13：把 PowerShell 引号嵌进 Docker `--mount source=` 值
+
+- 最近复发/补充：同日运行路径映射 Linux 定向测试时再次写成 `--mount type=bind,source='E:\\repo',...`，Docker 在创建测试容器前以同一非法 Windows 路径退出 1；两个预先创建且带 owner 的缓存卷为空并保留用于修正后调用。该错误已重复，余下发布命令禁止在 Windows bind 上使用 `--mount source=` 形态，仓库挂载统一使用完整单参数 `--volume 'E:\\repo:/src:ro'`；named volume 才继续使用 `--mount type=volume,...`。
+
+- 环境：PowerShell 7 调用 Docker Desktop，以只读 bind 向已核对的 ShellCheck 镜像传入发布夹具。
+- 错误模式：使用 `--mount type=bind,source='E:\\...\\fixture.sh',target=...`，把单引号放在原生命令参数的值中间。
+- 症状 / 退出码：Docker 在创建容器前拒绝该 source，报告不是有效 Windows 路径并退出 1；lint 容器没有启动，文件和工作区未修改。
+- 根因：PowerShell 只在 token 边界处理引号；嵌在 `source=` 后的引号被原样传给 Docker，而不是只用于保护路径。
+- 正确做法：把整个 volume 规格作为一个 PowerShell 参数，例如 `--volume 'E:\\repo:/src:ro'`，挂载明确仓库根后使用容器内精确路径；本次 ShellCheck 随后通过。
+- 预防检查：Windows bind 参数的引号包裹完整原生命令参数，不嵌进 `key=value` 的 value；首次调用先使用只读 mount 和非变更命令。
+- 适用范围：PowerShell 调 Docker/Compose 的 bind mount、BuildKit context 和 lint/test 容器。
+
+## 2026-08-13：把空存档实例要求成存档根目录零条目
+
+- 环境：v0.4.14 隔离 Compose 夹具，首次存档上传升级门禁的持久数据前置检查。
+- 错误模式：用 `find <local-container>/saves -mindepth 1` 必须无输出判断“没有存档”。
+- 症状 / 退出码：Panel 健康且摘要哨兵有效，但脚本在管理员创建和 updater 调用前退出 1；只读核对显示框架已创建规范空目录 `saves/Saves`，其下没有存档或文件。
+- 根因：把“没有可识别存档”错误收紧为“运行时连规范目录骨架也不能创建”。
+- 正确做法：允许唯一的空 `Saves` 根目录，只拒绝其下任何条目以及 `saves` 根下其它条目；升级后和重启后复用同一语义断言。
+- 预防检查：文件系统断言区分目录骨架、空业务集合和真实对象；先从代码/新鲜运行实例确认规范布局，再定义深度和允许项。
+- 适用范围：Stardew 存档、Mod/备份目录、首次初始化、升级保留和空集合 E2E。
+
+## 2026-08-13：把 Shell 内建 `command` 直接传给 `docker exec`
+
+- 环境：PowerShell 7，精简 DinD 容器能力诊断。
+- 错误模式：执行 `docker exec <container> command -v sha256sum`。
+- 症状 / 退出码：OCI 在启动进程前报告 `command` 不在 PATH、退出 127；随后独立 `ls` 和 `sha256sum` 探针均成功，未修改产品或测试状态。
+- 根因：`command` 是 Shell builtin，不是可由 OCI 直接 `execve` 的可执行文件。
+- 正确做法：需要 builtin 时显式执行 `docker exec <container> sh -c 'command -v "$1"' sh sha256sum`；已知命令的实际功能探针可直接调用可执行文件并检查退出码。
+- 预防检查：传给 `docker exec` 的首参数必须是容器内真实 executable；`command`、`type`、条件表达式和管道均通过明确的 Shell 运行。
+- 适用范围：Docker exec 能力探针、BusyBox/Alpine、发布门禁诊断。
+
+## 2026-08-13：把更新检查的 Release tag 当成无前缀版本号
+
+- 环境：隔离 v0.4.14 Panel，受控 GitHub Releases TLS fixture 返回正式 tag `v0.4.15`。
+- 错误模式：升级 E2E 要求 `latestVersion` 精确等于 `0.4.15`。
+- 症状 / 退出码：update check HTTP 200，网关 release 计数增加且拒绝计数为 0，但夹具比较失败退出 1；dry-run/apply 尚未调用。管理员只写入任务数据，随后整个夹具按 owner 重建。
+- 根因：API 保留上游 `tag_name` 的 `v` 前缀；只有 updater 的目标规范化结果去除前缀。
+- 正确做法：update-check 契约比较时去除单个版本前缀后验证语义版本，仍要求 current、updateAvailable 和受控来源计数精确；dry-run/apply 继续断言规范化目标 `0.4.15`。
+- 预防检查：版本测试明确区分 Release tag、展示值、规范化 updater 版本与 OCI label，不在不同层之间复用字节精确断言。
+- 适用范围：GitHub Release 检查、tag、updater API、OCI 元数据与版本展示。
+
+## 2026-08-13：把短暂 HTTP 断线的轮询命中设为唯一升级证据
+
+- 环境：同机 DinD，v0.4.14 通过真实 Web updater 切换到已在本地 registry 的 v0.4.15 候选。
+- 错误模式：增强复验要求 500ms 状态轮询必须至少捕获一次请求异常，否则即使 apply 已返回目标终态也失败。
+- 症状 / 退出码：前一轮同链路已经捕获断线并完整通过；增强轮因镜像和 registry 已热缓存，在约 18 秒内完成切换，轮询从旧 Panel 活动态直接看到新 Panel 终态，没有命中异常窗口，脚本在数据/功能复验前退出 1。容器实际已替换为候选且健康，未误判为产品回滚。
+- 根因：进程切换必然发生，但客户端固定采样不保证命中其短暂不可用窗口；把观测采样当成系统事实会产生时序型假失败。
+- 正确做法：首次冷链仍保留实际断线捕获证据；重复/热缓存链接受“捕获断线，或 Panel container ID 明确变化且随后 `/health`、`/api/version`、持久 apply 终态全部恢复”的组合证据，同时继续要求非目标游戏容器 ID/StartedAt 不变。
+- 预防检查：瞬态故障门禁使用至少一个持续事实（容器身份/启动时间、状态文件）和一个终态探针，不把固定间隔 HTTP 采样是否恰好命中作为唯一硬条件。
+- 适用范围：自更新断线重连、快速滚动替换、热缓存升级与本地代理切换。
+
+## 2026-08-13：在只读源码挂载根运行默认输出的 `go build`
+
+- 环境：Linux `golang:1.25-alpine` 定向门禁，仓库以 `/src:ro` 挂载，Go module/build cache 使用任务专属可写卷。
+- 错误模式：`go vet ... && go build ./cmd/panel` 没有用 `-o` 指定容器可写输出。
+- 症状 / 退出码：vet 完成后，Go 已编译 Panel，但复制最终 `a.out` 到工作目录名 `panel` 时报告 `read-only file system` 并退出 1；源码、cache 之外的文件和产品资源未修改。
+- 根因：单一 main package 的 `go build` 默认在当前工作目录落二进制，而当前目录按设计只读。
+- 正确做法：保留源码只读，使用 `go build -o /tmp/panel ./cmd/panel`，随后验证输出非空并由 `--rm` 容器清理；全仓只做编译检查时也可使用明确任务输出目录。
+- 预防检查：只读源码门禁中所有会产生最终制品的命令必须显式指定 `/tmp` 或任务 volume；不要为了默认输出临时把源码挂载改成可写。
+- 适用范围：Go build、前端 dist、文档站产物和容器化只读源码门禁。
+
+## 2026-08-13：在 Panel 容器内使用只对 DinD 宿主可见的数据路径
+
+- 环境：标准 Compose 升级夹具，宿主数据为 `/gate/.../data`，Panel 只挂载 `DATA_DIR:/data`。
+- 错误模式：升级后 `prepare` 成功后，用 `docker exec panel` 修改宿主路径 `/gate/.../data/instances/stardew/.env`。
+- 症状 / 退出码：升级、数据保留和重启门禁均通过，游戏 fixture volume 复制完整；容器内 `grep/printf` 报父目录不存在，脚本在 stop、Nexus 和上传前退出 1。只读复核确认真实文件位于容器 `/data/instances/stardew/.env`，任务卷未 attach。
+- 根因：把 Docker host path 与容器 mount target 当成同一命名空间；该夹具没有像早期 standalone E2E 那样额外挂载 host path 到同名 container path。
+- 正确做法：宿主摘要/清理使用 `/gate/.../data`，Panel 内 Junimo/实例操作统一使用 `/data/instances/stardew`；两者在脚本中使用不同变量，不从字符串相同推断可见性。
+- 预防检查：每个 bind 同时记录 source 和 target；传给二级容器或 `docker exec` 前按执行所在命名空间选择路径，并用只读 `test -e` 验证一次。
+- 适用范围：Docker bind、DinD、updater helper、Panel/Junimo 实例数据和二级容器文件操作。
+
+## 2026-08-13：在 PowerShell→Docker→sh→SQLite 多层内联 SQL 中重复单引号
+
+- 环境：只读诊断标准 Compose 升级后导入失败，临时 Alpine 容器以 readonly bind 打开任务 `panel.db`。
+- 错误模式：PowerShell 双引号 SQL 内把 `j.type='value'` 又按单引号字符串规则写成四个单引号，传到 SQLite 后成为 `j.type=''value''`。
+- 症状 / 退出码：SQLite 在 prepare 阶段报告目标值附近 syntax error 并退出 1；查询未执行，数据库 readonly、临时容器退出，产品和测试状态未变化。
+- 根因：在并不需要转义单引号的 PowerShell 双引号字符串中继续套用另一层字符串规则，且把 SQL、Docker 参数和 Shell 命令放在同一行。
+- 正确做法：用 `apply_patch` 创建任务专属 POSIX 脚本，SQL 在脚本中只经过一层 Shell 双引号，容器显式 readonly bind 后执行；宿主只负责捕获 JSON 并投影脱敏字段。
+- 预防检查：SQLite/Python/JSON/正则只要跨 `pwsh → docker → sh` 就不内联；写入任务脚本，先跑 `sh -n`/相应解析，再只读执行。
+- 适用范围：DinD 数据库诊断、发布夹具、嵌套 Shell 与多层字符串字面量。
+
+## 2026-08-13：复用长生命周期门禁容器时猜测仓库挂载点
+
+- 环境：Windows Docker Desktop，任务专属 DinD 发布门禁容器。
+- 错误模式：未读取容器挂载信息，直接假定仓库位于 `/workspace` 并执行 `cd /workspace/backend`。
+- 症状 / 退出码：Go 版本探针成功，随后 `sh` 报目录不存在并退出 1；测试没有开始，源码和运行夹具未改变。
+- 根因：把其它容器的常用工作目录套用到当前长生命周期容器；该容器实际把仓库 bind 到 `/src`。
+- 正确做法：复用既有任务容器前先读取完整 `docker inspect` JSON，并由 PowerShell `ConvertFrom-Json` 投影 `Mounts`；本次确认目标为 `/src` 后再执行门禁。
+- 预防检查：任何跨工具调用复用的容器都先核对精确名称、镜像、挂载目标和所需工具，不根据历史命令或命名习惯猜测路径。
+- 适用范围：发布 DinD、工具链容器、只读源码门禁和长生命周期测试夹具。
+
+## 2026-08-13：清理升级夹具后直接运行仅负责验收的脚本
+
+- 最近复发/补充：同日创建 rollback414 夹具前只沿用了更早的 `0.4.14` 本地标签核验；前一轮真实 updater 已移除该临时标签，Compose 因受控 registry 不提供旧版本而在 Panel 创建前报 `manifest unknown`。每一次 fixture setup 都必须紧邻地从只读 retained image 恢复并 inspect 源 tag，不能把上一轮的探针结果跨 updater 链复用；部分创建的 root/volume 必须按 owner 精确清理后才能重建。
+- 环境：v0.4.14→v0.4.15 隔离 Web updater 门禁，fixture 创建脚本与 PowerShell 验收脚本分离。
+- 错误模式：精确清理上一轮失败夹具后，直接启动只负责 readiness/API/数据断言的 `v0415-web-upgrade-e2e.ps1`，遗漏先运行 `v0415-web-upgrade-fixture.sh`。
+- 症状 / 退出码：验收器在初始 readiness 等待 4 分钟后报告旧版 Panel 不健康并退出 1；只读复核确认目标容器、volume 和 fixture 根从未创建，候选代码未执行。
+- 根因：把“验收器”误当成包含 setup/cleanup 的自包含脚本，且脚本在等待端口前没有断言精确 Panel/game/volume/root 已存在并属于本轮 owner。
+- 正确做法：按固定两步顺序先执行 fixture 脚本，核对容器 owner、源镜像精确版本及 root，再运行验收器；验收器开始时增加这些 fail-fast 前置条件，避免用 readiness 超时掩盖资源缺失。
+- 预防检查：分离式发布夹具要在调用入口写出 setup → inspect → test → cleanup 顺序；每个消费者脚本在长轮询前验证其全部前置资源。
+- 适用范围：Web updater、升级/回滚矩阵、外置 E2E fixture 与长等待 readiness。
+
+## 2026-08-13：PowerShell 中未引用 Git stash ref
+
+- 环境：PowerShell 7，在共享 `main` 重放后恢复任务发布证据。
+- 错误模式：执行 `git stash pop stash@{0}`，没有把 reflog 风格引用作为独立的字面量参数引用。
+- 症状 / 退出码：Git 收到被 PowerShell 重新解释的参数并报告 `unknown switch 'e'`，退出 129；stash 未弹出、工作树未改变。
+- 根因：PowerShell 会解释裸露的 `@{...}` hashtable 语法，不能假定 `stash@{0}` 按原始字符传给 native command。
+- 正确做法：使用 `git stash pop 'stash@{0}'`；本次随后完整恢复五个 tracked 文件，stash 正常删除，`git diff --check` 通过。
+- 预防检查：PowerShell 调用 Git 时，对包含 `@{}`、`^`、`~`、冒号或通配符语义的 ref/pathspec 统一使用单引号字面量，并在失败后先核对 stash 仍存在再修正命令。
+- 适用范围：`git stash`、reflog 引用、revision range 与复杂 pathspec。
+
+## 2026-08-13：真实 auth integration 的总超时被冷构建依赖耗尽
+
+- 最近复发/补充：首次预热误加 `docker build --network host`，虽然 46.9 秒完成相同 `RUN apk add`，原测试使用默认网络时 BuildKit 没有命中该 layer，又在 120 秒 context 内于第 16/18 项被取消。网络模式是构建 cache 语义的一部分；“相同 Dockerfile 指令”还不够，预热必须与测试的 builder、network、platform 和 build args 全部一致。
+- 环境：任务专属 DinD，`TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth`，测试总 context 为 2 分钟。
+- 错误模式：在 Alpine `bash/python3` BuildKit 层完全冷且 apk 下载很慢时直接启动 integration，把 fixture 构建时间和产品断言共用同一个 120 秒 context。
+- 症状 / 退出码：`apk add` 已安装到第 15/18 项时 context cancel，Docker build 报 `signal: killed`，测试退出 1；Compose 未启动，`waitRuntimeAuth` 产品逻辑未执行。
+- 根因：测试依赖准备耗尽硬编码总预算，不能据此判断 auth acceptance 回归。
+- 正确做法：先用任务专属 Dockerfile 以完全相同的 `FROM alpine:3.20` 与 `RUN apk add --no-cache bash python3` 预热受校验 BuildKit layer，再重跑原测试并要求真正进入 running+unhealthy API 断言；不修改测试超时、不跳过产品逻辑。
+- 预防检查：带内部 image build 的短时 integration 开始前先 inspect/预热其不可控外网依赖层；日志若停在 build 阶段，必须明确标为夹具准备失败，不能记录成产品失败或通过。
+- 适用范围：Docker integration 内嵌 apk/apt/npm/go 下载与共享总 context 的测试。
+
+## 2026-08-14：把宿主多平台 descriptor ID 当成 DinD 导入后的 config image ID
+
+- 环境：Docker Desktop containerd image store 向任务 DinD 预加载 `mcr.microsoft.com/dotnet/sdk:6.0`。
+- 错误模式：宿主 inspect 显示多平台 descriptor `sha256:c8fdd...`，`docker image save` 后经唯一 TCP endpoint load，仍要求 DinD `image inspect .Id` 字节相等。
+- 症状 / 退出码：load 明确成功，DinD 镜像包含 `DOTNET_SDK_VERSION=6.0.428` 且大小约 745 MB，但单平台 config image ID 为 `sha256:9d227...`，脚本主动退出 1；镜像内容未损坏，也未重复加载。
+- 根因：containerd store 的索引/manifest descriptor 身份与导出选定平台后传统 Docker image config ID 属于不同层级，不能跨层直接比较。
+- 正确做法：保留导出 tar 的 SHA-256 与大小；导入后核对精确 tag、OS/arch、SDK 环境，并实际运行 `dotnet --list-sdks`。需要内容链比对时比较同一层级的平台 manifest/config/layer，而不是顶层 index 对 config ID。
+- 预防检查：预加载多平台镜像前明确记录 index digest、目标 platform manifest 与 config ID 三种身份；断言必须注明层级，不能只写通用 `Id`。
+- 适用范围：Docker Desktop containerd image store、`docker save/load`、DinD 镜像预载和多架构发布核验。
 
 ## 编码与换行快速检查
 

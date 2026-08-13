@@ -1,17 +1,26 @@
 # SAVE-IMPORT-FIRST-UPLOAD-1 接手记录（2026-08-13，completed，未发布）
 
+## 2026-08-14 发布门禁进展
+
+- 代码等价候选 `5fc7e4c` 已分别从 v0.4.14、v0.3.2 的标准 Compose 旧 Panel 走 Web 一键更新；两条链都保留数据库、管理员、实例、Mod、备份、审计、空 saves 与非目标游戏容器/volume，并在升级后 Panel 重启保持终态。
+- 升级后的新 Panel 均完成 Nexus 同 key 重放、错误 runtime 409 且 transaction=0、同 token 恢复 `.125`、空 saves 首次上传及 Control 自动解绑。结果为 farmhand total=2/customized=1/bound=0，bootstrap=0、目标目录唯一、preimport 可读、journal completed，Panel 再重启仍保持；这证明 helper host-path 映射和 `${INSTANCE_HOST_DATA_DIR}` Compose bind 两层修复必须同时存在。
+- unhealthy 候选从 v0.4.14 更新后以 `health_check_failed` 自动回滚，旧 Panel 与长期数据、备份和非目标 Docker 资源保持。完整 Go/前端/网站/兼容/脚本/Docker integration/Control 编译门禁也已通过，详情见 `docs/09-image-build.md`。
+- 官网 docs-only 提交 `13f6af3` 进入远端后，两条本地修复被安全 rebase 为 `967647d` 与 `fd04ff0`。代码内容等价但 OCI revision 不同，因此下一位不得把 `5fc7e4c` 镜像用于 tag；必须从最终干净 main 重建精确候选并重跑 fresh、两条升级后功能和 unhealthy 回滚，再进入 push/tag。
+
 ## 改了什么、影响哪些接口/文件
 
 - 修复空实例直接上传被误报“升级 Junimo”的两个原因：`ImportSaveAndStart` 在 journal/token ownership 前按 `.env IMAGE_VERSION=.125` 检查宿主 JunimoServer Mod，缺失或无效时复用 `lifecycleRunner.ensureJunimoServerMod` 从精确 image 原子同步；不启动游戏。明确 tag 不兼容仍是 `junimo_import_unsupported`，同步/复核失败为 `save_import_runtime_prepare_failed`。
+- 标准 Compose 升级后复验进一步发现：Panel 内 `instance.DataDir=/data/instances/...` 不能直接作为宿主 Docker daemon 的 bind source。`DriverOptions` 现由 `cmd/panel` 注入 `PANEL_DATA_DIR` 与 `PANEL_HOST_DATA_DIR`，`dockerHostPath` 只允许数据根内路径并映射到宿主根；JunimoServer image 提取、runtime update recovery 提取、SMAPI bundled staging 和 SMAPI ZIP 安装挂载均使用映射后的 source。实例 Compose 的受管 `.local-container` bind 同样不能保留相对路径：新模板使用 `${INSTANCE_HOST_DATA_DIR}`，Prepare/runtime recovery 会原子写入宿主实例路径并迁移旧模板。缺失 host root 的旧同路径部署保持兼容，配置了 host root 却映射不完整/越界则 fail closed。
 - `save_import_bootstrap.go` 为没有活动存档的 operation 创建确定性 `AnxiImportBootstrap_<operationId>`。它从指纹稳定的 staged target 克隆到事务私有 source，no-replace 发布，只重命名副本主文件，并把 gameloader 指向副本；Junimo maintenance 因此不会把上传目标当成当前活动档，也不会触发普通零存档自动建档。
 - journal 记录 bootstrap 名、全树指纹、no-replace 发布 ownership 和 cleanup completed。取消只有在 ownership 已耐久、pointer 未漂移且上游可证明未生效时删除 pointer/bootstrap/source/target；发布与 ownership 落盘之间中断或同名碰撞时不删除未知目录，直接 recovery。成功则在目标 pointer、finalizer、Control/Junimo 零绑定、GameLoop.Saved 与磁盘稳定之后删除 bootstrap，再写 completed。清理失败留在 recovery，preimport 不删。
-- 主要影响 `save_import_{bootstrap,transaction,durable}.go`、对应 staging/maintenance/transaction/bootstrap 测试、`internal/web/save_import_api.go`。公开上传 JSON、hostHandling、任务阶段和已有存档导入语义不变。
+- 主要影响 `save_import_{bootstrap,transaction,durable}.go`、`driver.go`、`docker_host_path.go`、`junimo_mod_runtime.go`、`lifecycle.go`、`runtime_update_apply_runner.go`、`smapi_bundled_sync.go`、`installer.go`、`cmd/panel/main.go`、对应测试与 `internal/web/save_import_api.go`。公开上传 JSON、hostHandling、任务阶段和已有存档导入语义不变。
 
 ## 如何验证、下一步注意事项
 
 - Go 专项覆盖首次 runtime asset 同步只执行一次、错 tag 不提取、空实例 staging/重试/取消、bootstrap 碰撞零覆盖、maintenance 接受精确 bootstrap、完成清理必须先看到 target pointer，并已通过相关包全量测试。前端稳定错误码测试与 production build 也通过。
 - 不要用启动完整 server 代替静态资源物化，否则零存档会产生无关新档。不要放松 bootstrap 的 operationId 派生、no-replace、目标前后指纹或 pointer 检查，也不要在 target durable 之前删除维护世界。
-- 正式候选仍要用真实有效 Stardew 存档验证 bootstrap 能加载、完整 Web 上传完成后只剩目标存档；注入 Mod 提取断流、复制/发布中断、Panel/Control 中断、cleanup 权限失败，并从 v0.4.14/v0.3.2 一键升级后的空实例再次验收。矩阵见 `docs/09-image-build.md`。
+- `eaae88f` 候选已经用真实有效 Stardew 存档完成空实例 Web 上传，bootstrap 实际加载并清理，最终只剩目标存档，runtime 提取失败同 token 可重试，自动解绑/durable save/Panel 重启均通过。仍需补复制/发布中断、Panel/Control 精确中断、cleanup 权限失败，并从 v0.4.14/v0.3.2 一键升级后的空实例再次验收。矩阵见 `docs/09-image-build.md`。
+- 注意 `eaae88f` 独立夹具把 host data path 同名挂进 Panel，不能作为标准 Compose path mapping 的最终证据。v0.4.14 Web 升级本身、数据/非目标资源保留与重启已经通过；升级后首次上传在正确镜像重试时稳定返回 runtime-prepare 409，且二级容器没有生成宿主 Junimo manifest，从而定位 helper bind 的 namespace 缺口。`1961b40` 修复 helper 后任务已进入 `backup_created`，但 maintenance server 因旧实例 Compose 的相对 `.local-container` bind 被解析为 Panel `/data` 路径而启动失败；新模板、旧实例原子迁移及 idempotency 单测已补齐。必须从包含两层修复的最终 SHA 重建候选，并用标准 Compose（仅 `/data` container target）重跑同一升级后上传链。
 
 # NEXUS-EXT-IDEMPOTENCY-1 接手记录（2026-08-13，completed，未发布）
 
@@ -25,7 +34,8 @@
 
 - `go test ./internal/storage ./internal/jobs ./internal/web -run 'Idempotent|Idempotency|RemoteInstall' -count=1` 覆盖 12 路并发、终态复用、不同 key、单 runner、实例状态变化后的 HTTP 复用和非法 key；并已通过 `go test ./... -count=1`、`go vet ./...` 与 `go build ./...`。
 - key 是一次用户动作身份，不是 `modId/fileId` 的永久身份。扩展必须在响应不确定时复用，在用户明确新开安装时轮换；后端不得按完整 CDN URL 建键或把临时 query/token 写入 jobs、日志和审计。
-- 正式发布前用真实扩展和候选 Panel 注入“后端已创建 job 但 HTTP 响应断流”，重启扩展/Panel 后用同 key 必须取回原 jobId，且 jobs 表只有一条目标任务。
+- `eaae88f` 已用任务专属 Chromium profile 加载真实 unpacked 0.1.3：Panel bridge 同源注册后 20 路同 capture 得到 1 owner/19 shared，Panel 只有 1 个 job；关闭/重开 Chromium 后 requestId/job 持久化，popup/Panel console error/warn 为 0。独立候选服务端在调用方不观察首次响应后重启活动 Panel，20 路及终态重放都复用原 failed job、runner 只启动 1 次；不同 key 只创建第二个受控失败 job，SQLite total/distinct=2/2，失败未留下 Mod，key 未进入 audit/log。测试使用合成账号和受控 Nexus-CDN 形态 URL，不依赖生产 Nexus 登录。
+- 正式发布仍需在 v0.4.14/v0.3.2 Web 升级得到的新 Panel 上复验该链，并完成 tag 前/后镜像门禁；不要把受控失败 URL 写成真实 Nexus ZIP 成功下载。
 
 # SAVE-IMPORT-AUTO-UNCLAIM-1 接手记录（2026-08-13，completed，未发布）
 
@@ -41,6 +51,7 @@
 
 - Control 纯契约覆盖动作解析、错档、在线玩家、恢复、Saved 后仍绑定和成功计数；真实 game-data 编译 0 errors。Linux 容器内 go test ./... -count=1、go vet ./...、三项 cmd build 均通过。
 - 新增专项覆盖未完成导入保护精确结果、无关 commandId 不受保护、`completed` 后释放，以及 Web 同步器在保护期不入库/不删文件、完成后正常归档。`b15fa42` 旧候选的真实链已复现并证明 fail-closed，包含修复的最终候选必须重新跑完整首次上传、Panel 重启恢复和资源清理，旧候选不可用于 tag。
+- `eaae88f` 候选已从重新克隆的 1,959,640,718 B 只读 game-data 基线跑过完整 Web 首次上传：无宿主 Junimo Mod、空 saves/无 pointer，受控 runtime 提取失败返回稳定 409 且 transaction=0，同 token 恢复后 job succeeded；bootstrap created/cleaned、目标目录唯一、preimport 可读、Control total=2/customized=1 全部解绑、durable save 完成。Panel 重启后 journal/server 保持，结果文件已归档且数据库 succeeded/ok，完整测试 platformId 不在 journal。Compose 容器/网络、两个运行期 volume、Panel 与 data 均精确清理/重置；只读源未修改。
 - Docker Desktop project anxi-unbind-e2e-20260813-r1 使用任务专属端口、bind、game-data/steam-session 卷，从只读历史隔离夹具克隆 2 个 farmhand（1 customized、1 bound）。Control 0.3.2 的单个 save-now succeeded 后，Control details、Junimo diagnostics 和主 XML 均为 total=2/customized=1/bound=0；主文件 SHA-256 发生变化，server 重启后仍为 0。项目容器/网络/卷为零，克隆目录移入回收站，源夹具未改。
 - 后续维护不得把动作移到 XML 离线改写，也不得在 Panel 看不到精确 GameLoop.Saved 或 diagnostics 绑定计数时放行 completed。若未来界面移除 SteamID，需要先另行定义 Panel 生成一次性平台 ID 的上游 swap 契约；本次没有实现该路线。
 - 下一次正式版本必须按 docs/09-image-build.md 以最终 commit 重建 Control/Panel 候选，重新核对 DLL SHA、真实上传完整事务、故障注入、上一正式版/最低支持版一键升级、回滚和升级后再验收；当前实现未创建 tag、镜像或 Release。

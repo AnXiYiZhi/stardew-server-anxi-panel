@@ -10,17 +10,27 @@
 - 正式候选必须从本地 `main` 的最终提交构建，build args 固定 `VERSION=0.4.15`、完整 commit SHA、UTC build date；本节后三张功能矩阵全部完成前禁止 push `main`、创建 `v0.4.15`、更新 registry/latest 或创建 Release。
 - 自动解绑必须在唯一隔离的真实旧导入夹具上走完整后台上传事务，而不是只调用 Control 命令；正常链、零 farmhand/在线玩家/错 Control/结果断流、Panel 或 Control 中断恢复、稳定 XML、角色/小屋/Mod/备份保留和资源归零均需有候选证据。
 - `b15fa42` 候选的真实首次上传已证明 runtime-prepare 失败可重试、bootstrap maintenance、swap finalizer、Control 自动解绑与 GameLoop.Saved 均能运行，但同时捕获发布阻断竞争：command history 在 durable gate 读取前归档并删除结果，数据库公开白名单又不保留私有聚合证明，任务安全进入 recovery。生产修复改为由未完成 import journal 保护精确 command result；针对性 Go 测试已通过，旧候选证据作废，必须从包含该修复的最终 SHA 重建并重跑整链。
-- Nexus 幂等必须在真实候选 Panel 上覆盖 20 路同 key、不同 fileId、首次响应丢失、Panel 重启和终态复用；权威断言是 SQLite 只有一个 owner/job 且 runner/下载调用不重复，不能只看扩展 singleflight。
+- `eaae88f` 的独立首次上传夹具把宿主数据目录以同一路径额外挂进 Panel，因而没有覆盖标准 Compose 的 namespace 边界。v0.4.14 Web 一键升级到该候选已通过 check/dry-run/apply、真实断线重连、health/version/commit、数据库/用户/Mod/备份/空 saves/非目标游戏容器与 volume 保留及重启；升级后 Nexus 同 key 复用也通过。随后空存档上传在错误镜像注入后正确 409/transaction=0，但恢复 `.125` 的同 token 重试仍 409：Panel 把容器内 `/data/.../junimo-mod-sync` 直接交给宿主 daemon，二级容器实际看不到目标目录。`1961b40` 候选加入 helper 路径映射后正确镜像重试已进入 maintenance，但实例 Compose 的 `./.local-container/...` 又由 Panel 内 Compose CLI 解析成 `/data/...`，server/auth 因宿主 daemon 看不到该路径而启动失败。当前修复同时把受管 Compose bind 迁移到 `${INSTANCE_HOST_DATA_DIR}`；两个候选的升级后新功能证据均作废，必须从新 SHA 重建并重跑。
+- Nexus 幂等已在 `eaae88f` 候选覆盖真实 Chrome 0.1.3、Panel bridge、20 路同 capture、浏览器重启持久化，以及服务端首次响应被调用方丢弃、Panel 活动 runner 重启、20 路终态重放和不同 key；权威 SQLite/任务日志断言仍以 owner/job、distinct key 和 runner 启动次数为准，没有只看扩展 singleflight。
 - 升级矩阵至少包含上一正式版 `v0.4.14` 与本次 migration/运行栈支持边界 `v0.3.2`，两者都必须使用 Panel Web 一键更新完整链；目标 unhealthy/版本错误必须恢复原版。升级后新 Panel 再执行三项新功能，其中首次上传必须从空 saves/无 gameloader pointer 开始；同时验证 SQLite、用户、实例、存档、Mod、备份、审计与非目标 Docker 资源保留。
 - tag 前还须执行 Release workflow 的精确全量命令：兼容清单与远程制品、脚本功能/语法/ShellCheck、Linux Go test/vet/build 与 integration、SMAPI 真实下载、前端全量测试/audit/build、网站 audit/build、候选 fresh/restart 和镜像内 helper/扩展包检查。
 - `.dockerignore` 现在明确排除任务级 `.agents` 目录；本地/CI build context 不再发送错题本、发布夹具、临时 ZIP 或 E2E 脚本。正式镜像仍只由 Dockerfile 的 frontend/browser-extension/backend/deploy 精确 COPY 组成，排除项不改变运行产物。
 - tag 后等待 Release workflow 成功，再从 Docker Hub、ACR、GHCR 回拉 `0.4.15`，核对三仓 digest、OCI version/revision、latest 与 GitHub Release/四项资产，并逐仓执行隔离 health/version/restart；最终 workflow ID、digest、耗时、故障和清理结果必须回写本文件及接手/路线文档。
+
+## 2026-08-14 代码等价候选门禁证据与最终候选边界
+
+- 代码等价候选 `5fc7e4cf7f01f92e7a25c39c90a036cc86d3e122` 已在本机 Docker Desktop Linux containers 构建为 `0.4.15`：image ID=`sha256:b405f14accc8cbcba1b11af27a4e854341c902a8be4d99e6b622c77087462ba8`，OCI revision 精确匹配，受控本地 registry digest=`sha256:cbab69051512bd91e0f53a0e46807d947239e41d67220c7316be56d205383e49`。该镜像只用于本地门禁，没有推送互联网 registry、更新 `latest`、创建 tag 或 Release。
+- `v0.4.14 → 5fc7e4c` 与 `v0.3.2 → 5fc7e4c` 都从真实旧 Panel Web 完成 update check、dry-run、管理员确认、apply、预期断线重连与终态恢复。两条链均精确核对 `/health`、`/api/version`、migration 013、数据库、初始化、管理员、实例、空 saves、Mod、备份、审计、非目标游戏容器/volume、升级状态与 Panel 重启；升级得到的新 Panel 再执行 Nexus 重放、错 Junimo runtime 409 后同 token 正确 runtime 重试、空 saves 首次上传以及自动解绑，最终 Control/Junimo/磁盘为 total=2、customized=1、bound=0，bootstrap 清理且 journal 在 Panel 重启后仍为 completed。
+- 由同一候选制作的 unhealthy 目标从 `v0.4.14` Web 一键更新后进入 `failed_rolled_back`，错误为 `health_check_failed`；旧 `0.4.14`、数据库、用户、Mod、备份、非目标游戏容器/volume、升级备份与重启状态均恢复并保持可读。受控 registry 随后恢复健康候选，测试只清理本轮拥有的 Compose project、容器、网络、bind 与 volume，没有执行 prune。
+- 全量门禁已通过：Linux `go test ./... -count=1`、`go vet ./...`、三个 Go 命令构建、41,889,142 B 真实 SMAPI 下载、runtime/updater/Docker integration（含 real candidate upgrade/reconcile）、前端 15 项状态测试与 production audit/build、网站 production audit/build、兼容矩阵 19 项、四个部署脚本功能测试、八个 Release 脚本 `bash -n` 与 ShellCheck 0.11.0。Control 0.3.2 使用官方签名的 ModBuildConfig 4.3.0 与真实只读 game-data 编译 0 errors；内嵌 DLL 150,528 B、SHA-256=`a62e525d07279c4c8e8ca13d94e4914cfee2eae79ae60077332c5f2d8b897b2d`，source/embedded/runtime manifest 均为 0.3.2，行为由上述真实升级后上传再次验证。
+- 官网 docs-only 提交 `13f6af396a904474c53a4c0c4ed5132436ec6159` 发布后，本地两个 Docker namespace 修复已安全 rebase 为 `967647d` 与 `fd04ff0`；产品代码与 `5fc7e4c` 等价，但 commit 身份已经变化。因此 `5fc7e4c` 不能作为 tag 镜像。正式 tag 前必须先提交本节证据，从最终干净 `main` 重建精确 revision 候选，并至少重跑 fresh/restart、两条 Web 升级后的三项新功能以及 unhealthy 自动回滚；这些最终身份结果和 tag 后三仓证据将在发布收口提交回填。
 
 # SAVE-IMPORT-FIRST-UPLOAD-1 候选门禁（2026-08-13，代码完成、未发布）
 
 ## 变更清单与受影响链路
 
 - 新安装但从未启动的实例可能尚无宿主侧 `JunimoServer` Mod。提交导入前现在先从 `.env` 指定的精确 `.125` server image 只读提取、原子替换并重新静态校验；只有真实 image/tag 不兼容才返回 `junimo_import_unsupported`，同步/校验故障使用新的 `save_import_runtime_prepare_failed`。该步在 journal 和上传所有权转移前完成。
+- 标准 Compose 下任何交给 Docker daemon 的 bind source 都不能使用 Panel 内 `/data` 路径。driver 由 `cmd/panel` 接收 container/host 数据根，只把容器数据根内路径按相对路径映射到 `PANEL_HOST_DATA_DIR`；越界、非绝对或不完整映射拒绝执行。相同规则覆盖 Junimo/runtime update 提取、SMAPI bundled staging 与 SMAPI 安装包挂载；实例 Compose 的受管 `.local-container` bind 改用 `${INSTANCE_HOST_DATA_DIR}`，Prepare/runtime recovery 自动补写宿主实例路径并原子迁移旧相对路径，避免 helper 修好后 server/auth Compose 仍复用错误 namespace。
 - journal 创建时若没有活动存档，staging 在 preimport 已耐久后从未修改的上传目标创建事务专属 `AnxiImportBootstrap_<operationId>` 副本，仅把副本主文件重命名为 bootstrap 名，并把 gameloader 指向它。这为 Junimo 提供一个非目标的维护世界，防止零存档启动自动新建其它世界，也避免上游“不能导入当前活动存档”门禁。
 - bootstrap 名称、全树指纹、no-replace 发布所有权和清理状态全部写入 operation journal。提交前取消只在 ownership 已耐久且 pointer 仍指向该 bootstrap 时恢复为“无 pointer”并删除事务自有副本；发布成功但 ownership 尚未落盘的崩溃窗口、指针冲突和同名碰撞均保留现场进入 recovery。导入完成则只在目标 pointer、finalizer/durable save/磁盘门禁全部通过后删除 bootstrap；清理失败不宣布 completed。
 - 受影响文件为 `save_import_bootstrap.go`、`save_import_transaction.go`、`save_import_durable.go`、Web/前端错误码映射及对应测试。upload-preview/commit JSON、hostHandling、管理员权限和已有存档导入时序不变。
@@ -29,42 +39,43 @@
 
 | 场景 | 预期措施 | 当前证据 / 正式发布前状态 |
 | --- | --- | --- |
-| 首次安装、无宿主 JunimoServer Mod | 从精确 image 同步一次并复核，不误报升级 | Go 同步/幂等回归通过；真实候选 image 上传待执行 |
+| 首次安装、无宿主 JunimoServer Mod | 从精确 image 同步一次并复核，不误报升级 | `eaae88f` 同路径夹具通过；标准 Compose 升级后稳定复现 host bind namespace 409 并完成代码修复，最终 SHA 候选待重跑 |
 | 明确非 `.125` image | 仍返回 `junimo_import_unsupported`，不进入 journal/不接管 token | 旧版本专项通过；候选 API 待执行 |
-| image 提取、网络、原子替换或校验失败 | 结构化 runtime-prepare 错误；上传 token 仍可重试，无导入 journal | 结构化错误映射与单测通过；可控断流待候选 |
-| 空 saves/无 gameloader 的正常首次上传 | preimport 后创建非目标 bootstrap，运行维护链，目标 durable 后删除 | staging + maintenance bootstrap 回归通过；完整真实 Web 导入待候选 |
+| image 提取、网络、原子替换或校验失败 | 结构化 runtime-prepare 错误；上传 token 仍可重试，无导入 journal | 同路径候选恢复 `.125` 后同 token 成功；标准 Compose 错镜像分支同样精确 409/transaction=0，但恢复分支暴露错误 bind，映射修复后的最终候选待重跑 |
+| 空 saves/无 gameloader 的正常首次上传 | preimport 后创建非目标 bootstrap，运行维护链，目标 durable 后删除 | `eaae88f` Web 实链成功：bootstrap created/cleaned，最终 saves 目录仅 1 个目标，preimport 可读，Panel 重启后 journal completed、server 保持 running |
 | 已有活动存档 | 沿用原 pointer，不创建 bootstrap | 旧链与新断言通过；候选需与首次链 A/B 复验 |
 | bootstrap 同名碰撞/指纹变化 | 不覆盖，不改现有字节，进入 recovery | 碰撞零修改回归通过；真实故障注入待候选 |
 | 复制/发布中断 | 隐藏 staging + 指纹 + no-replace，重试只继续原 operation | 单元幂等边界通过；Panel kill 窗口待候选 |
 | 提交前取消 | 删除 bootstrap pointer/副本、本 operation target/source，保留 preimport | 回归通过；真实 API cancel 和资源归零待候选 |
 | Junimo/Control/API/FIFO 延迟、断流或容器退出 | 仍使用既有 maintenance fail-closed，不重发 import，保留 journal/preimport | 既有失败矩阵单测通过；首次链真实故障待候选 |
 | 目标已耐久但 bootstrap 清理失败 | 不写 completed，目标保持活动，人工/恢复只清事务自有副本 | target-pointer 清理门禁回归通过；权限故障待候选 |
-| 数据完整性 | 上传目标与 preimport 在 bootstrap 构建前后指纹一致；最终仅目标留在 saves | 目标字节/指纹回归通过；真实存档、Mod/备份/重启待候选 |
-| 权限与敏感信息 | 仍限管理员；bootstrap 只含 operationId，无 platformId/姓名/凭据新增日志 | 差异审查通过；候选日志/support bundle 扫描待执行 |
-| 升级/回滚 | v0.4.14/v0.3.2 升级后从空 saves 首传；unhealthy 候选不留 bootstrap/journal | 真实 Web 一键升级、失败回滚与升级后复验待候选 |
+| 数据完整性 | 上传目标与 preimport 在 bootstrap 构建前后指纹一致；最终仅目标留在 saves | 候选真实存档完成 durable save；目标主文件、preimport、JunimoServer DLL/manifest 均可读，bootstrap=0、目标目录=1，Panel 重启保持 |
+| 权限与敏感信息 | 仍限管理员；bootstrap 只含 operationId，无 platformId/姓名/凭据新增日志 | 合成管理员同进程 session；journal 扫描确认完整测试 platformId 不存在，公开输出仅聚合计数；support bundle 扫描待执行 |
+| 升级/回滚 | v0.4.14/v0.3.2 升级后从空 saves 首传；unhealthy 候选不留 bootstrap/journal | v0.4.14→`eaae88f` 的 updater、保留、重启和升级后 Nexus 已通过；升级后首传定位并修复 host bind，最终候选全链、v0.3.2 与 unhealthy 回滚待重跑 |
 
 # NEXUS-EXT-IDEMPOTENCY-1 发布门禁补充（2026-08-13，代码完成、未发布）
 
 - compatibility 与 release workflow 的前端门禁新增 `npm run test:nexus-extension-idempotency`；PR path 同时覆盖 `browser-extensions/**`，扩展代码变化不会再绕过 compatibility。
 - 自动专项覆盖扩展 20 路并发、panel bridge、失败重试、service worker 重启、不同 fileId，以及后端 SQLite 12 路原子 owner、终态复用和 HTTP 契约。它们只证明代码级幂等，不替代 Docker/真实浏览器验收。
-- 下一正式候选必须在唯一隔离 Panel、数据库、实例目录和浏览器测试配置中至少验证：正常单击；快速重复触发；同 Mod 不同 fileId；后端创建 job 后截断 HTTP 响应；扩展 worker 重启；Panel 进程重启；失败后新动作轮换 key；批量两个不同 Mod；终态 jobs 表仅一条目标 requestId。测试不得使用生产 Nexus 登录、真实用户存档或长期面板 session。
-- 本轮没有构建候选镜像、执行 Web 一键升级、创建 tag、推送 registry 或更新 latest；正式发布仍须与当前其它未发布功能合并执行本文件完整故障矩阵和升级后复验。
+- `eaae88f` 候选使用任务专属 Chromium profile 加载真实 unpacked 0.1.3：Panel 同源 bridge 注册后，20 路同 capture 消息得到 20 个成功响应、19 个 shared 结果、1 个 jobId；Panel 仅持久化 1 个 `mod_remote_install` job。弹窗标题/正文/queued 状态可见，Panel 与 popup console error/warn 为 0；关闭并重开 Chromium 后 storage 中原 requestId/job 仍精确保持。测试只使用合成账号和受控失败的 `*.nexus-cdn.com/*.zip` URL，没有使用生产 Nexus 登录或真实用户数据。
+- 独立候选服务端 E2E 让标准 HTTP 客户端发出请求但不观察响应；看到一个活动 owner 后重启 Panel。恢复为 failed 后 20 路同 key 全部 202/deduped 并返回原 job，终态再重放仍复用；不同 key 创建且只创建第二个受控失败任务，129 字节 key 返回 400。SQLite 为 total=2/distinct_keys=2，首任务 runner 启动日志精确 1 次，失败前后 Mod manifest 数不变，随机 key 不在 audit metadata 或 Panel logs。
+- 本轮仍未执行 v0.4.14/v0.3.2 Web 一键升级、创建 tag、推送 registry 或更新 latest；升级后复验和正式 release 收口完成前继续保持 pre-release。
 
 ## 本功能正式候选故障矩阵
 
 | 场景 | 预期措施 | 当前证据 / 正式发布前状态 |
 | --- | --- | --- |
-| 正常单次安装 | 一个 requestId、一个 HTTP POST、一个 job，导入链和公开请求体保持兼容 | Node/Go 契约通过；真实浏览器 + 候选镜像待执行 |
-| 快速重复点击、自动/手动/下载事件竞争 | 进行中 Promise 先登记后执行，followers 共享结果；SQLite 只允许一个 owner/runner | 20 路扩展与 12 路存储并发通过；真机快速操作待执行 |
+| 正常单次安装 | 一个 requestId、一个 HTTP POST、一个 job，导入链和公开请求体保持兼容 | `eaae88f` 真实 Chrome → Panel bridge → 候选 API 通过；受控 URL 安全失败，未使用生产 Nexus 下载 |
+| 快速重复点击、自动/手动/下载事件竞争 | 进行中 Promise 先登记后执行，followers 共享结果；SQLite 只允许一个 owner/runner | 真实 Chrome 20 路为 1 owner/19 shared/1 job；独立候选 20 路 HTTP 重放仍为原 job，runnerStarts=1 |
 | 同 Mod 的不同文件、未知 fileId、新安装动作 | 已知 fileId 不同必须换 key；未知文件身份不合并；不同批量项各有独立 key | Node identity 回归通过；真实 Nexus 页面切换待执行 |
-| 非法、缺失或碰撞 key | 非法 key 返回 400；缺失保持 0.1.2 兼容；同 key 在同实例只返回原 job | Web/存储回归通过；管理员权限不变，随机 key 不写日志/审计 metadata |
+| 非法、缺失或碰撞 key | 非法 key 返回 400；缺失保持 0.1.2 兼容；同 key 在同实例只返回原 job | 129 字节 key 真实返回 400；同 key 终态复用；SQLite 2 个不同动作仅 2 个 distinct key；随机 key 不在日志/审计 |
 | POST 前网络失败 | 不创建 job；rejected singleflight 立即清理，capture 保持 active 并沿用 key 重试 | 同 worker 立即重试回归通过；可控代理断网待候选 |
-| job 已创建但 HTTP 响应断流/超时 | 重试同 key，返回原 jobId 与 deduped=true，不启动第二个 runner | 终态/实例状态变化后的持久复用通过；服务端接受后断流待候选 |
-| 扩展 worker 或 Panel 进程中断 | requestId 已进 chrome.storage；Panel 重启后由 SQLite 原 job 恢复响应 | worker 重建 VM 回归通过；真实进程 kill/restart 待候选 |
-| 首次任务已部分成功或已经失败/终态 | 相同 key 仍绑定原任务，不自动重下或重导；用户明确新动作才换 key | storage terminal reuse 与 HTTP 复用通过；真实下载/解压中断待候选 |
-| 失败回滚和数据完整性 | 本功能不改变 Junimo 下载、校验、原子导入/回滚逻辑；重复请求不能额外写第二份 Mod | 单元/全量 Go 通过；坏包、部分导入与候选升级后复验仍走既有远程安装矩阵 |
-| 权限与敏感信息 | 仍要求管理员和目标实例权限；CDN query 不进入 key、公开 Job、审计 metadata 或普通日志 | 差异审查与 Web 契约通过；候选日志/support bundle 脱敏扫描待执行 |
-| 资源清理 | singleflight 成功/失败均立即删除；测试只清理任务自有浏览器配置、容器、网络、volume 和 bind | Node 已证明失败不缓存；真实门禁须按 ownership 精确清理，禁止全局 prune |
+| job 已创建但 HTTP 响应断流/超时 | 重试同 key，返回原 jobId 与 deduped=true，不启动第二个 runner | 候选调用方丢弃首次响应后，20 路重放与终态重放均返回原 job，runnerStarts=1 |
+| 扩展 worker 或 Panel 进程中断 | requestId 已进 chrome.storage；Panel 重启后由 SQLite 原 job 恢复响应 | 真实 Chromium 关闭/重开后 requestId/job 保持；活动 runner 时重启 Panel，原 job 安全恢复为 failed 并可复用 |
+| 首次任务已部分成功或已经失败/终态 | 相同 key 仍绑定原任务，不自动重下或重导；用户明确新动作才换 key | Panel 中断后的 failed 终态仍绑定原 job；不同动作 key 只创建第二个 job；真实解压中断仍由既有远程安装矩阵覆盖 |
+| 失败回滚和数据完整性 | 本功能不改变 Junimo 下载、校验、原子导入/回滚逻辑；重复请求不能额外写第二份 Mod | 两个受控失败任务前后 Mod manifest 数相同、临时归档由 defer 清理；坏包/升级后复验仍走既有矩阵 |
+| 权限与敏感信息 | 仍要求管理员和目标实例权限；CDN query 不进入 key、公开 Job、审计 metadata 或普通日志 | 合成管理员真机通过；key 不在 audit metadata/Panel logs；浏览器/服务端输出只保留聚合计数 |
+| 资源清理 | singleflight 成功/失败均立即删除；测试只清理任务自有浏览器配置、容器、网络、volume 和 bind | Chromium profile/cache、候选 Panel、精确 bind 均按 owner 清理；未 prune，外层 DinD 留给后续升级门禁 |
 | 旧版升级与回滚 | migration 013 原子应用；旧扩展无 key 继续工作；目标候选失败时整版 Panel 按现有 updater 回滚 | 旧 schema → 当前 migration 全量测试通过；上一正式版/最老受影响版 Web 一键升级与 unhealthy 回滚待候选 |
 
 # SAVE-IMPORT-AUTO-UNCLAIM-1 候选门禁（2026-08-13，代码完成、未发布）
@@ -80,13 +91,13 @@
 
 | 场景 | 预期措施 | 当前证据 / 正式发布前状态 |
 | --- | --- | --- |
-| 正常 swap_to_player | finalizer 后同一次 save-now 自动清空全部绑定，双证据和磁盘门禁后 completed | C#/Go 契约通过；隔离真实 Control 已把 total=2/customized=1/bound=1 变为 2/1/0并重启保持。完整 Web 上传事务仍须最终候选复跑 |
+| 正常 swap_to_player | finalizer 后同一次 save-now 自动清空全部绑定，双证据和磁盘门禁后 completed | `eaae88f` 候选完整 Web 首次上传成功；journal 为 total=2/customized=1、unbind verified，durable save 与 completed 通过，Panel 重启后 server 仍运行 |
 | virtual_host_takeover/as-is | 不提交解绑动作、不额外保存 | Go as-is 回归保持原分支；正式候选继续覆盖 |
 | 空/不可读 farmhandData、错目标存档、非服务器 | Control 在保存前失败，不改盘、不发布 completed | C# precondition/结果测试；真实故障注入待候选 |
 | 真人 farmhand 在线 | 不踢人，动作失败并保持维护态 | C# 在线门禁与 Go maintenance 测试；真实客户端在线分支待候选 |
 | 旧 Control、坏 DLL/hash、options 缺失或错版本 | pending 只等待启动；明确 mismatch/invalid fail closed并停止导入推进 | maintenance/control gate 单测通过；代表老版本升级必须验证自动同步到 0.3.2 |
 | diagnostics 网络超时、断流、failedFields 或结果缺计数 | 不把 GameLoop.Saved 单点当成功，返回 unconfirmed/recovery 并保留事务材料 | Go 失败矩阵通过；可控代理/真实断流待候选 |
-| command history 与 durable gate 并发读取终态结果 | 未完成 journal 的精确 commandId 结果保留原文件；不可读 fail closed；completed 后才归档删除 | `b15fa42` 真实链稳定复现提前归档后 recovery；`DurableCommandResultProtected` 与 Web 同步专项通过，最终候选整链待复跑 |
+| command history 与 durable gate 并发读取终态结果 | 未完成 journal 的精确 commandId 结果保留原文件；不可读 fail closed；completed 后才归档删除 | `b15fa42` 稳定复现 recovery；修复专项通过；`eaae88f` 同链 job succeeded，重启后原文件已归档且数据库精确为 succeeded/ok |
 | 保存已成功但后续验证暂时失败 | 不重发 import/save-now；journal 保留同 commandId，恢复只继续观察 | Go durable 恢复和 C# pending journal 契约通过；Panel/Control 中断窗口真机待候选 |
 | Control 在清空后、Saved 前退出 | 同一 pending journal 恢复，重复清空幂等，只启动原 commandId 的保存 | C# recovery 契约通过；真实 kill 窗口待候选 |
 | 重复提交或旧结果 | 动作/目标 saveId/commandId 任一不一致均拒绝，禁止把旧 succeeded 复用到新事务 | C#/Go identity tests 通过 |

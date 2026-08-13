@@ -2,9 +2,11 @@
 
 - 根因有两层：从未启动的实例尚未把 server image 内的 JunimoServer Mod 物化到宿主，旧静态检查因此误报“需要升级”；同时零存档没有可加载的非目标维护世界，直接启动会由游戏创建无关新档，而上游又禁止导入当前活动目标。
 - `ImportSaveAndStart` 现在在创建 journal、接管上传 token 前先核对 `.env` 的精确 `.125` image。宿主 Mod 缺失或无效时复用 lifecycle 的原子提取/同步，再做静态复核，不启动长运行游戏；真实 tag 不兼容仍返回 `junimo_import_unsupported`，提取、替换或复核失败返回可重试的 `save_import_runtime_prepare_failed`。
+- 标准 Compose 中 Panel 看到的实例路径是 `/data/instances/...`，Docker daemon 的 bind source 则必须使用 `PANEL_HOST_DATA_DIR/instances/...`。driver 现在显式保存 container/host 数据根映射，所有会把 Panel 本地文件交给二级容器的 JunimoServer 提取、SMAPI bundled staging 和 SMAPI 安装包挂载都先做受限相对路径转换；实例 Compose 的受管 `.local-container` bind 也统一引用 `${INSTANCE_HOST_DATA_DIR}`，`Prepare` 与 runtime recovery 会原子补写该环境值并迁移旧相对路径。路径逃出数据根、映射非绝对或配置不完整时 fail closed；未设置 host data dir 的旧式同路径/测试部署保持原行为。
 - staging 发现原活动存档为空时，在 preimport 已耐久且目标指纹稳定后，创建事务专属 `AnxiImportBootstrap_<operationId>` 副本，只把副本主文件改为 bootstrap 名并将 gameloader 指向它。目标存档不被改写，Junimo 始终在非目标世界执行既有 maintenance/finalizer/durable-save 链。
 - journal 新增 bootstrap 名称、指纹、no-replace 发布所有权和清理完成标记。提交前取消仅在 ownership 已耐久且 pointer 仍指向该 bootstrap 时删除 pointer、副本和临时源；成功只在目标 pointer 及既有 finalizer、Control、Junimo、XML、durable-save 门禁都通过后清理。碰撞、发布后 ownership 尚未落盘、指纹/指针漂移或清理失败全部进入 recovery，不能猜测所有权或提前写 completed；preimport 继续保留。
-- 影响 `save_import_bootstrap.go`、`save_import_transaction.go`、`save_import_durable.go`、Web 稳定错误映射及对应测试。upload-preview/commit DTO、管理员权限、hostHandling 和已有活动存档路径不变；正式候选真实首次上传、故障注入与升级后复验见 `docs/09-image-build.md`。
+- 影响 `save_import_bootstrap.go`、`save_import_transaction.go`、`save_import_durable.go`、`docker_host_path.go`、Junimo/SMAPI 二级容器 bind、Panel driver 初始化、Web 稳定错误映射及对应测试。upload-preview/commit DTO、管理员权限、hostHandling 和已有活动存档路径不变；正式候选真实首次上传、故障注入与升级后复验见 `docs/09-image-build.md`。
+- 代码等价 `5fc7e4c` 候选已经从 v0.4.14 与 v0.3.2 的真实 Web 一键升级后完成空 saves 首次上传：错误 runtime 稳定 409 且不接管 transaction，同 token 恢复精确 `.125` 后成功；host 路径映射同时覆盖 helper 与实例 Compose bind，bootstrap 最终为 0、目标目录唯一、preimport/journal 可读，Panel 重启后仍 completed。由于官网 docs-only 提交并入后本地修复 rebase 为 `967647d`/`fd04ff0`，正式 tag 仍须从最终 SHA 重建并复验，不能复用旧镜像身份。
 
 # NEXUS-EXT-IDEMPOTENCY-1：浏览器扩展远程安装持久幂等（2026-08-13，completed，未发布）
 
@@ -22,6 +24,7 @@
 - Panel 只有在同一 commandId 的 Control succeeded 同时证明动作名、目标 saveId、boundFarmhandCount=0，并且 Junimo /diagnostics/state 再次读到相同总数/已定制数和零绑定后，才继续 dayTransition、稳定 XML、磁盘变化和 completed。任一来源缺失、旧 Control/DLL、玩家在线、目标错档或仍有绑定都 fail closed，实例继续保持不可加入的导入维护状态。
 - 影响文件：embedded/smapi-mod-src/{ControlContract,DeferredCommandOutcomes,ModEntry}.cs、embedded/smapi-mod 0.3.2 制品、runtime_stack_manifest.json、save_import_{durable,evidence,maintenance,transaction}.go、`command_results.go`、Web `control_commands.go` 及测试。新增内部错误码 save_import_maintenance_control_mismatch；公开上传 DTO、前端模式和 SteamID 输入均未变化。
 - 验证：Control 契约测试通过；使用真实 Stardew game-data 编译 0 errors（仅既有 analyzer/compiler warning）；Linux Go 全量 test/vet/build 通过。Docker Desktop 唯一隔离 project 从只读旧夹具克隆 2 个 farmhand（1 customized、1 bound），真实 Control 保存后运行态与磁盘均为 2/1/0，主文件 hash 改变；重启 server 后仍为零绑定且同 commandId 结果保持 succeeded。任务容器、网络、卷和克隆目录均已精确清理，原夹具未修改。
+- v0.4.14/v0.3.2 升级得到的新 Panel 上，Control 0.3.2 又随真实首次上传完成同一 2/1/0 解绑和 durable save，Nexus 重放、错误 runtime 同 token 重试与 Panel 重启也通过；unhealthy 目标已自动恢复旧 v0.4.14 及数据/非目标资源。最终 revision 重建、tag 后 registry 回拉与 Release 证据仍以 `docs/09-image-build.md` 为准。
 
 # STARTUP-NEWGAME-DURABILITY-1：启动诊断、新建档耐久与手动恢复（2026-08-13，released in v0.4.14）
 
