@@ -52,7 +52,13 @@ func readPasswordBridgeStatus(dataDir string) PasswordBridgeStatus {
 // consumes the command on its next tick and reflects into JunimoServer's
 // PasswordProtectionService to complete the authentication.
 func (d *Driver) ApproveAuth(ctx context.Context, instance registry.Instance, uniqueMultiplayerID string) (*CommandRunResult, error) {
-	return approveAuth(instance, uniqueMultiplayerID)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var approveErr error
+		result, approveErr = approveAuth(instance, uniqueMultiplayerID)
+		return approveErr
+	})
+	return result, err
 }
 
 // approveAuth is the testable core of Driver.ApproveAuth.

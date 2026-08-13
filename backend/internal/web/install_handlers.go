@@ -142,6 +142,9 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 
 	// Auto-prepare before install (idempotent: skips files that already exist).
 	if err := driver.Prepare(r.Context(), makeRegistryInstance(instance)); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		s.logger.Error("auto-prepare failed", "instance", instanceID, "error", err)
 		writeError(w, http.StatusInternalServerError, "prepare_failed", sanitizeErrorMsg(err, "准备实例目录失败"))
 		return
@@ -172,6 +175,9 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		ForceReauth:   body.ForceReauth,
 	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if activeJobID, handled := writeActiveInstallConflict(w, err, "该实例已有安装任务正在进行。"); handled {
 			s.logger.Info("install request attached to active job", "instance", instanceID, "job_id", activeJobID)
 			return
@@ -232,6 +238,9 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 		AuthLoginOnly: true,
 	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if activeJobID, handled := writeActiveInstallConflict(w, err, "该实例已有安装或 Steam 授权任务正在进行。"); handled {
 			s.logger.Info("steam-auth login attached to active install job", "instance", instanceID, "job_id", activeJobID)
 			return

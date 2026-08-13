@@ -8,12 +8,15 @@ import {
 } from '../../../api'
 import type { InstancePasswordStatus, SaveInfo } from '../../../types'
 import { errorMessage, stateLabel } from '../../../core/helpers'
-import type { StardewDashboardData, StardewPageProps } from '../stardew-routes'
+import type { StardewDashboardData, StardewPageProps, StardewRoute } from '../stardew-routes'
+import { classifyInstallationState } from '../installation-state'
 import { panelUpdateSurface, } from '../panel-update-machine'
 import { hasPlayerCjbRisk } from '../player-mod-details'
 import './MobileHomePage.css'
 
-type MobileHomePageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
+type MobileHomePageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'> & {
+  onUseDesktop?: (route?: StardewRoute) => void
+}
 
 type ApproveTarget = { uniqueMultiplayerId: string; name: string }
 
@@ -94,7 +97,7 @@ function saveDate(save: SaveInfo): string {
   return `第 ${save.gameYear} 年${season}季${save.gameDay ?? '?'} 日`
 }
 
-export function MobileHomePage({ user, instanceState, dashboardData }: MobileHomePageProps) {
+export function MobileHomePage({ user, instanceState, dashboardData, onUseDesktop }: MobileHomePageProps) {
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -117,6 +120,10 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
   const hasActiveLifecycleJob = dashboardData.jobs.some(
     (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
   )
+  const hasActiveInstallJob = dashboardData.jobs.some(
+    (j) => j.type === 'stardew_install' && (j.status === 'running' || j.status === 'queued'),
+  )
+  const installation = classifyInstallationState(instanceState, hasActiveInstallJob)
   const activeLifecycleIsStopping = hasActiveLifecycleJob && instanceState?.driverPhase === 'stopping'
   const hostOnline = (dashboardData.players?.players ?? []).some(
     (player) => player.isHost && player.status === 'online',
@@ -284,6 +291,48 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
   function renderLifecycleButtons() {
     if (!state) return null
 
+    if (installation.kind === 'installing') {
+      return (
+        <button type="button" className="sd-btn-tan sd-mhome-lifecycle-btn sd-btn-loading" disabled>
+          <span className="sd-btn-spinner" aria-hidden="true" />
+          安装 / 修复中…
+        </button>
+      )
+    }
+
+    if (installation.kind === 'not_installed'
+      || installation.kind === 'install_failed'
+      || installation.kind === 'repair_required') {
+      const label = installation.kind === 'not_installed'
+        ? '切换电脑端安装游戏'
+        : installation.kind === 'repair_required'
+          ? '切换电脑端修复安装'
+          : '切换电脑端继续安装'
+      return (
+        <button
+          type="button"
+          className="sd-btn-tan sd-mhome-lifecycle-btn"
+          onClick={() => onUseDesktop?.('install')}
+          disabled={!onUseDesktop}
+        >
+          {label}
+        </button>
+      )
+    }
+
+    if (installation.kind === 'runtime_error' || installation.kind === 'unknown') {
+      return (
+        <button
+          type="button"
+          className="sd-btn-tan sd-mhome-lifecycle-btn"
+          onClick={() => onUseDesktop?.('diagnostics')}
+          disabled={!onUseDesktop}
+        >
+          切换电脑端查看诊断
+        </button>
+      )
+    }
+
     if (state === 'save_required') {
       return (
         <button type="button" className="sd-btn-start sd-mhome-lifecycle-btn" disabled title="请先创建或上传存档后再启动">
@@ -351,10 +400,6 @@ export function MobileHomePage({ user, instanceState, dashboardData }: MobileHom
           </button>
         </>
       )
-    }
-
-    if (state === 'error') {
-      return <div className="sd-notice sd-notice--error sd-mhome-notice">服务器异常，请到电脑端查看诊断信息。</div>
     }
 
     return null

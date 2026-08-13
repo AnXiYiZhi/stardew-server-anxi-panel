@@ -1334,3 +1334,50 @@ Panel 不接收 steam-auth-cn 的 `repository_dispatch`，也不根据 auth 发�
 - `GET /api/instances/stardew/junimo-update/apply` 响应形状不变；前端继续使用 `phase`、`progress`、`updatedAt`。当 `phase=verifying_auth` 时，`updatedAt` 作为当前阶段起点显示累计等待时间和自动重试说明。
 - 后端不再使用 steam-auth Docker health 判断运行栈升级是否可接受，因为该 health 可能等待外部 Steam 在线连接。容器 running、目标 digest 匹配且 `/steam/ready` 合法即通过；响应中的未登录/无 ticket 是 warning，不是失败。
 - 如果 `/steam/ready` 在有界超时内始终不可达或不可解析，仍返回 `auth_service_not_ready` 并进入原有回滚链路。前端提示“正在尝试连接”不改变失败、回滚或终态契约。
+# FE-INSTALL-DIAGNOSTIC-MAPPING-1 联调契约（2026-08-13，completed，未发布）
+
+- `GET /api/instances/:id/state` 可选返回 `installationDiagnostic`：`status=installed|incomplete|not_installed|unknown`、`requiredFiles=ok|missing|unknown`、`compose=ready|missing|invalid|unavailable`、`image=available|missing|unavailable`、`serverContainer=running|stopped|missing|unknown`、`control.static=match|mismatch|missing|unknown`、`control.runtime=match|mismatch|not_observed|invalid|unknown`、可选 `observedVersion`、必填 `expectedVersion`、`recommendedAction=install|repair_install|retry_start|diagnose` 和 UTC `checkedAt`。
+- 前端不得再从顶层 `state=error` 推导“未安装”。明确 `status=not_installed`，或仍是 `uninitialized/admin_created/junimo_scaffolded` 且诊断未明确 installed，才显示首次安装入口；`requiredFiles=missing`、非首装场景的 Compose 缺失/无效或 image 明确缺失才显示修复；Control 明确缺失/不匹配/运行时无效进入诊断；Compose/image unavailable、`status=unknown`、`serverContainer=running` 却同时声称未安装/不完整，或其它证据矛盾必须 fail closed 为诊断，不得提交安装。
+- `control.runtime=not_observed` 表示当前启动尚未观察到 Control 或容器未运行，不是版本错误；只有 `mismatch/invalid` 才能显示明确 Control 异常。后端未提供新字段时，旧前端兼容分支只把 `install_verification_failed` 且消息明确包含“运行文件不完整”映射为修复，验证器错误和其它运行错误仍不映射成重装。
+- 活动 `stardew_install` job 优先显示安装/修复中并抑制首次弹窗。桌面安装表单是否可打开由共享分类器决定；移动端对应动作先写入 `install` 或 `diagnostics` 桌面路由再切换完整桌面壳。
+
+# STARTUP-NEWGAME-DURABILITY-1 联调契约（2026-08-13，代码完成，待正式发布）
+
+## 启动状态与 Control 证据
+
+- 点击启动/重启后，server 容器已 up 但本次 `control/options.json` 尚未出现时，`GET /api/instances/:id/state` 必须保持 `state=starting`、`driverPhase=control_runtime_starting`。前端显示“仍在启动”和轮询进度，不显示版本不匹配、未安装或重装按钮。
+- 只有合法运行快照的 `controlModVersion` 与内嵌期望值不同时，后端才写 `state=error`、`driverPhase=control_runtime_version_mismatch`。manifest/DLL/options 损坏使用对应 invalid code；一直没有快照到完整等待期限时安全停服为 `state=stopped`、`driverPhase=control_runtime_start_timeout`。
+- 启动验收失败后无法确认 Compose 已停止时为 `control_runtime_cleanup_failed`；启动前旧 snapshot 无法清理时为 `control_runtime_snapshot_cleanup_failed`。这两项都是诊断/人工检查，不是重装证据。
+- `/state.installationDiagnostic.control.runtime=not_observed` 与上述 pending 语义一致。前端可以展示等待/重试启动，但不得把 not_observed 翻译为“Control 版本不匹配”。
+
+## 新建存档请求幂等
+
+- `POST /api/instances/:id/saves/custom-new-game` 请求体保持 `NewGameConfig`，当前客户端必须同时发送非空 `Idempotency-Key`。key 是当前用户动作的稳定 request ID，不是存档名；在 202 被接受前，同一规范化配置的网络重试复用原 key，用户修改配置后使用新 key。
+- 缺失或空 `Idempotency-Key` 返回 HTTP 428 / `idempotency_key_required`；后端不会为旧客户端随机生成 key，也不会创建 job、owner 或事务。
+- 首次接受与相同 key+相同配置的重复提交都返回 HTTP 202 和相同 `{jobId}`。相同 key 绑定不同配置返回 HTTP 409 `new_game_request_conflict`；其它 active lifecycle/new-game owner 返回 409 `new_game_in_progress`；owner/transaction 缺失、损坏或身份不一致返回 409 `new_game_recovery_required`。客户端不得在这些 409 后生成新 key 自动重提。
+- 正式前端测试必须固定 header 存在、相同配置复用、配置变化换 key、网络/服务端失败不清 key、只在 202 resolve 后清除本地 pending key。
+- job payload 持久化 `operation=new_game/requestId/config`。刷新页面后以返回的 job ID 继续读取 `/api/jobs/:id`/stream；不得通过重新 POST 轮询进展。
+
+## 单写入者和不可逆进展
+
+- 事务开始即返回固定 `creationWriter`：没有完整旧存档为 `startup`，只观察 Junimo 启动自动创建，Panel POST 次数必须为 0；有完整旧存档为 `http`，只有稳定观察到同 transaction 的旧 `save-loaded` 基线与 API ready 后，Panel 才允许一次 `/newgame`。
+- `status.json` 当前 transaction 的 `save-creating/creationObserved`、gameloader 离开初始 save、任意新存档目录三者任一出现即视为不可逆进展并持久化。即使 loader 已前进但 XML 尚未落盘，也必须禁止 POST；后续只能等待 loader/Control 与目录收敛到唯一 saveId。
+- 一旦 `commandCalled`、`progressObserved`、`unknown` 或 `ambiguous`，UI 的“重试”必须回到同一持久事务/人工诊断，不能启动第二次创建。Stop、Restart、Restore 也应得到 owner 冲突，而不是取消建档 job。
+- owner 以已 fsync 的完整 staging 目录做 no-replace 原子发布，并发请求只允许一个 winner。事务进入 `rolling_back`后，用户手动 Start 只幂等继续已持久的 quarantine/restore 计划；完成前零 ComposeUp、零 `/newgame`、零新事务。
+
+## 四段耐久成功条件
+
+1. Control 对同一 `transactionId + targetSaveId` 返回 fresh `state=save-loaded`，并明确 `newGameCreationObserved=true`。
+2. 同一快照冻结的角色配置逐项与请求一致：身份/农场/最爱/性别/宠物、skin/hair/shirt/pants/accessory、三组 RGB 和 `isCustomized`；`customizationApplied/customizationVerified=true`，且更新后的 `players.json` 为同一 save 提供唯一、同名 host 证据。
+3. Panel 使用事务中预留的同一 `commandId` 发布/恢复 `save-now`；Control 在调用保存前持久同 ID pending journal。容器在 running 回执后或 Saved/终态回执前中断，都只恢复该 ID。只有终态 `succeeded/errorCode=ok` 且 details 精确包含 `GameLoop.Saved + transactionId + saveId + expectedSaveId` 才通过；unknown/expired/错身份不完成也不换 ID。
+4. save-now 之后主 XML 与 `SaveGameInfo` 连续两轮 SHA-256 稳定；主 XML 的全部配置字段、`isCustomized` 与运行时解析后的 `whichFarm` 均正确，SaveGameInfo 独立校验人物/农场，Control、loader 和唯一新目录最终指向相同 saveId。通过后才能提交 Mod profile、transaction success 并释放 owner。
+
+Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 manifest、DLL hash 和实际 `options.json.controlModVersion` 必须一致；只覆盖宿主 DLL 而未验证进程实载不能算通过。
+
+2026-08-13 隔离 Docker 联调已实际跑通两条 writer：startup writer 不调用 `/newgame`，HTTP writer 在真实旧 active save 基线后只调用一次且旧档双哈希保持；两条都拿到上述四段证据。真实 Stardew 1.6 主 XML 的性别使用 `Gender/gender` 文本，旧 `isMale` 可为 `xsi:nil`；shirt/pants 的有效物品 ID 位于 `shirtItem/pantsItem.itemId`，旧标量可为 `-1`。后端磁盘门禁按该当前结构读取并兼容旧格式，错误 item ID 仍必须失败。当前 Control 编译/嵌入/清单 SHA-256 为 `3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce`；候选镜像升级后仍需再次核对运行态 `options.json`，本条不能替代正式升级和生产验收。
+
+## 宿主重启边界
+
+- 本任务明确不提供“重启前 running 的普通游戏实例自动恢复”。宿主重启后 game container 保持关闭，用户手动点击启动；前端不得把这种关闭状态伪装为自动恢复中。
+- 若重启前存在未结束 new-game owner，手动启动会恢复同一 request/config/transaction 并继续观察或完成耐久门禁。这个显式恢复不能扩展成 Panel 启动时自动 ComposeUp，也不能绕过 owner 再创建新事务。
+- Panel bootstrap 的 required-runtime、Runtime apply 与 SMAPI apply 恢复必须保持 server/auth 关闭。它们可收敛未完成的静态替换或回滚，但即使持久化状态记录了 `ServerWasRunning=true`，也必须返回“请手动启动”而不 ComposeUp。存在 unfinished new-game owner 时连静态替换也禁止。

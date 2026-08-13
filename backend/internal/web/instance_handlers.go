@@ -33,21 +33,22 @@ type instanceResponse struct {
 }
 
 type instanceStateResponse struct {
-	InstanceID        string                 `json:"instanceId"`
-	DriverID          string                 `json:"driverId"`
-	Name              string                 `json:"name"`
-	State             string                 `json:"state"`
-	StateMessage      *string                `json:"stateMessage"`
-	DriverPhase       string                 `json:"driverPhase"`
-	UpdatedAt         string                 `json:"updatedAt"`
-	SteamAuthLoggedIn bool                   `json:"steamAuthLoggedIn"`
-	SteamAuthReady    bool                   `json:"steamAuthReady"`
-	InviteCode        string                 `json:"inviteCode,omitempty"`
-	UIStatus          string                 `json:"uiStatus"`
-	UIStatusUpdatedAt string                 `json:"uiStatusUpdatedAt"`
-	StatusSource      controlStatusSnapshot  `json:"statusSource"`
-	PlayersSource     controlPlayersSnapshot `json:"playersSource"`
-	RuntimeDiagnostic runtimeDiagnostic      `json:"runtimeDiagnostic"`
+	InstanceID             string                     `json:"instanceId"`
+	DriverID               string                     `json:"driverId"`
+	Name                   string                     `json:"name"`
+	State                  string                     `json:"state"`
+	StateMessage           *string                    `json:"stateMessage"`
+	DriverPhase            string                     `json:"driverPhase"`
+	UpdatedAt              string                     `json:"updatedAt"`
+	SteamAuthLoggedIn      bool                       `json:"steamAuthLoggedIn"`
+	SteamAuthReady         bool                       `json:"steamAuthReady"`
+	InviteCode             string                     `json:"inviteCode,omitempty"`
+	UIStatus               string                     `json:"uiStatus"`
+	UIStatusUpdatedAt      string                     `json:"uiStatusUpdatedAt"`
+	StatusSource           controlStatusSnapshot      `json:"statusSource"`
+	PlayersSource          controlPlayersSnapshot     `json:"playersSource"`
+	RuntimeDiagnostic      runtimeDiagnostic          `json:"runtimeDiagnostic"`
+	InstallationDiagnostic *sj.InstallationDiagnostic `json:"installationDiagnostic,omitempty"`
 }
 
 type composeExecPipeDocker interface {
@@ -863,22 +864,38 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 	readControlJSON(filepath.Join(controlDir, "players.json"), &playersSource)
 	runtimeDiagnostic := buildRuntimeDiagnostic(instance, statusSource, playersSource)
 	runtimeDiagnostic.CommandProtocol = s.commandProtocolDiagnostics(ctx, instance)
+	var installationDiagnostic *sj.InstallationDiagnostic
+	if driver, err := s.registry.Get(instance.DriverID); err == nil {
+		type installationDiagnosticProvider interface {
+			InstallationDiagnostic(context.Context, registry.Instance) sj.InstallationDiagnostic
+		}
+		if provider, ok := driver.(installationDiagnosticProvider); ok {
+			diagnostic := provider.InstallationDiagnostic(ctx, makeRegistryInstance(instance))
+			installationDiagnostic = &diagnostic
+			runtimeDiagnostic.InstalledControlVersion = runtimeDiagnostic.ControlModVersion
+			runtimeDiagnostic.InstalledControlMatches = diagnostic.Control.Static == "match"
+			runtimeDiagnostic.RuntimeControlState = diagnostic.Control.Runtime
+			runtimeDiagnostic.RuntimeControlVersion = diagnostic.Control.ObservedVersion
+			runtimeDiagnostic.RuntimeControlMatches = diagnostic.Control.Runtime == "match"
+		}
+	}
 	return instanceStateResponse{
-		InstanceID:        instance.ID,
-		DriverID:          instance.DriverID,
-		Name:              instance.Name,
-		State:             instance.State,
-		StateMessage:      nullableString(instance.StateMessage),
-		DriverPhase:       instance.DriverPhase,
-		UpdatedAt:         instance.UpdatedAt,
-		SteamAuthLoggedIn: sjconfig.SteamAuthLoggedIn(instance.DataDir),
-		SteamAuthReady:    s.probeSteamAuthReady(ctx, instance),
-		InviteCode:        inviteCodeFromDriverPayload(instance.DriverPayload),
-		UIStatus:          uiStatus,
-		UIStatusUpdatedAt: uiStatusUpdatedAt,
-		StatusSource:      statusSource,
-		PlayersSource:     playersSource,
-		RuntimeDiagnostic: runtimeDiagnostic,
+		InstanceID:             instance.ID,
+		DriverID:               instance.DriverID,
+		Name:                   instance.Name,
+		State:                  instance.State,
+		StateMessage:           nullableString(instance.StateMessage),
+		DriverPhase:            instance.DriverPhase,
+		UpdatedAt:              instance.UpdatedAt,
+		SteamAuthLoggedIn:      sjconfig.SteamAuthLoggedIn(instance.DataDir),
+		SteamAuthReady:         s.probeSteamAuthReady(ctx, instance),
+		InviteCode:             inviteCodeFromDriverPayload(instance.DriverPayload),
+		UIStatus:               uiStatus,
+		UIStatusUpdatedAt:      uiStatusUpdatedAt,
+		StatusSource:           statusSource,
+		PlayersSource:          playersSource,
+		RuntimeDiagnostic:      runtimeDiagnostic,
+		InstallationDiagnostic: installationDiagnostic,
 	}
 }
 

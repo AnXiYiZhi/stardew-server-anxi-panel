@@ -150,6 +150,10 @@ type runtimeUpdateRecoveryManifest struct {
 	OriginalComposeSHA256    string                     `json:"originalComposeSha256,omitempty"`
 	OriginalControlJSONSHA   string                     `json:"originalControlManifestSha256,omitempty"`
 	OriginalControlDLLSHA    string                     `json:"originalControlDllSha256,omitempty"`
+	// KeepServerStopped is process-local recovery policy. Panel bootstrap sets
+	// it so transaction convergence can restore durable materials without ever
+	// starting the game; it is deliberately excluded from the persisted manifest.
+	KeepServerStopped bool `json:"-"`
 }
 
 var runtimeUpdateApplyIDPattern = regexp.MustCompile(`^apply_[a-f0-9]{24}$`)
@@ -204,6 +208,9 @@ func runtimeUpdateServerMayHaveBeenRecreated(manifest runtimeUpdateRecoveryManif
 }
 
 func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeUpdateApplyStatus{}, err
+	}
 	if d.jobs == nil || d.store == nil {
 		return RuntimeUpdateApplyStatus{}, errors.New("runtime update apply service is not configured")
 	}
@@ -231,6 +238,9 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeUpdateApplyStatus{}, err
+	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
 	if err != nil {
 		return RuntimeUpdateApplyStatus{}, fmt.Errorf("list conflicting jobs: %w", err)
@@ -271,10 +281,15 @@ func (d *Driver) RuntimeUpdateApplyStatus(instance registry.Instance) (RuntimeUp
 	return status, err
 }
 
-// RecoverRuntimeUpdateApply resumes a persisted non-terminal apply after the
-// generic jobs recovery has released its database lock. A missing manifest is
-// treated as safe only in phases that precede every instance mutation.
+// RecoverRuntimeUpdateApply converges a persisted non-terminal apply after the
+// generic jobs recovery has released its database lock. It never resumes the
+// upgrade or starts the game; a user must explicitly Start after convergence.
 func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registry.Instance) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
+	}
 	status, err := readRuntimeUpdateApplyStatus(instance.DataDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -299,14 +314,11 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 	runtimeDocker, dockerOK := d.docker.(RuntimeUpdateApplyDockerService)
 	manifest, err := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) && status.ResumeAfterRepair && runtimeUpdateApplyPreMutationPhase(status.Phase) {
-			if !dockerOK {
-				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用，无法继续修复后的升级复检。")
-			}
-			return d.recoverRuntimeUpdateAfterRepair(ctx, runtimeDocker, instance, status, status.Phase == RuntimeUpdateApplyResumingUpgrade)
-		}
 		if errors.Is(err, os.ErrNotExist) && runtimeUpdateApplyPreMutationPhase(status.Phase) {
-			return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, instance, status)
+			if !dockerOK {
+				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用，无法确认游戏保持关闭。")
+			}
+			return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, runtimeDocker, instance, status)
 		}
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复材料缺失，已禁止猜测性恢复。")
 	}
@@ -314,26 +326,19 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "私有恢复清单与实例或该事务记录的版本对不一致。")
 	}
 	if !runtimeUpdateMutationStarted(manifest) {
-		if status.ResumeAfterRepair {
-			if !dockerOK {
-				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用，无法继续修复后的升级复检。")
-			}
-			if err := os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID)); err != nil {
-				return d.markRuntimeUpdateRecoveryUncertain(instance, status, "无法清理尚未发生实例修改的重试恢复目录。")
-			}
-			return d.recoverRuntimeUpdateAfterRepair(ctx, runtimeDocker, instance, status, status.Phase == RuntimeUpdateApplyResumingUpgrade)
+		if !dockerOK {
+			return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用，无法确认游戏保持关闭。")
 		}
-		return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, instance, status)
+		return d.finishRuntimeUpdateRecoveryBeforeChange(ctx, runtimeDocker, instance, status)
 	}
 	if !dockerOK {
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Docker 恢复能力不可用。")
 	}
+	// Bootstrap recovery only converges the interrupted transaction. It must not
+	// continue verification or an upgrade retry, because either path may ComposeUp
+	// the game before the user explicitly presses Start.
+	manifest.KeepServerStopped = true
 	if status.ResumeAfterRepair {
-		// A repaired retry deliberately keeps this marker while its recovery
-		// manifest still has no mutation intent, so a restart can continue the
-		// same apply. Once an intent is durable, the runner clears its in-memory
-		// marker; if the prior status write still has true, normal transaction
-		// rollback is safer than starting another upgrade over a partial change.
 		status.ResumeAfterRepair = false
 		if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 			return err
@@ -375,16 +380,23 @@ func runtimeUpdateApplyPreMutationPhase(phase string) bool {
 	return phase == RuntimeUpdateApplyChecking || phase == RuntimeUpdateApplyPulling || phase == RuntimeUpdateApplyBackingUp || phase == RuntimeUpdateApplyResumingUpgrade
 }
 
-func (d *Driver) finishRuntimeUpdateRecoveryBeforeChange(ctx context.Context, instance registry.Instance, status RuntimeUpdateApplyStatus) error {
+func (d *Driver) finishRuntimeUpdateRecoveryBeforeChange(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status RuntimeUpdateApplyStatus) error {
+	project := strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir)))
+	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, project, "server", "steam-auth"); err != nil {
+		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Panel 重启后的升级事务未修改实例，但无法确认游戏容器已停止。")
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	status.Phase, status.Progress = RuntimeUpdateApplyFailedRolledBack, 100
-	status.ErrorCode, status.Error = "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。"
-	status.ServerRunning, status.ManualAction = status.ServerWasRunning, ""
+	status.ErrorCode, status.Error = "panel_restart_before_change", "Panel 重启发生在实例修改前；升级未继续，游戏保持关闭。"
+	status.ServerRunning = false
+	status.ResumeAfterRepair = false
+	status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
 	status.UpdatedAt, status.FinishedAt = now, now
 	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: status.Error})
 	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 		return err
 	}
+	d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件恢复已收敛，请手动启动服务器", "stopped", "")
 	d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
 	if runtimeUpdateApplyIDPattern.MatchString(status.ApplyID) {
 		_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, status.ApplyID))

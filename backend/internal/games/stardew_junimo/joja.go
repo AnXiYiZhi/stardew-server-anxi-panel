@@ -29,7 +29,13 @@ const (
 // host via JunimoServer's own POST /roles/admin before simulating the "!joja"
 // chat command through the embedded control mod.
 func (d *Driver) EnableJojaRoute(ctx context.Context, instance registry.Instance, confirm string) (*CommandRunResult, error) {
-	return enableJojaRoute(ctx, d, instance, confirm)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var enableErr error
+		result, enableErr = enableJojaRoute(ctx, d, instance, confirm)
+		return enableErr
+	})
+	return result, err
 }
 
 // enableJojaRoute is the testable core of Driver.EnableJojaRoute.

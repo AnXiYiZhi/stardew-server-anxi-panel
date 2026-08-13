@@ -90,6 +90,32 @@ type CommandQueueDiagnostics struct {
 	ResultsWritable      bool       `json:"resultsWritable"`
 }
 
+// NewGameCommandResultProtected reports whether an unfinished persistent
+// new-game transaction still needs this exact command result for its durable
+// save gate. Web/background history importers must not delete that file before
+// the lifecycle transaction has verified GameLoop.Saved and disk durability.
+// Any unreadable owner/transaction state fails closed via a non-nil error.
+func NewGameCommandResultProtected(dataDir, commandID string) (bool, error) {
+	if !validCommandID(commandID) {
+		return false, &CommandError{Code: "invalid_command_id", Message: "命令 ID 格式错误"}
+	}
+	owner, err := LoadNewGameOwner(dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read new-game owner before command result cleanup: %w", err)
+	}
+	record, err := LoadNewGameTransaction(dataDir, owner.TransactionID)
+	if err != nil {
+		return false, fmt.Errorf("read new-game transaction before command result cleanup: %w", err)
+	}
+	if isTerminalNewGameOwnerStage(record.Stage) {
+		return false, nil
+	}
+	return strings.TrimSpace(record.DurableSaveCommandID) == commandID, nil
+}
+
 func ListCommandResultFiles(dataDir string) ([]CommandResultFile, error) {
 	dir := commandResultsDir(dataDir)
 	entries, err := os.ReadDir(dir)

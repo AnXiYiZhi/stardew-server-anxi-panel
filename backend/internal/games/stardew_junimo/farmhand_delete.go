@@ -86,6 +86,9 @@ type farmhandDeleteRunner struct {
 // online; they receive in-game notices because Junimo's cabin removal is not
 // guaranteed to refresh an already-connected client's building snapshot.
 func (d *Driver) DeleteFarmhand(ctx context.Context, req FarmhandDeleteRequest) (*registry.Job, error) {
+	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
 	if d.jobs == nil || d.store == nil {
 		return nil, &CommandError{Code: "not_supported", Message: "人物删除任务服务未配置"}
 	}
@@ -106,10 +109,14 @@ func (d *Driver) DeleteFarmhand(ctx context.Context, req FarmhandDeleteRequest) 
 	if !ok {
 		return nil, &CommandError{Code: "not_supported", Message: "Docker 服务不支持 Junimo API 调用"}
 	}
-	// Serialize the active-job check and job creation. Without this guard, two
-	// admins clicking at the same instant could both observe an empty job list.
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	// Serialize owner validation, the active-job check, and job creation with
+	// new-game preclaim. Without this shared guard, both operations could observe
+	// an empty owner/job set and then mutate the same save concurrently.
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: req.Instance.ID})
 	if err != nil {
 		return nil, fmt.Errorf("读取活动任务失败: %w", err)

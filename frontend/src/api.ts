@@ -302,10 +302,10 @@ export function getSavesPreflight(instanceId = defaultInstanceId) {
   return request<PreflightResult>(`/api/instances/${encodeURIComponent(instanceId)}/saves/preflight`)
 }
 
-export function createNewGame(config: NewGameConfig, instanceId = defaultInstanceId) {
+export function createNewGame(config: NewGameConfig, requestId: string, instanceId = defaultInstanceId) {
   return request<LifecycleJobResponse>(
     `/api/instances/${encodeURIComponent(instanceId)}/saves/custom-new-game`,
-    { method: 'POST', body: config },
+    { method: 'POST', body: config, headers: { 'Idempotency-Key': requestId } },
   )
 }
 

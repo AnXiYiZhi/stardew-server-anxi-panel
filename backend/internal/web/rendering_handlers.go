@@ -77,6 +77,9 @@ func (s *server) handleInstanceRendering(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *server) writeRenderingError(w http.ResponseWriter, err error, fallback string) {
+	if writeStardewMutationGuardConflict(w, err) {
+		return
+	}
 	if ce, ok := err.(*sj.CommandError); ok {
 		status := http.StatusBadRequest
 		switch ce.Code {

@@ -643,6 +643,204 @@ func TestRestartRejectsSecondActiveRestart(t *testing.T) {
 	}
 }
 
+func TestStartReusesActiveStartWithoutCancelOrSecondRunner(t *testing.T) {
+	store := newLifecycleTestStore(t)
+	dataDir := t.TempDir()
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID, Payload: startJobPayload,
+		Run: func(ctx context.Context, _ *jobs.Context) error {
+			defer close(finished)
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		close(release)
+		<-finished
+	})
+
+	driver := New(&fakeConsoleDocker{}, slog.Default(), manager, store)
+	reused, err := driver.Start(context.Background(), registry.StartRequest{Instance: makeRegistryInstanceForTest(instance)})
+	if err != nil {
+		t.Fatalf("retry Start: %v", err)
+	}
+	if reused.ID != job.ID {
+		t.Fatalf("retry job = %q, want existing %q", reused.ID, job.ID)
+	}
+	select {
+	case <-finished:
+		t.Fatal("retry Start canceled the active start runner")
+	default:
+	}
+	active, err := manager.Active(context.Background(), storage.ListActiveJobsFilter{
+		TargetType: "instance", TargetID: instance.ID, Types: []string{lifecycleJobType},
+	})
+	if err != nil || len(active) != 1 || active[0].ID != job.ID {
+		t.Fatalf("active lifecycle jobs = %#v, err=%v", active, err)
+	}
+}
+
+func TestStartRejectsDifferentActiveLifecycleWithoutCancel(t *testing.T) {
+	store := newLifecycleTestStore(t)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID, Payload: stopJobPayload,
+		Run: func(ctx context.Context, _ *jobs.Context) error {
+			defer close(finished)
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		close(release)
+		<-finished
+	})
+
+	driver := New(&fakeConsoleDocker{}, slog.Default(), manager, store)
+	_, err = driver.Start(context.Background(), registry.StartRequest{Instance: makeRegistryInstanceForTest(instance)})
+	if !errors.Is(err, ErrLifecycleInProgress) {
+		t.Fatalf("Start error = %v, want ErrLifecycleInProgress", err)
+	}
+	select {
+	case <-finished:
+		t.Fatal("conflicting Start canceled the active lifecycle runner")
+	default:
+	}
+	active, listErr := manager.Active(context.Background(), storage.ListActiveJobsFilter{
+		TargetType: "instance", TargetID: instance.ID, Types: []string{lifecycleJobType},
+	})
+	if listErr != nil || len(active) != 1 || active[0].ID != job.ID {
+		t.Fatalf("active lifecycle jobs = %#v, err=%v", active, listErr)
+	}
+}
+
+func TestNewGameStartIdempotencySurvivesConcurrentActiveAndTerminalRetries(t *testing.T) {
+	_, store, instance, manager := prepareNewGameFailureDeferTest(t)
+	var err error
+	instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateAdminCreated, StateMessage: "fixture", DriverPhase: "fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseVerify := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseVerify) }) }
+	t.Cleanup(release)
+	var composePsCalls atomic.Int32
+	fake := &fakeConsoleDocker{
+		composePsFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+			composePsCalls.Add(1)
+			return paneldocker.ComposePsResult{}, nil
+		},
+		runContainerFunc: func(ctx context.Context, _ paneldocker.ContainerTTYRunOpts, _ <-chan string, _ func(string)) (int, error) {
+			select {
+			case <-releaseVerify:
+				return 1, errors.New("release idempotency fixture")
+			case <-ctx.Done():
+				return 1, ctx.Err()
+			}
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	cfg := newGameTestConfig("standard")
+	request := registry.StartRequest{
+		Instance:      makeRegistryInstanceForTest(instance),
+		NewGame:       true,
+		NewGameConfig: &cfg,
+		RequestID:     "request-concurrent-idempotency",
+	}
+
+	const callers = 12
+	start := make(chan struct{})
+	type result struct {
+		job *registry.Job
+		err error
+	}
+	results := make(chan result, callers)
+	for range callers {
+		go func() {
+			<-start
+			job, err := driver.Start(context.Background(), request)
+			results <- result{job: job, err: err}
+		}()
+	}
+	close(start)
+
+	var originalJobID string
+	for range callers {
+		got := <-results
+		if got.err != nil {
+			t.Fatalf("concurrent new-game Start: %v", got.err)
+		}
+		if got.job == nil || got.job.ID == "" {
+			t.Fatalf("concurrent new-game Start returned %#v", got.job)
+		}
+		if originalJobID == "" {
+			originalJobID = got.job.ID
+		} else if got.job.ID != originalJobID {
+			t.Fatalf("concurrent retry job=%q, want original %q", got.job.ID, originalJobID)
+		}
+	}
+	if got := composePsCalls.Load(); got != 1 {
+		t.Fatalf("ComposePs calls during concurrent acceptance = %d, want exactly one new request", got)
+	}
+
+	conflicting := cfg
+	conflicting.FarmerName = "Different Farmer"
+	request.NewGameConfig = &conflicting
+	if _, err := driver.Start(context.Background(), request); err == nil {
+		t.Fatal("same request ID with different config unexpectedly succeeded")
+	} else {
+		var ownerErr *NewGameOwnerError
+		if !errors.As(err, &ownerErr) || ownerErr.Code != "new_game_request_conflict" {
+			t.Fatalf("different-config retry error = %v, want new_game_request_conflict", err)
+		}
+	}
+
+	release()
+	waitForDriverTestJobStatus(t, store, originalJobID, storage.JobStatusFailed)
+	request.NewGameConfig = &cfg
+	replayed, err := driver.Start(context.Background(), request)
+	if err != nil {
+		t.Fatalf("terminal retry: %v", err)
+	}
+	if replayed.ID != originalJobID {
+		t.Fatalf("terminal retry job=%q, want original %q", replayed.ID, originalJobID)
+	}
+}
+
 func makeRegistryInstanceForTest(instance storage.Instance) registry.Instance {
 	return registry.Instance{
 		ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir,
@@ -667,7 +865,7 @@ func newLifecycleTestStore(t *testing.T) *storage.Store {
 	return store
 }
 
-func TestNewGameStopsBeforeTransactionWhenSMAPIBundledSyncFails(t *testing.T) {
+func TestNewGameSMAPIBundledSyncFailureRollsBackPersistentTransaction(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "stardew")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -718,9 +916,389 @@ func TestNewGameStopsBeforeTransactionWhenSMAPIBundledSyncFails(t *testing.T) {
 	if updated.DriverPhase != "smapi_bundled_sync_failed" {
 		t.Fatalf("driver phase = %s, want smapi_bundled_sync_failed", updated.DriverPhase)
 	}
-	if _, err := os.Stat(newGameTransactionsDir(dataDir)); !os.IsNotExist(err) {
-		t.Fatalf("new-game transaction should not start before SMAPI sync succeeds: %v", err)
+	entries, err := os.ReadDir(newGameTransactionsDir(dataDir))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("transaction entries = %d, err=%v", len(entries), err)
 	}
+	record, err := LoadNewGameTransaction(dataDir, entries[0].Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Stage != newGameStateRolledBack || !record.RollbackCompleted || record.ErrorCode != "smapi_bundled_sync_failed" {
+		t.Fatalf("rolled-back transaction = %#v", record)
+	}
+	if _, err := LoadNewGameOwner(dataDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new-game owner after rollback = %v", err)
+	}
+}
+
+func TestNewGameFailureDeferPreservesLateCreationProgressWithoutComposeDown(t *testing.T) {
+	dataDir, store, instance, manager := prepareNewGameFailureDeferTest(t)
+	var downs atomic.Int32
+	fake := newGameFailureDeferDocker(t, dataDir)
+	fake.composePsFunc = func(context.Context, string) (paneldocker.ComposePsResult, error) {
+		if err := os.MkdirAll(filepath.Join(savesDir(dataDir), "Saves", "Late_777"), 0o755); err != nil {
+			return paneldocker.ComposePsResult{}, err
+		}
+		if err := writeGameloaderPointer(dataDir, "Late_777"); err != nil {
+			return paneldocker.ComposePsResult{}, err
+		}
+		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+			Service: "server", State: "exited", Status: "Exited (1)", ExitCode: 1,
+		}}}, nil
+	}
+	fake.composeDownFunc = func(context.Context, string) (paneldocker.CommandResult, error) {
+		downs.Add(1)
+		return paneldocker.CommandResult{ExitCode: 0}, nil
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job := startNewGameFailureDeferJob(t, manager, driver, fake, instance, "request-late-progress")
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+
+	if downs.Load() != 0 {
+		t.Fatalf("ComposeDown calls = %d, want 0 after late progress", downs.Load())
+	}
+	owner, err := LoadNewGameOwner(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := LoadNewGameTransaction(dataDir, owner.TransactionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Stage != newGameStateUnknown || !record.ProgressObserved || record.ProgressSave != "Late_777" || record.RollbackCompleted {
+		t.Fatalf("preserved transaction = %#v", record)
+	}
+	if _, err := os.Stat(filepath.Join(savesDir(dataDir), "Saves", "Late_777")); err != nil {
+		t.Fatalf("late save directory was not preserved: %v", err)
+	}
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.State != storage.InstanceStateError || updated.DriverPhase != "new_game_recovery_required" {
+		t.Fatalf("instance after late progress = %#v", updated)
+	}
+}
+
+func TestNewGameFailureDeferComposeDownFailureKeepsOwnerAndSkipsRollback(t *testing.T) {
+	dataDir, store, instance, manager := prepareNewGameFailureDeferTest(t)
+	var downs atomic.Int32
+	fake := newGameFailureDeferDocker(t, dataDir)
+	fake.composePsFunc = func(context.Context, string) (paneldocker.ComposePsResult, error) {
+		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+			Service: "server", State: "exited", Status: "Exited (1)", ExitCode: 1,
+		}}}, nil
+	}
+	fake.composeDownFunc = func(context.Context, string) (paneldocker.CommandResult, error) {
+		downs.Add(1)
+		return paneldocker.CommandResult{ExitCode: 1, Stderr: "injected down failure"}, errors.New("injected down failure")
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job := startNewGameFailureDeferJob(t, manager, driver, fake, instance, "request-down-failure")
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+
+	if downs.Load() != 1 {
+		t.Fatalf("ComposeDown calls = %d, want 1", downs.Load())
+	}
+	owner, err := LoadNewGameOwner(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := LoadNewGameTransaction(dataDir, owner.TransactionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Stage != newGameStateRollbackFail || record.RollbackCompleted || !strings.Contains(record.RollbackError, "injected down failure") {
+		t.Fatalf("failed-stop transaction = %#v", record)
+	}
+	if _, err := os.Stat(newGamePendingPath(dataDir)); err != nil {
+		t.Fatalf("pending marker was rolled back after unconfirmed stop: %v", err)
+	}
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.State != storage.InstanceStateError || updated.DriverPhase != "new_game_rollback_failed" {
+		t.Fatalf("instance after down failure = %#v", updated)
+	}
+}
+
+func TestNewGameComposeUpPartialFailureMustConfirmDownBeforeRollback(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		downErr   error
+		wantOwner bool
+		wantStage NewGameTransactionState
+	}{
+		{name: "down confirmed", wantStage: newGameStateRolledBack},
+		{name: "down unconfirmed", downErr: errors.New("injected partial-up cleanup failure"), wantOwner: true, wantStage: newGameStateRollbackFail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir, store, instance, manager := prepareNewGameFailureDeferTest(t)
+			fake := newGameFailureDeferDocker(t, dataDir)
+			fake.composeUpFunc = func(context.Context, string) (paneldocker.CommandResult, error) {
+				return paneldocker.CommandResult{ExitCode: 1, Stderr: "server container may already be running"}, errors.New("injected compose up partial failure")
+			}
+			var downs atomic.Int32
+			fake.composeDownFunc = func(context.Context, string) (paneldocker.CommandResult, error) {
+				downs.Add(1)
+				if tc.downErr != nil {
+					return paneldocker.CommandResult{ExitCode: 1, Stderr: tc.downErr.Error()}, tc.downErr
+				}
+				return paneldocker.CommandResult{ExitCode: 0}, nil
+			}
+			driver := New(fake, slog.Default(), manager, store)
+			job := startNewGameFailureDeferJob(t, manager, driver, fake, instance, "request-partial-up-"+strings.ReplaceAll(tc.name, " ", "-"))
+			waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+			if downs.Load() != 1 {
+				t.Fatalf("ComposeDown calls = %d, want 1", downs.Load())
+			}
+			entries, err := os.ReadDir(newGameTransactionsDir(dataDir))
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("transaction entries = %d, err=%v", len(entries), err)
+			}
+			record, err := LoadNewGameTransaction(dataDir, entries[0].Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if record.Stage != tc.wantStage {
+				t.Fatalf("stage = %s, want %s; record=%#v", record.Stage, tc.wantStage, record)
+			}
+			_, ownerErr := LoadNewGameOwner(dataDir)
+			if tc.wantOwner && ownerErr != nil {
+				t.Fatalf("owner should be retained: %v", ownerErr)
+			}
+			if !tc.wantOwner && !errors.Is(ownerErr, os.ErrNotExist) {
+				t.Fatalf("terminal rollback owner = %v", ownerErr)
+			}
+		})
+	}
+}
+
+func TestManualStartRetriesRollbackOnlyAndNeverStartsGame(t *testing.T) {
+	dataDir, store, instance, manager := prepareNewGameFailureDeferTest(t)
+	oldSettings := []byte(`{"Server":{"MaxPlayers":2}}`)
+	newSettings := []byte(`{"Server":{"MaxPlayers":8}}`)
+	writeNewGameSnapshotFixture(t, serverSettingsPath(dataDir), oldSettings)
+	cfg := newGameTestConfig("standard")
+	tx, _, err := beginOrResumeNewGameTransactionWithJobStatus(
+		dataDir, cfg, "request-rollback-recovery", "terminated-original-job",
+		func(string) (bool, error) { return false, nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeNewGameSnapshotFixture(t, serverSettingsPath(dataDir), newSettings)
+	writeNewGameTestRawSave(t, dataDir, "RollbackOnly_73", `<SaveGame>`)
+	if err := tx.beginRollback(errors.New("original new-game failure"), "new_game_failed", newGameStateFailed); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.failRollback(errors.New("initial ComposeDown failure")); err == nil {
+		t.Fatal("expected initial rollback failure")
+	}
+
+	var running atomic.Bool
+	running.Store(true)
+	var failDown atomic.Bool
+	failDown.Store(true)
+	var downs, ups, execs atomic.Int32
+	fake := &fakeConsoleDocker{
+		composePsFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+			if !running.Load() {
+				return paneldocker.ComposePsResult{}, nil
+			}
+			return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+				Service: "server", State: "running", Status: "Up",
+			}}}, nil
+		},
+		composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			downs.Add(1)
+			if failDown.Load() {
+				return paneldocker.CommandResult{ExitCode: 1, Stderr: "injected down failure"}, errors.New("injected down failure")
+			}
+			running.Store(false)
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+		composeUpFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			ups.Add(1)
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+		execFunc: func(context.Context, string, string, string, ...string) (paneldocker.CommandResult, error) {
+			execs.Add(1)
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	start := func(wantStatus string) {
+		t.Helper()
+		job, startErr := driver.Start(context.Background(), registry.StartRequest{Instance: registry.Instance{ID: instance.ID}})
+		if startErr != nil {
+			t.Fatal(startErr)
+		}
+		waitForDriverTestJobStatus(t, store, job.ID, wantStatus)
+	}
+
+	// First manual Start sees a still-running Compose project. Down fails, so no
+	// file restore or owner release is allowed.
+	start(storage.JobStatusFailed)
+	owner, err := LoadNewGameOwner(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, err := LoadNewGameTransaction(dataDir, owner.TransactionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Stage != newGameStateRollbackFail || failed.RollbackCompleted {
+		t.Fatalf("failed recovery transaction = %#v", failed)
+	}
+	if got, readErr := os.ReadFile(serverSettingsPath(dataDir)); readErr != nil || string(got) != string(newSettings) {
+		t.Fatalf("settings changed while Compose stop was unconfirmed: %q, %v", got, readErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(savesDir(dataDir), "Saves", "RollbackOnly_73")); statErr != nil {
+		t.Fatalf("save moved while Compose stop was unconfirmed: %v", statErr)
+	}
+
+	// A later manual Start may retry only the same rollback. Once Down and its
+	// post-check succeed, journal replay finishes and leaves the game off.
+	failDown.Store(false)
+	start(storage.JobStatusSucceeded)
+	if ups.Load() != 0 || execs.Load() != 0 {
+		t.Fatalf("rollback recovery called forward game operations: ComposeUp=%d exec=%d", ups.Load(), execs.Load())
+	}
+	if downs.Load() != 2 {
+		t.Fatalf("ComposeDown calls = %d, want 2", downs.Load())
+	}
+	if _, ownerErr := LoadNewGameOwner(dataDir); !errors.Is(ownerErr, os.ErrNotExist) {
+		t.Fatalf("owner after complete rollback = %v", ownerErr)
+	}
+	final, err := LoadNewGameTransaction(dataDir, tx.record.TransactionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Stage != newGameStateRolledBack || !final.RollbackCompleted {
+		t.Fatalf("final transaction = %#v", final)
+	}
+	if got, readErr := os.ReadFile(serverSettingsPath(dataDir)); readErr != nil || string(got) != string(oldSettings) {
+		t.Fatalf("settings not restored after recovery: %q, %v", got, readErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dataDir, ".local-container", "saves-quarantine", "new-game", tx.record.TransactionID, "RollbackOnly_73")); statErr != nil {
+		t.Fatalf("new save not quarantined after recovery: %v", statErr)
+	}
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.State != storage.InstanceStateStopped || updated.DriverPhase != "new_game_rolled_back" {
+		t.Fatalf("instance after rollback-only recovery = %#v", updated)
+	}
+}
+
+func prepareNewGameFailureDeferTest(t *testing.T) (string, *storage.Store, storage.Instance, *jobs.Manager) {
+	t.Helper()
+	dataDir := filepath.Join(t.TempDir(), "stardew")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION=1.5.0-preview.125\nSERVER_IMAGE=sdvd/server:1.5.0-preview.125\nGAME_LANGUAGE=zh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	junimoDir := junimoServerModDir(dataDir)
+	if err := os.MkdirAll(junimoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(junimoDir, junimoServerManifestName), []byte(`{"Name":"JunimoServer","Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(junimoDir, junimoServerAssemblyName), []byte("test dll"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := newLifecycleTestStore(t)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: storage.DefaultDriverID, Name: "Stardew Valley", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateStopped, StateMessage: "stopped", DriverPhase: "stopped",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dataDir, store, instance, jobs.NewManager(store, slog.Default())
+}
+
+func newGameFailureDeferDocker(t *testing.T, dataDir string) *fakeConsoleDocker {
+	t.Helper()
+	return &fakeConsoleDocker{
+		runContainerFunc: func(_ context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
+			command := strings.Join(opts.Command, " ")
+			if strings.Contains(command, "anxi-install-verify") {
+				return 0, nil
+			}
+			if strings.Contains(command, smapiBundledSyncMarker) {
+				stage := ""
+				for _, bind := range opts.Binds {
+					if strings.HasSuffix(bind, ":/managed") {
+						stage = strings.TrimSuffix(bind, ":/managed")
+						break
+					}
+				}
+				if stage == "" {
+					return 1, errors.New("managed SMAPI stage bind missing")
+				}
+				for _, mod := range []struct{ folder, name, id string }{
+					{folder: "ConsoleCommands", name: "Console Commands", id: consoleCommandsID},
+					{folder: "SaveBackup", name: "Save Backup", id: saveBackupID},
+				} {
+					dir := filepath.Join(stage, mod.folder)
+					if err := os.MkdirAll(dir, 0o755); err != nil {
+						return 1, err
+					}
+					manifest := fmt.Sprintf(`{"Name":%q,"UniqueID":%q,"Version":"1.0.0"}`, mod.name, mod.id)
+					if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
+						return 1, err
+					}
+				}
+				if lineHandler != nil {
+					lineHandler(smapiBundledSyncMarker + ": copy complete")
+				}
+				return 0, nil
+			}
+			return 1, fmt.Errorf("unexpected one-shot command for %s: %s", dataDir, command)
+		},
+		composeUpFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+}
+
+func startNewGameFailureDeferJob(
+	t *testing.T,
+	manager *jobs.Manager,
+	driver *Driver,
+	fake *fakeConsoleDocker,
+	instance storage.Instance,
+	requestID string,
+) storage.Job {
+	t.Helper()
+	config := registry.NewGameConfig{
+		FarmName: "FirstFarm", FarmType: "standard", StartingCabins: 1, MaxPlayers: 4,
+		CabinLayout: "nearby", ProfitMargin: "100", MoneyMode: "shared",
+	}
+	runner := &lifecycleRunner{
+		driver: driver, lifecycle: fake, instance: instance, operation: "start", newGame: true,
+		newGameConfig: &config, newGameRequestID: requestID,
+	}
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID, Timeout: 10 * time.Second, Run: runner.run,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return job
 }
 
 // TestDoRestoreAndRestart_StoppedSkipsStopAndStart verifies that when the

@@ -91,9 +91,20 @@ type smapiRecoveryManifest struct {
 	ConfigSwitched         bool   `json:"configSwitched"`
 	ControlManifestPresent bool   `json:"controlManifestPresent"`
 	ControlDLLPresent      bool   `json:"controlDllPresent"`
+	// KeepServerStopped is set only by Panel bootstrap recovery. It prevents
+	// rollback verification from ComposeUp-ing the game before a manual Start.
+	KeepServerStopped bool `json:"-"`
 }
 
 func (d *Driver) RunSMAPIUpdateDryRun(ctx context.Context, instance registry.Instance) (SMAPIUpdateStatus, error) {
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return SMAPIUpdateStatus{}, err
+	}
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return SMAPIUpdateStatus{}, err
+	}
 	inspection, err := d.InspectSMAPIUpdate(ctx, instance)
 	if err != nil {
 		return SMAPIUpdateStatus{}, err
@@ -165,6 +176,9 @@ func (d *Driver) SMAPIUpdateDryRunStatus(instance registry.Instance) (SMAPIUpdat
 }
 
 func (d *Driver) StartSMAPIUpdateApply(ctx context.Context, instance registry.Instance, createdBy int64) (SMAPIUpdateStatus, error) {
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return SMAPIUpdateStatus{}, err
+	}
 	manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
 	if manifestErr != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
 		return SMAPIUpdateStatus{}, &RuntimeUpdateValidationError{Code: "matrix_not_recommended", Message: "内置兼容矩阵不是 recommended，禁止 SMAPI 升级。"}
@@ -192,6 +206,9 @@ func (d *Driver) StartSMAPIUpdateApply(ctx context.Context, instance registry.In
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return SMAPIUpdateStatus{}, err
+	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
 	if err != nil {
 		return SMAPIUpdateStatus{}, err
@@ -244,10 +261,16 @@ func smapiApplyTerminal(phase string) bool {
 	return phase == SMAPIApplySucceeded || phase == SMAPIApplyFailedRolledBack || phase == SMAPIApplyRollbackFailed
 }
 
-// RecoverSMAPIUpdateApply never resumes an installer after a Panel restart.
-// Before the volume switch it discards only the controlled staging volume;
-// after the switch it runs the same old-volume rollback path as an apply error.
+// RecoverSMAPIUpdateApply never resumes an installer or starts the game after a
+// Panel restart. Before the volume switch it stops the game and discards the
+// controlled staging volume; after the switch it restores the old volume while
+// keeping the runtime stopped for an explicit user Start.
 func (d *Driver) RecoverSMAPIUpdateApply(ctx context.Context, instance registry.Instance) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
+	}
 	status, err := readSMAPIUpdateStatus(instance.DataDir, "apply-status.json")
 	if errors.Is(err, os.ErrNotExist) || err == nil && smapiApplyTerminal(status.Phase) {
 		return nil
@@ -262,8 +285,13 @@ func (d *Driver) RecoverSMAPIUpdateApply(ctx context.Context, instance registry.
 	recovery, err := readSMAPIRecoveryManifest(instance.DataDir, status.UpdateID)
 	if err != nil {
 		if status.Phase == SMAPIApplyChecking || status.Phase == SMAPIApplyDownloading || status.Phase == SMAPIApplyValidating {
-			status.Phase, status.Progress, status.ErrorCode, status.Error = SMAPIApplyFailedRolledBack, 100, "panel_restart_before_change", "Panel 重启发生在任何实例修改前；实例保持原状。"
+			if _, stopErr := workflow.ComposeDown(ctx, instance.DataDir); stopErr != nil {
+				return d.markSMAPIRollbackFailed(instance.DataDir, &status, fmt.Errorf("keep game stopped after Panel restart: %w", stopErr))
+			}
+			status.Phase, status.Progress, status.ErrorCode, status.Error = SMAPIApplyFailedRolledBack, 100, "panel_restart_before_change", "Panel 重启发生在任何实例修改前；升级未继续，游戏保持关闭。"
+			status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
 			status.UpdatedAt, status.FinishedAt = time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)
+			d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "SMAPI 恢复已收敛，请手动启动服务器", "stopped", "")
 			return writeSMAPIUpdateStatus(instance.DataDir, "apply-status.json", status)
 		}
 		return d.markSMAPIRollbackFailed(instance.DataDir, &status, errors.New("SMAPI recovery manifest missing"))
@@ -272,30 +300,25 @@ func (d *Driver) RecoverSMAPIUpdateApply(ctx context.Context, instance registry.
 	if recovery.SchemaVersion != 1 || recovery.UpdateID != status.UpdateID || recovery.Project != project || !gameDataVolumeNamePattern.MatchString(recovery.OriginalVolume) || recovery.StagingVolume != project+"_anxi-smapi-update-"+strings.TrimPrefix(status.UpdateID, "apply_") {
 		return d.markSMAPIRollbackFailed(instance.DataDir, &status, errors.New("SMAPI recovery manifest is inconsistent"))
 	}
+	recovery.KeepServerStopped = true
 	stored, err := d.store.GetInstance(ctx, instance.ID)
 	if err != nil {
 		return err
 	}
 	job, err := d.jobs.Start(ctx, jobs.Spec{Type: SMAPIUpdateApplyJobType, DisplayName: "恢复 SMAPI 升级", TargetType: "instance", TargetID: instance.ID, CreatedBy: recovery.ActorID, Timeout: time.Hour, Run: func(runCtx context.Context, jobCtx *jobs.Context) error {
 		if !recovery.ConfigSwitched {
-			if err := restoreControlMod(instance.DataDir, recovery); err != nil {
+			lifecycle := &lifecycleRunner{driver: d, lifecycle: workflow, instance: stored, actorID: recovery.ActorID, preserveControlMod: true}
+			if err := lifecycle.doStop(runCtx, jobCtx); err != nil {
 				return d.markSMAPIRollbackFailed(instance.DataDir, &status, err)
 			}
-			if recovery.ServerWasRunning {
-				lifecycle := &lifecycleRunner{driver: d, lifecycle: workflow, instance: stored, actorID: recovery.ActorID, preserveControlMod: true}
-				stored.State = storage.InstanceStateStopped
-				lifecycle.instance = stored
-				if err := lifecycle.doStart(runCtx, jobCtx); err != nil {
-					return d.markSMAPIRollbackFailed(instance.DataDir, &status, err)
-				}
-				if err := d.verifySMAPIRollbackStack(runCtx, workflow, instance, recovery.OriginalVolume, status.Current.Version); err != nil {
-					return d.markSMAPIRollbackFailed(instance.DataDir, &status, err)
-				}
+			if err := restoreControlMod(instance.DataDir, recovery); err != nil {
+				return d.markSMAPIRollbackFailed(instance.DataDir, &status, err)
 			}
 			if err := workflow.RuntimeRemoveSMAPIStagingVolume(runCtx, instance.DataDir, recovery.Project, recovery.StagingVolume); err != nil {
 				status.Warnings = append(status.Warnings, "Panel 重启后 staging volume 需人工检查。")
 			}
-			status.Phase, status.Progress, status.ErrorCode, status.Error = SMAPIApplyFailedRolledBack, 100, "panel_restart_before_switch", "Panel 重启发生在切换前；旧 GAME_DATA_VOLUME 未改变。"
+			status.Phase, status.Progress, status.ErrorCode, status.Error = SMAPIApplyFailedRolledBack, 100, "panel_restart_before_switch", "Panel 重启发生在切换前；旧 GAME_DATA_VOLUME 未改变，游戏保持关闭。"
+			status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
 			status.UpdatedAt, status.FinishedAt = time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)
 			_ = os.RemoveAll(smapiRecoveryDir(instance.DataDir, recovery.UpdateID))
 			return writeSMAPIUpdateStatus(instance.DataDir, "apply-status.json", status)
@@ -561,6 +584,25 @@ func (d *Driver) rollbackSMAPIUpdate(ctx context.Context, jobCtx *jobs.Context, 
 	}
 	if err := restoreControlMod(instance.DataDir, recovery); err != nil {
 		return d.markSMAPIRollbackFailed(instance.DataDir, status, err)
+	}
+	if recovery.KeepServerStopped {
+		if !recovery.ConfigSwitched {
+			if err := lifecycle.doStop(ctx, jobCtx); err != nil {
+				return d.markSMAPIRollbackFailed(instance.DataDir, status, err)
+			}
+		}
+		if err := dockerWorkflow.RuntimeRemoveSMAPIStagingVolume(ctx, instance.DataDir, recovery.Project, recovery.StagingVolume); err != nil {
+			status.Warnings = append(status.Warnings, "已恢复旧卷，但失败的 staging volume 需人工清理。")
+		}
+		status.Phase, status.Progress = SMAPIApplyFailedRolledBack, 100
+		status.ErrorCode, status.Error = "panel_restart_recovery", "Panel 重启后已回滚中断的 SMAPI 升级；游戏保持关闭。"
+		status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
+		status.UpdatedAt, status.FinishedAt = time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)
+		if err := writeSMAPIUpdateStatus(instance.DataDir, "apply-status.json", *status); err != nil {
+			return err
+		}
+		_ = os.RemoveAll(smapiRecoveryDir(instance.DataDir, recovery.UpdateID))
+		return nil
 	}
 	instance.State = storage.InstanceStateStopped
 	lifecycle.instance = instance

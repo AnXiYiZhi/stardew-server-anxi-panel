@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.0",
+  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.1",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
   "runtimeUpdatePolicy": "required",
@@ -71,12 +71,14 @@
     "trustedHosts": ["gh.llkk.cc", "github.dpik.top", "ghfast.top", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
-    "version": "0.3.0",
-    "dllSha256": "b15479eda376f386fdadc1cc9d0c31815cabc0a919d0655debe6d7117352c05a",
+    "version": "0.3.1",
+    "dllSha256": "3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce",
     "commandResultVersion": 1
   },
   "status": "recommended",
   "releaseNotes": [
+    "Control 0.3.1 只允许精确匹配新建档 transactionId/saveId 的存档应用完整角色定制，save-loaded 状态携带内存逐字段读回证据。",
+    "Control 0.3.1 对新建档 save-now 持久化同一 commandId 的 pending journal；中断后只恢复该 ID，并严格校验 GameLoop.Saved、saveId 与 transactionId。",
     "Control 0.3.0 采集标准 IP 连接玩家的 SMAPI peer context，并为 Panel 提供只读玩家 Mod 比较数据；不执行踢出、封禁或拦截。",
     "Panel 0.3.2 修复宿主 Mods bind mount 保留旧 JunimoServer DLL、导致 .125 镜像实际加载 .121 Mod 的升级缺口；升级与启动现在校验实际 Mod 版本并支持事务回滚。",
     "当前 Panel 强制使用 JunimoServer 1.5.0-preview.125；已安装的受支持旧实例会在新 Panel 启动后自动完成预检与成对升级，不再二次询问。",

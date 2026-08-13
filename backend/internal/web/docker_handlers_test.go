@@ -449,9 +449,10 @@ func TestInstanceRenderingOpenCallsJunimoAPI(t *testing.T) {
 		},
 		instanceState: storage.InstanceStateRunning,
 	}
-	handler, dataDir, closeStore := newDockerTestHandler(t, fake)
+	handler, store, dataDir, closeStore := newDockerTestHandlerWithStore(t, fake)
 	defer closeStore()
 	adminCookie := setupDockerAdmin(t, handler)
+	setDockerTestInstanceState(t, store, storage.InstanceStateRunning)
 	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
 	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 		t.Fatalf("create instance dir: %v", err)
@@ -487,9 +488,10 @@ func TestInstanceRenderingStatusCallsJunimoAPI(t *testing.T) {
 		},
 		instanceState: storage.InstanceStateRunning,
 	}
-	handler, dataDir, closeStore := newDockerTestHandler(t, fake)
+	handler, store, dataDir, closeStore := newDockerTestHandlerWithStore(t, fake)
 	defer closeStore()
 	adminCookie := setupDockerAdmin(t, handler)
+	setDockerTestInstanceState(t, store, storage.InstanceStateRunning)
 	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
 	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 		t.Fatalf("create instance dir: %v", err)
@@ -528,6 +530,19 @@ func setupDockerAdmin(t *testing.T, handler http.Handler) *http.Cookie {
 		t.Fatalf("setup admin returned %d: %s", response.Code, response.Body.String())
 	}
 	return cookie
+}
+
+func setDockerTestInstanceState(t *testing.T, store *storage.Store, state string) {
+	t.Helper()
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:            storage.DefaultInstanceID,
+		State:         state,
+		StateMessage:  "test state",
+		DriverPhase:   state,
+		DriverPayload: "{}",
+	}); err != nil {
+		t.Fatalf("set test instance state after setup: %v", err)
+	}
 }
 
 func newDockerTestHandler(t *testing.T, fake fakeDockerService) (http.Handler, string, func()) {

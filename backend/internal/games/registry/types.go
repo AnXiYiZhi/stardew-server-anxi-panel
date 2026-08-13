@@ -73,6 +73,7 @@ type StartRequest struct {
 	ActorID       int64
 	NewGame       bool           // When true, lifecycle job creates a new official-farm save.
 	NewGameConfig *NewGameConfig // Normalized, validated payload persisted by the lifecycle transaction.
+	RequestID     string         // Stable idempotency key for a new-game request and all of its retries.
 }
 
 // SaveImportRequest starts the durable save-import transaction. PlatformID is

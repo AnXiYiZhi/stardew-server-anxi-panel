@@ -117,18 +117,24 @@ func (d *Driver) rejectActiveRuntimeUpdate(ctx context.Context, instanceID strin
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
 		TargetType: "instance",
 		TargetID:   instanceID,
-		Types:      []string{RuntimeUpdateDryRunJobType, "stardew_junimo_update_apply", SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType},
+		Types: []string{
+			RuntimeUpdateDryRunJobType, "stardew_junimo_update_apply", SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType,
+			"stardew_install", "mod_nexus_install", "mod_remote_install",
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("list runtime update jobs: %w", err)
 	}
 	if len(active) > 0 {
-		return &RuntimeUpdateValidationError{Code: "runtime_update_busy", Message: "实例存在运行组件升级预检或执行任务，请等待任务结束。"}
+		return &RuntimeUpdateValidationError{Code: "runtime_update_busy", Message: "实例存在安装、Mod 或运行组件变更任务，请等待任务结束。"}
 	}
 	return nil
 }
 
 func (d *Driver) StartRuntimeUpdateDryRun(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateDryRunStatus, error) {
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeUpdateDryRunStatus{}, err
+	}
 	if d.jobs == nil || d.store == nil {
 		return RuntimeUpdateDryRunStatus{}, errors.New("runtime update dry-run service is not configured")
 	}
@@ -151,6 +157,9 @@ func (d *Driver) StartRuntimeUpdateDryRun(ctx context.Context, instance registry
 
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeUpdateDryRunStatus{}, err
+	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
 		TargetType: "instance",
 		TargetID:   instance.ID,

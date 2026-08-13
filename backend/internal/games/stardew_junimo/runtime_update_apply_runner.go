@@ -1,10 +1,8 @@
 package stardew_junimo
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -55,6 +53,11 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 
 	if recovery != nil {
+		if recovery.KeepServerStopped {
+			status.ServerRunning = false
+			status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, *recovery, "panel_restart_recovery", "Panel 重启后已回滚中断的运行组件升级；游戏保持关闭。")
+		}
 		if !runtimeUpdateMutationStarted(*recovery) {
 			if err := finish(RuntimeUpdateApplyFailedRolledBack, "panel_restart_before_change", "Panel 重启发生在实例修改前；实例保持原状。"); err != nil {
 				return err
@@ -670,50 +673,6 @@ func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateAp
 		}
 	}
 	return errors.New(lastFailure)
-}
-
-func runningControlMatchesManifest(dataDir string) bool {
-	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
-	if err != nil {
-		return false
-	}
-	raw, err := os.ReadFile(filepath.Join(dataDir, ".local-container", "control", "options.json"))
-	if err != nil {
-		return false
-	}
-	var options struct {
-		ControlModVersion string `json:"controlModVersion"`
-	}
-	if json.Unmarshal(raw, &options) != nil || strings.TrimSpace(options.ControlModVersion) != manifest.Control.Version {
-		return false
-	}
-	installedDLL, err := os.ReadFile(filepath.Join(smapiModDir(dataDir), "StardewAnxiPanel.Control.dll"))
-	if err != nil {
-		return false
-	}
-	return bytes.Equal(installedDLL, smapiModDLL) && verifyEmbeddedControlManifest(manifest) == nil
-}
-
-func waitForRunningControlManifest(ctx context.Context, dataDir string, timeout time.Duration) bool {
-	if timeout <= 0 {
-		timeout = time.Minute
-	}
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if runningControlMatchesManifest(dataDir) {
-			return true
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-deadline.C:
-			return false
-		case <-ticker.C:
-		}
-	}
 }
 
 // runtimeInfoContractReady verifies the same FIFO-backed control path used by

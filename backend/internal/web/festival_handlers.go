@@ -50,6 +50,9 @@ func (s *server) handleFestivalEventTrigger(w http.ResponseWriter, r *http.Reque
 
 	result, err := trigger.TriggerFestivalEvent(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
@@ -100,6 +103,9 @@ func (s *server) handleJojaRouteEnable(w http.ResponseWriter, r *http.Request, i
 
 	result, err := enabler.EnableJojaRoute(r.Context(), makeRegistryInstance(instance), body.Confirm)
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
@@ -145,6 +151,9 @@ func (s *server) handleGameSaveRequest(w http.ResponseWriter, r *http.Request, i
 
 	result, err := requester.RequestSaveNow(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			if ce.Code == "server_not_running" {

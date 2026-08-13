@@ -52,6 +52,7 @@ jobs:
           npm run test:runtime-components
           npm run test:smapi-update
           npm run test:install-state
+          npm run test:new-game-idempotency
           npm run test:farm-catalog
           npm run test:save-import
           npm run test:mod-list

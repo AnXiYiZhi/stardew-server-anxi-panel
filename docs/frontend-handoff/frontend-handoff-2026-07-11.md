@@ -1581,3 +1581,22 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - `test-junimo-update-status.ts` 覆盖分钟/秒格式、非认证阶段和 live-region 单一归属；全部 12 个 `test:*` 脚本与 production build 已重跑。除本地 Panel/Vite fixture 外，正式 Web 升级得到的新 Panel 已在 769×240 与 280×653 验证提示、计时增长、唯一 live headline、动态详情隔离、零横向溢出和 console health。
 - 后端若以后拆分新的 Steam 等待 phase，应同步扩展纯函数和状态测试；不要只更换标题而移除 elapsed/自动刷新说明，也不要把“正在尝试连接”表述成升级必须等到 Steam 登录成功。
+# FE-INSTALL-DIAGNOSTIC-MAPPING-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么
+
+- 新增 `frontend/src/games/stardew/installation-state.ts`，把实例状态和可选 `installationDiagnostic` 收敛为 `installed/installing/not_installed/install_failed/repair_required/runtime_error/unknown`。首次安装提示只由明确 `not_installed` 或尚未开始的 scaffold 状态触发；`error` 不再等价于“未安装”。`junimo_scaffolded` 即使已生成 Compose/发现镜像，也不能假定已有 Steam/VNC 凭据而直接走 reuseCredentials 修复。
+- `StardewPanel.tsx` 删除本地 installed-state 集合；`InstallPage.tsx` 删除重复集合和 `state === 'error'` 的直接重试门禁，按文件、Compose、镜像、Control 与诊断可用性分别显示安装、修复、启动重试或诊断。Control mismatch、Docker unavailable 和未知/矛盾证据不能打开安装表单。
+- `MobileHomePage.tsx` 同步消费分类器；移动动作会切换到完整桌面版的 `install` 或 `diagnostics` 精确路由，不再只给无目标的异常提示。`frontend/src/types.ts` 增加与后端 JSON 一致的可选 `InstallationDiagnostic`。
+
+## 影响文件与验证
+
+- 影响：`frontend/src/types.ts`、`games/stardew/{installation-state.ts,StardewPanel.tsx,StardewMobileShell.tsx}`、`games/stardew/pages/{InstallPage.tsx,InstallPage.css}`、`games/stardew/mobile/MobileHomePage.tsx`、`frontend/scripts/test-install-state.ts`。
+- 已通过：`npm run test:install-state`、`npm run test:responsive-layout`、`npm run build`。
+- 下一步：候选镜像必须在明确未安装、确认缺文件、Control mismatch、Docker unavailable、普通启动失败五种 API fixture 下分别验收桌面首次弹窗、安装页按钮和移动端目标路由；不要把 source/build 通过写成 Browser 或真机已通过。
+
+# FE-NEWGAME-IDEMPOTENCY-1 接手记录（2026-08-13，completed，未发布）
+
+- `api.createNewGame` 强制接收 request ID 并写入 `Idempotency-Key`。`SavesSection` 用配置指纹管理一个 pending ref：同配置失败后保留，配置变化才换 key，只在 `createNewGame` resolve 后清理；这与后端缺 key 返回 HTTP 428 的硬契约一致。
+- `scripts/test-new-game-idempotency.ts` 真实 mock fetch 验证 URL/body/credentials/header，并用 TypeScript AST 锁定 ref 的生成、复用、失败保留与成功清理顺序；已接入 compatibility-matrix/release workflow 和 responsive 门禁存在性断言。
+- 2026-08-13 当前源码已通过全部 14 项 `test:*`、production audit（0 vulnerabilities）与 production build。本地 Browser fixture 已核对 desktop runtime error 零重装文案、390px diagnostics 路由与零溢出、missing-files 只给 repair，console 为 0；候选镜像/升级后/正式真机仍待发布门禁。

@@ -19,22 +19,30 @@ public sealed class ModEntry : Mod
     private string controlDir = "";
     private string commandDir = "";
     private string commandResultDir = "";
+	private string pendingSaveCommandJournalPath = "";
     private InitConfig? initConfig;
     private bool isJunimoRuntime;
     private readonly PasswordProtectionBridge passwordBridge = new();
     private readonly WarpHomeBridge warpHomeBridge = new();
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
     private readonly Dictionary<string, PlayerModContext> playerModContexts = new(StringComparer.Ordinal);
-    private bool panelCustomizationApplied;
     private PauseReason lastForcedPauseReason;
     private DateTimeOffset lastPauseErrorLogAt = DateTimeOffset.MinValue;
     private bool pendingNewGameOptions;
 	private PendingNewGameMarker? pendingNewGameMarker;
+	private bool newGameCreationObserved;
+	private VerifiedCharacterCustomization? verifiedPanelCustomization;
 	private FarmCatalogRequest? farmCatalogRequest;
 	private FarmTypeResolution? farmTypeResolution;
 	private bool catalogGenerated;
 	private bool runtimeFarmCatalogReady;
 	private const int MaxCatalogImageDataUriChars = 64 * 1024;
+
+	private sealed record VerifiedCharacterCustomization(
+		string TransactionId,
+		string SaveId,
+		DateTimeOffset VerifiedAt,
+		CharacterCustomizationSnapshot Snapshot);
 
     public override void Entry(IModHelper helper)
     {
@@ -43,6 +51,7 @@ public sealed class ModEntry : Mod
         controlDir = Path.GetFullPath(controlDir);
         commandDir = Path.Combine(controlDir, "commands");
         commandResultDir = Path.Combine(controlDir, "command-results");
+		pendingSaveCommandJournalPath = Path.Combine(controlDir, "pending-save-command.json");
         Directory.CreateDirectory(commandDir);
         Directory.CreateDirectory(commandResultDir);
         LoadPlayerModContexts();
@@ -120,14 +129,8 @@ public sealed class ModEntry : Mod
             passwordBridge.Initialize(Monitor);
             warpHomeBridge.Initialize(Monitor);
         }
-		pendingNewGameMarker = ReadJsonFile<PendingNewGameMarker>(PendingNewGamePath(), "pending new-game marker");
-		var markerValidation = NewGameControlContract.ValidateMarker(pendingNewGameMarker, initConfig, DateTimeOffset.UtcNow);
-		pendingNewGameOptions = markerValidation.Valid;
-		if (!markerValidation.Valid && pendingNewGameMarker is not null)
-			Monitor.Log($"Pending new-game marker rejected: {markerValidation.ErrorCode}.", LogLevel.Warn);
-		farmCatalogRequest = ReadJsonFile<FarmCatalogRequest>(FarmCatalogRequestPath(), "farm catalog request");
-		if (!NewGameControlContract.IsFreshCatalogRequest(farmCatalogRequest, DateTimeOffset.UtcNow))
-			farmCatalogRequest = null;
+		RefreshPendingNewGameMarker();
+		RefreshFarmCatalogRequest();
         ApplyPendingNewGameWorldOptions();
         ApplyDirectIpNetworkPolicy();
         WritePanelOptions();
@@ -139,6 +142,8 @@ public sealed class ModEntry : Mod
 
     private void OnSaveCreating(object? sender, SaveCreatingEventArgs e)
     {
+		RefreshPendingNewGameMarker();
+		newGameCreationObserved = pendingNewGameOptions && initConfig is not null;
         ApplyPendingNewGameWorldOptions();
         ApplyPanelCharacterCustomization();
         WriteStatus("save-creating", "Stardew Valley is creating the save requested by JunimoServer.");
@@ -146,10 +151,14 @@ public sealed class ModEntry : Mod
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
-        ApplyPanelCharacterCustomization();
+		RefreshPendingNewGameMarker();
+		var wroteCustomizationStatus = ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
         var saveFolder = Constants.SaveFolderName;
-        WriteStatus("save-loaded", "Save loaded through JunimoServer. Direct IP connections are enabled on UDP port 24642.", saveFolder);
+        WritePlayers();
+        ResumePendingSaveCommand();
+		if (!wroteCustomizationStatus)
+			WriteStatus("save-loaded", "Save loaded through JunimoServer. Direct IP connections are enabled on UDP port 24642.", saveFolder);
     }
 
     private void OnSaved(object? sender, SavedEventArgs e)
@@ -165,12 +174,18 @@ public sealed class ModEntry : Mod
 
         WriteSaveEvent(saveName);
 
-        var saveOutcome = pendingSaveCommands.Complete(DateTimeOffset.UtcNow);
+		var verifiedTransactionId = verifiedPanelCustomization is not null
+			&& string.Equals(verifiedPanelCustomization.SaveId, saveName, StringComparison.Ordinal)
+			? verifiedPanelCustomization.TransactionId
+			: "";
+        var saveOutcome = pendingSaveCommands.Complete(verifiedTransactionId, saveName, DateTimeOffset.UtcNow);
         if (saveOutcome is not null)
         {
             var resultPath = Path.Combine(commandResultDir, saveOutcome.CommandId + ".json");
-            WriteJsonAtomic(resultPath, saveOutcome);
-            Monitor.Log($"Save-now command {saveOutcome.CommandId} completed through GameLoop.Saved.", LogLevel.Info);
+			if (WriteJsonAtomic(resultPath, saveOutcome))
+				ClearPendingSaveCommandJournal(saveOutcome.CommandId);
+			var logLevel = saveOutcome.Status == CommandStatuses.Succeeded ? LogLevel.Info : LogLevel.Warn;
+			Monitor.Log($"Save-now command {saveOutcome.CommandId} completed through GameLoop.Saved with status {saveOutcome.Status} ({saveOutcome.ErrorCode}).", logLevel);
         }
     }
 
@@ -188,9 +203,13 @@ public sealed class ModEntry : Mod
         if (!e.IsMultipleOf(120))
             return;
 
+		RefreshPendingNewGameMarker(logRejected: false);
+		var catalogRequestChanged = RefreshFarmCatalogRequest(logRejected: false);
         ApplyPendingNewGameWorldOptions();
+		ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
-		if (farmCatalogRequest is not null && !runtimeFarmCatalogReady)
+		ResumePendingSaveCommand();
+		if (farmCatalogRequest is not null && (catalogRequestChanged || !runtimeFarmCatalogReady || !File.Exists(PanelOptionsPath())))
 			WritePanelOptions();
         WritePlayers();
         ExpirePendingPlayerModContexts();
@@ -200,7 +219,8 @@ public sealed class ModEntry : Mod
         if (timedOutSave is not null)
         {
             var resultPath = Path.Combine(commandResultDir, timedOutSave.CommandId + ".json");
-            WriteJsonAtomic(resultPath, timedOutSave);
+			if (WriteJsonAtomic(resultPath, timedOutSave))
+				ClearPendingSaveCommandJournal(timedOutSave.CommandId);
             Monitor.Log($"Save-now command {timedOutSave.CommandId} timed out waiting for GameLoop.Saved.", LogLevel.Warn);
         }
     }
@@ -256,16 +276,49 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void ApplyPanelCharacterCustomization()
+    private bool ApplyPanelCharacterCustomization()
     {
-        if (panelCustomizationApplied || initConfig is null || !Context.IsWorldReady)
-            return;
+        if (initConfig is null || !Context.IsWorldReady)
+            return false;
         if (!IsPanelNewGameMode(initConfig.Mode))
-            return;
-        if (!string.Equals(Game1.player.farmName.Value, initConfig.FarmName, StringComparison.OrdinalIgnoreCase))
-            return;
+            return false;
+		var currentSaveId = Constants.SaveFolderName;
+		if (string.IsNullOrWhiteSpace(currentSaveId))
+			return false;
+		if (!NewGameControlContract.CanCustomizeLoadedSave(
+			newGameCreationObserved,
+			pendingNewGameMarker,
+			initConfig,
+			currentSaveId,
+			DateTimeOffset.UtcNow))
+			return false;
+		// An exact persisted transaction + target marker is the recovery proof
+		// after a process restart, where SaveCreating will not fire again.
+		newGameCreationObserved = true;
 
-        var cfg = initConfig;
+		var cfg = initConfig;
+		var before = CaptureCharacterCustomization(Game1.player);
+		if (verifiedPanelCustomization is not null
+			&& string.Equals(verifiedPanelCustomization.TransactionId, cfg.TransactionId, StringComparison.Ordinal)
+			&& string.Equals(verifiedPanelCustomization.SaveId, currentSaveId, StringComparison.Ordinal)
+			&& CharacterCustomizationContract.CoreEquals(verifiedPanelCustomization.Snapshot, before)
+			&& CharacterCustomizationContract.MatchesCore(cfg, before))
+		{
+			WritePlayers();
+			WriteStatus("save-loaded", "Target save remains loaded and Panel character customization still matches.", currentSaveId);
+			return true;
+		}
+		verifiedPanelCustomization = null;
+		if (CharacterCustomizationContract.MatchesCore(cfg, before))
+		{
+			verifiedPanelCustomization = new(cfg.TransactionId, currentSaveId, DateTimeOffset.UtcNow, before);
+			WritePlayers();
+			WriteStatus("save-loaded", "Target save is loaded and Panel character customization was read back successfully.", currentSaveId);
+			return true;
+		}
+		if (!string.Equals(Game1.player.farmName.Value, cfg.FarmName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
         Game1.player.Name = cfg.FarmerName;
         Game1.player.displayName = cfg.FarmerName;
         Game1.player.favoriteThing.Value = string.IsNullOrWhiteSpace(cfg.FavoriteThing) ? "Anxi" : cfg.FavoriteThing;
@@ -290,10 +343,52 @@ public sealed class ModEntry : Mod
             Game1.player.changePantsColor(ToColor(cfg.PantsColor));
         Game1.player.isCustomized.Value = true;
         Game1.player.ConvertClothingOverrideToClothesItems();
-        panelCustomizationApplied = true;
-        Game1.saveOnNewDay = true;
-        WriteStatus("save-customized", "Panel character customization applied to the JunimoServer world.", Constants.SaveFolderName);
+		var actual = CaptureCharacterCustomization(Game1.player);
+		var customizationMismatches = CharacterCustomizationContract.MismatchFields(cfg, actual);
+		var verified = customizationMismatches.Length == 0;
+		if (verified)
+		{
+			verifiedPanelCustomization = new(cfg.TransactionId, currentSaveId, DateTimeOffset.UtcNow, actual);
+			Game1.saveOnNewDay = true;
+			WritePlayers();
+		}
+		WriteStatus(
+			verified ? "save-loaded" : "save-customization-invalid",
+			verified
+				? "Panel character customization was applied and read back from the JunimoServer world."
+				: "Panel character customization did not match after applying it.",
+			currentSaveId,
+			customizationMismatches,
+			verified ? null : actual);
+		return true;
     }
+
+	private static CharacterCustomizationSnapshot CaptureCharacterCustomization(Farmer farmer)
+	{
+		return new CharacterCustomizationSnapshot
+		{
+			FarmerName = farmer.Name ?? "",
+			FarmName = farmer.farmName.Value ?? "",
+			FavoriteThing = farmer.favoriteThing.Value ?? "",
+			Gender = farmer.IsMale ? "male" : "female",
+			PetType = farmer.whichPetType ?? "",
+			PetBreed = farmer.whichPetBreed ?? "",
+			Skin = farmer.skin.Value,
+			Hair = farmer.hair.Value,
+			Shirt = farmer.GetShirtId() ?? "",
+			Pants = farmer.GetPantsId() ?? "",
+			Accessory = farmer.accessory.Value,
+			EyeColor = FromColor(farmer.newEyeColor.Value),
+			HairColor = FromColor(farmer.hairstyleColor.Value),
+			PantsColor = FromColor(farmer.pantsColor.Value),
+			IsCustomized = farmer.isCustomized.Value,
+		};
+	}
+
+	private static RgbColor FromColor(Color color)
+	{
+		return new RgbColor { R = color.R, G = color.G, B = color.B };
+	}
 
     private static Color ToColor(RgbColor color)
     {
@@ -352,6 +447,11 @@ public sealed class ModEntry : Mod
 		return Path.Combine(controlDir, "farm-catalog-request.json");
     }
 
+	private string PanelOptionsPath()
+	{
+		return Path.Combine(controlDir, "options.json");
+	}
+
     private static void ApplyDirectIpNetworkPolicy()
     {
         if (Game1.options is null)
@@ -396,6 +496,35 @@ public sealed class ModEntry : Mod
             return null;
         }
     }
+
+	private void RefreshPendingNewGameMarker(bool logRejected = true)
+	{
+		var observed = ReadJsonFile<PendingNewGameMarker>(PendingNewGamePath(), "pending new-game marker");
+		var validation = NewGameControlContract.ValidateMarker(observed, initConfig, DateTimeOffset.UtcNow);
+		pendingNewGameMarker = observed;
+		pendingNewGameOptions = validation.Valid;
+		if (logRejected && !validation.Valid && observed is not null)
+			Monitor.Log($"Pending new-game marker rejected: {validation.ErrorCode}.", LogLevel.Warn);
+	}
+
+	private bool RefreshFarmCatalogRequest(bool logRejected = true)
+	{
+		var observed = ReadJsonFile<FarmCatalogRequest>(FarmCatalogRequestPath(), "farm catalog request");
+		if (!NewGameControlContract.IsFreshCatalogRequest(observed, DateTimeOffset.UtcNow))
+		{
+			if (logRejected && observed is not null)
+				Monitor.Log("Runtime farm catalog request is expired or invalid.", LogLevel.Warn);
+			observed = null;
+		}
+		var changed = !string.Equals(farmCatalogRequest?.RequestId, observed?.RequestId, StringComparison.Ordinal)
+			|| !string.Equals(farmCatalogRequest?.TransactionId, observed?.TransactionId, StringComparison.Ordinal)
+			|| farmCatalogRequest?.GeneratedAt != observed?.GeneratedAt
+			|| farmCatalogRequest?.ExpiresAt != observed?.ExpiresAt;
+		farmCatalogRequest = observed;
+		if (changed)
+			runtimeFarmCatalogReady = false;
+		return changed;
+	}
 
 	private T? ReadJsonFile<T>(string path, string description) where T : class
 	{
@@ -472,7 +601,7 @@ public sealed class ModEntry : Mod
                 MoneyModes = new[] { Option("shared", "共享资金"), Option("separate", "分开资金") },
                 FarmTypes = farmTypes.ToArray(),
             };
-			catalogGenerated = WriteJsonAtomic(Path.Combine(controlDir, "options.json"), options);
+			catalogGenerated = WriteJsonAtomic(PanelOptionsPath(), options);
         }
         catch (Exception ex)
         {
@@ -605,8 +734,14 @@ public sealed class ModEntry : Mod
 		return BoundCatalogImage("data:image/svg+xml;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(svg)));
     }
 
-    private void WriteStatus(string state, string message, string? saveId = null)
+    private void WriteStatus(
+		string state,
+		string message,
+		string? saveId = null,
+		string[]? customizationMismatches = null,
+		CharacterCustomizationSnapshot? customizationAttempt = null)
     {
+		var customization = verifiedPanelCustomization;
         var status = new RuntimeStatus
         {
             State = state,
@@ -623,6 +758,15 @@ public sealed class ModEntry : Mod
 			FarmTypeResolved = farmTypeResolution?.Resolved ?? false,
 			CatalogGenerated = catalogGenerated,
 			NewGameWarning = farmTypeResolution?.Warning ?? "",
+			NewGameCreationObserved = newGameCreationObserved,
+			CustomizationApplied = customization is not null,
+			CustomizationVerified = customization is not null,
+			CustomizationTransactionId = customization?.TransactionId ?? "",
+			CustomizationSaveId = customization?.SaveId ?? "",
+			CustomizationVerifiedAt = customization?.VerifiedAt,
+			Customization = customization?.Snapshot,
+			CustomizationAttempt = customizationAttempt,
+			CustomizationMismatches = customizationMismatches ?? Array.Empty<string>(),
         };
         WriteJson(Path.Combine(controlDir, "status.json"), status);
     }
@@ -637,7 +781,7 @@ public sealed class ModEntry : Mod
         WriteJson(Path.Combine(controlDir, "players.json"), new PlayersFile
         {
             UpdatedAt = DateTimeOffset.UtcNow,
-            SaveId = Context.IsWorldReady ? Game1.GetSaveGameName() : "",
+			SaveId = Context.IsWorldReady ? Constants.SaveFolderName ?? "" : "",
             Players = players,
         });
     }
@@ -788,6 +932,26 @@ public sealed class ModEntry : Mod
                 var resultPath = Path.Combine(commandResultDir, command.Id + ".json");
                 if (File.Exists(resultPath))
                 {
+					if (string.Equals(command.Name, "save-now", StringComparison.Ordinal))
+					{
+						var existing = ReadCommandOutcome(resultPath);
+						if (existing is null)
+							continue;
+						if (string.Equals(existing.Status, CommandStatuses.Running, StringComparison.Ordinal))
+						{
+							var journalFailure = EnsurePendingSaveCommandJournal(command);
+							if (journalFailure is not null)
+							{
+								if (WriteJsonAtomic(resultPath, journalFailure))
+									File.Delete(path);
+								continue;
+							}
+							File.Delete(path);
+							ResumePendingSaveCommand();
+							continue;
+						}
+						ClearPendingSaveCommandJournal(command.Id);
+					}
                     File.Delete(path);
                     continue;
                 }
@@ -810,8 +974,13 @@ public sealed class ModEntry : Mod
                 // Never delete the command before its durable result exists. If the
                 // process dies after execution but before this write, the ambiguity is
                 // intentionally surfaced as unknown and is never auto-retried by panel.
-                if (WriteJsonAtomic(resultPath, outcome))
+				if (WriteJsonAtomic(resultPath, outcome))
+				{
+					if (string.Equals(command.Name, "save-now", StringComparison.Ordinal)
+						&& !string.Equals(outcome.Status, CommandStatuses.Running, StringComparison.Ordinal))
+						ClearPendingSaveCommandJournal(command.Id);
                     File.Delete(path);
+				}
             }
             catch (Exception ex)
             {
@@ -828,6 +997,9 @@ public sealed class ModEntry : Mod
                 var saveOutcome = pendingSaveCommands.Begin(command, Context.IsWorldReady, DateTimeOffset.UtcNow, SaveCommandTimeout);
                 if (saveOutcome.Status == CommandStatuses.Running)
                 {
+					var journalFailure = EnsurePendingSaveCommandJournal(command);
+					if (journalFailure is not null)
+						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, journalFailure.ErrorCode, journalFailure.Message)!;
 					if (Game1.activeClickableMenu is not null)
 						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_ui_busy", "The game menu is busy and could not start saving.")!;
 					Game1.activeClickableMenu = new SaveGameMenu();
@@ -879,6 +1051,139 @@ public sealed class ModEntry : Mod
         }
         return NewOutcome(command, CommandStatuses.Dispatched, "", "Command dispatched to the game loop.");
     }
+
+	private CommandOutcome? EnsurePendingSaveCommandJournal(PanelCommand command)
+	{
+		if (File.Exists(pendingSaveCommandJournalPath))
+		{
+			PendingSaveCommandJournal? existing;
+			try
+			{
+				existing = JsonSerializer.Deserialize<PendingSaveCommandJournal>(
+					File.ReadAllText(pendingSaveCommandJournalPath), ContractJson.Options);
+			}
+			catch (Exception ex)
+			{
+				Monitor.Log($"Pending save command journal is unreadable and was preserved: {ex}", LogLevel.Error);
+				return NewOutcome(command, CommandStatuses.Failed, "save_journal_invalid", "The existing save journal is unreadable and requires recovery.");
+			}
+			if (!SaveCommandRecoveryContract.Matches(existing, command))
+				return NewOutcome(command, CommandStatuses.Failed, "save_already_pending", "A different durable save command still owns the save journal.");
+			return null;
+		}
+
+		var journal = new PendingSaveCommandJournal
+		{
+			Command = command,
+			UpdatedAt = DateTimeOffset.UtcNow,
+		};
+		return WriteJsonAtomic(pendingSaveCommandJournalPath, journal)
+			? null
+			: NewOutcome(command, CommandStatuses.Failed, "save_journal_write_failed", "The durable save journal could not be written.");
+	}
+
+	private void ResumePendingSaveCommand()
+	{
+		if (pendingSaveCommands.PendingCommandId is not null || !File.Exists(pendingSaveCommandJournalPath))
+			return;
+
+		PendingSaveCommandJournal? journal;
+		try
+		{
+			journal = JsonSerializer.Deserialize<PendingSaveCommandJournal>(
+				File.ReadAllText(pendingSaveCommandJournalPath), ContractJson.Options);
+		}
+		catch (Exception ex)
+		{
+			Monitor.Log($"Pending save command journal cannot be resumed and was preserved: {ex}", LogLevel.Error);
+			return;
+		}
+		if (journal is null || journal.SchemaVersion != PendingSaveCommandJournal.CurrentSchemaVersion)
+		{
+			Monitor.Log("Pending save command journal has an unsupported schema and was preserved.", LogLevel.Error);
+			return;
+		}
+
+		var command = journal.Command;
+		var resultPath = Path.Combine(commandResultDir, command.Id + ".json");
+		var existing = ReadCommandOutcome(resultPath);
+		if (existing is not null && !string.Equals(existing.Status, CommandStatuses.Running, StringComparison.Ordinal))
+		{
+			ClearPendingSaveCommandJournal(command.Id);
+			return;
+		}
+
+		var saveName = Constants.SaveFolderName;
+		if (string.IsNullOrWhiteSpace(saveName) && Context.IsWorldReady)
+			saveName = Game1.GetSaveGameName();
+		var verifiedTransactionId = verifiedPanelCustomization?.TransactionId;
+		var verifiedSaveId = verifiedPanelCustomization?.SaveId;
+		var decision = SaveCommandRecoveryContract.Evaluate(
+			command, Context.IsWorldReady, saveName, verifiedTransactionId, verifiedSaveId);
+		if (decision.TerminalFailure)
+		{
+			var failed = NewOutcome(command, CommandStatuses.Failed, decision.ErrorCode, "The durable save journal is invalid.");
+			if (WriteJsonAtomic(resultPath, failed))
+				ClearPendingSaveCommandJournal(command.Id);
+			return;
+		}
+		if (!decision.CanResume || Game1.activeClickableMenu is not null)
+			return;
+
+		var running = pendingSaveCommands.Begin(command, true, DateTimeOffset.UtcNow, SaveCommandTimeout);
+		if (running.Status != CommandStatuses.Running)
+		{
+			if (WriteJsonAtomic(resultPath, running))
+				ClearPendingSaveCommandJournal(command.Id);
+			return;
+		}
+		if (!WriteJsonAtomic(resultPath, running))
+		{
+			pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_result_write_failed", "The resumed running result could not be written.");
+			return;
+		}
+		try
+		{
+			Game1.activeClickableMenu = new SaveGameMenu();
+			Monitor.Log($"Resumed durable save-now command {command.Id} with the same command ID.", LogLevel.Info);
+		}
+		catch (Exception ex)
+		{
+			var failed = pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_resume_failed", ex.Message);
+			if (failed is not null && WriteJsonAtomic(resultPath, failed))
+				ClearPendingSaveCommandJournal(command.Id);
+		}
+	}
+
+	private CommandOutcome? ReadCommandOutcome(string path)
+	{
+		try
+		{
+			return JsonSerializer.Deserialize<CommandOutcome>(File.ReadAllText(path), ContractJson.Options);
+		}
+		catch (Exception ex)
+		{
+			Monitor.Log($"Failed to read command outcome {path}: {ex}", LogLevel.Warn);
+			return null;
+		}
+	}
+
+	private void ClearPendingSaveCommandJournal(string commandId)
+	{
+		if (!File.Exists(pendingSaveCommandJournalPath))
+			return;
+		try
+		{
+			var journal = JsonSerializer.Deserialize<PendingSaveCommandJournal>(
+				File.ReadAllText(pendingSaveCommandJournalPath), ContractJson.Options);
+			if (journal is not null && string.Equals(journal.Command.Id, commandId, StringComparison.Ordinal))
+				File.Delete(pendingSaveCommandJournalPath);
+		}
+		catch (Exception ex)
+		{
+			Monitor.Log($"Failed to clear pending save command journal: {ex}", LogLevel.Warn);
+		}
+	}
 
     private static CommandOutcome NewOutcome(PanelCommand command, string status, string errorCode, string message)
     {

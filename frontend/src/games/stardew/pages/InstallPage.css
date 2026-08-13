@@ -74,6 +74,32 @@
   color: #3a8020;
 }
 
+.sd-install-repair-card,
+.sd-install-diagnose-card {
+  border-color: #d08010;
+  background: rgba(208, 128, 16, 0.09);
+}
+
+.sd-install-repair-card .sd-install-complete-icon,
+.sd-install-diagnose-card .sd-install-complete-icon,
+.sd-install-repair-card .sd-install-complete-title,
+.sd-install-diagnose-card .sd-install-complete-title,
+.sd-install-repair-card .sd-install-complete-desc,
+.sd-install-diagnose-card .sd-install-complete-desc {
+  color: #7a4800;
+}
+
+.sd-install-diagnose-card--error {
+  border-color: #c02020;
+  background: rgba(192, 32, 32, 0.07);
+}
+
+.sd-install-diagnose-card--error .sd-install-complete-icon,
+.sd-install-diagnose-card--error .sd-install-complete-title,
+.sd-install-diagnose-card--error .sd-install-complete-desc {
+  color: #8b0000;
+}
+
 .sd-install-info-bar {
   padding: 8px 12px;
   border-left: 3px solid #c8a87a;

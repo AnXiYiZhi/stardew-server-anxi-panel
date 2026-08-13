@@ -127,9 +127,9 @@ func TestModdedFarmCreationFeatureFlagAllowsReadyExplicitFarmType(t *testing.T) 
 		t.Fatalf("feature-enabled FrontierFarm = %+v; response=%+v", frontier, catalog)
 	}
 
-	create, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/custom-new-game", map[string]any{
+	create, _ := doNewGameJSON(t, handler, map[string]any{
 		"farmName": "Frontier Test", "farmType": "FrontierFarm",
-	}, adminCookie)
+	}, adminCookie, "frontier-farm-create")
 	if create.Code != http.StatusAccepted {
 		t.Fatalf("create = %d: %s", create.Code, create.Body.String())
 	}

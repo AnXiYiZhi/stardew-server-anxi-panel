@@ -246,6 +246,9 @@ func manualRuntimeStackMethod(code string) string {
 // dry-run and starts a fresh apply transaction. It never accepts an image,
 // path, apply ID, or strategy from the caller.
 func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry.Instance, createdBy int64) (RuntimeUpdateApplyStatus, error) {
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeUpdateApplyStatus{}, err
+	}
 	if d.jobs == nil || d.store == nil {
 		return RuntimeUpdateApplyStatus{}, errors.New("runtime update repair service is not configured")
 	}
@@ -259,6 +262,9 @@ func (d *Driver) StartRuntimeUpdateRepair(ctx context.Context, instance registry
 
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeUpdateApplyStatus{}, err
+	}
 	plan := DetectRuntimeUpdateRepairPlan(instance)
 	if plan == nil {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_not_needed", Message: "当前没有需要执行的一键修复方案。"}
@@ -340,12 +346,23 @@ func (d *Driver) startKnownRuntimeRepairPlan(ctx context.Context, docker Runtime
 	if plan.Attempts >= runtimeUpdateRepairAttemptLimit {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_repair_exhausted", Message: "同一实例的自动修复已连续尝试 3 次；已停止自动操作。"}
 	}
-	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
-	if err != nil {
-		return RuntimeUpdateApplyStatus{}, fmt.Errorf("list conflicting jobs: %w", err)
-	}
-	if len(active) > 0 {
-		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_update_busy", Message: "实例存在安装、生命周期或组件升级任务，请等待任务结束。"}
+	slotDeadline := time.Now().Add(3 * time.Second)
+	for {
+		active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
+		if err != nil {
+			return RuntimeUpdateApplyStatus{}, fmt.Errorf("list conflicting jobs: %w", err)
+		}
+		if len(active) == 0 {
+			break
+		}
+		if len(active) != 1 || previous.JobID == "" || active[0].ID != previous.JobID || time.Now().After(slotDeadline) {
+			return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "runtime_update_busy", Message: "实例存在安装、生命周期或组件升级任务，请等待任务结束。"}
+		}
+		select {
+		case <-ctx.Done():
+			return RuntimeUpdateApplyStatus{}, ctx.Err()
+		case <-time.After(25 * time.Millisecond):
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	sourceID := newRuntimeApplyID()

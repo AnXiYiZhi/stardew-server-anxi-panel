@@ -95,6 +95,7 @@ public sealed class PendingNewGameMarker
 	public int SchemaVersion { get; set; }
 	public string TransactionId { get; set; } = "";
 	public string RequestedFarmType { get; set; } = "";
+	public string TargetSaveId { get; set; } = "";
 	public DateTimeOffset CreatedAt { get; set; }
 	public DateTimeOffset ExpiresAt { get; set; }
 	public string State { get; set; } = "";
@@ -167,6 +168,22 @@ public static class NewGameControlContract
 		if (!string.Equals(marker.State, "pending", StringComparison.OrdinalIgnoreCase))
 			return new(false, "marker_not_pending", marker);
 		return new(true, "", marker);
+	}
+
+	public static bool CanCustomizeLoadedSave(
+		bool creationObserved,
+		PendingNewGameMarker? marker,
+		InitConfig? init,
+		string? loadedSaveId,
+		DateTimeOffset now)
+	{
+		_ = creationObserved;
+		var validation = ValidateMarker(marker, init, now);
+		if (!validation.Valid)
+			return false;
+		return !string.IsNullOrWhiteSpace(marker?.TargetSaveId)
+			&& !string.IsNullOrWhiteSpace(loadedSaveId)
+			&& string.Equals(marker.TargetSaveId, loadedSaveId, StringComparison.Ordinal);
 	}
 
 	public static FarmTypeResolution ResolveFarmType(string? requested, IReadOnlyList<RuntimeFarmType> additionalFarms)
@@ -248,6 +265,140 @@ public sealed class RuntimeStatus
 	public bool FarmTypeResolved { get; set; }
 	public bool CatalogGenerated { get; set; }
 	public string NewGameWarning { get; set; } = "";
+	public bool NewGameCreationObserved { get; set; }
+	public bool CustomizationApplied { get; set; }
+	public bool CustomizationVerified { get; set; }
+	public string CustomizationTransactionId { get; set; } = "";
+	public string CustomizationSaveId { get; set; } = "";
+	public DateTimeOffset? CustomizationVerifiedAt { get; set; }
+	public CharacterCustomizationSnapshot? Customization { get; set; }
+	public CharacterCustomizationSnapshot? CustomizationAttempt { get; set; }
+	public string[] CustomizationMismatches { get; set; } = Array.Empty<string>();
+}
+
+public sealed class CharacterCustomizationSnapshot
+{
+	public string FarmerName { get; set; } = "";
+	public string FarmName { get; set; } = "";
+	public string FavoriteThing { get; set; } = "";
+	public string Gender { get; set; } = "";
+	public string PetType { get; set; } = "";
+	public string PetBreed { get; set; } = "";
+	public int? Skin { get; set; }
+	public int? Hair { get; set; }
+	public string? Shirt { get; set; }
+	public string? Pants { get; set; }
+	public int? Accessory { get; set; }
+	public RgbColor? EyeColor { get; set; }
+	public RgbColor? HairColor { get; set; }
+	public RgbColor? PantsColor { get; set; }
+	public bool IsCustomized { get; set; }
+}
+
+public static class CharacterCustomizationContract
+{
+	public static CharacterCustomizationSnapshot ExpectedCore(InitConfig config)
+	{
+		ArgumentNullException.ThrowIfNull(config);
+		return new CharacterCustomizationSnapshot
+		{
+			FarmerName = config.FarmerName ?? "",
+			FarmName = config.FarmName ?? "",
+			FavoriteThing = string.IsNullOrWhiteSpace(config.FavoriteThing) ? "Anxi" : config.FavoriteThing,
+			Gender = string.Equals(config.Gender, "female", StringComparison.OrdinalIgnoreCase) ? "female" : "male",
+			PetType = string.Equals(config.PetType, "Dog", StringComparison.OrdinalIgnoreCase) ? "Dog" : "Cat",
+			PetBreed = string.IsNullOrWhiteSpace(config.PetBreed) ? "0" : config.PetBreed,
+			Skin = config.Skin,
+			Hair = config.Hair,
+			Shirt = string.IsNullOrWhiteSpace(config.Shirt) ? null : config.Shirt,
+			Pants = string.IsNullOrWhiteSpace(config.Pants) ? null : config.Pants,
+			Accessory = config.Accessory,
+			EyeColor = NormalizeColor(config.EyeColor),
+			HairColor = NormalizeColor(config.HairColor),
+			PantsColor = NormalizeColor(config.PantsColor),
+			IsCustomized = true,
+		};
+	}
+
+	public static bool CoreEquals(CharacterCustomizationSnapshot? expected, CharacterCustomizationSnapshot? actual)
+	{
+		if (!RequiredCoreEquals(expected, actual) || expected is null || actual is null)
+			return false;
+		return expected.Skin == actual.Skin
+			&& expected.Hair == actual.Hair
+			&& string.Equals(expected.Shirt, actual.Shirt, StringComparison.Ordinal)
+			&& string.Equals(expected.Pants, actual.Pants, StringComparison.Ordinal)
+			&& expected.Accessory == actual.Accessory
+			&& ColorsEqual(expected.EyeColor, actual.EyeColor)
+			&& ColorsEqual(expected.HairColor, actual.HairColor)
+			&& ColorsEqual(expected.PantsColor, actual.PantsColor)
+			&& expected.IsCustomized == actual.IsCustomized;
+	}
+
+	public static bool MatchesCore(InitConfig? config, CharacterCustomizationSnapshot? actual)
+	{
+		return MismatchFields(config, actual).Length == 0;
+	}
+
+	public static string[] MismatchFields(InitConfig? config, CharacterCustomizationSnapshot? actual)
+	{
+		if (config is null)
+			return new[] { "config" };
+		if (actual is null)
+			return new[] { "snapshot" };
+		var expected = ExpectedCore(config);
+		var mismatches = new List<string>();
+		if (!string.Equals(expected.FarmerName, actual.FarmerName, StringComparison.Ordinal)) mismatches.Add("farmerName");
+		if (!string.Equals(expected.FarmName, actual.FarmName, StringComparison.Ordinal)) mismatches.Add("farmName");
+		if (!string.Equals(expected.FavoriteThing, actual.FavoriteThing, StringComparison.Ordinal)) mismatches.Add("favoriteThing");
+		if (!string.Equals(expected.Gender, actual.Gender, StringComparison.Ordinal)) mismatches.Add("gender");
+		if (!string.Equals(expected.PetType, actual.PetType, StringComparison.Ordinal)) mismatches.Add("petType");
+		if (!string.Equals(expected.PetBreed, actual.PetBreed, StringComparison.Ordinal)) mismatches.Add("petBreed");
+		if (expected.Skin.HasValue && expected.Skin != actual.Skin) mismatches.Add("skin");
+		if (expected.Hair.HasValue && expected.Hair != actual.Hair) mismatches.Add("hair");
+		if (expected.Shirt is not null && !string.Equals(expected.Shirt, actual.Shirt, StringComparison.Ordinal)) mismatches.Add("shirt");
+		if (expected.Pants is not null && !string.Equals(expected.Pants, actual.Pants, StringComparison.Ordinal)) mismatches.Add("pants");
+		if (expected.Accessory.HasValue && expected.Accessory != actual.Accessory) mismatches.Add("accessory");
+		if (expected.EyeColor is not null && !ColorsEqual(expected.EyeColor, actual.EyeColor)) mismatches.Add("eyeColor");
+		if (expected.HairColor is not null && !ColorsEqual(expected.HairColor, actual.HairColor)) mismatches.Add("hairColor");
+		if (expected.PantsColor is not null && !ColorsEqual(expected.PantsColor, actual.PantsColor)) mismatches.Add("pantsColor");
+		if (!actual.IsCustomized) mismatches.Add("isCustomized");
+		return mismatches.ToArray();
+	}
+
+	private static bool RequiredCoreEquals(CharacterCustomizationSnapshot? expected, CharacterCustomizationSnapshot? actual)
+	{
+		return expected is not null
+			&& actual is not null
+			&& string.Equals(expected.FarmerName, actual.FarmerName, StringComparison.Ordinal)
+			&& string.Equals(expected.FarmName, actual.FarmName, StringComparison.Ordinal)
+			&& string.Equals(expected.FavoriteThing, actual.FavoriteThing, StringComparison.Ordinal)
+			&& string.Equals(expected.Gender, actual.Gender, StringComparison.Ordinal)
+			&& string.Equals(expected.PetType, actual.PetType, StringComparison.Ordinal)
+			&& string.Equals(expected.PetBreed, actual.PetBreed, StringComparison.Ordinal);
+	}
+
+	private static RgbColor? NormalizeColor(RgbColor? color)
+	{
+		return color is null
+			? null
+			: new RgbColor
+			{
+				R = Math.Clamp(color.R, 0, 255),
+				G = Math.Clamp(color.G, 0, 255),
+				B = Math.Clamp(color.B, 0, 255),
+			};
+	}
+
+	private static bool ColorsEqual(RgbColor? expected, RgbColor? actual)
+	{
+		return expected is null
+			? actual is null
+			: actual is not null
+				&& expected.R == actual.R
+				&& expected.G == actual.G
+				&& expected.B == actual.B;
+	}
 }
 
 public sealed class PlayersFile
@@ -290,6 +441,97 @@ public sealed class PanelCommand
     public string Name { get; set; } = "";
     public Dictionary<string, JsonElement>? Payload { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed record SaveCommandExpectation(
+	bool Valid,
+	bool IsTargeted,
+	string TransactionId,
+	string SaveId,
+	string ErrorCode);
+
+public static class SaveCommandContract
+{
+	public const string TransactionIdPayloadKey = "transactionId";
+	public const string SaveIdPayloadKey = "saveId";
+	public const string SavedEventName = "GameLoop.Saved";
+
+	public static SaveCommandExpectation ParseExpectation(PanelCommand command)
+	{
+		ArgumentNullException.ThrowIfNull(command);
+		var payload = command.Payload;
+		if (payload is null)
+			return new(true, false, "", "", "");
+
+		var hasTransaction = payload.TryGetValue(TransactionIdPayloadKey, out var rawTransaction);
+		var hasSave = payload.TryGetValue(SaveIdPayloadKey, out var rawSave);
+		if (!hasTransaction && !hasSave)
+			return new(true, false, "", "", "");
+
+		var transactionId = ReadString(rawTransaction);
+		var saveId = ReadString(rawSave);
+		if (!hasTransaction || !hasSave || transactionId.Length == 0 || saveId.Length == 0)
+			return new(false, false, transactionId, saveId, "save_target_invalid");
+		return new(true, true, transactionId, saveId, "");
+	}
+
+	public static CommandOutcome CompleteSavedEvent(PanelCommand command, string? actualSaveId, DateTimeOffset now)
+	{
+		ArgumentNullException.ThrowIfNull(command);
+		var expectation = ParseExpectation(command);
+		var actual = actualSaveId?.Trim() ?? "";
+		var details = BuildDetails(expectation, actual);
+
+		if (!expectation.Valid)
+			return Outcome(command, CommandStatuses.Failed, expectation.ErrorCode,
+				"The save command target payload is incomplete or invalid.", now, details);
+		if (actual.Length == 0)
+			return Outcome(command, CommandStatuses.Failed, "save_identity_missing",
+				"GameLoop.Saved did not expose the saved game identity.", now, details);
+		if (expectation.IsTargeted && !string.Equals(expectation.SaveId, actual, StringComparison.Ordinal))
+			return Outcome(command, CommandStatuses.Failed, "save_target_mismatch",
+				"GameLoop.Saved completed for a different save than the command target.", now, details);
+
+		return Outcome(command, CommandStatuses.Succeeded, "ok",
+			expectation.IsTargeted
+				? "GameLoop.Saved confirmed that the requested target save completed."
+				: "GameLoop.Saved confirmed that the requested game save completed.",
+			now, details);
+	}
+
+	private static string ReadString(JsonElement value)
+		=> value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() ?? "" : "";
+
+	private static Dictionary<string, string> BuildDetails(SaveCommandExpectation expectation, string actualSaveId)
+	{
+		var details = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["event"] = SavedEventName,
+			["saveId"] = actualSaveId,
+		};
+		if (expectation.TransactionId.Length > 0)
+			details["transactionId"] = expectation.TransactionId;
+		if (expectation.SaveId.Length > 0)
+			details["expectedSaveId"] = expectation.SaveId;
+		return details;
+	}
+
+	private static CommandOutcome Outcome(
+		PanelCommand command,
+		string status,
+		string errorCode,
+		string message,
+		DateTimeOffset now,
+		Dictionary<string, string> details) => new()
+	{
+		CommandId = command.Id,
+		Status = status,
+		ErrorCode = errorCode,
+		Message = message,
+		CreatedAt = command.CreatedAt,
+		UpdatedAt = now,
+		Details = details,
+	};
 }
 
 public static class CommandStatuses

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -579,6 +580,8 @@ func TestDriverStatusUsesInstanceDataDir(t *testing.T) {
 }
 
 func TestDriverReconcileStatePromotesStoppedWhenServerIsRunning(t *testing.T) {
+	dataDir, expectedControl := setupControlRuntimeGateTest(t)
+	writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expectedControl+`"}`)
 	fake := &fakeDocker{
 		psResult: paneldocker.ComposePsResult{
 			Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up 1 minute"}},
@@ -586,7 +589,7 @@ func TestDriverReconcileStatePromotesStoppedWhenServerIsRunning(t *testing.T) {
 	}
 	store := &fakeStore{instance: storage.Instance{
 		ID:            "stardew",
-		DataDir:       "custom-dir",
+		DataDir:       dataDir,
 		State:         storage.InstanceStateStopped,
 		DriverPayload: `{"invite_code":"ABCD1234"}`,
 	}}
@@ -605,8 +608,196 @@ func TestDriverReconcileStatePromotesStoppedWhenServerIsRunning(t *testing.T) {
 	if got := store.updated[0].DriverPayload; got != `{"invite_code":"ABCD1234"}` {
 		t.Fatalf("driver payload was not preserved: %s", got)
 	}
-	if fake.workDir != "custom-dir" {
-		t.Fatalf("expected custom-dir workdir, got %q", fake.workDir)
+	if fake.workDir != dataDir {
+		t.Fatalf("expected %q workdir, got %q", dataDir, fake.workDir)
+	}
+}
+
+func TestDriverReconcileStateDoesNotPromoteRunningContainerWithoutControlRuntime(t *testing.T) {
+	dataDir, _ := setupControlRuntimeGateTest(t)
+	fake := &fakeDocker{psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+		Service: "server", State: "running", Status: "Up 1 minute",
+	}}}}
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateStopped,
+	}}
+	driver := New(fake, nil, nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateStopped || len(store.updated) != 0 {
+		t.Fatalf("pending Control must not promote state: updated=%+v writes=%d", updated, len(store.updated))
+	}
+}
+
+func TestDriverReconcileStateStopsExpiredOrphanedStartingRuntime(t *testing.T) {
+	dataDir, _ := setupControlRuntimeGateTest(t)
+	var running atomic.Bool
+	running.Store(true)
+	var downs atomic.Int32
+	fake := &fakeConsoleDocker{
+		composePsFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+			if !running.Load() {
+				return paneldocker.ComposePsResult{}, nil
+			}
+			return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+				Service: "server", State: "running", Status: "Up 30 minutes",
+			}}}, nil
+		},
+		composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			downs.Add(1)
+			running.Store(false)
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateStarting,
+		DriverPhase: "control_runtime_starting", DriverPayload: `{"kept":true}`,
+		UpdatedAt: time.Now().UTC().Add(-readyStateTimeout - time.Minute).Format(time.RFC3339Nano),
+	}}
+	driver := New(fake, slog.Default(), nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatalf("reconcile expired orphan: %v", err)
+	}
+	if downs.Load() != 1 {
+		t.Fatalf("ComposeDown calls = %d, want 1", downs.Load())
+	}
+	if updated.State != storage.InstanceStateStopped || updated.DriverPhase != "control_runtime_orphan_stopped" {
+		t.Fatalf("expired orphan final state = %+v", updated)
+	}
+	if len(store.updated) != 1 || store.updated[0].DriverPayload != `{"kept":true}` {
+		t.Fatalf("unexpected orphan reconciliation writes = %#v", store.updated)
+	}
+}
+
+func TestDriverReconcileStateKeepsFreshOrphanedStartingRuntimeWithinBudget(t *testing.T) {
+	dataDir, _ := setupControlRuntimeGateTest(t)
+	var downs atomic.Int32
+	fake := &fakeConsoleDocker{
+		composePsFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+			return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+				Service: "server", State: "running", Status: "Up 1 minute",
+			}}}, nil
+		},
+		composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			downs.Add(1)
+			return paneldocker.CommandResult{ExitCode: 0}, nil
+		},
+	}
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateStarting,
+		DriverPhase: "control_runtime_starting", UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}}
+	driver := New(fake, slog.Default(), nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if downs.Load() != 0 || len(store.updated) != 0 || updated.State != storage.InstanceStateStarting {
+		t.Fatalf("fresh orphan changed early: updated=%+v writes=%d downs=%d", updated, len(store.updated), downs.Load())
+	}
+}
+
+func TestDriverReconcileStateMarksOrphanCleanupFailureWithoutClaimingStopped(t *testing.T) {
+	dataDir, _ := setupControlRuntimeGateTest(t)
+	fake := &fakeConsoleDocker{
+		composePsFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+			return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+				Service: "server", State: "running", Status: "Up 30 minutes",
+			}}}, nil
+		},
+		composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+			return paneldocker.CommandResult{ExitCode: 1, Stderr: "injected"}, errors.New("injected down failure")
+		},
+	}
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateStarting,
+		DriverPhase: "control_runtime_starting",
+		UpdatedAt:   time.Now().UTC().Add(-readyStateTimeout - time.Minute).Format(time.RFC3339Nano),
+	}}
+	driver := New(fake, slog.Default(), nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.State != storage.InstanceStateError || updated.DriverPhase != "control_runtime_orphan_cleanup_failed" {
+		t.Fatalf("cleanup failure was misreported: %+v", updated)
+	}
+}
+
+func TestDriverReconcileStateDoesNotPromoteExplicitControlMismatch(t *testing.T) {
+	dataDir, _ := setupControlRuntimeGateTest(t)
+	writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"0.2.2"}`)
+	fake := &fakeDocker{psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+		Service: "server", State: "running", Status: "Up 1 minute",
+	}}}}
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateError,
+	}}
+	driver := New(fake, nil, nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateError || len(store.updated) != 0 {
+		t.Fatalf("mismatched Control must not promote state: updated=%+v writes=%d", updated, len(store.updated))
+	}
+}
+
+func TestDriverReconcileStateDoesNotOverrideActiveLifecycleOwner(t *testing.T) {
+	dataDir, expectedControl := setupControlRuntimeGateTest(t)
+	writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expectedControl+`"}`)
+	store := newLifecycleTestStore(t)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateStarting, DriverPhase: "control_runtime_starting", DriverPayload: "{}",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	release := make(chan struct{})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID,
+		Run: func(ctx context.Context, _ *jobs.Context) error {
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		close(release)
+		waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	})
+	fake := &fakeDocker{psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+		Service: "server", State: "running", Status: "Up 1 minute",
+	}}}}
+	driver := New(fake, slog.Default(), manager, store)
+
+	updated, err := driver.ReconcileState(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateStarting || updated.DriverPhase != "control_runtime_starting" {
+		t.Fatalf("active lifecycle owner was overwritten: %+v", updated)
 	}
 }
 
@@ -632,6 +823,27 @@ func TestDriverReconcileStateDoesNotPromoteWithoutServerService(t *testing.T) {
 	}
 	if len(store.updated) != 0 {
 		t.Fatalf("expected no state update, got %d", len(store.updated))
+	}
+}
+
+func TestDriverReconcileStateDemotesPersistedRunningWhenServerIsAbsent(t *testing.T) {
+	fake := &fakeDocker{psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
+		Service: "steam-auth", State: "running", Status: "Up 1 minute",
+	}}}}
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateRunning, DriverPayload: `{"kept":true}`,
+	}}
+	driver := New(fake, nil, nil, store)
+
+	updated, err := driver.ReconcileState(context.Background(), store.instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateStopped || updated.DriverPhase != "container_stopped" {
+		t.Fatalf("absent server must remain stopped after host restart: %+v", updated)
+	}
+	if len(store.updated) != 1 || store.updated[0].DriverPayload != `{"kept":true}` {
+		t.Fatalf("unexpected reconcile writes: %+v", store.updated)
 	}
 }
 

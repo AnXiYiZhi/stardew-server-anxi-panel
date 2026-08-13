@@ -71,11 +71,15 @@ func (s *server) handleInstanceServerPassword(w http.ResponseWriter, r *http.Req
 		updates = sjconfig.EmptyEnvTemplate()
 		updates["SERVER_PASSWORD"] = body.Password
 	}
-	if err := os.MkdirAll(instance.DataDir, 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, "env_write_failed", sanitizeErrorMsg(err, "更新服务器密码失败"))
-		return
-	}
-	if err := sjconfig.UpdateEnvFile(envPath, updates); err != nil {
+	if err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		if err := os.MkdirAll(instance.DataDir, 0o755); err != nil {
+			return err
+		}
+		return sjconfig.UpdateEnvFile(envPath, updates)
+	}); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "env_write_failed", sanitizeErrorMsg(err, "更新服务器密码失败"))
 		return
 	}

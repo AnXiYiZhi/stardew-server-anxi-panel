@@ -426,6 +426,19 @@ func (s *RestartScheduler) sendSay(ctx context.Context, driver registry.GameDriv
 
 func (s *RestartScheduler) runShutdown(ctx context.Context, driver registry.GameDriver, instance storage.Instance, schedule storage.RestartSchedule, scheduledAt time.Time) error {
 	actionAt := scheduledAt.Format(time.RFC3339)
+	// The persistent new-game transaction owns save and runtime evidence. An
+	// automatic shutdown must not inspect players, create a backup, send Control
+	// commands, or ComposeDown while that owner is unfinished.
+	if guard, ok := driver.(sj.InstanceMutationOwnershipGuard); ok {
+		if err := guard.EnsureMutationOwnershipAvailable(ctx, makeRegistryInstance(instance)); err != nil {
+			var ownerErr *sj.NewGameOwnerError
+			if errors.As(err, &ownerErr) && strings.HasPrefix(ownerErr.Code, "new_game_") {
+				return s.store.MarkRestartScheduleAction(ctx, schedule.InstanceID, "shutdown", actionAt, "skipped_new_game_recovery_required", ownerErr.Message)
+			}
+			_ = s.store.MarkRestartScheduleAction(ctx, schedule.InstanceID, "shutdown", actionAt, "failed", err.Error())
+			return err
+		}
+	}
 	if schedule.SkipIfPlayersOnline {
 		players, err := s.onlinePlayerCount(ctx, driver, instance)
 		if err == nil && players > 0 {
@@ -494,6 +507,20 @@ func (s *RestartScheduler) runStartup(ctx context.Context, driver registry.GameD
 	actionAt := scheduledAt.Format(time.RFC3339)
 	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
 		return s.store.MarkRestartScheduleAction(ctx, schedule.InstanceID, "startup", actionAt, "skipped_already_running", "服务器已在运行，计划开启无需执行。")
+	}
+	// Scheduled startup is automatic. A persistent new-game owner may only be
+	// resumed by an explicit user start, never by Panel/host restart recovery.
+	if guard, ok := driver.(interface {
+		EnsureOfflineMutationAllowed(context.Context, registry.Instance) error
+	}); ok {
+		if err := guard.EnsureOfflineMutationAllowed(ctx, makeRegistryInstance(instance)); err != nil {
+			var ownerErr *sj.NewGameOwnerError
+			if errors.As(err, &ownerErr) && strings.HasPrefix(ownerErr.Code, "new_game_") {
+				return s.store.MarkRestartScheduleAction(ctx, schedule.InstanceID, "startup", actionAt, "skipped_new_game_recovery_required", ownerErr.Message)
+			}
+			_ = s.store.MarkRestartScheduleAction(ctx, schedule.InstanceID, "startup", actionAt, "failed", err.Error())
+			return err
+		}
 	}
 	saves, err := driver.ListSaves(ctx, makeRegistryInstance(instance))
 	if err != nil {

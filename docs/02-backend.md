@@ -1836,3 +1836,47 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 新版、未变化版以及最终目标复验统一走同一接口验收；HTTP 500/其它状态、503 current/畸形 schema、接口不可达、current schema 损坏或 digest 不匹配仍按原事务回滚，不把真实 auth 服务故障伪装成成功。
 - 新增 Docker integration fixture：真实容器 health 固定 `unhealthy`，真实 HTTP 接口返回未登录，验收仍成功；另用真实容器删除 ready 文件产生 HTTP 404，确认 fail closed。单元覆盖 500 合法 JSON、503 current/ready=true 与 `accounts=null/number/object` 均拒绝，并固定真实 503 `ready=false` 合约。
 - 正式发布的真实 Web updater 另从 v0.4.9 注入 Panel 自更新候选 `HEALTHCHECK=false`，等待完整 120 秒后精确收敛为 `failed_rolled_back / health_check_failed`；切回健康 Panel 候选后升级成功。该回滚故障与上方“steam-auth unhealthy 但接口合法时继续”是两条独立证据。v0.3.2 历史 apply body 兼容链也成功，数据、事务备份、非目标 game container/volume 与重启状态均通过。tag `v0.4.10`、Release workflow `31325589153` 和三仓回拉证据见 `docs/09-image-build.md`。
+
+# STARTUP-NEWGAME-DURABILITY-1：启动验收、安装诊断与新建档单写入者（2026-08-13，代码完成，待正式发布）
+
+## Control 启动验收语义
+
+- 普通启动和重启不再把“尚未看到 Control 状态”当作版本不匹配。对外语义固定为三类：等待中、明确通过、明确失败；内部明确失败再细分为 `version_mismatch` 与 `invalid`，避免把坏 DLL、坏 JSON 和错误版本混成同一根因。
+- `InspectControlRuntimeGate` 先验证内嵌清单、实例内 Control DLL 内容，再读取本次启动写出的 `control/options.json`。文件尚未出现时返回 `pending/control_runtime_pending`；只有合法 JSON 明确报告了非期望 `controlModVersion`，才返回 `version_mismatch/control_runtime_version_mismatch`；manifest、DLL、文件读取或 JSON/空版本问题分别返回 `invalid` 及稳定细分错误码。
+- 生命周期保留实例为 `starting/control_runtime_starting`，使用完整 `runtimeUpdateServerTimeout`（当前默认 20 分钟）等待本次启动证据，不再截断为 1 分钟。等待期间日志包含已等待和剩余时间；一直 pending 到期限只会安全停服并写 `stopped/control_runtime_start_timeout`，不会提示重装或错误版本。
+- 明确 mismatch/invalid 会先用独立有界 context 停止 Compose，再写错误终态；无法确认停服时进入 `control_runtime_cleanup_failed`。启动前清理旧 `status.json/players.json/options.json` 失败会以 `control_runtime_snapshot_cleanup_failed` fail closed，防止旧快照冒充本次加载。
+- `ReconcileState` 不会在活动 lifecycle owner 或未结束的新建档 owner 存在时把实例提前提升为 running；外部启动的容器也必须已有 `ControlRuntimeGateReady` 才能提升。容器消失时 running/starting 仍收敛为 stopped，Docker 暂时不可读时保持原状态。
+
+## 安装完整性诊断与错误状态
+
+- `GET /api/instances/:id/state` 可选返回 `installationDiagnostic`。字段包括 `status=installed|incomplete|not_installed|unknown`、`requiredFiles=ok|missing|unknown`、Compose、镜像、server 容器、Control 静态/运行时状态、期望/观察版本、`recommendedAction` 与 UTC `checkedAt`。
+- 后端只在明确的未初始化/scaffold 且缺少安装证据时给 `not_installed/install`；必需文件明确缺失、已安装场景 Compose 缺失/无效或镜像明确不存在时给 `incomplete/repair_install`。Docker、镜像或卷探针暂时失败固定为 `unknown/diagnose`，不得降级成“未安装”。
+- Control 安装内容与运行进程分层：`control.static` 校验实例 Mod manifest 与 DLL；`control.runtime=not_observed` 只表示当前没有本次运行证据，`mismatch/invalid` 才是明确 Control 故障。必需文件证据按实例缓存 10 分钟；`error` 状态可触发一次真实 volume 校验，但探针错误不写“文件缺失”。
+- 旧 `runtimeDiagnostic` 字段继续保留兼容；新前端以 `installationDiagnostic` 为操作门禁，顶层 `state=error` 不再等价于未安装或重装。
+
+## 新建存档持久 owner、单写入者与幂等
+
+- `POST /api/instances/:id/saves/custom-new-game` 强制要求非空 `Idempotency-Key`。当前前端为同一尚未得到 202 的配置持久复用同一个 request ID；缺失 header 直接返回 HTTP 428 / `idempotency_key_required`，且不创建 job、owner 或存档。请求 ID、规范化配置 SHA-256、transaction ID、原始 job ID、executor 与随机 owner token 持久化到 `.local-container/control/new-game-owner/owner.json`，事务正文保存在 `new-game-transactions/<transactionId>/transaction.json`。
+- lifecycle 新建档 job 使用 exclusive owner。相同 request ID 与相同配置返回原 job；相同 key 配置不同返回 `new_game_request_conflict`；其它活动建档/lifecycle 返回 `new_game_in_progress`，不会先取消旧任务。owner token 每次写前校验，只有确认旧 job 非活动时才允许受控轮换接管；owner/transaction 损坏或身份不一致返回 `new_game_recovery_required`，禁止覆盖现场。
+- owner 首次抢占使用完整 staging 目录：先以 `0600` 写入 `owner.json`，再 fsync 文件/目录，最后以 Linux `RENAME_NOREPLACE` 或 Windows 不覆盖 `MoveFile` 原子发布；并发抢占只有一个 winner。历史空 owner 目录只在早于当前进程、内容确实为空，且不存在 rotation、非终态事务、marker/catalog 或 Control 创建进展时才可隔离恢复；任何未知内容都 fail closed。
+- 每个事务在创建前固定 `creationWriter=startup|http`。没有完整活动存档时只允许 Junimo 启动期自动建档，Panel 永远不 POST `/newgame`；存在完整旧存档时 HTTP writer 必须先观察事务绑定的旧 `save-loaded` 稳定基线和 API ready，再最多提交一次。
+- Control `save-creating`、gameloader 从初始值前进、新存档目录出现任一项都是持久 creation progress。一旦 `progressObserved`、`commandCalled`、unknown 或 ambiguous 出现，任何恢复路径都只观察原事务，绝不再次提交 `/newgame`。loader 可先于目录出现，此时足以禁止 POST，但只有 loader/Control 与新目录收敛到唯一 ID 后才能绑定 `targetSaveId`；冲突或多个目录进入 ambiguous 并保留现场。
+- Stop、Restart、Restore 与普通新启动不能取消未结束 owner。宿主或 Panel 中断后不会自动启动游戏；用户显式点击启动时才按原 request/config 受控恢复，并继续使用已持久的候选 saveId 与命令 ID。
+- 事务失败回滚先可靠写入 `rolling_back`、冻结目录隔离计划与每步 write-ahead checkpoint，再执行任何 quarantine/文件/Mod 恢复。Panel 在任意步中断后，下一次手动 Start 只进入 rollback-only runner：先确认 Compose 已停，然后幂等继续原回滚；不同步进行 runtime 同步、ComposeUp 或 `/newgame`。只有 `rolled_back` 已持久才释放 owner，用户需再点一次 Start 启服。
+
+## 角色定制四段耐久门禁与 Control 0.3.1
+
+- 成功顺序固定为：本事务目标 `save-loaded` → 运行内存角色字段逐项正确 → 使用事务预留的同一 `commandId` 执行 `save-now` 并收到精确 `GameLoop.Saved` → 主存档 XML 与 `SaveGameInfo` 在磁盘上稳定且字段正确。任一阶段缺证据、身份冲突或超时都不能报告成功。
+- Control `0.3.1` 只允许匹配 transaction/target save 的 `SaveCreating` 或精确恢复身份应用角色配置。`status.json` 冻结 `transactionId/saveId/creationObserved/customizationApplied/customizationVerified/customizationVerifiedAt/customization`；独立 `players.json` 还必须在验证时间之后报告同一 save 的唯一 host，且 host 名称与配置一致。
+- `save-now` 的 command ID 在发布前写入事务，Control 又在打开 `SaveGameMenu` 前原子写入 `pending-save-command.json`。queued/running/terminal 及 Control/容器中断后只恢复同 ID；不会换 ID 重做。unknown、过期、无 `GameLoop.Saved`、不同 transaction/save 或旧于本次 `save-loaded` 的回执都禁止完成。成功回执必须同时携带 `event=GameLoop.Saved`、`transactionId`、`saveId`、`expectedSaveId`，终态落盘后才清 journal。
+- 内存和磁盘均校验完整配置：人物名、农场名、最爱、性别、宠物类型/品种、skin/hair/shirt/pants/accessory、眼睛/头发/裤子 RGB 与 `isCustomized`。磁盘门禁连续两轮得到相同的主 XML/SaveGameInfo SHA-256 才稳定；主 XML 还校验运行时解析后的 `whichFarm`，SaveGameInfo 独立核对人物名和农场名。最后要求 Control、loader 和唯一新目录身份收敛，再原子提交 Mod profile、事务 success 并释放 owner。
+- 当前运行栈 identity 为 `control-0.3.1`；source manifest、embedded manifest、嵌入 DLL 与 `runtime_stack_manifest.json` 必须保持一致。任何 DLL 变化都要重新计算清单 SHA-256，并在正式候选上完成真实 game-data 编译、契约测试和运行时实载验收。
+
+## 影响文件、验证与边界
+
+- 主要后端文件：`control_runtime_gate.go`、`installation_diagnostic.go`、`lifecycle.go`、`driver.go`、`new_game_transaction.go`、`new_game_transaction_owner.go`、`new_game_progress.go`、`new_game_lifecycle.go`、`new_game_durability*.go`、Web instance/lifecycle handlers、Control `ControlContract.cs/ModEntry.cs/DeferredCommandOutcomes.cs`、两份 manifest/DLL 与运行栈清单。
+- 已增加纯函数、生命周期、Reconcile、installation diagnostic、owner/token、progress、durability、Web state 与前端幂等回归。2026-08-13 当前源码已通过全量 Go test/vet/build、Control 契约与真实 game-data 编译、前端 14 项状态测试/build、脚本/ShellCheck、兼容矩阵、runtime/updater Docker integration 和网站 build；精确结果见 `docs/09-image-build.md`。最终 commit 候选镜像、正式 Web 升级/回滚、升级后 Browser 与生产真机仍须重新取证，不能把 pre-candidate 通过写成已发布。
+- 隔离 Docker 真实建档同时通过 startup writer（Panel POST=0）和已有活动旧档的 HTTP writer（POST=1、旧档双哈希保持），两条链均完成 Control 内存、同 ID `GameLoop.Saved` 和双 XML 耐久门禁。真实 Stardew 1.6 证明 `Gender/gender` 与 `shirtItem/pantsItem.itemId` 是当前权威磁盘字段，旧 `isMale` 可为 `xsi:nil`、旧衣服字段可为 `-1`；解析器已按该结构严格验证并保留旧格式兼容。当前编译产物、嵌入 DLL 与运行栈清单 SHA-256 均为 `3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce`。
+- 同一正式版本还必须纳入已进入 `origin/main` 的两个前置修复：`92f3be6bb2731358420ba315ac18029c2506d81f` 的 `run.sh` swap/swappiness 持久化，以及 `621c5645e0048da7c4793035615438ed78fc7002` 的图形化 Compose Web 自动标准化。代码已推送不等于 Release/真机通过；最终候选仍需验证新版 Release 附件确实包含前者，并在生产同步测试中覆盖后者的转换与回滚。
+- 明确排除“宿主机重启后自动恢复原 running 实例”。产品预期是宿主重启后游戏保持关闭，由用户手动点击启动；不得为本任务增加 restart policy 或 Panel 启动时自动 ComposeUp。新建档 owner 的手动恢复只是保护未完成事务，不等同于普通运行实例自动恢复。
+- Panel 启动时的 required-runtime、Runtime apply 和 SMAPI apply 协调器都先检查未完成 new-game owner；存在 owner 时零修复/停服/起服/替换。普通中断升级在 Panel/宿主重启后只做安全回滚和静态材料收敛，强制保持 server/auth 关闭并提示手动 Start，即使 recovery manifest 记录 `ServerWasRunning=true` 也不 ComposeUp。存档、导入、安装、Control/SMAPI/Runtime 更新、玩家删除与重启计划等变更入口均在未完成 owner 下 fail closed。

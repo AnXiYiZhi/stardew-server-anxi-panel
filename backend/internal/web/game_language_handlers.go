@@ -40,7 +40,12 @@ func (s *server) handleInstanceGameLanguage(w http.ResponseWriter, r *http.Reque
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := sj.UpdateGameLanguageSettings(instance.DataDir, body); err != nil {
+	if err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		return sj.UpdateGameLanguageSettings(instance.DataDir, body)
+	}); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid_game_language", sanitizeErrorMsg(err, "服务器游戏语言无效"))
 		return
 	}

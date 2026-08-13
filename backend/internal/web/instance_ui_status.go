@@ -83,6 +83,11 @@ type runtimeDiagnostic struct {
 	ControlModVersion        string         `json:"controlModVersion,omitempty"`
 	ExpectedControlMod       string         `json:"expectedControlModVersion"`
 	ControlModMatches        bool           `json:"controlModMatches"`
+	InstalledControlVersion  string         `json:"installedControlVersion,omitempty"`
+	InstalledControlMatches  bool           `json:"installedControlMatches"`
+	RuntimeControlState      string         `json:"runtimeControlState"`
+	RuntimeControlVersion    string         `json:"runtimeControlVersion,omitempty"`
+	RuntimeControlMatches    bool           `json:"runtimeControlMatches"`
 	JunimoStackVersion       string         `json:"junimoStackVersion"`
 	JunimoUpdateStatus       string         `json:"junimoUpdateStatus"`
 	JunimoUpdateCode         string         `json:"junimoUpdateCode"`

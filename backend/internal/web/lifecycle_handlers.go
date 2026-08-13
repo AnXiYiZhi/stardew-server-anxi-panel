@@ -141,10 +141,6 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
-	if !ok {
-		return
-	}
 
 	var requested registry.NewGameConfig
 	if !decodeJSON(w, r, &requested) {
@@ -184,6 +180,11 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 		}
 		cfg.FarmType = selection.FarmTypeID
 	}
+	requestID := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if requestID == "" {
+		writeError(w, http.StatusPreconditionRequired, "idempotency_key_required", "新建存档必须提供 Idempotency-Key；网络重试时请复用同一个键。")
+		return
+	}
 
 	driver, ok := s.loadDriver(w, instance.DriverID)
 	if !ok {
@@ -196,8 +197,23 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 		// via attach-cli so JunimoServer creates a fresh save with the new config.
 		NewGame:       true,
 		NewGameConfig: &cfg,
+		RequestID:     requestID,
 	})
 	if err != nil {
+		var ownerErr *sj.NewGameOwnerError
+		var txErr *sj.NewGameTransactionError
+		if errors.As(err, &ownerErr) {
+			writeError(w, http.StatusConflict, ownerErr.Code, ownerErr.Message)
+			return
+		}
+		if errors.As(err, &txErr) {
+			status := http.StatusInternalServerError
+			if txErr.Code == "new_game_in_progress" || txErr.Code == "new_game_request_conflict" || txErr.Code == "new_game_recovery_required" {
+				status = http.StatusConflict
+			}
+			writeError(w, status, txErr.Code, txErr.Message)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
@@ -429,20 +445,30 @@ func (s *server) handleSaveSelect(w http.ResponseWriter, r *http.Request, instan
 		writeError(w, http.StatusBadRequest, "missing_field", "存档名称不能为空")
 		return
 	}
-	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
-		return
-	}
-	if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
-		return
-	}
-	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
-		return
-	}
-	if err := sj.ApplyModProfile(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusInternalServerError, "mod_profile_apply_failed", sanitizeErrorMsg(err, "apply save mod profile failed"))
+	mutationErr := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.ApplyModProfile(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusInternalServerError, "mod_profile_apply_failed", sanitizeErrorMsg(err, "apply save mod profile failed"))
+			return errStardewMutationResponseWritten
+		}
+		return nil
+	})
+	if mutationErr != nil {
+		if errors.Is(mutationErr, errStardewMutationResponseWritten) || writeStardewMutationGuardConflict(w, mutationErr) {
+			return
+		}
+		writeError(w, http.StatusConflict, "instance_mutation_conflict", sanitizeErrorMsg(mutationErr, "存档选择与其它实例操作冲突"))
 		return
 	}
 	// Advance state if currently in save_required.
@@ -481,20 +507,30 @@ func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "missing_field", "存档名称不能为空")
 		return
 	}
-	if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
-		return
-	}
-	if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
-		return
-	}
-	if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
-		return
-	}
-	if err := sj.ApplyModProfile(instance.DataDir, body.Name); err != nil {
-		writeError(w, http.StatusInternalServerError, "mod_profile_apply_failed", sanitizeErrorMsg(err, "apply save mod profile failed"))
+	mutationErr := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		if err := sj.ValidateSaveExists(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.ValidateSaveCanActivate(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusConflict, "save_name_encoding_invalid", sanitizeError(err, "存档目录名编码异常"))
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.SetActiveSave(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusInternalServerError, "select_failed", sanitizeErrorMsg(err, "选择存档失败"))
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.ApplyModProfile(instance.DataDir, body.Name); err != nil {
+			writeError(w, http.StatusInternalServerError, "mod_profile_apply_failed", sanitizeErrorMsg(err, "apply save mod profile failed"))
+			return errStardewMutationResponseWritten
+		}
+		return nil
+	})
+	if mutationErr != nil {
+		if errors.Is(mutationErr, errStardewMutationResponseWritten) || writeStardewMutationGuardConflict(w, mutationErr) {
+			return
+		}
+		writeError(w, http.StatusConflict, "instance_mutation_conflict", sanitizeErrorMsg(mutationErr, "存档选择与其它实例操作冲突"))
 		return
 	}
 	if err := s.advanceToReadyToStart(r, instance); err != nil {
@@ -531,19 +567,31 @@ func (s *server) handleSaveDelete(w http.ResponseWriter, r *http.Request, instan
 	if !ok {
 		return
 	}
-	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
-	if activeSaveName == saveName && (instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting) {
-		writeError(w, http.StatusConflict, "active_save_running", "当前启动存档正在被服务器使用，请先停止服务器再删除。")
-		return
-	}
-	if err := sj.ValidateSaveExists(instance.DataDir, saveName); err != nil {
-		writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
-		return
-	}
-	backupPath, err := sj.DeleteSaveWithBackup(instance.DataDir, saveName)
-	if err != nil {
-		s.logger.Warn("delete save transaction failed", "instance", instanceID, "save", saveName, "error", err)
-		writeError(w, http.StatusInternalServerError, "save_delete_failed", sanitizeErrorMsg(err, "删除存档失败"))
+	var activeSaveName, backupPath string
+	mutationErr := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		activeSaveName = sj.GetActiveSaveName(instance.DataDir)
+		if activeSaveName == saveName && (instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting) {
+			writeError(w, http.StatusConflict, "active_save_running", "当前启动存档正在被服务器使用，请先停止服务器再删除。")
+			return errStardewMutationResponseWritten
+		}
+		if err := sj.ValidateSaveExists(instance.DataDir, saveName); err != nil {
+			writeError(w, http.StatusNotFound, "save_not_found", sanitizeError(err, "存档不存在"))
+			return errStardewMutationResponseWritten
+		}
+		var err error
+		backupPath, err = sj.DeleteSaveWithBackup(instance.DataDir, saveName)
+		if err != nil {
+			s.logger.Warn("delete save transaction failed", "instance", instanceID, "save", saveName, "error", err)
+			writeError(w, http.StatusInternalServerError, "save_delete_failed", sanitizeErrorMsg(err, "删除存档失败"))
+			return errStardewMutationResponseWritten
+		}
+		return nil
+	})
+	if mutationErr != nil {
+		if errors.Is(mutationErr, errStardewMutationResponseWritten) || writeStardewMutationGuardConflict(w, mutationErr) {
+			return
+		}
+		writeError(w, http.StatusConflict, "instance_mutation_conflict", sanitizeErrorMsg(mutationErr, "删除存档与其它实例操作冲突"))
 		return
 	}
 	if activeSaveName == saveName {
@@ -595,8 +643,16 @@ func (s *server) handleSaveBackupCreate(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	backupPath, err := sj.BackupManual(instance.DataDir, saveName)
+	var backupPath string
+	err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		var backupErr error
+		backupPath, backupErr = sj.BackupManual(instance.DataDir, saveName)
+		return backupErr
+	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "backup_failed", sanitizeErrorMsg(err, "save backup failed"))
 		return
 	}
@@ -614,8 +670,16 @@ func (s *server) handleSavesBackupsList(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	maintenance, maintenanceErr := sj.RunBackupMaintenance(instance.DataDir)
+	var maintenance sj.BackupMaintenanceResult
+	maintenanceErr := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		var runErr error
+		maintenance, runErr = sj.RunBackupMaintenance(instance.DataDir)
+		return runErr
+	})
 	if maintenanceErr != nil {
+		if writeStardewMutationGuardConflict(w, maintenanceErr) {
+			return
+		}
 		s.logger.Warn("save backup maintenance failed", "instance", instanceID, "error", maintenanceErr)
 	}
 	backups, err := sj.ListBackups(instance.DataDir)
@@ -655,8 +719,16 @@ func (s *server) handleSavesBackupPolicy(w http.ResponseWriter, r *http.Request,
 			writeError(w, http.StatusBadRequest, "invalid_body", "invalid backup policy body")
 			return
 		}
-		policy, err := sj.WriteBackupPolicy(instance.DataDir, body)
+		var policy sj.BackupPolicy
+		err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+			var writeErr error
+			policy, writeErr = sj.WriteBackupPolicy(instance.DataDir, body)
+			return writeErr
+		})
 		if err != nil {
+			if writeStardewMutationGuardConflict(w, err) {
+				return
+			}
 			writeError(w, http.StatusInternalServerError, "backup_policy_failed", sanitizeErrorMsg(err, "write backup policy failed"))
 			return
 		}
@@ -678,7 +750,12 @@ func (s *server) handleSavesBackupDelete(w http.ResponseWriter, r *http.Request,
 	if !ok {
 		return
 	}
-	if err := sj.DeleteBackup(instance.DataDir, backupName); err != nil {
+	if err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		return sj.DeleteBackup(instance.DataDir, backupName)
+	}); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "不合法") {
 			writeError(w, http.StatusBadRequest, "invalid_backup_name", errMsg)
@@ -762,8 +839,16 @@ func (s *server) handleSavesBackupRestore(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	saveName, err := sj.RestoreBackup(instance.DataDir, body.BackupName, body.Overwrite)
+	var saveName string
+	err := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		var restoreErr error
+		saveName, restoreErr = sj.RestoreBackup(instance.DataDir, body.BackupName, body.Overwrite)
+		return restoreErr
+	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "已存在") {
 			writeError(w, http.StatusConflict, "save_exists", errMsg)
@@ -914,6 +999,49 @@ func (s *server) ensureInstanceNotRunning(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return instance, false
 	}
+	driver, err := s.registry.Get(instance.DriverID)
+	guardedRuntime := false
+	if err == nil {
+		if guard, guarded := driver.(interface {
+			EnsureOfflineMutationAllowed(context.Context, registry.Instance) error
+		}); guarded {
+			if guardErr := guard.EnsureOfflineMutationAllowed(r.Context(), makeRegistryInstance(instance)); guardErr != nil {
+				var ownerErr *sj.NewGameOwnerError
+				if errors.As(guardErr, &ownerErr) {
+					writeError(w, http.StatusConflict, ownerErr.Code, ownerErr.Message)
+				} else {
+					writeError(w, http.StatusConflict, "server_state_unknown", "无法确认服务器已停止，请检查 Docker 状态后重试。")
+				}
+				return instance, false
+			}
+			// The driver guard already checked both its persistent transaction
+			// owner and Docker runtime truth. Keep checking the persisted state
+			// below so a concurrent lifecycle owner cannot be bypassed merely
+			// because Docker is momentarily stopped.
+			guardedRuntime = true
+		}
+		if !guardedRuntime {
+			status, statusErr := driver.Status(r.Context(), makeRegistryInstance(instance))
+			if statusErr != nil {
+				s.logger.Warn("failed to verify stopped runtime before mutation", "instance", instance.ID, "driver", instance.DriverID, "error", statusErr)
+				writeError(w, http.StatusConflict, "server_state_unknown", "无法确认服务器已停止，请检查 Docker 状态后重试。")
+				return instance, false
+			}
+			if status != nil && status.Runtime != nil {
+				for _, container := range status.Runtime.Containers {
+					if container.Service != "server" {
+						continue
+					}
+					state := strings.ToLower(strings.TrimSpace(container.State))
+					containerStatus := strings.ToLower(strings.TrimSpace(container.Status))
+					if state == "running" || strings.HasPrefix(containerStatus, "up") {
+						writeError(w, http.StatusConflict, "server_running", "服务器容器仍在运行，请先停止服务器再操作存档。")
+						return instance, false
+					}
+				}
+			}
+		}
+	}
 	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
 		writeError(w, http.StatusConflict, "server_running", "服务器运行中，请先停止服务器再操作存档。")
 		return instance, false
@@ -1005,68 +1133,84 @@ func (s *server) handleModsUpload(w http.ResponseWriter, r *http.Request, instan
 	var imported []registry.ModInfo
 	discoveredCount := 0
 	var skippedBuiltInNames []string
-	for i, header := range modFiles {
-		file, err := header.Open()
-		if err != nil {
-			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusBadRequest, "missing_file", fmt.Sprintf("读取第 %d 个 Mod ZIP 失败", i+1))
-			return
-		}
+	activeSaveName := ""
+	var listed []registry.ModInfo
+	mutationErr := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		for i, header := range modFiles {
+			file, err := header.Open()
+			if err != nil {
+				rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+				writeError(w, http.StatusBadRequest, "missing_file", fmt.Sprintf("读取第 %d 个 Mod ZIP 失败", i+1))
+				return errStardewMutationResponseWritten
+			}
 
-		tmp, err := os.CreateTemp("", "stardew-mod-upload-*.zip")
-		if err != nil {
+			tmp, err := os.CreateTemp("", "stardew-mod-upload-*.zip")
+			if err != nil {
+				_ = file.Close()
+				rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+				writeError(w, http.StatusInternalServerError, "internal_error", "创建临时文件失败")
+				return errStardewMutationResponseWritten
+			}
+			tmpPath := tmp.Name()
+
+			if _, err := io.Copy(tmp, file); err != nil {
+				_ = file.Close()
+				_ = tmp.Close()
+				_ = os.Remove(tmpPath)
+				rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+				writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
+				return errStardewMutationResponseWritten
+			}
 			_ = file.Close()
-			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusInternalServerError, "internal_error", "创建临时文件失败")
-			return
-		}
-		tmpPath := tmp.Name()
+			if err := tmp.Close(); err != nil {
+				_ = os.Remove(tmpPath)
+				rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+				writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
+				return errStardewMutationResponseWritten
+			}
 
-		if _, err := io.Copy(tmp, file); err != nil {
-			_ = file.Close()
-			_ = tmp.Close()
+			batchResult, err := sj.UploadModZipDetailed(instance.DataDir, tmpPath)
 			_ = os.Remove(tmpPath)
-			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
-			return
-		}
-		_ = file.Close()
-		if err := tmp.Close(); err != nil {
-			_ = os.Remove(tmpPath)
-			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusInternalServerError, "write_failed", "写入临时文件失败")
-			return
+			if err != nil {
+				rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+				writeError(w, http.StatusBadRequest, modUploadErrorCode(err), sanitizeError(err, fmt.Sprintf("第 %d 个 Mod ZIP 无效", i+1)))
+				return errStardewMutationResponseWritten
+			}
+			discoveredCount += batchResult.Stats.DiscoveredCount
+			skippedBuiltInNames = append(skippedBuiltInNames, batchResult.Stats.SkippedBuiltInNames...)
+			imported = append(imported, batchResult.Mods...)
 		}
 
-		batchResult, err := sj.UploadModZipDetailed(instance.DataDir, tmpPath)
-		_ = os.Remove(tmpPath)
-		if err != nil {
-			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			writeError(w, http.StatusBadRequest, modUploadErrorCode(err), sanitizeError(err, fmt.Sprintf("第 %d 个 Mod ZIP 无效", i+1)))
+		// Mod writes are only allowed while the game server is stopped, so the next
+		// normal start will load the new files without requiring an extra restart.
+		activeSaveName = sj.GetActiveSaveName(instance.DataDir)
+		if activeSaveName != "" {
+			if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
+				rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
+				s.logger.Error("mark imported mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+				writeError(w, http.StatusInternalServerError, "mod_enable_failed", "Mod 已解析但无法为当前存档启用，本次导入已回滚")
+				return errStardewMutationResponseWritten
+			}
+		}
+		if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
+			s.logger.Warn("clear mods restart required", "instance", instanceID, "error", err)
+		}
+		var listErr error
+		listed, listErr = sj.ListModsWithState(instance.DataDir, activeSaveName)
+		if listErr != nil {
+			listed = nil
+		}
+		return nil
+	})
+	if mutationErr != nil {
+		if errors.Is(mutationErr, errStardewMutationResponseWritten) || writeStardewMutationGuardConflict(w, mutationErr) {
 			return
 		}
-		discoveredCount += batchResult.Stats.DiscoveredCount
-		skippedBuiltInNames = append(skippedBuiltInNames, batchResult.Stats.SkippedBuiltInNames...)
-		imported = append(imported, batchResult.Mods...)
+		writeError(w, http.StatusConflict, "instance_mutation_conflict", sanitizeErrorMsg(mutationErr, "Mod 导入与其它实例操作冲突"))
+		return
 	}
-
-	// Mod writes are only allowed while the game server is stopped, so the next
-	// normal start will load the new files without requiring an extra restart.
-	activeSaveName := sj.GetActiveSaveName(instance.DataDir)
-	if activeSaveName != "" {
-		if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
-			rollbackImportedMods(instance.DataDir, imported, s.logger, instanceID)
-			s.logger.Error("mark imported mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
-			writeError(w, http.StatusInternalServerError, "mod_enable_failed", "Mod 已解析但无法为当前存档启用，本次导入已回滚")
-			return
-		}
-	}
-	if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
-		s.logger.Warn("clear mods restart required", "instance", instanceID, "error", err)
-	}
-	listed, listErr := sj.ListModsWithState(instance.DataDir, activeSaveName)
 	var compatibilityWarnings []registry.ModCompatibilityWarning
-	if listErr == nil {
+	if listed != nil {
 		compatibilityWarnings = sj.DetectModCompatibilityWarnings(instance.DataDir, activeSaveName, listed)
 	}
 
@@ -1114,13 +1258,21 @@ func (s *server) handleModDelete(w http.ResponseWriter, r *http.Request, instanc
 	if !ok {
 		return
 	}
-	if err := sj.DeleteMod(instance.DataDir, modID); err != nil {
+	if err := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		if err := sj.DeleteMod(instance.DataDir, modID); err != nil {
+			return err
+		}
+		// Mod writes are only allowed while stopped; clear any stale restart marker.
+		if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
+			s.logger.Warn("clear mods restart required", "instance", instanceID, "error", err)
+		}
+		return nil
+	}); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "delete_failed", sanitizeErrorMsg(err, "删除 Mod 失败"))
 		return
-	}
-	// Mod writes are only allowed while stopped; clear any stale restart marker.
-	if err := sj.ClearModsRestartRequired(instance.DataDir); err != nil {
-		s.logger.Warn("clear mods restart required", "instance", instanceID, "error", err)
 	}
 	s.logger.Info("mod deleted", "instance", instanceID, "mod", modID)
 	s.auditLog(r, &actor, "mod_delete", "instance", instanceID, auditMetadata("modId", modID))
@@ -1198,15 +1350,23 @@ func (s *server) handleModEnabledUpdate(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	saveName := strings.TrimSpace(req.SaveName)
-	if saveName == "" {
-		saveName = sj.GetActiveSaveName(instance.DataDir)
-	}
-	if saveName == "" {
-		writeError(w, http.StatusConflict, "active_save_required", "active save is required")
-		return
-	}
-	mods, err := sj.SetModEnabledForSaveCascade(instance.DataDir, saveName, modID, req.Enabled)
+	var mods []registry.ModInfo
+	err := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		if saveName == "" {
+			saveName = sj.GetActiveSaveName(instance.DataDir)
+		}
+		if saveName == "" {
+			writeError(w, http.StatusConflict, "active_save_required", "active save is required")
+			return errStardewMutationResponseWritten
+		}
+		var updateErr error
+		mods, updateErr = sj.SetModEnabledForSaveCascade(instance.DataDir, saveName, modID, req.Enabled)
+		return updateErr
+	})
 	if err != nil {
+		if errors.Is(err, errStardewMutationResponseWritten) || writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusBadRequest, "mod_enable_failed", sanitizeErrorMsg(err, "update mod enabled state failed"))
 		return
 	}
@@ -1244,15 +1404,23 @@ func (s *server) handleAllModsEnabledUpdate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	saveName := strings.TrimSpace(req.SaveName)
-	if saveName == "" {
-		saveName = sj.GetActiveSaveName(instance.DataDir)
-	}
-	if saveName == "" {
-		writeError(w, http.StatusConflict, "active_save_required", "active save is required")
-		return
-	}
-	mods, err := sj.SetAllModsEnabledForSave(instance.DataDir, saveName, req.Enabled)
+	var mods []registry.ModInfo
+	err := s.withStardewOfflineMutation(r.Context(), instance, func() error {
+		if saveName == "" {
+			saveName = sj.GetActiveSaveName(instance.DataDir)
+		}
+		if saveName == "" {
+			writeError(w, http.StatusConflict, "active_save_required", "active save is required")
+			return errStardewMutationResponseWritten
+		}
+		var updateErr error
+		mods, updateErr = sj.SetAllModsEnabledForSave(instance.DataDir, saveName, req.Enabled)
+		return updateErr
+	})
 	if err != nil {
+		if errors.Is(err, errStardewMutationResponseWritten) || writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusBadRequest, "mod_enable_all_failed", sanitizeErrorMsg(err, "update all mod enabled states failed"))
 		return
 	}
@@ -1290,8 +1458,16 @@ func (s *server) handleModSyncClassificationUpdate(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "invalid_sync_kind", "无效的同步分类")
 		return
 	}
-	mods, err := sj.SetModSyncClassificationCascade(instance.DataDir, modID, req.SyncKind, req.SyncNote)
+	var mods []registry.ModInfo
+	err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		var updateErr error
+		mods, updateErr = sj.SetModSyncClassificationCascade(instance.DataDir, modID, req.SyncKind, req.SyncNote)
+		return updateErr
+	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if strings.Contains(err.Error(), "does not exist") {
 			writeError(w, http.StatusNotFound, "mod_not_found", "Mod 不存在")
 			return
@@ -1531,30 +1707,32 @@ func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, i
 		CreatedBy:   actor.User.ID,
 		Timeout:     30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
-			_, _ = job.Info(ctx, fmt.Sprintf("准备安装 Nexus Mod #%d", result.ModID))
-			imported, err := sj.InstallNexusMod(ctx, instance.DataDir, apiKey, result, func(message string) {
-				_, _ = job.Info(ctx, message)
+			return s.withStardewOfflineMutation(ctx, instance, func() error {
+				_, _ = job.Info(ctx, fmt.Sprintf("准备安装 Nexus Mod #%d", result.ModID))
+				imported, err := sj.InstallNexusMod(ctx, instance.DataDir, apiKey, result, func(message string) {
+					_, _ = job.Info(ctx, message)
+				})
+				if err != nil {
+					return err
+				}
+				for _, mod := range imported {
+					name := mod.Name
+					if name == "" {
+						name = mod.FolderName
+					}
+					_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
+				}
+				if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+					if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
+						s.logger.Warn("mark nexus installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+						_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
+					} else {
+						_, _ = job.Info(ctx, fmt.Sprintf("已为当前存档启用：%s", activeSaveName))
+					}
+				}
+				_ = sj.ClearModsRestartRequired(instance.DataDir)
+				return nil
 			})
-			if err != nil {
-				return err
-			}
-			for _, mod := range imported {
-				name := mod.Name
-				if name == "" {
-					name = mod.FolderName
-				}
-				_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
-			}
-			if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
-				if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
-					s.logger.Warn("mark nexus installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
-					_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
-				} else {
-					_, _ = job.Info(ctx, fmt.Sprintf("已为当前存档启用：%s", activeSaveName))
-				}
-			}
-			_ = sj.ClearModsRestartRequired(instance.DataDir)
-			return nil
 		},
 	})
 	if err != nil {
@@ -1607,30 +1785,32 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		CreatedBy:   actor.User.ID,
 		Timeout:     30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
-			_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
-			imported, err := sj.InstallRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, func(message string) {
-				_, _ = job.Info(ctx, message)
+			return s.withStardewOfflineMutation(ctx, instance, func() error {
+				_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
+				imported, err := sj.InstallRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, func(message string) {
+					_, _ = job.Info(ctx, message)
+				})
+				if err != nil {
+					return err
+				}
+				for _, mod := range imported {
+					name := mod.Name
+					if name == "" {
+						name = mod.FolderName
+					}
+					_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
+				}
+				if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+					if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
+						s.logger.Warn("mark remote installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
+						_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
+					} else {
+						_, _ = job.Info(ctx, fmt.Sprintf("已为当前存档启用：%s", activeSaveName))
+					}
+				}
+				_ = sj.ClearModsRestartRequired(instance.DataDir)
+				return nil
 			})
-			if err != nil {
-				return err
-			}
-			for _, mod := range imported {
-				name := mod.Name
-				if name == "" {
-					name = mod.FolderName
-				}
-				_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
-			}
-			if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
-				if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
-					s.logger.Warn("mark remote installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
-					_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
-				} else {
-					_, _ = job.Info(ctx, fmt.Sprintf("已为当前存档启用：%s", activeSaveName))
-				}
-			}
-			_ = sj.ClearModsRestartRequired(instance.DataDir)
-			return nil
 		},
 	})
 	if err != nil {

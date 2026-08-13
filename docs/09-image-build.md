@@ -1,3 +1,101 @@
+# STARTUP-NEWGAME-DURABILITY-1 正式发布门禁（2026-08-13，代码完成，待验证/未发布）
+
+## 本版候选范围与已进入 main 的前置修复
+
+- 本节描述下一正式版本的候选范围，不是发布记录。当前没有为这些改动创建 tag、推送正式镜像、更新 `latest` 或完成生产真机验收；所有下方“发布证据”仍须在最终候选 commit 上取得。
+- 启动链修复 Panel false negative：缺少本次 Control 状态是 pending/starting，使用完整 20 分钟预算；只有合法 `options.json` 明确报告了错误版本才是 mismatch，坏 manifest/DLL/options 使用 invalid，pending 超时安全停服。
+- 安装/前端链新增 `installationDiagnostic`，把必需文件、Compose、镜像、server 容器与 Control static/runtime 分开；`state=error` 不再一律打开首次安装/重装，Docker 不可读或证据冲突 fail closed 到 diagnostics。
+- 新建档链强制 `Idempotency-Key`（缺失返回 428、零写入），增加实例级持久 owner/token、exclusive job、startup/http 固定单写入者和不可逆进展记录。owner 使用 staging+fsync+no-replace rename 原子抢占；loader、Control 或目录任一前进后禁止第二次 `/newgame`。unknown/ambiguous/中断保留现场，用户手动启动恢复同一事务。
+- 角色定制成功门禁升级为四段：transaction-bound `save-loaded` → 内存完整身份/外观/颜色与唯一 host 正确 → 同一持久 `save-now commandId` 通过 pending journal 恢复并收到精确 `GameLoop.Saved` → 主 XML/SaveGameInfo 两轮 hash 稳定、完整角色/农场字段和 Control/loader/目录身份一致。Control 升为 `0.3.1`，source/embedded manifest、DLL 与运行栈清单必须同源。
+- 新建档失败回滚新增 `rolling_back` 步骤 journal，中断后手动 Start 只停服并继续原回滚。unfinished owner 阻断所有存档/安装/更新/玩家/重启计划变更；Panel bootstrap 的 Runtime/SMAPI 恢复仅收敛/回滚，游戏保持关闭。
+- `92f3be6bb2731358420ba315ac18029c2506d81f` 已在 `origin/main` 修复 `deploy/run.sh`：复用已启用 swap 或新建 `/swapfile` 都立即并持久化 `vm.swappiness=60`，带专项测试和 Release workflow 门禁。下一 Release 必须上传此后的新版 `run.sh`，不能复用 v0.4.11 的附件。
+- `621c5645e0048da7c4793035615438ed78fc7002` 已在 `origin/main` 实现图形化 Compose 自动标准化。其本地专项与隔离成功链见下一节；本次正式版本仍必须在最终候选及生产真机同步验收，不能因提交已 push 就视为已发布。
+- 明确不实现宿主机重启自动恢复 running 游戏实例。宿主重启后游戏保持关闭，用户手动开启；不得添加 Docker restart policy、Panel 启动自动 ComposeUp 或“恢复原 running 状态”的发布断言。仅 unfinished new-game owner 在用户显式启动后恢复原事务。
+
+## 受影响链路
+
+`Panel 启动/重启 → 清理旧 Control snapshot → ComposeUp → Control pending/ready/mismatch/invalid → instance state/Reconcile → /state installationDiagnostic → 桌面/移动操作映射`
+
+`新建档 UI → 强制 Idempotency-Key → exclusive lifecycle job → atomic persistent owner/token + transaction → startup/http writer → Control/loader/目录进展 → targetSaveId → Control 0.3.1 完整内存复核 → 同 commandId pending journal/save-now → GameLoop.Saved → 双 XML 稳定/身份收敛 → Mod profile → success/owner release`
+
+`正式 Panel 更新 → 621c564 图形化 Compose capability/conversion → v0.4.11/v0.3.2 升级与回滚 → 新 Panel 运行栈 Control 0.3.1 同步 → 升级后功能复验 → 92f3be6 run.sh Release 资产`
+
+本版不新增数据库 migration；new-game owner/transaction 使用实例私有 JSON 文件并保持旧 transaction 兼容读取。部署识别与 Release 附件发生变化，且 Control/长期实例状态与建档恢复路径改变，因此必须执行代表老版本升级和数据完整性矩阵。
+
+## 正式发布前故障矩阵
+
+| 场景 | 预期措施与硬门槛 | 最终候选必须提供的证据 |
+| --- | --- | --- |
+| 正常冷启动 | 旧 snapshot 清理后 ComposeUp；pending 保持 starting，Control 0.3.1 ready 后才 running | 生命周期单测、真实 `.125` 冷启动日志、`/state` 与实际 `options.json` 版本一致 |
+| Control 启动较慢/状态尚未出现 | 使用完整 20 分钟预算，持续报告 elapsed/remaining；不得提前 mismatch 或重装 | 可控延迟在旧 1 分钟之后再写 options，最终成功且无第二次 ComposeUp |
+| Control 始终未观察到 | 到期安全 ComposeDown，终态 stopped/`control_runtime_start_timeout`，文件与存档保留 | 缩短测试 timeout 的单元/真实 fault injection，容器归零、game-data/save hash 不变 |
+| 明确错误版本 | 只有合法 options 报非期望版本才 `control_runtime_version_mismatch` 并停服 | wrong-version Control fixture；UI 显示诊断而非未安装 |
+| manifest/DLL/options 缺失、hash 错、坏 JSON/空版本 | 分别 invalid code，fail closed 停服；不得伪装 mismatch/timeout | 表驱动 gate + 候选镜像嵌入 hash + 实例文件故障注入 |
+| 旧 snapshot 清理失败 | 启动前 `control_runtime_snapshot_cleanup_failed`，不得让旧文件通过本次验收 | 权限/文件类型注入，ComposeUp 调用数为 0 |
+| gate 失败后的 ComposeDown 超时/断流 | `control_runtime_cleanup_failed`，不能宣称 server 已停；保留人工诊断 | fake/真实 Docker 可控失败，状态与容器事实一致，重试不删除 volume |
+| Reconcile/Panel 轮询竞态 | lifecycle/new-game owner 活动时不提升 running；外部容器缺 ready snapshot 也不提升 | Reconcile 并发回归、Panel restart/state refresh |
+| 明确未安装 | scaffold/初始化状态且无安装文件证据才显示 install | `/state` fixture、桌面/移动按钮与权限回归 |
+| 文件/Compose/镜像明确不完整 | 显示 repair，保留存档/实例配置；不把运行错误当首次安装 | required-files/Compose/image 单项故障 fixture、修复入口 |
+| Docker/镜像/卷暂时不可读或证据冲突 | `unknown/diagnose`，不提供重装写操作 | daemon 断流、running+incomplete 矛盾 fixture、前端分类纯测试 |
+| Control `not_observed` | 仅等待/重试启动，不报版本错误 | starting/stopped state + missing options 浏览器 fixture |
+| 正常 startup writer 新建档 | 固定 writer=startup，Panel `/newgame` POST=0；唯一目录/loader/Control 收敛 | 真实空 saves `.125` E2E、请求计数 0、四段耐久证据 |
+| 正常 HTTP writer 新建档 | 旧完整存档达到 transaction-bound save-loaded 基线后 POST 恰好 1 次 | 真实活动旧存档 E2E、POST 计数 1、旧档 hash 保持 |
+| 同 key 同配置重复/网络响应丢失 | 返回/恢复原 job；不创建第二 owner/job/transaction，不重复 POST | 12 路并发、HTTP 202 相同 jobId、断流重试和持久目录基数 |
+| 缺失/空 Idempotency-Key | HTTP 428 `idempotency_key_required`；零 job、owner、transaction、Compose 和存档变更 | Web 回归、Driver 调用数和私有目录基数 |
+| 同 key 不同配置/另一个 active owner | 409 conflict/in-progress，不取消旧 job，不生成新事务 | Web/driver 回归与原 owner token/transaction 内容不变 |
+| owner 首次 claim 在 mkdir/写文件/发布窗口中断 | 不暴露半 owner；no-replace 保证单 winner；仅零证据历史空目录可安全隔离 | Windows/Linux 原子 rename、12 路 contender、staging/legacy empty/未知文件故障注入 |
+| loader 先前进、目录/XML 延后 | 一见 loader delta 即持久 progress，禁止 POST；等目录同 ID 后才能 bind target | 可控时序 fixture，POST=0、最终唯一目录 |
+| Control save-creating/新目录先出现 | 同样抑制 POST，候选只在证据唯一时绑定 | 各信号独立时序测试与 ambiguous 对照 |
+| 多目录或信号指向不同 save | `new_game_ambiguous`，保留现场/owner，禁止猜目标、回滚删除或重提 | 故障注入、目录/hash/loader/support bundle 边界检查 |
+| `/newgame` timeout/断流/非零但可能已执行 | intent 已持久化；只观察，最终 unknown 也不重提 | POST 服务端接受后断流 fixture，调用计数 1，恢复后仍 1 |
+| Panel/runner/container 在 intent、progress、target bind 各窗口中断 | 用户手动启动后接管同 request/transaction/token generation；只继续缺失阶段 | 每个 write-ahead 窗口 restart fixture、job/owner fencing、无重复 mutation |
+| owner/token 丢失、损坏或轮换中断 | recovery_required/fail closed；rotation 可恢复，未知 owner 不删除 | token mismatch、owner.json 坏文件、rotation dir 中断测试 |
+| Control save-loaded 属于旧/其它 save/tx | 等待精确旧基线仅适用于 HTTP writer；其它 fresh mismatch 立即失败 | durability identity matrix，禁止 save-now 发布 |
+| 内存任一身份/外观/颜色/`isCustomized` 或唯一 host 不匹配 | 终止当前成功链，保留现场；不能依据 XML 已出现提前通过 | status customization 逐字段与 players.json 独立故障矩阵 |
+| save-now running 结果后或 Saved/终态结果前 Control/容器中断 | 持久 journal 恢复同一 commandId；不得发布第二 command | C# recovery contract + 真实 Control 故障注入，命令/journal/结果基数为 1 |
+| save-now unknown/expired/failed/旧结果/错 tx-save | 不通过、不换 ID 自动重提；给稳定 recovery/诊断错误 | C# DeferredCommandOutcomes 契约 + Go 结果矩阵 |
+| 磁盘 XML 尚未稳定/临时坏 XML | 有界等待；必须连续两轮相同双 hash 才通过 | 分段写入/暂时 malformed fixture |
+| XML 人物字段、SaveGameInfo、whichFarm 错误 | 精确 mismatch，禁止 profile/success | 官方与显式模组农场 fixture，字段逐项故障注入 |
+| profile commit 失败 | 耐久存档保留为 profile pending；恢复只重试 profile，不建新档或 save-now | profile failure/restart、save hash 和 command count 不变 |
+| 用户在 active owner 时 Stop/Restart/Restore | 拒绝覆盖事务；原 job/owner/容器证据不被取消 | driver/Web 冲突测试与 UI 行为 |
+| 回滚计划持久失败，或 quarantine/文件/Mod restore 后中断 | plan 失败零破坏性操作；已开始时按原 `rolling_back` 步骤幂等重放，必须先确认停服 | 每个 write-ahead/checkpoint kill fixture，ComposeDown 失败时零 restore/owner 保留 |
+| unfinished owner 下其它 mutation | 存档选择/删除/上传/导入、安装、Control/SMAPI/Runtime 更新、玩家与重启计划均 409/fail closed | state=error + server running/stopped 组合，所有 API/driver 零 Compose/文件变更 |
+| 宿主机/Panel 重启 | 普通游戏保持关闭；Runtime/SMAPI 中断恢复仅回滚/收敛，即使 `ServerWasRunning=true` 也不 ComposeUp | 检查 Compose restart policy，bootstrap/recovery 每个 mutation checkpoint 零 ComposeUp；用户手动 Start 后才开服 |
+| 621c564 标准 Compose | 普通 Web check/dry-run/apply，不走 conversion，声明结构不被改写 | v0.4.11→候选隔离 Web 更新 |
+| 621c564 图形化 Compose 无 env/写死 image | 唯一可信身份后 `conversionRequired=true`，Web helper 标准化并保留外部 volume | tag 前最终候选隔离 E2E + tag 后生产 NAS 真机同步验收 |
+| 621c564 目标 unhealthy/版本错/转换窗口中断 | 恢复旧数据库、Compose/env、容器名称/状态和版本；非目标游戏资源不变 | 每个 mutation 窗口 fault injection、`failed_rolled_back` 或明确 `rollback_failed` |
+| 92f3be6 已启用 swap/new swap/无 sysctl.d/冲突值 | 运行值和持久值均为 60；幂等，失败不得误报成功 | `test_run_sh_swap.sh`、bash/ShellCheck、候选 Release asset 字节核对 |
+| 权限与敏感信息 | install/new-game/update 仍需登录及管理员权限；key/owner 不含凭据，日志/support bundle 不含 env/session/save/transaction 正文 | Web 401/403、脱敏扫描、support bundle 白名单 |
+| 数据完整性 | v0.4.11/v0.3.2 升级、失败回滚、Panel restart 后 SQLite、初始化、用户、实例、存档、Mod、备份、审计和 new-game 证据按范围保留 | live/backup SQLite integrity、文件 SHA、transaction/owner 终态、非目标容器/volume ID |
+| 资源清理 | 只删除本测试唯一 owner/project/container/network/port/bind/volume；禁止 prune | 每轮前后精确 ownership 查询和零残留报告 |
+
+## 2026-08-13 当前源码预候选验证证据
+
+- Control `0.3.1` 纯契约测试通过；使用只读真实 `stardew_game-data` 与标准 `/p:GamePath=/game /p:EnableModDeploy=false` 编译成功，0 errors、1 个既有 analyzer/compiler warning。最终编译产物、嵌入 DLL 与 `runtime_stack_manifest.json` 的 SHA-256 三方一致：`3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce`。
+- 后端最终源码全量 `go test ./... -count=1` 用时 73.4 秒并通过，`go vet ./...`、`go build ./...` 通过；另修正“安全回滚状态已落盘但原 job 尚差 SQLite 终态写入”的完成竞态，只对 status 中同一个 job 有界等待，其它活动任务仍立即拒绝，专项连续 5 次通过。
+- Docker Desktop 隔离真实建档 E2E 用时 143.59 秒并通过：空 saves 的 startup writer 创建 `ReleaseGate_*` 且 Panel POST `/newgame` 为 0；随后以该存档作为旧 active save，HTTP writer 只 POST 1 次并创建 `HTTPReleaseGate_*`，旧主文件/SaveGameInfo SHA-256 保持。两条链都通过完整 Control 内存定制、唯一 host、同 ID `GameLoop.Saved`、主 XML/SaveGameInfo 稳定校验、owner/marker 清理；隔离 project/container/network/两卷终态均为 0。
+- 真实 E2E 同时锁定 Stardew 1.6 磁盘契约：性别以 `Gender/gender` 文本为权威，旧 `isMale` 可为 `xsi:nil`；有效衣服 ID 从 `shirtItem/pantsItem.itemId` 读取，旧 `shirt/pants=-1` 只作兼容占位。旧格式仍兼容，错误 item ID 专项必须返回 `new_game_disk_character_mismatch`。
+- 前端 14 项 `test:*`、production audit（0 vulnerabilities）和 production build 通过；Bash 四项功能测试、全部脚本 `bash -n`、ShellCheck 通过；compatibility validate、目标 Panel `0.4.12`、19 项 Python 测试、真实 remote artifacts（59.1 秒）通过；runtime Docker integration 12.043 秒、updater 成功/失败回滚 integration 34.801 秒、VitePress production build 通过。
+- 这些证据仍是未提交最终候选源码的 pre-candidate 证据。精确 commit 镜像、正式 Web 一键升级、图形化 Compose conversion、unhealthy 回滚、升级后功能、候选 Browser、tag 后三仓与生产真机仍未完成；因此当前仍不得 tag、推送正式镜像或更新 `latest`。
+
+## Tag 前待验证清单（当前均不得写成已完成）
+
+1. 在最终候选源码重建 Control `0.3.1`：Docker .NET 6 + 真实只读 game-data、0 errors、契约矩阵通过；核对 source/embedded manifest、DLL SHA-256、runtime manifest 和运行态 `options.json`。
+2. 执行后端全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...`；前端空 Node volume 的全部 `test:*`（含 install state 与 new-game idempotency）、production audit/build；Bash 功能测试、`bash -n`、ShellCheck；兼容矩阵 validate/version/remote artifacts；Docker updater/runtime integration；网站 production build。
+3. 用唯一隔离 Compose project、端口、bind、game-data/steam-session volume 跑本节 startup/HTTP writer 两条真实建档主路径与高风险 fault matrix，包括 owner claim、rollback journal、Control pending journal 和 bootstrap 保持停服。不得复用生产存档、凭据或唯一数据卷；不可稳定复现的断流/中断用可控代理或 fault seam。
+4. 构建带精确候选 version/commit/build date 的最终 Panel 镜像并完成 fresh health/version/restart、Control hash、Release helper/asset smoke。候选 commit 后任何代码变化都使旧镜像证据失效。
+5. 从正式 `v0.4.11` 和最低支持 `v0.3.2` 通过真实 Web 更新检查、dry-run、管理员确认、apply、预期断线重连与终态恢复升级候选；至少一次目标 unhealthy 自动回滚，并在升级得到的新 Panel 上复验安装诊断、Control slow-start、new-game idempotency/四段耐久和 swap Release asset。
+6. tag 前在隔离环境完整验收 `621c564`：覆盖标准/图形化 Compose、外部 volume、目标失败和每个中断恢复窗口。生产真机必须在正式镜像发布、回拉和隔离 smoke 通过后再执行，当前不宣称生产通过。
+7. Browser 使用候选及升级后 bundle 验收桌面、390px 手机、280px 窄屏：starting/pending、mismatch、unknown/repair/not-installed、重复建档与 recovery 提示、按钮门禁、无横向溢出、console error/warn 为 0。
+8. 所有门禁通过后，确认本地仅在 `main`、工作树干净且与 `origin/main` 完全同步，再创建新的不可移动 annotated `v*` tag。不得从其它分支、旧候选或本节两个前置提交直接打 tag。
+
+## Tag 后仍必须完成
+
+- 等待 Release workflow 成功；从 Docker Hub、阿里云 ACR、GHCR 回拉精确版本，核对三仓 digest、OCI version/revision/created 与 `latest`，逐仓用独立数据卷完成 health/version/restart smoke。
+- 下载 GitHub Release 的 `run.sh`，与 tag 中 `deploy/run.sh` 逐字节/摘要比较，并实际确认 swappiness 专项测试使用的逻辑存在；核对其它 Release assets 与 tag 源文件。若附件仍是 v0.4.11 旧脚本，发布不合格。
+- 在回拉镜像上完成隔离 Control 0.3.1、新建档和图形化 Compose smoke，再把 workflow ID、三仓 digest、候选/升级/故障矩阵耗时、生产同步结果与资源清理记录回写本节、backend handoff 和路线图。上述工作未完成前不能把本节改成“已发布”。
+- 回拉与隔离 smoke 全部通过后，才在生产真机完整备份、确认无人写入并保留旧部署回滚材料的窗口内，用精确正式 tag 走 Web 更新/图形化 Compose 转换；核对 Panel health/version、Control 0.3.1 实载、SQLite/存档/Mod/备份、游戏容器/volume 和宿主重启后手动启服边界。失败立即停止灰度并按 updater 事务恢复，不得移动 tag 或用 `latest` 猜版本。
+
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 发布门禁：图形化 Compose 自动标准化（2026-08-12，未发布）
 
 ## 变更清单与受影响链路

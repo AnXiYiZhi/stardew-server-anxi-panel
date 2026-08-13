@@ -41,9 +41,15 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	}
 	status.Phase = RuntimeUpdateApplyFailedRolledBack
 	status.ErrorCode, status.Error = causeCode, paneldocker.RedactString(causeMessage)
-	status.ManualAction = ""
-	status.ServerRunning = manifest.ServerWasRunning
-	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，但原 server/auth 版本对、认证卷与运行状态已恢复。"})
+	if manifest.KeepServerStopped {
+		status.ServerRunning = false
+		status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，原 server/auth 静态配置与认证卷已恢复；游戏保持关闭，运行验收延后到手动启动。"})
+	} else {
+		status.ManualAction = ""
+		status.ServerRunning = manifest.ServerWasRunning
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，但原 server/auth 版本对、认证卷与运行状态已恢复。"})
+	}
 	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, *status); err != nil {
 		return fmt.Errorf("persist successful rollback status: %w", err)
 	}
@@ -114,6 +120,18 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 		if err := restoreRuntimeControlMod(instance.DataDir, manifest); err != nil {
 			return fmt.Errorf("restore Control mod: %w", err)
 		}
+	}
+	if manifest.KeepServerStopped {
+		if runtimeUpdateAuthChanged(manifest) && runtimeUpdateAuthMayHaveBeenRecreated(manifest) && runtimeUpdateAuthSnapshotCreated(manifest) {
+			if err := docker.RuntimeRestoreVolume(ctx, instance.DataDir, manifest.SnapshotVolume, manifest.SteamSessionVolume, manifest.OriginalServer.ImageID); err != nil {
+				return fmt.Errorf("restore steam session: %w", err)
+			}
+		}
+		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+			return fmt.Errorf("restore stopped state: %w", err)
+		}
+		d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件恢复已收敛，请手动启动服务器", "stopped", job.ID)
+		return nil
 	}
 	if err := pinRuntimeRollbackImages(instance.DataDir, manifest); err != nil {
 		return fmt.Errorf("pin original runtime images: %w", err)

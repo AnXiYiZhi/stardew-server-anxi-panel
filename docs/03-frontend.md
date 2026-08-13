@@ -2535,3 +2535,15 @@ npm.cmd run dev
 - 等待时长从 apply `updatedAt`（阶段切换时写入）计算；现有 1.8 秒状态轮询会持续触发刷新，无需新增 API 字段或额外定时器。
 - 可访问性收口：唯一 `role=status` 只包住阶段标题；持续变化的等待分钟/秒以及展开后的重复技术详情不再属于 live region，避免读屏器每轮轮询重复或双重播报。可视文案与自动刷新保持不变。
 - 状态脚本覆盖 4 分 7 秒格式和非认证阶段不展示。除本地 Panel/Vite fixture 外，正式 Web 升级得到的 v0.4.10 bundle 已在 769×240 与 280×653 复验：等待秒数跨 2.5 秒轮询继续增长、全局 `role=status` 始终只有标题一个、动态详情不进入 live region，root/body 无横向溢出且 console error/warn 为空。
+# FE-INSTALL-DIAGNOSTIC-MAPPING-1：安装完整性与运行错误分流（2026-08-13，completed，未发布）
+
+- `frontend/src/games/stardew/installation-state.ts` 是桌面壳、安装页和移动端总览共用的纯分类器。只有后端明确返回 `installationDiagnostic.status=not_installed`，或实例仍处于 `uninitialized/admin_created/junimo_scaffolded` 且诊断未明确已安装，才允许显示“未安装”和首次安装弹窗；普通 `state=error` 默认进入运行诊断，不再自动要求重装。
+- 分类器联合判断必需文件、Compose、镜像和 Control：必需文件缺失、Compose 缺失/无效或镜像明确缺失才给“检查并修复安装”；Control 静态/运行时明确不匹配、Docker/镜像不可读、证据互相矛盾时只给“查看诊断”或“前往服务器控制”，不开放安装表单。旧后端仅对 `install_verification_failed + “运行文件不完整”` 保留窄兼容修复分支；验证器自身失败仍按诊断处理。
+- `StardewPanel.tsx` 的首次安装提示、`InstallPage.tsx` 的状态文案/卡片/按钮/表单门禁均消费同一分类结果。移动端总览按分类显示安装、继续安装、修复或诊断动作，并先把 URL 切到对应桌面路由再切换完整桌面壳。
+- `InstanceState` 新增可选 `installationDiagnostic` 类型；旧版本 API 无该字段时仍能安全降级。`frontend/scripts/test-install-state.ts` 增加表驱动覆盖正常安装、活动安装、普通运行错误、确认缺文件、验证器失败、安装失败、Control mismatch、不可用/矛盾诊断和明确未安装。验证：`npm run test:install-state`、`npm run test:responsive-layout`、`npm run build` 通过；尚待候选镜像 Browser/真机验收。
+
+# FE-NEWGAME-IDEMPOTENCY-1：新建档请求幂等键（2026-08-13，completed，未发布）
+
+- `createNewGame` 每次请求都必须发送 `Idempotency-Key`；后端缺 key 返回 428，前端不提供无 key 兼容路径。`SavesSection` 以规范化配置指纹保留 pending request ID：同配置的网络/服务失败后复用，配置变化才换 key，只在 API resolve/202 后清除。
+- `frontend/scripts/test-new-game-idempotency.ts` 使用真实 mock fetch 固定 URL/body/credentials/header，并用 TypeScript AST 锁定“同配置不换 key、失败不清 key、resolve 后才清”的顺序。专项已接入 compatibility-matrix 与 release workflow；2026-08-13 当前源码 14 项 `test:*`、production audit（0 vulnerabilities）和 production build 已全部通过。
+- 本地 Browser QA 已验证桌面普通运行错误不出现重装/凭据表单、390px 移动端导向诊断且零横向溢出，以及确认缺文件时只显示修复；console error/warn 为 0。候选镜像和升级后 bundle 仍是 tag 前门禁。

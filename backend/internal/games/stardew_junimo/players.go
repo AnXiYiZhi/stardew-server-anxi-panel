@@ -99,6 +99,16 @@ type playerRosterStore interface {
 // structured players.json file in the mounted control directory; older instances
 // without that bridge fall back to the conservative Junimo "info" parser.
 func (d *Driver) ListPlayers(ctx context.Context, instance registry.Instance) (*PlayersResult, error) {
+	var result *PlayersResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var listErr error
+		result, listErr = d.listPlayers(ctx, instance)
+		return listErr
+	})
+	return result, err
+}
+
+func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*PlayersResult, error) {
 	_, durableRoster := d.store.(playerRosterStore)
 	result := &PlayersResult{
 		InstanceID:  instance.ID,

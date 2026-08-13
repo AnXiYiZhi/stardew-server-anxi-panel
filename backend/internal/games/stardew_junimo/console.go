@@ -149,26 +149,50 @@ type commandExecutor interface {
 // RunAllowlistedCommand validates the command against the allowlist and executes
 // it via attach-cli. It requires the instance to be in running state.
 func (d *Driver) RunAllowlistedCommand(ctx context.Context, instance registry.Instance, req CommandRequest, isAdmin bool) (*CommandRunResult, error) {
-	return runCommand(ctx, d, instance, req, isAdmin)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var runErr error
+		result, runErr = runCommand(ctx, d, instance, req, isAdmin)
+		return runErr
+	})
+	return result, err
 }
 
 // SendSay sends a server-wide message via attach-cli say command.
 func (d *Driver) SendSay(ctx context.Context, instance registry.Instance, message string) (*CommandRunResult, error) {
-	return sendSay(ctx, d, instance, message)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var sendErr error
+		result, sendErr = sendSay(ctx, d, instance, message)
+		return sendErr
+	})
+	return result, err
 }
 
 // KickPlayer disconnects the given player from the running server. It is
 // fire-and-forget: the embedded StardewAnxiPanel.Control SMAPI mod consumes
 // the command on its next tick and calls Game1.server.kick internally.
 func (d *Driver) KickPlayer(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*CommandRunResult, error) {
-	return kickPlayer(instance, uniqueMultiplayerID, name)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var kickErr error
+		result, kickErr = kickPlayer(instance, uniqueMultiplayerID, name)
+		return kickErr
+	})
+	return result, err
 }
 
 // TriggerFestivalEvent asks the embedded control mod to simulate the "!event"
 // chat command, force-starting today's festival main event. Upstream JunimoServer
 // applies no permission check to this command. It is fire-and-forget like kick/say.
 func (d *Driver) TriggerFestivalEvent(ctx context.Context, instance registry.Instance) (*CommandRunResult, error) {
-	return triggerFestivalEvent(instance)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var triggerErr error
+		result, triggerErr = triggerFestivalEvent(instance)
+		return triggerErr
+	})
+	return result, err
 }
 
 // RequestSaveNow registers a game save request with the embedded control mod.
@@ -176,7 +200,13 @@ func (d *Driver) TriggerFestivalEvent(ctx context.Context, instance registry.Ins
 // becomes succeeded exclusively when the mod observes GameLoop.Saved for the
 // same command ID.
 func (d *Driver) RequestSaveNow(ctx context.Context, instance registry.Instance) (*CommandRunResult, error) {
-	return requestSaveNow(instance)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var saveErr error
+		result, saveErr = requestSaveNow(instance)
+		return saveErr
+	})
+	return result, err
 }
 
 // triggerFestivalEvent is the testable core of Driver.TriggerFestivalEvent.

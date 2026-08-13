@@ -19,8 +19,8 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
-// TestRunningProtection_ReturnsServerRunning verifies that save-switching,
-// save-creation, and mod write operations return 409 server_running when the
+// TestRunningProtection_ReturnsServerRunning verifies that save-switching and
+// mod write operations return 409 server_running when the
 // instance is running or starting.
 func TestRunningProtection_ReturnsServerRunning(t *testing.T) {
 	handler, store, closeFn := newTestHandlerWithStore(t)
@@ -54,8 +54,6 @@ func TestRunningProtection_ReturnsServerRunning(t *testing.T) {
 		path   string
 		body   any
 	}{
-		{"custom-new-game", http.MethodPost, "/api/instances/stardew/saves/custom-new-game",
-			map[string]any{"farmName": "Test", "farmType": "standard"}},
 		{"select", http.MethodPost, "/api/instances/stardew/saves/select",
 			map[string]string{"name": "TestSave"}},
 		{"select-and-start", http.MethodPost, "/api/instances/stardew/saves/select-and-start",
@@ -678,9 +676,19 @@ func TestNewGameHandlerPassesNormalizedJobPayload(t *testing.T) {
 	if setup.Code != http.StatusOK {
 		t.Fatalf("setup = %d: %s", setup.Code, setup.Body.String())
 	}
-	resp, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/custom-new-game", map[string]any{
+	missingKey, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/custom-new-game", map[string]any{
 		"farmName": "Farm",
 	}, adminCookie)
+	if missingKey.Code != http.StatusPreconditionRequired || !strings.Contains(missingKey.Body.String(), "idempotency_key_required") {
+		t.Fatalf("missing idempotency key = %d: %s", missingKey.Code, missingKey.Body.String())
+	}
+	if capture.starts != 0 {
+		t.Fatalf("driver started without idempotency key: %d", capture.starts)
+	}
+
+	resp, _ := doNewGameJSON(t, handler, map[string]any{
+		"farmName": "Farm",
+	}, adminCookie, "new-game-normalized-payload")
 	if resp.Code != http.StatusAccepted {
 		t.Fatalf("create = %d: %s", resp.Code, resp.Body.String())
 	}
@@ -691,16 +699,41 @@ func TestNewGameHandlerPassesNormalizedJobPayload(t *testing.T) {
 	if cfg.FarmType != "standard" || cfg.CabinLayout != "nearby" || cfg.CabinMode != "recommended" || cfg.MaxPlayers != 10 {
 		t.Fatalf("payload was not normalized: %#v", cfg)
 	}
+	if capture.request.RequestID != "new-game-normalized-payload" {
+		t.Fatalf("request id = %q", capture.request.RequestID)
+	}
 }
 
 type capturingNewGameDriver struct {
 	registry.GameDriver
 	request registry.StartRequest
+	starts  int
 }
 
 func (d *capturingNewGameDriver) ID() string   { return sj.DriverID }
 func (d *capturingNewGameDriver) Name() string { return "test" }
+func (d *capturingNewGameDriver) Status(_ context.Context, instance registry.Instance) (*registry.ServerStatus, error) {
+	return &registry.ServerStatus{InstanceID: instance.ID, Runtime: &registry.RuntimeStatus{}}, nil
+}
 func (d *capturingNewGameDriver) Start(_ context.Context, request registry.StartRequest) (*registry.Job, error) {
+	d.starts++
 	d.request = request
 	return &registry.Job{ID: "job_new_game_test"}, nil
+}
+
+func doNewGameJSON(t *testing.T, handler http.Handler, body any, cookie *http.Cookie, requestID string) (*httptest.ResponseRecorder, *http.Cookie) {
+	t.Helper()
+	var payload bytes.Buffer
+	if err := json.NewEncoder(&payload).Encode(body); err != nil {
+		t.Fatalf("encode new-game body: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/custom-new-game", &payload)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", requestID)
+	if cookie != nil {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response, nil
 }

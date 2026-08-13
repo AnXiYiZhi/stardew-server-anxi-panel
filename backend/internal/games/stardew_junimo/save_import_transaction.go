@@ -448,11 +448,17 @@ func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID string) 
 }
 
 func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImportRequest) (*registry.Job, error) {
+	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
 	if d.jobs == nil {
 		return nil, fmt.Errorf("driver: job manager not configured")
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}

@@ -169,6 +169,48 @@ func TestRuntimeFarmCatalogWaitTimeout(t *testing.T) {
 	assertRuntimeCatalogErrorCode(t, err, "runtime_catalog_timeout")
 }
 
+func TestRuntimeFarmCatalogRequestRefreshPreservesTransactionIdentity(t *testing.T) {
+	tx := prepareRuntimeCatalogTestTransaction(t, "FrontierFarm")
+	path := farmCatalogRequestPath(tx.dataDir)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var before runtimeCatalogRequest
+	if err := json.Unmarshal(raw, &before); err != nil {
+		t.Fatal(err)
+	}
+	before.GeneratedAt = time.Now().UTC().Add(-3 * time.Hour)
+	before.ExpiresAt = time.Now().UTC().Add(-time.Hour)
+	expired, err := json.Marshal(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, expired, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := tx.refreshRuntimeCatalogRequest(); err != nil {
+		t.Fatal(err)
+	}
+	refreshedRaw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refreshed runtimeCatalogRequest
+	if err := json.Unmarshal(refreshedRaw, &refreshed); err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.RequestID != tx.record.TransactionID || refreshed.TransactionID != tx.record.TransactionID ||
+		refreshed.RequestedFarmType != "FrontierFarm" {
+		t.Fatalf("refreshed identity = %#v", refreshed)
+	}
+	if !refreshed.ExpiresAt.After(time.Now().UTC().Add(90*time.Minute)) ||
+		refreshed.ExpiresAt.Sub(refreshed.GeneratedAt) != runtimeCatalogRequestTTL {
+		t.Fatalf("refreshed lifetime = generated %s expires %s ttl %s", refreshed.GeneratedAt, refreshed.ExpiresAt, runtimeCatalogRequestTTL)
+	}
+}
+
 func TestRuntimeFarmCatalogFailureStopsBeforeNewGamePost(t *testing.T) {
 	tx := prepareRuntimeCatalogTestTransaction(t, "FrontierFarm")
 	catalog := validRuntimeCatalogForTest(tx)
@@ -192,14 +234,22 @@ func TestRuntimeFarmCatalogFailureStopsBeforeNewGamePost(t *testing.T) {
 
 func TestModdedNewGameValidatesXMLAndCommitsExactProfile(t *testing.T) {
 	tx := prepareRuntimeCatalogTestTransaction(t, "FrontierFarm")
+	if tx.record.CreationWriter != newGameCreationWriterStartup {
+		t.Fatalf("creation writer = %q, want startup", tx.record.CreationWriter)
+	}
 	tx.record.ModSelection = &NewGameModSelection{FarmTypeID: "FrontierFarm"}
 	tx.record.EnabledModKeys = []string{"unique:FlashShifter.FrontierFarm", "unique:Pathoschild.ContentPatcher"}
 	writeRuntimeCatalogTestOptions(t, tx, validRuntimeCatalogForTest(tx))
+	simulator := startNewGameControlSimulator(t, tx, "Frontier_101", "FrontierFarm", nil)
+	if err := stageNewGameCandidate(tx, "Frontier_101"); err != nil {
+		t.Fatal(err)
+	}
 	var committedSave string
 	var committedKeys []string
+	var posts atomic.Int32
 	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
 		if strings.Contains(strings.Join(args, " "), "/newgame") {
-			writeNewGameTestSave(t, tx.dataDir, "Frontier_101", "FrontierFarm")
+			posts.Add(1)
 		}
 		return paneldocker.CommandResult{ExitCode: 0}, nil
 	}}
@@ -218,21 +268,36 @@ func TestModdedNewGameValidatesXMLAndCommitsExactProfile(t *testing.T) {
 	if tx.record.Stage != newGameStateSuccess || tx.record.ResolvedFarmType != "FrontierFarm" {
 		t.Fatalf("record = %#v", tx.record)
 	}
+	if posts.Load() != 0 {
+		t.Fatalf("startup writer POST count = %d, want 0", posts.Load())
+	}
+	result := simulator.wait(t)
+	assertSingleNewGameSaveCommand(t, tx.dataDir, tx.record.TransactionID, "Frontier_101", result.CommandID)
 }
 
 func TestModdedNewGameStandardXMLMismatchIsQuarantinedOnRollback(t *testing.T) {
 	tx := prepareRuntimeCatalogTestTransaction(t, "FrontierFarm")
 	writeRuntimeCatalogTestOptions(t, tx, validRuntimeCatalogForTest(tx))
+	simulator := startNewGameControlSimulator(t, tx, "Wrong_202", "0", nil)
+	if err := stageNewGameCandidate(tx, "Wrong_202"); err != nil {
+		t.Fatal(err)
+	}
+	var posts atomic.Int32
 	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
 		if strings.Contains(strings.Join(args, " "), "/newgame") {
-			writeNewGameTestSave(t, tx.dataDir, "Wrong_202", "0")
+			posts.Add(1)
 		}
 		return paneldocker.CommandResult{ExitCode: 0}, nil
 	}}
 	err := runNewGameCommandJob(t, newGameTestRunner(tx.dataDir, fake), tx)
-	if err == nil || !strings.Contains(err.Error(), "farm type mismatch") {
+	if err == nil || (!strings.Contains(err.Error(), "new_game_disk_farm_type_mismatch") && !strings.Contains(err.Error(), "whichFarm")) {
 		t.Fatalf("err = %v", err)
 	}
+	if posts.Load() != 0 {
+		t.Fatalf("startup writer POST count = %d, want 0", posts.Load())
+	}
+	result := simulator.wait(t)
+	assertSingleNewGameSaveCommand(t, tx.dataDir, tx.record.TransactionID, "Wrong_202", result.CommandID)
 	if rollbackErr := tx.rollback(err, "farm_type_mismatch", newGameStateFailed); rollbackErr != nil {
 		t.Fatal(rollbackErr)
 	}
@@ -245,9 +310,14 @@ func TestModdedNewGameProfileCommitFailurePreservesSaveAsRecoverable(t *testing.
 	tx := prepareRuntimeCatalogTestTransaction(t, "FrontierFarm")
 	tx.record.ModSelection = &NewGameModSelection{FarmTypeID: "FrontierFarm"}
 	writeRuntimeCatalogTestOptions(t, tx, validRuntimeCatalogForTest(tx))
+	simulator := startNewGameControlSimulator(t, tx, "Keep_303", "FrontierFarm", nil)
+	if err := stageNewGameCandidate(tx, "Keep_303"); err != nil {
+		t.Fatal(err)
+	}
+	var posts atomic.Int32
 	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
 		if strings.Contains(strings.Join(args, " "), "/newgame") {
-			writeNewGameTestSave(t, tx.dataDir, "Keep_303", "FrontierFarm")
+			posts.Add(1)
 		}
 		return paneldocker.CommandResult{ExitCode: 0}, nil
 	}}
@@ -257,6 +327,11 @@ func TestModdedNewGameProfileCommitFailurePreservesSaveAsRecoverable(t *testing.
 	if err == nil || !strings.Contains(err.Error(), "profile") {
 		t.Fatalf("err = %v", err)
 	}
+	if posts.Load() != 0 {
+		t.Fatalf("startup writer POST count = %d, want 0", posts.Load())
+	}
+	result := simulator.wait(t)
+	assertSingleNewGameSaveCommand(t, tx.dataDir, tx.record.TransactionID, "Keep_303", result.CommandID)
 	if rollbackErr := tx.rollback(err, "mod_profile_commit_failed", newGameStateFailed); rollbackErr != nil {
 		t.Fatal(rollbackErr)
 	}
@@ -277,6 +352,9 @@ func prepareRuntimeCatalogTestTransaction(t *testing.T, farmType string) *newGam
 	}
 	tx.record.RequestedFarmType = farmType
 	tx.record.Config.FarmType = farmType
+	if err := tx.prepareConfigAndMarker(); err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.prepareRuntimeCatalogRequest(); err != nil {
 		t.Fatal(err)
 	}

@@ -20,9 +20,13 @@ import (
 const (
 	lifecycleJobType       = "stardew_lifecycle"
 	lifecycleJobTimeout    = 30 * time.Minute
+	newGameJobTimeout      = 90 * time.Minute
+	controlCleanupTimeout  = 2 * time.Minute
 	startServerWaitTimeout = 5 * time.Minute // Docker container reaches "running" within seconds; 5m is ample
 	startCheckInterval     = 3 * time.Second
 	startProgressInterval  = 30 * time.Second
+	newGameReservationWait = 5 * time.Second
+	newGameReservationPoll = 25 * time.Millisecond
 
 	// readyStateTimeout covers the entire window from "container running" to "invite code obtained".
 	// New-game world generation can take 15+ min, but the invite code may arrive earlier
@@ -39,9 +43,23 @@ const (
 	inviteCodeCacheTTL       = 5 * time.Second
 )
 
-const restartJobPayload = `{"operation":"restart"}`
+const (
+	startJobPayload          = `{"operation":"start"}`
+	stopJobPayload           = `{"operation":"stop"}`
+	restartJobPayload        = `{"operation":"restart"}`
+	restoreRestartJobPayload = `{"operation":"restore_restart"}`
+)
 
-var ErrRestartInProgress = errors.New("restart already in progress")
+type lifecycleJobPayload struct {
+	Operation string                  `json:"operation"`
+	RequestID string                  `json:"requestId,omitempty"`
+	Config    *registry.NewGameConfig `json:"config,omitempty"`
+}
+
+var (
+	ErrLifecycleInProgress = errors.New("lifecycle operation already in progress")
+	ErrRestartInProgress   = errors.New("restart already in progress")
+)
 
 type inviteCodeCacheEntry struct {
 	code      string
@@ -71,16 +89,28 @@ type lifecycleRunner struct {
 	driver                    *Driver
 	lifecycle                 LifecycleDockerService
 	instance                  storage.Instance
-	operation                 string // "start", "stop", "restart", "restore_restart"
+	operation                 string // "start", "stop", "restart", "restore_restart", "new_game_rollback"
 	actorID                   int64
 	newGame                   bool // When true, send "settings newgame --confirm" after server starts.
 	newGameConfig             *registry.NewGameConfig
+	newGameRequestID          string
 	newGameCommandTimeout     time.Duration
 	newGameObservationTimeout time.Duration
 	newGamePollInterval       time.Duration
 	newGameAPIReadyTimeout    time.Duration
 	newGameCatalogTimeout     time.Duration
+	newGameControlGateTimeout time.Duration
+	newGameSaveGateTimeout    time.Duration
+	newGameDiskGateTimeout    time.Duration
 	commitNewGameModProfile   func(string, string, []string) error
+	// A production new-game Start creates the exclusive job first to obtain its
+	// durable jobId, then synchronously reserves the persistent owner/transaction
+	// before returning to the HTTP caller. The runner waits on this handoff so it
+	// can never touch runtime files before the reservation is fully durable.
+	newGameReservationReady   <-chan struct{}
+	newGameReservationTx      *newGameTransaction
+	newGameReservationResumed bool
+	newGameReservationErr     error
 	// rollback-only: the SMAPI updater has restored the exact prior Control Mod
 	// and must not replace it before starting the old game-data volume.
 	preserveControlMod bool
@@ -101,6 +131,103 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	ld, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return nil, fmt.Errorf("docker 服务不支持生命周期操作")
+	}
+	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	resumeFromManualStart := false
+	rollbackRecovery := false
+	if !req.NewGame {
+		resume, resumeErr := pendingNewGameStartRequest(instance.DataDir)
+		if resumeErr != nil {
+			return nil, resumeErr
+		}
+		if resume != nil {
+			resumeFromManualStart = true
+			rollbackRecovery = isNewGameRollbackRecoveryStage(resume.Stage)
+			req.NewGame = true
+			req.NewGameConfig = &resume.Config
+			req.RequestID = resume.RequestID
+		}
+	}
+	jobPayload := ""
+	if req.NewGame {
+		if req.NewGameConfig == nil {
+			return nil, &NewGameTransactionError{Code: "new_game_payload_missing", Message: "新建存档任务缺少规范化配置"}
+		}
+		if strings.TrimSpace(req.RequestID) == "" {
+			compatID, randomErr := newGameRandomHex(16)
+			if randomErr != nil {
+				return nil, &NewGameOwnerError{Code: "new_game_request_invalid", Message: "无法生成兼容的新建存档请求 ID", Cause: randomErr}
+			}
+			req.RequestID = "compat-" + compatID
+		}
+		if err := validateNewGameRequestID(req.RequestID); err != nil {
+			return nil, &NewGameOwnerError{Code: "new_game_request_invalid", Message: "新建存档请求 ID 无效", Cause: err}
+		}
+		normalized, normalizeErr := NormalizeNewGameConfigWithModded(*req.NewGameConfig, true)
+		if normalizeErr != nil {
+			return nil, &NewGameOwnerError{Code: "new_game_payload_invalid", Message: "新建存档配置无效", Cause: normalizeErr}
+		}
+		req.NewGameConfig = &normalized
+		if !resumeFromManualStart {
+			if persisted, found, err := d.findPersistedNewGameJob(ctx, instance.DataDir, req.RequestID, *req.NewGameConfig); err != nil {
+				return nil, err
+			} else if found {
+				return &registry.Job{ID: persisted.ID}, nil
+			}
+		}
+		// A new request (unlike an exact idempotent replay above) must prove the
+		// instance is stopped before it reserves files that are also mutation
+		// targets. This is inside runtimeUpdateMu, the same linearization mutex used
+		// by lifecycle/runtime/import mutations.
+		if !resumeFromManualStart {
+			ps, psErr := d.docker.ComposePs(ctx, instance.DataDir)
+			if psErr != nil {
+				return nil, &NewGameOwnerError{Code: "server_state_unknown", Message: "无法确认服务器已停止，请检查 Docker 状态后重试", Cause: psErr}
+			}
+			if serverServiceUp(ps.Services) {
+				return nil, &NewGameOwnerError{Code: "server_running", Message: "服务器容器仍在运行，请先停止服务器再创建存档"}
+			}
+		}
+		if existing, found, err := d.findActiveNewGameJob(ctx, req.Instance.ID, req.RequestID, *req.NewGameConfig); err != nil {
+			return nil, err
+		} else if found {
+			persisted, waitErr := d.waitForPersistedNewGameReservation(ctx, instance.DataDir, req.RequestID, *req.NewGameConfig, existing.ID)
+			if waitErr != nil {
+				return nil, waitErr
+			}
+			return &registry.Job{ID: persisted.ID}, nil
+		}
+		payloadOperation := "new_game"
+		if rollbackRecovery {
+			payloadOperation = "new_game_rollback"
+		}
+		payloadData, err := json.Marshal(lifecycleJobPayload{Operation: payloadOperation, RequestID: req.RequestID, Config: req.NewGameConfig})
+		if err != nil {
+			return nil, &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "序列化新建存档任务配置失败", Cause: err}
+		}
+		jobPayload = string(payloadData)
+	} else {
+		if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+			return nil, err
+		}
+		active, activeOperation, found, activeErr := d.findActiveLifecycleJob(ctx, req.Instance.ID)
+		if activeErr != nil {
+			return nil, activeErr
+		}
+		if found {
+			if activeOperation == "start" {
+				return &registry.Job{ID: active.ID}, nil
+			}
+			return nil, lifecycleConflict(activeOperation, active.ID)
+		}
+		jobPayload = startJobPayload
+	}
 	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
@@ -110,53 +237,267 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
-	if err := d.requireCurrentRuntimeStack(req.Instance); err != nil {
-		return nil, err
-	}
-	ld, ok := d.docker.(LifecycleDockerService)
-	if !ok {
-		return nil, fmt.Errorf("docker 服务不支持生命周期操作")
-	}
-	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
-	if err != nil {
-		return nil, fmt.Errorf("load instance: %w", err)
-	}
-	if err := d.cancelActiveLifecycleJobs(ctx, req.Instance.ID, "新的启动请求已提交，取消旧的生命周期任务。"); err != nil {
-		return nil, err
-	}
-	jobPayload := ""
-	if req.NewGame {
-		if req.NewGameConfig == nil {
-			return nil, &NewGameTransactionError{Code: "new_game_payload_missing", Message: "新建存档任务缺少规范化配置"}
+	// A rollback-only recovery must remain available even when the forward
+	// runtime stack is outdated. It never starts game containers or consumes the
+	// candidate runtime; it only confirms Compose is stopped and restores the
+	// transaction snapshots.
+	if !rollbackRecovery {
+		if err := d.requireCurrentRuntimeStack(req.Instance); err != nil {
+			return nil, err
 		}
-		payloadData, err := json.Marshal(req.NewGameConfig)
-		if err != nil {
-			return nil, &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "序列化新建存档任务配置失败", Cause: err}
-		}
-		jobPayload = string(payloadData)
+	}
+	operation := "start"
+	if rollbackRecovery {
+		operation = "new_game_rollback"
 	}
 	runner := &lifecycleRunner{
-		driver:        d,
-		lifecycle:     ld,
-		instance:      instance,
-		operation:     "start",
-		actorID:       req.ActorID,
-		newGame:       req.NewGame,
-		newGameConfig: req.NewGameConfig,
+		driver:           d,
+		lifecycle:        ld,
+		instance:         instance,
+		operation:        operation,
+		actorID:          req.ActorID,
+		newGame:          req.NewGame,
+		newGameConfig:    req.NewGameConfig,
+		newGameRequestID: req.RequestID,
+	}
+	var reservationReady chan struct{}
+	if req.NewGame {
+		reservationReady = make(chan struct{})
+		runner.newGameReservationReady = reservationReady
+	}
+	jobTimeout := lifecycleJobTimeout
+	if req.NewGame {
+		jobTimeout = newGameJobTimeout
 	}
 	job, err := d.jobs.Start(ctx, jobs.Spec{
 		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   req.Instance.ID,
+		Exclusive:  true,
 		CreatedBy:  req.ActorID,
 		Payload:    jobPayload,
-		Timeout:    lifecycleJobTimeout,
+		Timeout:    jobTimeout,
 		Run:        runner.run,
 	})
 	if err != nil {
+		if req.NewGame && !rollbackRecovery {
+			if existing, found, lookupErr := d.findActiveNewGameJob(ctx, req.Instance.ID, req.RequestID, *req.NewGameConfig); lookupErr != nil {
+				return nil, lookupErr
+			} else if found {
+				persisted, waitErr := d.waitForPersistedNewGameReservation(ctx, instance.DataDir, req.RequestID, *req.NewGameConfig, existing.ID)
+				if waitErr != nil {
+					return nil, waitErr
+				}
+				return &registry.Job{ID: persisted.ID}, nil
+			}
+		}
+		if !req.NewGame {
+			if existing, activeOperation, found, lookupErr := d.findActiveLifecycleJob(ctx, req.Instance.ID); lookupErr != nil {
+				return nil, lookupErr
+			} else if found {
+				if activeOperation == "start" {
+					return &registry.Job{ID: existing.ID}, nil
+				}
+				return nil, lifecycleConflict(activeOperation, existing.ID)
+			}
+		}
 		return nil, fmt.Errorf("start lifecycle job: %w", err)
 	}
+	if req.NewGame {
+		isJobActive := func(jobID string) (bool, error) {
+			active, activeErr := d.jobs.Active(context.Background(), storage.ListActiveJobsFilter{
+				TargetType: "instance",
+				TargetID:   req.Instance.ID,
+				Types:      []string{lifecycleJobType},
+			})
+			if activeErr != nil {
+				return false, activeErr
+			}
+			for _, activeJob := range active {
+				if activeJob.ID == jobID {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+		tx, resumed, reserveErr := beginOrResumeNewGameTransactionWithJobStatus(
+			instance.DataDir, *req.NewGameConfig, req.RequestID, job.ID, isJobActive,
+		)
+		runner.newGameReservationTx = tx
+		runner.newGameReservationResumed = resumed
+		runner.newGameReservationErr = reserveErr
+		close(reservationReady)
+		if reserveErr != nil {
+			return nil, reserveErr
+		}
+	}
 	return &registry.Job{ID: job.ID}, nil
+}
+
+func (d *Driver) findActiveLifecycleJob(ctx context.Context, instanceID string) (storage.Job, string, bool, error) {
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   instanceID,
+		Types:      []string{lifecycleJobType},
+	})
+	if err != nil {
+		return storage.Job{}, "", false, fmt.Errorf("list active lifecycle jobs: %w", err)
+	}
+	if len(active) == 0 {
+		return storage.Job{}, "", false, nil
+	}
+	job := active[0]
+	if len(active) > 1 {
+		return job, "multiple", true, nil
+	}
+	return job, lifecycleOperation(job), true, nil
+}
+
+func lifecycleOperation(job storage.Job) string {
+	if !job.Payload.Valid || strings.TrimSpace(job.Payload.String) == "" {
+		return "unknown"
+	}
+	var payload lifecycleJobPayload
+	if err := json.Unmarshal([]byte(job.Payload.String), &payload); err != nil || strings.TrimSpace(payload.Operation) == "" {
+		return "unknown"
+	}
+	return strings.TrimSpace(payload.Operation)
+}
+
+func lifecycleConflict(operation, jobID string) error {
+	return fmt.Errorf("%w: active operation=%s job=%s", ErrLifecycleInProgress, operation, jobID)
+}
+
+// waitForPersistedNewGameReservation closes the cross-process window between
+// SQLite's exclusive job commit and atomic owner publication. A second Panel
+// may observe the job during that interval, but it must not acknowledge 202
+// until the same jobId is durably bound by both transaction and owner.
+func (d *Driver) waitForPersistedNewGameReservation(ctx context.Context, dataDir, requestID string, cfg registry.NewGameConfig, jobID string) (storage.Job, error) {
+	deadline := time.NewTimer(newGameReservationWait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(newGameReservationPoll)
+	defer ticker.Stop()
+	for {
+		job, found, err := d.findPersistedNewGameJob(ctx, dataDir, requestID, cfg)
+		if err != nil {
+			return storage.Job{}, err
+		}
+		if found {
+			if job.ID != jobID {
+				return storage.Job{}, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "活动任务与持久新建存档事务的 jobId 不一致"}
+			}
+			owner, ownerErr := LoadNewGameOwner(dataDir)
+			if ownerErr != nil {
+				return storage.Job{}, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "持久新建存档事务已出现但 owner 无法验证", Cause: ownerErr}
+			}
+			record, recordErr := LoadNewGameTransaction(dataDir, owner.TransactionID)
+			if recordErr != nil || owner.JobID != jobID || record.JobID != jobID || owner.RequestID != requestID || record.RequestID != requestID || owner.TransactionID != record.TransactionID || owner.ConfigSHA256 != record.ConfigSHA256 {
+				return storage.Job{}, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "活动任务尚未形成一致的持久 owner/transaction 绑定", Cause: recordErr}
+			}
+			return job, nil
+		}
+		select {
+		case <-ctx.Done():
+			return storage.Job{}, ctx.Err()
+		case <-deadline.C:
+			return storage.Job{}, &NewGameOwnerError{Code: "new_game_in_progress", Message: "新建存档任务正在持久化 owner；尚未安全接受本次重试"}
+		case <-ticker.C:
+		}
+	}
+}
+
+func (d *Driver) findPersistedNewGameJob(ctx context.Context, dataDir, requestID string, cfg registry.NewGameConfig) (storage.Job, bool, error) {
+	record, err := findNewGameTransactionByRequest(dataDir, requestID)
+	if err != nil {
+		return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "读取新建存档幂等事务失败", Cause: err}
+	}
+	if record == nil {
+		return storage.Job{}, false, nil
+	}
+	hash, err := newGameConfigSHA256(cfg)
+	if err != nil {
+		return storage.Job{}, false, err
+	}
+	if record.ConfigSHA256 != hash {
+		return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_request_conflict", Message: "同一请求 ID 已绑定到不同的新建存档配置"}
+	}
+	if strings.TrimSpace(record.JobID) == "" {
+		return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "新建存档事务缺少原始 jobId"}
+	}
+	job, err := d.jobs.Get(ctx, record.JobID)
+	if err != nil {
+		return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "新建存档事务引用的原始任务不存在", Cause: err}
+	}
+	return job, true, nil
+}
+
+func (d *Driver) findActiveNewGameJob(ctx context.Context, instanceID, requestID string, cfg registry.NewGameConfig) (storage.Job, bool, error) {
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   instanceID,
+		Types:      []string{lifecycleJobType},
+	})
+	if err != nil {
+		return storage.Job{}, false, fmt.Errorf("list active lifecycle jobs: %w", err)
+	}
+	wantedHash, err := newGameConfigSHA256(cfg)
+	if err != nil {
+		return storage.Job{}, false, err
+	}
+	for _, job := range active {
+		var payload lifecycleJobPayload
+		if !job.Payload.Valid || json.Unmarshal([]byte(job.Payload.String), &payload) != nil || payload.Operation != "new_game" || payload.Config == nil {
+			return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_in_progress", Message: "实例存在尚未结束的生命周期任务，当前不会取消它以启动新建存档"}
+		}
+		if payload.RequestID != requestID {
+			return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_in_progress", Message: "另一个新建存档任务仍在执行"}
+		}
+		activeHash, hashErr := newGameConfigSHA256(*payload.Config)
+		if hashErr != nil || activeHash != wantedHash {
+			return storage.Job{}, false, &NewGameOwnerError{Code: "new_game_request_conflict", Message: "同一请求 ID 已绑定到不同的新建存档配置", Cause: hashErr}
+		}
+		return job, true, nil
+	}
+	return storage.Job{}, false, nil
+}
+
+func pendingNewGameStartRequest(dataDir string) (*NewGameTransactionRecord, error) {
+	owner, err := LoadNewGameOwner(dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "新建存档 owner 无法读取，需要先修复事务现场", Cause: err}
+	}
+	record, err := LoadNewGameTransaction(dataDir, owner.TransactionID)
+	if err != nil {
+		return nil, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "新建存档事务记录缺失或损坏", Owner: &owner, Cause: err}
+	}
+	if record.TransactionID != owner.TransactionID || record.RequestID != owner.RequestID || record.ConfigSHA256 != owner.ConfigSHA256 {
+		return nil, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "新建存档 owner 与事务身份不一致", Owner: &owner}
+	}
+	if isTerminalNewGameOwnerStage(record.Stage) {
+		if err := releaseTerminalNewGameOwner(dataDir, owner); err != nil {
+			return nil, &NewGameOwnerError{Code: "new_game_recovery_required", Message: "清理已结束的新建存档 owner 失败", Owner: &owner, Cause: err}
+		}
+		return nil, nil
+	}
+	return &record, nil
+}
+
+func isNewGameRollbackRecoveryStage(stage NewGameTransactionState) bool {
+	return stage == newGameStateRollingBack || stage == newGameStateRollbackFail
+}
+
+func rejectUnfinishedNewGameOwner(dataDir string) error {
+	record, err := pendingNewGameStartRequest(dataDir)
+	if err != nil {
+		return err
+	}
+	if record != nil {
+		return &NewGameOwnerError{Code: "new_game_in_progress", Message: "新建存档事务尚未结束，当前操作不会取消或覆盖它"}
+	}
+	return nil
 }
 
 // Stop implements registry.GameDriver.Stop.
@@ -183,8 +524,18 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	if err != nil {
 		return fmt.Errorf("load instance: %w", err)
 	}
-	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "停止服务器请求已提交，取消旧的生命周期任务。"); err != nil {
+	if err := rejectUnfinishedNewGameOwner(stored.DataDir); err != nil {
 		return err
+	}
+	active, activeOperation, found, activeErr := d.findActiveLifecycleJob(ctx, instance.ID)
+	if activeErr != nil {
+		return activeErr
+	}
+	if found {
+		if activeOperation == "stop" {
+			return nil
+		}
+		return lifecycleConflict(activeOperation, active.ID)
 	}
 	runner := &lifecycleRunner{
 		driver:    d,
@@ -196,7 +547,9 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   instance.ID,
+		Exclusive:  true,
 		CreatedBy:  0,
+		Payload:    stopJobPayload,
 		Timeout:    lifecycleJobTimeout,
 		Run:        runner.run,
 	}); err != nil {
@@ -229,11 +582,18 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	if err != nil {
 		return fmt.Errorf("load instance: %w", err)
 	}
-	if err := d.rejectActiveRestart(ctx, instance.ID); err != nil {
+	if err := rejectUnfinishedNewGameOwner(stored.DataDir); err != nil {
 		return err
 	}
-	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "重启服务器请求已提交，取消旧的生命周期任务。"); err != nil {
-		return err
+	active, activeOperation, found, activeErr := d.findActiveLifecycleJob(ctx, instance.ID)
+	if activeErr != nil {
+		return activeErr
+	}
+	if found {
+		if activeOperation == "restart" {
+			return ErrRestartInProgress
+		}
+		return lifecycleConflict(activeOperation, active.ID)
 	}
 	runner := &lifecycleRunner{
 		driver:    d,
@@ -245,29 +605,13 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   instance.ID,
+		Exclusive:  true,
 		CreatedBy:  0,
 		Payload:    restartJobPayload,
 		Timeout:    lifecycleJobTimeout,
 		Run:        runner.run,
 	}); err != nil {
 		return fmt.Errorf("start restart job: %w", err)
-	}
-	return nil
-}
-
-func (d *Driver) rejectActiveRestart(ctx context.Context, instanceID string) error {
-	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
-		TargetType: "instance",
-		TargetID:   instanceID,
-		Types:      []string{lifecycleJobType},
-	})
-	if err != nil {
-		return fmt.Errorf("list active lifecycle jobs: %w", err)
-	}
-	for _, job := range active {
-		if job.Payload.Valid && job.Payload.String == restartJobPayload {
-			return ErrRestartInProgress
-		}
 	}
 	return nil
 }
@@ -302,8 +646,15 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
 	}
-	if err := d.cancelActiveLifecycleJobs(ctx, instance.ID, "回档请求已提交，取消旧的生命周期任务。"); err != nil {
+	if err := rejectUnfinishedNewGameOwner(stored.DataDir); err != nil {
 		return nil, err
+	}
+	active, activeOperation, found, activeErr := d.findActiveLifecycleJob(ctx, instance.ID)
+	if activeErr != nil {
+		return nil, activeErr
+	}
+	if found {
+		return nil, lifecycleConflict(activeOperation, active.ID)
 	}
 	runner := &lifecycleRunner{
 		driver:            d,
@@ -318,7 +669,9 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 		Type:       lifecycleJobType,
 		TargetType: "instance",
 		TargetID:   instance.ID,
+		Exclusive:  true,
 		CreatedBy:  actorID,
+		Payload:    restoreRestartJobPayload,
 		Timeout:    lifecycleJobTimeout,
 		Run:        runner.run,
 	})
@@ -328,26 +681,21 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 	return &registry.Job{ID: job.ID}, nil
 }
 
-func (d *Driver) cancelActiveLifecycleJobs(ctx context.Context, instanceID, reason string) error {
-	if d.jobs == nil {
-		return nil
-	}
-	canceled, err := d.jobs.CancelActive(ctx, storage.ListActiveJobsFilter{
-		TargetType: "instance",
-		TargetID:   instanceID,
-		Types:      []string{lifecycleJobType},
-	}, "")
-	if err != nil {
-		return fmt.Errorf("cancel active lifecycle jobs: %w", err)
-	}
-	for _, job := range canceled {
-		_, _ = d.jobs.AppendLog(context.Background(), job.ID, storage.JobLogLevelWarn, reason)
-	}
-	return nil
-}
-
 // run is the job.Runner function for lifecycle operations.
 func (r *lifecycleRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
+	if r.newGameReservationReady != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-r.newGameReservationReady:
+		}
+		if r.newGameReservationErr != nil {
+			return r.newGameReservationErr
+		}
+		if r.newGameReservationTx == nil {
+			return &NewGameOwnerError{Code: "new_game_recovery_required", Message: "新建存档任务缺少已持久化的 owner 预留"}
+		}
+	}
 	switch r.operation {
 	case "start":
 		return r.doStart(ctx, jobCtx)
@@ -357,18 +705,159 @@ func (r *lifecycleRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 		return r.doRestart(ctx, jobCtx)
 	case "restore_restart":
 		return r.doRestoreAndRestart(ctx, jobCtx)
+	case "new_game_rollback":
+		return r.doResumeNewGameRollback(ctx, jobCtx)
 	default:
 		return fmt.Errorf("未知的生命周期操作: %s", r.operation)
 	}
 }
 
+// doResumeNewGameRollback is deliberately separate from doStart. A manual
+// Start while a rollback journal is unfinished is a recovery trigger, not
+// permission to resume the forward new-game path: it may only stop/confirm the
+// Compose project, replay idempotent rollback steps, and leave the game off.
+func (r *lifecycleRunner) doResumeNewGameRollback(ctx context.Context, jobCtx *jobs.Context) error {
+	if r.newGameConfig == nil || strings.TrimSpace(r.newGameRequestID) == "" {
+		return &NewGameOwnerError{Code: "new_game_recovery_required", Message: "回滚恢复缺少原事务身份"}
+	}
+	isJobActive := func(jobID string) (bool, error) {
+		active, err := r.driver.jobs.Active(context.Background(), storage.ListActiveJobsFilter{
+			TargetType: "instance",
+			TargetID:   r.instance.ID,
+			Types:      []string{lifecycleJobType},
+		})
+		if err != nil {
+			return false, err
+		}
+		for _, activeJob := range active {
+			if activeJob.ID == jobID {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	tx := r.newGameReservationTx
+	if tx == nil {
+		var err error
+		tx, _, err = beginOrResumeNewGameTransactionWithJobStatus(
+			r.instance.DataDir, *r.newGameConfig, r.newGameRequestID, jobCtx.ID, isJobActive,
+		)
+		if err != nil {
+			return &NewGameOwnerError{Code: "new_game_recovery_required", Message: "接管新建存档回滚事务失败", Cause: err}
+		}
+	}
+	if !isNewGameRollbackRecoveryStage(tx.record.Stage) {
+		return &NewGameOwnerError{Code: "new_game_recovery_required", Message: "事务不处于可恢复回滚阶段"}
+	}
+	originalCause := errors.New(tx.record.ErrorMessage)
+	if tx.record.ErrorMessage == "" {
+		originalCause = errors.New("new-game transaction failed before rollback")
+	}
+	if err := tx.beginRollback(originalCause, tx.record.ErrorCode, tx.record.RollbackOriginalStage); err != nil {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"无法持久化新建存档回滚恢复点，未修改事务文件。", "new_game_rollback_failed", jobCtx.ID)
+		return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "持久化回滚恢复点失败", Cause: err}
+	}
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("正在恢复新建存档回滚事务：%s", tx.record.TransactionID))
+
+	compose, inspectErr := r.lifecycle.ComposePs(ctx, r.instance.DataDir)
+	if inspectErr != nil {
+		rollbackErr := tx.failRollback(fmt.Errorf("inspect Compose before rollback: %w", inspectErr))
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"无法确认游戏容器已停止；回滚现场已保留。", "new_game_rollback_failed", jobCtx.ID)
+		return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "无法确认游戏容器已停止", Cause: inspectErr, RollbackError: rollbackErr}
+	}
+	if !newGameComposeConfirmedStopped(compose) {
+		_, _ = jobCtx.Info(ctx, "检测到 Compose 服务仍在运行；仅执行停服后继续原回滚，不会启动游戏。")
+		result, downErr := r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
+		if downErr != nil || result.ExitCode != 0 {
+			if downErr == nil {
+				downErr = fmt.Errorf("ComposeDown exited with code %d", result.ExitCode)
+			}
+			rollbackErr := tx.failRollback(fmt.Errorf("stop Compose before rollback: %w", downErr))
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"游戏容器停止失败；未继续文件回滚，现场已保留。", "new_game_rollback_failed", jobCtx.ID)
+			return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "游戏容器停止失败", Cause: downErr, RollbackError: rollbackErr}
+		}
+		compose, inspectErr = r.lifecycle.ComposePs(ctx, r.instance.DataDir)
+		if inspectErr != nil || !newGameComposeConfirmedStopped(compose) {
+			if inspectErr == nil {
+				inspectErr = errors.New("Compose services are still active after ComposeDown")
+			}
+			rollbackErr := tx.failRollback(fmt.Errorf("confirm Compose stopped after rollback stop: %w", inspectErr))
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+				"停服后仍无法确认容器终态；未继续文件回滚。", "new_game_rollback_failed", jobCtx.ID)
+			return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "停服后无法确认容器终态", Cause: inspectErr, RollbackError: rollbackErr}
+		}
+	}
+
+	if err := tx.continueRollback(); err != nil {
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"新建存档回滚尚未完整完成；owner 和 journal 已保留。", "new_game_rollback_failed", jobCtx.ID)
+		return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "继续新建存档回滚失败", Cause: err}
+	}
+	if tx.record.Stage != newGameStateRolledBack || !tx.record.RollbackCompleted {
+		return &NewGameOwnerError{Code: "new_game_recovery_required", Message: "回滚未达到完整终态，owner 不会释放"}
+	}
+	if err := tx.releaseOwner(); err != nil {
+		return &NewGameOwnerError{Code: "new_game_recovery_required", Message: "回滚已完成但 owner 清理失败", Cause: err}
+	}
+	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateStopped,
+		"新建存档事务已完整回滚；游戏服务器保持关闭，请手动再次启动。", "new_game_rolled_back", jobCtx.ID)
+	_, _ = jobCtx.Info(ctx, "原新建存档事务已完整回滚，游戏服务器保持关闭。")
+	return nil
+}
+
+func newGameComposeConfirmedStopped(result paneldocker.ComposePsResult) bool {
+	for _, service := range result.Services {
+		state := strings.ToLower(strings.TrimSpace(service.State))
+		status := strings.ToLower(strings.TrimSpace(service.Status))
+		if state == "exited" || state == "dead" || state == "stopped" || strings.HasPrefix(status, "exited") {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (retErr error) {
 	_, _ = jobCtx.Info(ctx, "正在启动 Stardew 服务器...")
+	// The production Start path has already made this reservation durable before
+	// returning the job to its caller. Arm a narrow early-failure settlement for
+	// verification/config errors that occur before the main transaction defer is
+	// installed below. No runtime mutation has happened at that point, so a clean
+	// transaction can be rolled back and released; uncertain progress is retained.
+	preStartReservationPending := r.newGame && r.newGameReservationTx != nil
+	defer func() {
+		if !preStartReservationPending || retErr == nil {
+			return
+		}
+		tx := r.newGameReservationTx
+		evidence, progressErr := tx.observeNewGameProgress()
+		if progressErr != nil || evidence.Observed || evidence.Ambiguous {
+			tx.record.Stage = newGameStateUnknown
+			tx.record.Result = "unconfirmed"
+			tx.record.ErrorCode = "new_game_recovery_required"
+			tx.record.ErrorMessage = paneldocker.RedactString(retErr.Error())
+			_ = tx.persist()
+			return
+		}
+		if rollbackErr := tx.rollback(retErr, "new_game_start_preflight_failed", newGameStateFailed); rollbackErr != nil {
+			retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档启动前校验失败且事务回滚未完成", Cause: retErr, RollbackError: rollbackErr}
+			return
+		}
+		if releaseErr := tx.releaseOwner(); releaseErr != nil {
+			retErr = &NewGameTransactionError{Code: "new_game_owner_release_failed", Message: "新建存档启动前校验失败，事务已回滚但 owner 清理失败", Cause: retErr, RollbackError: releaseErr}
+		}
+	}()
 	imageRef := gameInstallImage(r.instance.DataDir)
 	ok, err := r.driver.verifyGameDataVolume(ctx, r.instance.DataDir, imageRef, func(line string) {
 		_, _ = jobCtx.Info(ctx, "[verify] "+paneldocker.RedactString(line))
 	})
 	if err != nil || !ok {
+		if err == nil {
+			r.driver.rememberInstallationEvidence(r.instance.ID, "missing")
+		}
 		message := "游戏运行文件不完整，请重新安装或修复。"
 		if err != nil {
 			message = "验证游戏运行文件失败，请检查任务日志后重试。"
@@ -380,6 +869,7 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		}
 		return fmt.Errorf("game runtime files are incomplete")
 	}
+	r.driver.rememberInstallationEvidence(r.instance.ID, "ok")
 
 	var newGameTx *newGameTransaction
 	var newGameSelection *NewGameModSelection
@@ -393,17 +883,6 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		if cfgErr != nil {
 			return &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "新建存档任务配置无效", Cause: cfgErr}
 		}
-		changed, syncErr := r.driver.EnsureManagedSMAPIBundledMods(ctx, r.instance.DataDir, imageRef, func(line string) {
-			_, _ = jobCtx.Info(context.Background(), "[smapi-sync] "+paneldocker.RedactString(line))
-		})
-		if syncErr != nil {
-			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateStopped,
-				"SMAPI 内置支持 Mod 同步失败，已阻止创建存档", "smapi_bundled_sync_failed", jobCtx.ID)
-			return &NewGameTransactionError{Code: "smapi_bundled_sync_failed", Message: "创建存档前同步 SMAPI 内置支持 Mod 失败", Cause: syncErr}
-		}
-		if changed {
-			_, _ = jobCtx.Info(ctx, "已在事务快照和 Mod 指纹计算前物化 SMAPI 内置支持 Mod。")
-		}
 		farmType, farmTypeErr := NormalizeNewGameFarmType(cfg.FarmType)
 		if farmTypeErr != nil {
 			return &NewGameTransactionError{Code: "new_game_payload_invalid", Message: "新建存档 FarmType 无效", Cause: farmTypeErr}
@@ -416,51 +895,163 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 			cfg.FarmType = selection.FarmTypeID
 			newGameSelection = &selection
 		}
-		newGameTx, retErr = beginNewGameTransaction(r.instance.DataDir, cfg)
-		if retErr != nil {
-			return &NewGameTransactionError{Code: "new_game_snapshot_failed", Message: "创建新存档事务快照失败", Cause: retErr}
+		isJobActive := func(jobID string) (bool, error) {
+			active, activeErr := r.driver.jobs.Active(context.Background(), storage.ListActiveJobsFilter{
+				TargetType: "instance",
+				TargetID:   r.instance.ID,
+				Types:      []string{lifecycleJobType},
+			})
+			if activeErr != nil {
+				return false, activeErr
+			}
+			for _, activeJob := range active {
+				if activeJob.ID == jobID {
+					return true, nil
+				}
+			}
+			return false, nil
 		}
+		var resumed bool
+		if strings.TrimSpace(r.newGameRequestID) == "" {
+			compatID, randomErr := newGameRandomHex(16)
+			if randomErr != nil {
+				return &NewGameTransactionError{Code: "new_game_request_invalid", Message: "无法生成兼容的新建存档请求 ID", Cause: randomErr}
+			}
+			r.newGameRequestID = "compat-" + compatID
+		}
+		if r.newGameReservationTx != nil {
+			newGameTx = r.newGameReservationTx
+			resumed = r.newGameReservationResumed
+			cfg = newGameTx.record.Config
+		} else {
+			newGameTx, resumed, retErr = beginOrResumeNewGameTransactionWithJobStatus(
+				r.instance.DataDir, cfg, r.newGameRequestID, jobCtx.ID, isJobActive,
+			)
+			if retErr != nil {
+				return &NewGameTransactionError{Code: "new_game_snapshot_failed", Message: "创建新存档事务快照失败", Cause: retErr}
+			}
+		}
+		preStartReservationPending = false
 		defer func() {
 			if newGameCompleted || retErr == nil {
 				return
 			}
-			var composeStopErr error
-			if composeStarted {
-				stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				_, composeStopErr = r.lifecycle.ComposeDown(stopCtx, r.instance.DataDir)
-				cancel()
-			}
 			code := "new_game_failed"
-			stage := newGameStateFailed
 			var txErr *NewGameTransactionError
-			if errors.As(retErr, &txErr) {
+			if errors.As(retErr, &txErr) && txErr.Code != "" {
 				code = txErr.Code
 			}
+			preserveForRecovery := newGameTx.record.CommandCalled || newGameTx.record.ProgressObserved ||
+				newGameTx.record.Stage == newGameStateUnknown || newGameTx.record.Stage == newGameStateAmbiguous
+			if !preserveForRecovery {
+				// Progress can appear after the last normal observation (for
+				// example while waiting for Control). Recheck before stopping or
+				// rolling back so a late loader/directory advance is never erased.
+				evidence, progressErr := newGameTx.observeNewGameProgress()
+				if progressErr != nil {
+					preserveForRecovery = true
+					code = "new_game_progress_state_unknown"
+				} else if evidence.Observed || evidence.Ambiguous {
+					preserveForRecovery = true
+				}
+			}
+			if preserveForRecovery {
+				if newGameTx.record.Stage != newGameStateAmbiguous &&
+					newGameTx.record.Stage != newGameStateProfilePending &&
+					newGameTx.record.Stage != newGameStateFinalizing {
+					newGameTx.record.Stage = newGameStateUnknown
+				}
+				newGameTx.record.Result = "unconfirmed"
+				newGameTx.record.ErrorCode = code
+				newGameTx.record.ErrorMessage = paneldocker.RedactString(retErr.Error())
+				_ = newGameTx.persist()
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"新建存档已有不可逆进展，现场已保留；请手动再次启动以恢复同一事务。", "new_game_recovery_required", jobCtx.ID)
+				return
+			}
+			stage := newGameStateFailed
 			if newGameTx.record.Stage == newGameStateUnknown || newGameTx.record.Stage == newGameStateAmbiguous {
 				stage = newGameTx.record.Stage
 			}
-			if rollbackErr := newGameTx.rollback(retErr, code, stage); rollbackErr != nil {
-				retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且回滚未完整完成", Cause: retErr, RollbackError: rollbackErr}
+			if beginErr := newGameTx.beginRollback(retErr, code, stage); beginErr != nil {
+				retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "无法持久化回滚恢复点，未执行停服或文件恢复", Cause: retErr, RollbackError: beginErr}
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+					"新建存档回滚 journal 写入失败；未继续破坏性操作，owner 已保留。", "new_game_rollback_failed", jobCtx.ID)
+				return
 			}
-			if composeStopErr != nil {
-				newGameTx.record.Stage = newGameStateRollbackFail
-				newGameTx.record.Result = "failed"
-				newGameTx.record.RollbackCompleted = false
-				newGameTx.record.RollbackError = "stop server during rollback: " + paneldocker.RedactString(composeStopErr.Error())
-				_ = newGameTx.persist()
-				retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且停止服务器失败", Cause: retErr, RollbackError: composeStopErr}
+			if composeStarted {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				composeStopResult, composeStopErr := r.lifecycle.ComposeDown(stopCtx, r.instance.DataDir)
+				cancel()
+				if composeStopErr == nil && composeStopResult.ExitCode != 0 {
+					composeStopErr = fmt.Errorf("ComposeDown exited with code %d", composeStopResult.ExitCode)
+				}
+				if composeStopErr != nil {
+					rollbackErr := newGameTx.failRollback(fmt.Errorf("stop server before rollback: %w", composeStopErr))
+					retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且无法确认服务器已停止；已保留 owner 和现场", Cause: retErr, RollbackError: rollbackErr}
+					r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+						"新建存档失败且服务器停止未确认；现场已保留，需要修复后再恢复。", "new_game_rollback_failed", jobCtx.ID)
+					return
+				}
+				composeState, composeInspectErr := r.lifecycle.ComposePs(context.Background(), r.instance.DataDir)
+				if composeInspectErr != nil || !newGameComposeConfirmedStopped(composeState) {
+					if composeInspectErr == nil {
+						composeInspectErr = errors.New("Compose services remain active after ComposeDown")
+					}
+					rollbackErr := newGameTx.failRollback(fmt.Errorf("confirm server stopped before rollback: %w", composeInspectErr))
+					retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "停服后无法确认服务器终态；已保留 owner 和现场", Cause: retErr, RollbackError: rollbackErr}
+					r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+						"停服后无法确认服务器终态；未继续文件回滚。", "new_game_rollback_failed", jobCtx.ID)
+					return
+				}
+				composeStarted = false
 			}
 			finalCode := code
-			if newGameTx.record.Stage == newGameStateRollbackFail {
+			if rollbackErr := newGameTx.continueRollback(); rollbackErr != nil {
+				retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且回滚未完整完成", Cause: retErr, RollbackError: rollbackErr}
 				finalCode = "new_game_rollback_failed"
+			} else if releaseErr := newGameTx.releaseOwner(); releaseErr != nil {
+				retErr = &NewGameTransactionError{Code: "new_game_owner_release_failed", Message: "新建存档已完整回滚但 owner 清理失败", Cause: retErr, RollbackError: releaseErr}
+				finalCode = "new_game_owner_release_failed"
 			}
-			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateStopped,
+			finalState := storage.InstanceStateStopped
+			if newGameTx.record.Stage == newGameStateRollbackFail || newGameTx.record.Stage == newGameStateRollingBack {
+				finalState = storage.InstanceStateError
+			}
+			r.driver.updatePhase(context.Background(), r.instance.ID, finalState,
 				"创建新存档失败: "+paneldocker.RedactString(retErr.Error()), finalCode, jobCtx.ID)
 		}()
-		if retErr = newGameTx.prepareConfigAndMarker(); retErr != nil {
-			return retErr
+		needsConfigReplay := !resumed || newGameTx.record.Stage == newGameStatePreparing || newGameTx.record.Stage == newGameStateConfigured
+		if resumed && !needsConfigReplay {
+			if retErr = refreshPendingNewGameMarker(newGameTx); retErr != nil {
+				return retErr
+			}
+			if newGameTx.record.DiskVerifiedAt == nil &&
+				newGameTx.record.Stage != newGameStateMarkerWritten && newGameTx.record.Stage != newGameStateModsPrepared {
+				if retErr = newGameTx.refreshRuntimeCatalogRequest(); retErr != nil {
+					return retErr
+				}
+			}
 		}
-		_, _ = jobCtx.Info(ctx, fmt.Sprintf("新建存档事务已准备：%s", newGameTx.record.TransactionID))
+		changed, syncErr := r.driver.EnsureManagedSMAPIBundledMods(ctx, r.instance.DataDir, imageRef, func(line string) {
+			_, _ = jobCtx.Info(context.Background(), "[smapi-sync] "+paneldocker.RedactString(line))
+		})
+		if syncErr != nil {
+			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateStopped,
+				"SMAPI 内置支持 Mod 同步失败，已阻止创建存档", "smapi_bundled_sync_failed", jobCtx.ID)
+			return &NewGameTransactionError{Code: "smapi_bundled_sync_failed", Message: "创建存档前同步 SMAPI 内置支持 Mod 失败", Cause: syncErr}
+		}
+		if changed {
+			_, _ = jobCtx.Info(ctx, "已在持久 owner 保护下同步 SMAPI 内置支持 Mod。")
+		}
+		if needsConfigReplay {
+			if retErr = newGameTx.prepareConfigAndMarker(); retErr != nil {
+				return retErr
+			}
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("新建存档事务已准备：%s", newGameTx.record.TransactionID))
+		} else {
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("正在恢复新建存档事务：%s（阶段 %s）", newGameTx.record.TransactionID, newGameTx.record.Stage))
+		}
 	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在启动服务器...", "starting", jobCtx.ID)
 
@@ -493,7 +1084,14 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 	} else {
 		_, _ = jobCtx.Info(ctx, "服务器游戏语言已同步："+language.LanguageCode)
 	}
-	r.clearRuntimeControlSnapshots(ctx, jobCtx)
+	if err := r.clearRuntimeControlSnapshots(ctx, jobCtx); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+			"无法清理上一轮 Control 运行快照，已阻止启动", "control_runtime_snapshot_cleanup_failed", jobCtx.ID)
+		return fmt.Errorf("clear stale Control runtime snapshots: %w", err)
+	}
+	if r.newGame && newGameTx.record.DurableSaveCommandID != "" {
+		_, _ = jobCtx.Info(ctx, "恢复事务保留了同一 save-now commandId 的命令结果现场用于幂等观察。")
+	}
 
 	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer static init compatibility mounts failed: %v", err))
@@ -503,36 +1101,40 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 
 	if r.newGame {
 		var modPrepareErr error
-		if newGameSelection == nil {
-			modPrepareErr = ApplyNewSaveDefaultModState(r.instance.DataDir)
-		} else {
-			prepared, err := ApplyNewGameModSelectionState(r.instance.DataDir, *newGameSelection)
-			if err != nil {
-				modPrepareErr = err
+		if newGameTx.record.Stage == newGameStatePreparing || newGameTx.record.Stage == newGameStateConfigured || newGameTx.record.Stage == newGameStateMarkerWritten {
+			if newGameSelection == nil {
+				modPrepareErr = ApplyNewSaveDefaultModState(r.instance.DataDir)
 			} else {
-				newGameSelection = &prepared
-				newGameTx.record.ModSelection = &prepared
-				newGameTx.record.EnabledModKeys = append([]string{}, prepared.EnabledModKeys...)
-				newGameTx.record.RequestedFarmType = prepared.FarmTypeID
-				newGameTx.record.Config.FarmType = prepared.FarmTypeID
-				modPrepareErr = newGameTx.persist()
+				prepared, err := ApplyNewGameModSelectionState(r.instance.DataDir, *newGameSelection)
+				if err != nil {
+					modPrepareErr = err
+				} else {
+					newGameSelection = &prepared
+					newGameTx.record.ModSelection = &prepared
+					newGameTx.record.EnabledModKeys = append([]string{}, prepared.EnabledModKeys...)
+					newGameTx.record.RequestedFarmType = prepared.FarmTypeID
+					newGameTx.record.Config.FarmType = prepared.FarmTypeID
+					modPrepareErr = newGameTx.persist()
+				}
+			}
+			if modPrepareErr != nil {
+				r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+					"prepare new-save Mod set failed: "+modPrepareErr.Error(), "farm_dependencies_missing", jobCtx.ID)
+				return modPrepareErr
+			}
+			if err := newGameTx.mark(newGameStateModsPrepared); err != nil {
+				return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录 Mod 准备状态失败", Cause: err}
+			}
+			if newGameSelection == nil {
+				_, _ = jobCtx.Info(ctx, "New save mod defaults applied: third-party mods are disabled.")
+			} else {
+				_, _ = jobCtx.Info(ctx, fmt.Sprintf("已准备模组农场 %s 的必要 Mod 集合（%d 个组件）。", newGameSelection.FarmTypeID, len(newGameSelection.EnabledModKeys)))
 			}
 		}
-		if modPrepareErr != nil {
-			r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
-				"prepare new-save Mod set failed: "+modPrepareErr.Error(), "farm_dependencies_missing", jobCtx.ID)
-			return modPrepareErr
-		}
-		if err := newGameTx.mark(newGameStateModsPrepared); err != nil {
-			return &NewGameTransactionError{Code: "new_game_state_write_failed", Message: "记录 Mod 准备状态失败", Cause: err}
-		}
-		if err := newGameTx.prepareRuntimeCatalogRequest(); err != nil {
-			return err
-		}
-		if newGameSelection == nil {
-			_, _ = jobCtx.Info(ctx, "New save mod defaults applied: third-party mods are disabled.")
-		} else {
-			_, _ = jobCtx.Info(ctx, fmt.Sprintf("已准备模组农场 %s 的必要 Mod 集合（%d 个组件）。", newGameSelection.FarmTypeID, len(newGameSelection.EnabledModKeys)))
+		if newGameTx.record.Stage == newGameStateModsPrepared {
+			if err := newGameTx.prepareRuntimeCatalogRequest(); err != nil {
+				return err
+			}
 		}
 	} else if activeSaveName := GetActiveSaveName(r.instance.DataDir); activeSaveName != "" {
 		if err := ApplyModProfile(r.instance.DataDir, activeSaveName); err != nil {
@@ -549,6 +1151,12 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("已隔离重复的 SMAPI 内置组件：%s。原文件保留在私有隔离目录。", strings.Join(quarantined, "、")))
 	}
 
+	// compose up can return non-zero after creating or starting only part of the
+	// project. Treat the runtime as potentially live before invoking it so the
+	// failure defer must confirm ComposeDown before restoring transaction files.
+	if r.newGame {
+		composeStarted = true
+	}
 	result, err := r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
 	if err != nil {
 		if friendly, ok := r.vncPortUnavailableMessage(result); ok {
@@ -580,15 +1188,11 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 			"服务器启动失败", "start_failed", jobCtx.ID)
 		return err
 	}
-	controlTimeout := r.driver.runtimeUpdateServerTimeout
-	if controlTimeout <= 0 || controlTimeout > time.Minute {
-		controlTimeout = time.Minute
-	}
-	if !r.preserveControlMod && !waitForRunningControlManifest(ctx, r.instance.DataDir, controlTimeout) {
-		_, _ = r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
-		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
-			"SMAPI 未实际加载当前 Panel 要求的 Control 版本，服务器已停止", "control_runtime_version_mismatch", jobCtx.ID)
-		return errors.New("SMAPI did not load the required Control version")
+	if stopped, err := r.waitForControlRuntime(ctx, jobCtx); err != nil {
+		if stopped {
+			composeStarted = false
+		}
+		return err
 	}
 	r.clearStaleInviteCode(ctx, jobCtx)
 
@@ -710,7 +1314,11 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	_, _ = jobCtx.Info(ctx, "正在重启 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在重启...", "restarting", jobCtx.ID)
 	r.removeInviteCodeFile(ctx, jobCtx)
-	r.clearRuntimeControlSnapshots(ctx, jobCtx)
+	if err := r.clearRuntimeControlSnapshots(ctx, jobCtx); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
+			"无法清理上一轮 Control 运行快照，已阻止重启", "control_runtime_snapshot_cleanup_failed", jobCtx.ID)
+		return fmt.Errorf("clear stale Control runtime snapshots before restart: %w", err)
+	}
 
 	if err := r.ensureJunimoServerMod(ctx, jobCtx); err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
@@ -750,6 +1358,9 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	if err := r.waitForServer(ctx, jobCtx); err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"重启后服务器未就绪", "restart_timeout", jobCtx.ID)
+		return err
+	}
+	if _, err := r.waitForControlRuntime(ctx, jobCtx); err != nil {
 		return err
 	}
 	r.clearStaleInviteCode(ctx, jobCtx)
@@ -1130,23 +1741,115 @@ func (r *lifecycleRunner) instanceStillRunning(ctx context.Context) bool {
 	}
 }
 
-func (r *lifecycleRunner) clearRuntimeControlSnapshots(ctx context.Context, jobCtx *jobs.Context) {
+// waitForControlRuntime keeps the instance in starting until this launch has
+// produced an explicit Control runtime snapshot. A missing options.json is
+// pending evidence and can only become a start timeout; version mismatch is
+// reserved for a valid snapshot which names a different version.
+//
+// The bool result reports whether this helper successfully stopped Compose
+// after a terminal gate failure. Callers use it to prevent duplicate cleanup.
+func (r *lifecycleRunner) waitForControlRuntime(ctx context.Context, jobCtx *jobs.Context) (bool, error) {
+	if r.preserveControlMod {
+		return false, nil
+	}
+	timeout := r.driver.runtimeUpdateServerTimeout
+	if timeout <= 0 {
+		timeout = readyStateTimeout
+	}
+	deadline := time.Now().Add(timeout)
+	startedAt := time.Now()
+	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting,
+		"服务器容器已启动，正在等待 SMAPI Control 就绪...", "control_runtime_starting", jobCtx.ID)
+	_, _ = jobCtx.Info(ctx, fmt.Sprintf("等待本次启动的 Control 运行状态，最长 %s。", timeout.Round(time.Second)))
+
+	for {
+		result := InspectControlRuntimeGate(r.instance.DataDir)
+		switch result.State {
+		case ControlRuntimeGateReady:
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("Control 运行版本已验收：%s。", result.Actual))
+			return false, nil
+		case ControlRuntimeGateVersionMismatch:
+			message := fmt.Sprintf("SMAPI 明确加载了错误的 Control 版本（实际 %s，期望 %s），服务器已停止", result.Actual, result.Expected)
+			return r.stopAfterControlRuntimeFailure(jobCtx, storage.InstanceStateError, message, ControlRuntimeCodeVersionMismatch,
+				fmt.Errorf("Control runtime version mismatch: actual=%s expected=%s", result.Actual, result.Expected))
+		case ControlRuntimeGateInvalid:
+			message := "Control 运行状态无效，服务器已停止；游戏文件仍保留，请查看诊断后重试"
+			return r.stopAfterControlRuntimeFailure(jobCtx, storage.InstanceStateError, message, result.Code,
+				fmt.Errorf("invalid Control runtime evidence: %s", result.Code))
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			message := "等待 Control 运行状态超时，服务器已停止；游戏文件仍完整，可重试启动"
+			return r.stopAfterControlRuntimeFailure(jobCtx, storage.InstanceStateStopped, message, "control_runtime_start_timeout",
+				errors.New("timed out waiting for Control runtime state"))
+		}
+		wait := startProgressInterval
+		if remaining < wait {
+			wait = remaining
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return false, ctx.Err()
+		case <-timer.C:
+			elapsed := time.Since(startedAt).Round(time.Second)
+			remaining = time.Until(deadline).Round(time.Second)
+			if remaining < 0 {
+				remaining = 0
+			}
+			_, _ = jobCtx.Info(ctx, fmt.Sprintf("Control 尚未写出明确运行状态，仍在启动（已等待 %s，剩余 %s）。", elapsed, remaining))
+		}
+	}
+}
+
+func (r *lifecycleRunner) stopAfterControlRuntimeFailure(
+	jobCtx *jobs.Context,
+	state string,
+	message string,
+	code string,
+	cause error,
+) (bool, error) {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), controlCleanupTimeout)
+	defer cancel()
+	result, err := r.lifecycle.ComposeDown(cleanupCtx, r.instance.DataDir)
+	if err != nil {
+		detail := strings.TrimSpace(result.Stderr)
+		if detail == "" {
+			detail = err.Error()
+		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
+			"Control 启动验收失败，且未能确认服务器已停止，请立即检查 Docker 状态", "control_runtime_cleanup_failed", jobCtx.ID)
+		return false, fmt.Errorf("%w; stop server after Control gate failure: %s", cause, paneldocker.RedactString(detail))
+	}
+	r.driver.updatePhase(context.Background(), r.instance.ID, state, message, code, jobCtx.ID)
+	_, _ = jobCtx.Warn(context.Background(), message)
+	return true, cause
+}
+
+func (r *lifecycleRunner) clearRuntimeControlSnapshots(ctx context.Context, jobCtx *jobs.Context) error {
 	paths := []string{
 		filepath.Join(controlDir(r.instance.DataDir), "status.json"),
 		filepath.Join(controlDir(r.instance.DataDir), "players.json"),
 		filepath.Join(controlDir(r.instance.DataDir), "options.json"),
 	}
 	removed := false
+	var cleanupErr error
 	for _, path := range paths {
 		if err := os.Remove(path); err == nil {
 			removed = true
 		} else if err != nil && !os.IsNotExist(err) {
 			_, _ = jobCtx.Warn(ctx, fmt.Sprintf("清理旧运行状态文件失败：%s: %v", filepath.Base(path), err))
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove %s: %w", filepath.Base(path), err))
 		}
 	}
 	if removed {
 		_, _ = jobCtx.Info(ctx, "已清理上一轮 SMAPI 运行状态快照，等待本次启动写入新状态。")
 	}
+	return cleanupErr
 }
 
 // clearStaleInviteCode removes /tmp/invite-code.txt only when it still contains
@@ -1292,7 +1995,7 @@ func (d *Driver) updateDriverPayloadInviteCode(ctx context.Context, instanceID, 
 // sendNewGameCommand waits for the JunimoServer HTTP API to be ready, then calls
 // POST /newgame to create a fresh save using the current server-settings.json values.
 // Existing saves are preserved; junimohost.gameloader.json is updated automatically.
-func (r *lifecycleRunner) sendNewGameCommand(ctx context.Context, jobCtx *jobs.Context, tx *newGameTransaction) error {
+func (r *lifecycleRunner) sendNewGameCommandLegacy(ctx context.Context, jobCtx *jobs.Context, tx *newGameTransaction) error {
 	if tx == nil {
 		return &NewGameTransactionError{Code: "new_game_transaction_missing", Message: "新建存档事务不存在"}
 	}

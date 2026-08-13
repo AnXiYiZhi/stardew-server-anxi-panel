@@ -2113,7 +2113,16 @@ func (d *Driver) RunBackupMaintenanceScheduler(ctx context.Context, instances []
 			if instance.DriverID != "" && instance.DriverID != DriverID {
 				continue
 			}
+			d.runtimeUpdateMu.Lock()
+			// A pending new-game owner needs its save/command evidence preserved
+			// byte-for-byte until an administrator explicitly resumes it. Do not
+			// consume save events or create/prune backups during Panel bootstrap.
+			if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+				d.runtimeUpdateMu.Unlock()
+				continue
+			}
 			result, err := RunBackupMaintenance(instance.DataDir)
+			d.runtimeUpdateMu.Unlock()
 			if err != nil {
 				d.logger.Warn("save backup maintenance failed", "instance", instance.ID, "error", err)
 				continue

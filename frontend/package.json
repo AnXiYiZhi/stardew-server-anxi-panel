@@ -15,6 +15,7 @@
     "test:runtime-components": "node --experimental-strip-types scripts/test-runtime-components-status.ts",
     "test:smapi-update": "node --experimental-strip-types scripts/test-smapi-update-status.ts",
     "test:install-state": "node --experimental-strip-types scripts/test-install-state.ts",
+    "test:new-game-idempotency": "node --experimental-strip-types scripts/test-new-game-idempotency.ts",
     "test:farm-catalog": "node --experimental-strip-types scripts/test-farm-catalog-state.ts",
     "test:save-import": "node --experimental-strip-types scripts/test-save-import.ts",
     "test:mod-list": "node --experimental-strip-types scripts/test-mod-list-utils.ts",

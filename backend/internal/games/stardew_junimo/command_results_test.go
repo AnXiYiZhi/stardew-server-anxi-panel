@@ -136,6 +136,37 @@ func TestCleanupDoesNotRemoveActiveCommandResult(t *testing.T) {
 	}
 }
 
+func TestNewGameCommandResultProtectedUntilTransactionTerminal(t *testing.T) {
+	dataDir := t.TempDir()
+	id := "0123456789abcdef0123456789abcdef"
+	tx, _, err := beginOrResumeNewGameTransaction(
+		dataDir, newGameTestConfig("standard"), "request-command-result-protection", "job-command-result-protection",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx.record.DurableSaveCommandID = id
+	if err := tx.persist(); err != nil {
+		t.Fatal(err)
+	}
+	protected, err := NewGameCommandResultProtected(dataDir, id)
+	if err != nil || !protected {
+		t.Fatalf("protected=%v err=%v, want true", protected, err)
+	}
+	other, err := NewGameCommandResultProtected(dataDir, "fedcba9876543210fedcba9876543210")
+	if err != nil || other {
+		t.Fatalf("unrelated protected=%v err=%v, want false", other, err)
+	}
+	tx.record.Stage = newGameStateSuccess
+	if err := tx.persist(); err != nil {
+		t.Fatal(err)
+	}
+	protected, err = NewGameCommandResultProtected(dataDir, id)
+	if err != nil || protected {
+		t.Fatalf("terminal protected=%v err=%v, want false", protected, err)
+	}
+}
+
 func TestLegacyModSubmissionOmitsQueuedStatus(t *testing.T) {
 	dataDir := t.TempDir()
 	if got := submissionStatus(dataDir); got != "" {

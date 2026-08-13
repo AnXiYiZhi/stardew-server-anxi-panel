@@ -102,6 +102,9 @@ func (s *server) handleFarmhandDelete(w http.ResponseWriter, r *http.Request, in
 	job, err := deleter.DeleteFarmhand(r.Context(), sj.FarmhandDeleteRequest{Instance: makeRegistryInstance(instance), PlayerID: playerID,
 		ExpectedName: body.ExpectedName, ExpectedSave: body.ExpectedSaveID, ActorID: actor.User.ID})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
@@ -157,6 +160,9 @@ func (s *server) handlePlayerKick(w http.ResponseWriter, r *http.Request, instan
 
 	result, err := kicker.KickPlayer(r.Context(), makeRegistryInstance(instance), uniqueMultiplayerID, body.Name)
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
@@ -212,6 +218,9 @@ func (s *server) handlePlayerWarpHome(w http.ResponseWriter, r *http.Request, in
 
 	result, err := warper.WarpPlayerHome(r.Context(), makeRegistryInstance(instance), uniqueMultiplayerID, body.Name)
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
@@ -267,6 +276,9 @@ func (s *server) handlePlayerApproveAuth(w http.ResponseWriter, r *http.Request,
 
 	result, err := approver.ApproveAuth(r.Context(), makeRegistryInstance(instance), uniqueMultiplayerID)
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {
@@ -324,6 +336,9 @@ func (s *server) handlePlayerBan(w http.ResponseWriter, r *http.Request, instanc
 
 	result, err := banner.BanPlayer(r.Context(), makeRegistryInstance(instance), name, body.UniqueMultiplayerID)
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if ce, ok := err.(*sj.CommandError); ok {
 			status := http.StatusBadRequest
 			switch ce.Code {

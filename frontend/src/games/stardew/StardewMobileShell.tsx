@@ -1,6 +1,8 @@
 import { Suspense, lazy, useLayoutEffect, useRef, useState } from 'react'
 import type { CurrentUser } from '../../types'
 import { stateLabel } from '../../core/helpers'
+import { routeToPath } from './stardew-routes'
+import type { StardewRoute } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
 import { UpdateDetailsDialog } from './UpdateDetailsDialog'
 import { panelUpdateSurface } from './panel-update-machine'
@@ -88,6 +90,11 @@ export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobi
   const statusDotClass = mobileStatusDotClass(dashboardData.instanceState?.state, dashboardData.loading)
   const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
 
+  const useDesktopRoute = (route?: StardewRoute) => {
+    if (route) window.history.pushState({}, '', routeToPath(route))
+    onUseDesktop?.()
+  }
+
   return (
     <div className="sd-mshell">
       <header className="sd-mshell-topbar">
@@ -110,7 +117,12 @@ export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobi
         <div ref={mainScrollRef} className="sd-mshell-scroll" tabIndex={0} aria-label="面板主内容">
         <Suspense fallback={<MobilePageLoadingFallback />}>
         {activeTab === 'overview' ? (
-          <MobileHomePage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
+          <MobileHomePage
+            user={user}
+            instanceState={dashboardData.instanceState}
+            dashboardData={dashboardData}
+            onUseDesktop={useDesktopRoute}
+          />
         ) : activeTab === 'server' ? (
           <MobileControlPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
         ) : activeTab === 'players' ? (

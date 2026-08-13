@@ -15,6 +15,7 @@ import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
 import { UpdateDetailsDialog } from './UpdateDetailsDialog'
+import { classifyInstallationState } from './installation-state'
 import { panelUpdateSurface } from './panel-update-machine'
 import { calculateShellViewport, shouldAutoCollapseOpsRail } from './responsive-layout'
 import './StardewPanel.css'
@@ -103,7 +104,6 @@ const REMOTE_INSTALL_JOB_TYPES = new Set(['mod_remote_install', 'mod_nexus_insta
 const DOWNLOAD_PROGRESS_RE = /下载进度：已下载[\s\S]*?[（(]\s*([0-9]+(?:\.[0-9]+)?)%\s*[）)]/
 const OPS_RAIL_METRICS_REFRESH_MS = 2000
 const DESKTOP_SHELL_MOUNTED_CLASS = 'sd-desktop-shell-mounted'
-const GAME_INSTALLED_STATES = new Set(['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'])
 const ACTIVE_INSTALL_JOB_STATUSES = new Set(['queued', 'running'])
 
 function formatCountdown(ms: number): string {
@@ -591,8 +591,8 @@ export function StardewPanel({
     const installJobActive = jobs.some(
       (job) => job.type === 'stardew_install' && ACTIVE_INSTALL_JOB_STATUSES.has(job.status),
     )
-    const gameInstalled = GAME_INSTALLED_STATES.has(instanceState.state)
-    if (gameInstalled || installJobActive || route === 'install') {
+    const installation = classifyInstallationState(instanceState, installJobActive)
+    if (!installation.showMissingInstallPrompt || route === 'install') {
       setInstallPromptPending(false)
       return
     }

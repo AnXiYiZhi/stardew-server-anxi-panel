@@ -135,7 +135,7 @@ func TestSMAPIUpdateUsesRealDockerStateWhenDatabaseIsStopped(t *testing.T) {
 	}
 }
 
-func TestSMAPIUpdateRestartBeforeSwitchRestoresPreviouslyRunningServer(t *testing.T) {
+func TestSMAPIUpdateRestartBeforeSwitchKeepsPreviouslyRunningServerStopped(t *testing.T) {
 	driver, instance, fake := setupSMAPIWorkflowDriver(t, storage.InstanceStateRunning)
 	updateID := "apply_" + strings.Repeat("d", 24)
 	project := strings.ToLower(filepath.Base(instance.DataDir))
@@ -147,15 +147,69 @@ func TestSMAPIUpdateRestartBeforeSwitchRestoresPreviouslyRunningServer(t *testin
 	if err := writeSMAPIRecoveryManifest(instance.DataDir, recovery); err != nil {
 		t.Fatal(err)
 	}
+	beforeUp := fake.composeUpCount
+	beforeCalls := len(fake.applyCalls)
 	if err := driver.RecoverSMAPIUpdateApply(context.Background(), instance); err != nil {
 		t.Fatal(err)
 	}
 	restored := waitSMAPIApply(t, driver, instance)
-	if restored.Phase != SMAPIApplyFailedRolledBack {
+	if restored.Phase != SMAPIApplyFailedRolledBack || restored.ManualAction == "" {
 		t.Fatalf("status=%#v", restored)
 	}
-	if !strings.Contains(strings.Join(fake.calls, "\n"), "compose up") {
-		t.Fatal("old running server was not restarted")
+	if fake.composeUpCount != beforeUp {
+		t.Fatalf("Panel bootstrap SMAPI recovery started the game: %v", fake.calls)
+	}
+	if !strings.Contains(strings.Join(fake.applyCalls[beforeCalls:], "\n"), "compose down") {
+		t.Fatalf("Panel bootstrap SMAPI recovery did not ensure the game is stopped: %v", fake.applyCalls[beforeCalls:])
+	}
+	stored, err := driver.store.GetInstance(context.Background(), instance.ID)
+	if err != nil || stored.State != storage.InstanceStateStopped {
+		t.Fatalf("instance state after recovery = %#v, %v", stored, err)
+	}
+}
+
+func TestSMAPIUpdateRestartAfterSwitchRollsBackWithoutStartingGame(t *testing.T) {
+	driver, instance, fake := setupSMAPIWorkflowDriver(t, storage.InstanceStateRunning)
+	updateID := "apply_" + strings.Repeat("e", 24)
+	project := strings.ToLower(filepath.Base(instance.DataDir))
+	originalVolume := project + "_game-data"
+	stagingVolume := project + "_anxi-smapi-update-" + strings.Repeat("e", 24)
+	manifestPresent, dllPresent, err := backupControlMod(instance.DataDir, updateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := switchGameDataVolumeAtomic(instance.DataDir, stagingVolume); err != nil {
+		t.Fatal(err)
+	}
+	status := SMAPIUpdateStatus{UpdateID: updateID, Phase: SMAPIApplyVerifying, Current: SMAPICurrent{Version: "4.4.0"}, ServerWasRunning: true, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}}
+	recovery := smapiRecoveryManifest{
+		SchemaVersion: 1, UpdateID: updateID, Project: project, OriginalVolume: originalVolume, StagingVolume: stagingVolume,
+		ServerWasRunning: true, ConfigSwitched: true, ControlManifestPresent: manifestPresent, ControlDLLPresent: dllPresent,
+	}
+	if err := writeSMAPIUpdateStatus(instance.DataDir, "apply-status.json", status); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSMAPIRecoveryManifest(instance.DataDir, recovery); err != nil {
+		t.Fatal(err)
+	}
+	beforeUp := fake.composeUpCount
+	beforeCalls := len(fake.applyCalls)
+	if err := driver.RecoverSMAPIUpdateApply(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	restored := waitSMAPIApply(t, driver, instance)
+	if restored.Phase != SMAPIApplyFailedRolledBack || restored.ErrorCode != "panel_restart_recovery" || restored.ManualAction == "" {
+		t.Fatalf("status=%#v", restored)
+	}
+	if fake.composeUpCount != beforeUp {
+		t.Fatalf("Panel bootstrap SMAPI rollback started the game: %v", fake.calls)
+	}
+	if !strings.Contains(strings.Join(fake.applyCalls[beforeCalls:], "\n"), "compose down") {
+		t.Fatalf("Panel bootstrap SMAPI rollback did not stop the game: %v", fake.applyCalls[beforeCalls:])
+	}
+	env, err := os.ReadFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil || !strings.Contains(string(env), "GAME_DATA_VOLUME="+originalVolume) {
+		t.Fatalf("old GAME_DATA_VOLUME was not restored: %s, %v", env, err)
 	}
 }
 

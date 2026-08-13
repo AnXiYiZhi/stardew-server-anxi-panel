@@ -50,6 +50,16 @@ func (d *Driver) GetRenderingFPS(ctx context.Context, instance registry.Instance
 // SetRenderingFPS proxies to JunimoServer's POST /rendering endpoint from inside
 // the server container, so the browser never sees the Junimo API key.
 func (d *Driver) SetRenderingFPS(ctx context.Context, instance registry.Instance, fps int) (*RenderingResult, error) {
+	var response *RenderingResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var setErr error
+		response, setErr = d.setRenderingFPS(ctx, instance, fps)
+		return setErr
+	})
+	return response, err
+}
+
+func (d *Driver) setRenderingFPS(ctx context.Context, instance registry.Instance, fps int) (*RenderingResult, error) {
 	if fps < 0 || fps > 60 {
 		return nil, &CommandError{Code: "invalid_rendering_fps", Message: "VNC 显示帧率必须是 0 到 60 之间的数字"}
 	}

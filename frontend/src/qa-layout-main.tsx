@@ -24,10 +24,33 @@ const JUNIMO_REPAIR = params.get('junimoRepair') || ''
 const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
+const INSTALL_DIAGNOSTIC = params.get('installDiagnostic') || ''
 if (JUNIMO_WORKFLOW === 'race-retry' || JUNIMO_WORKFLOW === 'rollback-failed' || JUNIMO_CONFIG === 'repairable') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
 const iso = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString()
+
+const diagnosticBase = {
+  status: 'installed', requiredFiles: 'ok', compose: 'ready', image: 'available',
+  serverContainer: 'stopped',
+  control: { static: 'match', runtime: 'not_observed', expectedVersion: '0.3.1' },
+  recommendedAction: 'retry_start', checkedAt: now.toISOString(),
+} as const
+const installationDiagnostic = INSTALL_DIAGNOSTIC === 'installed-error'
+  ? diagnosticBase
+  : INSTALL_DIAGNOSTIC === 'control-mismatch'
+    ? { ...diagnosticBase, control: { ...diagnosticBase.control, runtime: 'mismatch' as const, observedVersion: '0.3.0' }, recommendedAction: 'diagnose' as const }
+    : INSTALL_DIAGNOSTIC === 'missing-files'
+      ? { ...diagnosticBase, status: 'incomplete' as const, requiredFiles: 'missing' as const, recommendedAction: 'repair_install' as const }
+      : INSTALL_DIAGNOSTIC === 'not-installed'
+        ? { ...diagnosticBase, status: 'not_installed' as const, requiredFiles: 'unknown' as const, compose: 'missing' as const, image: 'missing' as const, serverContainer: 'missing' as const, control: { static: 'missing' as const, runtime: 'not_observed' as const, expectedVersion: '0.3.1' }, recommendedAction: 'install' as const }
+        : undefined
+const instanceStateFixture = {
+  instanceId: 'stardew', driverId: 'stardew_junimo', name: 'AnxiFarm', state: STATE,
+  stateMessage: INSTALL_DIAGNOSTIC === 'installed-error' ? 'Control 启动超时；游戏文件仍完整，可重试启动。' : null,
+  driverPhase: INSTALL_DIAGNOSTIC === 'installed-error' ? 'control_runtime_start_timeout' : STATE,
+  updatedAt: iso(2), installationDiagnostic,
+}
 
 const players = [
   { name: 'AnxiPlayer', role: 'host', isHost: true, locationDisplayName: '农场 · 春季 12 日', tileX: 64, tileY: 11, uniqueMultiplayerId: '7f9a2b10', status: 'online', ping: 36, farmMoney: 128640, personalMoney: 28230, onlineSeconds: 8000 },
@@ -333,7 +356,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/api\/system\/update\/dry-run$/, dryRunStatus],
   [/\/api\/system\/update(?:\/check)?$/, panelUpdate],
   [/\/api\/version$/, { version: APPLY === 'succeeded' ? '0.1.15' : '0.1.14', commit: '3f7a9c2', buildDate: '2025-05-21 14:28:36' }],
-  [/\/state$/, { instanceId: 'stardew', driverId: 'stardew_junimo', name: 'AnxiFarm', state: STATE, stateMessage: null, driverPhase: STATE, updatedAt: iso(2) }],
+  [/\/state$/, instanceStateFixture],
   [/\/metrics$/, metrics],
   [/\/players\/[^/]+\/mods$/, playerModDetails],
   [/\/players$/, { instanceId: 'stardew', state: STATE, source: 'junimo', onlineCount: 3, maxPlayers: 12, players, parseStatus: 'exact', updatedAt: iso(0), recentEvents: recentPlayerEvents, rawInfo: JSON.stringify({ server: 'AnxiFarm', uptime: '2天 4小时 12分', version: '1.6.15 (Stardew Valley)', players_online: 3, max_players: 8, junimo_note: '此信息为 Junimo 协议原始输出，用于调试与集成。', timestamp: '2025-05-21T14:28:36+08:00' }, null, 2) }],

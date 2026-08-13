@@ -23,6 +23,7 @@ import {
   hasSteamSdkDownloadStarted,
 } from '../install-helpers'
 import { canonicalInstallJobs, logsDescribeActiveInstall } from '../install-state'
+import { classifyInstallationState } from '../installation-state'
 import { useSteamAuthLogin } from '../useSteamAuthLogin'
 
 // ── 进度工具 ──────────────────────────────────────────────────────────────────
@@ -248,12 +249,11 @@ const AUTH_FAILED_PHASES = [
 ]
 
 function calcStepStatuses(
-  state: string,
+  installed: boolean,
   phase: string,
   authFailed: boolean,
   isInstalling: boolean,
 ): [StepStatus, StepStatus, StepStatus, StepStatus, StepStatus] {
-  const installed = ['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'].includes(state)
   // Phases where Steam authentication is actively happening (not yet done)
   const authPhases = [
     'steam_auth_running', 'auth_method_required', 'steam_guard_choice_required',
@@ -289,10 +289,10 @@ function calcStepStatuses(
   return [s1, s2, s3, s4, s5]
 }
 
-function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, state: string): string {
+function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, installed: boolean): string {
   if (phase === 'smapi_install_failed') return 'SMAPI 运行环境安装失败，请检查任务日志后重试'
   if (phase === 'smapi_bundled_sync_failed') return 'SMAPI 内置支持 Mod 同步失败，请检查任务日志后重试'
-  if (['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped'].includes(state)) return '安装完成'
+  if (installed) return '安装完成'
   if (phase === 'download_failed') return '游戏文件下载失败，请检查网络/磁盘后重试'
   if (phase === 'post_auth_failed') return 'Steam 认证已成功，后续安装步骤失败，请使用已保存凭据重试'
   if (phase === 'steamcmd_failed') return 'SteamCMD 兜底下载失败，请查看任务日志后重试'
@@ -345,14 +345,10 @@ const STEAM_STEP_ICON_SRC = STEP_ICON_SRC[2]
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 
 export function InstallPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
-  const state = instanceState?.state ?? ''
   const phase = instanceState?.driverPhase ?? ''
   const stateMessage = instanceState?.stateMessage ?? ''
 
   const isAdmin = user.role === 'admin'
-  // Any state after game_installed means the game is installed (server may be running/stopped).
-  const INSTALLED_STATES = ['game_installed', 'save_required', 'ready_to_start', 'starting', 'running', 'stopped']
-  const isInstalled = INSTALLED_STATES.includes(state)
 
   // ── 镜像选项 ──────────────────────────────────────────────────────────────────
   const [imageTagOptions, setImageTagOptions] = useState<ImageTagOption[]>([])
@@ -394,14 +390,16 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const activeInstallJob = installJobs.active
   const latestInstallJob = activeInstallJob ?? installJobs.selected ?? installJobs.latest
   const hasActiveInstallJob = activeInstallJob !== null
+  const installation = classifyInstallationState(instanceState, hasActiveInstallJob)
+  const isInstalled = installation.isInstalled
   const staleInstallingPhase = !isInstalled
     && INSTALLING_PHASES.includes(phase)
     && !hasActiveInstallJob
     && (latestInstallJob === null || isTerminalJobStatus(latestInstallJob.status))
   const basePhase = staleInstallingPhase ? 'install_interrupted' : phase
   const authSucceededInLogs = logsShowSteamAuthSucceeded(logs)
-  const canDirectRetry = isInstalled
-    || state === 'error'
+  const canDirectRetry = installation.kind === 'installed'
+    || installation.kind === 'repair_required'
     || staleInstallingPhase
     || authSucceededInLogs
     || ['pull_failed', 'install_timeout', 'steam_auth_connection_failed', 'install_interrupted', 'download_failed', 'post_auth_failed', 'smapi_bundled_sync_failed'].includes(basePhase)
@@ -657,10 +655,17 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const needsSteamCMDGuardChoice = effectivePhase === 'steamcmd_guard_choice_required'
   const needsSteamCMDGuard = effectivePhase === 'steamcmd_guard_required' || effectivePhase === 'steamcmd_guard_mobile_required'
   const needsQrCode = effectivePhase === 'steam_qr_required'
-  const stepStatuses = calcStepStatuses(state, effectivePhase, authFailed, isInstalling)
+  const needsInstallRepair = installation.kind === 'repair_required'
+  const needsInstallationDiagnosis = installation.kind === 'runtime_error' || installation.kind === 'unknown'
+  const installWorkflowFailed = installation.kind === 'install_failed'
+  const showPrimaryInstallAction = installation.kind === 'not_installed'
+    || installWorkflowFailed
+    || needsInstallRepair
+  const installationWorkflowComplete = isInstalled && !isInstalling
+  const stepStatuses = calcStepStatuses(installationWorkflowComplete, effectivePhase, authFailed, isInstalling)
   const showProgress = isInstalling || isInstalled || authFailed
     || ['pull_failed', 'install_timeout', 'download_failed', 'post_auth_failed', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed', 'smapi_install_failed', 'smapi_bundled_sync_failed'].includes(effectivePhase)
-  const progressLabel = phaseLabel(effectivePhase, isInstalling, authFailed, state)
+  const progressLabel = phaseLabel(effectivePhase, isInstalling, authFailed, installationWorkflowComplete)
   const selectedOption = imageTagOptions.find((o) => o.tag === imageTag)
   const steamDownloadProgress = effectivePhase === 'steam_sdk_downloading'
     ? steamSdkProgress
@@ -740,7 +745,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     : pullProgress && effectivePhase === 'steamcmd_image_pulling'
       ? Math.min(74, Math.round(58 + pullProgress.percent * 0.16))
       : null
-  const overallProgress = isInstalled
+  const overallProgress = installationWorkflowComplete
     ? 100
     : downloadOverallProgress !== null
       ? downloadOverallProgress
@@ -774,16 +779,24 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           <div className="sd-state-card">
             <div className="sd-state-row">
               <span className="sd-state-label">安装状态</span>
-              {isInstalled ? (
-                <><span className="sd-dot sd-dot-green" aria-hidden="true" /><span className="sd-state-value">已安装</span></>
-              ) : isInstalling ? (
+              {isInstalling ? (
                 <><span className="sd-dot sd-dot-yellow" aria-hidden="true" /><span className="sd-state-value">安装中…</span></>
+              ) : installation.kind === 'installed' ? (
+                <><span className="sd-dot sd-dot-green" aria-hidden="true" /><span className="sd-state-value">已安装</span></>
               ) : effectivePhase === 'steamcmd_failed' || effectivePhase === 'steamcmd_image_pull_failed' ? (
                 <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">兜底失败</span></>
               ) : postAuthRecoverable ? (
                 <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">下载失败</span></>
               ) : authFailed ? (
                 <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">认证失败</span></>
+              ) : needsInstallRepair ? (
+                <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">需要修复</span></>
+              ) : installation.kind === 'runtime_error' ? (
+                <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">运行异常</span></>
+              ) : installWorkflowFailed ? (
+                <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">安装未完成</span></>
+              ) : installation.kind === 'unknown' ? (
+                <><span className="sd-dot sd-dot-yellow" aria-hidden="true" /><span className="sd-state-value">状态待诊断</span></>
               ) : (
                 <><span className="sd-dot sd-dot-gray" aria-hidden="true" /><span className="sd-state-value">未安装</span></>
               )}
@@ -799,9 +812,17 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
             <div className="sd-state-row">
               <span className="sd-state-label">状态说明</span>
               <span className="sd-install-state-msg">
-                {stateMessage || (isInstalled
+                {stateMessage || (installation.kind === 'installed'
                   ? 'Stardew Valley Dedicated Server 已成功安装并可运行！'
-                  : '配置 Steam 凭据并安装 Stardew Valley 服务器（含 SMAPI + JunimoServer）。')}
+                  : needsInstallRepair
+                    ? '安装文件或运行栈不完整，请执行校验与修复。'
+                    : installation.kind === 'runtime_error'
+                      ? '服务器运行异常，但当前没有证据表明游戏未安装；请先查看诊断。'
+                      : installWorkflowFailed
+                        ? '上次安装流程未完成，请根据当前阶段继续或重试。'
+                        : installation.kind === 'unknown'
+                          ? '暂时无法确认安装完整性，请先查看诊断，避免重复安装。'
+                          : '配置 Steam 凭据并安装 Stardew Valley 服务器（含 SMAPI + JunimoServer）。')}
               </span>
             </div>
           </div>
@@ -845,7 +866,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           <div className="sd-install-column-title">安装配置</div>
 
           {/* ── 已安装成功卡 ───────────────────────────────────────────────── */}
-          {isInstalled ? (
+          {installation.kind === 'installed' ? (
             <div className="sd-install-complete-card">
               <span className="sd-install-complete-icon">✓</span>
               <div className="sd-install-complete-body">
@@ -861,7 +882,48 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   type="button"
                   onClick={() => { setShowForm(true); setInstallError('') }}
                 >
-                  重新安装 / 修复
+                  校验 / 修复安装
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {needsInstallRepair ? (
+            <div className="sd-install-complete-card sd-install-repair-card">
+              <span className="sd-install-complete-icon">!</span>
+              <div className="sd-install-complete-body">
+                <div className="sd-install-complete-title">安装需要修复</div>
+                <div className="sd-install-complete-desc">已确认必需文件、Compose 或镜像不完整；修复不会删除现有存档。</div>
+              </div>
+              {isAdmin ? (
+                <button
+                  className="sd-btn-green"
+                  type="button"
+                  onClick={() => { setShowForm(true); setInstallError('') }}
+                >
+                  检查并修复安装
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {needsInstallationDiagnosis ? (
+            <div className={`sd-install-complete-card sd-install-diagnose-card${installation.kind === 'runtime_error' ? ' sd-install-diagnose-card--error' : ''}`}>
+              <span className="sd-install-complete-icon">!</span>
+              <div className="sd-install-complete-body">
+                <div className="sd-install-complete-title">
+                  {installation.kind === 'runtime_error' ? '服务器运行异常' : '安装状态尚未确认'}
+                </div>
+                <div className="sd-install-complete-desc">
+                  当前没有“游戏未安装”的可靠证据。请先查看诊断，避免无依据地重新安装。
+                </div>
+              </div>
+              <button className="sd-btn-tan" type="button" onClick={() => onNavigate('diagnostics')}>
+                查看诊断
+              </button>
+              {installation.action === 'retry_start' ? (
+                <button className="sd-btn-green" type="button" onClick={() => onNavigate('server')}>
+                  前往服务器控制
                 </button>
               ) : null}
             </div>
@@ -883,7 +945,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           </div>
 
           {/* ── 非 admin 提示 ──────────────────────────────────────────────── */}
-          {!isAdmin ? (
+          {!isAdmin && installation.canOpenInstallForm ? (
             <div className="sd-install-info-bar">
               仅管理员可以启动安装。请联系管理员完成 Steam 认证和游戏安装。
             </div>
@@ -899,7 +961,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           {/* ── 操作按钮区 ────────────────────────────────────────────────── */}
           {isAdmin && !isInstalling && !showForm ? (
             <div className="sd-install-actions">
-              {!isInstalled || authFailed ? (
+              {showPrimaryInstallAction ? (
                 <button
                   className="sd-btn-green sd-btn--lg"
                   type="button"
@@ -911,10 +973,12 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       ? '重试 SteamCMD 授权/下载'
                     : postAuthRecoverable
                       ? '重试下载（不重新输入账号）'
-                      : authFailed
+                    : authFailed
                         ? '重新输入 Steam 凭据'
+                      : needsInstallRepair
+                        ? '检查并修复安装'
                       : canDirectRetry
-                        ? '重试安装'
+                        ? '继续 / 重试安装'
                         : '安装游戏'}
                 </button>
               ) : null}
@@ -928,7 +992,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           ) : null}
 
           {/* ── 安装配置表单 ───────────────────────────────────────────────── */}
-          {showForm && isAdmin ? (
+          {showForm && isAdmin && installation.canOpenInstallForm ? (
             <div className="sd-install-form-card">
               <div className="sd-install-form-title">
                 {steamCMDRecoverable
@@ -937,8 +1001,10 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   ? '重试下载 / 继续安装'
                   : isQrAuthError || (authFailed && !isInstalled)
                   ? '重新输入 Steam 凭据'
-                  : isInstalled
-                    ? '重新安装 / 修复安装'
+                  : installation.kind === 'installed'
+                    ? '校验 / 修复安装'
+                    : needsInstallRepair
+                      ? '修复安装文件'
                     : canDirectRetry
                       ? '确认重试安装'
                       : '安装配置'}
@@ -948,10 +1014,12 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   ? '上次已进入 SteamCMD 兜底但授权或下载未完成；本次会直接复用已保存账号密码进入 SteamCMD 授权/下载，本地已有 SteamCMD 镜像时不会重新拉取。'
                   : postAuthRecoverable
                   ? 'Steam 认证已经成功，本次只会复用已保存凭据重试下载/后续安装步骤，不需要重新输入账号密码。'
-                  : isInstalled
+                  : installation.kind === 'installed'
                     ? '本次会跳过 steam-auth，复用已保存凭据和 SteamCMD 授权缓存直接下载/校验游戏文件，不需要重新输入账号密码。'
-                  : canDirectRetry && !isInstalled
-                    ? '将使用已保存的 Steam 凭据重新安装，只需确认镜像版本。'
+                    : needsInstallRepair
+                      ? '将复用已保存凭据校验并补齐缺失文件，不会删除现有存档。'
+                  : canDirectRetry
+                    ? '将使用已保存的 Steam 凭据继续未完成的安装，只需确认镜像版本。'
                   : '请输入 Steam 账号信息和 VNC 密码。密码不会出现在任何日志中。'}
               </p>
 
@@ -1045,9 +1113,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       ? '正在启动安装…'
                       : steamCMDRecoverable
                         ? '确认重试 SteamCMD'
-                        : isInstalled
+                        : installation.kind === 'installed' || needsInstallRepair
                           ? '确认修复 / 更新'
-                        : canDirectRetry && !isInstalled
+                        : canDirectRetry
                           ? '确认重试'
                           : '确认安装'}
                   </button>
@@ -1385,10 +1453,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
             <div className="sd-install-auth-placeholder">
               <img className="sd-install-auth-orb" src={STEAM_STEP_ICON_SRC} alt="" aria-hidden="true" />
               <p>
-                {isInstalled
+                {installation.kind === 'installed'
                   ? 'Steam 认证已完成。后续修复安装会复用已保存凭据与 SteamCMD 授权缓存。'
                   : isInstalling
                     ? '安装流程运行中，认证交互会在需要时显示在这里。'
+                    : needsInstallRepair
+                      ? '修复安装会复用已保存凭据；现有存档不会被删除。'
+                      : needsInstallationDiagnosis
+                        ? '当前异常尚未证实由安装缺失导致，请先查看诊断，避免重复安装。'
                     : '启动安装后，这里会显示扫码登录、Steam Guard 或验证码输入。'}
               </p>
             </div>

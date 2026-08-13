@@ -62,6 +62,9 @@ func validateSaveImportHostHandling(input *saveImportHostHandlingRequest) (mode,
 }
 
 func writeSaveImportSubmitError(w http.ResponseWriter, err error) {
+	if writeStardewMutationGuardConflict(w, err) {
+		return
+	}
 	if typed, ok := sj.AsImportTransactionError(err); ok {
 		switch typed.Code {
 		case sj.ImportErrorUnsupported, sj.ImportErrorSaveExists, sj.ImportErrorBusy,

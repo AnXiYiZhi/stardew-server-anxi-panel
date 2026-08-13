@@ -87,13 +87,16 @@ public sealed class PendingSaveCommandTracker
             return Create(command, CommandStatuses.Failed, "world_not_ready", "The game world is not ready.", now);
         if (pending is not null)
             return Create(command, CommandStatuses.Failed, "save_already_pending", "Another game save request is already pending.", now);
+		var expectation = SaveCommandContract.ParseExpectation(command);
+		if (!expectation.Valid)
+			return Create(command, CommandStatuses.Failed, expectation.ErrorCode, "The save command target payload is incomplete or invalid.", now);
 
         pending = command;
         deadline = now.Add(timeout);
         return Create(command, CommandStatuses.Running, "", "The game save request is registered and is waiting for GameLoop.Saved.", now);
     }
 
-    public CommandOutcome? Complete(DateTimeOffset now)
+    public CommandOutcome? Complete(string? verifiedTransactionId, string? actualSaveId, DateTimeOffset now)
     {
         if (pending is null)
             return null;
@@ -101,7 +104,19 @@ public sealed class PendingSaveCommandTracker
         var command = pending;
         pending = null;
         deadline = default;
-        return Create(command, CommandStatuses.Succeeded, "ok", "GameLoop.Saved confirmed that the requested game save completed.", now);
+		var outcome = SaveCommandContract.CompleteSavedEvent(command, actualSaveId, now);
+		var expectation = SaveCommandContract.ParseExpectation(command);
+		if (outcome.Status == CommandStatuses.Succeeded
+			&& expectation.IsTargeted
+			&& !string.Equals(expectation.TransactionId, verifiedTransactionId, StringComparison.Ordinal))
+		{
+			outcome.Status = CommandStatuses.Failed;
+			outcome.ErrorCode = "save_transaction_mismatch";
+			outcome.Message = "GameLoop.Saved completed for a save which was not verified for the command transaction.";
+			outcome.Details ??= new Dictionary<string, string>();
+			outcome.Details["verifiedTransactionId"] = verifiedTransactionId ?? "";
+		}
+		return outcome;
     }
 
     public CommandOutcome? Expire(DateTimeOffset now)
@@ -134,4 +149,58 @@ public sealed class PendingSaveCommandTracker
         CreatedAt = command.CreatedAt,
         UpdatedAt = now,
     };
+}
+
+public sealed class PendingSaveCommandJournal
+{
+    public const int CurrentSchemaVersion = 1;
+
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+    public PanelCommand Command { get; set; } = new();
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed record SaveCommandRecoveryDecision(bool CanResume, bool TerminalFailure, string ErrorCode);
+
+public static class SaveCommandRecoveryContract
+{
+    public static bool Matches(PendingSaveCommandJournal? journal, PanelCommand command)
+    {
+        if (journal is null || journal.SchemaVersion != PendingSaveCommandJournal.CurrentSchemaVersion)
+            return false;
+        if (!string.Equals(journal.Command.Id, command.Id, StringComparison.Ordinal)
+            || !string.Equals(journal.Command.Name, command.Name, StringComparison.Ordinal))
+            return false;
+
+        var persisted = SaveCommandContract.ParseExpectation(journal.Command);
+        var incoming = SaveCommandContract.ParseExpectation(command);
+        return persisted.Valid == incoming.Valid
+            && persisted.IsTargeted == incoming.IsTargeted
+            && string.Equals(persisted.TransactionId, incoming.TransactionId, StringComparison.Ordinal)
+            && string.Equals(persisted.SaveId, incoming.SaveId, StringComparison.Ordinal);
+    }
+
+    public static SaveCommandRecoveryDecision Evaluate(
+        PanelCommand command,
+        bool worldReady,
+        string? actualSaveId,
+        string? verifiedTransactionId,
+        string? verifiedSaveId)
+    {
+        if (string.IsNullOrWhiteSpace(command.Id) || !string.Equals(command.Name, "save-now", StringComparison.Ordinal))
+            return new(false, true, "save_journal_invalid");
+        var expectation = SaveCommandContract.ParseExpectation(command);
+        if (!expectation.Valid)
+            return new(false, true, expectation.ErrorCode);
+        if (!worldReady)
+            return new(false, false, "world_not_ready");
+        if (!expectation.IsTargeted)
+            return new(true, false, "");
+
+        if (!string.Equals(expectation.SaveId, actualSaveId?.Trim(), StringComparison.Ordinal)
+            || !string.Equals(expectation.SaveId, verifiedSaveId?.Trim(), StringComparison.Ordinal)
+            || !string.Equals(expectation.TransactionId, verifiedTransactionId?.Trim(), StringComparison.Ordinal))
+            return new(false, false, "save_target_not_ready");
+        return new(true, false, "");
+    }
 }

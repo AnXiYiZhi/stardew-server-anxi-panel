@@ -185,5 +185,7 @@ assert.match(qaSource, /SURFACE === 'app'/)
 assert.match(qaSource, /\/\\\/control-commands\$\//)
 assert.match(releaseWorkflow, /npm run test:responsive-layout/)
 assert.match(compatibilityWorkflow, /npm run test:responsive-layout/)
+assert.match(releaseWorkflow, /npm run test:new-game-idempotency/)
+assert.match(compatibilityWorkflow, /npm run test:new-game-idempotency/)
 
 console.log('responsive layout tests passed')

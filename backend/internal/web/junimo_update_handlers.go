@@ -92,6 +92,9 @@ func (s *server) handleInstanceJunimoUpdateConfigRepair(w http.ResponseWriter, r
 	}
 	result, err := repairer.RepairRuntimeStackConfig(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if validation, yes := sj.IsRuntimeUpdateValidationError(err); yes {
 			writeError(w, http.StatusConflict, validation.Code, validation.Message)
 			return
@@ -147,6 +150,9 @@ func (s *server) handleInstanceJunimoUpdateApply(w http.ResponseWriter, r *http.
 		}
 		status, err := applier.StartRuntimeUpdateApply(r.Context(), makeRegistryInstance(instance), actor.User.ID)
 		if err != nil {
+			if writeStardewMutationGuardConflict(w, err) {
+				return
+			}
 			if validation, yes := sj.IsRuntimeUpdateValidationError(err); yes {
 				writeError(w, http.StatusConflict, validation.Code, validation.Message)
 				return
@@ -190,6 +196,9 @@ func (s *server) handleInstanceJunimoUpdateRepair(w http.ResponseWriter, r *http
 	}
 	status, err := repairer.StartRuntimeUpdateRepair(r.Context(), makeRegistryInstance(instance), actor.User.ID)
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if validation, yes := sj.IsRuntimeUpdateValidationError(err); yes {
 			writeError(w, http.StatusConflict, validation.Code, validation.Message)
 			return
@@ -252,6 +261,9 @@ func (s *server) handleInstanceJunimoUpdateDryRun(w http.ResponseWriter, r *http
 		}
 		status, err := dryRunner.StartRuntimeUpdateDryRun(r.Context(), makeRegistryInstance(instance), actor.User.ID)
 		if err != nil {
+			if writeStardewMutationGuardConflict(w, err) {
+				return
+			}
 			if validation, isValidation := sj.IsRuntimeUpdateValidationError(err); isValidation {
 				writeError(w, http.StatusConflict, validation.Code, validation.Message)
 				return
@@ -387,6 +399,9 @@ func (s *server) handleInstanceSMAPIUpdateDryRun(w http.ResponseWriter, r *http.
 		}
 		status, err := workflow.RunSMAPIUpdateDryRun(r.Context(), makeRegistryInstance(instance))
 		if err != nil {
+			if writeStardewMutationGuardConflict(w, err) {
+				return
+			}
 			s.logger.Error("SMAPI dry-run failed", "instance", instance.ID, "error", err)
 			writeError(w, http.StatusInternalServerError, "smapi_dry_run_failed", "SMAPI dry-run 失败")
 			return
@@ -431,6 +446,9 @@ func (s *server) handleInstanceSMAPIUpdateApply(w http.ResponseWriter, r *http.R
 		}
 		status, err := workflow.StartSMAPIUpdateApply(r.Context(), makeRegistryInstance(instance), actor.User.ID)
 		if err != nil {
+			if writeStardewMutationGuardConflict(w, err) {
+				return
+			}
 			if validation, yes := sj.IsRuntimeUpdateValidationError(err); yes {
 				writeError(w, http.StatusConflict, validation.Code, validation.Message)
 				return

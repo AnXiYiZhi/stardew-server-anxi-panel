@@ -85,6 +85,13 @@ func syncControlCommandResults(ctx context.Context, store *storage.Store, instan
 	}
 	for _, file := range files {
 		o := file.Outcome
+		protected, protectErr := sj.NewGameCommandResultProtected(instance.DataDir, o.CommandID)
+		if protectErr != nil {
+			return protectErr
+		}
+		if protected {
+			continue
+		}
 		if err := store.ImportControlCommandResult(ctx, storage.ImportControlCommandResultParams{
 			CommandID: o.CommandID, InstanceID: instance.ID, Status: string(o.Status), ErrorCode: safeCommandField(o.ErrorCode, 128),
 			ResultMessage: safeCommandResultMessage(o.Message), ResultDetails: safeCommandDetails(o.Details),

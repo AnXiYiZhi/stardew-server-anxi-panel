@@ -53,6 +53,14 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {
 		return
 	}
+	// This coordinator is started automatically during Panel bootstrap. Never
+	// let that automatic path resume, stop, repair, or replace a runtime owned by
+	// an unfinished new-game transaction; only an explicit user start may resume
+	// that transaction through the lifecycle runner.
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		d.logger.Warn("skip required runtime update while new-game transaction owns instance", "instance", instance.ID, "error", err)
+		return
+	}
 	if instance.State == storage.InstanceStateUninitialized || instance.State == storage.InstanceStateAdminCreated {
 		return
 	}
@@ -106,15 +114,22 @@ func (d *Driver) requireCurrentRuntimeStack(instance registry.Instance) error {
 }
 
 func (d *Driver) runRequiredRuntimeUpdate(ctx context.Context, instance registry.Instance, manifest sjconfig.RuntimeStackManifest) error {
+	// Recheck in the goroutine before its first durable write. This closes the
+	// scheduling window between StartRequiredRuntimeUpdate and this runner.
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	status := RequiredRuntimeUpdateStatus{SchemaVersion: 1, PanelVersion: d.panelVersion, StackVersion: manifest.StackVersion, Phase: requiredRuntimePhaseChecking, StartedAt: now, UpdatedAt: now}
 	set := func(phase, code, message string, terminal bool) error {
-		status.Phase, status.ErrorCode, status.Error = phase, code, message
-		status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-		if terminal {
-			status.FinishedAt = status.UpdatedAt
-		}
-		return writeRequiredRuntimeUpdateStatus(instance.DataDir, status)
+		return d.WithMutationOwnership(ctx, instance, func() error {
+			status.Phase, status.ErrorCode, status.Error = phase, code, message
+			status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+			if terminal {
+				status.FinishedAt = status.UpdatedAt
+			}
+			return writeRequiredRuntimeUpdateStatus(instance.DataDir, status)
+		})
 	}
 	if err := set(requiredRuntimePhaseChecking, "", "", false); err != nil {
 		return err

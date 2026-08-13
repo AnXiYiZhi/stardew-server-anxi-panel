@@ -19,6 +19,9 @@ type RuntimeStackConfigRepairResult struct {
 }
 
 func (d *Driver) RepairRuntimeStackConfig(ctx context.Context, instance registry.Instance) (RuntimeStackConfigRepairResult, error) {
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeStackConfigRepairResult{}, err
+	}
 	if d.jobs == nil {
 		return RuntimeStackConfigRepairResult{}, errors.New("runtime config repair service is not configured")
 	}
@@ -31,6 +34,9 @@ func (d *Driver) RepairRuntimeStackConfig(ctx context.Context, instance registry
 
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return RuntimeStackConfigRepairResult{}, err
+	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
 		TargetType: "instance",
 		TargetID:   instance.ID,

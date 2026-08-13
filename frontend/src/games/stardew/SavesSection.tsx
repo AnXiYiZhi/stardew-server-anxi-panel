@@ -165,6 +165,19 @@ function SaveCard({
 
 // ── SavesSection ──────────────────────────────────────────────────────────────
 
+function createNewGameRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')
+  }
+  // The key is an idempotency identity, not an authentication secret. This
+  // compatibility branch only serves older non-secure embedded browsers.
+  return `compat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
 export function SavesSection({
   state,
   isAdmin,
@@ -200,6 +213,7 @@ export function SavesSection({
   // 新建游戏弹窗
   const [showNewGameModal, setShowNewGameModal] = useState(false)
   const [newGameError, setNewGameError] = useState('')
+  const newGameRequestRef = useRef<{ fingerprint: string; requestId: string } | null>(null)
 
   // 上传存档弹窗
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -395,7 +409,15 @@ export function SavesSection({
     setBusy(true)
     setNewGameError('')
     try {
-      const res = await createNewGame(cfg)
+      const fingerprint = JSON.stringify(cfg)
+      if (newGameRequestRef.current?.fingerprint !== fingerprint) {
+        newGameRequestRef.current = {
+          fingerprint,
+          requestId: createNewGameRequestId(),
+        }
+      }
+      const res = await createNewGame(cfg, newGameRequestRef.current.requestId)
+      newGameRequestRef.current = null
       setShowNewGameModal(false)
       await loadSaves()
       onJobStarted(res.jobId)

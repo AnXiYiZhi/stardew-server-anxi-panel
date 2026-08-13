@@ -40,7 +40,13 @@ func readWarpHomeBridgeStatus(dataDir string) WarpHomeBridgeStatus {
 // WarpPlayerHome asks the embedded control mod to call JunimoServer's own
 // FarmerExtensions.WarpHome helper for the target online farmhand.
 func (d *Driver) WarpPlayerHome(ctx context.Context, instance registry.Instance, uniqueMultiplayerID, name string) (*CommandRunResult, error) {
-	return warpPlayerHome(instance, uniqueMultiplayerID, name)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var warpErr error
+		result, warpErr = warpPlayerHome(instance, uniqueMultiplayerID, name)
+		return warpErr
+	})
+	return result, err
 }
 
 // warpPlayerHome is the testable core of Driver.WarpPlayerHome.

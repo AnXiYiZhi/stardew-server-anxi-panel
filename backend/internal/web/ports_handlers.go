@@ -66,11 +66,15 @@ func (s *server) handleInstanceVNCConfig(w http.ResponseWriter, r *http.Request,
 		updates = sjconfig.EmptyEnvTemplate()
 		updates["VNC_PORT"] = port
 	}
-	if err := os.MkdirAll(instance.DataDir, 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, "env_write_failed", sanitizeErrorMsg(err, "更新 VNC 端口失败"))
-		return
-	}
-	if err := sjconfig.UpdateEnvFile(envPath, updates); err != nil {
+	if err := s.withStardewMutationOwnership(r.Context(), instance, func() error {
+		if err := os.MkdirAll(instance.DataDir, 0o755); err != nil {
+			return err
+		}
+		return sjconfig.UpdateEnvFile(envPath, updates)
+	}); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "env_write_failed", sanitizeErrorMsg(err, "更新 VNC 端口失败"))
 		return
 	}

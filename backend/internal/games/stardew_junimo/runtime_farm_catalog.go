@@ -17,7 +17,11 @@ const (
 	runtimeFarmCatalogSchemaVersion = 2
 	runtimeCatalogRequestVersion    = 1
 	maxRuntimeOptionsBytes          = 2 * 1024 * 1024
-	runtimeCatalogRequestTTL        = 10 * time.Minute
+	// A new-game lifecycle can legitimately spend 20m waiting for Control and
+	// up to 90m across durability/recovery phases. Keep the request valid for the
+	// same bounded window as its persistent marker so manual recovery never
+	// inherits an already-expired catalog identity.
+	runtimeCatalogRequestTTL = newGameMarkerTTL
 )
 
 type runtimeCatalogRequest struct {
@@ -79,6 +83,33 @@ func (tx *newGameTransaction) prepareRuntimeCatalogRequest() error {
 	tx.record.ExpectedFingerprint = fingerprint
 	tx.record.Stage = newGameStateCatalogAsked
 	return tx.persist()
+}
+
+func (tx *newGameTransaction) refreshRuntimeCatalogRequest() error {
+	if err := tx.assertOwner(); err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(farmCatalogRequestPath(tx.dataDir))
+	if err != nil {
+		return &NewGameTransactionError{Code: "runtime_catalog_prepare_failed", Message: "恢复时读取运行时农场目录请求失败", Cause: err}
+	}
+	var request runtimeCatalogRequest
+	if err := json.Unmarshal(raw, &request); err != nil || request.SchemaVersion != runtimeCatalogRequestVersion ||
+		request.RequestID != tx.record.TransactionID || request.TransactionID != tx.record.TransactionID ||
+		request.RequestedFarmType != tx.record.RequestedFarmType {
+		return &NewGameTransactionError{Code: "runtime_catalog_prepare_failed", Message: "恢复时运行时农场目录请求身份无效", Cause: err}
+	}
+	now := time.Now().UTC()
+	request.GeneratedAt = now
+	request.ExpiresAt = now.Add(runtimeCatalogRequestTTL)
+	payload, err := json.MarshalIndent(request, "", "  ")
+	if err != nil {
+		return &NewGameTransactionError{Code: "runtime_catalog_prepare_failed", Message: "恢复时生成运行时农场目录请求失败", Cause: err}
+	}
+	if err := tx.writeJSON(farmCatalogRequestPath(tx.dataDir), payload, 0o644); err != nil {
+		return &NewGameTransactionError{Code: "runtime_catalog_prepare_failed", Message: "恢复时刷新运行时农场目录请求失败", Cause: err}
+	}
+	return nil
 }
 
 func expectedRuntimeModFingerprint(dataDir string) (string, error) {

@@ -680,3 +680,39 @@
 - 影响：运行栈 apply/恢复验证和 `steam_auth_ready` 检查文案；无 API 路由或 JSON shape 变化，无认证卷、Compose 重建顺序或凭据处理变化。
 - 验证：聚焦单元覆盖 HTTP 500、503 current/ready=true 以及 current `accounts=null/number/object` 拒绝，并固定真实 503 `ready=false` 合约；Docker integration 同时验证 200 ready 成功和真实 404 fail closed。正式 v0.4.10 又完成 v0.4.9/v0.3.2 Web 一键升级、Panel 自更新候选 120 秒 unhealthy 自动回滚、健康 Panel 候选重试成功、数据/非目标资源保护和重启；独立 runtime Docker integration 证明 steam-auth unhealthy + 合法接口会继续。Release/三仓结果见本文件顶部与 `docs/09-image-build.md`。
 - 下一步：不要重新把 Steam 登录/ticket 或 auth Docker health 提升为升级硬门槛。若扩展 schema/status 白名单，必须同时补 HTTP 状态、坏 schema、真实容器与完整 apply/rollback 证据。
+
+# STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，代码完成，待正式发布）
+
+## 改了什么
+
+- 启动验收增加独立 `ControlRuntimeGate`。缺少本次 `options.json` 是 pending，实例保持 `starting/control_runtime_starting` 并等待完整 20 分钟预算；合法快照明确给出错误版本才是 `control_runtime_version_mismatch`。manifest/DLL/JSON 损坏使用独立 invalid code，超时安全停服为 `control_runtime_start_timeout`，停服也失败才是 `control_runtime_cleanup_failed`。
+- `ReconcileState` 尊重活动 lifecycle owner 和持久 new-game owner；容器存在但 Control 未 ready 时不得提前发布 running。启动前旧 Control snapshot 无法安全清理时 fail closed。
+- `/state` 新增 `installationDiagnostic`，把必需文件、Compose、镜像、server 容器、Control static/runtime 和推荐动作分开。Docker/镜像探针暂时不可用时返回 unknown/diagnose，绝不能由 `state=error` 推导“未安装”。
+- 新建档入口强制使用 `Idempotency-Key`、exclusive lifecycle job 和实例级持久 owner/token；缺 key 返回 428，零 job/零 owner。startup 与 HTTP writer 在事务创建时固定；Control、gameloader 或新目录任一前进后永久禁止再次 POST。相同 key+配置返回原 job，不同配置冲突；只有证明旧 job 已终态，才可轮换 token 并恢复原事务。owner 由完整 staging + fsync + no-replace rename 原子抢占，历史空目录仅在零事务/零运行进展证据时才可隔离恢复。
+- Control 升至 `0.3.1`。成功门禁固定为当前事务 `save-loaded`、完整内存定制和唯一 host 正确、同一持久 `save-now commandId` 收到精确 `GameLoop.Saved`、两轮稳定 XML/SaveGameInfo 字段与 SHA-256 正确；随后才写 profile、success 并释放 owner。Control 在打开保存菜单前持久 `pending-save-command.json`，崩溃后只恢复同 ID，终态回执落盘后才清除。
+- 普通 Stop/Restart/Restore 不能取消未结束 owner。回滚使用 `rolling_back` 与每步 write-ahead journal；中断后手动 Start 只停服并继续回滚，不 ComposeUp/POST。Panel 或宿主中断后不自动启动；Runtime/SMAPI 恢复也只收敛/回滚静态材料并保持停服，用户手动启动才恢复同一建档事务或普通运行。
+
+## 影响文件与接口
+
+- 后端：`control_runtime_gate.go`、`installation_diagnostic.go`、`driver.go`、`lifecycle.go`、`new_game_{transaction,transaction_owner,progress,lifecycle,durability,durability_transaction}.go`，以及对应 Web state/lifecycle handlers 和测试。
+- Control：`embedded/smapi-mod-src/{ControlContract,ModEntry,DeferredCommandOutcomes}.cs`、契约可执行程序、两份 manifest、嵌入 DLL 与 `config/runtime_stack_manifest.json`；运行栈 identity 为 `control-0.3.1`。
+- HTTP：`GET /api/instances/:id/state` 可选增加 `installationDiagnostic`；`POST /api/instances/:id/saves/custom-new-game` 必须带 `Idempotency-Key`，成功仍以 202 返回 `{jobId}`，缺 header 返回 HTTP 428 / `idempotency_key_required`。
+- 前端/API：`createNewGame` 显式发送 request ID；新建档弹窗只在请求尚未被 202 接受时为相同配置复用 key。安装页、桌面/移动壳共用诊断分类器；详情见最新 frontend handoff。
+
+## 如何验证
+
+- Control 启动：覆盖 pending→ready、pending timeout、明确 mismatch、invalid snapshot、Compose cleanup 失败、snapshot cleanup 失败、context cancel 和 Reconcile 不提前提升。
+- 建档：覆盖 owner 并发 winner、same-key same-config 原 job、same-key different-config 冲突、token 丢失/轮换恢复、startup writer POST=0、loader 先前进、多个目录 ambiguous、unknown 后不重提、目标绑定与手动恢复。
+- 耐久：用精确 transaction/save fixture 覆盖旧/错 `save-loaded`、所有身份/外观/颜色字段独立错误、players 无唯一 host、save-now 旧/错/unknown/expired、同 ID pending journal 恢复、GameLoop.Saved 身份、主 XML/SaveGameInfo 字段与双稳定 hash；Control 必须用真实 game-data 编译并跑契约矩阵。
+- 回滚/互斥：覆盖 rollback plan 持久失败零变更、quarantine/每个 restore 步骤中断恢复、ComposeDown 失败保留 owner，以及所有存档/安装/更新/玩家/重启计划变更入口在 owner 下零写入。宿主恢复用例要断言 `ServerWasRunning=true` 仍零 ComposeUp。
+- 2026-08-13 当前源码已通过：Control 契约与真实只读 game-data 0-error 编译，编译/嵌入/清单 SHA-256=`3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce`；Go 全量 test/vet/build；前端 14 项状态测试/audit/build；脚本/ShellCheck；兼容矩阵/remote artifacts；runtime/updater Docker integration；网站 build。隔离真实 new-game E2E 的 startup writer POST=0、HTTP writer POST=1 且旧档双哈希保持，两条都完成四段耐久门禁。实测还固定了 Stardew 1.6 `Gender/gender`、可空旧 `isMale` 和 `shirtItem/pantsItem.itemId` 磁盘契约。
+- 上述是 pre-candidate 证据。最终 commit 候选仍须跑正式 Web 升级/回滚、图形化 Compose conversion、升级后功能/Browser 与生产真机，证据写入 `docs/09-image-build.md` 后才能 tag。
+
+## 下一步注意事项
+
+- 不要把 `options.json` 不存在、Docker probe unknown 或 `control.runtime=not_observed` 改回版本 mismatch/未安装。只有明确、可解析且错误的版本才使用 mismatch。
+- 一旦 transaction 的 `commandCalled`、`progressObserved`、unknown 或 ambiguous 为真，任何自动恢复、按钮重试和运维脚本都不得调用第二次 `/newgame`。不要只以“尚无完整 XML”判断是否可以重提。
+- Control 成功状态必须继续是 `save-loaded` 且包含冻结的 customization identity；不得用旧的临时状态、只读内存字段或“磁盘 XML 已出现”替代同 ID save-now 与 XML 终态。
+- owner 文件是安全锁，不是缓存。损坏/缺失 transaction 时返回 recovery required 并保留目录，不得静默删除；support bundle 继续排除 owner、事务、存档和命令结果正文。
+- 本次正式版本还要一起收口 `92f3be6bb2731358420ba315ac18029c2506d81f`（Release `run.sh` 必须含 swap/swappiness=60 修复）与 `621c5645e0048da7c4793035615438ed78fc7002`（图形化 Compose 自动标准化）。两者虽已在 `origin/main`，最终候选/升级后/生产真机证据仍未完成，不能在 handoff 或 Release notes 中提前写成真机通过。
+- 不要为修复 transaction recovery 顺手启用 Docker restart policy 或 Panel 启动自动 ComposeUp。宿主重启后的普通实例由用户手动开启，这是当前明确产品策略。

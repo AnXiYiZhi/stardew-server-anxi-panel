@@ -97,8 +97,11 @@ var otherSave = new PanelCommand { Id = "11111111111111111111111111111111", Name
 var duplicateSave = tracker.Begin(otherSave, true, now, TimeSpan.FromSeconds(30));
 if (duplicateSave.Status != CommandStatuses.Failed || duplicateSave.ErrorCode != "save_already_pending" || duplicateSave.CommandId != otherSave.Id)
     throw new InvalidOperationException("a concurrent save command was not rejected with its own command ID");
-Expect(tracker.Complete(now.AddSeconds(1))!, CommandStatuses.Succeeded, "ok");
-if (tracker.Complete(now.AddSeconds(2)) is not null)
+var genericTrackedSave = tracker.Complete("frozen-tx-must-not-leak", "Current_1", now.AddSeconds(1))!;
+Expect(genericTrackedSave, CommandStatuses.Succeeded, "ok");
+if (genericTrackedSave.Details is null || genericTrackedSave.Details.ContainsKey("transactionId"))
+    throw new InvalidOperationException("generic tracker completion fabricated a transaction ID");
+if (tracker.Complete("", "Current_1", now.AddSeconds(2)) is not null)
     throw new InvalidOperationException("one Saved event completed a save command more than once");
 Expect(tracker.Begin(command, false, now, TimeSpan.FromSeconds(30)), CommandStatuses.Failed, "world_not_ready");
 Expect(tracker.Begin(command, true, now, TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
@@ -109,6 +112,125 @@ Expect(tracker.Begin(command, true, now, TimeSpan.FromSeconds(30)), CommandStatu
 Expect(tracker.Fail(now.AddSeconds(1), "save_ui_busy", "busy")!, CommandStatuses.Failed, "save_ui_busy");
 if (tracker.PendingCommandId is not null)
     throw new InvalidOperationException("failed save command remained pending");
+
+var targetedSaveCommand = new PanelCommand
+{
+    Id = command.Id,
+    Name = "save-now",
+    CreatedAt = now,
+    Payload = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        [SaveCommandContract.TransactionIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("tx-1"),
+        [SaveCommandContract.SaveIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("Target_1"),
+    },
+};
+var saveExpectation = SaveCommandContract.ParseExpectation(targetedSaveCommand);
+if (!saveExpectation.Valid || !saveExpectation.IsTargeted
+    || saveExpectation.TransactionId != "tx-1" || saveExpectation.SaveId != "Target_1")
+{
+    throw new InvalidOperationException("targeted save command payload was not parsed exactly");
+}
+var targetedSaveSuccess = SaveCommandContract.CompleteSavedEvent(targetedSaveCommand, "Target_1", now.AddSeconds(1));
+Expect(targetedSaveSuccess, CommandStatuses.Succeeded, "ok");
+if (targetedSaveSuccess.Details is null
+    || targetedSaveSuccess.Details.GetValueOrDefault("event") != SaveCommandContract.SavedEventName
+    || targetedSaveSuccess.Details.GetValueOrDefault("saveId") != "Target_1"
+    || targetedSaveSuccess.Details.GetValueOrDefault("expectedSaveId") != "Target_1"
+    || targetedSaveSuccess.Details.GetValueOrDefault("transactionId") != "tx-1")
+{
+    throw new InvalidOperationException("targeted save success details did not preserve the expected target");
+}
+var targetedSaveMismatch = SaveCommandContract.CompleteSavedEvent(targetedSaveCommand, "Old_1", now.AddSeconds(1));
+Expect(targetedSaveMismatch, CommandStatuses.Failed, "save_target_mismatch");
+if (targetedSaveMismatch.Details is null
+    || targetedSaveMismatch.Details.GetValueOrDefault("saveId") != "Old_1"
+    || targetedSaveMismatch.Details.GetValueOrDefault("expectedSaveId") != "Target_1"
+    || targetedSaveMismatch.Details.GetValueOrDefault("transactionId") != "tx-1")
+{
+    throw new InvalidOperationException("save target mismatch details did not report expected and actual identities");
+}
+var targetedTracker = new PendingSaveCommandTracker();
+Expect(targetedTracker.Begin(targetedSaveCommand, true, now, TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
+Expect(targetedTracker.Complete("tx-1", "Target_1", now.AddSeconds(1))!, CommandStatuses.Succeeded, "ok");
+Expect(targetedTracker.Begin(targetedSaveCommand, true, now, TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
+Expect(targetedTracker.Complete("", "Old_1", now.AddSeconds(1))!, CommandStatuses.Failed, "save_target_mismatch");
+if (targetedTracker.PendingCommandId is not null)
+    throw new InvalidOperationException("a mismatched Saved event left the targeted save command pending");
+Expect(targetedTracker.Begin(targetedSaveCommand, true, now, TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
+var transactionMismatch = targetedTracker.Complete("other-tx", "Target_1", now.AddSeconds(1))!;
+Expect(transactionMismatch, CommandStatuses.Failed, "save_transaction_mismatch");
+if (transactionMismatch.Details is null
+    || transactionMismatch.Details.GetValueOrDefault("transactionId") != "tx-1"
+    || transactionMismatch.Details.GetValueOrDefault("verifiedTransactionId") != "other-tx")
+{
+    throw new InvalidOperationException("save transaction mismatch details did not preserve expected and verified identities");
+}
+var genericSaveCommand = new PanelCommand { Id = command.Id, Name = "save-now", CreatedAt = now };
+var genericSaveSuccess = SaveCommandContract.CompleteSavedEvent(genericSaveCommand, "Current_1", now.AddSeconds(1));
+Expect(genericSaveSuccess, CommandStatuses.Succeeded, "ok");
+if (genericSaveSuccess.Details is null
+    || genericSaveSuccess.Details.GetValueOrDefault("saveId") != "Current_1"
+    || genericSaveSuccess.Details.ContainsKey("transactionId")
+    || genericSaveSuccess.Details.ContainsKey("expectedSaveId"))
+{
+    throw new InvalidOperationException("an unbound save command received stale target details");
+}
+var incompleteSaveCommand = new PanelCommand
+{
+    Id = command.Id,
+    Name = "save-now",
+    CreatedAt = now,
+    Payload = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        [SaveCommandContract.TransactionIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("tx-1"),
+    },
+};
+Expect(SaveCommandContract.CompleteSavedEvent(incompleteSaveCommand, "Target_1", now.AddSeconds(1)),
+    CommandStatuses.Failed, "save_target_invalid");
+var invalidTargetTracker = new PendingSaveCommandTracker();
+Expect(invalidTargetTracker.Begin(incompleteSaveCommand, true, now, TimeSpan.FromSeconds(30)),
+    CommandStatuses.Failed, "save_target_invalid");
+if (invalidTargetTracker.PendingCommandId is not null)
+    throw new InvalidOperationException("an invalid targeted save command became pending");
+var wrongTypeSaveCommand = new PanelCommand
+{
+    Id = command.Id,
+    Name = "save-now",
+    CreatedAt = now,
+    Payload = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        [SaveCommandContract.TransactionIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("tx-1"),
+        [SaveCommandContract.SaveIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement(1),
+    },
+};
+Expect(SaveCommandContract.CompleteSavedEvent(wrongTypeSaveCommand, "Target_1", now.AddSeconds(1)),
+    CommandStatuses.Failed, "save_target_invalid");
+
+var saveJournal = new PendingSaveCommandJournal { Command = targetedSaveCommand, UpdatedAt = now };
+if (!SaveCommandRecoveryContract.Matches(saveJournal, targetedSaveCommand))
+    throw new InvalidOperationException("durable save journal did not match its original command");
+var differentTarget = new PanelCommand
+{
+    Id = targetedSaveCommand.Id,
+    Name = targetedSaveCommand.Name,
+    CreatedAt = targetedSaveCommand.CreatedAt,
+    Payload = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        [SaveCommandContract.TransactionIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("tx-1"),
+        [SaveCommandContract.SaveIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("Other_1"),
+    },
+};
+if (SaveCommandRecoveryContract.Matches(saveJournal, differentTarget))
+    throw new InvalidOperationException("durable save journal accepted a different target");
+var waitingResume = SaveCommandRecoveryContract.Evaluate(targetedSaveCommand, true, "Old_1", "tx-1", "Old_1");
+if (waitingResume.CanResume || waitingResume.TerminalFailure || waitingResume.ErrorCode != "save_target_not_ready")
+    throw new InvalidOperationException("targeted save recovery did not wait for the exact verified world");
+var readyResume = SaveCommandRecoveryContract.Evaluate(targetedSaveCommand, true, "Target_1", "tx-1", "Target_1");
+if (!readyResume.CanResume || readyResume.TerminalFailure)
+    throw new InvalidOperationException("targeted save recovery rejected the exact verified world");
+var restartTracker = new PendingSaveCommandTracker();
+Expect(restartTracker.Begin(saveJournal.Command, true, now.AddMinutes(5), TimeSpan.FromSeconds(30)), CommandStatuses.Running, "");
+Expect(restartTracker.Complete("tx-1", "Target_1", now.AddMinutes(5).AddSeconds(1))!, CommandStatuses.Succeeded, "ok");
 
 var frontier = new RuntimeFarmType("FrontierFarm", "边境农场", false);
 var meadowlands = new RuntimeFarmType("MeadowlandsFarm", "草原农场", false, "builtin");
@@ -149,6 +271,19 @@ var marker = new PendingNewGameMarker
 };
 if (!NewGameControlContract.ValidateMarker(marker, init, now).Valid)
     throw new InvalidOperationException("matching transaction marker was rejected");
+if (NewGameControlContract.CanCustomizeLoadedSave(true, marker, init, "new-save", now))
+    throw new InvalidOperationException("SaveCreating evidence bypassed a missing exact target");
+marker.TargetSaveId = "new-save";
+if (!NewGameControlContract.CanCustomizeLoadedSave(true, marker, init, "new-save", now))
+    throw new InvalidOperationException("an exact target was rejected when SaveCreating evidence was present");
+if (!NewGameControlContract.CanCustomizeLoadedSave(false, marker, init, "new-save", now))
+    throw new InvalidOperationException("an exact recovery target was rejected");
+if (NewGameControlContract.CanCustomizeLoadedSave(true, marker, init, "other-save", now))
+    throw new InvalidOperationException("SaveCreating evidence allowed a non-target loaded save");
+if (NewGameControlContract.CanCustomizeLoadedSave(false, marker, init, "other-save", now))
+    throw new InvalidOperationException("a non-target recovery save was allowed to receive customization");
+if (NewGameControlContract.CanCustomizeLoadedSave(true, marker, init, "new-save ", now))
+    throw new InvalidOperationException("a non-exact target identity was accepted");
 if (NewGameControlContract.ValidateMarker(marker, new InitConfig { TransactionId = otherSave.Id }, now).ErrorCode != "transaction_mismatch")
     throw new InvalidOperationException("mismatched transaction marker was accepted");
 marker.ExpiresAt = now.AddSeconds(-1);
@@ -156,6 +291,152 @@ if (NewGameControlContract.ValidateMarker(marker, init, now).ErrorCode != "marke
     throw new InvalidOperationException("expired marker was accepted");
 if (NewGameControlContract.ShouldClearMarkerOnSaveLoaded)
     throw new InvalidOperationException("SaveLoaded must not clear an active backend transaction marker");
+
+var customizationConfig = new InitConfig
+{
+    FarmerName = "Leah",
+    FarmName = "Blue Farm",
+    FavoriteThing = "",
+    Gender = "FEMALE",
+    PetType = "dog",
+    PetBreed = "",
+	Skin = 3,
+	Hair = 14,
+	Shirt = "1001",
+	Pants = "1002",
+	Accessory = 7,
+	EyeColor = new RgbColor { R = 11, G = 22, B = 33 },
+	HairColor = new RgbColor { R = 44, G = 55, B = 66 },
+	PantsColor = new RgbColor { R = 77, G = 88, B = 99 },
+};
+CharacterCustomizationSnapshot CoreSnapshot(
+    string farmerName = "Leah",
+    string farmName = "Blue Farm",
+    string favoriteThing = "Anxi",
+    string gender = "female",
+    string petType = "Dog",
+    string petBreed = "0",
+	int? skin = 3,
+	int? hair = 14,
+	string? shirt = "1001",
+	string? pants = "1002",
+	int? accessory = 7,
+	int eyeR = 11,
+	int eyeG = 22,
+	int eyeB = 33,
+	int hairR = 44,
+	int hairG = 55,
+	int hairB = 66,
+	int pantsR = 77,
+	int pantsG = 88,
+	int pantsB = 99,
+	bool isCustomized = true) => new()
+{
+    FarmerName = farmerName,
+    FarmName = farmName,
+    FavoriteThing = favoriteThing,
+    Gender = gender,
+    PetType = petType,
+    PetBreed = petBreed,
+	Skin = skin,
+	Hair = hair,
+	Shirt = shirt,
+	Pants = pants,
+	Accessory = accessory,
+	EyeColor = new RgbColor { R = eyeR, G = eyeG, B = eyeB },
+	HairColor = new RgbColor { R = hairR, G = hairG, B = hairB },
+	PantsColor = new RgbColor { R = pantsR, G = pantsG, B = pantsB },
+	IsCustomized = isCustomized,
+};
+var expectedCore = CharacterCustomizationContract.ExpectedCore(customizationConfig);
+if (!CharacterCustomizationContract.CoreEquals(expectedCore, CoreSnapshot()))
+    throw new InvalidOperationException("normalized expected character core did not match an equal snapshot");
+if (!CharacterCustomizationContract.MatchesCore(customizationConfig, CoreSnapshot()))
+    throw new InvalidOperationException("character core did not match its init config");
+var shirtMismatchFields = CharacterCustomizationContract.MismatchFields(customizationConfig, CoreSnapshot(shirt: "different"));
+if (shirtMismatchFields.Length != 1 || shirtMismatchFields[0] != "shirt")
+	throw new InvalidOperationException("character mismatch diagnostics did not identify the exact field");
+var clampedColors = CharacterCustomizationContract.ExpectedCore(new InitConfig
+{
+	EyeColor = new RgbColor { R = -1, G = 256, B = 12 },
+	HairColor = new RgbColor { R = 300, G = 13, B = -2 },
+	PantsColor = new RgbColor { R = 14, G = -3, B = 400 },
+});
+if (clampedColors.EyeColor is not { R: 0, G: 255, B: 12 }
+	|| clampedColors.HairColor is not { R: 255, G: 13, B: 0 }
+	|| clampedColors.PantsColor is not { R: 14, G: 0, B: 255 })
+{
+	throw new InvalidOperationException("expected appearance colors did not match ToColor's 0..255 channel clamp");
+}
+foreach (var mismatch in new[]
+{
+    CoreSnapshot(farmerName: "Other"),
+    CoreSnapshot(farmName: "Other Farm"),
+    CoreSnapshot(favoriteThing: "Other"),
+    CoreSnapshot(gender: "male"),
+    CoreSnapshot(petType: "Cat"),
+    CoreSnapshot(petBreed: "1"),
+	CoreSnapshot(skin: 4),
+	CoreSnapshot(hair: 15),
+	CoreSnapshot(shirt: "1003"),
+	CoreSnapshot(pants: "1004"),
+	CoreSnapshot(accessory: 8),
+	CoreSnapshot(eyeR: 12),
+	CoreSnapshot(eyeG: 23),
+	CoreSnapshot(eyeB: 34),
+	CoreSnapshot(hairR: 45),
+	CoreSnapshot(hairG: 56),
+	CoreSnapshot(hairB: 67),
+	CoreSnapshot(pantsR: 78),
+	CoreSnapshot(pantsG: 89),
+	CoreSnapshot(pantsB: 100),
+	CoreSnapshot(isCustomized: false),
+})
+{
+    if (CharacterCustomizationContract.CoreEquals(expectedCore, mismatch)
+		|| CharacterCustomizationContract.MatchesCore(customizationConfig, mismatch))
+	{
+		throw new InvalidOperationException("a configured character identity or appearance mismatch was accepted");
+	}
+}
+if (CharacterCustomizationContract.CoreEquals(null, CoreSnapshot())
+    || CharacterCustomizationContract.CoreEquals(expectedCore, null)
+    || CharacterCustomizationContract.MatchesCore(null, CoreSnapshot()))
+{
+    throw new InvalidOperationException("a missing character core/config was accepted");
+}
+var sparseCustomizationConfig = new InitConfig
+{
+	FarmerName = "Leah",
+	FarmName = "Blue Farm",
+	FavoriteThing = "",
+	Gender = "FEMALE",
+	PetType = "dog",
+	PetBreed = "",
+};
+if (!CharacterCustomizationContract.MatchesCore(sparseCustomizationConfig, CoreSnapshot())
+	|| CharacterCustomizationContract.MatchesCore(sparseCustomizationConfig, CoreSnapshot(isCustomized: false)))
+{
+	throw new InvalidOperationException("unspecified appearance fields were not optional or isCustomized was not enforced");
+}
+var serializedCustomizationStatus = System.Text.Json.JsonSerializer.Serialize(
+	new RuntimeStatus { Customization = CoreSnapshot() }, ContractJson.Options);
+using (var customizationDocument = System.Text.Json.JsonDocument.Parse(serializedCustomizationStatus))
+{
+	var customizationJSON = customizationDocument.RootElement.GetProperty("customization");
+	if (customizationJSON.GetProperty("skin").GetInt32() != 3
+		|| customizationJSON.GetProperty("hair").GetInt32() != 14
+		|| customizationJSON.GetProperty("shirt").GetString() != "1001"
+		|| customizationJSON.GetProperty("pants").GetString() != "1002"
+		|| customizationJSON.GetProperty("accessory").GetInt32() != 7
+		|| customizationJSON.GetProperty("eyeColor").GetProperty("r").GetInt32() != 11
+		|| customizationJSON.GetProperty("hairColor").GetProperty("g").GetInt32() != 55
+		|| customizationJSON.GetProperty("pantsColor").GetProperty("b").GetInt32() != 99
+		|| !customizationJSON.GetProperty("isCustomized").GetBoolean())
+	{
+		throw new InvalidOperationException("customization status JSON did not expose the complete camelCase appearance snapshot");
+	}
+}
 
 var fingerprintA = NewGameControlContract.ComputeModFingerprint(new[]
 {

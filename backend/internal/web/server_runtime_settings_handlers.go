@@ -1,8 +1,10 @@
 package web
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 )
 
@@ -47,7 +49,21 @@ func (s *server) handleInstanceServerRuntimeSettings(w http.ResponseWriter, r *h
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := sj.UpdateServerRuntimeSettings(instance.DataDir, body); err != nil {
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	updater, ok := driver.(interface {
+		UpdateServerRuntimeSettings(context.Context, registry.Instance, sj.ServerRuntimeSettings) error
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "settings_update_unsupported", "当前游戏驱动不支持更新小屋与联机设置")
+		return
+	}
+	if err := updater.UpdateServerRuntimeSettings(r.Context(), makeRegistryInstance(instance), body); err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid_settings", sanitizeErrorMsg(err, "小屋与联机设置无效"))
 		return
 	}

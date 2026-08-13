@@ -895,8 +895,8 @@ func TestRuntimeUpdateRepairDetectsKnownLegacyConfigAndCompletesUpgrade(t *testi
 	}
 }
 
-func TestRuntimeUpdateRepairResumeAfterCleanupRestartsFullDetection(t *testing.T) {
-	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+func TestRuntimeUpdateRepairResumeAfterCleanupKeepsServerStopped(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
 	if err != nil {
 		t.Fatal(err)
@@ -919,24 +919,25 @@ func TestRuntimeUpdateRepairResumeAfterCleanupRestartsFullDetection(t *testing.T
 	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 		t.Fatal(err)
 	}
+	before := len(fake.applyCalls)
 	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
 		t.Fatal(err)
 	}
 	final := waitRuntimeApply(t, driver, instance)
-	if final.Phase != RuntimeUpdateApplySucceeded || final.ApplyID == sourceID || final.RepairSourceApplyID != sourceID || final.ResumeAfterRepair {
-		t.Fatalf("post-repair restart did not resume detection and upgrade: %#v", final)
+	if final.Phase != RuntimeUpdateApplyFailedRolledBack || final.ApplyID != sourceID || final.ResumeAfterRepair || final.ServerRunning || final.ManualAction == "" {
+		t.Fatalf("post-repair restart did not converge to manual stopped state: %#v", final)
 	}
 	backups, err := filepath.Glob(filepath.Join(instance.DataDir, ".local-container", "junimo-update", "config-repair", "*", "original.env"))
-	if err != nil || len(backups) != 1 {
-		t.Fatalf("historical config repair did not create its private backup: %v %v", backups, err)
+	if err != nil || len(backups) != 0 {
+		t.Fatalf("Panel bootstrap unexpectedly resumed config repair: %v %v", backups, err)
 	}
-	checks, _ := json.Marshal(final.Checks)
-	if !bytes.Contains(checks, []byte(`"known_legacy_config_repaired"`)) {
-		t.Fatalf("historical repair diagnosis was not retained: %s", checks)
+	calls := strings.Join(fake.applyCalls[before:], "\n")
+	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
+		t.Fatalf("Panel bootstrap recovery started the game: %s", calls)
 	}
 }
 
-func TestRuntimeUpdateRepairResumeAfterRetryManifestBeforeMutation(t *testing.T) {
+func TestRuntimeUpdateRepairResumeAfterRetryManifestBeforeMutationKeepsServerStopped(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
 	applyID := "apply_" + strings.Repeat("8", 24)
@@ -979,11 +980,12 @@ func TestRuntimeUpdateRepairResumeAfterRetryManifestBeforeMutation(t *testing.T)
 		t.Fatal(err)
 	}
 	final := waitRuntimeApply(t, driver, instance)
-	if final.Phase != RuntimeUpdateApplySucceeded || final.ApplyID != applyID || final.RepairSourceApplyID != sourceID || final.ResumeAfterRepair {
-		t.Fatalf("no-mutation retry restart did not continue the same upgrade: %#v", final)
+	if final.Phase != RuntimeUpdateApplyFailedRolledBack || final.ApplyID != applyID || final.RepairSourceApplyID != sourceID || final.ResumeAfterRepair || final.ServerRunning || final.ManualAction == "" {
+		t.Fatalf("no-mutation retry restart did not converge to manual stopped state: %#v", final)
 	}
-	if len(fake.applyCalls) == before {
-		t.Fatal("no-mutation retry restart did not execute the recovered apply")
+	calls := strings.Join(fake.applyCalls[before:], "\n")
+	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
+		t.Fatalf("Panel bootstrap recovery started the game: %s", calls)
 	}
 	if _, err := os.Stat(runtimeUpdateRecoveryDir(instance.DataDir, applyID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("successful recovered retry did not clean its recovery directory: %v", err)
@@ -1092,8 +1094,8 @@ func TestRuntimeUpdateApplyRestartRecoveryDoesNotGuess(t *testing.T) {
 	}
 }
 
-func TestRuntimeUpdateApplyRestartBeforeManifestFinishesWithoutDockerMutation(t *testing.T) {
-	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+func TestRuntimeUpdateApplyRestartBeforeManifestKeepsServerStopped(t *testing.T) {
+	driver, store, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
 	status := RuntimeUpdateApplyStatus{
 		ApplyID: "apply_" + strings.Repeat("e", 24), Phase: RuntimeUpdateApplyBackingUp,
 		ServerWasRunning: true, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
@@ -1109,11 +1111,19 @@ func TestRuntimeUpdateApplyRestartBeforeManifestFinishesWithoutDockerMutation(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_before_change" || !restored.ServerRunning || restored.ManualAction != "" {
+	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_before_change" || restored.ServerRunning || restored.ManualAction == "" {
 		t.Fatalf("pre-mutation restart was not finalized safely: %#v", restored)
 	}
-	if len(fake.applyCalls) != before {
-		t.Fatalf("pre-mutation recovery touched Docker: %v", fake.applyCalls[before:])
+	calls := strings.Join(fake.applyCalls[before:], "\n")
+	if !strings.Contains(calls, "stop server,steam-auth") {
+		t.Fatalf("pre-mutation recovery did not ensure the runtime is stopped: %s", calls)
+	}
+	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
+		t.Fatalf("pre-mutation recovery started the game: %s", calls)
+	}
+	stored, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil || stored.State != storage.InstanceStateStopped {
+		t.Fatalf("instance state after recovery = %#v, %v", stored, err)
 	}
 }
 
@@ -1154,7 +1164,7 @@ func TestRuntimeUpdateSnapshotCreateIntentOwnsPossibleCrashWindowVolume(t *testi
 }
 
 func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T) {
-	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
 	applyID := "apply_" + strings.Repeat("d", 24)
 	target := RuntimeUpdateSelectedPair{
@@ -1191,12 +1201,17 @@ func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T)
 	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 		t.Fatal(err)
 	}
+	before := len(fake.applyCalls)
 	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
 		t.Fatal(err)
 	}
 	restored := waitRuntimeApply(t, driver, instance)
-	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_recovery" {
+	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_recovery" || restored.ServerRunning || restored.ManualAction == "" {
 		t.Fatalf("write-ahead recovery did not roll back: %#v", restored)
+	}
+	calls := strings.Join(fake.applyCalls[before:], "\n")
+	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
+		t.Fatalf("write-ahead recovery started the game: %s", calls)
 	}
 	gotControl, err := os.ReadFile(filepath.Join(smapiModDir(instance.DataDir), "StardewAnxiPanel.Control.dll"))
 	if err != nil || !bytes.Equal(gotControl, originalControl) {
@@ -1204,31 +1219,40 @@ func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T)
 	}
 }
 
-func TestRuntimeUpdateApplyRestartSafelyContinuesFinalVerification(t *testing.T) {
-	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+func TestRuntimeUpdateApplyRestartRollsBackFinalVerificationAndKeepsStopped(t *testing.T) {
+	driver, store, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
 	applyID := "apply_" + strings.Repeat("b", 24)
 	target := RuntimeUpdateSelectedPair{
 		Server:    RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
 		SteamAuth: RuntimeUpdateSelectedImage{Image: inspection.Recommended.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
 	}
-	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 1, ApplyID: applyID, Project: strings.ToLower(filepath.Base(instance.DataDir)), SteamSessionVolume: "stardew_steam-session", SnapshotVolume: strings.ToLower(filepath.Base(instance.DataDir)) + "_anxi-junimo-update-" + strings.Repeat("b", 24) + "-steam-session", OriginalState: storage.InstanceStateStopped, OriginalServer: RuntimeUpdateSelectedImage{Image: inspection.Current.Server.Image, Digest: "sha256:" + strings.Repeat("b", 64), ImageID: "sha256:" + strings.Repeat("b", 64)}, OriginalAuth: RuntimeUpdateSelectedImage{Image: inspection.Current.SteamAuth.Image, Digest: "sha256:" + strings.Repeat("c", 64), ImageID: "sha256:" + strings.Repeat("c", 64)}, Target: target, ConfigWritten: true, AuthRecreated: true, ServerRecreated: true}
+	manifest := runtimeUpdateRecoveryManifest{SchemaVersion: 1, ApplyID: applyID, Project: strings.ToLower(filepath.Base(instance.DataDir)), SteamSessionVolume: "stardew_steam-session", SnapshotVolume: strings.ToLower(filepath.Base(instance.DataDir)) + "_anxi-junimo-update-" + strings.Repeat("b", 24) + "-steam-session", ServerWasRunning: true, OriginalState: storage.InstanceStateRunning, OriginalServer: RuntimeUpdateSelectedImage{Image: inspection.Current.Server.Image, Digest: "sha256:" + strings.Repeat("b", 64), ImageID: "sha256:" + strings.Repeat("b", 64)}, OriginalAuth: RuntimeUpdateSelectedImage{Image: inspection.Current.SteamAuth.Image, Digest: "sha256:" + strings.Repeat("c", 64), ImageID: "sha256:" + strings.Repeat("c", 64)}, Target: target, ConfigWritten: true, AuthRecreated: true, ServerRecreated: true}
 	if err := createRuntimeRecoveryFiles(instance.DataDir, manifest); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeRuntimeTargetEnvAtomic(instance.DataDir, inspection.Recommended, target); err != nil {
 		t.Fatal(err)
 	}
-	status := RuntimeUpdateApplyStatus{ApplyID: applyID, Phase: RuntimeUpdateApplyVerifyingServer, Current: inspection.Current, Target: inspection.Recommended, Selected: target, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}}
+	status := RuntimeUpdateApplyStatus{ApplyID: applyID, Phase: RuntimeUpdateApplyVerifyingServer, Current: inspection.Current, Target: inspection.Recommended, Selected: target, ServerWasRunning: true, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}}
 	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
 		t.Fatal(err)
 	}
+	before := len(fake.applyCalls)
 	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
 		t.Fatal(err)
 	}
 	restored := waitRuntimeApply(t, driver, instance)
-	if restored.Phase != RuntimeUpdateApplySucceeded || restored.ServerRunning {
-		t.Fatalf("safe continuation failed: %#v", restored)
+	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_recovery" || restored.ServerRunning || restored.ManualAction == "" {
+		t.Fatalf("final-verification restart did not converge to manual stopped state: %#v", restored)
+	}
+	calls := strings.Join(fake.applyCalls[before:], "\n")
+	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
+		t.Fatalf("final-verification recovery started the game: %s", calls)
+	}
+	stored, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil || stored.State != storage.InstanceStateStopped {
+		t.Fatalf("instance state after recovery = %#v, %v", stored, err)
 	}
 }
 

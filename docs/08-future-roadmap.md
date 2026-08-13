@@ -1783,3 +1783,28 @@ Multi Game Mode later
 - [x] 新旧两条路径现在都立即设置并验证 `vm.swappiness=60`，通过 `sysctl.d` 管理文件持久化，并规范化 `/etc/sysctl.conf` 中已有冲突值；缺少 `sysctl.d` 的系统安全回退到 `/etc/sysctl.conf`。
 - [x] 新增 `scripts/tests/test_run_sh_swap.sh`，覆盖运行态写入、drop-in、既有冲突值、无 `sysctl.d` 回退、幂等重跑、已启用 swap 的补修和缺少内核参数时安全失败；Git Bash、Linux `bash:5.2`、`bash -n` 与 ShellCheck 0.10.0 通过。
 - [x] Release workflow 已纳入 swap 专项测试，并把 `deploy/run.sh` 与两个 run.sh 测试脚本加入 ShellCheck；本任务未创建 tag、未推送镜像或更新 `latest`。
+# 2026-08-13 已完成、待发布：安装错误分类与安全操作门禁（FE-INSTALL-DIAGNOSTIC-MAPPING-1）
+
+- [x] 桌面壳、安装页和移动端总览共用安装状态纯分类器；`error` 不再一律显示“未安装”或开放重装，首次安装提示只接受明确未安装证据。
+- [x] 必需文件、Compose、镜像、Control、Docker 不可用和证据矛盾分别映射为修复、运行诊断或未知；Control `not_observed` 不误报版本错误，明确 mismatch/invalid 才进入 Control 异常。
+- [x] 移动端安装/修复/诊断按钮切到完整桌面版的精确目标路由；安装表单按分类门禁，普通运行错误无法提交安装。
+- [x] 安装状态表测、响应式源码门禁和 production build 已通过。候选镜像 Browser fixture 与正式真机矩阵仍是发布门禁，不得因本项完成提前打 tag。
+
+# 2026-08-13 代码完成、发布门禁进行中：启动与新建档耐久性（STARTUP-NEWGAME-DURABILITY-1）
+
+- [x] Control 启动验收区分 pending、ready 与明确失败；缺少本次 `options.json` 保持 starting，完整等待预算耗尽后才安全停服，只有合法快照报告错误版本才使用 version mismatch。invalid snapshot、旧快照清理失败和停服失败各有独立错误码。
+- [x] Reconcile 不会越过活动 lifecycle/new-game owner 提前发布 running，外部容器也需要 Control ready。普通宿主重启自动恢复明确排除：游戏保持关闭，由用户手动启动。
+- [x] `/state.installationDiagnostic` 与前端共享分类器已把必需文件、Compose、镜像、server 容器、Control static/runtime 和 Docker unknown 分层；`state=error` 不再一律显示“未安装”。
+- [x] 新建档强制 `Idempotency-Key`（缺失为 428）、exclusive job、持久 request/config/transaction/job/owner token；相同请求返回原 job，不同配置或其它 owner fail closed。前端相同未接受配置复用 key，配置变化换 key。owner 由完整 staging+fsync+no-replace rename 原子抢占。
+- [x] startup/http 单写入者固定；Control、gameloader 或目录任一进展出现后永久禁止第二次 `/newgame`，loader 先行但目录未落盘也只观察。unknown/ambiguous 保存现场，手动启动恢复原事务。
+- [x] Control `0.3.1` 与 Go 四段耐久门禁已实现：事务目标 save-loaded、内存完整身份/外观/颜色与唯一 host、同 command ID 的持久 pending journal + GameLoop.Saved、稳定磁盘 XML/SaveGameInfo 与身份收敛。source/embedded manifest、DLL 和运行栈清单已同步。
+- [x] 新建档回滚使用 `rolling_back` 和每步 write-ahead journal，中断后手动 Start 只停服并继续原回滚。未完成 owner 阻断存档/安装/更新/玩家/重启计划变更；Panel 启动时 Runtime/SMAPI 升级恢复也强制保持游戏关闭。
+- [x] 安装脚本 swap 修复已由 `92f3be6bb2731358420ba315ac18029c2506d81f` 进入 `origin/main`：复用或新建 `/swapfile` 都设置并持久化 `vm.swappiness=60`。下一正式 Release 必须重新上传本提交后的 `run.sh`，不能复用 v0.4.11 附件。
+- [x] 图形化 Compose 自动标准化已由 `621c5645e0048da7c4793035615438ed78fc7002` 进入 `origin/main`；安全探针、conversionRequired、外部 volume 保留与回滚代码/专项测试已实现。
+- [x] 当前源码 pre-candidate 门禁已通过：Control 契约/真实 game-data 编译与三方 SHA、Go 全量 test/vet/build、前端 14 项/audit/build、脚本/ShellCheck、兼容矩阵/remote artifacts、runtime/updater Docker integration、网站 build；隔离真实 startup/HTTP writer 双路径用时 143.59 秒并通过，POST 分别为 0/1、旧档哈希保持、四段耐久和资源清理成立。
+- [ ] 在最终候选提交重新跑 Control 真实 game-data 编译/契约、后端全量 test/vet/build、前端全部状态测试/build、脚本/ShellCheck、兼容矩阵、Docker integration、网站 build 与 Browser 桌面/移动验收；任何失败先修复再重跑。
+- [ ] 使用唯一隔离 Docker 资源完成 fresh 与升级后真实建档：分别覆盖 startup writer POST=0、HTTP writer POST=1、loader 先行、请求断流/重复 key、Panel/容器中断、wrong Control、save-now unknown/旧结果、XML/身份 mismatch、owner 恢复与资源清理。
+- [ ] 从上一正式版 `v0.4.11` 和运行栈最低支持版 `v0.3.2` 走完整 Web 一键更新；注入 unhealthy/版本错误/转换窗口中断验证自动回滚，并在升级得到的 Panel 上复验安装诊断、启动门和新建档四段耐久链。
+- [ ] 构建精确候选并完成全部本地/隔离发布门禁，重点覆盖 `621c564` 的图形化 Compose Web 转换与回滚、Control 0.3.1 实载、新建档四段耐久和现有存档完整性。门禁未完成前不得创建 tag 或更新 `latest`。
+- [ ] tag 只能从干净且与 `origin/main` 同步、所有门禁通过的最终 `main` 创建；随后等待 Release workflow，回拉三仓精确版核对 digest/OCI/latest，并核对 Release `run.sh` 确实包含 `92f3be6` 的 swap/swappiness 修复后再做隔离 smoke。
+- [ ] 正式镜像发布并回拉通过后再进行生产真机同步验收：用精确 tag 验证 `621c564` 图形化 Compose 转换、Control 0.3.1、现有存档/容器/volume/SQLite 完整性与宿主手动启服边界。完成前不得宣称真机通过；发现高风险问题停止灰度并按正式事务回滚。

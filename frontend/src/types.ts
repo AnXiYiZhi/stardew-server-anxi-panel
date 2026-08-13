@@ -429,6 +429,22 @@ export type RuntimeComponentsPreflight = {
   updatedAt?: string
 }
 
+export type InstallationDiagnostic = {
+  status: 'installed' | 'incomplete' | 'not_installed' | 'unknown'
+  requiredFiles: 'ok' | 'missing' | 'unknown'
+  compose: 'ready' | 'missing' | 'invalid' | 'unavailable'
+  image: 'available' | 'missing' | 'unavailable'
+  serverContainer: 'running' | 'stopped' | 'missing' | 'unknown'
+  control: {
+    static: 'match' | 'mismatch' | 'missing' | 'unknown'
+    runtime: 'match' | 'mismatch' | 'not_observed' | 'invalid' | 'unknown'
+    observedVersion?: string
+    expectedVersion: string
+  }
+  recommendedAction: 'install' | 'repair_install' | 'retry_start' | 'diagnose'
+  checkedAt: string
+}
+
 export type InstanceState = {
   instanceId: string
   driverId: string
@@ -445,6 +461,7 @@ export type InstanceState = {
   inviteCode?: string
   uiStatus?: 'stopped' | 'starting_container' | 'loading_save' | 'waiting_for_host' | 'ready' | 'stopping' | 'failed'
   uiStatusUpdatedAt?: string
+  installationDiagnostic?: InstallationDiagnostic
   statusSource?: { state?: string; saveId?: string; updatedAt?: string }
   playersSource?: { saveId?: string; updatedAt?: string; players?: Array<{ isHost?: boolean; status?: string }> }
   runtimeDiagnostic?: {

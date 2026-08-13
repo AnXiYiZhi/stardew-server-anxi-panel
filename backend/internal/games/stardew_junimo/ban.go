@@ -23,7 +23,13 @@ import (
 // container restart. This stage intentionally does not add panel-side
 // persistence or an unban/list management surface.
 func (d *Driver) BanPlayer(ctx context.Context, instance registry.Instance, name, uniqueMultiplayerID string) (*CommandRunResult, error) {
-	return banPlayer(ctx, d, instance, name, uniqueMultiplayerID)
+	var result *CommandRunResult
+	err := d.WithMutationOwnership(ctx, instance, func() error {
+		var banErr error
+		result, banErr = banPlayer(ctx, d, instance, name, uniqueMultiplayerID)
+		return banErr
+	})
+	return result, err
 }
 
 // banPlayer is the testable core of Driver.BanPlayer.

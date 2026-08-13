@@ -208,6 +208,7 @@ backup_file="${env_file}.before-junimo-fix-${stamp}"
 tmp_file="${env_file}.tmp-${stamp}"
 panel_was_stopped=0
 
+# shellcheck disable=SC2329 # Invoked indirectly by the ERR/INT/TERM trap below.
 restart_panel_on_error() {
   if [[ "$panel_was_stopped" -eq 1 ]]; then
     yellow "发生错误，正在重新启动 Panel……"
@@ -317,5 +318,6 @@ done
 
 echo
 yellow "等待超过 30 分钟；脚本只停止显示进度，不会终止后台升级任务。"
+# shellcheck disable=SC1111 # Chinese corner quotes are intentional UI punctuation.
 echo "请打开面板的“诊断 → 版本维护”查看最终状态。"
 exit 3

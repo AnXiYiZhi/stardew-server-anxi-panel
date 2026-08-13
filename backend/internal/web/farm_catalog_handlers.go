@@ -161,6 +161,9 @@ func (s *server) handlePrepareFarmType(w http.ResponseWriter, r *http.Request, i
 		selection, err = sj.PrepareNewGameMods(instance.DataDir, request.FarmTypeID)
 	}
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		if selectionErr, typed := sj.IsNewGameModSelectionError(err); typed {
 			status := http.StatusConflict
 			if selectionErr.Code == "farm_type_not_found" {

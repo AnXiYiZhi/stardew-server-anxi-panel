@@ -81,6 +81,31 @@ type activeJobStateStore interface {
 	UpdateInstanceStateForActiveJob(ctx context.Context, params storage.UpdateInstanceStateForActiveJobParams) (storage.Instance, error)
 }
 
+// InstanceMutationGuard is an optional driver capability used by the Web layer
+// before operations that require a fully stopped, transaction-free instance.
+// It keeps Stardew-specific owner knowledge in the driver instead of copying
+// transaction file rules into HTTP handlers.
+type InstanceMutationGuard interface {
+	EnsureOfflineMutationAllowed(ctx context.Context, instance registry.Instance) error
+}
+
+// InstanceMutationOwnershipGuard is used by automatic workflows that may run
+// while the server is online (for example a scheduled shutdown). It checks only
+// the persistent new-game transaction owner and performs no Docker inspection.
+type InstanceMutationOwnershipGuard interface {
+	EnsureMutationOwnershipAvailable(ctx context.Context, instance registry.Instance) error
+}
+
+// InstanceMutationExecutor linearizes Web-owned filesystem mutations with
+// lifecycle/new-game ownership. The callback executes while runtimeUpdateMu is
+// held, so a successful owner check cannot be invalidated before the write.
+// Callers must not invoke another Driver method which acquires runtimeUpdateMu
+// from inside the callback.
+type InstanceMutationExecutor interface {
+	WithMutationOwnership(ctx context.Context, instance registry.Instance, mutate func() error) error
+	WithOfflineMutation(ctx context.Context, instance registry.Instance, mutate func() error) error
+}
+
 // Driver implements registry.GameDriver for Stardew Valley / JunimoServer.
 type Driver struct {
 	docker       DockerService
@@ -105,6 +130,8 @@ type Driver struct {
 	backupMaintenanceInterval  time.Duration
 	requiredRuntimeMu          sync.Mutex
 	requiredRuntimeRunning     map[string]bool
+	installationEvidenceMu     sync.Mutex
+	installationEvidence       map[string]requiredFilesEvidence
 }
 
 // New creates a Driver.  jobs and store may be nil for tests that only use
@@ -132,6 +159,7 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		runtimeUpdateStopTimeout:   10 * time.Minute,
 		backupMaintenanceInterval:  2 * time.Second,
 		requiredRuntimeRunning:     make(map[string]bool),
+		installationEvidence:       make(map[string]requiredFilesEvidence),
 	}
 }
 
@@ -145,6 +173,9 @@ func (d *Driver) Name() string { return DriverName }
 func (d *Driver) PrepareFarmMods(ctx context.Context, instance registry.Instance, farmTypeID string) (NewGameModSelection, error) {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return NewGameModSelection{}, err
+	}
 	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
 		return NewGameModSelection{}, &NewGameModSelectionError{Code: "server_running", Message: "服务器运行中，无法准备模组农场"}
 	}
@@ -169,8 +200,16 @@ func (d *Driver) CommandOutcome(ctx context.Context, instance registry.Instance,
 // Prepare ensures the instance working directory, docker-compose.yml, and .env
 // exist.  It never overwrites files the user has already modified.
 func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
 	if instance.DataDir == "" {
 		return errors.New("instance data dir is empty")
+	}
+	// Prepare is also called during Panel bootstrap. An unfinished new-game
+	// transaction exclusively owns its runtime files until a user explicitly
+	// resumes it; bootstrap must not repair or rewrite anything underneath it.
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
 	}
 	recoveries, err := RecoverImportTransactions(instance.DataDir)
 	if err != nil {
@@ -258,6 +297,9 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 
 // Install validates credentials, creates an async install job, and returns its ID.
 func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*registry.Job, error) {
+	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
 	manifest, manifestErr := sjconfig.BuiltInRuntimeStackManifest()
 	if manifestErr != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
 		return nil, fmt.Errorf("内置兼容矩阵不是可安装的 recommended 状态")
@@ -279,6 +321,9 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
+		return nil, err
+	}
 	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
@@ -432,6 +477,29 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 					return instance, nil
 				}
 				if instance.State != storage.InstanceStateRunning {
+					// A lifecycle job owns the transition from starting to running.
+					// Reconcile must not publish running merely because Compose has
+					// created the container while SMAPI/Control is still starting.
+					if d.activeLifecycleOwner(ctx, instance.ID) {
+						return instance, nil
+					}
+					// A completed Compose start is still owned by the persistent
+					// new-game transaction until all four durability gates commit.
+					// Do not erase recovery_required/error just because the container
+					// remains up to preserve an ambiguous writer's evidence.
+					if unfinishedNewGameOwnerExists(instance.DataDir) {
+						return instance, nil
+					}
+					// For a container started outside the Panel, require fresh runtime
+					// evidence before promoting persisted state. A missing options file
+					// is pending, not proof that the expected Control version is loaded.
+					controlGate := InspectControlRuntimeGate(instance.DataDir)
+					if controlGate.State != ControlRuntimeGateReady {
+						if instance.State == storage.InstanceStateStarting && controlGate.State == ControlRuntimeGatePending {
+							return d.reconcileOrphanedStartingRuntime(ctx, instance)
+						}
+						return instance, nil
+					}
 					payload := instance.DriverPayload
 					if payload == "" {
 						payload = "{}"
@@ -480,14 +548,104 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 		return instance, nil
 	}
 	if ok {
+		d.rememberInstallationEvidence(instance.ID, "ok")
 		return instance, nil
 	}
+	d.rememberInstallationEvidence(instance.ID, "missing")
 	return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
 		ID:           instance.ID,
 		State:        storage.InstanceStateError,
 		StateMessage: "游戏运行文件不完整，请重新安装或修复。",
 		DriverPhase:  "install_verification_failed",
 	})
+}
+
+func unfinishedNewGameOwnerExists(dataDir string) bool {
+	owner, err := LoadNewGameOwner(dataDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	if err != nil {
+		return true
+	}
+	record, err := LoadNewGameTransaction(dataDir, owner.TransactionID)
+	if err != nil {
+		return true
+	}
+	return !isTerminalNewGameOwnerStage(record.Stage)
+}
+
+func (d *Driver) EnsureOfflineMutationAllowed(ctx context.Context, instance registry.Instance) error {
+	return d.WithOfflineMutation(ctx, instance, nil)
+}
+
+func (d *Driver) EnsureMutationOwnershipAvailable(ctx context.Context, instance registry.Instance) error {
+	return d.WithMutationOwnership(ctx, instance, nil)
+}
+
+func (d *Driver) WithMutationOwnership(ctx context.Context, instance registry.Instance, mutate func() error) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
+	}
+	if d.jobs != nil {
+		active, operation, found, err := d.findActiveLifecycleJob(ctx, instance.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			return lifecycleConflict(operation, active.ID)
+		}
+	}
+	if mutate == nil {
+		return nil
+	}
+	return mutate()
+}
+
+func (d *Driver) WithOfflineMutation(ctx context.Context, instance registry.Instance, mutate func() error) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
+	}
+	if d.jobs != nil {
+		active, operation, found, err := d.findActiveLifecycleJob(ctx, instance.ID)
+		if err != nil {
+			return err
+		}
+		if found {
+			return lifecycleConflict(operation, active.ID)
+		}
+	}
+	if d.docker == nil {
+		return &NewGameOwnerError{Code: "server_state_unknown", Message: "无法确认服务器已停止，请检查 Docker 状态后重试"}
+	}
+	ps, err := d.docker.ComposePs(ctx, instance.DataDir)
+	if err != nil {
+		return &NewGameOwnerError{Code: "server_state_unknown", Message: "无法确认服务器已停止，请检查 Docker 状态后重试", Cause: err}
+	}
+	if serverServiceUp(ps.Services) {
+		return &NewGameOwnerError{Code: "server_running", Message: "服务器容器仍在运行，请先停止服务器再操作"}
+	}
+	if mutate == nil {
+		return nil
+	}
+	return mutate()
+}
+
+// UpdateServerRuntimeSettings serializes the server-settings.json write with
+// lifecycle/new-game ownership. A Web-side check followed by a direct file
+// write would leave a TOCTOU window in which Start could reserve and snapshot
+// the old file between those two operations.
+func (d *Driver) UpdateServerRuntimeSettings(_ context.Context, instance registry.Instance, settings ServerRuntimeSettings) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
+		return err
+	}
+	return UpdateServerRuntimeSettings(instance.DataDir, settings)
 }
 
 func serverServiceUp(services []paneldocker.ComposeService) bool {
@@ -499,6 +657,87 @@ func serverServiceUp(services []paneldocker.ComposeService) bool {
 		return state == "running" || strings.HasPrefix(strings.ToLower(svc.Status), "up")
 	}
 	return false
+}
+
+func (d *Driver) reconcileOrphanedStartingRuntime(ctx context.Context, instance storage.Instance) (storage.Instance, error) {
+	payload := instance.DriverPayload
+	if payload == "" {
+		payload = "{}"
+	}
+	updatedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(instance.UpdatedAt))
+	if err != nil {
+		// Persist the first observation so a malformed historical timestamp cannot
+		// reset the grace period on every status poll after a Panel restart.
+		return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+			ID:            instance.ID,
+			State:         storage.InstanceStateStarting,
+			StateMessage:  "检测到启动任务已中断；正在等待 Control 启动验收的剩余窗口，超时后将安全停服",
+			DriverPhase:   "control_runtime_orphan_wait",
+			DriverPayload: payload,
+		})
+	}
+	if time.Now().UTC().Before(updatedAt.UTC().Add(readyStateTimeout)) {
+		return instance, nil
+	}
+
+	lifecycle, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+			ID:            instance.ID,
+			State:         storage.InstanceStateError,
+			StateMessage:  "启动任务已中断且无法执行安全停服；游戏容器可能仍在运行，请检查 Docker 状态",
+			DriverPhase:   "control_runtime_orphan_cleanup_failed",
+			DriverPayload: payload,
+		})
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), controlCleanupTimeout)
+	defer cancel()
+	result, downErr := lifecycle.ComposeDown(cleanupCtx, instance.DataDir)
+	if downErr == nil && result.ExitCode != 0 {
+		downErr = fmt.Errorf("ComposeDown exited with code %d", result.ExitCode)
+	}
+	if downErr == nil {
+		var ps paneldocker.ComposePsResult
+		ps, downErr = lifecycle.ComposePs(cleanupCtx, instance.DataDir)
+		if downErr == nil && serverServiceUp(ps.Services) {
+			downErr = errors.New("server service remains running after ComposeDown")
+		}
+	}
+	if downErr != nil {
+		d.logger.Error("failed to stop orphaned starting runtime", "instance", instance.ID, "error", downErr)
+		return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+			ID:            instance.ID,
+			State:         storage.InstanceStateError,
+			StateMessage:  "启动任务已中断，且未能确认游戏容器已停止；请立即检查 Docker 状态",
+			DriverPhase:   "control_runtime_orphan_cleanup_failed",
+			DriverPayload: payload,
+		})
+	}
+	return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+		ID:            instance.ID,
+		State:         storage.InstanceStateStopped,
+		StateMessage:  "启动任务在 Control 就绪前中断并超时，游戏容器已安全停止；请手动重新启动",
+		DriverPhase:   "control_runtime_orphan_stopped",
+		DriverPayload: payload,
+	})
+}
+
+func (d *Driver) activeLifecycleOwner(ctx context.Context, instanceID string) bool {
+	if d.jobs == nil {
+		return false
+	}
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   instanceID,
+		Types:      []string{lifecycleJobType},
+	})
+	if err != nil {
+		// Fail closed: a transient job-store error must not let an unowned
+		// reconcile write over the lifecycle runner's starting state.
+		d.logger.Warn("failed to inspect active lifecycle owner during reconcile", "instance", instanceID, "error", err)
+		return true
+	}
+	return len(active) > 0
 }
 
 // isRunningState returns true if the instance state indicates the container should be up.
