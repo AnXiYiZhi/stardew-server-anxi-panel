@@ -97,6 +97,7 @@
 
 ## 2026-08-13：生产容器诊断输出完整 `docker inspect`，暴露环境变量凭据
 
+- 最近复发/补充：同日诊断新生产主机的 Stardew 存档槽位时，结构化脚本虽然没有输出平台 userID，却把四个 `homeLocation` 的完整 FarmHouse GUID 作为状态字段打印；这些不是认证凭据，但对判断空闲槽只需要“存在且类型为 FarmHouse”。后续投影改为 `homeLocationPresent/homeLocationKind`，所有存档内部 GUID、位置唯一标识和玩家关联值默认不输出。
 - 环境：生产 Ubuntu 22.04，经 Posh-SSH 诊断 Steam 认证辅助容器的健康检查失败。
 - 错误模式：为查看 health、restart count 和网络信息，直接输出完整 `docker inspect stardew-steam-auth-1`；结果同时包含 `Config.Env` 中的账号凭据。
 - 症状 / 退出码：命令成功且只读，但敏感值进入本次工具输出；没有写入工作区、远端日志或 Git，最终交付不得复述该值。
@@ -249,7 +250,7 @@
 ## 2026-08-09：`apply_patch` 使用过长且手写的上下文
 
 - 最近复发/补充：2026-08-10 最终收口已推送后补记 GitHub API EOF 时，又从终端输出手抄两条很长的列表上下文，其中一处漏掉空格，`apply_patch` 以 `verification failed` 安全零修改退出。随后改为分别使用稳定标题和最小邻接行插入，不能因为内容只是文档就放宽精确上下文要求。
-- 最近复发/补充：2026-08-13 最终 Control SHA 同步时猜错 `runtime_stack_manifest.json` 的缩进层级，随后又把 backend handoff 末尾句误当成 `docs/02-backend.md` 的锚点，两次 `apply_patch` 均安全零修改。继续 Web updater 夹具时，又按 JavaScript 载荷里的转义形态猜 SQLite 行上下文，实际落盘文本已经去掉反斜杠，补丁再次安全零修改。每次都应先以 `rg -n -C` 读取真实目标文件，再使用最小精确行修正；即使文本刚出现在组合输出或聊天摘要里，也必须先确认它属于当前目标文件且转义形态一致。
+- 最近复发/补充：2026-08-13 最终 Control SHA 同步时猜错 `runtime_stack_manifest.json` 的缩进层级，随后又把 backend handoff 末尾句误当成 `docs/02-backend.md` 的锚点，两次 `apply_patch` 均安全零修改。继续 Web updater 夹具时，又按 JavaScript 载荷里的转义形态猜 SQLite 行上下文，实际落盘文本已经去掉反斜杠，补丁再次安全零修改。最终清理时还对已经由其它收口动作移除的未跟踪诊断脚本发送 Delete File，因目标不存在再次安全失败。每次都应先以 `rg -n -C` 或 `Test-Path` 读取真实目标，再使用最小精确行修正；即使文本刚出现在组合输出或聊天摘要里，也必须先确认它属于当前目标文件、转义形态一致且删除目标此刻仍存在。
 - 最近复发/补充：2026-08-09 弹窗高度文档补丁在工具调用显示长期 running 后被 turn 中断，等待终态时相同补丁最终落盘两次，造成三份文档顶部段落重复。恢复被中断的写操作后必须先用唯一标题计数和 `git diff --check` 核对实际终态，不能根据中断提示猜测“未写入”或直接重放；发现重复后用最小精确补丁去重。
 - 环境：Windows 工作区，向已有用户修改的 `AGENTS.md` 插入生产 SSH 约定。
 - 错误模式：补丁除锚点外还手写复制整条后续长行，其中漏掉一个空格。
