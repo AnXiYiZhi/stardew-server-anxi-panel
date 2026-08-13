@@ -1999,7 +1999,7 @@
 
 ## 2026-08-13：检索已给出真实文件后仍读取猜测文件名
 
-- 最近复发/补充：同一轮继续审查 import staging 时，`rg` 已明确返回 `save_import_staging.go`，后续仍读取猜测的 `save_import_files.go`，在 fail-fast 下退出 1；文件未修改。该模式连续两次后，预防规则已提升到项目 `AGENTS.md`：符号检索与精确路径读取必须拆成两条命令，真实命中是唯一输入。
+- 最近复发/补充：同一轮继续审查 import staging 时，`rg` 已明确返回 `save_import_staging.go`，后续仍读取猜测的 `save_import_files.go`，在 fail-fast 下退出 1；文件未修改。该模式连续两次后，预防规则已提升到项目 `AGENTS.md`：符号检索与精确路径读取必须拆成两条命令，真实命中是唯一输入。随后读取正式 CI 门禁时又直接猜测 `.github/workflows/compatibility.yml`，Release workflow 前半已读出，但第二个文件不存在使命令退出 1；候选镜像和仓库文件未受影响。此后所有 workflow 文件先单独执行 `rg --files .github/workflows`，再读取精确结果。
 
 - 环境：PowerShell 7，在当前仓库核对 `ensureJunimoServerMod` 实现。
 - 错误模式：同一组合命令的 `rg` 已返回实现位于 `lifecycle.go`，后续仍按记忆读取不存在的 `lifecycle_runner.go`；末尾成功的 `git status` 又使整条命令最终退出 0。
