@@ -1,4 +1,4 @@
-# 2026-08-13 完成：启动误判、安装错误映射与新建档耐久（待发布 v0.4.13）
+# 2026-08-13 完成：启动误判、安装错误映射与新建档耐久（待发布 v0.4.14）
 
 - [x] Control 启动使用 pending/ready/mismatch/invalid 四态和完整预算，Start/Restart 共用 gate，Reconcile 不再只凭 server container 提升 running；宿主重启保持游戏关闭。
 - [x] 后端 installationDiagnostic 与前端共享分类器修复 `error → 未安装/重装`，desktop/mobile 升级后 Browser 已用 files-ok error 实证。
@@ -6,7 +6,8 @@
 - [x] v0.4.11/v0.3.2 Web 升级、unhealthy 回滚、官方一次性 migrate-fnos 与 621 图形化 Web conversion 已通过隔离真机门禁。
 - [x] Linux CI 12 路 owner 原子 claim 偶发竞态已修复：进程内发布串行、跨进程 no-replace 原子边界不变；Windows/Linux 各 100 次并发专项和全量门禁通过。
 - [x] `v0.4.12` tag 的 Release workflow `31679615132` 在镜像构建/推送前被旧维修脚本 SC2317 阻断；无 Release、无三仓或 `latest` 变更。tag 保持不可移动，局部 ShellCheck 0.10.0/0.11.0 修复复验通过。
-- [ ] 以 `v0.4.13` 最终 commit 重建精确 revision 候选并复跑关键门禁；随后新 tag、Release workflow、三仓回拉/资产核对和生产真机同步。未完成前不得标记“已发布”。
+- [x] `v0.4.13` 全部 release gates 通过后，ACR 拒绝 Buildx 默认 attestation，造成 Docker Hub `0.4.13/latest` 已更新而 GHCR/ACR/Release 未更新的部分发布；workflow 已显式禁用 provenance/SBOM，tag 不移动。
+- [ ] 以 `v0.4.14` 最终 commit 重建精确 revision 候选并复跑关键门禁；成功 workflow 必须覆盖并统一三仓 latest，再做资产核对和生产真机同步。未完成前不得标记“已发布”。
 
 # 2026-08-12 完成：图形化 Compose 一键升级自动标准化（PANEL-UPDATE-GRAPHICAL-COMPOSE-1，未发布）
 

@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-13：多仓 Buildx 默认 attestation 被 ACR 拒绝并造成部分推送
+
+- 环境：GitHub Actions `docker/build-push-action@v6`，同一次 build 向 Docker Hub、阿里云 ACR、GHCR 推送 `v0.4.13/latest`。
+- 错误模式：沿用 action 的默认 provenance attestation，没有先证明三个目标 registry 都接受 `application/vnd.oci.empty.v1+json` manifest class。
+- 症状 / 退出码：完整 release gates 通过，Buildx 在 ACR push 阶段报 `denied: unknown manifest class for application/vnd.oci.empty.v1+json` 并退出 1；GitHub Release 未创建。多仓 push 不是事务：Docker Hub `0.4.13/latest` 已落盘，GHCR/ACR 仍为 v0.4.11。
+- 根因：Buildx 的 attestation 兼容性是 registry 能力的一部分，单一 `tags:` 列表不会在任一目标拒绝时回滚其它已经完成的 manifest/tag。
+- 正确做法：为要求三仓 digest 完全一致的当前发布显式设置 `provenance:false`、`sbom:false`，先在受控 registry 验证产物只有目标 `linux/amd64` image manifest；新不可移动版本成功后覆盖三仓 `latest`。若未来恢复 provenance，应把支持矩阵、不同 digest 契约和部分失败补偿设计成独立发布方案。
+- 预防检查：tag 前必须用当前 buildx/action 精确参数向兼容性最低的 registry 或等价受控 fixture 推送一次；多目标发布失败后立即逐仓查询精确版和 latest，不能由 workflow 总失败推断“任何仓都没变化”。
+- 适用范围：GitHub Actions、Buildx、多 registry OCI image、provenance/SBOM attestation 与不可移动 tag 发布。
+
 ## 2026-08-13：把 GitHub latest Release fixture 错写成数组
 
 - 环境：最终 `v0.4.12` 候选、任务专属 DinD、受控 HTTPS GitHub Release/registry 网关。
@@ -158,6 +168,7 @@
 
 ## 2026-08-13：生产容器诊断输出完整 `docker inspect`，暴露环境变量凭据
 
+- 最近复发/补充：同日继续核对存档挂载点时，虽然只投影了 `Mounts`，仍把匿名 Docker volume 的完整 opaque hash 作为 `Source` 输出；判断存档路径只需要已知 bind 的 destination 与归一化来源类型。由于这已是同一轮第二次把内部唯一标识带入生产诊断输出，规则同步提升到 `AGENTS.md`：生产投影除凭据外还必须默认剔除匿名 volume hash、容器/网络完整 ID、存档 GUID 和玩家关联标识，只输出完成判断所需的布尔值、类型、计数或脱敏短形态。
 - 最近复发/补充：同日诊断新生产主机的 Stardew 存档槽位时，结构化脚本虽然没有输出平台 userID，却把四个 `homeLocation` 的完整 FarmHouse GUID 作为状态字段打印；这些不是认证凭据，但对判断空闲槽只需要“存在且类型为 FarmHouse”。后续投影改为 `homeLocationPresent/homeLocationKind`，所有存档内部 GUID、位置唯一标识和玩家关联值默认不输出。
 - 环境：生产 Ubuntu 22.04，经 Posh-SSH 诊断 Steam 认证辅助容器的健康检查失败。
 - 错误模式：为查看 health、restart count 和网络信息，直接输出完整 `docker inspect stardew-steam-auth-1`；结果同时包含 `Config.Env` 中的账号凭据。
@@ -271,6 +282,7 @@
 
 ## 2026-08-11：仓库文本检索误用了不存在的顶层目录
 
+- 最近复发/补充：2026-08-13 核对邀请码持久化实现时，把不存在的 `backend/internal/store` 与真实的 `backend/internal/storage` 候选混入同一条 `rg`，有效路径先返回命中，后续 `Select-Object` 又让包装命令表面退出 0。没有文件或远端状态变化。随后只从已确认的 `backend/internal/storage` 读取；以后即使是只读候选搜索，也必须先用 `rg --files backend/internal` 发现实际包名，并在接管道前保存和检查 `rg` 的原始退出码。
 - 最近复发/补充：2026-08-12 排查 Panel 自动更新时，把未先由 `rg --files` 或 `Test-Path` 确认的 `backend/internal/versioninfo` 与多个有效目录一起传给 `rg`；有效目录先产生大量命中，命令最后仍因不存在路径退出 2。随后又猜测不存在的 `backend/internal/web/setup_handlers.go` 和 `backend/internal/updatecheck/types.go`；实际 updatecheck 类型位于 `service.go`，前一个 updater 文件已输出但组合命令仍失败。后续跨模块检索或读取只使用已经列出的实际路径，候选目录和文件不得混入正式命令参数。
 - 最近复发/补充：同日诊断创建存档失败时，在已确认的 `backend`、`deploy` 之外又把猜测的顶层 `cmd` 和根目录 `docker-compose.yml` 一并传给 `rg`；随后解释 SMAPI 首次落盘时又把不存在的顶层 `config` 混入多根检索。两次都是有效路径已返回命中、但 `rg` 因无效目标退出 2。后续多目标检索必须先以 `rg --files` 得到实际文件集，或只传已经由 `Test-Path` 验证的根目录；不得因前半段有输出而忽略原生命令非零退出码。
 - 最近复发/补充：2026-08-13 读取任务数据库迁移 schema 时，把首个迁移文件猜成不存在的 `backend/migrations/001_initial.sql`，同一命令后续检索仍有输出并掩盖了 `Get-Content` 的非终止错误；远端和产品文件均未改变。随即先用 `rg --files backend/migrations` 确认真实文件为 `001_foundation.sql`。后续批量读取文件前必须使用已列出的精确路径，并让每个读取错误终止包装命令，不能由后续成功命令掩盖。
@@ -310,6 +322,7 @@
 
 ## 2026-08-09：`apply_patch` 使用过长且手写的上下文
 
+- 最近复发/补充：2026-08-13 补记生产诊断教训时，把 `AGENTS.md` 与错题本更新混入同一个补丁，又手写了带轻微空格差异的长列表行；按设计整份补丁以 `verification failed` 安全零修改。随后先核对 diff，再按文件拆分并只用标题与首条列表项作最小锚点。项目已明确要求多文件修改默认拆分，错题本更新也不得例外。
 - 最近复发/补充：2026-08-10 最终收口已推送后补记 GitHub API EOF 时，又从终端输出手抄两条很长的列表上下文，其中一处漏掉空格，`apply_patch` 以 `verification failed` 安全零修改退出。随后改为分别使用稳定标题和最小邻接行插入，不能因为内容只是文档就放宽精确上下文要求。
 - 最近复发/补充：2026-08-13 最终 Control SHA 同步时猜错 `runtime_stack_manifest.json` 的缩进层级，随后又把 backend handoff 末尾句误当成 `docs/02-backend.md` 的锚点，两次 `apply_patch` 均安全零修改。继续 Web updater 夹具时，又按 JavaScript 载荷里的转义形态猜 SQLite 行上下文，实际落盘文本已经去掉反斜杠，补丁再次安全零修改。最终清理时还对已经由其它收口动作移除的未跟踪诊断脚本发送 Delete File，因目标不存在再次安全失败。每次都应先以 `rg -n -C` 或 `Test-Path` 读取真实目标，再使用最小精确行修正；即使文本刚出现在组合输出或聊天摘要里，也必须先确认它属于当前目标文件、转义形态一致且删除目标此刻仍存在。
 - 最近复发/补充：2026-08-09 弹窗高度文档补丁在工具调用显示长期 running 后被 turn 中断，等待终态时相同补丁最终落盘两次，造成三份文档顶部段落重复。恢复被中断的写操作后必须先用唯一标题计数和 `git diff --check` 核对实际终态，不能根据中断提示猜测“未写入”或直接重放；发现重复后用最小精确补丁去重。

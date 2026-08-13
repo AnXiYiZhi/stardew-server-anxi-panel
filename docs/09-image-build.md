@@ -1,8 +1,8 @@
-# STARTUP-NEWGAME-DURABILITY-1 正式发布门禁（2026-08-13，代码完成，v0.4.13 待发布）
+# STARTUP-NEWGAME-DURABILITY-1 正式发布门禁（2026-08-13，代码完成，v0.4.14 待发布）
 
 ## 本版候选范围与已进入 main 的前置修复
 
-- 本节描述下一正式版本的候选范围，不是成功发布记录。`v0.4.12` tag 已固定在 `21fa312656f18a8bfdef7db62e224f91b3830deb`，但 Release workflow `31679615132` 在 push 镜像和创建 Release 之前被 ShellCheck SC2317 阻断；不得移动该 tag。修复后的正式候选号调整为 `v0.4.13`，正式镜像、`latest`、Release 和生产真机仍未更新。
+- 本节描述下一正式版本的候选范围，不是成功发布记录。`v0.4.12` tag 的 workflow 在 push 前被 ShellCheck 阻断；`v0.4.13` tag 的完整 release gates 通过，但 Buildx 默认 attestation 被阿里云 ACR 拒绝，GitHub Release 未创建且只在 Docker Hub 留下部分 `0.4.13/latest`。两个 tag 均保持不可移动。workflow 现统一禁用 ACR 不支持的 provenance/SBOM attestation，修复后的正式候选号调整为 `v0.4.14`；三仓一致、Release 和生产真机仍未完成。
 - 启动链修复 Panel false negative：缺少本次 Control 状态是 pending/starting，使用完整 20 分钟预算；只有合法 `options.json` 明确报告了错误版本才是 mismatch，坏 manifest/DLL/options 使用 invalid，pending 超时安全停服。
 - 安装/前端链新增 `installationDiagnostic`，把必需文件、Compose、镜像、server 容器与 Control static/runtime 分开；`state=error` 不再一律打开首次安装/重装，Docker 不可读或证据冲突 fail closed 到 diagnostics。
 - 新建档链强制 `Idempotency-Key`（缺失返回 428、零写入），增加实例级持久 owner/token、exclusive job、startup/http 固定单写入者和不可逆进展记录。owner 使用 staging+fsync+no-replace rename 原子抢占；loader、Control 或目录任一前进后禁止第二次 `/newgame`。unknown/ambiguous/中断保留现场，用户手动启动恢复同一事务。
@@ -84,12 +84,13 @@
 - 首次文档收口 SHA `4ed7c5ad120ed36caf4613a30037f727a66f75b6` 的远端 Compatibility matrix `31676618033` 在 Linux 12 路 `TestNewGameOwnerAtomicClaimAllowsExactlyOneWinner` 暴露真实并发竞态，因此明确阻止 tag。根因是同一进程 loser 在 winner rename 后、目录同步完成前可能把 owner 目录瞬时不可读误判为 recovery_required。修复增加进程内 claim publication mutex，跨进程仍使用 no-replace rename；Windows/Linux 该专项各连续 100 次通过，Windows全量 74.0 秒、Linux全量 152.2 秒及两平台 vet/build通过。必须等包含此修复的新 SHA 远端 Compatibility 成功后才可继续 tag。
 - 最终 `21fa312656f18a8bfdef7db62e224f91b3830deb` 候选镜像 version=`0.4.12`、image ID=`sha256:65af4e0c7dcba236e9e47230c0037b81667499cd8ee19cdabf29300ffd9fab1f`，fresh health/version/restart 通过；同一精确候选在受控 TLS DinD 中先被 unhealthy healthcheck 驱动回滚到官方 v0.4.11，再以健康镜像成功升级，最终 `phase=succeeded`、SQLite integrity=`ok`、save/Mod/backup 三类哨兵保留、Panel restart 后终态持久，任务资源归零。该 SHA 的 Compatibility workflow `31678353960` 成功。
 - annotated `v0.4.12` 推送后，Release workflow `31679615132` 在 `Run release gates` 的 ShellCheck 阶段报告 `deploy/repair-junimo-0.3.5.sh` ERR trap handler 内命令 SC2317 并退出 1；metadata、registry login、build/push 和 GitHub Release 均未执行。脚本原有 SC2329 注释只抑制“函数未调用”，未抑制 trap 间接调用函数体的 SC2317；修复把局部解释性指令限定为 `SC2317,SC2329`，并用 ShellCheck 0.10.0/0.11.0 对 workflow 精确输入复验。由于 tag 不可移动，下一候选使用 `v0.4.13`，所有最终身份和关键 Web 门禁必须按新 SHA/版本重跑。
+- `v0.4.13` 的最终候选 `26e7a1e4f5949349a316484bf173c0653e7b6ac3`（image ID=`sha256:5efcb8cd73038b2823ae6cefe16f8ea37685d05ea4a6c1af356c1668a8f630d7`）通过 fresh/restart 和官方 v0.4.11 的 unhealthy 回滚+健康升级，远端 Compatibility `31680079482` 成功。Release workflow `31681173485` 的全部 release gates 也通过，但多仓 Buildx push 因 ACR 拒绝 `application/vnd.oci.empty.v1+json` attestation 失败；未创建 GitHub Release。远端审计确认 Docker Hub `0.4.13/latest` 已成为 digest `sha256:6393f178f308aaa20b6f1141aa5ca98f9c4bc518faf055db21ef6eeb5c4d8f9b`，GHCR/ACR 仍为 v0.4.11，属于明确的部分发布。下一成功版本必须以 `v0.4.14` 覆盖三仓 `latest` 并统一 digest；workflow 使用 `provenance:false`、`sbom:false`，避免向 ACR 推送不支持的空 attestation manifest。任务专属 DinD/registry 已用 Buildx 0.35.0 对同一参数做 push 探针，远端 tag 直接解析为单一 `application/vnd.oci.image.manifest.v1+json`，没有 index/empty attestation；容器和卷终态为 0。
 
 ## Tag 前剩余收口清单
 
 1. 提交本节真实证据与错题本，删除本轮未跟踪夹具；确认最终 commit 只有预期文档/执行记录差异且 `main==origin/main`。
-2. 用最终 commit/revision 重建 `0.4.13` 镜像，复跑 OCI identity、fresh health/version/restart、候选 Control/Release asset 摘要、关键 Web unhealthy rollback + healthy apply；代码未变化的全量源码、真实建档、621 conversion 与 Browser 证据保留，但必须确认最终构建上下文没有意外代码差异。
-3. 确认本地仅在 `main`、工作树干净、无非 main worktree/未合并有效提交，并与 `origin/main` 完全同步；随后才创建新的不可移动 annotated `v0.4.13` tag。不得移动失败的 `v0.4.12`，也不得从旧 `3cdf43c` 镜像身份直接推 tag。
+2. 用最终 commit/revision 重建 `0.4.14` 镜像，复跑 OCI identity、fresh health/version/restart、无 attestation 的受控 registry manifest、关键 Web unhealthy rollback + healthy apply；代码未变化的全量源码、真实建档、621 conversion 与 Browser 证据保留，但必须确认最终构建上下文没有意外代码差异。
+3. 确认本地仅在 `main`、工作树干净、无非 main worktree/未合并有效提交，并与 `origin/main` 完全同步；随后才创建新的不可移动 annotated `v0.4.14` tag。不得移动失败的 `v0.4.12/v0.4.13`，也不得从旧候选镜像身份直接推 tag。
 
 ## Tag 后仍必须完成
 
