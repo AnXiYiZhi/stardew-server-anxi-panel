@@ -104,6 +104,16 @@
 
 - 最近复发/补充：本地 annotated `v0.4.15` 创建后，核验使用未引用的 `git rev-parse v0.4.15^{}`；PowerShell 重新解释花括号，Git 实际收到空 revision 并以 ambiguous argument 退出。push 尚未执行，tag 对象已正确创建且远端为零。随后使用 `git rev-parse 'v0.4.15^{}'` 核对 peeled commit 与 HEAD 相同，再完成首次 push；没有删除、移动或重建 tag。复杂 Git revision 中的 `@{}`、`^{}`、`~`、`^` 一律作为单引号字面量 argv。
 
+## 2026-08-14：把内部发布文档提交误判为会触发 Pages
+
+- 环境：v0.4.15 post-release 证据提交，仅修改 `.agents/error-notebook.md`、`docs/**` 与接手文档。
+- 错误模式：在查询 workflow runs 前假定“文档提交”必然同时触发 Compatibility 和 Pages，并要求同一 commit 立即出现两个 run。
+- 症状 / 退出码：Compatibility `31726487421` 已正常启动，但查询只得到一个 run，包装器主动退出 1；Git、tag、Release、Pages 和 registry 均未变化。
+- 根因：`.github/workflows/docs.yml` 的 push paths 只包含 `website/**` 与 workflow 自身；内部长期文档 `docs/**` 不属于官网部署输入。本次没有官网内容变化，因此没有 Pages run 是正确终态。
+- 正确做法：等待前先读取目标 workflow 的 branch/path/event 触发器；本次只等待 Compatibility。只有变更 `website/**` 或 docs workflow 时才要求 Pages run。
+- 预防检查：不要从文件语义名称推断 CI 路由；每次 post-release 提交按实际 changed paths 与 workflow YAML 计算预期 run 集合，再查询 GitHub。
+- 适用范围：GitHub Actions path filters、内部 docs 与官网 website 的发布后验证。
+
 ## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
 
 - 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。
