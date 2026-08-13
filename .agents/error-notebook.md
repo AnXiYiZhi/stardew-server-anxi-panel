@@ -259,6 +259,16 @@
 - 预防检查：调用 finalize 前列出所有仍待完成的浏览器阶段；只要还有部署、异步生成或线上复核，就不要 finalize。
 - 适用范围：VitePress/Pages、Vite/静态托管及所有“本地预览 → CI 部署 → 线上复核”的同 turn 工作流。
 
+## 2026-08-13：Web 工具拒绝直接打开精确 GitHub Pages URL
+
+- 环境：Codex Web 工具，v0.4.14 post-release GitHub Pages 线上 HTTP 验收。
+- 错误模式：把已知的两个精确 Pages URL 直接提交给 Web `open`。
+- 症状 / 退出码：两次请求都在取页前返回不可重试的 `URL is not safe to open`；没有访问页面、没有外部写入，也没有继续改写后重放同一工具形态。
+- 根因：当前 Web 工具的 URL 安全门禁未接受该直接打开形态，不代表 GitHub Pages 不可达或部署失败。
+- 正确做法：已知公开地址使用 `curl.exe -fsSL --max-time 30` 做独立、有界 HTTP 读取，只在内存检查首页/更新日志的精确版本与关键文案并输出布尔结果；部署状态另以固定 Pages workflow 为权威证据。
+- 预防检查：Web 工具明确返回不可重试的 URL 安全错误后立即停止该形态；不得把工具门禁解释成站点故障，也不得为绕过门禁放宽 TLS 校验或改用不明代理。
+- 适用范围：GitHub Pages、已知公开静态站与其它被应用 Web 安全门禁拒绝的精确 URL。
+
 ## 2026-08-12：空数据库真实生命周期夹具使用不存在的用户 ID
 
 - 环境：PowerShell 7、Docker Desktop Linux containers、v0.4.11 真实首次建档 opt-in 集成测试。
@@ -1123,6 +1133,7 @@
 
 ## 2026-08-01：把 PowerShell 自动变量当成任务变量
 
+- 最近复发/补充：2026-08-13 v0.4.14 官网线上 HTTP 验收首次把首页响应命名为 `$home`；PowerShell 变量名大小写不敏感，实际命中只读自动变量 `$HOME`，赋值阶段报错，随后对空值调用字符串方法继续报错。命令没有外部写入；随即改为 `$portalHomeResponse` / `$portalChangelogResponse` 并只输出布尔断言。任务变量必须使用业务前缀，不能用 `$home`、`$host` 等看似普通但会命中自动变量的名称。
 - 环境：Windows，PowerShell 7，整理 Docker 候选镜像检查结果。
 - 错误模式：用 `$Host` 保存候选镜像检查对象。
 - 症状 / 退出码：PowerShell 报只读或常量变量不能覆盖，检查命令在赋值阶段退出。

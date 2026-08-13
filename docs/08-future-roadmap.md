@@ -8,6 +8,7 @@
 - [x] `v0.4.12` tag 的 Release workflow `31679615132` 在镜像构建/推送前被旧维修脚本 SC2317 阻断；无 Release、无三仓或 `latest` 变更。tag 保持不可移动，局部 ShellCheck 0.10.0/0.11.0 修复复验通过。
 - [x] `v0.4.13` 全部 release gates 通过后，ACR 拒绝 Buildx 默认 attestation，造成 Docker Hub `0.4.13/latest` 已更新而 GHCR/ACR/Release 未更新的部分发布；workflow 已显式禁用 provenance/SBOM，tag 不移动。
 - [x] `v0.4.14@a70efc98feec` 的精确候选、正式 Web unhealthy 回滚/健康升级、Compatibility `31682006066`、Release workflow `31682847388`、三仓统一 digest、逐仓首次启动/重启和四项资产核对全部通过。
+- [x] post-release 提交 `c0cc94cb56ae` 的 Compatibility `31684078849` 与 Pages `31684078868` 成功；线上首页和更新日志 HTTP 正文精确命中 v0.4.14、swappiness 与宿主重启后手动启动边界。
 - [ ] 生产真机同步等待 `114.55.142.107:22` 的正确 SSH 用户名；`cz/root` 均被拒绝，未执行生产变更。取得用户名后使用精确 `0.4.14`，游戏保持关闭并由用户手动启动。
 
 # 2026-08-12 完成：图形化 Compose 一键升级自动标准化（PANEL-UPDATE-GRAPHICAL-COMPOSE-1，未发布）

@@ -101,6 +101,7 @@
 - [x] Release workflow、三仓精确版/latest digest/metadata、逐仓独立 health/version/restart smoke 已完成。
 - [x] GitHub Release 四项资产与 tag 源字节一致，`run.sh` swappiness 修复已核对。
 - [x] 最终候选的 Control 0.3.1、双 writer 新建档、图形化 conversion、正式 Web unhealthy rollback/健康升级和升级后 UI 证据已完成。
+- [x] post-release `main` 提交 `c0cc94cb56ae` 的 Compatibility `31684078849` 与 Pages `31684078868` 成功；官网首页和更新日志的线上 HTTP 正文命中 v0.4.14、Control/新建存档摘要、swappiness 与宿主重启后手动启动边界。
 - [ ] 生产真机同步被 SSH 用户名阻塞：`114.55.142.107:22` 可达，但 `cz`/`root` 均被拒绝。取得正确用户名后，先完整备份并确认无人写入，使用精确 `0.4.14` 走 Web 更新/图形化 Compose 转换；游戏保持关闭，核对 Panel health/version、Control 0.3.1、SQLite/存档/Mod/备份、非目标资源和手动启服边界。
 
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 发布门禁：图形化 Compose 自动标准化（2026-08-12，未发布）
