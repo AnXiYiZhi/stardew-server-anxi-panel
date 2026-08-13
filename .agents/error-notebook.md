@@ -46,6 +46,16 @@
 - 预防检查：跨任务协调优先从 compact snapshot 建立 cursor；编排解析错误不能当作目标任务终态，也不能触发重复发布或 Git 操作。
 - 适用范围：Codex Desktop `wait_threads`、长任务协作与共享工作区发布协调。
 
+## 2026-08-14：直接调用 `pwsh -File` 时重复了内层字符串引号
+
+- 环境：Codex Desktop `shell_command` 已直接进入 PowerShell，再启动 PowerShell 7 执行任务专属升级验收脚本。
+- 错误模式：把只适用于外层 `-Command '& { ... }'` 字符串的双写单引号继续用于直接命令，写成 `pwsh ... -File ''.agents/v0415-web-upgrade-e2e.ps1''`。
+- 症状 / 退出码：PowerShell 7 把脚本参数解析成不存在的 `/v0415-web-upgrade-e2e.ps1`，在读取脚本前以 1 退出；旧版隔离 fixture 已启动但 updater、候选镜像和产品 API 都尚未执行，随后按精确 Compose project、volume 与 root 清理为零。
+- 根因：混淆“嵌在 PowerShell 单引号脚本块中的字符串字面量”和“直接传给原生命令的 argv”。引号转义只在前一种语法层需要，不能机械复制到后一种。
+- 正确做法：直接命令使用 `pwsh -NoLogo -NoProfile -File .agents/v0415-web-upgrade-e2e.ps1 -Prefix success414 ...`；需要先解析绝对路径时，在单一 `pwsh -Command` 脚本块内用 `Resolve-Path -LiteralPath` 并通过调用运算符执行，不能混用两种形态。
+- 预防检查：执行任务 `.ps1` 前先判断当前工具命令是否已经是直接 argv 层；直接 `-File` 参数只保留一层路径，不出现相邻 `''`。失败发生在脚本加载前时先确认产品链未开始，再清理 fixture 并修正调用。
+- 适用范围：Codex Desktop、PowerShell 7、`pwsh -File`、任务专属发布与 E2E 脚本。
+
 ## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
 
 - 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。
