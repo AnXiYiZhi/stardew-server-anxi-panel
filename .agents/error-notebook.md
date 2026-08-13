@@ -2,6 +2,47 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-13：PowerShell 中未引用 `stash@{0}`
+
+- 环境：PowerShell 7，在 tag 被 CI 阻断后恢复暂存的错题本修改。
+- 错误模式：直接执行 `git stash pop stash@{0}`，没有把 reflog selector 作为单个字面字符串引用。
+- 症状 / 退出码：Git 收到被 PowerShell 解析破坏的参数并报 `unknown switch 'e'`、退出 129；stash 和工作树均未变化。
+- 根因：`@{}` 在 PowerShell 中有 hashtable/script 语义，不能按 Bash 示例裸传给原生命令。
+- 正确做法：使用 `git stash pop 'stash@{0}'`，每次先 `git stash list` 确认目标；本轮加引号后成功恢复并自动 drop 精确 stash。
+- 预防检查：PowerShell 调用 Git 时，ref/reflog 参数含 `{}`、`@`、`^` 等 Shell 元字符一律单引号包裹；不能照抄 Bash 裸参数。
+- 适用范围：Git stash/reflog、revision expressions 与 PowerShell 原生命令参数。
+
+## 2026-08-13：清理旧任务资源时假定创建阶段写入了 owner label
+
+- 环境：最终 Web 门禁完成后清理唯一外层 DinD 容器和 daemon 数据卷。
+- 错误模式：未先读取实际 metadata，直接断言容器与 volume 的 `com.openai.codex.owner` 等于任务前缀。
+- 最近复发/补充：改为 mount 交叉核对后，又把 Docker Desktop canonical source `/run/desktop/mnt/host/e/...` 与 PowerShell `Resolve-Path` 的 `E:\...` 做字面相等，第二次在删除前安全退出。Windows bind identity 应同时核对 destination、canonical source 的固定任务后缀和容器/volume 关系，不能跨命名空间直接比较路径文本。
+- 症状 / 退出码：断言报 outer container ownership mismatch 并在删除前退出；完整 inspect 随后显示两个资源都没有 label，但容器精确名称、`docker:29-dind` 镜像、唯一任务 volume mount 和任务 bind 均吻合。
+- 根因：把新夹具推荐的 owner-label 规范反向套到本轮早期已经创建、未设置 label 的资源，没有保留创建时真实契约。
+- 正确做法：删除前从完整 inspect 交叉核对精确名称、镜像、挂载的唯一 volume、工作区 bind 与无其它消费者；label 存在时作为强证据，不存在时不得伪造，但也不能只凭名称直接删除。
+- 预防检查：每个任务创建资源时立即记录实际 ID/labels/mounts；清理断言必须来自记录或现状 inspect，不能在结束时猜创建参数。后续新夹具一律在创建时加 owner label。
+- 适用范围：Docker 容器、network、volume 和跨多轮保留的发布夹具。
+
+## 2026-08-13：用旧 Panel 尚未切走的版本响应推断回滚完成
+
+- 环境：最终 `v0.4.12` revision 的 v0.4.11 unhealthy Web 更新复跑。
+- 错误模式：POST apply 后直接等待 `/api/version=0.4.11` 作为“已恢复旧版”信号；切换 helper 尚未停旧 Panel 时该条件立即成立，于是过早开始终态倒计时。
+- 症状 / 退出码：120 秒后脚本报 rollback terminal missing，持久状态仍是 `waiting_health`、75%、无 errorCode；trap 随后清理任务 helper/容器，产品从未宣称回滚已完成。
+- 根因：版本响应没有证明候选曾运行或回滚阶段已开始；同一个旧版本值同时代表“尚未切换”和“已经恢复”，缺少事件顺序证据。
+- 正确做法：故障注入必须先同时观察目标容器 `/api/version=0.4.12` 与 Docker health=`unhealthy`，再等待 v0.4.11 恢复，最后读取持久 `failed_rolled_back/health_check_failed`。只有完整顺序才是回滚证据。
+- 预防检查：所有状态机 E2E 对重复值建立中间阶段/nonce/目标身份门禁，不能只看最终值；外层 timeout 必须覆盖产品 health timeout 与 rollback budget 之和。
+- 适用范围：Panel updater、蓝绿切换、健康超时、回滚与任何前后状态值相同的异步流程。
+
+## 2026-08-13：受控 HTTPS 夹具依赖 DinD 先前的系统 CA 状态
+
+- 环境：最终 `v0.4.12` revision 的受控 Release/registry Web 升级复跑。
+- 错误模式：新建网关后直接用 DinD 系统 curl 探测 `api.github.com`，假定早期曾导入任务 CA 就会在本轮持续生效；readiness 轮询又没有抑制每次相同的证书错误。
+- 症状 / 退出码：60 秒内重复返回 curl 60 `unable to get local issuer certificate`，最终 fixture gateway not ready；Panel、更新事务和持久数据均未创建或修改。
+- 根因：测试脚本把 TLS 信任隐式依赖于容器外部准备阶段/重启前状态，没有把 CA 作为本轮命令的显式输入；重复错误输出还放大了无效日志。
+- 正确做法：脚本在任何 HTTPS 探针前显式设置 `CURL_CA_BUNDLE` 与 `SSL_CERT_FILE` 为任务 CA；Panel 继续只读挂载同一 CA，dockerd registry 信任另按 daemon 契约独立验证。readiness 内相同暂态 stderr 静默，到期只输出一次稳定错误。
+- 预防检查：受控 TLS E2E 的 CA、DNS 与 endpoint 都必须在单次脚本输入中自包含，不能从先前容器生命周期推导；正式产品请求前先完成 curl 与 registry push/pull 双探针。
+- 适用范围：DinD、受控 GitHub/registry、容器重启后的 TLS 测试与有界 readiness。
+
 ## 2026-08-13：best-effort cleanup 函数继承最后一条非零状态
 
 - 环境：任务专属 DinD，升级后浏览器验收完成后的精确资源清理。

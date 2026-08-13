@@ -60,7 +60,14 @@ func (e *NewGameOwnerError) Error() string {
 
 func (e *NewGameOwnerError) Unwrap() error { return e.Cause }
 
-var newGameOwnerOperationMu sync.Mutex
+var (
+	newGameOwnerOperationMu sync.Mutex
+	// The filesystem rename is still the cross-process linearization point.
+	// Serializing claim publication inside one Panel process prevents a losing
+	// goroutine from interpreting the winner's not-yet-synced directory view as
+	// a persistent empty-owner recovery condition on Linux filesystems.
+	newGameOwnerClaimMu sync.Mutex
+)
 
 var (
 	newGameExecutorOnce sync.Once
@@ -421,6 +428,8 @@ func findNewGameTransactionByRequest(dataDir, requestID string) (*NewGameTransac
 }
 
 func claimNewGameOwner(dataDir string, owner NewGameOwnerRecord) (claimed bool, retErr error) {
+	newGameOwnerClaimMu.Lock()
+	defer newGameOwnerClaimMu.Unlock()
 	if err := ensureNewGameControlDir(dataDir); err != nil {
 		return false, err
 	}

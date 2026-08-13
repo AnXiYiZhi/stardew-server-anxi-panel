@@ -81,6 +81,7 @@
 - `621c564` 图形化链完成两层验收：官方 v0.4.11 hard-coded/no-env 容器先通过新版 Release `migrate-fnos.sh` 一次性标准化并保留旧容器、bind、named/anonymous volume 和 SQLite；随后用包含 `621c564`、对外报告 0.4.11 的来源镜像走真实 Web conversion，先观察 unhealthy 目标并完整回滚，再以健康候选重试，事务 `9afdaa53abb0` 成功。转换后 capability=`supported` 且 `conversionRequired=false`，Panel 重启正常，Release 命中 5 次、registry 命中 178 次。
 - 在由 v0.4.11 Web 升级得到的候选 Panel（事务 `16e630f9e439`）上重新构造 `state=error + requiredFiles=ok + compose=ready + image=available` 的隔离证据；普通用户 `/state` 精确返回 `installationDiagnostic.status=installed`、`recommendedAction=retry_start`。应用内 Browser 验证桌面端显示“错误 + 查看诊断”且没有“未安装/重装”弹窗，点击进入 `/instances/stardew/diagnostics`；390×844 移动端显示“切换电脑端查看诊断”，root/body `scrollWidth==clientWidth==390`，两视口 console error/warn 为 0。浏览器转发与嵌套 Panel/container/network/volume 最终精确查询均为 0。
 - 上述真实升级仍基于代码提交候选；本次发布证据文档和错题本收口会产生仅文档差异的最终 tag 候选 commit。必须以最终 commit 重建带新 revision 的镜像并重跑身份、fresh smoke、关键 Web 升级/回滚与 Release asset 门禁后才能 tag；当前仍未推送 tag、正式镜像或 `latest`，生产同步也尚未开始。
+- 首次文档收口 SHA `4ed7c5ad120ed36caf4613a30037f727a66f75b6` 的远端 Compatibility matrix `31676618033` 在 Linux 12 路 `TestNewGameOwnerAtomicClaimAllowsExactlyOneWinner` 暴露真实并发竞态，因此明确阻止 tag。根因是同一进程 loser 在 winner rename 后、目录同步完成前可能把 owner 目录瞬时不可读误判为 recovery_required。修复增加进程内 claim publication mutex，跨进程仍使用 no-replace rename；Windows/Linux 该专项各连续 100 次通过，Windows全量 74.0 秒、Linux全量 152.2 秒及两平台 vet/build通过。必须等包含此修复的新 SHA 远端 Compatibility 成功后才可继续 tag。
 
 ## Tag 前剩余收口清单
 

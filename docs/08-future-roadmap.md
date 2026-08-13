@@ -4,6 +4,7 @@
 - [x] 后端 installationDiagnostic 与前端共享分类器修复 `error → 未安装/重装`，desktop/mobile 升级后 Browser 已用 files-ok error 实证。
 - [x] 新建档强制持久幂等、单 writer、owner fencing、完整角色内存复核、同 ID durable save、双 XML 稳定门禁和可恢复回滚；真实 startup writer POST=0、HTTP writer POST=1 通过。
 - [x] v0.4.11/v0.3.2 Web 升级、unhealthy 回滚、官方一次性 migrate-fnos 与 621 图形化 Web conversion 已通过隔离真机门禁。
+- [x] Linux CI 12 路 owner 原子 claim 偶发竞态已修复：进程内发布串行、跨进程 no-replace 原子边界不变；Windows/Linux 各 100 次并发专项和全量门禁通过。
 - [ ] 最终文档 commit 后重建精确 revision 候选并复跑关键门禁；随后 tag、Release workflow、三仓回拉/资产核对和生产真机同步。未完成前不得标记“已发布”。
 
 # 2026-08-12 完成：图形化 Compose 一键升级自动标准化（PANEL-UPDATE-GRAPHICAL-COMPOSE-1，未发布）
