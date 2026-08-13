@@ -305,6 +305,9 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	} else {
 		return fmt.Errorf("stat .env: %w", err)
 	}
+	if err := d.ensureInstanceDockerHostBindings(instance.DataDir); err != nil {
+		return fmt.Errorf("ensure instance Docker host bindings: %w", err)
+	}
 	if err := EnsureGameDataVolumeBinding(instance.DataDir); err != nil {
 		return fmt.Errorf("ensure explicit game data volume binding: %w", err)
 	}

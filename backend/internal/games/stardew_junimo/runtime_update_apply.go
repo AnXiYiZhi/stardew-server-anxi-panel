@@ -297,6 +297,9 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 	if err != nil {
 		return err
 	}
+	if err := d.ensureInstanceDockerHostBindings(instance.DataDir); err != nil {
+		return fmt.Errorf("ensure instance Docker host bindings before runtime recovery: %w", err)
+	}
 	if status.Phase == RuntimeUpdateApplySucceeded || status.Phase == RuntimeUpdateApplyFailedRolledBack {
 		manifest, manifestErr := readRuntimeUpdateRecoveryManifest(instance.DataDir, status.ApplyID)
 		if manifestErr != nil || !validRuntimeUpdateRecoveryManifest(instance, status, manifest) {

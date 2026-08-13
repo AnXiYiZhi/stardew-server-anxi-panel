@@ -325,12 +325,12 @@ func TestDriverPrepare_CreatesDirectoryAndFiles(t *testing.T) {
 		"tty: true",
 		"steam-session:/data/steam-session",
 		"game-data:/data/game",
-		"./.local-container/saves:/config/xdg/config/StardewValley",
-		"./.local-container/settings:/data/settings",
-		"./.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro",
-		"./.local-container/cont-env/DBUS_SESSION_BUS_ADDRESS:/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS:ro",
-		"./.local-container/cont-groups/cinit/id:/etc/cont-groups.d/cinit/id:ro",
-		"./.local-container/cont-users/root/home:/etc/cont-users.d/root/home:ro",
+		"${INSTANCE_HOST_DATA_DIR}/.local-container/saves:/config/xdg/config/StardewValley",
+		"${INSTANCE_HOST_DATA_DIR}/.local-container/settings:/data/settings",
+		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-env/APP_NAME:/etc/cont-env.d/APP_NAME:ro",
+		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-env/DBUS_SESSION_BUS_ADDRESS:/etc/cont-env.d/DBUS_SESSION_BUS_ADDRESS:ro",
+		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-groups/cinit/id:/etc/cont-groups.d/cinit/id:ro",
+		"${INSTANCE_HOST_DATA_DIR}/.local-container/cont-users/root/home:/etc/cont-users.d/root/home:ro",
 	} {
 		if !strings.Contains(composeText, want) {
 			t.Errorf("docker-compose.yml missing %q", want)
@@ -387,9 +387,15 @@ func TestDriverPrepare_DoesNotOverwriteExistingFiles(t *testing.T) {
 	if string(got) != string(customCompose) {
 		t.Error("Prepare should not overwrite existing docker-compose.yml")
 	}
-	gotEnv, _ := os.ReadFile(filepath.Join(dataDir, ".env"))
-	if string(gotEnv) != string(customEnv) {
-		t.Error("Prepare should not overwrite existing .env")
+	gotEnv, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		t.Fatalf("read migrated .env: %v", err)
+	}
+	if gotEnv["MY_KEY"] != "myvalue" {
+		t.Errorf("Prepare should preserve existing .env values, got MY_KEY=%q", gotEnv["MY_KEY"])
+	}
+	if gotEnv["INSTANCE_HOST_DATA_DIR"] != dataDir {
+		t.Errorf("Prepare should add the Docker host data path, got %q want %q", gotEnv["INSTANCE_HOST_DATA_DIR"], dataDir)
 	}
 }
 

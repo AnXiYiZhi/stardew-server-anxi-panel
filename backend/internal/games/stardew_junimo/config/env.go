@@ -115,6 +115,7 @@ func writeEnvFile(path string, fields map[string]string) error {
 	// Write known keys in a stable order first.
 	ordered := []string{
 		"GAME_DATA_VOLUME",
+		"INSTANCE_HOST_DATA_DIR",
 		"IMAGE_VERSION",
 		"SERVER_IMAGE",
 		"SERVER_IMAGE_CANDIDATES",
@@ -189,6 +190,7 @@ func quoteEnvValue(value string) string {
 func EmptyEnvTemplate() map[string]string {
 	return map[string]string{
 		"GAME_DATA_VOLUME":                       "",
+		"INSTANCE_HOST_DATA_DIR":                 "",
 		"IMAGE_VERSION":                          "",
 		"SERVER_IMAGE":                           DefaultServerImage,
 		"SERVER_IMAGE_CANDIDATES":                DefaultServerImageCandidates,
