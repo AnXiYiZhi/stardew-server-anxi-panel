@@ -245,8 +245,10 @@ func waitForImportRuntimeProbes(ctx context.Context, lifecycle LifecycleDockerSe
 		if lastErr == nil {
 			return nil
 		}
-		if typed, ok := AsImportTransactionError(lastErr); ok && typed.Code == ImportErrorMaintenanceMod {
-			return typed
+		if typed, ok := AsImportTransactionError(lastErr); ok {
+			if typed.Code == ImportErrorMaintenanceMod || typed.Code == ImportErrorMaintenanceControl {
+				return typed
+			}
 		}
 		if err := waitImportPoll(ctx, interval); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -275,7 +277,18 @@ func probeImportRuntime(ctx context.Context, lifecycle LifecycleDockerService, d
 			return &ImportTransactionError{Code: ImportErrorMaintenanceAPI, Message: "Junimo health and status APIs are unavailable", Cause: statusErr}
 		}
 	}
-	return verifyRunningJunimoVersion(ctx, lifecycle, dataDir)
+	if err := verifyRunningJunimoVersion(ctx, lifecycle, dataDir); err != nil {
+		return err
+	}
+	control := InspectControlRuntimeGate(dataDir)
+	switch control.State {
+	case ControlRuntimeGateReady:
+		return nil
+	case ControlRuntimeGatePending:
+		return errors.New("Control runtime evidence is not ready")
+	default:
+		return &ImportTransactionError{Code: ImportErrorMaintenanceControl, Message: "running Control version or DLL does not match the Panel runtime manifest"}
+	}
 }
 
 func verifyRunningJunimoVersion(ctx context.Context, lifecycle LifecycleDockerService, dataDir string) error {

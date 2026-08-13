@@ -36,6 +36,15 @@ POST /api/instances/:id/mods/remote/install
 }
 ```
 
+扩展同时发送当前安装动作的稳定请求标识：
+
+```http
+Idempotency-Key: <requestId>
+X-Anxi-Nexus-Installer: 0.1.3
+```
+
+同一次捕获产生的自动提交、手动提交、下载事件和页面重新注入会复用同一个 `requestId`。面板如果已经为该标识创建任务，会返回原 `jobId`，不会再启动第二个安装任务；重新选择文件或开始新的安装动作会生成新标识。
+
 ## 安装测试
 
 1. 打开 Chrome / Edge 的扩展管理页。
@@ -66,7 +75,7 @@ POST /api/instances/:id/mods/remote/install
 - Nexus 改版后，Mod 页头部的下载按钮从 `Manual download` 变成短标签 `Manual`（旁边是 `Vortex`，位于 `Download:` 下方），点击后对**有依赖的 Mod**会先弹出 `Download mod file` 模态框，框内才是真正的 `Manual download`；对**无依赖的 Mod**则可能直接进入下载。旧扩展只匹配 `Manual download` 文案，导致在 Mod 页报“未找到 Manual download 按钮”。
 - 主路径改为**直接拼链接**：在 Mod 页先用 `findFileIdOnPage()` 从页面 DOM（仅限当前 Mod 的链接/`data-file-id`）恢复 `file_id`，直接走 `generateNexusDownloadUrl()` 拿临时 ZIP 链接，跳过点按钮和模态框。
 - 兜底路径：Mod 页没有暴露 `file_id`（或直接生成失败）时，才回退到点击 `Manual`（短按钮）→ 等 `Download mod file` 模态框出现 → 点模态里的 `Manual download` 进入下载页；`findManualDownloadButton` 收紧为严格匹配 `manual download`，新增 `findShortManualButton` 匹配短 `Manual`，两步点击带 4 秒节流避免重复弹窗。
-- 交付提醒：面板下载扩展接口会**优先复用实例目录 `.local-container/browser-extensions/anxi-nexus-installer.zip` 缓存**（只校验 manifest/background 存在、不校验版本）。更新扩展后需删除该缓存 ZIP，或让后端从新镜像预包/源码重新生成，用户才能拿到新版本。
+- 交付提醒：面板下载扩展接口会核对实例缓存 ZIP 与内置源码的 manifest 版本；版本不一致时会自动重新打包，无需手动删除缓存。
 
 # NEXUS-MODPAGE-DL-2 Shadow DOM 与 data-tracking 匹配（0.1.2）
 
@@ -75,3 +84,10 @@ POST /api/instances/:id/mods/remote/install
 - 新增 `findManualDownloadControl()`：优先按 Nexus 自带的 `data-tracking*="Download"` 属性分类下载控件，用 `manual` 关键字排除 `vortex`/`mod manager`，再按控件是否已带 `file_id` 排序；找不到才回退到旧的文案匹配 `findManualDownloadButton`/`findShortManualButton` 逻辑（已从两步点击模型改为统一的“控件是否带 file_id”判断）。
 - 新增 `openNexusFileList()` + `waitForFileIdOnPage()`：`file_id` 未就绪时主动点击/跳转到文件列表页，并轮询（含 `MutationObserver`）等待 Nexus 异步渲染出 `file_id`，超时 20 秒才回退到点击流程，避免旧版在文件列表尚未加载时误判"未找到"。
 - 交付提醒同上：更新到 0.1.2 后，实例目录已有的 ZIP 缓存 manifest 版本仍是 `0.1.1`，会被后端版本感知逻辑判定为过期并自动重新打包，无需手动清缓存。
+
+# NEXUS-EXT-IDEMPOTENCY-1 重复提交幂等（0.1.3）
+
+- `START_CAPTURE` 为每次安装动作生成并持久化 `requestId`；同一已知 Mod/file 或同一批量项的活动 capture 在页面重新注入、扩展 service worker 重启或提交响应丢失后继续复用。选择同一 Mod 的另一个 `fileId` 会生成新标识；无法证明 fileId 相同的两个独立手动动作也不会合并。
+- `background.js` 与 `panel-bridge.js` 使用只覆盖进行中请求的 singleflight。Promise 在异步 POST 启动前登记，成功或失败后立即释放；失败不会缓存五分钟，也不会阻止用户重试。
+- 两条 POST 路径都发送 `Idempotency-Key`。面板在 SQLite 中把它与 `mod_remote_install + instance` 原子绑定，重复请求返回 `202 { jobId, deduped: true }`；因此扩展内存丢失也不会重复建任务。
+- 提交网络失败时 capture 保持可重试，且沿用原 `requestId`；已经明确创建任务后开始新的安装动作才会轮换标识。

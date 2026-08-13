@@ -13,6 +13,7 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -223,6 +224,13 @@ func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance,
 	if err := os.WriteFile(filepath.Join(modDir, "JunimoServer.dll"), []byte("dll"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := installSMAPIMod(dataDir); err != nil {
+		t.Fatal(err)
+	}
+	runtimeManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
 	saveName := "Upload_1"
 	saveDir := filepath.Join(savesDir(dataDir), "Saves", saveName)
 	if err := os.MkdirAll(saveDir, 0o700); err != nil {
@@ -241,6 +249,9 @@ func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance,
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(controlDir(dataDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "status.json"), []byte(`{"saveId":"Old_1"}`), 0o600); err != nil {
@@ -320,7 +331,7 @@ func TestImportMaintenanceFailuresStopAndRestore(t *testing.T) {
 			fake, record := newMaintenanceFake(tc.cfg)
 			d := New(fake, nil, nil, store)
 			err := d.runImportMaintenance(context.Background(), instance, op, nil,
-				importMaintenanceOptions{ReadyTimeout: 15 * time.Millisecond, PollInterval: time.Millisecond})
+				importMaintenanceOptions{ReadyTimeout: 250 * time.Millisecond, PollInterval: time.Millisecond})
 			typed, ok := AsImportTransactionError(err)
 			if !ok || typed.Code != tc.code {
 				t.Fatalf("error=%v code=%v want=%s", err, typed, tc.code)
@@ -379,6 +390,26 @@ func TestImportMaintenanceStaticDLLMismatchDoesNotStartContainer(t *testing.T) {
 	defer record.mu.Unlock()
 	if record.started {
 		t.Fatal("container started before static DLL verification")
+	}
+}
+
+func TestImportMaintenanceControlMismatchStopsRuntime(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"0.0.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+	d := New(fake, nil, nil, store)
+	err := d.runImportMaintenance(context.Background(), instance, op, nil,
+		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorMaintenanceControl {
+		t.Fatalf("error=%v code=%v", err, typed)
+	}
+	record.mu.Lock()
+	defer record.mu.Unlock()
+	if !record.down {
+		t.Fatal("mismatched Control runtime was not stopped")
 	}
 }
 

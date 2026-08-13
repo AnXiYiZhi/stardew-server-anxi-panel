@@ -5,6 +5,7 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
+      - "browser-extensions/**"
       - "scripts/compatibility_matrix.py"
       - "scripts/tests/test_compatibility_matrix.py"
       - ".github/workflows/compatibility-matrix.yml"
@@ -53,6 +54,7 @@ jobs:
           npm run test:smapi-update
           npm run test:install-state
           npm run test:new-game-idempotency
+          npm run test:nexus-extension-idempotency
           npm run test:farm-catalog
           npm run test:save-import
           npm run test:mod-list

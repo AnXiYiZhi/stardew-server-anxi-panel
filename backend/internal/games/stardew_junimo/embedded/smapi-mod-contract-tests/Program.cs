@@ -175,6 +175,47 @@ if (genericSaveSuccess.Details is null
 {
     throw new InvalidOperationException("an unbound save command received stale target details");
 }
+var unbindSaveCommand = new PanelCommand
+{
+    Id = command.Id,
+    Name = "save-now",
+    CreatedAt = now,
+    Payload = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        [SaveCommandContract.PreSaveActionPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement(SaveCommandContract.UnbindAllFarmhandsAction),
+        [SaveCommandContract.PreSaveActionSaveIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("Imported_1"),
+    },
+};
+var unbindExpectation = SaveCommandContract.ParseExpectation(unbindSaveCommand);
+if (!unbindExpectation.Valid || unbindExpectation.IsTargeted
+    || unbindExpectation.PreSaveAction != SaveCommandContract.UnbindAllFarmhandsAction
+    || unbindExpectation.PreSaveActionSaveId != "Imported_1")
+{
+    throw new InvalidOperationException("farmhand unbind save action was not parsed exactly");
+}
+var unbindReady = FarmhandUnbindContract.ValidateBeforeSave(
+    unbindExpectation, "Imported_1", true, true, 0, new FarmhandBindingSummary(3, 3, 3));
+if (!unbindReady.CanApply)
+    throw new InvalidOperationException($"valid farmhand unbind was rejected: {unbindReady.ErrorCode}");
+var unbindPlayersConnected = FarmhandUnbindContract.ValidateBeforeSave(
+    unbindExpectation, "Imported_1", true, true, 1, new FarmhandBindingSummary(3, 3, 3));
+if (unbindPlayersConnected.CanApply || unbindPlayersConnected.ErrorCode != "farmhand_unbind_players_connected")
+    throw new InvalidOperationException("farmhand unbind accepted an online human farmhand");
+var unbindWrongSave = FarmhandUnbindContract.ValidateBeforeSave(
+    unbindExpectation, "Other_1", true, true, 0, new FarmhandBindingSummary(3, 3, 3));
+if (unbindWrongSave.CanApply || unbindWrongSave.ErrorCode != "farmhand_unbind_save_mismatch")
+    throw new InvalidOperationException("farmhand unbind accepted the wrong loaded save");
+Expect(SaveCommandContract.CompleteSavedEvent(
+        unbindSaveCommand, "Imported_1", now.AddSeconds(1), new FarmhandBindingSummary(3, 3, 0)),
+    CommandStatuses.Succeeded, "ok");
+Expect(SaveCommandContract.CompleteSavedEvent(
+        unbindSaveCommand, "Imported_1", now.AddSeconds(1), new FarmhandBindingSummary(3, 3, 1)),
+    CommandStatuses.Failed, "farmhand_unbind_incomplete");
+Expect(SaveCommandContract.CompleteSavedEvent(unbindSaveCommand, "Imported_1", now.AddSeconds(1)),
+    CommandStatuses.Failed, "farmhand_unbind_unverified");
+Expect(SaveCommandContract.CompleteSavedEvent(
+        unbindSaveCommand, "Other_1", now.AddSeconds(1), new FarmhandBindingSummary(3, 3, 0)),
+    CommandStatuses.Failed, "farmhand_unbind_save_mismatch");
 var incompleteSaveCommand = new PanelCommand
 {
     Id = command.Id,
@@ -222,6 +263,28 @@ var differentTarget = new PanelCommand
 };
 if (SaveCommandRecoveryContract.Matches(saveJournal, differentTarget))
     throw new InvalidOperationException("durable save journal accepted a different target");
+var unbindJournal = new PendingSaveCommandJournal { Command = unbindSaveCommand, UpdatedAt = now };
+if (!SaveCommandRecoveryContract.Matches(unbindJournal, unbindSaveCommand))
+    throw new InvalidOperationException("durable save journal did not preserve the farmhand unbind action");
+var differentActionTarget = new PanelCommand
+{
+    Id = unbindSaveCommand.Id,
+    Name = unbindSaveCommand.Name,
+    CreatedAt = unbindSaveCommand.CreatedAt,
+    Payload = new Dictionary<string, System.Text.Json.JsonElement>
+    {
+        [SaveCommandContract.PreSaveActionPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement(SaveCommandContract.UnbindAllFarmhandsAction),
+        [SaveCommandContract.PreSaveActionSaveIdPayloadKey] = System.Text.Json.JsonSerializer.SerializeToElement("Other_1"),
+    },
+};
+if (SaveCommandRecoveryContract.Matches(unbindJournal, differentActionTarget))
+    throw new InvalidOperationException("durable save journal accepted a different farmhand unbind target");
+var unbindWaitingResume = SaveCommandRecoveryContract.Evaluate(unbindSaveCommand, true, "Other_1", null, null);
+if (unbindWaitingResume.CanResume || unbindWaitingResume.TerminalFailure || unbindWaitingResume.ErrorCode != "save_target_not_ready")
+    throw new InvalidOperationException("farmhand unbind recovery did not wait for its exact save");
+var unbindReadyResume = SaveCommandRecoveryContract.Evaluate(unbindSaveCommand, true, "Imported_1", null, null);
+if (!unbindReadyResume.CanResume || unbindReadyResume.TerminalFailure)
+    throw new InvalidOperationException("farmhand unbind recovery rejected its exact save");
 var waitingResume = SaveCommandRecoveryContract.Evaluate(targetedSaveCommand, true, "Old_1", "tx-1", "Old_1");
 if (waitingResume.CanResume || waitingResume.TerminalFailure || waitingResume.ErrorCode != "save_target_not_ready")
     throw new InvalidOperationException("targeted save recovery did not wait for the exact verified world");

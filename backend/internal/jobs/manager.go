@@ -111,18 +111,24 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {
 	if spec.Run == nil {
 		return storage.Job{}, fmt.Errorf("job runner is required")
 	}
+	if spec.Exclusive && spec.IdempotencyKey != "" {
+		return storage.Job{}, fmt.Errorf("exclusive and idempotent job creation cannot be combined")
+	}
 
 	createParams := storage.CreateJobParams{
-		Type:        spec.Type,
-		DisplayName: spec.DisplayName,
-		TargetType:  spec.TargetType,
-		TargetID:    spec.TargetID,
-		CreatedBy:   spec.CreatedBy,
-		Payload:     spec.Payload,
+		Type:           spec.Type,
+		DisplayName:    spec.DisplayName,
+		TargetType:     spec.TargetType,
+		TargetID:       spec.TargetID,
+		CreatedBy:      spec.CreatedBy,
+		Payload:        spec.Payload,
+		IdempotencyKey: spec.IdempotencyKey,
 	}
 	var job storage.Job
 	var err error
-	if spec.Exclusive {
+	if spec.IdempotencyKey != "" {
+		job, err = m.store.CreateIdempotentJob(ctx, createParams)
+	} else if spec.Exclusive {
 		job, err = m.store.CreateExclusiveJob(ctx, createParams)
 	} else {
 		job, err = m.store.CreateJob(ctx, createParams)

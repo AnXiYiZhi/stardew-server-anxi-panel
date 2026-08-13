@@ -187,5 +187,7 @@ assert.match(releaseWorkflow, /npm run test:responsive-layout/)
 assert.match(compatibilityWorkflow, /npm run test:responsive-layout/)
 assert.match(releaseWorkflow, /npm run test:new-game-idempotency/)
 assert.match(compatibilityWorkflow, /npm run test:new-game-idempotency/)
+assert.match(releaseWorkflow, /npm run test:nexus-extension-idempotency/)
+assert.match(compatibilityWorkflow, /npm run test:nexus-extension-idempotency/)
 
 console.log('responsive layout tests passed')

@@ -1,3 +1,10 @@
+# NEXUS-EXT-IDEMPOTENCY-1：扩展重复提交收敛（2026-08-13，completed，未发布）
+
+- 浏览器扩展版本升为 0.1.3。每次 `START_CAPTURE` 生成并在 `chrome.storage.local` capture 中保存 `requestId`；同一已知 Mod/file 或同一批量项的活动 capture 在页面重新注入、自动/手动提交竞争和 MV3 service worker 重启后继续复用，不同 `fileId`、无法证明 fileId 相同的独立手动动作或新的安装动作生成新标识。
+- `shared.js` 新增同步发布 Promise 的 singleflight registry。`background.js` 与 `panel-bridge.js` 只合并进行中的同一 requestId，请求成功或失败后立即释放；不再用固定 TTL 缓存已完成或 rejected Promise。每个调用方仍各自收敛 capture/batch 状态，只有 leader 发通知。
+- 后台直连与同源 panel bridge 都发送 `Idempotency-Key` 和版本头 `X-Anxi-Nexus-Installer: 0.1.3`。提交失败时 capture 恢复为可重试并保留同一 requestId；响应丢失后重试由后端返回原 jobId。
+- 新增 `test:nexus-extension-idempotency`，用 Node VM 真实加载 `shared.js/background.js/panel-bridge.js`，覆盖 20 路并发单 POST、rejected 后同 worker 立即重试、模拟 worker 重启、同 capture 重注入、不同/未知 fileId 不合并、bridge 单 POST及版本头。compatibility/release workflow 已把它加入正式门禁。
+
 # FE-INSTALL-RUNTIME-ERROR-MAPPING-1：运行错误不再误导重装（2026-08-13，released in v0.4.14）
 
 - `StardewPanel`、`InstallPage` 与移动端总览共享 installation-state 分类器；`state=error` 必须结合后端 `installationDiagnostic`，只有明确缺安装文件/镜像/Compose 才进入 repair，文件完整时提供 retry/diagnostics，未知证据也不得降级成“未安装”。新建档请求同步携带并在失败重试中复用 Idempotency-Key。

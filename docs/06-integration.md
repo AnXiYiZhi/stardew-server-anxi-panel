@@ -1,3 +1,18 @@
+# NEXUS-EXT-IDEMPOTENCY-1 联调契约（2026-08-13，completed，未发布）
+
+- 扩展 0.1.3 对每次用户安装动作生成稳定 `requestId`，后台直连和 panel bridge 都以 `Idempotency-Key` 请求头提交到既有 `POST /api/instances/:id/mods/remote/install`；请求体 `{url, mod?}` 不变，`fileId/requestId` 只在扩展内部消息中传递。
+- 首次创建仍返回 `202 {jobId}`；相同 key 重放返回 `202 {jobId, deduped:true}`，其中 jobId 必须与首次完全一致。前端/扩展应继续观察该任务，不得因为 deduped 再开任务；旧扩展不带键时保持兼容，但没有跨进程幂等保证。
+- key 的服务端作用域为 `mod_remote_install + instance + key`，终态也保持绑定。网络超时、页面刷新或 MV3 worker 重启必须复用同一 key；用户明确重新选择文件或在任务终态后重新开始安装时生成新 key。非法 key 返回 `400 invalid_idempotency_key`。
+- 进程内 singleflight 只负责减少重复 HTTP；SQLite 唯一索引才是任务创建权威。不同 Mod 文件即使 modId 相同也不得共用 requestId；失败 POST 要恢复可重试 capture，不缓存 rejected Promise。
+
+# SAVE-IMPORT-AUTO-UNCLAIM-1 联调契约（2026-08-13，completed，未发布）
+
+- upload-preview 与 upload-commit-and-start 的请求/响应完全不变；桌面和手机继续提交现有 hostHandling。前端不新增“国内 IP / Steam / 自动解绑”选项，也不改变当前 platformId 输入、校验或提示。
+- 后端仅对 hostHandling.mode=swap_to_player 默认自动解绑。Junimo 先继续用 platformId 完成既有 swap-host-to 主机迁移；finalizer 确认后，Control 在同一个耐久 save-now 的保存前清空全部 farmhand 绑定并落盘。virtual_host_takeover 不清空 ID，也不额外保存。
+- 202 受理、runtime_ready、import_confirmed、finalize_confirmed 都不是完成。swap_to_player 新增完成硬条件：同一 commandId 的 GameLoop.Saved 结果必须证明动作和目标存档一致、boundFarmhandCount=0，Junimo diagnostics 必须再次证明相同角色集合为零绑定，随后仍要通过 dayTransition、稳定 XML 和磁盘变化门禁。
+- 旧 Control、DLL hash 不一致、动作结果缺失、错档、有人在线、角色数据不可读或任一角色仍绑定时，job 保持失败/恢复语义，不发布邀请码，不把实例提升为普通 running。前端继续只根据现有 job/journal 终态显示成功，不解析日志；新增内部 maintenance 错误不会要求新请求字段。
+- 结果/journal 只保存 total/customized/bound 计数，不回传或持久化原始 userID/SteamID。自动解绑不删除角色、小屋、物品或关系；隔离真机证明 2 个角色和 1 个 customized 标记保存、重启后仍在，仅绑定数从 1 变 0。
+
 # STARTUP-NEWGAME-DURABILITY-1 联调终态（2026-08-13，released in v0.4.14）
 
 - `/api/instances/:id/state` 的 `installationDiagnostic` 是前端操作映射的普通用户权威：明确完整安装的 lifecycle error 返回 `installed/retry_start`，缺文件才 `incomplete/repair_install`，不可读证据为 `unknown/diagnose`。Control runtime 只有观察到合法非期望版本才 mismatch，缺 snapshot 在预算内是 pending。

@@ -178,7 +178,11 @@ public sealed class ModEntry : Mod
 			&& string.Equals(verifiedPanelCustomization.SaveId, saveName, StringComparison.Ordinal)
 			? verifiedPanelCustomization.TransactionId
 			: "";
-        var saveOutcome = pendingSaveCommands.Complete(verifiedTransactionId, saveName, DateTimeOffset.UtcNow);
+		var saveOutcome = pendingSaveCommands.Complete(
+			verifiedTransactionId,
+			saveName,
+			DateTimeOffset.UtcNow,
+			ReadFarmhandBindingSummary());
         if (saveOutcome is not null)
         {
             var resultPath = Path.Combine(commandResultDir, saveOutcome.CommandId + ".json");
@@ -993,16 +997,26 @@ public sealed class ModEntry : Mod
     {
         switch (command.Name)
         {
-            case "save-now":
-                var saveOutcome = pendingSaveCommands.Begin(command, Context.IsWorldReady, DateTimeOffset.UtcNow, SaveCommandTimeout);
-                if (saveOutcome.Status == CommandStatuses.Running)
-                {
+			case "save-now":
+				var saveOutcome = pendingSaveCommands.Begin(command, Context.IsWorldReady, DateTimeOffset.UtcNow, SaveCommandTimeout);
+				if (saveOutcome.Status == CommandStatuses.Running)
+				{
 					var journalFailure = EnsurePendingSaveCommandJournal(command);
 					if (journalFailure is not null)
 						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, journalFailure.ErrorCode, journalFailure.Message)!;
 					if (Game1.activeClickableMenu is not null)
 						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_ui_busy", "The game menu is busy and could not start saving.")!;
-					Game1.activeClickableMenu = new SaveGameMenu();
+					var actionFailure = ApplySavePreAction(command);
+					if (actionFailure is not null)
+						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, actionFailure.ErrorCode, actionFailure.Message)!;
+					try
+					{
+						Game1.activeClickableMenu = new SaveGameMenu();
+					}
+					catch (Exception ex)
+					{
+						return pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_start_failed", ex.Message)!;
+					}
                     Monitor.Log($"Save-now command {command.Id} registered; waiting for GameLoop.Saved.", LogLevel.Info);
                 }
                 return saveOutcome;
@@ -1137,6 +1151,14 @@ public sealed class ModEntry : Mod
 				ClearPendingSaveCommandJournal(command.Id);
 			return;
 		}
+		var actionFailure = ApplySavePreAction(command);
+		if (actionFailure is not null)
+		{
+			var failed = pendingSaveCommands.Fail(DateTimeOffset.UtcNow, actionFailure.ErrorCode, actionFailure.Message);
+			if (failed is not null && WriteJsonAtomic(resultPath, failed))
+				ClearPendingSaveCommandJournal(command.Id);
+			return;
+		}
 		if (!WriteJsonAtomic(resultPath, running))
 		{
 			pendingSaveCommands.Fail(DateTimeOffset.UtcNow, "save_result_write_failed", "The resumed running result could not be written.");
@@ -1183,6 +1205,74 @@ public sealed class ModEntry : Mod
 		{
 			Monitor.Log($"Failed to clear pending save command journal: {ex}", LogLevel.Warn);
 		}
+	}
+
+	private CommandOutcome? ApplySavePreAction(PanelCommand command)
+	{
+		var expectation = SaveCommandContract.ParseExpectation(command);
+		if (!expectation.Valid)
+			return NewOutcome(command, CommandStatuses.Failed, expectation.ErrorCode, "The save command action payload is invalid.");
+		if (!string.Equals(expectation.PreSaveAction, SaveCommandContract.UnbindAllFarmhandsAction, StringComparison.Ordinal))
+			return null;
+
+		var saveName = Constants.SaveFolderName;
+		if (string.IsNullOrWhiteSpace(saveName) && Context.IsWorldReady)
+			saveName = Game1.GetSaveGameName();
+		var hostId = Game1.player?.UniqueMultiplayerID ?? 0;
+		var onlineFarmhandCount = Context.IsWorldReady
+			? Game1.getOnlineFarmers().Count(farmer => farmer.UniqueMultiplayerID != hostId)
+			: 0;
+		var before = ReadFarmhandBindingSummary();
+		var decision = FarmhandUnbindContract.ValidateBeforeSave(
+			expectation,
+			saveName,
+			Context.IsWorldReady,
+			Game1.IsServer,
+			onlineFarmhandCount,
+			before);
+		if (!decision.CanApply)
+			return NewOutcome(command, CommandStatuses.Failed, decision.ErrorCode, decision.Message);
+
+		var cleared = 0;
+		foreach (var pair in Game1.netWorldState!.Value.farmhandData.Pairs)
+		{
+			var farmhand = pair.Value;
+			if (farmhand is null || string.IsNullOrEmpty(farmhand.userID?.Value))
+				continue;
+			farmhand.userID.Value = "";
+			cleared++;
+		}
+		var after = ReadFarmhandBindingSummary();
+		if (after is null || after.TotalFarmhands <= 0 || after.BoundFarmhands != 0)
+			return NewOutcome(command, CommandStatuses.Failed, "farmhand_unbind_incomplete", "At least one farmhand role remains bound after the unbind action.");
+
+		Monitor.Log(
+			$"Prepared durable save after unbinding {cleared} of {after.TotalFarmhands} farmhand role(s); waiting for GameLoop.Saved.",
+			LogLevel.Info);
+		return null;
+	}
+
+	private static FarmhandBindingSummary? ReadFarmhandBindingSummary()
+	{
+		var farmhandData = Game1.netWorldState?.Value?.farmhandData;
+		if (farmhandData is null)
+			return null;
+
+		var total = 0;
+		var customized = 0;
+		var bound = 0;
+		foreach (var pair in farmhandData.Pairs)
+		{
+			var farmhand = pair.Value;
+			if (farmhand is null)
+				continue;
+			total++;
+			if (farmhand.isCustomized?.Value == true)
+				customized++;
+			if (!string.IsNullOrEmpty(farmhand.userID?.Value))
+				bound++;
+		}
+		return new FarmhandBindingSummary(total, customized, bound);
 	}
 
     private static CommandOutcome NewOutcome(PanelCommand command, string status, string errorCode, string message)

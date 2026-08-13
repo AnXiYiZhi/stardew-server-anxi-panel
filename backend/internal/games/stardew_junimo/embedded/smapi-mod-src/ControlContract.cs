@@ -448,12 +448,52 @@ public sealed record SaveCommandExpectation(
 	bool IsTargeted,
 	string TransactionId,
 	string SaveId,
+	string PreSaveAction,
+	string PreSaveActionSaveId,
 	string ErrorCode);
+
+public sealed record FarmhandBindingSummary(
+	int TotalFarmhands,
+	int CustomizedFarmhands,
+	int BoundFarmhands);
+
+public sealed record FarmhandUnbindDecision(bool CanApply, string ErrorCode, string Message);
+
+public static class FarmhandUnbindContract
+{
+	public static FarmhandUnbindDecision ValidateBeforeSave(
+		SaveCommandExpectation expectation,
+		string? actualSaveId,
+		bool worldReady,
+		bool isServer,
+		int onlineFarmhandCount,
+		FarmhandBindingSummary? summary)
+	{
+		if (!string.Equals(expectation.PreSaveAction, SaveCommandContract.UnbindAllFarmhandsAction, StringComparison.Ordinal))
+			return new(true, "", "");
+		if (!worldReady)
+			return new(false, "farmhand_unbind_world_not_ready", "The game world is not ready for farmhand unbinding.");
+		if (!isServer)
+			return new(false, "farmhand_unbind_not_server", "Farmhand unbinding can only run on the server host.");
+		if (!string.Equals(expectation.PreSaveActionSaveId, actualSaveId?.Trim(), StringComparison.Ordinal))
+			return new(false, "farmhand_unbind_save_mismatch", "The loaded save does not match the farmhand unbind target.");
+		if (onlineFarmhandCount != 0)
+			return new(false, "farmhand_unbind_players_connected", "Farmhand unbinding requires every human farmhand to be offline.");
+		if (summary is null)
+			return new(false, "farmhand_unbind_state_unavailable", "Farmhand binding state is unavailable.");
+		if (summary.TotalFarmhands <= 0)
+			return new(false, "farmhand_unbind_no_farmhands", "The imported save contains no farmhand roles to unbind.");
+		return new(true, "", "");
+	}
+}
 
 public static class SaveCommandContract
 {
 	public const string TransactionIdPayloadKey = "transactionId";
 	public const string SaveIdPayloadKey = "saveId";
+	public const string PreSaveActionPayloadKey = "preSaveAction";
+	public const string PreSaveActionSaveIdPayloadKey = "preSaveActionSaveId";
+	public const string UnbindAllFarmhandsAction = "unbind-all-farmhands";
 	public const string SavedEventName = "GameLoop.Saved";
 
 	public static SaveCommandExpectation ParseExpectation(PanelCommand command)
@@ -461,21 +501,33 @@ public static class SaveCommandContract
 		ArgumentNullException.ThrowIfNull(command);
 		var payload = command.Payload;
 		if (payload is null)
-			return new(true, false, "", "", "");
+			return new(true, false, "", "", "", "", "");
 
 		var hasTransaction = payload.TryGetValue(TransactionIdPayloadKey, out var rawTransaction);
 		var hasSave = payload.TryGetValue(SaveIdPayloadKey, out var rawSave);
-		if (!hasTransaction && !hasSave)
-			return new(true, false, "", "", "");
-
 		var transactionId = ReadString(rawTransaction);
 		var saveId = ReadString(rawSave);
-		if (!hasTransaction || !hasSave || transactionId.Length == 0 || saveId.Length == 0)
-			return new(false, false, transactionId, saveId, "save_target_invalid");
-		return new(true, true, transactionId, saveId, "");
+		if (hasTransaction != hasSave || (hasTransaction && (transactionId.Length == 0 || saveId.Length == 0)))
+			return new(false, false, transactionId, saveId, "", "", "save_target_invalid");
+
+		var hasAction = payload.TryGetValue(PreSaveActionPayloadKey, out var rawAction);
+		var hasActionSave = payload.TryGetValue(PreSaveActionSaveIdPayloadKey, out var rawActionSave);
+		var action = ReadString(rawAction);
+		var actionSaveId = ReadString(rawActionSave);
+		if (hasAction != hasActionSave
+			|| (hasAction && (!string.Equals(action, UnbindAllFarmhandsAction, StringComparison.Ordinal) || actionSaveId.Length == 0)))
+		{
+			return new(false, hasTransaction, transactionId, saveId, action, actionSaveId, "save_action_invalid");
+		}
+
+		return new(true, hasTransaction, transactionId, saveId, action, actionSaveId, "");
 	}
 
-	public static CommandOutcome CompleteSavedEvent(PanelCommand command, string? actualSaveId, DateTimeOffset now)
+	public static CommandOutcome CompleteSavedEvent(
+		PanelCommand command,
+		string? actualSaveId,
+		DateTimeOffset now,
+		FarmhandBindingSummary? farmhandBindings = null)
 	{
 		ArgumentNullException.ThrowIfNull(command);
 		var expectation = ParseExpectation(command);
@@ -491,6 +543,24 @@ public static class SaveCommandContract
 		if (expectation.IsTargeted && !string.Equals(expectation.SaveId, actual, StringComparison.Ordinal))
 			return Outcome(command, CommandStatuses.Failed, "save_target_mismatch",
 				"GameLoop.Saved completed for a different save than the command target.", now, details);
+		if (expectation.PreSaveAction.Length > 0
+			&& !string.Equals(expectation.PreSaveActionSaveId, actual, StringComparison.Ordinal))
+		{
+			return Outcome(command, CommandStatuses.Failed, "farmhand_unbind_save_mismatch",
+				"GameLoop.Saved completed for a different save than the farmhand unbind target.", now, details);
+		}
+		if (string.Equals(expectation.PreSaveAction, UnbindAllFarmhandsAction, StringComparison.Ordinal))
+		{
+			if (farmhandBindings is null)
+				return Outcome(command, CommandStatuses.Failed, "farmhand_unbind_unverified",
+					"GameLoop.Saved completed but farmhand binding state could not be verified.", now, details);
+			details["farmhandCount"] = farmhandBindings.TotalFarmhands.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			details["customizedFarmhandCount"] = farmhandBindings.CustomizedFarmhands.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			details["boundFarmhandCount"] = farmhandBindings.BoundFarmhands.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			if (farmhandBindings.TotalFarmhands <= 0 || farmhandBindings.BoundFarmhands != 0)
+				return Outcome(command, CommandStatuses.Failed, "farmhand_unbind_incomplete",
+					"GameLoop.Saved completed but at least one farmhand role remains bound.", now, details);
+		}
 
 		return Outcome(command, CommandStatuses.Succeeded, "ok",
 			expectation.IsTargeted
@@ -513,6 +583,10 @@ public static class SaveCommandContract
 			details["transactionId"] = expectation.TransactionId;
 		if (expectation.SaveId.Length > 0)
 			details["expectedSaveId"] = expectation.SaveId;
+		if (expectation.PreSaveAction.Length > 0)
+			details["preSaveAction"] = expectation.PreSaveAction;
+		if (expectation.PreSaveActionSaveId.Length > 0)
+			details["preSaveActionSaveId"] = expectation.PreSaveActionSaveId;
 		return details;
 	}
 

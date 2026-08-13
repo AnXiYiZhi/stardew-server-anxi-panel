@@ -159,6 +159,39 @@ func TestImportEvidenceDiagnosticsAPIUnavailable(t *testing.T) {
 	}
 }
 
+func TestImportEvidenceFarmhandBindingSummary(t *testing.T) {
+	exec := importEvidenceExec{run: func(_ context.Context, _ []string) (paneldocker.CommandResult, error) {
+		return paneldocker.CommandResult{Stdout: `{"farmhandData":[{"uniqueMultiplayerId":1,"isCustomized":true,"hasUserId":false},{"uniqueMultiplayerId":2,"isCustomized":true,"hasUserId":false},{"uniqueMultiplayerId":3,"isCustomized":false,"hasUserId":false}],"failedFields":[]}`}, nil
+	}}
+	summary, err := ReadJunimoFarmhandBindingSummary(context.Background(), exec, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.TotalFarmhands != 3 || summary.CustomizedFarmhands != 2 || summary.BoundFarmhands != 0 {
+		t.Fatalf("summary=%+v", summary)
+	}
+}
+
+func TestImportEvidenceFarmhandBindingFailure(t *testing.T) {
+	exec := importEvidenceExec{run: func(_ context.Context, _ []string) (paneldocker.CommandResult, error) {
+		return paneldocker.CommandResult{Stdout: `{"farmhandData":[],"failedFields":["farmhandData"]}`}, nil
+	}}
+	_, err := ReadJunimoFarmhandBindingSummary(context.Background(), exec, t.TempDir())
+	if got := importEvidenceErrorCode(t, err); got != "diagnostics_field_failed" {
+		t.Fatalf("code=%q", got)
+	}
+}
+
+func TestImportEvidenceFarmhandBindingMissing(t *testing.T) {
+	exec := importEvidenceExec{run: func(_ context.Context, _ []string) (paneldocker.CommandResult, error) {
+		return paneldocker.CommandResult{Stdout: `{"failedFields":[]}`}, nil
+	}}
+	_, err := ReadJunimoFarmhandBindingSummary(context.Background(), exec, t.TempDir())
+	if got := importEvidenceErrorCode(t, err); got != "diagnostics_field_missing" {
+		t.Fatalf("code=%q", got)
+	}
+}
+
 func TestImportEvidenceMainSaveHash(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Farm_1")
 	data := []byte("read-only save bytes")

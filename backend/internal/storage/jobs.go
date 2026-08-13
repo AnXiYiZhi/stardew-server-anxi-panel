@@ -24,6 +24,7 @@ const (
 
 var ErrInvalidJobStatus = errors.New("invalid job status")
 var ErrActiveJobsExist = errors.New("active jobs exist")
+var ErrIdempotentJobExists = errors.New("idempotent job exists")
 
 // ActiveJobExistsError identifies the active job which owns an exclusive
 // target operation. Callers can attach to Job instead of starting a duplicate.
@@ -37,6 +38,20 @@ func (e *ActiveJobExistsError) Error() string {
 
 func (e *ActiveJobExistsError) Unwrap() error {
 	return ErrActiveJobsExist
+}
+
+// IdempotentJobExistsError identifies the durable job already created for an
+// idempotency key. Callers must return Job instead of launching another runner.
+type IdempotentJobExistsError struct {
+	Job Job
+}
+
+func (e *IdempotentJobExistsError) Error() string {
+	return fmt.Sprintf("job %s already exists for the idempotency key", e.Job.ID)
+}
+
+func (e *IdempotentJobExistsError) Unwrap() error {
+	return ErrIdempotentJobExists
 }
 
 type Job struct {
@@ -65,12 +80,13 @@ type JobLog struct {
 }
 
 type CreateJobParams struct {
-	Type        string
-	DisplayName string
-	TargetType  string
-	TargetID    string
-	CreatedBy   int64
-	Payload     string
+	Type           string
+	DisplayName    string
+	TargetType     string
+	TargetID       string
+	CreatedBy      int64
+	Payload        string
+	IdempotencyKey string
 }
 
 type ListJobsFilter struct {
@@ -104,6 +120,50 @@ func (s *Store) CreateJob(ctx context.Context, params CreateJobParams) (Job, err
 		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
 	`, id, params.Type, nullStringParam(params.DisplayName), JobStatusQueued, params.TargetType, params.TargetID, optionalCreatedBy(params.CreatedBy), nullStringParam(params.Payload))
 	return scanJobRow(row)
+}
+
+// CreateIdempotentJob atomically creates a durable job identity. The same key
+// remains bound to the original job after it reaches a terminal state so a
+// caller can safely recover from a lost HTTP response or process restart.
+func (s *Store) CreateIdempotentJob(ctx context.Context, params CreateJobParams) (Job, error) {
+	if params.IdempotencyKey == "" {
+		return Job{}, errors.New("idempotency key is required")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Job{}, fmt.Errorf("begin idempotent job transaction: %w", err)
+	}
+	defer rollback(tx)
+
+	existing, err := findJobByIdempotencyKey(ctx, tx, params.Type, params.TargetType, params.TargetID, params.IdempotencyKey)
+	if err == nil {
+		return Job{}, &IdempotentJobExistsError{Job: existing}
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return Job{}, err
+	}
+
+	id, err := NewJobID()
+	if err != nil {
+		return Job{}, err
+	}
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO jobs (id, type, display_name, status, target_type, target_id, created_by, payload, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
+	`, id, params.Type, nullStringParam(params.DisplayName), JobStatusQueued, params.TargetType, params.TargetID, optionalCreatedBy(params.CreatedBy), nullStringParam(params.Payload), params.IdempotencyKey)
+	job, err := scanJobRow(row)
+	if err != nil {
+		_ = tx.Rollback()
+		if existing, findErr := s.findJobByIdempotencyKey(ctx, params.Type, params.TargetType, params.TargetID, params.IdempotencyKey); findErr == nil {
+			return Job{}, &IdempotentJobExistsError{Job: existing}
+		}
+		return Job{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Job{}, fmt.Errorf("commit idempotent job transaction: %w", err)
+	}
+	return job, nil
 }
 
 // CreateExclusiveJob atomically creates a job only when no queued/running job
@@ -165,6 +225,30 @@ func findActiveJob(ctx context.Context, queryer jobQueryer, jobType, targetType,
 		ORDER BY created_at DESC, id DESC
 		LIMIT 1
 	`, jobType, targetType, targetID, JobStatusQueued, JobStatusRunning)
+	return scanJobRow(row)
+}
+
+func (s *Store) findJobByIdempotencyKey(ctx context.Context, jobType, targetType, targetID, idempotencyKey string) (Job, error) {
+	return findJobByIdempotencyKey(ctx, s.db, jobType, targetType, targetID, idempotencyKey)
+}
+
+// GetJobByIdempotencyKey returns the durable owner for an idempotent request.
+// It is used before mutable runtime preconditions so a replay can recover the
+// original response even when the instance state has since changed.
+func (s *Store) GetJobByIdempotencyKey(ctx context.Context, jobType, targetType, targetID, idempotencyKey string) (Job, error) {
+	if idempotencyKey == "" {
+		return Job{}, ErrNotFound
+	}
+	return s.findJobByIdempotencyKey(ctx, jobType, targetType, targetID, idempotencyKey)
+}
+
+func findJobByIdempotencyKey(ctx context.Context, queryer jobQueryer, jobType, targetType, targetID, idempotencyKey string) (Job, error) {
+	row := queryer.QueryRowContext(ctx, `
+		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at
+		FROM jobs
+		WHERE type = ? AND target_type = ? AND target_id = ? AND idempotency_key = ?
+		LIMIT 1
+	`, jobType, targetType, targetID, idempotencyKey)
 	return scanJobRow(row)
 }
 

@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -72,7 +73,7 @@ func (f *durableTestFixture) options(t *testing.T) importDurableSaveOptions {
 		CommandTimeout: 20 * time.Millisecond, TransitionTimeout: 20 * time.Millisecond, PollInterval: time.Millisecond,
 		SubmitCommand: func(dataDir, commandID string) error {
 			f.submissions++
-			if err := writePanelCommandWithID(dataDir, commandID, "save-now", nil); err != nil {
+			if err := writeImportDurableSaveCommand(dataDir, commandID, "Upload_1"); err != nil {
 				return err
 			}
 			writeDurableMain(t, dataDir, f.afterXML)
@@ -88,7 +89,18 @@ func (f *durableTestFixture) options(t *testing.T) importDurableSaveOptions {
 				status = f.outcomes[index]
 				f.outcomeCall++
 			}
-			return CommandOutcome{CommandID: commandID, Status: status, UpdatedAt: time.Now().UTC()}, nil
+			return CommandOutcome{CommandID: commandID, Status: status, UpdatedAt: time.Now().UTC(), Details: map[string]string{
+				"event":                   "GameLoop.Saved",
+				"saveId":                  "Upload_1",
+				"preSaveAction":           importFarmhandUnbindAction,
+				"preSaveActionSaveId":     "Upload_1",
+				"farmhandCount":           "3",
+				"customizedFarmhandCount": "3",
+				"boundFarmhandCount":      "0",
+			}}, nil
+		},
+		GetBindings: func(context.Context, commandExecutor, string) (JunimoFarmhandBindingSummary, error) {
+			return JunimoFarmhandBindingSummary{TotalFarmhands: 3, CustomizedFarmhands: 3}, nil
 		},
 		WaitTransition: func(context.Context, commandExecutor, string, int64, time.Duration, time.Duration) error {
 			return f.waitErr
@@ -111,7 +123,7 @@ func TestImportDurableFinalizeSaveNowSavedAndCompleted(t *testing.T) {
 		t.Fatal(err)
 	}
 	j, _ := LoadImportJournal(f.runtime.fixture.dataDir, f.runtime.fixture.op)
-	if j.Stage != ImportStageCompleted || !j.DurableGameLoopSaved || j.DurableTransitionComplete == nil || !*j.DurableTransitionComplete || j.DurableSaveBefore == nil || j.DurableSaveAfter == nil {
+	if j.Stage != ImportStageCompleted || !j.DurableGameLoopSaved || !j.FarmhandUnbindVerified || j.FarmhandCount != 3 || j.CustomizedFarmhandCount != 3 || j.DurableTransitionComplete == nil || !*j.DurableTransitionComplete || j.DurableSaveBefore == nil || j.DurableSaveAfter == nil {
 		t.Fatalf("journal=%+v", j)
 	}
 	if !importSaveDiskChanged(*j.DurableSaveBefore, *j.DurableSaveAfter) || f.submissions != 1 || f.runtime.importWrites != 0 {
@@ -251,6 +263,60 @@ func TestImportDurableSavedWithoutFileChangeFailsCompletedGate(t *testing.T) {
 	j, _ := LoadImportJournal(f.runtime.fixture.dataDir, f.runtime.fixture.op)
 	if j.Stage == ImportStageCompleted {
 		t.Fatalf("unchanged file passed completed gate")
+	}
+}
+
+func TestImportDurableCommandCarriesAutomaticFarmhandUnbindAction(t *testing.T) {
+	dataDir := t.TempDir()
+	commandID := "0123456789abcdef0123456789abcdef"
+	if err := writeImportDurableSaveCommand(dataDir, commandID, "Imported_123"); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(controlDir(dataDir), "commands"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("command entries=%d err=%v", len(entries), err)
+	}
+	raw, err := os.ReadFile(filepath.Join(controlDir(dataDir), "commands", entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var command struct {
+		Name    string            `json:"name"`
+		Payload map[string]string `json:"payload"`
+	}
+	if err := json.Unmarshal(raw, &command); err != nil {
+		t.Fatal(err)
+	}
+	if command.Name != "save-now" || command.Payload["preSaveAction"] != importFarmhandUnbindAction || command.Payload["preSaveActionSaveId"] != "Imported_123" {
+		t.Fatalf("automatic unbind payload=%+v", command)
+	}
+}
+
+func TestImportDurableRejectsUnverifiedFarmhandUnbindResult(t *testing.T) {
+	f := prepareDurableTestFixture(t, "swap_host_to")
+	options := f.options(t)
+	options.GetOutcome = func(_ string, commandID string) (CommandOutcome, error) {
+		return CommandOutcome{CommandID: commandID, Status: CommandStatusSucceeded, UpdatedAt: time.Now().UTC()}, nil
+	}
+	err := f.driver.runImportDurableSave(context.Background(), f.runtime.fixture.instance, f.runtime.fixture.op, nil, options)
+	assertImportActivationCode(t, err, ImportErrorRecoveryRequired)
+	j, _ := LoadImportJournal(f.runtime.fixture.dataDir, f.runtime.fixture.op)
+	if j.Stage == ImportStageCompleted || j.FarmhandUnbindVerified {
+		t.Fatalf("unverified unbind completed import: %+v", j)
+	}
+}
+
+func TestImportDurableRejectsLiveBoundFarmhandAfterSaved(t *testing.T) {
+	f := prepareDurableTestFixture(t, "swap_host_to")
+	options := f.options(t)
+	options.GetBindings = func(context.Context, commandExecutor, string) (JunimoFarmhandBindingSummary, error) {
+		return JunimoFarmhandBindingSummary{TotalFarmhands: 3, CustomizedFarmhands: 3, BoundFarmhands: 1}, nil
+	}
+	err := f.driver.runImportDurableSave(context.Background(), f.runtime.fixture.instance, f.runtime.fixture.op, nil, options)
+	assertImportActivationCode(t, err, ImportErrorRecoveryRequired)
+	j, _ := LoadImportJournal(f.runtime.fixture.dataDir, f.runtime.fixture.op)
+	if j.Stage == ImportStageCompleted || j.FarmhandUnbindVerified {
+		t.Fatalf("live bound farmhand completed import: %+v", j)
 	}
 }
 

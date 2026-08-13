@@ -1,3 +1,19 @@
+# 2026-08-13 完成：Nexus 扩展重复提交持久幂等（NEXUS-EXT-IDEMPOTENCY-1，未发布）
+
+- [x] 扩展 0.1.3 为每次 capture 持久化 requestId，自动/手动/下载事件竞争和 service worker 重启后复用；不同 fileId 与新安装动作轮换。
+- [x] background/panel bridge 使用无 TTL 的 in-flight singleflight，失败立即释放并保留可重试 capture；两条 POST 路径统一发送 Idempotency-Key。
+- [x] migration 013 与 jobs 创建层按 type/target/key 原子绑定原 job，重复 HTTP 返回 `202 {jobId,deduped:true}`，包括任务已经终态或首次响应丢失的情况。
+- [x] Node VM 覆盖 20 路扩展并发、bridge、同 worker 失败重试/worker 重启和不同或未知文件身份；Go 覆盖 12 路存储并发、Manager 单 runner、HTTP 复用与非法 key。compatibility/release workflow 已纳入扩展专项。
+- [ ] 下一正式版本仍需按 `docs/09-image-build.md` 在隔离 Docker 候选上执行真实浏览器扩展 → Panel → job → CDN ZIP 链，并注入 POST 响应断流/Panel 重启后以同 key 取回原任务；本任务没有创建 tag 或发布镜像。
+
+# 2026-08-13 完成：上传存档切换玩家主机后自动解绑（SAVE-IMPORT-AUTO-UNCLAIM-1，未发布）
+
+- [x] 保持当前前端和 hostHandling DTO 不变；swap_to_player 后台默认自动处理，virtual_host_takeover/as-is 不受影响。
+- [x] Control 0.3.2 在精确目标、服务器、零在线 farmhand 门禁下清空全部 farmhandData.userID，并与原耐久 save-now 共用同一 commandId、pending journal 和 GameLoop.Saved。
+- [x] Panel 同时验证 Control 动作结果与 Junimo diagnostics 的 total/customized/bound 计数；零绑定前不进入 completed，旧 Control/DLL、错档、玩家在线或证据缺失均 fail closed。
+- [x] C# 契约、真实 game-data 编译、Linux Go 全量 test/vet/build通过；Docker Desktop 隔离真机把 2 个角色中的 1 个绑定降为 0，磁盘 hash 改变且重启后仍为 0，角色数和 customized 数保持。
+- [ ] 下一正式版本按 docs/09-image-build.md 完成精确候选、完整 UI→导入事务故障矩阵、代表老版本 Web 一键升级/回滚、升级后复验和 tag 后三仓收口；本任务未发布。
+
 # 2026-08-13 已发布：v0.4.14 启动误判、安装错误映射与新建档耐久
 
 - [x] Control 启动使用 pending/ready/mismatch/invalid 四态和完整预算，Start/Restart 共用 gate，Reconcile 不再只凭 server container 提升 running；宿主重启保持游戏关闭。

@@ -184,6 +184,98 @@ func TestCreateExclusiveJobConcurrentRequestsHaveOneWinner(t *testing.T) {
 	}
 }
 
+func TestCreateIdempotentJobReturnsOriginalTerminalJob(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+
+	params := CreateJobParams{
+		Type: "mod_remote_install", TargetType: "instance", TargetID: DefaultInstanceID,
+		IdempotencyKey: "nexus-request-1",
+	}
+	first, err := store.CreateIdempotentJob(context.Background(), params)
+	if err != nil {
+		t.Fatalf("create first idempotent job: %v", err)
+	}
+	if _, err := store.FinishJob(context.Background(), first.ID); err != nil {
+		t.Fatalf("finish first idempotent job: %v", err)
+	}
+
+	_, err = store.CreateIdempotentJob(context.Background(), params)
+	var existing *IdempotentJobExistsError
+	if !errors.As(err, &existing) {
+		t.Fatalf("repeat idempotent job error = %v, want IdempotentJobExistsError", err)
+	}
+	if existing.Job.ID != first.ID || existing.Job.Status != JobStatusSucceeded {
+		t.Fatalf("existing job = %#v, want succeeded job %s", existing.Job, first.ID)
+	}
+	if !errors.Is(err, ErrIdempotentJobExists) {
+		t.Fatalf("error %v does not unwrap to ErrIdempotentJobExists", err)
+	}
+
+	second, err := store.CreateIdempotentJob(context.Background(), CreateJobParams{
+		Type: "mod_remote_install", TargetType: "instance", TargetID: DefaultInstanceID,
+		IdempotencyKey: "nexus-request-2",
+	})
+	if err != nil {
+		t.Fatalf("create different idempotency key: %v", err)
+	}
+	if second.ID == first.ID {
+		t.Fatal("different idempotency keys must create different jobs")
+	}
+}
+
+func TestCreateIdempotentJobConcurrentRequestsHaveOneWinner(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+
+	const callers = 12
+	type result struct {
+		job Job
+		err error
+	}
+	start := make(chan struct{})
+	results := make(chan result, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			job, err := store.CreateIdempotentJob(context.Background(), CreateJobParams{
+				Type: "mod_remote_install", TargetType: "instance", TargetID: DefaultInstanceID,
+				IdempotencyKey: "nexus-concurrent-request",
+			})
+			results <- result{job: job, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	winners := 0
+	conflicts := 0
+	observedIDs := map[string]struct{}{}
+	for got := range results {
+		if got.err == nil {
+			winners++
+			observedIDs[got.job.ID] = struct{}{}
+			continue
+		}
+		var existing *IdempotentJobExistsError
+		if !errors.As(got.err, &existing) {
+			t.Fatalf("unexpected idempotent create error: %v", got.err)
+		}
+		conflicts++
+		observedIDs[existing.Job.ID] = struct{}{}
+	}
+	if winners != 1 || conflicts != callers-1 {
+		t.Fatalf("winners=%d conflicts=%d, want 1/%d", winners, conflicts, callers-1)
+	}
+	if len(observedIDs) != 1 {
+		t.Fatalf("observed job ids = %v, want one durable owner", observedIDs)
+	}
+}
+
 func TestExclusiveInstallMigrationRetiresLegacyDuplicateOwners(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := Open(context.Background(), config.Config{

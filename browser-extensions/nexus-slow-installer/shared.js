@@ -9,6 +9,46 @@ const DEFAULT_CONFIG = {
 const CONFIG_KEY = "anxiNexusInstallerConfig";
 const STATE_KEY = "anxiNexusInstallerState";
 
+function createInstallRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  return `compat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createSingleflightRegistry() {
+  const flights = new Map();
+  return {
+    run(key, operation) {
+      const normalizedKey = String(key || "").trim();
+      if (!normalizedKey) {
+        throw new Error("singleflight key is required");
+      }
+      const existing = flights.get(normalizedKey);
+      if (existing) {
+        return { promise: existing, shared: true };
+      }
+
+      // Defer the operation until after the Promise has been published. This
+      // makes the check-and-register step atomic within the JavaScript event
+      // loop even when operation starts with asynchronous storage or fetch work.
+      const promise = Promise.resolve().then(operation);
+      flights.set(normalizedKey, promise);
+      const cleanup = () => {
+        if (flights.get(normalizedKey) === promise) {
+          flights.delete(normalizedKey);
+        }
+      };
+      promise.then(cleanup, cleanup);
+      return { promise, shared: false };
+    }
+  };
+}
+
 function normalizePanelBaseUrl(value) {
   const raw = String(value || "").trim().replace(/\/+$/, "");
   if (!raw) {

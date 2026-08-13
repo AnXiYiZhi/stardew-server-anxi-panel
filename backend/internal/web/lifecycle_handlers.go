@@ -1663,6 +1663,25 @@ type remoteInstallRequest struct {
 	Mod nexusInstallRequest `json:"mod,omitempty"`
 }
 
+const maxRemoteInstallIdempotencyKeyBytes = 128
+
+func remoteInstallIdempotencyKey(r *http.Request) (string, error) {
+	raw := r.Header.Get("Idempotency-Key")
+	if raw == "" {
+		return "", nil
+	}
+	key := strings.TrimSpace(raw)
+	if key == "" || len(key) > maxRemoteInstallIdempotencyKeyBytes {
+		return "", errors.New("idempotency key must contain 1 to 128 visible ASCII bytes")
+	}
+	for _, char := range key {
+		if char < 0x21 || char > 0x7e {
+			return "", errors.New("idempotency key must contain only visible ASCII characters")
+		}
+	}
+	return key, nil
+}
+
 // handleModNexusInstall handles POST /api/instances/:id/mods/nexus/install.
 func (s *server) handleModNexusInstall(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAdmin(w, r)
@@ -1755,6 +1774,24 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
+	idempotencyKey, err := remoteInstallIdempotencyKey(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_idempotency_key", "Idempotency-Key 必须是 1 到 128 字节的可见 ASCII 字符")
+		return
+	}
+	if idempotencyKey != "" {
+		existing, findErr := s.store.GetJobByIdempotencyKey(r.Context(), "mod_remote_install", "instance", instanceID, idempotencyKey)
+		if findErr == nil {
+			s.logger.Info("remote mod install reused existing job", "instance", instanceID, "job", existing.ID)
+			s.auditLog(r, &actor, "mod_remote_install_reused", "instance", instanceID, auditMetadata("jobId", existing.ID))
+			writeJSON(w, http.StatusAccepted, map[string]any{"jobId": existing.ID, "deduped": true})
+			return
+		}
+		if !errors.Is(findErr, storage.ErrNotFound) {
+			writeError(w, http.StatusInternalServerError, "job_lookup_failed", "查询已有远程安装任务失败")
+			return
+		}
+	}
 	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
 	if !ok {
 		return
@@ -1778,12 +1815,13 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 	}
 	result := req.Mod.toSearchResult()
 	job, err := s.jobs.Start(r.Context(), jobs.Spec{
-		Type:        "mod_remote_install",
-		DisplayName: modInstallJobDisplayName("mod_remote_install", result),
-		TargetType:  "instance",
-		TargetID:    instanceID,
-		CreatedBy:   actor.User.ID,
-		Timeout:     30 * time.Minute,
+		Type:           "mod_remote_install",
+		DisplayName:    modInstallJobDisplayName("mod_remote_install", result),
+		TargetType:     "instance",
+		TargetID:       instanceID,
+		CreatedBy:      actor.User.ID,
+		IdempotencyKey: idempotencyKey,
+		Timeout:        30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
 			return s.withStardewOfflineMutation(ctx, instance, func() error {
 				_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
@@ -1814,6 +1852,13 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		},
 	})
 	if err != nil {
+		var existing *storage.IdempotentJobExistsError
+		if errors.As(err, &existing) {
+			s.logger.Info("remote mod install reused existing job", "instance", instanceID, "job", existing.Job.ID)
+			s.auditLog(r, &actor, "mod_remote_install_reused", "instance", instanceID, auditMetadata("jobId", existing.Job.ID))
+			writeJSON(w, http.StatusAccepted, map[string]any{"jobId": existing.Job.ID, "deduped": true})
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "job_create_failed", sanitizeErrorMsg(err, "创建远程安装任务失败"))
 		return
 	}

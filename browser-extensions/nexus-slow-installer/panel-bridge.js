@@ -1,6 +1,7 @@
 (() => {
   const PANEL_SOURCE = "ANXI_PANEL_NEXUS_INSTALL";
   const EXTENSION_SOURCE = "ANXI_NEXUS_INSTALLER";
+  const panelPostFlights = createSingleflightRegistry();
   let config = DEFAULT_CONFIG;
   let allowed = false;
   let initError = "";
@@ -29,7 +30,7 @@
       method: "GET",
       credentials: "include",
       headers: {
-        "X-Anxi-Nexus-Installer": "0.1.2"
+        "X-Anxi-Nexus-Installer": "0.1.3"
       }
     });
     if (!response.ok) {
@@ -70,43 +71,71 @@
     }
   }
 
+  function panelPostFlightKey(payload, url) {
+    const requestId = String((payload && payload.requestId) || "").trim();
+    if (requestId) {
+      return `request:${requestId}`;
+    }
+    const instanceId = String((payload && payload.instanceId) || DEFAULT_CONFIG.instanceId || "stardew");
+    const mod = payload && payload.mod ? payload.mod : {};
+    const modId = Number(mod.modId || 0);
+    const fileId = Number(payload && payload.fileId ? payload.fileId : 0);
+    if (modId > 0 && fileId > 0) {
+      return `${instanceId}:mod:${modId}:file:${fileId}`;
+    }
+    try {
+      const parsed = new URL(url);
+      return `${instanceId}:url:${parsed.hostname.toLowerCase()}${parsed.pathname}`;
+    } catch {
+      return `${instanceId}:url:${String(url || "").split("?")[0]}`;
+    }
+  }
+
   async function postRemoteInstallFromPanel(payload) {
     const url = String((payload && payload.url) || "").trim();
     if (!isNexusArchiveDownloadUrl(url)) {
       throw new Error("missing Nexus CDN ZIP download url");
     }
-    const response = await fetchWithTimeout(panelRemoteInstallEndpoint(payload && payload.instanceId), {
-      method: "POST",
-      credentials: "include",
-      headers: {
+    const requestId = String((payload && payload.requestId) || "").trim();
+    const flight = panelPostFlights.run(panelPostFlightKey(payload || {}, url), async () => {
+      const headers = {
         "Content-Type": "application/json",
-        "X-Anxi-Nexus-Installer": "0.1.2"
-      },
-      body: JSON.stringify({
-        url,
-        mod: payload && payload.mod ? payload.mod : undefined
-      })
-    }, 30000);
-
-    let body = null;
-    const text = await response.text();
-    if (text) {
-      try {
-        body = JSON.parse(text);
-      } catch {
-        body = { raw: text };
+        "X-Anxi-Nexus-Installer": "0.1.3"
+      };
+      if (requestId) {
+        headers["Idempotency-Key"] = requestId;
       }
-    }
+      const response = await fetchWithTimeout(panelRemoteInstallEndpoint(payload && payload.instanceId), {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          url,
+          mod: payload && payload.mod ? payload.mod : undefined
+        })
+      }, 30000);
 
-    if (!response.ok) {
-      const message = body && body.error && body.error.message
-        ? body.error.message
-        : `panel returned HTTP ${response.status}`;
-      const code = body && body.error && body.error.code ? ` (${body.error.code})` : "";
-      throw new Error(`${message}${code}`);
-    }
+      let body = null;
+      const text = await response.text();
+      if (text) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = { raw: text };
+        }
+      }
 
-    return body || {};
+      if (!response.ok) {
+        const message = body && body.error && body.error.message
+          ? body.error.message
+          : `panel returned HTTP ${response.status}`;
+        const code = body && body.error && body.error.code ? ` (${body.error.code})` : "";
+        throw new Error(`${message}${code}`);
+      }
+
+      return body || {};
+    });
+    return await flight.promise;
   }
 
   async function sendToBackground(type, data) {

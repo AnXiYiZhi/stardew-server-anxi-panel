@@ -96,7 +96,11 @@ public sealed class PendingSaveCommandTracker
         return Create(command, CommandStatuses.Running, "", "The game save request is registered and is waiting for GameLoop.Saved.", now);
     }
 
-    public CommandOutcome? Complete(string? verifiedTransactionId, string? actualSaveId, DateTimeOffset now)
+    public CommandOutcome? Complete(
+        string? verifiedTransactionId,
+        string? actualSaveId,
+        DateTimeOffset now,
+        FarmhandBindingSummary? farmhandBindings = null)
     {
         if (pending is null)
             return null;
@@ -104,7 +108,7 @@ public sealed class PendingSaveCommandTracker
         var command = pending;
         pending = null;
         deadline = default;
-		var outcome = SaveCommandContract.CompleteSavedEvent(command, actualSaveId, now);
+		var outcome = SaveCommandContract.CompleteSavedEvent(command, actualSaveId, now, farmhandBindings);
 		var expectation = SaveCommandContract.ParseExpectation(command);
 		if (outcome.Status == CommandStatuses.Succeeded
 			&& expectation.IsTargeted
@@ -174,10 +178,12 @@ public static class SaveCommandRecoveryContract
 
         var persisted = SaveCommandContract.ParseExpectation(journal.Command);
         var incoming = SaveCommandContract.ParseExpectation(command);
-        return persisted.Valid == incoming.Valid
-            && persisted.IsTargeted == incoming.IsTargeted
-            && string.Equals(persisted.TransactionId, incoming.TransactionId, StringComparison.Ordinal)
-            && string.Equals(persisted.SaveId, incoming.SaveId, StringComparison.Ordinal);
+		return persisted.Valid == incoming.Valid
+			&& persisted.IsTargeted == incoming.IsTargeted
+			&& string.Equals(persisted.TransactionId, incoming.TransactionId, StringComparison.Ordinal)
+			&& string.Equals(persisted.SaveId, incoming.SaveId, StringComparison.Ordinal)
+			&& string.Equals(persisted.PreSaveAction, incoming.PreSaveAction, StringComparison.Ordinal)
+			&& string.Equals(persisted.PreSaveActionSaveId, incoming.PreSaveActionSaveId, StringComparison.Ordinal);
     }
 
     public static SaveCommandRecoveryDecision Evaluate(
@@ -192,9 +198,14 @@ public static class SaveCommandRecoveryContract
         var expectation = SaveCommandContract.ParseExpectation(command);
         if (!expectation.Valid)
             return new(false, true, expectation.ErrorCode);
-        if (!worldReady)
-            return new(false, false, "world_not_ready");
-        if (!expectation.IsTargeted)
+		if (!worldReady)
+			return new(false, false, "world_not_ready");
+		if (expectation.PreSaveAction.Length > 0
+			&& !string.Equals(expectation.PreSaveActionSaveId, actualSaveId?.Trim(), StringComparison.Ordinal))
+		{
+			return new(false, false, "save_target_not_ready");
+		}
+		if (!expectation.IsTargeted)
             return new(true, false, "");
 
         if (!string.Equals(expectation.SaveId, actualSaveId?.Trim(), StringComparison.Ordinal)

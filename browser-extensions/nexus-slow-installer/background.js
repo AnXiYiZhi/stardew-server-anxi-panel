@@ -1,5 +1,8 @@
 importScripts("shared.js");
 
+const installPostFlights = createSingleflightRegistry();
+const legacyCaptureRequestIds = new Map();
+
 async function getConfig() {
   const stored = await chrome.storage.local.get(CONFIG_KEY);
   return { ...DEFAULT_CONFIG, ...(stored[CONFIG_KEY] || {}) };
@@ -109,6 +112,52 @@ function captureKeyFromDownloadItem(state, item) {
     return key;
   }
   return "";
+}
+
+function captureTargetsMatch(existing, payload) {
+  if (!existing || !existing.active || Date.now() > Number(existing.expiresAt || 0)) {
+    return false;
+  }
+  const existingModId = Number(existing.modId || 0);
+  const nextModId = Number(payload && payload.modId ? payload.modId : 0);
+  if (existingModId > 0 && nextModId > 0 && existingModId !== nextModId) {
+    return false;
+  }
+  const existingFileId = Number(existing.fileId || 0);
+  const nextFileId = Number(payload && payload.fileId ? payload.fileId : 0);
+  if (existingFileId > 0 && nextFileId > 0) {
+    return existingFileId === nextFileId;
+  }
+  const existingBatchId = String(existing.batchId || "").trim();
+  const existingItemId = String(existing.itemId || "").trim();
+  const nextBatchId = String((payload && payload.batchId) || "").trim();
+  const nextItemId = String((payload && payload.itemId) || "").trim();
+  return Boolean(
+    existingBatchId &&
+    existingItemId &&
+    existingBatchId === nextBatchId &&
+    existingItemId === nextItemId
+  );
+}
+
+function requestIdForCapture(capture, captureKey) {
+  const stored = String((capture && capture.requestId) || "").trim();
+  if (stored) {
+    return stored;
+  }
+  const identity = [
+    String(captureKey || (capture && capture.captureKey) || "default"),
+    Number(capture && capture.createdAt ? capture.createdAt : 0),
+    Number(capture && capture.tabId ? capture.tabId : 0),
+    Number(capture && capture.modId ? capture.modId : 0),
+    Number(capture && capture.fileId ? capture.fileId : 0)
+  ].join(":");
+  let requestId = legacyCaptureRequestIds.get(identity);
+  if (!requestId) {
+    requestId = createInstallRequestId();
+    legacyCaptureRequestIds.set(identity, requestId);
+  }
+  return requestId;
 }
 
 function normalizeBatchItemStatus(status) {
@@ -358,12 +407,11 @@ async function fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-async function postRemoteInstall(downloadUrl, capture) {
+async function postRemoteInstall(downloadUrl, capture, config) {
   downloadUrl = String(downloadUrl || "").trim();
   if (!isNexusArchiveDownloadUrl(downloadUrl)) {
     throw new Error("还没有拿到 Nexus CDN ZIP 下载链接，不能创建面板安装任务");
   }
-  const config = await getConfig();
   if (!config.panelBaseUrl) {
     throw new Error("请先在扩展设置里填写面板地址");
   }
@@ -389,7 +437,8 @@ async function postRemoteInstall(downloadUrl, capture) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Anxi-Nexus-Installer": "0.1.2"
+        "X-Anxi-Nexus-Installer": "0.1.3",
+        "Idempotency-Key": capture.requestId
       },
       body: JSON.stringify({ url: downloadUrl, mod })
     }, 30000);
@@ -434,6 +483,8 @@ async function postRemoteInstallViaPanel(downloadUrl, capture, config, mod) {
       payload: {
         url: downloadUrl,
         mod,
+        fileId: Number(capture.fileId || 0),
+        requestId: capture.requestId,
         instanceId: config.instanceId || DEFAULT_CONFIG.instanceId
       }
     });
@@ -683,9 +734,15 @@ async function triggerNexusManualDownloadInMainWorld(tabId, params) {
 async function startCapture(payload, sender) {
   const now = Date.now();
   const captureKey = captureKeyFrom(payload || {}, sender);
+  const state = await getState();
+  const previousCapture = getCaptures(state)[captureKey];
+  const requestId = captureTargetsMatch(previousCapture, payload)
+    ? requestIdForCapture(previousCapture, captureKey)
+    : createInstallRequestId();
   const capture = {
     active: true,
     captureKey,
+    requestId,
     batchId: payload.batchId || "",
     itemId: payload.itemId || "",
     autoSubmit: Boolean(payload.autoSubmit),
@@ -700,7 +757,6 @@ async function startCapture(payload, sender) {
     pageUrl: payload.pageUrl || (sender.tab && sender.tab.url) || "",
     pendingUrl: ""
   };
-  const state = await getState();
   await setState({
     captures: { ...getCaptures(state), [captureKey]: capture },
     capture,
@@ -843,6 +899,7 @@ async function finishInstall(downloadUrl, captureKey) {
   const resolvedCaptureKey = context.captureKey || captureKey || captureKeyForCapture(state, rawCapture);
   const capture = {
     ...rawCapture,
+    requestId: requestIdForCapture(rawCapture, resolvedCaptureKey),
     batchId: rawCapture.batchId || context.batchId,
     itemId: rawCapture.itemId || context.itemId,
     captureKey: resolvedCaptureKey || rawCapture.captureKey,
@@ -870,8 +927,10 @@ async function finishInstall(downloadUrl, captureKey) {
     });
   }
 
+  const flight = installPostFlights.run(capture.requestId, () => postRemoteInstall(downloadUrl, capture, config));
   try {
-    const result = await postRemoteInstall(downloadUrl, capture);
+    const result = await flight.promise;
+    const deduped = Boolean(result.deduped || flight.shared);
     const jobsUrl = panelJobUrl(config, result.jobId || "");
     const doneState = await getState();
     const doneCaptures = getCaptures(doneState);
@@ -881,7 +940,9 @@ async function finishInstall(downloadUrl, captureKey) {
       capture: doneCapture,
       lastInstall: {
         status: "queued",
-        message: result.jobId ? `面板已创建安装任务：${result.jobId}` : "面板已接收安装请求",
+        message: deduped
+          ? (result.jobId ? `面板已复用安装任务：${result.jobId}` : "面板已复用安装请求")
+          : (result.jobId ? `面板已创建安装任务：${result.jobId}` : "面板已接收安装请求"),
         updatedAt: Date.now(),
         modId: capture.modId,
         fileId: capture.fileId,
@@ -889,11 +950,13 @@ async function finishInstall(downloadUrl, captureKey) {
         url: redactDownloadUrl(downloadUrl)
       }
     });
-    await notify("已提交到面板", result.jobId ? `安装任务：${result.jobId}` : "远程安装任务已创建");
+    if (!flight.shared) {
+      await notify(deduped ? "已复用面板任务" : "已提交到面板", result.jobId ? `安装任务：${result.jobId}` : "远程安装任务已创建");
+    }
     if (capture.batchId && capture.itemId) {
       await setBatchItemStatus(capture.batchId, capture.itemId, {
         status: "queued",
-        message: "panel job created",
+        message: deduped ? "existing panel job reused" : "panel job created",
         jobId: result.jobId || ""
       });
     }
@@ -904,11 +967,16 @@ async function finishInstall(downloadUrl, captureKey) {
         // The user may already have closed the tab.
       }
     }
-    return { ...result, jobsUrl };
+    return { ...result, jobsUrl, deduped };
   } catch (error) {
     const failedState = await getState();
     const failedCaptures = getCaptures(failedState);
-    const failedCapture = { ...postingCapture, active: false, error: statusTextFromError(error) };
+    const failedCapture = {
+      ...postingCapture,
+      active: Date.now() <= postingCapture.expiresAt,
+      autoSubmitting: false,
+      error: statusTextFromError(error)
+    };
     await setState({
       captures: resolvedCaptureKey ? { ...failedCaptures, [resolvedCaptureKey]: failedCapture } : failedCaptures,
       capture: failedCapture,
@@ -921,7 +989,9 @@ async function finishInstall(downloadUrl, captureKey) {
         url: redactDownloadUrl(downloadUrl)
       }
     });
-    await notify("提交失败", statusTextFromError(error));
+    if (!flight.shared) {
+      await notify("提交失败", statusTextFromError(error));
+    }
     if (capture.batchId && capture.itemId) {
       await setBatchItemStatus(capture.batchId, capture.itemId, {
         status: "failed",

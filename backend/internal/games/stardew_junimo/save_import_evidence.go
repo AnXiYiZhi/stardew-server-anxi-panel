@@ -41,6 +41,18 @@ type JunimoDiagnosticsState struct {
 	FailedFields  []string `json:"failedFields"`
 }
 
+type JunimoFarmhandBindingState struct {
+	UniqueMultiplayerID int64 `json:"uniqueMultiplayerId"`
+	IsCustomized        bool  `json:"isCustomized"`
+	HasUserID           bool  `json:"hasUserId"`
+}
+
+type JunimoFarmhandBindingSummary struct {
+	TotalFarmhands      int `json:"totalFarmhands"`
+	CustomizedFarmhands int `json:"customizedFarmhands"`
+	BoundFarmhands      int `json:"boundFarmhands"`
+}
+
 type JunimoProcessIdentity struct {
 	ContainerID       string `json:"containerId,omitempty"`
 	ProcessStartTicks string `json:"processStartTicks,omitempty"`
@@ -191,6 +203,38 @@ func ReadJunimoDiagnosticsState(ctx context.Context, exec commandExecutor, dataD
 		return state, &ImportEvidenceError{Code: "diagnostics_field_missing", Message: "Junimo diagnostics response is missing a required import evidence field"}
 	}
 	return state, nil
+}
+
+func ReadJunimoFarmhandBindingSummary(ctx context.Context, exec commandExecutor, dataDir string) (JunimoFarmhandBindingSummary, error) {
+	raw, err := readJunimoAPI(ctx, exec, dataDir, "/diagnostics/state")
+	if err != nil {
+		return JunimoFarmhandBindingSummary{}, err
+	}
+	var payload struct {
+		FarmhandData *[]JunimoFarmhandBindingState `json:"farmhandData"`
+		FailedFields []string                      `json:"failedFields"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return JunimoFarmhandBindingSummary{}, &ImportEvidenceError{Code: "diagnostics_invalid_json", Message: "Junimo diagnostics JSON is invalid", Cause: err}
+	}
+	for _, field := range payload.FailedFields {
+		if field == "farmhandData" || field == "gameThreadTimeout" {
+			return JunimoFarmhandBindingSummary{}, &ImportEvidenceError{Code: "diagnostics_field_failed", Message: "Junimo diagnostics could not read farmhand binding state"}
+		}
+	}
+	if payload.FarmhandData == nil {
+		return JunimoFarmhandBindingSummary{}, &ImportEvidenceError{Code: "diagnostics_field_missing", Message: "Junimo diagnostics response is missing farmhand binding state"}
+	}
+	summary := JunimoFarmhandBindingSummary{TotalFarmhands: len(*payload.FarmhandData)}
+	for _, farmhand := range *payload.FarmhandData {
+		if farmhand.IsCustomized {
+			summary.CustomizedFarmhands++
+		}
+		if farmhand.HasUserID {
+			summary.BoundFarmhands++
+		}
+	}
+	return summary, nil
 }
 
 func readDayTransitionComplete(ctx context.Context, exec commandExecutor, dataDir string) (*bool, error) {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.1",
+  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.2",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
   "runtimeUpdatePolicy": "required",
@@ -71,12 +71,13 @@
     "trustedHosts": ["gh.llkk.cc", "github.dpik.top", "ghfast.top", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
-    "version": "0.3.1",
-    "dllSha256": "3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce",
+    "version": "0.3.2",
+    "dllSha256": "a62e525d07279c4c8e8ca13d94e4914cfee2eae79ae60077332c5f2d8b897b2d",
     "commandResultVersion": 1
   },
   "status": "recommended",
   "releaseNotes": [
+    "Control 0.3.2 为 swap-host-to 存档导入提供持久的 unbind-all-farmhands 保存前动作：无真人农场工在线时清空全部角色 userID，并在同一 commandId 的 GameLoop.Saved 回执中返回匿名计数证据。",
     "Control 0.3.1 只允许精确匹配新建档 transactionId/saveId 的存档应用完整角色定制，save-loaded 状态携带内存逐字段读回证据。",
     "Control 0.3.1 对新建档 save-now 持久化同一 commandId 的 pending journal；中断后只恢复该 ID，并严格校验 GameLoop.Saved、saveId 与 transactionId。",
     "Control 0.3.0 采集标准 IP 连接玩家的 SMAPI peer context，并为 Panel 提供只读玩家 Mod 比较数据；不执行踢出、封禁或拦截。",

@@ -197,6 +197,40 @@ func TestManagerExclusiveJobReturnsCurrentOwner(t *testing.T) {
 	waitForJobStatus(t, store, first.ID, storage.JobStatusCanceled)
 }
 
+func TestManagerIdempotentJobStartsOneRunner(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	first, err := manager.Start(context.Background(), Spec{
+		Type: "mod_remote_install", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		IdempotencyKey: "nexus-manager-request", Timeout: 3 * time.Second,
+		Run: func(context.Context, *Context) error {
+			close(started)
+			<-release
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("start first idempotent job: %v", err)
+	}
+	<-started
+
+	_, err = manager.Start(context.Background(), Spec{
+		Type: "mod_remote_install", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		IdempotencyKey: "nexus-manager-request",
+		Run:            func(context.Context, *Context) error { return errors.New("duplicate runner started") },
+	})
+	var existing *storage.IdempotentJobExistsError
+	if !errors.As(err, &existing) || existing.Job.ID != first.ID {
+		t.Fatalf("repeat start error = %v, existing=%#v, want job %s", err, existing, first.ID)
+	}
+
+	close(release)
+	waitForJobStatus(t, store, first.ID, storage.JobStatusSucceeded)
+}
+
 func TestManagerRecoverInterruptedInstallMarksInstanceError(t *testing.T) {
 	manager, store, closeStore := newJobsTestManager(t)
 	defer closeStore()

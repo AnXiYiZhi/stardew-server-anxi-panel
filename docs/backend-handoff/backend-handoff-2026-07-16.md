@@ -1,3 +1,33 @@
+# NEXUS-EXT-IDEMPOTENCY-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `POST /api/instances/:id/mods/remote/install` 可选读取 1–128 字节可见 ASCII `Idempotency-Key`。同 key 重放返回已有 `202 {jobId,deduped:true}`；不带 key 的旧扩展继续按原行为创建任务。
+- migration `013_job_idempotency_key.sql` 为 jobs 增加私有列和 `type/target_type/target_id/key` 唯一索引。`storage.CreateIdempotentJob` 在 SQLite 事务中查找/创建 owner，唯一冲突回读已有 Job；`jobs.Manager` 只有真正创建者发布事件并启动 runner。
+- 主要文件：`backend/migrations/013_job_idempotency_key.sql`、`internal/storage/jobs.go`、`internal/jobs/{types,manager}.go`、`internal/web/lifecycle_handlers.go` 及对应测试。公开 Job DTO、远程安装 JSON body、下载/解压和 Mod 导入逻辑未改变。
+
+## 如何验证、下一步注意事项
+
+- `go test ./internal/storage ./internal/jobs ./internal/web -run 'Idempotent|Idempotency|RemoteInstall' -count=1` 覆盖 12 路并发、终态复用、不同 key、单 runner、实例状态变化后的 HTTP 复用和非法 key；并已通过 `go test ./... -count=1`、`go vet ./...` 与 `go build ./...`。
+- key 是一次用户动作身份，不是 `modId/fileId` 的永久身份。扩展必须在响应不确定时复用，在用户明确新开安装时轮换；后端不得按完整 CDN URL 建键或把临时 query/token 写入 jobs、日志和审计。
+- 正式发布前用真实扩展和候选 Panel 注入“后端已创建 job 但 HTTP 响应断流”，重启扩展/Panel 后用同 key 必须取回原 jobId，且 jobs 表只有一条目标任务。
+
+# SAVE-IMPORT-AUTO-UNCLAIM-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 不修改 Junimo 上游、不新增前端选择。swap_to_player 在已有 swap-host-to finalizer 完成后，后台默认把 unbind-all-farmhands 动作附加到同一次耐久 save-now；virtual_host_takeover/as-is 维持原行为。
+- Control 0.3.2 新增预保存动作契约、前置校验、全部 farmhandData.userID 清空、结果计数和 pending journal 恢复。动作要求精确目标存档、服务器主机、零在线 farmhand 和可读角色数据；重启恢复只重复同一 commandId，清空本身幂等。
+- Go durable import 新增动作 payload、Control 结果身份/计数校验和 Junimo diagnostics 双证据；journal 记录 farmhandUnbindVerified、farmhandCount、customizedFarmhandCount。维护 runtime 同时检查当前内嵌 Control DLL 与 options.json 版本，旧/错 DLL 使用 save_import_maintenance_control_mismatch 停止推进。
+- 主要文件为 save_import_durable.go、save_import_evidence.go、save_import_maintenance.go、save_import_transaction.go、ControlContract.cs、DeferredCommandOutcomes.cs、ModEntry.cs、两份 Control manifest/DLL 与 runtime_stack_manifest.json。公开 Web DTO、审计字段和前端文件没有变化。
+
+## 如何验证、下一步注意事项
+
+- Control 纯契约覆盖动作解析、错档、在线玩家、恢复、Saved 后仍绑定和成功计数；真实 game-data 编译 0 errors。Linux 容器内 go test ./... -count=1、go vet ./...、三项 cmd build 均通过。
+- Docker Desktop project anxi-unbind-e2e-20260813-r1 使用任务专属端口、bind、game-data/steam-session 卷，从只读历史隔离夹具克隆 2 个 farmhand（1 customized、1 bound）。Control 0.3.2 的单个 save-now succeeded 后，Control details、Junimo diagnostics 和主 XML 均为 total=2/customized=1/bound=0；主文件 SHA-256 发生变化，server 重启后仍为 0。项目容器/网络/卷为零，克隆目录移入回收站，源夹具未改。
+- 后续维护不得把动作移到 XML 离线改写，也不得在 Panel 看不到精确 GameLoop.Saved 或 diagnostics 绑定计数时放行 completed。若未来界面移除 SteamID，需要先另行定义 Panel 生成一次性平台 ID 的上游 swap 契约；本次没有实现该路线。
+- 下一次正式版本必须按 docs/09-image-build.md 以最终 commit 重建 Control/Panel 候选，重新核对 DLL SHA、真实上传完整事务、故障注入、上一正式版/最低支持版一键升级、回滚和升级后再验收；当前实现未创建 tag、镜像或 Release。
+
 # STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，released in v0.4.14）
 
 ## 交付状态与下一步

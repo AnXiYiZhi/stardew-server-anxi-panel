@@ -49,6 +49,7 @@ const (
 	ImportErrorMaintenanceLog     = "save_import_maintenance_log_unavailable"
 	ImportErrorMaintenanceAPI     = "save_import_maintenance_api_unavailable"
 	ImportErrorMaintenanceMod     = "save_import_maintenance_version_mismatch"
+	ImportErrorMaintenanceControl = "save_import_maintenance_control_mismatch"
 	ImportErrorMaintenanceSaves   = "save_import_maintenance_saves_unavailable"
 	ImportErrorMaintenanceProcess = "save_import_maintenance_process_changed"
 	ImportErrorCommandFailed      = "import_command_failed"
@@ -109,6 +110,9 @@ type ImportJournal struct {
 	DurableGameLoopSaved           bool                             `json:"durableGameLoopSaved"`
 	DurableTransitionComplete      *bool                            `json:"durableTransitionComplete,omitempty"`
 	DurableSaveWarning             string                           `json:"durableSaveWarning,omitempty"`
+	FarmhandUnbindVerified         bool                             `json:"farmhandUnbindVerified"`
+	FarmhandCount                  int                              `json:"farmhandCount,omitempty"`
+	CustomizedFarmhandCount        int                              `json:"customizedFarmhandCount,omitempty"`
 	UpstreamSubmittedAt            *time.Time                       `json:"upstreamSubmittedAt,omitempty"`
 	UpstreamSubmitted              bool                             `json:"upstreamSubmitted"`
 	UpstreamConfirmed              bool                             `json:"upstreamConfirmed"`

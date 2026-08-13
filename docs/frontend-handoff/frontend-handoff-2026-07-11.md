@@ -1,3 +1,17 @@
+# NEXUS-EXT-IDEMPOTENCY-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些文件
+
+- `browser-extensions/nexus-slow-installer` 升为 0.1.3。capture 新增持久 `requestId`；相同已知 mod/file 或同一批量项在页面重注入和 worker 重启后复用，不同/未知 fileId 的独立动作或新动作轮换。`background.js` 直连和 `panel-bridge.js` 同源转发都发送相同 Idempotency-Key。
+- `shared.js` 的 singleflight 会先发布 Promise 再异步执行 POST，并在 resolve/reject 后立即删除；不缓存失败。background follower 复用网络结果但仍更新自己的 capture/batch，leader 才发通知；提交失败会把 capture 恢复为可重试。
+- 影响 `shared.js`、`background.js`、`panel-bridge.js`、manifest/README、`frontend/scripts/test-nexus-extension-idempotency.mjs`、package scripts 与两个 workflow。没有改 React ModsPage 的批量状态机、搜索 sessionStorage 或远程安装请求体。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:nexus-extension-idempotency` 真实加载三份扩展脚本，覆盖 20 路并发单 POST、rejected 后同 worker 立即重试、worker 重启、重注入、不同/未知 fileId、bridge singleflight 和 0.1.3 版本头；三份 JS 另经 `node --check`。当前 15 项前端 `test:*`、`test:responsive-layout` 与 production build 全部通过。
+- 不要把 requestId 改回 `instanceId+modId` 或固定 5 分钟 Promise：前者会合并同 Mod 的不同文件，后者会缓存 rejected 并阻断重试。跨进程权威在后端 jobs 唯一键，扩展 Map 只做当次 in-flight 降噪。
+- 正式候选需用真实 Chrome/Edge 扩展验证一次自动批量链，并模拟 POST 返回前断流；恢复后 UI/扩展应拿到原 jobId、批量项进入 queued/job 跟踪且不遗留第二个后台页。
+
 # FE-INSTALL-RUNTIME-ERROR-MAPPING-1 接手记录（2026-08-13，released in v0.4.14）
 
 ## 改了什么与如何验证

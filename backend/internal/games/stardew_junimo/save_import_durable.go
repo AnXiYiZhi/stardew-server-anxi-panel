@@ -21,6 +21,7 @@ import (
 const (
 	durableSaveWarningTransitionTimeout = "GameLoop.Saved confirmed disk persistence, but dayTransitionComplete did not become true before the deadline"
 	durableSaveWarningTransitionMissing = "GameLoop.Saved confirmed disk persistence, but dayTransitionComplete is unavailable; no fallback was assumed"
+	importFarmhandUnbindAction          = "unbind-all-farmhands"
 )
 
 type JunimoImportSaveDiskState struct {
@@ -36,6 +37,7 @@ type importDurableSaveOptions struct {
 	PollInterval      time.Duration
 	SubmitCommand     func(dataDir, commandID string) error
 	GetOutcome        func(dataDir, commandID string) (CommandOutcome, error)
+	GetBindings       func(context.Context, commandExecutor, string) (JunimoFarmhandBindingSummary, error)
 	WaitTransition    func(context.Context, commandExecutor, string, int64, time.Duration, time.Duration) error
 }
 
@@ -175,11 +177,6 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if options.PollInterval <= 0 {
 		options.PollInterval = 500 * time.Millisecond
 	}
-	if options.SubmitCommand == nil {
-		options.SubmitCommand = func(dataDir, commandID string) error {
-			return writePanelCommandWithID(dataDir, commandID, "save-now", nil)
-		}
-	}
 	if options.GetOutcome == nil {
 		options.GetOutcome = func(dataDir, commandID string) (CommandOutcome, error) {
 			return d.importCommandOutcome(ctx, instance.ID, dataDir, commandID)
@@ -188,6 +185,9 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if options.WaitTransition == nil {
 		options.WaitTransition = waitForJunimoDayTransitionComplete
 	}
+	if options.GetBindings == nil {
+		options.GetBindings = ReadJunimoFarmhandBindingSummary
+	}
 
 	j, err := LoadImportJournal(instance.DataDir, operationID)
 	if err != nil {
@@ -195,6 +195,12 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	}
 	if j.Stage == ImportStageCompleted {
 		return nil
+	}
+	if options.SubmitCommand == nil {
+		targetSave := j.SaveName
+		options.SubmitCommand = func(dataDir, commandID string) error {
+			return writeImportDurableSaveCommand(dataDir, commandID, targetSave)
+		}
 	}
 	if j.Stage != ImportStageFinalizeConfirmed && j.Stage != ImportStageSavePersisting && j.Stage != ImportStageSaveVerified {
 		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "durable save requires a confirmed finalizer", "", nil)
@@ -267,11 +273,34 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if outcome.CommandID != j.DurableSaveCommandID || outcome.Status != CommandStatusSucceeded {
 		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorResultUnconfirmed, "save-now returned an unrelated or non-success result", "", nil)
 	}
+	controlBindings, bindingsErr := importFarmhandUnbindSummaryFromOutcome(outcome, j.SaveName)
+	if bindingsErr != nil {
+		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "save-now did not prove that every farmhand role was unbound", "", bindingsErr)
+	}
 	j, err = LoadImportJournal(instance.DataDir, operationID)
 	if err != nil {
 		return err
 	}
 	j.DurableGameLoopSaved = true
+	if err := WriteImportJournal(instance.DataDir, j); err != nil {
+		return err
+	}
+	liveBindings, bindingsReadErr := options.GetBindings(ctx, lifecycle, instance.DataDir)
+	if bindingsReadErr != nil {
+		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorResultUnconfirmed, "GameLoop.Saved succeeded but live farmhand binding state is unavailable", "", bindingsReadErr)
+	}
+	if liveBindings.TotalFarmhands <= 0 || liveBindings.BoundFarmhands != 0 ||
+		liveBindings.TotalFarmhands != controlBindings.TotalFarmhands ||
+		liveBindings.CustomizedFarmhands != controlBindings.CustomizedFarmhands {
+		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "farmhand binding verification disagrees after GameLoop.Saved", "", nil)
+	}
+	j, err = LoadImportJournal(instance.DataDir, operationID)
+	if err != nil {
+		return err
+	}
+	j.FarmhandUnbindVerified = true
+	j.FarmhandCount = liveBindings.TotalFarmhands
+	j.CustomizedFarmhandCount = liveBindings.CustomizedFarmhands
 	if err := WriteImportJournal(instance.DataDir, j); err != nil {
 		return err
 	}
@@ -326,9 +355,52 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if err := WriteImportJournal(instance.DataDir, j); err != nil {
 		return err
 	}
-	maintenanceLog(job, "GameLoop.Saved, dayTransitionComplete, stable XML, and target save disk change verified; import transaction completed.")
+	maintenanceLog(job, fmt.Sprintf("GameLoop.Saved, %d farmhand role(s) unbound, dayTransitionComplete, stable XML, and target save disk change verified; import transaction completed.", j.FarmhandCount))
 	d.markCompletedImportRuntimeRunning(instance)
 	return nil
+}
+
+func writeImportDurableSaveCommand(dataDir, commandID, saveName string) error {
+	return writePanelCommandWithID(dataDir, commandID, "save-now", map[string]string{
+		"preSaveAction":       importFarmhandUnbindAction,
+		"preSaveActionSaveId": saveName,
+	})
+}
+
+func importFarmhandUnbindSummaryFromOutcome(outcome CommandOutcome, saveName string) (JunimoFarmhandBindingSummary, error) {
+	if outcome.Details == nil ||
+		outcome.Details["preSaveAction"] != importFarmhandUnbindAction ||
+		outcome.Details["preSaveActionSaveId"] != saveName ||
+		outcome.Details["saveId"] != saveName {
+		return JunimoFarmhandBindingSummary{}, errors.New("farmhand unbind result identity is missing or mismatched")
+	}
+	readCount := func(key string) (int, error) {
+		value, ok := outcome.Details[key]
+		if !ok {
+			return 0, fmt.Errorf("farmhand unbind result is missing %s", key)
+		}
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return 0, fmt.Errorf("farmhand unbind result has invalid %s", key)
+		}
+		return parsed, nil
+	}
+	total, err := readCount("farmhandCount")
+	if err != nil {
+		return JunimoFarmhandBindingSummary{}, err
+	}
+	customized, err := readCount("customizedFarmhandCount")
+	if err != nil {
+		return JunimoFarmhandBindingSummary{}, err
+	}
+	bound, err := readCount("boundFarmhandCount")
+	if err != nil {
+		return JunimoFarmhandBindingSummary{}, err
+	}
+	if total <= 0 || customized > total || bound != 0 {
+		return JunimoFarmhandBindingSummary{}, errors.New("farmhand unbind result did not confirm every role as unbound")
+	}
+	return JunimoFarmhandBindingSummary{TotalFarmhands: total, CustomizedFarmhands: customized, BoundFarmhands: bound}, nil
 }
 
 func (d *Driver) importCommandOutcome(ctx context.Context, instanceID, dataDir, commandID string) (CommandOutcome, error) {

@@ -1,3 +1,71 @@
+# v0.4.15 正式候选范围与门禁状态（2026-08-13，pre-release）
+
+- 目标版本为 `0.4.15`，只合并两组已完成且相互独立的修复：`NEXUS-EXT-IDEMPOTENCY-1` 与 `SAVE-IMPORT-AUTO-UNCLAIM-1`。Panel 新增 migration 013，浏览器扩展升为 0.1.3，内嵌 Control 升为 0.3.2；Junimo/SMAPI/game/auth 版本不变。
+- 正式候选必须从本地 `main` 的最终提交构建，build args 固定 `VERSION=0.4.15`、完整 commit SHA、UTC build date；本节后两张功能矩阵全部完成前禁止 push `main`、创建 `v0.4.15`、更新 registry/latest 或创建 Release。
+- 自动解绑必须在唯一隔离的真实旧导入夹具上走完整后台上传事务，而不是只调用 Control 命令；正常链、零 farmhand/在线玩家/错 Control/结果断流、Panel 或 Control 中断恢复、稳定 XML、角色/小屋/Mod/备份保留和资源归零均需有候选证据。
+- Nexus 幂等必须在真实候选 Panel 上覆盖 20 路同 key、不同 fileId、首次响应丢失、Panel 重启和终态复用；权威断言是 SQLite 只有一个 owner/job 且 runner/下载调用不重复，不能只看扩展 singleflight。
+- 升级矩阵至少包含上一正式版 `v0.4.14` 与本次 migration/运行栈支持边界 `v0.3.2`，两者都必须使用 Panel Web 一键更新完整链；目标 unhealthy/版本错误必须恢复原版。升级后新 Panel 再执行两项新功能，验证 SQLite、用户、实例、存档、Mod、备份、审计与非目标 Docker 资源保留。
+- tag 前还须执行 Release workflow 的精确全量命令：兼容清单与远程制品、脚本功能/语法/ShellCheck、Linux Go test/vet/build 与 integration、SMAPI 真实下载、前端全量测试/audit/build、网站 audit/build、候选 fresh/restart 和镜像内 helper/扩展包检查。
+- tag 后等待 Release workflow 成功，再从 Docker Hub、ACR、GHCR 回拉 `0.4.15`，核对三仓 digest、OCI version/revision、latest 与 GitHub Release/四项资产，并逐仓执行隔离 health/version/restart；最终 workflow ID、digest、耗时、故障和清理结果必须回写本文件及接手/路线文档。
+
+# NEXUS-EXT-IDEMPOTENCY-1 发布门禁补充（2026-08-13，代码完成、未发布）
+
+- compatibility 与 release workflow 的前端门禁新增 `npm run test:nexus-extension-idempotency`；PR path 同时覆盖 `browser-extensions/**`，扩展代码变化不会再绕过 compatibility。
+- 自动专项覆盖扩展 20 路并发、panel bridge、失败重试、service worker 重启、不同 fileId，以及后端 SQLite 12 路原子 owner、终态复用和 HTTP 契约。它们只证明代码级幂等，不替代 Docker/真实浏览器验收。
+- 下一正式候选必须在唯一隔离 Panel、数据库、实例目录和浏览器测试配置中至少验证：正常单击；快速重复触发；同 Mod 不同 fileId；后端创建 job 后截断 HTTP 响应；扩展 worker 重启；Panel 进程重启；失败后新动作轮换 key；批量两个不同 Mod；终态 jobs 表仅一条目标 requestId。测试不得使用生产 Nexus 登录、真实用户存档或长期面板 session。
+- 本轮没有构建候选镜像、执行 Web 一键升级、创建 tag、推送 registry 或更新 latest；正式发布仍须与当前其它未发布功能合并执行本文件完整故障矩阵和升级后复验。
+
+## 本功能正式候选故障矩阵
+
+| 场景 | 预期措施 | 当前证据 / 正式发布前状态 |
+| --- | --- | --- |
+| 正常单次安装 | 一个 requestId、一个 HTTP POST、一个 job，导入链和公开请求体保持兼容 | Node/Go 契约通过；真实浏览器 + 候选镜像待执行 |
+| 快速重复点击、自动/手动/下载事件竞争 | 进行中 Promise 先登记后执行，followers 共享结果；SQLite 只允许一个 owner/runner | 20 路扩展与 12 路存储并发通过；真机快速操作待执行 |
+| 同 Mod 的不同文件、未知 fileId、新安装动作 | 已知 fileId 不同必须换 key；未知文件身份不合并；不同批量项各有独立 key | Node identity 回归通过；真实 Nexus 页面切换待执行 |
+| 非法、缺失或碰撞 key | 非法 key 返回 400；缺失保持 0.1.2 兼容；同 key 在同实例只返回原 job | Web/存储回归通过；管理员权限不变，随机 key 不写日志/审计 metadata |
+| POST 前网络失败 | 不创建 job；rejected singleflight 立即清理，capture 保持 active 并沿用 key 重试 | 同 worker 立即重试回归通过；可控代理断网待候选 |
+| job 已创建但 HTTP 响应断流/超时 | 重试同 key，返回原 jobId 与 deduped=true，不启动第二个 runner | 终态/实例状态变化后的持久复用通过；服务端接受后断流待候选 |
+| 扩展 worker 或 Panel 进程中断 | requestId 已进 chrome.storage；Panel 重启后由 SQLite 原 job 恢复响应 | worker 重建 VM 回归通过；真实进程 kill/restart 待候选 |
+| 首次任务已部分成功或已经失败/终态 | 相同 key 仍绑定原任务，不自动重下或重导；用户明确新动作才换 key | storage terminal reuse 与 HTTP 复用通过；真实下载/解压中断待候选 |
+| 失败回滚和数据完整性 | 本功能不改变 Junimo 下载、校验、原子导入/回滚逻辑；重复请求不能额外写第二份 Mod | 单元/全量 Go 通过；坏包、部分导入与候选升级后复验仍走既有远程安装矩阵 |
+| 权限与敏感信息 | 仍要求管理员和目标实例权限；CDN query 不进入 key、公开 Job、审计 metadata 或普通日志 | 差异审查与 Web 契约通过；候选日志/support bundle 脱敏扫描待执行 |
+| 资源清理 | singleflight 成功/失败均立即删除；测试只清理任务自有浏览器配置、容器、网络、volume 和 bind | Node 已证明失败不缓存；真实门禁须按 ownership 精确清理，禁止全局 prune |
+| 旧版升级与回滚 | migration 013 原子应用；旧扩展无 key 继续工作；目标候选失败时整版 Panel 按现有 updater 回滚 | 旧 schema → 当前 migration 全量测试通过；上一正式版/最老受影响版 Web 一键升级与 unhealthy 回滚待候选 |
+
+# SAVE-IMPORT-AUTO-UNCLAIM-1 候选门禁（2026-08-13，代码完成、未发布）
+
+## 变更清单与受影响链路
+
+- Control 从 0.3.1 升为 0.3.2；source/embedded manifest 和 DLL 与 runtime_stack_manifest.json 一致，当前 DLL SHA-256 为 a62e525d07279c4c8e8ca13d94e4914cfee2eae79ae60077332c5f2d8b897b2d，运行栈后缀为 control-0.3.2。
+- swap_to_player 导入链改为：Junimo swap-host-to/finalizer → Panel 持久化同一 save-now commandId → Control 保存前 unbind-all-farmhands → GameLoop.Saved → Control total/customized/bound 结果 → Junimo diagnostics 二次零绑定复核 → dayTransition/稳定 XML/磁盘变化 → completed。virtual_host_takeover/as-is、上传 DTO、前端页面和 SteamID 输入不变。
+- Control 预保存动作只清空 Game1.netWorldState.farmhandData 中非空 userID，不改 Server 主机、角色数量、isCustomized、小屋或其它角色内容。pending journal 保存完整动作身份；恢复重复执行同一动作和同一 commandId，不生成第二次保存。
+- Panel maintenance runtime 在进入导入前验证当前内嵌 Control DLL 与 options.json 版本；结果/journal 只含角色计数，原始 platformId/userID 继续不进入普通日志、HTTP、审计或事务 journal。
+
+## 本功能故障矩阵
+
+| 场景 | 预期措施 | 当前证据 / 正式发布前状态 |
+| --- | --- | --- |
+| 正常 swap_to_player | finalizer 后同一次 save-now 自动清空全部绑定，双证据和磁盘门禁后 completed | C#/Go 契约通过；隔离真实 Control 已把 total=2/customized=1/bound=1 变为 2/1/0并重启保持。完整 Web 上传事务仍须最终候选复跑 |
+| virtual_host_takeover/as-is | 不提交解绑动作、不额外保存 | Go as-is 回归保持原分支；正式候选继续覆盖 |
+| 空/不可读 farmhandData、错目标存档、非服务器 | Control 在保存前失败，不改盘、不发布 completed | C# precondition/结果测试；真实故障注入待候选 |
+| 真人 farmhand 在线 | 不踢人，动作失败并保持维护态 | C# 在线门禁与 Go maintenance 测试；真实客户端在线分支待候选 |
+| 旧 Control、坏 DLL/hash、options 缺失或错版本 | pending 只等待启动；明确 mismatch/invalid fail closed并停止导入推进 | maintenance/control gate 单测通过；代表老版本升级必须验证自动同步到 0.3.2 |
+| diagnostics 网络超时、断流、failedFields 或结果缺计数 | 不把 GameLoop.Saved 单点当成功，返回 unconfirmed/recovery 并保留事务材料 | Go 失败矩阵通过；可控代理/真实断流待候选 |
+| 保存已成功但后续验证暂时失败 | 不重发 import/save-now；journal 保留同 commandId，恢复只继续观察 | Go durable 恢复和 C# pending journal 契约通过；Panel/Control 中断窗口真机待候选 |
+| Control 在清空后、Saved 前退出 | 同一 pending journal 恢复，重复清空幂等，只启动原 commandId 的保存 | C# recovery 契约通过；真实 kill 窗口待候选 |
+| 重复提交或旧结果 | 动作/目标 saveId/commandId 任一不一致均拒绝，禁止把旧 succeeded 复用到新事务 | C#/Go identity tests 通过 |
+| 部分成功后的回滚 | 不自动猜测重绑 userID；维护态与 preimport 保留，只有权威继续验收或显式整档恢复可处理 | 设计 fail closed；正式候选须验证恢复操作不重复解绑、不丢 preimport |
+| 权限与敏感信息 | Web 仍使用既有管理员/实例权限；结果只记录计数，不记录姓名或 ID | API 未改；单测与差异审查通过，候选支持包/日志脱敏扫描待执行 |
+| 数据完整性 | 仅 userID 变空，角色数、customized、主机、小屋及存档 XML 必须保留 | 隔离真机角色数 2、customized 1 保持，主文件 hash 改变且 XML/重启均为 bound=0；更丰富家庭/Mod 存档待候选 |
+| 资源清理 | 仅删除本任务精确 project/container/network/volume/bind；源夹具只读不变 | anxi-unbind-e2e-20260813-r1 容器/网络/两卷归零，克隆目录移入回收站；源 project/volume 未启动或修改 |
+
+## 已完成验证与下一正式版本阻断项
+
+- Control 纯契约测试通过；Docker .NET 6 使用真实 Stardew game-data 和标准 GamePath/EnableModDeploy=false 编译成功，0 errors、1 个既有 analyzer/compiler warning。两份 manifest 版本均为 0.3.2，嵌入 DLL 实际摘要与运行栈清单一致。
+- 后端 Linux Go 1.25 容器执行 go test ./... -count=1、go vet ./...、panel/panel-updater/smapi-candidate build 全部通过。专项覆盖动作 payload、结果缺失/错档/仍绑定、Junimo live disagreement、maintenance Control mismatch 和 diagnostics 字段失败。
+- Docker Desktop 隔离实测使用只读 save-import-e2e-release3 派生独立 bind 和 game-data/steam-session 卷，不复用生产。Control 0.3.2 实际加载；初始 diagnostics 为 2/1/1、零在线玩家。单一 commandId 返回 succeeded/ok、动作和 saveId 精确匹配、2/1/0；实时 diagnostics 与主 XML 均为零绑定，SHA-256 从 33961e281f503277b9c7feaecaa11a072eb2145b37917a4375d7d1a58dae52e5 变为 2e42f5574d8bc74543ac157bcfee81ee29b38415d01f5f27ca19f8f197153dcd；server 重启后仍为 2/1/0且结果保留。
+- 本轮不是正式发布：没有构建/推送 Panel 候选镜像，没有 tag、latest、registry 或 GitHub Release 变更。下一正式版本在 tag 前仍必须用最终 commit 构建精确候选，补完整 UI→上传→job 事务、上述真实故障注入、v0.4.14 和最低支持 v0.3.2 Web 一键升级/失败回滚、升级后的再次自动解绑、前端/脚本/兼容矩阵/Docker integration/网站全量门禁；任一缺失不得发布。
+
 # STARTUP-NEWGAME-DURABILITY-1 正式发布门禁（2026-08-13，v0.4.14 已发布，生产 SSH 待授权）
 
 ## 本版候选范围与已进入 main 的前置修复
