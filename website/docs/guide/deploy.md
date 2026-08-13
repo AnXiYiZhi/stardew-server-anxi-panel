@@ -2,6 +2,8 @@
 
 有了服务器之后（自己的云服务器/NAS，或按 [服务器选择](/guide/choose-server) 领的阿里云免费试用），在服务器终端里跑一键脚本即可完成部署。
 
+Windows 10/11 用户请先按 [Windows + Docker Desktop](/deploy/windows) 完成 WSL2 与 Linux containers 设置，再在 WSL2 的 Linux 终端运行本页脚本。
+
 ## 一键部署（Linux 云服务器 / NAS 推荐）
 
 官方 GitHub Release 安装（推荐）：
@@ -10,7 +12,13 @@
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
 
-> 当前国内脚本镜像只提供 HTTP，无法证明脚本在传输途中未被篡改，因此不再推荐下载后直接执行。GitHub 访问不稳定时，请在浏览器打开本项目官方 Release，下载 `run.sh` 后再运行；不要执行来源不明或仅经 HTTP 传输的安装脚本。
+::: tip 国内加速脚本（HTTP）
+GitHub Release 下载较慢时，可以使用国内加速地址：
+
+```bash
+curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+```
+:::
 
 运行后会出现菜单：
 

@@ -4,11 +4,17 @@
 
 状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；v0.4.14 已由 post-release Pages workflow 正式上线。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
 
-## 2026-08-13：NAS 默认推荐 SSH 一键部署（completed，未发布）
+## 2026-08-13：Windows 部署独立专页（completed，未发布）
+
+- 新增 `deploy/windows`，放在侧栏 `deploy/nas` 之后、端口页之前；把原系统要求页的 Windows + Docker Desktop 段落扩展为 9 个章节，覆盖支持边界、WSL2、Docker Desktop Linux containers/WSL Integration、Docker 验证、WSL 数据目录、一键部署、访问端口、日常维护和常见问题。
+- `deploy/requirements` 删除 Windows H2、命令和配置块，只在下一步保留独立专页链接；quick-start、部署安装、首页、README 与内部新手指南同步指向新页。技术边界依据 Microsoft WSL 安装文档和 Docker Desktop Windows/WSL2 官方建议，没有修改产品代码、脚本或镜像。
+- VitePress production build 3.96 秒通过。应用内 Browser 在 1440×900/390×844 验证侧栏精确顺序、NAS→Windows 点击、新页 9 个章节、root/body 零横向溢出、零 overlay 与零 console warn/error；系统要求页 H2 集合已无 Windows，正文无 `wsl --version`，下一步链接仍存在。当前仅完成本地修改与验证，未宣称 Pages 已上线。
+
+## 2026-08-13：NAS 默认推荐 SSH 一键部署（已发布）
 
 - `deploy/nas` 改名为“NAS 图形化部署（进阶）”，首屏新增 SSH 一键部署推荐框；图形化 Compose 只面向能自行核对宿主机绝对路径、Docker Socket、端口、持久化挂载和环境变量的熟练用户。
 - `deploy/quick-start`、系统要求、部署安装、首页部署入口和侧栏统一把 Linux/NAS SSH 一键脚本放在默认位置；README 与内部新手指南同步。没有修改页面主题、依赖、Panel API、`run.sh` 或图形化 Compose 内容。
-- VitePress production build 3.92 秒通过。应用内 Browser 在 1440×900 与 390×844 验证标题、推荐框和进阶条件可见，root/body 无横向溢出、framework overlay 为 0、console warn/error 为 0；点击推荐框链接后精确进入 `/deploy/quick-start.html` 并显示 Linux/NAS 共同推荐说明。当前仅完成本地修改与验证，未宣称 Pages 已上线。
+- VitePress production build 3.92 秒通过。应用内 Browser 在 1440×900 与 390×844 验证标题、推荐框和进阶条件可见，root/body 无横向溢出、framework overlay 为 0、console warn/error 为 0；点击推荐框链接后精确进入 `/deploy/quick-start.html` 并显示 Linux/NAS 共同推荐说明。提交 `5526ef214e1ff25b7e30b9861bf416302a39d08b` 的 Pages `31708671546` 与 compatibility `31708671729` 均成功，说明已上线。
 
 ## 2026-08-13：官网展示 v0.4.14（已发布）
 
@@ -131,8 +137,9 @@ website/docs/
 │  └─ first-login.md           首次进面板：建管理员、装游戏、建/传存档、拿邀请码
 ├─ deploy/
 │  ├─ requirements.md          系统要求（云服务器/NAS 最低与推荐配置）
-│  ├─ quick-start.md           一键脚本部署（Linux 云服务器）
+│  ├─ quick-start.md           一键脚本部署（Linux/NAS；Windows 需先完成专页设置）
 │  ├─ nas.md                   NAS 图形化 Compose 进阶部署（首屏推荐 SSH 一键脚本）
+│  ├─ windows.md               Windows + WSL2 + Docker Desktop 独立部署说明
 │  └─ ports.md                 端口与安全组/防火墙说明
 ├─ handbook/                   深度文档：按面板 9 个功能页逐页精讲（2026-07-08 新增）
 │  ├─ index.md                 深度文档导航页
@@ -168,6 +175,7 @@ website/docs/
 | `deploy/requirements.md` | `README.md` "系统要求" |
 | `deploy/quick-start.md` | `README.md` "推荐：一键启动脚本" + `docs/user-guide/getting-started.md` 第二节 |
 | `deploy/nas.md` | NAS 图形化 Compose 进阶部署；默认先推荐 `deploy/quick-start.md` 的 SSH 一键脚本 |
+| `deploy/windows.md` | 原系统要求页的 Windows 段落扩展为 WSL2、Docker Desktop、Linux containers、目录、部署、访问、端口、维护和排障专页 |
 | `deploy/ports.md` | `README.md` "云服务器安全组" + `docs/user-guide/getting-started.md` 第五节 |
 | `maintain/update.md` | `docs/user-guide/maintenance.md` "更新面板" |
 | `maintain/saves-backup.md` | `docs/user-guide/maintenance.md` "存档备份"、"计划重启" |
@@ -243,6 +251,7 @@ export default defineConfig({
             { text: '系统要求', link: '/deploy/requirements' },
             { text: '一键脚本部署', link: '/deploy/quick-start' },
             { text: 'NAS 图形化部署（进阶）', link: '/deploy/nas' },
+            { text: 'Windows + Docker Desktop', link: '/deploy/windows' },
             { text: '端口与安全组', link: '/deploy/ports' }
           ]
         }

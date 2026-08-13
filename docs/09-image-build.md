@@ -1,3 +1,9 @@
+# 部署入口恢复国内 HTTP 加速卡片（2026-08-13，已完成，未发布）
+
+- 所有活动 `run.sh` 部署命令入口现统一为“官方 GitHub Release 安装（推荐）”在上、“国内加速脚本（HTTP）”卡片在下；本文件的一键启动说明已同步恢复该卡片，完整地址只在实际命令区出现一次。
+- 本次只修改文档展示，不改变 `deploy/run.sh`、镜像候选、Compose、Panel API 或 updater；没有构建/推送镜像、创建 tag、更新 `latest` 或创建 GitHub Release。
+- README、新手指南、官网三页与本文共六处已通过地址数量/顺序检查；网站 production build 通过，桌面和 390×844 Browser 验证卡片渲染、页面跳转、无横向溢出及零 console warn/error。
+
 # v0.4.15 正式候选范围与门禁状态（2026-08-13，pre-release）
 
 - 目标版本为 `0.4.15`，合并三组已完成且共用同一存档导入发布门禁的修复：`NEXUS-EXT-IDEMPOTENCY-1`、`SAVE-IMPORT-AUTO-UNCLAIM-1` 与 `SAVE-IMPORT-FIRST-UPLOAD-1`。Panel 新增 migration 013，浏览器扩展升为 0.1.3，内嵌 Control 升为 0.3.2；Junimo/SMAPI/game/auth 版本不变。
@@ -1099,7 +1105,14 @@ TCP 8080
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
 
-当前仅提供 HTTP 的镜像不得作为“下载后直接执行”入口；GitHub 访问不稳定时应从浏览器打开官方 Release 手工下载 `run.sh`，不得用 HTTP 200/长度代替完整性校验。
+> [!TIP]
+> **国内加速脚本（HTTP）**
+>
+> GitHub Release 下载较慢时，可以使用国内加速地址：
+>
+> ```bash
+> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+> ```
 
 如果直接从仓库文件启动：
 

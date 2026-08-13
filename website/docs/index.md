@@ -21,7 +21,7 @@ features:
     link: /guide/getting-started
     linkText: 开始了解
   - title: 部署指南
-    details: 系统要求、Linux/NAS SSH 一键脚本、NAS 图形化进阶部署、端口与安全组说明。
+    details: 系统要求、Linux/NAS SSH 一键脚本、NAS 图形化进阶部署、Windows + Docker Desktop、端口说明。
     link: /deploy/requirements
     linkText: 查看部署方式
   - title: 日常维护

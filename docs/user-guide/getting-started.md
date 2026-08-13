@@ -17,7 +17,14 @@
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
 
-> 当前国内镜像只提供 HTTP，无法证明脚本在传输途中未被篡改，因此不再推荐下载后直接执行。GitHub 访问不稳定时，请在浏览器打开本项目官方 Release，下载 `run.sh` 后再运行；不要执行来源不明或仅经 HTTP 传输的安装脚本。
+> [!TIP]
+> **国内加速脚本（HTTP）**
+>
+> GitHub Release 下载较慢时，可以使用国内加速地址：
+>
+> ```bash
+> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+> ```
 
 运行后会出现菜单，按提示一步步选择即可：安装 Docker/Compose（如缺失）、选择镜像源、启动面板。脚本会自动生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和数据目录 `~/.anxi-panel/data`。
 
@@ -29,7 +36,7 @@ http://服务器公网IP:8090
 
 ### Windows + Docker Desktop
 
-Windows 用户先在 PowerShell 用 `wsl --version` 与 `wsl -l -v` 确认 WSL2，再进入已启用 Docker Desktop 集成的 WSL2 发行版。确认 `docker version`、`docker compose version` 可用后，在该 Linux 终端运行上面同一条部署命令，完成后访问 `http://localhost:8090`。
+Windows 用户先按[官网的 Windows + Docker Desktop 独立部署说明](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/windows)完成 WSL2、Linux containers、WSL Integration、安装目录和防火墙设置。确认 `docker version`、`docker compose version` 可用后，在 WSL2 Linux 终端运行上面同一条部署命令，完成后访问 `http://localhost:8090`。
 
 Windows 支持的是 WSL2 + Docker Desktop 中的 Linux 容器，不是原生 `.exe` 或 Windows Service。建议把 `~/.anxi-panel` 留在 WSL2 Linux 文件系统中并保持 Docker Desktop 运行；长期 24 小时服务仍优先推荐 Linux/NAS。
 

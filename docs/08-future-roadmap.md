@@ -1,8 +1,20 @@
-# 2026-08-13 完成：NAS 默认推荐 SSH 一键部署（DOCS-NAS-SSH-DEFAULT-1，未发布）
+# 2026-08-13 完成：恢复部署页国内 HTTP 加速卡片（DOCS-INSTALL-HTTP-CARD-3，未发布）
+
+- [x] README、新手指南、官网部署安装/一键脚本/Windows 页面及镜像部署文档，统一在官方 GitHub Release 命令正下方恢复“国内加速脚本（HTTP）”卡片，地址为 `http://anxinas.dpdns.org/run.sh`。
+- [x] 六个活动入口各包含一个官方地址与一个国内地址，顺序全部为官方在上、国内卡片在下；未修改 `deploy/run.sh`、Panel、镜像候选或 Compose。
+- [x] VitePress production build 通过；应用内 Browser 覆盖桌面部署页、390×844 一键脚本页与 Windows 页，卡片/命令/跳转可见，无横向溢出、framework overlay 或 console warn/error。本任务未创建 tag、未发布网站或镜像。
+
+# 2026-08-13 完成：Windows 部署独立专页（DOCS-WINDOWS-STANDALONE-1，未发布）
+
+- [x] 把系统要求页的 Windows + Docker Desktop 正文迁到 NAS 图形化部署之后的独立专页，补全 WSL2、Linux containers、WSL Integration、目录、部署、访问、端口、维护和排障。
+- [x] 系统要求页只保留新页入口；quick-start、部署安装、首页、README、新手指南和文档门户架构同步链接，Panel API、脚本与 Compose 不变。
+- [x] VitePress production build 通过；应用内 Browser 在 1440×900/390×844 验证新页、侧栏顺序、NAS→Windows 点击、系统要求正文移除、零页面横向溢出、零 overlay 与零 console warn/error。本任务未创建 tag 或发布网站。
+
+# 2026-08-13 完成：NAS 默认推荐 SSH 一键部署（DOCS-NAS-SSH-DEFAULT-1，已发布）
 
 - [x] NAS 图形化部署页改为“进阶”入口，首屏默认推荐开启 SSH 并运行 `run.sh`；图形化 Compose 只推荐给能自行处理宿主机路径、Docker Socket、端口、持久化挂载和环境变量的熟练用户。
 - [x] 官网首页、系统要求、一键脚本、部署安装和侧栏，以及 README 与新手指南统一推荐顺序；Panel API、部署脚本和 Compose 内容不变。
-- [x] VitePress production build 通过；应用内 Browser 在 1440×900/390×844 验证新文案、进阶标题、推荐链接跳转、零横向溢出、零 overlay 和零 console warn/error。本任务没有创建 tag 或发布网站。
+- [x] VitePress production build 通过；应用内 Browser 在 1440×900/390×844 验证新文案、进阶标题、推荐链接跳转、零横向溢出、零 overlay 和零 console warn/error。提交 `5526ef214e1ff25b7e30b9861bf416302a39d08b` 的 Pages `31708671546` 与 compatibility `31708671729` 均成功，说明已上线；没有创建 tag 或发布镜像。
 
 # 2026-08-13 完成：无存档实例可直接上传现有存档（SAVE-IMPORT-FIRST-UPLOAD-1，未发布）
 

@@ -58,9 +58,20 @@ Anxi Panel 是围绕 [JunimoServer](https://stardew-valley-dedicated-server.gith
 
 在 Linux 服务器或 NAS 的 SSH 终端运行：
 
+官方 GitHub Release 安装（推荐）：
+
 ```bash
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
 ```
+
+> [!TIP]
+> **国内加速脚本（HTTP）**
+>
+> GitHub Release 下载较慢时，可以使用国内加速地址：
+>
+> ```bash
+> curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh
+> ```
 
 脚本会检查 Docker 环境、生成安全配置、选择可用镜像源并启动面板。部署完成后，在浏览器打开：
 
@@ -76,6 +87,8 @@ http://你的服务器IP:8090
 4. 启动服务器，复制邀请码给朋友。
 
 ### Windows + Docker Desktop
+
+Windows 不是原生部署环境，需要通过 WSL2 运行 Docker Desktop 的 Linux containers。第一次设置请先看完整的 [Windows + Docker Desktop 部署说明](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/windows)。
 
 1. 在 Windows 10/11 安装并更新 WSL2 与 Docker Desktop。
 2. 在 Docker Desktop 中启用 **Use WSL 2 based engine**、切换到 **Linux containers**，并为使用的 WSL2 发行版开启 **WSL Integration**。

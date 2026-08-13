@@ -1,4 +1,28 @@
-# DOCS-NAS-SSH-DEFAULT-1 接手记录（2026-08-13，completed，未发布）
+# DOCS-INSTALL-HTTP-CARD-3 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些文件
+
+- 按当前产品要求，在所有活动部署命令入口把“国内加速脚本（HTTP）”恢复为独立卡片，并统一放在官方 GitHub Release 命令正下方。官网三页使用 VitePress `tip`，README、新手指南和镜像部署文档使用 GitHub `[!TIP]`。
+- 影响 `README.md`、`docs/user-guide/getting-started.md`、`website/docs/guide/deploy.md`、`website/docs/deploy/quick-start.md`、`website/docs/deploy/windows.md` 与 `docs/09-image-build.md`。国内命令固定为 `curl -fsSL -o run.sh http://anxinas.dpdns.org/run.sh && chmod +x run.sh && bash run.sh`；未修改实际 `deploy/run.sh`、Panel 前后端、镜像源或 Compose。
+
+## 如何验证、下一步注意事项
+
+- 六文件一致性检查确认官方/国内地址各出现一次并保持官方在上；`npm.cmd --prefix website run docs:build` 通过。应用内 Browser 覆盖桌面部署页与 390×844 一键脚本/Windows 页：卡片、HTTP 命令和 Windows `cd ~` 上下文均可见，root/body 无横向溢出，framework overlay 与 console warn/error 为 0；部署安装页实际点击“一键脚本部署”后目标页卡片存在。
+- 后续新增任何直接展示 `run.sh` 安装命令的用户页面，都必须同时放置这两个入口并保持同一顺序；不要再只保留官方命令，也不要把国内地址改写成 HTTPS。若国内分发地址变化，应一次同步上述六处并重跑 production build 与桌面/手机渲染检查。
+
+# DOCS-WINDOWS-STANDALONE-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些文件
+
+- 新增 `website/docs/deploy/windows.md`，把 Windows + Docker Desktop 从系统要求页拆成部署侧栏独立专页，并排在 NAS 图形化部署之后。页面以 WSL2 + Docker Desktop Linux containers 为唯一支持路径，补全安装、集成、验证、数据目录、一键部署、访问端口、日常维护和排障。
+- `website/docs/deploy/requirements.md` 删除 Windows 配置正文，只保留新页入口；同步修改 `.vitepress/config.ts`、`deploy/quick-start.md`、`guide/deploy.md`、首页入口、README、内部新手指南与 `docs/11-docs-portal.md`。Panel React、后端 API、脚本和 Compose 未变。
+
+## 如何验证、下一步注意事项
+
+- `npm.cmd --prefix website run docs:build` 通过（3.96 秒）。应用内 Browser 在 1440×900 和 390×844 验证 Windows 页 9 个章节、桌面侧栏顺序、NAS→Windows 点击、标题/警告框、零页面横向溢出、零 overlay 与零 console warn/error；系统要求页不再包含 Windows H2、`wsl --version` 或旧配置块，并保留新页链接。
+- 后续 Windows 支持说明以该专页为唯一详细来源；README、新手指南与 quick-start 只保留摘要和链接。不得把 Windows 写成原生 `.exe`、Windows Service 或 Windows containers，也不要让用户在 PowerShell、`/mnt/c` 或另一个 WSL 发行版重复部署第二套。
+
+# DOCS-NAS-SSH-DEFAULT-1 接手记录（2026-08-13，已发布）
 
 ## 改了什么、影响哪些文件
 
@@ -8,6 +32,7 @@
 ## 如何验证、下一步注意事项
 
 - `npm.cmd --prefix website run docs:build` 通过（3.92 秒）。应用内 Browser 在 1440×900 和 390×844 验证新标题、SSH 推荐框、图形化进阶条件、零横向溢出、零 framework overlay 与零 console warn/error；点击推荐框的一键脚本链接后进入 `/deploy/quick-start.html`，目标页包含 Linux/NAS 共同优先使用脚本的说明。
+- 提交 `5526ef214e1ff25b7e30b9861bf416302a39d08b` 的 Pages `31708671546` 与 compatibility `31708671729` 均成功；NAS 默认推荐 SSH 的说明已上线。
 - 后续增加 NAS 部署入口时继续保持“SSH 一键脚本为默认、图形化 Compose 为熟练用户进阶方案”的顺序；不要再使用“NAS 用户通常没有 SSH 习惯”作为推荐图形化部署的理由。若脚本或 NAS 支持边界发生变化，需同步 README、新手指南、官网四个部署入口和侧栏标签。
 
 # FE-SAVE-IMPORT-FIRST-UPLOAD-1 接手记录（2026-08-13，completed，未发布）

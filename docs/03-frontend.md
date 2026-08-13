@@ -1,8 +1,21 @@
-# DOCS-NAS-SSH-DEFAULT-1：NAS 默认推荐 SSH 一键部署（2026-08-13，completed，未发布）
+# DOCS-INSTALL-HTTP-CARD-3：恢复国内加速脚本卡片（2026-08-13，completed，未发布）
+
+- 六个包含活动部署命令的入口统一保留“官方 GitHub Release 安装（推荐）”在上，并在其正下方恢复“国内加速脚本（HTTP）”卡片：`README.md`、`docs/user-guide/getting-started.md`、官网 `guide/deploy`、`deploy/quick-start`、`deploy/windows` 及 `docs/09-image-build.md`。官网使用 VitePress `tip` 卡片，GitHub Markdown 页面使用 `[!TIP]` 卡片。
+- 国内卡片固定执行 `http://anxinas.dpdns.org/run.sh`；Windows 页同时保留 `cd ~` 和“必须在 WSL2 Linux 终端执行”的上下文。官方命令、`deploy/run.sh`、Panel React/API、镜像候选和部署逻辑均未修改。
+- 六文件一致性断言确认每页恰有一个官方地址、一个国内 HTTP 地址，且官方始终在前；VitePress production build 通过。应用内 Browser 在桌面部署页、390×844 一键脚本页和 Windows 页确认卡片可见、命令正确、无横向溢出、无 framework overlay，console warn/error 为 0；从部署安装页实际点击“一键脚本部署”进入目标页后卡片仍存在。
+
+# DOCS-WINDOWS-STANDALONE-1：Windows 部署独立专页（2026-08-13，completed，未发布）
+
+- `website/docs/deploy/windows.md` 新增 Windows + Docker Desktop 独立部署页，位于 NAS 图形化部署之后、端口页之前；详细覆盖支持边界、WSL2 安装/升级、Docker Desktop Linux containers 与 WSL Integration、Docker 验证、WSL Linux 数据目录、`run.sh` 部署、局域网/外网端口、日常启动更新和六类常见故障。
+- `deploy/requirements.md` 删除原 Windows 完整正文，只在“下一步”保留独立专页入口；quick-start、部署安装、首页、README 与内部新手指南统一链接新页。没有修改 Panel React、API、`run.sh`、Compose 或镜像支持范围。
+- `npm.cmd --prefix website run docs:build` 3.96 秒通过。应用内 Browser 在 1440×900/390×844 验证新页 9 个章节、侧栏精确顺序、NAS→Windows 点击、root/body 零横向溢出、零 framework overlay 与零 console warn/error；系统要求页 H2 集合不再含 Windows，正文无 `wsl --version`，仍保留指向新专页的下一步链接。
+
+# DOCS-NAS-SSH-DEFAULT-1：NAS 默认推荐 SSH 一键部署（2026-08-13，已发布）
 
 - 官网 NAS 页标题改为“NAS 图形化部署（进阶）”，首屏提示 NAS 用户也应优先开启 SSH 并运行 `run.sh`；只有非常熟悉 NAS Docker 图形界面，能自行处理宿主机路径、Docker Socket、端口、持久化挂载和环境变量时，才建议继续使用图形化 Compose。
 - `website/docs/deploy/{nas,quick-start,requirements}.md`、`guide/deploy.md`、首页部署入口和 VitePress 侧栏统一同一推荐层级；README 与新手指南同步，避免其它入口仍把 NAS 直接导向图形化方案。没有修改 Panel React、API、部署脚本或 Compose 内容。
 - `npm.cmd --prefix website run docs:build` 3.92 秒通过。应用内 Browser 在 1440×900 与 390×844 验证标题、推荐框和进阶条件可见，root/body 无横向溢出、framework overlay 为 0、console warn/error 为 0；实际点击推荐框“一键脚本部署”进入 `/deploy/quick-start.html`，目标页同时显示 Linux/NAS 优先使用脚本的说明。
+- 提交 `5526ef214e1ff25b7e30b9861bf416302a39d08b` 已推送 `main`；Pages workflow `31708671546` 与 compatibility workflow `31708671729` 均成功，NAS 默认推荐 SSH 的说明已上线。
 
 # FE-SAVE-IMPORT-FIRST-UPLOAD-1：首次上传运行组件错误分流（2026-08-13，completed，未发布）
 
