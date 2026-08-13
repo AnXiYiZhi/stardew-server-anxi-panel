@@ -69,25 +69,24 @@
 | 数据完整性 | v0.4.11/v0.3.2 升级、失败回滚、Panel restart 后 SQLite、初始化、用户、实例、存档、Mod、备份、审计和 new-game 证据按范围保留 | live/backup SQLite integrity、文件 SHA、transaction/owner 终态、非目标容器/volume ID |
 | 资源清理 | 只删除本测试唯一 owner/project/container/network/port/bind/volume；禁止 prune | 每轮前后精确 ownership 查询和零残留报告 |
 
-## 2026-08-13 当前源码预候选验证证据
+## 2026-08-13 代码候选与真实升级验证证据
 
 - Control `0.3.1` 纯契约测试通过；使用只读真实 `stardew_game-data` 与标准 `/p:GamePath=/game /p:EnableModDeploy=false` 编译成功，0 errors、1 个既有 analyzer/compiler warning。最终编译产物、嵌入 DLL 与 `runtime_stack_manifest.json` 的 SHA-256 三方一致：`3833769287e794d392296c52df760f8451b24a177243a0926d6f0ca9fd81b3ce`。
 - 后端最终源码全量 `go test ./... -count=1` 用时 73.4 秒并通过，`go vet ./...`、`go build ./...` 通过；另修正“安全回滚状态已落盘但原 job 尚差 SQLite 终态写入”的完成竞态，只对 status 中同一个 job 有界等待，其它活动任务仍立即拒绝，专项连续 5 次通过。
 - Docker Desktop 隔离真实建档 E2E 用时 143.59 秒并通过：空 saves 的 startup writer 创建 `ReleaseGate_*` 且 Panel POST `/newgame` 为 0；随后以该存档作为旧 active save，HTTP writer 只 POST 1 次并创建 `HTTPReleaseGate_*`，旧主文件/SaveGameInfo SHA-256 保持。两条链都通过完整 Control 内存定制、唯一 host、同 ID `GameLoop.Saved`、主 XML/SaveGameInfo 稳定校验、owner/marker 清理；隔离 project/container/network/两卷终态均为 0。
 - 真实 E2E 同时锁定 Stardew 1.6 磁盘契约：性别以 `Gender/gender` 文本为权威，旧 `isMale` 可为 `xsi:nil`；有效衣服 ID 从 `shirtItem/pantsItem.itemId` 读取，旧 `shirt/pants=-1` 只作兼容占位。旧格式仍兼容，错误 item ID 专项必须返回 `new_game_disk_character_mismatch`。
 - 前端 14 项 `test:*`、production audit（0 vulnerabilities）和 production build 通过；Bash 四项功能测试、全部脚本 `bash -n`、ShellCheck 通过；compatibility validate、目标 Panel `0.4.12`、19 项 Python 测试、真实 remote artifacts（59.1 秒）通过；runtime Docker integration 12.043 秒、updater 成功/失败回滚 integration 34.801 秒、VitePress production build 通过。
-- 这些证据仍是未提交最终候选源码的 pre-candidate 证据。精确 commit 镜像、正式 Web 一键升级、图形化 Compose conversion、unhealthy 回滚、升级后功能、候选 Browser、tag 后三仓与生产真机仍未完成；因此当前仍不得 tag、推送正式镜像或更新 `latest`。
+- 代码修复提交为 `3cdf43c5a2b3055add7ed5a6720d97e24794073c`，已推送并与 `origin/main` 同步。本机精确代码候选 `ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.4.12` 的 image ID=`sha256:85be8243c8a61f4d0be2f0d91e22f4e90d5edfb17b07d75fbdec411fbb97cd3c`，内嵌 version=`0.4.12`、完整 revision=`3cdf43c5a2b3055add7ed5a6720d97e24794073c`、build date=`2026-08-13T05:33:59Z`；fresh health/version/restart 通过。
+- 唯一任务 DinD 使用受控 TLS `api.github.com` 与受控 TLS GHCR/ACR registry，完整走 setup/login cookie、更新检查、capability、dry-run、管理员确认、apply、预期断线重连与持久终态。正式 `v0.4.11` 先实际运行 unhealthy `0.4.12`，收敛到 `failed_rolled_back / health_check_failed` 并恢复 v0.4.11，再切换相同引用到精确健康候选，事务 `342a58d4135f` 成功；最低支持 `v0.3.2` 以真实零长度历史 apply body 升级，事务 `b3acbb48b87f` 成功。两条链均验证 live/backup SQLite integrity、管理员/实例、save/Mod/backup 哨兵、非目标 game container ID/volume 内容及重启后终态；受控 Release 命中 13 次、registry `/v2/` 命中 226 次。
+- `621c564` 图形化链完成两层验收：官方 v0.4.11 hard-coded/no-env 容器先通过新版 Release `migrate-fnos.sh` 一次性标准化并保留旧容器、bind、named/anonymous volume 和 SQLite；随后用包含 `621c564`、对外报告 0.4.11 的来源镜像走真实 Web conversion，先观察 unhealthy 目标并完整回滚，再以健康候选重试，事务 `9afdaa53abb0` 成功。转换后 capability=`supported` 且 `conversionRequired=false`，Panel 重启正常，Release 命中 5 次、registry 命中 178 次。
+- 在由 v0.4.11 Web 升级得到的候选 Panel（事务 `16e630f9e439`）上重新构造 `state=error + requiredFiles=ok + compose=ready + image=available` 的隔离证据；普通用户 `/state` 精确返回 `installationDiagnostic.status=installed`、`recommendedAction=retry_start`。应用内 Browser 验证桌面端显示“错误 + 查看诊断”且没有“未安装/重装”弹窗，点击进入 `/instances/stardew/diagnostics`；390×844 移动端显示“切换电脑端查看诊断”，root/body `scrollWidth==clientWidth==390`，两视口 console error/warn 为 0。浏览器转发与嵌套 Panel/container/network/volume 最终精确查询均为 0。
+- 上述真实升级仍基于代码提交候选；本次发布证据文档和错题本收口会产生仅文档差异的最终 tag 候选 commit。必须以最终 commit 重建带新 revision 的镜像并重跑身份、fresh smoke、关键 Web 升级/回滚与 Release asset 门禁后才能 tag；当前仍未推送 tag、正式镜像或 `latest`，生产同步也尚未开始。
 
-## Tag 前待验证清单（当前均不得写成已完成）
+## Tag 前剩余收口清单
 
-1. 在最终候选源码重建 Control `0.3.1`：Docker .NET 6 + 真实只读 game-data、0 errors、契约矩阵通过；核对 source/embedded manifest、DLL SHA-256、runtime manifest 和运行态 `options.json`。
-2. 执行后端全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...`；前端空 Node volume 的全部 `test:*`（含 install state 与 new-game idempotency）、production audit/build；Bash 功能测试、`bash -n`、ShellCheck；兼容矩阵 validate/version/remote artifacts；Docker updater/runtime integration；网站 production build。
-3. 用唯一隔离 Compose project、端口、bind、game-data/steam-session volume 跑本节 startup/HTTP writer 两条真实建档主路径与高风险 fault matrix，包括 owner claim、rollback journal、Control pending journal 和 bootstrap 保持停服。不得复用生产存档、凭据或唯一数据卷；不可稳定复现的断流/中断用可控代理或 fault seam。
-4. 构建带精确候选 version/commit/build date 的最终 Panel 镜像并完成 fresh health/version/restart、Control hash、Release helper/asset smoke。候选 commit 后任何代码变化都使旧镜像证据失效。
-5. 从正式 `v0.4.11` 和最低支持 `v0.3.2` 通过真实 Web 更新检查、dry-run、管理员确认、apply、预期断线重连与终态恢复升级候选；至少一次目标 unhealthy 自动回滚，并在升级得到的新 Panel 上复验安装诊断、Control slow-start、new-game idempotency/四段耐久和 swap Release asset。
-6. tag 前在隔离环境完整验收 `621c564`：覆盖标准/图形化 Compose、外部 volume、目标失败和每个中断恢复窗口。生产真机必须在正式镜像发布、回拉和隔离 smoke 通过后再执行，当前不宣称生产通过。
-7. Browser 使用候选及升级后 bundle 验收桌面、390px 手机、280px 窄屏：starting/pending、mismatch、unknown/repair/not-installed、重复建档与 recovery 提示、按钮门禁、无横向溢出、console error/warn 为 0。
-8. 所有门禁通过后，确认本地仅在 `main`、工作树干净且与 `origin/main` 完全同步，再创建新的不可移动 annotated `v*` tag。不得从其它分支、旧候选或本节两个前置提交直接打 tag。
+1. 提交本节真实证据与错题本，删除本轮未跟踪夹具；确认最终 commit 只有预期文档/执行记录差异且 `main==origin/main`。
+2. 用最终 commit/revision 重建 `0.4.12` 镜像，复跑 OCI identity、fresh health/version/restart、候选 Control/Release asset 摘要、关键 Web unhealthy rollback + healthy apply；代码未变化的全量源码、真实建档、621 conversion 与 Browser 证据保留，但必须确认最终构建上下文没有意外代码差异。
+3. 确认本地仅在 `main`、工作树干净、无非 main worktree/未合并有效提交，并与 `origin/main` 完全同步；随后才创建新的不可移动 annotated `v0.4.12` tag。不得从旧 `3cdf43c` 镜像身份直接推 tag。
 
 ## Tag 后仍必须完成
 

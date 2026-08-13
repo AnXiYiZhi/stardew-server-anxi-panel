@@ -1,3 +1,8 @@
+# FE-INSTALL-RUNTIME-ERROR-MAPPING-1：运行错误不再误导重装（2026-08-13，completed，待发布）
+
+- `StardewPanel`、`InstallPage` 与移动端总览共享 installation-state 分类器；`state=error` 必须结合后端 `installationDiagnostic`，只有明确缺安装文件/镜像/Compose 才进入 repair，文件完整时提供 retry/diagnostics，未知证据也不得降级成“未安装”。新建档请求同步携带并在失败重试中复用 Idempotency-Key。
+- 前端状态、响应式与 production build 门禁通过。由正式 v0.4.11 Web 升级得到的 0.4.12 bundle 上，应用内 Browser 验证 `error + files ok` 桌面显示“查看诊断”且没有重装弹窗，点击进入诊断页；390×844 移动端显示电脑端诊断引导，横向溢出为 0，console error/warn 为 0。精确 API 与截图证据记录在 `docs/09-image-build.md`。
+
 # FE-INSTALL-AUTHORITY-1：安装终态单调合并与已有任务接管（2026-08-11，released in v0.4.11）
 
 - `install-state.ts` 将 dashboard job 列表与详情轮询按 job ID 合并；同一任务只要任一来源观察到 succeeded/failed/canceled，迟到的 queued/running 快照就不能把它复活。页面从合并结果派生唯一 active/latest/selected 安装任务，不再用 `installJob ?? dashboardJob` 的到达顺序决定当前状态。

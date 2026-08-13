@@ -1,3 +1,11 @@
+# 2026-08-13 完成：启动误判、安装错误映射与新建档耐久（待发布 v0.4.12）
+
+- [x] Control 启动使用 pending/ready/mismatch/invalid 四态和完整预算，Start/Restart 共用 gate，Reconcile 不再只凭 server container 提升 running；宿主重启保持游戏关闭。
+- [x] 后端 installationDiagnostic 与前端共享分类器修复 `error → 未安装/重装`，desktop/mobile 升级后 Browser 已用 files-ok error 实证。
+- [x] 新建档强制持久幂等、单 writer、owner fencing、完整角色内存复核、同 ID durable save、双 XML 稳定门禁和可恢复回滚；真实 startup writer POST=0、HTTP writer POST=1 通过。
+- [x] v0.4.11/v0.3.2 Web 升级、unhealthy 回滚、官方一次性 migrate-fnos 与 621 图形化 Web conversion 已通过隔离真机门禁。
+- [ ] 最终文档 commit 后重建精确 revision 候选并复跑关键门禁；随后 tag、Release workflow、三仓回拉/资产核对和生产真机同步。未完成前不得标记“已发布”。
+
 # 2026-08-12 完成：图形化 Compose 一键升级自动标准化（PANEL-UPDATE-GRAPHICAL-COMPOSE-1，未发布）
 
 - [x] Compose 身份反查之后新增持久 `PANEL_IMAGE` 契约探针；缺 `.env`、坏 env 或写死 image 不再被 dry-run 误判为可直接升级。

@@ -1,3 +1,11 @@
+# STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，completed，待发布）
+
+## 交付状态与下一步
+
+- `3cdf43c5a2b3055add7ed5a6720d97e24794073c` 完成 Control runtime gate、安装诊断、lifecycle handoff、原子 new-game owner/幂等、双 writer、完整定制/磁盘耐久、save-now journal、rollback journal、mutation guard 与 bootstrap 保持停服。Control 已升为 0.3.1，内嵌 DLL/runtime manifest 摘要一致。
+- Go 全量/vet/build、真实 Control 编译、startup+HTTP writer Docker E2E 已通过；v0.4.11/v0.3.2 真实 Web 升级、unhealthy 回滚、621 conversion 与升级后诊断/UI 也已通过，精确事务与数据完整性证据见 `docs/09-image-build.md`。
+- 下一位只需继续发布收口：提交本轮证据后以最终 SHA 重建候选，重跑精确身份/fresh/关键 Web 门禁；工作树干净同步后才 tag。tag 后核对 Release workflow、三仓 digest/latest、run.sh swappiness 资产，再进入生产。不要恢复宿主重启自动开服语义。
+
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 接手记录（2026-08-12，completed，未发布）
 
 ## 改了什么、影响哪些接口/文件

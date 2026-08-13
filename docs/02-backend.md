@@ -1,3 +1,9 @@
+# STARTUP-NEWGAME-DURABILITY-1：启动诊断、新建档耐久与手动恢复（2026-08-13，completed，待发布）
+
+- 修复 Control 启动验收的 pending/mismatch 混淆、1 分钟截断与 Restart 旁路；Reconcile 只有新鲜 ready 证据才提升 running，宿主/Panel 重启不自动 ComposeUp，用户手动 Start 才继续。`/state` 新增安装文件、Compose、镜像、容器及 Control static/runtime 的权威 `installationDiagnostic`。
+- 新建档采用强制 Idempotency-Key、原子持久 owner/token、startup/http 固定 writer、进展 write-ahead、同 ID save-now journal、完整角色外观内存复核和双 XML 稳定门禁；rollback journal 可在用户手动 Start 后只继续原回滚。unfinished owner 阻断所有会覆盖事务现场的 mutation。
+- 代码提交 `3cdf43c5a2b3055add7ed5a6720d97e24794073c` 已在 `origin/main`；全量 Go、Control 0.3.1 真实编译、双 writer 真实 Docker 建档均通过。正式 v0.4.11/v0.3.2 Web 升级、unhealthy 自动回滚、621 图形化 conversion 与升级后普通用户诊断/UI 已在唯一 DinD 通过，事务 ID 与完整矩阵见 `docs/09-image-build.md`。当前仍待最终文档 commit 重建候选与 tag 后三仓/生产收口。
+
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1：图形化 Compose 一键升级自动标准化（2026-08-12，completed，未发布）
 
 - Panel 自更新的部署反查新增持久镜像契约探针：在隔离、无网络 helper 中显式加载部署目录 `.env`，临时注入不会被拉取的 `PANEL_IMAGE` 探针值，并要求 `docker compose config --images <service>` 精确解析到该值。探针只在容器 ID、Compose project/service、当前镜像和数据挂载已经全部反查一致后执行，不把 Compose label 漂移或服务歧义降级为自动迁移。
