@@ -1,4 +1,4 @@
-# STARTUP-NEWGAME-DURABILITY-1：启动诊断、新建档耐久与手动恢复（2026-08-13，completed，v0.4.14 待发布）
+# STARTUP-NEWGAME-DURABILITY-1：启动诊断、新建档耐久与手动恢复（2026-08-13，released in v0.4.14）
 
 - 修复 Control 启动验收的 pending/mismatch 混淆、1 分钟截断与 Restart 旁路；Reconcile 只有新鲜 ready 证据才提升 running，宿主/Panel 重启不自动 ComposeUp，用户手动 Start 才继续。`/state` 新增安装文件、Compose、镜像、容器及 Control static/runtime 的权威 `installationDiagnostic`。
 - 新建档采用强制 Idempotency-Key、原子持久 owner/token、startup/http 固定 writer、进展 write-ahead、同 ID save-now journal、完整角色外观内存复核和双 XML 稳定门禁；rollback journal 可在用户手动 Start 后只继续原回滚。unfinished owner 阻断所有会覆盖事务现场的 mutation。
@@ -6,6 +6,7 @@
 - Linux CI 暴露进程内 12 路原子 owner claim 的极短可见性竞态：loser 可能在 winner 发布/同步目录的瞬间把现场误判为缺 `owner.json`。新增仅限进程内的 claim publication mutex；跨进程线性化仍由 `RENAME_NOREPLACE` 负责，未知/遗留现场仍 fail closed。Windows 与 Linux 并发专项各连续 100 次、两平台全量 Go test/vet/build均通过。
 - `v0.4.12` tag 已固定在 `21fa312656f18a8bfdef7db62e224f91b3830deb`，但 Release workflow `31679615132` 在镜像构建/推送前被旧维修脚本 trap handler 的 ShellCheck SC2317 阻断，未创建 Release、未更新三仓或 `latest`。局部 ShellCheck 指令现同时说明并抑制 SC2317/SC2329，0.10.0 与 0.11.0 workflow 精确输入复验通过；依据 tag 不可移动规则，修复后正式候选改为 `v0.4.13`。
 - `v0.4.13` 的 release gates 全部通过，但 workflow `31681173485` 在多仓 push 时因 ACR 不支持 Buildx 默认 `application/vnd.oci.empty.v1+json` attestation 失败；Docker Hub 已部分写入 `0.4.13/latest`，GHCR/ACR 和 GitHub Release 未更新。workflow 现显式 `provenance:false`、`sbom:false`，下一不可移动候选为 `v0.4.14`，成功后必须覆盖三仓 latest 并验证统一 digest。
+- `v0.4.14` 固定在 `a70efc98feecd6b2db803435b59b0f31d1439cf3`。Release workflow `31682847388` 成功；三仓 `0.4.14/latest` 统一 digest=`sha256:5b58ad998da14726b655f4a965c0e3f74ae7839fe615b0f59dd8af1ee16a8ebd`，三个精确镜像分别通过首次启动/重启 health、SQLite 和版本验收，四项 Release 资产与 tag 源一致。生产同步因 `114.55.142.107:22` 的正确 SSH 用户名缺失而待完成，未对生产执行升级。
 
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1：图形化 Compose 一键升级自动标准化（2026-08-12，completed，未发布）
 

@@ -1,8 +1,8 @@
-# STARTUP-NEWGAME-DURABILITY-1 正式发布门禁（2026-08-13，代码完成，v0.4.14 待发布）
+# STARTUP-NEWGAME-DURABILITY-1 正式发布门禁（2026-08-13，v0.4.14 已发布，生产 SSH 待授权）
 
 ## 本版候选范围与已进入 main 的前置修复
 
-- 本节描述下一正式版本的候选范围，不是成功发布记录。`v0.4.12` tag 的 workflow 在 push 前被 ShellCheck 阻断；`v0.4.13` tag 的完整 release gates 通过，但 Buildx 默认 attestation 被阿里云 ACR 拒绝，GitHub Release 未创建且只在 Docker Hub 留下部分 `0.4.13/latest`。两个 tag 均保持不可移动。workflow 现统一禁用 ACR 不支持的 provenance/SBOM attestation，修复后的正式候选号调整为 `v0.4.14`；三仓一致、Release 和生产真机仍未完成。
+- `v0.4.14` 已从不可移动 tag `a70efc98feecd6b2db803435b59b0f31d1439cf3` 正式发布；Release workflow、三仓精确版/latest、Release 资产和逐仓首次启动/重启均已通过。生产目标 `114.55.142.107:22` 的 `cz` 与 `root` password authentication 均被服务端拒绝，未建立 session、未执行生产升级；等待用户提供正确 SSH 用户名，不降低为猜账号或绕过认证。
 - 启动链修复 Panel false negative：缺少本次 Control 状态是 pending/starting，使用完整 20 分钟预算；只有合法 `options.json` 明确报告了错误版本才是 mismatch，坏 manifest/DLL/options 使用 invalid，pending 超时安全停服。
 - 安装/前端链新增 `installationDiagnostic`，把必需文件、Compose、镜像、server 容器与 Control static/runtime 分开；`state=error` 不再一律打开首次安装/重装，Docker 不可读或证据冲突 fail closed 到 diagnostics。
 - 新建档链强制 `Idempotency-Key`（缺失返回 428、零写入），增加实例级持久 owner/token、exclusive job、startup/http 固定单写入者和不可逆进展记录。owner 使用 staging+fsync+no-replace rename 原子抢占；loader、Control 或目录任一前进后禁止第二次 `/newgame`。unknown/ambiguous/中断保留现场，用户手动启动恢复同一事务。
@@ -85,19 +85,23 @@
 - 最终 `21fa312656f18a8bfdef7db62e224f91b3830deb` 候选镜像 version=`0.4.12`、image ID=`sha256:65af4e0c7dcba236e9e47230c0037b81667499cd8ee19cdabf29300ffd9fab1f`，fresh health/version/restart 通过；同一精确候选在受控 TLS DinD 中先被 unhealthy healthcheck 驱动回滚到官方 v0.4.11，再以健康镜像成功升级，最终 `phase=succeeded`、SQLite integrity=`ok`、save/Mod/backup 三类哨兵保留、Panel restart 后终态持久，任务资源归零。该 SHA 的 Compatibility workflow `31678353960` 成功。
 - annotated `v0.4.12` 推送后，Release workflow `31679615132` 在 `Run release gates` 的 ShellCheck 阶段报告 `deploy/repair-junimo-0.3.5.sh` ERR trap handler 内命令 SC2317 并退出 1；metadata、registry login、build/push 和 GitHub Release 均未执行。脚本原有 SC2329 注释只抑制“函数未调用”，未抑制 trap 间接调用函数体的 SC2317；修复把局部解释性指令限定为 `SC2317,SC2329`，并用 ShellCheck 0.10.0/0.11.0 对 workflow 精确输入复验。由于 tag 不可移动，下一候选使用 `v0.4.13`，所有最终身份和关键 Web 门禁必须按新 SHA/版本重跑。
 - `v0.4.13` 的最终候选 `26e7a1e4f5949349a316484bf173c0653e7b6ac3`（image ID=`sha256:5efcb8cd73038b2823ae6cefe16f8ea37685d05ea4a6c1af356c1668a8f630d7`）通过 fresh/restart 和官方 v0.4.11 的 unhealthy 回滚+健康升级，远端 Compatibility `31680079482` 成功。Release workflow `31681173485` 的全部 release gates 也通过，但多仓 Buildx push 因 ACR 拒绝 `application/vnd.oci.empty.v1+json` attestation 失败；未创建 GitHub Release。远端审计确认 Docker Hub `0.4.13/latest` 已成为 digest `sha256:6393f178f308aaa20b6f1141aa5ca98f9c4bc518faf055db21ef6eeb5c4d8f9b`，GHCR/ACR 仍为 v0.4.11，属于明确的部分发布。下一成功版本必须以 `v0.4.14` 覆盖三仓 `latest` 并统一 digest；workflow 使用 `provenance:false`、`sbom:false`，避免向 ACR 推送不支持的空 attestation manifest。任务专属 DinD/registry 已用 Buildx 0.35.0 对同一参数做 push 探针，远端 tag 直接解析为单一 `application/vnd.oci.image.manifest.v1+json`，没有 index/empty attestation；容器和卷终态为 0。
+- 最终 `v0.4.14` 候选 `a70efc98feecd6b2db803435b59b0f31d1439cf3` 的本机 image ID=`sha256:df24cd01c7e86c9d7ca562784d3adc335d89d786fbd9b226d513b5d14f991404`，version=`0.4.14`、完整 revision、build date=`2026-08-13T08:25:59Z`；fresh/restart 通过。官方 v0.4.11 → 该精确候选再次先观察 unhealthy 目标并恢复 v0.4.11，再以健康镜像升级成功，事务 `5191eb70656c`，SQLite `ok`、save/Mod/backup 三哨兵与重启终态保持，任务资源为 0。该 SHA Compatibility workflow `31682006066` 成功。
+- annotated tag `v0.4.14` 的 Release workflow `31682847388` / job `94392047913` 于 `2026-08-13T08:37:12Z` 开始、`08:44:32Z` 完成，总时长 7 分 20 秒；release gates 4 分 02 秒、build/push 2 分 24 秒，所有步骤成功。GitHub Release `Stardew Server Anxi Panel 0.4.14` 于 `08:44:23Z` 发布，非 draft/prerelease。
+- Docker Hub、GHCR、阿里云 ACR 的 `0.4.14/latest` 六个引用统一为单一 OCI image manifest digest=`sha256:5b58ad998da14726b655f4a965c0e3f74ae7839fe615b0f59dd8af1ee16a8ebd`，version=`0.4.14`、revision=`a70efc98feec`、created=`2026-08-13T08:41:50Z`。三个精确镜像分别用独立 container/network/volume 首次启动并重启，均 Docker health=`healthy`、database=`ok`、版本/commit 精确、fresh setup 未初始化，最终资源为 0；成功覆盖了 v0.4.13 的 Docker Hub 部分发布。
+- Release 四项资产均与 tag 源逐字节一致：`run.sh`=`7263bfa323b2bf4eb94674bde9c77a57a8b86734c606055c9cdef2fc1e130787`、`migrate-fnos.sh`=`90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`、`repair-junimo-0.3.5.sh`=`13a07708d23e02c002c979eef28639bc2fe283a2e5988e228afc0c068f51cd0e`、`repair-junimo-upgrade.sh`=`4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`；下载的 `run.sh` 明确包含运行态和持久态 `vm.swappiness=60` 逻辑。
 
-## Tag 前剩余收口清单
+## Tag 前收口（已完成）
 
-1. 提交本节真实证据与错题本，删除本轮未跟踪夹具；确认最终 commit 只有预期文档/执行记录差异且 `main==origin/main`。
-2. 用最终 commit/revision 重建 `0.4.14` 镜像，复跑 OCI identity、fresh health/version/restart、无 attestation 的受控 registry manifest、关键 Web unhealthy rollback + healthy apply；代码未变化的全量源码、真实建档、621 conversion 与 Browser 证据保留，但必须确认最终构建上下文没有意外代码差异。
-3. 确认本地仅在 `main`、工作树干净、无非 main worktree/未合并有效提交，并与 `origin/main` 完全同步；随后才创建新的不可移动 annotated `v0.4.14` tag。不得移动失败的 `v0.4.12/v0.4.13`，也不得从旧候选镜像身份直接推 tag。
+1. 最终 commit `a70efc98feecd6b2db803435b59b0f31d1439cf3` 只包含 attestation 兼容修复、规则和发布证据；tag 前 `main==origin/main`、单 worktree/单 main branch、工作树洁净。
+2. 精确 `0.4.14` 候选已完成 OCI identity、fresh/restart、无 attestation 的受控 registry manifest，以及关键 Web unhealthy rollback + healthy apply。
+3. annotated `v0.4.14` 从该提交创建并保持不可移动；失败的 `v0.4.12/v0.4.13` 未移动或复用。
 
-## Tag 后仍必须完成
+## Tag 后收口
 
-- 等待 Release workflow 成功；从 Docker Hub、阿里云 ACR、GHCR 回拉精确版本，核对三仓 digest、OCI version/revision/created 与 `latest`，逐仓用独立数据卷完成 health/version/restart smoke。
-- 下载 GitHub Release 的 `run.sh`，与 tag 中 `deploy/run.sh` 逐字节/摘要比较，并实际确认 swappiness 专项测试使用的逻辑存在；核对其它 Release assets 与 tag 源文件。若附件仍是 v0.4.11 旧脚本，发布不合格。
-- 在回拉镜像上完成隔离 Control 0.3.1、新建档和图形化 Compose smoke，再把 workflow ID、三仓 digest、候选/升级/故障矩阵耗时、生产同步结果与资源清理记录回写本节、backend handoff 和路线图。上述工作未完成前不能把本节改成“已发布”。
-- 回拉与隔离 smoke 全部通过后，才在生产真机完整备份、确认无人写入并保留旧部署回滚材料的窗口内，用精确正式 tag 走 Web 更新/图形化 Compose 转换；核对 Panel health/version、Control 0.3.1 实载、SQLite/存档/Mod/备份、游戏容器/volume 和宿主重启后手动启服边界。失败立即停止灰度并按 updater 事务恢复，不得移动 tag 或用 `latest` 猜版本。
+- [x] Release workflow、三仓精确版/latest digest/metadata、逐仓独立 health/version/restart smoke 已完成。
+- [x] GitHub Release 四项资产与 tag 源字节一致，`run.sh` swappiness 修复已核对。
+- [x] 最终候选的 Control 0.3.1、双 writer 新建档、图形化 conversion、正式 Web unhealthy rollback/健康升级和升级后 UI 证据已完成。
+- [ ] 生产真机同步被 SSH 用户名阻塞：`114.55.142.107:22` 可达，但 `cz`/`root` 均被拒绝。取得正确用户名后，先完整备份并确认无人写入，使用精确 `0.4.14` 走 Web 更新/图形化 Compose 转换；游戏保持关闭，核对 Panel health/version、Control 0.3.1、SQLite/存档/Mod/备份、非目标资源和手动启服边界。
 
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 发布门禁：图形化 Compose 自动标准化（2026-08-12，未发布）
 

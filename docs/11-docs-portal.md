@@ -2,7 +2,12 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航并已展示 v0.4.11，安装去重、终态一致性、首次建档 SMAPI 准备和认证取消清理说明均已上线。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；源码已切换为 v0.4.14，待本次 post-release Pages workflow 完成后上线。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+
+## 2026-08-13：官网展示 v0.4.14（待 Pages 发布）
+
+- 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 切换为 v0.4.14；更新日志置顶说明 Control 启动等待、运行错误不再误导重装、持久新建档/角色定制耐久门禁、宿主重启保持停服、swappiness=60 与安全图形化 Compose 标准化。
+- 没有修改主题组件、路由、依赖、图片或 Panel API；v0.4.11 保留为历史条目。正式镜像、三仓和 Release 资产已经完成，网站仍需 production audit/build 与 Pages workflow 后才能标记线上发布。
 
 ## 2026-08-12：官网展示 v0.4.11（已发布）
 

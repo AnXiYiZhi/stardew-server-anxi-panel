@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.11
+release: v0.4.14
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.11。重复安装会自动回到同一任务，完成状态不再被旧日志覆盖；首次建档前也会完整准备 SMAPI 支持组件。
+    details: 当前最新 v0.4.14。启动状态不再提前误报版本错误，运行故障不会被误导成重装；新建存档和角色定制采用可恢复的持久化门禁。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.11</strong>
-    <p>同一实例只会运行一个安装或授权任务，重复点击会继续原任务；任务终态不会被迟到状态复活，首次建档前会先安全准备 SMAPI 内置支持 Mod，取消二维码登录也不会遗留一次性容器。</p>
+    <strong>v0.4.14</strong>
+    <p>Control 尚未就绪时会继续等待，只有明确的错误版本才报不匹配；运行错误不再要求重装。首次建档、角色定制与立即保存由同一个持久事务保护，中断后可以安全恢复。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

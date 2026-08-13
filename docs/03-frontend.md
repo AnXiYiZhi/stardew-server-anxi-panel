@@ -1,7 +1,8 @@
-# FE-INSTALL-RUNTIME-ERROR-MAPPING-1：运行错误不再误导重装（2026-08-13，completed，待发布）
+# FE-INSTALL-RUNTIME-ERROR-MAPPING-1：运行错误不再误导重装（2026-08-13，released in v0.4.14）
 
 - `StardewPanel`、`InstallPage` 与移动端总览共享 installation-state 分类器；`state=error` 必须结合后端 `installationDiagnostic`，只有明确缺安装文件/镜像/Compose 才进入 repair，文件完整时提供 retry/diagnostics，未知证据也不得降级成“未安装”。新建档请求同步携带并在失败重试中复用 Idempotency-Key。
 - 前端状态、响应式与 production build 门禁通过。由正式 v0.4.11 Web 升级得到的 0.4.12 bundle 上，应用内 Browser 验证 `error + files ok` 桌面显示“查看诊断”且没有重装弹窗，点击进入诊断页；390×844 移动端显示电脑端诊断引导，横向溢出为 0，console error/warn 为 0。精确 API 与截图证据记录在 `docs/09-image-build.md`。
+- 该前端已随 `v0.4.14@a70efc98feec` 正式发布；三仓镜像和 Release workflow 已验证。生产 Panel 尚未同步，原因是新主机 SSH 用户名未确认，而不是前端或镜像门禁失败。
 
 # FE-INSTALL-AUTHORITY-1：安装终态单调合并与已有任务接管（2026-08-11，released in v0.4.11）
 

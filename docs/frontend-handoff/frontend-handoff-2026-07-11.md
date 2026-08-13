@@ -1,10 +1,10 @@
-# FE-INSTALL-RUNTIME-ERROR-MAPPING-1 接手记录（2026-08-13，completed，待发布）
+# FE-INSTALL-RUNTIME-ERROR-MAPPING-1 接手记录（2026-08-13，released in v0.4.14）
 
 ## 改了什么与如何验证
 
 - `installation-state.ts` 统一 `StardewPanel`、`InstallPage`、移动端的安装/repair/runtime-error 判定；后端 files-ok error 显示 retry/diagnostics，unknown 不显示重装，只有明确 missing 才 repair。新建档 fetch 发送 Idempotency-Key，UI 对相同配置失败重试复用同 key。
 - 专项状态、幂等、responsive 与 production build 通过。应用内 Browser 在由 v0.4.11 Web 升级得到的 0.4.12 bundle 上验证：桌面 error 页面无“未安装/重装”弹窗，点击“查看诊断”路由正确；390×844 移动端诊断引导可见，root/body 无横向溢出，console error/warn 为 0。
-- 发布尚未完成。下一步只按 `docs/09-image-build.md` 用最终 revision 候选复验并在 tag 后三仓回拉；不要在前端重新维护独立 installed-state 枚举。
+- `v0.4.14@a70efc98feec` 已正式发布；Release workflow `31682847388`、三仓 `0.4.14/latest` 统一 digest 和逐仓启动/重启均通过。生产同步等待新主机正确 SSH 用户名；不要在前端重新维护独立 installed-state 枚举。
 
 # FE-INSTALL-AUTHORITY-1 接手记录（2026-08-11，released in v0.4.11）
 

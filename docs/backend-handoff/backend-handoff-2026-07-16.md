@@ -1,4 +1,4 @@
-# STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，completed，v0.4.14 待发布）
+# STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，released in v0.4.14）
 
 ## 交付状态与下一步
 
@@ -8,6 +8,7 @@
 - 发布阻断复跑补丁：Linux Compatibility matrix 的 12 contender owner claim 偶发读到 winner 发布中的空目录。`new_game_transaction_owner.go` 增加进程内 claim mutex，只消除同进程 loser 的可见性窗口；Linux `renameat2(RENAME_NOREPLACE)` / Windows no-replace 仍是跨进程唯一原子边界。两平台专项各 `-count=100` 及全量 test/vet/build通过，未知 owner 现场的 fail-closed 语义未放宽。
 - `v0.4.12` 固定 tag 的 Release workflow `31679615132` 在任何 registry login/build/push/Release 之前被 `repair-junimo-0.3.5.sh` 的 SC2317 阻断；没有半发布镜像或 Release。脚本仅为 ERR/INT/TERM trap 间接调用的恢复函数补充局部 `SC2317,SC2329` 说明，ShellCheck 0.10.0/0.11.0 对 workflow 全输入通过。不得移动 `v0.4.12`；下一正式版本为 `v0.4.13`，仍需重建精确 revision 候选、关键 Web 回滚/升级、远端 Compatibility、tag 后三仓和生产收口。
 - `v0.4.13` 的 release gates 通过，Buildx push 才因 ACR 拒绝默认 empty attestation manifest 失败；Docker Hub `0.4.13/latest` 已部分更新，GHCR/ACR 和 GitHub Release 未更新。不要移动或重用该 tag；workflow 已统一禁用 provenance/SBOM attestation，`v0.4.14` 成功后必须用三仓精确版和 latest 的相同 digest 覆盖这一部分发布状态。
+- 正式 `v0.4.14` tag=`a70efc98feecd6b2db803435b59b0f31d1439cf3`；Compatibility `31682006066` 与 Release workflow `31682847388` 成功，GitHub Release 非 draft/prerelease。Docker Hub/GHCR/ACR 的精确版与 latest 统一 digest `sha256:5b58ad998da14726b655f4a965c0e3f74ae7839fe615b0f59dd8af1ee16a8ebd`，三个精确镜像分别完成首次启动/重启；四项 Release asset 与 tag 源字节一致。生产 `114.55.142.107:22` 的 `cz/root` 均认证失败，等待正确用户名后才可同步，游戏必须保持关闭直到用户手动启动。
 
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 接手记录（2026-08-12，completed，未发布）
 

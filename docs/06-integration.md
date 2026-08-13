@@ -1,8 +1,8 @@
-# STARTUP-NEWGAME-DURABILITY-1 联调终态（2026-08-13，completed，待发布）
+# STARTUP-NEWGAME-DURABILITY-1 联调终态（2026-08-13，released in v0.4.14）
 
 - `/api/instances/:id/state` 的 `installationDiagnostic` 是前端操作映射的普通用户权威：明确完整安装的 lifecycle error 返回 `installed/retry_start`，缺文件才 `incomplete/repair_install`，不可读证据为 `unknown/diagnose`。Control runtime 只有观察到合法非期望版本才 mismatch，缺 snapshot 在预算内是 pending。
 - `POST /saves/custom-new-game` 强制 `Idempotency-Key`；同 key/config 返回原 job，缺 key 为 428，同 key 不同配置/其它 owner 为 409。完成只在 transaction-bound save-loaded、完整内存角色、同 ID GameLoop.Saved、双 XML 稳定正确四段证据全部成立后返回成功。
-- 正式 v0.4.11/v0.3.2 真实 Web 升级、unhealthy 回滚、621 hard-coded/no-env conversion 及升级后 desktop/mobile error 映射均已通过；数据与非目标 Docker 资源保持，终态零残留。最终 tag 前/后仍需按 `docs/09-image-build.md` 以最终 revision 重建并核对三仓、Release 资产和生产真机。
+- 正式 v0.4.11/v0.3.2 真实 Web 升级、unhealthy 回滚、621 hard-coded/no-env conversion 及升级后 desktop/mobile error 映射均已通过；最终 `v0.4.14@a70efc98feec` 的 Release workflow、三仓统一 digest、资产和逐仓重启也已通过。生产真机因 `114.55.142.107:22` 的正确 SSH 用户名缺失而未执行升级；取得用户名后仍须按 `docs/09-image-build.md` 以精确 `0.4.14` 同步，游戏保持关闭。
 
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 联调契约（2026-08-12，completed，未发布）
 
