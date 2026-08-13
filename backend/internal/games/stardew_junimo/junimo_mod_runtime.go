@@ -84,7 +84,7 @@ func validateExtractedJunimoServerMod(dir, expectedVersion string) error {
 	})
 }
 
-func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef, workDir, expectedVersion string) (string, error) {
+func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef, workDir, hostWorkDir, expectedVersion string) (string, error) {
 	if err := os.MkdirAll(workDir, 0o700); err != nil {
 		return "", err
 	}
@@ -95,7 +95,7 @@ func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef,
 	if err := os.RemoveAll(targetDir); err != nil {
 		return "", err
 	}
-	absWorkDir, err := filepath.Abs(workDir)
+	absWorkDir, err := filepath.Abs(hostWorkDir)
 	if err != nil {
 		return "", err
 	}

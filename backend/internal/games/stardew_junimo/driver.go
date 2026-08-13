@@ -108,11 +108,13 @@ type InstanceMutationExecutor interface {
 
 // Driver implements registry.GameDriver for Stardew Valley / JunimoServer.
 type Driver struct {
-	docker       DockerService
-	logger       *slog.Logger
-	jobs         *jobs.Manager
-	store        StateStore
-	panelVersion string
+	docker           DockerService
+	logger           *slog.Logger
+	jobs             *jobs.Manager
+	store            StateStore
+	panelVersion     string
+	containerDataDir string
+	hostDataDir      string
 
 	// guardChans maps running install job ID → channel for Steam Guard input.
 	mu         sync.Mutex
@@ -134,15 +136,31 @@ type Driver struct {
 	installationEvidence       map[string]requiredFilesEvidence
 }
 
+type DriverOptions struct {
+	PanelVersion     string
+	ContainerDataDir string
+	HostDataDir      string
+}
+
 // New creates a Driver.  jobs and store may be nil for tests that only use
 // the driver skeleton (Prepare, Status).
 func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, store StateStore, panelVersions ...string) *Driver {
+	options := DriverOptions{}
+	if len(panelVersions) > 0 {
+		options.PanelVersion = panelVersions[0]
+	}
+	return NewWithOptions(docker, logger, jobManager, store, options)
+}
+
+// NewWithOptions creates a Driver with the Panel container-to-host data path
+// mapping required by Docker bind mounts created through the host daemon.
+func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, store StateStore, options DriverOptions) *Driver {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	panelVersion := "dev"
-	if len(panelVersions) > 0 && strings.TrimSpace(panelVersions[0]) != "" {
-		panelVersion = strings.TrimSpace(panelVersions[0])
+	if strings.TrimSpace(options.PanelVersion) != "" {
+		panelVersion = strings.TrimSpace(options.PanelVersion)
 	}
 	return &Driver{
 		docker:                     docker,
@@ -150,6 +168,8 @@ func New(docker DockerService, logger *slog.Logger, jobManager *jobs.Manager, st
 		jobs:                       jobManager,
 		store:                      store,
 		panelVersion:               panelVersion,
+		containerDataDir:           strings.TrimSpace(options.ContainerDataDir),
+		hostDataDir:                strings.TrimSpace(options.HostDataDir),
 		guardChans:                 make(map[string]chan string),
 		inviteCodeCache:            make(map[string]inviteCodeCacheEntry),
 		inviteCodeFlights:          make(map[string]*inviteCodeFlight),

@@ -773,8 +773,12 @@ func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.C
 	if err != nil {
 		return fmt.Errorf("download reviewed SMAPI installer: %w", err)
 	}
+	hostArchivePath, err := r.driver.dockerHostPath(archivePath)
+	if err != nil {
+		return fmt.Errorf("map reviewed SMAPI installer for Docker: %w", err)
+	}
 	_, _ = jobCtx.Info(context.Background(), fmt.Sprintf("[smapi] 使用 JunimoServer 镜像 %s 预安装 SMAPI。", imageRef))
-	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSMAPIInstallOpts(imageRef, archivePath), nil, func(line string) {
+	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSMAPIInstallOpts(imageRef, hostArchivePath), nil, func(line string) {
 		_, _ = jobCtx.Info(context.Background(), "[smapi] "+paneldocker.RedactString(line))
 	})
 	if err != nil {

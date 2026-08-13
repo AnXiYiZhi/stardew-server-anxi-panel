@@ -55,6 +55,10 @@ func (d *Driver) EnsureManagedSMAPIBundledMods(ctx context.Context, dataDir, ima
 		return false, fmt.Errorf("create SMAPI bundled staging directory: %w", err)
 	}
 	defer os.RemoveAll(stage)
+	hostStage, err := d.dockerHostPath(stage)
+	if err != nil {
+		return false, fmt.Errorf("map SMAPI bundled staging directory for Docker: %w", err)
+	}
 
 	script := `set -eu
 echo "` + smapiBundledSyncMarker + `: copying installed SMAPI support mods"
@@ -71,7 +75,7 @@ echo "` + smapiBundledSyncMarker + `: copy complete"`
 		Command:    []string{"-c", script},
 		Binds: []string{
 			resolvedGameDataVolumeName(dataDir) + ":/data/game:ro",
-			stage + ":/managed",
+			hostStage + ":/managed",
 		},
 	}, nil, lineHandler)
 	if err != nil {

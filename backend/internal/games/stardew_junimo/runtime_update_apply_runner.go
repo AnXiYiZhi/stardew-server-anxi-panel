@@ -238,7 +238,11 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	}
 	if runtimeUpdateServerChanged(manifest) {
 		recoveryDir := runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID)
-		extractedDir, err := extractJunimoServerMod(ctx, docker, manifest.Target.Server.Image, recoveryDir, manifest.TargetServerVersion)
+		hostRecoveryDir, pathErr := d.dockerHostPath(recoveryDir)
+		if pathErr != nil {
+			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_bind_path_failed", "无法映射 JunimoServer Mod 提取目录。")
+		}
+		extractedDir, err := extractJunimoServerMod(ctx, docker, manifest.Target.Server.Image, recoveryDir, hostRecoveryDir, manifest.TargetServerVersion)
 		if err != nil {
 			return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "junimo_mod_extract_failed", "无法从目标 server 镜像提取并验证 JunimoServer Mod。")
 		}

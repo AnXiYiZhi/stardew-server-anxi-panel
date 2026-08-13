@@ -1409,7 +1409,14 @@ func (r *lifecycleRunner) ensureJunimoServerMod(ctx context.Context, jobCtx *job
 		return err
 	}
 	defer os.RemoveAll(workDir)
-	extractedDir, err := extractJunimoServerMod(ctx, r.lifecycle, imageRef, workDir, expectedVersion)
+	hostWorkDir := workDir
+	if r.driver != nil {
+		hostWorkDir, err = r.driver.dockerHostPath(workDir)
+		if err != nil {
+			return fmt.Errorf("map JunimoServer sync directory for Docker: %w", err)
+		}
+	}
+	extractedDir, err := extractJunimoServerMod(ctx, r.lifecycle, imageRef, workDir, hostWorkDir, expectedVersion)
 	if err != nil {
 		return fmt.Errorf("sync JunimoServer mod from %s: %w", imageRef, err)
 	}
