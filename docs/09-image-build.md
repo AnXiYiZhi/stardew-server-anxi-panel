@@ -1,12 +1,39 @@
 # v0.4.15 正式候选范围与门禁状态（2026-08-13，pre-release）
 
-- 目标版本为 `0.4.15`，只合并两组已完成且相互独立的修复：`NEXUS-EXT-IDEMPOTENCY-1` 与 `SAVE-IMPORT-AUTO-UNCLAIM-1`。Panel 新增 migration 013，浏览器扩展升为 0.1.3，内嵌 Control 升为 0.3.2；Junimo/SMAPI/game/auth 版本不变。
-- 正式候选必须从本地 `main` 的最终提交构建，build args 固定 `VERSION=0.4.15`、完整 commit SHA、UTC build date；本节后两张功能矩阵全部完成前禁止 push `main`、创建 `v0.4.15`、更新 registry/latest 或创建 Release。
+- 目标版本为 `0.4.15`，合并三组已完成且共用同一存档导入发布门禁的修复：`NEXUS-EXT-IDEMPOTENCY-1`、`SAVE-IMPORT-AUTO-UNCLAIM-1` 与 `SAVE-IMPORT-FIRST-UPLOAD-1`。Panel 新增 migration 013，浏览器扩展升为 0.1.3，内嵌 Control 升为 0.3.2；Junimo/SMAPI/game/auth 版本不变。
+- 正式候选必须从本地 `main` 的最终提交构建，build args 固定 `VERSION=0.4.15`、完整 commit SHA、UTC build date；本节后三张功能矩阵全部完成前禁止 push `main`、创建 `v0.4.15`、更新 registry/latest 或创建 Release。
 - 自动解绑必须在唯一隔离的真实旧导入夹具上走完整后台上传事务，而不是只调用 Control 命令；正常链、零 farmhand/在线玩家/错 Control/结果断流、Panel 或 Control 中断恢复、稳定 XML、角色/小屋/Mod/备份保留和资源归零均需有候选证据。
 - Nexus 幂等必须在真实候选 Panel 上覆盖 20 路同 key、不同 fileId、首次响应丢失、Panel 重启和终态复用；权威断言是 SQLite 只有一个 owner/job 且 runner/下载调用不重复，不能只看扩展 singleflight。
-- 升级矩阵至少包含上一正式版 `v0.4.14` 与本次 migration/运行栈支持边界 `v0.3.2`，两者都必须使用 Panel Web 一键更新完整链；目标 unhealthy/版本错误必须恢复原版。升级后新 Panel 再执行两项新功能，验证 SQLite、用户、实例、存档、Mod、备份、审计与非目标 Docker 资源保留。
+- 升级矩阵至少包含上一正式版 `v0.4.14` 与本次 migration/运行栈支持边界 `v0.3.2`，两者都必须使用 Panel Web 一键更新完整链；目标 unhealthy/版本错误必须恢复原版。升级后新 Panel 再执行三项新功能，其中首次上传必须从空 saves/无 gameloader pointer 开始；同时验证 SQLite、用户、实例、存档、Mod、备份、审计与非目标 Docker 资源保留。
 - tag 前还须执行 Release workflow 的精确全量命令：兼容清单与远程制品、脚本功能/语法/ShellCheck、Linux Go test/vet/build 与 integration、SMAPI 真实下载、前端全量测试/audit/build、网站 audit/build、候选 fresh/restart 和镜像内 helper/扩展包检查。
 - tag 后等待 Release workflow 成功，再从 Docker Hub、ACR、GHCR 回拉 `0.4.15`，核对三仓 digest、OCI version/revision、latest 与 GitHub Release/四项资产，并逐仓执行隔离 health/version/restart；最终 workflow ID、digest、耗时、故障和清理结果必须回写本文件及接手/路线文档。
+
+# SAVE-IMPORT-FIRST-UPLOAD-1 候选门禁（2026-08-13，代码完成、未发布）
+
+## 变更清单与受影响链路
+
+- 新安装但从未启动的实例可能尚无宿主侧 `JunimoServer` Mod。提交导入前现在先从 `.env` 指定的精确 `.125` server image 只读提取、原子替换并重新静态校验；只有真实 image/tag 不兼容才返回 `junimo_import_unsupported`，同步/校验故障使用新的 `save_import_runtime_prepare_failed`。该步在 journal 和上传所有权转移前完成。
+- journal 创建时若没有活动存档，staging 在 preimport 已耐久后从未修改的上传目标创建事务专属 `AnxiImportBootstrap_<operationId>` 副本，仅把副本主文件重命名为 bootstrap 名，并把 gameloader 指向它。这为 Junimo 提供一个非目标的维护世界，防止零存档启动自动新建其它世界，也避免上游“不能导入当前活动存档”门禁。
+- bootstrap 名称、全树指纹、no-replace 发布所有权和清理状态全部写入 operation journal。提交前取消只在 ownership 已耐久且 pointer 仍指向该 bootstrap 时恢复为“无 pointer”并删除事务自有副本；发布成功但 ownership 尚未落盘的崩溃窗口、指针冲突和同名碰撞均保留现场进入 recovery。导入完成则只在目标 pointer、finalizer/durable save/磁盘门禁全部通过后删除 bootstrap；清理失败不宣布 completed。
+- 受影响文件为 `save_import_bootstrap.go`、`save_import_transaction.go`、`save_import_durable.go`、Web/前端错误码映射及对应测试。upload-preview/commit JSON、hostHandling、管理员权限和已有存档导入时序不变。
+
+## 本功能故障矩阵
+
+| 场景 | 预期措施 | 当前证据 / 正式发布前状态 |
+| --- | --- | --- |
+| 首次安装、无宿主 JunimoServer Mod | 从精确 image 同步一次并复核，不误报升级 | Go 同步/幂等回归通过；真实候选 image 上传待执行 |
+| 明确非 `.125` image | 仍返回 `junimo_import_unsupported`，不进入 journal/不接管 token | 旧版本专项通过；候选 API 待执行 |
+| image 提取、网络、原子替换或校验失败 | 结构化 runtime-prepare 错误；上传 token 仍可重试，无导入 journal | 结构化错误映射与单测通过；可控断流待候选 |
+| 空 saves/无 gameloader 的正常首次上传 | preimport 后创建非目标 bootstrap，运行维护链，目标 durable 后删除 | staging + maintenance bootstrap 回归通过；完整真实 Web 导入待候选 |
+| 已有活动存档 | 沿用原 pointer，不创建 bootstrap | 旧链与新断言通过；候选需与首次链 A/B 复验 |
+| bootstrap 同名碰撞/指纹变化 | 不覆盖，不改现有字节，进入 recovery | 碰撞零修改回归通过；真实故障注入待候选 |
+| 复制/发布中断 | 隐藏 staging + 指纹 + no-replace，重试只继续原 operation | 单元幂等边界通过；Panel kill 窗口待候选 |
+| 提交前取消 | 删除 bootstrap pointer/副本、本 operation target/source，保留 preimport | 回归通过；真实 API cancel 和资源归零待候选 |
+| Junimo/Control/API/FIFO 延迟、断流或容器退出 | 仍使用既有 maintenance fail-closed，不重发 import，保留 journal/preimport | 既有失败矩阵单测通过；首次链真实故障待候选 |
+| 目标已耐久但 bootstrap 清理失败 | 不写 completed，目标保持活动，人工/恢复只清事务自有副本 | target-pointer 清理门禁回归通过；权限故障待候选 |
+| 数据完整性 | 上传目标与 preimport 在 bootstrap 构建前后指纹一致；最终仅目标留在 saves | 目标字节/指纹回归通过；真实存档、Mod/备份/重启待候选 |
+| 权限与敏感信息 | 仍限管理员；bootstrap 只含 operationId，无 platformId/姓名/凭据新增日志 | 差异审查通过；候选日志/support bundle 扫描待执行 |
+| 升级/回滚 | v0.4.14/v0.3.2 升级后从空 saves 首传；unhealthy 候选不留 bootstrap/journal | 真实 Web 一键升级、失败回滚与升级后复验待候选 |
 
 # NEXUS-EXT-IDEMPOTENCY-1 发布门禁补充（2026-08-13，代码完成、未发布）
 

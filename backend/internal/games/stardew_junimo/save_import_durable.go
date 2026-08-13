@@ -350,6 +350,9 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 	if err := WriteImportJournal(instance.DataDir, j); err != nil {
 		return err
 	}
+	if err := cleanupCompletedImportBootstrap(instance.DataDir, &j); err != nil {
+		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "target save is durable but the transaction bootstrap could not be cleaned", "", err)
+	}
 	// Keep save_verified as a durable crash boundary, then close the transaction.
 	j.Stage = ImportStageCompleted
 	if err := WriteImportJournal(instance.DataDir, j); err != nil {
@@ -477,6 +480,9 @@ func completeAsIsImportDurably(ctx context.Context, lifecycle LifecycleDockerSer
 	j.LastErrorCode, j.LastError = "", ""
 	if err := WriteImportJournal(dataDir, j); err != nil {
 		return err
+	}
+	if err := cleanupCompletedImportBootstrap(dataDir, &j); err != nil {
+		return recordImportDurableFailure(dataDir, operationID, ImportErrorRecoveryRequired, "as-is target is loaded but the transaction bootstrap could not be cleaned", "", err)
 	}
 	j.Stage = ImportStageCompleted
 	return WriteImportJournal(dataDir, j)

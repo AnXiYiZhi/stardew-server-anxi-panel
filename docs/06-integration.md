@@ -1,3 +1,10 @@
+# SAVE-IMPORT-FIRST-UPLOAD-1 联调契约（2026-08-13，completed，未发布）
+
+- `upload-preview`、`upload-commit-and-start` 的请求/响应和管理员权限不变。过去必须先启动一次才能上传的空实例，现在可直接 commit；后端会在接管上传 token 前同步精确 `.125` image 内的 JunimoServer Mod，并在无活动存档时创建 operation-owned bootstrap 维护世界。
+- 新稳定错误码 `save_import_runtime_prepare_failed` 表示 image 提取、宿主原子替换或静态复核失败，前端应保留上传并提示检查 Docker/网络后重试；`junimo_import_unsupported` 只表示明确的 image/tag/协议不兼容。两者都发生在导入 journal 与上传所有权转移前，不能出现半提交 job。
+- bootstrap 完全是后端事务细节，不进入公开 DTO。API 接受后的 `202` 仍只代表 job 已创建，不能视为导入成功；最终 completed 仍要求目标存档已激活、Control/Junimo/durable-save/磁盘门禁通过且 bootstrap 已清理。提交前取消恢复到无 pointer；指针漂移、碰撞、清理失败或不确定执行结果均进入既有 recovery 契约。
+- 候选联调必须从空 `Saves`、无 gameloader、宿主 JunimoServer Mod 缺失的真实实例开始走完整 Web 上传；同时覆盖同步断流可重试、bootstrap 复制/发布中断、Panel/游戏容器中断恢复、取消和资源归零，并在 v0.4.14/v0.3.2 Web 一键升级得到的新 Panel 上再次执行。
+
 # NEXUS-EXT-IDEMPOTENCY-1 联调契约（2026-08-13，completed，未发布）
 
 - 扩展 0.1.3 对每次用户安装动作生成稳定 `requestId`，后台直连和 panel bridge 都以 `Idempotency-Key` 请求头提交到既有 `POST /api/instances/:id/mods/remote/install`；请求体 `{url, mod?}` 不变，`fileId/requestId` 只在扩展内部消息中传递。

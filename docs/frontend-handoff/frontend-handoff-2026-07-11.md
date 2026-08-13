@@ -1,3 +1,11 @@
+# FE-SAVE-IMPORT-FIRST-UPLOAD-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、如何验证、下一步
+
+- 上传表单和 API shape 不变。`frontend/src/core/helpers.ts` 与 `frontend/src/games/stardew/save-import.ts` 新增 `save_import_runtime_prepare_failed` 的明确提示：运行组件准备失败时保留上传、检查 Docker/网络后重试；只有后端确认 `junimo_import_unsupported` 才提示升级 Junimo 运行组件。
+- `frontend/scripts/test-save-import.ts` 把新错误加入稳定错误闭集；`npm run test:save-import` 与 production build 已通过。bootstrap 名、指纹和清理状态均为后端私有 journal，不得在前端复制一套状态机或把 job 的 202 当成最终成功。
+- 正式候选需用空 saves/无 gameloader 的真实 UI 上传验证：用户无需先启动服务器，失败后同一 token 可重试，完成时只显示目标存档且刷新/重启状态正确。完整故障与升级矩阵见 `docs/09-image-build.md`。
+
 # NEXUS-EXT-IDEMPOTENCY-1 接手记录（2026-08-13，completed，未发布）
 
 ## 改了什么、影响哪些文件

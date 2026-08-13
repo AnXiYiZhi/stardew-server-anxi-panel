@@ -23,6 +23,7 @@ const saveImportErrorMap: Record<string, SaveImportErrorPresentation> = {
   platform_id_invalid: { message: '请输入有效的 Steam64 或 GOG 十进制平台 ID。', tone: 'error', retryBlocked: false },
   save_exists: { message: '同名存档已经存在。现有存档未被覆盖，请先处理重名存档。', tone: 'error', retryBlocked: false },
   junimo_import_unsupported: { message: '当前 Junimo 运行版本不支持安全导入，请先完成运行组件升级。', tone: 'error', retryBlocked: false },
+  save_import_runtime_prepare_failed: { message: '存档导入运行组件同步或校验失败，请查看安装诊断后重试。', tone: 'error', retryBlocked: false },
   save_import_busy: { message: '已有存档导入任务正在运行或等待恢复，请先查看当前任务。', tone: 'error', retryBlocked: true },
   import_command_failed: { message: 'Junimo 未执行导入命令，系统不会自动重试。请查看任务详情后再决定下一步。', tone: 'error', retryBlocked: true },
   import_result_unconfirmed: { message: '导入结果暂时无法确认。请保持服务器现状并查看任务详情，不要重复提交。', tone: 'warning', retryBlocked: true },

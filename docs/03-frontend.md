@@ -1,3 +1,9 @@
+# FE-SAVE-IMPORT-FIRST-UPLOAD-1：首次上传运行组件错误分流（2026-08-13，completed，未发布）
+
+- 存档上传表单、preview/commit 请求、hostHandling 选择和轮询流程不变；后端现在会为从未启动、无存档的实例自行准备 Junimo 静态组件并建立事务专属维护 bootstrap，前端不需要先诱导用户启动一个新档。
+- `save_import_runtime_prepare_failed` 已加入通用 `ApiError` 与存档导入专用错误展示：提示运行组件准备失败、保留上传并允许检查 Docker/网络后重试。只有真实 `.125` image/协议不兼容才继续显示 `junimo_import_unsupported` 的升级提示，不再把首次物化失败笼统归因成版本过旧。
+- `npm run test:save-import` 固定新错误码映射和原有错误闭集；production build 已通过。正式发布前还需在最终候选上从空 saves/无 gameloader 完成真实 UI 上传，并验证失败后同一上传 token 可重试、无多余新档和无 bootstrap 残留。
+
 # NEXUS-EXT-IDEMPOTENCY-1：扩展重复提交收敛（2026-08-13，completed，未发布）
 
 - 浏览器扩展版本升为 0.1.3。每次 `START_CAPTURE` 生成并在 `chrome.storage.local` capture 中保存 `requestId`；同一已知 Mod/file 或同一批量项的活动 capture 在页面重新注入、自动/手动提交竞争和 MV3 service worker 重启后继续复用，不同 `fileId`、无法证明 fileId 相同的独立手动动作或新的安装动作生成新标识。

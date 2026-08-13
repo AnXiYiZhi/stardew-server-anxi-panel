@@ -61,6 +61,7 @@ const errorCodeMap: Record<string, string> = {
   host_decision_required: '请选择原主机角色的处理方式',
   platform_id_invalid: '请输入有效的 Steam64 或 GOG 十进制平台 ID',
   junimo_import_unsupported: '当前 Junimo 运行版本不支持安全导入，请先升级运行组件',
+  save_import_runtime_prepare_failed: '存档导入运行组件同步或校验失败，请查看安装诊断',
   save_import_busy: '已有存档导入任务正在运行或等待恢复',
   import_command_failed: 'Junimo 未执行导入命令，系统不会自动重试',
   import_result_unconfirmed: '导入结果暂时无法确认，请勿重复提交',

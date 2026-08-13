@@ -189,6 +189,42 @@ func TestImportMaintenanceWaitsForEvidenceBaseline(t *testing.T) {
 	}
 }
 
+func TestImportMaintenanceAcceptsFirstUploadBootstrapWorld(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	j, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.OriginalActiveSave = ""
+	j.StagedSaveFingerprint, err = importDirectoryFingerprint(filepath.Join(savesDir(dataDir), "Saves", j.SaveName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteImportJournal(dataDir, j); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(gameloaderPath(dataDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareImportBootstrap(dataDir, op); err != nil {
+		t.Fatal(err)
+	}
+	j, err = LoadImportJournal(dataDir, op)
+	if err != nil || j.BootstrapSaveName == "" || j.OriginalActiveSave != j.BootstrapSaveName {
+		t.Fatalf("bootstrap journal=%+v err=%v", j, err)
+	}
+	fake, _ := newMaintenanceFake(maintenanceFakeConfig{})
+	driver := New(fake, nil, nil, store)
+	if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	j, err = LoadImportJournal(dataDir, op)
+	if err != nil || j.Stage != ImportStageRuntimeReady || j.RuntimeBaseline == nil || j.RuntimeBaseline.ActivePointer != j.BootstrapSaveName {
+		t.Fatalf("runtime bootstrap baseline=%+v err=%v", j, err)
+	}
+}
+
 func TestImportMaintenanceWaitsForSavesCommandRegistration(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{savesProbeFailures: 2})

@@ -1,3 +1,11 @@
+# 2026-08-13 完成：无存档实例可直接上传现有存档（SAVE-IMPORT-FIRST-UPLOAD-1，未发布）
+
+- [x] 将“从未启动导致宿主 JunimoServer Mod 尚未物化”与真实版本不兼容分流：精确 `.125` image 在上传接管前复用 lifecycle 原子同步；新增 `save_import_runtime_prepare_failed`，不再误提示用户升级。
+- [x] 空 saves/无 gameloader 时从只读目标创建 operation-owned bootstrap 维护世界，目标与 preimport 指纹保持；已有活动存档路径不变。
+- [x] journal 固定 bootstrap 身份、指纹、发布 ownership 和清理状态；提交前取消、重复 staging、同名碰撞零删除、发布/ownership 崩溃窗、目标 pointer 门禁和完成清理均 fail closed，异常进入 recovery 而非误报 completed。
+- [x] Web 稳定错误映射、前端通用/导入专用提示及 `test:save-import` 已更新；Go 专项、相关包全量测试和前端 production build 已通过。
+- [ ] 按 `docs/09-image-build.md` 用最终 SHA 构建 `0.4.15` 候选，完成真实空实例 Web 上传、故障注入、v0.4.14/v0.3.2 升级后复验和正式发布收口；完成前不创建或推送 tag。
+
 # 2026-08-13 完成：Nexus 扩展重复提交持久幂等（NEXUS-EXT-IDEMPOTENCY-1，未发布）
 
 - [x] 扩展 0.1.3 为每次 capture 持久化 requestId，自动/手动/下载事件竞争和 service worker 重启后复用；不同 fileId 与新安装动作轮换。

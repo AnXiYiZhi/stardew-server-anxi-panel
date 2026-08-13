@@ -187,6 +187,9 @@ func TestImportStagingJournalAndPreimportBackupTarget(t *testing.T) {
 	if j.OriginalActiveSave != "Active_999" {
 		t.Fatalf("original active=%q", j.OriginalActiveSave)
 	}
+	if j.BootstrapSaveName != "" {
+		t.Fatalf("existing active save unexpectedly created bootstrap %q", j.BootstrapSaveName)
+	}
 	zr, err := zip.OpenReader(backupFile)
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +211,88 @@ func TestImportStagingJournalAndPreimportBackupTarget(t *testing.T) {
 	}
 	if string(main) != "uploaded-target-bytes" {
 		t.Fatalf("preimport backed up wrong save: %q", main)
+	}
+}
+
+func TestImportStagingWithoutActiveSaveProvisionsAndCleansBootstrap(t *testing.T) {
+	dataDir := t.TempDir()
+	op := "41112233445566778899aabbccddeeff"
+	createOwnedImportJournalFixture(t, dataDir, op, "first-upload")
+	if err := prepareImportStaging(dataDir, op); err != nil {
+		t.Fatal(err)
+	}
+	j, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedBootstrap := importBootstrapSaveName(op)
+	if j.OriginalActiveSave != expectedBootstrap || j.BootstrapSaveName != expectedBootstrap || j.BootstrapSaveFingerprint == "" || !j.BootstrapSaveCreated {
+		t.Fatalf("bootstrap journal incomplete: %+v", j)
+	}
+	pointer, err := readActivePointerStrict(dataDir)
+	if err != nil || pointer != expectedBootstrap {
+		t.Fatalf("bootstrap pointer=%q err=%v", pointer, err)
+	}
+	targetMain, err := os.ReadFile(filepath.Join(savesDir(dataDir), "Saves", "Imported_123", "Imported_123"))
+	if err != nil || string(targetMain) != "first-upload" {
+		t.Fatalf("target changed: %q err=%v", targetMain, err)
+	}
+	bootstrapDir := filepath.Join(savesDir(dataDir), "Saves", expectedBootstrap)
+	bootstrapMain, err := os.ReadFile(filepath.Join(bootstrapDir, expectedBootstrap))
+	if err != nil || string(bootstrapMain) != "first-upload" {
+		t.Fatalf("bootstrap main=%q err=%v", bootstrapMain, err)
+	}
+	if _, err := os.Stat(filepath.Join(bootstrapDir, "Imported_123")); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap retained target main filename: %v", err)
+	}
+	if err := prepareImportStaging(dataDir, op); err != nil {
+		t.Fatalf("idempotent staging retry failed: %v", err)
+	}
+	if err := CleanupUnsubmittedImport(dataDir, op); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(bootstrapDir); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap survived cleanup: %v", err)
+	}
+	if _, err := os.Stat(gameloaderPath(dataDir)); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap pointer survived cleanup: %v", err)
+	}
+}
+
+func TestImportStagingWithoutActiveSaveDoesNotOverwriteBootstrapCollision(t *testing.T) {
+	dataDir := t.TempDir()
+	op := "42112233445566778899aabbccddeeff"
+	bootstrapName := importBootstrapSaveName(op)
+	bootstrapDir := writeImportSourceFixture(t, filepath.Join(savesDir(dataDir), "Saves"), bootstrapName, "existing-bootstrap")
+	before, err := importDirectoryFingerprint(bootstrapDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createOwnedImportJournalFixture(t, dataDir, op, "first-upload")
+	err = prepareImportStaging(dataDir, op)
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("collision error=%v", err)
+	}
+	after, err := importDirectoryFingerprint(bootstrapDir)
+	if err != nil || before != after {
+		t.Fatalf("existing bootstrap changed: before=%s after=%s err=%v", before, after, err)
+	}
+	j, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.BootstrapSaveCreated {
+		t.Fatalf("colliding bootstrap was marked as transaction-owned: %+v", j)
+	}
+	cleanupErr := CleanupUnsubmittedImport(dataDir, op)
+	cleanupTyped, ok := AsImportTransactionError(cleanupErr)
+	if !ok || cleanupTyped.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("collision cleanup error=%v", cleanupErr)
+	}
+	afterCleanup, err := importDirectoryFingerprint(bootstrapDir)
+	if err != nil || before != afterCleanup {
+		t.Fatalf("colliding bootstrap changed during cleanup: before=%s after=%s err=%v", before, afterCleanup, err)
 	}
 }
 

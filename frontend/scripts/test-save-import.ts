@@ -82,7 +82,7 @@ assert.equal(saveImportSubmissionDisabled({
 }), true)
 
 assert.deepEqual(allSaveImportErrorCodes().sort(), [
-  'host_decision_required', 'platform_id_invalid', 'save_exists', 'junimo_import_unsupported', 'save_import_busy',
+  'host_decision_required', 'platform_id_invalid', 'save_exists', 'junimo_import_unsupported', 'save_import_runtime_prepare_failed', 'save_import_busy',
   'import_command_failed', 'import_result_unconfirmed', 'import_recovery_required', 'import_activation_timeout', 'save_in_progress',
 ].sort())
 assert.equal(saveImportErrorPresentation(new ApiError(409, 'import_result_unconfirmed', 'upstream text')).tone, 'warning')

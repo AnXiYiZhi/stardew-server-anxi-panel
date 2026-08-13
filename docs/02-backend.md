@@ -1,3 +1,11 @@
+# SAVE-IMPORT-FIRST-UPLOAD-1：无存档实例首次上传可直接进入事务导入（2026-08-13，completed，未发布）
+
+- 根因有两层：从未启动的实例尚未把 server image 内的 JunimoServer Mod 物化到宿主，旧静态检查因此误报“需要升级”；同时零存档没有可加载的非目标维护世界，直接启动会由游戏创建无关新档，而上游又禁止导入当前活动目标。
+- `ImportSaveAndStart` 现在在创建 journal、接管上传 token 前先核对 `.env` 的精确 `.125` image。宿主 Mod 缺失或无效时复用 lifecycle 的原子提取/同步，再做静态复核，不启动长运行游戏；真实 tag 不兼容仍返回 `junimo_import_unsupported`，提取、替换或复核失败返回可重试的 `save_import_runtime_prepare_failed`。
+- staging 发现原活动存档为空时，在 preimport 已耐久且目标指纹稳定后，创建事务专属 `AnxiImportBootstrap_<operationId>` 副本，只把副本主文件改为 bootstrap 名并将 gameloader 指向它。目标存档不被改写，Junimo 始终在非目标世界执行既有 maintenance/finalizer/durable-save 链。
+- journal 新增 bootstrap 名称、指纹、no-replace 发布所有权和清理完成标记。提交前取消仅在 ownership 已耐久且 pointer 仍指向该 bootstrap 时删除 pointer、副本和临时源；成功只在目标 pointer 及既有 finalizer、Control、Junimo、XML、durable-save 门禁都通过后清理。碰撞、发布后 ownership 尚未落盘、指纹/指针漂移或清理失败全部进入 recovery，不能猜测所有权或提前写 completed；preimport 继续保留。
+- 影响 `save_import_bootstrap.go`、`save_import_transaction.go`、`save_import_durable.go`、Web 稳定错误映射及对应测试。upload-preview/commit DTO、管理员权限、hostHandling 和已有活动存档路径不变；正式候选真实首次上传、故障注入与升级后复验见 `docs/09-image-build.md`。
+
 # NEXUS-EXT-IDEMPOTENCY-1：浏览器扩展远程安装持久幂等（2026-08-13，completed，未发布）
 
 - `POST /api/instances/:id/mods/remote/install` 现在可接收 `Idempotency-Key`。键限制为 1–128 字节可见 ASCII；缺失时保留旧客户端的非幂等行为，非法键返回 `400 invalid_idempotency_key`。

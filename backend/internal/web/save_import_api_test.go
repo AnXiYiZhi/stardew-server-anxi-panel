@@ -42,6 +42,7 @@ func TestSaveImportStableErrorMapping(t *testing.T) {
 	codes := []string{
 		sj.ImportErrorSaveExists,
 		sj.ImportErrorUnsupported,
+		sj.ImportErrorRuntimePrepare,
 		sj.ImportErrorBusy,
 		sj.ImportErrorCommandFailed,
 		sj.ImportErrorResultUnconfirmed,

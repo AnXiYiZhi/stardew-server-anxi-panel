@@ -1011,6 +1011,7 @@
 
 ## 2026-07-29：前台临时 HTTP 服务超时后仍占用端口
 
+- 最近复发/补充：2026-08-13 首次 `v0.4.15`（随后因新增缺陷已作废）本地 Buildx 候选把 `shell_command` 上限设为 120 秒，构建在 124 秒以 124 终止且没有产出目标 image tag。没有原样重跑；先核对精确 image 行数为 0、没有匹配该 tag 的 buildx/buildctl 宿主进程、BuildKit 本身仍 healthy，才确认终态可继续。正式候选构建必须给至少 10 分钟命令上限，并只用 cell yield/wait 提供进度；用户追加新修复后旧候选即使成功也不得复用为最终候选。
 - 最近复发/补充：2026-08-10 三仓回拉 Go 夹具把内层 `shell_command` timeout 设为 1 秒，希望由外层 yield 返回 cell；实际命令在约 5 秒以 124 被终止，不能判断 Go 子进程是否仍在。没有直接重跑，而是先按 `anxi.test.owner` 查询 container/volume/network，并核对 18150–18152 均无 listener，再把命令 timeout 改为 10 分钟、只用 `functions.exec` yield/wait 续取。长任务的“命令执行上限”和“提前返回控制权”必须分开配置。
 - 最近复发/补充：2026-08-13 自动解绑回归门禁再次把全量 Go 容器的 `shell_command` timeout 设为 1 秒，包装命令约 5 秒后以 124 退出，但精确容器 `anxi-unbind-go-20260813-r1` 仍在运行。没有重复启动，先用精确容器名和任务 label 核对既有 container/volume，再继续读取该容器终态。后续长门禁必须直接给足命令执行上限；需要提前让出控制权只能依赖执行工具的 yield/cell 机制。
 - 最近复发/补充：随后再次读取同一个 `--rm` 门禁容器时，它已在检查窗口内完成并自动删除，`docker inspect` 返回 no such object，后续又对空数组取值产生级联错误，且最终日志/退出码不可恢复。长门禁不得在等待可能丢失时使用 `--rm`；应保留精确任务容器到终态采证，先判断 inspect 是否命中再读取 State，采证后才定向清理。
@@ -1985,6 +1986,38 @@
 - 正确做法：先在允许的候选根目录用 `rg --files` 按精确文件名定位，并用 `Resolve-Path -LiteralPath` 确认；找不到时只使用已经留存的证据或当前 Panel 契约，不继续猜绝对路径。
 - 预防检查：凡读取工作区根以外的源码，首条命令先验证目标文件存在；组合检索不得让一个缺失外部路径掩盖其它已成功的只读证据。
 - 适用范围：上游源码审计、多仓库联调、临时检出目录和外部工作树。
+
+## 2026-08-13：已切换子目录后仍重复携带仓库相对前缀
+
+- 环境：PowerShell 7，从仓库根将 Shell `workdir` 切换到 `backend/` 后执行 Go 专项格式化和测试。
+- 错误模式：`workdir` 已是 `backend/`，`gofmt` 的文件参数仍写成 `backend/internal/...`。
+- 症状 / 退出码：`GetFileAttributesEx ... The system cannot find the path specified`，退出 1；`gofmt` 与测试均未开始，源码没有被该命令修改。
+- 根因：组合命令时只更改了 Shell 工作目录，未同步重新解析文件参数的相对根。
+- 正确做法：从仓库根执行时使用 `backend/internal/...`；从 `backend/` 执行时使用 `internal/...`。命令含文件参数时，切换 `workdir` 后必须逐项重算相对路径。
+- 预防检查：提交 Shell 前把 `workdir` 与第一个文件参数拼成一次实际路径；若出现 `<workdir末级>/<文件参数首级>` 重复，先去掉一层前缀。
+- 适用范围：`gofmt`/`go test`、npm 脚本、文档构建与任何依赖 `workdir` 的相对文件命令。
+
+## 2026-08-13：检索已给出真实文件后仍读取猜测文件名
+
+- 最近复发/补充：同一轮继续审查 import staging 时，`rg` 已明确返回 `save_import_staging.go`，后续仍读取猜测的 `save_import_files.go`，在 fail-fast 下退出 1；文件未修改。该模式连续两次后，预防规则已提升到项目 `AGENTS.md`：符号检索与精确路径读取必须拆成两条命令，真实命中是唯一输入。
+
+- 环境：PowerShell 7，在当前仓库核对 `ensureJunimoServerMod` 实现。
+- 错误模式：同一组合命令的 `rg` 已返回实现位于 `lifecycle.go`，后续仍按记忆读取不存在的 `lifecycle_runner.go`；末尾成功的 `git status` 又使整条命令最终退出 0。
+- 症状 / 退出码：`Get-Content` 报路径不存在，目标实现没有在该次输出中显示；文件和运行资源未修改。
+- 根因：没有把搜索结果作为后续读取的唯一输入，并把可能失败的读取与其它成功诊断放在同一个未 fail-fast 的脚本块中。
+- 正确做法：先用 `rg -n`/`rg --files` 得到明确文件，下一条命令再用该真实路径读取；每个 `Get-Content` 失败后立即退出，不能让后续成功掩盖。
+- 预防检查：任何按符号定位的源码读取不得猜文件名；组合只读脚本同样为关键 cmdlet 设置 `-ErrorAction Stop` 或显式检查 `$?`。
+- 适用范围：按函数/类型定位 Go、TS/C# 源码，以及含多个只读诊断步骤的 PowerShell 命令。
+
+## 2026-08-13：PowerShell 嵌套命令输出数组被当成单一路径
+
+- 环境：PowerShell 7，提交前汇总 tracked changed 与 untracked 文件做 UTF-8/BOM 审计。
+- 错误模式：使用 `@((git diff ...), (git ls-files ...)) | Where-Object ...` 合并两个命令输出；外层数组保留了嵌套集合，后续 `Join-Path` 把整组文件名串成一个长路径。
+- 症状 / 退出码：`ReadAllBytes` 报不存在的组合路径并退出 1；`git diff --check` 已独立通过，但编码审计没有完成，文件未修改。
+- 根因：误以为 PowerShell 会在带逗号的嵌套子表达式后自动逐项扁平化，再送入管道。
+- 正确做法：先建空数组，分别用 `$changed += @(git diff ...)` 与 `$changed += @(git ls-files ...)` 收集，再用 `$changed = @($changed | Where-Object ... | Sort-Object -Unique)` 扁平化。
+- 预防检查：传给 `Join-Path`/文件 API 前先断言每项都是单一相对路径，且 `Test-Path -LiteralPath` 成功；多个原生命令输出不要以内层带逗号的 `@((...),(...))` 直接合并。
+- 适用范围：变更文件审计、批量格式化、哈希/编码检查及任何由多个命令组成的文件列表。
 
 ## 编码与换行快速检查
 

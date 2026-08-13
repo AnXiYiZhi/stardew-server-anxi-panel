@@ -1,3 +1,18 @@
+# SAVE-IMPORT-FIRST-UPLOAD-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 修复空实例直接上传被误报“升级 Junimo”的两个原因：`ImportSaveAndStart` 在 journal/token ownership 前按 `.env IMAGE_VERSION=.125` 检查宿主 JunimoServer Mod，缺失或无效时复用 `lifecycleRunner.ensureJunimoServerMod` 从精确 image 原子同步；不启动游戏。明确 tag 不兼容仍是 `junimo_import_unsupported`，同步/复核失败为 `save_import_runtime_prepare_failed`。
+- `save_import_bootstrap.go` 为没有活动存档的 operation 创建确定性 `AnxiImportBootstrap_<operationId>`。它从指纹稳定的 staged target 克隆到事务私有 source，no-replace 发布，只重命名副本主文件，并把 gameloader 指向副本；Junimo maintenance 因此不会把上传目标当成当前活动档，也不会触发普通零存档自动建档。
+- journal 记录 bootstrap 名、全树指纹、no-replace 发布 ownership 和 cleanup completed。取消只有在 ownership 已耐久、pointer 未漂移且上游可证明未生效时删除 pointer/bootstrap/source/target；发布与 ownership 落盘之间中断或同名碰撞时不删除未知目录，直接 recovery。成功则在目标 pointer、finalizer、Control/Junimo 零绑定、GameLoop.Saved 与磁盘稳定之后删除 bootstrap，再写 completed。清理失败留在 recovery，preimport 不删。
+- 主要影响 `save_import_{bootstrap,transaction,durable}.go`、对应 staging/maintenance/transaction/bootstrap 测试、`internal/web/save_import_api.go`。公开上传 JSON、hostHandling、任务阶段和已有存档导入语义不变。
+
+## 如何验证、下一步注意事项
+
+- Go 专项覆盖首次 runtime asset 同步只执行一次、错 tag 不提取、空实例 staging/重试/取消、bootstrap 碰撞零覆盖、maintenance 接受精确 bootstrap、完成清理必须先看到 target pointer，并已通过相关包全量测试。前端稳定错误码测试与 production build 也通过。
+- 不要用启动完整 server 代替静态资源物化，否则零存档会产生无关新档。不要放松 bootstrap 的 operationId 派生、no-replace、目标前后指纹或 pointer 检查，也不要在 target durable 之前删除维护世界。
+- 正式候选仍要用真实有效 Stardew 存档验证 bootstrap 能加载、完整 Web 上传完成后只剩目标存档；注入 Mod 提取断流、复制/发布中断、Panel/Control 中断、cleanup 权限失败，并从 v0.4.14/v0.3.2 一键升级后的空实例再次验收。矩阵见 `docs/09-image-build.md`。
+
 # NEXUS-EXT-IDEMPOTENCY-1 接手记录（2026-08-13，completed，未发布）
 
 ## 改了什么、影响哪些接口/文件

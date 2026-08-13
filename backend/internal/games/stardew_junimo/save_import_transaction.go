@@ -52,6 +52,7 @@ const (
 	ImportErrorMaintenanceControl = "save_import_maintenance_control_mismatch"
 	ImportErrorMaintenanceSaves   = "save_import_maintenance_saves_unavailable"
 	ImportErrorMaintenanceProcess = "save_import_maintenance_process_changed"
+	ImportErrorRuntimePrepare     = "save_import_runtime_prepare_failed"
 	ImportErrorCommandFailed      = "import_command_failed"
 	ImportErrorSaveInProgress     = "save_in_progress"
 )
@@ -79,6 +80,10 @@ type ImportJournal struct {
 	InstanceID                     string                           `json:"instanceId"`
 	SaveName                       string                           `json:"saveName"`
 	OriginalActiveSave             string                           `json:"originalActiveSave,omitempty"`
+	BootstrapSaveName              string                           `json:"bootstrapSaveName,omitempty"`
+	BootstrapSaveFingerprint       string                           `json:"bootstrapSaveFingerprint,omitempty"`
+	BootstrapSaveCreated           bool                             `json:"bootstrapSaveCreated,omitempty"`
+	BootstrapCleanupCompleted      bool                             `json:"bootstrapCleanupCompleted,omitempty"`
 	HostHandling                   string                           `json:"hostHandling"`
 	PlatformIDFingerprint          string                           `json:"platformIdFingerprint,omitempty"`
 	SourceOwned                    bool                             `json:"sourceOwned"`
@@ -370,6 +375,9 @@ func CleanupUnsubmittedImport(dataDir, operationID string) error {
 	if !safelyProvenNoEffect && (j.UpstreamSubmitted || j.UpstreamConfirmed || importStageAtLeast(j.Stage, ImportStageSubmitted)) {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "submitted import requires manual recovery"}
 	}
+	if err := cleanupUnsubmittedImportBootstrap(dataDir, j); err != nil {
+		return err
+	}
 	if j.StagedSaveCreated {
 		target := filepath.Join(savesDir(dataDir), "Saves", j.SaveName)
 		if _, statErr := os.Stat(target); statErr == nil {
@@ -469,9 +477,11 @@ func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImport
 	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
-	// Static image/DLL verification is read-only and does not start or exec the
-	// runtime. The live FIFO check remains deferred to the future submission phase.
-	if err := validateImportStaticCapability(req.Instance.DataDir); err != nil {
+	// A freshly installed instance has not necessarily started once, so its
+	// host-mounted JunimoServer Mod may not have been extracted from the image
+	// yet. Prepare that static runtime asset before taking ownership of the
+	// upload. This does not start or exec the long-running game service.
+	if err := d.prepareImportRuntimeAssets(ctx, req.Instance); err != nil {
 		return nil, err
 	}
 	j, err := CreateImportJournal(req.Instance.DataDir, req)
@@ -569,6 +579,43 @@ func prepareImportStaging(dataDir, operationID string) error {
 		if err := WriteImportJournal(dataDir, j); err != nil {
 			return err
 		}
+	}
+	if j.OriginalActiveSave == "" {
+		if err := prepareImportBootstrap(dataDir, operationID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Driver) prepareImportRuntimeAssets(ctx context.Context, instance registry.Instance) error {
+	values, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		return &ImportTransactionError{Code: ImportErrorRuntimePrepare, Message: "Junimo import runtime configuration cannot be read", Cause: err}
+	}
+	imageVersion := strings.TrimSpace(values["IMAGE_VERSION"])
+	if imageVersion == "" {
+		return &ImportTransactionError{Code: ImportErrorRuntimePrepare, Message: "Junimo import runtime version is not configured"}
+	}
+	if imageVersion != TestedImageTag {
+		return &ImportTransactionError{Code: ImportErrorUnsupported, Message: "Junimo .125 runtime is required for transactional import"}
+	}
+	if err := validateExtractedJunimoServerMod(junimoServerModDir(instance.DataDir), TestedImageTag); err == nil {
+		return nil
+	}
+	lifecycle, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return &ImportTransactionError{Code: ImportErrorRuntimePrepare, Message: "Junimo import runtime assets cannot be prepared", Cause: errors.New("docker lifecycle operations are unsupported")}
+	}
+	runner := &lifecycleRunner{
+		driver: d, lifecycle: lifecycle,
+		instance: storage.Instance{ID: instance.ID, DriverID: instance.DriverID, DataDir: instance.DataDir, State: instance.State},
+	}
+	if err := runner.ensureJunimoServerMod(ctx, nil); err != nil {
+		return &ImportTransactionError{Code: ImportErrorRuntimePrepare, Message: "Junimo import runtime assets could not be synchronized", Cause: err}
+	}
+	if err := validateImportStaticCapability(instance.DataDir); err != nil {
+		return &ImportTransactionError{Code: ImportErrorRuntimePrepare, Message: "Junimo import runtime assets failed verification", Cause: err}
 	}
 	return nil
 }

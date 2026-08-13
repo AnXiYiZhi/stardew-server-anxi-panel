@@ -1,12 +1,15 @@
 package stardew_junimo
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 )
 
@@ -182,4 +185,71 @@ func TestValidateImportCapabilityVersionDLLAndFIFO(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPrepareImportRuntimeAssetsSynchronizesFreshInstanceBeforeValidation(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+TestedImageTag+"\nSERVER_IMAGE=sdvd/server:"+TestedImageTag+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extractor := &fakeDocker{}
+	docker := &fakeConsoleDocker{runContainerFunc: extractor.RunContainerTTY}
+	driver := New(docker, nil, nil, nil)
+	instance := registry.Instance{ID: "fresh", DriverID: DriverID, DataDir: dataDir, State: "stopped"}
+	if err := driver.prepareImportRuntimeAssets(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	if extractor.containerRuns != 1 {
+		t.Fatalf("Junimo extraction runs=%d, want 1", extractor.containerRuns)
+	}
+	if err := validateImportStaticCapability(dataDir); err != nil {
+		t.Fatalf("synchronized runtime failed validation: %v", err)
+	}
+	if err := driver.prepareImportRuntimeAssets(context.Background(), instance); err != nil {
+		t.Fatalf("idempotent runtime preparation failed: %v", err)
+	}
+	if extractor.containerRuns != 1 {
+		t.Fatalf("idempotent preparation extracted again: %d", extractor.containerRuns)
+	}
+}
+
+func TestPrepareImportRuntimeAssetsKeepsVersionMismatchAsUpgradeError(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION=1.5.0-preview.124\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extractor := &fakeDocker{}
+	driver := New(&fakeConsoleDocker{runContainerFunc: extractor.RunContainerTTY}, nil, nil, nil)
+	err := driver.prepareImportRuntimeAssets(context.Background(), registry.Instance{ID: "old", DriverID: DriverID, DataDir: dataDir})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorUnsupported || extractor.containerRuns != 0 {
+		t.Fatalf("error=%v extractionRuns=%d", err, extractor.containerRuns)
+	}
+}
+
+func TestPrepareImportRuntimeAssetsReportsPreparationFailuresWithoutUpgradeAdvice(t *testing.T) {
+	t.Run("runtime config unreadable", func(t *testing.T) {
+		driver := New(&fakeConsoleDocker{}, nil, nil, nil)
+		err := driver.prepareImportRuntimeAssets(context.Background(), registry.Instance{ID: "missing-env", DriverID: DriverID, DataDir: t.TempDir()})
+		typed, ok := AsImportTransactionError(err)
+		if !ok || typed.Code != ImportErrorRuntimePrepare {
+			t.Fatalf("error=%v", err)
+		}
+	})
+
+	t.Run("image extraction failed", func(t *testing.T) {
+		dataDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+TestedImageTag+"\nSERVER_IMAGE=sdvd/server:"+TestedImageTag+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		docker := &fakeConsoleDocker{runContainerFunc: func(context.Context, paneldocker.ContainerTTYRunOpts, <-chan string, func(string)) (int, error) {
+			return 1, errors.New("test extraction failure")
+		}}
+		driver := New(docker, nil, nil, nil)
+		err := driver.prepareImportRuntimeAssets(context.Background(), registry.Instance{ID: "extract-failure", DriverID: DriverID, DataDir: dataDir})
+		typed, ok := AsImportTransactionError(err)
+		if !ok || typed.Code != ImportErrorRuntimePrepare {
+			t.Fatalf("error=%v", err)
+		}
+	})
 }

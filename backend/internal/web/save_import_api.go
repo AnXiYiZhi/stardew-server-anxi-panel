@@ -67,7 +67,7 @@ func writeSaveImportSubmitError(w http.ResponseWriter, err error) {
 	}
 	if typed, ok := sj.AsImportTransactionError(err); ok {
 		switch typed.Code {
-		case sj.ImportErrorUnsupported, sj.ImportErrorSaveExists, sj.ImportErrorBusy,
+		case sj.ImportErrorUnsupported, sj.ImportErrorRuntimePrepare, sj.ImportErrorSaveExists, sj.ImportErrorBusy,
 			sj.ImportErrorCommandFailed, sj.ImportErrorResultUnconfirmed,
 			sj.ImportErrorRecoveryRequired, sj.ImportErrorActivationTimeout,
 			sj.ImportErrorSaveInProgress:
