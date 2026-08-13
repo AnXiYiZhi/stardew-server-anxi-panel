@@ -208,7 +208,7 @@ backup_file="${env_file}.before-junimo-fix-${stamp}"
 tmp_file="${env_file}.tmp-${stamp}"
 panel_was_stopped=0
 
-# shellcheck disable=SC2329 # Invoked indirectly by the ERR/INT/TERM trap below.
+# shellcheck disable=SC2317,SC2329 # Invoked indirectly by the ERR/INT/TERM trap below.
 restart_panel_on_error() {
   if [[ "$panel_was_stopped" -eq 1 ]]; then
     yellow "发生错误，正在重新启动 Panel……"

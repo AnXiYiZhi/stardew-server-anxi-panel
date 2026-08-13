@@ -1,4 +1,4 @@
-# STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，completed，待发布）
+# STARTUP-NEWGAME-DURABILITY-1 接手记录（2026-08-13，completed，v0.4.13 待发布）
 
 ## 交付状态与下一步
 
@@ -6,6 +6,7 @@
 - Go 全量/vet/build、真实 Control 编译、startup+HTTP writer Docker E2E 已通过；v0.4.11/v0.3.2 真实 Web 升级、unhealthy 回滚、621 conversion 与升级后诊断/UI 也已通过，精确事务与数据完整性证据见 `docs/09-image-build.md`。
 - 下一位只需继续发布收口：提交本轮证据后以最终 SHA 重建候选，重跑精确身份/fresh/关键 Web 门禁；工作树干净同步后才 tag。tag 后核对 Release workflow、三仓 digest/latest、run.sh swappiness 资产，再进入生产。不要恢复宿主重启自动开服语义。
 - 发布阻断复跑补丁：Linux Compatibility matrix 的 12 contender owner claim 偶发读到 winner 发布中的空目录。`new_game_transaction_owner.go` 增加进程内 claim mutex，只消除同进程 loser 的可见性窗口；Linux `renameat2(RENAME_NOREPLACE)` / Windows no-replace 仍是跨进程唯一原子边界。两平台专项各 `-count=100` 及全量 test/vet/build通过，未知 owner 现场的 fail-closed 语义未放宽。
+- `v0.4.12` 固定 tag 的 Release workflow `31679615132` 在任何 registry login/build/push/Release 之前被 `repair-junimo-0.3.5.sh` 的 SC2317 阻断；没有半发布镜像或 Release。脚本仅为 ERR/INT/TERM trap 间接调用的恢复函数补充局部 `SC2317,SC2329` 说明，ShellCheck 0.10.0/0.11.0 对 workflow 全输入通过。不得移动 `v0.4.12`；下一正式版本为 `v0.4.13`，仍需重建精确 revision 候选、关键 Web 回滚/升级、远端 Compatibility、tag 后三仓和生产收口。
 
 # PANEL-UPDATE-GRAPHICAL-COMPOSE-1 接手记录（2026-08-12，completed，未发布）
 

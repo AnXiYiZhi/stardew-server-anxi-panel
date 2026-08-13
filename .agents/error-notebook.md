@@ -2,6 +2,26 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-13：把 GitHub latest Release fixture 错写成数组
+
+- 环境：最终 `v0.4.12` 候选、任务专属 DinD、受控 HTTPS GitHub Release/registry 网关。
+- 错误模式：为省一步生成文件，直接把 `/releases` 的数组响应复制为 `/releases/latest` 响应；就绪轮询却按真实 GitHub 契约读取顶层 `.tag_name`。
+- 症状 / 退出码：网关连续返回 HTTP 200，但 `jq '.tag_name=="v0.4.12"'` 始终为 false，60 秒后包装器按设计退出并清理；Panel、updater 和测试数据均未创建。诊断时还对 BusyBox `ps` 使用了不支持的 `-p`，该只读命令额外报 usage，但没有状态变化。
+- 根因：混淆 GitHub `GET /releases`（数组）与 `GET /releases/latest`（对象）两个 API shape，并把 GNU/procps 的 `ps` 参数套到 BusyBox。
+- 正确做法：为两个路径分别生成契约一致的 JSON；启动后先独立断言数组端点的 `.[0].tag_name` 与 latest 端点的 `.tag_name`。容器内进程诊断先查看 `ps --help`，BusyBox 使用 `ps -o ...` 后在输出侧过滤 PID。
+- 预防检查：受控 HTTP fixture 每个路由都必须在长流程前做 status、content-type 和 JSON shape 探针；不能以同为 Release 数据为由复用不同端点的根节点类型。
+- 适用范围：GitHub API mock、Panel updater Web E2E、BusyBox 容器诊断。
+
+## 2026-08-13：为压缩 PowerShell 发布包装器删除关键分词空格
+
+- 环境：最终 `v0.4.12` 候选的 fresh health/restart 冒烟。
+- 错误模式：把可读的多行 PowerShell 压成一行时写成 `$volume*>$null`、`throw'volume'` 等连写，误以为运算符和关键字无需空格。
+- 症状 / 退出码：Docker 收到带 `*>` 后缀的无效 volume 名，PowerShell 又把 `throw'volume'` 解析成不存在的 `throwvolume` 命令；Panel 容器未创建。事后按任务前缀查询 container/network/volume 均为零。
+- 根因：违反项目已规定的 PowerShell 明确分词规则，为减少命令长度牺牲了可解析性与 fail-fast 行为。
+- 正确做法：`$volume *> $null`、`throw 'volume create failed'`、`if (...) { ... }` 均保留空格和清晰换行；复杂清理包装器不得压缩成单行。
+- 预防检查：发布脚本发送前检查 `throw'`、变量紧贴 `*>`、`-ne0` 等模式；命令长度较大时创建任务专属脚本或保持多行，不做人工 minify。
+- 适用范围：PowerShell 7、Docker 资源创建/清理、发布身份与健康检查包装器。
+
 ## 2026-08-13：PowerShell 中未引用 `stash@{0}`
 
 - 环境：PowerShell 7，在 tag 被 CI 阻断后恢复暂存的错题本修改。
@@ -459,6 +479,7 @@
 - 环境：Docker Desktop，`koalaman/shellcheck-alpine:v0.10.0`，仓库只读挂载到 `/work`。
 - 错误模式：先把不属于正式 workflow 的 `deploy/run.sh` 加入门禁产生既有提示；随后给 `$ROOT_DIR/deploy/migrate-fnos.sh` 增加相对 `source=` 指令，但正式输入路径与 ShellCheck 解析后的路径仍不被视为同一输入。
 - 症状 / 退出码：两次均退出 1，第二次仍为 `SC1091 Not following`；本次新增 repair 脚本没有告警。
+- 最近复发/补充：2026-08-13 修复 Release runner 的 SC2317 后，虽然输入文件清单已逐字复制，却把仓库挂到 `/workspace` 后从容器默认 `/` 工作目录传绝对文件名；测试脚本的相对 source 契约因此再次无法解析，并连带出现 SC1091/SC2034/SC2329，退出 1。修复目标脚本没有被证明失败，文件未被 lint 修改。随后明确 `-w /workspace` 并传与 workflow 完全一致的相对路径重跑。
 - 根因：第一次没有精确复制 release workflow 文件清单；第二次误以为动态绝对 source 可由相对 `source=` 自动关联已列输入。
 - 正确做法：严格复制 workflow 的四个 ShellCheck 输入；对测试 harness 已验证的动态 `$ROOT_DIR` source 在该行使用带原因的 `disable=SC1091`，功能测试继续实际执行被 source 脚本。
 - 预防检查：发布门禁先从 workflow 逐字取得文件和参数；第三方 lint 镜像先 inspect；动态 source 的功能正确性由真实 Bash 测试负责，静态抑制必须局部且解释原因。
@@ -566,7 +587,7 @@
 
 ## 2026-07-28：嵌套 PowerShell 提前展开变量
 
-- 最近复发/补充：2026-08-13 为发布脚本做逐文件 `bash -n` 时，把 Bash `for ...; do ... "$f" || exit $?; done` 再嵌入 `pwsh → docker run → sh -c`，PowerShell 提前展开 `$f/$?`，容器收到残缺脚本并报 `unexpected end of file`；文件未修改。改为 PowerShell 外层枚举明确文件，每次直接传 `bash -n <file>`，完整语法检查与 ShellCheck 通过。跨 Shell 循环不再内联，宁可外层结构化枚举。
+- 最近复发/补充：2026-08-13 为发布脚本做逐文件 `bash -n` 时，把 Bash `for ...; do ... "$f" || exit $?; done` 再嵌入 `pwsh → docker run → sh -c`，PowerShell提前展开 `$f/$?`，容器收到残缺脚本并报 `unexpected end of file`；文件未修改。改为 PowerShell 外层枚举明确文件，每次直接传 `bash -n <file>`，完整语法检查与 ShellCheck 通过。同日最终升级成功后的只读哨兵复核又在 PowerShell 双引号参数内写 Bash `$f`，即使前置反斜杠也不会阻止 PowerShell 展开，造成命令在 SQLite 已确认 `ok` 后退出 1；没有产品或数据写入。随后改为三个明确的 `test -f` 参数；紧接着统计资源时又在同类字符串中写 `$(... | wc -l)`，PowerShell 抢先执行并因宿主没有 `wc` 报错，进一步证明反斜杠不是 PowerShell 转义。最终改为直接传 `docker exec ... docker ps/network ls` 参数并在 PowerShell 收集输出计数，不再使用嵌套 shell substitution。跨 Shell 循环不再内联，宁可外层结构化枚举。
 - 最近复发/补充：2026-08-12 v0.4.11 发布验收用双引号 `rg -F` 模式搜索字面 `jobs/${`，PowerShell 把 `${` 解释为未闭合变量表达式并在搜索前报 `ParserError`；没有修改文件。带 `$`、`${`、反引号的字面模式必须改为单引号参数、`Select-String -SimpleMatch`，或搜索不含特殊字符的稳定片段，不能把 `-F` 当成 Shell 层的转义。
 - 最近复发/补充：2026-08-12 同轮只读审查把字面变量名写成双引号 `"$admin"` 传给 `rg -F`，父 PowerShell 先展开为未定义空值，结果执行了空模式搜索并输出了测试脚本开头的不必要内容。搜索源码中的 `$变量` 必须使用单引号固定模式或不含变量的稳定上下文；若目标文件可能含凭据，只允许白名单投影，不能让空模式回退成整文件输出。
 - 最近复发/补充：2026-08-12 升级后重启断言把两组容器 ID 的排序、数组收集、`-join` 和 `-ne` 全塞进一个 `if`，PowerShell 运算符绑定使实际相同的 ID 被虚假报告为变化；随后逐项精确比对证明两个容器 ID 均未改变。发布断言先分别计算 `$beforeKey = (@($before | Sort-Object) -join '|')` 与 `$afterKey`，再只比较两个标量，不在条件内混合管道、数组与字符串运算。
@@ -1222,7 +1243,7 @@
 - 根因：未先 inspect 镜像启动契约，把镜像内存在 `shellcheck` 二进制等同于已经配置 entrypoint。
 - 正确做法：显式运行 `shellcheck deploy/... scripts/...`，或在只读 inspect 确认后使用 `--entrypoint shellcheck`。
 - 预防检查：首次使用工具镜像先核对 Entrypoint/Cmd 和二进制路径；脚本路径不能作为未确认镜像的首命令。
-- 最近复发/补充：2026-08-13 新使用的 `koalaman/shellcheck:stable` 与上面的 alpine 版本契约相反，镜像已配置 `Entrypoint=["/bin/shellcheck"]`；命令仍手工追加一次 `shellcheck`，二进制把该词当文件名并以 `openBinaryFile: does not exist` 退出 2，实际 lint 未开始。读取完整 inspect JSON 后改为只传脚本路径。结论不应固化“有或没有 entrypoint”，每个精确 tag 都必须先 inspect 后组装命令。
+- 最近复发/补充：2026-08-13 新使用的 `koalaman/shellcheck:stable` 与上面的 alpine 版本契约相反，镜像已配置 `Entrypoint=["/bin/shellcheck"]`；命令仍手工追加一次 `shellcheck`，二进制把该词当文件名并以 `openBinaryFile: does not exist` 退出 2，实际 lint 未开始。读取完整 inspect JSON 后改为只传脚本路径。当天最终 updater fixture 修正后复验又原样复发一次，说明不能依靠短期记忆；之后必须把精确 inspect 投影放在每次第三方 lint 命令前，按结果二选一传参。结论不应固化“有或没有 entrypoint”，每个精确 tag 都必须先 inspect 后组装命令。
 - 适用范围：ShellCheck、Hadolint、linters 与任何第三方 CLI 工具镜像。
 
 ## 2026-07-31：Docker-outside-of-Docker 无法看到测试容器的 TempDir
