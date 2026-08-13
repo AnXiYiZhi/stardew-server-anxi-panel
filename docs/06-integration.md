@@ -19,6 +19,7 @@
 - 202 受理、runtime_ready、import_confirmed、finalize_confirmed 都不是完成。swap_to_player 新增完成硬条件：同一 commandId 的 GameLoop.Saved 结果必须证明动作和目标存档一致、boundFarmhandCount=0，Junimo diagnostics 必须再次证明相同角色集合为零绑定，随后仍要通过 dayTransition、稳定 XML 和磁盘变化门禁。
 - 旧 Control、DLL hash 不一致、动作结果缺失、错档、有人在线、角色数据不可读或任一角色仍绑定时，job 保持失败/恢复语义，不发布邀请码，不把实例提升为普通 running。前端继续只根据现有 job/journal 终态显示成功，不解析日志；新增内部 maintenance 错误不会要求新请求字段。
 - 结果/journal 只保存 total/customized/bound 计数，不回传或持久化原始 userID/SteamID。自动解绑不删除角色、小屋、物品或关系；隔离真机证明 2 个角色和 1 个 customized 标记保存、重启后仍在，仅绑定数从 1 变 0。
+- 通用 command history 同步不得抢占导入的 durable result：只要任一未完成 save-import journal 的 `DurableSaveCommandID` 与文件相同，`DurableCommandResultProtected` 就要求保留原 JSON，供当前任务或 Panel 重启恢复读取动作身份和聚合计数；journal 不可读时停止同步。只有导入写入 `completed` 后才按原公开白名单入库并删除文件。该保护不改变任何 Web DTO，也不会把存档名、SteamID 或 Control 私有字段扩大到公开历史。
 
 # STARTUP-NEWGAME-DURABILITY-1 联调终态（2026-08-13，released in v0.4.14）
 

@@ -19,6 +19,7 @@
 - [x] 保持当前前端和 hostHandling DTO 不变；swap_to_player 后台默认自动处理，virtual_host_takeover/as-is 不受影响。
 - [x] Control 0.3.2 在精确目标、服务器、零在线 farmhand 门禁下清空全部 farmhandData.userID，并与原耐久 save-now 共用同一 commandId、pending journal 和 GameLoop.Saved。
 - [x] Panel 同时验证 Control 动作结果与 Junimo diagnostics 的 total/customized/bound 计数；零绑定前不进入 completed，旧 Control/DLL、错档、玩家在线或证据缺失均 fail closed。
+- [x] 候选真实 Web 首次上传捕获 command history 与 durable gate 竞争：未完成导入的精确 save-now 结果现在由 journal 所有权保护，后台不得提前脱敏归档/删除；事务完成后才恢复普通归档，专项测试覆盖保护与释放。
 - [x] C# 契约、真实 game-data 编译、Linux Go 全量 test/vet/build通过；Docker Desktop 隔离真机把 2 个角色中的 1 个绑定降为 0，磁盘 hash 改变且重启后仍为 0，角色数和 customized 数保持。
 - [ ] 下一正式版本按 docs/09-image-build.md 完成精确候选、完整 UI→导入事务故障矩阵、代表老版本 Web 一键升级/回滚、升级后复验和 tag 后三仓收口；本任务未发布。
 

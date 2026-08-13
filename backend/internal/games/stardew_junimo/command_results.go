@@ -116,6 +116,47 @@ func NewGameCommandResultProtected(dataDir, commandID string) (bool, error) {
 	return strings.TrimSpace(record.DurableSaveCommandID) == commandID, nil
 }
 
+// SaveImportCommandResultProtected keeps the exact save-now outcome on disk
+// while an unfinished import transaction still needs its structured details.
+// The Web history importer intentionally persists only a small public-safe
+// subset of command details, so moving this result into the database before
+// the durable import gate reads it would discard the farmhand-unbind proof.
+func SaveImportCommandResultProtected(dataDir, commandID string) (bool, error) {
+	if !validCommandID(commandID) {
+		return false, &CommandError{Code: "invalid_command_id", Message: "命令 ID 格式错误"}
+	}
+	entries, err := os.ReadDir(importTransactionsDir(dataDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read save-import transactions before command result cleanup: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !validImportOperationID(entry.Name()) {
+			continue
+		}
+		journal, err := LoadImportJournal(dataDir, entry.Name())
+		if err != nil {
+			return false, fmt.Errorf("read save-import transaction before command result cleanup: %w", err)
+		}
+		if journal.Stage != ImportStageCompleted && strings.TrimSpace(journal.DurableSaveCommandID) == commandID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// DurableCommandResultProtected is the single cleanup gate for transaction-
+// owned command outcomes. Any unreadable owner fails closed through an error.
+func DurableCommandResultProtected(dataDir, commandID string) (bool, error) {
+	protected, err := NewGameCommandResultProtected(dataDir, commandID)
+	if err != nil || protected {
+		return protected, err
+	}
+	return SaveImportCommandResultProtected(dataDir, commandID)
+}
+
 func ListCommandResultFiles(dataDir string) ([]CommandResultFile, error) {
 	dir := commandResultsDir(dataDir)
 	entries, err := os.ReadDir(dir)

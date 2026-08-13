@@ -18,8 +18,9 @@
 - 前端与上传 HTTP 请求保持不变；仅 swap_to_player（内部 swap_host_to）在 Junimo finalizer 已确认后，由后台默认提交带 preSaveAction=unbind-all-farmhands 和精确目标 saveId 的同一次 Control save-now。virtual_host_takeover/as-is 不进入该动作。
 - Control 0.3.2 只在世界已加载、当前进程为服务器、实际存档与动作目标完全一致、真人 farmhand 在线数为 0 且 farmhandData 可读时执行；它遍历全部正式 farmhandData 角色，不区分已定制与空白槽，将非空 userID 清空，再启动原生 SaveGameMenu。Server 虚拟主机不在 farmhandData 中，不会被改写。
 - 动作和保存共用既有 pending-save-command journal、相同 commandId 与 GameLoop.Saved 终态。Control 进程中断后只恢复同一 journal，重复清空为空操作；不会发布第二个 save-now。结果仅记录角色总数、已定制数、剩余绑定数，不记录玩家名、平台 ID 或 userID。
+- 候选真实 Web 导入发现过一条后台竞争：Control 已写出带完整聚合证明的 `succeeded`，但通用 command history 同步器可能先把文件导入数据库、按公开历史白名单丢弃导入私有字段并删除原文件，durable gate 随后只能回读缺字段结果而进入 recovery。`DurableCommandResultProtected` 现在同时检查未完成 new-game owner 与 save-import journal；精确 `DurableSaveCommandID` 所属导入未到 `completed` 前，历史同步器不得搬走或删除该结果，读取 journal 失败也 fail closed。事务完成后恢复普通归档，不扩大数据库敏感字段白名单。
 - Panel 只有在同一 commandId 的 Control succeeded 同时证明动作名、目标 saveId、boundFarmhandCount=0，并且 Junimo /diagnostics/state 再次读到相同总数/已定制数和零绑定后，才继续 dayTransition、稳定 XML、磁盘变化和 completed。任一来源缺失、旧 Control/DLL、玩家在线、目标错档或仍有绑定都 fail closed，实例继续保持不可加入的导入维护状态。
-- 影响文件：embedded/smapi-mod-src/{ControlContract,DeferredCommandOutcomes,ModEntry}.cs、embedded/smapi-mod 0.3.2 制品、runtime_stack_manifest.json、save_import_{durable,evidence,maintenance,transaction}.go 及测试。新增内部错误码 save_import_maintenance_control_mismatch；公开上传 DTO、前端模式和 SteamID 输入均未变化。
+- 影响文件：embedded/smapi-mod-src/{ControlContract,DeferredCommandOutcomes,ModEntry}.cs、embedded/smapi-mod 0.3.2 制品、runtime_stack_manifest.json、save_import_{durable,evidence,maintenance,transaction}.go、`command_results.go`、Web `control_commands.go` 及测试。新增内部错误码 save_import_maintenance_control_mismatch；公开上传 DTO、前端模式和 SteamID 输入均未变化。
 - 验证：Control 契约测试通过；使用真实 Stardew game-data 编译 0 errors（仅既有 analyzer/compiler warning）；Linux Go 全量 test/vet/build 通过。Docker Desktop 唯一隔离 project 从只读旧夹具克隆 2 个 farmhand（1 customized、1 bound），真实 Control 保存后运行态与磁盘均为 2/1/0，主文件 hash 改变；重启 server 后仍为零绑定且同 commandId 结果保持 succeeded。任务容器、网络、卷和克隆目录均已精确清理，原夹具未修改。
 
 # STARTUP-NEWGAME-DURABILITY-1：启动诊断、新建档耐久与手动恢复（2026-08-13，released in v0.4.14）

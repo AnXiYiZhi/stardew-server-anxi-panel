@@ -34,11 +34,13 @@
 - 不修改 Junimo 上游、不新增前端选择。swap_to_player 在已有 swap-host-to finalizer 完成后，后台默认把 unbind-all-farmhands 动作附加到同一次耐久 save-now；virtual_host_takeover/as-is 维持原行为。
 - Control 0.3.2 新增预保存动作契约、前置校验、全部 farmhandData.userID 清空、结果计数和 pending journal 恢复。动作要求精确目标存档、服务器主机、零在线 farmhand 和可读角色数据；重启恢复只重复同一 commandId，清空本身幂等。
 - Go durable import 新增动作 payload、Control 结果身份/计数校验和 Junimo diagnostics 双证据；journal 记录 farmhandUnbindVerified、farmhandCount、customizedFarmhandCount。维护 runtime 同时检查当前内嵌 Control DLL 与 options.json 版本，旧/错 DLL 使用 save_import_maintenance_control_mismatch 停止推进。
+- 候选真实 Web 首次上传发现 command result 生命周期竞争：通用历史同步可能在 durable gate 前导入并删除 Control 结果，而公开历史脱敏会丢弃动作身份/计数。`command_results.go` 新增 `SaveImportCommandResultProtected`/`DurableCommandResultProtected`，按未完成 journal 的精确 `DurableSaveCommandID` 保留原 JSON；journal 不可读时 fail closed，只有 `completed` 后才允许 `control_commands.go` 归档删除。没有扩大数据库公开详情白名单。
 - 主要文件为 save_import_durable.go、save_import_evidence.go、save_import_maintenance.go、save_import_transaction.go、ControlContract.cs、DeferredCommandOutcomes.cs、ModEntry.cs、两份 Control manifest/DLL 与 runtime_stack_manifest.json。公开 Web DTO、审计字段和前端文件没有变化。
 
 ## 如何验证、下一步注意事项
 
 - Control 纯契约覆盖动作解析、错档、在线玩家、恢复、Saved 后仍绑定和成功计数；真实 game-data 编译 0 errors。Linux 容器内 go test ./... -count=1、go vet ./...、三项 cmd build 均通过。
+- 新增专项覆盖未完成导入保护精确结果、无关 commandId 不受保护、`completed` 后释放，以及 Web 同步器在保护期不入库/不删文件、完成后正常归档。`b15fa42` 旧候选的真实链已复现并证明 fail-closed，包含修复的最终候选必须重新跑完整首次上传、Panel 重启恢复和资源清理，旧候选不可用于 tag。
 - Docker Desktop project anxi-unbind-e2e-20260813-r1 使用任务专属端口、bind、game-data/steam-session 卷，从只读历史隔离夹具克隆 2 个 farmhand（1 customized、1 bound）。Control 0.3.2 的单个 save-now succeeded 后，Control details、Junimo diagnostics 和主 XML 均为 total=2/customized=1/bound=0；主文件 SHA-256 发生变化，server 重启后仍为 0。项目容器/网络/卷为零，克隆目录移入回收站，源夹具未改。
 - 后续维护不得把动作移到 XML 离线改写，也不得在 Panel 看不到精确 GameLoop.Saved 或 diagnostics 绑定计数时放行 completed。若未来界面移除 SteamID，需要先另行定义 Panel 生成一次性平台 ID 的上游 swap 契约；本次没有实现该路线。
 - 下一次正式版本必须按 docs/09-image-build.md 以最终 commit 重建 Control/Panel 候选，重新核对 DLL SHA、真实上传完整事务、故障注入、上一正式版/最低支持版一键升级、回滚和升级后再验收；当前实现未创建 tag、镜像或 Release。

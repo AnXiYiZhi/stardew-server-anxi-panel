@@ -3,6 +3,7 @@
 - 目标版本为 `0.4.15`，合并三组已完成且共用同一存档导入发布门禁的修复：`NEXUS-EXT-IDEMPOTENCY-1`、`SAVE-IMPORT-AUTO-UNCLAIM-1` 与 `SAVE-IMPORT-FIRST-UPLOAD-1`。Panel 新增 migration 013，浏览器扩展升为 0.1.3，内嵌 Control 升为 0.3.2；Junimo/SMAPI/game/auth 版本不变。
 - 正式候选必须从本地 `main` 的最终提交构建，build args 固定 `VERSION=0.4.15`、完整 commit SHA、UTC build date；本节后三张功能矩阵全部完成前禁止 push `main`、创建 `v0.4.15`、更新 registry/latest 或创建 Release。
 - 自动解绑必须在唯一隔离的真实旧导入夹具上走完整后台上传事务，而不是只调用 Control 命令；正常链、零 farmhand/在线玩家/错 Control/结果断流、Panel 或 Control 中断恢复、稳定 XML、角色/小屋/Mod/备份保留和资源归零均需有候选证据。
+- `b15fa42` 候选的真实首次上传已证明 runtime-prepare 失败可重试、bootstrap maintenance、swap finalizer、Control 自动解绑与 GameLoop.Saved 均能运行，但同时捕获发布阻断竞争：command history 在 durable gate 读取前归档并删除结果，数据库公开白名单又不保留私有聚合证明，任务安全进入 recovery。生产修复改为由未完成 import journal 保护精确 command result；针对性 Go 测试已通过，旧候选证据作废，必须从包含该修复的最终 SHA 重建并重跑整链。
 - Nexus 幂等必须在真实候选 Panel 上覆盖 20 路同 key、不同 fileId、首次响应丢失、Panel 重启和终态复用；权威断言是 SQLite 只有一个 owner/job 且 runner/下载调用不重复，不能只看扩展 singleflight。
 - 升级矩阵至少包含上一正式版 `v0.4.14` 与本次 migration/运行栈支持边界 `v0.3.2`，两者都必须使用 Panel Web 一键更新完整链；目标 unhealthy/版本错误必须恢复原版。升级后新 Panel 再执行三项新功能，其中首次上传必须从空 saves/无 gameloader pointer 开始；同时验证 SQLite、用户、实例、存档、Mod、备份、审计与非目标 Docker 资源保留。
 - tag 前还须执行 Release workflow 的精确全量命令：兼容清单与远程制品、脚本功能/语法/ShellCheck、Linux Go test/vet/build 与 integration、SMAPI 真实下载、前端全量测试/audit/build、网站 audit/build、候选 fresh/restart 和镜像内 helper/扩展包检查。
@@ -78,6 +79,7 @@
 | 真人 farmhand 在线 | 不踢人，动作失败并保持维护态 | C# 在线门禁与 Go maintenance 测试；真实客户端在线分支待候选 |
 | 旧 Control、坏 DLL/hash、options 缺失或错版本 | pending 只等待启动；明确 mismatch/invalid fail closed并停止导入推进 | maintenance/control gate 单测通过；代表老版本升级必须验证自动同步到 0.3.2 |
 | diagnostics 网络超时、断流、failedFields 或结果缺计数 | 不把 GameLoop.Saved 单点当成功，返回 unconfirmed/recovery 并保留事务材料 | Go 失败矩阵通过；可控代理/真实断流待候选 |
+| command history 与 durable gate 并发读取终态结果 | 未完成 journal 的精确 commandId 结果保留原文件；不可读 fail closed；completed 后才归档删除 | `b15fa42` 真实链稳定复现提前归档后 recovery；`DurableCommandResultProtected` 与 Web 同步专项通过，最终候选整链待复跑 |
 | 保存已成功但后续验证暂时失败 | 不重发 import/save-now；journal 保留同 commandId，恢复只继续观察 | Go durable 恢复和 C# pending journal 契约通过；Panel/Control 中断窗口真机待候选 |
 | Control 在清空后、Saved 前退出 | 同一 pending journal 恢复，重复清空幂等，只启动原 commandId 的保存 | C# recovery 契约通过；真实 kill 窗口待候选 |
 | 重复提交或旧结果 | 动作/目标 saveId/commandId 任一不一致均拒绝，禁止把旧 succeeded 复用到新事务 | C#/Go identity tests 通过 |

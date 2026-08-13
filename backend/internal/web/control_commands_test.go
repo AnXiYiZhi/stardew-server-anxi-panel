@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -59,6 +60,61 @@ func TestSyncControlCommandResultsImportsIdempotentlyAndDeletesTerminalFile(t *t
 	got, err := store.GetControlCommand(context.Background(), "0123456789abcdef0123456789abcdef")
 	if err != nil || got.Status != "succeeded" {
 		t.Fatalf("persisted result=%#v err=%v", got, err)
+	}
+}
+
+func TestSyncControlCommandResultsKeepsUnfinishedSaveImportProof(t *testing.T) {
+	_, store, cleanup := newTestHandlerWithStore(t)
+	defer cleanup()
+	instance := ensureCommandSyncInstance(t, store)
+	commandID := "0123456789abcdef0123456789abcdef"
+	operationID := "00112233445566778899aabbccddeeff"
+	now := time.Now().UTC()
+	if err := store.CreateControlCommand(context.Background(), storage.CreateControlCommandParams{
+		CommandID: commandID, InstanceID: instance.ID, CommandType: "save-now", Status: "queued", ResultSupported: true, SubmittedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := sj.CreateImportJournal(instance.DataDir, registry.SaveImportRequest{
+		Instance: registry.Instance{ID: instance.ID, DataDir: instance.DataDir}, OperationID: operationID,
+		SaveName: "Imported_123", HostHandling: "swap_host_to", PlatformID: "76561198012345678",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal.Stage = sj.ImportStageSavePersisting
+	journal.DurableSaveCommandID = commandID
+	if err := sj.WriteImportJournal(instance.DataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := writeCommandResultFixture(t, instance.DataDir, sj.CommandOutcome{
+		CommandID: commandID, Status: sj.CommandStatusSucceeded, ErrorCode: "ok", CreatedAt: now, UpdatedAt: now.Add(time.Second),
+		Details: map[string]string{"preSaveAction": "unbind-all-farmhands", "farmhandCount": "2", "boundFarmhandCount": "0"},
+	})
+	if err := syncControlCommandResults(context.Background(), store, instance, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(resultPath); err != nil {
+		t.Fatalf("unfinished import proof was removed: %v", err)
+	}
+	queued, err := store.GetControlCommand(context.Background(), commandID)
+	if err != nil || queued.Status != "queued" {
+		t.Fatalf("protected result was imported early: %#v err=%v", queued, err)
+	}
+
+	journal.Stage = sj.ImportStageCompleted
+	if err := sj.WriteImportJournal(instance.DataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncControlCommandResults(context.Background(), store, instance, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(resultPath); !os.IsNotExist(err) {
+		t.Fatalf("completed import result was not archived: %v", err)
+	}
+	persisted, err := store.GetControlCommand(context.Background(), commandID)
+	if err != nil || persisted.Status != "succeeded" {
+		t.Fatalf("completed result=%#v err=%v", persisted, err)
 	}
 }
 

@@ -189,6 +189,7 @@
 
 ## 2026-08-13：生产容器诊断输出完整 `docker inspect`，暴露环境变量凭据
 
+- 最近复发/补充：同日 v0.4.15 首次上传失败诊断直接输出了隔离 server 日志尾部，其中含测试存档名、角色关联 ID、FarmHouse GUID 和服务端网络 ID；这些不是生产凭据，夹具也已隔离，但判断失败只需要 journal 阶段/错误码与 Control 的 total/customized/bound 聚合。后续该 E2E 禁止输出原始 server 日志；只从 journal、command result 或 SQLite 做固定字段投影，原日志只在必要时于进程内匹配预期标记。
 - 最近复发/补充：同日检查隔离存档中 `<userID>` 是否为空时，用一个同时兼容自闭合/成对标签但边界不严的正则；它从首个 `<userID />` 一直跨到后续 `</userID>`，把约数 MB 存档正文输出到工具结果。平台 ID 内容已被替换且没有生产凭据，但仍违反最小输出。存档敏感字段验收必须用 XML 解析器并只输出 `total/bound` 计数，禁止用可能跨标签的正则打印匹配正文。
 - 最近复发/补充：同日继续核对存档挂载点时，虽然只投影了 `Mounts`，仍把匿名 Docker volume 的完整 opaque hash 作为 `Source` 输出；判断存档路径只需要已知 bind 的 destination 与归一化来源类型。由于这已是同一轮第二次把内部唯一标识带入生产诊断输出，规则同步提升到 `AGENTS.md`：生产投影除凭据外还必须默认剔除匿名 volume hash、容器/网络完整 ID、存档 GUID 和玩家关联标识，只输出完成判断所需的布尔值、类型、计数或脱敏短形态。
 - 最近复发/补充：同日诊断新生产主机的 Stardew 存档槽位时，结构化脚本虽然没有输出平台 userID，却把四个 `homeLocation` 的完整 FarmHouse GUID 作为状态字段打印；这些不是认证凭据，但对判断空闲槽只需要“存在且类型为 FarmHouse”。后续投影改为 `homeLocationPresent/homeLocationKind`，所有存档内部 GUID、位置唯一标识和玩家关联值默认不输出。
@@ -242,6 +243,7 @@
 
 ## 2026-08-12：向 DinD 外层容器 `/tmp` 复制脚本只信任 `docker cp` 退出码
 
+- 最近复发/补充：2026-08-13 v0.4.15 候选导入再次对 62,721,024 B archive 执行 `docker cp ...:/tmp/...`，命令退出 0，但立即 `stat` 报不存在；加载未开始，宿主 archive 保留。该问题已有专门历史条目且 AGENTS 已要求镜像预加载优先唯一环回 TCP，后续本轮销毁已验收的无残留旧 DinD，重建带唯一 `127.0.0.1:<task-port>` 的 DinD，并由宿主 CLI 直接 `image load -i`，不再尝试容器 rootfs 中转。
 - 环境：PowerShell 7、Docker Desktop、任务专属 `docker:29-dind` privileged 外层容器。
 - 错误模式：把任务脚本复制到外层 DinD 的 `/tmp`，只在同一包装命令后续用 `test -f` 才发现目标不存在；`docker cp` 本身退出 0 且无报错。改用相同容器的 `/root/<task>.sh` 后文件可见。
 - 症状 / 退出码：两次 `/tmp` 目标都由后续 `sha256sum`/`test -f` 以文件不存在退出 1，E2E 尚未启动；复制到 `/root` 后立即核对字节数与 SHA-256 一致，脚本正常运行。
@@ -557,6 +559,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
+- 最近复发/补充：2026-08-13 继续 v0.4.15 首次上传 E2E 时，多次把仓库根不存在的 `internal`、`backend/internal/registry`、猜测的 `backend/internal/storage/migrations/009_control_commands.sql` 混入已确认路径；还再次把 `Dockerfile*`、`save_import*`、`runtime*` 作为 Windows `rg` 位置参数。部分组合命令已输出有效内容后仍以 1/`os error 123` 结束，产品和测试资源未被修改。此规则已在 AGENTS 提升但仍复发：余下发布检索只传 `rg --files`/前一次命中返回的精确路径，通配只能作为 `-g` 的值；不得在同一读取批次补猜惯例文件。
 - 最近复发/补充：2026-08-13 `v0.4.15` Control 门禁探针已由 `rg --files` 明确输出 `StardewAnxiPanel.Control.ContractTests.csproj`，随后仍手写成不存在的 `SmapiModContractTests.csproj`，只读 `Get-Content` 退出 1；产品文件未变。发现命令的原始路径输出必须直接复制为后续参数，禁止把长文件名按语义缩写或重新拼接。
 - 最近复发/补充：2026-08-13 `v0.4.15` 自动解绑代码审查时，又把 `backend/internal/games/stardew_junimo/save_import_*.go` 作为 Windows `rg` 位置参数；`rg` 报 `os error 123`，同一组合命令后续 `Get-Content` 成功并把最终退出码掩成 0，没有写入。后续同目录通配检索固定使用 `rg -g 'save_import_*.go' <pattern> backend/internal/games/stardew_junimo`，并在转入其它原生命令前保存/检查 `rg` 的退出码。
 - 最近复发/补充：2026-08-13 准备 `v0.4.15` 发布时，读取已确认的 Dockerfile、release/compatibility workflow 后又按惯例追加不存在的 `.github/workflows/docker-integration.yml`；前三个文件输出有效，但组合命令最终以路径不存在退出 1，没有写入。实际 Docker integration 已接在现有 Compatibility/Release workflow；后续工作流读取必须先用 `rg --files .github/workflows` 取得真实清单，不能按门禁名称猜独立文件。
@@ -665,7 +668,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
-- 最近复发/补充：2026-08-13 本版兼容矩阵门禁再次先执行 `Get-Command python` + `python --version`，命中 Windows Store alias 后无版本输出并在矩阵前退出；没有项目状态变化。随后才调用 workspace dependency loader，使用其返回的 Python 3.12.13 精确路径通过 validate/version/unit/remote-artifact。该错误已多次复发且规则已在 `AGENTS.md`：Windows Python 门禁第一步必须直接加载 workspace dependencies，不再探测 Store alias。
+- 最近复发/补充：2026-08-13 本版兼容矩阵门禁再次先执行 `Get-Command python` + `python --version`，命中 Windows Store alias 后无版本输出并在矩阵前退出；没有项目状态变化。随后才调用 workspace dependency loader，使用其返回的 Python 3.12.13 精确路径通过 validate/version/unit/remote-artifact。`b15fa42` 产品候选通过 smoke 后启动正式矩阵时又重复同一探针失败，矩阵仍未开始、Docker 资源未变化；本轮余下 Python 命令固定复用已加载的精确解释器。该错误已多次复发且规则已在 `AGENTS.md`：Windows Python 门禁第一步必须直接加载 workspace dependencies，不再探测 Store alias。
 - 最近复发/补充：同日最终收口兼容矩阵时仍再次执行 `Get-Command python` 后调用 Store alias，版本探针以 9009 退出，矩阵尚未运行、项目无变化；随后才加载 workspace dependencies，并用精确 Python 3.12.13 完成 19 项单测及 84.6 秒远程制品校验。该规则已经提升但仍复发：后续本任务所有 Python 命令直接复用已加载的精确路径，不再做宿主 alias 探针。
 - 最近复发/补充：2026-08-11 v0.4.11 兼容矩阵门禁明知发布规则已要求先加载 workspace dependency，仍先探测到 Windows Store alias 后运行失败的 `python --version`，随后又未用 `Get-Command py` 验证便猜测 `py -3`，两次均在矩阵启动前退出且无项目状态变更。后续 Windows 发布计划的 Python 第一步固定为 `codex_app__load_workspace_dependencies`，只使用其精确解释器路径；不得再把 Store alias/`py` 作为发布探针。
 - 最近复发/补充：2026-08-10 官网反馈墙方案讨论调用本地 UI 规则检索时，虽然先取得 `Get-Command python`，仍把版本探针和实际查询合并在同一命令中；同日平板 Hero 对齐修复又先试 Store alias、再猜测不存在的 `py -3`，两次均未产生项目修改，随后才从 workspace dependency loader 取得精确 Python 并完成查询。后续同类只读设计检索必须先调用 dependency loader，使用其返回的精确 Python 路径单独完成版本探针和查询，不能继续把 `Get-Command` 成功当成解释器可用，也不能猜测 `py` launcher。
@@ -1599,6 +1602,7 @@
 
 ## 2026-08-06：重定向 MSBuild 中间目录后旧 obj 被重新纳入编译
 
+- 最近复发/补充：2026-08-13 v0.4.15 Control 0.3.2 正式编译直接把含项目文件的 `/src` 只读挂载，却没有为标准 `/src/obj` 与 `/src/bin` 提供可写任务空间；NuGet restore 在创建 `obj/*.tmp` 时以 EROFS 退出，编译未开始。随后运行相邻 ContractTests 时又只读挂载 `/tests` 而遗漏相同的 `obj/bin`，同样在 restore 前 EROFS；产品契约断言均未执行。后续每个 .NET 项目都保持标准命令，并分别用两个精确 owner volume 覆盖该项目根的 `obj/bin`，既隐藏宿主既有生成目录又允许标准输出；不再重定向 Base 路径。
 - 环境：PowerShell 7、只读源码 bind、`mcr.microsoft.com/dotnet/sdk:6.0`、真实只读 SMAPI game-data。
 - 错误模式：为避免写源码目录，把 `BaseIntermediateOutputPath` 指到 `/tmp/obj`，但源码树保留了先前标准构建生成的 `obj/`。
 - 症状 / 退出码：真实 Control build 报 8 个 `CS0579 Duplicate ... Attribute`；任务容器和 NuGet 卷随后按精确名称/ownership label 清理。
@@ -1631,7 +1635,7 @@
 
 ## 2026-08-06：把不同构建路径下的 .NET DLL 当成字节可复现
 
-- 最近复发/补充：2026-08-13 `v0.4.15` 发布门禁把 `/work` 新鲜构建的 Control 0.3.2 摘要 `67393f...` 与先前在另一项目路径构建并已真机验证的嵌入摘要 `a62e52...` 直接比较，误报源码/二进制漂移；第二次同路径构建仍稳定为 `67393f...`，说明本轮编译本身可重复，但不能跨路径外推。随后恢复既有三段权威：嵌入 DLL 与 runtime manifest 精确相等、新鲜源码以标准命令 0 error 编译、嵌入 DLL 的目标元数据与真实运行行为单独验证；未用不同路径产物覆盖已验证 DLL。
+- 最近复发/补充：2026-08-13 `v0.4.15` 发布门禁把 `/work` 新鲜构建的 Control 0.3.2 摘要 `67393f...` 与先前在另一项目路径构建并已真机验证的嵌入摘要 `a62e52...` 直接比较，误报源码/二进制漂移；第二次同路径构建仍稳定为 `67393f...`，说明本轮编译本身可重复，但不能跨路径外推。随后恢复既有三段权威：嵌入 DLL 与 runtime manifest 精确相等、新鲜源码以标准命令 0 error 编译、嵌入 DLL 的目标元数据与真实运行行为单独验证；未用不同路径产物覆盖已验证 DLL。正式全量门禁稍后又分别用 SDK 8/SDK 6 的 `/src` 构建摘要 `1019d6...`/`91d9fc...` 与 embedded 直接比较并再次虚假失败；源码两次均 0 error，SDK 6 仅既有 analyzer/compiler warning，embedded 与 manifest 仍精确为 `a62e52...`。后续本轮不再执行 fresh-DLL 对 embedded 的跨路径摘要断言，只运行上述三段权威。
 - 环境：同一 Control C# 源码、`mcr.microsoft.com/dotnet/sdk:6.0`、真实 game-data，分别以 `/src/smapi-mod-src` 与 `/src` 作为项目路径构建。
 - 错误模式：用新鲜复编译 DLL 的 SHA-256 与先前已提升、已真实运行的嵌入 DLL 做硬相等，并把不等直接视为源码/嵌入漂移。
 - 症状 / 退出码：两个新构建分别得到不同摘要，且都不等于嵌入清单的 `b15479...`；三者都编译成功并包含 `PlayerModContextLifecycle/PeerContextReceived/reportedAt` 元数据，嵌入 DLL 已在真实 LAN 联调产生正确 context。
@@ -1913,6 +1917,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-13 v0.4.15 最终产品候选的 version/revision/created 实际全部精确，但身份包装器再次直接把 `ConvertFrom-Json` 产生的 `System.DateTime` created 与 ISO 字符串比较，先于 smoke 创建就虚假报 mismatch；独立布尔投影确认只有类型比较失败，未创建容器/网络/卷。后续同轮 OCI 与 `/api/version` 时间断言必须共用先判类型、转 UTC、invariant 格式化的 helper，不得再内联原始 `-eq`。
 - 最近复发/补充：2026-08-12 v0.4.11 最终候选包装器已经规范化 `/api/version.buildDate`，却遗漏同一脚本中经 `docker image inspect | ConvertFrom-Json` 读取的 OCI `created` label，仍把 `System.DateTime` 直接与 ISO 字符串比较；过长的内联 `try/finally` 最终只表现为无诊断 exit 1，任务资源已清理。独立投影确认 version/revision 正确且 created 类型为 `System.DateTime`，规范化后精确通过。统一 helper 必须覆盖同一断言里的每一个时间字段，不能只修 API 而遗漏 OCI/inspect。
 - 最近复发/补充：2026-08-11 v0.4.11 候选 fresh smoke 的 `/api/version` 已返回精确 `0.4.11`、完整 commit 和 `2026-08-11T14:57:11Z`，包装器仍把 `Invoke-RestMethod` 自动解析的 `buildDate` 直接与手写 `[DateTime]` 比较并虚假报 metadata mismatch；候选容器随后按 owner 清理。重跑必须先按运行时类型把日期统一转为 UTC，再格式化为 invariant `yyyy-MM-ddTHH:mm:ssZ` 字符串断言，禁止继续直接比较对象/原始文本。
 - 最近复发/补充：2026-08-09 候选 metadata 核验再次把 JSON 自动转换的 `DateTime` 与原始 ISO 文本直接比较，显示值相同却误报；同轮 rollback 断言又反向假定 `StartedAt` 必然是 `DateTime`，实际为 string 后直接调用 `.ToUniversalTime()` 失败。统一规范化 helper 必须先按运行时类型分支：`DateTime` 直接转 UTC，string 用 invariant `DateTimeOffset::Parse` 后转 UTC，最后格式化比较；不得假定解析器总返回同一类型。
@@ -1997,6 +2002,16 @@
 - 预防检查：提交 Shell 前把 `workdir` 与第一个文件参数拼成一次实际路径；若出现 `<workdir末级>/<文件参数首级>` 重复，先去掉一层前缀。
 - 适用范围：`gofmt`/`go test`、npm 脚本、文档构建与任何依赖 `workdir` 的相对文件命令。
 
+## 2026-08-13：容器挂载布局没有保持 csproj 的相对源码路径
+
+- 环境：Docker Desktop、`mcr.microsoft.com/dotnet/sdk:6.0`，运行 Control ContractTests。
+- 错误模式：测试项目挂到 `/tests`，却把它通过 `../smapi-mod-src/*.cs` 引用的兄弟源码目录挂到 `/src`。
+- 症状 / 退出码：标准 `obj/bin` 已可写，但编译报 5 个 `CS2001 Source file /tests/../smapi-mod-src/... could not be found`，契约断言未执行；源码未修改。
+- 根因：只按语义给容器目录命名，没有先读取并保持 csproj 的相对 Include 路径。
+- 正确做法：测试项目 `/tests` 对应的源码必须挂到精确兄弟路径 `/smapi-mod-src`；复用同一只读源与任务专属输出 volume，不改项目引用。
+- 预防检查：容器化编译前读取 csproj 的 `Compile Include`/`ProjectReference`，把宿主目录映射成相同相对拓扑；不能随意改成 `/src`。
+- 适用范围：多项目 .NET、相对源码 Include 和容器只读挂载。
+
 ## 2026-08-13：检索已给出真实文件后仍读取猜测文件名
 
 - 最近复发/补充：同一轮继续审查 import staging 时，`rg` 已明确返回 `save_import_staging.go`，后续仍读取猜测的 `save_import_files.go`，在 fail-fast 下退出 1；文件未修改。该模式连续两次后，预防规则已提升到项目 `AGENTS.md`：符号检索与精确路径读取必须拆成两条命令，真实命中是唯一输入。随后读取正式 CI 门禁时又直接猜测 `.github/workflows/compatibility.yml`，Release workflow 前半已读出，但第二个文件不存在使命令退出 1；候选镜像和仓库文件未受影响。此后所有 workflow 文件先单独执行 `rg --files .github/workflows`，再读取精确结果。
@@ -2018,6 +2033,86 @@
 - 正确做法：先建空数组，分别用 `$changed += @(git diff ...)` 与 `$changed += @(git ls-files ...)` 收集，再用 `$changed = @($changed | Where-Object ... | Sort-Object -Unique)` 扁平化。
 - 预防检查：传给 `Join-Path`/文件 API 前先断言每项都是单一相对路径，且 `Test-Path -LiteralPath` 成功；多个原生命令输出不要以内层带逗号的 `@((...),(...))` 直接合并。
 - 适用范围：变更文件审计、批量格式化、哈希/编码检查及任何由多个命令组成的文件列表。
+
+## 2026-08-13：使用 PowerShell 只读内置变量 `$Host` 保存镜像信息
+
+- 环境：PowerShell 7，对比 Docker Desktop 与任务 DinD 中候选镜像的安全字段。
+- 错误模式：变量名写成 `$host`；PowerShell 变量不区分大小写，因此实际尝试覆盖只读自动变量 `$Host`。
+- 症状 / 退出码：赋值报 `Cannot overwrite variable Host`，但未设置 fail-fast，后续 DinD 投影成功使组合命令最终退出 0，宿主字段均为 null；镜像和容器未修改。
+- 根因：使用过于通用且与自动变量冲突的名称，并让非终止错误被后续成功掩盖。
+- 正确做法：使用任务专属 `$hostImageInfo`、`$dindImageInfo`，脚本首行 `$ErrorActionPreference='Stop'`；投影前分别检查原生命令退出码。
+- 预防检查：PowerShell 变量避免 `$Host/$PID/$Matches/$Error/$Args` 等自动变量及大小写变体；正式断言不允许非终止错误继续。
+- 适用范围：Docker inspect、SSH/HTTP 投影和所有 PowerShell 发布包装器。
+
+## 2026-08-13：跨 Docker image store 强制比较 `image inspect .Id`
+
+- 环境：Docker Desktop containerd image store 与 classic DinD，通过同一 `docker save/load` archive 导入 v0.4.15 候选。
+- 错误模式：archive load 成功后，直接要求两端 `docker image inspect .Id` 完全相同。
+- 症状 / 退出码：Docker Desktop 返回 OCI manifest ID `a82f8496...`，DinD 返回 config ID `a51249ae...`，包装器误报 mismatch；两端实际均为 linux/amd64，OCI version/revision/created 完全一致，archive 未提前删除。
+- 根因：不同 image store 对 `.Id` 的内部表示不构成跨 store 可移植契约；archive 内容身份不能只靠这一字段。
+- 正确做法：load 后核对精确 tag 存在、OS/arch、OCI version/revision/created，并用加载镜像启动后核对 `/health` 与 `/api/version`；同一 registry 的正式 digest 另按 manifest digest 比较。
+- 预防检查：只有同一 daemon/store 内才比较 image ID；跨 Desktop/DinD/registry 必须先明确 manifest、config 和 repo digest 各自语义。
+- 适用范围：Docker save/load、containerd/classic store、正式三仓回拉和候选预加载。
+
+## 2026-08-13：在 Go Alpine 容器启动阶段在线安装整套 Docker daemon
+
+- 环境：Docker Desktop Linux，v0.4.15 正式 Docker integration 的任务专属 DinD。
+- 错误模式：以 `golang:1.25-alpine` 为基础容器，在 entrypoint 内执行 `apk add docker docker-cli-compose docker-cli-buildx`，再启动 dockerd；readiness 初始 120 秒和扩展 120 秒都耗尽。
+- 症状 / 退出码：容器始终运行，但 `apk` 连续数分钟停在 containerd/runc 安装阶段，dockerd 和产品 integration 均未开始；精确 owner label 核对后仅删除该任务容器，未产生内部测试资源。
+- 根因：把大体积、外部网络敏感的 daemon 安装放进 readiness 关键路径；即使 APK 源很慢也无法区分下载与服务故障。
+- 正确做法：使用已包含 Docker daemon、Compose 和 buildx 的官方 `docker:29-dind`，通过本地多阶段 Dockerfile 从官方 `golang:1.25-alpine` 复制 `/usr/local/go`；镜像构建完成后再启动有界 daemon readiness。
+- 预防检查：DinD 门禁镜像必须预装 daemon 和测试工具链；entrypoint 只启动服务并探针，不在线安装整套运行时。准备阶段失败不得计为产品 integration 失败。
+- 适用范围：Docker-in-Docker Go 集成、升级/回滚夹具和需要 daemon + 编译器的隔离发布门禁。
+
+## 2026-08-13：DinD 未显式命名 `/var/lib/docker` 且清理遗漏 `-v`
+
+- 环境：Docker Desktop，v0.4.15 发布门禁的 r1/r2/r3 外层 `docker:29-dind` 容器。
+- 错误模式：启动外层 DinD 时没有显式挂载任务命名 volume 到镜像声明的 `/var/lib/docker`，清理又使用 `docker rm -f` 而非 `docker rm -f -v`。
+- 症状 / 退出码：准备销毁 r3 时内部仍有 2 个已无容器的测试 volume；外层旧 r1/r2 也可能留下无 label 的匿名 daemon-data volume。产品/用户 Docker 资源未被复用。
+- 根因：只给外层 container 加 owner label，没有把镜像隐式 VOLUME 纳入资源清单和终态断言。
+- 正确做法：r3 先核对 owner 后用 `rm -f -v`；旧 orphan 只在同时满足“本轮创建时间、dangling、内部含 DinD buildkit/vfs 结构”时按精确名称删除。后续 r4 使用 `anxi-v0415-dind-root-r4:/var/lib/docker` 命名卷和 owner label。
+- 预防检查：启动任何声明 VOLUME 的任务镜像前 inspect Config.Volumes，为每个持久目标显式绑定任务命名卷；清理后同时检查 container 和这些精确 volume 为零。
+- 适用范围：DinD、数据库、缓存服务及所有镜像声明匿名 VOLUME 的隔离门禁。
+
+## 2026-08-13：把隔离管理员会话 Cookie 写入系统临时文件跨工具调用
+
+- 环境：PowerShell 7、v0.4.15 首次上传隔离 Panel E2E。
+- 错误模式：第一条工具调用在内存生成合成管理员账号后，为让下一条调用复用登录态，用 `Set-Content` 把 session Cookie 写入用户 TEMP。
+- 症状 / 退出码：初始化成功，但会话值短暂落盘；没有进入仓库、镜像层、Git 或普通日志。发现后先将精确文件覆写为零字节再用文件 API 删除，并销毁该 Panel 数据夹具，不再复用该管理员。
+- 根因：把跨工具调用的进程隔离当成必须落盘交接，没有先设计单进程测试编排。
+- 正确做法：用 `apply_patch` 创建不含任何固定凭据的任务脚本；脚本自身在内存生成 username/password/secret，使用同一个 `WebRequestSession` 完成 setup、调用、轮询与重启验收，只输出版本、状态和聚合计数。
+- 预防检查：发布 E2E 设计阶段列出所有秘密的生命周期；账号、口令、Cookie、token 不允许作为跨 cell 文件、环境持久变量或命令输出。若工具调用必须拆分，重建可丢弃夹具而不是落盘会话。
+- 适用范围：Web 管理员 E2E、浏览器 Cookie、SSH/registry token 与任何任务专属合成凭据。
+
+## 2026-08-13：在 BusyBox 容器中直接使用 GNU `realpath -m` / `find -printf`
+
+- 环境：Docker Desktop、`docker:29-dind`/Alpine BusyBox 外层容器，清理 v0.4.15 首次上传任务目录并发现 journal。
+- 错误模式：未探测工具能力就使用 GNU `realpath -m` 和 `find -printf`；BusyBox 不支持对应参数。
+- 症状 / 退出码：候选 Panel 已按 owner 精确删除，但目录清理在 `realpath -m` 处退出 1，任务数据仍原样保留；后续 journal 发现命令也因 `-printf` 无输出，需要回退。产品源码、其它容器和 volume 未改变。
+- 根因：把宿主/GNU coreutils 语法直接带入精简 Alpine 容器，没有遵守先探针实际能力的发布夹具规则。
+- 正确做法：对已存在的任务目录使用 BusyBox `readlink -f` 并精确比较预期绝对路径，再删除；文件名枚举使用受控 `for path in "$root"/*; do test ... && basename ...; done`，且路径根为固定任务目录。
+- 预防检查：精简容器脚本首次使用 `realpath/find/stat` 的非 POSIX flag 前先执行帮助/版本探针；正式清理不得在能力未知时与前一步容器删除合并。
+- 适用范围：Alpine/BusyBox 发布夹具、DinD 清理、嵌套容器文件投影。
+
+## 2026-08-13：宿主 Docker CLI 连接远端 daemon 时误以为 Compose 文件也在 daemon 端解析
+
+- 环境：Windows PowerShell 7，宿主 `docker -H tcp://127.0.0.1:<DinD>`，compose 文件只存在于外层 DinD 的 `/gate/...` bind。
+- 错误模式：直接从 Windows 宿主执行 `docker -H ... compose -f /gate/.../docker-compose.yml down`，并把该命令埋在无诊断的长清理包装器中。
+- 症状 / 退出码：Docker CLI 把路径解析成 `E:\gate\...` 后报文件不存在，Compose 容器/网络/volume 与 Panel 都保持原样；首个包装器只返回退出 1，逐项终态核对后才确认零清理。
+- 根因：`-H` 只选择 daemon，Compose CLI 仍在调用方本机加载配置和相对文件；daemon 能看到 bind source 不代表宿主 Compose CLI 能读取同一路径。
+- 正确做法：在已经挂载该绝对路径、包含 Compose CLI 且连接同一 socket 的任务 Panel 容器内执行 `docker compose -f <exact-path> down`；随后由宿主对远端 daemon 精确核对容器/网络/卷，再按 owner 清理 Panel 和 bind。
+- 预防检查：远端 daemon 的 Compose 门禁必须分别确认“谁解析 compose 文件”和“谁执行 Docker API”；配置只在远端可见时不得由宿主 CLI 解析。关键清理拆成有输出的 down、终态核对、volume 删除、Panel 删除四步。
+- 适用范围：DinD、SSH Docker context、远端 daemon 与任何 client/daemon 文件系统不共享的 Compose 操作。
+
+## 2026-08-13：外层只读 volume mount 名被误当成 DinD 内同名 volume
+
+- 环境：Docker Desktop 外层 DinD，宿主 volume 只读挂到外层 `/fixtures/steam-session`，再由内层 daemon 创建复制容器。
+- 错误模式：内层复制容器使用 `source=save-import-e2e-release3_steam-session`，误以为它会引用外层同名宿主 volume；内层 daemon 实际新建了一个同名空 volume。
+- 症状 / 退出码：复制命令成功但目标条目数为 0；本案外层源 fixture 本来也为空，因此没有影响游戏链，但留下一个内层错误 source volume。清理时按精确名称、创建时间、零 attach 和空 label 证明后删除，没有触及外层源卷。
+- 根因：容器内 Docker daemon 无法按名称引用宿主 daemon 的 volume；外层 mount 只在外层文件系统暴露为 `/fixtures/...`。
+- 正确做法：内层复制容器必须使用外层 daemon 可见的 bind source `/fixtures/steam-session`，目标才使用内层任务 volume；复制后分别以字节/条目数核对外层 bind source 与内层 target。
+- 预防检查：画清 daemon 边界；任何 volume 名只属于创建它的 daemon。socket/DinD 二级容器的 source 必须先证明对目标 daemon 可见，不能因名字相同推断共享。
+- 适用范围：DinD、Docker Socket 测试、二级容器 bind 与跨 daemon 数据预加载。
 
 ## 编码与换行快速检查
 

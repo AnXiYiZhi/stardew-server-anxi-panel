@@ -167,6 +167,39 @@ func TestNewGameCommandResultProtectedUntilTransactionTerminal(t *testing.T) {
 	}
 }
 
+func TestSaveImportCommandResultProtectedUntilTransactionCompleted(t *testing.T) {
+	dataDir := t.TempDir()
+	commandID := "0123456789abcdef0123456789abcdef"
+	operationID := "00112233445566778899aabbccddeeff"
+	journal, err := CreateImportJournal(dataDir, testImportRequest(dataDir, operationID, "76561198012345678"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal.Stage = ImportStageSavePersisting
+	journal.DurableSaveCommandID = commandID
+	if err := WriteImportJournal(dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+
+	protected, err := DurableCommandResultProtected(dataDir, commandID)
+	if err != nil || !protected {
+		t.Fatalf("protected=%v err=%v, want true", protected, err)
+	}
+	other, err := DurableCommandResultProtected(dataDir, "fedcba9876543210fedcba9876543210")
+	if err != nil || other {
+		t.Fatalf("unrelated protected=%v err=%v, want false", other, err)
+	}
+
+	journal.Stage = ImportStageCompleted
+	if err := WriteImportJournal(dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	protected, err = DurableCommandResultProtected(dataDir, commandID)
+	if err != nil || protected {
+		t.Fatalf("completed protected=%v err=%v, want false", protected, err)
+	}
+}
+
 func TestLegacyModSubmissionOmitsQueuedStatus(t *testing.T) {
 	dataDir := t.TempDir()
 	if got := submissionStatus(dataDir); got != "" {

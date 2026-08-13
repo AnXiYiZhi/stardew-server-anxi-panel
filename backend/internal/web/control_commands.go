@@ -85,7 +85,7 @@ func syncControlCommandResults(ctx context.Context, store *storage.Store, instan
 	}
 	for _, file := range files {
 		o := file.Outcome
-		protected, protectErr := sj.NewGameCommandResultProtected(instance.DataDir, o.CommandID)
+		protected, protectErr := sj.DurableCommandResultProtected(instance.DataDir, o.CommandID)
 		if protectErr != nil {
 			return protectErr
 		}
