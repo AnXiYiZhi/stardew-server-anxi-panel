@@ -6,6 +6,12 @@
 
 # v0.4.15 正式候选范围与门禁状态（2026-08-13，pre-release）
 
+## 2026-08-14 tag 前新增依赖安全门禁
+
+- 最终前端洁净 production audit 新命中 `GHSA-2v37-7h3g-55p8`：Vite 8.0.16 经 PostCSS 8.5.25 锁定 nanoid 3.3.17，而 advisory 修复边界为 3.3.18。门禁按发布阻断处理，没有忽略 high，也没有直接运行无边界 `npm audit fix`。
+- `frontend/package-lock.json` 只更新传递节点 nanoid 3.3.17 → 3.3.18、官方 npm tarball URL 与 integrity；PostCSS 原 `^3.3.16` 契约允许该补丁，`package.json` 与其它依赖节点不变。Node 24 重新洁净安装后 production audit=0，15 项前端状态测试与 production build 全部通过。
+- 该 lockfile 位于镜像 build context，因此此前最终身份 `df90240` 的 fresh、v0.4.14/v0.3.2 升级后功能与 unhealthy 回滚只保留为发现修复前的代码证据，不能用于 tag。提交依赖修复及本节后，必须重建精确 version/revision/date 候选并重复三条关键门禁；正式结果随 tag 后三仓证据一起回填。
+
 - 目标版本为 `0.4.15`，合并三组已完成且共用同一存档导入发布门禁的修复：`NEXUS-EXT-IDEMPOTENCY-1`、`SAVE-IMPORT-AUTO-UNCLAIM-1` 与 `SAVE-IMPORT-FIRST-UPLOAD-1`。Panel 新增 migration 013，浏览器扩展升为 0.1.3，内嵌 Control 升为 0.3.2；Junimo/SMAPI/game/auth 版本不变。
 - 正式候选必须从本地 `main` 的最终提交构建，build args 固定 `VERSION=0.4.15`、完整 commit SHA、UTC build date；本节后三张功能矩阵全部完成前禁止 push `main`、创建 `v0.4.15`、更新 registry/latest 或创建 Release。
 - 自动解绑必须在唯一隔离的真实旧导入夹具上走完整后台上传事务，而不是只调用 Control 命令；正常链、零 farmhand/在线玩家/错 Control/结果断流、Panel 或 Control 中断恢复、稳定 XML、角色/小屋/Mod/备份保留和资源归零均需有候选证据。

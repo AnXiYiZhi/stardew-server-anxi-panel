@@ -1,3 +1,9 @@
+# 2026-08-14 完成：发布门禁最小修复 nanoid high advisory（FE-DEPENDENCY-NANOID-SECURITY-1，未发布）
+
+- [x] 确认依赖链 `vite@8.0.16 → postcss@8.5.25 → nanoid@3.3.17`，只把 lockfile 传递依赖升级到修复版 3.3.18；不新增直接依赖、不扩大其它包版本范围。
+- [x] Node 24 洁净 `npm ci`、production audit 0 vulnerabilities、15 项状态测试与 production build 全部通过。
+- [ ] 从包含 lockfile 修复的最终 SHA 重建 0.4.15 候选并重复 fresh、v0.4.14/v0.3.2 升级后功能、unhealthy 回滚及正式发布收口；旧 `df90240` 候选不得用于 tag。
+
 # 2026-08-13 完成：恢复部署页国内 HTTP 加速卡片（DOCS-INSTALL-HTTP-CARD-3，未发布）
 
 - [x] README、新手指南、官网部署安装/一键脚本/Windows 页面及镜像部署文档，统一在官方 GitHub Release 命令正下方恢复“国内加速脚本（HTTP）”卡片，地址为 `http://anxinas.dpdns.org/run.sh`。

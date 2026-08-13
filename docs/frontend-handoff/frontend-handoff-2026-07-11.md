@@ -1,3 +1,14 @@
+# FE-DEPENDENCY-NANOID-SECURITY-1 接手记录（2026-08-14，completed，未发布）
+
+## 改了什么、影响哪些文件
+
+- 正式发布门禁在 2026-08-14 新命中 nanoid high advisory；依赖链为 Vite 8.0.16 → PostCSS 8.5.25 → nanoid 3.3.17。PostCSS 已允许 `^3.3.16`，所以只把 `frontend/package-lock.json` 的 nanoid 节点更新到 3.3.18 及其官方 npm tarball integrity；`package.json`、React 源码、API、扩展和用户交互均不变。
+
+## 如何验证、下一步注意事项
+
+- Node 24 任务容器中洁净 `npm ci` 后，production audit 为 0 vulnerabilities；15 项前端状态测试与 production build 全部通过。不要用 `npm audit fix` 无边界升级整个锁文件；后续 advisory 仍先解析依赖链和允许范围，再采用最小补丁并重跑完整前端门禁。
+- 因 lockfile 属于镜像 build context，先前 `df90240` 候选虽然已通过两条升级与 unhealthy 回滚，也不能再用于 tag。正式候选必须从包含本修复和发布文档的最终 SHA 重建，并重跑 fresh/restart、v0.4.14/v0.3.2 Web 升级后功能与 unhealthy 自动回滚。
+
 # DOCS-INSTALL-HTTP-CARD-3 接手记录（2026-08-13，completed，未发布）
 
 ## 改了什么、影响哪些文件

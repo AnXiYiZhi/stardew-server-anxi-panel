@@ -56,6 +56,30 @@
 - 预防检查：执行任务 `.ps1` 前先判断当前工具命令是否已经是直接 argv 层；直接 `-File` 参数只保留一层路径，不出现相邻 `''`。失败发生在脚本加载前时先确认产品链未开始，再清理 fixture 并修正调用。
 - 适用范围：Codex Desktop、PowerShell 7、`pwsh -File`、任务专属发布与 E2E 脚本。
 
+## 2026-08-14：Compose 清理后仍把已删除的卷当成必然存在
+
+- 环境：v0.4.14 → v0.4.15 最终候选升级后功能夹具，任务实例 Compose 使用真实 game-data 与 steam-session volume。
+- 错误模式：先执行 `docker compose down --volumes`，随后无条件 `docker volume inspect` 同一个运行期 game volume并要求再次删除。
+- 症状 / 退出码：Compose 已成功删除 server/auth、网络、steam-session、game volume，后续 inspect 报 `no such volume` 并退出 1；主升级夹具和 sentinel volume/root 尚在，产品门禁结果已完整输出且未被改变。
+- 根因：清理包装器没有把 Compose 的 `--volumes` 所有权行为纳入幂等终态，混用了“必须由本步骤删除”和“前一步允许已删除”两种断言。
+- 正确做法：在 down 前记录精确 mount volume 名；down 后把这些卷的缺失视为成功，只对仍存在且 owner label/名称都匹配的任务卷执行显式删除，最后统一断言容器、网络、记录卷和 root 全部为零。
+- 预防检查：每个清理阶段先定义资源是 required-present、optional-present 还是 required-absent；会删除资源的 Compose 命令之后不得再按 required-present 检查同一对象。
+- 适用范围：Docker Compose `down --volumes`、外部/内部/匿名卷、发布升级夹具与幂等资源清理。
+
+## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
+
+- 最近复发/补充：最终前端门禁为查 `tsBuildInfoFile` 再次执行 `rg ... frontend/tsconfig*.json`，Windows 未展开该通配符，`rg` 以 os error 123 退出；测试没有开始、文件未修改。随后先用 `rg --files frontend -g 'tsconfig*.json'` 得到三个精确文件，再逐个检索成功。该规则已在 AGENTS 提升仍复发；余下发布流程禁止向 `rg` 位置参数传任何 `*`，必须先生成精确路径数组。
+
+## 2026-08-14：用 PowerShell 对象模式解析 npm lockfile 的空字符串键
+
+- 环境：PowerShell 7，nanoid 最小 lockfile 升级后的 JSON 收口检查。
+- 错误模式：执行 `Get-Content package-lock.json -Raw | ConvertFrom-Json`，沿用普通配置 JSON 的对象投影方式。
+- 症状 / 退出码：PowerShell 报 package JSON 含空字符串属性名、只有 `-AsHashTable` 才支持并退出 1；此前 `git diff --check`、BOM/U+FFFD 和三行最小差异均已通过，文件没有被解析器修改。
+- 根因：npm lockfile v3 的 `packages` 合法包含根包键 `""`，PowerShell PSCustomObject 不能表示该属性名，不是 JSON 语法或 lockfile 损坏。
+- 正确做法：lockfile 使用 `ConvertFrom-Json -AsHashtable`，或以同版本 Node/npm 的洁净 `npm ci` 作为权威解析；普通应用 JSON 才继续用对象模式投影。
+- 预防检查：选择 JSON 解析器前确认 schema 是否允许空键、重复键或特殊属性；package-lock、Composer lock 等包管理器文件优先用其原生 CLI 加通用 hashtable 解析双证据。
+- 适用范围：npm package-lock v3、PowerShell 7 JSON 验证与依赖安全门禁。
+
 ## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
 
 - 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。

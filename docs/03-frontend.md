@@ -1,3 +1,8 @@
+# FE-DEPENDENCY-NANOID-SECURITY-1：发布门禁最小升级 nanoid（2026-08-14，completed，未发布）
+
+- v0.4.15 tag 前洁净 production audit 新命中 `GHSA-2v37-7h3g-55p8`：`vite@8.0.16 → postcss@8.5.25 → nanoid@3.3.17`，受影响范围为 `<3.3.18`。应用没有直接调用 nanoid；`postcss` 声明 `^3.3.16`，因此只更新 `frontend/package-lock.json` 的传递依赖为 3.3.18，不新增直接依赖、不扩大 Vite/React/PostCSS 版本范围。
+- Node 24 隔离环境重新执行洁净 `npm ci`、`npm audit --omit=dev --audit-level=high`、全部 15 项状态测试和 `tsc -b && vite build`，结果为 0 vulnerabilities 且全部通过。该锁文件进入正式镜像 build context，最终候选必须在本变更提交后重新构建并重复精确 OCI/升级/回滚门禁。
+
 # DOCS-INSTALL-HTTP-CARD-3：恢复国内加速脚本卡片（2026-08-13，completed，未发布）
 
 - 六个包含活动部署命令的入口统一保留“官方 GitHub Release 安装（推荐）”在上，并在其正下方恢复“国内加速脚本（HTTP）”卡片：`README.md`、`docs/user-guide/getting-started.md`、官网 `guide/deploy`、`deploy/quick-start`、`deploy/windows` 及 `docs/09-image-build.md`。官网使用 VitePress `tip` 卡片，GitHub Markdown 页面使用 `[!TIP]` 卡片。
