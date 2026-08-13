@@ -9,7 +9,7 @@
 - 最低 2 核 2 GB 内存、20 GB 可用磁盘；推荐 2 核 4 GB 以上。详细配置建议见 [README 系统要求](../../README.md#系统要求)。
 - 云服务器需要能开放公网端口；NAS 家用场景至少要能在局域网访问。
 
-## 二、一键部署（Linux 云服务器推荐）
+## 二、一键部署（Linux 云服务器 / NAS 推荐）
 
 官方 GitHub Release 安装（推荐）：
 
@@ -33,9 +33,11 @@ Windows 用户先在 PowerShell 用 `wsl --version` 与 `wsl -l -v` 确认 WSL2�
 
 Windows 支持的是 WSL2 + Docker Desktop 中的 Linux 容器，不是原生 `.exe` 或 Windows Service。建议把 `~/.anxi-panel` 留在 WSL2 Linux 文件系统中并保持 Docker Desktop 运行；长期 24 小时服务仍优先推荐 Linux/NAS。
 
-## 三、NAS 图形化部署
+## 三、NAS 部署选择
 
-没有 SSH 习惯的 NAS 用户可以直接在 Docker / Container Manager / 项目 / 应用栈里粘贴 compose 内容部署，完整步骤（含常见坑）见 [README 的 NAS 图形化部署](../../README.md#nas-图形化-docker-compose-部署)。
+NAS 用户也优先推荐在系统设置中开启 SSH，并运行上面同一条一键部署命令。脚本会自动生成和检查配置，后续更新与维护也更省心。
+
+只有已经非常熟悉 NAS 的 Docker / Container Manager / 项目 / 应用栈界面，能够自行正确处理宿主机路径、Docker Socket、端口、挂载和环境变量时，才建议使用[官网的 NAS 图形化部署（进阶）](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/nas)。
 
 ## 四、首次进入面板
 

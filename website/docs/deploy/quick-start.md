@@ -1,10 +1,12 @@
 # 一键脚本部署
 
-Linux 云服务器用户优先使用一键启动脚本 `run.sh`。脚本会生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和 `~/.anxi-panel/data`，自动创建 `PANEL_SECRET`，首次启动时可自动选择可用镜像源，也可手动切换阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR、Docker Hub 官方或自定义镜像地址。
+Linux 云服务器和 NAS 用户都优先使用一键启动脚本 `run.sh`。NAS 用户请先在系统设置中开启 SSH，再登录 NAS 终端运行本页命令。脚本会生成 `~/.anxi-panel/.env`、`docker-compose.yml` 和 `~/.anxi-panel/data`，自动创建 `PANEL_SECRET`，首次启动时可自动选择可用镜像源，也可手动切换阿里云 ACR、Docker Hub 加速链路、DaoCloud、GHCR、Docker Hub 官方或自定义镜像地址。
 
 Windows 10/11 用户也可以使用同一脚本，但需要先安装 WSL2 与 Docker Desktop，启用 Linux containers、WSL 2 backend 和对应发行版的 WSL Integration，然后从该 WSL2 发行版的 Linux 终端运行。项目不提供原生 Windows `.exe`。
 
 NAS 或特殊 Linux 环境中，如果 `$HOME` 不存在或不可写，脚本会自动把安装目录放到当前可写目录下的 `.anxi-panel`，例如在 `/vol1/1000/docker` 执行时会使用 `/vol1/1000/docker/.anxi-panel`。
+
+只有已经非常熟悉 NAS 的 Docker 图形界面，并且能够自行核对宿主机路径、Docker Socket、端口、挂载和环境变量时，才建议改用 [NAS 图形化部署（进阶）](/deploy/nas)。
 
 默认访问方式：
 

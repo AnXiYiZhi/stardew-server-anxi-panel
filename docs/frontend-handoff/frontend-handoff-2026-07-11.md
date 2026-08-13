@@ -1,3 +1,15 @@
+# DOCS-NAS-SSH-DEFAULT-1 接手记录（2026-08-13，completed，未发布）
+
+## 改了什么、影响哪些文件
+
+- NAS 部署页首屏改为默认推荐 SSH 一键脚本，原图形化 Compose 方案明确标记为“进阶”；只有熟悉宿主机绝对路径、Docker Socket、端口、持久化挂载和环境变量的 NAS Docker 图形界面用户才建议使用。
+- 影响 `website/docs/deploy/{nas,quick-start,requirements}.md`、`website/docs/guide/deploy.md`、`website/docs/index.md`、`website/docs/.vitepress/config.ts`、`README.md` 与 `docs/user-guide/getting-started.md`。没有修改 Panel React、后端 API、`deploy/run.sh` 或图形化 Compose 配置本身。
+
+## 如何验证、下一步注意事项
+
+- `npm.cmd --prefix website run docs:build` 通过（3.92 秒）。应用内 Browser 在 1440×900 和 390×844 验证新标题、SSH 推荐框、图形化进阶条件、零横向溢出、零 framework overlay 与零 console warn/error；点击推荐框的一键脚本链接后进入 `/deploy/quick-start.html`，目标页包含 Linux/NAS 共同优先使用脚本的说明。
+- 后续增加 NAS 部署入口时继续保持“SSH 一键脚本为默认、图形化 Compose 为熟练用户进阶方案”的顺序；不要再使用“NAS 用户通常没有 SSH 习惯”作为推荐图形化部署的理由。若脚本或 NAS 支持边界发生变化，需同步 README、新手指南、官网四个部署入口和侧栏标签。
+
 # FE-SAVE-IMPORT-FIRST-UPLOAD-1 接手记录（2026-08-13，completed，未发布）
 
 ## 改了什么、如何验证、下一步

@@ -56,7 +56,7 @@ Anxi Panel 是围绕 [JunimoServer](https://stardew-valley-dedicated-server.gith
 
 ### 一键部署（推荐）
 
-在 Linux 服务器终端运行：
+在 Linux 服务器或 NAS 的 SSH 终端运行：
 
 ```bash
 curl -fsSL -o run.sh https://github.com/anxiyizhi/stardew-server-anxi-panel/releases/latest/download/run.sh && chmod +x run.sh && bash run.sh
@@ -84,7 +84,7 @@ http://你的服务器IP:8090
 
 建议把面板数据保存在 WSL2 的 Linux 文件系统中，并保持 Docker Desktop 运行。Windows 防火墙仍需按联机场景允许面板和游戏端口；系统重启或 Docker Desktop 退出期间，服务器也会停止。
 
-Windows、NAS、飞牛 OS 和手动 Compose 部署请直接查看[部署指南](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/requirements)。
+NAS 用户也优先使用 SSH 一键部署；只有非常熟悉 Docker 图形界面时，才建议使用图形化 Compose。Windows、NAS、飞牛 OS 和手动 Compose 的完整说明请查看[部署指南](https://anxiyizhi.github.io/stardew-server-anxi-panel/deploy/requirements)。
 
 ## 🧭 日常管理
 

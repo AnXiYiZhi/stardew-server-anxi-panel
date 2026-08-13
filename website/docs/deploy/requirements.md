@@ -84,5 +84,6 @@ docker compose version
 ## 下一步
 
 - 云服务器用户：看 [一键脚本部署](/deploy/quick-start)。
-- NAS 用户：看 [NAS 图形化部署](/deploy/nas)。
+- NAS 用户：同样优先看 [一键脚本部署](/deploy/quick-start)，在系统设置中开启 SSH 后运行脚本。
+- 只有非常熟悉 Docker 图形界面的 NAS 用户，才建议看 [NAS 图形化部署（进阶）](/deploy/nas)。
 - Windows 用户：先完成本页的 WSL2 + Docker Desktop 设置，再看 [一键脚本部署](/deploy/quick-start)。

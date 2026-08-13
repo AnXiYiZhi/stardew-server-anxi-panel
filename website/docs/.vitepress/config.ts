@@ -38,7 +38,7 @@ export default defineConfig({
           items: [
             { text: '系统要求', link: '/deploy/requirements' },
             { text: '一键脚本部署', link: '/deploy/quick-start' },
-            { text: 'NAS 图形化部署', link: '/deploy/nas' },
+            { text: 'NAS 图形化部署（进阶）', link: '/deploy/nas' },
             { text: '端口与安全组', link: '/deploy/ports' }
           ]
         }

@@ -4,6 +4,12 @@
 
 状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；v0.4.14 已由 post-release Pages workflow 正式上线。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
 
+## 2026-08-13：NAS 默认推荐 SSH 一键部署（completed，未发布）
+
+- `deploy/nas` 改名为“NAS 图形化部署（进阶）”，首屏新增 SSH 一键部署推荐框；图形化 Compose 只面向能自行核对宿主机绝对路径、Docker Socket、端口、持久化挂载和环境变量的熟练用户。
+- `deploy/quick-start`、系统要求、部署安装、首页部署入口和侧栏统一把 Linux/NAS SSH 一键脚本放在默认位置；README 与内部新手指南同步。没有修改页面主题、依赖、Panel API、`run.sh` 或图形化 Compose 内容。
+- VitePress production build 3.92 秒通过。应用内 Browser 在 1440×900 与 390×844 验证标题、推荐框和进阶条件可见，root/body 无横向溢出、framework overlay 为 0、console warn/error 为 0；点击推荐框链接后精确进入 `/deploy/quick-start.html` 并显示 Linux/NAS 共同推荐说明。当前仅完成本地修改与验证，未宣称 Pages 已上线。
+
 ## 2026-08-13：官网展示 v0.4.14（已发布）
 
 - 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 切换为 v0.4.14；更新日志置顶说明 Control 启动等待、运行错误不再误导重装、持久新建档/角色定制耐久门禁、宿主重启保持停服、swappiness=60 与安全图形化 Compose 标准化。
@@ -126,7 +132,7 @@ website/docs/
 ├─ deploy/
 │  ├─ requirements.md          系统要求（云服务器/NAS 最低与推荐配置）
 │  ├─ quick-start.md           一键脚本部署（Linux 云服务器）
-│  ├─ nas.md                   NAS 图形化 Compose 部署
+│  ├─ nas.md                   NAS 图形化 Compose 进阶部署（首屏推荐 SSH 一键脚本）
 │  └─ ports.md                 端口与安全组/防火墙说明
 ├─ handbook/                   深度文档：按面板 9 个功能页逐页精讲（2026-07-08 新增）
 │  ├─ index.md                 深度文档导航页
@@ -161,7 +167,7 @@ website/docs/
 | `guide/first-login.md` | `docs/user-guide/getting-started.md` 第四节"首次进入面板" |
 | `deploy/requirements.md` | `README.md` "系统要求" |
 | `deploy/quick-start.md` | `README.md` "推荐：一键启动脚本" + `docs/user-guide/getting-started.md` 第二节 |
-| `deploy/nas.md` | `README.md` "NAS 图形化 Docker Compose 部署" |
+| `deploy/nas.md` | NAS 图形化 Compose 进阶部署；默认先推荐 `deploy/quick-start.md` 的 SSH 一键脚本 |
 | `deploy/ports.md` | `README.md` "云服务器安全组" + `docs/user-guide/getting-started.md` 第五节 |
 | `maintain/update.md` | `docs/user-guide/maintenance.md` "更新面板" |
 | `maintain/saves-backup.md` | `docs/user-guide/maintenance.md` "存档备份"、"计划重启" |
@@ -236,7 +242,7 @@ export default defineConfig({
           items: [
             { text: '系统要求', link: '/deploy/requirements' },
             { text: '一键脚本部署', link: '/deploy/quick-start' },
-            { text: 'NAS 图形化部署', link: '/deploy/nas' },
+            { text: 'NAS 图形化部署（进阶）', link: '/deploy/nas' },
             { text: '端口与安全组', link: '/deploy/ports' }
           ]
         }

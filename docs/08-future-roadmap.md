@@ -1,3 +1,9 @@
+# 2026-08-13 完成：NAS 默认推荐 SSH 一键部署（DOCS-NAS-SSH-DEFAULT-1，未发布）
+
+- [x] NAS 图形化部署页改为“进阶”入口，首屏默认推荐开启 SSH 并运行 `run.sh`；图形化 Compose 只推荐给能自行处理宿主机路径、Docker Socket、端口、持久化挂载和环境变量的熟练用户。
+- [x] 官网首页、系统要求、一键脚本、部署安装和侧栏，以及 README 与新手指南统一推荐顺序；Panel API、部署脚本和 Compose 内容不变。
+- [x] VitePress production build 通过；应用内 Browser 在 1440×900/390×844 验证新文案、进阶标题、推荐链接跳转、零横向溢出、零 overlay 和零 console warn/error。本任务没有创建 tag 或发布网站。
+
 # 2026-08-13 完成：无存档实例可直接上传现有存档（SAVE-IMPORT-FIRST-UPLOAD-1，未发布）
 
 - [x] 将“从未启动导致宿主 JunimoServer Mod 尚未物化”与真实版本不兼容分流：精确 `.125` image 在上传接管前复用 lifecycle 原子同步；新增 `save_import_runtime_prepare_failed`，不再误提示用户升级。

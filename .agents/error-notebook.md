@@ -906,6 +906,7 @@
 - 最近复发/补充：2026-08-09 核对 Junimo 兼容桥时，把不存在的 `backend/internal/controlmod` 与真实 `backend/internal/games/stardew_junimo` 一起传给 `rg`；有效匹配后仍产生 `os error 2`。Control Mod 源码实际内嵌于 `backend/internal/games/stardew_junimo/embedded/smapi-mod-src`，后续只从 `rg --files backend/internal/games/stardew_junimo` 发现并读取真实路径。
 - 最近复发/补充：2026-07-29 在 `rg` 位置参数中写入仓库不存在的 `internal`、`cmd` 目录，导致已有匹配结果后仍以路径错误结束。多目录搜索必须先用 `rg --files` 或 `Test-Path` 验证目录，只传当前仓库实际存在的根目录。
 - 最近复发/补充：2026-07-29 重构隔离预览时再次直接读取不存在的 `docs/.vitepress/config.mts`；随后先用 `rg --files --hidden docs/.vitepress` 找到真实的 `config.ts`。2026-07-31 搜索前端 tooltip 时又把未经发现的 `frontend/src/components` 作为 `rg` 位置参数，产生 `os error 2`；同时后续成功输出掩盖了原生命令状态。今后所有多目录搜索先用 `rg --files <已确认根目录>` 发现路径，或只从已确认存在的共同父目录配合 `-g` 搜索，并在 `rg` 后立即保存、判断 `$LASTEXITCODE`。
+- 最近复发/补充：2026-08-13 修改 NAS 部署文案时，把 VitePress 配置根按习惯写成不存在的 `website/.vitepress`，与真实的 `website/docs/.vitepress` 一起传给 `rg`，有效文档匹配之后仍以路径错误退出。随后停止使用猜测路径，先从 `website` 根执行 `rg --files --hidden -g '*vitepress*' -g 'config.*'` 发现配置位置，再读取精确命中路径。
 - 最近复发/补充：2026-08-01 一次组合读取对不存在路径产生 PowerShell non-terminating error，末尾显式 `exit 0` 又把它掩盖。只读发布脚本同样必须以 `$ErrorActionPreference=''Stop''` 开始，文件路径先发现后读取，成功分支才允许输出 0。
 - 环境：PowerShell 7，读取 VitePress 配置。
 - 错误模式：未先查看实际文件便读取 `website/docs/.vitepress/config.mts`，并在脚本末尾无条件 `exit 0`。
@@ -997,6 +998,8 @@
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
 
 - 最近复发/补充：2026-08-12 v0.4.11 本地官网点击 `<a href="./changelog">查看本次更新 →</a>` 时，先把预期 URL 硬编码为无扩展名 `/changelog`；点击实际完成并规范化到 `/changelog.html`，但 `expectNavigation` 等待错误目标 3 秒超时。读取 tab URL/H1/H2 证明页面已经正确进入日志，未重复点击。相对 Markdown href 在 VitePress router 下可能规范化；这类入口优先等待唯一目标 DOM，再读取实际 URL，不能只把源码 `getAttribute` 机械拼成等待值。
+- 最近复发/补充：2026-08-13 NAS 文档本地预览 readiness 直接请求 `/deploy/nas`，遗漏配置中的 Pages base `/stardew-server-anxi-panel/`，命中 VitePress 404。随后虽改为请求正确 base 首页，却又假定首页 SSR 必然包含 NAS 侧栏链接；首页只链接系统要求，因此探针再次安全失败。服务监听和构建均正常；最终从构建产物发现精确 HTML 路径，再读取目标页自身链接。VitePress 本地预览不能从源码相对路径假定站点根，HTTP 探针也不能假定其它路由的链接必然出现在首页。
+- 最近复发/补充：2026-08-13 NAS 文档 Browser QA 用 `getByRole('heading', {name: 'NAS 图形化部署（进阶）', exact: true})` 等待 H1；VitePress 把标题锚点的 `Permalink to ...` 一并纳入 accessible name，页面已正确渲染却没有精确匹配。随后先读 DOM snapshot 确认标题结构，再用唯一 `main h1` 读取可见文本或使用非精确 role 匹配；正文标题存在内嵌 permalink 时不要假设 accessible name 等于肉眼标题。
 - 最近复发/补充：2026-08-09 v0.4.9 官网 QA 再次按技能示例请求 `networkidle`，当前后端仍明确拒绝；改为 `domcontentloaded` 后等待首页 `v0.4.9` 可见并读取 DOM/console。随后 `expectNavigation` 又传入正则 URL，动作实际已完成但包装器报 `requires a url`；先读取 `tab.url()` 发现已到目标页，再按目标 DOM 验证，没有盲目重复点击。两项规则已提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-01 Browser 的只读 `evaluate` 中，SVG 元素代理不提供 `getBBox()`，调用返回 `TypeError`。SVG 视觉校验改用 `getBoundingClientRect()`、静态 `viewBox`/路径坐标和截图联合判断；调用非基础 DOM 方法前先确认当前代理实际支持。
 - 最近复发/补充：2026-07-29 本地预览后期进入 `ERR_CONNECTION_REFUSED` 错误页，Browser 随即因 `data:` 错误页 URL 策略拒绝 reload/close 链。此时不得继续尝试替代浏览器或 CDP 绕过；保留此前证据、精确停止 dev server，并以 production build 作为最终非视觉门禁。同轮还误把通用 Playwright 的 `setViewportSize`、对象形式 `waitForURL` 和代理元素原生 `click()` 套到封装 API；响应式尺寸与交互必须使用当前 Browser 暴露的 viewport 与 locator 能力。
@@ -1104,6 +1107,7 @@
 
 - 最近复发/补充：2026-08-10 v0.4.10 官网 CSS 修复本地验收又在嵌套 `pwsh` 中使用 `Start-Process npm.cmd`、隐藏窗口和日志重定向，命令再次在执行前被策略拒绝，端口/进程均未创建。该错误已重复，预防规则提升到 `AGENTS.md`：Windows 本地预览直接作为可等待的 `shell_command` cell 运行，禁止再用 `Start-Process` 后台派生。
 - 同轮终止可等待 cell 后，VitePress 子进程仍监听 4187；首次清理前把整条后代统一要求匹配 `docs:preview|vitepress preview`，但叶子真实 argv 为 `vitepress.js preview docs`，归属检查安全失败且未停止进程。正确做法是分别核对根进程的 `npm.cmd run docs:preview`、叶子绝对工作区 `vitepress.js preview docs`、固定端口及完整 ParentProcessId 链，再按精确 PID 自底向上停止并复查 listener；不要用一个过窄字符串模式替代进程树归属。
+- 最近复发/补充：2026-08-13 NAS 文档预览清理时，已读到监听叶子为 `vitepress.js preview docs`，却仍用拼错且过窄的单个 `-like '*...*nodes*'` 模式验证，安全断言拒绝停止且进程未变。随后按本条既有规则读取监听 PID 的完整父进程链，分别核对工作区、`vitepress.js`、`preview docs` 和精确端口，再自底向上幂等停止；不得把多个条件压成未经探针的通配字符串。
 - 第二轮本地预览调用 `functions.wait(terminate=true)` 本身等待 124 秒后以 124 超时，VitePress 仍监听 4187；没有把“已请求终止”当成实际清理。随后只读取得监听 PID 与五级 ParentProcessId/argv，确认完整任务归属后自底向上停止并复查 `-State Listen` 为 0。任何 cell terminate/timeout 结果都不是子进程退出证据，必须按端口和进程树复核。
 - 环境：Codex Windows `shell_command`，准备启动 VitePress 本地开发服务器。
 - 错误模式：在嵌套 `pwsh` 中用 `Start-Process npm.cmd`、重定向日志并隐藏窗口。

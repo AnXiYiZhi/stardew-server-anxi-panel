@@ -1,6 +1,10 @@
-# NAS 图形化部署
+# NAS 图形化部署（进阶）
 
-NAS 用户通常没有 SSH 习惯，可以直接用飞牛 / 群晖 / 绿联 / 威联通等系统里的 Docker、容器、Container Manager、项目、Compose、应用栈功能部署。不同 NAS 菜单名字不一样，但核心步骤一致。
+::: tip 推荐：使用 SSH 一键部署
+NAS 用户也优先推荐开启 SSH，并按 [一键脚本部署](/deploy/quick-start) 运行 `run.sh`。脚本会自动生成和检查部署配置，后续更新与维护也更省心。
+:::
+
+只有当你已经非常熟悉飞牛 / 群晖 / 绿联 / 威联通等 NAS 的 Docker 图形界面，能够正确处理宿主机绝对路径、Docker Socket、端口、持久化挂载和环境变量时，才建议使用本页的图形化部署方式。不同 NAS 菜单可能叫“Docker”“容器”“Container Manager”“项目”“Compose”或“应用栈”，但核心步骤一致。
 
 ## 准备工作
 

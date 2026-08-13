@@ -1,3 +1,9 @@
+# DOCS-NAS-SSH-DEFAULT-1：NAS 默认推荐 SSH 一键部署（2026-08-13，completed，未发布）
+
+- 官网 NAS 页标题改为“NAS 图形化部署（进阶）”，首屏提示 NAS 用户也应优先开启 SSH 并运行 `run.sh`；只有非常熟悉 NAS Docker 图形界面，能自行处理宿主机路径、Docker Socket、端口、持久化挂载和环境变量时，才建议继续使用图形化 Compose。
+- `website/docs/deploy/{nas,quick-start,requirements}.md`、`guide/deploy.md`、首页部署入口和 VitePress 侧栏统一同一推荐层级；README 与新手指南同步，避免其它入口仍把 NAS 直接导向图形化方案。没有修改 Panel React、API、部署脚本或 Compose 内容。
+- `npm.cmd --prefix website run docs:build` 3.92 秒通过。应用内 Browser 在 1440×900 与 390×844 验证标题、推荐框和进阶条件可见，root/body 无横向溢出、framework overlay 为 0、console warn/error 为 0；实际点击推荐框“一键脚本部署”进入 `/deploy/quick-start.html`，目标页同时显示 Linux/NAS 优先使用脚本的说明。
+
 # FE-SAVE-IMPORT-FIRST-UPLOAD-1：首次上传运行组件错误分流（2026-08-13，completed，未发布）
 
 - 存档上传表单、preview/commit 请求、hostHandling 选择和轮询流程不变；后端现在会为从未启动、无存档的实例自行准备 Junimo 静态组件并建立事务专属维护 bootstrap，前端不需要先诱导用户启动一个新档。
