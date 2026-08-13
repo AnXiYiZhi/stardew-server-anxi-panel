@@ -1,8 +1,15 @@
-# 2026-08-14 完成：发布门禁最小修复 nanoid high advisory（FE-DEPENDENCY-NANOID-SECURITY-1，未发布）
+# 2026-08-14 已发布：v0.4.15 Nexus 幂等、自动解绑与无存档首次上传
+
+- [x] annotated `v0.4.15` 固定指向 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`；Compatibility `31725203858` 与 Release workflow `31725256195` 成功。
+- [x] v0.4.14/v0.3.2 Web 一键升级后的 Nexus 重放、错误 runtime 同 token 恢复、空存档首次上传、2/1/0 自动解绑、Panel 重启耐久，以及 unhealthy 自动回滚全部通过。
+- [x] Docker Hub、ACR、GHCR 的 `0.4.15/latest` 六引用统一 digest=`sha256:b91e3cfd8175305723e0b97feb7c4c202179f2e229aff4f6145fe60b354a5c33`；三个精确镜像 fresh/restart 与四项 Release 资产核验通过。
+- [x] nanoid 最小升级到 3.3.18，production audit=0；全部任务临时文件、DinD、registry、容器/网络/卷按 owner 精确清理为零，历史只读夹具未改。
+
+# 2026-08-14 已发布：发布门禁最小修复 nanoid high advisory（FE-DEPENDENCY-NANOID-SECURITY-1）
 
 - [x] 确认依赖链 `vite@8.0.16 → postcss@8.5.25 → nanoid@3.3.17`，只把 lockfile 传递依赖升级到修复版 3.3.18；不新增直接依赖、不扩大其它包版本范围。
 - [x] Node 24 洁净 `npm ci`、production audit 0 vulnerabilities、15 项状态测试与 production build 全部通过。
-- [ ] 从包含 lockfile 修复的最终 SHA 重建 0.4.15 候选并重复 fresh、v0.4.14/v0.3.2 升级后功能、unhealthy 回滚及正式发布收口；旧 `df90240` 候选不得用于 tag。
+- [x] 从包含 lockfile 修复的最终 SHA `d84157d` 重建 0.4.15 候选，fresh、v0.4.14/v0.3.2 升级后功能、unhealthy 回滚及正式发布收口全部通过；旧 `df90240` 候选未用于 tag。
 
 # 2026-08-13 完成：恢复部署页国内 HTTP 加速卡片（DOCS-INSTALL-HTTP-CARD-3，未发布）
 

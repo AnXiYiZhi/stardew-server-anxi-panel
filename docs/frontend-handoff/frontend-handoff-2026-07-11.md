@@ -1,4 +1,8 @@
-# FE-DEPENDENCY-NANOID-SECURITY-1 接手记录（2026-08-14，completed，未发布）
+# v0.4.15 前端发布接手状态（2026-08-14，released）
+
+- annotated `v0.4.15` 固定在 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`；Compatibility `31725203858` 与 Release workflow `31725256195` 成功。Docker Hub、ACR、GHCR 的 `0.4.15/latest` 统一 digest=`sha256:b91e3cfd8175305723e0b97feb7c4c202179f2e229aff4f6145fe60b354a5c33`，逐仓 fresh/restart health/database/version 通过，GitHub Release 四项资产与 tag 源一致。
+
+# FE-DEPENDENCY-NANOID-SECURITY-1 接手记录（2026-08-14，released in v0.4.15）
 
 ## 改了什么、影响哪些文件
 

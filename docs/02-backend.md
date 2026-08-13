@@ -1,3 +1,8 @@
+# v0.4.15 后端发布状态（2026-08-14，released）
+
+- `v0.4.15@d84157dc8a3abc83d13d29c276d6ed332e901ce7` 已正式发布。Nexus 持久幂等、Control 0.3.2 自动解绑、无存档首次上传 bootstrap、二级 helper 与实例 Compose 两层宿主路径映射均在 v0.4.14/v0.3.2 Web 升级得到的新 Panel 上完成真实复验；unhealthy 自动回滚也通过。
+- Release workflow `31725256195`、Compatibility `31725203858` 成功；三仓 `0.4.15/latest` 统一 digest=`sha256:b91e3cfd8175305723e0b97feb7c4c202179f2e229aff4f6145fe60b354a5c33`，逐仓 fresh/restart health/database/version 通过。完整候选身份、事务证据、资产摘要与清理记录见 `docs/09-image-build.md`。
+
 # SAVE-IMPORT-FIRST-UPLOAD-1：无存档实例首次上传可直接进入事务导入（2026-08-13，completed，未发布）
 
 - 根因有两层：从未启动的实例尚未把 server image 内的 JunimoServer Mod 物化到宿主，旧静态检查因此误报“需要升级”；同时零存档没有可加载的非目标维护世界，直接启动会由游戏创建无关新档，而上游又禁止导入当前活动目标。

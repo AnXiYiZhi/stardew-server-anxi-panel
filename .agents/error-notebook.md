@@ -80,6 +80,30 @@
 - 预防检查：选择 JSON 解析器前确认 schema 是否允许空键、重复键或特殊属性；package-lock、Composer lock 等包管理器文件优先用其原生 CLI 加通用 hashtable 解析双证据。
 - 适用范围：npm package-lock v3、PowerShell 7 JSON 验证与依赖安全门禁。
 
+## 2026-08-14：把本地完整 SHA 候选契约套到正式 workflow 的 12 位 revision
+
+- 环境：v0.4.15 发布后三仓六引用 OCI 元数据核验，Docker Desktop containerd image store。
+- 错误模式：要求正式镜像 `org.opencontainers.image.revision` 等于 40 位 tag commit，并对共享 image ID 的 `RepoDigests` 无条件取第一项。
+- 症状 / 退出码：六引用实际 digest/image ID、version、created、平台完全一致，但 workflow 明确写入的 revision 为 `d84157dc8a3a`，断言退出 1；同时 Docker inspect 因同一 image ID 关联三仓标签，第一项 RepoDigest 恰为 ACR，不能证明当前 ref 的仓库归属。镜像、registry 和 Release 未被修改。
+- 根因：本地候选为方便精确追溯使用 40 位 SHA，而 `.github/workflows/release.yml` 第 80 行的既有正式契约是 `${GITHUB_SHA::12}`；历史 v0.4.14/v0.4.11 也按 12 位验收。`RepoDigests` 属于 image object 的全部已知仓库摘要，不按当前 inspect ref 自动排序。
+- 正确做法：正式镜像要求 revision 精确等于 tag commit 的 12 位前缀，并另行核对 annotated tag peeled commit 的完整 40 位 SHA；RepoDigest 必须按当前 repository 前缀筛选且恰有一个匹配。按该契约重验后六引用统一 digest `sha256:b91e3c...`。
+- 预防检查：发布元数据断言先读取 workflow 的实际 build args，明确完整/短 SHA 层级；任何共享 image ID 的 RepoDigests 都使用 repository 前缀匹配，禁止 `Select-Object -First 1`。
+- 适用范围：多 registry 同 image ID、OCI revision、Docker inspect 与正式发布回拉。
+
+## 2026-08-14：最终 DinD 构建的 Alpine runtime 层瞬时 VFS I/O error
+
+- 环境：任务专属 DinD `vfs` storage driver，从含 nanoid 3.3.18 的最终 SHA 构建 Panel；frontend install/audit/build 和 Go 编译层均已完成。
+- 错误模式：不是命令参数错误；Alpine `apk add docker-cli` 写 `/usr/bin/docker` 时返回单次 `I/O error`，最终 stage 退出 1。
+- 症状 / 退出码：BuildKit 没有生成目标 candidate tag；`df -h/-i` 显示磁盘 19%、inode 4%，daemon 无错误尾日志，独立 Alpine 容器在 `/usr/bin` 创建文件成功。
+- 根因：证据支持 DinD VFS/runtime layer 的瞬时写入故障，不支持源码、依赖包、磁盘不足或只读文件系统；具体底层瞬态不可进一步稳定复现。
+- 正确做法：先确认目标 tag 为零、磁盘/inode、daemon、独立可写层和已完成产品层，再只做一次有界同参数重试；重试命中已校验产品缓存并成功生成精确候选，随后完整回拉、fresh、两条升级和 unhealthy 回滚均通过。
+- 预防检查：runtime layer 出现 I/O error 时禁止盲目循环；先区分磁盘/inode/daemon/只读/单 layer 瞬态，保存原退出码并限定一次重试，若复发立即停止发布检查 Docker Desktop 存储。
+- 适用范围：Docker Desktop、DinD VFS、BuildKit final stage 与正式候选构建。
+
+## 2026-08-14：PowerShell 裸露 `^{}` 让 annotated tag 核验丢失 revision
+
+- 最近复发/补充：本地 annotated `v0.4.15` 创建后，核验使用未引用的 `git rev-parse v0.4.15^{}`；PowerShell 重新解释花括号，Git 实际收到空 revision 并以 ambiguous argument 退出。push 尚未执行，tag 对象已正确创建且远端为零。随后使用 `git rev-parse 'v0.4.15^{}'` 核对 peeled commit 与 HEAD 相同，再完成首次 push；没有删除、移动或重建 tag。复杂 Git revision 中的 `@{}`、`^{}`、`~`、`^` 一律作为单引号字面量 argv。
+
 ## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
 
 - 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。

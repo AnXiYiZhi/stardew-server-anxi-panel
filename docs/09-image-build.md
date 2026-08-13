@@ -1,3 +1,11 @@
+# v0.4.15 正式发布结果（2026-08-14，released）
+
+- annotated tag `v0.4.15` 固定指向 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`，tag 对象为 `39038d64a7068a9233ef74757b011453dc86fbe5`；创建前本地 `main` 工作树干净且与 `origin/main` 精确同步。Compatibility matrix `31725203858` 成功，Release workflow `31725256195` 从 2026-08-13T17:21:02Z 运行到 17:28:48Z，7 分 43 秒内完成全部 release gates、三仓 push 和 GitHub Release 创建。
+- 最终本地候选 image ID=`sha256:e47f0a4e6ba973e4256b6941e7eb4cfa8f7d6d6e37c3eb3c1fd948b13042da7d`，受控 registry digest=`sha256:ec550a39ce4b6353b4d0380a26708e17797739deabd9608f12b00f32107e4efa`，version=`0.4.15`、完整 revision=`d84157dc8a3abc83d13d29c276d6ed332e901ce7`、created=`2026-08-13T17:01:15Z`。fresh/restart 以及 v0.4.14、v0.3.2 两条真实 Web 一键升级均通过；升级后 Nexus 同 key 复用、错误 runtime 409 后同 token 恢复、无存档首次上传、Control 自动解绑 total/customized/bound=`2/1/0`、bootstrap 清理和 Panel 重启耐久全部成立。由同一候选制作的 unhealthy 目标以 `health_check_failed` 自动恢复 v0.4.14，长期数据与非目标 Docker 资源保持。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.15` 与 `latest` 六个实际回拉引用统一为 digest/image ID=`sha256:b91e3cfd8175305723e0b97feb7c4c202179f2e229aff4f6145fe60b354a5c33`，OCI version=`0.4.15`、revision=`d84157dc8a3a`、created=`2026-08-13T17:26:43Z`。正式 workflow 按既有契约使用 tag commit 的 12 位前缀；三个精确镜像分别用独立 container/network/volume 完成 fresh + restart，均返回 Docker health healthy、`/health.status=ok`、database=ok、`/api/version=0.4.15@d84157dc8a3a`、fresh setup 未初始化，测试运行资源终态为 0。
+- GitHub Release `Stardew Server Anxi Panel 0.4.15` 为非 draft、非 prerelease。四项资产均与 tag 源字节一致：`run.sh` 33,793 B / `7263bfa323b2bf4eb94674bde9c77a57a8b86734c606055c9cdef2fc1e130787`，`migrate-fnos.sh` 34,269 B / `90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`，`repair-junimo-upgrade.sh` 8,521 B / `4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`，`repair-junimo-0.3.5.sh` 14,585 B / `13a07708d23e02c002c979eef28639bc2fe283a2e5988e228afc0c068f51cd0e`。
+- tag 前新增的 nanoid high advisory 以最小 3.3.17 → 3.3.18 lockfile 修复收口，洁净 production audit=0、15 项状态测试和 production build 通过。最终候选首次 runtime layer 构建遇到一次 DinD VFS/APK 写 `/usr/bin/docker` I/O error；目标 tag 为 0、磁盘/inode 充足且独立可写探针通过后，唯一有界重试成功，没有关闭 TLS/APK 签名或降低门禁。全部 `.agents/v0415-*`、277 MB SDK tar、隔离 DinD、registry、任务容器/网络及 15 个任务卷已按 owner 精确清理；三个只读历史夹具源卷保持未改，没有执行 prune。
+
 # 部署入口恢复国内 HTTP 加速卡片（2026-08-13，已完成，未发布）
 
 - 所有活动 `run.sh` 部署命令入口现统一为“官方 GitHub Release 安装（推荐）”在上、“国内加速脚本（HTTP）”卡片在下；本文件的一键启动说明已同步恢复该卡片，完整地址只在实际命令区出现一次。

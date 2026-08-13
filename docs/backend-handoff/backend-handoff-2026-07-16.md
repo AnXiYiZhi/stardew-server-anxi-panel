@@ -2,6 +2,8 @@
 
 ## 2026-08-14 发布门禁进展
 
+- 发布已完成：annotated `v0.4.15` 固定在 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`；Compatibility `31725203858` 与 Release workflow `31725256195` 成功，三仓 `0.4.15/latest` 统一 digest=`sha256:b91e3cfd8175305723e0b97feb7c4c202179f2e229aff4f6145fe60b354a5c33`。三个精确镜像 fresh/restart 与四项 Release 资产已验收，任务资源清理为零。
+
 - 代码等价候选 `5fc7e4c` 已分别从 v0.4.14、v0.3.2 的标准 Compose 旧 Panel 走 Web 一键更新；两条链都保留数据库、管理员、实例、Mod、备份、审计、空 saves 与非目标游戏容器/volume，并在升级后 Panel 重启保持终态。
 - 升级后的新 Panel 均完成 Nexus 同 key 重放、错误 runtime 409 且 transaction=0、同 token 恢复 `.125`、空 saves 首次上传及 Control 自动解绑。结果为 farmhand total=2/customized=1/bound=0，bootstrap=0、目标目录唯一、preimport 可读、journal completed，Panel 再重启仍保持；这证明 helper host-path 映射和 `${INSTANCE_HOST_DATA_DIR}` Compose bind 两层修复必须同时存在。
 - unhealthy 候选从 v0.4.14 更新后以 `health_check_failed` 自动回滚，旧 Panel 与长期数据、备份和非目标 Docker 资源保持。完整 Go/前端/网站/兼容/脚本/Docker integration/Control 编译门禁也已通过，详情见 `docs/09-image-build.md`。
