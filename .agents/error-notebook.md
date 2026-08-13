@@ -2104,6 +2104,16 @@
 - 预防检查：远端 daemon 的 Compose 门禁必须分别确认“谁解析 compose 文件”和“谁执行 Docker API”；配置只在远端可见时不得由宿主 CLI 解析。关键清理拆成有输出的 down、终态核对、volume 删除、Panel 删除四步。
 - 适用范围：DinD、SSH Docker context、远端 daemon 与任何 client/daemon 文件系统不共享的 Compose 操作。
 
+## 2026-08-13：人工把短 commit SHA 补写成错误的完整 SHA
+
+- 环境：PowerShell 7，准备构建 v0.4.15 精确 revision 候选。
+- 错误模式：知道新提交短 SHA 为 `6a8b48e` 后，在发布断言中手工补写了一个并非 Git 返回值的 40 位字符串，再与 `git rev-parse HEAD` 比较。
+- 症状 / 退出码：前置断言立即报 commit mismatch 并退出 1；`docker build` 尚未执行，没有候选 tag、容器、网络或 volume 变化。
+- 根因：把短 SHA 当成可人工扩展的标识，而不是只读展示前缀；完整对象名的后 33 位不可推断。
+- 正确做法：一次读取 `$candidateCommit = (git rev-parse HEAD).Trim()`，只验证它匹配 40 位小写十六进制并与当前 `main`/计划状态一致；同一变量原样传入 build arg、OCI 与 `/api/version` 断言。人类记录只使用短前缀，不反向生成完整值。
+- 预防检查：发布脚本禁止出现手写 40 位候选 SHA；所有完整 revision 必须直接来自 Git 命令或已验证的 tag/ref 解析结果。
+- 适用范围：Docker build args、workflow commit 查询、OCI revision、tag/source 和发布证据。
+
 ## 2026-08-13：外层只读 volume mount 名被误当成 DinD 内同名 volume
 
 - 环境：Docker Desktop 外层 DinD，宿主 volume 只读挂到外层 `/fixtures/steam-session`，再由内层 daemon 创建复制容器。
