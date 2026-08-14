@@ -1,0 +1,170 @@
+name: Validate release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable version to validate (for example 0.4.16)
+        required: true
+        type: string
+      previous_version:
+        description: Previous stable version; empty uses the latest GitHub Release
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: release-candidate-main
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+jobs:
+  candidate:
+    name: Build and validate immutable candidate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GHCR_IMAGE: ghcr.io/anxiyizhi/stardew-server-anxi-panel
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            website/package-lock.json
+
+      - name: Resolve candidate identity
+        id: meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PREVIOUS_VERSION: ${{ inputs.previous_version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION#v}"
+          previous="${INPUT_PREVIOUS_VERSION#v}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "version must be an exact stable semantic version" >&2
+            exit 1
+          fi
+          if [[ -z "$previous" ]]; then
+            previous="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+            previous="${previous#v}"
+          fi
+          if [[ ! "$previous" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "previous_version must be an exact stable semantic version" >&2
+            exit 1
+          fi
+          highest="$(printf '%s\n%s\n' "$previous" "$version" | sort -V | tail -n 1)"
+          if [[ "$highest" != "$version" || "$previous" == "$version" ]]; then
+            echo "candidate version must be newer than previous version" >&2
+            exit 1
+          fi
+          short_sha="${GITHUB_SHA:0:12}"
+          build_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          local_image="anxi-release-candidate:$version-$short_sha"
+          candidate_ref="$GHCR_IMAGE:candidate-$version-$short_sha"
+          artifact_name="release-candidate-$version-$short_sha"
+          {
+            echo "version=$version"
+            echo "previous=$previous"
+            echo "base_ref=v$previous"
+            echo "short_sha=$short_sha"
+            echo "build_date=$build_date"
+            echo "local_image=$local_image"
+            echo "candidate_ref=$candidate_ref"
+            echo "artifact_name=$artifact_name"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Run selected code gates
+        shell: bash
+        run: bash scripts/run-release-gates.sh --version "${{ steps.meta.outputs.version }}" --base-ref "${{ steps.meta.outputs.base_ref }}"
+
+      - name: Validate Windows candidate wrapper
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath 'scripts/release-candidate.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+
+      - name: Build and validate candidate image
+        shell: bash
+        run: |
+          bash scripts/release-candidate.sh --version "${{ steps.meta.outputs.version }}" --previous-version "${{ steps.meta.outputs.previous }}" --commit "$GITHUB_SHA" --build-date "${{ steps.meta.outputs.build_date }}" --image "${{ steps.meta.outputs.local_image }}" --metadata-output "$RUNNER_TEMP/candidate-local.json"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push validated candidate and seal metadata
+        id: seal
+        shell: bash
+        env:
+          LOCAL_IMAGE: ${{ steps.meta.outputs.local_image }}
+          CANDIDATE_REF: ${{ steps.meta.outputs.candidate_ref }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PREVIOUS_VERSION: ${{ steps.meta.outputs.previous }}
+          BUILD_DATE: ${{ steps.meta.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          docker tag "$LOCAL_IMAGE" "$CANDIDATE_REF"
+          docker push "$CANDIDATE_REF"
+          repository="${CANDIDATE_REF%:*}"
+          mapfile -t digests < <(docker image inspect "$CANDIDATE_REF" | jq -r --arg prefix "$repository@" '.[0].RepoDigests[]? | select(startswith($prefix)) | split("@")[1]' | sort -u)
+          if [[ "${#digests[@]}" -ne 1 || ! "${digests[0]}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "unable to resolve one exact candidate digest" >&2
+            exit 1
+          fi
+          digest="${digests[0]}"
+          jq --arg candidateRef "$CANDIDATE_REF" --arg digest "$digest" --arg workflowRunId "$GITHUB_RUN_ID" --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" '. + {candidateRef:$candidateRef,digest:$digest,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt}' "$RUNNER_TEMP/candidate-local.json" >"$RUNNER_TEMP/candidate.json"
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+
+      - name: Upload immutable candidate proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: ${{ runner.temp }}/candidate.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Candidate summary
+        shell: bash
+        run: |
+          {
+            echo "## Release candidate passed"
+            echo
+            echo "- Version: \`${{ steps.meta.outputs.version }}\`"
+            echo "- Previous Web-upgrade source: \`${{ steps.meta.outputs.previous }}\`"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Candidate: \`${{ steps.meta.outputs.candidate_ref }}@${{ steps.seal.outputs.digest }}\`"
+            echo "- Covered: code regression, fresh install/restart, real Web upgrade, unhealthy rollback, SQLite/data/non-target-container preservation"
+          } >>"$GITHUB_STEP_SUMMARY"

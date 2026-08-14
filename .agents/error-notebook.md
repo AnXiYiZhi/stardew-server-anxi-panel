@@ -2,6 +2,96 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-14：路径正则的斜杠转义未在补丁包装后落盘
+
+- 环境：更新 TypeScript 响应式测试，使其断言 candidate workflow 调用统一门禁脚本。
+- 错误模式：在 JavaScript 模板承载的 `apply_patch` 中写正则 `/scripts\/run-release-gates\.sh/`，包装层消费转义后实际落盘为 `/scripts/run-release-gates.sh/`。
+- 症状 / 退出码：Node 在断言执行前报 `ERR_INVALID_TYPESCRIPT_SYNTAX: Expression expected`；第一次修补又按预期转义后的文本找上下文，`apply_patch` verification failed 且零修改。
+- 根因：同一反斜杠同时承担外层模板和内层正则转义，且没有先读取实际落盘行。
+- 正确做法：路径存在性改用 `releaseCandidateWorkflow.includes('scripts/run-release-gates.sh')`，不再为固定字符串引入正则；补丁失败后先 `rg` 读取精确实际行再修。
+- 预防检查：固定路径/命令优先 `includes` 或固定字符串匹配；跨层补丁后的正则必须读取落盘源码再运行测试，不能由补丁输入推断结果。
+- 适用范围：JavaScript/TypeScript 正则、路径断言、`functions.exec` 中的 `apply_patch`。
+
+## 2026-08-14：复用响应文件导致后续版本探针覆盖 apply 终态
+
+- 环境：v0.4.15 → unhealthy 0.4.16 真实 Web 回滚 E2E；持久 apply 已到 `failed_rolled_back`。
+- 错误模式：`wait_apply_phase` 与 `wait_version` 共用同一个 `response.json`，先等回滚成功、再读取版本，最后才从已被覆盖的文件断言 `errorCode`。
+- 症状 / 退出码：产品实际已恢复 v0.4.15，但夹具从 `/api/version` JSON 读不到 `errorCode`，虚假报告“未返回 health_check_failed”。
+- 根因：没有在状态响应仍具备对应 schema 时立即完成断言，把可变临时文件当成跨步骤持久证据。
+- 正确做法：`wait_apply_phase failed_rolled_back` 返回后立即断言 `errorCode=health_check_failed`，之后才调用 `wait_version`；不同 schema 需要长期保留时使用不同文件。
+- 预防检查：任何复用响应文件的 E2E helper，调用下一个 HTTP 探针前必须消费完当前 schema；断言失败时先打印当前 JSON 顶层字段，确认没有被相邻请求覆盖。
+- 适用范围：HTTP E2E、轮询状态机、共享临时响应文件和升级/回滚验收。
+
+## 2026-08-14：apply 返回后立即看到旧版本就提前开始短回滚终态预算
+
+- 环境：v0.4.15 真实 Web apply 到受控 unhealthy 0.4.16，旧 Panel 与 updater helper 异步切换。
+- 错误模式：`start_apply` 返回后先调用 `wait_version 0.4.15`，旧容器在真正切换前仍可响应，导致该断言立即成功；随后只给 `failed_rolled_back` 60 秒。
+- 症状 / 退出码：update check、dry-run、管理员 apply 都已成功开始，但夹具在产品正常 unhealthy 健康预算结束前报 `timed out waiting for apply phase failed_rolled_back`；包装器自动清理。
+- 根因：把“尚未离开旧版本”和“目标失败后已经恢复旧版本”混为同一状态，并使用短于产品健康等待的终态预算。
+- 正确做法：先通过持久 apply API 最长 360 秒等待精确 `failed_rolled_back`，再验证 `/api/version` 已恢复上一正式版；超时打印最后一个 apply JSON。
+- 预防检查：异步自更新必须以持久事务 phase 建立顺序，health/version 只能作为终态后的附加验收；任何测试预算不得短于产品对应阶段预算。
+- 适用范围：Panel Web updater、unhealthy 回滚、断线重连与异步容器替换 E2E。
+
+## 2026-08-14：替换 Nginx 主配置后仍假定默认静态 root 生效
+
+- 环境：任务专属 DinD、受控 TLS `api.github.com`、正式 v0.4.15 Panel 的真实 update check。
+- 错误模式：完整替换 `/etc/nginx/nginx.conf` 后，在 location 中使用 `try_files /releases.json`，却没有在新配置中声明 root。
+- 症状 / 退出码：TLS、DNS 与 HTTP 均命中受控 Nginx，但 `POST /api/system/update/check` 返回业务 HTTP 200，内部 `checkStatus=error/checkError=GitHub Release 返回 HTTP 404`；dry-run/apply 尚未开始，包装器自动清理资源。
+- 根因：镜像默认站点的 root 属于被替换的配置上下文，不能假定在自定义主配置中继续存在。
+- 正确做法：候选 Release fixture 的唯一 location 直接 `return 200` 固定 JSON，避免静态 root、URI rewrite 和 query string 路径歧义；JSON 只含测试版本和公开假 URL。
+- 预防检查：自定义 Web 服务器主配置后先用同 hostname/TLS/path/query 做独立 HTTP 探针；不能由容器 running 推断目标路由可读。
+- 适用范围：Nginx 测试夹具、受控第三方 API、TLS/DNS 劫持 E2E。
+
+## 2026-08-14：向带固定 ENTRYPOINT 的旧 Panel 镜像传入 `cat` 但未覆盖入口
+
+- 环境：Windows Docker Desktop、任务专属 DinD，真实上一正式版 Web 升级候选夹具。
+- 错误模式：使用 `docker run --rm <old-panel-image> cat /etc/ssl/certs/ca-certificates.crt` 提取系统 CA bundle。
+- 症状 / 退出码：旧镜像的固定 ENTRYPOINT 仍为 `/app/panel`，实际进程变成 `/app/panel cat ...` 并持续运行；外层候选命令 30 分钟后以 124 超时。只读 `docker top` 精确定位到该进程，旧版 Compose、管理员和 apply 均尚未创建。
+- 根因：Docker 镜像参数只替换 CMD，不会替换 ENTRYPOINT；夹具没有先核对目标镜像入口语义。
+- 正确做法：使用 `docker run --rm --entrypoint cat <old-panel-image> /etc/ssl/certs/ca-certificates.crt`；上一正式版与基础夹具镜像先在宿主有界拉取、保存并导入 DinD，避免在内层重复冷拉取。
+- 预防检查：任何把通用工具命令附加到应用镜像后的 `docker run` 都必须先 inspect Entrypoint/Cmd；需要执行工具时显式 `--entrypoint`。外层/内层镜像拉取必须有阶段日志和超时。
+- 适用范围：Panel/服务镜像取证、候选 DinD、`docker run image command` 和固定 ENTRYPOINT 镜像。
+
+## 2026-08-14：把递归任务目录清理与 Docker 删除继续内联发送
+
+- 环境：候选演练外层超时后，已通过只读投影得到唯一 DinD 名称、owner label 和 `.agents/anxi-release-candidate-*` 任务目录。
+- 错误模式：仍把路径前缀断言、`docker rm -f`、递归 `Remove-Item` 和终态统计组合成一条内联 PowerShell。
+- 症状 / 退出码：执行策略在 PowerShell 启动前拒绝整条命令；容器和目录当时均未变化。
+- 根因：复杂且含递归删除的内联命令不可充分审计，违反已有“复杂清理落任务脚本”规则。
+- 正确做法：用 `apply_patch` 创建精确 `.agents/cleanup-release-candidate-test.ps1`，脚本内验证绝对路径位于 `.agents`、容器 owner label 精确匹配，再删除并断言容器/卷/目录为零；成功后用 `apply_patch` 删除该脚本。
+- 预防检查：任何包含递归删除或两个以上资源种类的清理一开始就写成任务专属脚本，不先尝试内联；策略拒绝视为零执行。
+- 适用范围：Docker 测试资源、工作区任务目录、外层超时后的恢复清理。
+
+## 2026-08-14：未探测模块便假定工作区 Python 包含 PyYAML
+
+- 环境：Codex workspace Python 3.12，用于解析两个新 GitHub Actions YAML。
+- 错误模式：只确认了解释器路径，没有先探测 `import yaml`，直接在实际校验命令中导入 PyYAML。
+- 症状 / 退出码：Python 以 `ModuleNotFoundError: No module named 'yaml'` 退出 1；workflow 尚未解析，文件和项目依赖均未改变。
+- 根因：workspace dependency loader 保证解释器和一组运行库可用，但不保证任意第三方模块都在解释器默认 `sys.path`。
+- 正确做法：无项目依赖的 YAML 语法校验使用任务专属 Ruby 容器自带的 Psych，或先独立探测目标 Python 模块；不要为了两份 workflow 临时修改项目依赖。
+- 预防检查：使用非标准库前先运行最小 import/version 探针；缺失时立即换已经验证的隔离工具，不在实际校验命令中首次发现依赖。
+- 适用范围：YAML/TOML/JSON schema 工具、workspace Python 和一次性文档/工作流解析。
+
+## 2026-08-14：把 Windows 的 WSL relay 当成可用 Bash
+
+- 环境：Windows PowerShell 7、未安装可用 WSL Linux 发行版，准备校验三个新 Bash 发布脚本。
+- 错误模式：只凭 `Get-Command bash` 返回路径就直接执行 `bash -n`。
+- 症状 / 退出码：WSL relay 报 `execvpe(/bin/bash) failed: No such file or directory` 并退出 1；第一个脚本尚未由 Bash 解析，仓库和 Docker 均未变化。
+- 根因：Windows 可存在 `bash.exe`/WSL relay 命令，但这不证明背后已经安装包含 `/bin/bash` 的发行版。
+- 正确做法：本项目 Windows 主机上的 Bash 语法与功能测试直接使用任务专属 Linux 容器；只有 `bash --version` 实际成功后才允许把宿主 Bash 当 Git Bash/WSL 使用。
+- 预防检查：`Get-Command bash` 之后必须独立执行版本探针并检查退出码；WSL relay 失败后不再重试，切换到已验证的 `bash:5.2` 或项目门禁容器。
+- 适用范围：Windows 上的 `bash -n`、ShellCheck、发布脚本和任何声称在 WSL/Git Bash 中执行的门禁。
+
+## 2026-08-14：检索已返回真实文件后仍读取了猜测文件名
+
+- 环境：Windows PowerShell 7，审计候选发布工作流与 Go updater 更新检查实现。
+- 错误模式：同一组合命令前半的 `rg` 已命中 `backend/internal/updatecheck/service.go`，后半仍凭记忆执行 `Get-Content backend/internal/updatecheck/checker.go`。
+- 症状 / 退出码：`Get-Content` 报路径不存在，组合命令退出 1；只读审计被中断，产品、Git 和 Docker 状态均未改变。
+- 根因：没有把检索结果作为下一条读取命令的唯一输入，还把定位与读取放在同一条尚未确认路径的组合命令中。
+- 正确做法：先用独立 `rg` 完成定位，再在下一次 fail-fast 调用中读取其返回的精确路径 `backend/internal/updatecheck/service.go`；无命中时停止并重新定位，不猜文件名。
+- 预防检查：任何源码读取路径只允许来自 `rg` 的实际输出或 `rg --files`；首次接触目录时禁止在同一组合命令中先检索、再硬编码另一个文件名。该规则已提升到 `AGENTS.md`，本次按复发处理。
+- 适用范围：源码审计、按类型/函数定位、工作流与测试夹具检索。
+
 ## 2026-08-14：远程 Shell 变量被 PowerShell 双引号命令提前解析
 
 - 环境：Windows PowerShell 7、Posh-SSH 3.2.7，对生产 Linux 主机做只读 VNC/日志诊断。
@@ -482,7 +572,7 @@
 
 - 最近复发/补充：2026-08-13 调整隔离 E2E `.env` 的六个白名单键时，先把实际位于第 1、22–25、40 行的内容误写成一个连续 hunk，`apply_patch` 校验失败且零修改。随后先读取精确行号，再按三个真实邻接段拆 hunk 成功；检索结果按筛选顺序相邻不代表它们在源文件中相邻。
 - 最近复发/补充：2026-08-13 生产角色解绑成功后清理任务脚本时，直接发送 Delete File，未先核对共享工作区中该脚本已经不存在，`apply_patch` 因目标缺失安全零修改。随后以 `Test-Path -LiteralPath` 确认无需清理。共享工作区中的一次性文件即使刚被本轮成功读取执行，删除前也必须重新检查当前终态。
-- 最近复发/补充：2026-08-13 补记生产诊断教训时，把 `AGENTS.md` 与错题本更新混入同一个补丁，又手写了带轻微空格差异的长列表行；按设计整份补丁以 `verification failed` 安全零修改。随后先核对 diff，再按文件拆分并只用标题与首条列表项作最小锚点。项目已明确要求多文件修改默认拆分，错题本更新也不得例外。
+- 最近复发/补充：2026-08-13 补记生产诊断教训时，把 `AGENTS.md` 与错题本更新混入同一个补丁，又手写了带轻微空格差异的长列表行；按设计整份补丁以 `verification failed` 安全零修改。2026-08-14 为 Linux/Windows 候选包装器同时补 `git fetch` 时又把两个文件放进同一补丁，PowerShell 文件的上下文误按 Bash 结构书写，整份补丁安全零修改；读取两个实际片段后拆成单文件补丁成功。项目已明确要求多文件修改默认拆分，错题本更新也不得例外。
 - 最近复发/补充：2026-08-10 最终收口已推送后补记 GitHub API EOF 时，又从终端输出手抄两条很长的列表上下文，其中一处漏掉空格，`apply_patch` 以 `verification failed` 安全零修改退出。随后改为分别使用稳定标题和最小邻接行插入，不能因为内容只是文档就放宽精确上下文要求。
 - 最近复发/补充：2026-08-13 最终 Control SHA 同步时猜错 `runtime_stack_manifest.json` 的缩进层级，随后又把 backend handoff 末尾句误当成 `docs/02-backend.md` 的锚点，两次 `apply_patch` 均安全零修改。继续 Web updater 夹具时，又按 JavaScript 载荷里的转义形态猜 SQLite 行上下文，实际落盘文本已经去掉反斜杠，补丁再次安全零修改。最终清理时还对已经由其它收口动作移除的未跟踪诊断脚本发送 Delete File，因目标不存在再次安全失败。每次都应先以 `rg -n -C` 或 `Test-Path` 读取真实目标，再使用最小精确行修正；即使文本刚出现在组合输出或聊天摘要里，也必须先确认它属于当前目标文件、转义形态一致且删除目标此刻仍存在。
 - 最近复发/补充：2026-08-09 弹窗高度文档补丁在工具调用显示长期 running 后被 turn 中断，等待终态时相同补丁最终落盘两次，造成三份文档顶部段落重复。恢复被中断的写操作后必须先用唯一标题计数和 `git diff --check` 核对实际终态，不能根据中断提示猜测“未写入”或直接重放；发现重复后用最小精确补丁去重。
@@ -772,16 +862,16 @@
 - 最近复发/补充：2026-08-12 v0.4.11 发布验收用双引号 `rg -F` 模式搜索字面 `jobs/${`，PowerShell 把 `${` 解释为未闭合变量表达式并在搜索前报 `ParserError`；没有修改文件。带 `$`、`${`、反引号的字面模式必须改为单引号参数、`Select-String -SimpleMatch`，或搜索不含特殊字符的稳定片段，不能把 `-F` 当成 Shell 层的转义。
 - 最近复发/补充：2026-08-12 同轮只读审查把字面变量名写成双引号 `"$admin"` 传给 `rg -F`，父 PowerShell 先展开为未定义空值，结果执行了空模式搜索并输出了测试脚本开头的不必要内容。搜索源码中的 `$变量` 必须使用单引号固定模式或不含变量的稳定上下文；若目标文件可能含凭据，只允许白名单投影，不能让空模式回退成整文件输出。
 - 最近复发/补充：2026-08-12 升级后重启断言把两组容器 ID 的排序、数组收集、`-join` 和 `-ne` 全塞进一个 `if`，PowerShell 运算符绑定使实际相同的 ID 被虚假报告为变化；随后逐项精确比对证明两个容器 ID 均未改变。发布断言先分别计算 `$beforeKey = (@($before | Sort-Object) -join '|')` 与 `$afterKey`，再只比较两个标量，不在条件内混合管道、数组与字符串运算。
-- 最近复发/补充：2026-08-11 补记 v0.4.11 前端夹具规则时，用 JavaScript 模板字符串承载含 Markdown 反引号的两份 `apply_patch` 文本，未转义的反引号提前结束模板并在工具调用前触发 `SyntaxError: Unexpected identifier`；两个补丁均未执行、文件未变化。补丁正文包含 Markdown code span 时改用 JavaScript 单引号普通字符串或逐个单文件调用，不能让载荷分隔符与正文反引号相同。
-- 最近复发/补充：2026-08-13 创建 `v0.4.12` Web E2E 证书脚本时，用 JavaScript 普通模板字符串承载带 Bash 行尾反斜杠的新增文件补丁；反斜杠吞掉模板换行，下一条 patch 行开头的 `+` 被拼进 OpenSSL 命令。脚本语法仍合法，但运行时 OpenSSL 以无效参数退出。跨 JavaScript `apply_patch` 新建 Shell 文件时避免行尾续行，优先写清晰单行命令；确需反斜杠必须先验证实际落盘行，而不能只依赖 `bash -n`。
-- 最近复发/补充：同轮创建 conversion E2E 脚本时，JavaScript 模板字符串里包含字面 Compose 占位符 `${PANEL_IMAGE}`，编排层在 `apply_patch` 调用前把它当 JavaScript 插值并以 `ReferenceError` 中止，文件未创建。口头确认要转义后重建长补丁时仍漏掉同一处，又一次在调用前零修改失败。此类长补丁如必须用模板字符串，生成前先机械检索每个 `${`；能改成分别检查 `image:` 与 `PANEL_IMAGE` 的等价断言时直接消除冲突，否则所有目标文件中的 `${...}` 都要显式转义为 `\${...}`，落盘后再固定字符串核对。
+- 最近复发/补充：2026-08-11 补记 v0.4.11 前端夹具规则时，用 JavaScript 模板字符串承载含 Markdown 反引号的两份 `apply_patch` 文本，未转义的反引号提前结束模板并在工具调用前触发 `SyntaxError: Unexpected identifier`；两个补丁均未执行、文件未变化。2026-08-14 为 OCI 时间复发补记再次使用同一错误载荷形态，在补丁执行前触发 `Unexpected identifier 'ConvertFrom'`，确认零修改后改用 JavaScript 双引号普通字符串成功。补丁正文包含 Markdown code span 时必须改用普通字符串或逐个单文件调用，不能让载荷分隔符与正文反引号相同。
+- 最近复发/补充：2026-08-13 创建 `v0.4.12` Web E2E 证书脚本时，用 JavaScript 普通模板字符串承载带 Bash 行尾反斜杠的新增文件补丁；反斜杠吞掉模板换行，下一条 patch 行开头的 `+` 被拼进 OpenSSL 命令。2026-08-14 candidate workflow 初稿再次发生同类污染，实际 YAML 中形成 `release-candidate.sh + --version` 与 `jq + --arg`；YAML 解析仍合法，只有全文语义审查发现。已改为无续行单行命令，并增加固定字符串禁止检查。跨 JavaScript `apply_patch` 新建 Shell/YAML 文件时禁止行尾续行，优先写清晰单行或真正的数组；不能只依赖 Bash/YAML 语法检查。
+- 最近复发/补充：同轮创建 conversion E2E 脚本时，JavaScript 模板字符串里包含字面 Compose 占位符 `${PANEL_IMAGE}`，编排层在 `apply_patch` 调用前把它当 JavaScript 插值并以 `ReferenceError` 中止，文件未创建。口头确认要转义后重建长补丁时仍漏掉同一处，又一次在调用前零修改失败。2026-08-14 候选 E2E 首次真正进入 DinD 后，又因补丁包装层只消除了 JavaScript 插值、没有让反斜杠实际落盘，Bash 在 Compose heredoc 中把 `${PANEL_IMAGE}` 当未定义变量并由 `set -u` 中止；旧版 Compose/apply 均未开始，资源自动清理为零。修复改为 `compose_image_literal='${PANEL_IMAGE}'`，再由 heredoc展开这个已定义变量写出字面占位符，不继续叠加转义。此类长补丁如必须用模板字符串，生成前先机械检索每个 `${`；能消除跨层字面量时优先消除，不能只凭补丁源码中的反斜杠推断落盘结果。
 - 最近复发/补充：2026-08-09 本地 UI 夹具把进程环境、readiness 轮询和带转义 JSON 的 `Invoke-WebRequest` 全塞进一条 JavaScript → `pwsh -Command`，在执行前被策略拦截；Panel 未启动，数据目录未创建。改为分步启动进程，并通过本地浏览器完成初始化交互；含 JSON 的请求使用真实文件/对象序列化或浏览器表单，不在多层命令字符串中手写转义。
 - 最近复发/补充：2026-08-09 上游 Junimo 查询中，Web 搜索编排层连续两次在执行前返回 `SyntaxError: Unexpected string`；继续缩短同类查询仍没有有效结果。已停止使用该搜索形态，改为打开已由官方仓库/Registry 元数据确认的精确 GitHub、Docker Hub URL。编排层语法错误连续出现时不得继续改写并重放同类调用，优先走已确认主来源的精确地址或验证过的 CLI/API。
 - 最近复发/补充：2026-08-08 最终编码审计把多个 `-join`、插值异常文本和 pipeline 塞入同一层 `pwsh -Command`，在真正执行检查前触发 `Expressions are only allowed as the first element of a pipeline`。修正为三个独立、短小的只读检查并行运行；复杂审计不要为了减少一次调用重新叠加多层引号和管道。
 - 最近复发/补充：2026-08-06 在 PowerShell 参数中嵌入 `sh -c` 的 Bash 重试变量 `$attempt`，错误地使用反斜杠尝试保护变量；PowerShell 仍提前展开并让 Bash 收到残缺条件。改为三段不含变量的显式 `go mod download || (sleep 5 && go mod download) ...`，跨 Shell 命令优先消除变量与转义，而不是叠加转义层。
 - 最近复发/补充：2026-08-01 Hero 配色预览验证把 `sh -c`、`grep` 模式和 PowerShell 双引号再次嵌入同一条命令，脚本在有效诊断前退出 1。已改为让 `docker exec` 直接调用 `grep`，模式使用 PowerShell 单引号参数，只有确实需要容器 shell 展开时才引入 `sh -c`。
 - 最近复发/补充：2026-08-01 官网 Hero 预览审计在 JavaScript 包装、PowerShell 与 `rg` 三层中直接拼接带引号的搜索命令，命令尚未得到有效结果便退出 1。多层调用先把搜索模式和真实文件路径分别固定，优先直接调用单层 `rg -e <pattern> <confirmed-path>`；需要较长 PowerShell 逻辑时使用独立的单引号脚本块，不在 JavaScript 普通字符串里继续嵌套。
-- 最近复发/补充：2026-07-31 在 `[pscustomobject]` 属性表达式中直接嵌入 `docker exec ...; $LASTEXITCODE -eq 0`，PowerShell 在执行前报缺少右括号。原生命令及退出码检查必须先单独执行并存入 `$sidecarExists`，再把变量放进对象；不要在属性值括号里混合语句分隔符。
+- 最近复发/补充：2026-07-31 在 `[pscustomobject]` 属性表达式中直接嵌入 `docker exec ...; $LASTEXITCODE -eq 0`，PowerShell 在执行前报缺少右括号。2026-08-14 候选成功后的只读证据汇总又把语句形式 `if (...) { ... } else { ... }` 直接写进 `BuildDate=(if ...)`，PowerShell 把 `if` 当命令名并在对象输出前退出；metadata、镜像和资源未变。原生命令、条件分支及规范化必须先单独执行并存入标量，再把变量放进对象；不要在属性值括号里混合语句。
 - 最近复发/补充：2026-07-29 参考研究子任务在 JavaScript 工具包装层中再次把 PowerShell 引号嵌进普通字符串，导致包装层 `SyntaxError`，命令尚未执行；改用 JavaScript template literal 包裹完整 `pwsh -Command '& { ... }'` 后成功。跨 JavaScript/PowerShell 两层时同时检查两层字符串边界。
 - 最近复发/补充：2026-08-01 发布门禁在 `functions.exec` JavaScript 包装层连续出现普通字符串闭合错误，另有 skill 分段读取数组与嵌套 `printf` 的 PowerShell 引号边界破裂；统一改为 JavaScript template literal 承载完整 PowerShell 单引号脚本块，并把复杂 `printf`/数组探针拆成独立调用。包装层语法失败时命令根本没有执行，不得原样重放。
 - 环境：Windows，外层 Shell 已是 PowerShell，再调用 `pwsh -Command "...$variable..."`。
@@ -1446,7 +1536,7 @@
 - 根因：未先 inspect 镜像启动契约，把镜像内存在 `shellcheck` 二进制等同于已经配置 entrypoint。
 - 正确做法：显式运行 `shellcheck deploy/... scripts/...`，或在只读 inspect 确认后使用 `--entrypoint shellcheck`。
 - 预防检查：首次使用工具镜像先核对 Entrypoint/Cmd 和二进制路径；脚本路径不能作为未确认镜像的首命令。
-- 最近复发/补充：2026-08-13 新使用的 `koalaman/shellcheck:stable` 与上面的 alpine 版本契约相反，镜像已配置 `Entrypoint=["/bin/shellcheck"]`；命令仍手工追加一次 `shellcheck`，二进制把该词当文件名并以 `openBinaryFile: does not exist` 退出 2，实际 lint 未开始。读取完整 inspect JSON 后改为只传脚本路径。当天最终 updater fixture 修正后复验又原样复发一次，说明不能依靠短期记忆；之后必须把精确 inspect 投影放在每次第三方 lint 命令前，按结果二选一传参。结论不应固化“有或没有 entrypoint”，每个精确 tag 都必须先 inspect 后组装命令。
+- 最近复发/补充：2026-08-13 新使用的 `koalaman/shellcheck:stable` 与上面的 alpine 版本契约相反，镜像已配置 `Entrypoint=["/bin/shellcheck"]`；命令仍手工追加一次 `shellcheck`，二进制把该词当文件名并以 `openBinaryFile: does not exist` 退出 2，实际 lint 未开始。读取完整 inspect JSON 后改为只传脚本路径。当天最终 updater fixture 修正后复验又原样复发一次，说明不能依靠短期记忆；2026-08-14 又在首次拉取 `koalaman/shellcheck:v0.11.0` 后先执行、后 inspect，同样以退出 2 结束，改为读取 `Config.Entrypoint=["/bin/shellcheck"]` 后只传脚本路径，三份新脚本全部通过。之后必须把精确 inspect 投影放在每次第三方 lint 命令前，按结果二选一传参。结论不应固化“有或没有 entrypoint”，每个精确 tag 都必须先 inspect 后组装命令。
 - 适用范围：ShellCheck、Hadolint、linters 与任何第三方 CLI 工具镜像。
 
 ## 2026-07-31：Docker-outside-of-Docker 无法看到测试容器的 TempDir
@@ -2059,6 +2149,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-14 新增 Windows 候选包装器时再次直接比较 Docker inspect 的 OCI created 与参数字符串；候选 version/revision/created 实际精确，但包装器在 fresh 前虚假中止。精确 owner 检查确认容器、卷、任务目录为零；修复为统一 `ConvertTo-UtcIsoString` 后再比较。该错误已经多次复发且规则已在 `AGENTS.md`，后续 PowerShell 候选脚本禁止出现任何未经 helper 的 ISO 时间 `-eq/-ne`。
 - 最近复发/补充：2026-08-13 v0.4.15 最终产品候选的 version/revision/created 实际全部精确，但身份包装器再次直接把 `ConvertFrom-Json` 产生的 `System.DateTime` created 与 ISO 字符串比较，先于 smoke 创建就虚假报 mismatch；独立布尔投影确认只有类型比较失败，未创建容器/网络/卷。后续同轮 OCI 与 `/api/version` 时间断言必须共用先判类型、转 UTC、invariant 格式化的 helper，不得再内联原始 `-eq`。
 - 最近复发/补充：2026-08-12 v0.4.11 最终候选包装器已经规范化 `/api/version.buildDate`，却遗漏同一脚本中经 `docker image inspect | ConvertFrom-Json` 读取的 OCI `created` label，仍把 `System.DateTime` 直接与 ISO 字符串比较；过长的内联 `try/finally` 最终只表现为无诊断 exit 1，任务资源已清理。独立投影确认 version/revision 正确且 created 类型为 `System.DateTime`，规范化后精确通过。统一 helper 必须覆盖同一断言里的每一个时间字段，不能只修 API 而遗漏 OCI/inspect。
 - 最近复发/补充：2026-08-11 v0.4.11 候选 fresh smoke 的 `/api/version` 已返回精确 `0.4.11`、完整 commit 和 `2026-08-11T14:57:11Z`，包装器仍把 `Invoke-RestMethod` 自动解析的 `buildDate` 直接与手写 `[DateTime]` 比较并虚假报 metadata mismatch；候选容器随后按 owner 清理。重跑必须先按运行时类型把日期统一转为 UTC，再格式化为 invariant `yyyy-MM-ddTHH:mm:ssZ` 字符串断言，禁止继续直接比较对象/原始文本。
@@ -2497,7 +2588,7 @@
 
 ## 编码与换行快速检查
 
-- 最近复发/补充：2026-08-13 owner guard 收口时再次对完整变更文件列表做 U+FFFD 正文扫描，命中错题本历史合法示例并误报失败；源码与新文件没有被修改。随即拆分为“全部目标完整字节仅查 BOM”“tracked 文件只查 `git diff --unified=0` 新增行”“untracked 新文件才查完整正文”。编码收口脚本不得把 BOM 与 replacement-character 的检查范围混成同一个完整文件循环。
+- 最近复发/补充：2026-08-13 owner guard 收口时再次对完整变更文件列表做 U+FFFD 正文扫描，命中错题本历史合法示例并误报失败；源码与新文件没有被修改。2026-08-14 候选流程收口又在同一个完整文件循环中对错题本调用 `Contains(U+FFFD)`，再次命中历史示例并主动退出 1；随即拆分为“全部目标完整字节仅查 BOM”“tracked 文件只查 `git diff --unified=0` 新增行”“untracked 新文件才查完整正文”，最终检查通过。编码收口脚本不得把 BOM 与 replacement-character 的检查范围混成同一个完整文件循环。
 - 最近复发/补充：2026-08-12 v0.4.11 收口时，虽然命令后半已经实现“只检查新增 diff 行”，前半仍先对所有 changed file 完整正文扫描 U+FFFD，只排除了错题本而遗漏同样含历史乱码说明的 `docs/09-image-build.md`，导致在新增行检查执行前误报退出 1。编码审计只能对完整变更文件检查 BOM；U+FFFD 必须唯一地从 `git diff --unified=0 --no-color` 的单个 `+` 新增行判断，不得在同一命令保留任何完整正文 replacement-character 扫描。
 - 最近复发/补充：2026-08-10 v0.4.10 官网收口审计又对全部 changed file 完整正文搜索 U+FFFD，命中本节在 `HEAD` 中已经存在的合法示例后组合命令退出 1；同日 `DOCS-HOME-QQ-COMMUNITY-1` 收口时再次错误复用完整文件扫描并命中同一历史示例。两次均按 `HEAD` 对照确认不是本次引入。正确复核固定为 `git diff --unified=0 --no-color` 后只检查单个 `+` 开头且排除 `+++` 文件头的新增行；该规则因多次复发已提升到 `AGENTS.md`，收口命令不得再组合完整文件 U+FFFD 扫描。
 - 最近复发/补充：2026-08-09 新建游戏弹窗收口再次对全部已修改文件直接执行 U+FFFD 搜索，命中了本节合法示例并让组合命令退出 1；同日升级修复目录审计已经出现相同误报。本次 Steam 升级等待修复又扫描完整的 `docs/09-image-build.md` 和错题本，分别命中历史乱码说明与本节合法示例；确认均为既有语义文本、无 BOM，未做整文件重编码。源码格式与 `git diff --check` 实际通过。此检查必须先生成 `git diff --unified=0`，只过滤单个 `+` 的新增行并排除 `+++` 文件头，禁止再次扫描完整历史文件。

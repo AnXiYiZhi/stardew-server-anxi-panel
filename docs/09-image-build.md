@@ -1,3 +1,13 @@
+# 候选制品一次构建与正式 digest 提升流程（2026-08-14）
+
+- 正式发布拆成两个 workflow：手动运行 `.github/workflows/release-candidate.yml` 冻结 `main` 的 version/full commit/build date，运行代码回归并调用 `scripts/release-candidate.sh`；Windows Docker Desktop 可用 `pwsh -NoLogo -NoProfile -File scripts/release-candidate.ps1 -Version <x.y.z> -PreviousVersion <x.y.z>` 复现同一镜像链。只有候选全部通过后才推送 GHCR `candidate-<version>-<sha12>` 并上传 `candidate.json` 证明。候选证明固定 previous version、image ID、registry digest 和 workflow run，30 天内供 tag workflow 使用。
+- `scripts/run-release-gates.sh --version <x.y.z> --base-ref v<previous>` 始终运行兼容清单、脚本、后端 test/vet/build、updater/Docker integration、前端全部状态回归与 production build；只有 Junimo/runtime manifest 或实现变化才运行真实 SMAPI 下载、远端制品与运行栈长 integration，只有官网/公开文档变化才构建 VitePress。
+- 候选镜像只构建一次。自动候选链先做 fresh health/version/setup/restart，再把完全相同的本地镜像导入任务专属 DinD；DinD 使用受控 TLS `api.github.com` Release endpoint 与受控 TLS `ghcr.io` registry，从上一正式版真实调用 setup cookie、update check、dry-run、管理员 apply、断线重连和终态查询。相同目标引用先发布 unhealthy 镜像验证 `failed_rolled_back/health_check_failed`，再切回健康候选验证成功升级、SQLite integrity、初始化状态、Panel 数据、非目标游戏容器/volume 和 Panel 重启。
+- annotated `v*` tag 只能指向候选证明的完整 commit，且该 commit 必须仍精确等于 `origin/main`。`.github/workflows/release.yml` 下载同 SHA/版本的成功候选 artifact，核对 GHCR digest 与 OCI version/full revision/build date 后，以 `skopeo --preserve-digests` 把同一对象提升为 Docker Hub、ACR、GHCR 的精确版本；一个正式仓库 health/version 冒烟成功后才更新三仓 `latest` 并创建 GitHub Release。发布 workflow 不再编译或重建镜像。
+- 默认升级矩阵只有“上一正式版 → 候选”。数据库迁移、部署格式、运行栈、长期数据结构或跨版本兼容实现变化时，才根据迁移代码增加“受影响的最老支持版本 → 候选”；对应真实新功能验收仍需在升级后的 Panel 上执行。三仓六引用 digest 相同时不再启动三份重复镜像，只核对六引用并冒烟一个精确正式引用。
+- 手动顺序：先把本版变更矩阵和代码提交到同步的 `main`，从 Actions 手动运行 `Validate release candidate` 并输入目标版本；成功后才能在同一 SHA 创建 annotated tag。若 tag 后找不到完全匹配且未过期的候选证明，或 digest/OCI/main 任一不符，发布立即停止。
+- 本流程实现阶段用 `-AllowDirty` 做过一次不发布的合成 `0.4.16` 本地演练，仅验证脚本本身，不构成正式候选证明：候选 image ID=`sha256:86057f4d36c5866d6365e463abc9a9f4a0bf1262afac957b1ae9d2562fc1fec9`，从正式 `0.4.15` 通过真实 Web 完成 check/dry-run/apply；同引用 unhealthy 先收敛为 `failed_rolled_back/health_check_failed`，切回健康候选后升级成功，并通过 SQLite integrity、初始化/Panel 哨兵、非目标 game container/volume 与 Panel restart。最终通过轮用时 403.5 秒，未 push candidate/正式 registry、未创建 tag/Release；任务 DinD、Compose、容器、网络、卷和临时目录归零。正式版本仍必须在干净且同步的 `main` 上运行 workflow 取得 artifact。
+
 # v0.4.15 正式发布结果（2026-08-14，released）
 
 - annotated tag `v0.4.15` 固定指向 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`，tag 对象为 `39038d64a7068a9233ef74757b011453dc86fbe5`；创建前本地 `main` 工作树干净且与 `origin/main` 精确同步。Compatibility matrix `31725203858` 成功，Release workflow `31725256195` 从 2026-08-13T17:21:02Z 运行到 17:28:48Z，7 分 43 秒内完成全部 release gates、三仓 push 和 GitHub Release 创建。

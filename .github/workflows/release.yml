@@ -1,4 +1,4 @@
-name: Release Panel Image
+name: Promote validated panel candidate
 
 on:
   push:
@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: write
   packages: write
 
@@ -17,11 +18,13 @@ env:
   DOCKERHUB_IMAGE: anxiyizhi/stardew-server-anxi-panel
   ACR_REGISTRY: crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com
   ACR_IMAGE: crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/stardew-server-anxi-panel
+  GHCR_IMAGE: ghcr.io/anxiyizhi/stardew-server-anxi-panel
 
 jobs:
   release:
-    name: Build and publish panel
+    name: Promote exact candidate digest
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout tag
@@ -29,153 +32,255 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Run release gates
+      - name: Verify immutable tag and synchronized main
+        id: identity
         shell: bash
-        run: |
-          python scripts/compatibility_matrix.py validate backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
-          python scripts/compatibility_matrix.py check-panel-version backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json --version "${GITHUB_REF_NAME#v}"
-          python scripts/compatibility_matrix.py verify-remote-artifacts backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json
-          python -m unittest discover -s scripts/tests -p 'test_compatibility_matrix.py'
-          bash scripts/tests/test_run_sh_update.sh
-          bash scripts/tests/test_run_sh_swap.sh
-          bash scripts/tests/test_migrate_fnos.sh
-          bash scripts/tests/test_repair_junimo_upgrade.sh
-          for script in deploy/run.sh deploy/migrate-fnos.sh deploy/repair-junimo-0.3.5.sh deploy/repair-junimo-upgrade.sh scripts/tests/test_run_sh_update.sh scripts/tests/test_run_sh_swap.sh scripts/tests/test_migrate_fnos.sh scripts/tests/test_repair_junimo_upgrade.sh; do
-            bash -n "$script"
-          done
-          shellcheck deploy/run.sh deploy/migrate-fnos.sh deploy/repair-junimo-0.3.5.sh deploy/repair-junimo-upgrade.sh scripts/tests/test_run_sh_update.sh scripts/tests/test_run_sh_swap.sh scripts/tests/test_migrate_fnos.sh scripts/tests/test_repair_junimo_upgrade.sh
-          (cd backend && go test ./...)
-          (cd backend && go vet ./...)
-          (cd backend && go build ./...)
-          (cd backend && PANEL_RUN_SMAPI_DOWNLOAD_TEST=1 go test -tags=integration ./internal/games/stardew_junimo -run '^TestSMAPIArchiveRealDownload$' -count=1 -v)
-          (cd backend && go test -tags=integration ./internal/games/stardew_junimo -run '^TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth$' -count=1 -v)
-          (cd backend && PANEL_RUN_DOCKER_UPDATE_TEST=1 go test ./internal/updater -run '^TestDockerIntegration' -count=1)
-          (cd backend && go test -tags=integration ./internal/docker)
-          (cd frontend && npm ci && npm audit --omit=dev --audit-level=high && npm run test:command-results && npm run test:update-status && npm run test:panel-update && npm run test:junimo-update && npm run test:component-update-flow && npm run test:runtime-components && npm run test:smapi-update && npm run test:install-state && npm run test:new-game-idempotency && npm run test:nexus-extension-idempotency && npm run test:farm-catalog && npm run test:save-import && npm run test:mod-list && npm run test:responsive-layout && npm run test:player-mods && npm run build)
-          (cd website && npm ci && npm audit --omit=dev --audit-level=high && npm run docs:build)
-
-      - name: Prepare release metadata
-        id: meta
-        shell: bash
-        env:
-          GHCR_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          : "${GHCR_OWNER:?GHCR_OWNER is required}"
-          version="${GITHUB_REF_NAME#v}"
-          commit="${GITHUB_SHA::12}"
-          build_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          ghcr_owner="$(printf '%s' "$GHCR_OWNER" | tr '[:upper:]' '[:lower:]')"
-
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release tag must be v followed by an exact stable semantic version" >&2
+            exit 1
+          fi
+          if [[ "$(git cat-file -t "refs/tags/$tag")" != tag ]]; then
+            echo "release tag must be annotated" >&2
+            exit 1
+          fi
+          commit="$(git rev-parse "$tag^{}")"
+          git fetch origin main
+          if [[ "$(git rev-parse origin/main)" != "$commit" ]]; then
+            echo "release tag commit must exactly match origin/main" >&2
+            exit 1
+          fi
+          short_sha="${commit:0:12}"
+          artifact_name="release-candidate-$version-$short_sha"
           {
+            echo "tag=$tag"
             echo "version=$version"
             echo "commit=$commit"
-            echo "build_date=$build_date"
-            echo "ghcr_image=ghcr.io/${ghcr_owner}/stardew-server-anxi-panel"
-            echo "tags<<EOF"
-            echo "${DOCKERHUB_IMAGE}:${version}"
-            echo "${DOCKERHUB_IMAGE}:latest"
-            echo "${ACR_IMAGE}:${version}"
-            echo "${ACR_IMAGE}:latest"
-            echo "ghcr.io/${ghcr_owner}/stardew-server-anxi-panel:${version}"
-            echo "ghcr.io/${ghcr_owner}/stardew-server-anxi-panel:latest"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+            echo "short_sha=$short_sha"
+            echo "artifact_name=$artifact_name"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Download successful candidate proof
+        id: proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.identity.outputs.artifact_name }}
+          EXPECTED_VERSION: ${{ steps.identity.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+          EXPECTED_SHORT_SHA: ${{ steps.identity.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          proof_dir="$RUNNER_TEMP/candidate-proof"
+          mkdir -p "$proof_dir"
+          runs_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/release-candidate.yml/runs" -f branch=main -f status=success -f per_page=50)"
+          mapfile -t run_ids < <(jq -r --arg sha "$EXPECTED_COMMIT" '.workflow_runs[] | select(.head_sha == $sha and .conclusion == "success") | .id' <<<"$runs_json")
+          selected_run=""
+          for run_id in "${run_ids[@]}"; do
+            artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts")"
+            if jq -e --arg name "$ARTIFACT_NAME" '.artifacts[] | select(.name == $name and (.expired | not))' <<<"$artifacts_json" >/dev/null; then
+              gh run download "$run_id" --name "$ARTIFACT_NAME" --dir "$proof_dir"
+              selected_run="$run_id"
+              break
+            fi
+          done
+          if [[ -z "$selected_run" || ! -s "$proof_dir/candidate.json" ]]; then
+            echo "no successful, unexpired candidate proof matches this exact tag commit and version" >&2
+            exit 1
+          fi
+          proof="$proof_dir/candidate.json"
+          schema="$(jq -r '.schemaVersion // 0' "$proof")"
+          version="$(jq -r '.version // empty' "$proof")"
+          commit="$(jq -r '.commit // empty' "$proof")"
+          candidate_ref="$(jq -r '.candidateRef // empty' "$proof")"
+          digest="$(jq -r '.digest // empty' "$proof")"
+          expected_ref="$GHCR_IMAGE:candidate-$EXPECTED_VERSION-$EXPECTED_SHORT_SHA"
+          if [[ "$schema" != 1 || "$version" != "$EXPECTED_VERSION" || "$commit" != "$EXPECTED_COMMIT" || "$candidate_ref" != "$expected_ref" || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "candidate proof identity does not match the immutable release tag" >&2
+            jq '{schemaVersion,version,commit,candidateRef,digest}' "$proof" >&2
+            exit 1
+          fi
+          {
+            echo "run_id=$selected_run"
+            echo "candidate_ref=$candidate_ref"
+            echo "digest=$digest"
+            echo "build_date=$(jq -r '.buildDate' "$proof")"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Install registry promotion tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends skopeo
+
+      - name: Authenticate registries
+        shell: bash
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          ACR_USERNAME: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | skopeo login --username "$GHCR_USERNAME" --password-stdin ghcr.io
+          printf '%s' "$DOCKERHUB_TOKEN" | skopeo login --username "$DOCKERHUB_USERNAME" --password-stdin docker.io
+          printf '%s' "$ACR_PASSWORD" | skopeo login --username "$ACR_USERNAME" --password-stdin "$ACR_REGISTRY"
+
+      - name: Verify candidate digest and OCI identity
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ steps.proof.outputs.candidate_ref }}
+          EXPECTED_DIGEST: ${{ steps.proof.outputs.digest }}
+          EXPECTED_VERSION: ${{ steps.identity.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+          EXPECTED_BUILD_DATE: ${{ steps.proof.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          source_repository="${CANDIDATE_REF%:*}"
+          skopeo inspect "docker://$source_repository@$EXPECTED_DIGEST" >"$RUNNER_TEMP/candidate-inspect.json"
+          actual_digest="$(jq -r '.Digest' "$RUNNER_TEMP/candidate-inspect.json")"
+          actual_version="$(jq -r '.Labels["org.opencontainers.image.version"] // empty' "$RUNNER_TEMP/candidate-inspect.json")"
+          actual_revision="$(jq -r '.Labels["org.opencontainers.image.revision"] // empty' "$RUNNER_TEMP/candidate-inspect.json")"
+          actual_created="$(jq -r '.Labels["org.opencontainers.image.created"] // empty' "$RUNNER_TEMP/candidate-inspect.json")"
+          if [[ "$actual_digest" != "$EXPECTED_DIGEST" || "$actual_version" != "$EXPECTED_VERSION" || "$actual_revision" != "$EXPECTED_COMMIT" || "$actual_created" != "$EXPECTED_BUILD_DATE" ]]; then
+            echo "candidate registry object does not match its validated proof" >&2
+            exit 1
+          fi
+
+      - name: Promote exact version tags
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ steps.proof.outputs.candidate_ref }}
+          EXPECTED_DIGEST: ${{ steps.proof.outputs.digest }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          source_repository="${CANDIDATE_REF%:*}"
+          source="docker://$source_repository@$EXPECTED_DIGEST"
+          skopeo copy --all --preserve-digests "$source" "docker://$DOCKERHUB_IMAGE:$VERSION"
+          skopeo copy --all --preserve-digests "$source" "docker://$ACR_IMAGE:$VERSION"
+          skopeo copy --all --preserve-digests "$source" "docker://$GHCR_IMAGE:$VERSION"
+          for image in "$DOCKERHUB_IMAGE:$VERSION" "$ACR_IMAGE:$VERSION" "$GHCR_IMAGE:$VERSION"; do
+            actual="$(skopeo inspect --format '{{.Digest}}' "docker://$image")"
+            if [[ "$actual" != "$EXPECTED_DIGEST" ]]; then
+              echo "promoted exact tag digest mismatch: $image -> $actual" >&2
+              exit 1
+            fi
+          done
+
+      - name: Smoke one promoted exact image
+        shell: bash
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          smoke_image="anxi-promoted-smoke:$VERSION"
+          smoke_container="anxi-promoted-smoke-$GITHUB_RUN_ID"
+          smoke_volume="anxi-promoted-smoke-$GITHUB_RUN_ID-data"
+          cleanup() {
+            docker rm -f "$smoke_container" >/dev/null 2>&1 || true
+            docker volume rm "$smoke_volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          skopeo copy "docker://$GHCR_IMAGE:$VERSION" "docker-daemon:$smoke_image"
+          docker volume create --label "com.anxi-panel.test-owner=release-$GITHUB_RUN_ID" "$smoke_volume" >/dev/null
+          docker run -d --name "$smoke_container" --label "com.anxi-panel.test-owner=release-$GITHUB_RUN_ID" --mount "type=volume,src=$smoke_volume,dst=/data" "$smoke_image" >/dev/null
+          ready=0
+          for _ in $(seq 1 120); do
+            if docker exec "$smoke_container" wget -qO- http://127.0.0.1:8090/health >"$RUNNER_TEMP/promoted-health.json" 2>/dev/null; then
+              if [[ "$(jq -r '.status // empty' "$RUNNER_TEMP/promoted-health.json")" == ok ]]; then
+                ready=1
+                break
+              fi
+            fi
+            sleep 1
+          done
+          if ((ready != 1)); then
+            docker logs "$smoke_container" >&2
+            exit 1
+          fi
+          docker exec "$smoke_container" wget -qO- http://127.0.0.1:8090/api/version >"$RUNNER_TEMP/promoted-version.json"
+          if [[ "$(jq -r '.version // empty' "$RUNNER_TEMP/promoted-version.json")" != "$VERSION" || "$(jq -r '.commit // empty' "$RUNNER_TEMP/promoted-version.json")" != "$EXPECTED_COMMIT" ]]; then
+            cat "$RUNNER_TEMP/promoted-version.json" >&2
+            exit 1
+          fi
+
+      - name: Promote and verify latest tags
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ steps.proof.outputs.candidate_ref }}
+          EXPECTED_DIGEST: ${{ steps.proof.outputs.digest }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          source_repository="${CANDIDATE_REF%:*}"
+          source="docker://$source_repository@$EXPECTED_DIGEST"
+          skopeo copy --all --preserve-digests "$source" "docker://$DOCKERHUB_IMAGE:latest"
+          skopeo copy --all --preserve-digests "$source" "docker://$ACR_IMAGE:latest"
+          skopeo copy --all --preserve-digests "$source" "docker://$GHCR_IMAGE:latest"
+          for image in "$DOCKERHUB_IMAGE:$VERSION" "$DOCKERHUB_IMAGE:latest" "$ACR_IMAGE:$VERSION" "$ACR_IMAGE:latest" "$GHCR_IMAGE:$VERSION" "$GHCR_IMAGE:latest"; do
+            actual="$(skopeo inspect --format '{{.Digest}}' "docker://$image")"
+            if [[ "$actual" != "$EXPECTED_DIGEST" ]]; then
+              echo "published tag digest mismatch: $image -> $actual" >&2
+              exit 1
+            fi
+          done
 
       - name: Prepare release notes
         id: notes
         shell: bash
         run: |
           set -euo pipefail
-
-          tag="${GITHUB_REF_NAME}"
-          subject="$(git log -1 --format=%s "${tag}^{}")"
-          tag_message="$(git for-each-ref --format='%(contents)' "refs/tags/${tag}")"
+          tag="$GITHUB_REF_NAME"
+          subject="$(git log -1 --format=%s "$tag^{}")"
+          tag_message="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
           details="$(printf '%s\n' "$tag_message" | tail -n +2 | sed '/./,$!d')"
-
           if [[ -z "${details//[[:space:]]/}" ]]; then
-            commit_message="$(git log -1 --format=%B "${tag}^{}")"
+            commit_message="$(git log -1 --format=%B "$tag^{}")"
             details="$(printf '%s\n' "$commit_message" | tail -n +2 | sed '/./,$!d')"
           fi
-
           if [[ -z "${details//[[:space:]]/}" ]]; then
-            details="- ${subject}"
+            details="- $subject"
           fi
-
-          previous_tag="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
-          notes_path="${RUNNER_TEMP}/release-notes.md"
+          previous_tag="$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)"
+          notes_path="$RUNNER_TEMP/release-notes.md"
           {
             printf '## %s\n\n' "$tag"
             printf '%s\n\n' "$details"
             if [[ -n "$previous_tag" ]]; then
-              printf '**完整变更**：https://github.com/%s/compare/%s...%s\n' \
-                "$GITHUB_REPOSITORY" "$previous_tag" "$tag"
+              printf '**完整变更**：https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$previous_tag" "$tag"
             else
-              printf '**完整提交记录**：https://github.com/%s/commits/%s\n' \
-                "$GITHUB_REPOSITORY" "$tag"
+              printf '**完整提交记录**：https://github.com/%s/commits/%s\n' "$GITHUB_REPOSITORY" "$tag"
             fi
-          } > "$notes_path"
-
-          echo "path=$notes_path" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Log in to Alibaba Cloud ACR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.ACR_REGISTRY }}
-          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: true
-          provenance: false
-          sbom: false
-          tags: ${{ steps.meta.outputs.tags }}
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
-            COMMIT=${{ steps.meta.outputs.commit }}
-            BUILD_DATE=${{ steps.meta.outputs.build_date }}
-          cache-from: type=gha,scope=panel
-          cache-to: type=gha,mode=max,scope=panel
+          } >"$notes_path"
+          echo "path=$notes_path" >>"$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          name: Stardew Server Anxi Panel ${{ steps.meta.outputs.version }}
+          name: Stardew Server Anxi Panel ${{ steps.identity.outputs.version }}
           body_path: ${{ steps.notes.outputs.path }}
           files: |
             deploy/run.sh
             deploy/migrate-fnos.sh
             deploy/repair-junimo-0.3.5.sh
             deploy/repair-junimo-upgrade.sh
+
+      - name: Release summary
+        shell: bash
+        run: |
+          {
+            echo "## Validated candidate promoted"
+            echo
+            echo "- Candidate workflow: \`${{ steps.proof.outputs.run_id }}\`"
+            echo "- Commit: \`${{ steps.identity.outputs.commit }}\`"
+            echo "- Digest: \`${{ steps.proof.outputs.digest }}\`"
+            echo "- The release workflow did not rebuild the image."
+          } >>"$GITHUB_STEP_SUMMARY"

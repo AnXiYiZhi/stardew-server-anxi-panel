@@ -1,3 +1,10 @@
+# RELEASE-CANDIDATE-PROMOTION-1 联调契约（2026-08-14）
+
+- 候选门禁不新增生产 API，也不允许测试专用 release URL 进入 Panel 配置。真实旧版仍访问固定 `https://api.github.com`，但任务专属 DinD 用私有 CA、受控 TLS endpoint 和容器级 host 映射返回唯一候选 Release；Docker daemon 同时只在该 DinD 内把 `ghcr.io` 映射到受控 TLS registry。CA、cookie、registry、Compose、bind 和 volume 都随 DinD 清理，不进入镜像、GitHub artifact 或日志。
+- E2E 必须通过公开接口依次调用 `POST /api/setup/admin`、`POST /api/system/update/check`、`POST/GET /api/system/update/dry-run` 和 `POST/GET /api/system/update/apply`。上一正式版使用当前 `{"confirmFullStack":true}`；代表老版本如果仍采用历史空 body，只有第一次请求明确返回 400 且尚未创建 apply 时才允许按旧契约重发空 body。
+- 相同精确版本引用先指向带失败 HEALTHCHECK 的候选派生镜像，必须恢复上一正式版并返回 `failed_rolled_back/health_check_failed`；随后 registry 原子切回本次构建的健康候选，再创建新的 check/dry-run/apply。健康链要求目标 `/health`、`/api/version` 的 version/full commit、SQLite integrity、初始化状态、Panel 哨兵、非目标游戏容器 ID/volume hash 和 Panel 重启后 apply 终态全部正确。
+- 正式 tag workflow 不调用上述 API，也不重新测试另一份构建；它只消费成功候选 workflow 上传的 `candidate.json`，验证 tag/main/commit/version/build date/digest 后提升原对象。候选 artifact 不匹配、过期或 registry 对象被覆盖时 fail closed。
+
 # SAVE-IMPORT-FIRST-UPLOAD-1 联调契约（2026-08-13，completed，未发布）
 
 - `upload-preview`、`upload-commit-and-start` 的请求/响应和管理员权限不变。过去必须先启动一次才能上传的空实例，现在可直接 commit；后端会在接管上传 token 前同步精确 `.125` image 内的 JunimoServer Mod，并在无活动存档时创建 operation-owned bootstrap 维护世界。

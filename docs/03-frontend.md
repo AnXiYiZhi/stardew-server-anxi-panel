@@ -1,3 +1,9 @@
+# FE-RELEASE-GATE-RELOCATION-1：前端发布契约迁到候选阶段（2026-08-14，completed）
+
+- 前端 15 项状态测试、production audit/build 仍是每个正式候选的必跑回归，但执行入口从 tag 后的 `release.yml` 移到 `scripts/run-release-gates.sh`，由手动 `release-candidate.yml` 在候选镜像构建前调用。Compatibility workflow 继续在 `main` 直接执行同组核心前端测试。
+- `frontend/scripts/test-responsive-layout.ts` 不再错误要求正式 digest 提升 workflow 包含 npm 命令；它现在同时断言统一门禁脚本仍含 responsive/new-game/Nexus 三项关键回归、候选 workflow 必须调用统一门禁、正式 workflow 必须使用 `skopeo --preserve-digests` 且不得重新 `docker build`。
+- 这不改变任何 React 页面、CSS、API 或响应式算法。验证运行 `npm run test:responsive-layout`，并结合 workflow YAML/actionlint、Bash/ShellCheck 和真实候选 Web-upgrade E2E；后续增加前端关键回归时应更新统一门禁脚本和本契约，不得重新塞回 tag workflow。
+
 # v0.4.15 前端发布状态（2026-08-14，released）
 
 - Nexus 扩展 0.1.3、首次上传运行组件错误分流和 nanoid 3.3.18 安全补丁已随 `v0.4.15@d84157dc8a3abc83d13d29c276d6ed332e901ce7` 正式发布。Release workflow `31725256195` 与 Compatibility `31725203858` 成功；三仓 `0.4.15/latest` digest 统一，逐仓 fresh/restart 通过。

@@ -1,3 +1,11 @@
+# 2026-08-14 完成：候选镜像一次构建与 digest 提升发布（RELEASE-CANDIDATE-PROMOTION-1）
+
+- [x] 新增手动 `Validate release candidate` workflow：冻结同步 `main` 的版本、完整 commit 与 build date，自动执行代码回归、fresh/restart、上一正式版真实 Web 一键升级、unhealthy 自动回滚、SQLite/初始化/非目标资源保留，并只在全部成功后推送带 SHA 的 GHCR candidate。
+- [x] 新增 `scripts/run-release-gates.sh`、Linux/CI `scripts/release-candidate.sh`、Windows Docker Desktop `scripts/release-candidate.ps1` 与受控 TLS DinD Web-upgrade E2E；基础回归始终执行，官网与 Junimo/SMAPI/远程制品长门禁按上一 tag 到候选 SHA 的受影响路径自动选择。
+- [x] 正式 `release.yml` 改为查找同 SHA/版本的成功候选 artifact，验证 annotated tag 精确等于 `origin/main`，再把候选 digest 原样提升到三仓 exact/latest；一个正式镜像冒烟后创建 GitHub Release，不再 tag 后重建镜像或逐仓重复启动相同 digest。
+- [x] 发布硬门禁默认只保留上一正式版升级；只有数据库迁移、部署格式、运行栈、长期数据或跨版本兼容实现变化时增加最老受影响版本。发布完成仍须回填两个 workflow ID、唯一 digest、选择/跳过矩阵、耗时与资源清理。
+- [x] Windows Docker Desktop 合成 `0.4.16` 开发演练完整通过：fresh/restart、正式 `0.4.15` 真实 Web unhealthy 回滚、健康升级、SQLite/初始化/Panel 数据/非目标资源和重启耐久；最终轮 403.5 秒，全部任务资源归零且没有任何远端发布。该 `-AllowDirty` 结果只验证流程实现，正式候选仍须由同步干净 `main` 的 workflow 生成。
+
 # 2026-08-14 已发布：v0.4.15 Nexus 幂等、自动解绑与无存档首次上传
 
 - [x] annotated `v0.4.15` 固定指向 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`；Compatibility `31725203858` 与 Release workflow `31725256195` 成功。

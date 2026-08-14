@@ -1,3 +1,15 @@
+# FE-RELEASE-GATE-RELOCATION-1 接手记录（2026-08-14，completed）
+
+## 改了什么、影响哪些文件
+
+- `frontend/scripts/test-responsive-layout.ts` 的发布契约从“`release.yml` 必须直接包含三个 npm 测试命令”调整为三层断言：`scripts/run-release-gates.sh` 保留 responsive/new-game/Nexus 回归，`release-candidate.yml` 必须调用该统一门禁，正式 `release.yml` 必须只用 `skopeo --preserve-digests` 提升制品且不得 `docker build`。
+- 没有修改 React/CSS/API；影响仅限前端测试对新候选发布架构的静态保护。Compatibility workflow 仍直接执行核心前端测试，候选 workflow 运行完整状态测试、audit 和 production build。
+
+## 如何验证、下一步注意事项
+
+- 运行 `npm run test:responsive-layout`；同时对两个 workflow 运行 YAML/actionlint，对三个 Bash 脚本运行 `bash -n`/ShellCheck。真实候选链由 Windows wrapper 和受控 TLS DinD 验证。
+- 后续新增关键前端发布测试时，应加入 `scripts/run-release-gates.sh` 并扩展本契约；不要把重复 npm 门禁重新放进 tag workflow，否则会失去“只提升已测 digest”的保证。
+
 # v0.4.15 前端发布接手状态（2026-08-14，released）
 
 - annotated `v0.4.15` 固定在 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`；Compatibility `31725203858` 与 Release workflow `31725256195` 成功。Docker Hub、ACR、GHCR 的 `0.4.15/latest` 统一 digest=`sha256:b91e3cfd8175305723e0b97feb7c4c202179f2e229aff4f6145fe60b354a5c33`，逐仓 fresh/restart health/database/version 通过，GitHub Release 四项资产与 tag 源一致。
