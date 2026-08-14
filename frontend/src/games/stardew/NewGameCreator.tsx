@@ -328,7 +328,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
           </button>
           {advancedOpen && (
             <div className="ngc-advanced-options">
-              <label className="ngc-check-row"><input type="checkbox" checked={cfg.remixedCommunityCenter} onChange={(event) => set('remixedCommunityCenter', event.target.checked)} />社区中心手机包</label>
+              <label className="ngc-check-row"><input type="checkbox" checked={cfg.remixedCommunityCenter} onChange={(event) => set('remixedCommunityCenter', event.target.checked)} />社区中心收集包</label>
               <label className="ngc-check-row"><input type="checkbox" checked={cfg.remixedMineRewards} onChange={(event) => set('remixedMineRewards', event.target.checked)} />矿洞掉落</label>
               <label className="ngc-check-row"><input type="checkbox" checked={cfg.spawnMonstersOnFarm} onChange={(event) => set('spawnMonstersOnFarm', event.target.checked)} />在农场出现怪物</label>
               {farmCatalog.moddedCreationEnabled ? (

@@ -182,6 +182,7 @@ func (s *durablePendingUploadStore) put(dataDir, instanceID, sourceDir, saveName
 	token := newToken()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pruneExpiredSucceededLocked(dataDir)
 	target := filepath.Join(durableUploadDir(dataDir, token), "payload")
 	if err := stagePendingUpload(sourceDir, target); err != nil {
 		return "", err
@@ -283,7 +284,7 @@ func (s *durablePendingUploadStore) attachJob(dataDir, token, operationID, jobID
 	if err != nil {
 		return err
 	}
-	if entry.Status != "owned" || entry.OperationID != operationID {
+	if (entry.Status != "owned" && entry.Status != "succeeded") || entry.OperationID != operationID {
 		return fmt.Errorf("owned token mismatch")
 	}
 	if entry.JobID != "" && entry.JobID != jobID {
@@ -291,6 +292,43 @@ func (s *durablePendingUploadStore) attachJob(dataDir, token, operationID, jobID
 	}
 	entry.JobID = jobID
 	return writeDurablePendingUpload(dataDir, token, entry)
+}
+
+func (s *durablePendingUploadStore) markSucceeded(dataDir, token, operationID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, err := readDurablePendingUpload(dataDir, token)
+	if err != nil {
+		return err
+	}
+	if entry.Status != "owned" || entry.OperationID != operationID {
+		return fmt.Errorf("owned token mismatch")
+	}
+	entry.Status = "succeeded"
+	entry.ExpiresAt = s.now().Add(uploadTokenTTL)
+	entry.LeaseUntil = time.Time{}
+	return writeDurablePendingUpload(dataDir, token, entry)
+}
+
+func (s *durablePendingUploadStore) pruneExpiredSucceededLocked(dataDir string) {
+	entries, err := os.ReadDir(durableUploadRoot(dataDir))
+	if err != nil {
+		return
+	}
+	for _, item := range entries {
+		if !item.IsDir() {
+			continue
+		}
+		data, readErr := os.ReadFile(filepath.Join(durableUploadRoot(dataDir), item.Name(), "token.json"))
+		if readErr != nil {
+			continue
+		}
+		var entry durablePendingUpload
+		if json.Unmarshal(data, &entry) != nil || entry.Status != "succeeded" || s.now().Before(entry.ExpiresAt) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(durableUploadRoot(dataDir), item.Name()))
+	}
 }
 
 func transactionSourceDirForUpload(dataDir, operationID string) string {

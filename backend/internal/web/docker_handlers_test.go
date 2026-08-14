@@ -33,6 +33,8 @@ type fakeDockerService struct {
 	statsDelay    time.Duration
 	logsResult    paneldocker.CommandResult
 	logsErr       error
+	composeUp     paneldocker.CommandResult
+	composeUpErr  error
 	execFunc      func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	instanceState string
 }
@@ -47,6 +49,10 @@ func (f fakeDockerService) ComposeVersion(ctx context.Context, workDir string) (
 
 func (f fakeDockerService) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
 	return f.psResult, f.psErr
+}
+
+func (f fakeDockerService) ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	return f.ComposePs(ctx, dir)
 }
 
 func (f fakeDockerService) ComposeStats(ctx context.Context, dir string) (paneldocker.ComposeStatsResult, error) {
@@ -117,7 +123,7 @@ func (f fakeDockerService) RemoveVolumes(ctx context.Context, workDir string, na
 }
 
 func (f fakeDockerService) ComposeUp(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
-	return paneldocker.CommandResult{ExitCode: 0}, nil
+	return f.composeUp, f.composeUpErr
 }
 
 func (f fakeDockerService) ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error) {

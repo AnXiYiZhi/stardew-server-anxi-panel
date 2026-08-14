@@ -148,6 +148,26 @@ func (s *Store) UpdateInstanceState(ctx context.Context, params UpdateInstanceSt
 	return scanInstanceRow(row)
 }
 
+// RestoreInstanceStateSnapshot restores the four persisted lifecycle fields
+// exactly, including NULL versus non-NULL state_message semantics. It is used
+// only by rollback paths which already captured an authoritative Instance.
+func (s *Store) RestoreInstanceStateSnapshot(ctx context.Context, snapshot Instance) (Instance, error) {
+	if !IsValidInstanceState(snapshot.State) {
+		return Instance{}, ErrInvalidStateTransition
+	}
+	var stateMessage any
+	if snapshot.StateMessage.Valid {
+		stateMessage = snapshot.StateMessage.String
+	}
+	row := s.db.QueryRowContext(ctx, `
+		UPDATE instances
+		SET state = ?, state_message = ?, driver_phase = ?, driver_payload = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE id = ?
+		RETURNING id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at
+	`, snapshot.State, stateMessage, snapshot.DriverPhase, snapshot.DriverPayload, snapshot.ID)
+	return scanInstanceRow(row)
+}
+
 // UpdateInstanceStateForActiveJob applies an instance transition only while
 // the supplied job is queued/running and targets that instance. This turns the
 // active job row into a durable write lease and blocks late writes from stale

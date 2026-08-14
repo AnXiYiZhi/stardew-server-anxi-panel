@@ -48,7 +48,7 @@ type RuntimeUpdateApplyDockerService interface {
 	RuntimeComposeUpServicePreserve(context.Context, string, string, string) error
 	RuntimeUpdateServiceCPUShares(context.Context, string, string, string, int64) error
 	RuntimeServiceInspect(context.Context, string, string, string) (paneldocker.RuntimeServiceMetadata, error)
-	RuntimeSteamAuthReady(context.Context, string, string) (paneldocker.RuntimeSteamReady, error)
+	RuntimeSteamAuthHealth(context.Context, string, string) (paneldocker.RuntimeAuthServiceHealth, error)
 	RuntimeServerHealth(context.Context, string, string) error
 	RuntimeCreateSnapshotVolume(context.Context, string, string, string) error
 	RuntimeCloneVolume(context.Context, string, string, string, string) error

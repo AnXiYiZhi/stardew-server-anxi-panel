@@ -81,6 +81,10 @@ func (f *fakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.Com
 	return f.psResult, f.psErr
 }
 
+func (f *fakeDocker) ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	return f.ComposePs(ctx, dir)
+}
+
 func (f *fakeDocker) ComposePullStreaming(_ context.Context, _ string, _ []string, lineHandler func(string)) (paneldocker.CommandResult, error) {
 	f.composePulls++
 	if f.pullErr == nil {
@@ -264,6 +268,14 @@ func (f *fakeStore) UpdateInstanceState(_ context.Context, p storage.UpdateInsta
 	f.instance.StateMessage.Valid = p.StateMessage != ""
 	f.instance.DriverPhase = p.DriverPhase
 	f.instance.DriverPayload = p.DriverPayload
+	return f.instance, nil
+}
+
+func (f *fakeStore) RestoreInstanceStateSnapshot(_ context.Context, snapshot storage.Instance) (storage.Instance, error) {
+	f.instance.State = snapshot.State
+	f.instance.StateMessage = snapshot.StateMessage
+	f.instance.DriverPhase = snapshot.DriverPhase
+	f.instance.DriverPayload = snapshot.DriverPayload
 	return f.instance, nil
 }
 
@@ -1965,7 +1977,11 @@ func TestBuildSteamCMDAuthMigrationOptsCopiesLegacyCachesIntoCanonicalVolume(t *
 
 func waitForDriverTestJobStatus(t *testing.T, store *storage.Store, jobID string, status string) storage.Job {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// Several lifecycle fixtures use a 10-second job timeout. Under the full
+	// package gate, concurrent SQLite/filesystem work can legitimately push a
+	// terminal transition past five seconds, so the observer must outlive the
+	// runner's own bounded timeout without becoming unbounded itself.
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		job, err := store.GetJob(context.Background(), jobID)
 		if err != nil {

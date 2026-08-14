@@ -192,9 +192,10 @@ func TestRunningProtection_StoppedAllowsOperations(t *testing.T) {
 	}
 }
 
-// TestSaveUploadCommitAndStart_RunningBlocked verifies that upload-commit-and-start
-// returns 409 when running and does not import the save.
-func TestSaveUploadCommitAndStart_RunningBlocked(t *testing.T) {
+// TestSaveUploadCommitAndStart_UnsafeStatesBlocked verifies that the Web entry
+// uses the same explicit offline-state contract as the driver. Rejection occurs
+// before token reservation or driver loading.
+func TestSaveUploadCommitAndStart_UnsafeStatesBlocked(t *testing.T) {
 	handler, store, closeFn := newTestHandlerWithStore(t)
 	defer closeFn()
 
@@ -222,19 +223,30 @@ func TestSaveUploadCommitAndStart_RunningBlocked(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(map[string]any{"token": "fake-token-123", "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true}})
-	req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	if adminCookie != nil {
-		req.AddCookie(adminCookie)
-	}
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusConflict {
-		t.Errorf("upload-commit-and-start running returned %d, want 409; body: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), sj.ImportErrorSaveInProgress) {
-		t.Errorf("upload-commit-and-start running error = %s, want %s", w.Body.String(), sj.ImportErrorSaveInProgress)
+	for _, state := range []string{
+		storage.InstanceStateUninitialized,
+		storage.InstanceStateJunimoScaffolded,
+		storage.InstanceStateSteamAuthRunning,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+	} {
+		t.Run(state, func(t *testing.T) {
+			if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+				ID: storage.DefaultInstanceID, State: state, StateMessage: "unsafe state", DriverPhase: "unsafe", DriverPayload: `{}`,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			if adminCookie != nil {
+				req.AddCookie(adminCookie)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), sj.ImportErrorSaveInProgress) {
+				t.Errorf("state %s returned %d, want 409 %s; body: %s", state, w.Code, sj.ImportErrorSaveInProgress, w.Body.String())
+			}
+		})
 	}
 }
 

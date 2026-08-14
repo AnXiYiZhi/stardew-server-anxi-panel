@@ -3,6 +3,23 @@
 - `REQUIRED-RUNTIME-STALE-STATUS-1` 已进入 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`。最终候选 `31799350642` 通过后端默认并行 test/vet/build、真实 SMAPI/runtime integration、fresh/restart、`v0.4.15` Web unhealthy 回滚与 healthy 升级；Tag `31799876171`、正式提升 `31799891830` 成功。
 - 三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像重启前后 health/database/version/setup 正确；SQLite、初始化、Panel 数据、非目标游戏容器/volume 保持，完整候选故障与资源清理见 `docs/09-image-build.md`。
 
+# SAVE-IMPORT-FIRST-INSTALL-STATE-1 接手记录（2026-08-14，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 根因是三层状态契约不一致：installer 成功终态为 `game_installed`；Web 旧入口仅拒绝 running/starting，已允许 journal/ownership/staging/preimport/bootstrap；`runImportMaintenance` 却在 Docker 探针前要求精确 `stopped`，所以真实首次上传稳定失败为 `instance must remain stopped before maintenance startup`。历史维护和 fresh fixture 均把状态写成 `stopped`，掩盖了安装器真实输出。
+- `save_import_maintenance.go` 新增共享 `IsSaveImportMaintenanceOfflineState`，仅接受 `game_installed / save_required / ready_to_start / stopped`。Web commit 使用该集合早拒绝；`ImportSaveAndStart` 在 journal 或 token ownership 前通过 store 重新读取权威实例，并让后续所有路径只使用该 `DataDir`。安全探针新增 `ComposePsStrict`，固定无缓存执行 `docker compose ps --all --format json`；空输出、坏 JSON、缺 service/state、未知 server 状态和任一 running/restarting/paused/removing 副本都 fail closed。maintenance 静态/指针检查后、`ComposeUp` 前再复验一次。
+- maintenance 进入时仍发布私有 `stopped/save_import_maintenance`，不改普通 Start、邀请码或 Phase A 提交语义。journal 在 `ComposeUp` 前先把 `maintenanceStarted=true` 和原始实例四字段快照作为“可能已启动”证明；失败 defer 只有 `ComposeDown` exit 0 且 strict Compose 证明 server 已停，才清 flag 并通过 storage `RestoreInstanceStateSnapshot` 恢复精确 state/phase/payload 与 `state_message` NULL/空语义。状态发布、journal 清旗或恢复写入错误全部显式返回 recovery required。Phase A 正式 FIFO 写入前的证据失败也走相同停机与恢复，不再留下运行中的 maintenance。
+- `CleanupUnsubmittedImport` 显式拒绝 `MaintenanceStarted=true`，并把 bootstrap/pointer 与 staged 全树 fingerprint 先汇总成只读 cleanup plan；所有证据通过后才开始任何删除，避免后置 mismatch 造成半清理。job 以 operation 派生 idempotency key 持久化；job→token 绑定窗口中断时可从 key 找回，key 不存在才可证明无 durable runner。cleanup 删除完成后先写 `stage=canceled` marker，再删 token，最后清 journal；任一窗口中断均可重试，残留 canceled marker 不会产生 busy。成功 token 标为 `succeeded` 并在短幂等窗口后精确回收。preimport 永久保留；活动、submitted、身份不符、磁盘漂移或运行态不可证全部 busy/recovery。
+- 主要文件：`save_import_maintenance.go`、`save_import_transaction.go`、对应 maintenance/transaction 测试，Web `lifecycle_handlers.go`、`pending_uploads_test.go`、`saves_handlers_test.go` 与共享 Docker fake。公开 `upload-commit-and-start` JSON、hostHandling、单次 FIFO、同名 no-replace、journal 阶段和成功结果未变；`{token,cancel:true}` 只扩大到上述可审计的 terminal pre-submit cleanup。
+
+## 如何验证、下一步注意事项
+
+- driver 专项覆盖四个允许状态、完整不安全状态集合、数据库离线但 Compose running、strict Compose 缓存绕过/坏解析/多 server 状态、`game_installed` 启动/readiness/cancel 精确恢复、状态写入与恢复失败、Phase A 提交前失败停机、cleanup 全计划前零删除、未知 schema/stage fail closed、权威 DataDir，以及真实 `game_installed` + 空 active save 的完整 `ImportSaveAndStart`；本地受控 fake 在明确上限内走完 bootstrap、runtime_ready、Phase A、activation、durable completed，并断言正式 `saves import` 只写一次。
+- Web/API 回归从真实 `game_installed` 创建 preview/commit；故障夹具让 maintenance `ComposeUp` 立即失败，确认 journal 为未提交 `backup_created`、state 快照恢复，再以同 token cancel 清 journal/staged/bootstrap/pointer/token、保留 preimport 且 `HasUnfinishedImportTransaction=false`。这条链不使用真实 Steam、账号或生产存档。
+- 后续不要把共享集合扩大到安装/授权、starting/running 或 error，也不要移除两次 Compose 检查。不要为兼容旧失败直接删目录、改 journal 或清 preimport；任何自动恢复都必须继续经过 terminal job identity、driver runtime guard、MaintenanceStarted、upstream、ownership、pointer 和 fingerprint 全套门禁。
+- 本任务只完成本地修复与回归，不创建 tag、Release 或镜像。正式发布前应从上一正式版升级得到的新 Panel 复验“安装完成态首次上传”和“注入 maintenance 启动失败后安全 cancel/reupload”，并保留原 state 恢复、preimport、资源精确清理证据。
+
 # REQUIRED-RUNTIME-STALE-STATUS-1 接手记录（2026-08-14，released in v0.4.16）
 
 ## 改了什么、影响哪些接口/文件
@@ -409,7 +426,7 @@
 
 - 新增 `internal/web/save_import_api.go`，正式定义嵌套 hostHandling DTO、公开 mode 到 driver mode 的映射、平台 ID 字符串校验和稳定事务错误映射。commit handler 不再接受缺省 takeover，也不再调用旧覆盖导入/指针/普通 Start 链。
 - durable pending token 新增持久 `jobId`、`reserveOrReuse/lookup/attachJob`。operationId 只由后端生成；相同 token 与同一 fingerprint 决策可在 handler 返回后或 Panel 重启后拿回原 `202`，不会重复建 job。
-- owned token 的 Web cancel 现在只返回 `save_in_progress`，绝不删除事务 source/journal/staged/preimport。driver 在 ownership 后 job 创建失败时返回并记录 `save_in_progress`；handler 仅在 token 仍是 reserved 时 release。
+- owned token 的历史默认是 Web cancel 只返回 `save_in_progress`。2026-08-14 起仅对精确关联 terminal failed/canceled job、driver 证明四态离线且 Compose server 实停、`MaintenanceStarted=false`、未提交且 ownership/pointer/fingerprint 全部成立的事务开放安全 cancel；它删除 source/journal/staged/bootstrap/pointer/token，仍绝不删除 preimport。其它 owned 事务继续冲突；handler 仅在 token 仍是 reserved 时 release。
 - `CreateImportJournal` 的幂等比较扩展到 instance/save/hostHandling/platform fingerprint，避免同 operation 被不同主机决策复用。原始 platformId 只在请求闭包内存中存在；审计仅记录公开 mode、saveName、operationId、jobId。
 
 ## 接口与影响文件
@@ -494,7 +511,7 @@
 - 新增 `save_import_maintenance.go`：独立 ComposeUp/就绪探针，不复用普通 Start 成功判定。顺序为 `.125`/DLL 静态校验、staging/preimport、ComposeUp、server running、FIFO、log、health/status、容器内 manifest、裸 `saves`、玩家复查、baseline。
 - `save_import_transaction.go` 的 job 在 `backup_created` 后进入维护 runtime；journal 新增 `maintenanceStarted/runtimeBaseline/serverOutputLogOffset`，全部证据成功后才写 `runtime_ready`。
 - `driver.go` reconcile 保留 `stopped/save_import_maintenance`；`lifecycle.go` 的邀请码读取在维护 phase 拒绝。维护状态会隐藏旧 `invite_code`，失败时恢复原 payload。
-- 任一 ready 前失败或 cancel 会停止本 job 启动的 Compose runtime，恢复原 stopped state/phase/message/payload；不清 staged/preimport。玩家连接返回 `save_import_players_connected`，没有 kick 行为。
+- 任一 ready 前失败或 cancel 会停止本 job 启动的 Compose runtime；2026-08-14 起只有 ComposeDown 成功且 ComposePs 证明 server 已停，才恢复进入维护前的精确 state/phase/message/payload（允许原状态为 `game_installed/save_required/ready_to_start/stopped`）；不清 staged/preimport。玩家连接返回 `save_import_players_connected`，没有 kick 行为。
 
 ## 影响文件与接口
 
@@ -806,3 +823,30 @@
 - owner 文件是安全锁，不是缓存。损坏/缺失 transaction 时返回 recovery required 并保留目录，不得静默删除；support bundle 继续排除 owner、事务、存档和命令结果正文。
 - 本次正式版本还要一起收口 `92f3be6bb2731358420ba315ac18029c2506d81f`（Release `run.sh` 必须含 swap/swappiness=60 修复）与 `621c5645e0048da7c4793035615438ed78fc7002`（图形化 Compose 自动标准化）。两者虽已在 `origin/main`，最终候选/升级后/生产真机证据仍未完成，不能在 handoff 或 Release notes 中提前写成真机通过。
 - 不要为修复 transaction recovery 顺手启用 Docker restart policy 或 Panel 启动自动 ComposeUp。宿主重启后的普通实例由用户手动开启，这是当前明确产品策略。
+
+# RUNTIME-AUTH-HEALTH-PROBE-1 接手记录（2026-08-14，代码完成，待发布）
+
+## 改了什么
+
+- Issue #9 的真实失败点是 Runtime 验收误用 `/steam/ready`。该端点会尝试恢复会话、连接 Steam、登录并拿 App Ticket；Steam 网络正常时很快完成，少数受阻/慢连接环境则超过 Panel 单次 15 秒探针，反复重试到 10 分钟预算后把在线能力故障误判为服务损坏。
+- `backend/internal/docker/runtime_apply.go` 将 `RuntimeSteamAuthReady` 重命名为 `RuntimeSteamAuthHealth`，只请求 `/health`；返回值改为 `RuntimeAuthServiceHealth{LoggedIn, AccountCount}`，新增不包含响应正文的 `RuntimeAuthHealthError`。解析器要求 HTTP 200、单一 JSON 文档、精确 `status="ok"`、非 null bool `logged_in`、非 null array `accounts`。
+- `runtime_update_apply_runner.go`、`runtime_update_rollback.go` 和 `smapi_update_workflow.go` 的目标、最终目标、旧栈回滚及 SMAPI 复验均改用该纯服务契约。`logged_in=false` 只 warning；Control-only、Junimo 与 LAN/IP 模式继续。接口不可达/超时/非 200/坏 JSON/字段错误/status 错误、容器不运行及 digest mismatch 全部 fail closed。
+- 错误码固定为 `auth_container_not_running`、`auth_digest_mismatch`、`auth_health_unreachable`、`auth_health_timeout`、`auth_health_http_status`、`auth_health_invalid_response`。apply/rollback 会保留最后一次脱敏探针原因；禁止输出用户名、密码、token、session、ticket、body 或完整 env。
+- `checks[].name=steam_auth_ready` 为 API/前端兼容暂不重命名，其新语义是“容器 running + digest + 严格 `/health`”。实例 `/state.steamAuthReady` 仍是真正的 Steam 在线能力诊断，继续请求 `/steam/ready`；登录、ticket 与邀请码语义没有改变。
+
+## 兼容性与安全边界
+
+- 内置 `1.5.0-anxi.2` 精确 source revision 的 `/health` 已核实为无副作用、HTTP 200、`status/logged_in/accounts`；真实镜像 opt-in 也通过。Panel Git 历史 manifest 只出现过 `.2`，没有另一个已明确支持的旧认证 tag 可证明同契约。
+- `config/runtime_stack.go` 与 `scripts/compatibility_matrix.py` 使用显式 health-contract allowlist 固定 `.2`。其它 tag 以 `unsupported/auth_health_contract` 在 mutation 前停止；不要猜测旧版兼容，也不要增加 `/health → /steam/ready` fallback。若以后支持新 auth tag，必须先审计其精确 source revision/镜像 digest，再同时更新两处 allowlist、manifest 和 fixture。
+- Docker health 不参与放行，因为其历史实现可能与 Steam 在线状态耦合。认证卷快照、auth-first/server-second、目标 digest 精确验证、失败回滚和私有恢复材料规则均未放宽。
+
+## 如何验证
+
+- 单元表覆盖在线/离线成功，以及非 200、空响应、非 JSON、字段缺失、status null/非 ok、logged_in null/string/number、accounts null/object/string/number 和 trailing JSON。
+- Docker probe fixture 让 `/health` 快速返回合法离线 body、让 `/steam/ready` 阻塞 60 秒，并检查请求日志没有 ready；还覆盖不可达、短超时、404、500、坏 JSON。完整 apply integration 覆盖 auth 镜像变化、Control-only/auth 未变化、最终目标复验、旧栈回滚和六类错误码；digest mismatch 回归保留。
+- 2026-08-14 实际通过：相关 Go 定向测试、两组 Docker integration、真实镜像 opt-in、兼容矩阵 20 项与 manifest validate，以及 Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...`。所有任务专属 Docker 资源已精确清理。
+
+## 下一步注意事项
+
+- 建议随下一个补丁版 `v0.4.17` 发布，但当前没有候选、tag、Release 或正式镜像。发布人仍须按 `docs/09-image-build.md` 从上一正式版完成真实 Panel Web 升级、升级后本专项复验、unhealthy 候选安全回滚、数据/非目标资源完整性和 digest 提升门禁。
+- 不要把 `/health` 返回的 `logged_in` 改成硬门槛，也不要仅凭 HTTP 200、合法 JSON 或 Docker healthy 放行。错误码、last probe reason 和目标/回滚契约必须保持一致。

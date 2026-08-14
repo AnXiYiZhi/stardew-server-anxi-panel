@@ -2,10 +2,42 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
 )
+
+func TestRestoreInstanceStateSnapshotPreservesNullableMessage(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+	instance, err := store.EnsureDefaultInstance(context.Background(), EnsureDefaultInstanceParams{
+		ID: DefaultInstanceID, DriverID: DefaultDriverID, Name: "Stardew Valley",
+		DataDir: filepath.Join(t.TempDir(), "instances", "stardew"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.State = InstanceStateGameInstalled
+	instance.StateMessage = sql.NullString{String: "", Valid: true}
+	instance.DriverPhase = "exact-empty-message"
+	instance.DriverPayload = `{"exact":true}`
+	restored, err := store.RestoreInstanceStateSnapshot(context.Background(), instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.StateMessage.Valid || restored.StateMessage.String != "" || restored.DriverPhase != instance.DriverPhase || restored.DriverPayload != instance.DriverPayload {
+		t.Fatalf("valid empty snapshot not preserved: %+v", restored)
+	}
+	instance.StateMessage = sql.NullString{String: "ignored", Valid: false}
+	restored, err = store.RestoreInstanceStateSnapshot(context.Background(), instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.StateMessage.Valid {
+		t.Fatalf("NULL snapshot not preserved: %+v", restored.StateMessage)
+	}
+}
 
 func TestEnsureDefaultInstanceCreatesAndPreservesExisting(t *testing.T) {
 	store, closeStore := newStorageTestStore(t)

@@ -80,6 +80,16 @@ class CompatibilityMatrixTests(unittest.TestCase):
         with self.assertRaises(MATRIX.MatrixError):
             MATRIX.validate(value)
 
+    def test_auth_health_contract_tags_are_explicit(self):
+        value = copy.deepcopy(self.base)
+        auth = value["steamAuth"]
+        digest = next(iter(auth["digests"].values()))
+        auth["tag"] = "1.5.0-anxi.1"
+        auth["images"] = [image.rsplit(":", 1)[0] + ":1.5.0-anxi.1" for image in auth["images"]]
+        auth["digests"] = {image: digest for image in auth["images"]}
+        with self.assertRaisesRegex(MATRIX.MatrixError, "pure /health contract"):
+            MATRIX.validate(value)
+
     def test_candidate_and_tested_statuses_are_not_part_of_release_flow(self):
         for status in ("candidate", "tested", "discovered"):
             value = copy.deepcopy(self.base)

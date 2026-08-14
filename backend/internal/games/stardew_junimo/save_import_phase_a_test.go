@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 const phaseATestPlatformID = "76561198000000001"
@@ -56,6 +58,14 @@ func preparePhaseATestFixture(t *testing.T, hostHandling string) *phaseATestFixt
 	journal.PreimportBackupSHA256 = backupSHA
 	journal.Stage = ImportStageRuntimeReady
 	journal.MaintenanceStarted = true
+	store.mu.Lock()
+	original := store.instance
+	store.mu.Unlock()
+	journal.OriginalInstanceState = original.State
+	journal.OriginalInstanceStateMessage = original.StateMessage.String
+	journal.OriginalInstanceStateMessageValid = original.StateMessage.Valid
+	journal.OriginalInstanceDriverPhase = original.DriverPhase
+	journal.OriginalInstanceDriverPayload = original.DriverPayload
 	journal.RuntimeBaseline = &JunimoImportEvidenceSnapshot{
 		MainSaveSHA256: preHash, ActivePointer: "Old_1",
 		ProcessIdentity: &JunimoProcessIdentity{ContainerID: "container-a", ProcessStartTicks: "123"},
@@ -69,6 +79,43 @@ func preparePhaseATestFixture(t *testing.T, hostHandling string) *phaseATestFixt
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
 	record.started = true
 	return &phaseATestFixture{dataDir: dataDir, op: op, instance: instance, store: store, fake: fake, record: record, preHash: preHash}
+}
+
+func TestImportPhaseAPreSubmitEvidenceFailureStopsAndRestores(t *testing.T) {
+	f := preparePhaseATestFixture(t, "server_owns_original")
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"other":"kept"}`
+	f.store.mu.Unlock()
+	if err := os.Remove(filepath.Join(savesDir(f.dataDir), "Saves", "Upload_1", "Upload_1")); err != nil {
+		t.Fatal(err)
+	}
+	driver := New(f.fake, nil, nil, f.store)
+	err := driver.runImportPhaseA(context.Background(), f.instance, f.op, "", nil, phaseATestOptions())
+	if err == nil {
+		t.Fatal("pre-submit evidence failure unexpectedly succeeded")
+	}
+	if f.teeCalls != 0 {
+		t.Fatalf("FIFO writes=%d, want zero", f.teeCalls)
+	}
+	f.record.mu.Lock()
+	down := f.record.down
+	f.record.mu.Unlock()
+	if !down {
+		t.Fatal("maintenance runtime was not stopped after pre-submit evidence failure")
+	}
+	journal, loadErr := LoadImportJournal(f.dataDir, f.op)
+	if loadErr != nil || journal.MaintenanceStarted || journal.UpstreamSubmitted {
+		t.Fatalf("journal=%+v err=%v", journal, loadErr)
+	}
+	f.store.mu.Lock()
+	restored := f.store.instance
+	f.store.mu.Unlock()
+	if restored.DriverPhase != "container_stopped" || restored.StateMessage.String != "stopped before import" {
+		t.Fatalf("original instance snapshot not restored: %+v", restored)
+	}
 }
 
 func (f *phaseATestFixture) interceptFIFO(effect func(command string) (paneldocker.CommandResult, error)) {

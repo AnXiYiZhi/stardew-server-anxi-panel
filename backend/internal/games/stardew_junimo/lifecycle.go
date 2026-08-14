@@ -228,7 +228,7 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 		}
 		jobPayload = startJobPayload
 	}
-	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
+	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID, ""); err != nil {
 		return nil, err
 	}
 	if err := d.rejectActiveFarmhandDelete(ctx, req.Instance.ID); err != nil {
@@ -507,7 +507,7 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
-	if err := d.rejectActiveSaveImport(ctx, instance.ID); err != nil {
+	if err := d.rejectActiveSaveImport(ctx, instance.ID, ""); err != nil {
 		return err
 	}
 	if err := d.rejectActiveFarmhandDelete(ctx, instance.ID); err != nil {
@@ -565,7 +565,7 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
-	if err := d.rejectActiveSaveImport(ctx, instance.ID); err != nil {
+	if err := d.rejectActiveSaveImport(ctx, instance.ID, ""); err != nil {
 		return err
 	}
 	if err := d.rejectActiveFarmhandDelete(ctx, instance.ID); err != nil {
@@ -629,7 +629,7 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
-	if err := d.rejectActiveSaveImport(ctx, instance.ID); err != nil {
+	if err := d.rejectActiveSaveImport(ctx, instance.ID, ""); err != nil {
 		return nil, err
 	}
 	if err := d.rejectActiveFarmhandDelete(ctx, instance.ID); err != nil {

@@ -24,10 +24,12 @@ type runtimeApplyFakeDocker struct {
 	*runtimeUpdateFakeDocker
 	applyMu                sync.Mutex
 	applyCalls             []string
-	authReady, authTicket  bool
+	authLoggedIn           bool
 	authHealth             string
-	authFailTarget         bool
+	authContainerState     string
+	authUseTargetState     bool
 	authProbeErrorTarget   bool
+	authProbeErrorCode     string
 	inviteUnavailable      bool
 	serverHealthFailTarget bool
 	controlContractFail    bool
@@ -40,7 +42,7 @@ type runtimeApplyFakeDocker struct {
 }
 
 func newRuntimeApplyFakeDocker(dataDir string) *runtimeApplyFakeDocker {
-	return &runtimeApplyFakeDocker{runtimeUpdateFakeDocker: newRuntimeUpdateFakeDocker(dataDir), authReady: true, authTicket: true, authHealth: "healthy"}
+	return &runtimeApplyFakeDocker{runtimeUpdateFakeDocker: newRuntimeUpdateFakeDocker(dataDir), authLoggedIn: true, authHealth: "healthy", authContainerState: "running", authProbeErrorCode: "auth_health_unreachable"}
 }
 func (f *runtimeApplyFakeDocker) applyCall(call string) {
 	f.applyMu.Lock()
@@ -145,19 +147,28 @@ func (f *runtimeApplyFakeDocker) RuntimeServiceInspect(_ context.Context, dataDi
 		digest = "sha256:" + strings.Repeat("d", 64)
 	}
 	health := "healthy"
+	state := "running"
 	if service == "steam-auth" {
 		health = f.authHealth
+		if f.targetConfigured(dataDir) {
+			state = f.authContainerState
+		}
 	}
-	return paneldocker.RuntimeServiceMetadata{ContainerID: strings.Repeat("a", 12), ImageID: digest, State: "running", Health: health}, nil
+	return paneldocker.RuntimeServiceMetadata{ContainerID: strings.Repeat("a", 12), ImageID: digest, State: state, Health: health}, nil
 }
-func (f *runtimeApplyFakeDocker) RuntimeSteamAuthReady(_ context.Context, dataDir, _ string) (paneldocker.RuntimeSteamReady, error) {
+func (f *runtimeApplyFakeDocker) RuntimeSteamAuthHealth(_ context.Context, dataDir, _ string) (paneldocker.RuntimeAuthServiceHealth, error) {
+	scope := "original"
+	if f.targetConfigured(dataDir) {
+		scope = "target"
+	}
+	f.applyCall("auth health " + scope)
 	if f.targetConfigured(dataDir) && f.authProbeErrorTarget {
-		return paneldocker.RuntimeSteamReady{}, errors.New("auth endpoint unavailable")
+		return paneldocker.RuntimeAuthServiceHealth{}, &paneldocker.RuntimeAuthHealthError{Code: f.authProbeErrorCode, Message: "steam-auth-cn /health 受控测试失败。"}
 	}
-	if f.targetConfigured(dataDir) && f.authFailTarget {
-		return paneldocker.RuntimeSteamReady{Ready: f.authReady, HasTicket: f.authTicket}, nil
+	if f.targetConfigured(dataDir) && f.authUseTargetState {
+		return paneldocker.RuntimeAuthServiceHealth{LoggedIn: f.authLoggedIn}, nil
 	}
-	return paneldocker.RuntimeSteamReady{Ready: true, HasTicket: true}, nil
+	return paneldocker.RuntimeAuthServiceHealth{LoggedIn: true, AccountCount: 1}, nil
 }
 func (f *runtimeApplyFakeDocker) RuntimeServerHealth(_ context.Context, dataDir, _ string) error {
 	if f.targetConfigured(dataDir) && f.serverHealthFailTarget {
@@ -298,9 +309,8 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	// Steam login. The service API is already reachable and must be enough for
 	// an unchanged auth container even while its online capability is degraded.
 	fake.authHealth = "unhealthy"
-	fake.authFailTarget = true
-	fake.authReady = false
-	fake.authTicket = false
+	fake.authUseTargetState = true
+	fake.authLoggedIn = false
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +373,7 @@ func TestRuntimeUpdateApplyImageCleanupFailureIsWarning(t *testing.T) {
 func TestRuntimeUpdateApplyPinsRunningContainerImageIDsWithoutPersistingDigestConfig(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
 	fake.metadata["sdvd/server:1.4.0-preview.1"] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("d", 64), Digest: "sha256:" + strings.Repeat("d", 64)}
-	fake.metadata["anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1"] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("e", 64), Digest: "sha256:" + strings.Repeat("e", 64)}
+	fake.metadata["anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("e", 64), Digest: "sha256:" + strings.Repeat("e", 64)}
 	fake.authProbeErrorTarget = true
 	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
 		t.Fatal(err)
@@ -376,7 +386,7 @@ func TestRuntimeUpdateApplyPinsRunningContainerImageIDsWithoutPersistingDigestCo
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env["SERVER_IMAGE"] != "sdvd/server:1.4.0-preview.1" || env["STEAM_SERVICE_IMAGE"] != "anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1" {
+	if env["SERVER_IMAGE"] != "sdvd/server:1.4.0-preview.1" || env["STEAM_SERVICE_IMAGE"] != "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2" {
 		t.Fatalf("rollback leaked temporary digest pins into persistent config: %#v", env)
 	}
 	inspection := sjconfig.InspectRuntimeStack(instance.DataDir, true)
@@ -427,9 +437,8 @@ func TestRuntimeUpdateApplyRestoresStoppedStateAndDoesNotLeakSecrets(t *testing.
 
 func TestRuntimeUpdateApplyAcceptsLoggedOutAuthAndDoesNotRequireInviteCode(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
-	fake.authFailTarget = true
-	fake.authReady = false
-	fake.authTicket = false
+	fake.authUseTargetState = true
+	fake.authLoggedIn = false
 	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -443,6 +452,62 @@ func TestRuntimeUpdateApplyAcceptsLoggedOutAuthAndDoesNotRequireInviteCode(t *te
 	if strings.Contains(strings.Join(fake.applyCalls, "\n"), "/tmp/invite-code.txt") {
 		t.Fatalf("runtime acceptance still probed an invite code: %s", strings.Join(fake.applyCalls, "\n"))
 	}
+	if got := strings.Count(strings.Join(fake.applyCalls, "\n"), "auth health target"); got < 2 {
+		t.Fatalf("initial and final target verification did not share /health: calls=%v", fake.applyCalls)
+	}
+}
+
+func TestRuntimeUpdateAuthFailureCodesAndLastReasonSurviveRollback(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		code      string
+		configure func(*runtimeApplyFakeDocker)
+	}{
+		{name: "container not running", code: "auth_container_not_running", configure: func(f *runtimeApplyFakeDocker) { f.authContainerState = "exited" }},
+		{name: "digest mismatch", code: "auth_digest_mismatch", configure: func(f *runtimeApplyFakeDocker) { f.digestMismatchService = "steam-auth" }},
+		{name: "health unreachable", code: "auth_health_unreachable", configure: func(f *runtimeApplyFakeDocker) {
+			f.authProbeErrorTarget = true
+			f.authProbeErrorCode = "auth_health_unreachable"
+		}},
+		{name: "health timeout", code: "auth_health_timeout", configure: func(f *runtimeApplyFakeDocker) {
+			f.authProbeErrorTarget = true
+			f.authProbeErrorCode = "auth_health_timeout"
+		}},
+		{name: "health http status", code: "auth_health_http_status", configure: func(f *runtimeApplyFakeDocker) {
+			f.authProbeErrorTarget = true
+			f.authProbeErrorCode = "auth_health_http_status"
+		}},
+		{name: "health invalid response", code: "auth_health_invalid_response", configure: func(f *runtimeApplyFakeDocker) {
+			f.authProbeErrorTarget = true
+			f.authProbeErrorCode = "auth_health_invalid_response"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+			test.configure(fake)
+			if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+				t.Fatal(err)
+			}
+			status := waitRuntimeApply(t, driver, instance)
+			if status.Phase != RuntimeUpdateApplyFailedRolledBack || status.ErrorCode != test.code || status.CauseCode != test.code {
+				t.Fatalf("status=%#v", status)
+			}
+			if strings.TrimSpace(status.Error) == "" || status.Error == "steam-auth-cn 认证服务接口验证失败。" {
+				t.Fatalf("last sanitized health failure reason was lost: %#v", status)
+			}
+			if !strings.Contains(strings.Join(fake.applyCalls, "\n"), "auth health original") {
+				t.Fatalf("rollback did not verify the original auth image through the same /health contract: %v", fake.applyCalls)
+			}
+		})
+	}
+}
+
+func TestRuntimeUpdateRollbackAuthHealthFailureRetainsSanitizedProbeReason(t *testing.T) {
+	err := fmt.Errorf("verify old auth: %w", &RuntimeUpdateValidationError{Code: "auth_health_timeout", Message: "steam-auth-cn /health 探针超时，未在单次探针预算内返回。"})
+	code, message := runtimeUpdateRollbackFailure(err)
+	if code != "rollback_verify_auth_failed" || !strings.Contains(message, "/health 探针超时") {
+		t.Fatalf("code=%q message=%q", code, message)
+	}
 }
 
 func TestRequiredRuntimeUpdateAutomaticallyChainsDryRunAndApply(t *testing.T) {
@@ -451,9 +516,8 @@ func TestRequiredRuntimeUpdateAutomaticallyChainsDryRunAndApply(t *testing.T) {
 	if err := os.Remove(runtimeUpdateDryRunStatusPath(instance.DataDir)); err != nil {
 		t.Fatal(err)
 	}
-	fake.authFailTarget = true
-	fake.authReady = false
-	fake.authTicket = false
+	fake.authUseTargetState = true
+	fake.authLoggedIn = false
 	fake.inviteUnavailable = true
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {

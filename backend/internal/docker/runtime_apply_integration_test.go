@@ -5,6 +5,7 @@ package docker
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,10 +93,9 @@ func TestRuntimeRemoveImageExactIDAndContainerProtection(t *testing.T) {
 }
 
 // This fixture deliberately contains a sensitive-looking empty environment
-// value and has bash but no Node.js. It protects the real image inspect and
-// steam-auth readiness contracts from regressing to full-JSON parsing or a
-// Node-dependent in-container probe.
-func TestRuntimeInspectAndAuthProbeWithoutNode(t *testing.T) {
+// value and has bash but no Node.js. /steam/ready hangs, while /health can be
+// switched among the supported and fail-closed cases without external Steam.
+func TestRuntimeInspectAndAuthHealthProbeWithoutNode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	project := "anxiauthprobe" + strings.ToLower(strings.ReplaceAll(time.Now().UTC().Format("150405.000000"), ".", ""))
@@ -109,8 +109,56 @@ func TestRuntimeInspectAndAuthProbeWithoutNode(t *testing.T) {
 		}
 		return string(output)
 	}
-	build := exec.CommandContext(ctx, "docker", "build", "-t", image, "-")
-	build.Stdin = strings.NewReader("FROM alpine:3.20\nRUN apk add --no-cache bash python3 && mkdir -p /www/steam && printf '{\"ready\":true,\"has_ticket\":true}' > /www/steam/ready\nENV VNC_PASSWORD=\nENTRYPOINT [\"python3\",\"-m\",\"http.server\",\"3001\",\"--directory\",\"/www\"]\n")
+	authServer := `import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+valid_body = b'{"status":"ok","logged_in":false,"accounts":[]}'
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        with open("/tmp/auth-health-requests.log", "a", encoding="utf-8") as handle:
+            handle.write(self.path + "\n")
+            handle.flush()
+        if self.path == "/steam/ready":
+            time.sleep(60)
+            return
+        mode = "ok"
+        try:
+            with open("/tmp/auth-health-mode", "r", encoding="utf-8") as handle:
+                mode = handle.read().strip()
+        except FileNotFoundError:
+            pass
+        if mode == "timeout":
+            time.sleep(3)
+            return
+        if mode == "404":
+            self.send_response(404)
+            self.end_headers()
+            return
+        if mode == "500":
+            self.send_response(500)
+            self.end_headers()
+            return
+        body = b'not-json' if mode == "bad-json" else valid_body
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        pass
+
+ThreadingHTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
+`
+	if err := os.WriteFile(filepath.Join(workDir, "auth-server.py"), []byte(authServer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dockerfile := "FROM alpine:3.20\nRUN apk add --no-cache bash python3\nCOPY auth-server.py /auth-server.py\nENV VNC_PASSWORD=\nENTRYPOINT [\"sh\",\"-c\",\"python3 /auth-server.py & echo $! > /tmp/auth-server.pid; exec tail -f /dev/null\"]\n"
+	if err := os.WriteFile(filepath.Join(workDir, "Dockerfile"), []byte(dockerfile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	build := exec.CommandContext(ctx, "docker", "build", "-t", image, workDir)
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build auth fixture: %v: %s", err, output)
 	}
@@ -122,7 +170,7 @@ func TestRuntimeInspectAndAuthProbeWithoutNode(t *testing.T) {
 		_ = exec.Command("docker", "compose", "--project-name", project, "--file", composePath, "down", "--remove-orphans").Run()
 		_ = exec.Command("docker", "image", "rm", "-f", image).Run()
 	})
-	client := NewClient(Options{DockerPath: "docker"})
+	client := NewClient(Options{DockerPath: "docker", Timeouts: Timeouts{Ps: time.Second}})
 	imageMetadata, err := client.RuntimeImageInspect(ctx, workDir, image)
 	if err != nil || !runtimeDigestPattern.MatchString(imageMetadata.ID) {
 		t.Fatalf("image inspect metadata=%+v err=%v", imageMetadata, err)
@@ -139,20 +187,44 @@ func TestRuntimeInspectAndAuthProbeWithoutNode(t *testing.T) {
 	if err != nil || service.State != "running" || service.ImageID != imageMetadata.ID {
 		t.Fatalf("service metadata=%+v err=%v compose=%s", service, err, run("compose", "--project-name", project, "--file", composePath, "ps", "-a"))
 	}
-	ready, err := client.RuntimeSteamAuthReady(ctx, workDir, project)
-	if err != nil || !ready.Ready || !ready.HasTicket {
-		t.Fatalf("ready=%+v err=%v", ready, err)
+	health, err := client.RuntimeSteamAuthHealth(ctx, workDir, project)
+	if err != nil || health.LoggedIn || health.AccountCount != 0 {
+		t.Fatalf("health=%+v err=%v", health, err)
 	}
-	run("compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "rm", "/www/steam/ready")
-	if _, err := client.RuntimeSteamAuthReady(ctx, workDir, project); err == nil {
-		t.Fatal("HTTP 404 auth response was accepted")
+	for _, test := range []struct {
+		mode string
+		code string
+	}{
+		{mode: "timeout", code: "auth_health_timeout"},
+		{mode: "404", code: "auth_health_http_status"},
+		{mode: "500", code: "auth_health_http_status"},
+		{mode: "bad-json", code: "auth_health_invalid_response"},
+	} {
+		t.Run(test.mode, func(t *testing.T) {
+			run("compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "sh", "-c", "printf '%s' "+test.mode+" > /tmp/auth-health-mode")
+			_, probeErr := client.RuntimeSteamAuthHealth(ctx, workDir, project)
+			var healthErr *RuntimeAuthHealthError
+			if !errors.As(probeErr, &healthErr) || healthErr.Code != test.code {
+				t.Fatalf("mode=%s error=%v typed=%+v", test.mode, probeErr, healthErr)
+			}
+		})
+	}
+	run("compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "sh", "-c", "kill $(cat /tmp/auth-server.pid)")
+	_, probeErr := client.RuntimeSteamAuthHealth(ctx, workDir, project)
+	var healthErr *RuntimeAuthHealthError
+	if !errors.As(probeErr, &healthErr) || healthErr.Code != "auth_health_unreachable" {
+		t.Fatalf("unreachable error=%v typed=%+v", probeErr, healthErr)
+	}
+	requests := run("compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "cat", "/tmp/auth-health-requests.log")
+	if !strings.Contains(requests, "/health") || strings.Contains(requests, "/steam/ready") {
+		t.Fatalf("unexpected auth probe paths: %q", requests)
 	}
 }
 
 // Opt-in release acceptance against the reviewed runtime images. It does not
 // read credentials and does not require a logged-in Steam session; the auth
-// assertion is that the real .NET image's /steam/ready response is reachable
-// and parseable without Node.js inside the container.
+// assertion is that the real .NET image's pure /health response satisfies the
+// strict service-health contract without Node.js or a Steam account.
 func TestRuntimeRealImagesOptIn(t *testing.T) {
 	serverImage := os.Getenv("ANXI_REAL_SERVER_IMAGE")
 	authImage := os.Getenv("ANXI_REAL_AUTH_IMAGE")
@@ -183,7 +255,7 @@ func TestRuntimeRealImagesOptIn(t *testing.T) {
 	}
 	var lastErr error
 	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline); {
-		if _, lastErr = client.RuntimeSteamAuthReady(ctx, workDir, project); lastErr == nil {
+		if _, lastErr = client.RuntimeSteamAuthHealth(ctx, workDir, project); lastErr == nil {
 			service, inspectErr := client.RuntimeServiceInspect(ctx, workDir, project, "steam-auth")
 			if inspectErr != nil || service.State != "running" {
 				t.Fatalf("real auth service=%+v err=%v", service, inspectErr)
@@ -192,7 +264,7 @@ func TestRuntimeRealImagesOptIn(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	}
-	t.Fatalf("real auth readiness response remained unavailable: %v", lastErr)
+	t.Fatalf("real auth health response remained unavailable: %v", lastErr)
 }
 
 // The installer fixture only emulates the official installer's CLI contract;

@@ -41,7 +41,7 @@ func newRuntimeUpdateFakeDocker(dataDir string) *runtimeUpdateFakeDocker {
 		fakeDocker: &fakeDocker{psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}, {Service: "steam-auth", State: "running"}}}},
 		metadata: map[string]paneldocker.RuntimeImageMetadata{
 			"sdvd/server:1.4.0-preview.1":                    {ID: "sha256:" + strings.Repeat("b", 64), Digest: "sha256:" + strings.Repeat("b", 64)},
-			"anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1": {ID: "sha256:" + strings.Repeat("c", 64), Digest: "sha256:" + strings.Repeat("c", 64)},
+			"anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2": {ID: "sha256:" + strings.Repeat("c", 64), Digest: "sha256:" + strings.Repeat("c", 64)},
 		},
 		pulled: map[string]bool{}, pullErrors: map[string]error{}, digestMissing: map[string]bool{},
 		composeConfig: paneldocker.RuntimeComposeConfig{Project: strings.ToLower(filepath.Base(dataDir)), Services: []string{"server", "steam-auth"}, SteamSessionVolume: "stardew_steam-session"},
@@ -54,6 +54,9 @@ func newRuntimeUpdateFakeDocker(dataDir string) *runtimeUpdateFakeDocker {
 	for _, candidate := range manifest.SteamAuth.TrustedCandidates {
 		f.metadata[candidate] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("a", 64), Digest: manifest.SteamAuth.Digests[candidate]}
 	}
+	currentAuth := "anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2"
+	f.metadata[currentAuth] = paneldocker.RuntimeImageMetadata{ID: "sha256:" + strings.Repeat("c", 64), Digest: "sha256:" + strings.Repeat("c", 64)}
+	f.pulled[currentAuth] = true
 	return f
 }
 
@@ -73,6 +76,10 @@ func (f *runtimeUpdateFakeDocker) ComposeVersion(context.Context, string) (panel
 func (f *runtimeUpdateFakeDocker) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
 	f.record("docker compose ps")
 	return f.fakeDocker.ComposePs(ctx, dir)
+}
+func (f *runtimeUpdateFakeDocker) ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	f.record("docker compose ps --all")
+	return f.fakeDocker.ComposePsStrict(ctx, dir)
 }
 func (f *runtimeUpdateFakeDocker) RuntimeImageInspect(_ context.Context, _ string, image string) (paneldocker.RuntimeImageMetadata, error) {
 	f.record("docker image inspect")
@@ -119,7 +126,7 @@ func setupRuntimeUpdateDriver(t *testing.T, state string) (*Driver, *storage.Sto
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := "IMAGE_VERSION=1.4.0-preview.1\nSERVER_IMAGE=sdvd/server:1.4.0-preview.1\nSERVER_IMAGE_CANDIDATES=sdvd/server:1.4.0-preview.1\nSTEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1\nSTEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.4.0-anxi.1\n"
+	env := "IMAGE_VERSION=1.4.0-preview.1\nSERVER_IMAGE=sdvd/server:1.4.0-preview.1\nSERVER_IMAGE_CANDIDATES=sdvd/server:1.4.0-preview.1\nSTEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\n"
 	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte(env), 0o600); err != nil {
 		t.Fatal(err)
 	}

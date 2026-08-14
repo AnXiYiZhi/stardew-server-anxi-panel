@@ -304,7 +304,11 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 	}
 
 	if body.Cancel {
-		if err := s.pendingUploads.cancel(instance.DataDir, body.Token); err != nil {
+		if err := s.cancelPendingSaveUpload(r.Context(), instance, body.Token); err != nil {
+			if _, typed := sj.AsImportTransactionError(err); typed {
+				writeSaveImportSubmitError(w, err)
+				return
+			}
 			writeError(w, http.StatusConflict, sj.ImportErrorSaveInProgress, "upload is already owned by an import transaction")
 			return
 		}
@@ -322,19 +326,44 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if prior, lookupErr := s.pendingUploads.lookup(instance.DataDir, body.Token, instanceID); lookupErr == nil && prior.JobID != "" {
+	prior, _ := s.pendingUploads.lookup(instance.DataDir, body.Token, instanceID)
+	allowedOperationID := ""
+	if prior != nil && prior.OperationID != "" && (prior.Status == "reserved" || prior.Status == "owned" || prior.Status == "succeeded") {
 		retry := registry.SaveImportRequest{Instance: makeRegistryInstance(instance), OperationID: prior.OperationID,
 			SaveName: prior.SaveName, HostHandling: driverMode, PlatformID: platformID}
 		journal, journalErr := sj.LoadImportJournal(instance.DataDir, prior.OperationID)
-		if journalErr != nil || !sj.ImportJournalMatchesRequest(journal, retry) {
-			writeError(w, http.StatusConflict, sj.ImportErrorBusy, "upload token belongs to a different import request")
+		if journalErr == nil {
+			if !sj.ImportJournalMatchesRequest(journal, retry) {
+				writeError(w, http.StatusConflict, sj.ImportErrorBusy, "upload token belongs to a different import request")
+				return
+			}
+			if journal.Stage == sj.ImportStageCanceled {
+				writeError(w, http.StatusConflict, sj.ImportErrorBusy, "upload transaction was already canceled")
+				return
+			}
+			allowedOperationID = prior.OperationID
+		} else if prior.Status != "reserved" {
+			writeError(w, http.StatusConflict, sj.ImportErrorRecoveryRequired, "owned upload transaction journal could not be verified")
 			return
 		}
-		writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: prior.JobID, OperationID: prior.OperationID, SaveName: prior.SaveName})
-		return
+		if prior.JobID == "" && prior.Status != "reserved" && s.jobs != nil {
+			if recovered, recoverErr := s.jobs.GetByIdempotencyKey(r.Context(), sj.SaveImportJobType, "instance", instanceID, sj.SaveImportJobIdempotencyKey(prior.OperationID)); recoverErr == nil {
+				prior.JobID = recovered.ID
+				if attachErr := s.pendingUploads.attachJob(instance.DataDir, body.Token, prior.OperationID, recovered.ID); attachErr != nil {
+					s.logger.Warn("recovered save import job but token attachment remains deferred", "instance", instanceID, "job", recovered.ID, "operation", prior.OperationID, "error", attachErr)
+				}
+			} else if !errors.Is(recoverErr, storage.ErrNotFound) {
+				writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to recover import job identity")
+				return
+			}
+		}
+		if prior.JobID != "" {
+			writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: prior.JobID, OperationID: prior.OperationID, SaveName: prior.SaveName})
+			return
+		}
 	}
 
-	busy, busyErr := sj.HasUnfinishedImportTransaction(instance.DataDir)
+	busy, busyErr := sj.HasUnfinishedImportTransactionOtherThan(instance.DataDir, allowedOperationID)
 	if busyErr != nil {
 		writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to inspect import recovery state")
 		return
@@ -347,7 +376,7 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
+	if !sj.IsSaveImportMaintenanceOfflineState(instance.State) {
 		writeError(w, http.StatusConflict, sj.ImportErrorSaveInProgress, "server must be stopped before importing a save")
 		return
 	}
@@ -377,6 +406,9 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 			TransferSourceOwnership: func(targetDir string) error {
 				return s.pendingUploads.transferOwnership(instance.DataDir, body.Token, operationID, targetDir)
 			},
+			MarkUploadSucceeded: func() error {
+				return s.pendingUploads.markSucceeded(instance.DataDir, body.Token, operationID)
+			},
 		})
 		if submitErr != nil {
 			if current, lookupErr := s.pendingUploads.lookup(instance.DataDir, body.Token, instanceID); lookupErr == nil && current.Status == "reserved" {
@@ -393,6 +425,71 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: job.ID, OperationID: operationID, SaveName: entry.SaveName})
 		return
 	}
+}
+
+// cancelPendingSaveUpload supports two loss-bounded cases: an unowned preview,
+// or an owned transaction whose job is durably terminal and whose journal can
+// still pass CleanupUnsubmittedImport's no-upstream-effect gates. The latter
+// preserves the preimport backup and never guesses ownership from paths.
+func (s *server) cancelPendingSaveUpload(ctx context.Context, instance storage.Instance, token string) error {
+	entry, err := s.pendingUploads.lookup(instance.DataDir, token, instance.ID)
+	if err != nil {
+		return err
+	}
+	if entry.Status != "owned" {
+		return s.pendingUploads.cancel(instance.DataDir, token)
+	}
+	if entry.OperationID == "" || s.jobs == nil {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "owned save import has no verifiable durable identity"}
+	}
+	var job storage.Job
+	jobFound := false
+	if entry.JobID != "" {
+		job, err = s.jobs.Get(ctx, entry.JobID)
+		if err != nil {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "owned save import job could not be verified", Cause: err}
+		}
+		jobFound = true
+	} else {
+		job, err = s.jobs.GetByIdempotencyKey(ctx, sj.SaveImportJobType, "instance", instance.ID, sj.SaveImportJobIdempotencyKey(entry.OperationID))
+		if err == nil {
+			jobFound = true
+			entry.JobID = job.ID
+			_ = s.pendingUploads.attachJob(instance.DataDir, token, entry.OperationID, job.ID)
+		} else if !errors.Is(err, storage.ErrNotFound) {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "owned save import job identity could not be recovered", Cause: err}
+		}
+	}
+	var payload struct {
+		OperationID string `json:"operationId"`
+	}
+	if jobFound {
+		if job.Type != sj.SaveImportJobType || job.TargetType != "instance" || job.TargetID != instance.ID ||
+			!job.Payload.Valid || json.Unmarshal([]byte(job.Payload.String), &payload) != nil || payload.OperationID != entry.OperationID {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned save import job identity does not match the transaction"}
+		}
+		if job.Status != storage.JobStatusFailed && job.Status != storage.JobStatusCanceled {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "save import job is not in a safely cancellable terminal state"}
+		}
+	}
+	type unsubmittedImportCleaner interface {
+		CleanupUnsubmittedSaveImport(context.Context, registry.Instance, string) error
+	}
+	driver, driverErr := s.registry.Get(instance.DriverID)
+	cleaner, supported := driver.(unsubmittedImportCleaner)
+	if driverErr != nil || !supported {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup runtime state cannot be verified", Cause: driverErr}
+	}
+	if err := cleaner.CleanupUnsubmittedSaveImport(ctx, makeRegistryInstance(instance), entry.OperationID); err != nil {
+		return err
+	}
+	if err := s.pendingUploads.removeOwned(instance.DataDir, token, entry.OperationID); err != nil {
+		return err
+	}
+	if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, entry.OperationID); err != nil {
+		s.logger.Warn("save import token was canceled but terminal journal cleanup is deferred", "instance", instance.ID, "operation", entry.OperationID, "error", err)
+	}
+	return nil
 }
 
 // handleSavesList handles GET /api/instances/:id/saves.

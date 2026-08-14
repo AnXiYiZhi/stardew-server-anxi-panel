@@ -2624,3 +2624,9 @@ npm.cmd run dev
 - 桌面存档页的“游戏日回档”行现在与“其他备份”行复用同一个悬停详情格式化函数，鼠标停留时显示备份类型、农民、游戏内日期和地图；自动回档类型显示为“游戏日回档”，不暴露内部 `auto` kind。
 - 影响 `frontend/src/games/stardew/SavesSection.tsx`、`frontend/scripts/test-save-backup-details.ts` 和 `frontend/package.json`。未改变备份/回档 API、排序、按钮状态、移动端堆叠卡片或 CSS。
 - 验证：`npm.cmd run test:save-backup-details` 与 `npm.cmd run build` 通过。桌面 Browser QA 实际把鼠标移动到回档行，5 条 fixture 行均带用户可读详情；页面无横向溢出、无残留弹窗，console error/warn 为 0。
+
+# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1：新建存档社区中心收集包文案（2026-08-14，completed，未发布）
+
+- `NewGameCreator` 高级设置把误写的“社区中心手机包”更正为 Stardew 中文选项使用的“社区中心收集包”。
+- 只改变 `frontend/src/games/stardew/NewGameCreator.tsx` 的可见文案；`remixedCommunityCenter` 勾选状态、默认值、提交字段和新建存档 API 均未改变。
+- 验证：前端 production build 通过，源码与构建产物均包含“社区中心收集包”且不再包含“社区中心手机包”。

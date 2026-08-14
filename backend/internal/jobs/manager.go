@@ -155,6 +155,10 @@ func (m *Manager) Get(ctx context.Context, id string) (storage.Job, error) {
 	return m.store.GetJob(ctx, id)
 }
 
+func (m *Manager) GetByIdempotencyKey(ctx context.Context, jobType, targetType, targetID, key string) (storage.Job, error) {
+	return m.store.GetJobByIdempotencyKey(ctx, jobType, targetType, targetID, key)
+}
+
 func (m *Manager) List(ctx context.Context, filter storage.ListJobsFilter) ([]storage.Job, error) {
 	return m.store.ListJobs(ctx, filter)
 }

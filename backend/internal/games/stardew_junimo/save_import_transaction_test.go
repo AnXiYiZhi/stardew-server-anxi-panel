@@ -2,15 +2,21 @@ package stardew_junimo
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 func testImportRequest(dir, operationID, platformID string) registry.SaveImportRequest {
@@ -52,6 +58,43 @@ func TestImportJournalIdempotentAndSensitiveIDNotPersisted(t *testing.T) {
 		t.Fatal(err)
 	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("journal mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestImportJournalUnknownSchemaStageAndFieldsFailClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{name: "schema", mutate: func(raw string) string { return strings.Replace(raw, `"schemaVersion": 1`, `"schemaVersion": 2`, 1) }},
+		{name: "stage", mutate: func(raw string) string {
+			return strings.Replace(raw, `"stage": "validated"`, `"stage": "future_stage"`, 1)
+		}},
+		{name: "unknown field", mutate: func(raw string) string {
+			return strings.TrimSuffix(strings.TrimSpace(raw), "}") + ",\n  \"futureField\": true\n}\n"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			op := "09112233445566778899aabbccddeeff"
+			if _, err := CreateImportJournal(dir, testImportRequest(dir, op, "")); err != nil {
+				t.Fatal(err)
+			}
+			path := importJournalPath(dir, op)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(tc.mutate(string(raw))), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadImportJournal(dir, op); err == nil {
+				t.Fatal("unsupported journal was accepted")
+			}
+			if _, err := HasUnfinishedImportTransaction(dir); err == nil {
+				t.Fatal("unsupported journal was treated as safely idle")
+			}
+		})
 	}
 }
 
@@ -128,8 +171,15 @@ func TestCleanupImportStopsAfterUpstreamSubmission(t *testing.T) {
 	if err := CleanupUnsubmittedImport(dir, op); err != nil {
 		t.Fatal(err)
 	}
+	canceled, err := LoadImportJournal(dir, op)
+	if err != nil || canceled.Stage != ImportStageCanceled {
+		t.Fatalf("cleanup marker=%+v err=%v", canceled, err)
+	}
+	if err := FinalizeCanceledImportCleanup(dir, op); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := LoadImportJournal(dir, op); !os.IsNotExist(err) {
-		t.Fatalf("journal still exists: %v", err)
+		t.Fatalf("finalized journal still exists: %v", err)
 	}
 	j, err = CreateImportJournal(dir, testImportRequest(dir, op, ""))
 	if err != nil {
@@ -146,6 +196,322 @@ func TestCleanupImportStopsAfterUpstreamSubmission(t *testing.T) {
 	}
 	if _, err := LoadImportJournal(dir, op); err != nil {
 		t.Fatalf("submitted journal was removed: %v", err)
+	}
+}
+
+func TestCleanupImportStopsWhileMaintenanceMayStillBeRunning(t *testing.T) {
+	dir := t.TempDir()
+	op := "31112233445566778899aabbccddeeff"
+	j, err := CreateImportJournal(dir, testImportRequest(dir, op, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Stage = ImportStageRuntimeReady
+	j.MaintenanceStarted = true
+	if err := WriteImportJournal(dir, j); err != nil {
+		t.Fatal(err)
+	}
+	err = CleanupUnsubmittedImport(dir, op)
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("cleanup error=%v", err)
+	}
+	if _, err := LoadImportJournal(dir, op); err != nil {
+		t.Fatalf("live maintenance journal was removed: %v", err)
+	}
+}
+
+func TestCleanupUnsubmittedSaveImportHoldsLifecycleLockAndRejectsRunningCompose(t *testing.T) {
+	dir := t.TempDir()
+	op := "32112233445566778899aabbccddeeff"
+	if _, err := CreateImportJournal(dir, testImportRequest(dir, op, "")); err != nil {
+		t.Fatal(err)
+	}
+	store := &importMaintenanceStore{instance: storage.Instance{
+		ID: "instance-1", DriverID: DriverID, DataDir: dir, State: storage.InstanceStateGameInstalled,
+		StateMessage: sql.NullString{String: "installed", Valid: true}, DriverPhase: "game_installed", DriverPayload: `{}`,
+	}}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	fake := &fakeConsoleDocker{composePsFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+		close(entered)
+		<-release
+		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}}}, nil
+	}}
+	driver := New(fake, nil, nil, store)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- driver.CleanupUnsubmittedSaveImport(context.Background(), registry.Instance{ID: "instance-1", DataDir: dir}, op)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not reach Compose preflight")
+	}
+	if driver.runtimeUpdateMu.TryLock() {
+		driver.runtimeUpdateMu.Unlock()
+		close(release)
+		t.Fatal("cleanup released lifecycle lock between Compose preflight and filesystem gates")
+	}
+	close(release)
+	err := <-errCh
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorSaveInProgress {
+		t.Fatalf("cleanup error=%v", err)
+	}
+	if _, err := LoadImportJournal(dir, op); err != nil {
+		t.Fatalf("running Compose cleanup removed journal: %v", err)
+	}
+}
+
+func TestImportSaveAndStartRejectsUnsafeStateBeforeOwnership(t *testing.T) {
+	for _, state := range []string{
+		storage.InstanceStateUninitialized,
+		storage.InstanceStateJunimoScaffolded,
+		storage.InstanceStateSteamAuthRunning,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+	} {
+		t.Run(state, func(t *testing.T) {
+			dataDir := filepath.Join(t.TempDir(), "instance")
+			if err := os.MkdirAll(dataDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			store := newLifecycleTestStore(t)
+			stored, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+				ID: "stardew", DriverID: DriverID, Name: "test", DataDir: dataDir,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+				ID: stored.ID, State: state, StateMessage: "unsafe", DriverPhase: "unsafe", DriverPayload: `{"kept":true}`,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fake, _ := newMaintenanceFake(maintenanceFakeConfig{})
+			driver := New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+			transferred := false
+			op := NewImportOperationID()
+			_, err = driver.ImportSaveAndStart(context.Background(), registry.SaveImportRequest{
+				Instance:    registry.Instance{ID: stored.ID, DriverID: stored.DriverID, DataDir: dataDir, State: stored.State},
+				OperationID: op, SaveName: "Upload_1", HostHandling: "server_owns_original",
+				TransferSourceOwnership: func(string) error { transferred = true; return nil },
+			})
+			typed, ok := AsImportTransactionError(err)
+			if !ok || typed.Code != ImportErrorSaveInProgress {
+				t.Fatalf("error=%v", err)
+			}
+			if transferred {
+				t.Fatal("unsafe state transferred upload ownership")
+			}
+			if _, err := LoadImportJournal(dataDir, op); !os.IsNotExist(err) {
+				t.Fatalf("unsafe state created transaction journal: %v", err)
+			}
+		})
+	}
+}
+
+func TestImportSaveAndStartRejectsStaleDataDirectoryBeforeFilesystemOwnership(t *testing.T) {
+	root := t.TempDir()
+	authoritativeDir := filepath.Join(root, "authoritative")
+	staleDir := filepath.Join(root, "stale")
+	if err := os.MkdirAll(authoritativeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(staleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := newLifecycleTestStore(t)
+	stored, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: "stardew", DriverID: DriverID, Name: "test", DataDir: authoritativeDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, DriverPhase: "game_installed", DriverPayload: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := New(&fakeDocker{}, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+	transferred := false
+	op := NewImportOperationID()
+	_, err = driver.ImportSaveAndStart(context.Background(), registry.SaveImportRequest{
+		Instance:    registry.Instance{ID: stored.ID, DriverID: stored.DriverID, DataDir: staleDir, State: stored.State},
+		OperationID: op, SaveName: "Upload_1", HostHandling: "server_owns_original",
+		TransferSourceOwnership: func(string) error { transferred = true; return nil },
+	})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired || transferred {
+		t.Fatalf("error=%v transferred=%v", err, transferred)
+	}
+	if _, err := os.Stat(importJournalPath(authoritativeDir, op)); !os.IsNotExist(err) {
+		t.Fatalf("authoritative directory received stale request journal: %v", err)
+	}
+	if _, err := os.Stat(importJournalPath(staleDir, op)); !os.IsNotExist(err) {
+		t.Fatalf("stale directory received transaction journal: %v", err)
+	}
+}
+
+func TestImportSaveAndStartRejectsRunningComposeBeforeOwnership(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "instance")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := newLifecycleTestStore(t)
+	stored, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: "stardew", DriverID: DriverID, Name: "test", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, StateMessage: "installed", DriverPhase: "game_installed", DriverPayload: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake, _ := newMaintenanceFake(maintenanceFakeConfig{})
+	fake.composePsFunc = func(context.Context, string) (paneldocker.ComposePsResult, error) {
+		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}}}, nil
+	}
+	driver := New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+	transferred := false
+	op := NewImportOperationID()
+	_, err = driver.ImportSaveAndStart(context.Background(), registry.SaveImportRequest{
+		Instance:    registry.Instance{ID: stored.ID, DriverID: stored.DriverID, DataDir: dataDir, State: stored.State},
+		OperationID: op, SaveName: "Upload_1", HostHandling: "server_owns_original",
+		TransferSourceOwnership: func(string) error { transferred = true; return nil },
+	})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorSaveInProgress || transferred {
+		t.Fatalf("error=%v transferred=%v", err, transferred)
+	}
+	if _, err := LoadImportJournal(dataDir, op); !os.IsNotExist(err) {
+		t.Fatalf("running Compose created transaction journal: %v", err)
+	}
+}
+
+func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "instance")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("IMAGE_VERSION="+TestedImageTag+"\nAPI_PORT=5110\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	modDir := junimoServerModDir(dataDir)
+	if err := os.MkdirAll(modDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"`+TestedImageTag+`","UniqueID":"JunimoHost.Server"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "JunimoServer.dll"), []byte("dll"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installSMAPIMod(dataDir); err != nil {
+		t.Fatal(err)
+	}
+	runtimeManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(controlDir(dataDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stagedDir := filepath.Join(t.TempDir(), "upload")
+	stagedSaveDir := filepath.Join(stagedDir, "Upload_1")
+	if err := os.MkdirAll(stagedSaveDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mainXML := `<SaveGame><player><name>Imported</name></player></SaveGame>`
+	if err := os.WriteFile(filepath.Join(stagedSaveDir, "Upload_1"), []byte(mainXML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stagedSaveDir, "SaveGameInfo"), []byte(`<Farmer><name>Imported</name></Farmer>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := newLifecycleTestStore(t)
+	stored, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: "stardew", DriverID: DriverID, Name: "test", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, StateMessage: "game installed", DriverPhase: "game_installed", DriverPayload: `{"install":"complete"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+	baseExec := fake.execFunc
+	fake.execFunc = func(ctx context.Context, dir, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
+		if len(args) > 0 && args[0] == "tee" && strings.HasPrefix(stdin, "saves import Upload_1 --reload") {
+			if err := writeGameloaderPointer(dataDir, "Upload_1"); err != nil {
+				return paneldocker.CommandResult{}, err
+			}
+			if err := os.WriteFile(filepath.Join(controlDir(dataDir), "status.json"), []byte(`{"saveId":"Upload_1"}`), 0o600); err != nil {
+				return paneldocker.CommandResult{}, err
+			}
+			return baseExec(ctx, dir, service, stdin, args...)
+		}
+		if len(args) > 0 && args[0] == "curl" && strings.HasSuffix(args[len(args)-1], "/status") {
+			return paneldocker.CommandResult{Stdout: `{"playerCount":0,"isOnline":true,"isReady":true,"dayTransitionComplete":true,"version":10}`}, nil
+		}
+		return baseExec(ctx, dir, service, stdin, args...)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	driver := New(fake, slog.Default(), manager, store)
+	op := NewImportOperationID()
+	job, err := driver.ImportSaveAndStart(context.Background(), registry.SaveImportRequest{
+		Instance: registry.Instance{ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: dataDir,
+			State: stored.State, StateMessage: stored.StateMessage.String, DriverPhase: stored.DriverPhase, DriverPayload: stored.DriverPayload},
+		OperationID: op, StagedDir: stagedDir, SaveName: "Upload_1", HostHandling: "server_owns_original",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		storedJob, loadErr := store.GetJob(context.Background(), job.ID)
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		if storedJob.Status == storage.JobStatusSucceeded {
+			break
+		}
+		if storedJob.Status == storage.JobStatusFailed || storedJob.Status == storage.JobStatusCanceled || time.Now().After(deadline) {
+			logs, _ := store.ListJobLogs(context.Background(), job.ID, 0, 100)
+			t.Fatalf("job status=%s error=%q logs=%+v", storedJob.Status, storedJob.ErrorMessage.String, logs)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	journal, err := LoadImportJournal(dataDir, op)
+	if err != nil || journal.Stage != ImportStageCompleted || journal.BootstrapSaveName == "" || !journal.BootstrapCleanupCompleted {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	if GetActiveSaveName(dataDir) != "Upload_1" {
+		t.Fatalf("active save=%q", GetActiveSaveName(dataDir))
+	}
+	record.mu.Lock()
+	commands := strings.Join(record.stdin, "\n")
+	record.mu.Unlock()
+	if strings.Count(commands, "saves import Upload_1 --reload") != 1 {
+		t.Fatalf("import command count mismatch: %q", commands)
+	}
+	if _, err := os.Stat(filepath.Join(savesDir(dataDir), "Saves", journal.BootstrapSaveName)); !os.IsNotExist(err) {
+		t.Fatalf("completed bootstrap still exists: %v", err)
 	}
 }
 

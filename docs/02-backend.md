@@ -3,6 +3,15 @@
 - `REQUIRED-RUNTIME-STALE-STATUS-1` 已随 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c` 正式发布。候选 run `31799350642` 通过默认并行 Go test/vet/build、真实 SMAPI/runtime integration、fresh/restart，以及从 `v0.4.15` 经 Panel Web API 的 unhealthy 回滚与 healthy 升级；SQLite、初始化状态、Panel 数据和非目标游戏容器/volume 均保持。
 - Tag workflow `31799876171` 与正式提升 workflow `31799891830` 成功，三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像首次与重启后均返回 Docker healthy、`/health`/database ok 和完整 `0.4.16@5fa04d1...` 版本身份；详细失败修复、矩阵和资源清理见 `docs/09-image-build.md`。
 
+# SAVE-IMPORT-FIRST-INSTALL-STATE-1：安装完成后首次上传沿用真实离线状态（2026-08-14，completed，未发布）
+
+- 根因：安装成功会把实例写成 `game_installed`，Web 旧提交入口只排除 `running/starting`，因此允许创建 journal、接管 token、staging、preimport 和首次上传 bootstrap；但 `runImportMaintenance` 随后又把数据库状态硬限制为精确 `stopped`，在任何 `ComposePs/ComposeUp` 前返回 `instance must remain stopped before maintenance startup`。既有 maintenance 与 fresh-upload 夹具都伪造为 `stopped`，没有覆盖安装器的真实终态。
+- driver 现在集中定义 `IsSaveImportMaintenanceOfflineState`：只有 `game_installed / save_required / ready_to_start / stopped` 可以启动导入维护运行时。Web commit 入口使用同一集合做早期拒绝；`ImportSaveAndStart` 在创建 journal 或转移上传 ownership 前重新读取数据库，随后整条 staging/maintenance/Phase A/activation/durable-save 链只使用该权威 `DataDir`。`runImportMaintenance` 在静态能力/指针校验后、真正 `ComposeUp` 前再检查一次。状态允许不等于 Docker 已停；安全检查固定调用无缓存、必须可解析的 `ComposePsStrict = docker compose ps --all --format json`，空响应、坏 JSON、缺失 service/state、未知 server 状态、任一 running/restarting/paused/removing 副本都 fail closed。`uninitialized`、安装/授权阶段、`starting/running`、`error` 等状态不会接管 token 或创建事务。
+- maintenance 仍临时发布 `state=stopped / driverPhase=save_import_maintenance` 并隐藏邀请码，但原始状态不再被永久改成 `stopped`。启动、readiness、Phase A 提交前证据或取消失败时，只有 `ComposeDown` 成功且随后 strict Compose 证明 server 已停，才清除 `maintenanceStarted` 并通过 `RestoreInstanceStateSnapshot` 恢复进入维护前精确的 state、phase、`state_message` NULL/空值语义和 payload；状态发布、journal 清旗或恢复写入任一失败都会显式升级为 recovery required，不能被忽略。无法证明已停时保留维护 ownership，禁止伪装成可安全离线。
+- `maintenanceStarted` 现在在 `ComposeUp` 前先按“可能已启动”写入 journal，只有停机复验后才清零。`CleanupUnsubmittedImport` 新增显式 `MaintenanceStarted=false` 门禁，并继续要求未提交/未确认、operation ownership、bootstrap pointer、staged target 全树 fingerprint 等既有证明；不会删除未知路径、变化后的同名存档或 preimport。
+- `POST .../saves/upload-commit-and-start` 的 `{token,cancel:true}` 增加受控的历史失败清理契约。job 以 operation 派生的持久 idempotency key 创建；即使进程在 job 创建后、token 绑定前退出，重试也能从数据库找回唯一 job。若数据库中根本不存在该 key，则证明没有 durable runner，可按同一未提交门禁取消。driver 在同一个 `runtimeUpdateMu` 临界区完成四态校验、strict Compose 实停复验和 `CleanupUnsubmittedImport` 全部门禁；cleanup 先只读验证 bootstrap ownership/pointer 与 staged 全树 fingerprint，全部通过后才开始删除，并先写耐久 `canceled` marker，再删除 owned token、最后清 journal。任一中断都可幂等续做且 `canceled` marker 不再制造 `save_import_busy`。preimport ZIP 永久保留；活动、成功、已提交、身份不匹配、运行时不可证或 fingerprint 漂移都返回 busy/recovery。成功导入 token 标记为 `succeeded`，保留短时幂等响应窗口后由后续上传精确回收元数据。
+- 影响 `save_import_maintenance.go`、`save_import_transaction.go`、Web `lifecycle_handlers.go`、pending upload 测试夹具及对应测试；公开 commit DTO、hostHandling、单次 FIFO、同名 no-replace、journal 阶段和成功导入语义不变。专项覆盖真实 `game_installed` 首次上传完整走到 completed、四态允许矩阵、不安全状态零 ownership、数据库离线但 Compose running 拒绝、失败/取消/readiness 精确恢复，以及含 staged/bootstrap/preimport/owned token 的 Web 失败事务安全取消。
+
 # REQUIRED-RUNTIME-STALE-STATUS-1：运行栈修复成功后收敛历史失败（2026-08-14，released in v0.4.16）
 
 - 根因：`required-status.json` 既负责阻止同一 Panel/stack 的确定性失败无限重试，又被全栈升级弹窗作为当前状态读取；用户后来从维护页完成普通 runtime apply 后，`apply-status.json` 已是 `succeeded`，但普通 apply 成功路径没有同步这个 required 协调文件，旧的 `runtime_update_save_failed` 因而继续显示为当前故障。
@@ -228,7 +237,7 @@
 - `POST /api/instances/:id/saves/upload-commit-and-start` 已彻底断开旧 `ImportSaveToVolume -> SetActiveSave -> ApplyModProfile -> Start` 路径，只能创建 `stardew_import_save_and_start` 持久事务。请求必须携带嵌套 `hostHandling`：`swap_to_player` 使用十进制字符串 `platformId`；`virtual_host_takeover` 必须显式 `acknowledged=true`。缺失、未知 mode 或 takeover 未确认统一返回 `host_decision_required`，绝不默认 takeover。
 - swap 的平台 ID 在 Web 入口 trim 后逐字符校验 ASCII 十进制，并以 `uint64` 非零范围复核；JSON DTO 始终使用 string，不经过浮点。原值仅传入 driver/FIFO 闭包，journal 只保存 `sha256(operationId + "\x00" + platformId)`，普通日志、审计、HTTP 响应和错误文本均不包含原值。
 - commit 使用后端生成的 128-bit operation ID：durable token 从 `available` 原子 reserve；driver 成功创建 journal 后 callback 将 payload 转为 operation/source 所有；job 创建成功后 token 记录 `jobId`。成功固定返回 `202 {jobId, operationId, saveName}`。相同 token 与相同 host 决策重试从持久 token+journal 返回原响应，不创建第二个 job；不同决策返回 `save_import_busy`。
-- cancel 仅删除仍为 `available` 的预览 token。`reserved/owned` token 已属于事务，cancel 返回 `save_in_progress`，不会删除 source、journal、staged target 或 preimport。提交失败且 token 尚为 reserved 时安全 release；ownership 已转移后 job 创建失败保留全部事务数据并返回 `save_in_progress`，journal 同步记录稳定错误，禁止退回临时上传目录。
+- cancel 仍可直接删除 `available` 预览 token；`reserved` 或活动/成功的 owned 事务继续返回冲突。owned token 只有在精确关联的导入 job 已 `failed/canceled`、driver 在生命周期互斥锁内证明数据库状态属于四态离线集合且 Compose server 实停、journal 仍为 `MaintenanceStarted=false` 且未提交/未确认，并通过 bootstrap ownership、pointer 与 staged fingerprint 门禁时，才调用 `CleanupUnsubmittedImport` 删除 source/journal/本次 staged target/bootstrap/pointer 和 token；preimport 保留。Compose 复验与文件清理不留可被 Start 抢入的窗口，任一身份、运行态或磁盘证据不确定都 fail closed。
 - 本接口稳定映射 `host_decision_required / platform_id_invalid / save_exists / junimo_import_unsupported / save_import_busy / import_command_failed / import_result_unconfirmed / import_recovery_required / import_activation_timeout / save_in_progress`。原实例运行或启动中返回 `save_in_progress`；已有未完成导入返回 `save_import_busy`。
 - 审计动作仍为 `save_import_submit`，仅含公开 mode、saveName、operationId、jobId。实现位于 `internal/web/save_import_api.go`、`pending_uploads.go`、`lifecycle_handlers.go` 与 driver transaction；本阶段未修改前端、Junimo 上游或 Stardew XML。
 
@@ -265,7 +274,7 @@
 - 维护运行时始终持久化为 `state=stopped`、`driverPhase=save_import_maintenance`，不复用普通 Start 的邀请码/ready/newgame 流程。状态 reconcile 不会因 server 容器运行而把它提升为 `running`；邀请码 API 在该 phase 拒绝读取，driver payload 中旧 `invite_code` 暂时隐藏。
 - `runtime_ready` 前后均检查 `/status.playerCount`；发现 farmhand 时返回 `save_import_players_connected`，不踢人、不继续。唯一写入 FIFO 的探测是裸 `saves`，本阶段不构造或发送 `saves import`。
 - `runtime_ready` journal 新增 `maintenanceStarted`、`serverOutputLogOffset` 和 `runtimeBaseline`。baseline 复用 SAVE-IMPORT-EVIDENCE-1，至少要求目标主文件 SHA-256、finalizeCount 和稳定 ProcessIdentity，并记录 active pointer、pending、runtime saveId、day-transition 等可用证据；启动期间指针或 ProcessIdentity 改变会拒绝推进。
-- `runtime_ready` 前的启动、FIFO、日志、API、运行中版本、命令探测、玩家或证据失败，以及 job cancel，都会 `ComposeDown` 本 job 启动的运行时、恢复原 stopped phase/message/payload，并保留 staged target 与 preimport。该段是 MAINTENANCE-RUNTIME-1 完成时边界；PHASE-A-1 现已从 `runtime_ready` 继续正式提交，但仍不能宣告整个导入成功。
+- `runtime_ready` 前的启动、FIFO、日志、API、运行中版本、命令探测、玩家或证据失败，以及 job cancel，都会 `ComposeDown` 本 job 启动的运行时；只有随后 `ComposePs` 证明 server 已停才恢复进入维护前的精确 state/phase/message/payload，并保留 staged target 与 preimport。原状态允许为 `game_installed/save_required/ready_to_start/stopped`，不再要求或永久归一化成 `stopped`；停机不可证时保留 maintenance ownership 并禁止自动 cleanup。该段是 MAINTENANCE-RUNTIME-1 完成时边界；PHASE-A-1 现已从 `runtime_ready` 继续正式提交，但仍不能宣告整个导入成功。
 
 # SAVE-IMPORT-STAGING-1：持久 source、无覆盖暂存与 preimport 备份（2026-07-16，completed）
 
@@ -1935,3 +1944,25 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 同一正式版本还必须纳入已进入 `origin/main` 的两个前置修复：`92f3be6bb2731358420ba315ac18029c2506d81f` 的 `run.sh` swap/swappiness 持久化，以及 `621c5645e0048da7c4793035615438ed78fc7002` 的图形化 Compose Web 自动标准化。代码已推送不等于 Release/真机通过；最终候选仍需验证新版 Release 附件确实包含前者，并在生产同步测试中覆盖后者的转换与回滚。
 - 明确排除“宿主机重启后自动恢复原 running 实例”。产品预期是宿主重启后游戏保持关闭，由用户手动点击启动；不得为本任务增加 restart policy 或 Panel 启动时自动 ComposeUp。新建档 owner 的手动恢复只是保护未完成事务，不等同于普通运行实例自动恢复。
 - Panel 启动时的 required-runtime、Runtime apply 和 SMAPI apply 协调器都先检查未完成 new-game owner；存在 owner 时零修复/停服/起服/替换。普通中断升级在 Panel/宿主重启后只做安全回滚和静态材料收敛，强制保持 server/auth 关闭并提示手动 Start，即使 recovery manifest 记录 `ServerWasRunning=true` 也不 ComposeUp。存档、导入、安装、Control/SMAPI/Runtime 更新、玩家删除与重启计划等变更入口均在未完成 owner 下 fail closed。
+
+# RUNTIME-AUTH-HEALTH-PROBE-1：认证服务健康与 Steam 在线能力彻底解耦（2026-08-14，代码完成，待发布）
+
+## 根因与职责边界
+
+- Issue #9 不是容器、镜像或 digest 错误。旧运行组件验收在目标、最终目标复验、旧版本回滚和 SMAPI 运行栈复验中统一调用 `RuntimeSteamAuthReady`，容器内请求 `GET /steam/ready`。该端点会恢复会话、连接 Steam、登录并获取 App Ticket；少数 Steam 网络受阻或连接很慢的环境中，单次 15 秒 Docker 探针会反复超时，最终耗尽 10 分钟认证预算并把“Steam 暂时不可用”误报为“认证服务接口损坏”。网络正常时同一端点很快返回，所以普通环境不容易复现。
+- 运行组件维护事务现在只调用 `RuntimeSteamAuthHealth` 的 `GET /health`。`/health` 是无副作用的服务状态快照，不触发登录；`/steam/ready`、`/steam/app-ticket` 和邀请码链仍保留给确实需要 Steam 登录、ticket 或在线大厅的业务。实例 `/state` 中现有 `steamAuthReady` 诊断字段仍属于在线能力探针，不得与运行组件验收混用。
+- 本节取代本文此前所有把 `/steam/ready`、Docker health、`ready` 或 `has_ticket` 描述为 Runtime/SMAPI apply 硬门槛的历史说明；这些旧段落只记录当时版本行为，不能作为当前实现依据。验收不会在 `/health` 失败后回退请求 `/steam/ready`。
+
+## 严格契约、错误与回滚
+
+- 硬门槛顺序固定为：`steam-auth` 容器 `running`；实际 image ID 与目标不可变 digest 精确相等；容器内 `/health` 在单次短预算内可达；HTTP 状态必须为 `200`；响应必须是单一 JSON 文档，且 `status` 是大小写精确的字符串 `"ok"`、`logged_in` 是非 null 布尔值、`accounts` 是非 null JSON 数组。不能用 Docker `health=healthy`、任意 HTTP 200、任意合法 JSON 或额外一次 `/steam/ready` 代替。
+- `logged_in=false` 返回 `RuntimeAuthServiceHealth{LoggedIn:false}` 并追加非阻断 warning，说明 Steam 在线能力暂不可用；它不阻止 Control-only 更新、Junimo 升级或 LAN/IP 模式启动。`accounts` 只用于计数，不进入日志或状态正文。
+- 稳定错误码为 `auth_container_not_running`、`auth_digest_mismatch`、`auth_health_unreachable`、`auth_health_timeout`、`auth_health_http_status`、`auth_health_invalid_response`。HTTP body、账号名、密码、refresh token、session、ticket 和容器完整环境变量都不会进入错误；apply 最终失败、`causeCode/causeError` 和 `failed_rolled_back` 会保留脱敏后的最后一次具体探针原因，不再只写“认证服务接口验证失败”。接口、schema 或 digest 失败仍 fail closed，并进入既有认证卷快照、成对回滚与旧栈复验事务。
+- 目标初验、最终目标复验、Panel 重启后的续验、SMAPI 新/旧栈验收和旧版本回滚统一复用这份纯健康契约。公开检查名 `checks[].name=steam_auth_ready` 暂时保留以兼容现有前端/API，但其语义已经是“容器 + digest + 严格 `/health` 服务契约”，不是 Steam 已登录。
+
+## 实现、兼容性与验证
+
+- 主要文件：`backend/internal/docker/runtime_apply.go`、`runtime_apply*_test.go`；`backend/internal/games/stardew_junimo/runtime_update_apply*.go`、`runtime_update_rollback.go`、`smapi_update_workflow.go` 及对应测试；`config/runtime_stack.go`、`runtime_stack_test.go`；`scripts/compatibility_matrix.py` 及单测。
+- 内置推荐 `steam-auth-cn:1.5.0-anxi.2` 的精确源 revision 与真实镜像均已验证：`/health` 返回 HTTP 200 和 `status/logged_in/accounts`，且不会触发登录；`/steam/ready` 才执行登录与 ticket。Panel Git 历史运行栈 manifest 只出现过 `.2`。运行栈 inspection 与兼容矩阵现以显式 allowlist 固定该已审计契约；未审计 tag 返回 `unsupported/auth_health_contract`，拒绝自动升级且绝不静默回退 `/steam/ready`。
+- 受控 Docker fixture 让 `/health` 立即返回 `logged_in=false`、让 `/steam/ready` 阻塞 60 秒，并通过请求日志证明维护验收从未访问 ready；另覆盖 `/health` 不可达、短超时、404、500、坏 JSON、目标 auth 发生变化、Control-only/auth 未变化、最终目标复验、旧版回滚复验与 digest 不匹配。真实镜像 opt-in 不使用真实 Steam 凭据，只验证 `/health` 契约。
+- 2026-08-14 已通过：严格 parser 单测；Go 定向单测；两组 Docker integration；真实 `1.5.0-anxi.2` opt-in；兼容矩阵 20 项单测与 manifest validate；Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...`。任务专属容器、镜像、网络和 volume 清理后均为 0。尚未构建正式候选、打 tag、创建 Release 或推送正式镜像。

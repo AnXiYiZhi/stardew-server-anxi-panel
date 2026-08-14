@@ -314,15 +314,16 @@ GET /api/instances/:id/players/:uniqueMultiplayerId/mods
 
 # SAVE-IMPORT-MAINTENANCE-RUNTIME-1 联调契约（2026-07-16，completed）
 
+- 2026-08-15 首次安装状态修复把提交与 driver 的共享离线集合固定为 `game_installed / save_required / ready_to_start / stopped`。Web 先按集合拒绝明显不安全状态；driver 在 journal/token ownership 前重新读取数据库，并让整条导入链只使用该权威 `DataDir`。接管前与 `ComposeUp` 前的 Docker 证据都使用无缓存 `docker compose ps --all` 严格解析；空/坏输出、缺字段、未知状态以及任一 running/restarting/paused/removing server 都拒绝。因此安装完成无需先调用 Stop API，也不能仅凭数据库离线或缓存的 Compose 结果放行实际运行中的 server。
 - 上传提交仍返回 `202 + jobId + operationId`。job 在 staging/preimport 后启动维护 runtime；实例对 UI 继续呈现 `stopped`，phase 为 `save_import_maintenance`，不会发布 `ready` 或邀请码。客户端不得把 server 容器存在、job 成功或 `runtime_ready` 单独解释为导入成功。
 - `runtime_ready` 仅表示 `.125` 容器、FIFO、可读日志、health/status API、`saves` 列表命令和复合 baseline 均已就绪。该段是 MAINTENANCE-RUNTIME-1 的历史边界；PHASE-A-1 已在其后发送正式 import，但依然没有 Panel 指针预写、新游戏或 XML 修改。
-- 维护 phase 的邀请码读取被拒绝；若 `/status.playerCount > 0`，job 以 `save_import_players_connected` 明确失败且不会踢人。`runtime_ready` 前失败/取消恢复原停止状态并保留 staged/preimport。
+- 维护 phase 的邀请码读取被拒绝；若 `/status.playerCount > 0`，job 以 `save_import_players_connected` 明确失败且不会踢人。`runtime_ready` 前失败/取消会先 ComposeDown；只有随后 ComposePs 证明 server 已停才恢复进入维护前精确的 state/phase/message/payload，并保留 staged/preimport。停机不可证时保留 maintenance ownership，不能自动 cleanup。
 - journal 新增 `maintenanceStarted`、`serverOutputLogOffset`、`runtimeBaseline`；baseline 中 pending UserID 仍为 `json:"-"`，不得通过 API、日志或 journal 外泄。
 
 # SAVE-IMPORT-STAGING-1 联调契约（2026-07-16，completed）
 
 - `upload-preview` 响应不变。`upload-commit-and-start` reserve token 后，driver 先建立 journal，再同步把 payload 转入 operation/source；只有 source 所有权落盘且 job 创建成功才返回既有 `202 {jobId,operationId,saveName}`。因此响应后不再依赖 handler 内存中的 tempDir。
-- token 新增内部 `owned` 状态：同 operation 可重新发现 source，其他 operation 拒绝占用。cancel 对 available token 仍删除 pending upload；对 owned token 调用提交前 transaction cleanup，删除 source 和本 operation 创建且未变化的 staged target，保留 preimport。submitted 后返回 recovery 冲突，不自动删除。
+- token 内部 `owned` 状态允许同 operation 重新发现 source，其他 operation 拒绝占用；job 使用 operation 派生的数据库 idempotency key。进程若在 job 创建与 token `jobId` 绑定之间退出，提交/cancel 重试从 key 找回同一个 job；完全不存在该 key 才可证明没有 durable runner。cancel 对 available token 仍删除 pending upload；owned token 仅在 terminal job（或无 durable job）、driver 四态离线、strict Compose server 实停、journal `MaintenanceStarted=false` 且未提交，并通过 bootstrap pointer 与 staged fingerprint 门禁时执行 transaction cleanup。所有只读证据先生成完整 cleanup plan，通过后才删除；先写 `stage=canceled`，再删除 token，最后清 journal，使任一进程中断都可幂等继续且不会永久 busy。它删除 source/本 operation 创建且未变化的 staged target/bootstrap/pointer/token，保留 preimport；活动、成功、submitted 或证据不确定均返回 busy/recovery。成功 token 短时保留幂等响应后按到期元数据回收。
 - `202` 仍不代表导入成功。该段记录的是 STAGING-1 完成时边界；后续 MAINTENANCE-RUNTIME-1 与 PHASE-A-1 已扩展到维护 runtime 和正式 Phase A 提交，但前端仍不得展示整个导入成功。
 - journal 新增 `sourceOwned/stagedSaveCreated/stagedSaveFingerprint/preimportBackupSha256`；`staged` 现在严格表示 `Saves/<saveName>` 已完整原子可见，`backup_created` 严格表示上传目标的 preimport ZIP 及 SHA-256 已落盘。
 - `preimport` 是长期恢复材料，不参与自动游戏日清理。用户若取消提交，目标目录被安全清理但 preimport 仍可从现有备份列表恢复；删除该 ZIP 只能走现有显式备份删除操作。
@@ -1329,7 +1330,7 @@ Panel 不接收 steam-auth-cn 的 `repository_dispatch`，也不根据 auth 发�
 ## Local downloaded-game/rich-save run (2026-07-17)
 
 - A copied local save with two farmhands, three cabins, furniture, fridge content and cellar assignments was uploaded through multipart preview and the 202 commit endpoint. Missing host handling and unacknowledged takeover both returned `host_decision_required`; acknowledged takeover returned a dedicated job/operation and completed with unchanged as-is hash.
-- A fresh scaffolded database first failed before maintenance because it was not yet `stopped`; the unsubmitted transaction was cleaned with `CleanupUnsubmittedImport`, its preimport was retained, and the formal Stop API normalized state before retry.
+- Historical note (superseded on 2026-08-14): a fresh scaffolded database once failed before maintenance because its real post-install state was `game_installed`, and the test workaround used `CleanupUnsubmittedImport` plus Stop API normalization. The fixed contract now accepts `game_installed` directly while still requiring Compose server stopped; no permanent rewrite to `stopped` is needed. A legacy pre-submit failure can be canceled only after terminal-job identity, stopped-runtime, `MaintenanceStarted=false`, ownership/pointer/fingerprint and no-upstream-effect gates pass; the driver holds the lifecycle mutex across the final Compose check and cleanup, and preimport remains retained.
 - The run exposed and fixed two timing/safety gaps: command registration can precede diagnostics baseline readiness, so baseline capture now polls within the same deadline; and a missing original pointer is rejected before ComposeUp so upstream cannot enter new-game creation. Neither path sent `saves import` before its evidence gate.
 - After completion, a real restart reloaded `1111_442923526`; XML/hash, `Pending=null`, diagnostics, runtime cabin/farmhand counts and day-transition state remained valid. Human client role selection, reconnect/sleep and spouse/child/pet semantics remain open.
 # IMAGE-CLEANUP-1：Panel apply 状态兼容字段（2026-07-17）
@@ -1429,3 +1430,23 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - 本任务明确不提供“重启前 running 的普通游戏实例自动恢复”。宿主重启后 game container 保持关闭，用户手动点击启动；前端不得把这种关闭状态伪装为自动恢复中。
 - 若重启前存在未结束 new-game owner，手动启动会恢复同一 request/config/transaction 并继续观察或完成耐久门禁。这个显式恢复不能扩展成 Panel 启动时自动 ComposeUp，也不能绕过 owner 再创建新事务。
 - Panel bootstrap 的 required-runtime、Runtime apply 与 SMAPI apply 恢复必须保持 server/auth 关闭。它们可收敛未完成的静态替换或回滚，但即使持久化状态记录了 `ServerWasRunning=true`，也必须返回“请手动启动”而不 ComposeUp。存在 unfinished new-game owner 时连静态替换也禁止。
+
+# RUNTIME-AUTH-HEALTH-PROBE-1 联调契约（2026-08-14，待发布）
+
+## 运行组件验收与在线业务分层
+
+- Runtime apply、最终目标复验、旧栈回滚复验及 SMAPI apply 只通过容器内 `GET /health` 判断 steam-auth HTTP 服务是否正常；不会调用 `/steam/ready`，也不会在 health 失败后 fallback。`/steam/ready` 仍供实例 `steamAuthReady` 在线诊断、Steam 登录和 App Ticket 相关业务使用，两个职责不得重新合并。
+- 硬验收必须同时满足：容器 state 为 `running`；实际 image ID 与本次目标 digest 精确匹配；`/health` 在单次短超时内返回；HTTP 为 200；body 是单一 JSON 文档；`status === "ok"`、`typeof logged_in === boolean`、`accounts` 为 JSON array 且三个字段都存在、非 null。Docker health 状态不是替代证据。
+- `logged_in=false` 是成功的服务健康结果，同时在 `warnings[]` 追加 Steam 在线能力暂不可用的脱敏提示。它不阻断仅 Control 变化、Junimo 成对升级或 LAN/IP 模式。需要邀请码、在线大厅或 ticket 时，业务链再独立等待 Steam 登录。
+
+## API 状态与失败语义
+
+- 为兼容既有消费者，apply `checks[].name` 仍返回 `steam_auth_ready`；该名称当前表示“容器 running + digest + 严格 `/health`”，不表示 ready/ticket。阶段枚举和 apply-status JSON shape 不变。
+- 失败码固定区分 `auth_container_not_running`、`auth_digest_mismatch`、`auth_health_unreachable`、`auth_health_timeout`、`auth_health_http_status`、`auth_health_invalid_response`。最后一次脱敏原因保留在 apply 错误、`causeCode/causeError` 以及回滚终态中；响应 body、Steam 用户名、密码、refresh token、session、ticket 和容器环境变量不进入 API 或日志。
+- 上述任何硬失败都继续进入既有安全回滚。旧 auth 复验也必须通过相同 `/health` 契约，不能因回滚目标较旧而调用 `/steam/ready`；无法证明旧镜像契约时必须返回 `unsupported/auth_health_contract` 并在 mutation 前停止。
+
+## 受控联调证据
+
+- 本地 Docker fixture 的 `/health` 立即返回 `{"status":"ok","logged_in":false,"accounts":[]}`，`/steam/ready` 故意阻塞 60 秒。运行组件 apply 在短时间内成功，请求日志只出现 `/health`，证明没有触发登录端点；Docker health 同时可保持 `unhealthy`，仍不影响纯服务契约判断。
+- 同一 fixture 用受控 mode 覆盖 `/health` 连接失败、短超时、404、500 和坏 JSON，全部得到对应稳定错误码并进入 `failed_rolled_back`；回滚后的旧 auth 再次以 `/health` 验收。另有单元表覆盖空 body、非 JSON、字段缺失、status null/非 ok、logged_in null/string/number、accounts null/object/string/number。
+- 真实 `1.5.0-anxi.2` opt-in 只验证镜像 ID/digest 和 `/health` 严格契约，不配置或读取真实 Steam 账号。本文此前关于 Runtime/SMAPI apply 使用 `/steam/ready` 的段落属于旧版本历史行为，已由本节取代；实例在线诊断中的 `/steam/ready` 说明仍然有效。

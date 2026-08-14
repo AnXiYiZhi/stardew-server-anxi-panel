@@ -1740,3 +1740,19 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - 后续给备份详情增加字段时只修改 `backupDetailsTitle`，不要在两个列表里重新内联；若改成自定义 tooltip，需要同时补键盘聚焦和读屏关联，不能只保留鼠标入口。
+
+# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1 接手记录（2026-08-14，completed，未发布）
+
+## 改了什么
+
+- 新建存档高级设置中的“社区中心手机包”是文字误写，现已更正为 Stardew 高级游戏选项使用的“社区中心收集包”。
+- 仍由 `NewGameConfig.remixedCommunityCenter` 的复选框表示普通/重新混合选择，没有改控件语义、默认值或请求结构。
+
+## 影响文件与验证
+
+- 产品代码只影响 `frontend/src/games/stardew/NewGameCreator.tsx`；无 CSS、类型、API 或后端改动。
+- 前端 production build 通过；源码和 `dist` 产物已做正反向文案检查，确认新文案存在且旧误字不存在。
+
+## 下一步注意事项
+
+- 后续若把复选框改成“普通/重新混合”显式选择器，应继续保留“社区中心收集包”作为选项名称；不要把栏目名和选中值“重新混合”合并成一个含义不清的复选框标签。

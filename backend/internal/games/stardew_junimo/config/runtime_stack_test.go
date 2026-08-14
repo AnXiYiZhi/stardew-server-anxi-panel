@@ -159,21 +159,34 @@ func TestInspectRuntimeStackVersionPairs(t *testing.T) {
 		authTag   string
 		want      string
 		available bool
+		supported bool
+		code      string
 	}{
-		{"exact pair", manifest.Server.Tag, manifest.SteamAuth.Tag, RuntimeStackStatusUpToDate, false},
-		{"supported preview.121 remains optional update", "1.5.0-preview.121", manifest.SteamAuth.Tag, RuntimeStackStatusUpdateAvailable, true},
-		{"server new auth old", manifest.Server.Tag, "1.5.0-anxi.1", RuntimeStackStatusUpdateAvailable, true},
-		{"both old", "1.5.0-preview.120", "1.5.0-anxi.1", RuntimeStackStatusUpdateAvailable, true},
+		{"exact pair", manifest.Server.Tag, manifest.SteamAuth.Tag, RuntimeStackStatusUpToDate, false, true, "up_to_date"},
+		{"supported preview.121 remains optional update", "1.5.0-preview.121", manifest.SteamAuth.Tag, RuntimeStackStatusUpdateAvailable, true, true, "update_available"},
+		{"server new auth contract unreviewed", manifest.Server.Tag, "1.5.0-anxi.1", RuntimeStackStatusInvalidConfig, false, false, "unsupported/auth_health_contract"},
+		{"both old auth contract unreviewed", "1.5.0-preview.120", "1.5.0-anxi.1", RuntimeStackStatusInvalidConfig, false, false, "unsupported/auth_health_contract"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeRuntimeEnv(t, dir, tc.serverTag, tc.authTag, false)
 			got := InspectRuntimeStack(dir, true)
-			if got.Status != tc.want || got.Available != tc.available || !got.Supported {
-				t.Fatalf("status=%q available=%v supported=%v, want %q/%v/true (%s)", got.Status, got.Available, got.Supported, tc.want, tc.available, got.Reason)
+			if got.Status != tc.want || got.Available != tc.available || got.Supported != tc.supported || got.Code != tc.code {
+				t.Fatalf("status=%q code=%q available=%v supported=%v, want %q/%q/%v/%v (%s)", got.Status, got.Code, got.Available, got.Supported, tc.want, tc.code, tc.available, tc.supported, got.Reason)
 			}
 		})
+	}
+}
+
+func TestSteamAuthHealthContractCompatibilityIsExplicit(t *testing.T) {
+	if !steamAuthHealthContractSupported("1.5.0-anxi.2") {
+		t.Fatal("reviewed steam-auth-cn 1.5.0-anxi.2 health contract was not accepted")
+	}
+	for _, tag := range []string{"", "1.5.0-anxi.1", "1.5.0-anxi.3", "latest"} {
+		if steamAuthHealthContractSupported(tag) {
+			t.Fatalf("unreviewed steam-auth health contract accepted: %q", tag)
+		}
 	}
 }
 

@@ -18,9 +18,11 @@ import (
 )
 
 type importMaintenanceStore struct {
-	mu       sync.Mutex
-	instance storage.Instance
-	updates  []storage.UpdateInstanceStateParams
+	mu         sync.Mutex
+	instance   storage.Instance
+	updates    []storage.UpdateInstanceStateParams
+	updateErr  error
+	restoreErr error
 }
 
 func (s *importMaintenanceStore) GetInstance(context.Context, string) (storage.Instance, error) {
@@ -32,10 +34,55 @@ func (s *importMaintenanceStore) GetInstance(context.Context, string) (storage.I
 func (s *importMaintenanceStore) UpdateInstanceState(_ context.Context, p storage.UpdateInstanceStateParams) (storage.Instance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.updateErr != nil {
+		return storage.Instance{}, s.updateErr
+	}
 	s.updates = append(s.updates, p)
 	s.instance.State, s.instance.DriverPhase, s.instance.DriverPayload = p.State, p.DriverPhase, p.DriverPayload
 	s.instance.StateMessage = sql.NullString{String: p.StateMessage, Valid: p.StateMessage != ""}
 	return s.instance, nil
+}
+
+func (s *importMaintenanceStore) RestoreInstanceStateSnapshot(_ context.Context, snapshot storage.Instance) (storage.Instance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.restoreErr != nil {
+		return storage.Instance{}, s.restoreErr
+	}
+	s.updates = append(s.updates, storage.UpdateInstanceStateParams{
+		ID: snapshot.ID, State: snapshot.State, StateMessage: snapshot.StateMessage.String,
+		DriverPhase: snapshot.DriverPhase, DriverPayload: snapshot.DriverPayload,
+	})
+	s.instance.State = snapshot.State
+	s.instance.StateMessage = snapshot.StateMessage
+	s.instance.DriverPhase = snapshot.DriverPhase
+	s.instance.DriverPayload = snapshot.DriverPayload
+	return s.instance, nil
+}
+
+func TestSaveImportServerStoppedStrictMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		services []paneldocker.ComposeService
+		stopped  bool
+		wantErr  bool
+	}{
+		{name: "absent", stopped: true},
+		{name: "all terminal", services: []paneldocker.ComposeService{{Service: "server", State: "exited"}, {Service: "server", State: "dead"}, {Service: "steam-auth", State: "running"}}, stopped: true},
+		{name: "created", services: []paneldocker.ComposeService{{Service: "server", State: "created"}}, stopped: true},
+		{name: "one of multiple running", services: []paneldocker.ComposeService{{Service: "server", State: "exited"}, {Service: "server", State: "running"}}},
+		{name: "restarting", services: []paneldocker.ComposeService{{Service: "server", State: "restarting"}}},
+		{name: "paused", services: []paneldocker.ComposeService{{Service: "server", State: "paused"}}},
+		{name: "unknown", services: []paneldocker.ComposeService{{Service: "server", State: "mystery"}}, wantErr: true},
+		{name: "missing state", services: []paneldocker.ComposeService{{Service: "server"}}, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stopped, err := saveImportServerStoppedStrict(tc.services)
+			if (err != nil) != tc.wantErr || stopped != tc.stopped {
+				t.Fatalf("stopped=%v err=%v", stopped, err)
+			}
+		})
+	}
 }
 
 type maintenanceFakeConfig struct {
@@ -47,6 +94,7 @@ type maintenanceFakeConfig struct {
 type maintenanceFakeRecord struct {
 	mu                  sync.Mutex
 	started, down       bool
+	upCalls             int
 	fifoCheckedBeforeUp bool
 	stdin               []string
 	identityCalls       int
@@ -59,6 +107,7 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 	fake := &fakeConsoleDocker{}
 	fake.composeUpFunc = func(context.Context, string) (paneldocker.CommandResult, error) {
 		record.mu.Lock()
+		record.upCalls++
 		record.started = true
 		record.mu.Unlock()
 		if cfg.composeUpError {
@@ -191,6 +240,7 @@ func TestImportMaintenanceWaitsForEvidenceBaseline(t *testing.T) {
 
 func TestImportMaintenanceAcceptsFirstUploadBootstrapWorld(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	setMaintenanceFixtureState(store, &instance, storage.InstanceStateGameInstalled, "game installed; save required", "game_installed", `{"install":"complete","invite_code":"stale"}`)
 	j, err := LoadImportJournal(dataDir, op)
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +272,99 @@ func TestImportMaintenanceAcceptsFirstUploadBootstrapWorld(t *testing.T) {
 	j, err = LoadImportJournal(dataDir, op)
 	if err != nil || j.Stage != ImportStageRuntimeReady || j.RuntimeBaseline == nil || j.RuntimeBaseline.ActivePointer != j.BootstrapSaveName {
 		t.Fatalf("runtime bootstrap baseline=%+v err=%v", j, err)
+	}
+}
+
+func setMaintenanceFixtureState(store *importMaintenanceStore, instance *registry.Instance, state, message, phase, payload string) {
+	store.mu.Lock()
+	store.instance.State = state
+	store.instance.StateMessage = sql.NullString{String: message, Valid: message != ""}
+	store.instance.DriverPhase = phase
+	store.instance.DriverPayload = payload
+	store.mu.Unlock()
+	instance.State = state
+	instance.StateMessage = message
+	instance.DriverPhase = phase
+	instance.DriverPayload = payload
+}
+
+func TestSaveImportMaintenanceOfflineStateContract(t *testing.T) {
+	allowed := map[string]bool{
+		storage.InstanceStateGameInstalled: true,
+		storage.InstanceStateSaveRequired:  true,
+		storage.InstanceStateReadyToStart:  true,
+		storage.InstanceStateStopped:       true,
+	}
+	states := []string{
+		storage.InstanceStateUninitialized,
+		storage.InstanceStateAdminCreated,
+		storage.InstanceStateJunimoScaffolded,
+		storage.InstanceStateCredentialsRequired,
+		storage.InstanceStateSteamAuthRunning,
+		storage.InstanceStateSteamAuthFailed,
+		storage.InstanceStateSteamAuthDone,
+		storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+		storage.InstanceStateStopped,
+		storage.InstanceStateError,
+	}
+	for _, state := range states {
+		if got := IsSaveImportMaintenanceOfflineState(state); got != allowed[state] {
+			t.Errorf("state %q allowed=%v, want %v", state, got, allowed[state])
+		}
+	}
+}
+
+func TestImportMaintenanceAllowedOfflineStateMatrix(t *testing.T) {
+	for _, state := range []string{
+		storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStopped,
+	} {
+		t.Run(state, func(t *testing.T) {
+			dataDir, op, instance, store := prepareMaintenanceFixture(t)
+			setMaintenanceFixtureState(store, &instance, state, "original "+state, "phase_"+state, `{"kept":"`+state+`"}`)
+			fake, _ := newMaintenanceFake(maintenanceFakeConfig{})
+			driver := New(fake, nil, nil, store)
+			if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+				importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond}); err != nil {
+				t.Fatal(err)
+			}
+			journal, err := LoadImportJournal(dataDir, op)
+			if err != nil || journal.Stage != ImportStageRuntimeReady {
+				t.Fatalf("journal=%+v err=%v", journal, err)
+			}
+		})
+	}
+}
+
+func TestImportMaintenanceRejectsRunningComposeBeforeStartup(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	setMaintenanceFixtureState(store, &instance, storage.InstanceStateGameInstalled, "installed", "game_installed", `{"kept":true}`)
+	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+	fake.composePsFunc = func(context.Context, string) (paneldocker.ComposePsResult, error) {
+		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}}}, nil
+	}
+	driver := New(fake, nil, nil, store)
+	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+		importMaintenanceOptions{ReadyTimeout: 100 * time.Millisecond, PollInterval: time.Millisecond})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorSaveInProgress || strings.Contains(typed.Message, "must remain stopped") {
+		t.Fatalf("error=%v typed=%+v", err, typed)
+	}
+	record.mu.Lock()
+	started := record.started
+	record.mu.Unlock()
+	if started {
+		t.Fatal("maintenance ComposeUp ran while the server service was already running")
+	}
+	journal, loadErr := LoadImportJournal(dataDir, op)
+	if loadErr != nil || journal.LastErrorCode != ImportErrorSaveInProgress {
+		t.Fatalf("journal=%+v err=%v", journal, loadErr)
 	}
 }
 
@@ -389,6 +532,91 @@ func TestImportMaintenanceFailuresStopAndRestore(t *testing.T) {
 				t.Fatalf("original state not restored: %+v", last)
 			}
 		})
+	}
+}
+
+func TestImportMaintenanceGameInstalledFailuresRestoreExactSnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cfg    maintenanceFakeConfig
+		cancel bool
+	}{
+		{name: "startup", cfg: maintenanceFakeConfig{composeUpError: true}},
+		{name: "readiness", cfg: maintenanceFakeConfig{missingFIFO: true}},
+		{name: "canceled", cfg: maintenanceFakeConfig{neverRunning: true}, cancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, op, instance, store := prepareMaintenanceFixture(t)
+			const originalPayload = `{"install":"complete","nested":{"kept":true},"invite_code":"stale"}`
+			setMaintenanceFixtureState(store, &instance, storage.InstanceStateGameInstalled,
+				"exact game-installed message", "game_installed", originalPayload)
+			fake, record := newMaintenanceFake(tc.cfg)
+			driver := New(fake, nil, nil, store)
+			ctx := context.Background()
+			if tc.cancel {
+				canceled, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = canceled
+			}
+			err := driver.runImportMaintenance(ctx, instance, op, nil,
+				importMaintenanceOptions{ReadyTimeout: 30 * time.Millisecond, PollInterval: time.Millisecond})
+			if err == nil {
+				t.Fatal("maintenance failure fixture unexpectedly succeeded")
+			}
+			record.mu.Lock()
+			down := record.down
+			record.mu.Unlock()
+			if !down {
+				t.Fatal("failed maintenance runtime was not stopped")
+			}
+			store.mu.Lock()
+			restored := store.instance
+			store.mu.Unlock()
+			if restored.State != storage.InstanceStateGameInstalled || restored.DriverPhase != "game_installed" ||
+				restored.StateMessage.String != "exact game-installed message" || !restored.StateMessage.Valid || restored.DriverPayload != originalPayload {
+				t.Fatalf("original snapshot not restored exactly: %+v", restored)
+			}
+		})
+	}
+}
+
+func TestImportMaintenanceStateWriteFailurePreventsComposeUp(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	store.updateErr = errors.New("injected state write failure")
+	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+	driver := New(fake, nil, nil, store)
+	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorMaintenanceStart {
+		t.Fatalf("error=%T %v", err, err)
+	}
+	record.mu.Lock()
+	upCalls := record.upCalls
+	record.mu.Unlock()
+	if upCalls != 0 {
+		t.Fatal("ComposeUp ran after maintenance state write failed")
+	}
+	journal, loadErr := LoadImportJournal(dataDir, op)
+	if loadErr != nil || journal.MaintenanceStarted {
+		t.Fatalf("journal=%+v err=%v", journal, loadErr)
+	}
+}
+
+func TestImportMaintenanceRestoreFailureSurfacesRecoveryRequired(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	store.restoreErr = errors.New("injected exact restore failure")
+	fake, _ := newMaintenanceFake(maintenanceFakeConfig{composeUpError: true})
+	driver := New(fake, nil, nil, store)
+	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired || !strings.Contains(err.Error(), "failed to restore instance state") {
+		t.Fatalf("error=%T %v", err, err)
+	}
+	journal, loadErr := LoadImportJournal(dataDir, op)
+	if loadErr != nil || journal.MaintenanceStarted {
+		t.Fatalf("journal=%+v err=%v", journal, loadErr)
 	}
 }
 

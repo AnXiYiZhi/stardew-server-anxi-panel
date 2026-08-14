@@ -110,6 +110,32 @@ func (c *Client) ComposePs(ctx context.Context, dir string) (ComposePsResult, er
 	return composeResult, err
 }
 
+// ComposePsStrict bypasses the short UI cache and requires a complete,
+// parseable `docker compose ps --all` response. Safety-sensitive callers use
+// this method before starting or deleting transaction-owned runtime data; an
+// empty/malformed response must never be interpreted as "the server is down".
+func (c *Client) ComposePsStrict(ctx context.Context, dir string) (ComposePsResult, error) {
+	result, err := c.run(ctx, "docker compose ps --all", dir, c.timeouts.Ps, "compose", "ps", "--all", "--format", "json")
+	composeResult := ComposePsResult{Result: result, Services: []ComposeService{}}
+	if err != nil {
+		return composeResult, err
+	}
+	if strings.TrimSpace(result.Stdout) == "" {
+		return composeResult, fmt.Errorf("docker compose ps --all returned an empty response")
+	}
+	services, parseErr := parseComposeServices(result.Stdout)
+	if parseErr != nil {
+		return composeResult, fmt.Errorf("parse docker compose ps --all response: %w", parseErr)
+	}
+	for _, service := range services {
+		if strings.TrimSpace(service.Service) == "" || strings.TrimSpace(service.State) == "" {
+			return composeResult, fmt.Errorf("docker compose ps --all response is missing service or state")
+		}
+	}
+	composeResult.Services = services
+	return composeResult, nil
+}
+
 func (c *Client) ComposeStats(ctx context.Context, dir string) (ComposeStatsResult, error) {
 	result, err := c.run(ctx, "docker compose stats", dir, c.timeouts.Stats, "compose", "stats", "--no-stream", "--format", "json")
 	statsResult := ComposeStatsResult{Result: result}

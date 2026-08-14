@@ -330,6 +330,37 @@ func TestImportStagingPreimportRestoresAndSurvivesCleanup(t *testing.T) {
 	}
 }
 
+func TestCleanupUnsubmittedImportPlansAllChecksBeforeMutation(t *testing.T) {
+	dataDir := t.TempDir()
+	op := "55112233445566778899aabbccddeeff"
+	createOwnedImportJournalFixture(t, dataDir, op, "first-upload")
+	if err := prepareImportStaging(dataDir, op); err != nil {
+		t.Fatal(err)
+	}
+	j, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stagedMain := filepath.Join(savesDir(dataDir), "Saves", j.SaveName, j.SaveName)
+	if err := os.WriteFile(stagedMain, []byte("changed-after-fingerprint"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bootstrapDir := filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName)
+	if err := CleanupUnsubmittedImport(dataDir, op); err == nil {
+		t.Fatal("changed staged target was cleaned")
+	}
+	if _, err := os.Stat(bootstrapDir); err != nil {
+		t.Fatalf("bootstrap was partially removed before staged fingerprint rejection: %v", err)
+	}
+	pointer, err := readActivePointerStrict(dataDir)
+	if err != nil || pointer != j.BootstrapSaveName {
+		t.Fatalf("bootstrap pointer changed before full cleanup plan validation: pointer=%q err=%v", pointer, err)
+	}
+	if _, err := os.Stat(importTransactionSourceDir(dataDir, op)); err != nil {
+		t.Fatalf("transaction source was partially removed: %v", err)
+	}
+}
+
 func TestImportStagingSubmittedCleanupRejected(t *testing.T) {
 	dataDir := t.TempDir()
 	op := "60112233445566778899aabbccddeeff"

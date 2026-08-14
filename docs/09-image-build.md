@@ -1636,8 +1636,72 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 
 # Steam 在线等待解耦专项验证（2026-08-09，非发布记录）
 
+- 历史说明：以下是 v0.4.10 当时使用 `/steam/ready` 的验收证据；该探针仍会在 Steam 网络挂起时阻塞，当前契约已由后文 `RUNTIME-AUTH-HEALTH-PROBE-1` 的严格 `/health` 方案取代，不得按本节复刻实现。
 - 变更链路：运行栈 apply `recreating_auth → verifying_auth → recreating_server`；auth 验收从 Docker health 改为容器 running + 精确 image ID + 可解析 `/steam/ready`，前端消费原有 phase/updatedAt 展示等待详情。
 - 故障矩阵：正常已登录接口通过；边界未登录/无 ticket 通过并警告；Steam 外网波动由 auth 后台重试且不阻塞升级；接口超时/断流/坏 JSON 仍失败回滚；digest 不匹配仍立即失败；重复目标复验使用同一幂等只读探针；Panel/容器中断恢复、认证卷快照、失败回滚和数据完整性逻辑未改；不读取或记录账号凭据；测试仅创建唯一前缀容器/镜像并精确清理。
 - Docker Desktop 29.5.3 Linux containers 实机 fixture 将 healthcheck 固定为失败，同时由真实容器 HTTP 服务返回 `{"ready":false,"has_ticket":false}`。`TestRuntimeUpdateAuthAcceptanceDoesNotWaitForDockerHealth` 12.53 秒通过；旧实现会等待 auth timeout。清理后 `anxiauthoffline*` 容器和镜像均为空。
 - 代码门禁：后端全量 `go test ./...`、`go vet ./...`、`go build ./...`；前端全部 12 个 `test:*` 脚本与 `npm run build` 均通过。Browser 桌面与 390×844 窄屏提示可见，窄屏 root/body 无横向溢出，console error/warn 为空。
 - 本轮没有构建正式候选镜像、没有打 tag 或推送 registry。发布前仍须按本文件总门禁从最新正式版执行 Panel 一键升级、升级后功能复验、目标失败回滚和全量门禁，不能把本专项测试替代正式发布验收。
+
+# RUNTIME-AUTH-HEALTH-PROBE-1 发布前专项矩阵（2026-08-14，代码已验证，未发布）
+
+## 变更清单与受影响链路
+
+- 根因：v0.4.10 至当前 v0.4.16 的运行组件验收请求 `/steam/ready`。该业务端点会恢复 Steam 会话、连接/登录并获取 App Ticket；在少数 Steam 网络受阻或连接很慢的环境中，Panel 的 15 秒单次 Docker 探针反复超时，最终耗尽 10 分钟认证预算并进入回滚。容器、目标 digest 和 HTTP 服务本身可能一直正常，因此问题只在特定网络环境稳定暴露。
+- Runtime target/final verify、rollback old target verify、required-runtime/SMAPI 相关复验全部改为纯 `GET /health`；`/steam/ready` 保留给登录、ticket、邀请码和在线诊断，health 失败后没有 fallback。Docker health 也不作为替代证据。
+- 受影响文件为后端 Docker runtime probe、Junimo runtime apply/rollback/SMAPI workflow、运行栈兼容 inspection、兼容矩阵脚本及测试；无数据库迁移、Compose 格式、认证卷布局、公开路由或 apply-status JSON shape 变化。兼容检查名 `steam_auth_ready` 保留，但文案和含义已改为严格 service health。
+- 本节取代本文件此前所有把 `/steam/ready` 写成当前 Runtime/SMAPI 维护验收契约的说明；旧段落只保留版本历史价值。
+
+## 本版专项矩阵
+
+| 维度 | 场景 | 预期与现有证据 |
+| --- | --- | --- |
+| 正常路径 | `/health` HTTP 200，`status=ok`、`logged_in=true`、`accounts` 数组 | 单元与真实 `1.5.0-anxi.2` opt-in 通过 |
+| Steam 离线边界 | `/health` 立即返回 `logged_in=false`，`/steam/ready` 阻塞 60 秒 | apply 快速成功并产生 warning；请求日志证明未访问 ready |
+| schema 安全 | 非 200、空 body、非 JSON、缺字段、null/错误类型、status 非 ok、trailing JSON | 全部 fail closed，稳定映射 health 错误码 |
+| 网络失败 | 不可达、短超时、404、500、坏 JSON | Docker integration 全部进入 `failed_rolled_back`，保留脱敏最后原因 |
+| 镜像完整性 | auth image 变化、未变化、实际 image ID 与目标 digest 不同 | 变化与 Control-only 两条流程通过；mismatch 立即失败 |
+| 重复/恢复 | 目标初验、最终目标复验、旧栈回滚、SMAPI 复验 | 统一调用严格 `/health`，无业务登录副作用 |
+| 数据与资源 | steam-session、凭据、临时容器/网络/镜像/volume | 不读取或输出敏感值；任务资源精确清理后计数均为 0 |
+| 兼容性 | 内置/历史清单和未审计旧 tag | 仅 `.2` 有审计证据；其它 tag 在 mutation 前以 `unsupported/auth_health_contract` 停止，绝不回退 ready |
+
+## 已执行门禁与正式发布待办
+
+- 已通过：严格 parser/错误码定向单测；Junimo Runtime/SMAPI/rollback 定向测试；Docker `/health` fixture；完整 apply/rollback Docker integration；真实推荐 server/auth opt-in；兼容矩阵 20 项单测与当前 manifest validate。
+- Linux `golang:1.25-alpine` 隔离门禁已通过 `go test ./... -count=1`、`go vet ./...`、`go build ./...`。Windows 宿主定向包只命中既知 POSIX `0600`/`0666` 语义差异，已由 Linux 目标文件系统全量门禁覆盖，不是产品失败。
+- 发布建议为下一个补丁版 `v0.4.17`。正式候选仍必须从与 `origin/main` 精确同步且干净的 main 构建，并补做：上一正式版经真实 Panel Web API check/dry-run/apply 到同一候选、升级后的 Runtime/Control-only/LAN 场景复验、同候选 unhealthy Panel 回滚、SQLite/实例/非目标容器与 volume 完整性、候选证明、digest 提升和正式回拉冒烟。本任务没有创建 tag、Release、候选或正式镜像。
+
+# v0.4.17 发布计划与候选矩阵（2026-08-15，发布进行中）
+
+## 固定变更范围
+
+- `RUNTIME-AUTH-HEALTH-PROBE-1`：Runtime/SMAPI/目标复验/旧栈回滚统一使用严格 `/health` 服务契约，Steam 离线只 warning；接口、schema、digest 或容器失败继续安全回滚。发布脚本的 Linux integration 筛选名已同步为真实测试 `TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady`，防止旧测试名导致 “no tests to run” 被误记为通过。
+- `SAVE-IMPORT-FIRST-INSTALL-STATE-1`：真实安装终态 `game_installed` 与 `save_required / ready_to_start / stopped` 共享离线导入契约；driver 保留最终权威状态和 Docker 双门禁，不放宽 starting/running/安装中/未初始化。
+- 首次上传发布前安全复审：Compose 安全证据改为无缓存、严格解析的 `docker compose ps --all`；权威 `DataDir` 贯穿导入链；状态/journal 写入错误显式失败；原 state/phase/payload 与 message NULL 语义精确恢复；Phase A FIFO 前失败会停 maintenance。job 使用 operation idempotency key，cleanup 使用先计划后删除与耐久 canceled marker，覆盖 jobId/token/journal 三类中断窗口；成功 token 到期精确回收。
+- `FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1`：仅把新建存档高级设置误写的“社区中心手机包”更正为“社区中心收集包”，不改字段、默认值或后端语义。
+- 无数据库 schema migration、Compose 文件格式、运行镜像清单版本、公开 API shape 或 Release 资产变化；storage 只增加内部精确快照恢复方法。目标补丁版本固定为 `0.4.17`，上一正式版为 `0.4.16`。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 放行条件 |
+| --- | --- | --- |
+| auth 正常/离线 | `/health` logged_in true/false；`/steam/ready` 永久挂起 | 两者均快速通过服务验收；false 仅 warning；请求日志零 ready |
+| auth 故障/回滚 | unreachable、timeout、404、500、坏 JSON、字段/type/status 错、digest mismatch | 稳定错误码、保留脱敏最后原因并 `failed_rolled_back`；旧栈仍按 `/health` 验收 |
+| 首次上传正常路径 | `game_installed`、无活动存档、bootstrap→maintenance→Phase A→activation→durable save | 单次 FIFO import、runtime_ready 到 completed，目标/指针/备份保持 |
+| 离线状态与 Docker | 四态允许；未初始化/安装中/starting/running 拒绝；缓存 stale、多个 server、restarting/paused/未知/坏 JSON | ownership 前拒绝所有不安全或不可分类证据；不创建危险事务 |
+| 失败与精确恢复 | 状态发布失败、ComposeUp/readiness/cancel、Phase A 提交前失败、恢复写入失败 | 未提交时 strict stop 后精确恢复；写入/停机不可证转 recovery required，不伪装离线 |
+| 中断与清理 | job 创建后 token 未 attach；无 durable job；cleanup 后 token 未删；token 已删 journal 未清 | idempotency key/terminal canceled marker 幂等收敛，不永久 busy、不删 preimport/未知文件 |
+| cleanup 数据安全 | staged fingerprint 漂移、bootstrap pointer/ownership 漂移、未知 schema/stage | 所有只读门禁在首个删除前完成；任一不确定零部分清理、fail closed |
+| 兼容与 UI | auth `.2` allowlist、20 项兼容矩阵；前端文案正反检查和全状态回归 | 未审计 tag mutation 前拒绝；正确文案进入 production bundle，字段契约不变 |
+| 正式升级 | `v0.4.16` Web check/dry-run/apply；同候选 unhealthy 注入 | healthy 升级与 unhealthy 回滚均通过，SQLite、初始化、任务长期数据、非目标容器/volume 保持 |
+| 正式提升 | candidate proof→annotated tag→三仓 version/latest→Release | 六引用同一 digest/OCI；正式镜像 health/version/重启通过；四项 Release 资产存在 |
+
+## 推送前已完成证据
+
+- Windows 定向与受影响包：save-import/maintenance/Web/token/storage/docker/jobs 专项与包回归通过；Docker 包 integration `16.495s`，updater Docker integration `38.202s`。
+- Linux `golang:1.25-alpine`：`go test ./... -count=1` 全包通过，随后 `go vet ./...`、`go build ./...` 退出 0。strict Compose parser/cache、多状态、精确恢复、Phase A pre-submit、cleanup plan、未知 journal、权威 DataDir、job/token 中断测试均包含在该次全量门禁。
+- 门禁自检发现并修复两处“假通过/易抖动”风险：发布脚本旧 auth 测试名会产生 `no tests to run`，现已绑定真实测试名；共享 job 终态观察器原 5 秒预算短于 fixture 自身 10 秒 job timeout，在全包 I/O 压力下曾提前结束，现改为有界 15 秒并以同一最终代码重跑 Linux 全量通过。没有跳过或降低产品断言。
+- Linux DinD 真实 auth fixture：`TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady` 及 rollback 404/500/bad-json/timeout/unreachable 子例全部通过，`47.18s`；内层容器、network、volume 与 fixture image 清理后均为 0。真实 SMAPI 下载 `41,889,142` bytes，`77.06s` 通过。
+- 兼容矩阵：Python 3.12.13 validate、`check-panel-version --version 0.4.17`、20 项单测通过；远程制品校验 `85.7s` 通过，只有清单允许的可选镜像 mirror unavailable warning。
+- 前端 Node 24 隔离卷：`npm ci`、production audit（0 vulnerability）、全部 17 个 `test:*` 脚本与 production build 通过；完整仓库挂载保证 responsive-layout 读取真实 workflow，`node_modules/dist` 使用任务专属卷。
+- 部署脚本：Git Bash 5.2.37 的全清单 `bash -n`、四项功能测试及 ShellCheck v0.10.0 通过。正式候选尚未推送；自动候选 run、Web 升级 E2E、unhealthy 回滚、tag、正式 digest 与 Release 证据必须在后续小节回填后才算发布完成。

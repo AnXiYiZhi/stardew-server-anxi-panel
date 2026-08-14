@@ -5,16 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
 
 var runtimeContainerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 var runtimeSnapshotVolumePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*_anxi-junimo-update-[a-f0-9]{24}-steam-session$`)
+var runtimeHTTPStatusPattern = regexp.MustCompile(`^[0-9]{3}$`)
 
-const runtimeAuthReadyProbe = `set -eu
+const runtimeAuthHealthProbe = `set -eu
 exec 3<>/dev/tcp/127.0.0.1/3001
-printf 'GET /steam/ready HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
+printf 'GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
 IFS= read -r status <&3
 printf '%s\n' "$status"
 while IFS= read -r line <&3; do [ "$line" = $'\r' ] && break; done
@@ -37,17 +39,22 @@ type RuntimeServiceMetadata struct {
 	Health      string `json:"health,omitempty"`
 }
 
-type RuntimeSteamReady struct {
-	Ready     bool `json:"ready"`
-	HasTicket bool `json:"hasTicket"`
+type RuntimeAuthServiceHealth struct {
+	LoggedIn     bool `json:"loggedIn"`
+	AccountCount int  `json:"accountCount"`
 }
 
-type runtimeSteamReadyEnvelope struct {
-	Ready     json.RawMessage `json:"ready"`
-	HasTicket json.RawMessage `json:"has_ticket"`
-	Status    json.RawMessage `json:"status"`
-	LoggedIn  json.RawMessage `json:"logged_in"`
-	Accounts  json.RawMessage `json:"accounts"`
+type RuntimeAuthHealthError struct {
+	Code    string
+	Message string
+}
+
+func (e *RuntimeAuthHealthError) Error() string { return e.Code }
+
+type runtimeAuthHealthEnvelope struct {
+	Status   json.RawMessage `json:"status"`
+	LoggedIn json.RawMessage `json:"logged_in"`
+	Accounts json.RawMessage `json:"accounts"`
 }
 
 type RuntimeHostCapacity struct {
@@ -186,104 +193,66 @@ func parseRuntimeServiceInspectOutput(output, containerID string) (RuntimeServic
 	return RuntimeServiceMetadata{ContainerID: containerID, Image: strings.TrimSpace(values[1]), ImageID: values[0], State: strings.TrimSpace(values[2]), Health: strings.TrimSpace(values[3])}, nil
 }
 
-func (c *Client) RuntimeSteamAuthReady(ctx context.Context, dir, project string) (RuntimeSteamReady, error) {
+func (c *Client) RuntimeSteamAuthHealth(ctx context.Context, dir, project string) (RuntimeAuthServiceHealth, error) {
 	if !composeProjectPattern.MatchString(project) {
-		return RuntimeSteamReady{}, errors.New("invalid compose project")
+		return RuntimeAuthServiceHealth{}, errors.New("invalid compose project")
 	}
-	result, err := c.run(ctx, "probe steam auth ready", dir, c.timeouts.Ps,
-		"compose", "--project-name", project, "exec", "-T", "steam-auth", "bash", "-c", runtimeAuthReadyProbe)
+	result, err := c.run(ctx, "probe steam auth health", dir, c.timeouts.Ps,
+		"compose", "--project-name", project, "exec", "-T", "steam-auth", "bash", "-c", runtimeAuthHealthProbe)
 	if err != nil {
-		return RuntimeSteamReady{}, err
+		if errors.Is(err, ErrCommandTimeout) {
+			return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_timeout", "steam-auth-cn /health 探针超时，未在单次探针预算内返回。")
+		}
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_unreachable", "steam-auth-cn /health 无法连接。")
 	}
-	return parseRuntimeSteamReadyHTTPResponse(result.Stdout)
+	return parseRuntimeAuthHealthHTTPResponse(result.Stdout)
 }
 
-func parseRuntimeSteamReadyHTTPResponse(output string) (RuntimeSteamReady, error) {
+func parseRuntimeAuthHealthHTTPResponse(output string) (RuntimeAuthServiceHealth, error) {
 	statusLine, body, ok := strings.Cut(output, "\n")
 	statusFields := strings.Fields(strings.TrimSpace(statusLine))
-	if !ok || len(statusFields) < 2 || (statusFields[0] != "HTTP/1.0" && statusFields[0] != "HTTP/1.1") {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth ready HTTP response")
-	}
-	if statusFields[1] == "503" {
-		return parseRuntimeSteamUnavailableResponse(body)
+	if !ok || len(statusFields) < 2 || (statusFields[0] != "HTTP/1.0" && statusFields[0] != "HTTP/1.1") || !runtimeHTTPStatusPattern.MatchString(statusFields[1]) {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 返回了无效的 HTTP/JSON 响应。")
 	}
 	if statusFields[1] != "200" {
-		return RuntimeSteamReady{}, errors.New("steam auth ready endpoint returned an unsupported HTTP status")
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_http_status", fmt.Sprintf("steam-auth-cn /health 返回 HTTP %s；验收要求 HTTP 200。", statusFields[1]))
 	}
-	return parseRuntimeSteamReadyResponse(body)
+	return parseRuntimeAuthHealthResponse(body)
 }
 
-func parseRuntimeSteamUnavailableResponse(output string) (RuntimeSteamReady, error) {
-	unavailable, err := decodeRuntimeSteamReadyEnvelope(output)
-	if err != nil || unavailable.Ready == nil || unavailable.Status != nil || unavailable.LoggedIn != nil || unavailable.Accounts != nil {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth unavailable response")
+func parseRuntimeAuthHealthResponse(output string) (RuntimeAuthServiceHealth, error) {
+	var health runtimeAuthHealthEnvelope
+	decoder := json.NewDecoder(strings.NewReader(output))
+	if err := decoder.Decode(&health); err != nil {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 返回了无效的 HTTP/JSON 响应。")
 	}
-	ready, err := decodeRuntimeSteamBool(unavailable.Ready)
-	if err != nil || ready {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth unavailable response")
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 返回了无效的 HTTP/JSON 响应。")
 	}
-	if unavailable.HasTicket != nil {
-		hasTicket, err := decodeRuntimeSteamBool(unavailable.HasTicket)
-		if err != nil || hasTicket {
-			return RuntimeSteamReady{}, errors.New("invalid steam auth unavailable response")
-		}
-	}
-	return RuntimeSteamReady{Ready: false, HasTicket: false}, nil
-}
-
-func parseRuntimeSteamReadyResponse(output string) (RuntimeSteamReady, error) {
-	ready, err := decodeRuntimeSteamReadyEnvelope(output)
-	if err != nil {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
-	}
-	// Keep accepting the original ready/has_ticket contract, but also accept
-	// the current steam-service contract used by the reviewed auth image. Login
-	// and ticket availability are capabilities for online play, not hard
-	// runtime-upgrade acceptance requirements.
-	if ready.Ready != nil {
-		if ready.Status != nil || ready.LoggedIn != nil || ready.Accounts != nil {
-			return RuntimeSteamReady{}, errors.New("mixed steam auth ready response")
-		}
-		legacyReady, err := decodeRuntimeSteamBool(ready.Ready)
-		if err != nil {
-			return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
-		}
-		hasTicket := false
-		if ready.HasTicket != nil {
-			hasTicket, err = decodeRuntimeSteamBool(ready.HasTicket)
-			if err != nil {
-				return RuntimeSteamReady{}, errors.New("invalid steam auth ready response")
-			}
-		}
-		return RuntimeSteamReady{Ready: legacyReady, HasTicket: hasTicket}, nil
-	}
-	if ready.HasTicket != nil || ready.Status == nil || ready.LoggedIn == nil || ready.Accounts == nil {
-		return RuntimeSteamReady{}, errors.New("incomplete steam auth ready response")
+	if health.Status == nil || health.LoggedIn == nil || health.Accounts == nil {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 缺少 status、logged_in 或 accounts 字段。")
 	}
 	var status string
-	if isRuntimeSteamNull(ready.Status) || json.Unmarshal(ready.Status, &status) != nil || !strings.EqualFold(strings.TrimSpace(status), "ok") {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth status response")
+	if isRuntimeAuthNull(health.Status) || json.Unmarshal(health.Status, &status) != nil || status != "ok" {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 的 status 必须是字符串 ok。")
 	}
-	if _, err := decodeRuntimeSteamBool(ready.LoggedIn); err != nil {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth logged-in response")
+	loggedIn, err := decodeRuntimeAuthBool(health.LoggedIn)
+	if err != nil {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 的 logged_in 必须是布尔值。")
 	}
 	var accounts []json.RawMessage
-	if !strings.HasPrefix(strings.TrimSpace(string(ready.Accounts)), "[") || json.Unmarshal(ready.Accounts, &accounts) != nil {
-		return RuntimeSteamReady{}, errors.New("invalid steam auth accounts response")
+	if !strings.HasPrefix(strings.TrimSpace(string(health.Accounts)), "[") || json.Unmarshal(health.Accounts, &accounts) != nil {
+		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_invalid_response", "steam-auth-cn /health 的 accounts 必须是 JSON 数组。")
 	}
-	return RuntimeSteamReady{Ready: true, HasTicket: false}, nil
+	return RuntimeAuthServiceHealth{LoggedIn: loggedIn, AccountCount: len(accounts)}, nil
 }
 
-func decodeRuntimeSteamReadyEnvelope(output string) (runtimeSteamReadyEnvelope, error) {
-	var envelope runtimeSteamReadyEnvelope
-	if err := json.Unmarshal([]byte(output), &envelope); err != nil {
-		return runtimeSteamReadyEnvelope{}, err
-	}
-	return envelope, nil
+func newRuntimeAuthHealthError(code, message string) error {
+	return &RuntimeAuthHealthError{Code: code, Message: message}
 }
 
-func decodeRuntimeSteamBool(raw json.RawMessage) (bool, error) {
-	if raw == nil || isRuntimeSteamNull(raw) {
+func decodeRuntimeAuthBool(raw json.RawMessage) (bool, error) {
+	if raw == nil || isRuntimeAuthNull(raw) {
 		return false, errors.New("missing steam auth boolean")
 	}
 	var value bool
@@ -293,7 +262,7 @@ func decodeRuntimeSteamBool(raw json.RawMessage) (bool, error) {
 	return value, nil
 }
 
-func isRuntimeSteamNull(raw json.RawMessage) bool {
+func isRuntimeAuthNull(raw json.RawMessage) bool {
 	return strings.EqualFold(strings.TrimSpace(string(raw)), "null")
 }
 

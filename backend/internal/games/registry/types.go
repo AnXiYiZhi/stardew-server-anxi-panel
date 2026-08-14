@@ -87,9 +87,13 @@ type SaveImportRequest struct {
 	// TransferSourceOwnership moves the durable upload payload into the
 	// operation-owned source directory. It is transient and never persisted.
 	TransferSourceOwnership func(targetDir string) error
-	SaveName                string
-	HostHandling            string
-	PlatformID              string
+	// MarkUploadSucceeded terminalizes the durable upload token after the
+	// import journal is fully completed. It is best-effort metadata cleanup and
+	// must not change an already successful save import into a failed job.
+	MarkUploadSucceeded func() error
+	SaveName            string
+	HostHandling        string
+	PlatformID          string
 }
 
 // SaveImportStarter is an optional driver capability used by the web layer.

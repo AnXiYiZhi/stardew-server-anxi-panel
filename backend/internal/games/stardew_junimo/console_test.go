@@ -59,6 +59,10 @@ func (f *fakeConsoleDocker) ComposePs(ctx context.Context, dir string) (paneldoc
 	return paneldocker.ComposePsResult{}, nil
 }
 
+func (f *fakeConsoleDocker) ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	return f.ComposePs(ctx, dir)
+}
+
 func (f *fakeConsoleDocker) ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
 	if f.composeLogsFunc != nil {
 		return f.composeLogsFunc(ctx, dir, opts)

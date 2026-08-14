@@ -187,6 +187,10 @@ var trustedRuntimeRepositories = map[string]map[string]struct{}{
 	},
 }
 
+var supportedSteamAuthHealthContractTags = map[string]struct{}{
+	"1.5.0-anxi.2": {},
+}
+
 func BuiltInRuntimeStackManifest() (RuntimeStackManifest, error) {
 	runtimeStackManifestOnce.Do(func() {
 		if err := json.Unmarshal(runtimeStackManifestJSON, &runtimeStackManifest); err != nil {
@@ -561,6 +565,9 @@ func InspectRuntimeStack(dataDir string, installed bool) RuntimeStackInspection 
 	if authCode != "" {
 		return withRuntimeStackRepairPlan(values, classifiedRuntimeStack(result, authCode, authReason))
 	}
+	if !steamAuthHealthContractSupported(auth.Tag) {
+		return invalidRuntimeStack(result, "unsupported/auth_health_contract", "当前 steam-auth-cn 版本未列入纯 /health 契约兼容清单；为保证目标与回滚验收一致，Panel 拒绝自动升级且不会回退调用 /steam/ready。")
+	}
 	if strings.TrimSpace(values["IMAGE_VERSION"]) != server.Tag {
 		return invalidRuntimeStack(result, "invalid_config/server_version_mismatch", "IMAGE_VERSION 与 server 镜像 tag 不一致。")
 	}
@@ -584,6 +591,11 @@ func InspectRuntimeStack(dataDir string, installed bool) RuntimeStackInspection 
 	result.Code = "update_available"
 	result.Reason = "当前 Junimo 运行组件版本对与推荐版本对不一致。"
 	return result
+}
+
+func steamAuthHealthContractSupported(tag string) bool {
+	_, ok := supportedSteamAuthHealthContractTags[strings.TrimSpace(tag)]
+	return ok
 }
 
 func inspectRunningControlVersion(dataDir string) (string, bool) {

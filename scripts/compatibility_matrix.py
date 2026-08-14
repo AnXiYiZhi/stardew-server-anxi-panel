@@ -25,6 +25,7 @@ SMAPI_REQUEST_TIMEOUT_SECONDS = 120
 SMAPI_RETRY_ROUNDS = 3
 SMAPI_RETRY_BASE_SECONDS = 1
 REMOTE_COMMAND_RETRY_ROUNDS = 3
+STEAM_AUTH_HEALTH_CONTRACT_TAGS = {"1.5.0-anxi.2"}
 
 
 class MatrixError(ValueError):
@@ -97,6 +98,7 @@ def validate(matrix: dict) -> None:
     validate_image_component("steamAuth", matrix.get("steamAuth"), True)
 
     auth = matrix["steamAuth"]
+    require(auth["tag"] in STEAM_AUTH_HEALTH_CONTRACT_TAGS, "steamAuth tag lacks the reviewed pure /health contract")
     require(isinstance(auth.get("upstreamRef"), str) and auth["upstreamRef"].startswith("refs/tags/"), "steamAuth.upstreamRef must be an exact tag ref")
     require(REVISION_RE.fullmatch(str(auth.get("sourceRevision", ""))) is not None, "steamAuth.sourceRevision must be a full revision")
 

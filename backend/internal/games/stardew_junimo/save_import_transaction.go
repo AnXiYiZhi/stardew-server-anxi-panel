@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,7 @@ const (
 	ImportStageSavePersisting    = "save_persisting"
 	ImportStageSaveVerified      = "save_verified"
 	ImportStageCompleted         = "completed"
+	ImportStageCanceled          = "canceled"
 
 	ImportErrorResultUnconfirmed  = "import_result_unconfirmed"
 	ImportErrorRecoveryRequired   = "import_recovery_required"
@@ -57,6 +59,10 @@ const (
 	ImportErrorSaveInProgress     = "save_in_progress"
 )
 
+func SaveImportJobIdempotencyKey(operationID string) string {
+	return "save-import:" + operationID
+}
+
 var importStagingMu sync.Mutex
 
 type ImportTransactionError struct {
@@ -75,57 +81,62 @@ func AsImportTransactionError(err error) (*ImportTransactionError, bool) {
 }
 
 type ImportJournal struct {
-	SchemaVersion                  int                              `json:"schemaVersion"`
-	OperationID                    string                           `json:"operationId"`
-	InstanceID                     string                           `json:"instanceId"`
-	SaveName                       string                           `json:"saveName"`
-	OriginalActiveSave             string                           `json:"originalActiveSave,omitempty"`
-	BootstrapSaveName              string                           `json:"bootstrapSaveName,omitempty"`
-	BootstrapSaveFingerprint       string                           `json:"bootstrapSaveFingerprint,omitempty"`
-	BootstrapSaveCreated           bool                             `json:"bootstrapSaveCreated,omitempty"`
-	BootstrapCleanupCompleted      bool                             `json:"bootstrapCleanupCompleted,omitempty"`
-	HostHandling                   string                           `json:"hostHandling"`
-	PlatformIDFingerprint          string                           `json:"platformIdFingerprint,omitempty"`
-	SourceOwned                    bool                             `json:"sourceOwned"`
-	Stage                          string                           `json:"stage"`
-	StagedSaveCreated              bool                             `json:"stagedSaveCreated"`
-	StagedSaveFingerprint          string                           `json:"stagedSaveFingerprint,omitempty"`
-	PreimportBackupName            string                           `json:"preimportBackupName,omitempty"`
-	PreimportBackupSHA256          string                           `json:"preimportBackupSha256,omitempty"`
-	MaintenanceStarted             bool                             `json:"maintenanceStarted"`
-	RuntimeBaseline                *JunimoImportEvidenceSnapshot    `json:"runtimeBaseline,omitempty"`
-	ServerOutputLogOffset          *int64                           `json:"serverOutputLogOffset,omitempty"`
-	PreSubmitEvidence              *JunimoImportEvidenceSnapshot    `json:"preSubmitEvidence,omitempty"`
-	PreSubmitLogOffset             *int64                           `json:"preSubmitLogOffset,omitempty"`
-	PhaseAEvidence                 *JunimoImportEvidenceSnapshot    `json:"phaseAEvidence,omitempty"`
-	PhaseAOutcome                  string                           `json:"phaseAOutcome,omitempty"`
-	PhaseARestoredSHA256           string                           `json:"phaseARestoredSha256,omitempty"`
-	PhaseALogDetail                string                           `json:"phaseALogDetail,omitempty"`
-	ActivationEvidence             *JunimoImportActivationEvidence  `json:"activationEvidence,omitempty"`
-	ActivationOutcome              string                           `json:"activationOutcome,omitempty"`
-	ActivationRestarted            bool                             `json:"activationRestarted"`
-	ActivationProcessBaseline      *JunimoActivationProcessBaseline `json:"activationProcessBaseline,omitempty"`
-	DurableSaveCommandID           string                           `json:"durableSaveCommandId,omitempty"`
-	DurableSaveSubmittedAt         *time.Time                       `json:"durableSaveSubmittedAt,omitempty"`
-	DurableSaveSubmissionFailed    bool                             `json:"durableSaveSubmissionFailed"`
-	DurableSaveBefore              *JunimoImportSaveDiskState       `json:"durableSaveBefore,omitempty"`
-	DurableSaveAfter               *JunimoImportSaveDiskState       `json:"durableSaveAfter,omitempty"`
-	DurableStatusBaselineVersion   *int64                           `json:"durableStatusBaselineVersion,omitempty"`
-	DurableStatusAfterSavedVersion *int64                           `json:"durableStatusAfterSavedVersion,omitempty"`
-	DurableGameLoopSaved           bool                             `json:"durableGameLoopSaved"`
-	DurableTransitionComplete      *bool                            `json:"durableTransitionComplete,omitempty"`
-	DurableSaveWarning             string                           `json:"durableSaveWarning,omitempty"`
-	FarmhandUnbindVerified         bool                             `json:"farmhandUnbindVerified"`
-	FarmhandCount                  int                              `json:"farmhandCount,omitempty"`
-	CustomizedFarmhandCount        int                              `json:"customizedFarmhandCount,omitempty"`
-	UpstreamSubmittedAt            *time.Time                       `json:"upstreamSubmittedAt,omitempty"`
-	UpstreamSubmitted              bool                             `json:"upstreamSubmitted"`
-	UpstreamConfirmed              bool                             `json:"upstreamConfirmed"`
-	LastErrorCode                  string                           `json:"lastErrorCode,omitempty"`
-	LastError                      string                           `json:"lastError,omitempty"`
-	RecoveryState                  string                           `json:"recoveryState,omitempty"`
-	CreatedAt                      time.Time                        `json:"createdAt"`
-	UpdatedAt                      time.Time                        `json:"updatedAt"`
+	SchemaVersion                     int                              `json:"schemaVersion"`
+	OperationID                       string                           `json:"operationId"`
+	InstanceID                        string                           `json:"instanceId"`
+	SaveName                          string                           `json:"saveName"`
+	OriginalActiveSave                string                           `json:"originalActiveSave,omitempty"`
+	BootstrapSaveName                 string                           `json:"bootstrapSaveName,omitempty"`
+	BootstrapSaveFingerprint          string                           `json:"bootstrapSaveFingerprint,omitempty"`
+	BootstrapSaveCreated              bool                             `json:"bootstrapSaveCreated,omitempty"`
+	BootstrapCleanupCompleted         bool                             `json:"bootstrapCleanupCompleted,omitempty"`
+	HostHandling                      string                           `json:"hostHandling"`
+	PlatformIDFingerprint             string                           `json:"platformIdFingerprint,omitempty"`
+	SourceOwned                       bool                             `json:"sourceOwned"`
+	Stage                             string                           `json:"stage"`
+	StagedSaveCreated                 bool                             `json:"stagedSaveCreated"`
+	StagedSaveFingerprint             string                           `json:"stagedSaveFingerprint,omitempty"`
+	PreimportBackupName               string                           `json:"preimportBackupName,omitempty"`
+	PreimportBackupSHA256             string                           `json:"preimportBackupSha256,omitempty"`
+	MaintenanceStarted                bool                             `json:"maintenanceStarted"`
+	OriginalInstanceState             string                           `json:"originalInstanceState,omitempty"`
+	OriginalInstanceStateMessage      string                           `json:"originalInstanceStateMessage,omitempty"`
+	OriginalInstanceStateMessageValid bool                             `json:"originalInstanceStateMessageValid"`
+	OriginalInstanceDriverPhase       string                           `json:"originalInstanceDriverPhase,omitempty"`
+	OriginalInstanceDriverPayload     string                           `json:"originalInstanceDriverPayload,omitempty"`
+	RuntimeBaseline                   *JunimoImportEvidenceSnapshot    `json:"runtimeBaseline,omitempty"`
+	ServerOutputLogOffset             *int64                           `json:"serverOutputLogOffset,omitempty"`
+	PreSubmitEvidence                 *JunimoImportEvidenceSnapshot    `json:"preSubmitEvidence,omitempty"`
+	PreSubmitLogOffset                *int64                           `json:"preSubmitLogOffset,omitempty"`
+	PhaseAEvidence                    *JunimoImportEvidenceSnapshot    `json:"phaseAEvidence,omitempty"`
+	PhaseAOutcome                     string                           `json:"phaseAOutcome,omitempty"`
+	PhaseARestoredSHA256              string                           `json:"phaseARestoredSha256,omitempty"`
+	PhaseALogDetail                   string                           `json:"phaseALogDetail,omitempty"`
+	ActivationEvidence                *JunimoImportActivationEvidence  `json:"activationEvidence,omitempty"`
+	ActivationOutcome                 string                           `json:"activationOutcome,omitempty"`
+	ActivationRestarted               bool                             `json:"activationRestarted"`
+	ActivationProcessBaseline         *JunimoActivationProcessBaseline `json:"activationProcessBaseline,omitempty"`
+	DurableSaveCommandID              string                           `json:"durableSaveCommandId,omitempty"`
+	DurableSaveSubmittedAt            *time.Time                       `json:"durableSaveSubmittedAt,omitempty"`
+	DurableSaveSubmissionFailed       bool                             `json:"durableSaveSubmissionFailed"`
+	DurableSaveBefore                 *JunimoImportSaveDiskState       `json:"durableSaveBefore,omitempty"`
+	DurableSaveAfter                  *JunimoImportSaveDiskState       `json:"durableSaveAfter,omitempty"`
+	DurableStatusBaselineVersion      *int64                           `json:"durableStatusBaselineVersion,omitempty"`
+	DurableStatusAfterSavedVersion    *int64                           `json:"durableStatusAfterSavedVersion,omitempty"`
+	DurableGameLoopSaved              bool                             `json:"durableGameLoopSaved"`
+	DurableTransitionComplete         *bool                            `json:"durableTransitionComplete,omitempty"`
+	DurableSaveWarning                string                           `json:"durableSaveWarning,omitempty"`
+	FarmhandUnbindVerified            bool                             `json:"farmhandUnbindVerified"`
+	FarmhandCount                     int                              `json:"farmhandCount,omitempty"`
+	CustomizedFarmhandCount           int                              `json:"customizedFarmhandCount,omitempty"`
+	UpstreamSubmittedAt               *time.Time                       `json:"upstreamSubmittedAt,omitempty"`
+	UpstreamSubmitted                 bool                             `json:"upstreamSubmitted"`
+	UpstreamConfirmed                 bool                             `json:"upstreamConfirmed"`
+	LastErrorCode                     string                           `json:"lastErrorCode,omitempty"`
+	LastError                         string                           `json:"lastError,omitempty"`
+	RecoveryState                     string                           `json:"recoveryState,omitempty"`
+	CreatedAt                         time.Time                        `json:"createdAt"`
+	UpdatedAt                         time.Time                        `json:"updatedAt"`
 }
 
 type ImportRecovery struct {
@@ -213,6 +224,9 @@ func WriteImportJournal(dataDir string, j ImportJournal) error {
 	if !validImportOperationID(j.OperationID) {
 		return fmt.Errorf("invalid operation id")
 	}
+	if err := validateImportJournal(j, j.OperationID); err != nil {
+		return err
+	}
 	dir := filepath.Dir(importJournalPath(dataDir, j.OperationID))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -240,10 +254,53 @@ func LoadImportJournal(dataDir, operationID string) (ImportJournal, error) {
 		return ImportJournal{}, err
 	}
 	var j ImportJournal
-	if err := json.Unmarshal(data, &j); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&j); err != nil {
+		return ImportJournal{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("multiple JSON documents")
+		}
+		return ImportJournal{}, fmt.Errorf("invalid import journal JSON: %w", err)
+	}
+	if err := validateImportJournal(j, operationID); err != nil {
 		return ImportJournal{}, err
 	}
 	return j, nil
+}
+
+func validateImportJournal(j ImportJournal, operationID string) error {
+	if j.SchemaVersion != 1 {
+		return fmt.Errorf("unsupported import journal schema version %d", j.SchemaVersion)
+	}
+	if j.OperationID != operationID || !validImportOperationID(j.OperationID) {
+		return fmt.Errorf("import journal operation identity mismatch")
+	}
+	if strings.TrimSpace(j.InstanceID) == "" {
+		return fmt.Errorf("import journal instance identity is missing")
+	}
+	if err := validateSaveName(j.SaveName); err != nil {
+		return fmt.Errorf("import journal save name is invalid: %w", err)
+	}
+	if !isKnownImportStage(j.Stage) {
+		return fmt.Errorf("unsupported import journal stage %q", j.Stage)
+	}
+	return nil
+}
+
+func isKnownImportStage(stage string) bool {
+	switch stage {
+	case ImportStageValidated, ImportStageStaged, ImportStageBackupCreated,
+		ImportStageRuntimeReady, ImportStageSubmitted, ImportStageConfirmed,
+		ImportStageSaveActivating, ImportStageFinalizeConfirmed,
+		ImportStageSavePersisting, ImportStageSaveVerified,
+		ImportStageCompleted, ImportStageCanceled:
+		return true
+	default:
+		return false
+	}
 }
 
 func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
@@ -256,14 +313,17 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 	}
 	var result []ImportRecovery
 	for _, entry := range entries {
-		if !entry.IsDir() || !validImportOperationID(entry.Name()) {
+		if !entry.IsDir() {
 			continue
+		}
+		if !validImportOperationID(entry.Name()) {
+			return nil, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "unknown save import transaction directory requires recovery"}
 		}
 		j, err := LoadImportJournal(dataDir, entry.Name())
 		if err != nil {
 			return nil, err
 		}
-		if j.Stage == ImportStageCompleted {
+		if j.Stage == ImportStageCompleted || j.Stage == ImportStageCanceled {
 			continue
 		}
 		_, sourceErr := os.Stat(importTransactionSourceDir(dataDir, j.OperationID))
@@ -338,6 +398,12 @@ func (d *Driver) resumeRecoveredImportDurableSaves(ctx context.Context, instance
 }
 
 func HasUnfinishedImportTransaction(dataDir string) (bool, error) {
+	return HasUnfinishedImportTransactionOtherThan(dataDir, "")
+}
+
+// HasUnfinishedImportTransactionOtherThan allows an idempotent retry to
+// resume its own durable operation while still rejecting every other owner.
+func HasUnfinishedImportTransactionOtherThan(dataDir, allowedOperationID string) (bool, error) {
 	entries, err := os.ReadDir(importTransactionsDir(dataDir))
 	if os.IsNotExist(err) {
 		return false, nil
@@ -346,14 +412,20 @@ func HasUnfinishedImportTransaction(dataDir string) (bool, error) {
 		return false, err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || !validImportOperationID(entry.Name()) {
+		if !entry.IsDir() {
 			continue
+		}
+		if !validImportOperationID(entry.Name()) {
+			return false, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "unknown save import transaction directory requires recovery"}
 		}
 		j, err := LoadImportJournal(dataDir, entry.Name())
 		if err != nil {
 			return false, err
 		}
-		if j.Stage != ImportStageCompleted {
+		if j.OperationID == allowedOperationID {
+			continue
+		}
+		if j.Stage != ImportStageCompleted && j.Stage != ImportStageCanceled {
 			return true, nil
 		}
 	}
@@ -371,28 +443,87 @@ func CleanupUnsubmittedImport(dataDir, operationID string) error {
 	if err != nil {
 		return err
 	}
+	if j.Stage == ImportStageCanceled {
+		return nil
+	}
+	if j.MaintenanceStarted {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import maintenance may still be running; automatic cleanup is unsafe"}
+	}
 	safelyProvenNoEffect := j.PhaseAOutcome == phaseAOutcomeNoEffect && !j.MaintenanceStarted && !j.UpstreamConfirmed
 	if !safelyProvenNoEffect && (j.UpstreamSubmitted || j.UpstreamConfirmed || importStageAtLeast(j.Stage, ImportStageSubmitted)) {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "submitted import requires manual recovery"}
 	}
-	if err := cleanupUnsubmittedImportBootstrap(dataDir, j); err != nil {
+	bootstrapPlan, err := planUnsubmittedImportBootstrapCleanup(dataDir, j)
+	if err != nil {
 		return err
 	}
+	stagedTarget := ""
 	if j.StagedSaveCreated {
-		target := filepath.Join(savesDir(dataDir), "Saves", j.SaveName)
-		if _, statErr := os.Stat(target); statErr == nil {
-			fingerprint, fingerprintErr := importDirectoryFingerprint(target)
+		stagedTarget = filepath.Join(savesDir(dataDir), "Saves", j.SaveName)
+		if _, statErr := os.Stat(stagedTarget); statErr == nil {
+			fingerprint, fingerprintErr := importDirectoryFingerprint(stagedTarget)
 			if fingerprintErr != nil || fingerprint != j.StagedSaveFingerprint {
 				return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "staged save changed; automatic cleanup is unsafe", Cause: fingerprintErr}
-			}
-			if err := os.RemoveAll(target); err != nil {
-				return fmt.Errorf("remove staged import target: %w", err)
 			}
 		} else if !os.IsNotExist(statErr) {
 			return fmt.Errorf("check staged import target: %w", statErr)
 		}
 	}
+	// No mutation is allowed before every ownership, pointer and fingerprint
+	// check above has succeeded. This prevents a later staged-target mismatch
+	// from leaving a partially deleted bootstrap transaction.
+	if err := executeUnsubmittedImportBootstrapCleanup(dataDir, bootstrapPlan); err != nil {
+		return err
+	}
+	if stagedTarget != "" {
+		if err := os.RemoveAll(stagedTarget); err != nil {
+			return fmt.Errorf("remove staged import target: %w", err)
+		}
+	}
+	if err := os.RemoveAll(importTransactionSourceDir(dataDir, operationID)); err != nil {
+		return fmt.Errorf("remove import transaction source: %w", err)
+	}
+	j.Stage = ImportStageCanceled
+	j.SourceOwned = false
+	j.StagedSaveCreated = false
+	j.StagedSaveFingerprint = ""
+	j.BootstrapSaveCreated = false
+	j.BootstrapSaveFingerprint = ""
+	j.BootstrapCleanupCompleted = true
+	j.LastErrorCode, j.LastError = "", ""
+	return WriteImportJournal(dataDir, j)
+}
+
+// FinalizeCanceledImportCleanup removes only a transaction which has already
+// reached the durable canceled marker. The marker makes cleanup retryable if
+// the process stops between filesystem cleanup and token deletion.
+func FinalizeCanceledImportCleanup(dataDir, operationID string) error {
+	importStagingMu.Lock()
+	defer importStagingMu.Unlock()
+	j, err := LoadImportJournal(dataDir, operationID)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if j.Stage != ImportStageCanceled || j.MaintenanceStarted || j.UpstreamSubmitted || j.UpstreamConfirmed {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import cleanup is not durably canceled"}
+	}
 	return os.RemoveAll(filepath.Dir(importJournalPath(dataDir, operationID)))
+}
+
+// CleanupUnsubmittedSaveImport serializes the final runtime preflight and
+// filesystem cleanup with lifecycle mutations. The Web layer must not split
+// the Compose stopped check from ownership/fingerprint guarded deletion.
+func (d *Driver) CleanupUnsubmittedSaveImport(ctx context.Context, instance registry.Instance, operationID string) error {
+	d.runtimeUpdateMu.Lock()
+	defer d.runtimeUpdateMu.Unlock()
+	original, err := d.inspectSaveImportMaintenanceOffline(ctx, instance)
+	if err != nil {
+		return err
+	}
+	return CleanupUnsubmittedImport(original.DataDir, operationID)
 }
 
 func importStageAtLeast(stage, threshold string) bool {
@@ -433,7 +564,7 @@ func validateImportStaticCapability(dataDir string) error {
 	return nil
 }
 
-func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID string) error {
+func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID, allowedOperationID string) error {
 	if d.jobs == nil {
 		return nil
 	}
@@ -447,7 +578,7 @@ func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID string) 
 	if d.store != nil {
 		instance, loadErr := d.store.GetInstance(ctx, instanceID)
 		if loadErr == nil {
-			unfinished, checkErr := HasUnfinishedImportTransaction(instance.DataDir)
+			unfinished, checkErr := HasUnfinishedImportTransactionOtherThan(instance.DataDir, allowedOperationID)
 			if checkErr != nil {
 				return checkErr
 			}
@@ -460,21 +591,44 @@ func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID string) 
 }
 
 func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImportRequest) (*registry.Job, error) {
-	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
-		return nil, err
-	}
 	if d.jobs == nil {
 		return nil, fmt.Errorf("driver: job manager not configured")
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
-	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
-		return nil, err
-	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
-	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
+	if d.store == nil {
+		return nil, &ImportTransactionError{Code: ImportErrorMaintenanceStart, Message: "instance state store is unavailable before save import submission"}
+	}
+	loaded, err := d.store.GetInstance(ctx, req.Instance.ID)
+	if err != nil {
+		return nil, &ImportTransactionError{Code: ImportErrorMaintenanceStart, Message: "failed to load authoritative instance before save import submission", Cause: err}
+	}
+	if filepath.Clean(loaded.DataDir) != filepath.Clean(req.Instance.DataDir) {
+		return nil, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "instance data directory changed during save import submission"}
+	}
+	if err := rejectUnfinishedNewGameOwner(loaded.DataDir); err != nil {
+		return nil, err
+	}
+	// This is the pre-ownership authoritative gate. It reloads the persisted
+	// state and checks Compose before a journal is created or the upload is
+	// transferred into transaction ownership.
+	authoritative, err := d.inspectSaveImportMaintenanceOffline(ctx, req.Instance)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(authoritative.DataDir) != filepath.Clean(loaded.DataDir) {
+		return nil, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "instance data directory changed during save import preflight"}
+	}
+	req.Instance = registry.Instance{
+		ID: authoritative.ID, DriverID: authoritative.DriverID, Name: authoritative.Name,
+		DataDir: authoritative.DataDir, State: authoritative.State,
+		StateMessage: authoritative.StateMessage.String, DriverPhase: authoritative.DriverPhase,
+		DriverPayload: authoritative.DriverPayload, CreatedAt: authoritative.CreatedAt, UpdatedAt: authoritative.UpdatedAt,
+	}
+	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID, req.OperationID); err != nil {
 		return nil, err
 	}
 	// A freshly installed instance has not necessarily started once, so its
@@ -487,6 +641,9 @@ func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImport
 	j, err := CreateImportJournal(req.Instance.DataDir, req)
 	if err != nil {
 		return nil, err
+	}
+	if j.Stage == ImportStageCanceled {
+		return nil, &ImportTransactionError{Code: ImportErrorBusy, Message: "save import operation was already canceled"}
 	}
 	sourceDir := importTransactionSourceDir(req.Instance.DataDir, req.OperationID)
 	if !j.SourceOwned {
@@ -507,7 +664,7 @@ func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImport
 		}
 	}
 	payload, _ := json.Marshal(map[string]string{"operationId": req.OperationID})
-	job, err := d.jobs.Start(ctx, jobs.Spec{Type: SaveImportJobType, DisplayName: "Import save and start", TargetType: "instance", TargetID: req.Instance.ID, CreatedBy: req.ActorID, Payload: string(payload), Timeout: 30 * time.Minute,
+	job, err := d.jobs.Start(ctx, jobs.Spec{Type: SaveImportJobType, DisplayName: "Import save and start", TargetType: "instance", TargetID: req.Instance.ID, IdempotencyKey: SaveImportJobIdempotencyKey(req.OperationID), CreatedBy: req.ActorID, Payload: string(payload), Timeout: 30 * time.Minute,
 		Run: func(runCtx context.Context, job *jobs.Context) error {
 			d.saveImportRunMu.Lock()
 			defer d.saveImportRunMu.Unlock()
@@ -525,10 +682,22 @@ func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImport
 			if err := d.runImportActivation(runCtx, req.Instance, req.OperationID, job, defaultImportActivationOptions()); err != nil {
 				return err
 			}
-			return d.runImportDurableSave(runCtx, req.Instance, req.OperationID, job, defaultImportDurableSaveOptions())
+			if err := d.runImportDurableSave(runCtx, req.Instance, req.OperationID, job, defaultImportDurableSaveOptions()); err != nil {
+				return err
+			}
+			if req.MarkUploadSucceeded != nil {
+				if err := req.MarkUploadSucceeded(); err != nil {
+					_, _ = job.Warn(context.Background(), "Save import completed, but upload token metadata cleanup was deferred.")
+				}
+			}
+			return nil
 		},
 	})
 	if err != nil {
+		var existing *storage.IdempotentJobExistsError
+		if errors.As(err, &existing) {
+			return &registry.Job{ID: existing.Job.ID}, nil
+		}
 		j.LastErrorCode = ImportErrorSaveInProgress
 		j.LastError = "import job creation failed after upload ownership transfer"
 		_ = WriteImportJournal(req.Instance.DataDir, j)

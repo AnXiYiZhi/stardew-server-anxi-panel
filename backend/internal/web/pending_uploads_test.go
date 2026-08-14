@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
@@ -17,8 +18,10 @@ import (
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -164,6 +167,36 @@ func TestPendingUploadOwnershipTransferAndRestartDiscovery(t *testing.T) {
 	}
 }
 
+func TestPendingUploadSucceededMetadataExpiresWithoutDeletingTransactionSource(t *testing.T) {
+	store := newDurablePendingUploadStore()
+	now := time.Now()
+	store.now = func() time.Time { return now }
+	dataDir := t.TempDir()
+	token := createPendingUpload(t, store, dataDir)
+	op := "71112233445566778899aabbccddeeff"
+	if _, err := store.reserve(dataDir, token, "i1", op); err != nil {
+		t.Fatal(err)
+	}
+	target := transactionSourceDirForUpload(dataDir, op)
+	if err := store.transferOwnership(dataDir, token, op, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.markSucceeded(dataDir, token, op); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.attachJob(dataDir, token, op, "job-after-fast-success"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(uploadTokenTTL + time.Second)
+	_ = createPendingUpload(t, store, dataDir)
+	if _, err := os.Stat(durableUploadDir(dataDir, token)); !os.IsNotExist(err) {
+		t.Fatalf("expired succeeded token metadata survived prune: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "save")); err != nil {
+		t.Fatalf("token metadata prune removed transaction-owned source: %v", err)
+	}
+}
+
 func TestPendingUploadReserveOrReuseAndCancelBeforeOwnership(t *testing.T) {
 	store := newDurablePendingUploadStore()
 	dataDir := t.TempDir()
@@ -230,6 +263,12 @@ func TestPendingUploadHandlerReturnKeepsTransactionSource(t *testing.T) {
 	if setup.Code != http.StatusOK {
 		t.Fatalf("setup=%d: %s", setup.Code, setup.Body.String())
 	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: storage.DefaultInstanceID, State: storage.InstanceStateGameInstalled, StateMessage: "game installed",
+		DriverPhase: "game_installed", DriverPayload: `{"install":"complete"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	var zipBytes bytes.Buffer
 	zw := zip.NewWriter(&zipBytes)
@@ -284,6 +323,9 @@ func TestPendingUploadHandlerReturnKeepsTransactionSource(t *testing.T) {
 	if driver.request.HostHandling != "swap_host_to" || driver.request.PlatformID != platformID {
 		t.Fatalf("driver request host handling was not mapped: %+v", driver.request)
 	}
+	if driver.request.Instance.State != storage.InstanceStateGameInstalled || driver.request.Instance.DriverPhase != "game_installed" {
+		t.Fatalf("first-install API request lost its real state: %+v", driver.request.Instance)
+	}
 	retry, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", commitBody, adminCookie)
 	if retry.Code != http.StatusAccepted || retry.Body.String() != commit.Body.String() || driver.calls != 1 {
 		t.Fatalf("idempotent retry code=%d calls=%d first=%s retry=%s", retry.Code, driver.calls, commit.Body.String(), retry.Body.String())
@@ -319,5 +361,187 @@ func TestPendingUploadHandlerReturnKeepsTransactionSource(t *testing.T) {
 	}
 	if _, err := os.Stat(driver.sourceDir); err != nil {
 		t.Fatalf("owned transaction source was removed by token cancel: %v", err)
+	}
+}
+
+func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
+	root := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{Addr: ":0", DataDir: root, DBPath: filepath.Join(root, "panel.db"), Secret: "test-secret", Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	instanceDir := filepath.Join(root, "instances", "stardew")
+	if err := os.MkdirAll(instanceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: sj.DriverID, Name: "Stardew Valley", DataDir: instanceDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, StateMessage: "game installed exactly",
+		DriverPhase: "game_installed", DriverPayload: `{"install":"complete","kept":true}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, ".env"), []byte("IMAGE_VERSION="+sj.TestedImageTag+"\nAPI_PORT=5110\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	modDir := filepath.Join(instanceDir, ".local-container", "mods", "JunimoServer")
+	if err := os.MkdirAll(modDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "manifest.json"), []byte(`{"Version":"`+sj.TestedImageTag+`","UniqueID":"JunimoHost.Server"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "JunimoServer.dll"), []byte("dll"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := fakeDockerService{composeUp: paneldocker.CommandResult{ExitCode: 1}, composeUpErr: errors.New("injected maintenance startup failure")}
+	manager := jobs.NewManager(store, slog.Default())
+	driver := sj.New(fake, slog.Default(), manager, store)
+	drivers := registry.New()
+	if err := drivers.Register(driver); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Deps{
+		Config: config.Config{DataDir: root, Secret: "test-secret", Version: "test"}, Store: store,
+		Registry: drivers, Docker: fake, Jobs: manager, Logger: slog.Default(),
+	})
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username": "admin", "password": "admin-password", "confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup=%d: %s", setup.Code, setup.Body.String())
+	}
+	stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, StateMessage: "game installed exactly",
+		DriverPhase: "game_installed", DriverPayload: `{"install":"complete","kept":true}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var zipBytes bytes.Buffer
+	zw := zip.NewWriter(&zipBytes)
+	for name, content := range map[string]string{
+		"Upload_1/Upload_1":     `<SaveGame><player><name>Imported</name></player></SaveGame>`,
+		"Upload_1/SaveGameInfo": `<Farmer><name>Imported</name></Farmer>`,
+	} {
+		writer, createErr := zw.Create(name)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		_, _ = writer.Write([]byte(content))
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var form bytes.Buffer
+	mw := multipart.NewWriter(&form)
+	part, err := mw.CreateFormFile("save", "first-upload.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write(zipBytes.Bytes())
+	_ = mw.Close()
+	previewReq := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-preview", &form)
+	previewReq.Header.Set("Content-Type", mw.FormDataContentType())
+	previewReq.AddCookie(adminCookie)
+	previewResp := httptest.NewRecorder()
+	handler.ServeHTTP(previewResp, previewReq)
+	if previewResp.Code != http.StatusOK {
+		t.Fatalf("preview=%d: %s", previewResp.Code, previewResp.Body.String())
+	}
+	var preview struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(previewResp.Body.Bytes(), &preview); err != nil || preview.Token == "" {
+		t.Fatalf("preview token err=%v body=%s", err, previewResp.Body.String())
+	}
+	commit, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+		"token": preview.Token, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
+	}, adminCookie)
+	if commit.Code != http.StatusAccepted {
+		t.Fatalf("commit=%d: %s", commit.Code, commit.Body.String())
+	}
+	var accepted saveUploadCommitResponse
+	if err := json.Unmarshal(commit.Body.Bytes(), &accepted); err != nil {
+		t.Fatal(err)
+	}
+	waitForHTTPJobStatus(t, handler, adminCookie, accepted.JobID, storage.JobStatusFailed)
+
+	journal, err := sj.LoadImportJournal(instanceDir, accepted.OperationID)
+	if err != nil || journal.Stage != sj.ImportStageBackupCreated || !journal.StagedSaveCreated || !journal.BootstrapSaveCreated ||
+		journal.MaintenanceStarted || journal.UpstreamSubmitted || journal.UpstreamConfirmed {
+		t.Fatalf("failed pre-submit journal=%+v err=%v", journal, err)
+	}
+	preimportPath := filepath.Join(instanceDir, ".local-container", "backups", "saves", journal.PreimportBackupName)
+	if _, err := os.Stat(preimportPath); err != nil {
+		t.Fatalf("preimport backup missing before cleanup: %v", err)
+	}
+	failedState, err := store.GetInstance(context.Background(), stored.ID)
+	if err != nil || failedState.State != storage.InstanceStateGameInstalled || failedState.DriverPhase != "game_installed" ||
+		failedState.StateMessage.String != "game installed exactly" || failedState.DriverPayload != `{"install":"complete","kept":true}` {
+		t.Fatalf("game_installed snapshot was not restored: %+v err=%v", failedState, err)
+	}
+	// Simulate two process interruption windows at once: the job row is durable
+	// but its ID was not attached to the token, and driver cleanup completed but
+	// token removal/finalization did not. The retry must recover the job through
+	// its idempotency key and finish the canceled marker without becoming busy.
+	owned, err := readDurablePendingUpload(instanceDir, preview.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned.JobID = ""
+	if err := writeDurablePendingUpload(instanceDir, preview.Token, owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.CleanupUnsubmittedSaveImport(context.Background(), makeRegistryInstance(failedState), accepted.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	canceledMarker, err := sj.LoadImportJournal(instanceDir, accepted.OperationID)
+	if err != nil || canceledMarker.Stage != sj.ImportStageCanceled {
+		t.Fatalf("durable canceled marker=%+v err=%v", canceledMarker, err)
+	}
+	if _, err := os.Stat(durableUploadDir(instanceDir, preview.Token)); err != nil {
+		t.Fatalf("interrupted cleanup lost owned token before Web finalization: %v", err)
+	}
+
+	cancel, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+		"token": preview.Token, "cancel": true,
+	}, adminCookie)
+	if cancel.Code != http.StatusOK {
+		t.Fatalf("cancel=%d: %s", cancel.Code, cancel.Body.String())
+	}
+	if _, err := sj.LoadImportJournal(instanceDir, accepted.OperationID); !os.IsNotExist(err) {
+		t.Fatalf("journal survived safe cancel: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, ".local-container", "saves", "Saves", "Upload_1")); !os.IsNotExist(err) {
+		t.Fatalf("staged target survived safe cancel: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, ".local-container", "saves", "Saves", journal.BootstrapSaveName)); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap survived safe cancel: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, ".local-container", "saves", ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")); !os.IsNotExist(err) {
+		t.Fatalf("bootstrap pointer survived safe cancel: %v", err)
+	}
+	if _, err := os.Stat(durableUploadDir(instanceDir, preview.Token)); !os.IsNotExist(err) {
+		t.Fatalf("owned token survived safe cancel: %v", err)
+	}
+	if _, err := os.Stat(preimportPath); err != nil {
+		t.Fatalf("safe cancel removed preimport backup: %v", err)
+	}
+	busy, err := sj.HasUnfinishedImportTransaction(instanceDir)
+	if err != nil || busy {
+		t.Fatalf("safe cancel left save_import_busy=%v err=%v", busy, err)
 	}
 }

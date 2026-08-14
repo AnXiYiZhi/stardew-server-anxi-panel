@@ -55,7 +55,7 @@ type SMAPIUpdateWorkflowDocker interface {
 	RuntimeInstallSMAPIArchive(context.Context, string, string, string, string) error
 	RuntimeRemoveSMAPIStagingVolume(context.Context, string, string, string) error
 	RuntimeServerHealth(context.Context, string, string) error
-	RuntimeSteamAuthReady(context.Context, string, string) (paneldocker.RuntimeSteamReady, error)
+	RuntimeSteamAuthHealth(context.Context, string, string) (paneldocker.RuntimeAuthServiceHealth, error)
 }
 
 type SMAPIUpdateStatus struct {
@@ -504,7 +504,7 @@ func (d *Driver) verifySMAPIStack(ctx context.Context, dockerWorkflow SMAPIUpdat
 	for time.Now().Before(deadline) {
 		meta, metaErr := dockerWorkflow.RuntimeReadSMAPIMetadata(ctx, instance.DataDir, volume, gameInstallImage(instance.DataDir))
 		healthErr := dockerWorkflow.RuntimeServerHealth(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
-		_, authErr := dockerWorkflow.RuntimeSteamAuthReady(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
+		_, authErr := dockerWorkflow.RuntimeSteamAuthHealth(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
 		statusOK, playersOK := verifyControlRuntimeFiles(instance.DataDir, commandResultVersion)
 		logs, logsErr := dockerWorkflow.ComposeLogs(ctx, instance.DataDir, paneldocker.LogsOptions{Service: "server", Tail: 800})
 		junimoLoaded, controlLoaded := requiredSMAPIModsLoaded(logs.Stdout + "\n" + logs.Stderr)

@@ -168,45 +168,72 @@ func cleanupCompletedImportBootstrap(dataDir string, j *ImportJournal) error {
 	return nil
 }
 
-func cleanupUnsubmittedImportBootstrap(dataDir string, j ImportJournal) error {
+type unsubmittedImportBootstrapCleanupPlan struct {
+	removePointer bool
+	bootstrapDir  string
+	sourceRoot    string
+}
+
+func planUnsubmittedImportBootstrapCleanup(dataDir string, j ImportJournal) (unsubmittedImportBootstrapCleanupPlan, error) {
+	plan := unsubmittedImportBootstrapCleanupPlan{}
 	if j.BootstrapSaveName == "" {
-		return nil
+		return plan, nil
 	}
 	if j.BootstrapSaveName != importBootstrapSaveName(j.OperationID) || j.BootstrapSaveName == j.SaveName {
-		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap cleanup identity is invalid"}
+		return plan, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap cleanup identity is invalid"}
 	}
+	plan.bootstrapDir = filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName)
+	plan.sourceRoot = importBootstrapSourceRoot(dataDir, j.OperationID)
 	if !j.BootstrapSaveCreated {
 		_, err := readActivePointerStrict(dataDir)
 		if err == nil || !errors.Is(err, os.ErrNotExist) {
-			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap ownership is unconfirmed while an active pointer exists", Cause: err}
+			return plan, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap ownership is unconfirmed while an active pointer exists", Cause: err}
 		}
-		bootstrapDir := filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName)
-		if _, err := os.Lstat(bootstrapDir); err == nil {
-			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "an unowned import bootstrap path requires recovery"}
+		if _, err := os.Lstat(plan.bootstrapDir); err == nil {
+			return plan, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "an unowned import bootstrap path requires recovery"}
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap ownership cannot be verified", Cause: err}
+			return plan, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap ownership cannot be verified", Cause: err}
 		}
-		if err := os.RemoveAll(importBootstrapSourceRoot(dataDir, j.OperationID)); err != nil {
-			return fmt.Errorf("remove unowned import bootstrap source: %w", err)
-		}
-		return nil
+		return plan, nil
 	}
 	pointer, err := readActivePointerStrict(dataDir)
 	if err == nil {
 		if pointer != j.BootstrapSaveName {
-			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "active pointer changed before import bootstrap cleanup"}
+			return plan, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "active pointer changed before import bootstrap cleanup"}
 		}
+		plan.removePointer = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return plan, &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap pointer is unreadable", Cause: err}
+	}
+	return plan, nil
+}
+
+func executeUnsubmittedImportBootstrapCleanup(dataDir string, plan unsubmittedImportBootstrapCleanupPlan) error {
+	if plan.removePointer {
 		if err := os.Remove(gameloaderPath(dataDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove import bootstrap pointer: %w", err)
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "import bootstrap pointer is unreadable", Cause: err}
 	}
-	if err := os.RemoveAll(filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName)); err != nil {
+	if plan.bootstrapDir != "" {
+		if err := os.RemoveAll(plan.bootstrapDir); err != nil {
+			return fmt.Errorf("remove unsubmitted import bootstrap: %w", err)
+		}
+	}
+	if plan.sourceRoot != "" {
+		if err := os.RemoveAll(plan.sourceRoot); err != nil {
+			return fmt.Errorf("remove import bootstrap source: %w", err)
+		}
+	}
+	return nil
+}
+
+func cleanupUnsubmittedImportBootstrap(dataDir string, j ImportJournal) error {
+	plan, err := planUnsubmittedImportBootstrapCleanup(dataDir, j)
+	if err != nil {
+		return err
+	}
+	if err := executeUnsubmittedImportBootstrapCleanup(dataDir, plan); err != nil {
 		return fmt.Errorf("remove unsubmitted import bootstrap: %w", err)
-	}
-	if err := os.RemoveAll(importBootstrapSourceRoot(dataDir, j.OperationID)); err != nil {
-		return fmt.Errorf("remove import bootstrap source: %w", err)
 	}
 	return nil
 }

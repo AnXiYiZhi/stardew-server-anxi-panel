@@ -72,7 +72,7 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 
 	journal, pre, offset, command, err := prepareImportPhaseASubmission(ctx, lifecycle, instance.DataDir, operationID, platformID)
 	if err != nil {
-		return err
+		return d.failImportPhaseAPreSubmit(lifecycle, instance.DataDir, operationID, options, err)
 	}
 	journal.PreSubmitEvidence = &pre
 	journal.PreSubmitLogOffset = &offset
@@ -93,12 +93,17 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 		if stopErr != nil {
 			return recordImportPhaseAFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, phaseAOutcomeRecoveryRequired, "FIFO write failed and the maintenance server could not be stopped", nil, stopErr)
 		}
-		journal, _ = LoadImportJournal(instance.DataDir, operationID)
+		journal, err = LoadImportJournal(instance.DataDir, operationID)
+		if err != nil {
+			return maintenanceRollbackError("FIFO write failed and the stopped journal could not be reloaded", errors.Join(writeErr, err))
+		}
 		journal.MaintenanceStarted = false
 		journal.PhaseAOutcome = phaseAOutcomeFIFOWriteFailed
 		journal.PhaseALogDetail = redactPhaseALog(writeResult.Stdout+" "+writeResult.Stderr+" "+writeErr.Error(), platformID)
 		journal.LastErrorCode, journal.LastError = ImportErrorCommandFailed, "Junimo import command could not be written to FIFO"
-		_ = WriteImportJournal(instance.DataDir, journal)
+		if err := WriteImportJournal(instance.DataDir, journal); err != nil {
+			return maintenanceRollbackError("FIFO write failed and the stopped journal could not be persisted", errors.Join(writeErr, err))
+		}
 		return &ImportTransactionError{Code: ImportErrorCommandFailed, Message: journal.LastError, Cause: writeErr}
 	}
 
@@ -338,14 +343,49 @@ func stopImportPhaseAServer(ctx context.Context, lifecycle LifecycleDockerServic
 		return err
 	}
 	for {
-		ps, err := lifecycle.ComposePs(ctx, dataDir)
-		if err == nil && !serverServiceUp(ps.Services) {
-			return nil
+		ps, err := lifecycle.ComposePsStrict(ctx, dataDir)
+		if err == nil {
+			stopped, classifyErr := saveImportServerStoppedStrict(ps.Services)
+			if classifyErr != nil {
+				return classifyErr
+			}
+			if stopped {
+				return nil
+			}
 		}
 		if err := waitImportPoll(ctx, interval); err != nil {
 			return err
 		}
 	}
+}
+
+func (d *Driver) failImportPhaseAPreSubmit(lifecycle LifecycleDockerService, dataDir, operationID string, options importPhaseAOptions, cause error) error {
+	journal, err := LoadImportJournal(dataDir, operationID)
+	if err != nil {
+		return maintenanceRollbackError("Phase A pre-submit failed and the journal cannot prove that no command was submitted", errors.Join(cause, err))
+	}
+	if journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted) {
+		return maintenanceRollbackError("Phase A pre-submit failed after submission may have occurred", cause)
+	}
+	stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
+	defer cancel()
+	if err := stopImportPhaseAServer(stopCtx, lifecycle, dataDir, options.PollInterval); err != nil {
+		return maintenanceRollbackError("Phase A pre-submit failed and the maintenance runtime could not be stopped", errors.Join(cause, err))
+	}
+	journal.MaintenanceStarted = false
+	journal.LastErrorCode = ImportErrorMaintenanceReady
+	journal.LastError = "Phase A pre-submit evidence could not be captured"
+	if err := WriteImportJournal(dataDir, journal); err != nil {
+		return maintenanceRollbackError("Phase A pre-submit failed and stopped state could not be persisted", errors.Join(cause, err))
+	}
+	original, err := originalInstanceSnapshotFromJournal(journal, dataDir)
+	if err != nil {
+		return maintenanceRollbackError("Phase A pre-submit failed and the original instance state is unavailable", errors.Join(cause, err))
+	}
+	if err := restoreInstanceState(d, original); err != nil {
+		return maintenanceRollbackError("Phase A pre-submit failed and the original instance state could not be restored", errors.Join(cause, err))
+	}
+	return cause
 }
 
 func confirmImportPhaseA(dataDir, operationID string, evidence JunimoImportEvidenceSnapshot, classification phaseAClassification, runtimeStillRunning bool, job *jobs.Context) error {
@@ -376,11 +416,16 @@ func confirmImportPhaseA(dataDir, operationID string, evidence JunimoImportEvide
 }
 
 func recordImportPhaseAFailure(dataDir, operationID, code, outcome, message string, evidence *JunimoImportEvidenceSnapshot, cause error) error {
-	if journal, err := LoadImportJournal(dataDir, operationID); err == nil {
+	journal, err := LoadImportJournal(dataDir, operationID)
+	if err == nil {
 		journal.PhaseAOutcome = outcome
 		journal.PhaseAEvidence = evidence
 		journal.LastErrorCode, journal.LastError = code, message
-		_ = WriteImportJournal(dataDir, journal)
+		if writeErr := WriteImportJournal(dataDir, journal); writeErr != nil {
+			cause = errors.Join(cause, fmt.Errorf("persist Phase A failure: %w", writeErr))
+		}
+	} else {
+		cause = errors.Join(cause, fmt.Errorf("load Phase A journal while recording failure: %w", err))
 	}
 	return &ImportTransactionError{Code: code, Message: message, Cause: cause}
 }

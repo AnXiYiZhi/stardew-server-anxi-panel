@@ -57,6 +57,7 @@ const (
 // DockerService defines what the driver needs from the Docker layer.
 type DockerService interface {
 	ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
+	ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
 	ComposePullStreaming(ctx context.Context, dir string, services []string, lineHandler func(line string)) (paneldocker.CommandResult, error)
 	PullImageStreaming(ctx context.Context, dir string, imageRef string, lineHandler func(line string)) (paneldocker.CommandResult, error)
 	ImageInspect(ctx context.Context, dir string, imageRef string) (paneldocker.CommandResult, error)
@@ -75,6 +76,7 @@ type DockerService interface {
 type StateStore interface {
 	GetInstance(ctx context.Context, id string) (storage.Instance, error)
 	UpdateInstanceState(ctx context.Context, params storage.UpdateInstanceStateParams) (storage.Instance, error)
+	RestoreInstanceStateSnapshot(ctx context.Context, snapshot storage.Instance) (storage.Instance, error)
 }
 
 type activeJobStateStore interface {
@@ -347,7 +349,7 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
 		return nil, err
 	}
-	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID); err != nil {
+	if err := d.rejectActiveSaveImport(ctx, req.Instance.ID, ""); err != nil {
 		return nil, err
 	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {

@@ -339,9 +339,8 @@ func TestSMAPIUpdateWorkflowSuccessUsesStagingAndPreservesOldVolume(t *testing.T
 func TestSMAPIUpdateWorkflowAcceptsLoggedOutAuth(t *testing.T) {
 	driver, instance, fake := setupSMAPIWorkflowDriver(t, storage.InstanceStateStopped)
 	withFakeSMAPIArchive(t, instance.DataDir)
-	fake.authFailTarget = true
-	fake.authReady = false
-	fake.authTicket = false
+	fake.authUseTargetState = true
+	fake.authLoggedIn = false
 	fake.inviteUnavailable = true
 	if _, err := driver.RunSMAPIUpdateDryRun(context.Background(), instance); err != nil {
 		t.Fatal(err)

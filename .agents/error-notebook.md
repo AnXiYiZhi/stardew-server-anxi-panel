@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-14：Docker/FRP 生产时间线探针的时间参数与过滤范围过宽
+
+- 环境：Windows PowerShell 7 通过 Posh-SSH 3.2.7 对 114/47 生产主机执行只读掉线诊断，远程为 Docker 29、FRP 0.70.1 和 systemd journal。
+- 错误模式：首次向 `docker events --since` 传入模糊的 `today`，又把 stderr 丢弃并用后续 pipeline 退出码掩盖了前端诊断；改用精确时间后又未先排除 `exec_*`/healthcheck 事件，导致大量秒级健康探针淹没真实容器生命周期。FRPS 日志同样用了过宽的 `client|proxy` 过滤，大量正常 Panel 连接使输出截断。
+- 症状 / 退出码：第一次 Docker 事件结果为空但包装命令表面退出 0；第二次和 FRPS 日志查询均成功但输出超额截断。所有操作均为只读，两台服务器、Docker 和 FRP 状态未被修改。
+- 根因：把人类可读时间词当成 Docker 已验证契约，且没有在远程 pipeline 中保留产生者退出码；诊断过滤也未按“生命周期动作”和“异常类型”收窄。
+- 正确做法：`docker events` 使用带时区的精确 RFC 3339 起点与当下终点，保留 Docker 原始退出码；JSON 投影先排除 `exec_*` 与 `health_status*`，再只保留 `create/start/stop/die/destroy/kill/oom`。FRP 时间线只查 `write timeout`、`session shutdown`、`control is closed`、`i/o deadline`、`EOF`、重登与代理恢复，不再用泛化 `client|proxy` 命中正常访问。
+- 预防检查：时间线命令先用 1–2 分钟小窗口验证时间契约和输出 shape；任何产生者后接 pipeline 时使用 `pipefail` 或显式保存其退出码；正式全日查询前先排除高频正常事件。
+- 适用范围：生产 Docker events、FRP 客户端/服务端日志、systemd journal 与掉线时间线取证。
+
 ## 2026-08-14：VitePress Browser 断言使用源码 href 与未限定的可访问名称
 
 - 环境：应用内 Browser，VitePress dev server，桌面 1440×900 与手机 390×844 官网验收。
@@ -124,6 +134,8 @@
 
 ## 2026-08-14：检索已返回真实文件后仍读取了猜测文件名
 
+- 最近复发/补充：同日排查上传取消所需的 server 依赖及存档路径时，该模式又连续复发两次：`rg` 已返回真实定义位于 `backend/internal/web/handler.go`、`junimo_mod_runtime.go`、`saves.go` 与 `new_game_transaction.go`，组合命令仍继续读取预先猜测且不存在的 `server.go` 或 `config_paths.go`，只读命令退出 1；无文件、数据库或 Docker 改动。之后严格拆为“定位一次、读取实际命中路径一次”，并禁止在定位调用里预附加任何猜测读取目标。
+- 最近复发/补充：同日只读排查首次安装后的存档导入失败时，把猜测且不存在的 `save_import_recovery.go` 与真实源码路径一并交给 `rg`，有效命中输出后仍以路径不存在退出 2；产品代码、实例与 Docker 均未改变。随后只使用 `rg --files` 和已经命中的 `save_import_transaction.go` 继续；诊断型多文件检索也不得添加基于职责猜出的候选文件名。
 - 最近复发/补充：同日修复升级历史状态时，`rg` 已返回 `backend/internal/games/stardew_junimo/runtime_update_dry_run_test.go`，同一组合命令后半仍读取了猜测的 `runtime_update_test.go`，`Get-Content` 退出 1；只读定位中断，源码未被该命令修改。随后改为下一条独立命令只读取实际命中路径；后续组合命令禁止在 `rg` 之后出现未由其输出得到的新文件名。
 - 环境：Windows PowerShell 7，审计候选发布工作流与 Go updater 更新检查实现。
 - 错误模式：同一组合命令前半的 `rg` 已命中 `backend/internal/updatecheck/service.go`，后半仍凭记忆执行 `Get-Content backend/internal/updatecheck/checker.go`。
@@ -199,6 +211,7 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-15 发布前审计 token/job 崩溃窗口时，又把 `backend/internal/games/stardew_junimo/save_import*` 作为 `rg` 位置参数；前半对 `jobs.Manager.Start` 的读取成功，末尾检索仍以 os error 123 令组合命令退出 2，产品文件未变化。此前同日只读排查首次安装后的存档导入失败时，已先后三次把 `save_import*_test.go`、`*save*test.go` 或 `*_test.go` 作为 Windows `rg` 位置参数；二次代码审查时又把两个包的 `*test.go` 直接作为位置参数，随后在已取得 Compose cache 实现后又让末尾附加检索残留 `backend/internal/docker/*.go`。复发都发生在主命令已安全后又为压缩附加检索手写通配路径，说明必须检查整条命令。余下发布流程禁止任何 `rg` 位置参数包含 `*`；测试覆盖检索固定从明确目录使用 `rg -g 'save_import*_test.go' ... backend/internal/games/stardew_junimo` 与 `rg -g '*save*test.go' ... backend/internal/web`。
 - 最近复发/补充：最终前端门禁为查 `tsBuildInfoFile` 再次执行 `rg ... frontend/tsconfig*.json`，Windows 未展开该通配符，`rg` 以 os error 123 退出；测试没有开始、文件未修改。随后先用 `rg --files frontend -g 'tsconfig*.json'` 得到三个精确文件，再逐个检索成功。该规则已在 AGENTS 提升仍复发；余下发布流程禁止向 `rg` 位置参数传任何 `*`，必须先生成精确路径数组。
 
 ## 2026-08-14：用 PowerShell 对象模式解析 npm lockfile 的空字符串键
@@ -749,6 +762,7 @@
 
 ## 2026-08-09：切换工作目录后仍重复仓库路径前缀
 
+- 最近复发/补充：2026-08-14 首次安装存档导入修复的首次格式化又在 `workdir=<repo>/backend` 下传入 `backend/internal/...`，三个目标均在 `gofmt` 执行前报路径不存在并退出 2，定向测试按 fail-fast 未启动。后续本任务的格式化调用固定在模块根先以 `Test-Path -LiteralPath internal/...` 验证首个目标，再传 `internal/...`；测试使用同一模块根但拆成独立调用。
 - 最近复发/补充：2026-08-09 弹窗修复终验把 `workdir` 设为 `frontend`，却仍向 `git diff --stat` 传仓库根相对的 `frontend/src/...` 与 `docs/...`，命令退出 0 但没有任何 stat 输出。最终差异检查统一回到仓库根执行；若必须留在子目录，前端路径去掉 `frontend/`，仓库文档使用 `../docs/...`。无输出也必须按预期基数核对，不能只凭退出 0 判定成功。
 - 环境：Windows，PowerShell 7，从仓库根切换到 `backend` 作为命令工作目录。
 - 错误模式：`workdir` 已是 `backend`，仍向 `gofmt` 传入 `backend/internal/...`。
@@ -760,6 +774,7 @@
 
 ## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
 
+- 最近复发/补充：2026-08-15 `v0.4.17` 发布脚本门禁又先从 PATH 调用 `bash --version`，命中无发行版的 WSL relay，并在任何 `bash -n`/功能测试前以 `execvpe(/bin/bash) failed` 退出 1；仓库与 Docker 无变化。后续本轮只使用已验证精确 Git Bash 路径或 Linux 容器，不再探测 PATH bash。
 - 最近复发/补充：2026-08-14 修复生产 VNC 端口前为任务脚本做语法检查，仍只用 `Get-Command bash` 取得 PATH 首项并直接执行，再次命中 WSL 转发器、以 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，远端 Compose 和容器均未变化。随后固定使用本条已验证的 `D:\Code\CodeTools\Git\bin\bash.exe`，先执行 `--version` 再执行 `-n`；已知精确路径存在时不得重新从 PATH 选择解释器。
 - 最近复发/补充：2026-08-12 图形化 Compose E2E 脚本终验再次直接调用 PATH 中的 `bash -n`，命中同一个 WSL 转发器并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行。随后按本条使用已验证的 `D:\Code\CodeTools\Git\bin\bash.exe -n`，并在独立 `koalaman/shellcheck-alpine:v0.10.0` 容器显式调用 `shellcheck` 后通过。该错误已经进入 `AGENTS.md` 仍复发，后续 Windows Bash 命令模板必须直接从精确 Git Bash 路径开始，不能先试 PATH。
 - 最近复发/补充：2026-08-13 为生产 swap 扩容脚本做本地语法检查时，虽然先调用了 `Get-Command bash`，却没有验证其来源和 `--version` 就执行，仍命中 WSL 转发器并以同一 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，生产主机未变化。后续直接验证并使用已记录的精确 Git Bash 路径，禁止把“命令存在”当成“解释器可用”。
@@ -818,6 +833,7 @@
 
 ## 2026-07-31：批量读取时假定可选文件存在
 
+- 最近复发/补充：2026-08-14 排查 v0.4.16 游戏日回档悬停详情时，在已经确认 `backend`、根 `Dockerfile` 和 `.github` 的组合检索中又追加了未经 `rg --files`/`Test-Path` 确认、实际不存在的根 `docker` 目录；前面的源码命中有效，但组合命令最终以退出码 2 停止，只有只读输出，产品文件未修改。后续静态资源检索只传当前已确认存在的精确路径；可选目录先独立 `Test-Path -LiteralPath`，不再按部署惯例补猜。
 - 最近复发/补充：2026-08-13 继续 v0.4.15 首次上传 E2E 时，多次把仓库根不存在的 `internal`、`backend/internal/registry`、猜测的 `backend/internal/storage/migrations/009_control_commands.sql` 混入已确认路径；还再次把 `Dockerfile*`、`save_import*`、`runtime*` 作为 Windows `rg` 位置参数。准备 Web 一键升级夹具时又把 `.agents/v0415-*.ps1` 作为 Windows 位置参数，前序接口检索虽有有效输出，最后仍以 `os error 123` 结束；产品和测试资源均未修改。此规则已在 AGENTS 提升但仍复发：余下发布检索只传 `rg --files`/前一次命中返回的精确路径，通配只能作为 `-g` 的值；不得在同一读取批次补猜惯例文件。
 - 最近复发/补充：2026-08-13 `v0.4.15` Control 门禁探针已由 `rg --files` 明确输出 `StardewAnxiPanel.Control.ContractTests.csproj`，随后仍手写成不存在的 `SmapiModContractTests.csproj`，只读 `Get-Content` 退出 1；产品文件未变。发现命令的原始路径输出必须直接复制为后续参数，禁止把长文件名按语义缩写或重新拼接。
 - 最近复发/补充：2026-08-13 `v0.4.15` 自动解绑代码审查时，又把 `backend/internal/games/stardew_junimo/save_import_*.go` 作为 Windows `rg` 位置参数；`rg` 报 `os error 123`，同一组合命令后续 `Get-Content` 成功并把最终退出码掩成 0，没有写入。后续同目录通配检索固定使用 `rg -g 'save_import_*.go' <pattern> backend/internal/games/stardew_junimo`，并在转入其它原生命令前保存/检查 `rg` 的退出码。
@@ -859,6 +875,8 @@
 
 ## 2026-07-31：右侧栏截图方法层级用错
 
+- 最近复发/补充：2026-08-14 验证 v0.4.16 游戏日回档行时，已经从完整 Browser API 文档读到截图属于 `Tab.screenshot()`，仍照前端测试技能示例调用 `qaTab.playwright.screenshot()` 并得到 `is not a function`；此前的 DOM/title 只读取证已成功，页面、测试数据和产品文件均未修改。随后改用 `qaTab.screenshot({ fullPage: false })` 成功；技能示例与运行时文档冲突时必须以本次运行时完整 API 为准。
+- 最近复发/补充：2026-08-14 同一前端 QA 先成功读取游戏日回档首行，随后没有先检查“其他备份”夹具条目数，就对空 locator 的 `first().getAttribute()` 等待，最终得到 `Playwright selector deadline exceeded`；当前 DOM 明确显示“暂无其他备份”，产品并未失败。以后对可选/空态列表先用 DOM snapshot 或 `count()` 判定是否有行，只有非零才读取 `first()`；空态契约改由空态文案或源码专项测试验证。
 - 最近复发/补充：2026-08-10 连续完成 Browser tab finalize/claim 后复用旧的 viewport capability 句柄，`set({width:1700})` 没有报错，但页面仍保持约 857px 宽，第一次顶栏度量因此落在平板断点。发现 `clientWidth` 与目标不符后重新从当前 browser 获取 viewport capability，再设置得到 `innerWidth=1700/clientWidth=1685`。跨 finalize 或重新 claim tab 后做响应式 QA，必须重新获取可选 capability，并在正式度量前核对 `innerWidth/clientWidth` 与 menu breakpoint，不能只信 `set()` 无异常。
 - 最近复发/补充：2026-08-10 验证 `target="_blank"` 的 QQ 外链时，只检查 `browser.tabs.list()` 并主动抛出“没有新标签”；实际新开的用户标签在 `browser.user.openTabs()` 中，标题与目标 URL 都已正确。外链新标签验收应先检查 session tabs，再检查 user open tabs，并把 `openTabs()` 返回的完整对象传给 `browser.user.claimTab()`；不得把“未自动纳入当前控制会话”误报为产品没有打开。
 - 最近复发/补充：2026-08-10 在 Browser 只读页面求值里使用 `HTMLAnchorElement` / `HTMLElement` 的 `instanceof`，隔离求值作用域没有暴露可用构造器，返回 `TypeError`；随后沿用失败初始化的变量名又得到未定义。页面和应用状态未受影响。DOM 度量只做 `null`/`tagName` 检查并直接读取标准属性；求值抛错后使用新的绑定名，不假定失败表达式留下可复用变量。
@@ -913,6 +931,7 @@
 - 最近复发/补充：2026-08-08 最终编码审计把多个 `-join`、插值异常文本和 pipeline 塞入同一层 `pwsh -Command`，在真正执行检查前触发 `Expressions are only allowed as the first element of a pipeline`。修正为三个独立、短小的只读检查并行运行；复杂审计不要为了减少一次调用重新叠加多层引号和管道。
 - 最近复发/补充：2026-08-06 在 PowerShell 参数中嵌入 `sh -c` 的 Bash 重试变量 `$attempt`，错误地使用反斜杠尝试保护变量；PowerShell 仍提前展开并让 Bash 收到残缺条件。改为三段不含变量的显式 `go mod download || (sleep 5 && go mod download) ...`，跨 Shell 命令优先消除变量与转义，而不是叠加转义层。
 - 最近复发/补充：2026-08-01 Hero 配色预览验证把 `sh -c`、`grep` 模式和 PowerShell 双引号再次嵌入同一条命令，脚本在有效诊断前退出 1。已改为让 `docker exec` 直接调用 `grep`，模式使用 PowerShell 单引号参数，只有确实需要容器 shell 展开时才引入 `sh -c`。
+- 最近复发/补充：2026-08-14 RUNTIME-AUTH-HEALTH-PROBE-1 读取状态常量时，极短的嵌套 `pwsh -Command '& { rg ... | Select-Object -First 60 }'` 在工具字符串末尾少了明确语句分隔，PowerShell 把收尾 `}` 报为 unexpected token；命令本体未执行、零写入。改为在脚本块结束前显式写 `; }`，后续即使是单管道只读命令也从已验证的 `pwsh ... '& { ...; }'` 骨架复制，不手工压缩末尾引号/花括号边界。
 - 最近复发/补充：2026-08-01 官网 Hero 预览审计在 JavaScript 包装、PowerShell 与 `rg` 三层中直接拼接带引号的搜索命令，命令尚未得到有效结果便退出 1。多层调用先把搜索模式和真实文件路径分别固定，优先直接调用单层 `rg -e <pattern> <confirmed-path>`；需要较长 PowerShell 逻辑时使用独立的单引号脚本块，不在 JavaScript 普通字符串里继续嵌套。
 - 最近复发/补充：2026-07-31 在 `[pscustomobject]` 属性表达式中直接嵌入 `docker exec ...; $LASTEXITCODE -eq 0`，PowerShell 在执行前报缺少右括号。2026-08-14 候选成功后的只读证据汇总又把语句形式 `if (...) { ... } else { ... }` 直接写进 `BuildDate=(if ...)`，PowerShell 把 `if` 当命令名并在对象输出前退出；metadata、镜像和资源未变。原生命令、条件分支及规范化必须先单独执行并存入标量，再把变量放进对象；不要在属性值括号里混合语句。
 - 最近复发/补充：2026-07-29 参考研究子任务在 JavaScript 工具包装层中再次把 PowerShell 引号嵌进普通字符串，导致包装层 `SyntaxError`，命令尚未执行；改用 JavaScript template literal 包裹完整 `pwsh -Command '& { ... }'` 后成功。跨 JavaScript/PowerShell 两层时同时检查两层字符串边界。
@@ -927,6 +946,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
+- 最近复发/补充：2026-08-15 `v0.4.17` 发布前兼容矩阵又先执行 `Get-Command python` 并调用 Windows Store alias，立即以 9009 退出，validate/version/unit 均未启动、项目无变化；随后停止 alias/`py` 猜测并改用 workspace dependency loader 的精确解释器。2026-08-14 `RUNTIME-AUTH-HEALTH-PROBE-1` 兼容矩阵也发生过同一错误。该预防规则已经提升到 `AGENTS.md`，Windows Python 门禁第一步必须直接加载 workspace dependencies，不得再以 `Get-Command python` 作为首选入口。
 - 最近复发/补充：2026-08-13 本版兼容矩阵门禁再次先执行 `Get-Command python` + `python --version`，命中 Windows Store alias 后无版本输出并在矩阵前退出；没有项目状态变化。随后才调用 workspace dependency loader，使用其返回的 Python 3.12.13 精确路径通过 validate/version/unit/remote-artifact。`b15fa42` 产品候选通过 smoke 后启动正式矩阵时又重复同一探针失败，矩阵仍未开始、Docker 资源未变化；本轮余下 Python 命令固定复用已加载的精确解释器。该错误已多次复发且规则已在 `AGENTS.md`：Windows Python 门禁第一步必须直接加载 workspace dependencies，不再探测 Store alias。
 - 最近复发/补充：同日最终收口兼容矩阵时仍再次执行 `Get-Command python` 后调用 Store alias，版本探针以 9009 退出，矩阵尚未运行、项目无变化；随后才加载 workspace dependencies，并用精确 Python 3.12.13 完成 19 项单测及 84.6 秒远程制品校验。该规则已经提升但仍复发：后续本任务所有 Python 命令直接复用已加载的精确路径，不再做宿主 alias 探针。
 - 最近复发/补充：2026-08-11 v0.4.11 兼容矩阵门禁明知发布规则已要求先加载 workspace dependency，仍先探测到 Windows Store alias 后运行失败的 `python --version`，随后又未用 `Get-Command py` 验证便猜测 `py -3`，两次均在矩阵启动前退出且无项目状态变更。后续 Windows 发布计划的 Python 第一步固定为 `codex_app__load_workspace_dependencies`，只使用其精确解释器路径；不得再把 Store alias/`py` 作为发布探针。
@@ -994,6 +1014,7 @@
 - 根因：Windows PowerShell 与 Unix shell 的 glob 展开行为不同，`rg` 收到非法字面路径。
 - 正确做法：使用 `rg -g 'Dockerfile*' <pattern> .`、`rg -g '*_test.go' <pattern> <dir>`，或先 `rg --files` 再筛选。
 - 预防检查：命令参数中出现 `*` 时确认它属于 `rg -g`，而不是位置参数。
+- 最近复发/补充：2026-08-14 排查 v0.4.16 前端静态资源缓存规则时，再次把根 `Dockerfile*` 作为 Windows `rg` 的位置参数；其它精确路径已有有效输出，但 `rg` 仍报告 `os error 123`。命令包装还没有在该次 `rg` 后立即检查原始退出码，后续成功输出掩盖了失败；本次只有只读检索，产品文件未修改。已改为明确根 `Dockerfile`，并要求每次原生命令后立刻保存/检查 `$LASTEXITCODE`，不得把错误检查推迟到下一条命令之后。
 - 最近复发/补充：2026-08-09 候选镜像资源探针再次把 `Dockerfile*` 作为位置参数；同日排查运行组件升级耗时时，又把 `runtime_update_apply*` 与 `*_test.go` 作为 Windows 位置参数。`rg` 在输出其它明确目录的命中后仍以非零退出，导致整条只读探针提前停止，均未修改业务文件或 Docker 资源。已改用 `rg -g 'Dockerfile*' ... .` / `rg -g 'runtime_update_apply*.go' ...` / `rg -g '*_test.go' ...`；该规则已在 `AGENTS.md` 固化，后续命令构造时必须机械检查所有含 `*` 的参数只能紧跟 `-g`，不得因同时提供了有效目录就忽略非法通配路径。2026-08-01 也曾在升级状态测试与发布记录检查中复发同类问题。
 - 最近复发/补充：2026-08-06 定位玩家 Mod `syncKind` fixture 时又把 `backend/internal/games/stardew_junimo/*test.go` 作为位置参数传给 `rg`。这是规则固化后的再次复发；同类检索一律先写成 `rg -g '*_test.go' <pattern> backend/internal/games/stardew_junimo`，命令提交前把所有含 `*` 的参数逐个核对为紧跟 `-g` 的值。
 - 最近复发/补充：2026-08-11 讨论首次安装、安装状态与新建存档三个缺陷的测试覆盖时，再次把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 的位置参数并得到 `os error 123`；该次只读检索未修改业务文件。后续测试检索必须写成 `rg -g '*_test.go' <pattern> backend/internal/games/stardew_junimo`，提交命令前继续机械检查每个含 `*` 的参数只能作为 `-g` 的值。
@@ -1143,7 +1164,7 @@
 
 ## 2026-07-28：`git diff --no-index` 的预期差异码污染整段校验
 
-- 最近复发/补充：2026-08-14 前端小屋选项定位时，末尾两个可选 `rg`（测试文件后缀、`runtimeSettings`）均无匹配，正常退出 1 却让两次只读批次被标为失败；此前源码命中有效、文件未修改。后续可选搜索统一立即把 1 归一为“零命中”，只让大于 1 失败，不能依赖组合命令最后一个 `rg` 的状态。
+- 最近复发/补充：2026-08-14 前端小屋选项定位时，末尾两个可选 `rg`（测试文件后缀、`runtimeSettings`）均无匹配，正常退出 1 却让两次只读批次被标为失败；同日修正社区中心文案时又先用带 `--hidden` 的仓库根搜索导致无必要超时，缩到 `frontend` 后虽已定位源码，末尾“正确文案”零命中仍泄漏退出 1；随后又凭习惯追加实际不存在的 `frontend/test`、`frontend/tests` 根而退出 2。以上均为只读且未修改产品。后续先用 `rg --files <已确认目录>` 发现真实搜索面，再在每个可选 `rg` 后立即把 1 归一为“零命中”、只让大于 1 失败；禁止为单个前端文案启用无边界的全仓 `--hidden` 搜索，也不能依赖组合命令最后一个 `rg` 的状态。
 - 最近复发/补充：2026-08-13 同一任务随后把“workflow 中可能没有扩展检查”的可选 `rg` 放在组合命令末尾；前两项已有有效命中，末项零命中正常返回 1，却让整段只读探针显示失败。已改为立即判断 `$LASTEXITCODE`，把 1 明确输出为 `no workflow extension checks found` 并归零，只让大于 1 失败。
 - 最近复发/补充：2026-08-13 查找 `SaveImportIntentStore` 时，前半段 `Get-Content` 已成功输出相关 intent 代码，末尾补充 `rg` 因类型名不存在正常返回 1，使整个只读命令被判失败；没有远端或产品修改。随后搜索统一在每次 `rg` 后保存退出码，只把大于 1 当作错误。已由精确源码行取得答案时，不再追加猜测符号名的无必要检索。
 - 最近复发/补充：2026-08-11 准备 v0.4.11 真实安装前置条件时，把四个独立 `rg -F` 探针顺序放在同一 Shell 命令中，前三个已有有效命中，最后一个可选环境变量名无命中返回 1，导致整个只读批次显示失败；没有文件或外部状态变更。多项检索必须逐项保存退出码，明确把 1 当作“零命中”并继续，只对大于 1 的状态失败；发布证据不要依赖组合命令的最后一个可选搜索。
@@ -1283,6 +1304,7 @@
 
 ## 2026-07-29：前台临时 HTTP 服务超时后仍占用端口
 
+- 最近复发/补充：2026-08-14 `RUNTIME-AUTH-HEALTH-PROBE-1` 首轮 Linux 受影响包测试首次填充独立 Go cache，`shell_command` 上限只给 120 秒，容器仍运行时宿主等待以 124 结束。虽先按精确名称确认容器归属与日志，但紧接着调用 `docker wait` 时原包装进程恰好完成并删除保留容器，出现 `No such container`，最终退出码证据丢失。同日首次安装存档状态机最终复验又把冷缓存全包上限设为 180 秒，外层以 124 结束时任务专属命名容器仍在运行；本轮没有重复启动，先以完整 inspect/日志确认 owner 和进度，再 `docker wait` 取得容器退出 0。后续同类首次冷缓存 Go 门禁给至少 10 分钟上限；外层超时后先确认原包装进程是否仍存活，保留容器的清理不能放在可能成为孤儿的包装进程中，终态采证与清理必须由唯一控制方完成。
 - 最近复发/补充：2026-08-14 Linux 全包回归把 `shell_command` timeout 错设为 1 秒，且 `docker run --rm` 未指定容器名；宿主等待以 124 结束时 Go 容器仍在运行。没有重启门禁，而是按唯一 module-cache volume 从完整 inspect JSON 精确找到随机名容器，`docker wait` 得到退出 0 后再清理两个任务卷。后续长门禁必须同时给足 timeout、指定唯一容器名并在采证前禁用 `--rm`，否则成功日志可能随容器删除而丢失。
 - 最近复发/补充：2026-08-13 首次 `v0.4.15`（随后因新增缺陷已作废）本地 Buildx 候选把 `shell_command` 上限设为 120 秒，构建在 124 秒以 124 终止且没有产出目标 image tag。没有原样重跑；先核对精确 image 行数为 0、没有匹配该 tag 的 buildx/buildctl 宿主进程、BuildKit 本身仍 healthy，才确认终态可继续。正式候选构建必须给至少 10 分钟命令上限，并只用 cell yield/wait 提供进度；用户追加新修复后旧候选即使成功也不得复用为最终候选。
 - 最近复发/补充：2026-08-10 三仓回拉 Go 夹具把内层 `shell_command` timeout 设为 1 秒，希望由外层 yield 返回 cell；实际命令在约 5 秒以 124 被终止，不能判断 Go 子进程是否仍在。没有直接重跑，而是先按 `anxi.test.owner` 查询 container/volume/network，并核对 18150–18152 均无 listener，再把命令 timeout 改为 10 分钟、只用 `functions.exec` yield/wait 续取。长任务的“命令执行上限”和“提前返回控制权”必须分开配置。
@@ -1373,6 +1395,7 @@
 ## 2026-07-29：通过 `Start-Process` 派生本地开发服务器被策略拦截
 
 - 最近复发/补充：2026-08-14 本地 Vite QA 结束时再次调用 `functions.wait(terminate=true)`，等待约 124 秒后以 124 返回，4178 仍由工作区 `vite.js --host 127.0.0.1 --port 4178 --strictPort` 监听。没有再次 terminate；读取精确监听 PID、进程名和完整工作区命令行后只停止该 node 进程，并复查端口为零。结束预览固定走“查 listener → 验 argv/工作区 → 精确停止 → 复查”，不把 cell terminate 当清理完成。
+  同日排查 v0.4.16 游戏日回档时，5173 的 Vite cell 也在 124 秒等待超时后遗留精确工作区 `node.exe ...vite.js --host 127.0.0.1 --port 5173` 监听；按相同归属核对只停止 PID 25916，并复查端口归零。后续本地预览结束直接执行既定端口/PID 清理流程，不再先用 `wait(terminate=true)` 消耗完整命令上限。
 - 最近复发/补充：2026-08-10 v0.4.10 官网 CSS 修复本地验收又在嵌套 `pwsh` 中使用 `Start-Process npm.cmd`、隐藏窗口和日志重定向，命令再次在执行前被策略拒绝，端口/进程均未创建。该错误已重复，预防规则提升到 `AGENTS.md`：Windows 本地预览直接作为可等待的 `shell_command` cell 运行，禁止再用 `Start-Process` 后台派生。
 - 同轮终止可等待 cell 后，VitePress 子进程仍监听 4187；首次清理前把整条后代统一要求匹配 `docs:preview|vitepress preview`，但叶子真实 argv 为 `vitepress.js preview docs`，归属检查安全失败且未停止进程。正确做法是分别核对根进程的 `npm.cmd run docs:preview`、叶子绝对工作区 `vitepress.js preview docs`、固定端口及完整 ParentProcessId 链，再按精确 PID 自底向上停止并复查 listener；不要用一个过窄字符串模式替代进程树归属。
 - 最近复发/补充：2026-08-13 NAS 文档预览清理时，已读到监听叶子为 `vitepress.js preview docs`，却仍用拼错且过窄的单个 `-like '*...*nodes*'` 模式验证，安全断言拒绝停止且进程未变。随后按本条既有规则读取监听 PID 的完整父进程链，分别核对工作区、`vitepress.js`、`preview docs` 和精确端口，再自底向上幂等停止；不得把多个条件压成未经探针的通配字符串。
@@ -2059,7 +2082,9 @@
 
 ## 2026-08-06：在 Windows 文件系统执行 Linux 权限位发布断言
 
+- 最近复发/补充：2026-08-14 首次安装存档导入状态机修复在 Windows 宿主运行两个受影响包的完整测试，`internal/web` 通过，但 `internal/games/stardew_junimo` 仍在 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 因 Compose mode=`0666`、want `0640` 失败；本次新增状态机专项此前均已通过。该包的完整权威结果改由任务专属 Linux 容器取得，Windows 只继续运行不依赖 POSIX 元数据的精确 `-run` 专项。
 - 最近复发/补充：2026-08-14 升级状态机修复直接在 Windows 宿主运行 `go test ./... -count=1`，`TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 再次因 Compose mode=`0666`、want `0640` 失败；同包还出现 Windows 原子替换文件占用和异步清理读取竞态。随后用只读仓库 bind、任务专属 Go cache volume 的 `golang:1.25-alpine` 重跑全包退出 0，并单独复跑异步清理用例通过。包含权限位的全包权威门禁必须一开始就在 Linux，Windows 只保留不依赖文件系统语义的定向补充。
+- 最近复发/补充：2026-08-14 RUNTIME-AUTH-HEALTH-PROBE-1 在接口重命名后直接于 Windows 宿主运行整个 `internal/games/stardew_junimo` 包，73.9 秒后同一 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 再次得到 mode=`0666`、want `0640`；本轮新增 auth 测试没有出现在失败列表，`internal/docker` 已通过。后续受影响包测试改用任务专属 Linux Go 容器与独立 cache volume；Windows 宿主只运行精确 `-run` 的无 POSIX 元数据专项，不能因为“只是定向包”就忽略包内已有权限断言。
 - 环境：Windows 宿主 Go 1.26，SMAPI 真实下载 integration 测试使用 `t.TempDir()`。
 - 错误模式：直接在 Windows 上运行同时断言缓存文件 POSIX `0600` 的生产 Linux 门禁。
 - 症状 / 退出码：真实下载约 331 秒并完成内容校验，但 `os.Stat().Mode().Perm()` 在 Windows ACL 语义下报告 `0666`，测试退出 1；这不能证明 Linux 容器中的产品权限实现失败。
@@ -2069,6 +2094,16 @@
 - 正确做法：使用与 Dockerfile 一致的 `golang:1.25-alpine` 任务专属 Linux 容器，从空容器缓存运行同一个 `-tags=integration` 测试，要求实际字节数、固定摘要、`0600` 和无 `.part` 残留同时通过。
 - 预防检查：发布测试包含 `chmod`、`Mode().Perm()`、UID/GID、符号链接或 Unix socket 时，先选择目标 Linux 环境；Windows 宿主仅可做不依赖 POSIX 元数据的补充测试。
 - 适用范围：Docker Linux 产品的 Go 文件权限、原子写入和下载缓存门禁。
+
+## 2026-08-14：Windows 取消 Docker exec 未立即终止容器内请求
+
+- 环境：Windows Docker Desktop 29.5.3、Go `exec.CommandContext`、`docker compose exec -T`、本地 Python HTTP 挂起夹具。
+- 错误模式：为验证 1 秒单探针超时，把 `/health` 的受控 handler 直接 `sleep(60)`，并假定 Go context 杀掉 Docker CLI 后容器内 exec/HTTP 请求会立即结束。
+- 症状 / 退出码：产品正确返回 `auth_health_timeout`，但 integration 的 timeout 子用例实际耗时 60.35 秒；其它 404/500/坏 JSON 子用例均不足 0.4 秒，任务资源最终正常清理。
+- 根因：Windows 上取消调用方 Docker CLI 不保证 daemon 侧 exec 会话及其容器内子进程同步终止；测试完成时间仍被容器内固定 sleep 主导。
+- 正确做法：真正需要证明“未调用”的 `/steam/ready` 保留 60 秒挂起；实际会调用并断言超时分类的 `/health` fixture 只延迟 3 秒，仍超过 1–2 秒单探针预算，但不会把本地门禁拖成长等待。
+- 预防检查：Docker exec 超时夹具必须同时设置客户端预算和容器端较短的硬上限，测试耗时断言以实际墙钟为准；不要把 context cancel 等同于 daemon 端进程树清理。
+- 适用范围：Docker Desktop 上的挂起 HTTP、`compose exec`、CommandContext 取消和故障注入测试。
 
 ## 2026-08-06：短命 Go 容器网络失败后丢失模块下载进度
 
@@ -2300,7 +2335,9 @@
 
 ## 2026-08-13：检索已给出真实文件后仍读取猜测文件名
 
+- 最近复发/补充：2026-08-14 审计认证镜像精确源码时，把摘要相近但并非 manifest `sourceRevision` 的 `a6cee498322...` 直接传给外部仓库 `git cat-file`，本地又没有该对象，命令在读取源码前退出 1。随后回到 Panel manifest 读取完整 revision，并用 `git ls-remote --tags origin` 核对远端精确 tag/commit；Git 对象 ID 必须从当前权威 manifest 或 Git 输出复制，不能从摘要短形态或上下文记忆重建。
 - 最近复发/补充：同一轮继续审查 import staging 时，`rg` 已明确返回 `save_import_staging.go`，后续仍读取猜测的 `save_import_files.go`，在 fail-fast 下退出 1；文件未修改。该模式连续两次后，预防规则已提升到项目 `AGENTS.md`：符号检索与精确路径读取必须拆成两条命令，真实命中是唯一输入。随后读取正式 CI 门禁时又直接猜测 `.github/workflows/compatibility.yml`，Release workflow 前半已读出，但第二个文件不存在使命令退出 1；候选镜像和仓库文件未受影响。此后所有 workflow 文件先单独执行 `rg --files .github/workflows`，再读取精确结果。
+- 最近复发/补充：2026-08-14 审计 steam-auth `/health` 历史契约时，先猜测源码位于不存在的 `src/JunimoServer.SteamService/Program.cs`，`git show` 立即以 path not found 退出；随后又把不存在的 `runtime_update_test.go` 与已确认测试文件一起传给 `rg`。两次均为只读、零写入，改为先用 `git ls-tree -r --name-only <commit>` / `rg --files` 取得精确的 `tools/steam-service/Program.cs` 和实际测试清单后继续。外部 Git 对象内路径和本仓测试文件同样必须先发现，不能从命名空间、类型名或包名猜物理路径。
 
 - 环境：PowerShell 7，在当前仓库核对 `ensureJunimoServerMod` 实现。
 - 错误模式：同一组合命令的 `rg` 已返回实现位于 `lifecycle.go`，后续仍按记忆读取不存在的 `lifecycle_runner.go`；末尾成功的 `git status` 又使整条命令最终退出 0。
@@ -2309,6 +2346,16 @@
 - 正确做法：先用 `rg -n`/`rg --files` 得到明确文件，下一条命令再用该真实路径读取；每个 `Get-Content` 失败后立即退出，不能让后续成功掩盖。
 - 预防检查：任何按符号定位的源码读取不得猜文件名；组合只读脚本同样为关键 cmdlet 设置 `-ErrorAction Stop` 或显式检查 `$?`。
 - 适用范围：按函数/类型定位 Go、TS/C# 源码，以及含多个只读诊断步骤的 PowerShell 命令。
+
+## 2026-08-14：PowerShell 将未引用的 Git peeling 语法解析成脚本块
+
+- 环境：PowerShell 7，读取外部只读 Git tag 对应的完整 commit。
+- 错误模式：在嵌套 `pwsh -Command` 中直接传递 `git rev-parse v1.5.0-anxi.2^{}`，没有把含花括号的 revision 参数作为一个完整字符串引用。
+- 症状 / 退出码：PowerShell 报 `ScriptBlock should only be specified as a value of the Command parameter` 并退出 1；Git 对象、工作树和 Docker 资源均未修改。
+- 根因：PowerShell 把裸 `{}` 当作脚本块语法，而不是 Git revision peeling 后缀；同一并发编排因此提前失败并丢失其它只读结果。
+- 正确做法：使用单引号整体引用的 `git rev-parse --verify 'v1.5.0-anxi.2^{commit}'`，并立即检查 `$LASTEXITCODE`；复杂 Git revision 参数不得裸写进多层命令字符串。
+- 预防检查：传给 PowerShell 原生命令的参数只要含 `{}`、`@{}`、`$()` 或反引号，就先作为单一字面量引用；并发只读探针也要允许逐项返回，避免一个解析错误掩掉其它证据。
+- 适用范围：`git rev-parse`/`git show` 的 peeling 与 reflog 语法，以及所有含 PowerShell 元字符的原生命令参数。
 
 ## 2026-08-13：PowerShell 嵌套命令输出数组被当成单一路径
 
@@ -2678,6 +2725,48 @@
 - 正确做法：用 `System.Diagnostics.Process` 启动 `git apply --cached --unidiff-zero -`，显式设置 `StandardInputEncoding=[System.Text.UTF8Encoding]::new($false)`，再把以 `\n` 拼接且结尾仅一个 LF 的完整补丁字符串写入 `StandardInput.Write`；先 `--check`，再正式应用，并立即跑 cached diff check。
 - 预防检查：任何需要逐字节稳定的 patch/SQL/JSON 标准输入不得由 PowerShell 对象管道或进程默认编码隐式序列化；必须显式构造 UTF-8 无 BOM 与 LF，或使用已验证的任务脚本。
 - 适用范围：`git apply`、校验和输入、跨平台补丁重放和共享工作树部分暂存。
+
+## 2026-08-15：检索已返回真实源码路径后仍按记忆读取猜测文件名
+
+- 环境：PowerShell 7，发布前审计 Docker Compose JSON 解析器。
+- 错误模式：同一只读组合命令中，`rg` 已明确返回解析器位于 `backend/internal/docker/compose.go`，后半仍按常见项目布局猜测并读取不存在的 `backend/internal/docker/parse.go`。
+- 症状 / 退出码：前半源码与测试正常输出，末尾 `Get-Content` 报路径不存在并使整条命令退出 1；工作树没有因此变化。
+- 根因：没有把检索结果当作后续读取的唯一依据，违反了“先定位、再按真实命中路径独立读取”的项目约定。
+- 正确做法：先单独运行 `rg -n`，确认真实文件后，再以独立 fail-fast 命令读取 `backend/internal/docker/compose.go` 的命中区段；不从函数职责推断文件名。
+- 预防检查：组合只读命令不得在检索后继续访问未由检索结果确认的路径；需要读取多个命中时先收集并核对精确文件列表。
+- 适用范围：源码函数/类型定位、文档章节检索以及跨目录文件名相近的仓库审计。
+
+## 2026-08-15：在仓库子目录把 Git 根相对文件名直接交给 gofmt
+
+- 最近复发/补充：修正为仓库根执行两份文件的 `gofmt` 后，又把紧随其后的 `go test ./internal/...` 留在同一个根目录命令中；格式化成功，但 Go 在加载测试前报告根目录没有 `go.mod` 并退出 1。格式化与 Go 门禁必须拆成不同 cwd 的独立命令，不能为减少一次调用重新合并。
+- 环境：PowerShell 7，工作目录为 `backend`，发布前 Go 定向测试。
+- 错误模式：在 `backend` 子目录执行 `git diff --name-only -- '*.go'`，把返回的 `backend/internal/...` 仓库根相对路径原样交给当前子目录中的 `gofmt -w`。
+- 症状 / 退出码：`gofmt` 对全部参数报 `GetFileAttributesEx backend/internal/...: The system cannot find the path specified` 并退出 2；格式化和后续测试均未执行，文件内容未变化。
+- 根因：Git 即使从子目录调用，默认输出仍是仓库根相对路径；原生命令的路径解析却基于当前 `backend` 子目录，形成重复的 `backend/backend/...`。
+- 正确做法：在仓库根收集并执行全部 Go 文件的 `gofmt -w -- <repo-relative paths>`，确认退出 0 后，再以 `backend` 为工作目录执行 `go test/vet/build`。
+- 预防检查：凡命令输入来自 Git 文件列表，先确认输出路径基准与消费命令工作目录一致；不同基准时切回仓库根或显式解析绝对路径，不能直接串接。
+- 适用范围：`gofmt`、格式化器、lint、测试选择器以及任何消费 `git diff --name-only` 的子目录命令。
+
+## 2026-08-15：给 Linux 全量 Go 门禁的宿主 shell 设置过短超时
+
+- 最近复发/补充：修正 strict Compose 测试后，本应只格式化并单独启动新门禁，却把 `gofmt` 与 `docker start -a anxi-v0417-go-gates` 合在同一个 `timeout_ms=1000` 命令；格式化已成功，保留容器被重新启动，但宿主约 3.7 秒后退出 124 并关闭 stdout 管道。精确 inspect 确认仍只有这个 owner 匹配容器在运行，未启动重复容器；后续只用独立 `docker wait` 接管。
+- 环境：PowerShell 7、Docker Desktop，任务专属 `golang:1.25-alpine` 容器执行 `go test/vet/build`。
+- 错误模式：虽然容器内命令是长门禁，却把宿主 `shell_command` 的 `timeout_ms` 设为 1000，工具实际约 5 秒即以 124 终止 Docker CLI。
+- 症状 / 退出码：宿主调用超时退出 124；精确核对发现 `anxi-v0417-go-gates` 仍在运行，两个带 owner label 的缓存卷存在，测试终态尚未确定，因此没有重复启动。
+- 根因：把编排层“尽快返回 cell”误当成可缩短实际命令超时；长运行 Docker 前台任务应由工具自然 yield，再通过同一 cell 等待，而不是杀死 Docker 客户端。
+- 正确做法：先用 `docker wait`/完整 inspect 接管现有唯一容器并取得退出码与日志；后续长门禁给足实际超时，让 `shell_command` 返回可等待 cell，使用 `wait` 获取终态并保持用户更新。
+- 预防检查：启动任何预计超过 5 秒的 test/build/container 前，显式区分工具 yield 时间和命令硬超时；硬超时必须覆盖真实上限，终态未知时禁止重复启动。
+- 适用范围：Docker 前台门禁、Go/npm build、下载测试与发布候选脚本。
+
+## 2026-08-15：把“资源不存在”的 Docker inspect 预期非零当成清理失败
+
+- 环境：PowerShell 7、Docker Desktop，`v0.4.17` 发布前任务资源清理复核。
+- 错误模式：先确认 owner label 下的容器、volume、network 均为空后，又在 `$ErrorActionPreference='Stop'` 的同一脚本中直接对预期不存在的精确名称运行 `docker inspect`，并试图在命令后读取 `$LASTEXITCODE`。
+- 症状 / 退出码：owner 计数已输出为零，但第一个不存在对象的 inspect 把 stderr 转成终止错误，使整个只读复核以 1 退出；没有创建、删除或改变任何资源。
+- 根因：把“对象不存在”当作普通分支处理时，忽略了 PowerShell 7 在 fail-fast 模式下可先于 `$LASTEXITCODE` 分支终止原生命令调用。
+- 正确做法：任务清理终态以 owner label 的三类资源空集合为主证据；确需核对固定名称时，用不会因空结果失败的 `docker ps -a --filter name=...`、`docker volume ls --filter name=...` 等列表查询，并校验返回集合，不直接用预期失败的 inspect 控制流。
+- 预防检查：在 `$ErrorActionPreference='Stop'` 脚本中不得依赖原生命令的预期非零作为正常分支；要么选用空集合成功的查询接口，要么把该探针放入已验证的独立错误捕获边界。
+- 适用范围：Docker 容器、volume、network、image 的不存在性断言及发布后资源清理复核。
 
 ## 编码与换行快速检查
 

@@ -83,7 +83,7 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 	case strings.HasPrefix(message, "recreate old auth:"):
 		return "rollback_recreate_auth_failed", "无法重建升级前的 steam-auth-cn。"
 	case strings.HasPrefix(message, "verify old auth:"):
-		return "rollback_verify_auth_failed", "升级前的 Steam 认证未能恢复就绪。"
+		return "rollback_verify_auth_failed", "升级前的 steam-auth-cn 未能通过纯服务健康验收；最后一次探针失败原因：" + runtimeUpdateErrorMessage(err, "未知健康检查错误。")
 	case strings.HasPrefix(message, "recreate old server:"):
 		return "rollback_recreate_server_failed", "无法重建升级前的 Junimo server。"
 	case strings.Contains(message, "rollback Junimo verification failed"):
