@@ -2,7 +2,8 @@
 
 - 正式镜像、tag、digest 与 Release 资产均不变。本次只补齐此前遗漏的公开说明：官网首页由 v0.4.14 切换到 v0.4.16，changelog 同时补入 v0.4.15 与 v0.4.16；GitHub 两版 Release 正文同步为同一用户可读变更范围，并继续保留精确验证身份和 compare 链接。
 - v0.4.15 公开范围为 Nexus 0.1.3 持久幂等、存档导入自动解绑、无存档实例首次上传和 nanoid 3.3.18；v0.4.16 公开范围为历史 runtime failure 安全收敛、桌面/移动隐藏但兼容 `FarmhouseStack`、桌面游戏日回档悬停详情。
-- 这是发布后纯文档修正，不改变候选内容、运行契约或测试输入，不触发候选重建、不移动既有 tag，也不重新提升 digest。VitePress build 5.63 秒通过；应用内 Browser 在 1440×900 与 390×844 验证首页→更新日志真实导航、两版正文、零横向溢出、零 overlay 和零 console error/warn。GitHub 两版 Release 正文已更新且非 draft/prerelease、发布时间未变、每版四项资产名称/大小/digest 未变；Pages workflow、线上正文与最终提交身份待推送后回填。
+- 这是发布后纯文档修正，不改变候选内容、运行契约或测试输入，不触发候选重建、不移动既有 tag，也不重新提升 digest。VitePress build 5.63 秒通过；应用内 Browser 在 1440×900 与 390×844 验证首页→更新日志真实导航、两版正文、零横向溢出、零 overlay 和零 console error/warn。GitHub 两版 Release 正文已更新且非 draft/prerelease、发布时间未变、每版四项资产名称/大小/digest 未变。
+- 发布提交 `2df79f939a014e12ddf8d952e019fd1320691f22` 经 Pages `31802129359`（build 20 秒、deploy 38 秒）和 Compatibility `31802129284`（1 分 44 秒）成功。线上首页与 `/changelog.html` 在桌面/手机均命中 v0.4.16、v0.4.15 及对应正文，零溢出/overlay/console error/warn；本次没有候选、tag、registry、latest、版本接口或镜像 digest 变化。
 
 # 候选制品一次构建与正式 digest 提升流程（2026-08-14）
 

@@ -2,7 +2,7 @@
 
 - [x] 官网首页切换到 v0.4.16，更新日志补齐遗漏的 v0.4.15，并保留 v0.4.14 及更早历史条目。
 - [x] v0.4.15 与 v0.4.16 GitHub Release 同步用户可读变更、升级验证、精确版本身份和完整 compare 链接，不移动 tag、不改镜像或 Release 资产。
-- [ ] VitePress build、桌面/移动 Browser、Pages workflow 与线上正文复核完成后，将 run ID、结果和最终 URL 回填长期文档。
+- [x] VitePress build、本地/线上桌面与移动 Browser 通过；发布提交 `2df79f9` 的 Pages `31802129359` 和 Compatibility `31802129284` 成功，线上首页与更新日志已复核。
 
 # 2026-08-14 已发布：v0.4.16 历史运行栈状态收敛与备份控制体验
 

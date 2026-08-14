@@ -8,7 +8,8 @@
 
 - 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 切换为 v0.4.16；更新日志在 v0.4.14 前补入 v0.4.16 与遗漏的 v0.4.15，内容与两版 GitHub Release 的用户可见变更保持一致。
 - v0.4.15 说明 Nexus 安装幂等、存档导入自动解绑、无存档实例首次上传及 nanoid 安全补丁；v0.4.16 说明历史运行组件失败状态收敛、仅隐藏 `FarmhouseStack` 且兼容旧配置，以及游戏日回档悬停详情。
-- 只修改公开文档内容，没有改主题组件、样式、依赖、Panel API 或发布镜像。VitePress production build 5.63 秒通过；应用内 Browser 在 1440×900 和 390×844 从首页真实点击到 `/changelog.html`，首页 v0.4.16、日志 v0.4.16/v0.4.15/v0.4.14 顺序和两版功能正文全部命中，root/body 横向溢出、framework overlay、console error/warn 均为 0。GitHub v0.4.15/v0.4.16 Release 正文已同步，均保持正式非草稿状态、原发布时间和四项附件；推送后的 Pages workflow 与线上 URL 仍需回填本节。
+- 只修改公开文档内容，没有改主题组件、样式、依赖、Panel API 或发布镜像。VitePress production build 5.63 秒通过；应用内 Browser 在 1440×900 和 390×844 从首页真实点击到 `/changelog.html`，首页 v0.4.16、日志 v0.4.16/v0.4.15/v0.4.14 顺序和两版功能正文全部命中，root/body 横向溢出、framework overlay、console error/warn 均为 0。GitHub v0.4.15/v0.4.16 Release 正文已同步，均保持正式非草稿状态、原发布时间和四项附件。
+- 发布提交 `2df79f939a014e12ddf8d952e019fd1320691f22` 的 Pages workflow `31802129359` 成功（build 20 秒、deploy 38 秒），Compatibility `31802129284` 成功（1 分 44 秒）。线上首页带 cache-bust 实际显示 v0.4.16，点击后精确进入 `/changelog.html`；1440×900 与 390×844 再次命中两版正文与正确顺序，root/body 横向溢出、overlay、console error/warn 均为 0。
 
 ## 2026-08-13：Windows 部署独立专页（completed，未发布）
 
@@ -98,7 +99,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前目标为 `v0.4.16` 文档；以本节 Pages 发布证据为准）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.16` 文档，并补齐 `v0.4.15` 更新日志）
 
 | 决策项 | 结论 |
 | --- | --- |
