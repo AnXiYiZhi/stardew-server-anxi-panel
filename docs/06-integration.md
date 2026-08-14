@@ -1,3 +1,9 @@
+# v0.4.17 跨端发布结果（2026-08-15，released）
+
+- `RUNTIME-AUTH-HEALTH-PROBE-1`、`SAVE-IMPORT-FIRST-INSTALL-STATE-1` 与社区中心收集包文案已在同一 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f` 候选中验收。auth 服务健康与 Steam 在线能力已分层；首次上传的 Web/driver 四态契约、strict Compose 实停门禁、精确恢复与安全取消保持同一后端权威；前端字段和公开上传 DTO 均未改变。
+- 候选 run `31823172958` 从 `v0.4.16` 通过公开 update check/dry-run/apply 先验证不健康目标 `failed_rolled_back/health_check_failed`，再升级精确候选；SQLite、初始化、Panel 数据、非目标游戏容器/volume 与重启均保持。Compatibility `31823172972`、Tag `31823884131`、正式提升 `31823899038` 成功。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.17/latest` 六引用统一 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`。独立正式镜像首次/重启均为 Docker healthy、`/health`/database ok，`/api/version` 精确返回版本、完整 commit 与 build date；四项 Release 资产齐全。
+
 # v0.4.16 跨端发布结果（2026-08-14，released）
 
 - 后端 required-runtime 历史失败收敛、前端 `FarmhouseStack` 隐藏兼容和游戏日回档悬停详情已在同一不可变候选中完成 fresh 及 `v0.4.15` Web 升级后验收；公开 update、server runtime settings 与 backup API 契约均未变化。
@@ -1431,7 +1437,7 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - 若重启前存在未结束 new-game owner，手动启动会恢复同一 request/config/transaction 并继续观察或完成耐久门禁。这个显式恢复不能扩展成 Panel 启动时自动 ComposeUp，也不能绕过 owner 再创建新事务。
 - Panel bootstrap 的 required-runtime、Runtime apply 与 SMAPI apply 恢复必须保持 server/auth 关闭。它们可收敛未完成的静态替换或回滚，但即使持久化状态记录了 `ServerWasRunning=true`，也必须返回“请手动启动”而不 ComposeUp。存在 unfinished new-game owner 时连静态替换也禁止。
 
-# RUNTIME-AUTH-HEALTH-PROBE-1 联调契约（2026-08-14，待发布）
+# RUNTIME-AUTH-HEALTH-PROBE-1 联调契约（2026-08-14，released in v0.4.17）
 
 ## 运行组件验收与在线业务分层
 

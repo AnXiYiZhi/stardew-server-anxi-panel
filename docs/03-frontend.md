@@ -1,3 +1,8 @@
+# v0.4.17 前端发布状态（2026-08-15，released）
+
+- `FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1` 已随 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f` 发布；新建存档高级设置显示“社区中心收集包”，`remixedCommunityCenter` 字段、默认值和提交行为未变。
+- 候选 run `31823172958` 通过全部 17 个前端状态测试、production audit/build、候选 fresh/restart 和 `v0.4.16` Web 升级；Tag `31823884131`、正式提升 `31823899038` 成功。三仓 `0.4.17/latest` 六引用统一 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`，正式镜像版本接口、重启和 GitHub Release 四项资产已复核。
+
 # DOCS-RELEASE-NOTES-0.4.15-0.4.16：官网与 Release 说明补齐（2026-08-14，completed）
 
 - 官网首页版本由 v0.4.14 切换到 v0.4.16，更新日志补入遗漏的 v0.4.15，并以同一用户可读范围同步两版 GitHub Release：v0.4.15 覆盖 Nexus 幂等、存档导入自动解绑、无存档首次上传与 nanoid 3.3.18；v0.4.16 覆盖历史运行组件失败状态收敛、隐藏但兼容 `FarmhouseStack`、游戏日回档悬停详情。
@@ -2625,7 +2630,7 @@ npm.cmd run dev
 - 影响 `frontend/src/games/stardew/SavesSection.tsx`、`frontend/scripts/test-save-backup-details.ts` 和 `frontend/package.json`。未改变备份/回档 API、排序、按钮状态、移动端堆叠卡片或 CSS。
 - 验证：`npm.cmd run test:save-backup-details` 与 `npm.cmd run build` 通过。桌面 Browser QA 实际把鼠标移动到回档行，5 条 fixture 行均带用户可读详情；页面无横向溢出、无残留弹窗，console error/warn 为 0。
 
-# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1：新建存档社区中心收集包文案（2026-08-14，completed，未发布）
+# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1：新建存档社区中心收集包文案（2026-08-14，released in v0.4.17）
 
 - `NewGameCreator` 高级设置把误写的“社区中心手机包”更正为 Stardew 中文选项使用的“社区中心收集包”。
 - 只改变 `frontend/src/games/stardew/NewGameCreator.tsx` 的可见文案；`remixedCommunityCenter` 勾选状态、默认值、提交字段和新建存档 API 均未改变。

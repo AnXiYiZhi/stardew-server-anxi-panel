@@ -1,9 +1,14 @@
+# v0.4.17 后端发布接手状态（2026-08-15，released）
+
+- `RUNTIME-AUTH-HEALTH-PROBE-1` 与 `SAVE-IMPORT-FIRST-INSTALL-STATE-1` 已进入 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`。Compatibility `31823172972`、候选 `31823172958`、Tag `31823884131`、正式提升 `31823899038` 成功；候选包含严格 `/health` 挂起式 Docker fixture、全量 Go/Web 状态机回归、fresh/restart、从 `v0.4.16` 的不健康回滚和健康 Web 升级。
+- 三仓 `0.4.17/latest` 统一 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`。独立正式镜像首次与重启后 Docker health、`/health`、database、`/api/version` 正确；SQLite、初始化、Panel 数据、非目标游戏容器/volume 保持，GitHub Release 四项资产齐全。完整候选证明与资源清理见 `docs/09-image-build.md`。
+
 # v0.4.16 后端发布接手状态（2026-08-14，released）
 
 - `REQUIRED-RUNTIME-STALE-STATUS-1` 已进入 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`。最终候选 `31799350642` 通过后端默认并行 test/vet/build、真实 SMAPI/runtime integration、fresh/restart、`v0.4.15` Web unhealthy 回滚与 healthy 升级；Tag `31799876171`、正式提升 `31799891830` 成功。
 - 三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像重启前后 health/database/version/setup 正确；SQLite、初始化、Panel 数据、非目标游戏容器/volume 保持，完整候选故障与资源清理见 `docs/09-image-build.md`。
 
-# SAVE-IMPORT-FIRST-INSTALL-STATE-1 接手记录（2026-08-14，completed，未发布）
+# SAVE-IMPORT-FIRST-INSTALL-STATE-1 接手记录（2026-08-14，released in v0.4.17）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -18,7 +23,7 @@
 - driver 专项覆盖四个允许状态、完整不安全状态集合、数据库离线但 Compose running、strict Compose 缓存绕过/坏解析/多 server 状态、`game_installed` 启动/readiness/cancel 精确恢复、状态写入与恢复失败、Phase A 提交前失败停机、cleanup 全计划前零删除、未知 schema/stage fail closed、权威 DataDir，以及真实 `game_installed` + 空 active save 的完整 `ImportSaveAndStart`；本地受控 fake 在明确上限内走完 bootstrap、runtime_ready、Phase A、activation、durable completed，并断言正式 `saves import` 只写一次。
 - Web/API 回归从真实 `game_installed` 创建 preview/commit；故障夹具让 maintenance `ComposeUp` 立即失败，确认 journal 为未提交 `backup_created`、state 快照恢复，再以同 token cancel 清 journal/staged/bootstrap/pointer/token、保留 preimport 且 `HasUnfinishedImportTransaction=false`。这条链不使用真实 Steam、账号或生产存档。
 - 后续不要把共享集合扩大到安装/授权、starting/running 或 error，也不要移除两次 Compose 检查。不要为兼容旧失败直接删目录、改 journal 或清 preimport；任何自动恢复都必须继续经过 terminal job identity、driver runtime guard、MaintenanceStarted、upstream、ownership、pointer 和 fingerprint 全套门禁。
-- 本任务只完成本地修复与回归，不创建 tag、Release 或镜像。正式发布前应从上一正式版升级得到的新 Panel 复验“安装完成态首次上传”和“注入 maintenance 启动失败后安全 cancel/reupload”，并保留原 state 恢复、preimport、资源精确清理证据。
+- 已随 `v0.4.17` 正式发布；候选从 `v0.4.16` 的 Web 升级/回滚、全量状态机回归、三仓 digest、正式回拉和资源清理证据见本文件顶部及 `docs/09-image-build.md`。以后改动导入契约仍须保留“安装完成态首次上传”和“maintenance 启动失败后安全 cancel/reupload”两条回归，并继续保留原 state 恢复与 preimport。
 
 # REQUIRED-RUNTIME-STALE-STATUS-1 接手记录（2026-08-14，released in v0.4.16）
 
@@ -824,7 +829,7 @@
 - 本次正式版本还要一起收口 `92f3be6bb2731358420ba315ac18029c2506d81f`（Release `run.sh` 必须含 swap/swappiness=60 修复）与 `621c5645e0048da7c4793035615438ed78fc7002`（图形化 Compose 自动标准化）。两者虽已在 `origin/main`，最终候选/升级后/生产真机证据仍未完成，不能在 handoff 或 Release notes 中提前写成真机通过。
 - 不要为修复 transaction recovery 顺手启用 Docker restart policy 或 Panel 启动自动 ComposeUp。宿主重启后的普通实例由用户手动开启，这是当前明确产品策略。
 
-# RUNTIME-AUTH-HEALTH-PROBE-1 接手记录（2026-08-14，代码完成，待发布）
+# RUNTIME-AUTH-HEALTH-PROBE-1 接手记录（2026-08-14，released in v0.4.17）
 
 ## 改了什么
 
@@ -848,5 +853,5 @@
 
 ## 下一步注意事项
 
-- 建议随下一个补丁版 `v0.4.17` 发布，但当前没有候选、tag、Release 或正式镜像。发布人仍须按 `docs/09-image-build.md` 从上一正式版完成真实 Panel Web 升级、升级后本专项复验、unhealthy 候选安全回滚、数据/非目标资源完整性和 digest 提升门禁。
+- 已随 `v0.4.17` 完成候选、上一版 Web 升级、unhealthy 安全回滚、数据/非目标资源保持、annotated tag、三仓 digest 提升与正式回拉；不可变 run/digest 见本文件顶部和 `docs/09-image-build.md`。
 - 不要把 `/health` 返回的 `logged_in` 改成硬门槛，也不要仅凭 HTTP 200、合法 JSON 或 Docker healthy 放行。错误码、last probe reason 和目标/回滚契约必须保持一致。

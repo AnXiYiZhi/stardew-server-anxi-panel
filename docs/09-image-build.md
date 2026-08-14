@@ -1643,7 +1643,7 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - 代码门禁：后端全量 `go test ./...`、`go vet ./...`、`go build ./...`；前端全部 12 个 `test:*` 脚本与 `npm run build` 均通过。Browser 桌面与 390×844 窄屏提示可见，窄屏 root/body 无横向溢出，console error/warn 为空。
 - 本轮没有构建正式候选镜像、没有打 tag 或推送 registry。发布前仍须按本文件总门禁从最新正式版执行 Panel 一键升级、升级后功能复验、目标失败回滚和全量门禁，不能把本专项测试替代正式发布验收。
 
-# RUNTIME-AUTH-HEALTH-PROBE-1 发布前专项矩阵（2026-08-14，代码已验证，未发布）
+# RUNTIME-AUTH-HEALTH-PROBE-1 发布专项矩阵（2026-08-14，released in v0.4.17）
 
 ## 变更清单与受影响链路
 
@@ -1669,9 +1669,9 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 
 - 已通过：严格 parser/错误码定向单测；Junimo Runtime/SMAPI/rollback 定向测试；Docker `/health` fixture；完整 apply/rollback Docker integration；真实推荐 server/auth opt-in；兼容矩阵 20 项单测与当前 manifest validate。
 - Linux `golang:1.25-alpine` 隔离门禁已通过 `go test ./... -count=1`、`go vet ./...`、`go build ./...`。Windows 宿主定向包只命中既知 POSIX `0600`/`0666` 语义差异，已由 Linux 目标文件系统全量门禁覆盖，不是产品失败。
-- 发布建议为下一个补丁版 `v0.4.17`。正式候选仍必须从与 `origin/main` 精确同步且干净的 main 构建，并补做：上一正式版经真实 Panel Web API check/dry-run/apply 到同一候选、升级后的 Runtime/Control-only/LAN 场景复验、同候选 unhealthy Panel 回滚、SQLite/实例/非目标容器与 volume 完整性、候选证明、digest 提升和正式回拉冒烟。本任务没有创建 tag、Release、候选或正式镜像。
+- 该修复阶段当时建议进入下一个补丁版 `v0.4.17`，且自身没有创建 tag、Release、候选或正式镜像；随后已由下节记录的最终 main 完成上一正式版 Web API 升级、unhealthy 回滚、数据/非目标资源保持、候选证明、digest 提升和正式回拉冒烟。
 
-# v0.4.17 发布计划与候选矩阵（2026-08-15，发布进行中）
+# v0.4.17 正式发布与候选矩阵（2026-08-15，released）
 
 ## 固定变更范围
 
@@ -1704,4 +1704,26 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - Linux DinD 真实 auth fixture：`TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady` 及 rollback 404/500/bad-json/timeout/unreachable 子例全部通过，`47.18s`；内层容器、network、volume 与 fixture image 清理后均为 0。真实 SMAPI 下载 `41,889,142` bytes，`77.06s` 通过。
 - 兼容矩阵：Python 3.12.13 validate、`check-panel-version --version 0.4.17`、20 项单测通过；远程制品校验 `85.7s` 通过，只有清单允许的可选镜像 mirror unavailable warning。
 - 前端 Node 24 隔离卷：`npm ci`、production audit（0 vulnerability）、全部 17 个 `test:*` 脚本与 production build 通过；完整仓库挂载保证 responsive-layout 读取真实 workflow，`node_modules/dist` 使用任务专属卷。
-- 部署脚本：Git Bash 5.2.37 的全清单 `bash -n`、四项功能测试及 ShellCheck v0.10.0 通过。正式候选尚未推送；自动候选 run、Web 升级 E2E、unhealthy 回滚、tag、正式 digest 与 Release 证据必须在后续小节回填后才算发布完成。
+- 部署脚本：Git Bash 5.2.37 的全清单 `bash -n`、四项功能测试及 ShellCheck v0.10.0 通过。以上是 commit 前证据；自动候选、Web 升级 E2E、unhealthy 回滚、tag、正式 digest 与 Release 的不可变结果记录如下。
+
+## 自动候选与上一正式版升级证据
+
+- 发布提交为 `d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`，由干净且与 `origin/main` 同步的本地 `main` fast-forward 推送。候选 workflow `31823172958`（attempt 1）从上一正式版 `0.4.16` 自动解析目标 `0.4.17`，固定 build date=`2026-08-14T17:16:15Z`；Compatibility workflow `31823172972` 同步成功。
+- 候选 artifact=`release-candidate-0.4.17-d63c93ffe7d6`，其中 `candidate.json` 固定 schema 1、完整 commit、workflow run 和引用 `ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.4.17-d63c93ffe7d6`；候选 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`，本地构建 image ID=`sha256:840344e9148a0b6a2947cf4f6700cf1b53a3c0407c8da03505ee08dc6ceae6d1`。
+- `Run selected code gates` 明确执行兼容契约与远程制品、部署脚本、后端、Junimo 真实 network/runtime integration、前端回归/build 和网站 build，最终输出 `all selected gates passed for 0.4.17`。真实 auth fixture `TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady` 及 rollback 404/500/bad-json/timeout/unreachable 子例全部通过；没有退回旧测试名或跳过挂起式用例。
+- 候选镜像完成 fresh install/restart。隔离 DinD 从 `v0.4.16` 通过公开 Panel Web API 执行 check/dry-run/apply：同版本引用先切到受控 unhealthy 目标，确认 `failed_rolled_back/health_check_failed` 和旧版恢复；再原子替换为精确健康候选并升级。最终日志明确输出 `previous release Web upgrade, rollback, persistence and restart passed`，覆盖 SQLite integrity、初始化状态、Panel 哨兵、非目标游戏容器/volume 和 Panel restart。
+- 候选 workflow 用时约 `9m6s`，全部步骤成功。唯一 GitHub annotation 是托管 action 在 Node 24 强制运行时提示其声明的 Node 20 已弃用；它没有改变构建、测试、候选对象或结论。兼容矩阵仅出现清单允许的可选镜像 mirror unavailable warning，必需制品与 source revision 均通过。
+
+## 自动 Tag、正式提升与发布后独立复核
+
+- 自动 Tag workflow `31823884131` 验证候选证明和仍为当前的 `origin/main` 后成功；`v0.4.17` 是 annotated tag（tag object `7c9ee9e1611cf692f0660908ae1eba3367d9b359`），解引用精确指向 `d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`。没有移动旧 tag，也没有从其它构建重新生成镜像。
+- 正式提升 workflow `31823899038` 成功校验候选 digest/OCI 身份，以 preserve-digests 提升精确版本，再完成单仓正式镜像冒烟、三仓 `latest` 提升和 GitHub Release 创建。Docker Hub、阿里云 ACR、GHCR 的 `0.4.17` 与 `latest` 六个远端引用经独立 `docker buildx imagetools inspect` 复核，全部精确等于候选 digest `sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`。
+- 独立回拉 `ghcr.io/anxiyizhi/stardew-server-anxi-panel:0.4.17` 后，首次启动第 6 次有界轮询即同时达到 running、Docker health=`healthy`、`/health.status=ok`、database=`ok`；`/api/version` 返回 `0.4.17`、完整 commit 和固定 build date。受控 `docker restart` 后第 6 次轮询得到完全相同结果。
+- GitHub Release `Stardew Server Anxi Panel 0.4.17` 于 `2026-08-14T17:26:48Z` 发布，为非 draft、非 prerelease，URL=`https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.4.17`。正文已补齐 `/health` 验收、首次上传状态机和“社区中心收集包”三项用户可读说明及升级/digest 证据；资产 `run.sh`、`migrate-fnos.sh`、`repair-junimo-0.3.5.sh`、`repair-junimo-upgrade.sh` 均为 uploaded 状态并具有 GitHub SHA256 摘要。
+- 本机发布后冒烟容器 `anxi-v0417-postrelease-smoke` 和 volume `anxi-v0417-postrelease-data` 在删除前完成 owner label 与 `/data` mount 复核，随后精确清理；owner=`v0417-postrelease` 的容器和 volume 均归零。候选证明临时目录只含已审计 `candidate.json`，验收后逐文件与空目录精确删除。未使用 `docker system prune`、`docker volume prune` 或模糊批量删除。
+
+## 发布结论与后续边界
+
+- `v0.4.17` 已完成自动候选、上一正式版真实 Web 升级、unhealthy 回滚、annotated tag、三仓 digest 提升、正式镜像版本/重启和 GitHub Release 门禁，没有兼容性或正式发布阻塞。证据回填属于 tag 后文档提交，不移动 `v0.4.17`，也不改变已发布候选 digest。
+- steam-auth 兼容范围仍只包含已审计 `1.5.0-anxi.2`；增加新 tag 前必须先固定源 revision、真实 `/health` 契约与 digest，再更新双 allowlist 和测试。不得恢复 `/health -> /steam/ready` fallback，也不得把 `logged_in=false` 升级为运行组件发布阻塞。
+- 首次上传离线集合继续严格限定为 `game_installed / save_required / ready_to_start / stopped`。任何状态扩展、cleanup 自动化或 journal schema 变化都必须重新覆盖 strict Compose 实停、上游提交边界、ownership/fingerprint 和精确状态恢复，不能用这次发布证据替代新变更的门禁。

@@ -1,9 +1,15 @@
+# v0.4.17 后端发布状态（2026-08-15，released）
+
+- `RUNTIME-AUTH-HEALTH-PROBE-1` 与 `SAVE-IMPORT-FIRST-INSTALL-STATE-1` 已随 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f` 正式发布。候选 run `31823172958` 和 Compatibility run `31823172972` 成功；真实 auth Docker fixture 证明 `/health` 在 Steam 离线时快速通过且不会请求挂起的 `/steam/ready`，404/500/坏 JSON/超时/不可达继续回滚。首次上传的真实 `game_installed`、四态矩阵、strict Compose、精确状态恢复和三类 job/token/journal 中断窗口由全量 Go/Web 回归固定。
+- 同一候选从 `v0.4.16` 通过公开 Panel Web API 先验证不健康目标 `failed_rolled_back/health_check_failed`，再升级到精确健康候选；SQLite、初始化、Panel 数据、非目标游戏容器/volume 和重启均保持。Tag workflow `31823884131` 创建 annotated `v0.4.17`，正式提升 `31823899038` 成功。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.17/latest` 六引用统一 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`。独立回拉 GHCR 精确版在首次启动和重启后均为 Docker healthy、`/health`/database ok，`/api/version` 返回完整提交与 build date；GitHub Release 为正式状态且四项脚本资产齐全。完整候选证明、时间线与资源清理见 `docs/09-image-build.md`。
+
 # v0.4.16 后端发布状态（2026-08-14，released）
 
 - `REQUIRED-RUNTIME-STALE-STATUS-1` 已随 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c` 正式发布。候选 run `31799350642` 通过默认并行 Go test/vet/build、真实 SMAPI/runtime integration、fresh/restart，以及从 `v0.4.15` 经 Panel Web API 的 unhealthy 回滚与 healthy 升级；SQLite、初始化状态、Panel 数据和非目标游戏容器/volume 均保持。
 - Tag workflow `31799876171` 与正式提升 workflow `31799891830` 成功，三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像首次与重启后均返回 Docker healthy、`/health`/database ok 和完整 `0.4.16@5fa04d1...` 版本身份；详细失败修复、矩阵和资源清理见 `docs/09-image-build.md`。
 
-# SAVE-IMPORT-FIRST-INSTALL-STATE-1：安装完成后首次上传沿用真实离线状态（2026-08-14，completed，未发布）
+# SAVE-IMPORT-FIRST-INSTALL-STATE-1：安装完成后首次上传沿用真实离线状态（2026-08-14，released in v0.4.17）
 
 - 根因：安装成功会把实例写成 `game_installed`，Web 旧提交入口只排除 `running/starting`，因此允许创建 journal、接管 token、staging、preimport 和首次上传 bootstrap；但 `runImportMaintenance` 随后又把数据库状态硬限制为精确 `stopped`，在任何 `ComposePs/ComposeUp` 前返回 `instance must remain stopped before maintenance startup`。既有 maintenance 与 fresh-upload 夹具都伪造为 `stopped`，没有覆盖安装器的真实终态。
 - driver 现在集中定义 `IsSaveImportMaintenanceOfflineState`：只有 `game_installed / save_required / ready_to_start / stopped` 可以启动导入维护运行时。Web commit 入口使用同一集合做早期拒绝；`ImportSaveAndStart` 在创建 journal 或转移上传 ownership 前重新读取数据库，随后整条 staging/maintenance/Phase A/activation/durable-save 链只使用该权威 `DataDir`。`runImportMaintenance` 在静态能力/指针校验后、真正 `ComposeUp` 前再检查一次。状态允许不等于 Docker 已停；安全检查固定调用无缓存、必须可解析的 `ComposePsStrict = docker compose ps --all --format json`，空响应、坏 JSON、缺失 service/state、未知 server 状态、任一 running/restarting/paused/removing 副本都 fail closed。`uninitialized`、安装/授权阶段、`starting/running`、`error` 等状态不会接管 token 或创建事务。
@@ -1945,7 +1951,7 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 明确排除“宿主机重启后自动恢复原 running 实例”。产品预期是宿主重启后游戏保持关闭，由用户手动点击启动；不得为本任务增加 restart policy 或 Panel 启动时自动 ComposeUp。新建档 owner 的手动恢复只是保护未完成事务，不等同于普通运行实例自动恢复。
 - Panel 启动时的 required-runtime、Runtime apply 和 SMAPI apply 协调器都先检查未完成 new-game owner；存在 owner 时零修复/停服/起服/替换。普通中断升级在 Panel/宿主重启后只做安全回滚和静态材料收敛，强制保持 server/auth 关闭并提示手动 Start，即使 recovery manifest 记录 `ServerWasRunning=true` 也不 ComposeUp。存档、导入、安装、Control/SMAPI/Runtime 更新、玩家删除与重启计划等变更入口均在未完成 owner 下 fail closed。
 
-# RUNTIME-AUTH-HEALTH-PROBE-1：认证服务健康与 Steam 在线能力彻底解耦（2026-08-14，代码完成，待发布）
+# RUNTIME-AUTH-HEALTH-PROBE-1：认证服务健康与 Steam 在线能力彻底解耦（2026-08-14，released in v0.4.17）
 
 ## 根因与职责边界
 

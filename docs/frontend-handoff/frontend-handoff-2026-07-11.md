@@ -1,3 +1,8 @@
+# v0.4.17 前端发布接手状态（2026-08-15，released）
+
+- “社区中心收集包”文案修正已进入 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`；`remixedCommunityCenter` 默认值、勾选行为、DTO 与后端语义不变。候选 `31823172958` 通过全部 17 个前端状态测试、production audit/build、fresh/restart 与 `v0.4.16` Web 升级。
+- Tag `31823884131`、正式提升 `31823899038` 成功；三仓 `0.4.17/latest` 六引用统一 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`。独立正式镜像版本接口/重启和 GitHub Release 四项资产已复核。
+
 # DOCS-RELEASE-NOTES-0.4.15-0.4.16 接手记录（2026-08-14，completed）
 
 ## 改了什么、影响哪些文件
@@ -1741,7 +1746,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - 后续给备份详情增加字段时只修改 `backupDetailsTitle`，不要在两个列表里重新内联；若改成自定义 tooltip，需要同时补键盘聚焦和读屏关联，不能只保留鼠标入口。
 
-# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1 接手记录（2026-08-14，completed，未发布）
+# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1 接手记录（2026-08-14，released in v0.4.17）
 
 ## 改了什么
 

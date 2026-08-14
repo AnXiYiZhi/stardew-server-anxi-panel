@@ -1,3 +1,9 @@
+# 2026-08-15 已发布：v0.4.17 认证健康探针、首次上传状态机与文案修正
+
+- [x] annotated `v0.4.17` 固定指向 `d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`；Compatibility `31823172972`、候选 `31823172958`、Tag `31823884131`、正式提升 `31823899038` 全部成功。
+- [x] `v0.4.16` 真实 Web unhealthy 回滚、healthy 升级、SQLite/初始化/Panel 数据/非目标容器与 volume/重启保持通过；候选 auth 挂起式 Docker fixture 和首次上传全量状态机回归通过。
+- [x] 三仓 `0.4.17/latest` 六引用统一 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`；独立正式镜像首次/重启 health/database/version、GitHub Release 四项资产和任务资源清理均通过。
+
 # 2026-08-14 完成：官网与 GitHub Release 补齐 v0.4.15 / v0.4.16 说明
 
 - [x] 官网首页切换到 v0.4.16，更新日志补齐遗漏的 v0.4.15，并保留 v0.4.14 及更早历史条目。
@@ -11,7 +17,7 @@
 - [x] 桌面/移动隐藏但兼容已有 `FarmhouseStack`，桌面游戏日回档与其它备份一致展示悬停详情；fresh 与升级后 production bundle 均完成专项验收。
 - [x] `v0.4.15` Web unhealthy 回滚、healthy 升级、数据/非目标资源/重启通过；三仓 `0.4.16/latest` 六引用统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`，版本接口与 Release 四项资产通过，任务资源清零。
 
-# 2026-08-15 完成：安装完成后首次上传状态机修复（SAVE-IMPORT-FIRST-INSTALL-STATE-1，v0.4.17 发布门禁中）
+# 2026-08-15 完成：安装完成后首次上传状态机修复（SAVE-IMPORT-FIRST-INSTALL-STATE-1，released in v0.4.17）
 
 - [x] 统一 Web 与 driver 的导入维护离线状态为 `game_installed / save_required / ready_to_start / stopped`；`uninitialized`、安装/授权阶段、`starting/running` 与其它不安全状态在 ownership/journal 前拒绝。
 - [x] driver 在接管上传前读取真实数据库状态并检查 Compose，maintenance 在 `ComposeUp` 前再次检查；数据库离线但 server 实际 running 仍 fail closed，`game_installed` 不再要求先经 Stop API 永久归一化。
@@ -19,7 +25,7 @@
 - [x] terminal failed/canceled owned token 增加受控 cancel：精确核对 job/instance/operation、运行时已停、未提交、bootstrap pointer 与 staged fingerprint 后清 journal/source/target/bootstrap/pointer/token，preimport 保留；活动、成功、submitted 或不确定证据保持 busy/recovery。
 - [x] 发布前二次审计收紧为无缓存 `compose ps --all` 严格解析、多 server/未知状态 fail closed、权威 DataDir、状态与 journal 写错显式失败、`state_message` NULL 精确恢复，以及 Phase A FIFO 前失败的安全停机。
 - [x] job 使用 operation 派生 idempotency key；jobId 绑定中断可恢复，无 durable job、cleanup 后 token 未删、token 已删 journal 未清三类窗口均有幂等契约。cleanup 所有只读证据先通过才开始删除，耐久 `canceled` marker 不再阻塞新上传；成功 token 到期回收。
-- [x] 自动化覆盖真实 `game_installed` 空实例完整首次导入、四态矩阵、不安全状态零接管、Compose running 拒绝、精确恢复与 `backup_created` 历史失败解除 busy；正式候选、自动 tag、三仓提升和发布后证据将在本节后续回填。
+- [x] 自动化覆盖真实 `game_installed` 空实例完整首次导入、四态矩阵、不安全状态零接管、Compose running 拒绝、精确恢复与 `backup_created` 历史失败解除 busy；正式候选、自动 tag、三仓提升和发布后证据均已回填到本文件顶部与 `docs/09-image-build.md`。
 
 # 2026-08-14 完成：候选通过后全自动版本号、Tag 与正式发布
 
@@ -1927,13 +1933,13 @@ Multi Game Mode later
 - [ ] tag 只能从干净且与 `origin/main` 同步、所有门禁通过的最终 `main` 创建；随后等待 Release workflow，回拉三仓精确版核对 digest/OCI/latest，并核对 Release `run.sh` 确实包含 `92f3be6` 的 swap/swappiness 修复后再做隔离 smoke。
 - [ ] 正式镜像发布并回拉通过后再进行生产真机同步验收：用精确 tag 验证 `621c564` 图形化 Compose 转换、Control 0.3.1、现有存档/容器/volume/SQLite 完整性与宿主手动启服边界。完成前不得宣称真机通过；发现高风险问题停止灰度并按正式事务回滚。
 
-# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1（2026-08-14，completed / not released）
+# FE-NEWGAME-COMMUNITY-BUNDLE-COPY-1（2026-08-14，released in v0.4.17）
 
 - [x] 新建存档高级设置把误写的“社区中心手机包”更正为“社区中心收集包”。
 - [x] 保持 `remixedCommunityCenter` 默认值、勾选行为、提交字段与后端契约不变。
 - [x] 前端 production build 以及源码/构建产物正反向文案检查通过。
 
-# RUNTIME-AUTH-HEALTH-PROBE-1（2026-08-14，completed / not released）
+# RUNTIME-AUTH-HEALTH-PROBE-1（2026-08-14，released in v0.4.17）
 
 - [x] 确认 Issue #9 根因：运行组件验收错误调用会触发 Steam 登录和 App Ticket 的 `/steam/ready`，少数 Steam 网络受阻环境中反复撞上 15 秒单探针与 10 分钟总预算，最终误报认证服务损坏。
 - [x] Runtime、最终目标复验、旧版本回滚与 SMAPI 复验统一改为容器 running + 精确 image ID/digest + 严格 `GET /health`；禁止 fallback `/steam/ready`，也不接受 Docker health 代替。
@@ -1942,4 +1948,4 @@ Multi Game Mode later
 - [x] 增加挂起式本地 Docker fixture，证明 `/health` 快速成功且 Panel 未请求永久阻塞的 `/steam/ready`；覆盖不可达、超时、404、500、坏 JSON、auth 变化/未变化、最终复验、旧栈回滚和 digest mismatch。
 - [x] 核实内置及历史清单只支持已审计 `steam-auth-cn 1.5.0-anxi.2`；运行栈与兼容矩阵对其它未审计 tag 返回 `unsupported/auth_health_contract`，不猜测兼容性。
 - [x] 严格单测、Docker integration、真实镜像 opt-in、兼容矩阵以及 Linux 全量 Go test/vet/build 已通过，任务 Docker 资源已精确清理。
-- [ ] 建议在下一个正式补丁版 `v0.4.17` 发布；创建候选、真实 Panel Web 升级、unhealthy 回滚、正式 digest 提升与生产验收仍须按 `docs/09-image-build.md` 门禁执行，本任务不创建 tag/Release/正式镜像。
+- [x] 已在 `v0.4.17` 完成候选、`v0.4.16` 真实 Panel Web 升级、unhealthy 回滚、annotated tag、三仓 digest 提升、正式镜像回拉和 Release 资产验收；证据见本文件顶部与 `docs/09-image-build.md`。
