@@ -1,3 +1,8 @@
+# v0.4.16 跨端发布结果（2026-08-14，released）
+
+- 后端 required-runtime 历史失败收敛、前端 `FarmhouseStack` 隐藏兼容和游戏日回档悬停详情已在同一不可变候选中完成 fresh 及 `v0.4.15` Web 升级后验收；公开 update、server runtime settings 与 backup API 契约均未变化。
+- 候选 run `31799350642` 验证同引用 unhealthy 目标返回 `failed_rolled_back/health_check_failed` 并恢复旧版，随后健康目标升级为 `0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`；SQLite、初始化、Panel 哨兵、非目标游戏容器/volume 和 Panel restart 均保持。Tag `31799876171` 与正式提升 `31799891830` 成功，三仓 exact/latest 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。
+
 # REQUIRED-RUNTIME-STALE-STATUS-1 / FE-CABIN-FARMHOUSESTACK-HIDE-1 联调契约（2026-08-14）
 
 - `GET /api/system/update/apply` 的公开结构和 full-stack phase 枚举不变。后端读取 required 协调状态时，只有当前 Panel/stack、最新 runtime apply=`succeeded`、实时 managed stack=`up_to_date` 三项同时成立，才把同 pair 的旧 `required-status.phase=failed` 持久化为 `succeeded` 并清空旧错误；`manual_action` 与任何当前未达标状态不得被前端或后端当作历史故障隐藏。

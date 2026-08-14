@@ -1,4 +1,9 @@
-# FE-RELEASE-GATE-RELOCATION-1 接手记录（2026-08-14，completed）
+# v0.4.16 前端发布接手状态（2026-08-14，released）
+
+- `FarmhouseStack` 两端隐藏兼容与游戏日回档悬停详情已进入 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`。最终候选 `31799350642` 在 fresh 和从 `v0.4.15` Web 升级后的 minified production chunk 中重复验证两项契约，并通过前端 17 项状态测试、audit/build 与网站 build。
+- Tag `31799876171`、正式提升 `31799891830` 成功；三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像版本接口/重启与 GitHub Release 四项资产均通过，下一位无需再为本版补发。
+
+# FE-RELEASE-GATE-RELOCATION-1 接手记录（2026-08-14，released in v0.4.16）
 
 ## 改了什么、影响哪些文件
 
@@ -11,7 +16,7 @@
 - 运行 `npm run test:responsive-layout`；同时对两个 workflow 运行 YAML/actionlint，对三个 Bash 脚本运行 `bash -n`/ShellCheck。真实候选链由 Windows wrapper 和受控 TLS DinD 验证。
 - 后续新增关键前端发布测试时，应加入 `scripts/run-release-gates.sh` 并扩展本契约；不要把重复 npm 门禁重新放进 tag workflow，否则会失去“只提升已测 digest”的保证。
 
-# FE-CABIN-FARMHOUSESTACK-HIDE-1 接手记录（2026-08-14，completed）
+# FE-CABIN-FARMHOUSESTACK-HIDE-1 接手记录（2026-08-14，released in v0.4.16）
 
 ## 改了什么、影响哪些文件
 
@@ -1708,7 +1713,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - `scripts/test-new-game-idempotency.ts` 真实 mock fetch 验证 URL/body/credentials/header，并用 TypeScript AST 锁定 ref 的生成、复用、失败保留与成功清理顺序；已接入 compatibility-matrix/release workflow 和 responsive 门禁存在性断言。
 - 2026-08-13 当前源码已通过全部 14 项 `test:*`、production audit（0 vulnerabilities）与 production build。本地 Browser fixture 已核对 desktop runtime error 零重装文案、390px diagnostics 路由与零溢出、missing-files 只给 repair，console 为 0；候选镜像/升级后/正式真机仍待发布门禁。
 
-# FE-SAVE-GAMEDAY-HOVER-DETAILS-1 接手记录（2026-08-14，completed，未发布）
+# FE-SAVE-GAMEDAY-HOVER-DETAILS-1 接手记录（2026-08-14，released in v0.4.16）
 
 ## 改了什么
 

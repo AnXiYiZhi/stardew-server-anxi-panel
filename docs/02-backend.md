@@ -1,4 +1,9 @@
-# REQUIRED-RUNTIME-STALE-STATUS-1：运行栈修复成功后收敛历史失败（2026-08-14，completed）
+# v0.4.16 后端发布状态（2026-08-14，released）
+
+- `REQUIRED-RUNTIME-STALE-STATUS-1` 已随 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c` 正式发布。候选 run `31799350642` 通过默认并行 Go test/vet/build、真实 SMAPI/runtime integration、fresh/restart，以及从 `v0.4.15` 经 Panel Web API 的 unhealthy 回滚与 healthy 升级；SQLite、初始化状态、Panel 数据和非目标游戏容器/volume 均保持。
+- Tag workflow `31799876171` 与正式提升 workflow `31799891830` 成功，三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像首次与重启后均返回 Docker healthy、`/health`/database ok 和完整 `0.4.16@5fa04d1...` 版本身份；详细失败修复、矩阵和资源清理见 `docs/09-image-build.md`。
+
+# REQUIRED-RUNTIME-STALE-STATUS-1：运行栈修复成功后收敛历史失败（2026-08-14，released in v0.4.16）
 
 - 根因：`required-status.json` 既负责阻止同一 Panel/stack 的确定性失败无限重试，又被全栈升级弹窗作为当前状态读取；用户后来从维护页完成普通 runtime apply 后，`apply-status.json` 已是 `succeeded`，但普通 apply 成功路径没有同步这个 required 协调文件，旧的 `runtime_update_save_failed` 因而继续显示为当前故障。
 - `ReadRequiredRuntimeUpdateStatus` 现在会对 `failed` 做最终一致性重算。只有 required 记录属于当前 Panel version 与内嵌 required stack、最新 `apply-status.json` 为 `succeeded`，且 `InspectManagedRuntimeStack` 实时结果为 `up_to_date` 时，才原子把 required phase 改为 `succeeded`、清空旧 errorCode/error 并更新时间；`manual_action`、当前 apply 失败、版本对不匹配和实际栈未达标均保持原状。

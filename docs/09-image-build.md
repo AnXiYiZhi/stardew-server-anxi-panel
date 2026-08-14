@@ -8,7 +8,7 @@
 - 自动顺序：维护者只需把已经完成的产品变更和本版矩阵提交到同步的 `main`；产品路径过滤命中后自动候选、自动验证 main 未被取代、自动 tag、自动 digest 提升和 Release。文档、发布工作流或测试脚本自身的单独提交不自动发布镜像。任何候选证明、run ID、tag、digest、OCI 或 main 身份不符都会 fail closed；需要 major/minor 版本时才手动 dispatch 并填写版本覆盖值。
 - 本流程实现阶段用 `-AllowDirty` 做过一次不发布的合成 `0.4.16` 本地演练，仅验证脚本本身，不构成正式候选证明：候选 image ID=`sha256:86057f4d36c5866d6365e463abc9a9f4a0bf1262afac957b1ae9d2562fc1fec9`，从正式 `0.4.15` 通过真实 Web 完成 check/dry-run/apply；同引用 unhealthy 先收敛为 `failed_rolled_back/health_check_failed`，切回健康候选后升级成功，并通过 SQLite integrity、初始化/Panel 哨兵、非目标 game container/volume 与 Panel restart。最终通过轮用时 403.5 秒，未 push candidate/正式 registry、未创建 tag/Release；任务 DinD、Compose、容器、网络、卷和临时目录归零。正式版本仍必须在干净且同步的 `main` 上运行 workflow 取得 artifact。
 
-# v0.4.16 正式候选范围与专项矩阵（2026-08-14，pre-release）
+# v0.4.16 正式候选与发布结果（2026-08-14，released）
 
 ## 变更清单与受影响链路
 
@@ -29,13 +29,27 @@
 | 数据完整性 | healthy 升级、unhealthy 目标自动回滚、Panel 重启 | SQLite integrity、初始化状态、Panel 哨兵、非目标 game container/volume 均保持；unhealthy 必须为 `failed_rolled_back/health_check_failed` |
 | 资源清理 | 所有 fresh/DinD/Compose/registry/network/volume/bind | 只清理本轮 owner 资源，终态计数为 0，不执行 prune，不接触生产数据或凭据 |
 
-## 选择的自动门禁与发布前状态
+## 选择的自动门禁与发布前记录
 
 - `scripts/run-release-gates.sh` 已纳入 `test:cabin-strategy-options` 和 `test:save-backup-details`，Compatibility workflow 同步执行；responsive 契约锁定两项测试仍属于正式门禁。
 - `scripts/release-candidate.sh` 的 fresh candidate smoke 新增生产 chunk 验收；`scripts/tests/test_release_candidate_upgrade.sh` 在 `v0.4.15` 真实 Web healthy apply 成功后再次下载升级 Panel 的精确 chunk 并执行同一产品契约。两条链均检查隐藏兼容 option 与回档悬停详情，不用源码或开发服务器代替生产 bundle。
 - 由于 `backend/internal/games/stardew_junimo/**` 变化，自动路径选择必须执行后端 test/vet/build、SMAPI 真实下载和 runtime auth Docker integration；前端执行全部状态脚本、production audit/build。网站、Control 源/DLL、runtime manifest、部署脚本功能未变化，是否跳过由 `run-release-gates.sh` 基于 `v0.4.15..candidate SHA` 自动判定，不能人工缩减。
 - 本地发布前预检已通过：17 项前端状态脚本、production audit=0、TypeScript/Vite build；三个变更 Shell 的 `bash -n`/ShellCheck 0.11.0；四份 release workflow YAML 解析；Linux 三项 required-runtime 定向测试；Linux `go test -p 1 ./... -count=1`、`go vet ./...`、`go build ./...`。桌面 QA 已确认两端隐藏选项、回档详情和 console/横向溢出。首次冷 Go cache 曾被 `proxy.golang.org unexpected EOF` 截断；改用同一 owner cache 有界预热后恢复。默认多包并行在本机 Docker Desktop 曾让既有 fake dry-run 超过 5 秒预算；单项与串行全包均通过，资源归零，正式候选仍必须执行仓库默认并行命令，不能以本地串行替代。上述预检不构成正式候选证明；只有同步干净 `main` 推送后 `Validate release candidate` 的不可变 artifact、unhealthy 回滚、healthy Web 升级和后续 digest 提升全部成功，才允许自动 tag/正式发布。本节将在发布后以 workflow ID、唯一 digest、实际矩阵、耗时、故障和资源清理结果回填。
 - 首次自动候选 run `31798450997` 在精确提交 `e719f4b31fdbc4911a22c59cee326fbfd9747a95` 上停止于 fresh production bundle 断言；并行 Compatibility matrix run `31798451024` 成功。镜像 build、版本注入与 fresh health 已完成，但 `SavesPage-*.js` 的无边界提取同时匹配 `SavesPage` 和 `MobileSavesPage`，被安全判为非唯一 chunk；没有产生候选 artifact、tag、正式镜像或 Release。修复把 fresh 与升级后断言统一收紧为路径边界匹配并剥离前导 `/`，必须重新通过脚本语法/ShellCheck、合成双 chunk 回归、真实 production bundle 断言和新的完整自动候选，不能重用本次失败身份。
+
+## 正式候选、Tag 与提升结果
+
+- 产品修复提交为 `e719f4b31fdbc4911a22c59cee326fbfd9747a95`，候选 bundle 断言修复为 `b51b792433dbffcb3ee3581b0cad91ac96e5ba92`。随后用户账号提交仅修改 README 的 `5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`，旧候选 run `31799008175` 在镜像构建前因 `origin/main` 已前进而 fail closed，未生成 artifact/tag；最终候选按最新 main 重建，没有把当时工作树中另一组未提交前端修改带入版本。
+- 最终 `Validate release candidate` run `31799350642` 从 2026-08-14T12:12:33Z 到 12:20:04Z 成功（约 7 分 31 秒）。自动矩阵执行兼容契约、部署脚本、默认并行后端 test/vet/build、Junimo/SMAPI 真实网络与 runtime integration（真实 SMAPI 下载 41,889,142 B）、前端 17 项状态测试/audit/production build；因 README 变化额外构建网站。runtime manifest 未变，因此远端制品核验按脚本规则跳过。fresh health/version/setup/restart、生产 bundle 专项、`v0.4.15` Web check/dry-run/apply、同引用 unhealthy `failed_rolled_back/health_check_failed`、健康升级、SQLite/初始化/Panel 哨兵/非目标游戏容器与 volume、升级后 bundle、Panel restart 全部通过。
+- 候选证明 artifact=`release-candidate-0.4.16-5fa04d137bf7`，version=`0.4.16`、previous=`0.4.15`、commit=`5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`、build date=`2026-08-14T12:12:51Z`、image ID=`sha256:45e74b320bdd0e3304e6d582621d967e02a68873adaaf0349f5e46d4d036fd15`、唯一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。Compatibility matrix `31798967632` 在相同产品/脚本提交上成功。
+- `Tag validated release candidate` run `31799876171` 成功；annotated `v0.4.16` tag 对象=`a832e0d0be53e0a107cac34e2ccc260ce612d426`，剥离后精确指向 `5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`。`Promote validated panel candidate` run `31799891830` 从 12:20:24Z 到 12:21:56Z 成功（约 1 分 32 秒），未重新 build，只提升上述候选 digest。
+
+## 发布后独立核验与清理
+
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.16` 与 `latest` 六个远端 manifest 全部为 `sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`；OCI label 为 version=`0.4.16`、完整 revision=`5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`、created=`2026-08-14T12:12:51Z`。
+- 从 GHCR 精确 digest 启动独立正式镜像，首次与重启后均为 Docker health=`healthy`、`/health.status=ok`、database=`ok`、`/api/version=0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`、build date=`2026-08-14T12:12:51Z`、setup initialized=false。首次本地脚本只等待 HTTP 即读取 Docker health，命中正常 `starting` 窗口后已改为联合有界等待并完整重跑通过；没有降低镜像门禁。
+- GitHub Release `Stardew Server Anxi Panel 0.4.16` 为非 draft、非 prerelease。下载资产与 tag 源字节一致：`run.sh` 33,793 B / `7263bfa323b2bf4eb94674bde9c77a57a8b86734c606055c9cdef2fc1e130787`，`migrate-fnos.sh` 34,269 B / `90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`，`repair-junimo-0.3.5.sh` 14,585 B / `13a07708d23e02c002c979eef28639bc2fe283a2e5988e228afc0c068f51cd0e`，`repair-junimo-upgrade.sh` 8,521 B / `4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`。
+- 候选/正式 workflow 的 DinD、Compose、受控 registry、容器、网络、volume 与 bind 均由成功门禁清理；本地正式镜像冒烟终态容器/网络/volume 为 0，候选证明与 Release 资产临时目录也已逐文件核对后清零。没有 prune、没有生产数据或长期凭据参与测试。
 
 # v0.4.15 正式发布结果（2026-08-14，released）
 

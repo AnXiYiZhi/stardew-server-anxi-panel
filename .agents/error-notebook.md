@@ -2628,6 +2628,37 @@
 - 预防检查：脚本化跟踪不得从文件名或职责猜测显示名；列表结果应作为本轮唯一输入，单个可选工作流无运行时不能让其它必需工作流查询丢失。
 - 适用范围：`gh run list/view/watch`、workflow dispatch 与自动发布链跟踪。
 
+## 2026-08-14：把 HTTP readiness 当成 Docker health 已收敛
+
+- 环境：PowerShell 7、Docker Desktop，`v0.4.16` 正式镜像发布后隔离冒烟。
+- 错误模式：等待 `/health.status=ok` 后立即读取一次 `State.Health.Status` 并要求已经是 `healthy`，没有为 Docker healthcheck 自身的 interval/start period 保留收敛窗口。
+- 症状 / 退出码：Panel HTTP 已正常返回，Docker inspect 仍为短暂的 `starting`，冒烟脚本主动退出 1；`finally` 随后把任务容器、网络和 volume 全部精确清零，正式镜像与 registry 未改变。
+- 根因：应用 readiness 与 Docker daemon 调度 healthcheck 是两个独立时钟；前者成功不保证后者已经完成首次探针。
+- 正确做法：在同一个有界 readiness 循环中分别读取 `/health` 与完整 `docker inspect` JSON，只有 HTTP=`ok` 且 Docker health=`healthy` 才返回；重启后重复同一联合条件，再读取版本与 setup 状态。
+- 预防检查：容器冒烟必须明确区分 HTTP、进程 running 与 Docker health 三种状态；不得用任一单点替代其它状态，也不得把正常 `starting` 窗口记录成产品失败。
+- 适用范围：发布后镜像冒烟、Compose readiness、容器重启与健康检查门禁。
+
+## 2026-08-14：把 Release 资产下载、校验与递归清理放在同一命令
+
+- 最近复发/补充：拆成独立清理 cell 后，虽然已先列出精确 10 个文件、逐项 `Remove-Item` 且目录只在确认为空时非递归删除，工具策略仍在执行前拒绝整个命令；文件保持未删。确认属于工具对删除 cmdlet 的更严格边界后，不再重放 `Remove-Item`，改用同一 PowerShell 进程的 `System.IO.File.Delete`/`Directory.Delete` 对已审计的固定临时目标逐项处理，并在每步后断言不存在。
+- 环境：PowerShell 7、Codex Shell 安全策略，`v0.4.16` GitHub Release 资产复核。
+- 错误模式：同一个长 Shell cell 先 `gh release download`/`git archive`/哈希比较，再在 `finally` 中对动态临时目录执行 `Remove-Item -Recurse -Force`。
+- 症状 / 退出码：命令在执行前被策略拒绝；资产未下载，临时目录未创建，工作区和外部 Release 均未变化。
+- 根因：违反项目已规定的发布资产阶段分离与递归删除安全边界；即使路径有断言，也不能把外部读取、验收和破坏性清理绑定成一个不可分辨的长事务。
+- 正确做法：第一条命令只在已验证的精确临时目录下载、归档和完成哈希断言；第二条命令核对已知文件清单后逐文件删除，再用非递归 `Remove-Item` 从叶子到根删除已确认空目录。
+- 预防检查：Release 资产流程固定拆成“下载 → 校验完成并输出证据 → 独立清理”三阶段；任何含 `gh release download` 的 cell 不得出现 `Remove-Item`，任务临时目录尽量采用扁平、可枚举结构。
+- 适用范围：GitHub Release、外部制品、校验和与任务临时文件清理。
+
+## 2026-08-14：PowerShell 未固定 Git 补丁标准输入的 UTF-8 与 LF
+
+- 环境：PowerShell 7，在共享工作树中用 `git diff -U0` 选择发布证据 hunk，并通过 stdin 传给 `git apply --cached`。
+- 错误模式：把补丁行数组直接用 PowerShell 管道送给原生命令，假定 `$OutputEncoding=UTF-8` 同时保证行终止符为 LF。
+- 症状 / 退出码：首次用对象管道时，只含新增行的补丁以每行 `\r` 尾随空白警告写入 index，下一中文删除行无法匹配并退出 1；改用 `System.Diagnostics.Process` 但未设置 `StandardInputEncoding` 后，新增 hunk 仍可写入，包含中文删除行的下一文件再次无法匹配。两轮工作树都未变，并分别只撤销本轮错题本 index 暂存。
+- 根因：PowerShell 原生命令对象管道会按平台行结束符序列化文本，`$OutputEncoding` 不能保证 LF；直接创建重定向进程时，标准输入编码也不能依赖默认代码页。补丁必须同时固定 UTF-8 字节和 LF，否则纯新增可能掩盖编码错误，直到需要匹配中文旧行才失败。
+- 正确做法：用 `System.Diagnostics.Process` 启动 `git apply --cached --unidiff-zero -`，显式设置 `StandardInputEncoding=[System.Text.UTF8Encoding]::new($false)`，再把以 `\n` 拼接且结尾仅一个 LF 的完整补丁字符串写入 `StandardInput.Write`；先 `--check`，再正式应用，并立即跑 cached diff check。
+- 预防检查：任何需要逐字节稳定的 patch/SQL/JSON 标准输入不得由 PowerShell 对象管道或进程默认编码隐式序列化；必须显式构造 UTF-8 无 BOM 与 LF，或使用已验证的任务脚本。
+- 适用范围：`git apply`、校验和输入、跨平台补丁重放和共享工作树部分暂存。
+
 ## 编码与换行快速检查
 
 - 最近复发/补充：2026-08-13 owner guard 收口时再次对完整变更文件列表做 U+FFFD 正文扫描，命中错题本历史合法示例并误报失败；源码与新文件没有被修改。2026-08-14 候选流程收口又在同一个完整文件循环中对错题本调用 `Contains(U+FFFD)`，再次命中历史示例并主动退出 1；随即拆分为“全部目标完整字节仅查 BOM”“tracked 文件只查 `git diff --unified=0` 新增行”“untracked 新文件才查完整正文”，最终检查通过。编码收口脚本不得把 BOM 与 replacement-character 的检查范围混成同一个完整文件循环。

@@ -1,4 +1,9 @@
-# REQUIRED-RUNTIME-STALE-STATUS-1 接手记录（2026-08-14，completed）
+# v0.4.16 后端发布接手状态（2026-08-14，released）
+
+- `REQUIRED-RUNTIME-STALE-STATUS-1` 已进入 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`。最终候选 `31799350642` 通过后端默认并行 test/vet/build、真实 SMAPI/runtime integration、fresh/restart、`v0.4.15` Web unhealthy 回滚与 healthy 升级；Tag `31799876171`、正式提升 `31799891830` 成功。
+- 三仓 `0.4.16/latest` 统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`。独立正式镜像重启前后 health/database/version/setup 正确；SQLite、初始化、Panel 数据、非目标游戏容器/volume 保持，完整候选故障与资源清理见 `docs/09-image-build.md`。
+
+# REQUIRED-RUNTIME-STALE-STATUS-1 接手记录（2026-08-14，released in v0.4.16）
 
 ## 改了什么、影响哪些接口/文件
 

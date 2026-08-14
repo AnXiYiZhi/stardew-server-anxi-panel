@@ -1,3 +1,10 @@
+# 2026-08-14 已发布：v0.4.16 历史运行栈状态收敛与备份控制体验
+
+- [x] annotated `v0.4.16` 固定指向 `5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`；候选 `31799350642`、Tag `31799876171`、正式提升 `31799891830` 全部成功。
+- [x] `REQUIRED-RUNTIME-STALE-STATUS-1` 在当前 Panel/stack、apply succeeded、实时 up-to-date 三重证据下收敛旧失败；真实失败与 `manual_action` 保持。
+- [x] 桌面/移动隐藏但兼容已有 `FarmhouseStack`，桌面游戏日回档与其它备份一致展示悬停详情；fresh 与升级后 production bundle 均完成专项验收。
+- [x] `v0.4.15` Web unhealthy 回滚、healthy 升级、数据/非目标资源/重启通过；三仓 `0.4.16/latest` 六引用统一 digest=`sha256:5f07910869d6d895e40ecb3954f5905d0cb6abf830e7cf57062bbcf97ca37e0f`，版本接口与 Release 四项资产通过，任务资源清零。
+
 # 2026-08-14 完成：候选通过后全自动版本号、Tag 与正式发布
 
 - [x] 产品镜像/部署资产路径推送 `main` 后自动运行候选；默认以最新 Release 为 Web 升级源，并在最高稳定 tag 上递增 patch，major/minor 仍可手动覆盖。

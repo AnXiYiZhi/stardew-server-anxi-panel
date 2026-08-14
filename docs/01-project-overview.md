@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.4.15`（commit `d84157dc8a3abc83d13d29c276d6ed332e901ce7`）。本版修复 Nexus 扩展重复提交、上传存档后自动解绑旧玩家平台身份，以及无存档实例首次上传误报运行组件升级；三仓精确版/latest、Release 资产、上一正式版与代表老版本 Web 一键升级、升级后新功能和 unhealthy 自动回滚均已通过。后续版本采用“一次构建不可变候选、上一正式版真实 Web 升级、正式 tag 只提升同一 digest”的精简发布流程。完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.4.16`（commit `5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`）。本版在运行组件实际修复成功后安全收敛同 Panel/stack 的历史失败，桌面与移动端隐藏但兼容已有 `FarmhouseStack` 小屋策略，并让桌面游戏日回档与其它备份一致展示悬停详情。上一正式版真实 Web unhealthy 回滚与 healthy 升级、三仓精确版/latest 同 digest、正式镜像重启、版本接口及 Release 资产均已通过；发布继续采用“一次构建不可变候选、tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 
