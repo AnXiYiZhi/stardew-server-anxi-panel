@@ -2,6 +2,26 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-14：VitePress Browser 断言使用源码 href 与未限定的可访问名称
+
+- 环境：应用内 Browser，VitePress dev server，桌面 1440×900 与手机 390×844 官网验收。
+- 错误模式：把首页 DOM 的相对 `./changelog` 直接解析成无后缀目标并传给精确导航等待；随后把 H2 的可访问名称假定为纯版本号，移动端又用未限定正文范围的同名文本定位。
+- 症状 / 退出码：点击实际成功到达 `/changelog.html`，但第一次导航等待因目标少 `.html` 超时；桌面 H2 的可访问名称还包含 permalink，精确 role locator 无匹配；手机端先命中隐藏的本页目录链接而不是可见正文标题。页面未被修改，读取当前 URL/DOM 后确认导航和内容均正常。
+- 根因：VitePress dev 会规范化内部路由；标题会把锚点纳入 accessible name；响应式布局保留隐藏目录节点，单看文本顺序不能代表可见正文。
+- 正确做法：内部点击后以当前真实 URL 或 DOM 已暴露的 `.html` URL 做精确断言；H2 顺序从 `main h2` 的首文本节点读取；移动端定位限定 `main` 并断言可见性，不使用全页同名文本的第一个匹配。
+- 预防检查：点击前同时区分源码 href、DOM 规范化 href 与实际导航 URL；VitePress 标题和响应式重复文本一律先查看 DOM snapshot，再选择 `main` 范围和真实可见节点。
+- 适用范围：VitePress、应用内 Browser、桌面/移动响应式导航与目录验收。
+
+## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
+
+- 环境：Windows 工作区，发布后向 `docs/09-image-build.md` 补写公开说明证据。
+- 错误模式：凭记忆把文件首个标题写成“正式发布流程”，直接以该行作为补丁上下文。
+- 症状 / 退出码：`apply_patch verification failed`，未匹配到预期行；补丁为零修改，其它文件不受影响。
+- 根因：实际首行是“候选制品一次构建与正式 digest 提升流程”，没有先读取精确上下文。
+- 正确做法：先用 `Get-Content -TotalCount` 读取目标文件真实文件头，再基于精确命中行构造补丁；补丁失败后先检查 diff，确认零修改再重写。
+- 预防检查：跨文件或长文档插入前必须读取目标位置附近的当前文本，不得复用相邻文档标题或历史记忆作为 hunk 上下文。
+- 适用范围：`apply_patch`、长期 Markdown 文档、并发工作树中的上下文敏感编辑。
+
 ## 2026-08-14：用嵌套数组字面量合并原生命令输出时文件列表被压成单个路径
 
 - 环境：PowerShell 7，交付前合并 `git diff --name-only` 与 `git ls-files --others` 的编码审计。
@@ -1356,7 +1376,7 @@
 - 最近复发/补充：2026-08-10 v0.4.10 官网 CSS 修复本地验收又在嵌套 `pwsh` 中使用 `Start-Process npm.cmd`、隐藏窗口和日志重定向，命令再次在执行前被策略拒绝，端口/进程均未创建。该错误已重复，预防规则提升到 `AGENTS.md`：Windows 本地预览直接作为可等待的 `shell_command` cell 运行，禁止再用 `Start-Process` 后台派生。
 - 同轮终止可等待 cell 后，VitePress 子进程仍监听 4187；首次清理前把整条后代统一要求匹配 `docs:preview|vitepress preview`，但叶子真实 argv 为 `vitepress.js preview docs`，归属检查安全失败且未停止进程。正确做法是分别核对根进程的 `npm.cmd run docs:preview`、叶子绝对工作区 `vitepress.js preview docs`、固定端口及完整 ParentProcessId 链，再按精确 PID 自底向上停止并复查 listener；不要用一个过窄字符串模式替代进程树归属。
 - 最近复发/补充：2026-08-13 NAS 文档预览清理时，已读到监听叶子为 `vitepress.js preview docs`，却仍用拼错且过窄的单个 `-like '*...*nodes*'` 模式验证，安全断言拒绝停止且进程未变。随后按本条既有规则读取监听 PID 的完整父进程链，分别核对工作区、`vitepress.js`、`preview docs` 和精确端口，再自底向上幂等停止；不得把多个条件压成未经探针的通配字符串。
-- 第二轮本地预览调用 `functions.wait(terminate=true)` 本身等待 124 秒后以 124 超时，VitePress 仍监听 4187；没有把“已请求终止”当成实际清理。2026-08-13 部署卡片 QA 清理 18120 预览时同一形态再次等待 124 秒并以 124 退出，精确端口仍由工作区 `vitepress.js preview docs --host 127.0.0.1 --port 18120` 监听；没有原样重试。两次均改为只读取得监听 PID 与完整 ParentProcessId/argv，确认任务归属后自底向上停止并复查 `-State Listen` 为 0。任何 cell terminate/timeout 结果都不是子进程退出证据，必须按端口和进程树复核。
+- 第二轮本地预览调用 `functions.wait(terminate=true)` 本身等待 124 秒后以 124 超时，VitePress 仍监听 4187；没有把“已请求终止”当成实际清理。2026-08-13 部署卡片 QA 清理 18120 预览时同一形态再次等待 124 秒并以 124 退出；2026-08-14 v0.4.16 官网补录 QA 的 41731 dev server 也在 cell 超时后继续监听。三次都没有原样重试，而是只读取得监听 PID、绝对工作区 argv 和精确端口，确认任务归属后定向停止并复查 `-State Listen` 为 0。任何 cell terminate/timeout 结果都不是子进程退出证据，必须按端口和进程树复核。
 - 环境：Codex Windows `shell_command`，准备启动 VitePress 本地开发服务器。
 - 错误模式：在嵌套 `pwsh` 中用 `Start-Process npm.cmd`、重定向日志并隐藏窗口。
 - 症状 / 退出码：命令在执行前被工具策略拒绝，没有创建进程或日志。

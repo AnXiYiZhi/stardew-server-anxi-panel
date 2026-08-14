@@ -1,3 +1,8 @@
+# DOCS-RELEASE-NOTES-0.4.15-0.4.16：官网与 Release 说明补齐（2026-08-14，completed）
+
+- 官网首页版本由 v0.4.14 切换到 v0.4.16，更新日志补入遗漏的 v0.4.15，并以同一用户可读范围同步两版 GitHub Release：v0.4.15 覆盖 Nexus 幂等、存档导入自动解绑、无存档首次上传与 nanoid 3.3.18；v0.4.16 覆盖历史运行组件失败状态收敛、隐藏但兼容 `FarmhouseStack`、游戏日回档悬停详情。
+- 影响 `website/docs/index.md`、`website/docs/changelog.md` 和长期维护文档；没有修改官网主题/CSS/依赖、Panel 前端运行代码、API 或镜像。VitePress production build 5.63 秒通过；应用内 Browser 在 1440×900 与 390×844 完成首页到日志真实点击、版本顺序和正文断言，横向溢出、overlay、console error/warn 均为 0。两版 GitHub Release 已同步且状态/发布时间/四项资产保持；推送后继续复核 Pages 与线上正文。
+
 # v0.4.16 前端发布状态（2026-08-14，released）
 
 - `FE-CABIN-FARMHOUSESTACK-HIDE-1` 与 `FE-SAVE-GAMEDAY-HOVER-DETAILS-1` 已随 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c` 发布。候选在 fresh 与 `v0.4.15` Web 升级后的生产 bundle 中都验证了桌面/移动仅隐藏 `FarmhouseStack` 且保留旧值兼容，以及游戏日回档整行悬停包含类型、农民、日期和地图。

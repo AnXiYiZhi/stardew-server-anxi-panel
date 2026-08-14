@@ -1,3 +1,15 @@
+# DOCS-RELEASE-NOTES-0.4.15-0.4.16 接手记录（2026-08-14，completed）
+
+## 改了什么、影响哪些文件
+
+- `website/docs/index.md` 的首页版本和摘要切换到 v0.4.16；`website/docs/changelog.md` 在 v0.4.14 之前补入 v0.4.16 与遗漏的 v0.4.15。两版 GitHub Release 使用同一用户可见功能范围，不再只有 compare 链接、候选 run 或依赖提交标题。
+- 只影响官网 Markdown、GitHub Release 正文和对应维护文档；不改变网站主题、CSS、依赖、路由、Panel API、运行镜像、tag 或 Release 资产。
+
+## 如何验证、下一步注意事项
+
+- VitePress production build 5.63 秒通过；应用内 Browser 在 1440×900 与 390×844 实际从首页点击版本入口，确认 v0.4.16/v0.4.15/v0.4.14 顺序、两版正文、root/body 零横向溢出、零 overlay 与零 console error/warn。两版 GitHub Release 已同步且正式状态、发布时间、四项附件未变；推送后仍需跟踪 Pages workflow 并复核线上同一路径。
+- 以后正式发布完成后应在同一收口任务内同步首页 frontmatter、首页版本摘要、changelog 与 GitHub Release 用户可读正文，不能只记录内部发布证据或 compare 链接。
+
 # v0.4.16 前端发布接手状态（2026-08-14，released）
 
 - `FarmhouseStack` 两端隐藏兼容与游戏日回档悬停详情已进入 `v0.4.16@5fa04d137bf760d2124b75cc5e3e8e2b44ff4c7c`。最终候选 `31799350642` 在 fresh 和从 `v0.4.15` Web 升级后的 minified production chunk 中重复验证两项契约，并通过前端 17 项状态测试、audit/build 与网站 build。

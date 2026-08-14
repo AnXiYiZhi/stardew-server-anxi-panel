@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.14
+release: v0.4.16
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.14。启动状态不再提前误报版本错误，运行故障不会被误导成重装；新建存档和角色定制采用可恢复的持久化门禁。
+    details: 当前最新 v0.4.16。运行组件成功升级后会自动清理已失效的失败提示；小屋策略和游戏日回档信息展示也更清晰。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.14</strong>
-    <p>Control 尚未就绪时会继续等待，只有明确的错误版本才报不匹配；运行错误不再要求重装。首次建档、角色定制与立即保存由同一个持久事务保护，中断后可以安全恢复。</p>
+    <strong>v0.4.16</strong>
+    <p>已成功完成的运行组件升级不再残留旧失败提示；新建或修改小屋设置时隐藏 FarmhouseStack，已有配置继续兼容；游戏日回档悬停可查看类型、农民、游戏日期和地图。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

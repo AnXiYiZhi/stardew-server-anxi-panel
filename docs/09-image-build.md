@@ -1,3 +1,9 @@
+# v0.4.15 / v0.4.16 发布说明补录（2026-08-14，post-release docs-only）
+
+- 正式镜像、tag、digest 与 Release 资产均不变。本次只补齐此前遗漏的公开说明：官网首页由 v0.4.14 切换到 v0.4.16，changelog 同时补入 v0.4.15 与 v0.4.16；GitHub 两版 Release 正文同步为同一用户可读变更范围，并继续保留精确验证身份和 compare 链接。
+- v0.4.15 公开范围为 Nexus 0.1.3 持久幂等、存档导入自动解绑、无存档实例首次上传和 nanoid 3.3.18；v0.4.16 公开范围为历史 runtime failure 安全收敛、桌面/移动隐藏但兼容 `FarmhouseStack`、桌面游戏日回档悬停详情。
+- 这是发布后纯文档修正，不改变候选内容、运行契约或测试输入，不触发候选重建、不移动既有 tag，也不重新提升 digest。VitePress build 5.63 秒通过；应用内 Browser 在 1440×900 与 390×844 验证首页→更新日志真实导航、两版正文、零横向溢出、零 overlay 和零 console error/warn。GitHub 两版 Release 正文已更新且非 draft/prerelease、发布时间未变、每版四项资产名称/大小/digest 未变；Pages workflow、线上正文与最终提交身份待推送后回填。
+
 # 候选制品一次构建与正式 digest 提升流程（2026-08-14）
 
 - 正式发布拆成三个自动衔接的 workflow：影响镜像或正式部署资产的提交推送到 `main` 后，`.github/workflows/release-candidate.yml` 自动读取最新 GitHub Release 作为升级源，并在最高稳定 tag 上递增 patch 版本，冻结 version/full commit/build date、运行代码回归并调用 `scripts/release-candidate.sh`；Windows Docker Desktop 可用 `pwsh -NoLogo -NoProfile -File scripts/release-candidate.ps1 -Version <x.y.z> -PreviousVersion <x.y.z>` 复现同一镜像链。只有候选全部通过后才推送 GHCR `candidate-<version>-<sha12>` 并上传 `candidate.json` 证明。手动 dispatch 仅用于明确 major/minor 版本或受控重试。
