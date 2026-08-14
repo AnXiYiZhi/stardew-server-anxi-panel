@@ -141,6 +141,7 @@ const modsPageSource = readFileSync(new URL('../src/games/stardew/pages/ModsPage
 const qaSource = readFileSync(new URL('../src/qa-layout-main.tsx', import.meta.url), 'utf8')
 const releaseWorkflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8')
 const releaseCandidateWorkflow = readFileSync(new URL('../../.github/workflows/release-candidate.yml', import.meta.url), 'utf8')
+const releaseAfterCandidateWorkflow = readFileSync(new URL('../../.github/workflows/release-after-candidate.yml', import.meta.url), 'utf8')
 const releaseGates = readFileSync(new URL('../../scripts/run-release-gates.sh', import.meta.url), 'utf8')
 const compatibilityWorkflow = readFileSync(new URL('../../.github/workflows/compatibility-matrix.yml', import.meta.url), 'utf8')
 
@@ -192,6 +193,10 @@ assert.match(compatibilityWorkflow, /npm run test:new-game-idempotency/)
 assert.match(releaseGates, /npm run test:nexus-extension-idempotency/)
 assert.match(compatibilityWorkflow, /npm run test:nexus-extension-idempotency/)
 assert.ok(releaseCandidateWorkflow.includes('scripts/run-release-gates.sh'))
+assert.ok(releaseCandidateWorkflow.includes('push:\n    branches: [main]'))
+assert.ok(releaseAfterCandidateWorkflow.includes('workflow_run:'))
+assert.ok(releaseAfterCandidateWorkflow.includes('gh workflow run release.yml'))
+assert.ok(releaseWorkflow.includes('workflow_dispatch:'))
 assert.match(releaseWorkflow, /skopeo copy --all --preserve-digests/)
 assert.doesNotMatch(releaseWorkflow, /docker build/)
 

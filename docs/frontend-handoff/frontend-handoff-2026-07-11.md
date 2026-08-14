@@ -3,6 +3,7 @@
 ## 改了什么、影响哪些文件
 
 - `frontend/scripts/test-responsive-layout.ts` 的发布契约从“`release.yml` 必须直接包含三个 npm 测试命令”调整为三层断言：`scripts/run-release-gates.sh` 保留 responsive/new-game/Nexus 回归，`release-candidate.yml` 必须调用该统一门禁，正式 `release.yml` 必须只用 `skopeo --preserve-digests` 提升制品且不得 `docker build`。
+- 自动发布扩展后，该测试还读取 `release-after-candidate.yml`：要求候选具备 `main` 产品路径 push 入口、成功候选由 `workflow_run` 收口，并显式 dispatch 支持 `workflow_dispatch` 的正式 workflow。`GITHUB_TOKEN` 创建 tag 不承担递归触发职责。
 - 没有修改 React/CSS/API；影响仅限前端测试对新候选发布架构的静态保护。Compatibility workflow 仍直接执行核心前端测试，候选 workflow 运行完整状态测试、audit 和 production build。
 
 ## 如何验证、下一步注意事项

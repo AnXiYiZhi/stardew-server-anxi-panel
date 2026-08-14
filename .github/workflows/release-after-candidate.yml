@@ -1,0 +1,109 @@
+name: Tag validated release candidate
+
+on:
+  workflow_run:
+    workflows:
+      - "Validate release candidate"
+    types:
+      - completed
+
+concurrency:
+  group: tag-validated-candidate-main
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  tag:
+    name: Tag the still-current validated main commit
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Download candidate proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          proof_dir="$RUNNER_TEMP/candidate-proof"
+          mkdir -p "$proof_dir"
+          artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/artifacts")"
+          mapfile -t artifact_names < <(jq -r '.artifacts[] | select((.name | startswith("release-candidate-")) and (.expired | not)) | .name' <<<"$artifacts_json")
+          if [[ "${#artifact_names[@]}" -ne 1 ]]; then
+            echo "expected exactly one unexpired candidate proof artifact" >&2
+            exit 1
+          fi
+          gh run download "$CANDIDATE_RUN_ID" --name "${artifact_names[0]}" --dir "$proof_dir"
+          if [[ ! -s "$proof_dir/candidate.json" ]]; then
+            echo "candidate proof is missing" >&2
+            exit 1
+          fi
+
+      - name: Verify current main, create tag, and start promotion
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ github.event.workflow_run.id }}
+          CANDIDATE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          proof="$RUNNER_TEMP/candidate-proof/candidate.json"
+          schema="$(jq -r '.schemaVersion // 0' "$proof")"
+          version="$(jq -r '.version // empty' "$proof")"
+          commit="$(jq -r '.commit // empty' "$proof")"
+          workflow_run_id="$(jq -r '.workflowRunId // empty' "$proof")"
+          candidate_ref="$(jq -r '.candidateRef // empty' "$proof")"
+          digest="$(jq -r '.digest // empty' "$proof")"
+          expected_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-$version-${commit:0:12}"
+          if [[ "$schema" != 1 || ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || "$commit" != "$CANDIDATE_COMMIT" || "$workflow_run_id" != "$CANDIDATE_RUN_ID" || "$candidate_ref" != "$expected_ref" || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "candidate proof does not match the completed workflow run" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git fetch --tags origin
+          if [[ "$(git rev-parse origin/main)" != "$commit" ]]; then
+            {
+              echo "## Candidate superseded"
+              echo
+              echo "Validated commit \`$commit\` is no longer current \`origin/main\`; no tag or release was created."
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          tag="v$version"
+          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            if [[ "$(git cat-file -t "refs/tags/$tag")" != tag || "$(git rev-parse "$tag^{}")" != "$commit" ]]; then
+              echo "existing tag $tag does not match the validated commit" >&2
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" "$commit" -m "$tag validated candidate" -m "Candidate workflow: $CANDIDATE_RUN_ID"$'\n'"Digest: $digest"
+            git push origin "refs/tags/$tag"
+          fi
+
+          gh workflow run release.yml --ref main -f "tag=$tag"
+          {
+            echo "## Formal promotion dispatched"
+            echo
+            echo "- Tag: \`$tag\`"
+            echo "- Commit: \`$commit\`"
+            echo "- Candidate workflow: \`$CANDIDATE_RUN_ID\`"
+            echo "- Digest: \`$digest\`"
+          } >>"$GITHUB_STEP_SUMMARY"

@@ -4,9 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing validated annotated tag to promote
+        required: true
+        type: string
 
 concurrency:
-  group: release-panel-${{ github.ref }}
+  group: release-panel-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -30,14 +36,17 @@ jobs:
       - name: Checkout tag
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Verify immutable tag and synchronized main
         id: identity
         shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
+          tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
           version="${tag#v}"
           if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "release tag must be v followed by an exact stable semantic version" >&2
@@ -97,10 +106,11 @@ jobs:
           commit="$(jq -r '.commit // empty' "$proof")"
           candidate_ref="$(jq -r '.candidateRef // empty' "$proof")"
           digest="$(jq -r '.digest // empty' "$proof")"
+          proof_run_id="$(jq -r '.workflowRunId // empty' "$proof")"
           expected_ref="$GHCR_IMAGE:candidate-$EXPECTED_VERSION-$EXPECTED_SHORT_SHA"
-          if [[ "$schema" != 1 || "$version" != "$EXPECTED_VERSION" || "$commit" != "$EXPECTED_COMMIT" || "$candidate_ref" != "$expected_ref" || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          if [[ "$schema" != 1 || "$version" != "$EXPECTED_VERSION" || "$commit" != "$EXPECTED_COMMIT" || "$proof_run_id" != "$selected_run" || "$candidate_ref" != "$expected_ref" || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "candidate proof identity does not match the immutable release tag" >&2
-            jq '{schemaVersion,version,commit,candidateRef,digest}' "$proof" >&2
+            jq '{schemaVersion,version,commit,workflowRunId,candidateRef,digest}' "$proof" >&2
             exit 1
           fi
           {
@@ -236,9 +246,11 @@ jobs:
       - name: Prepare release notes
         id: notes
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.identity.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
+          tag="$RELEASE_TAG"
           subject="$(git log -1 --format=%s "$tag^{}")"
           tag_message="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
           details="$(printf '%s\n' "$tag_message" | tail -n +2 | sed '/./,$!d')"
@@ -265,6 +277,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.identity.outputs.tag }}
           name: Stardew Server Anxi Panel ${{ steps.identity.outputs.version }}
           body_path: ${{ steps.notes.outputs.path }}
           files: |

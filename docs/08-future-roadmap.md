@@ -1,3 +1,9 @@
+# 2026-08-14 完成：候选通过后全自动版本号、Tag 与正式发布
+
+- [x] 产品镜像/部署资产路径推送 `main` 后自动运行候选；默认以最新 Release 为 Web 升级源，并在最高稳定 tag 上递增 patch，major/minor 仍可手动覆盖。
+- [x] 新增成功候选的 `workflow_run` 收口器：校验证明 run/commit/version/digest，main 已前进则安全跳过，仍为最新则创建 annotated tag，并通过显式 `workflow_dispatch` 启动正式 digest 提升，规避 `GITHUB_TOKEN` 推 tag 不递归触发 workflow 的限制。
+- [x] 文档、工作流和纯测试脚本提交不自动发布镜像；候选输入发生新产品提交时旧 run 自动取消或最终标记 superseded，不移动已有 tag。
+
 # 2026-08-14 完成：候选镜像一次构建与 digest 提升发布（RELEASE-CANDIDATE-PROMOTION-1）
 
 - [x] 新增手动 `Validate release candidate` workflow：冻结同步 `main` 的版本、完整 commit 与 build date，自动执行代码回归、fresh/restart、上一正式版真实 Web 一键升级、unhealthy 自动回滚、SQLite/初始化/非目标资源保留，并只在全部成功后推送带 SHA 的 GHCR candidate。

@@ -4,6 +4,7 @@
 - E2E 必须通过公开接口依次调用 `POST /api/setup/admin`、`POST /api/system/update/check`、`POST/GET /api/system/update/dry-run` 和 `POST/GET /api/system/update/apply`。上一正式版使用当前 `{"confirmFullStack":true}`；代表老版本如果仍采用历史空 body，只有第一次请求明确返回 400 且尚未创建 apply 时才允许按旧契约重发空 body。
 - 相同精确版本引用先指向带失败 HEALTHCHECK 的候选派生镜像，必须恢复上一正式版并返回 `failed_rolled_back/health_check_failed`；随后 registry 原子切回本次构建的健康候选，再创建新的 check/dry-run/apply。健康链要求目标 `/health`、`/api/version` 的 version/full commit、SQLite integrity、初始化状态、Panel 哨兵、非目标游戏容器 ID/volume hash 和 Panel 重启后 apply 终态全部正确。
 - 正式 tag workflow 不调用上述 API，也不重新测试另一份构建；它只消费成功候选 workflow 上传的 `candidate.json`，验证 tag/main/commit/version/build date/digest 后提升原对象。候选 artifact 不匹配、过期或 registry 对象被覆盖时 fail closed。
+- 产品路径 push 自动触发候选；成功 run 由独立 `workflow_run` 工作流校验证明并再次读取 `origin/main`。仅当前 SHA 未被后续提交取代时创建 annotated tag，并显式 dispatch 正式提升 workflow；候选被取代时不调用 Panel API、不移动 tag、不发布 registry。
 
 # SAVE-IMPORT-FIRST-UPLOAD-1 联调契约（2026-08-13，completed，未发布）
 

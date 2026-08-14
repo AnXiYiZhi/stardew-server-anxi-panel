@@ -1,7 +1,8 @@
 # FE-RELEASE-GATE-RELOCATION-1：前端发布契约迁到候选阶段（2026-08-14，completed）
 
-- 前端 15 项状态测试、production audit/build 仍是每个正式候选的必跑回归，但执行入口从 tag 后的 `release.yml` 移到 `scripts/run-release-gates.sh`，由手动 `release-candidate.yml` 在候选镜像构建前调用。Compatibility workflow 继续在 `main` 直接执行同组核心前端测试。
+- 前端 15 项状态测试、production audit/build 仍是每个正式候选的必跑回归，但执行入口从 tag 后的 `release.yml` 移到 `scripts/run-release-gates.sh`，由产品路径自动或受控手动触发的 `release-candidate.yml` 在候选镜像构建前调用。Compatibility workflow 继续在 `main` 直接执行同组核心前端测试。
 - `frontend/scripts/test-responsive-layout.ts` 不再错误要求正式 digest 提升 workflow 包含 npm 命令；它现在同时断言统一门禁脚本仍含 responsive/new-game/Nexus 三项关键回归、候选 workflow 必须调用统一门禁、正式 workflow 必须使用 `skopeo --preserve-digests` 且不得重新 `docker build`。
+- 自动发布补充契约继续由同一测试保护：候选必须存在 `main` 产品路径 push 入口，成功候选必须由独立 `workflow_run` 收口器启动 `release.yml` 的 `workflow_dispatch`；避免候选通过后仍要求人工点按钮，或错误依赖 `GITHUB_TOKEN` 的 tag push 递归触发。
 - 这不改变任何 React 页面、CSS、API 或响应式算法。验证运行 `npm run test:responsive-layout`，并结合 workflow YAML/actionlint、Bash/ShellCheck 和真实候选 Web-upgrade E2E；后续增加前端关键回归时应更新统一门禁脚本和本契约，不得重新塞回 tag workflow。
 
 # v0.4.15 前端发布状态（2026-08-14，released）
