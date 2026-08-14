@@ -53,7 +53,7 @@ if [[ ! -f "$fixtures_tar" ]]; then
   exit 1
 fi
 
-for command_name in docker curl jq openssl sqlite3 sha256sum; do
+for command_name in docker curl grep jq openssl sha256sum sort sqlite3; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "candidate upgrade E2E: missing required command: $command_name" >&2
     exit 1
@@ -246,6 +246,55 @@ wait_version() {
   return 1
 }
 
+assert_upgraded_frontend_contract() {
+  local output_dir="$root/upgraded-frontend"
+  local entry_asset=""
+  local prefix=""
+  local asset=""
+  local control_asset=""
+  local mobile_control_asset=""
+  local saves_asset=""
+  local -a matches=()
+
+  mkdir -p "$output_dir"
+  curl --silent --show-error --fail "http://127.0.0.1:$panel_port/" >"$output_dir/index.html"
+  mapfile -t matches < <(grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' "$output_dir/index.html" | sort -u)
+  if [[ "${#matches[@]}" -ne 1 ]]; then
+    echo "candidate upgrade E2E: expected exactly one frontend entry asset" >&2
+    exit 1
+  fi
+  entry_asset="${matches[0]}"
+  curl --silent --show-error --fail "http://127.0.0.1:$panel_port$entry_asset" >"$output_dir/entry.js"
+
+  for prefix in ServerControlPage MobileControlPage SavesPage; do
+    mapfile -t matches < <(grep -oE "$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
+    if [[ "${#matches[@]}" -ne 1 ]]; then
+      echo "candidate upgrade E2E: expected exactly one $prefix frontend chunk" >&2
+      exit 1
+    fi
+    asset="/assets/${matches[0]}"
+    curl --silent --show-error --fail "http://127.0.0.1:$panel_port$asset" >"$output_dir/$prefix.js"
+    case "$prefix" in
+      ServerControlPage) control_asset="$output_dir/$prefix.js" ;;
+      MobileControlPage) mobile_control_asset="$output_dir/$prefix.js" ;;
+      SavesPage) saves_asset="$output_dir/$prefix.js" ;;
+    esac
+  done
+
+  for asset in "$control_asset" "$mobile_control_asset"; do
+    if ! grep -Eq 'value:.FarmhouseStack.,hidden:!0,children:.FarmhouseStack（兼容已有配置）.' "$asset"; then
+      echo "candidate upgrade E2E: upgraded frontend exposes FarmhouseStack or lost legacy-value compatibility" >&2
+      exit 1
+    fi
+  done
+  if ! grep -Eq 'kind===.auto.\?.游戏日回档.' "$saves_asset" ||
+    ! grep -Eq 'farmerName\?.农民：' "$saves_asset" ||
+    ! grep -Eq 'farmType\?.地图：' "$saves_asset"; then
+    echo "candidate upgrade E2E: upgraded frontend lost game-day rollback hover details" >&2
+    exit 1
+  fi
+}
+
 wait_version "$previous_version" 120
 
 setup_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie-jar "$cookie_file" --header 'Content-Type: application/json' --data '{"username":"admin","password":"release-candidate-password","confirmPassword":"release-candidate-password"}' "http://127.0.0.1:$panel_port/api/setup/admin")"
@@ -374,6 +423,7 @@ run_dry_run
 start_apply
 wait_version "$version" 300
 wait_apply_phase succeeded 120
+assert_upgraded_frontend_contract
 
 if [[ ! -s "$data_dir/panel.db" || ! -f "$data_dir/release-candidate-sentinel.txt" ]]; then
   echo "candidate upgrade E2E: Panel data was not preserved" >&2

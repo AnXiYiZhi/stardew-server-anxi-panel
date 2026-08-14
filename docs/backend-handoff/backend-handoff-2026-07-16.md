@@ -1,3 +1,16 @@
+# REQUIRED-RUNTIME-STALE-STATUS-1 接手记录（2026-08-14，completed）
+
+## 改了什么、影响哪些接口/文件
+
+- 修复 Panel/运行栈已经成功更新后，`.local-container/junimo-update/required-status.json` 仍保留旧 `failed/runtime_update_save_failed` 并污染全栈升级弹窗的问题。
+- `required_runtime_update.go` 在公开状态读取及 Panel 启动协调入口重算旧失败；`runtime_update_apply_runner.go` 在普通 apply 成功后立即触发重算。必须同时满足当前 Panel/stack、最新 apply succeeded、实际栈 up-to-date 才写 `succeeded` 并清空旧错误；`manual_action` 和真实当前失败不变。公开 HTTP DTO、phase 枚举及历史 dry-run/apply 文件均不变。
+- `runtime_update_apply_test.go` 新增立即收敛、读取时迁移和失败不误清理回归。
+
+## 如何验证、下一步注意事项
+
+- 定向运行：`go test ./internal/games/stardew_junimo -run 'Test(RequiredRuntimeUpdateFailureIsPersistedAndNotRetriedOnSamePanel|SuccessfulRuntimeApplyResolvesStaleRequiredFailure|ReadRequiredRuntimeStatusResolvesHistoricalFailure)$' -count=1`。
+- 升级后 fixture 应先放入同 Panel/stack 的旧 required failure，再提供 succeeded apply 与 up-to-date 运行栈；首次读取应返回并持久化 `succeeded`。删除任一证明条件时必须继续返回 `failed`。不要把 `manual_action` 纳入自动清理，也不要物理删除 apply/dry-run 诊断证据。
+
 # SAVE-IMPORT-FIRST-UPLOAD-1 接手记录（2026-08-13，completed，未发布）
 
 ## 2026-08-14 发布门禁进展

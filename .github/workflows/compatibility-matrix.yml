@@ -55,8 +55,10 @@ jobs:
           npm run test:install-state
           npm run test:new-game-idempotency
           npm run test:nexus-extension-idempotency
+          npm run test:cabin-strategy-options
           npm run test:farm-catalog
           npm run test:save-import
+          npm run test:save-backup-details
           npm run test:mod-list
           npm run test:responsive-layout
           npm run test:player-mods

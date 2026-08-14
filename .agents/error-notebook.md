@@ -2,6 +2,26 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-14：用嵌套数组字面量合并原生命令输出时文件列表被压成单个路径
+
+- 环境：PowerShell 7，交付前合并 `git diff --name-only` 与 `git ls-files --others` 的编码审计。
+- 错误模式：使用 `$changed = @((git diff ...), (git ls-files ...))` 收集两组原生命令输出，再把元素直接传给 `Resolve-Path`/`ReadAllBytes`。
+- 症状 / 退出码：第一组多行输出被当成一个以空格连接的字符串，`ReadAllBytes` 报“文件名、目录名或卷标语法不正确”并退出 1；此前独立执行的 `git diff --check` 已通过，产品文件没有被该审计命令修改。
+- 根因：在该嵌套调用形态下，逗号分隔的子表达式没有按逐行路径扁平化，后续代码错误地假设每个数组元素都是单一路径。
+- 正确做法：先初始化 `$changed = @()`，再分别用 `$changed += @(git diff --name-only ...)` 和 `$changed += @(git ls-files --others --exclude-standard)` 收集并扁平化每组逐行输出，最后过滤空值和去重。
+- 预防检查：合并多个原生命令的文件列表后，先断言每个元素 `Test-Path -LiteralPath` 成功并输出计数；不要用嵌套 `@((command1), (command2))` 直接构造路径列表。
+- 适用范围：PowerShell 7、Git 文件清单、BOM/U+FFFD 审计和任何逐文件循环。
+
+## 2026-08-14：Docker Desktop 多包并行耗尽 fake 异步测试的固定终态预算
+
+- 环境：Windows Docker Desktop、`golang:1.25-alpine`、只读仓库 bind，发布前本地执行 `go test ./... -count=1`。
+- 错误模式：在本机受限 Linux VM 中按 Go 默认包并行度同时运行约 48 秒的 web 包和 Stardew 异步 fake 测试，假设后者的 5/8 秒终态预算不会受调度竞争影响。
+- 症状 / 退出码：`TestRuntimeUpdateDryRunSucceedsWithoutDestructiveCommandsAndPersists` 停在 fake `pulling_server` 并超时；更早一轮三项定向测试曾停在 required `applying`。两处随后都有异步 job 写已关闭测试数据库的日志。相同三项定向测试重跑为 0.886 秒全绿；同一 Linux 环境使用 `go test -p 1 ./... -count=1` 后全包、vet、build 全绿，Stardew 包 54.156 秒、web 包 30.383 秒，任务容器/卷均归零。
+- 根因：测试 fake 本身没有真实网络或 Docker 延迟；本地 VM 的多包资源竞争耗尽了测试夹具固定等待预算，不能据此判定本次运行栈状态修复失败。
+- 正确做法：Docker Desktop 本地全包预检使用 `go test -p 1 ./... -count=1` 隔离资源竞争，同时保留定向原命令复验；正式候选仍运行仓库定义的默认全量命令并作为发布权威。若 GitHub runner 也复现同一终态超时，必须修复测试等待/产品终态，不能用串行或延长 timeout 掩盖远端失败。
+- 预防检查：本机容器全包若异步 fake 超时，先比较单项、串行全包与包耗时，检查是否有产品终态或资源竞争证据；不要直接重跑默认并行，也不要把本地串行通过替代正式候选。
+- 适用范围：Docker Desktop 本地 Go 全包、SQLite/job 异步测试和带固定轮询预算的 fake runner。
+
 ## 2026-08-14：路径正则的斜杠转义未在补丁包装后落盘
 
 - 环境：更新 TypeScript 响应式测试，使其断言 candidate workflow 调用统一门禁脚本。
@@ -84,6 +104,7 @@
 
 ## 2026-08-14：检索已返回真实文件后仍读取了猜测文件名
 
+- 最近复发/补充：同日修复升级历史状态时，`rg` 已返回 `backend/internal/games/stardew_junimo/runtime_update_dry_run_test.go`，同一组合命令后半仍读取了猜测的 `runtime_update_test.go`，`Get-Content` 退出 1；只读定位中断，源码未被该命令修改。随后改为下一条独立命令只读取实际命中路径；后续组合命令禁止在 `rg` 之后出现未由其输出得到的新文件名。
 - 环境：Windows PowerShell 7，审计候选发布工作流与 Go updater 更新检查实现。
 - 错误模式：同一组合命令前半的 `rg` 已命中 `backend/internal/updatecheck/service.go`，后半仍凭记忆执行 `Get-Content backend/internal/updatecheck/checker.go`。
 - 症状 / 退出码：`Get-Content` 报路径不存在，组合命令退出 1；只读审计被中断，产品、Git 和 Docker 状态均未改变。
@@ -381,6 +402,7 @@
 
 ## 2026-08-13：为寻找临时发布夹具遍历全部 Git 历史文件名导致超时
 
+- 最近复发/补充：2026-08-14 为核对 GitHub Issue 对应的最早修复版本，把两次 `git log v0.4.10..HEAD -G ...` 差异内容扫描放进同一个 10 秒命令，第一段尚未完成便以 `124` 超时；检索只读，仓库与远端未改变。后续按单个问题拆分，只扫描明确 revision range 与路径，并为 `-G` 补丁遍历单独设置合理上限；若已有提交/文件线索，优先用 `git show` 或 `git tag --contains`，不再用短预算组合扫描。
 - 环境：Windows PowerShell 7、正式 `v0.4.12` Web 一键升级门禁准备。
 - 错误模式：把多个 `git log --all` 历史检索放进同一个 30 秒命令，其中最后一段不限定提交或路径，遍历全部历史文件名后再做文本过滤。
 - 症状 / 退出码：前两段输出了有限历史，第三段尚未完成便以 `124` 超时；命令只读，没有修改 Git、Docker 或文件。
@@ -529,6 +551,7 @@
 
 ## 2026-08-11：仓库文本检索误用了不存在的顶层目录
 
+- 最近复发/补充：2026-08-14 核对 Issue #8 的睡觉/主机语义时，把猜测且不存在的顶层 `control-mod` 与已确认的 `docs`、`backend`、`frontend` 一起传给 `rg`；有效路径已经输出命中，但 `rg` 最终以 2 退出。随后查询真实 Control 源路径时，第二段筛选无命中属于正常候选排除，却没有显式把 `rg` 的退出 1 归一化为成功，导致整个只读包装再次报告失败；两次均未修改产品或远端。后续先以 `rg --files`/`Test-Path` 生成真实搜索根，对“允许无命中”的候选筛选明确保存退出码并在 0/1 后 `exit 0`，不得只写 `if ($LASTEXITCODE -gt 1)` 后让最后一个 1 泄漏成包装终态。
 - 最近复发/补充：2026-08-13 生产 VNC 5800 根因已在远端确认后，为核对本地 Compose 模板又把不存在的顶层 `internal` 与有效的 `docs`、`deploy`、`frontend` 一起传给 `rg`；前序文档与前端命中已输出，但命令最终因 `internal` 不存在退出 1，没有新增远端操作或产品文件修改。随后停止猜路径，改为先用仓库根 `rg --files` 发现真实 `backend/internal/...` 文件，再按精确命中读取。
 - 最近复发/补充：2026-08-13 核对邀请码持久化实现时，把不存在的 `backend/internal/store` 与真实的 `backend/internal/storage` 候选混入同一条 `rg`，有效路径先返回命中，后续 `Select-Object` 又让包装命令表面退出 0。没有文件或远端状态变化。随后只从已确认的 `backend/internal/storage` 读取；以后即使是只读候选搜索，也必须先用 `rg --files backend/internal` 发现实际包名，并在接管道前保存和检查 `rg` 的原始退出码。
 - 最近复发/补充：2026-08-12 排查 Panel 自动更新时，把未先由 `rg --files` 或 `Test-Path` 确认的 `backend/internal/versioninfo` 与多个有效目录一起传给 `rg`；有效目录先产生大量命中，命令最后仍因不存在路径退出 2。随后又猜测不存在的 `backend/internal/web/setup_handlers.go` 和 `backend/internal/updatecheck/types.go`；实际 updatecheck 类型位于 `service.go`，前一个 updater 文件已输出但组合命令仍失败。后续跨模块检索或读取只使用已经列出的实际路径，候选目录和文件不得混入正式命令参数。
@@ -1100,6 +1123,7 @@
 
 ## 2026-07-28：`git diff --no-index` 的预期差异码污染整段校验
 
+- 最近复发/补充：2026-08-14 前端小屋选项定位时，末尾两个可选 `rg`（测试文件后缀、`runtimeSettings`）均无匹配，正常退出 1 却让两次只读批次被标为失败；此前源码命中有效、文件未修改。后续可选搜索统一立即把 1 归一为“零命中”，只让大于 1 失败，不能依赖组合命令最后一个 `rg` 的状态。
 - 最近复发/补充：2026-08-13 同一任务随后把“workflow 中可能没有扩展检查”的可选 `rg` 放在组合命令末尾；前两项已有有效命中，末项零命中正常返回 1，却让整段只读探针显示失败。已改为立即判断 `$LASTEXITCODE`，把 1 明确输出为 `no workflow extension checks found` 并归零，只让大于 1 失败。
 - 最近复发/补充：2026-08-13 查找 `SaveImportIntentStore` 时，前半段 `Get-Content` 已成功输出相关 intent 代码，末尾补充 `rg` 因类型名不存在正常返回 1，使整个只读命令被判失败；没有远端或产品修改。随后搜索统一在每次 `rg` 后保存退出码，只把大于 1 当作错误。已由精确源码行取得答案时，不再追加猜测符号名的无必要检索。
 - 最近复发/补充：2026-08-11 准备 v0.4.11 真实安装前置条件时，把四个独立 `rg -F` 探针顺序放在同一 Shell 命令中，前三个已有有效命中，最后一个可选环境变量名无命中返回 1，导致整个只读批次显示失败；没有文件或外部状态变更。多项检索必须逐项保存退出码，明确把 1 当作“零命中”并继续，只对大于 1 的状态失败；发布证据不要依赖组合命令的最后一个可选搜索。
@@ -1239,6 +1263,7 @@
 
 ## 2026-07-29：前台临时 HTTP 服务超时后仍占用端口
 
+- 最近复发/补充：2026-08-14 Linux 全包回归把 `shell_command` timeout 错设为 1 秒，且 `docker run --rm` 未指定容器名；宿主等待以 124 结束时 Go 容器仍在运行。没有重启门禁，而是按唯一 module-cache volume 从完整 inspect JSON 精确找到随机名容器，`docker wait` 得到退出 0 后再清理两个任务卷。后续长门禁必须同时给足 timeout、指定唯一容器名并在采证前禁用 `--rm`，否则成功日志可能随容器删除而丢失。
 - 最近复发/补充：2026-08-13 首次 `v0.4.15`（随后因新增缺陷已作废）本地 Buildx 候选把 `shell_command` 上限设为 120 秒，构建在 124 秒以 124 终止且没有产出目标 image tag。没有原样重跑；先核对精确 image 行数为 0、没有匹配该 tag 的 buildx/buildctl 宿主进程、BuildKit 本身仍 healthy，才确认终态可继续。正式候选构建必须给至少 10 分钟命令上限，并只用 cell yield/wait 提供进度；用户追加新修复后旧候选即使成功也不得复用为最终候选。
 - 最近复发/补充：2026-08-10 三仓回拉 Go 夹具把内层 `shell_command` timeout 设为 1 秒，希望由外层 yield 返回 cell；实际命令在约 5 秒以 124 被终止，不能判断 Go 子进程是否仍在。没有直接重跑，而是先按 `anxi.test.owner` 查询 container/volume/network，并核对 18150–18152 均无 listener，再把命令 timeout 改为 10 分钟、只用 `functions.exec` yield/wait 续取。长任务的“命令执行上限”和“提前返回控制权”必须分开配置。
 - 最近复发/补充：2026-08-13 自动解绑回归门禁再次把全量 Go 容器的 `shell_command` timeout 设为 1 秒，包装命令约 5 秒后以 124 退出，但精确容器 `anxi-unbind-go-20260813-r1` 仍在运行。没有重复启动，先用精确容器名和任务 label 核对既有 container/volume，再继续读取该容器终态。后续长门禁必须直接给足命令执行上限；需要提前让出控制权只能依赖执行工具的 yield/cell 机制。
@@ -1327,6 +1352,7 @@
 
 ## 2026-07-29：通过 `Start-Process` 派生本地开发服务器被策略拦截
 
+- 最近复发/补充：2026-08-14 本地 Vite QA 结束时再次调用 `functions.wait(terminate=true)`，等待约 124 秒后以 124 返回，4178 仍由工作区 `vite.js --host 127.0.0.1 --port 4178 --strictPort` 监听。没有再次 terminate；读取精确监听 PID、进程名和完整工作区命令行后只停止该 node 进程，并复查端口为零。结束预览固定走“查 listener → 验 argv/工作区 → 精确停止 → 复查”，不把 cell terminate 当清理完成。
 - 最近复发/补充：2026-08-10 v0.4.10 官网 CSS 修复本地验收又在嵌套 `pwsh` 中使用 `Start-Process npm.cmd`、隐藏窗口和日志重定向，命令再次在执行前被策略拒绝，端口/进程均未创建。该错误已重复，预防规则提升到 `AGENTS.md`：Windows 本地预览直接作为可等待的 `shell_command` cell 运行，禁止再用 `Start-Process` 后台派生。
 - 同轮终止可等待 cell 后，VitePress 子进程仍监听 4187；首次清理前把整条后代统一要求匹配 `docs:preview|vitepress preview`，但叶子真实 argv 为 `vitepress.js preview docs`，归属检查安全失败且未停止进程。正确做法是分别核对根进程的 `npm.cmd run docs:preview`、叶子绝对工作区 `vitepress.js preview docs`、固定端口及完整 ParentProcessId 链，再按精确 PID 自底向上停止并复查 listener；不要用一个过窄字符串模式替代进程树归属。
 - 最近复发/补充：2026-08-13 NAS 文档预览清理时，已读到监听叶子为 `vitepress.js preview docs`，却仍用拼错且过窄的单个 `-like '*...*nodes*'` 模式验证，安全断言拒绝停止且进程未变。随后按本条既有规则读取监听 PID 的完整父进程链，分别核对工作区、`vitepress.js`、`preview docs` 和精确端口，再自底向上幂等停止；不得把多个条件压成未经探针的通配字符串。
@@ -1908,6 +1934,7 @@
 
 ## 2026-08-06：切到子目录后仍给 gofmt 传仓库根相对路径
 
+- 最近复发/补充：2026-08-14 升级状态机修复首次格式化时，工具 `workdir` 已是 `<repo>/backend`，三个 `gofmt` 目标仍带 `backend/` 前缀，全部报 `GetFileAttributesEx ... path not found` 并退出 2，定向测试未启动。随后使用模块根相对的 `internal/...` 成功格式化并通过回归；本任务余下 Go 命令固定先以 `Test-Path` 校验首个目标，不再切换路径基准。
 - 最近复发/补充：2026-08-13 自动解绑实现首次格式化时，`workdir` 已设为 `<repo>/backend`，但目标数组仍全部写成 `backend/internal/...`；新增的 `Resolve-Path` fail-fast 正确在首个目标终止，`gofmt` 和测试均未运行、文件未被命令修改。后续本任务固定为仓库根格式化 `backend/internal/...`，再切到 `backend` 仅运行 Go 测试，禁止在同一调用中切换两套相对路径语义。
 - 最近复发/补充：2026-08-10 三仓 smoke 临时 Go 文件命名为 `.codex-v0410-registry-smoke.go`；`gofmt` 可处理，但 `go run` 会忽略以点开头的 Go 源文件并报当前目录无 Go 文件。任务脚本应使用普通、唯一且预检不存在的文件名，执行完成后再用 `apply_patch` 删除；不要把“隐藏临时文件”惯例套给 Go package/file discovery。
 - 环境：PowerShell 7，`workdir=backend`，玩家 Mod 比较改动后的 Go 格式化。
@@ -1935,6 +1962,7 @@
 - 最近补充：切换到移动壳后又沿用桌面页标题 `玩家管理` 做 `waitFor`，导致 locator 超时；移动页实际以“在线玩家”区域开头。跨桌面/移动验收应先读当前语义树，或等待两端共有的稳定控件，不应假定标题复用。
 - 最近补充：打开真实 Panel 登录页后把预期标题猜成“登录面板”，实际页面唯一 heading 仍是产品名 `Stardew Anxi Panel`，表单由“用户名 / 密码 显示密码 / 登录”控件区分。首次进入真实状态页应先取语义快照，再等待快照中确实存在的控件。
 - 最近补充：语义快照把密码输入框显示成 `textbox "密码 显示密码"`，但这不是 `getByLabel("密码 显示密码")` 可用的真实 label；直接照抄组合后的可访问名称会得到 `no_matches`。登录表单应先用已确认的唯一 `input[type="password"]` 定位，或读取可交互 DOM 后使用真实 label，不能把快照的聚合文本反推成 label 绑定。
+- 最近复发/补充：2026-08-14 移动小屋设置的语义快照显示 `combobox "小屋策略（CabinStrategy）"`，直接用 `getByLabel` 仍得到 `no_matches`；检查同名 `getByRole('combobox')` 精确命中 1 个后，使用 role locator 成功切到 `None`。语义快照给出的是可访问名称，不保证底层存在可由 label engine 解析的绑定；交互应优先复用快照中的 role/name 组合。
 - 最近补充：2026-08-07 验收 VitePress 展示站时，先把主题开关猜成按钮“主题模式”，实际语义角色/名称是 `switch "切换为深色主题"`；又用 exact heading `v0.4.8（最新版本）` 定位，实际可访问名称还包含 permalink 文本。VitePress 页面必须先读取当前 `domSnapshot()`，按已观察到的 role/name 操作；含标题永久链接时优先用正文投影或非 exact 文本，不猜组合后的可访问名称。
 - 最近补充：同轮把页面求值误写成不存在的 `tab.playwright.dom.evaluate(...)`；当前 Browser 的页面级只读求值是 `tab.playwright.evaluate(...)`，语义树读取则是 `tab.playwright.domSnapshot()`。Browser 子接口的层级必须以已读 API Reference 和本轮已验证调用为准，首次失败后不得继续在相邻对象上试探。
 - 最近复发/补充：2026-08-10 顶栏垂直留白复测先误用 `tab.locator(...)`，当前封装的 locator 位于 `tab.playwright.locator(...)`；随后又在页面代理元素上调用不受支持的原生 `focus()`。检查运行时原型后改用已暴露的 locator `press("ArrowDown")` 让跳转链接获得真实键盘焦点。DOM 查询、交互和 Tab 级导航/截图必须继续按对象层级区分，页面代理元素不假定拥有原生方法。
@@ -2011,6 +2039,7 @@
 
 ## 2026-08-06：在 Windows 文件系统执行 Linux 权限位发布断言
 
+- 最近复发/补充：2026-08-14 升级状态机修复直接在 Windows 宿主运行 `go test ./... -count=1`，`TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 再次因 Compose mode=`0666`、want `0640` 失败；同包还出现 Windows 原子替换文件占用和异步清理读取竞态。随后用只读仓库 bind、任务专属 Go cache volume 的 `golang:1.25-alpine` 重跑全包退出 0，并单独复跑异步清理用例通过。包含权限位的全包权威门禁必须一开始就在 Linux，Windows 只保留不依赖文件系统语义的定向补充。
 - 环境：Windows 宿主 Go 1.26，SMAPI 真实下载 integration 测试使用 `t.TempDir()`。
 - 错误模式：直接在 Windows 上运行同时断言缓存文件 POSIX `0600` 的生产 Linux 门禁。
 - 症状 / 退出码：真实下载约 331 秒并完成内容校验，但 `os.Stat().Mode().Perm()` 在 Windows ACL 语义下报告 `0666`，测试退出 1；这不能证明 Linux 容器中的产品权限实现失败。
@@ -2023,6 +2052,7 @@
 
 ## 2026-08-06：短命 Go 容器网络失败后丢失模块下载进度
 
+- 最近复发/补充：2026-08-14 v0.4.16 发布前 Linux 定向回归虽然挂了任务专属 `GOMODCACHE/GOCACHE`，包装器仍在首次 `proxy.golang.org` 多项 `unexpected EOF` 后立即删除两个 cache volume，导致没有保留已成功的下载进度；三个产品测试尚未进入，任务容器/卷已确认归零。后续改为先用唯一持久 volume 对 `go mod download` 做最多两次有界预热，失败轮保留同一 cache，预热成功后再运行原测试，最终才按 owner 精确清理。
 - 环境：Docker Desktop、`golang:1.25-alpine`、只读源码 bind，首次在 Linux 重跑 SMAPI 下载门禁。
 - 错误模式：未给短命 `--rm` 容器挂任务专属 `GOMODCACHE/GOCACHE`；`proxy.golang.org` 下载 `modernc.org/sqlite` 元数据发生一次 `unexpected EOF` 后容器退出，已获取依赖缓存也随之丢失。
 - 症状 / 退出码：Go package setup 退出 1，`TestSMAPIArchiveRealDownload` 尚未开始，产品下载逻辑未被执行。

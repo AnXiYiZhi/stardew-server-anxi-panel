@@ -495,11 +495,93 @@ func TestRequiredRuntimeUpdateFailureIsPersistedAndNotRetriedOnSamePanel(t *test
 	if err != nil || status.Phase != requiredRuntimePhaseFailed {
 		t.Fatalf("required failure status=%#v err=%v", status, err)
 	}
+	if observed, readErr := driver.ReadRequiredRuntimeUpdateStatus(instance); readErr != nil || observed.Phase != requiredRuntimePhaseFailed {
+		t.Fatalf("current required failure was incorrectly resolved: %#v err=%v", observed, readErr)
+	}
 	before := len(fake.applyCalls)
 	driver.StartRequiredRuntimeUpdate(context.Background(), instance)
 	time.Sleep(25 * time.Millisecond)
 	if len(fake.applyCalls) != before {
 		t.Fatalf("identical failed Panel/stack auto-retried: before=%d after=%d", before, len(fake.applyCalls))
+	}
+}
+
+func TestSuccessfulRuntimeApplyResolvesStaleRequiredFailure(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	driver.panelVersion = "0.4.15"
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := RequiredRuntimeUpdateStatus{
+		SchemaVersion: 1,
+		PanelVersion:  driver.panelVersion,
+		StackVersion:  manifest.StackVersion,
+		Phase:         requiredRuntimePhaseFailed,
+		ErrorCode:     "runtime_update_save_failed",
+		Error:         "historical save confirmation failure",
+		FinishedAt:    "2026-08-14T01:15:41Z",
+	}
+	if err := writeRequiredRuntimeUpdateStatus(instance.DataDir, stale); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	if apply := waitRuntimeApply(t, driver, instance); apply.Phase != RuntimeUpdateApplySucceeded {
+		t.Fatalf("runtime apply did not succeed: %#v", apply)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		resolved, readErr := readRequiredRuntimeUpdateStatus(instance.DataDir)
+		if readErr == nil && resolved.Phase == requiredRuntimePhaseSucceeded {
+			if resolved.ErrorCode != "" || resolved.Error != "" {
+				t.Fatalf("resolved required status retained stale error: %#v", resolved)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	resolved, readErr := readRequiredRuntimeUpdateStatus(instance.DataDir)
+	t.Fatalf("successful runtime apply did not resolve required failure: %#v err=%v", resolved, readErr)
+}
+
+func TestReadRequiredRuntimeStatusResolvesHistoricalFailure(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	driver.panelVersion = "0.4.15"
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	if apply := waitRuntimeApply(t, driver, instance); apply.Phase != RuntimeUpdateApplySucceeded {
+		t.Fatalf("runtime apply did not succeed: %#v", apply)
+	}
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRequiredRuntimeUpdateStatus(instance.DataDir, RequiredRuntimeUpdateStatus{
+		SchemaVersion: 1,
+		PanelVersion:  driver.panelVersion,
+		StackVersion:  manifest.StackVersion,
+		Phase:         requiredRuntimePhaseFailed,
+		ErrorCode:     "runtime_update_save_failed",
+		Error:         "historical save confirmation failure",
+		FinishedAt:    "2026-08-14T01:15:41Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := driver.ReadRequiredRuntimeUpdateStatus(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Phase != requiredRuntimePhaseSucceeded || resolved.ErrorCode != "" || resolved.Error != "" {
+		t.Fatalf("historical required failure was not resolved on read: %#v", resolved)
+	}
+	persisted, err := readRequiredRuntimeUpdateStatus(instance.DataDir)
+	if err != nil || persisted.Phase != requiredRuntimePhaseSucceeded {
+		t.Fatalf("resolved required status was not persisted: %#v err=%v", persisted, err)
 	}
 }
 

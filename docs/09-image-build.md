@@ -8,6 +8,34 @@
 - 自动顺序：维护者只需把已经完成的产品变更和本版矩阵提交到同步的 `main`；产品路径过滤命中后自动候选、自动验证 main 未被取代、自动 tag、自动 digest 提升和 Release。文档、发布工作流或测试脚本自身的单独提交不自动发布镜像。任何候选证明、run ID、tag、digest、OCI 或 main 身份不符都会 fail closed；需要 major/minor 版本时才手动 dispatch 并填写版本覆盖值。
 - 本流程实现阶段用 `-AllowDirty` 做过一次不发布的合成 `0.4.16` 本地演练，仅验证脚本本身，不构成正式候选证明：候选 image ID=`sha256:86057f4d36c5866d6365e463abc9a9f4a0bf1262afac957b1ae9d2562fc1fec9`，从正式 `0.4.15` 通过真实 Web 完成 check/dry-run/apply；同引用 unhealthy 先收敛为 `failed_rolled_back/health_check_failed`，切回健康候选后升级成功，并通过 SQLite integrity、初始化/Panel 哨兵、非目标 game container/volume 与 Panel restart。最终通过轮用时 403.5 秒，未 push candidate/正式 registry、未创建 tag/Release；任务 DinD、Compose、容器、网络、卷和临时目录归零。正式版本仍必须在干净且同步的 `main` 上运行 workflow 取得 artifact。
 
+# v0.4.16 正式候选范围与专项矩阵（2026-08-14，pre-release）
+
+## 变更清单与受影响链路
+
+- 目标补丁版本由自动候选流程从最新正式版 `v0.4.15` 递增为 `0.4.16`。本版只包含三项已完成修复：`REQUIRED-RUNTIME-STALE-STATUS-1`、`FE-CABIN-FARMHOUSESTACK-HIDE-1`、`FE-SAVE-GAMEDAY-HOVER-DETAILS-1`。
+- 后端在普通 runtime apply 成功、required 状态读取和 Panel 启动协调入口收敛同一当前 Panel/stack pair 的历史 `failed`：只有 apply=`succeeded` 且实时 managed stack=`up_to_date` 才改写为 `succeeded` 并清空旧错误。`manual_action`、当前真实失败、dry-run/apply 诊断文件和公开 HTTP DTO/phase 均不改变。
+- 桌面与移动小屋策略选择器只隐藏 `FarmhouseStack`，继续保留已有受控值及后端 `CabinStack|FarmhouseStack|None` 三值契约；不会在页面加载或未保存时改写旧配置。桌面“游戏日回档”与“其他备份”统一使用同一整行悬停详情函数，未改备份 API、排序、按钮状态、CSS 或移动端常驻详情。
+- 本版没有数据库 migration、部署/Compose 格式、runtime manifest、Control/SMAPI DLL、存档/Mod/备份结构或公开 API schema 变化。required 状态只允许匹配候选自身 Panel/stack pair 后收敛，不解释或迁移更老 Panel 身份，因此升级矩阵保持“当前上一正式版 `v0.4.15` → 候选”，不增加更老版本链。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 正式候选门禁 |
+| --- | --- | --- |
+| 正常路径 | 同候选 Panel/stack 的旧 required failure + 成功 runtime apply + 实时 up-to-date | Go 定向/全包回归必须返回并持久化 `succeeded`，旧 error/errorCode 清空；普通 apply 完成后立即收敛 |
+| 关键边界 | apply 非成功、实时栈非 up-to-date、Panel/stack pair 不匹配 | 必须继续保留 `failed`；不得因单一版本字符串或历史文件存在而误清理 |
+| 权限与兼容 | `manual_action`、已有 `FarmhouseStack`、管理员 API 门禁 | `manual_action` 不自动清理；前端隐藏旧选项但保持受控值，GET/PUT 三值契约和管理员权限不变 |
+| 幂等与恢复 | 状态读取、Panel 重启和启动协调重复执行 | 已成功状态保持成功，不重复 apply；写入失败只记录 warning/返回错误，不删除 dry-run/apply 诊断 |
+| 前端生产产物 | fresh 候选与 Web 升级后的生产 bundle | 桌面/移动 chunk 都必须包含 `FarmhouseStack` hidden 兼容 option；Saves chunk 必须包含游戏日回档类型、农民、日期和地图详情 |
+| 数据完整性 | healthy 升级、unhealthy 目标自动回滚、Panel 重启 | SQLite integrity、初始化状态、Panel 哨兵、非目标 game container/volume 均保持；unhealthy 必须为 `failed_rolled_back/health_check_failed` |
+| 资源清理 | 所有 fresh/DinD/Compose/registry/network/volume/bind | 只清理本轮 owner 资源，终态计数为 0，不执行 prune，不接触生产数据或凭据 |
+
+## 选择的自动门禁与发布前状态
+
+- `scripts/run-release-gates.sh` 已纳入 `test:cabin-strategy-options` 和 `test:save-backup-details`，Compatibility workflow 同步执行；responsive 契约锁定两项测试仍属于正式门禁。
+- `scripts/release-candidate.sh` 的 fresh candidate smoke 新增生产 chunk 验收；`scripts/tests/test_release_candidate_upgrade.sh` 在 `v0.4.15` 真实 Web healthy apply 成功后再次下载升级 Panel 的精确 chunk 并执行同一产品契约。两条链均检查隐藏兼容 option 与回档悬停详情，不用源码或开发服务器代替生产 bundle。
+- 由于 `backend/internal/games/stardew_junimo/**` 变化，自动路径选择必须执行后端 test/vet/build、SMAPI 真实下载和 runtime auth Docker integration；前端执行全部状态脚本、production audit/build。网站、Control 源/DLL、runtime manifest、部署脚本功能未变化，是否跳过由 `run-release-gates.sh` 基于 `v0.4.15..candidate SHA` 自动判定，不能人工缩减。
+- 本地发布前预检已通过：17 项前端状态脚本、production audit=0、TypeScript/Vite build；三个变更 Shell 的 `bash -n`/ShellCheck 0.11.0；四份 release workflow YAML 解析；Linux 三项 required-runtime 定向测试；Linux `go test -p 1 ./... -count=1`、`go vet ./...`、`go build ./...`。桌面 QA 已确认两端隐藏选项、回档详情和 console/横向溢出。首次冷 Go cache 曾被 `proxy.golang.org unexpected EOF` 截断；改用同一 owner cache 有界预热后恢复。默认多包并行在本机 Docker Desktop 曾让既有 fake dry-run 超过 5 秒预算；单项与串行全包均通过，资源归零，正式候选仍必须执行仓库默认并行命令，不能以本地串行替代。上述预检不构成正式候选证明；只有同步干净 `main` 推送后 `Validate release candidate` 的不可变 artifact、unhealthy 回滚、healthy Web 升级和后续 digest 提升全部成功，才允许自动 tag/正式发布。本节将在发布后以 workflow ID、唯一 digest、实际矩阵、耗时、故障和资源清理结果回填。
+
 # v0.4.15 正式发布结果（2026-08-14，released）
 
 - annotated tag `v0.4.15` 固定指向 `d84157dc8a3abc83d13d29c276d6ed332e901ce7`，tag 对象为 `39038d64a7068a9233ef74757b011453dc86fbe5`；创建前本地 `main` 工作树干净且与 `origin/main` 精确同步。Compatibility matrix `31725203858` 成功，Release workflow `31725256195` 从 2026-08-13T17:21:02Z 运行到 17:28:48Z，7 分 43 秒内完成全部 release gates、三仓 push 和 GitHub Release 创建。

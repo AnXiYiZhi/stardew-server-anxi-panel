@@ -1,3 +1,9 @@
+# REQUIRED-RUNTIME-STALE-STATUS-1 / FE-CABIN-FARMHOUSESTACK-HIDE-1 联调契约（2026-08-14）
+
+- `GET /api/system/update/apply` 的公开结构和 full-stack phase 枚举不变。后端读取 required 协调状态时，只有当前 Panel/stack、最新 runtime apply=`succeeded`、实时 managed stack=`up_to_date` 三项同时成立，才把同 pair 的旧 `required-status.phase=failed` 持久化为 `succeeded` 并清空旧错误；`manual_action` 与任何当前未达标状态不得被前端或后端当作历史故障隐藏。
+- 普通 Junimo/Control 运行组件 apply 成功会立即触发该收敛；Panel 重启自动协调和后续升级状态轮询再提供幂等兜底。前端不需要新增“清理历史故障”按钮，也不自行比较文件时间或版本字符串。
+- `GET/PUT /api/instances/:id/config/server-runtime-settings` 仍接受并可能返回 `CabinStack|FarmhouseStack|None`。桌面和移动下拉框仅隐藏 `FarmhouseStack` 选择入口，已有该值时必须保持受控值兼容，不能在未明确选择并保存时自动改写服务端配置。
+
 # RELEASE-CANDIDATE-PROMOTION-1 联调契约（2026-08-14）
 
 - 候选门禁不新增生产 API，也不允许测试专用 release URL 进入 Panel 配置。真实旧版仍访问固定 `https://api.github.com`，但任务专属 DinD 用私有 CA、受控 TLS endpoint 和容器级 host 映射返回唯一候选 Release；Docker daemon 同时只在该 DinD 内把 `ghcr.io` 映射到受控 TLS registry。CA、cookie、registry、Compose、bind 和 volume 都随 DinD 清理，不进入镜像、GitHub artifact 或日志。

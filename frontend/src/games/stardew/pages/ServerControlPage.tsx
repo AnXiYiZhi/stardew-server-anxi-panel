@@ -915,7 +915,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
                     }}
                   >
                     <option value="CabinStack">CabinStack（隐藏小屋堆叠，最适合大多数服务器）</option>
-                    <option value="FarmhouseStack">FarmhouseStack（隐藏小屋，从主农舍共用入口出）</option>
+                    <option value="FarmhouseStack" hidden>FarmhouseStack（兼容已有配置）</option>
                     <option value="None">None（原版行为，小屋放置在真实农场位置）</option>
                   </select>
                 </label>

@@ -4,6 +4,12 @@
 - [x] 新增成功候选的 `workflow_run` 收口器：校验证明 run/commit/version/digest，main 已前进则安全跳过，仍为最新则创建 annotated tag，并通过显式 `workflow_dispatch` 启动正式 digest 提升，规避 `GITHUB_TOKEN` 推 tag 不递归触发 workflow 的限制。
 - [x] 文档、工作流和纯测试脚本提交不自动发布镜像；候选输入发生新产品提交时旧 run 自动取消或最终标记 superseded，不移动已有 tag。
 
+# 2026-08-14 完成：升级历史失败收敛、FarmhouseStack 隐藏与回档详情补齐
+
+- [x] `REQUIRED-RUNTIME-STALE-STATUS-1`：普通运行组件 apply 成功后立即重算 required 协调状态；启动/状态读取幂等兜底。只有当前 Panel/stack、成功 apply 与实时 up-to-date 三重证据才把旧 failed 改为 succeeded，真实失败和 manual_action 不清理。
+- [x] `FE-CABIN-FARMHOUSESTACK-HIDE-1`：桌面与移动“小屋与联机高级设置”只向用户显示 `CabinStack`/`None`；`FarmhouseStack` 仅隐藏并保留已有配置与后端三值 API 兼容。
+- [x] `FE-SAVE-GAMEDAY-HOVER-DETAILS-1`：桌面“游戏日回档”行复用“其他备份”的详情格式化逻辑，悬停展示备份类型、农民、游戏内日期和地图；新增专项回归脚本，接口和移动端常驻详情不变。
+
 # 2026-08-14 完成：候选镜像一次构建与 digest 提升发布（RELEASE-CANDIDATE-PROMOTION-1）
 
 - [x] 新增手动 `Validate release candidate` workflow：冻结同步 `main` 的版本、完整 commit 与 build date，自动执行代码回归、fresh/restart、上一正式版真实 Web 一键升级、unhealthy 自动回滚、SQLite/初始化/非目标资源保留，并只在全部成功后推送带 SHA 的 GHCR candidate。

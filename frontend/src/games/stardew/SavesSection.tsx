@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Job, JobLog, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
+import type { BackupInfo, Job, JobLog, NewGameConfig, SaveInfo, SavesListResult, UploadPreviewResult } from '../../types'
 import {
   defaultInstanceId,
   getSaves,
@@ -60,6 +60,19 @@ const backupKindLabel: Record<string, string> = {
   latest: '历史备份',
   daily: '历史备份',
   scheduled: '历史备份',
+}
+
+function backupDetailsTitle(backup: BackupInfo): string {
+  return [
+    backup.kind === 'auto' ? '游戏日回档' : backupKindLabel[backup.kind] ?? backup.kind,
+    backup.farmerName ? `农民：${backup.farmerName}` : null,
+    backup.gameYear
+      ? `第 ${backup.gameYear} 年 ${seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason} 第 ${backup.gameDay} 天`
+      : null,
+    backup.farmType ? `地图：${farmTypeLabel[backup.farmType] ?? backup.farmType}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function saveFarmMapSrc(save: SaveInfo): string | null {
@@ -809,7 +822,12 @@ export function SavesSection({
                   <span>操作</span>
                 </div>
                 {autoBackups.map((backup) => (
-                  <div className="sd-save-backup-row" role="row" key={backup.name}>
+                  <div
+                    className="sd-save-backup-row"
+                    role="row"
+                    key={backup.name}
+                    title={backupDetailsTitle(backup)}
+                  >
                     <span className="sd-save-backup-cell">
                       {backup.gameYear
                         ? `第 ${backup.gameYear} 年 ${seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason ?? ''}季 ${backup.gameDay} 日`
@@ -868,18 +886,8 @@ export function SavesSection({
               </div>
               {(showAllBackups ? otherBackups : otherBackups.slice(0, 5)).map((backup) => {
                 const sameNameExists = saves.some((save) => save.name === backup.saveName)
-                const rowTitle = [
-                  backupKindLabel[backup.kind] ?? backup.kind,
-                  backup.farmerName ? `农民：${backup.farmerName}` : null,
-                  backup.gameYear
-                    ? `第 ${backup.gameYear} 年 ${seasonLabel[backup.gameSeason ?? ''] ?? backup.gameSeason} 第 ${backup.gameDay} 天`
-                    : null,
-                  backup.farmType ? `地图：${farmTypeLabel[backup.farmType] ?? backup.farmType}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
                 return (
-                  <div className="sd-save-backup-row" role="row" key={backup.name} title={rowTitle}>
+                  <div className="sd-save-backup-row" role="row" key={backup.name} title={backupDetailsTitle(backup)}>
                     <span className="sd-save-backup-file">
                       <span className="sd-save-backup-zip" aria-hidden="true">ZIP</span>
                       <span className="sd-save-backup-file-text">

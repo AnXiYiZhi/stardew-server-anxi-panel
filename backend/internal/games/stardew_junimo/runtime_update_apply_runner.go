@@ -49,6 +49,11 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 			return err
 		}
 		d.auditRuntimeUpdateTerminal(ctx, instance.ID, status)
+		if phase == RuntimeUpdateApplySucceeded {
+			if _, err := d.ReadRequiredRuntimeUpdateStatus(instance); err != nil && !errors.Is(err, os.ErrNotExist) {
+				d.logger.Warn("reconcile required runtime status after successful apply", "instance", instance.ID, "error", err)
+			}
+		}
 		return nil
 	}
 

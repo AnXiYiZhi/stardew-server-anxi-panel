@@ -4,12 +4,24 @@
 
 - `frontend/scripts/test-responsive-layout.ts` 的发布契约从“`release.yml` 必须直接包含三个 npm 测试命令”调整为三层断言：`scripts/run-release-gates.sh` 保留 responsive/new-game/Nexus 回归，`release-candidate.yml` 必须调用该统一门禁，正式 `release.yml` 必须只用 `skopeo --preserve-digests` 提升制品且不得 `docker build`。
 - 自动发布扩展后，该测试还读取 `release-after-candidate.yml`：要求候选具备 `main` 产品路径 push 入口、成功候选由 `workflow_run` 收口，并显式 dispatch 支持 `workflow_dispatch` 的正式 workflow。`GITHUB_TOKEN` 创建 tag 不承担递归触发职责。
-- 没有修改 React/CSS/API；影响仅限前端测试对新候选发布架构的静态保护。Compatibility workflow 仍直接执行核心前端测试，候选 workflow 运行完整状态测试、audit 和 production build。
+- 没有修改 React/CSS/API；影响仅限前端测试对新候选发布架构的静态保护。Compatibility workflow 仍直接执行核心前端测试，候选 workflow 运行完整 17 项状态测试、audit 和 production build；本版 cabin strategy/save backup detail 两项专项已加入统一门禁并由 responsive 契约锁定。
 
 ## 如何验证、下一步注意事项
 
 - 运行 `npm run test:responsive-layout`；同时对两个 workflow 运行 YAML/actionlint，对三个 Bash 脚本运行 `bash -n`/ShellCheck。真实候选链由 Windows wrapper 和受控 TLS DinD 验证。
 - 后续新增关键前端发布测试时，应加入 `scripts/run-release-gates.sh` 并扩展本契约；不要把重复 npm 门禁重新放进 tag workflow，否则会失去“只提升已测 digest”的保证。
+
+# FE-CABIN-FARMHOUSESTACK-HIDE-1 接手记录（2026-08-14，completed）
+
+## 改了什么、影响哪些文件
+
+- 桌面 `pages/ServerControlPage.tsx` 和移动 `mobile/MobileControlPage.tsx` 的 CabinStrategy 下拉框把 `FarmhouseStack` 标为 hidden；用户可见选项只剩 `CabinStack` 与 `None`。
+- 这不是接口删值：隐藏 option 保留已有 `FarmhouseStack` 受控值的兼容性，`types.ts`、`api.ts` 和后端 GET/PUT 三值契约均未修改。已有配置只有在用户主动选择另一个可见策略并保存时才改变。
+
+## 如何验证、下一步注意事项
+
+- 运行 `npm run test:cabin-strategy-options` 与 `npm run build`，并在桌面与移动控制页分别打开“小屋与联机高级设置”，展开策略选择器，确认只有两个可见选项且 console 无 error/warning。fresh candidate 与上一正式版 Web 升级后的生产 chunk 都必须再次命中 `FarmhouseStack` hidden 兼容契约。
+- 后续若决定正式废弃 `FarmhouseStack`，必须另做数据迁移、API 契约和后端校验变更；本次仅隐藏，禁止把旧值静默归一为 `CabinStack`。
 
 # v0.4.15 前端发布接手状态（2026-08-14，released）
 
@@ -1695,3 +1707,19 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - `api.createNewGame` 强制接收 request ID 并写入 `Idempotency-Key`。`SavesSection` 用配置指纹管理一个 pending ref：同配置失败后保留，配置变化才换 key，只在 `createNewGame` resolve 后清理；这与后端缺 key 返回 HTTP 428 的硬契约一致。
 - `scripts/test-new-game-idempotency.ts` 真实 mock fetch 验证 URL/body/credentials/header，并用 TypeScript AST 锁定 ref 的生成、复用、失败保留与成功清理顺序；已接入 compatibility-matrix/release workflow 和 responsive 门禁存在性断言。
 - 2026-08-13 当前源码已通过全部 14 项 `test:*`、production audit（0 vulnerabilities）与 production build。本地 Browser fixture 已核对 desktop runtime error 零重装文案、390px diagnostics 路由与零溢出、missing-files 只给 repair，console 为 0；候选镜像/升级后/正式真机仍待发布门禁。
+
+# FE-SAVE-GAMEDAY-HOVER-DETAILS-1 接手记录（2026-08-14，completed，未发布）
+
+## 改了什么
+
+- `SavesSection.tsx` 把“其他备份”原本内联的整行 `title` 拼装提取为 `backupDetailsTitle(backup)`；“游戏日回档”和“其他备份”两类桌面行都调用该函数。
+- 自动回档的详情首段显示用户可读的“游戏日回档”，其余字段沿用既有顺序：农民、游戏内日期、地图。没有新增自定义浮层或状态，因此不会产生两套悬停生命周期。
+
+## 影响与验证
+
+- 影响文件：`frontend/src/games/stardew/SavesSection.tsx`、`frontend/scripts/test-save-backup-details.ts`、`frontend/package.json`；无后端/API/CSS 变更，手机端本来已把这些字段常驻显示在堆叠行中，不需要增加悬停行为。
+- `npm.cmd run test:save-backup-details` 验证两个桌面区块都绑定共享详情函数，并锁定农民、地图字段仍在详情中；`npm.cmd run build` 通过。桌面 Browser QA 实际移动鼠标到首条回档行，fixture 的 5 条回档记录都得到“游戏日回档 · 农民 · 游戏内日期”详情，页面无横向溢出、无残留弹窗，console error/warn 为 0。fresh candidate 和上一正式版 Web 升级后的 Saves production chunk 还会再次验证这组详情契约。
+
+## 下一步注意事项
+
+- 后续给备份详情增加字段时只修改 `backupDetailsTitle`，不要在两个列表里重新内联；若改成自定义 tooltip，需要同时补键盘聚焦和读屏关联，不能只保留鼠标入口。

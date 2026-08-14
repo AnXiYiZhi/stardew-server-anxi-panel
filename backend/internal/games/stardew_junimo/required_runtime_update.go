@@ -70,7 +70,7 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 		d.requiredRuntimeMu.Unlock()
 		return
 	}
-	if previous, readErr := readRequiredRuntimeUpdateStatus(instance.DataDir); readErr == nil && previous.PanelVersion == d.panelVersion && previous.StackVersion == manifest.StackVersion {
+	if previous, readErr := d.ReadRequiredRuntimeUpdateStatus(instance); readErr == nil && previous.PanelVersion == d.panelVersion && previous.StackVersion == manifest.StackVersion {
 		if previous.Phase == requiredRuntimePhaseManual || previous.Phase == requiredRuntimePhaseFailed && previous.ErrorCode != "context_cancelled" {
 			d.requiredRuntimeMu.Unlock()
 			return
@@ -336,7 +336,29 @@ func (d *Driver) waitRequiredRuntimeCommand(ctx context.Context, instance regist
 // ReadRequiredRuntimeUpdateStatus exposes the durable coordinator result to
 // the HTTP aggregation layer without making it the authority for apply logic.
 func (d *Driver) ReadRequiredRuntimeUpdateStatus(instance registry.Instance) (RequiredRuntimeUpdateStatus, error) {
-	return readRequiredRuntimeUpdateStatus(instance.DataDir)
+	status, err := readRequiredRuntimeUpdateStatus(instance.DataDir)
+	if err != nil || status.Phase != requiredRuntimePhaseFailed {
+		return status, err
+	}
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired || status.PanelVersion != d.panelVersion || status.StackVersion != manifest.StackVersion {
+		return status, nil
+	}
+	apply, err := readRuntimeUpdateApplyStatus(instance.DataDir)
+	if err != nil || apply.Phase != RuntimeUpdateApplySucceeded {
+		return status, nil
+	}
+	if InspectManagedRuntimeStack(instance.DataDir, instance.State).Status != sjconfig.RuntimeStackStatusUpToDate {
+		return status, nil
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	status.Phase, status.ErrorCode, status.Error = requiredRuntimePhaseSucceeded, "", ""
+	status.UpdatedAt, status.FinishedAt = now, now
+	if err := writeRequiredRuntimeUpdateStatus(instance.DataDir, status); err != nil {
+		return status, err
+	}
+	return status, nil
 }
 
 func waitRequiredRuntimePoll(ctx context.Context, interval time.Duration) error {

@@ -1,3 +1,10 @@
+# REQUIRED-RUNTIME-STALE-STATUS-1：运行栈修复成功后收敛历史失败（2026-08-14，completed）
+
+- 根因：`required-status.json` 既负责阻止同一 Panel/stack 的确定性失败无限重试，又被全栈升级弹窗作为当前状态读取；用户后来从维护页完成普通 runtime apply 后，`apply-status.json` 已是 `succeeded`，但普通 apply 成功路径没有同步这个 required 协调文件，旧的 `runtime_update_save_failed` 因而继续显示为当前故障。
+- `ReadRequiredRuntimeUpdateStatus` 现在会对 `failed` 做最终一致性重算。只有 required 记录属于当前 Panel version 与内嵌 required stack、最新 `apply-status.json` 为 `succeeded`，且 `InspectManagedRuntimeStack` 实时结果为 `up_to_date` 时，才原子把 required phase 改为 `succeeded`、清空旧 errorCode/error 并更新时间；`manual_action`、当前 apply 失败、版本对不匹配和实际栈未达标均保持原状。
+- 普通 runtime apply 写出成功终态后会立即触发同一重算；Panel 启动自动协调和升级状态 API 读取时还会再次收敛，兼容 v0.4.15 已经遗留在磁盘的失败文件。后端接口和状态枚举不变，不删除 dry-run/apply 诊断历史，也不自动掩盖需要人工恢复的状态。
+- 影响 `required_runtime_update.go`、`runtime_update_apply_runner.go` 与 `runtime_update_apply_test.go`。回归覆盖真实当前失败不被清理、普通 apply 成功立即清理，以及已有成功 apply + 历史 required failure 在首次读取时持久化收敛。
+
 # v0.4.15 后端发布状态（2026-08-14，released）
 
 - `v0.4.15@d84157dc8a3abc83d13d29c276d6ed332e901ce7` 已正式发布。Nexus 持久幂等、Control 0.3.2 自动解绑、无存档首次上传 bootstrap、二级 helper 与实例 Compose 两层宿主路径映射均在 v0.4.14/v0.3.2 Web 升级得到的新 Panel 上完成真实复验；unhealthy 自动回滚也通过。

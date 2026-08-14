@@ -1,9 +1,15 @@
 # FE-RELEASE-GATE-RELOCATION-1：前端发布契约迁到候选阶段（2026-08-14，completed）
 
-- 前端 15 项状态测试、production audit/build 仍是每个正式候选的必跑回归，但执行入口从 tag 后的 `release.yml` 移到 `scripts/run-release-gates.sh`，由产品路径自动或受控手动触发的 `release-candidate.yml` 在候选镜像构建前调用。Compatibility workflow 继续在 `main` 直接执行同组核心前端测试。
+- 前端 17 项状态测试、production audit/build 仍是每个正式候选的必跑回归，但执行入口从 tag 后的 `release.yml` 移到 `scripts/run-release-gates.sh`，由产品路径自动或受控手动触发的 `release-candidate.yml` 在候选镜像构建前调用。Compatibility workflow 继续在 `main` 直接执行同组核心前端测试；本版新增的 cabin strategy 与 save backup detail 两项专项已同时接入两条门禁。
 - `frontend/scripts/test-responsive-layout.ts` 不再错误要求正式 digest 提升 workflow 包含 npm 命令；它现在同时断言统一门禁脚本仍含 responsive/new-game/Nexus 三项关键回归、候选 workflow 必须调用统一门禁、正式 workflow 必须使用 `skopeo --preserve-digests` 且不得重新 `docker build`。
 - 自动发布补充契约继续由同一测试保护：候选必须存在 `main` 产品路径 push 入口，成功候选必须由独立 `workflow_run` 收口器启动 `release.yml` 的 `workflow_dispatch`；避免候选通过后仍要求人工点按钮，或错误依赖 `GITHUB_TOKEN` 的 tag push 递归触发。
 - 这不改变任何 React 页面、CSS、API 或响应式算法。验证运行 `npm run test:responsive-layout`，并结合 workflow YAML/actionlint、Bash/ShellCheck 和真实候选 Web-upgrade E2E；后续增加前端关键回归时应更新统一门禁脚本和本契约，不得重新塞回 tag workflow。
+
+# FE-CABIN-FARMHOUSESTACK-HIDE-1：隐藏 FarmhouseStack 小屋策略（2026-08-14，completed）
+
+- 桌面 `ServerControlPage.tsx` 与移动 `MobileControlPage.tsx` 的“小屋与联机高级设置”下拉框不再向用户提供 `FarmhouseStack`；可见选项只保留推荐的 `CabinStack` 与原版 `None`。
+- 这是纯前端隐藏：兼容 option 仍以 HTML `hidden` 保留，因此已有实例若返回 `FarmhouseStack`，受控 select 不会丢失当前值；用户没有主动改成其它策略时，保存仍可原样提交。`ServerRuntimeSettings` 类型、GET/PUT API 和后端三值校验均不变。
+- 影响桌面/移动控制页两个 JSX 文件，无样式、路由或请求编排变化。`test:cabin-strategy-options` 锁定两端只暴露 `CabinStack`/`None` 且保留 hidden 兼容值；fresh candidate 和 Web 升级后的生产 chunk 还会再次验证 minify 后的 hidden option。桌面/移动 Browser 与 TypeScript/Vite production build 已通过。
 
 # v0.4.15 前端发布状态（2026-08-14，released）
 
@@ -2602,3 +2608,9 @@ npm.cmd run dev
 - `createNewGame` 每次请求都必须发送 `Idempotency-Key`；后端缺 key 返回 428，前端不提供无 key 兼容路径。`SavesSection` 以规范化配置指纹保留 pending request ID：同配置的网络/服务失败后复用，配置变化才换 key，只在 API resolve/202 后清除。
 - `frontend/scripts/test-new-game-idempotency.ts` 使用真实 mock fetch 固定 URL/body/credentials/header，并用 TypeScript AST 锁定“同配置不换 key、失败不清 key、resolve 后才清”的顺序。专项已接入 compatibility-matrix 与 release workflow；2026-08-13 当前源码 14 项 `test:*`、production audit（0 vulnerabilities）和 production build 已全部通过。
 - 本地 Browser QA 已验证桌面普通运行错误不出现重装/凭据表单、390px 移动端导向诊断且零横向溢出，以及确认缺文件时只显示修复；console error/warn 为 0。候选镜像和升级后 bundle 仍是 tag 前门禁。
+
+# FE-SAVE-GAMEDAY-HOVER-DETAILS-1：游戏日回档悬停详情（2026-08-14，completed，未发布）
+
+- 桌面存档页的“游戏日回档”行现在与“其他备份”行复用同一个悬停详情格式化函数，鼠标停留时显示备份类型、农民、游戏内日期和地图；自动回档类型显示为“游戏日回档”，不暴露内部 `auto` kind。
+- 影响 `frontend/src/games/stardew/SavesSection.tsx`、`frontend/scripts/test-save-backup-details.ts` 和 `frontend/package.json`。未改变备份/回档 API、排序、按钮状态、移动端堆叠卡片或 CSS。
+- 验证：`npm.cmd run test:save-backup-details` 与 `npm.cmd run build` 通过。桌面 Browser QA 实际把鼠标移动到回档行，5 条 fixture 行均带用户可读详情；页面无横向溢出、无残留弹窗，console error/warn 为 0。
