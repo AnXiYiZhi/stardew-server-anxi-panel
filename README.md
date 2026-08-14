@@ -7,6 +7,7 @@
     <a href="https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/latest"><img src="https://img.shields.io/github/v/release/AnXiYiZhi/stardew-server-anxi-panel?display_name=tag&amp;style=flat-square&amp;color=5b8c3a" alt="Latest Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/AnXiYiZhi/stardew-server-anxi-panel?style=flat-square&amp;color=c87935" alt="License"></a>
     <a href="#-快速开始"><img src="https://img.shields.io/badge/运行方式-Docker-2496ED?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker"></a>
+    <a href="https://qun.qq.com/universal-share/share?ac=1&amp;authKey=HeQFNP4CqureCKUYia53Hbp8v5O0%2BH5aUPVGyQLofjldXToeO2TSB4JbbYAaWFWW&amp;busi_data=eyJncm91cENvZGUiOiIxMTAzNzk4NDAzIiwidG9rZW4iOiJ2TWhzcWYxNlk4MTlwekdBY1luZWwrY21acTc2SWFkd2wxM25hNUpOOE8rV3RzMThWQWluYUk4Y2F0ZTVIb0poIiwidWluIjoiMTUxNzQ2ODI1MiJ9&amp;data=niTIkqFahNDXKg0NtZOyTcnMsfMI84tU6hUxtn9VnEMYrFTPD7i_dqcj9okLyMQ0sfgLM1m7njUOFxmQqvu64Q&amp;svctype=4&amp;tempid=h5_group_info"><img src="https://img.shields.io/badge/官方QQ群-1103798403-12B7F5?style=flat-square&amp;logo=qq&amp;logoColor=white" alt="官方 QQ 交流群 1103798403"></a>
   </p>
   <p><a href="#-快速开始">快速开始</a> · <a href="https://anxiyizhi.github.io/stardew-server-anxi-panel/">完整文档</a> · <a href="https://anxiyizhi.github.io/stardew-server-anxi-panel/changelog">更新日志</a> · <a href="README.en.md">English</a></p>
 </div>
