@@ -267,12 +267,12 @@ assert_upgraded_frontend_contract() {
   curl --silent --show-error --fail "http://127.0.0.1:$panel_port$entry_asset" >"$output_dir/entry.js"
 
   for prefix in ServerControlPage MobileControlPage SavesPage; do
-    mapfile -t matches < <(grep -oE "$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
+    mapfile -t matches < <(grep -oE "(^|/)$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
     if [[ "${#matches[@]}" -ne 1 ]]; then
       echo "candidate upgrade E2E: expected exactly one $prefix frontend chunk" >&2
       exit 1
     fi
-    asset="/assets/${matches[0]}"
+    asset="/assets/${matches[0]#/}"
     curl --silent --show-error --fail "http://127.0.0.1:$panel_port$asset" >"$output_dir/$prefix.js"
     case "$prefix" in
       ServerControlPage) control_asset="$output_dir/$prefix.js" ;;

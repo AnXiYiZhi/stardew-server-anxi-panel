@@ -2259,6 +2259,7 @@
 
 ## 2026-08-13：已切换子目录后仍重复携带仓库相对前缀
 
+- 最近复发/补充：2026-08-14 在 `frontend/` 运行前端回归后继续执行仓库级编码审计，`git diff --name-only` 返回仓库根相对的 `.agents/...`，却用当前子目录 `Join-Path` 成为 `frontend/.agents/...` 并让 `ReadAllBytes` 退出 1；前端测试和 `git diff --check` 已通过，文件未损坏。仓库级 Git 文件列表必须与显式 `git rev-parse --show-toplevel` 结果组合，不能沿用子项目 workdir。
 - 环境：PowerShell 7，从仓库根将 Shell `workdir` 切换到 `backend/` 后执行 Go 专项格式化和测试。
 - 错误模式：`workdir` 已是 `backend/`，`gofmt` 的文件参数仍写成 `backend/internal/...`。
 - 症状 / 退出码：`GetFileAttributesEx ... The system cannot find the path specified`，退出 1；`gofmt` 与测试均未开始，源码没有被该命令修改。
@@ -2616,6 +2617,16 @@
 - 正确做法：保留导出 tar 的 SHA-256 与大小；导入后核对精确 tag、OS/arch、SDK 环境，并实际运行 `dotnet --list-sdks`。需要内容链比对时比较同一层级的平台 manifest/config/layer，而不是顶层 index 对 config ID。
 - 预防检查：预加载多平台镜像前明确记录 index digest、目标 platform manifest 与 config ID 三种身份；断言必须注明层级，不能只写通用 `Id`。
 - 适用范围：Docker Desktop containerd image store、`docker save/load`、DinD 镜像预载和多架构发布核验。
+
+## 2026-08-14：用猜测的 GitHub Actions 显示名查询运行
+
+- 环境：PowerShell 7、GitHub CLI，`v0.4.16` 候选发布轮询。
+- 错误模式：把工作流文件语义概括成显示名 `Compatibility Matrix`，未先读取仓库实际 `name:` 或 `gh workflow list --all`。
+- 症状 / 退出码：`gh run list --workflow 'Compatibility Matrix'` 报 `could not find any workflows named Compatibility Matrix` 并退出 1；查询在本地失败，远端候选任务未受影响。
+- 根因：GitHub CLI 的 `--workflow` 按精确工作流名或文件名解析，而仓库实际显示名是小写 `Compatibility matrix gates`。
+- 正确做法：开始多工作流轮询前先运行 `gh workflow list --all`，记录精确显示名或直接使用稳定的 workflow 文件名；本次后续按 `Validate release candidate`、`Compatibility matrix gates`、`Tag validated release candidate`、`Promote validated panel candidate` 查询。
+- 预防检查：脚本化跟踪不得从文件名或职责猜测显示名；列表结果应作为本轮唯一输入，单个可选工作流无运行时不能让其它必需工作流查询丢失。
+- 适用范围：`gh run list/view/watch`、workflow dispatch 与自动发布链跟踪。
 
 ## 编码与换行快速检查
 

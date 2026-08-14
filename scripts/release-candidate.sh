@@ -178,12 +178,12 @@ assert_frontend_contract_from_container() {
   docker exec "$container" wget -qO- "http://127.0.0.1:8090$entry_asset" >"$output_dir/entry.js"
 
   for prefix in ServerControlPage MobileControlPage SavesPage; do
-    mapfile -t matches < <(grep -oE "$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
+    mapfile -t matches < <(grep -oE "(^|/)$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
     if [[ "${#matches[@]}" -ne 1 ]]; then
       echo "release candidate: expected exactly one $prefix frontend chunk" >&2
       exit 1
     fi
-    asset="/assets/${matches[0]}"
+    asset="/assets/${matches[0]#/}"
     docker exec "$container" wget -qO- "http://127.0.0.1:8090$asset" >"$output_dir/$prefix.js"
     case "$prefix" in
       ServerControlPage) control_asset="$output_dir/$prefix.js" ;;
