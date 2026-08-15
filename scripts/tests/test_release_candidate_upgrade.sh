@@ -53,7 +53,7 @@ if [[ ! -f "$fixtures_tar" ]]; then
   exit 1
 fi
 
-for command_name in docker curl grep jq openssl sha256sum sort sqlite3; do
+for command_name in docker curl grep jq openssl sha256sum sort sqlite3 zip; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "candidate upgrade E2E: missing required command: $command_name" >&2
     exit 1
@@ -295,6 +295,130 @@ assert_upgraded_frontend_contract() {
   fi
 }
 
+assert_upgraded_empty_compose_save_import_submission() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_compose="$instance_dir/docker-compose.yml"
+  local import_project="$project-save-import"
+  local fixture_root="$root/save-import-fixture"
+  local save_zip="$root/Imported_123.zip"
+  local commit_body="$root/save-import-commit.json"
+  local stop_code=""
+  local instance_state=""
+  local compose_ps_output=""
+  local preview_code=""
+  local upload_token=""
+  local commit_code=""
+  local import_job_id=""
+  local import_operation_id=""
+  local job_status=""
+  local cleaned=0
+
+  echo "candidate upgrade E2E: testing Panel Stop empty Compose save-import submission"
+  mkdir -p "$instance_dir/.local-container/mods/JunimoServer"
+  mkdir -p "$instance_dir/.local-container/saves/Saves/Existing_1"
+  mkdir -p "$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server"
+  printf 'IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\n' >"$instance_dir/.env"
+  printf '%s\n' '{"Name":"JunimoServer","Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}' >"$instance_dir/.local-container/mods/JunimoServer/manifest.json"
+  printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
+  printf '%s\n' '<SaveGame><player><name>Existing</name></player></SaveGame>' >"$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1"
+  printf '%s\n' '<Farmer><name>Existing</name></Farmer>' >"$instance_dir/.local-container/saves/Saves/Existing_1/SaveGameInfo"
+  printf '%s\n' '{"SaveNameToLoad":"Existing_1"}' >"$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server/junimohost.gameloader.json"
+  printf 'name: %s\nservices:\n  server:\n    image: alpine:3.20\n    command: ["sh", "-c", "sleep 3600"]\n' "$import_project" >"$instance_compose"
+
+  docker compose --project-directory "$instance_dir" -f "$instance_compose" up -d >/dev/null
+  if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "UPDATE instances SET state='running', state_message='release candidate running fixture', driver_phase='running', driver_payload='{}' WHERE id='stardew'; SELECT changes();")" != 1 ]]; then
+    echo "candidate upgrade E2E: failed to prepare the default instance state" >&2
+    exit 1
+  fi
+
+  stop_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/instances/stardew/stop")"
+  if [[ "$stop_code" != 202 ]]; then
+    echo "candidate upgrade E2E: Panel Stop failed with HTTP $stop_code" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  for _ in $(seq 1 60); do
+    if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" >"$response_file" 2>/dev/null; then
+      instance_state="$(jq -r '.state // empty' "$response_file")"
+      if [[ "$instance_state" == stopped ]] &&
+        [[ -z "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+  if [[ "$instance_state" != stopped ]] ||
+    [[ -n "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+    echo "candidate upgrade E2E: Panel Stop did not reach stopped with zero project containers" >&2
+    exit 1
+  fi
+  compose_ps_output="$(docker exec --workdir /data/instances/stardew "$panel_container" docker compose ps --all --format json)"
+  if [[ -n "$(printf '%s' "$compose_ps_output" | tr -d '[:space:]')" ]]; then
+    echo "candidate upgrade E2E: compose ps after Panel Stop was not empty" >&2
+    printf '%s\n' "$compose_ps_output" >&2
+    exit 1
+  fi
+
+  # Make the asynchronous maintenance fixture fail immediately after the
+  # submission has crossed the empty strict-Compose gate. This keeps the E2E
+  # deterministic while still proving 202/job ownership on the upgraded Panel.
+  printf 'name: %s\nservices:\n  server:\n    image: alpine:3.20\n    command: ["sh", "-c", "exit 1"]\n' "$import_project" >"$instance_compose"
+  mkdir -p "$fixture_root/Imported_123"
+  printf '%s\n' '<SaveGame><player><name>Imported</name></player></SaveGame>' >"$fixture_root/Imported_123/Imported_123"
+  printf '%s\n' '<Farmer><name>Imported</name></Farmer>' >"$fixture_root/Imported_123/SaveGameInfo"
+  (
+    cd "$fixture_root"
+    zip -q -r "$save_zip" Imported_123
+  )
+
+  preview_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --form "save=@$save_zip;filename=Imported_123.zip" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-preview")"
+  upload_token="$(jq -r '.token // empty' "$response_file")"
+  if [[ "$preview_code" != 200 || -z "$upload_token" || "$(jq -r '.saveName // empty' "$response_file")" != Imported_123 ]]; then
+    echo "candidate upgrade E2E: save upload preview failed with HTTP $preview_code" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  jq -n --arg token "$upload_token" '{token:$token,hostHandling:{mode:"virtual_host_takeover",acknowledged:true}}' >"$commit_body"
+  commit_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$commit_body" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-commit-and-start")"
+  import_job_id="$(jq -r '.jobId // empty' "$response_file")"
+  import_operation_id="$(jq -r '.operationId // empty' "$response_file")"
+  if [[ "$commit_code" != 202 || -z "$import_job_id" || -z "$import_operation_id" || "$(jq -r '.saveName // empty' "$response_file")" != Imported_123 ]]; then
+    echo "candidate upgrade E2E: empty Compose save import was not accepted with HTTP 202/jobId" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+
+  for _ in $(seq 1 90); do
+    if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/jobs/$import_job_id" >"$response_file" 2>/dev/null; then
+      job_status="$(jq -r '.job.status // empty' "$response_file")"
+      if [[ "$job_status" == failed || "$job_status" == canceled || "$job_status" == succeeded ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+  if [[ "$job_status" != failed ]]; then
+    echo "candidate upgrade E2E: controlled maintenance fixture did not fail terminally" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  for _ in $(seq 1 60); do
+    instance_state="$(curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" | jq -r '.state // empty')"
+    if [[ "$instance_state" == stopped ]] &&
+      [[ -z "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]] &&
+      [[ -z "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+      cleaned=1
+      break
+    fi
+    sleep 1
+  done
+  if ((cleaned != 1)); then
+    echo "candidate upgrade E2E: controlled save-import fixture did not restore stopped state and clean Docker resources" >&2
+    exit 1
+  fi
+  echo "candidate upgrade E2E: upgraded Panel accepted empty Compose save import and cleaned the controlled failure"
+}
+
 wait_version "$previous_version" 120
 
 setup_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie-jar "$cookie_file" --header 'Content-Type: application/json' --data '{"username":"admin","password":"release-candidate-password","confirmPassword":"release-candidate-password"}' "http://127.0.0.1:$panel_port/api/setup/admin")"
@@ -453,5 +577,6 @@ if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_befor
   echo "candidate upgrade E2E: Panel restart changed the game container" >&2
   exit 1
 fi
+assert_upgraded_empty_compose_save_import_submission
 
 echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence and restart passed"

@@ -1,3 +1,16 @@
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 接手记录（2026-08-15，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 用户新装 `v0.4.17` 后先建档、再通过 Panel Stop 停服并上传存档。只读取证显示 Stop job 已成功、实例为 `stopped/stopped`、Compose 配置仍有 `steam-auth/server`，但项目容器数、活动 job 和 import journal 都是 0；上传 token 尚为 `available`，证明事务没有开始。真实 Docker 在 `compose down` 后会让 `compose ps --all --format json` 以 0 退出并返回空 stdout，旧 `ComposePsStrict` 却把它当错误；Web 将未公开的 maintenance start 错误 fallback 为 `save_in_progress`，于是页面误报服务器正在保存或接管事务。
+- `internal/docker/compose.go` 改为仅在命令成功时接受空 stdout，并返回初始化好的空 `Services`；`compose_test.go` 固定成功空集合，同时继续证明坏 JSON、非空条目缺 service/state 均失败；`runtime_apply_integration_test.go` 新增真实 `ComposeUp/ComposeDown` 零容器回归。Stardew 的 `saveImportServerStoppedStrict` 原本就把空服务集合视为 server absent，因此 driver、公开 DTO、错误码、token/journal ownership 和前端均无需修改。
+- 这项修复不接受“有输出但无法分类”的结果：Docker/Compose 命令失败、坏 JSON、缺字段、未知状态与任一运行中 server 副本仍 fail closed；数据库仍只允许 `game_installed/save_required/ready_to_start/stopped`，且 ownership 前和 `ComposeUp` 前的两次严格检查都保留。
+
+## 如何验证、下一步注意事项
+
+- Linux `go test ./internal/docker ./internal/games/stardew_junimo -count=1` 通过；Docker 包明确覆盖四次无缓存 strict 调用：running 正常解析、坏 JSON 拒绝、空 stdout 返回 0 services、缺 state 拒绝。随后串行 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build -o /tmp/anxi-panel ./cmd/panel` 全绿；宿主 Docker 全套 `go test -tags=integration ./internal/docker -count=1 -v` 同轮通过，新增 integration 实际启动并 down 任务 Compose，确认项目容器归零后 strict 返回空集合。任务容器、网络和 Go 缓存卷全部清理归零。
+- `scripts/tests/test_release_candidate_upgrade.sh` 已加入升级后专项：真实启动一次性实例 Compose，经公开 Panel Stop 后确认项目容器为 0 且 Panel 容器内 `compose ps --all` stdout 为空，再走 upload-preview/commit 并要求 `202/jobId/operationId`。受控 server 改为立即退出，使 maintenance job 快速失败并验证实例恢复 stopped、项目容器/网络归零。下一候选必须实际跑通该链；不要用 `docker compose create` 当作 E2E 前置条件。
+
 # v0.4.17 后端发布接手状态（2026-08-15，released）
 
 - `RUNTIME-AUTH-HEALTH-PROBE-1` 与 `SAVE-IMPORT-FIRST-INSTALL-STATE-1` 已进入 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`。Compatibility `31823172972`、候选 `31823172958`、Tag `31823884131`、正式提升 `31823899038` 成功；候选包含严格 `/health` 挂起式 Docker fixture、全量 Go/Web 状态机回归、fresh/restart、从 `v0.4.16` 的不健康回滚和健康 Web 升级。

@@ -240,7 +240,7 @@ if ((dind_ready != 1)); then
   exit 1
 fi
 
-docker exec "$dind_container" apk add --no-cache bash curl jq openssl sqlite docker-cli-compose >/dev/null
+docker exec "$dind_container" apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip >/dev/null
 docker exec "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version"
 docker rm -f "$dind_container" >/dev/null
 

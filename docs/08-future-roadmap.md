@@ -1,3 +1,11 @@
+# 2026-08-15 完成：停服空 Compose 集合不再阻断存档导入（SAVE-IMPORT-COMPOSE-EMPTY-SET-1，未发布）
+
+- [x] 生产只读取证确认 `v0.4.17` 的 Stop job、SQLite 和 Compose 配置正常，项目容器/活动 job/import journal 均为 0，上传 token 未被接管；问题是 strict probe 将 `compose down` 后成功的空 stdout 错当异常，并由 Web fallback 映射为 `save_in_progress`。
+- [x] `ComposePsStrict` 仅把“命令成功 + 空 stdout”接受为 0 services；坏 JSON、缺 service/state、未知状态、非零退出和运行中的 server 继续 fail closed，四态、两次检查及事务 ownership 门禁不变。
+- [x] Linux Docker/Junimo 定向全包、串行全量 test/vet/build 及真实 `ComposeUp → ComposeDown → 零容器 → strict 空集合` integration 通过，任务容器、网络与缓存卷归零；公开上传 DTO、错误码和前端不变。
+- [x] 候选升级脚本已加入真实 `Panel Stop/compose down → 零容器/空 stdout → Web 上传 202/jobId/operationId → 受控 maintenance 失败 → stopped/容器/网络清理`，不使用 `compose create` 占位绕过；Bash 语法与 ShellCheck 已通过。
+- [ ] 下一正式候选必须实际跑通新增升级后链，并回填候选 run、正式提升、digest 与资源清理证据。
+
 # 2026-08-15 完成：官网更新日志同步 v0.4.17
 
 - [x] 官网首页版本角标、入口摘要和 `CURRENT RELEASE` 切换到 v0.4.17，changelog 置顶新增三项正式变更并保留 v0.4.16 历史条目。

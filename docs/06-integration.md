@@ -1,3 +1,8 @@
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 联调契约（2026-08-15，completed，未发布）
+
+- `POST /api/instances/:id/saves/upload-commit-and-start` 的请求、202 响应、错误码和管理员权限不变。Panel Stop 使用 `docker compose down` 后，`docker compose ps --all --format json` 成功返回空 stdout 代表该项目当前没有容器；后端必须把它作为空服务集合并继续既有 server stopped 判定，不能误映射成 `save_in_progress`。
+- 非零退出、非空坏 JSON、条目缺 service/state、未知状态及真实运行中的 server 仍拒绝；前端无需增加字段或文案。候选升级测试已加入真实 `Panel Stop → 零 Compose 容器/空 stdout → upload-preview → commit 202/jobId/operationId`，并让受控 maintenance 容器立即退出以验证失败终态后的 stopped 恢复及 Docker 资源归零；该链必须在候选中通过。
+
 # v0.4.17 跨端发布结果（2026-08-15，released）
 
 - `RUNTIME-AUTH-HEALTH-PROBE-1`、`SAVE-IMPORT-FIRST-INSTALL-STATE-1` 与社区中心收集包文案已在同一 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f` 候选中验收。auth 服务健康与 Steam 在线能力已分层；首次上传的 Web/driver 四态契约、strict Compose 实停门禁、精确恢复与安全取消保持同一后端权威；前端字段和公开上传 DTO 均未改变。

@@ -110,10 +110,10 @@ func (c *Client) ComposePs(ctx context.Context, dir string) (ComposePsResult, er
 	return composeResult, err
 }
 
-// ComposePsStrict bypasses the short UI cache and requires a complete,
-// parseable `docker compose ps --all` response. Safety-sensitive callers use
-// this method before starting or deleting transaction-owned runtime data; an
-// empty/malformed response must never be interpreted as "the server is down".
+// ComposePsStrict bypasses the short UI cache and requires a parseable
+// `docker compose ps --all` response. Docker Compose exits successfully with
+// empty stdout after `compose down`; that is a valid empty service set. A
+// command failure or any non-empty malformed response still fails closed.
 func (c *Client) ComposePsStrict(ctx context.Context, dir string) (ComposePsResult, error) {
 	result, err := c.run(ctx, "docker compose ps --all", dir, c.timeouts.Ps, "compose", "ps", "--all", "--format", "json")
 	composeResult := ComposePsResult{Result: result, Services: []ComposeService{}}
@@ -121,7 +121,7 @@ func (c *Client) ComposePsStrict(ctx context.Context, dir string) (ComposePsResu
 		return composeResult, err
 	}
 	if strings.TrimSpace(result.Stdout) == "" {
-		return composeResult, fmt.Errorf("docker compose ps --all returned an empty response")
+		return composeResult, nil
 	}
 	services, parseErr := parseComposeServices(result.Stdout)
 	if parseErr != nil {

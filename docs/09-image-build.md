@@ -1,3 +1,20 @@
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 发布专项矩阵（2026-08-15，pending candidate）
+
+- 变更清单：修复 `v0.4.17` 在 Panel Stop 已成功 `docker compose down` 后，`ComposePsStrict` 把退出 0 的空 stdout 当成探针错误，导致上传事务在 ownership/journal 前被 Web fallback 误报为 `save_in_progress`。修复仅将“命令成功 + 空 stdout”解释为 0 services，并新增 Docker integration 及升级后 Web E2E；公开上传 API、前端、Junimo/Control/runtime manifest、数据库和部署格式不变。候选脚本仅为一次性 DinD 补充 `zip` fixture 工具。
+- 受影响链路：`POST .../saves/upload-commit-and-start → ImportSaveAndStart pre-ownership gate → ComposePsStrict → saveImportServerStoppedStrict`，以及复用 strict probe 的 maintenance/Phase A/安全 cleanup 停机证明。没有改动 Compose Up/Down、存档内容、token/journal 结构或运行栈镜像。
+
+| 专项 | 本版验证 |
+| --- | --- |
+| 正常路径 | integration 实际 `ComposeUp` 启动 server，`ComposeDown` 后证明项目容器为 0，再要求 `ComposePsStrict` 成功返回 0 services；升级 E2E 从公开 Panel Stop 得到同一空输出，再要求上传返回 `202/jobId/operationId`。 |
+| 关键边界 | 非空 running 正常解析；真实运行中的 server 仍由 driver 返回 `save_in_progress`。坏 JSON、缺 service/state、未知 server 状态和 Docker/Compose 非零退出继续 fail closed。 |
+| 权限安全 | 修复不改变管理员鉴权、路径校验、Docker 参数或前端字段；空集合只在 Compose 命令退出 0 时成立，错误输出和非空不可分类结果不降级。 |
+| 幂等/恢复 | strict probe 继续绕过 UI cache；重复调用不创建资源。导入 ownership、journal、`MaintenanceStarted`、upstream 和 cleanup fingerprint 门禁不变。 |
+| 数据完整性 | 生产取证全程只读，确认故障请求没有创建 import job/journal、没有接管 token；测试不挂载生产数据，也不读写真实存档。 |
+| 资源清理 | integration 使用唯一前缀 Compose project，测试后容器和网络归零；升级 E2E 的受控 maintenance 容器立即退出，必须验证 job 失败终止、实例恢复 stopped 且项目容器/网络归零；本地 Go 门禁资源按精确 owner 校验后归零。 |
+
+- 本地门禁：Linux 定向 `go test ./internal/docker ./internal/games/stardew_junimo -count=1`，串行全量 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build -o /tmp/anxi-panel ./cmd/panel`，以及宿主 Docker 全套 `go test -tags=integration ./internal/docker -count=1 -v` 全部通过；新增真实空集合 E2E 与既有 runtime/updater integration 同轮通过，测试后对应容器和网络归零。`release-candidate.sh` 与升级 E2E 的 `bash -n`、ShellCheck 在只读仓库挂载的 Alpine 任务容器中通过，容器归零。
+- 候选选择：产品后端和候选脚本路径变化，必须执行统一代码门禁、`go test -tags=integration ./internal/docker`、候选镜像 fresh/restart、上一正式版 Web unhealthy 回滚和 healthy 升级，并在升级后的 Panel 真实执行 Stop 空集合上传专项。runtime manifest、SMAPI/Junimo 实现、Control 和网站内容未变，对应远程制品/SMAPI 长链按 `scripts/run-release-gates.sh` 路径差异自动跳过；不得跳过新增 Docker integration 或升级后 Web E2E。预期自动候选版本为上一正式版 `v0.4.17` 的补丁递增版，最终版本、commit、build date、run、digest、实际耗时与资源清理须在候选/正式流程结束后回填。
+
 # v0.4.17 官网版本同步（2026-08-15，post-release docs-only）
 
 - 官网首页与 changelog 同步到已发布的 v0.4.17，公开范围为 steam-auth `/health` 服务验收、安装完成后首次上传状态机和“社区中心收集包”文案修正；内容直接来自正式 Release 与本文件的不可变候选/升级/回滚证据。

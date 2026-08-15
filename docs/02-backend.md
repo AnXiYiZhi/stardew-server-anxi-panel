@@ -1,3 +1,10 @@
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1：停服后的空 Compose 集合允许首次导入（2026-08-15，completed，未发布）
+
+- 生产只读取证确认：`v0.4.17` 实例已通过 Panel Stop 成功执行 `docker compose down`，数据库为 `stopped/stopped`、活动 job 为 0、导入 journal 为 0、上传 token 仍为 `available`；实例 Compose 配置继续声明 `steam-auth/server`，但 `docker compose ps --all --format json` 以 0 退出且 stdout 为空。提交入口没有接管上传，却因 strict probe 把合法空集合误判为错误，再由 Web fallback 映射成 `save_in_progress`。
+- `ComposePsStrict` 现在把“命令成功且 stdout 为空”解析为合法的空 `Services` 集合。该结果仍由 `saveImportServerStoppedStrict` 判定为没有 server 副本、可以进入维护；命令非零、非空坏 JSON、条目缺 service/state、未知 server 状态及任一 `running/restarting/paused/removing` 副本仍 fail closed。没有放宽数据库四态、两次无缓存检查、ownership/journal 前置顺序或 cleanup 门禁。
+- 影响 `internal/docker/compose.go`、`compose_test.go` 与 `runtime_apply_integration_test.go`；公开 `upload-preview`、`upload-commit-and-start` DTO、错误码、hostHandling、journal 和前端代码均未变化。Linux 定向回归覆盖 strict cache bypass、成功空集合、坏 JSON、缺字段和完整 Stardew Junimo 包；随后串行全量 `go test ./...`、`go vet ./...` 与 panel build 均通过。真实 Docker integration 还实际执行 `ComposeUp → ComposeDown → 项目容器归零 → ComposePsStrict=0 services` 并清理容器/网络。
+- `scripts/tests/test_release_candidate_upgrade.sh` 已加入升级后专项：候选 Panel 真实接管一个运行中的一次性 Compose 项目，经公开 Stop API 执行 `compose down`，确认项目容器为 0、Panel 容器内 `compose ps --all` stdout 为空，再上传伪存档并要求返回 `202/jobId/operationId`；受控 server 随后立即退出，job 必须失败终止、实例恢复 stopped 且项目容器/网络归零。下一正式候选必须实际跑过此链，不得用预先 `docker compose create` 的占位容器掩盖空集合路径。
+
 # v0.4.17 后端发布状态（2026-08-15，released）
 
 - `RUNTIME-AUTH-HEALTH-PROBE-1` 与 `SAVE-IMPORT-FIRST-INSTALL-STATE-1` 已随 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f` 正式发布。候选 run `31823172958` 和 Compatibility run `31823172972` 成功；真实 auth Docker fixture 证明 `/health` 在 Steam 离线时快速通过且不会请求挂起的 `/steam/ready`，404/500/坏 JSON/超时/不可达继续回滚。首次上传的真实 `game_installed`、四态矩阵、strict Compose、精确状态恢复和三类 job/token/journal 中断窗口由全量 Go/Web 回归固定。

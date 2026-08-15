@@ -14,6 +14,45 @@ import (
 	"time"
 )
 
+func TestComposePsStrictAcceptsEmptyProjectAfterComposeDown(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	project := "anxistrictps" + strings.ToLower(strings.ReplaceAll(time.Now().UTC().Format("150405.000000"), ".", ""))
+	workDir := t.TempDir()
+	composePath := filepath.Join(workDir, "docker-compose.yml")
+	compose := "name: " + project + "\nservices:\n  server:\n    image: alpine:3.20\n    command: [\"sh\", \"-c\", \"sleep 300\"]\n"
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := NewClient(Options{DockerPath: "docker"})
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		_, _ = client.ComposeDown(cleanupCtx, workDir)
+	})
+	if result, err := client.ComposeUp(ctx, workDir); err != nil || result.ExitCode != 0 {
+		t.Fatalf("compose up result=%+v err=%v", result, err)
+	}
+	running, err := client.ComposePsStrict(ctx, workDir)
+	if err != nil || len(running.Services) != 1 || running.Services[0].Service != "server" || running.Services[0].State != "running" {
+		t.Fatalf("running strict result=%+v err=%v", running, err)
+	}
+	if result, err := client.ComposeDown(ctx, workDir); err != nil || result.ExitCode != 0 {
+		t.Fatalf("compose down result=%+v err=%v", result, err)
+	}
+	containerNames, err := exec.CommandContext(ctx, "docker", "ps", "-a", "--filter", "label=com.docker.compose.project="+project, "--format", "{{.Names}}").CombinedOutput()
+	if err != nil {
+		t.Fatalf("inspect compose project containers: %v: %s", err, containerNames)
+	}
+	if strings.TrimSpace(string(containerNames)) != "" {
+		t.Fatalf("compose down left project containers: %s", containerNames)
+	}
+	empty, err := client.ComposePsStrict(ctx, workDir)
+	if err != nil || len(empty.Services) != 0 {
+		t.Fatalf("empty strict result=%+v err=%v", empty, err)
+	}
+}
+
 // This test creates only uniquely prefixed disposable volumes and never uses a
 // Compose project or volume supplied by a real Panel instance.
 func TestRuntimeApplyIsolatedSteamSessionCloneRestore(t *testing.T) {

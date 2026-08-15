@@ -2,6 +2,27 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-15：把未验证的内部 PowerShell API 当作参数转义器
+
+- 环境：Windows PowerShell 7、Posh-SSH 3.2.7，对用户指定服务器执行只读 SQLite 诊断。
+- 错误模式：为不含空格的固定数据库路径构造远程 Python 参数时，调用 `[System.Management.Automation.Language.CodeGeneration]::QuoteArgument(...)`，但没有先确认当前 PowerShell 运行时是否暴露该方法。
+- 症状 / 退出码：本地在生成远程命令时抛出 `InvalidOperation`，提示 `CodeGeneration` 不含 `QuoteArgument`；远端 Python 与 SQLite 查询均未执行，生产数据和本地产品文件未修改。
+- 根因：把非稳定、未验证的内部类型方法当成公共 PowerShell 契约，同时为已经满足安全字符约束的路径引入了不必要的转义层。
+- 正确做法：先验证参数只含预期的绝对 Linux 路径字符；本次固定 `/root/.anxi-panel/data/panel.db` 无空格和 shell 元字符，直接作为独立参数传递。复杂参数改用任务专属脚本或 UTF-8 base64 载荷，不猜内部转义 API。
+- 预防检查：使用 .NET/PowerShell helper 前先以 `Get-Member` 或官方公共 API 契约确认存在；已满足严格白名单的固定参数不增加额外转义层。
+- 适用范围：PowerShell 7、Posh-SSH 远程诊断、原生命令参数拼装和多层 shell 转义。
+
+## 2026-08-15：Markdown 反引号提前终止 JavaScript 补丁模板
+
+- 最近复发/补充：同日向 Bash 候选测试写多行 `printf` 时，在 JavaScript 模板源码里保留了 Bash 的行尾反斜杠；JavaScript 先把反斜杠与换行当作自身续行并移除换行，后续补丁新增前缀因而落入同一 Bash 行，生成了语法合法但内容错误的 Compose fixture。`bash -n` 与 ShellCheck 都未发现，最终 staged diff 审查命中，候选尚未运行。改为单个 `printf` 格式串内显式 `\n`，不让外层模板承载 Bash 行尾续行；修改后必须同时断言生成文本，不把静态 lint 当作内容验证。
+- 环境：Codex `functions.exec` JavaScript 编排，准备向四份 Markdown 长期文档分别调用 `apply_patch`。
+- 错误模式：用 JavaScript 反引号模板承载含大量未转义 Markdown 反引号的补丁文本，并把四个补丁放在同一个脚本中。
+- 症状 / 退出码：V8 在执行任何工具调用前报 `SyntaxError: Unexpected identifier 'v0'`；四个补丁均未执行，产品和文档为零修改。
+- 根因：外层 JavaScript 模板与内层 Markdown 行内代码使用同一分隔符，且没有在编排前做语法边界检查。
+- 正确做法：每份文档使用独立 `apply_patch` 调用，并在 JavaScript 模板内把 Markdown 反引号显式写成 \`；首份成功后再继续下一份。
+- 预防检查：补丁内容含 Markdown 行内代码时，提交 `functions.exec` 前机械检查所有内层反引号都已转义；多文件补丁继续拆分，避免解析失败扩大为整批零执行。
+- 适用范围：`functions.exec`、JavaScript 模板字符串、Markdown 文档和嵌套 `apply_patch`。
+
 ## 2026-08-15：沿用上轮已撤下的 `shell_command` 工具名
 
 - 环境：Codex Windows 工作区，新一轮官网文档任务开始时执行只读文档检查。
@@ -222,6 +243,7 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-15 生产存档导入诊断时，又把 `backend/internal/games/stardew_junimo/save_import_*.go` 作为 Windows `rg` 位置参数；迁移和类型读取已输出，但末尾检索仍以 `os error 123` 失败，远端尚未查询且产品文件未变化。开始修复后检索测试覆盖时，同轮又把两个包的 `*_test.go` 作为位置参数并把 stderr 丢弃，组合命令被后续成功输出掩盖；增加真实 Docker 回归时再次把 `backend/internal/docker/*_test.go` 放在位置参数且让前面的成功输出掩盖错误。随即统一改为明确目录配合 `rg -g '*_test.go'`。即使是只读诊断，提交命令前也必须机械检查每个含 `*` 的参数只能紧跟 `-g`，且不得隐藏原生命令失败。
 - 最近复发/补充：2026-08-15 发布前审计 token/job 崩溃窗口时，又把 `backend/internal/games/stardew_junimo/save_import*` 作为 `rg` 位置参数；前半对 `jobs.Manager.Start` 的读取成功，末尾检索仍以 os error 123 令组合命令退出 2，产品文件未变化。此前同日只读排查首次安装后的存档导入失败时，已先后三次把 `save_import*_test.go`、`*save*test.go` 或 `*_test.go` 作为 Windows `rg` 位置参数；二次代码审查时又把两个包的 `*test.go` 直接作为位置参数，随后在已取得 Compose cache 实现后又让末尾附加检索残留 `backend/internal/docker/*.go`。复发都发生在主命令已安全后又为压缩附加检索手写通配路径，说明必须检查整条命令。余下发布流程禁止任何 `rg` 位置参数包含 `*`；测试覆盖检索固定从明确目录使用 `rg -g 'save_import*_test.go' ... backend/internal/games/stardew_junimo` 与 `rg -g '*save*test.go' ... backend/internal/web`。
 - 最近复发/补充：最终前端门禁为查 `tsBuildInfoFile` 再次执行 `rg ... frontend/tsconfig*.json`，Windows 未展开该通配符，`rg` 以 os error 123 退出；测试没有开始、文件未修改。随后先用 `rg --files frontend -g 'tsconfig*.json'` 得到三个精确文件，再逐个检索成功。该规则已在 AGENTS 提升仍复发；余下发布流程禁止向 `rg` 位置参数传任何 `*`，必须先生成精确路径数组。
 
@@ -1362,6 +1384,7 @@
 
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
+- 最近复发/补充：2026-08-15 检查 lifecycle Stop 分支时，把含字面双引号的三个候选重新拼成单个 `rg -e` 正则并嵌入 JavaScript → PowerShell，传到 `rg` 后变成未闭合分组并报 `regex parse error: unclosed group`；命令只读、文件未变化。随即按 `case "stop"`、`runStop`、`operation == "stop"` 分拆为三次 `rg -F -e`。候选数量少也不得为减少调用恢复多层分组正则。
 - 最近复发/补充：2026-08-13 讨论存档自动解绑时，为一次性查找 Control 命令分支，把带字面双引号的 `case "save-now"` 与其它候选拼成 `rg` 分组正则，经 JavaScript → PowerShell 后落成 `unclosed group`；同一只读命令的其它固定字符串证据已正常返回，文件未修改。后续改为每个候选独立 `rg -F`，多条只读检索不再共享一个复杂正则或依赖末条 `rg` 的退出码。
 - 最近复发/补充：2026-08-13 查找 Compose server-running 判定时，又把含字面双引号的候选分组正则内联进 JavaScript → PowerShell → `rg`，最终传给 `rg` 的模式被截断并报 `unclosed group`；命令只读、未修改文件。随后改用多个 `rg -F` 和直接读取已确认文件。即使只是一次候选检索，也不得重新在多层命令中拼分组正则或字面引号。
 - 最近复发/补充：同日最终差异扫描又把同时含单双引号的 password/token 正则放进嵌套 PowerShell 数组，解析阶段报 `Unexpected token ']'`，尚未读取 diff。立即删除复杂模式，改为多个 `Select-String -SimpleMatch` 与 `rg -F` 白名单检查；敏感扫描也不能以“安全检查”为由例外使用多层复杂正则。
@@ -1440,6 +1463,7 @@
 
 ## 2026-07-29：`rg` 搜索模式以连字符开头时被当作选项
 
+- 最近复发/补充：2026-08-15 检查是否已有 `git show --output=-` 条目时，又直接把 `--output=-` 作为 `rg -F` 的模式，`rg` 报 `unrecognized flag --output`、退出 2，未执行搜索且文件未变化。随即改用 `rg -F -e '<pattern>'`；引号和固定字符串模式都不能替代 `-e` 参数边界。
 - 最近复发/补充：2026-08-12 v0.4.11 收口先后直接执行以 `-join` 和 `--fixed-strings` 开头的两次模式搜索；引号和 `-F` 都没有终止参数解析，第一次报未知短选项，第二次把模式误当成长选项并返回无关结果。该错误已再次出现，预防规则同步提升到 `AGENTS.md`：凡模式首字符可能是 `-`，必须使用 `-e '<pattern>'`，或在明确参数后加 `--` 再传模式。
 - 最近复发/补充：2026-08-13 检查错题本是否已有 Go `-race`/CGO 条目时，把以 `-race` 开头的组合模式直接交给 `rg -n -i`，命令没有执行预期检索却返回了无关内容。随即改用 `rg -n -i -e 'race|CGO_ENABLED|cgo' <file>`，正确得到零匹配的退出码 1。即使搜索目标不是 CLI 文档，只要模式首字符是短横线也必须显式使用 `-e`，不能根据退出码 0 误认结果有效。
 - 环境：Windows，PowerShell 7，检查隔离 VitePress 预览的 CSS 自定义属性。
@@ -2732,6 +2756,7 @@
 
 ## 2026-08-14：PowerShell 未固定 Git 补丁标准输入的 UTF-8 与 LF
 
+- 最近复发/补充：2026-08-15 为只暂存生产存档修复的错题条目，重新使用重定向进程时漏设 `StandardInputEncoding`，且没有先执行 `git apply --cached --check` 就直接应用手写零上下文补丁；Git 在 line 11 报 `corrupt patch` 并在写入前终止，索引和工作树均未因该命令变化。后续先显式固定 UTF-8 无 BOM、补足结尾 LF并只运行 `--check`，通过后才应用同一字节载荷。
 - 环境：PowerShell 7，在共享工作树中用 `git diff -U0` 选择发布证据 hunk，并通过 stdin 传给 `git apply --cached`。
 - 错误模式：把补丁行数组直接用 PowerShell 管道送给原生命令，假定 `$OutputEncoding=UTF-8` 同时保证行终止符为 LF。
 - 症状 / 退出码：首次用对象管道时，只含新增行的补丁以每行 `\r` 尾随空白警告写入 index，下一中文删除行无法匹配并退出 1；改用 `System.Diagnostics.Process` 但未设置 `StandardInputEncoding` 后，新增 hunk 仍可写入，包含中文删除行的下一文件再次无法匹配。两轮工作树都未变，并分别只撤销本轮错题本 index 暂存。
@@ -2742,6 +2767,7 @@
 
 ## 2026-08-15：检索已返回真实源码路径后仍按记忆读取猜测文件名
 
+- 最近复发/补充：2026-08-15 增加 strict Compose 真实 Docker 回归时，`rg --files backend/internal/docker` 已列出实际测试文件，随后仍凭记忆读取不存在的 `backend/internal/docker/compose_integration_test.go`；其它精确文件输出正常但 `Get-Content` 失败。检查候选升级覆盖时，又把未确认的 `scripts/test-release-candidate.sh` 和两个已存在脚本一起传给 `rg`，导致组合检索退出 2；真实文件是先前文件清单已返回的 `scripts/tests/test_release_candidate_upgrade.sh`。改为只读取检索返回的精确路径；后续不得从被测函数或测试职责推断文件名。
 - 最近复发/补充：同日回填发布证据时，把从 `docs/09-image-build.md` 读取到的旧发布建议误当成 `docs/02-backend.md` 内容，向后者提交了不存在上下文的 `apply_patch`；补丁验证失败且零修改。跨文档替换也必须先用精确文本定位真实文件和行，再对单文件施补丁，不能根据章节职责迁移记忆中的句子。
 - 最近复发/补充：同日发布后核对候选 E2E 日志标记时，在 `rg` 的多个输入中凭命名习惯加入不存在的 `scripts/release-candidate-lib.sh`；真实 `release-candidate.sh` 和测试脚本已有命中输出，但缺失路径仍使组合检索以 1 退出。多文件检索前必须先用 `rg --files` 确认每个精确输入，或只给已验证目录配 `-g`，不能把“可能存在”的辅助文件混入命令。
 - 环境：PowerShell 7，发布前审计 Docker Compose JSON 解析器。
@@ -2754,6 +2780,7 @@
 
 ## 2026-08-15：在仓库子目录把 Git 根相对文件名直接交给 gofmt
 
+- 最近复发/补充：2026-08-15 增加 strict Compose 真实 Docker 回归后，又在 `backend` cwd 把仓库根相对的 `backend/internal/docker/runtime_apply_integration_test.go` 交给 `gofmt`，得到路径不存在且未修改文件。随即切回仓库根并用检索确认的精确相对路径格式化；格式化和测试继续按各自 cwd 分开执行。
 - 最近复发/补充：修正为仓库根执行两份文件的 `gofmt` 后，又把紧随其后的 `go test ./internal/...` 留在同一个根目录命令中；格式化成功，但 Go 在加载测试前报告根目录没有 `go.mod` 并退出 1。格式化与 Go 门禁必须拆成不同 cwd 的独立命令，不能为减少一次调用重新合并。
 - 环境：PowerShell 7，工作目录为 `backend`，发布前 Go 定向测试。
 - 错误模式：在 `backend` 子目录执行 `git diff --name-only -- '*.go'`，把返回的 `backend/internal/...` 仓库根相对路径原样交给当前子目录中的 `gofmt -w`。
@@ -2799,3 +2826,13 @@
 - `.ps1`：遵循 `.gitattributes` 的 CRLF；既有 BOM 只有在已验证的 Windows PowerShell 5.1 兼容场景保留。
 - Go/TS/JS/JSON/YAML/Markdown：UTF-8 无 BOM；修改后运行格式化、解析或构建检查。
 - 交付前：`git diff --check`、`git status --short`、检查差异规模，并搜索意外 Unicode replacement character（`U+FFFD`）。发现整文件换行或编码变化时不要提交。
+
+## 2026-08-15：把 `git show --output=-` 误当成标准输出
+
+- 环境：PowerShell 7、Git，检查已暂存 blob 是否带 UTF-8 BOM。
+- 错误模式：为捕获 `git show :<path>` 内容追加 `--output=-`，误以为 `-` 表示 stdout。
+- 症状 / 退出码：Git 退出 0，却在仓库根创建名为 `-` 的 0 字节文件；产品与索引未变化。精确解析路径、大小和 SHA-256 后确认该文件只由本任务创建，并用 `apply_patch` 删除。
+- 根因：`git show` 默认已经写 stdout，`--output=<file>` 的参数值始终是文件名；这里的 `-` 没有 stdout 特殊含义。
+- 正确做法：直接捕获 `git show :<path>` 的 stdout；若需要逐字节检查 blob，则通过重定向进程捕获 `StandardOutput.BaseStream`，不要传 `--output`。
+- 预防检查：原生命令的输出参数是否支持 `-` 必须先读帮助或做任务目录外的无写探针；审计后检查工作区是否出现意外未跟踪文件。
+- 适用范围：`git show`、Git blob 审计、BOM 检查和任何把 stdout 约定类推到 `--output` 的命令。

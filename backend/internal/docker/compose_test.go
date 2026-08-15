@@ -152,7 +152,7 @@ func TestComposePsUsesShortTTLCacheAndInvalidatesAfterStateChange(t *testing.T) 
 	}
 }
 
-func TestComposePsStrictBypassesCacheAndFailsClosed(t *testing.T) {
+func TestComposePsStrictBypassesCacheAcceptsEmptySetAndFailsClosedOnMalformed(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("strict fake docker argument sequencing is covered on the Linux target filesystem")
 	}
@@ -166,7 +166,8 @@ case "$1 $2 $3 $4 $5" in
     case "$(wc -l < %q)" in
       1) printf '[{"Service":"server","State":"running","Status":"Up 1 second"}]' ;;
       2) printf '{bad json' ;;
-      *) printf '' ;;
+      3) printf '' ;;
+      *) printf '[{"Service":"server","Status":"Exited (0)"}]' ;;
     esac
     ;;
   *) printf 'unexpected args: %%s %%s %%s %%s %%s' "$1" "$2" "$3" "$4" "$5" >&2; exit 7 ;;
@@ -184,11 +185,15 @@ esac
 	if _, err := client.ComposePsStrict(context.Background(), workDir); err == nil || !strings.Contains(err.Error(), "parse docker compose ps --all") {
 		t.Fatalf("malformed strict response error=%v", err)
 	}
-	if _, err := client.ComposePsStrict(context.Background(), workDir); err == nil || !strings.Contains(err.Error(), "empty response") {
-		t.Fatalf("empty strict response error=%v", err)
+	empty, err := client.ComposePsStrict(context.Background(), workDir)
+	if err != nil || len(empty.Services) != 0 {
+		t.Fatalf("empty strict response=%+v err=%v", empty, err)
 	}
-	if got := readCountFile(t, countPath); got != 3 {
-		t.Fatalf("strict command count=%d, want 3 uncached calls", got)
+	if _, err := client.ComposePsStrict(context.Background(), workDir); err == nil || !strings.Contains(err.Error(), "missing service or state") {
+		t.Fatalf("incomplete strict response error=%v", err)
+	}
+	if got := readCountFile(t, countPath); got != 4 {
+		t.Fatalf("strict command count=%d, want 4 uncached calls", got)
 	}
 }
 
