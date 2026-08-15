@@ -6,6 +6,7 @@ import type { InstancePasswordStatus } from '../../../types'
 import { formatStardewLocation, rawStardewLocation, readableStardewLocation, type StardewLocationLike } from '../location-format'
 import { submitAndWaitForPlayerCommand, type PlayerCommandFeedback } from '../player-command-results'
 import { hasPlayerCjbRisk, playerModActionLabel } from '../player-mod-details'
+import { ModalPortal } from '../../../core/ModalPortal'
 
 const PLAYER_EVENTS_PAGE_SIZE = 2
 
@@ -750,14 +751,14 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
           )}
 
           {pendingAuthPlayers.length > 0 ? (
-            <div className="sd-players-table-placeholder">
-              <div className="sd-players-table-header">
+            <div className="sd-players-table-placeholder sd-players-pending-table">
+              <div className="sd-players-table-header sd-players-pending-table-row">
                 <span>玩家名</span>
                 <span>联机 ID</span>
                 <span>操作</span>
               </div>
               {pendingAuthPlayers.map((player) => (
-                <div className="sd-players-table-row" key={player.uniqueMultiplayerId || player.name}>
+                <div className="sd-players-table-row sd-players-pending-table-row" key={player.uniqueMultiplayerId || player.name}>
                   <span className="sd-players-name-cell">
                     <span className="sd-players-avatar" aria-hidden="true">{player.name.slice(0, 1).toUpperCase()}</span>
                     <span className="sd-players-name-copy">
@@ -918,9 +919,13 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
       </div>
 
       {warpHomeConfirmTarget ? (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="player-warp-home-confirm-title"
+          onEscape={warpHomeBusyId !== null ? undefined : () => setWarpHomeConfirmTarget(null)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>确认传送回家</h3>
+            <h3 id="player-warp-home-confirm-title">确认传送回家</h3>
             <p>将玩家 {warpHomeConfirmTarget.name} 传送回自己的小屋？该操作会调用 JunimoServer 自己的 WarpHome 逻辑，适合玩家卡在地图或建筑边缘时救援。</p>
             <div className="sd-confirm-actions">
               <button className="sd-btn-tan" onClick={() => setWarpHomeConfirmTarget(null)} disabled={warpHomeBusyId !== null}>
@@ -931,13 +936,18 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {kickConfirmTarget ? (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="player-kick-confirm-title"
+          onEscape={kickBusyId !== null ? undefined : () => setKickConfirmTarget(null)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>确认踢出玩家</h3>
+            <h3 id="player-kick-confirm-title">确认踢出玩家</h3>
             <p>将玩家 {kickConfirmTarget.name} 踢出服务器？该操作会立即断开该玩家的连接，玩家可以重新加入。</p>
             <div className="sd-confirm-actions">
               <button className="sd-btn-tan" onClick={() => setKickConfirmTarget(null)} disabled={kickBusyId !== null}>
@@ -948,13 +958,17 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {approveConfirmTarget ? (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="player-approve-confirm-title"
+          onEscape={approveBusyId !== null ? undefined : () => setApproveConfirmTarget(null)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>确认批准认证</h3>
+            <h3 id="player-approve-confirm-title">确认批准认证</h3>
             <p>批准玩家 {approveConfirmTarget.name} 的密码认证？该操作会立即让玩家进入正式农场，等同于服务器替其正确输入了一次密码。</p>
             <div className="sd-confirm-actions">
               <button className="sd-btn-tan" onClick={() => setApproveConfirmTarget(null)} disabled={approveBusyId !== null}>
@@ -965,13 +979,18 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {banConfirmTarget ? (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="player-ban-confirm-title"
+          onEscape={banBusy ? undefined : () => setBanConfirmTarget(null)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>确认封禁玩家</h3>
+            <h3 id="player-ban-confirm-title">确认封禁玩家</h3>
             <p>
               封禁玩家 {banConfirmTarget.name}？控制模组会优先按联机 ID 精确封禁；封禁记录在服务器容器重启后会丢失，需要重新操作。
             </p>
@@ -984,13 +1003,18 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {deleteConfirmTarget ? (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="player-delete-confirm-title"
+          onEscape={deleteBusyId !== null ? undefined : () => setDeleteConfirmTarget(null)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>确认删除存档人物</h3>
+            <h3 id="player-delete-confirm-title">确认删除存档人物</h3>
             <p>将永久删除人物 {deleteConfirmTarget.name}、其人物进度、背包以及对应小屋和小屋内容。该操作不会封禁玩家，对方以后仍可重新创建人物。</p>
             {onlineHumanCount > 0 ? (
               <p className="sd-notice sd-notice--warn">当前有 {onlineHumanCount} 名玩家在线。现支持有真人玩家在线时删除离线玩家存档，但删除会同时移除其小屋，现有在线客户端可能无法立即同步建筑变化，出现旧小屋残影或位置显示异常。建议在线玩家在操作完成后重新连接。系统将先保存并创建整档保护备份。</p>
@@ -1004,7 +1028,7 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )

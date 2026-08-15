@@ -1,3 +1,10 @@
+# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1：Control-only 升级补齐宿主 JunimoServer（2026-08-15，completed，待发布）
+
+- 支持包证明 server/auth tag 均已是推荐版本、仅 Control `0.3.1 → 0.3.2`，但宿主 `.local-container/mods/JunimoServer` 缺失；整个 `/data/Mods` 又由宿主 bind 覆盖。旧 apply 把“server image ID 未变”等同于“不需要同步 JunimoServer”，SMAPI 因缺少 `JunimoHost.Server` 跳过 Control，目标验收报 `server_container_not_ready`，旧版回滚再报 `rollback_verify_server_failed`，两次 repair 均进入人工干预。离线校时和 SteamAPI 告警不是该终态的根因。
+- apply 现在独立校验宿主 JunimoServer 的 manifest、UniqueID、版本、DLL、普通文件和 symlink 边界；server image 变化或宿主组件缺失/损坏任一成立时，均从已选可信目标 image 事务化提取并替换。server/auth tag 未变仍不重建 auth、不快照 steam-session，只把 Junimo 物化计入 server change plan。
+- 回滚在启动原 server 验收前再次校验其 JunimoServer；缺失或损坏时只允许从恢复清单记录的原 immutable server image ID 提取，经过相同静态校验后原子补齐。该路径兼容旧 Panel 已生成且 `JunimoModReplaced=false` 的 `rollback_failed` 清单，使升级到本补丁后的“检测、修复并升级”能恢复现有现场；提取、路径映射或替换失败返回 `rollback_repair_junimo_mod_failed` 并继续保留私有材料。
+- 影响 `runtime_update_apply_runner.go`、`runtime_update_rollback.go`、apply/integration 测试和候选升级 E2E；公开 API、数据库、runtime manifest、server/auth/Control 产物和存档格式不变。回归覆盖新 Control-only 事务缺失 Mod、旧 `rollback_failed` 恢复后继续升级、既有目标失败/成对回滚，并用真实 Docker image ID 提取内置 Mod。`v0.4.17 → 候选` 升级后的公开 repair API 还会构造已失败 2 次的旧事务，删除原可信 tag 后要求第 3 次修复仍从 immutable image ID 补齐 Mod、保留未变化 auth 容器并恢复 stopped。
+
 # SAVE-IMPORT-COMPOSE-EMPTY-SET-1：停服后的空 Compose 集合允许首次导入（2026-08-15，completed，未发布）
 
 - 生产只读取证确认：`v0.4.17` 实例已通过 Panel Stop 成功执行 `docker compose down`，数据库为 `stopped/stopped`、活动 job 为 0、导入 journal 为 0、上传 token 仍为 `available`；实例 Compose 配置继续声明 `steam-auth/server`，但 `docker compose ps --all --format json` 以 0 退出且 stdout 为空。提交入口没有接管上传，却因 strict probe 把合法空集合误判为错误，再由 Web fallback 映射成 `save_in_progress`。
@@ -121,7 +128,7 @@
 # RUNTIME-UPDATE-PRESERVE-AUTH-1：运行组件按差异升级（2026-08-08，completed，未发布）
 
 - 生产 `0.4.5 → 0.4.8` 后的 required runtime 同步暴露出事务缺陷：server/auth 已是 `.125 / 1.5.0-anxi.2`、仅 Control 需要 `0.2.2 → 0.3.0` 时，旧实现仍停止整个 Compose、快照认证卷并 `--force-recreate` steam-auth。目标认证在网络退避约 400 秒后才恢复，而默认 auth 验收只有 90 秒；目标与回滚先后超时，最终落入 `rollback_failed`。
-- `runtimeUpdateRecoveryManifest` schema 2 记录 server/auth 是否真正变更及是否创建认证快照；schema 1 仍按旧事务保守恢复。Control-only 或其它 auth digest/tag 未变化的升级只停止并重建 server，不替换 JunimoServer Mod、不创建/恢复 steam-session 快照，也不调用 Steam readiness 网络接口；只核对原 auth 容器 image ID、running/healthy，并以 `docker update --cpu-shares 256` 原地同步资源权重，容器 ID 和会话保持。
+- `runtimeUpdateRecoveryManifest` schema 2 记录 server/auth 是否真正变更及是否创建认证快照；schema 1 仍按旧事务保守恢复。Control-only 或其它 auth digest/tag 未变化的升级只停止并重建 server，不创建/恢复 steam-session 快照，也不调用 Steam readiness 网络接口；宿主 JunimoServer 已完整且匹配时不替换，缺失/损坏时会从同一 immutable server 版本补齐。原 auth 只核对 image ID、running/healthy，并以 `docker update --cpu-shares 256` 原地同步资源权重，容器 ID 和会话保持。
 - auth 版本或 image ID 真正变化时仍执行停止、私有卷快照、强制重建、服务接口验收及成对回滚，默认 auth 验收窗口由 90 秒提高到 10 分钟，覆盖当前镜像的五轮连接退避。server 冷启动 20 分钟、停止重试 10 分钟和总 job 2 小时不变。
 - 新增 `RuntimeComposeUpServicePreserve`（`compose up --no-recreate`）和受闭集约束的 `RuntimeUpdateServiceCPUShares`；服务名仍只允许 `server/steam-auth`，权重只接受 server=768、auth=256。公开 API、数据库和运行栈清单未改变。
 - 自动测试以 auth readiness 强制失败证明 Control-only 不再进入网络探针，并断言无 auth stop/up、无认证卷快照/恢复、仅 server stop/up；最终 `go test ./... -count=1`（63.4 秒）、`go vet ./...`、`go build ./...` 全部通过。Docker Desktop 使用只读 `.125 + auth .2 + Control 0.2.0` 夹具复制出两个唯一隔离 project/volume，停止态与运行态真实升级均成功；运行态 auth 容器 ID 前后完全一致、CPU shares=256、server=768，Control 0.3.0 实载且原运行状态恢复。

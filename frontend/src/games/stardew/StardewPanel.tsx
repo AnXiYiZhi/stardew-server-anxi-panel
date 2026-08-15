@@ -11,6 +11,7 @@ import type {
 } from '../../types'
 import { getInstanceMetrics, getRestartSchedule } from '../../api'
 import { jobDisplayName, stateLabel } from '../../core/helpers'
+import { ModalPortal } from '../../core/ModalPortal'
 import { parseRoute, routeToPath } from './stardew-routes'
 import type { StardewNavigateOptions, StardewRoute, StardewSaveActionRequest } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
@@ -1053,8 +1054,12 @@ export function StardewPanel({
       </aside>
 
       {showMissingGameInstallPrompt ? (
-        <div className="sd-confirm-overlay" role="presentation">
-          <div className="sd-confirm-dialog sd-confirm-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="sd-first-install-title">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="sd-first-install-title"
+          onEscape={() => setShowMissingGameInstallPrompt(false)}
+        >
+          <div className="sd-confirm-dialog sd-confirm-dialog-wide">
             <h3 id="sd-first-install-title">请先安装游戏</h3>
             <p>
               当前实例还没有检测到 Stardew Valley 游戏文件。请先进入安装界面完成 Steam
@@ -1076,7 +1081,7 @@ export function StardewPanel({
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
       </div>
     </div>

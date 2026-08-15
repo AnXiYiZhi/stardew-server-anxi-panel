@@ -3,6 +3,7 @@ import './OverviewPage.css'
 import { getJunimoUpdate, getRuntimeComponents } from '../../../api'
 import type { JunimoUpdateInfo, RuntimeComponentsInfo } from '../../../types'
 import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import { InviteCodeCard } from '../InviteCodeCard'
 import { modIsSystemRuntime } from '../mod-visibility'
 import { panelUpdateSurface } from '../panel-update-machine'
@@ -492,9 +493,14 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
 
       {/* 危险操作确认弹框 */}
       {confirmAction ? (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="overview-lifecycle-confirm-title"
+          onEscape={cancelConfirm}
+        >
           <div className="sd-confirm-dialog">
-            <h3>{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
+            <h3 id="overview-lifecycle-confirm-title">{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
             <p>
               {confirmAction === 'stop'
                 ? '停止服务器将断开所有玩家连接，邀请码将失效。'
@@ -512,7 +518,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )

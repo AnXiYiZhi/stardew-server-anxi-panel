@@ -86,6 +86,9 @@ compose_ready=0
 cleanup() {
   local cleanup_status=$?
   set +e
+  if [[ -f "$data_dir/instances/stardew/docker-compose.yml" ]]; then
+    docker compose --project-name stardew --project-directory "$data_dir/instances/stardew" -f "$data_dir/instances/stardew/docker-compose.yml" down --volumes --remove-orphans >/dev/null 2>&1
+  fi
   if ((compose_ready == 1)); then
     docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1
   fi
@@ -254,6 +257,8 @@ assert_upgraded_frontend_contract() {
   local control_asset=""
   local mobile_control_asset=""
   local saves_asset=""
+  local jobs_asset=""
+  local players_asset=""
   local -a matches=()
 
   mkdir -p "$output_dir"
@@ -266,7 +271,7 @@ assert_upgraded_frontend_contract() {
   entry_asset="${matches[0]}"
   curl --silent --show-error --fail "http://127.0.0.1:$panel_port$entry_asset" >"$output_dir/entry.js"
 
-  for prefix in ServerControlPage MobileControlPage SavesPage; do
+  for prefix in ServerControlPage MobileControlPage SavesPage JobsLogsPage PlayersPage; do
     mapfile -t matches < <(grep -oE "(^|/)$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
     if [[ "${#matches[@]}" -ne 1 ]]; then
       echo "candidate upgrade E2E: expected exactly one $prefix frontend chunk" >&2
@@ -278,6 +283,8 @@ assert_upgraded_frontend_contract() {
       ServerControlPage) control_asset="$output_dir/$prefix.js" ;;
       MobileControlPage) mobile_control_asset="$output_dir/$prefix.js" ;;
       SavesPage) saves_asset="$output_dir/$prefix.js" ;;
+      JobsLogsPage) jobs_asset="$output_dir/$prefix.js" ;;
+      PlayersPage) players_asset="$output_dir/$prefix.js" ;;
     esac
   done
 
@@ -291,6 +298,14 @@ assert_upgraded_frontend_contract() {
     ! grep -Eq 'farmerName\?.农民：' "$saves_asset" ||
     ! grep -Eq 'farmType\?.地图：' "$saves_asset"; then
     echo "candidate upgrade E2E: upgraded frontend lost game-day rollback hover details" >&2
+    exit 1
+  fi
+  if ! grep -Fq '最近控制命令分页' "$jobs_asset" || ! grep -Fq '玩家活动分页' "$players_asset"; then
+    echo "candidate upgrade E2E: upgraded frontend lost bounded pagination contracts" >&2
+    exit 1
+  fi
+  if ! grep -FRq 'data-modal-initial-focus' "$output_dir" || ! grep -FRq 'aria-modal' "$output_dir"; then
+    echo "candidate upgrade E2E: upgraded frontend lost shared modal accessibility contract" >&2
     exit 1
   fi
 }
@@ -359,10 +374,24 @@ assert_upgraded_empty_compose_save_import_submission() {
     exit 1
   fi
 
-  # Make the asynchronous maintenance fixture fail immediately after the
-  # submission has crossed the empty strict-Compose gate. This keeps the E2E
-  # deterministic while still proving 202/job ownership on the upgraded Panel.
-  printf 'name: %s\nservices:\n  server:\n    image: alpine:3.20\n    command: ["sh", "-c", "exit 1"]\n' "$import_project" >"$instance_compose"
+  # Make the asynchronous maintenance ComposeUp fail immediately after the
+  # submission has crossed the empty strict-Compose gate. The source is
+  # deliberately absent and Compose is forbidden from creating it, so this
+  # exercises deterministic failure cleanup without shortening product health
+  # budgets or waiting for a deliberately exited server to time out.
+  cat >"$instance_compose" <<EOF
+name: $import_project
+services:
+  server:
+    image: alpine:3.20
+    command: ["sh", "-c", "sleep 3600"]
+    volumes:
+      - type: bind
+        source: $root/missing-maintenance-bind
+        target: /fixture
+        bind:
+          create_host_path: false
+EOF
   mkdir -p "$fixture_root/Imported_123"
   printf '%s\n' '<SaveGame><player><name>Imported</name></player></SaveGame>' >"$fixture_root/Imported_123/Imported_123"
   printf '%s\n' '<Farmer><name>Imported</name></Farmer>' >"$fixture_root/Imported_123/SaveGameInfo"
@@ -417,6 +446,202 @@ assert_upgraded_empty_compose_save_import_submission() {
     exit 1
   fi
   echo "candidate upgrade E2E: upgraded Panel accepted empty Compose save import and cleaned the controlled failure"
+}
+
+assert_upgraded_legacy_junimo_repair() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_compose="$instance_dir/docker-compose.yml"
+  local runtime_manifest="/workspace/backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json"
+  local fixture_image_dir="$root/runtime-repair-image"
+  local control_source="/workspace/backend/internal/games/stardew_junimo/embedded/smapi-mod"
+  local server_ref=""
+  local auth_ref=""
+  local server_candidates=""
+  local auth_candidates=""
+  local server_version=""
+  local stack_version=""
+  local control_version=""
+  local server_image_id=""
+  local auth_image_id=""
+  local apply_id="apply_666666666666666666666666"
+  local recovery_dir="$instance_dir/.local-container/junimo-update/recovery/$apply_id"
+  local selected_file="$root/runtime-repair-selected.json"
+  local inspection_file="$root/runtime-repair-inspection.json"
+  local manifest_file="$recovery_dir/manifest.json"
+  local apply_status_file="$instance_dir/.local-container/junimo-update/apply-status.json"
+  local original_env_sha=""
+  local original_compose_sha=""
+  local original_control_manifest_sha=""
+  local original_control_dll_sha=""
+  local auth_container_id=""
+  local repair_code=""
+  local repair_job_id=""
+  local repair_phase=""
+  local repair_source=""
+  local repaired_version=""
+  local instance_state=""
+  local response_code=""
+  local now=""
+
+  echo "candidate upgrade E2E: testing legacy rollback_failed Junimo materialization through public repair API"
+  server_ref="$(jq -r '.server.images[0]' "$runtime_manifest")"
+  auth_ref="$(jq -r '.steamAuth.images[0]' "$runtime_manifest")"
+  server_candidates="$(jq -r '.server.images | join(",")' "$runtime_manifest")"
+  auth_candidates="$(jq -r '.steamAuth.images | join(",")' "$runtime_manifest")"
+  server_version="$(jq -r '.server.tag' "$runtime_manifest")"
+  stack_version="$(jq -r '.stackVersion' "$runtime_manifest")"
+  control_version="$(jq -r '.controlMod.version' "$runtime_manifest")"
+
+  mkdir -p "$fixture_image_dir/JunimoServer" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control" "$instance_dir/.local-container/control"
+  cat >"$fixture_image_dir/bash" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "-c" ]; then
+  printf '{"status":"ok"}\n'
+  exit 0
+fi
+exec /bin/sh "$@"
+EOF
+  chmod 755 "$fixture_image_dir/bash"
+  printf '%s\n' '{"Name":"JunimoServer","Version":"'"$server_version"'","UniqueID":"JunimoHost.Server"}' >"$fixture_image_dir/JunimoServer/manifest.json"
+  printf 'release-candidate-runtime-repair-dll\n' >"$fixture_image_dir/JunimoServer/JunimoServer.dll"
+  cat >"$fixture_image_dir/Dockerfile" <<'EOF'
+FROM alpine:3.20
+COPY bash /bin/bash
+COPY JunimoServer /data/Mods/JunimoServer
+EOF
+  docker build --network none --tag "$project/runtime-repair-server:$version" "$fixture_image_dir" >/dev/null
+  server_image_id="$(docker image inspect "$project/runtime-repair-server:$version" | jq -r '.[0].Id')"
+  auth_image_id="$(docker image inspect alpine:3.20 | jq -r '.[0].Id')"
+  docker tag "$server_image_id" "$server_ref"
+  docker tag "$auth_image_id" "$auth_ref"
+
+  cp "$control_source/manifest.json" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/manifest.json"
+  cp "$control_source/StardewAnxiPanel.Control.dll" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/StardewAnxiPanel.Control.dll"
+  printf '%s\n' '{"controlModVersion":"'"$control_version"'"}' >"$instance_dir/.local-container/control/options.json"
+  printf '%s\n' '{"state":"save-loaded","commandResultVersion":1}' >"$instance_dir/.local-container/control/status.json"
+  rm -rf -- "$instance_dir/.local-container/mods/JunimoServer"
+
+  cat >"$instance_dir/.env" <<EOF
+IMAGE_VERSION=$server_version
+SERVER_IMAGE=$server_ref
+SERVER_IMAGE_CANDIDATES=$server_candidates
+STEAM_SERVICE_IMAGE=$auth_ref
+STEAM_SERVICE_IMAGE_CANDIDATES=$auth_candidates
+INSTANCE_HOST_DATA_DIR=$instance_dir
+EOF
+  chmod 600 "$instance_dir/.env"
+  cat >"$instance_compose" <<'EOF'
+services:
+  server:
+    image: ${SERVER_IMAGE}
+    command:
+      - sh
+      - -c
+      - |
+        rm -f /tmp/smapi-input /tmp/server-output.log
+        mkfifo /tmp/smapi-input
+        : > /tmp/server-output.log
+        while true; do
+          while IFS= read -r line; do
+            if [ "$$line" = info ]; then
+              printf '[INFO JunimoServer] --- Server Info ---\n[INFO JunimoServer] Version: __SERVER_VERSION__\n[INFO JunimoServer] Status: Ready\n' >> /tmp/server-output.log
+            fi
+          done < /tmp/smapi-input
+        done &
+        exec tail -f /dev/null
+    volumes:
+      - ${INSTANCE_HOST_DATA_DIR}/.local-container/mods:/data/Mods
+      - ${INSTANCE_HOST_DATA_DIR}/.local-container/control:/data/control
+  steam-auth:
+    image: ${STEAM_SERVICE_IMAGE}
+    command: ["sleep", "3600"]
+EOF
+  sed -i "s/__SERVER_VERSION__/$server_version/g" "$instance_compose"
+  chmod 600 "$instance_compose"
+
+  docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" up -d server steam-auth >/dev/null
+  docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" stop server steam-auth >/dev/null
+  auth_container_id="$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --all --format json steam-auth | jq -r 'if type == "array" then .[0].ID else .ID end')"
+  if [[ -z "$auth_container_id" || "$auth_container_id" == null ]]; then
+    echo "candidate upgrade E2E: failed to create the preserved steam-auth fixture" >&2
+    exit 1
+  fi
+  if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "UPDATE instances SET state='stopped', state_message='legacy runtime repair fixture', driver_phase='stopped', driver_payload='{}' WHERE id='stardew'; SELECT changes();")" != 1 ]]; then
+    echo "candidate upgrade E2E: failed to prepare the runtime repair instance state" >&2
+    exit 1
+  fi
+
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update" >"$inspection_file"
+  if [[ "$(jq -r '.status // empty' "$inspection_file")" != up_to_date || "$(jq -r '.recommended.stackVersion // empty' "$inspection_file")" != "$stack_version" ]]; then
+    echo "candidate upgrade E2E: runtime repair fixture is not the recommended current stack" >&2
+    cat "$inspection_file" >&2
+    exit 1
+  fi
+
+  jq -n --arg server_image "$server_ref" --arg server_id "$server_image_id" --arg auth_image "$auth_ref" --arg auth_id "$auth_image_id" '{server:{image:$server_image,digest:$server_id,imageId:$server_id},steamAuth:{image:$auth_image,digest:$auth_id,imageId:$auth_id}}' >"$selected_file"
+  mkdir -p "$recovery_dir"
+  cp "$instance_dir/.env" "$recovery_dir/original.env"
+  cp "$instance_compose" "$recovery_dir/original-compose.yml"
+  cp "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/manifest.json" "$recovery_dir/original-control-manifest.json"
+  cp "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/StardewAnxiPanel.Control.dll" "$recovery_dir/original-control-StardewAnxiPanel.Control.dll"
+  original_env_sha="$(sha256sum "$recovery_dir/original.env" | awk '{print $1}')"
+  original_compose_sha="$(sha256sum "$recovery_dir/original-compose.yml" | awk '{print $1}')"
+  original_control_manifest_sha="$(sha256sum "$recovery_dir/original-control-manifest.json" | awk '{print $1}')"
+  original_control_dll_sha="$(sha256sum "$recovery_dir/original-control-StardewAnxiPanel.Control.dll" | awk '{print $1}')"
+  now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+  jq -n --slurpfile selected "$selected_file" --arg apply_id "$apply_id" --arg server_version "$server_version" --arg env_sha "$original_env_sha" --arg compose_sha "$original_compose_sha" --arg control_manifest_sha "$original_control_manifest_sha" --arg control_dll_sha "$original_control_dll_sha" '{schemaVersion:3,applyId:$apply_id,actorId:1,project:"stardew",steamSessionVolume:"stardew_steam-session",snapshotVolume:("stardew_anxi-junimo-update-"+($apply_id|sub("^apply_";""))+"-steam-session"),serverWasRunning:false,authWasRunning:false,serverImageChanged:false,authImageChanged:false,authSnapshotCreated:false,originalState:"stopped",originalServer:$selected[0].server,originalAuth:$selected[0].steamAuth,target:$selected[0],originalServerVersion:$server_version,targetServerVersion:$server_version,junimoModOriginalPresent:false,junimoModPrepared:false,junimoModReplaced:false,configWritten:false,authRecreated:false,serverRecreated:false,controlManifestPresent:true,controlDLLPresent:true,controlUpdated:true,mutationStarted:true,stopIntent:true,controlUpdateIntent:true,lastIntent:"control_update",originalEnvSha256:$env_sha,originalComposeSha256:$compose_sha,originalControlManifestSha256:$control_manifest_sha,originalControlDllSha256:$control_dll_sha}' >"$manifest_file"
+  jq --slurpfile selected "$selected_file" --arg apply_id "$apply_id" --arg now "$now" '{applyId:$apply_id,phase:"rollback_failed",progress:100,current:.current,target:.recommended,selected:$selected[0],checks:[],warnings:[],logs:[],serverWasRunning:false,serverRunning:false,errorCode:"rollback_failed",error:"legacy Control-only fixture",causeCode:"server_container_not_ready",causeError:"新版 Junimo server 运行验证失败。",rollbackCode:"rollback_verify_server_failed",rollbackError:"升级前的 Junimo server 未能恢复就绪。",repairAttempts:2,manualAction:"fixture",startedAt:$now,updatedAt:$now,finishedAt:$now}' "$inspection_file" >"$apply_status_file"
+  chmod 600 "$manifest_file" "$apply_status_file" "$recovery_dir"/*
+
+  docker image rm "$server_ref" >/dev/null
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update" >"$response_file"
+  repair_code="$(jq -r '.repairPlan.code // empty' "$response_file")"
+  if [[ "$repair_code" != repair/rollback_failed || "$(jq -r '.repairPlan.actionAvailable // false' "$response_file")" != true || "$(jq -r '.repairPlan.attempts // -1' "$response_file")" != 2 ]]; then
+    echo "candidate upgrade E2E: upgraded Panel did not expose the bounded legacy repair plan" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+
+  response_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"confirm":true}' "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update/repair")"
+  repair_job_id="$(jq -r '.jobId // empty' "$response_file")"
+  if [[ "$response_code" != 202 || -z "$repair_job_id" || "$(jq -r '.repairAttempts // 0' "$response_file")" != 3 ]]; then
+    echo "candidate upgrade E2E: legacy runtime repair was not accepted as the third bounded attempt" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+
+  for _ in $(seq 1 180); do
+    if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/junimo-update/apply" >"$response_file" 2>/dev/null; then
+      repair_phase="$(jq -r '.phase // empty' "$response_file")"
+      if [[ "$repair_phase" == succeeded || "$repair_phase" == failed_rolled_back || "$repair_phase" == rollback_failed ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+  repair_source="$(jq -r '.repairSourceApplyId // empty' "$response_file")"
+  if [[ "$repair_phase" != succeeded || "$(jq -r '.repairAttempts // 0' "$response_file")" != 3 || "$repair_source" != "$apply_id" ]]; then
+    echo "candidate upgrade E2E: legacy Junimo repair did not converge successfully" >&2
+    cat "$response_file" >&2
+    docker logs "$panel_container" 2>&1 | tail -n 120 >&2 || true
+    exit 1
+  fi
+  repaired_version="$(jq -r '.Version // empty' "$instance_dir/.local-container/mods/JunimoServer/manifest.json")"
+  instance_state="$(curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" | jq -r '.state // empty')"
+  if [[ "$repaired_version" != "$server_version" || "$instance_state" != stopped || -d "$recovery_dir" ]]; then
+    echo "candidate upgrade E2E: repaired Junimo material, stopped state, or recovery cleanup is incorrect" >&2
+    exit 1
+  fi
+  if [[ "$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --all --format json steam-auth | jq -r 'if type == "array" then .[0].ID else .ID end')" != "$auth_container_id" ]]; then
+    echo "candidate upgrade E2E: unchanged steam-auth container was recreated during legacy repair" >&2
+    exit 1
+  fi
+  if [[ -n "$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --status running --quiet)" ]]; then
+    echo "candidate upgrade E2E: legacy repair did not restore the original stopped runtime state" >&2
+    exit 1
+  fi
+  echo "candidate upgrade E2E: legacy third-attempt repair restored Junimo from the immutable original image ID"
 }
 
 wait_version "$previous_version" 120
@@ -577,6 +802,7 @@ if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_befor
   echo "candidate upgrade E2E: Panel restart changed the game container" >&2
   exit 1
 fi
+assert_upgraded_legacy_junimo_repair
 assert_upgraded_empty_compose_save_import_submission
 
-echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence and restart passed"
+echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence, restart and legacy runtime repair passed"

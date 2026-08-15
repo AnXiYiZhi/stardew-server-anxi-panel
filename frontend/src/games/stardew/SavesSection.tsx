@@ -14,6 +14,7 @@ import {
 } from '../../api'
 import { errorMessage, formatBytes } from '../../core/helpers'
 import { Field } from '../../core/Field'
+import { ModalPortal } from '../../core/ModalPortal'
 import { NewGameCreator } from './NewGameCreator'
 import type { StardewSaveActionRequest } from './stardew-routes'
 import { useSaveBackups } from './useSaveBackups'
@@ -952,9 +953,14 @@ export function SavesSection({
 
       {/* ── 删除确认对话框 ── */}
       {confirmDeleteName ? (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="sd-delete-save-title"
+          onEscape={busy ? undefined : () => setConfirmDeleteName(null)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>删除存档</h3>
+            <h3 id="sd-delete-save-title">删除存档</h3>
             <p>
               确定删除存档 <strong>"{confirmDeleteName}"</strong> 吗？
               删除前会自动备份，但操作本身不可直接撤销。
@@ -997,14 +1003,19 @@ export function SavesSection({
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 彻底删除备份确认对话框 ── */}
       {deleteBackupTarget ? (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="sd-delete-backup-title"
+          onEscape={busy ? undefined : cancelDeleteBackupDialog}
+        >
           <div className="sd-confirm-dialog sd-confirm-dialog-wide">
-            <h3>彻底删除备份</h3>
+            <h3 id="sd-delete-backup-title">彻底删除备份</h3>
             <p>
               确定彻底删除备份 <strong>"{deleteBackupTarget.name}"</strong> 吗？
               这个操作只删除备份 ZIP，不会删除当前存档，但删除后无法从这个备份恢复。
@@ -1031,14 +1042,19 @@ export function SavesSection({
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 回档确认对话框 ── */}
       {restoreBackup ? (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="sd-restore-save-title"
+          onEscape={busy ? undefined : cancelRestoreDialog}
+        >
           <div className="sd-confirm-dialog sd-confirm-dialog-wide">
-            <h3>回档到此日</h3>
+            <h3 id="sd-restore-save-title">回档到此日</h3>
             <p>
               确定回档到 <strong>"{restoreBackup.name}"</strong> 吗？
               回档后会生成存档 <strong>"{restoreBackup.saveName}"</strong>。
@@ -1083,15 +1099,19 @@ export function SavesSection({
               ) : null}
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 新建游戏弹窗 ── */}
       {showNewGameModal ? (
-        <div className="sd-saves-modal-overlay">
+        <ModalPortal
+          className="sd-saves-modal-overlay"
+          ariaLabelledBy="sd-new-game-title"
+          onEscape={busy ? undefined : () => { setShowNewGameModal(false); setNewGameError('') }}
+        >
           <div className="sd-saves-modal-card sd-saves-modal-card-wide">
             <div className="sd-saves-modal-header">
-              <h3 className="sd-saves-modal-title">新建游戏</h3>
+              <h3 id="sd-new-game-title" className="sd-saves-modal-title">新建游戏</h3>
               <button
                 className="sd-btn-tan"
                 type="button"
@@ -1107,15 +1127,19 @@ export function SavesSection({
               submitError={newGameError}
             />
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 上传存档弹窗 ── */}
       {showUploadModal ? (
-        <div className="sd-saves-modal-overlay">
+        <ModalPortal
+          className="sd-saves-modal-overlay"
+          ariaLabelledBy="sd-upload-save-title"
+          onEscape={uploadBusy ? undefined : handleUploadCancel}
+        >
           <div className="sd-saves-modal-card">
             <div className="sd-saves-modal-header">
-              <h3 className="sd-saves-modal-title">上传存档</h3>
+              <h3 id="sd-upload-save-title" className="sd-saves-modal-title">上传存档</h3>
             </div>
 
             {uploadMessage ? <div className={uploadMessageTone === 'warning' ? 'sd-save-import-warning' : 'sd-saves-error'}>{uploadMessage}</div> : null}
@@ -1287,7 +1311,7 @@ export function SavesSection({
               </div>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </section>
   )

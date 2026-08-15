@@ -1,3 +1,33 @@
+# v0.4.18 正式候选范围与专项矩阵（2026-08-15，本地门禁通过，pending automatic candidate）
+
+## 变更清单与受影响链路
+
+- 目标版本由自动候选从当前正式版 `v0.4.17` 递增补丁为 `0.4.18`；本地 `main` 只纳入三组已完成工作：`SAVE-IMPORT-COMPOSE-EMPTY-SET-1`、`RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1`、`FE-MODAL-VIEWPORT-1` / `FE-CONTROL-COMMAND-PAGINATION-1`。不得手工创建或移动 tag；推送后必须由不可变候选、自动 tag 和 digest 提升链完成发布。
+- 存档导入修复把 Compose 命令成功且 stdout 为空解释为 0 个 service，解除 Panel Stop 已完成后首次上传被错误挡在 ownership/journal 之前的 `save_in_progress`；非零退出、坏 JSON、缺字段和未知状态仍 fail closed。
+- Junimo 运行栈修复不再把“server image 未变化”等同于“宿主 JunimoServer 一定完整”。Control-only apply 会在事务变更计划和 staging 前校验宿主挂载目录；缺失、损坏或版本不符时仍从已验签目标 server image 提取并事务替换。对历史 `rollback_failed`，回滚会先用事务保存的原 server immutable image ID 补回原版本 JunimoServer，再固定原镜像、启动验收并恢复原 running/stopped 状态；恢复材料、三次尝试上限和公开 repair 确认体不变。
+- 前端新增共享 body Portal modal：集中处理 body scroll lock、背景 inert/`aria-hidden`、Esc、焦点圈定/归还和嵌套栈；桌面/移动现有对话框迁移到同一契约。最近控制命令固定每页 3 条并可翻页，玩家活动分页和认证布局边界同步消除窄高/宽矮视口的遮挡。公开后端 DTO、数据库、部署格式、runtime manifest、Control/SMAPI DLL 均不改变。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 正式候选门禁 |
+| --- | --- | --- |
+| 正常路径 | Stop 后 Compose 为空的首次存档上传；Control-only 且宿主 Junimo 缺失；历史 rollback_failed repair；桌面/移动 modal 与分页 | 公开上传 API 必须返回 `202/jobId/operationId`；apply/repair 均补齐推荐 Junimo 版本；第三次受限 repair 成功；17 项前端状态回归与 production bundle 契约通过 |
+| 关键边界 | Compose 非零/坏 JSON/未知状态；Junimo 损坏或错版本；repair 已失败 2 次；宽矮与窄高视口、嵌套 modal、页尾不足 3 条 | 后端继续 fail closed；repair 第 3 次允许执行且成功后归零恢复目录，第 4 次仍禁止；modal 不越出视口、不穿透背景，分页页码夹紧 |
+| 权限安全 | 管理员上传、升级、repair；恢复目录/镜像来源；键盘焦点 | API 鉴权和严格 `{"confirm":true}` 不变；只接受事务匹配、SHA-256 通过和 immutable image ID；Esc/Tab 只作用于顶层 modal，关闭后焦点归还 |
+| 幂等/恢复 | 重复 strict probe、Control-only apply、旧事务 repair、Panel restart | 0 service 不创建资源；有效 Junimo 不重复提取；repair 仍绑定原 apply ID、尝试计数和恢复材料；中断后由既有 write-ahead 规则收敛 |
+| 数据完整性 | 存档 ownership/journal、原 `.env`/Compose/Control、SQLite、非目标游戏数据 | 上传修复不改存档内容；rollback 必须恢复原配置和 Control、从原 image ID 补 Mod；升级 E2E 再验 SQLite、初始化状态、Panel 哨兵及非目标容器/volume |
+| 资源清理 | 上传受控失败、Junimo extraction staging/recovery、modal 全局状态、候选 DinD | job 终止后项目容器/网络归零；临时提取目录和成功 recovery 删除，失败材料保留；最后一个 modal 关闭后恢复 body/background；所有测试资源按 owner 精确清理 |
+| 升级/回滚 | `v0.4.17 → 0.4.18` healthy 与同引用 unhealthy；升级后的旧 rollback_failed 真实 repair | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 v0.4.17；healthy 升级后用公开 API 构造第 3 次 repair，删除可信 tag 后仍须从原 image ID 补齐 Junimo、保持 steam-auth container 与 stopped 状态 |
+| 生产前端 | fresh 候选与 Web 升级后的精确 production chunks | ServerControl/MobileControl/Saves 既有契约继续通过；JobsLogs 必须包含最近控制命令分页、Players 包含玩家活动分页，加载产物必须包含共享 `aria-modal` / initial-focus 契约 |
+
+## 门禁选择与发布前状态
+
+- 因后端 `stardew_junimo`、Docker strict probe、前端和发布候选脚本同时变化，自动候选必须执行后端默认全量 test/vet/build、Docker integration、runtime/SMAPI 真实长链、前端全部状态测试/audit/production build、脚本语法与 ShellCheck、fresh install/restart、上一正式版 Web unhealthy 回滚和 healthy 升级。runtime manifest、Control 源/DLL、数据库 migration、部署格式和网站内容未变；远程制品、网站等是否跳过仍只允许 `scripts/run-release-gates.sh` 按 `v0.4.17..candidate SHA` 路径差异决定。
+- 发布前专项已通过：Junimo Control-only 缺失目录单测、旧 schema 3 `rollback_failed` repair 单测、相邻回滚恢复矩阵，以及从真实 Docker immutable image ID 提取 Junimo 的 integration；Linux 默认全量 Go test/vet/build、Docker/updater/runtime integration、41,889,142 B 真实 SMAPI 下载、前端 17 项状态回归/audit/production build、兼容矩阵 20 项、部署脚本测试、网站 production build、`bash -n` 与 ShellCheck 0.11.0 均通过。Windows `npm ci` 因既有 `node_modules` 文件锁触发 `EPERM` 后没有删除或重试，改由 Node 22 Linux 容器与任务专属依赖/产物卷完成同一前端门禁。
+- 本地完整候选演练以 `0.4.18`、上一正式版 `0.4.17` 构建未发布镜像，最终通过轮固定 build date=`2026-08-15T11:57:09Z`、local image ID=`sha256:f76b22fcec32007c55700807b1aaf9d28bc460668c250664f4bc3ebcda249f80`。同一轮通过 fresh health/version/setup/restart、公开 Web unhealthy `failed_rolled_back/health_check_failed`、healthy 升级、SQLite/初始化/非目标资源/Panel restart、旧 `rollback_failed` 第三次 repair 从原 immutable image ID 补回 Junimo 并保持 steam-auth container/stopped 状态，以及升级后 Stop 空 Compose 存档上传成功与受控失败清理。演练只用于验证当前工作树，metadata 中的 revision 是演练前基线，不可替代最终干净 `main` 的自动候选证明。
+- 演练期间先后暴露并修复了候选夹具问题：DinD `apk` TLS 抖动改为同一必需工具集三次有界重试；原受控失败会进入产品真实 20 分钟 readiness，改为缺失且禁止自动创建的 bind source 立即触发 Compose Up 失败；旧事务 E2E 调整到会占用恢复 ownership 的受控失败之前；Compose 的 `$line` 正确转义为 `$$line`；Junimo IPC 夹具改为真实 `/tmp/smapi-input` 且 EOF 后重新打开。每次都保留产品真实超时、API 和终态断言，没有降低门禁。
+- 剩余阻断项仅为最终 commit、自动候选 run/artifact/digest、自动 tag/正式 workflow、三仓六引用、正式版本接口、GitHub Release 与发布后证据回填；任一失败仍须修复后再继续。
+
 # SAVE-IMPORT-COMPOSE-EMPTY-SET-1 发布专项矩阵（2026-08-15，pending candidate）
 
 - 变更清单：修复 `v0.4.17` 在 Panel Stop 已成功 `docker compose down` 后，`ComposePsStrict` 把退出 0 的空 stdout 当成探针错误，导致上传事务在 ownership/journal 前被 Web fallback 误报为 `save_in_progress`。修复仅将“命令成功 + 空 stdout”解释为 0 services，并新增 Docker integration 及升级后 Web E2E；公开上传 API、前端、Junimo/Control/runtime manifest、数据库和部署格式不变。候选脚本仅为一次性 DinD 补充 `zip` fixture 工具。

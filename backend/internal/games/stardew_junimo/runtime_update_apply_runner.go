@@ -117,7 +117,8 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if preflight.controlChanged {
 		changePlan = append(changePlan, "Control")
 	}
-	if runtimeUpdateServerChanged(manifest) {
+	junimoModNeedsSync := validateExtractedJunimoServerMod(junimoServerModDir(instance.DataDir), manifest.TargetServerVersion) != nil
+	if runtimeUpdateServerChanged(manifest) || junimoModNeedsSync {
 		changePlan = append(changePlan, "server")
 	}
 	if runtimeUpdateAuthChanged(manifest) {
@@ -241,7 +242,7 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := setPhase(RuntimeUpdateApplyWritingConfig, 50, "正在事务化同步目标 JunimoServer Mod 并写入推荐版本对配置。"); err != nil {
 		return err
 	}
-	if runtimeUpdateServerChanged(manifest) {
+	if runtimeUpdateServerChanged(manifest) || junimoModNeedsSync {
 		recoveryDir := runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID)
 		hostRecoveryDir, pathErr := d.dockerHostPath(recoveryDir)
 		if pathErr != nil {

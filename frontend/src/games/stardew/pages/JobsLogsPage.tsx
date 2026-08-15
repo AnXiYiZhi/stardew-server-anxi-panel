@@ -20,10 +20,12 @@ import {
   jobDisplayName,
   shortJobID,
 } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 
 // ── 常量表 ────────────────────────────────────────────────────────────────────
 
 const pullProgressRe = /^\[pull:progress:(\d+):(\d+)\]$/
+const CONTROL_COMMAND_PAGE_SIZE = 3
 
 const STATUS_LABELS: Record<string, string> = {
   queued: '排队中',
@@ -134,6 +136,7 @@ function suggestNextPort(port: string): string {
 export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [controlCommands, setControlCommands] = useState<ControlCommand[]>([])
+  const [controlCommandPage, setControlCommandPage] = useState(1)
   const [controlCommandsError, setControlCommandsError] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
@@ -175,6 +178,10 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     try {
       const res = await getControlCommands()
       setControlCommands(res.commands)
+      setControlCommandPage((page) => Math.min(
+        page,
+        Math.max(1, Math.ceil(res.commands.length / CONTROL_COMMAND_PAGE_SIZE)),
+      ))
       setControlCommandsError('')
     } catch (e) {
       setControlCommandsError(errorMessage(e))
@@ -422,6 +429,13 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
   const showVNCPortFix = user.role === 'admin' && isVNCPortProblem(selectedJob, logs)
   const isLiveStreaming =
     selectedJob !== null && !isTerminalJobStatus(selectedJob.status) && !sseError
+  const controlCommandPageCount = Math.max(1, Math.ceil(controlCommands.length / CONTROL_COMMAND_PAGE_SIZE))
+  const currentControlCommandPage = Math.min(controlCommandPage, controlCommandPageCount)
+  const controlCommandPageStart = (currentControlCommandPage - 1) * CONTROL_COMMAND_PAGE_SIZE
+  const visibleControlCommands = controlCommands.slice(
+    controlCommandPageStart,
+    controlCommandPageStart + CONTROL_COMMAND_PAGE_SIZE,
+  )
 
   return (
     <div className="sd-page sd-jobs-page">
@@ -662,33 +676,60 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
         {controlCommands.length === 0 && !controlCommandsError ? (
           <div className="sd-command-history-empty">暂无控制命令记录。</div>
         ) : (
-          <div className="sd-command-history-table-wrap">
-            <table className="sd-command-history-table">
-              <thead><tr><th>命令</th><th>目标</th><th>提交人</th><th>状态</th><th>提交 / 完成时间</th><th>结构化结果</th></tr></thead>
-              <tbody>{controlCommands.map((command) => (
-                <tr key={command.commandId}>
-                  <td><strong>{COMMAND_TYPE_LABELS[command.commandType] ?? command.commandType}</strong><small title={command.commandId}>{command.commandId.slice(0, 10)}</small></td>
-                  <td>{command.targetLabel || command.targetId || '全服'}</td>
-                  <td>{command.actorUsername || '未知'}</td>
-                  <td><span className={`sd-command-status sd-command-status-${command.status}`}>{command.resultSupported ? (COMMAND_STATUS_LABELS[command.status] ?? command.status) : '已提交（旧模组）'}</span></td>
-                  <td><span>{formatDate(command.submittedAt)}</span><small>{command.completedAt ? formatDate(command.completedAt) : '尚未完成'}</small></td>
-                  <td>
-                    {command.resultSupported ? (
-                      <><span>{command.resultMessage || (command.status === 'dispatched' ? '指令已发送，最终效果需结合游戏状态确认。' : '—')}</span>{command.errorCode ? <small>代码：{command.errorCode}</small> : null}{command.resultDetails && Object.keys(command.resultDetails).length ? <small>{Object.entries(command.resultDetails).map(([key, value]) => `${key}: ${value}`).join(' · ')}</small> : null}</>
-                    ) : <span>已提交，无法获取精确结果。</span>}
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
+          <>
+            <div className="sd-command-history-table-wrap">
+              <table className="sd-command-history-table">
+                <thead><tr><th>命令</th><th>目标</th><th>提交人</th><th>状态</th><th>提交 / 完成时间</th><th>结构化结果</th></tr></thead>
+                <tbody>{visibleControlCommands.map((command) => (
+                  <tr key={command.commandId}>
+                    <td><strong>{COMMAND_TYPE_LABELS[command.commandType] ?? command.commandType}</strong><small title={command.commandId}>{command.commandId.slice(0, 10)}</small></td>
+                    <td>{command.targetLabel || command.targetId || '全服'}</td>
+                    <td>{command.actorUsername || '未知'}</td>
+                    <td><span className={`sd-command-status sd-command-status-${command.status}`}>{command.resultSupported ? (COMMAND_STATUS_LABELS[command.status] ?? command.status) : '已提交（旧模组）'}</span></td>
+                    <td><span>{formatDate(command.submittedAt)}</span><small>{command.completedAt ? formatDate(command.completedAt) : '尚未完成'}</small></td>
+                    <td>
+                      {command.resultSupported ? (
+                        <><span>{command.resultMessage || (command.status === 'dispatched' ? '指令已发送，最终效果需结合游戏状态确认。' : '—')}</span>{command.errorCode ? <small>代码：{command.errorCode}</small> : null}{command.resultDetails && Object.keys(command.resultDetails).length ? <small>{Object.entries(command.resultDetails).map(([key, value]) => `${key}: ${value}`).join(' · ')}</small> : null}</>
+                      ) : <span>已提交，无法获取精确结果。</span>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <nav className="sd-command-history-pagination" aria-label="最近控制命令分页">
+              <button
+                className="sd-btn-tan sd-command-history-page-button"
+                type="button"
+                disabled={currentControlCommandPage <= 1}
+                onClick={() => setControlCommandPage((page) => Math.max(1, page - 1))}
+              >
+                上一页
+              </button>
+              <span className="sd-command-history-page-status" aria-live="polite">
+                第 {currentControlCommandPage} / {controlCommandPageCount} 页
+              </span>
+              <button
+                className="sd-btn-tan sd-command-history-page-button"
+                type="button"
+                disabled={currentControlCommandPage >= controlCommandPageCount}
+                onClick={() => setControlCommandPage((page) => Math.min(controlCommandPageCount, page + 1))}
+              >
+                下一页
+              </button>
+            </nav>
+          </>
         )}
       </section>
 
       {/* ── 清空确认弹框 ── */}
       {showClearConfirm ? (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="sd-clear-jobs-title"
+          onEscape={busy ? undefined : () => setShowClearConfirm(false)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>清空任务历史</h3>
+            <h3 id="sd-clear-jobs-title">清空任务历史</h3>
             <p>确定清空所有任务记录吗？此操作不可撤销。</p>
             <div className="sd-confirm-actions">
               <button
@@ -708,13 +749,17 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {showClearErrorConfirm ? (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="sd-clear-job-errors-title"
+          onEscape={busy ? undefined : () => setShowClearErrorConfirm(false)}
+        >
           <div className="sd-confirm-dialog">
-            <h3>清空错误日志</h3>
+            <h3 id="sd-clear-job-errors-title">清空错误日志</h3>
             <p>确定清空所有任务中的错误日志和错误详情吗？任务记录和任务状态会保留。</p>
             <div className="sd-confirm-actions">
               <button
@@ -734,14 +779,18 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {showVNCPortModal ? (
-        <div className="sd-saves-modal-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-saves-modal-overlay"
+          ariaLabelledBy="sd-vnc-port-title"
+          onEscape={vncPortSaving ? undefined : handleCloseVNCPortModal}
+        >
           <div className="sd-saves-modal-card sd-vnc-port-modal">
             <div className="sd-saves-modal-header">
-              <h3 className="sd-saves-modal-title">更换 VNC 端口</h3>
+              <h3 id="sd-vnc-port-title" className="sd-saves-modal-title">更换 VNC 端口</h3>
             </div>
 
             {vncPortLoading ? (
@@ -789,7 +838,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
               </div>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )

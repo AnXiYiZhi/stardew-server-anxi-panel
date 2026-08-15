@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import { stateLabel, formatDate } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import { ServerSummaryCard } from '../ServerSummaryCard'
 import type { StardewPageProps } from '../stardew-routes'
 import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
@@ -674,9 +675,15 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
 
       {/* ── 危险操作确认弹框 ───────────────────────────────────────────────── */}
       {confirmAction ? (
-        <div key="confirm" className="sd-confirm-overlay">
+        <ModalPortal
+          key="confirm"
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="server-lifecycle-confirm-title"
+          onEscape={cancelConfirm}
+        >
           <div className="sd-confirm-dialog">
-            <h3>{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
+            <h3 id="server-lifecycle-confirm-title">{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
             <p>
               {confirmAction === 'stop'
                 ? '停止服务器将断开所有在线玩家的连接，邀请码将立即失效。此操作不可撤销，确认继续？'
@@ -694,13 +701,18 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {scheduleOpen ? (
-        <div key="schedule" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          key="schedule"
+          className="sd-confirm-overlay"
+          ariaLabelledBy="server-restart-schedule-title"
+          onEscape={scheduleSaving ? undefined : closeRestartSchedule}
+        >
           <div className="sd-confirm-dialog sd-confirm-dialog-wide">
-            <h3>计划重启</h3>
+            <h3 id="server-restart-schedule-title">计划重启</h3>
             {scheduleLoading ? (
               <p>正在读取计划重启配置...</p>
             ) : (
@@ -808,13 +820,18 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {passwordOpen ? (
-        <div key="password" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          key="password"
+          className="sd-confirm-overlay"
+          ariaLabelledBy="server-password-settings-title"
+          onEscape={passwordSaving ? undefined : closePasswordSettings}
+        >
           <div className="sd-confirm-dialog">
-            <h3>服务器密码设置</h3>
+            <h3 id="server-password-settings-title">服务器密码设置</h3>
 
             {passwordLoading ? (
               <p>正在读取当前密码配置...</p>
@@ -891,13 +908,18 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {runtimeSettingsOpen ? (
-        <div key="runtime-settings" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          key="runtime-settings"
+          className="sd-confirm-overlay"
+          ariaLabelledBy="server-runtime-settings-title"
+          onEscape={runtimeSettingsSaving ? undefined : closeRuntimeSettings}
+        >
           <div className="sd-confirm-dialog">
-            <h3>小屋与联机高级设置</h3>
+            <h3 id="server-runtime-settings-title">小屋与联机高级设置</h3>
 
             {runtimeSettingsLoading ? (
               <p>正在读取当前配置...</p>
@@ -975,11 +997,16 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {gameLanguageOpen ? (
-        <div key="game-language" className="sd-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="game-language-title">
+        <ModalPortal
+          key="game-language"
+          className="sd-confirm-overlay"
+          ariaLabelledBy="game-language-title"
+          onEscape={gameLanguageSaving ? undefined : () => setGameLanguageOpen(false)}
+        >
           <div className="sd-confirm-dialog">
             <h3 id="game-language-title">服务器游戏语言</h3>
             {gameLanguageLoading ? (
@@ -1021,13 +1048,19 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {jojaOpen ? (
-        <div key="joja" className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          key="joja"
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="server-joja-confirm-title"
+          onEscape={jojaBusy ? undefined : closeJojaConfirm}
+        >
           <div className="sd-confirm-dialog">
-            <h3>永久启用 Joja 路线</h3>
+            <h3 id="server-joja-confirm-title">永久启用 Joja 路线</h3>
 
             <div className="sd-confirm-warning">
               此操作会模拟游戏内 <code>!joja IRREVERSIBLY_ENABLE_JOJA_RUN</code> 指令，永久禁用标准社区中心路线，改为 Joja 路线。<strong>此操作不可撤销</strong>，对本存档的剩余游玩时间永久生效。请仅在你确实需要切换路线时使用。
@@ -1073,7 +1106,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )

@@ -4,6 +4,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,9 +13,62 @@ import (
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
+
+func TestRuntimeUpdateRollbackMaterializesMissingJunimoFromOriginalImageID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	suffix := strings.ToLower(strings.ReplaceAll(time.Now().UTC().Format("150405.000000"), ".", ""))
+	image := "anxijunimorepair" + suffix + ":integration"
+	root := t.TempDir()
+	buildDir := filepath.Join(root, "image")
+	modDir := filepath.Join(buildDir, "JunimoServer")
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	version := "1.5.0-preview.125"
+	manifest := fmt.Sprintf(`{"Name":"JunimoServer","Version":%q,"UniqueID":"JunimoHost.Server"}`, version)
+	if err := os.WriteFile(filepath.Join(modDir, junimoServerManifestName), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, junimoServerAssemblyName), []byte("real Docker JunimoServer fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dockerfile := "FROM alpine:3.20\nCOPY JunimoServer /data/Mods/JunimoServer\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.CommandContext(ctx, "docker", "build", "-t", image, buildDir).CombinedOutput(); err != nil {
+		t.Fatalf("build Junimo rollback fixture: %v: %s", err, output)
+	}
+	t.Cleanup(func() { _ = exec.Command("docker", "image", "rm", "-f", image).Run() })
+
+	client := paneldocker.NewClient(paneldocker.Options{DockerPath: "docker"})
+	metadata, err := client.RuntimeImageInspect(ctx, root, image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataDir := filepath.Join(root, "instance")
+	applyID := "apply_" + strings.Repeat("5", 24)
+	if err := os.MkdirAll(runtimeUpdateRecoveryDir(dataDir, applyID), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	driver := New(client, nil, nil, nil)
+	recovery := runtimeUpdateRecoveryManifest{
+		ApplyID: applyID, OriginalServerVersion: version,
+		OriginalServer: RuntimeUpdateSelectedImage{Image: image, ImageID: metadata.ID},
+	}
+	instance := registry.Instance{ID: "stardew", DataDir: dataDir}
+	if err := driver.ensureRuntimeRollbackJunimoServerMod(ctx, nil, client, instance, recovery); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readJunimoServerModVersion(junimoServerModDir(dataDir)); err != nil || got != version {
+		t.Fatalf("immutable original image did not materialize JunimoServer: version=%q err=%v", got, err)
+	}
+}
 
 // This regression fixture represents Issue #9: /health is immediately usable
 // while /steam/ready hangs like a blocked Steam connection. Runtime acceptance

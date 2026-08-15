@@ -1,3 +1,9 @@
+# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1 联调契约（2026-08-15，completed，待发布）
+
+- `GET/POST /api/instances/:id/junimo-update*` 的请求与响应结构不变；repair/apply 可能新增稳定 `rollbackCode=rollback_repair_junimo_mod_failed`。Control-only 不再表示“完全不碰 JunimoServer”：只有宿主组件通过目标版本、UniqueID、DLL、普通文件和无 symlink 校验时才跳过，缺失/损坏会从选定目标 image 事务化补齐，auth 容器和 steam-session 仍保持不变。
+- 已由旧版本写入 `rollback_failed`、且清单显示 server image 未变/Junimo 未替换的实例，在本补丁中点击现有“修复：恢复旧版后升级”时，后端可从清单绑定的原 immutable server image ID 补齐组件，先通过原版本验收，再重新检测和创建新事务；前端不得自行删除状态、恢复目录或减少 repairAttempts。
+- 候选升级后专项必须构造 server/auth 已是推荐 tag、旧 Control、宿主 JunimoServer 缺失的实例，确认 SMAPI 缺依赖的旧故障可由新 Panel 的公开 repair/apply 路径收敛为 succeeded；同时断言 auth 容器 ID/认证卷保持、恢复材料按成功终态清理。无法提取原 image、路径映射失败、manifest/DLL 不合法仍 fail closed 并保留材料。
+
 # SAVE-IMPORT-COMPOSE-EMPTY-SET-1 联调契约（2026-08-15，completed，未发布）
 
 - `POST /api/instances/:id/saves/upload-commit-and-start` 的请求、202 响应、错误码和管理员权限不变。Panel Stop 使用 `docker compose down` 后，`docker compose ps --all --format json` 成功返回空 stdout 代表该项目当前没有容器；后端必须把它作为空服务集合并继续既有 server stopped 判定，不能误映射成 `save_in_progress`。

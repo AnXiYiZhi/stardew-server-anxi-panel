@@ -514,6 +514,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sd-players-pending-table {
+  overflow-x: hidden;
+}
+.sd-players-pending-table .sd-players-pending-table-row {
+  grid-template-columns: minmax(170px, 1.35fr) minmax(96px, 0.85fr) 92px;
+  min-width: 0;
+}
+.sd-players-pending-table .sd-players-row-actions {
+  justify-content: flex-end;
+}
 .sd-players-name-cell {
   display: flex !important;
   align-items: center;

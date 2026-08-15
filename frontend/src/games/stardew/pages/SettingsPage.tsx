@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import {
   getAuditLogs,
   getUsers,
@@ -13,6 +13,7 @@ import {
 import type { AuditLogEntry } from '../../../api'
 import type { PanelUser } from '../../../types'
 import { errorMessage, formatDate } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import type { StardewPageProps } from '../stardew-routes'
 
 // ── 审计日志操作中文映射 ──────────────────────────────────────────────────────
@@ -85,10 +86,11 @@ type ConfirmDialogProps = {
 }
 
 function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCancel, danger }: ConfirmDialogProps) {
+  const titleId = useId()
   return (
-    <div className="sd-confirm-overlay" role="dialog" aria-modal>
+    <ModalPortal className="sd-confirm-overlay" ariaLabelledBy={titleId} onEscape={onCancel}>
       <div className="sd-confirm-dialog">
-        <h3>{title}</h3>
+        <h3 id={titleId}>{title}</h3>
         <p>{body}</p>
         <div className="sd-confirm-actions">
           <button className="sd-btn-tan" onClick={onCancel}>取消</button>
@@ -97,7 +99,7 @@ function ConfirmDialog({ title, body, confirmLabel = '确认', onConfirm, onCanc
           </button>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   )
 }
 
@@ -577,9 +579,13 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
       )}
 
       {passwordTarget && (
-        <div className="sd-confirm-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          ariaLabelledBy="sd-settings-password-dialog-title"
+          onEscape={passwordBusy || passwordSelfChanged ? undefined : () => { setPasswordTarget(null); setPasswordDraft(''); setPasswordDialogError(null) }}
+        >
           <div className="sd-confirm-dialog">
-            <h3>重置密码</h3>
+            <h3 id="sd-settings-password-dialog-title">重置密码</h3>
             {passwordSelfChanged ? (
               <p>密码已修改，当前会话已失效，即将跳转到登录页…</p>
             ) : (
@@ -617,7 +623,7 @@ function UserManagementSection({ currentUserId, isAdmin, isSuperAdmin }: UserMan
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {deleteConfirm && (

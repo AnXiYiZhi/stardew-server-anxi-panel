@@ -2640,3 +2640,18 @@ npm.cmd run dev
 - `NewGameCreator` 高级设置把误写的“社区中心手机包”更正为 Stardew 中文选项使用的“社区中心收集包”。
 - 只改变 `frontend/src/games/stardew/NewGameCreator.tsx` 的可见文案；`remixedCommunityCenter` 勾选状态、默认值、提交字段和新建存档 API 均未改变。
 - 验证：前端 production build 通过，源码与构建产物均包含“社区中心收集包”且不再包含“社区中心手机包”。
+
+# FE-MODAL-VIEWPORT-1：模态层、待认证表格与偏高视口修复（2026-08-15，completed，未发布）
+
+- 新增 `frontend/src/core/ModalPortal.tsx` 作为桌面和移动端确认框的统一模态基础层。模态固定 portal 到 `document.body`，统一提供 `dialog/alertdialog`、`aria-modal`、标题关联、页面滚动锁定、初始焦点、Tab/Shift+Tab 焦点循环、Esc 关闭、关闭后焦点归还，以及背景 `inert`/`aria-hidden` 隔离。
+- 设置页删除用户、任务日志清理、服务器控制、玩家操作、存档新建/删除/回档/上传、Mod 删除、总览停服/重启和首次安装提示均切到共享模态层。设置卡片与任务页现有直接子元素定位规则不再能把弹窗插入列表底部；危险确认使用 `alertdialog`。移动控制的计划重启、密码、运行设置、游戏语言、Joja，以及移动存档上传/回档同步获得焦点管理。Joja 的“填入”按钮、确认文案和提交条件保持不变。
+- 待认证玩家区不再复用完整七列玩家表，新增独立三列网格“玩家名 / 联机 ID / 操作”，取消 `870px` 最小宽度；桌面 1536×1024 下表格 `scrollWidth === clientWidth`，批准按钮完整落在表格内。
+- 登录/初始化页的流式羊皮纸卡片回退由 `max-aspect-ratio: 4/3` 提高到 `8/5`，覆盖 16:10 与 3:2 桌面；1366×768 等更宽比例仍保留原场景布局。1536×1024 实测表单底部为 660px、页面无横向溢出且允许纵向滚动。
+- `test:responsive-layout` 增加上述视口、三列表格、Portal、焦点和 Joja“填入”静态契约。全部 17 项前端 `test:*` 与 `npm.cmd run build` 通过；应用内 Browser 已在 1536×1024 和 390×844 验证删除用户、清空错误日志、新建/删除存档、计划重启、Joja、移动回档的居中/可见性、标题语义、背景隔离、焦点循环与归还，console error/warn 为 0。
+
+# FE-CONTROL-COMMAND-PAGINATION-1：最近控制命令分页（2026-08-15，completed，未发布）
+
+- 任务日志页“最近控制命令”固定每页展示 3 条，保留顶部总条数；分页提供上一页、当前页/总页数和下一页，首尾页自动禁用无效方向。
+- 分页只切片现有响应，不增加请求；原 5 秒刷新继续工作。刷新后若总条数减少，会把当前页校正到仍然有效的末页，避免出现空白页。
+- 控制命令卡片与表格滚动容器补齐 `min-width: 0`/宽度约束，900px 表格最小宽度只在自身内部横向滚动，不再撑宽整张卡片或把分页按钮挤出右侧栏。
+- 影响 `frontend/src/games/stardew/pages/JobsLogsPage.{tsx,css}`、`frontend/src/qa-layout-main.tsx` 和 `frontend/scripts/test-responsive-layout.ts`；未改变控制命令 API、排序或状态文案。全部 17 项前端 `test:*` 与 production build 通过。应用内 Browser 在 967×732 右侧预览验证 7 条数据按 3/3/1 分页、首尾禁用、按钮完整可见且 console error/warn 为 0。

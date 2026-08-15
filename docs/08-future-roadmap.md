@@ -1,3 +1,11 @@
+# 2026-08-15 完成：Control-only 升级与旧人工恢复补齐 JunimoServer（RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1，待发布）
+
+- [x] 支持包定位到 server/auth 未变化、仅 Control 升级时宿主 JunimoServer 缺失；SMAPI 跳过 Control，目标和旧版回滚均无法通过健康验收。确认离线校时/SteamAPI 不是人工干预根因。
+- [x] 新 apply 独立验证并事务化补齐缺失/损坏的 JunimoServer；auth 容器、steam-session 和运行栈推荐清单不变。
+- [x] 旧 `rollback_failed` 清单可从持久化原 server immutable image ID 补齐组件，先恢复原版本验收再继续新事务；失败保留材料并返回稳定错误码。
+- [x] 新事务、旧 v0.4.17 风格恢复、既有回滚矩阵及真实 Docker image-ID 提取回归通过。
+- [ ] 下一补丁候选必须在上一正式版 Web 升级后的 Panel 复现并修复同一 missing-Junimo Control-only 场景，随后完成自动 tag、三仓 digest、latest、版本接口、Release 和证据回填。
+
 # 2026-08-15 完成：停服空 Compose 集合不再阻断存档导入（SAVE-IMPORT-COMPOSE-EMPTY-SET-1，未发布）
 
 - [x] 生产只读取证确认 `v0.4.17` 的 Stop job、SQLite 和 Compose 配置正常，项目容器/活动 job/import journal 均为 0，上传 token 未被接管；问题是 strict probe 将 `compose down` 后成功的空 stdout 错当异常，并由 Web fallback 映射为 `save_in_progress`。
@@ -1963,3 +1971,20 @@ Multi Game Mode later
 - [x] 核实内置及历史清单只支持已审计 `steam-auth-cn 1.5.0-anxi.2`；运行栈与兼容矩阵对其它未审计 tag 返回 `unsupported/auth_health_contract`，不猜测兼容性。
 - [x] 严格单测、Docker integration、真实镜像 opt-in、兼容矩阵以及 Linux 全量 Go test/vet/build 已通过，任务 Docker 资源已精确清理。
 - [x] 已在 `v0.4.17` 完成候选、`v0.4.16` 真实 Panel Web 升级、unhealthy 回滚、annotated tag、三仓 digest 提升、正式镜像回拉和 Release 资产验收；证据见本文件顶部与 `docs/09-image-build.md`。
+
+# FE-MODAL-VIEWPORT-1（2026-08-15，completed / not released）
+
+- [x] 设置页删除用户与任务日志清理弹窗改为 `body` Portal，不再受页面直接子元素 `position: relative` 规则影响；桌面存档、玩家、服务器、Mod、总览和首次安装确认同步统一。
+- [x] 桌面/移动模态统一标题语义、危险 `alertdialog`、初始焦点、Tab 循环、Esc、焦点归还、滚动锁定和背景 `inert`/`aria-hidden`；Joja“填入”按钮保持不变。
+- [x] 待认证玩家使用独立三列网格，取消七列表的 `870px` 最小宽度与桌面横向滚动；批准按钮完整可见。
+- [x] 登录/初始化流式回退覆盖 16:10 与 3:2；1536×1024 表单完整且无横向溢出。
+- [x] 全部 17 项前端状态/布局测试、production build、1536×1024 与 390×844 Browser QA 通过，console error/warn 为 0。
+- [ ] 候选镜像及上一正式版 Web 升级后的 production bundle 按同一桌面/移动矩阵抽验；本项当前未创建 tag 或发布镜像。
+
+# FE-CONTROL-COMMAND-PAGINATION-1（2026-08-15，completed / not released）
+
+- [x] 任务日志页最近控制命令固定每页 3 条，显示总条数、当前页/总页数与上一页/下一页边界状态。
+- [x] 复用现有 5 秒数据刷新，不增加 API 请求；数据缩短时自动校正当前页，避免空白末页。
+- [x] 表格横向溢出限制在内部滚动容器，右侧栏窄宽度下分页按钮保持完整可见。
+- [x] 全部 17 项前端状态/布局测试、production build 和 967×732 Browser 真实翻页通过，console error/warn 为 0。
+- [ ] 候选镜像及上一正式版 Web 升级后的 production bundle 抽验；本项当前未创建 tag 或发布镜像。

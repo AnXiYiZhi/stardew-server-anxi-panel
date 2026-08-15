@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError, cancelSaveUploadPreview, exportSave, getSaveBackups, restoreSaveBackup, uploadSavePreview, uploadSaveCommitAndStart } from '../../../api'
 import type { BackupInfo, SaveInfo, UploadPreviewResult } from '../../../types'
 import { errorMessage, formatBytes, formatDate } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import type { StardewPageProps } from '../stardew-routes'
 import {
   findActiveSaveImportJob,
@@ -517,9 +518,13 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
       ) : null}
 
       {uploadOpen ? (
-        <div className="sd-msave-dialog-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-msave-dialog-overlay"
+          ariaLabelledBy="mobile-save-upload-title"
+          onEscape={uploadBusy ? undefined : handleUploadCancel}
+        >
           <div className="sd-panel sd-msave-dialog">
-            <h3>导入存档</h3>
+            <h3 id="mobile-save-upload-title">导入存档</h3>
 
             {uploadMessage ? <div className={`sd-notice ${uploadMessageTone === 'warning' ? 'sd-msave-import-warning' : 'sd-notice--error'} sd-msave-notice`}>{uploadMessage}</div> : null}
 
@@ -676,13 +681,18 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {restoreTarget ? (
-        <div className="sd-msave-dialog-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-msave-dialog-overlay"
+          role="alertdialog"
+          ariaLabelledBy="mobile-save-restore-title"
+          onEscape={restoreBusy ? undefined : closeRestoreDialog}
+        >
           <div className="sd-panel sd-msave-dialog">
-            <h3>回档到此日</h3>
+            <h3 id="mobile-save-restore-title">回档到此日</h3>
             <p className="sd-msave-dialog-text">
               确定回档到 "{restoreTarget.name}" 吗？回档后会生成存档 "{restoreTarget.saveName}"。
             </p>
@@ -727,7 +737,7 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
               )}
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )

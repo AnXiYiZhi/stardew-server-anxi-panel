@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import type { ModInfo, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { modDisplayName } from '../mod-display'
@@ -2347,9 +2348,14 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       )}
 
       {confirmDelete && (
-        <div className="sd-confirm-overlay">
+        <ModalPortal
+          className="sd-confirm-overlay"
+          role="alertdialog"
+          ariaLabelledBy="mod-delete-confirm-title"
+          onEscape={deleteBusy ? undefined : closeDeleteConfirm}
+        >
           <div className="sd-confirm-dialog">
-            <h3>确认删除 Mod</h3>
+            <h3 id="mod-delete-confirm-title">确认删除 Mod</h3>
             {deleteBundleCompanions.length > 0 ? (
               <>
                 <p>
@@ -2394,7 +2400,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
     </div>
   )

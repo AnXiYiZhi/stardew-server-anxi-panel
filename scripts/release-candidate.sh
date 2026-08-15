@@ -165,6 +165,8 @@ assert_frontend_contract_from_container() {
   local control_asset=""
   local mobile_control_asset=""
   local saves_asset=""
+  local jobs_asset=""
+  local players_asset=""
   local -a matches=()
 
   mkdir -p "$output_dir"
@@ -177,7 +179,7 @@ assert_frontend_contract_from_container() {
   entry_asset="${matches[0]}"
   docker exec "$container" wget -qO- "http://127.0.0.1:8090$entry_asset" >"$output_dir/entry.js"
 
-  for prefix in ServerControlPage MobileControlPage SavesPage; do
+  for prefix in ServerControlPage MobileControlPage SavesPage JobsLogsPage PlayersPage; do
     mapfile -t matches < <(grep -oE "(^|/)$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
     if [[ "${#matches[@]}" -ne 1 ]]; then
       echo "release candidate: expected exactly one $prefix frontend chunk" >&2
@@ -189,6 +191,8 @@ assert_frontend_contract_from_container() {
       ServerControlPage) control_asset="$output_dir/$prefix.js" ;;
       MobileControlPage) mobile_control_asset="$output_dir/$prefix.js" ;;
       SavesPage) saves_asset="$output_dir/$prefix.js" ;;
+      JobsLogsPage) jobs_asset="$output_dir/$prefix.js" ;;
+      PlayersPage) players_asset="$output_dir/$prefix.js" ;;
     esac
   done
 
@@ -202,6 +206,14 @@ assert_frontend_contract_from_container() {
     ! grep -Eq 'farmerName\?.农民：' "$saves_asset" ||
     ! grep -Eq 'farmType\?.地图：' "$saves_asset"; then
     echo "release candidate: production frontend lost game-day rollback hover details" >&2
+    exit 1
+  fi
+  if ! grep -Fq '最近控制命令分页' "$jobs_asset" || ! grep -Fq '玩家活动分页' "$players_asset"; then
+    echo "release candidate: production frontend lost bounded pagination contracts" >&2
+    exit 1
+  fi
+  if ! grep -FRq 'data-modal-initial-focus' "$output_dir" || ! grep -FRq 'aria-modal' "$output_dir"; then
+    echo "release candidate: production frontend lost shared modal accessibility contract" >&2
     exit 1
   fi
 }
@@ -240,7 +252,21 @@ if ((dind_ready != 1)); then
   exit 1
 fi
 
-docker exec "$dind_container" apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip >/dev/null
+dind_tools_ready=0
+for attempt in 1 2 3; do
+  if docker exec "$dind_container" apk add --no-cache bash curl jq openssl sqlite docker-cli-compose zip >/dev/null; then
+    dind_tools_ready=1
+    break
+  fi
+  if ((attempt < 3)); then
+    echo "release candidate: DinD tool install attempt $attempt failed; retrying the same required package set" >&2
+    sleep $((attempt * 5))
+  fi
+done
+if ((dind_tools_ready != 1)); then
+  echo "release candidate: isolated DinD tools could not be installed after 3 attempts" >&2
+  exit 1
+fi
 docker exec "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version"
 docker rm -f "$dind_container" >/dev/null
 

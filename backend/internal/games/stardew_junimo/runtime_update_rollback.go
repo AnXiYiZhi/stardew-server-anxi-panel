@@ -74,6 +74,8 @@ func runtimeUpdateRollbackFailure(err error) (string, string) {
 		return "rollback_restore_compose_failed", "无法恢复升级前的 Compose 配置。"
 	case strings.HasPrefix(message, "restore JunimoServer mod:"):
 		return "rollback_restore_junimo_mod_failed", "无法恢复升级前的 JunimoServer Mod。"
+	case strings.HasPrefix(message, "repair original JunimoServer mod:"):
+		return "rollback_repair_junimo_mod_failed", "升级前的 JunimoServer Mod 缺失或损坏，且无法从原 server 镜像安全补齐。"
 	case strings.HasPrefix(message, "restore Control mod:"):
 		return "rollback_restore_control_mod_failed", "无法恢复升级前的 Control Mod。"
 	case strings.HasPrefix(message, "pin original runtime images:"):
@@ -133,6 +135,9 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 		d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件恢复已收敛，请手动启动服务器", "stopped", job.ID)
 		return nil
 	}
+	if err := d.ensureRuntimeRollbackJunimoServerMod(ctx, job, docker, instance, manifest); err != nil {
+		return fmt.Errorf("repair original JunimoServer mod: %w", err)
+	}
 	if err := pinRuntimeRollbackImages(instance.DataDir, manifest); err != nil {
 		return fmt.Errorf("pin original runtime images: %w", err)
 	}
@@ -176,6 +181,40 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 		return fmt.Errorf("restore stopped state: %w", err)
 	}
 	d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件升级失败，已回滚并恢复停止", "stopped", job.ID)
+	return nil
+}
+
+func (d *Driver) ensureRuntimeRollbackJunimoServerMod(ctx context.Context, job *jobs.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
+	if err := validateExtractedJunimoServerMod(junimoServerModDir(instance.DataDir), manifest.OriginalServerVersion); err == nil {
+		return nil
+	}
+	recoveryDir := runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID)
+	workDir, err := os.MkdirTemp(recoveryDir, "rollback-junimo-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(workDir)
+	hostWorkDir, err := d.dockerHostPath(workDir)
+	if err != nil {
+		return fmt.Errorf("map rollback JunimoServer directory for Docker: %w", err)
+	}
+	imageRef := strings.TrimSpace(manifest.OriginalServer.ImageID)
+	if !runtimeImageDigestPattern.MatchString(imageRef) {
+		imageRef = strings.TrimSpace(manifest.OriginalServer.Image)
+	}
+	extractedDir, err := extractJunimoServerMod(ctx, docker, imageRef, workDir, hostWorkDir, manifest.OriginalServerVersion)
+	if err != nil {
+		return err
+	}
+	if _, err := replaceJunimoServerMod(instance.DataDir, extractedDir, filepath.Join(workDir, "invalid-junimo-server")); err != nil {
+		return err
+	}
+	if err := validateExtractedJunimoServerMod(junimoServerModDir(instance.DataDir), manifest.OriginalServerVersion); err != nil {
+		return err
+	}
+	if job != nil {
+		_, _ = job.Info(ctx, "升级前的 JunimoServer Mod 缺失或损坏，已从事务记录的原 server image ID 安全补齐。")
+	}
 	return nil
 }
 

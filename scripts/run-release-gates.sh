@@ -102,7 +102,7 @@ if changed_since_base backend/internal/games/stardew_junimo scripts/compatibilit
   (
     cd backend
     PANEL_RUN_SMAPI_DOWNLOAD_TEST=1 go test -tags=integration ./internal/games/stardew_junimo -run '^TestSMAPIArchiveRealDownload$' -count=1 -v
-    go test -tags=integration ./internal/games/stardew_junimo -run '^TestRuntimeUpdateAuthAcceptanceUsesPureHealthAndNeverCallsSteamReady$' -count=1 -v
+    go test -tags=integration ./internal/games/stardew_junimo -run '^TestRuntimeUpdate(AuthAcceptanceUsesPureHealthAndNeverCallsSteamReady|RollbackMaterializesMissingJunimoFromOriginalImageID)$' -count=1 -v
   )
 else
   echo "release gates: Junimo real network/runtime integration skipped; affected inputs are unchanged"

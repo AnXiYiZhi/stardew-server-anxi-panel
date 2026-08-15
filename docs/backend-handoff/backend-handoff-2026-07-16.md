@@ -1,3 +1,18 @@
+# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1 接手记录（2026-08-15，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 用户支持包显示当前 Panel 为 v0.4.17，运行栈 server/auth tag 已匹配推荐值，只因 Control DLL 需要同步而进入 Control-only apply；宿主持久 Mod 目录却没有 `JunimoServer`。由于该目录覆盖镜像 `/data/Mods`，SMAPI 明确跳过依赖 `JunimoHost.Server` 的 Control，容器保持 running/unhealthy。目标等待 20 分钟得到 `server_container_not_ready`，自动回滚再等待 20 分钟得到 `rollback_verify_server_failed`，后续两次幂等 repair 重复同一结果。
+- `runtime_update_apply_runner.go` 不再只用 `runtimeUpdateServerChanged` 决定是否提取 Mod。事务在 change plan 前静态验证宿主 JunimoServer；image 变化或组件缺失/损坏都会从已验证目标 image 提取、记录 write-ahead intent、原子替换并纳入既有 rollback。
+- `runtime_update_rollback.go` 在启动原 server 前静态复核原版本 JunimoServer。旧恢复清单没有 Junimo replace intent、或既有回滚已恢复出缺失/损坏目录时，使用清单内原 server immutable image ID 重新物化；不接受客户端 image/path。失败稳定映射为 `rollback_repair_junimo_mod_failed`，恢复材料不删除。
+- 主要影响 `runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`runtime_update_apply_test.go`、`runtime_update_apply_integration_test.go`、`scripts/run-release-gates.sh` 和 `scripts/tests/test_release_candidate_upgrade.sh`；公开 repair/apply JSON 只可能出现新增稳定 rollbackCode，数据库、manifest 推荐版本、镜像/Control 制品和部署格式均未变。
+
+## 如何验证、下一步注意事项
+
+- 单元回归从 server/auth tag 已匹配、Control 旧版、宿主 Junimo 目录缺失开始，要求 auth 容器不重建且最终 Control-only apply 成功；另构造旧 v0.4.17 风格的 `rollback_failed + JunimoModReplaced=false` 私有清单，要求一次 repair 从原 image ID 补齐、恢复旧版验收并继续新事务成功。既有目标失败、回滚和 repair 幂等矩阵保持通过。
+- integration 构建最小真实 server fixture，通过 Docker inspect 得到 immutable image ID，删除宿主 Mod 后只用该 ID 提取并验证 manifest/DLL。候选升级 E2E 会在 `v0.4.17` 升级得到的新 Panel 上构造已失败 2 次的旧 `rollback_failed`，删除原 server 可信 tag 后通过公开 repair API 执行第 3 次受限修复；最终必须补齐 Mod、保留未变化 steam-auth container ID、恢复 stopped 并清理 recovery。不能只验证普通 Start，因为普通 lifecycle 原本就有 ensure 兜底。
+- 不要把修复退化为复制当前 Panel 内文件、信任可变 tag 或在 API 接受调用方路径。KeepServerStopped 的 Panel 启动恢复仍只收敛材料而不启动游戏；用户后续手动 Start 会走 lifecycle ensure。成功回滚/repair 才能按既有规则清理私有目录。
+
 # SAVE-IMPORT-COMPOSE-EMPTY-SET-1 接手记录（2026-08-15，completed，未发布）
 
 ## 改了什么、影响哪些接口/文件
@@ -222,7 +237,7 @@
 ## 改了什么
 
 - required runtime apply 不再把“版本对推荐”误解为“两个容器都必须重建”。恢复清单 schema 2 按当前/目标 tag 和 immutable image ID 分别记录 server/auth change plan；旧 schema 1 继续按全量变更保守处理。
-- auth 未变化且原来运行时：只停止 server，保留 auth 容器与 steam-session，不发起 Steam readiness 请求；通过 image ID、容器状态和 health 验收，再原地更新 CPU shares=256。auth 未变化但原来停止时使用 `compose up --no-recreate` 启动现有容器做验收。server 未变化时跳过 JunimoServer Mod 提取/替换，但仍重建 server 以加载新 Control。
+- auth 未变化且原来运行时：只停止 server，保留 auth 容器与 steam-session，不发起 Steam readiness 请求；通过 image ID、容器状态和 health 验收，再原地更新 CPU shares=256。auth 未变化但原来停止时使用 `compose up --no-recreate` 启动现有容器做验收。server 未变化且宿主 JunimoServer 完整匹配时跳过提取/替换；缺失或损坏时从同一 immutable server 版本补齐，再重建 server 以加载新 Control。
 - auth 真正变化时原快照、重建、readiness 和回滚边界保持；auth 等待由 90 秒增至 10 分钟。回滚只停止/恢复实际变更的 auth，Control-only 失败不会因同一 Steam 网络故障再次把回滚升级成 `rollback_failed`。
 
 ## 影响、验证与下一步

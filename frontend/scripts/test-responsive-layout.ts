@@ -138,6 +138,14 @@ const newGameCreatorCss = readFileSync(new URL('../src/games/stardew/NewGameCrea
 const savesPageCss = readFileSync(new URL('../src/games/stardew/pages/SavesPage.css', import.meta.url), 'utf8')
 const installPageCss = readFileSync(new URL('../src/games/stardew/pages/InstallPage.css', import.meta.url), 'utf8')
 const modsPageSource = readFileSync(new URL('../src/games/stardew/pages/ModsPage.tsx', import.meta.url), 'utf8')
+const modalPortalSource = readFileSync(new URL('../src/core/ModalPortal.tsx', import.meta.url), 'utf8')
+const playersPageCss = readFileSync(new URL('../src/games/stardew/pages/PlayersPage.css', import.meta.url), 'utf8')
+const playersPageSource = readFileSync(new URL('../src/games/stardew/pages/PlayersPage.tsx', import.meta.url), 'utf8')
+const savesSectionSource = readFileSync(new URL('../src/games/stardew/SavesSection.tsx', import.meta.url), 'utf8')
+const settingsPageSource = readFileSync(new URL('../src/games/stardew/pages/SettingsPage.tsx', import.meta.url), 'utf8')
+const jobsLogsPageSource = readFileSync(new URL('../src/games/stardew/pages/JobsLogsPage.tsx', import.meta.url), 'utf8')
+const mobileControlPageSource = readFileSync(new URL('../src/games/stardew/mobile/MobileControlPage.tsx', import.meta.url), 'utf8')
+const mobileSavesPageSource = readFileSync(new URL('../src/games/stardew/mobile/MobileSavesPage.tsx', import.meta.url), 'utf8')
 const qaSource = readFileSync(new URL('../src/qa-layout-main.tsx', import.meta.url), 'utf8')
 const releaseWorkflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8')
 const releaseCandidateWorkflow = readFileSync(new URL('../../.github/workflows/release-candidate.yml', import.meta.url), 'utf8')
@@ -159,6 +167,7 @@ assert.doesNotMatch(appCss, /:has\(\.sd-shell\)/)
 assert.match(appCss, /body\s*{[^}]*min-width:\s*280px/s)
 assert.match(appCss, /#root\.sd-desktop-shell-mounted/)
 assert.match(appCss, /#root\.sd-mobile-shell-mounted/)
+assert.match(appCss, /max-aspect-ratio:\s*8\s*\/\s*5/)
 assert.match(appCss, /min-aspect-ratio:\s*5\s*\/\s*2/)
 assert.match(shellCss, /\.sd-shell-viewport\s*{[^}]*overflow:\s*hidden/s)
 assert.match(shellCss, /\.sd-shell-viewport\s*{[^}]*overflow:\s*clip/s)
@@ -185,6 +194,34 @@ assert.match(installPageCss, /\.sd-install-qr-card\s*{[^}]*max-height:\s*min\(92
 assert.match(newGameCreatorCss, /@container\s+ngc-modal\s*\(max-width:\s*1100px\)/)
 assert.match(newGameCreatorCss, /@container\s+ngc-modal\s*\(max-width:\s*480px\)/)
 assert.doesNotMatch(newGameCreatorCss, /@container\s+sd-main-scroll/)
+assert.match(playersPageSource, /sd-players-pending-table-row/)
+assert.match(playersPageCss, /\.sd-players-pending-table\s*{[^}]*overflow-x:\s*hidden/s)
+assert.match(playersPageCss, /\.sd-players-pending-table \.sd-players-pending-table-row\s*{[^}]*grid-template-columns:[^}]*min-width:\s*0/s)
+assert.match(modalPortalSource, /createPortal/)
+assert.match(modalPortalSource, /document\.body/)
+assert.match(modalPortalSource, /event\.key !== 'Tab'/)
+assert.match(modalPortalSource, /event\.key === 'Escape'/)
+assert.match(modalPortalSource, /returnTarget\.focus\(\)/)
+assert.match(modalPortalSource, /element\.inert = true/)
+assert.match(modalPortalSource, /setAttribute\('aria-hidden', 'true'\)/)
+for (const modalConsumer of [
+  panelSource,
+  savesSectionSource,
+  settingsPageSource,
+  jobsLogsPageSource,
+  playersPageSource,
+  modsPageSource,
+  mobileControlPageSource,
+  mobileSavesPageSource,
+]) {
+  assert.match(modalConsumer, /<ModalPortal/)
+}
+assert.match(savesSectionSource, /role="alertdialog"/)
+assert.match(mobileControlPageSource, />\s*填入\s*</)
+assert.match(jobsLogsPageSource, /CONTROL_COMMAND_PAGE_SIZE\s*=\s*3/)
+assert.match(jobsLogsPageSource, /controlCommands\.slice\(/)
+assert.match(jobsLogsPageSource, /aria-label="最近控制命令分页"/)
+assert.match(qaSource, /cmd_qa_joja_07/)
 assert.match(modsPageSource, /typeof ResizeObserver === 'undefined'/)
 assert.match(qaSource, /SURFACE === 'app'/)
 assert.match(qaSource, /\/\\\/control-commands\$\//)

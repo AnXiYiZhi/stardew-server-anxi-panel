@@ -1773,3 +1773,41 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - 后续若把复选框改成“普通/重新混合”显式选择器，应继续保留“社区中心收集包”作为选项名称；不要把栏目名和选中值“重新混合”合并成一个含义不清的复选框标签。
+
+# FE-MODAL-VIEWPORT-1 接手记录（2026-08-15，completed，未发布）
+
+## 改了什么
+
+- 新增 `frontend/src/core/ModalPortal.tsx`，把 Stardew 桌面端 `sd-confirm-overlay` 和移动控制/存档确认框 portal 到 `document.body`。共享层负责语义角色与标题关联、滚动锁定、初始焦点、Tab 循环、Esc、关闭后的触发按钮焦点归还，并在模态期间给其它 `body` 子树设置 `inert` 与 `aria-hidden`。
+- 已迁移设置页用户删除/密码、日志清理/VNC、服务器控制、玩家操作、存档、Mod 删除、总览生命周期与首次安装提示；移动端迁移计划重启、密码、运行设置、游戏语言、Joja、存档上传与回档。设置页和任务页父容器的 `position: relative` 不再覆盖弹窗 `fixed`。危险删除、Joja、踢出/封禁与回档使用 `alertdialog`。
+- 待认证玩家表新增 `sd-players-pending-table(-row)` 三列布局，移除完整玩家表的七列和 `min-width: 870px` 约束。登录/初始化页流式回退阈值调整为 `max-aspect-ratio: 8/5`，覆盖 16:10 与 3:2。
+- Joja 输入旁的“填入”按钮、自动填入行为、确认词和提交门禁均原样保留。
+
+## 影响文件与验证
+
+- 主要影响 `frontend/src/core/ModalPortal.tsx`、`App.css`、`SavesSection.tsx`、`StardewPanel.tsx`、桌面 `pages/{Settings,JobsLogs,ServerControl,Players,Mods,Overview}Page`、移动 `Mobile{Control,Saves}Page`，以及 `scripts/test-responsive-layout.ts`；没有 API、后端状态或业务提交逻辑变化。
+- 全部 17 项 `npm.cmd run test:*` 和 production build 通过。应用内 Browser 在 1536×1024 验证 3:2 登录表单完整、删除用户/清空日志居中、待认证表无横向滚动、新建与删除存档语义正确；390×844 验证计划重启、Joja（含“填入”）、回档的焦点锁定、背景隔离和关闭后焦点归还。两种视口均无横向溢出，console error/warn 为 0。
+
+## 下一步注意事项
+
+- 新增确认框必须复用 `ModalPortal`，提供唯一标题 ID；不可再把 `role=dialog` 只挂在页面内普通 `div` 上。危险且需立即注意的不可逆确认优先使用 `role="alertdialog"`。
+- 模态异步提交期间应把 `onEscape` 设为 `undefined`，与禁用取消按钮保持一致。若以后加入嵌套模态，共享层已有栈与背景状态恢复逻辑，不要在页面组件另写第二套 body 锁定。
+- 候选镜像与上一正式版 Web 升级后的 production bundle 仍需抽验这组弹窗和 3:2/移动视口；本记录只证明当前源码/Vite fixture，不代表正式镜像已发布。
+
+# FE-CONTROL-COMMAND-PAGINATION-1 接手记录（2026-08-15，completed，未发布）
+
+## 改了什么
+
+- `JobsLogsPage.tsx` 给“最近控制命令”增加本地分页，页大小固定为 3；卡片标题继续展示接口返回的总条数，分页显示“第 n / m 页”，首尾按钮按边界禁用。
+- 现有 5 秒 `listControlCommands` 刷新没有增加请求。每次成功刷新后会按新总页数校正当前页；渲染阶段直接从现有数组切片，不新增 effect、缓存或服务端分页契约。
+- `JobsLogsPage.css` 限制控制命令卡片与表格滚动容器的最小宽度，使表格的 900px 最小宽度留在内部滚动层；分页栏按卡片可见宽度布局，右侧栏窄宽度下“下一页”不会被裁掉。
+
+## 影响文件与验证
+
+- 影响 `frontend/src/games/stardew/pages/JobsLogsPage.{tsx,css}`、`frontend/src/qa-layout-main.tsx`、`frontend/scripts/test-responsive-layout.ts`；无后端/API、数据排序、轮询周期或命令状态语义变化。
+- QA fixture 扩为 7 条不同状态的控制命令。全部 17 项 `npm.cmd run test:*` 与 `npm.cmd run build` 通过；应用内 Browser 在右侧 967×732 预览实际点击到第 2、3 页，确认行数为 3/3/1、首尾禁用正确、页面无横向溢出、表格仅内部滚动、console error/warn 为 0。
+
+## 下一步注意事项
+
+- 若未来后端支持服务端分页，应同时提供总条数和稳定游标/页码，并明确 5 秒轮询时当前页的更新策略；在接口变更前不要把本地切片和服务端分页混用。
+- 候选镜像和上一正式版 Web 升级后的 production bundle 仍需抽验该分页；本记录只证明当前源码与 Vite fixture，尚未发布。

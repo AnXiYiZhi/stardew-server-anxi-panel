@@ -174,7 +174,15 @@ func (f *runtimeApplyFakeDocker) RuntimeServerHealth(_ context.Context, dataDir,
 	if f.targetConfigured(dataDir) && f.serverHealthFailTarget {
 		return errors.New("health failed")
 	}
-	return nil
+	values, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		return err
+	}
+	err = validateExtractedJunimoServerMod(junimoServerModDir(dataDir), values["IMAGE_VERSION"])
+	if err != nil {
+		f.applyCall("server health " + err.Error())
+	}
+	return err
 }
 func (f *runtimeApplyFakeDocker) RuntimeCreateSnapshotVolume(context.Context, string, string, string) error {
 	f.applyCall("volume create snapshot")
@@ -327,6 +335,9 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"0.2.2"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.RemoveAll(junimoServerModDir(instance.DataDir)); err != nil {
+		t.Fatal(err)
+	}
 	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || inspection.Code != "control_update_available" {
 		t.Fatalf("control-only fixture=%+v", inspection)
@@ -336,7 +347,7 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	}
 	status := waitRuntimeApply(t, driver, instance)
 	if status.Phase != RuntimeUpdateApplySucceeded {
-		t.Fatalf("control-only phase=%s code=%s error=%s", status.Phase, status.ErrorCode, status.Error)
+		t.Fatalf("control-only phase=%s code=%s error=%s cause=%s/%s rollback=%s/%s calls=%v", status.Phase, status.ErrorCode, status.Error, status.CauseCode, status.CauseError, status.RollbackCode, status.RollbackError, fake.applyCalls)
 	}
 	calls := strings.Join(fake.applyCalls, "\n")
 	for _, forbidden := range []string{"stop server,steam-auth", "up steam-auth", "up preserve steam-auth", "volume create snapshot", "volume clone snapshot", "volume restore snapshot"} {
@@ -355,6 +366,102 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	}
 	if status.Selected.SteamAuth.ImageID == "" || status.Selected.Server.ImageID == "" {
 		t.Fatalf("selected immutable image IDs missing: %+v", status.Selected)
+	}
+	version, err := readJunimoServerModVersion(junimoServerModDir(instance.DataDir))
+	if err != nil || version != manifest.Server.Tag {
+		t.Fatalf("control-only update did not materialize the required JunimoServer mod: version=%q err=%v", version, err)
+	}
+	if fake.fakeDocker.containerRuns != 1 {
+		t.Fatalf("control-only update extracted JunimoServer %d times, want 1", fake.fakeDocker.containerRuns)
+	}
+}
+
+func TestRuntimeUpdateRepairMaterializesMissingJunimoFromLegacyControlOnlyTransaction(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	stackManifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"IMAGE_VERSION":                  stackManifest.Server.Tag,
+		"SERVER_IMAGE":                   stackManifest.Server.TrustedCandidates[0],
+		"SERVER_IMAGE_CANDIDATES":        strings.Join(stackManifest.Server.TrustedCandidates, ","),
+		"STEAM_SERVICE_IMAGE":            stackManifest.SteamAuth.TrustedCandidates[0],
+		"STEAM_SERVICE_IMAGE_CANDIDATES": strings.Join(stackManifest.SteamAuth.TrustedCandidates, ","),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"0.2.2"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(junimoServerModDir(instance.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || inspection.Code != "control_update_available" {
+		t.Fatalf("legacy control-only fixture=%+v", inspection)
+	}
+	applyID := "apply_" + strings.Repeat("6", 24)
+	project := strings.ToLower(filepath.Base(instance.DataDir))
+	selected := RuntimeUpdateSelectedPair{
+		Server: RuntimeUpdateSelectedImage{
+			Image: stackManifest.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64),
+		},
+		SteamAuth: RuntimeUpdateSelectedImage{
+			Image: stackManifest.SteamAuth.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64),
+		},
+	}
+	recovery := runtimeUpdateRecoveryManifest{
+		SchemaVersion: 3, ApplyID: applyID, Project: project, SteamSessionVolume: "stardew_steam-session",
+		SnapshotVolume: project + "_anxi-junimo-update-" + strings.Repeat("6", 24) + "-steam-session",
+		OriginalState:  storage.InstanceStateStopped,
+		OriginalServer: selected.Server, OriginalAuth: selected.SteamAuth, Target: selected,
+		OriginalServerVersion: stackManifest.Server.Tag, TargetServerVersion: stackManifest.Server.Tag,
+		MutationStarted: true, StopIntent: true, ControlUpdateIntent: true, ControlUpdated: true,
+	}
+	if err := createRuntimeRecoveryFiles(instance.DataDir, recovery); err != nil {
+		t.Fatal(err)
+	}
+	recovery.ControlManifestPresent, recovery.ControlDLLPresent, err = backupRuntimeControlMod(instance.DataDir, applyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovery.OriginalEnvSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original.env"))
+	recovery.OriginalComposeSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-compose.yml"))
+	recovery.OriginalControlJSONSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-manifest.json"))
+	recovery.OriginalControlDLLSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-StardewAnxiPanel.Control.dll"))
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, recovery); err != nil {
+		t.Fatal(err)
+	}
+	failed := RuntimeUpdateApplyStatus{
+		ApplyID: applyID, Phase: RuntimeUpdateApplyRollbackFailed, Progress: 100,
+		Current: inspection.Current, Target: inspection.Recommended, Selected: selected,
+		Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
+		CauseCode: "server_container_not_ready", CauseError: "新版 Junimo server 运行验证失败。",
+		RollbackCode: "rollback_verify_server_failed", RollbackError: "升级前的 Junimo server 未能恢复就绪。",
+	}
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, failed); err != nil {
+		t.Fatal(err)
+	}
+	fake.fakeDocker.junimoExtractVersion = stackManifest.Server.Tag
+	plan := DetectRuntimeUpdateRepairPlan(instance)
+	if plan == nil || !plan.ActionAvailable || plan.Code != "repair/rollback_failed" {
+		t.Fatalf("legacy rollback repair plan=%#v", plan)
+	}
+	started, err := driver.StartRuntimeUpdateRepair(context.Background(), instance, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := waitRuntimeApply(t, driver, instance)
+	if final.Phase != RuntimeUpdateApplySucceeded || final.RepairAttempts != 1 || final.RepairSourceApplyID != applyID {
+		t.Fatalf("legacy control-only rollback was not repaired: started=%#v final=%#v", started, final)
+	}
+	version, err := readJunimoServerModVersion(junimoServerModDir(instance.DataDir))
+	if err != nil || version != stackManifest.Server.Tag {
+		t.Fatalf("legacy repair did not materialize JunimoServer: version=%q err=%v", version, err)
+	}
+	if fake.fakeDocker.containerRuns != 1 {
+		t.Fatalf("legacy repair extracted JunimoServer %d times, want 1", fake.fakeDocker.containerRuns)
 	}
 }
 

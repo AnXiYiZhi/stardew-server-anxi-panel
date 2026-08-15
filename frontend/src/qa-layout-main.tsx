@@ -174,6 +174,37 @@ const controlCommandHistory = {
       errorCode: 'player_not_found', resultMessage: '目标玩家当前不在线。',
       submittedAt: iso(32), completedAt: iso(31), updatedAt: iso(31),
     },
+    {
+      commandId: 'cmd_qa_save_now_03', instanceId: 'stardew', commandType: 'save-now',
+      targetType: 'server', targetLabel: '当前存档', actorUserId: 1, actorUsername: '管理员',
+      status: 'succeeded', resultSupported: true, resultMessage: '游戏内保存已确认完成。',
+      submittedAt: iso(52), completedAt: iso(51), updatedAt: iso(51),
+    },
+    {
+      commandId: 'cmd_qa_kick_04', instanceId: 'stardew', commandType: 'kick',
+      targetType: 'player', targetId: 'f2a8c410', targetLabel: 'PendingGuest', actorUserId: 1,
+      actorUsername: '管理员', status: 'dispatched', resultSupported: true,
+      resultMessage: '踢出指令已发送。', submittedAt: iso(72), updatedAt: iso(72),
+    },
+    {
+      commandId: 'cmd_qa_approve_auth_05', instanceId: 'stardew', commandType: 'approve-auth',
+      targetType: 'player', targetId: 'f2a8c410', targetLabel: 'PendingGuest', actorUserId: 1,
+      actorUsername: '管理员', status: 'succeeded', resultSupported: true,
+      resultMessage: '玩家认证已批准。', submittedAt: iso(92), completedAt: iso(91), updatedAt: iso(91),
+    },
+    {
+      commandId: 'cmd_qa_ban_06', instanceId: 'stardew', commandType: 'ban',
+      targetType: 'player', targetId: 'd4e5f6a1', targetLabel: 'WinterBreeze', actorUserId: 1,
+      actorUsername: '管理员', status: 'failed', resultSupported: true,
+      errorCode: 'player_offline', resultMessage: '目标玩家当前离线。',
+      submittedAt: iso(112), completedAt: iso(111), updatedAt: iso(111),
+    },
+    {
+      commandId: 'cmd_qa_joja_07', instanceId: 'stardew', commandType: 'enable-joja',
+      targetType: 'server', targetLabel: '当前存档', actorUserId: 1, actorUsername: '管理员',
+      status: 'expired', resultSupported: true, resultMessage: '结果等待超时，请结合游戏状态确认。',
+      submittedAt: iso(132), completedAt: iso(131), updatedAt: iso(131),
+    },
   ],
 }
 const backups = {

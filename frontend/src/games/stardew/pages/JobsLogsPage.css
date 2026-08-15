@@ -1,15 +1,32 @@
 /* JobsLogsPage page-only styles. Loaded with the lazy page chunk. */
 
-.sd-command-history { margin-top: 12px; padding: 12px; }
+.sd-command-history { min-width: 0; margin-top: 12px; padding: 12px; }
 .sd-command-history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .sd-command-history-head h3 { margin: 0; color: #3f260d; }
 .sd-command-history-head span, .sd-command-history-empty { color: #76583d; font-size: 12px; }
-.sd-command-history-table-wrap { overflow-x: auto; }
+.sd-command-history-table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; }
 .sd-command-history-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12px; color: #402b18; }
 .sd-command-history-table th, .sd-command-history-table td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid #dfcfaa; }
 .sd-command-history-table th { color: #6b492a; background: #efe1bd; }
 .sd-command-history-table td span, .sd-command-history-table td small { display: block; }
 .sd-command-history-table td small { margin-top: 3px; color: #80664d; word-break: break-all; }
+.sd-command-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.sd-command-history-page-button {
+  min-width: 68px;
+  padding: 5px 10px;
+}
+.sd-command-history-page-status {
+  min-width: 84px;
+  color: #76583d;
+  font-size: 12px;
+  text-align: center;
+}
 .sd-command-status { display: inline-block !important; padding: 2px 7px; border-radius: 10px; white-space: nowrap; background: #ddd0ac; }
 .sd-command-status-succeeded { color: #246126; background: #d8ebc6; }
 .sd-command-status-dispatched { color: #66510f; background: #f3e7ae; }
@@ -19,6 +36,7 @@
 @media (max-width: 720px) {
   .sd-command-history { padding: 9px; }
   .sd-command-history-table { min-width: 760px; }
+  .sd-command-history-pagination { justify-content: center; }
 }
 
 

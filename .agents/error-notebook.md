@@ -243,7 +243,10 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-15 检查 production bundle 新契约时，又把 `frontend/dist/assets/JobsLogsPage-*.js` 与 `PlayersPage-*.js` 作为 `rg` 位置参数，两个检索均报 `os error 123`；产物未被修改。随后改为 `rg -g 'JobsLogsPage-*.js'` / `-g 'PlayersPage-*.js'` 并命中精确 chunk。即便目标是生成目录，Windows `rg` 也不接受未展开通配路径。
+- 最近复发/补充：2026-08-15 修复 Junimo 运行栈事务时，又把 `backend/internal/games/stardew_junimo/runtime_update*.go` 作为 Windows `rg` 位置参数，立即以 `os error 123` 退出；源码未被该只读命令修改。随后固定改成 `rg -g 'runtime_update*.go' ... backend/internal/games/stardew_junimo`，本轮余下检索不再让 `*` 出现在位置参数。
 - 最近复发/补充：2026-08-15 生产存档导入诊断时，又把 `backend/internal/games/stardew_junimo/save_import_*.go` 作为 Windows `rg` 位置参数；迁移和类型读取已输出，但末尾检索仍以 `os error 123` 失败，远端尚未查询且产品文件未变化。开始修复后检索测试覆盖时，同轮又把两个包的 `*_test.go` 作为位置参数并把 stderr 丢弃，组合命令被后续成功输出掩盖；增加真实 Docker 回归时再次把 `backend/internal/docker/*_test.go` 放在位置参数且让前面的成功输出掩盖错误。随即统一改为明确目录配合 `rg -g '*_test.go'`。即使是只读诊断，提交命令前也必须机械检查每个含 `*` 的参数只能紧跟 `-g`，且不得隐藏原生命令失败。
+- 最近复发/补充：2026-08-15 前端视觉评审检索 CSS 归属时，把 `frontend/src/App*` 作为 Windows `rg` 位置参数；其它明确目录已输出大量命中，但该参数仍产生 `os error 123`，且组合输出过长被截断。随后只使用检索已经确认的 `frontend/src/App.tsx`、`frontend/src/App.css` 与明确目录。本轮余下检索禁止位置参数含 `*`，通配只能作为 `-g` 的值。
 - 最近复发/补充：2026-08-15 发布前审计 token/job 崩溃窗口时，又把 `backend/internal/games/stardew_junimo/save_import*` 作为 `rg` 位置参数；前半对 `jobs.Manager.Start` 的读取成功，末尾检索仍以 os error 123 令组合命令退出 2，产品文件未变化。此前同日只读排查首次安装后的存档导入失败时，已先后三次把 `save_import*_test.go`、`*save*test.go` 或 `*_test.go` 作为 Windows `rg` 位置参数；二次代码审查时又把两个包的 `*test.go` 直接作为位置参数，随后在已取得 Compose cache 实现后又让末尾附加检索残留 `backend/internal/docker/*.go`。复发都发生在主命令已安全后又为压缩附加检索手写通配路径，说明必须检查整条命令。余下发布流程禁止任何 `rg` 位置参数包含 `*`；测试覆盖检索固定从明确目录使用 `rg -g 'save_import*_test.go' ... backend/internal/games/stardew_junimo` 与 `rg -g '*save*test.go' ... backend/internal/web`。
 - 最近复发/补充：最终前端门禁为查 `tsBuildInfoFile` 再次执行 `rg ... frontend/tsconfig*.json`，Windows 未展开该通配符，`rg` 以 os error 123 退出；测试没有开始、文件未修改。随后先用 `rg --files frontend -g 'tsconfig*.json'` 得到三个精确文件，再逐个检索成功。该规则已在 AGENTS 提升仍复发；余下发布流程禁止向 `rg` 位置参数传任何 `*`，必须先生成精确路径数组。
 
@@ -659,6 +662,7 @@
 
 ## 2026-08-09：`apply_patch` 使用过长且手写的上下文
 
+- 最近复发/补充：2026-08-15 统一前端模态框时，把 `ServerControlPage.tsx` 五个弹窗的结构凭相邻页面记忆写进同一个长补丁，其中密码弹窗实际卡片类与猜测不一致，整份补丁以 `verification failed` 安全零修改。确认该文件 diff 为空后，改为先逐段读取真实 wrapper、标题、关闭按钮和尾标签，再按单个弹窗的小 hunk 修改；同文件的多个相似 JSX 块也不能用首个块推断后续块。
 - 最近复发/补充：2026-08-13 调整隔离 E2E `.env` 的六个白名单键时，先把实际位于第 1、22–25、40 行的内容误写成一个连续 hunk，`apply_patch` 校验失败且零修改。随后先读取精确行号，再按三个真实邻接段拆 hunk 成功；检索结果按筛选顺序相邻不代表它们在源文件中相邻。
 - 最近复发/补充：2026-08-13 生产角色解绑成功后清理任务脚本时，直接发送 Delete File，未先核对共享工作区中该脚本已经不存在，`apply_patch` 因目标缺失安全零修改。随后以 `Test-Path -LiteralPath` 确认无需清理。共享工作区中的一次性文件即使刚被本轮成功读取执行，删除前也必须重新检查当前终态。
 - 最近复发/补充：2026-08-13 补记生产诊断教训时，把 `AGENTS.md` 与错题本更新混入同一个补丁，又手写了带轻微空格差异的长列表行；按设计整份补丁以 `verification failed` 安全零修改。2026-08-14 为 Linux/Windows 候选包装器同时补 `git fetch` 时又把两个文件放进同一补丁，PowerShell 文件的上下文误按 Bash 结构书写，整份补丁安全零修改；读取两个实际片段后拆成单文件补丁成功。项目已明确要求多文件修改默认拆分，错题本更新也不得例外。
@@ -807,6 +811,7 @@
 
 ## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
 
+- 最近复发/补充：2026-08-15 为 Junimo 候选升级 E2E 做语法检查时直接调用 PATH 的 `bash -n`，再次命中无发行版 WSL relay 并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行、仓库未被该命令修改。随后直接使用已 inspect 的 `bash:5.2` 只读挂载容器完成 `bash -n`，ShellCheck 使用独立已 inspect 镜像显式调用。
 - 最近复发/补充：2026-08-15 `v0.4.17` 发布脚本门禁又先从 PATH 调用 `bash --version`，命中无发行版的 WSL relay，并在任何 `bash -n`/功能测试前以 `execvpe(/bin/bash) failed` 退出 1；仓库与 Docker 无变化。后续本轮只使用已验证精确 Git Bash 路径或 Linux 容器，不再探测 PATH bash。
 - 最近复发/补充：2026-08-14 修复生产 VNC 端口前为任务脚本做语法检查，仍只用 `Get-Command bash` 取得 PATH 首项并直接执行，再次命中 WSL 转发器、以 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，远端 Compose 和容器均未变化。随后固定使用本条已验证的 `D:\Code\CodeTools\Git\bin\bash.exe`，先执行 `--version` 再执行 `-n`；已知精确路径存在时不得重新从 PATH 选择解释器。
 - 最近复发/补充：2026-08-12 图形化 Compose E2E 脚本终验再次直接调用 PATH 中的 `bash -n`，命中同一个 WSL 转发器并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行。随后按本条使用已验证的 `D:\Code\CodeTools\Git\bin\bash.exe -n`，并在独立 `koalaman/shellcheck-alpine:v0.10.0` 容器显式调用 `shellcheck` 后通过。该错误已经进入 `AGENTS.md` 仍复发，后续 Windows Bash 命令模板必须直接从精确 Git Bash 路径开始，不能先试 PATH。
@@ -979,6 +984,7 @@
 
 ## 2026-07-28：Python 命令不存在却被后续命令掩盖
 
+- 最近复发/补充：2026-08-15 `v0.4.18` 发布前兼容矩阵仍先执行 `Get-Command python` 并调用 Windows Store alias，版本探针无有效输出且以非零退出；矩阵尚未开始、仓库未变化。随后立即加载 workspace dependencies，用返回的 Python 3.12.13 精确路径完成 validate/version/20 项单测。本轮余下 Python 只复用该路径。
 - 最近复发/补充：2026-08-15 `v0.4.17` 发布前兼容矩阵又先执行 `Get-Command python` 并调用 Windows Store alias，立即以 9009 退出，validate/version/unit 均未启动、项目无变化；随后停止 alias/`py` 猜测并改用 workspace dependency loader 的精确解释器。2026-08-14 `RUNTIME-AUTH-HEALTH-PROBE-1` 兼容矩阵也发生过同一错误。该预防规则已经提升到 `AGENTS.md`，Windows Python 门禁第一步必须直接加载 workspace dependencies，不得再以 `Get-Command python` 作为首选入口。
 - 最近复发/补充：2026-08-13 本版兼容矩阵门禁再次先执行 `Get-Command python` + `python --version`，命中 Windows Store alias 后无版本输出并在矩阵前退出；没有项目状态变化。随后才调用 workspace dependency loader，使用其返回的 Python 3.12.13 精确路径通过 validate/version/unit/remote-artifact。`b15fa42` 产品候选通过 smoke 后启动正式矩阵时又重复同一探针失败，矩阵仍未开始、Docker 资源未变化；本轮余下 Python 命令固定复用已加载的精确解释器。该错误已多次复发且规则已在 `AGENTS.md`：Windows Python 门禁第一步必须直接加载 workspace dependencies，不再探测 Store alias。
 - 最近复发/补充：同日最终收口兼容矩阵时仍再次执行 `Get-Command python` 后调用 Store alias，版本探针以 9009 退出，矩阵尚未运行、项目无变化；随后才加载 workspace dependencies，并用精确 Python 3.12.13 完成 19 项单测及 84.6 秒远程制品校验。该规则已经提升但仍复发：后续本任务所有 Python 命令直接复用已加载的精确路径，不再做宿主 alias 探针。
@@ -1019,6 +1025,7 @@
 
 ## 2026-07-28：Windows `npm ci` 被 node_modules 文件锁阻断
 
+- 最近复发/补充：2026-08-15 `v0.4.18` 洁净前端门禁在宿主 `npm ci` 删除 Rolldown 原生 DLL 时返回 `EPERM unlink`；没有重试、强删或结束未知进程。随后按本条使用与 Dockerfile 一致的 `node:22-alpine`、完整仓库稳定挂载和任务专属 `node_modules`/`dist` volume，洁净安装、audit、17 项状态测试与 build 全部通过。
 - 最近复发/补充：2026-08-10 Web E2E 清理任务 archive 时，Windows 在 Docker image load 结束后短暂持有 `images.tar`，第一次精确 `RemoveAll` 失败；没有扩大删除范围或强杀进程，改为验证目标仍位于任务 `.work`、Docker 资源已终态后对同一精确路径做有界退避重试并成功。Windows 文件锁恢复只能重试已验证的任务文件，不能升级为递归清理工作区。
 - 最近复发/补充：2026-08-01 前端和官网两次把宿主源码父目录只读挂到 `/work`，同时把 named volume 挂到 `/work/node_modules`；runc 在只读父挂载下无法创建子挂载点，容器尚未运行 npm 就失败。该问题已提升到 `AGENTS.md`：宿主源码固定只读挂 `/src`，任务专属可写 workspace volume 挂 `/work`，复制源码/lockfile 后再安装构建。
 - 环境：Windows 工作区，已有 `frontend/node_modules`。
@@ -1042,6 +1049,7 @@
 
 ## 2026-07-28：Windows 下把 Shell glob 直接传给 `rg`
 
+- 最近复发/补充：2026-08-15 检索前端 CSS 直接子元素规则时，又把 `frontend/src/games/stardew/**/*.css` 与 `*.css` 作为 Windows `rg` 位置参数，两个路径均报 `os error 123`；同日给最近控制命令加分页时又把 `frontend/src/games/stardew/pages/*.tsx` 作为位置参数，前一个精确文件已有命中但组合检索仍以 `os error 123` 结束。两次命令都只读、文件未变化。后续固定使用 `rg -g '*.css' ... <directory>` / `rg -g '*.tsx' ... <directory>`，提交前机械检查所有 `*` 只出现在 `-g` 的值中。
 - 环境：PowerShell/Windows。
 - 错误模式：`rg ... Dockerfile*` 或 `rg ... config/*test.go`。
 - 症状：`文件名、目录名或卷标语法不正确 (os error 123)`。
@@ -1385,6 +1393,7 @@
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
 - 最近复发/补充：2026-08-15 检查 lifecycle Stop 分支时，把含字面双引号的三个候选重新拼成单个 `rg -e` 正则并嵌入 JavaScript → PowerShell，传到 `rg` 后变成未闭合分组并报 `regex parse error: unclosed group`；命令只读、文件未变化。随即按 `case "stop"`、`runStop`、`operation == "stop"` 分拆为三次 `rg -F -e`。候选数量少也不得为减少调用恢复多层分组正则。
+- 最近复发/补充：2026-08-15 检索前端遗留弹窗时，把含字面双引号的 `className="sd-confirm-overlay"` 正则直接放入 JavaScript → PowerShell 双引号命令，`rg` 最终收到被截断的模式并报 `unclosed group`；命令只读、文件未变化。后续将检索值先放入 PowerShell 单引号变量并使用 `rg -F -- $pattern`，不再让 JSX 属性引号跨越两层字符串边界。
 - 最近复发/补充：2026-08-13 讨论存档自动解绑时，为一次性查找 Control 命令分支，把带字面双引号的 `case "save-now"` 与其它候选拼成 `rg` 分组正则，经 JavaScript → PowerShell 后落成 `unclosed group`；同一只读命令的其它固定字符串证据已正常返回，文件未修改。后续改为每个候选独立 `rg -F`，多条只读检索不再共享一个复杂正则或依赖末条 `rg` 的退出码。
 - 最近复发/补充：2026-08-13 查找 Compose server-running 判定时，又把含字面双引号的候选分组正则内联进 JavaScript → PowerShell → `rg`，最终传给 `rg` 的模式被截断并报 `unclosed group`；命令只读、未修改文件。随后改用多个 `rg -F` 和直接读取已确认文件。即使只是一次候选检索，也不得重新在多层命令中拼分组正则或字面引号。
 - 最近复发/补充：同日最终差异扫描又把同时含单双引号的 password/token 正则放进嵌套 PowerShell 数组，解析阶段报 `Unexpected token ']'`，尚未读取 diff。立即删除复杂模式，改为多个 `Select-String -SimpleMatch` 与 `rg -F` 白名单检查；敏感扫描也不能以“安全检查”为由例外使用多层复杂正则。
@@ -1727,6 +1736,7 @@
 
 ## 2026-08-06：Vite 端口落入 Windows TCP 排除区间
 
+- 最近复发/补充：2026-08-15 前端视觉评审仅检查 `5173` 没有监听就启动 Vite，Node 返回相同 `listen EACCES`；随后确认 Docker Desktop 当前排除区间为 `5141-5240`，`5173` 正位于其中。Windows 本地预览即使使用项目默认端口，也必须先同时检查监听和 `netsh interface ipv4 show excludedportrange protocol=tcp`，再选择区间外端口。
 - 环境：Windows 11、Docker Desktop，任务专属 Vite QA 服务。
 - 错误模式：只检查 `Get-NetTCPConnection` 没有监听后，就选择 `4317` 启动 Vite。
 - 症状 / 退出码：Node 返回 `listen EACCES: permission denied 127.0.0.1:4317`；端口没有其它监听进程。
@@ -1834,6 +1844,8 @@
 ## 2026-08-02：把标准 Playwright 方法套到 Browser 精简定位器
 
 - 环境：应用内 Browser，尝试把阿里云安全组端口列滚入视口。
+- 最近复发/补充：2026-08-15 复核移动回档的焦点归还时，假定精简 Browser 的 `locator.press('Enter')` 会像完整 Playwright 一样激活按钮并打开弹窗；实际只把焦点移到“回档到此日”，后续查找弹窗内“取消”超时，页面未提交任何业务操作。后续需要测试“键盘焦点起点 + 打开弹窗”时先用 `press('Enter')` 明确聚焦，再独立 `click()` 打开，且在操作弹窗控件前先用 DOM snapshot/role count 确认弹窗已出现。
+- 最近复发/补充：2026-08-15 核对模态背景隔离时，把非标准 `:focusable` 直接传给浏览器原生 `Element.matches()`，运行时抛出无效选择器异常；只读评估在返回前终止，页面状态未改变。随后改为核对根节点的 `inert` 属性、`aria-hidden`、活动焦点归属与 Tab 循环；原生 DOM 查询不得借用 jQuery/UI 或测试框架专有伪类。
 - 错误模式：对 Browser 精简定位器调用未暴露的 `scrollIntoViewIfNeeded()`。
 - 症状：运行时直接报该方法不存在，页面状态未改变。
 - 根因：把标准 Playwright Locator API 当成当前 Browser 包装层的完整接口，没有按已读文档的可用方法集执行。
@@ -1842,6 +1854,8 @@
 
 ## 2026-08-02：误用应用内 Browser 的标签页创建接口
 
+- 最近复发/补充：2026-08-15 新建本地预览标签后把 `waitForLoadState` 直接调用在 tab 对象上，导航已成功但方法不存在；只读检查确认 tab 顶层负责 `goto/url/screenshot`，等待与 locator 属于 `tab.playwright`。后续固定使用 `await tab.playwright.waitForLoadState('domcontentloaded')`，不能把精简 tab 包装当成 Playwright Page。
+- 最近复发/补充：2026-08-15 前端视觉验收前检查持久 Browser 会话时，直接读取上一轮已关闭的 `reviewTab.url()`，Browser 返回 `Unknown tab: 1`；当前标签列表实际为空，页面和文件均未变化。后续先以 `browser.tabs.list()` 核对持久引用仍存在于实时列表，再读取 URL；列表为空时按已验证的 `tabs.new()` → `goto()` 流程创建新标签，不把 Node REPL 中仍存在的对象绑定当作标签仍存活的证据。
 - 环境：持久 Browser 会话，需要打开 ECS 面板的新标签页。
 - 错误模式：调用不存在的 `iab.tabs.open()`；随后又把 URL 作为参数传给 `tabs.new()`，实际只得到 `about:blank`。
 - 症状：第一次报方法不存在；第二次创建空白页，必须再导航。
@@ -1991,6 +2005,7 @@
 - 正确做法：使用普通 PowerShell 数组 `@()` 和 `+= [pscustomobject]...` 收集少量已验证路径，再直接构造 `[pscustomobject]` 输出 JSON。
 - 预防检查：短小诊断脚本优先使用原生数组；只有确有性能需求时才使用泛型列表，并在组合到 JSON 对象前显式调用 `.ToArray()` 做独立探针。
 - 适用范围：PowerShell 7 的诊断聚合、ordered dictionary 与 `ConvertTo-Json`。
+- 最近复发/补充：2026-08-15 批量读取多份项目文档区间时，单元素嵌套 range 数组在后续索引中再次触发 `Argument types do not match`；前面的只读输出有效，文件未修改。改为每个文件用独立 `Get-Content` 或带 `start/end` 明确字段的对象，不再用单元素嵌套数组压缩行段读取。
 - 最近复发/补充：2026-08-13 批量打印多个源码行段时，把嵌套 `@(@(start,end), ...)` 的元素直接传入 `[Math]::Min`，PowerShell 动态类型绑定报 `Argument types do not match`，前两个文件已只读输出、后续未执行且无产品修改。随后改为每个范围使用带明确字段的 hashtable，并在传给 `[Math]::Min` 前强制转换为 `[int]`；行段读取不再依赖嵌套数组的隐式标量化。
 
 ## 2026-08-06：统一终端 TTY 无法直接启动 WindowsApps PowerShell 7
@@ -2046,6 +2061,7 @@
 - 最近复发/补充：2026-08-14 移动小屋设置的语义快照显示 `combobox "小屋策略（CabinStrategy）"`，直接用 `getByLabel` 仍得到 `no_matches`；检查同名 `getByRole('combobox')` 精确命中 1 个后，使用 role locator 成功切到 `None`。语义快照给出的是可访问名称，不保证底层存在可由 label engine 解析的绑定；交互应优先复用快照中的 role/name 组合。
 - 最近补充：2026-08-07 验收 VitePress 展示站时，先把主题开关猜成按钮“主题模式”，实际语义角色/名称是 `switch "切换为深色主题"`；又用 exact heading `v0.4.8（最新版本）` 定位，实际可访问名称还包含 permalink 文本。VitePress 页面必须先读取当前 `domSnapshot()`，按已观察到的 role/name 操作；含标题永久链接时优先用正文投影或非 exact 文本，不猜组合后的可访问名称。
 - 最近补充：同轮把页面求值误写成不存在的 `tab.playwright.dom.evaluate(...)`；当前 Browser 的页面级只读求值是 `tab.playwright.evaluate(...)`，语义树读取则是 `tab.playwright.domSnapshot()`。Browser 子接口的层级必须以已读 API Reference 和本轮已验证调用为准，首次失败后不得继续在相邻对象上试探。
+- 最近复发/补充：2026-08-15 前端视觉评审在 `functions.exec` 的 JavaScript 模板字符串中又嵌入了含 `${...}` 的页面求值文本，导致 `document` 在编排 isolate 中提前求值并报 `ReferenceError`；改写时又把 `playwright.evaluate` 猜成对象参数 `{expression: ...}`，当前包装明确要求直接传字符串或函数。页面未被写入，移动截图已在失败前保存。正确方式是向 Node REPL 传普通字符串载荷，并在载荷内调用 `tab.playwright.evaluate(() => ({...}))`；不要让外层模板参与页面表达式插值，也不要套用未在本轮 API Reference 中出现的参数形态。
 - 最近复发/补充：2026-08-10 顶栏垂直留白复测先误用 `tab.locator(...)`，当前封装的 locator 位于 `tab.playwright.locator(...)`；随后又在页面代理元素上调用不受支持的原生 `focus()`。检查运行时原型后改用已暴露的 locator `press("ArrowDown")` 让跳转链接获得真实键盘焦点。DOM 查询、交互和 Tab 级导航/截图必须继续按对象层级区分，页面代理元素不假定拥有原生方法。
 - 最近复发/补充：同轮尝试把持久 Node REPL 中的 `tabletCompactTab` 直接写进新的 `functions.exec` V8 isolate，调用 `codex_app__open_in_codex` 前即报 `ReferenceError`。两种 JavaScript 运行时不共享绑定；需要跨运行时传值时，先让 Node REPL 输出可序列化的 `tab.id`，再把字面值传给普通工具，不能引用另一 isolate 的变量名。
 - 适用范围：Codex in-app Browser 响应式测试与临时视口覆盖。
@@ -2767,7 +2783,9 @@
 
 ## 2026-08-15：检索已返回真实源码路径后仍按记忆读取猜测文件名
 
+- 最近复发/补充：2026-08-15 本次事务修复定位测试时，先凭记忆读取不存在的 `runtime_update_test.go`；真实测试已由 `rg --files` 证明位于 `runtime_update_apply_test.go` 等文件，只读命令退出 1 且源码未变。随后只读取文件清单和符号检索返回的精确路径。
 - 最近复发/补充：2026-08-15 增加 strict Compose 真实 Docker 回归时，`rg --files backend/internal/docker` 已列出实际测试文件，随后仍凭记忆读取不存在的 `backend/internal/docker/compose_integration_test.go`；其它精确文件输出正常但 `Get-Content` 失败。检查候选升级覆盖时，又把未确认的 `scripts/test-release-candidate.sh` 和两个已存在脚本一起传给 `rg`，导致组合检索退出 2；真实文件是先前文件清单已返回的 `scripts/tests/test_release_candidate_upgrade.sh`。改为只读取检索返回的精确路径；后续不得从被测函数或测试职责推断文件名。
+- 最近复发/补充：2026-08-15 前端视觉评审时，把未经 `rg --files frontend` 确认的 `frontend/README.md` 与已知存在的 `docs/03-frontend.md` 一起交给 `rg`；后者命中正常，但缺失路径仍使组合检索退出 2。只读评审同样必须先确认可选说明文件存在，或只对已验证目录使用 `-g`，不能因文件名常见就把它加入精确输入列表。
 - 最近复发/补充：同日回填发布证据时，把从 `docs/09-image-build.md` 读取到的旧发布建议误当成 `docs/02-backend.md` 内容，向后者提交了不存在上下文的 `apply_patch`；补丁验证失败且零修改。跨文档替换也必须先用精确文本定位真实文件和行，再对单文件施补丁，不能根据章节职责迁移记忆中的句子。
 - 最近复发/补充：同日发布后核对候选 E2E 日志标记时，在 `rg` 的多个输入中凭命名习惯加入不存在的 `scripts/release-candidate-lib.sh`；真实 `release-candidate.sh` 和测试脚本已有命中输出，但缺失路径仍使组合检索以 1 退出。多文件检索前必须先用 `rg --files` 确认每个精确输入，或只给已验证目录配 `-g`，不能把“可能存在”的辅助文件混入命令。
 - 环境：PowerShell 7，发布前审计 Docker Compose JSON 解析器。
@@ -2780,6 +2798,7 @@
 
 ## 2026-08-15：在仓库子目录把 Git 根相对文件名直接交给 gofmt
 
+- 最近复发/补充：2026-08-15 本次 Junimo 修复首次格式化仍在 `workdir=backend` 传入 `backend/internal/...`，`gofmt` 在修改前以路径不存在退出 2；随后回到仓库根按实际路径格式化，并把 Go 测试拆到模块根。本轮不再混用两套路径基准。
 - 最近复发/补充：2026-08-15 增加 strict Compose 真实 Docker 回归后，又在 `backend` cwd 把仓库根相对的 `backend/internal/docker/runtime_apply_integration_test.go` 交给 `gofmt`，得到路径不存在且未修改文件。随即切回仓库根并用检索确认的精确相对路径格式化；格式化和测试继续按各自 cwd 分开执行。
 - 最近复发/补充：修正为仓库根执行两份文件的 `gofmt` 后，又把紧随其后的 `go test ./internal/...` 留在同一个根目录命令中；格式化成功，但 Go 在加载测试前报告根目录没有 `go.mod` 并退出 1。格式化与 Go 门禁必须拆成不同 cwd 的独立命令，不能为减少一次调用重新合并。
 - 环境：PowerShell 7，工作目录为 `backend`，发布前 Go 定向测试。
@@ -2792,6 +2811,7 @@
 
 ## 2026-08-15：给 Linux 全量 Go 门禁的宿主 shell 设置过短超时
 
+- 最近复发/补充：2026-08-15 定向 Go 测试超过初始工具等待后返回了 session ID，但编排脚本只打印 `output`、没有保留 `session_id`，使终态无法从原会话继续读取；只读进程归属确认唯一测试已结束后才重新执行，没有并发启动第二份产品测试。后续长命令必须把完整结果 JSON 输出或立即保存 session ID，并用同一 `write_stdin` 等待。
 - 最近复发/补充：修正 strict Compose 测试后，本应只格式化并单独启动新门禁，却把 `gofmt` 与 `docker start -a anxi-v0417-go-gates` 合在同一个 `timeout_ms=1000` 命令；格式化已成功，保留容器被重新启动，但宿主约 3.7 秒后退出 124 并关闭 stdout 管道。精确 inspect 确认仍只有这个 owner 匹配容器在运行，未启动重复容器；后续只用独立 `docker wait` 接管。
 - 环境：PowerShell 7、Docker Desktop，任务专属 `golang:1.25-alpine` 容器执行 `go test/vet/build`。
 - 错误模式：虽然容器内命令是长门禁，却把宿主 `shell_command` 的 `timeout_ms` 设为 1000，工具实际约 5 秒即以 124 终止 Docker CLI。
@@ -2811,8 +2831,21 @@
 - 预防检查：在 `$ErrorActionPreference='Stop'` 脚本中不得依赖原生命令的预期非零作为正常分支；要么选用空集合成功的查询接口，要么把该探针放入已验证的独立错误捕获边界。
 - 适用范围：Docker 容器、volume、network、image 的不存在性断言及发布后资源清理复核。
 
+## 2026-08-15：候选回滚夹具的 FIFO 路径与重开语义偏离产品契约
+
+- 环境：任务专属 DinD，`test_release_candidate_upgrade.sh` 的旧 `rollback_failed` Junimo 恢复夹具。
+- 错误模式：夹具把产品固定的 `/tmp/smapi-input` 错写为 `/tmp/server-input.fifo`，并用单层 `while read ... done < fifo &` 模拟 Junimo 命令通道；修复循环重开后首次重跑仍遗漏了路径契约。
+- 症状 / 退出码：真实恢复已经补回正确 Junimo Mod，但事务持续停在 `rolling_back`；E2E 有界等待 180 秒后报告 `legacy Junimo repair did not converge successfully` 并退出 1。旁路只读投影显示 `/tmp/server-output.log` 始终为 0 字节，Panel 重复读取输出，而 `tee -a /tmp/smapi-input` 只创建了无消费者的普通文件。
+- 根因：夹具既没有复用产品常量对应的真实路径，也忽略了命名管道在所有写端关闭时会向当前读取者返回 EOF；测试双重偏离真实 Junimo 的持久命令监听语义。
+- 正确做法：夹具精确创建并监听 `/tmp/smapi-input`，用外层永久循环在每次 EOF 后重新打开 FIFO，内层循环处理该写端连接上的全部命令；保留 Compose 的 `$$line` 转义，并继续用产品真实探针次数验证。
+- 预防检查：IPC 夹具必须从源码核对路径、文件类型、重开和多消息语义；任何用 FIFO 模拟长生命周期 IPC 的门禁都至少验证两个先后断开的写端，不能通过减少产品探针或放宽门禁掩盖夹具缺陷。
+- 适用范围：FIFO、容器内命令桥、Junimo 健康探针、真实升级与恢复 E2E。
+
 ## 编码与换行快速检查
 
+- 最近复发/补充：2026-08-15 前端模态修复收口时，完整变更文件 BOM 审计命中 `frontend/src/App.css` 后直接退出 1，没有先判断 BOM 是否由本次修改引入；随后通过重定向进程读取 `HEAD:frontend/src/App.css` 的原始 blob，确认基线和工作树都以 `EF-BB-BF` 开头，本次 `apply_patch` 正确保留了原编码。已有文件命中 BOM 时必须先与 `HEAD` 原始字节比较；基线已有且文件类型未被无 BOM 硬规则覆盖时记录为“保留”，只有新增 BOM 或 Go/TS/JS/JSON/YAML/Markdown/.env 等硬违规才判失败。
+- 最近复发/补充：2026-08-15 首次构建共享 `ModalPortal` 时，仅在 `useEffect` 顶部用 `if (!containerRef.current) return` 对 ref 值做局部推断，随后闭包中的键盘事件处理仍被 TypeScript 判定可能为 `null`，`tsc -b` 以 TS2345/TS18047 退出 2，Vite build 未开始。修正为先取得 `mountedContainer`，通过空值守卫后再赋给显式非空的 `HTMLDivElement` 常量供闭包捕获；带 ref 的异步/事件闭包需让非空快照本身拥有明确类型，不能只依赖外层控制流推断。
+- 最近复发/补充：2026-08-15 为统一前端模态层增加静态回归时，断言误写为实现必须包含 `event.key === 'Tab'`，而真实且正确的早退分支是 `event.key !== 'Tab'`，导致首轮 `test:responsive-layout` 在进入 build 前退出 1；产品代码未因失败命令变化。随后按已读取的真实实现修正断言并单独重跑测试，静态契约不得凭预期语句形态猜测比较方向。
 - 最近复发/补充：2026-08-13 owner guard 收口时再次对完整变更文件列表做 U+FFFD 正文扫描，命中错题本历史合法示例并误报失败；源码与新文件没有被修改。2026-08-14 候选流程收口又在同一个完整文件循环中对错题本调用 `Contains(U+FFFD)`，再次命中历史示例并主动退出 1；随即拆分为“全部目标完整字节仅查 BOM”“tracked 文件只查 `git diff --unified=0` 新增行”“untracked 新文件才查完整正文”，最终检查通过。编码收口脚本不得把 BOM 与 replacement-character 的检查范围混成同一个完整文件循环。
 - 最近复发/补充：2026-08-12 v0.4.11 收口时，虽然命令后半已经实现“只检查新增 diff 行”，前半仍先对所有 changed file 完整正文扫描 U+FFFD，只排除了错题本而遗漏同样含历史乱码说明的 `docs/09-image-build.md`，导致在新增行检查执行前误报退出 1。编码审计只能对完整变更文件检查 BOM；U+FFFD 必须唯一地从 `git diff --unified=0 --no-color` 的单个 `+` 新增行判断，不得在同一命令保留任何完整正文 replacement-character 扫描。
 - 最近复发/补充：2026-08-10 v0.4.10 官网收口审计又对全部 changed file 完整正文搜索 U+FFFD，命中本节在 `HEAD` 中已经存在的合法示例后组合命令退出 1；同日 `DOCS-HOME-QQ-COMMUNITY-1` 收口时再次错误复用完整文件扫描并命中同一历史示例。两次均按 `HEAD` 对照确认不是本次引入。正确复核固定为 `git diff --unified=0 --no-color` 后只检查单个 `+` 开头且排除 `+++` 文件头的新增行；该规则因多次复发已提升到 `AGENTS.md`，收口命令不得再组合完整文件 U+FFFD 扫描。
@@ -2836,3 +2869,14 @@
 - 正确做法：直接捕获 `git show :<path>` 的 stdout；若需要逐字节检查 blob，则通过重定向进程捕获 `StandardOutput.BaseStream`，不要传 `--output`。
 - 预防检查：原生命令的输出参数是否支持 `-` 必须先读帮助或做任务目录外的无写探针；审计后检查工作区是否出现意外未跟踪文件。
 - 适用范围：`git show`、Git blob 审计、BOM 检查和任何把 stdout 约定类推到 `--output` 的命令。
+
+## 2026-08-15：把原生 Playwright 定位器方法直接套到应用内 Browser 定位器
+
+- 最近复发/补充：同一次预览复位又在 `playwright.evaluate()` 的隔离执行环境中用 `element instanceof HTMLElement` 过滤可滚动元素，但该环境的 `HTMLElement` 不是可用构造器，返回 `Right-hand side of 'instanceof' is not an object`；改成遍历所有节点后，又命中了只有只读 `scrollLeft` 的隔离对象；即使精确选中 `.sd-jobs-page`，直接赋值仍是只读。正确做法是先只读识别实际滚动容器，再对精确容器调用 DOM `scrollTo()` 方法，不对隔离代理对象做属性写入，也不对 `querySelectorAll('*')` 的混合节点做通用处理。
+- 环境：Codex 应用内 Browser、Node REPL，本地 Vite 前端可视化验收。
+- 错误模式：对 `previewTab.playwright.getByRole(...)` 返回的受限定位器直接调用原生 Playwright 的 `scrollIntoViewIfNeeded()`。
+- 症状 / 退出码：工具返回 `scrollIntoViewIfNeeded is not a function`；页面状态和产品文件没有变化，第二页数据已在调用前完成切换。
+- 根因：应用内 Browser 暴露的是受控 Playwright 子集，定位器不保证实现原生 Playwright 的全部方法。
+- 正确做法：对纯滚动这类无副作用操作使用 `previewTab.playwright.evaluate()`，在页面内精确选择目标后调用 DOM 原生 `element.scrollIntoView({ block: 'end' })`；交互仍优先使用可访问角色定位器。
+- 预防检查：调用 Browser 定位器的非基础方法前先查当前插件文档或探测接口；已知未暴露的方法不得按原生 Playwright 经验重复调用。
+- 适用范围：Codex 应用内 Browser 的滚动、截图定位与可视化 QA。

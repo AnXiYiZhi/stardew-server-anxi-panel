@@ -14,6 +14,7 @@ import {
 } from '../../../api'
 import type { InstancePasswordStatus, RestartSchedule, ServerRuntimeSettings } from '../../../types'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
+import { ModalPortal } from '../../../core/ModalPortal'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileControlPage.css'
 import { submitAndWaitForPlayerCommand } from '../player-command-results'
@@ -561,9 +562,13 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
 
       {/* ── 计划重启弹窗 ─────────────────────────────────────────────────── */}
       {scheduleOpen ? (
-        <div className="sd-mctrl-dialog-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-mctrl-dialog-overlay"
+          ariaLabelledBy="mobile-restart-schedule-title"
+          onEscape={scheduleSaving ? undefined : () => setScheduleOpen(false)}
+        >
           <div className="sd-panel sd-mctrl-dialog">
-            <h3>计划重启</h3>
+            <h3 id="mobile-restart-schedule-title">计划重启</h3>
             {scheduleLoading ? (
               <p>正在读取计划重启配置...</p>
             ) : (
@@ -675,14 +680,18 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 服务器密码设置弹窗 ───────────────────────────────────────────── */}
       {passwordOpen ? (
-        <div className="sd-mctrl-dialog-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-mctrl-dialog-overlay"
+          ariaLabelledBy="mobile-server-password-title"
+          onEscape={passwordSaving ? undefined : () => setPasswordOpen(false)}
+        >
           <div className="sd-panel sd-mctrl-dialog">
-            <h3>服务器密码设置</h3>
+            <h3 id="mobile-server-password-title">服务器密码设置</h3>
 
             {passwordLoading ? (
               <p>正在读取当前密码配置...</p>
@@ -768,14 +777,18 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 小屋与联机高级设置弹窗 ───────────────────────────────────────── */}
       {runtimeSettingsOpen ? (
-        <div className="sd-mctrl-dialog-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-mctrl-dialog-overlay"
+          ariaLabelledBy="mobile-runtime-settings-title"
+          onEscape={runtimeSettingsSaving ? undefined : () => setRuntimeSettingsOpen(false)}
+        >
           <div className="sd-panel sd-mctrl-dialog">
-            <h3>小屋与联机高级设置</h3>
+            <h3 id="mobile-runtime-settings-title">小屋与联机高级设置</h3>
 
             {runtimeSettingsLoading ? (
               <p>正在读取当前配置...</p>
@@ -859,12 +872,16 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 服务器游戏语言弹窗 ───────────────────────────────────────────── */}
       {gameLanguageOpen ? (
-        <div className="sd-mctrl-dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="mobile-game-language-title">
+        <ModalPortal
+          className="sd-mctrl-dialog-overlay"
+          ariaLabelledBy="mobile-game-language-title"
+          onEscape={gameLanguageSaving ? undefined : () => setGameLanguageOpen(false)}
+        >
           <div className="sd-panel sd-mctrl-dialog">
             <h3 id="mobile-game-language-title">服务器游戏语言</h3>
             {gameLanguageLoading ? (
@@ -906,14 +923,19 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
               </>
             )}
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {/* ── 永久启用 Joja 路线弹窗 ───────────────────────────────────────── */}
       {jojaOpen ? (
-        <div className="sd-mctrl-dialog-overlay" role="dialog" aria-modal="true">
+        <ModalPortal
+          className="sd-mctrl-dialog-overlay"
+          role="alertdialog"
+          ariaLabelledBy="mobile-joja-title"
+          onEscape={jojaBusy ? undefined : () => setJojaOpen(false)}
+        >
           <div className="sd-panel sd-mctrl-dialog">
-            <h3>永久启用 Joja 路线</h3>
+            <h3 id="mobile-joja-title">永久启用 Joja 路线</h3>
 
             <div className="sd-mctrl-warning">
               此操作会模拟游戏内 !joja IRREVERSIBLY_ENABLE_JOJA_RUN 指令，永久禁用标准社区中心路线，改为 Joja 路线。<strong>此操作不可撤销</strong>，对本存档的剩余游玩时间永久生效。请仅在你确实需要切换路线时使用。
@@ -967,7 +989,7 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
               </button>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </div>
   )
