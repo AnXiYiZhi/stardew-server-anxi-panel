@@ -1,36 +1,43 @@
-# 2026-08-16 完成未发布：默认保留虚拟主机农舍等级
+# 2026-08-16 已发布：v0.5.0 聚合可靠性与兼容更新
+
+- [x] annotated `v0.5.0` 固定在 `9b18dd3fe5192692548bf11a85010dd35303da93`；Compatibility `31899107019`、候选 `31899107629`、自动 Tag `31899867310`、正式提升 `31899874927` 全部成功。
+- [x] v0.4.19 的 none/global/role 加入保护、角色独立密码与旧全服密码兼容完整纳入用户可见汇总；v0.5.0 同时发布存档导入 strict/耐久/cleanup 恢复、真实最近活动语义和 Control 0.3.4 主机农舍等级保持。
+- [x] `v0.4.19` Web unhealthy 回滚/healthy 升级、升级后受影响 E2E、最老受影响 `v0.4.11` 代表升级预演、三仓六引用、Release 资产和独立正式镜像首次/重启均通过；统一 digest=`sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`，owner 测试资源清零。
+- [ ] 官网首页/changelog 的 v0.5.0 与补录 v0.4.19 内容已准备；VitePress build 2.68 秒及本地 1440×900/390×844 首页到日志真实点击、版本顺序、正文、溢出、overlay、console 已通过。待 docs-only 提交的 Pages、Compatibility 和线上同矩阵成功后回填，不得触发候选重建或移动 tag。
+
+# 2026-08-16 已发布：默认保留虚拟主机农舍等级（v0.5.0）
 
 - [x] Control `0.3.4` 在 `SaveLoaded` 前按精确程序集/类型/签名 Harmony 跳过 JunimoServer `.125` 的 `ResetHostFarmhouseToLevelZero()`；默认启用且不提供开关，不携带或修改上游源码。
 - [x] Control options/status 暴露补丁安装结果；Panel 要求 availability 明确为 true，目标漂移或安装失败时以 `control_runtime_host_farmhouse_patch_unavailable` 停服，避免静默回退到归零行为。
 - [x] C# 契约、真实游戏程序集编译、Go runtime/lifecycle 回归通过；真实 `.125` Docker 读档与 `GameLoop.Saved` 已证明任务副本的主机房屋等级 2 保持为 2，测试资源归零。
-- [ ] 下一正式候选需按 `docs/09-image-build.md` 的本任务矩阵完成 Control-only Web 升级、升级后真实读档/重启/保存和失败回滚；本轮不提交、不推送、不 tag、不发布，也不为导入存档增加特殊处理。
+- [x] 显式 v0.5.0 候选按 `docs/09-image-build.md` 聚合矩阵完成 Control-only Web 升级、升级后受影响真实链与 unhealthy 回滚，并从同一 digest 自动 tag/正式提升；导入存档仍没有为房屋等级增加特殊分支。
 
-# 2026-08-15 完成未发布：存档导入 token/job/cleanup 崩溃恢复
+# 2026-08-15 已发布：存档导入 token/job/cleanup 崩溃恢复（v0.5.0）
 
 - [x] primary job、operationId、journal 与 owned token 形成 `type + instance + save-import:<operationId>` 一对一身份；job runner 只在 journal attach、token attach、journal ready 全部成功后启动，attach 失败不再返回 202。
 - [x] Panel 重启覆盖 job 创建前后、journal/token 两次 attach 与 runner release 前窗口；只按 exact idempotency identity 恢复，缺失、冲突、payload 不符或 exact job 不存在均 recovery required，不猜最近任务。
 - [x] cleanup 先持久完整只读计划，再按 bootstrap/staged/source 的 removal-started/removed 子阶段执行；schema/stage/关键字段、maintenance/FIFO/upstream、pointer、source/bootstrap/staged 指纹任一不可证时零删除或停止在可恢复证据上，preimport 永久保留。
 - [x] filesystem completed 后通过 0600 cleanup receipt 串联 journal finalize 与 token 删除；token 删除失败、journal 已删、重复/并发 cancel 可幂等收敛且危险删除最多一次。
 - [x] succeeded token 过期后压缩为 exact-result tombstone，不删除 completed journal、preimport 或正式存档，也不破坏同 token 幂等查询。
-- [x] jobs、pending upload、transaction、Web/API 故障注入专项已补；本任务不提交、不推送、不 tag、不发布，后续正式候选仍需升级后真实 Docker E2E。
+- [x] jobs、pending upload、transaction、Web/API 故障注入专项与升级后真实 Docker E2E 已随 v0.5.0 候选完成；正式 digest 提升后另做首次/重启冒烟和资源归零。
 
-# 2026-08-15 完成未发布：存档导入维护事务耐久闭环
+# 2026-08-15 已发布：存档导入维护事务耐久闭环（v0.5.0）
 
 - [x] maintenance phase、原始实例快照与 `MaintenanceStarted` 改为 write-ahead 门禁；任一数据库/journal 写失败均禁止 ComposeUp 或进入 recovery required，不再吞掉 LastError、清旗、快照恢复错误。
 - [x] 精确恢复 state、driver phase、`state_message` NULL/空/普通三态及 payload 原始字节；空 phase/payload 不经过 storage 默认值归一化。
 - [x] 失败恢复固定为 Down(0) → strict fresh stop → journal 清旗/pending → 快照恢复 → journal restored；缺任一步都保留 ownership/人工恢复证据，Reconcile 与 cleanup 不得降级为普通 stopped。
 - [x] Phase A FIFO 调用前增加耐久 attempt 位；仅明确未尝试、未提交、未确认的 pre-submit 失败自动停机恢复，模糊 FIFO 结果只停机并保持 manual recovery/单次提交语义。
 - [x] Panel 重启恢复覆盖 start-intent 前后、ComposeUp 返回、Down 后清旗前、清旗后快照恢复前四个崩溃窗口；可能部分启动先 Down+strict，可能 FIFO 提交不自动恢复/清理。
-- [x] maintenance/Phase A/transaction/Web 专项、Linux 受影响包与全量 test、vet、build 通过；任务未提交、未推送、未打 tag、未发布。首次全量与同工作树 Control 0.3.3 制品更新交叠读到旧摘要，稳定后同命令重跑通过，不作为产品放宽理由。
+- [x] maintenance/Phase A/transaction/Web 专项、Linux 受影响包与全量 test、vet、build 通过；最终候选再次通过默认全量和真实 Web 升级并随 v0.5.0 发布。首次全量与同工作树 Control 制品更新交叠读到旧摘要，稳定后同命令重跑通过，不作为产品放宽理由。
 
-# 2026-08-15 完成未发布：存档导入严格无缓存停机证明
+# 2026-08-15 已发布：存档导入严格无缓存停机证明（v0.5.0）
 
 - [x] `ComposePsStrict` 保持独立 `--all` fresh 调用，拒绝命令失败、输出截断、坏 JSON、`null`、缺字段与未知 Docker state；普通 `ComposePs` 的短缓存和 UI 语义不变。
 - [x] server 停机分类收紧为仅“无 server”或“全部 `exited/dead`”通过；`running/Up/restarting/paused/created/removing/unknown/空状态` 和多个副本中的任一非稳定项全部拒绝。
 - [x] ownership/journal/runtime asset 前、maintenance 初检、`ComposeUp` 前、失败 `ComposeDown` 后和 owned cleanup 前全部使用 strict；cache invalidation 仅维持普通查询一致性，不再被当作停机证明。
 - [x] 数据库权威 `DataDir` 贯穿 maintenance 错误记录与后续事务；提交/cleanup 遇到调用方目录不一致时在文件或 token 变更前返回 recovery required。
 - [x] 真实 Docker Client cache/parser 受控回归、driver 状态矩阵、`game_installed` fresh-running 零副作用和 Web reservation 释放回归通过；任务专属 Linux 最终默认全量 test、串行复核、vet、build 均通过。
-- [ ] 后续正式候选需按 `docs/09-image-build.md` 本任务专项矩阵执行升级后真实 Docker E2E；本次明确不提交、不推送、不打 tag、不发布镜像或 Release。
+- [x] v0.5.0 候选按 `docs/09-image-build.md` 聚合矩阵执行升级后真实 Docker E2E、unhealthy 回滚和正式提升；命令/JSON 不确定性仍保持 fail closed。
 
 # 2026-08-15 已上线：官网更新日志同步 v0.4.18
 
@@ -2031,7 +2038,7 @@ Multi Game Mode later
 - [x] 全部 17 项前端状态/布局测试、production build 和 967×732 Browser 真实翻页通过，console error/warn 为 0。
 - [x] 候选镜像及 `v0.4.17` Web 升级后的 production bundle 已抽验 JobsLogs/Players 分页契约；随自动 `v0.4.18` tag 与同 digest 正式镜像发布。
 
-# PLAYER-AUTH-MODES-1（2026-08-15，代码完成，待正式发布）
+# PLAYER-AUTH-MODES-1（2026-08-15，released in v0.4.19，included in v0.5.0）
 
 - [x] 玩家加入保护改为显式 `none / global / role`，旧 `SERVER_PASSWORD` 安装自动兼容为 global/none。
 - [x] 角色密码按 `UniqueMultiplayerID` 绑定，只持久化每实例 HMAC verifier；内部 Junimo guard、密钥与 payload 纳入 Docker/API/审计脱敏边界。
@@ -2039,10 +2046,11 @@ Multi Game Mode later
 - [x] Control `0.3.3` 通过 Harmony prefix 只重写 `TryAuthenticate` 输入，继续复用上游 Junimo 的 attempts、timeout、隔离小屋、清理和传送；损坏配置与未知角色拒绝认证，Panel 批准 guard 保持可用。
 - [x] 桌面/移动端共用“玩家加入保护”弹窗，支持三模式、角色状态、密码重置、待重启与补丁状态；1280×720 和 390×844 Browser QA 无横向溢出。
 - [x] Go 聚焦测试、C# 策略契约、真实 game-data Control 0-error 编译、前端 responsive-layout 与 production build 已通过。
-- [ ] 正式候选前完成真实双客户端联机矩阵：各自密码、交叉失败、错误次数/超时、Panel 批准、未重启/重启 revision、旧实例迁移和上一正式版 Web 升级后复验；完成前不 tag、不提升正式镜像。
+- [x] v0.4.19 候选完成自动认证策略、角色隔离、错误边界、revision/重启、旧实例兼容、Control-only 更新/回滚和 Web 升级验证并正式发布；v0.5.0 从 v0.4.19 的真实 Web 回滚/升级再次覆盖该能力。
+- [ ] 两个真人客户端实际输入独立角色密码的人工联机记录仍未补齐；自动策略/Control 夹具不能表述成真人联机已验证。以后修改认证目标、attempts/timeout 或客户端交互时补各自密码、交叉失败和 Panel 批准矩阵。
 - [ ] 设备 ID 绑定暂不实现。浏览器 device ID 无法证明 Stardew 客户端身份，且指纹可复制/清理；若以后需要免密码设备授权，应先设计有客户端参与的签名 challenge，不用 localStorage/Cookie 伪装安全绑定。
 
-# PLAYER-LAST-SEEN-SEMANTICS-1（2026-08-15，已完成）
+# PLAYER-LAST-SEEN-SEMANTICS-1（2026-08-15，released in v0.5.0）
 
 - [x] 修复存档名册观测时间被误当作最后在线时间：API `lastSeen` 只读取 `last_online_at`，从未上线角色不再显示“上次 今天 HH:mm”。
 - [x] 保留 `last_seen_at` 作为内部观测审计，不迁移或清洗数据库；真正在线过的角色离线后仍保留真实最后在线时间。

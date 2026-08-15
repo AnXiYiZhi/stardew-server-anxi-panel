@@ -1,4 +1,4 @@
-# v0.5.0 正式候选准备（2026-08-16，pending）
+# v0.5.0 正式候选与发布结果（2026-08-16，released）
 
 ## 聚合变更清单与受影响链路
 
@@ -27,18 +27,24 @@
 
 ## 发布状态
 
-- 当前状态为候选前准备；本节中的本地专项证据不替代不可变候选证明、两条真实 Web 升级、自动 annotated tag、三仓六引用同 digest、正式镜像重启冒烟和 GitHub Release 资产验收。全部成功后必须在本节回填精确 commit、workflow、artifact、digest、build date、升级/回滚结果、门禁选择/跳过和资源清理终态。
-- 首个显式 `0.5.0` 候选 `31897973357` 在 selected code gates 期间主动取消，没有构建或推送候选镜像；必跑 Compatibility `31897972627` 的 Linux 默认全量后端测试暴露 `TestControlRuntimeContextCancellationDoesNotCleanup` 仍用 30ms timeout 同时承担“进入 starting”和“取消”的竞态，在共享 runner 负载下先取消、后读取到初始 stopped。该轮 `ComposeDown` 次数仍为 0，说明不是产品误清理。测试现已改为先观察精确 `control_runtime_starting` phase、再通过 manager 显式取消；目标测试连续 50 次通过，Linux Go 1.25 默认全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过，任务容器与 volume 已归零。下一候选仍须重新跑默认全量与两条 workflow，禁止把局部复验当作候选证明。
+- 最终发布 commit=`9b18dd3fe5192692548bf11a85010dd35303da93`。Compatibility `31899107019` 于 `2026-08-15T17:43:12Z..17:45:07Z` 成功；显式候选 `31899107629` 使用 `version=0.5.0`、`previous_version=0.4.19`，实际 job 于 `17:48:17Z..17:59:19Z` 用时 11 分 02 秒并成功。自动 push 产生的同 commit patch 候选 `31899107063` 被取消，未形成第二个候选身份。
+- 不可变 artifact `release-candidate-0.5.0-9b18dd3fe519`（ID `9250770198`）固定 schema=1、previous=`0.4.19`、build date=`2026-08-15T17:48:42Z`、local image ID=`sha256:55693feb011ae79261ad76dfcb3540ec9ba870fc3eb3c83f274717bc652b0e71`、candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.0-9b18dd3fe519` 和 digest=`sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`。候选没有重新使用首轮失败的证明。
+- 路径矩阵没有跳过本版受影响链：runtime manifest 变化触发远程制品验证，Junimo 实现变化触发 SMAPI 真实下载与运行栈 integration，docs 变化触发网站 build；兼容清单、部署脚本/ShellCheck、后端全量 test/vet/build、updater/Docker integration、前端全部状态回归/audit/build、fresh install/restart、`v0.4.19` Web unhealthy 回滚/healthy 升级和升级后受影响 E2E 全部通过。存档长期结构最老受影响的 `v0.4.11 → 0.5.0` 已在本地 release-candidate 预演中用同一产品代码完成代表 Web 升级；最终 commit 只在其后收紧取消时序测试和发布记录，没有改变运行产品逻辑。
+- 自动 Tag workflow `31899867310` 于 `17:59:21Z..17:59:35Z` 成功；annotated tag object=`8a51ad3638f5057ebca1f1555ff652ba378e1c87`，tagger time=`2026-08-15T17:59:30Z`，解引用精确等于发布 commit，tag message 固定 candidate workflow 与 digest。正式提升 `31899874927` 于 `17:59:32Z..18:01:05Z` 成功，只用 `skopeo --all --preserve-digests` 提升 proof digest，没有 rebuild。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.5.0` 与 `latest` 六引用已独立复核，全部精确等于 `sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`。GitHub Release `Stardew Server Anxi Panel 0.5.0` 于 `2026-08-15T18:01:02Z` 发布，为 latest、非 draft、非 prerelease；四项资产与 tag 源逐字节一致：`run.sh`=`7263bfa323b2bf4eb94674bde9c77a57a8b86734c606055c9cdef2fc1e130787`、`migrate-fnos.sh`=`90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`、`repair-junimo-0.3.5.sh`=`13a07708d23e02c002c979eef28639bc2fe283a2e5988e228afc0c068f51cd0e`、`repair-junimo-upgrade.sh`=`4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`。
+- GitHub Release 正文已在不改变 tag、digest、发布时间和四项资产的前提下补齐用户可读汇总：v0.4.19 的角色独立密码/全服模式/旧配置兼容，以及 v0.5.0 的存档恢复、真实最近活动、农舍保持、升级和 digest 证据。官网首页/changelog 同步内容由发布后 docs-only 提交负责。
+- 从 GHCR 正式 digest 拉取的独立空数据卷容器在首次启动和 restart 后均返回 `health=ok`、version=`0.5.0`、完整 commit、build date=`2026-08-15T17:48:42Z`、setup initialized=false；owner 容器与 volume 终态为 0。候选证明与 Release 资产临时目录已逐文件和空目录精确清理，未执行 prune，也未触碰生产数据或既有非目标 Docker 资源。
+- 首个显式 `0.5.0` 候选 `31897973357` 在 selected code gates 期间主动取消，没有构建或推送候选镜像；必跑 Compatibility `31897972627` 的 Linux 默认全量后端测试暴露 `TestControlRuntimeContextCancellationDoesNotCleanup` 仍用 30ms timeout 同时承担“进入 starting”和“取消”的竞态，在共享 runner 负载下先取消、后读取到初始 stopped。该轮 `ComposeDown` 次数仍为 0，说明不是产品误清理。测试改为先观察精确 `control_runtime_starting` phase、再通过 manager 显式取消；目标测试连续 50 次通过，Linux Go 1.25 默认全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过。最终 Compatibility 与候选已重新跑默认全量并成功，未把局部复验当作候选证明。
 
 # v0.4.19 正式发布基线（2026-08-15，released）
 
-- `v0.4.19` 由候选 workflow `31892497427` 验证并从 commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee` 自动创建 annotated tag；正式候选 digest 为 `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17`。本版加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码与 Control fail-closed runtime patch；Release、annotated tag、三仓 `0.4.19` 与 `latest` 保持正式状态，它是 v0.5.0 healthy/unhealthy Web 升级的唯一当前上一正式版基线。
+- `v0.4.19` 由候选 workflow `31892497427` 验证并从 commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee` 自动创建 annotated tag；正式候选 digest 为 `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17`。本版加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码与 Control fail-closed runtime patch；它的 Release、annotated tag 与三仓精确 `0.4.19` 保持不可变，并已作为 v0.5.0 healthy/unhealthy Web 升级的唯一上一正式版基线。三仓 `latest` 在 v0.5.0 正式提升成功后才统一前移到新 digest。
 
-# HOST-FARMHOUSE-PRESERVE-1 候选前门禁记录（2026-08-16，completed，未发布）
+# HOST-FARMHOUSE-PRESERVE-1 候选前门禁记录（2026-08-16，released in v0.5.0）
 
 ## 变更清单与受影响链路
 
-- Control `0.3.3 → 0.3.4`，新增对 JunimoServer `.125` 精确方法 `HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()` 的默认 Harmony skip；server/auth image、Compose/部署格式、数据库、公开 API 和前端 bundle 不变。runtime stack manifest 与内嵌 Control DLL/SHA 已更新，因此下一候选必须选择 Control/runtime 真实长链，不能按“server 镜像没变”跳过。
+- Control `0.3.3 → 0.3.4`，新增对 JunimoServer `.125` 精确方法 `HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()` 的默认 Harmony skip；server/auth image、Compose/部署格式、数据库、公开 API 和前端 bundle 不变。runtime stack manifest 与内嵌 Control DLL/SHA 已更新，最终候选因此选择并通过 Control/runtime 真实长链，没有按“server 镜像没变”跳过。
 - Control options/status 新增补丁 availability/detail；Panel runtime gate 只有在 DLL/版本匹配且 availability=true 时才 ready，缺字段/false 使用 `control_runtime_host_farmhouse_patch_unavailable` 停服。该兼容层不携带上游源码，也没有运行期开关。
 - 本地已完成 .NET 6 契约测试、只读真实游戏程序集标准构建，以及精确 `.125` Docker `SaveLoaded → save-now → GameLoop.Saved`：任务副本 `houseUpgradeLevel=2` 保存后仍为 2，owner 容器/卷清零。任务专属 Linux Go 1.25 容器的后端全量 test/vet/build 全绿并精确删除两个 cache volume；Windows 全量仅有既有 NTFS mode 差异。该证据验证当前工作树，不替代不可变候选和上一正式版 Web 升级证明。
 
@@ -53,7 +59,7 @@
 | 升级/回滚 | 当前上一正式版通过真实 Panel Web API 升到候选；同候选 unhealthy 注入 | Control-only apply 必须物化 0.3.4 并在升级后实测；unhealthy 必须恢复上一正式版 Control/状态，不能留下混合 DLL/manifest |
 | 历史风险 | 已被旧 #346 farmhand 镜像污染的存档 | 明确不再自动 level-zero 自愈；不得把“保留当前存档值”描述成自动修复历史污染 |
 
-# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 候选前门禁记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 候选前门禁记录（2026-08-15，released in v0.5.0）
 
 ## 变更清单与受影响链路
 
@@ -67,9 +73,9 @@
 - cleanup/幂等：staged 与 bootstrap fingerprint 漂移、pointer 漂移、未知 schema/stage/缺关键字段零删除；每个 removal 子阶段重启；filesystem complete 后 token 删除失败、journal 已不存在、两个并发 cancel 最多一次危险删除。
 - 成功生命周期：succeeded tombstone 保留 exact result；completed journal、preimport、正式存档不删除；既有首次 `game_installed` 完整导入、单次 FIFO、no-replace、strict stop 与 durable save 继续回归。
 - 实际验证：Windows jobs 全包、save-import/maintenance/Phase A/transaction 专项、pending-upload/save Web 专项及 Web 全包通过；Stardew Windows 全包唯一失败仍是已记录的 NTFS mode=`0666`/Linux 期望 `0640`。任务专属 `golang:1.25-alpine` 容器以只读仓库 bind 和两个独立 cache volume 完成 `go test ./... -count=1`，全部包通过；宿主 `go vet ./...`、`go build ./...` 通过。任务容器自动删除，两个精确 label volume 删除后 owner resource=0，未使用任何 prune。
-- 本任务只运行本地/任务专属 Linux test、vet、build 与编码/差异审计，不构建或推送候选/正式镜像，不提交、不推送、不 tag、不创建 Release。后续候选必须在升级得到的新 Panel 上再执行真实 upload/attach-crash/cancel-retry E2E，并精确清理任务资源。
+- pre-candidate 阶段只运行本地/任务专属 Linux test、vet、build 与编码/差异审计；最终 v0.5.0 候选已在升级得到的新 Panel 上执行受影响的 upload/recovery/cancel 回归并精确清理任务资源，随后才自动 tag 和正式提升。
 
-# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 候选前门禁记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 候选前门禁记录（2026-08-15，released in v0.5.0）
 
 ## 变更清单与受影响链路
 
@@ -82,9 +88,9 @@
 - 正常/边界：四种允许离线 state、message NULL/空/普通、空 phase/payload、raw payload bytes、runtime ready、邀请码隐藏、单次 FIFO、activation/durable save 回归。
 - 故障/恢复：phase 写库、MaintenanceStarted journal、LastError journal、ComposeDown、strict unknown/error、清旗 journal、snapshot storage、四个 Panel 崩溃窗口以及 FIFO 结果模糊；所有不能完成整条恢复证明的场景均保留 recovery required。
 - Windows 精确专项与 Web 提交/取消通过；任务专属 `golang:1.25-alpine` 容器中受影响四包通过，最终 `go test ./... -count=1` 通过；宿主 `go vet ./...`、`go build ./...` 通过。首次全量恰逢保留的无关 Control 0.3.3 DLL 与 manifest 先后更新，编译读到旧摘要而失败；当前两者 SHA256 一致后以同一命令重跑通过。
-- 本任务不构建/推送候选或正式镜像，不提交、不推送、不打 tag、不创建 Release。后续候选仍须在升级后的 Panel 上覆盖上述故障矩阵；不得把本地自动化当作真实升级发布证据。
+- pre-candidate 阶段没有构建/推送候选或正式镜像；最终 v0.5.0 候选重新跑默认全量和升级后受影响矩阵，并以不可变 proof、自动 tag 和同 digest 正式提升补齐发布证据。本地自动化仍不能单独替代该候选证明。
 
-# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 候选前门禁记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 候选前门禁记录（2026-08-15，released in v0.5.0）
 
 ## 变更清单与受影响链路
 
@@ -103,7 +109,7 @@
 | 权限/所有权 | `game_installed` 但 fresh server 运行；Web commit | journal、runtime asset、bootstrap、staged target 与 ownership 均不变，Web reservation 释放回 available |
 | 数据完整性 | 调用方 `DataDir` 与数据库权威目录不同 | 提交/owned cleanup 在变更前 recovery required；maintenance 失败 journal 只写权威目录 |
 | 幂等/恢复 | pre-ComposeUp 复验、失败 ComposeDown 复验、owned cancel cleanup | 每个边界重新运行 strict；普通 cache invalidation 不替代证明 |
-| 升级后 E2E | 上一正式版升级得到的新 Panel 执行 cache/fresh 冲突和失败清理 | 本次未发布；下一候选必须按差异选择并执行，不得以 fake driver 或连续普通 `ComposePs` 代替 |
+| 升级后 E2E | 上一正式版升级得到的新 Panel 执行 cache/fresh 冲突和失败清理 | v0.5.0 候选已按差异选择并执行；没有用 fake driver 或连续普通 `ComposePs` 代替 |
 
 ## 本地验证与资源清理
 
@@ -1917,7 +1923,7 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - steam-auth 兼容范围仍只包含已审计 `1.5.0-anxi.2`；增加新 tag 前必须先固定源 revision、真实 `/health` 契约与 digest，再更新双 allowlist 和测试。不得恢复 `/health -> /steam/ready` fallback，也不得把 `logged_in=false` 升级为运行组件发布阻塞。
 - 首次上传离线集合继续严格限定为 `game_installed / save_required / ready_to_start / stopped`。任何状态扩展、cleanup 自动化或 journal schema 变化都必须重新覆盖 strict Compose 实停、上游提交边界、ownership/fingerprint 和精确状态恢复，不能用这次发布证据替代新变更的门禁。
 
-# PLAYER-AUTH-MODES-1 发布前记录（2026-08-15，尚未创建候选）
+# PLAYER-AUTH-MODES-1 发布记录（2026-08-15，released in v0.4.19，included in v0.5.0）
 
 ## 本版变更与受影响链路
 
@@ -1936,7 +1942,7 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 | 数据完整性 | 旧 `SERVER_PASSWORD` 自动迁移为 global；空密码为 none；角色密码不明文落盘；Panel SQLite/存档/非目标 volume 不变 | 升级前后 API、`.env` 脱敏投影、SQLite integrity 与资源快照 |
 | 资源清理 | Control-only apply 成功/回滚的任务容器、network、bind、volume 精确归零 | owner label 和精确资源名清单 |
 
-## 当前 pre-candidate 证据与剩余门禁
+## 发布证据与后续边界
 
 - 已完成：在干净 `HEAD` 验证卷只叠加本功能差异后，Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过；C# 纯策略契约；`.NET 6 SDK + stardew_game-data` 标准 Control 实编译（0 errors，1 个既有 analyzer warning）；Node 22 Linux 全部 17 项前端状态/布局回归与 production build；1280×720、390×844 Browser 视觉 QA。
-- 尚未完成：运行栈/SMAPI/Control required-update Docker integration、真实双客户端认证、候选 fresh install、上一正式版 Web 升级、unhealthy 回滚、digest 提升与正式冒烟。当前不得创建/移动/push `v*` tag，不得更新 `latest` 或创建 GitHub Release。
+- `v0.4.19` 候选 `31892497427`、自动 Tag `31893049884` 与正式提升 `31893060495` 已完成 Control required-update、fresh/restart、上一正式版 Web unhealthy 回滚/healthy 升级、三仓统一 digest 与正式冒烟；v0.5.0 候选 `31899107629` 又从 v0.4.19 完成真实 Web 回滚/升级并保留该认证回归。自动策略、Control fixture 和升级证据不等同于两个真人客户端实际输入角色密码；该人工记录仍是后续涉及认证交互改动时必须补的验证边界。

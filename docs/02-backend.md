@@ -1,4 +1,10 @@
-# HOST-FARMHOUSE-PRESERVE-1：默认保留虚拟主机农舍等级（2026-08-16，completed，未发布）
+# v0.5.0 后端发布状态（2026-08-16，released）
+
+- `SAVE-IMPORT-STRICT-OFFLINE-PROBE-1`、`SAVE-IMPORT-MAINTENANCE-DURABILITY-1`、`SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1`、`PLAYER-LAST-SEEN-SEMANTICS-1` 与 `HOST-FARMHOUSE-PRESERVE-1` 已进入 `v0.5.0@9b18dd3fe5192692548bf11a85010dd35303da93`；Control 为 0.3.4，内嵌 DLL SHA-256=`5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982`。v0.4.19 的 none/global/role 认证、角色独立密码与旧全服密码兼容继续完整保留。
+- Compatibility `31899107019`、显式候选 `31899107629`、自动 Tag `31899867310` 和正式提升 `31899874927` 全部成功。候选 proof `release-candidate-0.5.0-9b18dd3fe519` 固定 build date=`2026-08-15T17:48:42Z`、digest=`sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`；`v0.4.19` Web unhealthy 回滚/healthy 升级、升级后受影响 E2E 与正式镜像首次/重启均通过。
+- 首轮候选因取消时序测试把“进入 starting”和“超时取消”共用 30ms 而停止，未构建或推送镜像；修复后先等精确 phase 再 manager cancel，目标测试连续 50 次、Linux 全量 test/vet/build 与最终 CI 均通过。后续不要恢复基于极短 wall-clock 的竞态断言。
+
+# HOST-FARMHOUSE-PRESERVE-1：默认保留虚拟主机农舍等级（2026-08-16，released in v0.5.0）
 
 - JunimoServer `1.5.0-preview.125` 会在 `SaveLoaded` 调用 `JunimoServer.Services.AlwaysOn.HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()`，把非零的虚拟主机 `HouseUpgradeLevel`、室内布局和床重置为 0 级。上游已移除最初导致 #346 的 farmhand→host 房屋等级镜像活动，因此 Panel Control `0.3.4` 默认用 Harmony prefix 跳过这一残留过渡修复；不增加开关，也不修改 JunimoServer 镜像或上游源码。
 - `HostFarmhousePreservationPatch` 只接受程序集名 `JunimoServer`、完整类型名、`public static void`、零参数这组精确签名，并在 Harmony patch info 中复核 owner。反射目标缺失、签名变化或补丁未登记时，Control 在 `options.json/status.json` 报 `hostFarmhousePreservationPatchAvailable=false`；Panel 启动门禁返回 `control_runtime_host_farmhouse_patch_unavailable` 并停服，不能在补丁未知时继续读档。
@@ -6,29 +12,29 @@
 - 可选真实 Docker 集成测试会只读复制游戏卷和源存档，在任务副本中把第一处虚拟主机 `houseUpgradeLevel` 设为 2，启动精确 `.125`、确认 Control gate ready、执行同一 Control `save-now` 并等待 `GameLoop.Saved`，最后断言磁盘仍为 2。2026-08-16 本地实跑通过并清理任务容器/卷为零；C# 契约测试和真实游戏程序集编译通过，任务专属 Linux 容器中的后端全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 也全部通过。Windows 全量仅命中既有 NTFS mode `0666`/Linux `0640` 权限差异。
 - 风险边界：此兼容层有意关闭上游的历史 #346 自愈。如果某份存档已经被旧 farmhand 镜像逻辑污染，Panel 不会替它自动降回 0 级；当前任务也不为导入存档增加特殊分支。后续 JunimoServer 变更目标类型/签名时会 fail closed，必须重新核对上游行为后更新兼容层，不能放宽为模糊反射。
 
-# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1：job/token/journal 精确绑定与幂等取消（2026-08-15，completed，未发布）
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1：job/token/journal 精确绑定与幂等取消（2026-08-15，released in v0.5.0）
 
 - `jobs.Spec.BeforeRun` 在 job 行和 idempotency key 已提交后、runner goroutine 创建前同步执行持久 ownership 握手。存档导入固定按 `journal(jobType/jobId/jobIdempotencyKey=journal_attached) → owned token 同一身份 → journal jobBindingState=ready → runner` 发布；staging、preimport、bootstrap、maintenance 和 FIFO 在 `ready` 前均不可进入。握手失败会同步把 job 标成 failed、runner 调用次数为 0，并向 Web 返回 `import_recovery_required`，不再只记录 attachJob 错误后返回 202。
 - primary job 的唯一身份为 `type=stardew_import_save_and_start + targetType=instance + targetId + idempotencyKey=save-import:<operationId>`，数据库唯一索引继续保证一对一。Panel 重启只按该四元组和 payload `operationId` 找回，不读取“最近任务”；journal/token 任一 jobId/type/key 缺失、冲突、payload 不符或 exact key 不存在都 fail closed。恢复验证按 journal attach、token attach、journal ready 幂等重做；submitted 后的自动观测任务改用独立 `stardew_import_save_recovery` 类型，不能冒充 operation 的 primary job。
 - cleanup 在任何删除前建立并原子持久化 schema-1 `cleanupPlan`：冻结 operation/instance/save、source ownership 与全树指纹、staged 全树指纹、bootstrap 名称/ownership/指纹/source 指纹，以及 active pointer。未知 schema/stage/cleanup state、缺少 safety-critical 字段、maintenance/FIFO/submitted/confirmed、pointer 或任一 fingerprint 漂移均在零删除处返回 recovery required。删除状态机为 `planned → bootstrap_removal_started → bootstrap_removed → staged_removal_started → staged_removed → source_removal_started → source_removed → filesystem_completed+canceled`；每个 started 都是写前 intent，进程在删除前后退出均可按原指纹幂等收敛，preimport 永久不删。
 - Web 在 filesystem completed 后先写 0600、token-hash 命名的 cleanup receipt，再 finalize canceled journal，最后按 receipt 精确删除 owned token。journal 已删而 token 尚在、token 删除失败、或两个并发 cancel 都能重复调用：receipt 与 token 的 instance/operation/job/type/key 必须完全相同，危险 token 删除最多一次；token 已不存在时 receipt 仍让同一 cancel 返回成功。receipt 不保存原 token、Steam 用户名/密码、session、ticket 或平台 ID。
-- succeeded token 不再在 TTL 后整目录删除，而是压缩成只含 instance/save/operation/job 精确结果的 tombstone；payload/preview/lease/过期元数据被清空，同 token 仍可按 exact job 返回原幂等结果。该路径不调用 canceled cleanup，不删除 completed journal、preimport 或正式存档。主要影响 `internal/jobs`、registry `SaveImportRequest`、`save_import_transaction.go`、Web pending-upload/commit/cancel；公开 HTTP DTO、单次 FIFO、no-replace、durable save 与邀请码语义不变。Windows 专项/Web 全包、任务专属 Linux 全量 `go test ./... -count=1`、vet、build 全部通过，Docker owner 资源清零；本任务未提交、未推送、未 tag、未发布。
+- succeeded token 不再在 TTL 后整目录删除，而是压缩成只含 instance/save/operation/job 精确结果的 tombstone；payload/preview/lease/过期元数据被清空，同 token 仍可按 exact job 返回原幂等结果。该路径不调用 canceled cleanup，不删除 completed journal、preimport 或正式存档。主要影响 `internal/jobs`、registry `SaveImportRequest`、`save_import_transaction.go`、Web pending-upload/commit/cancel；公开 HTTP DTO、单次 FIFO、no-replace、durable save 与邀请码语义不变。Windows 专项/Web 全包、任务专属 Linux 全量 `go test ./... -count=1`、vet、build 全部通过，Docker owner 资源清零；最终候选再次通过升级后受影响链并随 v0.5.0 发布。
 
-# SAVE-IMPORT-MAINTENANCE-DURABILITY-1：维护阶段、journal 与快照恢复闭环（2026-08-15，completed，未发布）
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1：维护阶段、journal 与快照恢复闭环（2026-08-15，released in v0.5.0）
 
 - `runImportMaintenance` 现在采用严格 write-ahead 顺序：先把数据库权威实例的 state、`state_message` NULL/空/普通值、driver phase 与 payload 原始字节编码进 operation 自有的 0600 journal；再持久化 `state=stopped / driverPhase=save_import_maintenance`；再写 `MaintenanceStarted=true + start_intent_persisted`；只有三步都成功才允许 `ComposeUp`。`updateImportMaintenancePhase`、`restoreInstanceState`、LastError 与所有清旗/恢复 journal 写入错误均沿调用链返回，不再只记日志或吞掉。
 - 成功 `ComposeUp` 后立即写 `compose_up_returned`，完整 readiness 证据写入后再写 `runtime_ready_persisted`。任何启动/readiness/phase 失败只在 `ComposeDown` 成功且 exit code=0、`ComposePsStrict` fresh 证明全部 server 稳定终止、journal 成功写入 `MaintenanceStarted=false + snapshot_restore_pending`、数据库精确快照恢复成功、journal 成功写入 `snapshot_restored` 后，才回到原离线状态。任一环失败都返回 `import_recovery_required`，并让 maintenance flag 或 pending marker 继续阻止 Reconcile/cleanup 把现场伪装成普通 stopped。
 - `RestoreInstanceStateSnapshot` 明确是无默认值的恢复专用 storage 契约：不会把空 phase 改为 `empty`，不会把空 payload 改为 `{}`，并保留 `state_message` 的 NULL、有效空串、普通字符串三态。journal 新快照使用 base64 保存 message/phase/payload 字节，避免 JSON UTF-8 归一化改变原始 payload；旧 schema-1 字段仍可只读恢复。
 - Phase A 在真正调用 FIFO writer 前先持久化 `phaseAFifoWriteAttempted=true`。pre-submit 失败只有在该位为 false、`UpstreamSubmitted=false`、`UpstreamConfirmed=false` 且 stage 未到 submitted 时，才执行 Down + strict probe + 清旗 + 精确快照恢复；writer intent 写入后无论 FIFO 返回何种错误都视为可能提交，停止私有 runtime 但保留 maintenance ownership/manual recovery，禁止 staged/token 自动 cleanup。Panel 启动恢复覆盖 start intent、ComposeUp returned、Down 后未清旗、清旗后未恢复四个窗口；可能发生部分 ComposeUp 的窗口会先 Down 再 strict，可能发生 FIFO 写入的窗口只停机并保持 manual recovery。
-- 专项覆盖 phase/journal/LastError 写入失败、Down/strict/清旗/快照恢复失败、四种离线 state、message 三态、原始字节、Phase A 零 FIFO pre-submit、FIFO 模糊提交以及四个重启崩溃点。Docker/storage/Junimo/Web 专项、Linux 受影响四包、任务专属 Linux 全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过；首次全量在同工作树的 Control 0.3.3 DLL 与 manifest 并发更新窗口读到旧摘要而失败，二者稳定一致后以同一精确命令重跑通过。本任务未提交、未推送、未打 tag、未发布。
+- 专项覆盖 phase/journal/LastError 写入失败、Down/strict/清旗/快照恢复失败、四种离线 state、message 三态、原始字节、Phase A 零 FIFO pre-submit、FIFO 模糊提交以及四个重启崩溃点。Docker/storage/Junimo/Web 专项、Linux 受影响四包、任务专属 Linux 全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过；首次全量在同工作树的 Control DLL 与 manifest 并发更新窗口读到旧摘要而失败，二者稳定一致后以同一精确命令重跑通过。最终候选再次执行默认全量和真实升级链并随 v0.5.0 发布。
 
-# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1：存档导入严格无缓存停机证明（2026-08-15，completed，未发布）
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1：存档导入严格无缓存停机证明（2026-08-15，released in v0.5.0）
 
 - Docker Client 保留普通 `ComposePs` 的约 1.5 秒缓存、坏 JSON debug 降级与 UI/状态页语义；安全路径继续使用独立 `ComposePsStrict`，每次直接执行 `docker compose ps --all --format json`。strict 不读写普通 cache，命令失败、stdout/stderr 截断、非空坏 JSON、JSON `null`、缺 service/state 或 Docker 未知 state 均返回错误；Compose Down 后“命令成功且未截断的空 stdout”及合法 `[]` 仍表示 0 services，避免重新引入 v0.4.18 的空项目回归。
 - `saveImportServerStoppedStrict` 现在只把 server 不存在，或所有 server 条目均为 `exited/dead`，认作稳定停机。任一 `running`、`Status=Up...`、`restarting`、`paused`、`created`、`removing` 均直接拒绝；空/未知状态返回不可分类错误。函数遍历全部 server 条目，不能由第一个 exited 副本遮住后续活跃或未知副本。
 - 严格探针固定覆盖五个安全边界：`ImportSaveAndStart` 在 runtime asset、journal、staging/bootstrap 与 token ownership 之前；`runImportMaintenance` 初始权威检查；`ComposeUp` 前最终复验；maintenance/Phase A 失败后的 `ComposeDown` 终态证明；owned token cleanup 前。`ComposeUp/Down` 仍失效普通 cache，但 cache invalidation 不作为这些门禁的停机证据。
 - 数据库实例读取成功后，maintenance 的错误 journal、staging/Phase A/activation/durable-save 与恢复均使用数据库权威 `DataDir`；调用方目录与权威目录不一致时，提交和 owned cleanup 在任何文件删除、journal 创建或 ownership 转移前返回 `import_recovery_required`。影响 `internal/docker/compose.go`、存档导入 maintenance/transaction、相应测试与 Web 提交回归；公开上传 DTO、数据库 schema 和普通状态接口不变。
-- 回归覆盖 cache stopped/fresh running、cache running/fresh exited、坏/空值/缺字段/未知/截断 JSON、完整状态矩阵、多 server、`game_installed` 实际运行时零 journal/零 ownership/零 bootstrap、Web token 释放及权威目录隔离。任务专属 Linux 容器中的 Docker Client/Junimo/Web 专项、三包全量、最终默认 `go test ./... -count=1`、串行复核、`go vet ./...` 与 `go build ./...` 均通过；未提交、未推送、未打 tag、未发布。
+- 回归覆盖 cache stopped/fresh running、cache running/fresh exited、坏/空值/缺字段/未知/截断 JSON、完整状态矩阵、多 server、`game_installed` 实际运行时零 journal/零 ownership/零 bootstrap、Web token 释放及权威目录隔离。任务专属 Linux 容器中的 Docker Client/Junimo/Web 专项、三包全量、最终默认 `go test ./... -count=1`、串行复核、`go vet ./...` 与 `go build ./...` 均通过；最终候选在升级后的 Panel 再验受影响链并随 v0.5.0 发布。
 
 # v0.4.18 后端发布状态（2026-08-15，released）
 
@@ -2025,7 +2031,7 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 受控 Docker fixture 让 `/health` 立即返回 `logged_in=false`、让 `/steam/ready` 阻塞 60 秒，并通过请求日志证明维护验收从未访问 ready；另覆盖 `/health` 不可达、短超时、404、500、坏 JSON、目标 auth 发生变化、Control-only/auth 未变化、最终目标复验、旧版回滚复验与 digest 不匹配。真实镜像 opt-in 不使用真实 Steam 凭据，只验证 `/health` 契约。
 - 2026-08-14 已通过：严格 parser 单测；Go 定向单测；两组 Docker integration；真实 `1.5.0-anxi.2` opt-in；兼容矩阵 20 项单测与 manifest validate；Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...`。任务专属容器、镜像、网络和 volume 清理后均为 0。尚未构建正式候选、打 tag、创建 Release 或推送正式镜像。
 
-# PLAYER-AUTH-MODES-1：IP 直连的全服密码与角色独立密码（2026-08-15，代码完成，待正式发布）
+# PLAYER-AUTH-MODES-1：IP 直连的全服密码与角色独立密码（2026-08-15，released in v0.4.19，included in v0.5.0）
 
 ## 配置与安全模型
 
@@ -2046,9 +2052,9 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 
 - Go 聚焦测试覆盖旧配置推断、角色隔离 verifier、无明文落盘/响应、全角色完整性、revision 冲突、旧 API 兼容、运行状态合并和 Docker 脱敏；干净基线叠加本功能差异后的 Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。纯 C# 契约覆盖正确角色、串角色、缺失角色、Panel guard、损坏配置 fail-closed 与 global 旁路。
 - Control 已在 `.NET 6 SDK + stardew_game-data` 上按标准 `/p:GamePath=/game /p:EnableModDeploy=false` 真实编译，结果为 0 errors；只有既有 ModBuildConfig analyzer 编译器版本 warning。前端与跨端验证见 `docs/03-frontend.md`、`docs/06-integration.md`。
-- 尚未完成真人客户端的联机 E2E。正式候选必须至少验证：两个角色分别正确登录、交叉密码失败、失败次数/超时仍由 Junimo 生效、Panel 批准认证仍成功、保存后未重启显示 pending、重启后 revision/补丁 ready，以及从上一正式版通过 Web 升级后同一链路再次通过。
+- v0.4.19 候选已验证 none/global/role 配置、角色隔离、旧 API/旧 `SERVER_PASSWORD` 兼容、revision/补丁 fail-closed、Control-only 更新和回滚；v0.5.0 又从 v0.4.19 完成真实 Web 回滚/升级并保留该回归。尚未把“两个真人客户端实际输入不同角色密码”的人工联机记录纳入证据，维护者不得把自动策略/Control 夹具表述为真人联机已验证；后续涉及认证目标、attempts/timeout 或客户端交互的改动仍应补该人工矩阵。
 
-# PLAYER-LAST-SEEN-SEMANTICS-1：从未在线角色的时间语义修复（2026-08-15）
+# PLAYER-LAST-SEEN-SEMANTICS-1：从未在线角色的时间语义修复（2026-08-15，released in v0.5.0）
 
 - 玩家 API 的 `lastSeen` 现在只允许来自 SQLite 名册的 `last_online_at`，不再回退到通用的 `last_seen_at`。后者只表示面板最近从 Control、缓存或存档 XML 观察到该名册项，不能证明玩家登录过。
 - 存档 XML 补出的离线角色即使被连续轮询并写入名册，也会继续省略 `lastSeen`；真正在线过的角色离线后仍保留最后一次 `last_online_at`。现有污染数据无需清理，因为这类记录的 `last_online_at` 本来就是空值，部署修复后会自动停止展示假时间。

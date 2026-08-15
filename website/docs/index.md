@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.18
+release: v0.5.0
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.18。修复停服后首次导入存档卡住，以及只更新 Control 时缺少 JunimoServer 导致需要人工恢复的问题。
+    details: 当前最新 v0.5.0。加入全服/角色独立密码保护，并强化存档导入恢复、玩家最近活动和虚拟主机农舍等级保持。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.18</strong>
-    <p>停服后即使 Compose 已没有容器，也能继续首次导入存档；只更新 Control 时会自动补齐缺失的 JunimoServer，并可恢复旧版留下的人工干预事务。确认框和最近控制命令分页也更稳定易用。</p>
+    <strong>v0.5.0</strong>
+    <p>玩家加入保护支持不设密码、全服统一密码和角色独立密码；存档导入遇到重启或取消时更可靠，离线角色不再显示伪造的最近在线时间，虚拟主机读档也不再被强制把农舍等级归零。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

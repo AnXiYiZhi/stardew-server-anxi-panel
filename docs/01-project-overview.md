@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.4.19`（commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee`）。本版在 `v0.4.18` 的存档导入、Junimo runtime 恢复和响应式前端修复基础上，加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码，以及 Control 对 Junimo 登录认证的 fail-closed runtime patch；候选 workflow `31892497427` 和正式 digest `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17` 已固定。发布继续采用“一次构建不可变候选、tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.5.0`（commit `9b18dd3fe5192692548bf11a85010dd35303da93`）。它完整包含 v0.4.19 的 none/global/role 玩家加入保护、角色独立密码与旧全服密码兼容，并新增存档导入 strict 停机证明和崩溃恢复、真实 `lastSeen` 语义，以及 Control 0.3.4 默认保留虚拟主机农舍等级。候选 workflow `31899107629`、正式提升 workflow `31899874927` 和三仓统一 digest `sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a` 已固定；发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

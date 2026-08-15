@@ -1,4 +1,16 @@
-# HOST-FARMHOUSE-PRESERVE-1 接手记录（2026-08-16，completed，未发布）
+# v0.5.0 后端发布接手状态（2026-08-16，released）
+
+## 改了什么、影响哪些接口/文件
+
+- `v0.5.0@9b18dd3fe5192692548bf11a85010dd35303da93` 聚合发布存档导入 strict 停机证明、maintenance/SQLite/FIFO 恢复、job/token/cleanup 精确恢复、真实 `lastSeen` 与 Control 0.3.4 主机农舍保持；v0.4.19 的 none/global/role、角色独立密码、旧全服密码/API 兼容继续完整包含。公开存档/玩家 DTO shape 和数据库 schema 不变。
+- 影响文件仍以本页各专项列出的 `internal/docker`、`internal/jobs`、`internal/games/stardew_junimo`、Web pending uploads、storage、Control 源/DLL、runtime manifest 和对应测试为准；没有绕开 Stardew driver 把业务逻辑堆到 API。
+
+## 如何验证、下一步注意事项
+
+- Compatibility `31899107019`、显式候选 `31899107629`、自动 Tag `31899867310`、正式提升 `31899874927` 成功；artifact `release-candidate-0.5.0-9b18dd3fe519` 固定 build date=`2026-08-15T17:48:42Z` 与 digest=`sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`。`v0.4.19` Web unhealthy/healthy、升级后受影响 E2E、三仓六引用、Release 资产与独立正式镜像首次/重启均通过，owner 资源为 0。
+- 首轮 CI 只暴露取消测试的 30ms wall-clock 竞态，产品 `ComposeDown` 调用仍为 0；测试改为等精确 phase 后显式 cancel，连续 50 次、Linux 全量和最终 CI 均通过。后续不要把自动认证夹具描述成真人双客户端联机，也不要把“保留当前农舍等级”描述成修复已被旧版归零的历史存档。
+
+# HOST-FARMHOUSE-PRESERVE-1 接手记录（2026-08-16，released in v0.5.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -12,7 +24,7 @@
 - `TestRealHostFarmhouseLevelPreservedAcrossLoadOptIn` 已用 `sdvd/server:1.5.0-preview.125@sha256:10f438...` 实跑：任务副本的主机房屋等级 2 经真实 `SaveLoaded`、Control gate ready、`save-now`/`GameLoop.Saved` 后磁盘仍为 2，任务 container/volume 清零。测试只复制源卷/源存档，不修改输入。任务专属 Linux Go 1.25 容器中的后端全量 test/vet/build 全绿；Windows 全量只剩项目已记录的 NTFS mode `0666`/Linux `0640` 差异。
 - 后续不得把反射改为按短类型名或近似方法名搜索。上游若移除/更名该方法，当前设计会安全停服；维护者必须先重新审查上游 #346 相关逻辑，再决定删除或更新补丁。跳过后不再执行历史污染存档的 level-zero 自愈；本轮明确未为导入存档设计例外。
 
-# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 接手记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 接手记录（2026-08-15，released in v0.5.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -26,9 +38,9 @@
 
 - 故障注入覆盖三次 job binding 崩溃点、attach failure runner=0、重启 exact 恢复、missing/mismatched job；cleanup 覆盖 staged/bootstrap/pointer 漂移零删除、unknown/missing evidence、全部 removal 子阶段、journal gone/token remains、token delete retry、并发 cancel；succeeded tombstone 覆盖 exact result 与 completed artifacts 保持。首次安装完整导入、Phase A single FIFO、strict stop、no-replace、durable save 保持回归。
 - Windows jobs、save-import 专项与 Web 全包通过；Stardew 全包唯一失败仍是已知 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 NTFS mode=0666/want0640。任务专属 `golang:1.25-alpine` 容器 `go test ./... -count=1` 全绿，宿主 vet/build 全绿，精确容器/volume 清理后 owner resource=0。后续不得重新允许“exact key 不存在即推断无 runner”，不得先删 journal/token 再补 receipt，也不得把 succeeded tombstone 交给 canceled cleanup。
-- 下一候选需在升级后的真实 Panel 上注入 attach 前崩溃与 token delete 一次失败，确认同 token/operation/job 收敛且无第二次 FIFO或同名覆盖。本任务未提交、未推送、未 tag、未发布。
+- v0.5.0 候选已在升级后的真实 Panel 上覆盖受影响 upload/recovery/cancel 链，并由故障注入回归继续证明同 token/operation/job 收敛且无第二次 FIFO 或同名覆盖；不可变 proof、正式提升和资源清理见本文件顶部。
 
-# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 接手记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 接手记录（2026-08-15，released in v0.5.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -42,9 +54,9 @@
 
 - 专项覆盖 phase 与 journal 写失败 ComposeUp=0、Down/strict/清旗/restore fail closed、四个离线 state、message 三态/raw bytes、Phase A pre-submit FIFO=0、模糊 FIFO、四个重启崩溃点，以及现有邀请码、single FIFO、activation、durable save、Web pending-upload 回归。
 - Windows 专项、Linux 受影响四包、任务专属 Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 已通过。第一次全量与同工作树另一组 Control 0.3.3 制品/manifest 并发更新交叠，稳定一致后原命令重跑通过；不要据此放宽 Control manifest gate。
-- 后续修改不可把 `MaintenanceStarted=false` 当成恢复完成；还必须检查 `maintenanceRecoveryState=snapshot_restored`。也不可仅用 `UpstreamSubmitted=false` 推断 FIFO 未写，必须同时要求 `phaseAFifoWriteAttempted=false`。本任务未提交、未推送、未 tag、未发布。
+- 后续修改不可把 `MaintenanceStarted=false` 当成恢复完成；还必须检查 `maintenanceRecoveryState=snapshot_restored`。也不可仅用 `UpstreamSubmitted=false` 推断 FIFO 未写，必须同时要求 `phaseAFifoWriteAttempted=false`。本链已随 v0.5.0 发布，新的相关改动必须重新走故障注入和升级门禁。
 
-# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 接手记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 接手记录（2026-08-15，released in v0.5.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -57,7 +69,7 @@
 
 - Docker Client 受控测试真实经过 cache、runner、limited-buffer、parser，覆盖 cache stopped/fresh running、反向 cache、坏 JSON、空 JSON 值、缺字段、未知 state 与 truncation；driver 矩阵覆盖 `running/Up/restarting/paused/created/removing/unknown/空`、全部 terminal、无 server 及多个副本。`game_installed` fresh-running 回归断言零 journal、零 ownership、零 bootstrap；Web 回归断言 409、token 回 available、staged source 保留。
 - 权威目录回归分别固定：maintenance strict 初检失败只改权威 journal；stale caller 的 submit 和 owned cleanup 均拒绝，两个目录无越权修改。Linux 专项、三包全量、最终默认与串行全量、vet、build 全绿；初次错误挂载和一次 Docker Desktop 并行时序失败均已按错题本纠正并取得最终原命令成功。
-- 后续不要把 `created` 重新当作停止，不要只看第一个 server，也不要用 `serverServiceUp`、普通 `ComposePs` 连续读取、sleep TTL 或 cache invalidation 替代 strict。若扩展 Docker state 枚举，必须先更新 strict parser 和 fail-closed 分类/测试。下一候选需在升级后的真实 Panel 上重复 cache/fresh 冲突与 cleanup 链；本任务未提交、未推送、未打 tag、未发布。
+- 后续不要把 `created` 重新当作停止，不要只看第一个 server，也不要用 `serverServiceUp`、普通 `ComposePs` 连续读取、sleep TTL 或 cache invalidation 替代 strict。若扩展 Docker state 枚举，必须先更新 strict parser 和 fail-closed 分类/测试。v0.5.0 候选已在升级后的真实 Panel 上重复受影响 cache/fresh 与 cleanup 链；新的相关改动仍必须重新执行，不能借用本版证据。
 
 # v0.4.18 后端发布接手状态（2026-08-15，released）
 
@@ -952,7 +964,7 @@
 - 已随 `v0.4.17` 完成候选、上一版 Web 升级、unhealthy 安全回滚、数据/非目标资源保持、annotated tag、三仓 digest 提升与正式回拉；不可变 run/digest 见本文件顶部和 `docs/09-image-build.md`。
 - 不要把 `/health` 返回的 `logged_in` 改成硬门槛，也不要仅凭 HTTP 200、合法 JSON 或 Docker healthy 放行。错误码、last probe reason 和目标/回滚契约必须保持一致。
 
-# PLAYER-AUTH-MODES-1 接手记录（2026-08-15，代码完成，待正式发布）
+# PLAYER-AUTH-MODES-1 接手记录（2026-08-15，released in v0.4.19，included in v0.5.0）
 
 ## 改了什么
 
@@ -971,7 +983,7 @@
 
 - Go 聚焦：角色 verifier 隔离/no-plaintext、legacy 推断、全角色完整性、revision conflict、新旧 API、auth runtime 状态、Docker redaction。
 - C# 契约：正确角色、交叉角色、未知角色、Panel guard、损坏配置 fail-closed、global 原样通过。真实 Mod 必须继续使用任务副本和标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`；当前已在 `stardew_game-data` 0 errors 编译。
-- 尚需正式候选 E2E：两真人客户端交叉密码、Junimo attempts/timeout/lobby/warp、Panel approve、重启 revision、Control-only required update/rollback 和上一正式版 Web 升级后复验。没有这些证据不得把本节状态改成 released。
+- v0.4.19 候选已完成自动角色隔离、Junimo 原流程复用、Panel approve、revision/重启、Control-only required update/rollback 和上一正式版 Web 升级后复验；v0.5.0 又从 v0.4.19 完成真实 Web 回滚/升级。尚缺的是两个真人客户端实际输入独立密码的人工记录，必须明确保留为客户端交互验证缺口，不得把自动夹具冒充真人测试。
 
 ## 下一步注意事项
 
@@ -979,7 +991,7 @@
 - Harmony prefix 参数使用 `__0/__1` 位置约定，避免依赖上游参数名；升级 Junimo 时仍要真实加载验证目标签名和传送行为。patch 找不到或配置损坏必须拒绝角色认证，不能退回全服 guard 或开放模式。
 - 当前实现是“角色身份绑定”，不是设备 ID 绑定。浏览器设备指纹不能证明 Stardew 客户端身份；未来免密码设备能力必须有客户端签名 challenge，不能在 Panel localStorage/Cookie 上补一个伪绑定。
 
-# PLAYER-LAST-SEEN-SEMANTICS-1 接手记录（2026-08-15）
+# PLAYER-LAST-SEEN-SEMANTICS-1 接手记录（2026-08-15，released in v0.5.0）
 
 ## 改了什么
 

@@ -1,3 +1,9 @@
+# DOCS-PORTAL-0.5.0 接手记录（2026-08-16，发布内容已完成，等待 Pages 终态）
+
+- `website/docs/index.md` 已切换到 v0.5.0；`website/docs/changelog.md` 置顶加入 v0.5.0 的角色加入保护、存档导入恢复、真实最近活动和主机农舍保持，并单列补齐官网此前遗漏的 v0.4.19 全服/角色独立密码与旧配置兼容。主题、CSS、依赖和路由未变。
+- Panel 前端运行代码已随 `v0.5.0@9b18dd3fe5192692548bf11a85010dd35303da93` 发布：v0.4.19 的共用玩家加入保护弹窗继续包含，v0.5.0 的“在线 / 最近活动”语义已进入 production bundle。候选 `31899107629`、正式提升 `31899874927` 和统一 digest `sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a` 已成功。
+- VitePress production build 2.68 秒通过；本地 1440×900/390×844 从首页真实点击到 changelog，首页 v0.5.0、日志 v0.5.0/v0.4.19/v0.4.18 顺序、角色密码/legacy/存档恢复/农舍正文、零横向溢出、零 overlay 和零 console warn/error 均通过。本次 docs-only 提交必须只触发 Pages/Compatibility，不得触发候选重建；Pages workflow 与线上同矩阵结果在完成后回填。
+
 # DOCS-PORTAL-0.4.18 接手记录（2026-08-15，completed，已上线）
 
 - `website/docs/index.md` 与 `website/docs/changelog.md` 已同步 v0.4.18 用户可见范围：停服空 Compose 首次导入、Control-only 缺失 JunimoServer/旧人工事务恢复、共享确认框与最近控制命令分页。官网主题、CSS、依赖和路由未变，Panel API、镜像、tag、digest 与 Release 也未改。
@@ -1823,7 +1829,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - 若未来后端支持服务端分页，应同时提供总条数和稳定游标/页码，并明确 5 秒轮询时当前页的更新策略；在接口变更前不要把本地切片和服务端分页混用。
 - 候选镜像和 `v0.4.17` Web 升级后的 production bundle 已抽验该分页，并随 `v0.4.18` 正式发布。
 
-# FE-PLAYER-AUTH-MODES-1 接手记录（2026-08-15，代码完成，待正式发布）
+# FE-PLAYER-AUTH-MODES-1 接手记录（2026-08-15，released in v0.4.19，included in v0.5.0）
 
 ## 改了什么
 
@@ -1841,9 +1847,9 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - PUT 200 只表示配置已保存，不能改成“立即生效”；运行中必须以 `restartRequired` 提醒重启。revision conflict 后应重新打开/读取，不能自动用旧草稿覆盖。
 - 不要在前端缓存或回显角色密码，也不要把 `roleId` 作为可编辑字段。设备绑定目前不在范围内，禁止用浏览器本地标识冒充游戏客户端授权。
-- 正式发布前与后端一起跑真实双客户端交叉密码、Panel approve、重启生效和旧实例升级；完成前本节保持“待正式发布”。
+- v0.4.19/v0.5.0 已完成自动角色隔离、Panel approve、revision/重启、旧实例兼容和真实 Web 升级/回滚并正式发布；两个真人客户端实际输入独立密码仍没有人工记录。以后修改客户端交互时必须补该人工矩阵，但不得把这个验证缺口误写成当前版本未发布。
 
-# FE-PLAYER-LAST-SEEN-SEMANTICS-1 接手记录（2026-08-15）
+# FE-PLAYER-LAST-SEEN-SEMANTICS-1 接手记录（2026-08-15，released in v0.5.0）
 
 ## 改了什么
 

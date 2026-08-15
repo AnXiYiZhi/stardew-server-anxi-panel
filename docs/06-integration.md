@@ -1,29 +1,35 @@
-# HOST-FARMHOUSE-PRESERVE-1 Panel/Control 联调契约（2026-08-16，completed，未发布）
+# v0.5.0 跨端发布结果（2026-08-16，released）
+
+- v0.4.19 已发布的 none/global/role 加入保护、角色独立密码、旧 `SERVER_PASSWORD`/旧 API 兼容和 Control `TryAuthenticate` fail-closed patch 继续保留；v0.5.0 新增存档导入 strict/maintenance/job-token-cleanup 恢复、真实 `lastSeen` 语义，以及 Control 0.3.4 的主机农舍等级保持。公开存档提交 DTO、玩家 DTO shape、数据库 schema 与前端路由不变。
+- Compatibility `31899107019` 与候选 `31899107629` 成功；候选从 `v0.4.19` 经公开 update check/dry-run/apply 验证 unhealthy `failed_rolled_back/health_check_failed` 和 healthy 升级，并在升级后的 Panel 重跑受影响 E2E。存档长期结构的 `v0.4.11 → 0.5.0` 代表升级已在本地候选预演通过；首轮 CI 取消时序测试失败未构建或推送镜像，确定性修复后重新走完整 workflow。
+- 自动 Tag `31899867310` 与正式提升 `31899874927` 成功，annotated `v0.5.0` 解引用到 `9b18dd3fe5192692548bf11a85010dd35303da93`。Docker Hub、阿里云 ACR、GHCR 的 `0.5.0/latest` 六引用统一 digest=`sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`；独立正式镜像首次/重启均为 health ok、版本/commit/build date 精确、setup initialized=false，任务资源归零。
+
+# HOST-FARMHOUSE-PRESERVE-1 Panel/Control 联调契约（2026-08-16，released in v0.5.0）
 
 - Control `0.3.4` 的 `options.json` 与 `status.json` 新增 `hostFarmhousePreservationPatchAvailable` 和诊断用 `hostFarmhousePreservationPatchDetail`。Panel 启动只接受当前 Control 版本且 availability 明确为 `true`；字段缺失或 false 返回稳定码 `control_runtime_host_farmhouse_patch_unavailable` 并停服。
 - 补丁默认启用、没有 Web/API 开关。它在 `SaveLoaded` 前精确跳过 JunimoServer `.125` 的主机农舍归零方法；公开实例/存档/任务 DTO、前端调用与数据库契约均不变化，客户端无需增加字段或分支。
 - 联调不得只伪造 options=true：正式候选必须用精确推荐镜像完成真实 `SaveLoaded`，再经 Control `save-now` 的同 commandId `GameLoop.Saved` 结果确认升级房屋等级仍在磁盘。目标签名漂移必须表现为 fail-closed 停服，而不是继续读档。
 
-# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 联调契约（2026-08-15，completed，未发布）
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 联调契约（2026-08-15，released in v0.5.0）
 
 - `POST /api/instances/:id/saves/upload-commit-and-start` 的 JSON 形状不变；新的 `202` 硬前提是数据库 primary job、owned token 与 journal 已共同记录同一 `operationId/jobId/jobType/idempotencyKey`，且 journal 为 `jobBindingState=ready`。job 创建成功但 token attach/journal confirm 失败时返回 `import_recovery_required`，runner 不进入 staging/preimport/bootstrap/maintenance/FIFO，不能先 202 后靠日志补偿。
 - commit 重试与 Panel 重启只查询 `type=stardew_import_save_and_start + target=instance/:id + save-import:<operationId>`，并校验 job payload；不按 createdAt、最近任务或 token 内单独的 jobId 猜测。三方缺失/冲突、exact job 不存在或 payload 不符均 409 recovery required；验证一致时才幂等补 journal/token binding 并返回原 `jobId/operationId/saveName`。
 - `{token,cancel:true}` 对 available token 保持原语义；owned token 只允许 exact job 为 failed/canceled、strict fresh stop 通过、journal 的 maintenance/FIFO/upstream/ownership/pointer/全树指纹与 cleanup schema 全部可证时继续。queued/running/succeeded/submitted/confirmed、未知字段/阶段、缺证、目录漂移均 fail closed。删除采用持久子阶段，filesystem completed 后写独立 receipt，再删 journal/token；重复请求和并发请求都返回同一终态，危险删除最多一次，preimport 始终保留。
 - succeeded token TTL 到期后只压缩为 exact-result tombstone，同 token 仍返回原 202 幂等结果；completed journal、preimport、正式存档和 job 记录不删。公开前端不新增字段或按钮，现有任务轮询、单次 FIFO、同名 no-replace、邀请码与 durable save 流程不变。
 
-# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 联调契约（2026-08-15，completed，未发布）
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 联调契约（2026-08-15，released in v0.5.0）
 
 - 公开 `upload-preview`、`upload-commit-and-start` 请求/响应与 hostHandling 形状不变；变化只在后台事务耐久边界。维护 runtime 只有在权威快照 journal、数据库 maintenance phase、`MaintenanceStarted=true` 三次持久化都成功后才会 `ComposeUp`，因此 phase 或 journal 故障会保持 `ComposeUp=0`，Web job 返回稳定失败而不会短暂暴露普通 running/invite 状态。
 - 自动失败恢复必须同时完成 ComposeDown(0)、strict fresh stop、`MaintenanceStarted=false + snapshot_restore_pending` journal、精确数据库快照恢复和 `snapshot_restored` journal。缺任一证据时 Web 继续得到 `import_recovery_required`/busy 语义，owned upload token、journal、bootstrap/staged target 都保留，取消接口不能把 pending/manual recovery 误当成可安全清理。
 - Phase A 新增内部 `phaseAFifoWriteAttempted` 写前证据，不进入公开 DTO。该位为 false 且两个 upstream flag 均 false时，pre-submit 失败会安全停机并恢复原状态；该位为 true 而 submitted receipt 尚未持久化时，Panel 重启只会停机并保持人工恢复，不会二次写 FIFO、恢复普通离线状态或释放 token。
-- Panel 重启分类覆盖 start intent、ComposeUp returned、Down 后未清旗、清旗后未恢复四个窗口。前三类在恢复前执行无缓存停机证明，最后一类再次 strict probe 后幂等恢复；任何 Docker/JSON/journal/storage 不确定性都 fail closed。Web pending-upload、首次安装提交、取消与错误映射专项及后端全量回归通过；未提交、未发布。
+- Panel 重启分类覆盖 start intent、ComposeUp returned、Down 后未清旗、清旗后未恢复四个窗口。前三类在恢复前执行无缓存停机证明，最后一类再次 strict probe 后幂等恢复；任何 Docker/JSON/journal/storage 不确定性都 fail closed。Web pending-upload、首次安装提交、取消与错误映射专项及后端全量回归通过，并已由 v0.5.0 候选的升级后受影响 E2E 与正式 proof 收口。
 
-# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 联调契约（2026-08-15，completed，未发布）
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 联调契约（2026-08-15，released in v0.5.0）
 
 - `POST /api/instances/:id/saves/upload-commit-and-start` 的请求体、`202/jobId/operationId/saveName`、权限和前端流程不变。数据库处于 `game_installed/save_required/ready_to_start/stopped` 只代表允许尝试；driver 必须在接管上传前用无缓存 `docker compose ps --all --format json` 证明真实 server 已稳定终止。
 - 只有项目无 server，或所有 server 条目均为 `exited/dead`，才允许继续。任一 `running`、`Status` 以 `Up` 开头、`restarting`、`paused`、`created`、`removing`、空/未知 state、坏/`null`/缺字段 JSON、命令错误或输出截断均 fail closed。普通页面继续走缓存 `ComposePs`，不会因安全门禁收紧而增加轮询或改变展示 DTO。
 - strict 失败发生在 runtime asset、journal、bootstrap/staged target 与 token ownership 之前：Web 返回既有 409 导入错误并把尚未 owned 的 reservation 释放回 `available`，上传源仍可重试。maintenance 启动前、`ComposeUp` 前、失败 `ComposeDown` 后与 owned cancel cleanup 前均重复独立 strict 证明；不得以 cache invalidation 或等待 TTL 代替。
-- Web 传入的实例目录与数据库权威 `DataDir` 不一致时，driver 返回 `import_recovery_required`，不在任一目录创建/删除事务数据。专项 Web 回归固定 `game_installed + 普通 ComposePs=exited + strict=fresh running`：commit 必须 409、token 回到 available、staged source 保留且无 import journal。该任务未提交、未发布，后续候选仍需把这条链纳入升级后真实 Docker E2E。
+- Web 传入的实例目录与数据库权威 `DataDir` 不一致时，driver 返回 `import_recovery_required`，不在任一目录创建/删除事务数据。专项 Web 回归固定 `game_installed + 普通 ComposePs=exited + strict=fresh running`：commit 必须 409、token 回到 available、staged source 保留且无 import journal。v0.5.0 候选已把受影响链纳入升级后真实 Docker E2E；后续修改 strict/ownership 时仍需重跑。
 
 # v0.4.18 跨端发布结果（2026-08-15，released）
 
@@ -1501,7 +1507,7 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - 同一 fixture 用受控 mode 覆盖 `/health` 连接失败、短超时、404、500 和坏 JSON，全部得到对应稳定错误码并进入 `failed_rolled_back`；回滚后的旧 auth 再次以 `/health` 验收。另有单元表覆盖空 body、非 JSON、字段缺失、status null/非 ok、logged_in null/string/number、accounts null/object/string/number。
 - 真实 `1.5.0-anxi.2` opt-in 只验证镜像 ID/digest 和 `/health` 严格契约，不配置或读取真实 Steam 账号。本文此前关于 Runtime/SMAPI apply 使用 `/steam/ready` 的段落属于旧版本历史行为，已由本节取代；实例在线诊断中的 `/steam/ready` 说明仍然有效。
 
-# PLAYER-AUTH-MODES-1 跨端契约（2026-08-15）
+# PLAYER-AUTH-MODES-1 跨端契约（2026-08-15，released in v0.4.19，included in v0.5.0）
 
 ## 配置接口
 
@@ -1528,7 +1534,7 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - 恢复/幂等：同 revision 重复提交的第二个请求冲突；保存后未重启显示 configured/runtime 不一致；重启后 revision 一致且 patch ready；损坏 key/payload/guard 不开放访问。
 - 升级：旧 `SERVER_PASSWORD` 实例升级后自动显示 global；无密码实例显示 none；上一正式版经 Panel Web 更新到候选后重新执行角色模式 E2E，并确认旧 API 在 role 模式不泄露 guard。
 
-# 玩家列表 `lastSeen` 跨端契约（2026-08-15）
+# 玩家列表 `lastSeen` 跨端契约（2026-08-15，released in v0.5.0）
 
 - `GET /api/instances/:id/players` 中的 `players[].lastSeen` 表示“最后一次真实在线时间”，不是面板最后一次扫描到存档角色的时间。只存在于存档 XML、从未被在线快照观察到的离线角色必须省略该字段。
 - SQLite `player_roster.last_seen_at` 是内部名册观测时间，仍可随轮询更新；只有在线快照会更新 `last_online_at`，API 仅从后者回填 `lastSeen`。前端不得用响应 `updatedAt`、浏览器当前时间或名册观测时间补造该字段。

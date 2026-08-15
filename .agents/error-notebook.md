@@ -2840,7 +2840,7 @@
 
 ## 2026-08-14：把 Release 资产下载、校验与递归清理放在同一命令
 
-- 最近复发/补充：2026-08-15 `v0.4.18` 四项 Release 资产已在独立 cell 完成 API/tag 源 SHA-256 校验后，仍先后提交动态循环和四个精确 `Remove-Item -LiteralPath` 清理；工具策略两次都在执行前拒绝，文件未删。随后使用 `apply_patch` 精确删除四个已知文本文件，并在确认目录 entries=0 后用 `[System.IO.Directory]::Delete(<fixed-empty-dir>)` 删除空目录、复查路径为零。此环境下发布资产清理不要再尝试 `Remove-Item`；直接沿用已验证的 apply_patch + 固定空目录删除流程。
+- 最近复发/补充：2026-08-15 `v0.4.18` 四项 Release 资产已在独立 cell 完成 API/tag 源 SHA-256 校验后，仍先后提交动态循环和四个精确 `Remove-Item -LiteralPath` 清理；工具策略两次都在执行前拒绝，文件未删。随后使用 `apply_patch` 精确删除四个已知文本文件，并在确认目录 entries=0 后用 `[System.IO.Directory]::Delete(<fixed-empty-dir>)` 删除空目录、复查路径为零。2026-08-16 `v0.5.0` 收口再次把 Release 下载、SHA-256 校验和两个 `%TEMP%` 目录的递归 `Remove-Item` 合进同一 cell，工具在进程启动前拒绝，未下载或删除任何文件；改回三阶段流程。此环境下发布资产清理不要再尝试 `Remove-Item`；直接沿用已验证的 apply_patch + 固定空目录删除流程。
 - 最近复发/补充：拆成独立清理 cell 后，虽然已先列出精确 10 个文件、逐项 `Remove-Item` 且目录只在确认为空时非递归删除，工具策略仍在执行前拒绝整个命令；文件保持未删。确认属于工具对删除 cmdlet 的更严格边界后，不再重放 `Remove-Item`，改用同一 PowerShell 进程的 `System.IO.File.Delete`/`Directory.Delete` 对已审计的固定临时目标逐项处理，并在每步后断言不存在。
 - 环境：PowerShell 7、Codex Shell 安全策略，`v0.4.16` GitHub Release 资产复核。
 - 错误模式：同一个长 Shell cell 先 `gh release download`/`git archive`/哈希比较，再在 `finally` 中对动态临时目录执行 `Remove-Item -Recurse -Force`。
@@ -2998,7 +2998,7 @@
 
 ## 2026-08-16：未先确认路径、空结果和 Git 对象就组合执行只读探针
 
-- 最近复发/补充：实现后的真实测试诊断中，`rg` 已明确返回文件为 `runtime_stack.go`，同一组合命令后半仍凭命名猜测读取不存在的 `runtime_update.go`，使只读命令退出 1；随后改为读取真实命中路径。更新联调文档时又凭记忆猜测置顶标题，`apply_patch` 因上下文不匹配而零修改；读取文件真实首行后才施补丁。源码/文档定位都必须以刚取得的精确路径和文本为唯一输入。
+- 最近复发/补充：实现后的真实测试诊断中，`rg` 已明确返回文件为 `runtime_stack.go`，同一组合命令后半仍凭命名猜测读取不存在的 `runtime_update.go`，使只读命令退出 1；随后改为读取真实命中路径。更新联调文档时又凭记忆猜测置顶标题，`apply_patch` 因上下文不匹配而零修改；读取文件真实首行后才施补丁。2026-08-16 v0.5.0 发布后收口又把 frontend handoff 的 `# DOCS-PORTAL-0.4.18 接手记录...` 标题误当成 `docs/03-frontend.md` 的真实标题，补丁精确校验失败并零修改；读取目标文件首行后改用实际的 `# DOCS-PORTAL-0.4.18：官网更新日志同步最新版...`。源码/文档定位都必须以刚取得的精确路径和文本为唯一输入。
 - 环境：PowerShell 7、Git、`rg`，诊断 JunimoServer 主机房屋等级归零逻辑。
 - 错误模式：先凭记忆读取不存在的 `compatibility-matrices/runtime-stack.json`；随后把可能为空的 `rg --files compatibility-matrices` 当成必定退出 0 的前置步骤；最后又假定本地上游克隆已经包含镜像标签声明的源码 revision，直接执行 `git cat-file -e <revision>^{commit}`。
 - 症状 / 退出码：不存在的路径使组合命令退出 1；空目录搜索使后续上游检索未执行；本地克隆缺少精确镜像 revision 时 `git cat-file` 退出 128。三次均为只读失败，工作区产品代码、Docker 镜像和外部仓库未变化。
@@ -3026,3 +3026,24 @@
 - 正确做法：正式 tag 回退或撤回应优先使用带三仓密钥、可审计且逐仓校验 digest 的受控 GitHub Actions 流程；若必须本机执行，先用不回显 token 的登录方式和任务专属测试引用验证写权限，再修改正式 `latest`。
 - 预防检查：修改任何正式 registry tag 前，分别确认 GHCR、Docker Hub、阿里云 ACR 的实际写入身份与权限来源；只读 manifest 探针不得当成写权限探针，首次写入失败后不得在未改变认证假设时重试。
 - 适用范围：GHCR、Docker Hub、阿里云 ACR 的正式镜像提升、撤回和 `latest` 回退。
+
+## 2026-08-16：Windows 长轮询超出 `exec_command` 等待上限
+
+- 最近复发/补充：改成上限 `30000` 后，命令内部等待和三个远端查询仍略超 30 秒，工具按设计返回仍在运行的 session，`exit_code` 因进程未结束而省略；编排脚本却用 `undefined !== 0` 把它伪报为 `EXIT:undefined`，并且没有输出 `session_id`。长命令必须先判断是否存在 `session_id` 并把它交给 `write_stdin`；只有 `exit_code` 字段存在且非 0 才是进程失败。
+- 环境：Windows PowerShell 7、GitHub Actions 正式候选轮询、统一命令工具。
+- 错误模式：为了在一次调用内等待 40 秒，把工具层 `yield_time_ms` 设为 `50000`，超过 Windows 有效范围 `10000-30000`。
+- 症状 / 退出码：调用在命令启动前被编排层拒绝，返回值没有正常的 `output/exit_code`；远端 workflow 和本地工作区均未变化。
+- 根因：混淆了命令内部允许的短暂 `Start-Sleep` 时长与工具等待结果的 `yield_time_ms` 上限。
+- 正确做法：Windows 上 `yield_time_ms` 最大使用 `30000`；需要更长观察窗口时让命令在 30 秒后返回 session，再用 `write_stdin` 等待，或拆成不超过 30 秒的状态轮询并持续向用户更新。
+- 预防检查：调用前按工具 schema 校验 Windows 的等待范围；不得用超范围参数试探边界。
+- 适用范围：Windows `exec_command`、GitHub Actions 轮询和任何超过 30 秒的本地命令。
+
+## 2026-08-16：把 `git log` 的 `%n` 换行格式类推给 `for-each-ref`
+
+- 环境：PowerShell 7、Git for Windows，核验 `v0.5.0` annotated tag。
+- 错误模式：在 `git for-each-ref --format` 中使用 `%n` 拼接 object、tagger date、subject 和 contents，误以为它与 `git log --format` 的换行占位符一致。
+- 症状 / 退出码：命令退出 0，但首项原样包含字面量 `%n`，PowerShell 又把 tag contents 的后续行拆成数组，不能作为结构化 tag 证据；tag 和仓库未变化。
+- 根因：不同 Git 子命令的 format 占位符集合不能直接类推；`for-each-ref` 不把 `%n` 解释为换行。
+- 正确做法：分别调用 `git rev-parse`、`git cat-file -t` 和单字段 `git for-each-ref --format='%(...)'`，或在已验证支持时使用 `%0a`；本次独立字段复核得到 tag object、tagger date、subject、contents 与解引用 commit 均正确。
+- 预防检查：首次使用格式占位符时先查对应子命令帮助或做单字段探针；结构化发布证据优先一字段一命令，避免跨子命令复用格式语法。
+- 适用范围：Git tag/ref 审计、`for-each-ref`、`log --format` 与 PowerShell 原生输出捕获。
