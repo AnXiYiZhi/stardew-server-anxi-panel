@@ -1016,6 +1016,7 @@
 - 正确做法：先运行 `docker context show` 和 `docker info`；未就绪时启动 `Docker Desktop.exe`，以短间隔轮询 `docker info`，设置明确超时并在失败时停止后续 Docker 门禁。
 - 预防检查：每个 Docker Desktop 测试批次最前面执行 daemon readiness gate。
 - 适用范围：镜像构建、Compose E2E、integration test 和发布后回拉验证。
+- 最近复发/补充：2026-08-15 官网证据回填后补做六个远端镜像引用核对，首个 `docker info` 发现 daemon 未运行并 fail-fast，未启动任何镜像检查或资源变更。随后从已验证路径隐藏启动 Docker Desktop，有界轮询第 2 次就绪，再重新检查六引用并全部命中预期 digest；不得绕过首个 readiness 失败继续执行。
 
 ## 2026-07-28：Windows 下把 Shell glob 直接传给 `rg`
 

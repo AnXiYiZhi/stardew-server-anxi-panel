@@ -2,7 +2,8 @@
 
 - 官网首页与 changelog 同步到已发布的 v0.4.17，公开范围为 steam-auth `/health` 服务验收、安装完成后首次上传状态机和“社区中心收集包”文案修正；内容直接来自正式 Release 与本文件的不可变候选/升级/回滚证据。
 - 本次只改官网 Markdown 和长期文档，不改变 v0.4.17 候选、annotated tag、三仓 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`、`latest`、版本接口、GitHub Release 正文或四项资产，也不触发候选重建。
-- VitePress production build 5.90 秒通过；应用内 Browser 在 1440×900 与 390×844 从首页真实点击到 `/changelog.html`，版本顺序、三项正文、零横向溢出、零 overlay 和零 console error/warn 均通过。Pages、Compatibility 和线上正文证据待本次提交推送后回填。
+- VitePress production build 5.90 秒通过；应用内 Browser 在本地及线上 1440×900/390×844 从首页真实点击到 `/changelog.html`，版本顺序、三项正文、零横向溢出、零 overlay 和零 console error/warn 均通过。发布提交 `94db6f6066120cba903204e6fe1e47d40e06cc95` 的 Pages `31871879333`（build 22 秒、deploy 10 秒）与 Compatibility `31871879299`（1 分 43 秒）成功；只触发这两个预期 workflow，没有候选重建。
+- 发布后再次只读核对：Docker Hub、阿里云 ACR、GHCR 的 `0.4.17/latest` 六引用仍统一为 `sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`；annotated `v0.4.17` 仍解引用到 `d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`。GitHub latest Release 仍为正式 `v0.4.17`，正文命中三项变更且四项资产保持；本次纯文档提交不改变已在正式发布后冒烟确认的 `/api/version=0.4.17` 证据。
 
 # v0.4.15 / v0.4.16 发布说明补录（2026-08-14，post-release docs-only）
 

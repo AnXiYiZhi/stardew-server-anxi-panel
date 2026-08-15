@@ -8,7 +8,7 @@
 
 - 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 从 v0.4.16 切换到 v0.4.17；更新日志置顶新增认证服务 `/health` 验收、安装完成后首次上传状态机和“社区中心收集包”文案修正，v0.4.16 保留为历史条目。
 - 内容来源为已发布 GitHub Release 与 `docs/09-image-build.md` 的不可变发布证据；只修改公开 Markdown 与长期文档，不改主题、CSS、依赖、Panel API、镜像、tag 或 Release。
-- VitePress production build 5.90 秒通过；应用内 Browser 在 1440×900 与 390×844 从首页真实点击到 `/changelog.html`，首页 v0.4.17、日志 v0.4.17/v0.4.16/v0.4.15 顺序和三项正文全部命中，root/body 横向溢出、framework overlay、console error/warn 均为 0。Pages workflow、线上同路径与兼容矩阵结果待推送后回填。
+- VitePress production build 5.90 秒通过；应用内 Browser 在本地及线上 1440×900/390×844 从首页真实点击到 `/changelog.html`，首页 v0.4.17、日志 v0.4.17/v0.4.16/v0.4.15 顺序和三项正文全部命中，root/body 横向溢出、framework overlay、console error/warn 均为 0。发布提交 `94db6f6066120cba903204e6fe1e47d40e06cc95` 的 Pages `31871879333`（build 22 秒、deploy 10 秒）与 Compatibility `31871879299`（1 分 43 秒）成功；没有触发候选重建。
 
 ## 2026-08-14：官网补齐 v0.4.15 并展示 v0.4.16
 
@@ -105,7 +105,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前目标为 `v0.4.17` 文档；以本节 Pages 发布证据为准）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.17` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |

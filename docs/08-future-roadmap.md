@@ -2,7 +2,7 @@
 
 - [x] 官网首页版本角标、入口摘要和 `CURRENT RELEASE` 切换到 v0.4.17，changelog 置顶新增三项正式变更并保留 v0.4.16 历史条目。
 - [x] 内容与 v0.4.17 GitHub Release、候选/升级/回滚证据一致，不修改 tag、镜像、digest、latest 或 Release 资产。
-- [ ] VitePress production build 5.90 秒及本地 1440×900/390×844 Browser 已通过；待 Pages、线上同路径 Browser 与 Compatibility 通过后回填最终证据。
+- [x] VitePress production build 5.90 秒及本地/线上 1440×900、390×844 Browser 全部通过；发布提交 `94db6f6` 的 Pages `31871879333` 和 Compatibility `31871879299` 成功，未触发候选重建。
 
 # 2026-08-15 已发布：v0.4.17 认证健康探针、首次上传状态机与文案修正
 

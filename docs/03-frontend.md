@@ -1,7 +1,7 @@
 # DOCS-PORTAL-0.4.17：官网更新日志同步最新版（2026-08-15，completed）
 
 - 官网首页版本角标、版本入口摘要和 `CURRENT RELEASE` 切换到 v0.4.17；changelog 在 v0.4.16 前新增认证 `/health` 验收、安装完成后首次上传状态机与“社区中心收集包”三项用户可读说明。
-- 影响 `website/docs/index.md`、`website/docs/changelog.md` 和长期维护文档；不改变官网主题/CSS/依赖、Panel 前端运行代码、API、镜像、tag 或 GitHub Release。VitePress production build 5.90 秒通过；应用内 Browser 在 1440×900 与 390×844 从首页真实点击到 `/changelog.html`，v0.4.17/v0.4.16/v0.4.15 顺序及三项正文全部命中，root/body 横向溢出、overlay、console error/warn 均为 0。Pages、线上正文与 Compatibility 证据待推送后回填。
+- 影响 `website/docs/index.md`、`website/docs/changelog.md` 和长期维护文档；不改变官网主题/CSS/依赖、Panel 前端运行代码、API、镜像、tag 或 GitHub Release。VitePress production build 5.90 秒通过；应用内 Browser 在本地及线上 1440×900/390×844 从首页真实点击到 `/changelog.html`，v0.4.17/v0.4.16/v0.4.15 顺序及三项正文全部命中，root/body 横向溢出、overlay、console error/warn 均为 0。发布提交 `94db6f6066120cba903204e6fe1e47d40e06cc95` 的 Pages `31871879333`（build 22 秒、deploy 10 秒）与 Compatibility `31871879299`（1 分 43 秒）成功；路径过滤没有触发候选重建。
 
 # v0.4.17 前端发布状态（2026-08-15，released）
 

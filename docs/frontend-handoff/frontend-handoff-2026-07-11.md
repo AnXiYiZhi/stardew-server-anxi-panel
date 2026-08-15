@@ -7,7 +7,7 @@
 
 ## 如何验证、下一步注意事项
 
-- VitePress production build 5.90 秒通过；应用内 Browser 在 1440×900 与 390×844 从首页实际点击版本入口，v0.4.17/v0.4.16/v0.4.15 顺序、三项正文、零横向溢出、零 framework overlay 和零 console error/warn 均通过。推送后继续跟踪 Pages 与 Compatibility，再对线上同一路径复核。
+- VitePress production build 5.90 秒通过；应用内 Browser 在本地及线上 1440×900/390×844 从首页实际点击版本入口，v0.4.17/v0.4.16/v0.4.15 顺序、三项正文、零横向溢出、零 framework overlay 和零 console error/warn 均通过。发布提交 `94db6f6066120cba903204e6fe1e47d40e06cc95` 的 Pages `31871879333` 与 Compatibility `31871879299` 成功，没有触发候选重建。
 - 以后每个正式版本完成后，应在发布证据提交后同步官网首页与 changelog，避免官网版本落后于 GitHub Release。
 
 # v0.4.17 前端发布接手状态（2026-08-15，released）
