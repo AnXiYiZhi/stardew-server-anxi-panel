@@ -158,8 +158,9 @@ func TestControlRuntimeHostFarmhousePatchFailureStopsServer(t *testing.T) {
 
 func TestControlRuntimeContextCancellationDoesNotCleanup(t *testing.T) {
 	result := runControlRuntimeGateFailureTest(t, controlRuntimeFailureFixture{
-		runtimeTimeout: time.Second,
-		jobTimeout:     30 * time.Millisecond,
+		runtimeTimeout:   time.Second,
+		jobTimeout:       10 * time.Second,
+		cancelAfterPhase: "control_runtime_starting",
 	})
 	if result.downCalls != 0 {
 		t.Fatalf("context cancellation must not stop Compose, calls=%d", result.downCalls)
@@ -229,10 +230,11 @@ func TestStartSnapshotCleanupFailureNeverCallsComposeUp(t *testing.T) {
 }
 
 type controlRuntimeFailureFixture struct {
-	optionsBody    string
-	runtimeTimeout time.Duration
-	jobTimeout     time.Duration
-	downErr        error
+	optionsBody      string
+	runtimeTimeout   time.Duration
+	jobTimeout       time.Duration
+	cancelAfterPhase string
+	downErr          error
 }
 
 type controlRuntimeFailureResult struct {
@@ -286,12 +288,20 @@ func runControlRuntimeGateFailureTest(t *testing.T, fixture controlRuntimeFailur
 	if err != nil {
 		t.Fatal(err)
 	}
-	failed := waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	wantJobStatus := storage.JobStatusFailed
+	if fixture.cancelAfterPhase != "" {
+		waitForControlLifecyclePhase(t, store, instance.ID, fixture.cancelAfterPhase)
+		if err := manager.Cancel(context.Background(), job.ID); err != nil {
+			t.Fatalf("cancel job after phase %s: %v", fixture.cancelAfterPhase, err)
+		}
+		wantJobStatus = storage.JobStatusCanceled
+	}
+	terminal := waitForDriverTestJobStatus(t, store, job.ID, wantJobStatus)
 	updated, err := store.GetInstance(context.Background(), instance.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return controlRuntimeFailureResult{job: failed, instance: updated, downCalls: downCalls}
+	return controlRuntimeFailureResult{job: terminal, instance: updated, downCalls: downCalls}
 }
 
 func prepareControlLifecycleInstance(t *testing.T, store *storage.Store, dataDir string) storage.Instance {

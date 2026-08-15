@@ -3,34 +3,36 @@
 ## 聚合变更清单与受影响链路
 
 - 本次明确覆盖自动 patch 版本，目标固定为 `0.5.0`，当前上一正式版固定为 `0.4.19`；推送 `main` 后如果路径触发默认 `0.4.20` 候选，必须由同一 commit 的手动 `version=0.5.0`、`previous_version=0.4.19` 候选取代，不得创建、移动或手工补推 tag。
+- `PLAYER-AUTH-MODES-1`：v0.4.19 已发布 none/global/role 玩家加入保护，v0.5.0 的用户可见汇总和回归仍必须完整包含该能力：角色密码按稳定角色 ID 保存为 HMAC verifier，配置使用 revision/原子替换，Control 对 Junimo `TryAuthenticate` 只改写输入并继续复用原 attempts/timeout/lobby/warp，runtime patch/revision 缺失或不一致时 fail closed。旧全服 `SERVER_PASSWORD` 升级为 global，role 模式下旧密码 API 返回 409 且不得泄露内部 guard。
 - `SAVE-IMPORT-STRICT-OFFLINE-PROBE-1`：存档导入的每个破坏性边界都使用无 cache 的 strict Compose 探针，只接受无 server 或全部 `exited/dead`；命令失败、截断、坏/空 JSON、缺字段、未知或过渡状态全部 fail closed，并始终使用数据库权威 `DataDir`。
 - `SAVE-IMPORT-MAINTENANCE-DURABILITY-1`：maintenance、SQLite 精确快照、Compose Up/Down、FIFO attempt 和恢复阶段全部 write-ahead；NULL、空值和原始 payload 可精确恢复，无法证明未写 FIFO 或已完整回滚时保留 `import_recovery_required`，不做第二次危险动作。
 - `SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1`：primary job 通过 `BeforeRun` 与 journal/token 精确绑定；成功 token 使用 tombstone，取消使用带 fingerprint 的 schema 1 cleanup plan、持久 removal 子阶段和 0600 receipt，使 staged/bootstrap 危险删除最多一次并可在 Panel restart 后继续证明。
 - `FE-PLAYER-LAST-SEEN-SEMANTICS-1`：玩家 API 的 `lastSeen` 只来自真实在线时间 `last_online_at`，不再把面板扫描到离线存档角色的时间伪装成最近在线；前端表头同步改为“在线 / 最近活动”，API shape 与数据库 schema 不变。
-- `HOST-FARMHOUSE-PRESERVE-1`：Control `0.3.3 → 0.3.4` 以 Harmony prefix 默认跳过 JunimoServer `.125` 的 `HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()`，不携带上游源码且没有开关；Control options/status 和 Panel runtime gate 对精确反射/patch availability fail closed。内嵌 DLL SHA-256 固定为 `5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982`。
+- `HOST-FARMHOUSE-PRESERVE-1`：Control `0.3.3 → 0.3.4` 以 Harmony prefix 默认跳过 JunimoServer `.125` 的 `HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()`，不携带上游源码且没有开关；Control options/status 和 Panel runtime gate 对角色认证与农舍两个精确 patch availability 均 fail closed。内嵌 DLL SHA-256 固定为 `5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982`。
 - 受影响路径横跨后端、Control 源/DLL、runtime stack manifest、前端和长期文档，因此统一门禁必须选择后端全量 test/vet/build、Docker/updater integration、远程制品、Junimo/SMAPI/Control 真实长链、前端全部状态回归/audit/production build、网站 build、兼容清单、部署脚本、fresh install/restart，以及真实 Web unhealthy 回滚与 healthy 升级；不得按单个子任务的“不变路径”跳过聚合后的必跑项。
 
 ## v0.5.0 专项矩阵
 
 | 维度 | 必测场景 | 正式候选门禁 |
 | --- | --- | --- |
-| 正常路径 | 离线存档上传、primary job 精确绑定、maintenance/FIFO/cleanup；房屋等级 0 与 2；从未在线与曾在线角色 | 上传从受理到 durable save/cleanup 完整终态；等级 2 经真实 SaveLoaded、save-now、Panel restart 后仍为 2；save-only 角色不返回伪造时间，曾在线角色保留最后在线时间 |
-| 关键边界 | Compose `running/Up/restarting/paused/created/removing`、坏/截断/null JSON；journal/token/job 不匹配；fingerprint/pointer 漂移；Control 类型/方法/owner/options 缺失 | 全部 fail closed 且在 ownership、FIFO、删除或读档前停止；不得回退 cache 探针、第二个 primary runner、无证明 cleanup 或旧 level-zero 行为 |
+| 正常路径 | none/global/两个角色独立密码与 Panel 批准；离线存档上传、primary job 精确绑定、maintenance/FIFO/cleanup；房屋等级 0 与 2；从未在线与曾在线角色 | 角色交叉登录隔离且 runtime revision 一致；上传从受理到 durable save/cleanup 完整终态；等级 2 经真实 SaveLoaded、save-now、Panel restart 后仍为 2；save-only 角色不返回伪造时间，曾在线角色保留最后在线时间 |
+| 关键边界 | 未配置角色、revision 冲突、旧 API/损坏 guard；Compose `running/Up/restarting/paused/created/removing`、坏/截断/null JSON；journal/token/job 不匹配；fingerprint/pointer 漂移；Control 类型/方法/owner/options 缺失 | 全部 fail closed 且在认证放行、ownership、FIFO、删除或读档前停止；不得回退开放认证、cache 探针、第二个 primary runner、无证明 cleanup 或旧 level-zero 行为 |
 | 权限安全 | 管理员提交/取消/升级；token owner、路径与 symlink；密码、平台 ID、原始 Docker 输出 | 管理员与实例边界不变；只操作数据库权威目录和已验 fingerprint；日志/API/证明不泄露凭据或玩家关联标识 |
 | 幂等/恢复 | attach 三写崩溃窗、maintenance start/down/restore 窗口、FIFO 结果模糊、cleanup 各子阶段、并发 cancel、Panel restart | exact recovery job 收敛；危险动作最多一次；不能证明安全时持久保留 manual recovery，而不是清旗、删 token 或重试 FIFO |
 | 数据完整性 | SQLite snapshot 的 NULL/空/raw、preimport/finished save、主存档双 XML、房屋 XML、非目标游戏容器/volume | exact restore；正式/完成存档不属于 token cleanup；除目标字段和预期事务外保持不变；失败/回滚恢复上一版运行状态和长期数据 |
 | 资源清理 | 成功、受控失败、取消、崩溃恢复、Control 真实测试和候选 DinD | staged/bootstrap/receipt/journal 按状态清理，证明不足材料保留；测试容器、网络、volume、bind 和临时制品按 owner 精确归零 |
-| 升级/回滚 | `v0.4.19 → 0.5.0` Web unhealthy 与 healthy；Control 0.3.3→0.3.4；升级后重跑受影响 E2E | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 v0.4.19；healthy 只使用同一候选 digest，升级后的 Panel 再验存档导入、lastSeen 和房屋等级保持 |
+| 升级/回滚 | `v0.4.19 → 0.5.0` Web unhealthy 与 healthy；Control 0.3.3→0.3.4；升级后重跑受影响 E2E | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 v0.4.19；healthy 只使用同一候选 digest，升级后的 Panel 再验角色认证回归、存档导入、lastSeen 和房屋等级保持 |
 | 最老受影响版本 | 存档导入事务首次正式存在的 `v0.4.11 → 0.5.0` 代表升级 | 因 journal/maintenance/cleanup 长期结构变化，增加一条最老受影响版本真实 Web 代表升级；其它更老版本不机械重复 |
 | 已知取舍 | 旧 #346 对历史 farmhand 镜像污染的 level-zero 自愈被禁用 | 只承诺不再强制归零并保留当前存档值；不把本版描述成自动修复已经污染的旧存档，导入存档不增加专门分支 |
 
 ## 发布状态
 
 - 当前状态为候选前准备；本节中的本地专项证据不替代不可变候选证明、两条真实 Web 升级、自动 annotated tag、三仓六引用同 digest、正式镜像重启冒烟和 GitHub Release 资产验收。全部成功后必须在本节回填精确 commit、workflow、artifact、digest、build date、升级/回滚结果、门禁选择/跳过和资源清理终态。
+- 首个显式 `0.5.0` 候选 `31897973357` 在 selected code gates 期间主动取消，没有构建或推送候选镜像；必跑 Compatibility `31897972627` 的 Linux 默认全量后端测试暴露 `TestControlRuntimeContextCancellationDoesNotCleanup` 仍用 30ms timeout 同时承担“进入 starting”和“取消”的竞态，在共享 runner 负载下先取消、后读取到初始 stopped。该轮 `ComposeDown` 次数仍为 0，说明不是产品误清理。测试现已改为先观察精确 `control_runtime_starting` phase、再通过 manager 显式取消；目标测试连续 50 次通过，Linux Go 1.25 默认全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过，任务容器与 volume 已归零。下一候选仍须重新跑默认全量与两条 workflow，禁止把局部复验当作候选证明。
 
 # v0.4.19 正式发布基线（2026-08-15，released）
 
-- `v0.4.19` 由候选 workflow `31892497427` 验证并从 commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee` 自动创建 annotated tag；正式候选 digest 为 `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17`。本版加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码与 Control fail-closed runtime patch；它是 v0.5.0 healthy/unhealthy Web 升级的唯一“当前上一正式版”基线。
+- `v0.4.19` 由候选 workflow `31892497427` 验证并从 commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee` 自动创建 annotated tag；正式候选 digest 为 `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17`。本版加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码与 Control fail-closed runtime patch；Release、annotated tag、三仓 `0.4.19` 与 `latest` 保持正式状态，它是 v0.5.0 healthy/unhealthy Web 升级的唯一当前上一正式版基线。
 
 # HOST-FARMHOUSE-PRESERVE-1 候选前门禁记录（2026-08-16，completed，未发布）
 

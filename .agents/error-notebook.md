@@ -210,6 +210,7 @@
 
 ## 2026-08-14：检索已返回真实文件后仍读取了猜测文件名
 
+- 最近复发/补充：2026-08-16 定位 `jobs.Context` 时，`rg` 已明确返回定义位于 `backend/internal/jobs/types.go`，同一组合命令后半仍按惯例读取不存在的 `backend/internal/jobs/context.go`，只读命令退出 1；源码和运行资源未改变。随后只读取真实命中路径。即使类型名与惯例文件名高度相似，后续 `Get-Content` 也必须直接复用检索输出，不能重新命名。
 - 最近复发/补充：2026-08-15 诊断玩家虚假最后在线时间时，主流程把不存在的仓库根 `mods` 和 `backend/internal/storage/migrations` 传给 `rg`；并行只读审查也先后猜测相对 `embedded/smapi-mod-src` 与同一 migrations 目录。命令均只读并以路径错误退出，未改产品或生产状态。真实 Control 源码和迁移分别由 `rg --files` 定位到 `backend/internal/games/stardew_junimo/embedded/smapi-mod-src` 与 `backend/migrations`；后续只读取真实命中路径。该模式已经由 `AGENTS.md` 的“检索与读取拆成独立 fail-fast 命令”规则覆盖，不得再按职责或目录名猜路径。
 - 最近复发/补充：2026-08-15 开始实现玩家加入保护时，未先用文件清单确认就读取猜测的 `backend/internal/web/server_password_handlers_test.go`；实际目录只有 `server_password_handlers.go`，既有密码接口测试并未按同名测试文件存在。组合读取在该点退出，产品文件未被修改；随后用 `rg --files` 与测试内容检索确认真实范围。新增测试文件可以规划创建，但读取既有测试时仍必须先发现。
 - 最近复发/补充：同一功能进入前端实现时，又按常见目录结构猜测了不存在的 `frontend/src/hooks/useServerPassword.ts` 与 `frontend/src/pages/*ControlPage.tsx`；真实文件均位于 `frontend/src/games/stardew/` 子树。三条只读 `Get-Content` 在并行调用中退出 1，未修改产品文件；随后先用 `rg --files frontend` 定位真实路径。即使交接摘要给出了文件名，也必须把其中的目录提示当作待验证信息，先发现再读取。
@@ -2892,6 +2893,7 @@
 
 ## 2026-08-15：给 Linux 全量 Go 门禁的宿主 shell 设置过短超时
 
+- 最近复发/补充：2026-08-16 修复候选时序测试后，在尚未单次验证显式 `Manager.Cancel` 会把 job 终态写成 `canceled` 的情况下直接执行 `-count=100`；测试 helper 仍等待 `failed`，每轮都会耗尽 15 秒 observer 上限，五分钟无输出后人工中断。中断宿主 Docker CLI 没有自动停止容器，随后按精确 owner label 找到 `interesting_euler`，确认归属后定点 `rm -f`，两个 cache volume 最终也精确清理。正确顺序是先 `-count=1 -v` 验证状态契约，再做有界重复；本次单次失败明确显示 `got canceled` 后修正 helper，不能把无输出当作普通编译慢。
 - 最近复发/补充：2026-08-15 发布后首次拉取正式 `v0.4.18` 并启动冒烟时，30 秒 yield 返回可续接 session，但编排再次只输出 `r.output`，丢失 `session_id`；随后只读精确查询确认任务容器和卷均已由原脚本 `finally` 清零，才以缓存镜像和新唯一名称重跑，没有并发启动重复资源。所有可能包含 image pull/readiness 的调用即使预期很快，也必须同时转发 `output/session_id/exit_code`，不能凭缓存或经验投影单字段。
 - 最近复发/补充：2026-08-15 定向 Go 测试超过初始工具等待后返回了 session ID，但编排脚本只打印 `output`、没有保留 `session_id`，使终态无法从原会话继续读取；只读进程归属确认唯一测试已结束后才重新执行，没有并发启动第二份产品测试。后续长命令必须把完整结果 JSON 输出或立即保存 session ID，并用同一 `write_stdin` 等待。
 - 最近复发/补充：2026-08-15 为 CI 权限失败搭建非 root DinD 复现环境时，再次让可能超过 30 秒的 build/start/readiness 命令只输出嵌套结果的 `output` 字段，导致工具 yield 后 session ID 丢失。只读核对确认唯一 task-owned DinD 已运行且 daemon ready，未重复创建；后续所有可能跨越 yield 的 `exec_command` 必须直接输出完整 JSON 结果，不能仅投影 `output`。
@@ -2939,7 +2941,7 @@
 - 最近复发/补充：2026-08-15 前端模态修复收口时，完整变更文件 BOM 审计命中 `frontend/src/App.css` 后直接退出 1，没有先判断 BOM 是否由本次修改引入；随后通过重定向进程读取 `HEAD:frontend/src/App.css` 的原始 blob，确认基线和工作树都以 `EF-BB-BF` 开头，本次 `apply_patch` 正确保留了原编码。已有文件命中 BOM 时必须先与 `HEAD` 原始字节比较；基线已有且文件类型未被无 BOM 硬规则覆盖时记录为“保留”，只有新增 BOM 或 Go/TS/JS/JSON/YAML/Markdown/.env 等硬违规才判失败。
 - 最近复发/补充：2026-08-15 首次构建共享 `ModalPortal` 时，仅在 `useEffect` 顶部用 `if (!containerRef.current) return` 对 ref 值做局部推断，随后闭包中的键盘事件处理仍被 TypeScript 判定可能为 `null`，`tsc -b` 以 TS2345/TS18047 退出 2，Vite build 未开始。修正为先取得 `mountedContainer`，通过空值守卫后再赋给显式非空的 `HTMLDivElement` 常量供闭包捕获；带 ref 的异步/事件闭包需让非空快照本身拥有明确类型，不能只依赖外层控制流推断。
 - 最近复发/补充：2026-08-15 为统一前端模态层增加静态回归时，断言误写为实现必须包含 `event.key === 'Tab'`，而真实且正确的早退分支是 `event.key !== 'Tab'`，导致首轮 `test:responsive-layout` 在进入 build 前退出 1；产品代码未因失败命令变化。随后按已读取的真实实现修正断言并单独重跑测试，静态契约不得凭预期语句形态猜测比较方向。
-- 最近复发/补充：2026-08-13 owner guard 收口时再次对完整变更文件列表做 U+FFFD 正文扫描，命中错题本历史合法示例并误报失败；源码与新文件没有被修改。2026-08-14 候选流程收口又在同一个完整文件循环中对错题本调用 `Contains(U+FFFD)`，再次命中历史示例并主动退出 1；随即拆分为“全部目标完整字节仅查 BOM”“tracked 文件只查 `git diff --unified=0` 新增行”“untracked 新文件才查完整正文”，最终检查通过。编码收口脚本不得把 BOM 与 replacement-character 的检查范围混成同一个完整文件循环。
+- 最近复发/补充：2026-08-13 owner guard 收口时再次对完整变更文件列表做 U+FFFD 正文扫描，命中错题本历史合法示例并误报失败；源码与新文件没有被修改。2026-08-14 候选流程收口又在同一个完整文件循环中对错题本调用 `Contains(U+FFFD)`，再次命中历史示例并主动退出 1；随即拆分为“全部目标完整字节仅查 BOM”“tracked 文件只查 `git diff --unified=0` 新增行”“untracked 新文件才查完整正文”，最终检查通过。2026-08-16 v0.5.0 候选修复收口再次把 BOM 与 U+FFFD 放进同一个完整文件循环，命中错题本合法示例并退出 1；改回完整文件只查 BOM、replacement character 只查 `git diff --unified=0 --no-color` 单个新增行。编码收口脚本不得把两种检查范围混成同一个完整文件循环。
 - 最近复发/补充：2026-08-12 v0.4.11 收口时，虽然命令后半已经实现“只检查新增 diff 行”，前半仍先对所有 changed file 完整正文扫描 U+FFFD，只排除了错题本而遗漏同样含历史乱码说明的 `docs/09-image-build.md`，导致在新增行检查执行前误报退出 1。编码审计只能对完整变更文件检查 BOM；U+FFFD 必须唯一地从 `git diff --unified=0 --no-color` 的单个 `+` 新增行判断，不得在同一命令保留任何完整正文 replacement-character 扫描。
 - 最近复发/补充：2026-08-10 v0.4.10 官网收口审计又对全部 changed file 完整正文搜索 U+FFFD，命中本节在 `HEAD` 中已经存在的合法示例后组合命令退出 1；同日 `DOCS-HOME-QQ-COMMUNITY-1` 收口时再次错误复用完整文件扫描并命中同一历史示例。两次均按 `HEAD` 对照确认不是本次引入。正确复核固定为 `git diff --unified=0 --no-color` 后只检查单个 `+` 开头且排除 `+++` 文件头的新增行；该规则因多次复发已提升到 `AGENTS.md`，收口命令不得再组合完整文件 U+FFFD 扫描。
 - 最近复发/补充：2026-08-09 新建游戏弹窗收口再次对全部已修改文件直接执行 U+FFFD 搜索，命中了本节合法示例并让组合命令退出 1；同日升级修复目录审计已经出现相同误报。本次 Steam 升级等待修复又扫描完整的 `docs/09-image-build.md` 和错题本，分别命中历史乱码说明与本节合法示例；确认均为既有语义文本、无 BOM，未做整文件重编码。源码格式与 `git diff --check` 实际通过。此检查必须先生成 `git diff --unified=0`，只过滤单个 `+` 的新增行并排除 `+++` 文件头，禁止再次扫描完整历史文件。
@@ -3014,3 +3016,13 @@
 - 正确做法：保持实例为 `admin_created` 调用 Prepare，让当前内嵌 Control 首次物化；Prepare 成功后再把测试实例推进为 `stopped` 并启动。修正后同一 `.125` 测试完成真实 SaveLoaded/save-now/GameLoop.Saved，等级 2 保持且资源清零。
 - 预防检查：真实集成夹具在调用 lifecycle 前必须按生产状态机排列 `Ensure instance → admin_created Prepare → installed/stopped → Start`；不能为了满足启动前状态断言提前越过负责物化资产的阶段。
 - 适用范围：Control 首次安装、required-runtime 升级、Stardew Junimo lifecycle 与使用 `Prepare` 的真实 Docker 测试。
+
+## 2026-08-16：未验证本机 registry 写权限就尝试回退正式 `latest`
+
+- 环境：Windows PowerShell 7、Docker Desktop、GitHub Container Registry，撤回误发的 `v0.4.19`。
+- 错误模式：只确认三仓镜像可公开读取和本机 Docker daemon 可用，就直接用 `docker buildx imagetools create` 尝试把 GHCR `latest` 重指向 `v0.4.18` 的精确 digest，没有先验证当前 credential helper 中的凭据具备 package write 权限。
+- 症状 / 退出码：manifest copy 在最终 PUT `manifests/latest` 时返回 `401 Unauthorized`，命令退出 1；远端 `latest` 未变化，仍指向撤回前 digest。
+- 根因：公开读取成功只能证明 pull 权限，不能证明本机 registry 登录态具有 push/package write 权限；正式发布使用的是 GitHub Actions secrets，与本机 Docker credential 不是同一授权来源。
+- 正确做法：正式 tag 回退或撤回应优先使用带三仓密钥、可审计且逐仓校验 digest 的受控 GitHub Actions 流程；若必须本机执行，先用不回显 token 的登录方式和任务专属测试引用验证写权限，再修改正式 `latest`。
+- 预防检查：修改任何正式 registry tag 前，分别确认 GHCR、Docker Hub、阿里云 ACR 的实际写入身份与权限来源；只读 manifest 探针不得当成写权限探针，首次写入失败后不得在未改变认证假设时重试。
+- 适用范围：GHCR、Docker Hub、阿里云 ACR 的正式镜像提升、撤回和 `latest` 回退。
