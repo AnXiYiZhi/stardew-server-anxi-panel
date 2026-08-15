@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.16
+release: v0.4.17
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.16。运行组件成功升级后会自动清理已失效的失败提示；小屋策略和游戏日回档信息展示也更清晰。
+    details: 当前最新 v0.4.17。认证服务升级不再因 Steam 暂时离线而误报失败；新安装实例首次上传存档也可安全完成。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.16</strong>
-    <p>已成功完成的运行组件升级不再残留旧失败提示；新建或修改小屋设置时隐藏 FarmhouseStack，已有配置继续兼容；游戏日回档悬停可查看类型、农民、游戏日期和地图。</p>
+    <strong>v0.4.17</strong>
+    <p>运行组件升级改用认证服务健康接口验收，Steam 暂时离线只提示、不再误判服务损坏；新安装实例可以安全完成首次存档上传，并修正“社区中心收集包”文案。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

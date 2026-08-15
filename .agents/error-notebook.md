@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-15：沿用上轮已撤下的 `shell_command` 工具名
+
+- 环境：Codex Windows 工作区，新一轮官网文档任务开始时执行只读文档检查。
+- 错误模式：把上一轮可用的嵌套工具名 `tools.shell_command` 直接复用于当前 `functions.exec`，没有先核对本轮实际暴露的工具清单。
+- 症状 / 退出码：编排层立即返回 `TypeError: tools.shell_command is not a function`；命令未启动，文件、Git 和外部状态均未修改。
+- 根因：可用工具会随会话环境变化，本轮只有 `tools.exec_command`，旧工具绑定不是跨轮稳定契约。
+- 正确做法：每轮首次 Shell 调用前以当前工具声明为准；本轮统一调用 `tools.exec_command`，读取其 `output/exit_code/session_id` 字段。
+- 预防检查：不得从历史摘要或记忆复制工具方法名；先检查当前 `functions.exec` 声明，再构造第一个只读命令。
+- 适用范围：跨轮工具编排、Codex 桌面会话恢复与任何延续任务。
+
 ## 2026-08-14：Docker/FRP 生产时间线探针的时间参数与过滤范围过宽
 
 - 环境：Windows PowerShell 7 通过 Posh-SSH 3.2.7 对 114/47 生产主机执行只读掉线诊断，远程为 Docker 29、FRP 0.70.1 和 systemd journal。
@@ -21,6 +31,7 @@
 - 正确做法：内部点击后以当前真实 URL 或 DOM 已暴露的 `.html` URL 做精确断言；H2 顺序从 `main h2` 的首文本节点读取；移动端定位限定 `main` 并断言可见性，不使用全页同名文本的第一个匹配。
 - 预防检查：点击前同时区分源码 href、DOM 规范化 href 与实际导航 URL；VitePress 标题和响应式重复文本一律先查看 DOM snapshot，再选择 `main` 范围和真实可见节点。
 - 适用范围：VitePress、应用内 Browser、桌面/移动响应式导航与目录验收。
+- 最近复发/补充：2026-08-15 v0.4.17 官网验收再次先用 `getByText(..., exact:true)` 点击含箭头的复合链接，并用纯标题 exact accessible name 等待带 permalink 的 H2，分别得到 no-match 超时。读取 DOM snapshot 后改用精确 link role 点击，并直接从 `main h2` 首文本节点断言；本次同时把该禁用模式提升到 `AGENTS.md` 的 Browser 规则，后续不得重放。
 
 ## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
 

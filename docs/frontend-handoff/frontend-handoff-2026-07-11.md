@@ -1,3 +1,15 @@
+# DOCS-PORTAL-0.4.17 接手记录（2026-08-15，completed）
+
+## 改了什么、影响哪些文件
+
+- `website/docs/index.md` 首页版本切换为 v0.4.17；`website/docs/changelog.md` 置顶新增 v0.4.17，并把 v0.4.16 降为历史条目。说明范围与正式 Release 一致：auth `/health` 服务验收、安装完成后首次上传状态机和“社区中心收集包”文案。
+- 只影响官网 Markdown 与长期文档；没有修改主题、CSS、依赖、路由、Panel API、镜像、tag、Release 正文或资产。
+
+## 如何验证、下一步注意事项
+
+- VitePress production build 5.90 秒通过；应用内 Browser 在 1440×900 与 390×844 从首页实际点击版本入口，v0.4.17/v0.4.16/v0.4.15 顺序、三项正文、零横向溢出、零 framework overlay 和零 console error/warn 均通过。推送后继续跟踪 Pages 与 Compatibility，再对线上同一路径复核。
+- 以后每个正式版本完成后，应在发布证据提交后同步官网首页与 changelog，避免官网版本落后于 GitHub Release。
+
 # v0.4.17 前端发布接手状态（2026-08-15，released）
 
 - “社区中心收集包”文案修正已进入 `v0.4.17@d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`；`remixedCommunityCenter` 默认值、勾选行为、DTO 与后端语义不变。候选 `31823172958` 通过全部 17 个前端状态测试、production audit/build、fresh/restart 与 `v0.4.16` Web 升级。

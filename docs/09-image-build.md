@@ -1,3 +1,9 @@
+# v0.4.17 官网版本同步（2026-08-15，post-release docs-only）
+
+- 官网首页与 changelog 同步到已发布的 v0.4.17，公开范围为 steam-auth `/health` 服务验收、安装完成后首次上传状态机和“社区中心收集包”文案修正；内容直接来自正式 Release 与本文件的不可变候选/升级/回滚证据。
+- 本次只改官网 Markdown 和长期文档，不改变 v0.4.17 候选、annotated tag、三仓 digest=`sha256:44c328cdf198ec888f3ec54bbe836ce114f5ac27c4ca5fb9cc63747a44083673`、`latest`、版本接口、GitHub Release 正文或四项资产，也不触发候选重建。
+- VitePress production build 5.90 秒通过；应用内 Browser 在 1440×900 与 390×844 从首页真实点击到 `/changelog.html`，版本顺序、三项正文、零横向溢出、零 overlay 和零 console error/warn 均通过。Pages、Compatibility 和线上正文证据待本次提交推送后回填。
+
 # v0.4.15 / v0.4.16 发布说明补录（2026-08-14，post-release docs-only）
 
 - 正式镜像、tag、digest 与 Release 资产均不变。本次只补齐此前遗漏的公开说明：官网首页由 v0.4.14 切换到 v0.4.16，changelog 同时补入 v0.4.15 与 v0.4.16；GitHub 两版 Release 正文同步为同一用户可读变更范围，并继续保留精确验证身份和 compare 链接。
