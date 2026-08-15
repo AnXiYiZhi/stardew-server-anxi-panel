@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.4.17`（commit `d63c93ffe7d65f8cdfcf2bedb9b336a6839be73f`）。本版把 steam-auth 服务健康与 Steam 在线能力解耦，避免升级因 Steam 暂时离线而误报失败；修复游戏刚安装完成后首次上传存档的维护状态机，并把新建存档高级设置文案更正为“社区中心收集包”。`v0.4.16` 真实 Web unhealthy 回滚与 healthy 升级、三仓精确版/latest 同 digest、正式镜像重启、版本接口及 Release 资产均已通过；发布继续采用“一次构建不可变候选、tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.4.18`（commit `56c437004b51763e77d12ffd9b716f39224d7b00`）。本版修复 Panel Stop 已完成后空 Compose 集合被误报为存档导入进行中，以及 Control-only 升级时宿主持久目录缺少 JunimoServer 导致目标和回滚都无法启动、最终要求人工干预的问题；同时统一桌面/移动确认框的 body Portal、焦点与背景隔离，并补齐最近控制命令分页。`v0.4.17` 真实 Web unhealthy 回滚、healthy 升级、旧 `rollback_failed` 第三次 repair、升级后空 Compose 存档上传、三仓精确版/latest 同 digest、正式镜像重启、版本接口及 Release 资产均已通过；发布继续采用“一次构建不可变候选、tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

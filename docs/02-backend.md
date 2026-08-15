@@ -1,11 +1,17 @@
-# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1：Control-only 升级补齐宿主 JunimoServer（2026-08-15，completed，待发布）
+# v0.4.18 后端发布状态（2026-08-15，released）
+
+- `RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1` 与 `SAVE-IMPORT-COMPOSE-EMPTY-SET-1` 已随 `v0.4.18@56c437004b51763e77d12ffd9b716f39224d7b00` 正式发布。最终候选 `31884242692`、Compatibility `31884242697`、自动 Tag `31884612425` 与正式提升 `31884620508` 全部成功；首个候选 `31883713810` 在构建镜像前发现 Linux 非 root ownership 问题并停止，修复后没有跳过对应 integration。
+- 候选从 `v0.4.17` 经公开 Web API 先完成 unhealthy `failed_rolled_back/health_check_failed`，再完成 healthy 升级；升级后的新 Panel 用原 immutable server image ID 收敛旧 `rollback_failed` 第三次 repair，保留未变化 auth 容器和 stopped 状态，并通过 `Panel Stop → 空 Compose → 存档上传受理 → 受控失败清理`。SQLite、初始化状态、Panel 数据、非目标容器/volume 与 Panel 重启均保持。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.18/latest` 六引用统一 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`。独立正式镜像首次启动和重启后均为 Docker healthy、`/health`/database ok、`/api/version=0.4.18@56c437004b51763e77d12ffd9b716f39224d7b00`、build date=`2026-08-15T12:18:12Z`、setup initialized=false；GitHub Release 为最新正式版且四项脚本资产与 tag 源 SHA-256 一致。完整证明和资源清理见 `docs/09-image-build.md`。
+
+# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1：Control-only 升级补齐宿主 JunimoServer（2026-08-15，released in v0.4.18）
 
 - 支持包证明 server/auth tag 均已是推荐版本、仅 Control `0.3.1 → 0.3.2`，但宿主 `.local-container/mods/JunimoServer` 缺失；整个 `/data/Mods` 又由宿主 bind 覆盖。旧 apply 把“server image ID 未变”等同于“不需要同步 JunimoServer”，SMAPI 因缺少 `JunimoHost.Server` 跳过 Control，目标验收报 `server_container_not_ready`，旧版回滚再报 `rollback_verify_server_failed`，两次 repair 均进入人工干预。离线校时和 SteamAPI 告警不是该终态的根因。
 - apply 现在独立校验宿主 JunimoServer 的 manifest、UniqueID、版本、DLL、普通文件和 symlink 边界；server image 变化或宿主组件缺失/损坏任一成立时，均从已选可信目标 image 事务化提取并替换。server/auth tag 未变仍不重建 auth、不快照 steam-session，只把 Junimo 物化计入 server change plan。
 - 回滚在启动原 server 验收前再次校验其 JunimoServer；缺失或损坏时只允许从恢复清单记录的原 immutable server image ID 提取，经过相同静态校验后原子补齐。该路径兼容旧 Panel 已生成且 `JunimoModReplaced=false` 的 `rollback_failed` 清单，使升级到本补丁后的“检测、修复并升级”能恢复现有现场；提取、路径映射或替换失败返回 `rollback_repair_junimo_mod_failed` 并继续保留私有材料。
 - Linux 上 helper 容器以 root 写宿主 bind 时，提取结束会把目标树递归归还给当前 Panel 进程的数值 UID/GID；Windows 保持既有 Docker Desktop 行为。这样非 root Panel 仍可完成原子 rename、失败清理和后续 Mod 写入，不把目录永久留成 root-only。影响 `runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`junimo_mod_runtime.go`、apply/integration 测试和候选升级 E2E；公开 API、数据库、runtime manifest、server/auth/Control 产物和存档格式不变。回归覆盖新 Control-only 事务缺失 Mod、旧 `rollback_failed` 恢复后继续升级、既有目标失败/成对回滚，并用真实 Docker image ID 提取内置 Mod；integration 还以非 root Panel UID 实际写入并删除物化目录。`v0.4.17 → 候选` 升级后的公开 repair API 会构造已失败 2 次的旧事务，删除原可信 tag 后要求第 3 次修复仍从 immutable image ID 补齐 Mod、保留未变化 auth 容器并恢复 stopped。
 
-# SAVE-IMPORT-COMPOSE-EMPTY-SET-1：停服后的空 Compose 集合允许首次导入（2026-08-15，completed，未发布）
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1：停服后的空 Compose 集合允许首次导入（2026-08-15，released in v0.4.18）
 
 - 生产只读取证确认：`v0.4.17` 实例已通过 Panel Stop 成功执行 `docker compose down`，数据库为 `stopped/stopped`、活动 job 为 0、导入 journal 为 0、上传 token 仍为 `available`；实例 Compose 配置继续声明 `steam-auth/server`，但 `docker compose ps --all --format json` 以 0 退出且 stdout 为空。提交入口没有接管上传，却因 strict probe 把合法空集合误判为错误，再由 Web fallback 映射成 `save_in_progress`。
 - `ComposePsStrict` 现在把“命令成功且 stdout 为空”解析为合法的空 `Services` 集合。该结果仍由 `saveImportServerStoppedStrict` 判定为没有 server 副本、可以进入维护；命令非零、非空坏 JSON、条目缺 service/state、未知 server 状态及任一 `running/restarting/paused/removing` 副本仍 fail closed。没有放宽数据库四态、两次无缓存检查、ownership/journal 前置顺序或 cleanup 门禁。

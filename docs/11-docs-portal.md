@@ -2,7 +2,13 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；官网版本展示目标已切换到最新 v0.4.17。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；官网版本展示目标已切换到最新 v0.4.18。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+
+## 2026-08-15：官网展示 v0.4.18
+
+- 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 从 v0.4.17 切换到 v0.4.18；更新日志置顶新增停服空 Compose 首次导入、Control-only 缺失 JunimoServer 与旧人工事务恢复、共享确认框和最近控制命令分页，v0.4.17 保留为历史条目。
+- 内容来自已发布 `v0.4.18` GitHub Release 和 `docs/09-image-build.md` 的不可变候选/三仓/正式镜像证据；只改公开 Markdown 与长期文档，不改变主题、CSS、依赖、Panel API、镜像、tag、digest 或 Release 资产。
+- VitePress production build 2.96 秒通过。应用内 Browser 在本地 1440×900 与 390×844 从首页真实点击到 `/changelog.html`；首页和日志均命中 v0.4.18，日志顺序为 v0.4.18/v0.4.17/v0.4.16，三组正文完整，root/body `scrollWidth == clientWidth`、framework overlay 和 console warn/error 均为 0。线上 Pages 与 Compatibility 结果在本次 docs-only 提交推送后跟踪，不触发候选重建或移动既有 tag。
 
 ## 2026-08-15：官网展示 v0.4.17
 

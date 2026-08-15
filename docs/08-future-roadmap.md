@@ -1,19 +1,25 @@
-# 2026-08-15 完成：Control-only 升级与旧人工恢复补齐 JunimoServer（RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1，待发布）
+# 2026-08-15 完成：官网更新日志同步 v0.4.18（待发布）
+
+- [x] 官网首页版本角标、入口摘要和 `CURRENT RELEASE` 切换到 v0.4.18；changelog 置顶新增停服空 Compose 导入、Control-only Junimo 恢复、共享确认框与控制命令分页，v0.4.17 保留为历史。
+- [x] VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900/390×844 完成首页到日志真实点击，版本顺序/正文正确，零横向溢出、零 overlay、零 console warn/error。
+- [ ] docs-only 提交推送后确认 Pages/Compatibility 成功且没有触发候选重建；随后复核线上首页与 changelog，不移动 `v0.4.18` 或改变三仓 digest。
+
+# 2026-08-15 已发布：v0.4.18 Control-only 升级与旧人工恢复补齐 JunimoServer
 
 - [x] 支持包定位到 server/auth 未变化、仅 Control 升级时宿主 JunimoServer 缺失；SMAPI 跳过 Control，目标和旧版回滚均无法通过健康验收。确认离线校时/SteamAPI 不是人工干预根因。
 - [x] 新 apply 独立验证并事务化补齐缺失/损坏的 JunimoServer；auth 容器、steam-session 和运行栈推荐清单不变。
 - [x] 旧 `rollback_failed` 清单可从持久化原 server immutable image ID 补齐组件，先恢复原版本验收再继续新事务；失败保留材料并返回稳定错误码。
 - [x] 新事务、旧 v0.4.17 风格恢复、既有回滚矩阵及真实 Docker image-ID 提取回归通过。
 - [x] 首次候选 `31883713810` 暴露 Linux helper root-owned bind；提取树现归还当前 Panel 数值 UID/GID，非 root DinD 的真实写入/删除 integration 与默认 package test/vet/build 通过，失败候选没有构建或推送镜像。
-- [ ] 下一补丁候选必须在上一正式版 Web 升级后的 Panel 复现并修复同一 missing-Junimo Control-only 场景，随后完成自动 tag、三仓 digest、latest、版本接口、Release 和证据回填。
+- [x] 最终候选 `31884242692` 在 `v0.4.17` Web 升级后的 Panel 通过旧 `rollback_failed` 第三次 repair，从原 immutable image ID 补齐 Junimo、保留 auth 容器与 stopped 状态；自动 Tag `31884612425`、正式提升 `31884620508`、三仓六引用、版本接口、Release 与证据回填完成。
 
-# 2026-08-15 完成：停服空 Compose 集合不再阻断存档导入（SAVE-IMPORT-COMPOSE-EMPTY-SET-1，未发布）
+# 2026-08-15 已发布：v0.4.18 停服空 Compose 集合不再阻断存档导入
 
 - [x] 生产只读取证确认 `v0.4.17` 的 Stop job、SQLite 和 Compose 配置正常，项目容器/活动 job/import journal 均为 0，上传 token 未被接管；问题是 strict probe 将 `compose down` 后成功的空 stdout 错当异常，并由 Web fallback 映射为 `save_in_progress`。
 - [x] `ComposePsStrict` 仅把“命令成功 + 空 stdout”接受为 0 services；坏 JSON、缺 service/state、未知状态、非零退出和运行中的 server 继续 fail closed，四态、两次检查及事务 ownership 门禁不变。
 - [x] Linux Docker/Junimo 定向全包、串行全量 test/vet/build 及真实 `ComposeUp → ComposeDown → 零容器 → strict 空集合` integration 通过，任务容器、网络与缓存卷归零；公开上传 DTO、错误码和前端不变。
 - [x] 候选升级脚本已加入真实 `Panel Stop/compose down → 零容器/空 stdout → Web 上传 202/jobId/operationId → 受控 maintenance 失败 → stopped/容器/网络清理`，不使用 `compose create` 占位绕过；Bash 语法与 ShellCheck 已通过。
-- [ ] 下一正式候选必须实际跑通新增升级后链，并回填候选 run、正式提升、digest 与资源清理证据。
+- [x] 最终候选在升级后的 Panel 实际跑通 `Stop → 空 Compose → Web 上传受理 → 受控失败清理`；候选/Compatibility/Tag/正式提升成功，三仓 `0.4.18/latest` 统一 digest，测试与发布后核验资源均清零。
 
 # 2026-08-15 完成：官网更新日志同步 v0.4.17
 
@@ -1973,19 +1979,19 @@ Multi Game Mode later
 - [x] 严格单测、Docker integration、真实镜像 opt-in、兼容矩阵以及 Linux 全量 Go test/vet/build 已通过，任务 Docker 资源已精确清理。
 - [x] 已在 `v0.4.17` 完成候选、`v0.4.16` 真实 Panel Web 升级、unhealthy 回滚、annotated tag、三仓 digest 提升、正式镜像回拉和 Release 资产验收；证据见本文件顶部与 `docs/09-image-build.md`。
 
-# FE-MODAL-VIEWPORT-1（2026-08-15，completed / not released）
+# FE-MODAL-VIEWPORT-1（2026-08-15，released in v0.4.18）
 
 - [x] 设置页删除用户与任务日志清理弹窗改为 `body` Portal，不再受页面直接子元素 `position: relative` 规则影响；桌面存档、玩家、服务器、Mod、总览和首次安装确认同步统一。
 - [x] 桌面/移动模态统一标题语义、危险 `alertdialog`、初始焦点、Tab 循环、Esc、焦点归还、滚动锁定和背景 `inert`/`aria-hidden`；Joja“填入”按钮保持不变。
 - [x] 待认证玩家使用独立三列网格，取消七列表的 `870px` 最小宽度与桌面横向滚动；批准按钮完整可见。
 - [x] 登录/初始化流式回退覆盖 16:10 与 3:2；1536×1024 表单完整且无横向溢出。
 - [x] 全部 17 项前端状态/布局测试、production build、1536×1024 与 390×844 Browser QA 通过，console error/warn 为 0。
-- [ ] 候选镜像及上一正式版 Web 升级后的 production bundle 按同一桌面/移动矩阵抽验；本项当前未创建 tag 或发布镜像。
+- [x] 候选镜像及 `v0.4.17` Web 升级后的 production bundle 已抽验共享 modal、桌面/移动路由和焦点契约；随自动 `v0.4.18` tag 与同 digest 正式镜像发布。
 
-# FE-CONTROL-COMMAND-PAGINATION-1（2026-08-15，completed / not released）
+# FE-CONTROL-COMMAND-PAGINATION-1（2026-08-15，released in v0.4.18）
 
 - [x] 任务日志页最近控制命令固定每页 3 条，显示总条数、当前页/总页数与上一页/下一页边界状态。
 - [x] 复用现有 5 秒数据刷新，不增加 API 请求；数据缩短时自动校正当前页，避免空白末页。
 - [x] 表格横向溢出限制在内部滚动容器，右侧栏窄宽度下分页按钮保持完整可见。
 - [x] 全部 17 项前端状态/布局测试、production build 和 967×732 Browser 真实翻页通过，console error/warn 为 0。
-- [ ] 候选镜像及上一正式版 Web 升级后的 production bundle 抽验；本项当前未创建 tag 或发布镜像。
+- [x] 候选镜像及 `v0.4.17` Web 升级后的 production bundle 已抽验 JobsLogs/Players 分页契约；随自动 `v0.4.18` tag 与同 digest 正式镜像发布。

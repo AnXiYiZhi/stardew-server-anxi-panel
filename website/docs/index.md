@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.4.17
+release: v0.4.18
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.4.17。认证服务升级不再因 Steam 暂时离线而误报失败；新安装实例首次上传存档也可安全完成。
+    details: 当前最新 v0.4.18。修复停服后首次导入存档卡住，以及只更新 Control 时缺少 JunimoServer 导致需要人工恢复的问题。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.4.17</strong>
-    <p>运行组件升级改用认证服务健康接口验收，Steam 暂时离线只提示、不再误判服务损坏；新安装实例可以安全完成首次存档上传，并修正“社区中心收集包”文案。</p>
+    <strong>v0.4.18</strong>
+    <p>停服后即使 Compose 已没有容器，也能继续首次导入存档；只更新 Control 时会自动补齐缺失的 JunimoServer，并可恢复旧版留下的人工干预事务。确认框和最近控制命令分页也更稳定易用。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

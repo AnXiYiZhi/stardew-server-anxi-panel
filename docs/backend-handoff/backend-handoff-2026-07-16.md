@@ -1,4 +1,10 @@
-# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1 接手记录（2026-08-15，completed，待发布）
+# v0.4.18 后端发布接手状态（2026-08-15，released）
+
+- 两项后端修复已进入 `v0.4.18@56c437004b51763e77d12ffd9b716f39224d7b00`。最终候选 `31884242692`、Compatibility `31884242697`、自动 Tag `31884612425`、正式提升 `31884620508` 成功；候选同时覆盖 `v0.4.17` unhealthy 回滚/healthy 升级、旧事务 immutable-image repair 与空 Compose 存档上传专项。
+- 候选证明 artifact `release-candidate-0.4.18-56c437004b51`（ID `9246912273`）固定 build date=`2026-08-15T12:18:12Z` 和 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`。Docker Hub、ACR、GHCR 的 exact/latest 六引用一致；独立正式镜像首次/重启 health/database/version/setup 和 GitHub Release 四项资产均通过。
+- 首个候选 `31883713810` 的非 root ownership 失败已通过产品修复和真实 UID 1000 DinD integration 收敛，未构建或推送错误镜像。以后改动 Junimo materialization 必须保留“helper root 写 bind、Panel 非 root rename/cleanup”回归；不要撤销 `chown` 或改成跳过 Linux integration。
+
+# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1 接手记录（2026-08-15，released in v0.4.18）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -14,7 +20,7 @@
 - integration 构建最小真实 server fixture，通过 Docker inspect 得到 immutable image ID，删除宿主 Mod 后只用该 ID 提取并验证 manifest/DLL；在任务专属 DinD 内让 daemon/root 写 bind、UID 1000 运行 Go/Panel，最终宿主写入/删除探针通过，默认包 test/vet/build 也通过。候选升级 E2E 会在 `v0.4.17` 升级得到的新 Panel 上构造已失败 2 次的旧 `rollback_failed`，删除原 server 可信 tag 后通过公开 repair API 执行第 3 次受限修复；最终必须补齐 Mod、保留未变化 steam-auth container ID、恢复 stopped 并清理 recovery。不能只验证普通 Start，因为普通 lifecycle 原本就有 ensure 兜底。
 - 不要把修复退化为复制当前 Panel 内文件、信任可变 tag 或在 API 接受调用方路径。KeepServerStopped 的 Panel 启动恢复仍只收敛材料而不启动游戏；用户后续手动 Start 会走 lifecycle ensure。成功回滚/repair 才能按既有规则清理私有目录。
 
-# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 接手记录（2026-08-15，completed，未发布）
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 接手记录（2026-08-15，released in v0.4.18）
 
 ## 改了什么、影响哪些接口/文件
 

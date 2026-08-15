@@ -1,3 +1,13 @@
+# DOCS-PORTAL-0.4.18：官网更新日志同步最新版（2026-08-15，completed，待发布）
+
+- 官网首页版本角标、版本入口摘要和 `CURRENT RELEASE` 切换到 v0.4.18；changelog 置顶说明停服空 Compose 存档导入、Control-only 缺失 JunimoServer/旧人工事务恢复，以及共享模态与最近控制命令分页，v0.4.17 保留为历史条目。
+- 只影响官网 Markdown 与长期文档，不改变主题/CSS/依赖、Panel 运行代码、API、镜像、tag、digest 或 GitHub Release。VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900/390×844 从首页实际点击到更新日志，版本顺序、三组正文、零横向溢出、零 overlay 和零 console warn/error 均通过。docs-only 提交推送后只允许 Pages/Compatibility 等路径预期 workflow，不得重建 v0.4.18 候选。
+
+# v0.4.18 前端发布状态（2026-08-15，released）
+
+- `FE-MODAL-VIEWPORT-1` 与 `FE-CONTROL-COMMAND-PAGINATION-1` 已随 `v0.4.18@56c437004b51763e77d12ffd9b716f39224d7b00` 发布。共享 `ModalPortal`、桌面/移动模态迁移、待认证玩家表布局、登录/初始化高宽比回退、最近控制命令 3 条分页及玩家活动分页边界均进入正式 production bundle。
+- 最终候选 `31884242692` 在源码 17 项状态测试、production audit/build、fresh 候选和从 `v0.4.17` Web 升级后的 minified chunks 中重复验证相关契约；Compatibility `31884242697`、自动 Tag `31884612425`、正式提升 `31884620508` 成功。三仓 `0.4.18/latest` 六引用统一 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`，正式镜像版本接口、重启和 GitHub Release 四项资产已复核。
+
 # DOCS-PORTAL-0.4.17：官网更新日志同步最新版（2026-08-15，completed）
 
 - 官网首页版本角标、版本入口摘要和 `CURRENT RELEASE` 切换到 v0.4.17；changelog 在 v0.4.16 前新增认证 `/health` 验收、安装完成后首次上传状态机与“社区中心收集包”三项用户可读说明。
@@ -2641,7 +2651,7 @@ npm.cmd run dev
 - 只改变 `frontend/src/games/stardew/NewGameCreator.tsx` 的可见文案；`remixedCommunityCenter` 勾选状态、默认值、提交字段和新建存档 API 均未改变。
 - 验证：前端 production build 通过，源码与构建产物均包含“社区中心收集包”且不再包含“社区中心手机包”。
 
-# FE-MODAL-VIEWPORT-1：模态层、待认证表格与偏高视口修复（2026-08-15，completed，未发布）
+# FE-MODAL-VIEWPORT-1：模态层、待认证表格与偏高视口修复（2026-08-15，released in v0.4.18）
 
 - 新增 `frontend/src/core/ModalPortal.tsx` 作为桌面和移动端确认框的统一模态基础层。模态固定 portal 到 `document.body`，统一提供 `dialog/alertdialog`、`aria-modal`、标题关联、页面滚动锁定、初始焦点、Tab/Shift+Tab 焦点循环、Esc 关闭、关闭后焦点归还，以及背景 `inert`/`aria-hidden` 隔离。
 - 设置页删除用户、任务日志清理、服务器控制、玩家操作、存档新建/删除/回档/上传、Mod 删除、总览停服/重启和首次安装提示均切到共享模态层。设置卡片与任务页现有直接子元素定位规则不再能把弹窗插入列表底部；危险确认使用 `alertdialog`。移动控制的计划重启、密码、运行设置、游戏语言、Joja，以及移动存档上传/回档同步获得焦点管理。Joja 的“填入”按钮、确认文案和提交条件保持不变。
@@ -2649,7 +2659,7 @@ npm.cmd run dev
 - 登录/初始化页的流式羊皮纸卡片回退由 `max-aspect-ratio: 4/3` 提高到 `8/5`，覆盖 16:10 与 3:2 桌面；1366×768 等更宽比例仍保留原场景布局。1536×1024 实测表单底部为 660px、页面无横向溢出且允许纵向滚动。
 - `test:responsive-layout` 增加上述视口、三列表格、Portal、焦点和 Joja“填入”静态契约。全部 17 项前端 `test:*` 与 `npm.cmd run build` 通过；应用内 Browser 已在 1536×1024 和 390×844 验证删除用户、清空错误日志、新建/删除存档、计划重启、Joja、移动回档的居中/可见性、标题语义、背景隔离、焦点循环与归还，console error/warn 为 0。
 
-# FE-CONTROL-COMMAND-PAGINATION-1：最近控制命令分页（2026-08-15，completed，未发布）
+# FE-CONTROL-COMMAND-PAGINATION-1：最近控制命令分页（2026-08-15，released in v0.4.18）
 
 - 任务日志页“最近控制命令”固定每页展示 3 条，保留顶部总条数；分页提供上一页、当前页/总页数和下一页，首尾页自动禁用无效方向。
 - 分页只切片现有响应，不增加请求；原 5 秒刷新继续工作。刷新后若总条数减少，会把当前页校正到仍然有效的末页，避免出现空白页。

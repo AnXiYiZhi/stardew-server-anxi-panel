@@ -1,3 +1,13 @@
+# DOCS-PORTAL-0.4.18 接手记录（2026-08-15，completed，待发布）
+
+- `website/docs/index.md` 与 `website/docs/changelog.md` 已同步 v0.4.18 用户可见范围：停服空 Compose 首次导入、Control-only 缺失 JunimoServer/旧人工事务恢复、共享确认框与最近控制命令分页。官网主题、CSS、依赖和路由未变，Panel API、镜像、tag、digest 与 Release 也未改。
+- VitePress production build 2.96 秒通过；本地应用内 Browser 在 1440×900/390×844 从首页真实点击到 `/changelog.html`，版本顺序和三组正文正确，两视口 root/body 无横向溢出、overlay=0、console warn/error=0。推送后跟踪 Pages/Compatibility；不得因 docs-only 收口重新发布候选或移动 `v0.4.18`。
+
+# v0.4.18 前端发布接手状态（2026-08-15，released）
+
+- `FE-MODAL-VIEWPORT-1` 与 `FE-CONTROL-COMMAND-PAGINATION-1` 已进入 `v0.4.18@56c437004b51763e77d12ffd9b716f39224d7b00`。最终候选 `31884242692` 在 17 项状态回归、production audit/build、fresh 与 `v0.4.17` Web 升级后的 production chunks 中验证共享 modal、JobsLogs/Players 分页和相关响应式契约。
+- Compatibility `31884242697`、自动 Tag `31884612425`、正式提升 `31884620508` 成功；三仓 `0.4.18/latest` 六引用统一 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`，独立正式镜像重启、版本接口和 GitHub Release 四项资产已复核。新增确认框继续必须复用 `ModalPortal`；控制命令 API 在服务端分页前继续保持现有本地 3 条切片契约。
+
 # DOCS-PORTAL-0.4.17 接手记录（2026-08-15，completed）
 
 ## 改了什么、影响哪些文件
@@ -1774,7 +1784,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - 后续若把复选框改成“普通/重新混合”显式选择器，应继续保留“社区中心收集包”作为选项名称；不要把栏目名和选中值“重新混合”合并成一个含义不清的复选框标签。
 
-# FE-MODAL-VIEWPORT-1 接手记录（2026-08-15，completed，未发布）
+# FE-MODAL-VIEWPORT-1 接手记录（2026-08-15，released in v0.4.18）
 
 ## 改了什么
 
@@ -1792,9 +1802,9 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - 新增确认框必须复用 `ModalPortal`，提供唯一标题 ID；不可再把 `role=dialog` 只挂在页面内普通 `div` 上。危险且需立即注意的不可逆确认优先使用 `role="alertdialog"`。
 - 模态异步提交期间应把 `onEscape` 设为 `undefined`，与禁用取消按钮保持一致。若以后加入嵌套模态，共享层已有栈与背景状态恢复逻辑，不要在页面组件另写第二套 body 锁定。
-- 候选镜像与上一正式版 Web 升级后的 production bundle 仍需抽验这组弹窗和 3:2/移动视口；本记录只证明当前源码/Vite fixture，不代表正式镜像已发布。
+- 候选镜像与 `v0.4.17` Web 升级后的 production bundle 已抽验这组弹窗、3:2/移动视口及共享可访问性契约，并随 `v0.4.18` 正式发布。
 
-# FE-CONTROL-COMMAND-PAGINATION-1 接手记录（2026-08-15，completed，未发布）
+# FE-CONTROL-COMMAND-PAGINATION-1 接手记录（2026-08-15，released in v0.4.18）
 
 ## 改了什么
 
@@ -1810,4 +1820,4 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - 若未来后端支持服务端分页，应同时提供总条数和稳定游标/页码，并明确 5 秒轮询时当前页的更新策略；在接口变更前不要把本地切片和服务端分页混用。
-- 候选镜像和上一正式版 Web 升级后的 production bundle 仍需抽验该分页；本记录只证明当前源码与 Vite fixture，尚未发布。
+- 候选镜像和 `v0.4.17` Web 升级后的 production bundle 已抽验该分页，并随 `v0.4.18` 正式发布。

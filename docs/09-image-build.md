@@ -1,4 +1,4 @@
-# v0.4.18 正式候选范围与专项矩阵（2026-08-15，本地门禁通过，pending automatic candidate）
+# v0.4.18 正式候选与发布结果（2026-08-15，released）
 
 ## 变更清单与受影响链路
 
@@ -20,16 +20,34 @@
 | 升级/回滚 | `v0.4.17 → 0.4.18` healthy 与同引用 unhealthy；升级后的旧 rollback_failed 真实 repair | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 v0.4.17；healthy 升级后用公开 API 构造第 3 次 repair，删除可信 tag 后仍须从原 image ID 补齐 Junimo、保持 steam-auth container 与 stopped 状态 |
 | 生产前端 | fresh 候选与 Web 升级后的精确 production chunks | ServerControl/MobileControl/Saves 既有契约继续通过；JobsLogs 必须包含最近控制命令分页、Players 包含玩家活动分页，加载产物必须包含共享 `aria-modal` / initial-focus 契约 |
 
-## 门禁选择与发布前状态
+## 门禁选择、候选失败与修复
 
 - 因后端 `stardew_junimo`、Docker strict probe、前端和发布候选脚本同时变化，自动候选必须执行后端默认全量 test/vet/build、Docker integration、runtime/SMAPI 真实长链、前端全部状态测试/audit/production build、脚本语法与 ShellCheck、fresh install/restart、上一正式版 Web unhealthy 回滚和 healthy 升级。runtime manifest、Control 源/DLL、数据库 migration、部署格式和网站内容未变；远程制品、网站等是否跳过仍只允许 `scripts/run-release-gates.sh` 按 `v0.4.17..candidate SHA` 路径差异决定。
 - 发布前专项已通过：Junimo Control-only 缺失目录单测、旧 schema 3 `rollback_failed` repair 单测、相邻回滚恢复矩阵，以及从真实 Docker immutable image ID 提取 Junimo 的 integration；Linux 默认全量 Go test/vet/build、Docker/updater/runtime integration、41,889,142 B 真实 SMAPI 下载、前端 17 项状态回归/audit/production build、兼容矩阵 20 项、部署脚本测试、网站 production build、`bash -n` 与 ShellCheck 0.11.0 均通过。Windows `npm ci` 因既有 `node_modules` 文件锁触发 `EPERM` 后没有删除或重试，改由 Node 22 Linux 容器与任务专属依赖/产物卷完成同一前端门禁。
 - 本地完整候选演练以 `0.4.18`、上一正式版 `0.4.17` 构建未发布镜像，最终通过轮固定 build date=`2026-08-15T11:57:09Z`、local image ID=`sha256:f76b22fcec32007c55700807b1aaf9d28bc460668c250664f4bc3ebcda249f80`。同一轮通过 fresh health/version/setup/restart、公开 Web unhealthy `failed_rolled_back/health_check_failed`、healthy 升级、SQLite/初始化/非目标资源/Panel restart、旧 `rollback_failed` 第三次 repair 从原 immutable image ID 补回 Junimo 并保持 steam-auth container/stopped 状态，以及升级后 Stop 空 Compose 存档上传成功与受控失败清理。演练只用于验证当前工作树，metadata 中的 revision 是演练前基线，不可替代最终干净 `main` 的自动候选证明。
 - 演练期间先后暴露并修复了候选夹具问题：DinD `apk` TLS 抖动改为同一必需工具集三次有界重试；原受控失败会进入产品真实 20 分钟 readiness，改为缺失且禁止自动创建的 bind source 立即触发 Compose Up 失败；旧事务 E2E 调整到会占用恢复 ownership 的受控失败之前；Compose 的 `$line` 正确转义为 `$$line`；Junimo IPC 夹具改为真实 `/tmp/smapi-input` 且 EOF 后重新打开。每次都保留产品真实超时、API 和终态断言，没有降低门禁。
 - 最终提交 `3acf3ff8ceed7c0fb848fbf2e7d2c12ff3194478` 推送后，首个自动候选 `31883713810` 在 selected code gates 失败并于镜像构建前停止：Linux runner 中真实 Docker helper 以 root 创建提取树，Actions 用户在原子 rename 和 TempDir cleanup 均得到 `permission denied`。修复不是跳过 integration，而是让非 Windows helper 在静态校验后把目标树递归归还当前 Panel 进程的纯数值 UID/GID，并在 integration 中增加宿主写入/删除探针。任务专属 DinD 已用 root daemon + UID 1000 Go/Panel 精确复现并通过该 integration（5.42 秒），随后该包默认 test（27.90 秒）、vet/build 通过；失败候选没有构建、推送 candidate、创建 tag 或改动正式仓库。
-- 剩余阻断项仅为最终 commit、自动候选 run/artifact/digest、自动 tag/正式 workflow、三仓六引用、正式版本接口、GitHub Release 与发布后证据回填；任一失败仍须修复后再继续。
+- 最终修复提交 `56c437004b51763e77d12ffd9b716f39224d7b00` 推送并精确等于 `origin/main` 后，自动候选 `31884242692` 于 `2026-08-15T12:17:52Z..12:26:37Z` 成功（job 8 分 42 秒）。统一门禁执行兼容清单 20 项、部署脚本、默认 Go test/vet/build、Docker/updater integration、Junimo runtime 真实 integration、41,889,142 B SMAPI 真实下载、前端 17 项状态测试/audit/build和网站 build；runtime/公开文档路径变化使对应长门禁被选择，manifest 输入未变化使远程制品验证按脚本自动跳过，没有人工降级。并行 Compatibility `31884242697` 于 `12:17:52Z..12:19:57Z` 成功。
 
-# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 发布专项矩阵（2026-08-15，pending candidate）
+## 不可变候选、升级 E2E 与自动发布
+
+- 候选证明 artifact `release-candidate-0.4.18-56c437004b51`（artifact ID `9246912273`，484 B）固定 version=`0.4.18`、previous=`0.4.17`、commit=`56c437004b51763e77d12ffd9b716f39224d7b00`、build date=`2026-08-15T12:18:12Z`、local image ID=`sha256:5d2d3c7ce75f6a9d72387b69035791df394cb34cc2b08e7670a05c32347aa8c8`、candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.4.18-56c437004b51` 和 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`。同一候选完成 fresh health/version/setup/restart，随后导入隔离 DinD，没有为升级链重建第二份镜像。
+- `v0.4.17 → 0.4.18` 真实 Panel Web 链先把同一目标引用指向 unhealthy 派生对象，得到 `failed_rolled_back/health_check_failed` 并恢复旧 Panel、SQLite、初始化状态、Panel 哨兵和非目标游戏容器/volume；再把引用原子恢复到上述精确候选，完成 check/dry-run/管理员确认/apply、预期断线重连、版本/commit、数据保持和 Panel restart。升级后的新 Panel 继续构造 v0.4.17 风格、已失败 2 次的 `rollback_failed`，删除原可信 tag 后第 3 次公开 repair 仍从清单 immutable image ID 补回 Junimo、保持 auth 容器 ID 和 stopped 状态并清除 recovery；随后公开 Stop 产生 0 Compose 容器/空 stdout，存档上传返回 `202/jobId/operationId`，受控 maintenance 失败终止后实例、容器和网络清理正确。
+- 自动 Tag workflow `31884612425` 于 `12:26:39Z..12:26:53Z` 成功创建 annotated `v0.4.18`；tag object=`01f2e52a140e404fbfbbeccd1a7c287ce40910bc`，解引用精确等于候选 commit，tagger time=`2026-08-15T12:26:48Z`。没有人工创建、移动或补推 tag。
+- 正式提升 workflow `31884620508` 于 `12:26:50Z..12:28:26Z` 成功。它重新验证候选证明、tag/main、digest 与 OCI identity，以 `skopeo --all --preserve-digests` 原样提升 exact，冒烟一个正式 exact 后才提升三仓 `latest` 并创建 Release；全程没有重新 build。GitHub Release `v0.4.18` 于 `2026-08-15T12:28:22Z` 发布，为 latest、非 draft、非 prerelease。
+
+## 发布后独立核验与资源清理
+
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.18` 与 `latest` 六个公开引用逐一用 Buildx 读取，全部精确等于候选 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`。从 GHCR 不可变 digest 回拉的镜像 label 为 version=`0.4.18`、revision=`56c437004b51763e77d12ffd9b716f39224d7b00`、created=`2026-08-15T12:18:12Z`。
+- 独立正式镜像使用任务专属 data volume 启动；首次和 `docker restart` 后均为 Docker health=`healthy`、`/health.status=ok`、database=`ok`、`/api/version=0.4.18`、完整 commit、build date=`2026-08-15T12:18:12Z`，`/api/setup/status.initialized=false`。容器与 volume 在 owner label 复核后终态均为 0。
+- Release 四项资产与 API digest、`v0.4.18` tag 源逐字节一致：`run.sh`=`7263bfa323b2bf4eb94674bde9c77a57a8b86734c606055c9cdef2fc1e130787`、`migrate-fnos.sh`=`90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`、`repair-junimo-0.3.5.sh`=`13a07708d23e02c002c979eef28639bc2fe283a2e5988e228afc0c068f51cd0e`、`repair-junimo-upgrade.sh`=`4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`。下载目录在校验后逐文件清理，正式冒烟容器/卷、候选 DinD/Compose/网络/卷和本地演练资源均无残留；未执行 prune，也未触碰生产数据。
+
+## v0.4.18 官网版本同步（2026-08-15，post-release docs-only）
+
+- 官网首页和 changelog 已切换到 v0.4.18，公开说明只使用上述正式发布证据：停服空 Compose 存档导入、Control-only JunimoServer 物化/旧人工事务恢复、共享模态和最近控制命令分页。该提交只改 Markdown 与长期文档，不改变候选内容、annotated tag、三仓 digest、`latest`、版本接口或 Release 资产，也不得触发候选重建。
+- VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900 和 390×844 从首页真实点击到 `/changelog.html`，首页 v0.4.18、日志 v0.4.18/v0.4.17/v0.4.16 顺序和三组正文全部命中，root/body 横向溢出、framework overlay、console warn/error 均为 0。docs-only 推送后的 Pages/Compatibility 与线上复核在该提交完成后继续跟踪。
+
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 发布专项矩阵（2026-08-15，released in v0.4.18）
 
 - 变更清单：修复 `v0.4.17` 在 Panel Stop 已成功 `docker compose down` 后，`ComposePsStrict` 把退出 0 的空 stdout 当成探针错误，导致上传事务在 ownership/journal 前被 Web fallback 误报为 `save_in_progress`。修复仅将“命令成功 + 空 stdout”解释为 0 services，并新增 Docker integration 及升级后 Web E2E；公开上传 API、前端、Junimo/Control/runtime manifest、数据库和部署格式不变。候选脚本仅为一次性 DinD 补充 `zip` fixture 工具。
 - 受影响链路：`POST .../saves/upload-commit-and-start → ImportSaveAndStart pre-ownership gate → ComposePsStrict → saveImportServerStoppedStrict`，以及复用 strict probe 的 maintenance/Phase A/安全 cleanup 停机证明。没有改动 Compose Up/Down、存档内容、token/journal 结构或运行栈镜像。
@@ -44,7 +62,7 @@
 | 资源清理 | integration 使用唯一前缀 Compose project，测试后容器和网络归零；升级 E2E 的受控 maintenance 容器立即退出，必须验证 job 失败终止、实例恢复 stopped 且项目容器/网络归零；本地 Go 门禁资源按精确 owner 校验后归零。 |
 
 - 本地门禁：Linux 定向 `go test ./internal/docker ./internal/games/stardew_junimo -count=1`，串行全量 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build -o /tmp/anxi-panel ./cmd/panel`，以及宿主 Docker 全套 `go test -tags=integration ./internal/docker -count=1 -v` 全部通过；新增真实空集合 E2E 与既有 runtime/updater integration 同轮通过，测试后对应容器和网络归零。`release-candidate.sh` 与升级 E2E 的 `bash -n`、ShellCheck 在只读仓库挂载的 Alpine 任务容器中通过，容器归零。
-- 候选选择：产品后端和候选脚本路径变化，必须执行统一代码门禁、`go test -tags=integration ./internal/docker`、候选镜像 fresh/restart、上一正式版 Web unhealthy 回滚和 healthy 升级，并在升级后的 Panel 真实执行 Stop 空集合上传专项。runtime manifest、SMAPI/Junimo 实现、Control 和网站内容未变，对应远程制品/SMAPI 长链按 `scripts/run-release-gates.sh` 路径差异自动跳过；不得跳过新增 Docker integration 或升级后 Web E2E。预期自动候选版本为上一正式版 `v0.4.17` 的补丁递增版，最终版本、commit、build date、run、digest、实际耗时与资源清理须在候选/正式流程结束后回填。
+- 候选结果：产品后端、Junimo materialization、候选脚本、前端与公开文档路径变化，统一代码门禁、Docker/updater integration、Junimo runtime/SMAPI 真实长链、网站 build、候选 fresh/restart、`v0.4.17` Web unhealthy 回滚和 healthy 升级均被自动选择；manifest 输入未变化的远程制品验证按脚本跳过。升级后的 Panel 真实执行 Stop 空集合上传专项并清理受控失败，最终身份、run、digest 与资源证据见本文件顶部。
 
 # v0.4.17 官网版本同步（2026-08-15，post-release docs-only）
 

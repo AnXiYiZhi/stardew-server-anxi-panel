@@ -1,10 +1,16 @@
-# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1 联调契约（2026-08-15，completed，待发布）
+# v0.4.18 跨端发布结果（2026-08-15，released）
+
+- 存档导入的公开 DTO、错误码和前端提交流程保持不变；后端把成功且空 stdout 的 Compose 查询识别为 0 services。运行栈 repair/apply DTO 只增加稳定的内部失败码，Control-only 事务会独立物化宿主 JunimoServer；共享 body Portal 与本地分页不增加 API 请求或后端字段。
+- 最终候选 `31884242692` 从 `v0.4.17` 通过公开 update check/dry-run/apply 完成 unhealthy 回滚与 healthy 升级；升级后的 production bundle、旧 `rollback_failed` 第三次 repair 和空 Compose 存档上传均通过。Compatibility `31884242697`、自动 Tag `31884612425`、正式提升 `31884620508` 成功。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.4.18/latest` 六引用统一 digest=`sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`。独立正式镜像首次/重启均为 Docker healthy、`/health`/database ok、版本/完整 commit/build date 精确、setup initialized=false；GitHub latest Release 为正式 `v0.4.18`，四项资产与 tag 源一致。
+
+# RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1 联调契约（2026-08-15，released in v0.4.18）
 
 - `GET/POST /api/instances/:id/junimo-update*` 的请求与响应结构不变；repair/apply 可能新增稳定 `rollbackCode=rollback_repair_junimo_mod_failed`。Control-only 不再表示“完全不碰 JunimoServer”：只有宿主组件通过目标版本、UniqueID、DLL、普通文件和无 symlink 校验时才跳过，缺失/损坏会从选定目标 image 事务化补齐，auth 容器和 steam-session 仍保持不变。
 - 已由旧版本写入 `rollback_failed`、且清单显示 server image 未变/Junimo 未替换的实例，在本补丁中点击现有“修复：恢复旧版后升级”时，后端可从清单绑定的原 immutable server image ID 补齐组件，先通过原版本验收，再重新检测和创建新事务；前端不得自行删除状态、恢复目录或减少 repairAttempts。
 - 候选升级后专项必须构造 server/auth 已是推荐 tag、旧 Control、宿主 JunimoServer 缺失的实例，确认 SMAPI 缺依赖的旧故障可由新 Panel 的公开 repair/apply 路径收敛为 succeeded；同时断言 auth 容器 ID/认证卷保持、恢复材料按成功终态清理。无法提取原 image、路径映射失败、manifest/DLL 不合法仍 fail closed 并保留材料。
 
-# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 联调契约（2026-08-15，completed，未发布）
+# SAVE-IMPORT-COMPOSE-EMPTY-SET-1 联调契约（2026-08-15，released in v0.4.18）
 
 - `POST /api/instances/:id/saves/upload-commit-and-start` 的请求、202 响应、错误码和管理员权限不变。Panel Stop 使用 `docker compose down` 后，`docker compose ps --all --format json` 成功返回空 stdout 代表该项目当前没有容器；后端必须把它作为空服务集合并继续既有 server stopped 判定，不能误映射成 `save_in_progress`。
 - 非零退出、非空坏 JSON、条目缺 service/state、未知状态及真实运行中的 server 仍拒绝；前端无需增加字段或文案。候选升级测试已加入真实 `Panel Stop → 零 Compose 容器/空 stdout → upload-preview → commit 202/jobId/operationId`，并让受控 maintenance 容器立即退出以验证失败终态后的 stopped 恢复及 Docker 资源归零；该链必须在候选中通过。
