@@ -1,3 +1,17 @@
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 联调契约（2026-08-15，completed，未发布）
+
+- 公开 `upload-preview`、`upload-commit-and-start` 请求/响应与 hostHandling 形状不变；变化只在后台事务耐久边界。维护 runtime 只有在权威快照 journal、数据库 maintenance phase、`MaintenanceStarted=true` 三次持久化都成功后才会 `ComposeUp`，因此 phase 或 journal 故障会保持 `ComposeUp=0`，Web job 返回稳定失败而不会短暂暴露普通 running/invite 状态。
+- 自动失败恢复必须同时完成 ComposeDown(0)、strict fresh stop、`MaintenanceStarted=false + snapshot_restore_pending` journal、精确数据库快照恢复和 `snapshot_restored` journal。缺任一证据时 Web 继续得到 `import_recovery_required`/busy 语义，owned upload token、journal、bootstrap/staged target 都保留，取消接口不能把 pending/manual recovery 误当成可安全清理。
+- Phase A 新增内部 `phaseAFifoWriteAttempted` 写前证据，不进入公开 DTO。该位为 false 且两个 upstream flag 均 false时，pre-submit 失败会安全停机并恢复原状态；该位为 true 而 submitted receipt 尚未持久化时，Panel 重启只会停机并保持人工恢复，不会二次写 FIFO、恢复普通离线状态或释放 token。
+- Panel 重启分类覆盖 start intent、ComposeUp returned、Down 后未清旗、清旗后未恢复四个窗口。前三类在恢复前执行无缓存停机证明，最后一类再次 strict probe 后幂等恢复；任何 Docker/JSON/journal/storage 不确定性都 fail closed。Web pending-upload、首次安装提交、取消与错误映射专项及后端全量回归通过；未提交、未发布。
+
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 联调契约（2026-08-15，completed，未发布）
+
+- `POST /api/instances/:id/saves/upload-commit-and-start` 的请求体、`202/jobId/operationId/saveName`、权限和前端流程不变。数据库处于 `game_installed/save_required/ready_to_start/stopped` 只代表允许尝试；driver 必须在接管上传前用无缓存 `docker compose ps --all --format json` 证明真实 server 已稳定终止。
+- 只有项目无 server，或所有 server 条目均为 `exited/dead`，才允许继续。任一 `running`、`Status` 以 `Up` 开头、`restarting`、`paused`、`created`、`removing`、空/未知 state、坏/`null`/缺字段 JSON、命令错误或输出截断均 fail closed。普通页面继续走缓存 `ComposePs`，不会因安全门禁收紧而增加轮询或改变展示 DTO。
+- strict 失败发生在 runtime asset、journal、bootstrap/staged target 与 token ownership 之前：Web 返回既有 409 导入错误并把尚未 owned 的 reservation 释放回 `available`，上传源仍可重试。maintenance 启动前、`ComposeUp` 前、失败 `ComposeDown` 后与 owned cancel cleanup 前均重复独立 strict 证明；不得以 cache invalidation 或等待 TTL 代替。
+- Web 传入的实例目录与数据库权威 `DataDir` 不一致时，driver 返回 `import_recovery_required`，不在任一目录创建/删除事务数据。专项 Web 回归固定 `game_installed + 普通 ComposePs=exited + strict=fresh running`：commit 必须 409、token 回到 available、staged source 保留且无 import journal。该任务未提交、未发布，后续候选仍需把这条链纳入升级后真实 Docker E2E。
+
 # v0.4.18 跨端发布结果（2026-08-15，released）
 
 - 存档导入的公开 DTO、错误码和前端提交流程保持不变；后端把成功且空 stdout 的 Compose 查询识别为 0 services。运行栈 repair/apply DTO 只增加稳定的内部失败码，Control-only 事务会独立物化宿主 JunimoServer；共享 body Portal 与本地分页不增加 API 请求或后端字段。
@@ -1473,3 +1487,36 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - 本地 Docker fixture 的 `/health` 立即返回 `{"status":"ok","logged_in":false,"accounts":[]}`，`/steam/ready` 故意阻塞 60 秒。运行组件 apply 在短时间内成功，请求日志只出现 `/health`，证明没有触发登录端点；Docker health 同时可保持 `unhealthy`，仍不影响纯服务契约判断。
 - 同一 fixture 用受控 mode 覆盖 `/health` 连接失败、短超时、404、500 和坏 JSON，全部得到对应稳定错误码并进入 `failed_rolled_back`；回滚后的旧 auth 再次以 `/health` 验收。另有单元表覆盖空 body、非 JSON、字段缺失、status null/非 ok、logged_in null/string/number、accounts null/object/string/number。
 - 真实 `1.5.0-anxi.2` opt-in 只验证镜像 ID/digest 和 `/health` 严格契约，不配置或读取真实 Steam 账号。本文此前关于 Runtime/SMAPI apply 使用 `/steam/ready` 的段落属于旧版本历史行为，已由本节取代；实例在线诊断中的 `/steam/ready` 说明仍然有效。
+
+# PLAYER-AUTH-MODES-1 跨端契约（2026-08-15）
+
+## 配置接口
+
+- 管理员 `GET /api/instances/:id/config/player-auth` 返回：
+  - `mode: "none" | "global" | "role"`、不透明 `revision`；
+  - `globalPassword` 只在 `global` 模式返回；
+  - `roles[] = {roleId,name,configured,status?}`，以及 configured/unconfigured/orphaned 计数；
+  - `runtimeMode/runtimeRevision/restartRequired/rolePasswordPatchReady/rolePasswordPatchDetail`。
+- 管理员 `PUT` 请求为 `{expectedRevision,mode,globalPassword?,rolePasswordUpdates?,rolePasswordRemovals?}`。角色更新项固定为 `{roleId,password}`；响应与 GET 相同。revision 缺失或已过期返回 HTTP 409 / `player_auth_revision_conflict`，调用方必须重新 GET 后让用户确认，不得静默覆盖。
+- 启用 `global` 必须有 1–128 字符密码；启用 `role` 必须存在非主机角色，且当前所有角色都有持久配置或本次 update。非法模式、空/超长角色密码、角色不存在、重复更新分别以稳定 400 错误返回；损坏的角色密钥/payload/内部 guard 以 409 fail closed，不自动降级为开放服务器。
+- 兼容接口 `GET/PUT .../config/server-password` 仅服务旧消费者：非空 PUT 映射 `global`，空 PUT 映射 `none`；当前为 `role` 时 GET/PUT 均返回 `409 role_auth_mode_active`，绝不把内部 guard 当服务器密码返回。
+
+## 保存、重启与运行时
+
+- 配置写入成功不重启容器。运行中的 Control 仍使用启动时环境，因此前端必须依据 `restartRequired` 显示待重启；不能把 PUT 200 解释成当前玩家已应用新规则。
+- `GET /api/instances/:id/password-status` 保留 Junimo 的 `enabled/authenticatedCount/pendingCount/timeoutSeconds/maxAttempts`，并增加 `configuredMode/configuredRevision/runtimeMode/runtimeRevision/restartRequired/rolePasswordPatchReady/rolePasswordPatchDetail`。服务器未运行仍返回既有 `409 server_not_running`。
+- Control 只在 `role` 模式 patch Junimo 的 `TryAuthenticate` 输入，不跳过原方法。正确角色密码被重写为内部 guard，错误输入被重写为 fail-closed sentinel；全服和不设密码模式不改变上游认证。Panel 批准待认证玩家传入内部 guard，必须继续通过同一上游方法完成传送。
+- 角色密码、HMAC verifier、实例密钥、内部 guard 和完整 `.env` 都不得进入 API、审计 metadata、Docker 命令结果、支持包或错误日志。审计 `instance_player_auth_update` 只记录 mode 及更新/删除/已配置数量。
+
+## 发布前联调矩阵
+
+- 正常路径：none、global、两个不同角色各自密码、Panel 批准认证。
+- 关键边界：A 密码不能登录 B；缺少角色配置不能启用；错误密码仍累计 Junimo attempts/timeout；角色改名后密码仍有效；存档切换后的 orphan 记录不冒充当前角色。
+- 恢复/幂等：同 revision 重复提交的第二个请求冲突；保存后未重启显示 configured/runtime 不一致；重启后 revision 一致且 patch ready；损坏 key/payload/guard 不开放访问。
+- 升级：旧 `SERVER_PASSWORD` 实例升级后自动显示 global；无密码实例显示 none；上一正式版经 Panel Web 更新到候选后重新执行角色模式 E2E，并确认旧 API 在 role 模式不泄露 guard。
+
+# 玩家列表 `lastSeen` 跨端契约（2026-08-15）
+
+- `GET /api/instances/:id/players` 中的 `players[].lastSeen` 表示“最后一次真实在线时间”，不是面板最后一次扫描到存档角色的时间。只存在于存档 XML、从未被在线快照观察到的离线角色必须省略该字段。
+- SQLite `player_roster.last_seen_at` 是内部名册观测时间，仍可随轮询更新；只有在线快照会更新 `last_online_at`，API 仅从后者回填 `lastSeen`。前端不得用响应 `updatedAt`、浏览器当前时间或名册观测时间补造该字段。
+- 真正在线过的角色离线后继续返回最后一次 `last_online_at`；本修复不改变玩家状态、在线人数、位置、收入或 API shape，也不需要迁移/清洗已有数据库。

@@ -1822,3 +1822,35 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - 若未来后端支持服务端分页，应同时提供总条数和稳定游标/页码，并明确 5 秒轮询时当前页的更新策略；在接口变更前不要把本地切片和服务端分页混用。
 - 候选镜像和 `v0.4.17` Web 升级后的 production bundle 已抽验该分页，并随 `v0.4.18` 正式发布。
+
+# FE-PLAYER-AUTH-MODES-1 接手记录（2026-08-15，代码完成，待正式发布）
+
+## 改了什么
+
+- 桌面/移动服务器控制入口统一改为“玩家加入保护”，共用 `PlayerAuthSettingsDialog.tsx`。旧桌面 hook 和移动页重复 state/handler 已移除。
+- 弹窗包含 none/global/role 三张模式卡；global 编辑统一密码，role 展示当前角色 configured 状态并只提交本次填写的密码。已有角色密码不回显，留空保持不变。
+- 底部运行状态同时展示 configured/runtime 模式、待重启、Control role patch 和 Junimo 认证人数。角色列表无数据、未配齐、密码过长、revision 冲突都有具体方向性提示。
+- 新增独立 `PlayerAuthSettingsDialog.css`，桌面三列、620px 以下单列；角色列表内部滚动且无页面横向溢出。ModalPortal 继续统一焦点和背景隔离。
+
+## 影响文件与验证
+
+- 主要文件：`types.ts`、`api.ts`、`PlayerAuthSettingsDialog.{tsx,css}`、桌面 `pages/ServerControlPage.tsx`、移动 `MobileControlPage.tsx`、`qa-layout-main.tsx`、`scripts/test-responsive-layout.ts`；删除 `useServerPassword.ts`。
+- Node 22 Linux 容器执行全部 17 项前端状态/布局测试与 production build 通过。Browser 在 1280×720 验证 680px 桌面 role 弹窗，在 390×844 验证 358px 移动 role/global 弹窗；页面横向溢出均为 0，长角色列表只滚动弹窗。
+
+## 下一步注意事项
+
+- PUT 200 只表示配置已保存，不能改成“立即生效”；运行中必须以 `restartRequired` 提醒重启。revision conflict 后应重新打开/读取，不能自动用旧草稿覆盖。
+- 不要在前端缓存或回显角色密码，也不要把 `roleId` 作为可编辑字段。设备绑定目前不在范围内，禁止用浏览器本地标识冒充游戏客户端授权。
+- 正式发布前与后端一起跑真实双客户端交叉密码、Panel approve、重启生效和旧实例升级；完成前本节保持“待正式发布”。
+
+# FE-PLAYER-LAST-SEEN-SEMANTICS-1 接手记录（2026-08-15）
+
+## 改了什么
+
+- 桌面 `PlayersPage.tsx` 的第三列表头由“在线时长”改为“在线 / 最近活动”，避免同一列在线时显示持续时长、离线时显示最后在线时间却仍被理解成单一时长。
+- 页面没有新增客户端时间推断；`lastSeen` 仍完全来自玩家 API。后端不再为从未在线的存档角色返回该字段后，桌面和移动端都会自然隐藏错误的“上次 今天 HH:mm”。
+
+## 验证与注意事项
+
+- Dockerfile 同款 Node 22 Alpine 洁净 `npm ci && npm run build` 通过，Vite 8.0.16 完成 140 modules production build。
+- 若以后调整文案或移动端布局，不得用 `playersData.updatedAt` 或浏览器当前时间补齐缺失的 `lastSeen`；字段缺失代表没有可信的真实在线历史。

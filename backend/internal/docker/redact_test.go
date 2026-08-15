@@ -11,6 +11,9 @@ func TestRedactString(t *testing.T) {
 		"Password: plain",
 		"STEAM_PASSWORD=steam-secret",
 		"VNC_PASSWORD=vnc-secret",
+		"SERVER_PASSWORD=server-secret",
+		"SAP_ROLE_AUTH_KEY=role-key-secret",
+		"SAP_ROLE_PASSWORDS_B64=role-config-secret",
 		"refresh_token=refresh-secret",
 		"app_ticket=ticket-secret",
 		`{"STEAM_REFRESH_TOKEN":"json-refresh","STEAM_APP_TICKET":"json-ticket"}`,
@@ -19,7 +22,7 @@ func TestRedactString(t *testing.T) {
 	}, "\n")
 
 	output := RedactString(input)
-	for _, secret := range []string{"plain", "steam-secret", "vnc-secret", "refresh-secret", "ticket-secret", "json-refresh", "json-ticket", "token-secret", "top-secret", "flag-secret"} {
+	for _, secret := range []string{"plain", "steam-secret", "vnc-secret", "server-secret", "role-key-secret", "role-config-secret", "refresh-secret", "ticket-secret", "json-refresh", "json-ticket", "token-secret", "top-secret", "flag-secret"} {
 		if strings.Contains(output, secret) {
 			t.Fatalf("expected %q to be redacted from %q", secret, output)
 		}

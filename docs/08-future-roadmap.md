@@ -1,3 +1,21 @@
+# 2026-08-15 完成未发布：存档导入维护事务耐久闭环
+
+- [x] maintenance phase、原始实例快照与 `MaintenanceStarted` 改为 write-ahead 门禁；任一数据库/journal 写失败均禁止 ComposeUp 或进入 recovery required，不再吞掉 LastError、清旗、快照恢复错误。
+- [x] 精确恢复 state、driver phase、`state_message` NULL/空/普通三态及 payload 原始字节；空 phase/payload 不经过 storage 默认值归一化。
+- [x] 失败恢复固定为 Down(0) → strict fresh stop → journal 清旗/pending → 快照恢复 → journal restored；缺任一步都保留 ownership/人工恢复证据，Reconcile 与 cleanup 不得降级为普通 stopped。
+- [x] Phase A FIFO 调用前增加耐久 attempt 位；仅明确未尝试、未提交、未确认的 pre-submit 失败自动停机恢复，模糊 FIFO 结果只停机并保持 manual recovery/单次提交语义。
+- [x] Panel 重启恢复覆盖 start-intent 前后、ComposeUp 返回、Down 后清旗前、清旗后快照恢复前四个崩溃窗口；可能部分启动先 Down+strict，可能 FIFO 提交不自动恢复/清理。
+- [x] maintenance/Phase A/transaction/Web 专项、Linux 受影响包与全量 test、vet、build 通过；任务未提交、未推送、未打 tag、未发布。首次全量与同工作树 Control 0.3.3 制品更新交叠读到旧摘要，稳定后同命令重跑通过，不作为产品放宽理由。
+
+# 2026-08-15 完成未发布：存档导入严格无缓存停机证明
+
+- [x] `ComposePsStrict` 保持独立 `--all` fresh 调用，拒绝命令失败、输出截断、坏 JSON、`null`、缺字段与未知 Docker state；普通 `ComposePs` 的短缓存和 UI 语义不变。
+- [x] server 停机分类收紧为仅“无 server”或“全部 `exited/dead`”通过；`running/Up/restarting/paused/created/removing/unknown/空状态` 和多个副本中的任一非稳定项全部拒绝。
+- [x] ownership/journal/runtime asset 前、maintenance 初检、`ComposeUp` 前、失败 `ComposeDown` 后和 owned cleanup 前全部使用 strict；cache invalidation 仅维持普通查询一致性，不再被当作停机证明。
+- [x] 数据库权威 `DataDir` 贯穿 maintenance 错误记录与后续事务；提交/cleanup 遇到调用方目录不一致时在文件或 token 变更前返回 recovery required。
+- [x] 真实 Docker Client cache/parser 受控回归、driver 状态矩阵、`game_installed` fresh-running 零副作用和 Web reservation 释放回归通过；任务专属 Linux 最终默认全量 test、串行复核、vet、build 均通过。
+- [ ] 后续正式候选需按 `docs/09-image-build.md` 本任务专项矩阵执行升级后真实 Docker E2E；本次明确不提交、不推送、不打 tag、不发布镜像或 Release。
+
 # 2026-08-15 已上线：官网更新日志同步 v0.4.18
 
 - [x] 官网首页版本角标、入口摘要和 `CURRENT RELEASE` 切换到 v0.4.18；changelog 置顶新增停服空 Compose 导入、Control-only Junimo 恢复、共享确认框与控制命令分页，v0.4.17 保留为历史。
@@ -1996,3 +2014,20 @@ Multi Game Mode later
 - [x] 表格横向溢出限制在内部滚动容器，右侧栏窄宽度下分页按钮保持完整可见。
 - [x] 全部 17 项前端状态/布局测试、production build 和 967×732 Browser 真实翻页通过，console error/warn 为 0。
 - [x] 候选镜像及 `v0.4.17` Web 升级后的 production bundle 已抽验 JobsLogs/Players 分页契约；随自动 `v0.4.18` tag 与同 digest 正式镜像发布。
+
+# PLAYER-AUTH-MODES-1（2026-08-15，代码完成，待正式发布）
+
+- [x] 玩家加入保护改为显式 `none / global / role`，旧 `SERVER_PASSWORD` 安装自动兼容为 global/none。
+- [x] 角色密码按 `UniqueMultiplayerID` 绑定，只持久化每实例 HMAC verifier；内部 Junimo guard、密钥与 payload 纳入 Docker/API/审计脱敏边界。
+- [x] 新增 driver 原子配置事务、revision 乐观锁、当前角色完整性校验和管理员 `GET/PUT /config/player-auth`；旧密码 API 在 role 模式 fail closed。
+- [x] Control `0.3.3` 通过 Harmony prefix 只重写 `TryAuthenticate` 输入，继续复用上游 Junimo 的 attempts、timeout、隔离小屋、清理和传送；损坏配置与未知角色拒绝认证，Panel 批准 guard 保持可用。
+- [x] 桌面/移动端共用“玩家加入保护”弹窗，支持三模式、角色状态、密码重置、待重启与补丁状态；1280×720 和 390×844 Browser QA 无横向溢出。
+- [x] Go 聚焦测试、C# 策略契约、真实 game-data Control 0-error 编译、前端 responsive-layout 与 production build 已通过。
+- [ ] 正式候选前完成真实双客户端联机矩阵：各自密码、交叉失败、错误次数/超时、Panel 批准、未重启/重启 revision、旧实例迁移和上一正式版 Web 升级后复验；完成前不 tag、不提升正式镜像。
+- [ ] 设备 ID 绑定暂不实现。浏览器 device ID 无法证明 Stardew 客户端身份，且指纹可复制/清理；若以后需要免密码设备授权，应先设计有客户端参与的签名 challenge，不用 localStorage/Cookie 伪装安全绑定。
+
+# PLAYER-LAST-SEEN-SEMANTICS-1（2026-08-15，已完成）
+
+- [x] 修复存档名册观测时间被误当作最后在线时间：API `lastSeen` 只读取 `last_online_at`，从未上线角色不再显示“上次 今天 HH:mm”。
+- [x] 保留 `last_seen_at` 作为内部观测审计，不迁移或清洗数据库；真正在线过的角色离线后仍保留真实最后在线时间。
+- [x] 增加真实 SQLite 双轮 `ListPlayers` 回归，Linux Stardew/storage 全包测试与 Node 22 production build 通过；桌面列名改为“在线 / 最近活动”。

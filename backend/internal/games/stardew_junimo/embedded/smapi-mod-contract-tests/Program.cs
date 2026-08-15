@@ -24,6 +24,52 @@ foreach (var code in new[] { "warp_failed", "kick_failed", "already_authenticate
 
 Expect(PlayerCommandOutcomes.Succeeded(command, "test", "1", "Leah"), CommandStatuses.Succeeded, "ok");
 
+string Base64Url(byte[] value) => Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+var roleKey = Enumerable.Range(1, 32).Select(value => (byte)value).ToArray();
+var internalGuard = RolePasswordPolicy.DeriveInternalGuard(roleKey);
+var rolePayload = new RolePasswordPayload
+{
+    SchemaVersion = 1,
+    Roles = new Dictionary<string, RolePasswordRecord>(StringComparer.Ordinal)
+    {
+        ["2"] = new()
+        {
+            Name = "Leah",
+            Verifier = RolePasswordPolicy.ComputeVerifier(roleKey, "2", "leah-secret"),
+        },
+        ["3"] = new()
+        {
+            Name = "Sam",
+            Verifier = RolePasswordPolicy.ComputeVerifier(roleKey, "3", "sam-secret"),
+        },
+    },
+};
+var encodedRolePayload = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(rolePayload, ContractJson.Options));
+var rolePolicy = RolePasswordPolicy.Parse("role", "revision-1", Base64Url(roleKey), encodedRolePayload, internalGuard);
+if (!rolePolicy.Valid || rolePolicy.Mode != RolePasswordPolicy.RoleMode || rolePolicy.Revision != "revision-1")
+    throw new InvalidOperationException($"valid role password policy was rejected: {rolePolicy.Detail}");
+if (rolePolicy.RewritePassword(2, "leah-secret") != internalGuard)
+    throw new InvalidOperationException("the matching role password was not rewritten to the internal guard");
+if (rolePolicy.RewritePassword(3, "leah-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    throw new InvalidOperationException("one role's password authenticated a different role");
+if (rolePolicy.RewritePassword(4, "leah-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    throw new InvalidOperationException("an unconfigured role was not rejected");
+if (rolePolicy.RewritePassword(2, internalGuard) != internalGuard)
+    throw new InvalidOperationException("the trusted Panel approval guard was not preserved");
+var malformedRolePolicy = RolePasswordPolicy.Parse("role", "revision-2", "bad", "bad", internalGuard);
+if (malformedRolePolicy.Valid || malformedRolePolicy.RewritePassword(2, "leah-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    throw new InvalidOperationException("a malformed role configuration did not fail closed");
+if (malformedRolePolicy.RewritePassword(2, internalGuard) != RolePasswordPolicy.InvalidPasswordSentinel)
+    throw new InvalidOperationException("a malformed role configuration accepted the internal guard instead of failing closed");
+rolePayload.Roles["2"].Verifier = "bad";
+var malformedVerifierPayload = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(rolePayload, ContractJson.Options));
+var malformedVerifierPolicy = RolePasswordPolicy.Parse("role", "revision-2", Base64Url(roleKey), malformedVerifierPayload, internalGuard);
+if (malformedVerifierPolicy.Valid || malformedVerifierPolicy.RewritePassword(2, "leah-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    throw new InvalidOperationException("a malformed role verifier did not fail closed");
+var globalPolicy = RolePasswordPolicy.Parse("global", "revision-3", null, null, "global-secret");
+if (!globalPolicy.Valid || globalPolicy.RewritePassword(2, "any-password") != "any-password")
+    throw new InvalidOperationException("global mode unexpectedly rewrote the upstream password");
+
 Expect(BroadcastOutcomeValidator.Validate(command, "", true, true)!, CommandStatuses.Failed, "empty_message");
 Expect(BroadcastOutcomeValidator.Validate(command, "hello", false, true)!, CommandStatuses.Failed, "world_not_ready");
 Expect(BroadcastOutcomeValidator.Validate(command, "hello", true, false)!, CommandStatuses.Failed, "chat_unavailable");

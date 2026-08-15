@@ -1,3 +1,46 @@
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1 候选前门禁记录（2026-08-15，completed，未发布）
+
+## 变更清单与受影响链路
+
+- 仅修改 save-import maintenance/Phase A/recovery、storage 精确快照契约和测试/文档；公开 API、Compose 模板、镜像引用、runtime manifest、Control/SMAPI 制品、数据库 schema 与前端 bundle 不因本任务变化。
+- 启动门禁固定为 0600 权威快照 journal → maintenance phase DB → `MaintenanceStarted=true/start_intent` journal → ComposeUp；成功后补 `compose_up_returned` 与 `runtime_ready_persisted`。失败恢复固定为 ComposeDown(0) → `ComposePsStrict` fresh stop → `MaintenanceStarted=false/snapshot_restore_pending` → exact storage restore → `snapshot_restored`。
+- Phase A 在 FIFO 前持久化 attempt 位；pre-submit 零 attempt 可自动停机恢复，attempt 后缺 submitted receipt 一律停机并保留 manual recovery/ownership，禁止二次 FIFO、staged/token cleanup。
+
+## 本任务专项矩阵与结果
+
+- 正常/边界：四种允许离线 state、message NULL/空/普通、空 phase/payload、raw payload bytes、runtime ready、邀请码隐藏、单次 FIFO、activation/durable save 回归。
+- 故障/恢复：phase 写库、MaintenanceStarted journal、LastError journal、ComposeDown、strict unknown/error、清旗 journal、snapshot storage、四个 Panel 崩溃窗口以及 FIFO 结果模糊；所有不能完成整条恢复证明的场景均保留 recovery required。
+- Windows 精确专项与 Web 提交/取消通过；任务专属 `golang:1.25-alpine` 容器中受影响四包通过，最终 `go test ./... -count=1` 通过；宿主 `go vet ./...`、`go build ./...` 通过。首次全量恰逢保留的无关 Control 0.3.3 DLL 与 manifest 先后更新，编译读到旧摘要而失败；当前两者 SHA256 一致后以同一命令重跑通过。
+- 本任务不构建/推送候选或正式镜像，不提交、不推送、不打 tag、不创建 Release。后续候选仍须在升级后的 Panel 上覆盖上述故障矩阵；不得把本地自动化当作真实升级发布证据。
+
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1 候选前门禁记录（2026-08-15，completed，未发布）
+
+## 变更清单与受影响链路
+
+- Docker Client 的普通 `ComposePs`、1.5 秒 cache、UI/状态页接口保持不变；`ComposePsStrict` 继续固定执行 `docker compose ps --all --format json`，新增 stdout/stderr truncation、JSON `null` 和未知 Docker state 拒绝。成功且未截断的空 stdout 仍保留 Compose Down 后 0 services 的真实契约。
+- 存档导入仅允许无 server 或全部 server=`exited/dead`；`running/Up/restarting/paused/created/removing/unknown/空状态` 全部 fail closed。安全调用点覆盖 pre-ownership、maintenance 初检、pre-ComposeUp、失败 ComposeDown 终态和 owned cleanup。
+- 数据库权威 `DataDir` 贯穿 journal/staging/maintenance/cleanup；调用方目录不一致时提交与 cleanup 直接返回 `import_recovery_required`。公开 API、SQLite schema、Compose 模板、runtime manifest、Control/SMAPI 制品、部署格式和前端 bundle 均不变。
+
+## 本任务专项矩阵
+
+| 维度 | 场景 | 结果/后续候选要求 |
+| --- | --- | --- |
+| 正常路径 | fresh 为 `exited/dead`；项目无 server；Compose Down 成功空 stdout | strict 通过；既有真实 Docker empty-project integration 继续保留 |
+| cache/新鲜度 | cache stopped/fresh running；cache running/fresh exited | 前者拒绝且零事务副作用；后者必须读到 fresh exited，不等待 TTL |
+| 解析边界 | 坏 JSON、`null`、缺 service/state、未知 state、stdout 截断 | 全部返回 strict error；不得转换成空 services |
+| 状态安全 | `running/Up/restarting/paused/created/removing/unknown/空`；多个 server 中混入任一非稳定项 | 全部拒绝；只有全部 `exited/dead` 通过 |
+| 权限/所有权 | `game_installed` 但 fresh server 运行；Web commit | journal、runtime asset、bootstrap、staged target 与 ownership 均不变，Web reservation 释放回 available |
+| 数据完整性 | 调用方 `DataDir` 与数据库权威目录不同 | 提交/owned cleanup 在变更前 recovery required；maintenance 失败 journal 只写权威目录 |
+| 幂等/恢复 | pre-ComposeUp 复验、失败 ComposeDown 复验、owned cancel cleanup | 每个边界重新运行 strict；普通 cache invalidation 不替代证明 |
+| 升级后 E2E | 上一正式版升级得到的新 Panel 执行 cache/fresh 冲突和失败清理 | 本次未发布；下一候选必须按差异选择并执行，不得以 fake driver 或连续普通 `ComposePs` 代替 |
+
+## 本地验证与资源清理
+
+- Windows 定向 `go test` 覆盖 Docker Client、save-import 与 Web 提交并通过；任务专属 `golang:1.25-alpine` 容器中，同一专项与 Docker/Junimo/Web 三包全量通过。受控测试使用真实 `docker.Client` 的 cache、command runner、limited buffer 与 JSON parser，只把 docker 可执行文件替换为确定性 fixture，不绕过生产解析层。
+- 首次三包全量仅挂 `backend/`，两条既有 Nexus extension ZIP 测试因缺仓库根资产失败；改为完整仓库 `/workspace:ro` 后三包全绿。第一次默认并行 `go test ./... -count=1` 又在 Docker Desktop 资源竞争下触发既有 `TestControlRuntimeContextCancellationDoesNotCleanup` 时序失败；该测试单项通过，`go test -p 1 ./... -count=1` 全绿，随后用户要求的最终默认 `go test ./... -count=1` 也全绿（Stardew 57.881 秒、Web 46.576 秒）。两次环境/时序诊断没有修改产品或降低断言。
+- `go vet ./...` 与 `go build ./...` 在同一 Linux 工具链和任务专属 Go module/build cache 中通过。容器均带 `com.openai.codex.owner=SAVE-IMPORT-STRICT-OFFLINE-PROBE-1` 且使用 `--rm`；交付前精确删除两个任务 cache volume 并复核容器、网络、volume 为零。
+- 本任务不创建候选、不提交/推送、不打 tag、不提升 `latest`、不发布镜像或 GitHub Release。上述矩阵是下一正式候选的专项输入，不是发布证明。
+
 # v0.4.18 正式候选与发布结果（2026-08-15，released）
 
 ## 变更清单与受影响链路
@@ -1802,3 +1845,27 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - `v0.4.17` 已完成自动候选、上一正式版真实 Web 升级、unhealthy 回滚、annotated tag、三仓 digest 提升、正式镜像版本/重启和 GitHub Release 门禁，没有兼容性或正式发布阻塞。证据回填属于 tag 后文档提交，不移动 `v0.4.17`，也不改变已发布候选 digest。
 - steam-auth 兼容范围仍只包含已审计 `1.5.0-anxi.2`；增加新 tag 前必须先固定源 revision、真实 `/health` 契约与 digest，再更新双 allowlist 和测试。不得恢复 `/health -> /steam/ready` fallback，也不得把 `logged_in=false` 升级为运行组件发布阻塞。
 - 首次上传离线集合继续严格限定为 `game_installed / save_required / ready_to_start / stopped`。任何状态扩展、cleanup 自动化或 journal schema 变化都必须重新覆盖 strict Compose 实停、上游提交边界、ownership/fingerprint 和精确状态恢复，不能用这次发布证据替代新变更的门禁。
+
+# PLAYER-AUTH-MODES-1 发布前记录（2026-08-15，尚未创建候选）
+
+## 本版变更与受影响链路
+
+- 新增 IP 直连的 `none / global / role` 玩家加入保护、角色 HMAC verifier、revision 原子配置、Control `TryAuthenticate` 输入补丁、运行时 revision/patch 状态和桌面/移动共享设置弹窗。
+- 受影响链路为：Panel API → stardew_junimo driver → `.env` 原子替换 → Compose 环境 → Control 0.3.3 → Junimo `PasswordProtectionService.TryAuthenticate` → lobby/attempts/timeout/warp；以及运行状态反向从 `status.json` → driver → API → 前端。
+- 运行栈从 `control-0.3.2` 升到 `control-0.3.3`，Control DLL SHA-256=`7b304fc8c8e5913ba11d3081f48ba06b2cb38b35a125c705e2a09ac22132ab1e`。server、steam-auth、game、SDK 和 SMAPI 版本/digest 未变化。任何正式候选都必须把 Control-only required runtime update、停服/备份/重启/实载版本与回滚纳入真实 Docker E2E。
+
+## 本版专项矩阵
+
+| 类别 | 必测场景 | 放行证据 |
+| --- | --- | --- |
+| 正常路径 | none、global、两个不同角色各自登录、Panel 批准认证 | 双客户端游戏内结果、Junimo 认证计数、Control runtime revision/patch ready |
+| 权限安全 | 普通用户不能读写；A 密码不能登录 B；旧 API 在 role 模式 409；API/日志/支持包/Docker 输出无 key/verifier/guard | HTTP 与脱敏断言、交叉登录失败、支持包扫描 |
+| 关键边界 | 未配置全角色、角色不存在、超长密码、角色改名、存档切换 orphan、损坏 key/payload/guard | 稳定错误码、fail-closed、不改变当前运行配置 |
+| 幂等与恢复 | revision 冲突；原子写入无临时残留；保存后未重启显示 pending；重启后 revision 一致；Control patch 失败 | 并发测试、磁盘检查、重启/故障注入 |
+| 数据完整性 | 旧 `SERVER_PASSWORD` 自动迁移为 global；空密码为 none；角色密码不明文落盘；Panel SQLite/存档/非目标 volume 不变 | 升级前后 API、`.env` 脱敏投影、SQLite integrity 与资源快照 |
+| 资源清理 | Control-only apply 成功/回滚的任务容器、network、bind、volume 精确归零 | owner label 和精确资源名清单 |
+
+## 当前 pre-candidate 证据与剩余门禁
+
+- 已完成：在干净 `HEAD` 验证卷只叠加本功能差异后，Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过；C# 纯策略契约；`.NET 6 SDK + stardew_game-data` 标准 Control 实编译（0 errors，1 个既有 analyzer warning）；Node 22 Linux 全部 17 项前端状态/布局回归与 production build；1280×720、390×844 Browser 视觉 QA。
+- 尚未完成：运行栈/SMAPI/Control required-update Docker integration、真实双客户端认证、候选 fresh install、上一正式版 Web 升级、unhealthy 回滚、digest 提升与正式冒烟。当前不得创建/移动/push `v*` tag，不得更新 `latest` 或创建 GitHub Release。

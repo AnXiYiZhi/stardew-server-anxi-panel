@@ -143,6 +143,10 @@ func writeEnvFile(path string, fields map[string]string) error {
 		"STEAM_AUTH_PORT",
 		"SERVER_TPS",
 		"SERVER_FPS",
+		"SAP_PLAYER_AUTH_MODE",
+		"SAP_PLAYER_AUTH_REVISION",
+		"SAP_ROLE_AUTH_KEY",
+		"SAP_ROLE_PASSWORDS_B64",
 		"SERVER_PASSWORD",
 		"MAX_LOGIN_ATTEMPTS",
 		"AUTH_TIMEOUT_SECONDS",
@@ -174,7 +178,39 @@ func writeEnvFile(path string, fields map[string]string) error {
 			sb.WriteByte('\n')
 		}
 	}
-	return os.WriteFile(path, []byte(sb.String()), 0o600)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create .env directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".env-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary .env: %w", err)
+	}
+	tmpPath := tmp.Name()
+	keepTemp := true
+	defer func() {
+		_ = tmp.Close()
+		if keepTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("chmod temporary .env: %w", err)
+	}
+	if _, err := tmp.WriteString(sb.String()); err != nil {
+		return fmt.Errorf("write temporary .env: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temporary .env: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary .env: %w", err)
+	}
+	if err := replaceEnvFile(tmpPath, path); err != nil {
+		return fmt.Errorf("replace .env: %w", err)
+	}
+	keepTemp = false
+	return nil
 }
 
 func quoteEnvValue(value string) string {
@@ -218,6 +254,10 @@ func EmptyEnvTemplate() map[string]string {
 		"STEAM_AUTH_PORT":                        "3001",
 		"SERVER_TPS":                             "60",
 		"SERVER_FPS":                             "0",
+		"SAP_PLAYER_AUTH_MODE":                   "",
+		"SAP_PLAYER_AUTH_REVISION":               "",
+		"SAP_ROLE_AUTH_KEY":                      "",
+		"SAP_ROLE_PASSWORDS_B64":                 "",
 		"SERVER_PASSWORD":                        "",
 		"MAX_LOGIN_ATTEMPTS":                     "3",
 		"AUTH_TIMEOUT_SECONDS":                   "120",

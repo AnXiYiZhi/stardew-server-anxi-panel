@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { stateLabel, formatDate } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
 import { ServerSummaryCard } from '../ServerSummaryCard'
@@ -7,7 +7,7 @@ import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
 import { useServerQuickBackup } from '../useServerQuickBackup'
 import { useServerRestartSchedule } from '../useServerRestartSchedule'
 import { useServerVNCSettings } from '../useServerVNCSettings'
-import { useServerPassword } from '../useServerPassword'
+import { PlayerAuthSettingsDialog } from '../PlayerAuthSettingsDialog'
 import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
 import { useServerFestival } from '../useServerFestival'
 import { useServerJoja } from '../useServerJoja'
@@ -33,6 +33,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
   // ── 状态推导 ──────────────────────────────────────────────────────────────
   const activeSaveName = dashboardData.saves?.activeSaveName ?? ''
   const isAdmin = user.role === 'admin'
+  const [playerAuthOpen, setPlayerAuthOpen] = useState(false)
   const {
     state,
     isRunning,
@@ -96,25 +97,6 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     handleToggleVNCDisplay,
     handleOpenVNCControl,
   } = useServerVNCSettings({ isAdmin, isRunning })
-
-  const {
-    passwordOpen,
-    passwordDraft,
-    passwordVisible,
-    passwordLoading,
-    passwordSaving,
-    passwordError,
-    passwordMessage,
-    passwordStatus,
-    passwordStatusLoading,
-    passwordStatusError,
-    openPasswordSettings,
-    closePasswordSettings,
-    togglePasswordVisible,
-    updatePasswordDraft,
-    loadPasswordStatus,
-    handleSaveServerPassword,
-  } = useServerPassword({ isAdmin })
 
   const {
     runtimeSettingsOpen,
@@ -562,13 +544,13 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             key="server-password-settings"
             className="sd-btn-tan sd-btn--lg"
             disabled={!isAdmin}
-            title={isAdmin ? '设置玩家加入服务器所需的密码' : '仅管理员可设置服务器密码'}
-            onClick={() => void openPasswordSettings()}
+            title={isAdmin ? '设置不设密码、全服统一密码或角色独立密码' : '仅管理员可设置玩家加入保护'}
+            onClick={() => setPlayerAuthOpen(true)}
           >
             <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.settings} alt="" />
             <span className="sd-server-quick-copy">
-              <strong>服务器密码设置</strong>
-              <span>配置玩家加入密码</span>
+              <strong>玩家加入保护</strong>
+              <span>全服或角色独立密码</span>
             </span>
           </button>
           <button
@@ -823,92 +805,8 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         </ModalPortal>
       ) : null}
 
-      {passwordOpen ? (
-        <ModalPortal
-          key="password"
-          className="sd-confirm-overlay"
-          ariaLabelledBy="server-password-settings-title"
-          onEscape={passwordSaving ? undefined : closePasswordSettings}
-        >
-          <div className="sd-confirm-dialog">
-            <h3 id="server-password-settings-title">服务器密码设置</h3>
-
-            {passwordLoading ? (
-              <p>正在读取当前密码配置...</p>
-            ) : (
-              <>
-                <label className="sd-schedule-field">
-                  <span>加入密码</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      className="sd-input"
-                      type={passwordVisible ? 'text' : 'password'}
-                      value={passwordDraft}
-                      placeholder="留空表示不设置密码"
-                      maxLength={128}
-                      onChange={(e) => updatePasswordDraft(e.target.value)}
-                      disabled={passwordSaving}
-                    />
-                    <button
-                      type="button"
-                      className="sd-btn-tan"
-                      onClick={togglePasswordVisible}
-                    >
-                      {passwordVisible ? '隐藏' : '显示'}
-                    </button>
-                  </div>
-                </label>
-
-                <div className="sd-confirm-warning">
-                  该密码仅在服务器容器启动时生效（JunimoServer 不支持运行时热改）。保存后需要重启服务器容器才会真正生效；玩家加入时需要在游戏内输入 <code>!login 密码</code>。
-                </div>
-
-                {passwordError ? <div className="sd-ov-error">{passwordError}</div> : null}
-                {passwordMessage ? <div className="sd-srv-result">{passwordMessage}</div> : null}
-
-                <div className="sd-confirm-actions">
-                  <button className="sd-btn-tan" onClick={closePasswordSettings} disabled={passwordSaving}>
-                    关闭
-                  </button>
-                  <button
-                    className="sd-btn-green"
-                    onClick={() => void handleSaveServerPassword()}
-                    disabled={passwordSaving}
-                  >
-                    {passwordSaving ? '保存中…' : '保存'}
-                  </button>
-                </div>
-
-                <div className="sd-schedule-summary" style={{ marginTop: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong>密码保护状态（来自 JunimoServer）</strong>
-                    <button
-                      type="button"
-                      className="sd-btn-tan"
-                      onClick={() => void loadPasswordStatus()}
-                      disabled={passwordStatusLoading || !isRunning}
-                    >
-                      {passwordStatusLoading ? '读取中…' : '刷新'}
-                    </button>
-                  </div>
-                  {!isRunning ? (
-                    <div>服务器未运行，无法读取密码保护状态。</div>
-                  ) : passwordStatusError ? (
-                    <div className="sd-ov-error">{passwordStatusError}</div>
-                  ) : passwordStatus ? (
-                    <>
-                      <div>是否启用：{passwordStatus.enabled ? '已启用' : '未启用'}</div>
-                      <div>已认证玩家：{passwordStatus.authenticatedCount}　待认证玩家：{passwordStatus.pendingCount}</div>
-                      <div>认证超时：{passwordStatus.timeoutSeconds} 秒　最大失败次数：{passwordStatus.maxAttempts}</div>
-                    </>
-                  ) : (
-                    <div>暂无数据。</div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </ModalPortal>
+      {playerAuthOpen ? (
+        <PlayerAuthSettingsDialog isRunning={isRunning} onClose={() => setPlayerAuthOpen(false)} />
       ) : null}
 
       {runtimeSettingsOpen ? (

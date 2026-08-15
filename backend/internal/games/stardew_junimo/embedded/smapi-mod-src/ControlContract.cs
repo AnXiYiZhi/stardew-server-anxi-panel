@@ -257,6 +257,10 @@ public sealed class RuntimeStatus
     public DateTimeOffset UpdatedAt { get; set; }
     public bool PasswordBridgeAvailable { get; set; }
     public string PasswordBridgeDetail { get; set; } = "";
+    public string PlayerAuthMode { get; set; } = "none";
+    public string PlayerAuthConfigRevision { get; set; } = "";
+    public bool RolePasswordPatchAvailable { get; set; }
+    public string RolePasswordPatchDetail { get; set; } = "";
     public bool WarpHomeBridgeAvailable { get; set; }
     public string WarpHomeBridgeDetail { get; set; } = "";
 	public string NewGameTransactionId { get; set; } = "";

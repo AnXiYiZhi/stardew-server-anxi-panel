@@ -1,3 +1,19 @@
+# SAVE-IMPORT-MAINTENANCE-DURABILITY-1：维护阶段、journal 与快照恢复闭环（2026-08-15，completed，未发布）
+
+- `runImportMaintenance` 现在采用严格 write-ahead 顺序：先把数据库权威实例的 state、`state_message` NULL/空/普通值、driver phase 与 payload 原始字节编码进 operation 自有的 0600 journal；再持久化 `state=stopped / driverPhase=save_import_maintenance`；再写 `MaintenanceStarted=true + start_intent_persisted`；只有三步都成功才允许 `ComposeUp`。`updateImportMaintenancePhase`、`restoreInstanceState`、LastError 与所有清旗/恢复 journal 写入错误均沿调用链返回，不再只记日志或吞掉。
+- 成功 `ComposeUp` 后立即写 `compose_up_returned`，完整 readiness 证据写入后再写 `runtime_ready_persisted`。任何启动/readiness/phase 失败只在 `ComposeDown` 成功且 exit code=0、`ComposePsStrict` fresh 证明全部 server 稳定终止、journal 成功写入 `MaintenanceStarted=false + snapshot_restore_pending`、数据库精确快照恢复成功、journal 成功写入 `snapshot_restored` 后，才回到原离线状态。任一环失败都返回 `import_recovery_required`，并让 maintenance flag 或 pending marker 继续阻止 Reconcile/cleanup 把现场伪装成普通 stopped。
+- `RestoreInstanceStateSnapshot` 明确是无默认值的恢复专用 storage 契约：不会把空 phase 改为 `empty`，不会把空 payload 改为 `{}`，并保留 `state_message` 的 NULL、有效空串、普通字符串三态。journal 新快照使用 base64 保存 message/phase/payload 字节，避免 JSON UTF-8 归一化改变原始 payload；旧 schema-1 字段仍可只读恢复。
+- Phase A 在真正调用 FIFO writer 前先持久化 `phaseAFifoWriteAttempted=true`。pre-submit 失败只有在该位为 false、`UpstreamSubmitted=false`、`UpstreamConfirmed=false` 且 stage 未到 submitted 时，才执行 Down + strict probe + 清旗 + 精确快照恢复；writer intent 写入后无论 FIFO 返回何种错误都视为可能提交，停止私有 runtime 但保留 maintenance ownership/manual recovery，禁止 staged/token 自动 cleanup。Panel 启动恢复覆盖 start intent、ComposeUp returned、Down 后未清旗、清旗后未恢复四个窗口；可能发生部分 ComposeUp 的窗口会先 Down 再 strict，可能发生 FIFO 写入的窗口只停机并保持 manual recovery。
+- 专项覆盖 phase/journal/LastError 写入失败、Down/strict/清旗/快照恢复失败、四种离线 state、message 三态、原始字节、Phase A 零 FIFO pre-submit、FIFO 模糊提交以及四个重启崩溃点。Docker/storage/Junimo/Web 专项、Linux 受影响四包、任务专属 Linux 全量 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过；首次全量在同工作树的 Control 0.3.3 DLL 与 manifest 并发更新窗口读到旧摘要而失败，二者稳定一致后以同一精确命令重跑通过。本任务未提交、未推送、未打 tag、未发布。
+
+# SAVE-IMPORT-STRICT-OFFLINE-PROBE-1：存档导入严格无缓存停机证明（2026-08-15，completed，未发布）
+
+- Docker Client 保留普通 `ComposePs` 的约 1.5 秒缓存、坏 JSON debug 降级与 UI/状态页语义；安全路径继续使用独立 `ComposePsStrict`，每次直接执行 `docker compose ps --all --format json`。strict 不读写普通 cache，命令失败、stdout/stderr 截断、非空坏 JSON、JSON `null`、缺 service/state 或 Docker 未知 state 均返回错误；Compose Down 后“命令成功且未截断的空 stdout”及合法 `[]` 仍表示 0 services，避免重新引入 v0.4.18 的空项目回归。
+- `saveImportServerStoppedStrict` 现在只把 server 不存在，或所有 server 条目均为 `exited/dead`，认作稳定停机。任一 `running`、`Status=Up...`、`restarting`、`paused`、`created`、`removing` 均直接拒绝；空/未知状态返回不可分类错误。函数遍历全部 server 条目，不能由第一个 exited 副本遮住后续活跃或未知副本。
+- 严格探针固定覆盖五个安全边界：`ImportSaveAndStart` 在 runtime asset、journal、staging/bootstrap 与 token ownership 之前；`runImportMaintenance` 初始权威检查；`ComposeUp` 前最终复验；maintenance/Phase A 失败后的 `ComposeDown` 终态证明；owned token cleanup 前。`ComposeUp/Down` 仍失效普通 cache，但 cache invalidation 不作为这些门禁的停机证据。
+- 数据库实例读取成功后，maintenance 的错误 journal、staging/Phase A/activation/durable-save 与恢复均使用数据库权威 `DataDir`；调用方目录与权威目录不一致时，提交和 owned cleanup 在任何文件删除、journal 创建或 ownership 转移前返回 `import_recovery_required`。影响 `internal/docker/compose.go`、存档导入 maintenance/transaction、相应测试与 Web 提交回归；公开上传 DTO、数据库 schema 和普通状态接口不变。
+- 回归覆盖 cache stopped/fresh running、cache running/fresh exited、坏/空值/缺字段/未知/截断 JSON、完整状态矩阵、多 server、`game_installed` 实际运行时零 journal/零 ownership/零 bootstrap、Web token 释放及权威目录隔离。任务专属 Linux 容器中的 Docker Client/Junimo/Web 专项、三包全量、最终默认 `go test ./... -count=1`、串行复核、`go vet ./...` 与 `go build ./...` 均通过；未提交、未推送、未打 tag、未发布。
+
 # v0.4.18 后端发布状态（2026-08-15，released）
 
 - `RUNTIME-UPDATE-JUNIMO-MATERIALIZE-1` 与 `SAVE-IMPORT-COMPOSE-EMPTY-SET-1` 已随 `v0.4.18@56c437004b51763e77d12ffd9b716f39224d7b00` 正式发布。最终候选 `31884242692`、Compatibility `31884242697`、自动 Tag `31884612425` 与正式提升 `31884620508` 全部成功；首个候选 `31883713810` 在构建镜像前发现 Linux 非 root ownership 问题并停止，修复后没有跳过对应 integration。
@@ -1992,3 +2008,32 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 内置推荐 `steam-auth-cn:1.5.0-anxi.2` 的精确源 revision 与真实镜像均已验证：`/health` 返回 HTTP 200 和 `status/logged_in/accounts`，且不会触发登录；`/steam/ready` 才执行登录与 ticket。Panel Git 历史运行栈 manifest 只出现过 `.2`。运行栈 inspection 与兼容矩阵现以显式 allowlist 固定该已审计契约；未审计 tag 返回 `unsupported/auth_health_contract`，拒绝自动升级且绝不静默回退 `/steam/ready`。
 - 受控 Docker fixture 让 `/health` 立即返回 `logged_in=false`、让 `/steam/ready` 阻塞 60 秒，并通过请求日志证明维护验收从未访问 ready；另覆盖 `/health` 不可达、短超时、404、500、坏 JSON、目标 auth 发生变化、Control-only/auth 未变化、最终目标复验、旧版回滚复验与 digest 不匹配。真实镜像 opt-in 不使用真实 Steam 凭据，只验证 `/health` 契约。
 - 2026-08-14 已通过：严格 parser 单测；Go 定向单测；两组 Docker integration；真实 `1.5.0-anxi.2` opt-in；兼容矩阵 20 项单测与 manifest validate；Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...`。任务专属容器、镜像、网络和 volume 清理后均为 0。尚未构建正式候选、打 tag、创建 Release 或推送正式镜像。
+
+# PLAYER-AUTH-MODES-1：IP 直连的全服密码与角色独立密码（2026-08-15，代码完成，待正式发布）
+
+## 配置与安全模型
+
+- 玩家加入保护现在有显式 `none / global / role` 三种模式。旧实例没有 `SAP_PLAYER_AUTH_MODE` 时仍按 `SERVER_PASSWORD` 是否为空推断 `global / none`，不会因为升级突然改变行为。
+- `.env` 新增 `SAP_PLAYER_AUTH_MODE`、`SAP_PLAYER_AUTH_REVISION`、`SAP_ROLE_AUTH_KEY`、`SAP_ROLE_PASSWORDS_B64`。角色身份使用存档中的数值 `UniqueMultiplayerID`，角色名只作展示；改名不会让密码失效，同一密码也不能跨角色使用。
+- 角色密码不保存明文。后端生成每实例 32 字节随机密钥，并只存 `HMAC-SHA256(key, "sap-role-password-v1\0" + roleId + "\0" + password)` 的 base64url verifier。角色模式下 `SERVER_PASSWORD` 改为由同一密钥派生的内部随机 guard；旧密码 API 在角色模式返回 `409 role_auth_mode_active`，Docker 输出脱敏也覆盖 guard、密钥和 verifier payload。全服与角色密码均限制为 1–128 个 Unicode 字符并拒绝控制字符，避免无法通过游戏聊天输入或破坏 `.env` 行结构。
+- `.env` 更新由读取合并改为同目录 `0600` 临时文件、文件 `fsync`、原子替换；Windows 使用 `MoveFileEx(REPLACE_EXISTING | WRITE_THROUGH)`。角色模式切换、角色 verifier、内部 guard 和 revision 在一次替换中提交，避免半套配置被容器启动读到。
+
+## Driver、API 与 Control Mod
+
+- `stardew_junimo.Driver` 新增 `GetPlayerAuthConfig` / `UpdatePlayerAuthConfig`。更新必须携带 `expectedRevision`，冲突返回 `409 player_auth_revision_conflict`；启用角色模式前会通过现有 `ListPlayers` 合并在线快照、缓存和存档 XML，并要求所有当前非主机角色已有或本次设置密码。更新继续进入 driver mutation ownership，不在 Web 层直接写 Stardew 状态。
+- 新接口为管理员专用 `GET/PUT /api/instances/:id/config/player-auth`。响应只返回角色 `configured` 状态和计数，不返回角色密码/verifier/密钥；PUT 只提交本次 `rolePasswordUpdates`/`rolePasswordRemovals`。旧 `GET/PUT .../config/server-password` 保留兼容，分别映射显式 `global` 或 `none`。
+- Control `0.3.3` 新增 Harmony prefix，补丁目标仍由既有 `PasswordProtectionBridge` 解析出的 Junimo `TryAuthenticate(long,string)` 提供。角色密码正确时把本次输入重写为内部 guard，错误、串角色、角色缺失或配置损坏时重写为不可能命中的 NUL sentinel；之后仍由上游 Junimo 执行失败次数、超时、隔离小屋清理和认证成功传送。Panel 的“批准认证”命令传入精确内部 guard，继续可用。
+- `status.json` 新增 `playerAuthMode/playerAuthConfigRevision/rolePasswordPatchAvailable/rolePasswordPatchDetail`。`GET /password-status` 和新配置接口都返回 configured/runtime mode、revision、`restartRequired` 与补丁状态，前端能区分“已保存”和“当前进程已生效”。
+- 运行栈 identity 更新为 `control-0.3.3`，两份 manifest 同步为 `0.3.3`；嵌入 DLL SHA-256 为 `7b304fc8c8e5913ba11d3081f48ba06b2cb38b35a125c705e2a09ac22132ab1e`。项目显式从 `$(GamePath)/smapi-internal/0Harmony.dll` 取得编译引用且不复制私有副本，运行时继续复用 SMAPI 已加载的 Harmony。
+
+## 验证与后续边界
+
+- Go 聚焦测试覆盖旧配置推断、角色隔离 verifier、无明文落盘/响应、全角色完整性、revision 冲突、旧 API 兼容、运行状态合并和 Docker 脱敏；干净基线叠加本功能差异后的 Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。纯 C# 契约覆盖正确角色、串角色、缺失角色、Panel guard、损坏配置 fail-closed 与 global 旁路。
+- Control 已在 `.NET 6 SDK + stardew_game-data` 上按标准 `/p:GamePath=/game /p:EnableModDeploy=false` 真实编译，结果为 0 errors；只有既有 ModBuildConfig analyzer 编译器版本 warning。前端与跨端验证见 `docs/03-frontend.md`、`docs/06-integration.md`。
+- 尚未完成真人客户端的联机 E2E。正式候选必须至少验证：两个角色分别正确登录、交叉密码失败、失败次数/超时仍由 Junimo 生效、Panel 批准认证仍成功、保存后未重启显示 pending、重启后 revision/补丁 ready，以及从上一正式版通过 Web 升级后同一链路再次通过。
+
+# PLAYER-LAST-SEEN-SEMANTICS-1：从未在线角色的时间语义修复（2026-08-15）
+
+- 玩家 API 的 `lastSeen` 现在只允许来自 SQLite 名册的 `last_online_at`，不再回退到通用的 `last_seen_at`。后者只表示面板最近从 Control、缓存或存档 XML 观察到该名册项，不能证明玩家登录过。
+- 存档 XML 补出的离线角色即使被连续轮询并写入名册，也会继续省略 `lastSeen`；真正在线过的角色离线后仍保留最后一次 `last_online_at`。现有污染数据无需清理，因为这类记录的 `last_online_at` 本来就是空值，部署修复后会自动停止展示假时间。
+- `players_test.go` 使用真实 SQLite 连续执行两轮 `ListPlayers`，同时断言 API 始终不返回假 `lastSeen`、内部 `last_seen_at` 继续推进且 `last_online_at` 保持为空。Linux 容器中的 Stardew 玩家包与 storage 包全量测试通过。

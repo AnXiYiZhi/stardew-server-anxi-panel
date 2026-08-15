@@ -3,16 +3,13 @@ import {
   sendSay,
   getRestartSchedule,
   updateRestartSchedule,
-  getInstanceServerPassword,
-  updateInstanceServerPassword,
-  getInstancePasswordStatus,
   getInstanceServerRuntimeSettings,
   updateInstanceServerRuntimeSettings,
   triggerFestivalEvent,
   enableJojaRoute,
   requestGameSave,
 } from '../../../api'
-import type { InstancePasswordStatus, RestartSchedule, ServerRuntimeSettings } from '../../../types'
+import type { RestartSchedule, ServerRuntimeSettings } from '../../../types'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
 import type { StardewPageProps } from '../stardew-routes'
@@ -20,6 +17,7 @@ import './MobileControlPage.css'
 import { submitAndWaitForPlayerCommand } from '../player-command-results'
 import { useGameLanguage } from '../useGameLanguage'
 import { STARDEW_GAME_LANGUAGES } from '../game-languages'
+import { PlayerAuthSettingsDialog } from '../PlayerAuthSettingsDialog'
 
 type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
 
@@ -85,17 +83,8 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [scheduleSaved, setScheduleSaved] = useState<string | null>(null)
 
-  // ── 服务器密码设置 ──────────────────────────────────────────────────────
-  const [passwordOpen, setPasswordOpen] = useState(false)
-  const [passwordDraft, setPasswordDraft] = useState('')
-  const [passwordVisible, setPasswordVisible] = useState(false)
-  const [passwordLoading, setPasswordLoading] = useState(false)
-  const [passwordSaving, setPasswordSaving] = useState(false)
-  const [passwordError, setPasswordError] = useState<string | null>(null)
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
-  const [passwordStatus, setPasswordStatus] = useState<InstancePasswordStatus | null>(null)
-  const [passwordStatusLoading, setPasswordStatusLoading] = useState(false)
-  const [passwordStatusError, setPasswordStatusError] = useState<string | null>(null)
+  // ── 玩家加入保护 ────────────────────────────────────────────────────────
+  const [playerAuthOpen, setPlayerAuthOpen] = useState(false)
 
   // ── 小屋与联机高级设置 ──────────────────────────────────────────────────
   const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false)
@@ -210,60 +199,6 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
       next.sort((a, b) => b - a)
       return { ...draft, warningMinutes: next }
     })
-  }
-
-  async function loadPasswordStatus() {
-    setPasswordStatusLoading(true)
-    setPasswordStatusError(null)
-    try {
-      const res = await getInstancePasswordStatus()
-      setPasswordStatus(res)
-    } catch (e) {
-      setPasswordStatus(null)
-      setPasswordStatusError(errorMessage(e))
-    } finally {
-      setPasswordStatusLoading(false)
-    }
-  }
-
-  async function openPasswordSettings() {
-    if (!isAdmin) return
-    setPasswordOpen(true)
-    setPasswordVisible(false)
-    setPasswordLoading(true)
-    setPasswordSaving(false)
-    setPasswordError(null)
-    setPasswordMessage(null)
-    try {
-      const res = await getInstanceServerPassword()
-      setPasswordDraft(res.serverPassword)
-    } catch (e) {
-      setPasswordError(errorMessage(e))
-      setPasswordDraft('')
-    } finally {
-      setPasswordLoading(false)
-    }
-    void loadPasswordStatus()
-  }
-
-  async function handleSaveServerPassword() {
-    if (passwordDraft.length > 128) {
-      setPasswordError('服务器密码不能超过 128 个字符')
-      setPasswordMessage(null)
-      return
-    }
-    setPasswordSaving(true)
-    setPasswordError(null)
-    setPasswordMessage(null)
-    try {
-      const res = await updateInstanceServerPassword(passwordDraft)
-      setPasswordDraft(res.serverPassword)
-      setPasswordMessage('密码已保存，需要重启服务器容器后才会生效。')
-    } catch (e) {
-      setPasswordError(errorMessage(e))
-    } finally {
-      setPasswordSaving(false)
-    }
   }
 
   async function openRuntimeSettings() {
@@ -464,13 +399,13 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
             type="button"
             className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
             disabled={!isAdmin}
-            title={isAdmin ? '设置玩家加入服务器所需的密码' : '仅管理员可设置服务器密码'}
-            onClick={() => void openPasswordSettings()}
+            title={isAdmin ? '设置不设密码、全服统一密码或角色独立密码' : '仅管理员可设置玩家加入保护'}
+            onClick={() => setPlayerAuthOpen(true)}
           >
             <img className="sd-mctrl-action-icon" src={ICONS.settings} alt="" />
             <span className="sd-mctrl-action-copy">
-              <strong>服务器密码设置</strong>
-              <span>配置玩家加入密码</span>
+              <strong>玩家加入保护</strong>
+              <span>全服或角色独立密码</span>
             </span>
           </button>
 
@@ -683,101 +618,13 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
         </ModalPortal>
       ) : null}
 
-      {/* ── 服务器密码设置弹窗 ───────────────────────────────────────────── */}
-      {passwordOpen ? (
-        <ModalPortal
-          className="sd-mctrl-dialog-overlay"
-          ariaLabelledBy="mobile-server-password-title"
-          onEscape={passwordSaving ? undefined : () => setPasswordOpen(false)}
-        >
-          <div className="sd-panel sd-mctrl-dialog">
-            <h3 id="mobile-server-password-title">服务器密码设置</h3>
-
-            {passwordLoading ? (
-              <p>正在读取当前密码配置...</p>
-            ) : (
-              <>
-                <label className="sd-mctrl-field">
-                  <span>加入密码</span>
-                  <div className="sd-mctrl-inline-row">
-                    <input
-                      className="sd-input"
-                      type={passwordVisible ? 'text' : 'password'}
-                      value={passwordDraft}
-                      placeholder="留空表示不设置密码"
-                      maxLength={128}
-                      onChange={(e) => {
-                        setPasswordDraft(e.target.value)
-                        setPasswordMessage(null)
-                      }}
-                      disabled={passwordSaving}
-                    />
-                    <button
-                      type="button"
-                      className="sd-btn-tan sd-mctrl-inline-btn"
-                      onClick={() => setPasswordVisible((v) => !v)}
-                    >
-                      {passwordVisible ? '隐藏' : '显示'}
-                    </button>
-                  </div>
-                </label>
-
-                <div className="sd-mctrl-warning">
-                  该密码仅在服务器容器启动时生效（JunimoServer 不支持运行时热改）。保存后需要重启服务器容器才会真正生效；玩家加入时需要在游戏内输入 !login 密码。
-                </div>
-
-                {passwordError ? <div className="sd-notice sd-notice--error sd-mctrl-notice">{passwordError}</div> : null}
-                {passwordMessage ? <div className="sd-notice sd-notice--ok sd-mctrl-notice">{passwordMessage}</div> : null}
-
-                <div className="sd-mctrl-dialog-actions">
-                  <button
-                    type="button"
-                    className="sd-btn-tan sd-mctrl-dialog-btn"
-                    onClick={() => setPasswordOpen(false)}
-                    disabled={passwordSaving}
-                  >
-                    关闭
-                  </button>
-                  <button
-                    type="button"
-                    className="sd-btn-green sd-mctrl-dialog-btn"
-                    onClick={() => void handleSaveServerPassword()}
-                    disabled={passwordSaving}
-                  >
-                    {passwordSaving ? '保存中…' : '保存'}
-                  </button>
-                </div>
-
-                <div className="sd-mctrl-summary sd-mctrl-summary-block">
-                  <div className="sd-mctrl-summary-head">
-                    <strong>密码保护状态（来自 JunimoServer）</strong>
-                    <button
-                      type="button"
-                      className="sd-btn-tan sd-mctrl-inline-btn"
-                      onClick={() => void loadPasswordStatus()}
-                      disabled={passwordStatusLoading || !isRunning}
-                    >
-                      {passwordStatusLoading ? '读取中…' : '刷新'}
-                    </button>
-                  </div>
-                  {!isRunning ? (
-                    <div>服务器未运行，无法读取密码保护状态。</div>
-                  ) : passwordStatusError ? (
-                    <div className="sd-notice sd-notice--error sd-mctrl-notice">{passwordStatusError}</div>
-                  ) : passwordStatus ? (
-                    <>
-                      <div>是否启用：{passwordStatus.enabled ? '已启用' : '未启用'}</div>
-                      <div>已认证玩家：{passwordStatus.authenticatedCount}　待认证玩家：{passwordStatus.pendingCount}</div>
-                      <div>认证超时：{passwordStatus.timeoutSeconds} 秒　最大失败次数：{passwordStatus.maxAttempts}</div>
-                    </>
-                  ) : (
-                    <div>暂无数据。</div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </ModalPortal>
+      {/* ── 玩家加入保护弹窗 ─────────────────────────────────────────────── */}
+      {playerAuthOpen ? (
+        <PlayerAuthSettingsDialog
+          isRunning={isRunning}
+          mobile
+          onClose={() => setPlayerAuthOpen(false)}
+        />
       ) : null}
 
       {/* ── 小屋与联机高级设置弹窗 ───────────────────────────────────────── */}

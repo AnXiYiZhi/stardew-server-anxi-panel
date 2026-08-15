@@ -1,0 +1,184 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
+namespace StardewAnxiPanel.Control;
+
+public sealed class RolePasswordPolicy
+{
+    public const string NoneMode = "none";
+    public const string GlobalMode = "global";
+    public const string RoleMode = "role";
+    public const string InvalidPasswordSentinel = "\0sap-role-auth-invalid";
+
+    private const int SchemaVersion = 1;
+    private const int KeyLength = 32;
+    private readonly byte[] roleKey;
+    private readonly Dictionary<string, RolePasswordRecord> roles;
+    private readonly string serverPassword;
+
+    private RolePasswordPolicy(
+        string mode,
+        string revision,
+        byte[] roleKey,
+        Dictionary<string, RolePasswordRecord> roles,
+        string serverPassword,
+        bool valid,
+        string detail)
+    {
+        Mode = mode;
+        Revision = revision;
+        this.roleKey = roleKey;
+        this.roles = roles;
+        this.serverPassword = serverPassword;
+        Valid = valid;
+        Detail = detail;
+    }
+
+    public string Mode { get; }
+
+    public string Revision { get; }
+
+    public bool Valid { get; }
+
+    public string Detail { get; }
+
+    public bool RequiresPatch => string.Equals(Mode, RoleMode, StringComparison.Ordinal);
+
+    public string InternalGuard => serverPassword;
+
+    public static RolePasswordPolicy LoadFromEnvironment()
+    {
+        return Parse(
+            Environment.GetEnvironmentVariable("SAP_PLAYER_AUTH_MODE"),
+            Environment.GetEnvironmentVariable("SAP_PLAYER_AUTH_REVISION"),
+            Environment.GetEnvironmentVariable("SAP_ROLE_AUTH_KEY"),
+            Environment.GetEnvironmentVariable("SAP_ROLE_PASSWORDS_B64"),
+            Environment.GetEnvironmentVariable("SERVER_PASSWORD"));
+    }
+
+    public static RolePasswordPolicy Parse(
+        string? rawMode,
+        string? rawRevision,
+        string? encodedKey,
+        string? encodedPayload,
+        string? serverPassword)
+    {
+        var password = serverPassword ?? "";
+        var mode = (rawMode ?? "").Trim().ToLowerInvariant();
+        if (mode.Length == 0)
+            mode = password.Length == 0 ? NoneMode : GlobalMode;
+        var revision = (rawRevision ?? "").Trim();
+        if (revision.Length == 0)
+            revision = "legacy-" + mode;
+
+        if (mode is not (NoneMode or GlobalMode or RoleMode))
+            return Invalid(mode, revision, password, "Unsupported player authentication mode.");
+        if (mode != RoleMode)
+            return new RolePasswordPolicy(mode, revision, Array.Empty<byte>(), new(), password, true, "OK");
+
+        try
+        {
+            var key = Base64UrlDecode(encodedKey ?? "");
+            if (key.Length != KeyLength)
+                return Invalid(mode, revision, password, "Role authentication key is missing or invalid.");
+            var payloadBytes = Base64UrlDecode(encodedPayload ?? "");
+            var payload = JsonSerializer.Deserialize<RolePasswordPayload>(payloadBytes, ContractJson.Options);
+            if (payload is null || payload.SchemaVersion != SchemaVersion || payload.Roles is null || payload.Roles.Count == 0)
+                return Invalid(mode, revision, password, "Role password configuration is missing or unsupported.");
+            foreach (var pair in payload.Roles)
+            {
+                if (!long.TryParse(pair.Key, NumberStyles.None, CultureInfo.InvariantCulture, out var roleId)
+                    || roleId <= 0
+                    || string.IsNullOrWhiteSpace(pair.Value.Verifier)
+                    || Base64UrlDecode(pair.Value.Verifier).Length != 32)
+                {
+                    return Invalid(mode, revision, password, "Role password configuration contains an invalid record.");
+                }
+            }
+            var expectedGuard = DeriveInternalGuard(key);
+            if (!SecureEquals(password, expectedGuard))
+                return Invalid(mode, revision, password, "Role authentication guard does not match SERVER_PASSWORD.");
+            return new RolePasswordPolicy(mode, revision, key, payload.Roles, password, true, "OK");
+        }
+        catch (Exception ex)
+        {
+            return Invalid(mode, revision, password, "Role password configuration could not be parsed: " + ex.Message);
+        }
+    }
+
+    public string RewritePassword(long playerId, string? providedPassword)
+    {
+        var provided = providedPassword ?? "";
+        if (!RequiresPatch)
+            return provided;
+
+        if (!Valid)
+            return InvalidPasswordSentinel;
+
+        // The Panel approval command supplies the real internal guard. Keeping
+        // this exact bypass means role mode still supports explicit admin approval.
+        if (SecureEquals(provided, serverPassword))
+            return provided;
+
+        var roleId = playerId.ToString(CultureInfo.InvariantCulture);
+        if (!roles.TryGetValue(roleId, out var record))
+            return InvalidPasswordSentinel;
+        var verifier = ComputeVerifier(roleKey, roleId, provided);
+        return SecureEquals(verifier, record.Verifier) ? serverPassword : InvalidPasswordSentinel;
+    }
+
+    public static string ComputeVerifier(byte[] key, string roleId, string password)
+    {
+        using var hmac = new HMACSHA256(key);
+        var payload = Encoding.UTF8.GetBytes("sap-role-password-v1\0" + roleId + "\0" + password);
+        return Base64UrlEncode(hmac.ComputeHash(payload));
+    }
+
+    public static string DeriveInternalGuard(byte[] key)
+    {
+        using var hmac = new HMACSHA256(key);
+        return "sap_" + Base64UrlEncode(hmac.ComputeHash(Encoding.UTF8.GetBytes("sap-junimo-internal-password-v1")));
+    }
+
+    private static RolePasswordPolicy Invalid(string mode, string revision, string serverPassword, string detail)
+        => new(mode, revision, Array.Empty<byte>(), new(), serverPassword, false, detail);
+
+    private static string Base64UrlEncode(byte[] value)
+        => Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static byte[] Base64UrlDecode(string value)
+    {
+        var normalized = value.Replace('-', '+').Replace('_', '/');
+        normalized += (normalized.Length % 4) switch
+        {
+            2 => "==",
+            3 => "=",
+            0 => "",
+            _ => throw new FormatException("Invalid base64url value."),
+        };
+        return Convert.FromBase64String(normalized);
+    }
+
+    private static bool SecureEquals(string left, string right)
+    {
+        var leftBytes = Encoding.UTF8.GetBytes(left);
+        var rightBytes = Encoding.UTF8.GetBytes(right);
+        return leftBytes.Length == rightBytes.Length
+            && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
+    }
+}
+
+public sealed class RolePasswordPayload
+{
+    public int SchemaVersion { get; set; }
+    public Dictionary<string, RolePasswordRecord> Roles { get; set; } = new(StringComparer.Ordinal);
+}
+
+public sealed class RolePasswordRecord
+{
+    public string Name { get; set; } = "";
+    public string Verifier { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+}

@@ -906,6 +906,38 @@ export type InstanceServerPasswordConfig = {
   serverPassword: string
 }
 
+export type PlayerAuthMode = 'none' | 'global' | 'role'
+
+export type PlayerAuthRoleConfig = {
+  roleId: string
+  name: string
+  configured: boolean
+  status?: string
+}
+
+export type InstancePlayerAuthConfig = {
+  mode: PlayerAuthMode
+  revision: string
+  globalPassword?: string
+  roles: PlayerAuthRoleConfig[]
+  configuredRoleCount: number
+  unconfiguredRoleCount: number
+  orphanedRoleCount: number
+  runtimeMode?: PlayerAuthMode
+  runtimeRevision?: string
+  restartRequired: boolean
+  rolePasswordPatchReady: boolean
+  rolePasswordPatchDetail?: string
+}
+
+export type UpdateInstancePlayerAuthConfig = {
+  expectedRevision: string
+  mode: PlayerAuthMode
+  globalPassword?: string
+  rolePasswordUpdates?: Array<{ roleId: string; password: string }>
+  rolePasswordRemovals?: string[]
+}
+
 export type ServerRuntimeSettings = {
   cabinStrategy: string          // "CabinStack"|"FarmhouseStack"|"None"
   existingCabinBehavior: string  // "KeepExisting"|"MoveToStack"
@@ -920,6 +952,13 @@ export type InstancePasswordStatus = {
   maxAttempts: number
   passwordBridgeAvailable?: boolean
   passwordBridgeDetail?: string
+  configuredMode?: PlayerAuthMode
+  configuredRevision?: string
+  runtimeMode?: PlayerAuthMode
+  runtimeRevision?: string
+  restartRequired: boolean
+  rolePasswordPatchReady: boolean
+  rolePasswordPatchDetail?: string
 }
 
 export type InstanceRenderingResult = {

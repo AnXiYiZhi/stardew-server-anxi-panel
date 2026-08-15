@@ -10,6 +10,8 @@ import type {
   InstallOptionsResponse,
   InstanceVNCConfig,
   InstanceServerPasswordConfig,
+  InstancePlayerAuthConfig,
+  UpdateInstancePlayerAuthConfig,
   InstancePasswordStatus,
   ServerRuntimeSettings,
   GameLanguageSettings,
@@ -386,6 +388,17 @@ export function updateInstanceServerPassword(password: string, instanceId = defa
   return request<InstanceServerPasswordConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/server-password`, {
     method: 'PUT',
     body: { password },
+  })
+}
+
+export function getInstancePlayerAuthConfig(instanceId = defaultInstanceId) {
+  return request<InstancePlayerAuthConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/player-auth`)
+}
+
+export function updateInstancePlayerAuthConfig(config: UpdateInstancePlayerAuthConfig, instanceId = defaultInstanceId) {
+  return request<InstancePlayerAuthConfig>(`/api/instances/${encodeURIComponent(instanceId)}/config/player-auth`, {
+    method: 'PUT',
+    body: config,
   })
 }
 

@@ -1,0 +1,352 @@
+.sd-player-auth-dialog {
+  width: min(94vw, 680px);
+  max-width: 680px;
+  gap: 14px;
+  padding: 20px 22px;
+  background:
+    radial-gradient(circle at 13px 12px, rgba(131, 78, 27, 0.07) 0 1px, transparent 1.4px) 0 0 / 22px 20px,
+    linear-gradient(180deg, #fff3ca, #f5d99d);
+  border-color: #4f2f13;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 250, 216, 0.72),
+    0 6px 0 rgba(52, 28, 9, 0.38);
+}
+
+.sd-player-auth-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(150, 91, 31, 0.34);
+}
+
+.sd-player-auth-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.sd-player-auth-dialog .sd-player-auth-heading h3 {
+  color: #2f1b0b;
+  font-size: 19px;
+  line-height: 1.15;
+  font-weight: 900;
+}
+
+.sd-player-auth-kicker {
+  color: #84602f;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+.sd-player-auth-restart-chip,
+.sd-player-auth-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid #b36c20;
+  border-radius: 2px;
+  background: #ffe59a;
+  color: #8c450d;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.sd-player-auth-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sd-player-auth-mode {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  min-height: 104px;
+  padding: 28px 10px 10px;
+  border: 2px solid rgba(145, 91, 36, 0.42);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 220, 0.9), rgba(241, 211, 153, 0.78)),
+    #f2d79d;
+  color: #3e2814;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 251, 221, 0.75);
+}
+
+.sd-player-auth-mode:hover:not(:disabled) {
+  border-color: #6c8f2d;
+  filter: brightness(1.02);
+}
+
+.sd-player-auth-mode:focus-visible {
+  outline: 3px solid rgba(52, 124, 42, 0.52);
+  outline-offset: 2px;
+}
+
+.sd-player-auth-mode.is-selected {
+  border-color: #315f20;
+  background:
+    linear-gradient(180deg, rgba(231, 247, 174, 0.94), rgba(166, 205, 94, 0.74)),
+    #bddb76;
+  box-shadow:
+    inset 0 0 0 1px rgba(247, 255, 201, 0.82),
+    0 2px 0 rgba(49, 91, 28, 0.28);
+}
+
+.sd-player-auth-mode:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.sd-player-auth-mode strong {
+  color: #2f1b0b;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sd-player-auth-mode > span:last-child {
+  color: #6f5132;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.sd-player-auth-mode-marker {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 1px 5px;
+  border: 1px solid rgba(120, 76, 30, 0.35);
+  background: rgba(255, 246, 198, 0.66);
+  color: #755127;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.sd-player-auth-mode.is-selected .sd-player-auth-mode-marker {
+  border-color: rgba(47, 99, 31, 0.42);
+  background: rgba(241, 255, 196, 0.76);
+  color: #285c22;
+}
+
+.sd-player-auth-config-card,
+.sd-player-auth-runtime {
+  display: grid;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 2px solid rgba(151, 95, 36, 0.38);
+  border-radius: 3px;
+  background: rgba(255, 246, 211, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 252, 229, 0.64);
+}
+
+.sd-player-auth-section-title,
+.sd-player-auth-runtime-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sd-player-auth-section-title > div,
+.sd-player-auth-runtime-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sd-player-auth-section-title strong,
+.sd-player-auth-runtime-head strong {
+  color: #35200f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sd-player-auth-section-title > div > span,
+.sd-player-auth-runtime-head > div > span {
+  color: #795c3b;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.sd-player-auth-password-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.sd-player-auth-password-row .sd-input,
+.sd-player-auth-role .sd-input {
+  min-width: 0;
+  min-height: 36px;
+}
+
+.sd-player-auth-role-list {
+  display: grid;
+  gap: 7px;
+  max-height: min(31vh, 250px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.sd-player-auth-role {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.72fr) minmax(180px, 1.28fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 1px solid rgba(151, 95, 36, 0.3);
+  background: rgba(255, 251, 225, 0.58);
+}
+
+.sd-player-auth-role-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sd-player-auth-role-name strong {
+  overflow: hidden;
+  color: #33200f;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-player-auth-role-name span {
+  font-size: 9.5px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.sd-player-auth-role-name .is-configured {
+  color: #347126;
+}
+
+.sd-player-auth-role-name .is-missing {
+  color: #a24b19;
+}
+
+.sd-player-auth-visibility {
+  justify-self: end;
+}
+
+.sd-player-auth-empty,
+.sd-player-auth-open-warning,
+.sd-player-auth-login-tip {
+  padding: 8px 10px;
+  border: 1px solid rgba(158, 95, 31, 0.4);
+  background: rgba(255, 239, 182, 0.68);
+  color: #71451c;
+  font-size: 11px;
+  line-height: 1.55;
+  font-weight: 700;
+}
+
+.sd-player-auth-open-warning {
+  border-color: rgba(164, 70, 31, 0.5);
+  background: rgba(255, 218, 154, 0.72);
+  color: #8b3618;
+}
+
+.sd-player-auth-login-tip code {
+  color: #2d6525;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 900;
+}
+
+.sd-player-auth-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sd-player-auth-runtime {
+  gap: 8px;
+  border-style: dashed;
+  background: rgba(235, 222, 180, 0.48);
+}
+
+.sd-player-auth-runtime-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+  gap: 5px 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(151, 95, 36, 0.24);
+  font-size: 10.5px;
+}
+
+.sd-player-auth-runtime-grid span {
+  color: #806340;
+}
+
+.sd-player-auth-runtime-grid strong {
+  min-width: 0;
+  color: #3f2b18;
+  overflow-wrap: anywhere;
+}
+
+.sd-player-auth-runtime-note {
+  color: #72583a;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.sd-player-auth-runtime-note.is-error {
+  color: #9f2f22;
+}
+
+@media (max-width: 620px) {
+  .sd-player-auth-dialog {
+    width: min(96vw, 520px);
+    padding: 15px;
+  }
+
+  .sd-player-auth-modes {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-player-auth-mode {
+    min-height: 70px;
+    padding: 11px 68px 10px 10px;
+  }
+
+  .sd-player-auth-role {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .sd-player-auth-runtime-grid {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+}
+
+.sd-player-auth-dialog--mobile {
+  max-width: 440px;
+}
+
+.sd-player-auth-dialog--mobile .sd-player-auth-mode {
+  min-height: 68px;
+}
+
+.sd-player-auth-dialog--mobile .sd-player-auth-role-list {
+  max-height: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-player-auth-mode {
+    transition: none;
+  }
+}

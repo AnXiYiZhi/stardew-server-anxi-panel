@@ -41,6 +41,8 @@ internal sealed class PasswordProtectionBridge
 
     public string Detail => _detail;
 
+    internal MethodInfo? TryAuthenticateMethod => _tryAuthenticateMethod;
+
     /// <summary>
     /// Resolves the reflection chain into JunimoServer's PasswordProtectionService.
     /// Must be called exactly once, after JunimoHost.Server is confirmed loaded

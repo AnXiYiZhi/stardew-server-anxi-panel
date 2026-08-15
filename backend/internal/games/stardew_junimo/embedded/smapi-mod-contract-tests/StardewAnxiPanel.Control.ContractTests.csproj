@@ -12,6 +12,7 @@
     <Compile Include="../smapi-mod-src/PlayerCommandOutcomes.cs" Link="PlayerCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/DeferredCommandOutcomes.cs" Link="DeferredCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/PausePolicy.cs" Link="PausePolicy.cs" />
+    <Compile Include="../smapi-mod-src/RolePasswordPolicy.cs" Link="RolePasswordPolicy.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

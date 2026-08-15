@@ -227,7 +227,36 @@ const backups = {
 }
 const backupPolicy = { policy: { gameSaveBackups: true, retainGameDays: 5 } }
 const restartSchedule = { schedule: { instanceId: 'stardew', enabled: false, shutdownTime: '04:00', startupTime: '04:10', timezone: 'Asia/Shanghai', warningMinutes: [10, 5, 1], backupBeforeShutdown: true, skipIfPlayersOnline: true } }
-const passwordStatus = { enabled: true, authenticatedCount: 3, pendingCount: 1, timeoutSeconds: 60, maxAttempts: 3, passwordBridgeAvailable: true }
+const passwordStatus = {
+  enabled: true,
+  authenticatedCount: 3,
+  pendingCount: 1,
+  timeoutSeconds: 60,
+  maxAttempts: 3,
+  passwordBridgeAvailable: true,
+  configuredMode: 'role',
+  configuredRevision: 'qa-player-auth-v2',
+  runtimeMode: 'global',
+  runtimeRevision: 'qa-player-auth-v1',
+  restartRequired: true,
+  rolePasswordPatchReady: true,
+}
+const playerAuthConfig = {
+  mode: 'role',
+  revision: 'qa-player-auth-v2',
+  roles: [
+    { roleId: '100000000000001', name: '春日茶', configured: true, status: 'online' },
+    { roleId: '100000000000002', name: '矿洞夜猫', configured: false, status: 'offline' },
+    { roleId: '100000000000003', name: '河畔木匠', configured: true, status: 'offline' },
+  ],
+  configuredRoleCount: 2,
+  unconfiguredRoleCount: 1,
+  orphanedRoleCount: 0,
+  runtimeMode: 'global',
+  runtimeRevision: 'qa-player-auth-v1',
+  restartRequired: true,
+  rolePasswordPatchReady: true,
+}
 const nexusSettings = { configured: true, hasApiKey: true, extensionConnected: true }
 const vncConfig = { vncPort: '24643' }
 const rendering = { fps: 30 }
@@ -406,6 +435,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/invite-code$/, { inviteCode: STATE === 'running' ? 'ANXI-FARM-2024' : '' }],
   [/\/restart-schedule$/, restartSchedule],
   [/\/config\/vnc-port$/, vncConfig],
+  [/\/config\/player-auth$/, playerAuthConfig],
   [/\/config\/server-password$/, serverPassword],
   [/\/config\/server-runtime-settings$/, serverRuntimeSettings],
   [/\/config\/game-language$/, { languageCode: 'zh' }],

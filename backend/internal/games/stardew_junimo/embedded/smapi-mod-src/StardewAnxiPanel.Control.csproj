@@ -9,5 +9,9 @@
 
   <ItemGroup Condition="'$(SAP_CI_BUILD)' != 'true'">
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.3.0" PrivateAssets="all" />
+    <Reference Include="0Harmony">
+      <HintPath>$(GamePath)/smapi-internal/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 </Project>

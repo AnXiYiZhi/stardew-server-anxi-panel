@@ -58,7 +58,8 @@ func TestUpdateEnvFile_NewFields(t *testing.T) {
 }
 
 func TestUpdateEnvFile_UpdatesExistingField(t *testing.T) {
-	path := filepath.Join(t.TempDir(), ".env")
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
 
 	if err := config.UpdateEnvFile(path, map[string]string{
 		"STEAM_USERNAME": "olduser",
@@ -82,6 +83,14 @@ func TestUpdateEnvFile_UpdatesExistingField(t *testing.T) {
 	}
 	if fields["VNC_PASSWORD"] != "oldvnc" {
 		t.Errorf("VNC_PASSWORD should be preserved, got %q", fields["VNC_PASSWORD"])
+	}
+
+	temporaryFiles, err := filepath.Glob(filepath.Join(dir, ".env-*.tmp"))
+	if err != nil {
+		t.Fatalf("glob temporary env files: %v", err)
+	}
+	if len(temporaryFiles) != 0 {
+		t.Fatalf("atomic env updates should not leave temporary files, got %v", temporaryFiles)
 	}
 }
 
@@ -166,6 +175,10 @@ func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 		"SERVER_TPS",
 		"SERVER_FPS",
 		"SERVER_PASSWORD",
+		"SAP_PLAYER_AUTH_MODE",
+		"SAP_PLAYER_AUTH_REVISION",
+		"SAP_ROLE_AUTH_KEY",
+		"SAP_ROLE_PASSWORDS_B64",
 		"MAX_LOGIN_ATTEMPTS",
 		"AUTH_TIMEOUT_SECONDS",
 		"API_ENABLED",

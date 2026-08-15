@@ -2666,3 +2666,20 @@ npm.cmd run dev
 - 分页只切片现有响应，不增加请求；原 5 秒刷新继续工作。刷新后若总条数减少，会把当前页校正到仍然有效的末页，避免出现空白页。
 - 控制命令卡片与表格滚动容器补齐 `min-width: 0`/宽度约束，900px 表格最小宽度只在自身内部横向滚动，不再撑宽整张卡片或把分页按钮挤出右侧栏。
 - 影响 `frontend/src/games/stardew/pages/JobsLogsPage.{tsx,css}`、`frontend/src/qa-layout-main.tsx` 和 `frontend/scripts/test-responsive-layout.ts`；未改变控制命令 API、排序或状态文案。全部 17 项前端 `test:*` 与 production build 通过。应用内 Browser 在 967×732 右侧预览验证 7 条数据按 3/3/1 分页、首尾禁用、按钮完整可见且 console error/warn 为 0。
+
+# FE-PLAYER-AUTH-MODES-1：玩家加入保护统一设置（2026-08-15，代码完成，待正式发布）
+
+- 服务器控制页原“服务器密码设置”改名为“玩家加入保护”，桌面和移动端统一使用 `PlayerAuthSettingsDialog.tsx`，不再各自维护一套密码读取、保存和运行状态逻辑；旧 `useServerPassword.ts` 已删除。
+- 弹窗第一层直接显示“不设密码 / 全服统一密码 / 角色独立密码”三张模式卡。全服模式显示单一密码输入；角色模式按当前存档角色列出“已设置 / 未设置”，已有密码永不回显，输入留空表示保持不变，只有本次填写的角色才进入 update payload。
+- 切换到角色模式时，前端先检查当前存档至少有一个非主机角色，并要求所有未配置角色本次填写密码；后端仍做同样的权威校验。角色名只用作可见标签，页面不把 `roleId` 当作密码或设备标识展示。
+- 弹窗底部并列展示已保存模式、运行中模式、是否需要重启、角色密码补丁状态和 Junimo 已认证/待认证人数。保存运行中实例后提示手动重启；服务器未运行时明确显示“启动后校验”，不会把未知补丁状态写成失败。
+- API/类型新增 `getInstancePlayerAuthConfig`、`updateInstancePlayerAuthConfig`、`PlayerAuthMode`、`InstancePlayerAuthConfig`，并扩展 `InstancePasswordStatus` 的 configured/runtime/revision/patch 字段。QA fixture 同时模拟“已保存 role、运行中仍为 global”的待重启状态。
+- 样式沿用项目羊皮纸/木牌/绿色选中态：桌面三列模式卡，620px 以下变单列；角色列表只在自身纵向滚动，ModalPortal 继续负责焦点、Esc、背景隔离和页面滚动锁定。没有新增图片资产或新字体。
+- 验证：`test:responsive-layout` 增加两端共享组件、三模式、角色完整性、QA 路由和响应式 CSS 契约；Node 22 Linux 容器的全部 17 项前端状态/布局回归与 production build 通过。应用内 Browser 在 1280×720 验证桌面弹窗宽 680px、无页面横向溢出，在 390×844 验证移动弹窗宽 358px、角色单列和全服模式完整可见；两种模式均只在弹窗内部滚动。
+- 后续注意：角色密码是“存档角色身份”而非浏览器设备绑定；前端不要用 localStorage、Cookie 或浏览器指纹模拟设备授权。正式发布前仍需配合真实两个客户端完成角色交叉密码和重启生效 E2E。
+
+# FE-PLAYER-LAST-SEEN-SEMANTICS-1：玩家最近活动文案（2026-08-15）
+
+- 桌面玩家表第三列从“在线时长”改为“在线 / 最近活动”，明确该列在线时显示持续时间、离线时显示后端提供的最后在线时间。
+- 前端继续原样消费 `/api/instances/:id/players`，不自行推算或补造 `lastSeen`。从未在线的存档角色在后端修复后不显示“上次 今天 HH:mm”；移动玩家页同样因字段为空而不显示假时间。
+- 使用 Dockerfile 同款 Node 22 Alpine、任务专属 `node_modules`/`dist` volume 完成洁净 `npm ci && npm run build`，TypeScript 与 Vite production build 通过。

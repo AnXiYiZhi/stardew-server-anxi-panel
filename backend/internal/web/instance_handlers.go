@@ -389,6 +389,10 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleInstanceServerPassword(w, r, instanceID)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "config" && parts[2] == "player-auth" {
+		s.handleInstancePlayerAuthConfig(w, r, instanceID)
+		return
+	}
 	if len(parts) == 3 && parts[1] == "config" && parts[2] == "server-runtime-settings" {
 		s.handleInstanceServerRuntimeSettings(w, r, instanceID)
 		return

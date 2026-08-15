@@ -30,6 +30,13 @@ type AuthStatusResult struct {
 	// JunimoServer's PasswordProtectionService failed to resolve.
 	PasswordBridgeAvailable bool   `json:"passwordBridgeAvailable"`
 	PasswordBridgeDetail    string `json:"passwordBridgeDetail,omitempty"`
+	ConfiguredMode          string `json:"configuredMode,omitempty"`
+	ConfiguredRevision      string `json:"configuredRevision,omitempty"`
+	RuntimeMode             string `json:"runtimeMode,omitempty"`
+	RuntimeRevision         string `json:"runtimeRevision,omitempty"`
+	RestartRequired         bool   `json:"restartRequired"`
+	RolePasswordPatchReady  bool   `json:"rolePasswordPatchReady"`
+	RolePasswordPatchDetail string `json:"rolePasswordPatchDetail,omitempty"`
 }
 
 // GetAuthStatus proxies JunimoServer's GET /auth endpoint from inside the
@@ -85,5 +92,16 @@ func (d *Driver) GetAuthStatus(ctx context.Context, instance registry.Instance) 
 	bridge := readPasswordBridgeStatus(instance.DataDir)
 	status.PasswordBridgeAvailable = bridge.Available
 	status.PasswordBridgeDetail = bridge.Detail
+	configured, configErr := readPlayerAuthEnvState(instance.DataDir)
+	runtime := readRuntimePlayerAuthStatus(instance.DataDir)
+	if configErr == nil {
+		status.ConfiguredMode = configured.Mode
+		status.ConfiguredRevision = configured.Revision
+		status.RestartRequired = runtime.Revision == "" || runtime.Revision != configured.Revision || (runtime.Mode != "" && runtime.Mode != configured.Mode)
+	}
+	status.RuntimeMode = runtime.Mode
+	status.RuntimeRevision = runtime.Revision
+	status.RolePasswordPatchReady = runtime.PatchReady
+	status.RolePasswordPatchDetail = runtime.PatchDetail
 	return &status, nil
 }

@@ -23,6 +23,8 @@ public sealed class ModEntry : Mod
     private InitConfig? initConfig;
     private bool isJunimoRuntime;
     private readonly PasswordProtectionBridge passwordBridge = new();
+    private readonly RolePasswordPatch rolePasswordPatch = new();
+    private RolePasswordPolicy playerAuthPolicy = RolePasswordPolicy.Parse(null, null, null, null, null);
     private readonly WarpHomeBridge warpHomeBridge = new();
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
     private readonly Dictionary<string, PlayerModContext> playerModContexts = new(StringComparer.Ordinal);
@@ -127,6 +129,8 @@ public sealed class ModEntry : Mod
         if (isJunimoRuntime)
         {
             passwordBridge.Initialize(Monitor);
+            playerAuthPolicy = RolePasswordPolicy.LoadFromEnvironment();
+            rolePasswordPatch.Initialize(ModManifest.UniqueID, passwordBridge.TryAuthenticateMethod, playerAuthPolicy, Monitor);
             warpHomeBridge.Initialize(Monitor);
         }
 		RefreshPendingNewGameMarker();
@@ -754,6 +758,10 @@ public sealed class ModEntry : Mod
             UpdatedAt = DateTimeOffset.UtcNow,
             PasswordBridgeAvailable = passwordBridge.Available,
             PasswordBridgeDetail = passwordBridge.Detail,
+            PlayerAuthMode = playerAuthPolicy.Mode,
+            PlayerAuthConfigRevision = playerAuthPolicy.Revision,
+            RolePasswordPatchAvailable = rolePasswordPatch.Available,
+            RolePasswordPatchDetail = rolePasswordPatch.Detail,
             WarpHomeBridgeAvailable = warpHomeBridge.Available,
             WarpHomeBridgeDetail = warpHomeBridge.Detail,
 			NewGameTransactionId = initConfig?.TransactionId ?? "",

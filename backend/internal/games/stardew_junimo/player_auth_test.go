@@ -8,16 +8,23 @@ import (
 )
 
 func writeStatusJSON(t *testing.T, dataDir string, available bool, detail string) {
+	writeStatusJSONFields(t, dataDir, map[string]any{
+		"passwordBridgeAvailable": available,
+		"passwordBridgeDetail":    detail,
+	})
+}
+
+func writeStatusJSONFields(t *testing.T, dataDir string, fields map[string]any) {
 	t.Helper()
 	control := filepath.Join(dataDir, ".local-container", "control")
 	if err := os.MkdirAll(control, 0o755); err != nil {
 		t.Fatalf("mkdir control: %v", err)
 	}
-	raw, err := json.Marshal(map[string]any{
-		"state":                   "running",
-		"passwordBridgeAvailable": available,
-		"passwordBridgeDetail":    detail,
-	})
+	status := map[string]any{"state": "running"}
+	for key, value := range fields {
+		status[key] = value
+	}
+	raw, err := json.Marshal(status)
 	if err != nil {
 		t.Fatalf("marshal status.json: %v", err)
 	}
