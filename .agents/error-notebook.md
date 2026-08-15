@@ -166,6 +166,7 @@
 
 ## 2026-08-14：检索已返回真实文件后仍读取了猜测文件名
 
+- 最近复发/补充：2026-08-15 最终版本接口核验时，`rg` 已返回真实健康与版本响应定义在 `backend/internal/web/handler.go`，组合命令仍凭职责猜测并检索不存在的 `backend/internal/http`；前一条真实检索结果已输出，末尾路径错误未被立即检查。随后只沿用真实命中的 `backend/internal/web/handler.go` 与 `auth_handlers.go`。目录也必须来自 `rg --files`/真实命中，不能只约束文件名。
 - 最近复发/补充：2026-08-15 发布证据收口组合读取长期文档时，凭日期猜测了不存在的 `docs/frontend-handoff/frontend-handoff-2026-07-17.md`；前面的真实文件已经输出，最后一个 `Get-Content` 仍让只读命令退出 1，仓库未被该命令修改。随后先用 `rg --files docs/frontend-handoff` 发现最新真实文件是 `frontend-handoff-2026-07-11.md`，再单独读取。接手文档日期也必须由文件列表发现，不能从当前日期或 backend handoff 日期类推。
 - 最近复发/补充：同日排查上传取消所需的 server 依赖及存档路径时，该模式又连续复发两次：`rg` 已返回真实定义位于 `backend/internal/web/handler.go`、`junimo_mod_runtime.go`、`saves.go` 与 `new_game_transaction.go`，组合命令仍继续读取预先猜测且不存在的 `server.go` 或 `config_paths.go`，只读命令退出 1；无文件、数据库或 Docker 改动。之后严格拆为“定位一次、读取实际命中路径一次”，并禁止在定位调用里预附加任何猜测读取目标。
 - 最近复发/补充：同日只读排查首次安装后的存档导入失败时，把猜测且不存在的 `save_import_recovery.go` 与真实源码路径一并交给 `rg`，有效命中输出后仍以路径不存在退出 2；产品代码、实例与 Docker 均未改变。随后只使用 `rg --files` 和已经命中的 `save_import_transaction.go` 继续；诊断型多文件检索也不得添加基于职责猜出的候选文件名。
@@ -2293,6 +2294,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-15 文档收口后的最终 GHCR digest smoke 已 healthy 且三个 API 实际返回正确，但包装器又用默认 `ConvertFrom-Json` 后把 `/api/version.buildDate` 直接与 ISO 字符串比较，虚假抛出 identity mismatch；`finally` 已删除精确容器和 volume，owner 资源复核为 0。重跑必须直接使用已经验证的 `ConvertFrom-Json -DateKind String`，不得因“刚在同版本早先 smoke 修过”就省略该参数。
 - 最近复发/补充：2026-08-15 `v0.4.18` 正式镜像首次/重启响应实际都返回精确 build date，但发布后包装器又把默认 `ConvertFrom-Json` 自动生成的 `DateTime` 与原始 ISO 字符串直接比较，导致两轮正常 smoke 在资源已安全清理后虚假报 mismatch。最终使用 PowerShell 7 的 `ConvertFrom-Json -DateKind String` 保留原始时间文本并完整重跑通过。凡断言 JSON ISO 字段，优先固定 `-DateKind String`；否则必须走既有 UTC/invariant helper，不得再直接 `-eq/-ne`。
 - 最近复发/补充：2026-08-14 新增 Windows 候选包装器时再次直接比较 Docker inspect 的 OCI created 与参数字符串；候选 version/revision/created 实际精确，但包装器在 fresh 前虚假中止。精确 owner 检查确认容器、卷、任务目录为零；修复为统一 `ConvertTo-UtcIsoString` 后再比较。该错误已经多次复发且规则已在 `AGENTS.md`，后续 PowerShell 候选脚本禁止出现任何未经 helper 的 ISO 时间 `-eq/-ne`。
 - 最近复发/补充：2026-08-13 v0.4.15 最终产品候选的 version/revision/created 实际全部精确，但身份包装器再次直接把 `ConvertFrom-Json` 产生的 `System.DateTime` created 与 ISO 字符串比较，先于 smoke 创建就虚假报 mismatch；独立布尔投影确认只有类型比较失败，未创建容器/网络/卷。后续同轮 OCI 与 `/api/version` 时间断言必须共用先判类型、转 UTC、invariant 格式化的 helper，不得再内联原始 `-eq`。
@@ -2909,3 +2911,13 @@
 - 正确做法：发现 `.git` 或项目记录目录由环境策略变为只读时立即停止写操作，保留工作树，等待权限恢复后先检查 `.git` 属性、`index.lock` 和 `git status`；不得改用远程 API、替代 object store 或其它旁路提交。Git for Windows 临时禁用全局 excludes 使用已验证的 `/dev/null`，且每个原生命令后立即检查 `$LASTEXITCODE`。
 - 预防检查：发布后证据提交前先做 `.git` 可写性和锁文件只读探针；遇到权限错误不得原样重试。任何 `git -c` 覆盖值先做独立只读探针，组合命令使用 fail-fast 并保存原始退出码。
 - 适用范围：Codex 托管权限切换、Git 暂存/提交、用户级 ignore 配置以及 PowerShell 原生命令错误传播。
+
+## 2026-08-15：把不存在的 `isLatest` 字段传给 `gh release view --json`
+
+- 环境：PowerShell 7、GitHub CLI，v0.4.18 发布后最终只读核验。
+- 错误模式：凭 API 响应字段记忆把 `isLatest` 加入 `gh release view --json` 字段列表，没有先核对当前 CLI 支持字段；组合脚本在该命令退出后停止，未产生外部修改。
+- 症状 / 退出码：命令无 JSON 输出并非 Release 缺失，而是 CLI 不支持该字段；`gh release view --help` 的可用字段列表不含 `isLatest`。
+- 根因：混淆了 GitHub REST Release 响应/业务概念与 GitHub CLI 的 GraphQL/格式化字段集合。
+- 正确做法：`gh release view v0.4.18 --json tagName,isDraft,isPrerelease,...` 读取指定 Release；另用不带 tag 的 `gh release view --json tagName` 取得当前 latest，再比较 tag。
+- 预防检查：首次使用或新增 `gh ... --json` 字段前先读取对应子命令帮助中的 `JSON FIELDS`；不得把网页/API 字段直接类推给 CLI。
+- 适用范围：GitHub CLI 的 release、run、workflow 等 JSON 投影。

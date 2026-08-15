@@ -47,6 +47,7 @@
 - 官网首页和 changelog 已切换到 v0.4.18，公开说明只使用上述正式发布证据：停服空 Compose 存档导入、Control-only JunimoServer 物化/旧人工事务恢复、共享模态和最近控制命令分页。该提交只改 Markdown 与长期文档，不改变候选内容、annotated tag、三仓 digest、`latest`、版本接口或 Release 资产，也不得触发候选重建。
 - VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900 和 390×844 从首页真实点击到 `/changelog.html`，首页 v0.4.18、日志 v0.4.18/v0.4.17/v0.4.16 顺序和三组正文全部命中，root/body 横向溢出、framework overlay、console warn/error 均为 0。
 - docs-only 提交 `09601de0d9b9064b88a56d091678194a65c333cd` 于 `2026-08-15T13:00:00Z` 触发的 Pages `31886032569` 成功（build 18 秒、deploy 10 秒），Compatibility `31886032526` 成功（2 分 5 秒，后端、前端 build 与隔离 Docker integration 全通过）；该 SHA 没有候选 workflow。部署后应用内 Browser 在公开 URL 的 1440×900/390×844 再次从首页真实点击到 changelog，版本顺序与 Compose/JunimoServer/确认框/每页 3 条四类正文全部命中，两页 root/body 均无横向溢出、overlay=0、console warn/error=0。该发布只改变官网和证据文档，没有重建镜像、创建或移动 tag。
+- 最终证据回填提交 `93f6a8464962f597319e986ae3114bdcf7a64106` 只修改 5 个长期文档，Compatibility `31886298061` 在 1 分 59 秒内完成后端、前端 build 与隔离 Docker integration；因没有 `website/**` 变化而未重复 Pages，也没有候选 workflow。该提交后再次确认 annotated `v0.4.18` 仍解引用到 `56c437004b51763e77d12ffd9b716f39224d7b00`，GitHub latest Release 仍有四项原 digest 资产，三仓 `0.4.18/latest` 六引用仍统一为 `sha256:b304e3b9c83620e94e3a16f33f5730991f74e470820a7481e696b54738eb8d74`。从该不可变 digest 启动的独立容器在重启后再次通过 Docker healthy、health/database、精确 `/api/version`/build date 与 fresh setup，owner 容器和 volume 终态均为 0。
 
 # SAVE-IMPORT-COMPOSE-EMPTY-SET-1 发布专项矩阵（2026-08-15，released in v0.4.18）
 
