@@ -3,7 +3,7 @@
 - [x] annotated `v0.5.0` 固定在 `9b18dd3fe5192692548bf11a85010dd35303da93`；Compatibility `31899107019`、候选 `31899107629`、自动 Tag `31899867310`、正式提升 `31899874927` 全部成功。
 - [x] v0.4.19 的 none/global/role 加入保护、角色独立密码与旧全服密码兼容完整纳入用户可见汇总；v0.5.0 同时发布存档导入 strict/耐久/cleanup 恢复、真实最近活动语义和 Control 0.3.4 主机农舍等级保持。
 - [x] `v0.4.19` Web unhealthy 回滚/healthy 升级、升级后受影响 E2E、最老受影响 `v0.4.11` 代表升级预演、三仓六引用、Release 资产和独立正式镜像首次/重启均通过；统一 digest=`sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a`，owner 测试资源清零。
-- [ ] 官网首页/changelog 的 v0.5.0 与补录 v0.4.19 内容已准备；VitePress build 2.68 秒及本地 1440×900/390×844 首页到日志真实点击、版本顺序、正文、溢出、overlay、console 已通过。待 docs-only 提交的 Pages、Compatibility 和线上同矩阵成功后回填，不得触发候选重建或移动 tag。
+- [x] 官网首页/changelog 的 v0.5.0 与补录 v0.4.19 内容已由 `242453ab631750689de467625346b6b0fb97c206` 发布；VitePress build 2.68 秒、Pages `31900873468`、Compatibility `31900873542` 和线上 1440×900/390×844 首页到日志真实点击、版本顺序、角色密码/legacy/存档恢复/真实最近活动/农舍正文、零横向溢出及零 console warn/error 全部通过。同一 SHA 没有候选 workflow，未移动 tag 或改写正式 digest。
 
 # 2026-08-16 已发布：默认保留虚拟主机农舍等级（v0.5.0）
 

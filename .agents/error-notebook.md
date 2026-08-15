@@ -1926,6 +1926,7 @@
 
 ## 2026-08-02：误用应用内 Browser 的标签页创建接口
 
+- 最近复发/补充：2026-08-16 v0.5.0 Pages 线上验收又把 URL 传给 `browser.tabs.new({url})`，只得到 `about:blank`，并紧接着调用不存在的 `tab.playwright.domcontentloaded()`；两次只读调用都没有导航或修改页面。检查当前原型后改为 `tabs.new()` → `tab.goto(url)` → `tab.playwright.waitForLoadState({state:"domcontentloaded"})`，随后桌面/手机验收通过。已存在的接口记录必须在打开标签前直接复用，不能因 Browser 版本变化猜测构造参数或把 load-state 名称当成方法。
 - 最近复发/补充：2026-08-15 新建本地预览标签后把 `waitForLoadState` 直接调用在 tab 对象上，导航已成功但方法不存在；只读检查确认 tab 顶层负责 `goto/url/screenshot`，等待与 locator 属于 `tab.playwright`。后续固定使用 `await tab.playwright.waitForLoadState('domcontentloaded')`，不能把精简 tab 包装当成 Playwright Page。
 - 最近复发/补充：2026-08-15 前端视觉验收前检查持久 Browser 会话时，直接读取上一轮已关闭的 `reviewTab.url()`，Browser 返回 `Unknown tab: 1`；当前标签列表实际为空，页面和文件均未变化。后续先以 `browser.tabs.list()` 核对持久引用仍存在于实时列表，再读取 URL；列表为空时按已验证的 `tabs.new()` → `goto()` 流程创建新标签，不把 Node REPL 中仍存在的对象绑定当作标签仍存活的证据。
 - 环境：持久 Browser 会话，需要打开 ECS 面板的新标签页。

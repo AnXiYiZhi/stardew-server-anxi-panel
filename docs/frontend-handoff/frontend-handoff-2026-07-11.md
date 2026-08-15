@@ -1,8 +1,8 @@
-# DOCS-PORTAL-0.5.0 接手记录（2026-08-16，发布内容已完成，等待 Pages 终态）
+# DOCS-PORTAL-0.5.0 接手记录（2026-08-16，completed，已上线）
 
 - `website/docs/index.md` 已切换到 v0.5.0；`website/docs/changelog.md` 置顶加入 v0.5.0 的角色加入保护、存档导入恢复、真实最近活动和主机农舍保持，并单列补齐官网此前遗漏的 v0.4.19 全服/角色独立密码与旧配置兼容。主题、CSS、依赖和路由未变。
 - Panel 前端运行代码已随 `v0.5.0@9b18dd3fe5192692548bf11a85010dd35303da93` 发布：v0.4.19 的共用玩家加入保护弹窗继续包含，v0.5.0 的“在线 / 最近活动”语义已进入 production bundle。候选 `31899107629`、正式提升 `31899874927` 和统一 digest `sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a` 已成功。
-- VitePress production build 2.68 秒通过；本地 1440×900/390×844 从首页真实点击到 changelog，首页 v0.5.0、日志 v0.5.0/v0.4.19/v0.4.18 顺序、角色密码/legacy/存档恢复/农舍正文、零横向溢出、零 overlay 和零 console warn/error 均通过。本次 docs-only 提交必须只触发 Pages/Compatibility，不得触发候选重建；Pages workflow 与线上同矩阵结果在完成后回填。
+- VitePress production build 2.68 秒通过；docs-only 提交 `242453ab631750689de467625346b6b0fb97c206` 只触发并通过 Pages `31900873468`（build 18 秒、deploy 14 秒）与 Compatibility `31900873542`（1 分 55 秒），没有候选重建。线上 1440×900/390×844 从首页真实点击到 changelog，首页 v0.5.0、日志 v0.5.0/v0.4.19/v0.4.18 顺序、角色密码/legacy/存档恢复/真实最近活动/农舍正文、root/body 零横向溢出和 console warn/error=0；v0.5.0 tag 与正式 digest 未改变。
 
 # DOCS-PORTAL-0.4.18 接手记录（2026-08-15，completed，已上线）
 

@@ -2,7 +2,7 @@
 
 - v0.4.19 的桌面/移动“玩家加入保护”共用弹窗及 none/global/role、角色配置、待重启和补丁状态继续包含在 v0.5.0；v0.5.0 同时把桌面玩家表列名改为“在线 / 最近活动”，缺少真实 `lastSeen` 的离线存档角色不再显示假时间。公开 DTO shape 和前端轮询频率不变。
 - 显式候选 `31899107629` 已通过全部前端状态回归、production audit/build、网站 production build、fresh/restart 与 `v0.4.19` Web 升级后的 production bundle 验收；正式 `v0.5.0@9b18dd3fe5192692548bf11a85010dd35303da93` 与三仓 digest `sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a` 已发布。
-- `website/docs/index.md` 与 `website/docs/changelog.md` 已准备同步 v0.5.0，并单独补齐此前官网遗漏的 v0.4.19 角色独立密码、全服密码模式和兼容性。VitePress production build 2.68 秒通过；本地 1440×900/390×844 从首页真实点击到 changelog，前三版顺序、四类正文、横向溢出、overlay 与 console 均通过。该 docs-only 发布不得移动 v0.5.0 tag、改写正式 digest 或触发候选重建；Pages/Compatibility 与线上验收结果在 workflow 完成后回填。
+- `website/docs/index.md` 与 `website/docs/changelog.md` 已由 docs-only 提交 `242453ab631750689de467625346b6b0fb97c206` 同步 v0.5.0，并单独补齐此前官网遗漏的 v0.4.19 角色独立密码、全服密码模式和兼容性。VitePress production build 2.68 秒通过；Pages `31900873468`（build 18 秒、deploy 14 秒）与 Compatibility `31900873542`（1 分 55 秒）均成功，且同一 SHA 没有候选 workflow。线上 1440×900/390×844 从首页真实点击到 changelog，前三版顺序、角色密码/legacy/存档恢复/真实最近活动/农舍正文、root/body 零横向溢出和 console warn/error=0；该提交没有移动 v0.5.0 tag 或改写正式 digest。
 
 # DOCS-PORTAL-0.4.18：官网更新日志同步最新版（2026-08-15，completed，已上线）
 
