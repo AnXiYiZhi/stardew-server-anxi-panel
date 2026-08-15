@@ -4,6 +4,7 @@
 - [x] 新 apply 独立验证并事务化补齐缺失/损坏的 JunimoServer；auth 容器、steam-session 和运行栈推荐清单不变。
 - [x] 旧 `rollback_failed` 清单可从持久化原 server immutable image ID 补齐组件，先恢复原版本验收再继续新事务；失败保留材料并返回稳定错误码。
 - [x] 新事务、旧 v0.4.17 风格恢复、既有回滚矩阵及真实 Docker image-ID 提取回归通过。
+- [x] 首次候选 `31883713810` 暴露 Linux helper root-owned bind；提取树现归还当前 Panel 数值 UID/GID，非 root DinD 的真实写入/删除 integration 与默认 package test/vet/build 通过，失败候选没有构建或推送镜像。
 - [ ] 下一补丁候选必须在上一正式版 Web 升级后的 Panel 复现并修复同一 missing-Junimo Control-only 场景，随后完成自动 tag、三仓 digest、latest、版本接口、Release 和证据回填。
 
 # 2026-08-15 完成：停服空 Compose 集合不再阻断存档导入（SAVE-IMPORT-COMPOSE-EMPTY-SET-1，未发布）

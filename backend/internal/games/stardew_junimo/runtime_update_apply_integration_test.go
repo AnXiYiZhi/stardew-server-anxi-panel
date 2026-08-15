@@ -68,6 +68,13 @@ func TestRuntimeUpdateRollbackMaterializesMissingJunimoFromOriginalImageID(t *te
 	if got, err := readJunimoServerModVersion(junimoServerModDir(dataDir)); err != nil || got != version {
 		t.Fatalf("immutable original image did not materialize JunimoServer: version=%q err=%v", got, err)
 	}
+	writeProbe := filepath.Join(junimoServerModDir(dataDir), ".host-write-probe")
+	if err := os.WriteFile(writeProbe, []byte("host-owned"), 0o600); err != nil {
+		t.Fatalf("materialized JunimoServer is not writable by the Panel process: %v", err)
+	}
+	if err := os.Remove(writeProbe); err != nil {
+		t.Fatalf("remove JunimoServer ownership probe: %v", err)
+	}
 }
 
 // This regression fixture represents Issue #9: /health is immediately usable

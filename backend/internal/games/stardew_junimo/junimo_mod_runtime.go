@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -99,7 +100,7 @@ func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef,
 	if err != nil {
 		return "", err
 	}
-	script := strings.Join([]string{
+	scriptParts := []string{
 		"set -eu",
 		"echo " + junimoModExtractMarker,
 		"test -d /data/Mods/JunimoServer",
@@ -107,7 +108,15 @@ func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef,
 		"cp -a /data/Mods/JunimoServer /out/" + runtimeTargetJunimoDir,
 		"find /out/" + runtimeTargetJunimoDir + " -type d -exec chmod 755 {} \\;",
 		"find /out/" + runtimeTargetJunimoDir + " -type f -exec chmod 644 {} \\;",
-	}, "; ")
+	}
+	ownershipCommand, err := extractedJunimoOwnershipCommand()
+	if err != nil {
+		return "", err
+	}
+	if ownershipCommand != "" {
+		scriptParts = append(scriptParts, ownershipCommand)
+	}
+	script := strings.Join(scriptParts, "; ")
 	extractCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	exitCode, err := docker.RunContainerTTY(extractCtx, paneldocker.ContainerTTYRunOpts{
@@ -124,6 +133,32 @@ func extractJunimoServerMod(ctx context.Context, docker DockerService, imageRef,
 		return "", err
 	}
 	return targetDir, nil
+}
+
+func extractedJunimoOwnershipCommand() (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", nil
+	}
+	current, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("resolve Panel process identity for JunimoServer extraction: %w", err)
+	}
+	if !isNumericIdentity(current.Uid) || !isNumericIdentity(current.Gid) {
+		return "", errors.New("Panel process identity for JunimoServer extraction is not numeric")
+	}
+	return "chown -R " + current.Uid + ":" + current.Gid + " /out/" + runtimeTargetJunimoDir, nil
+}
+
+func isNumericIdentity(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func replaceJunimoServerMod(dataDir, extractedDir, backupDir string) (bool, error) {

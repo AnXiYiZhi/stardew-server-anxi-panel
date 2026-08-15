@@ -5,12 +5,13 @@
 - 用户支持包显示当前 Panel 为 v0.4.17，运行栈 server/auth tag 已匹配推荐值，只因 Control DLL 需要同步而进入 Control-only apply；宿主持久 Mod 目录却没有 `JunimoServer`。由于该目录覆盖镜像 `/data/Mods`，SMAPI 明确跳过依赖 `JunimoHost.Server` 的 Control，容器保持 running/unhealthy。目标等待 20 分钟得到 `server_container_not_ready`，自动回滚再等待 20 分钟得到 `rollback_verify_server_failed`，后续两次幂等 repair 重复同一结果。
 - `runtime_update_apply_runner.go` 不再只用 `runtimeUpdateServerChanged` 决定是否提取 Mod。事务在 change plan 前静态验证宿主 JunimoServer；image 变化或组件缺失/损坏都会从已验证目标 image 提取、记录 write-ahead intent、原子替换并纳入既有 rollback。
 - `runtime_update_rollback.go` 在启动原 server 前静态复核原版本 JunimoServer。旧恢复清单没有 Junimo replace intent、或既有回滚已恢复出缺失/损坏目录时，使用清单内原 server immutable image ID 重新物化；不接受客户端 image/path。失败稳定映射为 `rollback_repair_junimo_mod_failed`，恢复材料不删除。
-- 主要影响 `runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`runtime_update_apply_test.go`、`runtime_update_apply_integration_test.go`、`scripts/run-release-gates.sh` 和 `scripts/tests/test_release_candidate_upgrade.sh`；公开 repair/apply JSON 只可能出现新增稳定 rollbackCode，数据库、manifest 推荐版本、镜像/Control 制品和部署格式均未变。
+- 首次自动候选 `31883713810` 在 Linux runner 的真实 Docker integration 发现 helper 以 root 写 bind 后，Actions 用户不能 rename/cleanup 提取目录。`junimo_mod_runtime.go` 现在仅在非 Windows 平台把已校验目标树递归 `chown` 给当前 Panel 进程的数值 UID/GID；数值身份经过纯数字校验，不接受环境注入。生产 root Panel 保持 `0:0`，非 root Panel 可继续原子替换和清理。
+- 主要影响 `runtime_update_apply_runner.go`、`runtime_update_rollback.go`、`junimo_mod_runtime.go`、`runtime_update_apply_test.go`、`runtime_update_apply_integration_test.go`、`scripts/run-release-gates.sh` 和 `scripts/tests/test_release_candidate_upgrade.sh`；公开 repair/apply JSON 只可能出现新增稳定 rollbackCode，数据库、manifest 推荐版本、镜像/Control 制品和部署格式均未变。
 
 ## 如何验证、下一步注意事项
 
 - 单元回归从 server/auth tag 已匹配、Control 旧版、宿主 Junimo 目录缺失开始，要求 auth 容器不重建且最终 Control-only apply 成功；另构造旧 v0.4.17 风格的 `rollback_failed + JunimoModReplaced=false` 私有清单，要求一次 repair 从原 image ID 补齐、恢复旧版验收并继续新事务成功。既有目标失败、回滚和 repair 幂等矩阵保持通过。
-- integration 构建最小真实 server fixture，通过 Docker inspect 得到 immutable image ID，删除宿主 Mod 后只用该 ID 提取并验证 manifest/DLL。候选升级 E2E 会在 `v0.4.17` 升级得到的新 Panel 上构造已失败 2 次的旧 `rollback_failed`，删除原 server 可信 tag 后通过公开 repair API 执行第 3 次受限修复；最终必须补齐 Mod、保留未变化 steam-auth container ID、恢复 stopped 并清理 recovery。不能只验证普通 Start，因为普通 lifecycle 原本就有 ensure 兜底。
+- integration 构建最小真实 server fixture，通过 Docker inspect 得到 immutable image ID，删除宿主 Mod 后只用该 ID 提取并验证 manifest/DLL；在任务专属 DinD 内让 daemon/root 写 bind、UID 1000 运行 Go/Panel，最终宿主写入/删除探针通过，默认包 test/vet/build 也通过。候选升级 E2E 会在 `v0.4.17` 升级得到的新 Panel 上构造已失败 2 次的旧 `rollback_failed`，删除原 server 可信 tag 后通过公开 repair API 执行第 3 次受限修复；最终必须补齐 Mod、保留未变化 steam-auth container ID、恢复 stopped 并清理 recovery。不能只验证普通 Start，因为普通 lifecycle 原本就有 ensure 兜底。
 - 不要把修复退化为复制当前 Panel 内文件、信任可变 tag 或在 API 接受调用方路径。KeepServerStopped 的 Panel 启动恢复仍只收敛材料而不启动游戏；用户后续手动 Start 会走 lifecycle ensure。成功回滚/repair 才能按既有规则清理私有目录。
 
 # SAVE-IMPORT-COMPOSE-EMPTY-SET-1 接手记录（2026-08-15，completed，未发布）

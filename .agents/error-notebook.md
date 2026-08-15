@@ -2801,6 +2801,7 @@
 - 最近复发/补充：2026-08-15 本次 Junimo 修复首次格式化仍在 `workdir=backend` 传入 `backend/internal/...`，`gofmt` 在修改前以路径不存在退出 2；随后回到仓库根按实际路径格式化，并把 Go 测试拆到模块根。本轮不再混用两套路径基准。
 - 最近复发/补充：2026-08-15 增加 strict Compose 真实 Docker 回归后，又在 `backend` cwd 把仓库根相对的 `backend/internal/docker/runtime_apply_integration_test.go` 交给 `gofmt`，得到路径不存在且未修改文件。随即切回仓库根并用检索确认的精确相对路径格式化；格式化和测试继续按各自 cwd 分开执行。
 - 最近复发/补充：修正为仓库根执行两份文件的 `gofmt` 后，又把紧随其后的 `go test ./internal/...` 留在同一个根目录命令中；格式化成功，但 Go 在加载测试前报告根目录没有 `go.mod` 并退出 1。格式化与 Go 门禁必须拆成不同 cwd 的独立命令，不能为减少一次调用重新合并。
+- 最近复发/补充：2026-08-15 修复候选 Linux UID/GID 后的收口再次在 `workdir=backend` 传入三条 `backend/internal/...` 仓库根相对路径，`gofmt` 全部以 `GetFileAttributesEx ... path not found` 退出且后续测试未运行。必须把格式化固定为仓库根的独立命令，再用另一个 `workdir=backend` 命令测试；不能因前一轮曾正确执行就省略 cwd 检查。
 - 环境：PowerShell 7，工作目录为 `backend`，发布前 Go 定向测试。
 - 错误模式：在 `backend` 子目录执行 `git diff --name-only -- '*.go'`，把返回的 `backend/internal/...` 仓库根相对路径原样交给当前子目录中的 `gofmt -w`。
 - 症状 / 退出码：`gofmt` 对全部参数报 `GetFileAttributesEx backend/internal/...: The system cannot find the path specified` 并退出 2；格式化和后续测试均未执行，文件内容未变化。
@@ -2812,6 +2813,7 @@
 ## 2026-08-15：给 Linux 全量 Go 门禁的宿主 shell 设置过短超时
 
 - 最近复发/补充：2026-08-15 定向 Go 测试超过初始工具等待后返回了 session ID，但编排脚本只打印 `output`、没有保留 `session_id`，使终态无法从原会话继续读取；只读进程归属确认唯一测试已结束后才重新执行，没有并发启动第二份产品测试。后续长命令必须把完整结果 JSON 输出或立即保存 session ID，并用同一 `write_stdin` 等待。
+- 最近复发/补充：2026-08-15 为 CI 权限失败搭建非 root DinD 复现环境时，再次让可能超过 30 秒的 build/start/readiness 命令只输出嵌套结果的 `output` 字段，导致工具 yield 后 session ID 丢失。只读核对确认唯一 task-owned DinD 已运行且 daemon ready，未重复创建；后续所有可能跨越 yield 的 `exec_command` 必须直接输出完整 JSON 结果，不能仅投影 `output`。
 - 最近复发/补充：修正 strict Compose 测试后，本应只格式化并单独启动新门禁，却把 `gofmt` 与 `docker start -a anxi-v0417-go-gates` 合在同一个 `timeout_ms=1000` 命令；格式化已成功，保留容器被重新启动，但宿主约 3.7 秒后退出 124 并关闭 stdout 管道。精确 inspect 确认仍只有这个 owner 匹配容器在运行，未启动重复容器；后续只用独立 `docker wait` 接管。
 - 环境：PowerShell 7、Docker Desktop，任务专属 `golang:1.25-alpine` 容器执行 `go test/vet/build`。
 - 错误模式：虽然容器内命令是长门禁，却把宿主 `shell_command` 的 `timeout_ms` 设为 1000，工具实际约 5 秒即以 124 终止 Docker CLI。
@@ -2840,6 +2842,16 @@
 - 正确做法：夹具精确创建并监听 `/tmp/smapi-input`，用外层永久循环在每次 EOF 后重新打开 FIFO，内层循环处理该写端连接上的全部命令；保留 Compose 的 `$$line` 转义，并继续用产品真实探针次数验证。
 - 预防检查：IPC 夹具必须从源码核对路径、文件类型、重开和多消息语义；任何用 FIFO 模拟长生命周期 IPC 的门禁都至少验证两个先后断开的写端，不能通过减少产品探针或放宽门禁掩盖夹具缺陷。
 - 适用范围：FIFO、容器内命令桥、Junimo 健康探针、真实升级与恢复 E2E。
+
+## 2026-08-15：非 root DinD 复现未先开放 Docker socket
+
+- 环境：任务专属 `docker:27-dind`，daemon 以 root 运行，Go integration 以 UID 1000 运行以复现 GitHub Actions 的 helper 所有权差异。
+- 错误模式：只给 Go module/build cache 做了 `chown`，没有先检查 `/var/run/docker.sock` 的 group/mode，就直接以 UID 1000 启动真实 Docker integration。
+- 症状 / 退出码：测试在构建 fixture 前因连接 Docker socket `permission denied` 退出 1；没有创建内层镜像或执行产品逻辑。
+- 根因：DinD socket 默认只允许 root/固定 docker group，任务测试用户没有对应组；这与待验证的 helper bind UID/GID 问题是两个独立权限层。
+- 正确做法：daemon ready 后先在任务容器内核对并为隔离测试 socket 设置 `0666`（或把测试用户加入精确 socket group），再以同一非 root UID 运行 Go；第二轮真实 integration 通过。
+- 预防检查：非 root DinD 测试的 readiness 必须同时包含 daemon、socket 可访问性、cache 所有权和二级 bind 路径可见性，不能只用 root 的 `docker info` 代表测试用户已就绪。
+- 适用范围：DinD、Docker socket、非 root integration、UID/GID 与二级 bind 权限回归。
 
 ## 编码与换行快速检查
 
