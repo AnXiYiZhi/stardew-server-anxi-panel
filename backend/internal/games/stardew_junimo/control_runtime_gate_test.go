@@ -50,10 +50,26 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 		{
 			name: "current runtime is ready",
 			prepare: func(t *testing.T, dataDir, expected string) {
-				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`"}`)
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true}`)
 			},
 			wantState: ControlRuntimeGateReady,
 			wantCode:  ControlRuntimeCodeReady,
+		},
+		{
+			name: "missing host farmhouse patch evidence is invalid",
+			prepare: func(t *testing.T, dataDir, expected string) {
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`"}`)
+			},
+			wantState: ControlRuntimeGateInvalid,
+			wantCode:  ControlRuntimeCodeHostFarmhousePatchUnavailable,
+		},
+		{
+			name: "failed host farmhouse patch is invalid",
+			prepare: func(t *testing.T, dataDir, expected string) {
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":false}`)
+			},
+			wantState: ControlRuntimeGateInvalid,
+			wantCode:  ControlRuntimeCodeHostFarmhousePatchUnavailable,
 		},
 		{
 			name: "explicit old runtime is mismatch",
@@ -110,7 +126,7 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 			}
 			got := InspectControlRuntimeGate(dataDir)
 			wantActual := tt.wantActual
-			if tt.wantState == ControlRuntimeGateReady {
+			if tt.wantState == ControlRuntimeGateReady || tt.wantCode == ControlRuntimeCodeHostFarmhousePatchUnavailable {
 				wantActual = expected
 			}
 			if got.State != tt.wantState || got.Code != tt.wantCode || got.Expected != expected || got.Actual != wantActual {
@@ -125,7 +141,7 @@ func TestWaitForControlRuntimeGateAcceptsDelayedOptions(t *testing.T) {
 	writeDone := make(chan struct{})
 	go func() {
 		time.Sleep(25 * time.Millisecond)
-		_ = os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+expected+`"}`), 0o600)
+		_ = os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600)
 		close(writeDone)
 	}()
 

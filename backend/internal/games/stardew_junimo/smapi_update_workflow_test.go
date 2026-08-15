@@ -94,7 +94,7 @@ func (f *smapiWorkflowFakeDocker) ComposeUp(ctx context.Context, dir string) (pa
 		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
 		control := filepath.Join(f.dataDir, ".local-container", "control")
 		_ = os.MkdirAll(control, 0o700)
-		_ = os.WriteFile(filepath.Join(control, "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600)
+		_ = os.WriteFile(filepath.Join(control, "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600)
 	}
 	return f.runtimeApplyFakeDocker.ComposeUp(ctx, dir)
 }

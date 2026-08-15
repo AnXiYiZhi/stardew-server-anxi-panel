@@ -137,6 +137,19 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {
 		return storage.Job{}, err
 	}
 	m.publish(Event{Type: EventJob, Job: &job})
+	if spec.BeforeRun != nil {
+		if prepareErr := spec.BeforeRun(ctx, job); prepareErr != nil {
+			terminalCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			failed, failErr := m.store.FailJob(terminalCtx, job.ID, "job start preparation failed")
+			cancel()
+			if failErr == nil {
+				job = failed
+				m.publish(Event{Type: EventJob, Job: &job})
+				m.publish(Event{Type: EventFinished, Job: &job})
+			}
+			return job, &StartPreparationError{Job: job, Cause: prepareErr, TerminalizeError: failErr}
+		}
+	}
 
 	timeout := spec.Timeout
 	if timeout <= 0 {
@@ -150,6 +163,23 @@ func (m *Manager) Start(ctx context.Context, spec Spec) (storage.Job, error) {
 	go m.run(runCtx, cancel, job, spec.Run)
 	return job, nil
 }
+
+// StartPreparationError means the durable job row exists, but the caller's
+// write-ahead ownership handshake failed before the runner was launched.
+type StartPreparationError struct {
+	Job              storage.Job
+	Cause            error
+	TerminalizeError error
+}
+
+func (e *StartPreparationError) Error() string {
+	if e.TerminalizeError != nil {
+		return fmt.Sprintf("prepare job %s before runner start: %v (terminalize: %v)", e.Job.ID, e.Cause, e.TerminalizeError)
+	}
+	return fmt.Sprintf("prepare job %s before runner start: %v", e.Job.ID, e.Cause)
+}
+
+func (e *StartPreparationError) Unwrap() error { return e.Cause }
 
 func (m *Manager) Get(ctx context.Context, id string) (storage.Job, error) {
 	return m.store.GetJob(ctx, id)

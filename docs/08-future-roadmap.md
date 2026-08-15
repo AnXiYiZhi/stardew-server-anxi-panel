@@ -1,3 +1,19 @@
+# 2026-08-16 完成未发布：默认保留虚拟主机农舍等级
+
+- [x] Control `0.3.4` 在 `SaveLoaded` 前按精确程序集/类型/签名 Harmony 跳过 JunimoServer `.125` 的 `ResetHostFarmhouseToLevelZero()`；默认启用且不提供开关，不携带或修改上游源码。
+- [x] Control options/status 暴露补丁安装结果；Panel 要求 availability 明确为 true，目标漂移或安装失败时以 `control_runtime_host_farmhouse_patch_unavailable` 停服，避免静默回退到归零行为。
+- [x] C# 契约、真实游戏程序集编译、Go runtime/lifecycle 回归通过；真实 `.125` Docker 读档与 `GameLoop.Saved` 已证明任务副本的主机房屋等级 2 保持为 2，测试资源归零。
+- [ ] 下一正式候选需按 `docs/09-image-build.md` 的本任务矩阵完成 Control-only Web 升级、升级后真实读档/重启/保存和失败回滚；本轮不提交、不推送、不 tag、不发布，也不为导入存档增加特殊处理。
+
+# 2026-08-15 完成未发布：存档导入 token/job/cleanup 崩溃恢复
+
+- [x] primary job、operationId、journal 与 owned token 形成 `type + instance + save-import:<operationId>` 一对一身份；job runner 只在 journal attach、token attach、journal ready 全部成功后启动，attach 失败不再返回 202。
+- [x] Panel 重启覆盖 job 创建前后、journal/token 两次 attach 与 runner release 前窗口；只按 exact idempotency identity 恢复，缺失、冲突、payload 不符或 exact job 不存在均 recovery required，不猜最近任务。
+- [x] cleanup 先持久完整只读计划，再按 bootstrap/staged/source 的 removal-started/removed 子阶段执行；schema/stage/关键字段、maintenance/FIFO/upstream、pointer、source/bootstrap/staged 指纹任一不可证时零删除或停止在可恢复证据上，preimport 永久保留。
+- [x] filesystem completed 后通过 0600 cleanup receipt 串联 journal finalize 与 token 删除；token 删除失败、journal 已删、重复/并发 cancel 可幂等收敛且危险删除最多一次。
+- [x] succeeded token 过期后压缩为 exact-result tombstone，不删除 completed journal、preimport 或正式存档，也不破坏同 token 幂等查询。
+- [x] jobs、pending upload、transaction、Web/API 故障注入专项已补；本任务不提交、不推送、不 tag、不发布，后续正式候选仍需升级后真实 Docker E2E。
+
 # 2026-08-15 完成未发布：存档导入维护事务耐久闭环
 
 - [x] maintenance phase、原始实例快照与 `MaintenanceStarted` 改为 write-ahead 门禁；任一数据库/journal 写失败均禁止 ComposeUp 或进入 recovery required，不再吞掉 LastError、清旗、快照恢复错误。

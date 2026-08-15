@@ -18,13 +18,14 @@ import (
 type fakeConsoleDocker struct {
 	paneldocker.Client // embed to satisfy interface; methods panic if called unexpectedly
 
-	execFunc         func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
-	runContainerFunc func(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
-	composeLogsFunc  func(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
-	restartFunc      func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
-	composeDownFunc  func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
-	composeUpFunc    func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
-	composePsFunc    func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
+	execFunc            func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	runContainerFunc    func(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
+	composeLogsFunc     func(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
+	restartFunc         func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
+	composeDownFunc     func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
+	composeUpFunc       func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
+	composePsFunc       func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
+	composePsStrictFunc func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
 }
 
 func (f *fakeConsoleDocker) ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
@@ -60,6 +61,9 @@ func (f *fakeConsoleDocker) ComposePs(ctx context.Context, dir string) (paneldoc
 }
 
 func (f *fakeConsoleDocker) ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	if f.composePsStrictFunc != nil {
+		return f.composePsStrictFunc(ctx, dir)
+	}
 	return f.ComposePs(ctx, dir)
 }
 

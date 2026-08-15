@@ -346,19 +346,17 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 			writeError(w, http.StatusConflict, sj.ImportErrorRecoveryRequired, "owned upload transaction journal could not be verified")
 			return
 		}
-		if prior.JobID == "" && prior.Status != "reserved" && s.jobs != nil {
-			if recovered, recoverErr := s.jobs.GetByIdempotencyKey(r.Context(), sj.SaveImportJobType, "instance", instanceID, sj.SaveImportJobIdempotencyKey(prior.OperationID)); recoverErr == nil {
-				prior.JobID = recovered.ID
-				if attachErr := s.pendingUploads.attachJob(instance.DataDir, body.Token, prior.OperationID, recovered.ID); attachErr != nil {
-					s.logger.Warn("recovered save import job but token attachment remains deferred", "instance", instanceID, "job", recovered.ID, "operation", prior.OperationID, "error", attachErr)
-				}
-			} else if !errors.Is(recoverErr, storage.ErrNotFound) {
-				writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to recover import job identity")
+		if prior.Status != "reserved" {
+			recovered, recoverErr := s.reconcilePendingImportJobIdentity(r.Context(), instance, body.Token, prior)
+			if recoverErr != nil {
+				writeSaveImportSubmitError(w, recoverErr)
 				return
 			}
+			writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: recovered.ID, OperationID: prior.OperationID, SaveName: prior.SaveName})
+			return
 		}
-		if prior.JobID != "" {
-			writeJSON(w, http.StatusAccepted, saveUploadCommitResponse{JobID: prior.JobID, OperationID: prior.OperationID, SaveName: prior.SaveName})
+		if prior.JobID != "" || prior.JobType != "" || prior.JobIdempotencyKey != "" {
+			writeError(w, http.StatusConflict, sj.ImportErrorRecoveryRequired, "reserved upload token has an inconsistent job identity")
 			return
 		}
 	}
@@ -406,19 +404,25 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 			TransferSourceOwnership: func(targetDir string) error {
 				return s.pendingUploads.transferOwnership(instance.DataDir, body.Token, operationID, targetDir)
 			},
+			AttachJobIdentity: func(jobID string) error {
+				return s.pendingUploads.attachJob(instance.DataDir, body.Token, operationID, jobID)
+			},
 			MarkUploadSucceeded: func() error {
 				return s.pendingUploads.markSucceeded(instance.DataDir, body.Token, operationID)
 			},
 		})
 		if submitErr != nil {
 			if current, lookupErr := s.pendingUploads.lookup(instance.DataDir, body.Token, instanceID); lookupErr == nil && current.Status == "reserved" {
-				_ = s.pendingUploads.release(instance.DataDir, body.Token, operationID)
+				if _, journalErr := sj.LoadImportJournal(instance.DataDir, operationID); os.IsNotExist(journalErr) {
+					_ = s.pendingUploads.release(instance.DataDir, body.Token, operationID)
+				}
 			}
 			writeSaveImportSubmitError(w, submitErr)
 			return
 		}
-		if attachErr := s.pendingUploads.attachJob(instance.DataDir, body.Token, operationID, job.ID); attachErr != nil {
-			s.logger.Error("failed to persist import job ownership", "instance", instanceID, "job", job.ID, "operation", operationID, "error", attachErr)
+		if verifyErr := s.verifyPendingImportJobBinding(instance, body.Token, operationID, job.ID); verifyErr != nil {
+			writeSaveImportSubmitError(w, verifyErr)
+			return
 		}
 		s.logger.Info("save import transaction submitted", "instance", instanceID, "mode", mode, "job", job.ID, "operation", operationID, "save", entry.SaveName)
 		s.auditLog(r, &actor, "save_import_submit", "instance", instanceID, auditMetadata("mode", mode, "saveName", entry.SaveName, "jobId", job.ID, "operationId", operationID))
@@ -427,50 +431,132 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 	}
 }
 
+func validatePendingImportJob(job storage.Job, instanceID, operationID string) error {
+	var payload struct {
+		OperationID string `json:"operationId"`
+	}
+	if job.Type != sj.SaveImportJobType || job.TargetType != "instance" || job.TargetID != instanceID ||
+		!job.Payload.Valid || json.Unmarshal([]byte(job.Payload.String), &payload) != nil || payload.OperationID != operationID {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import job identity does not match the owned transaction"}
+	}
+	return nil
+}
+
+func (s *server) verifyPendingImportJobBinding(instance storage.Instance, token, operationID, jobID string) error {
+	entry, err := s.pendingUploads.lookup(instance.DataDir, token, instance.ID)
+	if err != nil {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token job identity cannot be verified", Cause: err}
+	}
+	if (entry.Status != "owned" && entry.Status != "succeeded") || entry.OperationID != operationID ||
+		entry.JobType != sj.SaveImportJobType || entry.JobID != jobID ||
+		entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(operationID) {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token job identity is incomplete"}
+	}
+	journal, err := sj.LoadImportJournal(instance.DataDir, operationID)
+	if err != nil {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal job identity cannot be verified", Cause: err}
+	}
+	if !sj.ImportJournalHasJobIdentity(journal, instance.ID, jobID) {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal job identity is incomplete"}
+	}
+	return nil
+}
+
+func (s *server) reconcilePendingImportJobIdentity(ctx context.Context, instance storage.Instance, token string, entry *durablePendingUpload) (storage.Job, error) {
+	if entry == nil || entry.OperationID == "" || (entry.Status != "owned" && entry.Status != "succeeded") || s.jobs == nil {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned save import has no verifiable durable identity"}
+	}
+	job, err := s.jobs.GetByIdempotencyKey(ctx, sj.SaveImportJobType, "instance", instance.ID, sj.SaveImportJobIdempotencyKey(entry.OperationID))
+	if err != nil {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned save import job identity could not be recovered", Cause: err}
+	}
+	if err := validatePendingImportJob(job, instance.ID, entry.OperationID); err != nil {
+		return storage.Job{}, err
+	}
+	if entry.JobID != "" && entry.JobID != job.ID {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token belongs to a different job"}
+	}
+	if entry.JobType != "" && entry.JobType != sj.SaveImportJobType {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token has an invalid job type"}
+	}
+	if entry.JobIdempotencyKey != "" && entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(entry.OperationID) {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token has an invalid idempotency identity"}
+	}
+	if err := sj.AttachImportJournalJobIdentity(instance.DataDir, entry.OperationID, instance.ID, job.ID); err != nil {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal job identity could not be recovered", Cause: err}
+	}
+	if err := s.pendingUploads.attachJob(instance.DataDir, token, entry.OperationID, job.ID); err != nil {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token job identity could not be recovered", Cause: err}
+	}
+	if err := sj.ConfirmImportJournalJobBinding(instance.DataDir, entry.OperationID, instance.ID, job.ID); err != nil {
+		return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import job binding could not be confirmed", Cause: err}
+	}
+	if err := s.verifyPendingImportJobBinding(instance, token, entry.OperationID, job.ID); err != nil {
+		return storage.Job{}, err
+	}
+	if job.Status == storage.JobStatusSucceeded && entry.Status == "owned" {
+		journal, loadErr := sj.LoadImportJournal(instance.DataDir, entry.OperationID)
+		if loadErr != nil || journal.Stage != sj.ImportStageCompleted {
+			return storage.Job{}, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "succeeded save import journal is not completed", Cause: loadErr}
+		}
+		if markErr := s.pendingUploads.markSucceeded(instance.DataDir, token, entry.OperationID); markErr != nil {
+			s.logger.Warn("succeeded save import token compaction remains deferred", "instance", instance.ID, "job", job.ID, "operation", entry.OperationID, "error", markErr)
+		}
+	}
+	return job, nil
+}
+
 // cancelPendingSaveUpload supports two loss-bounded cases: an unowned preview,
 // or an owned transaction whose job is durably terminal and whose journal can
 // still pass CleanupUnsubmittedImport's no-upstream-effect gates. The latter
 // preserves the preimport backup and never guesses ownership from paths.
 func (s *server) cancelPendingSaveUpload(ctx context.Context, instance storage.Instance, token string) error {
+	s.saveImportCancelMu.Lock()
+	defer s.saveImportCancelMu.Unlock()
+	receipt, receiptErr := s.pendingUploads.cleanupReceipt(instance.DataDir, token, instance.ID)
 	entry, err := s.pendingUploads.lookup(instance.DataDir, token, instance.ID)
 	if err != nil {
+		if receiptErr == nil {
+			if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, receipt.OperationID); err != nil {
+				return err
+			}
+			if err := s.pendingUploads.removeOwnedAfterCleanup(instance.DataDir, token, receipt); err != nil {
+				return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "completed save import token cleanup could not converge", Cause: err}
+			}
+			return nil
+		}
+		if !os.IsNotExist(receiptErr) {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup receipt cannot be verified", Cause: receiptErr}
+		}
 		return err
 	}
+	if receiptErr == nil {
+		if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, receipt.OperationID); err != nil {
+			return err
+		}
+		if err := s.pendingUploads.removeOwnedAfterCleanup(instance.DataDir, token, receipt); err != nil {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "completed save import token cleanup could not converge", Cause: err}
+		}
+		return nil
+	}
+	if !os.IsNotExist(receiptErr) {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup receipt cannot be verified", Cause: receiptErr}
+	}
 	if entry.Status != "owned" {
+		if entry.Status == "succeeded" {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "succeeded save import token cannot be canceled"}
+		}
 		return s.pendingUploads.cancel(instance.DataDir, token)
 	}
 	if entry.OperationID == "" || s.jobs == nil {
-		return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "owned save import has no verifiable durable identity"}
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned save import has no verifiable durable identity"}
 	}
-	var job storage.Job
-	jobFound := false
-	if entry.JobID != "" {
-		job, err = s.jobs.Get(ctx, entry.JobID)
-		if err != nil {
-			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "owned save import job could not be verified", Cause: err}
-		}
-		jobFound = true
-	} else {
-		job, err = s.jobs.GetByIdempotencyKey(ctx, sj.SaveImportJobType, "instance", instance.ID, sj.SaveImportJobIdempotencyKey(entry.OperationID))
-		if err == nil {
-			jobFound = true
-			entry.JobID = job.ID
-			_ = s.pendingUploads.attachJob(instance.DataDir, token, entry.OperationID, job.ID)
-		} else if !errors.Is(err, storage.ErrNotFound) {
-			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "owned save import job identity could not be recovered", Cause: err}
-		}
+	job, err := s.reconcilePendingImportJobIdentity(ctx, instance, token, entry)
+	if err != nil {
+		return err
 	}
-	var payload struct {
-		OperationID string `json:"operationId"`
-	}
-	if jobFound {
-		if job.Type != sj.SaveImportJobType || job.TargetType != "instance" || job.TargetID != instance.ID ||
-			!job.Payload.Valid || json.Unmarshal([]byte(job.Payload.String), &payload) != nil || payload.OperationID != entry.OperationID {
-			return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned save import job identity does not match the transaction"}
-		}
-		if job.Status != storage.JobStatusFailed && job.Status != storage.JobStatusCanceled {
-			return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "save import job is not in a safely cancellable terminal state"}
-		}
+	if job.Status != storage.JobStatusFailed && job.Status != storage.JobStatusCanceled {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "save import job is not in a safely cancellable terminal state"}
 	}
 	type unsubmittedImportCleaner interface {
 		CleanupUnsubmittedSaveImport(context.Context, registry.Instance, string) error
@@ -483,11 +569,18 @@ func (s *server) cancelPendingSaveUpload(ctx context.Context, instance storage.I
 	if err := cleaner.CleanupUnsubmittedSaveImport(ctx, makeRegistryInstance(instance), entry.OperationID); err != nil {
 		return err
 	}
-	if err := s.pendingUploads.removeOwned(instance.DataDir, token, entry.OperationID); err != nil {
-		return err
+	if err := s.pendingUploads.markCleanupCompleted(instance.DataDir, token, entry.OperationID, job.ID); err != nil {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import filesystem cleanup completed but its token receipt could not be persisted", Cause: err}
 	}
 	if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, entry.OperationID); err != nil {
-		s.logger.Warn("save import token was canceled but terminal journal cleanup is deferred", "instance", instance.ID, "operation", entry.OperationID, "error", err)
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup receipt is durable but journal finalization failed", Cause: err}
+	}
+	receipt, err = s.pendingUploads.cleanupReceipt(instance.DataDir, token, instance.ID)
+	if err != nil {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup receipt disappeared before token removal", Cause: err}
+	}
+	if err := s.pendingUploads.removeOwnedAfterCleanup(instance.DataDir, token, receipt); err != nil {
+		return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup completed but owned token removal failed", Cause: err}
 	}
 	return nil
 }

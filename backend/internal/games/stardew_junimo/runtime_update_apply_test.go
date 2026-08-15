@@ -113,7 +113,7 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, data
 	if service == "server" {
 		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
 		_ = os.MkdirAll(filepath.Join(dataDir, ".local-container", "control"), 0o755)
-		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600)
+		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600)
 		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "status.json"), []byte(`{"state":"save-loaded","commandResultVersion":1,"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
 		_ = os.WriteFile(filepath.Join(dataDir, ".local-container", "control", "players.json"), []byte(`{"players":[],"updatedAt":"2026-07-20T00:00:00Z"}`), 0o600)
 	}
@@ -232,7 +232,7 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 		t.Fatal(err)
 	}
 	manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
-	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"`+manifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	oldJunimoDir := junimoServerModDir(instance.DataDir)

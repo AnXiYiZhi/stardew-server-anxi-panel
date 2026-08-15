@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -69,10 +71,14 @@ func TestSaveImportServerStoppedStrictMatrix(t *testing.T) {
 	}{
 		{name: "absent", stopped: true},
 		{name: "all terminal", services: []paneldocker.ComposeService{{Service: "server", State: "exited"}, {Service: "server", State: "dead"}, {Service: "steam-auth", State: "running"}}, stopped: true},
-		{name: "created", services: []paneldocker.ComposeService{{Service: "server", State: "created"}}, stopped: true},
+		{name: "running", services: []paneldocker.ComposeService{{Service: "server", State: "running"}}},
+		{name: "status up", services: []paneldocker.ComposeService{{Service: "server", State: "exited", Status: "Up 1 second"}}},
+		{name: "created", services: []paneldocker.ComposeService{{Service: "server", State: "created"}}},
 		{name: "one of multiple running", services: []paneldocker.ComposeService{{Service: "server", State: "exited"}, {Service: "server", State: "running"}}},
+		{name: "one of multiple unknown", services: []paneldocker.ComposeService{{Service: "server", State: "dead"}, {Service: "server", State: "mystery"}}, wantErr: true},
 		{name: "restarting", services: []paneldocker.ComposeService{{Service: "server", State: "restarting"}}},
 		{name: "paused", services: []paneldocker.ComposeService{{Service: "server", State: "paused"}}},
+		{name: "removing", services: []paneldocker.ComposeService{{Service: "server", State: "removing"}}},
 		{name: "unknown", services: []paneldocker.ComposeService{{Service: "server", State: "mystery"}}, wantErr: true},
 		{name: "missing state", services: []paneldocker.ComposeService{{Service: "server"}}, wantErr: true},
 	} {
@@ -85,9 +91,128 @@ func TestSaveImportServerStoppedStrictMatrix(t *testing.T) {
 	}
 }
 
+func TestImportMaintenanceJournalSnapshotPreservesRawLifecycleBytes(t *testing.T) {
+	dataDir, op, _, _ := prepareMaintenanceFixture(t)
+	journal, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateStopped,
+		StateMessage:  sql.NullString{String: string([]byte{'m', 0, 0xff}), Valid: true},
+		DriverPhase:   string([]byte{'p', 0, 0xfe}),
+		DriverPayload: string([]byte{'{', 0xff, 0, '}'}),
+	}
+	captureOriginalInstanceSnapshot(&journal, original)
+	if err := WriteImportJournal(dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := originalInstanceSnapshotFromJournal(loaded, dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.StateMessage != original.StateMessage || restored.DriverPhase != original.DriverPhase || restored.DriverPayload != original.DriverPayload {
+		t.Fatalf("snapshot bytes changed: got=%+v", restored)
+	}
+}
+
+func TestEnsureSaveImportServerStoppedUsesFreshDockerClientState(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("controlled Docker Client cache/parser test runs on the Linux target filesystem")
+	}
+	for _, tc := range []struct {
+		name        string
+		cachedState string
+		freshState  string
+		wantErr     bool
+	}{
+		{name: "cached stopped fresh running rejects", cachedState: "exited", freshState: "running", wantErr: true},
+		{name: "cached running fresh exited passes", cachedState: "running", freshState: "exited"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			client := paneldocker.NewClient(paneldocker.Options{
+				DockerPath:     writeSaveImportProbeDocker(t, tc.cachedState, tc.freshState),
+				ComposePsTTL:   time.Minute,
+				MaxOutputBytes: 1 << 20,
+			})
+			cached, err := client.ComposePs(context.Background(), workDir)
+			if err != nil || len(cached.Services) != 1 || cached.Services[0].State != tc.cachedState {
+				t.Fatalf("prime cache result=%+v err=%v", cached, err)
+			}
+			err = ensureSaveImportServerStopped(context.Background(), client, workDir)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("fresh state %q error=%v", tc.freshState, err)
+			}
+		})
+	}
+}
+
+func TestRunImportMaintenanceRecordsStrictPreflightFailureInAuthoritativeDataDir(t *testing.T) {
+	root := t.TempDir()
+	authoritativeDir := filepath.Join(root, "authoritative")
+	staleDir := filepath.Join(root, "stale")
+	if err := os.MkdirAll(authoritativeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(staleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	op := NewImportOperationID()
+	if _, err := CreateImportJournal(authoritativeDir, registry.SaveImportRequest{
+		Instance:    registry.Instance{ID: "stardew", DriverID: DriverID, DataDir: authoritativeDir},
+		OperationID: op, SaveName: "Upload_1", HostHandling: "server_owns_original",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := &importMaintenanceStore{instance: storage.Instance{
+		ID: "stardew", DriverID: DriverID, DataDir: authoritativeDir, State: storage.InstanceStateGameInstalled,
+	}}
+	fake := &fakeConsoleDocker{composePsStrictFunc: func(context.Context, string) (paneldocker.ComposePsResult, error) {
+		return paneldocker.ComposePsResult{}, errors.New("strict probe failed")
+	}}
+	driver := New(fake, nil, nil, store)
+	err := driver.runImportMaintenance(context.Background(), registry.Instance{
+		ID: "stardew", DriverID: DriverID, DataDir: staleDir, State: storage.InstanceStateGameInstalled,
+	}, op, nil, defaultImportMaintenanceOptions())
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorMaintenanceStart {
+		t.Fatalf("error=%v", err)
+	}
+	j, err := LoadImportJournal(authoritativeDir, op)
+	if err != nil || j.LastErrorCode != ImportErrorMaintenanceStart {
+		t.Fatalf("authoritative journal=%+v err=%v", j, err)
+	}
+	if _, err := os.Stat(importJournalPath(staleDir, op)); !os.IsNotExist(err) {
+		t.Fatalf("stale directory was modified: %v", err)
+	}
+}
+
+func writeSaveImportProbeDocker(t *testing.T, cachedState, freshState string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker")
+	script := fmt.Sprintf(`#!/bin/sh
+case "$1 $2 $3 $4 $5" in
+  "compose ps --format json ") printf '[{"Service":"server","State":"%s","Status":"cached"}]' ;;
+  "compose ps --all --format json") printf '[{"Service":"server","State":"%s","Status":"fresh"}]' ;;
+  *) printf 'unexpected args' >&2; exit 7 ;;
+esac
+`, cachedState, freshState)
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 type maintenanceFakeConfig struct {
 	missingFIFO, apiDown, apiTimeout, versionMismatch, playersConnected bool
 	composeUpError, neverRunning, processIdentityChanges                bool
+	composeDownError, strictStopError, strictStopUnknown                bool
 	savesProbeFailures, diagnosticsFailures                             int
 }
 
@@ -118,6 +243,10 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 	fake.composeDownFunc = func(context.Context, string) (paneldocker.CommandResult, error) {
 		record.mu.Lock()
 		record.down = true
+		if cfg.composeDownError {
+			record.mu.Unlock()
+			return paneldocker.CommandResult{ExitCode: 1}, errors.New("injected compose down failure")
+		}
 		record.started = false
 		record.mu.Unlock()
 		return paneldocker.CommandResult{}, nil
@@ -130,6 +259,18 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 			return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}}}, nil
 		}
 		return paneldocker.ComposePsResult{}, nil
+	}
+	fake.composePsStrictFunc = func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+		record.mu.Lock()
+		down := record.down
+		record.mu.Unlock()
+		if down && cfg.strictStopError {
+			return paneldocker.ComposePsResult{}, errors.New("injected strict stop probe failure")
+		}
+		if down && cfg.strictStopUnknown {
+			return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "unknown"}}}, nil
+		}
+		return fake.ComposePs(ctx, dir)
 	}
 	fake.execFunc = func(ctx context.Context, _ string, _ string, stdin string, args ...string) (paneldocker.CommandResult, error) {
 		record.mu.Lock()
@@ -430,7 +571,7 @@ func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance,
 	if err := os.MkdirAll(controlDir(dataDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "status.json"), []byte(`{"saveId":"Old_1"}`), 0o600); err != nil {
@@ -580,6 +721,59 @@ func TestImportMaintenanceGameInstalledFailuresRestoreExactSnapshot(t *testing.T
 	}
 }
 
+func TestImportMaintenanceFailureRestoresAllOfflineStatesAndMessageTriState(t *testing.T) {
+	states := []string{
+		storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStopped,
+	}
+	messages := []struct {
+		name  string
+		value sql.NullString
+	}{
+		{name: "null", value: sql.NullString{String: "ignored", Valid: false}},
+		{name: "empty", value: sql.NullString{String: "", Valid: true}},
+		{name: "ordinary", value: sql.NullString{String: "exact ordinary message", Valid: true}},
+	}
+	for _, state := range states {
+		for _, message := range messages {
+			t.Run(state+"/"+message.name, func(t *testing.T) {
+				_, op, instance, store := prepareMaintenanceFixture(t)
+				phase := "phase_" + state
+				payload := `{"state":"` + state + `"}`
+				if state == storage.InstanceStateGameInstalled && message.name == "null" {
+					phase, payload = "", ""
+				}
+				store.mu.Lock()
+				store.instance.State = state
+				store.instance.StateMessage = message.value
+				store.instance.DriverPhase = phase
+				store.instance.DriverPayload = payload
+				original := store.instance
+				store.mu.Unlock()
+				instance.State = state
+				instance.StateMessage = message.value.String
+				instance.DriverPhase = phase
+				instance.DriverPayload = payload
+				fake, _ := newMaintenanceFake(maintenanceFakeConfig{composeUpError: true})
+				driver := New(fake, nil, nil, store)
+				if err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+					importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond}); err == nil {
+					t.Fatal("maintenance failure fixture unexpectedly succeeded")
+				}
+				store.mu.Lock()
+				restored := store.instance
+				store.mu.Unlock()
+				if restored.State != original.State || restored.StateMessage != original.StateMessage ||
+					restored.DriverPhase != original.DriverPhase || restored.DriverPayload != original.DriverPayload {
+					t.Fatalf("snapshot not restored exactly: got=%+v want=%+v", restored, original)
+				}
+			})
+		}
+	}
+}
+
 func TestImportMaintenanceStateWriteFailurePreventsComposeUp(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	store.updateErr = errors.New("injected state write failure")
@@ -598,8 +792,209 @@ func TestImportMaintenanceStateWriteFailurePreventsComposeUp(t *testing.T) {
 		t.Fatal("ComposeUp ran after maintenance state write failed")
 	}
 	journal, loadErr := LoadImportJournal(dataDir, op)
-	if loadErr != nil || journal.MaintenanceStarted {
+	if loadErr != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored {
 		t.Fatalf("journal=%+v err=%v", journal, loadErr)
+	}
+}
+
+func TestImportMaintenanceStartedJournalFailurePreventsComposeUpAndRestoresSnapshot(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	store.mu.Lock()
+	original := store.instance
+	store.mu.Unlock()
+	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+	driver := New(fake, nil, nil, store)
+	writes := 0
+	driver.importJournalWrite = func(dir string, journal ImportJournal) error {
+		writes++
+		if writes == 2 {
+			return errors.New("injected MaintenanceStarted journal failure")
+		}
+		return WriteImportJournal(dir, journal)
+	}
+	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("error=%T %v", err, err)
+	}
+	record.mu.Lock()
+	upCalls, down := record.upCalls, record.down
+	record.mu.Unlock()
+	if upCalls != 0 || !down {
+		t.Fatalf("upCalls=%d down=%v", upCalls, down)
+	}
+	store.mu.Lock()
+	restored := store.instance
+	store.mu.Unlock()
+	if restored.State != original.State || restored.StateMessage != original.StateMessage ||
+		restored.DriverPhase != original.DriverPhase || restored.DriverPayload != original.DriverPayload {
+		t.Fatalf("snapshot not restored: got=%+v want=%+v", restored, original)
+	}
+	journal, loadErr := LoadImportJournal(dataDir, op)
+	if loadErr != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored {
+		t.Fatalf("journal=%+v err=%v", journal, loadErr)
+	}
+}
+
+func TestImportMaintenanceRollbackRequiresDownStrictProbeAndFlagPersistence(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		cfg              maintenanceFakeConfig
+		failJournalWrite int
+	}{
+		{name: "compose down failure", cfg: maintenanceFakeConfig{composeUpError: true, composeDownError: true}},
+		{name: "strict probe failure", cfg: maintenanceFakeConfig{composeUpError: true, strictStopError: true}},
+		{name: "strict unknown state", cfg: maintenanceFakeConfig{composeUpError: true, strictStopUnknown: true}},
+		{name: "MaintenanceStarted false write failure", cfg: maintenanceFakeConfig{composeUpError: true}, failJournalWrite: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir, op, instance, store := prepareMaintenanceFixture(t)
+			fake, _ := newMaintenanceFake(tc.cfg)
+			driver := New(fake, nil, nil, store)
+			if tc.failJournalWrite > 0 {
+				writes := 0
+				driver.importJournalWrite = func(dir string, journal ImportJournal) error {
+					writes++
+					if writes == tc.failJournalWrite {
+						return errors.New("injected rollback journal failure")
+					}
+					return WriteImportJournal(dir, journal)
+				}
+			}
+			err := driver.runImportMaintenance(context.Background(), instance, op, nil,
+				importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
+			typed, ok := AsImportTransactionError(err)
+			if !ok || typed.Code != ImportErrorRecoveryRequired {
+				t.Fatalf("error=%T %v", err, err)
+			}
+			store.mu.Lock()
+			current := store.instance
+			store.mu.Unlock()
+			if current.DriverPhase != importMaintenancePhase {
+				t.Fatalf("ordinary offline snapshot was restored without complete proof: %+v", current)
+			}
+			journal, loadErr := LoadImportJournal(dataDir, op)
+			if loadErr != nil || !journal.MaintenanceStarted {
+				t.Fatalf("journal safety evidence was cleared: %+v err=%v", journal, loadErr)
+			}
+		})
+	}
+}
+
+func TestRecordMaintenanceFailureJournalErrorIsRecoveryRequired(t *testing.T) {
+	dataDir, op, _, store := prepareMaintenanceFixture(t)
+	injected := errors.New("injected LastError journal failure")
+	driver := New(&fakeConsoleDocker{}, nil, nil, store)
+	driver.importJournalWrite = func(string, ImportJournal) error { return injected }
+	err := driver.recordMaintenanceFailure(dataDir, op, ImportErrorMaintenanceReady, "primary readiness failure", errors.New("primary"))
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired || !errors.Is(err, injected) {
+		t.Fatalf("error=%T %v", err, err)
+	}
+}
+
+func TestRecoverInterruptedImportMaintenanceCrashWindows(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		maintenanceState string
+		started          bool
+		recoveryState    string
+		wantDown         bool
+	}{
+		{name: "flag true before ComposeUp", maintenanceState: importMaintenanceStartIntentPersisted, recoveryState: importRecoveryMaintenanceStopAndRestore, wantDown: true},
+		{name: "ComposeUp returned before runtime ready", maintenanceState: importMaintenanceComposeUpReturned, started: true, recoveryState: importRecoveryMaintenanceStopAndRestore, wantDown: true},
+		{name: "ComposeDown returned before flag clear", maintenanceState: importMaintenanceComposeUpReturned, recoveryState: importRecoveryMaintenanceStopAndRestore, wantDown: true},
+		{name: "flag clear before snapshot restore", maintenanceState: importMaintenanceSnapshotRestorePending, recoveryState: importRecoveryMaintenanceRestoreSnapshot},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir, op, instance, store := prepareMaintenanceFixture(t)
+			store.mu.Lock()
+			original := store.instance
+			store.instance.State = storage.InstanceStateStopped
+			store.instance.StateMessage = sql.NullString{String: "private maintenance", Valid: true}
+			store.instance.DriverPhase = importMaintenancePhase
+			store.instance.DriverPayload = `{}`
+			store.mu.Unlock()
+			journal, err := LoadImportJournal(dataDir, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			captureOriginalInstanceSnapshot(&journal, original)
+			journal.MaintenanceStarted = tc.maintenanceState != importMaintenanceSnapshotRestorePending
+			journal.MaintenanceRecoveryState = tc.maintenanceState
+			if err := WriteImportJournal(dataDir, journal); err != nil {
+				t.Fatal(err)
+			}
+			fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+			record.started = tc.started
+			driver := New(fake, nil, nil, store)
+			recoveries, err := RecoverImportTransactions(dataDir)
+			if err != nil || len(recoveries) != 1 || recoveries[0].State != tc.recoveryState {
+				t.Fatalf("recoveries=%+v err=%v", recoveries, err)
+			}
+			recoveries, err = driver.recoverInterruptedImportMaintenance(context.Background(), instance, recoveries)
+			if err != nil || recoveries[0].State != "safe_to_resume_or_cleanup" {
+				t.Fatalf("recoveries=%+v err=%v", recoveries, err)
+			}
+			record.mu.Lock()
+			down := record.down
+			record.mu.Unlock()
+			if down != tc.wantDown {
+				t.Fatalf("ComposeDown=%v want=%v", down, tc.wantDown)
+			}
+			store.mu.Lock()
+			restored := store.instance
+			store.mu.Unlock()
+			if restored.State != original.State || restored.StateMessage != original.StateMessage ||
+				restored.DriverPhase != original.DriverPhase || restored.DriverPayload != original.DriverPayload {
+				t.Fatalf("snapshot not restored: got=%+v want=%+v", restored, original)
+			}
+			journal, err = LoadImportJournal(dataDir, op)
+			if err != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored {
+				t.Fatalf("journal=%+v err=%v", journal, err)
+			}
+		})
+	}
+}
+
+func TestRecoverInterruptedImportMaintenanceAmbiguousFIFOStaysManual(t *testing.T) {
+	dataDir, op, instance, store := prepareMaintenanceFixture(t)
+	journal, err := LoadImportJournal(dataDir, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	original := store.instance
+	store.instance.DriverPhase = importMaintenancePhase
+	store.mu.Unlock()
+	captureOriginalInstanceSnapshot(&journal, original)
+	journal.Stage = ImportStageRuntimeReady
+	journal.MaintenanceStarted = true
+	journal.MaintenanceRecoveryState = importMaintenanceRuntimeReadyPersisted
+	journal.PhaseAFIFOWriteAttempted = true
+	if err := WriteImportJournal(dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	fake, record := newMaintenanceFake(maintenanceFakeConfig{})
+	record.started = true
+	driver := New(fake, nil, nil, store)
+	recoveries, err := RecoverImportTransactions(dataDir)
+	if err != nil || len(recoveries) != 1 || recoveries[0].State != "manual_required" {
+		t.Fatalf("recoveries=%+v err=%v", recoveries, err)
+	}
+	if _, err := driver.recoverInterruptedImportMaintenance(context.Background(), instance, recoveries); err == nil {
+		t.Fatal("ambiguous FIFO recovery did not fail closed")
+	}
+	record.mu.Lock()
+	down := record.down
+	record.mu.Unlock()
+	if !down {
+		t.Fatal("ambiguous FIFO recovery left the private maintenance runtime running")
+	}
+	journal, err = LoadImportJournal(dataDir, op)
+	if err != nil || !journal.MaintenanceStarted || !journal.PhaseAFIFOWriteAttempted || journal.MaintenanceRecoveryState != importMaintenanceManualRecovery {
+		t.Fatalf("manual recovery evidence changed: %+v err=%v", journal, err)
 	}
 }
 
@@ -611,11 +1006,11 @@ func TestImportMaintenanceRestoreFailureSurfacesRecoveryRequired(t *testing.T) {
 	err := driver.runImportMaintenance(context.Background(), instance, op, nil,
 		importMaintenanceOptions{ReadyTimeout: time.Second, PollInterval: time.Millisecond})
 	typed, ok := AsImportTransactionError(err)
-	if !ok || typed.Code != ImportErrorRecoveryRequired || !strings.Contains(err.Error(), "failed to restore instance state") {
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
 		t.Fatalf("error=%T %v", err, err)
 	}
 	journal, loadErr := LoadImportJournal(dataDir, op)
-	if loadErr != nil || journal.MaintenanceStarted {
+	if loadErr != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestorePending {
 		t.Fatalf("journal=%+v err=%v", journal, loadErr)
 	}
 }

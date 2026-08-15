@@ -3,6 +3,7 @@ package stardew_junimo
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -58,6 +59,53 @@ func TestImportJournalIdempotentAndSensitiveIDNotPersisted(t *testing.T) {
 		t.Fatal(err)
 	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("journal mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestImportJobBindingFailurePreventsRunnerStart(t *testing.T) {
+	dataDir := t.TempDir()
+	op := "06112233445566778899aabbccddeeff"
+	req := testImportRequest(dataDir, op, "")
+	j, err := CreateImportJournal(dataDir, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeImportSourceFixture(t, importTransactionSourceDir(dataDir, op), req.SaveName, "owned")
+	j.SourceOwned = true
+	if err := WriteImportJournal(dataDir, j); err != nil {
+		t.Fatal(err)
+	}
+	req.AttachJobIdentity = func(string) error { return errors.New("injected token attach failure") }
+
+	store := newLifecycleTestStore(t)
+	manager := jobs.NewManager(store, slog.Default())
+	runnerCalls := 0
+	payload, _ := json.Marshal(map[string]string{"operationId": op})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: SaveImportJobType, TargetType: "instance", TargetID: req.Instance.ID,
+		IdempotencyKey: SaveImportJobIdempotencyKey(op), Payload: string(payload),
+		BeforeRun: func(_ context.Context, durable storage.Job) error {
+			return persistImportJobBinding(req, durable.ID)
+		},
+		Run: func(context.Context, *jobs.Context) error {
+			runnerCalls++
+			return nil
+		},
+	})
+	var preparation *jobs.StartPreparationError
+	if !errors.As(err, &preparation) || job.ID == "" {
+		t.Fatalf("job=%+v err=%v", job, err)
+	}
+	if runnerCalls != 0 {
+		t.Fatalf("runner calls=%d", runnerCalls)
+	}
+	journal, err := LoadImportJournal(dataDir, op)
+	if err != nil || journal.JobID != job.ID || journal.JobBindingState != importJobBindingJournalAttached {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	stored, err := store.GetJob(context.Background(), job.ID)
+	if err != nil || stored.Status != storage.JobStatusFailed {
+		t.Fatalf("stored job=%+v err=%v", stored, err)
 	}
 }
 
@@ -356,6 +404,51 @@ func TestImportSaveAndStartRejectsStaleDataDirectoryBeforeFilesystemOwnership(t 
 	}
 }
 
+func TestCleanupUnsubmittedSaveImportRejectsStaleDataDirectory(t *testing.T) {
+	root := t.TempDir()
+	authoritativeDir := filepath.Join(root, "authoritative")
+	staleDir := filepath.Join(root, "stale")
+	if err := os.MkdirAll(authoritativeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(staleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	op := NewImportOperationID()
+	if _, err := CreateImportJournal(authoritativeDir, registry.SaveImportRequest{
+		Instance:    registry.Instance{ID: "stardew", DriverID: DriverID, DataDir: authoritativeDir},
+		OperationID: op, SaveName: "Upload_1", HostHandling: "server_owns_original",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	staleSentinel := filepath.Join(staleDir, "sentinel")
+	if err := os.WriteFile(staleSentinel, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := &importMaintenanceStore{instance: storage.Instance{
+		ID: "stardew", DriverID: DriverID, DataDir: authoritativeDir, State: storage.InstanceStateGameInstalled,
+	}}
+	strictDir := ""
+	fake := &fakeConsoleDocker{composePsStrictFunc: func(_ context.Context, dir string) (paneldocker.ComposePsResult, error) {
+		strictDir = dir
+		return paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "exited"}}}, nil
+	}}
+	driver := New(fake, nil, nil, store)
+	err := driver.CleanupUnsubmittedSaveImport(context.Background(), registry.Instance{
+		ID: "stardew", DriverID: DriverID, DataDir: staleDir, State: storage.InstanceStateGameInstalled,
+	}, op)
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired || strictDir != authoritativeDir {
+		t.Fatalf("error=%v strictDir=%q", err, strictDir)
+	}
+	if _, err := LoadImportJournal(authoritativeDir, op); err != nil {
+		t.Fatalf("authoritative journal was modified: %v", err)
+	}
+	if content, err := os.ReadFile(staleSentinel); err != nil || string(content) != "keep" {
+		t.Fatalf("stale directory was modified: content=%q err=%v", content, err)
+	}
+}
+
 func TestImportSaveAndStartRejectsRunningComposeBeforeOwnership(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "instance")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -395,6 +488,54 @@ func TestImportSaveAndStartRejectsRunningComposeBeforeOwnership(t *testing.T) {
 	}
 }
 
+func TestImportSaveAndStartRejectsFreshRunningWhenComposeCacheIsStopped(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("controlled Docker Client cache/parser test runs on the Linux target filesystem")
+	}
+	dataDir := filepath.Join(t.TempDir(), "instance")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := newLifecycleTestStore(t)
+	stored, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: "stardew", DriverID: DriverID, Name: "test", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, StateMessage: "installed", DriverPhase: "game_installed", DriverPayload: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := paneldocker.NewClient(paneldocker.Options{
+		DockerPath:   writeSaveImportProbeDocker(t, "exited", "running"),
+		ComposePsTTL: time.Minute,
+	})
+	if cached, err := client.ComposePs(context.Background(), dataDir); err != nil || len(cached.Services) != 1 || cached.Services[0].State != "exited" {
+		t.Fatalf("prime stopped cache result=%+v err=%v", cached, err)
+	}
+	driver := New(client, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+	transferred := false
+	op := NewImportOperationID()
+	_, err = driver.ImportSaveAndStart(context.Background(), registry.SaveImportRequest{
+		Instance:    registry.Instance{ID: stored.ID, DriverID: stored.DriverID, DataDir: dataDir, State: stored.State},
+		OperationID: op, SaveName: "Upload_1", HostHandling: "server_owns_original",
+		TransferSourceOwnership: func(string) error { transferred = true; return nil },
+	})
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorSaveInProgress || transferred {
+		t.Fatalf("error=%v transferred=%v", err, transferred)
+	}
+	if _, err := LoadImportJournal(dataDir, op); !os.IsNotExist(err) {
+		t.Fatalf("fresh running state created transaction journal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(savesDir(dataDir), "Saves", importBootstrapSaveName(op))); !os.IsNotExist(err) {
+		t.Fatalf("fresh running state created bootstrap data: %v", err)
+	}
+}
+
 func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "instance")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -423,7 +564,7 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 	if err := os.MkdirAll(controlDir(dataDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -478,6 +619,7 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 		Instance: registry.Instance{ID: stored.ID, DriverID: stored.DriverID, Name: stored.Name, DataDir: dataDir,
 			State: stored.State, StateMessage: stored.StateMessage.String, DriverPhase: stored.DriverPhase, DriverPayload: stored.DriverPayload},
 		OperationID: op, StagedDir: stagedDir, SaveName: "Upload_1", HostHandling: "server_owns_original",
+		AttachJobIdentity: func(string) error { return nil },
 	})
 	if err != nil {
 		t.Fatal(err)

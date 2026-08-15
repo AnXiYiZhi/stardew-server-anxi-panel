@@ -87,6 +87,10 @@ type SaveImportRequest struct {
 	// TransferSourceOwnership moves the durable upload payload into the
 	// operation-owned source directory. It is transient and never persisted.
 	TransferSourceOwnership func(targetDir string) error
+	// AttachJobIdentity durably binds the operation's upload token to the exact
+	// save-import job. A successful return is the runner's permission to start;
+	// implementations must not treat this callback as best-effort metadata.
+	AttachJobIdentity func(jobID string) error
 	// MarkUploadSucceeded terminalizes the durable upload token after the
 	// import journal is fully completed. It is best-effort metadata cleanup and
 	// must not change an already successful save import into a failed job.

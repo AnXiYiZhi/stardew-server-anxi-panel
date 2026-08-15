@@ -36,6 +36,7 @@ type Deps struct {
 	UpdateChecker      UpdateChecker
 	Updater            UpdaterService
 	FarmCatalogScanner func(string) (sj.FarmCatalogResult, error)
+	pendingUploads     *durablePendingUploadStore
 }
 
 type UpdateChecker interface {
@@ -72,6 +73,7 @@ type server struct {
 	updater            UpdaterService
 	farmCatalogScanner func(string) (sj.FarmCatalogResult, error)
 	farmPrepareMu      sync.Mutex
+	saveImportCancelMu sync.Mutex
 	metricsMu          sync.Mutex
 	metricsCache       map[string]resourceMetricsCacheEntry
 	metricsFlights     map[string]*resourceMetricsFlight
@@ -107,6 +109,10 @@ func NewHandlerWithError(deps Deps) (http.Handler, error) {
 		dockerClient = paneldocker.NewClient(paneldocker.Options{Logger: logger})
 	}
 
+	pendingUploads := deps.pendingUploads
+	if pendingUploads == nil {
+		pendingUploads = newDurablePendingUploadStore()
+	}
 	s := &server{
 		config:             normalizeConfig(deps.Config),
 		store:              deps.Store,
@@ -114,7 +120,7 @@ func NewHandlerWithError(deps Deps) (http.Handler, error) {
 		docker:             dockerClient,
 		jobs:               deps.Jobs,
 		registry:           deps.Registry,
-		pendingUploads:     newDurablePendingUploadStore(),
+		pendingUploads:     pendingUploads,
 		publicIPResolver:   newPublicIPResolver(defaultPublicIPProviders),
 		updateChecker:      deps.UpdateChecker,
 		updater:            deps.Updater,

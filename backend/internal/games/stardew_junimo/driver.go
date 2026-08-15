@@ -110,13 +110,14 @@ type InstanceMutationExecutor interface {
 
 // Driver implements registry.GameDriver for Stardew Valley / JunimoServer.
 type Driver struct {
-	docker           DockerService
-	logger           *slog.Logger
-	jobs             *jobs.Manager
-	store            StateStore
-	panelVersion     string
-	containerDataDir string
-	hostDataDir      string
+	docker             DockerService
+	logger             *slog.Logger
+	jobs               *jobs.Manager
+	store              StateStore
+	importJournalWrite func(string, ImportJournal) error
+	panelVersion       string
+	containerDataDir   string
+	hostDataDir        string
 
 	// guardChans maps running install job ID → channel for Steam Guard input.
 	mu         sync.Mutex
@@ -238,6 +239,10 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		return fmt.Errorf("recover save import transactions: %w", err)
 	} else if len(recoveries) > 0 {
 		d.logger.Warn("discovered unfinished save import transactions", "instance", instance.ID, "count", len(recoveries))
+	}
+	recoveries, err = d.recoverInterruptedImportMaintenance(ctx, instance, recoveries)
+	if err != nil {
+		return fmt.Errorf("recover interrupted save import maintenance: %w", err)
 	}
 
 	// Create main directory and sub-directories. The named Docker volumes remain

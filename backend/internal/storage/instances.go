@@ -149,8 +149,10 @@ func (s *Store) UpdateInstanceState(ctx context.Context, params UpdateInstanceSt
 }
 
 // RestoreInstanceStateSnapshot restores the four persisted lifecycle fields
-// exactly, including NULL versus non-NULL state_message semantics. It is used
-// only by rollback paths which already captured an authoritative Instance.
+// exactly, including NULL versus empty/non-empty state_message semantics and
+// the original driver phase/payload string bytes. Unlike UpdateInstanceState,
+// this recovery-only contract never substitutes DefaultDriverPhase or "{}"
+// for empty values. Callers must pass an authoritative captured Instance.
 func (s *Store) RestoreInstanceStateSnapshot(ctx context.Context, snapshot Instance) (Instance, error) {
 	if !IsValidInstanceState(snapshot.State) {
 		return Instance{}, ErrInvalidStateTransition

@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.4.18`（commit `56c437004b51763e77d12ffd9b716f39224d7b00`）。本版修复 Panel Stop 已完成后空 Compose 集合被误报为存档导入进行中，以及 Control-only 升级时宿主持久目录缺少 JunimoServer 导致目标和回滚都无法启动、最终要求人工干预的问题；同时统一桌面/移动确认框的 body Portal、焦点与背景隔离，并补齐最近控制命令分页。`v0.4.17` 真实 Web unhealthy 回滚、healthy 升级、旧 `rollback_failed` 第三次 repair、升级后空 Compose 存档上传、三仓精确版/latest 同 digest、正式镜像重启、版本接口及 Release 资产均已通过；发布继续采用“一次构建不可变候选、tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.4.19`（commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee`）。本版在 `v0.4.18` 的存档导入、Junimo runtime 恢复和响应式前端修复基础上，加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码，以及 Control 对 Junimo 登录认证的 fail-closed runtime patch；候选 workflow `31892497427` 和正式 digest `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17` 已固定。发布继续采用“一次构建不可变候选、tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

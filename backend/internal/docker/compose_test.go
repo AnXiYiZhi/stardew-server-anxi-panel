@@ -167,7 +167,9 @@ case "$1 $2 $3 $4 $5" in
       1) printf '[{"Service":"server","State":"running","Status":"Up 1 second"}]' ;;
       2) printf '{bad json' ;;
       3) printf '' ;;
-      *) printf '[{"Service":"server","Status":"Exited (0)"}]' ;;
+      4) printf '[{"Service":"server","Status":"Exited (0)"}]' ;;
+      5) printf 'null' ;;
+      *) printf '[{"Service":"server","State":"unknown"}]' ;;
     esac
     ;;
   *) printf 'unexpected args: %%s %%s %%s %%s %%s' "$1" "$2" "$3" "$4" "$5" >&2; exit 7 ;;
@@ -192,9 +194,81 @@ esac
 	if _, err := client.ComposePsStrict(context.Background(), workDir); err == nil || !strings.Contains(err.Error(), "missing service or state") {
 		t.Fatalf("incomplete strict response error=%v", err)
 	}
-	if got := readCountFile(t, countPath); got != 4 {
-		t.Fatalf("strict command count=%d, want 4 uncached calls", got)
+	if _, err := client.ComposePsStrict(context.Background(), workDir); err == nil || !strings.Contains(err.Error(), "empty JSON value") {
+		t.Fatalf("empty JSON strict response error=%v", err)
 	}
+	if _, err := client.ComposePsStrict(context.Background(), workDir); err == nil || !strings.Contains(err.Error(), "unknown state") {
+		t.Fatalf("unknown state strict response error=%v", err)
+	}
+	if got := readCountFile(t, countPath); got != 6 {
+		t.Fatalf("strict command count=%d, want 6 uncached calls", got)
+	}
+}
+
+func TestComposePsStrictReadsFreshStateInBothCacheDirections(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("strict fake docker cache/parser coverage runs on the Linux target filesystem")
+	}
+	for _, tc := range []struct {
+		name        string
+		cachedState string
+		freshState  string
+	}{
+		{name: "cached stopped fresh running", cachedState: "exited", freshState: "running"},
+		{name: "cached running fresh stopped", cachedState: "running", freshState: "exited"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			normal := fmt.Sprintf(`[{"Service":"server","State":%q,"Status":"cached"}]`, tc.cachedState)
+			fresh := fmt.Sprintf(`[{"Service":"server","State":%q,"Status":"fresh"}]`, tc.freshState)
+			client := NewClient(Options{
+				DockerPath:   fakeDockerComposePsResponses(t, normal, fresh),
+				ComposePsTTL: time.Minute,
+			})
+
+			cached, err := client.ComposePs(context.Background(), workDir)
+			if err != nil || len(cached.Services) != 1 || cached.Services[0].State != tc.cachedState {
+				t.Fatalf("prime cache result=%+v err=%v", cached, err)
+			}
+			strict, err := client.ComposePsStrict(context.Background(), workDir)
+			if err != nil || len(strict.Services) != 1 || strict.Services[0].State != tc.freshState || strict.Services[0].Status != "fresh" {
+				t.Fatalf("strict result=%+v err=%v", strict, err)
+			}
+		})
+	}
+}
+
+func TestComposePsStrictRejectsTruncatedOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("strict fake docker limited-buffer coverage runs on the Linux target filesystem")
+	}
+	client := NewClient(Options{
+		DockerPath:     fakeDockerComposePsResponses(t, `[]`, `[{"Service":"server","State":"exited","Status":"Exited (0)"}]`),
+		MaxOutputBytes: 16,
+	})
+	if _, err := client.ComposePsStrict(context.Background(), t.TempDir()); err == nil || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("truncated strict response error=%v", err)
+	}
+}
+
+func fakeDockerComposePsResponses(t *testing.T, normal, strict string) string {
+	t.Helper()
+	fixtureDir := t.TempDir()
+	normalPath := filepath.Join(fixtureDir, "normal.json")
+	strictPath := filepath.Join(fixtureDir, "strict.json")
+	if err := os.WriteFile(normalPath, []byte(normal), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(strictPath, []byte(strict), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return fakeDocker(t, fmt.Sprintf(`
+case "$1 $2 $3 $4 $5" in
+  "compose ps --format json ") cat %q ;;
+  "compose ps --all --format json") cat %q ;;
+  *) printf 'unexpected args: %%s %%s %%s %%s %%s' "$1" "$2" "$3" "$4" "$5" >&2; exit 7 ;;
+esac
+`, normalPath, strictPath))
 }
 
 func readCountFile(t *testing.T, path string) int {

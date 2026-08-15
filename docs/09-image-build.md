@@ -1,3 +1,72 @@
+# v0.5.0 正式候选准备（2026-08-16，pending）
+
+## 聚合变更清单与受影响链路
+
+- 本次明确覆盖自动 patch 版本，目标固定为 `0.5.0`，当前上一正式版固定为 `0.4.19`；推送 `main` 后如果路径触发默认 `0.4.20` 候选，必须由同一 commit 的手动 `version=0.5.0`、`previous_version=0.4.19` 候选取代，不得创建、移动或手工补推 tag。
+- `SAVE-IMPORT-STRICT-OFFLINE-PROBE-1`：存档导入的每个破坏性边界都使用无 cache 的 strict Compose 探针，只接受无 server 或全部 `exited/dead`；命令失败、截断、坏/空 JSON、缺字段、未知或过渡状态全部 fail closed，并始终使用数据库权威 `DataDir`。
+- `SAVE-IMPORT-MAINTENANCE-DURABILITY-1`：maintenance、SQLite 精确快照、Compose Up/Down、FIFO attempt 和恢复阶段全部 write-ahead；NULL、空值和原始 payload 可精确恢复，无法证明未写 FIFO 或已完整回滚时保留 `import_recovery_required`，不做第二次危险动作。
+- `SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1`：primary job 通过 `BeforeRun` 与 journal/token 精确绑定；成功 token 使用 tombstone，取消使用带 fingerprint 的 schema 1 cleanup plan、持久 removal 子阶段和 0600 receipt，使 staged/bootstrap 危险删除最多一次并可在 Panel restart 后继续证明。
+- `FE-PLAYER-LAST-SEEN-SEMANTICS-1`：玩家 API 的 `lastSeen` 只来自真实在线时间 `last_online_at`，不再把面板扫描到离线存档角色的时间伪装成最近在线；前端表头同步改为“在线 / 最近活动”，API shape 与数据库 schema 不变。
+- `HOST-FARMHOUSE-PRESERVE-1`：Control `0.3.3 → 0.3.4` 以 Harmony prefix 默认跳过 JunimoServer `.125` 的 `HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()`，不携带上游源码且没有开关；Control options/status 和 Panel runtime gate 对精确反射/patch availability fail closed。内嵌 DLL SHA-256 固定为 `5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982`。
+- 受影响路径横跨后端、Control 源/DLL、runtime stack manifest、前端和长期文档，因此统一门禁必须选择后端全量 test/vet/build、Docker/updater integration、远程制品、Junimo/SMAPI/Control 真实长链、前端全部状态回归/audit/production build、网站 build、兼容清单、部署脚本、fresh install/restart，以及真实 Web unhealthy 回滚与 healthy 升级；不得按单个子任务的“不变路径”跳过聚合后的必跑项。
+
+## v0.5.0 专项矩阵
+
+| 维度 | 必测场景 | 正式候选门禁 |
+| --- | --- | --- |
+| 正常路径 | 离线存档上传、primary job 精确绑定、maintenance/FIFO/cleanup；房屋等级 0 与 2；从未在线与曾在线角色 | 上传从受理到 durable save/cleanup 完整终态；等级 2 经真实 SaveLoaded、save-now、Panel restart 后仍为 2；save-only 角色不返回伪造时间，曾在线角色保留最后在线时间 |
+| 关键边界 | Compose `running/Up/restarting/paused/created/removing`、坏/截断/null JSON；journal/token/job 不匹配；fingerprint/pointer 漂移；Control 类型/方法/owner/options 缺失 | 全部 fail closed 且在 ownership、FIFO、删除或读档前停止；不得回退 cache 探针、第二个 primary runner、无证明 cleanup 或旧 level-zero 行为 |
+| 权限安全 | 管理员提交/取消/升级；token owner、路径与 symlink；密码、平台 ID、原始 Docker 输出 | 管理员与实例边界不变；只操作数据库权威目录和已验 fingerprint；日志/API/证明不泄露凭据或玩家关联标识 |
+| 幂等/恢复 | attach 三写崩溃窗、maintenance start/down/restore 窗口、FIFO 结果模糊、cleanup 各子阶段、并发 cancel、Panel restart | exact recovery job 收敛；危险动作最多一次；不能证明安全时持久保留 manual recovery，而不是清旗、删 token 或重试 FIFO |
+| 数据完整性 | SQLite snapshot 的 NULL/空/raw、preimport/finished save、主存档双 XML、房屋 XML、非目标游戏容器/volume | exact restore；正式/完成存档不属于 token cleanup；除目标字段和预期事务外保持不变；失败/回滚恢复上一版运行状态和长期数据 |
+| 资源清理 | 成功、受控失败、取消、崩溃恢复、Control 真实测试和候选 DinD | staged/bootstrap/receipt/journal 按状态清理，证明不足材料保留；测试容器、网络、volume、bind 和临时制品按 owner 精确归零 |
+| 升级/回滚 | `v0.4.19 → 0.5.0` Web unhealthy 与 healthy；Control 0.3.3→0.3.4；升级后重跑受影响 E2E | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 v0.4.19；healthy 只使用同一候选 digest，升级后的 Panel 再验存档导入、lastSeen 和房屋等级保持 |
+| 最老受影响版本 | 存档导入事务首次正式存在的 `v0.4.11 → 0.5.0` 代表升级 | 因 journal/maintenance/cleanup 长期结构变化，增加一条最老受影响版本真实 Web 代表升级；其它更老版本不机械重复 |
+| 已知取舍 | 旧 #346 对历史 farmhand 镜像污染的 level-zero 自愈被禁用 | 只承诺不再强制归零并保留当前存档值；不把本版描述成自动修复已经污染的旧存档，导入存档不增加专门分支 |
+
+## 发布状态
+
+- 当前状态为候选前准备；本节中的本地专项证据不替代不可变候选证明、两条真实 Web 升级、自动 annotated tag、三仓六引用同 digest、正式镜像重启冒烟和 GitHub Release 资产验收。全部成功后必须在本节回填精确 commit、workflow、artifact、digest、build date、升级/回滚结果、门禁选择/跳过和资源清理终态。
+
+# v0.4.19 正式发布基线（2026-08-15，released）
+
+- `v0.4.19` 由候选 workflow `31892497427` 验证并从 commit `c289ccbdffdb8a6ecbeb4a5080b7db1040d2d0ee` 自动创建 annotated tag；正式候选 digest 为 `sha256:2df4df07362bb34e5ce4e97e1a0f3415f2366677d319ca4d01e9a5e946210d17`。本版加入 none/global/role 三种玩家认证模式、按稳定角色 ID 保存的独立密码与 Control fail-closed runtime patch；它是 v0.5.0 healthy/unhealthy Web 升级的唯一“当前上一正式版”基线。
+
+# HOST-FARMHOUSE-PRESERVE-1 候选前门禁记录（2026-08-16，completed，未发布）
+
+## 变更清单与受影响链路
+
+- Control `0.3.3 → 0.3.4`，新增对 JunimoServer `.125` 精确方法 `HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()` 的默认 Harmony skip；server/auth image、Compose/部署格式、数据库、公开 API 和前端 bundle 不变。runtime stack manifest 与内嵌 Control DLL/SHA 已更新，因此下一候选必须选择 Control/runtime 真实长链，不能按“server 镜像没变”跳过。
+- Control options/status 新增补丁 availability/detail；Panel runtime gate 只有在 DLL/版本匹配且 availability=true 时才 ready，缺字段/false 使用 `control_runtime_host_farmhouse_patch_unavailable` 停服。该兼容层不携带上游源码，也没有运行期开关。
+- 本地已完成 .NET 6 契约测试、只读真实游戏程序集标准构建，以及精确 `.125` Docker `SaveLoaded → save-now → GameLoop.Saved`：任务副本 `houseUpgradeLevel=2` 保存后仍为 2，owner 容器/卷清零。任务专属 Linux Go 1.25 容器的后端全量 test/vet/build 全绿并精确删除两个 cache volume；Windows 全量仅有既有 NTFS mode 差异。该证据验证当前工作树，不替代不可变候选和上一正式版 Web 升级证明。
+
+## 本任务专项矩阵
+
+| 维度 | 场景 | 下一正式候选要求 |
+| --- | --- | --- |
+| 正常路径 | 推荐 `.125`、Control 0.3.4、已有主机房屋等级 1/2/3 | 启动门禁 ready；至少等级 2 经真实读档、Panel restart/手动再启动、`save-now` 后等级与室内关键结构保持 |
+| 签名/安全 | Junimo 类型或方法缺失、返回/参数形态变化、Harmony owner 未登记、options 缺字段/false | 一律 `control_runtime_host_farmhouse_patch_unavailable` 并停止 server，不允许继续读档或降级为旧归零逻辑 |
+| 回归边界 | 等级 0 的新存档、正常停启、邀请/命令、Mod profile、新建存档 | 既有链继续通过；等级 0 不产生额外 XML 改写。导入存档本轮没有专门分支，按现有全量回归覆盖 |
+| 数据完整性 | 主存档、SaveGameInfo、Control options/status、SQLite、非目标实例/卷 | 非房屋目标字节/状态按既有规则保持；测试只操作任务副本，失败不得删除或覆盖源存档 |
+| 升级/回滚 | 当前上一正式版通过真实 Panel Web API 升到候选；同候选 unhealthy 注入 | Control-only apply 必须物化 0.3.4 并在升级后实测；unhealthy 必须恢复上一正式版 Control/状态，不能留下混合 DLL/manifest |
+| 历史风险 | 已被旧 #346 farmhand 镜像污染的存档 | 明确不再自动 level-zero 自愈；不得把“保留当前存档值”描述成自动修复历史污染 |
+
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 候选前门禁记录（2026-08-15，completed，未发布）
+
+## 变更清单与受影响链路
+
+- 后端新增 job `BeforeRun` 持久绑定门、journal job identity/cleanup plan/substage、pending-token exact identity、cancel receipt 与 succeeded tombstone；公开 API、SQLite migration、Compose/runtime manifest、Control/SMAPI 制品、部署格式和前端 bundle 不变。
+- primary job 只由 `stardew_import_save_and_start + instance + save-import:<operationId>` 标识；runner 在 journal/token/ready 三次写入后才启动。submitted 后的观测 runner 使用独立 recovery job type，不能形成第二个 primary identity。
+- cancel 删除顺序固定为完整只读 proof → 持久 cleanup intent/substage → filesystem completed/canceled → 0600 receipt → journal finalize → exact token delete；preimport、completed journal、正式存档不属于 succeeded token metadata cleanup。
+
+## 本任务专项矩阵
+
+- 身份/崩溃：job 创建后 journal/token 均未 attach、journal 后 token 前、token 后 runner release 前、attach 写失败 runner=0、Panel restart exact recovery、missing/mismatched job recovery required。
+- cleanup/幂等：staged 与 bootstrap fingerprint 漂移、pointer 漂移、未知 schema/stage/缺关键字段零删除；每个 removal 子阶段重启；filesystem complete 后 token 删除失败、journal 已不存在、两个并发 cancel 最多一次危险删除。
+- 成功生命周期：succeeded tombstone 保留 exact result；completed journal、preimport、正式存档不删除；既有首次 `game_installed` 完整导入、单次 FIFO、no-replace、strict stop 与 durable save 继续回归。
+- 实际验证：Windows jobs 全包、save-import/maintenance/Phase A/transaction 专项、pending-upload/save Web 专项及 Web 全包通过；Stardew Windows 全包唯一失败仍是已记录的 NTFS mode=`0666`/Linux 期望 `0640`。任务专属 `golang:1.25-alpine` 容器以只读仓库 bind 和两个独立 cache volume 完成 `go test ./... -count=1`，全部包通过；宿主 `go vet ./...`、`go build ./...` 通过。任务容器自动删除，两个精确 label volume 删除后 owner resource=0，未使用任何 prune。
+- 本任务只运行本地/任务专属 Linux test、vet、build 与编码/差异审计，不构建或推送候选/正式镜像，不提交、不推送、不 tag、不创建 Release。后续候选必须在升级得到的新 Panel 上再执行真实 upload/attach-crash/cancel-retry E2E，并精确清理任务资源。
+
 # SAVE-IMPORT-MAINTENANCE-DURABILITY-1 候选前门禁记录（2026-08-15，completed，未发布）
 
 ## 变更清单与受影响链路

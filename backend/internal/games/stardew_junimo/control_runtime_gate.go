@@ -23,15 +23,16 @@ const (
 )
 
 const (
-	ControlRuntimeCodePending           = "control_runtime_pending"
-	ControlRuntimeCodeReady             = "control_runtime_ready"
-	ControlRuntimeCodeVersionMismatch   = "control_runtime_version_mismatch"
-	ControlRuntimeCodeManifestInvalid   = "control_runtime_manifest_invalid"
-	ControlRuntimeCodeDLLMissing        = "control_runtime_dll_missing"
-	ControlRuntimeCodeDLLUnreadable     = "control_runtime_dll_unreadable"
-	ControlRuntimeCodeDLLHashMismatch   = "control_runtime_dll_hash_mismatch"
-	ControlRuntimeCodeOptionsInvalid    = "control_runtime_options_invalid"
-	ControlRuntimeCodeOptionsUnreadable = "control_runtime_options_unreadable"
+	ControlRuntimeCodePending                       = "control_runtime_pending"
+	ControlRuntimeCodeReady                         = "control_runtime_ready"
+	ControlRuntimeCodeVersionMismatch               = "control_runtime_version_mismatch"
+	ControlRuntimeCodeManifestInvalid               = "control_runtime_manifest_invalid"
+	ControlRuntimeCodeDLLMissing                    = "control_runtime_dll_missing"
+	ControlRuntimeCodeDLLUnreadable                 = "control_runtime_dll_unreadable"
+	ControlRuntimeCodeDLLHashMismatch               = "control_runtime_dll_hash_mismatch"
+	ControlRuntimeCodeOptionsInvalid                = "control_runtime_options_invalid"
+	ControlRuntimeCodeOptionsUnreadable             = "control_runtime_options_unreadable"
+	ControlRuntimeCodeHostFarmhousePatchUnavailable = "control_runtime_host_farmhouse_patch_unavailable"
 )
 
 // ControlRuntimeGateResult distinguishes a runtime snapshot that has not been
@@ -78,7 +79,8 @@ func InspectControlRuntimeGate(dataDir string) ControlRuntimeGateResult {
 		return result
 	}
 	var options struct {
-		ControlModVersion string `json:"controlModVersion"`
+		ControlModVersion                       string `json:"controlModVersion"`
+		HostFarmhousePreservationPatchAvailable *bool  `json:"hostFarmhousePreservationPatchAvailable"`
 	}
 	if json.Unmarshal(raw, &options) != nil {
 		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeOptionsInvalid
@@ -91,6 +93,10 @@ func InspectControlRuntimeGate(dataDir string) ControlRuntimeGateResult {
 	}
 	if result.Actual != result.Expected {
 		result.State, result.Code = ControlRuntimeGateVersionMismatch, ControlRuntimeCodeVersionMismatch
+		return result
+	}
+	if options.HostFarmhousePreservationPatchAvailable == nil || !*options.HostFarmhousePreservationPatchAvailable {
+		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeHostFarmhousePatchUnavailable
 		return result
 	}
 	result.State, result.Code = ControlRuntimeGateReady, ControlRuntimeCodeReady

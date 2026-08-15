@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,27 +13,43 @@ import (
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 )
 
 type durablePendingUpload struct {
-	InstanceID  string            `json:"instanceId"`
-	StagedDir   string            `json:"stagedDir"`
-	SaveName    string            `json:"saveName"`
-	Preview     registry.SaveInfo `json:"preview"`
-	ExpiresAt   time.Time         `json:"expiresAt"`
-	Status      string            `json:"status"`
-	OperationID string            `json:"operationId,omitempty"`
-	JobID       string            `json:"jobId,omitempty"`
-	LeaseUntil  time.Time         `json:"leaseUntil,omitempty"`
+	InstanceID        string            `json:"instanceId"`
+	StagedDir         string            `json:"stagedDir,omitempty"`
+	SaveName          string            `json:"saveName"`
+	Preview           registry.SaveInfo `json:"preview,omitempty"`
+	ExpiresAt         time.Time         `json:"expiresAt,omitempty"`
+	Status            string            `json:"status"`
+	OperationID       string            `json:"operationId,omitempty"`
+	JobType           string            `json:"jobType,omitempty"`
+	JobID             string            `json:"jobId,omitempty"`
+	JobIdempotencyKey string            `json:"jobIdempotencyKey,omitempty"`
+	LeaseUntil        time.Time         `json:"leaseUntil,omitempty"`
+	MetadataCompacted bool              `json:"metadataCompacted,omitempty"`
+}
+
+type durablePendingUploadCleanupReceipt struct {
+	SchemaVersion     int       `json:"schemaVersion"`
+	InstanceID        string    `json:"instanceId"`
+	OperationID       string    `json:"operationId"`
+	JobType           string    `json:"jobType"`
+	JobID             string    `json:"jobId"`
+	JobIdempotencyKey string    `json:"jobIdempotencyKey"`
+	CompletedAt       time.Time `json:"completedAt"`
 }
 
 type durablePendingUploadStore struct {
-	mu  sync.Mutex
-	now func() time.Time
+	mu        sync.Mutex
+	now       func() time.Time
+	write     func(string, string, *durablePendingUpload) error
+	removeAll func(string) error
 }
 
 func newDurablePendingUploadStore() *durablePendingUploadStore {
-	return &durablePendingUploadStore{now: time.Now}
+	return &durablePendingUploadStore{now: time.Now, write: writeDurablePendingUpload, removeAll: os.RemoveAll}
 }
 
 func pendingUploadHash(token string) string {
@@ -52,6 +69,14 @@ func durableUploadRecordPath(dataDir, token string) string {
 	return filepath.Join(durableUploadDir(dataDir, token), "token.json")
 }
 
+func durableUploadCleanupReceiptRoot(dataDir string) string {
+	return filepath.Join(dataDir, ".local-container", "control", "save-import-cleanup-receipts")
+}
+
+func durableUploadCleanupReceiptPath(dataDir, token string) string {
+	return filepath.Join(durableUploadCleanupReceiptRoot(dataDir), pendingUploadHash(token)+".json")
+}
+
 func writeDurablePendingUpload(dataDir, token string, entry *durablePendingUpload) error {
 	dir := durableUploadDir(dataDir, token)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -59,6 +84,10 @@ func writeDurablePendingUpload(dataDir, token string, entry *durablePendingUploa
 	}
 	_ = os.Chmod(durableUploadRoot(dataDir), 0o700)
 	_ = os.Chmod(dir, 0o700)
+	return writeDurablePendingUploadRecord(dir, entry)
+}
+
+func writeDurablePendingUploadRecord(dir string, entry *durablePendingUpload) error {
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return err
@@ -84,10 +113,11 @@ func writeDurablePendingUpload(dataDir, token string, entry *durablePendingUploa
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(name, durableUploadRecordPath(dataDir, token)); err != nil {
+	path := filepath.Join(dir, "token.json")
+	if err := os.Rename(name, path); err != nil {
 		return err
 	}
-	return os.Chmod(durableUploadRecordPath(dataDir, token), 0o600)
+	return os.Chmod(path, 0o600)
 }
 
 func readDurablePendingUpload(dataDir, token string) (*durablePendingUpload, error) {
@@ -100,6 +130,68 @@ func readDurablePendingUpload(dataDir, token string) (*durablePendingUpload, err
 		return nil, err
 	}
 	return &entry, nil
+}
+
+func writeDurablePendingUploadCleanupReceipt(dataDir, token string, receipt durablePendingUploadCleanupReceipt) error {
+	dir := durableUploadCleanupReceiptRoot(dataDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".receipt-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer func() { _ = os.Remove(name) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	path := durableUploadCleanupReceiptPath(dataDir, token)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+func readDurablePendingUploadCleanupReceipt(dataDir, token string) (durablePendingUploadCleanupReceipt, error) {
+	data, err := os.ReadFile(durableUploadCleanupReceiptPath(dataDir, token))
+	if err != nil {
+		return durablePendingUploadCleanupReceipt{}, err
+	}
+	var receipt durablePendingUploadCleanupReceipt
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&receipt); err != nil {
+		return durablePendingUploadCleanupReceipt{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return durablePendingUploadCleanupReceipt{}, fmt.Errorf("invalid save import cleanup receipt JSON")
+	}
+	if receipt.SchemaVersion != 1 || receipt.InstanceID == "" || receipt.OperationID == "" ||
+		receipt.JobType != sj.SaveImportJobType || receipt.JobID == "" ||
+		receipt.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(receipt.OperationID) || receipt.CompletedAt.IsZero() {
+		return durablePendingUploadCleanupReceipt{}, fmt.Errorf("invalid save import cleanup receipt")
+	}
+	return receipt, nil
 }
 
 func stagePendingUpload(source, target string) error {
@@ -188,8 +280,8 @@ func (s *durablePendingUploadStore) put(dataDir, instanceID, sourceDir, saveName
 		return "", err
 	}
 	entry := &durablePendingUpload{InstanceID: instanceID, StagedDir: target, SaveName: saveName, Preview: preview, ExpiresAt: s.now().Add(uploadTokenTTL), Status: "available"}
-	if err := writeDurablePendingUpload(dataDir, token, entry); err != nil {
-		_ = os.RemoveAll(durableUploadDir(dataDir, token))
+	if err := s.write(dataDir, token, entry); err != nil {
+		_ = s.removeAll(durableUploadDir(dataDir, token))
 		return "", err
 	}
 	return token, nil
@@ -225,7 +317,7 @@ func (s *durablePendingUploadStore) reserve(dataDir, token, instanceID, operatio
 		return nil, fmt.Errorf("upload token expired")
 	}
 	entry.Status, entry.OperationID, entry.LeaseUntil = "reserved", operationID, s.now().Add(uploadTokenTTL)
-	if err := writeDurablePendingUpload(dataDir, token, entry); err != nil {
+	if err := s.write(dataDir, token, entry); err != nil {
 		return nil, err
 	}
 	return entry, nil
@@ -258,7 +350,7 @@ func (s *durablePendingUploadStore) reserveOrReuse(dataDir, token, instanceID, o
 		return nil, fmt.Errorf("upload token expired")
 	}
 	entry.Status, entry.OperationID, entry.LeaseUntil = "reserved", operationID, s.now().Add(uploadTokenTTL)
-	if err := writeDurablePendingUpload(dataDir, token, entry); err != nil {
+	if err := s.write(dataDir, token, entry); err != nil {
 		return nil, err
 	}
 	return entry, nil
@@ -287,11 +379,16 @@ func (s *durablePendingUploadStore) attachJob(dataDir, token, operationID, jobID
 	if (entry.Status != "owned" && entry.Status != "succeeded") || entry.OperationID != operationID {
 		return fmt.Errorf("owned token mismatch")
 	}
-	if entry.JobID != "" && entry.JobID != jobID {
-		return fmt.Errorf("upload token already has a different job")
+	if entry.JobID != "" || entry.JobType != "" || entry.JobIdempotencyKey != "" {
+		if entry.JobID != jobID || (entry.JobType != "" && entry.JobType != sj.SaveImportJobType) ||
+			(entry.JobIdempotencyKey != "" && entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(operationID)) {
+			return fmt.Errorf("upload token already has a different job")
+		}
 	}
+	entry.JobType = sj.SaveImportJobType
 	entry.JobID = jobID
-	return writeDurablePendingUpload(dataDir, token, entry)
+	entry.JobIdempotencyKey = sj.SaveImportJobIdempotencyKey(operationID)
+	return s.write(dataDir, token, entry)
 }
 
 func (s *durablePendingUploadStore) markSucceeded(dataDir, token, operationID string) error {
@@ -304,10 +401,13 @@ func (s *durablePendingUploadStore) markSucceeded(dataDir, token, operationID st
 	if entry.Status != "owned" || entry.OperationID != operationID {
 		return fmt.Errorf("owned token mismatch")
 	}
+	if entry.JobType != sj.SaveImportJobType || entry.JobID == "" || entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(operationID) {
+		return fmt.Errorf("owned token job identity is incomplete")
+	}
 	entry.Status = "succeeded"
 	entry.ExpiresAt = s.now().Add(uploadTokenTTL)
 	entry.LeaseUntil = time.Time{}
-	return writeDurablePendingUpload(dataDir, token, entry)
+	return s.write(dataDir, token, entry)
 }
 
 func (s *durablePendingUploadStore) pruneExpiredSucceededLocked(dataDir string) {
@@ -327,7 +427,16 @@ func (s *durablePendingUploadStore) pruneExpiredSucceededLocked(dataDir string) 
 		if json.Unmarshal(data, &entry) != nil || entry.Status != "succeeded" || s.now().Before(entry.ExpiresAt) {
 			continue
 		}
-		_ = os.RemoveAll(filepath.Join(durableUploadRoot(dataDir), item.Name()))
+		if entry.JobType != sj.SaveImportJobType || entry.JobID == "" || entry.OperationID == "" ||
+			entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(entry.OperationID) {
+			continue
+		}
+		entry.StagedDir = ""
+		entry.Preview = registry.SaveInfo{}
+		entry.ExpiresAt = time.Time{}
+		entry.LeaseUntil = time.Time{}
+		entry.MetadataCompacted = true
+		_ = writeDurablePendingUploadRecord(filepath.Join(durableUploadRoot(dataDir), item.Name()), &entry)
 	}
 }
 
@@ -364,7 +473,7 @@ func (s *durablePendingUploadStore) transferOwnership(dataDir, token, operationI
 	entry.Status = "owned"
 	entry.StagedDir = target
 	entry.LeaseUntil = time.Time{}
-	if err := writeDurablePendingUpload(dataDir, token, entry); err != nil {
+	if err := s.write(dataDir, token, entry); err != nil {
 		return fmt.Errorf("persist upload ownership: %w", err)
 	}
 	return nil
@@ -380,17 +489,60 @@ func (s *durablePendingUploadStore) ownedOperation(dataDir, token string) (strin
 	return entry.OperationID, entry.Status == "owned", nil
 }
 
-func (s *durablePendingUploadStore) removeOwned(dataDir, token, operationID string) error {
+func (s *durablePendingUploadStore) markCleanupCompleted(dataDir, token, operationID, jobID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, err := readDurablePendingUpload(dataDir, token)
 	if err != nil {
 		return err
 	}
-	if entry.Status != "owned" || entry.OperationID != operationID {
+	if entry.Status != "owned" || entry.OperationID != operationID || entry.JobType != sj.SaveImportJobType ||
+		entry.JobID != jobID || entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(operationID) {
 		return fmt.Errorf("owned token mismatch")
 	}
-	return os.RemoveAll(durableUploadDir(dataDir, token))
+	receipt := durablePendingUploadCleanupReceipt{
+		SchemaVersion: 1, InstanceID: entry.InstanceID, OperationID: operationID,
+		JobType: sj.SaveImportJobType, JobID: jobID,
+		JobIdempotencyKey: sj.SaveImportJobIdempotencyKey(operationID), CompletedAt: s.now().UTC(),
+	}
+	return writeDurablePendingUploadCleanupReceipt(dataDir, token, receipt)
+}
+
+func (s *durablePendingUploadStore) cleanupReceipt(dataDir, token, instanceID string) (durablePendingUploadCleanupReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	receipt, err := readDurablePendingUploadCleanupReceipt(dataDir, token)
+	if err != nil {
+		return durablePendingUploadCleanupReceipt{}, err
+	}
+	if receipt.InstanceID != instanceID {
+		return durablePendingUploadCleanupReceipt{}, fmt.Errorf("cleanup receipt instance mismatch")
+	}
+	return receipt, nil
+}
+
+func (s *durablePendingUploadStore) removeOwnedAfterCleanup(dataDir, token string, receipt durablePendingUploadCleanupReceipt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	durable, err := readDurablePendingUploadCleanupReceipt(dataDir, token)
+	if err != nil {
+		return err
+	}
+	if durable != receipt {
+		return fmt.Errorf("cleanup receipt changed")
+	}
+	entry, err := readDurablePendingUpload(dataDir, token)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if entry.Status != "owned" || entry.InstanceID != receipt.InstanceID || entry.OperationID != receipt.OperationID ||
+		entry.JobType != receipt.JobType || entry.JobID != receipt.JobID || entry.JobIdempotencyKey != receipt.JobIdempotencyKey {
+		return fmt.Errorf("owned token does not match cleanup receipt")
+	}
+	return s.removeAll(durableUploadDir(dataDir, token))
 }
 
 func (s *durablePendingUploadStore) release(dataDir, token, operationID string) error {
@@ -404,7 +556,8 @@ func (s *durablePendingUploadStore) release(dataDir, token, operationID string) 
 		return fmt.Errorf("token lease mismatch")
 	}
 	entry.Status, entry.OperationID, entry.LeaseUntil = "available", "", time.Time{}
-	return writeDurablePendingUpload(dataDir, token, entry)
+	entry.JobType, entry.JobID, entry.JobIdempotencyKey = "", "", ""
+	return s.write(dataDir, token, entry)
 }
 
 func (s *durablePendingUploadStore) consume(dataDir, token, operationID string) error {
@@ -418,7 +571,7 @@ func (s *durablePendingUploadStore) consume(dataDir, token, operationID string) 
 		return fmt.Errorf("token lease mismatch")
 	}
 	entry.Status = "consumed"
-	return writeDurablePendingUpload(dataDir, token, entry)
+	return s.write(dataDir, token, entry)
 }
 
 func (s *durablePendingUploadStore) cancel(dataDir, token string) error {
@@ -431,5 +584,5 @@ func (s *durablePendingUploadStore) cancel(dataDir, token string) error {
 	if entry.Status == "reserved" || entry.OperationID != "" {
 		return fmt.Errorf("upload is part of an import transaction")
 	}
-	return os.RemoveAll(durableUploadDir(dataDir, token))
+	return s.removeAll(durableUploadDir(dataDir, token))
 }

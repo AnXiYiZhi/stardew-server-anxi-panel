@@ -387,10 +387,9 @@ func mergeStoredPlayerFallback(player *PlayerInfo, old storage.PlayerRosterEntry
 		player.WalletMode = old.WalletMode
 	}
 	if player.LastSeen == "" {
+		// API lastSeen is player activity. LastSeenAt only records that the
+		// roster entry was observed (including save-only offline characters).
 		player.LastSeen = old.LastOnlineAt
-		if player.LastSeen == "" {
-			player.LastSeen = old.LastSeenAt
-		}
 	}
 	if player.Source == "save_file" && old.SnapshotSource != "" {
 		player.Source = old.SnapshotSource

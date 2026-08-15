@@ -1,3 +1,16 @@
+# HOST-FARMHOUSE-PRESERVE-1 Panel/Control 联调契约（2026-08-16，completed，未发布）
+
+- Control `0.3.4` 的 `options.json` 与 `status.json` 新增 `hostFarmhousePreservationPatchAvailable` 和诊断用 `hostFarmhousePreservationPatchDetail`。Panel 启动只接受当前 Control 版本且 availability 明确为 `true`；字段缺失或 false 返回稳定码 `control_runtime_host_farmhouse_patch_unavailable` 并停服。
+- 补丁默认启用、没有 Web/API 开关。它在 `SaveLoaded` 前精确跳过 JunimoServer `.125` 的主机农舍归零方法；公开实例/存档/任务 DTO、前端调用与数据库契约均不变化，客户端无需增加字段或分支。
+- 联调不得只伪造 options=true：正式候选必须用精确推荐镜像完成真实 `SaveLoaded`，再经 Control `save-now` 的同 commandId `GameLoop.Saved` 结果确认升级房屋等级仍在磁盘。目标签名漂移必须表现为 fail-closed 停服，而不是继续读档。
+
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 联调契约（2026-08-15，completed，未发布）
+
+- `POST /api/instances/:id/saves/upload-commit-and-start` 的 JSON 形状不变；新的 `202` 硬前提是数据库 primary job、owned token 与 journal 已共同记录同一 `operationId/jobId/jobType/idempotencyKey`，且 journal 为 `jobBindingState=ready`。job 创建成功但 token attach/journal confirm 失败时返回 `import_recovery_required`，runner 不进入 staging/preimport/bootstrap/maintenance/FIFO，不能先 202 后靠日志补偿。
+- commit 重试与 Panel 重启只查询 `type=stardew_import_save_and_start + target=instance/:id + save-import:<operationId>`，并校验 job payload；不按 createdAt、最近任务或 token 内单独的 jobId 猜测。三方缺失/冲突、exact job 不存在或 payload 不符均 409 recovery required；验证一致时才幂等补 journal/token binding 并返回原 `jobId/operationId/saveName`。
+- `{token,cancel:true}` 对 available token 保持原语义；owned token 只允许 exact job 为 failed/canceled、strict fresh stop 通过、journal 的 maintenance/FIFO/upstream/ownership/pointer/全树指纹与 cleanup schema 全部可证时继续。queued/running/succeeded/submitted/confirmed、未知字段/阶段、缺证、目录漂移均 fail closed。删除采用持久子阶段，filesystem completed 后写独立 receipt，再删 journal/token；重复请求和并发请求都返回同一终态，危险删除最多一次，preimport 始终保留。
+- succeeded token TTL 到期后只压缩为 exact-result tombstone，同 token 仍返回原 202 幂等结果；completed journal、preimport、正式存档和 job 记录不删。公开前端不新增字段或按钮，现有任务轮询、单次 FIFO、同名 no-replace、邀请码与 durable save 流程不变。
+
 # SAVE-IMPORT-MAINTENANCE-DURABILITY-1 联调契约（2026-08-15，completed，未发布）
 
 - 公开 `upload-preview`、`upload-commit-and-start` 请求/响应与 hostHandling 形状不变；变化只在后台事务耐久边界。维护 runtime 只有在权威快照 journal、数据库 maintenance phase、`MaintenanceStarted=true` 三次持久化都成功后才会 `ComposeUp`，因此 phase 或 journal 故障会保持 `ComposeUp=0`，Web job 返回稳定失败而不会短暂暴露普通 running/invite 状态。

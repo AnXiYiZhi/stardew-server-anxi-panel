@@ -1,3 +1,33 @@
+# HOST-FARMHOUSE-PRESERVE-1 接手记录（2026-08-16，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- Control `0.3.4` 新增 `HostFarmhousePreservationPatch.cs`，在 `GameLaunched`、任何 `SaveLoaded` 之前精确定位 `JunimoServer.Services.AlwaysOn.HostFarmhouseUpgradeGuard.ResetHostFarmhouseToLevelZero()`，安装返回 `false` 的 Harmony prefix，从而默认保留虚拟主机存档中的农舍等级、室内布局和床。没有配置开关，也没有修改上游 JunimoServer 代码/镜像。
+- `ControlContract.cs` 和 `ModEntry.cs` 把 `hostFarmhousePreservationPatchAvailable/detail` 写入 options/status；`control_runtime_gate.go` 要求当前 Control 版本匹配且 availability 明确为 true。目标缺失、签名变化、Harmony 未登记或旧 Control 缺字段都会返回 `control_runtime_host_farmhouse_patch_unavailable`，生命周期停服而不是冒险继续读档。
+- 变更文件集中在 `embedded/smapi-mod-src`、两份 Control manifest/内嵌 DLL、`control_runtime_gate.go/test`、生命周期与运行栈夹具、`runtime_stack_manifest.json`，并新增 opt-in 真实 Docker 集成测试。Control `0.3.4` DLL SHA-256=`5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982`；server/auth 仍为原精确推荐版本。公开 Web DTO、数据库、前端和存档格式未变。
+
+## 如何验证、下一步注意事项
+
+- .NET 6 SDK 容器内的 Control contract tests 通过；以只读真实 `/game` 执行标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 为 0 error。Go runtime gate 覆盖 availability true/missing/false 与生命周期停服分支。
+- `TestRealHostFarmhouseLevelPreservedAcrossLoadOptIn` 已用 `sdvd/server:1.5.0-preview.125@sha256:10f438...` 实跑：任务副本的主机房屋等级 2 经真实 `SaveLoaded`、Control gate ready、`save-now`/`GameLoop.Saved` 后磁盘仍为 2，任务 container/volume 清零。测试只复制源卷/源存档，不修改输入。任务专属 Linux Go 1.25 容器中的后端全量 test/vet/build 全绿；Windows 全量只剩项目已记录的 NTFS mode `0666`/Linux `0640` 差异。
+- 后续不得把反射改为按短类型名或近似方法名搜索。上游若移除/更名该方法，当前设计会安全停服；维护者必须先重新审查上游 #346 相关逻辑，再决定删除或更新补丁。跳过后不再执行历史污染存档的 level-zero 自愈；本轮明确未为导入存档设计例外。
+
+# SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1 接手记录（2026-08-15，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `internal/jobs` 新增同步 `BeforeRun` 门：job/idempotency row 已耐久，但 runner goroutine 尚未创建。存档导入在此门内依次写 journal job identity、owned token job identity、journal `ready`；失败同步 terminalize job、runner=0，Web 返回 recovery required。registry `SaveImportRequest.AttachJobIdentity` 是必须成功的持久回调，不是 best effort。
+- primary identity 固定为 `stardew_import_save_and_start / instance / instanceId / save-import:<operationId>`，journal 与 token 同时记录 type/jobId/key，job payload 再记录 operationId。重启只按 exact key 查询并校验 payload，不读最近任务；任一缺失/冲突/不存在都 fail closed。后提交恢复任务改为独立 `stardew_import_save_recovery` 类型，避免同 operation 有第二个 primary job。
+- `save_import_transaction.go` 增加 schema-1 cleanup plan 和 write-ahead 子阶段。计划冻结 source/staged/bootstrap/active-pointer 的完整身份与指纹，所有只读检查先完成；删除按 bootstrap、staged、source 的 started/removed 状态推进，最终 `filesystem_completed+canceled`。未知 schema/stage/state、缺关键 bool、MaintenanceStarted/FIFO/upstream、pointer/fingerprint 漂移均拒绝，preimport 不删。
+- Web pending upload 增加精确 job type/key、0600 cleanup receipt 与 succeeded tombstone。取消顺序为 driver strict cleanup → receipt → journal finalize → receipt-guarded token delete；journal 已删/token 尚在、token delete 失败和双并发 cancel 均可重试且删除最多一次。成功 token 到期只清 preview/payload/lease 元数据，保留 exact job 结果映射；不会触发 canceled cleanup 或删除 completed journal/preimport/正式存档。
+- 主要文件：`internal/jobs/{types,manager}.go`、registry types、`save_import_transaction.go`、Web `handler/lifecycle_handlers/pending_uploads.go` 及相应测试。公开 commit/cancel JSON、hostHandling、single FIFO、no-replace、activation/durable save 与邀请契约不变；没有数据库 migration、镜像/runtime manifest 或前端改动。
+
+## 如何验证、下一步注意事项
+
+- 故障注入覆盖三次 job binding 崩溃点、attach failure runner=0、重启 exact 恢复、missing/mismatched job；cleanup 覆盖 staged/bootstrap/pointer 漂移零删除、unknown/missing evidence、全部 removal 子阶段、journal gone/token remains、token delete retry、并发 cancel；succeeded tombstone 覆盖 exact result 与 completed artifacts 保持。首次安装完整导入、Phase A single FIFO、strict stop、no-replace、durable save 保持回归。
+- Windows jobs、save-import 专项与 Web 全包通过；Stardew 全包唯一失败仍是已知 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 NTFS mode=0666/want0640。任务专属 `golang:1.25-alpine` 容器 `go test ./... -count=1` 全绿，宿主 vet/build 全绿，精确容器/volume 清理后 owner resource=0。后续不得重新允许“exact key 不存在即推断无 runner”，不得先删 journal/token 再补 receipt，也不得把 succeeded tombstone 交给 canceled cleanup。
+- 下一候选需在升级后的真实 Panel 上注入 attach 前崩溃与 token delete 一次失败，确认同 token/operation/job 收敛且无第二次 FIFO或同名覆盖。本任务未提交、未推送、未 tag、未发布。
+
 # SAVE-IMPORT-MAINTENANCE-DURABILITY-1 接手记录（2026-08-15，completed，未发布）
 
 ## 改了什么、影响哪些接口/文件
@@ -81,7 +111,7 @@
 - 根因是三层状态契约不一致：installer 成功终态为 `game_installed`；Web 旧入口仅拒绝 running/starting，已允许 journal/ownership/staging/preimport/bootstrap；`runImportMaintenance` 却在 Docker 探针前要求精确 `stopped`，所以真实首次上传稳定失败为 `instance must remain stopped before maintenance startup`。历史维护和 fresh fixture 均把状态写成 `stopped`，掩盖了安装器真实输出。
 - `save_import_maintenance.go` 新增共享 `IsSaveImportMaintenanceOfflineState`，仅接受 `game_installed / save_required / ready_to_start / stopped`。Web commit 使用该集合早拒绝；`ImportSaveAndStart` 在 journal 或 token ownership 前通过 store 重新读取权威实例，并让后续所有路径只使用该 `DataDir`。安全探针新增 `ComposePsStrict`，固定无缓存执行 `docker compose ps --all --format json`；空输出、坏 JSON、缺 service/state、未知 server 状态和任一 running/restarting/paused/removing 副本都 fail closed。maintenance 静态/指针检查后、`ComposeUp` 前再复验一次。
 - maintenance 进入时仍发布私有 `stopped/save_import_maintenance`，不改普通 Start、邀请码或 Phase A 提交语义。journal 在 `ComposeUp` 前先把 `maintenanceStarted=true` 和原始实例四字段快照作为“可能已启动”证明；失败 defer 只有 `ComposeDown` exit 0 且 strict Compose 证明 server 已停，才清 flag 并通过 storage `RestoreInstanceStateSnapshot` 恢复精确 state/phase/payload 与 `state_message` NULL/空语义。状态发布、journal 清旗或恢复写入错误全部显式返回 recovery required。Phase A 正式 FIFO 写入前的证据失败也走相同停机与恢复，不再留下运行中的 maintenance。
-- `CleanupUnsubmittedImport` 显式拒绝 `MaintenanceStarted=true`，并把 bootstrap/pointer 与 staged 全树 fingerprint 先汇总成只读 cleanup plan；所有证据通过后才开始任何删除，避免后置 mismatch 造成半清理。job 以 operation 派生 idempotency key 持久化；job→token 绑定窗口中断时可从 key 找回，key 不存在才可证明无 durable runner。cleanup 删除完成后先写 `stage=canceled` marker，再删 token，最后清 journal；任一窗口中断均可重试，残留 canceled marker 不会产生 busy。成功 token 标为 `succeeded` 并在短幂等窗口后精确回收。preimport 永久保留；活动、submitted、身份不符、磁盘漂移或运行态不可证全部 busy/recovery。
+- `CleanupUnsubmittedImport` 显式拒绝 `MaintenanceStarted=true`，并把 bootstrap/pointer 与 staged 全树 fingerprint 先汇总成只读 cleanup plan；所有证据通过后才开始任何删除，避免后置 mismatch 造成半清理。后续 `SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1` 已把本段早期窗口进一步收紧：job→token 只允许从 exact key 找回，key 不存在必须 recovery required；cleanup 使用持久子阶段和独立 receipt，顺序为 filesystem completed → receipt → journal finalize → exact token delete。成功 token 到期压缩为幂等 tombstone而非删除结果映射。preimport 永久保留；活动、submitted、身份不符、磁盘漂移或运行态不可证全部 busy/recovery。
 - 主要文件：`save_import_maintenance.go`、`save_import_transaction.go`、对应 maintenance/transaction 测试，Web `lifecycle_handlers.go`、`pending_uploads_test.go`、`saves_handlers_test.go` 与共享 Docker fake。公开 `upload-commit-and-start` JSON、hostHandling、单次 FIFO、同名 no-replace、journal 阶段和成功结果未变；`{token,cancel:true}` 只扩大到上述可审计的 terminal pre-submit cleanup。
 
 ## 如何验证、下一步注意事项

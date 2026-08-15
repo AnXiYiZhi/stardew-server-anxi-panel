@@ -90,7 +90,7 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 			if manifest.Expected == "" || manifest.State != ControlRuntimeGatePending {
 				t.Fatalf("pre-write Control gate = %+v, want pending with expected version", manifest)
 			}
-			writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+manifest.Expected+`"}`)
+			writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+manifest.Expected+`","hostFarmhousePreservationPatchAvailable":true}`)
 			waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 
 			updated, err := store.GetInstance(context.Background(), instance.ID)
@@ -138,6 +138,21 @@ func TestControlRuntimeExplicitOldVersionIsMismatch(t *testing.T) {
 	}
 	if !strings.Contains(result.job.ErrorMessage.String, "actual=0.2.2") {
 		t.Fatalf("explicit version was not preserved in job error: %+v", result.job)
+	}
+}
+
+func TestControlRuntimeHostFarmhousePatchFailureStopsServer(t *testing.T) {
+	result := runControlRuntimeGateFailureTest(t, controlRuntimeFailureFixture{
+		optionsBody: `{"controlModVersion":"{{expected}}","hostFarmhousePreservationPatchAvailable":false}`,
+	})
+	if result.instance.State != storage.InstanceStateError || result.instance.DriverPhase != ControlRuntimeCodeHostFarmhousePatchUnavailable {
+		t.Fatalf("host farmhouse patch failure state = %+v, want error/%s", result.instance, ControlRuntimeCodeHostFarmhousePatchUnavailable)
+	}
+	if result.downCalls != 1 {
+		t.Fatalf("host farmhouse patch failure ComposeDown calls = %d, want 1", result.downCalls)
+	}
+	if !strings.Contains(result.job.ErrorMessage.String, ControlRuntimeCodeHostFarmhousePatchUnavailable) {
+		t.Fatalf("host farmhouse patch failure code missing from job: %+v", result.job)
 	}
 }
 
@@ -228,9 +243,9 @@ type controlRuntimeFailureResult struct {
 
 func runControlRuntimeGateFailureTest(t *testing.T, fixture controlRuntimeFailureFixture) controlRuntimeFailureResult {
 	t.Helper()
-	dataDir, _ := setupControlRuntimeGateTest(t)
+	dataDir, expected := setupControlRuntimeGateTest(t)
 	if fixture.optionsBody != "" {
-		writeControlRuntimeOptions(t, dataDir, fixture.optionsBody)
+		writeControlRuntimeOptions(t, dataDir, strings.ReplaceAll(fixture.optionsBody, "{{expected}}", expected))
 	}
 	store := newLifecycleTestStore(t)
 	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{

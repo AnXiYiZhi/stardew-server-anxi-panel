@@ -18,24 +18,31 @@ func TestRestoreInstanceStateSnapshotPreservesNullableMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance.State = InstanceStateGameInstalled
-	instance.StateMessage = sql.NullString{String: "", Valid: true}
-	instance.DriverPhase = "exact-empty-message"
-	instance.DriverPayload = `{"exact":true}`
-	restored, err := store.RestoreInstanceStateSnapshot(context.Background(), instance)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !restored.StateMessage.Valid || restored.StateMessage.String != "" || restored.DriverPhase != instance.DriverPhase || restored.DriverPayload != instance.DriverPayload {
-		t.Fatalf("valid empty snapshot not preserved: %+v", restored)
-	}
-	instance.StateMessage = sql.NullString{String: "ignored", Valid: false}
-	restored, err = store.RestoreInstanceStateSnapshot(context.Background(), instance)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restored.StateMessage.Valid {
-		t.Fatalf("NULL snapshot not preserved: %+v", restored.StateMessage)
+	for _, tc := range []struct {
+		name    string
+		message sql.NullString
+		phase   string
+		payload string
+	}{
+		{name: "null", message: sql.NullString{String: "ignored", Valid: false}, phase: "", payload: ""},
+		{name: "empty", message: sql.NullString{String: "", Valid: true}, phase: "exact-empty-message", payload: `{"exact":true}`},
+		{name: "ordinary and raw bytes", message: sql.NullString{String: "ordinary", Valid: true}, phase: string([]byte{'p', 0, 'h'}), payload: string([]byte{'{', 0xff, 0, '}'})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			instance.State = InstanceStateGameInstalled
+			instance.StateMessage = tc.message
+			instance.DriverPhase = tc.phase
+			instance.DriverPayload = tc.payload
+			restored, err := store.RestoreInstanceStateSnapshot(context.Background(), instance)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if restored.StateMessage.Valid != tc.message.Valid ||
+				(tc.message.Valid && restored.StateMessage.String != tc.message.String) ||
+				restored.DriverPhase != tc.phase || restored.DriverPayload != tc.payload {
+				t.Fatalf("snapshot not preserved exactly: got=%+v", restored)
+			}
+		})
 	}
 }
 

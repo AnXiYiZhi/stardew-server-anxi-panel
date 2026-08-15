@@ -61,11 +61,8 @@ func preparePhaseATestFixture(t *testing.T, hostHandling string) *phaseATestFixt
 	store.mu.Lock()
 	original := store.instance
 	store.mu.Unlock()
-	journal.OriginalInstanceState = original.State
-	journal.OriginalInstanceStateMessage = original.StateMessage.String
-	journal.OriginalInstanceStateMessageValid = original.StateMessage.Valid
-	journal.OriginalInstanceDriverPhase = original.DriverPhase
-	journal.OriginalInstanceDriverPayload = original.DriverPayload
+	captureOriginalInstanceSnapshot(&journal, original)
+	journal.MaintenanceRecoveryState = importMaintenanceRuntimeReadyPersisted
 	journal.RuntimeBaseline = &JunimoImportEvidenceSnapshot{
 		MainSaveSHA256: preHash, ActivePointer: "Old_1",
 		ProcessIdentity: &JunimoProcessIdentity{ContainerID: "container-a", ProcessStartTicks: "123"},
@@ -263,11 +260,12 @@ func TestImportPhaseAFIFOWriteFailureIsNotSubmittedAndRedactsID(t *testing.T) {
 	d := New(f.fake, nil, nil, f.store)
 	err := d.runImportPhaseA(context.Background(), f.instance, f.op, phaseATestPlatformID, nil, phaseATestOptions())
 	typed, ok := AsImportTransactionError(err)
-	if !ok || typed.Code != ImportErrorCommandFailed {
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
 		t.Fatalf("error=%v", err)
 	}
 	journal, _ := LoadImportJournal(f.dataDir, f.op)
-	if journal.UpstreamSubmitted || journal.Stage != ImportStageRuntimeReady || strings.Contains(journal.PhaseALogDetail, phaseATestPlatformID) || !strings.Contains(journal.PhaseALogDetail, "[redacted-platform-id]") {
+	if journal.UpstreamSubmitted || !journal.PhaseAFIFOWriteAttempted || journal.Stage != ImportStageRuntimeReady ||
+		journal.MaintenanceRecoveryState != importMaintenanceManualRecovery || strings.Contains(journal.LastError, phaseATestPlatformID) {
 		t.Fatalf("journal=%+v", journal)
 	}
 }
@@ -348,7 +346,7 @@ func TestRecoverImportPhaseASubmittedAfterPanelRestart(t *testing.T) {
 	}
 }
 
-func TestImportPhaseANoEffectCanBeSafelyCleanedWithoutRetry(t *testing.T) {
+func TestImportPhaseANoEffectRemainsManualRecoveryWithoutRetry(t *testing.T) {
 	f := preparePhaseATestFixture(t, "swap_host_to")
 	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) {
 		return paneldocker.CommandResult{Stdout: "success text only"}, nil
@@ -359,11 +357,11 @@ func TestImportPhaseANoEffectCanBeSafelyCleanedWithoutRetry(t *testing.T) {
 	if !ok || typed.Code != ImportErrorCommandFailed || f.teeCalls != 1 {
 		t.Fatalf("error=%v writes=%d", err, f.teeCalls)
 	}
-	if err := CleanupUnsubmittedImport(f.dataDir, f.op); err != nil {
-		t.Fatal(err)
+	if err := CleanupUnsubmittedImport(f.dataDir, f.op); err == nil {
+		t.Fatal("cleanup succeeded even though FIFO submission was attempted")
 	}
-	if _, err := os.Stat(filepath.Join(savesDir(f.dataDir), "Saves", "Upload_1")); !os.IsNotExist(err) {
-		t.Fatalf("staged target still exists: %v", err)
+	if _, err := os.Stat(filepath.Join(savesDir(f.dataDir), "Saves", "Upload_1")); err != nil {
+		t.Fatalf("staged target was removed during manual recovery: %v", err)
 	}
 }
 

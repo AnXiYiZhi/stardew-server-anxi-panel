@@ -361,6 +361,129 @@ func TestCleanupUnsubmittedImportPlansAllChecksBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestCleanupUnsubmittedImportRejectsBootstrapFingerprintAndPointerDriftWithoutDeletion(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*testing.T, string, ImportJournal)
+	}{
+		{name: "bootstrap fingerprint", mutate: func(t *testing.T, dataDir string, j ImportJournal) {
+			t.Helper()
+			path := filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName, j.BootstrapSaveName)
+			if err := os.WriteFile(path, []byte("drifted bootstrap"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "bootstrap pointer", mutate: func(t *testing.T, dataDir string, _ ImportJournal) {
+			t.Helper()
+			if err := writeGameloaderPointer(dataDir, "AnotherSave_1"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			op := NewImportOperationID()
+			createOwnedImportJournalFixture(t, dataDir, op, "first-upload")
+			if err := prepareImportStaging(dataDir, op); err != nil {
+				t.Fatal(err)
+			}
+			j, err := LoadImportJournal(dataDir, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(t, dataDir, j)
+			if err := CleanupUnsubmittedImport(dataDir, op); err == nil {
+				t.Fatal("drifted cleanup succeeded")
+			}
+			for _, path := range []string{
+				filepath.Join(savesDir(dataDir), "Saves", j.SaveName),
+				filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName),
+				importTransactionSourceDir(dataDir, op),
+			} {
+				if _, err := os.Stat(path); err != nil {
+					t.Fatalf("cleanup deleted %s before full proof: %v", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestCleanupUnsubmittedImportResumesPersistedRemovalSubstages(t *testing.T) {
+	states := []string{
+		importCleanupPlanned,
+		importCleanupBootstrapRemovalStarted,
+		importCleanupBootstrapRemoved,
+		importCleanupStagedRemovalStarted,
+		importCleanupStagedRemoved,
+		importCleanupSourceRemovalStarted,
+		importCleanupSourceRemoved,
+	}
+	for _, state := range states {
+		t.Run(state, func(t *testing.T) {
+			dataDir := t.TempDir()
+			op := NewImportOperationID()
+			createOwnedImportJournalFixture(t, dataDir, op, "first-upload")
+			if err := prepareImportStaging(dataDir, op); err != nil {
+				t.Fatal(err)
+			}
+			j, err := LoadImportJournal(dataDir, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := buildImportCleanupPlan(dataDir, j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			j.CleanupPlan, j.CleanupState = plan, state
+			if state == importCleanupBootstrapRemovalStarted || state == importCleanupBootstrapRemoved ||
+				state == importCleanupStagedRemovalStarted || state == importCleanupStagedRemoved ||
+				state == importCleanupSourceRemovalStarted || state == importCleanupSourceRemoved {
+				_ = os.Remove(gameloaderPath(dataDir))
+				_ = os.RemoveAll(filepath.Join(savesDir(dataDir), "Saves", j.BootstrapSaveName))
+				_ = os.RemoveAll(importBootstrapSourceRoot(dataDir, op))
+			}
+			if state == importCleanupStagedRemovalStarted || state == importCleanupStagedRemoved ||
+				state == importCleanupSourceRemovalStarted || state == importCleanupSourceRemoved {
+				_ = os.RemoveAll(filepath.Join(savesDir(dataDir), "Saves", j.SaveName))
+			}
+			if state == importCleanupSourceRemovalStarted || state == importCleanupSourceRemoved {
+				_ = os.RemoveAll(importTransactionSourceDir(dataDir, op))
+			}
+			if err := WriteImportJournal(dataDir, j); err != nil {
+				t.Fatal(err)
+			}
+			if err := CleanupUnsubmittedImport(dataDir, op); err != nil {
+				t.Fatal(err)
+			}
+			completed, err := LoadImportJournal(dataDir, op)
+			if err != nil || completed.Stage != ImportStageCanceled || completed.CleanupState != importCleanupFilesystemCompleted {
+				t.Fatalf("journal=%+v err=%v", completed, err)
+			}
+		})
+	}
+}
+
+func TestCleanupUnsubmittedImportMissingSourceOwnershipFieldFailsClosed(t *testing.T) {
+	dataDir := t.TempDir()
+	op := NewImportOperationID()
+	createOwnedImportJournalFixture(t, dataDir, op, "owned")
+	path := importJournalPath(dataDir, op)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = []byte(strings.Replace(string(raw), "  \"sourceOwned\": true,\n", "", 1))
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CleanupUnsubmittedImport(dataDir, op); err == nil {
+		t.Fatal("journal missing source ownership was cleaned")
+	}
+	if _, err := os.Stat(importTransactionSourceDir(dataDir, op)); err != nil {
+		t.Fatalf("source was deleted: %v", err)
+	}
+}
+
 func TestImportStagingSubmittedCleanupRejected(t *testing.T) {
 	dataDir := t.TempDir()
 	op := "60112233445566778899aabbccddeeff"

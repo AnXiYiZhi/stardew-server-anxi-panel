@@ -431,6 +431,58 @@ func TestListPlayersMergesControlSnapshotWithSaveFarmhands(t *testing.T) {
 	if result.Players[1].Location != "FarmHouse" || result.Players[1].TileX == nil || *result.Players[1].TileX != 12 || result.Players[1].TileY == nil || *result.Players[1].TileY != 7 {
 		t.Fatalf("test saved location = %+v, want FarmHouse (12, 7)", result.Players[1])
 	}
+
+	dbDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{DataDir: dbDir, DBPath: filepath.Join(dbDir, "panel.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	instance.ID = "save-only-farmhand-test"
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{ID: instance.ID, DriverID: storage.DefaultDriverID, Name: "test", DataDir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	d.store = store
+	for attempt := 1; attempt <= 2; attempt++ {
+		persisted, err := d.ListPlayers(context.Background(), instance)
+		if err != nil {
+			t.Fatalf("ListPlayers attempt %d returned error: %v", attempt, err)
+		}
+		var farmhand *PlayerInfo
+		for i := range persisted.Players {
+			if persisted.Players[i].Name == "test" {
+				farmhand = &persisted.Players[i]
+				break
+			}
+		}
+		if farmhand == nil {
+			t.Fatalf("ListPlayers attempt %d omitted save-only farmhand: %+v", attempt, persisted.Players)
+		}
+		if farmhand.Status != "offline" || farmhand.LastSeen != "" {
+			t.Fatalf("ListPlayers attempt %d farmhand = %+v, want offline with no lastSeen", attempt, farmhand)
+		}
+	}
+
+	roster, err := store.ListPlayerRoster(context.Background(), instance.ID, "test_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var farmhandRow *storage.PlayerRosterEntry
+	for i := range roster {
+		if roster[i].DisplayName == "test" {
+			farmhandRow = &roster[i]
+			break
+		}
+	}
+	if farmhandRow == nil {
+		t.Fatalf("durable roster omitted save-only farmhand: %+v", roster)
+	}
+	if farmhandRow.LastSeenAt == "" || farmhandRow.LastOnlineAt != "" {
+		t.Fatalf("durable farmhand times = lastSeenAt %q lastOnlineAt %q, want observed but never online", farmhandRow.LastSeenAt, farmhandRow.LastOnlineAt)
+	}
 }
 
 func TestCacheMatchesSaveAcceptsFolderSuffixIdentity(t *testing.T) {

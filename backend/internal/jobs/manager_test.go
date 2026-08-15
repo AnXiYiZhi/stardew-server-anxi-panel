@@ -49,6 +49,37 @@ func TestManagerMarksSuccessfulAndFailedJobs(t *testing.T) {
 	}
 }
 
+func TestManagerBeforeRunFailureNeverLaunchesRunner(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	runnerCalls := 0
+	preparedJobID := ""
+	job, err := manager.Start(context.Background(), Spec{
+		Type: "save-import-test", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		IdempotencyKey: "operation-1",
+		BeforeRun: func(_ context.Context, durable storage.Job) error {
+			preparedJobID = durable.ID
+			return errors.New("injected ownership persistence failure")
+		},
+		Run: func(context.Context, *Context) error {
+			runnerCalls++
+			return nil
+		},
+	})
+	var preparation *StartPreparationError
+	if !errors.As(err, &preparation) || job.ID == "" || preparedJobID != job.ID {
+		t.Fatalf("job=%+v prepared=%q err=%v", job, preparedJobID, err)
+	}
+	if runnerCalls != 0 {
+		t.Fatalf("runner calls=%d", runnerCalls)
+	}
+	stored, err := store.GetJob(context.Background(), job.ID)
+	if err != nil || stored.Status != storage.JobStatusFailed {
+		t.Fatalf("stored job=%+v err=%v", stored, err)
+	}
+}
+
 func TestManagerRecoversPanicAsFailed(t *testing.T) {
 	manager, store, closeStore := newJobsTestManager(t)
 	defer closeStore()

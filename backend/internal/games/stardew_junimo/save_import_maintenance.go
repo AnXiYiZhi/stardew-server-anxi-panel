@@ -3,9 +3,11 @@ package stardew_junimo
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -52,14 +54,14 @@ func (d *Driver) inspectSaveImportMaintenanceOffline(ctx context.Context, instan
 		return storage.Instance{}, &ImportTransactionError{Code: ImportErrorMaintenanceStart, Message: "failed to load instance state before save import maintenance", Cause: err}
 	}
 	if !IsSaveImportMaintenanceOfflineState(original.State) {
-		return storage.Instance{}, &ImportTransactionError{Code: ImportErrorSaveInProgress, Message: "instance state does not allow save import maintenance startup"}
+		return original, &ImportTransactionError{Code: ImportErrorSaveInProgress, Message: "instance state does not allow save import maintenance startup"}
 	}
 	lifecycle, ok := d.docker.(LifecycleDockerService)
 	if !ok {
-		return storage.Instance{}, &ImportTransactionError{Code: ImportErrorMaintenanceStart, Message: "maintenance runtime is unavailable", Cause: errors.New("docker lifecycle operations are unsupported")}
+		return original, &ImportTransactionError{Code: ImportErrorMaintenanceStart, Message: "maintenance runtime is unavailable", Cause: errors.New("docker lifecycle operations are unsupported")}
 	}
 	if err := ensureSaveImportServerStopped(ctx, lifecycle, original.DataDir); err != nil {
-		return storage.Instance{}, err
+		return original, err
 	}
 	return original, nil
 }
@@ -84,10 +86,13 @@ func saveImportServerStoppedStrict(services []paneldocker.ComposeService) (bool,
 		if !strings.EqualFold(strings.TrimSpace(service.Service), "server") {
 			continue
 		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(service.Status)), "up") {
+			return false, nil
+		}
 		switch strings.ToLower(strings.TrimSpace(service.State)) {
-		case "exited", "dead", "created":
+		case "exited", "dead":
 			continue
-		case "running", "restarting", "paused", "removing":
+		case "running", "restarting", "paused", "created", "removing":
 			return false, nil
 		default:
 			return false, fmt.Errorf("unrecognized server service state %q", service.State)
@@ -100,10 +105,6 @@ func saveImportServerStoppedStrict(services []paneldocker.ComposeService) (bool,
 // the normal Start readiness path: no invite polling, new-game command, active
 // pointer update, or import command is performed here.
 func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Instance, operationID string, job *jobs.Context, options importMaintenanceOptions) (retErr error) {
-	lifecycle, ok := d.docker.(LifecycleDockerService)
-	if !ok {
-		return d.recordMaintenanceFailure(instance.DataDir, operationID, ImportErrorMaintenanceStart, "maintenance runtime is unavailable", errors.New("docker lifecycle operations are unsupported"))
-	}
 	if options.ReadyTimeout <= 0 {
 		options.ReadyTimeout = 5 * time.Minute
 	}
@@ -112,13 +113,20 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 	}
 
 	original, err := d.inspectSaveImportMaintenanceOffline(ctx, instance)
+	dataDir := instance.DataDir
+	if strings.TrimSpace(original.DataDir) != "" {
+		dataDir = original.DataDir
+	}
 	if err != nil {
 		if typed, ok := AsImportTransactionError(err); ok {
-			return d.recordMaintenanceFailure(instance.DataDir, operationID, typed.Code, typed.Message, typed.Cause)
+			return d.recordMaintenanceFailure(dataDir, operationID, typed.Code, typed.Message, typed.Cause)
 		}
-		return d.recordMaintenanceFailure(instance.DataDir, operationID, ImportErrorMaintenanceStart, "save import maintenance preflight failed", err)
+		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "save import maintenance preflight failed", err)
 	}
-	dataDir := original.DataDir
+	lifecycle, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "maintenance runtime is unavailable", errors.New("docker lifecycle operations are unsupported"))
+	}
 	journal, err := LoadImportJournal(dataDir, operationID)
 	if err != nil {
 		return err
@@ -145,17 +153,36 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "save import maintenance runtime recheck failed", err)
 	}
 
-	// Mark the runtime as potentially started before ComposeUp. A partial Docker
-	// failure must remain non-cleanable until ComposeDown plus ComposePs proves
-	// the server is stopped and the deferred path clears this flag.
+	// Persist the exact pre-maintenance snapshot before changing the database.
+	// The journal is the write-ahead recovery record for every later crash
+	// window, so a failed snapshot write leaves both Compose and the instance
+	// state untouched.
+	captureOriginalInstanceSnapshot(&journal, original)
+	journal.MaintenanceRecoveryState = importMaintenanceSnapshotCaptured
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		return maintenanceRollbackError("failed to persist the pre-maintenance instance snapshot", err)
+	}
+	if err := d.updateImportMaintenancePhase(ctx, "Save import maintenance runtime is starting; the server is not join-ready.", original); err != nil {
+		primary := d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "failed to publish save import maintenance state", err)
+		if restoreErr := d.restoreImportMaintenanceSnapshot(dataDir, operationID, original); restoreErr != nil {
+			return joinMaintenanceRollback(primary, "failed to restore the instance after maintenance phase publication failed", restoreErr)
+		}
+		return primary
+	}
+
+	// Mark the runtime as potentially started before ComposeUp. Once this write
+	// is attempted, even an error may mean the atomic rename reached disk; the
+	// failure path therefore performs ComposeDown plus a strict fresh probe.
 	journal.MaintenanceStarted = true
-	journal.OriginalInstanceState = original.State
-	journal.OriginalInstanceStateMessage = original.StateMessage.String
-	journal.OriginalInstanceStateMessageValid = original.StateMessage.Valid
-	journal.OriginalInstanceDriverPhase = original.DriverPhase
-	journal.OriginalInstanceDriverPayload = original.DriverPayload
-	if err := WriteImportJournal(dataDir, journal); err != nil {
-		return err
+	journal.MaintenanceRecoveryState = importMaintenanceStartIntentPersisted
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		primary := d.recordMaintenanceFailure(dataDir, operationID, ImportErrorRecoveryRequired, "failed to persist save import maintenance start intent", err)
+		stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if rollbackErr := d.stopAndRestoreImportMaintenance(stopCtx, lifecycle, dataDir, operationID, original); rollbackErr != nil {
+			return joinMaintenanceRollback(primary, "failed to recover after maintenance start-intent persistence failed", rollbackErr)
+		}
+		return primary
 	}
 	defer func() {
 		if retErr == nil {
@@ -163,32 +190,10 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 		}
 		stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		down, downErr := lifecycle.ComposeDown(stopCtx, dataDir)
-		if downErr != nil || down.ExitCode != 0 {
-			retErr = joinMaintenanceRollback(retErr, "failed to stop save import maintenance runtime", downErr)
-			return
-		}
-		if err := ensureSaveImportServerStopped(stopCtx, lifecycle, dataDir); err != nil {
-			retErr = joinMaintenanceRollback(retErr, "failed to prove save import maintenance runtime stopped", err)
-			return
-		}
-		failedJournal, loadErr := LoadImportJournal(dataDir, operationID)
-		if loadErr != nil {
-			retErr = joinMaintenanceRollback(retErr, "failed to reload save import journal during rollback", loadErr)
-			return
-		}
-		failedJournal.MaintenanceStarted = false
-		if writeErr := WriteImportJournal(dataDir, failedJournal); writeErr != nil {
-			retErr = joinMaintenanceRollback(retErr, "failed to persist stopped save import maintenance state", writeErr)
-			return
-		}
-		if restoreErr := restoreInstanceState(d, original); restoreErr != nil {
-			retErr = joinMaintenanceRollback(retErr, "failed to restore instance state after save import maintenance", restoreErr)
+		if rollbackErr := d.stopAndRestoreImportMaintenance(stopCtx, lifecycle, dataDir, operationID, original); rollbackErr != nil {
+			retErr = joinMaintenanceRollback(retErr, "failed to stop and restore save import maintenance", rollbackErr)
 		}
 	}()
-	if err := d.updateImportMaintenancePhase(ctx, "Save import maintenance runtime is starting; the server is not join-ready.", original); err != nil {
-		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "failed to publish save import maintenance state", err)
-	}
 	maintenanceLog(job, "Starting save_import_maintenance runtime without publishing an invite code.")
 
 	up, err := lifecycle.ComposeUp(ctx, dataDir)
@@ -200,6 +205,14 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 			err = fmt.Errorf("compose up exited with code %d", up.ExitCode)
 		}
 		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceStart, "maintenance container startup failed", err)
+	}
+	journal, err = LoadImportJournal(dataDir, operationID)
+	if err != nil {
+		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorRecoveryRequired, "maintenance container started but its journal could not be reloaded", err)
+	}
+	journal.MaintenanceRecoveryState = importMaintenanceComposeUpReturned
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorRecoveryRequired, "maintenance container started but its state could not be persisted", err)
 	}
 
 	readyCtx, cancel := context.WithTimeout(ctx, options.ReadyTimeout)
@@ -240,9 +253,10 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 	journal.RuntimeBaseline = &snapshot
 	journal.ServerOutputLogOffset = &offset
 	journal.Stage = ImportStageRuntimeReady
+	journal.MaintenanceRecoveryState = importMaintenanceRuntimeReadyPersisted
 	journal.LastErrorCode, journal.LastError = "", ""
-	if err := WriteImportJournal(dataDir, journal); err != nil {
-		return err
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorRecoveryRequired, "maintenance runtime became ready but its evidence could not be persisted", err)
 	}
 	if err := d.updateImportMaintenancePhase(ctx, "Save import maintenance runtime is ready; the server is not join-ready.", original); err != nil {
 		return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceReady, "failed to publish ready save import maintenance state", err)
@@ -466,17 +480,25 @@ func (d *Driver) maintenanceReadinessFailure(dataDir, operationID string, err er
 	return d.recordMaintenanceFailure(dataDir, operationID, ImportErrorMaintenanceReady, "save import maintenance runtime did not become ready", err)
 }
 
+func (d *Driver) writeImportJournal(dataDir string, journal ImportJournal) error {
+	if d.importJournalWrite != nil {
+		return d.importJournalWrite(dataDir, journal)
+	}
+	return WriteImportJournal(dataDir, journal)
+}
+
 func (d *Driver) recordMaintenanceFailure(dataDir, operationID, code, message string, cause error) error {
+	primary := &ImportTransactionError{Code: code, Message: message, Cause: cause}
 	journal, err := LoadImportJournal(dataDir, operationID)
 	if err == nil {
 		journal.LastErrorCode, journal.LastError = code, message
-		if writeErr := WriteImportJournal(dataDir, journal); writeErr != nil {
-			cause = errors.Join(cause, fmt.Errorf("persist save import failure: %w", writeErr))
+		if writeErr := d.writeImportJournal(dataDir, journal); writeErr != nil {
+			return joinMaintenanceRollback(primary, "failed to persist save import maintenance failure", writeErr)
 		}
 	} else {
-		cause = errors.Join(cause, fmt.Errorf("load save import journal while recording failure: %w", err))
+		return joinMaintenanceRollback(primary, "failed to load save import journal while recording maintenance failure", err)
 	}
-	return &ImportTransactionError{Code: code, Message: message, Cause: cause}
+	return primary
 }
 
 func restoreInstanceState(d *Driver, original storage.Instance) error {
@@ -523,9 +545,175 @@ func joinMaintenanceRollback(original error, message string, cause error) error 
 	}
 }
 
+func captureOriginalInstanceSnapshot(journal *ImportJournal, original storage.Instance) {
+	journal.OriginalInstanceSnapshot = &ImportInstanceStateSnapshot{
+		State:               original.State,
+		StateMessageValid:   original.StateMessage.Valid,
+		StateMessageBase64:  base64.StdEncoding.EncodeToString([]byte(original.StateMessage.String)),
+		DriverPhaseBase64:   base64.StdEncoding.EncodeToString([]byte(original.DriverPhase)),
+		DriverPayloadBase64: base64.StdEncoding.EncodeToString([]byte(original.DriverPayload)),
+	}
+	// Keep the legacy fields during the schema-1 compatibility window. New
+	// recovery always prefers the byte-exact snapshot above.
+	journal.OriginalInstanceState = original.State
+	journal.OriginalInstanceStateMessage = original.StateMessage.String
+	journal.OriginalInstanceStateMessageValid = original.StateMessage.Valid
+	journal.OriginalInstanceDriverPhase = original.DriverPhase
+	journal.OriginalInstanceDriverPayload = original.DriverPayload
+}
+
+func (d *Driver) stopAndRestoreImportMaintenance(ctx context.Context, lifecycle LifecycleDockerService, dataDir, operationID string, expected storage.Instance) error {
+	down, err := lifecycle.ComposeDown(ctx, dataDir)
+	if err != nil {
+		return fmt.Errorf("compose down save import maintenance: %w", err)
+	}
+	if down.ExitCode != 0 {
+		return fmt.Errorf("compose down save import maintenance exited with code %d", down.ExitCode)
+	}
+	if err := ensureSaveImportServerStopped(ctx, lifecycle, dataDir); err != nil {
+		return fmt.Errorf("strictly prove save import maintenance stopped: %w", err)
+	}
+	return d.restoreImportMaintenanceSnapshot(dataDir, operationID, expected)
+}
+
+func (d *Driver) restoreImportMaintenanceSnapshot(dataDir, operationID string, expected storage.Instance) error {
+	journal, err := LoadImportJournal(dataDir, operationID)
+	if err != nil {
+		return fmt.Errorf("load save import journal for snapshot restore: %w", err)
+	}
+	if journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted) {
+		return errors.New("save import journal cannot prove that upstream submission never started")
+	}
+	original, err := originalInstanceSnapshotFromJournal(journal, dataDir)
+	if err != nil {
+		return err
+	}
+	if expected.ID != "" && (original.ID != expected.ID || filepath.Clean(original.DataDir) != filepath.Clean(expected.DataDir)) {
+		return errors.New("save import snapshot identity changed during recovery")
+	}
+	journal.MaintenanceStarted = false
+	journal.MaintenanceRecoveryState = importMaintenanceSnapshotRestorePending
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		return fmt.Errorf("persist MaintenanceStarted=false before snapshot restore: %w", err)
+	}
+	if err := restoreInstanceState(d, original); err != nil {
+		return fmt.Errorf("restore exact pre-maintenance instance snapshot: %w", err)
+	}
+	journal.MaintenanceRecoveryState = importMaintenanceSnapshotRestored
+	journal.RecoveryState = "safe_to_resume_or_cleanup"
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		return fmt.Errorf("persist completed instance snapshot restore: %w", err)
+	}
+	return nil
+}
+
+func (d *Driver) recoverInterruptedImportMaintenance(ctx context.Context, instance registry.Instance, recoveries []ImportRecovery) ([]ImportRecovery, error) {
+	for i := range recoveries {
+		recovery := &recoveries[i]
+		if recovery.State == "manual_required" {
+			journal, err := LoadImportJournal(instance.DataDir, recovery.OperationID)
+			if err != nil {
+				return recoveries, maintenanceRollbackError("failed to inspect manual save import recovery", err)
+			}
+			if journal.MaintenanceStarted || journal.PhaseAFIFOWriteAttempted || journal.MaintenanceRecoveryState == importMaintenanceManualRecovery {
+				lifecycle, ok := d.docker.(LifecycleDockerService)
+				if !ok {
+					return recoveries, d.persistImportManualRecovery(instance.DataDir, journal,
+						"save import maintenance requires manual recovery before Panel preparation can continue",
+						errors.New("docker lifecycle operations are unsupported"))
+				}
+				stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				stopErr := stopImportPhaseAServer(stopCtx, lifecycle, instance.DataDir, time.Second)
+				cancel()
+				return recoveries, d.persistImportManualRecovery(instance.DataDir, journal,
+					"save import maintenance requires manual recovery before Panel preparation can continue", stopErr)
+			}
+		}
+		if recovery.State != importRecoveryMaintenanceStopAndRestore && recovery.State != importRecoveryMaintenanceRestoreSnapshot {
+			continue
+		}
+		if d.store == nil {
+			return recoveries, maintenanceRollbackError("save import maintenance recovery has no instance state store", nil)
+		}
+		authoritative, err := d.store.GetInstance(ctx, instance.ID)
+		if err != nil {
+			return recoveries, maintenanceRollbackError("failed to load authoritative instance during maintenance recovery", err)
+		}
+		if filepath.Clean(authoritative.DataDir) != filepath.Clean(instance.DataDir) {
+			return recoveries, maintenanceRollbackError("instance data directory changed during maintenance recovery", nil)
+		}
+		journal, err := LoadImportJournal(authoritative.DataDir, recovery.OperationID)
+		if err != nil {
+			return recoveries, maintenanceRollbackError("failed to reload interrupted maintenance journal", err)
+		}
+		if journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted) {
+			return recoveries, d.persistImportManualRecovery(authoritative.DataDir, journal,
+				"interrupted maintenance cannot prove that FIFO submission never started", nil)
+		}
+		lifecycle, ok := d.docker.(LifecycleDockerService)
+		if !ok {
+			return recoveries, d.persistImportManualRecovery(authoritative.DataDir, journal,
+				"interrupted maintenance runtime cannot be stopped safely", errors.New("docker lifecycle operations are unsupported"))
+		}
+		recoveryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		if recovery.State == importRecoveryMaintenanceStopAndRestore {
+			err = d.stopAndRestoreImportMaintenance(recoveryCtx, lifecycle, authoritative.DataDir, journal.OperationID, authoritative)
+		} else {
+			if probeErr := ensureSaveImportServerStopped(recoveryCtx, lifecycle, authoritative.DataDir); probeErr != nil {
+				err = probeErr
+			} else {
+				err = d.restoreImportMaintenanceSnapshot(authoritative.DataDir, journal.OperationID, authoritative)
+			}
+		}
+		cancel()
+		if err != nil {
+			return recoveries, d.persistImportManualRecovery(authoritative.DataDir, journal,
+				"interrupted save import maintenance requires manual recovery", err)
+		}
+		recovery.State = "safe_to_resume_or_cleanup"
+		recovery.ErrorCode = ""
+	}
+	return recoveries, nil
+}
+
+func (d *Driver) persistImportManualRecovery(dataDir string, journal ImportJournal, message string, cause error) error {
+	journal.MaintenanceRecoveryState = importMaintenanceManualRecovery
+	journal.RecoveryState = "manual_required"
+	journal.LastErrorCode = ImportErrorRecoveryRequired
+	journal.LastError = message
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		cause = errors.Join(cause, fmt.Errorf("persist manual save import recovery evidence: %w", err))
+	}
+	return maintenanceRollbackError(message, cause)
+}
+
 func originalInstanceSnapshotFromJournal(j ImportJournal, dataDir string) (storage.Instance, error) {
-	if !IsSaveImportMaintenanceOfflineState(j.OriginalInstanceState) {
-		return storage.Instance{}, fmt.Errorf("import journal original instance state %q is not restorable", j.OriginalInstanceState)
+	state := j.OriginalInstanceState
+	message := j.OriginalInstanceStateMessage
+	messageValid := j.OriginalInstanceStateMessageValid
+	phase := j.OriginalInstanceDriverPhase
+	payload := j.OriginalInstanceDriverPayload
+	if j.OriginalInstanceSnapshot != nil {
+		state = j.OriginalInstanceSnapshot.State
+		messageBytes, err := base64.StdEncoding.DecodeString(j.OriginalInstanceSnapshot.StateMessageBase64)
+		if err != nil {
+			return storage.Instance{}, fmt.Errorf("decode original instance state message: %w", err)
+		}
+		phaseBytes, err := base64.StdEncoding.DecodeString(j.OriginalInstanceSnapshot.DriverPhaseBase64)
+		if err != nil {
+			return storage.Instance{}, fmt.Errorf("decode original instance driver phase: %w", err)
+		}
+		payloadBytes, err := base64.StdEncoding.DecodeString(j.OriginalInstanceSnapshot.DriverPayloadBase64)
+		if err != nil {
+			return storage.Instance{}, fmt.Errorf("decode original instance driver payload: %w", err)
+		}
+		message = string(messageBytes)
+		messageValid = j.OriginalInstanceSnapshot.StateMessageValid
+		phase = string(phaseBytes)
+		payload = string(payloadBytes)
+	}
+	if !IsSaveImportMaintenanceOfflineState(state) {
+		return storage.Instance{}, fmt.Errorf("import journal original instance state %q is not restorable", state)
 	}
 	if strings.TrimSpace(j.InstanceID) == "" {
 		return storage.Instance{}, errors.New("import journal original instance identity is missing")
@@ -533,10 +721,10 @@ func originalInstanceSnapshotFromJournal(j ImportJournal, dataDir string) (stora
 	return storage.Instance{
 		ID:            j.InstanceID,
 		DataDir:       dataDir,
-		State:         j.OriginalInstanceState,
-		StateMessage:  sql.NullString{String: j.OriginalInstanceStateMessage, Valid: j.OriginalInstanceStateMessageValid},
-		DriverPhase:   j.OriginalInstanceDriverPhase,
-		DriverPayload: j.OriginalInstanceDriverPayload,
+		State:         state,
+		StateMessage:  sql.NullString{String: message, Valid: messageValid},
+		DriverPhase:   phase,
+		DriverPayload: payload,
 	}, nil
 }
 

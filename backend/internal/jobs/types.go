@@ -15,6 +15,11 @@ const (
 
 type Runner func(ctx context.Context, job *Context) error
 
+// BeforeRun is invoked after the job row has been durably created but before
+// any runner goroutine is started. Callers use it to persist external ownership
+// records which must exist before the job is allowed to mutate runtime state.
+type BeforeRun func(ctx context.Context, job storage.Job) error
+
 type Spec struct {
 	Type           string
 	DisplayName    string
@@ -25,6 +30,7 @@ type Spec struct {
 	CreatedBy      int64
 	Payload        string
 	Timeout        time.Duration
+	BeforeRun      BeforeRun
 	Run            Runner
 }
 

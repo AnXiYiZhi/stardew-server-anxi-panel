@@ -120,20 +120,39 @@ func (c *Client) ComposePsStrict(ctx context.Context, dir string) (ComposePsResu
 	if err != nil {
 		return composeResult, err
 	}
+	if result.StdoutTruncated || result.StderrTruncated {
+		return composeResult, fmt.Errorf("docker compose ps --all response was truncated")
+	}
 	if strings.TrimSpace(result.Stdout) == "" {
 		return composeResult, nil
+	}
+	if strings.EqualFold(strings.TrimSpace(result.Stdout), "null") {
+		return composeResult, fmt.Errorf("docker compose ps --all response contains an empty JSON value")
 	}
 	services, parseErr := parseComposeServices(result.Stdout)
 	if parseErr != nil {
 		return composeResult, fmt.Errorf("parse docker compose ps --all response: %w", parseErr)
 	}
 	for _, service := range services {
-		if strings.TrimSpace(service.Service) == "" || strings.TrimSpace(service.State) == "" {
+		state := strings.ToLower(strings.TrimSpace(service.State))
+		if strings.TrimSpace(service.Service) == "" || state == "" {
 			return composeResult, fmt.Errorf("docker compose ps --all response is missing service or state")
+		}
+		if !knownComposeContainerState(state) {
+			return composeResult, fmt.Errorf("docker compose ps --all response contains unknown state %q", service.State)
 		}
 	}
 	composeResult.Services = services
 	return composeResult, nil
+}
+
+func knownComposeContainerState(state string) bool {
+	switch state {
+	case "created", "running", "paused", "restarting", "removing", "exited", "dead":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) ComposeStats(ctx context.Context, dir string) (ComposeStatsResult, error) {

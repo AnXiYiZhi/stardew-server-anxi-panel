@@ -24,6 +24,7 @@ public sealed class ModEntry : Mod
     private bool isJunimoRuntime;
     private readonly PasswordProtectionBridge passwordBridge = new();
     private readonly RolePasswordPatch rolePasswordPatch = new();
+    private readonly HostFarmhousePreservationPatch hostFarmhousePreservationPatch = new();
     private RolePasswordPolicy playerAuthPolicy = RolePasswordPolicy.Parse(null, null, null, null, null);
     private readonly WarpHomeBridge warpHomeBridge = new();
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
@@ -128,6 +129,7 @@ public sealed class ModEntry : Mod
         isJunimoRuntime = Helper.ModRegistry.IsLoaded("JunimoHost.Server");
         if (isJunimoRuntime)
         {
+            hostFarmhousePreservationPatch.Initialize(ModManifest.UniqueID, Monitor);
             passwordBridge.Initialize(Monitor);
             playerAuthPolicy = RolePasswordPolicy.LoadFromEnvironment();
             rolePasswordPatch.Initialize(ModManifest.UniqueID, passwordBridge.TryAuthenticateMethod, playerAuthPolicy, Monitor);
@@ -593,6 +595,8 @@ public sealed class ModEntry : Mod
 				TransactionId = farmCatalogRequest?.TransactionId ?? "",
 				GeneratedAt = generatedAt,
 				ControlModVersion = ModManifest.Version.ToString(),
+				HostFarmhousePreservationPatchAvailable = hostFarmhousePreservationPatch.Available,
+				HostFarmhousePreservationPatchDetail = hostFarmhousePreservationPatch.Detail,
 				GameVersion = Game1.version ?? "",
 				ApiVersion = Constants.ApiVersion.ToString(),
 				LoadedMods = loadedMods,
@@ -762,6 +766,8 @@ public sealed class ModEntry : Mod
             PlayerAuthConfigRevision = playerAuthPolicy.Revision,
             RolePasswordPatchAvailable = rolePasswordPatch.Available,
             RolePasswordPatchDetail = rolePasswordPatch.Detail,
+            HostFarmhousePreservationPatchAvailable = hostFarmhousePreservationPatch.Available,
+            HostFarmhousePreservationPatchDetail = hostFarmhousePreservationPatch.Detail,
             WarpHomeBridgeAvailable = warpHomeBridge.Available,
             WarpHomeBridgeDetail = warpHomeBridge.Detail,
 			NewGameTransactionId = initConfig?.TransactionId ?? "",

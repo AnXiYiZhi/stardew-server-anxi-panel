@@ -585,7 +585,7 @@ export function PlayersPage({ user, instanceState, dashboardData, onNavigate }: 
           <div className="sd-players-table-header">
             <span>玩家名</span>
             <span>位置</span>
-            <span>在线时长</span>
+            <span>在线 / 最近活动</span>
             <span>玩家收入</span>
             <span>农场收入</span>
             <span>状态</span>

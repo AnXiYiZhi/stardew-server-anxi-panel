@@ -22,21 +22,23 @@ import (
 )
 
 type fakeDockerService struct {
-	versionResult paneldocker.CommandResult
-	versionErr    error
-	composeErr    error
-	psResult      paneldocker.ComposePsResult
-	psErr         error
-	statsResult   paneldocker.ComposeStatsResult
-	statsErr      error
-	statsCalls    *atomic.Int32
-	statsDelay    time.Duration
-	logsResult    paneldocker.CommandResult
-	logsErr       error
-	composeUp     paneldocker.CommandResult
-	composeUpErr  error
-	execFunc      func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
-	instanceState string
+	versionResult  paneldocker.CommandResult
+	versionErr     error
+	composeErr     error
+	psResult       paneldocker.ComposePsResult
+	psErr          error
+	strictPsResult paneldocker.ComposePsResult
+	strictPsErr    error
+	statsResult    paneldocker.ComposeStatsResult
+	statsErr       error
+	statsCalls     *atomic.Int32
+	statsDelay     time.Duration
+	logsResult     paneldocker.CommandResult
+	logsErr        error
+	composeUp      paneldocker.CommandResult
+	composeUpErr   error
+	execFunc       func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	instanceState  string
 }
 
 func (f fakeDockerService) DockerVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error) {
@@ -52,6 +54,9 @@ func (f fakeDockerService) ComposePs(ctx context.Context, dir string) (paneldock
 }
 
 func (f fakeDockerService) ComposePsStrict(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	if f.strictPsErr != nil || len(f.strictPsResult.Services) > 0 || f.strictPsResult.Result.Args != nil {
+		return f.strictPsResult, f.strictPsErr
+	}
 	return f.ComposePs(ctx, dir)
 }
 
