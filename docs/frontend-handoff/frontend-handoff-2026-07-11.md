@@ -1,7 +1,8 @@
-# DOCS-PORTAL-0.4.18 接手记录（2026-08-15，completed，待发布）
+# DOCS-PORTAL-0.4.18 接手记录（2026-08-15，completed，已上线）
 
 - `website/docs/index.md` 与 `website/docs/changelog.md` 已同步 v0.4.18 用户可见范围：停服空 Compose 首次导入、Control-only 缺失 JunimoServer/旧人工事务恢复、共享确认框与最近控制命令分页。官网主题、CSS、依赖和路由未变，Panel API、镜像、tag、digest 与 Release 也未改。
-- VitePress production build 2.96 秒通过；本地应用内 Browser 在 1440×900/390×844 从首页真实点击到 `/changelog.html`，版本顺序和三组正文正确，两视口 root/body 无横向溢出、overlay=0、console warn/error=0。推送后跟踪 Pages/Compatibility；不得因 docs-only 收口重新发布候选或移动 `v0.4.18`。
+- VitePress production build 2.96 秒通过；本地应用内 Browser 在 1440×900/390×844 从首页真实点击到 `/changelog.html`，版本顺序和三组正文正确，两视口 root/body 无横向溢出、overlay=0、console warn/error=0。
+- docs-only 提交 `09601de0d9b9064b88a56d091678194a65c333cd` 的 Pages `31886032569` 与 Compatibility `31886032526` 均成功，未触发候选。线上同样在 1440×900/390×844 完成首页到日志真实点击，v0.4.18/v0.4.17/v0.4.16 顺序、四类正文、横向溢出、overlay 和 console 均通过；不得因后续证据收口重新发布候选或移动 `v0.4.18`。
 
 # v0.4.18 前端发布接手状态（2026-08-15，released）
 

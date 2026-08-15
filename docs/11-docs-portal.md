@@ -8,7 +8,8 @@
 
 - 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 从 v0.4.17 切换到 v0.4.18；更新日志置顶新增停服空 Compose 首次导入、Control-only 缺失 JunimoServer 与旧人工事务恢复、共享确认框和最近控制命令分页，v0.4.17 保留为历史条目。
 - 内容来自已发布 `v0.4.18` GitHub Release 和 `docs/09-image-build.md` 的不可变候选/三仓/正式镜像证据；只改公开 Markdown 与长期文档，不改变主题、CSS、依赖、Panel API、镜像、tag、digest 或 Release 资产。
-- VitePress production build 2.96 秒通过。应用内 Browser 在本地 1440×900 与 390×844 从首页真实点击到 `/changelog.html`；首页和日志均命中 v0.4.18，日志顺序为 v0.4.18/v0.4.17/v0.4.16，三组正文完整，root/body `scrollWidth == clientWidth`、framework overlay 和 console warn/error 均为 0。线上 Pages 与 Compatibility 结果在本次 docs-only 提交推送后跟踪，不触发候选重建或移动既有 tag。
+- VitePress production build 2.96 秒通过。应用内 Browser 在本地 1440×900 与 390×844 从首页真实点击到 `/changelog.html`；首页和日志均命中 v0.4.18，日志顺序为 v0.4.18/v0.4.17/v0.4.16，三组正文完整，root/body `scrollWidth == clientWidth`、framework overlay 和 console warn/error 均为 0。
+- docs-only 提交 `09601de0d9b9064b88a56d091678194a65c333cd` 的 Pages `31886032569` 与 Compatibility `31886032526` 全部成功且没有候选 workflow。线上公开站点在 1440×900/390×844 再次从首页真实点击到 changelog，版本顺序、Compose/JunimoServer/确认框/每页 3 条正文、两页横向溢出、overlay 和 console 均通过；没有重建镜像或移动既有 tag。
 
 ## 2026-08-15：官网展示 v0.4.17
 

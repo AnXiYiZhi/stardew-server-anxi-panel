@@ -1,8 +1,8 @@
-# 2026-08-15 完成：官网更新日志同步 v0.4.18（待发布）
+# 2026-08-15 已上线：官网更新日志同步 v0.4.18
 
 - [x] 官网首页版本角标、入口摘要和 `CURRENT RELEASE` 切换到 v0.4.18；changelog 置顶新增停服空 Compose 导入、Control-only Junimo 恢复、共享确认框与控制命令分页，v0.4.17 保留为历史。
 - [x] VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900/390×844 完成首页到日志真实点击，版本顺序/正文正确，零横向溢出、零 overlay、零 console warn/error。
-- [ ] docs-only 提交推送后确认 Pages/Compatibility 成功且没有触发候选重建；随后复核线上首页与 changelog，不移动 `v0.4.18` 或改变三仓 digest。
+- [x] docs-only 提交 `09601de0d9b9064b88a56d091678194a65c333cd` 的 Pages `31886032569` 与 Compatibility `31886032526` 成功且没有触发候选重建；线上 1440×900/390×844 的首页到 changelog 真实点击、版本顺序、四类正文、横向溢出、overlay 和 console 全部通过，`v0.4.18` 与三仓 digest 未改变。
 
 # 2026-08-15 已发布：v0.4.18 Control-only 升级与旧人工恢复补齐 JunimoServer
 

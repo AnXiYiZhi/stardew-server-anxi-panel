@@ -1,7 +1,8 @@
-# DOCS-PORTAL-0.4.18：官网更新日志同步最新版（2026-08-15，completed，待发布）
+# DOCS-PORTAL-0.4.18：官网更新日志同步最新版（2026-08-15，completed，已上线）
 
 - 官网首页版本角标、版本入口摘要和 `CURRENT RELEASE` 切换到 v0.4.18；changelog 置顶说明停服空 Compose 存档导入、Control-only 缺失 JunimoServer/旧人工事务恢复，以及共享模态与最近控制命令分页，v0.4.17 保留为历史条目。
-- 只影响官网 Markdown 与长期文档，不改变主题/CSS/依赖、Panel 运行代码、API、镜像、tag、digest 或 GitHub Release。VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900/390×844 从首页实际点击到更新日志，版本顺序、三组正文、零横向溢出、零 overlay 和零 console warn/error 均通过。docs-only 提交推送后只允许 Pages/Compatibility 等路径预期 workflow，不得重建 v0.4.18 候选。
+- 只影响官网 Markdown 与长期文档，不改变主题/CSS/依赖、Panel 运行代码、API、镜像、tag、digest 或 GitHub Release。VitePress production build 2.96 秒通过；应用内 Browser 在本地 1440×900/390×844 从首页实际点击到更新日志，版本顺序、三组正文、零横向溢出、零 overlay 和零 console warn/error 均通过。
+- docs-only 提交 `09601de0d9b9064b88a56d091678194a65c333cd` 推送后仅触发并通过 Pages `31886032569` 与 Compatibility `31886032526`，没有候选重建。线上 1440×900/390×844 再次通过首页真实点击、版本顺序、四类正文、零横向溢出、零 overlay 和零 console warn/error；`v0.4.18` tag 与三仓 digest 不受该提交影响。
 
 # v0.4.18 前端发布状态（2026-08-15，released）
 
