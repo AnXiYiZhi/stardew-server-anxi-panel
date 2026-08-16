@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,11 +30,29 @@ type JunimoRuntimeWorldState struct {
 	Version               *int64 `json:"version,omitempty"`
 }
 
+type ControlHostBedEvidence struct {
+	State             string     `json:"state,omitempty"`
+	Healthy           *bool      `json:"healthy,omitempty"`
+	ErrorCode         string     `json:"errorCode,omitempty"`
+	FailureReason     string     `json:"failureReason,omitempty"`
+	HouseUpgradeLevel *int       `json:"houseUpgradeLevel,omitempty"`
+	ExpectedBedType   string     `json:"expectedBedType,omitempty"`
+	ActualBedType     string     `json:"actualBedType,omitempty"`
+	BedTileX          *int       `json:"bedTileX,omitempty"`
+	BedTileY          *int       `json:"bedTileY,omitempty"`
+	PlayerBedSpotX    *int       `json:"playerBedSpotX,omitempty"`
+	PlayerBedSpotY    *int       `json:"playerBedSpotY,omitempty"`
+	Repaired          bool       `json:"repaired"`
+	CheckedAt         *time.Time `json:"checkedAt,omitempty"`
+}
+
 // JunimoImportActivationEvidence is deliberately read-only. PendingIntent's
 // raw UserID is excluded by its json:"-" tag and is never persisted here.
 type JunimoImportActivationEvidence struct {
 	RuntimeSaveID            string                  `json:"runtimeSaveId,omitempty"`
 	RuntimeSaveIDErrorCode   string                  `json:"runtimeSaveIdErrorCode,omitempty"`
+	HostBed                  *ControlHostBedEvidence `json:"hostBed,omitempty"`
+	HostBedErrorCode         string                  `json:"hostBedErrorCode,omitempty"`
 	PendingIntent            JunimoSaveImportIntent  `json:"pendingIntent"`
 	ProcessIdentity          *JunimoProcessIdentity  `json:"processIdentity,omitempty"`
 	ProcessIdentityErrorCode string                  `json:"processIdentityErrorCode,omitempty"`
@@ -81,9 +101,12 @@ func captureImportActivationEvidence(ctx context.Context, exec commandExecutor, 
 		return evidence, err
 	}
 	evidence.PendingIntent = intent
-	evidence.RuntimeSaveID, err = readRuntimeSaveID(dataDir)
+	evidence.RuntimeSaveID, evidence.HostBed, err = readControlImportActivationStatus(dataDir)
 	if err != nil {
-		evidence.RuntimeSaveIDErrorCode = "runtime_save_id_unavailable"
+		if evidence.RuntimeSaveID == "" {
+			evidence.RuntimeSaveIDErrorCode = "runtime_save_id_unavailable"
+		}
+		evidence.HostBedErrorCode = activationEvidenceErrorCode(err)
 	}
 	evidence.ProcessIdentity, err = readProcessIdentity(ctx, exec, dataDir)
 	evidence.ProcessIdentityErrorCode = activationEvidenceErrorCode(err)
@@ -93,6 +116,25 @@ func captureImportActivationEvidence(ctx context.Context, exec commandExecutor, 
 	evidence.World, err = readRuntimeWorldState(ctx, exec, dataDir)
 	evidence.StatusErrorCode = activationEvidenceErrorCode(err)
 	return evidence, nil
+}
+
+func readControlImportActivationStatus(dataDir string) (string, *ControlHostBedEvidence, error) {
+	raw, err := os.ReadFile(filepath.Join(controlDir(dataDir), "status.json"))
+	if err != nil {
+		return "", nil, &ImportEvidenceError{Code: "control_status_unavailable", Message: "Control runtime status is unavailable", Cause: err}
+	}
+	var status struct {
+		SaveID  string                  `json:"saveId"`
+		HostBed *ControlHostBedEvidence `json:"hostBed"`
+	}
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return "", nil, &ImportEvidenceError{Code: "control_status_invalid_json", Message: "Control runtime status JSON is invalid", Cause: err}
+	}
+	status.SaveID = strings.TrimSpace(status.SaveID)
+	if status.SaveID == "" || status.HostBed == nil || status.HostBed.Healthy == nil {
+		return status.SaveID, status.HostBed, &ImportEvidenceError{Code: "control_host_bed_field_missing", Message: "Control runtime status is missing host bed evidence"}
+	}
+	return status.SaveID, status.HostBed, nil
 }
 
 func activationEvidenceErrorCode(err error) string {
@@ -113,6 +155,31 @@ func processIdentityEqual(a, b *JunimoProcessIdentity) bool {
 func activationWorldStable(e JunimoImportActivationEvidence) bool {
 	return e.StatusErrorCode == "" && e.World.IsOnline != nil && *e.World.IsOnline &&
 		e.World.DayTransitionComplete != nil && *e.World.DayTransitionComplete
+}
+
+func activationHostBedHealthy(e JunimoImportActivationEvidence) bool {
+	bed := e.HostBed
+	if e.HostBedErrorCode != "" || bed == nil || bed.Healthy == nil || !*bed.Healthy || bed.ErrorCode != "" || bed.HouseUpgradeLevel == nil {
+		return false
+	}
+	if bed.State != "healthy" && bed.State != "repaired" {
+		return false
+	}
+	level := *bed.HouseUpgradeLevel
+	expected := "Double"
+	if level == 0 {
+		expected = "Single"
+	} else if level < 1 || level > 3 {
+		return false
+	}
+	return bed.ExpectedBedType == expected && bed.ActualBedType == expected &&
+		bed.BedTileX != nil && bed.BedTileY != nil && bed.PlayerBedSpotX != nil && bed.PlayerBedSpotY != nil &&
+		*bed.PlayerBedSpotX == *bed.BedTileX+1 && *bed.PlayerBedSpotY == *bed.BedTileY+1
+}
+
+func activationHostBedFault(e JunimoImportActivationEvidence) bool {
+	return e.HostBedErrorCode == "" && e.HostBed != nil && e.HostBed.Healthy != nil && !*e.HostBed.Healthy &&
+		e.HostBed.ErrorCode == ImportErrorHostBedMissing
 }
 
 func activationCountAdvanced(j ImportJournal, e JunimoImportActivationEvidence) (bool, bool) {
@@ -168,7 +235,7 @@ func evaluateImportActivation(j ImportJournal, e JunimoImportActivationEvidence,
 		return activationWait
 	}
 	if targetLoaded && !e.PendingIntent.Exists {
-		if e.DiagnosticsErrorCode != "" || e.StatusErrorCode != "" {
+		if e.DiagnosticsErrorCode != "" || e.StatusErrorCode != "" || e.HostBedErrorCode != "" {
 			if final {
 				return activationUnconfirmed
 			}
@@ -178,7 +245,10 @@ func evaluateImportActivation(j ImportJournal, e JunimoImportActivationEvidence,
 		if known && !advanced && worldStable {
 			return activationRecovery
 		}
-		if advanced && e.MasterName != nil && *e.MasterName == "Server" && worldStable {
+		if advanced && e.MasterName != nil && *e.MasterName == "Server" && worldStable && activationHostBedFault(e) {
+			return activationRecovery
+		}
+		if advanced && e.MasterName != nil && *e.MasterName == "Server" && worldStable && activationHostBedHealthy(e) {
 			return activationSuccess
 		}
 		if final {
@@ -373,10 +443,14 @@ func classifyFinalImportActivation(dataDir, operationID string, evidence JunimoI
 		return err
 	}
 	decision := evaluateImportActivation(j, evidence, true)
+	if activationHostBedFault(evidence) {
+		return recordImportActivationFailure(dataDir, operationID, ImportErrorHostBedMissing, activationOutcomeRecovery, "the main FarmHouse has no safe player bed after host swap", &evidence, cause)
+	}
 	if decision == activationRecovery {
 		return recordImportActivationFailure(dataDir, operationID, ImportErrorRecoveryRequired, activationOutcomeRecovery, "save activation evidence indicates a partial or failed finalizer; import must not be repeated", &evidence, cause)
 	}
-	if decision == activationUnconfirmed || evidence.RuntimeSaveIDErrorCode != "" || evidence.DiagnosticsErrorCode != "" || evidence.StatusErrorCode != "" {
+	bedEvidenceRequired := j.HostHandling != "server_owns_original" && evidence.RuntimeSaveID == j.SaveName
+	if decision == activationUnconfirmed || evidence.RuntimeSaveIDErrorCode != "" || evidence.DiagnosticsErrorCode != "" || evidence.StatusErrorCode != "" || (bedEvidenceRequired && evidence.HostBedErrorCode != "") {
 		return recordImportActivationFailure(dataDir, operationID, ImportErrorResultUnconfirmed, activationOutcomeUnconfirmed, "save activation result is unconfirmed because required runtime evidence is unavailable", &evidence, cause)
 	}
 	return recordImportActivationFailure(dataDir, operationID, ImportErrorActivationTimeout, activationOutcomeTimeout, "target save or finalizer did not become ready before the activation deadline", &evidence, cause)

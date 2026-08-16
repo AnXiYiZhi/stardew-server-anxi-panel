@@ -51,6 +51,10 @@ public sealed class PanelOptions
 	public string ControlModVersion { get; set; } = "";
 	public bool HostFarmhousePreservationPatchAvailable { get; set; }
 	public string HostFarmhousePreservationPatchDetail { get; set; } = "";
+	public bool HostAutomationBridgeAvailable { get; set; }
+	public string HostAutomationBridgeDetail { get; set; } = "";
+	public bool HostSleepSafetyPatchAvailable { get; set; }
+	public string HostSleepSafetyPatchDetail { get; set; } = "";
 	public string GameVersion { get; set; } = "";
 	public string ApiVersion { get; set; } = "";
 	public LoadedModItem[] LoadedMods { get; set; } = Array.Empty<LoadedModItem>();
@@ -265,6 +269,12 @@ public sealed class RuntimeStatus
     public string RolePasswordPatchDetail { get; set; } = "";
     public bool HostFarmhousePreservationPatchAvailable { get; set; }
     public string HostFarmhousePreservationPatchDetail { get; set; } = "";
+    public bool HostAutomationBridgeAvailable { get; set; }
+    public string HostAutomationBridgeDetail { get; set; } = "";
+    public bool HostSleepSafetyPatchAvailable { get; set; }
+    public string HostSleepSafetyPatchDetail { get; set; } = "";
+    public HostBedStatus HostBed { get; set; } = HostBedStatus.Unavailable();
+    public HostControlStatus HostControl { get; set; } = new();
     public bool WarpHomeBridgeAvailable { get; set; }
     public string WarpHomeBridgeDetail { get; set; } = "";
 	public string NewGameTransactionId { get; set; } = "";
@@ -282,6 +292,49 @@ public sealed class RuntimeStatus
 	public CharacterCustomizationSnapshot? Customization { get; set; }
 	public CharacterCustomizationSnapshot? CustomizationAttempt { get; set; }
 	public string[] CustomizationMismatches { get; set; } = Array.Empty<string>();
+}
+
+public sealed class HostBedStatus
+{
+    public string State { get; set; } = "unavailable";
+    public bool Healthy { get; set; }
+    public string ErrorCode { get; set; } = "";
+    public string FailureReason { get; set; } = "";
+    public string Detail { get; set; } = "";
+    public int HouseUpgradeLevel { get; set; } = -1;
+    public string ExpectedBedType { get; set; } = "";
+    public string ActualBedType { get; set; } = "";
+    public string BedItemId { get; set; } = "";
+    public int? BedTileX { get; set; }
+    public int? BedTileY { get; set; }
+    public int? PlayerBedSpotX { get; set; }
+    public int? PlayerBedSpotY { get; set; }
+    public int FurnitureCount { get; set; }
+    public int BedCount { get; set; }
+    public string LayoutSource { get; set; } = "";
+    public bool RepairAttempted { get; set; }
+    public bool Repaired { get; set; }
+    public DateTimeOffset CheckedAt { get; set; }
+
+    public static HostBedStatus Unavailable(DateTimeOffset? checkedAt = null)
+        => new() { CheckedAt = checkedAt ?? DateTimeOffset.UtcNow };
+}
+
+public sealed class HostControlStatus
+{
+    public string Mode { get; set; } = "unknown";
+    public bool AutomationKnown { get; set; }
+    public bool AutomationEnabled { get; set; }
+    public bool ManualControl { get; set; }
+    public bool Paused { get; set; }
+    public string PauseReason { get; set; } = "None";
+    public bool HostVisible { get; set; }
+    public bool DisplayFarmer { get; set; }
+    public bool FarmerHidden { get; set; }
+    public bool VisibilityConsistent { get; set; }
+    public int? ConnectedClients { get; set; }
+    public DateTimeOffset? ManualLeaseExpiresAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class CharacterCustomizationSnapshot

@@ -139,7 +139,7 @@ func ComparePendingIntent(journal ImportJournal, pending JunimoSaveImportIntent)
 }
 
 func readJunimoAPI(ctx context.Context, exec commandExecutor, dataDir, endpoint string) ([]byte, error) {
-	apiPort, apiKey, err := readJunimoAPIConfig(dataDir)
+	_, apiKey, err := readJunimoAPIConfig(dataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,10 @@ func readJunimoAPI(ctx context.Context, exec commandExecutor, dataDir, endpoint 
 	if apiKey != "" {
 		args = append(args, "-H", "Authorization: Bearer "+apiKey)
 	}
-	args = append(args, "http://localhost:"+apiPort+endpoint)
+	// The request is executed inside the server container. The .env API_PORT
+	// controls only the host-side publication; the service listens on 8080 in
+	// the Compose runtime regardless of that external mapping.
+	args = append(args, "http://localhost:"+junimoContainerAPIPort+endpoint)
 	reqCtx, cancel := context.WithTimeout(ctx, importEvidenceAPITimeout)
 	defer cancel()
 	result, err := exec.ComposeExecPipe(reqCtx, dataDir, "server", "", args...)

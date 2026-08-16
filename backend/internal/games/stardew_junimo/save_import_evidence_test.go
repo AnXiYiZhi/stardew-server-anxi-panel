@@ -42,6 +42,25 @@ func importEvidenceErrorCode(t *testing.T, err error) string {
 	return evidenceErr.Code
 }
 
+func TestReadJunimoAPIUsesContainerPortWhenHostPortIsRemapped(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("API_PORT=18080\nAPI_KEY=secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var captured []string
+	executor := importEvidenceExec{run: func(_ context.Context, args []string) (paneldocker.CommandResult, error) {
+		captured = append([]string(nil), args...)
+		return paneldocker.CommandResult{Stdout: `{}`}, nil
+	}}
+	if _, err := readJunimoAPI(context.Background(), executor, dataDir, "/status"); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(captured, " ")
+	if !strings.Contains(joined, "Authorization: Bearer secret") || !strings.Contains(joined, "http://localhost:8080/status") || strings.Contains(joined, "localhost:18080") {
+		t.Fatalf("container API request used the host-published port: %v", captured)
+	}
+}
+
 func TestImportEvidencePendingFileMissing(t *testing.T) {
 	intent, err := ReadJunimoSaveImportIntent(t.TempDir())
 	if err != nil || intent.Exists {

@@ -118,8 +118,10 @@ PauseDecision Pause(
     bool enabled = true,
     bool server = true,
     bool worldReady = true,
-    bool countKnown = true
-) => PausePolicy.Evaluate(enabled, server, worldReady, countKnown, connections, festival, time);
+    bool countKnown = true,
+    bool automationKnown = true,
+    bool automationEnabled = true
+) => PausePolicy.Evaluate(enabled, server, worldReady, automationKnown, automationEnabled, countKnown, connections, festival, time);
 
 ExpectPause(Pause(), true, PauseReason.NoConnectedClients, "normal daytime with no clients");
 ExpectPause(Pause(time: 610), true, PauseReason.NoConnectedClients, "idle pause lower time boundary");
@@ -133,6 +135,39 @@ ExpectPause(Pause(countKnown: false), false, PauseReason.None, "unknown server c
 ExpectPause(Pause(enabled: false), false, PauseReason.None, "auto pause disabled");
 ExpectPause(Pause(server: false), false, PauseReason.None, "non-server game");
 ExpectPause(Pause(worldReady: false), false, PauseReason.None, "world not ready");
+ExpectPause(Pause(automationEnabled: false), false, PauseReason.ManualControl, "F9 manual-control override");
+ExpectPause(Pause(automationKnown: false), true, PauseReason.NoConnectedClients, "unknown automation fails closed");
+
+var manualNow = DateTimeOffset.Parse("2026-08-16T00:00:00Z");
+var manualLease = TimeSpan.FromMinutes(10);
+var manualActive = ManualControlPolicy.Evaluate(true, false, true, 0, manualNow, manualNow.AddMinutes(9), manualLease);
+if (manualActive.Mode != HostControlMode.Manual || manualActive.ShouldRestoreAutomation)
+    throw new InvalidOperationException("an attended VNC manual-control lease was ended early");
+var manualExpired = ManualControlPolicy.Evaluate(true, false, true, 0, manualNow, manualNow.AddMinutes(10), manualLease);
+if (manualExpired.Mode != HostControlMode.Manual || !manualExpired.ShouldRestoreAutomation)
+    throw new InvalidOperationException("an unattended VNC manual-control lease did not restore automation");
+var manualWithClient = ManualControlPolicy.Evaluate(true, false, true, 1, manualNow, manualNow.AddHours(1), manualLease);
+if (manualWithClient.ShouldRestoreAutomation)
+    throw new InvalidOperationException("manual control expired while a real network client was connected");
+if (!HostVisibilityContract.IsConsistent(true, true, false)
+    || !HostVisibilityContract.IsConsistent(false, false, true)
+    || HostVisibilityContract.IsConsistent(false, false, false))
+{
+    throw new InvalidOperationException("host sprite/shadow visibility consistency contract failed");
+}
+foreach (var level in new[] { 0, 1, 2, 3 })
+{
+    var expected = level == 0 ? HostBedContract.Single : HostBedContract.Double;
+    if (HostBedContract.ExpectedBedType(level) != expected
+        || !HostBedContract.HasUnambiguousMapBedPosition(level, 1)
+        || HostBedContract.HasUnambiguousMapBedPosition(level, 0)
+        || HostBedContract.HasUnambiguousMapBedPosition(level, 2))
+    {
+        throw new InvalidOperationException($"host bed layout contract failed for house level {level}");
+    }
+}
+if (HostBedContract.ExpectedBedType(4).Length != 0)
+    throw new InvalidOperationException("unsupported host house level did not fail closed");
 
 var tracker = new PendingSaveCommandTracker();
 var now = DateTimeOffset.UtcNow;

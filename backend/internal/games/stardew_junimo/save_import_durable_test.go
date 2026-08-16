@@ -41,7 +41,7 @@ func prepareDurableTestFixture(t *testing.T, hostHandling string) *durableTestFi
 	afterXML := `<SaveGame><player><name>After</name></player><year>1</year><currentSeason>spring</currentSeason><dayOfMonth>1</dayOfMonth></SaveGame>`
 	writeDurableMain(t, r.fixture.dataDir, beforeXML)
 	r.setRuntimeSave(t, "Upload_1")
-	if err := os.WriteFile(filepath.Join(controlDir(r.fixture.dataDir), "status.json"), []byte(`{"saveId":"Upload_1","commandResultVersion":1}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(controlDir(r.fixture.dataDir), "status.json"), []byte(`{"saveId":"Upload_1","commandResultVersion":1,"hostBed":{"state":"healthy","healthy":true,"houseUpgradeLevel":0,"expectedBedType":"Single","actualBedType":"Single","bedTileX":9,"bedTileY":8,"playerBedSpotX":10,"playerBedSpotY":9}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	r.clearPending(t)
@@ -381,6 +381,9 @@ func TestImportDurableWaitStatusFalseThenTrue(t *testing.T) {
 	fake.execFunc = func(_ context.Context, _, _ string, _ string, args ...string) (paneldocker.CommandResult, error) {
 		if len(args) == 0 || args[0] != "curl" || !strings.Contains(args[len(args)-1], "/wait/status?") {
 			return paneldocker.CommandResult{ExitCode: 1}, nil
+		}
+		if endpoint := args[len(args)-1]; !strings.Contains(endpoint, "localhost:8080/") || strings.Contains(endpoint, "localhost:5110/") {
+			t.Fatalf("wait/status used the host-published API port inside the container: %s", endpoint)
 		}
 		calls++
 		if calls == 1 {

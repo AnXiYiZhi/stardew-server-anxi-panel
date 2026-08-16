@@ -89,7 +89,7 @@ func prepareActivationTestRuntime(t *testing.T, hostHandling string) *activation
 
 func (r *activationTestRuntime) setRuntimeSave(t *testing.T, saveName string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(controlDir(r.fixture.dataDir), "status.json"), []byte(`{"saveId":"`+saveName+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(controlDir(r.fixture.dataDir), "status.json"), []byte(`{"saveId":"`+saveName+`","hostBed":{"state":"healthy","healthy":true,"houseUpgradeLevel":0,"expectedBedType":"Single","actualBedType":"Single","bedTileX":9,"bedTileY":8,"playerBedSpotX":10,"playerBedSpotY":9}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -189,6 +189,143 @@ func TestImportActivationPendingClearedWithoutCountRequiresRecovery(t *testing.T
 	assertImportActivationCode(t, err, ImportErrorRecoveryRequired)
 	if r.restarts != 0 {
 		t.Fatalf("partial finalizer triggered restart")
+	}
+}
+
+func TestImportActivationSwapRejectsMissingHostBed(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "swap_host_to")
+	if err := os.WriteFile(
+		filepath.Join(controlDir(r.fixture.dataDir), "status.json"),
+		[]byte(`{"saveId":"Upload_1","hostBed":{"state":"missing","healthy":false,"errorCode":"host_bed_missing","failureReason":"host_bed_layout_unresolved","houseUpgradeLevel":0}}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	r.clearPending(t)
+	r.finalizeCount = 1
+	d := New(r.fixture.fake, nil, nil, r.fixture.store)
+	err := d.runImportActivation(context.Background(), r.fixture.instance, r.fixture.op, nil, activationTestOptions())
+	assertImportActivationCode(t, err, ImportErrorHostBedMissing)
+	j, _ := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if j.Stage == ImportStageFinalizeConfirmed || j.ActivationEvidence == nil || !activationHostBedFault(*j.ActivationEvidence) {
+		t.Fatalf("missing host bed was accepted: %+v", j)
+	}
+}
+
+func TestConfirmedHostSwapFailureRollsBackCompleteSaveAndTransaction(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "swap_host_to")
+	saveDir := filepath.Join(savesDir(r.fixture.dataDir), "Saves", "Upload_1")
+	for name, value := range map[string]string{
+		"Upload_1":     "converted-main",
+		"Upload_1_old": "converted-old",
+		"SaveGameInfo": "converted-info",
+	} {
+		if err := os.WriteFile(filepath.Join(saveDir, name), []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.fixture.writePointer(t, "Upload_1")
+	r.fixture.store.mu.Lock()
+	r.fixture.store.instance.State = "running"
+	r.fixture.store.instance.DriverPhase = importMaintenancePhase
+	r.fixture.store.instance.StateMessage.String = "host bed failure"
+	r.fixture.store.mu.Unlock()
+
+	d := New(r.fixture.fake, nil, nil, r.fixture.store)
+	primary := &ImportTransactionError{Code: ImportErrorHostBedMissing, Message: "missing host bed"}
+	err := d.rollbackConfirmedHostSwapFailure(r.fixture.dataDir, r.fixture.op, nil, primary)
+	assertImportActivationCode(t, err, ImportErrorHostBedMissing)
+
+	want := map[string]string{
+		"Upload_1":     "main-save",
+		"Upload_1_old": "old-save",
+		"SaveGameInfo": "info",
+	}
+	for name, expected := range want {
+		actual, readErr := os.ReadFile(filepath.Join(saveDir, name))
+		if readErr != nil || string(actual) != expected {
+			t.Fatalf("restored %s=%q err=%v, want %q", name, actual, readErr, expected)
+		}
+	}
+	if pointer, pointerErr := readActivePointerStrict(r.fixture.dataDir); pointerErr != nil || pointer != "Old_1" {
+		t.Fatalf("active pointer=%q err=%v, want Old_1", pointer, pointerErr)
+	}
+	j, loadErr := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if loadErr != nil || j.Stage != ImportStageRolledBack || j.RollbackState != importActivationRollbackCompleted ||
+		j.RollbackRestoredSHA256 != r.fixture.preHash || j.RollbackRestoredFingerprint != j.StagedSaveFingerprint ||
+		j.RolledBackAt == nil || j.MaintenanceStarted || j.RollbackCauseCode != ImportErrorHostBedMissing ||
+		j.LastErrorCode != ImportErrorHostBedMissing {
+		t.Fatalf("rollback journal=%+v err=%v", j, loadErr)
+	}
+	unfinished, unfinishedErr := HasUnfinishedImportTransaction(r.fixture.dataDir)
+	if unfinishedErr != nil || unfinished {
+		t.Fatalf("rolled-back import remained unfinished: unfinished=%v err=%v", unfinished, unfinishedErr)
+	}
+	r.fixture.store.mu.Lock()
+	restoredInstance := r.fixture.store.instance
+	r.fixture.store.mu.Unlock()
+	if restoredInstance.State != "stopped" || restoredInstance.DriverPhase != "container_stopped" || restoredInstance.StateMessage.String != "stopped before import" {
+		t.Fatalf("instance snapshot was not restored: %+v", restoredInstance)
+	}
+	entries, readErr := os.ReadDir(filepath.Dir(saveDir))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".phase-a-") {
+			t.Fatalf("rollback left temporary save path %q", entry.Name())
+		}
+	}
+}
+
+func TestConfirmedHostSwapDurableFailureUsesGenericRollback(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "swap_host_to")
+	r.fixture.writePointer(t, "Upload_1")
+	d := New(r.fixture.fake, nil, nil, r.fixture.store)
+	primary := &ImportTransactionError{Code: ImportErrorResultUnconfirmed, Message: "durable save result was not confirmed"}
+
+	err := d.rollbackConfirmedHostSwapFailure(r.fixture.dataDir, r.fixture.op, nil, primary)
+	assertImportActivationCode(t, err, ImportErrorResultUnconfirmed)
+	j, loadErr := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if loadErr != nil || j.Stage != ImportStageRolledBack || j.RollbackState != importActivationRollbackCompleted ||
+		j.RollbackCauseCode != ImportErrorResultUnconfirmed || j.LastErrorCode != ImportErrorResultUnconfirmed {
+		t.Fatalf("generic rollback journal=%+v err=%v", j, loadErr)
+	}
+}
+
+func TestAsIsPostImportFailureDoesNotRunHostSwapRollback(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "as_is")
+	d := New(r.fixture.fake, nil, nil, r.fixture.store)
+	primary := &ImportTransactionError{Code: ImportErrorActivationTimeout, Message: "activation timed out"}
+
+	err := d.rollbackConfirmedHostSwapFailure(r.fixture.dataDir, r.fixture.op, nil, primary)
+	if err != primary {
+		t.Fatalf("as-is failure=%v, want original error", err)
+	}
+	j, loadErr := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if loadErr != nil || j.RollbackState != "" {
+		t.Fatalf("as-is import unexpectedly entered host-swap rollback: %+v err=%v", j, loadErr)
+	}
+}
+
+func TestImportActivationHostBedEvidenceSupportsEveryHouseLayout(t *testing.T) {
+	for level := 0; level <= 3; level++ {
+		expected := "Double"
+		if level == 0 {
+			expected = "Single"
+		}
+		healthy := true
+		x, y := 20+level, 30+level
+		evidence := JunimoImportActivationEvidence{HostBed: &ControlHostBedEvidence{
+			State: "healthy", Healthy: &healthy, HouseUpgradeLevel: &level,
+			ExpectedBedType: expected, ActualBedType: expected,
+			BedTileX: &x, BedTileY: &y,
+		}}
+		spotX, spotY := x+1, y+1
+		evidence.HostBed.PlayerBedSpotX, evidence.HostBed.PlayerBedSpotY = &spotX, &spotY
+		if !activationHostBedHealthy(evidence) {
+			t.Fatalf("level %d map-derived bed evidence was rejected: %+v", level, evidence.HostBed)
+		}
 	}
 }
 

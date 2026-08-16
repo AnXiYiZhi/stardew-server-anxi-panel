@@ -37,6 +37,7 @@ const (
 	ImportStageSaveVerified      = "save_verified"
 	ImportStageCompleted         = "completed"
 	ImportStageCanceled          = "canceled"
+	ImportStageRolledBack        = "rolled_back"
 
 	ImportErrorResultUnconfirmed  = "import_result_unconfirmed"
 	ImportErrorRecoveryRequired   = "import_recovery_required"
@@ -58,6 +59,7 @@ const (
 	ImportErrorRuntimePrepare     = "save_import_runtime_prepare_failed"
 	ImportErrorCommandFailed      = "import_command_failed"
 	ImportErrorSaveInProgress     = "save_in_progress"
+	ImportErrorHostBedMissing     = "host_bed_missing"
 
 	importMaintenanceSnapshotCaptured        = "snapshot_captured"
 	importMaintenanceStartIntentPersisted    = "start_intent_persisted"
@@ -165,6 +167,11 @@ type ImportJournal struct {
 	LastErrorCode                     string                           `json:"lastErrorCode,omitempty"`
 	LastError                         string                           `json:"lastError,omitempty"`
 	RecoveryState                     string                           `json:"recoveryState,omitempty"`
+	RollbackState                     string                           `json:"rollbackState,omitempty"`
+	RollbackCauseCode                 string                           `json:"rollbackCauseCode,omitempty"`
+	RollbackRestoredSHA256            string                           `json:"rollbackRestoredSha256,omitempty"`
+	RollbackRestoredFingerprint       string                           `json:"rollbackRestoredFingerprint,omitempty"`
+	RolledBackAt                      *time.Time                       `json:"rolledBackAt,omitempty"`
 	CleanupState                      string                           `json:"cleanupState,omitempty"`
 	CleanupPlan                       *ImportCleanupPlan               `json:"cleanupPlan,omitempty"`
 	CreatedAt                         time.Time                        `json:"createdAt"`
@@ -484,7 +491,7 @@ func isKnownImportStage(stage string) bool {
 		ImportStageRuntimeReady, ImportStageSubmitted, ImportStageConfirmed,
 		ImportStageSaveActivating, ImportStageFinalizeConfirmed,
 		ImportStageSavePersisting, ImportStageSaveVerified,
-		ImportStageCompleted, ImportStageCanceled:
+		ImportStageCompleted, ImportStageCanceled, ImportStageRolledBack:
 		return true
 	default:
 		return false
@@ -511,7 +518,7 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 		if err != nil {
 			return nil, err
 		}
-		if j.Stage == ImportStageCompleted || j.Stage == ImportStageCanceled {
+		if j.Stage == ImportStageCompleted || j.Stage == ImportStageCanceled || j.Stage == ImportStageRolledBack {
 			continue
 		}
 		_, sourceErr := os.Stat(importTransactionSourceDir(dataDir, j.OperationID))
@@ -587,10 +594,13 @@ func (d *Driver) resumeRecoveredImportDurableSaves(ctx context.Context, instance
 				defer d.saveImportRunMu.Unlock()
 				if recovery.State == "resume_activation_verification" {
 					if err := d.runImportActivation(runCtx, instance, operationID, job, defaultImportActivationOptions()); err != nil {
-						return err
+						return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, err)
 					}
 				}
-				return d.runImportDurableSave(runCtx, instance, operationID, job, defaultImportDurableSaveOptions())
+				if err := d.runImportDurableSave(runCtx, instance, operationID, job, defaultImportDurableSaveOptions()); err != nil {
+					return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, err)
+				}
+				return nil
 			},
 		})
 		if err != nil {
@@ -629,7 +639,7 @@ func HasUnfinishedImportTransactionOtherThan(dataDir, allowedOperationID string)
 		if j.OperationID == allowedOperationID {
 			continue
 		}
-		if j.Stage != ImportStageCompleted && j.Stage != ImportStageCanceled {
+		if j.Stage != ImportStageCompleted && j.Stage != ImportStageCanceled && j.Stage != ImportStageRolledBack {
 			return true, nil
 		}
 	}
@@ -1280,10 +1290,10 @@ func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImport
 				return err
 			}
 			if err := d.runImportActivation(runCtx, req.Instance, req.OperationID, job, defaultImportActivationOptions()); err != nil {
-				return err
+				return d.rollbackConfirmedHostSwapFailure(req.Instance.DataDir, req.OperationID, job, err)
 			}
 			if err := d.runImportDurableSave(runCtx, req.Instance, req.OperationID, job, defaultImportDurableSaveOptions()); err != nil {
-				return err
+				return d.rollbackConfirmedHostSwapFailure(req.Instance.DataDir, req.OperationID, job, err)
 			}
 			if req.MarkUploadSucceeded != nil {
 				if err := req.MarkUploadSucceeded(); err != nil {

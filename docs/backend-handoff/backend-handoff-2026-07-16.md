@@ -1,3 +1,19 @@
+# HOST-BED-MANUAL-CONTROL-1 后端接手记录（2026-08-16，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- JunimoServer `.125` 的 `SaveImportXmlTransform.ApplySwap` 创建 0 级 `Server` 主机，`CabinManagerService.TryFinalizeOnLoad` 又把主 FarmHouse 的 furniture/objects/fridge/decor/terrain 全移给旧 owner cabin 并清空主屋；因为新主机已经是 0 级，旧升级 guard 不重建默认床。这是 house level、布局/所有权和主屋内容不一致的根因。人工写回合法床只让 `FarmHouse.GetPlayerBed/GetPlayerBedSpot` 恢复命中，不能作为正式事务修复。
+- Control `0.3.5` 新增 `HostBedIntegrity.cs`、`HostAutomationBridge.cs`、`HostSleepSafetyPatch.cs`、`HostControlContract.cs`。自愈运行在 SMAPI 游戏线程，只认 master owner 的主 FarmHouse，坐标来自当前 `Back.DefaultBedPosition`，床型来自游戏默认常量及 double-wide 转换；已有床零写入，缺布局/非法等级/复核失败返回 `host_bed_missing`。睡眠 patch 精确绑定 `.125` 自动睡眠方法，缺床一次告警即阻断，合法床按原生路径且每日动作有界。
+- `save_import_activation.go` 将 `hostBed` 加入 swap 激活复合证据；`save_import_activation_rollback.go` 在已确认 swap 的任意 activation/durable-save 后置故障时恢复 preimport 完整树、pointer、Mod profile 与 instance snapshot。`rendering.go`、`save_import_evidence.go`、`save_import_durable.go` 修正容器内 Junimo API 端口恒为 8080。`host_bed_real_integration_test.go` 是 opt-in 真机闭环。
+- F9/F10 状态由 Control 原子管理：F9 manual 释放输入、覆盖 NoConnectedClients、保证人物可见并设置 10 分钟无人租约；重新自动化/到期恢复暂停。F10 及 tick/warp/SaveLoaded/DayStarted 同步 displayFarmer、player.hidden、sprite/shadow。`ControlContract.cs` 的 `status.json.hostBed/hostControl` 经 `instance_ui_status.go` 原样投影到既有实例状态 `statusSource`，没有新增写 API。
+- Control manifests/runtime manifest 升为 0.3.5，内嵌 DLL SHA-256=`918badd470622cdc5b18df57879bec4f87c2ffd58588f84ccedda13fd6bd3605`；server/auth/game/SDK/SMAPI 不变。
+
+## 如何验证、下一步注意事项
+
+- C# 契约覆盖 0/1/2/3 级期望床型、已有床幂等、手动租约、NoClients 覆盖与可见性一致；真实 game-data 使用标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 为 0 warning/0 error。Go 覆盖 hostBed activation、完整 current/`_old`/SaveGameInfo 回滚、pointer/profile/instance snapshot、一切临时路径清理、状态 DTO 与容器内 8080。
+- `TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 在精确 `.125` 中使用独立身份副本实跑：source hash 不变，swap 后 owner/farmhand 非目标数据保持，0 级实际 map 床位 `(9,8)` 恰好一张 Single；save-now/GameLoop.Saved、重启后仍幂等；通过 Xvnc Unix socket 发送 F9/F10 与方向键，manual 无客户端可移动、退出后 NoConnectedClients 恢复、四次可见性切换无 shadow-only；独立官方测试客户端入睡后日期从 spring 1/Y1 进入 spring 2/Y1，且无 sleep timeout/force-day-end。
+- 不要把测试观测到的 `(9,8)` 搬进产品代码，也不要从 XML 或 Farm/cabin 猜主屋床。上游若改变 `DefaultBedPosition`、FarmHouse/BedFurniture API 或精确自动睡眠方法，当前逻辑应 fail closed，需重新审查真实程序集与地图。正式发布还需从干净、与 `origin/main` 同步的 main 走候选/上一正式版 Web unhealthy 回滚与 healthy 升级；本记录不等于已发布。
+
 # v0.5.0 后端发布接手状态（2026-08-16，released）
 
 ## 改了什么、影响哪些接口/文件

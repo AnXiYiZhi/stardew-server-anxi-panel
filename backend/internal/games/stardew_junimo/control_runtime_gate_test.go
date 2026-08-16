@@ -34,6 +34,10 @@ func writeControlRuntimeOptions(t *testing.T, dataDir, body string) {
 	}
 }
 
+func readyControlRuntimeOptions(version string) string {
+	return `{"controlModVersion":"` + version + `","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}`
+}
+
 func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -50,10 +54,26 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 		{
 			name: "current runtime is ready",
 			prepare: func(t *testing.T, dataDir, expected string) {
-				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true}`)
+				writeControlRuntimeOptions(t, dataDir, readyControlRuntimeOptions(expected))
 			},
 			wantState: ControlRuntimeGateReady,
 			wantCode:  ControlRuntimeCodeReady,
+		},
+		{
+			name: "missing host automation bridge evidence is invalid",
+			prepare: func(t *testing.T, dataDir, expected string) {
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true,"hostSleepSafetyPatchAvailable":true}`)
+			},
+			wantState: ControlRuntimeGateInvalid,
+			wantCode:  ControlRuntimeCodeHostAutomationBridgeUnavailable,
+		},
+		{
+			name: "missing host sleep safety patch evidence is invalid",
+			prepare: func(t *testing.T, dataDir, expected string) {
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true}`)
+			},
+			wantState: ControlRuntimeGateInvalid,
+			wantCode:  ControlRuntimeCodeHostSleepSafetyPatchUnavailable,
 		},
 		{
 			name: "missing host farmhouse patch evidence is invalid",
@@ -126,7 +146,8 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 			}
 			got := InspectControlRuntimeGate(dataDir)
 			wantActual := tt.wantActual
-			if tt.wantState == ControlRuntimeGateReady || tt.wantCode == ControlRuntimeCodeHostFarmhousePatchUnavailable {
+			if tt.wantState == ControlRuntimeGateReady || tt.wantCode == ControlRuntimeCodeHostFarmhousePatchUnavailable ||
+				tt.wantCode == ControlRuntimeCodeHostAutomationBridgeUnavailable || tt.wantCode == ControlRuntimeCodeHostSleepSafetyPatchUnavailable {
 				wantActual = expected
 			}
 			if got.State != tt.wantState || got.Code != tt.wantCode || got.Expected != expected || got.Actual != wantActual {
@@ -141,7 +162,7 @@ func TestWaitForControlRuntimeGateAcceptsDelayedOptions(t *testing.T) {
 	writeDone := make(chan struct{})
 	go func() {
 		time.Sleep(25 * time.Millisecond)
-		_ = os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600)
+		_ = os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(readyControlRuntimeOptions(expected)), 0o600)
 		close(writeDone)
 	}()
 

@@ -478,7 +478,8 @@ func TestInstanceRenderingOpenCallsJunimoAPI(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("rendering returned %d: %s", response.Code, response.Body.String())
 	}
-	wantURL := "http://localhost:18080/rendering?fps=15"
+	// API_PORT is the host mapping; an exec inside the server container must use Junimo's fixed port.
+	wantURL := "http://localhost:8080/rendering?fps=15"
 	if len(capturedArgs) == 0 || capturedArgs[len(capturedArgs)-1] != wantURL {
 		t.Fatalf("rendering call args = %#v, want URL %q", capturedArgs, wantURL)
 	}
@@ -524,7 +525,8 @@ func TestInstanceRenderingStatusCallsJunimoAPI(t *testing.T) {
 	if body.FPS != 15 {
 		t.Fatalf("fps = %d, want 15", body.FPS)
 	}
-	wantURL := "http://localhost:18080/rendering"
+	// API_PORT is the host mapping; an exec inside the server container must use Junimo's fixed port.
+	wantURL := "http://localhost:8080/rendering"
 	if len(capturedArgs) == 0 || capturedArgs[len(capturedArgs)-1] != wantURL {
 		t.Fatalf("rendering status call args = %#v, want URL %q", capturedArgs, wantURL)
 	}

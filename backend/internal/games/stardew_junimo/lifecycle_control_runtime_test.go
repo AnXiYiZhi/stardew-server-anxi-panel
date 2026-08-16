@@ -90,7 +90,7 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 			if manifest.Expected == "" || manifest.State != ControlRuntimeGatePending {
 				t.Fatalf("pre-write Control gate = %+v, want pending with expected version", manifest)
 			}
-			writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+manifest.Expected+`","hostFarmhousePreservationPatchAvailable":true}`)
+			writeControlRuntimeOptions(t, dataDir, readyControlRuntimeOptions(manifest.Expected))
 			waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 
 			updated, err := store.GetInstance(context.Background(), instance.ID)

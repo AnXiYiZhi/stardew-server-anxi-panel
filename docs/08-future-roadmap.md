@@ -1,3 +1,11 @@
+# 2026-08-16 已完成、待发布：swap-host 主农舍床、睡眠与 VNC 手动状态闭环
+
+- [x] `HOST-BED-INTEGRITY-1`：定位 `.125` swap/finalizer 把主 FarmHouse 全部内容迁入旧 owner cabin、同时因新主机已为 0 级而跳过默认家具重建的组合根因；Control 0.3.5 在游戏线程仅按实际主 FarmHouse map `DefaultBedPosition` 与游戏床常量幂等补床，不硬编码 XML/坐标，不触碰 Farm/cabin/其它家具，0..3 级与无法确定布局 fail-closed 均有契约测试。
+- [x] `SAVE-IMPORT-HOST-BED-ROLLBACK-1`：swap 激活加入 `hostBed` 复合证据和 `host_bed_missing`；已确认 swap 后的激活或 durable-save 任一步失败都会停止服务器、验证 preimport 材料并恢复完整存档树、活动指针、Mod profile 和实例快照，证明不足保持 manual recovery。
+- [x] `JUNIMO-SLEEP-BOUND-1`：缺床不再无限 `sleeping in place`，每个故障 episode 只报告一次结构化原因；合法床沿实际 BedFurniture/player bed spot 执行原生睡眠，单日最多四次有界动作。
+- [x] `VNC-HOST-MANUAL-1`：F9 手动模式释放 automation 输入、覆盖 NoConnectedClients 暂停、强制完整人物可见并以 10 分钟无人租约恢复托管；F10 原子同步 sprite/displayFarmer/hidden/shadow，warp、读档、逐 tick、跨日复核。`hostBed/hostControl` 已进入现有结构化状态。
+- [x] 真实 Docker `.125` E2E 完成问题副本 swap、SaveLoaded、地图床位、save-now/GameLoop.Saved、重启幂等、Unix-socket VNC F9/F10、无客户端移动、恢复自动暂停，以及官方测试客户端实际睡眠；春 1 日进入春 2 日，无黑屏、超时或强制结束。Control 真实游戏程序集标准构建 0 warning/0 error；发布前仍须按 `docs/09-image-build.md` 从干净且同步的 main 生成不可变候选并完成上一正式版 Web 升级/回滚，当前没有创建 tag 或正式镜像。
+
 # 2026-08-16 已发布：v0.5.0 聚合可靠性与兼容更新
 
 - [x] annotated `v0.5.0` 固定在 `9b18dd3fe5192692548bf11a85010dd35303da93`；Compatibility `31899107019`、候选 `31899107629`、自动 Tag `31899867310`、正式提升 `31899874927` 全部成功。

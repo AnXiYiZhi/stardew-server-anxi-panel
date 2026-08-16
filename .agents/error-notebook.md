@@ -2879,6 +2879,8 @@
 
 ## 2026-08-15：在仓库子目录把 Git 根相对文件名直接交给 gofmt
 
+- 最近复发/补充：2026-08-16 主机床事务回滚收口时，`workdir` 已是 `<repo>/backend`，仍把 `backend/internal/...` 传给 `gofmt`，三个目标均以 `GetFileAttributesEx ... path not found` 退出 2，测试未启动、文件未修改。尽管本条已有多次记录，本次命令仍漏掉首目标 `Test-Path`；任务剩余格式化固定为仓库根并先验证第一条仓库相对路径，Go test 再使用独立的 backend cwd，不能再次合并。
+- 最近复发/补充：2026-08-16 主机床真实 E2E 修正后，组合命令的 `workdir` 已是 `<repo>/backend`，却再次给三个 `gofmt` 目标传入 `backend/internal/...`；`gofmt` 报路径不存在，但脚本未立即保存和检查退出码，后续定向 `go test` 成功把 `$LASTEXITCODE` 覆盖为 0。源码未被该次格式化修改。后续格式化固定在仓库根独立调用，先用 `Test-Path -LiteralPath` 校验首个文件并立即检查退出码；测试在模块根另起调用，禁止把两种 cwd 和两个原生命令重新压入同一脚本。
 - 最近复发/补充：2026-08-16 主机房屋等级任务先在 `workdir=backend` 传入 `backend/internal/.../control_runtime_gate_test.go`，随后新增真实集成测试时又重复传入同基准的 `backend/internal/.../host_farmhouse_preservation_real_integration_test.go`；两次都在修改前以路径不存在退出 2，后续测试未运行。两次均改为仓库根独立 `gofmt`、模块根独立 `go test`。既有规则在同一任务重复复发，之后不再把格式化与模块测试合并到一个 cwd 假设中。
 - 最近复发/补充：2026-08-15 本次 Junimo 修复首次格式化仍在 `workdir=backend` 传入 `backend/internal/...`，`gofmt` 在修改前以路径不存在退出 2；随后回到仓库根按实际路径格式化，并把 Go 测试拆到模块根。本轮不再混用两套路径基准。
 - 最近复发/补充：2026-08-15 增加 strict Compose 真实 Docker 回归后，又在 `backend` cwd 把仓库根相对的 `backend/internal/docker/runtime_apply_integration_test.go` 交给 `gofmt`，得到路径不存在且未修改文件。随即切回仓库根并用检索确认的精确相对路径格式化；格式化和测试继续按各自 cwd 分开执行。
@@ -3048,3 +3050,34 @@
 - 正确做法：分别调用 `git rev-parse`、`git cat-file -t` 和单字段 `git for-each-ref --format='%(...)'`，或在已验证支持时使用 `%0a`；本次独立字段复核得到 tag object、tagger date、subject、contents 与解引用 commit 均正确。
 - 预防检查：首次使用格式占位符时先查对应子命令帮助或做单字段探针；结构化发布证据优先一字段一命令，避免跨子命令复用格式语法。
 - 适用范围：Git tag/ref 审计、`for-each-ref`、`log --format` 与 PowerShell 原生输出捕获。
+
+## 2026-08-16：在 JavaScript 模板字符串中内嵌 PowerShell 反引号转义
+
+- 最近复发/补充：修正编排后，备份扫描先用“文件前 256 字节包含 `<SaveGame`”作为 XML 候选条件，14 个可打开 ZIP 因快速筛选假设过严而被全部漏报；改为解析每个较大成员的 XML 根节点后仍全部返回 `main_count_not_one`，说明对外层 ZIP 成员封装的假设依然未经验证。命令均只读且退出 0。正确顺序应先投影成员数量、大小、扩展名和魔数等脱敏结构，再按实测格式解包；即使 XML 根节点识别本身可靠，也不能跳过封装层探针。随后在线人数探针虽然改用 JavaScript `String.raw` 模板，载荷里的 Bash `${API_PORT:-8080}` 仍触发 JavaScript 模板插值并在执行前报 `Missing } in template expression`；`String.raw` 只改变反斜杠处理，不禁用 `${...}`，含 Bash 参数展开的载荷必须使用普通 JavaScript 字符串或拆开字符构造。
+- 环境：Codex `functions.exec` JavaScript 编排、PowerShell 7、Posh-SSH，经 Pinggy 执行远端只读 Python 探针。
+- 错误模式：用 JavaScript 反引号模板字符串承载 PowerShell 脚本，同时在脚本内用 PowerShell 反引号转义双引号。
+- 症状 / 退出码：编排层在启动命令前返回 `SyntaxError: Unexpected string`；没有建立新的 SSH 会话，也没有读取或修改远端存档。
+- 根因：同一个反引号既是 JavaScript 模板字符串边界，又被当作 PowerShell 转义符，导致外层脚本提前结束并解析失败。
+- 正确做法：传给 `exec_command.cmd` 的复杂 PowerShell 使用普通 JavaScript 字符串，或在 PowerShell 内通过单引号、字符拼接构造远端命令；禁止让 PowerShell 反引号出现在 JavaScript 模板字符串中。
+- 预防检查：提交编排调用前检查 `cmd` 载荷是否同时含 JavaScript 模板分隔符与 PowerShell 反引号；复杂 SSH 载荷统一先 Base64，再用无反引号的字符串拼接调用。
+- 适用范围：`functions.exec`、PowerShell 多层引号、Posh-SSH 和 Base64 远端脚本。
+
+## 2026-08-16：真实 Junimo E2E 凭惯例假设 VNC 入口与客户端 Mods 边界
+
+- 环境：Windows Docker Desktop、`sdvd/server:1.5.0-preview.125`、任务专属 Compose project、官方 Stardew 测试客户端。
+- 错误模式：测试先按常见 noVNC 部署假定 Xvnc 在容器 TCP 5900 监听，随后又让测试客户端直接使用服务端镜像自带的 Mods 目录；前者无法建立 RFB，后者令客户端也加载 JunimoServer 服务端 Mod，干扰真实联机/睡眠语义。
+- 症状 / 退出码：容器端口探针没有 5900 listener，但进程参数明确为 Unix socket；客户端能启动却带入不应加载的服务端 Mod。两次都发生在任务隔离资源中，源存档 hash 不变，失败项目按精确 Compose 名清理。
+- 根因：没有先从进程参数、socket 列表和镜像文件布局取得当前镜像的真实契约，错误复用了其它 VNC 镜像与同镜像 client/server 的默认假设。
+- 正确做法：先只读确认 Xvnc 实际监听 `/tmp/vnc.sock`，再在容器内用 `nc -U` 执行最小 RFB 客户端；独立游戏客户端必须挂任务专属空 Mods volume，只加载测试所需 client helper。方向键验证要跨多个 tick/至少约 2 秒采样，不能以单帧坐标变化作为输入结论。
+- 预防检查：新增真实容器 E2E 前先投影进程 argv、socket 类型、mount 与 Mods 清单；VNC、HTTP、Docker socket 均不得凭常用端口猜入口，客户端/服务端即使共用游戏镜像也必须显式隔离 Mod 边界。
+- 适用范围：JunimoServer VNC、真实客户端联机、Control F9/F10 与自动睡眠 Docker integration。
+
+## 2026-08-16：PowerShell 中给 Docker `--mount` 的 Windows 路径保留了单引号
+
+- 环境：PowerShell 7、Docker Desktop，以只读源码 bind 同步 Control C# 契约测试卷。
+- 错误模式：把 `src='E:\...\embedded'` 写进逗号分隔的 `--mount` 单个参数，误以为原生命令会像 Shell 一样剥掉位于参数内部的单引号。
+- 症状 / 退出码：Docker 把首尾单引号当作路径字符，报 `is not a valid Windows path` 并退出 125；容器未创建，测试卷和工作区未修改。
+- 根因：PowerShell 只会在引号包裹完整 token 时处理引号；嵌在 token 中的单引号会原样传给 Docker CLI。
+- 正确做法：用一个 PowerShell 双引号 token 承载完整参数：`--mount "type=bind,src=E:\...\embedded,dst=/repo,readonly"`；修正后只读 bind、精确文件复制及容器契约测试通过。
+- 预防检查：Windows Docker bind 首次使用前先以只读最小容器验证参数；检查报错中路径是否含字面引号。`--mount` 的 `src/dst` 不再使用内嵌 Shell 风格引号。
+- 适用范围：PowerShell 调用 Docker CLI 的 Windows bind、volume 与逗号分隔参数。

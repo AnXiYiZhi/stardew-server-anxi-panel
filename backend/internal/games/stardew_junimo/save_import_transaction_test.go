@@ -564,7 +564,7 @@ func TestImportSaveAndStartCompletesFromGameInstalledFirstUpload(t *testing.T) {
 	if err := os.MkdirAll(controlDir(dataDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(readyControlRuntimeOptions(runtimeManifest.Control.Version)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

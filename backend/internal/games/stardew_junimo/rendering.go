@@ -17,7 +17,10 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
-const renderingRequestTimeout = 10 * time.Second
+const (
+	renderingRequestTimeout = 10 * time.Second
+	junimoContainerAPIPort  = "8080"
+)
 
 // RenderingResult is returned after reading or updating JunimoServer's
 // server-side rendering FPS.
@@ -84,11 +87,14 @@ func (d *Driver) callRenderingAPI(ctx context.Context, instance registry.Instanc
 		return paneldocker.CommandResult{}, &CommandError{Code: "not_supported", Message: "Docker 服务不支持 Junimo API 调用"}
 	}
 
-	apiPort, apiKey, err := readJunimoAPIConfig(instance.DataDir)
+	_, apiKey, err := readJunimoAPIConfig(instance.DataDir)
 	if err != nil {
 		return paneldocker.CommandResult{}, err
 	}
-	url := fmt.Sprintf("http://localhost:%s/rendering", apiPort)
+	// ComposeExecPipe runs curl inside the server container. API_PORT is the
+	// host-published port and may be remapped; Junimo always listens on 8080 in
+	// this container contract.
+	url := "http://localhost:" + junimoContainerAPIPort + "/rendering"
 	if query != "" {
 		url += "?" + query
 	}

@@ -23,16 +23,18 @@ const (
 )
 
 const (
-	ControlRuntimeCodePending                       = "control_runtime_pending"
-	ControlRuntimeCodeReady                         = "control_runtime_ready"
-	ControlRuntimeCodeVersionMismatch               = "control_runtime_version_mismatch"
-	ControlRuntimeCodeManifestInvalid               = "control_runtime_manifest_invalid"
-	ControlRuntimeCodeDLLMissing                    = "control_runtime_dll_missing"
-	ControlRuntimeCodeDLLUnreadable                 = "control_runtime_dll_unreadable"
-	ControlRuntimeCodeDLLHashMismatch               = "control_runtime_dll_hash_mismatch"
-	ControlRuntimeCodeOptionsInvalid                = "control_runtime_options_invalid"
-	ControlRuntimeCodeOptionsUnreadable             = "control_runtime_options_unreadable"
-	ControlRuntimeCodeHostFarmhousePatchUnavailable = "control_runtime_host_farmhouse_patch_unavailable"
+	ControlRuntimeCodePending                         = "control_runtime_pending"
+	ControlRuntimeCodeReady                           = "control_runtime_ready"
+	ControlRuntimeCodeVersionMismatch                 = "control_runtime_version_mismatch"
+	ControlRuntimeCodeManifestInvalid                 = "control_runtime_manifest_invalid"
+	ControlRuntimeCodeDLLMissing                      = "control_runtime_dll_missing"
+	ControlRuntimeCodeDLLUnreadable                   = "control_runtime_dll_unreadable"
+	ControlRuntimeCodeDLLHashMismatch                 = "control_runtime_dll_hash_mismatch"
+	ControlRuntimeCodeOptionsInvalid                  = "control_runtime_options_invalid"
+	ControlRuntimeCodeOptionsUnreadable               = "control_runtime_options_unreadable"
+	ControlRuntimeCodeHostFarmhousePatchUnavailable   = "control_runtime_host_farmhouse_patch_unavailable"
+	ControlRuntimeCodeHostAutomationBridgeUnavailable = "control_runtime_host_automation_bridge_unavailable"
+	ControlRuntimeCodeHostSleepSafetyPatchUnavailable = "control_runtime_host_sleep_safety_patch_unavailable"
 )
 
 // ControlRuntimeGateResult distinguishes a runtime snapshot that has not been
@@ -81,6 +83,8 @@ func InspectControlRuntimeGate(dataDir string) ControlRuntimeGateResult {
 	var options struct {
 		ControlModVersion                       string `json:"controlModVersion"`
 		HostFarmhousePreservationPatchAvailable *bool  `json:"hostFarmhousePreservationPatchAvailable"`
+		HostAutomationBridgeAvailable           *bool  `json:"hostAutomationBridgeAvailable"`
+		HostSleepSafetyPatchAvailable           *bool  `json:"hostSleepSafetyPatchAvailable"`
 	}
 	if json.Unmarshal(raw, &options) != nil {
 		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeOptionsInvalid
@@ -97,6 +101,14 @@ func InspectControlRuntimeGate(dataDir string) ControlRuntimeGateResult {
 	}
 	if options.HostFarmhousePreservationPatchAvailable == nil || !*options.HostFarmhousePreservationPatchAvailable {
 		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeHostFarmhousePatchUnavailable
+		return result
+	}
+	if options.HostAutomationBridgeAvailable == nil || !*options.HostAutomationBridgeAvailable {
+		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeHostAutomationBridgeUnavailable
+		return result
+	}
+	if options.HostSleepSafetyPatchAvailable == nil || !*options.HostSleepSafetyPatchAvailable {
+		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeHostSleepSafetyPatchUnavailable
 		return result
 	}
 	result.State, result.Code = ControlRuntimeGateReady, ControlRuntimeCodeReady

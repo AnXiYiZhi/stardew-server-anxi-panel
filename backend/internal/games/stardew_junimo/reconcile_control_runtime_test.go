@@ -25,7 +25,7 @@ func TestDriverReconcileStateKeepsUnfinishedNewGameErrorOwner(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expectedControl+`","hostFarmhousePreservationPatchAvailable":true}`)
+	writeControlRuntimeOptions(t, dataDir, readyControlRuntimeOptions(expectedControl))
 	docker := &reconcileComposeCountingDocker{fakeDocker: &fakeDocker{
 		psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{
 			Service: "server", State: "running", Status: "Up 1 minute",

@@ -15,6 +15,7 @@ public sealed class ModEntry : Mod
     private static readonly TimeSpan SaveCommandTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PauseErrorLogInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PlayerModContextPendingTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan UnattendedManualControlLease = TimeSpan.FromMinutes(10);
 
     private string controlDir = "";
     private string commandDir = "";
@@ -25,11 +26,16 @@ public sealed class ModEntry : Mod
     private readonly PasswordProtectionBridge passwordBridge = new();
     private readonly RolePasswordPatch rolePasswordPatch = new();
     private readonly HostFarmhousePreservationPatch hostFarmhousePreservationPatch = new();
+    private HostAutomationBridge? hostAutomationBridge;
+    private HostSleepSafetyPatch? hostSleepSafetyPatch;
+    private HostBedIntegrity? hostBedIntegrity;
     private RolePasswordPolicy playerAuthPolicy = RolePasswordPolicy.Parse(null, null, null, null, null);
     private readonly WarpHomeBridge warpHomeBridge = new();
     private readonly PendingSaveCommandTracker pendingSaveCommands = new();
     private readonly Dictionary<string, PlayerModContext> playerModContexts = new(StringComparer.Ordinal);
     private PauseReason lastForcedPauseReason;
+    private bool? lastObservedAutomationEnabled;
+    private DateTimeOffset? lastManualInputAt;
     private DateTimeOffset lastPauseErrorLogAt = DateTimeOffset.MinValue;
     private bool pendingNewGameOptions;
 	private PendingNewGameMarker? pendingNewGameMarker;
@@ -39,6 +45,11 @@ public sealed class ModEntry : Mod
 	private FarmTypeResolution? farmTypeResolution;
 	private bool catalogGenerated;
 	private bool runtimeFarmCatalogReady;
+	private string lastStatusState = "booting";
+	private string lastStatusMessage = "SMAPI control mod loaded.";
+	private string? lastStatusSaveId;
+	private string[] lastCustomizationMismatches = Array.Empty<string>();
+	private CharacterCustomizationSnapshot? lastCustomizationAttempt;
 	private const int MaxCatalogImageDataUriChars = 64 * 1024;
 
 	private sealed record VerifiedCharacterCustomization(
@@ -58,16 +69,22 @@ public sealed class ModEntry : Mod
         Directory.CreateDirectory(commandDir);
         Directory.CreateDirectory(commandResultDir);
         LoadPlayerModContexts();
+        hostAutomationBridge = new HostAutomationBridge(OnHostControlChanged);
+        hostBedIntegrity = new HostBedIntegrity(Monitor);
+        hostSleepSafetyPatch = new HostSleepSafetyPatch(ValidateHostBedForSleep);
 
         helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         helper.Events.GameLoop.SaveCreating += OnSaveCreating;
         helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+        helper.Events.GameLoop.DayStarted += OnDayStarted;
         helper.Events.GameLoop.Saved += OnSaved;
         helper.Events.GameLoop.UpdateTicking += OnUpdateTicking;
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         helper.Events.Multiplayer.PeerContextReceived += OnPeerContextReceived;
         helper.Events.Multiplayer.PeerConnected += OnPeerConnected;
         helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
+        helper.Events.Player.Warped += OnWarped;
+        helper.Events.Input.ButtonPressed += OnManualInput;
 
         helper.ConsoleCommands.Add("sap_status", "Write a Stardew Anxi Panel status snapshot.", (_, _) =>
         {
@@ -130,6 +147,8 @@ public sealed class ModEntry : Mod
         if (isJunimoRuntime)
         {
             hostFarmhousePreservationPatch.Initialize(ModManifest.UniqueID, Monitor);
+            hostAutomationBridge!.Initialize(ModManifest.UniqueID, Monitor);
+            hostSleepSafetyPatch!.Initialize(ModManifest.UniqueID, Monitor);
             passwordBridge.Initialize(Monitor);
             playerAuthPolicy = RolePasswordPolicy.LoadFromEnvironment();
             rolePasswordPatch.Initialize(ModManifest.UniqueID, passwordBridge.TryAuthenticateMethod, playerAuthPolicy, Monitor);
@@ -160,11 +179,41 @@ public sealed class ModEntry : Mod
 		RefreshPendingNewGameMarker();
 		var wroteCustomizationStatus = ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
+        hostSleepSafetyPatch?.Reset();
+        hostBedIntegrity?.BeginSaveLoad();
+        hostAutomationBridge?.SynchronizeVisibility();
+        EnsureHostBedIntegrity();
         var saveFolder = Constants.SaveFolderName;
         WritePlayers();
         ResumePendingSaveCommand();
 		if (!wroteCustomizationStatus)
 			WriteStatus("save-loaded", "Save loaded through JunimoServer. Direct IP connections are enabled on UDP port 24642.", saveFolder);
+		else
+			RewriteStatus();
+    }
+
+    private void OnDayStarted(object? sender, DayStartedEventArgs e)
+    {
+        hostSleepSafetyPatch?.Reset();
+        hostAutomationBridge?.SynchronizeVisibility();
+        EnsureHostBedIntegrity();
+        RewriteStatus();
+    }
+
+    private void OnWarped(object? sender, WarpedEventArgs e)
+    {
+        if (e.IsLocalPlayer)
+        {
+            hostAutomationBridge?.SynchronizeVisibility();
+            RewriteStatus();
+        }
+    }
+
+    private void OnManualInput(object? sender, ButtonPressedEventArgs e)
+    {
+        if (hostAutomationBridge?.AutomationEnabled != false)
+            return;
+        lastManualInputAt = DateTimeOffset.UtcNow;
     }
 
     private void OnSaved(object? sender, SavedEventArgs e)
@@ -201,6 +250,7 @@ public sealed class ModEntry : Mod
 
     private void OnUpdateTicking(object? sender, UpdateTickingEventArgs e)
     {
+        RefreshHostControlState();
         // Keep the clock paused throughout the game update. The post-update pass below
         // then corrects JunimoServer if it overwrites IsPaused using a stale farmhand.
         ApplyPauseCorrectionSafely();
@@ -208,6 +258,7 @@ public sealed class ModEntry : Mod
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
     {
+        hostAutomationBridge?.SynchronizeVisibility();
         ApplyPauseCorrectionSafely();
 
         if (!e.IsMultipleOf(120))
@@ -219,11 +270,13 @@ public sealed class ModEntry : Mod
 		ApplyPanelCharacterCustomization();
         ApplyDirectIpNetworkPolicy();
 		ResumePendingSaveCommand();
+		EnsureHostBedIntegrity();
 		if (farmCatalogRequest is not null && (catalogRequestChanged || !runtimeFarmCatalogReady || !File.Exists(PanelOptionsPath())))
 			WritePanelOptions();
         WritePlayers();
         ExpirePendingPlayerModContexts();
         ConsumeCommands();
+		RewriteStatus();
 
         var timedOutSave = pendingSaveCommands.Expire(DateTimeOffset.UtcNow);
         if (timedOutSave is not null)
@@ -262,10 +315,13 @@ public sealed class ModEntry : Mod
         }
 
         var server = Game1.server;
+        var automationEnabled = hostAutomationBridge?.AutomationEnabled;
         var decision = PausePolicy.Evaluate(
             enabled: true,
             isServer: true,
             worldReady: true,
+            automationKnown: automationEnabled.HasValue,
+            automationEnabled: automationEnabled == true,
             connectionCountKnown: server is not null,
             connectionCount: server?.connectionsCount ?? 0,
             isFestivalDay: Utility.isFestivalDay(Game1.dayOfMonth, Game1.season),
@@ -274,6 +330,8 @@ public sealed class ModEntry : Mod
 
         if (decision.ShouldForcePause)
             Game1.netWorldState.Value.IsPaused = true;
+        else if (decision.Reason == PauseReason.ManualControl)
+            Game1.netWorldState.Value.IsPaused = false;
 
         if (decision.Reason != lastForcedPauseReason)
         {
@@ -284,6 +342,98 @@ public sealed class ModEntry : Mod
             );
             lastForcedPauseReason = decision.Reason;
         }
+    }
+
+    private void OnHostControlChanged()
+    {
+        var automationEnabled = hostAutomationBridge?.AutomationEnabled;
+        var now = DateTimeOffset.UtcNow;
+        if (automationEnabled == false && lastObservedAutomationEnabled != false)
+        {
+            lastManualInputAt = now;
+            if (hostAutomationBridge?.TrySetHostVisible(true) != true)
+                Monitor.Log("[HostManualControl] Manual mode started, but the host could not be made visible atomically.", LogLevel.Error);
+        }
+        else if (automationEnabled == true)
+            lastManualInputAt = null;
+        lastObservedAutomationEnabled = automationEnabled;
+        hostAutomationBridge?.SynchronizeVisibility();
+        RewriteStatus();
+    }
+
+    private void RefreshHostControlState()
+    {
+        if (!isJunimoRuntime || hostAutomationBridge is null)
+            return;
+
+        var automationEnabled = hostAutomationBridge.AutomationEnabled;
+        var server = Context.IsWorldReady ? Game1.server : null;
+        var decision = ManualControlPolicy.Evaluate(
+            automationKnown: automationEnabled.HasValue,
+            automationEnabled: automationEnabled == true,
+            connectionCountKnown: server is not null,
+            connectionCount: server?.connectionsCount ?? 0,
+            lastManualInputAt: lastManualInputAt,
+            now: DateTimeOffset.UtcNow,
+            unattendedLease: UnattendedManualControlLease);
+        if (decision.ShouldRestoreAutomation && hostAutomationBridge.TryEnableAutomation())
+        {
+            lastManualInputAt = null;
+            Monitor.Log(
+                "[HostManualControl] Unattended manual-control lease expired; automation and NoConnectedClients pause policy were restored.",
+                LogLevel.Warn);
+        }
+    }
+
+    private HostControlStatus BuildHostControlStatus()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var automationEnabled = hostAutomationBridge?.AutomationEnabled;
+        var hostVisible = hostAutomationBridge?.HostVisible ?? false;
+        var connectionCount = Context.IsWorldReady ? Game1.server?.connectionsCount : null;
+        var lease = ManualControlPolicy.Evaluate(
+            automationKnown: automationEnabled.HasValue,
+            automationEnabled: automationEnabled == true,
+            connectionCountKnown: connectionCount.HasValue,
+            connectionCount: connectionCount ?? 0,
+            lastManualInputAt: lastManualInputAt,
+            now: now,
+            unattendedLease: UnattendedManualControlLease);
+        var displayFarmer = Context.IsWorldReady && Game1.displayFarmer;
+        var farmerHidden = Context.IsWorldReady && Game1.player?.hidden.Value == true;
+        return new HostControlStatus
+        {
+            Mode = lease.Mode.ToString().ToLowerInvariant(),
+            AutomationKnown = automationEnabled.HasValue,
+            AutomationEnabled = automationEnabled == true,
+            ManualControl = lease.Mode == HostControlMode.Manual,
+            Paused = Context.IsWorldReady && Game1.netWorldState?.Value?.IsPaused == true,
+            PauseReason = lastForcedPauseReason.ToString(),
+            HostVisible = hostVisible,
+            DisplayFarmer = displayFarmer,
+            FarmerHidden = farmerHidden,
+            VisibilityConsistent = Context.IsWorldReady
+                && HostVisibilityContract.IsConsistent(hostVisible, displayFarmer, farmerHidden),
+            ConnectedClients = connectionCount,
+            ManualLeaseExpiresAt = lease.LeaseExpiresAt,
+            UpdatedAt = now,
+        };
+    }
+
+    private HostBedStatus EnsureHostBedIntegrity()
+    {
+        var status = hostBedIntegrity?.Ensure() ?? HostBedStatus.Unavailable();
+        if (status.Healthy)
+            hostSleepSafetyPatch?.NotifyBedHealthy();
+        return status;
+    }
+
+    private bool ValidateHostBedForSleep(StardewValley.Locations.FarmHouse farmHouse)
+    {
+        var mainFarmHouse = Game1.getLocationFromName("FarmHouse");
+        if (!ReferenceEquals(farmHouse, mainFarmHouse))
+            return false;
+        return EnsureHostBedIntegrity().Healthy;
     }
 
     private bool ApplyPanelCharacterCustomization()
@@ -597,6 +747,10 @@ public sealed class ModEntry : Mod
 				ControlModVersion = ModManifest.Version.ToString(),
 				HostFarmhousePreservationPatchAvailable = hostFarmhousePreservationPatch.Available,
 				HostFarmhousePreservationPatchDetail = hostFarmhousePreservationPatch.Detail,
+				HostAutomationBridgeAvailable = hostAutomationBridge?.Available == true,
+				HostAutomationBridgeDetail = hostAutomationBridge?.Detail ?? "Not initialized.",
+				HostSleepSafetyPatchAvailable = hostSleepSafetyPatch?.Available == true,
+				HostSleepSafetyPatchDetail = hostSleepSafetyPatch?.Detail ?? "Not initialized.",
 				GameVersion = Game1.version ?? "",
 				ApiVersion = Constants.ApiVersion.ToString(),
 				LoadedMods = loadedMods,
@@ -753,12 +907,25 @@ public sealed class ModEntry : Mod
 		string[]? customizationMismatches = null,
 		CharacterCustomizationSnapshot? customizationAttempt = null)
     {
+		lastStatusState = state;
+		lastStatusMessage = message;
+		lastStatusSaveId = saveId;
+		lastCustomizationMismatches = customizationMismatches ?? Array.Empty<string>();
+		lastCustomizationAttempt = customizationAttempt;
+		WriteStatusSnapshot();
+	}
+
+	private void RewriteStatus()
+		=> WriteStatusSnapshot();
+
+	private void WriteStatusSnapshot()
+	{
 		var customization = verifiedPanelCustomization;
         var status = new RuntimeStatus
         {
-            State = state,
-            Message = message,
-            SaveId = string.IsNullOrWhiteSpace(saveId) ? initConfig?.SaveId : saveId,
+            State = lastStatusState,
+            Message = lastStatusMessage,
+            SaveId = string.IsNullOrWhiteSpace(lastStatusSaveId) ? initConfig?.SaveId : lastStatusSaveId,
             UpdatedAt = DateTimeOffset.UtcNow,
             PasswordBridgeAvailable = passwordBridge.Available,
             PasswordBridgeDetail = passwordBridge.Detail,
@@ -768,6 +935,12 @@ public sealed class ModEntry : Mod
             RolePasswordPatchDetail = rolePasswordPatch.Detail,
             HostFarmhousePreservationPatchAvailable = hostFarmhousePreservationPatch.Available,
             HostFarmhousePreservationPatchDetail = hostFarmhousePreservationPatch.Detail,
+            HostAutomationBridgeAvailable = hostAutomationBridge?.Available == true,
+            HostAutomationBridgeDetail = hostAutomationBridge?.Detail ?? "Not initialized.",
+            HostSleepSafetyPatchAvailable = hostSleepSafetyPatch?.Available == true,
+            HostSleepSafetyPatchDetail = hostSleepSafetyPatch?.Detail ?? "Not initialized.",
+            HostBed = hostBedIntegrity?.Snapshot ?? HostBedStatus.Unavailable(),
+            HostControl = BuildHostControlStatus(),
             WarpHomeBridgeAvailable = warpHomeBridge.Available,
             WarpHomeBridgeDetail = warpHomeBridge.Detail,
 			NewGameTransactionId = initConfig?.TransactionId ?? "",
@@ -783,8 +956,8 @@ public sealed class ModEntry : Mod
 			CustomizationSaveId = customization?.SaveId ?? "",
 			CustomizationVerifiedAt = customization?.VerifiedAt,
 			Customization = customization?.Snapshot,
-			CustomizationAttempt = customizationAttempt,
-			CustomizationMismatches = customizationMismatches ?? Array.Empty<string>(),
+			CustomizationAttempt = lastCustomizationAttempt,
+			CustomizationMismatches = lastCustomizationMismatches,
         };
         WriteJson(Path.Combine(controlDir, "status.json"), status);
     }

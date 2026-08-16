@@ -37,7 +37,7 @@ func TestSetRenderingFPSCallsJunimoAPIInsideServerContainer(t *testing.T) {
 	want := []string{
 		"curl", "-sf", "-X", "POST", "-H", "Content-Length: 0",
 		"-H", "Authorization: Bearer secret",
-		"http://localhost:18080/rendering?fps=15",
+		"http://localhost:8080/rendering?fps=15",
 	}
 	if !reflect.DeepEqual(capturedArgs, want) {
 		t.Fatalf("args = %#v, want %#v", capturedArgs, want)
@@ -71,7 +71,7 @@ func TestGetRenderingFPSCallsJunimoAPIInsideServerContainer(t *testing.T) {
 	want := []string{
 		"curl", "-sf", "-X", "GET",
 		"-H", "Authorization: Bearer secret",
-		"http://localhost:18080/rendering",
+		"http://localhost:8080/rendering",
 	}
 	if !reflect.DeepEqual(capturedArgs, want) {
 		t.Fatalf("args = %#v, want %#v", capturedArgs, want)

@@ -14,9 +14,39 @@ import (
 )
 
 type controlStatusSnapshot struct {
-	State     string `json:"state"`
-	SaveID    string `json:"saveId"`
-	UpdatedAt string `json:"updatedAt"`
+	State       string                     `json:"state"`
+	SaveID      string                     `json:"saveId"`
+	UpdatedAt   string                     `json:"updatedAt"`
+	HostBed     controlHostBedSnapshot     `json:"hostBed"`
+	HostControl controlHostControlSnapshot `json:"hostControl"`
+}
+type controlHostBedSnapshot struct {
+	State             string `json:"state"`
+	Healthy           bool   `json:"healthy"`
+	ErrorCode         string `json:"errorCode,omitempty"`
+	FailureReason     string `json:"failureReason,omitempty"`
+	HouseUpgradeLevel int    `json:"houseUpgradeLevel"`
+	ExpectedBedType   string `json:"expectedBedType,omitempty"`
+	ActualBedType     string `json:"actualBedType,omitempty"`
+	BedTileX          *int   `json:"bedTileX,omitempty"`
+	BedTileY          *int   `json:"bedTileY,omitempty"`
+	PlayerBedSpotX    *int   `json:"playerBedSpotX,omitempty"`
+	PlayerBedSpotY    *int   `json:"playerBedSpotY,omitempty"`
+	Repaired          bool   `json:"repaired"`
+}
+type controlHostControlSnapshot struct {
+	Mode                 string  `json:"mode"`
+	AutomationKnown      bool    `json:"automationKnown"`
+	AutomationEnabled    bool    `json:"automationEnabled"`
+	ManualControl        bool    `json:"manualControl"`
+	Paused               bool    `json:"paused"`
+	PauseReason          string  `json:"pauseReason"`
+	HostVisible          bool    `json:"hostVisible"`
+	DisplayFarmer        bool    `json:"displayFarmer"`
+	FarmerHidden         bool    `json:"farmerHidden"`
+	VisibilityConsistent bool    `json:"visibilityConsistent"`
+	ConnectedClients     *int    `json:"connectedClients,omitempty"`
+	ManualLeaseExpiresAt *string `json:"manualLeaseExpiresAt,omitempty"`
 }
 type controlPlayersSnapshot struct {
 	SaveID    string `json:"saveId"`

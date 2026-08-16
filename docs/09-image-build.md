@@ -1,3 +1,31 @@
+# HOST-BED-MANUAL-CONTROL-1 候选前门禁记录（2026-08-16，completed，未发布）
+
+## 变更清单与受影响链路
+
+- Control `0.3.4 → 0.3.5`：新增主 FarmHouse 床完整性自愈、Junimo 睡眠有界保护、F9 manual-control/NoConnectedClients 协调和 F10 sprite/displayFarmer/hidden/shadow 原子同步；内嵌 DLL SHA-256=`918badd470622cdc5b18df57879bec4f87c2ffd58588f84ccedda13fd6bd3605`。server/auth/game/SDK/SMAPI 与 Compose/数据库格式不变。
+- stardew_junimo 的 swap 激活新增 `hostBed` 复合证据、`host_bed_missing` 和后置失败整树回滚；容器内 Junimo API 统一固定 8080。现有实例状态 `statusSource` 新增只读 `hostBed/hostControl`，没有新增写路由或 Web XML 特判。
+- 变更影响 Control/runtime stack、存档导入 activation/durable/rollback、Junimo 真实运行与实例状态，因此正式候选必须选择后端全量 test/vet/build、Control 契约与真实程序集编译、runtime manifest/远程制品、Junimo/SMAPI 长 integration、Docker/updater、fresh/restart、上一正式版 Web unhealthy 回滚/healthy 升级和升级后本专项 E2E。当前仅完成工作树本地门禁，没有创建 tag、更新 latest、推送正式镜像或创建 Release。
+
+## 本版专项矩阵
+
+| 维度 | 场景 | 断言/证据 |
+| --- | --- | --- |
+| 正常路径 | 0 级空主屋；1/2/3 级缺床；真实 swap/save/restart/sleep | 实际 map `DefaultBedPosition`；0=Single、1..3=Double；恰好一床；GameLoop.Saved 后重启保持；实际进入次日 |
+| 关键边界 | 已有床；其它家具；Farm/cabin 有床但主屋无床；地图属性/等级/类型异常 | 已有床完全零修改；其它家具与 cabin 不动；只检查 master 主 FarmHouse；无法证明布局返回 `host_bed_missing` |
+| 权限安全 | Web 导入、平台 ID、status/log | handler 不解析 XML；敏感玩家关联标识不进入新增日志/投影；仍沿用管理员导入权限 |
+| 幂等/恢复 | 重复导入/启动/自愈；activation 或 durable-save 任一步失败 | 不增加第二张床；停止运行时并恢复 preimport 整树、pointer、Mod profile、instance snapshot；材料不完整时 manual_required |
+| 数据完整性 | current、`_old`、SaveGameInfo、原/新主机与 farmhand 非目标字段 | SHA/fingerprint 精确恢复；角色、背包、任务、关系、邮件及其它家具不由修复代码改写；源夹具 hash 不变 |
+| VNC/无人值守 | 零客户端 F9、方向键、再次 F9/租约到期；F10 多次、warp/load/day | manual 时不被 NoClients 暂停且可移动；退出后自动暂停恢复；人物与 shadow 无半状态；10 分钟无人租约防止长期流逝 |
+| 睡眠故障 | 主屋缺床；合法床自动睡眠 | 每故障 episode 一次 `host_bed_missing`，不无限 sleeping-in-place；合法床每日动作最多 4，真实客户端从 spring 1/Y1 进入 spring 2/Y1 |
+| 资源清理 | 成功与各次诊断失败 | 仅按 `sap.task=host-bed-20260816`/精确 Compose project 清理容器、网络、volume、bind/temp；禁止 prune，生产数据只读/隔离 |
+
+## 本地验证记录
+
+- Control 已以只读真实 `/game` 和标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 编译通过（0 warning/0 error），产物大小 195072 bytes，SHA 与 manifest 一致；纯策略 C# 契约通过。任务专属 Linux Go 1.25 容器中 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过；全量首轮发现 Web rendering 两条旧 fixture 仍误用宿主映射 18080，改为容器内固定 8080 后先定向、再同参数全量通过，没有放宽产品实现。
+- `TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 在 `sdvd/server:1.5.0-preview.125` 真实 Docker runtime 通过，用时 180.16s：独立身份存档 swap 后床位为运行地图给出的 `(9,8)`，SaveLoaded、save-now/GameLoop.Saved、restart、Xvnc Unix-socket F9/F10/方向键、NoClients 恢复，以及独立官方测试客户端实际睡眠跨日全部成功；日志无 timeout/force-day-end。该坐标只作为实测证据，产品实现和测试期望均未写死。
+- 收口按 `sap.task=host-bed-20260816` 复核容器/network 均为 0，并逐一验证 owner label 后删除 7 个精确 cache/output volume；13 个 `anxihostbed<timestamp>` 失败诊断目录在确认位于系统 Temp、名称匹配且非 reparse point 后送入回收站。未执行 prune、未删除源夹具或生产数据。
+- 正式候选尚未生成。推送 main 后必须按上述受影响矩阵完成不可变候选、上一正式版 Web 更新/回滚与 digest 提升门禁；任何失败停止发布，不得把本地真实 E2E 替代候选证明。
+
 # v0.5.0 正式候选与发布结果（2026-08-16，released）
 
 ## 聚合变更清单与受影响链路

@@ -4,6 +4,7 @@ public enum PauseReason
 {
     None,
     NoConnectedClients,
+    ManualControl,
 }
 
 public readonly record struct PauseDecision(bool ShouldForcePause, PauseReason Reason);
@@ -14,6 +15,8 @@ public static class PausePolicy
         bool enabled,
         bool isServer,
         bool worldReady,
+        bool automationKnown,
+        bool automationEnabled,
         bool connectionCountKnown,
         int connectionCount,
         bool isFestivalDay,
@@ -21,6 +24,9 @@ public static class PausePolicy
     {
         if (!enabled || !isServer || !worldReady)
             return new(false, PauseReason.None);
+
+        if (automationKnown && !automationEnabled)
+            return new(false, PauseReason.ManualControl);
 
         if (
             connectionCountKnown

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.4",
+  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.5",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
   "runtimeUpdatePolicy": "required",
@@ -71,12 +71,13 @@
     "trustedHosts": ["gh.llkk.cc", "github.dpik.top", "ghfast.top", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
-    "version": "0.3.4",
-    "dllSha256": "5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982",
+    "version": "0.3.5",
+    "dllSha256": "918badd470622cdc5b18df57879bec4f87c2ffd58588f84ccedda13fd6bd3605",
     "commandResultVersion": 1
   },
   "status": "recommended",
   "releaseNotes": [
+    "Control 0.3.5 在游戏线程按主 FarmHouse 当前地图的 DefaultBedPosition 与游戏默认床常量幂等修复缺失的合法床；swap-host-to 激活必须取得床健康证据，任一激活或持久化失败都会恢复完整预导入存档、活动指针和实例状态。缺床睡眠输出 host_bed_missing 且有明确动作上限。F9 手动控制解除 NoConnectedClients 暂停并受无人值守租约保护，F10 原子同步人物与影子可见性，hostBed/hostControl 进入结构化状态。",
     "Control 0.3.4 默认通过精确反射与 Harmony 跳过 JunimoServer preview.125 的主机农舍等级归零自愈，保留存档原有 HouseUpgradeLevel、地图与室内内容；补丁未成功安装时 Control 启动门禁拒绝进入 ready。",
     "Control 0.3.3 在不修改上游 JunimoServer 的前提下，为 IP 直连新增角色独立密码：按角色 UniqueMultiplayerID 校验 !login，并继续复用 Junimo 的超时、失败次数、隔离小屋与传送流程。",
     "Control 0.3.2 为 swap-host-to 存档导入提供持久的 unbind-all-farmhands 保存前动作：无真人农场工在线时清空全部角色 userID，并在同一 commandId 的 GameLoop.Saved 回执中返回匿名计数证据。",

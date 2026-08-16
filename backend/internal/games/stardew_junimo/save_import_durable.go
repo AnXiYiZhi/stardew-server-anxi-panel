@@ -489,11 +489,11 @@ func completeAsIsImportDurably(ctx context.Context, lifecycle LifecycleDockerSer
 }
 
 func readJunimoWaitStatus(ctx context.Context, exec commandExecutor, dataDir string, since int64) (JunimoRuntimeWorldState, bool, bool, error) {
-	apiPort, apiKey, err := readJunimoAPIConfig(dataDir)
+	_, apiKey, err := readJunimoAPIConfig(dataDir)
 	if err != nil {
 		return JunimoRuntimeWorldState{}, false, false, err
 	}
-	endpoint := "http://localhost:" + apiPort + "/wait/status?since=" + strconv.FormatInt(since, 10) + "&dayTransitionComplete=true&timeout=8000"
+	endpoint := "http://localhost:" + junimoContainerAPIPort + "/wait/status?since=" + strconv.FormatInt(since, 10) + "&dayTransitionComplete=true&timeout=8000"
 	args := []string{"curl", "-sS", "--max-time", "10", "-w", "\n%{http_code}"}
 	if apiKey != "" {
 		args = append(args, "-H", "Authorization: Bearer "+apiKey)

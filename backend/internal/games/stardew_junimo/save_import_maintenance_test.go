@@ -559,6 +559,9 @@ func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance,
 	if err := os.WriteFile(filepath.Join(saveDir, saveName), []byte("main-save"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(saveDir, saveName+"_old"), []byte("old-save"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(saveDir, "SaveGameInfo"), []byte("info"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -571,7 +574,7 @@ func prepareMaintenanceFixture(t *testing.T) (string, string, registry.Instance,
 	if err := os.MkdirAll(controlDir(dataDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(`{"controlModVersion":"`+runtimeManifest.Control.Version+`","hostFarmhousePreservationPatchAvailable":true}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "options.json"), []byte(readyControlRuntimeOptions(runtimeManifest.Control.Version)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(controlDir(dataDir), "status.json"), []byte(`{"saveId":"Old_1"}`), 0o600); err != nil {

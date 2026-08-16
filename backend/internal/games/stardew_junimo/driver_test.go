@@ -599,7 +599,7 @@ func TestDriverStatusUsesInstanceDataDir(t *testing.T) {
 
 func TestDriverReconcileStatePromotesStoppedWhenServerIsRunning(t *testing.T) {
 	dataDir, expectedControl := setupControlRuntimeGateTest(t)
-	writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expectedControl+`","hostFarmhousePreservationPatchAvailable":true}`)
+	writeControlRuntimeOptions(t, dataDir, readyControlRuntimeOptions(expectedControl))
 	fake := &fakeDocker{
 		psResult: paneldocker.ComposePsResult{
 			Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up 1 minute"}},
@@ -771,7 +771,7 @@ func TestDriverReconcileStateDoesNotPromoteExplicitControlMismatch(t *testing.T)
 
 func TestDriverReconcileStateDoesNotOverrideActiveLifecycleOwner(t *testing.T) {
 	dataDir, expectedControl := setupControlRuntimeGateTest(t)
-	writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expectedControl+`","hostFarmhousePreservationPatchAvailable":true}`)
+	writeControlRuntimeOptions(t, dataDir, readyControlRuntimeOptions(expectedControl))
 	store := newLifecycleTestStore(t)
 	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
 		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: dataDir,
