@@ -419,3 +419,11 @@ docs.anxinas.dpdns.org
 - 以后若再次探索首页方向，应从已上线版本建立独立预览；用户确认前不得覆盖正式源码、提交或发布。
 - 产品页面只能引用仓库中有明确运行时或文档用途的素材。清理前同时检查字面量引用和动态模板路径；`NewGameCreator.tsx` 的宠物品种图属于动态引用，不能按“文件名无搜索结果”误删。
 - 代理生成图、临时站点和 Browser QA 截图只属于一次性输出；方向撤回后应清理，不得复制进产品素材目录或在后续设计中反复复用。
+
+## 八、2026-08-16 无公网临时 root SSH 教程
+
+- 新增 `website/docs/maintain/temporary-pinggy-ssh.md`，面向没有公网 IPv4、无法端口转发的普通 Linux、WSL2 和飞牛 fnOS 设备，统一使用 Pinggy 免费 TCP 反向隧道提供短期 SSH 排障入口。
+- 按用户要求默认提供 `root`，但不复用或永久修改系统原 sshd：教程创建仅监听 `127.0.0.1:22222` 的独立临时 sshd，强制非空密码、只允许 root、禁用转发能力；维修结束后停止精确 PID、删除独立配置并按原状态锁定或重置 root 密码。
+- WSL2 明确要求临时 sshd 与 Pinggy 都运行在实际保存 `~/.anxi-panel` 的同一个发行版中，不使用 Windows `portproxy`；飞牛说明 SSH 总开关和用户 SSH 权限两层入口，并提供宿主 OpenSSH 不可用时的 Pinggy 官方容器备用方案。
+- 页面包含本机预检、ED25519 指纹核验、Pinggy 地址解析、发给协助者的固定凭据/授权模板、强制清理步骤和常见错误；侧栏与深度诊断页已增加入口。
+- 事实依据核对 Pinggy 官方 Usage、TCP/SSH 指南和免费时长说明，以及 Microsoft WSL 网络/systemd 文档与飞牛当前初始化/SSH 权限说明。验证使用 `cd website && npm run docs:build`，并检查内部链接与新增 Markdown 编码。

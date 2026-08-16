@@ -51,7 +51,8 @@ export default defineConfig({
             { text: '更新面板', link: '/maintain/update' },
             { text: '存档与备份', link: '/maintain/saves-backup' },
             { text: 'Mod 管理', link: '/maintain/mods' },
-            { text: '面板管理与诊断', link: '/maintain/admin' }
+            { text: '面板管理与诊断', link: '/maintain/admin' },
+            { text: '无公网临时 root SSH', link: '/maintain/temporary-pinggy-ssh' }
           ]
         }
       ],

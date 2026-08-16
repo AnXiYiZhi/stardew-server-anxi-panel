@@ -31,3 +31,4 @@
 
 - 具体报错现象和解法：看 [常见问题](/faq/)。
 - 后台任务的详细日志：看 [任务与日志](/handbook/jobs-logs)。
+- 设备没有公网 IP、需要临时交给别人 SSH 排障：看 [用 Pinggy 临时开放 root SSH](/maintain/temporary-pinggy-ssh)。
