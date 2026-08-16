@@ -1,10 +1,10 @@
-# HOST-BED-MANUAL-CONTROL-1 候选前门禁记录（2026-08-16，completed，未发布）
+# v0.5.1 HOST-BED-MANUAL-CONTROL-1 正式候选与发布结果（2026-08-16，released）
 
 ## 变更清单与受影响链路
 
 - Control `0.3.4 → 0.3.5`：新增主 FarmHouse 床完整性自愈、Junimo 睡眠有界保护、F9 manual-control/NoConnectedClients 协调和 F10 sprite/displayFarmer/hidden/shadow 原子同步；内嵌 DLL SHA-256=`918badd470622cdc5b18df57879bec4f87c2ffd58588f84ccedda13fd6bd3605`。server/auth/game/SDK/SMAPI 与 Compose/数据库格式不变。
 - stardew_junimo 的 swap 激活新增 `hostBed` 复合证据、`host_bed_missing` 和后置失败整树回滚；容器内 Junimo API 统一固定 8080。现有实例状态 `statusSource` 新增只读 `hostBed/hostControl`，没有新增写路由或 Web XML 特判。
-- 变更影响 Control/runtime stack、存档导入 activation/durable/rollback、Junimo 真实运行与实例状态，因此正式候选必须选择后端全量 test/vet/build、Control 契约与真实程序集编译、runtime manifest/远程制品、Junimo/SMAPI 长 integration、Docker/updater、fresh/restart、上一正式版 Web unhealthy 回滚/healthy 升级和升级后本专项 E2E。当前仅完成工作树本地门禁，没有创建 tag、更新 latest、推送正式镜像或创建 Release。
+- 变更影响 Control/runtime stack、存档导入 activation/durable/rollback、Junimo 真实运行与实例状态，因此正式候选选择后端全量 test/vet/build、Control 契约与真实程序集编译、runtime manifest/远程制品、Junimo/SMAPI 长 integration、Docker/updater、fresh/restart、上一正式版 Web unhealthy 回滚/healthy 升级和升级后本专项 E2E；公开文档变化同时选择 website build。候选没有口头跳过受影响长链，无关历史人工故障不重复注入。
 
 ## 本版专项矩阵
 
@@ -24,7 +24,10 @@
 - Control 已以只读真实 `/game` 和标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 编译通过（0 warning/0 error），产物大小 195072 bytes，SHA 与 manifest 一致；纯策略 C# 契约通过。任务专属 Linux Go 1.25 容器中 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过；全量首轮发现 Web rendering 两条旧 fixture 仍误用宿主映射 18080，改为容器内固定 8080 后先定向、再同参数全量通过，没有放宽产品实现。
 - `TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 在 `sdvd/server:1.5.0-preview.125` 真实 Docker runtime 通过，用时 180.16s：独立身份存档 swap 后床位为运行地图给出的 `(9,8)`，SaveLoaded、save-now/GameLoop.Saved、restart、Xvnc Unix-socket F9/F10/方向键、NoClients 恢复，以及独立官方测试客户端实际睡眠跨日全部成功；日志无 timeout/force-day-end。该坐标只作为实测证据，产品实现和测试期望均未写死。
 - 收口按 `sap.task=host-bed-20260816` 复核容器/network 均为 0，并逐一验证 owner label 后删除 7 个精确 cache/output volume；13 个 `anxihostbed<timestamp>` 失败诊断目录在确认位于系统 Temp、名称匹配且非 reparse point 后送入回收站。未执行 prune、未删除源夹具或生产数据。
-- 正式候选尚未生成。推送 main 后必须按上述受影响矩阵完成不可变候选、上一正式版 Web 更新/回滚与 digest 提升门禁；任何失败停止发布，不得把本地真实 E2E 替代候选证明。
+- 正式发布 commit=`427a295ab905701069b7f710300ba09b6afd21f0`。Compatibility `31942102879` 于 `10:36:19Z..10:38:32Z` 成功；候选 `31942102917` 于 `10:36:19Z..10:48:04Z` 成功，job 实际 11m42s，日志明确 `release gates: all selected gates passed for 0.5.1`。不可变 artifact `release-candidate-0.5.1-427a295ab905`（ID `9262422503`）固定 build date=`2026-08-16T10:36:46Z`、candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.1-427a295ab905` 与 digest=`sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`。
+- 自动 Tag workflow `31942624901` 于 `10:48:06Z..10:48:19Z` 成功；`v0.5.1` 为 annotated tag，tag object=`6cb0d50b189bc68dd999c39fbabe181b61dd4f8f`，精确指向上述 commit。正式提升 `31942631860` 于 `10:48:16Z..10:49:37Z` 成功，只提升候选证明 digest，没有 rebuild；三仓精确版本与 `latest` 六引用通过同 digest 校验，并从一个正式引用回拉完成 health/version smoke。
+- GitHub Release `Stardew Server Anxi Panel 0.5.1` 于 `2026-08-16T10:49:34Z` 发布，为非 draft、非 prerelease；四项既有发布资产上传成功。候选/兼容/Tag/提升没有产品失败；唯一 annotation 是 Actions 将旧 Node 20 action 强制运行于 Node 24 的弃用提醒，不影响门禁结论。工作树本地首轮 Web fixture 端口断言失败已在候选前修正并以全量重跑闭环，不能算作候选放宽。
+- 资源终态：本地 `sap.task=host-bed-20260816` 容器/network/volume 均为 0，失败诊断目录已送回收站；GitHub 候选由 workflow 自身完成 builder/临时资源清理。发布后证据只更新长期文档，不移动 `v0.5.1`、不改变 digest，也不重新触发已发布候选门禁。
 
 # v0.5.0 正式候选与发布结果（2026-08-16，released）
 

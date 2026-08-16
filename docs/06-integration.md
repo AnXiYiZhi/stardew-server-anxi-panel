@@ -1,10 +1,11 @@
-# HOST-BED-MANUAL-CONTROL-1 跨端/运行时契约（2026-08-16，completed，未发布）
+# HOST-BED-MANUAL-CONTROL-1 跨端/运行时契约（2026-08-16，released in v0.5.1）
 
 - 调用链保持 `Panel save import transaction → JunimoServer saves import --swap-host-to → Control game-thread integrity/finalizer evidence → Control save-now/GameLoop.Saved`。Web 层仍只提交 hostHandling/platformId 与展示事务结果，不解析或改写 Stardew XML。交换主机的激活成功现在要求 Control `status.json.hostBed` 明确 healthy、houseUpgradeLevel 存在、期望/实际床型匹配，且 bed tile 与 player bed spot 关系能由实际主 FarmHouse 验证；缺床使用稳定错误码 `host_bed_missing`。
 - Control 自愈只操作 `Game1.getLocationFromName("FarmHouse")` 且其 owner 为 `Game1.MasterPlayer` 的主屋。0 级使用游戏单床常量，1/2/3 级使用游戏 double-wide 转换；坐标来自当前 FarmHouse `Back` map 的 `DefaultBedPosition`。已有床、其它家具以及 Farm/cabin/其他位置完全不动；无法证明布局时激活失败，并由已确认 swap 的 preimport 事务回滚整树、活动指针、Mod profile 与实例快照。
 - 现有实例状态响应 `statusSource` 透传 `hostBed` 与 `hostControl`。`hostControl.mode` 为 `automation|manual|unknown`；F9 手动态须同时满足 automation=false、manualControl=true、pauseReason=ManualControl、paused=false、visibilityConsistent=true，零网络客户端不再触发 NoConnectedClients。再次 F9、10 分钟无人租约到期、读档/跨日都会恢复或重算策略。F10 的可见/隐藏结果要求 `hostVisible`、`displayFarmer`、`farmerHidden` 与 shadow 同步，不能只依赖某一个静态 flag。
 - 睡眠契约不再容忍无限 `sleeping in place`：缺主屋床时单次结构化告警后阻断该故障 episode；有床时按实际 BedFurniture/player bed spot 调用原生睡眠路径，单日游戏线程动作上限为 4。真实 Docker E2E 已通过独立客户端进入下一日，并断言无强制结束、无超时兜底；该结果是实际游戏跨日，不是只检查 XML 或模拟状态。
 - 联调回归应覆盖：0..3 级地图床型/床位、重复启动/导入/自愈幂等、其它家具保留、Farm/cabin 床不误判、角色非目标数据不串位、激活与 durable-save 故障完整回滚、无客户端 F9 输入、退出手动后 NoConnectedClients 恢复、F10 多次切换及 warp/重启/跨日一致。Junimo 容器内 REST 一律使用固定 8080，不能把宿主映射端口带入容器内部探针。
+- 发布证据：`v0.5.1` annotated tag 精确指向 `427a295ab905701069b7f710300ba09b6afd21f0`；候选、兼容、Tag、正式提升四个 workflow 全绿，三仓版本/`latest` 使用同一 digest `sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`，正式镜像 smoke 与 GitHub Release 成功。
 
 # v0.5.0 跨端发布结果（2026-08-16，released）
 

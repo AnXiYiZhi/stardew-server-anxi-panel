@@ -1,4 +1,4 @@
-# HOST-BED-MANUAL-CONTROL-1：交换主机后的农舍/睡眠与 VNC 状态闭环（2026-08-16，completed，未发布）
+# HOST-BED-MANUAL-CONTROL-1：交换主机后的农舍/睡眠与 VNC 状态闭环（2026-08-16，released in v0.5.1）
 
 - 根因位于 JunimoServer `.125` 的组合流程，而非 Web handler：`saves import --swap-host-to` 先创建 0 级 `Server` 主机/主 FarmHouse，`CabinManagerService.TryFinalizeOnLoad()` 随后把主 FarmHouse 的 objects、fridge、decor、terrain 与 furniture（含床）整体移入原主人的 cabin 并清空主屋；交换结果已经是 0 级，旧 `HostFarmhouseUpgradeGuard` 的“非 0 才重置”分支不会再生成默认家具。Control 0.3.4 又有意跳过破坏性的整屋归零，因此最终留下“等级/地图已切到新主机、主屋无床且家具为空”的不一致状态。人工补回合法 `BedFurniture` 后，`FarmHouse.GetPlayerBed/GetPlayerBedSpot` 能重新命中真实睡眠交互点，所以可缓解黑屏，但它没有修复导入事务、所有权或后续兼容性。
 - 正式修复位于 Control `0.3.5` 的游戏线程与 stardew_junimo 导入事务。`HostBedIntegrity` 只检查当前 `Game1.MasterPlayer` 所属的主 `FarmHouse`，已有任意合法 `BedFurniture` 时零修改；缺床时只接受 0..3 级、实际 `Back` map 的 `DefaultBedPosition`，并使用游戏 `BedFurniture.DEFAULT_BED_INDEX` / `Utility.GetDoubleWideVersionOfBed` 创建 Single/Double 床。地图属性缺失、坐标无效、类型不符或添加后复核失败均返回 `host_bed_missing`，不猜坐标、不扫描或搬运 Farm/cabin 的床，也不重建其它家具。
@@ -6,6 +6,7 @@
 - `HostSleepSafetyPatch` 在游戏线程拦截 Junimo `.125` 的精确自动睡眠方法：缺床只记录一次结构化 `host_bed_missing` 并立即阻断无界等待；合法床沿真实 bed spot 进入原生睡眠确认，单日最多四次有界动作。F9 关闭 automation 时进入 10 分钟无人手动租约，释放输入抑制、强制主机完整可见并用 `ManualControl` 覆盖 `NoConnectedClients` 暂停；重新开启 automation 或租约到期恢复原无人暂停策略。F10、warp、SaveLoaded、DayStarted 与逐 tick 会原子同步 sprite、`displayFarmer`、`hidden` 和 shadow 状态。
 - Control `status.json` 及现有实例状态的 `statusSource` 新增 `hostBed` 与 `hostControl`：后者包含 `mode/automationKnown/automationEnabled/manualControl/paused/pauseReason/hostVisible/displayFarmer/farmerHidden/visibilityConsistent/connectedClients/manualLeaseExpiresAt`，前者包含健康态、房屋等级、期望/实际床型、床 tile/player bed spot、自愈与错误信息。没有新增普通 Web 写接口或 Stardew XML handler 特判。
 - 验证覆盖 0/1/2/3 级布局、已有床幂等、其它家具保留、Farm/cabin 床隔离、交换角色数据不串位、完整回滚与临时文件清理、手动租约/暂停/可见性契约。真实 `.125` Docker E2E 导入独立身份问题副本，完成 `SaveLoaded → 床证据 → save-now/GameLoop.Saved → 重启 → VNC F9/F10 → 官方测试客户端睡眠`，日期从春 1 日进入春 2 日，日志未出现超时/强制结束；实际 0 级床位为地图返回的 `(9,8)`，测试与实现均未硬编码该坐标。
+- 本修复已随 `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0` 发布；候选 `31942102917`、兼容矩阵 `31942102879`、自动 Tag `31942624901`、正式提升 `31942631860` 全部成功，正式 digest=`sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`。
 
 # v0.5.0 后端发布状态（2026-08-16，released）
 

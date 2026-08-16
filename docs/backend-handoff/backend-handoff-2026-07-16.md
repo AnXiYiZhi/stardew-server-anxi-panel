@@ -1,4 +1,4 @@
-# HOST-BED-MANUAL-CONTROL-1 后端接手记录（2026-08-16，completed，未发布）
+# HOST-BED-MANUAL-CONTROL-1 后端接手记录（2026-08-16，released in v0.5.1）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -12,7 +12,8 @@
 
 - C# 契约覆盖 0/1/2/3 级期望床型、已有床幂等、手动租约、NoClients 覆盖与可见性一致；真实 game-data 使用标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 为 0 warning/0 error。Go 覆盖 hostBed activation、完整 current/`_old`/SaveGameInfo 回滚、pointer/profile/instance snapshot、一切临时路径清理、状态 DTO 与容器内 8080。
 - `TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 在精确 `.125` 中使用独立身份副本实跑：source hash 不变，swap 后 owner/farmhand 非目标数据保持，0 级实际 map 床位 `(9,8)` 恰好一张 Single；save-now/GameLoop.Saved、重启后仍幂等；通过 Xvnc Unix socket 发送 F9/F10 与方向键，manual 无客户端可移动、退出后 NoConnectedClients 恢复、四次可见性切换无 shadow-only；独立官方测试客户端入睡后日期从 spring 1/Y1 进入 spring 2/Y1，且无 sleep timeout/force-day-end。
-- 不要把测试观测到的 `(9,8)` 搬进产品代码，也不要从 XML 或 Farm/cabin 猜主屋床。上游若改变 `DefaultBedPosition`、FarmHouse/BedFurniture API 或精确自动睡眠方法，当前逻辑应 fail closed，需重新审查真实程序集与地图。正式发布还需从干净、与 `origin/main` 同步的 main 走候选/上一正式版 Web unhealthy 回滚与 healthy 升级；本记录不等于已发布。
+- 不要把测试观测到的 `(9,8)` 搬进产品代码，也不要从 XML 或 Farm/cabin 猜主屋床。上游若改变 `DefaultBedPosition`、FarmHouse/BedFurniture API 或精确自动睡眠方法，当前逻辑应 fail closed，需重新审查真实程序集与地图。
+- `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0` 已正式发布：Compatibility `31942102879`、候选 `31942102917`、annotated Tag `31942624901`、正式提升 `31942631860` 全部成功；artifact `release-candidate-0.5.1-427a295ab905` 固定 build date=`2026-08-16T10:36:46Z` 与 digest=`sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`，提升没有 rebuild。
 
 # v0.5.0 后端发布接手状态（2026-08-16，released）
 
