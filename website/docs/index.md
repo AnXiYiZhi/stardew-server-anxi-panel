@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.1
+release: v0.5.2
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.1。修复交换主机后的主农舍缺床、睡眠黑屏，以及 VNC 手动控制仍被无人暂停和人物只剩影子的问题。
+    details: 当前最新 v0.5.2。Mod 页面可自动检查已安装模组更新，配置页改为更紧凑的双列图片卡，删除操作也恢复明确的红色填充。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.1</strong>
-    <p>交换主机后会安全核验并修复主农舍缺床，Junimo 可正常上床进入次日；VNC 手动模式不再被无人暂停，人物与影子可见性也会保持一致。</p>
+    <strong>v0.5.2</strong>
+    <p>打开 Mod 页面即可查看可用更新；配置模组改为全宽双列图片卡与状态筛选，删除按钮使用更醒目的红色填充。提醒只显示在页面内，不会发送系统通知或自动安装更新。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

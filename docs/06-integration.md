@@ -7,12 +7,13 @@
 - 联调回归应覆盖：0..3 级地图床型/床位、重复启动/导入/自愈幂等、其它家具保留、Farm/cabin 床不误判、角色非目标数据不串位、激活与 durable-save 故障完整回滚、无客户端 F9 输入、退出手动后 NoConnectedClients 恢复、F10 多次切换及 warp/重启/跨日一致。Junimo 容器内 REST 一律使用固定 8080，不能把宿主映射端口带入容器内部探针。
 - 发布证据：`v0.5.1` annotated tag 精确指向 `427a295ab905701069b7f710300ba09b6afd21f0`；候选、兼容、Tag、正式提升四个 workflow 全绿，三仓版本/`latest` 使用同一 digest `sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`，正式镜像 smoke 与 GitHub Release 成功。
 
-# MOD-UPDATE-CHECK-1 跨端契约（2026-08-16，completed，未发布）
+# MOD-UPDATE-CHECK-1 跨端契约（2026-08-16，released in v0.5.2）
 
 - `GET /api/instances/:id/mod-updates` 供任意已登录用户在打开 Mod 页面时自动调用；返回 `{ status, checkedAt?, updates, eligibleCount, skippedCount, checkError?, cached }`。`updates[]` 为 `{ id, uniqueId, name, folderName, currentVersion, latestVersion, url }`。`status=error` 是可展示的上游降级态而非 HTTP 失败，前端必须继续展示同响应内的上次成功 `updates`。
 - `POST /api/instances/:id/mod-updates/check` 仅管理员可用且强制绕过 6 小时 TTL；响应 DTO 与 GET 相同。前端只在「添加模组」页签提供该按钮，普通用户仍可看到自动检查结果。上传/删除后前端触发强制刷新，本地清单从其它路径变化时则由清单指纹自动失效并通过 GET 重查。
 - 后端 Stardew driver 负责清单扫描、资格过滤、SMAPI update service 通信、缓存和 URL 校验；请求根级 `apiVersion` 优先来自 Control `options.json`，缺少运行时快照时使用 v4 基线 `4.0.0`，可用时同时发送实际 `gameVersion` 与 Linux platform。Web 层只做鉴权、driver capability 断言与序列化。没有新增 SQLite 表、后台定时器、系统通知、Nexus Key 读取或无人值守 Mod 替换链路。
 - 联调时至少覆盖：首次成功、同指纹缓存、本地清单或 SMAPI API/game version 变化后失效、无 eligible Mod 不出网、上游失败保留旧结果、非 HTTP(S) 建议链接被丢弃，以及页签徽标/筛选/卡片外链。SMAPI 公共接口变化必须表现为页内降级，不能阻塞 `GET .../mods` 主列表；候选升级 E2E 使用受控 TLS SMAPI 服务固定验证首次强刷与 cached GET。
+- `v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1` 已完成该契约的正式收口：候选 `31945655119` 从 v0.5.1 真实 Web 升级后同时命中匿名 401、管理员强刷、缓存 GET 和 production bundle 契约，并完成同一候选的 unhealthy 回滚；Compatibility `31945655121`、Tag `31946063809`、正式提升 `31946073920` 全部成功。三仓 `0.5.2/latest` 六引用统一 digest=`sha256:42b5dae824f63d3b5ba44a1f33704a622a62c4d6170225d52a63ac39147aaaed`，正式镜像首次/重启的健康与版本接口均通过。
 
 # v0.5.0 跨端发布结果（2026-08-16，released）
 

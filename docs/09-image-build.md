@@ -1,4 +1,4 @@
-# v0.5.2 MOD-UPDATE-CHECK-1 / FE-MOD-CONFIG-CARDS-1 正式候选计划（2026-08-16，candidate pending）
+# v0.5.2 MOD-UPDATE-CHECK-1 / FE-MOD-CONFIG-CARDS-1 正式候选与发布结果（2026-08-16，released）
 
 ## 变更清单与受影响链路
 
@@ -23,10 +23,14 @@
 
 ## 发布状态
 
-- 候选前状态：变更范围已限定为上述产品代码、专项/回归测试、升级 E2E 和长期文档；`main` 与 `origin/main` 在工作开始时均为 `d42fcbfe01b62cc8b0944c5d49326d7e8ee04faf`，上一正式 tag 为 `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0`。正式候选 run、artifact、digest、自动 Tag、正式提升、三仓、版本接口、Release 与资源清理证据待门禁完成后回填。
+- 发布范围已限定为上述产品代码、专项/回归测试、升级 E2E 和相关长期文档；正式发布 commit=`51fd82459e4ac8afbf362f7ad12c0651937879a1`，上一正式版固定为 `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0`。Compatibility `31945655121` 于 `2026-08-16T11:55:37Z..11:57:33Z` 成功；自动候选 `31945655119` 于 `11:55:37Z..12:04:28Z` 成功，候选 job 实际用时 8 分 48 秒并明确输出 `release gates: all selected gates passed for 0.5.2`。
+- 不可变 artifact `release-candidate-0.5.2-51fd82459e4a`（ID `9263297274`）固定 schema=1、previous=`0.5.1`、build date=`2026-08-16T11:55:58Z`、local image ID=`sha256:2d269e4d1a8e26138ea06db77f9851827e8217569eb357f97de1f872e38ba64f`、candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.2-51fd82459e4a` 与 digest=`sha256:42b5dae824f63d3b5ba44a1f33704a622a62c4d6170225d52a63ac39147aaaed`，workflow attempt=1。路径矩阵因 runtime manifest 未变自动跳过远程制品复验；Junimo/SMAPI 路径和公开文档有变化，因此真实运行集成、网站构建及其余默认代码、Docker/updater、fresh/restart 门禁均实际执行，没有口头跳过。
 - 候选前本地门禁：任务专属 Linux Go 1.25 环境中 `go test -p 1 ./... -count=1`（Stardew 60.377s、Web 44.540s）、`go vet ./...`、`go build ./...` 全绿；Node 24 Linux 洁净 `npm ci` 后前端 17 组状态回归、production audit/build 全绿，website production audit/build 全绿；兼容矩阵 validate/version 与 20 项单测通过。升级脚本 `bash -n`、ShellCheck 通过；公开 Content Patcher 请求向真实 SMAPI 返回 `2.9.1`、HTTPS Nexus URL 和零 errors。
 - 不发布的 `-AllowDirty` 完整候选预演以 `v0.5.1` 正式 digest 为升级源：fresh/restart、unhealthy `failed_rolled_back/health_check_failed`、healthy Web 升级、SQLite/初始化/Panel 数据/非目标容器与 volume 保持、Panel restart、升级后受控 TLS SMAPI 首次强刷 + cached GET、前端 bundle、既有 Junimo repair 与存档导入回归全部通过。首轮专项断言误用 jq `.cached // true` 把合法 `false` 当缺失而失败，产品响应本身正确；修为 `has("cached")` 后从 fresh 开始完整重跑成功，没有跳过或放宽门禁。
-- 本地预演 wrapper/trap 已清理两轮候选容器、网络、volume、bind/temp；8 个 `sap.task=mod-update-release-20260816` 洁净构建卷与本地 synthetic 镜像在核对 owner/OCI identity 后精确删除，终态均为 0。未执行 prune，未删除三个属于历史 `v046-release-20260731` owner 的非目标资源，也未触碰生产数据。
+- 正式候选再次从 `v0.5.1` 通过真实 Panel Web update check、dry-run、管理员确认、apply、断线重连与终态恢复：unhealthy 目标得到 `failed_rolled_back/health_check_failed` 并恢复旧版，healthy 目标使用同一候选 digest；SQLite、初始化状态、任务长期数据、非目标游戏容器/volume 和 Panel restart 状态均保持。升级后的 Panel 重新通过受控 TLS SMAPI 首次管理员 POST、缓存 GET、Mod 页面 production bundle、Junimo repair 与存档导入专项。
+- 自动 Tag workflow `31946063809` 于 `12:04:30Z..12:04:48Z` 成功；`v0.5.2` 为 annotated tag，tag object=`29436c45b204f053bc338a93a622a628713e87ef`，精确指向正式发布 commit。正式提升 `31946073920` 于 `12:04:44Z..12:06:17Z` 成功，只提升候选证明中的精确 digest，没有 rebuild；Docker Hub、阿里云 ACR、GHCR 的 `0.5.2` 与 `latest` 六个引用均解析为 `sha256:42b5dae824f63d3b5ba44a1f33704a622a62c4d6170225d52a63ac39147aaaed`。
+- 从 GHCR 精确 digest 独立回拉的正式镜像首次与 Panel restart 后均为 `/health=ok`；`/api/version` 两次都返回 version=`0.5.2`、完整 commit=`51fd82459e4ac8afbf362f7ad12c0651937879a1`、buildDate=`2026-08-16T11:55:58Z`，未初始化状态保持 `false`。GitHub Release `Stardew Server Anxi Panel 0.5.2` 于 `12:06:14Z` 发布，为 latest、非 draft、非 prerelease。四项资产已与 tag 源逐项一致：`run.sh` 33793 bytes / `7263bfa323b2bf4eb94674bde9c77a57a8b86734c606055c9cdef2fc1e130787`，`migrate-fnos.sh` 34269 / `90510768d6636917fb7f15937a7dce34c34974dd8c9af5451030560eca57cbfd`，`repair-junimo-0.3.5.sh` 14585 / `13a07708d23e02c002c979eef28639bc2fe283a2e5988e228afc0c068f51cd0e`，`repair-junimo-upgrade.sh` 8521 / `4f3c666770b6be77ed51895264f47c940b066d61386b66b3653a858e8929b4c2`。
+- 正式 workflows 没有产品或门禁失败；唯一 annotation 是旧 action 被平台强制使用 Node 24 的弃用提醒，不影响结论。候选前真实 SMAPI 探针暴露的根级 `apiVersion` 缺口和本地预演的 jq 布尔断言均在推送前修复并全量重跑，未降低门禁。本地 wrapper/trap、候选预演和发布后 smoke 的任务容器、网络、volume、bind、temp 与 synthetic 镜像均按 owner/OCI identity 精确清理为 0；未执行 prune，历史 `v046-release-20260731` 的非目标资源及生产数据保持未动。
 
 # v0.5.1 HOST-BED-MANUAL-CONTROL-1 正式候选与发布结果（2026-08-16，released）
 

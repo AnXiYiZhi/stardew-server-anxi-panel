@@ -6,12 +6,12 @@
 - [x] `VNC-HOST-MANUAL-1`：F9 手动模式释放 automation 输入、覆盖 NoConnectedClients 暂停、强制完整人物可见并以 10 分钟无人租约恢复托管；F10 原子同步 sprite/displayFarmer/hidden/shadow，warp、读档、逐 tick、跨日复核。`hostBed/hostControl` 已进入现有结构化状态。
 - [x] 真实 Docker `.125` E2E 完成问题副本 swap、SaveLoaded、地图床位、save-now/GameLoop.Saved、重启幂等、Unix-socket VNC F9/F10、无客户端移动、恢复自动暂停，以及官方测试客户端实际睡眠；春 1 日进入春 2 日，无黑屏、超时或强制结束。Control 真实游戏程序集标准构建 0 warning/0 error。`v0.5.1` 候选 `31942102917`、兼容 `31942102879`、Tag `31942624901`、正式提升 `31942631860` 全绿，同一 digest `sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5` 已提升到三仓版本与 `latest`。
 
-# 2026-08-16 已完成、待发布：Mod 自动更新检查与配置页重构
+# 2026-08-16 已发布：v0.5.2 Mod 自动更新检查与配置页重构
 
 - [x] `MOD-UPDATE-CHECK-1`：Stardew driver 通过 SMAPI update service 检查全部可识别的启用/禁用物理 Mod；请求携带实际或保守基线 SMAPI API version，6 小时缓存绑定本地清单与运行时版本指纹，支持管理员强制刷新、失败保留上次成功结果和安全 URL 过滤。
 - [x] `FE-MOD-UPDATE-REMINDER-1`：提醒限定在「添加模组」页签徽标、页内状态条和可更新卡片；提供只看可更新与重新检查，不建立系统通知、已读状态或后台轮询。
 - [x] `FE-MOD-CONFIG-CARDS-1`：移除「配置模组」常驻右侧说明占位，改成全宽双列小图片卡、动态上下文条、搜索排序、状态筛选与原有安全开关；窄屏收敛为单列；「添加模组」已安装卡片的删除操作使用红色像素填充并保留运行态灰化禁用。
-- [x] 后端五条 driver 专项和 Web 权限/路由专项、前端 Mod 列表/响应式回归和 production build 已通过；发布前仍按 `docs/09-image-build.md` 选择本版专项矩阵，并在 Linux 完成后端全包权限语义与升级后受控 SMAPI 门禁。
+- [x] 后端五条 driver 专项和 Web 权限/路由专项、前端 Mod 列表/响应式回归与 production build 全部通过；`v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1` 的 Compatibility `31945655121`、候选 `31945655119`、自动 Tag `31946063809`、正式提升 `31946073920` 全绿。v0.5.1 unhealthy 回滚、healthy Web 升级、升级后受控 SMAPI/API/production bundle、三仓 `0.5.2/latest` 六引用、正式镜像首次/重启和 GitHub Release 均通过，统一 digest=`sha256:42b5dae824f63d3b5ba44a1f33704a622a62c4d6170225d52a63ac39147aaaed`。
 
 # 2026-08-16 已发布：v0.5.0 聚合可靠性与兼容更新
 

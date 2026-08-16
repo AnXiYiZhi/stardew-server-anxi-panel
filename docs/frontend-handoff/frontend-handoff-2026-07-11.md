@@ -1,4 +1,4 @@
-# FE-MOD-UPDATE-REMINDER-1 / FE-MOD-CONFIG-CARDS-1 接手记录（2026-08-16，completed，未发布）
+# FE-MOD-UPDATE-REMINDER-1 / FE-MOD-CONFIG-CARDS-1 接手记录（2026-08-16，released in v0.5.2）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -8,8 +8,9 @@
 
 ## 如何验证、下一步注意事项
 
-- Node 24 Linux 洁净安装后的全部 17 组前端状态回归、production audit/build 均通过。应用内 Browser 在默认视口实际点击「添加模组」与「配置模组」：2 个更新徽标、状态条和两条当前→最新外链均存在；配置页为 37 张图片卡、桌面首行 2 张、旧右栏计数 0，四类筛选中“有问题 1”只留下 Custom Companions。已停止态 37 个删除按钮均显示红色填充；运行态保留同一贴图并具有 `disabled`、`not-allowed` 与灰化滤镜。820×732 下删除填充仍可见，root/body/main 横向溢出均为 0；最终标签 console warn/error=0。不发布的候选预演还在真实 v0.5.1→0.5.2 Web 升级后从生产 bundle 命中更新提醒、配置筛选和新版本卡片契约。
+- Node 24 Linux 洁净安装后的全部 17 组前端状态回归、production audit/build 均通过。应用内 Browser 在默认视口实际点击「添加模组」与「配置模组」：2 个更新徽标、状态条和两条当前→最新外链均存在；配置页为 37 张图片卡、桌面首行 2 张、旧右栏计数 0，四类筛选中“有问题 1”只留下 Custom Companions。已停止态 37 个删除按钮均显示红色填充；运行态保留同一贴图并具有 `disabled`、`not-allowed` 与灰化滤镜。820×732 下删除填充仍可见，root/body/main 横向溢出均为 0；最终标签 console warn/error=0。正式候选 `31945655119` 还在真实 v0.5.1→v0.5.2 Web 升级后从 production bundle 命中更新提醒、配置筛选和新版本卡片契约。
 - 更新提醒必须继续留在 Mod 工作台，不扩展浏览器/系统通知；卡片图片失败应保持固定占位尺寸。配置写操作仍受管理员、存档、停服与 `canToggle` 约束，不能为了整卡交互把开关或批量按钮的独立语义合并掉。
+- `v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1` 已正式发布；Compatibility `31945655121`、自动 Tag `31946063809`、正式提升 `31946073920` 全绿，三仓版本/`latest` 统一 digest=`sha256:42b5dae824f63d3b5ba44a1f33704a622a62c4d6170225d52a63ac39147aaaed`。正式镜像首次/重启与 GitHub Release 已复核，提醒仍仅存在于页面内。
 
 # DOCS-PORTAL-0.5.0 接手记录（2026-08-16，completed，已上线）
 

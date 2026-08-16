@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.5.0`（commit `9b18dd3fe5192692548bf11a85010dd35303da93`）。它完整包含 v0.4.19 的 none/global/role 玩家加入保护、角色独立密码与旧全服密码兼容，并新增存档导入 strict 停机证明和崩溃恢复、真实 `lastSeen` 语义，以及 Control 0.3.4 默认保留虚拟主机农舍等级。候选 workflow `31899107629`、正式提升 workflow `31899874927` 和三仓统一 digest `sha256:92ea973d55c1f63b4eb356652d491f8d37ef5f69112df1f19c161e4b0e9b611a` 已固定；发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.5.2`（commit `51fd82459e4ac8afbf362f7ad12c0651937879a1`）。它在既有玩家保护、存档事务恢复和 Control 主机兼容能力上，新增按本地清单通过 SMAPI 检查 Mod 更新的页内提醒，并把配置 Mod 页面重构为全宽双列图片卡、筛选与明确的红色删除操作；不会发送系统通知或自动替换 Mod。候选 workflow `31945655119`、正式提升 workflow `31946073920` 和三仓统一 digest `sha256:42b5dae824f63d3b5ba44a1f33704a622a62c4d6170225d52a63ac39147aaaed` 已固定；发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程。完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

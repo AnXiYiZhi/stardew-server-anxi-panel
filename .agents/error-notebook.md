@@ -2,6 +2,37 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-16：深层 volume mount 预创建 Git clone 目标目录
+
+- 环境：Docker Desktop、`node:24-alpine`，用任务 volume 和 `git clone --shared --no-checkout` 隔离官网构建。
+- 错误模式：同时把工作卷挂到 `/work`、依赖卷挂到 `/work/repo/website/node_modules`，再尝试 clone 到 `/work/repo`。
+- 症状 / 退出码：Docker 为深层 mount 预先创建 `/work/repo/website`，`git clone` 报 `destination path '/work/repo' already exists and is not an empty directory` 并退出 128；构建尚未开始，正常 `finally` 已把 0 个残留容器和 0 个残留 volume 复核闭环。
+- 根因：容器启动阶段会先物化所有 mount target 及其父目录，不能把待创建的 clone 目录同时作为另一挂载点的祖先。
+- 正确做法：依赖卷挂到独立 `/modules`；先 clone 到全空目录并覆盖当前源码，再把 `/modules` 链接为 package 的 `node_modules`。
+- 预防检查：clone/copy 的目标必须在容器启动后仍为空或不存在；任何深层 mount target 都先检查它会创建哪些父目录。
+- 适用范围：Docker 隔离 Git clone、Node `node_modules` volume、构建缓存和所有嵌套挂载布局。
+
+## 2026-08-16：未读取 `package.json` 就猜测 npm 构建脚本名
+
+- 最近复发/补充：改用正确的 `npm run docs:build` 后，未先确认当前 Windows 工作树没有 `website/node_modules`，命令以 `vitepress is not recognized` 退出 1；没有进入构建或修改源码。按项目规则改用任务专属 Node 24 Linux source/dependency volume 执行洁净 `npm ci + npm run docs:build`，避免把临时依赖和 VitePress 产物写入工作树。
+- 环境：PowerShell 7、`website/` VitePress 官网，v0.5.2 发布证据收尾。
+- 错误模式：在仓库已有 `website/package.json` 的情况下，直接按常见约定执行 `npm run build`，没有先读取实际 scripts。
+- 症状 / 退出码：npm 报 `Missing script: "build"` 并退出 1；尚未进入 VitePress 构建，源码、产物、发布 tag 与镜像均未变化。
+- 根因：本项目官网脚本名是 `docs:build`，不能从工具类型推断为通用 `build`。
+- 正确做法：先定位并读取目标 package 的 `scripts`，在 `website/` 执行 `npm run docs:build`；原生命令后继续显式检查 `$LASTEXITCODE`。
+- 预防检查：首次进入任一 Node 子项目时先读取其 `package.json`，只能使用当前文件声明的脚本名，并确认依赖二进制存在；工作树未安装依赖时直接选择项目约定的洁净 Linux 容器，不要从相邻 `frontend/` 或历史命令复制入口或假定依赖已安装。
+- 适用范围：frontend、website、浏览器扩展及仓库内其它独立 Node package。
+
+## 2026-08-16：PowerShell 对多行原生命令输出逐元素执行 `-notmatch`
+
+- 环境：PowerShell 7、GitHub CLI，更新并复核 v0.5.2 Release 正文。
+- 错误模式：把 `gh release view --jq .body` 的多行原生命令输出直接赋给变量，再用 `$body -notmatch 'pattern'` 当作单个布尔值。
+- 症状 / 退出码：`gh release edit` 已成功并返回正式 Release URL，但正文数组中其它不匹配行被 `-notmatch` 返回为非空数组，`if` 因而虚假抛出 `release notes verification failed`；tag、资产、digest 未改变。
+- 根因：PowerShell 比较运算符对数组逐元素过滤，不会先把多行输出隐式拼成一个字符串。
+- 正确做法：先用 `$bodyText = (@($bodyLines) -join "`n")` 规范化，再对 `$bodyText` 做标量 `-match/-notmatch`；或解析结构化 JSON 后逐字段断言。
+- 预防检查：凡原生命令可能输出多行，断言前打印变量运行时类型/元素数；需要全文匹配时显式 join，不能把数组比较结果直接交给 `if`。
+- 适用范围：`gh`、`git log/show`、Docker logs 和其它多行 CLI 文本核验。
+
 ## 2026-08-16：jq `//` 把合法布尔 false 当成缺失值
 
 - 环境：Docker DinD 内 `scripts/tests/test_release_candidate_upgrade.sh`，验证升级后的 Mod 更新响应。
@@ -21,6 +52,16 @@
 - 正确做法：继续使用已验证的 `const r = await tools.exec_command({ cmd: "...", workdir: "...", shell: "pwsh", yield_time_ms: 30000, max_output_tokens: 12000 });` 骨架，只替换命令字符串。
 - 预防检查：发送前检查对象键均为合法 JavaScript 标识符或完整成对引号，尤其核对多行命令后的最后两个数值字段；解析错误视为零执行，先确认无外部状态变化再重发。
 - 适用范围：所有 `functions.exec` raw JavaScript 工具编排调用。
+
+## 2026-08-16：PowerShell 原生命令 stderr 对象未先转成字符串
+
+- 环境：PowerShell 7，只读探测新 SSH 目标的 22000 端口是否为 HTTP 服务。
+- 错误模式：把 `curl.exe ... 2>&1` 的输出直接收进数组并嵌入 `[pscustomobject]` 后执行 `ConvertTo-Json`；PowerShell 将原生 stderr 包装成带完整异常与调用上下文的 `ErrorRecord`，而不是普通字符串。
+- 症状 / 退出码：curl 正确以 28 超时且没有远端响应，但 JSON 输出递归展开 `SerializedRemoteException`、`InvocationInfo` 等内部对象，触发深度截断警告并产生无关的大段诊断；请求只读，远端和本地产品状态均未变化。
+- 根因：没有在捕获原生命令合并输出的第一层固定文本边界，误以为 `2>&1` 在 PowerShell 中一定得到字符串。
+- 正确做法：使用 `@(& $native ... 2>&1 | ForEach-Object { $_.ToString() })` 立即把每项转成文本，同时单独保存并投影 `$LASTEXITCODE`；后续 22000 SSH 协议探针采用该形态，只输出相关握手行。
+- 预防检查：任何要进入 JSON、表格或日志的原生命令 stderr 都先显式 `.ToString()`，并限制行数/字段；不得把 `ErrorRecord` 或异常对象直接嵌入通用诊断 DTO。
+- 适用范围：PowerShell 7 下的 curl、ssh、docker、git 等原生命令探针及其结构化输出。
 
 ## 2026-08-16：组合检索后仍按记忆读取不存在的源码路径
 
@@ -133,6 +174,7 @@
 
 ## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
 
+- 最近复发/补充：同一 `v0.5.2` 发布后 smoke 补记中，又手抄长行时漏掉 `healthy` 与“且”之间的空格，`apply_patch` 再次校验失败并安全零修改。此后本轮错题补记只允许以章节标题作唯一上下文插入，禁止附带任何既有长条目。
 - 最近复发/补充：2026-08-16 补记 website `npm ci` 的已知文件锁时，手写既有长行上下文漏掉了 `Rolldown` 与“原生”之间的空格，`apply_patch` 因校验失败安全零修改。随后只使用刚由 `rg` 确认的稳定章节标题作最小锚点；错题本长条目不得从工具输出手抄为补丁上下文。
 - 最近复发/补充：2026-08-16 给 `ImportJournal` 增加主农舍床失败回滚字段时，未先读取当前字段对齐就从摘要猜了 `RecoveryState` 周围空白，并把常量、字段与三个终态判断合在同一补丁；`apply_patch` 因字段空白不匹配而整体安全拒绝，零修改。随后用 `rg` 定位精确行并按常量、字段、终态判断拆分小补丁；代码文件也必须先读取真实邻域，不能只凭符号名和记忆构造长 hunk。
 - 最近复发/补充：2026-08-16 补记生产 SSH 诊断错题时，把三个相距很远的 hunk 合并为一个补丁，并把真实上下文中的 ASCII `...` 误写成 Unicode 省略号 `…`，导致整份补丁校验失败且零修改。确认目标邻域后改为按位置拆成三个独立补丁并全部成功；长文档补丁既要复制精确字符，也要遵守多位置默认拆分规则。
@@ -1303,6 +1345,8 @@
 
 ## 2026-07-31：精简 Node Alpine 缺少 VitePress `lastUpdated` 所需 Git
 
+- 最近复发/补充：同一轮修正 Git 缺失时又直接把宿主 `.git` 复制到任务 volume；`git count-objects -vH` 随后才显示 74934 个松散对象、约 1.58 GiB，`cp` 在 Docker Desktop bind→volume I/O 中持续处于 D 状态。受控 Ctrl+C 终止 PTY 后外层 PowerShell `finally` 未执行，按 `sap.task=v052-evidence-site-retry-20260816` 检查完整 inspect/owner 后精确删除 1 个容器和 2 个 volume，终态为 0。隔离构建需要历史时先检查对象库规模，改用 `git clone --shared --no-checkout` 引用只读宿主对象库，再覆盖当前网站源码；不得整目录复制巨大 `.git`，也不能假设终止 PTY 会执行脚本 finally。
+- 最近复发/补充：2026-08-16 v0.5.2 发布证据收尾在任务专属 `node:24-alpine` 可写卷完成 `npm ci` 后，又未执行项目规则明确要求的 Git 探针，VitePress 读取 `docs/changelog.md` 时再次以 `spawn git ENOENT` 退出 1；`finally` 已把任务容器和两个 volume 精确清零。后续从 fresh volume 重跑时必须在同一个构建容器先 `apk add --no-cache git` 并执行 `git --version`，不能只修 npm 依赖。
 - 最近复发/补充：2026-08-09 候选收口又把官网源码整体只读挂载进 Node 20 容器，即使把输出改到 `/tmp/docs-dist`，Vite 加载 `config.ts` 仍因无法创建 `config.ts.timestamp-*.mjs` 以 `EROFS` 退出。已改为在容器内把网站复制到任务专属可写目录，并只读复用宿主 Git 对象库；Vite/VitePress 构建不能只给 `dist` 与 `node_modules` 写权限。2026-08-01 的 linked worktree 构建也曾命中同一问题；不要在只读源码挂载上继续补零散写目录。
 - 最近复发/补充：2026-08-01 官网 Hero 最终干净构建把 Windows linked worktree 只读挂到 `/repo`，其 `.git` 文件仍指向 `E:/.../.git/worktrees/...`，容器内 `git -C /repo` 报 `not a git repository`，尚未进入 npm 构建。linked worktree 跨 Windows/Linux 挂载时必须同时只读挂载主仓库 `.git`，并显式设置容器内 `GIT_DIR=/git-common/worktrees/<name>`、`GIT_WORK_TREE=/repo`；不能认为挂入工作树目录就自动获得可解析的 Git 元数据。
 - 最近复发/补充：2026-08-01 官网 Hero 增量预览复用了保存 `/work` 的依赖 volume，却换成新的临时 Node Alpine 构建容器，误以为首次容器执行过的 `apk add git` 也会随 volume 保留；增量 build 再次以 `spawn git ENOENT` 失败。系统包属于容器层而非工作 volume，每一个新的构建容器都必须先安装并探测 `git --version`，不能从复用 `node_modules` 推断 Git 仍存在。
@@ -2428,6 +2472,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-16 `v0.5.2` 正式 digest 独立 smoke 前，OCI version/revision/created 实际均精确，但包装器再次把 `docker image inspect | ConvertFrom-Json` 产生的 `System.DateTime` created 直接与 `2026-08-16T11:55:58Z` 字符串比较并虚假抛出 identity mismatch。断言发生在 volume/container 创建前，独立投影确认两者均不存在。重跑使用 `ConvertFrom-Json -DateKind String` 同时覆盖 OCI 与 `/api/version`，不得只规范化其中一处。
 - 最近复发/补充：2026-08-15 文档收口后的最终 GHCR digest smoke 已 healthy 且三个 API 实际返回正确，但包装器又用默认 `ConvertFrom-Json` 后把 `/api/version.buildDate` 直接与 ISO 字符串比较，虚假抛出 identity mismatch；`finally` 已删除精确容器和 volume，owner 资源复核为 0。重跑必须直接使用已经验证的 `ConvertFrom-Json -DateKind String`，不得因“刚在同版本早先 smoke 修过”就省略该参数。
 - 最近复发/补充：2026-08-15 `v0.4.18` 正式镜像首次/重启响应实际都返回精确 build date，但发布后包装器又把默认 `ConvertFrom-Json` 自动生成的 `DateTime` 与原始 ISO 字符串直接比较，导致两轮正常 smoke 在资源已安全清理后虚假报 mismatch。最终使用 PowerShell 7 的 `ConvertFrom-Json -DateKind String` 保留原始时间文本并完整重跑通过。凡断言 JSON ISO 字段，优先固定 `-DateKind String`；否则必须走既有 UTC/invariant helper，不得再直接 `-eq/-ne`。
 - 最近复发/补充：2026-08-14 新增 Windows 候选包装器时再次直接比较 Docker inspect 的 OCI created 与参数字符串；候选 version/revision/created 实际精确，但包装器在 fresh 前虚假中止。精确 owner 检查确认容器、卷、任务目录为零；修复为统一 `ConvertTo-UtcIsoString` 后再比较。该错误已经多次复发且规则已在 `AGENTS.md`，后续 PowerShell 候选脚本禁止出现任何未经 helper 的 ISO 时间 `-eq/-ne`。
@@ -3053,6 +3098,7 @@
 
 ## 2026-08-15：把不存在的 `isLatest` 字段传给 `gh release view --json`
 
+- 最近复发/补充：2026-08-16 `v0.5.2` 发布后独立核验再次把 `isLatest` 传给 `gh release view --json`；同一组合命令前半 registry 名称检索成功，Release 子命令随后在返回任何 Release 数据前以 `Unknown JSON field` 退出，外部状态未改变。修正为先用当前 CLI 支持的字段读取指定 Release，再用不带 tag 的 `gh release view --json tagName` 独立比较 latest；本任务余下不得再使用该字段。
 - 环境：PowerShell 7、GitHub CLI，v0.4.18 发布后最终只读核验。
 - 错误模式：凭 API 响应字段记忆把 `isLatest` 加入 `gh release view --json` 字段列表，没有先核对当前 CLI 支持字段；组合脚本在该命令退出后停止，未产生外部修改。
 - 症状 / 退出码：命令无 JSON 输出并非 Release 缺失，而是 CLI 不支持该字段；`gh release view --help` 的可用字段列表不含 `isLatest`。
