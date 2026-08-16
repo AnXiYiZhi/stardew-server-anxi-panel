@@ -350,6 +350,7 @@
 
 ## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
 
+- 最近复发/补充：2026-08-16 为从共享脏错题本中只暂存 v0.5.1 官网验收的两条复发记录，手写补丁把每个实际 5 行旧侧上下文声明成 6 行，`git apply --cached --check` 在 line 11 报 `corrupt patch` 并保持 index 不变。逐行按前缀重算为 `-5/+6` 后，check 与实际 partial staging 均成功；即使只有两个短 hunk，也不能凭肉眼估计 header 计数。
 - 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。
 - 错误模式：手写 `git apply --cached` 补丁时沿用原始 diff 的 `@@ -1098,9 +1104,16 @@`，却遗漏 hunk 末尾作为第 9 条旧行的下一段代码围栏上下文。
 - 症状 / 退出码：`git apply --cached --check` 在应用前报 `corrupt patch at line 56`、退出 1；暂存区保持为空，工作树文件未变化。
@@ -621,6 +622,7 @@
 
 ## 2026-08-13：Web 工具拒绝直接打开精确 GitHub Pages URL
 
+- 最近复发/补充：2026-08-16 发布 v0.5.1 官网更新后，再次把已知 GitHub Pages 首页与 changelog URL 直接交给 Web `open`，两项都在取页前被 `URL is not safe to open` 拒绝；Pages workflow 已成功，站点没有因此受影响。按既有正确做法停止该工具形态，改用 PowerShell 有界 HTTP 请求验证线上 200、版本号和发布标题。
 - 最近复发/补充：2026-08-13 拆分 Windows 部署专页时，把已知 Microsoft WSL 安装文档 URL 直接交给 Web `open`，Docker 两个官方地址正常返回，但 Microsoft 地址在取页前被同一安全门禁拒绝。没有重放直接打开；改为限定 `learn.microsoft.com` 的搜索查询取得官方结果，再从搜索结果读取主来源。对不同域名不能从同批其它 URL 成功推断精确 `open` 一定可用。
 - 环境：Codex Web 工具，v0.4.14 post-release GitHub Pages 线上 HTTP 验收。
 - 错误模式：把已知的两个精确 Pages URL 直接提交给 Web `open`。
@@ -1564,6 +1566,7 @@
 
 ## 2026-08-01：把 PowerShell 自动变量当成任务变量
 
+- 最近复发/补充：2026-08-16 v0.5.1 官网线上验收把首页响应再次命名为 `$home`，PowerShell 因变量名大小写不敏感而命中只读 `$HOME`，在首个 HTTP 响应赋值时退出；网站和仓库均未被该命令修改。后续必须沿用已有 `$portalHomeResponse` / `$portalChangelogResponse` 命名，任务变量声明前也要执行系统变量冲突检查。
 - 最近复发/补充：2026-08-13 v0.4.14 官网线上 HTTP 验收首次把首页响应命名为 `$home`；PowerShell 变量名大小写不敏感，实际命中只读自动变量 `$HOME`，赋值阶段报错，随后对空值调用字符串方法继续报错。命令没有外部写入；随即改为 `$portalHomeResponse` / `$portalChangelogResponse` 并只输出布尔断言。任务变量必须使用业务前缀，不能用 `$home`、`$host` 等看似普通但会命中自动变量的名称。
 - 环境：Windows，PowerShell 7，整理 Docker 候选镜像检查结果。
 - 错误模式：用 `$Host` 保存候选镜像检查对象。
