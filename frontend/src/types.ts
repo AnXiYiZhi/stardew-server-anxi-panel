@@ -1025,6 +1025,26 @@ export type ModsListResult = {
   compatibilityWarnings?: ModCompatibilityWarning[]
 }
 
+export type ModUpdateInfo = {
+  id: string
+  uniqueId: string
+  name: string
+  folderName: string
+  currentVersion: string
+  latestVersion: string
+  url: string
+}
+
+export type ModUpdateCheckResult = {
+  status: 'ok' | 'error'
+  checkedAt?: string
+  updates: ModUpdateInfo[]
+  eligibleCount: number
+  skippedCount: number
+  checkError?: string
+  cached: boolean
+}
+
 export type ModUploadSummary = {
   archiveCount: number
   discoveredCount: number

@@ -1679,6 +1679,14 @@
   height: 32px;
 }
 
+.sd-mods-nexus-card .sd-mods-card-actions > .sd-btn-delete {
+  background-color: #b94432;
+  background-image: url('/assets/stardew/ui/buttons/button_server_stop_red_blank.png');
+  background-repeat: no-repeat;
+  color: #fff6dc;
+  text-shadow: 0 1px 0 rgba(89, 20, 12, 0.82);
+}
+
 .sd-mods-search-footer {
   min-height: 24px;
 }
@@ -2259,4 +2267,377 @@
 .sd-mods-compatibility-warning span,
 .sd-mods-compatibility-warning small {
   overflow-wrap: anywhere;
+}
+
+/* MOD-UPDATE-CHECK-1 / FE-MOD-CONFIG-CARDS-1 final page overrides. */
+
+.sd-mods-tab-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.sd-mods-tab-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 6px;
+  border: 1px solid #8b561d;
+  border-radius: 999px;
+  background: #f2b33d;
+  box-shadow: inset 0 1px 0 rgb(255 244 177 / 75%), 0 1px 0 rgb(84 44 11 / 20%);
+  color: #4b280c;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.sd-mods-update-notice {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid #bda96f;
+  border-radius: 7px;
+  background: rgba(246, 238, 204, 0.72);
+  color: #513718;
+}
+
+.sd-mods-update-notice-found {
+  border-color: #c48728;
+  background: linear-gradient(90deg, rgba(255, 223, 128, 0.58), rgba(255, 246, 211, 0.74));
+  box-shadow: inset 4px 0 0 #d98f20;
+}
+
+.sd-mods-update-notice-error {
+  border-color: #c07b48;
+}
+
+.sd-mods-update-notice-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid #80501f;
+  border-radius: 5px;
+  background: #f7d06b;
+  box-shadow: inset 0 0 0 2px rgba(255, 247, 196, 0.75);
+  color: #5c3212;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.sd-mods-update-notice-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sd-mods-update-notice-main strong {
+  font-size: 14px;
+}
+
+.sd-mods-update-notice-main span {
+  color: #806444;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.sd-mods-update-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-mods-update-notice-actions button,
+.sd-mods-update-card-row button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.sd-mods-update-tag {
+  border-color: #b66e19;
+  font-weight: 900;
+}
+
+.sd-mods-update-card-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 1px solid rgba(188, 119, 31, 0.42);
+  border-radius: 5px;
+  background: rgba(255, 223, 126, 0.35);
+  color: #684018;
+  font-size: 12px;
+}
+
+.sd-mods-settings-layout {
+  display: block;
+}
+
+.sd-mods-settings-layout .sd-mods-enable-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d3b875;
+  border-radius: 7px;
+  background: rgba(255, 247, 215, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 253, 231, 0.58);
+}
+
+.sd-mods-settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sd-mods-settings-head .sd-mods-section-title {
+  margin: 0;
+}
+
+.sd-mods-settings-subtitle {
+  margin: 4px 0 0;
+  color: #81694d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sd-mods-settings-context {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid #bca871;
+  border-left-width: 4px;
+  border-radius: 5px;
+  background: rgba(247, 238, 202, 0.76);
+  color: #5f4527;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sd-mods-settings-context img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sd-mods-settings-context-ready {
+  border-color: #6fa65e;
+  background: rgba(221, 240, 193, 0.62);
+  color: #34552b;
+}
+
+.sd-mods-settings-context-warn {
+  border-color: #ce8a2f;
+  background: rgba(255, 225, 150, 0.56);
+}
+
+.sd-mods-settings-context-neutral {
+  border-color: #a99167;
+}
+
+.sd-mods-settings-tools {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.sd-mods-settings-tools .sd-mods-installed-controls {
+  margin: 0;
+}
+
+.sd-mods-settings-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sd-mods-settings-filter {
+  min-height: 36px;
+  padding: 5px 10px;
+  border: 1px solid #bda16b;
+  border-radius: 5px;
+  background: rgba(255, 250, 225, 0.64);
+  color: #674723;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sd-mods-settings-filter span {
+  color: #9a6b2c;
+}
+
+.sd-mods-settings-filter-active {
+  border-color: #477d39;
+  background: #668e4f;
+  box-shadow: inset 0 0 0 1px rgba(226, 248, 196, 0.48);
+  color: #fff8dc;
+}
+
+.sd-mods-settings-filter-active span {
+  color: #f6df8c;
+}
+
+.sd-mods-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.sd-mods-config-card {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 82px;
+  padding: 8px 9px;
+  border: 1px solid rgba(158, 117, 62, 0.38);
+  border-radius: 7px;
+  background: rgba(255, 251, 229, 0.63);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 244, 0.52);
+}
+
+.sd-mods-config-card-enabled {
+  border-left: 4px solid #62934d;
+  padding-left: 6px;
+}
+
+.sd-mods-config-picture,
+.sd-mods-config-picture img {
+  width: 54px;
+  height: 54px;
+  box-sizing: border-box;
+}
+
+.sd-mods-config-picture {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid #a77b43;
+  border-radius: 6px;
+  background: repeating-linear-gradient(135deg, #ead7a6 0 7px, #dfc58c 7px 14px);
+  box-shadow: inset 0 0 0 2px rgba(255, 248, 218, 0.65);
+}
+
+.sd-mods-config-picture img {
+  object-fit: cover;
+}
+
+.sd-mods-config-picture span {
+  color: #735025;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.sd-mods-config-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sd-mods-config-version {
+  flex: 0 0 auto;
+  color: #92703e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sd-mods-config-state {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+}
+
+.sd-mods-config-state .sd-mod-toggle {
+  min-width: 50px;
+  min-height: 44px;
+}
+
+.sd-mods-config-card .sd-mods-enable-dependencies {
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.sd-mods-config-card .sd-mods-dependency-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container sd-main-scroll (max-width: 1040px) {
+  .sd-mods-settings-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-mods-settings-filters {
+    justify-content: flex-start;
+  }
+}
+
+@container sd-main-scroll (max-width: 760px) {
+  .sd-mods-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container sd-main-scroll (max-width: 680px) {
+  .sd-mods-update-notice {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .sd-mods-update-notice-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .sd-mods-update-notice-actions button {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .sd-mods-settings-head {
+    flex-direction: column;
+  }
+
+  .sd-mods-settings-head .sd-mods-enable-actions,
+  .sd-mods-settings-head .sd-mods-enable-actions button {
+    width: 100%;
+  }
+
+  .sd-mods-settings-filter {
+    flex: 1 1 calc(50% - 6px);
+    min-height: 44px;
+  }
+
+  .sd-mods-config-card {
+    grid-template-columns: 54px minmax(0, 1fr) 52px;
+    gap: 8px;
+  }
+
+  .sd-mods-update-card-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }

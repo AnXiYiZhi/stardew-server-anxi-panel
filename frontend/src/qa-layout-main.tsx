@@ -118,12 +118,44 @@ const saves = {
   ],
 }
 
+const qaModNames = ['Content Patcher', 'SpaceCore', 'Custom Companions', 'UI Info Suite 2', 'Lookup Anything']
+const qaModUniqueIDs = ['Pathoschild.ContentPatcher', 'spacechase0.SpaceCore', 'PeacefulEnd.CustomCompanions', 'Annosz.UiInfoSuite2', 'Pathoschild.LookupAnything']
+const qaModPictures = [
+  '/assets/stardew/ui/icons/icon_nav_install_package_image2.png',
+  '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png',
+  '/assets/stardew/ui/icons/icon_nav_mods.png',
+]
 const mods = {
   restartRequired: false,
   mods: Array.from({ length: 37 }, (_, i) => ({
-    id: `mod_${i}`, uniqueId: `Author.Mod${i}`, name: `示例模组 ${i + 1}`, version: '1.0.0', author: 'Pathoschild',
-    folderName: `Mod${i}`, enabled: i % 9 !== 0, canToggle: true, syncKind: 'client_optional', builtIn: i < 1,
+    id: `mod_${i}`,
+    uniqueId: qaModUniqueIDs[i] ?? `Author.Mod${i}`,
+    name: qaModNames[i] ?? `示例模组 ${i + 1}`,
+    version: i < 2 ? '1.0.0' : '2.3.1',
+    author: i < 5 ? 'Pathoschild' : 'Junimo Studio',
+    folderName: qaModNames[i]?.replaceAll(' ', '') ?? `Mod${i}`,
+    enabled: i % 9 !== 0,
+    canToggle: true,
+    syncKind: i % 3 === 0 ? 'server_only' : i % 3 === 1 ? 'client_required' : 'unknown',
+    builtIn: false,
+    pictureUrl: qaModPictures[i % qaModPictures.length],
+    updateKeys: [`Nexus:${1900 + i}`],
+    dependencies: i === 2
+      ? [{ uniqueId: 'spacechase0.SpaceCore', minimumVersion: '1.20.0', required: true, installed: true, enabled: false, installedVersion: '1.19.0', satisfied: false, status: 'disabled' }]
+      : [],
   })),
+}
+
+const modUpdates = {
+  status: 'ok',
+  checkedAt: iso(3),
+  cached: false,
+  eligibleCount: 37,
+  skippedCount: 0,
+  updates: [
+    { id: 'mod_0', uniqueId: 'Pathoschild.ContentPatcher', name: 'Content Patcher', folderName: 'ContentPatcher', currentVersion: '1.0.0', latestVersion: '2.7.2', url: 'https://www.nexusmods.com/stardewvalley/mods/1915' },
+    { id: 'mod_1', uniqueId: 'spacechase0.SpaceCore', name: 'SpaceCore', folderName: 'SpaceCore', currentVersion: '1.0.0', latestVersion: '1.28.1', url: 'https://www.nexusmods.com/stardewvalley/mods/1348' },
+  ],
 }
 
 const health = {
@@ -428,6 +460,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/saves\/preflight$/, { canCreate: true, canUpload: true, warnings: [] }],
   [/\/saves\/upload-preview$/, { token: 'qa-save-import-token', saveName: 'ImportedFarm_123', preview: { name: 'ImportedFarm_123', farmerName: 'OldHost', farmName: 'Imported Farm', gameYear: 3, gameSeason: 'fall', gameDay: 18, farmType: 'standard', fileSizeBytes: 25165824, modifiedAt: iso(5) } }],
   [/\/saves$/, saves],
+  [/\/mod-updates(?:\/check)?$/, modUpdates],
   [/\/mods$/, mods],
   [/\/mods\/nexus\/install$/, { jobId: 'job_mobile_nexus_install' }],
   [/\/mods\/nexus\/extension\/download$/, {}],

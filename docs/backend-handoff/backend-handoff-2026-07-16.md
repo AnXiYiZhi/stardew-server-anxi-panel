@@ -15,6 +15,18 @@
 - 不要把测试观测到的 `(9,8)` 搬进产品代码，也不要从 XML 或 Farm/cabin 猜主屋床。上游若改变 `DefaultBedPosition`、FarmHouse/BedFurniture API 或精确自动睡眠方法，当前逻辑应 fail closed，需重新审查真实程序集与地图。
 - `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0` 已正式发布：Compatibility `31942102879`、候选 `31942102917`、annotated Tag `31942624901`、正式提升 `31942631860` 全部成功；artifact `release-candidate-0.5.1-427a295ab905` 固定 build date=`2026-08-16T10:36:46Z` 与 digest=`sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`，提升没有 rebuild。
 
+# MOD-UPDATE-CHECK-1 后端接手记录（2026-08-16，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `registry.ModUpdateInfo/ModUpdateCheckResult` 与 Stardew driver `CheckModUpdates` 已落地；Web 新增已登录 GET `/api/instances/:id/mod-updates` 和管理员 POST `/api/instances/:id/mod-updates/check`。核心实现位于 `internal/games/stardew_junimo/mod_updates.go`，路由与薄 handler 位于 `internal/web/{instance_handlers,mod_update_handlers}.go`。
+- driver 扫描启用/禁用物理 Mod，排除内置/损坏/无更新键条目，按 50 条请求 SMAPI v4 update service。根级 `apiVersion` 优先取 Control `options.json` 的实际值，未运行过时使用 v4 基线 `4.0.0`；实际 API/game version 与 Linux platform 和本地清单共同进入缓存指纹。结果使用 6 小时 TTL 原子缓存到 `.local-container/control/mod-updates.json`；更新链接只接受 HTTP(S)。外部失败用 `status=error` 带回旧结果，避免主 Mod 列表被第三方服务拖垮。
+
+## 如何验证、下一步注意事项
+
+- 五条 driver 专项覆盖缓存复用、清单/运行时版本失效、成功后服务失败保留旧值、不安全 URL 与无 eligible 条目不出网；Web 专项覆盖匿名 401、普通用户读/强刷 403、管理员强刷和错误方法 405。任务专属 Linux Go 1.25 的后端全量 test/vet/build 已通过；不发布的完整候选预演也已从 v0.5.1 完成 unhealthy 回滚、healthy 升级，并在升级后的 Panel 通过受控 SMAPI 首次强刷与缓存 GET。正式结果仍只接受推送后 immutable candidate proof。
+- 不要把该能力改成 Web handler 直接请求 Nexus/SMAPI，也不要复用用户 Nexus Personal API Key。SMAPI API 尚属外部契约，字段或端点变化时保持页内降级；若未来做无人值守更新，必须另立下载来源、签名/摘要、原子替换、回滚和运行态互斥专项，不能把本轮“提醒”隐式升级为自动安装。
+
 # v0.5.0 后端发布接手状态（2026-08-16，released）
 
 ## 改了什么、影响哪些接口/文件

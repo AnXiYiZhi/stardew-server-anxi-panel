@@ -538,6 +538,24 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		s.handleSavesUploadCommitAndStart(w, r, instanceID)
 		return
 	}
+	// GET /api/instances/:id/mod-updates
+	if len(parts) == 2 && parts[1] == "mod-updates" {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModUpdatesGet(w, r, instanceID)
+		return
+	}
+	// POST /api/instances/:id/mod-updates/check
+	if len(parts) == 3 && parts[1] == "mod-updates" && parts[2] == "check" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleModUpdatesCheck(w, r, instanceID)
+		return
+	}
 	// GET /api/instances/:id/mods
 	if len(parts) == 2 && parts[1] == "mods" {
 		if r.Method != http.MethodGet {

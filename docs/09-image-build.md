@@ -1,3 +1,33 @@
+# v0.5.2 MOD-UPDATE-CHECK-1 / FE-MOD-CONFIG-CARDS-1 正式候选计划（2026-08-16，candidate pending）
+
+## 变更清单与受影响链路
+
+- 下一补丁版本固定由自动候选从当前正式版 `v0.5.1` 递增为 `0.5.2`；不手工创建或移动 tag。后端新增登录用户 GET `/api/instances/:id/mod-updates`、管理员 POST `/api/instances/:id/mod-updates/check`，Stardew driver 扫描启用/禁用物理 Mod，并通过 SMAPI v4 update service 取得建议版本。成功结果按本地 Mod 清单、实际 SMAPI API/game version 与 Linux platform 指纹缓存 6 小时；上游失败保留上次成功结果，不自动下载或替换 Mod，不读取 Nexus Key。
+- 发布前真实 SMAPI 探针发现根级 `apiVersion` 缺失时上游不会返回 `suggestedUpdate`；实现已在候选前修正为优先读取 Control `options.json` 的实际 `apiVersion/gameVersion`，未生成运行时快照时保守使用与 v4 端点匹配的 `4.0.0`，并把这些运行时条件纳入缓存指纹。公开 Content Patcher 探针已得到 HTTPS 更新建议；测试同时锁定请求根级 `apiVersion`、Linux platform 与运行时版本变化后的缓存失效。
+- 前端只在 Mod 工作台提供页签数量徽标、页内状态条、可更新筛选与外链；没有系统/浏览器通知。配置页删除无效右侧说明栏，改成全宽双列小图片卡、上下文提示、搜索/排序/状态筛选与原有安全开关；窄屏单列。已安装卡片的删除按钮使用既有红色像素填充，运行态仍灰化禁用。
+- 变更影响 backend Web/driver、frontend Mod 页面、响应式/QA fixture、发布升级 E2E 和长期文档；没有数据库 migration、Compose/部署格式、runtime manifest、Control/SMAPI/Junimo 制品或长期业务数据结构变化。因此升级版本矩阵保持唯一 `v0.5.1 → v0.5.2`，但仍必须完成同一候选的 unhealthy 回滚、healthy Web 升级和升级后 Mod 更新专项。路径选择应运行默认全量代码门禁、Stardew Junimo/SMAPI integration、frontend 全回归、website build、fresh/restart 与 updater/Docker；runtime manifest 未变，远程制品校验由脚本自动跳过。
+
+## 本版专项矩阵
+
+| 维度 | 场景 | 正式候选断言 |
+| --- | --- | --- |
+| 正常路径 | 启用/禁用物理 Mod；SMAPI 返回一个建议更新；页面进入、筛选与配置 | 根级 `apiVersion` + Mod 版本/UpdateKeys 发往受控服务；API 返回 current→latest 与安全 URL；页签徽标、只看可更新、双列图片卡和开关同时存在 |
+| 关键边界 | 内置、损坏、缺 UniqueID/版本/UpdateKeys、重复 UniqueID、零 eligible、超过 50 条；运行时 API/game version 变化 | 不合格条目不出网；零 eligible 仍返回确定空数组；请求有界分批；运行时条件变化立即使缓存失效，不继续复用旧建议 |
+| 外部服务/恢复 | 首次成功、6 小时同指纹缓存、超时/非 2xx/坏或超大响应、服务恢复 | 成功原子缓存；失败以 `status=error` 保留最后成功结果且不阻塞主 Mod 列表；恢复后管理员强刷可覆盖旧状态 |
+| 权限安全 | 匿名 GET、普通用户 GET/POST、管理员 POST；恶意建议 URL | 匿名 401、普通用户可读但强刷 403、管理员强刷成功并审计；只接受带 host 的 HTTP/HTTPS，不外发 Nexus Key、Cookie 或本地路径 |
+| 幂等/并发 | 同实例并发进入页面、上传/删除后重查、GET 与 force 交错 | driver 按实例串行；同指纹缓存稳定；清单或运行时指纹变化后重查；前端保留最后结果且无后台轮询风暴 |
+| 数据完整性 | Mod 启用/禁用目录、manifest、存档配置、SQLite | 更新检查全程只读 Mod/存档；唯一写入为实例 control 目录的原子缓存；没有自动安装、数据库 schema 或现有 Mod 状态改写 |
+| UI/响应式 | 默认桌面、820px 窄屏、服务器运行态、图片缺失 | 配置桌面两列/窄屏一列且零横向溢出；固定图片占位；删除按钮正常态红色填充、运行态保留贴图但 disabled；console 无 error/warn |
+| 升级/回滚 | `v0.5.1 → v0.5.2` unhealthy 与 healthy；升级后受控 SMAPI、缓存与前端 bundle | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 0.5.1；healthy 使用同一候选 digest；升级后真实 API 首次 POST + cached GET 与 Mod 页面契约通过 |
+| 资源清理 | 本地门禁、候选 DinD、成功/失败/回滚 | HTTP body 有界并关闭；原子临时文件不残留；仅按任务 owner/精确 Compose project 清理容器、网络、volume、bind/temp，禁止 prune |
+
+## 发布状态
+
+- 候选前状态：变更范围已限定为上述产品代码、专项/回归测试、升级 E2E 和长期文档；`main` 与 `origin/main` 在工作开始时均为 `d42fcbfe01b62cc8b0944c5d49326d7e8ee04faf`，上一正式 tag 为 `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0`。正式候选 run、artifact、digest、自动 Tag、正式提升、三仓、版本接口、Release 与资源清理证据待门禁完成后回填。
+- 候选前本地门禁：任务专属 Linux Go 1.25 环境中 `go test -p 1 ./... -count=1`（Stardew 60.377s、Web 44.540s）、`go vet ./...`、`go build ./...` 全绿；Node 24 Linux 洁净 `npm ci` 后前端 17 组状态回归、production audit/build 全绿，website production audit/build 全绿；兼容矩阵 validate/version 与 20 项单测通过。升级脚本 `bash -n`、ShellCheck 通过；公开 Content Patcher 请求向真实 SMAPI 返回 `2.9.1`、HTTPS Nexus URL 和零 errors。
+- 不发布的 `-AllowDirty` 完整候选预演以 `v0.5.1` 正式 digest 为升级源：fresh/restart、unhealthy `failed_rolled_back/health_check_failed`、healthy Web 升级、SQLite/初始化/Panel 数据/非目标容器与 volume 保持、Panel restart、升级后受控 TLS SMAPI 首次强刷 + cached GET、前端 bundle、既有 Junimo repair 与存档导入回归全部通过。首轮专项断言误用 jq `.cached // true` 把合法 `false` 当缺失而失败，产品响应本身正确；修为 `has("cached")` 后从 fresh 开始完整重跑成功，没有跳过或放宽门禁。
+- 本地预演 wrapper/trap 已清理两轮候选容器、网络、volume、bind/temp；8 个 `sap.task=mod-update-release-20260816` 洁净构建卷与本地 synthetic 镜像在核对 owner/OCI identity 后精确删除，终态均为 0。未执行 prune，未删除三个属于历史 `v046-release-20260731` owner 的非目标资源，也未触碰生产数据。
+
 # v0.5.1 HOST-BED-MANUAL-CONTROL-1 正式候选与发布结果（2026-08-16，released）
 
 ## 变更清单与受影响链路

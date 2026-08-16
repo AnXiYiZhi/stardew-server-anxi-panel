@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  checkModUpdates,
   deleteMod,
   exportMods,
   exportModSyncPack,
   exportModSyncUpdatePack,
+  getModUpdates,
   getMods,
   updateAllModsEnabled,
   updateModEnabled,
@@ -11,7 +13,7 @@ import {
   uploadMods,
 } from '../../api'
 import { errorMessage } from '../../core/helpers'
-import type { ModInfo, ModsListResult, ModSyncKind, ModUploadSummary } from '../../types'
+import type { ModInfo, ModsListResult, ModSyncKind, ModUpdateCheckResult, ModUploadSummary } from '../../types'
 import type { StardewPageProps } from './stardew-routes'
 
 type UseModsManagementOptions = {
@@ -49,9 +51,13 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
   const [syncPackBusy, setSyncPackBusy] = useState<'full' | 'update' | null>(null)
   const [syncPackError, setSyncPackError] = useState<string | null>(null)
   const [enableUpdating, setEnableUpdating] = useState<string | null>(null)
-	const [enableAllUpdating, setEnableAllUpdating] = useState<boolean | null>(null)
+  const [enableAllUpdating, setEnableAllUpdating] = useState<boolean | null>(null)
   const [enableError, setEnableError] = useState<string | null>(null)
+  const [modUpdates, setModUpdates] = useState<ModUpdateCheckResult | null>(null)
+  const [modUpdatesLoading, setModUpdatesLoading] = useState(false)
+  const [modUpdatesError, setModUpdatesError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const modInventoryFingerprintRef = useRef<string | null>(null)
 
   const loadMods = useCallback(async () => {
     setLoading(true)
@@ -68,6 +74,24 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
     }
   }, [])
 
+  const loadModUpdates = useCallback(async (force = false) => {
+    setModUpdatesLoading(true)
+    setModUpdatesError(null)
+    try {
+      const result = force ? await checkModUpdates() : await getModUpdates()
+      setModUpdates(result)
+      if (result.status === 'error') {
+        setModUpdatesError(result.checkError || '暂时无法检查 Mod 更新。')
+      }
+      return result
+    } catch (error) {
+      setModUpdatesError(errorMessage(error))
+      return null
+    } finally {
+      setModUpdatesLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!dashboardData.mods) void loadMods()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -75,6 +99,27 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
   useEffect(() => {
     if (dashboardData.mods) setData(dashboardData.mods)
   }, [dashboardData.mods])
+
+  useEffect(() => {
+    void loadModUpdates()
+  }, [loadModUpdates])
+
+  const modInventoryFingerprint = (data?.mods ?? [])
+    .filter((mod) => !mod.builtIn)
+    .map((mod) => `${mod.uniqueId ?? ''}\u0000${mod.version ?? ''}\u0000${mod.folderName}\u0000${(mod.updateKeys ?? []).join(',')}`)
+    .sort()
+    .join('\u0001')
+
+  useEffect(() => {
+    if (!data) return
+    if (modInventoryFingerprintRef.current === null) {
+      modInventoryFingerprintRef.current = modInventoryFingerprint
+      return
+    }
+    if (modInventoryFingerprintRef.current === modInventoryFingerprint) return
+    modInventoryFingerprintRef.current = modInventoryFingerprint
+    void loadModUpdates()
+  }, [data, loadModUpdates, modInventoryFingerprint])
 
   async function handleUpload() {
     if (uploadFiles.length === 0) return
@@ -84,6 +129,7 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
     try {
       const result = await uploadMods(uploadFiles)
       await loadMods()
+      void loadModUpdates(true)
       void dashboardData.refreshMods()
       setShowUpload(false)
       setUploadFiles([])
@@ -134,6 +180,7 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
       await deleteMod(confirmDelete.id)
       void dashboardData.refreshMods()
       await loadMods()
+      void loadModUpdates(true)
       setConfirmDelete(null)
     } catch (error) {
       setDeleteError(errorMessage(error))
@@ -234,6 +281,7 @@ export function useModsManagement({ dashboardData, activeSaveName }: UseModsMana
     data, loading, listError, showUpload, uploadFiles, setUploadFiles, uploadBusy, uploadError,
     uploadSuccess, confirmDelete, deleteBusy, deleteError, exportBusy, exportError, syncUpdating, syncError,
     syncPackBusy, syncPackError, enableUpdating, enableAllUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
+    modUpdates, modUpdatesLoading, modUpdatesError, loadModUpdates,
     handleUpload, openDeleteConfirm, closeDeleteConfirm, handleDeleteConfirm, handleExport, handleSyncChange,
     handleEnabledChange, handleAllEnabledChange, handleSyncPackExport,
   }

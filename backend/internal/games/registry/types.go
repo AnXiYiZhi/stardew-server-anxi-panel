@@ -302,6 +302,33 @@ type ModsListResult struct {
 	CompatibilityWarnings []ModCompatibilityWarning `json:"compatibilityWarnings,omitempty"`
 }
 
+// ModUpdateInfo describes an update suggested by SMAPI's update service for
+// one installed physical mod. The panel deliberately exposes the upstream page
+// instead of attempting an unattended replacement of local files.
+type ModUpdateInfo struct {
+	ID             string `json:"id"`
+	UniqueID       string `json:"uniqueId"`
+	Name           string `json:"name"`
+	FolderName     string `json:"folderName"`
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+	URL            string `json:"url"`
+}
+
+// ModUpdateCheckResult is returned by GET .../mod-updates and
+// POST .../mod-updates/check. Status is "ok" or "error"; an upstream failure
+// remains a successful HTTP response so the page can keep showing the last
+// known result together with CheckError.
+type ModUpdateCheckResult struct {
+	Status        string          `json:"status"`
+	CheckedAt     string          `json:"checkedAt,omitempty"`
+	Updates       []ModUpdateInfo `json:"updates"`
+	EligibleCount int             `json:"eligibleCount"`
+	SkippedCount  int             `json:"skippedCount"`
+	CheckError    string          `json:"checkError,omitempty"`
+	Cached        bool            `json:"cached"`
+}
+
 // ModUploadSummary describes the complete, atomic result of a manual upload.
 // DiscoveredCount includes valid manifests supplied for SMAPI-bundled support
 // mods; ImportedCount excludes those intentionally skipped duplicate copies.

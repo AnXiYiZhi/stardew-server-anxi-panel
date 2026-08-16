@@ -32,6 +32,7 @@ import type {
   JobsResponse,
   LifecycleJobResponse,
   ModInfo,
+  ModUpdateCheckResult,
   ModsListResult,
   ModSyncKind,
   NewGameConfig,
@@ -526,6 +527,16 @@ export function deleteSaveBackup(backupName: string, instanceId = defaultInstanc
 
 export function getMods(instanceId = defaultInstanceId) {
   return request<ModsListResult>(`/api/instances/${encodeURIComponent(instanceId)}/mods`)
+}
+
+export function getModUpdates(instanceId = defaultInstanceId) {
+  return request<ModUpdateCheckResult>(`/api/instances/${encodeURIComponent(instanceId)}/mod-updates`)
+}
+
+export function checkModUpdates(instanceId = defaultInstanceId) {
+  return request<ModUpdateCheckResult>(`/api/instances/${encodeURIComponent(instanceId)}/mod-updates/check`, {
+    method: 'POST',
+  })
 }
 
 export function uploadMods(files: File[], instanceId = defaultInstanceId) {

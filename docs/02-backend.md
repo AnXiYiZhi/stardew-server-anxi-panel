@@ -8,6 +8,13 @@
 - 验证覆盖 0/1/2/3 级布局、已有床幂等、其它家具保留、Farm/cabin 床隔离、交换角色数据不串位、完整回滚与临时文件清理、手动租约/暂停/可见性契约。真实 `.125` Docker E2E 导入独立身份问题副本，完成 `SaveLoaded → 床证据 → save-now/GameLoop.Saved → 重启 → VNC F9/F10 → 官方测试客户端睡眠`，日期从春 1 日进入春 2 日，日志未出现超时/强制结束；实际 0 级床位为地图返回的 `(9,8)`，测试与实现均未硬编码该坐标。
 - 本修复已随 `v0.5.1@427a295ab905701069b7f710300ba09b6afd21f0` 发布；候选 `31942102917`、兼容矩阵 `31942102879`、自动 Tag `31942624901`、正式提升 `31942631860` 全部成功，正式 digest=`sha256:70c1967eb36827dbbf78ec3c11683c994814961dcf6673ae365ec4f43c6c25a5`。
 
+# MOD-UPDATE-CHECK-1：按本地清单自动检查 Mod 更新（2026-08-16，completed，未发布）
+
+- Stardew Junimo driver 新增 `CheckModUpdates(ctx, instance, force)` 可选能力，读取启用与禁用目录中的物理 Mod；内置运行时、清单解析失败、缺少 `UniqueID`/版本/`UpdateKeys` 的条目不会请求上游。更新判断完全采用 SMAPI update service 返回的 `suggestedUpdate`，Panel 不自行比较第三方版本号，也不会自动覆盖本地 Mod。
+- 新增 `GET /api/instances/:id/mod-updates`（已登录用户）与 `POST /api/instances/:id/mod-updates/check`（管理员强制刷新）。上游暂时失败时 HTTP 仍返回 `status=error`，并保留最后一次成功的 `updates/checkedAt`；本地列表或缓存读写失败才返回 500。建议链接只接受带 host 的 HTTP/HTTPS URL。
+- 成功结果按实例原子写入 `<dataDir>/.local-container/control/mod-updates.json`，默认缓存 6 小时；缓存同时绑定本地物理 Mod 清单和实际 SMAPI API/game version、Linux platform 的 SHA-256 指纹，因此上传、删除、更换版本或运行时版本变化会立即使旧结果失效。请求根级 `apiVersion` 优先取 Control `options.json`，无运行时快照时保守使用 v4 端点基线 `4.0.0`；按 50 条分批、15 秒超时、响应上限 2 MiB，沿用 `netdns` 容错客户端，不读取或外发用户 Nexus API Key。
+- 影响文件：`internal/games/registry/types.go`、`internal/games/stardew_junimo/mod_updates.go`、`internal/web/{instance_handlers,mod_update_handlers}.go` 及专项测试。五条 driver 专项覆盖缓存/运行时指纹失效/降级/URL 安全，Web 专项覆盖 401/403/管理员强刷/405；任务专属 Linux Go 1.25 的 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build ./...` 与不发布的完整候选升级预演均通过。
+
 # v0.5.0 后端发布状态（2026-08-16，released）
 
 - `SAVE-IMPORT-STRICT-OFFLINE-PROBE-1`、`SAVE-IMPORT-MAINTENANCE-DURABILITY-1`、`SAVE-IMPORT-TOKEN-CLEANUP-RECOVERY-1`、`PLAYER-LAST-SEEN-SEMANTICS-1` 与 `HOST-FARMHOUSE-PRESERVE-1` 已进入 `v0.5.0@9b18dd3fe5192692548bf11a85010dd35303da93`；Control 为 0.3.4，内嵌 DLL SHA-256=`5ab089610b0ae2b9368c0abd87165b98373206a80270ac58f237d29a8a13b982`。v0.4.19 的 none/global/role 认证、角色独立密码与旧全服密码兼容继续完整保留。

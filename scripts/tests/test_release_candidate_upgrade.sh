@@ -122,6 +122,7 @@ make_server_certificate() {
 
 make_server_certificate ghcr.io registry
 make_server_certificate api.github.com releases
+make_server_certificate smapi.io smapi
 
 mkdir -p /etc/docker/certs.d/ghcr.io
 cp "$tls_dir/ca.crt" /etc/docker/certs.d/ghcr.io/ca.crt
@@ -144,11 +145,23 @@ events {}
 http {
   server {
     listen 443 ssl;
+    server_name api.github.com;
     ssl_certificate /certs/releases.crt;
     ssl_certificate_key /certs/releases.key;
     default_type application/json;
     location / {
       return 200 '[{"tag_name":"v$version","html_url":"https://example.invalid/releases/v$version","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z"}]';
+    }
+  }
+  server {
+    listen 443 ssl;
+    server_name smapi.io;
+    ssl_certificate /certs/smapi.crt;
+    ssl_certificate_key /certs/smapi.key;
+    default_type application/json;
+    location = /api/v4.0.0/mods {
+      limit_except POST { deny all; }
+      return 200 '[{"id":"Pathoschild.ContentPatcher","suggestedUpdate":{"version":"2.9.1","url":"https://www.nexusmods.com/stardewvalley/mods/1915"},"errors":[]}]';
     }
   }
 }
@@ -201,6 +214,7 @@ services:
       - "127.0.0.1:$panel_port:8090"
     extra_hosts:
       - "api.github.com:172.31.250.10"
+      - "smapi.io:172.31.250.10"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $data_dir:/data
@@ -259,6 +273,7 @@ assert_upgraded_frontend_contract() {
   local saves_asset=""
   local jobs_asset=""
   local players_asset=""
+  local mods_asset=""
   local -a matches=()
 
   mkdir -p "$output_dir"
@@ -271,7 +286,7 @@ assert_upgraded_frontend_contract() {
   entry_asset="${matches[0]}"
   curl --silent --show-error --fail "http://127.0.0.1:$panel_port$entry_asset" >"$output_dir/entry.js"
 
-  for prefix in ServerControlPage MobileControlPage SavesPage JobsLogsPage PlayersPage; do
+  for prefix in ServerControlPage MobileControlPage SavesPage JobsLogsPage PlayersPage ModsPage; do
     mapfile -t matches < <(grep -oE "(^|/)$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
     if [[ "${#matches[@]}" -ne 1 ]]; then
       echo "candidate upgrade E2E: expected exactly one $prefix frontend chunk" >&2
@@ -285,6 +300,7 @@ assert_upgraded_frontend_contract() {
       SavesPage) saves_asset="$output_dir/$prefix.js" ;;
       JobsLogsPage) jobs_asset="$output_dir/$prefix.js" ;;
       PlayersPage) players_asset="$output_dir/$prefix.js" ;;
+      ModsPage) mods_asset="$output_dir/$prefix.js" ;;
     esac
   done
 
@@ -304,10 +320,59 @@ assert_upgraded_frontend_contract() {
     echo "candidate upgrade E2E: upgraded frontend lost bounded pagination contracts" >&2
     exit 1
   fi
+  if ! grep -Fq '只看可更新' "$mods_asset" || ! grep -Fq '重新检查' "$mods_asset" ||
+    ! grep -Fq '配置模组筛选' "$mods_asset" || ! grep -Fq '发现新版本' "$mods_asset"; then
+    echo "candidate upgrade E2E: upgraded frontend lost Mod update reminder or configuration-card contracts" >&2
+    exit 1
+  fi
   if ! grep -FRq 'data-modal-initial-focus' "$output_dir" || ! grep -FRq 'aria-modal' "$output_dir"; then
     echo "candidate upgrade E2E: upgraded frontend lost shared modal accessibility contract" >&2
     exit 1
   fi
+}
+
+assert_upgraded_mod_update_check() {
+  local instance_dir="$data_dir/instances/stardew"
+  local mod_dir="$instance_dir/.local-container/mods/ContentPatcher"
+  local cache_file="$instance_dir/.local-container/control/mod-updates.json"
+  local code=""
+
+  echo "candidate upgrade E2E: testing upgraded Mod update API against controlled SMAPI service"
+  mkdir -p "$mod_dir"
+  rm -f -- "$cache_file"
+  printf '%s\n' '{"Name":"Content Patcher","UniqueID":"Pathoschild.ContentPatcher","Version":"2.0.0","Author":"Pathoschild","UpdateKeys":["Nexus:1915"]}' >"$mod_dir/manifest.json"
+
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$panel_port/api/instances/stardew/mod-updates")"
+  if [[ "$code" != 401 ]]; then
+    echo "candidate upgrade E2E: anonymous Mod update GET returned HTTP $code, want 401" >&2
+    exit 1
+  fi
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --request POST "http://127.0.0.1:$panel_port/api/instances/stardew/mod-updates/check")"
+  if [[ "$code" != 200 || "$(jq -r '.status // empty' "$response_file")" != ok ||
+    "$(jq -r '.eligibleCount // 0' "$response_file")" != 1 ||
+    "$(jq -r '.updates | length' "$response_file")" != 1 ||
+    "$(jq -r '.updates[0].uniqueId // empty' "$response_file")" != Pathoschild.ContentPatcher ||
+    "$(jq -r '.updates[0].currentVersion // empty' "$response_file")" != 2.0.0 ||
+    "$(jq -r '.updates[0].latestVersion // empty' "$response_file")" != 2.9.1 ||
+    "$(jq -r '.updates[0].url // empty' "$response_file")" != https://www.nexusmods.com/stardewvalley/mods/1915 ||
+    "$(jq -r 'if has("cached") then .cached else true end' "$response_file")" != false ]]; then
+    echo "candidate upgrade E2E: upgraded Mod update check contract failed with HTTP $code" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  if [[ ! -s "$cache_file" ]]; then
+    echo "candidate upgrade E2E: upgraded Mod update check did not persist its instance cache" >&2
+    exit 1
+  fi
+
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/mod-updates")"
+  if [[ "$code" != 200 || "$(jq -r '.cached // false' "$response_file")" != true ||
+    "$(jq -r '.updates[0].latestVersion // empty' "$response_file")" != 2.9.1 ]]; then
+    echo "candidate upgrade E2E: upgraded Mod update cached GET contract failed with HTTP $code" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  echo "candidate upgrade E2E: upgraded Mod update API returned and cached the controlled suggestion"
 }
 
 assert_upgraded_empty_compose_save_import_submission() {
@@ -802,7 +867,8 @@ if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_befor
   echo "candidate upgrade E2E: Panel restart changed the game container" >&2
   exit 1
 fi
+assert_upgraded_mod_update_check
 assert_upgraded_legacy_junimo_repair
 assert_upgraded_empty_compose_save_import_submission
 
-echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence, restart and legacy runtime repair passed"
+echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence, restart, Mod update checks and legacy runtime repair passed"

@@ -137,6 +137,7 @@ const mobilePlayersCss = readFileSync(new URL('../src/games/stardew/mobile/Mobil
 const newGameCreatorCss = readFileSync(new URL('../src/games/stardew/NewGameCreator.css', import.meta.url), 'utf8')
 const savesPageCss = readFileSync(new URL('../src/games/stardew/pages/SavesPage.css', import.meta.url), 'utf8')
 const installPageCss = readFileSync(new URL('../src/games/stardew/pages/InstallPage.css', import.meta.url), 'utf8')
+const modsPageCss = readFileSync(new URL('../src/games/stardew/pages/ModsPage.css', import.meta.url), 'utf8')
 const modsPageSource = readFileSync(new URL('../src/games/stardew/pages/ModsPage.tsx', import.meta.url), 'utf8')
 const modalPortalSource = readFileSync(new URL('../src/core/ModalPortal.tsx', import.meta.url), 'utf8')
 const playersPageCss = readFileSync(new URL('../src/games/stardew/pages/PlayersPage.css', import.meta.url), 'utf8')
@@ -237,6 +238,10 @@ assert.match(jobsLogsPageSource, /controlCommands\.slice\(/)
 assert.match(jobsLogsPageSource, /aria-label="最近控制命令分页"/)
 assert.match(qaSource, /cmd_qa_joja_07/)
 assert.match(modsPageSource, /typeof ResizeObserver === 'undefined'/)
+assert.match(
+  modsPageCss,
+  /\.sd-mods-nexus-card \.sd-mods-card-actions > \.sd-btn-delete\s*{[^}]*background-color:\s*#b94432;[^}]*button_server_stop_red_blank\.png[^}]*color:\s*#fff6dc;/s,
+)
 assert.match(qaSource, /SURFACE === 'app'/)
 assert.match(qaSource, /\/\\\/control-commands\$\//)
 assert.match(qaSource, /\/\\\/config\\\/player-auth\$\//)

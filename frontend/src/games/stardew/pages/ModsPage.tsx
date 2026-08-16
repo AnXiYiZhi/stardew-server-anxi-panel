@@ -4,7 +4,7 @@ import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { downloadNexusInstallerExtension, searchNexusMods, getNexusSettings, saveNexusAPIKey, deleteNexusAPIKey, getJob } from '../../../api'
 import { errorMessage, formatDate } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
-import type { ModInfo, ModSearchResult, ModSyncKind, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
+import type { ModInfo, ModSearchResult, ModSyncKind, ModUpdateInfo, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { modDisplayName } from '../mod-display'
 import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, sortInstalledMods, type InstalledModSort } from '../mod-list-utils'
@@ -13,6 +13,7 @@ import { routeToPath, type StardewPageProps } from '../stardew-routes'
 import { useModsManagement } from '../useModsManagement'
 
 type ModWorkbenchTab = 'download' | 'installed' | 'settings'
+type SettingsModFilter = 'all' | 'enabled' | 'disabled' | 'issues'
 
 const NEXUS_SEARCH_PAGE_SIZE_DEFAULT = 8
 const NEXUS_SEARCH_PAGE_SIZE_MIN = 1
@@ -185,6 +186,11 @@ function dependencyDisplay(mod: ModInfo) {
   }
 }
 
+function modHasConfigurationIssue(mod: ModInfo) {
+  if (mod.parseError) return true
+  return (mod.dependencies ?? []).some((dependency) => dependency.required && !dependency.satisfied)
+}
+
 function installedStatusLabel(result: ModSearchResult) {
   const version = result.installedVersion ? ` v${result.installedVersion}` : ''
   if (result.installedEnabled === false) return `已安装但未启用${version}`
@@ -211,12 +217,14 @@ function countGridColumns(gridTemplateColumns: string) {
 
 function ModSearchResultCard({
   result,
+  update,
   actionSlot,
   statsSlot,
   footerSlot,
   className,
 }: {
   result: ModSearchResult
+  update?: ModUpdateInfo
   actionSlot?: ReactNode
   statsSlot?: ReactNode
   footerSlot?: ReactNode
@@ -228,7 +236,7 @@ function ModSearchResultCard({
     <div className={cardClassName}>
       <div className="sd-mods-nexus-card-pic-wrap">
         {result.pictureUrl ? (
-          <img className="sd-mods-nexus-card-pic" src={result.pictureUrl} alt="" />
+          <img className="sd-mods-nexus-card-pic" src={result.pictureUrl} alt="" loading="lazy" />
         ) : (
           <div className="sd-mods-nexus-card-pic sd-mods-nexus-card-pic-empty" aria-hidden="true">
             {result.source === 'nexus' || result.source === 'nexus_package' ? 'NEXUS' : 'MOD'}
@@ -253,6 +261,7 @@ function ModSearchResultCard({
               {installedStatusLabel(result)}
             </span>
           ) : null}
+          {update ? <span className="sd-tag sd-tag-gold sd-mods-update-tag">可更新 v{update.latestVersion}</span> : null}
         </div>
         <div className="sd-mods-nexus-card-meta">
           {result.author ? <span className="sd-mods-meta-item"><span className="sd-mods-meta-label">作者</span>{result.author}</span> : null}
@@ -277,6 +286,18 @@ function ModSearchResultCard({
         </button>
         {actionSlot}
       </div>
+      {update ? (
+        <div className="sd-mods-update-card-row">
+          <span><strong>发现新版本</strong> v{update.currentVersion} → v{update.latestVersion}</span>
+          <button
+            className="sd-btn-tan"
+            type="button"
+            onClick={() => window.open(update.url, '_blank', 'noopener,noreferrer')}
+          >
+            查看更新页
+          </button>
+        </div>
+      ) : null}
       {footerSlot ? <div className="sd-mods-nexus-card-footer">{footerSlot}</div> : null}
     </div>
   )
@@ -585,6 +606,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   const [activeTab, setActiveTab] = useState<ModWorkbenchTab>('download')
   const [installedQuery, setInstalledQuery] = useState('')
   const [installedSort, setInstalledSort] = useState<InstalledModSort>('installed-desc')
+  const [updatesOnly, setUpdatesOnly] = useState(false)
+  const [settingsFilter, setSettingsFilter] = useState<SettingsModFilter>('all')
 
   const [nexusQuery, setNexusQuery] = useState(restoredNexusSearchState?.query ?? '')
   const [nexusLoading, setNexusLoading] = useState(false)
@@ -638,6 +661,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     data, loading, listError, showUpload, uploadFiles, setUploadFiles, uploadBusy, uploadError,
     uploadSuccess, confirmDelete, deleteBusy, deleteError, exportBusy, exportError, syncUpdating, syncError,
     syncPackBusy, syncPackError, enableUpdating, enableAllUpdating, enableError, fileInputRef, loadMods, openUpload, closeUpload,
+    modUpdates, modUpdatesLoading, modUpdatesError, loadModUpdates,
     handleUpload, openDeleteConfirm, closeDeleteConfirm, handleDeleteConfirm, handleExport, handleSyncChange,
     handleEnabledChange, handleAllEnabledChange, handleSyncPackExport,
   } = useModsManagement({ dashboardData, activeSaveName })
@@ -691,6 +715,33 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     filterAndSortInstalledMods(data?.mods ?? [], installedQuery, installedSort)
       .filter((mod) => !modIsSystemRuntime(mod))
   ), [data?.mods, installedQuery, installedSort])
+  const modUpdatesByUniqueID = useMemo(() => {
+    const updates = new Map<string, ModUpdateInfo>()
+    for (const update of modUpdates?.updates ?? []) {
+      updates.set(update.uniqueId.trim().toLowerCase(), update)
+    }
+    return updates
+  }, [modUpdates?.updates])
+  const installedVisibleMods = useMemo(() => (
+    updatesOnly
+      ? filteredUserVisibleMods.filter((mod) => mod.uniqueId && modUpdatesByUniqueID.has(mod.uniqueId.trim().toLowerCase()))
+      : filteredUserVisibleMods
+  ), [filteredUserVisibleMods, modUpdatesByUniqueID, updatesOnly])
+  const settingsCounts = useMemo(() => ({
+    all: filteredUserVisibleMods.length,
+    enabled: filteredUserVisibleMods.filter((mod) => mod.enabled).length,
+    disabled: filteredUserVisibleMods.filter((mod) => !mod.enabled).length,
+    issues: filteredUserVisibleMods.filter(modHasConfigurationIssue).length,
+  }), [filteredUserVisibleMods])
+  const settingsVisibleMods = useMemo(() => (
+    filteredUserVisibleMods.filter((mod) => {
+      if (settingsFilter === 'enabled') return mod.enabled
+      if (settingsFilter === 'disabled') return !mod.enabled
+      if (settingsFilter === 'issues') return modHasConfigurationIssue(mod)
+      return true
+    })
+  ), [filteredUserVisibleMods, settingsFilter])
+  const modUpdateCount = modUpdates?.updates.length ?? 0
   const restartRequired = data?.restartRequired ?? false
   const deleteBundle = useMemo(() => (
     confirmDelete ? modBundleMembers(mods, confirmDelete) : []
@@ -1703,15 +1754,21 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           {tabItems.map((tab) => (
             <button
               key={tab.id}
-                className={`sd-mods-tab${activeTab === tab.id ? ' sd-mods-tab-active' : ''}`}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
-              >
+              className={`sd-mods-tab${activeTab === tab.id ? ' sd-mods-tab-active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-label={tab.id === 'installed' && modUpdateCount > 0 ? `${tab.label}，${modUpdateCount} 个可更新` : tab.label}
+              onClick={() => setActiveTab(tab.id)}
+            >
               <img className="sd-mods-tab-icon" src={tab.icon} alt="" />
               <span className="sd-mods-tab-text">
-                <span className="sd-mods-tab-label">{tab.label}</span>
+                <span className="sd-mods-tab-label">
+                  {tab.label}
+                  {tab.id === 'installed' && modUpdateCount > 0 ? (
+                    <span className="sd-mods-tab-badge" aria-hidden="true">{modUpdateCount}</span>
+                  ) : null}
+                </span>
                 <span className="sd-mods-tab-hint">{tab.hint}</span>
               </span>
             </button>
@@ -1907,6 +1964,54 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                 </div>
               )}
 
+              <div
+                className={`sd-mods-update-notice${modUpdateCount > 0 ? ' sd-mods-update-notice-found' : ''}${modUpdatesError ? ' sd-mods-update-notice-error' : ''}`}
+                role="status"
+                aria-live="polite"
+              >
+                <span className="sd-mods-update-notice-icon" aria-hidden="true">↻</span>
+                <div className="sd-mods-update-notice-main">
+                  <strong>
+                    {modUpdatesLoading && !modUpdates
+                      ? '正在自动检查 Mod 更新…'
+                      : modUpdateCount > 0
+                        ? `发现 ${modUpdateCount} 个可更新 Mod`
+                        : modUpdatesError
+                          ? '本次更新检查未完成'
+                          : '已安装 Mod 均为最新'}
+                  </strong>
+                  <span>
+                    {modUpdatesError
+                      ? `${modUpdatesError}${modUpdateCount > 0 ? ' 已保留上次检查结果。' : ''}`
+                      : modUpdates?.checkedAt
+                        ? `检查于 ${formatDate(modUpdates.checkedAt)}${modUpdates.cached ? ' · 使用缓存' : ''}`
+                        : '进入本页后自动检查，不会发送系统通知。'}
+                  </span>
+                </div>
+                <div className="sd-mods-update-notice-actions">
+                  {modUpdateCount > 0 ? (
+                    <button
+                      className={updatesOnly ? 'sd-btn-green' : 'sd-btn-tan'}
+                      type="button"
+                      aria-pressed={updatesOnly}
+                      onClick={() => setUpdatesOnly((current) => !current)}
+                    >
+                      {updatesOnly ? '显示全部' : '只看可更新'}
+                    </button>
+                  ) : null}
+                  {isAdmin ? (
+                    <button
+                      className="sd-btn-tan"
+                      type="button"
+                      disabled={modUpdatesLoading}
+                      onClick={() => void loadModUpdates(true)}
+                    >
+                      {modUpdatesLoading ? '检查中…' : '重新检查'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
               {(data?.compatibilityWarnings ?? []).map((warning) => (
                 <div className="sd-mods-compatibility-warning" key={`${warning.code}:${warning.saveName ?? ''}`}>
                   <strong>⚠ {warning.title}</strong>
@@ -2025,16 +2130,24 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     上传 Mod
                   </button>
                 </div>
-              ) : !loading && filteredUserVisibleMods.length === 0 ? (
+              ) : !loading && installedVisibleMods.length === 0 ? (
                 <div className="sd-mods-empty sd-mods-search-empty">
-                  <div className="sd-mods-empty-title">没有匹配的 Mod</div>
-                  <div className="sd-mods-empty-desc">可尝试名称、UniqueID、文件夹名或 Nexus 数字 ID。</div>
-                  <button className="sd-btn-tan" type="button" onClick={() => setInstalledQuery('')}>清空搜索</button>
+                  <div className="sd-mods-empty-title">{updatesOnly ? '当前筛选中没有可更新 Mod' : '没有匹配的 Mod'}</div>
+                  <div className="sd-mods-empty-desc">
+                    {updatesOnly ? '可以显示全部已安装模组，或重新检查更新。' : '可尝试名称、UniqueID、文件夹名或 Nexus 数字 ID。'}
+                  </div>
+                  <button
+                    className="sd-btn-tan"
+                    type="button"
+                    onClick={() => updatesOnly ? setUpdatesOnly(false) : setInstalledQuery('')}
+                  >
+                    {updatesOnly ? '显示全部' : '清空搜索'}
+                  </button>
                 </div>
               ) : (
                 <>
                   <div className="sd-mods-nexus-list">
-                    {filteredUserVisibleMods.map((mod) => {
+                    {installedVisibleMods.map((mod) => {
                     const syncBusy = syncUpdating === mod.id
                     const requiredDependency = dependencyDisplay(mod)
                     const isBuiltIn = mod.builtIn === true
@@ -2045,6 +2158,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                       <ModSearchResultCard
                         key={mod.id}
                         result={modToSearchResult(mod)}
+                        update={mod.uniqueId ? modUpdatesByUniqueID.get(mod.uniqueId.trim().toLowerCase()) : undefined}
                         actionSlot={isBuiltIn ? (
                           <span className="sd-mods-pending-badge">内置</span>
                         ) : (
@@ -2119,30 +2233,70 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
 
           {activeTab === 'settings' ? (
             <div className="sd-mods-settings-layout">
-              <section className="sd-mods-settings-left sd-mods-enable-panel">
-                <div className="sd-mods-section-title">
-                  当前存档 Mod 启用状态
-                  {activeSaveName ? <span className="sd-mods-loading-tag">{activeSaveName}</span> : null}
+              <section className="sd-mods-enable-panel">
+                <div className="sd-mods-settings-head">
+                  <div>
+                    <div className="sd-mods-section-title">
+                      当前存档 Mod 启用状态
+                      {activeSaveName ? <span className="sd-mods-loading-tag">{activeSaveName}</span> : null}
+                    </div>
+                    <p className="sd-mods-settings-subtitle">用紧凑卡片快速核对图片、版本、前置依赖和启用状态。</p>
+                  </div>
+                  <div className="sd-mods-enable-actions">
+                    <button
+                      type="button"
+                      className="sd-btn-green"
+                      disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || userVisibleMods.every((mod) => mod.enabled || !mod.canToggle)}
+                      onClick={() => void handleAllEnabledChange(true)}
+                    >
+                      {enableAllUpdating === true ? '正在全部启用…' : '一键启用全部'}
+                    </button>
+                    <button
+                      type="button"
+                      className="sd-btn-tan"
+                      disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || userVisibleMods.every((mod) => !mod.enabled || !mod.canToggle)}
+                      onClick={() => void handleAllEnabledChange(false)}
+                    >
+                      {enableAllUpdating === false ? '正在全部禁用…' : '一键禁用全部'}
+                    </button>
+                  </div>
                 </div>
-                {installedModControls}
-                <div className="sd-mods-enable-actions">
-                  <button
-                    type="button"
-                    className="sd-btn-green"
-                    disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || userVisibleMods.every((mod) => mod.enabled || !mod.canToggle)}
-                    onClick={() => void handleAllEnabledChange(true)}
-                  >
-                    {enableAllUpdating === true ? '正在全部启用…' : '一键启用全部'}
-                  </button>
-                  <button
-                    type="button"
-                    className="sd-btn-tan"
-                    disabled={writeDisabled || !activeSaveName || enableAllUpdating !== null || enableUpdating !== null || userVisibleMods.every((mod) => !mod.enabled || !mod.canToggle)}
-                    onClick={() => void handleAllEnabledChange(false)}
-                  >
-                    {enableAllUpdating === false ? '正在全部禁用…' : '一键禁用全部'}
-                  </button>
+
+                <div className={`sd-mods-settings-context${isRunning ? ' sd-mods-settings-context-warn' : !activeSaveName ? ' sd-mods-settings-context-neutral' : writeDisabled ? ' sd-mods-settings-context-neutral' : ' sd-mods-settings-context-ready'}`}>
+                  <img src="/assets/stardew/ui/icons/icon_nav_mods.png" alt="" />
+                  <span>
+                    {isRunning
+                      ? '服务器正在运行：当前可查看配置，停止服务器后才能修改。'
+                      : !activeSaveName
+                        ? '请先选择存档；每个存档会独立保存 Mod 启用状态。'
+                        : !isAdmin
+                          ? '当前为只读视图；管理员可在服务器停止时修改。'
+                          : '当前可以修改；启用状态会在下次启动服务器时生效。'}
+                  </span>
                 </div>
+
+                <div className="sd-mods-settings-tools">
+                  {installedModControls}
+                  <div className="sd-mods-settings-filters" role="group" aria-label="配置模组筛选">
+                    {([
+                      ['all', '全部'],
+                      ['enabled', '已启用'],
+                      ['disabled', '已禁用'],
+                      ['issues', '有问题'],
+                    ] as Array<[SettingsModFilter, string]>).map(([filter, label]) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        className={`sd-mods-settings-filter${settingsFilter === filter ? ' sd-mods-settings-filter-active' : ''}`}
+                        aria-pressed={settingsFilter === filter}
+                        onClick={() => setSettingsFilter(filter)}
+                      >
+                        {label} <span>{settingsCounts[filter]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {enableError ? <div className="sd-mods-list-error">{enableError}</div> : null}
                 {!activeSaveName ? (
                   <div className="sd-mods-empty sd-mods-settings-empty">
@@ -2162,64 +2316,69 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     <div className="sd-mods-empty-desc">可尝试名称、UniqueID、文件夹名或 Nexus 数字 ID。</div>
                     <button className="sd-btn-tan" type="button" onClick={() => setInstalledQuery('')}>清空搜索</button>
                   </div>
+                ) : settingsVisibleMods.length === 0 ? (
+                  <div className="sd-mods-empty sd-mods-settings-empty">
+                    <div className="sd-mods-empty-title">这个分类暂时为空</div>
+                    <div className="sd-mods-empty-desc">切换到“全部”查看当前搜索范围内的所有 Mod。</div>
+                    <button className="sd-btn-tan" type="button" onClick={() => setSettingsFilter('all')}>显示全部</button>
+                  </div>
                 ) : (
-                  <div className="sd-mods-enable-list">
-                    {filteredUserVisibleMods.map((mod) => {
+                  <div className="sd-mods-config-grid">
+                    {settingsVisibleMods.map((mod) => {
                       const busy = enableUpdating === mod.id
                       const toggleDisabled = writeDisabled || !activeSaveName || !mod.canToggle || busy || enableAllUpdating !== null
                       const title = mod.enableNote || writeTitle || (mod.enabled ? '禁用此 Mod' : '启用此 Mod')
                       const requiredDependency = dependencyDisplay(mod)
+                      const update = mod.uniqueId ? modUpdatesByUniqueID.get(mod.uniqueId.trim().toLowerCase()) : undefined
                       return (
-                        <div className="sd-mods-enable-row" key={`enable-${mod.id}`}>
+                        <article className={`sd-mods-config-card${mod.enabled ? ' sd-mods-config-card-enabled' : ''}`} key={`enable-${mod.id}`}>
+                          <div className="sd-mods-config-picture">
+                            {mod.pictureUrl ? (
+                              <img src={mod.pictureUrl} alt="" loading="lazy" />
+                            ) : (
+                              <span aria-hidden="true">MOD</span>
+                            )}
+                          </div>
                           <div className="sd-mods-enable-main">
-                            <span className="sd-mods-enable-name">{modDisplayName(mod)}</span>
+                            <div className="sd-mods-config-name-row">
+                              <span className="sd-mods-enable-name">{modDisplayName(mod)}</span>
+                              {mod.version ? <span className="sd-mods-config-version">v{mod.version}</span> : null}
+                            </div>
                             <span className="sd-mods-enable-meta">
                               {mod.uniqueId || mod.folderName}{mod.installedAt ? ` · 安装 ${formatDate(mod.installedAt)}` : ''}
                             </span>
-                            {requiredDependency ? (
-                              <div className="sd-mods-enable-dependencies">
+                            <div className="sd-mods-enable-dependencies">
+                              {requiredDependency ? (
                                 <span className={`sd-tag ${requiredDependency.className} sd-mods-dependency-tag`} title={requiredDependency.title}>
                                   {requiredDependency.label}
                                 </span>
-                              </div>
-                            ) : null}
+                              ) : <span className="sd-tag sd-tag-blue">无需前置</span>}
+                              {update ? <span className="sd-tag sd-tag-gold">可更新 v{update.latestVersion}</span> : null}
+                              {mod.parseError ? <span className="sd-tag sd-tag-red" title={mod.parseError}>清单解析失败</span> : null}
+                            </div>
                           </div>
-                          <div className="sd-mods-enable-tags">
-                            {mod.builtIn ? <span className="sd-tag sd-tag-blue">内置</span> : null}
+                          <div className="sd-mods-config-state">
                             <span className={`sd-tag ${mod.enabled ? 'sd-tag-green' : 'sd-tag-gold'}`}>
                               {mod.enabled ? '已启用' : '已禁用'}
                             </span>
+                            <label className={`sd-mod-toggle${mod.enabled ? ' sd-mod-toggle-on' : ''}${toggleDisabled ? ' sd-mod-toggle-disabled' : ''}`} title={title}>
+                              <input
+                                type="checkbox"
+                                checked={mod.enabled}
+                                disabled={toggleDisabled}
+                                aria-label={`${modDisplayName(mod)}：${mod.enabled ? '已启用' : '已禁用'}`}
+                                onChange={(e) => handleEnabledChange(mod, e.currentTarget.checked)}
+                              />
+                              <span className="sd-mod-toggle-track" aria-hidden="true">
+                                <span className="sd-mod-toggle-thumb" />
+                              </span>
+                            </label>
                           </div>
-                          <label className={`sd-mod-toggle${mod.enabled ? ' sd-mod-toggle-on' : ''}${toggleDisabled ? ' sd-mod-toggle-disabled' : ''}`} title={title}>
-                            <input
-                              type="checkbox"
-                              checked={mod.enabled}
-                              disabled={toggleDisabled}
-                              onChange={(e) => handleEnabledChange(mod, e.currentTarget.checked)}
-                            />
-                            <span className="sd-mod-toggle-track" aria-hidden="true">
-                              <span className="sd-mod-toggle-thumb" />
-                            </span>
-                          </label>
-                        </div>
+                        </article>
                       )
                     })}
                   </div>
                 )}
-              </section>
-              <section className="sd-mods-settings-right">
-                <div className="sd-mods-section-title">说明</div>
-                <div className="sd-mods-empty sd-mods-settings-empty">
-                  <img
-                    className="sd-mods-empty-icon"
-                    src="/assets/stardew/ui/icons/icon_nav_mods.png"
-                    alt=""
-                  />
-                  <div className="sd-mods-empty-title">当前阶段仅切换启用状态</div>
-                  <div className="sd-mods-empty-desc">
-                    服务器停止时可切换。新建或新导入的存档默认只启用内置组件，第三方 Mod 需要在这里手动打开。
-                  </div>
-                </div>
               </section>
             </div>
           ) : null}
