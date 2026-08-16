@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.0
+release: v0.5.1
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.0。加入全服/角色独立密码保护，并强化存档导入恢复、玩家最近活动和虚拟主机农舍等级保持。
+    details: 当前最新 v0.5.1。修复交换主机后的主农舍缺床、睡眠黑屏，以及 VNC 手动控制仍被无人暂停和人物只剩影子的问题。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.0</strong>
-    <p>玩家加入保护支持不设密码、全服统一密码和角色独立密码；存档导入遇到重启或取消时更可靠，离线角色不再显示伪造的最近在线时间，虚拟主机读档也不再被强制把农舍等级归零。</p>
+    <strong>v0.5.1</strong>
+    <p>交换主机后会安全核验并修复主农舍缺床，Junimo 可正常上床进入次日；VNC 手动模式不再被无人暂停，人物与影子可见性也会保持一致。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
