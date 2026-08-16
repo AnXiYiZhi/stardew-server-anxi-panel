@@ -8,14 +8,21 @@ namespace StardewAnxiPanel.Control;
 internal sealed class RolePasswordPatch
 {
     private static RolePasswordPolicy policy = RolePasswordPolicy.Parse(null, null, null, null, null);
+    private static Func<string> activeSaveId = () => "";
 
     public bool Available { get; private set; } = true;
 
     public string Detail { get; private set; } = "Not initialized.";
 
-    public void Initialize(string harmonyID, MethodInfo? tryAuthenticateMethod, RolePasswordPolicy loadedPolicy, IMonitor monitor)
+    public void Initialize(
+        string harmonyID,
+        MethodInfo? tryAuthenticateMethod,
+        RolePasswordPolicy loadedPolicy,
+        Func<string> activeSaveIdProvider,
+        IMonitor monitor)
     {
         policy = loadedPolicy;
+        activeSaveId = activeSaveIdProvider;
         if (!loadedPolicy.RequiresPatch)
         {
             Available = true;
@@ -35,6 +42,9 @@ internal sealed class RolePasswordPatch
             var prefix = typeof(RolePasswordPatch).GetMethod(nameof(BeforeTryAuthenticate), BindingFlags.NonPublic | BindingFlags.Static)
                 ?? throw new MissingMethodException(nameof(BeforeTryAuthenticate));
             harmony.Patch(tryAuthenticateMethod, prefix: new HarmonyMethod(prefix));
+            var patchInfo = Harmony.GetPatchInfo(tryAuthenticateMethod);
+            if (patchInfo?.Prefixes.Any(patch => string.Equals(patch.owner, harmony.Id, StringComparison.Ordinal)) != true)
+                throw new InvalidOperationException("Harmony did not report the role password prefix as installed.");
             Available = loadedPolicy.Valid;
             Detail = loadedPolicy.Valid ? "OK" : loadedPolicy.Detail;
             monitor.Log(
@@ -53,7 +63,14 @@ internal sealed class RolePasswordPatch
 
     private static void BeforeTryAuthenticate(long __0, ref string __1)
     {
-        __1 = policy.RewritePassword(__0, __1);
+        try
+        {
+            __1 = policy.RewritePassword(activeSaveId(), __0, __1);
+        }
+        catch
+        {
+            __1 = RolePasswordPolicy.InvalidPasswordSentinel;
+        }
     }
 }
 #endif

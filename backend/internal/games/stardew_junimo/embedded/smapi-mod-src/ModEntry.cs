@@ -150,8 +150,13 @@ public sealed class ModEntry : Mod
             hostAutomationBridge!.Initialize(ModManifest.UniqueID, Monitor);
             hostSleepSafetyPatch!.Initialize(ModManifest.UniqueID, Monitor);
             passwordBridge.Initialize(Monitor);
-            playerAuthPolicy = RolePasswordPolicy.LoadFromEnvironment();
-            rolePasswordPatch.Initialize(ModManifest.UniqueID, passwordBridge.TryAuthenticateMethod, playerAuthPolicy, Monitor);
+            playerAuthPolicy = RolePasswordPolicy.LoadFromEnvironment(controlDir);
+            rolePasswordPatch.Initialize(
+                ModManifest.UniqueID,
+                passwordBridge.TryAuthenticateMethod,
+                playerAuthPolicy,
+                GetActiveRolePasswordSaveId,
+                Monitor);
             warpHomeBridge.Initialize(Monitor);
         }
 		RefreshPendingNewGameMarker();
@@ -172,6 +177,12 @@ public sealed class ModEntry : Mod
         ApplyPendingNewGameWorldOptions();
         ApplyPanelCharacterCustomization();
         WriteStatus("save-creating", "Stardew Valley is creating the save requested by JunimoServer.");
+    }
+
+    private static string GetActiveRolePasswordSaveId()
+    {
+        var saveId = Constants.SaveFolderName;
+        return string.IsNullOrWhiteSpace(saveId) ? Game1.GetSaveGameName() ?? "" : saveId;
     }
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)

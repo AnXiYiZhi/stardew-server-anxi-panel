@@ -70,6 +70,211 @@ var globalPolicy = RolePasswordPolicy.Parse("global", "revision-3", null, null, 
 if (!globalPolicy.Valid || globalPolicy.RewritePassword(2, "any-password") != "any-password")
     throw new InvalidOperationException("global mode unexpectedly rewrote the upstream password");
 
+var emptyRolePayload = new RolePasswordPayload
+{
+    SchemaVersion = 1,
+    Roles = new Dictionary<string, RolePasswordRecord>(StringComparer.Ordinal),
+};
+var encodedEmptyRolePayload = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(emptyRolePayload, ContractJson.Options));
+var enrollmentDir = Path.Combine(Path.GetTempPath(), "sap-role-credentials-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(enrollmentDir);
+try
+{
+    var enrollmentPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-enrollment",
+        Base64Url(roleKey),
+        encodedEmptyRolePayload,
+        internalGuard).UseCredentialStore(enrollmentDir);
+    if (!enrollmentPolicy.Valid)
+        throw new InvalidOperationException($"empty role mode could not start self-enrollment: {enrollmentPolicy.Detail}");
+
+    foreach (var invalidPassword in new[] { " leading", "trailing ", "two  spaces", " ", "line\nbreak" })
+    {
+        if (RolePasswordPolicy.IsChatRepresentablePassword(invalidPassword)
+            || enrollmentPolicy.RewritePassword("Farm_100", 20, invalidPassword) != RolePasswordPolicy.InvalidPasswordSentinel)
+        {
+            throw new InvalidOperationException("a password changed by Junimo's chat argument parsing was accepted");
+        }
+    }
+    foreach (var validPassword in new[] { "x", "one internal space", "不间断\u00a0空格" })
+    {
+        if (!RolePasswordPolicy.IsChatRepresentablePassword(validPassword))
+            throw new InvalidOperationException("a chat-representable password was rejected");
+    }
+
+    using var startEnrollment = new ManualResetEventSlim(false);
+    var alpha = Task.Run(() =>
+    {
+        startEnrollment.Wait();
+        return enrollmentPolicy.RewritePassword("Farm_100", 2, "alpha-secret");
+    });
+    var beta = Task.Run(() =>
+    {
+        startEnrollment.Wait();
+        return enrollmentPolicy.RewritePassword("Farm_100", 2, "beta-secret");
+    });
+    startEnrollment.Set();
+    Task.WaitAll(alpha, beta);
+    var alphaWon = alpha.Result == internalGuard;
+    var betaWon = beta.Result == internalGuard;
+    if (alphaWon == betaWon)
+        throw new InvalidOperationException("concurrent first-login enrollment did not produce exactly one winner");
+    var winningPassword = alphaWon ? "alpha-secret" : "beta-secret";
+    var losingPassword = alphaWon ? "beta-secret" : "alpha-secret";
+    if (enrollmentPolicy.RewritePassword("Farm_100", 2, winningPassword) != internalGuard
+        || enrollmentPolicy.RewritePassword("Farm_100", 2, losingPassword) != RolePasswordPolicy.InvalidPasswordSentinel)
+    {
+        throw new InvalidOperationException("the first enrolled password was not retained");
+    }
+    if (enrollmentPolicy.RewritePassword("Farm_100", 3, winningPassword) != internalGuard)
+        throw new InvalidOperationException("two roles could not intentionally choose the same password");
+    if (enrollmentPolicy.RewritePassword("Farm_100", 4, "x") != internalGuard)
+        throw new InvalidOperationException("a one-character role password was rejected");
+    const long negativeRoleId = -7928143696348358209;
+    if (enrollmentPolicy.RewritePassword("Farm_100", negativeRoleId, "old-save-secret") != internalGuard
+        || enrollmentPolicy.RewritePassword("Farm_100", negativeRoleId, "wrong-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    {
+        throw new InvalidOperationException("a canonical negative old-save role ID could not enroll and authenticate");
+    }
+
+    var storedCredentials = File.ReadAllText(Path.Combine(enrollmentDir, RoleCredentialStore.FileName));
+    if (storedCredentials.Contains(winningPassword, StringComparison.Ordinal)
+        || storedCredentials.Contains(losingPassword, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("the runtime credential store leaked a plaintext password");
+    }
+
+    var restartedPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-enrollment",
+        Base64Url(roleKey),
+        encodedEmptyRolePayload,
+        internalGuard).UseCredentialStore(enrollmentDir);
+    if (restartedPolicy.RewritePassword("Farm_100", 2, winningPassword) != internalGuard)
+        throw new InvalidOperationException("an enrolled password did not survive policy restart");
+    if (restartedPolicy.RewritePassword("Farm_100", negativeRoleId, "old-save-secret") != internalGuard)
+        throw new InvalidOperationException("a negative old-save role credential did not survive policy restart");
+    if (restartedPolicy.RewritePassword("OtherFarm_200", 2, "other-save-secret") != internalGuard
+        || restartedPolicy.RewritePassword("OtherFarm_200", 2, winningPassword) != RolePasswordPolicy.InvalidPasswordSentinel
+        || restartedPolicy.RewritePassword("Farm_100", 2, winningPassword) != internalGuard)
+    {
+        throw new InvalidOperationException("role credentials were reused across save identities");
+    }
+
+    File.Delete(Path.Combine(enrollmentDir, RoleCredentialStore.FileName));
+    var missingPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-enrollment",
+        Base64Url(roleKey),
+        encodedEmptyRolePayload,
+        internalGuard).UseCredentialStore(enrollmentDir);
+    if (missingPolicy.Valid
+        || missingPolicy.RewritePassword("Farm_100", 3, "new-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    {
+        throw new InvalidOperationException("a missing initialized credential store was treated as unconfigured");
+    }
+
+    File.WriteAllText(Path.Combine(enrollmentDir, RoleCredentialStore.FileName), "{");
+    if (enrollmentPolicy.RewritePassword("Farm_100", 2, internalGuard) != RolePasswordPolicy.InvalidPasswordSentinel)
+        throw new InvalidOperationException("runtime store corruption still allowed the Panel guard bypass");
+    var corruptPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-enrollment",
+        Base64Url(roleKey),
+        encodedEmptyRolePayload,
+        internalGuard).UseCredentialStore(enrollmentDir);
+    if (corruptPolicy.Valid
+        || corruptPolicy.RewritePassword("Farm_100", 3, "new-secret") != RolePasswordPolicy.InvalidPasswordSentinel)
+    {
+        throw new InvalidOperationException("a corrupt credential store was treated as an unconfigured role");
+    }
+}
+finally
+{
+    Directory.Delete(enrollmentDir, recursive: true);
+}
+
+var legacyMigrationDir = Path.Combine(Path.GetTempPath(), "sap-role-legacy-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(legacyMigrationDir);
+try
+{
+    var legacyPayload = new RolePasswordPayload
+    {
+        SchemaVersion = 1,
+        Roles = new Dictionary<string, RolePasswordRecord>(StringComparer.Ordinal)
+        {
+            ["2"] = new() { Name = "Leah", Verifier = RolePasswordPolicy.ComputeVerifier(roleKey, "2", "legacy-leah") },
+            ["3"] = new() { Name = "Sam", Verifier = RolePasswordPolicy.ComputeVerifier(roleKey, "3", "legacy-sam") },
+        },
+    };
+    var encodedLegacyPayload = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(legacyPayload, ContractJson.Options));
+    var legacyPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-legacy",
+        Base64Url(roleKey),
+        encodedLegacyPayload,
+        internalGuard).UseCredentialStore(legacyMigrationDir);
+    if (legacyPolicy.RewritePassword("LegacyFarm_300", 2, "legacy-leah") != internalGuard)
+        throw new InvalidOperationException("a legacy role password did not authenticate during migration");
+    var migratedOnlyPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-legacy",
+        Base64Url(roleKey),
+        encodedEmptyRolePayload,
+        internalGuard).UseCredentialStore(legacyMigrationDir);
+    if (migratedOnlyPolicy.RewritePassword("LegacyFarm_300", 3, "legacy-sam") != internalGuard)
+        throw new InvalidOperationException("legacy migration did not retain every role credential");
+    var migratedStore = File.ReadAllText(Path.Combine(legacyMigrationDir, RoleCredentialStore.FileName));
+    if (migratedStore.Contains("legacy-leah", StringComparison.Ordinal)
+        || migratedStore.Contains("legacy-sam", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("legacy migration leaked a plaintext password");
+    }
+}
+finally
+{
+    Directory.Delete(legacyMigrationDir, recursive: true);
+}
+
+var markerlessStoreDir = Path.Combine(Path.GetTempPath(), "sap-role-markerless-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(markerlessStoreDir);
+try
+{
+    var markerlessStore = new RoleCredentialStorePayload
+    {
+        SchemaVersion = RoleCredentialStore.SchemaVersion,
+        Saves = new Dictionary<string, RoleCredentialSave>(StringComparer.Ordinal)
+        {
+            ["Farm_100"] = new()
+            {
+                Roles = new Dictionary<string, RolePasswordRecord>(StringComparer.Ordinal)
+                {
+                    ["2"] = new() { Verifier = RolePasswordPolicy.ComputeVerifier(roleKey, "2", "existing-password") },
+                },
+            },
+        },
+    };
+    File.WriteAllText(
+        Path.Combine(markerlessStoreDir, RoleCredentialStore.FileName),
+        System.Text.Json.JsonSerializer.Serialize(markerlessStore, ContractJson.Options));
+    var markerlessPolicy = RolePasswordPolicy.Parse(
+        "role",
+        "revision-markerless",
+        Base64Url(roleKey),
+        encodedEmptyRolePayload,
+        internalGuard).UseCredentialStore(markerlessStoreDir);
+    if (markerlessPolicy.Valid
+        || markerlessPolicy.RewritePassword("Farm_100", 2, "existing-password") != RolePasswordPolicy.InvalidPasswordSentinel)
+    {
+        throw new InvalidOperationException("a credential store without its initialization marker did not fail closed");
+    }
+}
+finally
+{
+    Directory.Delete(markerlessStoreDir, recursive: true);
+}
+
 Expect(BroadcastOutcomeValidator.Validate(command, "", true, true)!, CommandStatuses.Failed, "empty_message");
 Expect(BroadcastOutcomeValidator.Validate(command, "hello", false, true)!, CommandStatuses.Failed, "world_not_ready");
 Expect(BroadcastOutcomeValidator.Validate(command, "hello", true, false)!, CommandStatuses.Failed, "chat_unavailable");

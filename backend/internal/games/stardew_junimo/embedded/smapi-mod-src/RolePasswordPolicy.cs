@@ -17,6 +17,7 @@ public sealed class RolePasswordPolicy
     private readonly byte[] roleKey;
     private readonly Dictionary<string, RolePasswordRecord> roles;
     private readonly string serverPassword;
+    private readonly RoleCredentialStore? credentialStore;
 
     private RolePasswordPolicy(
         string mode,
@@ -25,13 +26,15 @@ public sealed class RolePasswordPolicy
         Dictionary<string, RolePasswordRecord> roles,
         string serverPassword,
         bool valid,
-        string detail)
+        string detail,
+        RoleCredentialStore? credentialStore = null)
     {
         Mode = mode;
         Revision = revision;
         this.roleKey = roleKey;
         this.roles = roles;
         this.serverPassword = serverPassword;
+        this.credentialStore = credentialStore;
         Valid = valid;
         Detail = detail;
     }
@@ -48,14 +51,15 @@ public sealed class RolePasswordPolicy
 
     public string InternalGuard => serverPassword;
 
-    public static RolePasswordPolicy LoadFromEnvironment()
+    public static RolePasswordPolicy LoadFromEnvironment(string controlDir)
     {
         return Parse(
             Environment.GetEnvironmentVariable("SAP_PLAYER_AUTH_MODE"),
             Environment.GetEnvironmentVariable("SAP_PLAYER_AUTH_REVISION"),
             Environment.GetEnvironmentVariable("SAP_ROLE_AUTH_KEY"),
             Environment.GetEnvironmentVariable("SAP_ROLE_PASSWORDS_B64"),
-            Environment.GetEnvironmentVariable("SERVER_PASSWORD"));
+            Environment.GetEnvironmentVariable("SERVER_PASSWORD"))
+            .UseCredentialStore(controlDir);
     }
 
     public static RolePasswordPolicy Parse(
@@ -83,15 +87,23 @@ public sealed class RolePasswordPolicy
             var key = Base64UrlDecode(encodedKey ?? "");
             if (key.Length != KeyLength)
                 return Invalid(mode, revision, password, "Role authentication key is missing or invalid.");
-            var payloadBytes = Base64UrlDecode(encodedPayload ?? "");
-            var payload = JsonSerializer.Deserialize<RolePasswordPayload>(payloadBytes, ContractJson.Options);
-            if (payload is null || payload.SchemaVersion != SchemaVersion || payload.Roles is null || payload.Roles.Count == 0)
+            RolePasswordPayload payload;
+            if (string.IsNullOrWhiteSpace(encodedPayload))
+            {
+                payload = new RolePasswordPayload { SchemaVersion = SchemaVersion, Roles = new(StringComparer.Ordinal) };
+            }
+            else
+            {
+                var payloadBytes = Base64UrlDecode(encodedPayload);
+                payload = JsonSerializer.Deserialize<RolePasswordPayload>(payloadBytes, ContractJson.Options)
+                    ?? throw new InvalidDataException("Role password configuration is empty.");
+            }
+            if (payload.SchemaVersion != SchemaVersion || payload.Roles is null)
                 return Invalid(mode, revision, password, "Role password configuration is missing or unsupported.");
             foreach (var pair in payload.Roles)
             {
-                if (!long.TryParse(pair.Key, NumberStyles.None, CultureInfo.InvariantCulture, out var roleId)
-                    || roleId <= 0
-                    || string.IsNullOrWhiteSpace(pair.Value.Verifier)
+                if (!IsCanonicalRoleId(pair.Key)
+                    || pair.Value.Verifier.Length != 43
                     || Base64UrlDecode(pair.Value.Verifier).Length != 32)
                 {
                     return Invalid(mode, revision, password, "Role password configuration contains an invalid record.");
@@ -106,6 +118,16 @@ public sealed class RolePasswordPolicy
         {
             return Invalid(mode, revision, password, "Role password configuration could not be parsed: " + ex.Message);
         }
+    }
+
+    public RolePasswordPolicy UseCredentialStore(string controlDir)
+    {
+        if (!RequiresPatch || !Valid)
+            return this;
+        var store = new RoleCredentialStore(controlDir);
+        if (!store.ValidateExisting(out var detail))
+            return Invalid(Mode, Revision, serverPassword, detail);
+        return new RolePasswordPolicy(Mode, Revision, roleKey, roles, serverPassword, true, "OK", store);
     }
 
     public string RewritePassword(long playerId, string? providedPassword)
@@ -129,6 +151,24 @@ public sealed class RolePasswordPolicy
         return SecureEquals(verifier, record.Verifier) ? serverPassword : InvalidPasswordSentinel;
     }
 
+    public string RewritePassword(string? saveId, long playerId, string? providedPassword)
+    {
+        var provided = providedPassword ?? "";
+        if (!RequiresPatch)
+            return provided;
+        if (!Valid)
+            return InvalidPasswordSentinel;
+        if (credentialStore is not null && !credentialStore.ValidateExisting(out _))
+            return InvalidPasswordSentinel;
+        if (SecureEquals(provided, serverPassword))
+            return provided;
+        if (credentialStore is null)
+            return RewritePassword(playerId, provided);
+        return credentialStore.TryAuthenticateOrEnroll(saveId ?? "", playerId, provided, roleKey, roles, out _)
+            ? serverPassword
+            : InvalidPasswordSentinel;
+    }
+
     public static string ComputeVerifier(byte[] key, string roleId, string password)
     {
         using var hmac = new HMACSHA256(key);
@@ -142,13 +182,38 @@ public sealed class RolePasswordPolicy
         return "sap_" + Base64UrlEncode(hmac.ComputeHash(Encoding.UTF8.GetBytes("sap-junimo-internal-password-v1")));
     }
 
+    internal static bool IsCanonicalRoleId(string roleId)
+    {
+        return long.TryParse(roleId, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsed)
+            && parsed != 0
+            && string.Equals(roleId, parsed.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    }
+
+    internal static bool IsChatRepresentablePassword(string password)
+    {
+        if (password.StartsWith(' ')
+            || password.EndsWith(' ')
+            || password.Contains("  ", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var count = 0;
+        foreach (var rune in password.EnumerateRunes())
+        {
+            if (Rune.IsControl(rune) || ++count > 128)
+                return false;
+        }
+        return count > 0;
+    }
+
     private static RolePasswordPolicy Invalid(string mode, string revision, string serverPassword, string detail)
         => new(mode, revision, Array.Empty<byte>(), new(), serverPassword, false, detail);
 
-    private static string Base64UrlEncode(byte[] value)
+    internal static string Base64UrlEncode(byte[] value)
         => Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    private static byte[] Base64UrlDecode(string value)
+    internal static byte[] Base64UrlDecode(string value)
     {
         var normalized = value.Replace('-', '+').Replace('_', '/');
         normalized += (normalized.Length % 4) switch
@@ -161,7 +226,7 @@ public sealed class RolePasswordPolicy
         return Convert.FromBase64String(normalized);
     }
 
-    private static bool SecureEquals(string left, string right)
+    internal static bool SecureEquals(string left, string right)
     {
         var leftBytes = Encoding.UTF8.GetBytes(left);
         var rightBytes = Encoding.UTF8.GetBytes(right);

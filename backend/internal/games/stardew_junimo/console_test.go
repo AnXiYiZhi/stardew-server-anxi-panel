@@ -22,6 +22,7 @@ type fakeConsoleDocker struct {
 	runContainerFunc    func(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error)
 	composeLogsFunc     func(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
 	restartFunc         func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
+	recreateFunc        func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	composeDownFunc     func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	composeUpFunc       func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	composePsFunc       func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
@@ -77,6 +78,13 @@ func (f *fakeConsoleDocker) ComposeLogs(ctx context.Context, dir string, opts pa
 func (f *fakeConsoleDocker) ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
 	if f.restartFunc != nil {
 		return f.restartFunc(ctx, dir, services...)
+	}
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f *fakeConsoleDocker) ComposeRecreateServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
+	if f.recreateFunc != nil {
+		return f.recreateFunc(ctx, dir, services...)
 	}
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }

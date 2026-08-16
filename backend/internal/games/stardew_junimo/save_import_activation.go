@@ -309,6 +309,9 @@ func (d *Driver) runImportActivation(ctx context.Context, instance registry.Inst
 			return recordImportActivationFailure(instance.DataDir, operationID, ImportErrorResultUnconfirmed, activationOutcomeUnconfirmed, "player connection state is unavailable; controlled restart was not attempted", nil, err)
 		}
 	}
+	if _, err := EnsureServerPlayerAuthEnvironment(instance.DataDir); err != nil {
+		return recordImportActivationFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, activationOutcomeRecovery, "player authentication Compose migration failed before activation restart", nil, err)
+	}
 	if err := ApplyModProfile(instance.DataDir, j.SaveName); err != nil {
 		return recordImportActivationFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, activationOutcomeRecovery, "target save Mod profile could not be applied before activation", nil, err)
 	}
@@ -328,11 +331,11 @@ func (d *Driver) runImportActivation(ctx context.Context, instance registry.Inst
 	running := psErr == nil && serverServiceUp(ps.Services)
 	var resultErr error
 	if running {
-		result, restartErr := lifecycle.ComposeRestartServices(ctx, instance.DataDir, "server")
+		result, restartErr := lifecycle.ComposeRecreateServices(ctx, instance.DataDir, "server")
 		if restartErr != nil || result.ExitCode != 0 {
 			resultErr = restartErr
 			if resultErr == nil {
-				resultErr = fmt.Errorf("compose restart exited with code %d", result.ExitCode)
+				resultErr = fmt.Errorf("compose recreate exited with code %d", result.ExitCode)
 			}
 		}
 	} else {

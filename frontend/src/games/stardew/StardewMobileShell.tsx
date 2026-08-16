@@ -6,6 +6,7 @@ import type { StardewRoute } from './stardew-routes'
 import { useStardewDashboardData } from './useStardewDashboardData'
 import { UpdateDetailsDialog } from './UpdateDetailsDialog'
 import { panelUpdateSurface } from './panel-update-machine'
+import { useStardewLifecycleActions } from './useStardewLifecycleActions'
 import './StardewMobileShell.css'
 
 const MobileHomePage = lazy(() => import('./mobile/MobileHomePage').then((m) => ({ default: m.MobileHomePage })))
@@ -61,6 +62,11 @@ function mobileStatusDotClass(state: string | undefined, loading: boolean): stri
 
 export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobileShellProps) {
   const dashboardData = useStardewDashboardData()
+  const lifecycleActions = useStardewLifecycleActions({
+    instanceState: dashboardData.instanceState,
+    dashboardData,
+    isAdmin: user.role === 'admin',
+  })
   const [activeTab, setActiveTab] = useState<MobileTabKey>(() =>
     window.location.pathname.endsWith('/player-mods') || window.location.pathname.endsWith('/players')
       ? 'players'
@@ -86,8 +92,12 @@ export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobi
     mainScroll.scrollLeft = 0
   }, [activeTab])
 
-  const statusText = mobileStatusText(dashboardData.instanceState?.state, dashboardData.loading)
-  const statusDotClass = mobileStatusDotClass(dashboardData.instanceState?.state, dashboardData.loading)
+  const statusText = lifecycleActions.restartInProgress
+    ? '正在重启'
+    : mobileStatusText(dashboardData.instanceState?.state, dashboardData.loading)
+  const statusDotClass = lifecycleActions.restartInProgress
+    ? 'sd-dot sd-dot-yellow sd-dot-pulse'
+    : mobileStatusDotClass(dashboardData.instanceState?.state, dashboardData.loading)
   const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
 
   const useDesktopRoute = (route?: StardewRoute) => {
@@ -124,7 +134,13 @@ export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobi
             onUseDesktop={useDesktopRoute}
           />
         ) : activeTab === 'server' ? (
-          <MobileControlPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
+          <MobileControlPage
+            user={user}
+            instanceState={dashboardData.instanceState}
+            dashboardData={dashboardData}
+            restartInProgress={lifecycleActions.restartInProgress}
+            onPlayerAuthRestart={lifecycleActions.handleRestart}
+          />
         ) : activeTab === 'players' ? (
           <MobilePlayersPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
         ) : activeTab === 'mods' ? (

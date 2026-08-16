@@ -912,17 +912,23 @@ export type PlayerAuthRoleConfig = {
   roleId: string
   name: string
   configured: boolean
+  credentialStatus: 'waiting' | 'configured' | 'error'
   status?: string
 }
 
 export type InstancePlayerAuthConfig = {
   mode: PlayerAuthMode
   revision: string
+  timeoutSeconds: number
+  maxAttempts: number
   globalPassword?: string
   roles: PlayerAuthRoleConfig[]
   configuredRoleCount: number
   unconfiguredRoleCount: number
+  credentialErrorCount: number
   orphanedRoleCount: number
+  roleCredentialStoreReady: boolean
+  roleCredentialStoreDetail?: string
   runtimeMode?: PlayerAuthMode
   runtimeRevision?: string
   restartRequired: boolean
@@ -933,6 +939,8 @@ export type InstancePlayerAuthConfig = {
 export type UpdateInstancePlayerAuthConfig = {
   expectedRevision: string
   mode: PlayerAuthMode
+  timeoutSeconds?: number
+  maxAttempts?: number
   globalPassword?: string
   rolePasswordUpdates?: Array<{ roleId: string; password: string }>
   rolePasswordRemovals?: string[]

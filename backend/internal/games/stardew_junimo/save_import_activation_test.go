@@ -77,7 +77,7 @@ func prepareActivationTestRuntime(t *testing.T, hostHandling string) *activation
 		}
 		return baseExec(ctx, dir, service, stdin, args...)
 	}
-	f.fake.restartFunc = func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
+	f.fake.recreateFunc = func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
 		runtime.restarts++
 		if runtime.onRestart != nil {
 			runtime.onRestart()

@@ -18,8 +18,9 @@ case "$1 $2 $3 $4 $5 $6" in
   "version "*) printf 'Docker version ok' ;;
   "compose version "*) printf 'Docker Compose version ok' ;;
 		"compose ps --format json "*) printf '[{"Name":"demo","Service":"app","State":"running","Health":"healthy","ExitCode":0}]' ;;
-		"compose stats --no-stream --format json"*) printf '{"Container":"demo-server-1","Name":"demo-server-1","Service":"server","CPUPerc":"2.50%%","MemUsage":"128MiB / 2GiB","MemPerc":"6.25%%"}' ;;
+  "compose stats --no-stream --format json"*) printf '{"Container":"demo-server-1","Name":"demo-server-1","Service":"server","CPUPerc":"2.50%%","MemUsage":"128MiB / 2GiB","MemPerc":"6.25%%"}' ;;
   "compose pull "*) printf 'pull ok' ;;
+  "compose up -d --no-deps --force-recreate server") printf 'recreate server ok' ;;
   "compose up -d "*) printf 'up ok' ;;
   "compose down "*) printf 'down ok' ;;
   "compose restart server "*) printf 'restart server ok' ;;
@@ -66,6 +67,9 @@ esac
 	}
 	if result, err = client.ComposeRestartServices(context.Background(), workDir, "server"); err != nil || result.ExitCode != 0 || !strings.Contains(result.Stdout, "restart server ok") {
 		t.Fatalf("ComposeRestartServices result=%+v err=%v", result, err)
+	}
+	if result, err = client.ComposeRecreateServices(context.Background(), workDir, "server"); err != nil || result.ExitCode != 0 || !strings.Contains(result.Stdout, "recreate server ok") {
+		t.Fatalf("ComposeRecreateServices result=%+v err=%v", result, err)
 	}
 	if result, err = client.ComposeLogs(context.Background(), workDir, LogsOptions{Service: "app", Tail: 25}); err != nil || !strings.Contains(result.Stdout, "tail=25 service=app") {
 		t.Fatalf("ComposeLogs result=%+v err=%v", result, err)
@@ -114,6 +118,16 @@ func TestComposeLogsValidatesInput(t *testing.T) {
 	}
 	if _, err := client.ComposeLogs(context.Background(), t.TempDir(), LogsOptions{Tail: MaxLogTail + 1}); err != ErrInvalidTail {
 		t.Fatalf("expected ErrInvalidTail, got %v", err)
+	}
+}
+
+func TestComposeRecreateServicesRequiresValidatedExplicitTargets(t *testing.T) {
+	client := NewClient(Options{DockerPath: "docker"})
+	if _, err := client.ComposeRecreateServices(context.Background(), t.TempDir()); err == nil {
+		t.Fatal("expected empty service list to fail")
+	}
+	if _, err := client.ComposeRecreateServices(context.Background(), t.TempDir(), "server;steam-auth"); err == nil {
+		t.Fatal("expected invalid service name to fail")
 	}
 }
 
@@ -356,6 +370,7 @@ func fakeDocker(t *testing.T, script string) string {
 			"if \"%1 %2 %3 %4\"==\"compose pull  \" (echo pull ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose up -d \" (echo up ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose down  \" (echo down ok& exit /b 0)\r\n" +
+			"if \"%1 %2 %3 %4 %5 %6\"==\"compose up -d --no-deps --force-recreate server\" (echo recreate server ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose restart  \" (echo restart ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose restart server \" (echo restart server ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose logs --no-color --tail\" (echo logs ok tail=%5 service=%6& exit /b 0)\r\n" +

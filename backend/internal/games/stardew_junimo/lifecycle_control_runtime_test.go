@@ -21,13 +21,13 @@ import (
 
 func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 	tests := []struct {
-		name      string
-		operation string
-		wantUp    int32
-		wantReset int32
+		name         string
+		operation    string
+		wantUp       int32
+		wantRecreate int32
 	}{
 		{name: "ordinary start", operation: "start", wantUp: 1},
-		{name: "restart", operation: "restart", wantReset: 1},
+		{name: "restart", operation: "restart", wantRecreate: 1},
 	}
 
 	for _, tt := range tests {
@@ -35,9 +35,25 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 			store := newLifecycleTestStore(t)
 			dataDir := filepath.Join(t.TempDir(), "stardew")
 			instance := prepareControlLifecycleInstance(t, store, dataDir)
+			if tt.operation == "restart" {
+				composePath := filepath.Join(dataDir, "docker-compose.yml")
+				compose, err := os.ReadFile(composePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				legacy := string(compose)
+				for _, entry := range playerAuthComposeEnvironment {
+					legacy = strings.ReplaceAll(legacy, entry.mappingLine+"\n", "")
+				}
+				if err := os.WriteFile(composePath, []byte(legacy), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			var composeUps atomic.Int32
 			var restarts atomic.Int32
+			var recreates atomic.Int32
+			var recreateSawPlayerAuth atomic.Bool
 			launched := make(chan struct{})
 			var launchedOnce sync.Once
 			markLaunched := func() { launchedOnce.Do(func() { close(launched) }) }
@@ -49,6 +65,17 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 				},
 				restartFunc: func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
 					restarts.Add(1)
+					markLaunched()
+					return paneldocker.CommandResult{ExitCode: 0}, nil
+				},
+				recreateFunc: func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
+					recreates.Add(1)
+					compose, _ := os.ReadFile(filepath.Join(dataDir, "docker-compose.yml"))
+					complete := true
+					for _, entry := range playerAuthComposeEnvironment {
+						complete = complete && strings.Contains(string(compose), entry.mappingLine)
+					}
+					recreateSawPlayerAuth.Store(complete)
 					markLaunched()
 					return paneldocker.CommandResult{ExitCode: 0}, nil
 				},
@@ -103,8 +130,79 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 			if got := composeUps.Load(); got != tt.wantUp {
 				t.Fatalf("%s ComposeUp calls = %d, want %d", tt.operation, got, tt.wantUp)
 			}
-			if got := restarts.Load(); got != tt.wantReset {
-				t.Fatalf("%s restart calls = %d, want %d", tt.operation, got, tt.wantReset)
+			if got := recreates.Load(); got != tt.wantRecreate {
+				t.Fatalf("%s recreate calls = %d, want %d", tt.operation, got, tt.wantRecreate)
+			}
+			if got := restarts.Load(); got != 0 {
+				t.Fatalf("%s reused frozen container environment through %d restart calls", tt.operation, got)
+			}
+			if tt.operation == "restart" && !recreateSawPlayerAuth.Load() {
+				t.Fatal("restart recreated server before migrating the legacy player-auth environment")
+			}
+		})
+	}
+}
+
+func TestPlayerAuthMigrationFailurePreservesRuntimeSnapshotsAndNeverLaunches(t *testing.T) {
+	for _, operation := range []string{"start", "restart"} {
+		t.Run(operation, func(t *testing.T) {
+			store := newLifecycleTestStore(t)
+			dataDir := filepath.Join(t.TempDir(), "stardew")
+			instance := prepareControlLifecycleInstance(t, store, dataDir)
+			composePath := filepath.Join(dataDir, "docker-compose.yml")
+			unsupportedCompose := "services:\n  server:\n    image: server:test\n    environment: { EXISTING: value }\n"
+			if err := os.WriteFile(composePath, []byte(unsupportedCompose), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			control := controlDir(dataDir)
+			statusPath := filepath.Join(control, "status.json")
+			optionsPath := filepath.Join(control, "options.json")
+			statusBody := []byte(`{"state":"save-loaded"}`)
+			optionsBody := []byte(`{"controlModVersion":"0.3.5"}`)
+			if err := os.WriteFile(statusPath, statusBody, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(optionsPath, optionsBody, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var launches atomic.Int32
+			fake := &fakeConsoleDocker{
+				composeUpFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
+					launches.Add(1)
+					return paneldocker.CommandResult{ExitCode: 0}, nil
+				},
+				recreateFunc: func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
+					launches.Add(1)
+					return paneldocker.CommandResult{ExitCode: 0}, nil
+				},
+			}
+			manager := jobs.NewManager(store, slog.Default())
+			driver := New(fake, slog.Default(), manager, store)
+			runner := &lifecycleRunner{driver: driver, lifecycle: fake, instance: instance, operation: operation}
+			job, err := manager.Start(context.Background(), jobs.Spec{
+				Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID,
+				Timeout: 5 * time.Second, Run: runner.run,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+			if launches.Load() != 0 {
+				t.Fatalf("%s launched Compose after an unsafe migration failure", operation)
+			}
+			for path, want := range map[string][]byte{statusPath: statusBody, optionsPath: optionsBody} {
+				got, err := os.ReadFile(path)
+				if err != nil || string(got) != string(want) {
+					t.Fatalf("runtime snapshot %s changed: got=%q err=%v", filepath.Base(path), got, err)
+				}
+			}
+			updated, err := store.GetInstance(context.Background(), instance.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if updated.DriverPhase != "player_auth_compose_migration_failed" {
+				t.Fatalf("instance phase=%q, want player_auth_compose_migration_failed", updated.DriverPhase)
 			}
 		})
 	}

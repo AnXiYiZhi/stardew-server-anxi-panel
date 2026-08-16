@@ -79,6 +79,7 @@ type LifecycleDockerService interface {
 	ComposeDown(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeRestart(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
+	ComposeRecreateServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	ComposeExecTTY(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.ComposeExecTTYResult, error)
 	ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
@@ -850,6 +851,13 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 			retErr = &NewGameTransactionError{Code: "new_game_owner_release_failed", Message: "新建存档启动前校验失败，事务已回滚但 owner 清理失败", Cause: retErr, RollbackError: releaseErr}
 		}
 	}()
+	if changed, err := EnsureServerPlayerAuthEnvironment(r.instance.DataDir); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped,
+			"迁移玩家加入保护运行环境失败，已阻止启动", "player_auth_compose_migration_failed", jobCtx.ID)
+		return fmt.Errorf("migrate player authentication Compose environment before start: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已为旧实例补齐玩家加入保护运行环境。")
+	}
 	imageRef := gameInstallImage(r.instance.DataDir)
 	ok, err := r.driver.verifyGameDataVolume(ctx, r.instance.DataDir, imageRef, func(line string) {
 		_, _ = jobCtx.Info(ctx, "[verify] "+paneldocker.RedactString(line))
@@ -1313,6 +1321,13 @@ func (r *lifecycleRunner) doRestoreAndRestart(ctx context.Context, jobCtx *jobs.
 func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在重启 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在重启...", "restarting", jobCtx.ID)
+	if changed, err := EnsureServerPlayerAuthEnvironment(r.instance.DataDir); err != nil {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
+			"迁移玩家加入保护运行环境失败，已阻止重启", "player_auth_compose_migration_failed", jobCtx.ID)
+		return fmt.Errorf("migrate player authentication Compose environment before restart: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已为旧实例补齐玩家加入保护运行环境。")
+	}
 	r.removeInviteCodeFile(ctx, jobCtx)
 	if err := r.clearRuntimeControlSnapshots(ctx, jobCtx); err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
@@ -1326,11 +1341,9 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 		return err
 	}
 
-	composeConfigChanged := false
 	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer static init compatibility mounts failed: %v", err))
 	} else if changed {
-		composeConfigChanged = true
 		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
 	}
 	if quarantined, err := QuarantineSMAPIBundledDuplicates(r.instance.DataDir); err != nil {
@@ -1341,17 +1354,11 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("已隔离重复的 SMAPI 内置组件：%s。原文件保留在私有隔离目录。", strings.Join(quarantined, "、")))
 	}
 
-	var result paneldocker.CommandResult
-	var err error
-	if composeConfigChanged {
-		result, err = r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
-	} else {
-		result, err = r.lifecycle.ComposeRestartServices(ctx, r.instance.DataDir, "server")
-	}
+	result, err := r.lifecycle.ComposeRecreateServices(ctx, r.instance.DataDir, "server")
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"重启失败: "+result.Stderr, "restart_failed", jobCtx.ID)
-		return fmt.Errorf("docker compose restart server: %w", err)
+		return fmt.Errorf("docker compose recreate server: %w", err)
 	}
 	_, _ = jobCtx.Info(ctx, "重启完成，等待服务器就绪...")
 
