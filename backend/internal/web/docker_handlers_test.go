@@ -22,23 +22,25 @@ import (
 )
 
 type fakeDockerService struct {
-	versionResult  paneldocker.CommandResult
-	versionErr     error
-	composeErr     error
-	psResult       paneldocker.ComposePsResult
-	psErr          error
-	strictPsResult paneldocker.ComposePsResult
-	strictPsErr    error
-	statsResult    paneldocker.ComposeStatsResult
-	statsErr       error
-	statsCalls     *atomic.Int32
-	statsDelay     time.Duration
-	logsResult     paneldocker.CommandResult
-	logsErr        error
-	composeUp      paneldocker.CommandResult
-	composeUpErr   error
-	execFunc       func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
-	instanceState  string
+	versionResult       paneldocker.CommandResult
+	versionErr          error
+	composeErr          error
+	psResult            paneldocker.ComposePsResult
+	psErr               error
+	strictPsResult      paneldocker.ComposePsResult
+	strictPsErr         error
+	statsResult         paneldocker.ComposeStatsResult
+	statsErr            error
+	statsCalls          *atomic.Int32
+	statsDelay          time.Duration
+	logsResult          paneldocker.CommandResult
+	logsErr             error
+	containerLogsResult paneldocker.CommandResult
+	containerLogsErr    error
+	composeUp           paneldocker.CommandResult
+	composeUpErr        error
+	execFunc            func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
+	instanceState       string
 }
 
 func (f fakeDockerService) DockerVersion(ctx context.Context, workDir string) (paneldocker.CommandResult, error) {
@@ -72,6 +74,10 @@ func (f fakeDockerService) ComposeStats(ctx context.Context, dir string) (paneld
 
 func (f fakeDockerService) ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error) {
 	return f.logsResult, f.logsErr
+}
+
+func (f fakeDockerService) ContainerLogs(ctx context.Context, workDir, container string, tail int) (paneldocker.CommandResult, error) {
+	return f.containerLogsResult, f.containerLogsErr
 }
 
 func (f fakeDockerService) ComposePullStreaming(ctx context.Context, dir string, services []string, lineHandler func(line string)) (paneldocker.CommandResult, error) {

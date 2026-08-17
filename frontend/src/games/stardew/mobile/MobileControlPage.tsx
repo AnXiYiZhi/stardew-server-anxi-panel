@@ -3,13 +3,11 @@ import {
   sendSay,
   getRestartSchedule,
   updateRestartSchedule,
-  getInstanceServerRuntimeSettings,
-  updateInstanceServerRuntimeSettings,
   triggerFestivalEvent,
   enableJojaRoute,
   requestGameSave,
 } from '../../../api'
-import type { RestartSchedule, ServerRuntimeSettings } from '../../../types'
+import type { RestartSchedule } from '../../../types'
 import { errorMessage, stateLabel, formatDate } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
 import type { StardewPageProps } from '../stardew-routes'
@@ -18,6 +16,8 @@ import { submitAndWaitForPlayerCommand } from '../player-command-results'
 import { useGameLanguage } from '../useGameLanguage'
 import { STARDEW_GAME_LANGUAGES } from '../game-languages'
 import { PlayerAuthSettingsDialog } from '../PlayerAuthSettingsDialog'
+import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
+import { ServerRuntimeSettingsDialog } from '../ServerRuntimeSettingsDialog'
 
 type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'> & {
   restartInProgress: boolean
@@ -44,12 +44,6 @@ const defaultRestartSchedule: RestartSchedule = {
   warningMinutes: [10, 5, 1],
   backupBeforeShutdown: true,
   skipIfPlayersOnline: false,
-}
-
-const defaultRuntimeSettings: ServerRuntimeSettings = {
-  cabinStrategy: 'CabinStack',
-  existingCabinBehavior: 'KeepExisting',
-  networkBroadcastPeriod: 1,
 }
 
 function serverStatusText(state: string | null, loading: boolean): string {
@@ -95,13 +89,24 @@ export function MobileControlPage({
   // ── 玩家加入保护 ────────────────────────────────────────────────────────
   const [playerAuthOpen, setPlayerAuthOpen] = useState(false)
 
-  // ── 小屋与联机高级设置 ──────────────────────────────────────────────────
-  const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false)
-  const [runtimeSettingsDraft, setRuntimeSettingsDraft] = useState<ServerRuntimeSettings>(defaultRuntimeSettings)
-  const [runtimeSettingsLoading, setRuntimeSettingsLoading] = useState(false)
-  const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false)
-  const [runtimeSettingsError, setRuntimeSettingsError] = useState<string | null>(null)
-  const [runtimeSettingsMessage, setRuntimeSettingsMessage] = useState<string | null>(null)
+  // ── 联机人数与小屋设置（桌面/移动共用同一 hook 与弹窗组件） ───────────────
+  const {
+    runtimeSettingsOpen,
+    runtimeSettingsDraft,
+    setRuntimeSettingsDraft,
+    runtimeSettingsLoading,
+    runtimeSettingsSaving,
+    runtimeSettingsError,
+    runtimeSettingsMessage,
+    clearRuntimeSettingsFeedback,
+    openRuntimeSettings,
+    closeRuntimeSettings,
+    handleSaveRuntimeSettings,
+  } = useServerRuntimeSettings({
+    isAdmin,
+    isRunning,
+    refreshPlayers: dashboardData.refreshPlayers,
+  })
 
   const {
     gameLanguageOpen,
@@ -210,39 +215,6 @@ export function MobileControlPage({
       next.sort((a, b) => b - a)
       return { ...draft, warningMinutes: next }
     })
-  }
-
-  async function openRuntimeSettings() {
-    if (!isAdmin) return
-    setRuntimeSettingsOpen(true)
-    setRuntimeSettingsLoading(true)
-    setRuntimeSettingsSaving(false)
-    setRuntimeSettingsError(null)
-    setRuntimeSettingsMessage(null)
-    try {
-      const res = await getInstanceServerRuntimeSettings()
-      setRuntimeSettingsDraft(res)
-    } catch (e) {
-      setRuntimeSettingsError(errorMessage(e))
-      setRuntimeSettingsDraft(defaultRuntimeSettings)
-    } finally {
-      setRuntimeSettingsLoading(false)
-    }
-  }
-
-  async function handleSaveRuntimeSettings() {
-    setRuntimeSettingsSaving(true)
-    setRuntimeSettingsError(null)
-    setRuntimeSettingsMessage(null)
-    try {
-      const res = await updateInstanceServerRuntimeSettings(runtimeSettingsDraft)
-      setRuntimeSettingsDraft(res)
-      setRuntimeSettingsMessage('设置已保存，需要重启服务器容器后才会生效。')
-    } catch (e) {
-      setRuntimeSettingsError(errorMessage(e))
-    } finally {
-      setRuntimeSettingsSaving(false)
-    }
   }
 
   async function handleTriggerFestivalEvent() {
@@ -424,13 +396,13 @@ export function MobileControlPage({
             type="button"
             className="sd-btn-tan sd-mctrl-action-btn sd-mctrl-action-btn--card"
             disabled={!isAdmin}
-            title={isAdmin ? '配置小屋策略与联机广播频率' : '仅管理员可配置小屋与联机高级设置'}
+            title={isAdmin ? '配置联机人数上限、小屋策略与广播频率' : '仅管理员可配置联机人数与小屋设置'}
             onClick={() => void openRuntimeSettings()}
           >
             <img className="sd-mctrl-action-icon" src={ICONS.settings} alt="" />
             <span className="sd-mctrl-action-copy">
-              <strong>小屋与联机高级设置</strong>
-              <span>小屋策略 / 广播频率</span>
+              <strong>联机人数与小屋设置</strong>
+              <span>人数上限 / 小屋策略 / 广播频率</span>
             </span>
           </button>
 
@@ -639,99 +611,23 @@ export function MobileControlPage({
         />
       ) : null}
 
-      {/* ── 小屋与联机高级设置弹窗 ───────────────────────────────────────── */}
+      {/* ── 联机人数与小屋设置弹窗 ───────────────────────────────────────── */}
       {runtimeSettingsOpen ? (
-        <ModalPortal
-          className="sd-mctrl-dialog-overlay"
-          ariaLabelledBy="mobile-runtime-settings-title"
-          onEscape={runtimeSettingsSaving ? undefined : () => setRuntimeSettingsOpen(false)}
-        >
-          <div className="sd-panel sd-mctrl-dialog">
-            <h3 id="mobile-runtime-settings-title">小屋与联机高级设置</h3>
-
-            {runtimeSettingsLoading ? (
-              <p>正在读取当前配置...</p>
-            ) : (
-              <>
-                <label className="sd-mctrl-field">
-                  <span>小屋策略（CabinStrategy）</span>
-                  <select
-                    className="sd-input"
-                    value={runtimeSettingsDraft.cabinStrategy}
-                    disabled={runtimeSettingsSaving}
-                    onChange={(e) => {
-                      setRuntimeSettingsDraft((draft) => ({ ...draft, cabinStrategy: e.target.value }))
-                      setRuntimeSettingsMessage(null)
-                    }}
-                  >
-                    <option value="CabinStack">CabinStack（隐藏小屋堆叠，最适合大多数服务器）</option>
-                    <option value="FarmhouseStack" hidden>FarmhouseStack（兼容已有配置）</option>
-                    <option value="None">None（原版行为，小屋放置在真实农场位置）</option>
-                  </select>
-                </label>
-
-                <label className="sd-mctrl-field">
-                  <span>已有小屋处理方式（ExistingCabinBehavior）</span>
-                  <select
-                    className="sd-input"
-                    value={runtimeSettingsDraft.existingCabinBehavior}
-                    disabled={runtimeSettingsSaving}
-                    onChange={(e) => {
-                      setRuntimeSettingsDraft((draft) => ({ ...draft, existingCabinBehavior: e.target.value }))
-                      setRuntimeSettingsMessage(null)
-                    }}
-                  >
-                    <option value="KeepExisting">KeepExisting（保留已有小屋位置）</option>
-                    <option value="MoveToStack">MoveToStack（把已有小屋迁移到策略指定位置）</option>
-                  </select>
-                </label>
-
-                <label className="sd-mctrl-field">
-                  <span>网络广播频率（NetworkBroadcastPeriod，单位：刻）</span>
-                  <select
-                    className="sd-input"
-                    value={runtimeSettingsDraft.networkBroadcastPeriod}
-                    disabled={runtimeSettingsSaving}
-                    onChange={(e) => {
-                      setRuntimeSettingsDraft((draft) => ({ ...draft, networkBroadcastPeriod: Number(e.target.value) }))
-                      setRuntimeSettingsMessage(null)
-                    }}
-                  >
-                    <option value={1}>1（每刻广播，最实时）</option>
-                    <option value={2}>2</option>
-                    <option value={3}>3（原版频率）</option>
-                  </select>
-                </label>
-
-                <div className="sd-mctrl-warning">
-                  这些设置写入 server-settings.json，JunimoServer 只在容器启动时读取。保存后需要重启服务器容器才会生效，对已有存档同样适用。
-                </div>
-
-                {runtimeSettingsError ? <div className="sd-notice sd-notice--error sd-mctrl-notice">{runtimeSettingsError}</div> : null}
-                {runtimeSettingsMessage ? <div className="sd-notice sd-notice--ok sd-mctrl-notice">{runtimeSettingsMessage}</div> : null}
-
-                <div className="sd-mctrl-dialog-actions">
-                  <button
-                    type="button"
-                    className="sd-btn-tan sd-mctrl-dialog-btn"
-                    onClick={() => setRuntimeSettingsOpen(false)}
-                    disabled={runtimeSettingsSaving}
-                  >
-                    关闭
-                  </button>
-                  <button
-                    type="button"
-                    className="sd-btn-green sd-mctrl-dialog-btn"
-                    onClick={() => void handleSaveRuntimeSettings()}
-                    disabled={runtimeSettingsSaving}
-                  >
-                    {runtimeSettingsSaving ? '保存中…' : '保存'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </ModalPortal>
+        <ServerRuntimeSettingsDialog
+          mobile
+          draft={runtimeSettingsDraft}
+          setDraft={setRuntimeSettingsDraft}
+          loading={runtimeSettingsLoading}
+          saving={runtimeSettingsSaving}
+          error={runtimeSettingsError}
+          message={runtimeSettingsMessage}
+          isRunning={isRunning}
+          currentMaxPlayers={dashboardData.players?.maxPlayers ?? null}
+          onlineCount={dashboardData.players?.onlineCount ?? null}
+          onClearFeedback={clearRuntimeSettingsFeedback}
+          onClose={closeRuntimeSettings}
+          onSave={() => { void handleSaveRuntimeSettings() }}
+        />
       ) : null}
 
       {/* ── 服务器游戏语言弹窗 ───────────────────────────────────────────── */}

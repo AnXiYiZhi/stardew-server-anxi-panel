@@ -26,6 +26,7 @@ case "$1 $2 $3 $4 $5 $6" in
   "compose restart server "*) printf 'restart server ok' ;;
   "compose restart "*) printf 'restart ok' ;;
   "compose logs --no-color --tail "*) printf 'logs ok tail=%s service=%s' "$5" "$6" ;;
+  "logs --tail 25 demo-panel "*) printf 'panel logs ok' ;;
   *) printf 'unexpected args: %s %s %s %s %s %s' "$1" "$2" "$3" "$4" "$5" "$6" >&2; exit 7 ;;
 esac
 `)
@@ -74,6 +75,9 @@ esac
 	if result, err = client.ComposeLogs(context.Background(), workDir, LogsOptions{Service: "app", Tail: 25}); err != nil || !strings.Contains(result.Stdout, "tail=25 service=app") {
 		t.Fatalf("ComposeLogs result=%+v err=%v", result, err)
 	}
+	if result, err = client.ContainerLogs(context.Background(), workDir, "demo-panel", 25); err != nil || !strings.Contains(result.Stdout, "panel logs ok") {
+		t.Fatalf("ContainerLogs result=%+v err=%v", result, err)
+	}
 }
 
 func TestParseComposeJSON_Formats(t *testing.T) {
@@ -117,6 +121,16 @@ func TestComposeLogsValidatesInput(t *testing.T) {
 		t.Fatalf("expected ErrInvalidService, got %v", err)
 	}
 	if _, err := client.ComposeLogs(context.Background(), t.TempDir(), LogsOptions{Tail: MaxLogTail + 1}); err != ErrInvalidTail {
+		t.Fatalf("expected ErrInvalidTail, got %v", err)
+	}
+}
+
+func TestContainerLogsValidatesInput(t *testing.T) {
+	client := NewClient(Options{DockerPath: "docker"})
+	if _, err := client.ContainerLogs(context.Background(), t.TempDir(), "bad/container", 100); err != ErrInvalidContainer {
+		t.Fatalf("expected ErrInvalidContainer, got %v", err)
+	}
+	if _, err := client.ContainerLogs(context.Background(), t.TempDir(), "demo-panel", MaxLogTail+1); err != ErrInvalidTail {
 		t.Fatalf("expected ErrInvalidTail, got %v", err)
 	}
 }
@@ -374,6 +388,7 @@ func fakeDocker(t *testing.T, script string) string {
 			"if \"%1 %2 %3 %4\"==\"compose restart  \" (echo restart ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose restart server \" (echo restart server ok& exit /b 0)\r\n" +
 			"if \"%1 %2 %3 %4\"==\"compose logs --no-color --tail\" (echo logs ok tail=%5 service=%6& exit /b 0)\r\n" +
+			"if \"%1 %2 %3 %4\"==\"logs --tail 25 demo-panel\" (echo panel logs ok& exit /b 0)\r\n" +
 			"echo password=secret 1>&2\r\nexit /b 9\r\n"
 		if strings.Contains(script, "exit 9") {
 			content = "@echo off\r\necho password=secret 1>&2\r\nexit /b 9\r\n"

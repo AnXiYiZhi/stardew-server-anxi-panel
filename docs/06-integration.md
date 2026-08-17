@@ -1,3 +1,35 @@
+# NEXUS-MOD-ONECLICK-UPDATE-1 跨端契约（2026-08-17，completed，待发布）
+
+- 继续复用 `POST /api/instances/:id/mods/remote/install`、现有 `mod_remote_install` Job 与 `Idempotency-Key`。安装请求仍为 `{url, mod, expectedVersion, nexusFileId}`；一键更新额外发送 `replaceUniqueId`，且服务端要求正数 `mod.modId/nexusFileId` 和非空 `expectedVersion`，任一缺失都在建 Job 前返回 400。未提供 `replaceUniqueId` 的旧客户端和普通安装行为不变。
+- 前端只对管理员、停止态、扩展已连接、具备直接 Nexus ID 且物理包只有一个成员的已安装 Mod开放入口。扩展 0.1.8 把 `operation/replaceUniqueId` 与版本、file ID 一起贯穿 batch、session、capture、background 直连和 panel bridge；不会修改 Nexus CDN 签名 URL。批量安装的 Nexus 页面按项串行打开，当前项成功提交给 Panel 后才开始下一项。
+- 后端在同一 Mod profile 锁内先把 ZIP 下载到临时区，校验目标 manifest 的 `UniqueID == replaceUniqueId`、版本等价于 `expectedVersion` 且 ZIP 只含一个目标 Mod；全部通过后才把旧目录同盘重命名为临时备份并替换。新目录安装失败会删除半成品并恢复旧目录，校验失败则 Mods 目录零写入。
+- 替换继承原来的启用/禁用目录，并把旧包根目录 `config.json` 覆盖到新包，避免更新清空用户配置。Nexus sidecar 只有在新元数据持久化成功后才清理旧文件夹条目；更新时不会调用“为当前存档自动启用导入 Mod”的安装后逻辑。
+- 聚合包、内置 Mod、目标不存在、UniqueID/版本不符、服务器运行中、普通用户和扩展断连均 fail closed；“查看更新页”外链继续作为手工路径。自动化覆盖成功替换、文件夹改名、配置与禁用状态保留、错误 UID/版本零写入、请求校验和扩展上下文。真实 Chrome + 0.1.8 已验证 CDN 捕获、Panel 任务终态及 Content Patcher `2.9.0 → 2.9.1` 后的 manifest/config/启用状态。
+
+# NEXUS-EXT-LATEST-1 跨端契约（2026-08-17，completed，待发布）
+
+- `GET /api/instances/:id/mods/nexus/search` 的 `results[].version` 与 `results[].requiredMods[].version` 表示 Nexus 当前元数据版本。一键安装的每个本体/前置目标都必须把该值作为 `expectedVersion` 发送给扩展；缺失版本是可见失败，不允许退化为任意文件。
+- 扩展仅在普通 Nexus 页面 URL 使用 `anxi_version` 维持导航状态。最终 CDN URL 必须保持 Nexus 原样签名；面板请求为 `{url, mod, expectedVersion, nexusFileId}`，并继续携带原 `Idempotency-Key`。同一批量目标的版本变化会轮换 capture 身份，旧请求不能与新版本合并。
+- 扩展先在单文件 DOM 上下文精确匹配版本并确定 `nexusFileId`；面板随后下载临时 ZIP，并在任何 Mods 写入前要求至少一个 SMAPI manifest 版本与 `expectedVersion` 等价。两层任一失败都终止该 item/job，UI 显示目标名称和失败原因，原 Mod 保持不变。
+- 旧客户端省略新增字段仍可调用远程安装接口；0.1.5 新 Panel 会显式传目标版本，旧 Panel 批量 payload 缺字段时由扩展从 Nexus 当前文件页补出版本，再走相同文件行匹配。日志、审计和扩展持久状态只记录安全版本/file ID/脱敏 URL，不得保存 CDN key、expires 或完整 query。
+- 自动化已覆盖前置版本补全、旧/新候选选择、旧 Panel 缺版本字段兼容、批次串行、两条扩展 POST、后端 manifest 匹配/不匹配与零写入；已登录 Nexus 的经典文件页验证了 `<dt>Content Patcher 2.9.1</dt> + <dd data-id="160463">` 关联，旧版 2.9.0 为 153187，不存在的 2.9.10 不匹配。真实 Chrome + 当前 0.1.8 进一步在停止态测试实例完成 Content Patcher `2.9.1/file_id=160463` 与 Elle's New Barn Animals `1.1.3/file_id=34408` 的串行安装，以及 Content Patcher 更新；两条成功链均由 Panel 任务与落盘 manifest 交叉确认，临时制品为零。远程安装仍只接受 ZIP，发现旧目标实际提供 `.rar` 时没有放宽安全契约或把手工按钮跳转冒充成功。
+
+# SERVER-RUNTIME-MAXPLAYERS-1 / FE-SERVER-RUNTIME-MAXPLAYERS-1 跨端契约（2026-08-17，completed，待发布）
+
+- 继续复用管理员 `GET/PUT /api/instances/:id/config/server-runtime-settings`。GET 结构为 `{ maxPlayers, cabinStrategy, existingCabinBehavior, networkBroadcastPeriod }`，`maxPlayers` 缺失或无效时默认 `10`；合法范围 `1~100`。新前端 PUT 始终提交四个实际值，旧客户端省略 `maxPlayers` 时后端在 driver 锁内保留磁盘原值。
+- 写回仍受 `Driver.runtimeUpdateMu` 与 unfinished new-game owner 保护，并使用已有安全原子 JSON 写；只更新 `Server` 的四个目标 key，保留根级、`Game`、`Server` 其它字段。审计事件仍为 `instance_server_runtime_settings_update`，新增 `maxPlayers/previousMaxPlayers` metadata。
+- 服务器运行时，dashboard `/players.maxPlayers` 表示 Junimo `info` 读出的**当前生效上限**；配置文件值只表示**重启后配置**，两者不同必须显示待重启。服务器停止时没有 live 值，`/players.maxPlayers` 可投影下次启动配置。运行中 live info 不可读时返回 `null`，不得用待生效配置冒充。
+- 桌面摘要只有管理员看到“修改上限”，它与快捷操作、移动控制页都调用同一个 `openRuntimeSettings`、共享 hook/弹窗/保存流。目标值低于当前在线人数只显示警告，仍可“仅保存”；保存本身不重启。成功后刷新 players/dashboard，但运行中当前值要等真实容器重启后才变化。
+- `startingCabins 0~7` 与 `maxPlayers 1~100` 继续分离；不按高人数检测 Mod、小屋或加入硬门禁，不把该值做成 SQLite/单存档设置。
+- 联调验证已在任务专属 Compose project 中只读克隆真实已有存档和游戏卷：先保存/启动 `11`，`GET /players` 返回 live `11`；运行中 PUT 为 `12` 后同接口仍返回 `11`；调用既有 restart 生命周期并完成就绪后返回 `12`，配置 GET 同时保持 `12`。该 opt-in 场景固化在 `internal/web/server_runtime_settings_real_integration_test.go`，并在 Compose 前断言克隆 `.env` 的 project 身份；源夹具不写入、最终保持停止，任务容器/网络/卷/bind 临时目录均清零。
+
+# SUPPORT-BUNDLE-LOG-CONTEXT-2 / FE-DIAGNOSTICS-EXPORT-ACTION-1 跨端契约（2026-08-17，completed，待发布）
+
+- 管理员仍通过 `POST /api/instances/:id/support-bundle` 下载流式 `application/zip`，不依赖 `Content-Length`。前端只把入口移到诊断页标题栏、“重新检查”左侧；鉴权、请求方法、Blob 下载和文件名契约不变。
+- ZIP 的日志契约扩展为：`server-logs.txt` 最近 1000 行、`steam-auth-logs.txt` 最近 500 行、`panel-logs.txt` 最近 1000 行，以及 `job-logs.json` 中当前实例最近 10 个任务各最多 200 条日志。`jobs.json` 只列当前实例最近任务，`instance-state.json` 使用诊断页完整状态投影但强制移除邀请码。
+- 日志与 JSON 消息均在后端脱敏；存档内容、Steam session、密码库、上传/恢复事务、备份和任务 payload 不导出。某个容器或数据源不可读时，对应 ZIP 文件保留采集失败说明，其余条目继续生成；前端不需要按缺失条目做分支。
+- 联调最低覆盖：匿名/普通用户权限不回归、管理员得到有效 ZIP、四类新增日志条目存在、已知密码/Token/邀请码不出现、按钮在桌面位于重新检查左侧、430px 无横向滚动。后端 Docker/Web 专项、前端响应式契约、production build 和本地浏览器双视口已通过。
+
 # HOST-BED-MANUAL-CONTROL-1 跨端/运行时契约（2026-08-16，released in v0.5.1）
 
 - 调用链保持 `Panel save import transaction → JunimoServer saves import --swap-host-to → Control game-thread integrity/finalizer evidence → Control save-now/GameLoop.Saved`。Web 层仍只提交 hostHandling/platformId 与展示事务结果，不解析或改写 Stardew XML。交换主机的激活成功现在要求 Control `status.json.hostBed` 明确 healthy、houseUpgradeLevel 存在、期望/实际床型匹配，且 bed tile 与 player bed spot 关系能由实际主 FarmHouse 验证；缺床使用稳定错误码 `host_bed_missing`。
@@ -656,7 +688,7 @@ GET /api/instances/:id/players/:uniqueMultiplayerId/mods
 
 - `POST /api/instances/:id/support-bundle` 仍由管理员触发，仍返回 `application/zip`，文件名形如 `support-bundle-YYYYMMDD-HHMMSS.zip`。
 - 后端现在流式写 ZIP，不再设置 `Content-Length`。前端下载逻辑应以 HTTP 成功和 Blob 内容为准，不要依赖总长度或进度百分比。
-- ZIP 内条目和脱敏语义保持不变：版本、健康检查、实例状态、近期任务、审计摘要、Compose 状态、Compose 配置摘要和 server 日志 tail。
+- 本次流式改造当时保持了原 ZIP 条目；2026-08-17 的 `SUPPORT-BUNDLE-LOG-CONTEXT-2` 后续在同一协议上新增 Panel/steam-auth/任务进度日志，并把实例状态升级为完整诊断投影，当前条目以本文顶部契约为准。
 - 如果后续支持包单个条目采集失败，应在 ZIP 内写入对应 error/note 条目；流式响应开始后不能再切换成 JSON 错误体。
 
 # JUNIMO-MOD-MOUNT-RESTORE-1 联调契约
@@ -907,7 +939,7 @@ npm.cmd run dev
 
 - `GET /api/instances/:id/players` 返回在线快照和缓存名册。
 - 玩家名册会合并当前存档主 XML 中的 `<player>` 与 `<farmhands><Farmer>`；存档存在但当前不在线、也没进入缓存的玩家应显示为 `status=offline`、`source=save_file`，例如 `saveId=test` 可匹配 `Saves/test_数字` 下的 farmhand。
-- `maxPlayers` 默认取当前存档 `server-settings.json` 的 `Server.MaxPlayers`（junimo info 解析出的值优先）；服务器未运行时也会返回，供前端显示"在线数/人数上限"。
+- `maxPlayers` 在 running 状态只表示 Junimo `info` 解析出的当前生效值；服务器未运行时才取 `server-settings.json` 的 `Server.MaxPlayers` 作为下次启动配置。live info 暂时不可读时返回 `null`，不能回退到待重启配置并伪装成已生效。
 - 前端显示 online/offline、host、位置、tile/pixel。
 - 未知地图 key 保留原值。
 - 玩家页固定展示 `money`、`farmIncome`、`personalIncome` 和 `walletMode`；`farmIncome` 是农场/团队累计收入，`personalIncome` 是玩家个人累计收入，不随钱包模式改变含义。
@@ -1213,11 +1245,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 # CABIN-STRATEGY-1 小屋策略分层联调契约
 
 - `POST /api/instances/:id/saves/custom-new-game` 新增可选字段 `cabinMode`（`"recommended"|"vanilla"`），不传时默认 `"recommended"`。这是新建存档页给用户的简化二选一：`recommended` 对应 `Server.CabinStrategy="CabinStack"`（隐藏小屋堆叠，共用位置各自只看到自己的小屋），`vanilla` 对应 `Server.CabinStrategy="None"`（原版行为，小屋出现在真实农场地图位置，此时 `cabinLayout: "nearby"|"separate"` 才会在视觉上产生实际差异）。
-- 新增 `GET /api/instances/:id/config/server-runtime-settings`：管理员专用，返回 `{ "cabinStrategy": "CabinStack"|"FarmhouseStack"|"None", "existingCabinBehavior": "KeepExisting"|"MoveToStack", "networkBroadcastPeriod": number }`。文件不存在或字段缺失时返回 `CabinStack`/`KeepExisting`/`1` 三个默认值，不报错。
-- 新增 `PUT /api/instances/:id/config/server-runtime-settings`：管理员专用，请求体是同一个 `ServerRuntimeSettings` 结构（三个字段都必须传）。后端会校验 `cabinStrategy` 必须是三选一、`existingCabinBehavior` 必须是二选一、`networkBroadcastPeriod` 必须在 `1~10`，校验失败返回 `400 invalid_settings`。成功后只覆盖这三个字段，`server-settings.json` 里的 `MaxPlayers`、`AllowIpConnections` 等其它字段原样保留。
-- 这两个接口是服务器控制页"小屋与联机高级设置"弹窗的完整版入口，和新建存档页的简化 `cabinMode` 共用同一份底层 `server-settings.json`，但**不是**同一层级：新建存档页只在建档瞬间写一次初始值，服务器控制页可以在存档已存在、服务器运行中或已停止的任何时候读写。两边都不会互相覆盖对方没有涉及的字段。
+- 新增 `GET /api/instances/:id/config/server-runtime-settings`：管理员专用，当前返回 `{ "maxPlayers": number, "cabinStrategy": "CabinStack"|"FarmhouseStack"|"None", "existingCabinBehavior": "KeepExisting"|"MoveToStack", "networkBroadcastPeriod": number }`。文件不存在或字段缺失时返回 `10`/`CabinStack`/`KeepExisting`/`1` 默认值，不报错。
+- 新增 `PUT /api/instances/:id/config/server-runtime-settings`：管理员专用。新客户端传完整四字段结构；兼容旧三字段 PUT，省略 `maxPlayers` 时保留磁盘原值。后端校验 `maxPlayers` 为 `1~100`、小屋策略枚举和广播频率 `1~10`，失败返回 `400 invalid_settings`。成功只覆盖四个目标字段，`AllowIpConnections` 等其它 Server/Game/根级字段原样保留。
+- 这两个接口是服务器控制页“联机人数与小屋设置”弹窗的完整版入口，和新建存档页的简化 `cabinMode` 共用同一份底层 `server-settings.json`，但**不是**同一层级：新建存档页只在建档瞬间写一次初始值，服务器控制页可以在存档已存在、服务器运行中或已停止的任何时候读写。两边都不会互相覆盖对方没有涉及的字段。
 - **关键约束**：无论通过哪个入口修改，都只在 JunimoServer `server` 容器**下一次启动**时生效（和 `SERVER_PASSWORD`、`ExistingServerSettings` 同理），前端弹窗必须提示"需要重启服务器容器"，不能暗示实时生效。
-- 联调验证建议：新建存档时分别提交 `cabinMode` 缺省、`"recommended"`、`"vanilla"`，确认 `server-settings.json` 的 `Server.CabinStrategy` 分别是 `CabinStack`/`CabinStack`/`None`；存档创建后调用 `PUT .../server-runtime-settings` 把 `cabinStrategy` 改成 `"FarmhouseStack"`、`networkBroadcastPeriod` 改成 `3`，重新 `GET` 确认改动生效且 `MaxPlayers` 未被覆盖；提交非法枚举值（如 `cabinStrategy: "Bogus"`）应返回 `400`。
+- 联调验证建议：新建存档时分别提交 `cabinMode` 缺省、`"recommended"`、`"vanilla"`，确认 `Server.CabinStrategy` 分别正确；建档后用 PUT 设置 `maxPlayers=1/100` 并验证边界、`0/101` 拒绝、旧 PUT 省略时保留、未知 Server/Game 字段与原子写不回归。运行中设置与当前值不同后，GET 配置应返回新值但 `/players.maxPlayers` 仍返回 live 旧值，重启后才读到新值。
 - 命中本地任一候选时应直接显示“本地已有镜像 ... 直接使用”，不应先拉取排在前面的缺失候选。
 # REAL-INSTANCE-CRITICAL-FLOWS-VERIFIED-1 真实实例联调结论
 

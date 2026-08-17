@@ -1,6 +1,7 @@
 importScripts("shared.js");
 
 const installPostFlights = createSingleflightRegistry();
+const batchOpenFlights = createSingleflightRegistry();
 const legacyCaptureRequestIds = new Map();
 
 async function getConfig() {
@@ -61,7 +62,8 @@ function batchContextFromPayload(payload, captureKey) {
     batchId,
     itemId,
     captureKey: resolvedKey,
-    autoSubmit: Boolean(payload && payload.autoSubmit)
+    autoSubmit: Boolean(payload && payload.autoSubmit),
+    expectedVersion: normalizeNexusExpectedVersion(payload && payload.expectedVersion)
   };
 }
 
@@ -123,6 +125,11 @@ function captureTargetsMatch(existing, payload) {
   if (existingModId > 0 && nextModId > 0 && existingModId !== nextModId) {
     return false;
   }
+  const existingVersion = normalizeNexusExpectedVersion(existing.expectedVersion);
+  const nextVersion = normalizeNexusExpectedVersion(payload && payload.expectedVersion);
+  if ((existingVersion || nextVersion) && existingVersion !== nextVersion) {
+    return false;
+  }
   const existingFileId = Number(existing.fileId || 0);
   const nextFileId = Number(payload && payload.fileId ? payload.fileId : 0);
   if (existingFileId > 0 && nextFileId > 0) {
@@ -150,7 +157,8 @@ function requestIdForCapture(capture, captureKey) {
     Number(capture && capture.createdAt ? capture.createdAt : 0),
     Number(capture && capture.tabId ? capture.tabId : 0),
     Number(capture && capture.modId ? capture.modId : 0),
-    Number(capture && capture.fileId ? capture.fileId : 0)
+    Number(capture && capture.fileId ? capture.fileId : 0),
+    normalizeNexusExpectedVersion(capture && capture.expectedVersion)
   ].join(":");
   let requestId = legacyCaptureRequestIds.get(identity);
   if (!requestId) {
@@ -230,6 +238,9 @@ function withBatchParams(rawUrl, batchId, item) {
   url.searchParams.set("anxi_auto_submit", "1");
   url.searchParams.set("anxi_batch", batchId);
   url.searchParams.set("anxi_item", item.id);
+  if (item.expectedVersion) {
+    url.searchParams.set("anxi_version", item.expectedVersion);
+  }
   return url.toString();
 }
 
@@ -239,7 +250,7 @@ function normalizedBatchTargetUrl(rawUrl) {
   try {
     const url = new URL(value);
     url.hash = "";
-    for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item"]) {
+    for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item", "anxi_version"]) {
       url.searchParams.delete(key);
     }
     return url.toString();
@@ -306,6 +317,47 @@ async function failBatchItemLater(batchId, itemId, timeoutMs) {
   }, timeoutMs);
 }
 
+function batchItemIsActive(item) {
+  return ["opening", "capturing", "ready", "posting"].includes(String((item && item.status) || ""));
+}
+
+async function openNextBatchItem(batchId) {
+  if (!batchId) return null;
+  const flight = batchOpenFlights.run(`open:${batchId}`, async () => {
+    const batch = await getBatch(batchId);
+    if (!batch || isBatchFailed(batch) || isBatchComplete(batch)) {
+      return batch;
+    }
+    const items = Array.isArray(batch.items) ? batch.items : [];
+    if (items.some(batchItemIsActive)) {
+      return batch;
+    }
+    const item = items.find((candidate) => candidate.status === "pending");
+    if (!item) {
+      return batch;
+    }
+    if (!item.url) {
+      return await setBatchItemStatus(batchId, item.id, { status: "failed", message: "missing Nexus URL" });
+    }
+    try {
+      const tab = await chrome.tabs.create({ url: withBatchParams(item.url, batchId, item), active: false });
+      const nextBatch = await setBatchItemStatus(batchId, item.id, {
+        status: "opening",
+        message: "background page opened",
+        tabId: tab.id || null
+      });
+      void failBatchItemLater(batchId, item.id, 180000);
+      return nextBatch;
+    } catch (error) {
+      return await setBatchItemStatus(batchId, item.id, {
+        status: "failed",
+        message: statusTextFromError(error)
+      });
+    }
+  });
+  return await flight.promise;
+}
+
 async function startBatchInstall(payload, sender) {
   const targets = uniqueBatchTargets(Array.isArray(payload && payload.targets) ? payload.targets : []);
   if (targets.length === 0) {
@@ -324,18 +376,22 @@ async function startBatchInstall(payload, sender) {
       await setState({ batches: { ...batches, [batchId]: nextBatch } });
     }
     await notifyPanelBatch(nextBatch);
+    await openNextBatchItem(batchId);
     return await getBatch(batchId);
   }
   const now = Date.now();
   const items = targets.map((target, index) => ({
     id: target.id || `item_${index + 1}`,
     role: target.role || "mod",
+    operation: target.operation === "update" ? "update" : "install",
     modId: Number(target.modId || 0),
     name: target.name || "",
     url: target.url || "",
-    status: "opening",
-    message: "opening background page",
-    progress: 10,
+    expectedVersion: normalizeNexusExpectedVersion(target.expectedVersion),
+    replaceUniqueId: String(target.replaceUniqueId || "").trim(),
+    status: "pending",
+    message: "waiting for previous batch item",
+    progress: 0,
     createdAt: now,
     updatedAt: now
   }));
@@ -351,26 +407,7 @@ async function startBatchInstall(payload, sender) {
 
   await setState({ batches: { ...batches, [batchId]: batch } });
 
-  for (const item of items) {
-    if (!item.url) {
-      await setBatchItemStatus(batchId, item.id, { status: "failed", message: "missing Nexus URL" });
-      continue;
-    }
-    try {
-      const tab = await chrome.tabs.create({ url: withBatchParams(item.url, batchId, item), active: false });
-      await setBatchItemStatus(batchId, item.id, {
-        status: "opening",
-        message: "background page opened",
-        tabId: tab.id || null
-      });
-      void failBatchItemLater(batchId, item.id, 180000);
-    } catch (error) {
-      await setBatchItemStatus(batchId, item.id, {
-        status: "failed",
-        message: statusTextFromError(error)
-      });
-    }
-  }
+  await openNextBatchItem(batchId);
 
   return await getBatch(batchId);
 }
@@ -420,6 +457,7 @@ async function postRemoteInstall(downloadUrl, capture, config) {
     ? {
         modId: capture.modId,
         name: capture.modName || "",
+        version: normalizeNexusExpectedVersion(capture.expectedVersion),
         nexusUrl: capture.pageUrl || `https://www.nexusmods.com/stardewvalley/mods/${capture.modId}`
       }
     : undefined;
@@ -437,10 +475,16 @@ async function postRemoteInstall(downloadUrl, capture, config) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-Anxi-Nexus-Installer": "0.1.3",
+        "X-Anxi-Nexus-Installer": "0.1.8",
         "Idempotency-Key": capture.requestId
       },
-      body: JSON.stringify({ url: downloadUrl, mod })
+      body: JSON.stringify({
+        url: downloadUrl,
+        mod,
+        expectedVersion: normalizeNexusExpectedVersion(capture.expectedVersion),
+        nexusFileId: Number(capture.fileId || 0),
+        replaceUniqueId: capture.operation === "update" ? String(capture.replaceUniqueId || "").trim() : undefined
+      })
     }, 30000);
   } catch (error) {
     const message = statusTextFromError(error);
@@ -484,6 +528,9 @@ async function postRemoteInstallViaPanel(downloadUrl, capture, config, mod) {
         url: downloadUrl,
         mod,
         fileId: Number(capture.fileId || 0),
+        expectedVersion: normalizeNexusExpectedVersion(capture.expectedVersion),
+        operation: capture.operation === "update" ? "update" : "install",
+        replaceUniqueId: String(capture.replaceUniqueId || "").trim(),
         requestId: capture.requestId,
         instanceId: config.instanceId || DEFAULT_CONFIG.instanceId
       }
@@ -735,6 +782,10 @@ async function startCapture(payload, sender) {
   const now = Date.now();
   const captureKey = captureKeyFrom(payload || {}, sender);
   const state = await getState();
+  const batch = getBatches(state)[String(payload.batchId || "")];
+  const batchItem = batch && Array.isArray(batch.items)
+    ? batch.items.find((item) => item.id === String(payload.itemId || ""))
+    : null;
   const previousCapture = getCaptures(state)[captureKey];
   const requestId = captureTargetsMatch(previousCapture, payload)
     ? requestIdForCapture(previousCapture, captureKey)
@@ -753,6 +804,9 @@ async function startCapture(payload, sender) {
     gameDomain: payload.gameDomain || "stardewvalley",
     modId: Number(payload.modId || 0),
     fileId: Number(payload.fileId || 0),
+    expectedVersion: normalizeNexusExpectedVersion(payload.expectedVersion),
+    operation: batchItem && batchItem.operation === "update" ? "update" : "install",
+    replaceUniqueId: String((batchItem && batchItem.replaceUniqueId) || "").trim(),
     modName: payload.modName || "",
     pageUrl: payload.pageUrl || (sender.tab && sender.tab.url) || "",
     pendingUrl: ""
@@ -774,7 +828,9 @@ async function startCapture(payload, sender) {
       status: "capturing",
       message: "capturing zip link",
       tabId: capture.tabId,
-      captureKey
+      captureKey,
+      fileId: capture.fileId,
+      expectedVersion: capture.expectedVersion
     });
   }
   return capture;
@@ -805,6 +861,8 @@ async function storeCapturedDownloadUrl(downloadUrl, downloadItemId, captureKey,
     ...capture,
     batchId: capture.batchId || context.batchId,
     itemId: capture.itemId || context.itemId,
+    expectedVersion: capture.expectedVersion || context.expectedVersion,
+    fileId: Number((contextPayload && contextPayload.fileId) || capture.fileId || 0),
     captureKey: resolvedCaptureKey || capture.captureKey,
     autoSubmit: Boolean(capture.autoSubmit || context.autoSubmit),
     closeTabOnComplete: Boolean(capture.closeTabOnComplete || context.autoSubmit),
@@ -967,6 +1025,9 @@ async function finishInstall(downloadUrl, captureKey) {
         // The user may already have closed the tab.
       }
     }
+    if (capture.batchId) {
+      await openNextBatchItem(capture.batchId);
+    }
     return { ...result, jobsUrl, deduped };
   } catch (error) {
     const failedState = await getState();
@@ -1060,6 +1121,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!stored) {
           sendResponse({ ok: false, error: "捕获状态已过期，请重新打开 Nexus 下载页" });
           return;
+        }
+        sendResponse({ ok: true });
+        return;
+      }
+      case "CAPTURE_FAILED": {
+        const batchId = String(message.batchId || "");
+        const itemId = String(message.itemId || "");
+        if (batchId && itemId) {
+          await setBatchItemStatus(batchId, itemId, {
+            status: "failed",
+            message: String(message.message || "capture failed")
+          });
         }
         sendResponse({ ok: true });
         return;

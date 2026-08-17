@@ -30,7 +30,7 @@
       method: "GET",
       credentials: "include",
       headers: {
-        "X-Anxi-Nexus-Installer": "0.1.3"
+        "X-Anxi-Nexus-Installer": "0.1.8"
       }
     });
     if (!response.ok) {
@@ -100,7 +100,7 @@
     const flight = panelPostFlights.run(panelPostFlightKey(payload || {}, url), async () => {
       const headers = {
         "Content-Type": "application/json",
-        "X-Anxi-Nexus-Installer": "0.1.3"
+        "X-Anxi-Nexus-Installer": "0.1.8"
       };
       if (requestId) {
         headers["Idempotency-Key"] = requestId;
@@ -111,7 +111,12 @@
         headers,
         body: JSON.stringify({
           url,
-          mod: payload && payload.mod ? payload.mod : undefined
+          mod: payload && payload.mod ? payload.mod : undefined,
+          expectedVersion: normalizeNexusExpectedVersion(payload && payload.expectedVersion),
+          nexusFileId: Number(payload && payload.fileId ? payload.fileId : 0),
+          replaceUniqueId: payload && payload.operation === "update"
+            ? String(payload.replaceUniqueId || "").trim()
+            : undefined
         })
       }, 30000);
 

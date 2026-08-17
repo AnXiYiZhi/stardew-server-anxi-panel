@@ -9,6 +9,62 @@ const DEFAULT_CONFIG = {
 const CONFIG_KEY = "anxiNexusInstallerConfig";
 const STATE_KEY = "anxiNexusInstallerState";
 
+function normalizeNexusExpectedVersion(value) {
+  const normalized = String(value || "").trim().replace(/^v(?=\d)/i, "");
+  return normalized.length <= 64 && /^[0-9a-z._+-]+$/i.test(normalized) ? normalized : "";
+}
+
+function mergeNexusAutomationParams(current, remembered) {
+  const active = current && typeof current === "object" ? current : {};
+  const stored = remembered && typeof remembered === "object" ? remembered : {};
+  const batchId = String(active.batchId || "");
+  const itemId = String(active.itemId || "");
+  const sameStoredItem =
+    (!batchId || !stored.batchId || batchId === String(stored.batchId)) &&
+    (!itemId || !stored.itemId || itemId === String(stored.itemId));
+  const resolvedBatchId = batchId || (sameStoredItem ? String(stored.batchId || "") : "");
+  const resolvedItemId = itemId || (sameStoredItem ? String(stored.itemId || "") : "");
+  return {
+    batchId: resolvedBatchId,
+    itemId: resolvedItemId,
+    captureKey: resolvedBatchId && resolvedItemId
+      ? `${resolvedBatchId}:${resolvedItemId}`
+      : (sameStoredItem ? String(stored.captureKey || "") : ""),
+    autoSubmit: Boolean(active.autoSubmit || (sameStoredItem && stored.autoSubmit)),
+    expectedVersion: normalizeNexusExpectedVersion(active.expectedVersion) ||
+      (sameStoredItem ? normalizeNexusExpectedVersion(stored.expectedVersion) : "")
+  };
+}
+
+function nexusVersionMatchesText(text, expectedVersion) {
+  const expected = normalizeNexusExpectedVersion(expectedVersion);
+  if (!expected) {
+    return false;
+  }
+  const escaped = expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^0-9a-z])v?${escaped}([^0-9a-z]|$)`, "i").test(String(text || ""));
+}
+
+function chooseNexusFileCandidate(candidates, expectedVersion) {
+  const available = (Array.isArray(candidates) ? candidates : [])
+    .filter((candidate) => Number.isInteger(Number(candidate && candidate.fileId)) && Number(candidate.fileId) > 0);
+  const expected = normalizeNexusExpectedVersion(expectedVersion);
+  const matching = expected
+    ? available.filter((candidate) => nexusVersionMatchesText(candidate.contextText, expected))
+    : available;
+  if (matching.length === 0) {
+    return null;
+  }
+  matching.sort((a, b) => {
+    const visible = Number(Boolean(b.visible)) - Number(Boolean(a.visible));
+    if (visible !== 0) {
+      return visible;
+    }
+    return Number(a.order || 0) - Number(b.order || 0);
+  });
+  return matching[0];
+}
+
 function createInstallRequestId() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();

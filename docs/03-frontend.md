@@ -1,3 +1,48 @@
+# FE-NEXUS-MOD-ONECLICK-UPDATE-1：已安装 Mod 一键更新（扩展 0.1.8，2026-08-17，completed，待发布）
+
+- 管理员在“添加模组”的已安装卡片检测到新版本时，会在“查看更新页”左侧看到“一键更新”。按钮只对服务器已停止、浏览器扩展已连接、可由 Nexus ID 精确定位且只包含一个 Mod 的包开放；运行中、扩展未连接或聚合包场景保持禁用，并通过悬浮提示说明原因。
+- 更新继续复用现有扩展批量任务、进度、失败跳转和 session 恢复，不另建第二套表单。批量项增加 `operation: update` 与 `replaceUniqueId`，同时保留 `expectedVersion` 和 Nexus file ID 的严格版本选择；扩展 0.1.8 的 background 直连与 panel bridge 两条提交路径都只在更新模式发送替换目标。普通“本体 + 缺失前置”批次改成每项提交成功后才打开下一 Nexus 页，避免两个页面的 file ID/capture 状态交叉。
+- 更新完成后重新读取本地 Mod 清单并强制刷新更新检查；已安装旧版本不会被误判为批次已经完成。现有“查看更新页”外链始终保留，用户仍可选择手工处理。
+- `test:nexus-extension-idempotency` 覆盖 update 上下文的 batch/capture/session 持久化、两条 POST 请求体和批次页面串行打开；production build 通过。应用内 Browser 验证了按钮位置、扩展断连禁用提示和 800px 零横向溢出。真实 Chrome + `0.1.8` 已完成 Content Patcher `2.9.0 → 2.9.1` 一键更新，以及 Content Patcher `2.9.1/file_id=160463` 提交后再打开 Elle's New Barn Animals `1.1.3/file_id=34408` 的缺前置 ZIP 批次；Panel 均显示成功，安装目录 manifest 精确匹配且无临时残留。
+
+# FE-REFRESH-ACTIONS-AUDIT-1：全前端刷新按钮数据流审计（2026-08-17，completed，待发布）
+
+- 逐项核对桌面/移动的 Mod、玩家、邀请码/面板地址、存档/回档、任务日志、诊断、VNC、用户、审计日志、认证状态、Mod 更新与 Panel 版本检查按钮；确认每个入口都绑定真实 API、具备忙碌或错误反馈，并在成功后覆盖当前页面读取的 state。玩家、设置、认证与版本检查链路无需改动。
+- 诊断页“重新检查”改用 `Promise.allSettled` 独立接收健康检查与 Compose 结果：一项失败不再吞掉另一项成功数据；Compose 失败时清空旧容器投影并显示本次错误，健康结果成功时仍同步 dashboard 公共诊断状态。
+- 任务页 `loadJobs()` 现在区分“成功空列表”和“请求失败”；成功刷新会清除旧错误，若当前选中任务已从新列表消失，则选择最新剩余任务或清空详情/日志，不再保留不存在任务的旧内容。
+- 移动存档的回档刷新与桌面保持一致，把旧 Panel 可能返回的 `backups:null` 规范成空数组。`StardewDashboardData` 的八个异步刷新函数类型统一为 `Promise<void>`，调用方的 `await` 与实际运行契约一致。
+- `test:responsive-layout` 增加上述刷新数据流静态契约；`test:mod-list`、`test:responsive-layout` 与 production build 通过。
+
+# FE-MODS-REFRESH-INSTALLED-1：下载模组页刷新后清除已删除 Mod 状态（2026-08-17，completed，待发布）
+
+- 根因是 Nexus 搜索结果与本地 Mod 清单的合并只覆盖“找到匹配项”的情况；删除 Mod 后刷新虽然重新读取了 `/mods`，但找不到匹配项时保留了 session 搜索结果里的 `installed: true`、旧版本和文件夹，所以卡片仍显示“已安装”。
+- `mod-list-utils.ts` 新增桌面/移动共用的 `nexusInstalledState()`：匹配 Nexus ID 或 Nexus 包来源 ID 时返回真实启用/版本/文件夹；未匹配时显式返回 `installed: false` 并清空旧元数据。桌面与移动端本体、前置 Mod 搜索卡片都改为双向对账。
+- 桌面页头“刷新”在 `loadMods()` 成功后立即用本次返回的清单重算当前 Nexus 搜索结果，再刷新 dashboard 公共缓存；不需要重新搜索 Nexus，也不会等下一轮公共轮询才更新按钮。
+- `npm run test:mod-list` 新增“删除后空清单必须清除旧状态”和 Nexus 包来源 ID 覆盖；`npm run build` 通过。
+
+# NEXUS-EXT-LATEST-1：一键安装默认锁定 Nexus 最新版本（扩展 0.1.5，2026-08-17，completed，待发布）
+
+- `ModsPage` 生成批量目标时，本体使用搜索结果 `version`，每个未安装前置使用后端补全的 `requiredMods[].version`，统一写入 `expectedVersion`。任何目标缺少版本时按钮直接失败并说明原因，不再让扩展猜文件。
+- 扩展把目标版本放在 Nexus 页面 URL 的 `anxi_version` 参数并存入 session/capture/batch；页面跳转会保留它。兼容旧 Panel：批量目标没有 `expectedVersion` 时仍打开 Nexus，由文件页当前版本标题补出目标，随后使用同一严格文件行匹配；页面也没有版本时才 fail closed。带签名的 Nexus CDN ZIP URL 完全不修改，提交面板时独立发送 `expectedVersion` 与最终 `nexusFileId`。
+- `content.js` 不再返回 DOM 中第一个 `file_id`。它收集当前 Mod 的候选文件，把文本限制在只包含该 file ID 的最近祖先范围内，再精确匹配版本边界；经典 Nexus 文件页的版本标题位于 `<dt>`、`file_id` 位于相邻 `<dd data-id>`，因此候选会先规范到 `dd` 并合并同组 `dt` 文本。旧 `2.9.0` 节点在前、目标 `2.9.1` 在后时会选择后者，`2.9.10` 也不会误匹配 `2.9.1`。目标版本不存在时立即把批量项标为失败，不回退旧文件。
+- 扩展版本升为 `0.1.5`，两条 POST 路径的 `X-Anxi-Nexus-Installer` 同步更新；后端下载扩展 ZIP 的版本感知缓存会自动重打包。0.1.4 在真实 v0.5.2 Panel 点击时因旧批量 payload 缺版本而立即失败、没有开页/建任务/写 Mods；0.1.5 加回页面推断兼容。影响 `shared.js/content.js/background.js/panel-bridge.js/manifest.json/README`、`ModsPage.tsx`、`types.ts` 与扩展回归脚本。
+- `npm run test:nexus-extension-idempotency` 覆盖旧文件优先 DOM、严格版本边界、新 Panel 缺失版本拒绝、旧 Panel 缺字段时页面推断、页面参数、批次串行和两条 POST 请求体；`npm run build` 通过。已登录 Nexus 的真实 Content Patcher 文件页确认 `2.9.1 → file_id=160463`、`2.9.0 → file_id=153187` 且 `2.9.10` 无匹配；真实 Chrome + 当前 `0.1.8` 又完成了停止态安装/更新终态，证据见本页顶部和 `docs/09-image-build.md`。
+
+# FE-SERVER-RUNTIME-MAXPLAYERS-1：桌面/移动共用建档后人数上限设置（2026-08-17，completed，待发布）
+
+- 桌面快捷操作改名为“联机人数与小屋设置”，副标题为“人数上限 / 小屋策略 / 广播频率”；同一弹窗顶部增加 `1~100` 数字输入，说明该值包含主机位且降低不会删除已有角色或小屋，原三项配置归入清晰的“高级设置” fieldset。
+- `ServerSummaryCard` 为在线玩家摘要增加显式 `canEditPlayerLimit/onEditPlayerLimit` props；只有管理员看到“修改上限”，按钮 CSS 触控热区至少 `44px`。回调直接调用 `ServerControlPage` 既有 `openRuntimeSettings`，没有第二套 state、API 或表单。
+- `useServerRuntimeSettings`、`ServerRuntimeSettingsDialog` 与 `server-runtime-settings-state.ts` 现在由桌面/移动共同使用。新前端 GET 后归一默认值、每次 PUT 都提交实际 `maxPlayers`，保存成功后刷新 players 投影；两端共享 `1/100` 边界校验、低于在线人数只警告不阻止、运行中“当前生效 / 重启后配置”以及停止时“下次启动生效”文案。
+- 弹窗只提供“仅保存”，不会直接或静默重启；运行中的当前上限始终来自 dashboard `players.maxPlayers`，待重启配置只作为配置值展示。没有加入 Mod/小屋硬门禁，也没有改变新建档表单的 `startingCabins` 范围。
+- 新增 `test:runtime-player-limit` 并接入兼容矩阵、release gates 与响应式门禁；QA fixture 固定当前生效 `12`、重启后配置 `16`，用于验证待重启分层。
+- 前端全部 19 项适用状态回归与 production build 通过。应用内 Browser 实测管理员/普通用户权限、摘要/快捷两个入口打开同一弹窗、`0/101` 拒绝与 `1/100` 接受、低于在线人数非阻塞警告、running 当前/配置分层、stopped 下次启动文案、移动端共用表单和 44px 触控区；当前 Browser runtime 无精确窄视口切换能力，窄屏契约由现有响应式静态回归补足，不伪报 390px 浏览器实测。
+
+# FE-DIAGNOSTICS-EXPORT-ACTION-1：诊断包按钮移到重新检查左侧（2026-08-17，completed，待发布）
+
+- `DiagnosticsPage.tsx` 将管理员“导出诊断包”从折叠的“维护与技术详情”内部移到“服务器健康”标题栏，与“重新检查”组成同级操作区；DOM 与视觉顺序固定为“导出诊断包 → 重新检查”，让用户遇到问题时无需先展开技术详情。
+- 导出继续使用棕色次操作、下载图标和原有 admin/忙碌/错误状态，尺寸从 `sm` 调整为与绿色重新检查一致的 `lg`；接口、Blob 下载、文件名和权限逻辑均未改变。标题提示明确为“导出脱敏后的诊断日志 ZIP”。
+- 沿用诊断页现有响应式动作区：桌面并排，`<=760px` 两列满宽，`<=460px` 单列；响应式源码回归锁定按钮顺序、维护详情内不再重复按钮和两个断点。`npm run test:responsive-layout`、`npm run build` 已通过；应用内 Browser 在 1400×900 验证两按钮同高且顺序正确，在 430×900 验证自动纵排且 `scrollWidth == clientWidth`。
+
 # FE-MOD-UPDATE-REMINDER-1 / FE-MOD-CONFIG-CARDS-1：页内更新提醒与配置页重构（2026-08-16，released in v0.5.2）
 
 - 更新提醒只存在于 Mod 工作台，不接系统通知：进入页面后自动读取更新结果；「添加模组」页签出现可更新数量徽标，页内状态条提供“只看可更新/显示全部”和管理员“重新检查”，每个可更新的已安装卡片显示当前→最新版本及安全外链。检查失败保留上次结果并在原位置解释，不遮挡上传、删除或同步操作。
@@ -2244,14 +2289,14 @@ npm.cmd run dev
 # CABIN-STRATEGY-1 小屋策略设置分层（新建存档简化二选一 + 服务器控制页完整高级设置）
 
 - 需求来源：用户给出明确的设计口径——`CabinStrategy`（小屋策略）不应该只在新建存档时硬编码一次。新建存档页只暴露一个简化二选一（推荐/原版），服务器控制页给完整高级设置（`CabinStrategy`/`ExistingCabinBehavior`/`NetworkBroadcastPeriod`），两边必须共用同一份后端配置来源，改完提示"重启服务器后生效"。后端契约详见 `docs/02-backend.md` `CABIN-STRATEGY-1` 与 `docs/06-integration.md` 对应小节。
-- `types.ts`：`NewGameConfig` 新增 `cabinMode?: string`（`"recommended"|"vanilla"`）；新增独立类型 `ServerRuntimeSettings{ cabinStrategy, existingCabinBehavior, networkBroadcastPeriod }`。
+- `types.ts`：`NewGameConfig` 新增 `cabinMode?: string`（`"recommended"|"vanilla"`）；独立类型当前为 `ServerRuntimeSettings{ maxPlayers, cabinStrategy, existingCabinBehavior, networkBroadcastPeriod }`，其中人数上限由后续 `FE-SERVER-RUNTIME-MAXPLAYERS-1` 加入。
 - `api.ts` 新增 `getInstanceServerRuntimeSettings(instanceId?)` / `updateInstanceServerRuntimeSettings(settings, instanceId?)`，对应 `GET/PUT /api/instances/:id/config/server-runtime-settings`，写法和 `getInstanceServerPassword`/`updateInstanceServerPassword` 完全同构。
 - `NewGameCreator.tsx`：联机设置侧栏在"联机小屋布局"上方新增"小屋模式"步进控件（复用 `ArrowButton` + 左右切换两态的模式，和"资金管理"共享/分开的写法一致，不是新增交互模式），显示"推荐"/"原版"，默认值 `recommended`。这是故意做成二选一而不是三选一（不暴露 `FarmhouseStack`）——新建存档场景下用户只需要"要不要隐藏小屋"这一个决策，`FarmhouseStack` 这类更细的变体留给服务器控制页的高级设置。
-- `ServerControlPage.tsx`："快捷操作"网格里紧跟"服务器密码设置"之后新增"小屋与联机高级设置"按钮（`sd-btn-tan sd-btn--lg`，仅 `!isAdmin` 时禁用，不要求服务器运行中——因为这组配置本来就只在容器启动时生效，随时可以编辑）。点击 `openRuntimeSettings()` 打开新弹窗（复用 `sd-confirm-overlay`/`sd-confirm-dialog`，和"服务器密码设置"弹窗同构），弹窗内三个 `<select>`：
+- `ServerControlPage.tsx`："快捷操作"网格里紧跟"服务器密码设置"之后新增的入口当前名为“联机人数与小屋设置”（`sd-btn-tan sd-btn--lg`，仅 `!isAdmin` 时禁用，不要求服务器运行中——因为这组配置本来就只在容器启动时生效，随时可以编辑）。点击 `openRuntimeSettings()` 打开桌面/移动共用弹窗，顶部为人数上限，以下三个 `<select>` 位于高级设置区：
   - `CabinStrategy`：`CabinStack`/`FarmhouseStack`/`None` 三选一，选项文案直接说明各自效果。
   - `ExistingCabinBehavior`：`KeepExisting`/`MoveToStack` 二选一。
   - `NetworkBroadcastPeriod`：`1`/`2`/`3` 三个预设刻数（对应用户给的参考表格"1=每个刻，3=原版"），没有做自定义数字输入框——三个预设覆盖了绝大多数场景，加自定义输入框在这个弹窗里是不必要的复杂度。
-  保存调用 `handleSaveRuntimeSettings()` → `updateInstanceServerRuntimeSettings()`，成功后提示"设置已保存，需要重启服务器容器后才会生效"，和密码弹窗的提示文案风格一致。
+  保存调用 `handleSaveRuntimeSettings()` → `updateInstanceServerRuntimeSettings()`；后续 `FE-SERVER-RUNTIME-MAXPLAYERS-1` 把该数据流抽成桌面/移动共用 hook，并按运行/停止状态分别提示重启后或下次启动生效。
 - 影响文件：`frontend/src/types.ts`、`frontend/src/api.ts`、`frontend/src/games/stardew/NewGameCreator.tsx`、`frontend/src/games/stardew/pages/ServerControlPage.tsx`。未新增图片素材（弹窗内是纯 `<select>`，沿用 `sd-input`/`sd-schedule-field` 既有样式类），未改生命周期 API、密码设置、计划重启、VNC 或 Junimo 通信。
 - 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿；`cd frontend; npx tsc --noEmit -p . && npm run build` 通过。**未做浏览器实测**：没有连一个真实实例走一遍"新建存档选原版→服务器控制页改小屋策略→重启→确认 `server-settings.json` 变化"的完整链路，弹窗在移动端窄屏下的表现也未截图验证，建议下一位维护者补一次。
 - 下一步注意事项：`ExistingCabinBehavior` 在新建存档页没有暴露入口（新档没有"已有小屋"概念，永远由后端写 `KeepExisting`），只能通过服务器控制页的高级设置事后修改；如果以后要统一到同一套表单里，需要重新设计交互而不是简单地把字段搬过去。
@@ -2705,4 +2750,4 @@ npm.cmd run dev
 - 管理员仍可代设和重置，但不再要求所有 waiting 角色本次填写；保存 payload 只包含本次非空输入与明确清除项。角色密码仍不回显、不缓存，roleId 只作为不可编辑请求标识。
 - `useStardewLifecycleActions.ts` 修复重启提交后的重复点击窗口：restart 发起时后端投影本来就是 `running`，该旧状态不能立即清掉 pending；必须先观察到 lifecycle job，再在任务终态解锁。普通 start 仍允许用从 stopped 变为 running 作为短任务未被轮询捕获时的完成证据。
 - 新增 `lifecycle-action-state.ts` 纯状态判定和 `test:lifecycle-action-state`，并继续由 `test:responsive-layout` 覆盖共用弹窗、桌面/移动入口和重启联动；Docker/production build 结果见 `docs/09-image-build.md`。
-- 本次不打 tag。正式发布前必须用两个真实 Stardew 客户端复验首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持；前端自动状态测试不能替代游戏内交互。
+- 前序阶段未打 tag；2026-08-17 用户已确认两个真实 Stardew 客户端完成首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持，并授权进入正式候选。前端自动状态测试仍只作为补充证据。

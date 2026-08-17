@@ -125,6 +125,7 @@ echo "release gates: frontend regression and production build"
   npm run test:new-game-idempotency
   npm run test:nexus-extension-idempotency
   npm run test:cabin-strategy-options
+  npm run test:runtime-player-limit
   npm run test:farm-catalog
   npm run test:save-import
   npm run test:save-backup-details

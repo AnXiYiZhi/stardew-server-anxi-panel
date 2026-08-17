@@ -2,11 +2,41 @@ import type { ModInfo } from '../../types'
 
 export type InstalledModSort = 'installed-desc' | 'name-asc' | 'name-desc'
 
+export type NexusInstalledState = {
+  installed: boolean
+  installedEnabled?: boolean
+  installedFolderName?: string
+  installedVersion?: string
+}
+
 export const INSTALLED_MOD_SORT_OPTIONS: Array<{ value: InstalledModSort; label: string }> = [
   { value: 'installed-desc', label: '最近安装' },
   { value: 'name-asc', label: '名称 A–Z' },
   { value: 'name-desc', label: '名称 Z–A' },
 ]
+
+export function nexusInstalledState(mods: ModInfo[] | undefined, modId: number): NexusInstalledState {
+  const match = modId > 0
+    ? mods?.find((mod) => (
+      (mod.nexusModId ?? 0) === modId ||
+      (mod.originSource === 'nexus' && (mod.originNexusModId ?? 0) === modId)
+    ))
+    : undefined
+  if (!match) {
+    return {
+      installed: false,
+      installedEnabled: undefined,
+      installedFolderName: undefined,
+      installedVersion: undefined,
+    }
+  }
+  return {
+    installed: true,
+    installedEnabled: match.enabled,
+    installedFolderName: match.folderName,
+    installedVersion: match.version,
+  }
+}
 
 const CONTENT_PACK_PREFIXES: Record<string, string> = {
   'pathoschild.contentpatcher': '[CP]',

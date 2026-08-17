@@ -1,3 +1,60 @@
+# NEXUS-MOD-ONECLICK-UPDATE-1 后端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `POST /api/instances/:id/mods/remote/install` 继续复用原路由、`mod_remote_install` Job、幂等键和扩展下载链；新增兼容可选 `replaceUniqueId`。Web 层用 `NormalizeRemoteModReplaceUniqueID` 拒绝空白、控制字符和超长值；更新模式还强制正数 Nexus Mod ID/file ID 和非空 `expectedVersion`，在建 Job 前 fail closed，并且不再执行普通安装后的“为当前存档自动启用”逻辑。
+- `remote_install.go` 增加 `UpdateRemoteMod`，在下载和 manifest 版本预检后把替换目标传给 `uploadModZip`。旧文件夹只在新 Nexus sidecar 元数据持久化成功后清理；sidecar 写失败不会把已经安全完成的文件替换误报为整体回滚。
+- `mods.go` 在既有 Mod profile 锁内按 `UniqueID` 找到非内置目标并拒绝聚合包。新 ZIP 必须只有一个目标 Mod、UniqueID 完全匹配且版本等价于 `expectedVersion`；校验全部完成后才把旧目录同盘移动到 `.local-container/.mod-update-backup-*`，替换失败会删除半成品并恢复旧目录。
+- 更新沿用旧 Mod 的 active/disabled 根目录，并把旧根目录 `config.json` 复制到新包覆盖作者默认配置；若新版本更换文件夹名，会同步清理旧安装时间与旧 Nexus sidecar 条目。普通安装及未传 `replaceUniqueId` 的旧客户端行为不变。
+
+## 如何验证、下一步注意事项
+
+- 专项覆盖成功替换和文件夹改名、旧配置覆盖新默认、禁用状态保持、错误 UniqueID/目标版本时零写入，以及 Web 字段校验；扩展回归覆盖 background 直连和 panel bridge 都传递替换目标。
+- 不要改成“先删除旧目录再下载”。下载、ZIP/manifest/版本/单成员校验必须全部先完成；真正替换只能发生在 profile 锁内并保留同盘备份。聚合包继续引导用户打开更新页手工处理，除非将来能证明整包成员映射并补齐整包事务测试。
+- 真实 Chrome + 0.1.8 已把隔离实例的 Content Patcher 从 `2.9.0/file_id=153187` 更新到 `2.9.1/file_id=160463`，精确请求携带 `replaceUniqueId=Pathoschild.ContentPatcher`；新 manifest、旧 `config.json` 哨兵、原启用状态和零临时备份均已核对。后续修改更新事务或扩展提交链时须重跑同等真实 E2E。
+
+# NEXUS-EXT-LATEST-1 后端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `nexus.go` 给 `NexusRequiredMod` 增加 `version`，搜索完成后把所有未带版本的 Nexus 前置 ID 去重并用一次 GraphQL ID 查询补齐当前版本；没有明确版本的前置不会被新扩展自动安装。
+- `POST /api/instances/:id/mods/remote/install` 新增兼容可选字段 `expectedVersion`、`nexusFileId`。Web 层校验安全版本文本，把目标版本覆盖到本次 Nexus metadata result，并只在任务/审计中记录版本与 file ID；完整 CDN URL 及签名 query 仍不进日志。
+- `remote_install.go` 在下载完成与 `uploadModZip` 之间执行 ZIP manifest 版本验真。任何 manifest 匹配目标即可兼容多 Mod 聚合包；完全不匹配返回 `RemoteModVersionMismatchError`，临时文件 defer 清理且尚未进入 Mods 锁/目录创建/sidecar 写入。扩展 CDN 直链与携带版本的 NXM ticket 都传递同一目标；旧请求不带 `expectedVersion` 时维持原行为。
+
+## 如何验证、下一步注意事项
+
+- `go test ./internal/games/stardew_junimo ./internal/web -run 'Nexus|RemoteInstall|RemoteArchiveVersion|NormalizeRemoteMod' -count=1`、扩展 ZIP 版本感知专项与任务专属 Linux Go 1.25 全量 `go test ./... -count=1` 已通过；专项证明前置版本补全、版本边界、错误文本脱敏以及不匹配时 Mods 目录不存在，测试容器/缓存卷已清零。
+- 不得把 `expectedVersion` 追加到 `*.nexus-cdn.com` 签名 URL；它是独立请求字段。也不要把 Nexus 页面元数据直接当成已安装版本，最终权威仍是 ZIP 内 manifest。
+- 真实 0.1.8 扩展 E2E 已验证当前 Content Patcher 选择 `2.9.1/file_id=160463`，并在前置 Job 被 Panel 接受后才打开 Elle's New Barn Animals `1.1.3/file_id=34408`；两份 manifest 匹配且临时制品为零。此前交叉 file ID 使目标拿到错误 ZIP 时，后端以版本不匹配安全失败、目标未落盘。若真实 Mod 的 Nexus 页面版本与 SMAPI manifest 长期采用不同格式，应先增加有证据的归一规则，不能关闭 fail-closed 校验；`.rar/.7z` 也不得在没有独立解包安全设计和测试时冒充 ZIP 放行。
+
+# SERVER-RUNTIME-MAXPLAYERS-1 后端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `internal/games/stardew_junimo/saves.go` 扩展 `ServerRuntimeSettings.MaxPlayers *int`：GET 始终归一为 `1~100` 内的值（缺失/无效默认 `10`），PUT 非空时校验边界，nil 表示旧客户端省略并保留原值。更新返回 previous/current，采用现有 `atomicWriteValidatedJSON`，map 合并保留根级、`Game`、`Server` 未知字段。
+- `driver.go` 继续在同一 `runtimeUpdateMu` 与 unfinished new-game owner guard 内完成读、合并、写；`server_runtime_settings_handlers.go` 不新增路由，继续处理管理员 GET/PUT，并把锁内取得的 `maxPlayers/previousMaxPlayers` 写入 `instance_server_runtime_settings_update` 审计。
+- `players.go` 在 running + Control `players.json` 快照路径额外复用 Junimo `info` 读取当前生效上限；不再回退到可能待重启的配置值。stopped 才从配置文件投影下次启动值，live 读取失败返回 nil。
+
+## 如何验证、下一步注意事项
+
+- 单元/Web 专项覆盖缺失默认 `10`、`1/100` 接受、`0/101` 拒绝、旧 PUT 保留、Server/Game/根级字段保留、原子写失败不破坏原文件/无残留 temp、owner/mutex 冲突、匿名/普通用户权限、400 错误及审计旧/新值；`players` 测试固定配置 `20`、live `4`，确认运行投影只返回 `4`。
+- `internal/web/server_runtime_settings_real_integration_test.go` 是 opt-in 真实已有存档闭环。2026-08-17 已在只读源、任务克隆卷/bind、唯一 Compose project 中实跑：配置 `11` 启动后 `/players=11`，运行中 PUT `12` 后仍 `/players=11`，既有 restart job 成功后 `/players=12` 且配置 GET 为 `12`；完整仓库 Linux Go 1.25 全量测试、宿主 vet/build 均通过，任务资源为零，源夹具恢复原定义并保持 stopped。
+- 后续不能把 `ServerRuntimeSettings.MaxPlayers` 从指针改成普通 int，否则旧三字段 PUT 会被 JSON 零值误判为显式 `0`。运行中 dashboard 值必须继续来自 Junimo live info；配置 GET 与 live players 可以暂时不同，这是待重启语义，不是缓存错误。
+- 本任务不改新建档 `startingCabins`/Mod 逻辑，不增加保存并重启，也不做 tag/Release。以后扩展 opt-in E2E 时必须继续重写并预检克隆 `.env` 的 `COMPOSE_PROJECT_NAME`，不能让只读源夹具与任务副本共享容器命名空间。
+
+# SUPPORT-BUNDLE-LOG-CONTEXT-2 后端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `internal/web/support_bundle.go` 保持管理员 POST `/api/instances/:id/support-bundle` 的流式 ZIP 协议，新增 `panel-logs.txt`、`steam-auth-logs.txt`、`job-logs.json`，并把 server tail 提升到 1000 行。任务摘要/日志只选当前实例；最多输出最近 20 个任务摘要、最近 10 个任务各 200 条日志，不导出 payload。
+- `instance-state.json` 复用 `makeInstanceStateResponse` 的完整诊断投影，并在写 ZIP 前清空 `InviteCode`。日志和任务消息统一走 `paneldocker.RedactString`；存档、session、角色密码库、事务/恢复目录和备份不遍历。单项日志采集失败会在对应文本条目记录错误，不中断其余 ZIP 内容。
+- `internal/docker/compose.go` 新增 `ContainerLogs`，固定执行 `docker logs --tail N <container>`，容器名和 `1..1000` tail 均在执行前校验；Web 通过可选接口和 `os.Hostname()` 采集 Panel 自身日志。支持包健康检查的 Docker/Compose 探针改用 `globalWorkDir()`，修复空工作目录造成的假失败。
+
+## 如何验证、下一步注意事项
+
+- `support_bundle_test.go` 断言新增条目、当前实例任务日志、三类容器日志和完整 ZIP，并注入 Panel/job/server/Compose/邀请码/恢复材料等秘密证明均不泄露；Docker 单测覆盖固定参数和非法 container/tail。`go test ./internal/docker ./internal/web` 已通过。
+- 后续若继续扩展支持包，优先增加有界、结构化且可脱敏的条目；不要扫描整个数据目录、存档、Steam session、备份或任务 payload。流式响应一旦开始不能再返回 JSON HTTP 错误，采集失败必须留在 ZIP 内。Panel 若不在 Docker 中运行，`panel-logs.txt` 的采集失败说明属于允许降级。
+
 # HOST-BED-MANUAL-CONTROL-1 后端接手记录（2026-08-16，released in v0.5.1）
 
 ## 改了什么、影响哪些接口/文件
@@ -1058,4 +1115,4 @@
 
 - 不得删除 initialized marker 后把丢失/损坏 store 当作空库；这会让已有角色重新开放首次认领。任何格式迁移都必须保留“初始化过即 fail closed”的耐久证据和原子发布顺序。
 - verifier 必须按 saveId 隔离；切换、导入、回档和删除角色不得把另一存档的同 roleId 记录自动复用。API、job log、支持包、Docker 输出仍禁止出现 key、guard、verifier 或完整 store。
-- 正式发布前补两真人客户端首次设置/交叉失败/清除后重认领/Panel 批准/重启保持矩阵；自动测试不能替代该交互证据。
+- 2026-08-17 用户已确认两真人客户端完成首次设置、各自正确登录、交叉失败、清除后重认领、Panel 批准、server recreate/Panel 重启保持矩阵，并授权正式发布；自动测试继续只作为补充契约证据。

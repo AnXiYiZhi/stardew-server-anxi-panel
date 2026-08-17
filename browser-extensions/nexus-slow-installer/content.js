@@ -189,7 +189,7 @@
 
   // waitForFileIdOnPage polls (and observes) the DOM until the lazily-loaded
   // file id appears, resolving 0 on timeout.
-  function waitForFileIdOnPage(timeoutMs) {
+  function waitForFileIdOnPage(timeoutMs, expectedVersion = "") {
     return new Promise((resolve) => {
       const deadline = Date.now() + timeoutMs;
       let obs = null;
@@ -201,7 +201,7 @@
         }
       };
       const tick = () => {
-        const id = findFileIdOnPage();
+        const id = findFileIdOnPage(expectedVersion);
         if (id) {
           cleanup();
           resolve(id);
@@ -243,7 +243,7 @@
   function withCurrentAnxiParams(rawUrl) {
     const target = new URL(rawUrl, window.location.href);
     const current = new URL(window.location.href);
-    for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item"]) {
+    for (const key of ["anxi_auto", "anxi_auto_submit", "anxi_batch", "anxi_item", "anxi_version"]) {
       const value = current.searchParams.get(key);
       if (value) {
         target.searchParams.set(key, value);
@@ -259,6 +259,9 @@
     }
     if (batch.itemId) {
       target.searchParams.set("anxi_item", batch.itemId);
+    }
+    if (batch.expectedVersion) {
+      target.searchParams.set("anxi_version", batch.expectedVersion);
     }
     return target.toString();
   }
@@ -363,33 +366,177 @@
     }
   }
 
-  // findFileIdOnPage recovers the Nexus file id from the mod page DOM so we can
-  // build the download link directly (via generateNexusDownloadUrl) instead of
-  // clicking "Manual" and navigating through the download modal. It only trusts
-  // file ids from links that point at the current mod. Returns 0 when no file
-  // id is present yet (e.g. it only appears after opening the modal), in which
-  // case the caller falls back to the button-click flow.
-  function findFileIdOnPage() {
-    // 1. Any current-mod link that already carries a file id — the per-file
-    //    "Manual download" links in the files tab / download modal use
-    //    `?tab=files&file_id=...`.
-    for (const link of deepQueryAll("a[href]")) {
-      const id = fileIdFromUrl(link.href);
-      if (id && urlIsForCurrentMod(link.href)) {
+  function fileIdsWithin(node) {
+    const ids = new Set();
+    const addNode = (candidate) => {
+      if (!(candidate instanceof Element)) {
+        return;
+      }
+      const href = elementHref(candidate);
+      const hrefID = href && urlIsForCurrentMod(href) ? fileIdFromUrl(href) : 0;
+      if (hrefID) {
+        ids.add(hrefID);
+      }
+      for (const attr of ["data-id", "data-file-id", "data-fileid", "file-id", "fileid"]) {
+        const id = Number(candidate.getAttribute(attr));
+        if (Number.isInteger(id) && id > 0) {
+          ids.add(id);
+        }
+      }
+    };
+    addNode(node);
+    if (node && typeof node.querySelectorAll === "function") {
+      for (const child of node.querySelectorAll("a[href*='file_id='], a[href*='file='], dd[data-id], [data-file-id], [data-fileid], mod-file-download")) {
+        addNode(child);
+      }
+    }
+    return ids;
+  }
+
+  function parentElementAcrossShadow(node) {
+    if (node && node.parentElement) {
+      return node.parentElement;
+    }
+    const root = node && typeof node.getRootNode === "function" ? node.getRootNode() : null;
+    return root && root.host instanceof Element ? root.host : null;
+  }
+
+  function directFileId(node) {
+    if (!(node instanceof Element)) {
+      return 0;
+    }
+    const href = elementHref(node);
+    const hrefID = href && urlIsForCurrentMod(href) ? fileIdFromUrl(href) : 0;
+    if (hrefID) {
+      return hrefID;
+    }
+    for (const attr of ["data-id", "data-file-id", "data-fileid", "file-id", "fileid"]) {
+      const id = Number(node.getAttribute(attr));
+      if (Number.isInteger(id) && id > 0) {
         return id;
       }
     }
-    // 2. Nexus file rows expose the id on `dd[data-id]` (see the community
-    //    archive userscript) and some widgets on `data-file-id`.
+    return 0;
+  }
+
+  function canonicalFileCandidateNode(node, fileId) {
+    let current = node instanceof Element ? node : null;
+    for (let depth = 0; current && depth < 10; depth += 1) {
+      const tag = current.tagName.toLowerCase();
+      const ownsFileID = directFileId(current) === fileId;
+      if (ownsFileID && (
+        tag === "dd" ||
+        tag === "mod-file-download" ||
+        current.hasAttribute("data-file-id") ||
+        current.hasAttribute("data-fileid")
+      )) {
+        return current;
+      }
+      current = parentElementAcrossShadow(current);
+    }
+    return node;
+  }
+
+  function isNexusFileRowBoundary(node) {
+    if (!(node instanceof Element)) {
+      return false;
+    }
+    const tag = node.tagName.toLowerCase();
+    if (["li", "tr", "article"].includes(tag)) {
+      return true;
+    }
+    if (tag === "dd" && node.hasAttribute("data-id")) {
+      return true;
+    }
+    if (node.hasAttribute("data-file-id") || node.hasAttribute("data-fileid")) {
+      return true;
+    }
+    return /file[-_\s]*(expander|row|card|item)|mod[-_\s]*file/i.test(String(node.className || ""));
+  }
+
+  // Collect text only while an ancestor still belongs to one Nexus file. This
+  // prevents an old file row from inheriting the latest version text from the
+  // surrounding list, which is what made the previous "first file_id wins"
+  // behavior select stale archives on pages containing hidden duplicate rows.
+  function fileCandidateContext(node, fileId) {
+    const parts = [];
+    let visible = false;
+    let current = canonicalFileCandidateNode(node, fileId);
+    if (current && current.tagName.toLowerCase() === "dd") {
+      const label = current.previousElementSibling;
+      if (label && label.tagName.toLowerCase() === "dt") {
+        visible = visible || isVisible(label);
+        parts.push(textOf(label));
+        for (const attr of ["data-version", "data-file-version", "aria-label", "title"]) {
+          parts.push(label.getAttribute(attr) || "");
+        }
+      }
+    }
+    for (let depth = 0; current && depth < 10; depth += 1) {
+      const nestedIDs = fileIdsWithin(current);
+      if (Array.from(nestedIDs).some((id) => id !== fileId)) {
+        break;
+      }
+      visible = visible || isVisible(current);
+      parts.push(textOf(current));
+      for (const attr of ["data-version", "data-file-version", "aria-label", "title"]) {
+        parts.push(current.getAttribute(attr) || "");
+      }
+      if (isNexusFileRowBoundary(current)) {
+        break;
+      }
+      current = parentElementAcrossShadow(current);
+    }
+    return { contextText: parts.join(" ").replace(/\s+/g, " ").trim(), visible };
+  }
+
+  // findFileIdOnPage recovers every current-mod file candidate and, when an
+  // expected version is known, returns only a row whose own text identifies
+  // that exact version. An unmatched version returns 0 instead of silently
+  // falling back to an older file.
+  function findFileIdOnPage(expectedVersion = "") {
+    const candidates = [];
+    let order = 0;
+    const addCandidate = (fileId, node) => {
+      if (!Number.isInteger(fileId) || fileId <= 0 || !(node instanceof Element)) {
+        return;
+      }
+      const context = fileCandidateContext(node, fileId);
+      candidates.push({ fileId, node, order: order++, ...context });
+    };
+
+    for (const link of deepQueryAll("a[href]")) {
+      const id = fileIdFromUrl(link.href);
+      if (id && urlIsForCurrentMod(link.href)) {
+        addCandidate(id, link);
+      }
+    }
     for (const node of deepQueryAll("dd[data-id], [data-file-id], [data-fileid], mod-file-download")) {
       for (const attr of ["data-id", "data-file-id", "data-fileid", "file-id", "fileid"]) {
         const id = Number(node.getAttribute && node.getAttribute(attr));
         if (Number.isInteger(id) && id > 0) {
-          return id;
+          addCandidate(id, node);
+          break;
         }
       }
     }
-    return 0;
+
+    const selected = chooseNexusFileCandidate(candidates, expectedVersion);
+    return selected ? Number(selected.fileId) : 0;
+  }
+
+  function findCurrentNexusVersion() {
+    for (const node of deepQueryAll("[data-version], [data-file-version]")) {
+      for (const attr of ["data-version", "data-file-version"]) {
+        const value = normalizeNexusExpectedVersion(node.getAttribute && node.getAttribute(attr));
+        if (value) {
+          return value;
+        }
+      }
+    }
+    const bodyText = textOf(document.body);
+    const match = bodyText.match(/\bversion\s*:?\s*v?([0-9]+(?:\.[0-9a-z][0-9a-z+.-]*)+)/i);
+    return normalizeNexusExpectedVersion(match && match[1]);
   }
 
   function findNexusGameId() {
@@ -537,7 +684,7 @@
   }
 
   function emptyBatchParams() {
-    return { batchId: "", itemId: "", captureKey: "", autoSubmit: false };
+    return { batchId: "", itemId: "", captureKey: "", autoSubmit: false, expectedVersion: "" };
   }
 
   function readAutomationParams() {
@@ -560,7 +707,8 @@
         batchId,
         itemId,
         captureKey: String(parsed.captureKey || (batchId && itemId ? `${batchId}:${itemId}` : "")),
-        autoSubmit: Boolean(parsed.autoSubmit)
+        autoSubmit: Boolean(parsed.autoSubmit),
+        expectedVersion: normalizeNexusExpectedVersion(parsed.expectedVersion)
       };
     } catch {
       return emptyBatchParams();
@@ -579,6 +727,7 @@
         itemId,
         captureKey: String(params.captureKey || (batchId && itemId ? `${batchId}:${itemId}` : "")),
         autoSubmit: Boolean(params.autoSubmit),
+        expectedVersion: normalizeNexusExpectedVersion(params.expectedVersion),
         modId: pageInfo && pageInfo.modId ? pageInfo.modId : 0,
         expiresAt: Date.now() + 15 * 60 * 1000
       }));
@@ -592,17 +741,18 @@
       const url = new URL(window.location.href);
       const batchId = url.searchParams.get("anxi_batch") || "";
       const itemId = url.searchParams.get("anxi_item") || "";
-      const current = {
+      const remembered = readAutomationParams();
+      const current = mergeNexusAutomationParams({
         batchId,
         itemId,
-        captureKey: batchId && itemId ? `${batchId}:${itemId}` : "",
-        autoSubmit: url.searchParams.get("anxi_auto_submit") === "1"
-      };
+        autoSubmit: url.searchParams.get("anxi_auto_submit") === "1",
+        expectedVersion: url.searchParams.get("anxi_version")
+      }, remembered);
       if (current.autoSubmit || current.batchId || current.itemId) {
         rememberAutomationParams(current);
         return current;
       }
-      return readAutomationParams();
+      return remembered;
     } catch {
       return readAutomationParams();
     }
@@ -672,8 +822,16 @@
 
   async function beginCapture(clickSlow) {
     hasStarted = true;
-    const batch = batchParams();
+    const initialBatch = batchParams();
+    const batch = {
+      ...initialBatch,
+      expectedVersion: normalizeNexusExpectedVersion(initialBatch.expectedVersion || findCurrentNexusVersion())
+    };
     rememberAutomationParams(batch);
+    if (batch.autoSubmit && !batch.expectedVersion) {
+      await reportCaptureFailure("Nexus 页面没有提供最新版本号，已停止自动安装");
+      return;
+    }
     await chrome.runtime.sendMessage({
       type: "START_CAPTURE",
       payload: {
@@ -684,24 +842,41 @@
         itemId: batch.itemId,
         captureKey: batch.captureKey,
         autoSubmit: batch.autoSubmit,
+        expectedVersion: batch.expectedVersion,
         closeTabOnComplete: batch.autoSubmit
       }
     });
 
-    if (!pageInfo.fileId) {
+    // Some legacy Nexus files land directly on the free-download interstitial.
+    // In that state the correct file id is already known, but trying to
+    // regenerate the URL first can fall back to the same manual-download link
+    // forever. Trigger the visible slow-download control before entering the
+    // file-discovery path again.
+    if (clickSlow && (document.querySelector("mod-file-download") || findSlowDownloadButton())) {
+      setStatus("已进入 Nexus 慢速下载页，正在自动触发 Slow download...");
+      const clicked = await clickSlowDownloadWhenReady();
+      if (!clicked) {
+        await reportCaptureFailure("已进入 Nexus 慢速下载页，但没有找到 Slow download 按钮");
+      }
+      return;
+    }
+
+    if (!pageInfo.fileId || batch.expectedVersion) {
       // Preferred path: recover the file id and build the download link
       // directly via generateNexusDownloadUrl, skipping the fragile button/
       // navigation flow. Nexus loads the file id lazily (files tab / modal),
       // so when it isn't present yet we open the file list and poll for it.
-      setStatus("正在识别 Nexus 文件...");
-      let fileId = findFileIdOnPage();
+      setStatus(batch.expectedVersion ? `正在识别最新版本 v${batch.expectedVersion}...` : "正在识别 Nexus 文件...");
+      let fileId = findFileIdOnPage(batch.expectedVersion);
       if (!fileId) {
         openNexusFileList();
-        fileId = await waitForFileIdOnPage(20000);
+        fileId = await waitForFileIdOnPage(20000, batch.expectedVersion);
       }
       if (fileId) {
         pageInfo = { ...pageInfo, fileId };
-        setStatus("已识别 Nexus 文件，正在直接获取 ZIP 链接...");
+        setStatus(batch.expectedVersion
+          ? `已锁定 v${batch.expectedVersion}（file_id=${fileId}），正在获取 ZIP 链接...`
+          : "已识别 Nexus 文件，正在直接获取 ZIP 链接...");
         const directArchive = findDirectArchiveLink();
         if (directArchive) {
           await captureUrl(directArchive);
@@ -715,6 +890,9 @@
           const message = error && error.message ? error.message : String(error);
           setStatus(`直接获取失败，尝试点击下载入口：${message}`);
         }
+      } else if (batch.expectedVersion) {
+        await reportCaptureFailure(`没有找到版本 v${batch.expectedVersion} 对应的 Nexus 文件，未下载其它版本`);
+        return;
       }
 
       // Last resort: click through the manual-download control / modal.
@@ -751,6 +929,20 @@
     setStatus(clicked ? `已通过扩展调试点击 Slow download，等待浏览器下载事件。直接生成失败：${directError}` : `自动捕获失败：${directError || "没有找到 Slow download 按钮"}`);
   }
 
+  async function reportCaptureFailure(message) {
+    setStatus(message);
+    const batch = batchParams();
+    if (!batch.batchId || !batch.itemId) {
+      return;
+    }
+    await chrome.runtime.sendMessage({
+      type: "CAPTURE_FAILED",
+      batchId: batch.batchId,
+      itemId: batch.itemId,
+      message
+    });
+  }
+
   async function captureUrl(url) {
     const batch = batchParams();
     rememberAutomationParams(batch);
@@ -761,7 +953,9 @@
       captureKey: batch.captureKey,
       batchId: batch.batchId,
       itemId: batch.itemId,
-      autoSubmit: batch.autoSubmit
+      autoSubmit: batch.autoSubmit,
+      expectedVersion: batch.expectedVersion,
+      fileId: Number(pageInfo.fileId || 0)
     });
     if (!response || !response.ok) {
       throw new Error(response && response.error ? response.error : "保存 ZIP 链接失败");
@@ -791,7 +985,9 @@
             captureKey: batch.captureKey,
             batchId: batch.batchId,
             itemId: batch.itemId,
-            autoSubmit: batch.autoSubmit
+            autoSubmit: batch.autoSubmit,
+            expectedVersion: batch.expectedVersion,
+            fileId: Number(pageInfo.fileId || 0)
           }
         : {
             type: "SUBMIT_CAPTURED_URL",
@@ -799,7 +995,9 @@
             captureKey: batch.captureKey,
             batchId: batch.batchId,
             itemId: batch.itemId,
-            autoSubmit: batch.autoSubmit
+            autoSubmit: batch.autoSubmit,
+            expectedVersion: batch.expectedVersion,
+            fileId: Number(pageInfo.fileId || 0)
           };
       const response = await chrome.runtime.sendMessage(message);
       if (!response || !response.ok) {
@@ -1073,7 +1271,8 @@
             batchId: parts[0] || known.batchId,
             itemId: parts[1] || known.itemId,
             captureKey,
-            autoSubmit: Boolean(message.autoSubmit || known.autoSubmit)
+            autoSubmit: Boolean(message.autoSubmit || known.autoSubmit),
+            expectedVersion: known.expectedVersion
           });
         }
         pendingDownloadUrl = BACKGROUND_PENDING_URL;

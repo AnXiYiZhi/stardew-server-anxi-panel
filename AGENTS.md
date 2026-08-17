@@ -58,6 +58,7 @@
 - 产品测试按预期发现的业务失败不必逐条记；但测试命令写错、环境选错、乱码、误用 Shell、清理范围错误等执行问题必须记录。
 - 任务交付前检查本次是否出现新的执行类错误；若有但错题本未更新，任务不得标记完成。
 - 多代理协作只需即时状态时使用 `list_agents`；调用 `wait_agent` 等待结果时 `timeout_ms` 必须不低于工具 schema 的 `10000` 最小值，不得用短轮询试探参数边界。
+- Codex Desktop 任务工具固定使用服务端分页上限：`list_threads limit<=50`、`read_thread turnLimit<=10`；需要更多任务或更早历史时只使用响应游标分页，不得试探更大的单页参数。
 
 ## Shell、工具与文件编码约定
 
@@ -81,9 +82,11 @@
 - 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前和清理后都要用 `Get-NetTCPConnection -State Listen` 检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留；清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。
 - 正式发布门禁不得在同一个工具编排调用中以 `Promise.all` 等方式并发启动多个长运行 Shell；必须逐项使用可等待、可取得完整退出码与输出的独立调用。编排层异常、超时或提前返回后，先核对精确宿主进程、容器和 volume，再决定恢复或重跑，禁止在终态未知时重复启动同一门禁。
 - Windows 上 `npm ci` 若因现有 `node_modules` 文件锁报 `EPERM`，不得强删目录或反复重试；改用与发布版本一致的 Node Linux 容器和独立 `node_modules` volume 完成门禁，再按精确名称清理测试 volume。
+- 进入任一 Node 子项目执行门禁前必须先读取该目录当前 `package.json.scripts`，只能调用实际声明的脚本；不得把相邻 package 的脚本名直接复用。官网正式构建入口是 `website` 下的 `npm run docs:build`，不是 `npm run build`。
 - 前端洁净发布门禁必须把完整仓库挂到容器内稳定根目录，并从 `<repo>/frontend` 运行；`test:responsive-layout` 会读取仓库根 `.github/workflows`，禁止只挂 `frontend/` 后把它误解析成 `/.github`。`frontend/node_modules` 与 `frontend/dist` 使用任务专属独立 volume。
 - `TestSMAPIArchiveRealDownload` 会断言 Linux `0600` 权限，正式发布门禁只能在任务专属 Linux 容器与独立 Go module/build cache 中运行；禁止先在 Windows 宿主试跑并把必然的 `0666` 当成产品失败。其它涉及 `Mode().Perm()`、UID/GID、symlink 或 Unix socket 的发布测试同样先选择目标 Linux 文件系统。
 - 应用内 Browser 验证本地 Vite/VitePress 时使用 `domcontentloaded` 后等待唯一可见 DOM，不使用当前后端不支持的 `networkidle`；导航断言只传文档支持的精确 URL，不能传正则/predicate。静态站的精确目标必须从当前 DOM `href` 与实际 SPA/普通文档路由模式解析，不得硬编码 `.html` 规范化假设；主测试与 A/B/补充脚本共用同一目标契约。VitePress 的复合链接可能含图标/箭头，标题 accessible name 可能附带 permalink；定位前先读 DOM snapshot，链接优先用唯一 role/href，标题顺序从 `main h1/h2` 可见文本或首文本节点断言，禁止把肉眼主文案直接传给 `exact:true` 重放已知超时。窄屏固定导航页面不得用 `fullPage` 拼接截图判断渲染，必须结合普通视口截图与 root/body `scrollWidth <= clientWidth` 度量。
+- 应用内 Browser 的持久 tab 引用跨用户中断、turn 或自动清理后可能失效。关闭、读取或继续操作旧 tab 前，必须先用当前 browser 的 `tabs.list()` 按 id 核对仍存在；缺失时直接丢弃旧引用并按需要重新取得标签，不得对已知 stale 引用重放 `url()`、`close()` 或其它操作。
 - 精简容器运行项目门禁前必须核对子进程依赖：VitePress `lastUpdated` 构建使用 Node Alpine 时先安装 `git`；兼容矩阵需要 Docker CLI 与 buildx，updater/runtime Docker integration 需要 Docker CLI 与 Compose；挂载任务允许的 Docker Socket 后仍必须先通过相应 `docker version`、`docker buildx version`、`docker compose version` 探针。第三方 lint 镜像首次使用前先 inspect Entrypoint/Cmd，ShellCheck 命令必须显式调用 `shellcheck`。
 - VitePress/Vite 构建会在 `.vitepress` 配置目录创建 `config.ts.timestamp-*.mjs`；禁止再使用“完整源码只读 bind，仅给 `node_modules`/cache/dist 写卷”的门禁形态。使用任务副本，或允许配置目录临时可写并在构建后用 Git 状态确认只剩预期修改；产物、缓存和依赖仍用任务专属 volume 隔离。
 - Control Mod 真实 C# 编译必须复用项目已验证的标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 输出路径；不得在含既有 `bin/obj` 的源码树上改写 `BaseIntermediateOutputPath`/`BaseOutputPath`，否则旧生成源码会重新进入编译。需要只读源码隔离时先制作排除 `bin/obj` 的任务副本；一次性 SDK 容器没有已验证 NuGet 缓存时不得强制 `--network none` 后假定 restore 可用。
@@ -96,5 +99,6 @@
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。U+FFFD 审计只检查 `git diff --unified=0` 中单个 `+` 开头且排除 `+++` 文件头的本次新增行，不得扫描整个历史文件后把合法示例误报为新乱码；BOM 仍检查完整变更文件。发现新增 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
 - 发布说明与 Release 资产验收不得把外部更新、下载、校验和 `Remove-Item` 清理合在同一长 Shell cell；先独立完成并确认校验结果。工作区内任务专属的已知文本临时文件使用精确 `apply_patch` 删除，不用动态循环或递归 Shell 删除；空目录不进入 Git，可在不扩大删除权限的前提下保留。
+- Windows 上需要递归删除工作区任务目录时，不得把 `Remove-Item -Recurse` 直接内联到工具命令；从一开始就用 `apply_patch` 创建任务专属 `.ps1`，脚本内核对解析后的绝对路径精确等于预期目标且位于 `.agents` 等任务边界内，执行并验证清零后再用 `apply_patch` 删除脚本。策略拒绝视为零执行，不得原样重试。
 - `apply_patch` 的多文件或 update/delete 混合操作默认拆成独立补丁；确需多文件时必须先结束当前 hunk，再写下一个 `*** Update File`/`*** Delete File` 声明。出现 `Unexpected line found in update hunk` 时视为零修改，先检查实际 diff，再按文件拆分，禁止原样重放。
 - 跨 worktree 整合旧差异时先用 `git diff --ignore-space-at-eol` 去除换行噪声；不得把带行号的原始 Git hunk header 直接重放给 `apply_patch`。对已在 `main` 变化的文件必须重新读取当前上下文并做语义合并，禁止用整文件覆盖掩掉新版本内容。

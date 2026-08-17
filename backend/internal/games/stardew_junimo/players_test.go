@@ -168,7 +168,7 @@ func TestReadPlayersFromControl(t *testing.T) {
 	}
 }
 
-func TestListPlayersPrefersControlFile(t *testing.T) {
+func TestListPlayersPrefersControlFileAndUsesLiveInfoLimit(t *testing.T) {
 	dir := t.TempDir()
 	control := filepath.Join(dir, ".local-container", "control")
 	if err := os.MkdirAll(control, 0o755); err != nil {
@@ -182,10 +182,27 @@ func TestListPlayersPrefersControlFile(t *testing.T) {
 		t.Fatalf("write players.json: %v", err)
 	}
 
+	if err := os.MkdirAll(filepath.Dir(serverSettingsPath(dir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(serverSettingsPath(dir), []byte(`{"Server":{"MaxPlayers":20}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	step := 0
 	d := newTestDriver(&fakeConsoleDocker{
-		execFunc: func(_ context.Context, _, _, _ string, _ ...string) (paneldocker.CommandResult, error) {
-			t.Fatal("ListPlayers should not call Junimo info when players.json is available")
-			return paneldocker.CommandResult{}, nil
+		execFunc: func(_ context.Context, _, _, stdinData string, _ ...string) (paneldocker.CommandResult, error) {
+			step++
+			switch step {
+			case 1:
+				return paneldocker.CommandResult{Stdout: "0 /tmp/server-output.log", ExitCode: 0}, nil
+			case 2:
+				if stdinData != "info\n" {
+					t.Fatalf("stdin = %q, want info newline", stdinData)
+				}
+				return paneldocker.CommandResult{ExitCode: 0}, nil
+			default:
+				return paneldocker.CommandResult{Stdout: "Players: 1/4\nOnline players: host\n", ExitCode: 0}, nil
+			}
 		},
 	})
 	instance := makeRunningInstance()
@@ -203,6 +220,9 @@ func TestListPlayersPrefersControlFile(t *testing.T) {
 	}
 	if result.OnlineCount == nil || *result.OnlineCount != 1 {
 		t.Fatalf("online count = %#v, want 1", result.OnlineCount)
+	}
+	if result.MaxPlayers == nil || *result.MaxPlayers != 4 {
+		t.Fatalf("live max players = %#v, want 4 (configured restart value is 20)", result.MaxPlayers)
 	}
 	if len(result.Players) != 1 || result.Players[0].Name != "host" || !result.Players[0].IsHost {
 		t.Fatalf("players = %+v, want host", result.Players)

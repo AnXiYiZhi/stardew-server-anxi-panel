@@ -7,7 +7,7 @@ import { ModalPortal } from '../../../core/ModalPortal'
 import type { ModInfo, ModSearchResult, ModSyncKind, ModUpdateInfo, NexusModSearchResult, NexusRequiredMod, NexusSettingsStatus } from '../../../types'
 import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { modDisplayName } from '../mod-display'
-import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, sortInstalledMods, type InstalledModSort } from '../mod-list-utils'
+import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, nexusInstalledState, sortInstalledMods, type InstalledModSort } from '../mod-list-utils'
 import { MOD_UPLOAD_TOOLTIP, ModUploadGuidance } from '../ModUploadGuidance'
 import { routeToPath, type StardewPageProps } from '../stardew-routes'
 import { useModsManagement } from '../useModsManagement'
@@ -43,9 +43,12 @@ type NexusExtensionBatchItemStatus = 'pending' | 'opening' | 'capturing' | 'read
 type NexusExtensionBatchItem = {
   id: string
   role: 'target' | 'required'
+  operation?: 'install' | 'update'
   modId: number
   name: string
   url: string
+  expectedVersion: string
+  replaceUniqueId?: string
   status: NexusExtensionBatchItemStatus
   message?: string
   jobId?: string
@@ -61,6 +64,7 @@ type NexusExtensionBatch = {
 type NexusExtensionInstallState = {
   modId: number
   batchId: string
+  operation?: 'install' | 'update'
   status: 'starting' | 'running' | 'done' | 'failed'
   progress: number
   error?: string
@@ -218,6 +222,7 @@ function countGridColumns(gridTemplateColumns: string) {
 function ModSearchResultCard({
   result,
   update,
+  updateActionSlot,
   actionSlot,
   statsSlot,
   footerSlot,
@@ -225,6 +230,7 @@ function ModSearchResultCard({
 }: {
   result: ModSearchResult
   update?: ModUpdateInfo
+  updateActionSlot?: ReactNode
   actionSlot?: ReactNode
   statsSlot?: ReactNode
   footerSlot?: ReactNode
@@ -289,13 +295,16 @@ function ModSearchResultCard({
       {update ? (
         <div className="sd-mods-update-card-row">
           <span><strong>发现新版本</strong> v{update.currentVersion} → v{update.latestVersion}</span>
-          <button
-            className="sd-btn-tan"
-            type="button"
-            onClick={() => window.open(update.url, '_blank', 'noopener,noreferrer')}
-          >
-            查看更新页
-          </button>
+          <div className="sd-mods-update-card-actions">
+            {updateActionSlot}
+            <button
+              className="sd-btn-tan"
+              type="button"
+              onClick={() => window.open(update.url, '_blank', 'noopener,noreferrer')}
+            >
+              查看更新页
+            </button>
+          </div>
         </div>
       ) : null}
       {footerSlot ? <div className="sd-mods-nexus-card-footer">{footerSlot}</div> : null}
@@ -464,6 +473,7 @@ function readNexusExtensionSessionState(): NexusExtensionInstallState | null {
     return {
       modId: Number(parsed.modId),
       batchId: String(parsed.batchId),
+      operation: parsed.operation === 'update' ? 'update' : 'install',
       status: parsed.status === 'done' || parsed.status === 'failed' || parsed.status === 'running' || parsed.status === 'starting'
         ? parsed.status
         : 'running',
@@ -959,23 +969,8 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
-  function nexusModInstalledMatchInList(modList: ModInfo[] | undefined, modId: number) {
-    if (!modList || modId <= 0) return null
-    const match = modList.find((mod) => (
-      (mod.nexusModId ?? 0) === modId ||
-      (mod.originSource === 'nexus' && (mod.originNexusModId ?? 0) === modId)
-    ))
-    if (!match) return null
-    return {
-      installed: true,
-      installedEnabled: match.enabled,
-      installedFolderName: match.folderName,
-      installedVersion: match.version,
-    }
-  }
-
   function nexusModInstalledInList(modList: ModInfo[] | undefined, modId: number) {
-    return nexusModInstalledMatchInList(modList, modId) !== null
+    return nexusInstalledState(modList, modId).installed
   }
 
   function syncNexusResultsFromInstalledMods(modList: ModInfo[] | undefined) {
@@ -983,18 +978,26 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     setNexusResults((prev) => {
       if (!prev) return prev
       return prev.map((result) => {
-        const match = nexusModInstalledMatchInList(modList, result.modId)
+        const installedState = nexusInstalledState(modList, result.modId)
         const requiredMods = result.requiredMods?.map((required) => {
-          const requiredMatch = nexusModInstalledMatchInList(modList, required.modId)
-          return requiredMatch ? { ...required, ...requiredMatch } : required
+          const requiredState = nexusInstalledState(modList, required.modId)
+          return { ...required, ...requiredState }
         })
         return {
           ...result,
-          ...(match ?? {}),
+          ...installedState,
           ...(requiredMods ? { requiredMods } : {}),
         }
       })
     })
+  }
+
+  async function handleModsRefresh() {
+    const latest = await loadMods()
+    if (latest) {
+      syncNexusResultsFromInstalledMods(latest.mods)
+    }
+    void dashboardData.refreshMods()
   }
 
   async function refreshModsAfterNexusExtensionDone() {
@@ -1002,6 +1005,9 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     const latestMods = latest?.mods ?? data?.mods ?? []
     syncNexusResultsFromInstalledMods(latestMods)
     await dashboardData.refreshMods()
+    if (nexusExtensionInstallRef.current?.operation === 'update') {
+      await loadModUpdates(true)
+    }
   }
 
   function refreshDashboardForNexusBatchJobs(items: NexusExtensionBatchItem[] | null | undefined) {
@@ -1018,13 +1024,13 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   }
 
   async function markInstalledBatchItems(items: NexusExtensionBatchItem[]) {
-    const needsLocalCheck = items.some((item) => item.status !== 'done' && item.modId > 0)
+    const needsLocalCheck = items.some((item) => item.operation !== 'update' && item.status !== 'done' && item.modId > 0)
     if (!needsLocalCheck) return items
     const latest = await loadMods()
     const latestMods = latest?.mods ?? data?.mods ?? []
     syncNexusResultsFromInstalledMods(latestMods)
     return items.map((item) => {
-      if (item.status === 'done' || !nexusModInstalledInList(latestMods, item.modId)) {
+      if (item.operation === 'update' || item.status === 'done' || !nexusModInstalledInList(latestMods, item.modId)) {
         return item
       }
       return {
@@ -1084,7 +1090,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
         ...activeInstall,
         status: 'failed',
         progress: 100,
-        error: `${item.name || `Mod ${item.modId}`} 安装失败：${job?.errorMessage || job?.status || '请查看任务日志'}`,
+        error: `${item.name || `Mod ${item.modId}`} ${item.operation === 'update' ? '更新' : '安装'}失败：${job?.errorMessage || job?.status || '请查看任务日志'}`,
         errorItemName: item.name || `Mod ${item.modId}`,
         errorJobId: item.jobId,
         items: reconciledItems,
@@ -1473,33 +1479,42 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       byModId.set(required.modId, {
         id: `required-${required.modId}`,
         role: 'required',
+        operation: 'install',
         modId: required.modId,
         name: required.name,
         url: nexusRequiredInstallURL(required),
+        expectedVersion: required.version?.trim() ?? '',
         status: 'pending',
       })
     }
     byModId.set(result.modId, {
       id: `target-${result.modId}`,
       role: 'target',
+      operation: 'install',
       modId: result.modId,
       name: result.name,
       url: nexusExtensionInstallURL(result),
+      expectedVersion: result.version?.trim() ?? '',
       status: 'pending',
     })
     return Array.from(byModId.values())
   }
 
-  async function handleNexusInstall(result: NexusModSearchResult) {
+  async function startNexusExtensionBatch(
+    result: NexusModSearchResult,
+    targets: NexusExtensionBatchItem[],
+    operation: 'install' | 'update',
+  ) {
     if (nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running') return
     if (nexusExtensionConnection.status !== 'connected') {
       const connected = await testNexusExtensionConnection(false)
       if (!connected) return
     }
-    const batchId = `nexus_${result.modId}_${Date.now()}`
+    const batchId = `nexus_${operation}_${result.modId}_${Date.now()}`
     const installState: NexusExtensionInstallState = {
       modId: result.modId,
       batchId,
+      operation,
       status: 'starting',
       progress: 5,
     }
@@ -1510,10 +1525,14 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
     setNexusInstallError(null)
 
     try {
+      const missingVersion = targets.find((target) => !target.expectedVersion)
+      if (missingVersion) {
+        throw new Error(`${missingVersion.name || `Mod ${missingVersion.modId}`} 未返回 Nexus 最新版本号，已停止自动${operation === 'update' ? '更新' : '安装'}`)
+      }
       const response = await requestNexusExtension<{ batch: NexusExtensionBatch }>('START_BATCH_INSTALL', {
         payload: {
           batchId,
-          targets: nexusExtensionInstallTargets(result),
+          targets,
         },
       }, 8000)
       updateNexusExtensionBatch(response.batch)
@@ -1540,6 +1559,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       const failedState: NexusExtensionInstallState = {
         modId: result.modId,
         batchId,
+        operation,
         status: 'failed',
         progress: 100,
         error: errorMessage(e),
@@ -1548,6 +1568,41 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
       nexusExtensionInstallRef.current = failedState
       clearNexusExtensionTimers()
     }
+  }
+
+  function handleNexusInstall(result: NexusModSearchResult) {
+    return startNexusExtensionBatch(result, nexusExtensionInstallTargets(result), 'install')
+  }
+
+  function handleNexusUpdate(mod: ModInfo, update: ModUpdateInfo) {
+    const modId = mod.nexusModId ?? 0
+    const result: NexusModSearchResult = {
+      modId,
+      name: modDisplayName(mod),
+      summary: mod.nexusSummary ?? mod.description,
+      author: mod.author,
+      version: update.latestVersion,
+      endorsementCount: mod.endorsementCount ?? 0,
+      downloadCount: mod.downloadCount ?? 0,
+      pictureUrl: mod.pictureUrl,
+      nexusUrl: mod.nexusUrl || `https://www.nexusmods.com/stardewvalley/mods/${modId}`,
+      installed: true,
+      installedEnabled: mod.enabled,
+      installedFolderName: mod.folderName,
+      installedVersion: update.currentVersion,
+    }
+    const target: NexusExtensionBatchItem = {
+      id: `update-${modId}`,
+      role: 'target',
+      operation: 'update',
+      modId,
+      name: result.name,
+      url: nexusExtensionInstallURL(result),
+      expectedVersion: update.latestVersion.trim(),
+      replaceUniqueId: mod.uniqueId?.trim(),
+      status: 'pending',
+    }
+    return startNexusExtensionBatch(result, [target], 'update')
   }
 
   function openNexusKeyModal() {
@@ -1711,7 +1766,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
           <button
             className="sd-btn-tan"
             disabled={loading}
-            onClick={loadMods}
+            onClick={() => void handleModsRefresh()}
             type="button"
             title="刷新 Mod 列表"
           >
@@ -2154,11 +2209,42 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
                     const isSmapi = modIsSmapi(mod)
                     const isPanelControl = modIsPanelControl(mod)
                     const bundleDeleteCount = isBuiltIn ? 1 : modBundleMembers(mods, mod).length
+                    const update = mod.uniqueId ? modUpdatesByUniqueID.get(mod.uniqueId.trim().toLowerCase()) : undefined
+                    const extensionBusy = nexusExtensionInstall?.status === 'starting' || nexusExtensionInstall?.status === 'running'
+                    const thisUpdateBusy = extensionBusy && nexusExtensionInstall?.operation === 'update' && nexusExtensionInstall.modId === mod.nexusModId
+                    const updateDisabledReason = !isAdmin
+                      ? '仅管理员可以更新 Mod'
+                      : isRunning
+                        ? '服务器运行中，请先停止后更新 Mod'
+                        : bundleDeleteCount > 1
+                          ? `该 Mod 属于包含 ${bundleDeleteCount} 个 Mod 的安装包，请手动更新整个包`
+                          : !mod.uniqueId
+                            ? '该 Mod 缺少 UniqueID，无法安全替换'
+                            : (mod.nexusModId ?? 0) <= 0
+                              ? '该 Mod 没有独立 Nexus ID，请打开更新页手动更新'
+                              : nexusExtensionConnection.status !== 'connected'
+                                ? `浏览器扩展未连通：${nexusExtensionConnection.message || '请先检测扩展连接'}`
+                                : extensionBusy && !thisUpdateBusy
+                                  ? '另一个 Mod 安装或更新任务正在进行'
+                                  : ''
+                    const updateCanRun = !!update && !updateDisabledReason && !thisUpdateBusy
                     return (
                       <ModSearchResultCard
                         key={mod.id}
                         result={modToSearchResult(mod)}
-                        update={mod.uniqueId ? modUpdatesByUniqueID.get(mod.uniqueId.trim().toLowerCase()) : undefined}
+                        update={update}
+                        updateActionSlot={update && !isBuiltIn ? (
+                          <span className="sd-mods-update-action-wrap" title={updateDisabledReason || '下载并安全替换为最新版本'}>
+                            <button
+                              className="sd-btn-green"
+                              type="button"
+                              disabled={!updateCanRun}
+                              onClick={() => void handleNexusUpdate(mod, update)}
+                            >
+                              {thisUpdateBusy ? `更新中 ${Math.round(nexusExtensionInstall?.progress ?? 0)}%` : '一键更新'}
+                            </button>
+                          </span>
+                        ) : undefined}
                         actionSlot={isBuiltIn ? (
                           <span className="sd-mods-pending-badge">内置</span>
                         ) : (

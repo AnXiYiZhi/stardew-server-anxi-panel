@@ -62,15 +62,15 @@ export type StardewDashboardData = {
   updateDialogOpen: boolean
   // 刷新函数（供各页面在操作完成后主动刷新）
   refreshAll: () => void
-  refreshInstanceState: () => void
-  refreshSaves: () => void
-  refreshMods: () => void
-  refreshPlayers: () => void
-  refreshJobs: () => void
-  refreshHealth: () => void
+  refreshInstanceState: () => Promise<void>
+  refreshSaves: () => Promise<void>
+  refreshMods: () => Promise<void>
+  refreshPlayers: () => Promise<void>
+  refreshJobs: () => Promise<void>
+  refreshHealth: () => Promise<void>
   applyHealthDiagnostics: (health: HealthDiagnosticsResponse) => void
-  refreshInviteCode: () => void
-  refreshPublicIP: (force?: boolean) => void
+  refreshInviteCode: () => Promise<void>
+  refreshPublicIP: (force?: boolean) => Promise<void>
   refreshUpdateStatus: (manual?: boolean) => Promise<void>
   runUpdateDryRun: (targetVersion: string) => Promise<void>
   applyUpdate: () => Promise<void>

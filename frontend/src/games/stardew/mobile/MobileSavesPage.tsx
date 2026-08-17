@@ -162,7 +162,7 @@ export function MobileSavesPage({ user, instanceState, dashboardData }: MobileSa
     setBackupsError(null)
     try {
       const result = await getSaveBackups()
-      setBackups(result.backups)
+      setBackups(Array.isArray(result.backups) ? result.backups : [])
     } catch (e) {
       setBackupsError(errorMessage(e))
     } finally {

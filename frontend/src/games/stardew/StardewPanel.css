@@ -4123,6 +4123,44 @@
   white-space: nowrap;
 }
 
+.sd-server-summary-subrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sd-server-summary-subrow .sd-server-summary-sub {
+  flex: 1 1 auto;
+}
+
+.sd-server-summary-limit-btn {
+  flex: 0 0 auto;
+  min-width: 68px;
+  min-height: 44px;
+  margin: -12px 0 -11px;
+  padding: 0 6px;
+  border: 1px solid rgba(126, 77, 27, 0.52);
+  border-radius: 3px;
+  background: rgba(255, 240, 190, 0.62);
+  color: #5d3817;
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1.1;
+  font-weight: 900;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sd-server-summary-limit-btn:hover {
+  background: rgba(255, 247, 214, 0.9);
+}
+
+.sd-server-summary-limit-btn:focus-visible {
+  outline: 3px solid rgba(35, 105, 38, 0.76);
+  outline-offset: 2px;
+}
+
 .sd-server-quick .sd-srv-hint {
   display: none;
 }

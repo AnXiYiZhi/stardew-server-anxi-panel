@@ -1,3 +1,40 @@
+# v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式候选计划（2026-08-17，candidate pending）
+
+## 变更清单与受影响链路
+
+- 下一补丁版本由自动候选从当前正式版 `v0.5.2` 递增为 `0.5.3`；不手工创建、移动或提前推送 tag。用户明确把 `v0.5.2` 以后本地 `main` 上的已提交与未提交功能作为同一版本整体发布，范围固定为本节、专项/回归测试、升级 E2E、公开更新日志和长期接手文档。
+- `PLAYER-AUTH-SELF-ENROLL-1` 允许 role 模式在空角色或 waiting 角色存在时启用；首次合法 `!login` 为当前存档角色原子写入不可逆 verifier，管理员代设、清除与重新认领继续可用。凭据按 saveId 存入 `role-passwords.json`，带 initialized marker、Panel/Control 跨进程锁、原子权限写入、legacy 迁移和 store/`.env` 事务回滚；状态明确区分 waiting/configured/error/orphan。Control 升到 `0.3.6`，旧 Compose 自动补齐四个 SAP 环境变量，restart 只强制重建 server。特别感谢群友「石头佬」对密码功能的建议与帮助。
+- `NEXUS-EXT-LATEST-1` 把主 Mod 与未满足前置的 Nexus 当前版本加入安装批次，只选择版本完全匹配的文件行并传递 `expectedVersion/nexusFileId`；服务端在 ZIP 下载后、Mods 落盘前复核 manifest 版本。`NEXUS-MOD-ONECLICK-UPDATE-1` 再把扩展升到 `0.1.8`：管理员可在已安装单成员 Nexus Mod 的更新提示旁复用同一批次一键更新，扩展额外发送 `replaceUniqueId`，后端先校验、再备份替换并保留 `config.json` 与启用状态；普通安装批次在当前项成功提交后才打开下一 Nexus 页，避免不同文件捕获状态交叉。缺版本、页面无匹配、错误 UID、聚合包或旧包都 fail closed；`FE-MODS-REFRESH-INSTALLED-1` 同时修复删除后刷新仍显示已安装的单向 merge。特别感谢群友「鹈鹕镇的热心市民」对 Mod 功能的反馈与帮助。
+- `SERVER-RUNTIME-MAXPLAYERS-1` 在既有 runtime settings GET/PUT 中增加 `maxPlayers=1~100`，保留旧客户端省略字段和配置文件未知字段；运行中显示 Control 当前生效值，保存只更新重启后配置且不静默重启。桌面摘要、快捷操作和移动控制页共用同一 hook/弹窗；真实 Docker 专项已覆盖 `11 → 配置 12 → 重启后 12`。
+- `SUPPORT-BUNDLE-LOG-CONTEXT-2` 为管理员诊断 ZIP 增加有界且脱敏的 Panel、server、steam-auth 与当前实例最近任务日志，保持邀请码、session、token、角色凭据、存档和恢复材料不外泄；导出入口移到诊断页页头。`FE-REFRESH-ACTIONS-AUDIT-1` 让诊断资源独立结算、任务空列表清理旧详情、移动备份兼容 null，并统一 dashboard 刷新的 Promise 契约。
+- 受影响链路覆盖 backend Web/driver、Control 源码与内嵌 DLL、runtime stack manifest、Compose 迁移与生命周期、Nexus 浏览器扩展、desktop/mobile frontend、支持包、公开网站和长期数据文件。SQLite schema、游戏存档 XML、server/steam-auth/game/SDK/SMAPI 镜像版本未改变；但运行栈清单、Control 制品、部署环境和角色凭据长期结构已改变，因此必须选择远程制品/Control 真实编译、Junimo/SMAPI 长 integration、Docker/updater、fresh/restart、网站 build 与上一正式版 Web 升级/回滚。代表升级保持唯一 `v0.5.2 → v0.5.3`：`v0.5.2` 正是所有新增长期结构与 Compose 迁移的最老受影响正式输入，不再机械增加更老版本。
+
+## 本版专项矩阵
+
+| 维度 | 场景 | 正式候选断言 |
+| --- | --- | --- |
+| 正常路径 | role 空列表启用、waiting 首次认领/重复正确登录/管理员代设清除；Nexus 本体+前置最新版安装、单成员 Mod 一键更新；运行人数设置；诊断导出与刷新 | Control/Panel 状态一致且不回显明文；扩展选择精确 file ID，安装/更新后 manifest 匹配；更新保留旧配置与启用状态；配置保存和重启生效分离；ZIP 条目完整；刷新使用本次响应 |
+| 关键边界 | 角色错误/孤立/损坏；并发首次认领；`2.9.0/2.9.1/2.9.10`、缺版本、无匹配文件、错误 UID/版本、聚合包与替换失败；人数 `0/1/100/101`；`backups:null`、任务消失和单项诊断失败 | 认证与安装/更新 fail closed；并发只有一个写入者；版本不前缀误匹配；更新校验失败零写入、替换失败恢复旧目录；边界值准确；独立资源成功不被其它失败抹掉，旧详情不残留 |
+| 权限与敏感信息 | 普通用户/管理员认证配置、运行设置、远程安装与支持包；恶意 URL/ZIP/日志 | 写操作维持管理员门禁；verifier/key/guard、Cookie、session、token、邀请码、CDN 签名 query、路径和恢复材料不进入 API/日志/ZIP；URL 与 manifest 双重验真 |
+| 幂等、并发与恢复 | Panel/Control 同时写 store；active/stale lock；store 成功但 `.env` 失败；扩展安装/更新重复点击与后台恢复；替换中断；刷新重入；Panel 重启 | 单写入者、原子终态和稳定错误码；事务失败完整回滚；同一安装/更新复用原任务；旧 Mod 备份可恢复且临时目录清理；busy 门禁不重复请求；重启后凭据、任务与配置保持 |
+| Compose 与运行栈兼容 | v0.5.2 mapping/list Compose；inline role；inline none/global；restart server；Control `0.3.6` 清单/哈希 | 安全结构幂等补四项环境；无法证明的 role 阻止；none/global 自定义 inline 原样保留并告警；只重建 server、steam-auth ID 不变；远程制品和嵌入 DLL 精确一致 |
+| 数据完整性 | saveId 隔离、legacy verifier 迁移、未知 runtime settings 字段、旧 Mod 配置/启用状态与错误 ZIP、SQLite/存档/非目标 volume | 不串档、不丢 verifier、不覆盖未知字段；更新保留旧 `config.json` 与 active/disabled 位置；错误 ZIP 落盘前删除且不改 Mods；升级/回滚前后 SQLite、初始化、存档、非目标容器/volume 与长期任务数据保持 |
+| 前端与响应式 | 桌面/移动密码与人数弹窗、Mod 删除后刷新、一键更新按钮/禁用提示、诊断/任务/备份刷新，桌面与窄屏 | 两端共用状态流；running/configured 文案准确；删除后清空本体和前置旧安装元数据；更新入口与查看页同组且门禁可解释；无横向溢出、重复入口或 console error/warn |
+| 真实交互 | 两个真人客户端首次设置不同角色密码、重复正确、交叉失败、管理员清除后重新认领、Panel 批准、server recreate/Panel 重启；真实 Chrome 0.1.8 登录 Panel/Nexus 安装本体+前置并更新一个已安装 Mod | 用户于 2026-08-17 确认两客户端完整矩阵通过；Chrome 扩展真实捕获 CDN、提交任务并在停止态实例完成安装/更新，manifest/config/启用状态均已核对。自动 C#/Go/DOM 夹具只作为补充证据 |
+| 升级与回滚 | `v0.5.2 → v0.5.3` 同一候选 unhealthy 与 healthy，升级后认证/扩展/人数/支持包/刷新专项 | unhealthy 必须 `failed_rolled_back/health_check_failed` 并恢复 0.5.2；healthy 使用同一 digest；断线重连、Panel restart 与受影响长期状态保持；升级后再次通过真实 E2E |
+| 资源清理 | 本地验证、候选 DinD、人工 E2E、成功/失败/回滚 | 只按任务 owner/精确 Compose project 清理容器、网络、volume、bind/temp/测试镜像；终态计数为 0，禁止 prune，不触碰生产数据 |
+
+## 发布状态
+
+- 候选前状态：上一正式版固定为 `v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1`，本地 `main` 相对 `origin/main` 只有本版提交与工作树变更，远端没有独立提交。更新日志已按聚合范围准备，并加入“密码功能感谢群友石头佬”“Mod 功能感谢群友鹈鹕镇的热心市民”。候选 commit、workflow、artifact、digest、自动 Tag、正式提升、GitHub Release、三仓引用与资源终态待全部门禁完成后回填。
+- 发布阻断线：真实 Chrome + 0.1.8 扩展安装/更新已取得下述可验证结果；用户于 2026-08-17 进一步确认两个真人客户端的首次认领、各自正确登录、交叉失败、管理员清除后重认领、Panel 批准以及 server recreate/Panel 重启保持全部通过。人工高风险门禁已解除，可以提交 `main` 启动不可变候选；后续候选、Web 升级/回滚、digest 提升或正式冒烟任一失败仍须停止发布并修复受影响下游。
+
+## 真实 Chrome 0.1.8 扩展证据（2026-08-17，passed）
+
+- 更新链：停止态隔离实例预置 Content Patcher `2.9.0/file_id=153187` 与配置哨兵；管理员点击同一 Mod 卡片的“一键更新”后，扩展提交 `expectedVersion=2.9.1`、`nexusFileId=160463`、`replaceUniqueId=Pathoschild.ContentPatcher`，Panel Job 成功。落盘 manifest 为 `2.9.1`，旧 `config.json` 哨兵与启用状态保持，`.remote-mod-*`、`.partial*`、`.mod-update-backup-*` 为零。
+- 缺前置安装链：先删除测试实例中的 Content Patcher 并刷新下载页，搜索 ZIP 目标 Elle's New Barn Animals `1.1.3`。扩展只先打开前置页；前置 `2.9.1/file_id=160463` 被 Panel 接受后才打开目标页，目标独立提交 `1.1.3/file_id=34408`。两个 Job 均成功，最终 manifest 分别为 `Pathoschild.ContentPatcher 2.9.1` 与 `Elle.NewBarnAnimals 1.1.3`，临时制品为零。
+- 失败保护：0.1.6 并发页面曾使目标沿用前置 file ID，后端 manifest 版本验真以“期望 1.2.11、实际 2.9.1”安全拒绝，目标未落盘；0.1.7/0.1.8 改为串行后不再交叉。原成功夹具候选实际下载格式为 `.rar`，超出当前只接受 ZIP 的远程安装契约，因此没有放宽 URL/解包安全校验或把手工下载跳转记为成功，改用真实 ZIP 内容包完成成功门禁。
+
 # v0.5.2 MOD-UPDATE-CHECK-1 / FE-MOD-CONFIG-CARDS-1 正式候选与发布结果（2026-08-16，released）
 
 ## 变更清单与受影响链路
@@ -2013,7 +2050,7 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - 已完成：在干净 `HEAD` 验证卷只叠加本功能差异后，Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过；C# 纯策略契约；`.NET 6 SDK + stardew_game-data` 标准 Control 实编译（0 errors，1 个既有 analyzer warning）；Node 22 Linux 全部 17 项前端状态/布局回归与 production build；1280×720、390×844 Browser 视觉 QA。
 - `v0.4.19` 候选 `31892497427`、自动 Tag `31893049884` 与正式提升 `31893060495` 已完成 Control required-update、fresh/restart、上一正式版 Web unhealthy 回滚/healthy 升级、三仓统一 digest 与正式冒烟；v0.5.0 候选 `31899107629` 又从 v0.4.19 完成真实 Web 回滚/升级并保留该认证回归。自动策略、Control fixture 和升级证据不等同于两个真人客户端实际输入角色密码；该人工记录仍是后续涉及认证交互改动时必须补的验证边界。
 
-# PLAYER-AUTH-SELF-ENROLL-1 未发布验证记录（2026-08-17，不打 tag）
+# PLAYER-AUTH-SELF-ENROLL-1 发布前验证记录（2026-08-17，人工矩阵 passed）
 
 ## 变更清单与受影响链路
 
@@ -2042,5 +2079,5 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - `.NET 6 SDK + stardew_game-data`：纯 Control 契约通过；标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 为 0 errors、1 个既有 CS9057 analyzer/compiler warning。标准产物 204288 bytes，最终嵌入 DLL 与 runtime manifest SHA-256 均为 `e7f3744b647c2f658ac3ad60d1dc27d958d935c7946f134b35447ab6c79bb422`。
 - Node 22 Alpine 使用完整仓库 bind 和独立 `node_modules/dist` volume，`npm ci`、production audit 0 vulnerability、新增脚本在内的全部 18 项 `test:*` 与 Vite production build（142 modules，2.22s）通过。`compatibility-matrix.yml` 已加入新脚本并通过 YAML parse；`run-release-gates.sh` 已加入新脚本并通过 Bash 5.2 `bash -n` 与 ShellCheck。
 - 本地 `sap-player-auth:test-20260817` dev 镜像完成 Dockerfile 全阶段构建；全新数据卷首次启动和 `docker restart` 后均得到 `/health.status=ok`，`/api/version.version=dev-player-auth-20260817` 且 commit 为当前工作树标识。该本地引用未推送，冒烟后与任务容器、6 个测试 volume、Control 临时副本、18092 监听均精确清理；`sap.task=player-auth-20260817` 的容器/volume/image 最终计数全部为 0。
-- 本次用户明确要求先不打 tag：不创建/移动 `v*` tag，不创建 GitHub Release，不提升任何正式镜像或 `latest`，也不把本节的可变工作树测试写成不可变候选证明。
-- 两真人客户端人工矩阵仍未完成；因此即使全部自动门禁通过，也只能说明代码与容器契约通过，不能宣称游戏内双客户端自助认领已经人工验收。
+- 前序阶段按用户要求未创建/移动 `v*` tag、GitHub Release 或正式镜像；2026-08-17 用户确认人工矩阵通过并明确授权正式发布，后续仍只允许由不可变候选自动创建 annotated tag 和提升同一 digest。
+- 用户确认两个真实客户端已完成：各自首次设置不同角色密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate 与 Panel 重启后保持。该用户确认作为本次人工交互证据，自动夹具继续只证明代码/容器契约。

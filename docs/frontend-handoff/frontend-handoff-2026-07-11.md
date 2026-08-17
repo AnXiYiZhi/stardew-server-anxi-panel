@@ -1,3 +1,84 @@
+# FE-NEXUS-MOD-ONECLICK-UPDATE-1 前端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `ModsPage.tsx` 在可更新的已安装卡片上把“一键更新”放到“查看更新页”左侧。只对管理员、停止态、扩展已连接、直接 Nexus ID、单物理成员且具备 `UniqueID` 的 Mod 开放；其它场景用禁用按钮和 `title` 解释，现有外链不隐藏。
+- 安装与更新共用 `startNexusExtensionBatch`、批量进度、失败任务跳转、session 恢复和扩展状态，没有第二套表单。更新目标写入 `operation: update`、`replaceUniqueId`、严格 `expectedVersion` 和 Nexus 页面地址；任务成功后重读 Mods 并强制重新检查更新。
+- 扩展升为 0.1.8。`background.js` 把 operation/替换目标贯穿 batch、capture 和恢复状态，background 直连与 `panel-bridge.js` 只在 update 模式向既有远程安装接口发送 `replaceUniqueId`；普通安装 payload 保持兼容。普通批次只打开首项，当前 CDN 链接成功提交给 Panel 后才打开下一 Nexus 页，防止不同页面的 capture/file ID 交叉。
+- `ModsPage.css` 为更新提示动作组增加桌面并排和窄屏换行；QA fixture 补齐 Nexus ID，用于验证正常和扩展断连状态。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:nexus-extension-idempotency` 固定 update 上下文从 batch 到 capture 和两条 POST 的传递；production build 通过。应用内 Browser 验证按钮紧邻“查看更新页”、断连时禁用提示和 800px root/body 零横向溢出。
+- 不要把本地“已安装”直接当成 update 批次完成条件，否则旧版本会在扩展真正下载前被提前标为 done。聚合包不能只替换其中一个成员；需要继续保留外链并解释为何不可一键更新。
+- 真实 Chrome + 0.1.8 已在停止态完成 CDN 捕获与后台任务：Content Patcher `2.9.0 → 2.9.1` 更新保留 config/启用状态；缺前置批次先提交 Content Patcher `2.9.1/file_id=160463`，再打开并安装 Elle's New Barn Animals `1.1.3/file_id=34408`。两个落盘 manifest 精确匹配，临时目录为零。
+
+# FE-REFRESH-ACTIONS-AUDIT-1 前端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 全量盘点可见刷新入口后，`DiagnosticsPage.tsx` 把健康检查与 Compose 刷新从全有或全无的 `Promise.all` 改成独立落盘；`JobsLogsPage.tsx` 区分列表失败与成功空列表，并在选中任务消失时清理旧详情；`MobileSavesPage.tsx` 兼容旧版 `backups:null`。
+- `stardew-routes.ts` 将 `refreshInstanceState/refreshSaves/refreshMods/refreshPlayers/refreshJobs/refreshHealth/refreshInviteCode/refreshPublicIP` 的返回类型从 `void` 校正为 `Promise<void>`。运行时 API 未变化，但今后组合刷新可被类型安全地等待。
+- 玩家、邀请码/面板地址、桌面存档与备份、VNC、用户、审计日志、当前认证状态、Mod 更新和 Panel 版本检查均已确认成功时完整替换对应 state，未发现 Mod 搜索页同类单向 merge。
+
+## 如何验证、下一步注意事项
+
+- `test:responsive-layout` 固定诊断独立结算、任务过期选择清理、移动备份空值归一、Mod 本次响应立即对账和刷新 Promise 类型契约；`test:mod-list` 与 production build 同时通过。
+- 新增刷新按钮时必须明确四点：真实请求、按钮 busy 防重、成功覆盖当前视图 state、失败保留或清除旧数据的明确策略。多个独立资源不得用一个 `Promise.all` 形成无必要的全有或全无刷新。
+
+# FE-MODS-REFRESH-INSTALLED-1 前端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `mod-list-utils.ts` 新增共用 `nexusInstalledState(mods, modId)`，把当前服务器清单转换成完整的 Nexus 安装状态；未匹配时必须显式清除 `installedEnabled/installedFolderName/installedVersion`，不能继续把旧搜索 DTO 当作真值。
+- 桌面 `ModsPage.tsx` 的页头刷新会用 `loadMods()` 本次响应立即重算当前 Nexus 本体与前置卡片，再异步刷新 dashboard 缓存。移动 `MobileModsPage.tsx` 使用同一对账函数，session 恢复或公共清单变化时也能从“已安装”回到“未安装”。接口没有变化。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:mod-list` 覆盖直接 Nexus ID、Nexus 包来源 ID，以及删除后传入空清单必须返回 `installed:false` 且清空旧元数据；`npm run build` 通过。
+- 后续若增加新的 Nexus 安装来源 ID，只扩展共用 helper 的匹配契约，不要在桌面/移动页面各写一套只增不减的 merge。刷新失败时保留原 UI 并展示现有列表错误，不能把未知清单误当成空清单。
+
+# NEXUS-EXT-LATEST-1 前端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `ModsPage.tsx` 的 `NexusExtensionBatchItem` 增加必填 `expectedVersion`；主目标取 `NexusModSearchResult.version`，前置取新增的 `NexusRequiredMod.version`。任一缺失都在 `START_BATCH_INSTALL` 前 fail closed。
+- 扩展 0.1.5 用 `anxi_version` 在 Nexus 页面导航/session 中传递版本；`shared.js` 提供严格版本文本匹配和候选选择，`content.js` 只在单个 file ID 的 DOM 上下文内匹配目标版本。经典页会把候选规范到 `<dd data-id>` 并合并紧邻 `<dt>` 的文件标题/版本，避免下载链接子级 `<li>` 提前截断版本文本。新 Panel 显式传版本；旧 Panel 的 batch 缺字段时扩展先打开 Nexus，再从当前文件页标题补出版本。`background.js` 把版本和 file ID 持久化到 batch/capture，并由 background 直连或 panel bridge 统一提交 `{expectedVersion,nexusFileId}`。
+- 版本匹配失败通过 `CAPTURE_FAILED` 立即结束对应批量项；不再点击任意 Manual 控件继续。manifest、请求头、README 和测试断言都升到 0.1.5，面板缓存 ZIP 会按 manifest 版本自动更新。0.1.4 在真实 v0.5.2 Panel 点击时因旧 payload 缺字段而安全失败，未创建后台页、任务或 Mods 写入；该兼容回归是 0.1.5 的直接原因。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:nexus-extension-idempotency` 与 production build 通过；测试固定“2.9.0 候选在前、2.9.1 在后”并断言选择 2.9.1，覆盖 `2.9.10` 边界、缺版本拒绝、URL 参数及 background/bridge 请求体。已登录右侧浏览器的实际 Nexus DOM 探针选择 `2.9.1/file_id=160463`，区分旧版 `2.9.0/file_id=153187`，不存在的 `2.9.10` 返回空。
+- 不能把版本参数放进 Nexus CDN 签名链接，也不能在找不到目标版本时恢复“第一个 file_id”逻辑。Nexus 改 DOM 后应先扩展“单文件上下文”的采集选择器并增加 fixture，服务端 manifest 验真继续作为最终保护。
+- 当前 0.1.8 的真实 Chrome 已完成本体+前置 ZIP 批量安装与单 Mod 更新；具体 file ID、任务和落盘证据见本文件顶部及 `docs/09-image-build.md`。后续修改 Nexus DOM 选择、批次恢复或提交路径时仍须重跑同等真实链，不能用应用内 Browser 的只读 DOM 探针代替扩展点击、CDN 捕获、Panel 任务与 manifest 终态。
+
+# FE-SERVER-RUNTIME-MAXPLAYERS-1 前端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `ServerRuntimeSettingsDialog.tsx/.css` 与 `server-runtime-settings-state.ts` 提供桌面/移动共用表单：顶部 `1~100` 数字输入及中文说明、运行/停止生效提示和低于在线人数的非阻塞警告；小屋策略、已有小屋处理和广播频率移入“高级设置”。弹窗只有“仅保存”，不会调用生命周期 API。
+- `useServerRuntimeSettings.ts` 成为两端唯一读取/保存流：GET 归一默认值，PUT 始终提交实际 `maxPlayers`，成功 await `refreshPlayers()`。`ServerControlPage.tsx` 与 `MobileControlPage.tsx` 删除各自重复弹窗；快捷操作统一改名为“联机人数与小屋设置 / 人数上限 / 小屋策略 / 广播频率”。
+- `ServerSummaryCard.tsx` 新增明确的 `canEditPlayerLimit/onEditPlayerLimit` props；管理员在线玩家摘要显示 44px 触控热区“修改上限”，回调仍是页面已有 `openRuntimeSettings`。运行中当前上限来自 `dashboardData.players.maxPlayers`，配置值只用于重启后提示。
+- `scripts/test-runtime-player-limit.ts` 新增数据流/权限/边界/响应式/可访问性契约，并接入 package、兼容矩阵、release gates 和响应式门禁；QA fixture 为 live `12`、configured `16`。
+
+## 如何验证、下一步注意事项
+
+- 全部 19 项适用状态回归和 production build 已通过。应用内 Browser 的真实 QA shell 验证：管理员摘要入口可见、普通用户隐藏；两个桌面入口只打开一个共用弹窗；`0/101` 阻止、`1/100` 接受；目标 `2` 低于在线 `3` 仍可保存；running 显示 live `12` / configured `16` 待重启，stopped 显示下次启动；移动端同表单、同警告和 44px 操作按钮，root 无横向溢出。当前 Browser runtime 不能切换精确窄视口，窄屏由现有响应式静态门禁覆盖，不把强制 mobile shell 描述成 390px 实测。
+- 移动浏览器自动化对 number input 的 DOM proxy 报空值，但截图清楚显示受控值 `16`；实际 fill/边界/警告均通过。这是自动化读取代理差异，不要据此另建移动 state。后续修改必须继续保持两端共用 hook/dialog，不能复制第三套实现，也不能把保存后的配置值直接写进 live dashboard 冒充已生效。
+- 本任务没有保存并重启、Mod 检测或 tag/Release。若以后加“保存并重启”，必须调用既有生命周期与在线玩家确认流，不能在 hook 内直接发 restart。
+
+# FE-DIAGNOSTICS-EXPORT-ACTION-1 前端接手记录（2026-08-17，completed，待发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `pages/DiagnosticsPage.tsx` 将“导出诊断包”从“维护与技术详情”内容区移到页头 `.sd-diag-header-actions`，DOM 顺序为导出在前、重新检查在后；按钮复用 `sd-btn-tan sd-btn--lg` 和既有下载图标，管理员、`exportBusy`、错误提示与 Blob 下载逻辑不变。
+- 技术详情只保留升级/深入诊断说明，不再重复导出入口。`scripts/test-responsive-layout.ts` 新增源码契约，锁定页头顺序、详情区无重复按钮，以及 `<=760px` 两列和 `<=460px` 单列响应式规则。没有新增 CSS 图片、API 字段或移动端专用分支。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:responsive-layout` 与 `npm run build` 通过。应用内 Browser 的真实 QA shell 在 1400×900 量得“导出诊断包/重新检查”高度均 35px且无横向滚动；430×900 两按钮纵向满宽，root `scrollWidth=clientWidth=430`。
+- 后续不要把按钮重新埋回折叠详情，也不要在页头和详情同时保留两个入口。普通用户仍看到禁用按钮并获得“仅管理员可导出诊断包”的 title；如果后端 ZIP 条目继续扩展，前端无需解析内容，只维持 HTTP/Blob 下载和现有错误展示。
+
 # FE-MOD-UPDATE-REMINDER-1 / FE-MOD-CONFIG-CARDS-1 接手记录（2026-08-16，released in v0.5.2）
 
 ## 改了什么、影响哪些接口/文件
@@ -1891,4 +1972,4 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - `waiting` 表示玩家可首次认领，`error` 表示凭据层 fail closed；任何 UI 重构都不能把两者合并成“未设置”。也不能因角色列表为空而禁止 role，因为新建/导入后出现的角色需要使用同一首次登录契约。
-- 本次没有 tag/Release。正式发布前需要两个真实客户端完成首次认领、交叉失败、清除后重认领、Panel 批准和重启保持矩阵。
+- 前序阶段没有 tag/Release；2026-08-17 用户已确认两个真实客户端完成首次认领、各自正确登录、交叉失败、清除后重认领、Panel 批准和重启保持矩阵，并授权正式发布。

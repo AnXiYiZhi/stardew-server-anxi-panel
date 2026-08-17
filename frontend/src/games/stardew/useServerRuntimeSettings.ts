@@ -2,20 +2,21 @@ import { useState } from 'react'
 import { getInstanceServerRuntimeSettings, updateInstanceServerRuntimeSettings } from '../../api'
 import { errorMessage } from '../../core/helpers'
 import type { ServerRuntimeSettings } from '../../types'
-
-const defaultRuntimeSettings: ServerRuntimeSettings = {
-  cabinStrategy: 'CabinStack',
-  existingCabinBehavior: 'KeepExisting',
-  networkBroadcastPeriod: 1,
-}
+import {
+  DEFAULT_SERVER_RUNTIME_SETTINGS,
+  maxPlayersValidationError,
+  normalizeServerRuntimeSettings,
+} from './server-runtime-settings-state'
 
 type RuntimeSettingsOptions = {
   isAdmin: boolean
+  isRunning: boolean
+  refreshPlayers: () => void
 }
 
-export function useServerRuntimeSettings({ isAdmin }: RuntimeSettingsOptions) {
+export function useServerRuntimeSettings({ isAdmin, isRunning, refreshPlayers }: RuntimeSettingsOptions) {
   const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false)
-  const [runtimeSettingsDraft, setRuntimeSettingsDraft] = useState<ServerRuntimeSettings>(defaultRuntimeSettings)
+  const [runtimeSettingsDraft, setRuntimeSettingsDraft] = useState<ServerRuntimeSettings>(DEFAULT_SERVER_RUNTIME_SETTINGS)
   const [runtimeSettingsLoading, setRuntimeSettingsLoading] = useState(false)
   const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false)
   const [runtimeSettingsError, setRuntimeSettingsError] = useState<string | null>(null)
@@ -30,10 +31,10 @@ export function useServerRuntimeSettings({ isAdmin }: RuntimeSettingsOptions) {
     setRuntimeSettingsMessage(null)
     try {
       const res = await getInstanceServerRuntimeSettings()
-      setRuntimeSettingsDraft(res)
+      setRuntimeSettingsDraft(normalizeServerRuntimeSettings(res))
     } catch (e) {
       setRuntimeSettingsError(errorMessage(e))
-      setRuntimeSettingsDraft(defaultRuntimeSettings)
+      setRuntimeSettingsDraft(DEFAULT_SERVER_RUNTIME_SETTINGS)
     } finally {
       setRuntimeSettingsLoading(false)
     }
@@ -43,14 +44,27 @@ export function useServerRuntimeSettings({ isAdmin }: RuntimeSettingsOptions) {
     setRuntimeSettingsOpen(false)
   }
 
+  function clearRuntimeSettingsFeedback() {
+    setRuntimeSettingsError(null)
+    setRuntimeSettingsMessage(null)
+  }
+
   async function handleSaveRuntimeSettings() {
+    const validationError = maxPlayersValidationError(runtimeSettingsDraft.maxPlayers)
+    if (validationError) {
+      setRuntimeSettingsError(validationError)
+      return
+    }
     setRuntimeSettingsSaving(true)
     setRuntimeSettingsError(null)
     setRuntimeSettingsMessage(null)
     try {
       const res = await updateInstanceServerRuntimeSettings(runtimeSettingsDraft)
-      setRuntimeSettingsDraft(res)
-      setRuntimeSettingsMessage('设置已保存，需要重启服务器容器后才会生效。')
+      setRuntimeSettingsDraft(normalizeServerRuntimeSettings(res))
+      await refreshPlayers()
+      setRuntimeSettingsMessage(isRunning
+        ? '设置已保存；人数上限与高级设置将在重启后生效。'
+        : '设置已保存；人数上限与高级设置将在下次启动时生效。')
     } catch (e) {
       setRuntimeSettingsError(errorMessage(e))
     } finally {
@@ -66,7 +80,7 @@ export function useServerRuntimeSettings({ isAdmin }: RuntimeSettingsOptions) {
     runtimeSettingsSaving,
     runtimeSettingsError,
     runtimeSettingsMessage,
-    setRuntimeSettingsMessage,
+    clearRuntimeSettingsFeedback,
     openRuntimeSettings,
     closeRuntimeSettings,
     handleSaveRuntimeSettings,

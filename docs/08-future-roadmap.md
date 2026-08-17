@@ -1,3 +1,45 @@
+# 2026-08-17 进行中：v0.5.3 聚合正式发布
+
+- [x] 版本范围固定为 v0.5.2 以后本地 main 的全部功能：角色密码首次登录自助设置、Nexus 一键安装锁定最新版本、已安装 Mod 一键安全更新、建档后联机人数上限、增强诊断 ZIP、Mod 删除后刷新纠正与全前端刷新数据流审计。
+- [x] 官网更新日志与首页已准备 v0.5.3，并按用户要求在密码功能中特别感谢群友「石头佬」、在 Mod 功能中特别感谢群友「鹈鹕镇的热心市民」。
+- [x] 真实 Chrome + 扩展 0.1.8 已完成 Content Patcher `2.9.0 → 2.9.1` 一键更新，以及 Content Patcher `2.9.1/file_id=160463` 提交后再安装 Elle's New Barn Animals `1.1.3/file_id=34408` 的缺前置 ZIP 批次；manifest、旧配置/启用状态和零临时残留均已核对。
+- [x] 用户于 2026-08-17 确认两个真人客户端角色密码矩阵通过：各自首次认领与重复正确登录、交叉失败、管理员清除后重认领、Panel 批准、server recreate/Panel 重启保持。
+- [ ] 提交并同步 origin/main，由不可变候选执行剩余自动门禁、创建 annotated v0.5.3 tag 和正式提升，最后回填 workflow、digest、Release 与资源清理证据。
+
+# 2026-08-17 已完成：已安装 Mod 一键安全更新
+
+- [x] `FE-NEXUS-MOD-ONECLICK-UPDATE-1`：在已安装 Mod 的更新提示旁增加管理员“一键更新”，与“一键安装”共用扩展批次、进度、失败跳转和 session 恢复；停止态、扩展连接、直接 Nexus ID 和单成员包是显式门禁，不能自动替换时保留“查看更新页”。
+- [x] `NEXUS-MOD-ONECLICK-UPDATE-1`：扩展升为 0.1.8 并贯穿 `operation/replaceUniqueId`；后端复用现有远程安装接口和 Job，先下载及校验 UniqueID/目标版本/单成员，再备份替换，失败恢复旧目录，同时保留旧 `config.json` 和启用/禁用状态。普通安装批次的 Nexus 页面按提交成功顺序串行打开。
+- [x] 后端成功替换、文件夹改名、错误 UID/版本零写入、配置与禁用状态回归，扩展幂等/请求体/串行回归、production build 和桌面/800px Browser QA 已通过；真实 Chrome CDN 捕获、安装/更新任务终态与落盘 manifest 也已通过。
+
+# 2026-08-17 已完成：全前端刷新按钮数据流审计
+
+- [x] `FE-REFRESH-ACTIONS-AUDIT-1`：核对桌面/移动所有可见刷新入口；诊断健康/Compose 独立结算，任务刷新清除已消失任务的旧详情，移动回档兼容旧版 null，dashboard 异步刷新函数统一 Promise 类型契约。
+- [x] 刷新数据流静态回归、Mod 删除后对账回归、响应式回归和 production build 通过；不新增后端接口，不触发 tag、镜像或 Release。
+
+# 2026-08-17 已完成：下载模组页刷新清除已删除状态
+
+- [x] `FE-MODS-REFRESH-INSTALLED-1`：桌面/移动 Nexus 搜索结果与当前服务器 Mod 清单双向对账；删除后刷新会显式清除本体和前置的“已安装”、启用状态、版本及文件夹元数据，桌面刷新使用本次 `/mods` 响应立即更新卡片。
+- [x] 共用 helper 的直接 Nexus ID、Nexus 包来源 ID、删除后空清单回归和前端 production build 已通过；不新增接口，不触发 tag、镜像或 Release。
+
+# 2026-08-17 已完成：Nexus 扩展一键安装锁定最新版本
+
+- [x] `NEXUS-EXT-LATEST-1`：扩展 0.1.5 从新面板接收本体及所有前置的 Nexus 当前版本，只在对应文件行中选择 `file_id`；兼容旧 Panel 缺少版本字段的 batch，由 Nexus 当前文件页补出目标后走相同严格匹配。版本随普通页面参数/session/capture 传递，不改 CDN 签名链接，页面也无法确认版本时 fail closed。
+- [x] Nexus 搜索补齐 `requiredMods[].version`；远程安装接口接收 `expectedVersion/nexusFileId`，ZIP 下载后、Mods 落盘前读取 manifest 二次验真，旧包不再能以新元数据写入或覆盖。
+- [x] 扩展幂等/版本候选回归、前端 production build、后端专项与任务专属 Linux Go 1.25 全量通过；已登录 Nexus 的右侧浏览器实际 DOM 选中 `2.9.1/file_id=160463`，并排除旧版 `2.9.0/file_id=153187`。普通 Chrome 真实 v0.5.2 Panel 首轮点击证明 0.1.4 会因旧 payload 缺版本而安全失败、未开页/建任务/写 Mods，随后以 0.1.5 页面推断兼容修正。本任务不创建 tag、不发布镜像或 Release。
+
+# 2026-08-17 已完成：建档后修改联机人数上限
+
+- [x] `SERVER-RUNTIME-MAXPLAYERS-1`：复用现有 runtime settings GET/PUT，在 `server-settings.json` 增加 `MaxPlayers 1~100` 的默认读取、旧 PUT 保留、未知字段保留、安全原子写、owner/mutex 互斥和旧/新值审计；不新增专用 API、SQLite 表、存档级设置或 Mod/小屋门禁。
+- [x] `FE-SERVER-RUNTIME-MAXPLAYERS-1`：桌面摘要管理员入口、桌面快捷操作与移动控制页共用同一 hook/弹窗/保存流；明确当前生效值与重启后配置，低于在线人数只警告，保存不静默重启，成功刷新 players 投影。
+- [x] 后端专项与 Web 权限/审计、Linux Go 1.25 全量 test/vet/build、前端全部 19 项状态回归/production build、桌面与移动 QA shell 联调已通过；真实 Docker 克隆已有存档验证 live `11`、运行中 configured `12` 仍 live `11`、重启后 `/players=12`，且源夹具保持停止、任务资源清零。本任务不打 tag、不发布 Release 或镜像。
+
+# 2026-08-17 已完成：无需 SSH 的增强诊断日志 ZIP 与页头入口
+
+- [x] `SUPPORT-BUNDLE-LOG-CONTEXT-2`：在现有管理员支持包中加入 Panel、server、steam-auth 有界日志 tail，以及当前实例最近任务的进度日志；完整实例诊断状态替代基础状态摘要，邀请码、密码、Token、session、存档、恢复材料和任务 payload 继续排除或脱敏。
+- [x] `FE-DIAGNOSTICS-EXPORT-ACTION-1`：将“导出诊断包”移到“服务器健康”页头，并固定在“重新检查”左侧；桌面并排、窄屏两列、极窄屏单列，无横向溢出。
+- [x] Docker/Web 专项测试、前端响应式契约与 production build 通过；本地应用内 Browser 已在 1400×900 和 430×900 验证顺序、同级视觉、纵排和零横向溢出。当前任务只完成诊断材料导出，不加入自动分析、远程上传或修复脚本执行。
+
 # 2026-08-16 已发布：v0.5.1 swap-host 主农舍床、睡眠与 VNC 手动状态闭环
 
 - [x] `HOST-BED-INTEGRITY-1`：定位 `.125` swap/finalizer 把主 FarmHouse 全部内容迁入旧 owner cabin、同时因新主机已为 0 级而跳过默认家具重建的组合根因；Control 0.3.5 在游戏线程仅按实际主 FarmHouse map `DefaultBedPosition` 与游戏床常量幂等补床，不硬编码 XML/坐标，不触碰 Farm/cabin/其它家具，0..3 级与无法确定布局 fail-closed 均有契约测试。
@@ -2080,5 +2122,5 @@ Multi Game Mode later
 - [x] 旧 Compose 自动补四个 SAP 环境变量，restart 强制只重建 server；role 无法安全迁移时阻止，none/global 自定义 inline environment 保留并告警继续。
 - [x] 修复 restart 请求后 stale running 立即清 pending 的重复提交窗口，新增纯状态回归。
 - [x] Docker Desktop Linux 全量 Go test/vet/build、Compose integration、Control 契约/标准编译、前端 18 项全量/build、本地镜像 fresh/restart 冒烟均通过；任务容器/volume/image/端口/临时副本清理为 0，证据见 `docs/09-image-build.md`。
-- [ ] 正式发布前完成两个真人客户端首次认领、各自/交叉密码、清除后重认领、Panel 批准和重启保持矩阵。
+- [x] 用户于 2026-08-17 确认两个真人客户端已完成首次认领、各自/交叉密码、清除后重认领、Panel 批准和重启保持矩阵。
 - [x] 本次按用户要求未打 tag、未创建 Release、未更新 `latest`；以后发布必须重新走不可变候选和上一正式版 Web 升级/回滚门禁。

@@ -1,3 +1,36 @@
+# NEXUS-EXT-MOD-UPDATE-1：管理员一键安全更新已安装 Mod（2026-08-17，completed，待发布）
+
+- 复用管理员 `POST /api/instances/:id/mods/remote/install` 与 `mod_remote_install` 任务；请求新增可选 `replaceUniqueId`。字段存在时 Web 调用 `UpdateRemoteMod`，并强制要求正数 Nexus Mod ID/file ID 与非空 `expectedVersion`；省略时保持原安装/幂等行为。仅管理员、停止态可用，`replaceUniqueId` 限 1~256 字节且拒绝控制字符。
+- Junimo 仍先下载完整 ZIP，再同时校验 `expectedVersion`、目标 SMAPI `UniqueID`、目标已安装且非内置、压缩包除 SMAPI 自带支持组件外只含一个目标 Mod。聚合安装包、多 Mod ZIP、错误版本或错误 UniqueID 均在旧目录移动前失败。
+- 校验通过后在 `.local-container` 同文件系统创建任务临时备份，复制旧 `config.json` 覆盖新版默认配置，按目标当前物理根换入新版；安装时间持久化或文件换入失败会删除不完整新版并恢复旧目录。目标原来位于 `mods-disabled` 时更新后仍禁用，Web 不调用“为当前存档启用”逻辑。
+- Nexus sidecar 只在新版写入成功后更新；sidecar 写入失败不会把已完成的文件替换误报为整体回滚。影响 `stardew_junimo/{mods.go,remote_install.go}`、`web/lifecycle_handlers.go` 与专项测试。
+- 验证：单 Mod 替换、目录改名、旧配置覆盖新版默认配置、禁用态保持、聚合包拒绝、错误 UniqueID/目标版本零写入、安装时间写入失败恢复旧目录与清理临时备份，以及 Web 精确目标参数拒绝均有自动化；Windows 精确专项和权威 Linux 全量通过。真实 Chrome + 扩展 `0.1.8` 已把测试夹具中的 Content Patcher 从 `2.9.0/file_id=153187` 一键更新为 `2.9.1/file_id=160463`，请求携带 `replaceUniqueId=Pathoschild.ContentPatcher`，旧 `config.json` 哨兵与启用状态保留，临时下载/备份残留为零。
+
+# NEXUS-EXT-LATEST-1：扩展远程安装的最新版本锁定与落盘前验真（2026-08-17，completed，待发布）
+
+- Nexus 搜索结果继续把主 Mod 的 `version` 作为当前版本；对 `requiredMods` 新增一次去重的 GraphQL 元数据补全并返回 `version`，使本体与所有未安装前置都能得到明确的最新目标。补全失败时搜索返回错误，不用缺失版本继续静默安装。
+- 管理员 `POST /api/instances/:id/mods/remote/install` 在既有 `{url, mod}` 上新增可选 `expectedVersion` 与 `nexusFileId`。0.1.5 扩展会同时提交二者；旧客户端省略字段仍兼容。版本号只接受最多 64 位的字母、数字、点、下划线、加号和减号，`nexusFileId` 不得为负数；CDN URL 本身仍按原安全规则校验，签名 query 不会被拼接或改写。
+- driver 下载 ZIP 到临时文件后、调用 `uploadModZip` 前读取所有 SMAPI `manifest.json`，按 SMAPI 的补零语义比较版本；至少一个 manifest 必须匹配 `expectedVersion`。该校验同时覆盖扩展 CDN 直链和携带目标版本的 NXM ticket 路径。不匹配时返回“期望/实际版本”错误并删除临时 ZIP，不创建 Mods 目录、不覆盖已有 Mod、不写安装时间或 Nexus sidecar。
+- `mod_remote_install` 的任务日志、结构化日志与审计只记录安全的目标版本和 `nexusFileId`，不记录完整临时 CDN query。影响文件：`stardew_junimo/{nexus.go,remote_install.go,nexus_test.go}`、`web/lifecycle_handlers.go`。
+- 验证：Nexus 搜索专项覆盖前置最新版本补全；远程 ZIP 专项覆盖 `v1.2.3` 等价匹配、`1.2.4` 不匹配和落盘前零写入；相关定向测试、扩展 ZIP 版本感知测试及任务专属 Linux Go 1.25 全量回归已覆盖该基础链。真实 Chrome + 扩展 `0.1.8` 在停止态测试实例先安装 Content Patcher `2.9.1/file_id=160463`，提交成功后才打开并安装 Elle's New Barn Animals `1.1.3/file_id=34408`；两份 manifest 精确匹配，Mods 临时制品为零。另一个旧 Mod 实际提供 `.rar`，因现有远程安装安全契约仅接受 ZIP，未把它作为成功夹具或放宽后端格式校验。
+
+# SERVER-RUNTIME-MAXPLAYERS-1：建档后修改联机人数上限（2026-08-17，completed，待发布）
+
+- 复用管理员 `GET/PUT /api/instances/:id/config/server-runtime-settings`；`ServerRuntimeSettings` 新增 `maxPlayers`，GET 在 `Server.MaxPlayers` 缺失或无效时返回 `10`，合法范围固定为 `1~100`。新前端始终提交实际值；兼容旧客户端省略 `maxPlayers` 的 PUT，并在同一把 `Driver.runtimeUpdateMu` 内保留磁盘当前值。
+- 更新仍先通过未结束新建档 owner guard，再以 `atomicWriteValidatedJSON` 在目标目录创建、同步、关闭并 rename 临时文件。写回采用 map 合并，只改 `Server.MaxPlayers/CabinStrategy/ExistingCabinBehavior/NetworkBroadcastPeriod`，保留根级、`Game`、`Server` 的其它未知字段。返回值同时携带锁内读取的 previous/current，Web 审计记录 `maxPlayers` 与 `previousMaxPlayers`。
+- 运行中 `/players` 不再用可能待重启的配置文件值冒充当前上限：Control `players.json` 提供在线快照时，driver 额外通过现有 Junimo `info` 命令读取当前生效 `maxPlayers`；读取失败返回 `null`。服务器停止时才把 `server-settings.json` 的值作为下次启动配置投影。
+- 未新增人数专用 API、SQLite 设置表、存档级配置、Mod 检测或小屋门禁；建档参数 `startingCabins 0~7` 与运行配置 `maxPlayers 1~100` 仍是独立维度。
+- 影响文件：`internal/games/stardew_junimo/{saves.go,driver.go,players.go}`、对应测试，`internal/web/server_runtime_settings_handlers.go`、Web API 测试与 opt-in `server_runtime_settings_real_integration_test.go`。
+- 验证完成：Windows 相关专项、Web 权限/错误/审计、`go vet ./...`、`go build ./...` 通过；Windows 全包只命中既有 NTFS `0666/0640` 差异，完整仓库挂载的 Linux Go 1.25 `go test ./... -count=1` 全绿。真实 Docker E2E 只读克隆已有存档与游戏卷，依次证明配置 `11` 启动后 `/players.maxPlayers=11`、运行中 PUT `12` 后仍为 `11`、重启后 `/players.maxPlayers=12` 且配置 GET 保持 `12`；任务容器、网络、卷、临时目录清零，源夹具恢复原定义并保持停止。
+
+# SUPPORT-BUNDLE-LOG-CONTEXT-2：诊断包补齐 Panel/Steam/任务日志（2026-08-17，completed，待发布）
+
+- 管理员 `POST /api/instances/:id/support-bundle` 的路径、ZIP 流式响应、文件名和前端 Blob 下载契约不变；本轮只把内容收敛为“无需 SSH 也足够定位常见问题”的有界诊断材料，不加入自动分析或自动修复。
+- ZIP 现在固定包含 `server-logs.txt`（server 最近 1000 行）、`steam-auth-logs.txt`（认证服务最近 500 行）、`panel-logs.txt`（Panel 容器最近 1000 行）和 `job-logs.json`（当前实例最近 10 个任务、每个最多 200 条进度日志）。已有版本、健康检查、Compose 状态/配置、Junimo 更新诊断、任务摘要和审计摘要继续保留。
+- `instance-state.json` 改为复用诊断页的完整结构化实例状态，带 UI 生命周期、Control status/players、运行栈、安装和命令协议诊断；邀请码在序列化前强制清空。任务只选当前实例，payload 不导出；存档、Steam session、角色密码库、新建档事务、SMAPI/Junimo 恢复材料和备份仍不会进入 ZIP。
+- Docker client 新增固定参数 `ContainerLogs`，只接受安全容器名和 `1..1000` 的 tail，用于通过 Panel 容器 hostname 读取自身 stdout/stderr。所有日志、任务消息、Compose 文本和错误输出继续经过统一脱敏；单项采集失败会写进对应 ZIP 条目，不会把已经开始的流式 ZIP 切换成 JSON 错误体。
+- 同时修正支持包健康检查过去向 Docker runner 传空工作目录、因此总被判失败的问题，统一使用已验证的全局临时工作目录。专项测试覆盖 ZIP 条目、当前实例任务过滤、任务/三类容器日志、邀请码及密码/Token/恢复材料不泄露，以及容器名/tail 参数校验；`go test ./internal/docker ./internal/web` 已通过。
+
 # HOST-BED-MANUAL-CONTROL-1：交换主机后的农舍/睡眠与 VNC 状态闭环（2026-08-16，released in v0.5.1）
 
 - 根因位于 JunimoServer `.125` 的组合流程，而非 Web handler：`saves import --swap-host-to` 先创建 0 级 `Server` 主机/主 FarmHouse，`CabinManagerService.TryFinalizeOnLoad()` 随后把主 FarmHouse 的 objects、fridge、decor、terrain 与 furniture（含床）整体移入原主人的 cabin 并清空主屋；交换结果已经是 0 级，旧 `HostFarmhouseUpgradeGuard` 的“非 0 才重置”分支不会再生成默认家具。Control 0.3.4 又有意跳过破坏性的整屋归零，因此最终留下“等级/地图已切到新主机、主屋无床且家具为空”的不一致状态。人工补回合法 `BedFurniture` 后，`FarmHouse.GetPlayerBed/GetPlayerBedSpot` 能重新命中真实睡眠交互点，所以可缓解黑屏，但它没有修复导入事务、所有权或后续兼容性。
@@ -1561,10 +1594,10 @@ docker run --rm `
 
 - 需求来源：`CabinStrategy`（小屋策略）此前在 `WriteServerSettings` 里被硬编码为 `"CabinStack"`，`ExistingCabinBehavior` 硬编码为 `"KeepExisting"`，用户完全无法选择，也无法在已有存档上事后调整。用户给出的设计：新建存档页只暴露一个简化二选一（推荐/原版），服务器控制页给完整高级设置（`CabinStrategy`/`ExistingCabinBehavior`/`NetworkBroadcastPeriod`），两边必须共用同一份底层配置来源，不能各自为政。
 - `registry.NewGameConfig` 新增 `CabinMode string`（json `cabinMode`），取值 `recommended|vanilla`，默认 `recommended`（`normalizeCfg` 兜底）。`WriteServerSettings` 不再硬编码，而是按 `cfg.CabinMode` 派生 `Server.CabinStrategy`：`recommended → "CabinStack"`，`vanilla → "None"`；`Server.ExistingCabinBehavior` 仍固定写 `"KeepExisting"`（新建存档场景下没有"已有小屋"需要处理，这个字段只在事后调整已有存档时才有意义）。`validateCfg` 新增 `cabinMode` 必须是 `recommended`/`vanilla` 之一的校验。
-- 新增独立类型 `ServerRuntimeSettings{ CabinStrategy, ExistingCabinBehavior, NetworkBroadcastPeriod }`（`saves.go`），以及两个函数：
-  - `ReadServerRuntimeSettings(dataDir) (ServerRuntimeSettings, error)`：读 `server-settings.json` 的 `Server` 段，字段缺失时兜底为 `CabinStack`/`KeepExisting`/`1`（不存在整个文件时同样返回这组默认值，不报错）。
-  - `UpdateServerRuntimeSettings(dataDir, settings) error`：`validateServerRuntimeSettings` 校验（`CabinStrategy` 必须是 `CabinStack`/`FarmhouseStack`/`None`，`ExistingCabinBehavior` 必须是 `KeepExisting`/`MoveToStack`，`NetworkBroadcastPeriod` 必须在 `1~10`）通过后，只覆盖这三个 key，**保留** `server-settings.json` 里其它已有字段（`MaxPlayers`、`AllowIpConnections` 等），和 `EnsureServerSettingsDefaults` 的"读取合并再写回"模式一致。这个函数可以在存档已存在、服务器随时运行/停止的情况下调用，不要求先新建存档。
-- 新增 Web 层 `backend/internal/web/server_runtime_settings_handlers.go`：`handleInstanceServerRuntimeSettings` 处理 `GET/PUT /api/instances/:id/config/server-runtime-settings`，完全照抄 `server_password_handlers.go` 的 `handleInstanceServerPassword` 结构（`requireAdmin` → `loadInstance` → 读/校验/写 → 审计日志），PUT 成功后写审计 `instance_server_runtime_settings_update`（metadata 记录 `cabinStrategy`/`existingCabinBehavior`）。路由已接入 `instance_handlers.go`，紧跟在 `config/server-password` 分支之后。
+- 新增独立类型 `ServerRuntimeSettings{ MaxPlayers, CabinStrategy, ExistingCabinBehavior, NetworkBroadcastPeriod }`（`saves.go`），以及两个函数：
+  - `ReadServerRuntimeSettings(dataDir) (ServerRuntimeSettings, error)`：读 `server-settings.json` 的 `Server` 段，字段缺失时兜底为 `10`/`CabinStack`/`KeepExisting`/`1`（不存在整个文件时同样返回这组默认值，不报错）。
+  - `UpdateServerRuntimeSettings(dataDir, settings) (ServerRuntimeSettingsUpdateResult, error)`：除既有枚举/广播频率校验外，`MaxPlayers` 在提交时必须为 `1~100`；旧客户端省略时保留原值。成功只覆盖四个目标 key，**保留** `server-settings.json` 里其它已有字段，并以安全原子写替代直接覆盖写。这个函数可以在存档已存在、服务器随时运行/停止的情况下调用，不要求先新建存档。
+- 新增 Web 层 `backend/internal/web/server_runtime_settings_handlers.go`：`handleInstanceServerRuntimeSettings` 处理 `GET/PUT /api/instances/:id/config/server-runtime-settings`，完全照抄 `server_password_handlers.go` 的 `handleInstanceServerPassword` 结构（`requireAdmin` → `loadInstance` → 读/校验/写 → 审计日志），PUT 成功后写审计 `instance_server_runtime_settings_update`（metadata 记录锁内取得的 `maxPlayers`/`previousMaxPlayers` 及小屋策略）。路由已接入 `instance_handlers.go`，紧跟在 `config/server-password` 分支之后。
 - 这组设置和 `SERVER_PASSWORD` 一样，只在 JunimoServer `server` 容器**启动时**读取 `server-settings.json`，保存后必须重启服务器容器才会生效——前端已在弹窗里明确提示。
 - 影响文件：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/saves.go`、`backend/internal/games/stardew_junimo/saves_test.go`、`backend/internal/web/server_runtime_settings_handlers.go`（新增）、`backend/internal/web/instance_handlers.go`。前端改动见 `docs/frontend-handoff/frontend-handoff-2026-07-10.md`。
 - 验证：`cd backend; go build ./... && go vet ./... && go test ./...` 全绿（新增 `TestWriteServerSettings_CabinMode*`、`TestServerRuntimeSettings_*` 系列测试；同时修正了两处直接调用 `validateCfg` 而未设置 `CabinMode` 的既有测试）。
@@ -2097,4 +2130,4 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 
 - 主要文件：`role_credential_store.go` 及平台原子替换文件、`player_auth_config.go`、`server_player_auth_compose.go`、`lifecycle.go`、Docker `compose.go`，Control `RoleCredentialStore.cs` / `RolePasswordPolicy.cs` / `RolePasswordPatch.cs` / `ModEntry.cs`，两份 manifest/DLL 与运行栈清单。
 - Go 回归覆盖首次认领、重复/错误/串角色、按存档隔离、legacy 迁移、marker/store 损坏、并发锁、权限、Panel/Control 交叉写、事务回滚、Compose 迁移与 none/global 兼容回退；Docker Desktop、Control 标准编译和完整门禁结果记录在 `docs/09-image-build.md`。
-- 本次明确不打 tag、不创建 Release、不提升 `latest`。由于认证客户端交互已变化，正式发布前仍必须补两个真人客户端的各自首次设置、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准和重启后保持矩阵；自动 C#/Go/Docker 夹具不得表述成真人联机已验证。
+- 前序阶段明确不打 tag、不创建 Release、不提升 `latest`；2026-08-17 用户已确认两个真人客户端的各自首次设置、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准和重启后保持矩阵全部通过，并授权进入正式候选。自动 C#/Go/Docker 夹具仍只作为补充契约证据。

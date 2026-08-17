@@ -17,7 +17,8 @@ import (
 
 // handleSupportBundle handles POST /api/instances/:id/support-bundle.
 // Exports a diagnostic ZIP containing redacted system info, health checks,
-// instance state, recent jobs, audit logs, and compose status.
+// instance state, recent jobs and job logs, container logs, audit logs, and
+// compose status.
 // Only accessible to admin users.
 func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, instanceID string) {
 	if r.Method != http.MethodPost {
@@ -53,8 +54,9 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 	// 4. Junimo update diagnosis and public apply status
 	s.addJunimoUpdateBundle(zw, instance)
 
-	// 5. Recent jobs summary
-	s.addJobsBundle(ctx, zw)
+	// 5. Recent instance jobs and their progress logs
+	recentJobs := s.addJobsBundle(ctx, zw, instance.ID)
+	s.addJobLogsBundle(ctx, zw, recentJobs)
 
 	// 6. Recent audit logs (redacted)
 	s.addAuditLogsBundle(ctx, zw)
@@ -65,8 +67,10 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 	// 8. Compose config summary (no secrets)
 	s.addComposeConfigBundle(zw, instance.DataDir)
 
-	// 9. Server logs tail (redacted)
-	s.addServerLogsBundle(ctx, zw, instance.DataDir)
+	// 9. Bounded service and panel log tails (redacted)
+	s.addComposeServiceLogsBundle(ctx, zw, instance.DataDir, "server", "server-logs.txt", paneldocker.MaxLogTail)
+	s.addComposeServiceLogsBundle(ctx, zw, instance.DataDir, "steam-auth", "steam-auth-logs.txt", 500)
+	s.addPanelLogsBundle(ctx, zw)
 
 	if err := zw.Close(); err != nil {
 		s.logger.Error("failed to close support bundle zip", "error", err)
@@ -90,7 +94,7 @@ func (s *server) addHealthBundle(ctx context.Context, zw *zip.Writer) {
 	var checks []HealthCheck
 
 	dockerOK := func() bool {
-		result, err := s.docker.DockerVersion(ctx, "")
+		result, err := s.docker.DockerVersion(ctx, globalWorkDir())
 		return err == nil && result.ExitCode == 0
 	}()
 	if dockerOK {
@@ -100,7 +104,7 @@ func (s *server) addHealthBundle(ctx context.Context, zw *zip.Writer) {
 	}
 
 	composeOK := func() bool {
-		result, err := s.docker.ComposeVersion(ctx, "")
+		result, err := s.docker.ComposeVersion(ctx, globalWorkDir())
 		return err == nil && result.ExitCode == 0
 	}()
 	if composeOK {
@@ -123,17 +127,11 @@ func (s *server) addHealthBundle(ctx context.Context, zw *zip.Writer) {
 }
 
 func (s *server) addInstanceStateBundle(ctx context.Context, zw *zip.Writer, instance storage.Instance) {
-	stateData := map[string]any{
-		"instanceId":   instance.ID,
-		"driverId":     instance.DriverID,
-		"name":         instance.Name,
-		"state":        instance.State,
-		"stateMessage": instance.StateMessage.String,
-		"driverPhase":  instance.DriverPhase,
-		"createdAt":    instance.CreatedAt,
-		"updatedAt":    instance.UpdatedAt,
-	}
-	writeJSONToZip(zw, "instance-state.json", stateData)
+	stateData := s.makeInstanceStateResponse(ctx, instance)
+	// Invite codes are credentials, not diagnostics. The remaining projection
+	// is the same structured state used by the diagnostics page.
+	stateData.InviteCode = ""
+	writeRedactedJSONToZip(zw, "instance-state.json", stateData)
 }
 
 func (s *server) addJunimoUpdateBundle(zw *zip.Writer, instance storage.Instance) {
@@ -154,20 +152,25 @@ func (s *server) addJunimoUpdateBundle(zw *zip.Writer, instance storage.Instance
 	writeRedactedJSONToZip(zw, "junimo-update.json", payload)
 }
 
-func (s *server) addJobsBundle(ctx context.Context, zw *zip.Writer) {
-	jobs, err := s.store.ListJobs(ctx, storage.ListJobsFilter{Limit: 20, IsAdmin: true})
+func (s *server) addJobsBundle(ctx context.Context, zw *zip.Writer, instanceID string) []storage.Job {
+	jobs, err := s.store.ListJobs(ctx, storage.ListJobsFilter{Limit: 50, IsAdmin: true})
 	if err != nil {
 		writeJSONToZip(zw, "jobs.json", map[string]string{"error": "读取任务列表失败"})
-		return
+		return nil
 	}
+	jobs = supportJobsForInstance(jobs, instanceID, 20)
 
 	type jobSummary struct {
 		ID           string `json:"id"`
 		Type         string `json:"type"`
 		Status       string `json:"status"`
+		TargetType   string `json:"targetType"`
+		TargetID     string `json:"targetId"`
 		ErrorMessage string `json:"errorMessage,omitempty"`
 		CreatedAt    string `json:"createdAt"`
+		StartedAt    string `json:"startedAt,omitempty"`
 		FinishedAt   string `json:"finishedAt,omitempty"`
+		UpdatedAt    string `json:"updatedAt"`
 	}
 	summaries := make([]jobSummary, 0, len(jobs))
 	for _, j := range jobs {
@@ -179,16 +182,83 @@ func (s *server) addJobsBundle(ctx context.Context, zw *zip.Writer) {
 		if j.FinishedAt.Valid {
 			finishedAt = j.FinishedAt.String
 		}
+		startedAt := ""
+		if j.StartedAt.Valid {
+			startedAt = j.StartedAt.String
+		}
 		summaries = append(summaries, jobSummary{
 			ID:           j.ID,
 			Type:         j.Type,
 			Status:       j.Status,
+			TargetType:   j.TargetType,
+			TargetID:     j.TargetID,
 			ErrorMessage: errMsg,
 			CreatedAt:    j.CreatedAt,
+			StartedAt:    startedAt,
 			FinishedAt:   finishedAt,
+			UpdatedAt:    j.UpdatedAt,
 		})
 	}
 	writeJSONToZip(zw, "jobs.json", summaries)
+	return jobs
+}
+
+func supportJobsForInstance(jobs []storage.Job, instanceID string, limit int) []storage.Job {
+	if limit <= 0 {
+		return []storage.Job{}
+	}
+	filtered := make([]storage.Job, 0, min(len(jobs), limit))
+	for _, job := range jobs {
+		if job.TargetType != "instance" || job.TargetID != instanceID {
+			continue
+		}
+		filtered = append(filtered, job)
+		if len(filtered) == limit {
+			break
+		}
+	}
+	return filtered
+}
+
+func (s *server) addJobLogsBundle(ctx context.Context, zw *zip.Writer, jobs []storage.Job) {
+	type logSummary struct {
+		Sequence  int64  `json:"sequence"`
+		Level     string `json:"level"`
+		Message   string `json:"message"`
+		CreatedAt string `json:"createdAt"`
+	}
+	type jobLogSummary struct {
+		JobID  string       `json:"jobId"`
+		Type   string       `json:"type"`
+		Status string       `json:"status"`
+		Logs   []logSummary `json:"logs"`
+		Error  string       `json:"error,omitempty"`
+	}
+
+	const maxJobsWithLogs = 10
+	if len(jobs) > maxJobsWithLogs {
+		jobs = jobs[:maxJobsWithLogs]
+	}
+	summaries := make([]jobLogSummary, 0, len(jobs))
+	for _, job := range jobs {
+		summary := jobLogSummary{JobID: job.ID, Type: job.Type, Status: job.Status, Logs: []logSummary{}}
+		logs, err := s.store.ListJobLogs(ctx, job.ID, 0, 200)
+		if err != nil {
+			summary.Error = "读取任务日志失败"
+			summaries = append(summaries, summary)
+			continue
+		}
+		for _, line := range logs {
+			summary.Logs = append(summary.Logs, logSummary{
+				Sequence:  line.Sequence,
+				Level:     line.Level,
+				Message:   paneldocker.RedactString(line.Message),
+				CreatedAt: line.CreatedAt,
+			})
+		}
+		summaries = append(summaries, summary)
+	}
+	writeRedactedJSONToZip(zw, "job-logs.json", summaries)
 }
 
 func (s *server) addAuditLogsBundle(ctx context.Context, zw *zip.Writer) {
@@ -255,17 +325,57 @@ func (s *server) addComposeConfigBundle(zw *zip.Writer, dataDir string) {
 	writeStringToZip(zw, "docker-compose.yml", redacted)
 }
 
-func (s *server) addServerLogsBundle(ctx context.Context, zw *zip.Writer, dataDir string) {
+func (s *server) addComposeServiceLogsBundle(ctx context.Context, zw *zip.Writer, dataDir, service, filename string, tail int) {
 	result, err := s.docker.ComposeLogs(ctx, dataDir, paneldocker.LogsOptions{
-		Service: "server",
-		Tail:    200,
+		Service: service,
+		Tail:    tail,
 	})
-	if err != nil {
-		writeJSONToZip(zw, "server-logs.txt", map[string]string{"error": "读取服务器日志失败"})
+	writeStringToZip(zw, filename, supportLogText(result, err))
+}
+
+type containerLogsDocker interface {
+	ContainerLogs(ctx context.Context, workDir, container string, tail int) (paneldocker.CommandResult, error)
+}
+
+func (s *server) addPanelLogsBundle(ctx context.Context, zw *zip.Writer) {
+	dockerClient, ok := s.docker.(containerLogsDocker)
+	if !ok {
+		writeStringToZip(zw, "panel-logs.txt", "[采集失败] 当前 Docker 客户端不支持读取 Panel 日志\n")
 		return
 	}
-	redacted := paneldocker.RedactString(result.Stdout)
-	writeStringToZip(zw, "server-logs.txt", redacted)
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		writeStringToZip(zw, "panel-logs.txt", "[采集失败] 无法识别 Panel 容器\n")
+		return
+	}
+	result, logsErr := dockerClient.ContainerLogs(ctx, globalWorkDir(), hostname, paneldocker.MaxLogTail)
+	writeStringToZip(zw, "panel-logs.txt", supportLogText(result, logsErr))
+}
+
+func supportLogText(result paneldocker.CommandResult, err error) string {
+	output := result.Stdout
+	if result.Stderr != "" {
+		if output != "" && output[len(output)-1] != '\n' {
+			output += "\n"
+		}
+		output += "[stderr]\n" + result.Stderr
+	}
+	if err != nil {
+		if output != "" && output[len(output)-1] != '\n' {
+			output += "\n"
+		}
+		output += "[采集失败] " + err.Error() + "\n"
+	}
+	if result.StdoutTruncated || result.StderrTruncated {
+		if output != "" && output[len(output)-1] != '\n' {
+			output += "\n"
+		}
+		output += "[提示] 日志达到诊断包大小上限，内容已截断\n"
+	}
+	if output == "" {
+		output = "[提示] 没有可用日志输出\n"
+	}
+	return paneldocker.RedactString(output)
 }
 
 // writeJSONToZip writes a JSON-serialized object to a zip entry.

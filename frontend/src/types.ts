@@ -947,6 +947,7 @@ export type UpdateInstancePlayerAuthConfig = {
 }
 
 export type ServerRuntimeSettings = {
+  maxPlayers: number            // 1-100, includes the host slot
   cabinStrategy: string          // "CabinStack"|"FarmhouseStack"|"None"
   existingCabinBehavior: string  // "KeepExisting"|"MoveToStack"
   networkBroadcastPeriod: number // 1-10
@@ -1092,6 +1093,7 @@ export type NexusModSearchResult = {
 export type NexusRequiredMod = {
   modId: number
   name: string
+  version?: string
   notes?: string
   nexusUrl: string
   installed: boolean

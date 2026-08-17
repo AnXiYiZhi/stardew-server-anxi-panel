@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -256,51 +257,153 @@ func TestServerRuntimeSettings_ReadDefaultsWhenMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadServerRuntimeSettings: %v", err)
 	}
-	if settings.CabinStrategy != "CabinStack" || settings.ExistingCabinBehavior != "KeepExisting" || settings.NetworkBroadcastPeriod != 1 {
+	if settings.MaxPlayers == nil || *settings.MaxPlayers != 10 || settings.CabinStrategy != "CabinStack" || settings.ExistingCabinBehavior != "KeepExisting" || settings.NetworkBroadcastPeriod != 1 {
 		t.Errorf("unexpected defaults: %+v", settings)
 	}
 }
 
 func TestServerRuntimeSettings_UpdateAndReadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", MaxPlayers: 20}); err != nil {
-		t.Fatalf("WriteServerSettings: %v", err)
+	settingsPath := serverSettingsPath(dir)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := `{"Server":{"MaxPlayers":20,"AllowIpConnections":true,"UnknownServerField":"keep"},"Game":{"FarmName":"Keep Farm","UnknownGameField":42},"UnknownRoot":{"enabled":true}}`
+	if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	want := ServerRuntimeSettings{
+		MaxPlayers:             runtimeSettingsMaxPlayersForTest(100),
 		CabinStrategy:          "FarmhouseStack",
 		ExistingCabinBehavior:  "MoveToStack",
 		NetworkBroadcastPeriod: 3,
 	}
-	if err := UpdateServerRuntimeSettings(dir, want); err != nil {
+	result, err := UpdateServerRuntimeSettings(dir, want)
+	if err != nil {
 		t.Fatalf("UpdateServerRuntimeSettings: %v", err)
+	}
+	if result.Previous.MaxPlayers == nil || *result.Previous.MaxPlayers != 20 || result.Current.MaxPlayers == nil || *result.Current.MaxPlayers != 100 {
+		t.Fatalf("update result = %+v", result)
 	}
 	got, err := ReadServerRuntimeSettings(dir)
 	if err != nil {
 		t.Fatalf("ReadServerRuntimeSettings: %v", err)
 	}
-	if got != want {
+	if got.MaxPlayers == nil || *got.MaxPlayers != 100 || got.CabinStrategy != want.CabinStrategy || got.ExistingCabinBehavior != want.ExistingCabinBehavior || got.NetworkBroadcastPeriod != want.NetworkBroadcastPeriod {
 		t.Errorf("ReadServerRuntimeSettings = %+v, want %+v", got, want)
 	}
-	// MaxPlayers written earlier must survive the runtime settings update.
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatalf("updated settings are not valid JSON: %v", err)
+	}
+	server := root["Server"].(map[string]any)
+	game := root["Game"].(map[string]any)
+	if server["MaxPlayers"] != float64(100) || server["AllowIpConnections"] != true || server["UnknownServerField"] != "keep" {
+		t.Errorf("Server fields were not preserved: %+v", server)
+	}
+	if game["FarmName"] != "Keep Farm" || game["UnknownGameField"] != float64(42) || root["UnknownRoot"] == nil {
+		t.Errorf("Game/root fields were not preserved: %+v", root)
+	}
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(settingsPath), ".new-game-*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("atomic write left temporary files: %v", matches)
+	}
+}
+
+func TestServerRuntimeSettings_LegacyUpdatePreservesMaxPlayers(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm", MaxPlayers: 37}); err != nil {
+		t.Fatalf("WriteServerSettings: %v", err)
+	}
+	result, err := UpdateServerRuntimeSettings(dir, ServerRuntimeSettings{
+		CabinStrategy:          "None",
+		ExistingCabinBehavior:  "KeepExisting",
+		NetworkBroadcastPeriod: 3,
+	})
+	if err != nil {
+		t.Fatalf("legacy UpdateServerRuntimeSettings: %v", err)
+	}
+	if result.Current.MaxPlayers == nil || *result.Current.MaxPlayers != 37 {
+		t.Fatalf("legacy update maxPlayers = %#v, want 37", result.Current.MaxPlayers)
+	}
 	server := readServerSection(t, dir)
-	if server["MaxPlayers"] != float64(20) {
-		t.Errorf("Server.MaxPlayers = %v, want 20 (must be preserved)", server["MaxPlayers"])
+	if server["MaxPlayers"] != float64(37) {
+		t.Fatalf("Server.MaxPlayers = %v, want preserved 37", server["MaxPlayers"])
+	}
+}
+
+func TestServerRuntimeSettings_UsesAtomicWriterAndPreservesOriginalOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := serverSettingsPath(dir)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{"Server":{"MaxPlayers":12,"CabinStrategy":"CabinStack","ExistingCabinBehavior":"KeepExisting","NetworkBroadcastPeriod":1}}`)
+	if err := os.WriteFile(settingsPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	_, err := updateServerRuntimeSettings(dir, ServerRuntimeSettings{
+		MaxPlayers:             runtimeSettingsMaxPlayersForTest(24),
+		CabinStrategy:          "None",
+		ExistingCabinBehavior:  "KeepExisting",
+		NetworkBroadcastPeriod: 3,
+	}, func(path string, data []byte, mode os.FileMode) error {
+		called = true
+		if path != settingsPath || len(data) == 0 || mode != 0o644 {
+			t.Fatalf("atomic writer args = %q, %d bytes, %o", path, len(data), mode)
+		}
+		return errors.New("injected atomic publish failure")
+	})
+	if err == nil || !called {
+		t.Fatalf("update error = %v, writer called = %v", err, called)
+	}
+	got, readErr := os.ReadFile(settingsPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("failed atomic update changed target: got %q want %q", got, original)
 	}
 }
 
 func TestServerRuntimeSettings_UpdateRejectsInvalid(t *testing.T) {
 	dir := t.TempDir()
 	cases := []ServerRuntimeSettings{
+		{MaxPlayers: runtimeSettingsMaxPlayersForTest(0), CabinStrategy: "CabinStack", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 1},
+		{MaxPlayers: runtimeSettingsMaxPlayersForTest(101), CabinStrategy: "CabinStack", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 1},
 		{CabinStrategy: "Bogus", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 1},
 		{CabinStrategy: "CabinStack", ExistingCabinBehavior: "Bogus", NetworkBroadcastPeriod: 1},
 		{CabinStrategy: "CabinStack", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 0},
 		{CabinStrategy: "CabinStack", ExistingCabinBehavior: "KeepExisting", NetworkBroadcastPeriod: 11},
 	}
 	for _, c := range cases {
-		if err := UpdateServerRuntimeSettings(dir, c); err == nil {
+		if _, err := UpdateServerRuntimeSettings(dir, c); err == nil {
 			t.Errorf("expected error for %+v", c)
 		}
 	}
+	for _, boundary := range []int{1, 100} {
+		settings := ServerRuntimeSettings{
+			MaxPlayers:             runtimeSettingsMaxPlayersForTest(boundary),
+			CabinStrategy:          "CabinStack",
+			ExistingCabinBehavior:  "KeepExisting",
+			NetworkBroadcastPeriod: 1,
+		}
+		if _, err := UpdateServerRuntimeSettings(dir, settings); err != nil {
+			t.Errorf("maxPlayers=%d should be accepted: %v", boundary, err)
+		}
+	}
+}
+
+func runtimeSettingsMaxPlayersForTest(value int) *int {
+	return &value
 }
 
 func TestValidateNewGameConfig_ProfitMargin(t *testing.T) {

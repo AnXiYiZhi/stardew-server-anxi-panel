@@ -19,6 +19,7 @@
     "test:new-game-idempotency": "node --experimental-strip-types scripts/test-new-game-idempotency.ts",
     "test:nexus-extension-idempotency": "node scripts/test-nexus-extension-idempotency.mjs",
     "test:cabin-strategy-options": "node --experimental-strip-types scripts/test-cabin-strategy-options.ts",
+    "test:runtime-player-limit": "node --experimental-strip-types scripts/test-runtime-player-limit.ts",
     "test:farm-catalog": "node --experimental-strip-types scripts/test-farm-catalog-state.ts",
     "test:save-import": "node --experimental-strip-types scripts/test-save-import.ts",
     "test:save-backup-details": "node --experimental-strip-types scripts/test-save-backup-details.ts",

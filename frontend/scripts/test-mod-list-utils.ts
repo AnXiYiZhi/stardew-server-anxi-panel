@@ -3,6 +3,7 @@ import type { ModInfo } from '../src/types.ts'
 import {
   filterAndSortInstalledMods,
   modMatchesInstalledQuery,
+  nexusInstalledState,
   sortInstalledMods,
 } from '../src/games/stardew/mod-list-utils.ts'
 
@@ -50,6 +51,28 @@ assert.deepEqual(source.map((item) => item.id), ['older', 'legacy', 'newer'], 's
 assert.deepEqual(sortInstalledMods(source, 'name-asc').map((item) => item.id), ['legacy', 'older', 'newer'])
 assert.deepEqual(sortInstalledMods(source, 'name-desc').map((item) => item.id), ['newer', 'older', 'legacy'])
 assert.deepEqual(filterAndSortInstalledMods(source, 'pathoschild 1915').map((item) => item.id), ['older'])
+
+assert.deepEqual(nexusInstalledState(source, 1915), {
+  installed: true,
+  installedEnabled: true,
+  installedFolderName: 'ContentPatcher',
+  installedVersion: undefined,
+})
+assert.deepEqual(nexusInstalledState([], 1915), {
+  installed: false,
+  installedEnabled: undefined,
+  installedFolderName: undefined,
+  installedVersion: undefined,
+}, 'refreshing after deletion must explicitly clear stale Nexus installed metadata')
+
+const nexusPackage = mod({
+  id: 'package-child',
+  folderName: 'PackageChild',
+  originSource: 'nexus',
+  originNexusModId: 3753,
+  version: '1.2.3',
+})
+assert.equal(nexusInstalledState([nexusPackage], 3753).installed, true)
 
 const builtIn = mod({ id: '__smapi_runtime', folderName: 'SMAPI', name: 'SMAPI', builtIn: true })
 assert.equal(sortInstalledMods([newer, builtIn])[0].id, '__smapi_runtime')

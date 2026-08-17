@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.2
+release: v0.5.3
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.2。Mod 页面可自动检查已安装模组更新，配置页改为更紧凑的双列图片卡，删除操作也恢复明确的红色填充。
+    details: 当前最新 v0.5.3。角色密码支持首次登录自助设置，Nexus 一键安装与一键更新锁定最新版本，并可在建档后修改联机人数上限。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.2</strong>
-    <p>打开 Mod 页面即可查看可用更新；配置模组改为全宽双列图片卡与状态筛选，删除按钮使用更醒目的红色填充。提醒只显示在页面内，不会发送系统通知或自动安装更新。</p>
+    <strong>v0.5.3</strong>
+    <p>角色独立密码可由玩家首次登录自助设置；Nexus 一键安装与一键更新都会锁定最新版本并在落盘前复核，联机人数上限也可在建档后安全修改。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

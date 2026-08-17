@@ -498,7 +498,7 @@ func FindModByUniqueID(dataDir, uniqueID string) (string, error) {
 		if m.BuiltIn {
 			continue
 		}
-		if m.UniqueID == uniqueID {
+		if strings.EqualFold(strings.TrimSpace(m.UniqueID), strings.TrimSpace(uniqueID)) {
 			return m.FolderName, nil
 		}
 	}
@@ -525,6 +525,8 @@ func ValidateModName(name string) error {
 type uploadModZipOptions struct {
 	inferNexusPackageOrigin bool
 	allowAlreadyInstalled   bool
+	replaceUniqueID         string
+	expectedVersion         string
 	stats                   *ModZipImportStats
 }
 
@@ -596,8 +598,40 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		opts.stats.DiscoveredCount = len(modDirs)
 	}
 
-	// Validate each top dir has a manifest.
+	// Validate each top dir has a manifest. Updates keep the current physical
+	// enabled/disabled root and only replace one exact SMAPI UniqueID.
 	root := modsDir(dataDir)
+	var replaceTarget registry.ModInfo
+	if opts.replaceUniqueID != "" {
+		physicalMods, err := listPhysicalMods(dataDir)
+		if err != nil {
+			return nil, fmt.Errorf("读取已安装 Mod 失败: %w", err)
+		}
+		physicalMods = ApplyNexusMetadataToMods(dataDir, physicalMods)
+		for _, mod := range physicalMods {
+			if !mod.BuiltIn && strings.EqualFold(strings.TrimSpace(mod.UniqueID), opts.replaceUniqueID) {
+				replaceTarget = mod
+				break
+			}
+		}
+		if replaceTarget.UniqueID == "" {
+			return nil, fmt.Errorf("要更新的 Mod UniqueID %q 不存在", opts.replaceUniqueID)
+		}
+		if replaceTarget.PackageKey != "" {
+			members := 0
+			for _, mod := range physicalMods {
+				if mod.PackageKey == replaceTarget.PackageKey {
+					members++
+				}
+			}
+			if members > 1 {
+				return nil, fmt.Errorf("Mod %q 属于包含 %d 个 Mod 的安装包，暂不支持一键更新，请手动更新整个包", replaceTarget.Name, members)
+			}
+		}
+		if !replaceTarget.Enabled {
+			root = disabledModsDir(dataDir)
+		}
+	}
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, fmt.Errorf("create mods dir: %w", err)
 	}
@@ -657,22 +691,30 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 		}
 		seenUniqueIDs[info.UniqueID] = dir.FolderName
 
+		if opts.replaceUniqueID != "" && !strings.EqualFold(strings.TrimSpace(info.UniqueID), opts.replaceUniqueID) {
+			return nil, fmt.Errorf("更新包包含非目标 Mod %q（UniqueID %q），只允许替换 %q", info.Name, info.UniqueID, opts.replaceUniqueID)
+		}
+
 		// Check for duplicate UniqueID against already-installed mods.
 		existing, err := FindModByUniqueID(dataDir, info.UniqueID)
 		if err != nil {
 			return nil, fmt.Errorf("检查已有 Mod 失败: %w", err)
 		}
 		if existing != "" {
-			if opts.allowAlreadyInstalled {
+			if opts.replaceUniqueID == "" && opts.allowAlreadyInstalled {
 				continue
 			}
-			return nil, fmt.Errorf("UniqueID %q 已存在于 Mod %q 中 (mod_exists)", info.UniqueID, existing)
+			if opts.replaceUniqueID == "" {
+				return nil, fmt.Errorf("UniqueID %q 已存在于 Mod %q 中 (mod_exists)", info.UniqueID, existing)
+			}
 		}
 
 		// Check target directory doesn't already exist.
 		dest := filepath.Join(root, dir.FolderName)
 		if _, err := os.Stat(dest); err == nil {
-			return nil, fmt.Errorf("mod folder %q already exists", dir.FolderName)
+			if opts.replaceUniqueID == "" || !strings.EqualFold(dir.FolderName, replaceTarget.FolderName) {
+				return nil, fmt.Errorf("mod folder %q already exists", dir.FolderName)
+			}
 		}
 
 		candidates = append(candidates, modCandidate{
@@ -681,6 +723,64 @@ func uploadModZip(dataDir, zipPath string, opts uploadModZipOptions) ([]registry
 			packageName: dir.PackageName,
 			info:        info,
 		})
+	}
+	if opts.replaceUniqueID != "" {
+		if len(candidates) != 1 {
+			return nil, fmt.Errorf("更新包必须且只能包含目标 Mod %q，实际找到 %d 个", opts.replaceUniqueID, len(candidates))
+		}
+		candidate := candidates[0]
+		if opts.expectedVersion != "" && !strings.EqualFold(normalizeRuntimeModVersion(candidate.info.Version), normalizeRuntimeModVersion(opts.expectedVersion)) {
+			return nil, &RemoteModVersionMismatchError{Expected: opts.expectedVersion, Actual: []string{candidate.info.Version}}
+		}
+		oldPath := filepath.Join(root, replaceTarget.FolderName)
+		newPath := filepath.Join(root, candidate.folderName)
+		stagedPath := filepath.Join(td, candidate.sourcePath)
+		oldConfigPath := filepath.Join(oldPath, "config.json")
+		newConfigPath := filepath.Join(stagedPath, "config.json")
+		if _, oldConfigErr := os.Stat(oldConfigPath); oldConfigErr == nil {
+			if err := copyFile(oldConfigPath, newConfigPath); err != nil {
+				return nil, fmt.Errorf("保留旧 Mod 配置失败: %w", err)
+			}
+		}
+
+		backupRoot, err := os.MkdirTemp(filepath.Dir(root), ".mod-update-backup-")
+		if err != nil {
+			return nil, fmt.Errorf("创建 Mod 更新备份目录失败: %w", err)
+		}
+		defer func() { _ = os.RemoveAll(backupRoot) }()
+		backupPath := filepath.Join(backupRoot, replaceTarget.FolderName)
+		if err := os.Rename(oldPath, backupPath); err != nil {
+			return nil, fmt.Errorf("备份旧 Mod 失败: %w", err)
+		}
+		restoreOld := func() error {
+			_ = os.RemoveAll(newPath)
+			if err := os.Rename(backupPath, oldPath); err != nil {
+				return fmt.Errorf("恢复旧 Mod 失败: %w", err)
+			}
+			return nil
+		}
+		if err := os.Rename(stagedPath, newPath); err != nil {
+			if copyErr := copyDir(stagedPath, newPath); copyErr != nil {
+				_ = os.RemoveAll(newPath)
+				if restoreErr := restoreOld(); restoreErr != nil {
+					return nil, fmt.Errorf("换入新版 Mod 失败: %v；%w", copyErr, restoreErr)
+				}
+				return nil, fmt.Errorf("换入新版 Mod 失败，旧版已恢复: %w", copyErr)
+			}
+		}
+
+		updated := readModInfo(newPath, candidate.folderName)
+		installed, err := recordModInstallTimes(dataDir, []registry.ModInfo{updated}, time.Now())
+		if err != nil {
+			if restoreErr := restoreOld(); restoreErr != nil {
+				return nil, fmt.Errorf("持久化 Mod 安装时间失败: %v；%w", err, restoreErr)
+			}
+			return nil, fmt.Errorf("持久化 Mod 安装时间失败，旧版已恢复: %w", err)
+		}
+		if candidate.folderName != replaceTarget.FolderName {
+			_ = deleteModInstallTimes(dataDir, []string{replaceTarget.FolderName})
+		}
+		return installed, nil
 	}
 	packageMembers := map[string][]registry.ModInfo{}
 	for _, candidate := range candidates {

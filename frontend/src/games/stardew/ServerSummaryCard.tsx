@@ -2,11 +2,14 @@ import { stateLabel } from '../../core/helpers'
 import type { SaveInfo } from '../../types'
 import { InviteCodeCard } from './InviteCodeCard'
 import type { StardewDashboardData } from './stardew-routes'
+import { shouldShowPlayerLimitAction } from './server-runtime-settings-state'
 
 type ServerSummaryCardProps = {
   instanceState: StardewDashboardData['instanceState']
   dashboardData: StardewDashboardData
   className?: string
+  canEditPlayerLimit: boolean
+  onEditPlayerLimit?: () => void
 }
 
 const SEASON_ZH: Record<string, string> = {
@@ -22,7 +25,13 @@ function saveDate(save: SaveInfo): string {
   return `第 ${save.gameYear} 年${season}季${save.gameDay ?? '?'} 日`
 }
 
-export function ServerSummaryCard({ instanceState, dashboardData, className }: ServerSummaryCardProps) {
+export function ServerSummaryCard({
+  instanceState,
+  dashboardData,
+  className,
+  canEditPlayerLimit,
+  onEditPlayerLimit,
+}: ServerSummaryCardProps) {
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
   const isStarting = state === 'starting'
@@ -63,24 +72,28 @@ export function ServerSummaryCard({ instanceState, dashboardData, className }: S
       label: '在线玩家',
       value: `${onlineCountText} / ${maxPlayersText}`,
       sub: `最大玩家数：${maxPlayersText}`,
+      editPlayerLimit: shouldShowPlayerLimitAction(canEditPlayerLimit, Boolean(onEditPlayerLimit)),
     },
     {
       icon: '/assets/stardew/ui/icons/icon_nav_overview_map_image2.png',
       label: '当前存档',
       value: farmNameText,
       sub: activeSave?.name ?? activeSaveName ?? playerSourceText,
+      editPlayerLimit: false,
     },
     {
       icon: '/assets/stardew/ui/icons/icon_topbar_user_avatar_image2.png',
       label: '主机农民',
       value: hostFarmerText,
       sub: activeSave ? `农场主：${gameDateText}` : '当前存档',
+      editPlayerLimit: false,
     },
     {
       icon: '/assets/stardew/ui/icons/icon_top_summary_time.png',
       label: '游戏日期',
       value: gameDateText,
       sub: activeSave?.name ?? '星露谷时间',
+      editPlayerLimit: false,
     },
   ]
 
@@ -105,7 +118,20 @@ export function ServerSummaryCard({ instanceState, dashboardData, className }: S
               {item.label}
             </span>
             <strong className="sd-server-summary-value">{item.value}</strong>
-            <span className="sd-server-summary-sub">{item.sub}</span>
+            <div className="sd-server-summary-subrow">
+              <span className="sd-server-summary-sub">{item.sub}</span>
+              {item.editPlayerLimit ? (
+                <button
+                  type="button"
+                  className="sd-server-summary-limit-btn"
+                  onClick={onEditPlayerLimit}
+                  aria-label="修改联机人数上限"
+                  title="修改联机人数上限"
+                >
+                  修改上限
+                </button>
+              ) : null}
+            </div>
           </div>
         ))}
       </div>

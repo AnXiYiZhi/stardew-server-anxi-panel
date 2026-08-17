@@ -666,13 +666,23 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
     setLocalError(null)
     setHasLocalAttempt(true)
     try {
-      const [res, compose] = await Promise.all([getHealthDiagnostics(), getComposePs()])
-      setLocalData(res)
-      setComposeServices(compose.services ?? [])
-      setComposeError(null)
-      applyHealthDiagnostics(res)
-    } catch (e) {
-      setLocalError(errorMessage(e))
+      const [healthResult, composeResult] = await Promise.allSettled([
+        getHealthDiagnostics(),
+        getComposePs(),
+      ])
+      if (healthResult.status === 'fulfilled') {
+        setLocalData(healthResult.value)
+        applyHealthDiagnostics(healthResult.value)
+      } else {
+        setLocalError(errorMessage(healthResult.reason))
+      }
+      if (composeResult.status === 'fulfilled') {
+        setComposeServices(composeResult.value.services ?? [])
+        setComposeError(null)
+      } else {
+        setComposeServices([])
+        setComposeError(errorMessage(composeResult.reason))
+      }
     } finally {
       setRefreshing(false)
     }
@@ -792,6 +802,15 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         </div>
         <div className="sd-diag-header-actions sd-actionbar sd-actionbar--end">
           <button
+            className="sd-btn-tan sd-btn--lg sd-diag-export-btn"
+            disabled={exportBusy || !isAdmin}
+            onClick={handleExportBundle}
+            type="button"
+            title={!isAdmin ? '仅管理员可导出诊断包' : '导出脱敏后的诊断日志 ZIP'}
+          >
+            {exportBusy ? '导出中…' : '导出诊断包'}
+          </button>
+          <button
             className="sd-btn-green sd-btn--lg"
             disabled={refreshing}
             onClick={handleRefresh}
@@ -841,16 +860,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
           <span className="sd-diag-maintenance-summary-count">{maintenanceCount ? `${maintenanceCount} 项可处理` : '按需查看'}</span>
         </summary>
         <div className="sd-diag-maintenance-tools">
-          <p>这里用于升级和故障排查。日常查看服务器状态不需要理解下面的技术字段。</p>
-          <button
-            className="sd-btn-tan sd-btn--sm sd-diag-export-btn"
-            disabled={exportBusy || !isAdmin}
-            onClick={handleExportBundle}
-            type="button"
-            title={!isAdmin ? '仅管理员可导出诊断包' : '导出含系统信息、日志、状态的诊断包'}
-          >
-            {exportBusy ? '导出中…' : '导出诊断包'}
-          </button>
+          <p>这里用于升级和深入故障排查。日常查看服务器状态不需要理解下面的技术字段。</p>
         </div>
       <section className="sd-card sd-diag-source-panel" aria-label="生命周期状态来源">
         <h3>服务器状态来源</h3>

@@ -2378,6 +2378,17 @@
   font-size: 12px;
 }
 
+.sd-mods-update-card-actions,
+.sd-mods-update-action-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sd-mods-update-action-wrap button {
+  width: 100%;
+}
+
 .sd-mods-settings-layout {
   display: block;
 }
@@ -2639,5 +2650,15 @@
   .sd-mods-update-card-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .sd-mods-update-card-actions,
+  .sd-mods-update-action-wrap {
+    width: 100%;
+  }
+
+  .sd-mods-update-card-actions > button,
+  .sd-mods-update-action-wrap {
+    flex: 1 1 0;
   }
 }

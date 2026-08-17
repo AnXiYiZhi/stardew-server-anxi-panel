@@ -676,11 +676,12 @@ func (d *Driver) WithOfflineMutation(ctx context.Context, instance registry.Inst
 // lifecycle/new-game ownership. A Web-side check followed by a direct file
 // write would leave a TOCTOU window in which Start could reserve and snapshot
 // the old file between those two operations.
-func (d *Driver) UpdateServerRuntimeSettings(_ context.Context, instance registry.Instance, settings ServerRuntimeSettings) error {
+func (d *Driver) UpdateServerRuntimeSettings(_ context.Context, instance registry.Instance, settings ServerRuntimeSettings) (ServerRuntimeSettingsUpdateResult, error) {
+	var result ServerRuntimeSettingsUpdateResult
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
-		return err
+		return result, err
 	}
 	return UpdateServerRuntimeSettings(instance.DataDir, settings)
 }

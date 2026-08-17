@@ -1,13 +1,16 @@
 package stardew_junimo
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -15,6 +18,27 @@ import (
 )
 
 var ErrInvalidRemoteModURL = errors.New("远程 Mod 下载链接无效")
+var ErrInvalidRemoteModExpectedVersion = errors.New("期望的 Mod 版本号无效")
+var ErrInvalidRemoteModReplaceUniqueID = errors.New("要替换的 Mod UniqueID 无效")
+
+const maxRemoteModManifestBytes = 1024 * 1024
+
+type RemoteModVersionMismatchError struct {
+	Expected string
+	Actual   []string
+}
+
+func (e *RemoteModVersionMismatchError) Error() string {
+	actual := "未知"
+	if e != nil && len(e.Actual) > 0 {
+		actual = strings.Join(e.Actual, "、")
+	}
+	expected := "未知"
+	if e != nil && e.Expected != "" {
+		expected = e.Expected
+	}
+	return fmt.Sprintf("下载包版本不匹配：期望 v%s，实际 manifest 版本为 %s；已取消安装，未覆盖现有 Mod", expected, actual)
+}
 
 type NexusDownloadTicket struct {
 	ModID   int
@@ -23,7 +47,23 @@ type NexusDownloadTicket struct {
 	Expires string
 }
 
-func InstallRemoteMod(ctx context.Context, dataDir, rawURL, apiKey string, result NexusModSearchResult, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
+func InstallRemoteMod(ctx context.Context, dataDir, rawURL, apiKey string, result NexusModSearchResult, expectedVersion string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
+	return installRemoteMod(ctx, dataDir, rawURL, apiKey, result, expectedVersion, "", logf)
+}
+
+func UpdateRemoteMod(ctx context.Context, dataDir, rawURL, apiKey string, result NexusModSearchResult, expectedVersion, replaceUniqueID string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
+	replaceUniqueID, err := NormalizeRemoteModReplaceUniqueID(replaceUniqueID)
+	if err != nil {
+		return nil, err
+	}
+	expectedVersion, err = NormalizeRemoteModExpectedVersion(expectedVersion)
+	if err != nil || expectedVersion == "" {
+		return nil, ErrInvalidRemoteModExpectedVersion
+	}
+	return installRemoteMod(ctx, dataDir, rawURL, apiKey, result, expectedVersion, replaceUniqueID, logf)
+}
+
+func installRemoteMod(ctx context.Context, dataDir, rawURL, apiKey string, result NexusModSearchResult, expectedVersion, replaceUniqueID string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
 	trimmed := strings.TrimSpace(rawURL)
 	if trimmed == "" {
 		return nil, ErrInvalidRemoteModURL
@@ -34,13 +74,17 @@ func InstallRemoteMod(ctx context.Context, dataDir, rawURL, apiKey string, resul
 		if err != nil {
 			return nil, err
 		}
-		return InstallNexusModWithTicket(ctx, dataDir, apiKey, result, ticket, logf)
+		return installNexusModWithTicketExpected(ctx, dataDir, apiKey, result, ticket, expectedVersion, replaceUniqueID, logf)
 	}
 
-	return InstallModFromDirectURL(ctx, dataDir, trimmed, result, logf)
+	return installModFromDirectURLExpected(ctx, dataDir, trimmed, result, expectedVersion, replaceUniqueID, logf)
 }
 
 func InstallNexusModWithTicket(ctx context.Context, dataDir, apiKey string, result NexusModSearchResult, ticket NexusDownloadTicket, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
+	return installNexusModWithTicketExpected(ctx, dataDir, apiKey, result, ticket, "", "", logf)
+}
+
+func installNexusModWithTicketExpected(ctx context.Context, dataDir, apiKey string, result NexusModSearchResult, ticket NexusDownloadTicket, expectedVersion, replaceUniqueID string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		return nil, ErrNexusAPIKeyMissing
@@ -66,15 +110,19 @@ func InstallNexusModWithTicket(ctx context.Context, dataDir, apiKey string, resu
 	if err != nil {
 		return nil, err
 	}
-	return installRemoteArchive(ctx, dataDir, link, result, logf)
+	return installRemoteArchive(ctx, dataDir, link, result, expectedVersion, replaceUniqueID, logf)
 }
 
 func InstallModFromDirectURL(ctx context.Context, dataDir, rawURL string, result NexusModSearchResult, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
+	return installModFromDirectURLExpected(ctx, dataDir, rawURL, result, "", "", logf)
+}
+
+func installModFromDirectURLExpected(ctx context.Context, dataDir, rawURL string, result NexusModSearchResult, expectedVersion, replaceUniqueID string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
 	if err := validateRemoteArchiveURL(rawURL); err != nil {
 		return nil, err
 	}
 	logNexusInstall(logf, "正在从远程链接下载 Mod 压缩包")
-	return installRemoteArchive(ctx, dataDir, rawURL, result, logf)
+	return installRemoteArchive(ctx, dataDir, rawURL, result, expectedVersion, replaceUniqueID, logf)
 }
 
 func ParseNexusNXMURL(raw string) (NexusDownloadTicket, error) {
@@ -125,7 +173,7 @@ func nexusGetDownloadLinkWithTicket(ctx context.Context, apiKey string, ticket N
 	return nexusGetDownloadLinkURL(ctx, apiKey, u.String())
 }
 
-func installRemoteArchive(ctx context.Context, dataDir, archiveURL string, result NexusModSearchResult, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
+func installRemoteArchive(ctx context.Context, dataDir, archiveURL string, result NexusModSearchResult, expectedVersion, replaceUniqueID string, logf NexusInstallLogFunc) ([]registry.ModInfo, error) {
 	tmp, err := os.CreateTemp("", "stardew-remote-mod-*.zip")
 	if err != nil {
 		return nil, fmt.Errorf("创建临时下载文件失败: %w", err)
@@ -137,9 +185,31 @@ func installRemoteArchive(ctx context.Context, dataDir, archiveURL string, resul
 	if err := nexusDownloadArchive(ctx, archiveURL, tmpPath, logf); err != nil {
 		return nil, err
 	}
+	expectedVersion, err = NormalizeRemoteModExpectedVersion(expectedVersion)
+	if err != nil {
+		return nil, err
+	}
+	if expectedVersion != "" {
+		logNexusInstall(logf, fmt.Sprintf("正在核对下载包版本，期望 v%s", expectedVersion))
+		if err := verifyRemoteModArchiveVersion(tmpPath, expectedVersion); err != nil {
+			return nil, err
+		}
+	}
 
-	logNexusInstall(logf, "正在校验并安装 Mod")
-	imported, err := uploadModZip(dataDir, tmpPath, uploadModZipOptions{inferNexusPackageOrigin: false, allowAlreadyInstalled: true})
+	updateMode := replaceUniqueID != ""
+	oldFolderName := ""
+	if updateMode {
+		oldFolderName, _ = FindModByUniqueID(dataDir, replaceUniqueID)
+		logNexusInstall(logf, fmt.Sprintf("正在校验并安全替换 Mod %s", replaceUniqueID))
+	} else {
+		logNexusInstall(logf, "正在校验并安装 Mod")
+	}
+	imported, err := uploadModZip(dataDir, tmpPath, uploadModZipOptions{
+		inferNexusPackageOrigin: false,
+		allowAlreadyInstalled:   !updateMode,
+		replaceUniqueID:         replaceUniqueID,
+		expectedVersion:         expectedVersion,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -149,14 +219,116 @@ func installRemoteArchive(ctx context.Context, dataDir, archiveURL string, resul
 	}
 	if result.ModID > 0 {
 		if err := SaveInstalledNexusMetadata(dataDir, imported, result); err != nil {
-			return nil, err
+			if !updateMode {
+				return nil, err
+			}
+			logNexusInstall(logf, fmt.Sprintf("新版文件已换入，但 Nexus 展示信息保存失败：%v", err))
+		} else if updateMode && len(imported) == 1 && oldFolderName != "" && imported[0].FolderName != oldFolderName {
+			// Metadata is keyed by physical folder. The old entry is only removed
+			// after the new entry has been durably written.
+			_ = DeleteInstalledNexusMetadata(dataDir, []string{oldFolderName})
 		}
 	}
-	logNexusInstall(logf, fmt.Sprintf("安装完成，%d 个 Mod 已导入", len(imported)))
+	if updateMode {
+		logNexusInstall(logf, fmt.Sprintf("更新完成，%d 个 Mod 已安全替换", len(imported)))
+	} else {
+		logNexusInstall(logf, fmt.Sprintf("安装完成，%d 个 Mod 已导入", len(imported)))
+	}
 	if result.ModID > 0 {
 		return ApplyNexusMetadataToMods(dataDir, imported), nil
 	}
 	return imported, nil
+}
+
+func NormalizeRemoteModReplaceUniqueID(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" || len(value) > 256 {
+		return "", ErrInvalidRemoteModReplaceUniqueID
+	}
+	for _, r := range value {
+		if r < 0x21 || r == 0x7f {
+			return "", ErrInvalidRemoteModReplaceUniqueID
+		}
+	}
+	return value, nil
+}
+
+func NormalizeRemoteModExpectedVersion(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if len(value) > 0 && (value[0] == 'v' || value[0] == 'V') {
+		value = value[1:]
+	}
+	if value == "" {
+		return "", nil
+	}
+	if len(value) > 64 {
+		return "", ErrInvalidRemoteModExpectedVersion
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("._+-", r) {
+			continue
+		}
+		return "", ErrInvalidRemoteModExpectedVersion
+	}
+	return value, nil
+}
+
+func verifyRemoteModArchiveVersion(zipPath, expectedVersion string) error {
+	expected, err := NormalizeRemoteModExpectedVersion(expectedVersion)
+	if err != nil || expected == "" {
+		return err
+	}
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("打开 ZIP 失败: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+
+	actualSet := map[string]struct{}{}
+	for _, file := range zr.File {
+		if file.FileInfo().IsDir() || !strings.EqualFold(path.Base(strings.ReplaceAll(file.Name, "\\", "/")), "manifest.json") {
+			continue
+		}
+		if file.UncompressedSize64 > maxRemoteModManifestBytes {
+			return fmt.Errorf("manifest.json 超过 %d KB 限制", maxRemoteModManifestBytes/1024)
+		}
+		reader, openErr := file.Open()
+		if openErr != nil {
+			return fmt.Errorf("读取 manifest.json 失败: %w", openErr)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(reader, maxRemoteModManifestBytes+1))
+		closeErr := reader.Close()
+		if readErr != nil {
+			return fmt.Errorf("读取 manifest.json 失败: %w", readErr)
+		}
+		if len(data) > maxRemoteModManifestBytes {
+			return fmt.Errorf("manifest.json 超过 %d KB 限制", maxRemoteModManifestBytes/1024)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("关闭 manifest.json 失败: %w", closeErr)
+		}
+		var manifest modManifest
+		if decodeModManifest(data, &manifest) != nil {
+			continue
+		}
+		actual := strings.TrimSpace(manifest.Version)
+		if actual == "" {
+			continue
+		}
+		if strings.EqualFold(normalizeRuntimeModVersion(actual), normalizeRuntimeModVersion(expected)) {
+			return nil
+		}
+		if safe, safeErr := NormalizeRemoteModExpectedVersion(actual); safeErr == nil && safe != "" {
+			actualSet[safe] = struct{}{}
+		}
+	}
+
+	actual := make([]string, 0, len(actualSet))
+	for version := range actualSet {
+		actual = append(actual, version)
+	}
+	sort.Strings(actual)
+	return &RemoteModVersionMismatchError{Expected: expected, Actual: actual}
 }
 
 func validateRemoteArchiveURL(raw string) error {

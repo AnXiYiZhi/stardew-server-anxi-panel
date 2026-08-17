@@ -987,6 +987,174 @@ func TestUploadModZip_AllowsAlreadyInstalledWhenRemoteInstallIsIdempotent(t *tes
 	}
 }
 
+func TestUploadModZip_ReplacesOneInstalledModAndPreservesConfig(t *testing.T) {
+	dir := t.TempDir()
+	oldManifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
+	newManifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"2.0.0","Author":"Tester"}`
+
+	oldZip := createModZip(t, map[string]string{"OldFolder/manifest.json": oldManifest})
+	if _, err := UploadModZip(dir, oldZip); err != nil {
+		t.Fatalf("install old mod: %v", err)
+	}
+	oldConfig := filepath.Join(modsDir(dir), "OldFolder", "config.json")
+	if err := os.WriteFile(oldConfig, []byte(`{"keep":true}`), 0o600); err != nil {
+		t.Fatalf("write old config: %v", err)
+	}
+
+	newZip := createModZip(t, map[string]string{
+		"NewFolder/manifest.json": newManifest,
+		"NewFolder/config.json":   `{"keep":false}`,
+	})
+	updated, err := uploadModZip(dir, newZip, uploadModZipOptions{replaceUniqueID: "AUTHOR.TESTMOD"})
+	if err != nil {
+		t.Fatalf("replace installed mod: %v", err)
+	}
+	if len(updated) != 1 || updated[0].Version != "2.0.0" || updated[0].FolderName != "NewFolder" {
+		t.Fatalf("updated mod = %+v", updated)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "OldFolder")); !os.IsNotExist(err) {
+		t.Fatalf("old folder still exists: %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(modsDir(dir), "NewFolder", "config.json"))
+	if err != nil || string(config) != `{"keep":true}` {
+		t.Fatalf("preserved config = %q, err = %v", config, err)
+	}
+}
+
+func TestUploadModZip_UpdatePreservesDisabledState(t *testing.T) {
+	dir := t.TempDir()
+	oldManifest := `{"Name":"Disabled Mod","UniqueID":"author.disabled","Version":"1.0.0","Author":"Tester"}`
+	newManifest := `{"Name":"Disabled Mod","UniqueID":"author.disabled","Version":"2.0.0","Author":"Tester"}`
+
+	oldZip := createModZip(t, map[string]string{"DisabledOld/manifest.json": oldManifest})
+	if _, err := UploadModZip(dir, oldZip); err != nil {
+		t.Fatalf("install old mod: %v", err)
+	}
+	if err := os.MkdirAll(disabledModsDir(dir), 0o755); err != nil {
+		t.Fatalf("create disabled root: %v", err)
+	}
+	if err := os.Rename(filepath.Join(modsDir(dir), "DisabledOld"), filepath.Join(disabledModsDir(dir), "DisabledOld")); err != nil {
+		t.Fatalf("disable old mod: %v", err)
+	}
+
+	newZip := createModZip(t, map[string]string{"DisabledNew/manifest.json": newManifest})
+	if _, err := uploadModZip(dir, newZip, uploadModZipOptions{replaceUniqueID: "author.disabled"}); err != nil {
+		t.Fatalf("replace disabled mod: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(disabledModsDir(dir), "DisabledNew", "manifest.json")); err != nil {
+		t.Fatalf("updated mod should remain disabled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "DisabledNew")); !os.IsNotExist(err) {
+		t.Fatalf("updated mod unexpectedly became active: %v", err)
+	}
+}
+
+func TestUploadModZip_UpdateRejectsWrongUniqueIDWithoutRemovingOldMod(t *testing.T) {
+	dir := t.TempDir()
+	oldManifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
+	wrongManifest := `{"Name":"Wrong Mod","UniqueID":"author.wrong","Version":"2.0.0","Author":"Tester"}`
+
+	oldZip := createModZip(t, map[string]string{"OldFolder/manifest.json": oldManifest})
+	if _, err := UploadModZip(dir, oldZip); err != nil {
+		t.Fatalf("install old mod: %v", err)
+	}
+	wrongZip := createModZip(t, map[string]string{"WrongFolder/manifest.json": wrongManifest})
+	if _, err := uploadModZip(dir, wrongZip, uploadModZipOptions{replaceUniqueID: "author.testmod"}); err == nil {
+		t.Fatal("wrong UniqueID update unexpectedly succeeded")
+	}
+	info := readModInfo(filepath.Join(modsDir(dir), "OldFolder"), "OldFolder")
+	if info.Version != "1.0.0" || info.UniqueID != "author.testmod" {
+		t.Fatalf("old mod was changed after rejected update: %+v", info)
+	}
+}
+
+func TestUploadModZip_UpdateRejectsWrongTargetVersionWithoutRemovingOldMod(t *testing.T) {
+	dir := t.TempDir()
+	oldManifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
+	wrongVersionManifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.5.0","Author":"Tester"}`
+
+	oldZip := createModZip(t, map[string]string{"OldFolder/manifest.json": oldManifest})
+	if _, err := UploadModZip(dir, oldZip); err != nil {
+		t.Fatalf("install old mod: %v", err)
+	}
+	wrongZip := createModZip(t, map[string]string{"NewFolder/manifest.json": wrongVersionManifest})
+	_, err := uploadModZip(dir, wrongZip, uploadModZipOptions{
+		replaceUniqueID: "author.testmod",
+		expectedVersion: "2.0.0",
+	})
+	if _, ok := err.(*RemoteModVersionMismatchError); !ok {
+		t.Fatalf("wrong target version error = %T %v", err, err)
+	}
+	info := readModInfo(filepath.Join(modsDir(dir), "OldFolder"), "OldFolder")
+	if info.Version != "1.0.0" {
+		t.Fatalf("old mod was changed after rejected version: %+v", info)
+	}
+}
+
+func TestUploadModZip_UpdateRejectsAggregatePackageWithoutRemovingOldMods(t *testing.T) {
+	dir := t.TempDir()
+	targetManifest := `{"Name":"Target Mod","UniqueID":"author.target","Version":"1.0.0","Author":"Tester"}`
+	companionManifest := `{"Name":"Companion Mod","UniqueID":"author.companion","Version":"1.0.0","Author":"Tester"}`
+	packageZip := createModZip(t, map[string]string{
+		"Bundle/Target/manifest.json":    targetManifest,
+		"Bundle/Companion/manifest.json": companionManifest,
+	})
+	if _, err := UploadModZip(dir, packageZip); err != nil {
+		t.Fatalf("install aggregate package: %v", err)
+	}
+
+	updateZip := createModZip(t, map[string]string{
+		"TargetNew/manifest.json": `{"Name":"Target Mod","UniqueID":"author.target","Version":"2.0.0","Author":"Tester"}`,
+	})
+	if _, err := uploadModZip(dir, updateZip, uploadModZipOptions{replaceUniqueID: "author.target"}); err == nil || !strings.Contains(err.Error(), "暂不支持一键更新") {
+		t.Fatalf("aggregate update error = %v", err)
+	}
+	for folder, uniqueID := range map[string]string{"Target": "author.target", "Companion": "author.companion"} {
+		info := readModInfo(filepath.Join(modsDir(dir), folder), folder)
+		if info.UniqueID != uniqueID || info.Version != "1.0.0" {
+			t.Fatalf("aggregate member %s changed after rejected update: %+v", folder, info)
+		}
+	}
+}
+
+func TestUploadModZip_UpdateRestoresOldModWhenInstallTimeWriteFails(t *testing.T) {
+	dir := t.TempDir()
+	oldManifest := `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"1.0.0","Author":"Tester"}`
+	oldZip := createModZip(t, map[string]string{
+		"OldFolder/manifest.json": oldManifest,
+		"OldFolder/config.json":   `{"keep":true}`,
+	})
+	if _, err := UploadModZip(dir, oldZip); err != nil {
+		t.Fatalf("install old mod: %v", err)
+	}
+	if err := os.WriteFile(modInstallTimesFilePath(dir), []byte("{"), 0o600); err != nil {
+		t.Fatalf("corrupt install-time sidecar: %v", err)
+	}
+
+	updateZip := createModZip(t, map[string]string{
+		"NewFolder/manifest.json": `{"Name":"Test Mod","UniqueID":"author.testmod","Version":"2.0.0","Author":"Tester"}`,
+		"NewFolder/config.json":   `{"keep":false}`,
+	})
+	if _, err := uploadModZip(dir, updateZip, uploadModZipOptions{replaceUniqueID: "author.testmod"}); err == nil || !strings.Contains(err.Error(), "旧版已恢复") {
+		t.Fatalf("install-time failure error = %v", err)
+	}
+	oldInfo := readModInfo(filepath.Join(modsDir(dir), "OldFolder"), "OldFolder")
+	if oldInfo.UniqueID != "author.testmod" || oldInfo.Version != "1.0.0" {
+		t.Fatalf("old mod was not restored: %+v", oldInfo)
+	}
+	config, err := os.ReadFile(filepath.Join(modsDir(dir), "OldFolder", "config.json"))
+	if err != nil || string(config) != `{"keep":true}` {
+		t.Fatalf("restored config = %q, err = %v", config, err)
+	}
+	if _, err := os.Stat(filepath.Join(modsDir(dir), "NewFolder")); !os.IsNotExist(err) {
+		t.Fatalf("new folder remained after rollback: %v", err)
+	}
+	backups, err := filepath.Glob(filepath.Join(dir, ".local-container", ".mod-update-backup-*"))
+	if err != nil || len(backups) != 0 {
+		t.Fatalf("temporary update backups = %v, err = %v", backups, err)
+	}
+}
+
 func TestUploadModZip_ImportsMissingModsWhenRemotePackagePartlyExists(t *testing.T) {
 	dir := t.TempDir()
 	existingManifest := `{"Name":"Existing Mod","UniqueID":"author.existing","Version":"1.0.0","Author":"Tester"}`

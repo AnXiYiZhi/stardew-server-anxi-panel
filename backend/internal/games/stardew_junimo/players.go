@@ -117,11 +117,11 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 		ParseStatus: "unavailable",
 		UpdatedAt:   time.Now().Format(time.RFC3339),
 	}
-	// 当前存档的人数上限来自新建存档时写入的 server-settings.json，
-	// 运行时来源（junimo info）解析出的值仍会覆盖这里的兜底。
-	result.MaxPlayers = readServerMaxPlayers(instance.DataDir)
 	zero := 0
 	if instance.State != storage.InstanceStateRunning {
+		// Stopped servers have no live runtime value. The configured value is the
+		// one that will become effective on the next container start.
+		result.MaxPlayers = readServerMaxPlayers(instance.DataDir)
 		result.OnlineCount = &zero
 		saveID := latestControlSaveID(instance.DataDir)
 		result.SaveID = saveID
@@ -148,6 +148,10 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 		result.ParseStatus = "exact"
 		result.Message = "已从 StardewAnxiPanel.Control players.json 读取当前在线快照，并合并玩家名册。"
 		result.UpdatedAt = snapshot.UpdatedAt
+		// players.json does not carry Junimo's effective limit. Read only the
+		// live info value while the container is running; never substitute the
+		// possibly pending server-settings.json value here.
+		result.MaxPlayers = readLiveServerMaxPlayers(ctx, d, instance)
 		return d.persistPlayerRoster(ctx, instance, result), nil
 	}
 
@@ -177,6 +181,18 @@ func (d *Driver) listPlayers(ctx context.Context, instance registry.Instance) (*
 	result.ParseStatus = parsed.ParseStatus
 	result.Message = parsed.Message
 	return d.persistPlayerRoster(ctx, instance, result), nil
+}
+
+func readLiveServerMaxPlayers(ctx context.Context, d *Driver, instance registry.Instance) *int {
+	info, err := runCommand(ctx, d, instance, CommandRequest{Command: "info"}, true)
+	if err != nil || info == nil || info.ExitCode != 0 {
+		return nil
+	}
+	raw := strings.TrimSpace(info.Output)
+	if raw == "" {
+		raw = strings.TrimSpace(info.Error)
+	}
+	return ParsePlayersFromInfo(raw).MaxPlayers
 }
 
 // persistPlayerRoster makes SQLite the durable history while keeping runtime

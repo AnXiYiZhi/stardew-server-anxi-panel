@@ -116,6 +116,7 @@ type NexusModSearchResult struct {
 type NexusRequiredMod struct {
 	ModID               int    `json:"modId"`
 	Name                string `json:"name"`
+	Version             string `json:"version,omitempty"`
 	Notes               string `json:"notes,omitempty"`
 	NexusURL            string `json:"nexusUrl"`
 	Installed           bool   `json:"installed"`
@@ -202,6 +203,10 @@ func SearchNexusModsPage(ctx context.Context, query string, apiKey string, page,
 	if len(results) > pageSize {
 		results = results[:pageSize]
 	}
+	results, err = hydrateNexusRequiredVersions(ctx, results)
+	if err != nil {
+		return NexusModSearchResponse{}, err
+	}
 
 	return NexusModSearchResponse{
 		Query:    trimmed,
@@ -211,6 +216,47 @@ func SearchNexusModsPage(ctx context.Context, query string, apiKey string, page,
 		Total:    total,
 		HasMore:  page*pageSize < total,
 	}, nil
+}
+
+// hydrateNexusRequiredVersions resolves every installable prerequisite through
+// the same current Nexus metadata endpoint used for search results. The browser
+// extension can then lock each background download to the dependency's latest
+// advertised version instead of choosing an arbitrary file row.
+func hydrateNexusRequiredVersions(ctx context.Context, results []NexusModSearchResult) ([]NexusModSearchResult, error) {
+	seen := map[int]struct{}{}
+	ids := make([]int, 0)
+	for _, result := range results {
+		for _, required := range result.RequiredMods {
+			if required.ModID <= 0 || strings.TrimSpace(required.Version) != "" {
+				continue
+			}
+			if _, exists := seen[required.ModID]; exists {
+				continue
+			}
+			seen[required.ModID] = struct{}{}
+			ids = append(ids, required.ModID)
+		}
+	}
+	if len(ids) == 0 {
+		return results, nil
+	}
+
+	metadata, err := nexusGetModsByIDGraphQL(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	versions := make(map[int]string, len(metadata))
+	for _, item := range metadata {
+		if version := strings.TrimSpace(item.Version); item.ModID > 0 && version != "" {
+			versions[item.ModID] = version
+		}
+	}
+	for i := range results {
+		for j := range results[i].RequiredMods {
+			results[i].RequiredMods[j].Version = versions[results[i].RequiredMods[j].ModID]
+		}
+	}
+	return results, nil
 }
 
 func normalizeSearchPagination(page, pageSize int) (int, int, int) {

@@ -3,6 +3,7 @@ package web
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 func TestSupportBundleStreamsValidZip(t *testing.T) {
@@ -20,11 +22,48 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 			Result:   paneldocker.CommandResult{ExitCode: 0, Stdout: "[]"},
 			Services: []paneldocker.ComposeService{{Name: "demo-server-1", Service: "server", State: "running"}},
 		},
-		logsResult: paneldocker.CommandResult{ExitCode: 0, Stdout: "server log tail STEAM_PASSWORD=super-secret refresh_token=recovery-secret app_ticket=ticket-secret"},
+		logsResult:          paneldocker.CommandResult{ExitCode: 0, Stdout: "service log tail STEAM_PASSWORD=super-secret refresh_token=recovery-secret app_ticket=ticket-secret"},
+		containerLogsResult: paneldocker.CommandResult{ExitCode: 0, Stdout: "panel log tail STEAM_PASSWORD=panel-secret"},
 	}
-	handler, _, dataRoot, closeStore := newDockerTestHandlerWithStore(t, fake)
+	handler, store, dataRoot, closeStore := newDockerTestHandlerWithStore(t, fake)
 	defer closeStore()
 	adminCookie := setupDockerAdmin(t, handler)
+	ctx := context.Background()
+	instance, err := store.GetInstance(ctx, storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+		ID:            instance.ID,
+		State:         instance.State,
+		StateMessage:  instance.StateMessage.String,
+		DriverPhase:   instance.DriverPhase,
+		DriverPayload: `{"invite_code":"invite-private"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := store.CreateJob(ctx, storage.CreateJobParams{
+		Type:       "stardew_lifecycle",
+		TargetType: "instance",
+		TargetID:   storage.DefaultInstanceID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendJobLog(ctx, job.ID, storage.JobLogLevelInfo, "starting server STEAM_PASSWORD=job-log-secret"); err != nil {
+		t.Fatal(err)
+	}
+	otherJob, err := store.CreateJob(ctx, storage.CreateJobParams{
+		Type:       "stardew_lifecycle",
+		TargetType: "instance",
+		TargetID:   "other-instance",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendJobLog(ctx, otherJob.ID, storage.JobLogLevelInfo, "other-instance-marker"); err != nil {
+		t.Fatal(err)
+	}
 	instanceDir := filepath.Join(dataRoot, "instances", "stardew")
 	if err := os.MkdirAll(filepath.Join(instanceDir, ".local-container", "smapi-update", "recovery", "apply_secret"), 0o700); err != nil {
 		t.Fatal(err)
@@ -94,13 +133,21 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 		}
 		contents.Write(data)
 	}
-	for _, name := range []string{"version.json", "health.json", "instance-state.json", "junimo-update.json", "jobs.json", "audit-logs.json", "compose-ps.json", "server-logs.txt"} {
+	for _, name := range []string{"version.json", "health.json", "instance-state.json", "junimo-update.json", "jobs.json", "job-logs.json", "audit-logs.json", "compose-ps.json", "docker-compose.yml", "server-logs.txt", "steam-auth-logs.txt", "panel-logs.txt"} {
 		if !names[name] {
 			t.Fatalf("support bundle missing %s; entries=%v", name, names)
 		}
 	}
 	serialized := strings.ToLower(contents.String())
-	for _, secret := range []string{"super-secret", "recovery-secret", "ticket-secret", "apply-secret", "do-not-export-recovery-secret", "compose-secret", "transaction-secret", "role-verifier-export-secret", "save-content-secret"} {
+	for _, marker := range []string{"service log tail", "panel log tail", "starting server", "runtimediagnostic"} {
+		if !strings.Contains(serialized, marker) {
+			t.Fatalf("support bundle missing diagnostic marker %q", marker)
+		}
+	}
+	if strings.Contains(serialized, "other-instance-marker") {
+		t.Fatal("support bundle included a job log from another instance")
+	}
+	for _, secret := range []string{"super-secret", "recovery-secret", "ticket-secret", "panel-secret", "job-log-secret", "invite-private", "apply-secret", "do-not-export-recovery-secret", "compose-secret", "transaction-secret", "role-verifier-export-secret", "save-content-secret"} {
 		if strings.Contains(serialized, secret) {
 			t.Fatalf("support bundle leaked %q", secret)
 		}

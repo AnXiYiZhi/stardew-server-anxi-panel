@@ -95,6 +95,62 @@ func TestRemoteInstallRejectsInvalidIdempotencyKey(t *testing.T) {
 	assertNestedJSONField(t, response.Body.Bytes(), "error", "message", "Idempotency-Key 必须是 1 到 128 字节的可见 ASCII 字符")
 }
 
+func TestRemoteInstallRejectsInvalidReplaceUniqueID(t *testing.T) {
+	handler, _, closeStore := newRemoteInstallIdempotencyHandler(t)
+	defer closeStore()
+	_, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username": "admin", "password": "admin-password", "confirmPassword": "admin-password",
+	}, nil)
+
+	response, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/mods/remote/install", map[string]any{
+		"url":             "https://supporter-files.nexus-cdn.com/mods/1303/1234/example.zip?key=secret",
+		"mod":             map[string]any{"modId": 1234, "name": "Example"},
+		"replaceUniqueId": "Pathoschild.ContentPatcher\nforged",
+	}, adminCookie)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid replace UniqueID = %d: %s", response.Code, response.Body.String())
+	}
+	assertNestedJSONField(t, response.Body.Bytes(), "error", "code", "invalid_replace_unique_id")
+}
+
+func TestRemoteInstallUpdateRequiresExactNexusTarget(t *testing.T) {
+	handler, _, closeStore := newRemoteInstallIdempotencyHandler(t)
+	defer closeStore()
+	_, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username": "admin", "password": "admin-password", "confirmPassword": "admin-password",
+	}, nil)
+
+	for _, test := range []struct {
+		name string
+		body map[string]any
+		code string
+	}{
+		{
+			name: "missing expected version",
+			body: map[string]any{"url": "https://supporter-files.nexus-cdn.com/mods/1303/1234/example.zip", "mod": map[string]any{"modId": 1234}, "nexusFileId": 160463, "replaceUniqueId": "Pathoschild.ContentPatcher"},
+			code: "invalid_expected_mod_version",
+		},
+		{
+			name: "missing file id",
+			body: map[string]any{"url": "https://supporter-files.nexus-cdn.com/mods/1303/1234/example.zip", "mod": map[string]any{"modId": 1234}, "expectedVersion": "2.9.1", "replaceUniqueId": "Pathoschild.ContentPatcher"},
+			code: "invalid_nexus_file_id",
+		},
+		{
+			name: "missing mod id",
+			body: map[string]any{"url": "https://supporter-files.nexus-cdn.com/mods/1303/1234/example.zip", "mod": map[string]any{"name": "Content Patcher"}, "expectedVersion": "2.9.1", "nexusFileId": 160463, "replaceUniqueId": "Pathoschild.ContentPatcher"},
+			code: "invalid_nexus_mod_id",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/mods/remote/install", test.body, adminCookie)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("update target validation = %d: %s", response.Code, response.Body.String())
+			}
+			assertNestedJSONField(t, response.Body.Bytes(), "error", "code", test.code)
+		})
+	}
+}
+
 func newRemoteInstallIdempotencyHandler(t *testing.T) (http.Handler, *storage.Store, func()) {
 	t.Helper()
 	dataDir := t.TempDir()

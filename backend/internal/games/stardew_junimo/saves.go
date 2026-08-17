@@ -954,15 +954,26 @@ func EnsureServerSettingsDefaults(dataDir string) error {
 // world. JunimoServer only reads server-settings.json on container start, so
 // none of these take effect until the server container is restarted.
 type ServerRuntimeSettings struct {
+	MaxPlayers             *int   `json:"maxPlayers,omitempty"`   // 1-100; nil on PUT preserves the current value
 	CabinStrategy          string `json:"cabinStrategy"`          // CabinStack|FarmhouseStack|None
 	ExistingCabinBehavior  string `json:"existingCabinBehavior"`  // KeepExisting|MoveToStack
 	NetworkBroadcastPeriod int    `json:"networkBroadcastPeriod"` // 1-10 ticks between state broadcasts (1=every tick, 3=vanilla)
+}
+
+// ServerRuntimeSettingsUpdateResult keeps the previous and persisted values
+// together so Web audit metadata can report a race-free max-player change.
+type ServerRuntimeSettingsUpdateResult struct {
+	Previous ServerRuntimeSettings
+	Current  ServerRuntimeSettings
 }
 
 var validCabinStrategies = map[string]bool{"CabinStack": true, "FarmhouseStack": true, "None": true}
 var validExistingCabinBehaviors = map[string]bool{"KeepExisting": true, "MoveToStack": true}
 
 func validateServerRuntimeSettings(settings ServerRuntimeSettings) error {
+	if settings.MaxPlayers != nil && (*settings.MaxPlayers < 1 || *settings.MaxPlayers > 100) {
+		return fmt.Errorf("maxPlayers 必须在 1~100 之间")
+	}
 	if !validCabinStrategies[settings.CabinStrategy] {
 		return fmt.Errorf("cabinStrategy 必须是 CabinStack/FarmhouseStack/None 之一")
 	}
@@ -979,11 +990,7 @@ func validateServerRuntimeSettings(settings ServerRuntimeSettings) error {
 // NetworkBroadcastPeriod from server-settings.json, defaulting missing fields to
 // the same values WriteServerSettings would have written for a recommended save.
 func ReadServerRuntimeSettings(dataDir string) (ServerRuntimeSettings, error) {
-	settings := ServerRuntimeSettings{
-		CabinStrategy:          "CabinStack",
-		ExistingCabinBehavior:  "KeepExisting",
-		NetworkBroadcastPeriod: 1,
-	}
+	settings, _ := readServerRuntimeSettingsRoot(nil)
 	data, err := os.ReadFile(serverSettingsPath(dataDir))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -995,9 +1002,81 @@ func ReadServerRuntimeSettings(dataDir string) (ServerRuntimeSettings, error) {
 	if err := json.Unmarshal(data, &root); err != nil {
 		return settings, fmt.Errorf("parse server-settings.json: %w", err)
 	}
+	return readServerRuntimeSettingsRoot(root)
+}
+
+// UpdateServerRuntimeSettings validates and writes MaxPlayers/CabinStrategy/
+// ExistingCabinBehavior/NetworkBroadcastPeriod into server-settings.json,
+// preserving every other key already present. A nil MaxPlayers is the legacy
+// PUT shape and preserves the current value. Requires a server container
+// restart to take effect.
+func UpdateServerRuntimeSettings(dataDir string, settings ServerRuntimeSettings) (ServerRuntimeSettingsUpdateResult, error) {
+	return updateServerRuntimeSettings(dataDir, settings, atomicWriteValidatedJSON)
+}
+
+func updateServerRuntimeSettings(
+	dataDir string,
+	settings ServerRuntimeSettings,
+	writeFile func(string, []byte, os.FileMode) error,
+) (ServerRuntimeSettingsUpdateResult, error) {
+	var result ServerRuntimeSettingsUpdateResult
+	if err := validateServerRuntimeSettings(settings); err != nil {
+		return result, err
+	}
+	settingsPath := serverSettingsPath(dataDir)
+	root := map[string]any{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		if err := json.Unmarshal(data, &root); err != nil {
+			return result, fmt.Errorf("parse server-settings.json: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return result, fmt.Errorf("read server-settings.json: %w", err)
+	}
+	previous, err := readServerRuntimeSettingsRoot(root)
+	if err != nil {
+		return result, err
+	}
+	result.Previous = previous
+	if settings.MaxPlayers == nil {
+		settings.MaxPlayers = previous.MaxPlayers
+	}
+	result.Current = settings
+
+	server, _ := root["Server"].(map[string]any)
+	if server == nil {
+		server = map[string]any{}
+	}
+	server["MaxPlayers"] = *settings.MaxPlayers
+	server["CabinStrategy"] = settings.CabinStrategy
+	server["ExistingCabinBehavior"] = settings.ExistingCabinBehavior
+	server["NetworkBroadcastPeriod"] = settings.NetworkBroadcastPeriod
+	root["Server"] = server
+
+	data, err := marshalJSON(root)
+	if err != nil {
+		return result, fmt.Errorf("marshal server-settings.json: %w", err)
+	}
+	if err := writeFile(settingsPath, data, 0o644); err != nil {
+		return result, fmt.Errorf("write server-settings.json: %w", err)
+	}
+	return result, nil
+}
+
+func readServerRuntimeSettingsRoot(root map[string]any) (ServerRuntimeSettings, error) {
+	defaultMaxPlayers := 10
+	settings := ServerRuntimeSettings{
+		MaxPlayers:             &defaultMaxPlayers,
+		CabinStrategy:          "CabinStack",
+		ExistingCabinBehavior:  "KeepExisting",
+		NetworkBroadcastPeriod: 1,
+	}
 	server, _ := root["Server"].(map[string]any)
 	if server == nil {
 		return settings, nil
+	}
+	if v, ok := server["MaxPlayers"].(float64); ok && v >= 1 && v <= 100 && v == float64(int(v)) {
+		maxPlayers := int(v)
+		settings.MaxPlayers = &maxPlayers
 	}
 	if v, ok := server["CabinStrategy"].(string); ok && v != "" {
 		settings.CabinStrategy = v
@@ -1009,43 +1088,6 @@ func ReadServerRuntimeSettings(dataDir string) (ServerRuntimeSettings, error) {
 		settings.NetworkBroadcastPeriod = int(v)
 	}
 	return settings, nil
-}
-
-// UpdateServerRuntimeSettings validates and writes CabinStrategy/
-// ExistingCabinBehavior/NetworkBroadcastPeriod into server-settings.json,
-// preserving every other key already present (e.g. MaxPlayers, AllowIpConnections).
-// Requires a server container restart to take effect.
-func UpdateServerRuntimeSettings(dataDir string, settings ServerRuntimeSettings) error {
-	if err := validateServerRuntimeSettings(settings); err != nil {
-		return err
-	}
-	settingsPath := serverSettingsPath(dataDir)
-	root := map[string]any{}
-	if data, err := os.ReadFile(settingsPath); err == nil {
-		if err := json.Unmarshal(data, &root); err != nil {
-			return fmt.Errorf("parse server-settings.json: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("read server-settings.json: %w", err)
-	}
-
-	server, _ := root["Server"].(map[string]any)
-	if server == nil {
-		server = map[string]any{}
-	}
-	server["CabinStrategy"] = settings.CabinStrategy
-	server["ExistingCabinBehavior"] = settings.ExistingCabinBehavior
-	server["NetworkBroadcastPeriod"] = settings.NetworkBroadcastPeriod
-	root["Server"] = server
-
-	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
-		return fmt.Errorf("create settings dir: %w", err)
-	}
-	data, err := marshalJSON(root)
-	if err != nil {
-		return fmt.Errorf("marshal server-settings.json: %w", err)
-	}
-	return os.WriteFile(settingsPath, data, 0o644)
 }
 
 // normalizeCfg applies defaults.

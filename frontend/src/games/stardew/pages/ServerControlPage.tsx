@@ -9,6 +9,7 @@ import { useServerRestartSchedule } from '../useServerRestartSchedule'
 import { useServerVNCSettings } from '../useServerVNCSettings'
 import { PlayerAuthSettingsDialog } from '../PlayerAuthSettingsDialog'
 import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
+import { ServerRuntimeSettingsDialog } from '../ServerRuntimeSettingsDialog'
 import { useServerFestival } from '../useServerFestival'
 import { useServerJoja } from '../useServerJoja'
 import { useServerConsole } from '../useServerConsole'
@@ -110,11 +111,15 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     runtimeSettingsSaving,
     runtimeSettingsError,
     runtimeSettingsMessage,
-    setRuntimeSettingsMessage,
+    clearRuntimeSettingsFeedback,
     openRuntimeSettings,
     closeRuntimeSettings,
     handleSaveRuntimeSettings,
-  } = useServerRuntimeSettings({ isAdmin })
+  } = useServerRuntimeSettings({
+    isAdmin,
+    isRunning,
+    refreshPlayers: dashboardData.refreshPlayers,
+  })
 
   const {
     gameLanguageOpen,
@@ -196,6 +201,8 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         instanceState={instanceState}
         dashboardData={dashboardData}
         className="sd-server-summary-card"
+        canEditPlayerLimit={isAdmin}
+        onEditPlayerLimit={() => { void openRuntimeSettings() }}
       />
 
       {/* ── 生命周期控制 ───────────────────────────────────────────────────── */}
@@ -584,13 +591,13 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             key="server-runtime-settings"
             className="sd-btn-tan sd-btn--lg"
             disabled={!isAdmin}
-            title={isAdmin ? '配置小屋策略与联机广播频率' : '仅管理员可配置小屋与联机高级设置'}
+            title={isAdmin ? '配置联机人数上限、小屋策略与广播频率' : '仅管理员可配置联机人数与小屋设置'}
             onClick={() => void openRuntimeSettings()}
           >
             <img className="sd-server-quick-icon" src={SERVER_PAGE_ICONS.settings} alt="" />
             <span className="sd-server-quick-copy">
-              <strong>小屋与联机高级设置</strong>
-              <span>小屋策略 / 广播频率</span>
+              <strong>联机人数与小屋设置</strong>
+              <span>人数上限 / 小屋策略 / 广播频率</span>
             </span>
           </button>
           <button
@@ -828,92 +835,20 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       ) : null}
 
       {runtimeSettingsOpen ? (
-        <ModalPortal
-          key="runtime-settings"
-          className="sd-confirm-overlay"
-          ariaLabelledBy="server-runtime-settings-title"
-          onEscape={runtimeSettingsSaving ? undefined : closeRuntimeSettings}
-        >
-          <div className="sd-confirm-dialog">
-            <h3 id="server-runtime-settings-title">小屋与联机高级设置</h3>
-
-            {runtimeSettingsLoading ? (
-              <p>正在读取当前配置...</p>
-            ) : (
-              <>
-                <label className="sd-schedule-field">
-                  <span>小屋策略（CabinStrategy）</span>
-                  <select
-                    className="sd-input"
-                    value={runtimeSettingsDraft.cabinStrategy}
-                    disabled={runtimeSettingsSaving}
-                    onChange={(e) => {
-                      setRuntimeSettingsDraft((draft) => ({ ...draft, cabinStrategy: e.target.value }))
-                      setRuntimeSettingsMessage(null)
-                    }}
-                  >
-                    <option value="CabinStack">CabinStack（隐藏小屋堆叠，最适合大多数服务器）</option>
-                    <option value="FarmhouseStack" hidden>FarmhouseStack（兼容已有配置）</option>
-                    <option value="None">None（原版行为，小屋放置在真实农场位置）</option>
-                  </select>
-                </label>
-
-                <label className="sd-schedule-field">
-                  <span>已有小屋处理方式（ExistingCabinBehavior）</span>
-                  <select
-                    className="sd-input"
-                    value={runtimeSettingsDraft.existingCabinBehavior}
-                    disabled={runtimeSettingsSaving}
-                    onChange={(e) => {
-                      setRuntimeSettingsDraft((draft) => ({ ...draft, existingCabinBehavior: e.target.value }))
-                      setRuntimeSettingsMessage(null)
-                    }}
-                  >
-                    <option value="KeepExisting">KeepExisting（保留已有小屋位置）</option>
-                    <option value="MoveToStack">MoveToStack（把已有小屋迁移到策略指定位置）</option>
-                  </select>
-                </label>
-
-                <label className="sd-schedule-field">
-                  <span>网络广播频率（NetworkBroadcastPeriod，单位：刻）</span>
-                  <select
-                    className="sd-input"
-                    value={runtimeSettingsDraft.networkBroadcastPeriod}
-                    disabled={runtimeSettingsSaving}
-                    onChange={(e) => {
-                      setRuntimeSettingsDraft((draft) => ({ ...draft, networkBroadcastPeriod: Number(e.target.value) }))
-                      setRuntimeSettingsMessage(null)
-                    }}
-                  >
-                    <option value={1}>1（每刻广播，最实时）</option>
-                    <option value={2}>2</option>
-                    <option value={3}>3（原版频率）</option>
-                  </select>
-                </label>
-
-                <div className="sd-confirm-warning">
-                  这些设置写入 server-settings.json，JunimoServer 只在容器启动时读取。保存后需要重启服务器容器才会生效，对已有存档同样适用。
-                </div>
-
-                {runtimeSettingsError ? <div className="sd-ov-error">{runtimeSettingsError}</div> : null}
-                {runtimeSettingsMessage ? <div className="sd-srv-result">{runtimeSettingsMessage}</div> : null}
-
-                <div className="sd-confirm-actions">
-                  <button className="sd-btn-tan" onClick={closeRuntimeSettings} disabled={runtimeSettingsSaving}>
-                    关闭
-                  </button>
-                  <button
-                    className="sd-btn-green"
-                    onClick={() => void handleSaveRuntimeSettings()}
-                    disabled={runtimeSettingsSaving}
-                  >
-                    {runtimeSettingsSaving ? '保存中…' : '保存'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </ModalPortal>
+        <ServerRuntimeSettingsDialog
+          draft={runtimeSettingsDraft}
+          setDraft={setRuntimeSettingsDraft}
+          loading={runtimeSettingsLoading}
+          saving={runtimeSettingsSaving}
+          error={runtimeSettingsError}
+          message={runtimeSettingsMessage}
+          isRunning={isRunning}
+          currentMaxPlayers={dashboardData.players?.maxPlayers ?? null}
+          onlineCount={dashboardData.players?.onlineCount ?? null}
+          onClearFeedback={clearRuntimeSettingsFeedback}
+          onClose={closeRuntimeSettings}
+          onSave={() => { void handleSaveRuntimeSettings() }}
+        />
       ) : null}
 
       {gameLanguageOpen ? (

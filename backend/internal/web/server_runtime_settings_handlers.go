@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
@@ -54,13 +55,14 @@ func (s *server) handleInstanceServerRuntimeSettings(w http.ResponseWriter, r *h
 		return
 	}
 	updater, ok := driver.(interface {
-		UpdateServerRuntimeSettings(context.Context, registry.Instance, sj.ServerRuntimeSettings) error
+		UpdateServerRuntimeSettings(context.Context, registry.Instance, sj.ServerRuntimeSettings) (sj.ServerRuntimeSettingsUpdateResult, error)
 	})
 	if !ok {
 		writeError(w, http.StatusNotImplemented, "settings_update_unsupported", "当前游戏驱动不支持更新小屋与联机设置")
 		return
 	}
-	if err := updater.UpdateServerRuntimeSettings(r.Context(), makeRegistryInstance(instance), body); err != nil {
+	result, err := updater.UpdateServerRuntimeSettings(r.Context(), makeRegistryInstance(instance), body)
+	if err != nil {
 		if writeStardewMutationGuardConflict(w, err) {
 			return
 		}
@@ -68,8 +70,10 @@ func (s *server) handleInstanceServerRuntimeSettings(w http.ResponseWriter, r *h
 		return
 	}
 	s.auditLog(r, &actor, "instance_server_runtime_settings_update", "instance", instanceID, auditMetadata(
-		"cabinStrategy", body.CabinStrategy,
-		"existingCabinBehavior", body.ExistingCabinBehavior,
+		"maxPlayers", strconv.Itoa(*result.Current.MaxPlayers),
+		"previousMaxPlayers", strconv.Itoa(*result.Previous.MaxPlayers),
+		"cabinStrategy", result.Current.CabinStrategy,
+		"existingCabinBehavior", result.Current.ExistingCabinBehavior,
 	))
-	writeJSON(w, http.StatusOK, body)
+	writeJSON(w, http.StatusOK, result.Current)
 }

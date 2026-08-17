@@ -11,7 +11,7 @@ import { errorMessage, formatDate } from '../../../core/helpers'
 import type { ModInfo, ModsListResult, NexusModSearchResult, NexusRequiredMod } from '../../../types'
 import { modIsPanelControl, modIsSmapi, modIsSystemRuntime } from '../mod-visibility'
 import { modDisplayName } from '../mod-display'
-import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, type InstalledModSort } from '../mod-list-utils'
+import { filterAndSortInstalledMods, INSTALLED_MOD_SORT_OPTIONS, nexusInstalledState, type InstalledModSort } from '../mod-list-utils'
 import { MOD_UPLOAD_TOOLTIP, ModUploadGuidance } from '../ModUploadGuidance'
 import type { StardewPageProps } from '../stardew-routes'
 import './MobileModsPage.css'
@@ -161,18 +161,6 @@ function modExternalUrl(mod: ModInfo) {
   return nexusId > 0 ? `https://www.nexusmods.com/stardewvalley/mods/${nexusId}` : ''
 }
 
-function nexusModInstalledMatchInList(modList: ModInfo[] | undefined, modId: number) {
-  if (!modList || modId <= 0) return null
-  const match = modList.find((mod) => modNexusId(mod) === modId)
-  if (!match) return null
-  return {
-    installed: true,
-    installedEnabled: match.enabled,
-    installedFolderName: match.folderName,
-    installedVersion: match.version,
-  }
-}
-
 function NexusRequiredModsBadge({
   requiredMods,
   open,
@@ -315,12 +303,12 @@ export function MobileModsPage({ user, instanceState, dashboardData }: MobileMod
     setNexusResults((prev) => {
       if (!prev) return prev
       return prev.map((result) => {
-        const match = nexusModInstalledMatchInList(modList, result.modId)
+        const installedState = nexusInstalledState(modList, result.modId)
         const requiredMods = result.requiredMods?.map((required) => {
-          const requiredMatch = nexusModInstalledMatchInList(modList, required.modId)
-          return requiredMatch ? { ...required, ...requiredMatch } : required
+          const requiredState = nexusInstalledState(modList, required.modId)
+          return { ...required, ...requiredState }
         })
-        return { ...result, ...(match ?? {}), ...(requiredMods ? { requiredMods } : {}) }
+        return { ...result, ...installedState, ...(requiredMods ? { requiredMods } : {}) }
       })
     })
   }

@@ -140,6 +140,7 @@ const mods = {
     builtIn: false,
     pictureUrl: qaModPictures[i % qaModPictures.length],
     updateKeys: [`Nexus:${1900 + i}`],
+    nexusModId: i === 0 ? 1915 : (i === 1 ? 1348 : 1900 + i),
     dependencies: i === 2
       ? [{ uniqueId: 'spacechase0.SpaceCore', minimumVersion: '1.20.0', required: true, installed: true, enabled: false, installedVersion: '1.19.0', satisfied: false, status: 'disabled' }]
       : [],
@@ -297,7 +298,7 @@ const nexusSettings = { configured: true, hasApiKey: true, extensionConnected: t
 const vncConfig = { vncPort: '24643' }
 const rendering = { fps: 30 }
 const serverPassword = { serverPassword: '' }
-const serverRuntimeSettings = { cabinStrategy: 'CabinStack', existingCabinBehavior: 'KeepExisting', networkBroadcastPeriod: 1 }
+const serverRuntimeSettings = { maxPlayers: 16, cabinStrategy: 'CabinStack', existingCabinBehavior: 'KeepExisting', networkBroadcastPeriod: 1 }
 const panelUpdate = {
   currentVersion: '0.1.14', currentCommit: '3f7a9c2', currentBuildDate: '2026-07-13T12:00:00Z',
   latestVersion: UPDATE === 'available' ? 'v0.1.15' : 'v0.1.14',

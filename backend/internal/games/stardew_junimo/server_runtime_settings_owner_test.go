@@ -29,9 +29,10 @@ func TestUpdateServerRuntimeSettingsLinearizesWithNewGameOwner(t *testing.T) {
 	driver.runtimeUpdateMu.Lock()
 	result := make(chan error, 1)
 	go func() {
-		result <- driver.UpdateServerRuntimeSettings(context.Background(), registry.Instance{
+		_, err := driver.UpdateServerRuntimeSettings(context.Background(), registry.Instance{
 			ID: "stardew", DataDir: dataDir,
 		}, ServerRuntimeSettings{})
+		result <- err
 	}()
 	select {
 	case err := <-result:

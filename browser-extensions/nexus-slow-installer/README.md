@@ -31,16 +31,22 @@ POST /api/instances/:id/mods/remote/install
   "mod": {
     "modId": 1348,
     "name": "",
+    "version": "2.9.1",
     "nexusUrl": "https://www.nexusmods.com/stardewvalley/mods/1348?tab=files&file_id=145986"
-  }
+  },
+  "expectedVersion": "2.9.1",
+  "nexusFileId": 145986,
+  "replaceUniqueId": "Pathoschild.ContentPatcher"
 }
 ```
+
+`replaceUniqueId` 只在管理员从已安装列表发起一键更新时出现；普通一键安装会省略该字段。更新模式下 `mod.modId`、`expectedVersion` 和 `nexusFileId` 都必须存在且有效，面板不会把缺少精确 Nexus 目标的请求降级成覆盖安装。
 
 扩展同时发送当前安装动作的稳定请求标识：
 
 ```http
 Idempotency-Key: <requestId>
-X-Anxi-Nexus-Installer: 0.1.3
+X-Anxi-Nexus-Installer: 0.1.8
 ```
 
 同一次捕获产生的自动提交、手动提交、下载事件和页面重新注入会复用同一个 `requestId`。面板如果已经为该标识创建任务，会返回原 `jobId`，不会再启动第二个安装任务；重新选择文件或开始新的安装动作会生成新标识。
@@ -91,3 +97,27 @@ X-Anxi-Nexus-Installer: 0.1.3
 - `background.js` 与 `panel-bridge.js` 使用只覆盖进行中请求的 singleflight。Promise 在异步 POST 启动前登记，成功或失败后立即释放；失败不会缓存五分钟，也不会阻止用户重试。
 - 两条 POST 路径都发送 `Idempotency-Key`。面板在 SQLite 中把它与 `mod_remote_install + instance` 原子绑定，重复请求返回 `202 { jobId, deduped: true }`；因此扩展内存丢失也不会重复建任务。
 - 提交网络失败时 capture 保持可重试，且沿用原 `requestId`；已经明确创建任务后开始新的安装动作才会轮换标识。
+
+# NEXUS-EXT-LATEST-1 精确安装最新版本（0.1.5）
+
+- 新面板批量目标携带 Nexus 当前元数据中的 `expectedVersion`；扩展把它拼到 Nexus 页面地址的 `anxi_version` 参数中并跨页面跳转保留。兼容旧 Panel：字段缺失时仍打开 Nexus，并从当前文件页版本标题补出目标；页面也无法确认版本时才失败。两种路径都不会修改带签名的 Nexus CDN ZIP 链接。
+- 文件列表存在多个历史版本或隐藏重复 DOM 时，扩展只接受自身文件行文本精确匹配目标版本的 `file_id`。找不到目标版本时立即把批量项标成失败，不再退回第一个旧文件。
+- 提交面板时独立发送 `expectedVersion` 和 `nexusFileId`。面板下载完成后、导入前读取 ZIP 内的 SMAPI `manifest.json`；没有任何 manifest 匹配目标版本就拒绝安装，因此旧包不会覆盖现有 Mod。
+
+# NEXUS-EXT-MOD-UPDATE-1 已安装 Mod 一键更新（0.1.6）
+
+- 已安装列表的管理员“一键更新”继续复用同一批量进度和 CDN 捕获链；更新目标额外携带 `operation=update` 与精确 `replaceUniqueId`，两条 POST 路径统一提交 `replaceUniqueId`，不会实现第二套表单或让扩展直接写服务器文件。
+- 面板后台先完整下载 ZIP，并同时核对 Nexus 目标版本、SMAPI `UniqueID` 与单 Mod 包约束；全部通过后才备份旧目录、保留旧 `config.json`、换入新版。换入或安装时间持久化失败会恢复旧目录，已禁用的 Mod 更新后仍保持禁用。
+- 聚合安装包、缺少独立 Nexus ID、服务器运行中、非管理员或扩展未连通时按钮不可用，并在入口说明原因；这些情况仍可使用“查看更新页”手动处理。
+
+# NEXUS-EXT-BATCH-SEQUENTIAL-1 批量页面串行捕获（0.1.7）
+
+- 真实 Chrome 的“本体 + 缺失前置”批次发现：并发打开多个 Nexus 后台页时，页面捕获状态可能交叉，使本体沿用前置的 `file_id`。面板的 manifest 版本校验会安全拒绝，但批次无法完成。
+- 扩展现在只打开批次首项；其 CDN 链接成功提交给 Panel 后，才打开下一项。依赖的 `file_id`、版本和自动化参数不会进入本体页面，失败项也不会继续打开后续目标。
+- 回归固定 Content Patcher `2.9.1/file_id=160463` 后再打开 Mod `4626` 的 `1.2.11` 页面，断言任一时刻只有一个活动捕获页，第二项 URL 不含前置的 `file_id`。
+
+# NEXUS-EXT-LEGACY-SLOW-1 旧版文件页 ZIP 续接（0.1.8）
+
+- 真实 Chrome 验证发现，部分旧 Nexus 文件会在扩展已锁定正确 `file_id` 后进入独立的免费慢速下载中间页；旧回退逻辑会再次寻找 `Manual download`，停在可见的 `Slow download` 按钮前。
+- 内容脚本现在优先识别已出现的 `mod-file-download` 组件或 `Slow download` 控件，并直接复用扩展触发与下载事件捕获链，不再回到文件发现流程形成循环。
+- 批次仍保持 0.1.7 的串行约束；这个续接只处理当前活动项，不改变版本、`file_id`、批次项或更新目标身份。远程安装的现有安全契约只接受 `.zip`；Nexus 返回 `.rar/.7z` 时不得把页面跳转或浏览器下载冒充 Panel 安装成功，也不得绕过后端格式校验。

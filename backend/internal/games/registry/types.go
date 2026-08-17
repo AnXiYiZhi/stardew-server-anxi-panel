@@ -303,8 +303,9 @@ type ModsListResult struct {
 }
 
 // ModUpdateInfo describes an update suggested by SMAPI's update service for
-// one installed physical mod. The panel deliberately exposes the upstream page
-// instead of attempting an unattended replacement of local files.
+// one installed physical mod. The upstream page remains available for manual
+// updates; eligible Nexus-backed single-mod packages can also use the explicit
+// administrator-triggered safe replacement flow.
 type ModUpdateInfo struct {
 	ID             string `json:"id"`
 	UniqueID       string `json:"uniqueId"`

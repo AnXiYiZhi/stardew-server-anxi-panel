@@ -17,11 +17,12 @@ const (
 )
 
 var (
-	ErrInvalidWorkDir = errors.New("invalid work dir")
-	ErrCommandFailed  = errors.New("docker command failed")
-	ErrCommandTimeout = errors.New("docker command timed out")
-	ErrInvalidService = errors.New("invalid compose service")
-	ErrInvalidTail    = errors.New("invalid log tail")
+	ErrInvalidWorkDir   = errors.New("invalid work dir")
+	ErrCommandFailed    = errors.New("docker command failed")
+	ErrCommandTimeout   = errors.New("docker command timed out")
+	ErrInvalidService   = errors.New("invalid compose service")
+	ErrInvalidContainer = errors.New("invalid container name")
+	ErrInvalidTail      = errors.New("invalid log tail")
 )
 
 type Options struct {

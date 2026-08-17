@@ -1849,8 +1849,11 @@ func modInstallJobDisplayName(jobType string, result sj.NexusModSearchResult) st
 }
 
 type remoteInstallRequest struct {
-	URL string              `json:"url"`
-	Mod nexusInstallRequest `json:"mod,omitempty"`
+	URL             string              `json:"url"`
+	Mod             nexusInstallRequest `json:"mod,omitempty"`
+	ExpectedVersion string              `json:"expectedVersion,omitempty"`
+	NexusFileID     int                 `json:"nexusFileId,omitempty"`
+	ReplaceUniqueID string              `json:"replaceUniqueId,omitempty"`
 }
 
 const maxRemoteInstallIdempotencyKeyBytes = 128
@@ -1996,6 +1999,38 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusBadRequest, "invalid_remote_mod_url", "远程 Mod 下载链接不能为空")
 		return
 	}
+	expectedVersion, err := sj.NormalizeRemoteModExpectedVersion(req.ExpectedVersion)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_expected_mod_version", "expectedVersion 必须是 1 到 64 位的版本号")
+		return
+	}
+	if req.NexusFileID < 0 {
+		writeError(w, http.StatusBadRequest, "invalid_nexus_file_id", "nexusFileId 不能为负数")
+		return
+	}
+	replaceUniqueID := ""
+	if strings.TrimSpace(req.ReplaceUniqueID) != "" {
+		replaceUniqueID, err = sj.NormalizeRemoteModReplaceUniqueID(req.ReplaceUniqueID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_replace_unique_id", "replaceUniqueId 必须是 1 到 256 字节的有效 Mod UniqueID")
+			return
+		}
+	}
+	result := req.Mod.toSearchResult()
+	if replaceUniqueID != "" {
+		if expectedVersion == "" {
+			writeError(w, http.StatusBadRequest, "invalid_expected_mod_version", "一键更新必须提供明确的 expectedVersion")
+			return
+		}
+		if req.NexusFileID <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_nexus_file_id", "一键更新必须提供有效的 nexusFileId")
+			return
+		}
+		if result.ModID <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_nexus_mod_id", "一键更新必须提供有效的 Nexus Mod ID")
+			return
+		}
+	}
 
 	apiKey, err := s.nexusAPIKey(r.Context())
 	if err != nil {
@@ -2003,7 +2038,9 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
-	result := req.Mod.toSearchResult()
+	if expectedVersion != "" {
+		result.Version = expectedVersion
+	}
 	job, err := s.jobs.Start(r.Context(), jobs.Spec{
 		Type:           "mod_remote_install",
 		DisplayName:    modInstallJobDisplayName("mod_remote_install", result),
@@ -2014,10 +2051,24 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		Timeout:        30 * time.Minute,
 		Run: func(ctx context.Context, job *jobs.Context) error {
 			return s.withStardewOfflineMutation(ctx, instance, func() error {
-				_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
-				imported, err := sj.InstallRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, func(message string) {
-					_, _ = job.Info(ctx, message)
-				})
+				if replaceUniqueID != "" {
+					_, _ = job.Info(ctx, fmt.Sprintf("准备从远程链接更新 Mod %s", replaceUniqueID))
+				} else {
+					_, _ = job.Info(ctx, "准备从远程链接安装 Mod")
+				}
+				if expectedVersion != "" {
+					_, _ = job.Info(ctx, fmt.Sprintf("目标版本：v%s（Nexus file_id=%d）", expectedVersion, req.NexusFileID))
+				}
+				var imported []registry.ModInfo
+				if replaceUniqueID != "" {
+					imported, err = sj.UpdateRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, expectedVersion, replaceUniqueID, func(message string) {
+						_, _ = job.Info(ctx, message)
+					})
+				} else {
+					imported, err = sj.InstallRemoteMod(ctx, instance.DataDir, rawURL, apiKey, result, expectedVersion, func(message string) {
+						_, _ = job.Info(ctx, message)
+					})
+				}
 				if err != nil {
 					return err
 				}
@@ -2028,7 +2079,7 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 					}
 					_, _ = job.Info(ctx, fmt.Sprintf("已导入：%s", name))
 				}
-				if activeSaveName := sj.GetActiveSaveName(instance.DataDir); activeSaveName != "" {
+				if activeSaveName := sj.GetActiveSaveName(instance.DataDir); replaceUniqueID == "" && activeSaveName != "" {
 					if err := sj.MarkImportedModsEnabledForSave(instance.DataDir, activeSaveName, imported); err != nil {
 						s.logger.Warn("mark remote installed mods enabled", "instance", instanceID, "save", activeSaveName, "error", err)
 						_, _ = job.Info(ctx, "安装完成，但当前存档启用状态更新失败，请到配置模组页手动启用")
@@ -2053,8 +2104,8 @@ func (s *server) handleModRemoteInstall(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	s.logger.Info("remote mod install queued", "instance", instanceID, "job", job.ID)
-	s.auditLog(r, &actor, "mod_remote_install", "instance", instanceID, auditMetadata("jobId", job.ID))
+	s.logger.Info("remote mod install queued", "instance", instanceID, "job", job.ID, "expectedVersion", expectedVersion, "nexusFileId", req.NexusFileID, "replaceUniqueId", replaceUniqueID)
+	s.auditLog(r, &actor, "mod_remote_install", "instance", instanceID, auditMetadata("jobId", job.ID, "expectedVersion", expectedVersion, "nexusFileId", fmt.Sprintf("%d", req.NexusFileID), "replaceUniqueId", replaceUniqueID))
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
 }
 

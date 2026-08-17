@@ -6,6 +6,7 @@ import vm from 'node:vm'
 const extensionRoot = new URL('../../browser-extensions/nexus-slow-installer/', import.meta.url)
 const sharedSource = readFileSync(new URL('shared.js', extensionRoot), 'utf8')
 const backgroundSource = readFileSync(new URL('background.js', extensionRoot), 'utf8')
+const contentSource = readFileSync(new URL('content.js', extensionRoot), 'utf8')
 const panelBridgeSource = readFileSync(new URL('panel-bridge.js', extensionRoot), 'utf8')
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', extensionRoot), 'utf8'))
 
@@ -71,6 +72,7 @@ function captureState({ key = 'tab:1', requestId = 'request-1', modId = 100, fil
     gameDomain: 'stardewvalley',
     modId,
     fileId,
+    expectedVersion: '2.9.1',
     modName: 'Example',
     pageUrl: `https://www.nexusmods.com/stardewvalley/mods/${modId}?file_id=${fileId}`,
     pendingUrl: downloadURL,
@@ -78,12 +80,14 @@ function captureState({ key = 'tab:1', requestId = 'request-1', modId = 100, fil
   return { captures: { [key]: capture }, capture }
 }
 
-function backgroundHarness({ seedState = captureState(), fetchImpl, tabMessageImpl } = {}) {
+function backgroundHarness({ seedState = captureState(), fetchImpl, tabMessageImpl, setTimeoutImpl = setTimeout } = {}) {
   const storage = storageArea({
     [CONFIG_KEY]: extensionConfig(),
     [STATE_KEY]: seedState,
   })
   const runtimeListeners = []
+  const createdTabs = []
+  let nextTabId = 99
   const context = {
     AbortController,
     URL,
@@ -91,7 +95,7 @@ function backgroundHarness({ seedState = captureState(), fetchImpl, tabMessageIm
     console,
     crypto: webcrypto,
     fetch: (...args) => fetchImpl(...args),
-    setTimeout,
+    setTimeout: setTimeoutImpl,
     clearTimeout,
     importScripts() {},
     chrome: {
@@ -103,7 +107,11 @@ function backgroundHarness({ seedState = captureState(), fetchImpl, tabMessageIm
         onCreated: { addListener() {} },
       },
       tabs: {
-        async create() { return { id: 99 } },
+        async create(options) {
+          const tab = { id: nextTabId++, url: options.url, active: options.active }
+          createdTabs.push(tab)
+          return tab
+        },
         async remove() {},
         async sendMessage(...args) {
           if (tabMessageImpl) return tabMessageImpl(...args)
@@ -120,7 +128,7 @@ function backgroundHarness({ seedState = captureState(), fetchImpl, tabMessageIm
   vm.createContext(context)
   vm.runInContext(sharedSource, context, { filename: 'shared.js' })
   vm.runInContext(backgroundSource, context, { filename: 'background.js' })
-  return { context, runtimeListeners, storage: storage.values }
+  return { context, runtimeListeners, storage: storage.values, createdTabs }
 }
 
 async function waitFor(predicate, message) {
@@ -153,7 +161,18 @@ async function testBackgroundSingleflight() {
   assert.ok(results.every((result) => result.jobId === 'job-singleflight'))
   assert.ok(results.some((result) => result.deduped), 'followers should report that the POST was shared')
   assert.equal(requests[0].options.headers['Idempotency-Key'], 'request-1')
-  assert.equal(requests[0].options.headers['X-Anxi-Nexus-Installer'], '0.1.3')
+  assert.equal(requests[0].options.headers['X-Anxi-Nexus-Installer'], '0.1.8')
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    url: downloadURL,
+    mod: {
+      modId: 100,
+      name: 'Example',
+      version: '2.9.1',
+      nexusUrl: 'https://www.nexusmods.com/stardewvalley/mods/100?file_id=10',
+    },
+    expectedVersion: '2.9.1',
+    nexusFileId: 10,
+  })
   assert.equal(harness.storage[STATE_KEY].captures['tab:1'].active, false)
 }
 
@@ -200,18 +219,39 @@ async function testFailureRetryAndWorkerRestart() {
   assert.equal(retryHeaders[0]['Idempotency-Key'], failedHeaders[0]['Idempotency-Key'])
 }
 
+async function testUpdateContextReachesPanelRequest() {
+  const seedState = captureState({ requestId: 'update-request-1' })
+  seedState.capture.operation = 'update'
+  seedState.capture.replaceUniqueId = 'Pathoschild.ContentPatcher'
+  seedState.captures['tab:1'] = seedState.capture
+  const requests = []
+  const harness = backgroundHarness({
+    seedState,
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return jsonResponse({ jobId: 'job-update' })
+    },
+  })
+
+  await harness.context.finishInstall(downloadURL, 'tab:1')
+  assert.equal(requests.length, 1)
+  assert.equal(JSON.parse(requests[0].options.body).replaceUniqueId, 'Pathoschild.ContentPatcher')
+}
+
 async function testCaptureIdentityRotation() {
   const harness = backgroundHarness({
     seedState: { captures: {}, capture: null },
     fetchImpl: async () => jsonResponse({ jobId: 'unused' }),
   })
   const sender = { tab: { id: 7, url: 'https://www.nexusmods.com/stardewvalley/mods/100' } }
-  const first = await harness.context.startCapture({ modId: 100, fileId: 10 }, sender)
-  const reinjected = await harness.context.startCapture({ modId: 100, fileId: 10 }, sender)
-  const differentFile = await harness.context.startCapture({ modId: 100, fileId: 11 }, sender)
+  const first = await harness.context.startCapture({ modId: 100, fileId: 10, expectedVersion: '2.9.0' }, sender)
+  const reinjected = await harness.context.startCapture({ modId: 100, fileId: 10, expectedVersion: '2.9.0' }, sender)
+  const differentVersion = await harness.context.startCapture({ modId: 100, fileId: 10, expectedVersion: '2.9.1' }, sender)
+  const differentFile = await harness.context.startCapture({ modId: 100, fileId: 11, expectedVersion: '2.9.1' }, sender)
   const unknownFile = await harness.context.startCapture({ modId: 100, fileId: 0 }, sender)
   const repeatedUnknownFile = await harness.context.startCapture({ modId: 100, fileId: 0 }, sender)
   assert.equal(reinjected.requestId, first.requestId, 'same active capture must survive page reinjection')
+  assert.notEqual(differentVersion.requestId, first.requestId, 'a new target version must rotate the install identity')
   assert.notEqual(differentFile.requestId, first.requestId, 'different Nexus files must be separate actions')
   assert.notEqual(repeatedUnknownFile.requestId, unknownFile.requestId, 'unknown file identities must not be merged')
 }
@@ -274,7 +314,8 @@ async function testPanelBridgeSingleflightAndFileIdentity() {
     instanceId: 'stardew',
     requestId: 'panel-request-1',
     fileId: 10,
-    mod: { modId: 100, name: 'Example' },
+    expectedVersion: '2.9.1',
+    mod: { modId: 100, name: 'Example', version: '2.9.1' },
   }
   const first = sendPanelInstall(listener, payload)
   const duplicate = sendPanelInstall(listener, payload)
@@ -285,6 +326,13 @@ async function testPanelBridgeSingleflightAndFileIdentity() {
   assert.equal(firstResult.result.jobId, 'job-panel')
   assert.equal(duplicateResult.result.jobId, 'job-panel')
   assert.equal(requests[0].options.headers['Idempotency-Key'], 'panel-request-1')
+  assert.equal(requests[0].options.headers['X-Anxi-Nexus-Installer'], '0.1.8')
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    url: downloadURL,
+    mod: { modId: 100, name: 'Example', version: '2.9.1' },
+    expectedVersion: '2.9.1',
+    nexusFileId: 10,
+  })
 
   const distinctRequests = []
   const distinctHarness = panelBridgeHarness(async (url, options) => {
@@ -300,8 +348,154 @@ async function testPanelBridgeSingleflightAndFileIdentity() {
   assert.equal(distinctRequests.length, 2, 'different fileIds must not be merged by the panel bridge')
 }
 
-assert.equal(manifest.version, '0.1.3')
+function testVersionAwareFileSelection() {
+  const context = { URL, console }
+  context.globalThis = context
+  vm.createContext(context)
+  vm.runInContext(sharedSource, context, { filename: 'shared.js' })
+  const oldFirst = [
+    { fileId: 100, contextText: 'Content Patcher 2.9.0 Manual download', visible: true, order: 0 },
+    { fileId: 101, contextText: 'Content Patcher 2.9.1 Manual download', visible: true, order: 1 },
+  ]
+  assert.equal(context.chooseNexusFileCandidate(oldFirst, '2.9.1').fileId, 101)
+  assert.equal(context.chooseNexusFileCandidate(oldFirst, 'v2.9.1').fileId, 101)
+  assert.equal(context.chooseNexusFileCandidate(oldFirst, '2.9.10'), null)
+  assert.equal(context.nexusVersionMatchesText('Content Patcher 2.9.10', '2.9.1'), false)
+
+  const restored = context.mergeNexusAutomationParams(
+    { batchId: 'batch-1', itemId: 'target-1915', autoSubmit: true, expectedVersion: '' },
+    { batchId: 'batch-1', itemId: 'target-1915', autoSubmit: true, expectedVersion: '2.9.1' },
+  )
+  assert.equal(restored.expectedVersion, '2.9.1', 'Nexus redirects must not drop the selected latest version')
+  const unrelated = context.mergeNexusAutomationParams(
+    { batchId: 'batch-2', itemId: 'target-1915', autoSubmit: true, expectedVersion: '' },
+    { batchId: 'batch-1', itemId: 'target-1915', autoSubmit: true, expectedVersion: '2.9.1' },
+  )
+  assert.equal(unrelated.expectedVersion, '', 'a different batch must not inherit stale version state')
+}
+
+async function testBatchCarriesLatestVersionAndAllowsLegacyInference() {
+  const harness = backgroundHarness({
+    fetchImpl: async () => jsonResponse({ jobId: 'unused' }),
+  })
+  const pageURL = harness.context.withBatchParams(
+    'https://www.nexusmods.com/stardewvalley/mods/1915?tab=files',
+    'batch-1',
+    { id: 'target-1915', expectedVersion: '2.9.1' },
+  )
+  assert.equal(new URL(pageURL).searchParams.get('anxi_version'), '2.9.1')
+  const legacyHarness = backgroundHarness({
+    fetchImpl: async () => jsonResponse({ jobId: 'unused' }),
+    setTimeoutImpl: (callback, delay, ...args) => delay >= 180000 ? 0 : setTimeout(callback, delay, ...args),
+  })
+  const legacyBatch = await legacyHarness.context.startBatchInstall({
+    batchId: 'batch-missing-version',
+    targets: [{ id: 'target-1915', modId: 1915, name: 'Content Patcher', url: pageURL }],
+  }, { tab: { id: 1 } })
+  assert.equal(legacyBatch.items[0].expectedVersion, '')
+  assert.equal(legacyBatch.items[0].status, 'opening', 'legacy Panel targets should defer latest-version discovery to Nexus')
+
+  const updateBatch = await legacyHarness.context.startBatchInstall({
+    batchId: 'batch-update',
+    targets: [{
+      id: 'update-1915',
+      operation: 'update',
+      replaceUniqueId: 'Pathoschild.ContentPatcher',
+      modId: 1915,
+      name: 'Content Patcher',
+      url: pageURL,
+      expectedVersion: '2.9.1',
+    }],
+  }, { tab: { id: 1 } })
+  assert.equal(updateBatch.items[0].operation, 'update')
+  assert.equal(updateBatch.items[0].replaceUniqueId, 'Pathoschild.ContentPatcher')
+  const updateCapture = await legacyHarness.context.startCapture({
+    batchId: 'batch-update',
+    itemId: 'update-1915',
+    modId: 1915,
+    fileId: 101,
+    expectedVersion: '2.9.1',
+  }, { tab: { id: 99 } })
+  assert.equal(updateCapture.operation, 'update')
+  assert.equal(updateCapture.replaceUniqueId, 'Pathoschild.ContentPatcher')
+}
+
+async function testBatchTargetsOpenSequentially() {
+  const harness = backgroundHarness({
+    seedState: { captures: {}, capture: null },
+    fetchImpl: async () => jsonResponse({ jobId: 'unused' }),
+    tabMessageImpl: async (_tabId, message) => {
+      if (message.type === 'PANEL_REMOTE_INSTALL') {
+        return { ok: true, result: { jobId: 'job-required' } }
+      }
+      return { ok: true }
+    },
+    setTimeoutImpl: (callback, delay, ...args) => delay >= 180000 ? 0 : setTimeout(callback, delay, ...args),
+  })
+  const batchId = 'batch-sequential'
+  const batch = await harness.context.startBatchInstall({
+    batchId,
+    targets: [
+      {
+        id: 'required-1915',
+        role: 'required',
+        modId: 1915,
+        name: 'Content Patcher',
+        url: 'https://www.nexusmods.com/stardewvalley/mods/1915?tab=files',
+        expectedVersion: '2.9.1',
+      },
+      {
+        id: 'target-4626',
+        role: 'target',
+        modId: 4626,
+        name: 'Dialogue translation',
+        url: 'https://www.nexusmods.com/stardewvalley/mods/4626?tab=files',
+        expectedVersion: '1.2.11',
+      },
+    ],
+  }, { tab: { id: 1 } })
+
+  assert.equal(harness.createdTabs.length, 1, 'only the first batch target may open initially')
+  assert.equal(batch.items[0].status, 'opening')
+  assert.equal(batch.items[1].status, 'pending')
+  assert.match(harness.createdTabs[0].url, /\/mods\/1915/)
+
+  const firstTab = harness.createdTabs[0]
+  await harness.context.startCapture({
+    batchId,
+    itemId: 'required-1915',
+    modId: 1915,
+    fileId: 160463,
+    expectedVersion: '2.9.1',
+    autoSubmit: true,
+    closeTabOnComplete: true,
+    pageUrl: firstTab.url,
+  }, { tab: { id: firstTab.id, url: firstTab.url } })
+  await harness.context.finishInstall(downloadURL, `${batchId}:required-1915`)
+
+  assert.equal(harness.createdTabs.length, 2, 'the next target must open only after the first POST is accepted')
+  const targetURL = new URL(harness.createdTabs[1].url)
+  assert.equal(targetURL.pathname, '/stardewvalley/mods/4626')
+  assert.equal(targetURL.searchParams.get('anxi_item'), 'target-4626')
+  assert.equal(targetURL.searchParams.get('anxi_version'), '1.2.11')
+  assert.equal(targetURL.searchParams.get('file_id'), null, 'the dependency file id must not leak into the target page')
+  const storedBatch = harness.storage[STATE_KEY].batches[batchId]
+  assert.equal(storedBatch.items[0].status, 'queued')
+  assert.equal(storedBatch.items[1].status, 'opening')
+}
+
+const legacySlowGuard = contentSource.indexOf('if (clickSlow && (document.querySelector("mod-file-download") || findSlowDownloadButton()))')
+const versionAwareDiscovery = contentSource.indexOf('if (!pageInfo.fileId || batch.expectedVersion)', legacySlowGuard)
+assert.ok(legacySlowGuard >= 0, 'legacy Nexus slow-download pages must have an explicit auto-click guard')
+assert.ok(versionAwareDiscovery > legacySlowGuard, 'the slow-download interstitial guard must run before file discovery')
+assert.equal(manifest.version, '0.1.8')
+assert.match(contentSource, /current\.previousElementSibling/)
+assert.match(contentSource, /label\.tagName\.toLowerCase\(\) === "dt"/)
+testVersionAwareFileSelection()
+await testBatchCarriesLatestVersionAndAllowsLegacyInference()
+await testBatchTargetsOpenSequentially()
 await testBackgroundSingleflight()
+await testUpdateContextReachesPanelRequest()
 await testFailureRetryAndWorkerRestart()
 await testCaptureIdentityRotation()
 await testPanelBridgeSingleflightAndFileIdentity()

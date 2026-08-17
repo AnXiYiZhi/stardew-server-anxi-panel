@@ -338,11 +338,23 @@ func TestSearchNexusMods_KeywordSearchRequestShape(t *testing.T) {
 }
 
 func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
+	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/graphql" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
+		requestCount++
 		w.Header().Set("Content-Type", "application/json")
+		if requestCount == 2 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"mods": map[string]any{
+						"nodes": []map[string]any{{"modId": 2400, "name": "SMAPI - Stardew Modding API", "version": "4.5.2"}},
+					},
+				},
+			})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]any{
 				"mods": map[string]any{
@@ -386,6 +398,12 @@ func TestSearchNexusMods_KeywordSearchParsesResult(t *testing.T) {
 	}
 	if resp.Results[0].RequiredMods[0].NexusURL != "https://www.nexusmods.com/stardewvalley/mods/2400" {
 		t.Fatalf("RequiredMods[0].NexusURL = %q", resp.Results[0].RequiredMods[0].NexusURL)
+	}
+	if resp.Results[0].RequiredMods[0].Version != "4.5.2" {
+		t.Fatalf("RequiredMods[0].Version = %q, want latest version 4.5.2", resp.Results[0].RequiredMods[0].Version)
+	}
+	if requestCount != 2 {
+		t.Fatalf("GraphQL requests = %d, want search plus one prerequisite metadata lookup", requestCount)
 	}
 	if resp.Query != "farming" {
 		t.Errorf("Query = %q, want %q", resp.Query, "farming")
@@ -538,6 +556,67 @@ func makeNexusModZip(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestVerifyRemoteModArchiveVersion(t *testing.T) {
+	archivePath := filepath.Join(t.TempDir(), "cool-mod.zip")
+	if err := os.WriteFile(archivePath, makeNexusModZip(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRemoteModArchiveVersion(archivePath, "v1.2.3"); err != nil {
+		t.Fatalf("matching archive version was rejected: %v", err)
+	}
+	err := verifyRemoteModArchiveVersion(archivePath, "1.2.4")
+	mismatch, ok := err.(*RemoteModVersionMismatchError)
+	if !ok {
+		t.Fatalf("mismatch error = %T %v, want *RemoteModVersionMismatchError", err, err)
+	}
+	if mismatch.Expected != "1.2.4" || len(mismatch.Actual) != 1 || mismatch.Actual[0] != "1.2.3" {
+		t.Fatalf("mismatch = %+v, want expected 1.2.4 and actual 1.2.3", mismatch)
+	}
+	if !strings.Contains(err.Error(), "未覆盖现有 Mod") {
+		t.Fatalf("mismatch error does not explain the safe no-write outcome: %v", err)
+	}
+}
+
+func TestRemoteArchiveVersionMismatchStopsBeforeInstall(t *testing.T) {
+	archive := makeNexusModZip(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	dataDir := t.TempDir()
+	_, err := installRemoteArchive(context.Background(), dataDir, server.URL+"/cool.zip", NexusModSearchResult{ModID: 1234}, "1.2.4", "", nil)
+	if _, ok := err.(*RemoteModVersionMismatchError); !ok {
+		t.Fatalf("install mismatch error = %T %v, want *RemoteModVersionMismatchError", err, err)
+	}
+	if _, statErr := os.Stat(modsDir(dataDir)); !os.IsNotExist(statErr) {
+		t.Fatalf("version mismatch mutated the Mods directory: %v", statErr)
+	}
+}
+
+func TestNormalizeRemoteModExpectedVersionRejectsUnsafeText(t *testing.T) {
+	if _, err := NormalizeRemoteModExpectedVersion("2.9.1\nforged"); err == nil {
+		t.Fatal("expected unsafe version text to be rejected")
+	}
+}
+
+func TestUpdateRemoteModRequiresExpectedVersionBeforeDownload(t *testing.T) {
+	_, err := UpdateRemoteMod(
+		context.Background(),
+		t.TempDir(),
+		"https://supporter-files.nexus-cdn.com/mods/1303/1234/example.zip",
+		"",
+		NexusModSearchResult{ModID: 1234},
+		"",
+		"Pathoschild.ContentPatcher",
+		nil,
+	)
+	if err != ErrInvalidRemoteModExpectedVersion {
+		t.Fatalf("missing update version error = %T %v", err, err)
+	}
 }
 
 func TestInstallNexusMod_DownloadsInstallsAndStoresMetadata(t *testing.T) {

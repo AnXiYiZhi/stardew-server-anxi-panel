@@ -311,6 +311,22 @@ func (c *Client) ComposeLogs(ctx context.Context, dir string, opts LogsOptions) 
 	return c.run(ctx, "docker compose logs", dir, c.timeouts.Logs, args...)
 }
 
+// ContainerLogs returns a bounded tail from one explicitly named container.
+// It is used by support bundles to collect the panel container's own logs,
+// which are outside an instance's Compose project.
+func (c *Client) ContainerLogs(ctx context.Context, workDir, container string, tail int) (CommandResult, error) {
+	if tail == 0 {
+		tail = DefaultLogTail
+	}
+	if tail < 1 || tail > MaxLogTail {
+		return CommandResult{WorkDir: workDir, ExitCode: -1}, ErrInvalidTail
+	}
+	if !serviceNamePattern.MatchString(container) {
+		return CommandResult{WorkDir: workDir, ExitCode: -1}, ErrInvalidContainer
+	}
+	return c.run(ctx, "docker logs", workDir, c.timeouts.Logs, "logs", "--tail", intString(tail), container)
+}
+
 func parseComposeServices(stdout string) ([]ComposeService, error) {
 	raw, err := parseComposeJSON(stdout)
 	if err != nil {

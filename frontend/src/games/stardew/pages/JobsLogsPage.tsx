@@ -163,14 +163,15 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
 
   const { refreshJobs: dashRefreshJobs, refreshInstanceState, refreshInviteCode } = dashboardData
 
-  const loadJobs = useCallback(async (): Promise<Job[]> => {
+  const loadJobs = useCallback(async (): Promise<Job[] | null> => {
     try {
       const res = await getJobs()
       setJobs(res.jobs)
+      setJobsError('')
       return res.jobs
     } catch (e) {
       setJobsError(errorMessage(e))
-      return []
+      return null
     }
   }, [])
 
@@ -193,7 +194,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
     void (async () => {
       setLoadingJobs(true)
       const loaded = await loadJobs()
-      if (!autoSelectedRef.current) {
+      if (loaded && !autoSelectedRef.current) {
         autoSelectedRef.current = true
         const requestedJobId = selectedJobIdFromLocation()
         if (requestedJobId) {
@@ -310,9 +311,17 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       const loaded = await loadJobs()
       await loadControlCommands()
       dashRefreshJobs()
-      if (!selectedJobId && loaded.length > 0) {
-        setSelectedJobId(loaded[0].id)
-      } else if (selectedJobId) {
+      if (!loaded) return
+      const selectedStillExists = selectedJobId
+        ? loaded.some((job) => job.id === selectedJobId)
+        : false
+      if (!selectedJobId || !selectedStillExists) {
+        const nextSelectedJobId = loaded[0]?.id ?? null
+        setSelectedJobId(nextSelectedJobId)
+        setSelectedJob(null)
+        setLogs([])
+        setLogsTruncated(false)
+      } else {
         const [jobRes, logsRes] = await Promise.all([
           getJob(selectedJobId).catch(() => null),
           getJobLogs(selectedJobId, 0).catch(() => null),
@@ -368,7 +377,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
           setLogs(logsRes.logs)
           setLogsTruncated(logsRes.logs.length >= 1000)
         }
-      } else if (loaded.length > 0) {
+      } else if (loaded && loaded.length > 0) {
         setSelectedJobId(loaded[0].id)
       }
     } catch (e) {
