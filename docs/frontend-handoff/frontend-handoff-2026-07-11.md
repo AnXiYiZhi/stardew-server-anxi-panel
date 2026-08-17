@@ -12,6 +12,7 @@
 - `npm run test:nexus-extension-idempotency` 固定 update 上下文从 batch 到 capture 和两条 POST 的传递；production build 通过。应用内 Browser 验证按钮紧邻“查看更新页”、断连时禁用提示和 800px root/body 零横向溢出。
 - 不要把本地“已安装”直接当成 update 批次完成条件，否则旧版本会在扩展真正下载前被提前标为 done。聚合包不能只替换其中一个成员；需要继续保留外链并解释为何不可一键更新。
 - 真实 Chrome + 0.1.8 已在停止态完成 CDN 捕获与后台任务：Content Patcher `2.9.0 → 2.9.1` 更新保留 config/启用状态；缺前置批次先提交 Content Patcher `2.9.1/file_id=160463`，再打开并安装 Elle's New Barn Animals `1.1.3/file_id=34408`。两个落盘 manifest 精确匹配，临时目录为零。
+- v0.5.3 首次候选 `32033542812` 的 selected code gates 已通过；fresh bundle 契约因仍在桌面/移动控制块搜索已抽离的运行设置 JSX 而误失败，且失败发生在候选上传、tag 和正式提升之前。`scripts/release-candidate.sh` 与升级 E2E 现都加载 `ServerRuntimeSettingsDialog` 懒块并在该块检查隐藏的 `FarmhouseStack` 兼容选项，Git Bash 语法、ShellCheck、production chunk 正则和 responsive-layout 回归通过；下一候选必须从修复后的新 commit 完整重跑，不可复用旧 run。
 
 # FE-REFRESH-ACTIONS-AUDIT-1 前端接手记录（2026-08-17，completed，待发布）
 

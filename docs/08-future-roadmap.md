@@ -4,7 +4,8 @@
 - [x] 官网更新日志与首页已准备 v0.5.3，并按用户要求在密码功能中特别感谢群友「石头佬」、在 Mod 功能中特别感谢群友「鹈鹕镇的热心市民」。
 - [x] 真实 Chrome + 扩展 0.1.8 已完成 Content Patcher `2.9.0 → 2.9.1` 一键更新，以及 Content Patcher `2.9.1/file_id=160463` 提交后再安装 Elle's New Barn Animals `1.1.3/file_id=34408` 的缺前置 ZIP 批次；manifest、旧配置/启用状态和零临时残留均已核对。
 - [x] 用户于 2026-08-17 确认两个真人客户端角色密码矩阵通过：各自首次认领与重复正确登录、交叉失败、管理员清除后重认领、Panel 批准、server recreate/Panel 重启保持。
-- [ ] 提交并同步 origin/main，由不可变候选执行剩余自动门禁、创建 annotated v0.5.3 tag 和正式提升，最后回填 workflow、digest、Release 与资源清理证据。
+- [x] 首版聚合提交已同步 `origin/main`；自动候选 `32033542812` 的代码门禁通过，fresh production bundle 因运行设置已抽到共享懒加载块、旧门禁仍搜索桌面/移动控制块而在推送候选前安全失败。
+- [ ] 提交共享 `ServerRuntimeSettingsDialog` 产物门禁修复并重新执行完整不可变候选；成功后再由自动流程创建 annotated v0.5.3 tag、提升同一 digest，并回填 workflow、Release 与资源清理证据。
 
 # 2026-08-17 已完成：已安装 Mod 一键安全更新
 

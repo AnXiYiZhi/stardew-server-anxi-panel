@@ -1150,6 +1150,7 @@
 
 ## 2026-08-09：Windows `bash` 命中无可用发行版的 WSL 转发器
 
+- 最近复发/补充：2026-08-17 修正 v0.5.3 候选前端产物门禁后，先用 `Get-Command bash` 看到 `C:\Windows\System32\bash.exe` 却仍直接执行 `bash -n`，再次命中无发行版 WSL relay 并以 `execvpe(/bin/bash) failed` 退出 1；脚本、仓库和 Docker 均未被该命令修改。后续立即改用已记录的 `D:\Code\CodeTools\Git\bin\bash.exe`，先验证 `--version` 再做语法和产物契约检查；Windows 发布任务不得再从 PATH 调用裸 `bash`。
 - 最近复发/补充：2026-08-15 为 Junimo 候选升级 E2E 做语法检查时直接调用 PATH 的 `bash -n`，再次命中无发行版 WSL relay 并以 `execvpe(/bin/bash) failed` 退出 1；脚本未执行、仓库未被该命令修改。随后直接使用已 inspect 的 `bash:5.2` 只读挂载容器完成 `bash -n`，ShellCheck 使用独立已 inspect 镜像显式调用。
 - 最近复发/补充：2026-08-15 `v0.4.17` 发布脚本门禁又先从 PATH 调用 `bash --version`，命中无发行版的 WSL relay，并在任何 `bash -n`/功能测试前以 `execvpe(/bin/bash) failed` 退出 1；仓库与 Docker 无变化。后续本轮只使用已验证精确 Git Bash 路径或 Linux 容器，不再探测 PATH bash。
 - 最近复发/补充：2026-08-14 修复生产 VNC 端口前为任务脚本做语法检查，仍只用 `Get-Command bash` 取得 PATH 首项并直接执行，再次命中 WSL 转发器、以 `execvpe(/bin/bash) failed` 退出 1；脚本未发送，远端 Compose 和容器均未变化。随后固定使用本条已验证的 `D:\Code\CodeTools\Git\bin\bash.exe`，先执行 `--version` 再执行 `-n`；已知精确路径存在时不得重新从 PATH 选择解释器。
@@ -1298,6 +1299,7 @@
 
 ## 2026-07-28：嵌套 PowerShell 提前展开变量
 
+- 最近复发/补充：2026-08-17 检查 v0.5.3 production entry 中的共享懒块时，把 Bash 的 `$(grep ...)`、数组和 `$entry` 写进 PowerShell 双引号参数；父 PowerShell 先尝试执行宿主 `grep`，Git Bash 随后只收到残缺脚本并退出，检查未执行且文件未变化。修正为用 PowerShell 原生 `rg` 返回精确匹配并在 PowerShell 中计数；任何跨 Shell 验证只要出现 `$`、`$()` 或数组语法就拆层，不能用反斜杠猜测 PowerShell 转义。
 - 最近复发/补充：2026-08-16 `v0.5.0` 部署脚本门禁在四项功能测试已通过后，又把 `for shell_file ... "$shell_file"` 嵌入 PowerShell 双引号的 `docker run ... bash -ec` 参数；PowerShell 提前把 `$shell_file` 展开为空，容器端 `for` 报 `unexpected end of file` 并退出 2。产品脚本和仓库没有因此改变，任务容器由 `--rm` 清理。后续改为 PowerShell 外层显式文件数组逐项调用只读容器 `bash -n <file>`，不在跨 Shell 命令中保留变量。
 - 最近复发/补充：2026-08-13 为发布脚本做逐文件 `bash -n` 时，把 Bash `for ...; do ... "$f" || exit $?; done` 再嵌入 `pwsh → docker run → sh -c`，PowerShell提前展开 `$f/$?`，容器收到残缺脚本并报 `unexpected end of file`；文件未修改。改为 PowerShell 外层枚举明确文件，每次直接传 `bash -n <file>`，完整语法检查与 ShellCheck 通过。同日最终升级成功后的只读哨兵复核又在 PowerShell 双引号参数内写 Bash `$f`，即使前置反斜杠也不会阻止 PowerShell 展开，造成命令在 SQLite 已确认 `ok` 后退出 1；没有产品或数据写入。随后改为三个明确的 `test -f` 参数；紧接着统计资源时又在同类字符串中写 `$(... | wc -l)`，PowerShell 抢先执行并因宿主没有 `wc` 报错，进一步证明反斜杠不是 PowerShell 转义。最终改为直接传 `docker exec ... docker ps/network ls` 参数并在 PowerShell 收集输出计数，不再使用嵌套 shell substitution。跨 Shell 循环不再内联，宁可外层结构化枚举。
 - 最近复发/补充：2026-08-12 v0.4.11 发布验收用双引号 `rg -F` 模式搜索字面 `jobs/${`，PowerShell 把 `${` 解释为未闭合变量表达式并在搜索前报 `ParserError`；没有修改文件。带 `$`、`${`、反引号的字面模式必须改为单引号参数、`Select-String -SimpleMatch`，或搜索不含特殊字符的稳定片段，不能把 `-F` 当成 Shell 层的转义。

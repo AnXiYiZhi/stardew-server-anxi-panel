@@ -1,4 +1,4 @@
-# v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式候选计划（2026-08-17，candidate pending）
+# v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式候选计划（2026-08-17，candidate retry pending）
 
 ## 变更清单与受影响链路
 
@@ -28,6 +28,7 @@
 
 - 候选前状态：上一正式版固定为 `v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1`，本地 `main` 相对 `origin/main` 只有本版提交与工作树变更，远端没有独立提交。更新日志已按聚合范围准备，并加入“密码功能感谢群友石头佬”“Mod 功能感谢群友鹈鹕镇的热心市民”。候选 commit、workflow、artifact、digest、自动 Tag、正式提升、GitHub Release、三仓引用与资源终态待全部门禁完成后回填。
 - 发布阻断线：真实 Chrome + 0.1.8 扩展安装/更新已取得下述可验证结果；用户于 2026-08-17 进一步确认两个真人客户端的首次认领、各自正确登录、交叉失败、管理员清除后重认领、Panel 批准以及 server recreate/Panel 重启保持全部通过。人工高风险门禁已解除，可以提交 `main` 启动不可变候选；后续候选、Web 升级/回滚、digest 提升或正式冒烟任一失败仍须停止发布并修复受影响下游。
+- 首次自动候选 workflow `32033542812` 固定提交 `2862d8b3c04768fed0e48acb8c8fdb5d95e30876`，版本解析为 `0.5.3`；全部 selected code gates 和 Windows wrapper 校验通过，但 fresh smoke 的 production bundle 检查仍只在 `ServerControlPage/MobileControlPage` 搜索已经抽到共享懒加载块的 `FarmhouseStack` 隐藏兼容选项，因此在任何候选上传、tag 或正式提升前安全失败。修复把 fresh 与升级后契约都改为精确拉取 `ServerRuntimeSettingsDialog` 块并在该块断言 `hidden` 兼容值，同时保留桌面/移动控制块存在性检查；Git Bash 5.2 `bash -n`、ShellCheck 0.10.0、真实 production chunk 正则与 `test:responsive-layout` 已通过。该失败没有产生候选 artifact、registry 引用、tag、Release 或待清理 Docker 资源；修复提交后必须重新走完整候选，不能重用 run `32033542812`。
 
 ## 真实 Chrome 0.1.8 扩展证据（2026-08-17，passed）
 

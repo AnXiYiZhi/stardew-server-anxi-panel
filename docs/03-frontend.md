@@ -4,6 +4,7 @@
 - 更新继续复用现有扩展批量任务、进度、失败跳转和 session 恢复，不另建第二套表单。批量项增加 `operation: update` 与 `replaceUniqueId`，同时保留 `expectedVersion` 和 Nexus file ID 的严格版本选择；扩展 0.1.8 的 background 直连与 panel bridge 两条提交路径都只在更新模式发送替换目标。普通“本体 + 缺失前置”批次改成每项提交成功后才打开下一 Nexus 页，避免两个页面的 file ID/capture 状态交叉。
 - 更新完成后重新读取本地 Mod 清单并强制刷新更新检查；已安装旧版本不会被误判为批次已经完成。现有“查看更新页”外链始终保留，用户仍可选择手工处理。
 - `test:nexus-extension-idempotency` 覆盖 update 上下文的 batch/capture/session 持久化、两条 POST 请求体和批次页面串行打开；production build 通过。应用内 Browser 验证了按钮位置、扩展断连禁用提示和 800px 零横向溢出。真实 Chrome + `0.1.8` 已完成 Content Patcher `2.9.0 → 2.9.1` 一键更新，以及 Content Patcher `2.9.1/file_id=160463` 提交后再打开 Elle's New Barn Animals `1.1.3/file_id=34408` 的缺前置 ZIP 批次；Panel 均显示成功，安装目录 manifest 精确匹配且无临时残留。
+- v0.5.3 首次候选发现 production 产物门禁仍在 `ServerControlPage/MobileControlPage` 搜索已抽离的运行设置表单，导致隐藏的 `FarmhouseStack` 兼容选项被误判缺失。fresh 与升级后门禁现都精确加载共享 `ServerRuntimeSettingsDialog` 懒块并在该块验证 `hidden` 兼容值；`test:responsive-layout` 同时锁定共享块名称，避免以后重构再次形成源码通过、候选误判。
 
 # FE-REFRESH-ACTIONS-AUDIT-1：全前端刷新按钮数据流审计（2026-08-17，completed，待发布）
 

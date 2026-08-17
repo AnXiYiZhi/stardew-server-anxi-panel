@@ -162,8 +162,7 @@ assert_frontend_contract_from_container() {
   local entry_asset=""
   local prefix=""
   local asset=""
-  local control_asset=""
-  local mobile_control_asset=""
+  local runtime_settings_asset=""
   local saves_asset=""
   local jobs_asset=""
   local players_asset=""
@@ -179,7 +178,7 @@ assert_frontend_contract_from_container() {
   entry_asset="${matches[0]}"
   docker exec "$container" wget -qO- "http://127.0.0.1:8090$entry_asset" >"$output_dir/entry.js"
 
-  for prefix in ServerControlPage MobileControlPage SavesPage JobsLogsPage PlayersPage; do
+  for prefix in ServerControlPage MobileControlPage ServerRuntimeSettingsDialog SavesPage JobsLogsPage PlayersPage; do
     mapfile -t matches < <(grep -oE "(^|/)$prefix-[A-Za-z0-9_-]+\.js" "$output_dir/entry.js" | sort -u)
     if [[ "${#matches[@]}" -ne 1 ]]; then
       echo "release candidate: expected exactly one $prefix frontend chunk" >&2
@@ -188,20 +187,17 @@ assert_frontend_contract_from_container() {
     asset="/assets/${matches[0]#/}"
     docker exec "$container" wget -qO- "http://127.0.0.1:8090$asset" >"$output_dir/$prefix.js"
     case "$prefix" in
-      ServerControlPage) control_asset="$output_dir/$prefix.js" ;;
-      MobileControlPage) mobile_control_asset="$output_dir/$prefix.js" ;;
+      ServerRuntimeSettingsDialog) runtime_settings_asset="$output_dir/$prefix.js" ;;
       SavesPage) saves_asset="$output_dir/$prefix.js" ;;
       JobsLogsPage) jobs_asset="$output_dir/$prefix.js" ;;
       PlayersPage) players_asset="$output_dir/$prefix.js" ;;
     esac
   done
 
-  for asset in "$control_asset" "$mobile_control_asset"; do
-    if ! grep -Eq 'value:.FarmhouseStack.,hidden:!0,children:.FarmhouseStack（兼容已有配置）.' "$asset"; then
-      echo "release candidate: production frontend exposes FarmhouseStack or lost legacy-value compatibility" >&2
-      exit 1
-    fi
-  done
+  if ! grep -Eq 'value:.FarmhouseStack.,hidden:!0,children:.FarmhouseStack（兼容已有配置）.' "$runtime_settings_asset"; then
+    echo "release candidate: production frontend exposes FarmhouseStack or lost legacy-value compatibility" >&2
+    exit 1
+  fi
   if ! grep -Eq 'kind===.auto.\?.游戏日回档.' "$saves_asset" ||
     ! grep -Eq 'farmerName\?.农民：' "$saves_asset" ||
     ! grep -Eq 'farmType\?.地图：' "$saves_asset"; then
