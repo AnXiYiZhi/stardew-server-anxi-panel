@@ -1,4 +1,4 @@
-# v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式候选计划（2026-08-17，candidate retry pending）
+# v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式发布（2026-08-17，released）
 
 ## 变更清单与受影响链路
 
@@ -26,9 +26,11 @@
 
 ## 发布状态
 
-- 候选前状态：上一正式版固定为 `v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1`，本地 `main` 相对 `origin/main` 只有本版提交与工作树变更，远端没有独立提交。更新日志已按聚合范围准备，并加入“密码功能感谢群友石头佬”“Mod 功能感谢群友鹈鹕镇的热心市民”。候选 commit、workflow、artifact、digest、自动 Tag、正式提升、GitHub Release、三仓引用与资源终态待全部门禁完成后回填。
-- 发布阻断线：真实 Chrome + 0.1.8 扩展安装/更新已取得下述可验证结果；用户于 2026-08-17 进一步确认两个真人客户端的首次认领、各自正确登录、交叉失败、管理员清除后重认领、Panel 批准以及 server recreate/Panel 重启保持全部通过。人工高风险门禁已解除，可以提交 `main` 启动不可变候选；后续候选、Web 升级/回滚、digest 提升或正式冒烟任一失败仍须停止发布并修复受影响下游。
+- 正式提交为 `ede7fa34231600cbfa83050b4ddb6fd650373ae1`，与 `origin/main` 精确同步；上一正式版固定为 `v0.5.2@51fd82459e4ac8afbf362f7ad12c0651937879a1`。Compatibility `32034735122` 与官网部署 `32033542832` 成功；受控重试候选 `32034798704` 自动解析 `0.5.3`，固定 build date=`2026-08-17T13:23:16Z`，10m08s 内完成远程制品、部署脚本、后端 test/vet/build、updater/Docker integration、Junimo/SMAPI 真实 network/runtime、19 项前端回归/build、网站 build、fresh/restart 与 `v0.5.2` Web unhealthy 回滚/healthy 升级。候选 artifact=`release-candidate-0.5.3-ede7fa342316`（ID `9290572787`），不可变引用 digest=`sha256:400ad1e92dc84bc62530d38e08ec2ddb20d4d385ee01dc2b35808d23d91bd1f8`。
+- 升级 E2E 先发布同候选 unhealthy 目标并确认 `failed_rolled_back/health_check_failed` 与旧版恢复，再替换为精确健康候选；升级后受控 Mod 更新检查/缓存、legacy `rollback_failed` Junimo 第三次修复、Panel Stop 空 Compose 存档导入、SQLite/初始化/长期状态/非目标容器与 volume、Panel restart 全部通过。候选脚本按唯一 Compose project/owner 清理 DinD 容器、网络、volume、导出文件和临时目录；workflow 成功收口且没有保留测试资源。
 - 首次自动候选 workflow `32033542812` 固定提交 `2862d8b3c04768fed0e48acb8c8fdb5d95e30876`，版本解析为 `0.5.3`；全部 selected code gates 和 Windows wrapper 校验通过，但 fresh smoke 的 production bundle 检查仍只在 `ServerControlPage/MobileControlPage` 搜索已经抽到共享懒加载块的 `FarmhouseStack` 隐藏兼容选项，因此在任何候选上传、tag 或正式提升前安全失败。修复把 fresh 与升级后契约都改为精确拉取 `ServerRuntimeSettingsDialog` 块并在该块断言 `hidden` 兼容值，同时保留桌面/移动控制块存在性检查；Git Bash 5.2 `bash -n`、ShellCheck 0.10.0、真实 production chunk 正则与 `test:responsive-layout` 已通过。该失败没有产生候选 artifact、registry 引用、tag、Release 或待清理 Docker 资源；修复提交后必须重新走完整候选，不能重用 run `32033542812`。
+- 自动 Tag workflow `32035705749` 成功；`v0.5.3` 是 annotated tag（tag object `76b5d1db5797b47d6b8f16cebbd04e1ba96f9785`），解引用精确指向同步的 `origin/main@ede7fa34231600cbfa83050b4ddb6fd650373ae1`。正式提升 `32035725325` 用时 1m25s，只以 preserve-digests 提升候选、没有 rebuild；Docker Hub、阿里云 ACR、GHCR 的 `0.5.3/latest` 六引用经独立 `docker buildx imagetools inspect` 复核均为同一 digest，OCI `version/revision/created` 分别为 `0.5.3`、完整 commit 与固定 build date。
+- 正式 workflow 已从一个精确版本引用完成 health/version 冒烟；GitHub Release `Stardew Server Anxi Panel 0.5.3` 于 `2026-08-17T13:34:50Z` 发布，非 draft/prerelease，四个脚本资产均为 uploaded 且带 SHA-256。Release 正文已补齐聚合功能、两处群友感谢、真人密码矩阵、Chrome 扩展实测、workflow 和 digest；正文编辑不移动 tag、不改变镜像或候选证明。
 
 ## 真实 Chrome 0.1.8 扩展证据（2026-08-17，passed）
 

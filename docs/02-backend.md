@@ -1,12 +1,13 @@
-# NEXUS-EXT-MOD-UPDATE-1：管理员一键安全更新已安装 Mod（2026-08-17，completed，待发布）
+# NEXUS-EXT-MOD-UPDATE-1：管理员一键安全更新已安装 Mod（2026-08-17，released in v0.5.3）
 
 - 复用管理员 `POST /api/instances/:id/mods/remote/install` 与 `mod_remote_install` 任务；请求新增可选 `replaceUniqueId`。字段存在时 Web 调用 `UpdateRemoteMod`，并强制要求正数 Nexus Mod ID/file ID 与非空 `expectedVersion`；省略时保持原安装/幂等行为。仅管理员、停止态可用，`replaceUniqueId` 限 1~256 字节且拒绝控制字符。
 - Junimo 仍先下载完整 ZIP，再同时校验 `expectedVersion`、目标 SMAPI `UniqueID`、目标已安装且非内置、压缩包除 SMAPI 自带支持组件外只含一个目标 Mod。聚合安装包、多 Mod ZIP、错误版本或错误 UniqueID 均在旧目录移动前失败。
 - 校验通过后在 `.local-container` 同文件系统创建任务临时备份，复制旧 `config.json` 覆盖新版默认配置，按目标当前物理根换入新版；安装时间持久化或文件换入失败会删除不完整新版并恢复旧目录。目标原来位于 `mods-disabled` 时更新后仍禁用，Web 不调用“为当前存档启用”逻辑。
 - Nexus sidecar 只在新版写入成功后更新；sidecar 写入失败不会把已完成的文件替换误报为整体回滚。影响 `stardew_junimo/{mods.go,remote_install.go}`、`web/lifecycle_handlers.go` 与专项测试。
 - 验证：单 Mod 替换、目录改名、旧配置覆盖新版默认配置、禁用态保持、聚合包拒绝、错误 UniqueID/目标版本零写入、安装时间写入失败恢复旧目录与清理临时备份，以及 Web 精确目标参数拒绝均有自动化；Windows 精确专项和权威 Linux 全量通过。真实 Chrome + 扩展 `0.1.8` 已把测试夹具中的 Content Patcher 从 `2.9.0/file_id=153187` 一键更新为 `2.9.1/file_id=160463`，请求携带 `replaceUniqueId=Pathoschild.ContentPatcher`，旧 `config.json` 哨兵与启用状态保留，临时下载/备份残留为零。
+- 已随 `v0.5.3@ede7fa34231600cbfa83050b4ddb6fd650373ae1` 正式发布；候选 `32034798704` 完成后端全量、远程制品、真实 Junimo/SMAPI、fresh/restart、`v0.5.2` Web unhealthy 回滚/healthy 升级和升级后专项，正式提升 `32035725325` 未 rebuild，三仓统一 digest=`sha256:400ad1e92dc84bc62530d38e08ec2ddb20d4d385ee01dc2b35808d23d91bd1f8`。
 
-# NEXUS-EXT-LATEST-1：扩展远程安装的最新版本锁定与落盘前验真（2026-08-17，completed，待发布）
+# NEXUS-EXT-LATEST-1：扩展远程安装的最新版本锁定与落盘前验真（2026-08-17，released in v0.5.3）
 
 - Nexus 搜索结果继续把主 Mod 的 `version` 作为当前版本；对 `requiredMods` 新增一次去重的 GraphQL 元数据补全并返回 `version`，使本体与所有未安装前置都能得到明确的最新目标。补全失败时搜索返回错误，不用缺失版本继续静默安装。
 - 管理员 `POST /api/instances/:id/mods/remote/install` 在既有 `{url, mod}` 上新增可选 `expectedVersion` 与 `nexusFileId`。0.1.5 扩展会同时提交二者；旧客户端省略字段仍兼容。版本号只接受最多 64 位的字母、数字、点、下划线、加号和减号，`nexusFileId` 不得为负数；CDN URL 本身仍按原安全规则校验，签名 query 不会被拼接或改写。
@@ -14,7 +15,7 @@
 - `mod_remote_install` 的任务日志、结构化日志与审计只记录安全的目标版本和 `nexusFileId`，不记录完整临时 CDN query。影响文件：`stardew_junimo/{nexus.go,remote_install.go,nexus_test.go}`、`web/lifecycle_handlers.go`。
 - 验证：Nexus 搜索专项覆盖前置最新版本补全；远程 ZIP 专项覆盖 `v1.2.3` 等价匹配、`1.2.4` 不匹配和落盘前零写入；相关定向测试、扩展 ZIP 版本感知测试及任务专属 Linux Go 1.25 全量回归已覆盖该基础链。真实 Chrome + 扩展 `0.1.8` 在停止态测试实例先安装 Content Patcher `2.9.1/file_id=160463`，提交成功后才打开并安装 Elle's New Barn Animals `1.1.3/file_id=34408`；两份 manifest 精确匹配，Mods 临时制品为零。另一个旧 Mod 实际提供 `.rar`，因现有远程安装安全契约仅接受 ZIP，未把它作为成功夹具或放宽后端格式校验。
 
-# SERVER-RUNTIME-MAXPLAYERS-1：建档后修改联机人数上限（2026-08-17，completed，待发布）
+# SERVER-RUNTIME-MAXPLAYERS-1：建档后修改联机人数上限（2026-08-17，released in v0.5.3）
 
 - 复用管理员 `GET/PUT /api/instances/:id/config/server-runtime-settings`；`ServerRuntimeSettings` 新增 `maxPlayers`，GET 在 `Server.MaxPlayers` 缺失或无效时返回 `10`，合法范围固定为 `1~100`。新前端始终提交实际值；兼容旧客户端省略 `maxPlayers` 的 PUT，并在同一把 `Driver.runtimeUpdateMu` 内保留磁盘当前值。
 - 更新仍先通过未结束新建档 owner guard，再以 `atomicWriteValidatedJSON` 在目标目录创建、同步、关闭并 rename 临时文件。写回采用 map 合并，只改 `Server.MaxPlayers/CabinStrategy/ExistingCabinBehavior/NetworkBroadcastPeriod`，保留根级、`Game`、`Server` 的其它未知字段。返回值同时携带锁内读取的 previous/current，Web 审计记录 `maxPlayers` 与 `previousMaxPlayers`。
@@ -23,7 +24,7 @@
 - 影响文件：`internal/games/stardew_junimo/{saves.go,driver.go,players.go}`、对应测试，`internal/web/server_runtime_settings_handlers.go`、Web API 测试与 opt-in `server_runtime_settings_real_integration_test.go`。
 - 验证完成：Windows 相关专项、Web 权限/错误/审计、`go vet ./...`、`go build ./...` 通过；Windows 全包只命中既有 NTFS `0666/0640` 差异，完整仓库挂载的 Linux Go 1.25 `go test ./... -count=1` 全绿。真实 Docker E2E 只读克隆已有存档与游戏卷，依次证明配置 `11` 启动后 `/players.maxPlayers=11`、运行中 PUT `12` 后仍为 `11`、重启后 `/players.maxPlayers=12` 且配置 GET 保持 `12`；任务容器、网络、卷、临时目录清零，源夹具恢复原定义并保持停止。
 
-# SUPPORT-BUNDLE-LOG-CONTEXT-2：诊断包补齐 Panel/Steam/任务日志（2026-08-17，completed，待发布）
+# SUPPORT-BUNDLE-LOG-CONTEXT-2：诊断包补齐 Panel/Steam/任务日志（2026-08-17，released in v0.5.3）
 
 - 管理员 `POST /api/instances/:id/support-bundle` 的路径、ZIP 流式响应、文件名和前端 Blob 下载契约不变；本轮只把内容收敛为“无需 SSH 也足够定位常见问题”的有界诊断材料，不加入自动分析或自动修复。
 - ZIP 现在固定包含 `server-logs.txt`（server 最近 1000 行）、`steam-auth-logs.txt`（认证服务最近 500 行）、`panel-logs.txt`（Panel 容器最近 1000 行）和 `job-logs.json`（当前实例最近 10 个任务、每个最多 200 条进度日志）。已有版本、健康检查、Compose 状态/配置、Junimo 更新诊断、任务摘要和审计摘要继续保留。
@@ -2111,7 +2112,7 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 存档 XML 补出的离线角色即使被连续轮询并写入名册，也会继续省略 `lastSeen`；真正在线过的角色离线后仍保留最后一次 `last_online_at`。现有污染数据无需清理，因为这类记录的 `last_online_at` 本来就是空值，部署修复后会自动停止展示假时间。
 - `players_test.go` 使用真实 SQLite 连续执行两轮 `ListPlayers`，同时断言 API 始终不返回假 `lastSeen`、内部 `last_seen_at` 继续推进且 `last_online_at` 保持为空。Linux 容器中的 Stardew 玩家包与 storage 包全量测试通过。
 
-# PLAYER-AUTH-SELF-ENROLL-1：角色密码首次登录自助设置（2026-08-17，未发布）
+# PLAYER-AUTH-SELF-ENROLL-1：角色密码首次登录自助设置（2026-08-17，released in v0.5.3）
 
 ## 当前契约与持久化
 
@@ -2130,4 +2131,5 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 
 - 主要文件：`role_credential_store.go` 及平台原子替换文件、`player_auth_config.go`、`server_player_auth_compose.go`、`lifecycle.go`、Docker `compose.go`，Control `RoleCredentialStore.cs` / `RolePasswordPolicy.cs` / `RolePasswordPatch.cs` / `ModEntry.cs`，两份 manifest/DLL 与运行栈清单。
 - Go 回归覆盖首次认领、重复/错误/串角色、按存档隔离、legacy 迁移、marker/store 损坏、并发锁、权限、Panel/Control 交叉写、事务回滚、Compose 迁移与 none/global 兼容回退；Docker Desktop、Control 标准编译和完整门禁结果记录在 `docs/09-image-build.md`。
+- 两个真人客户端的首次认领、重复正确、交叉失败、管理员清除后重新认领、Panel 批准和 server recreate/Panel restart 保持已由用户确认；能力随 `v0.5.3@ede7fa34231600cbfa83050b4ddb6fd650373ae1` 正式发布。
 - 前序阶段明确不打 tag、不创建 Release、不提升 `latest`；2026-08-17 用户已确认两个真人客户端的各自首次设置、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准和重启后保持矩阵全部通过，并授权进入正式候选。自动 C#/Go/Docker 夹具仍只作为补充契约证据。

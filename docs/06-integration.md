@@ -1,12 +1,13 @@
-# NEXUS-MOD-ONECLICK-UPDATE-1 跨端契约（2026-08-17，completed，待发布）
+# NEXUS-MOD-ONECLICK-UPDATE-1 跨端契约（2026-08-17，released in v0.5.3）
 
 - 继续复用 `POST /api/instances/:id/mods/remote/install`、现有 `mod_remote_install` Job 与 `Idempotency-Key`。安装请求仍为 `{url, mod, expectedVersion, nexusFileId}`；一键更新额外发送 `replaceUniqueId`，且服务端要求正数 `mod.modId/nexusFileId` 和非空 `expectedVersion`，任一缺失都在建 Job 前返回 400。未提供 `replaceUniqueId` 的旧客户端和普通安装行为不变。
 - 前端只对管理员、停止态、扩展已连接、具备直接 Nexus ID 且物理包只有一个成员的已安装 Mod开放入口。扩展 0.1.8 把 `operation/replaceUniqueId` 与版本、file ID 一起贯穿 batch、session、capture、background 直连和 panel bridge；不会修改 Nexus CDN 签名 URL。批量安装的 Nexus 页面按项串行打开，当前项成功提交给 Panel 后才开始下一项。
 - 后端在同一 Mod profile 锁内先把 ZIP 下载到临时区，校验目标 manifest 的 `UniqueID == replaceUniqueId`、版本等价于 `expectedVersion` 且 ZIP 只含一个目标 Mod；全部通过后才把旧目录同盘重命名为临时备份并替换。新目录安装失败会删除半成品并恢复旧目录，校验失败则 Mods 目录零写入。
 - 替换继承原来的启用/禁用目录，并把旧包根目录 `config.json` 覆盖到新包，避免更新清空用户配置。Nexus sidecar 只有在新元数据持久化成功后才清理旧文件夹条目；更新时不会调用“为当前存档自动启用导入 Mod”的安装后逻辑。
 - 聚合包、内置 Mod、目标不存在、UniqueID/版本不符、服务器运行中、普通用户和扩展断连均 fail closed；“查看更新页”外链继续作为手工路径。自动化覆盖成功替换、文件夹改名、配置与禁用状态保留、错误 UID/版本零写入、请求校验和扩展上下文。真实 Chrome + 0.1.8 已验证 CDN 捕获、Panel 任务终态及 Content Patcher `2.9.0 → 2.9.1` 后的 manifest/config/启用状态。
+- 聚合跨端契约已随 `v0.5.3@ede7fa34231600cbfa83050b4ddb6fd650373ae1` 发布；候选 `32034798704` 在 `v0.5.2` 升级后的真实 Panel 上重验受影响 API/production bundle，自动 Tag 与同 digest 正式提升均成功。
 
-# NEXUS-EXT-LATEST-1 跨端契约（2026-08-17，completed，待发布）
+# NEXUS-EXT-LATEST-1 跨端契约（2026-08-17，released in v0.5.3）
 
 - `GET /api/instances/:id/mods/nexus/search` 的 `results[].version` 与 `results[].requiredMods[].version` 表示 Nexus 当前元数据版本。一键安装的每个本体/前置目标都必须把该值作为 `expectedVersion` 发送给扩展；缺失版本是可见失败，不允许退化为任意文件。
 - 扩展仅在普通 Nexus 页面 URL 使用 `anxi_version` 维持导航状态。最终 CDN URL 必须保持 Nexus 原样签名；面板请求为 `{url, mod, expectedVersion, nexusFileId}`，并继续携带原 `Idempotency-Key`。同一批量目标的版本变化会轮换 capture 身份，旧请求不能与新版本合并。
@@ -14,7 +15,7 @@
 - 旧客户端省略新增字段仍可调用远程安装接口；0.1.5 新 Panel 会显式传目标版本，旧 Panel 批量 payload 缺字段时由扩展从 Nexus 当前文件页补出版本，再走相同文件行匹配。日志、审计和扩展持久状态只记录安全版本/file ID/脱敏 URL，不得保存 CDN key、expires 或完整 query。
 - 自动化已覆盖前置版本补全、旧/新候选选择、旧 Panel 缺版本字段兼容、批次串行、两条扩展 POST、后端 manifest 匹配/不匹配与零写入；已登录 Nexus 的经典文件页验证了 `<dt>Content Patcher 2.9.1</dt> + <dd data-id="160463">` 关联，旧版 2.9.0 为 153187，不存在的 2.9.10 不匹配。真实 Chrome + 当前 0.1.8 进一步在停止态测试实例完成 Content Patcher `2.9.1/file_id=160463` 与 Elle's New Barn Animals `1.1.3/file_id=34408` 的串行安装，以及 Content Patcher 更新；两条成功链均由 Panel 任务与落盘 manifest 交叉确认，临时制品为零。远程安装仍只接受 ZIP，发现旧目标实际提供 `.rar` 时没有放宽安全契约或把手工按钮跳转冒充成功。
 
-# SERVER-RUNTIME-MAXPLAYERS-1 / FE-SERVER-RUNTIME-MAXPLAYERS-1 跨端契约（2026-08-17，completed，待发布）
+# SERVER-RUNTIME-MAXPLAYERS-1 / FE-SERVER-RUNTIME-MAXPLAYERS-1 跨端契约（2026-08-17，released in v0.5.3）
 
 - 继续复用管理员 `GET/PUT /api/instances/:id/config/server-runtime-settings`。GET 结构为 `{ maxPlayers, cabinStrategy, existingCabinBehavior, networkBroadcastPeriod }`，`maxPlayers` 缺失或无效时默认 `10`；合法范围 `1~100`。新前端 PUT 始终提交四个实际值，旧客户端省略 `maxPlayers` 时后端在 driver 锁内保留磁盘原值。
 - 写回仍受 `Driver.runtimeUpdateMu` 与 unfinished new-game owner 保护，并使用已有安全原子 JSON 写；只更新 `Server` 的四个目标 key，保留根级、`Game`、`Server` 其它字段。审计事件仍为 `instance_server_runtime_settings_update`，新增 `maxPlayers/previousMaxPlayers` metadata。
@@ -23,7 +24,7 @@
 - `startingCabins 0~7` 与 `maxPlayers 1~100` 继续分离；不按高人数检测 Mod、小屋或加入硬门禁，不把该值做成 SQLite/单存档设置。
 - 联调验证已在任务专属 Compose project 中只读克隆真实已有存档和游戏卷：先保存/启动 `11`，`GET /players` 返回 live `11`；运行中 PUT 为 `12` 后同接口仍返回 `11`；调用既有 restart 生命周期并完成就绪后返回 `12`，配置 GET 同时保持 `12`。该 opt-in 场景固化在 `internal/web/server_runtime_settings_real_integration_test.go`，并在 Compose 前断言克隆 `.env` 的 project 身份；源夹具不写入、最终保持停止，任务容器/网络/卷/bind 临时目录均清零。
 
-# SUPPORT-BUNDLE-LOG-CONTEXT-2 / FE-DIAGNOSTICS-EXPORT-ACTION-1 跨端契约（2026-08-17，completed，待发布）
+# SUPPORT-BUNDLE-LOG-CONTEXT-2 / FE-DIAGNOSTICS-EXPORT-ACTION-1 跨端契约（2026-08-17，released in v0.5.3）
 
 - 管理员仍通过 `POST /api/instances/:id/support-bundle` 下载流式 `application/zip`，不依赖 `Content-Length`。前端只把入口移到诊断页标题栏、“重新检查”左侧；鉴权、请求方法、Blob 下载和文件名契约不变。
 - ZIP 的日志契约扩展为：`server-logs.txt` 最近 1000 行、`steam-auth-logs.txt` 最近 500 行、`panel-logs.txt` 最近 1000 行，以及 `job-logs.json` 中当前实例最近 10 个任务各最多 200 条日志。`jobs.json` 只列当前实例最近任务，`instance-state.json` 使用诊断页完整状态投影但强制移除邀请码。
@@ -1589,7 +1590,7 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - SQLite `player_roster.last_seen_at` 是内部名册观测时间，仍可随轮询更新；只有在线快照会更新 `last_online_at`，API 仅从后者回填 `lastSeen`。前端不得用响应 `updatedAt`、浏览器当前时间或名册观测时间补造该字段。
 - 真正在线过的角色离线后继续返回最后一次 `last_online_at`；本修复不改变玩家状态、在线人数、位置、收入或 API shape，也不需要迁移/清洗已有数据库。
 
-# PLAYER-AUTH-SELF-ENROLL-1 跨端契约（2026-08-17，未发布）
+# PLAYER-AUTH-SELF-ENROLL-1 跨端契约（2026-08-17，released in v0.5.3）
 
 ## API 与状态
 
@@ -1609,7 +1610,7 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - restart 使用 `docker compose up -d --no-deps --force-recreate server` 让配置进入新容器，不能用普通 restart 复用旧环境，也不能连带重启 `steam-auth`。
 - 前端 restart pending 不能由请求前就存在的 `state=running` 清除；只有观察到 lifecycle job 并进入终态后才解锁。start 仍可在未观察到短任务时使用 stopped→running 作为完成证据。
 
-## 未发布联调矩阵
+## 发布联调矩阵
 
 - 自动化：first enroll、重复正确登录、错误/串角色、Panel guard、空角色启用、清除后 waiting、save 隔离、legacy 迁移、store/marker 损坏、锁竞争、权限与事务回滚；Compose block/list/inline 以及 role fail-closed、none/global 兼容继续；restart 防重复提交。
-- 真人客户端：两个客户端分别首次设置不同密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate/Panel 重启后仍保持。该矩阵在正式发布前必做，本次不打 tag，自动测试结果不能替代真人交互证据。
+- 真人客户端：两个客户端分别首次设置不同密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate/Panel 重启后仍保持；用户已在正式候选前确认该矩阵通过。自动测试仍不能替代真人交互证据，最终能力已随 `v0.5.3` 发布。

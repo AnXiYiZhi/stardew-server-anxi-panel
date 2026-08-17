@@ -1,4 +1,4 @@
-# NEXUS-MOD-ONECLICK-UPDATE-1 后端接手记录（2026-08-17，completed，待发布）
+# NEXUS-MOD-ONECLICK-UPDATE-1 后端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -12,8 +12,9 @@
 - 专项覆盖成功替换和文件夹改名、旧配置覆盖新默认、禁用状态保持、错误 UniqueID/目标版本时零写入，以及 Web 字段校验；扩展回归覆盖 background 直连和 panel bridge 都传递替换目标。
 - 不要改成“先删除旧目录再下载”。下载、ZIP/manifest/版本/单成员校验必须全部先完成；真正替换只能发生在 profile 锁内并保留同盘备份。聚合包继续引导用户打开更新页手工处理，除非将来能证明整包成员映射并补齐整包事务测试。
 - 真实 Chrome + 0.1.8 已把隔离实例的 Content Patcher 从 `2.9.0/file_id=153187` 更新到 `2.9.1/file_id=160463`，精确请求携带 `replaceUniqueId=Pathoschild.ContentPatcher`；新 manifest、旧 `config.json` 哨兵、原启用状态和零临时备份均已核对。后续修改更新事务或扩展提交链时须重跑同等真实 E2E。
+- `v0.5.3@ede7fa34231600cbfa83050b4ddb6fd650373ae1` 已正式发布：Compatibility `32034735122`、候选 `32034798704`、自动 Tag `32035705749`、正式提升 `32035725325` 全部成功；三仓精确版本与 `latest` 统一 digest=`sha256:400ad1e92dc84bc62530d38e08ec2ddb20d4d385ee01dc2b35808d23d91bd1f8`，提升未 rebuild。
 
-# NEXUS-EXT-LATEST-1 后端接手记录（2026-08-17，completed，待发布）
+# NEXUS-EXT-LATEST-1 后端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -27,7 +28,7 @@
 - 不得把 `expectedVersion` 追加到 `*.nexus-cdn.com` 签名 URL；它是独立请求字段。也不要把 Nexus 页面元数据直接当成已安装版本，最终权威仍是 ZIP 内 manifest。
 - 真实 0.1.8 扩展 E2E 已验证当前 Content Patcher 选择 `2.9.1/file_id=160463`，并在前置 Job 被 Panel 接受后才打开 Elle's New Barn Animals `1.1.3/file_id=34408`；两份 manifest 匹配且临时制品为零。此前交叉 file ID 使目标拿到错误 ZIP 时，后端以版本不匹配安全失败、目标未落盘。若真实 Mod 的 Nexus 页面版本与 SMAPI manifest 长期采用不同格式，应先增加有证据的归一规则，不能关闭 fail-closed 校验；`.rar/.7z` 也不得在没有独立解包安全设计和测试时冒充 ZIP 放行。
 
-# SERVER-RUNTIME-MAXPLAYERS-1 后端接手记录（2026-08-17，completed，待发布）
+# SERVER-RUNTIME-MAXPLAYERS-1 后端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -42,7 +43,7 @@
 - 后续不能把 `ServerRuntimeSettings.MaxPlayers` 从指针改成普通 int，否则旧三字段 PUT 会被 JSON 零值误判为显式 `0`。运行中 dashboard 值必须继续来自 Junimo live info；配置 GET 与 live players 可以暂时不同，这是待重启语义，不是缓存错误。
 - 本任务不改新建档 `startingCabins`/Mod 逻辑，不增加保存并重启，也不做 tag/Release。以后扩展 opt-in E2E 时必须继续重写并预检克隆 `.env` 的 `COMPOSE_PROJECT_NAME`，不能让只读源夹具与任务副本共享容器命名空间。
 
-# SUPPORT-BUNDLE-LOG-CONTEXT-2 后端接手记录（2026-08-17，completed，待发布）
+# SUPPORT-BUNDLE-LOG-CONTEXT-2 后端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -1095,7 +1096,7 @@
 
 - 后续新增玩家时间字段时必须区分“观察到名册项”和“观察到玩家在线”；不能再次把 `last_seen_at`、响应 `updatedAt` 或页面轮询时间映射成用户可见的最后在线时间。
 
-# PLAYER-AUTH-SELF-ENROLL-1 接手记录（2026-08-17，未发布）
+# PLAYER-AUTH-SELF-ENROLL-1 接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么
 
@@ -1109,7 +1110,7 @@
 
 - 后端：`role_credential_store*.go`、`player_auth_config.go`、`server_player_auth_compose.go`、`lifecycle.go`、`runtime_update_apply_runner.go`、`save_import_activation.go`、Docker `compose.go` 及对应测试。
 - Control：`RoleCredentialStore.cs`、`RolePasswordPolicy.cs`、`RolePasswordPatch.cs`、`ModEntry.cs`、契约测试、manifest/DLL 与运行栈清单。前端与接口细节分别见最新 frontend handoff 和 `docs/06-integration.md`。
-- 已完成的宿主定向 Go 与前端回归、Docker Desktop Linux/Compose/Control 结果统一写入 `docs/09-image-build.md`；本次不打 tag、不创建 Release。
+- 宿主定向 Go、前端回归、Docker Desktop Linux/Compose/Control、真人双客户端和正式候选结果统一写入 `docs/09-image-build.md`；能力已随 `v0.5.3` 发布，后续不能再沿用“未打 tag/未创建 Release”的旧状态。
 
 ## 下一步注意事项
 

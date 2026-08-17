@@ -1,12 +1,13 @@
-# FE-NEXUS-MOD-ONECLICK-UPDATE-1：已安装 Mod 一键更新（扩展 0.1.8，2026-08-17，completed，待发布）
+# FE-NEXUS-MOD-ONECLICK-UPDATE-1：已安装 Mod 一键更新（扩展 0.1.8，2026-08-17，released in v0.5.3）
 
 - 管理员在“添加模组”的已安装卡片检测到新版本时，会在“查看更新页”左侧看到“一键更新”。按钮只对服务器已停止、浏览器扩展已连接、可由 Nexus ID 精确定位且只包含一个 Mod 的包开放；运行中、扩展未连接或聚合包场景保持禁用，并通过悬浮提示说明原因。
 - 更新继续复用现有扩展批量任务、进度、失败跳转和 session 恢复，不另建第二套表单。批量项增加 `operation: update` 与 `replaceUniqueId`，同时保留 `expectedVersion` 和 Nexus file ID 的严格版本选择；扩展 0.1.8 的 background 直连与 panel bridge 两条提交路径都只在更新模式发送替换目标。普通“本体 + 缺失前置”批次改成每项提交成功后才打开下一 Nexus 页，避免两个页面的 file ID/capture 状态交叉。
 - 更新完成后重新读取本地 Mod 清单并强制刷新更新检查；已安装旧版本不会被误判为批次已经完成。现有“查看更新页”外链始终保留，用户仍可选择手工处理。
 - `test:nexus-extension-idempotency` 覆盖 update 上下文的 batch/capture/session 持久化、两条 POST 请求体和批次页面串行打开；production build 通过。应用内 Browser 验证了按钮位置、扩展断连禁用提示和 800px 零横向溢出。真实 Chrome + `0.1.8` 已完成 Content Patcher `2.9.0 → 2.9.1` 一键更新，以及 Content Patcher `2.9.1/file_id=160463` 提交后再打开 Elle's New Barn Animals `1.1.3/file_id=34408` 的缺前置 ZIP 批次；Panel 均显示成功，安装目录 manifest 精确匹配且无临时残留。
 - v0.5.3 首次候选发现 production 产物门禁仍在 `ServerControlPage/MobileControlPage` 搜索已抽离的运行设置表单，导致隐藏的 `FarmhouseStack` 兼容选项被误判缺失。fresh 与升级后门禁现都精确加载共享 `ServerRuntimeSettingsDialog` 懒块并在该块验证 `hidden` 兼容值；`test:responsive-layout` 同时锁定共享块名称，避免以后重构再次形成源码通过、候选误判。
+- 修复后的候选 `32034798704` 已完成全部 19 项前端回归、production build、网站 build、fresh 及 `v0.5.2` 升级后 production bundle 契约；功能随 annotated `v0.5.3@ede7fa3` 和正式提升 `32035725325` 发布，三仓 `0.5.3/latest` 统一 digest=`sha256:400ad1e92dc84bc62530d38e08ec2ddb20d4d385ee01dc2b35808d23d91bd1f8`。
 
-# FE-REFRESH-ACTIONS-AUDIT-1：全前端刷新按钮数据流审计（2026-08-17，completed，待发布）
+# FE-REFRESH-ACTIONS-AUDIT-1：全前端刷新按钮数据流审计（2026-08-17，released in v0.5.3）
 
 - 逐项核对桌面/移动的 Mod、玩家、邀请码/面板地址、存档/回档、任务日志、诊断、VNC、用户、审计日志、认证状态、Mod 更新与 Panel 版本检查按钮；确认每个入口都绑定真实 API、具备忙碌或错误反馈，并在成功后覆盖当前页面读取的 state。玩家、设置、认证与版本检查链路无需改动。
 - 诊断页“重新检查”改用 `Promise.allSettled` 独立接收健康检查与 Compose 结果：一项失败不再吞掉另一项成功数据；Compose 失败时清空旧容器投影并显示本次错误，健康结果成功时仍同步 dashboard 公共诊断状态。
@@ -14,14 +15,14 @@
 - 移动存档的回档刷新与桌面保持一致，把旧 Panel 可能返回的 `backups:null` 规范成空数组。`StardewDashboardData` 的八个异步刷新函数类型统一为 `Promise<void>`，调用方的 `await` 与实际运行契约一致。
 - `test:responsive-layout` 增加上述刷新数据流静态契约；`test:mod-list`、`test:responsive-layout` 与 production build 通过。
 
-# FE-MODS-REFRESH-INSTALLED-1：下载模组页刷新后清除已删除 Mod 状态（2026-08-17，completed，待发布）
+# FE-MODS-REFRESH-INSTALLED-1：下载模组页刷新后清除已删除 Mod 状态（2026-08-17，released in v0.5.3）
 
 - 根因是 Nexus 搜索结果与本地 Mod 清单的合并只覆盖“找到匹配项”的情况；删除 Mod 后刷新虽然重新读取了 `/mods`，但找不到匹配项时保留了 session 搜索结果里的 `installed: true`、旧版本和文件夹，所以卡片仍显示“已安装”。
 - `mod-list-utils.ts` 新增桌面/移动共用的 `nexusInstalledState()`：匹配 Nexus ID 或 Nexus 包来源 ID 时返回真实启用/版本/文件夹；未匹配时显式返回 `installed: false` 并清空旧元数据。桌面与移动端本体、前置 Mod 搜索卡片都改为双向对账。
 - 桌面页头“刷新”在 `loadMods()` 成功后立即用本次返回的清单重算当前 Nexus 搜索结果，再刷新 dashboard 公共缓存；不需要重新搜索 Nexus，也不会等下一轮公共轮询才更新按钮。
 - `npm run test:mod-list` 新增“删除后空清单必须清除旧状态”和 Nexus 包来源 ID 覆盖；`npm run build` 通过。
 
-# NEXUS-EXT-LATEST-1：一键安装默认锁定 Nexus 最新版本（扩展 0.1.5，2026-08-17，completed，待发布）
+# NEXUS-EXT-LATEST-1：一键安装默认锁定 Nexus 最新版本（扩展 0.1.5，2026-08-17，released in v0.5.3）
 
 - `ModsPage` 生成批量目标时，本体使用搜索结果 `version`，每个未安装前置使用后端补全的 `requiredMods[].version`，统一写入 `expectedVersion`。任何目标缺少版本时按钮直接失败并说明原因，不再让扩展猜文件。
 - 扩展把目标版本放在 Nexus 页面 URL 的 `anxi_version` 参数并存入 session/capture/batch；页面跳转会保留它。兼容旧 Panel：批量目标没有 `expectedVersion` 时仍打开 Nexus，由文件页当前版本标题补出目标，随后使用同一严格文件行匹配；页面也没有版本时才 fail closed。带签名的 Nexus CDN ZIP URL 完全不修改，提交面板时独立发送 `expectedVersion` 与最终 `nexusFileId`。
@@ -29,7 +30,7 @@
 - 扩展版本升为 `0.1.5`，两条 POST 路径的 `X-Anxi-Nexus-Installer` 同步更新；后端下载扩展 ZIP 的版本感知缓存会自动重打包。0.1.4 在真实 v0.5.2 Panel 点击时因旧批量 payload 缺版本而立即失败、没有开页/建任务/写 Mods；0.1.5 加回页面推断兼容。影响 `shared.js/content.js/background.js/panel-bridge.js/manifest.json/README`、`ModsPage.tsx`、`types.ts` 与扩展回归脚本。
 - `npm run test:nexus-extension-idempotency` 覆盖旧文件优先 DOM、严格版本边界、新 Panel 缺失版本拒绝、旧 Panel 缺字段时页面推断、页面参数、批次串行和两条 POST 请求体；`npm run build` 通过。已登录 Nexus 的真实 Content Patcher 文件页确认 `2.9.1 → file_id=160463`、`2.9.0 → file_id=153187` 且 `2.9.10` 无匹配；真实 Chrome + 当前 `0.1.8` 又完成了停止态安装/更新终态，证据见本页顶部和 `docs/09-image-build.md`。
 
-# FE-SERVER-RUNTIME-MAXPLAYERS-1：桌面/移动共用建档后人数上限设置（2026-08-17，completed，待发布）
+# FE-SERVER-RUNTIME-MAXPLAYERS-1：桌面/移动共用建档后人数上限设置（2026-08-17，released in v0.5.3）
 
 - 桌面快捷操作改名为“联机人数与小屋设置”，副标题为“人数上限 / 小屋策略 / 广播频率”；同一弹窗顶部增加 `1~100` 数字输入，说明该值包含主机位且降低不会删除已有角色或小屋，原三项配置归入清晰的“高级设置” fieldset。
 - `ServerSummaryCard` 为在线玩家摘要增加显式 `canEditPlayerLimit/onEditPlayerLimit` props；只有管理员看到“修改上限”，按钮 CSS 触控热区至少 `44px`。回调直接调用 `ServerControlPage` 既有 `openRuntimeSettings`，没有第二套 state、API 或表单。
@@ -38,7 +39,7 @@
 - 新增 `test:runtime-player-limit` 并接入兼容矩阵、release gates 与响应式门禁；QA fixture 固定当前生效 `12`、重启后配置 `16`，用于验证待重启分层。
 - 前端全部 19 项适用状态回归与 production build 通过。应用内 Browser 实测管理员/普通用户权限、摘要/快捷两个入口打开同一弹窗、`0/101` 拒绝与 `1/100` 接受、低于在线人数非阻塞警告、running 当前/配置分层、stopped 下次启动文案、移动端共用表单和 44px 触控区；当前 Browser runtime 无精确窄视口切换能力，窄屏契约由现有响应式静态回归补足，不伪报 390px 浏览器实测。
 
-# FE-DIAGNOSTICS-EXPORT-ACTION-1：诊断包按钮移到重新检查左侧（2026-08-17，completed，待发布）
+# FE-DIAGNOSTICS-EXPORT-ACTION-1：诊断包按钮移到重新检查左侧（2026-08-17，released in v0.5.3）
 
 - `DiagnosticsPage.tsx` 将管理员“导出诊断包”从折叠的“维护与技术详情”内部移到“服务器健康”标题栏，与“重新检查”组成同级操作区；DOM 与视觉顺序固定为“导出诊断包 → 重新检查”，让用户遇到问题时无需先展开技术详情。
 - 导出继续使用棕色次操作、下载图标和原有 admin/忙碌/错误状态，尺寸从 `sm` 调整为与绿色重新检查一致的 `lg`；接口、Blob 下载、文件名和权限逻辑均未改变。标题提示明确为“导出脱敏后的诊断日志 ZIP”。
@@ -2744,11 +2745,11 @@ npm.cmd run dev
 - 前端继续原样消费 `/api/instances/:id/players`，不自行推算或补造 `lastSeen`。从未在线的存档角色在后端修复后不显示“上次 今天 HH:mm”；移动玩家页同样因字段为空而不显示假时间。
 - 使用 Dockerfile 同款 Node 22 Alpine、任务专属 `node_modules`/`dist` volume 完成洁净 `npm ci && npm run build`，TypeScript 与 Vite production build 通过。
 
-# FE-PLAYER-AUTH-SELF-ENROLL-1：角色密码首次登录认领（2026-08-17，未发布）
+# FE-PLAYER-AUTH-SELF-ENROLL-1：角色密码首次登录认领（2026-08-17，released in v0.5.3）
 
 - 本节覆盖 `FE-PLAYER-AUTH-MODES-1` 中“至少一个角色且所有角色必须由管理员预设密码”的旧 UI 约束。角色模式现在允许空角色列表和 `waiting` 角色；说明文案明确“新角色和无密码记录的老角色，会把第一次 `!login` 输入设为自己的密码”，空列表也允许先启用。
 - `InstancePlayerAuthRoleConfig.credentialStatus` 区分 `waiting / configured / error`。弹窗分别显示“等待首次设置 · 玩家可自行认领”“已设置 · 输入新密码可重置”“凭据异常 · 登录已拒绝”；管理员清除后先显示“保存后等待首次设置”。store 异常通过 `roleCredentialStoreReady/detail` 单独提示，错误角色禁用输入与清除，不能伪装成未设置。
 - 管理员仍可代设和重置，但不再要求所有 waiting 角色本次填写；保存 payload 只包含本次非空输入与明确清除项。角色密码仍不回显、不缓存，roleId 只作为不可编辑请求标识。
 - `useStardewLifecycleActions.ts` 修复重启提交后的重复点击窗口：restart 发起时后端投影本来就是 `running`，该旧状态不能立即清掉 pending；必须先观察到 lifecycle job，再在任务终态解锁。普通 start 仍允许用从 stopped 变为 running 作为短任务未被轮询捕获时的完成证据。
 - 新增 `lifecycle-action-state.ts` 纯状态判定和 `test:lifecycle-action-state`，并继续由 `test:responsive-layout` 覆盖共用弹窗、桌面/移动入口和重启联动；Docker/production build 结果见 `docs/09-image-build.md`。
-- 前序阶段未打 tag；2026-08-17 用户已确认两个真实 Stardew 客户端完成首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持，并授权进入正式候选。前端自动状态测试仍只作为补充证据。
+- 2026-08-17 用户确认两个真实 Stardew 客户端完成首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持；修复后候选与正式提升全部通过，能力已随 annotated `v0.5.3@ede7fa3` 发布。前端自动状态测试仍只作为补充证据。

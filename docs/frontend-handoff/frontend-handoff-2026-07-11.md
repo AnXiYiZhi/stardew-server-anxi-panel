@@ -1,4 +1,9 @@
-# FE-NEXUS-MOD-ONECLICK-UPDATE-1 前端接手记录（2026-08-17，completed，待发布）
+# DOCS-PORTAL-0.5.3 接手记录（2026-08-17，completed，已上线）
+
+- `website/docs/index.md` 与 `website/docs/changelog.md` 已发布 v0.5.3 的角色密码首次认领、Nexus 精确版本安装/一键更新、建档后人数上限、诊断/刷新改进，并保留对群友「石头佬」和「鹈鹕镇的热心市民」的特别感谢。
+- 官网 production build 已进入候选门禁并通过；push 对应的 Deploy docs portal `32033542832` 成功。GitHub Release 正文也已同步相同用户可读范围、候选/正式 workflow 与唯一 digest；正文更新没有移动 annotated tag 或改变镜像。
+
+# FE-NEXUS-MOD-ONECLICK-UPDATE-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -13,8 +18,9 @@
 - 不要把本地“已安装”直接当成 update 批次完成条件，否则旧版本会在扩展真正下载前被提前标为 done。聚合包不能只替换其中一个成员；需要继续保留外链并解释为何不可一键更新。
 - 真实 Chrome + 0.1.8 已在停止态完成 CDN 捕获与后台任务：Content Patcher `2.9.0 → 2.9.1` 更新保留 config/启用状态；缺前置批次先提交 Content Patcher `2.9.1/file_id=160463`，再打开并安装 Elle's New Barn Animals `1.1.3/file_id=34408`。两个落盘 manifest 精确匹配，临时目录为零。
 - v0.5.3 首次候选 `32033542812` 的 selected code gates 已通过；fresh bundle 契约因仍在桌面/移动控制块搜索已抽离的运行设置 JSX 而误失败，且失败发生在候选上传、tag 和正式提升之前。`scripts/release-candidate.sh` 与升级 E2E 现都加载 `ServerRuntimeSettingsDialog` 懒块并在该块检查隐藏的 `FarmhouseStack` 兼容选项，Git Bash 语法、ShellCheck、production chunk 正则和 responsive-layout 回归通过；下一候选必须从修复后的新 commit 完整重跑，不可复用旧 run。
+- 修复后的候选 `32034798704` 已完整重跑并成功；自动 Tag `32035705749`、正式提升 `32035725325`、三仓统一 digest、正式镜像冒烟和 Release 四项资产均通过。以后修改共享 runtime settings 懒块命名或产物拆分时，须同步 fresh 与升级后两条 production bundle 门禁。
 
-# FE-REFRESH-ACTIONS-AUDIT-1 前端接手记录（2026-08-17，completed，待发布）
+# FE-REFRESH-ACTIONS-AUDIT-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -27,7 +33,7 @@
 - `test:responsive-layout` 固定诊断独立结算、任务过期选择清理、移动备份空值归一、Mod 本次响应立即对账和刷新 Promise 类型契约；`test:mod-list` 与 production build 同时通过。
 - 新增刷新按钮时必须明确四点：真实请求、按钮 busy 防重、成功覆盖当前视图 state、失败保留或清除旧数据的明确策略。多个独立资源不得用一个 `Promise.all` 形成无必要的全有或全无刷新。
 
-# FE-MODS-REFRESH-INSTALLED-1 前端接手记录（2026-08-17，completed，待发布）
+# FE-MODS-REFRESH-INSTALLED-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -39,7 +45,7 @@
 - `npm run test:mod-list` 覆盖直接 Nexus ID、Nexus 包来源 ID，以及删除后传入空清单必须返回 `installed:false` 且清空旧元数据；`npm run build` 通过。
 - 后续若增加新的 Nexus 安装来源 ID，只扩展共用 helper 的匹配契约，不要在桌面/移动页面各写一套只增不减的 merge。刷新失败时保留原 UI 并展示现有列表错误，不能把未知清单误当成空清单。
 
-# NEXUS-EXT-LATEST-1 前端接手记录（2026-08-17，completed，待发布）
+# NEXUS-EXT-LATEST-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -53,7 +59,7 @@
 - 不能把版本参数放进 Nexus CDN 签名链接，也不能在找不到目标版本时恢复“第一个 file_id”逻辑。Nexus 改 DOM 后应先扩展“单文件上下文”的采集选择器并增加 fixture，服务端 manifest 验真继续作为最终保护。
 - 当前 0.1.8 的真实 Chrome 已完成本体+前置 ZIP 批量安装与单 Mod 更新；具体 file ID、任务和落盘证据见本文件顶部及 `docs/09-image-build.md`。后续修改 Nexus DOM 选择、批次恢复或提交路径时仍须重跑同等真实链，不能用应用内 Browser 的只读 DOM 探针代替扩展点击、CDN 捕获、Panel 任务与 manifest 终态。
 
-# FE-SERVER-RUNTIME-MAXPLAYERS-1 前端接手记录（2026-08-17，completed，待发布）
+# FE-SERVER-RUNTIME-MAXPLAYERS-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -68,7 +74,7 @@
 - 移动浏览器自动化对 number input 的 DOM proxy 报空值，但截图清楚显示受控值 `16`；实际 fill/边界/警告均通过。这是自动化读取代理差异，不要据此另建移动 state。后续修改必须继续保持两端共用 hook/dialog，不能复制第三套实现，也不能把保存后的配置值直接写进 live dashboard 冒充已生效。
 - 本任务没有保存并重启、Mod 检测或 tag/Release。若以后加“保存并重启”，必须调用既有生命周期与在线玩家确认流，不能在 hook 内直接发 restart。
 
-# FE-DIAGNOSTICS-EXPORT-ACTION-1 前端接手记录（2026-08-17，completed，待发布）
+# FE-DIAGNOSTICS-EXPORT-ACTION-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -1957,7 +1963,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - Dockerfile 同款 Node 22 Alpine 洁净 `npm ci && npm run build` 通过，Vite 8.0.16 完成 140 modules production build。
 - 若以后调整文案或移动端布局，不得用 `playersData.updatedAt` 或浏览器当前时间补齐缺失的 `lastSeen`；字段缺失代表没有可信的真实在线历史。
 
-# FE-PLAYER-AUTH-SELF-ENROLL-1 接手记录（2026-08-17，未发布）
+# FE-PLAYER-AUTH-SELF-ENROLL-1 接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么
 
@@ -1973,4 +1979,4 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - `waiting` 表示玩家可首次认领，`error` 表示凭据层 fail closed；任何 UI 重构都不能把两者合并成“未设置”。也不能因角色列表为空而禁止 role，因为新建/导入后出现的角色需要使用同一首次登录契约。
-- 前序阶段没有 tag/Release；2026-08-17 用户已确认两个真实客户端完成首次认领、各自正确登录、交叉失败、清除后重认领、Panel 批准和重启保持矩阵，并授权正式发布。
+- 2026-08-17 用户确认两个真实客户端完成首次认领、各自正确登录、交叉失败、清除后重认领、Panel 批准和重启保持矩阵；能力已随 annotated `v0.5.3@ede7fa3` 和同 digest 正式镜像发布。
