@@ -143,6 +143,10 @@ func (f fakeDockerService) ComposeRestartServices(ctx context.Context, dir strin
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
+func (f fakeDockerService) ComposeRecreateServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
 func (f fakeDockerService) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {
 	if f.execFunc != nil {
 		return f.execFunc(ctx, dir, service, stdinData, args...)

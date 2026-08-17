@@ -2697,3 +2697,12 @@ npm.cmd run dev
 - 桌面玩家表第三列从“在线时长”改为“在线 / 最近活动”，明确该列在线时显示持续时间、离线时显示后端提供的最后在线时间。
 - 前端继续原样消费 `/api/instances/:id/players`，不自行推算或补造 `lastSeen`。从未在线的存档角色在后端修复后不显示“上次 今天 HH:mm”；移动玩家页同样因字段为空而不显示假时间。
 - 使用 Dockerfile 同款 Node 22 Alpine、任务专属 `node_modules`/`dist` volume 完成洁净 `npm ci && npm run build`，TypeScript 与 Vite production build 通过。
+
+# FE-PLAYER-AUTH-SELF-ENROLL-1：角色密码首次登录认领（2026-08-17，未发布）
+
+- 本节覆盖 `FE-PLAYER-AUTH-MODES-1` 中“至少一个角色且所有角色必须由管理员预设密码”的旧 UI 约束。角色模式现在允许空角色列表和 `waiting` 角色；说明文案明确“新角色和无密码记录的老角色，会把第一次 `!login` 输入设为自己的密码”，空列表也允许先启用。
+- `InstancePlayerAuthRoleConfig.credentialStatus` 区分 `waiting / configured / error`。弹窗分别显示“等待首次设置 · 玩家可自行认领”“已设置 · 输入新密码可重置”“凭据异常 · 登录已拒绝”；管理员清除后先显示“保存后等待首次设置”。store 异常通过 `roleCredentialStoreReady/detail` 单独提示，错误角色禁用输入与清除，不能伪装成未设置。
+- 管理员仍可代设和重置，但不再要求所有 waiting 角色本次填写；保存 payload 只包含本次非空输入与明确清除项。角色密码仍不回显、不缓存，roleId 只作为不可编辑请求标识。
+- `useStardewLifecycleActions.ts` 修复重启提交后的重复点击窗口：restart 发起时后端投影本来就是 `running`，该旧状态不能立即清掉 pending；必须先观察到 lifecycle job，再在任务终态解锁。普通 start 仍允许用从 stopped 变为 running 作为短任务未被轮询捕获时的完成证据。
+- 新增 `lifecycle-action-state.ts` 纯状态判定和 `test:lifecycle-action-state`，并继续由 `test:responsive-layout` 覆盖共用弹窗、桌面/移动入口和重启联动；Docker/production build 结果见 `docs/09-image-build.md`。
+- 本次不打 tag。正式发布前必须用两个真实 Stardew 客户端复验首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持；前端自动状态测试不能替代游戏内交互。

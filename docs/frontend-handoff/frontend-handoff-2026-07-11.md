@@ -1874,3 +1874,21 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - Dockerfile 同款 Node 22 Alpine 洁净 `npm ci && npm run build` 通过，Vite 8.0.16 完成 140 modules production build。
 - 若以后调整文案或移动端布局，不得用 `playersData.updatedAt` 或浏览器当前时间补齐缺失的 `lastSeen`；字段缺失代表没有可信的真实在线历史。
+
+# FE-PLAYER-AUTH-SELF-ENROLL-1 接手记录（2026-08-17，未发布）
+
+## 改了什么
+
+- `PlayerAuthSettingsDialog.tsx` 允许没有非主机角色或仍有 waiting 角色时启用 role。角色卡新增 `credentialStatus` 三态以及 store 级异常提示；管理员可代设/重置，清除后回到等待玩家第一次 `!login` 自助设置。
+- 角色模式说明、空状态和计数已改为“已设置 / 待设置”，不再阻止未配置角色保存。请求仍只提交本次输入与清除，不回显、不持久化明文。
+- `useStardewLifecycleActions.ts` 不再用 restart 请求前就存在的 `running` 投影清除 pending。判定抽到 `lifecycle-action-state.ts`：restart 必须观察 lifecycle job 后才在终态解锁；start 保留 running fallback。
+
+## 影响与验证
+
+- 类型变化位于 `frontend/src/types.ts`；桌面 `ServerControlPage.tsx`、移动 `MobileControlPage.tsx` 和 `StardewMobileShell.tsx` 继续共用同一弹窗与生命周期 hook。QA fixture、样式和 responsive 源码契约同步更新。
+- 新增 `scripts/test-lifecycle-action-state.ts` 与 npm script；宿主定向测试、全量前端状态脚本和 Docker production build 的精确结果见 `docs/09-image-build.md`。
+
+## 下一步注意事项
+
+- `waiting` 表示玩家可首次认领，`error` 表示凭据层 fail closed；任何 UI 重构都不能把两者合并成“未设置”。也不能因角色列表为空而禁止 role，因为新建/导入后出现的角色需要使用同一首次登录契约。
+- 本次没有 tag/Release。正式发布前需要两个真实客户端完成首次认领、交叉失败、清除后重认领、Panel 批准和重启保持矩阵。

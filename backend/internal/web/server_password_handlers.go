@@ -146,6 +146,8 @@ func (s *server) handleInstancePlayerAuthConfig(w http.ResponseWriter, r *http.R
 	}
 	s.auditLog(r, &actor, "instance_player_auth_update", "instance", instanceID, auditMetadata(
 		"mode", result.Mode,
+		"timeoutSeconds", strconv.Itoa(result.TimeoutSeconds),
+		"maxAttempts", strconv.Itoa(result.MaxAttempts),
 		"configuredRoleCount", strconv.Itoa(result.ConfiguredRoleCount),
 		"removedRoleCount", strconv.Itoa(len(body.RolePasswordRemovals)),
 		"updatedRoleCount", strconv.Itoa(len(body.RolePasswordUpdates)),
@@ -157,7 +159,7 @@ func writePlayerAuthConfigError(w http.ResponseWriter, err error, fallback strin
 	if ce, ok := err.(*sj.CommandError); ok {
 		status := http.StatusBadRequest
 		switch ce.Code {
-		case "player_auth_revision_conflict", "role_auth_mode_active":
+		case "player_auth_revision_conflict", "role_auth_mode_active", "role_credential_store_busy", "role_credential_store_invalid":
 			status = http.StatusConflict
 		case "not_supported":
 			status = http.StatusNotImplemented

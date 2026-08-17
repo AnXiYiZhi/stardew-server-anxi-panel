@@ -179,6 +179,11 @@ func (r *installRunner) run(ctx context.Context, jobCtx *jobs.Context) error {
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
 	}
+	if changed, err := EnsureServerPlayerAuthEnvironment(r.instance.DataDir); err != nil {
+		return fmt.Errorf("ensure server player authentication environment: %w", err)
+	} else if changed {
+		_, _ = jobCtx.Info(ctx, "已为旧实例补齐玩家加入保护运行环境。")
+	}
 	// ── Step 2: docker compose pull ─────────────────────────────────────
 	if r.steamCMDDirect {
 		_, _ = jobCtx.Info(ctx, "本次安装将跳过 steam-auth，直接复用已保存凭据和 SteamCMD 授权缓存下载/校验游戏文件。")

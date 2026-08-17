@@ -294,6 +294,13 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	if _, err := EnsureServerContEnvFix(instance.DataDir); err != nil {
 		return fmt.Errorf("ensure server static init compatibility fix: %w", err)
 	}
+	if _, err := EnsureServerPlayerAuthEnvironment(instance.DataDir); err != nil {
+		if errors.Is(err, ErrPlayerAuthComposeUnsupported) {
+			d.logger.Warn("player authentication Compose migration requires manual review", "instance", instance.ID, "error", err)
+		} else {
+			return fmt.Errorf("ensure server player authentication environment: %w", err)
+		}
+	}
 
 	// Write .env only when not already present.
 	envPath := filepath.Join(instance.DataDir, ".env")

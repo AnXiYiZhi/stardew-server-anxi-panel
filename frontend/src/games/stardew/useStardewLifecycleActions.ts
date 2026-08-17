@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ApiError, startInstance, stopInstance, restartInstance } from '../../api'
 import { errorMessage } from '../../core/helpers'
 import type { InstanceState } from '../../types'
+import { shouldClearPendingStartupAction, type PendingStartupAction } from './lifecycle-action-state'
 import type { StardewDashboardData } from './stardew-routes'
 import { useStardewLifecycleState } from './useStardewLifecycleState'
 
@@ -23,7 +24,8 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
   const [actionError, setActionError] = useState<string | null>(null)
   const [saveRequiredDetected, setSaveRequiredDetected] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'stop' | 'restart' | null>(null)
-  const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
+  const [pendingStartupAction, setPendingStartupAction] = useState<PendingStartupAction>(null)
+  const [pendingStartupSawActiveJob, setPendingStartupSawActiveJob] = useState(false)
   const [pendingStopAction, setPendingStopAction] = useState(false)
 
   const state = instanceState?.state ?? null
@@ -36,14 +38,15 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
     pendingStop: pendingStopAction,
   })
   const { isRunning, isStarting, isStopped, hasActiveLifecycleJob, startupInProgress, waitingForStop } = lifecycle
+  const restartInProgress = pendingStartupAction === 'restart'
 
   const noSavesDetected = Boolean(dashboardData.saves && dashboardData.saves.saves.length === 0)
   const showSaveRequiredPrompt =
     (state === 'save_required' || saveRequiredDetected || noSavesDetected) && !isRunning && !isStarting
 
-  const canStart = isAdmin && isStopped && !actionBusy && !startupInProgress && !waitingForStop
-  const canStop = isAdmin && isRunning && !actionBusy && !waitingForStop
-  const canRestart = isAdmin && isRunning && !actionBusy && !waitingForStop
+  const canStart = isAdmin && isStopped && !actionBusy && !startupInProgress && !waitingForStop && !restartInProgress
+  const canStop = isAdmin && isRunning && !actionBusy && !waitingForStop && !restartInProgress
+  const canRestart = isAdmin && isRunning && !actionBusy && !waitingForStop && !restartInProgress
 
   useEffect(() => {
     if (state && state !== 'save_required') {
@@ -52,11 +55,23 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
   }, [state])
 
   useEffect(() => {
-    // Startup display follows the backend lifecycle job/state.
-    if (!hasActiveLifecycleJob && isRunning) {
-      setPendingStartupAction(null)
+    if (pendingStartupAction && hasActiveLifecycleJob) {
+      setPendingStartupSawActiveJob(true)
     }
-  }, [hasActiveLifecycleJob, isRunning])
+  }, [hasActiveLifecycleJob, pendingStartupAction])
+
+  useEffect(() => {
+    // Clear on success or after the submitted lifecycle job reaches any terminal state.
+    if (shouldClearPendingStartupAction({
+      action: pendingStartupAction,
+      hasActiveLifecycleJob,
+      isRunning,
+      sawActiveLifecycleJob: pendingStartupSawActiveJob,
+    })) {
+      setPendingStartupAction(null)
+      setPendingStartupSawActiveJob(false)
+    }
+  }, [hasActiveLifecycleJob, isRunning, pendingStartupAction, pendingStartupSawActiveJob])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -67,6 +82,7 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
   async function handleStart() {
     setActionBusy(true)
     setPendingStartupAction('start')
+    setPendingStartupSawActiveJob(false)
     setPendingStopAction(false)
     setActionError(null)
     try {
@@ -83,10 +99,12 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
         dashboardData.refreshInstanceState()
         dashboardData.refreshSaves()
         setPendingStartupAction(null)
+        setPendingStartupSawActiveJob(false)
         return
       }
       setActionError(errorMessage(e))
       setPendingStartupAction(null)
+      setPendingStartupSawActiveJob(false)
     } finally {
       setActionBusy(false)
     }
@@ -96,6 +114,7 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
     setActionBusy(true)
     setPendingStopAction(true)
     setPendingStartupAction(null)
+    setPendingStartupSawActiveJob(false)
     setActionError(null)
     dashboardData.clearInviteCode()
     try {
@@ -110,9 +129,10 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
     }
   }
 
-  async function handleRestart() {
+  async function handleRestart(): Promise<void> {
     setActionBusy(true)
     setPendingStartupAction('restart')
+    setPendingStartupSawActiveJob(false)
     setActionError(null)
     try {
       await restartInstance()
@@ -122,6 +142,8 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
     } catch (e) {
       setActionError(errorMessage(e))
       setPendingStartupAction(null)
+      setPendingStartupSawActiveJob(false)
+      throw e
     } finally {
       setActionBusy(false)
     }
@@ -138,13 +160,14 @@ export function useStardewLifecycleActions({ instanceState, dashboardData, isAdm
   function confirmPendingAction() {
     const action = confirmAction
     setConfirmAction(null)
-    void (action === 'stop' ? handleStop() : handleRestart())
+    void (action === 'stop' ? handleStop() : handleRestart()).catch(() => undefined)
   }
 
   return {
     ...lifecycle,
     actionBusy,
     actionError,
+    restartInProgress,
     saveRequiredDetected,
     showSaveRequiredPrompt,
     confirmAction,

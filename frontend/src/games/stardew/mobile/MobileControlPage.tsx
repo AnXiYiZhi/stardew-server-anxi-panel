@@ -19,7 +19,10 @@ import { useGameLanguage } from '../useGameLanguage'
 import { STARDEW_GAME_LANGUAGES } from '../game-languages'
 import { PlayerAuthSettingsDialog } from '../PlayerAuthSettingsDialog'
 
-type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
+type MobileControlPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'> & {
+  restartInProgress: boolean
+  onPlayerAuthRestart: () => Promise<void>
+}
 
 const ICONS = {
   broadcast: '/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png',
@@ -62,7 +65,13 @@ function serverStatusDotClass(state: string | null, loading: boolean): string {
   return 'sd-dot sd-dot-gray'
 }
 
-export function MobileControlPage({ user, instanceState, dashboardData }: MobileControlPageProps) {
+export function MobileControlPage({
+  user,
+  instanceState,
+  dashboardData,
+  restartInProgress,
+  onPlayerAuthRestart,
+}: MobileControlPageProps) {
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -123,8 +132,10 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
   const [jojaMessage, setJojaMessage] = useState<string | null>(null)
   const [jojaError, setJojaError] = useState(false)
 
-  const statusText = serverStatusText(state, dashboardData.loading)
-  const statusDotClass = serverStatusDotClass(state, dashboardData.loading)
+  const statusText = restartInProgress ? '正在重启' : serverStatusText(state, dashboardData.loading)
+  const statusDotClass = restartInProgress
+    ? 'sd-dot sd-dot-yellow sd-dot-pulse'
+    : serverStatusDotClass(state, dashboardData.loading)
 
   async function handleSay() {
     if (!sayMessage.trim()) return
@@ -624,6 +635,7 @@ export function MobileControlPage({ user, instanceState, dashboardData }: Mobile
           isRunning={isRunning}
           mobile
           onClose={() => setPlayerAuthOpen(false)}
+          onRestart={onPlayerAuthRestart}
         />
       ) : null}
 

@@ -1037,3 +1037,25 @@
 ## 下一步注意事项
 
 - 后续新增玩家时间字段时必须区分“观察到名册项”和“观察到玩家在线”；不能再次把 `last_seen_at`、响应 `updatedAt` 或页面轮询时间映射成用户可见的最后在线时间。
+
+# PLAYER-AUTH-SELF-ENROLL-1 接手记录（2026-08-17，未发布）
+
+## 改了什么
+
+- 角色模式允许待设置角色和空角色列表。Control `0.3.6` 的 `RoleCredentialStore.cs` 在第一次合法 `!login` 时按活动 saveId 与角色 ID 写入 HMAC verifier，并立即继续同一次 Junimo 认证；管理员代设/重置/清除仍走现有 player-auth API。
+- 新增 Panel/Control 共用的 `control/role-passwords.json`、`role-passwords.initialized` 与 `.role-passwords.lock` 契约。marker/store 不一致、损坏 schema、无效 save/role/verifier、权限或锁异常全部 fail closed；legacy `.env` verifier 只在新 store 尚未初始化时迁入当时活动存档。
+- `player_auth_config.go` 返回每个角色的 `credentialStatus=waiting|configured|error`，并增加 store ready/detail、error/orphan 计数。管理 mutation 将 store 与 `.env` key/revision 纳入同一回滚事务；新增 `role_credential_store.go` 及 Windows/Unix 原子替换实现。
+- `server_player_auth_compose.go` 在 start/restart 前为旧 Compose 补四个 SAP 变量；restart 通过 `ComposeRecreateServices(..., "server")` 强制重建 server。角色模式无法迁移自定义 environment 时阻止生命周期；none/global 的 inline environment 保留原文件、记录 warning 并继续，避免未使用角色模式的既有自定义部署被升级阻断。
+- Control 两份 manifest 与 runtime stack identity 升到 `0.3.6`；经标准 `/game` 0-error 实编译同步后的嵌入 DLL SHA-256=`e7f3744b647c2f658ac3ad60d1dc27d958d935c7946f134b35447ab6c79bb422`。
+
+## 影响文件与验证
+
+- 后端：`role_credential_store*.go`、`player_auth_config.go`、`server_player_auth_compose.go`、`lifecycle.go`、`runtime_update_apply_runner.go`、`save_import_activation.go`、Docker `compose.go` 及对应测试。
+- Control：`RoleCredentialStore.cs`、`RolePasswordPolicy.cs`、`RolePasswordPatch.cs`、`ModEntry.cs`、契约测试、manifest/DLL 与运行栈清单。前端与接口细节分别见最新 frontend handoff 和 `docs/06-integration.md`。
+- 已完成的宿主定向 Go 与前端回归、Docker Desktop Linux/Compose/Control 结果统一写入 `docs/09-image-build.md`；本次不打 tag、不创建 Release。
+
+## 下一步注意事项
+
+- 不得删除 initialized marker 后把丢失/损坏 store 当作空库；这会让已有角色重新开放首次认领。任何格式迁移都必须保留“初始化过即 fail closed”的耐久证据和原子发布顺序。
+- verifier 必须按 saveId 隔离；切换、导入、回档和删除角色不得把另一存档的同 roleId 记录自动复用。API、job log、支持包、Docker 输出仍禁止出现 key、guard、verifier 或完整 store。
+- 正式发布前补两真人客户端首次设置/交叉失败/清除后重认领/Panel 批准/重启保持矩阵；自动测试不能替代该交互证据。

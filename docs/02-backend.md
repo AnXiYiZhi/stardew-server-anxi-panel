@@ -2077,3 +2077,24 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 玩家 API 的 `lastSeen` 现在只允许来自 SQLite 名册的 `last_online_at`，不再回退到通用的 `last_seen_at`。后者只表示面板最近从 Control、缓存或存档 XML 观察到该名册项，不能证明玩家登录过。
 - 存档 XML 补出的离线角色即使被连续轮询并写入名册，也会继续省略 `lastSeen`；真正在线过的角色离线后仍保留最后一次 `last_online_at`。现有污染数据无需清理，因为这类记录的 `last_online_at` 本来就是空值，部署修复后会自动停止展示假时间。
 - `players_test.go` 使用真实 SQLite 连续执行两轮 `ListPlayers`，同时断言 API 始终不返回假 `lastSeen`、内部 `last_seen_at` 继续推进且 `last_online_at` 保持为空。Linux 容器中的 Stardew 玩家包与 storage 包全量测试通过。
+
+# PLAYER-AUTH-SELF-ENROLL-1：角色密码首次登录自助设置（2026-08-17，未发布）
+
+## 当前契约与持久化
+
+- 本节覆盖 `PLAYER-AUTH-MODES-1` 中“启用 role 前必须给所有当前角色预设密码”的旧约束。管理员现在可以在没有非主机角色、或存在待设置角色时直接启用 `role`；角色第一次提交合法 `!login 密码` 时，Control 会为当前活动存档的 `UniqueMultiplayerID` 计算 HMAC verifier、耐久写入后再放行本次认证。管理员仍可代设、重置或清除；清除后该角色回到 `waiting`，下一次首次登录重新认领。
+- 角色 verifier 从实例级 `.env` payload 迁到每实例 Control 私有目录的 `role-passwords.json`，schema 按活动 `saveId -> roleId` 隔离；`role-passwords.initialized` 标记区分“从未初始化”与“已初始化但文件丢失”。标记存在而 store 缺失、JSON/schema/verifier 非法、活动 save 身份不可用或权限收敛失败时一律 fail closed，不能把损坏现场误判成可重新认领。
+- Panel 与 Control 共用 `.role-passwords.lock` 的独占创建、随机 owner、5 秒有界等待和 2 分钟 stale lock 处理。写入采用同目录临时文件、flush/fsync、Linux `0600`、先耐久标记再原子替换 store；Panel 管理更新还把 store 与 `.env` revision/key 作为一个可回滚事务，任一步失败恢复原快照，回滚本身失败返回 `player_auth_transaction_rollback_failed`。
+- 旧 `SAP_ROLE_PASSWORDS_B64` 中已有 verifier 不丢失：新 store 尚未初始化时，只把 legacy 记录绑定到当时活动存档并在首次 Control 登录或 Panel mutation 时写入新 store；新 store 一旦初始化，后续存档各自拥有独立记录，不能跨档复用或由 orphan 角色自动认领。
+
+## 生命周期、Compose 与运行栈
+
+- 旧实例启动/重启前由 `EnsureServerPlayerAuthEnvironment` 幂等补齐 `SAP_PLAYER_AUTH_MODE`、`SAP_PLAYER_AUTH_REVISION`、`SAP_ROLE_AUTH_KEY`、`SAP_ROLE_PASSWORDS_B64` 的 Compose 透传；重启改用 `docker compose up -d --no-deps --force-recreate server`，确保新环境进入 server 且不重启 `steam-auth`。迁移采用原权限原子替换，不覆盖用户其它 Compose 内容。
+- 自定义 `server.environment` 若使用 inline/flow 或混合语法而无法安全改写：当前 `role` 模式继续阻止启动/重启并进入 `player_auth_compose_migration_failed`；旧 `none/global` 模式保留原 Compose、写入明确 job warning 后继续。这一兼容回退只适用于不依赖新增 SAP 透传的模式，不能用于绕过角色模式 fail-closed。
+- Control 从 `0.3.3` 更新到 `0.3.6`；两份 manifest、标准 `/game` 实编译产物、嵌入 DLL 和 `runtime_stack_manifest.json` 同步，DLL SHA-256=`e7f3744b647c2f658ac3ad60d1dc27d958d935c7946f134b35447ab6c79bb422`。`RolePasswordPolicy` 仍只改写 Junimo `TryAuthenticate` 输入，attempts、timeout、隔离与传送继续由上游执行。
+
+## 影响文件、验证与下一步
+
+- 主要文件：`role_credential_store.go` 及平台原子替换文件、`player_auth_config.go`、`server_player_auth_compose.go`、`lifecycle.go`、Docker `compose.go`，Control `RoleCredentialStore.cs` / `RolePasswordPolicy.cs` / `RolePasswordPatch.cs` / `ModEntry.cs`，两份 manifest/DLL 与运行栈清单。
+- Go 回归覆盖首次认领、重复/错误/串角色、按存档隔离、legacy 迁移、marker/store 损坏、并发锁、权限、Panel/Control 交叉写、事务回滚、Compose 迁移与 none/global 兼容回退；Docker Desktop、Control 标准编译和完整门禁结果记录在 `docs/09-image-build.md`。
+- 本次明确不打 tag、不创建 Release、不提升 `latest`。由于认证客户端交互已变化，正式发布前仍必须补两个真人客户端的各自首次设置、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准和重启后保持矩阵；自动 C#/Go/Docker 夹具不得表述成真人联机已验证。

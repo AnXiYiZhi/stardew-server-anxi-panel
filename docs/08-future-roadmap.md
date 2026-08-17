@@ -2070,3 +2070,15 @@ Multi Game Mode later
 - [x] 修复存档名册观测时间被误当作最后在线时间：API `lastSeen` 只读取 `last_online_at`，从未上线角色不再显示“上次 今天 HH:mm”。
 - [x] 保留 `last_seen_at` 作为内部观测审计，不迁移或清洗数据库；真正在线过的角色离线后仍保留真实最后在线时间。
 - [x] 增加真实 SQLite 双轮 `ListPlayers` 回归，Linux Stardew/storage 全包测试与 Node 22 production build 通过；桌面列名改为“在线 / 最近活动”。
+
+# PLAYER-AUTH-SELF-ENROLL-1（2026-08-17，未发布）
+
+- [x] role 模式允许空角色与 waiting 角色；新/无凭据角色可用第一次合法 `!login` 为当前存档角色自助设置密码，管理员代设、重置和清除继续可用。
+- [x] 新增按 saveId 隔离的 `role-passwords.json`、initialized marker、跨 Panel/Control 文件锁、原子 `0600` 写入、legacy payload 迁移和损坏 fail-closed；Panel store/`.env` 更新支持事务回滚。
+- [x] API/前端增加 waiting/configured/error、store ready/detail、error/orphan 计数；空列表可先启用，凭据异常不会伪装成待设置。
+- [x] Control 升到 `0.3.6`，运行栈清单和嵌入 DLL 摘要同步；角色补丁仍复用 Junimo attempts/timeout/隔离/传送。
+- [x] 旧 Compose 自动补四个 SAP 环境变量，restart 强制只重建 server；role 无法安全迁移时阻止，none/global 自定义 inline environment 保留并告警继续。
+- [x] 修复 restart 请求后 stale running 立即清 pending 的重复提交窗口，新增纯状态回归。
+- [x] Docker Desktop Linux 全量 Go test/vet/build、Compose integration、Control 契约/标准编译、前端 18 项全量/build、本地镜像 fresh/restart 冒烟均通过；任务容器/volume/image/端口/临时副本清理为 0，证据见 `docs/09-image-build.md`。
+- [ ] 正式发布前完成两个真人客户端首次认领、各自/交叉密码、清除后重认领、Panel 批准和重启保持矩阵。
+- [x] 本次按用户要求未打 tag、未创建 Release、未更新 `latest`；以后发布必须重新走不可变候选和上一正式版 Web 升级/回滚门禁。

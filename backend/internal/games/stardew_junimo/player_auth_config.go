@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,29 +37,39 @@ const (
 	roleAuthKeyBytes            = 32
 	playerAuthRevisionBytes     = 16
 	maxPlayerAuthPasswordRunes  = 128
+	defaultAuthTimeoutSeconds   = 120
+	maxAuthTimeoutSeconds       = 3600
+	defaultMaxLoginAttempts     = 3
+	maxLoginAttempts            = 20
 	invalidRolePasswordSentinel = "\x00sap-role-auth-invalid"
 )
 
 type PlayerAuthRoleConfig struct {
-	RoleID     string `json:"roleId"`
-	Name       string `json:"name"`
-	Configured bool   `json:"configured"`
-	Status     string `json:"status,omitempty"`
+	RoleID           string `json:"roleId"`
+	Name             string `json:"name"`
+	Configured       bool   `json:"configured"`
+	CredentialStatus string `json:"credentialStatus"`
+	Status           string `json:"status,omitempty"`
 }
 
 type PlayerAuthConfigResult struct {
-	Mode                    string                 `json:"mode"`
-	Revision                string                 `json:"revision"`
-	GlobalPassword          string                 `json:"globalPassword,omitempty"`
-	Roles                   []PlayerAuthRoleConfig `json:"roles"`
-	ConfiguredRoleCount     int                    `json:"configuredRoleCount"`
-	UnconfiguredRoleCount   int                    `json:"unconfiguredRoleCount"`
-	OrphanedRoleCount       int                    `json:"orphanedRoleCount"`
-	RuntimeMode             string                 `json:"runtimeMode,omitempty"`
-	RuntimeRevision         string                 `json:"runtimeRevision,omitempty"`
-	RestartRequired         bool                   `json:"restartRequired"`
-	RolePasswordPatchReady  bool                   `json:"rolePasswordPatchReady"`
-	RolePasswordPatchDetail string                 `json:"rolePasswordPatchDetail,omitempty"`
+	Mode                      string                 `json:"mode"`
+	Revision                  string                 `json:"revision"`
+	TimeoutSeconds            int                    `json:"timeoutSeconds"`
+	MaxAttempts               int                    `json:"maxAttempts"`
+	GlobalPassword            string                 `json:"globalPassword,omitempty"`
+	Roles                     []PlayerAuthRoleConfig `json:"roles"`
+	ConfiguredRoleCount       int                    `json:"configuredRoleCount"`
+	UnconfiguredRoleCount     int                    `json:"unconfiguredRoleCount"`
+	CredentialErrorCount      int                    `json:"credentialErrorCount"`
+	OrphanedRoleCount         int                    `json:"orphanedRoleCount"`
+	RoleCredentialStoreReady  bool                   `json:"roleCredentialStoreReady"`
+	RoleCredentialStoreDetail string                 `json:"roleCredentialStoreDetail,omitempty"`
+	RuntimeMode               string                 `json:"runtimeMode,omitempty"`
+	RuntimeRevision           string                 `json:"runtimeRevision,omitempty"`
+	RestartRequired           bool                   `json:"restartRequired"`
+	RolePasswordPatchReady    bool                   `json:"rolePasswordPatchReady"`
+	RolePasswordPatchDetail   string                 `json:"rolePasswordPatchDetail,omitempty"`
 }
 
 type PlayerAuthPasswordUpdate struct {
@@ -69,6 +80,8 @@ type PlayerAuthPasswordUpdate struct {
 type UpdatePlayerAuthConfigRequest struct {
 	ExpectedRevision     string                     `json:"expectedRevision"`
 	Mode                 string                     `json:"mode"`
+	TimeoutSeconds       *int                       `json:"timeoutSeconds,omitempty"`
+	MaxAttempts          *int                       `json:"maxAttempts,omitempty"`
 	GlobalPassword       *string                    `json:"globalPassword,omitempty"`
 	RolePasswordUpdates  []PlayerAuthPasswordUpdate `json:"rolePasswordUpdates,omitempty"`
 	RolePasswordRemovals []string                   `json:"rolePasswordRemovals,omitempty"`
@@ -89,6 +102,8 @@ type playerAuthEnvState struct {
 	Mode           string
 	Revision       string
 	ServerPassword string
+	TimeoutSeconds int
+	MaxAttempts    int
 	RoleKey        []byte
 	Payload        rolePasswordPayload
 }
@@ -126,6 +141,20 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 		if err != nil {
 			return err
 		}
+		timeoutSeconds := current.TimeoutSeconds
+		if request.TimeoutSeconds != nil {
+			if *request.TimeoutSeconds < 0 || *request.TimeoutSeconds > maxAuthTimeoutSeconds {
+				return &CommandError{Code: "invalid_auth_timeout", Message: "认证超时时间必须为 0 到 3600 秒，0 表示不限制"}
+			}
+			timeoutSeconds = *request.TimeoutSeconds
+		}
+		loginAttempts := current.MaxAttempts
+		if request.MaxAttempts != nil {
+			if *request.MaxAttempts < 1 || *request.MaxAttempts > maxLoginAttempts {
+				return &CommandError{Code: "invalid_max_login_attempts", Message: "最大失败次数必须为 1 到 20 次"}
+			}
+			loginAttempts = *request.MaxAttempts
+		}
 		players, err := d.listPlayers(ctx, instance)
 		if err != nil {
 			return err
@@ -136,12 +165,15 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 			roleByID[role.RoleID] = role
 		}
 
-		payload := current.Payload
-		if payload.Roles == nil {
-			payload = rolePasswordPayload{SchemaVersion: rolePasswordSchemaVersion, Roles: map[string]rolePasswordRecord{}}
-		}
 		roleKey := current.RoleKey
 		if len(roleKey) == 0 && (mode == PlayerAuthModeRole || len(request.RolePasswordUpdates) > 0) {
+			existingRecords, _, storeErr := roleCredentialsForSave(instance.DataDir, players.SaveID, current.Payload)
+			if storeErr != nil {
+				return &CommandError{Code: "role_credential_store_invalid", Message: "角色凭据文件损坏或无法读取；为防止串号，登录和修改均已拒绝"}
+			}
+			if len(existingRecords) > 0 {
+				return &CommandError{Code: "role_auth_key_invalid", Message: "角色凭据已经存在但认证密钥缺失，不能生成新密钥覆盖现有密码"}
+			}
 			roleKey, err = randomBytes(roleAuthKeyBytes)
 			if err != nil {
 				return fmt.Errorf("generate role authentication key: %w", err)
@@ -151,17 +183,17 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 		removed := make(map[string]bool, len(request.RolePasswordRemovals))
 		for _, rawID := range request.RolePasswordRemovals {
 			roleID := strings.TrimSpace(rawID)
-			if roleID == "" {
+			if !validPlayerAuthRoleID(roleID) {
 				return &CommandError{Code: "invalid_role_id", Message: "角色密码删除请求缺少角色 ID"}
 			}
 			if removed[roleID] {
 				return &CommandError{Code: "duplicate_role_update", Message: "同一个角色不能重复删除密码"}
 			}
 			removed[roleID] = true
-			delete(payload.Roles, roleID)
 		}
 
 		updated := make(map[string]bool, len(request.RolePasswordUpdates))
+		credentialUpdates := make(map[string]rolePasswordRecord, len(request.RolePasswordUpdates))
 		for _, update := range request.RolePasswordUpdates {
 			roleID := strings.TrimSpace(update.RoleID)
 			role, exists := roleByID[roleID]
@@ -172,12 +204,12 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 				return &CommandError{Code: "duplicate_role_update", Message: "同一个角色不能同时或重复修改密码"}
 			}
 			if !validPlayerAuthPassword(update.Password) {
-				return &CommandError{Code: "invalid_role_password", Message: "角色密码必须为 1 到 128 个字符，且不能包含控制字符"}
+				return &CommandError{Code: "invalid_role_password", Message: "角色密码必须为 1 到 128 个字符，不能包含控制字符，且空格不能位于首尾或连续出现"}
 			}
 			if len(roleKey) != roleAuthKeyBytes {
 				return &CommandError{Code: "role_auth_key_invalid", Message: "角色密码密钥不可用，请重新保存角色密码配置"}
 			}
-			payload.Roles[roleID] = rolePasswordRecord{
+			credentialUpdates[roleID] = rolePasswordRecord{
 				Name:      role.Name,
 				Verifier:  computeRolePasswordVerifier(roleKey, roleID, update.Password),
 				UpdatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -196,54 +228,106 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 				return &CommandError{Code: "global_password_required", Message: "切换到全服统一密码时必须设置新密码"}
 			}
 			if !validPlayerAuthPassword(serverPassword) {
-				return &CommandError{Code: "invalid_server_password", Message: "全服密码必须为 1 到 128 个字符，且不能包含控制字符"}
+				return &CommandError{Code: "invalid_server_password", Message: "全服密码必须为 1 到 128 个字符，不能包含控制字符，且空格不能位于首尾或连续出现"}
 			}
 		case PlayerAuthModeRole:
-			if len(roles) == 0 {
-				return &CommandError{Code: "role_roster_empty", Message: "当前存档没有可配置的非主机角色，无法启用角色独立密码"}
-			}
 			if len(roleKey) != roleAuthKeyBytes {
 				return &CommandError{Code: "role_auth_key_invalid", Message: "角色密码密钥不可用，请重新保存角色密码配置"}
 			}
-			for _, role := range roles {
-				if _, configured := payload.Roles[role.RoleID]; !configured {
-					return &CommandError{Code: "role_passwords_incomplete", Message: "启用角色独立密码前，必须为所有当前角色设置密码"}
-				}
+			if _, err := readRoleCredentialStore(instance.DataDir); err != nil {
+				return &CommandError{Code: "role_credential_store_invalid", Message: "角色凭据文件损坏或无法读取；为防止串号，登录和修改均已拒绝"}
 			}
 			serverPassword = deriveInternalServerPassword(roleKey)
 		}
 
-		encodedPayload, err := encodeRolePasswordPayload(payload)
-		if err != nil {
-			return err
-		}
-		revisionBytes, err := randomBytes(playerAuthRevisionBytes)
-		if err != nil {
-			return fmt.Errorf("generate player auth revision: %w", err)
-		}
-		revision := base64.RawURLEncoding.EncodeToString(revisionBytes)
-		updates := map[string]string{
-			playerAuthModeEnvKey:     mode,
-			playerAuthRevisionEnvKey: revision,
-			roleAuthKeyEnvKey:        encodeRoleAuthKey(roleKey),
-			rolePasswordsEnvKey:      encodedPayload,
-			"SERVER_PASSWORD":        serverPassword,
-		}
-		envPath := instanceEnvPath(instance.DataDir)
-		if _, err := os.Stat(envPath); os.IsNotExist(err) {
-			for key, value := range sjconfig.EmptyEnvTemplate() {
-				if _, configured := updates[key]; !configured {
-					updates[key] = value
-				}
+		revision := current.Revision
+		envChanged := mode != current.Mode ||
+			serverPassword != current.ServerPassword ||
+			timeoutSeconds != current.TimeoutSeconds ||
+			loginAttempts != current.MaxAttempts ||
+			encodeRoleAuthKey(roleKey) != encodeRoleAuthKey(current.RoleKey)
+		var envPath string
+		var envUpdates map[string]string
+		if envChanged {
+			encodedPayload, err := encodeRolePasswordPayload(current.Payload)
+			if err != nil {
+				return err
 			}
-		} else if err != nil {
-			return fmt.Errorf("inspect player authentication .env: %w", err)
+			revisionBytes, err := randomBytes(playerAuthRevisionBytes)
+			if err != nil {
+				return fmt.Errorf("generate player auth revision: %w", err)
+			}
+			revision = base64.RawURLEncoding.EncodeToString(revisionBytes)
+			envUpdates = map[string]string{
+				playerAuthModeEnvKey:     mode,
+				playerAuthRevisionEnvKey: revision,
+				roleAuthKeyEnvKey:        encodeRoleAuthKey(roleKey),
+				rolePasswordsEnvKey:      encodedPayload,
+				"SERVER_PASSWORD":        serverPassword,
+				"AUTH_TIMEOUT_SECONDS":   strconv.Itoa(timeoutSeconds),
+				"MAX_LOGIN_ATTEMPTS":     strconv.Itoa(loginAttempts),
+			}
+			envPath = instanceEnvPath(instance.DataDir)
+			if _, err := os.Stat(envPath); os.IsNotExist(err) {
+				for key, value := range sjconfig.EmptyEnvTemplate() {
+					if _, configured := envUpdates[key]; !configured {
+						envUpdates[key] = value
+					}
+				}
+			} else if err != nil {
+				return fmt.Errorf("inspect player authentication .env: %w", err)
+			}
 		}
-		if err := sjconfig.UpdateEnvFile(envPath, updates); err != nil {
+
+		commitEnv := func() error {
+			if !envChanged {
+				return nil
+			}
+			return sjconfig.UpdateEnvFile(envPath, envUpdates)
+		}
+		credentialsChanged := len(removed) > 0 || len(credentialUpdates) > 0
+		var stagedEnv *playerAuthEnvFileSnapshot
+		if credentialsChanged && envChanged && len(current.RoleKey) == 0 && len(roleKey) == roleAuthKeyBytes {
+			snapshot, snapshotErr := capturePlayerAuthEnvFile(instance.DataDir)
+			if snapshotErr != nil {
+				return fmt.Errorf("snapshot player authentication .env: %w", snapshotErr)
+			}
+			if stageErr := stagePlayerAuthRoleKey(instance.DataDir, snapshot.Exists, roleKey); stageErr != nil {
+				if restoreErr := restorePlayerAuthEnvFile(instance.DataDir, snapshot); restoreErr != nil {
+					return playerAuthTransactionRollbackError()
+				}
+				return fmt.Errorf("stage role authentication key: %w", stageErr)
+			}
+			stagedEnv = &snapshot
+		}
+		restoreStagedEnv := func(transactionErr error) error {
+			if stagedEnv == nil {
+				return transactionErr
+			}
+			if restoreErr := restorePlayerAuthEnvFile(instance.DataDir, *stagedEnv); restoreErr != nil {
+				return playerAuthTransactionRollbackError()
+			}
+			return transactionErr
+		}
+		if credentialsChanged {
+			if err := mutateRoleCredentialStoreAndCommit(instance.DataDir, players.SaveID, current.Payload, func(records map[string]rolePasswordRecord) error {
+				for roleID := range removed {
+					delete(records, roleID)
+				}
+				for roleID, record := range credentialUpdates {
+					records[roleID] = record
+				}
+				return nil
+			}, commitEnv); err != nil {
+				return restoreStagedEnv(err)
+			}
+		} else if err := commitEnv(); err != nil {
 			return err
 		}
 		next := playerAuthEnvState{
-			Mode: mode, Revision: revision, ServerPassword: serverPassword, RoleKey: roleKey, Payload: payload,
+			Mode: mode, Revision: revision, ServerPassword: serverPassword,
+			TimeoutSeconds: timeoutSeconds, MaxAttempts: loginAttempts,
+			RoleKey: roleKey, Payload: current.Payload,
 		}
 		result = buildPlayerAuthConfigResult(instance, next, players)
 		return nil
@@ -253,6 +337,50 @@ func (d *Driver) UpdatePlayerAuthConfig(ctx context.Context, instance registry.I
 
 func instanceEnvPath(dataDir string) string {
 	return filepath.Join(dataDir, ".env")
+}
+
+type playerAuthEnvFileSnapshot struct {
+	Raw    []byte
+	Exists bool
+}
+
+func capturePlayerAuthEnvFile(dataDir string) (playerAuthEnvFileSnapshot, error) {
+	raw, err := os.ReadFile(instanceEnvPath(dataDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return playerAuthEnvFileSnapshot{}, nil
+	}
+	if err != nil {
+		return playerAuthEnvFileSnapshot{}, err
+	}
+	return playerAuthEnvFileSnapshot{Raw: raw, Exists: true}, nil
+}
+
+func stagePlayerAuthRoleKey(dataDir string, envExists bool, roleKey []byte) error {
+	updates := map[string]string{roleAuthKeyEnvKey: encodeRoleAuthKey(roleKey)}
+	if !envExists {
+		for key, value := range sjconfig.EmptyEnvTemplate() {
+			updates[key] = value
+		}
+		updates[roleAuthKeyEnvKey] = encodeRoleAuthKey(roleKey)
+	}
+	return sjconfig.UpdateEnvFile(instanceEnvPath(dataDir), updates)
+}
+
+func restorePlayerAuthEnvFile(dataDir string, snapshot playerAuthEnvFileSnapshot) error {
+	if snapshot.Exists {
+		return writeRuntimeEnvBytesAtomic(dataDir, snapshot.Raw)
+	}
+	if err := os.Remove(instanceEnvPath(dataDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func playerAuthTransactionRollbackError() *CommandError {
+	return &CommandError{
+		Code:    "player_auth_transaction_rollback_failed",
+		Message: "玩家加入保护配置提交失败，且自动回滚未能完成；登录已按安全模式拒绝，请检查实例文件",
+	}
 }
 
 func readPlayerAuthEnvState(dataDir string) (playerAuthEnvState, error) {
@@ -284,17 +412,29 @@ func readPlayerAuthEnvState(dataDir string) (playerAuthEnvState, error) {
 	if err != nil {
 		return playerAuthEnvState{}, &CommandError{Code: "role_auth_config_invalid", Message: "角色密码配置格式无效"}
 	}
+	timeoutSeconds := playerAuthEnvInt(values["AUTH_TIMEOUT_SECONDS"], defaultAuthTimeoutSeconds)
+	loginAttempts := playerAuthEnvInt(values["MAX_LOGIN_ATTEMPTS"], defaultMaxLoginAttempts)
 	if mode == PlayerAuthModeRole {
-		if len(roleKey) != roleAuthKeyBytes || len(payload.Roles) == 0 {
-			return playerAuthEnvState{}, &CommandError{Code: "role_auth_config_invalid", Message: "角色密码模式缺少有效密钥或角色配置"}
+		if len(roleKey) != roleAuthKeyBytes {
+			return playerAuthEnvState{}, &CommandError{Code: "role_auth_config_invalid", Message: "角色密码模式缺少有效密钥"}
 		}
 		if !secureStringEqual(values["SERVER_PASSWORD"], deriveInternalServerPassword(roleKey)) {
 			return playerAuthEnvState{}, &CommandError{Code: "role_auth_guard_mismatch", Message: "角色密码内部保护口令不一致，请重新保存配置"}
 		}
 	}
 	return playerAuthEnvState{
-		Mode: mode, Revision: revision, ServerPassword: values["SERVER_PASSWORD"], RoleKey: roleKey, Payload: payload,
+		Mode: mode, Revision: revision, ServerPassword: values["SERVER_PASSWORD"],
+		TimeoutSeconds: timeoutSeconds, MaxAttempts: loginAttempts,
+		RoleKey: roleKey, Payload: payload,
 	}, nil
+}
+
+func playerAuthEnvInt(value string, defaultValue int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
 }
 
 func normalizePlayerAuthMode(mode string) (string, error) {
@@ -312,27 +452,53 @@ func normalizePlayerAuthMode(mode string) (string, error) {
 
 func buildPlayerAuthConfigResult(instance registry.Instance, state playerAuthEnvState, players *PlayersResult) *PlayerAuthConfigResult {
 	roles := eligiblePlayerAuthRoles(players)
+	saveID := ""
+	if players != nil {
+		saveID = players.SaveID
+	}
+	credentialRecords, _, credentialErr := roleCredentialsForSave(instance.DataDir, saveID, state.Payload)
+	if credentialErr == nil && len(credentialRecords) > 0 && len(state.RoleKey) != roleAuthKeyBytes {
+		credentialErr = fmt.Errorf("role credentials exist without their authentication key")
+		credentialRecords = nil
+	}
 	configured := 0
+	waiting := 0
+	credentialErrors := 0
 	currentIDs := make(map[string]bool, len(roles))
 	for i := range roles {
 		currentIDs[roles[i].RoleID] = true
-		_, roles[i].Configured = state.Payload.Roles[roles[i].RoleID]
+		if credentialErr != nil {
+			roles[i].CredentialStatus = RoleCredentialStatusError
+			credentialErrors++
+			continue
+		}
+		_, roles[i].Configured = credentialRecords[roles[i].RoleID]
 		if roles[i].Configured {
+			roles[i].CredentialStatus = RoleCredentialStatusConfigured
 			configured++
+		} else {
+			roles[i].CredentialStatus = RoleCredentialStatusWaiting
+			waiting++
 		}
 	}
 	orphaned := 0
-	for roleID := range state.Payload.Roles {
+	for roleID := range credentialRecords {
 		if !currentIDs[roleID] {
 			orphaned++
 		}
 	}
 	runtime := readRuntimePlayerAuthStatus(instance.DataDir)
 	result := &PlayerAuthConfigResult{
-		Mode: state.Mode, Revision: state.Revision, Roles: roles,
-		ConfiguredRoleCount: configured, UnconfiguredRoleCount: len(roles) - configured, OrphanedRoleCount: orphaned,
-		RuntimeMode: runtime.Mode, RuntimeRevision: runtime.Revision,
+		Mode: state.Mode, Revision: state.Revision,
+		TimeoutSeconds: state.TimeoutSeconds, MaxAttempts: state.MaxAttempts,
+		Roles:               roles,
+		ConfiguredRoleCount: configured, UnconfiguredRoleCount: waiting, CredentialErrorCount: credentialErrors, OrphanedRoleCount: orphaned,
+		RoleCredentialStoreReady: credentialErr == nil,
+		RuntimeMode:              runtime.Mode, RuntimeRevision: runtime.Revision,
 		RolePasswordPatchReady: runtime.PatchReady, RolePasswordPatchDetail: runtime.PatchDetail,
+	}
+	if credentialErr != nil {
+		result.RoleCredentialStoreDetail = "角色凭据文件损坏或无法读取；登录已安全拒绝。"
 	}
 	if state.Mode == PlayerAuthModeGlobal {
 		result.GlobalPassword = state.ServerPassword
@@ -350,8 +516,7 @@ func eligiblePlayerAuthRoles(players *PlayersResult) []PlayerAuthRoleConfig {
 	byID := make(map[string]PlayerAuthRoleConfig)
 	for _, player := range players.Players {
 		roleID := strings.TrimSpace(player.UniqueMultiplayerID)
-		parsedID, err := strconv.ParseInt(roleID, 10, 64)
-		if player.IsHost || err != nil || parsedID <= 0 {
+		if player.IsHost || !validPlayerAuthRoleID(roleID) {
 			continue
 		}
 		name := strings.TrimSpace(player.Name)
@@ -371,6 +536,11 @@ func eligiblePlayerAuthRoles(players *PlayersResult) []PlayerAuthRoleConfig {
 		return roles[i].Name < roles[j].Name
 	})
 	return roles
+}
+
+func validPlayerAuthRoleID(roleID string) bool {
+	parsedID, err := strconv.ParseInt(roleID, 10, 64)
+	return err == nil && parsedID != 0 && strconv.FormatInt(parsedID, 10) == roleID
 }
 
 func computeRolePasswordVerifier(key []byte, roleID, password string) string {
@@ -429,7 +599,7 @@ func decodeRolePasswordPayload(encoded string) (rolePasswordPayload, error) {
 	}
 	for roleID, record := range payload.Roles {
 		verifier, verifierErr := base64.RawURLEncoding.DecodeString(strings.TrimSpace(record.Verifier))
-		if parsed, err := strconv.ParseInt(roleID, 10, 64); err != nil || parsed <= 0 || verifierErr != nil || len(verifier) != sha256.Size {
+		if !validPlayerAuthRoleID(roleID) || verifierErr != nil || len(verifier) != sha256.Size {
 			return rolePasswordPayload{}, fmt.Errorf("invalid role password record")
 		}
 	}
@@ -472,6 +642,9 @@ func secureStringEqual(left, right string) bool {
 func validPlayerAuthPassword(password string) bool {
 	runeCount := utf8.RuneCountInString(password)
 	if runeCount == 0 || runeCount > maxPlayerAuthPasswordRunes {
+		return false
+	}
+	if strings.HasPrefix(password, " ") || strings.HasSuffix(password, " ") || strings.Contains(password, "  ") {
 		return false
 	}
 	for _, value := range password {

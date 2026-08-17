@@ -121,6 +121,7 @@ echo "release gates: frontend regression and production build"
   npm run test:runtime-components
   npm run test:smapi-update
   npm run test:install-state
+  npm run test:lifecycle-action-state
   npm run test:new-game-idempotency
   npm run test:nexus-extension-idempotency
   npm run test:cabin-strategy-options

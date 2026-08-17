@@ -2012,3 +2012,35 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 
 - 已完成：在干净 `HEAD` 验证卷只叠加本功能差异后，Linux `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过；C# 纯策略契约；`.NET 6 SDK + stardew_game-data` 标准 Control 实编译（0 errors，1 个既有 analyzer warning）；Node 22 Linux 全部 17 项前端状态/布局回归与 production build；1280×720、390×844 Browser 视觉 QA。
 - `v0.4.19` 候选 `31892497427`、自动 Tag `31893049884` 与正式提升 `31893060495` 已完成 Control required-update、fresh/restart、上一正式版 Web unhealthy 回滚/healthy 升级、三仓统一 digest 与正式冒烟；v0.5.0 候选 `31899107629` 又从 v0.4.19 完成真实 Web 回滚/升级并保留该认证回归。自动策略、Control fixture 和升级证据不等同于两个真人客户端实际输入角色密码；该人工记录仍是后续涉及认证交互改动时必须补的验证边界。
+
+# PLAYER-AUTH-SELF-ENROLL-1 未发布验证记录（2026-08-17，不打 tag）
+
+## 变更清单与受影响链路
+
+- 角色模式新增首次 `!login` 自助认领；verifier 从实例级 `.env` payload 演进为按 saveId 隔离的 Control 私有 store，并增加 initialized marker、Panel/Control 跨进程锁、原子权限写入、legacy 迁移和 store/`.env` 事务回滚。
+- API/前端新增 credential waiting/configured/error 与 store 健康状态，移除“启用前所有角色必须由管理员预设”的旧门禁；Control 从 `0.3.3` 升到 `0.3.6`。PR 自带 DLL 与项目标准 `/game` 构建不一致，已用 0-error 标准构建产物同步，最终 DLL SHA-256=`e7f3744b647c2f658ac3ad60d1dc27d958d935c7946f134b35447ab6c79bb422`。
+- 旧 Compose 在生命周期前补四个 SAP 环境变量；restart 改为 `up -d --no-deps --force-recreate server`。role 模式迁移失败继续阻止，none/global 的自定义 inline environment 保留并告警继续。前端 restart pending 不再被 stale running 提前清除。
+- 受影响链路：Panel player-auth API → driver mutation owner → `.env`/role credential store → Compose server environment/recreate → Control RolePasswordPatch → Junimo TryAuthenticate；反向状态为 Control/store + players → driver DTO → 桌面/移动共用弹窗。server/steam-auth/game/SDK/SMAPI 镜像版本未改变。
+
+## 本版专项矩阵
+
+| 类别 | 必测场景 | 本次放行条件 |
+| --- | --- | --- |
+| 正常路径 | 空角色启用；waiting 首次认领；已有凭据正确登录；管理员代设/清除 | Go+C# 契约与真实 Control 标准编译通过；API 不回显敏感值 |
+| 边界与安全 | 错误/串角色、无效输入、跨 saveId、orphan、Panel guard、marker/store/key/guard 损坏 | 全部 fail closed；错误与 waiting 可区分；verifier/key/guard 不进入日志/响应 |
+| 并发与恢复 | Panel/Control 同时写、活动/stale lock、marker/store 崩溃窗口、store 成功但 `.env` 失败及回滚失败 | 单写入者、原子终态、稳定错误码、无静默重新认领 |
+| Compose 兼容 | mapping/list 幂等迁移；inline role 阻止；inline none/global 继续；restart 只重建 server | 文件内容/权限保持，环境进入新 server，steam-auth 不重启 |
+| 前端生命周期 | restart 请求前 state=running、任务 active/terminal、普通 start 快任务 | restart 观察任务前持续锁定；terminal 后解锁；start fallback 保留 |
+| 数据完整性 | legacy `.env` verifier 迁入活动 save；其它 save 与存档/SQLite/非目标 volume 不变 | verifier 不丢失不串档；测试前后非目标资源一致 |
+| 真人交互 | 两客户端各自首次设置、交叉失败、清除重认领、Panel 批准、重启保持 | 正式发布前必须补齐；本次自动 Docker 验证不替代该项 |
+| 资源清理 | 所有任务容器、network、volume、bind 与临时镜像 | 仅按任务前缀/owner 精确清理，结束计数为 0 |
+
+## 当前证据与明确边界
+
+- 宿主定向验证通过：玩家认证/Compose/生命周期 Go 专项 `7.171s`；`test:lifecycle-action-state`、`test:responsive-layout` 与 production build。Windows Docker Compose integration `TestComposeRecreateServicesAppliesChangedEnvironmentWithoutRestartingDependency` `6.155s` 通过，证明 `.env` 从 none 改为 role 后只重建 server、运行时环境生效且 dependency 容器 ID 不变；测试项目容器/网络均归零。
+- Docker Desktop 的 `golang:1.25-alpine` 使用任务专属 module/build cache：冷缓存首次访问官方 Go Proxy 遇到 TLS handshake timeout，保留进度并经两次上限内预热切到 `goproxy.cn` 后成功；随后 `go test -p 1 ./... -count=1` 全包、`go vet ./...`、`go build ./...` 均通过。同步最终 Control DLL/manifest 后又重跑 Stardew 全子包（57.033s + config 0.020s）、Web（32.118s）与全量 build 通过，没有降低断言。
+- `.NET 6 SDK + stardew_game-data`：纯 Control 契约通过；标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 为 0 errors、1 个既有 CS9057 analyzer/compiler warning。标准产物 204288 bytes，最终嵌入 DLL 与 runtime manifest SHA-256 均为 `e7f3744b647c2f658ac3ad60d1dc27d958d935c7946f134b35447ab6c79bb422`。
+- Node 22 Alpine 使用完整仓库 bind 和独立 `node_modules/dist` volume，`npm ci`、production audit 0 vulnerability、新增脚本在内的全部 18 项 `test:*` 与 Vite production build（142 modules，2.22s）通过。`compatibility-matrix.yml` 已加入新脚本并通过 YAML parse；`run-release-gates.sh` 已加入新脚本并通过 Bash 5.2 `bash -n` 与 ShellCheck。
+- 本地 `sap-player-auth:test-20260817` dev 镜像完成 Dockerfile 全阶段构建；全新数据卷首次启动和 `docker restart` 后均得到 `/health.status=ok`，`/api/version.version=dev-player-auth-20260817` 且 commit 为当前工作树标识。该本地引用未推送，冒烟后与任务容器、6 个测试 volume、Control 临时副本、18092 监听均精确清理；`sap.task=player-auth-20260817` 的容器/volume/image 最终计数全部为 0。
+- 本次用户明确要求先不打 tag：不创建/移动 `v*` tag，不创建 GitHub Release，不提升任何正式镜像或 `latest`，也不把本节的可变工作树测试写成不可变候选证明。
+- 两真人客户端人工矩阵仍未完成；因此即使全部自动门禁通过，也只能说明代码与容器契约通过，不能宣称游戏内双客户端自助认领已经人工验收。

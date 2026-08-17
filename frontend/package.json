@@ -15,6 +15,7 @@
     "test:runtime-components": "node --experimental-strip-types scripts/test-runtime-components-status.ts",
     "test:smapi-update": "node --experimental-strip-types scripts/test-smapi-update-status.ts",
     "test:install-state": "node --experimental-strip-types scripts/test-install-state.ts",
+    "test:lifecycle-action-state": "node --experimental-strip-types scripts/test-lifecycle-action-state.ts",
     "test:new-game-idempotency": "node --experimental-strip-types scripts/test-new-game-idempotency.ts",
     "test:nexus-extension-idempotency": "node scripts/test-nexus-extension-idempotency.mjs",
     "test:cabin-strategy-options": "node --experimental-strip-types scripts/test-cabin-strategy-options.ts",

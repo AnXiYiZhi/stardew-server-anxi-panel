@@ -41,6 +41,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     isStopped,
     startupInProgress,
     waitingForStop,
+    restartInProgress,
     actionBusy,
     actionError,
     showSaveRequiredPrompt,
@@ -49,21 +50,24 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     canStop,
     canRestart,
     handleStart,
+    handleRestart,
     requestConfirm,
     cancelConfirm,
     confirmPendingAction,
   } = useStardewLifecycleActions({ instanceState, dashboardData, isAdmin })
-  const stateLabelText = state
-    ? stateLabel(state)
-    : dashboardData.loading
-      ? '读取中…'
-      : '未知'
-  const lifecycleDotClass = isRunning
-    ? 'sd-dot sd-dot-green sd-dot-pulse'
-    : state === 'stopped' || state === 'error'
-      ? 'sd-dot sd-dot-red'
-      : isStarting || startupInProgress || waitingForStop
-        ? 'sd-dot sd-dot-yellow sd-dot-pulse'
+  const stateLabelText = restartInProgress
+    ? '正在重启'
+    : state
+      ? stateLabel(state)
+      : dashboardData.loading
+        ? '读取中…'
+        : '未知'
+  const lifecycleDotClass = restartInProgress || isStarting || startupInProgress || waitingForStop
+    ? 'sd-dot sd-dot-yellow sd-dot-pulse'
+    : isRunning
+      ? 'sd-dot sd-dot-green sd-dot-pulse'
+      : state === 'stopped' || state === 'error'
+        ? 'sd-dot sd-dot-red'
         : 'sd-dot sd-dot-gray'
   const { quickBackupBusy, quickBackupMessage, quickBackupError, handleQuickBackup } = useServerQuickBackup({
     activeSaveName,
@@ -235,7 +239,12 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             </div>
           ) : null}
 
-          {waitingForStop ? (
+          {restartInProgress ? (
+            <button key="restarting" className="sd-btn-restart sd-btn-loading" disabled>
+              <span className="sd-btn-spinner" aria-hidden="true" />
+              重启中…
+            </button>
+          ) : waitingForStop ? (
             <button key="stopping" className="sd-btn-stop sd-btn-loading" disabled>
               <span className="sd-btn-spinner" aria-hidden="true" />
               停止中…
@@ -281,19 +290,24 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
         <div className="sd-server-lifecycle-status">
           状态
           <span className={lifecycleDotClass} aria-hidden="true" />
-          <span className={`sd-server-lifecycle-status-val sd-server-lifecycle-status-val-${state ?? 'unknown'}`}>
+          <span className={`sd-server-lifecycle-status-val sd-server-lifecycle-status-val-${restartInProgress ? 'restarting' : state ?? 'unknown'}`}>
             {stateLabelText}
           </span>
         </div>
 
-        {startupInProgress ? (
+        {restartInProgress ? (
+          <div className="sd-srv-hint" style={{ marginTop: 4 }}>
+            <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
+            &nbsp;服务器正在重启，页面会自动跟踪到重新运行，无需手动刷新。
+          </div>
+        ) : startupInProgress ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
             <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
             &nbsp;服务器正在启动，等待主机玩家上线后再操作。
           </div>
         ) : null}
 
-        {waitingForStop ? (
+        {!restartInProgress && waitingForStop ? (
           <div className="sd-srv-hint" style={{ marginTop: 4 }}>
             <span className="sd-dot sd-dot-yellow sd-dot-pulse" aria-hidden="true" />
             &nbsp;服务器正在停止，请等待完全停止后再启动。
@@ -806,7 +820,11 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
       ) : null}
 
       {playerAuthOpen ? (
-        <PlayerAuthSettingsDialog isRunning={isRunning} onClose={() => setPlayerAuthOpen(false)} />
+        <PlayerAuthSettingsDialog
+          isRunning={isRunning}
+          onClose={() => setPlayerAuthOpen(false)}
+          onRestart={handleRestart}
+        />
       ) : null}
 
       {runtimeSettingsOpen ? (

@@ -63,6 +63,7 @@ type fakeDocker struct {
 	removedVolumes       []string
 	removedByVolumes     []string
 	restartedServices    []string
+	recreatedServices    []string
 }
 
 func (f *fakeDocker) RecommendedSMAPIArchive(_ context.Context, dataDir string, manifest sjconfig.RuntimeStackManifest) (string, error) {
@@ -248,6 +249,11 @@ func (f *fakeDocker) RemoveContainersByVolume(_ context.Context, _ string, names
 
 func (f *fakeDocker) ComposeRestartServices(_ context.Context, _ string, services ...string) (paneldocker.CommandResult, error) {
 	f.restartedServices = append(f.restartedServices, services...)
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f *fakeDocker) ComposeRecreateServices(_ context.Context, _ string, services ...string) (paneldocker.CommandResult, error) {
+	f.recreatedServices = append(f.recreatedServices, services...)
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 

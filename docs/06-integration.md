@@ -1556,3 +1556,28 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - `GET /api/instances/:id/players` 中的 `players[].lastSeen` 表示“最后一次真实在线时间”，不是面板最后一次扫描到存档角色的时间。只存在于存档 XML、从未被在线快照观察到的离线角色必须省略该字段。
 - SQLite `player_roster.last_seen_at` 是内部名册观测时间，仍可随轮询更新；只有在线快照会更新 `last_online_at`，API 仅从后者回填 `lastSeen`。前端不得用响应 `updatedAt`、浏览器当前时间或名册观测时间补造该字段。
 - 真正在线过的角色离线后继续返回最后一次 `last_online_at`；本修复不改变玩家状态、在线人数、位置、收入或 API shape，也不需要迁移/清洗已有数据库。
+
+# PLAYER-AUTH-SELF-ENROLL-1 跨端契约（2026-08-17，未发布）
+
+## API 与状态
+
+- 本节覆盖旧 `PLAYER-AUTH-MODES-1` 中“role 必须存在非主机角色且所有角色已配置”的启用条件。`PUT /api/instances/:id/config/player-auth` 现在允许 `mode=role` 且角色列表为空或部分/全部为 waiting；`rolePasswordUpdates` 仅用于管理员代设/重置，`rolePasswordRemovals` 把已配置角色变回 waiting。
+- `GET/PUT .../config/player-auth` 的 `roles[]` 增加 `credentialStatus: waiting|configured|error`，顶层增加 `credentialErrorCount`、`orphanedRoleCount`、`roleCredentialStoreReady` 与可选 `roleCredentialStoreDetail`。`configured` 继续保留兼容且只在 status 为 configured 时为 true；响应仍不包含密码、verifier、role key、内部 guard 或 store 正文。
+- store 忙返回 `409 role_credential_store_busy`，store/marker/schema 损坏返回 `409 role_credential_store_invalid`，活动 save 身份不可用返回 `409 player_auth_save_unavailable`；跨 `.env`/store 回滚失败返回 `409 player_auth_transaction_rollback_failed`。这些错误均不得自动退回 none/global 或把 error 显示成 waiting。
+
+## 游戏内首次认领与存档隔离
+
+- 仅在 role 模式、策略/key/guard 有效、当前 active saveId 可验证、角色 ID 非主机零值且输入满足聊天密码约束时，Control 才允许首次认领。若当前 `saveId + roleId` 没有 verifier，本次输入先耐久写为该角色 verifier，再改写成内部 guard 交给同一个 Junimo `TryAuthenticate`；已有 verifier 时只做恒定时间校验，错误或串角色输入继续进入 fail-closed sentinel。
+- 凭据按 saveId 隔离。切换、导入或回档到另一个存档后，相同数字 roleId 也不能自动继承旧档 verifier；当前角色列表之外的记录只计为 orphan，不作为当前角色已配置证据。
+- legacy `.env` payload 只在新 store 尚未初始化时迁入当时活动存档。`role-passwords.initialized` 已存在而 store 缺失/损坏时禁止重新首次认领，避免崩溃或误删后账号被接管。
+
+## 生命周期与前端联动
+
+- start/restart 必须把四个 SAP 变量传入 server。block mapping/list 的旧 Compose自动迁移；role 模式的 inline/mixed environment 无法安全迁移时生命周期失败并报告 `player_auth_compose_migration_failed`。none/global 可保留原文件、记录 warning 后继续，因为它们不消费新增角色凭据变量。
+- restart 使用 `docker compose up -d --no-deps --force-recreate server` 让配置进入新容器，不能用普通 restart 复用旧环境，也不能连带重启 `steam-auth`。
+- 前端 restart pending 不能由请求前就存在的 `state=running` 清除；只有观察到 lifecycle job 并进入终态后才解锁。start 仍可在未观察到短任务时使用 stopped→running 作为完成证据。
+
+## 未发布联调矩阵
+
+- 自动化：first enroll、重复正确登录、错误/串角色、Panel guard、空角色启用、清除后 waiting、save 隔离、legacy 迁移、store/marker 损坏、锁竞争、权限与事务回滚；Compose block/list/inline 以及 role fail-closed、none/global 兼容继续；restart 防重复提交。
+- 真人客户端：两个客户端分别首次设置不同密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate/Panel 重启后仍保持。该矩阵在正式发布前必做，本次不打 tag，自动测试结果不能替代真人交互证据。

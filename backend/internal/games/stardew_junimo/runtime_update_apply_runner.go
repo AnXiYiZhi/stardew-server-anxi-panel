@@ -433,6 +433,11 @@ func (d *Driver) runtimeUpdateApplyPreflight(ctx context.Context, job *jobs.Cont
 	} else if changed {
 		_, _ = job.Info(ctx, "已补齐低资源启动调度权重与现有 Junimo 运行兼容配置。")
 	}
+	if changed, err := EnsureServerPlayerAuthEnvironment(instance.DataDir); err != nil {
+		return runtimeUpdatePreflight{}, errors.New("compose_player_auth_migration_failed")
+	} else if changed {
+		_, _ = job.Info(ctx, "已为旧实例补齐玩家加入保护运行环境。")
+	}
 	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return runtimeUpdatePreflight{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}

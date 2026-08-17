@@ -65,6 +65,10 @@ func (f *runtimeApplyFakeDocker) ComposeRestartServices(context.Context, string,
 	f.applyCall("compose restart services")
 	return paneldocker.CommandResult{}, nil
 }
+func (f *runtimeApplyFakeDocker) ComposeRecreateServices(context.Context, string, ...string) (paneldocker.CommandResult, error) {
+	f.applyCall("compose recreate services")
+	return paneldocker.CommandResult{}, nil
+}
 func (f *runtimeApplyFakeDocker) ComposeExecPipe(_ context.Context, dataDir string, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
 	f.applyCall("compose exec " + service + " " + strings.Join(args, " "))
 	if service == "server" && len(args) > 0 && args[0] == "cat" {

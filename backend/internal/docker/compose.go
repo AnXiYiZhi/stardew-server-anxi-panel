@@ -216,6 +216,28 @@ func (c *Client) ComposeRestartServices(ctx context.Context, dir string, service
 	return result, err
 }
 
+// ComposeRecreateServices recreates only the named services. Unlike
+// `docker compose restart`, this re-evaluates Compose interpolation and applies
+// current .env values while leaving dependencies and their containers intact.
+func (c *Client) ComposeRecreateServices(ctx context.Context, dir string, services ...string) (CommandResult, error) {
+	args := []string{"compose", "up", "-d", "--no-deps", "--force-recreate"}
+	if len(services) == 0 {
+		result := CommandResult{WorkDir: dir, Args: RedactArgs(append([]string{c.dockerPath}, args...)), ExitCode: -1}
+		return result, CommandError{Op: "docker compose up --force-recreate", Result: result, Err: errors.New("at least one compose service is required")}
+	}
+	for _, service := range services {
+		if !serviceNamePattern.MatchString(service) {
+			result := CommandResult{WorkDir: dir, Args: RedactArgs(append([]string{c.dockerPath}, args...)), ExitCode: -1}
+			return result, CommandError{Op: "docker compose up --force-recreate", Result: result, Err: fmt.Errorf("invalid compose service name %q", service)}
+		}
+		args = append(args, service)
+	}
+	c.invalidateComposePs(dir)
+	result, err := c.run(ctx, "docker compose up --force-recreate", dir, c.timeouts.Restart, args...)
+	c.invalidateComposePs(dir)
+	return result, err
+}
+
 // ComposeExecPipe runs `docker compose exec -T <service> <args>` with stdinData piped to the
 // process stdin.  The -T flag disables pseudo-TTY allocation so stdin can be redirected.
 func (c *Client) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (CommandResult, error) {
