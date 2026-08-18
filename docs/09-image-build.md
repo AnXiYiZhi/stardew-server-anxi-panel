@@ -1,4 +1,4 @@
-# v0.5.5 更新检查 / 运行设置交互 / 新建游戏半屏布局候选矩阵（2026-08-18，待自动候选）
+# v0.5.5 更新检查 / 运行设置交互 / 新建游戏半屏布局正式发布（2026-08-18，released）
 
 ## 变更清单与受影响链路
 
@@ -32,11 +32,23 @@
 - 本次相对 `v0.5.4` 同时修改后端 updatecheck、候选升级脚本、前端页面/CSS/PNG 和公开长期文档。自动候选必须执行后端 test/vet/build、前端全部状态回归/audit/build、脚本测试/ShellCheck、compatibility、fresh/restart、updater/Docker integration 与 `v0.5.4` 真实 Web unhealthy/healthy 升级；网站、Control、SMAPI/Junimo runtime 长链是否跳过只能由 `scripts/run-release-gates.sh` 按路径差异决定。
 - 用户在 2026-08-18 明确授权把本地 `main` 提交到 `origin/main`，因此允许触发自动 release-candidate/Tag 链。此记录只表示推送授权与本地前置证据；候选 workflow、不可变 artifact/digest、自动 Tag 和正式提升未完成前不得标记 `v0.5.5` 已发布。
 
-# PANEL-UPDATE-LATEST-RELEASE-API-1 候选升级夹具兼容（2026-08-18，未发布）
+## 正式候选与发布结果
+
+- 正式发布 commit=`a77fbe61e2423cac39233c6796a3024bd146b365`。Compatibility `32127766392` 于 `2026-08-18T10:38:41Z..10:41:20Z` 成功；自动候选 `32127766494` 于 `10:38:41Z..10:47:42Z` 成功，使用上一正式版 `v0.5.4` 完成 fresh/restart、真实 Panel Web unhealthy 回滚与 healthy 升级，并在升级后的 production bundle 复验更新检查、运行设置、最新任务日志与新建游戏布局。
+- 自动 Tag `32128518008` 于 `10:47:43Z..10:47:57Z` 成功；正式提升 `32128533342` 于 `10:47:55Z..10:49:24Z` 成功，只提升候选证明中的 digest=`sha256:584a460c90103966394e71c67fe5416822985c9b8246013b5d2cff80400174de`，没有重新 build。annotated `v0.5.5`、三仓精确版本与 `latest`、GitHub Release 均对应同一 commit/digest。
+- GitHub Release 正文已在发布后补齐用户可读汇总、候选与正式提升链接、唯一 digest 和完整 compare 链接；只编辑 Release 正文，没有移动 tag、改变资产、重推镜像或触发第二个候选。官网首页/changelog 的 v0.5.4/v0.5.5 补写由后续 docs-only 提交部署，不改变本候选证明。
+
+# v0.5.4 安装进度与 SteamCMD 授权复用正式发布（2026-08-18，released）
+
+- 正式发布 commit=`e0b888c4f8bd0d33cb8475b180d6029b76fddac5`。安装向导增加 SMAPI 真实下载进度、阶段标题和持续活动提示；旧 SteamCMD 持久卷迁移后，同一次非强制重装先尝试缓存登录，只有失效才自动回退一次完整登录。下载校验、Steam 登录真值和事务边界没有放宽。
+- Compatibility `32108845544` 与候选 `32108845520` 成功；候选完成上一正式版 Web 升级、异常目标自动回滚、fresh/restart 与升级后安装状态复验。自动 Tag `32109534507`、正式提升 `32109555161` 随后成功，正式 digest=`sha256:4d5dbc6faf23cb15aa859deca62022e7e03dd896a7fc4c77086ac805ddb33cb2`。
+- GitHub Release `v0.5.4` 正文已在不改变 annotated tag、正式镜像、四项资产和发布时间的前提下补齐安装进度、授权复用、安全边界、候选 run、digest 与 compare 链接；本次元数据修订不重建或重发版本。
+
+# PANEL-UPDATE-LATEST-RELEASE-API-1 候选升级夹具兼容（2026-08-18，released in v0.5.5）
 
 - 面板更新检查迁移到 GitHub `/releases/latest` 单对象接口。候选 DinD 的受控 TLS `api.github.com` 夹具现在精确区分两条路径：`/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest` 为新候选返回单对象，`/repos/anxiyizhi/stardew-server-anxi-panel/releases` 为上一正式版返回兼容数组；其它路径 404。
 - 这项双协议夹具是上一正式版真实 Web 升级门禁的一部分，不能只把所有路径统一改成新对象，否则旧 Panel 会在 update check 阶段解析失败；也不能只保留旧数组，否则新候选无法证明生产 latest 契约。
-- 当前完成 updatecheck/Web 专项、`go vet/build`、升级脚本 Git Bash `bash -n` 与 ShellCheck 0.11.0；未执行候选、未创建 tag、未推送镜像或更新 `latest`。正式发布仍须按本文件门禁验证旧版检查、候选检查、dry-run、unhealthy 回滚、healthy apply 与升级后接口。
+- updatecheck/Web 专项、`go vet/build`、升级脚本 Git Bash `bash -n` 与 ShellCheck 0.11.0 均通过；候选 `32127766494` 已实际验证旧版检查、候选检查、dry-run、unhealthy 回滚、healthy apply 与升级后接口，能力随 `v0.5.5` 正式发布。
 
 # v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式发布（2026-08-17，released）
 

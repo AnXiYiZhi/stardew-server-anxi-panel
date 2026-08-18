@@ -700,6 +700,7 @@
 
 ## 2026-08-14：PowerShell 裸露 `^{}` 让 annotated tag 核验丢失 revision
 
+- 最近复发/补充：2026-08-18 核对 v0.5.4/v0.5.5 tag target 时又裸写 `git rev-parse v0.5.4^{}`，PowerShell 在 Git 执行前重新解释花括号并产生 malformed invocation/ambiguous revision；只读核验失败，tag 与远端状态未改变。后续直接复用既有正确形式 `git rev-parse 'v0.5.4^{}'`，所有 peeling revision 必须在命令第一次出现时整体单引号引用。
 - 最近复发/补充：本地 annotated `v0.4.15` 创建后，核验使用未引用的 `git rev-parse v0.4.15^{}`；PowerShell 重新解释花括号，Git 实际收到空 revision 并以 ambiguous argument 退出。push 尚未执行，tag 对象已正确创建且远端为零。随后使用 `git rev-parse 'v0.4.15^{}'` 核对 peeled commit 与 HEAD 相同，再完成首次 push；没有删除、移动或重建 tag。复杂 Git revision 中的 `@{}`、`^{}`、`~`、`^` 一律作为单引号字面量 argv。
 
 ## 2026-08-14：把内部发布文档提交误判为会触发 Pages
@@ -2899,6 +2900,7 @@
 
 ## 2026-08-13：检索已给出真实文件后仍读取猜测文件名
 
+- 最近复发/补充：2026-08-18 判断 docs-only 推送是否触发候选时，未先列出 workflow 文件便读取猜测的 `.github/workflows/compatibility.yml`；该路径不存在，使组合只读命令退出，仓库和 GitHub 状态未改变。随后以 `rg --files .github/workflows` 返回的真实文件名读取触发器。即使只想确认常见的 Compatibility 工作流，也必须从当前目录清单复制实际路径，不能从显示名反推 YAML 文件名。
 - 最近复发/补充：2026-08-14 审计认证镜像精确源码时，把摘要相近但并非 manifest `sourceRevision` 的 `a6cee498322...` 直接传给外部仓库 `git cat-file`，本地又没有该对象，命令在读取源码前退出 1。随后回到 Panel manifest 读取完整 revision，并用 `git ls-remote --tags origin` 核对远端精确 tag/commit；Git 对象 ID 必须从当前权威 manifest 或 Git 输出复制，不能从摘要短形态或上下文记忆重建。
 - 最近复发/补充：同一轮继续审查 import staging 时，`rg` 已明确返回 `save_import_staging.go`，后续仍读取猜测的 `save_import_files.go`，在 fail-fast 下退出 1；文件未修改。该模式连续两次后，预防规则已提升到项目 `AGENTS.md`：符号检索与精确路径读取必须拆成两条命令，真实命中是唯一输入。随后读取正式 CI 门禁时又直接猜测 `.github/workflows/compatibility.yml`，Release workflow 前半已读出，但第二个文件不存在使命令退出 1；候选镜像和仓库文件未受影响。此后所有 workflow 文件先单独执行 `rg --files .github/workflows`，再读取精确结果。
 - 最近复发/补充：2026-08-14 审计 steam-auth `/health` 历史契约时，先猜测源码位于不存在的 `src/JunimoServer.SteamService/Program.cs`，`git show` 立即以 path not found 退出；随后又把不存在的 `runtime_update_test.go` 与已确认测试文件一起传给 `rg`。两次均为只读、零写入，改为先用 `git ls-tree -r --name-only <commit>` / `rg --files` 取得精确的 `tools/steam-service/Program.cs` 和实际测试清单后继续。外部 Git 对象内路径和本仓测试文件同样必须先发现，不能从命名空间、类型名或包名猜物理路径。
@@ -3425,6 +3427,7 @@
 
 ## 2026-08-15：把不存在的 `isLatest` 字段传给 `gh release view --json`
 
+- 最近复发/补充：2026-08-18 补写 v0.5.4/v0.5.5 Release 时再次把 `isLatest` 传给 `gh release view --json`，随后又把该子命令支持的 `url` 误传给不支持它的 `gh release list --json`，两次均在读取 Release 前以 `Unknown JSON field` 退出，外部状态未改变。修正为先读取各自帮助列出的 JSON 字段：指定版本用 `release view` 的 `url`，列表只取 `tagName/name/publishedAt` 等受支持字段；latest 仍以无 tag 的 `gh release view --json tagName` 判断。不同 `gh` 子命令的同名资源也不能共享字段集合。
 - 最近复发/补充：2026-08-16 `v0.5.2` 发布后独立核验再次把 `isLatest` 传给 `gh release view --json`；同一组合命令前半 registry 名称检索成功，Release 子命令随后在返回任何 Release 数据前以 `Unknown JSON field` 退出，外部状态未改变。修正为先用当前 CLI 支持的字段读取指定 Release，再用不带 tag 的 `gh release view --json tagName` 独立比较 latest；本任务余下不得再使用该字段。
 - 环境：PowerShell 7、GitHub CLI，v0.4.18 发布后最终只读核验。
 - 错误模式：凭 API 响应字段记忆把 `isLatest` 加入 `gh release view --json` 字段列表，没有先核对当前 CLI 支持字段；组合脚本在该命令退出后停止，未产生外部修改。

@@ -1,4 +1,10 @@
-# FE-JOB-LOG-LATEST-TAIL-1：完成任务默认展示日志结尾（2026-08-18，未发布）
+# DOCS-PORTAL-0.5.4-0.5.5：官网更新日志与 Release 说明补齐（2026-08-18，completed，待上线）
+
+- `website/docs/changelog.md` 补上此前未进入官网的 `v0.5.4` 与 `v0.5.5`：前者说明 SMAPI 真实下载进度和 SteamCMD 授权复用，后者说明正式 latest 更新检查、任务最新日志尾页、联机人数保存并重启、半屏建档布局与 image2 素材修复。
+- `website/docs/index.md` 的版本角标、更新卡和 CURRENT RELEASE 同步到 `v0.5.5`。本次只修改公开文档和发布说明，不改变 Panel bundle、API、annotated tag、正式镜像或 digest。
+- GitHub Release `v0.5.4`、`v0.5.5` 正文已补齐用户可读变更、候选门禁、正式提升与唯一 digest；正文编辑没有移动 tag、重新构建镜像或触发候选。官网 production build 与 Pages 结果在本次文档提交推送后补记。
+
+# FE-JOB-LOG-LATEST-TAIL-1：完成任务默认展示日志结尾（2026-08-18，released in v0.5.5）
 
 - 任务日志页、安装页和右栏活动任务初始日志统一改用 `getLatestJobLogs`，直接加载当前任务最新尾页。任务/安装详情先读取 job 状态再读取尾页，避免日志先返回旧尾部、job 随后返回终态时因不接 SSE 而漏掉最后几行；非终态任务仍从尾页最后一个 sequence 接 SSE，连接前产生的日志由既有 `after` 回放补齐。
 - 任务页不再用“返回数量达到 1000”猜截断，而是读取后端 `hasEarlier`。确有更早日志时提示“当前显示最新 1000 行日志，更早的日志未加载”，完成任务不会再停留在第 981~1000 行而隐藏后续成功/失败结论。
@@ -36,7 +42,7 @@
 - 扩展版本升为 `0.1.5`，两条 POST 路径的 `X-Anxi-Nexus-Installer` 同步更新；后端下载扩展 ZIP 的版本感知缓存会自动重打包。0.1.4 在真实 v0.5.2 Panel 点击时因旧批量 payload 缺版本而立即失败、没有开页/建任务/写 Mods；0.1.5 加回页面推断兼容。影响 `shared.js/content.js/background.js/panel-bridge.js/manifest.json/README`、`ModsPage.tsx`、`types.ts` 与扩展回归脚本。
 - `npm run test:nexus-extension-idempotency` 覆盖旧文件优先 DOM、严格版本边界、新 Panel 缺失版本拒绝、旧 Panel 缺字段时页面推断、页面参数、批次串行和两条 POST 请求体；`npm run build` 通过。已登录 Nexus 的真实 Content Patcher 文件页确认 `2.9.1 → file_id=160463`、`2.9.0 → file_id=153187` 且 `2.9.10` 无匹配；真实 Chrome + 当前 `0.1.8` 又完成了停止态安装/更新终态，证据见本页顶部和 `docs/09-image-build.md`。
 
-# FE-SERVER-RUNTIME-SETTINGS-UX-2：入口、步进器与保存重启体验修正（2026-08-18，未发布）
+# FE-SERVER-RUNTIME-SETTINGS-UX-2：入口、步进器与保存重启体验修正（2026-08-18，released in v0.5.5）
 
 - `ServerSummaryCard` 不再用负 margin 把 44px“修改上限”按钮挤出摘要行；可编辑单元格为按钮预留横向空间，按钮在整个单元格内绝对居中，`<=520px` 摘要降为单列。总览页“在线玩家”卡片同时增加管理员“修改上限”入口，仍复用 `useServerRuntimeSettings` 与 `ServerRuntimeSettingsDialog`，没有第四套状态或 API。
 - 最大人数输入隐藏浏览器原生 spinner，改为像素风 `− / +` 步进按钮；两者均为 44px 热区、按 `1/100` 边界自动禁用，直接输入、键盘方向键和既有整数校验仍保留。
@@ -2768,17 +2774,17 @@ npm.cmd run dev
 - 新增 `lifecycle-action-state.ts` 纯状态判定和 `test:lifecycle-action-state`，并继续由 `test:responsive-layout` 覆盖共用弹窗、桌面/移动入口和重启联动；Docker/production build 结果见 `docs/09-image-build.md`。
 - 2026-08-17 用户确认两个真实 Stardew 客户端完成首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持；修复后候选与正式提升全部通过，能力已随 annotated `v0.5.3@ede7fa3` 发布。前端自动状态测试仍只作为补充证据。
 
-# FE-INSTALL-SMAPI-LIVE-PROGRESS-1（2026-08-18，未发布）
+# FE-INSTALL-SMAPI-LIVE-PROGRESS-1（2026-08-18，released in v0.5.4）
 
 - 安装向导第四步由“下载游戏”改为“下载与环境”，覆盖游戏文件、Steam SDK 与 SMAPI 运行环境，避免 SteamCMD 完成后仍把后续工作描述成游戏下载。右栏标题按当前阶段动态切换为“Steam 认证 / 镜像下载 / 下载任务 / SMAPI 安装”，SMAPI 阶段不再停留在截图中的“Steam 认证”。
 - `install-helpers.ts` 解析后端 `[smapi:download:progress:...]` marker，校验安全整数、字节边界和候选编号后，计算真实百分比。SMAPI 阶段不再复用已经 100% 的 Steam SDK/SteamCMD 进度；顶部总进度在 SMAPI 下载区间随真实百分比从约 89% 推进到 96%。
 - SMAPI 卡片显示当前下载源、`已下载 / 总字节 · 百分比` 和原生 `role=progressbar` 语义；缓存命中、下载完成后校验/写入、尚未收到首个数据块分别有独立文案。绿色活动点说明任务仍在进行，`prefers-reduced-motion` 下停用脉冲和进度条过渡。
 - 顶部总进度、镜像拉取、Steam 下载和 SMAPI 下载均补齐 `aria-valuemin/max/now`。后端 marker 只用于派生 UI 并从可见任务日志中隐藏；可读的 `[smapi]` 日志仍保留。
-- 影响文件：`InstallPage.tsx`、`InstallPage.css`、`install-helpers.ts`、`test-install-state.ts`、`test-responsive-layout.ts`。2026-08-18 `test:install-state`、`test:responsive-layout` 与 `npm run build` 通过；尚未构建正式候选或部署生产，生产现网仍是旧版静态显示。
+- 影响文件：`InstallPage.tsx`、`InstallPage.css`、`install-helpers.ts`、`test-install-state.ts`、`test-responsive-layout.ts`。2026-08-18 `test:install-state`、`test:responsive-layout` 与 `npm run build` 通过；候选 `32108845520`、自动 Tag `32109534507` 与正式提升 `32109555161` 全部成功，能力已随 `v0.5.4@e0b888c` 发布。
 
-# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2：新建游戏弹窗半屏布局修复（2026-08-18，未发布）
+# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2：新建游戏弹窗半屏布局修复（2026-08-18，released in v0.5.5）
 
 - 旧的 `ngc-modal <= 1100px` 规则会把仍有约 800～1000px 内容宽度的弹窗直接压成单列。半屏浏览器中三块桌面内容被串成约 2048px 高的长页，虽然滚动仍在弹窗内部，但视觉上与 2026-08-09 的错误拉伸表现相同。
 - 新断点按弹窗自身内容宽度分四级：`<=1100px` 使用压缩三栏，`<=780px` 使用“联机设置 + 角色表单”两栏并把农场选择四列横排到底部，`<=560px` 才改为单列且联机设置内部保持双列键值网格，`<=480/360px` 再处理表单堆叠、触控箭头和极窄屏。容器仍固定为 `ngc-modal`，未重新绑定页面级 `sd-main-scroll`。
 - 影响 `NewGameCreator.css` 与 `test-responsive-layout.ts`；没有改变 React 表单结构、新建存档字段、默认值、提交 API 或 Junimo 通信。无 container query 的回退媒体查询同步同一层级，不再使用 `transform:scale()` 假装适配。
-- 验证：`npm run test:responsive-layout` 与 `npm run build` 通过。应用内 Browser 在默认 948×805 下得到 `221 / 430 / 192px` 三栏，弹窗内容由修复前约 2048px 降为 772px；840×720 与 769×500 分别得到 `243 / 504px`、`220 / 456px` 两栏，农场选择均为四列。三个视口 document `scrollWidth == clientWidth`，滚动只发生在弹窗内部，console warn/error 为 0。
+- 验证：`npm run test:responsive-layout` 与 `npm run build` 通过。应用内 Browser 在默认 948×805 下得到 `221 / 430 / 192px` 三栏，弹窗内容由修复前约 2048px 降为 772px；840×720 与 769×500 分别得到 `243 / 504px`、`220 / 456px` 两栏，农场选择均为四列。三个视口 document `scrollWidth == clientWidth`，滚动只发生在弹窗内部，console warn/error 为 0；候选 `32127766494` 与正式提升 `32128533342` 成功，能力已随 `v0.5.5@a77fbe6` 发布。

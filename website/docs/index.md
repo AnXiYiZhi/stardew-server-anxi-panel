@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.3
+release: v0.5.5
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.3。角色密码支持首次登录自助设置，Nexus 一键安装与一键更新锁定最新版本，并可在建档后修改联机人数上限。
+    details: 当前最新 v0.5.5。更新检查与任务日志更准确，联机人数设置支持明确保存并重启，半屏建档弹窗和安装素材不再拉长、裁切。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.3</strong>
-    <p>角色独立密码可由玩家首次登录自助设置；Nexus 一键安装与一键更新都会锁定最新版本并在落盘前复核，联机人数上限也可在建档后安全修改。</p>
+    <strong>v0.5.5</strong>
+    <p>更新检查只认正式 latest，长任务打开即显示最新日志；联机人数设置新增保存并重启，半屏建档弹窗和安装素材也完成布局修复。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

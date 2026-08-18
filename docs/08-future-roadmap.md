@@ -2135,33 +2135,40 @@ Multi Game Mode later
 - [x] 用户于 2026-08-17 确认两个真人客户端已完成首次认领、各自/交叉密码、清除后重认领、Panel 批准和重启保持矩阵。
 - [x] 本次按用户要求未打 tag、未创建 Release、未更新 `latest`；以后发布必须重新走不可变候选和上一正式版 Web 升级/回滚门禁。
 
-# INSTALL-SMAPI-LIVE-PROGRESS-1 / STEAMCMD-MIGRATED-AUTH-REUSE-1（2026-08-18，未发布）
+# INSTALL-SMAPI-LIVE-PROGRESS-1 / STEAMCMD-MIGRATED-AUTH-REUSE-1（2026-08-18，released in v0.5.4）
 
 - [x] SMAPI 受审查安装包下载器增加逐写入字节回调、候选序号和已校验缓存命中事件；installer 节流写入 job marker 与实例状态，下载完成和完整性校验成功保持两个阶段。
 - [x] 前端第四步改为“下载与环境”，右栏按认证/镜像/下载/SMAPI 动态命名；SMAPI 显示真实字节、百分比、下载源、持续活动提示和 reduced-motion/ARIA 契约，不再沿用 SteamCMD 100% 造成假卡死。
 - [x] legacy SteamCMD 授权卷迁移成功后，同一次非强制重装立即先尝试 username-only 缓存登录；失效时只自动回退一次完整登录，成功标记仍由真实 SteamCMD 登录/下载产生。
 - [x] 新增流式进度、缓存命中、迁移缓存即时复用和前端 marker/布局回归；Windows 定向 Go 测试、`test:install-state`、`test:responsive-layout`、前端 production build 已通过。
-- [ ] 在 Linux 文件系统执行全量 Go test/vet/build，并用真实 Docker 慢速下载/候选切换/缓存命中/无效授权回退完成专项 E2E。
-- [ ] 从干净且与 `origin/main` 同步的 `main` 进入正式候选，完成上一正式版 Web 升级/回滚和升级后页面复验；当前代码未部署生产、未创建 tag/Release、未提升 `latest`。
+- [x] 候选 `32108845520` 在 Linux 门禁完成全量 Go test/vet/build、前端 production build、fresh/restart、真实 Web unhealthy 回滚与 healthy 升级；Compatibility `32108845544` 同时成功。
+- [x] 自动 Tag `32109534507` 与正式提升 `32109555161` 成功；`v0.5.4@e0b888c` 和三仓正式引用统一 digest=`sha256:4d5dbc6faf23cb15aa859deca62022e7e03dd896a7fc4c77086ac805ddb33cb2`。
 
-# JOB-LOG-LATEST-TAIL-1 / FE-JOB-LOG-LATEST-TAIL-1（2026-08-18，未发布）
+# JOB-LOG-LATEST-TAIL-1 / FE-JOB-LOG-LATEST-TAIL-1（2026-08-18，released in v0.5.5）
 
 - [x] 修复长任务完成后 UI 只加载最早 1000 行、因此停在 SteamCMD 自更新日志并隐藏最终成功/失败结论的问题。
 - [x] 后端新增 `latest=true` 有界尾页，返回正序日志与精确 `hasEarlier`；原 `after` 增量和 SSE 契约保持兼容。
 - [x] 任务页、安装页和右栏活动任务改取最新尾页；运行中任务从尾部 sequence 继续接 SSE，确有更早日志时显示准确提示。
 - [x] 存储/HTTP 专项、storage/Web 包、`go vet/build`、前端 responsive/install 状态回归和 production build 已通过；Web 首轮命中的无关存档导入时序用例单独及整包重跑均通过。
-- [ ] 尚未构建或部署生产镜像；如纳入正式版本，仍须按发布门禁从同步且干净的 `main` 构建不可变候选并完成 Web 升级/回滚。
+- [x] 候选 `32127766494`、Compatibility `32127766392`、自动 Tag `32128518008` 与正式提升 `32128533342` 全部成功；最新日志尾页已随 `v0.5.5@a77fbe6` 发布。
 
-# PANEL-UPDATE-LATEST-RELEASE-API-1（2026-08-18，未发布）
+# PANEL-UPDATE-LATEST-RELEASE-API-1（2026-08-18，released in v0.5.5）
 
 - [x] 面板正式更新检查从 GitHub Releases 列表首项推导改为官方 `/releases/latest` 单对象接口；draft、prerelease 和非 SemVer 继续 fail closed，并保留上次成功缓存。
-- [x] 更新检查专项锁定精确 URL、响应形态与错误边界；updatecheck/Web、`go vet/build`、升级脚本 Bash/ShellCheck 门禁通过，官方只读实测 latest 当前为 `v0.5.4`。
+- [x] 更新检查专项锁定精确 URL、响应形态与错误边界；updatecheck/Web、`go vet/build`、升级脚本 Bash/ShellCheck 门禁通过，发布后官方 latest 为 `v0.5.5`。
 - [x] 候选升级受控 TLS 夹具同时服务旧 Panel 的列表数组和新候选的 latest 对象，其它 GitHub API 路径返回 404。
-- [x] 用户于 2026-08-18 明确授权随本次 `main` 推送进入 release-candidate；自动候选、Tag 与正式提升仍必须以 workflow 全部门禁成功为准。
+- [x] 候选 `32127766494`、自动 Tag `32128518008` 和正式提升 `32128533342` 成功；`v0.5.5` 与三仓 `latest` 使用同一已证明 digest。
 
-# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2（2026-08-18，未发布）
+# FE-SERVER-RUNTIME-SETTINGS-UX-2（2026-08-18，released in v0.5.5）
+
+- [x] 服务器摘要、总览和移动控制共用人数设置入口与 hook/dialog；摘要按钮不再越界，原生 spinner 改为 44px 像素风 `− / +`，1/100 边界自动禁用。
+- [x] 底部拆分“关闭 / 仅保存 / 保存并重启”；运行中重启先确认在线玩家，保存失败零重启，保存成功但重启失败明确保留已保存配置，停止态不偷换为启动。
+- [x] 安装时间线 seed/Steam/download 使用重新生成的透明 image2 素材，Steam 认证卡复用同源，摘要存档与农民头像按各自容器裁切；19 项前端回归、production build 和 Browser QA 通过。
+- [x] 候选、升级后 production bundle 与正式提升均通过，能力已随 `v0.5.5@a77fbe6` 发布。
+
+# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2（2026-08-18，released in v0.5.5）
 
 - [x] 修复半屏宽度仍被 1100px 断点直接压成单列的问题；弹窗按 1100/780/560/480/360px 分级使用压缩三栏、两栏、单栏和极窄屏布局。
 - [x] 两栏模式把农场选择改为底部四列，单栏模式把联机设置内部改为紧凑双列；移除 `transform:scale()`，container query 与无容器查询回退保持一致。
 - [x] 响应式专项、production build、948×805、840×720、769×500 Browser QA 通过；页面级横向溢出和 console warn/error 均为 0。
-- [x] 用户于 2026-08-18 明确授权随本次 `main` 推送进入自动候选；候选、Tag、Release 与正式镜像仍须等待完整 workflow 门禁成功。
+- [x] 候选 `32127766494`、自动 Tag `32128518008`、正式提升 `32128533342` 和 GitHub Release 成功，能力已随 `v0.5.5@a77fbe6` 发布。

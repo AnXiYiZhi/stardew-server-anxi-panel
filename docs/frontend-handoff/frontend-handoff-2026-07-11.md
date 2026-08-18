@@ -1,4 +1,16 @@
-# FE-JOB-LOG-LATEST-TAIL-1 前端接手记录（2026-08-18，未发布）
+# DOCS-PORTAL-0.5.4-0.5.5 接手记录（2026-08-18，completed，待上线）
+
+## 改了什么、影响哪些文件
+
+- `website/docs/index.md` 把版本角标、版本卡与 CURRENT RELEASE 从 `v0.5.3` 更新为 `v0.5.5`；`website/docs/changelog.md` 新增 `v0.5.4` 和 `v0.5.5` 两节，补齐安装进度/授权复用，以及更新检查、日志尾页、人数设置、半屏弹窗和 image2 素材修复。
+- GitHub Release 两版正文已独立补齐用户可读说明、候选 run 与 digest。Release 正文属于发布元数据编辑，没有修改 tag target、四项资产或镜像引用，也不会触发新的候选。
+
+## 如何验证、下一步注意事项
+
+- 先运行 `website` 的 `npm run docs:build`；推送包含 `website/**` 的 docs-only 提交后等待 Deploy docs portal 与 Compatibility，确认同一提交没有 Validate release candidate。Pages 成功后再补写线上证据，不要把“Release 正文已更新”误写成“官网已上线”。
+- 后续发布时首页 frontmatter `release`、CURRENT RELEASE、首页摘要、changelog 首项和 GitHub Release 正文必须保持同一版本；正文可以发布后补充，但不得借此移动既有 annotated tag 或重建已证明 digest。
+
+# FE-JOB-LOG-LATEST-TAIL-1 前端接手记录（2026-08-18，released in v0.5.5）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -71,7 +83,7 @@
 - 不能把版本参数放进 Nexus CDN 签名链接，也不能在找不到目标版本时恢复“第一个 file_id”逻辑。Nexus 改 DOM 后应先扩展“单文件上下文”的采集选择器并增加 fixture，服务端 manifest 验真继续作为最终保护。
 - 当前 0.1.8 的真实 Chrome 已完成本体+前置 ZIP 批量安装与单 Mod 更新；具体 file ID、任务和落盘证据见本文件顶部及 `docs/09-image-build.md`。后续修改 Nexus DOM 选择、批次恢复或提交路径时仍须重跑同等真实链，不能用应用内 Browser 的只读 DOM 探针代替扩展点击、CDN 捕获、Panel 任务与 manifest 终态。
 
-# FE-SERVER-RUNTIME-SETTINGS-UX-2 前端接手记录（2026-08-18，未发布）
+# FE-SERVER-RUNTIME-SETTINGS-UX-2 前端接手记录（2026-08-18，released in v0.5.5）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -2008,7 +2020,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - `waiting` 表示玩家可首次认领，`error` 表示凭据层 fail closed；任何 UI 重构都不能把两者合并成“未设置”。也不能因角色列表为空而禁止 role，因为新建/导入后出现的角色需要使用同一首次登录契约。
 - 2026-08-17 用户确认两个真实客户端完成首次认领、各自正确登录、交叉失败、清除后重认领、Panel 批准和重启保持矩阵；能力已随 annotated `v0.5.3@ede7fa3` 和同 digest 正式镜像发布。
 
-# FE-INSTALL-SMAPI-LIVE-PROGRESS-1 接手记录（2026-08-18，未发布）
+# FE-INSTALL-SMAPI-LIVE-PROGRESS-1 接手记录（2026-08-18，released in v0.5.4）
 
 ## 改了什么
 
@@ -2024,9 +2036,9 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - 旧后端没有 SMAPI marker 时必须保留活动提示，不能重新回退到 SteamCMD 100% 或静态 Steam 认证卡；收到 100% 后也只能说下载结束/正在校验或安装，不能提前显示整个安装完成。
-- 正式候选仍需在慢速真实下载、候选切换、缓存命中以及窄屏/reduced-motion 下做 Browser 复验。当前变更尚未部署生产或发布。
+- 正式候选 `32108845520`、Compatibility `32108845544`、自动 Tag `32109534507` 和正式提升 `32109555161` 均成功；能力已随 `v0.5.4@e0b888c` 与 digest `sha256:4d5dbc6faf23cb15aa859deca62022e7e03dd896a7fc4c77086ac805ddb33cb2` 发布。以后修改下载阶段仍需复验慢速下载、候选切换、缓存命中、窄屏与 reduced-motion。
 
-# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2 接手记录（2026-08-18，未发布）
+# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2 接手记录（2026-08-18，released in v0.5.5）
 
 ## 改了什么
 
@@ -2041,4 +2053,4 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 ## 下一步注意事项
 
 - 响应式判断必须继续基于 `.sd-saves-modal-card-wide` 提供的 `ngc-modal`，不能恢复 `sd-main-scroll`。1100px 是压缩三栏入口，不再是单列入口；若调整列宽，至少复验默认半屏、840×720、769×500 和小于 560px 的强制桌面夹具。
-- 本地源码、production build 与 Browser QA 已完成；用户于 2026-08-18 明确授权随本次 `main` 推送进入自动候选。候选、Tag、Release 与生产部署仍以 workflow 实际终态为准，不能因本地通过提前标记已发布。
+- 本地源码、production build 与 Browser QA 已完成；候选 `32127766494`、Compatibility `32127766392`、自动 Tag `32128518008` 与正式提升 `32128533342` 均成功，能力已随 `v0.5.5@a77fbe6` 和 digest `sha256:584a460c90103966394e71c67fe5416822985c9b8246013b5d2cff80400174de` 发布。
