@@ -96,6 +96,7 @@ export function MobileControlPage({
     setRuntimeSettingsDraft,
     runtimeSettingsLoading,
     runtimeSettingsSaving,
+    runtimeSettingsSavingAction,
     runtimeSettingsError,
     runtimeSettingsMessage,
     clearRuntimeSettingsFeedback,
@@ -106,6 +107,7 @@ export function MobileControlPage({
     isAdmin,
     isRunning,
     refreshPlayers: dashboardData.refreshPlayers,
+    restartServer: onPlayerAuthRestart,
   })
 
   const {
@@ -619,6 +621,7 @@ export function MobileControlPage({
           setDraft={setRuntimeSettingsDraft}
           loading={runtimeSettingsLoading}
           saving={runtimeSettingsSaving}
+          savingAction={runtimeSettingsSavingAction}
           error={runtimeSettingsError}
           message={runtimeSettingsMessage}
           isRunning={isRunning}
@@ -627,6 +630,7 @@ export function MobileControlPage({
           onClearFeedback={clearRuntimeSettingsFeedback}
           onClose={closeRuntimeSettings}
           onSave={() => { void handleSaveRuntimeSettings() }}
+          onSaveAndRestart={() => { void handleSaveRuntimeSettings(true) }}
         />
       ) : null}
 

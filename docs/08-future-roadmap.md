@@ -30,6 +30,14 @@
 - [x] Nexus 搜索补齐 `requiredMods[].version`；远程安装接口接收 `expectedVersion/nexusFileId`，ZIP 下载后、Mods 落盘前读取 manifest 二次验真，旧包不再能以新元数据写入或覆盖。
 - [x] 扩展幂等/版本候选回归、前端 production build、后端专项与任务专属 Linux Go 1.25 全量通过；已登录 Nexus 的右侧浏览器实际 DOM 选中 `2.9.1/file_id=160463`，并排除旧版 `2.9.0/file_id=153187`。普通 Chrome 真实 v0.5.2 Panel 首轮点击证明 0.1.4 会因旧 payload 缺版本而安全失败、未开页/建任务/写 Mods，随后以 0.1.5 页面推断兼容修正。本任务不创建 tag、不发布镜像或 Release。
 
+# 2026-08-18 已完成、待发布：运行设置入口与保存重启体验修正
+
+- [x] 修复服务器摘要“修改上限”按钮用负 margin 越出单元格的问题；按钮改为卡片内居中并在极窄摘要单列，总览在线玩家卡片增加同一管理员入口。
+- [x] 最大人数输入用 44px 像素风 `− / +` 替代浏览器原生 spinner，保留直接输入、方向键和 `1~100` 校验。
+- [x] 弹窗动作改为左侧“关闭 / 仅保存”、右侧“保存并重启”，运行态先确认在线玩家断线再复用既有生命周期，停止态禁用重启；保存失败零重启，重启失败明确配置已保存。
+- [x] 安装进度及 Steam 认证占位图标去掉重复阴影并固定层级；seed/Steam/download 三枚带烤入黑色外扩像素的旧 PNG 按原图用 image2 再生为干净透明的 72×72 RGBA PNG，保留 Steam 圆标与下载底座。摘要存档与主机农民使用适合 22px 的专用图标/头像裁切，不再出现素材被遮挡或缩成碎片的观感。
+- [x] 定向状态/响应式回归、production build，以及 1280×720、430×900、390×844 QA shell 布局、步进和零横向溢出验收；本任务仅本地提交，不推送 `main`、不触发候选或自动 Tag。
+
 # 2026-08-17 已完成：建档后修改联机人数上限
 
 - [x] `SERVER-RUNTIME-MAXPLAYERS-1`：复用现有 runtime settings GET/PUT，在 `server-settings.json` 增加 `MaxPlayers 1~100` 的默认读取、旧 PUT 保留、未知字段保留、安全原子写、owner/mutex 互斥和旧/新值审计；不新增专用 API、SQLite 表、存档级设置或 Mod/小屋门禁。

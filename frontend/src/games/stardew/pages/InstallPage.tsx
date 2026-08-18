@@ -337,10 +337,10 @@ const STEP_ICON: Record<StepStatus, string> = {
 }
 const STEPS = ['准备环境', '拉取镜像', 'Steam 认证', '下载与环境', '完成'] as const
 const STEP_ICON_SRC = [
-  '/assets/stardew/ui/install/icon_install_step_seed_image2.png',
+  '/assets/stardew/ui/install/icon_install_step_seed_image2_regen.png',
   '/assets/stardew/ui/install/icon_install_step_box_image2.png',
-  '/assets/stardew/ui/install/icon_install_step_steam_image2.png',
-  '/assets/stardew/ui/install/icon_install_step_download_image2.png',
+  '/assets/stardew/ui/install/icon_install_step_steam_image2_regen.png',
+  '/assets/stardew/ui/install/icon_install_step_download_image2_regen.png',
   '/assets/stardew/ui/install/icon_install_step_star_image2.png',
 ] as const
 const STEAM_STEP_ICON_SRC = STEP_ICON_SRC[2]

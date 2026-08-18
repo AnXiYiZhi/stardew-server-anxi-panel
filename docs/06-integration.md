@@ -26,6 +26,13 @@
 - 旧客户端省略新增字段仍可调用远程安装接口；0.1.5 新 Panel 会显式传目标版本，旧 Panel 批量 payload 缺字段时由扩展从 Nexus 当前文件页补出版本，再走相同文件行匹配。日志、审计和扩展持久状态只记录安全版本/file ID/脱敏 URL，不得保存 CDN key、expires 或完整 query。
 - 自动化已覆盖前置版本补全、旧/新候选选择、旧 Panel 缺版本字段兼容、批次串行、两条扩展 POST、后端 manifest 匹配/不匹配与零写入；已登录 Nexus 的经典文件页验证了 `<dt>Content Patcher 2.9.1</dt> + <dd data-id="160463">` 关联，旧版 2.9.0 为 153187，不存在的 2.9.10 不匹配。真实 Chrome + 当前 0.1.8 进一步在停止态测试实例完成 Content Patcher `2.9.1/file_id=160463` 与 Elle's New Barn Animals `1.1.3/file_id=34408` 的串行安装，以及 Content Patcher 更新；两条成功链均由 Panel 任务与落盘 manifest 交叉确认，临时制品为零。远程安装仍只接受 ZIP，发现旧目标实际提供 `.rar` 时没有放宽安全契约或把手工按钮跳转冒充成功。
 
+# FE-SERVER-RUNTIME-SETTINGS-UX-2 显式保存重启契约（2026-08-18，未发布）
+
+- 后端契约不变：配置仍由管理员 `PUT /api/instances/:id/config/server-runtime-settings` 保存，生命周期仍由 `POST /api/instances/:id/restart` 提交；没有把两者合并成新接口，也没有让 PUT 隐式重启。
+- 前端三个入口（服务器摘要、总览在线玩家卡片、移动控制快捷操作）共用同一 hook/dialog。选择“仅保存”只 PUT 并刷新 players；选择“保存并重启”必须在运行态先显示在线玩家断线确认，确认后顺序执行 PUT → players 刷新 → 页面既有 `handleRestart`。PUT 失败不得发 restart；restart 失败必须保留已保存配置并提示可重试或稍后手动重启。
+- 停止态“保存并重启”保持可见但禁用，只允许仅保存并等待下次启动；不得把 restart 偷换成 start。运行态重启继续由 `useStardewLifecycleActions` 持有 pending/job/状态刷新，设置 hook 不直接调用 `restartInstance`。
+- 联调最低覆盖：管理员三入口、普通用户入口隐藏、`1/100` 边界与 44px 自定义步进、在线人数确认、保存失败零重启、保存成功/重启失败的部分成功文案、重启提交后的 pending 状态，以及 520/430/390px 无横向溢出。
+
 # SERVER-RUNTIME-MAXPLAYERS-1 / FE-SERVER-RUNTIME-MAXPLAYERS-1 跨端契约（2026-08-17，released in v0.5.3）
 
 - 继续复用管理员 `GET/PUT /api/instances/:id/config/server-runtime-settings`。GET 结构为 `{ maxPlayers, cabinStrategy, existingCabinBehavior, networkBroadcastPeriod }`，`maxPlayers` 缺失或无效时默认 `10`；合法范围 `1~100`。新前端 PUT 始终提交四个实际值，旧客户端省略 `maxPlayers` 时后端在 driver 锁内保留磁盘原值。

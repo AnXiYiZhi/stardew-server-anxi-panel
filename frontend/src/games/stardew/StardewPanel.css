@@ -4095,10 +4095,18 @@
 }
 
 .sd-server-summary-label img {
-  width: 18px;
-  height: 18px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
+  object-position: center;
   image-rendering: pixelated;
+  filter: none;
+}
+
+.sd-server-summary-label img.sd-server-summary-farmer-icon {
+  object-fit: cover;
+  object-position: 50% 10%;
 }
 
 .sd-server-summary-value {
@@ -4134,11 +4142,19 @@
   flex: 1 1 auto;
 }
 
+.sd-server-summary-item--editable {
+  position: relative;
+  padding-right: 92px;
+}
+
 .sd-server-summary-limit-btn {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  max-width: calc(100% - 20px);
   min-width: 68px;
   min-height: 44px;
-  margin: -12px 0 -11px;
+  margin: 0;
   padding: 0 6px;
   border: 1px solid rgba(126, 77, 27, 0.52);
   border-radius: 3px;
@@ -4150,6 +4166,7 @@
   font-weight: 900;
   cursor: pointer;
   touch-action: manipulation;
+  transform: translateY(-50%);
 }
 
 .sd-server-summary-limit-btn:hover {
@@ -4184,6 +4201,12 @@
   .sd-server-message-row .sd-btn-green,
   .sd-server-command-row .sd-btn-green {
     width: 100%;
+  }
+}
+
+@container sd-main-scroll (max-width: 520px) {
+  .sd-server-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

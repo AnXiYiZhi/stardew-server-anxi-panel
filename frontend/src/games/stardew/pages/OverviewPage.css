@@ -675,6 +675,38 @@
   image-rendering: pixelated;
 }
 
+.sd-ov-card .sd-player-hd {
+  flex-wrap: wrap;
+}
+
+.sd-ov-player-limit-btn {
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 68px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 7px;
+  border: 1px solid rgba(126, 77, 27, 0.52);
+  border-radius: 3px;
+  background: rgba(255, 240, 190, 0.72);
+  color: #5d3817;
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1.1;
+  font-weight: 900;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sd-ov-player-limit-btn:hover {
+  background: rgba(255, 247, 214, 0.96);
+}
+
+.sd-ov-player-limit-btn:focus-visible {
+  outline: 3px solid rgba(35, 105, 38, 0.76);
+  outline-offset: 2px;
+}
+
 .sd-ov-player-body {
   position: relative;
   min-height: 140px;

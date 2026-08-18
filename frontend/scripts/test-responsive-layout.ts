@@ -19,6 +19,14 @@ function readTextFile(url: URL): string {
   return readFileSync(url, 'utf8').replace(/\r\n?/g, '\n')
 }
 
+for (const icon of ['seed', 'steam', 'download']) {
+  const png = readFileSync(new URL(`../public/assets/stardew/ui/install/icon_install_step_${icon}_image2_regen.png`, import.meta.url))
+  assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${icon} icon must be PNG`)
+  assert.equal(png.readUInt32BE(16), 72, `${icon} icon width`)
+  assert.equal(png.readUInt32BE(20), 72, `${icon} icon height`)
+  assert.equal(png[25], 6, `${icon} icon must keep RGBA transparency`)
+}
+
 function closeTo(actual: number, expected: number, message: string, tolerance = 1e-7): void {
   assert.ok(
     Math.abs(actual - expected) <= tolerance,
@@ -208,10 +216,23 @@ assert.match(savesPageCss, /\.sd-saves-modal-card\s*{[^}]*max-height:\s*min\(90v
 assert.match(savesPageCss, /\.sd-saves-modal-card-wide\s*{[^}]*container-name:\s*ngc-modal[^}]*container-type:\s*inline-size/s)
 assert.match(installPageCss, /\.sd-install-qr-card\s*{[^}]*box-sizing:\s*border-box/s)
 assert.match(installPageCss, /\.sd-install-qr-card\s*{[^}]*max-height:\s*min\(92vh,\s*100%\)/s)
-assert.match(installPageCss, /\.sd-install-column-title-download::before\s*{[^}]*icon_install_step_download_image2\.png/s)
+assert.match(installPageCss, /\.sd-install-column-title-download::before\s*{[^}]*icon_install_step_download_image2_regen\.png/s)
 assert.match(installPageCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.sd-install-activity-dot\s*{[^}]*animation:\s*none/s)
 assert.match(installPageSource, /aria-label="SMAPI 安装包下载进度"/)
 assert.match(installPageSource, /'下载与环境'/)
+assert.match(installPageSource, /icon_install_step_seed_image2_regen\.png/)
+assert.match(installPageSource, /icon_install_step_steam_image2_regen\.png/)
+assert.match(installPageSource, /icon_install_step_download_image2_regen\.png/)
+assert.doesNotMatch(installPageSource, /icon_install_step_(?:seed|steam|download)_clean\.svg/)
+assert.match(installPageCss, /icon_install_step_steam_image2_regen\.png/)
+assert.match(installPageCss, /icon_install_step_download_image2_regen\.png/)
+assert.match(installPageCss, /\.sd-install-page \.sd-install-step\s*\{[^}]*isolation:\s*isolate[^}]*overflow:\s*visible/s)
+assert.match(installPageCss, /\.sd-install-steps::before\s*\{[^}]*z-index:\s*0/s)
+assert.match(installPageCss, /\.sd-install-step-art\s*\{[^}]*z-index:\s*2[^}]*object-fit:\s*contain[^}]*filter:\s*none/s)
+assert.doesNotMatch(installPageCss, /\.sd-install-step-art\s*\{[^}]*drop-shadow/s)
+assert.match(installPageCss, /\.sd-install-auth-placeholder\s*\{[^}]*isolation:\s*isolate[^}]*overflow:\s*visible/s)
+assert.match(installPageCss, /\.sd-install-auth-orb\s*\{[^}]*z-index:\s*1[^}]*object-fit:\s*contain[^}]*filter:\s*none/s)
+assert.doesNotMatch(installPageCss, /\.sd-install-auth-orb\s*\{[^}]*drop-shadow/s)
 assert.match(apiSource, /export function getLatestJobLogs/)
 assert.match(apiSource, /params\.set\('latest', 'true'\)/)
 assert.match(installPageSource, /getLatestJobLogs\(installJobId, 1000\)/)

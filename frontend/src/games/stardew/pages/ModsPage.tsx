@@ -789,7 +789,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
   )
 
   const tabItems: Array<{ id: ModWorkbenchTab; label: string; hint: string; icon: string }> = [
-    { id: 'download', label: '下载模组', hint: '搜索 N 站并准备安装', icon: '/assets/stardew/ui/install/icon_install_step_download_image2.png' },
+    { id: 'download', label: '下载模组', hint: '搜索 N 站并准备安装', icon: '/assets/stardew/ui/install/icon_install_step_download_image2_regen.png' },
     { id: 'installed', label: '添加模组', hint: '本服已安装与玩家同步', icon: '/assets/stardew/ui/icons/icon_nav_install_package_image2.png' },
     { id: 'settings', label: '配置模组', hint: '启用、依赖与配置入口', icon: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png' },
   ]

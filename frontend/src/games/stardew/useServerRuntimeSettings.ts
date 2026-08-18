@@ -12,21 +12,23 @@ type RuntimeSettingsOptions = {
   isAdmin: boolean
   isRunning: boolean
   refreshPlayers: () => void
+  restartServer: () => Promise<void>
 }
 
-export function useServerRuntimeSettings({ isAdmin, isRunning, refreshPlayers }: RuntimeSettingsOptions) {
+export function useServerRuntimeSettings({ isAdmin, isRunning, refreshPlayers, restartServer }: RuntimeSettingsOptions) {
   const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false)
   const [runtimeSettingsDraft, setRuntimeSettingsDraft] = useState<ServerRuntimeSettings>(DEFAULT_SERVER_RUNTIME_SETTINGS)
   const [runtimeSettingsLoading, setRuntimeSettingsLoading] = useState(false)
-  const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false)
+  const [runtimeSettingsSavingAction, setRuntimeSettingsSavingAction] = useState<'save' | 'save_restart' | null>(null)
   const [runtimeSettingsError, setRuntimeSettingsError] = useState<string | null>(null)
   const [runtimeSettingsMessage, setRuntimeSettingsMessage] = useState<string | null>(null)
+  const runtimeSettingsSaving = runtimeSettingsSavingAction !== null
 
   async function openRuntimeSettings() {
     if (!isAdmin) return
     setRuntimeSettingsOpen(true)
     setRuntimeSettingsLoading(true)
-    setRuntimeSettingsSaving(false)
+    setRuntimeSettingsSavingAction(null)
     setRuntimeSettingsError(null)
     setRuntimeSettingsMessage(null)
     try {
@@ -49,26 +51,40 @@ export function useServerRuntimeSettings({ isAdmin, isRunning, refreshPlayers }:
     setRuntimeSettingsMessage(null)
   }
 
-  async function handleSaveRuntimeSettings() {
+  async function handleSaveRuntimeSettings(restartAfterSave = false) {
     const validationError = maxPlayersValidationError(runtimeSettingsDraft.maxPlayers)
     if (validationError) {
       setRuntimeSettingsError(validationError)
       return
     }
-    setRuntimeSettingsSaving(true)
+    setRuntimeSettingsSavingAction(restartAfterSave ? 'save_restart' : 'save')
     setRuntimeSettingsError(null)
     setRuntimeSettingsMessage(null)
     try {
       const res = await updateInstanceServerRuntimeSettings(runtimeSettingsDraft)
       setRuntimeSettingsDraft(normalizeServerRuntimeSettings(res))
-      await refreshPlayers()
+      let playersRefreshFailed = false
+      try {
+        await refreshPlayers()
+      } catch {
+        playersRefreshFailed = true
+      }
+      if (restartAfterSave && isRunning) {
+        try {
+          await restartServer()
+          setRuntimeSettingsOpen(false)
+        } catch (restartError) {
+          setRuntimeSettingsError(`设置已保存，但服务器重启失败：${errorMessage(restartError)}。可以重试或稍后手动重启。`)
+        }
+        return
+      }
       setRuntimeSettingsMessage(isRunning
-        ? '设置已保存；人数上限与高级设置将在重启后生效。'
-        : '设置已保存；人数上限与高级设置将在下次启动时生效。')
+        ? `设置已保存；人数上限与高级设置将在重启后生效。${playersRefreshFailed ? ' 当前人数刷新暂时失败，面板会自动重试。' : ''}`
+        : `设置已保存；人数上限与高级设置将在下次启动时生效。${playersRefreshFailed ? ' 当前人数刷新暂时失败，面板会自动重试。' : ''}`)
     } catch (e) {
       setRuntimeSettingsError(errorMessage(e))
     } finally {
-      setRuntimeSettingsSaving(false)
+      setRuntimeSettingsSavingAction(null)
     }
   }
 
@@ -78,6 +94,7 @@ export function useServerRuntimeSettings({ isAdmin, isRunning, refreshPlayers }:
     setRuntimeSettingsDraft,
     runtimeSettingsLoading,
     runtimeSettingsSaving,
+    runtimeSettingsSavingAction,
     runtimeSettingsError,
     runtimeSettingsMessage,
     clearRuntimeSettingsFeedback,

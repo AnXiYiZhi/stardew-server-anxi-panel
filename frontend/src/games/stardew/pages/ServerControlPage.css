@@ -1545,10 +1545,13 @@
 }
 
 .sd-server-summary-label img {
-  width: 18px;
-  height: 18px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
+  object-position: center;
   image-rendering: pixelated;
+  filter: none;
 }
 
 .sd-server-summary-value {

@@ -36,6 +36,14 @@
 - 扩展版本升为 `0.1.5`，两条 POST 路径的 `X-Anxi-Nexus-Installer` 同步更新；后端下载扩展 ZIP 的版本感知缓存会自动重打包。0.1.4 在真实 v0.5.2 Panel 点击时因旧批量 payload 缺版本而立即失败、没有开页/建任务/写 Mods；0.1.5 加回页面推断兼容。影响 `shared.js/content.js/background.js/panel-bridge.js/manifest.json/README`、`ModsPage.tsx`、`types.ts` 与扩展回归脚本。
 - `npm run test:nexus-extension-idempotency` 覆盖旧文件优先 DOM、严格版本边界、新 Panel 缺失版本拒绝、旧 Panel 缺字段时页面推断、页面参数、批次串行和两条 POST 请求体；`npm run build` 通过。已登录 Nexus 的真实 Content Patcher 文件页确认 `2.9.1 → file_id=160463`、`2.9.0 → file_id=153187` 且 `2.9.10` 无匹配；真实 Chrome + 当前 `0.1.8` 又完成了停止态安装/更新终态，证据见本页顶部和 `docs/09-image-build.md`。
 
+# FE-SERVER-RUNTIME-SETTINGS-UX-2：入口、步进器与保存重启体验修正（2026-08-18，未发布）
+
+- `ServerSummaryCard` 不再用负 margin 把 44px“修改上限”按钮挤出摘要行；可编辑单元格为按钮预留横向空间，按钮在整个单元格内绝对居中，`<=520px` 摘要降为单列。总览页“在线玩家”卡片同时增加管理员“修改上限”入口，仍复用 `useServerRuntimeSettings` 与 `ServerRuntimeSettingsDialog`，没有第四套状态或 API。
+- 最大人数输入隐藏浏览器原生 spinner，改为像素风 `− / +` 步进按钮；两者均为 44px 热区、按 `1/100` 边界自动禁用，直接输入、键盘方向键和既有整数校验仍保留。
+- 弹窗底部固定为左侧“关闭 / 仅保存”、右侧“保存并重启”；`<=420px` 时前两项两列、重启动作独占下一行。停止态保留但禁用重启动作，运行态点击后先显示在线玩家断线确认，再由各页面传入的既有 `handleRestart` 进入统一生命周期状态机；保存失败不重启，保存成功但重启提交失败会明确说明配置已经落盘。
+- 安装五步时间线与 Steam 认证占位图标移除重复 `drop-shadow`，并用独立 stacking context 保证像素图不被进度线或卡片裁切；原 seed/Steam/download PNG 本身带有不对称的烤入阴影，使用 image2 按原造型、颜色、底座和像素描边重新生成一组三图，再抠纯色背景、等比切成三个 72×72 RGBA PNG（`*_image2_regen.png`）。认证卡与第三步共用同一 Steam 资源。服务器摘要的存档图标改用专用摘要素材，主机农民改用顶栏头像的方形头部裁切，避免把整身立绘压到 22px 后看成碎片。旧 PNG 保留供历史追溯，未采用手绘 SVG 或不透明生成草稿。
+- `test:runtime-player-limit` 锁定三入口共用、无负 margin、自定义步进器、44px 热区、动作分组、确认弹窗、生命周期委托与摘要头像裁切；`test:responsive-layout` 锁定安装进度和 Steam 占位图标无叠加阴影、层级完整。前端当前声明的 19 条状态/布局回归与 production build 全部通过；右侧 Browser QA 确认安装五步和 Steam 占位图标 `filter:none`、摘要头像为 22×22 方形裁切，相关页面 root 零横向溢出。
+
 # FE-SERVER-RUNTIME-MAXPLAYERS-1：桌面/移动共用建档后人数上限设置（2026-08-17，released in v0.5.3）
 
 - 桌面快捷操作改名为“联机人数与小屋设置”，副标题为“人数上限 / 小屋策略 / 广播频率”；同一弹窗顶部增加 `1~100` 数字输入，说明该值包含主机位且降低不会删除已有角色或小屋，原三项配置归入清晰的“高级设置” fieldset。

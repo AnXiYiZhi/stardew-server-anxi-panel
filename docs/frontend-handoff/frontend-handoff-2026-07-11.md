@@ -71,6 +71,21 @@
 - 不能把版本参数放进 Nexus CDN 签名链接，也不能在找不到目标版本时恢复“第一个 file_id”逻辑。Nexus 改 DOM 后应先扩展“单文件上下文”的采集选择器并增加 fixture，服务端 manifest 验真继续作为最终保护。
 - 当前 0.1.8 的真实 Chrome 已完成本体+前置 ZIP 批量安装与单 Mod 更新；具体 file ID、任务和落盘证据见本文件顶部及 `docs/09-image-build.md`。后续修改 Nexus DOM 选择、批次恢复或提交路径时仍须重跑同等真实链，不能用应用内 Browser 的只读 DOM 探针代替扩展点击、CDN 捕获、Panel 任务与 manifest 终态。
 
+# FE-SERVER-RUNTIME-SETTINGS-UX-2 前端接手记录（2026-08-18，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `ServerSummaryCard.tsx` / `StardewPanel.css` 给可编辑人数摘要增加独立布局类：44px“修改上限”改为单元格内居中，不再依赖负 margin；极窄摘要单列。`OverviewPage.tsx/.css` 在在线玩家卡片头增加同一管理员入口，并复用现有 hook/dialog。
+- `ServerRuntimeSettingsDialog.tsx/.css` 隐藏原生 number spinner，增加 44px 像素风 `− / +`，在 1 与 100 自动禁用；底部动作改为左侧“关闭 / 仅保存”和右侧“保存并重启”，`<=420px` 安全换成两行。
+- `useServerRuntimeSettings.ts` 接收页面已有 `restartServer` 生命周期函数。显式“保存并重启”先经过带在线人数的 `alertdialog`，确认后 PUT、刷新 players，再调用 `handleRestart`；停止态按钮禁用，保存失败不会重启，部分成功错误会说明配置已保存。桌面服务器页、桌面总览和移动控制页都只传各自已有生命周期函数，没有直接 import/call restart API。
+- `InstallPage.css` 移除五步时间线和 Steam 认证占位图标的重复 `drop-shadow`，图标与进度线各自固定 stacking order；seed/Steam/download 三个旧 PNG 自带不对称黑色外扩像素，按用户要求用 image2 保留原造型、配色、Steam 圆标和下载底座重新生成，抠底并切为三个 72×72 RGBA `icon_install_step_*_image2_regen.png`。Steam 认证卡继续与第三步共用一个源；模组流程的下载图标同步引用再生版。`ServerSummaryCard.tsx` / `StardewPanel.css` 使用专用存档摘要图标，并把顶栏农民头像裁成清晰的 22px 头部图标。旧 PNG 未覆盖，手绘 SVG 与不透明生成草稿均未进入运行时。
+- 接口、DTO、权限、最大人数范围和配置文件格式均未改变。影响测试为 `scripts/test-runtime-player-limit.ts`；没有新建后端 endpoint、数据库表或页面私有保存状态。
+
+## 如何验证、下一步注意事项
+
+- 前端当前声明的 19 条状态/布局回归与 `npm run build` 全部通过。真实 QA shell：1280×720 的摘要按钮完全位于 item/grid 内，动作按钮 88/88/111px 全在 520px 弹窗内；430×900 与 390×844 的 stepper、动作区和对话框均无横向溢出，`− / +` 为 44px，运行中在线 3 人确认提示可见。右侧 Browser 又确认五步图标和 Steam 占位图标 `filter:none`、stacking order 为 `2/1` 且无裁切，服务器摘要主机农民为 22×22 方形头像裁切；安装与服务器页 root 均零横向溢出。
+- 后续若调整动作顺序，必须保持左侧次要动作、右侧重启动作以及 420px 两行契约；不要恢复原生 spinner 或用负 margin 扩大热区。保存并重启必须继续走页面的 `handleRestart`，不能在设置 hook 内直接调用 `restartInstance`，也不能在停止态把“重启”偷偷降级成启动。
+
 # FE-SERVER-RUNTIME-MAXPLAYERS-1 前端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件

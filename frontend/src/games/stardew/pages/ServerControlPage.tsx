@@ -109,6 +109,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     setRuntimeSettingsDraft,
     runtimeSettingsLoading,
     runtimeSettingsSaving,
+    runtimeSettingsSavingAction,
     runtimeSettingsError,
     runtimeSettingsMessage,
     clearRuntimeSettingsFeedback,
@@ -119,6 +120,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
     isAdmin,
     isRunning,
     refreshPlayers: dashboardData.refreshPlayers,
+    restartServer: handleRestart,
   })
 
   const {
@@ -840,6 +842,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           setDraft={setRuntimeSettingsDraft}
           loading={runtimeSettingsLoading}
           saving={runtimeSettingsSaving}
+          savingAction={runtimeSettingsSavingAction}
           error={runtimeSettingsError}
           message={runtimeSettingsMessage}
           isRunning={isRunning}
@@ -848,6 +851,7 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
           onClearFeedback={clearRuntimeSettingsFeedback}
           onClose={closeRuntimeSettings}
           onSave={() => { void handleSaveRuntimeSettings() }}
+          onSaveAndRestart={() => { void handleSaveRuntimeSettings(true) }}
         />
       ) : null}
 

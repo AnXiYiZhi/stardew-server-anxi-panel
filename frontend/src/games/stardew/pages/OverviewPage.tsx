@@ -5,10 +5,12 @@ import type { JunimoUpdateInfo, RuntimeComponentsInfo } from '../../../types'
 import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
 import { InviteCodeCard } from '../InviteCodeCard'
+import { ServerRuntimeSettingsDialog } from '../ServerRuntimeSettingsDialog'
 import { modIsSystemRuntime } from '../mod-visibility'
 import { panelUpdateSurface } from '../panel-update-machine'
 import type { StardewPageProps } from '../stardew-routes'
 import { useStardewLifecycleActions } from '../useStardewLifecycleActions'
+import { useServerRuntimeSettings } from '../useServerRuntimeSettings'
 import { formatStardewLocation } from '../location-format'
 import { shouldShowRuntimeComponentsUpdate } from '../runtime-components-status'
 import { shouldShowSMAPIUpdate } from '../smapi-update-status'
@@ -28,6 +30,7 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
   const [runtimeComponents, setRuntimeComponents] = useState<RuntimeComponentsInfo | null>(null)
   const {
     state,
+    isRunning,
     actionBusy,
     actionError,
     showSaveRequiredPrompt,
@@ -35,10 +38,30 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
     startupInProgress,
     waitingForStop,
     handleStart,
+    handleRestart,
     requestConfirm,
     cancelConfirm,
     confirmPendingAction,
   } = useStardewLifecycleActions({ instanceState, dashboardData, isAdmin })
+  const {
+    runtimeSettingsOpen,
+    runtimeSettingsDraft,
+    setRuntimeSettingsDraft,
+    runtimeSettingsLoading,
+    runtimeSettingsSaving,
+    runtimeSettingsSavingAction,
+    runtimeSettingsError,
+    runtimeSettingsMessage,
+    clearRuntimeSettingsFeedback,
+    openRuntimeSettings,
+    closeRuntimeSettings,
+    handleSaveRuntimeSettings,
+  } = useServerRuntimeSettings({
+    isAdmin,
+    isRunning,
+    refreshPlayers: dashboardData.refreshPlayers,
+    restartServer: handleRestart,
+  })
 
   const activeSave = dashboardData.saves?.activeSaveName ?? null
   const saveCount = dashboardData.saves?.saves.length ?? 0
@@ -373,6 +396,17 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
             <img src={OVERVIEW_ICONS.players} alt="" />
             在线玩家
             {onlineCount != null && maxPlayers != null ? <span>{onlineCount}/{maxPlayers}</span> : null}
+            {isAdmin ? (
+              <button
+                type="button"
+                className="sd-ov-player-limit-btn"
+                onClick={() => { void openRuntimeSettings() }}
+                aria-label="修改联机人数上限"
+                title="修改联机人数上限"
+              >
+                修改上限
+              </button>
+            ) : null}
           </div>
           <div className="sd-ov-player-body">
             {onlinePlayers.length > 0 ? (
@@ -490,6 +524,25 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
           </button>
         </section>
       </div>
+
+      {runtimeSettingsOpen ? (
+        <ServerRuntimeSettingsDialog
+          draft={runtimeSettingsDraft}
+          setDraft={setRuntimeSettingsDraft}
+          loading={runtimeSettingsLoading}
+          saving={runtimeSettingsSaving}
+          savingAction={runtimeSettingsSavingAction}
+          error={runtimeSettingsError}
+          message={runtimeSettingsMessage}
+          isRunning={isRunning}
+          currentMaxPlayers={dashboardData.players?.maxPlayers ?? null}
+          onlineCount={dashboardData.players?.onlineCount ?? null}
+          onClearFeedback={clearRuntimeSettingsFeedback}
+          onClose={closeRuntimeSettings}
+          onSave={() => { void handleSaveRuntimeSettings() }}
+          onSaveAndRestart={() => { void handleSaveRuntimeSettings(true) }}
+        />
+      ) : null}
 
       {/* 危险操作确认弹框 */}
       {confirmAction ? (

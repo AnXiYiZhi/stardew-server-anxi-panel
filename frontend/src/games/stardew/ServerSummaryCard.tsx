@@ -69,20 +69,23 @@ export function ServerSummaryCard({
   const summaryItems = [
     {
       icon: '/assets/stardew/ui/icons/icon_top_summary_players.png',
+      iconClass: '',
       label: '在线玩家',
       value: `${onlineCountText} / ${maxPlayersText}`,
       sub: `最大玩家数：${maxPlayersText}`,
       editPlayerLimit: shouldShowPlayerLimitAction(canEditPlayerLimit, Boolean(onEditPlayerLimit)),
     },
     {
-      icon: '/assets/stardew/ui/icons/icon_nav_overview_map_image2.png',
+      icon: '/assets/stardew/ui/icons/icon_top_summary_save.png',
+      iconClass: '',
       label: '当前存档',
       value: farmNameText,
       sub: activeSave?.name ?? activeSaveName ?? playerSourceText,
       editPlayerLimit: false,
     },
     {
-      icon: '/assets/stardew/ui/icons/icon_topbar_user_avatar_image2.png',
+      icon: '/assets/stardew/ui/topbar/icon_topbar_user_avatar_image2_v2.png',
+      iconClass: 'sd-server-summary-farmer-icon',
       label: '主机农民',
       value: hostFarmerText,
       sub: activeSave ? `农场主：${gameDateText}` : '当前存档',
@@ -90,6 +93,7 @@ export function ServerSummaryCard({
     },
     {
       icon: '/assets/stardew/ui/icons/icon_top_summary_time.png',
+      iconClass: '',
       label: '游戏日期',
       value: gameDateText,
       sub: activeSave?.name ?? '星露谷时间',
@@ -112,9 +116,12 @@ export function ServerSummaryCard({
         </div>
 
         {summaryItems.map((item) => (
-          <div className="sd-server-summary-item" key={item.label}>
+          <div
+            className={`sd-server-summary-item${item.editPlayerLimit ? ' sd-server-summary-item--editable' : ''}`}
+            key={item.label}
+          >
             <span className="sd-server-summary-label">
-              <img src={item.icon} alt="" />
+              <img className={item.iconClass || undefined} src={item.icon} alt="" />
               {item.label}
             </span>
             <strong className="sd-server-summary-value">{item.value}</strong>
