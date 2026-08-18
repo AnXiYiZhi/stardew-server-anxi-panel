@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -117,6 +118,59 @@ func TestJobsAPIIncludesDisplayName(t *testing.T) {
 	}
 	if payload.Jobs[0].DisplayName == nil || *payload.Jobs[0].DisplayName != "Farm Type Manager (FTM) · mod_remote_install" {
 		t.Fatalf("displayName = %#v, want mod name", payload.Jobs[0].DisplayName)
+	}
+}
+
+func TestJobsAPILatestLogsReturnsChronologicalTail(t *testing.T) {
+	handler, store, closeStore := newTestHandlerWithStore(t)
+	defer closeStore()
+
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username":        "admin",
+		"password":        "admin-password",
+		"confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup admin returned %d: %s", setup.Code, setup.Body.String())
+	}
+
+	job, err := store.CreateJob(context.Background(), storage.CreateJobParams{
+		Type:       "test",
+		TargetType: "instance",
+		TargetID:   storage.DefaultInstanceID,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	for index := 1; index <= 5; index++ {
+		if _, err := store.AppendJobLog(context.Background(), job.ID, storage.JobLogLevelInfo, fmt.Sprintf("line-%d", index)); err != nil {
+			t.Fatalf("append log %d: %v", index, err)
+		}
+	}
+
+	response, _ := doJSON(t, handler, http.MethodGet, "/api/jobs/"+job.ID+"/logs?latest=true&limit=2", nil, adminCookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("latest logs returned %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Logs []struct {
+			Sequence int64 `json:"sequence"`
+		} `json:"logs"`
+		HasEarlier bool `json:"hasEarlier"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode latest logs: %v", err)
+	}
+	if !payload.HasEarlier {
+		t.Fatal("expected hasEarlier=true")
+	}
+	if len(payload.Logs) != 2 || payload.Logs[0].Sequence != 4 || payload.Logs[1].Sequence != 5 {
+		t.Fatalf("latest logs = %#v, want sequences 4 and 5", payload.Logs)
+	}
+
+	invalid, _ := doJSON(t, handler, http.MethodGet, "/api/jobs/"+job.ID+"/logs?latest=not-a-bool", nil, adminCookie)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid latest query returned %d: %s", invalid.Code, invalid.Body.String())
 	}
 }
 

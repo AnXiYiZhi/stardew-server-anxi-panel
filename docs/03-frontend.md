@@ -1,3 +1,9 @@
+# FE-JOB-LOG-LATEST-TAIL-1：完成任务默认展示日志结尾（2026-08-18，未发布）
+
+- 任务日志页、安装页和右栏活动任务初始日志统一改用 `getLatestJobLogs`，直接加载当前任务最新尾页。任务/安装详情先读取 job 状态再读取尾页，避免日志先返回旧尾部、job 随后返回终态时因不接 SSE 而漏掉最后几行；非终态任务仍从尾页最后一个 sequence 接 SSE，连接前产生的日志由既有 `after` 回放补齐。
+- 任务页不再用“返回数量达到 1000”猜截断，而是读取后端 `hasEarlier`。确有更早日志时提示“当前显示最新 1000 行日志，更早的日志未加载”，完成任务不会再停留在第 981~1000 行而隐藏后续成功/失败结论。
+- 影响 `src/{api,types}.ts`、`JobsLogsPage.tsx`、`InstallPage.tsx`、`useStardewDashboardData.ts` 与 `test-responsive-layout.ts`。`test:responsive-layout`、`test:install-state` 和 production build 已通过。
+
 # FE-NEXUS-MOD-ONECLICK-UPDATE-1：已安装 Mod 一键更新（扩展 0.1.8，2026-08-17，released in v0.5.3）
 
 - 管理员在“添加模组”的已安装卡片检测到新版本时，会在“查看更新页”左侧看到“一键更新”。按钮只对服务器已停止、浏览器扩展已连接、可由 Nexus ID 精确定位且只包含一个 Mod 的包开放；运行中、扩展未连接或聚合包场景保持禁用，并通过悬浮提示说明原因。

@@ -524,6 +524,44 @@ func (s *Store) ListJobLogs(ctx context.Context, jobID string, afterSequence int
 	return logs, nil
 }
 
+func (s *Store) ListLatestJobLogs(ctx context.Context, jobID string, limit int) ([]JobLog, bool, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, job_id, level, message, created_at, sequence
+		FROM job_logs
+		WHERE job_id = ?
+		ORDER BY sequence DESC
+		LIMIT ?
+	`, jobID, limit+1)
+	if err != nil {
+		return nil, false, fmt.Errorf("list latest job logs: %w", err)
+	}
+	defer rows.Close()
+
+	logs := make([]JobLog, 0, limit+1)
+	for rows.Next() {
+		logLine, err := scanJobLog(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		logs = append(logs, logLine)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("list latest job logs rows: %w", err)
+	}
+
+	hasEarlier := len(logs) > limit
+	if hasEarlier {
+		logs = logs[:limit]
+	}
+	for left, right := 0, len(logs)-1; left < right; left, right = left+1, right-1 {
+		logs[left], logs[right] = logs[right], logs[left]
+	}
+	return logs, hasEarlier, nil
+}
+
 func (s *Store) ListInterruptedJobs(ctx context.Context) ([]Job, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, type, display_name, status, target_type, target_id, created_by, created_at, started_at, finished_at, error_message, payload, updated_at

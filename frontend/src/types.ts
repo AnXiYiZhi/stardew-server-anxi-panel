@@ -141,6 +141,7 @@ export type JobResponse = {
 
 export type JobLogsResponse = {
   logs: JobLog[]
+  hasEarlier: boolean
 }
 
 export type Instance = {

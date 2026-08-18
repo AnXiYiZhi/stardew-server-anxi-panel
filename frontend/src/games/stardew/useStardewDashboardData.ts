@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createJobEventSource,
-  getJobLogs,
+  getLatestJobLogs,
   getHealthDiagnostics,
   getInstancePlayers,
   getInviteCode,
@@ -313,7 +313,7 @@ export function useStardewDashboardData(): StardewDashboardData {
 
     for (const jobId of activeJobIds) {
       if (jobStreamsRef.current.has(jobId)) continue
-      void getJobLogs(jobId)
+      void getLatestJobLogs(jobId, 200)
         .then((res) => appendJobLogs(jobId, res.logs))
         .catch(() => {
           // 实时流仍会继续写入后续日志；初始日志拉取失败不阻塞右栏显示任务。

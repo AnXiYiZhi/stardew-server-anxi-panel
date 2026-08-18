@@ -25,7 +25,8 @@ type jobDetailResponse struct {
 }
 
 type jobLogsResponse struct {
-	Logs []jobLogResponse `json:"logs"`
+	Logs       []jobLogResponse `json:"logs"`
+	HasEarlier bool             `json:"hasEarlier"`
 }
 
 type clearErrorLogsResponse struct {
@@ -217,13 +218,29 @@ func (s *server) handleJobLogs(w http.ResponseWriter, r *http.Request, jobID str
 	if limit > 1000 {
 		limit = 1000
 	}
-	logs, err := s.jobs.Logs(r.Context(), jobID, after, int(limit))
+	latest, ok := parseOptionalBoolQuery(w, r, "latest", false)
+	if !ok {
+		return
+	}
+	var (
+		logs       []storage.JobLog
+		hasEarlier bool
+		err        error
+	)
+	if latest {
+		logs, hasEarlier, err = s.jobs.LatestLogs(r.Context(), jobID, int(limit))
+	} else {
+		logs, err = s.jobs.Logs(r.Context(), jobID, after, int(limit))
+	}
 	if err != nil {
 		s.logger.Error("failed to list job logs", "job_id", jobID, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
 		return
 	}
-	response := jobLogsResponse{Logs: make([]jobLogResponse, 0, len(logs))}
+	response := jobLogsResponse{
+		Logs:       make([]jobLogResponse, 0, len(logs)),
+		HasEarlier: hasEarlier,
+	}
 	for _, logLine := range logs {
 		response.Logs = append(response.Logs, makeJobLogResponse(logLine))
 	}
@@ -404,6 +421,19 @@ func parseOptionalIntQuery(w http.ResponseWriter, r *http.Request, key string, f
 	if err != nil || parsed < 0 {
 		writeError(w, http.StatusBadRequest, "invalid_query", "query parameter must be a non-negative integer")
 		return 0, false
+	}
+	return parsed, true
+}
+
+func parseOptionalBoolQuery(w http.ResponseWriter, r *http.Request, key string, fallback bool) (bool, bool) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return fallback, true
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_query", "query parameter must be a boolean")
+		return false, false
 	}
 	return parsed, true
 }

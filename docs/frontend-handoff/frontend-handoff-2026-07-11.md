@@ -1,3 +1,15 @@
+# FE-JOB-LOG-LATEST-TAIL-1 前端接手记录（2026-08-18，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `src/api.ts` 新增 `getLatestJobLogs`，`types.ts` 为响应补 `hasEarlier`。任务详情初载/刷新/清错误日志、安装详情初载和 dashboard 活动任务日志均切到最新尾页。
+- `JobsLogsPage.tsx` 用服务端 `hasEarlier` 控制截断提示，并明确提示当前显示最新 1000 行；任务页与安装页先读取 job 再读取尾页，封住完成瞬间的并发读取竞态，运行中任务从尾页最后 sequence 接既有 SSE。影响 `InstallPage.tsx`、`useStardewDashboardData.ts` 和静态回归。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:responsive-layout`、`npm run test:install-state`、`npm run build` 通过。回归锁定 API 的 `latest=true`、三个消费入口、`hasEarlier` 和新提示文案。
+- 不要把 `logs.length === 1000` 当成存在更早日志，精确真值只来自 `hasEarlier`。运行中任务建立 SSE 时必须继续传最新日志的最后 sequence；若改回默认 `after=0`，长任务会重新回放最早 1000 行并再次隐藏尾部状态。
+
 # DOCS-PORTAL-0.5.3 接手记录（2026-08-17，completed，已上线）
 
 - `website/docs/index.md` 与 `website/docs/changelog.md` 已发布 v0.5.3 的角色密码首次认领、Nexus 精确版本安装/一键更新、建档后人数上限、诊断/刷新改进，并保留对群友「石头磊」和「鹈鹕镇的热心市民」的特别感谢。

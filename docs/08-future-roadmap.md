@@ -2135,3 +2135,11 @@ Multi Game Mode later
 - [x] 新增流式进度、缓存命中、迁移缓存即时复用和前端 marker/布局回归；Windows 定向 Go 测试、`test:install-state`、`test:responsive-layout`、前端 production build 已通过。
 - [ ] 在 Linux 文件系统执行全量 Go test/vet/build，并用真实 Docker 慢速下载/候选切换/缓存命中/无效授权回退完成专项 E2E。
 - [ ] 从干净且与 `origin/main` 同步的 `main` 进入正式候选，完成上一正式版 Web 升级/回滚和升级后页面复验；当前代码未部署生产、未创建 tag/Release、未提升 `latest`。
+
+# JOB-LOG-LATEST-TAIL-1 / FE-JOB-LOG-LATEST-TAIL-1（2026-08-18，未发布）
+
+- [x] 修复长任务完成后 UI 只加载最早 1000 行、因此停在 SteamCMD 自更新日志并隐藏最终成功/失败结论的问题。
+- [x] 后端新增 `latest=true` 有界尾页，返回正序日志与精确 `hasEarlier`；原 `after` 增量和 SSE 契约保持兼容。
+- [x] 任务页、安装页和右栏活动任务改取最新尾页；运行中任务从尾部 sequence 继续接 SSE，确有更早日志时显示准确提示。
+- [x] 存储/HTTP 专项、storage/Web 包、`go vet/build`、前端 responsive/install 状态回归和 production build 已通过；Web 首轮命中的无关存档导入时序用例单独及整包重跑均通过。
+- [ ] 尚未构建或部署生产镜像；如纳入正式版本，仍须按发布门禁从同步且干净的 `main` 构建不可变候选并完成 Web 升级/回滚。

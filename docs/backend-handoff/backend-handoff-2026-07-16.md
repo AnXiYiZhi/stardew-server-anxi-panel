@@ -1,3 +1,15 @@
+# JOB-LOG-LATEST-TAIL-1 后端接手记录（2026-08-18，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `internal/storage/jobs.go` 新增 `ListLatestJobLogs`：倒序查询 `limit+1` 行、准确计算 `hasEarlier`、裁剪后反转为 sequence 升序；`internal/jobs/manager.go` 暴露对应只读能力。
+- `GET /api/jobs/:id/logs` 新增 `latest=true` 并在响应中固定返回 `hasEarlier`；旧 `after` 查询和 SSE 未改变。非法布尔值返回 400。影响 `internal/web/jobs_handlers.go`。
+
+## 如何验证、下一步注意事项
+
+- `go test ./internal/storage -run TestListLatestJobLogsReturnsTailInAscendingOrder -count=1` 与 `go test ./internal/web -run TestJobsAPILatestLogsReturnsChronologicalTail -count=1` 通过；storage/Web 包最终也通过，`go vet ./...`、`go build ./...` 全绿。存储/Web 专项覆盖正序尾页、精确截断标志和非法查询。
+- 尾页结果必须继续按升序返回，否则前端最后 sequence 和 SSE `after` 会取错。不要用 `COUNT(*)` 增加一次全表计数；`limit+1` 已足够判断是否存在更早日志。原 `ListJobLogs(after)` 是 SSE 回放契约，不得改成尾页语义。
+
 # NEXUS-MOD-ONECLICK-UPDATE-1 后端接手记录（2026-08-17，released in v0.5.3）
 
 ## 改了什么、影响哪些接口/文件

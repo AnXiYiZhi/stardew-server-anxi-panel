@@ -8,7 +8,7 @@ import {
   getInstanceVNCConfig,
   getControlCommands,
   getJob,
-  getJobLogs,
+  getLatestJobLogs,
   getJobs,
   updateInstanceVNCPort,
 } from '../../../api'
@@ -229,16 +229,14 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
 
     void (async () => {
       try {
-        const [jobRes, logsRes] = await Promise.all([
-          getJob(selectedJobId),
-          getJobLogs(selectedJobId, 0),
-        ])
+        const jobRes = await getJob(selectedJobId)
+        const logsRes = await getLatestJobLogs(selectedJobId)
 
         if (cancelled) return
 
         setSelectedJob(jobRes.job)
         setLogs(logsRes.logs)
-        setLogsTruncated(logsRes.logs.length >= 1000)
+        setLogsTruncated(logsRes.hasEarlier)
         setLoadingDetail(false)
 
         // 非终态任务接入 SSE
@@ -322,14 +320,12 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
         setLogs([])
         setLogsTruncated(false)
       } else {
-        const [jobRes, logsRes] = await Promise.all([
-          getJob(selectedJobId).catch(() => null),
-          getJobLogs(selectedJobId, 0).catch(() => null),
-        ])
+        const jobRes = await getJob(selectedJobId).catch(() => null)
+        const logsRes = await getLatestJobLogs(selectedJobId).catch(() => null)
         if (jobRes) setSelectedJob(jobRes.job)
         if (logsRes) {
           setLogs(logsRes.logs)
-          setLogsTruncated(logsRes.logs.length >= 1000)
+          setLogsTruncated(logsRes.hasEarlier)
         }
       }
     } finally {
@@ -368,14 +364,12 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
       const loaded = await loadJobs()
       dashRefreshJobs()
       if (selectedJobId) {
-        const [jobRes, logsRes] = await Promise.all([
-          getJob(selectedJobId).catch(() => null),
-          getJobLogs(selectedJobId, 0).catch(() => null),
-        ])
+        const jobRes = await getJob(selectedJobId).catch(() => null)
+        const logsRes = await getLatestJobLogs(selectedJobId).catch(() => null)
         if (jobRes) setSelectedJob(jobRes.job)
         if (logsRes) {
           setLogs(logsRes.logs)
-          setLogsTruncated(logsRes.logs.length >= 1000)
+          setLogsTruncated(logsRes.hasEarlier)
         }
       } else if (loaded && loaded.length > 0) {
         setSelectedJobId(loaded[0].id)
@@ -621,7 +615,7 @@ export function JobsLogsPage({ user, dashboardData }: StardewPageProps) {
                   ) : null}
                   {logsTruncated ? (
                     <div className="sd-jobs-sse-notice sd-jobs-sse-notice-warn">
-                      当前仅显示最近加载的 1000 行日志，完整分页加载可在后续里程碑继续补齐。
+                      当前显示最新 1000 行日志，更早的日志未加载。
                     </div>
                   ) : null}
                 </div>

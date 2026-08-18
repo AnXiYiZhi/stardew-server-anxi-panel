@@ -209,6 +209,10 @@ func (m *Manager) Logs(ctx context.Context, jobID string, afterSequence int64, l
 	return m.store.ListJobLogs(ctx, jobID, afterSequence, limit)
 }
 
+func (m *Manager) LatestLogs(ctx context.Context, jobID string, limit int) ([]storage.JobLog, bool, error) {
+	return m.store.ListLatestJobLogs(ctx, jobID, limit)
+}
+
 func (m *Manager) AppendLog(ctx context.Context, jobID string, level string, message string) (storage.JobLog, error) {
 	logLine, err := m.store.AppendJobLog(ctx, jobID, level, message)
 	if err != nil {

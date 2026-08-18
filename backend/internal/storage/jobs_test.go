@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -66,6 +67,47 @@ func TestJobsStorageLifecycle(t *testing.T) {
 	}
 	if finished.Status != JobStatusSucceeded || !finished.FinishedAt.Valid {
 		t.Fatalf("job was not finished: %#v", finished)
+	}
+}
+
+func TestListLatestJobLogsReturnsTailInAscendingOrder(t *testing.T) {
+	store, closeStore := newStorageTestStore(t)
+	defer closeStore()
+
+	job, err := store.CreateJob(context.Background(), CreateJobParams{
+		Type:       "test",
+		TargetType: "instance",
+		TargetID:   DefaultInstanceID,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	for index := 1; index <= 5; index++ {
+		if _, err := store.AppendJobLog(context.Background(), job.ID, JobLogLevelInfo, fmt.Sprintf("line-%d", index)); err != nil {
+			t.Fatalf("append log %d: %v", index, err)
+		}
+	}
+
+	logs, hasEarlier, err := store.ListLatestJobLogs(context.Background(), job.ID, 3)
+	if err != nil {
+		t.Fatalf("list latest logs: %v", err)
+	}
+	if !hasEarlier {
+		t.Fatal("expected earlier logs to be reported")
+	}
+	if len(logs) != 3 || logs[0].Sequence != 3 || logs[1].Sequence != 4 || logs[2].Sequence != 5 {
+		t.Fatalf("latest logs = %#v, want sequences 3, 4, 5", logs)
+	}
+
+	allLogs, hasEarlier, err := store.ListLatestJobLogs(context.Background(), job.ID, 5)
+	if err != nil {
+		t.Fatalf("list exact latest logs: %v", err)
+	}
+	if hasEarlier {
+		t.Fatal("did not expect earlier logs when the limit equals the total")
+	}
+	if len(allLogs) != 5 || allLogs[0].Sequence != 1 || allLogs[4].Sequence != 5 {
+		t.Fatalf("all latest logs = %#v, want sequences 1 through 5", allLogs)
 	}
 }
 

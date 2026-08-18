@@ -1,3 +1,9 @@
+# JOB-LOG-LATEST-TAIL-1 跨端契约（2026-08-18，未发布）
+
+- `GET /api/jobs/:id/logs?latest=true&limit=N` 返回该任务最新 N 行日志，但 `logs` 始终按 `sequence` 升序，便于直接渲染；`limit` 最大 1000。响应为 `{ logs, hasEarlier }`，只有服务端确认存在更早行时 `hasEarlier=true`。
+- 不带 `latest=true` 时继续使用既有 `after=<sequence>` 正向增量语义，SSE `/stream?after=<sequence>` 也不变。前端详情应先读取 job 再读取最新尾页：终态据此获得完成后的最终日志，非终态随后以尾页最后 sequence 建立 SSE，避免重复显示又不漏掉 GET 与订阅之间的新日志。
+- 安装完成页与任务完成页必须显示日志结尾的真实成功/失败信息，不能把最早 1000 行称为“最近日志”。若 `hasEarlier=true`，只提示更早日志未加载，不把它误报成任务仍在运行。
+
 # NEXUS-MOD-ONECLICK-UPDATE-1 跨端契约（2026-08-17，released in v0.5.3）
 
 - 继续复用 `POST /api/instances/:id/mods/remote/install`、现有 `mod_remote_install` Job 与 `Idempotency-Key`。安装请求仍为 `{url, mod, expectedVersion, nexusFileId}`；一键更新额外发送 `replaceUniqueId`，且服务端要求正数 `mod.modId/nexusFileId` 和非空 `expectedVersion`，任一缺失都在建 Job 前返回 400。未提供 `replaceUniqueId` 的旧客户端和普通安装行为不变。

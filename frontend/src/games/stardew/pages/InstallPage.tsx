@@ -8,7 +8,7 @@ import {
   createJobEventSource,
   getInstallOptions,
   getJob,
-  getJobLogs,
+  getLatestJobLogs,
   installInstance,
   submitSteamGuardInput,
 } from '../../../api'
@@ -428,10 +428,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
 
     const load = async () => {
       try {
-        const [jobRes, logsRes] = await Promise.all([
-          getJob(installJobId),
-          getJobLogs(installJobId, 0, 1000),
-        ])
+        const jobRes = await getJob(installJobId)
+        const logsRes = await getLatestJobLogs(installJobId, 1000)
         if (cancelled) return
         setInstallJob(jobRes.job)
         setLogs(logsRes.logs)

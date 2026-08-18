@@ -240,6 +240,13 @@ export function getJobLogs(id: string, after = 0, limit = 1000) {
   return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
 }
 
+export function getLatestJobLogs(id: string, limit = 1000) {
+  const params = new URLSearchParams()
+  params.set('latest', 'true')
+  params.set('limit', String(Math.min(limit, 1000)))
+  return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
+}
+
 export function getStardewState() {
   return getInstanceState(defaultInstanceId)
 }

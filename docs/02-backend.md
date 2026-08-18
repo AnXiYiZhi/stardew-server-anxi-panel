@@ -1,3 +1,9 @@
+# JOB-LOG-LATEST-TAIL-1：任务日志最新尾页读取（2026-08-18，未发布）
+
+- `GET /api/jobs/:id/logs` 新增兼容查询参数 `latest=true`。该模式按 `sequence DESC` 有界读取最新 `limit` 行，再在返回前恢复为时间正序；原有 `after=<sequence>` 增量读取与 SSE 契约不变。
+- 响应新增 `hasEarlier`。存储层内部读取 `limit+1` 行判断是否确有更早日志，因此日志总数刚好等于上限时不会误报截断。`limit` 仍最多 1000，非法 `latest` 返回 `400 invalid_query`。
+- 影响 `internal/storage/jobs.go`、`internal/jobs/manager.go`、`internal/web/jobs_handlers.go` 及专项测试。验证覆盖“5 行取最新 3 行得到 3/4/5 且正序”“总数等于 limit 时 `hasEarlier=false`”“HTTP 最新 2 行返回 4/5”与非法布尔查询；storage/Web 包、`go vet ./...` 和 `go build ./...` 最终均通过。
+
 # NEXUS-EXT-MOD-UPDATE-1：管理员一键安全更新已安装 Mod（2026-08-17，released in v0.5.3）
 
 - 复用管理员 `POST /api/instances/:id/mods/remote/install` 与 `mod_remote_install` 任务；请求新增可选 `replaceUniqueId`。字段存在时 Web 调用 `UpdateRemoteMod`，并强制要求正数 Nexus Mod ID/file ID 与非空 `expectedVersion`；省略时保持原安装/幂等行为。仅管理员、停止态可用，`replaceUniqueId` 限 1~256 字节且拒绝控制字符。
