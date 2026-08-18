@@ -2133,3 +2133,24 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - Go 回归覆盖首次认领、重复/错误/串角色、按存档隔离、legacy 迁移、marker/store 损坏、并发锁、权限、Panel/Control 交叉写、事务回滚、Compose 迁移与 none/global 兼容回退；Docker Desktop、Control 标准编译和完整门禁结果记录在 `docs/09-image-build.md`。
 - 两个真人客户端的首次认领、重复正确、交叉失败、管理员清除后重新认领、Panel 批准和 server recreate/Panel restart 保持已由用户确认；能力随 `v0.5.3@ede7fa34231600cbfa83050b4ddb6fd650373ae1` 正式发布。
 - 前序阶段明确不打 tag、不创建 Release、不提升 `latest`；2026-08-17 用户已确认两个真人客户端的各自首次设置、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准和重启后保持矩阵全部通过，并授权进入正式候选。自动 C#/Go/Docker 夹具仍只作为补充契约证据。
+
+# INSTALL-SMAPI-LIVE-PROGRESS-1 / STEAMCMD-MIGRATED-AUTH-REUSE-1（2026-08-18，未发布）
+
+## SMAPI 下载进度契约
+
+- 安装流程进入 `smapi_installing` 后，先写入可读日志说明正在检查本地安装包缓存；需要下载时，`smapi_archive.go` 从每次响应体写入中取得实时字节数，而不是等一个 2 MiB Range 请求全部结束后才更新。候选源切换会把进度归零并递增候选编号。
+- job log 控制标记固定为 `[smapi:download:progress:<downloaded>:<total>:<candidate>:<candidateCount>:<cached>]`。`downloaded/total` 是十进制字节数，候选编号从 1 开始，`cached=true` 只在既有目标文件通过长度、SHA-256 和 ZIP 安全校验后产生。该标记不包含 URL、凭据或本地路径。
+- `installer.go` 按候选切换、完成、缓存命中、累计至少 512 KiB 或间隔至少 2 秒节流写入 marker，并同步更新实例 `stateMessage`。下载结束后另写“正在校验完整性”，校验成功后再写“正在写入游戏运行目录”，不能把收到最后一个字节等同于完整性校验成功。
+- 非生产测试 Docker provider 没有进度回调时，installer 在 provider 成功返回后补一条已校验缓存完成 marker，保持测试替身与生产前端契约一致；生产 Docker service 仍走受审查 URL、Range、长度、checksum 与 ZIP 限制的原下载器。
+
+## 旧 SteamCMD 授权缓存即时复用
+
+- `migrateLegacySteamCMDAuthCache` 现在只在迁移容器退出 0 且明确输出 `canonical cache already present` 或 `migrated legacy cache` 时返回可用。若本次不是更换账号/强制重新授权、`.env` 旧版本又尚无 `STEAMCMD_AUTH_COMPLETED=true`，同一次重装会立即把 `steamCMDUseCache` 置为 true，先执行 username-only、`NoPromptForPassword` 的免验证登录。
+- 缓存缺失或失效仍沿用现有一次性自动回退：清除失效状态标记，随后用账号密码完整登录并按需进入 Steam Guard。迁移成功本身不会提前写 `STEAMCMD_AUTH_COMPLETED=true`；只有 SteamCMD 实际登录并开始/完成下载后才持久化该标记，避免把仅存在的旧文件误记为有效授权。
+- 更换账号路径继续先清除 session、统一 SteamCMD 卷和两个 legacy 卷，且不启用迁移缓存；游戏数据卷不受影响。
+
+## 影响文件与验证
+
+- 主要文件：`backend/internal/games/stardew_junimo/{smapi_archive.go,installer.go,smapi_archive_test.go,driver_test.go}`。
+- 新增回归覆盖流式中间字节、最终完成、已校验缓存命中，以及“没有完成标记但迁移到旧授权缓存”的修复安装直接免验证登录；既有缓存失效后完整登录回退与已标记缓存修复回归继续通过。
+- 2026-08-18 Windows 宿主定向五项安装/下载回归通过。全包宿主测试仅命中既有 Linux 权限断言 `Compose mode=0666, want 0640`，不是本功能失败；正式候选仍必须在 Linux 文件系统完成全量 Go 门禁和真实 Docker 安装 E2E。本节代码尚未部署生产、未创建 tag/Release、未提升镜像。

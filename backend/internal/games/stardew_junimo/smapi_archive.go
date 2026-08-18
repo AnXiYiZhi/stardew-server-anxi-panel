@@ -35,6 +35,15 @@ type smapiArchiveDownloadOptions struct {
 	maxNoProgressAttempts int
 	retryDelay            time.Duration
 	newClient             func(time.Duration) *http.Client
+	onProgress            func(smapiArchiveDownloadProgress)
+}
+
+type smapiArchiveDownloadProgress struct {
+	DownloadedBytes int64
+	TotalBytes      int64
+	Candidate       int
+	CandidateCount  int
+	Cached          bool
 }
 
 var defaultSMAPIArchiveDownloadOptions = smapiArchiveDownloadOptions{
@@ -53,12 +62,25 @@ func ensureRecommendedSMAPIArchive(ctx context.Context, dataDir string, manifest
 	return ensureRecommendedSMAPIArchiveWithOptions(ctx, dataDir, manifest, defaultSMAPIArchiveDownloadOptions)
 }
 
+func ensureRecommendedSMAPIArchiveWithProgress(ctx context.Context, dataDir string, manifest sjconfig.RuntimeStackManifest, onProgress func(smapiArchiveDownloadProgress)) (string, error) {
+	opts := defaultSMAPIArchiveDownloadOptions
+	opts.onProgress = onProgress
+	return ensureRecommendedSMAPIArchiveWithOptions(ctx, dataDir, manifest, opts)
+}
+
 func ensureRecommendedSMAPIArchiveWithOptions(ctx context.Context, dataDir string, manifest sjconfig.RuntimeStackManifest, opts smapiArchiveDownloadOptions) (string, error) {
 	target := recommendedSMAPIArchivePath(dataDir, manifest)
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return "", err
 	}
 	if err := validateRecommendedSMAPIArchive(target, manifest); err == nil {
+		emitSMAPIArchiveProgress(opts, smapiArchiveDownloadProgress{
+			DownloadedBytes: manifest.SMAPI.ArchiveBytes,
+			TotalBytes:      manifest.SMAPI.ArchiveBytes,
+			Candidate:       1,
+			CandidateCount:  max(1, len(manifest.SMAPI.URLs)),
+			Cached:          true,
+		})
 		return target, nil
 	}
 
@@ -121,7 +143,7 @@ func downloadRecommendedSMAPIArchive(ctx context.Context, dst *os.File, manifest
 		return nil
 	}
 	var candidateErrors []error
-	for _, rawURL := range manifest.SMAPI.URLs {
+	for candidateIndex, rawURL := range manifest.SMAPI.URLs {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -131,7 +153,16 @@ func downloadRecommendedSMAPIArchive(ctx context.Context, dst *os.File, manifest
 		if _, err := dst.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		err := downloadRecommendedSMAPIArchiveCandidate(ctx, client, dst, manifest, strings.TrimSpace(rawURL), opts)
+		progress := smapiArchiveDownloadProgress{
+			TotalBytes:     manifest.SMAPI.ArchiveBytes,
+			Candidate:      candidateIndex + 1,
+			CandidateCount: len(manifest.SMAPI.URLs),
+		}
+		emitSMAPIArchiveProgress(opts, progress)
+		err := downloadRecommendedSMAPIArchiveCandidate(ctx, client, dst, manifest, strings.TrimSpace(rawURL), opts, func(downloaded int64) {
+			progress.DownloadedBytes = downloaded
+			emitSMAPIArchiveProgress(opts, progress)
+		})
 		if err == nil {
 			err = dst.Sync()
 		}
@@ -150,7 +181,7 @@ func downloadRecommendedSMAPIArchive(ctx context.Context, dst *os.File, manifest
 	return fmt.Errorf("all reviewed SMAPI download candidates failed: %w", errors.Join(candidateErrors...))
 }
 
-func downloadRecommendedSMAPIArchiveCandidate(ctx context.Context, client *http.Client, dst *os.File, manifest sjconfig.RuntimeStackManifest, rawURL string, opts smapiArchiveDownloadOptions) error {
+func downloadRecommendedSMAPIArchiveCandidate(ctx context.Context, client *http.Client, dst *os.File, manifest sjconfig.RuntimeStackManifest, rawURL string, opts smapiArchiveDownloadOptions, onProgress func(int64)) error {
 	var offset int64
 	noProgressAttempts := 0
 	for offset < manifest.SMAPI.ArchiveBytes {
@@ -158,7 +189,7 @@ func downloadRecommendedSMAPIArchiveCandidate(ctx context.Context, client *http.
 			return err
 		}
 		end := min(offset+opts.chunkBytes-1, manifest.SMAPI.ArchiveBytes-1)
-		written, err := downloadSMAPIArchiveRange(ctx, client, dst, manifest, rawURL, offset, end)
+		written, err := downloadSMAPIArchiveRange(ctx, client, dst, manifest, rawURL, offset, end, onProgress)
 		if written > 0 {
 			offset += written
 			noProgressAttempts = 0
@@ -191,7 +222,7 @@ func downloadRecommendedSMAPIArchiveCandidate(ctx context.Context, client *http.
 	return nil
 }
 
-func downloadSMAPIArchiveRange(ctx context.Context, client *http.Client, dst *os.File, manifest sjconfig.RuntimeStackManifest, rawURL string, start, end int64) (int64, error) {
+func downloadSMAPIArchiveRange(ctx context.Context, client *http.Client, dst *os.File, manifest sjconfig.RuntimeStackManifest, rawURL string, start, end int64, onProgress func(int64)) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return 0, err
@@ -214,11 +245,36 @@ func downloadSMAPIArchiveRange(ctx context.Context, client *http.Client, dst *os
 	if resp.ContentLength >= 0 && resp.ContentLength != want {
 		return 0, errors.New("SMAPI range response length mismatch")
 	}
-	written, copyErr := io.CopyN(dst, resp.Body, want)
+	progressDst := io.Writer(dst)
+	if onProgress != nil {
+		progressDst = &smapiArchiveProgressWriter{dst: dst, downloaded: start, onProgress: onProgress}
+	}
+	written, copyErr := io.CopyN(progressDst, resp.Body, want)
 	if copyErr != nil {
 		return written, fmt.Errorf("read recommended SMAPI range %d-%d: %w", start, end, copyErr)
 	}
 	return written, nil
+}
+
+type smapiArchiveProgressWriter struct {
+	dst        io.Writer
+	downloaded int64
+	onProgress func(int64)
+}
+
+func (w *smapiArchiveProgressWriter) Write(p []byte) (int, error) {
+	n, err := w.dst.Write(p)
+	if n > 0 {
+		w.downloaded += int64(n)
+		w.onProgress(w.downloaded)
+	}
+	return n, err
+}
+
+func emitSMAPIArchiveProgress(opts smapiArchiveDownloadOptions, progress smapiArchiveDownloadProgress) {
+	if opts.onProgress != nil {
+		opts.onProgress(progress)
+	}
 }
 
 func parseSMAPIContentRange(raw string) (start, end, total int64, err error) {

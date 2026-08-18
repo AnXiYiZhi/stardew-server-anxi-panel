@@ -1614,3 +1614,22 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 
 - 自动化：first enroll、重复正确登录、错误/串角色、Panel guard、空角色启用、清除后 waiting、save 隔离、legacy 迁移、store/marker 损坏、锁竞争、权限与事务回滚；Compose block/list/inline 以及 role fail-closed、none/global 兼容继续；restart 防重复提交。
 - 真人客户端：两个客户端分别首次设置不同密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate/Panel 重启后仍保持；用户已在正式候选前确认该矩阵通过。自动测试仍不能替代真人交互证据，最终能力已随 `v0.5.3` 发布。
+
+# INSTALL-SMAPI-LIVE-PROGRESS-1 联调契约（2026-08-18，未发布）
+
+## Job log → 前端进度
+
+- 后端在现有安装 job 日志/SSE 中发送 `[smapi:download:progress:<downloaded>:<total>:<candidate>:<candidateCount>:<cached>]`，不新增 HTTP 接口或响应字段。五个字段依次为已写入字节、清单总字节、当前候选序号、候选总数、是否命中已校验缓存。
+- 示例：`[smapi:download:progress:16777216:41889142:1:2:false]` 表示候选 1/2 已写入 16 MiB；`[smapi:download:progress:41889142:41889142:1:2:true]` 表示本地缓存已通过完整校验。前端必须拒绝负数、超过总量、非安全整数、0 候选或候选序号越界的 marker。
+- marker 属于隐藏控制行，任务日志 UI 不展示；相邻 `[smapi]` 可读日志用于人工诊断。前端应从当前 active `stardew_install` job 派生进度，不能从旧 job 或已经完成的 SteamCMD/SDK 进度补造 SMAPI 百分比。
+- 兼容旧后端：没有 marker 时仍显示 `smapi_installing` 活动状态和“检查缓存/状态会自动更新”，不能回退成 SteamCMD 100% 或静止的 Steam 认证卡。新后端缓存命中或 provider 成功时会给出 100% marker。
+
+## 授权迁移边界
+
+- 旧 SteamCMD volume 迁入统一授权卷不改变 API shape。迁移容器明确报告已存在/已迁移缓存后，本次非强制重新授权安装先走 username-only 缓存登录；失败再自动回退账号密码与 Steam Guard。
+- UI 不应把“检测到缓存”表述为已登录成功；只有后端实际登录/下载后才写 `STEAMCMD_AUTH_COMPLETED=true`。更换账号继续清除所有认证卷并完整登录。
+
+## 发布验收
+
+- 真实 Docker E2E 至少覆盖：SMAPI 慢速分块下载时 marker 单调推进且页面字节/百分比变化；候选切换归零并显示新序号；缓存命中直接显示校验通过；最后字节到达后进入校验/写入而不是提前完成。
+- 升级旧实例时准备仅有 legacy `config.vdf`、没有 `STEAMCMD_AUTH_COMPLETED` 的授权卷，点击修复后应先走免验证登录；再注入无效缓存，确认只自动回退一次完整登录并保留既有 Steam Guard 交互。正式候选、上一版 Web 升级和生产部署尚未执行。

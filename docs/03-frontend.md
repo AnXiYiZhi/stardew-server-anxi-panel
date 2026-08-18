@@ -2753,3 +2753,11 @@ npm.cmd run dev
 - `useStardewLifecycleActions.ts` 修复重启提交后的重复点击窗口：restart 发起时后端投影本来就是 `running`，该旧状态不能立即清掉 pending；必须先观察到 lifecycle job，再在任务终态解锁。普通 start 仍允许用从 stopped 变为 running 作为短任务未被轮询捕获时的完成证据。
 - 新增 `lifecycle-action-state.ts` 纯状态判定和 `test:lifecycle-action-state`，并继续由 `test:responsive-layout` 覆盖共用弹窗、桌面/移动入口和重启联动；Docker/production build 结果见 `docs/09-image-build.md`。
 - 2026-08-17 用户确认两个真实 Stardew 客户端完成首次认领、各自密码、交叉失败、清除后重新认领、Panel 批准和重启保持；修复后候选与正式提升全部通过，能力已随 annotated `v0.5.3@ede7fa3` 发布。前端自动状态测试仍只作为补充证据。
+
+# FE-INSTALL-SMAPI-LIVE-PROGRESS-1（2026-08-18，未发布）
+
+- 安装向导第四步由“下载游戏”改为“下载与环境”，覆盖游戏文件、Steam SDK 与 SMAPI 运行环境，避免 SteamCMD 完成后仍把后续工作描述成游戏下载。右栏标题按当前阶段动态切换为“Steam 认证 / 镜像下载 / 下载任务 / SMAPI 安装”，SMAPI 阶段不再停留在截图中的“Steam 认证”。
+- `install-helpers.ts` 解析后端 `[smapi:download:progress:...]` marker，校验安全整数、字节边界和候选编号后，计算真实百分比。SMAPI 阶段不再复用已经 100% 的 Steam SDK/SteamCMD 进度；顶部总进度在 SMAPI 下载区间随真实百分比从约 89% 推进到 96%。
+- SMAPI 卡片显示当前下载源、`已下载 / 总字节 · 百分比` 和原生 `role=progressbar` 语义；缓存命中、下载完成后校验/写入、尚未收到首个数据块分别有独立文案。绿色活动点说明任务仍在进行，`prefers-reduced-motion` 下停用脉冲和进度条过渡。
+- 顶部总进度、镜像拉取、Steam 下载和 SMAPI 下载均补齐 `aria-valuemin/max/now`。后端 marker 只用于派生 UI 并从可见任务日志中隐藏；可读的 `[smapi]` 日志仍保留。
+- 影响文件：`InstallPage.tsx`、`InstallPage.css`、`install-helpers.ts`、`test-install-state.ts`、`test-responsive-layout.ts`。2026-08-18 `test:install-state`、`test:responsive-layout` 与 `npm run build` 通过；尚未构建正式候选或部署生产，生产现网仍是旧版静态显示。

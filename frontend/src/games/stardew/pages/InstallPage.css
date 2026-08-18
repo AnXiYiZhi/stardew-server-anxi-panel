@@ -386,6 +386,64 @@
   color: #8a7060;
 }
 
+.sd-install-smapi-card {
+  gap: 8px;
+}
+
+.sd-install-smapi-progress {
+  flex-wrap: wrap;
+}
+
+.sd-install-smapi-progress .sd-install-prog-track {
+  min-width: min(210px, 100%);
+}
+
+.sd-install-smapi-progress .sd-install-prog-pct {
+  white-space: normal;
+}
+
+.sd-install-activity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #486126;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sd-install-activity-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 1px solid #36531e;
+  border-radius: 50%;
+  background: #69a936;
+  box-shadow: 0 0 0 0 rgba(81, 137, 45, 0.38);
+  animation: sd-install-activity-pulse 1.6s ease-out infinite;
+}
+
+@keyframes sd-install-activity-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(81, 137, 45, 0.38);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px rgba(81, 137, 45, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-install-activity-dot {
+    animation: none;
+  }
+
+  .sd-install-prog-fill,
+  .sd-install-overall-fill {
+    transition: none;
+  }
+}
+
 .sd-install-guard-section {
   padding: 10px 12px;
   border: 1px solid #c8a87a;
@@ -1064,6 +1122,11 @@
 
 .sd-install-column-title-steam::before {
   background: url('/assets/stardew/ui/install/icon_install_step_steam_image2.png') center / contain no-repeat;
+  filter: drop-shadow(1px 1px 0 rgba(72, 42, 14, 0.34));
+}
+
+.sd-install-column-title-download::before {
+  background: url('/assets/stardew/ui/install/icon_install_step_download_image2.png') center / contain no-repeat;
   filter: drop-shadow(1px 1px 0 rgba(72, 42, 14, 0.34));
 }
 

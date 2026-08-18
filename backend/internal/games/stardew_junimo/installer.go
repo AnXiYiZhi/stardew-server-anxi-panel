@@ -760,12 +760,53 @@ func (r *installRunner) completeInstall(ctx context.Context, jobCtx *jobs.Contex
 func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.Context) error {
 	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
 	r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-		"游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境...", "smapi_installing", jobCtx.ID)
+		"游戏文件和 Steam SDK 已完成，正在检查 SMAPI 安装包缓存...", "smapi_installing", jobCtx.ID)
 
 	imageRef := envWithDefault(envVals, "SERVER_IMAGE", serverImageDefault(r.imageTag))
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		return err
+	}
+	_, _ = jobCtx.Info(context.Background(), "[smapi] 正在检查本地 SMAPI 安装包缓存；如需下载，页面会显示实时进度。")
+	var (
+		progressObserved      bool
+		lastProgressBytes     int64 = -1
+		lastProgressAt              = time.Time{}
+		lastProgressCandidate       = -1
+	)
+	emitProgress := func(progress smapiArchiveDownloadProgress) {
+		now := time.Now()
+		candidateChanged := progress.Candidate != lastProgressCandidate
+		complete := progress.TotalBytes > 0 && progress.DownloadedBytes >= progress.TotalBytes
+		if progressObserved && !candidateChanged && !progress.Cached && !complete &&
+			progress.DownloadedBytes-lastProgressBytes < 512*1024 && now.Sub(lastProgressAt) < 2*time.Second {
+			return
+		}
+		progressObserved = true
+		lastProgressBytes = progress.DownloadedBytes
+		lastProgressAt = now
+		lastProgressCandidate = progress.Candidate
+		_, _ = jobCtx.Info(context.Background(), fmt.Sprintf(
+			"[smapi:download:progress:%d:%d:%d:%d:%t]",
+			progress.DownloadedBytes,
+			progress.TotalBytes,
+			progress.Candidate,
+			progress.CandidateCount,
+			progress.Cached,
+		))
+
+		percent := 0
+		if progress.TotalBytes > 0 {
+			percent = int(float64(progress.DownloadedBytes) * 100 / float64(progress.TotalBytes))
+		}
+		message := fmt.Sprintf("正在下载 SMAPI 安装包（%d%%，下载源 %d/%d），请稍候...", percent, progress.Candidate, progress.CandidateCount)
+		if progress.Cached {
+			message = "本地 SMAPI 安装包缓存校验通过，正在准备安装..."
+		} else if complete {
+			message = "SMAPI 安装包下载完成，正在校验完整性..."
+		}
+		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+			message, "smapi_installing", jobCtx.ID)
 	}
 	archivePath := ""
 	if provider, ok := r.driver.docker.(interface {
@@ -773,11 +814,21 @@ func (r *installRunner) ensureSMAPIInstalled(ctx context.Context, jobCtx *jobs.C
 	}); ok {
 		archivePath, err = provider.RecommendedSMAPIArchive(ctx, r.instance.DataDir, manifest)
 	} else {
-		archivePath, err = ensureRecommendedSMAPIArchive(ctx, r.instance.DataDir, manifest)
+		archivePath, err = ensureRecommendedSMAPIArchiveWithProgress(ctx, r.instance.DataDir, manifest, emitProgress)
 	}
 	if err != nil {
 		return fmt.Errorf("download reviewed SMAPI installer: %w", err)
 	}
+	if !progressObserved {
+		emitProgress(smapiArchiveDownloadProgress{
+			DownloadedBytes: manifest.SMAPI.ArchiveBytes,
+			TotalBytes:      manifest.SMAPI.ArchiveBytes,
+			Candidate:       1,
+			CandidateCount:  max(1, len(manifest.SMAPI.URLs)),
+			Cached:          true,
+		})
+	}
+	_, _ = jobCtx.Info(context.Background(), "[smapi] SMAPI 安装包已通过完整性校验，正在写入游戏运行目录。")
 	hostArchivePath, err := r.driver.dockerHostPath(archivePath)
 	if err != nil {
 		return fmt.Errorf("map reviewed SMAPI installer for Docker: %w", err)
@@ -813,7 +864,11 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	if err != nil {
 		return err
 	}
-	r.migrateLegacySteamCMDAuthCache(ctx, jobCtx, imageRef)
+	legacyCacheAvailable := r.migrateLegacySteamCMDAuthCache(ctx, jobCtx, imageRef)
+	if !r.forceReauth && !r.steamCMDUseCache && legacyCacheAvailable {
+		r.steamCMDUseCache = true
+		_, _ = jobCtx.Info(context.Background(), "[steamcmd] 检测到已保存的 SteamCMD 授权缓存，本次先尝试免验证登录。")
+	}
 
 	downloadMessage := "steam-auth 国内网络下载失败，正在复用已保存账号密码通过 SteamCMD 兜底下载游戏文件..."
 	if r.steamCMDUseCache {
@@ -1240,9 +1295,14 @@ echo "anxi-steamcmd-auth-migrate: no legacy cache found"
 	}
 }
 
-func (r *installRunner) migrateLegacySteamCMDAuthCache(ctx context.Context, jobCtx *jobs.Context, imageRef string) {
+func (r *installRunner) migrateLegacySteamCMDAuthCache(ctx context.Context, jobCtx *jobs.Context, imageRef string) bool {
+	cacheAvailable := false
 	exitCode, err := r.driver.docker.RunContainerTTY(ctx, r.buildSteamCMDAuthMigrationOpts(imageRef), nil, func(line string) {
 		if strings.HasPrefix(line, "anxi-steamcmd-auth-migrate:") {
+			switch strings.TrimSpace(line) {
+			case "anxi-steamcmd-auth-migrate: canonical cache already present", "anxi-steamcmd-auth-migrate: migrated legacy cache":
+				cacheAvailable = true
+			}
 			_, _ = jobCtx.Info(context.Background(), "[steamcmd] "+strings.TrimPrefix(line, "anxi-steamcmd-auth-migrate: "))
 		}
 	})
@@ -1252,7 +1312,9 @@ func (r *installRunner) migrateLegacySteamCMDAuthCache(ctx context.Context, jobC
 			message += " " + paneldocker.RedactString(err.Error())
 		}
 		_, _ = jobCtx.Warn(context.Background(), message)
+		return false
 	}
+	return cacheAvailable
 }
 
 func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *jobs.Context) {

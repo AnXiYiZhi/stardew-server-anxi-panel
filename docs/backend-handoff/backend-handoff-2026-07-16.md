@@ -1117,3 +1117,18 @@
 - 不得删除 initialized marker 后把丢失/损坏 store 当作空库；这会让已有角色重新开放首次认领。任何格式迁移都必须保留“初始化过即 fail closed”的耐久证据和原子发布顺序。
 - verifier 必须按 saveId 隔离；切换、导入、回档和删除角色不得把另一存档的同 roleId 记录自动复用。API、job log、支持包、Docker 输出仍禁止出现 key、guard、verifier 或完整 store。
 - 2026-08-17 用户已确认两真人客户端完成首次设置、各自正确登录、交叉失败、清除后重认领、Panel 批准、server recreate/Panel 重启保持矩阵，并授权正式发布；自动测试继续只作为补充契约证据。
+
+# INSTALL-SMAPI-LIVE-PROGRESS-1 / STEAMCMD-MIGRATED-AUTH-REUSE-1 接手记录（2026-08-18，未发布）
+
+## 改了什么
+
+- `smapi_archive.go` 的下载 options 新增结构化进度回调。Range 响应通过包装 writer 在每次实际写入时报告绝对字节数，候选开始报告 0，切换候选重新开始；目标缓存通过现有长度、checksum 与 ZIP 校验后报告 `Cached=true`。
+- `installer.go` 把进度节流成 `[smapi:download:progress:downloaded:total:candidate:candidateCount:cached]` job marker，并同步 `smapi_installing` 状态文案。节流边界为候选变化、缓存/完成、至少 512 KiB 或至少 2 秒；最后字节只进入“校验中”，函数成功返回后才记录“已通过完整性校验”。
+- legacy SteamCMD 授权迁移函数返回可信缓存存在性。非 `forceReauth` 且旧 `.env` 尚无完成标记时，当前安装立即先尝试 username-only cache login；缓存失效仍自动回退完整登录，且迁移本身不写完成标记。
+
+## 影响文件、验证与下一步
+
+- 后端文件：`smapi_archive.go`、`installer.go`、`smapi_archive_test.go`、`driver_test.go`；跨端 marker 和 UI 规则见 `docs/06-integration.md` 与最新 frontend handoff。
+- 定向测试覆盖流式中间进度、缓存命中、迁移旧授权立即复用、已有缓存复用和缓存失效回退，2026-08-18 Windows 宿主通过。宿主全包只因已知 POSIX mode 断言失败，正式门禁必须在任务专属 Linux 文件系统重跑全量。
+- 后续不得把收到 `downloaded==total` 当成 SHA-256/ZIP 校验成功；不得仅凭迁移文件存在提前写 `STEAMCMD_AUTH_COMPLETED`。若 marker shape 变化，必须同步 `install-helpers.ts`、跨端文档和旧后端 fallback 回归。
+- 当前仅完成本地源码和定向验证，未部署用户飞牛服务器、未构建候选或发布镜像。

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
+import { calcSteamDownloadTaskProgress, extractSMAPIArchiveProgress } from '../src/games/stardew/install-helpers.ts'
 import { canonicalInstallJobs, logsDescribeActiveInstall, reconcileJobSnapshots } from '../src/games/stardew/install-state.ts'
 import { classifyInstallationState } from '../src/games/stardew/installation-state.ts'
-import type { InstallationDiagnostic, InstanceState, Job, JobStatus } from '../src/types.ts'
+import type { InstallationDiagnostic, InstanceState, Job, JobLog, JobStatus } from '../src/types.ts'
 
 function job(id: string, status: JobStatus, updatedAt: string, createdAt = '2026-08-11T00:00:00.000Z'): Job {
   return {
@@ -235,3 +236,48 @@ for (const testCase of classificationCases) {
     assert.equal(actual[key as keyof typeof actual], value, `${testCase.name}: ${key}`)
   }
 }
+
+function jobLog(sequence: number, message: string): JobLog {
+  return {
+    id: sequence,
+    jobId: 'job_install',
+    sequence,
+    level: 'info',
+    message,
+    createdAt: '2026-08-18T00:00:00.000Z',
+  }
+}
+
+const smapiDownload = extractSMAPIArchiveProgress([
+  jobLog(1, '[smapi:download:progress:0:1000:1:2:false]'),
+  jobLog(2, '[smapi:download:progress:500:1000:1:2:false]'),
+], 'stardew_install')
+assert.deepEqual(smapiDownload, {
+  downloadedBytes: 500,
+  totalBytes: 1000,
+  percent: 50,
+  candidate: 1,
+  candidateCount: 2,
+  cached: false,
+})
+const smapiDownloadingTask = calcSteamDownloadTaskProgress('smapi_installing', null, null, null, smapiDownload)
+assert.equal(smapiDownloadingTask?.percent, 90)
+assert.equal(smapiDownloadingTask?.done, 2)
+assert.match(smapiDownloadingTask?.label ?? '', /50%.*1\/2/)
+
+const smapiCache = extractSMAPIArchiveProgress([
+  jobLog(3, '[smapi:download:progress:1000:1000:1:2:true]'),
+], 'stardew_install')
+assert.equal(smapiCache?.cached, true)
+assert.equal(smapiCache?.percent, 100)
+const smapiCachedTask = calcSteamDownloadTaskProgress('smapi_installing', null, null, null, smapiCache)
+assert.equal(smapiCachedTask?.percent, 100)
+assert.equal(smapiCachedTask?.done, 3)
+assert.match(smapiCachedTask?.label ?? '', /缓存校验通过/)
+
+assert.equal(extractSMAPIArchiveProgress([
+  jobLog(4, '[smapi:download:progress:1001:1000:1:1:false]'),
+], 'stardew_install'), null)
+assert.equal(extractSMAPIArchiveProgress([
+  jobLog(5, '[smapi:download:progress:500:1000:1:1:false]'),
+], 'stardew_start'), null)

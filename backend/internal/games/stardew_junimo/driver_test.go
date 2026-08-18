@@ -48,6 +48,7 @@ type fakeDocker struct {
 	junimoExtractVersion string
 	authMigrateRuns      int
 	authMigrateOpts      paneldocker.ContainerTTYRunOpts
+	authMigrateLines     []string
 	smapiRuns            int
 	smapiLines           []string
 	smapiOpts            paneldocker.ContainerTTYRunOpts
@@ -160,7 +161,13 @@ func (f *fakeDocker) RunContainerTTY(_ context.Context, opts paneldocker.Contain
 	if strings.Contains(command, "anxi-steamcmd-auth-migrate") {
 		f.authMigrateRuns++
 		f.authMigrateOpts = opts
-		lineHandler("anxi-steamcmd-auth-migrate: no legacy cache found")
+		lines := f.authMigrateLines
+		if len(lines) == 0 {
+			lines = []string{"anxi-steamcmd-auth-migrate: no legacy cache found"}
+		}
+		for _, line := range lines {
+			lineHandler(line)
+		}
 		return 0, nil
 	}
 	if strings.Contains(command, "anxi-install-verify") {
@@ -1810,6 +1817,82 @@ func TestDriverInstallRepairUsesCachedLoginAndAnonymousSDK(t *testing.T) {
 	}
 	if strings.Contains(command, `"$STEAM_USERNAME" +app_update 1007`) || strings.Contains(command, `"$STEAM_PASSWORD" +app_update 1007`) {
 		t.Fatalf("Steam SDK download must not pass account credentials, command=%q", command)
+	}
+}
+
+func TestDriverInstallRepairUsesMigratedSteamCMDAuthorizationImmediately(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:           instance.ID,
+		State:        storage.InstanceStateGameInstalled,
+		StateMessage: "Game installed",
+		DriverPhase:  "game_installed",
+	}); err != nil {
+		t.Fatalf("set installed phase: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthErr: errors.New("steam-auth should not run during repair"),
+		authMigrateLines: []string{
+			"anxi-steamcmd-auth-migrate: checking legacy authorization cache",
+			"anxi-steamcmd-auth-migrate: migrated legacy cache",
+		},
+		containerLines: []string{
+			"Logging in user steam-user",
+			"Waiting for user info...OK",
+			"Success! App '413150' fully installed.",
+			"Success! App '1007' fully installed.",
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+		SteamCMDRetry: true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if fake.authMigrateRuns != 1 {
+		t.Fatalf("expected one legacy authorization migration, ran %d times", fake.authMigrateRuns)
+	}
+	if fake.containerRuns != 1 {
+		t.Fatalf("migrated authorization should be tried once without a full-login rerun, ran %d times", fake.containerRuns)
+	}
+	command := strings.Join(fake.containerOpts.Command, " ")
+	if !strings.Contains(command, `+@NoPromptForPassword 1 +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150`) {
+		t.Fatalf("migrated authorization should be used immediately, command=%q", command)
+	}
+	if strings.Contains(command, `+login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150`) {
+		t.Fatalf("migrated authorization must not submit the password before the cache is tried, command=%q", command)
 	}
 }
 

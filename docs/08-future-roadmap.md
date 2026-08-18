@@ -2126,3 +2126,12 @@ Multi Game Mode later
 - [x] Docker Desktop Linux 全量 Go test/vet/build、Compose integration、Control 契约/标准编译、前端 18 项全量/build、本地镜像 fresh/restart 冒烟均通过；任务容器/volume/image/端口/临时副本清理为 0，证据见 `docs/09-image-build.md`。
 - [x] 用户于 2026-08-17 确认两个真人客户端已完成首次认领、各自/交叉密码、清除后重认领、Panel 批准和重启保持矩阵。
 - [x] 本次按用户要求未打 tag、未创建 Release、未更新 `latest`；以后发布必须重新走不可变候选和上一正式版 Web 升级/回滚门禁。
+
+# INSTALL-SMAPI-LIVE-PROGRESS-1 / STEAMCMD-MIGRATED-AUTH-REUSE-1（2026-08-18，未发布）
+
+- [x] SMAPI 受审查安装包下载器增加逐写入字节回调、候选序号和已校验缓存命中事件；installer 节流写入 job marker 与实例状态，下载完成和完整性校验成功保持两个阶段。
+- [x] 前端第四步改为“下载与环境”，右栏按认证/镜像/下载/SMAPI 动态命名；SMAPI 显示真实字节、百分比、下载源、持续活动提示和 reduced-motion/ARIA 契约，不再沿用 SteamCMD 100% 造成假卡死。
+- [x] legacy SteamCMD 授权卷迁移成功后，同一次非强制重装立即先尝试 username-only 缓存登录；失效时只自动回退一次完整登录，成功标记仍由真实 SteamCMD 登录/下载产生。
+- [x] 新增流式进度、缓存命中、迁移缓存即时复用和前端 marker/布局回归；Windows 定向 Go 测试、`test:install-state`、`test:responsive-layout`、前端 production build 已通过。
+- [ ] 在 Linux 文件系统执行全量 Go test/vet/build，并用真实 Docker 慢速下载/候选切换/缓存命中/无效授权回退完成专项 E2E。
+- [ ] 从干净且与 `origin/main` 同步的 `main` 进入正式候选，完成上一正式版 Web 升级/回滚和升级后页面复验；当前代码未部署生产、未创建 tag/Release、未提升 `latest`。

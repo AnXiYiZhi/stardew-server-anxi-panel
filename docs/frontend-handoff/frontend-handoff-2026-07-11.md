@@ -1980,3 +1980,21 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - `waiting` 表示玩家可首次认领，`error` 表示凭据层 fail closed；任何 UI 重构都不能把两者合并成“未设置”。也不能因角色列表为空而禁止 role，因为新建/导入后出现的角色需要使用同一首次登录契约。
 - 2026-08-17 用户确认两个真实客户端完成首次认领、各自正确登录、交叉失败、清除后重认领、Panel 批准和重启保持矩阵；能力已随 annotated `v0.5.3@ede7fa3` 和同 digest 正式镜像发布。
+
+# FE-INSTALL-SMAPI-LIVE-PROGRESS-1 接手记录（2026-08-18，未发布）
+
+## 改了什么
+
+- `InstallPage.tsx` 将第四步改为“下载与环境”，右栏标题随当前阶段在 Steam 认证、镜像下载、下载任务和 SMAPI 安装之间切换。SMAPI 阶段不再使用已完成的 SDK/SteamCMD progress，也不再显示静止的“等待安装器输出”。
+- `install-helpers.ts` 新增 SMAPI marker 解析与阶段进度换算：下载占安装子任务 80%→100% 区间，进而让顶部总进度在约 89%→96% 连续推进。非法字节/候选字段或非当前安装 job 均忽略。
+- SMAPI 卡片显示候选源、格式化字节、百分比、缓存命中、下载完成后的校验/写入文案与持续活动点；所有进度条具备 ARIA 数值，reduced-motion 关闭脉冲与宽度过渡。隐藏控制 marker 不进入可见任务日志。
+
+## 影响与验证
+
+- 影响 `pages/InstallPage.{tsx,css}`、`install-helpers.ts`、`scripts/test-install-state.ts`、`scripts/test-responsive-layout.ts`。没有新增 API；job/SSE marker 契约见 `docs/06-integration.md`。
+- `npm run test:install-state`、`npm run test:responsive-layout` 与 `npm run build` 已通过。状态测试覆盖下载 50%、缓存 100%、越界 marker 与错误 job type；布局测试固定下载图标、reduced-motion、ARIA 和第四步文案。
+
+## 下一步注意事项
+
+- 旧后端没有 SMAPI marker 时必须保留活动提示，不能重新回退到 SteamCMD 100% 或静态 Steam 认证卡；收到 100% 后也只能说下载结束/正在校验或安装，不能提前显示整个安装完成。
+- 正式候选仍需在慢速真实下载、候选切换、缓存命中以及窄屏/reduced-motion 下做 Browser 复验。当前变更尚未部署生产或发布。

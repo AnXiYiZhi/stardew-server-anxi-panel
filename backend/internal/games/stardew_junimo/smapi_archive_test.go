@@ -24,6 +24,18 @@ func (f smapiArchiveRoundTripFunc) RoundTrip(req *http.Request) (*http.Response,
 	return f(req)
 }
 
+type smapiArchiveChunkedReader struct {
+	reader *bytes.Reader
+	max    int
+}
+
+func (r *smapiArchiveChunkedReader) Read(p []byte) (int, error) {
+	if len(p) > r.max {
+		p = p[:r.max]
+	}
+	return r.reader.Read(p)
+}
+
 func writeSMAPITestZip(t *testing.T, entries map[string]string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "smapi.zip")
@@ -127,6 +139,73 @@ func TestEnsureRecommendedSMAPIArchiveDownloadsReviewedRanges(t *testing.T) {
 	}
 	if requested[0] != "bytes=0-30" {
 		t.Fatalf("first range=%q", requested[0])
+	}
+}
+
+func TestEnsureRecommendedSMAPIArchiveReportsStreamingProgress(t *testing.T) {
+	payload := readValidSMAPITestZip(t)
+	manifest := smapiArchiveManifestForPayload(payload)
+	var progress []smapiArchiveDownloadProgress
+	opts := smapiArchiveTestDownloadOptions(func(req *http.Request) (*http.Response, error) {
+		start, end := parseRequestedSMAPIRange(t, req.Header.Get("Range"))
+		resp := smapiRangeResponse(payload, start, end, int64(len(payload)))
+		resp.Body = io.NopCloser(&smapiArchiveChunkedReader{
+			reader: bytes.NewReader(payload[start : end+1]),
+			max:    7,
+		})
+		return resp, nil
+	})
+	opts.chunkBytes = int64(len(payload))
+	opts.onProgress = func(item smapiArchiveDownloadProgress) {
+		progress = append(progress, item)
+	}
+
+	if _, err := ensureRecommendedSMAPIArchiveWithOptions(context.Background(), t.TempDir(), manifest, opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(progress) < 3 {
+		t.Fatalf("progress updates=%d, want initial, intermediate, and complete updates", len(progress))
+	}
+	if progress[0].DownloadedBytes != 0 || progress[0].Candidate != 1 || progress[0].CandidateCount != 1 {
+		t.Fatalf("initial progress=%+v", progress[0])
+	}
+	last := progress[len(progress)-1]
+	if last.DownloadedBytes != int64(len(payload)) || last.TotalBytes != int64(len(payload)) || last.Cached {
+		t.Fatalf("final progress=%+v", last)
+	}
+	foundIntermediate := false
+	for _, item := range progress {
+		if item.DownloadedBytes > 0 && item.DownloadedBytes < item.TotalBytes {
+			foundIntermediate = true
+			break
+		}
+	}
+	if !foundIntermediate {
+		t.Fatalf("progress did not include an intermediate byte count: %+v", progress)
+	}
+}
+
+func TestEnsureRecommendedSMAPIArchiveReportsValidatedCacheHit(t *testing.T) {
+	payload := readValidSMAPITestZip(t)
+	manifest := smapiArchiveManifestForPayload(payload)
+	opts := smapiArchiveTestDownloadOptions(func(req *http.Request) (*http.Response, error) {
+		start, end := parseRequestedSMAPIRange(t, req.Header.Get("Range"))
+		return smapiRangeResponse(payload, start, end, int64(len(payload))), nil
+	})
+	dataDir := t.TempDir()
+	if _, err := ensureRecommendedSMAPIArchiveWithOptions(context.Background(), dataDir, manifest, opts); err != nil {
+		t.Fatal(err)
+	}
+
+	var progress []smapiArchiveDownloadProgress
+	opts.onProgress = func(item smapiArchiveDownloadProgress) {
+		progress = append(progress, item)
+	}
+	if _, err := ensureRecommendedSMAPIArchiveWithOptions(context.Background(), dataDir, manifest, opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(progress) != 1 || !progress[0].Cached || progress[0].DownloadedBytes != int64(len(payload)) {
+		t.Fatalf("cache progress=%+v", progress)
 	}
 }
 

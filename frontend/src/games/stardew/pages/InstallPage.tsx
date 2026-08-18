@@ -15,10 +15,12 @@ import {
 import {
   appendUniqueLog,
   errorMessage,
+  formatBytes,
   isTerminalJobStatus,
 } from '../../../core/helpers'
 import {
   calcSteamDownloadTaskProgress,
+  extractSMAPIArchiveProgress,
   extractSteamDownloadProgress,
   hasSteamSdkDownloadStarted,
 } from '../install-helpers'
@@ -29,6 +31,7 @@ import { useSteamAuthLogin } from '../useSteamAuthLogin'
 // ── 进度工具 ──────────────────────────────────────────────────────────────────
 
 const PULL_PROGRESS_RE = /^\[pull:progress:(\d+):(\d+)\]$/
+const SMAPI_PROGRESS_RE = /^\[smapi:download:progress:/
 const STEAM_QR_URL_RE = /^or open:\s*(https?:\/\/s\.team\/q\/\S+)/i
 const STEAMCMD_BRACKET_PROGRESS_RE = /\[steamcmd\]\s+\[\s*\d+(?:\.\d+)?%\]\s+downloading update\s+\(/i
 
@@ -119,7 +122,7 @@ function inferLatestSteamAuthLogPhase(logs: JobLog[]): SteamAuthLogPhase | null 
     const isGuardMenu = message.includes('steam guard authentication') ||
       (message.includes('[1]') && message.includes('approve in steam') && message.includes('[2]') && message.includes('enter code'))
     const isSteamCMD = message.includes('[steamcmd]')
-    const isSMAPI = message.includes('[smapi]')
+    const isSMAPI = message.startsWith('[smapi')
     const isSteamCMDGuardMenu = isSteamCMD && message.includes('steam guard') &&
       message.includes('[1]') && message.includes('[2]') &&
       (message.includes('approve') || message.includes('code') || message.includes('email'))
@@ -332,7 +335,7 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
 const STEP_ICON: Record<StepStatus, string> = {
   done: '✓', error: '✗', active: '↻', pending: '○',
 }
-const STEPS = ['准备环境', '拉取镜像', 'Steam 认证', '下载游戏', '完成'] as const
+const STEPS = ['准备环境', '拉取镜像', 'Steam 认证', '下载与环境', '完成'] as const
 const STEP_ICON_SRC = [
   '/assets/stardew/ui/install/icon_install_step_seed_image2.png',
   '/assets/stardew/ui/install/icon_install_step_box_image2.png',
@@ -594,6 +597,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const steamGameProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'game')
   const steamSdkProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'sdk')
   const steamCMDClientProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'steamcmd_update')
+  const smapiArchiveProgress = extractSMAPIArchiveProgress(activeInstallLogs, installJobType)
   const logAuthPhase = inferLatestSteamAuthLogPhase(activeInstallLogs)
   const logDownloadPhase = logAuthPhase === 'smapi_installing'
     ? 'smapi_installing'
@@ -669,9 +673,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const selectedOption = imageTagOptions.find((o) => o.tag === imageTag)
   const steamDownloadProgress = effectivePhase === 'steam_sdk_downloading'
     ? steamSdkProgress
-      : effectivePhase === 'smapi_installing'
-        ? steamSdkProgress ?? steamGameProgress
-        : effectivePhase === 'game_downloading'
+      : effectivePhase === 'game_downloading'
       ? steamGameProgress
       : effectivePhase === 'steamcmd_downloading'
         ? steamSdkProgress ?? steamGameProgress ?? steamCMDClientProgress
@@ -685,9 +687,10 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     steamGameProgress,
     steamSdkProgress,
     steamCMDClientProgress,
+    smapiArchiveProgress,
   )
 
-  const visibleLogs = logs.filter((log) => !PULL_PROGRESS_RE.test(log.message)).slice(-50)
+  const visibleLogs = logs.filter((log) => !PULL_PROGRESS_RE.test(log.message) && !SMAPI_PROGRESS_RE.test(log.message)).slice(-50)
 
   useEffect(() => {
     if (!optimisticPhase) return
@@ -754,6 +757,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     : showProgress
       ? Math.min(96, (finishedStepCount * 20) + (hasActiveStep ? 8 : 0))
       : 0
+  const activityPanelTitle = effectivePhase === 'smapi_installing'
+    ? 'SMAPI 安装'
+    : effectivePhase === 'pull_running' || effectivePhase === 'steamcmd_image_pulling'
+      ? '镜像下载'
+      : effectivePhase === 'game_downloading' || effectivePhase === 'steam_sdk_downloading' || effectivePhase === 'steamcmd_downloading'
+        ? '下载任务'
+        : 'Steam 认证'
+  const activityPanelUsesDownloadIcon = activityPanelTitle !== 'Steam 认证'
 
   return (
     <div className="sd-page sd-install-page">
@@ -849,7 +860,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
         </ol>
 
         <div className="sd-install-overall-progress">
-          <div className="sd-install-overall-track">
+          <div
+            className="sd-install-overall-track"
+            role="progressbar"
+            aria-label="安装总进度"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={overallProgress}
+          >
             <div className="sd-install-overall-fill" style={{ width: `${overallProgress}%` }} />
           </div>
           <span>{overallProgress}%</span>
@@ -1134,7 +1152,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
         </section>
 
         <section className="sd-install-column sd-install-auth-panel">
-          <div className="sd-install-column-title sd-install-column-title-steam">Steam 认证</div>
+          <div className={`sd-install-column-title ${activityPanelUsesDownloadIcon ? 'sd-install-column-title-download' : 'sd-install-column-title-steam'}`}>
+            {activityPanelTitle}
+          </div>
 
           {/* 拉取镜像进度卡 */}
           {(effectivePhase === 'pull_running' || effectivePhase === 'steamcmd_image_pulling') && isInstalling ? (
@@ -1150,7 +1170,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               </div>
               {pullProgress ? (
                 <div className="sd-install-prog-wrap">
-                  <div className="sd-install-prog-track">
+                  <div
+                    className="sd-install-prog-track"
+                    role="progressbar"
+                    aria-label="Docker 镜像下载进度"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pullProgress.percent}
+                  >
                     <div
                       className={`sd-install-prog-fill${pullProgress.done === pullProgress.total ? ' done' : ''}`}
                       style={{ width: `${pullProgress.percent}%` }}
@@ -1171,12 +1198,53 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
 
           {/* 游戏/SDK 下载提示 */}
           {effectivePhase === 'smapi_installing' && isInstalling ? (
-            <div className="sd-install-download-card">
-              <div className="sd-install-dl-title">安装 SMAPI 运行环境中...</div>
-              <div className="sd-install-dl-hint">
-                游戏文件和 Steam SDK 已完成，正在通过加速源安装 SMAPI；完成后会进入安装完成。
+            <div className="sd-install-download-card sd-install-smapi-card">
+              <div className="sd-install-dl-title" role="status" aria-live="polite" aria-atomic="true">
+                {smapiArchiveProgress && smapiArchiveProgress.percent < 100
+                  ? '正在下载 SMAPI 安装包…'
+                  : '正在安装 SMAPI 运行环境…'}
               </div>
-              <div className="sd-install-waiting">正在等待 SMAPI 安装器输出...</div>
+              <div className="sd-install-dl-hint">
+                {smapiArchiveProgress?.cached
+                  ? '本地安装包缓存已通过校验，无需重复下载，正在写入游戏运行目录。'
+                  : smapiArchiveProgress?.percent === 100
+                    ? '安装包已下载完成，正在校验并写入游戏运行目录。'
+                    : smapiArchiveProgress
+                      ? `正在从下载源 ${smapiArchiveProgress.candidate}/${smapiArchiveProgress.candidateCount} 获取安装包；进度会自动更新。`
+                      : '正在检查本地安装包缓存；如需下载，页面会在收到首个数据块后显示实时字节进度。'}
+              </div>
+              {smapiArchiveProgress ? (
+                <div className="sd-install-prog-wrap sd-install-smapi-progress">
+                  <div
+                    className="sd-install-prog-track"
+                    role="progressbar"
+                    aria-label="SMAPI 安装包下载进度"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={smapiArchiveProgress.percent}
+                  >
+                    <div
+                      className={`sd-install-prog-fill${smapiArchiveProgress.percent >= 100 ? ' done' : ''}`}
+                      style={{ width: `${smapiArchiveProgress.percent}%` }}
+                    />
+                  </div>
+                  <span className="sd-install-prog-pct">
+                    {smapiArchiveProgress.cached
+                      ? '缓存已校验'
+                      : `${formatBytes(smapiArchiveProgress.downloadedBytes)} / ${formatBytes(smapiArchiveProgress.totalBytes)} · ${smapiArchiveProgress.percent}%`}
+                  </span>
+                </div>
+              ) : null}
+              <div className="sd-install-activity">
+                <span className="sd-install-activity-dot" />
+                <span>
+                  {smapiArchiveProgress?.percent === 100 || smapiArchiveProgress?.cached
+                    ? '下载阶段已结束，安装任务仍在继续'
+                    : smapiArchiveProgress
+                      ? '下载仍在进行，进度会自动更新'
+                      : '安装任务仍在进行，状态会自动更新'}
+                </span>
+              </div>
             </div>
           ) : null}
 
@@ -1200,7 +1268,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               </div>
               {steamDownloadProgress ? (
                 <div className="sd-install-prog-wrap">
-                  <div className="sd-install-prog-track">
+                  <div
+                    className="sd-install-prog-track"
+                    role="progressbar"
+                    aria-label="Steam 下载进度"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={steamDownloadProgress.percent}
+                  >
                     <div
                       className={`sd-install-prog-fill${steamDownloadProgress.percent >= 100 ? ' done' : ''}`}
                       style={{ width: `${steamDownloadProgress.percent}%` }}

@@ -1,7 +1,10 @@
 import type { Job, JobLog } from '../../types'
-import { roundPercent } from '../../core/helpers'
 
-type DownloadProgress = {
+function roundPercent(value: number): number {
+  return Math.min(100, Math.max(0, Math.round(value * 10) / 10))
+}
+
+export type DownloadProgress = {
   filesDone: number
   filesTotal: number
   percent: number
@@ -10,11 +13,55 @@ type DownloadProgress = {
   itemLabel?: string
 }
 
+export type SMAPIArchiveProgress = {
+  downloadedBytes: number
+  totalBytes: number
+  percent: number
+  candidate: number
+  candidateCount: number
+  cached: boolean
+}
+
 type DownloadProgressKind = 'game' | 'sdk' | 'steamcmd_update'
 
 const steamDownloadProgressRe = /\[steam\].*Progress:\s*(\d+)\/(\d+)\s+files\s+-\s+([^/()]+?)\/([^()]+?)\s+\((\d+(?:\.\d+)?)%\)/i
 const steamCMDDownloadProgressRe = /\[steamcmd\].*progress:\s*(\d+(?:\.\d+)?)\s*\(([^/()]+?)\s*\/\s*([^()]+?)\)/i
 const steamCMDBracketProgressRe = /\[steamcmd\]\s+\[\s*(\d+(?:\.\d+)?)%\]\s+downloading update\s+\(([\d,]+)\s+of\s+([\d,]+)\s+([^)]+?)\)/i
+const smapiArchiveProgressRe = /^\[smapi:download:progress:(\d+):(\d+):(\d+):(\d+):(true|false)\]$/i
+
+export function extractSMAPIArchiveProgress(logs: JobLog[], jobType: string | undefined): SMAPIArchiveProgress | null {
+  if (jobType !== 'stardew_install') return null
+  let latest: SMAPIArchiveProgress | null = null
+  for (const log of logs) {
+    const match = log.message.match(smapiArchiveProgressRe)
+    if (!match) continue
+    const downloadedBytes = Number(match[1])
+    const totalBytes = Number(match[2])
+    const candidate = Number(match[3])
+    const candidateCount = Number(match[4])
+    if (
+      !Number.isSafeInteger(downloadedBytes) ||
+      !Number.isSafeInteger(totalBytes) ||
+      !Number.isSafeInteger(candidate) ||
+      !Number.isSafeInteger(candidateCount) ||
+      downloadedBytes < 0 ||
+      totalBytes <= 0 ||
+      downloadedBytes > totalBytes ||
+      candidate <= 0 ||
+      candidateCount <= 0 ||
+      candidate > candidateCount
+    ) continue
+    latest = {
+      downloadedBytes,
+      totalBytes,
+      percent: roundPercent((downloadedBytes / totalBytes) * 100),
+      candidate,
+      candidateCount,
+      cached: match[5].toLowerCase() === 'true',
+    }
+  }
+  return latest
+}
 
 export function extractSteamDownloadProgress(logs: JobLog[], jobType: string | undefined, kind: DownloadProgressKind): DownloadProgress | null {
   if (jobType !== 'stardew_install') return null
@@ -153,6 +200,7 @@ export function calcSteamDownloadTaskProgress(
   gameProgress: DownloadProgress | null,
   sdkProgress: DownloadProgress | null,
   steamCMDClientProgress: DownloadProgress | null = null,
+  smapiArchiveProgress: SMAPIArchiveProgress | null = null,
 ) {
   if (
     phase !== 'game_downloading' &&
@@ -161,11 +209,20 @@ export function calcSteamDownloadTaskProgress(
     phase !== 'smapi_installing'
   ) return null
   if (phase === 'smapi_installing') {
+    const archivePercent = smapiArchiveProgress?.percent ?? 0
+    const archiveReady = archivePercent >= 100
+    const label = smapiArchiveProgress?.cached
+      ? '本地 SMAPI 安装包缓存校验通过，正在安装运行环境。'
+      : archiveReady
+        ? 'SMAPI 安装包下载完成，正在校验并写入游戏运行目录。'
+        : smapiArchiveProgress
+          ? `正在下载 SMAPI 安装包（${archivePercent}%，下载源 ${smapiArchiveProgress.candidate}/${smapiArchiveProgress.candidateCount}）。`
+          : '正在检查 SMAPI 安装包缓存；如需下载，进度会在这里持续更新。'
     return {
-      done: 2,
+      done: archiveReady ? 3 : 2,
       total: 3,
-      percent: 88,
-      label: '游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境。',
+      percent: roundPercent(80 + archivePercent * 0.2),
+      label,
     }
   }
   if (phase === 'steam_sdk_downloading') {
