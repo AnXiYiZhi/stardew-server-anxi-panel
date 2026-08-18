@@ -1,3 +1,37 @@
+# v0.5.5 更新检查 / 运行设置交互 / 新建游戏半屏布局候选矩阵（2026-08-18，待自动候选）
+
+## 变更清单与受影响链路
+
+- `PANEL-UPDATE-LATEST-RELEASE-API-1`：更新检查从 GitHub Releases 列表首项改用官方 `/releases/latest` 单对象；候选升级夹具同时兼容上一正式版的列表协议和新候选的 latest 协议。影响 updatecheck、管理员更新检查和真实 Web 升级门禁。
+- `FE-SERVER-RUNTIME-SETTINGS-UX-2`：服务器摘要与总览增加同一人数设置入口；人数控件使用 44px 像素风步进；底部拆分“关闭 / 仅保存 / 保存并重启”，重启继续经过在线玩家确认和既有生命周期状态机。影响桌面服务器、总览、移动控制与运行设置共享 hook/dialog，不改变后端 DTO/API。
+- 安装与摘要素材修复：seed、Steam、download 三张时间线图标按 image2 重新生成透明 72×72 RGBA，移除重复阴影/裁切；Steam 认证占位继续复用同源；服务器摘要/顶栏头像使用明确的独立图标与裁切。影响前端静态资源和 production bundle，不影响安装状态机。
+- `FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2`：新建游戏弹窗改为 1100px 压缩三栏、780px 两栏、560px 单栏及 480/360px 极窄屏细化；不再在半屏直接变成约 2048px 高的单列，也不再使用 `transform:scale()`。影响 CSS/响应式门禁，不改变建档请求或 Junimo。
+
+`GitHub latest → updatecheck cache/API → 管理员更新检查 → dry-run/apply → unhealthy 回滚 / healthy 升级`
+
+`三个运行设置入口 → 共用 dialog/hook → PUT runtime settings → players 刷新 → 可选在线确认 → 既有 restart lifecycle → pending/job/终态`
+
+`Saves 新建游戏 Portal → ngc-modal 内容宽度 → 三栏 / 两栏+底部农场 / 单栏 → 弹窗内部滚动`
+
+## 本版专项矩阵
+
+| 维度 | 场景 | 通过标准 |
+| --- | --- | --- |
+| 正常路径 | GitHub latest 单对象；仅保存；运行态保存并重启；948px 半屏新建档弹窗 | 更新检查得到最新稳定 SemVer；PUT 与 restart 顺序正确；三入口共用同一状态；半屏保持三栏且操作可达 |
+| 关键边界 | draft/prerelease/非 SemVer、latest 请求失败缓存；人数 1/100、低于在线人数、停止态；1100/780/560/480/360px | 非正式版本 fail closed、保留最近成功缓存；边界可保存、警告不伪装硬失败、停止态不偷换 start；各断点无页面横向溢出 |
+| 权限安全 | 普通用户入口、管理员重启确认、更新接口异常 schema | 普通用户看不到编辑入口；运行态重启先显示在线玩家确认；坏 schema/HTTP 错误不冒充可升级 |
+| 幂等与恢复 | 重复保存/重启点击、PUT 失败、PUT 成功但 restart 失败、更新检查重试 | pending 门禁不重复提交；保存失败零重启；部分成功明确提示配置已保存且可重试重启；缓存语义稳定 |
+| 数据完整性 | 运行设置四字段、未知配置字段、现有存档/Mod/安装任务；纯 UI 弹窗重排 | 继续由后端原子写保留非目标字段；不改存档/Mod/SQLite；图标和 CSS 不改变安装 job/Steam 授权；新建档 payload 不变 |
+| UI / 可访问性 | 1280/948/840/769/430/390px，键盘、disabled、reduced motion、PNG alpha | 44px 控件、可见焦点和禁用语义成立；三/两/单栏按内容宽度切换；弹窗内部滚动可达；图片不裁切且 console 无 error/warn |
+| 升级与回滚 | `v0.5.4 → v0.5.5` 同候选 unhealthy/healthy；升级后复验更新检查、运行设置和新建档弹窗 | unhealthy 为 `failed_rolled_back/health_check_failed` 并恢复 0.5.4；healthy 使用同一 digest；SQLite/初始化/非目标容器与 volume 保持；升级后生产 bundle 通过专项 |
+| 资源清理 | 候选 DinD、fresh、升级/回滚、Browser/Vite | 只按任务 owner/精确 project 清理容器、网络、volume、bind/temp；不执行 prune；本地预览不进入正式镜像 |
+
+## 推送前证据与自动门禁选择
+
+- 更新检查专项、Web 包、`go vet/build`、升级脚本语法/ShellCheck 已在对应提交完成；运行设置 19 项前端状态/布局回归和 production build 已通过；新建游戏修复的 `test:responsive-layout`、production build、948×805、840×720、769×500 Browser QA 已通过，页面级横向溢出和 console warn/error 为 0。
+- 本次相对 `v0.5.4` 同时修改后端 updatecheck、候选升级脚本、前端页面/CSS/PNG 和公开长期文档。自动候选必须执行后端 test/vet/build、前端全部状态回归/audit/build、脚本测试/ShellCheck、compatibility、fresh/restart、updater/Docker integration 与 `v0.5.4` 真实 Web unhealthy/healthy 升级；网站、Control、SMAPI/Junimo runtime 长链是否跳过只能由 `scripts/run-release-gates.sh` 按路径差异决定。
+- 用户在 2026-08-18 明确授权把本地 `main` 提交到 `origin/main`，因此允许触发自动 release-candidate/Tag 链。此记录只表示推送授权与本地前置证据；候选 workflow、不可变 artifact/digest、自动 Tag 和正式提升未完成前不得标记 `v0.5.5` 已发布。
+
 # PANEL-UPDATE-LATEST-RELEASE-API-1 候选升级夹具兼容（2026-08-18，未发布）
 
 - 面板更新检查迁移到 GitHub `/releases/latest` 单对象接口。候选 DinD 的受控 TLS `api.github.com` 夹具现在精确区分两条路径：`/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest` 为新候选返回单对象，`/repos/anxiyizhi/stardew-server-anxi-panel/releases` 为上一正式版返回兼容数组；其它路径 404。

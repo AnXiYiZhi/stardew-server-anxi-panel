@@ -2157,4 +2157,11 @@ Multi Game Mode later
 - [x] 面板正式更新检查从 GitHub Releases 列表首项推导改为官方 `/releases/latest` 单对象接口；draft、prerelease 和非 SemVer 继续 fail closed，并保留上次成功缓存。
 - [x] 更新检查专项锁定精确 URL、响应形态与错误边界；updatecheck/Web、`go vet/build`、升级脚本 Bash/ShellCheck 门禁通过，官方只读实测 latest 当前为 `v0.5.4`。
 - [x] 候选升级受控 TLS 夹具同时服务旧 Panel 的列表数组和新候选的 latest 对象，其它 GitHub API 路径返回 404。
-- [ ] 本地代码尚未推送；不得因完成修复自动触发 release-candidate。只有用户明确授权发布后才进入完整候选、自动 Tag 与正式提升链。
+- [x] 用户于 2026-08-18 明确授权随本次 `main` 推送进入 release-candidate；自动候选、Tag 与正式提升仍必须以 workflow 全部门禁成功为准。
+
+# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2（2026-08-18，未发布）
+
+- [x] 修复半屏宽度仍被 1100px 断点直接压成单列的问题；弹窗按 1100/780/560/480/360px 分级使用压缩三栏、两栏、单栏和极窄屏布局。
+- [x] 两栏模式把农场选择改为底部四列，单栏模式把联机设置内部改为紧凑双列；移除 `transform:scale()`，container query 与无容器查询回退保持一致。
+- [x] 响应式专项、production build、948×805、840×720、769×500 Browser QA 通过；页面级横向溢出和 console warn/error 均为 0。
+- [x] 用户于 2026-08-18 明确授权随本次 `main` 推送进入自动候选；候选、Tag、Release 与正式镜像仍须等待完整 workflow 门禁成功。

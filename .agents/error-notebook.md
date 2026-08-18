@@ -2,6 +2,97 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-18：检查 PNG 前不能假定全局 Python 已安装 Pillow
+
+- 环境：PowerShell 7 / Windows，本地检查 imagegen 输出的尺寸、色彩格式与 alpha。
+- 错误模式：确认 `python --version` 成功后，直接用 `from PIL import Image` 读取 PNG，没有先探测 Pillow 模块。
+- 症状 / 退出码：Python 3.12.10 返回 `ModuleNotFoundError: No module named 'PIL'`；PNG 与仓库均未被修改。
+- 根因：把“Python 解释器存在”错误等同于“第三方 Pillow 已安装”。
+- 正确做法：只需读取 Windows PNG 元数据时使用已验证的 `System.Drawing.Common`；确需 Pillow 时先独立探测模块，缺失则使用工作区依赖提供的精确解释器，不临时污染全局环境。
+- 预防检查：在任何 `python -c` 导入第三方包前先核对解释器和模块可用性；能用系统只读 API 完成的元数据探针不引入额外依赖。
+- 适用范围：Windows 本地图片、文档和其它需要 Python 第三方库的只读检查。
+
+## 2026-08-18：新增源码断言必须复用测试文件已有变量名
+
+- 环境：Node 22，运行 `frontend/scripts/test-runtime-player-limit.ts`。
+- 错误模式：给摘要头像 CSS 增加断言时凭相邻任务记忆写成 `panelCss`，该文件实际把 `StardewPanel.css` 读入变量 `shellCss`。
+- 症状 / 退出码：测试立即报 `ReferenceError: panelCss is not defined`，后续响应式测试与 build 因 fail-fast 未执行；产品文件未被修改。
+- 根因：追加断言前只检索了目标断言区域，没有同时复核文件顶部已经声明的 fixture 变量名。
+- 正确做法：读取测试文件顶部 fixture 声明，使用现有 `shellCss`；修正后从首个失败门禁重新执行顺序验证。
+- 预防检查：任何新断言引用 fixture 前先用精确检索或顶部邻域确认变量已声明，不能把其它测试文件的命名带入当前文件。
+- 适用范围：本仓库 Node 源码文本回归脚本及其它手写 fixture 断言。
+
+## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
+
+- 环境：PowerShell 7，本地检查前端页面与重启调用链。
+- 错误模式：把实际位于 `frontend/src/games/stardew/pages`、且 API 为单文件 `frontend/src/api.ts` 的代码，按常见前端结构猜成不存在的 `frontend/src/pages`、`frontend/src/api` 和 `frontend/src/components`，并放入同一组 `rg` 参数。
+- 症状 / 退出码：`rg` 对三个不存在路径输出 `系统找不到指定的文件`；同一组合命令后续检索成功掩盖了前面的路径错误，仓库文件未被修改。
+- 根因：没有先以 `rg --files frontend/src` 得到真实路径，就把记忆中的目录布局当成仓库事实；组合命令也没有逐次检查原生命令退出码。
+- 正确做法：先用 `rg --files` 或前一条 `rg` 命中的真实文件路径定位，再对精确文件或目录独立检索；多个原生命令必须逐项检查 `$LASTEXITCODE`，不能让后续成功覆盖前一次失败。
+- 预防检查：新目录第一次参与检索前先核对其存在；本仓库 Stardew 页面固定从 `frontend/src/games/stardew/**` 起找，API 先查 `frontend/src/api.ts`。
+- 适用范围：本仓库 PowerShell 下的 `rg`、`git`、Node 与其它组合原生命令。
+
+## 2026-08-18：Windows 宿主没有全局 ShellCheck 时先拆开 Bash 语法门禁
+
+- 最近复发/补充：同轮拆开 `bash -n` 后只相信 `Get-Command bash` 的命令名解析，实际命中 WSL 转发器；当前 WSL 没有 `/bin/bash`，以 `CreateProcessCommon: execvpe(/bin/bash) failed` 停止，脚本未执行或修改。Windows 必须确认解析结果是 Git 安装目录内真实 `bash.exe`，或先验证 WSL 发行版的 `/bin/bash` 存在；命令名可解析不等于目标 Bash 环境可运行。
+- 环境：PowerShell 7，本地验证 `scripts/tests/test_release_candidate_upgrade.sh`。
+- 错误模式：在同一 fail-fast 命令中先解析 `bash` 和 `shellcheck` 路径，再顺序执行两项门禁；宿主没有全局 `shellcheck`，因此 `Get-Command` 在任何 `bash -n` 执行前就停止。
+- 症状 / 退出码：PowerShell 报 `shellcheck is not recognized`，脚本和产品文件未被执行或修改，Bash 语法检查也尚未形成结果。
+- 根因：把可用的 Git Bash 和未确认存在的 ShellCheck 当成同一宿主工具链，没有先分别探测。
+- 正确做法：先独立运行已确认的 `bash -n`；ShellCheck 若宿主缺失，只能使用已验证 Entrypoint/Cmd 的任务专属 lint 容器或项目既有 CI，不能临时安装、猜镜像入口或把 Bash 通过冒充 ShellCheck 通过。
+- 预防检查：脚本门禁开始前分别执行 `Get-Command bash`、`Get-Command shellcheck`；任一缺失只影响对应门禁，不能让探针顺序掩掉其它可运行结果。
+- 适用范围：Windows 宿主上的 Bash、ShellCheck 及其它由多个独立可执行文件组成的脚本门禁。
+
+## 2026-08-18：普通修复不得把 `push main` 当成无发布副作用的收尾
+
+- 环境：GitHub Actions，完成任务日志尾页修复后同步本地 `main`。
+- 错误模式：机械执行“功能工作同步 `origin/main`”，没有在 push 前重新核对 `.github/workflows/release-candidate.yml` 的 `push main` 自动候选及后续自动 Tag/正式提升链，也没有把用户当前只要求“修复”与“授权发布”分开。
+- 症状 / 外部状态：提交 `4d5c144` 推送后触发候选 run `32119643365` 和兼容矩阵；用户立即指出会自动打 Tag。候选在 selected code gates 阶段被取消，build/push candidate 尚未开始；后续 Tag run `32119992279` 为 `skipped`，远端没有 Tag 指向该提交。
+- 根因：把项目“单主线”约束错误扩大为每次实现都必须立即 push，忽略正式候选门禁本身说明 push 是发布触发器，也没有在会触发 CI/CD 外部写入前取得当次发布授权。
+- 正确做法：普通修复可以直接在本地 `main` 实现和提交，但只在用户明确要求发布/推送，且发布门禁、变更矩阵和候选授权齐备时才 push `origin/main`。发现误触发后立即取消候选，并核对候选结论、Tag workflow、远端 tag 指向和候选镜像步骤。
+- 预防检查：每次 `git push origin main` 前必须明确回答“用户是否授权触发正式候选/自动 Tag 链”；答案不是明确“是”就停止在本地提交，不得以单主线规则代替发布授权。
+- 适用范围：本仓库所有会触发 release-candidate、自动 Tag、正式提升或镜像发布的 main push。
+
+## 2026-08-18：批量打开上游 PR 时单页超时不能覆盖已成功的精确比较证据
+
+- 环境：Codex Web，只读核对 JunimoServer `1.5.0-preview.125` 到 `.127` 的 GitHub 提交与 PR。
+- 错误模式：在一次批量 `open` 中同时读取三个 PR 与一个 compare 页面，并假设每个页面都会返回正文。
+- 症状 / 退出码：PR `#523` 单项返回 `Internal Error`，同批 `#518`、`#526` 和精确 compare 均成功；仓库、镜像和外部服务未被修改。
+- 根因：GitHub 单页抓取发生独立超时；这不代表同批其它主来源失效，也不影响已由 compare API 证明的提交边界。
+- 正确做法：按结果项独立判断；保留成功的官方 compare、commit/PR 和 OCI revision 证据。失败页若只涉及规划或非运行代码且精确提交/文件清单已足够，不原样重试，也不把它纳入产品结论。
+- 预防检查：批量 Web 读取后逐项检查错误块；用户可见结论只引用实际成功打开或由已验证 API 返回的来源，单项失败不得让整批成功证据被误判或被静默当成已读。
+- 适用范围：GitHub PR/commit/compare、官方文档批量读取及其它每个 URL 可独立失败的只读调查。
+
+## 2026-08-18：只读遍历 SteamCMD 旧卷时 `os.stat` 跟随失效符号链接
+
+- 环境：飞牛生产主机，Python 3.11 只读统计 `stardew_steamcmd-*` 授权卷的文件数量、授权哨兵存在性和最新修改时间。
+- 错误模式：对 `os.walk()` 返回的每个路径直接调用 `os.stat()`，默认跟随符号链接，并假设旧 SteamCMD 卷内所有链接目标都仍存在。
+- 症状 / 退出码：旧 `steamcmd-root-local` 中的 `steamcmd/linux32/steamservice.so` 为失效链接，诊断脚本抛 `FileNotFoundError` 并退出；数据库、容器和 volume 均未修改。
+- 根因：旧版 SteamCMD 缓存会保留指向已移除目标的符号链接；`os.walk()` 列出链接不代表后续跟随目标的 `stat()` 一定成功。
+- 正确做法：只读库存使用 `os.lstat()` 统计链接自身，并单独用 `os.path.lexists()` / `os.path.exists()` 计数失效链接；只有业务确需目标元数据且已确认目标存在时才跟随。
+- 预防检查：遍历缓存、运行时或迁移遗留目录前先把符号链接和普通文件分开处理；诊断脚本不得因单个 broken symlink 中止其余安全投影。
+- 适用范围：SteamCMD/Steam 缓存、容器 volume、Mod 链接、迁移遗留目录与其它允许符号链接的只读文件盘点。
+
+## 2026-08-17：ExifTool 整包按值复制使 iPhone 有理数/XMP 元数据发生非目标变化
+
+- 环境：飞牛 `trim.photos` 的 iPhone XR JPEG Orientation 4 修复试制；先由 libvips 生成全画幅正向像素，再用 `exiftool -TagsFromFile <src> -all:all` 恢复元数据。
+- 错误模式：把 `-all:all` 当成原始 APP/EXIF/XMP 字节的无损复制，并在试制后用严格元数据门禁比较。
+- 症状 / 退出码：试制脚本退出 1；ApertureValue、BrightnessValue、FocalLength、ShutterSpeedValue 和若干 GPS 有理数发生重新序列化，`XMPToolkit` 也被改写。门禁在目标文件进入照片库和相册关系切换前停止；原图、生产数据库和共享相册均未变化。
+- 根因：ExifTool 的 `TagsFromFile` 复制的是解析后的标签值，不保证保留 TIFF 有理数的原始分子/分母或 XMP 包装器字节；重新写入时会按当前 ExifTool 版本规范化。
+- 正确做法：要求“除指定标签/缩略图外其余元数据严格不变”时，保留并移植源 JPEG 的原始 APP/COM 段，在 TIFF IFD 中精确定位 Orientation 和内嵌缩略图范围，只做等长、可验证的字节修改；像素编码段独立来自已验证的正向全画幅输出。
+- 预防检查：图像修复的试制必须在入库前比较元数据键值和原始段；`TagsFromFile` 只作为语义级保留手段，不得宣称字节级无变化。出现非目标差异时不得放宽门禁，先换成原始段保留方案。
+- 适用范围：JPEG/TIFF/HEIC 的 EXIF、MakerNotes、GPS 有理数、XMP 包装和其它要求元数据严格保真的修复。
+
+## 2026-08-17：像素误差验证读取了试制 JPEG 并改变 atime
+
+- 环境：飞牛生产照片的任务专属备份目录；用 libvips 对“期望翻转像素”和 Q100 试制 JPEG 做 subtract/abs/avg/max 验证。
+- 错误模式：生成试制文件后立即恢复其 atime/mtime，但忽略后续 `vips subtract` 会再次读取试制 JPEG。
+- 症状 / 退出码：像素与严格元数据门禁均通过，随后文件时间门禁报 `stage filesystem metadata changed` 并退出 1；目标副本尚未进入照片库，数据库和共享相册未修改。
+- 根因：文件时间恢复点放在验证链中间，而不是所有读取型外部进程完成之后；Linux relatime 会在旧 mtime/atime 文件被读取时更新 atime。
+- 正确做法：先完成全部 ExifTool/vips/解码验证，再在最终属性断言前统一恢复源、试制主图、嵌入缩略图及其它会进入成品的文件 atime/mtime；验证函数自身也应在读取后按快照恢复。
+- 预防检查：列出所有会打开目标文件的外部进程，把时间恢复作为“最后一次读取之后、最终 stat 之前”的显式步骤；不得假定只读工具不会改变文件系统元数据。
+- 适用范围：要求保留 atime/mtime 的图片、视频、备份和任何由外部工具做只读验证的生产文件。
+
 ## 2026-08-17：`appcenter-cli` 的 appname 错误提示与帮助/flag 契约矛盾
 
 - 环境：飞牛 `appcenter-cli 1.0.1`，准备只停止 `trim.photos` 以做离线、可回滚的相册关系事务。
@@ -231,6 +322,8 @@
 
 ## 2026-08-16：组合检索后仍按记忆读取不存在的源码路径
 
+- 最近复发/补充：2026-08-18 修复任务日志尾页展示时，`rg` 已定位 `jobLogsResponse` 在 `backend/internal/web/jobs_handlers.go`，后续只读组合命令仍凭记忆追加不存在的 `backend/internal/web/types.go`，导致读取阶段退出 1；产品源码与运行状态未修改。随后用 `rg --files backend/internal/web` 确认真正测试文件和响应类型位置，余下读取只使用清单或命中的精确路径。
+- 最近复发/补充：2026-08-17 回答宿主 Mods 路径时，先后把未由文件清单确认的仓库根 `docker-compose.yml` 和 `scripts/run.sh` 与真实路径混入只读 `rg`；实际文件分别位于 `deploy/docker-compose.yml` 和 `deploy/run.sh`，两次均返回路径不存在，仓库与服务器状态未被修改。随后先用 `rg --files -g '*compose*'` 和已确认的 `deploy/run.sh` 继续；即使是文档问答，也必须先发现真实路径，不能按常见仓库布局猜根目录文件。
 - 最近复发/补充：2026-08-17 实现 Mod 一键更新时，把未经本轮文件清单确认、实际不存在的 `frontend/src/games/stardew/nexus-extension.ts` 与真实源码一起传给 `rg`；随后又把 registry 类型先后猜成不存在的 `backend/internal/registry/game.go` 和 `backend/internal/registry`，实际类型位于 `backend/internal/games/registry/types.go`。这些只读命令分别退出 1/2，源码未被修改；改为从仓库根 `rg --files backend` 取得真实清单后继续，余下读取只使用该清单中的精确路径。
 - 最近复发/补充：2026-08-17 修复 Nexus 下载页刷新时，连续把未由本轮文件清单确认的 `backend/internal/.../content.js`、`frontend/src/pages/ModsPage.tsx`、仓库根 `internal` 和不存在的 `frontend/src/games/stardew/hooks` 混入只读检索；真实实现分别位于 `browser-extensions/nexus-slow-installer/content.js`、`frontend/src/games/stardew/pages/ModsPage.tsx` 和已确认的前端目录。命令只读、产品与浏览器状态未变；随后只使用 `rg --files` 或前一次命中的精确路径。本轮余下审计不再把概念目录与真实输入并列。
 - 最近复发/补充：2026-08-17 本任务已在本条记录过 `console.go`/`commands.go` 后，后续诊断 live `info` 时仍第二次把不存在的 `commands.go` 混入精确输入；此前 Compose 模板检索已返回真实 `compose_template.go`，后续又猜测不存在的 `assets/docker-compose.yml.tmpl`。两次均为只读失败，产品文件未变；同类错误在记录后复发，余下读取只能复制本轮最新 `rg` 的完整命中路径，不能把先前记忆或常见目录结构重新加入组合命令。
@@ -350,6 +443,9 @@
 
 ## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
 
+- 最近复发/补充：2026-08-18 给响应式测试追加安装图标断言时，虽然刚由检索看到目标行，仍在补丁中手抄过长的三行正则上下文，`apply_patch verification failed` 且零修改。随后读取精确邻域，只用稳定的 `assert.match(installPageSource, /'下载与环境'/)` 单行作锚点成功插入；测试文件中的长正则也必须按最小稳定上下文补丁，不能把工具输出中的转义形态重新手抄一遍。
+- 最近复发/补充：2026-08-18 同步任务日志尾页长期文档时，六文件补丁把 `docs/06-integration.md` 当前首标题猜成较早的 SUPPORT-BUNDLE 章节，实际文件头已是 `NEXUS-MOD-ONECLICK-UPDATE-1`；`apply_patch verification failed` 且整批零修改，产品代码未受影响。随后读取实际文件头，按文件拆成独立补丁，并只用当前首标题作最小插入锚点。
+- 最近复发/补充：2026-08-17 把照片日期诊断脚本从邻近照片查询改为 schema 查询时，按上一版记忆构造了过长替换 hunk，遗漏文件末尾已有的 `con.close()`，导致 `apply_patch verification failed` 且零修改。重新读取 heredoc 的精确当前内容后，改成从真实起止行匹配的小范围替换成功；同一任务刚修改过的临时脚本也必须重读，不能从上一轮补丁文本反推现状。
 - 最近复发/补充：2026-08-17 记录本机扩展 E2E 的 `rg` 通配复发时，虽已从 `rg` 命中看到目标章节和较早条目，却没有先读取章节真实开头，遗漏了更晚新增的 popup/options 与 HTTP client 两条记录，导致首个 `apply_patch` 校验失败且零修改。随后精确读取章节邻域，并只用章节标题与真实首条作为最小上下文成功插入。错题本即使是同日刚读过，也必须以当前完整邻域为准。
 - 最近复发/补充：2026-08-17 补记本轮路径、通配和正则错误时，从截断的错题本检索输出假定通配章节第一条是 `vite.config.*`，但真实首条已新增 Nexus HTTP client 记录；多 hunk `apply_patch` 因上下文不匹配整体安全零修改。随后读取三个章节真实邻域并逐章拆补丁。截断输出不能作为长文档补丁上下文，必须先精确读取目标章节。
 - 最近复发/补充：2026-08-17 为 Nexus 最新版本补丁同时修改同一 Go 文件中前部类型和后部函数时，把后部 hunk 写在前、前部 hunk 写在后；`apply_patch` 在处理到逆序的类型上下文时整体以 verification failed 安全拒绝，文件零修改。读取两个真实邻域后按源码顺序拆成独立小补丁成功。即使所有上下文都曾读取，同文件多 hunk 也必须按行号从前到后排列；不确定时默认拆分。
@@ -730,6 +826,7 @@
 
 ## 2026-08-13：前端 QA 技能示例与当前 Browser 截图 API 不一致
 
+- 最近复发/补充：2026-08-18 诊断新建游戏弹窗时，凭通用浏览器 API 记忆调用了不存在的 `browser.tabs.open(url)`，调用在创建标签前失败，用户标签和页面状态未改变。当前 Browser 的建页契约是先 `browser.tabs.new()`，再对返回的 `Tab` 调用 `goto(url)`；已有应用内标签则优先 `browser.user.openTabs()` 后把完整条目交给 `browser.user.claimTab()`。建页、认领和导航必须按已读取的当次 API Reference 分层调用，不把其它浏览器库的快捷方法类推过来。
 - 最近复发/补充：2026-08-17 本任务准备响应式 QA 时，凭名称猜测 `agent.documentation.get("browser.viewport")`，随后又猜测不存在的 `agent.documentation.search()`；两次都在页面交互前失败，Browser/tab 状态未改变。当前 runtime 没有独立 viewport 文档或 search helper；应以已完整读取的 `browser.documentation()` 和实际暴露的 tab/playwright 方法为准，不继续猜能力名。本轮最终使用默认视口、强制 mobile shell、DOM 度量、真实交互与普通截图组合验证，并由源码响应式门禁补充窄屏契约。
 - 环境：Codex 应用内 Browser，验证升级得到的 `v0.4.12` Panel 登录页。
 - 错误模式：照前端测试技能的示例调用 `tab.playwright.screenshot(...)`，没有先以当前 Browser 完整文档中的接口定义为准。
@@ -915,12 +1012,13 @@
 
 ## 2026-08-11：外层验证命令误用任务脚本的内部变量
 
+- 最近复发/补充：2026-08-18 取得 workspace dependency loader 返回的精确 `python.exe` 后，仍错误调用不存在的 `Get-Command -LiteralPath $python`，PowerShell 在 UI 规则检索启动前报参数绑定错误并退出 1；产品文件未修改。文件系统中的精确可执行路径应由 `Test-Path -LiteralPath` / `Resolve-Path -LiteralPath` 验证，再用 `& $resolved` 运行；`Get-Command` 只按命令名/已注册应用解析，没有 `-LiteralPath` 参数。
 - 环境：PowerShell 7，解析隔离一键升级夹具并探测工作区 Python。
 - 错误模式：`$python` 只在待验证的 `run-v0410.ps1` 内定义，外层 `pwsh -Command` 没有 dot-source 该脚本，却直接执行 `& $python --version`。
 - 症状 / 退出码：PowerShell 报 `The expression after '&' ... was not valid` 并退出 1；脚本 Parser 已通过，案例未启动，只有临时 `.ps1` 换行被机械规范为 CRLF。
 - 根因：把文件内变量误当成调用方作用域变量；为了避免执行案例，本来也不应 dot-source 含主流程的脚本。
 - 正确做法：外层探针直接使用工作区依赖工具返回且已验证的精确 Python 绝对路径；脚本内变量只在 `pwsh -File` 正式执行时使用。
-- 预防检查：调用运算符 `&` 前确认目标值在当前作用域非空并由 `Get-Command -LiteralPath` 或 `Test-Path -LiteralPath` 验证；不要从未执行脚本文本中继承变量。
+- 预防检查：调用运算符 `&` 前确认目标值在当前作用域非空；命令名用 `Get-Command` 验证，精确文件路径用 `Test-Path -LiteralPath` / `Resolve-Path -LiteralPath` 验证；不要从未执行脚本文本中继承变量。
 - 适用范围：发布夹具、工作区运行时和所有分离“语法检查/正式执行”的 PowerShell 脚本。
 
 ## 2026-08-11：候选镜像冒烟把 HTTP 健康状态猜成 Docker 健康状态
@@ -1129,6 +1227,7 @@
 
 ## 2026-08-09：切换工作目录后仍重复仓库路径前缀
 
+- 最近复发/补充：2026-08-18 修复任务日志尾页展示后的首轮格式化把工具 `workdir` 设为 `<repo>/backend`，仍向 `gofmt` 传入五个 `backend/internal/...` 路径；全部在格式化前报 `GetFileAttributesEx ... path not found`，fail-fast 使定向测试未启动，源码未被该失败命令修改。随后从仓库根先以 `Test-Path` 核对目标并独立格式化，Go 测试另从 `backend` 模块根执行。
 - 最近复发/补充：2026-08-17 实现 Mod 一键更新后的首轮格式化把工具 `workdir` 设为 `<repo>/backend`，仍向 `gofmt` 传入三个 `backend/internal/...` 路径；命令在格式化前全部报 `GetFileAttributesEx ... path not found` 并退出 1，后续测试因 fail-fast 未启动，源码未被该失败命令修改。随后按既有规则把格式化改回仓库根并先做 `Test-Path`，Go 测试再从模块根独立执行。
 - 最近复发/补充：2026-08-17 实现 Nexus 下载包版本校验后的首轮格式化把工具 `workdir` 设为 `<repo>/backend`，却仍向 `gofmt` 传入四个 `backend/internal/...` 仓库根路径；全部在格式化前报 `GetFileAttributesEx ... path not found` 并退出 2，测试未启动、文件未被该失败命令修改。随后在模块根改用 `internal/...` 并通过定向测试。余下 Go 格式化在命令前必须用当前 cwd 的 `Test-Path` 核对首目标，并与测试拆开执行。
 - 最近复发/补充：2026-08-17 修复 PR #10 后首轮格式化时，工具 `workdir` 已是 `<repo>/backend`，仍向 `gofmt` 传入四个 `backend/internal/...` 路径，全部在格式化前报 `GetFileAttributesEx ... path not found` 并退出 2，后续定向测试因 fail-fast 未执行，源码未被该命令修改。后续严格拆为仓库根路径存在性探针加独立 `gofmt backend/internal/...`，测试再从 `backend` 模块根单独运行。
@@ -1390,6 +1489,8 @@
 
 ## 2026-07-28：Docker Desktop CLI 存在但 daemon 未启动
 
+- 最近复发/补充：同轮 ShellCheck 后准备恢复 Docker Desktop 启动前状态时，把 `docker image ls --format '{{json .}}'` 中每个镜像的 `Containers=0` 误读成宿主总容器数为零；真正的 `docker container ls -a` 发现多批既有容器，保护断言在调用 `DockerCli -Shutdown` 前停止，未关闭 daemon 或修改容器。镜像行的 Containers 字段只描述该镜像引用，任何 daemon 停止判断必须重新读取容器清单和运行状态；有既有资源时保持当前状态并停止恢复动作。
+- 最近复发/补充：2026-08-18 为缺失的宿主 ShellCheck 寻找容器兜底时先执行 `docker info`，Linux engine named pipe 不存在，命令 fail-fast，尚未 inspect/pull/run 任何 lint 镜像。随后按既有规则从验证路径启动 Docker Desktop 并有界轮询；ShellCheck 容器只有在 inspect Entrypoint/Cmd 后才可运行。
 - 环境：Windows Docker Desktop。
 - 错误模式：看到 `docker version` 客户端信息后直接构建。
 - 症状：无法连接 `dockerDesktopLinuxEngine` named pipe。
@@ -1401,7 +1502,9 @@
 
 ## 2026-07-28：Windows 下把 Shell glob 直接传给 `rg`
 
+- 最近复发/补充：2026-08-18 定位新建游戏弹窗接手记录时，又把 `docs/frontend-handoff/*.md` 作为 Windows `rg` 位置参数，得到 `文件名、目录名或卷标语法不正确 (os error 123)`；同一命令中的两个精确 Markdown 文件仍输出命中，产品文件未被该只读检索修改。随后先用 `Get-ChildItem -LiteralPath docs/frontend-handoff -File` 取得精确最新文件，再把该完整路径交给 `rg`。以后 handoff 检索同样禁止裸 glob，必须先生成精确文件清单或使用明确目录配合 `-g '*.md'`。
 - 最近复发/补充：2026-08-17 复核 Mod 更新测试时，又把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 位置参数，立即得到 `os error 123`；命令只读且没有输出可用测试命中。改为对精确目录使用 `-g '*_test.go'`。本条和 AGENTS 均已多次强调，后续检索参数发送前必须机械扫描裸 `*`。
+- 最近复发/补充：2026-08-17 排查 Panel 版本检查提示时，把 `docker-compose*.yml` 作为 Windows `rg` 位置参数，前面的源码与文档查询已有有效输出，但该位置参数仍触发 `os error 123` 并让只读组合命令提前退出；产品文件未修改。随后改为 `rg -g 'docker-compose*.yml' <pattern> .`，本任务后续检索继续机械检查所有含 `*` 的实参只能作为 `-g` 的值。
 - 最近复发/补充：2026-08-17 准备 v0.5.3 发布矩阵时，把 `backend/internal/games/stardew_junimo/*integration*` 和 `*test*` 再次作为 Windows `rg` 位置参数，得到 `os error 123`；同一 PowerShell 批次中的其它检索已有有效输出，错误检查又被后续状态掩盖。命令只读，未修改产品或 Docker 资源。后续发布审计检索只传明确目录根并使用 `-g '*integration*'` / `-g '*test*'`，且每个原生命令后立即保存并检查退出码。
 - 最近复发/补充：2026-08-17 本任务在本条已经新增复发记录后，又把 `backend/internal/games/stardew_junimo/*.go` 作为 Windows `rg` 位置参数，得到 `os error 123`；有效的精确文件输出不能把该失败视为成功。随后只对明确目录配 `-g '*.go'`。这是记录后的再次复发，余下命令发送前必须机械拒绝任何不紧跟 `-g` 的含 `*` 参数。
 - 最近复发/补充：2026-08-17 本任务复核 runtime settings 的 Web/driver 测试覆盖时，又把 `backend/internal/web/*_test.go` 与 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 位置参数，两个根均报 `os error 123`；命令只读，未修改文件。随即改为 `rg -g '*_test.go' <pattern> backend/internal/web backend/internal/games/stardew_junimo`。该规则已是 AGENTS 硬门禁，余下检索发送前必须机械检查位置参数中没有 `*`。
@@ -1524,6 +1627,7 @@
 
 ## 2026-07-31：PowerShell 插值变量后直接连接连字符
 
+- 最近复发/补充：2026-08-18 生产 SteamCMD 只读诊断的 ShellStream 包装器在双引号中写了 `"$end:%s"`，PowerShell 在建立 SSH 会话前即因把冒号解释为变量作用域分隔符而报 `ParserError`，远端零执行。改为任务专属脚本并统一使用 `"${end}:%s"`；远端 marker、registry ref 和错误前缀等变量后接冒号时都必须显式包围变量名。
 - 最近复发/补充：2026-08-15 `v0.4.17` 发布后批量核验 registry digest 时，在错误文本中写成 `"digest mismatch for $ref: $digest"`；PowerShell 把变量后的冒号按作用域变量语法解析，在任何 registry 请求前报 `ParserError`。修正为 `"digest mismatch for ${ref}: $digest"` 后再执行核验；变量后接冒号同样必须显式使用 `${name}` 边界。
 - 环境：PowerShell 7，创建任务专属 Docker volume 名。
 - 错误模式：在双引号中写 `"$prefix-go-mod"`，期望得到 `<prefix>-go-mod`。
@@ -1535,6 +1639,7 @@
 
 ## 2026-07-31：Node 直接执行 TS 时不解析 Vite 的无扩展运行时导入
 
+- 最近复发/补充：2026-08-18 把 SMAPI 进度解析回归接入既有 `test:install-state` 后，测试首次直接加载 `install-helpers.ts`，其中对 `../../core/helpers` 的无扩展运行时导入在 Node 22 下再次以 `ERR_MODULE_NOT_FOUND` 退出 1；测试未执行，产品状态未变化。虽然该前端 tsconfig 启用了 `allowImportingTsExtensions`，只给直接导入补 `.ts` 后仍继续进入 `core/helpers.ts → ../api` 的无扩展运行时依赖并第二次同类失败。最终按本条既有规则让被测安装进度 helper 保持无项目内运行时依赖，把简单百分比夹取/舍入收为文件内纯函数，再分别复验 Node 门禁和 Vite production build；预检必须递归覆盖传递依赖，不能只看第一层 import。
 - 环境：Node 22 `--experimental-strip-types` 运行前端纯逻辑测试。
 - 错误模式：被测 `mod-list-utils.ts` 运行时导入 `./mod-display`，认为 Node 会像 Vite 一样补 `.ts`。
 - 症状 / 退出码：`ERR_MODULE_NOT_FOUND`；生产构建尚未执行。
@@ -1572,6 +1677,7 @@
 
 ## 2026-07-28：`git diff --no-index` 的预期差异码污染整段校验
 
+- 最近复发/补充：2026-08-18 已精确读取 `migrateLegacySteamCMDAuthCache()` 后，把“该函数是否有专门测试”这一允许无命中的 `rg -g '*_test.go'` 放在 cell 末尾且未归一化退出码；源码证据完整输出，但 cell 仍以 1 结束，产品和远端均未修改。补充覆盖检索同样必须立即保存退出码，把 1 明确记录为“无专门命中”，并在已有主证据后显式成功结束。
 - 最近复发/补充：2026-08-15 回填 `v0.4.17` 联调证据时，把三个可能无命中的 `rg` 顺序放进同一 cell；中间查询已经定位真实状态契约，最后一个可选符号零命中仍让整个只读批次退出 1。改为读取已确认的精确行段；后续多项可选搜索必须逐项把退出码 1 归一为零命中，不能依赖最后一条命令代表整批结果。
 - 最近复发/补充：2026-08-14 前端小屋选项定位时，末尾两个可选 `rg`（测试文件后缀、`runtimeSettings`）均无匹配，正常退出 1 却让两次只读批次被标为失败；同日修正社区中心文案时又先用带 `--hidden` 的仓库根搜索导致无必要超时，缩到 `frontend` 后虽已定位源码，末尾“正确文案”零命中仍泄漏退出 1；随后又凭习惯追加实际不存在的 `frontend/test`、`frontend/tests` 根而退出 2。以上均为只读且未修改产品。后续先用 `rg --files <已确认目录>` 发现真实搜索面，再在每个可选 `rg` 后立即把 1 归一为“零命中”、只让大于 1 失败；禁止为单个前端文案启用无边界的全仓 `--hidden` 搜索，也不能依赖组合命令最后一个 `rg` 的状态。
 - 最近复发/补充：2026-08-13 同一任务随后把“workflow 中可能没有扩展检查”的可选 `rg` 放在组合命令末尾；前两项已有有效命中，末项零命中正常返回 1，却让整段只读探针显示失败。已改为立即判断 `$LASTEXITCODE`，把 1 明确输出为 `no workflow extension checks found` 并归零，只让大于 1 失败。
@@ -2421,6 +2527,7 @@
 
 ## 2026-08-06：切到子目录后仍给 gofmt 传仓库根相对路径
 
+- 最近复发/补充：2026-08-18 实现 SMAPI 下载实时进度后，工具 `workdir` 已设为 `<repo>/backend`，首轮 `gofmt` 仍向四个目标传入 `backend/internal/...`；全部在格式化前报 `GetFileAttributesEx ... path not found` 并退出 2，后续测试因 fail-fast 未启动，源码未被该失败命令修改。随后固定为仓库根先用 `Test-Path -LiteralPath backend/internal/...` 验证并独立格式化，Go 测试再从 `backend` 模块根单独执行。
 - 最近复发/补充：2026-08-14 升级状态机修复首次格式化时，工具 `workdir` 已是 `<repo>/backend`，三个 `gofmt` 目标仍带 `backend/` 前缀，全部报 `GetFileAttributesEx ... path not found` 并退出 2，定向测试未启动。随后使用模块根相对的 `internal/...` 成功格式化并通过回归；本任务余下 Go 命令固定先以 `Test-Path` 校验首个目标，不再切换路径基准。
 - 最近复发/补充：2026-08-13 自动解绑实现首次格式化时，`workdir` 已设为 `<repo>/backend`，但目标数组仍全部写成 `backend/internal/...`；新增的 `Resolve-Path` fail-fast 正确在首个目标终止，`gofmt` 和测试均未运行、文件未被命令修改。后续本任务固定为仓库根格式化 `backend/internal/...`，再切到 `backend` 仅运行 Go 测试，禁止在同一调用中切换两套相对路径语义。
 - 最近复发/补充：2026-08-10 三仓 smoke 临时 Go 文件命名为 `.codex-v0410-registry-smoke.go`；`gofmt` 可处理，但 `go run` 会忽略以点开头的 Go 源文件并报当前目录无 Go 文件。任务脚本应使用普通、唯一且预检不存在的文件名，执行完成后再用 `apply_patch` 删除；不要把“隐藏临时文件”惯例套给 Go package/file discovery。
@@ -3295,6 +3402,7 @@
 
 ## 2026-08-15：把原生 Playwright 定位器方法直接套到应用内 Browser 定位器
 
+- 最近复发/补充：2026-08-17 在 Chrome 受控页面中定位飞牛相册内部滚动区时，对 `querySelectorAll()` 返回的隔离代理调用 `getAttributeNames()`，又先后直接赋值 `scrollTop`（包括 locator `evaluate`），分别得到“不是函数”和“只有 getter”；页面没有被修改。随后只使用可访问角色切换拍摄时间升序，并用 DOM snapshot/视口截图完成日期与缩略图验证；隔离代理不应假定拥有原生 DOM 方法或可写属性。
 - 最近复发/补充：2026-08-16 在 37 张 Mod 卡片已可见后，连续两次对首个 `.sd-btn-delete` 调用受控定位器 `evaluate(..., { timeoutMs: 10000 })`，底层仍按 3 秒 selector deadline 超时；页面、源码和按钮状态均未被修改。读取纯计算样式时改用 `tab.playwright.evaluate()` 在页面内 `querySelector` 精确节点，并先以 tab/按钮可见性确认处于「添加模组」而非「配置模组」；同一正常态与运行态投影均立即成功。大列表上的只读样式投影不得假定定位器 evaluate 会采用传入的延长超时。
 - 最近复发/补充：同一次预览复位又在 `playwright.evaluate()` 的隔离执行环境中用 `element instanceof HTMLElement` 过滤可滚动元素，但该环境的 `HTMLElement` 不是可用构造器，返回 `Right-hand side of 'instanceof' is not an object`；改成遍历所有节点后，又命中了只有只读 `scrollLeft` 的隔离对象；即使精确选中 `.sd-jobs-page`，直接赋值仍是只读。正确做法是先只读识别实际滚动容器，再对精确容器调用 DOM `scrollTo()` 方法，不对隔离代理对象做属性写入，也不对 `querySelectorAll('*')` 的混合节点做通用处理。
 - 环境：Codex 应用内 Browser、Node REPL，本地 Vite 前端可视化验收。
@@ -3363,6 +3471,7 @@
 
 ## 2026-08-16：Windows 长轮询超出 `exec_command` 等待上限
 
+- 最近复发/补充：2026-08-18 为生产安装任务做 30 秒后复查时，命令内部先 `Start-Sleep -Seconds 30` 再建立 SSH，必然略超 `yield_time_ms=30000`；编排仍只投影 `output/exit_code`，再次显示伪造的 `EXIT_CODE=undefined` 并丢失可续接 session。随后以精确命令行核对没有遗留诊断进程。状态复查不得把 sleep 预算吃满工具 yield；应直接立即查询，或输出完整返回对象并在存在 `session_id` 时用 `write_stdin` 续接。
 - 最近复发/补充：2026-08-17 本任务的统一 `exec_command` 返回 `session_id` 后，误把它的 `chunk_id` 交给只支持 yielded JavaScript cell 的 `functions.wait`，工具报告 cell not found；原 Go 进程仍由统一终端 session 持有，没有重复启动。随后改用同一 `session_id` 的 `write_stdin` 取得终态。`functions.wait(cell_id)` 与 `write_stdin(session_id)` 属于两类不同会话，不能按字段名相似混用。
 - 最近复发/补充：同日经 Pinggy SFTP 读取约 3.8 MB 活动存档并在本地解析 XML 时，30 秒 yield 返回仍在运行的 session，但编排只输出 `r.output`，再次丢失 session ID。确认两个精确任务进程仍存活后按创建时间、命令特征和父子关系定点停止，复查遗留为 0；没有重复下载，也未修改本地或远端。随后改用 UTF-8 Base64 Python 载荷在远端只读解析并仅输出房屋等级、家具/床计数，约 3 秒完成。任何跨隧道文件读取即使文件只有数 MB，也必须输出完整工具结果并准备续接；结构化大文件优先在数据所在端做最小投影。
 - 最近复发/补充：改成上限 `30000` 后，命令内部等待和三个远端查询仍略超 30 秒，工具按设计返回仍在运行的 session，`exit_code` 因进程未结束而省略；编排脚本却用 `undefined !== 0` 把它伪报为 `EXIT:undefined`，并且没有输出 `session_id`。长命令必须先判断是否存在 `session_id` 并把它交给 `write_stdin`；只有 `exit_code` 字段存在且非 0 才是进程失败。

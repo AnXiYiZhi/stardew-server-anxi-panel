@@ -2775,3 +2775,10 @@ npm.cmd run dev
 - SMAPI 卡片显示当前下载源、`已下载 / 总字节 · 百分比` 和原生 `role=progressbar` 语义；缓存命中、下载完成后校验/写入、尚未收到首个数据块分别有独立文案。绿色活动点说明任务仍在进行，`prefers-reduced-motion` 下停用脉冲和进度条过渡。
 - 顶部总进度、镜像拉取、Steam 下载和 SMAPI 下载均补齐 `aria-valuemin/max/now`。后端 marker 只用于派生 UI 并从可见任务日志中隐藏；可读的 `[smapi]` 日志仍保留。
 - 影响文件：`InstallPage.tsx`、`InstallPage.css`、`install-helpers.ts`、`test-install-state.ts`、`test-responsive-layout.ts`。2026-08-18 `test:install-state`、`test:responsive-layout` 与 `npm run build` 通过；尚未构建正式候选或部署生产，生产现网仍是旧版静态显示。
+
+# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2：新建游戏弹窗半屏布局修复（2026-08-18，未发布）
+
+- 旧的 `ngc-modal <= 1100px` 规则会把仍有约 800～1000px 内容宽度的弹窗直接压成单列。半屏浏览器中三块桌面内容被串成约 2048px 高的长页，虽然滚动仍在弹窗内部，但视觉上与 2026-08-09 的错误拉伸表现相同。
+- 新断点按弹窗自身内容宽度分四级：`<=1100px` 使用压缩三栏，`<=780px` 使用“联机设置 + 角色表单”两栏并把农场选择四列横排到底部，`<=560px` 才改为单列且联机设置内部保持双列键值网格，`<=480/360px` 再处理表单堆叠、触控箭头和极窄屏。容器仍固定为 `ngc-modal`，未重新绑定页面级 `sd-main-scroll`。
+- 影响 `NewGameCreator.css` 与 `test-responsive-layout.ts`；没有改变 React 表单结构、新建存档字段、默认值、提交 API 或 Junimo 通信。无 container query 的回退媒体查询同步同一层级，不再使用 `transform:scale()` 假装适配。
+- 验证：`npm run test:responsive-layout` 与 `npm run build` 通过。应用内 Browser 在默认 948×805 下得到 `221 / 430 / 192px` 三栏，弹窗内容由修复前约 2048px 降为 772px；840×720 与 769×500 分别得到 `243 / 504px`、`220 / 456px` 两栏，农场选择均为四列。三个视口 document `scrollWidth == clientWidth`，滚动只发生在弹窗内部，console warn/error 为 0。

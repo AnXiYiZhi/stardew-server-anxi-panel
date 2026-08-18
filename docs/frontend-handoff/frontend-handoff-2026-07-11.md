@@ -2025,3 +2025,20 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - 旧后端没有 SMAPI marker 时必须保留活动提示，不能重新回退到 SteamCMD 100% 或静态 Steam 认证卡；收到 100% 后也只能说下载结束/正在校验或安装，不能提前显示整个安装完成。
 - 正式候选仍需在慢速真实下载、候选切换、缓存命中以及窄屏/reduced-motion 下做 Browser 复验。当前变更尚未部署生产或发布。
+
+# FE-NEW-GAME-MODAL-COMPACT-LAYOUT-2 接手记录（2026-08-18，未发布）
+
+## 改了什么
+
+- `NewGameCreator.css` 不再在 `ngc-modal <= 1100px` 时直接把三栏改成单列。新层级为 1100px 压缩三栏、780px 两栏且农场选择横跨底部、560px 单列但联机设置内部保持双列、480/360px 手机与极窄屏细化。
+- 压缩布局同步缩小面板 padding、字段 label 列和农场卡间距，并把角色预览改成稳定的两列结构；删除旧 `transform:scale(.88)`，避免视觉缩放与真实占位高度不一致。无 container query 回退使用对应 viewport 断点。
+
+## 影响与验证
+
+- 影响 `frontend/src/games/stardew/NewGameCreator.css`、`frontend/scripts/test-responsive-layout.ts`。表单 JSX、新建存档 API、字段语义和后端均未修改。
+- `npm run test:responsive-layout`、TypeScript 与 Vite production build 通过。Browser 默认 948×805 为 `221 / 430 / 192px` 三栏，840×720 与 769×500 为两栏并把八张农场图排成四列；页面级横向溢出为 0，弹窗内部滚动可达，console warn/error 为 0。
+
+## 下一步注意事项
+
+- 响应式判断必须继续基于 `.sd-saves-modal-card-wide` 提供的 `ngc-modal`，不能恢复 `sd-main-scroll`。1100px 是压缩三栏入口，不再是单列入口；若调整列宽，至少复验默认半屏、840×720、769×500 和小于 560px 的强制桌面夹具。
+- 本地源码、production build 与 Browser QA 已完成；用户于 2026-08-18 明确授权随本次 `main` 推送进入自动候选。候选、Tag、Release 与生产部署仍以 workflow 实际终态为准，不能因本地通过提前标记已发布。
