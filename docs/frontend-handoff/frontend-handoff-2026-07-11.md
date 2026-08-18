@@ -1,6 +1,6 @@
 # DOCS-PORTAL-0.5.3 接手记录（2026-08-17，completed，已上线）
 
-- `website/docs/index.md` 与 `website/docs/changelog.md` 已发布 v0.5.3 的角色密码首次认领、Nexus 精确版本安装/一键更新、建档后人数上限、诊断/刷新改进，并保留对群友「石头佬」和「鹈鹕镇的热心市民」的特别感谢。
+- `website/docs/index.md` 与 `website/docs/changelog.md` 已发布 v0.5.3 的角色密码首次认领、Nexus 精确版本安装/一键更新、建档后人数上限、诊断/刷新改进，并保留对群友「石头磊」和「鹈鹕镇的热心市民」的特别感谢。
 - 官网 production build 已进入候选门禁并通过；push 对应的 Deploy docs portal `32033542832` 成功。GitHub Release 正文也已同步相同用户可读范围、候选/正式 workflow 与唯一 digest；正文更新没有移动 annotated tag 或改变镜像。
 
 # FE-NEXUS-MOD-ONECLICK-UPDATE-1 前端接手记录（2026-08-17，released in v0.5.3）

@@ -3,7 +3,7 @@
 ## 变更清单与受影响链路
 
 - 下一补丁版本由自动候选从当前正式版 `v0.5.2` 递增为 `0.5.3`；不手工创建、移动或提前推送 tag。用户明确把 `v0.5.2` 以后本地 `main` 上的已提交与未提交功能作为同一版本整体发布，范围固定为本节、专项/回归测试、升级 E2E、公开更新日志和长期接手文档。
-- `PLAYER-AUTH-SELF-ENROLL-1` 允许 role 模式在空角色或 waiting 角色存在时启用；首次合法 `!login` 为当前存档角色原子写入不可逆 verifier，管理员代设、清除与重新认领继续可用。凭据按 saveId 存入 `role-passwords.json`，带 initialized marker、Panel/Control 跨进程锁、原子权限写入、legacy 迁移和 store/`.env` 事务回滚；状态明确区分 waiting/configured/error/orphan。Control 升到 `0.3.6`，旧 Compose 自动补齐四个 SAP 环境变量，restart 只强制重建 server。特别感谢群友「石头佬」对密码功能的建议与帮助。
+- `PLAYER-AUTH-SELF-ENROLL-1` 允许 role 模式在空角色或 waiting 角色存在时启用；首次合法 `!login` 为当前存档角色原子写入不可逆 verifier，管理员代设、清除与重新认领继续可用。凭据按 saveId 存入 `role-passwords.json`，带 initialized marker、Panel/Control 跨进程锁、原子权限写入、legacy 迁移和 store/`.env` 事务回滚；状态明确区分 waiting/configured/error/orphan。Control 升到 `0.3.6`，旧 Compose 自动补齐四个 SAP 环境变量，restart 只强制重建 server。特别感谢群友「石头磊」对密码功能的建议与帮助。
 - `NEXUS-EXT-LATEST-1` 把主 Mod 与未满足前置的 Nexus 当前版本加入安装批次，只选择版本完全匹配的文件行并传递 `expectedVersion/nexusFileId`；服务端在 ZIP 下载后、Mods 落盘前复核 manifest 版本。`NEXUS-MOD-ONECLICK-UPDATE-1` 再把扩展升到 `0.1.8`：管理员可在已安装单成员 Nexus Mod 的更新提示旁复用同一批次一键更新，扩展额外发送 `replaceUniqueId`，后端先校验、再备份替换并保留 `config.json` 与启用状态；普通安装批次在当前项成功提交后才打开下一 Nexus 页，避免不同文件捕获状态交叉。缺版本、页面无匹配、错误 UID、聚合包或旧包都 fail closed；`FE-MODS-REFRESH-INSTALLED-1` 同时修复删除后刷新仍显示已安装的单向 merge。特别感谢群友「鹈鹕镇的热心市民」对 Mod 功能的反馈与帮助。
 - `SERVER-RUNTIME-MAXPLAYERS-1` 在既有 runtime settings GET/PUT 中增加 `maxPlayers=1~100`，保留旧客户端省略字段和配置文件未知字段；运行中显示 Control 当前生效值，保存只更新重启后配置且不静默重启。桌面摘要、快捷操作和移动控制页共用同一 hook/弹窗；真实 Docker 专项已覆盖 `11 → 配置 12 → 重启后 12`。
 - `SUPPORT-BUNDLE-LOG-CONTEXT-2` 为管理员诊断 ZIP 增加有界且脱敏的 Panel、server、steam-auth 与当前实例最近任务日志，保持邀请码、session、token、角色凭据、存档和恢复材料不外泄；导出入口移到诊断页页头。`FE-REFRESH-ACTIONS-AUDIT-1` 让诊断资源独立结算、任务空列表清理旧详情、移动备份兼容 null，并统一 dashboard 刷新的 Promise 契约。
