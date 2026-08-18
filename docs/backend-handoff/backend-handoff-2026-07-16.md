@@ -1,3 +1,15 @@
+# PANEL-UPDATE-LATEST-RELEASE-API-1 后端接手记录（2026-08-18，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `internal/updatecheck/service.go` 的默认更新源从 GitHub Releases 列表改为 `/releases/latest`，`fetchLatestRelease` 改为解析单个对象；返回 draft/prerelease 或后续 SemVer 校验失败时继续 fail closed。对外 `/api/system/update` 与 `/check` JSON 字段、权限和缓存语义不变。
+- `scripts/tests/test_release_candidate_upgrade.sh` 的受控 TLS GitHub 夹具同时支持旧 Panel 的 `/releases` 数组与新 Panel 的 `/releases/latest` 对象，其它路径返回 404，保证上一正式版 Web 升级到新候选时两端都使用各自真实协议。
+
+## 如何验证、下一步注意事项
+
+- `go test ./internal/updatecheck ./internal/web -run 'Test(Check|NetworkFailureRetainsLastSuccessfulResult|InvalidDevelopmentVersionNeverChecksOrReportsUpdate|DefaultClientUsesNetDNSFallbackTransport|SystemUpdatePermissions)' -count=1`、updatecheck 全包、Web 权限专项、`go vet/build`、升级脚本 `bash -n` 与 ShellCheck 0.11.0 均通过；正式 Release 接口只读核对为 `v0.5.4`。
+- 不要再通过 Releases 列表顺序推导 latest。升级夹具的旧数组路径在支持上一正式版期间不能提前删除；候选首次纳入发布时仍须真实执行上一正式版 Web update check/dry-run/unhealthy rollback/healthy apply。
+
 # JOB-LOG-LATEST-TAIL-1 后端接手记录（2026-08-18，未发布）
 
 ## 改了什么、影响哪些接口/文件

@@ -1,3 +1,8 @@
+# PANEL-UPDATE-LATEST-RELEASE-API-1 跨端契约（2026-08-18，未发布）
+
+- Panel 后端检查正式更新时必须调用 GitHub `GET /repos/anxiyizhi/stardew-server-anxi-panel/releases/latest`，解析单个 Release；不得依赖 `/releases` 列表顺序自行挑第一项。前端仍只消费现有 `latestVersion/updateAvailable/releaseUrl/publishedAt/checkedAt/checkStatus/checkError`，无需改接口。
+- latest 对象若为 draft、prerelease 或 tag 不是稳定 SemVer，后端返回现有错误状态并保留上次成功缓存，不允许进入 dry-run/apply。受控升级 E2E 同时提供旧版列表响应和新版 latest 对象，验证上一正式版与候选各自的真实更新检查协议。
+
 # JOB-LOG-LATEST-TAIL-1 跨端契约（2026-08-18，未发布）
 
 - `GET /api/jobs/:id/logs?latest=true&limit=N` 返回该任务最新 N 行日志，但 `logs` 始终按 `sequence` 升序，便于直接渲染；`limit` 最大 1000。响应为 `{ logs, hasEarlier }`，只有服务端确认存在更早行时 `hasEarlier=true`。

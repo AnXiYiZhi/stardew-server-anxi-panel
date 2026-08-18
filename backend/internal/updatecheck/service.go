@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	defaultReleasesURL = "https://api.github.com/repos/anxiyizhi/stardew-server-anxi-panel/releases?per_page=20"
-	defaultInterval    = 6 * time.Hour
-	defaultJitter      = 36 * time.Minute
-	requestTimeout     = 15 * time.Second
-	maxResponseBytes   = 1 << 20
+	defaultLatestReleaseURL = "https://api.github.com/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest"
+	defaultInterval         = 6 * time.Hour
+	defaultJitter           = 36 * time.Minute
+	requestTimeout          = 15 * time.Second
+	maxResponseBytes        = 1 << 20
 )
 
 type CheckStatus string
@@ -56,26 +56,26 @@ type HTTPDoer interface {
 }
 
 type Options struct {
-	CurrentVersion string
-	Commit         string
-	BuildDate      string
-	Client         HTTPDoer
-	ReleasesURL    string
-	Interval       time.Duration
-	Jitter         time.Duration
-	Now            func() time.Time
-	RandomFloat64  func() float64
-	Logger         *slog.Logger
+	CurrentVersion   string
+	Commit           string
+	BuildDate        string
+	Client           HTTPDoer
+	LatestReleaseURL string
+	Interval         time.Duration
+	Jitter           time.Duration
+	Now              func() time.Time
+	RandomFloat64    func() float64
+	Logger           *slog.Logger
 }
 
 type Service struct {
-	client        HTTPDoer
-	releasesURL   string
-	interval      time.Duration
-	jitter        time.Duration
-	now           func() time.Time
-	randomFloat64 func() float64
-	logger        *slog.Logger
+	client           HTTPDoer
+	latestReleaseURL string
+	interval         time.Duration
+	jitter           time.Duration
+	now              func() time.Time
+	randomFloat64    func() float64
+	logger           *slog.Logger
 
 	checkMu sync.Mutex
 	mu      sync.RWMutex
@@ -87,9 +87,9 @@ func New(opts Options) *Service {
 	if client == nil {
 		client = netdns.NewClient(requestTimeout)
 	}
-	releasesURL := strings.TrimSpace(opts.ReleasesURL)
-	if releasesURL == "" {
-		releasesURL = defaultReleasesURL
+	latestReleaseURL := strings.TrimSpace(opts.LatestReleaseURL)
+	if latestReleaseURL == "" {
+		latestReleaseURL = defaultLatestReleaseURL
 	}
 	interval := opts.Interval
 	if interval <= 0 {
@@ -126,7 +126,7 @@ func New(opts Options) *Service {
 	}
 
 	return &Service{
-		client: client, releasesURL: releasesURL, interval: interval, jitter: jitter,
+		client: client, latestReleaseURL: latestReleaseURL, interval: interval, jitter: jitter,
 		now: now, randomFloat64: randomFloat64, logger: logger, status: status,
 	}
 }
@@ -199,7 +199,7 @@ type githubRelease struct {
 }
 
 func (s *Service) fetchLatestRelease(ctx context.Context) (githubRelease, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.releasesURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.latestReleaseURL, nil)
 	if err != nil {
 		return githubRelease{}, fmt.Errorf("创建 GitHub Release 请求失败: %w", err)
 	}
@@ -217,21 +217,15 @@ func (s *Service) fetchLatestRelease(ctx context.Context) (githubRelease, error)
 		return githubRelease{}, fmt.Errorf("GitHub Release 返回 HTTP %d", resp.StatusCode)
 	}
 
-	var releases []githubRelease
+	var release githubRelease
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes))
-	if err := decoder.Decode(&releases); err != nil {
+	if err := decoder.Decode(&release); err != nil {
 		return githubRelease{}, fmt.Errorf("解析 GitHub Release 响应失败: %w", err)
 	}
-	for _, release := range releases {
-		if release.Draft || release.Prerelease {
-			continue
-		}
-		if _, ok := parseSemver(release.TagName); !ok {
-			continue
-		}
-		return release, nil
+	if release.Draft || release.Prerelease {
+		return githubRelease{}, errors.New("GitHub latest Release 不是正式 Release")
 	}
-	return githubRelease{}, errors.New("GitHub 没有可用的正式 Release")
+	return release, nil
 }
 
 // Run checks immediately after startup and then waits roughly six hours

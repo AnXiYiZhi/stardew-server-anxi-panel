@@ -149,9 +149,13 @@ http {
     ssl_certificate /certs/releases.crt;
     ssl_certificate_key /certs/releases.key;
     default_type application/json;
-    location / {
+    location = /repos/anxiyizhi/stardew-server-anxi-panel/releases/latest {
+      return 200 '{"tag_name":"v$version","html_url":"https://example.invalid/releases/v$version","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z"}';
+    }
+    location = /repos/anxiyizhi/stardew-server-anxi-panel/releases {
       return 200 '[{"tag_name":"v$version","html_url":"https://example.invalid/releases/v$version","draft":false,"prerelease":false,"published_at":"2026-01-01T00:00:00Z"}]';
     }
+    location / { return 404; }
   }
   server {
     listen 443 ssl;

@@ -58,17 +58,16 @@ func TestSemanticVersionComparison(t *testing.T) {
 	}
 }
 
-func TestCheckIgnoresDraftAndPrerelease(t *testing.T) {
+func TestCheckUsesLatestReleaseEndpoint(t *testing.T) {
 	checkedAt := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
 	client := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.UserAgent() == "" {
 			t.Fatal("missing user agent")
 		}
-		return jsonResponse(`[
-			{"tag_name":"v9.0.0","html_url":"https://example/draft","draft":true,"prerelease":false,"published_at":"2026-07-13T10:00:00Z"},
-			{"tag_name":"v2.0.0-rc.1","html_url":"https://example/rc","draft":false,"prerelease":true,"published_at":"2026-07-13T09:00:00Z"},
-			{"tag_name":"v0.1.15","html_url":"https://example/stable","draft":false,"prerelease":false,"published_at":"2026-07-12T08:00:00Z"}
-		]`), nil
+		if req.URL.String() != defaultLatestReleaseURL {
+			t.Fatalf("update URL = %q, want %q", req.URL.String(), defaultLatestReleaseURL)
+		}
+		return jsonResponse(`{"tag_name":"v0.1.15","html_url":"https://example/stable","draft":false,"prerelease":false,"published_at":"2026-07-12T08:00:00Z"}`), nil
 	})
 	svc := New(Options{CurrentVersion: "0.1.14", Commit: "abc", BuildDate: "today", Client: client, Now: func() time.Time { return checkedAt }})
 	status := svc.Check(context.Background())
@@ -80,12 +79,38 @@ func TestCheckIgnoresDraftAndPrerelease(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsNonStableLatestRelease(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "draft", body: `{"tag_name":"v9.0.0","html_url":"https://example/draft","draft":true,"prerelease":false,"published_at":"2026-07-13T10:00:00Z"}`},
+		{name: "prerelease", body: `{"tag_name":"v2.0.0-rc.1","html_url":"https://example/rc","draft":false,"prerelease":true,"published_at":"2026-07-13T09:00:00Z"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc := New(Options{
+				CurrentVersion: "v0.1.14",
+				Client: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return jsonResponse(test.body), nil
+				}),
+			})
+			status := svc.Check(context.Background())
+			if status.CheckStatus != StatusError || status.UpdateAvailable || status.LatestVersion != "" {
+				t.Fatalf("status = %+v", status)
+			}
+			if !strings.Contains(status.CheckError, "不是正式 Release") {
+				t.Fatalf("check error = %q", status.CheckError)
+			}
+		})
+	}
+}
+
 func TestNetworkFailureRetainsLastSuccessfulResult(t *testing.T) {
 	calls := 0
 	client := roundTripFunc(func(*http.Request) (*http.Response, error) {
 		calls++
 		if calls == 1 {
-			return jsonResponse(`[{"tag_name":"v0.2.0","html_url":"https://example/release","draft":false,"prerelease":false,"published_at":"2026-07-12T08:00:00Z"}]`), nil
+			return jsonResponse(`{"tag_name":"v0.2.0","html_url":"https://example/release","draft":false,"prerelease":false,"published_at":"2026-07-12T08:00:00Z"}`), nil
 		}
 		return nil, errors.New("temporary network outage")
 	})

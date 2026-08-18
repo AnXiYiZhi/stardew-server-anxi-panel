@@ -1,3 +1,9 @@
+# PANEL-UPDATE-LATEST-RELEASE-API-1 候选升级夹具兼容（2026-08-18，未发布）
+
+- 面板更新检查迁移到 GitHub `/releases/latest` 单对象接口。候选 DinD 的受控 TLS `api.github.com` 夹具现在精确区分两条路径：`/repos/anxiyizhi/stardew-server-anxi-panel/releases/latest` 为新候选返回单对象，`/repos/anxiyizhi/stardew-server-anxi-panel/releases` 为上一正式版返回兼容数组；其它路径 404。
+- 这项双协议夹具是上一正式版真实 Web 升级门禁的一部分，不能只把所有路径统一改成新对象，否则旧 Panel 会在 update check 阶段解析失败；也不能只保留旧数组，否则新候选无法证明生产 latest 契约。
+- 当前完成 updatecheck/Web 专项、`go vet/build`、升级脚本 Git Bash `bash -n` 与 ShellCheck 0.11.0；未执行候选、未创建 tag、未推送镜像或更新 `latest`。正式发布仍须按本文件门禁验证旧版检查、候选检查、dry-run、unhealthy 回滚、healthy apply 与升级后接口。
+
 # v0.5.3 角色密码 / Nexus 安装更新 / 运行设置聚合正式发布（2026-08-17，released）
 
 ## 变更清单与受影响链路

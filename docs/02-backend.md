@@ -1,3 +1,9 @@
+# PANEL-UPDATE-LATEST-RELEASE-API-1：面板更新检查改用 GitHub latest（2026-08-18，未发布）
+
+- Panel 更新检查不再请求 `/releases?per_page=20` 并假定列表首个稳定条目就是最新版本；默认源改为 GitHub 官方 `GET /repos/anxiyizhi/stardew-server-anxi-panel/releases/latest`，按单个 Release 对象解析。
+- 返回对象仍须满足 `draft=false`、`prerelease=false` 且 tag 为有效 SemVer，否则进入现有 `checkStatus=error`，保留上次成功结果，不生成任意升级目标。请求超时、响应上限、NetDNS fallback、管理员手动刷新和 6 小时自动检查契约不变。
+- `internal/updatecheck/service_test.go` 锁定精确 latest URL、单对象响应、draft/prerelease 拒绝和网络失败缓存；2026-08-18 只读核对官方 latest 与列表接口当前均为 `v0.5.4`，本修复纠正的是权威接口契约而非伪造版本差异。updatecheck/Web 专项、`go vet ./...`、`go build ./...` 均通过。
+
 # JOB-LOG-LATEST-TAIL-1：任务日志最新尾页读取（2026-08-18，未发布）
 
 - `GET /api/jobs/:id/logs` 新增兼容查询参数 `latest=true`。该模式按 `sequence DESC` 有界读取最新 `limit` 行，再在返回前恢复为时间正序；原有 `after=<sequence>` 增量读取与 SSE 契约不变。

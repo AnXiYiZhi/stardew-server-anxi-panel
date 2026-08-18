@@ -2143,3 +2143,10 @@ Multi Game Mode later
 - [x] 任务页、安装页和右栏活动任务改取最新尾页；运行中任务从尾部 sequence 继续接 SSE，确有更早日志时显示准确提示。
 - [x] 存储/HTTP 专项、storage/Web 包、`go vet/build`、前端 responsive/install 状态回归和 production build 已通过；Web 首轮命中的无关存档导入时序用例单独及整包重跑均通过。
 - [ ] 尚未构建或部署生产镜像；如纳入正式版本，仍须按发布门禁从同步且干净的 `main` 构建不可变候选并完成 Web 升级/回滚。
+
+# PANEL-UPDATE-LATEST-RELEASE-API-1（2026-08-18，未发布）
+
+- [x] 面板正式更新检查从 GitHub Releases 列表首项推导改为官方 `/releases/latest` 单对象接口；draft、prerelease 和非 SemVer 继续 fail closed，并保留上次成功缓存。
+- [x] 更新检查专项锁定精确 URL、响应形态与错误边界；updatecheck/Web、`go vet/build`、升级脚本 Bash/ShellCheck 门禁通过，官方只读实测 latest 当前为 `v0.5.4`。
+- [x] 候选升级受控 TLS 夹具同时服务旧 Panel 的列表数组和新候选的 latest 对象，其它 GitHub API 路径返回 404。
+- [ ] 本地代码尚未推送；不得因完成修复自动触发 release-candidate。只有用户明确授权发布后才进入完整候选、自动 Tag 与正式提升链。
