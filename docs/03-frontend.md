@@ -1,8 +1,8 @@
-# DOCS-PORTAL-0.5.4-0.5.5：官网更新日志与 Release 说明补齐（2026-08-18，completed，待上线）
+# DOCS-PORTAL-0.5.4-0.5.5：官网更新日志与 Release 说明补齐（2026-08-18，completed，已上线）
 
 - `website/docs/changelog.md` 补上此前未进入官网的 `v0.5.4` 与 `v0.5.5`：前者说明 SMAPI 真实下载进度和 SteamCMD 授权复用，后者说明正式 latest 更新检查、任务最新日志尾页、联机人数保存并重启、半屏建档布局与 image2 素材修复。
 - `website/docs/index.md` 的版本角标、更新卡和 CURRENT RELEASE 同步到 `v0.5.5`。本次只修改公开文档和发布说明，不改变 Panel bundle、API、annotated tag、正式镜像或 digest。
-- GitHub Release `v0.5.4`、`v0.5.5` 正文已补齐用户可读变更、候选门禁、正式提升与唯一 digest；正文编辑没有移动 tag、重新构建镜像或触发候选。官网 production build 与 Pages 结果在本次文档提交推送后补记。
+- GitHub Release `v0.5.4`、`v0.5.5` 正文已补齐用户可读变更、候选门禁、正式提升与唯一 digest；正文编辑没有移动 tag、重新构建镜像或触发候选。docs-only 提交 `95f190d` 的本地/CI VitePress build 与 Compatibility 均通过；首条 Pages run `32133444566` 的 deploy runner 长时间排队后取消，仅手动重跑同一 `docs.yml`，`32135628751` build 18 秒、deploy 10 秒成功。线上首页/changelog 均为 200，并确认包含 v0.5.5、v0.5.4 与本次四组摘要；该提交没有 Validate release candidate run。
 
 # FE-JOB-LOG-LATEST-TAIL-1：完成任务默认展示日志结尾（2026-08-18，released in v0.5.5）
 

@@ -36,7 +36,7 @@
 
 - 正式发布 commit=`a77fbe61e2423cac39233c6796a3024bd146b365`。Compatibility `32127766392` 于 `2026-08-18T10:38:41Z..10:41:20Z` 成功；自动候选 `32127766494` 于 `10:38:41Z..10:47:42Z` 成功，使用上一正式版 `v0.5.4` 完成 fresh/restart、真实 Panel Web unhealthy 回滚与 healthy 升级，并在升级后的 production bundle 复验更新检查、运行设置、最新任务日志与新建游戏布局。
 - 自动 Tag `32128518008` 于 `10:47:43Z..10:47:57Z` 成功；正式提升 `32128533342` 于 `10:47:55Z..10:49:24Z` 成功，只提升候选证明中的 digest=`sha256:584a460c90103966394e71c67fe5416822985c9b8246013b5d2cff80400174de`，没有重新 build。annotated `v0.5.5`、三仓精确版本与 `latest`、GitHub Release 均对应同一 commit/digest。
-- GitHub Release 正文已在发布后补齐用户可读汇总、候选与正式提升链接、唯一 digest 和完整 compare 链接；只编辑 Release 正文，没有移动 tag、改变资产、重推镜像或触发第二个候选。官网首页/changelog 的 v0.5.4/v0.5.5 补写由后续 docs-only 提交部署，不改变本候选证明。
+- GitHub Release 正文已在发布后补齐用户可读汇总、候选与正式提升链接、唯一 digest 和完整 compare 链接；只编辑 Release 正文，没有移动 tag、改变资产、重推镜像或触发第二个候选。官网首页/changelog 的 v0.5.4/v0.5.5 补写由 docs-only `95f190d` 部署：首条 Pages run 的 build 成功、deploy runner 长时间排队后取消，仅手动重跑同一 `docs.yml`；`32135628751` build/deploy 成功，线上两页 200 且内容复核通过。该文档链没有 Validate release candidate，不改变本候选证明。
 
 # v0.5.4 安装进度与 SteamCMD 授权复用正式发布（2026-08-18，released）
 

@@ -1982,6 +1982,7 @@
 
 ## 2026-08-01：把 PowerShell 自动变量当成任务变量
 
+- 最近复发/补充：2026-08-18 重跑 Pages 后的线上验收再次把首页响应命名为 `$home`，PowerShell 大小写不敏感地命中只读 `$HOME`，首个 `Invoke-WebRequest` 赋值阶段即停止；没有发出后续断言、修改官网或改变 GitHub 状态。改用既有约定 `$portalHomeResponse` / `$portalChangelogResponse` 后继续。该错误已多次复发且 `AGENTS.md` 已明确禁止复用 `$HOME/$home`；线上探针必须直接复制任务前缀变量名，不得再临时缩写。
 - 最近复发/补充：2026-08-16 v0.5.1 官网线上验收把首页响应再次命名为 `$home`，PowerShell 因变量名大小写不敏感而命中只读 `$HOME`，在首个 HTTP 响应赋值时退出；网站和仓库均未被该命令修改。后续必须沿用已有 `$portalHomeResponse` / `$portalChangelogResponse` 命名，任务变量声明前也要执行系统变量冲突检查。
 - 最近复发/补充：2026-08-13 v0.4.14 官网线上 HTTP 验收首次把首页响应命名为 `$home`；PowerShell 变量名大小写不敏感，实际命中只读自动变量 `$HOME`，赋值阶段报错，随后对空值调用字符串方法继续报错。命令没有外部写入；随即改为 `$portalHomeResponse` / `$portalChangelogResponse` 并只输出布尔断言。任务变量必须使用业务前缀，不能用 `$home`、`$host` 等看似普通但会命中自动变量的名称。
 - 环境：Windows，PowerShell 7，整理 Docker 候选镜像检查结果。

@@ -1,4 +1,4 @@
-# DOCS-PORTAL-0.5.4-0.5.5 接手记录（2026-08-18，completed，待上线）
+# DOCS-PORTAL-0.5.4-0.5.5 接手记录（2026-08-18，completed，已上线）
 
 ## 改了什么、影响哪些文件
 
@@ -7,7 +7,7 @@
 
 ## 如何验证、下一步注意事项
 
-- 先运行 `website` 的 `npm run docs:build`；推送包含 `website/**` 的 docs-only 提交后等待 Deploy docs portal 与 Compatibility，确认同一提交没有 Validate release candidate。Pages 成功后再补写线上证据，不要把“Release 正文已更新”误写成“官网已上线”。
+- `website` 的 `npm run docs:build` 与 Compatibility `32133444574` 通过；提交 `95f190d` 没有 Validate release candidate。首条 Pages `32133444566` 的 build 成功但 deploy runner 长时间排队，取消后只手动 dispatch 同一 `docs.yml`；重跑 `32135628751` build/deploy 成功。线上首页和 changelog 均返回 200，精确包含 v0.5.5、v0.5.4、人数保存重启与 SteamCMD 授权复用正文。
 - 后续发布时首页 frontmatter `release`、CURRENT RELEASE、首页摘要、changelog 首项和 GitHub Release 正文必须保持同一版本；正文可以发布后补充，但不得借此移动既有 annotated tag 或重建已证明 digest。
 
 # FE-JOB-LOG-LATEST-TAIL-1 前端接手记录（2026-08-18，released in v0.5.5）
