@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-20：正式提升不得重复 apt 安装 runner 已预装的 Skopeo
+
+- 环境：GitHub-hosted `ubuntu-24.04` runner image `20260810.271`，`v0.5.6` 正式 digest 提升。
+- 错误模式：release workflow 在已通过 tag/main/proof 身份后，无条件执行 `sudo apt-get update -qq` 与 `apt-get install skopeo`，没有先核对 runner 镜像的软件清单或 `command -v skopeo`。
+- 症状 / 退出码：首条提升 run `32277471754` 在 apt 步骤静默 20 分钟后受控取消；同 tag 重试 `32279520480` 在第二个独立 runner 同一步从 `17:04:55Z` 静默到 45 分钟 job 上限，最终 timeout。两条 run 的 registry 认证、候选 OCI 复核、三仓 version/latest、smoke 和 GitHub Release 均未开始；`v0.5.6` 只有已验证候选与 annotated tag，不是正式 Release。
+- 根因：官方 runner image `ubuntu24/20260810.271` 软件清单已包含 `Skopeo 1.13.3`；多余的 apt update 引入外部软件源等待，并因 `-qq` 没有进度输出，最终耗尽整个正式提升预算。
+- 正确做法：release workflow 直接 `command -v skopeo` 并输出 `skopeo --version`，缺失时 fail closed；不在正式提升路径即时 apt 安装。旧 `v0.5.6` tag 不移动、不删除、不冒充已发布，修复提交从上一正式版 `v0.5.5` 重建下一不可变 `v0.5.7` 候选。
+- 预防检查：新增 runner 工具安装前先核对该精确 runner image 的官方 software readme，并在 workflow 里探针实际二进制；已预装工具不得引入无上限网络安装。任何工具链修复都不能绕过候选 proof、OCI identity、digest copy、smoke 或三仓一致性。
+- 适用范围：GitHub Actions 发布、runner 预装工具、apt 软件源和 registry digest 提升。
+
 ## 2026-08-20：候选 E2E 不得把项目 job ID 猜成 UUID
 
 - 环境：PowerShell 7 启动的任务专属 DinD，`v0.5.5 → v0.5.6` 存档导入升级专项。
@@ -45,6 +55,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-20 修复正式提升工具后查找 workflow YAML 校验入口时，又把不存在的仓库根 `package.json` 与已确认存在的 `.github`、`scripts` 一起传给 `rg`；命令输出路径不存在，文件与发布状态未变化。前端/网站 package 已知位于各自子目录，查 workflow 工具根本不需要附加猜测的 root package。相同模式已在本轮补记并提升到 `AGENTS.md`，后续验证只传 `rg --files` 已列出的路径。
 - 最近复发/补充：2026-08-20 发布前定位 `audit_logs` schema 时，前一条 `rg --files backend` 已明确列出 `backend/migrations/*.sql` 和 `backend/internal/storage/migrations.go`，后续仍凭职责猜成不存在的 `backend/internal/storage/store.go` 与 `backend/internal/storage/migrations`；`rg` 返回路径不存在，文件与发布状态均未变化。已有真实命中必须直接成为下一条命令的输入，不能在命中后再改写成“看起来更合理”的路径；本规则已由 `AGENTS.md` 的真实路径唯一依据与逐项 fail-fast 门禁覆盖。
 - 环境：PowerShell 7，本地检查前端页面与重启调用链。
 - 错误模式：把实际位于 `frontend/src/games/stardew/pages`、且 API 为单文件 `frontend/src/api.ts` 的代码，按常见前端结构猜成不存在的 `frontend/src/pages`、`frontend/src/api` 和 `frontend/src/components`，并放入同一组 `rg` 参数。
@@ -3499,6 +3510,7 @@
 
 ## 2026-08-16：Windows 长轮询超出 `exec_command` 等待上限
 
+- 最近复发/补充：2026-08-20 正式提升轮询时又在单次命令里先 `Start-Sleep -Seconds 30`，同时把 `exec_command.yield_time_ms` 设为 Windows 上限 30000；命令在临界点返回空投影，没有得到预期 job JSON。随后的无 sleep 固定 job API 查询成功，远端 workflow 未被取消或重放。相同模式已多次复发，现把“内部等待必须明显短于 yield，状态轮询默认直接查询”提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-19 顺序执行 Web 全包、`go vet`、`go build` 时把三项放进一个可能超过 30 秒的统一命令，并在 JavaScript 编排中再次只输出 `r.output`；工具在 30 秒边界后没有可见终态，session 标识也未保留。随后通过精确 `go.exe/compile.exe/vet.exe/link.exe + 工作区命令行` 探针确认遗留进程为零，才把三项拆成独立调用；以后任何全包 Go 门禁即使通常较快，也必须一项一调用并输出完整工具结果。
 - 最近复发/补充：2026-08-18 为生产安装任务做 30 秒后复查时，命令内部先 `Start-Sleep -Seconds 30` 再建立 SSH，必然略超 `yield_time_ms=30000`；编排仍只投影 `output/exit_code`，再次显示伪造的 `EXIT_CODE=undefined` 并丢失可续接 session。随后以精确命令行核对没有遗留诊断进程。状态复查不得把 sleep 预算吃满工具 yield；应直接立即查询，或输出完整返回对象并在存在 `session_id` 时用 `write_stdin` 续接。
 - 最近复发/补充：2026-08-17 本任务的统一 `exec_command` 返回 `session_id` 后，误把它的 `chunk_id` 交给只支持 yielded JavaScript cell 的 `functions.wait`，工具报告 cell not found；原 Go 进程仍由统一终端 session 持有，没有重复启动。随后改用同一 `session_id` 的 `write_stdin` 取得终态。`functions.wait(cell_id)` 与 `write_stdin(session_id)` 属于两类不同会话，不能按字段名相似混用。
@@ -3514,6 +3526,7 @@
 
 ## 2026-08-16：把 `git log` 的 `%n` 换行格式类推给 `for-each-ref`
 
+- 最近复发/补充：2026-08-20 核对 `v0.5.6` annotated tag 时再次在 `git for-each-ref --format` 中写入四段 `%n`，命令退出 0 但把它们原样输出；tag type 与 peeled commit 已由独立命令正确核对，发布状态未变化。相同错误已是第二次，现把“`for-each-ref` 禁用 `%n`、发布证据默认一字段一命令”提升到 `AGENTS.md`。
 - 环境：PowerShell 7、Git for Windows，核验 `v0.5.0` annotated tag。
 - 错误模式：在 `git for-each-ref --format` 中使用 `%n` 拼接 object、tagger date、subject 和 contents，误以为它与 `git log --format` 的换行占位符一致。
 - 症状 / 退出码：命令退出 0，但首项原样包含字面量 `%n`，PowerShell 又把 tag contents 的后续行拆成数组，不能作为结构化 tag 证据；tag 和仓库未变化。

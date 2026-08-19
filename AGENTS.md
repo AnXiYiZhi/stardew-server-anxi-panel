@@ -82,6 +82,7 @@
 - 正式候选预取上一正式版和固定 fixture 镜像时，每个精确引用必须使用最多三次的有界 `docker pull`，单次 GHCR/Docker Hub token、TLS 或 EOF 失败不得直接判成镜像缺失；成功后必须 `docker image inspect` 再打包进入隔离 DinD。重试不关闭 TLS/认证、不改变引用，也不得重放 push、tag 或 workflow dispatch。
 - 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前和清理后都要用 `Get-NetTCPConnection -State Listen` 检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留；清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。
 - 正式发布门禁不得在同一个工具编排调用中以 `Promise.all` 等方式并发启动多个长运行 Shell；必须逐项使用可等待、可取得完整退出码与输出的独立调用。编排层异常、超时或提前返回后，先核对精确宿主进程、容器和 volume，再决定恢复或重跑，禁止在终态未知时重复启动同一门禁。
+- Windows `exec_command` 内部 `Start-Sleep`/轮询等待必须明显短于对应 `yield_time_ms`，禁止用 30 秒 sleep 吃满 30000 ms 工具上限；状态复查默认立即查询。长命令返回 session 时必须保留完整返回对象并用 `write_stdin(session_id)` 续接，不能只投影 output 或把缺失 exit code 当失败。
 - Windows 上 `npm ci` 若因现有 `node_modules` 文件锁报 `EPERM`，不得强删目录或反复重试；改用与发布版本一致的 Node Linux 容器和独立 `node_modules` volume 完成门禁，再按精确名称清理测试 volume。
 - 进入任一 Node 子项目执行门禁前必须先读取该目录当前 `package.json.scripts`，只能调用实际声明的脚本；不得把相邻 package 的脚本名直接复用。官网正式构建入口是 `website` 下的 `npm run docs:build`，不是 `npm run build`。
 - 前端洁净发布门禁必须把完整仓库挂到容器内稳定根目录，并从 `<repo>/frontend` 运行；`test:responsive-layout` 会读取仓库根 `.github/workflows`，禁止只挂 `frontend/` 后把它误解析成 `/.github`。`frontend/node_modules` 与 `frontend/dist` 使用任务专属独立 volume。
@@ -89,12 +90,14 @@
 - 应用内 Browser 验证本地 Vite/VitePress 时使用 `domcontentloaded` 后等待唯一可见 DOM，不使用当前后端不支持的 `networkidle`；导航断言只传文档支持的精确 URL，不能传正则/predicate。静态站的精确目标必须从当前 DOM `href` 与实际 SPA/普通文档路由模式解析，不得硬编码 `.html` 规范化假设；主测试与 A/B/补充脚本共用同一目标契约。VitePress 的复合链接可能含图标/箭头，标题 accessible name 可能附带 permalink；定位前先读 DOM snapshot，链接优先用唯一 role/href，标题顺序从 `main h1/h2` 可见文本或首文本节点断言，禁止把肉眼主文案直接传给 `exact:true` 重放已知超时。窄屏固定导航页面不得用 `fullPage` 拼接截图判断渲染，必须结合普通视口截图与 root/body `scrollWidth <= clientWidth` 度量。
 - 应用内 Browser 的持久 tab 引用跨用户中断、turn 或自动清理后可能失效。关闭、读取或继续操作旧 tab 前，必须先用当前 browser 的 `tabs.list()` 按 id 核对仍存在；缺失时直接丢弃旧引用并按需要重新取得标签，不得对已知 stale 引用重放 `url()`、`close()` 或其它操作。
 - 精简容器运行项目门禁前必须核对子进程依赖：VitePress `lastUpdated` 构建使用 Node Alpine 时先安装 `git`；兼容矩阵需要 Docker CLI 与 buildx，updater/runtime Docker integration 需要 Docker CLI 与 Compose；挂载任务允许的 Docker Socket 后仍必须先通过相应 `docker version`、`docker buildx version`、`docker compose version` 探针。第三方 lint 镜像首次使用前先 inspect Entrypoint/Cmd，ShellCheck 命令必须显式调用 `shellcheck`。
+- GitHub-hosted runner 上的发布工具先以精确 runner image 官方 software readme 和 `command -v`/版本探针为准；已预装的 Skopeo、Docker、gh、jq 等不得在正式提升里再次即时 `apt-get update/install`。确需安装新工具时必须有版本固定、完整性校验和有界网络等待，不能让静默软件源占满整个发布 timeout。
 - VitePress/Vite 构建会在 `.vitepress` 配置目录创建 `config.ts.timestamp-*.mjs`；禁止再使用“完整源码只读 bind，仅给 `node_modules`/cache/dist 写卷”的门禁形态。使用任务副本，或允许配置目录临时可写并在构建后用 Git 状态确认只剩预期修改；产物、缓存和依赖仍用任务专属 volume 隔离。
 - Control Mod 真实 C# 编译必须复用项目已验证的标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false` 输出路径；不得在含既有 `bin/obj` 的源码树上改写 `BaseIntermediateOutputPath`/`BaseOutputPath`，否则旧生成源码会重新进入编译。需要只读源码隔离时先制作排除 `bin/obj` 的任务副本；一次性 SDK 容器没有已验证 NuGet 缓存时不得强制 `--network none` 后假定 restore 可用。
 - 容器内测试调用宿主 Docker 时，daemon 看不到调用方容器私有的 `t.TempDir()`/`/tmp`。凡测试会把临时路径作为二级容器 bind source，必须改在带所需工具链的任务专属 DinD 容器内执行，或使用双方明确共享的宿主 bind；不能仅挂 Docker Socket后假定路径可见。
 - Windows Docker Desktop 向 DinD 预加载镜像时，优先为任务容器绑定唯一环回 TCP 端口，并用宿主 CLI `docker -H ... image load -i`；若使用 `docker cp`，即使退出 0 也必须立即在目标端核对存在、大小和摘要，不能仅凭退出码继续。
 - `rg` 在 Windows 上不要传递未由 Shell 展开的 `path/*` 或 `Dockerfile*`；使用 `rg -g '<glob>' <pattern> <root>`、明确目录或先用 `rg --files`。搜索模式以 `-` 开头时必须使用 `-e '<pattern>'` 显式声明，或在其它参数后用 `--` 结束选项解析；引号与 `-F` 都不能替代该边界。文本搜索优先 `rg`，文件列表优先 `rg --files`。
 - 按函数、类型或文本定位源码时，`rg` 返回的真实文件路径是后续读取的唯一依据；禁止在同一组合命令后半继续读取凭记忆猜测的文件名。先完成检索，再以独立 fail-fast 命令读取精确命中路径；PowerShell 只读组合也必须使用 `$ErrorActionPreference='Stop'` 或逐项检查，不能让后续成功命令掩盖 `Get-Content` 失败。
+- Git tag/ref 发布审计中，`git for-each-ref --format` 禁止使用属于 `git log --format` 的 `%n` 换行占位符；结构化证据默认一字段一命令，只有经过独立探针确认时才使用该子命令支持的 `%0a`。tag type、object、peeled commit、tagger date 与 subject 分别核对，不能让退出 0 的字面量占位符冒充有效格式。
 - Web 搜索编排层若连续两次在执行前返回同类解析错误，停止改写并重放该搜索形态；改用已确认的官方精确 URL，或使用已验证的 CLI/API 读取同一主来源。`functions.exec` 中编排 `web__run` 对象数组时，只从已验证骨架复制 `{q: "..."}`、`{ref_id: "..."}` 等完整键值结构，不得手写混合 JavaScript 与 JSON 的键名。
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
