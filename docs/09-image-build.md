@@ -6,6 +6,7 @@
 - 兼容 v0.5.5 已清空任务中心的真实现场：只有 confirmed journal、owned token 的 job/type/idempotency/token-hash 绑定、绑定记录早于之后成功的 `jobs_cleared` 审计，且当前没有活动 import/recovery job 时，才允许把缺失 job 视为旧终态证明。submitted/unknown、FIFO 已尝试、身份不一致或任何恢复证据模糊时继续 fail closed。
 - 现行 `DELETE /api/jobs` 在删除终态任务前先逐实例收敛可安全恢复的存档导入；不能安全恢复时返回 409 并保留 job/journal/token 证据。公开存档上传 DTO、job 类型、SQLite schema、前端 bundle 与运行栈清单不变。
 - `scripts/tests/test_release_candidate_upgrade.sh` 在 `v0.5.5 → v0.5.6` 升级后的真实 Panel/Docker 中制造 maintenance Compose 失败，再按旧版顺序删除终态 jobs 并留下更晚的 `jobs_cleared` 审计；下一次普通 preview 必须自动清旧 journal/staged target、保留现有存档和 preimport 备份并返回新 token。
+- 候选预取上一正式版及 `registry/nginx/alpine` 固定夹具时，Windows/Linux 包装器对同一精确引用增加最多三次的有界 pull，并在成功后 inspect；一次 token/TLS/EOF 瞬断不再浪费已经通过的 build/fresh 结果，也不降低认证、TLS、引用或 digest 门禁。
 
 `上传 preview → commit 202 / 前端丢弃 token → maintenance 失败 → terminal job + unfinished journal → 下一次 preview / 清空任务 → 精确身份恢复 → driver strict cleanup → 新上传可继续`
 
@@ -25,7 +26,7 @@
 
 ## 推送前证据与自动门禁选择
 
-- Windows 定向恢复专项、jobs/storage 包已通过；任务专属 Linux Go 1.25 容器内 Web 全包、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 已通过，容器与缓存卷精确清零。候选升级 E2E 新增脚本已通过 Git Bash `bash -n`，仍须在最终提交完成 ShellCheck 和真实 DinD 执行。
+- Windows 定向恢复专项、jobs/storage 包已通过；任务专属 Linux Go 1.25 容器内 Web 全包、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 已通过，容器与缓存卷精确清零。候选升级 E2E 新增脚本已通过 Git Bash `bash -n` 与 ShellCheck 0.11.0。首次本地候选预演的 build、fresh/restart 已通过，预取 `ghcr.io/...:0.5.5` 时匿名 token 请求单次 EOF；包装器已改为同引用有界重试，完整 DinD 预演仍须重新通过。
 - 相对 `v0.5.5` 修改后端 Web/storage、升级 E2E 脚本和长期文档，没有 frontend、Control、SMAPI/Junimo runtime manifest、Compose 部署格式、数据库 migration 或长期数据 schema 变化。自动候选必须执行后端 test/vet/build、前端全量状态回归/audit/build、脚本测试/ShellCheck、compatibility、fresh/restart、updater/Docker integration，以及上一正式版真实 Web unhealthy 回滚与 healthy 升级；其它长链的选择/跳过只由 `scripts/run-release-gates.sh` 按 `v0.5.5..candidate SHA` 路径差异判定。
 - 用户于 2026-08-20 明确要求“发布”，允许最终本地 `main` 提交并推送 `origin/main`，触发自动候选、annotated tag 和同 digest 正式提升。候选 proof、升级专项、自动 Tag、三仓提升和正式 smoke 全部成功前，本节保持 pre-release，不得宣称 `v0.5.6` 已发布。
 

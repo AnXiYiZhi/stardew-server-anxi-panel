@@ -1206,6 +1206,7 @@
 
 ## 2026-08-09：正式镜像回拉与 manifest 查询未统一使用有界网络重试
 
+- 最近复发/补充：2026-08-20 `v0.5.6` 本地候选预演已完成 build 与 fresh/restart，首次预取精确上一正式版 `ghcr.io/...:0.5.5` 时，匿名 token 请求返回 `EOF`，包装器单次 pull 后退出 1；升级夹具尚未启动，动态 owner 容器/卷/临时目录已归零，只有精确任务镜像保留待复用。不能把此结果解释成镜像缺失或产品失败；Windows/Linux 候选包装器都应对每个固定 fixture 引用做最多三次独立、保留 TLS/认证的 pull，并在成功后 inspect，再进入 `docker save`。
 - 最近复发/补充：2026-08-13 v0.4.15 Web 升级夹具准备时，任务 DinD 首次 `pull nginx:alpine` 在 `registry-1.docker.io/v2/` 返回 EOF，1.7 秒退出 1；registry 镜像已完成、gateway/Panel 尚未创建。保持 TLS/摘要校验，对该精确引用按最多三次独立重试并在成功后 inspect，不能把准备期暂态 EOF 记为产品升级失败。
 - 最近复发/补充：2026-08-10 发布后已按 index digest 回拉 Docker Hub 镜像，却在 `docker run` 时改用未登记为本地引用的 amd64 manifest digest；Docker daemon 重新向配置的镜像代理发 HEAD 并收到 403，容器未创建，夹具按 owner 清理。正确做法是远端分别核对 index/amd64 manifest，实际 pull/run 使用已回拉的不可变 index 引用；Docker Desktop containerd image store 的 `.Id` 可能呈现 index，不得把它再描述成 config digest。修正后 Docker Hub、ACR、GHCR 三组 health/version/restart 冒烟均通过。
 - 最近复发/补充：2026-08-10 post-release 文档独立复核再次在 Docker Hub `0.4.10` 的 OAuth token 阶段遇到一次 EOF；没有把它解释成 tag 缺失或重新发布，按既有逐引用有界重试后同一 index/amd64 manifest 查询成功。每个审查者和每个发布阶段都要实际使用同一重试模板，不能因为主流程已成功就假定后续只读复核不会断流。

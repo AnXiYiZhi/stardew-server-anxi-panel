@@ -227,9 +227,24 @@ docker volume rm "$fresh_volume" >/dev/null
 
 echo "release candidate: exporting exact image for isolated Web-upgrade E2E"
 docker save -o "$candidate_tar" "$candidate_image"
+pull_fixture_image() {
+  local image_ref="$1"
+  local attempt=""
+  for attempt in 1 2 3; do
+    echo "release candidate: pre-fetching $image_ref (attempt $attempt/3)"
+    if timeout --foreground 300 docker pull "$image_ref" && docker image inspect "$image_ref" >/dev/null; then
+      return 0
+    fi
+    if ((attempt < 3)); then
+      echo "release candidate: pull failed; retrying the same exact reference" >&2
+      sleep "$attempt"
+    fi
+  done
+  echo "release candidate: failed to pre-fetch $image_ref after 3 attempts" >&2
+  return 1
+}
 for fixture_image in "$previous_ref" registry:2 nginx:alpine alpine:3.20; do
-  echo "release candidate: pre-fetching $fixture_image"
-  timeout --foreground 300 docker pull "$fixture_image"
+  pull_fixture_image "$fixture_image"
 done
 docker save -o "$fixtures_tar" "$previous_ref" registry:2 nginx:alpine alpine:3.20
 docker run -d --privileged --name "$dind_container" --label "com.anxi-panel.test-owner=$owner" --env DOCKER_TLS_CERTDIR= --volume "$repo_root:/workspace:ro" --volume "$temp_root:/candidate:ro" docker:29-dind >/dev/null

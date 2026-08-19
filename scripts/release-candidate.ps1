@@ -45,20 +45,36 @@ function ConvertTo-UtcIsoString {
 function Invoke-DockerPullWithTimeout {
     param(
         [Parameter(Mandatory = $true)][string]$ImageRef,
-        [int]$TimeoutSeconds = 300
+        [int]$TimeoutSeconds = 300,
+        [int]$MaxAttempts = 3
     )
 
-    Write-Output "release candidate: pre-fetching $ImageRef"
     $dockerPath = (Get-Command docker -ErrorAction Stop).Source
-    $process = Start-Process -FilePath $dockerPath -ArgumentList @('pull', $ImageRef) -PassThru -NoNewWindow
-    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-        Stop-Process -Id $process.Id -Force
-        $process.WaitForExit()
-        throw "docker pull timed out after $TimeoutSeconds seconds: $ImageRef"
+    $lastFailure = ''
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        Write-Output "release candidate: pre-fetching $ImageRef (attempt $attempt/$MaxAttempts)"
+        $process = Start-Process -FilePath $dockerPath -ArgumentList @('pull', $ImageRef) -PassThru -NoNewWindow
+        try {
+            if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                [void]$process.WaitForExit()
+                $lastFailure = "timed out after $TimeoutSeconds seconds"
+            } elseif ($process.ExitCode -ne 0) {
+                $lastFailure = "exited with code $($process.ExitCode)"
+            } else {
+                & docker image inspect $ImageRef *> $null
+                Assert-NativeSuccess "docker image inspect after pull: $ImageRef"
+                return
+            }
+        } finally {
+            $process.Dispose()
+        }
+        if ($attempt -lt $MaxAttempts) {
+            Write-Warning "release candidate: pull $ImageRef $lastFailure; retrying the same exact reference"
+            Start-Sleep -Seconds $attempt
+        }
     }
-    if ($process.ExitCode -ne 0) {
-        throw "docker pull failed with exit code $($process.ExitCode): $ImageRef"
-    }
+    throw "docker pull failed after $MaxAttempts attempts ($lastFailure): $ImageRef"
 }
 
 function Wait-CandidatePanel {
