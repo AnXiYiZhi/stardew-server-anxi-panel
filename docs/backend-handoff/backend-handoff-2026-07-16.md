@@ -1,4 +1,4 @@
-# SAVE-IMPORT-AUTO-RECOVERY-1 后端接手记录（2026-08-19，未发布）
+# SAVE-IMPORT-AUTO-RECOVERY-1 后端接手记录（2026-08-19，released in v0.5.7）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -13,6 +13,7 @@
 - `TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction` 从真实 Web preview/commit 夹具制造 maintenance/staging pre-submit 失败，先保留旧手工安全取消回归，再证明丢失原 token 后下一次 preview 自动清理旧 journal/owned token/目标并保留 preimport；随后按 v0.5.5 顺序直接清空终态 job、写 `jobs_cleared` 审计，证明同一普通 preview 仍自动恢复。把 journal 注入 `phaseAFifoWriteAttempted=true` 时 preview 与清空任务中心都必须返回 `import_recovery_required`，且 job/journal/token 零删除。
 - `TestPendingUploadCleanupReceiptConvergesWithoutRawToken` 固定 hash receipt 的中断续收敛；`TestImportMutexEndpointCoverage` 保持 upload 路由由专用恢复门处理。自动恢复专项还主动清空 token 侧 job binding，确认可由 exact idempotency job 安全补回。Windows 定向专项与 jobs/storage 包通过；任务专属 Linux Go 1.25 容器内 Web 全包 51.004 秒、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全绿，容器与两个缓存卷精确清零。
 - 后续不得把 terminal job 单独当成可删除证据；必须继续满足 exact 三方身份、driver strict offline、maintenance snapshot restored、FIFO 从未尝试、upstream 未提交及全部 fingerprint/pointer 门禁。也不要把自动恢复扩成重放 `saves import`；submitted/unknown 只能观测、回滚或明确 fail closed。
+- 正式证据：Compatibility `32284291347`、候选 `32284304749`、自动 Tag `32285201579`、正式提升 `32285223565` 全部成功；候选在升级后的真实 Panel 中复现并收敛 `v0.5.5` jobs-cleared 遗留事务。`v0.5.7@f7cedaa31e9db71aa2291c8aa06ea857046caf81` 已发布，三仓版本与 `latest` 统一 digest=`sha256:0b2dbe649fd6ce7acce797e170fec9ad2f1da9f00730afe1bb39b4ea8d586290`；独立 health/version/OCI smoke 和任务资源清零复核通过。
 
 # PANEL-UPDATE-LATEST-RELEASE-API-1 后端接手记录（2026-08-18，未发布）
 

@@ -1,10 +1,11 @@
-# SAVE-IMPORT-AUTO-RECOVERY-1 跨端契约（2026-08-19，未发布）
+# SAVE-IMPORT-AUTO-RECOVERY-1 跨端契约（2026-08-19，released in v0.5.7）
 
 - 管理员开始新存档上传时不需要理解或手动处理旧 operation/journal/token。`POST /api/instances/:id/saves/upload-preview` 在读取请求体前、`upload-commit-and-start` 在 reserve 新 operation 前，都会自动尝试收敛“job 已 failed/canceled 且可严格证明未提交 Junimo”的旧事务；成功后原请求直接继续，不新增恢复按钮、恢复 DTO 或前端 token 持久化。
 - 自动恢复复用既有安全取消门禁和顺序：exact journal/job/owned-token identity → strict offline/no FIFO ambiguity/fingerprint checks → filesystem cleanup → durable receipt → canceled journal finalize → old token removal。token 只以服务端 SHA-256 目录身份参与恢复，API、日志、审计和浏览器状态均不返回原 token。
 - 若 v0.5.5 已通过任务中心清空了终态 job，后端只在 confirmed journal 与 owned token 仍精确绑定同一 job、token 绑定记录早于之后成功的 `jobs_cleared` 审计、当前无活动 import/recovery job 时把该审计作为兼容终态证明；普通 job missing 仍不足以触发删除。现行 `DELETE /api/jobs` 会先收敛可安全恢复的导入，模糊/已提交事务返回 409 并保留任务证据。
 - preview 若仍存在 running/queued job、submitted/unknown、身份冲突、运行态或磁盘漂移，必须在接收 ZIP 前返回稳定 409；安全链给出的 `import_recovery_required/save_in_progress` 优先于笼统 busy，不能静默删除或自动重提。前端沿用现有错误码展示即可。
 - 联调最低矩阵：pre-submit maintenance/staging 失败后丢失原浏览器 token，再次正常 preview 自动成功且旧 journal/owned token/暂存目标清零、preimport 保留；先清空终态任务后同一正常 preview 也能依据精确审计恢复；模糊事务清空任务中心返回 409 且 job/journal/token 均保留；receipt 后中断可重入；`phaseAFifoWriteAttempted=true` 时 preview 409 且旧材料逐项保持；preview 与 commit 之间旧任务转终态时 commit 再执行同一恢复门。
+- 正式候选 `32284304749` 已在 `v0.5.5 → v0.5.7` 的升级后 Panel 中制造 maintenance 失败、按旧版顺序清空终态 jobs 并保留之后的 `jobs_cleared` 审计，再由普通 preview 完成自动恢复；unhealthy 回滚、healthy apply、Panel restart、SQLite/初始化/现有存档/preimport/非目标容器与 volume 保持均通过。正式提升 `32285223565` 未 rebuild，三仓 `0.5.7/latest` 六引用统一 digest=`sha256:0b2dbe649fd6ce7acce797e170fec9ad2f1da9f00730afe1bb39b4ea8d586290`。
 
 # PANEL-UPDATE-LATEST-RELEASE-API-1 跨端契约（2026-08-18，未发布）
 

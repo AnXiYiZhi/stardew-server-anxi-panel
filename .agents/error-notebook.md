@@ -2833,6 +2833,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-20 `v0.5.7` 发布后独立 smoke 已通过 `/health` 与 `/api/version`，但同一包装器仍把 `docker image inspect | ConvertFrom-Json` 生成的 `System.DateTime` OCI created 与 ISO 原文直接比较，虚假抛出 label mismatch；`finally` 已按 owner 删除精确容器和 volume，复核两类资源均为 0。随后先确认值类型为 `System.DateTime`、`Kind=Utc`，再用 invariant UTC 格式规范化为 `2026-08-19T17:54:58Z`，版本、revision、created 全部通过。此项已多次复发且规则早已提升到 `AGENTS.md`；后续发布包装器必须在第一次 JSON 解析处固定 `ConvertFrom-Json -DateKind String` 或立即调用统一 UTC helper，禁止再写任何日期对象与原始文本的内联比较。
 - 最近复发/补充：2026-08-16 `v0.5.2` 正式 digest 独立 smoke 前，OCI version/revision/created 实际均精确，但包装器再次把 `docker image inspect | ConvertFrom-Json` 产生的 `System.DateTime` created 直接与 `2026-08-16T11:55:58Z` 字符串比较并虚假抛出 identity mismatch。断言发生在 volume/container 创建前，独立投影确认两者均不存在。重跑使用 `ConvertFrom-Json -DateKind String` 同时覆盖 OCI 与 `/api/version`，不得只规范化其中一处。
 - 最近复发/补充：2026-08-15 文档收口后的最终 GHCR digest smoke 已 healthy 且三个 API 实际返回正确，但包装器又用默认 `ConvertFrom-Json` 后把 `/api/version.buildDate` 直接与 ISO 字符串比较，虚假抛出 identity mismatch；`finally` 已删除精确容器和 volume，owner 资源复核为 0。重跑必须直接使用已经验证的 `ConvertFrom-Json -DateKind String`，不得因“刚在同版本早先 smoke 修过”就省略该参数。
 - 最近复发/补充：2026-08-15 `v0.4.18` 正式镜像首次/重启响应实际都返回精确 build date，但发布后包装器又把默认 `ConvertFrom-Json` 自动生成的 `DateTime` 与原始 ISO 字符串直接比较，导致两轮正常 smoke 在资源已安全清理后虚假报 mismatch。最终使用 PowerShell 7 的 `ConvertFrom-Json -DateKind String` 保留原始时间文本并完整重跑通过。凡断言 JSON ISO 字段，优先固定 `-DateKind String`；否则必须走既有 UTC/invariant helper，不得再直接 `-eq/-ne`。
@@ -3463,6 +3464,7 @@
 
 ## 2026-08-15：把不存在的 `isLatest` 字段传给 `gh release view --json`
 
+- 最近复发/补充：2026-08-20 `v0.5.7` 发布后核验再次把 `isLatest` 传给 `gh release view --json`，CLI 在读取任何 Release 数据前以 `Unknown JSON field` 退出，外部状态未改变。修正为指定 `v0.5.7` 读取 draft/prerelease/assets 等受支持字段，另用不带 tag 的 `gh release view --json tagName,publishedAt,url` 确认 latest。此错误已多次复发且本节已有固定替代命令；后续不得再凭记忆添加字段，发布核验模板应直接复用已验证字段集。
 - 最近复发/补充：2026-08-18 补写 v0.5.4/v0.5.5 Release 时再次把 `isLatest` 传给 `gh release view --json`，随后又把该子命令支持的 `url` 误传给不支持它的 `gh release list --json`，两次均在读取 Release 前以 `Unknown JSON field` 退出，外部状态未改变。修正为先读取各自帮助列出的 JSON 字段：指定版本用 `release view` 的 `url`，列表只取 `tagName/name/publishedAt` 等受支持字段；latest 仍以无 tag 的 `gh release view --json tagName` 判断。不同 `gh` 子命令的同名资源也不能共享字段集合。
 - 最近复发/补充：2026-08-16 `v0.5.2` 发布后独立核验再次把 `isLatest` 传给 `gh release view --json`；同一组合命令前半 registry 名称检索成功，Release 子命令随后在返回任何 Release 数据前以 `Unknown JSON field` 退出，外部状态未改变。修正为先用当前 CLI 支持的字段读取指定 Release，再用不带 tag 的 `gh release view --json tagName` 独立比较 latest；本任务余下不得再使用该字段。
 - 环境：PowerShell 7、GitHub CLI，v0.4.18 发布后最终只读核验。

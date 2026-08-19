@@ -1,4 +1,4 @@
-# SAVE-IMPORT-AUTO-RECOVERY-1：失败且未提交的导入事务自动收敛（2026-08-19，未发布）
+# SAVE-IMPORT-AUTO-RECOVERY-1：失败且未提交的导入事务自动收敛（2026-08-19，released in v0.5.7）
 
 - 存档上传 preview 与 commit 在接受新事务前都会尝试自动收敛旧导入。正常路径要求 primary job 已为 `failed/canceled`，journal、job payload/idempotency key 与 durable upload record 三方精确绑定同一 instance/operation/job；针对 v0.5.5 已把终态任务清空的遗留状态，则要求 confirmed journal 与 owned token 仍绑定同一 job、token 绑定记录早于之后成功的 `jobs_cleared` 审计，且当前没有活动 import/recovery job。两条路径都必须由现有 `CleanupUnsubmittedSaveImport` 再次证明 Compose 停止、maintenance 已恢复、FIFO 从未进入模糊提交、pointer/源/目标/bootstrap 指纹未漂移后才自动清理；用户不需要保留旧上传 token 或点击恢复按钮。
 - durable upload 新增仅供服务端恢复使用的 token-hash 引用。它不会反推或暴露 bearer token；自动链按 `operationId` 找到唯一 `owned` 记录，依次完成文件系统 cleanup → hash-keyed cleanup receipt → canceled journal finalization → 精确 owned token 删除。Panel/Web 在 receipt 已落盘、journal 或 token 删除中断后会在下一次上传入口继续同一收敛步骤。
@@ -6,7 +6,7 @@
 - `POST .../saves/upload-preview` 现在在读取 multipart/ZIP 前先执行上述恢复并检查 unfinished journal：可安全恢复时用户本次正常上传直接继续；仍有活动或模糊事务时立即拒绝，不再先接收完整 ZIP 后才在 commit 报 busy。commit 同样保留一次恢复门，覆盖“preview 完成后旧 job 才失败”的竞争窗口。公开成功 JSON、hostHandling、job 类型和数据库 schema 不变。
 - `DELETE /api/jobs` 现在会先逐实例收敛安全的失败导入；仍有模糊或已提交 journal 时返回 409 并保留任务证据，不再先删 job 再把实例留成永久 busy。`internal/storage/jobs.go` 新增最近一次成功整库清空审计时间读取，只用于兼容既有丢失 job row 的 v0.5.5 状态，不把普通“job 不存在”单独当成可删除证据。
 - 主要影响 `internal/storage/jobs.go` 与 `internal/web/{jobs_handlers.go,lifecycle_handlers.go,pending_uploads.go,pending_uploads_test.go}`。专项覆盖原 token 已被 UI 丢弃后的正常新 preview 自动清理、任务已清空后的同请求恢复、preimport 保留、journal/owned token/目标残留清零、模糊事务阻止清空任务中心，以及 FIFO write-attempt 时 409 且全部材料保持；hash receipt 无原 token 的中断续收敛也有独立回归。
-- 验证通过：Windows 定向恢复与 jobs/storage 包；任务专属 Linux Go 1.25 容器内 Web 全包（51.004 秒）、全仓 `go test ./... -count=1`、`go vet ./...` 和 `go build ./...` 全部通过，测试容器与两个缓存卷清零。正式候选仍须按发布门禁重跑，不得用本轮 pre-candidate 结果替代候选证明。
+- 验证通过：Windows 定向恢复与 jobs/storage 包；任务专属 Linux Go 1.25 容器内 Web 全包（51.004 秒）、全仓 `go test ./... -count=1`、`go vet ./...` 和 `go build ./...` 全部通过，测试容器与两个缓存卷清零。正式候选 `32284304749` 又从 `v0.5.5` 完成真实 Web unhealthy 回滚、healthy 升级和升级后 legacy jobs-cleared 恢复；自动 Tag `32285201579`、正式提升 `32285223565` 成功，能力已随 `v0.5.7@f7cedaa31e9db71aa2291c8aa06ea857046caf81` 发布，三仓统一 digest=`sha256:0b2dbe649fd6ce7acce797e170fec9ad2f1da9f00730afe1bb39b4ea8d586290`。
 
 # PANEL-UPDATE-LATEST-RELEASE-API-1：面板更新检查改用 GitHub latest（2026-08-18，未发布）
 

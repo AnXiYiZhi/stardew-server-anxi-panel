@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.5
+release: v0.5.7
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.5。更新检查与任务日志更准确，联机人数设置支持明确保存并重启，半屏建档弹窗和安装素材不再拉长、裁切。
+    details: 当前最新 v0.5.7。失败且未提交的存档导入可在下一次上传时安全自动恢复，兼容 v0.5.5 已清空任务中心后留下的严格可证明现场。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.5</strong>
-    <p>更新检查只认正式 latest，长任务打开即显示最新日志；联机人数设置新增保存并重启，半屏建档弹窗和安装素材也完成布局修复。</p>
+    <strong>v0.5.7</strong>
+    <p>存档导入在提交前失败时，下一次上传会先安全收敛旧事务；旧版已清空任务中心的严格可证明现场也可自动恢复。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

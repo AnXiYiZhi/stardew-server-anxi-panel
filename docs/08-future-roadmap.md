@@ -1,10 +1,12 @@
-# 2026-08-19 已完成、待发布：失败存档导入自动自修复
+# 2026-08-20 已发布：v0.5.7 失败存档导入自动自修复
 
 - [x] `SAVE-IMPORT-AUTO-RECOVERY-1`：新上传 preview/commit 会自动识别并收敛 job 已终态、三方身份一致且可严格证明从未提交 Junimo 的旧导入；不再要求用户保留原 token、关闭弹窗后返回手工取消或理解 recovery journal。
 - [x] 自动链复用 strict offline、maintenance 恢复、FIFO 未尝试、pointer/全树 fingerprint 与 no-replace 门禁，并以 hash-keyed receipt 保证 journal/token 删除中断可继续；submitted/unknown、身份冲突或磁盘漂移继续 fail closed。
 - [x] preview 在读取 ZIP 前完成恢复/阻断，commit 再覆盖任务状态竞争；专项已覆盖正常下一次上传自动成功、旧 journal/token/暂存目录清零、preimport 保留、无原 token receipt 收敛，以及 FIFO 模糊证据下 409 与零删除。
 - [x] 支持包确认 v0.5.5 用户曾清空终态任务、但 unfinished journal 仍锁住启动/选档/上传；兼容恢复现要求 exact token+journal job binding、绑定记录早于后续 `jobs_cleared` 审计且当前零活动导入，现行任务中心也会在删除前收敛安全失败或对模糊事务 409 保留证据。
-- [x] Windows 定向专项及 jobs/storage 通过；任务专属 Linux Go 1.25 完成 Web 全包、全仓 test/vet/build，测试容器与缓存卷清零。正式候选、升级后真实 Docker E2E 与发布门禁仍须按 `docs/09-image-build.md` 重跑。
+- [x] Windows 定向专项及 jobs/storage 通过；任务专属 Linux Go 1.25 完成 Web 全包、全仓 test/vet/build，测试容器与缓存卷清零。正式候选 `32284304749` 从 `v0.5.5` 完成 unhealthy 回滚、healthy 升级，并在升级后的真实 Docker Panel 重验 legacy jobs-cleared 自动恢复。
+- [x] `v0.5.6` 提升在认证或 registry 写入前被 runner 的冗余 apt 工具安装阻塞，旧 annotated tag 保留但未发布；删除即时安装、改用预装 Skopeo 探针后，从新 commit 完整重建 `v0.5.7`，没有复用旧候选。
+- [x] Compatibility `32284291347`、自动 Tag `32285201579`、正式提升 `32285223565` 和 GitHub Release 全部成功；annotated `v0.5.7` 指向 `f7cedaa31e9db71aa2291c8aa06ea857046caf81`，三仓 `0.5.7/latest` 六引用统一 digest=`sha256:0b2dbe649fd6ce7acce797e170fec9ad2f1da9f00730afe1bb39b4ea8d586290`，独立 health/version/OCI smoke 与资源清零通过。
 
 # 2026-08-17 已完成：v0.5.3 聚合正式发布
 

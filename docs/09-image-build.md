@@ -1,4 +1,4 @@
-# v0.5.7 存档导入失败自动恢复正式候选（2026-08-20，v0.5.6 提升工具失败后重建，pre-release）
+# v0.5.7 存档导入失败自动恢复正式发布（2026-08-20，released）
 
 ## 变更清单与受影响链路
 
@@ -31,9 +31,18 @@
 - 最终本地不发布预演在 commit=`3eecf79e82a3d364fad5ce56ef71811b62b181fb` 全部通过：image ID=`sha256:6760eea49bad3363d78ca89f8c82601f44d49251ce8ba5e86c72d491ab30f24d`，完成 fresh/restart、`v0.5.5` 真实 Web unhealthy 回滚与 healthy 升级、SQLite/初始化/非目标容器与 volume/Panel restart、Mod 更新、legacy Junimo 修复，以及升级后真实 maintenance 失败 + v0.5.5 jobs-clear 现场自动恢复；既有存档双文件 hash、preimport 备份与 stopped 状态保持，新 preview 成功。动态候选容器、volume、DinD 目录均为 0；该本地预演不生成候选 artifact、不推 registry、不创建 tag，正式证明仍只能来自同步干净 `main` 的 GitHub workflow。
 - 首个正式 `v0.5.6` 候选 commit=`d1e61e33bce067a5816c3b354f7a41709573c664`：Compatibility `32276557209` 成功；候选 `32276557208` 用时 9 分 18 秒成功，artifact=`release-candidate-0.5.6-d1e61e33bce0`、build date=`2026-08-19T16:33:43Z`、digest=`sha256:c29760b02c26ea5f0b08d71cc4523275a4d53e7c0beacb7c538c4607f17cdc6c`，包含本版升级后真实恢复专项；自动 Tag `32277449499` 成功创建不可移动的 annotated `v0.5.6`。
 - `v0.5.6` 正式提升未完成，不能视为 Release：首条 `32277471754` 在 `Install registry promotion tool` 静默 20 分钟后、尚未认证 registry 时受控取消；同 tag 重试 `32279520480` 在第二个 runner 同一 `apt-get update -qq` 从 `17:04:55Z` 挂到 45 分钟上限并 timeout。两条 run 的候选 OCI 复核、三仓 version/latest、正式 smoke 和 GitHub Release 都未开始。官方 runner image `ubuntu24/20260810.271` 清单确认已预装 Skopeo，因此修复删除多余 apt 网络安装，只做本机工具探针；旧 tag 不移动、不删除，也不补写虚假 Release。
-- 下一次正式身份固定为 `v0.5.7`，previous release 仍为 `v0.5.5`；必须在包含提升工具修复的最新同步干净 `main` 上重新构建不可变候选，重跑全部自动门禁、真实 Web unhealthy/healthy 和升级后存档恢复，再创建新的 annotated tag。不得复用 `v0.5.6` 的 candidate digest 冒充新 commit，也不得只重跑旧 tag 的提升。
+- 受控重建身份固定为 `v0.5.7`，previous release 仍为 `v0.5.5`；从包含提升工具修复、与 `origin/main` 同步且干净的 `main@f7cedaa31e9db71aa2291c8aa06ea857046caf81` 重新构建不可变候选，完整重跑自动门禁、真实 Web unhealthy/healthy 和升级后存档恢复。没有复用 `v0.5.6` 的 candidate digest，也没有移动或删除旧 tag。
 - 相对 `v0.5.5` 修改后端 Web/storage、候选与提升 workflow、升级 E2E 脚本和长期文档，没有 frontend、Control、SMAPI/Junimo runtime manifest、Compose 部署格式、数据库 migration 或长期数据 schema 变化。自动候选必须执行后端 test/vet/build、前端全量状态回归/audit/build、脚本测试/ShellCheck、compatibility、fresh/restart、updater/Docker integration，以及上一正式版真实 Web unhealthy 回滚与 healthy 升级；其它长链的选择/跳过只由 `scripts/run-release-gates.sh` 按 `v0.5.5..candidate SHA` 路径差异判定。
-- 用户于 2026-08-20 明确要求“发布”，允许最终本地 `main` 提交并推送 `origin/main`，以及为上述失败后的受控重建手动 dispatch `v0.5.7` 候选。新候选 proof、升级专项、自动 Tag、三仓提升和正式 smoke 全部成功前，本节保持 pre-release，不得宣称 `v0.5.7` 已发布。
+- 用户于 2026-08-20 明确要求“发布”，允许最终本地 `main` 提交并推送 `origin/main`，以及为上述失败后的受控重建手动 dispatch `v0.5.7` 候选。以下新候选 proof、升级专项、自动 Tag、三仓提升、正式与独立 smoke 均已成功，`v0.5.7` 已成为最新正式 Release。
+
+## 正式候选与发布结果
+
+- Compatibility `32284291347` 于 `2026-08-19T17:54:15Z..17:56:46Z` 成功。正式候选 `32284304749` 于 `17:54:24Z..18:03:42Z` 成功；artifact=`release-candidate-0.5.7-f7cedaa31e9d`（ID `9377319437`），build date=`2026-08-19T17:54:58Z`，image ID=`sha256:dca1d4224297e14477387eb8f179f66349c0c2c6624987d08803d2c385a36139`，不可变 candidate digest=`sha256:0b2dbe649fd6ce7acce797e170fec9ad2f1da9f00730afe1bb39b4ea8d586290`。
+- 本次自动选择 compatibility contracts、部署脚本与 ShellCheck、后端全量 test/vet/build、updater/Docker integration、前端全部状态回归/audit/production build、官网 build、fresh/restart，以及 `v0.5.5` 真实 Panel Web unhealthy 回滚与 healthy 升级；升级后的 Panel 再次通过 Mod 更新、legacy Junimo 修复和 `jobs=[] + jobs_cleared + unfinished journal` 存档恢复专项。runtime manifest 与 Junimo runtime 输入未变，因此远程制品验证和 Junimo 真实 network/runtime 长链按路径差异自动跳过，没有口头降级。
+- 自动 Tag `32285201579` 于 `18:03:44Z..18:04:02Z` 成功；`v0.5.7` 为 annotated tag（tag object `61a3e18a709576ce5d675d376b86e84dd6c4cec3`），解引用精确指向 `f7cedaa31e9db71aa2291c8aa06ea857046caf81`。正式提升 `32285223565` 于 `18:03:59Z..18:05:19Z` 成功，先验证 runner 预装 Skopeo，再以 preserve-digests 提升候选，未重新 build。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.5.7` 与 `latest` 六个引用经独立 `docker buildx imagetools inspect` 一次全部命中同一候选 digest。精确 GHCR digest 回拉后的 `/health=ok`、`/api/version.version=0.5.7`、完整 commit 与 OCI `version/revision/created=0.5.7/f7cedaa31e9db71aa2291c8aa06ea857046caf81/2026-08-19T17:54:58Z` 均通过；独立 smoke 容器与 volume 按 owner 清理后计数均为 0。
+- GitHub Release `Stardew Server Anxi Panel 0.5.7` 于 `2026-08-19T18:05:16Z` 发布，非 draft/prerelease 且为 latest。`migrate-fnos.sh`、`repair-junimo-0.3.5.sh`、`repair-junimo-upgrade.sh`、`run.sh` 四项资产均为 uploaded，Release API SHA-256 与本地正式提交逐项一致；正文已补齐用户可读恢复边界、三个 workflow、唯一 digest 和 `v0.5.5...v0.5.7` compare。正文编辑未移动 tag、重推镜像或改变资产。
+- `v0.5.6` annotated tag 与失败 run 继续作为不可变审计记录保留，但它没有 GitHub Release、正式版本镜像或 `latest`；当前正式身份只认 `v0.5.7`。候选 workflow 与本地独立检查均已清理任务容器、网络、volume/bind/temp；本地下载的 proof 副本也已删除，没有触碰生产数据、长期凭据或其它任务资源。
 
 # v0.5.5 更新检查 / 运行设置交互 / 新建游戏半屏布局正式发布（2026-08-18，released）
 
