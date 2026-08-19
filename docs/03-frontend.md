@@ -1,3 +1,9 @@
+# DOCS-PORTAL-0.5.7：官网最新版本与 Release 说明同步（2026-08-20，completed，已上线）
+
+- `website/docs/changelog.md` 新增 `v0.5.7` 用户可见摘要：失败且明确未提交的存档导入会在下一次上传前自动收敛，兼容 `v0.5.5` 已清空任务中心但 exact journal/upload/audit 证据完整的现场；模糊或已提交事务继续 409 并保留证据。`website/docs/index.md` 的版本角标、更新卡和 CURRENT RELEASE 同步到 `v0.5.7`，`v0.5.5` 保留为历史版本，未发布的 `v0.5.6` 不冒充正式版。
+- GitHub Release `v0.5.7` 正文已补齐上述恢复边界、`v0.5.6` 未发布原因、候选/Tag/提升 run、唯一 digest 和 `v0.5.5...v0.5.7` compare。正文编辑没有移动 annotated tag、重推镜像、改变四项资产或发布时间。
+- 本地 `npm run docs:build` 6.84 秒通过；官网/证据提交 `c8a4eaa1cc9d28a7cf7f4518a0e2c268a612bf83` 的 Pages `32286253897` 成功，Compatibility `32286253917` 在 2 分 40 秒内完成 manifest、后端、前端和隔离 Docker integration。线上首页与 `/changelog` 均一次返回 200，并包含 v0.5.7 精确正文；该 docs-only push 没有 Validate release candidate，不改变正式 digest=`sha256:0b2dbe649fd6ce7acce797e170fec9ad2f1da9f00730afe1bb39b4ea8d586290`。
+
 # DOCS-PORTAL-0.5.4-0.5.5：官网更新日志与 Release 说明补齐（2026-08-18，completed，已上线）
 
 - `website/docs/changelog.md` 补上此前未进入官网的 `v0.5.4` 与 `v0.5.5`：前者说明 SMAPI 真实下载进度和 SteamCMD 授权复用，后者说明正式 latest 更新检查、任务最新日志尾页、联机人数保存并重启、半屏建档布局与 image2 素材修复。
