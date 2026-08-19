@@ -523,9 +523,17 @@ EOF
     exit 1
   fi
 
+  if [[ ! "$import_job_id" =~ ^job_[0-9a-f]{32}$ ]]; then
+    echo "candidate upgrade E2E: failed import returned an invalid project job ID" >&2
+    exit 1
+  fi
+  if [[ ! "$import_operation_id" =~ ^[0-9a-f]{32}$ ]]; then
+    echo "candidate upgrade E2E: failed import returned an invalid operation ID" >&2
+    exit 1
+  fi
   import_journal="$instance_dir/.local-container/control/save-import-transactions/$import_operation_id/journal.json"
-  if [[ ! "$import_job_id" =~ ^[0-9a-f-]{36}$ || ! "$import_operation_id" =~ ^[0-9a-f]{32}$ || ! -f "$import_journal" ]]; then
-    echo "candidate upgrade E2E: failed import did not retain exact terminal job/journal evidence" >&2
+  if [[ ! -f "$import_journal" ]]; then
+    echo "candidate upgrade E2E: failed import did not retain its exact unfinished journal" >&2
     exit 1
   fi
   active_job_count="$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running');")"

@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-20：候选 E2E 不得把项目 job ID 猜成 UUID
+
+- 环境：PowerShell 7 启动的任务专属 DinD，`v0.5.5 → v0.5.6` 存档导入升级专项。
+- 错误模式：新增 legacy jobs-clear 夹具时把 API 返回的 job ID 断言成通用 36 位十六进制/连字符 UUID，没有先读取本项目 `storage.newJobID()` 契约。
+- 症状 / 退出码：镜像 build、fresh/restart、unhealthy 回滚、healthy 升级、Mod 与 Junimo 修复均通过；存档导入 maintenance 按预期终态失败后，夹具在进入 legacy 恢复前报 `failed import did not retain exact terminal job/journal evidence` 并退出 1。产品自动恢复尚未执行；动态容器、网络、卷和临时目录由 owner trap 清理。
+- 根因：本项目 job ID 实际为 `job_` 加 32 位小写十六进制，长度恰好也是 36，但字符集合不是 UUID；把长度相同误当成格式相同。
+- 正确做法：从 `backend/internal/storage/jobs.go` 的真实生成器取得 `^job_[0-9a-f]{32}$` 契约；operation ID 继续按独立生成器断言 32 位十六进制，并单独验证精确 journal 文件存在，不能把多个身份格式合并猜测。
+- 预防检查：发布夹具新增任何 ID 正则前先定位生产生成/规范化函数；错误消息应尽量区分 ID 格式与文件证据，避免组合断言隐藏第一失败项。
+- 适用范围：job、operation、command、apply、backup 等所有项目生成 ID 的 Bash/PowerShell/Go 发布夹具。
+
 ## 2026-08-19：读取 jobs 实现前不得凭职责猜成 `store.go`
 
 - 最近复发/补充：同日补齐任务已清空后的存档导入恢复时，再次把 `exec_command.workdir` 设为 `backend`，却给四个 `gofmt` 参数保留 `backend/` 根前缀，四项均报 `GetFileAttributesEx ... The system cannot find the path specified`；命令在格式化和测试前停止，源码未被该命令改写。改为仓库根 workdir + 根相对路径后成功。此前同日已发生同一错误，现已把“workdir 与相对路径前缀必须成对核对”提升到 `AGENTS.md`，以后跨包格式化默认从仓库根执行。

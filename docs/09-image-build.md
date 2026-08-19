@@ -26,7 +26,7 @@
 
 ## 推送前证据与自动门禁选择
 
-- Windows 定向恢复专项、jobs/storage 包已通过；任务专属 Linux Go 1.25 容器内 Web 全包、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 已通过，容器与缓存卷精确清零。候选升级 E2E 新增脚本已通过 Git Bash `bash -n` 与 ShellCheck 0.11.0。首次本地候选预演的 build、fresh/restart 已通过，预取 `ghcr.io/...:0.5.5` 时匿名 token 请求单次 EOF；包装器已改为同引用有界重试，完整 DinD 预演仍须重新通过。
+- Windows 定向恢复专项、jobs/storage 包已通过；任务专属 Linux Go 1.25 容器内 Web 全包、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 已通过，容器与缓存卷精确清零。候选升级 E2E 新增脚本已通过 Git Bash `bash -n` 与 ShellCheck 0.11.0。首次本地候选预演的 build、fresh/restart 已通过，预取 `ghcr.io/...:0.5.5` 时匿名 token 请求单次 EOF；包装器改为同引用有界重试后真实证明 GHCR 第二次、Alpine 第二次成功。第二轮已通过 unhealthy/healthy、Mod 与 Junimo 修复，但新增夹具把项目 `job_<32hex>` 错猜成 UUID，在执行 legacy 恢复前安全停止；正则已改为生产生成器契约并拆分 journal 断言，完整 DinD 预演仍须重新通过。
 - 相对 `v0.5.5` 修改后端 Web/storage、升级 E2E 脚本和长期文档，没有 frontend、Control、SMAPI/Junimo runtime manifest、Compose 部署格式、数据库 migration 或长期数据 schema 变化。自动候选必须执行后端 test/vet/build、前端全量状态回归/audit/build、脚本测试/ShellCheck、compatibility、fresh/restart、updater/Docker integration，以及上一正式版真实 Web unhealthy 回滚与 healthy 升级；其它长链的选择/跳过只由 `scripts/run-release-gates.sh` 按 `v0.5.5..candidate SHA` 路径差异判定。
 - 用户于 2026-08-20 明确要求“发布”，允许最终本地 `main` 提交并推送 `origin/main`，触发自动候选、annotated tag 和同 digest 正式提升。候选 proof、升级专项、自动 Tag、三仓提升和正式 smoke 全部成功前，本节保持 pre-release，不得宣称 `v0.5.6` 已发布。
 
