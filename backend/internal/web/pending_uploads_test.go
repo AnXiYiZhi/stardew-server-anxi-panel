@@ -346,6 +346,34 @@ func TestPendingUploadCleanupReceiptRetriesTokenDeletionAfterJournalRemoval(t *t
 	}
 }
 
+func TestPendingUploadCleanupReceiptConvergesWithoutRawToken(t *testing.T) {
+	uploads, _, instance, token := completedCleanupReceiptFixture(t)
+	references, err := uploads.cleanupReferences(instance.DataDir, instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(references) != 1 {
+		t.Fatalf("cleanup references=%d", len(references))
+	}
+	reference := references[0]
+	if reference.Upload.TokenHash != pendingUploadHash(token) {
+		t.Fatalf("cleanup token hash=%q", reference.Upload.TokenHash)
+	}
+	if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, reference.Receipt.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := uploads.removeOwnedAfterCleanupByReference(instance.DataDir, reference.Upload, reference.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(durableUploadDir(instance.DataDir, token)); !os.IsNotExist(err) {
+		t.Fatalf("raw-tokenless cleanup left token directory: %v", err)
+	}
+	references, err = uploads.cleanupReferences(instance.DataDir, instance.ID)
+	if err != nil || len(references) != 0 {
+		t.Fatalf("cleanup references after convergence=%d err=%v", len(references), err)
+	}
+}
+
 func TestPendingUploadConcurrentCancelUsesCleanupReceiptOnce(t *testing.T) {
 	uploads, srv, instance, token := completedCleanupReceiptFixture(t)
 	removeCalls := 0
@@ -857,7 +885,7 @@ func TestPendingUploadCommitRejectsFreshRunningServerBeforeOwnership(t *testing.
 	}
 }
 
-func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
+func TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction(t *testing.T) {
 	root := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{Addr: ":0", DataDir: root, DBPath: filepath.Join(root, "panel.db"), Secret: "test-secret", Version: "test"})
 	if err != nil {
@@ -938,30 +966,35 @@ func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	var form bytes.Buffer
-	mw := multipart.NewWriter(&form)
-	part, err := mw.CreateFormFile("save", "first-upload.zip")
-	if err != nil {
-		t.Fatal(err)
+	uploadPreview := func(filename string) string {
+		t.Helper()
+		var form bytes.Buffer
+		mw := multipart.NewWriter(&form)
+		part, createErr := mw.CreateFormFile("save", filename)
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		_, _ = part.Write(zipBytes.Bytes())
+		_ = mw.Close()
+		previewReq := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-preview", &form)
+		previewReq.Header.Set("Content-Type", mw.FormDataContentType())
+		previewReq.AddCookie(adminCookie)
+		previewResp := httptest.NewRecorder()
+		handler.ServeHTTP(previewResp, previewReq)
+		if previewResp.Code != http.StatusOK {
+			t.Fatalf("preview=%d: %s", previewResp.Code, previewResp.Body.String())
+		}
+		var preview struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(previewResp.Body.Bytes(), &preview); err != nil || preview.Token == "" {
+			t.Fatalf("preview token err=%v body=%s", err, previewResp.Body.String())
+		}
+		return preview.Token
 	}
-	_, _ = part.Write(zipBytes.Bytes())
-	_ = mw.Close()
-	previewReq := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-preview", &form)
-	previewReq.Header.Set("Content-Type", mw.FormDataContentType())
-	previewReq.AddCookie(adminCookie)
-	previewResp := httptest.NewRecorder()
-	handler.ServeHTTP(previewResp, previewReq)
-	if previewResp.Code != http.StatusOK {
-		t.Fatalf("preview=%d: %s", previewResp.Code, previewResp.Body.String())
-	}
-	var preview struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(previewResp.Body.Bytes(), &preview); err != nil || preview.Token == "" {
-		t.Fatalf("preview token err=%v body=%s", err, previewResp.Body.String())
-	}
+	previewToken := uploadPreview("first-upload.zip")
 	commit, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
-		"token": preview.Token, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
+		"token": previewToken, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
 	}, adminCookie)
 	if commit.Code != http.StatusAccepted {
 		t.Fatalf("commit=%d: %s", commit.Code, commit.Body.String())
@@ -972,10 +1005,11 @@ func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
 	}
 	waitForHTTPJobStatus(t, handler, adminCookie, accepted.JobID, storage.JobStatusFailed)
 
-	journal, err := sj.LoadImportJournal(instanceDir, accepted.OperationID)
-	if err != nil || journal.Stage != sj.ImportStageBackupCreated || !journal.StagedSaveCreated || !journal.BootstrapSaveCreated ||
-		journal.MaintenanceStarted || journal.UpstreamSubmitted || journal.UpstreamConfirmed {
-		t.Fatalf("failed pre-submit journal=%+v err=%v", journal, err)
+	journal := waitForImportJournal(t, instanceDir, accepted.OperationID, func(current sj.ImportJournal) bool {
+		return current.Stage == sj.ImportStageBackupCreated && current.StagedSaveCreated && current.BootstrapSaveCreated
+	})
+	if journal.MaintenanceStarted || journal.UpstreamSubmitted || journal.UpstreamConfirmed {
+		t.Fatalf("failed pre-submit journal=%+v", journal)
 	}
 	preimportPath := filepath.Join(instanceDir, ".local-container", "backups", "saves", journal.PreimportBackupName)
 	if _, err := os.Stat(preimportPath); err != nil {
@@ -990,14 +1024,14 @@ func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
 	// but its ID was not attached to the token, and driver cleanup completed but
 	// token removal/finalization did not. The retry must recover the job through
 	// its idempotency key and finish the canceled marker without becoming busy.
-	owned, err := readDurablePendingUpload(instanceDir, preview.Token)
+	owned, err := readDurablePendingUpload(instanceDir, previewToken)
 	if err != nil {
 		t.Fatal(err)
 	}
 	owned.JobID = ""
 	owned.JobType = ""
 	owned.JobIdempotencyKey = ""
-	if err := writeDurablePendingUpload(instanceDir, preview.Token, owned); err != nil {
+	if err := writeDurablePendingUpload(instanceDir, previewToken, owned); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.CleanupUnsubmittedSaveImport(context.Background(), makeRegistryInstance(failedState), accepted.OperationID); err != nil {
@@ -1007,12 +1041,12 @@ func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
 	if err != nil || canceledMarker.Stage != sj.ImportStageCanceled {
 		t.Fatalf("durable canceled marker=%+v err=%v", canceledMarker, err)
 	}
-	if _, err := os.Stat(durableUploadDir(instanceDir, preview.Token)); err != nil {
+	if _, err := os.Stat(durableUploadDir(instanceDir, previewToken)); err != nil {
 		t.Fatalf("interrupted cleanup lost owned token before Web finalization: %v", err)
 	}
 
 	cancel, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
-		"token": preview.Token, "cancel": true,
+		"token": previewToken, "cancel": true,
 	}, adminCookie)
 	if cancel.Code != http.StatusOK {
 		t.Fatalf("cancel=%d: %s", cancel.Code, cancel.Body.String())
@@ -1029,7 +1063,7 @@ func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(instanceDir, ".local-container", "saves", ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")); !os.IsNotExist(err) {
 		t.Fatalf("bootstrap pointer survived safe cancel: %v", err)
 	}
-	if _, err := os.Stat(durableUploadDir(instanceDir, preview.Token)); !os.IsNotExist(err) {
+	if _, err := os.Stat(durableUploadDir(instanceDir, previewToken)); !os.IsNotExist(err) {
 		t.Fatalf("owned token survived safe cancel: %v", err)
 	}
 	if _, err := os.Stat(preimportPath); err != nil {
@@ -1039,4 +1073,210 @@ func TestFailedFirstInstallImportCanSafelyCancelOwnedTransaction(t *testing.T) {
 	if err != nil || busy {
 		t.Fatalf("safe cancel left save_import_busy=%v err=%v", busy, err)
 	}
+
+	secondToken := uploadPreview("second-upload.zip")
+	secondCommit, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+		"token": secondToken, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
+	}, adminCookie)
+	if secondCommit.Code != http.StatusAccepted {
+		t.Fatalf("second commit=%d: %s", secondCommit.Code, secondCommit.Body.String())
+	}
+	var secondAccepted saveUploadCommitResponse
+	if err := json.Unmarshal(secondCommit.Body.Bytes(), &secondAccepted); err != nil {
+		t.Fatal(err)
+	}
+	waitForHTTPJobStatus(t, handler, adminCookie, secondAccepted.JobID, storage.JobStatusFailed)
+	secondJournal, err := sj.LoadImportJournal(instanceDir, secondAccepted.OperationID)
+	if err != nil || (secondJournal.Stage != sj.ImportStageStaged && secondJournal.Stage != sj.ImportStageBackupCreated) ||
+		secondJournal.UpstreamSubmitted || secondJournal.UpstreamConfirmed {
+		t.Fatalf("second failed pre-submit journal=%+v err=%v", secondJournal, err)
+	}
+	secondPreimportPath := ""
+	if secondJournal.PreimportBackupName != "" {
+		secondPreimportPath = filepath.Join(instanceDir, ".local-container", "backups", "saves", secondJournal.PreimportBackupName)
+		if _, err := os.Stat(secondPreimportPath); err != nil {
+			t.Fatalf("second preimport backup missing before auto recovery: %v", err)
+		}
+	}
+	unsafeJournal := secondJournal
+	unsafeJournal.PhaseAFIFOWriteAttempted = true
+	if err := sj.WriteImportJournal(instanceDir, unsafeJournal); err != nil {
+		t.Fatal(err)
+	}
+	var blockedForm bytes.Buffer
+	blockedWriter := multipart.NewWriter(&blockedForm)
+	blockedPart, err := blockedWriter.CreateFormFile("save", "blocked-upload.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = blockedPart.Write(zipBytes.Bytes())
+	_ = blockedWriter.Close()
+	blockedReq := httptest.NewRequest(http.MethodPost, "/api/instances/stardew/saves/upload-preview", &blockedForm)
+	blockedReq.Header.Set("Content-Type", blockedWriter.FormDataContentType())
+	blockedReq.AddCookie(adminCookie)
+	blockedResp := httptest.NewRecorder()
+	handler.ServeHTTP(blockedResp, blockedReq)
+	if blockedResp.Code != http.StatusConflict || !strings.Contains(blockedResp.Body.String(), sj.ImportErrorRecoveryRequired) {
+		t.Fatalf("ambiguous preview=%d: %s", blockedResp.Code, blockedResp.Body.String())
+	}
+	if _, err := sj.LoadImportJournal(instanceDir, secondAccepted.OperationID); err != nil {
+		t.Fatalf("ambiguous auto recovery removed journal: %v", err)
+	}
+	if _, err := os.Stat(durableUploadDir(instanceDir, secondToken)); err != nil {
+		t.Fatalf("ambiguous auto recovery removed owned token: %v", err)
+	}
+	blockedClear, _ := doJSON(t, handler, http.MethodDelete, "/api/jobs", nil, adminCookie)
+	if blockedClear.Code != http.StatusConflict || !strings.Contains(blockedClear.Body.String(), sj.ImportErrorRecoveryRequired) {
+		t.Fatalf("ambiguous job clear=%d: %s", blockedClear.Code, blockedClear.Body.String())
+	}
+	keptJob, err := store.GetJob(context.Background(), secondAccepted.JobID)
+	if err != nil || keptJob.Status != storage.JobStatusFailed {
+		t.Fatalf("ambiguous job clear removed recovery evidence: job=%+v err=%v", keptJob, err)
+	}
+	if err := sj.WriteImportJournal(instanceDir, secondJournal); err != nil {
+		t.Fatal(err)
+	}
+	secondOwned, err := readDurablePendingUpload(instanceDir, secondToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondOwned.JobID = ""
+	secondOwned.JobType = ""
+	secondOwned.JobIdempotencyKey = ""
+	if err := writeDurablePendingUpload(instanceDir, secondToken, secondOwned); err != nil {
+		t.Fatal(err)
+	}
+
+	// A fresh preview is the user's next normal action. It must automatically
+	// converge the provably unsubmitted failed transaction before reading the
+	// new ZIP; the original raw token is no longer available to the UI.
+	thirdToken := uploadPreview("third-upload.zip")
+	if _, err := sj.LoadImportJournal(instanceDir, secondAccepted.OperationID); !os.IsNotExist(err) {
+		t.Fatalf("auto-recovered journal survived: %v", err)
+	}
+	if _, err := os.Stat(durableUploadDir(instanceDir, secondToken)); !os.IsNotExist(err) {
+		t.Fatalf("auto-recovered owned token survived: %v", err)
+	}
+	if secondPreimportPath != "" {
+		if _, err := os.Stat(secondPreimportPath); err != nil {
+			t.Fatalf("auto recovery removed second preimport backup: %v", err)
+		}
+	}
+	busy, err = sj.HasUnfinishedImportTransaction(instanceDir)
+	if err != nil || busy {
+		t.Fatalf("automatic recovery left save_import_busy=%v err=%v", busy, err)
+	}
+	thirdCancel, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+		"token": thirdToken, "cancel": true,
+	}, adminCookie)
+	if thirdCancel.Code != http.StatusOK {
+		t.Fatalf("third preview cancel=%d: %s", thirdCancel.Code, thirdCancel.Body.String())
+	}
+
+	legacyToken := uploadPreview("legacy-cleared-job-upload.zip")
+	legacyCommit, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+		"token": legacyToken, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
+	}, adminCookie)
+	if legacyCommit.Code == http.StatusConflict && strings.Contains(legacyCommit.Body.String(), sj.ImportErrorRecoveryRequired) {
+		// A concurrent Windows journal replace can expose a transient read gap to
+		// the immediate post-submit verifier. The same-token retry is the durable
+		// API contract and must attach to the already-created job.
+		legacyCommit, _ = doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+			"token": legacyToken, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
+		}, adminCookie)
+	}
+	if legacyCommit.Code != http.StatusAccepted {
+		t.Fatalf("legacy commit=%d: %s", legacyCommit.Code, legacyCommit.Body.String())
+	}
+	var legacyAccepted saveUploadCommitResponse
+	if err := json.Unmarshal(legacyCommit.Body.Bytes(), &legacyAccepted); err != nil {
+		t.Fatal(err)
+	}
+	waitForHTTPJobStatus(t, handler, adminCookie, legacyAccepted.JobID, storage.JobStatusFailed)
+	legacyJournal, err := sj.LoadImportJournal(instanceDir, legacyAccepted.OperationID)
+	if err != nil || legacyJournal.UpstreamSubmitted || legacyJournal.UpstreamConfirmed ||
+		!sj.ImportJournalHasJobIdentity(legacyJournal, stored.ID, legacyAccepted.JobID) {
+		t.Fatalf("legacy failed journal=%+v err=%v", legacyJournal, err)
+	}
+	legacyOwned, err := readDurablePendingUpload(instanceDir, legacyToken)
+	if err != nil || legacyOwned.Status != "owned" || legacyOwned.JobID != legacyAccepted.JobID || legacyOwned.JobType != sj.SaveImportJobType ||
+		legacyOwned.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(legacyAccepted.OperationID) {
+		t.Fatalf("legacy owned token=%+v err=%v", legacyOwned, err)
+	}
+	legacyPreimportPath := ""
+	if legacyJournal.PreimportBackupName != "" {
+		legacyPreimportPath = filepath.Join(instanceDir, ".local-container", "backups", "saves", legacyJournal.PreimportBackupName)
+	}
+
+	// Reproduce v0.5.5: its clear endpoint first proved that no job was active,
+	// deleted every terminal row, and only then wrote the summary audit. The
+	// next ordinary upload must use that later audit plus the exact token/journal
+	// binding as legacy terminality evidence instead of remaining busy forever.
+	deleted, err := store.ClearJobs(context.Background())
+	if err != nil || deleted == 0 {
+		t.Fatalf("simulate legacy job clear deleted=%d err=%v", deleted, err)
+	}
+	if err := store.CreateAuditLog(context.Background(), storage.AuditLogParams{
+		Action: "jobs_cleared", TargetType: "jobs", TargetID: "all", Metadata: `{"count":1}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetJob(context.Background(), legacyAccepted.JobID); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("legacy job survived simulated clear: %v", err)
+	}
+	clearedAt, found, err := store.LatestJobsClearedAt(context.Background())
+	if err != nil || !found {
+		t.Fatalf("legacy clear evidence time=%s found=%v err=%v", clearedAt, found, err)
+	}
+	legacyReference, err := newDurablePendingUploadStore().findOwnedByOperation(instanceDir, stored.ID, legacyAccepted.OperationID)
+	if err != nil || legacyReference.Entry.JobID != legacyAccepted.JobID || legacyReference.RecordUpdatedAt.IsZero() ||
+		clearedAt.Before(legacyReference.RecordUpdatedAt.UTC().Truncate(time.Millisecond)) {
+		t.Fatalf("legacy upload reference=%+v err=%v", legacyReference, err)
+	}
+	activeImports, err := manager.Active(context.Background(), storage.ListActiveJobsFilter{TargetType: "instance", TargetID: stored.ID,
+		Types: []string{sj.SaveImportJobType, sj.SaveImportRecoveryJobType}})
+	if err != nil || len(activeImports) != 0 {
+		t.Fatalf("legacy active imports=%+v err=%v", activeImports, err)
+	}
+	if _, err := manager.GetByIdempotencyKey(context.Background(), sj.SaveImportJobType, "instance", stored.ID,
+		sj.SaveImportJobIdempotencyKey(legacyAccepted.OperationID)); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("legacy idempotent job lookup after clear: %v", err)
+	}
+
+	afterClearToken := uploadPreview("after-cleared-job-upload.zip")
+	if _, err := sj.LoadImportJournal(instanceDir, legacyAccepted.OperationID); !os.IsNotExist(err) {
+		t.Fatalf("legacy-cleared journal survived auto recovery: %v", err)
+	}
+	if _, err := os.Stat(durableUploadDir(instanceDir, legacyToken)); !os.IsNotExist(err) {
+		t.Fatalf("legacy-cleared token survived auto recovery: %v", err)
+	}
+	if legacyPreimportPath != "" {
+		if _, err := os.Stat(legacyPreimportPath); err != nil {
+			t.Fatalf("legacy-cleared recovery removed preimport backup: %v", err)
+		}
+	}
+	afterClearCancel, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
+		"token": afterClearToken, "cancel": true,
+	}, adminCookie)
+	if afterClearCancel.Code != http.StatusOK {
+		t.Fatalf("after-clear preview cancel=%d: %s", afterClearCancel.Code, afterClearCancel.Body.String())
+	}
+}
+
+func waitForImportJournal(t *testing.T, dataDir, operationID string, ready func(sj.ImportJournal) bool) sj.ImportJournal {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	var (
+		last    sj.ImportJournal
+		lastErr error
+	)
+	for time.Now().Before(deadline) {
+		last, lastErr = sj.LoadImportJournal(dataDir, operationID)
+		if lastErr == nil && ready(last) {
+			return last
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("import journal did not converge: journal=%+v err=%v", last, lastErr)
+	return sj.ImportJournal{}
 }

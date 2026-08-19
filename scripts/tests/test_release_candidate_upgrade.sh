@@ -392,6 +392,16 @@ assert_upgraded_empty_compose_save_import_submission() {
   local import_operation_id=""
   local job_status=""
   local cleaned=0
+  local existing_save_sha=""
+  local existing_info_sha=""
+  local active_job_count=""
+  local cleared_job_count=""
+  local cleared_audit_count=""
+  local import_journal=""
+  local retry_preview_code=""
+  local retry_upload_token=""
+  local retry_cancel_code=""
+  local preimport_backup_count=""
 
   echo "candidate upgrade E2E: testing Panel Stop empty Compose save-import submission"
   mkdir -p "$instance_dir/.local-container/mods/JunimoServer"
@@ -402,6 +412,8 @@ assert_upgraded_empty_compose_save_import_submission() {
   printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
   printf '%s\n' '<SaveGame><player><name>Existing</name></player></SaveGame>' >"$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1"
   printf '%s\n' '<Farmer><name>Existing</name></Farmer>' >"$instance_dir/.local-container/saves/Saves/Existing_1/SaveGameInfo"
+  existing_save_sha="$(sha256sum "$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1" | awk '{print $1}')"
+  existing_info_sha="$(sha256sum "$instance_dir/.local-container/saves/Saves/Existing_1/SaveGameInfo" | awk '{print $1}')"
   printf '%s\n' '{"SaveNameToLoad":"Existing_1"}' >"$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server/junimohost.gameloader.json"
   printf 'name: %s\nservices:\n  server:\n    image: alpine:3.20\n    command: ["sh", "-c", "sleep 3600"]\n' "$import_project" >"$instance_compose"
 
@@ -510,7 +522,60 @@ EOF
     echo "candidate upgrade E2E: controlled save-import fixture did not restore stopped state and clean Docker resources" >&2
     exit 1
   fi
-  echo "candidate upgrade E2E: upgraded Panel accepted empty Compose save import and cleaned the controlled failure"
+
+  import_journal="$instance_dir/.local-container/control/save-import-transactions/$import_operation_id/journal.json"
+  if [[ ! "$import_job_id" =~ ^[0-9a-f-]{36}$ || ! "$import_operation_id" =~ ^[0-9a-f]{32}$ || ! -f "$import_journal" ]]; then
+    echo "candidate upgrade E2E: failed import did not retain exact terminal job/journal evidence" >&2
+    exit 1
+  fi
+  active_job_count="$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running');")"
+  cleared_job_count="$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" 'SELECT COUNT(*) FROM jobs;')"
+  if [[ "$active_job_count" != 0 || ! "$cleared_job_count" =~ ^[1-9][0-9]*$ ]]; then
+    echo "candidate upgrade E2E: legacy jobs-clear fixture is not terminal and non-empty" >&2
+    exit 1
+  fi
+
+  # Reproduce the v0.5.5 task-center bug exactly: terminal rows disappear and
+  # a later durable jobs_cleared audit remains, while the owned upload binding
+  # and unfinished import journal are untouched. The next ordinary preview on
+  # the upgraded Panel must recover only this exact identity before reading ZIP.
+  sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "PRAGMA foreign_keys=ON; BEGIN IMMEDIATE; DELETE FROM job_logs; DELETE FROM jobs; INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, metadata_json) VALUES (NULL, 'jobs_cleared', 'jobs', 'all', '{\"count\":$cleared_job_count}'); COMMIT;"
+  cleared_audit_count="$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "SELECT COUNT(*) FROM audit_logs WHERE action='jobs_cleared' AND target_type='jobs' AND target_id='all';")"
+  if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" 'SELECT COUNT(*) FROM jobs;')" != 0 || "$cleared_audit_count" == 0 ]]; then
+    echo "candidate upgrade E2E: failed to reproduce the legacy jobs-cleared durable state" >&2
+    exit 1
+  fi
+
+  retry_preview_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --form "save=@$save_zip;filename=Imported_123.zip" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-preview")"
+  retry_upload_token="$(jq -r '.token // empty' "$response_file")"
+  if [[ "$retry_preview_code" != 200 || -z "$retry_upload_token" || "$(jq -r '.saveName // empty' "$response_file")" != Imported_123 ]]; then
+    echo "candidate upgrade E2E: upgraded Panel did not auto-recover the v0.5.5 jobs-cleared import with HTTP $retry_preview_code" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  if [[ -e "$import_journal" || -d "$instance_dir/.local-container/saves/Saves/Imported_123" ]]; then
+    echo "candidate upgrade E2E: legacy auto-recovery retained the old journal or staged target" >&2
+    exit 1
+  fi
+  if [[ "$(sha256sum "$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1" | awk '{print $1}')" != "$existing_save_sha" ||
+    "$(sha256sum "$instance_dir/.local-container/saves/Saves/Existing_1/SaveGameInfo" | awk '{print $1}')" != "$existing_info_sha" ]]; then
+    echo "candidate upgrade E2E: legacy auto-recovery changed the selected existing save" >&2
+    exit 1
+  fi
+  preimport_backup_count="$(find "$instance_dir/.local-container/backups/saves" -maxdepth 1 -type f -name 'preimport_Imported_123_*.zip' | wc -l | tr -d '[:space:]')"
+  if [[ ! "$preimport_backup_count" =~ ^[1-9][0-9]*$ ]]; then
+    echo "candidate upgrade E2E: legacy auto-recovery removed the durable preimport backup" >&2
+    exit 1
+  fi
+
+  jq -n --arg token "$retry_upload_token" '{token:$token,cancel:true}' >"$commit_body"
+  retry_cancel_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$commit_body" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-commit-and-start")"
+  if [[ "$retry_cancel_code" != 200 || "$(jq -r '.cancelled // false' "$response_file")" != true ]]; then
+    echo "candidate upgrade E2E: recovered preview token cleanup failed with HTTP $retry_cancel_code" >&2
+    cat "$response_file" >&2
+    exit 1
+  fi
+  echo "candidate upgrade E2E: upgraded Panel recovered the v0.5.5 jobs-cleared import, preserved data, and accepted a new preview"
 }
 
 assert_upgraded_legacy_junimo_repair() {

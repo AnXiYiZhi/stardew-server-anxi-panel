@@ -1,3 +1,11 @@
+# 2026-08-19 已完成、待发布：失败存档导入自动自修复
+
+- [x] `SAVE-IMPORT-AUTO-RECOVERY-1`：新上传 preview/commit 会自动识别并收敛 job 已终态、三方身份一致且可严格证明从未提交 Junimo 的旧导入；不再要求用户保留原 token、关闭弹窗后返回手工取消或理解 recovery journal。
+- [x] 自动链复用 strict offline、maintenance 恢复、FIFO 未尝试、pointer/全树 fingerprint 与 no-replace 门禁，并以 hash-keyed receipt 保证 journal/token 删除中断可继续；submitted/unknown、身份冲突或磁盘漂移继续 fail closed。
+- [x] preview 在读取 ZIP 前完成恢复/阻断，commit 再覆盖任务状态竞争；专项已覆盖正常下一次上传自动成功、旧 journal/token/暂存目录清零、preimport 保留、无原 token receipt 收敛，以及 FIFO 模糊证据下 409 与零删除。
+- [x] 支持包确认 v0.5.5 用户曾清空终态任务、但 unfinished journal 仍锁住启动/选档/上传；兼容恢复现要求 exact token+journal job binding、绑定记录早于后续 `jobs_cleared` 审计且当前零活动导入，现行任务中心也会在删除前收敛安全失败或对模糊事务 409 保留证据。
+- [x] Windows 定向专项及 jobs/storage 通过；任务专属 Linux Go 1.25 完成 Web 全包、全仓 test/vet/build，测试容器与缓存卷清零。正式候选、升级后真实 Docker E2E 与发布门禁仍须按 `docs/09-image-build.md` 重跑。
+
 # 2026-08-17 已完成：v0.5.3 聚合正式发布
 
 - [x] 版本范围固定为 v0.5.2 以后本地 main 的全部功能：角色密码首次登录自助设置、Nexus 一键安装锁定最新版本、已安装 Mod 一键安全更新、建档后联机人数上限、增强诊断 ZIP、Mod 删除后刷新纠正与全前端刷新数据流审计。

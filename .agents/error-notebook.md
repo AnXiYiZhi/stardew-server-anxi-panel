@@ -2,6 +2,17 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-19：读取 jobs 实现前不得凭职责猜成 `store.go`
+
+- 最近复发/补充：同日补齐任务已清空后的存档导入恢复时，再次把 `exec_command.workdir` 设为 `backend`，却给四个 `gofmt` 参数保留 `backend/` 根前缀，四项均报 `GetFileAttributesEx ... The system cannot find the path specified`；命令在格式化和测试前停止，源码未被该命令改写。改为仓库根 workdir + 根相对路径后成功。此前同日已发生同一错误，现已把“workdir 与相对路径前缀必须成对核对”提升到 `AGENTS.md`，以后跨包格式化默认从仓库根执行。
+- 环境：PowerShell 7，本地只读诊断存档导入 busy 判定。
+- 错误模式：已确认 `save_import_transaction.go` 和 Web handler 路径后，把 jobs 存储实现按常见职责猜成不存在的 `backend/internal/jobs/store.go`，并在读取组合命令的前置路径断言中使用该路径。
+- 症状 / 退出码：PowerShell 抛出 `Missing backend/internal/jobs/store.go` 并在任何目标源码范围输出前停止；产品文件和运行状态均未修改。
+- 根因：没有先用 `rg --files backend/internal/jobs` 取得真实文件清单；当前实现实际位于 `manager.go`、`types.go` 等文件。
+- 正确做法：先列出目录真实文件，再按 `rg` 命中的精确符号路径读取；本次改用 `backend/internal/jobs/manager.go`，且后续文件读取按路径逐项执行。
+- 预防检查：首次进入任何包查实现时先用 `rg --files <package-dir>`；目录职责和类型名都不能推出具体文件名，不把未经确认的路径放进组合命令前置门禁。
+- 适用范围：本仓库源码定位、PowerShell 组合只读命令及 Go 包实现追踪。
+
 ## 2026-08-18：检查 PNG 前不能假定全局 Python 已安装 Pillow
 
 - 环境：PowerShell 7 / Windows，本地检查 imagegen 输出的尺寸、色彩格式与 alpha。
@@ -24,6 +35,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-20 发布前定位 `audit_logs` schema 时，前一条 `rg --files backend` 已明确列出 `backend/migrations/*.sql` 和 `backend/internal/storage/migrations.go`，后续仍凭职责猜成不存在的 `backend/internal/storage/store.go` 与 `backend/internal/storage/migrations`；`rg` 返回路径不存在，文件与发布状态均未变化。已有真实命中必须直接成为下一条命令的输入，不能在命中后再改写成“看起来更合理”的路径；本规则已由 `AGENTS.md` 的真实路径唯一依据与逐项 fail-fast 门禁覆盖。
 - 环境：PowerShell 7，本地检查前端页面与重启调用链。
 - 错误模式：把实际位于 `frontend/src/games/stardew/pages`、且 API 为单文件 `frontend/src/api.ts` 的代码，按常见前端结构猜成不存在的 `frontend/src/pages`、`frontend/src/api` 和 `frontend/src/components`，并放入同一组 `rg` 参数。
 - 症状 / 退出码：`rg` 对三个不存在路径输出 `系统找不到指定的文件`；同一组合命令后续检索成功掩盖了前面的路径错误，仓库文件未被修改。
@@ -653,6 +665,7 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-19 补齐存档导入恢复测试时，把 `backend/internal/web/*_test.go` 作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；命令只读且没有修改源码。改为 `rg -g '*_test.go' ... backend/internal/web` 后命中。该规则已在 `AGENTS.md` 固化，本轮仍复发；后续每条 `rg` 在发送前机械拒绝任何位置参数中的 `*`/`?`，通配只能紧跟 `-g`。
 - 最近复发/补充：2026-08-17 准备本机真实扩展 E2E 时，再次把 `frontend/vite.config.*` 混进后端配置的组合 `rg` 位置参数；其它明确目录先输出有效命中，但该参数仍产生 `os error 123`，只读命令未修改源码或测试环境。随后改为先读取精确的 `frontend/vite.config.ts`，后续检索只向明确目录传 `-g 'vite.config.*'`。这已是同日同一字面错误再次复发；`AGENTS.md` 现有硬规则继续作为门禁，余下命令在发送前必须逐项拒绝任何位置参数中的 `*`/`?`。
 - 最近复发/补充：2026-08-17 检索扩展 popup/options 状态时再次把 `popup.*`、`options.*` 作为 Windows `rg` 位置参数，立即得到 `os error 123`；扩展状态和源码未修改。随后改用已确认目录配合 `-g 'popup.*' -g 'options.*'`。位置参数含 `*` 的字面检查仍是发送命令前的硬门禁。
 - 最近复发/补充：2026-08-17 为 Nexus 远程安装定位测试中的 HTTP client 覆盖时，再次把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 位置参数，命令只读并以 `os error 123` 退出；随后改为明确目录配合 `-g '*_test.go'`。本任务余下每条检索在发送前机械检查：任何含 `*` 的参数必须紧跟 `-g`，不能位于最后的位置参数列表。
@@ -3475,6 +3488,7 @@
 
 ## 2026-08-16：Windows 长轮询超出 `exec_command` 等待上限
 
+- 最近复发/补充：2026-08-19 顺序执行 Web 全包、`go vet`、`go build` 时把三项放进一个可能超过 30 秒的统一命令，并在 JavaScript 编排中再次只输出 `r.output`；工具在 30 秒边界后没有可见终态，session 标识也未保留。随后通过精确 `go.exe/compile.exe/vet.exe/link.exe + 工作区命令行` 探针确认遗留进程为零，才把三项拆成独立调用；以后任何全包 Go 门禁即使通常较快，也必须一项一调用并输出完整工具结果。
 - 最近复发/补充：2026-08-18 为生产安装任务做 30 秒后复查时，命令内部先 `Start-Sleep -Seconds 30` 再建立 SSH，必然略超 `yield_time_ms=30000`；编排仍只投影 `output/exit_code`，再次显示伪造的 `EXIT_CODE=undefined` 并丢失可续接 session。随后以精确命令行核对没有遗留诊断进程。状态复查不得把 sleep 预算吃满工具 yield；应直接立即查询，或输出完整返回对象并在存在 `session_id` 时用 `write_stdin` 续接。
 - 最近复发/补充：2026-08-17 本任务的统一 `exec_command` 返回 `session_id` 后，误把它的 `chunk_id` 交给只支持 yielded JavaScript cell 的 `functions.wait`，工具报告 cell not found；原 Go 进程仍由统一终端 session 持有，没有重复启动。随后改用同一 `session_id` 的 `write_stdin` 取得终态。`functions.wait(cell_id)` 与 `write_stdin(session_id)` 属于两类不同会话，不能按字段名相似混用。
 - 最近复发/补充：同日经 Pinggy SFTP 读取约 3.8 MB 活动存档并在本地解析 XML 时，30 秒 yield 返回仍在运行的 session，但编排只输出 `r.output`，再次丢失 session ID。确认两个精确任务进程仍存活后按创建时间、命令特征和父子关系定点停止，复查遗留为 0；没有重复下载，也未修改本地或远端。随后改用 UTF-8 Base64 Python 载荷在远端只读解析并仅输出房屋等级、家具/床计数，约 3 秒完成。任何跨隧道文件读取即使文件只有数 MB，也必须输出完整工具结果并准备续接；结构化大文件优先在数据所在端做最小投影。

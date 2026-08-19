@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 )
 
 const (
@@ -419,6 +420,33 @@ func (s *Store) ClearJobs(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("commit clear jobs transaction: %w", err)
 	}
 	return count, nil
+}
+
+// LatestJobsClearedAt returns the durable audit time of the most recent
+// successful whole job-center clear. The Web layer uses this only as legacy
+// terminality evidence for an import whose exact job row was removed by an
+// older Panel version after ClearJobs had already proved there were no active
+// jobs.
+func (s *Store) LatestJobsClearedAt(ctx context.Context) (time.Time, bool, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT created_at
+		FROM audit_logs
+		WHERE action = 'jobs_cleared' AND target_type = 'jobs' AND target_id = 'all'
+		ORDER BY id DESC
+		LIMIT 1
+	`).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("load latest jobs clear audit: %w", err)
+	}
+	parsed, err := parseDBTime(value)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("parse latest jobs clear audit: %w", err)
+	}
+	return parsed, true, nil
 }
 
 func (s *Store) ClearJobErrorLogs(ctx context.Context) (int64, int64, error) {

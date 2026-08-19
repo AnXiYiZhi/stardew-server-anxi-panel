@@ -1,3 +1,19 @@
+# SAVE-IMPORT-AUTO-RECOVERY-1 后端接手记录（2026-08-19，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 根因是后端已有安全取消器只接受原始上传 token，而桌面/移动端拿到 `202` 后立即丢弃 token；job 后续失败时 journal 仍为未完成，前端又只把 queued/running 当 active，于是下一次 preview 能上传、commit 永久返回 `save_import_busy`。用户支持包进一步证明 v0.5.5 的“清空任务中心”会删除该终态 job row，但不会清 journal：`jobs=[]` 与之后的 `jobs_cleared` 审计并存，启动、选档和再次上传都被同一事务锁阻断。
+- `internal/web/lifecycle_handlers.go` 新增 `autoRecoverSafeFailedSaveImport`，在 preview 读取 multipart 前及 commit 新建 operation 前执行。它只接受唯一 unfinished operation、terminal failed/canceled primary job，并精确校验 journal job binding、payload operationId、idempotency key 与 owned upload metadata；最终删除仍委托 driver `CleanupUnsubmittedSaveImport`，没有在 API 层重写 Stardew/Junimo 清理逻辑。
+- `pending_uploads.go` 增加不可逆 token-hash reference 与 receipt 枚举/校验能力。自动链保持 filesystem completed → receipt → journal finalize → owned token removal；receipt 已落盘而 Panel 中断时，下一次上传可在不知道原 bearer token 的情况下继续。原 token 不写日志、不进入新 DTO，也不从 hash 反推。
+- 兼容已清空 job 的旧现场时，不因 `ErrNotFound` 直接删除：必须由 confirmed journal、owned token 的 job/type/idempotency 三项和 token 绑定文件 mtime 证明同一任务，再由时间更晚的成功 `jobs_cleared` 审计证明清空时全局零 active job，并复核当前零 import/recovery job；之后仍完整调用 driver strict cleanup。`jobs_handlers.go` 在现行 `DELETE /api/jobs` 前先逐实例恢复安全失败，任何 unfinished 模糊/已提交事务都 409 并保留 job 证据。
+- preview 现在对不可恢复的 unfinished transaction 在接收 ZIP 前返回 409；可安全恢复则同一次 preview 继续。commit 保留第二道恢复门，覆盖 preview 后旧 job 才终态的竞争。成功响应、hostHandling、job 类型、SQLite schema 与前端 bundle 均未改变。
+
+## 如何验证、下一步注意事项
+
+- `TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction` 从真实 Web preview/commit 夹具制造 maintenance/staging pre-submit 失败，先保留旧手工安全取消回归，再证明丢失原 token 后下一次 preview 自动清理旧 journal/owned token/目标并保留 preimport；随后按 v0.5.5 顺序直接清空终态 job、写 `jobs_cleared` 审计，证明同一普通 preview 仍自动恢复。把 journal 注入 `phaseAFifoWriteAttempted=true` 时 preview 与清空任务中心都必须返回 `import_recovery_required`，且 job/journal/token 零删除。
+- `TestPendingUploadCleanupReceiptConvergesWithoutRawToken` 固定 hash receipt 的中断续收敛；`TestImportMutexEndpointCoverage` 保持 upload 路由由专用恢复门处理。自动恢复专项还主动清空 token 侧 job binding，确认可由 exact idempotency job 安全补回。Windows 定向专项与 jobs/storage 包通过；任务专属 Linux Go 1.25 容器内 Web 全包 51.004 秒、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全绿，容器与两个缓存卷精确清零。
+- 后续不得把 terminal job 单独当成可删除证据；必须继续满足 exact 三方身份、driver strict offline、maintenance snapshot restored、FIFO 从未尝试、upstream 未提交及全部 fingerprint/pointer 门禁。也不要把自动恢复扩成重放 `saves import`；submitted/unknown 只能观测、回滚或明确 fail closed。
+
 # PANEL-UPDATE-LATEST-RELEASE-API-1 后端接手记录（2026-08-18，未发布）
 
 ## 改了什么、影响哪些接口/文件

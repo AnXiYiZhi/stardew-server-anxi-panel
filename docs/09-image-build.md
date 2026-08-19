@@ -1,3 +1,34 @@
+# v0.5.6 存档导入失败自动恢复正式候选（2026-08-20，pre-release）
+
+## 变更清单与受影响链路
+
+- `SAVE-IMPORT-AUTO-RECOVERY-1`：修复存档导入在 maintenance/staging 已失败、前端又已丢弃原始上传 token 后，unfinished journal 永久阻断启动、选档和再次上传的问题。普通终态 job 只在 journal、job payload/idempotency 与 owned upload 三方身份一致时自动收敛；真正删除继续委托 `stardew_junimo` driver 的 strict cleanup，不在 Web 层重放 Stardew 导入。
+- 兼容 v0.5.5 已清空任务中心的真实现场：只有 confirmed journal、owned token 的 job/type/idempotency/token-hash 绑定、绑定记录早于之后成功的 `jobs_cleared` 审计，且当前没有活动 import/recovery job 时，才允许把缺失 job 视为旧终态证明。submitted/unknown、FIFO 已尝试、身份不一致或任何恢复证据模糊时继续 fail closed。
+- 现行 `DELETE /api/jobs` 在删除终态任务前先逐实例收敛可安全恢复的存档导入；不能安全恢复时返回 409 并保留 job/journal/token 证据。公开存档上传 DTO、job 类型、SQLite schema、前端 bundle 与运行栈清单不变。
+- `scripts/tests/test_release_candidate_upgrade.sh` 在 `v0.5.5 → v0.5.6` 升级后的真实 Panel/Docker 中制造 maintenance Compose 失败，再按旧版顺序删除终态 jobs 并留下更晚的 `jobs_cleared` 审计；下一次普通 preview 必须自动清旧 journal/staged target、保留现有存档和 preimport 备份并返回新 token。
+
+`上传 preview → commit 202 / 前端丢弃 token → maintenance 失败 → terminal job + unfinished journal → 下一次 preview / 清空任务 → 精确身份恢复 → driver strict cleanup → 新上传可继续`
+
+`v0.5.5 清空任务 → jobs 缺失 + jobs_cleared 审计 + owned token/journal 留存 → v0.5.6 普通 preview → legacy 精确门禁 → 安全收敛`
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 通过标准 |
+| --- | --- | --- |
+| 正常路径 | terminal failed/canceled job 且三方身份一致；现行任务中心清空；恢复后再次 preview | 同一次请求先收敛旧事务再接受新 ZIP；清空任务先恢复后删除；实例回到 stopped 且无旧 journal/token/staged target |
+| 关键边界 | job 缺失但有更晚 `jobs_cleared`；审计缺失/更早、binding 缺失、多个 unfinished、活动 import/recovery job | 只放行 v0.5.5 精确旧现场；任一证据不全返回 `save_import_busy` / `import_recovery_required`，零猜测、零删除 |
+| 权限与安全 | 普通用户调用存档上传或清空任务；token/hash 与日志/DTO/审计 | 继续由管理员权限门禁；原 bearer token 不持久化到新增引用、不写日志/响应，hash 不可反推；普通用户不能触发恢复写入 |
+| 幂等与中断恢复 | filesystem cleanup 后、receipt 后、journal finalize 前或 token removal 前中断；重复 preview/clear | cleanup receipt 使每个阶段可重复收敛；已删除资源视为成功，不重放 import/FIFO，不破坏下次重试 |
+| 数据完整性 | 既有选中存档、pointer/instance snapshot、旧 staged target、preimport 备份 | 既有存档内容/hash 与 pointer 保持；旧 staged target 和 unfinished journal 删除；preimport 备份保留；SQLite integrity 通过 |
+| 升级与回滚 | 同一候选 `v0.5.5 → v0.5.6` unhealthy/healthy；升级后复现 v0.5.5 `jobs=[] + jobs_cleared` 现场 | unhealthy 为 `failed_rolled_back/health_check_failed` 并恢复 v0.5.5；healthy 使用同一 digest；升级后的真实 Panel 自动恢复并接受新 preview |
+| 资源清理 | maintenance 失败、legacy 恢复、候选 DinD、fresh、升级/回滚 | 任务 Compose 容器/网络、候选容器/volume/bind/temp 按 owner 精确归零；不 prune，不使用生产数据或长期凭据 |
+
+## 推送前证据与自动门禁选择
+
+- Windows 定向恢复专项、jobs/storage 包已通过；任务专属 Linux Go 1.25 容器内 Web 全包、全仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 已通过，容器与缓存卷精确清零。候选升级 E2E 新增脚本已通过 Git Bash `bash -n`，仍须在最终提交完成 ShellCheck 和真实 DinD 执行。
+- 相对 `v0.5.5` 修改后端 Web/storage、升级 E2E 脚本和长期文档，没有 frontend、Control、SMAPI/Junimo runtime manifest、Compose 部署格式、数据库 migration 或长期数据 schema 变化。自动候选必须执行后端 test/vet/build、前端全量状态回归/audit/build、脚本测试/ShellCheck、compatibility、fresh/restart、updater/Docker integration，以及上一正式版真实 Web unhealthy 回滚与 healthy 升级；其它长链的选择/跳过只由 `scripts/run-release-gates.sh` 按 `v0.5.5..candidate SHA` 路径差异判定。
+- 用户于 2026-08-20 明确要求“发布”，允许最终本地 `main` 提交并推送 `origin/main`，触发自动候选、annotated tag 和同 digest 正式提升。候选 proof、升级专项、自动 Tag、三仓提升和正式 smoke 全部成功前，本节保持 pre-release，不得宣称 `v0.5.6` 已发布。
+
 # v0.5.5 更新检查 / 运行设置交互 / 新建游戏半屏布局正式发布（2026-08-18，released）
 
 ## 变更清单与受影响链路

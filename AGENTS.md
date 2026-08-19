@@ -98,6 +98,7 @@
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。U+FFFD 审计只检查 `git diff --unified=0` 中单个 `+` 开头且排除 `+++` 文件头的本次新增行，不得扫描整个历史文件后把合法示例误报为新乱码；BOM 仍检查完整变更文件。发现新增 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
+- `gofmt`、`go test` 与其它按相对路径执行的命令在发送前必须同时核对 `exec_command.workdir`：从仓库根执行时使用 `backend/...`，从 `backend` 子目录执行时使用 `internal/...`，禁止把子目录 workdir 与仓库根前缀叠加。需要同时格式化跨包文件时默认从仓库根执行已确认的根相对路径。
 - 发布说明与 Release 资产验收不得把外部更新、下载、校验和 `Remove-Item` 清理合在同一长 Shell cell；先独立完成并确认校验结果。工作区内任务专属的已知文本临时文件使用精确 `apply_patch` 删除，不用动态循环或递归 Shell 删除；空目录不进入 Git，可在不扩大删除权限的前提下保留。
 - Windows 上需要递归删除工作区任务目录时，不得把 `Remove-Item -Recurse` 直接内联到工具命令；从一开始就用 `apply_patch` 创建任务专属 `.ps1`，脚本内核对解析后的绝对路径精确等于预期目标且位于 `.agents` 等任务边界内，执行并验证清零后再用 `apply_patch` 删除脚本。策略拒绝视为零执行，不得原样重试。
 - `apply_patch` 的多文件或 update/delete 混合操作默认拆成独立补丁；确需多文件时必须先结束当前 hunk，再写下一个 `*** Update File`/`*** Delete File` 声明。出现 `Unexpected line found in update hunk` 时视为零修改，先检查实际 diff，再按文件拆分，禁止原样重放。

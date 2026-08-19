@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/auth"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -124,6 +125,15 @@ func (s *server) handleClearJobs(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := s.prepareSaveImportsForJobClear(r.Context()); err != nil {
+		if _, typed := sj.AsImportTransactionError(err); typed {
+			writeSaveImportSubmitError(w, err)
+			return
+		}
+		s.logger.Error("failed to verify save imports before clearing jobs", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
 	count, err := s.jobs.Clear(r.Context())
 	if err != nil {
 		if errors.Is(err, storage.ErrActiveJobsExist) {
@@ -147,6 +157,36 @@ func (s *server) handleClearJobs(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("failed to write jobs clear audit", "error", err)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": count})
+}
+
+// prepareSaveImportsForJobClear keeps the task-center action from deleting the
+// only terminal-job proof still needed by a durable import journal. Recoverable
+// failed imports are converged first; ambiguous or submitted imports retain
+// their job rows and fail closed for explicit recovery.
+func (s *server) prepareSaveImportsForJobClear(ctx context.Context) error {
+	if s.store == nil {
+		return nil
+	}
+	instances, err := s.store.ListInstances(ctx)
+	if err != nil {
+		return err
+	}
+	for _, instance := range instances {
+		if instance.DriverID != sj.DriverID {
+			continue
+		}
+		if _, err := s.autoRecoverSafeFailedSaveImport(ctx, instance); err != nil {
+			return err
+		}
+		unfinished, err := sj.HasUnfinishedImportTransaction(instance.DataDir)
+		if err != nil {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import recovery state cannot be inspected before clearing jobs", Cause: err}
+		}
+		if unfinished {
+			return &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import recovery evidence must be retained before clearing jobs"}
+		}
+	}
+	return nil
 }
 
 func (s *server) handleJobByID(w http.ResponseWriter, r *http.Request) {

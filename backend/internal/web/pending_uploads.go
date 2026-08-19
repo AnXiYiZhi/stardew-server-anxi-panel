@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,20 @@ type durablePendingUploadCleanupReceipt struct {
 	CompletedAt       time.Time `json:"completedAt"`
 }
 
+// durablePendingUploadReference identifies a persisted token record by its
+// one-way token hash. It lets recovery converge an already-owned transaction
+// without retaining or reconstructing the original bearer token in the UI.
+type durablePendingUploadReference struct {
+	TokenHash       string
+	Entry           durablePendingUpload
+	RecordUpdatedAt time.Time
+}
+
+type durablePendingUploadCleanupReference struct {
+	Upload  durablePendingUploadReference
+	Receipt durablePendingUploadCleanupReceipt
+}
+
 type durablePendingUploadStore struct {
 	mu        sync.Mutex
 	now       func() time.Time
@@ -65,6 +80,10 @@ func durableUploadDir(dataDir, token string) string {
 	return filepath.Join(durableUploadRoot(dataDir), pendingUploadHash(token))
 }
 
+func durableUploadDirByHash(dataDir, tokenHash string) string {
+	return filepath.Join(durableUploadRoot(dataDir), tokenHash)
+}
+
 func durableUploadRecordPath(dataDir, token string) string {
 	return filepath.Join(durableUploadDir(dataDir, token), "token.json")
 }
@@ -75,6 +94,18 @@ func durableUploadCleanupReceiptRoot(dataDir string) string {
 
 func durableUploadCleanupReceiptPath(dataDir, token string) string {
 	return filepath.Join(durableUploadCleanupReceiptRoot(dataDir), pendingUploadHash(token)+".json")
+}
+
+func durableUploadCleanupReceiptPathByHash(dataDir, tokenHash string) string {
+	return filepath.Join(durableUploadCleanupReceiptRoot(dataDir), tokenHash+".json")
+}
+
+func validPendingUploadHash(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && hex.EncodeToString(decoded) == value
 }
 
 func writeDurablePendingUpload(dataDir, token string, entry *durablePendingUpload) error {
@@ -132,7 +163,29 @@ func readDurablePendingUpload(dataDir, token string) (*durablePendingUpload, err
 	return &entry, nil
 }
 
+func readDurablePendingUploadByHash(dataDir, tokenHash string) (*durablePendingUpload, error) {
+	if !validPendingUploadHash(tokenHash) {
+		return nil, fmt.Errorf("invalid pending upload token hash")
+	}
+	data, err := os.ReadFile(filepath.Join(durableUploadDirByHash(dataDir, tokenHash), "token.json"))
+	if err != nil {
+		return nil, err
+	}
+	var entry durablePendingUpload
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return nil, err
+	}
+	return &entry, nil
+}
+
 func writeDurablePendingUploadCleanupReceipt(dataDir, token string, receipt durablePendingUploadCleanupReceipt) error {
+	return writeDurablePendingUploadCleanupReceiptByHash(dataDir, pendingUploadHash(token), receipt)
+}
+
+func writeDurablePendingUploadCleanupReceiptByHash(dataDir, tokenHash string, receipt durablePendingUploadCleanupReceipt) error {
+	if !validPendingUploadHash(tokenHash) {
+		return fmt.Errorf("invalid pending upload token hash")
+	}
 	dir := durableUploadCleanupReceiptRoot(dataDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -165,7 +218,7 @@ func writeDurablePendingUploadCleanupReceipt(dataDir, token string, receipt dura
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	path := durableUploadCleanupReceiptPath(dataDir, token)
+	path := durableUploadCleanupReceiptPathByHash(dataDir, tokenHash)
 	if err := os.Rename(name, path); err != nil {
 		return err
 	}
@@ -173,7 +226,14 @@ func writeDurablePendingUploadCleanupReceipt(dataDir, token string, receipt dura
 }
 
 func readDurablePendingUploadCleanupReceipt(dataDir, token string) (durablePendingUploadCleanupReceipt, error) {
-	data, err := os.ReadFile(durableUploadCleanupReceiptPath(dataDir, token))
+	return readDurablePendingUploadCleanupReceiptByHash(dataDir, pendingUploadHash(token))
+}
+
+func readDurablePendingUploadCleanupReceiptByHash(dataDir, tokenHash string) (durablePendingUploadCleanupReceipt, error) {
+	if !validPendingUploadHash(tokenHash) {
+		return durablePendingUploadCleanupReceipt{}, fmt.Errorf("invalid pending upload token hash")
+	}
+	data, err := os.ReadFile(durableUploadCleanupReceiptPathByHash(dataDir, tokenHash))
 	if err != nil {
 		return durablePendingUploadCleanupReceipt{}, err
 	}
@@ -489,6 +549,114 @@ func (s *durablePendingUploadStore) ownedOperation(dataDir, token string) (strin
 	return entry.OperationID, entry.Status == "owned", nil
 }
 
+// findOwnedByOperation recovers the durable token side of an import from the
+// operation identity. The raw bearer token is intentionally unavailable after
+// the original HTTP submission, so automatic recovery uses the on-disk token
+// hash only after the record proves the exact instance and operation owner.
+func (s *durablePendingUploadStore) findOwnedByOperation(dataDir, instanceID, operationID string) (durablePendingUploadReference, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(durableUploadRoot(dataDir))
+	if err != nil {
+		return durablePendingUploadReference{}, err
+	}
+	var matched *durablePendingUploadReference
+	for _, item := range entries {
+		if !item.IsDir() || !validPendingUploadHash(item.Name()) {
+			continue
+		}
+		entry, readErr := readDurablePendingUploadByHash(dataDir, item.Name())
+		if readErr != nil {
+			return durablePendingUploadReference{}, fmt.Errorf("read pending upload ownership record: %w", readErr)
+		}
+		if entry.Status != "owned" || entry.InstanceID != instanceID || entry.OperationID != operationID {
+			continue
+		}
+		if matched != nil {
+			return durablePendingUploadReference{}, fmt.Errorf("multiple owned upload records match the save import operation")
+		}
+		recordInfo, statErr := os.Stat(filepath.Join(durableUploadDirByHash(dataDir, item.Name()), "token.json"))
+		if statErr != nil {
+			return durablePendingUploadReference{}, fmt.Errorf("stat pending upload ownership record: %w", statErr)
+		}
+		matched = &durablePendingUploadReference{TokenHash: item.Name(), Entry: *entry, RecordUpdatedAt: recordInfo.ModTime().UTC()}
+	}
+	if matched == nil {
+		return durablePendingUploadReference{}, os.ErrNotExist
+	}
+	return *matched, nil
+}
+
+func (s *durablePendingUploadStore) attachJobByReference(dataDir string, reference durablePendingUploadReference, jobID string) (durablePendingUploadReference, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, err := readDurablePendingUploadByHash(dataDir, reference.TokenHash)
+	if err != nil {
+		return durablePendingUploadReference{}, err
+	}
+	expected := reference.Entry
+	if entry.Status != "owned" || entry.InstanceID != expected.InstanceID || entry.OperationID != expected.OperationID {
+		return durablePendingUploadReference{}, fmt.Errorf("owned token changed before automatic job recovery")
+	}
+	expectedKey := sj.SaveImportJobIdempotencyKey(entry.OperationID)
+	if (entry.JobID != "" && entry.JobID != jobID) || (entry.JobType != "" && entry.JobType != sj.SaveImportJobType) ||
+		(entry.JobIdempotencyKey != "" && entry.JobIdempotencyKey != expectedKey) {
+		return durablePendingUploadReference{}, fmt.Errorf("owned token already has a different job identity")
+	}
+	entry.JobType = sj.SaveImportJobType
+	entry.JobID = jobID
+	entry.JobIdempotencyKey = expectedKey
+	if err := writeDurablePendingUploadRecord(durableUploadDirByHash(dataDir, reference.TokenHash), entry); err != nil {
+		return durablePendingUploadReference{}, err
+	}
+	return durablePendingUploadReference{TokenHash: reference.TokenHash, Entry: *entry}, nil
+}
+
+func (s *durablePendingUploadStore) cleanupReferences(dataDir, instanceID string) ([]durablePendingUploadCleanupReference, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(durableUploadCleanupReceiptRoot(dataDir))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := make([]durablePendingUploadCleanupReference, 0)
+	for _, item := range entries {
+		if item.IsDir() || filepath.Ext(item.Name()) != ".json" {
+			continue
+		}
+		tokenHash := strings.TrimSuffix(item.Name(), ".json")
+		if !validPendingUploadHash(tokenHash) {
+			continue
+		}
+		receipt, readErr := readDurablePendingUploadCleanupReceiptByHash(dataDir, tokenHash)
+		if readErr != nil {
+			return nil, fmt.Errorf("read save import cleanup receipt: %w", readErr)
+		}
+		if receipt.InstanceID != instanceID {
+			continue
+		}
+		entry, readErr := readDurablePendingUploadByHash(dataDir, tokenHash)
+		if os.IsNotExist(readErr) {
+			continue
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("read cleanup-owned upload record: %w", readErr)
+		}
+		if entry.Status != "owned" || entry.InstanceID != receipt.InstanceID || entry.OperationID != receipt.OperationID ||
+			entry.JobType != receipt.JobType || entry.JobID != receipt.JobID || entry.JobIdempotencyKey != receipt.JobIdempotencyKey {
+			return nil, fmt.Errorf("cleanup-owned upload record does not match its receipt")
+		}
+		result = append(result, durablePendingUploadCleanupReference{
+			Upload:  durablePendingUploadReference{TokenHash: tokenHash, Entry: *entry},
+			Receipt: receipt,
+		})
+	}
+	return result, nil
+}
+
 func (s *durablePendingUploadStore) markCleanupCompleted(dataDir, token, operationID, jobID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -508,6 +676,27 @@ func (s *durablePendingUploadStore) markCleanupCompleted(dataDir, token, operati
 	return writeDurablePendingUploadCleanupReceipt(dataDir, token, receipt)
 }
 
+func (s *durablePendingUploadStore) markCleanupCompletedByReference(dataDir string, reference durablePendingUploadReference) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, err := readDurablePendingUploadByHash(dataDir, reference.TokenHash)
+	if err != nil {
+		return err
+	}
+	expected := reference.Entry
+	if entry.Status != "owned" || entry.InstanceID != expected.InstanceID || entry.OperationID != expected.OperationID ||
+		entry.JobType != sj.SaveImportJobType || entry.JobID != expected.JobID ||
+		entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(expected.OperationID) {
+		return fmt.Errorf("owned token changed before automatic cleanup receipt")
+	}
+	receipt := durablePendingUploadCleanupReceipt{
+		SchemaVersion: 1, InstanceID: entry.InstanceID, OperationID: entry.OperationID,
+		JobType: sj.SaveImportJobType, JobID: entry.JobID,
+		JobIdempotencyKey: entry.JobIdempotencyKey, CompletedAt: s.now().UTC(),
+	}
+	return writeDurablePendingUploadCleanupReceiptByHash(dataDir, reference.TokenHash, receipt)
+}
+
 func (s *durablePendingUploadStore) cleanupReceipt(dataDir, token, instanceID string) (durablePendingUploadCleanupReceipt, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -517,6 +706,20 @@ func (s *durablePendingUploadStore) cleanupReceipt(dataDir, token, instanceID st
 	}
 	if receipt.InstanceID != instanceID {
 		return durablePendingUploadCleanupReceipt{}, fmt.Errorf("cleanup receipt instance mismatch")
+	}
+	return receipt, nil
+}
+
+func (s *durablePendingUploadStore) cleanupReceiptByReference(dataDir string, reference durablePendingUploadReference) (durablePendingUploadCleanupReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	receipt, err := readDurablePendingUploadCleanupReceiptByHash(dataDir, reference.TokenHash)
+	if err != nil {
+		return durablePendingUploadCleanupReceipt{}, err
+	}
+	if receipt.InstanceID != reference.Entry.InstanceID || receipt.OperationID != reference.Entry.OperationID ||
+		receipt.JobID != reference.Entry.JobID {
+		return durablePendingUploadCleanupReceipt{}, fmt.Errorf("cleanup receipt does not match automatic recovery owner")
 	}
 	return receipt, nil
 }
@@ -543,6 +746,30 @@ func (s *durablePendingUploadStore) removeOwnedAfterCleanup(dataDir, token strin
 		return fmt.Errorf("owned token does not match cleanup receipt")
 	}
 	return s.removeAll(durableUploadDir(dataDir, token))
+}
+
+func (s *durablePendingUploadStore) removeOwnedAfterCleanupByReference(dataDir string, reference durablePendingUploadReference, receipt durablePendingUploadCleanupReceipt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	durable, err := readDurablePendingUploadCleanupReceiptByHash(dataDir, reference.TokenHash)
+	if err != nil {
+		return err
+	}
+	if durable != receipt {
+		return fmt.Errorf("cleanup receipt changed")
+	}
+	entry, err := readDurablePendingUploadByHash(dataDir, reference.TokenHash)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if entry.Status != "owned" || entry.InstanceID != receipt.InstanceID || entry.OperationID != receipt.OperationID ||
+		entry.JobType != receipt.JobType || entry.JobID != receipt.JobID || entry.JobIdempotencyKey != receipt.JobIdempotencyKey {
+		return fmt.Errorf("owned token does not match cleanup receipt")
+	}
+	return s.removeAll(durableUploadDirByHash(dataDir, reference.TokenHash))
 }
 
 func (s *durablePendingUploadStore) release(dataDir, token, operationID string) error {

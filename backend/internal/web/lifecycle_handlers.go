@@ -232,6 +232,19 @@ func (s *server) handleSavesUploadPreview(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	if _, err := s.autoRecoverSafeFailedSaveImport(r.Context(), instance); err != nil {
+		writeSaveImportSubmitError(w, err)
+		return
+	}
+	busy, err := sj.HasUnfinishedImportTransaction(instance.DataDir)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to inspect import recovery state")
+		return
+	}
+	if busy {
+		writeError(w, http.StatusConflict, sj.ImportErrorBusy, "a save import transaction is active or requires recovery")
+		return
+	}
 
 	// Hard cap on total request body to prevent disk exhaustion from oversized uploads.
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
@@ -361,6 +374,10 @@ func (s *server) handleSavesUploadCommitAndStart(w http.ResponseWriter, r *http.
 		}
 	}
 
+	if _, recoverErr := s.autoRecoverSafeFailedSaveImport(r.Context(), instance); recoverErr != nil {
+		writeSaveImportSubmitError(w, recoverErr)
+		return
+	}
 	busy, busyErr := sj.HasUnfinishedImportTransactionOtherThan(instance.DataDir, allowedOperationID)
 	if busyErr != nil {
 		writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to inspect import recovery state")
@@ -506,6 +523,150 @@ func (s *server) reconcilePendingImportJobIdentity(ctx context.Context, instance
 	return job, nil
 }
 
+type unsubmittedImportCleaner interface {
+	CleanupUnsubmittedSaveImport(context.Context, registry.Instance, string) error
+}
+
+// autoRecoverSafeFailedSaveImport converges only a terminal failed/canceled
+// import whose journal, job, and durable upload record prove the same owner.
+// CleanupUnsubmittedSaveImport supplies the final offline, no-submission,
+// fingerprint, pointer, and maintenance-recovery gates. Ambiguous or submitted
+// transactions remain untouched and continue to fail closed.
+func (s *server) autoRecoverSafeFailedSaveImport(ctx context.Context, instance storage.Instance) (bool, error) {
+	s.saveImportCancelMu.Lock()
+	defer s.saveImportCancelMu.Unlock()
+	if s.pendingUploads == nil || s.jobs == nil || s.registry == nil {
+		return false, nil
+	}
+
+	changed := false
+	receiptReferences, err := s.pendingUploads.cleanupReferences(instance.DataDir, instance.ID)
+	if err != nil {
+		return false, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup receipts cannot be reconciled", Cause: err}
+	}
+	for _, reference := range receiptReferences {
+		if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, reference.Receipt.OperationID); err != nil {
+			return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "automatic save import cleanup journal finalization failed", Cause: err}
+		}
+		if err := s.pendingUploads.removeOwnedAfterCleanupByReference(instance.DataDir, reference.Upload, reference.Receipt); err != nil {
+			return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "automatic save import token cleanup failed", Cause: err}
+		}
+		changed = true
+	}
+
+	recoveries, err := sj.RecoverImportTransactions(instance.DataDir)
+	if err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import recovery state cannot be inspected", Cause: err}
+	}
+	if len(recoveries) == 0 {
+		return changed, nil
+	}
+	if len(recoveries) != 1 {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "multiple unfinished save import transactions require recovery"}
+	}
+	operationID := recoveries[0].OperationID
+	reference, err := s.pendingUploads.findOwnedByOperation(instance.DataDir, instance.ID, operationID)
+	if os.IsNotExist(err) {
+		return changed, nil
+	}
+	if err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned save import transaction cannot be identified for automatic cleanup", Cause: err}
+	}
+	journal, err := sj.LoadImportJournal(instance.DataDir, operationID)
+	if err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal cannot be verified for automatic cleanup", Cause: err}
+	}
+	jobID := ""
+	job, err := s.jobs.GetByIdempotencyKey(ctx, sj.SaveImportJobType, "instance", instance.ID, sj.SaveImportJobIdempotencyKey(operationID))
+	if errors.Is(err, storage.ErrNotFound) {
+		// v0.5.5 allowed an administrator to clear terminal job rows while a
+		// failed pre-submit import journal still owned the instance. Recover
+		// that legacy state only when the token and confirmed journal bind the
+		// exact same deleted job, a later successful whole-center clear proves
+		// there were no active jobs, and no import/recovery job is active now.
+		entry := reference.Entry
+		if s.store == nil || entry.JobType != sj.SaveImportJobType || entry.JobID == "" ||
+			entry.JobIdempotencyKey != sj.SaveImportJobIdempotencyKey(operationID) ||
+			!sj.ImportJournalHasJobIdentity(journal, instance.ID, entry.JobID) {
+			s.logger.Warn("legacy cleared save import job evidence is incomplete", "instance", instance.ID, "operation", operationID)
+			return changed, nil
+		}
+		active, activeErr := s.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID,
+			Types: []string{sj.SaveImportJobType, sj.SaveImportRecoveryJobType}})
+		if activeErr != nil {
+			return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "active save import jobs cannot be verified for legacy cleanup", Cause: activeErr}
+		}
+		if len(active) != 0 {
+			s.logger.Warn("legacy cleared save import still has an active import job", "instance", instance.ID, "operation", operationID)
+			return changed, nil
+		}
+		clearedAt, found, clearErr := s.store.LatestJobsClearedAt(ctx)
+		if clearErr != nil {
+			return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "job clear evidence cannot be verified for legacy cleanup", Cause: clearErr}
+		}
+		// RecoverImportTransactions may update only informational journal fields
+		// after the old clear, so its current UpdatedAt is not terminality proof.
+		// The owned token record's mtime is the durable moment when this exact job
+		// identity was attached, and it is not changed by recovery observation.
+		if !found || reference.RecordUpdatedAt.IsZero() || clearedAt.Before(reference.RecordUpdatedAt.UTC().Truncate(time.Millisecond)) {
+			s.logger.Warn("legacy cleared save import has no later job-clear audit", "instance", instance.ID, "operation", operationID,
+				"audit_found", found, "audit_at", clearedAt, "binding_record_updated_at", reference.RecordUpdatedAt)
+			return changed, nil
+		}
+		jobID = entry.JobID
+	} else if err != nil {
+		return changed, err
+	} else {
+		if err := validatePendingImportJob(job, instance.ID, operationID); err != nil {
+			return changed, err
+		}
+		if job.Status != storage.JobStatusFailed && job.Status != storage.JobStatusCanceled {
+			return changed, nil
+		}
+		jobID = job.ID
+	}
+	if err := sj.AttachImportJournalJobIdentity(instance.DataDir, operationID, instance.ID, jobID); err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal job identity cannot be recovered automatically", Cause: err}
+	}
+	reference, err = s.pendingUploads.attachJobByReference(instance.DataDir, reference, jobID)
+	if err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "owned upload token job identity cannot be recovered automatically", Cause: err}
+	}
+	if err := sj.ConfirmImportJournalJobBinding(instance.DataDir, operationID, instance.ID, jobID); err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import job binding cannot be confirmed automatically", Cause: err}
+	}
+	journal, err = sj.LoadImportJournal(instance.DataDir, operationID)
+	if err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal cannot be verified for automatic cleanup", Cause: err}
+	}
+	if !sj.ImportJournalHasJobIdentity(journal, instance.ID, jobID) {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import journal job identity is incomplete"}
+	}
+	driver, driverErr := s.registry.Get(instance.DriverID)
+	cleaner, supported := driver.(unsubmittedImportCleaner)
+	if driverErr != nil || !supported {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "save import cleanup runtime state cannot be verified", Cause: driverErr}
+	}
+	if err := cleaner.CleanupUnsubmittedSaveImport(ctx, makeRegistryInstance(instance), operationID); err != nil {
+		return changed, err
+	}
+	if err := s.pendingUploads.markCleanupCompletedByReference(instance.DataDir, reference); err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "automatic save import cleanup receipt could not be persisted", Cause: err}
+	}
+	receipt, err := s.pendingUploads.cleanupReceiptByReference(instance.DataDir, reference)
+	if err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "automatic save import cleanup receipt cannot be verified", Cause: err}
+	}
+	if err := sj.FinalizeCanceledImportCleanup(instance.DataDir, operationID); err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "automatic save import journal finalization failed", Cause: err}
+	}
+	if err := s.pendingUploads.removeOwnedAfterCleanupByReference(instance.DataDir, reference, receipt); err != nil {
+		return changed, &sj.ImportTransactionError{Code: sj.ImportErrorRecoveryRequired, Message: "automatic save import token cleanup failed", Cause: err}
+	}
+	s.logger.Info("automatically cleaned failed unsubmitted save import", "instance", instance.ID, "job", jobID, "operation", operationID)
+	return true, nil
+}
+
 // cancelPendingSaveUpload supports two loss-bounded cases: an unowned preview,
 // or an owned transaction whose job is durably terminal and whose journal can
 // still pass CleanupUnsubmittedImport's no-upstream-effect gates. The latter
@@ -557,9 +718,6 @@ func (s *server) cancelPendingSaveUpload(ctx context.Context, instance storage.I
 	}
 	if job.Status != storage.JobStatusFailed && job.Status != storage.JobStatusCanceled {
 		return &sj.ImportTransactionError{Code: sj.ImportErrorBusy, Message: "save import job is not in a safely cancellable terminal state"}
-	}
-	type unsubmittedImportCleaner interface {
-		CleanupUnsubmittedSaveImport(context.Context, registry.Instance, string) error
 	}
 	driver, driverErr := s.registry.Get(instance.DriverID)
 	cleaner, supported := driver.(unsubmittedImportCleaner)
