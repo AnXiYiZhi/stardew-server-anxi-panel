@@ -3,7 +3,8 @@
 - [x] 正式候选 `32376230460` 在 selected code gates 命中 `TestRuntimeUpdateApplyImageCleanupFailureIsWarning`；失败发生在 build/GHCR/artifact 前，旧 run 不重跑、不提升。
 - [x] 根因是正常/重启续作成功链先发布 `succeeded`，再做 snapshot/旧镜像 cleanup 并补 warning，reader 可读到不完整 terminal；两条路径现统一为先 cleanup 汇总，再由既有 finish 一次性发布终态与审计。
 - [x] 回归显式阻塞旧镜像清理，证明阻塞期间状态非 terminal；释放并注入删除失败后仍 `succeeded` 且 warning 完整。Linux 定向 `count=20`、整仓 test/vet/build 全绿。
-- [ ] 从新 commit 重跑本地完整候选和正式 `v0.5.9 → v0.5.10` 全链；只有新候选 proof 可自动 Tag/提升。
+- [x] 修复后的本地 `0.5.10@96e5161255e6` 完整候选全绿，包含 fresh/restart、`v0.5.9` unhealthy/healthy、升级后 legacy 与存档 Phase A 专项。
+- [ ] 从新 commit 重跑正式 `v0.5.9 → v0.5.10` 全链；只有新候选 proof 可自动 Tag/提升。
 
 # 2026-08-20 已完成、待发布：v0.5.10 存档导入真实候选门禁补齐
 

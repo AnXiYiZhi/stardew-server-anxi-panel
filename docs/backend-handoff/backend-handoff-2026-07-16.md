@@ -8,7 +8,7 @@
 
 ## 如何验证与下一步
 
-- Linux Go 1.25 定向用例 `count=20` 用时 `20.185s`；整仓 test 全绿（Junimo `59.446s`、Web `53.524s`），vet/build 通过。失败候选不重跑；新 commit 必须重新完成本地候选与正式 `v0.5.9 → v0.5.10` 全链，Tag/提升只接受新 artifact。
+- Linux Go 1.25 定向用例 `count=20` 用时 `20.185s`；整仓 test 全绿（Junimo `59.446s`、Web `53.524s`），vet/build 通过。修复后的本地 `0.5.10@96e5161255e6` 完整候选也通过 fresh/restart、`v0.5.9` unhealthy/healthy 和升级后全部专项。失败候选不重跑；正式链仍必须从新 push 完整执行，Tag/提升只接受新 artifact。
 - 若以后新增其它 post-success cleanup，必须在 terminal 首次写盘前完成并把 best-effort 结果放入同一 status；不能恢复“先 succeeded、后补 warning”的双写窗口。terminal 后只允许不影响已发布状态内容的资源删除或明确可恢复操作。
 
 # SAVE-IMPORT-RELEASE-GATES-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
