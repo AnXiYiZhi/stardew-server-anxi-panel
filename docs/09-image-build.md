@@ -1,3 +1,30 @@
+# v0.5.7 发布后 Phase A no-effect 生产热修与代码修复（2026-08-20，unreleased）
+
+## 变更清单、受影响链路与发布边界
+
+- `SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1` 修复 `FIFO attempted/submitted + command_failed_no_effect` 被旧一刀切门禁永久留在 manual recovery 的问题。新代码只在持久化 pre/after 证据重新分类仍为 no-effect、当前磁盘 hash/pointer/pending intent 未漂移时恢复 maintenance snapshot，并把同一复合证明传入 existing strict cleanup/finalizer；其它 submitted/unknown 路径不变。
+- durable upload 的 exact job binding attach 不再重写 `token.json`，避免 v0.5.7 legacy jobs-cleared 自动恢复自行刷新 mtime、破坏“绑定早于清空审计”的时间证明。公开 API/DTO、SQLite migration、Compose、前端 bundle、Control/SMAPI/Junimo runtime manifest 均未变化。
+- 生产 v0.5.7 现场已经通过一次性离线恢复程序收敛，但没有替换 Panel 镜像。不可变修复前备份位于 `/root/.anxi-panel/manual-recovery/save-import-20260820`，manifest SHA-256=`72717504f0b4e6d3af80316cc7ef598f5fa7b9d060606db044313566f182d83e`；修复后 journal/owned token 清零、cleanup receipt 存在、preimport 保留、实例状态 `game_installed`、Panel healthy、游戏 Compose 为空。
+- 用户于 2026-08-20 明确要求“推送远端”，授权把本次修复直接提交到 `main` 并推送 `origin/main`。因为改动包含 `backend/**`，该推送会自动启动下一补丁版本候选；只有不可变候选完整通过本节矩阵、fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后复验，并且候选 commit 仍是最新 `origin/main`，才允许自动 Tag 和正式提升。不能把这次生产数据收敛当成镜像发布门禁或候选证明，也不得手工绕过失败门禁。
+
+## 本版专项矩阵（正式候选时执行）
+
+| 维度 | 必测场景 | 通过标准 |
+| --- | --- | --- |
+| 正常路径 | 真实 Docker 中让 FIFO 命令返回失败且 Junimo 零落盘；当前进程收尾与 Panel 重启各一条 | 返回原 `command_failed`；精确实例 snapshot 恢复；下一次 preview 自动 cleanup 并成功接受新上传 |
+| 关键边界 | outcome 标签无证据、after 早于 pre、主文件/pointer 漂移、pending intent 出现、upstream confirmed | 全部保持 `manual_required/import_recovery_required`，journal/token/staged/preimport 零误删，不重放 FIFO |
+| 权限与安全 | 普通用户触发上传；owned token/job/journal 身份冲突；多个 unfinished operation | 现有管理员门禁与 exact identity 不变；不因 no-effect 分支放宽身份或跨 operation 删除 |
+| 幂等与恢复 | failure evidence 后重启、snapshot restore pending 后重启、cleanup receipt/journal/token 各阶段中断、重复 exact attach | 可续作收敛；exact attach 不改 token mtime；危险删除最多一次，preimport 永久保留 |
+| 数据完整性 | 修复前/后主存档双文件、active pointer、实例 SQLite snapshot、bootstrap/source/staged fingerprint | no-effect 主存档与 pointer hash 不变；只删除 transaction-owned 且 fingerprint 未变资源；SQLite integrity 通过 |
+| 升级与回滚 | 当前正式 `v0.5.7 → 候选` 的 Web unhealthy/healthy；升级后复现 no-effect + jobs-cleared 现场 | unhealthy 恢复 v0.5.7；healthy 使用同一候选 digest；升级后的真实 Panel 自动恢复且保留非目标容器/volume/初始化状态 |
+| 资源清理 | 候选 DinD、fresh/restart、升级/回滚、no-effect 故障夹具 | 任务容器/网络/volume/bind/temp 按 owner 精确归零；不 prune、不使用生产数据或长期凭据 |
+
+## 当前代码门禁证据
+
+- Windows 精准 Phase A/restart/mtime 专项通过；Windows 包级尝试的唯一 Junimo 失败是已知 NTFS mode=`0666`/Linux `0640` 差异，Web 包通过。
+- 任务专属 Linux Go 1.25 中 Junimo 全包 96.726 秒、隔离 Web 全包 35.436 秒通过。首次整仓组合仅既有 `TestJobsAPIPermissionsAndLifecycle` 因 15 秒轮询超时失败；随后 `-p=1` 整仓尝试中 Web 全包 33.146 秒通过，但 Junimo 的既有 `TestReadRequiredRuntimeStatusResolvesHistoricalFailure` 在 20 秒异步等待内未结束。本次 no-effect 用例在各轮均无失败；`go vet ./...`、`go build ./...` 通过，两轮 owner 容器与缓存卷均清零。
+- 以上只证明代码级修复，不是不可变候选 artifact/digest 证明；正式发布仍缺本节矩阵中的真实 Docker no-effect、fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后复验，缺任一项都不得 tag 或提升镜像。
+
 # v0.5.7 存档导入失败自动恢复正式发布（2026-08-20，released）
 
 ## 变更清单与受影响链路

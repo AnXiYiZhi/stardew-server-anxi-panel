@@ -581,8 +581,14 @@ func (d *Driver) restoreImportMaintenanceSnapshot(dataDir, operationID string, e
 	if err != nil {
 		return fmt.Errorf("load save import journal for snapshot restore: %w", err)
 	}
-	if journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted) {
+	provenNoEffect := importJournalProvesPhaseANoEffect(journal)
+	if (journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted)) && !provenNoEffect {
 		return errors.New("save import journal cannot prove that upstream submission never started")
+	}
+	if provenNoEffect {
+		if err := currentDiskMatchesPhaseANoEffect(dataDir, journal); err != nil {
+			return fmt.Errorf("revalidate Phase A no-effect evidence: %w", err)
+		}
 	}
 	original, err := originalInstanceSnapshotFromJournal(journal, dataDir)
 	if err != nil {
@@ -646,7 +652,8 @@ func (d *Driver) recoverInterruptedImportMaintenance(ctx context.Context, instan
 		if err != nil {
 			return recoveries, maintenanceRollbackError("failed to reload interrupted maintenance journal", err)
 		}
-		if journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted) {
+		if (journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted)) &&
+			!importJournalProvesPhaseANoEffect(journal) {
 			return recoveries, d.persistImportManualRecovery(authoritative.DataDir, journal,
 				"interrupted maintenance cannot prove that FIFO submission never started", nil)
 		}

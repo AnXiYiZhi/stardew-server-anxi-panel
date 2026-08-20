@@ -523,6 +523,7 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 		}
 		_, sourceErr := os.Stat(importTransactionSourceDir(dataDir, j.OperationID))
 		r := ImportRecovery{OperationID: j.OperationID, Stage: j.Stage, SourceAvailable: sourceErr == nil}
+		provenNoEffect := importJournalProvesPhaseANoEffect(j)
 		if j.DurableSaveSubmissionFailed {
 			r.State, r.ErrorCode = "manual_required", ImportErrorRecoveryRequired
 		} else if j.Stage == ImportStageFinalizeConfirmed || j.Stage == ImportStageSavePersisting || j.Stage == ImportStageSaveVerified {
@@ -531,6 +532,13 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 			// Re-observe the already submitted transaction. This path never calls
 			// Phase A and therefore cannot publish another saves import command.
 			r.State = "resume_activation_verification"
+		} else if provenNoEffect && j.MaintenanceStarted {
+			r.State = importRecoveryMaintenanceStopAndRestore
+		} else if provenNoEffect && (j.MaintenanceRecoveryState == importMaintenanceSnapshotCaptured ||
+			j.MaintenanceRecoveryState == importMaintenanceSnapshotRestorePending) {
+			r.State = importRecoveryMaintenanceRestoreSnapshot
+		} else if provenNoEffect {
+			r.State = "safe_to_resume_or_cleanup"
 		} else if j.PhaseAFIFOWriteAttempted && !j.UpstreamSubmitted {
 			r.State, r.ErrorCode = "manual_required", ImportErrorRecoveryRequired
 		} else if j.MaintenanceStarted && !j.UpstreamSubmitted && !j.UpstreamConfirmed && !importStageAtLeast(j.Stage, ImportStageSubmitted) {
@@ -539,8 +547,6 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 			j.MaintenanceRecoveryState == importMaintenanceSnapshotRestorePending) &&
 			!j.UpstreamSubmitted && !j.UpstreamConfirmed && !importStageAtLeast(j.Stage, ImportStageSubmitted) {
 			r.State = importRecoveryMaintenanceRestoreSnapshot
-		} else if j.PhaseAOutcome == phaseAOutcomeNoEffect && !j.MaintenanceStarted && !j.UpstreamConfirmed {
-			r.State = "safe_to_resume_or_cleanup"
 		} else if j.UpstreamConfirmed || importStageAtLeast(j.Stage, ImportStageConfirmed) {
 			r.State, r.ErrorCode = "manual_required", ImportErrorRecoveryRequired
 		} else if j.UpstreamSubmitted || importStageAtLeast(j.Stage, ImportStageSubmitted) {
@@ -649,7 +655,8 @@ func HasUnfinishedImportTransactionOtherThan(dataDir, allowedOperationID string)
 // CleanupUnsubmittedImport removes the operation source and a staged target
 // only when the journal proves this operation created it and its full-tree
 // fingerprint is unchanged. The preimport ZIP is retained as the explicit
-// recovery policy. Once submission may have reached Junimo, cleanup is forbidden.
+// recovery policy. Post-FIFO cleanup is allowed only when durable before/after
+// evidence strictly proves that Junimo produced no disk effect.
 func CleanupUnsubmittedImport(dataDir, operationID string) error {
 	importStagingMu.Lock()
 	defer importStagingMu.Unlock()
@@ -666,13 +673,13 @@ func CleanupUnsubmittedImport(dataDir, operationID string) error {
 	if j.MaintenanceStarted {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import maintenance may still be running; automatic cleanup is unsafe"}
 	}
-	if j.PhaseAFIFOWriteAttempted && !j.UpstreamConfirmed {
+	safelyProvenNoEffect := importJournalProvesPhaseANoEffect(j)
+	if j.PhaseAFIFOWriteAttempted && !j.UpstreamConfirmed && !safelyProvenNoEffect {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import FIFO submission may have occurred; automatic cleanup is unsafe"}
 	}
 	if j.MaintenanceRecoveryState != "" && j.MaintenanceRecoveryState != importMaintenanceSnapshotRestored {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import maintenance recovery is incomplete; automatic cleanup is unsafe"}
 	}
-	safelyProvenNoEffect := j.PhaseAOutcome == phaseAOutcomeNoEffect && !j.MaintenanceStarted && !j.UpstreamConfirmed
 	if !safelyProvenNoEffect && (j.UpstreamSubmitted || j.UpstreamConfirmed || importStageAtLeast(j.Stage, ImportStageSubmitted)) {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "submitted import requires manual recovery"}
 	}
@@ -1094,7 +1101,8 @@ func verifyImportCleanupArtifactsRemoved(dataDir string, j ImportJournal) error 
 
 // FinalizeCanceledImportCleanup removes only a transaction which has already
 // reached the durable canceled marker. The marker makes cleanup retryable if
-// the process stops between filesystem cleanup and token deletion.
+// the process stops between filesystem cleanup and token deletion. Historical
+// FIFO/submitted flags are accepted only with the same strict no-effect proof.
 func FinalizeCanceledImportCleanup(dataDir, operationID string) error {
 	importStagingMu.Lock()
 	defer importStagingMu.Unlock()
@@ -1105,8 +1113,9 @@ func FinalizeCanceledImportCleanup(dataDir, operationID string) error {
 	if err != nil {
 		return err
 	}
+	provenNoEffect := importJournalProvesPhaseANoEffect(j)
 	if j.Stage != ImportStageCanceled || j.CleanupState != importCleanupFilesystemCompleted || j.CleanupPlan == nil ||
-		j.MaintenanceStarted || j.PhaseAFIFOWriteAttempted || j.UpstreamSubmitted || j.UpstreamConfirmed {
+		j.MaintenanceStarted || j.UpstreamConfirmed || (!provenNoEffect && (j.PhaseAFIFOWriteAttempted || j.UpstreamSubmitted)) {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import cleanup is not durably canceled"}
 	}
 	return os.RemoveAll(filepath.Dir(importJournalPath(dataDir, operationID)))

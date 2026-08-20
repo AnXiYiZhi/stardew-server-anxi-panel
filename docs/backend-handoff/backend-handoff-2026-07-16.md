@@ -1,3 +1,20 @@
+# SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1 后端接手记录（2026-08-20，未发布；生产已定向热修）
+
+## 改了什么、影响哪些接口/文件
+
+- 生产 operation `a93305b4bc6040364445e303bcf18873` 的 journal 已有完整 pre/after 证据：FIFO 写入尝试过，但主存档 hash、活动 pointer 均未变化且 Junimo 没有 pending intent，分类为 `command_failed_no_effect`。旧 `restoreImportMaintenanceSnapshot`、`CleanupUnsubmittedImport` 与 `FinalizeCanceledImportCleanup` 仍把所有 FIFO/submitted 历史一律视为模糊提交，因此 maintenance snapshot 无法恢复、unfinished journal 永久占用实例。
+- 同一现场的终态 job 已由旧版任务中心清除。v0.5.7 自动恢复先按 exact idempotency 找回相同 job binding，却无条件重写已经完整的 owned `token.json`，导致文件 mtime 晚于 `jobs_cleared` 审计，随后 legacy 门禁又把它判为证据不足。`internal/web/pending_uploads.go` 现对 exact job/type/idempotency attach 直接返回，不改文件；确需补字段时返回写后真实 mtime。
+- `save_import_phase_a.go` 新增 `importJournalProvesPhaseANoEffect` 与当前磁盘复核。只有 outcome、完整时间有序的 pre/after 证据、重新分类 no-effect、无 upstream confirmed，且恢复时主文件 hash/pointer/pending intent 仍吻合，才允许在当前失败收尾或 Panel 重启时恢复精确实例快照。
+- `save_import_maintenance.go` 与 `save_import_transaction.go` 将这个复合证明贯穿 stop-and-restore、pending snapshot restore、strict cleanup 和 canceled finalizer；历史 FIFO/submitted 标记仅在该窄条件下放行。证据缺失、伪造 outcome、磁盘漂移、pending intent、upstream confirmed 或其它提交结果继续 fail closed，也绝不重放 Junimo import。
+- 对外上传/任务 API、错误码、SQLite schema、前端和 runtime manifest 不变。影响文件为 `internal/games/stardew_junimo/{save_import_phase_a.go,save_import_maintenance.go,save_import_transaction.go,save_import_phase_a_test.go}` 与 `internal/web/{pending_uploads.go,pending_uploads_test.go}`。
+
+## 生产热修、验证与下一步注意事项
+
+- 写操作前确认游戏 Compose 为空并停止 Panel；SQLite `integrity_check=ok`。不可变备份位于 `/root/.anxi-panel/manual-recovery/save-import-20260820`，含修复前数据库、journal、owned token、preimport ZIP 与 gameloader，manifest SHA-256=`72717504f0b4e6d3af80316cc7ef598f5fa7b9d060606db044313566f182d83e`。
+- 一次性 Linux 恢复程序先 dry-run，再按与新代码相同的严格 no-effect、当前磁盘、pointer、全树 fingerprint 和 stopped 门禁执行；完成精确实例 snapshot restore、bootstrap/staged/source cleanup、receipt、journal finalize 与 owned token 删除，preimport 备份保留。生产 Panel 继续运行原 v0.5.7 镜像，重启后 `healthy`、restart count 0、实例权威状态 `game_installed`、import job 0、Compose 仍为空；远端临时程序已删除，备份保留。
+- 自动化覆盖当前进程 no-effect 收尾、Panel 重启 stop-and-restore、`snapshot_restore_pending` 续作、恢复后 cleanup/finalizer、磁盘漂移和伪造 outcome 拒绝，以及两条 job attach 都不改变 exact binding mtime。Windows 精准专项通过；Linux Junimo 全包 96.726 秒、隔离 Web 全包 35.436 秒通过，`go vet ./...`、`go build ./...` 通过。两次整仓组合尝试分别命中既有 Web job 15 秒轮询和 Junimo runtime-update 20 秒异步等待超时；第二次 Web 全包仍通过、本次 no-effect 用例均未失败，不把这些组合结果冒充全绿。两轮任务容器和缓存卷最终均为 0。
+- 后续不得把 `PhaseAOutcome` 字符串单独当成恢复证明，不得移除恢复前的当前磁盘复核或 cleanup 的 pointer/fingerprint 门禁，也不得用 journal `UpdatedAt` 替代 owned token 初次 job binding mtime。用户已授权把修复推送 `origin/main`；推送后仍须由自动候选完成本版真实 Docker no-effect E2E、fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后复验，任一失败都不得创建 tag、推正式镜像或更新 `latest`。
+
 # SAVE-IMPORT-AUTO-RECOVERY-1 后端接手记录（2026-08-19，released in v0.5.7）
 
 ## 改了什么、影响哪些接口/文件

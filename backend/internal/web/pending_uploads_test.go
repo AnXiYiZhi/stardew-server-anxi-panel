@@ -168,6 +168,46 @@ func TestPendingUploadOwnershipTransferAndRestartDiscovery(t *testing.T) {
 	}
 }
 
+func TestPendingUploadIdempotentJobAttachPreservesBindingMtime(t *testing.T) {
+	store := newDurablePendingUploadStore()
+	dataDir := t.TempDir()
+	token := createPendingUpload(t, store, dataDir)
+	op := "71112233445566778899aabbccddeeff"
+	jobID := "job_00112233445566778899aabbccddeeff"
+	if _, err := store.reserve(dataDir, token, "i1", op); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.transferOwnership(dataDir, token, op, transactionSourceDirForUpload(dataDir, op)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.attachJob(dataDir, token, op, jobID); err != nil {
+		t.Fatal(err)
+	}
+	recordPath := durableUploadRecordPath(dataDir, token)
+	fixed := time.Unix(1_700_000_000, 123_000_000).UTC()
+	if err := os.Chtimes(recordPath, fixed, fixed); err != nil {
+		t.Fatal(err)
+	}
+	reference, err := store.findOwnedByOperation(dataDir, "i1", op)
+	if err != nil || !reference.RecordUpdatedAt.Equal(fixed) {
+		t.Fatalf("reference=%+v err=%v", reference, err)
+	}
+	attached, err := store.attachJobByReference(dataDir, reference, jobID)
+	if err != nil || !attached.RecordUpdatedAt.Equal(fixed) {
+		t.Fatalf("attached=%+v err=%v", attached, err)
+	}
+	if err := store.attachJob(dataDir, token, op, jobID); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(recordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(fixed) {
+		t.Fatalf("idempotent attach changed binding mtime=%s", info.ModTime())
+	}
+}
+
 func TestPendingUploadRestartRecoversExactJobBindingCrashPoints(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

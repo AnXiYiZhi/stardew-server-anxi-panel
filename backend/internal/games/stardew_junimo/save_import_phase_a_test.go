@@ -346,7 +346,7 @@ func TestRecoverImportPhaseASubmittedAfterPanelRestart(t *testing.T) {
 	}
 }
 
-func TestImportPhaseANoEffectRemainsManualRecoveryWithoutRetry(t *testing.T) {
+func TestImportPhaseANoEffectRestoresSnapshotAndAllowsCleanup(t *testing.T) {
 	f := preparePhaseATestFixture(t, "swap_host_to")
 	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) {
 		return paneldocker.CommandResult{Stdout: "success text only"}, nil
@@ -357,11 +357,177 @@ func TestImportPhaseANoEffectRemainsManualRecoveryWithoutRetry(t *testing.T) {
 	if !ok || typed.Code != ImportErrorCommandFailed || f.teeCalls != 1 {
 		t.Fatalf("error=%v writes=%d", err, f.teeCalls)
 	}
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored ||
+		journal.RecoveryState != "safe_to_resume_or_cleanup" || !journal.PhaseAFIFOWriteAttempted || !journal.UpstreamSubmitted ||
+		journal.UpstreamConfirmed || !importJournalProvesPhaseANoEffect(journal) {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	f.store.mu.Lock()
+	restored := f.store.instance
+	f.store.mu.Unlock()
+	if restored.State != storage.InstanceStateStopped || restored.StateMessage.String != "stopped before import" || restored.DriverPhase != "container_stopped" {
+		t.Fatalf("original instance snapshot not restored: %+v", restored)
+	}
+	sourceDir := importTransactionSourceDir(f.dataDir, f.op)
+	if err := os.MkdirAll(sourceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "owned-source"), []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CleanupUnsubmittedImport(f.dataDir, f.op); err != nil {
+		t.Fatal(err)
+	}
+	if err := FinalizeCanceledImportCleanup(f.dataDir, f.op); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(savesDir(f.dataDir), "Saves", "Upload_1")); !os.IsNotExist(err) {
+		t.Fatalf("staged target survived proven-no-effect cleanup: %v", err)
+	}
+	if _, err := LoadImportJournal(f.dataDir, f.op); !os.IsNotExist(err) {
+		t.Fatalf("finalized no-effect journal survived: %v", err)
+	}
+}
+
+func TestRecoverImportPhaseANoEffectAfterPanelRestart(t *testing.T) {
+	f := preparePhaseATestFixture(t, "swap_host_to")
+	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) { return paneldocker.CommandResult{}, nil })
+	driver := New(f.fake, nil, nil, f.store)
+	if err := driver.runImportPhaseA(context.Background(), f.instance, f.op, phaseATestPlatformID, nil, phaseATestOptions()); err == nil {
+		t.Fatal("no-effect import unexpectedly succeeded")
+	}
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil || !importJournalProvesPhaseANoEffect(journal) {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	journal.MaintenanceStarted = true
+	journal.MaintenanceRecoveryState = importMaintenanceManualRecovery
+	journal.RecoveryState = "manual_required"
+	if err := WriteImportJournal(f.dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"phase":"manual"}`
+	f.store.mu.Unlock()
+
+	recoveries, err := RecoverImportTransactions(f.dataDir)
+	if err != nil || len(recoveries) != 1 || recoveries[0].State != importRecoveryMaintenanceStopAndRestore {
+		t.Fatalf("recoveries=%+v err=%v", recoveries, err)
+	}
+	recovered, err := driver.recoverInterruptedImportMaintenance(context.Background(), f.instance, recoveries)
+	if err != nil || len(recovered) != 1 || recovered[0].State != "safe_to_resume_or_cleanup" {
+		t.Fatalf("recoveries=%+v err=%v", recovered, err)
+	}
+	journal, err = LoadImportJournal(f.dataDir, f.op)
+	if err != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	f.store.mu.Lock()
+	restored := f.store.instance
+	f.store.mu.Unlock()
+	if restored.State != storage.InstanceStateStopped || restored.StateMessage.String != "stopped before import" || restored.DriverPhase != "container_stopped" {
+		t.Fatalf("restart recovery did not restore original snapshot: %+v", restored)
+	}
+}
+
+func TestRecoverImportPhaseANoEffectFinishesPendingSnapshotRestore(t *testing.T) {
+	f := preparePhaseATestFixture(t, "swap_host_to")
+	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) { return paneldocker.CommandResult{}, nil })
+	driver := New(f.fake, nil, nil, f.store)
+	if err := driver.runImportPhaseA(context.Background(), f.instance, f.op, phaseATestPlatformID, nil, phaseATestOptions()); err == nil {
+		t.Fatal("no-effect import unexpectedly succeeded")
+	}
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil || !importJournalProvesPhaseANoEffect(journal) {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	journal.MaintenanceStarted = false
+	journal.MaintenanceRecoveryState = importMaintenanceSnapshotRestorePending
+	journal.RecoveryState = ""
+	if err := WriteImportJournal(f.dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "snapshot restore interrupted", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"phase":"restore_pending"}`
+	f.store.mu.Unlock()
+
+	recoveries, err := RecoverImportTransactions(f.dataDir)
+	if err != nil || len(recoveries) != 1 || recoveries[0].State != importRecoveryMaintenanceRestoreSnapshot {
+		t.Fatalf("recoveries=%+v err=%v", recoveries, err)
+	}
+	recovered, err := driver.recoverInterruptedImportMaintenance(context.Background(), f.instance, recoveries)
+	if err != nil || len(recovered) != 1 || recovered[0].State != "safe_to_resume_or_cleanup" {
+		t.Fatalf("recoveries=%+v err=%v", recovered, err)
+	}
+	journal, err = LoadImportJournal(f.dataDir, f.op)
+	if err != nil || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored || journal.RecoveryState != "safe_to_resume_or_cleanup" {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+}
+
+func TestRecoverImportPhaseANoEffectRejectsDiskDrift(t *testing.T) {
+	f := preparePhaseATestFixture(t, "swap_host_to")
+	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) { return paneldocker.CommandResult{}, nil })
+	driver := New(f.fake, nil, nil, f.store)
+	if err := driver.runImportPhaseA(context.Background(), f.instance, f.op, phaseATestPlatformID, nil, phaseATestOptions()); err == nil {
+		t.Fatal("no-effect import unexpectedly succeeded")
+	}
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal.MaintenanceStarted = true
+	journal.MaintenanceRecoveryState = importMaintenanceManualRecovery
+	journal.RecoveryState = "manual_required"
+	if err := WriteImportJournal(f.dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	f.writeMain(t, "drift-after-restart")
+	recoveries, err := RecoverImportTransactions(f.dataDir)
+	if err != nil || len(recoveries) != 1 || recoveries[0].State != importRecoveryMaintenanceStopAndRestore {
+		t.Fatalf("recoveries=%+v err=%v", recoveries, err)
+	}
+	if _, err := driver.recoverInterruptedImportMaintenance(context.Background(), f.instance, recoveries); err == nil {
+		t.Fatal("restart recovery accepted drifted no-effect evidence")
+	}
+	journal, err = LoadImportJournal(f.dataDir, f.op)
+	if err != nil || journal.MaintenanceRecoveryState != importMaintenanceManualRecovery || journal.RecoveryState != "manual_required" {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+}
+
+func TestImportPhaseANoEffectLabelWithoutEvidenceRemainsManual(t *testing.T) {
+	f := preparePhaseATestFixture(t, "swap_host_to")
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal.Stage = ImportStageSubmitted
+	journal.MaintenanceStarted = false
+	journal.MaintenanceRecoveryState = importMaintenanceSnapshotRestored
+	journal.PhaseAFIFOWriteAttempted = true
+	journal.UpstreamSubmitted = true
+	journal.PhaseAOutcome = phaseAOutcomeNoEffect
+	journal.PreSubmitEvidence = nil
+	journal.PhaseAEvidence = nil
+	if err := WriteImportJournal(f.dataDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	if importJournalProvesPhaseANoEffect(journal) {
+		t.Fatal("no-effect label without composite evidence was accepted")
+	}
 	if err := CleanupUnsubmittedImport(f.dataDir, f.op); err == nil {
-		t.Fatal("cleanup succeeded even though FIFO submission was attempted")
+		t.Fatal("cleanup accepted a no-effect label without composite evidence")
 	}
 	if _, err := os.Stat(filepath.Join(savesDir(f.dataDir), "Saves", "Upload_1")); err != nil {
-		t.Fatalf("staged target was removed during manual recovery: %v", err)
+		t.Fatalf("manual-recovery target was changed: %v", err)
 	}
 }
 

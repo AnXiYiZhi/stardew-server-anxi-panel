@@ -1,3 +1,11 @@
+# 2026-08-20 已完成、待发布：Phase A 无落盘效果导入恢复与生产热修
+
+- [x] `SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1`：当 FIFO 已尝试但完整 pre/after 证据严格证明主存档 hash、活动 pointer 和 Junimo pending intent 均无变化时，恢复 pre-maintenance 实例快照并允许现有 fingerprint-guarded cleanup；证据缺失、伪造标签、磁盘漂移或 upstream confirmed 继续人工恢复。
+- [x] Panel 重启可续作 stop-and-restore 与 `snapshot_restore_pending`；当前进程 no-effect 失败也先恢复实例快照再返回原 command failure，不重放 Junimo import。
+- [x] durable upload 的 exact job binding attach 改为零写幂等，保留 `binding mtime < jobs_cleared` 的旧现场审计证明；补字段时才写入并返回真实新 mtime。
+- [x] 生产 v0.5.7 已在完整备份、SQLite integrity、Compose 空和 strict disk/fingerprint 证明下完成一次性收敛；journal/token 清零、receipt 落盘、preimport 保留、Panel healthy，原正式镜像未替换。
+- [x] Windows 精准专项、Linux Junimo/Web 全包、vet/build 通过，任务容器/缓存卷清零；用户已明确授权推送 `origin/main`，后续 Tag、正式镜像与 `latest` 只由自动候选在全部发布门禁成功后推进，不手工绕过。
+
 # 2026-08-20 已发布：v0.5.7 失败存档导入自动自修复
 
 - [x] `SAVE-IMPORT-AUTO-RECOVERY-1`：新上传 preview/commit 会自动识别并收敛 job 已终态、三方身份一致且可严格证明从未提交 Junimo 的旧导入；不再要求用户保留原 token、关闭弹窗后返回手工取消或理解 recovery journal。

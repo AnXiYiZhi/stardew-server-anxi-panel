@@ -281,6 +281,37 @@ func classifyImportPhaseA(journal ImportJournal, pre, after JunimoImportEvidence
 	return phaseAContradictory
 }
 
+// importJournalProvesPhaseANoEffect accepts the post-FIFO case only when the
+// two durable evidence snapshots contain the exact classification inputs that
+// prove Junimo changed neither the target save nor the active pointer and left
+// no pending import intent. A label alone is never sufficient recovery proof.
+func importJournalProvesPhaseANoEffect(journal ImportJournal) bool {
+	if journal.PhaseAOutcome != phaseAOutcomeNoEffect || journal.UpstreamConfirmed ||
+		journal.PreSubmitEvidence == nil || journal.PhaseAEvidence == nil {
+		return false
+	}
+	pre, after := journal.PreSubmitEvidence, journal.PhaseAEvidence
+	if pre.MainSaveSHA256 == "" || pre.ActivePointer == "" || after.CapturedAt.Before(pre.CapturedAt) {
+		return false
+	}
+	return classifyImportPhaseA(journal, *pre, *after) == phaseANoEffect
+}
+
+func currentDiskMatchesPhaseANoEffect(dataDir string, journal ImportJournal) error {
+	if !importJournalProvesPhaseANoEffect(journal) {
+		return errors.New("save import journal has no complete Phase A no-effect proof")
+	}
+	current, err := capturePhaseADiskEvidence(dataDir, journal.SaveName)
+	if err != nil {
+		return err
+	}
+	after := journal.PhaseAEvidence
+	if current.MainSaveSHA256 != after.MainSaveSHA256 || current.ActivePointer != after.ActivePointer || current.PendingIntent.Exists {
+		return errors.New("save import disk evidence changed after the Phase A no-effect proof")
+	}
+	return nil
+}
+
 func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifecycle LifecycleDockerService, pre JunimoImportEvidenceSnapshot, options importPhaseAOptions, job *jobs.Context, observationErr error) error {
 	stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
 	defer cancel()
@@ -300,7 +331,16 @@ func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifec
 	case phaseAConfirmedSwap, phaseAConfirmedAsIs:
 		return confirmImportPhaseA(dataDir, operationID, after, classification, false, job)
 	case phaseANoEffect:
-		return recordImportPhaseAFailure(dataDir, operationID, ImportErrorCommandFailed, phaseAOutcomeNoEffect, "Junimo import command produced no disk effect", &after, observationErr)
+		primary := recordImportPhaseAFailure(dataDir, operationID, ImportErrorCommandFailed, phaseAOutcomeNoEffect, "Junimo import command produced no disk effect", &after, observationErr)
+		journal, loadErr := LoadImportJournal(dataDir, operationID)
+		if loadErr != nil {
+			return maintenanceRollbackError("Phase A no-effect result could not reload its recovery journal", errors.Join(primary, loadErr))
+		}
+		if restoreErr := d.restoreImportMaintenanceSnapshot(dataDir, operationID, storage.Instance{ID: journal.InstanceID, DataDir: dataDir}); restoreErr != nil {
+			return d.persistImportManualRecovery(dataDir, journal,
+				"Phase A no-effect result could not restore the pre-maintenance instance snapshot", errors.Join(primary, restoreErr))
+		}
+		return primary
 	case phaseARecoveryRequired:
 		return recordImportPhaseAFailure(dataDir, operationID, ImportErrorRecoveryRequired, phaseAOutcomeRecoveryRequired, "save transformed and pending matched, but the boot target was not set", &after, observationErr)
 	case phaseAHalfConversion:

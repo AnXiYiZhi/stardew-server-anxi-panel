@@ -445,6 +445,9 @@ func (s *durablePendingUploadStore) attachJob(dataDir, token, operationID, jobID
 			return fmt.Errorf("upload token already has a different job")
 		}
 	}
+	if entry.JobType == sj.SaveImportJobType && entry.JobID == jobID && entry.JobIdempotencyKey == sj.SaveImportJobIdempotencyKey(operationID) {
+		return nil
+	}
 	entry.JobType = sj.SaveImportJobType
 	entry.JobID = jobID
 	entry.JobIdempotencyKey = sj.SaveImportJobIdempotencyKey(operationID)
@@ -603,13 +606,20 @@ func (s *durablePendingUploadStore) attachJobByReference(dataDir string, referen
 		(entry.JobIdempotencyKey != "" && entry.JobIdempotencyKey != expectedKey) {
 		return durablePendingUploadReference{}, fmt.Errorf("owned token already has a different job identity")
 	}
+	if entry.JobType == sj.SaveImportJobType && entry.JobID == jobID && entry.JobIdempotencyKey == expectedKey {
+		return durablePendingUploadReference{TokenHash: reference.TokenHash, Entry: *entry, RecordUpdatedAt: reference.RecordUpdatedAt}, nil
+	}
 	entry.JobType = sj.SaveImportJobType
 	entry.JobID = jobID
 	entry.JobIdempotencyKey = expectedKey
 	if err := writeDurablePendingUploadRecord(durableUploadDirByHash(dataDir, reference.TokenHash), entry); err != nil {
 		return durablePendingUploadReference{}, err
 	}
-	return durablePendingUploadReference{TokenHash: reference.TokenHash, Entry: *entry}, nil
+	recordInfo, err := os.Stat(filepath.Join(durableUploadDirByHash(dataDir, reference.TokenHash), "token.json"))
+	if err != nil {
+		return durablePendingUploadReference{}, err
+	}
+	return durablePendingUploadReference{TokenHash: reference.TokenHash, Entry: *entry, RecordUpdatedAt: recordInfo.ModTime().UTC()}, nil
 }
 
 func (s *durablePendingUploadStore) cleanupReferences(dataDir, instanceID string) ([]durablePendingUploadCleanupReference, error) {
