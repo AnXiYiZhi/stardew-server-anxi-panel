@@ -4,6 +4,7 @@
 - `PreviewSaveZip` 现在只在私有上传临时树中解析主 `<SaveGame>` 的非零十进制 `uniqueIDForThisGame`，按 Stardew `getLoadEnumerator`/SMAPI `SaveFolderName` 规则构造运行身份；名称变化时以 no-replace 方式同步重命名顶层目录、主文件和可选 `_old` 文件。预览响应、durable token、journal、staging、Junimo command 和后续 runtime evidence 从一开始使用同一 canonical saveName，不修改 XML 字节，也不在 finalizer 后猜测同档别名。
 - 已经规范的 `<prefix>_<worldId>` 保持不变；缺失 identity 的历史/损坏夹具继续走既有 preview/后续解析错误语义，显式非数字、溢出或零 identity 会在接管前拒绝。规范名仍经过 UTF-8、长度、路径、保留字和 Junimo command token 全部门禁；重命名目标已存在时 fail closed，不覆盖临时树中的任何节点。
 - 影响 `internal/games/stardew_junimo/{saves.go,saves_test.go}` 及上传预览返回的 `saveName` 值，不新增字段、SQLite migration、Control/Junimo 修改或 XML rewrite。专项覆盖生产同形态的无后缀中文目录、主文件与 `_old` 同步规范化、旧目录消失和正常/显式目录/GBK preview 不回归；任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。
+- 修复提交 `0657ff01f1216ffaa9362a800cf228bb4307aa8a` 已推送 `origin/main`，并以不更改公开版本比较的本地热修镜像部署到生产 `v0.5.8`。热修后 Panel/SQLite/Docker health 全绿，实例为 `stopped`、active jobs=0、两份 journal 均为 `rolled_back`、pending intent=false；原正式镜像、一致 SQLite 与 Compose/.env 回滚点保留。还需用户重新上传同一 ZIP 并重新提交平台 ID 才能完成真实 finalizer；回滚后原主机仍是主 `<player>`，因此在成功重导入前不会出现于可选 farmhand 列表。
 
 # SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1：终态零效果事务不再假 busy（2026-08-20，completed，未发布）
 

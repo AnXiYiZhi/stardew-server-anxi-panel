@@ -4,7 +4,8 @@
 - [x] `SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1`：preview 在私有临时树中读取世界 ID，将目录、主文件和 `_old` no-replace 规范化；preview/token/journal/FIFO/runtime 从接管前即使用唯一 canonical saveName，不改 XML。
 - [x] 生产同形态无后缀中文目录专项以及正常、显式目录、GBK preview 回归通过；规范名继续通过安全路径/命令 token 门禁。
 - [x] 任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全绿。
-- [ ] 尚待真实生产热更新与同一存档重新导入验收；正式候选还必须补“非规范目录 → finalizer → 自动解绑 → durable save → 重启仍可选原主机”的真实 Docker E2E。
+- [x] `origin/main@0657ff01f121` 已推送并热更新到生产；Panel/DB/Docker health 全绿，无 active job、unfinished journal 或 pending intent，原镜像与可执行 rollback 保留。
+- [ ] 尚待用户重新上传同一 ZIP 和平台 ID 完成生产重导入验收；正式候选还必须补“非规范目录 → finalizer → 自动解绑 → durable save → 重启仍可选原主机”的真实 Docker E2E。
 
 # 2026-08-20 已完成、待发布：终态 no-effect 普通操作自动解锁
 
@@ -12,7 +13,8 @@
 - [x] `SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1`：受 import mutex 保护的请求先认证，仅管理员在 busy 判定前收敛 exact-owner + terminal + strict no-effect 事务；未认证、非管理员、active/ambiguous/effect-bearing 继续零 cleanup/fail closed。
 - [x] maintenance 用 `saves info <exact-target>` 证明 Junimo 真能读取 staged target 后才提交；Phase A 无效果会在 Down 前有界采集、脱敏 `server-output` 到 journal，日志仍不参与成功判定。
 - [x] 管理员 mutation/未认证边界、target readiness、日志 platform ID 脱敏专项通过；Web 全包、Linux Junimo 全包、Linux 整仓 test、vet/build 全绿，任务容器/卷/临时恢复制品清零。
-- [ ] 尚未 push/发布。正式候选需补真实 Docker 的 target-invisible pre-submit 和 FIFO no-effect + 下一 mutation 自动清理两条专项，并在上一正式版 Web 升级后的新 Panel 重验；不得用生产热修或 Go fake 替代。
+- [x] 代码已随 `0657ff01f121` push 并进入生产热修，最终 Panel/DB/Docker health 与事务终态复核通过。
+- [ ] 正式候选仍需补真实 Docker 的 target-invisible pre-submit 和 FIFO no-effect + 下一 mutation 自动清理两条专项，并在上一正式版 Web 升级后的新 Panel 重验；不得用生产热修或 Go fake 替代。
 
 # 2026-08-20 已发布：v0.5.8 Phase A 无落盘效果导入恢复与生产热修
 

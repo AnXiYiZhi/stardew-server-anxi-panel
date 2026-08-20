@@ -20,7 +20,14 @@
 ## 候选前本地证据
 
 - 生产同形态的无后缀中文目录专项通过：preview 返回 canonical runtime identity，目录、主文件、`_old` 同步 no-replace 规范化，旧目录消失；正常 path、显式目录 entry、legacy GBK preview 同组回归通过。
-- 任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全绿；精确 module prefetch 后 `go mod verify` 通过。生产热更新和重新导入仍属本版待验收项，不以单元测试代替。
+- 任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全绿；精确 module prefetch 后 `go mod verify` 通过。生产热更新已完成，同一 ZIP 的重新导入仍属本版待验收项，不以单元测试代替。
+
+## 生产热修证据（2026-08-20）
+
+- 修复已以 `0657ff01f1216ffaa9362a800cf228bb4307aa8a` 推送并与 `origin/main` 同步。从该提交构建任务镜像 `anxi-panel-hotfix:0.5.8-0657ff01`，OCI version/commit/build date 为 `0.5.8`/`0657ff01f1216ffaa9362a800cf228bb4307aa8a`/`2026-08-20T11:29:31Z`；本地独立 volume 的 `/health` 与 `/api/version` 冒烟通过。不变更公开版本号，以 commit 区分热修，未创建 tag、未推送正式镜像或 `latest`。
+- 62,979,072-byte 镜像包在上传前后的 SHA-256 均为 `a7650ec3d6fb0b96742ee706b6cfd57981163fa7a7f77cd97ce47cc1c7481b43`。首次替换时 HTTP/DB 已就绪，但 Docker healthcheck 仍在 `starting` 窗口，严格脚本退出并自动恢复原 `v0.5.8@8d5fe360c042`；复核原 Panel healthy 后，把 Docker health 改为覆盖 start-period/interval 的独立有界等待，第二次替换成功。
+- 生产终态：Compose 精确使用热修镜像，容器 `healthy`、restart count=0，`/health` 包含 DB ok，`/api/version.commit=0657ff01f121...`；SQLite `integrity_check=ok`，实例 `stopped/stopped`，active jobs=0，两份现有 journal 均为 `rolled_back`，unfinished/invalid journal=0，Junimo pending intent=false。原正式镜像仍在服务器，一致 SQLite、Compose/.env、镜像 inspect、manifest 与可执行 rollback 保留在 `/root/.anxi-panel/manual-recovery/panel-hotfix-20260820-0657ff01-retry1`。
+- 已在精确 owner/健康/回滚制品断言后删除服务器和本机的冗余镜像 tar；已加载的生产热修镜像和私有回滚目录可恢复。真实重导入尚未执行，因为原始平台 ID 按安全契约不会持久化；用户必须重新上传 ZIP 并提交 ID，之后才能验收 finalizer、自动解绑、durable save 与原主机可选。
 
 # 下一补丁：终态 no-effect 普通操作自动解锁（2026-08-20，候选前）
 
@@ -29,7 +36,7 @@
 - `SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1` 修复生产 `v0.5.8` 的新现场：job 已 terminal failed、active jobs=0、Phase A 完整证据严格 no-effect 且 maintenance snapshot 已恢复，但 start/select 等普通 mutation 的通用 mutex 在 handler recovery 之前仍返回 `save_import_busy`。Web 现在先认证，仅管理员在通用 busy 检查前调用 existing exact-owner strict recovery；active/ambiguous/effect-bearing、身份冲突、非管理员和未认证请求继续 fail closed。
 - maintenance readiness 由通用 `saves` 响应收紧为只读 `saves info <exact-target>`，Junimo 看不到或读不到 staged target 时停在 pre-submit。Phase A 超时会在 Down 前按 offset 有界截取最后 16 KiB server output，经 platform ID/控制字符脱敏和 1024 字符限制写入 journal；日志只用于诊断，不改变 disk composite success proof。
 - 生产热修在 Panel pause 窗口内先完成不可变 SQLite/journal/token/存档/指针备份、integrity 和 dry-run，再只清理该 operation 的 transaction、owned token、staged target/source；preimport 与 receipt 保留。备份目录为 `/root/.anxi-panel/manual-recovery/save-import-20260820-98903e3c`，manifest SHA-256=`3930867885e251f4254b79734f6fa897b44cfd0c935d7a0b5c5d71b5e7ee6864`。首次安装 bootstrap cleanup 后 pointer 按产品契约不存在；Panel `/health=ok`、restart count=0、active jobs=0，未替换镜像。
-- 影响 backend Web/driver/tests 和长期文档；公开 API/DTO、SQLite migration、Compose、frontend、Control/SMAPI/Junimo runtime manifest 均未改变。当前尚未 push、未生成候选、未创建 tag、未提升镜像。
+- 影响 backend Web/driver/tests 和长期文档；公开 API/DTO、SQLite migration、Compose、frontend、Control/SMAPI/Junimo runtime manifest 均未改变。代码已随 `0657ff01f121` push 并进入生产热修；未生成通过正式门禁的候选证明、未创建 tag、未提升正式镜像。
 
 ## 本版专项矩阵
 

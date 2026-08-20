@@ -14,8 +14,9 @@
 ## 如何验证与下一步
 
 - 单元专项用生产同形态的无后缀中文目录和真实 `uniqueIDForThisGame`，确认响应/预览名、目录、主文件、`_old` 一致规范化，旧目录消失；正常 path、显式目录 entry 与 legacy GBK preview 同组回归通过。任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。
+- `origin/main@0657ff01f121` 已推送并以本地 `0.5.8` 热修镜像部署生产。最终 Panel/DB/Docker health 全绿，SQLite integrity ok，实例 stopped，active jobs=0，两份 journal 均 rolled_back，unfinished/invalid=0，pending intent=false；原正式镜像、SQLite/Compose/.env 与 rollback 脚本保留在生产私有目录。
 - 正式候选必须用真实 Junimo `.125` + Control 完成非规范 ZIP 的 swap finalizer、host bed、自动解绑、durable save、重启和真人客户端选原主机；不能只以 runtime saveId 数字后缀相同替代 finalizer 计数/intent 清空/Control 双证据。
-- 生产热更新必须先备份 Panel image/binary、SQLite、两份 rolled_back journal、当前非规范存档与 pointer，并保留原始存档直到 canonical 导入成功；没有用户重新提交的平台 ID时不得手工伪造绑定或直接改 XML。
+- 真实重导入仍必须保留原始存档直到 canonical 导入成功；没有用户重新提交的平台 ID 时不得手工伪造绑定或直接改 XML。当前原主机在回滚后仍是主 `<player>`，不是可选 farmhand；必须用新预览返回的 canonical saveName 重走 swap/finalizer，才会在成功后恢复可选。
 
 # SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1 后端接手记录（2026-08-20，completed，未发布）
 
@@ -39,7 +40,7 @@
 
 ## 下一步注意事项
 
-- 本提交尚未 push/发布。正式候选必须用真实 Docker 覆盖“目标对 Junimo 不可见时 pre-submit fail closed”“FIFO 已写但零效果时 capture log + snapshot restore + 下一管理员 mutation 自动清理”，并在升级后的 Panel 复验；日志文本不可升级为成功门禁。
+- 本修复已随 `0657ff01f121` push 并进入生产热修；正式候选仍必须用真实 Docker 覆盖“目标对 Junimo 不可见时 pre-submit fail closed”“FIFO 已写但零效果时 capture log + snapshot restore + 下一管理员 mutation 自动清理”，并在升级后的 Panel 复验；日志文本不可升级为成功门禁。
 - 如果再出现正式 import 无磁盘效果，先读 `phaseALogDetail` 与 pre/after disk evidence；不要重发同一 operation。仅完整 no-effect proof 可自动收敛，其它情况保留 journal/token/preimport 做人工恢复。
 
 # SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1 后端接手记录（2026-08-20，released in v0.5.8；生产已定向热修）

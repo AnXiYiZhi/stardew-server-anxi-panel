@@ -664,6 +664,7 @@
 
 ## 2026-08-14：检索已返回真实文件后仍读取了猜测文件名
 
+- 最近复发/补充：2026-08-20 生产热修后准备核对 SQLite 状态时，未先列出 `backend/migrations` 就把基础迁移猜成不存在的 `001_init.sql`；真实文件是随后 `rg --files` 返回的 `001_foundation.sql`。组合只读命令在第一个 `Get-Content` 就退出 1，没有连接生产或修改仓库产品文件。即使目录已知，迁移序号也不代表后缀名可以猜测，后续读取只复用文件清单的精确路径。
 - 最近复发/补充：2026-08-16 定位 `jobs.Context` 时，`rg` 已明确返回定义位于 `backend/internal/jobs/types.go`，同一组合命令后半仍按惯例读取不存在的 `backend/internal/jobs/context.go`，只读命令退出 1；源码和运行资源未改变。随后只读取真实命中路径。即使类型名与惯例文件名高度相似，后续 `Get-Content` 也必须直接复用检索输出，不能重新命名。
 - 最近复发/补充：2026-08-15 诊断玩家虚假最后在线时间时，主流程把不存在的仓库根 `mods` 和 `backend/internal/storage/migrations` 传给 `rg`；并行只读审查也先后猜测相对 `embedded/smapi-mod-src` 与同一 migrations 目录。命令均只读并以路径错误退出，未改产品或生产状态。真实 Control 源码和迁移分别由 `rg --files` 定位到 `backend/internal/games/stardew_junimo/embedded/smapi-mod-src` 与 `backend/migrations`；后续只读取真实命中路径。该模式已经由 `AGENTS.md` 的“检索与读取拆成独立 fail-fast 命令”规则覆盖，不得再按职责或目录名猜路径。
 - 最近复发/补充：2026-08-15 开始实现玩家加入保护时，未先用文件清单确认就读取猜测的 `backend/internal/web/server_password_handlers_test.go`；实际目录只有 `server_password_handlers.go`，既有密码接口测试并未按同名测试文件存在。组合读取在该点退出，产品文件未被修改；随后用 `rg --files` 与测试内容检索确认真实范围。新增测试文件可以规划创建，但读取既有测试时仍必须先发现。
@@ -3650,3 +3651,39 @@
 - 正确做法：用一个 PowerShell 双引号 token 承载完整参数：`--mount "type=bind,src=E:\...\embedded,dst=/repo,readonly"`；修正后只读 bind、精确文件复制及容器契约测试通过。
 - 预防检查：Windows Docker bind 首次使用前先以只读最小容器验证参数；检查报错中路径是否含字面引号。`--mount` 的 `src/dst` 不再使用内嵌 Shell 风格引号。
 - 适用范围：PowerShell 调用 Docker CLI 的 Windows bind、volume 与逗号分隔参数。
+# 2026-08-20：PowerShell 脚本中内联拼接 shell 单引号转义导致 ParserError
+
+- 环境：Windows 11 + PowerShell 7，任务专属生产 SSH 只读探针。
+- 错误模式：在 `.ps1` 的双引号字符串里直接写入 shell 的 `'\"'\"'` 单引号转义序列。
+- 症状：脚本在连接 SSH 前就以 `ParserError: Missing ')' in method call` 退出，远端零执行。
+- 根因：把 shell 的引号规则直接嵌入 PowerShell 双引号字面量，反斜杠不是 PowerShell 的双引号转义符，解析器提前结束字符串。
+- 正确做法：用 `[char]39` 和 `[char]34` 分别构造单/双引号，再拼成 shell 的安全替换序列；执行前先让 `pwsh -File` 完成脚本解析。
+- 预防检查：跨 `PowerShell → SSH → sh` 的复杂引号必须放任务脚本；引号本身使用字符代码组装，不在多层字面量中肉眼转义。
+- 适用范围：所有 PowerShell 生成 POSIX shell 单引号参数的 SSH/容器远程脚本。
+# 2026-08-20：生产 Docker mount 投影输出了匿名 volume 完整 hash
+
+- 环境：Windows 11 + PowerShell 7 + Posh-SSH 3.2.7，生产 Panel 只读 `docker inspect` 投影。
+- 错误模式：虽然已排除 `Config.Env`，却直接输出了所有 mount 的 `Source`。
+- 症状：工具输出中出现 `/var/lib/docker/volumes/<完整匿名 hash>/_data`；未输出凭据或存档内容，但违反生产投影最小化规则。
+- 根因：只把容器/网络 ID 视为需要脱敏，遗漏了匿名 volume 的 source 同样含完整 hash。
+- 正确做法：对 `Mounts` 按类型投影；`volume` 的 source 统一输出 `<redacted-volume>`，仅保留 type、destination 和 readOnly；bind source 也只在完成判断必需时输出。
+- 预防检查：生产 `docker inspect` 必须先在内存中 `ConvertFrom-Json`，再使用 allowlist 字段并显式脱敏 Env、IDs、volume hash、存档 GUID 和玩家关联标识；禁止输出原始 JSON。
+- 适用范围：所有生产 Docker 容器、volume、network 和 Compose 状态投影。
+# 2026-08-20：ShellCheck 容器已有 entrypoint 时重复传入 `shellcheck`
+
+- 环境：Windows 11 + Docker Desktop，本地 `koalaman/shellcheck:v0.11.0` 镜像。
+- 错误模式：未先投影镜像 `Entrypoint/Cmd`，直接运行 `docker run ... koalaman/shellcheck:v0.11.0 shellcheck -s sh <file>`。
+- 症状：容器实际执行为 `shellcheck shellcheck ...`，退出并报 `openBinaryFile: does not exist`；先行的 Alpine `sh -n` 已成功，未运行生产部署。
+- 根因：把“显式调用 shellcheck”误解为在已配置 shellcheck entrypoint 的官方镜像后再加一个同名位置参数。
+- 正确做法：先用完整 JSON `docker image inspect` + `ConvertFrom-Json` 核对 entrypoint；对该镜像使用 `docker run --entrypoint shellcheck ... -s sh <file>`，确保执行程序显式且参数不重复。
+- 预防检查：任何第三方 lint 镜像首次使用前都投影 `Config.Entrypoint/Config.Cmd`；命令数组必须在口头展开后只出现一次可执行程序。
+- 适用范围：ShellCheck 及所有带 entrypoint 的专用 lint/构建镜像。
+# 2026-08-20：生产热修在 HTTP 已就绪后立即断言 Docker health 必须为 healthy
+
+- 环境：Linux 生产 Docker Compose，Panel 镜像 `HEALTHCHECK --interval=1m --start-period=10s`。
+- 错误模式：部署脚本的有界轮询只等 `/health` 返回 200，随后立即断言 `docker inspect ... State.Health.Status == healthy`。
+- 症状：新容器的 HTTP/数据库就绪快于 Docker daemon 首次 healthcheck 调度，门禁在 `starting` 窗口退出 1，自动回滚恢复原 `v0.5.8`；回滚后 Panel、数据库、Compose 和原镜像健康。
+- 根因：把应用 readiness 与 Docker healthcheck 的 daemon 调度时序当成同一个瞬时事件。
+- 正确做法：分别有界等待 HTTP/DB readiness 和 Docker `healthy`；Docker 等待上限必须覆盖 `start-period + interval + timeout`，并在失败输出中记录最小脱敏 stage 后仍自动回滚。
+- 预防检查：替换容器的验收顺序固定为“HTTP 200 → DB status ok → version/commit → configured image → 有界 Docker healthy”，不允许在 `starting` 时立即判失败。
+- 适用范围：所有 Docker Compose 热更新、候选 fresh/restart smoke 和 updater healthy 验收。
