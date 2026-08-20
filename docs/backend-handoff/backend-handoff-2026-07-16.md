@@ -19,7 +19,7 @@
 
 ## 下一步注意事项
 
-- Linux 整仓 test/vet/build 已通过；推送前仍要运行本地 `v0.5.10` 完整候选复现。远端候选必须同时通过 selected code gates、fresh/restart、`v0.5.9` unhealthy rollback/healthy apply，以及升级后新增两条 Phase A boundary；任一失败都修复后从新 commit 重建，不得跳过或降级。
+- Linux 整仓 test/vet/build 与本地 `0.5.10@c45f0e09afa5` 完整候选已通过；本地候选覆盖 fresh/restart、`v0.5.9` unhealthy rollback/healthy apply、升级后新增两条 Phase A boundary 和下一 admin mutation 恢复。远端候选仍必须在同步 `main` 上重新完成 selected code gates 与同一升级矩阵；任一失败都修复后从新 commit 重建，不得跳过或降级。
 - 正式提升后核对三个 registry 的版本/`latest` 六引用同 digest、OCI metadata、独立 `/health`/`/api/version`、annotated tag、GitHub Release 四项资产与任务资源清零，并把 workflow/artifact/digest/耗时回填 `docs/09-image-build.md`、本接手文档和路线图。
 
 # SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 后端接手记录（2026-08-20，released in v0.5.9）

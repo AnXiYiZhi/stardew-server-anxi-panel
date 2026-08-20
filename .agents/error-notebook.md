@@ -635,6 +635,7 @@
 
 ## 2026-08-14：把递归任务目录清理与 Docker 删除继续内联发送
 
+- 最近复发/补充：2026-08-20 已按规则用 task-specific `.ps1` 精确删除 `%TEMP%\anxi-v0510-junimo-source`，但脚本只核对路径和初始文件数，没有先审计 Git pack 的 Windows `ReadOnly` 属性；`Directory.Delete(..., true)` 删除其余 871 个文件后在 `.idx` 处拒绝访问，metadata 已删、源码目录留下 3 个只读 pack 文件。没有扩大删除范围或原样重试；续作先逐个核对三个 exact pack 名、父目录和只读属性，只在该已验证任务目录内清除 `ReadOnly` 再完成删除。递归清理脚本除路径/owner 外还必须先统计只读项，并把部分完成设计成可审计、可续作状态。
 - 最近复发/补充：2026-08-17 Mod 扩展真实 E2E 结束后，虽然内联 PowerShell 已精确解析并比较工作区内 `.agents/tmp-v053-mod-update-e2e` 绝对路径，仍把 `Remove-Item -Recurse` 放在工具命令文本中，执行策略在 PowerShell 启动前拒绝，目录未变化。随后按既有规则用 `apply_patch` 创建任务专属清理脚本，在脚本内再次断言精确路径与 `.agents` 边界，执行成功后再用 `apply_patch` 删除脚本。已经存在本条规则时不得因目标唯一且已验证就重试内联递归删除。
 - 最近复发/补充：2026-08-16 主农舍真实 E2E 首轮失败后，虽已核对唯一 `%TEMP%\anxihostbed085327835653` 路径与两个 owner volume，仍把 Compose down、volume 删除和递归 `Remove-Item` 合在一个内联 cell；策略在进程启动前整体拒绝，零修改。随后只按精确 project/label/volume 名清理 Docker 资源，失败诊断目录保留到最终审计；不得再把宿主递归删除混入 Docker 清理包装器。
 - 环境：候选演练外层超时后，已通过只读投影得到唯一 DinD 名称、owner label 和 `.agents/anxi-release-candidate-*` 任务目录。

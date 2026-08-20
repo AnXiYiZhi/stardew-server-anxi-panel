@@ -4,7 +4,8 @@
 - [x] 升级 E2E 已加入 exact `saves info` 不可见时 pre-submit fail closed，以及真实 FIFO 接受一次 import 但零落盘后的脱敏诊断、复合 no-effect、snapshot restore 和下一管理员 mutation strict cleanup；preimport/hash/pointer/备份均有保持断言。
 - [x] 真实 Junimo `.125` 测试改为导入无 world ID 的非规范 ZIP，preview 先 canonicalize，再完成 finalizer/解绑/durable restart；官方 TestClient 按名称选择 `OriginalOwner` 并睡到次日，直接证明原主机可选。真实链 `223.39s` 通过且 owner 资源为 0。
 - [x] Bash 语法、ShellCheck、定向 Go、integration 编译以及任务专属 Linux Go 1.25 整仓 test/vet/build 通过；变更范围只有候选脚本、真实 integration test、长期文档和错题本，没有运行代码、前端/schema/Compose/runtime 资产变化。
-- [ ] 推送前完成本地完整候选；推送后跟踪 `v0.5.9 → v0.5.10` unhealthy/healthy、升级后专项、自动 Tag/提升，并核对三仓 digest/`latest`、版本接口、GitHub Release 和资源清零后回填证据。
+- [x] 本地 `0.5.10@c45f0e09afa5` 完整候选全绿：fresh/restart、`v0.5.9` unhealthy rollback/healthy apply、升级后 exact-target invisible、FIFO no-effect、脱敏诊断、下一管理员 mutation 恢复与既有受影响链全部通过。
+- [ ] 推送后跟踪正式 `v0.5.9 → v0.5.10` unhealthy/healthy、升级后专项、自动 Tag/提升，并核对三仓 digest/`latest`、版本接口、GitHub Release 和资源清零后回填证据。
 
 # 2026-08-20 已发布于 v0.5.9：非规范上传目录统一为运行时 saveId
 
