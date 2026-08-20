@@ -586,6 +586,295 @@ EOF
   echo "candidate upgrade E2E: upgraded Panel recovered the v0.5.5 jobs-cleared import, preserved data, and accepted a new preview"
 }
 
+assert_upgraded_save_import_phase_a_boundaries() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_compose="$instance_dir/docker-compose.yml"
+  # The production Docker client derives the exec project from the instance
+  # data-directory basename, so this fixture must use the real "stardew"
+  # project instead of an arbitrary top-level Compose name.
+  local import_project="stardew"
+  local fixture_root="$root/save-import-phase-a-fixture"
+  local archive_root="$fixture_root/archives"
+  local hidden_saves="$fixture_root/hidden-saves"
+  local runtime_fixture="$fixture_root/runtime"
+  local control_source="/workspace/backend/internal/games/stardew_junimo/embedded/smapi-mod"
+  local existing_main="$instance_dir/.local-container/saves/Saves/Existing_1/Existing_1"
+  local existing_info="$instance_dir/.local-container/saves/Saves/Existing_1/SaveGameInfo"
+  local active_pointer="$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server/junimohost.gameloader.json"
+  local pending_root="$instance_dir/.local-container/control/pending-save-uploads"
+  local transaction_root="$instance_dir/.local-container/control/save-import-transactions"
+  local existing_save_sha=""
+  local existing_info_sha=""
+  local case_name=""
+  local case_zip=""
+  local case_token=""
+  local case_job=""
+  local case_operation=""
+  local case_journal=""
+  local case_status=""
+  local case_code=""
+  local select_code=""
+  local preimport_count=""
+  local raw_platform_id="76561190000000456"
+
+  echo "candidate upgrade E2E: testing exact target visibility and FIFO no-effect recovery"
+  # The preceding legacy-repair fixture intentionally leaves its exact stopped
+  # stardew containers in place long enough to prove preservation. Its evidence
+  # is complete now; clear only that isolated DinD project before replacing the
+  # instance Compose definition with the import runtime.
+  docker compose --project-name "$import_project" --project-directory "$instance_dir" -f "$instance_compose" down --remove-orphans >/dev/null
+  if [[ -n "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ||
+    -n "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+    echo "candidate upgrade E2E: legacy stardew fixture resources remained before Phase A boundary tests" >&2
+    exit 1
+  fi
+  mkdir -p "$runtime_fixture" "$archive_root" "$hidden_saves"
+  mkdir -p "$instance_dir/.local-container/mods/JunimoServer"
+  mkdir -p "$instance_dir/.local-container/mods/StardewAnxiPanel.Control"
+  mkdir -p "$instance_dir/.local-container/control"
+  mkdir -p "$(dirname "$active_pointer")"
+  mkdir -p "$(dirname "$existing_main")"
+  printf 'IMAGE_VERSION=1.5.0-preview.125\nAPI_PORT=5110\n' >"$instance_dir/.env"
+  printf '%s\n' '{"Name":"JunimoServer","Version":"1.5.0-preview.125","UniqueID":"JunimoHost.Server"}' >"$instance_dir/.local-container/mods/JunimoServer/manifest.json"
+  printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
+  cp "$control_source/manifest.json" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/manifest.json"
+  cp "$control_source/StardewAnxiPanel.Control.dll" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/StardewAnxiPanel.Control.dll"
+  printf '%s\n' '{"controlModVersion":"0.3.6","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}' >"$instance_dir/.local-container/control/options.json"
+  printf '%s\n' '<SaveGame><player><name>Existing</name></player><uniqueIDForThisGame>1</uniqueIDForThisGame></SaveGame>' >"$existing_main"
+  printf '%s\n' '<Farmer><name>Existing</name></Farmer>' >"$existing_info"
+  printf '%s\n' '{"SaveNameToLoad":"Existing_1"}' >"$active_pointer"
+  existing_save_sha="$(sha256sum "$existing_main" | awk '{print $1}')"
+  existing_info_sha="$(sha256sum "$existing_info" | awk '{print $1}')"
+
+  cat >"$runtime_fixture/fake-http.sh" <<'EOF'
+#!/bin/sh
+set -eu
+if [ -f /tmp/anxi-target-missing ]; then
+  body='{"dayTransitionComplete":true,"saveId":"Existing_1","saveImportFinalizeCount":0,"masterName":"Existing","failedFields":[]}'
+else
+  body='{"playerCount":0,"dayTransitionComplete":true,"saveId":"Existing_1","saveImportFinalizeCount":0,"masterName":"Existing","farmhandData":[],"failedFields":[]}'
+fi
+length="$(printf '%s' "$body" | wc -c | tr -d '[:space:]')"
+printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "$length" "$body"
+EOF
+  cat >"$runtime_fixture/fake-junimo.sh" <<'EOF'
+#!/bin/sh
+set -eu
+rm -f /tmp/smapi-input /tmp/anxi-target-missing
+mkfifo /tmp/smapi-input
+: > /tmp/server-output.log
+nc -lk -p 8080 -e /fixture/fake-http.sh &
+exec 3<> /tmp/smapi-input
+while IFS= read -r command <&3; do
+  case "$command" in
+    "saves info "*)
+      save_name="${command#saves info }"
+      if [ -f "/data/Saves/$save_name/$save_name" ]; then
+        printf 'Save: %s\n  Farm Type: Standard\n' "$save_name" >> /tmp/server-output.log
+      else
+        printf 'Controlled fixture: exact save target is not visible: %s\n' "$save_name" >> /tmp/server-output.log
+        : > /tmp/anxi-target-missing
+      fi
+      ;;
+    "saves import "*)
+      printf 'Controlled Junimo diagnostic: command accepted but produced no disk effect: %s\n' "$command" >> /tmp/server-output.log
+      ;;
+    *)
+      printf 'Controlled fixture ignored command: %s\n' "$command" >> /tmp/server-output.log
+      ;;
+  esac
+done
+EOF
+  chmod 700 "$runtime_fixture/fake-http.sh" "$runtime_fixture/fake-junimo.sh"
+
+  create_phase_a_save_zip() {
+    local name="$1"
+    local identity="$2"
+    local source_root="$archive_root/$name"
+    local zip_path="$archive_root/$name.zip"
+    mkdir -p "$source_root/$name"
+    printf '<SaveGame><player><name>%s</name><farmName>Gate</farmName></player><uniqueIDForThisGame>%s</uniqueIDForThisGame></SaveGame>\n' "$name" "$identity" >"$source_root/$name/$name"
+    printf '<Farmer><name>%s</name><farmName>Gate</farmName></Farmer>\n' "$name" >"$source_root/$name/SaveGameInfo"
+    (
+      cd "$source_root"
+      zip -q -r "$zip_path" "$name"
+    )
+  }
+
+  write_phase_a_compose() {
+    local saves_source="$1"
+    cat >"$instance_compose" <<EOF
+services:
+  server:
+    image: $candidate_image
+    entrypoint: ["sh", "/fixture/fake-junimo.sh"]
+    volumes:
+      - type: bind
+        source: $runtime_fixture
+        target: /fixture
+        read_only: true
+      - type: bind
+        source: $instance_dir/.local-container/mods
+        target: /data/Mods
+        read_only: true
+      - type: bind
+        source: $saves_source
+        target: /data/Saves
+        read_only: true
+EOF
+  }
+
+  submit_phase_a_case() {
+    local name="$1"
+    local zip_path="$2"
+    local mode="$3"
+    local preview_code=""
+    preview_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --form "save=@$zip_path;filename=$name.zip" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-preview")"
+    case_token="$(jq -r '.token // empty' "$response_file")"
+    if [[ "$preview_code" != 200 || -z "$case_token" || "$(jq -r '.saveName // empty' "$response_file")" != "$name" ]]; then
+      echo "candidate upgrade E2E: $mode preview failed with HTTP $preview_code" >&2
+      cat "$response_file" >&2
+      exit 1
+    fi
+    if [[ "$mode" == invisible ]]; then
+      jq -n --arg token "$case_token" '{token:$token,hostHandling:{mode:"virtual_host_takeover",acknowledged:true}}' >"$root/save-import-phase-a-commit.json"
+    else
+      jq -n --arg token "$case_token" --arg platform "$raw_platform_id" '{token:$token,hostHandling:{mode:"swap_to_player",platformId:$platform}}' >"$root/save-import-phase-a-commit.json"
+    fi
+    case_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$root/save-import-phase-a-commit.json" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-commit-and-start")"
+    case_job="$(jq -r '.jobId // empty' "$response_file")"
+    case_operation="$(jq -r '.operationId // empty' "$response_file")"
+    if [[ "$case_code" != 202 || ! "$case_job" =~ ^job_[0-9a-f]{32}$ || ! "$case_operation" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "candidate upgrade E2E: $mode submission did not return exact accepted identities with HTTP $case_code" >&2
+      cat "$response_file" >&2
+      exit 1
+    fi
+  }
+
+  wait_phase_a_case_failed() {
+    local mode="$1"
+    local terminal_wait_seconds=150
+    if [[ "$mode" == invisible ]]; then
+      # The product intentionally gives a newly starting Junimo runtime up to
+      # five minutes to make the exact staged target visible before failing
+      # closed. Observe that full contract plus rollback overhead; do not turn
+      # a still-running readiness probe into a false terminal success.
+      terminal_wait_seconds=420
+    fi
+    case_status=""
+    for _ in $(seq 1 "$terminal_wait_seconds"); do
+      if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/jobs/$case_job" >"$response_file" 2>/dev/null; then
+        case_status="$(jq -r '.job.status // empty' "$response_file")"
+        if [[ "$case_status" == failed || "$case_status" == canceled || "$case_status" == succeeded ]]; then
+          break
+        fi
+      fi
+      sleep 1
+    done
+    if [[ "$case_status" != failed ]]; then
+      echo "candidate upgrade E2E: $mode case did not fail terminally" >&2
+      cat "$response_file" >&2
+      exit 1
+    fi
+    case_journal="$transaction_root/$case_operation/journal.json"
+    if [[ ! -f "$case_journal" ]]; then
+      echo "candidate upgrade E2E: $mode case lost its durable journal" >&2
+      exit 1
+    fi
+    for _ in $(seq 1 60); do
+      if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "SELECT state FROM instances WHERE id='stardew';")" == stopped ]] &&
+        [[ -z "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]] &&
+        [[ -z "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+        return
+      fi
+      sleep 1
+    done
+    echo "candidate upgrade E2E: $mode case did not restore stopped state and remove Compose resources" >&2
+    exit 1
+  }
+
+  recover_phase_a_case_with_admin_mutation() {
+    local mode="$1"
+    local name="$2"
+    jq -n '{name:"Existing_1"}' >"$root/save-import-phase-a-select.json"
+    select_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$root/save-import-phase-a-select.json" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/select")"
+    if [[ "$select_code" != 200 || "$(jq -r '.activeSaveName // empty' "$response_file")" != Existing_1 ]]; then
+      echo "candidate upgrade E2E: next admin mutation did not recover $mode case with HTTP $select_code" >&2
+      cat "$response_file" >&2
+      exit 1
+    fi
+    if [[ -e "$case_journal" || -d "$instance_dir/.local-container/saves/Saves/$name" || -d "$transaction_root/$case_operation/source" ]]; then
+      echo "candidate upgrade E2E: next admin mutation retained $mode journal, staged target, or owned source" >&2
+      exit 1
+    fi
+    if [[ -d "$pending_root" && -n "$(find "$pending_root" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]; then
+      echo "candidate upgrade E2E: next admin mutation retained a durable pending-upload token after $mode" >&2
+      exit 1
+    fi
+    if [[ "$(sha256sum "$existing_main" | awk '{print $1}')" != "$existing_save_sha" ||
+      "$(sha256sum "$existing_info" | awk '{print $1}')" != "$existing_info_sha" ||
+      "$(jq -r '.SaveNameToLoad // empty' "$active_pointer")" != Existing_1 ]]; then
+      echo "candidate upgrade E2E: next admin mutation changed the original selected save after $mode" >&2
+      exit 1
+    fi
+  }
+
+  create_phase_a_save_zip Invisible_789 789
+  case_name="Invisible_789"
+  case_zip="$archive_root/$case_name.zip"
+  write_phase_a_compose "$hidden_saves"
+  submit_phase_a_case "$case_name" "$case_zip" invisible
+  wait_phase_a_case_failed invisible
+  if [[ "$(jq -r '.phaseAFifoWriteAttempted' "$case_journal")" != false ||
+    "$(jq -r '.upstreamSubmitted' "$case_journal")" != false ||
+    "$(jq -r '.upstreamConfirmed' "$case_journal")" != false ||
+    "$(jq -r '.maintenanceRecoveryState // empty' "$case_journal")" != snapshot_restored ]]; then
+    echo "candidate upgrade E2E: invisible target crossed the FIFO point of no return or did not restore its snapshot" >&2
+    cat "$case_journal" >&2
+    exit 1
+  fi
+  if [[ "$(jq -r '.lastErrorCode // empty' "$case_journal")" != save_import_maintenance_not_ready ]]; then
+    echo "candidate upgrade E2E: invisible target did not retain the exact fail-closed readiness error" >&2
+    cat "$case_journal" >&2
+    exit 1
+  fi
+  recover_phase_a_case_with_admin_mutation invisible "$case_name"
+
+  create_phase_a_save_zip NoEffect_456 456
+  case_name="NoEffect_456"
+  case_zip="$archive_root/$case_name.zip"
+  write_phase_a_compose "$instance_dir/.local-container/saves/Saves"
+  submit_phase_a_case "$case_name" "$case_zip" no-effect
+  wait_phase_a_case_failed no-effect
+  if [[ "$(jq -r '.phaseAFifoWriteAttempted' "$case_journal")" != true ||
+    "$(jq -r '.upstreamSubmitted' "$case_journal")" != true ||
+    "$(jq -r '.upstreamConfirmed' "$case_journal")" != false ||
+    "$(jq -r '.phaseAOutcome // empty' "$case_journal")" != command_failed_no_effect ||
+    "$(jq -r '.maintenanceRecoveryState // empty' "$case_journal")" != snapshot_restored ||
+    "$(jq -r '.lastErrorCode // empty' "$case_journal")" != import_command_failed ]]; then
+    echo "candidate upgrade E2E: FIFO no-effect case did not retain complete safe-cleanup evidence" >&2
+    cat "$case_journal" >&2
+    exit 1
+  fi
+  if ! jq -e '.phaseALogDetail | contains("Controlled Junimo diagnostic") and contains("produced no disk effect")' "$case_journal" >/dev/null ||
+    grep -F "$raw_platform_id" "$case_journal" >/dev/null; then
+    echo "candidate upgrade E2E: Phase A diagnostic was absent or retained the raw platform ID" >&2
+    cat "$case_journal" >&2
+    exit 1
+  fi
+  preimport_count="$(find "$instance_dir/.local-container/backups/saves" -maxdepth 1 -type f -name 'preimport_NoEffect_456_*.zip' | wc -l | tr -d '[:space:]')"
+  if [[ ! "$preimport_count" =~ ^[1-9][0-9]*$ ]]; then
+    echo "candidate upgrade E2E: FIFO no-effect case lost its durable preimport backup before cleanup" >&2
+    exit 1
+  fi
+  recover_phase_a_case_with_admin_mutation no-effect "$case_name"
+  if [[ "$(find "$instance_dir/.local-container/backups/saves" -maxdepth 1 -type f -name 'preimport_NoEffect_456_*.zip' | wc -l | tr -d '[:space:]')" != "$preimport_count" ]]; then
+    echo "candidate upgrade E2E: FIFO no-effect auto-recovery removed its durable preimport backup" >&2
+    exit 1
+  fi
+  echo "candidate upgrade E2E: invisible target stayed pre-submit; FIFO no-effect evidence was redacted and the next admin mutation recovered automatically"
+}
+
 assert_upgraded_legacy_junimo_repair() {
   local instance_dir="$data_dir/instances/stardew"
   local instance_compose="$instance_dir/docker-compose.yml"
@@ -943,5 +1232,6 @@ fi
 assert_upgraded_mod_update_check
 assert_upgraded_legacy_junimo_repair
 assert_upgraded_empty_compose_save_import_submission
+assert_upgraded_save_import_phase_a_boundaries
 
-echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence, restart, Mod update checks and legacy runtime repair passed"
+echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence, restart, Mod checks, legacy runtime repair, and save-import safety boundaries passed"

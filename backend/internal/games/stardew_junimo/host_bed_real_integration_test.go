@@ -3,6 +3,7 @@
 package stardew_junimo
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -87,10 +88,11 @@ type realHostBedDiagnostics struct {
 }
 
 // TestRealSwapHostRepairsBedManualControlAndSleepsOptIn exercises the full
-// supported JunimoServer runtime. It creates a real game save, imports it via
-// swap_host_to, proves the map-derived bed survives save/restart, sends F9/F10
-// over raw VNC, then connects the official Junimo test client and sleeps into
-// the next day so AlwaysOnServer must put the host into the repaired bed.
+// supported JunimoServer runtime. It creates a real game save, previews a ZIP
+// whose directory lacks the runtime identity suffix, imports it via
+// swap_host_to, proves the map-derived bed survives save/restart, selects the
+// demoted original host with the official Junimo test client, sends F9/F10 over
+// raw VNC, and sleeps into the next day.
 func TestRealSwapHostRepairsBedManualControlAndSleepsOptIn(t *testing.T) {
 	sourceGameVolume := strings.TrimSpace(os.Getenv("ANXI_REAL_HOST_BED_SOURCE_GAME_VOLUME"))
 	testClientModVolume := strings.TrimSpace(os.Getenv("ANXI_REAL_HOST_BED_TEST_CLIENT_MOD_VOLUME"))
@@ -236,8 +238,8 @@ func TestRealSwapHostRepairsBedManualControlAndSleepsOptIn(t *testing.T) {
 	}
 
 	stopRealHostBedInstance(t, ctx, driver, store, &instance)
-	stagedRoot := filepath.Join(dataDir, "host-bed-upload")
-	if err := os.MkdirAll(stagedRoot, 0o700); err != nil {
+	canonicalCloneRoot := filepath.Join(dataDir, "host-bed-canonical-clone")
+	if err := os.MkdirAll(canonicalCloneRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	sourceSaveDir := filepath.Join(savesDir(dataDir), "Saves", saveName)
@@ -245,9 +247,37 @@ func TestRealSwapHostRepairsBedManualControlAndSleepsOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	importedSaveName, err := cloneRealHostBedSave(sourceSaveDir, stagedRoot, saveName)
+	importedSaveName, err := cloneRealHostBedSave(sourceSaveDir, canonicalCloneRoot, saveName)
 	if err != nil {
 		t.Fatalf("clone real source into an independent upload save: %v", err)
+	}
+	canonicalCloneDir := filepath.Join(canonicalCloneRoot, importedSaveName)
+	canonicalCloneHash, err := stableFileSHA256(filepath.Join(canonicalCloneDir, importedSaveName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	noncanonicalName := strings.SplitN(importedSaveName, "_", 2)[0]
+	if noncanonicalName == "" || noncanonicalName == importedSaveName {
+		t.Fatalf("independent save %q cannot produce a non-canonical upload identity", importedSaveName)
+	}
+	noncanonicalZip := filepath.Join(dataDir, "host-bed-noncanonical.zip")
+	if err := writeNoncanonicalRealHostBedArchive(canonicalCloneDir, importedSaveName, noncanonicalName, noncanonicalZip); err != nil {
+		t.Fatalf("write non-canonical real save ZIP: %v", err)
+	}
+	previewName, preview, stagedRoot, err := PreviewSaveZip(noncanonicalZip, filepath.Base(noncanonicalZip))
+	if err != nil {
+		t.Fatalf("preview non-canonical real save ZIP: %v", err)
+	}
+	defer os.RemoveAll(stagedRoot)
+	if previewName != importedSaveName || preview.Name != importedSaveName {
+		t.Fatalf("real preview did not normalize runtime identity: name=%q preview=%q want=%q", previewName, preview.Name, importedSaveName)
+	}
+	if _, err := os.Stat(filepath.Join(stagedRoot, noncanonicalName)); !os.IsNotExist(err) {
+		t.Fatalf("real preview retained non-canonical source directory %q: %v", noncanonicalName, err)
+	}
+	previewMainHash, err := stableFileSHA256(filepath.Join(stagedRoot, importedSaveName, importedSaveName))
+	if err != nil || previewMainHash != canonicalCloneHash {
+		t.Fatalf("real preview changed canonicalized main save: before=%s after=%s err=%v", canonicalCloneHash, previewMainHash, err)
 	}
 	operationID := NewImportOperationID()
 	importJob, err := driver.ImportSaveAndStart(ctx, registry.SaveImportRequest{
@@ -381,8 +411,9 @@ func TestRealSwapHostRepairsBedManualControlAndSleepsOptIn(t *testing.T) {
 	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "GET", "/wait/farmhands?timeout=60000", ""), "wait farmhands")
 	var slots struct {
 		Farmhands []struct {
-			Index        int  `json:"index"`
-			IsCustomized bool `json:"isCustomized"`
+			Index        int    `json:"index"`
+			Name         string `json:"name"`
+			IsCustomized bool   `json:"isCustomized"`
 		} `json:"farmhands"`
 	}
 	if err := json.Unmarshal(runRealHostBedClientRequest(t, ctx, clientName, "GET", "/farmhands", ""), &slots); err != nil {
@@ -390,18 +421,15 @@ func TestRealSwapHostRepairsBedManualControlAndSleepsOptIn(t *testing.T) {
 	}
 	slotIndex := -1
 	for _, slot := range slots.Farmhands {
-		if !slot.IsCustomized {
+		if slot.Name == newGame.FarmerName && slot.IsCustomized {
 			slotIndex = slot.Index
 			break
 		}
 	}
 	if slotIndex < 0 {
-		t.Fatalf("no uncustomized cabin available after host swap: %+v", slots.Farmhands)
+		t.Fatalf("demoted original host was not selectable after real import/restart: %+v", slots.Farmhands)
 	}
-	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "POST", "/farmhands/select", fmt.Sprintf(`{"slotIndex":%d}`, slotIndex)), "select farmhand")
-	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "GET", "/wait/character?timeout=60000", ""), "wait character")
-	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "POST", "/character/customize", `{"name":"SleepGate","favoriteThing":"Real beds"}`), "customize farmhand")
-	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "POST", "/character/confirm", `{}`), "confirm farmhand")
+	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "POST", "/farmhands/select", fmt.Sprintf(`{"slotIndex":%d}`, slotIndex)), "select demoted original host")
 	assertRealHostBedClientSuccess(t, runRealHostBedClientRequest(t, ctx, clientName, "GET", "/wait/world-ready?timeout=90000", ""), "wait client world")
 	waitRealHostBedControl(t, dataDir, time.Minute, func(status realHostBedControlStatus) bool {
 		return status.HostControl.ConnectedClients != nil && *status.HostControl.ConnectedClients > 0 && !status.HostControl.Paused
@@ -431,7 +459,7 @@ func TestRealSwapHostRepairsBedManualControlAndSleepsOptIn(t *testing.T) {
 
 	run("rm", "-f", "-v", clientName)
 	stopRealHostBedInstance(t, ctx, driver, store, &instance)
-	t.Logf("real host-bed E2E passed: source=%s imported=%s bed=(%d,%d) day=%s %d Y%d -> %s %d Y%d", saveName, importedSaveName, repairedTileX, repairedTileY, beforeDay.Season, beforeDay.DayOfMonth, beforeDay.Year, afterDay.Season, afterDay.DayOfMonth, afterDay.Year)
+	t.Logf("real non-canonical host-swap E2E passed: source=%s upload=%s canonical=%s original_host_selectable=true bed=(%d,%d) day=%s %d Y%d -> %s %d Y%d", saveName, noncanonicalName, importedSaveName, repairedTileX, repairedTileY, beforeDay.Season, beforeDay.DayOfMonth, beforeDay.Year, afterDay.Season, afterDay.DayOfMonth, afterDay.Year)
 }
 
 func assertRealHostBedShape(t *testing.T, status realHostBedControlStatus, expectedState string) {
@@ -639,6 +667,64 @@ func cloneRealHostBedSave(sourceDir, stagedRoot, sourceName string) (string, err
 		}
 	}
 	return targetName, nil
+}
+
+// writeNoncanonicalRealHostBedArchive preserves a genuine save byte-for-byte
+// while presenting its top-level directory and primary file under the raw
+// pre-SMAPI name. PreviewSaveZip must derive and materialize the canonical
+// <raw>_<uniqueIDForThisGame> identity before the durable transaction owns it.
+func writeNoncanonicalRealHostBedArchive(sourceDir, canonicalName, noncanonicalName, zipPath string) error {
+	if canonicalName == "" || noncanonicalName == "" || canonicalName == noncanonicalName {
+		return errors.New("real save archive requires distinct canonical and non-canonical names")
+	}
+	archiveFile, err := os.Create(zipPath)
+	if err != nil {
+		return err
+	}
+	archive := zip.NewWriter(archiveFile)
+	walkErr := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+		mapped := relative
+		switch relative {
+		case canonicalName:
+			mapped = noncanonicalName
+		case canonicalName + "_old":
+			mapped = noncanonicalName + "_old"
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(filepath.Join(noncanonicalName, mapped))
+		header.Method = zip.Deflate
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		source, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(writer, source)
+		closeErr := source.Close()
+		return errors.Join(copyErr, closeErr)
+	})
+	closeArchiveErr := archive.Close()
+	closeFileErr := archiveFile.Close()
+	if err := errors.Join(walkErr, closeArchiveErr, closeFileErr); err != nil {
+		_ = os.Remove(zipPath)
+		return err
+	}
+	return nil
 }
 
 func restampRealHostBedSaveIdentity(path, sourceID, targetID string, required bool) error {

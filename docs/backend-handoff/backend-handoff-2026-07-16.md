@@ -1,4 +1,28 @@
-# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 后端接手记录（2026-08-20，completed，未发布）
+# SAVE-IMPORT-RELEASE-GATES-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
+
+## 改了什么
+
+- `v0.5.9@0657ff01f121` 已不可变发布本轮产品修复。发布后按候选日志逐项对照专项矩阵，确认既有升级 E2E 只覆盖 maintenance Compose 缺 bind 与 legacy jobs-cleared，未实际制造 exact target invisible 和 FIFO submitted/no disk effect 两条已声明场景；因此不移动旧 tag/digest，以 `v0.5.10` fix-forward 补齐真实门禁。
+- `scripts/tests/test_release_candidate_upgrade.sh` 新增 `assert_upgraded_save_import_phase_a_boundaries`。夹具在升级后的候选 Panel 中启动同一候选镜像作为受控 Stardew runtime，使用持久在线 FIFO、server-output log、Junimo HTTP API、精确 Control DLL/options 与 staged Saves。第一例让 target 对 runtime 不可见，断言 import FIFO 零尝试；第二例让 target 可见且接受一次 import 命令但不落盘，断言 diagnostic redaction、`command_failed_no_effect`、snapshot restored，并由下一管理员 `select-save` 验证 strict auto recovery。
+- `host_bed_real_integration_test.go` 新增非规范真实 ZIP helper：canonical XML 保持不变，只把顶层目录、主文件和 `_old` 改为无 world ID 的 raw prefix；测试先跑真实 `PreviewSaveZip`，断言私有树被规范化、旧 raw 目录消失且主文件 hash 不变，再把返回的 temp staging root 交给真实 import。
+- 官方 TestClient 的 farmhand 列表读取 `Name`，测试选择名称为 `OriginalOwner` 的 customized slot，不再任选空 cabin。这个断言与后续进服、bed state、F9/F10、跨日睡眠一起直接证明 swap 后原主机是可选 farmhand，而不只是 XML 中存在一个解绑角色。
+
+## 影响文件与接口
+
+- 代码/脚本仅为 `backend/internal/games/stardew_junimo/host_bed_real_integration_test.go` 与 `scripts/tests/test_release_candidate_upgrade.sh`；同步更新 `docs/{02-backend,06-integration,08-future-roadmap,09-image-build}.md`、本接手文档和 `.agents/error-notebook.md`。
+- 没有修改 backend 运行代码、公开 API/DTO、SQLite migration、前端、Compose 或 runtime 资产。`v0.5.10` 仍必须完整构建并从 `v0.5.9` 真实 Web 升级，因为候选证明与测试输入发生了变化，不能沿用 `v0.5.9` artifact。
+
+## 如何验证
+
+- Bash 5.2 `bash -n`、ShellCheck `v0.11.0`、定向 preview 单测和 Linux integration 编译通过。
+- 真实链使用 Stardew 1.6.15 数据、Junimo `1.5.0-preview.125` 与精确 upstream revision `89abe8e6a07b3aaee1c0b4fad080683b948645d9` 编译的官方 TestClient，`TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 在 `223.39s` 通过：raw `HostBedGate` 规范为 `HostBedGate_2510107853108169243`，finalizer/解绑/durable restart 成功，`OriginalOwner` 可选，bed=`(9,8)`，Spring 1 Year 1 推进到 Spring 2 Year 1；对应 owner 容器、网络和卷均为 0。
+
+## 下一步注意事项
+
+- Linux 整仓 test/vet/build 已通过；推送前仍要运行本地 `v0.5.10` 完整候选复现。远端候选必须同时通过 selected code gates、fresh/restart、`v0.5.9` unhealthy rollback/healthy apply，以及升级后新增两条 Phase A boundary；任一失败都修复后从新 commit 重建，不得跳过或降级。
+- 正式提升后核对三个 registry 的版本/`latest` 六引用同 digest、OCI metadata、独立 `/health`/`/api/version`、annotated tag、GitHub Release 四项资产与任务资源清零，并把 workflow/artifact/digest/耗时回填 `docs/09-image-build.md`、本接手文档和路线图。
+
+# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 后端接手记录（2026-08-20，released in v0.5.9）
 
 ## 改了什么
 
@@ -18,7 +42,7 @@
 - 正式候选必须用真实 Junimo `.125` + Control 完成非规范 ZIP 的 swap finalizer、host bed、自动解绑、durable save、重启和真人客户端选原主机；不能只以 runtime saveId 数字后缀相同替代 finalizer 计数/intent 清空/Control 双证据。
 - 真实重导入仍必须保留原始存档直到 canonical 导入成功；没有用户重新提交的平台 ID 时不得手工伪造绑定或直接改 XML。当前原主机在回滚后仍是主 `<player>`，不是可选 farmhand；必须用新预览返回的 canonical saveName 重走 swap/finalizer，才会在成功后恢复可选。
 
-# SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1 后端接手记录（2026-08-20，completed，未发布）
+# SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1 后端接手记录（2026-08-20，released in v0.5.9）
 
 ## 改了什么
 

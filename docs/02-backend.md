@@ -1,4 +1,11 @@
-# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1：上传目录与 Stardew 运行时 saveId 统一（2026-08-20，completed，未发布）
+# SAVE-IMPORT-RELEASE-GATES-1：真实候选覆盖规范化、零效果恢复与原主机可选（2026-08-20，completed，待 v0.5.10 发布）
+
+- `v0.5.9@0657ff01f121` 已发布存档目录 canonicalization、exact-target readiness 和 terminal no-effect mutation recovery；发布后审计发现候选没有执行已经声明的 exact target invisible 与 FIFO sent/no disk effect 两条真实 Docker 场景。不可变 `v0.5.9` 不移动，本次只补测试/发布门禁并以 `v0.5.10` fix-forward。
+- `scripts/tests/test_release_candidate_upgrade.sh` 现在在健康升级得到的新 Panel 中创建真实 FIFO、server log、staged save 和受控 Junimo API：目标不可见必须停在 pre-submit；目标可见但 FIFO 零效果必须留下脱敏诊断、严格 no-effect 复合证据并恢复 snapshot。两条失败后再执行管理员选档，验证 exact journal/token/staged/source 自动清理、preimport/hash/pointer/备份保持，普通 mutation 不再被旧事务假锁死。
+- `host_bed_real_integration_test.go` 不再只导入已经 canonical 的真实存档。它先把真实主存档打成缺少 world ID 的 ZIP，再由 `PreviewSaveZip` 规范化并把返回的 staging root 直接交给真实 `ImportSaveAndStart`；成功后官方 TestClient 按 farmhand 名称选中 `OriginalOwner`，从而直接证明导入后原主机可选，并继续覆盖 finalizer、解绑、durable save、重启、床位、F9/F10 与睡眠跨日。
+- 真实 Junimo `.125` 链路已在 Linux Go 1.25 与精确 upstream revision `89abe8e6a07b3aaee1c0b4fad080683b948645d9` 上通过，用时 `223.39s`；canonical save=`HostBedGate_2510107853108169243`、`original_host_selectable=true`、Spring 1 → Spring 2，任务 owner 资源为 0。候选脚本 Bash/ShellCheck 与 integration 编译也已通过；完整候选和升级证据见 `docs/09-image-build.md`。
+
+# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1：上传目录与 Stardew 运行时 saveId 统一（2026-08-20，released in v0.5.9）
 
 - 生产 `v0.5.8` 的真实 swap_to_player 导入证明：上传 ZIP 顶层目录/主文件名只有 3 个字符且不带世界 ID；Junimo Layer A 已完成主机交换，但 Stardew/SMAPI 加载后把世界标识解析为 `<主文件首个下划线前缀>_<uniqueIDForThisGame>`。Junimo pending intent 仍记录原 3 字符目录，finalizer 的 wrong-save guard 因精确名称不同清除 intent 且 `finalizeCount` 保持 0；Panel 检出 target runtime saveId 不一致后正确恢复完整 preimport，原主机因此回到不可由客户端选择的主 `<player>`，不是角色丢失。
 - `PreviewSaveZip` 现在只在私有上传临时树中解析主 `<SaveGame>` 的非零十进制 `uniqueIDForThisGame`，按 Stardew `getLoadEnumerator`/SMAPI `SaveFolderName` 规则构造运行身份；名称变化时以 no-replace 方式同步重命名顶层目录、主文件和可选 `_old` 文件。预览响应、durable token、journal、staging、Junimo command 和后续 runtime evidence 从一开始使用同一 canonical saveName，不修改 XML 字节，也不在 finalizer 后猜测同档别名。
@@ -6,7 +13,7 @@
 - 影响 `internal/games/stardew_junimo/{saves.go,saves_test.go}` 及上传预览返回的 `saveName` 值，不新增字段、SQLite migration、Control/Junimo 修改或 XML rewrite。专项覆盖生产同形态的无后缀中文目录、主文件与 `_old` 同步规范化、旧目录消失和正常/显式目录/GBK preview 不回归；任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。
 - 修复提交 `0657ff01f1216ffaa9362a800cf228bb4307aa8a` 已推送 `origin/main`，并以不更改公开版本比较的本地热修镜像部署到生产 `v0.5.8`。热修后 Panel/SQLite/Docker health 全绿，实例为 `stopped`、active jobs=0、两份 journal 均为 `rolled_back`、pending intent=false；原正式镜像、一致 SQLite 与 Compose/.env 回滚点保留。还需用户重新上传同一 ZIP 并重新提交平台 ID 才能完成真实 finalizer；回滚后原主机仍是主 `<player>`，因此在成功重导入前不会出现于可选 farmhand 列表。
 
-# SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1：终态零效果事务不再假 busy（2026-08-20，completed，未发布）
+# SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1：终态零效果事务不再假 busy（2026-08-20，released in v0.5.9）
 
 - 生产 `v0.5.8` 再次出现 `stardew_import_save_and_start` 已终态失败、Phase A 前后主文件 hash/active pointer 均相同、无 pending intent、maintenance snapshot 已恢复，但普通启动/选档仍提示“已有存档导入任务正在运行或等待恢复”。根因不是仍有 active job，而是 `handleInstanceByID` 的通用 import mutex 在具体 handler 之前只检查 unfinished journal；安全自动恢复原本只接在 preview/commit/jobs-clear，普通管理员 mutation 永远到不了恢复入口。
 - 生产先在 Panel pause 窗口中完成 SQLite/journal/token/存档与指针不可变备份和 dry-run，再按 driver 的严格 Phase A no-effect cleanup 契约移除本 operation 的 transaction、owned token、staged target/source，保留 preimport ZIP 与 cleanup receipt。该现场属于首次安装 bootstrap，cleanup 后 gameloader pointer 按产品契约删除而不是保持；只读终态确认 Panel `/health=ok`、restart count 未变、active jobs=0、unfinished journal 已清零。备份留在生产私有恢复目录，没有写入仓库或日志凭据。

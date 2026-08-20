@@ -1,4 +1,32 @@
-# 下一补丁补充：非规范上传目录与运行时 saveId 统一（2026-08-20，候选前）
+# v0.5.10 存档导入真实候选门禁补齐（2026-08-20，候选前）
+
+## 变更范围、上一版审计与发布边界
+
+- `v0.5.9` 已由自动链从 `0657ff01f1216ffaa9362a800cf228bb4307aa8a` 不可变发布：Compatibility `32363876627`、候选 `32363876626`、自动 Tag `32364681064`、正式提升 `32364702253` 全绿；annotated tag object=`715f68197bf3e2092bb27ec2382bfa222dfdf5c8`，peeled commit 为上述提交，候选 digest=`sha256:f4698348603a34c51f49dae1d69570ecb12899b555786bf57b0ba1f7351d1112`，GitHub Release 于 `2026-08-20T11:38:43Z` 发布且含 4 项部署资产。
+- 发布后审计确认 `v0.5.9` 候选跑过既有 maintenance/legacy jobs-cleared 升级专项，但没有执行本文件已经声明的两条真实场景：`saves info <exact-target>` 不可见时 pre-submit fail closed，以及 FIFO 已发送但磁盘零效果后的诊断、snapshot restore 和下一管理员 mutation 自动恢复。旧 tag、digest 与 Release 不移动、不重建；本次以 `v0.5.10` fix-forward 补齐门禁。
+- 当前补丁只修改候选升级脚本、真实 Junimo integration test 与对应长期文档/错题本；不再改动 `v0.5.9` 已发布的 backend 产品实现、前端 bundle、SQLite schema、Compose、Control/SMAPI/Junimo runtime manifest。候选仍必须从同步干净 `main` 构建完整新镜像，并从当前上一正式版 `v0.5.9` 走真实 Web unhealthy/healthy 升级，不能因运行代码相同而复用 `v0.5.9` 证明。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 通过标准 |
+| --- | --- | --- |
+| 精确可见性 | 升级后的真实 Panel 让 fake Junimo 只具备通用 API、但 staged target 对 runtime 不可见 | exact `saves info` 失败；job 终态失败；`phaseAFifoWriteAttempted/upstreamSubmitted/upstreamConfirmed=false`；maintenance snapshot 恢复 |
+| FIFO 零效果 | target 可见，真实 FIFO 只接受一次 `saves import ... --swap-host-to`，但不改存档、pointer 或 pending intent | 只发送一次；复合证据重新分类 `command_failed_no_effect`；受控日志写入且原始平台 ID 不落 journal；snapshot 恢复 |
+| 幂等恢复 | 上述两类失败后分别执行下一次管理员 `select-save` | 只清理 exact journal/staged/source/owned token；preimport 永久保留；主文件 hash、活动 pointer 和非目标备份保持；mutation 正常继续 |
+| 真实世界链 | Junimo `.125` + Control + 官方 TestClient，用不带 world ID 的 ZIP 做 swap | preview 规范为 canonical runtime identity；finalizer 唯一一次、master=Server、farmhand 全解绑；durable save、重启、床位与 F9/F10 保持；客户端按名称选中 `OriginalOwner` 并睡到次日 |
+| 升级回滚 | `v0.5.9 → v0.5.10` 对同一候选注入 unhealthy，再执行 healthy apply | unhealthy 终态 `failed_rolled_back/health_check_failed` 并恢复旧版；healthy 使用同一候选 digest，SQLite/初始化/非目标容器与 volume 保持；升级后重跑上述候选专项 |
+| 资源清理 | 本地真实 runtime、候选 DinD、fresh/restart、两次升级与正式 smoke | 按任务 owner 精确清零 container/network/volume/bind/temp；不使用生产数据、不 prune |
+
+## 候选前本地证据
+
+- `TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 已在任务专属 Linux Go 1.25、真实 Stardew 1.6.15 数据、Junimo `1.5.0-preview.125` 和精确 upstream revision `89abe8e6a07b3aaee1c0b4fad080683b948645d9` 编译的官方 TestClient 上通过，用时 `223.39s`。原始 `HostBedGate_2510107853107169260` 被打成非规范 `HostBedGate` ZIP，preview 规范为独立 canonical `HostBedGate_2510107853108169243`；最终 `original_host_selectable=true`、床位 `(9,8)`、Spring 1 Year 1 推进到 Spring 2 Year 1，owner 标记的容器/网络/卷全部为 0。
+- 候选脚本新增升级 Panel 上的 exact-target invisible 与 FIFO no-effect 两条真实 Docker 夹具；Bash 5.2 `bash -n`、ShellCheck `v0.11.0` 和 backend integration 编译门禁通过。定向 preview 单元测试通过，新增真实测试完整运行通过。
+- 任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`（Junimo `79.016s`、Web `51.623s`）、`go vet ./...`、`go build ./...` 全绿。不可变候选 fresh/restart、`v0.5.9` Web unhealthy/healthy、升级后专项与资源清零仍是推送前门禁；此处不把定向证据冒充完整候选证明。正式候选、自动 Tag、三仓 digest/`latest`、版本接口和 GitHub Release 结果将在发布完成后回填本节。
+- 首次本地完整候选已通过 build、fresh/restart、unhealthy rollback、healthy apply 与既有升级专项，但 invisible 夹具只观察 `150s`，早于产品明确的 `5m` exact-target readiness budget，因 job 仍为 `running` 安全退出 1；候选未推送。夹具改为只对 invisible 场景观察 `420s`（5 分钟产品门禁加 rollback 余量），仍要求最终 `failed` 和完整 pre-submit/snapshot 证据；没有缩短产品超时、接受 running 或跳过断言。修正后 Bash/ShellCheck 再次通过，完整候选必须从新 commit 重跑。
+- 第二次本地候选再次通过前述升级链，终态安全失败为 `save_import_maintenance_fifo_unavailable`，没有冒充 exact-target 门禁成功。根因是夹具给 Compose 写了唯一 top-level `name`，而产品 `ComposeExecPipe` 按真实 instance data-dir basename 强制 project=`stardew`，因此 exec 查错项目；候选内同镜像/同脚本的独立容器探针已证明 FIFO、log 和 fake API 进程本身正常。夹具现先在既有 legacy repair 证据完成后精确 down 隔离 DinD 的 `stardew` project，再用无 top-level name 的真实项目契约启动 Phase A runtime；资源 owner/项目清零和所有原业务断言保持不变。Bash/ShellCheck 再次通过，仍须从新 commit 完整重跑。
+- 第三次本地候选在新增 Phase A 用例前由既有资源门禁安全失败：两个函数都有相同 `local import_project` 行，前一补丁缺少函数级锚点，误把 empty-Compose fixture 改成 `stardew`，产生已完成 legacy repair 的 orphan container；候选未进入目标场景、未推送。现已按函数名精确恢复 empty-Compose 的任务唯一 project，并只把 Phase A fixture 设为真实 `stardew`；随后用 `rg` 同时核对两处赋值与 Compose `name` 位置，Bash/ShellCheck 再通过。没有放宽资源清零断言，完整候选必须从新 commit 第四次重跑。
+
+# v0.5.9 已发布：非规范上传目录与运行时 saveId 统一（2026-08-20；真实门禁补齐进入 v0.5.10）
 
 ## 变更清单、受影响链路与当前边界
 
@@ -29,7 +57,7 @@
 - 生产终态：Compose 精确使用热修镜像，容器 `healthy`、restart count=0，`/health` 包含 DB ok，`/api/version.commit=0657ff01f121...`；SQLite `integrity_check=ok`，实例 `stopped/stopped`，active jobs=0，两份现有 journal 均为 `rolled_back`，unfinished/invalid journal=0，Junimo pending intent=false。原正式镜像仍在服务器，一致 SQLite、Compose/.env、镜像 inspect、manifest 与可执行 rollback 保留在 `/root/.anxi-panel/manual-recovery/panel-hotfix-20260820-0657ff01-retry1`。
 - 已在精确 owner/健康/回滚制品断言后删除服务器和本机的冗余镜像 tar；已加载的生产热修镜像和私有回滚目录可恢复。真实重导入尚未执行，因为原始平台 ID 按安全契约不会持久化；用户必须重新上传 ZIP 并提交 ID，之后才能验收 finalizer、自动解绑、durable save 与原主机可选。
 
-# 下一补丁：终态 no-effect 普通操作自动解锁（2026-08-20，候选前）
+# v0.5.9 已发布：终态 no-effect 普通操作自动解锁（2026-08-20；真实门禁补齐进入 v0.5.10）
 
 ## 变更清单、受影响链路与当前边界
 

@@ -118,6 +118,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-20 补存档导入候选门禁时，前一条检索已给出真实文件，后续仍猜成不存在的 `backend/internal/games/registry/driver.go`、`backend/internal/web/saves_handlers.go` 等路径，并把 Windows 不会展开的 `backend/internal/games/registry/*.go`/`stardew_junimo/*.go` 直接交给 `rg`，均只读失败且源码未变化。后续已严格使用 `rg` 的真实命中作为下一次输入，目录级文件筛选改用 `rg -g '<glob>' <pattern> <root>`；已有 `AGENTS.md` 规则继续作为发布前 fail-fast 检查，不能因“只是检索”忽略复发。
 - 最近复发/补充：2026-08-20 修复正式提升工具后查找 workflow YAML 校验入口时，又把不存在的仓库根 `package.json` 与已确认存在的 `.github`、`scripts` 一起传给 `rg`；命令输出路径不存在，文件与发布状态未变化。前端/网站 package 已知位于各自子目录，查 workflow 工具根本不需要附加猜测的 root package。相同模式已在本轮补记并提升到 `AGENTS.md`，后续验证只传 `rg --files` 已列出的路径。
 - 最近复发/补充：2026-08-20 发布前定位 `audit_logs` schema 时，前一条 `rg --files backend` 已明确列出 `backend/migrations/*.sql` 和 `backend/internal/storage/migrations.go`，后续仍凭职责猜成不存在的 `backend/internal/storage/store.go` 与 `backend/internal/storage/migrations`；`rg` 返回路径不存在，文件与发布状态均未变化。已有真实命中必须直接成为下一条命令的输入，不能在命中后再改写成“看起来更合理”的路径；本规则已由 `AGENTS.md` 的真实路径唯一依据与逐项 fail-fast 门禁覆盖。
 - 环境：PowerShell 7，本地检查前端页面与重启调用链。
@@ -130,6 +131,7 @@
 
 ## 2026-08-18：Windows 宿主没有全局 ShellCheck 时先拆开 Bash 语法门禁
 
+- 最近复发/补充：2026-08-20 对 shebang 为 Bash 的候选脚本先用 Alpine `sh -n`，在既有数组语法处报 `unexpected "("`；这不是脚本回归。随后 `Get-Command bash` 再次命中已知不可用的 WSL 转发器。正确续接是先按 shebang 选择解析器，并直接使用已检查过的 `bash:5.2` 容器跑 `bash -n`，ShellCheck 则用已 inspect Entrypoint/Cmd 的固定镜像独立执行；不得把 POSIX `sh` 当作 Bash 语法门禁。
 - 最近复发/补充：同轮拆开 `bash -n` 后只相信 `Get-Command bash` 的命令名解析，实际命中 WSL 转发器；当前 WSL 没有 `/bin/bash`，以 `CreateProcessCommon: execvpe(/bin/bash) failed` 停止，脚本未执行或修改。Windows 必须确认解析结果是 Git 安装目录内真实 `bash.exe`，或先验证 WSL 发行版的 `/bin/bash` 存在；命令名可解析不等于目标 Bash 环境可运行。
 - 环境：PowerShell 7，本地验证 `scripts/tests/test_release_candidate_upgrade.sh`。
 - 错误模式：在同一 fail-fast 命令中先解析 `bash` 和 `shellcheck` 路径，再顺序执行两项门禁；宿主没有全局 `shellcheck`，因此 `Get-Command` 在任何 `bash -n` 执行前就停止。
@@ -539,6 +541,7 @@
 
 ## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
 
+- 最近复发/补充：2026-08-20 修正候选脚本的 Compose project 时，两个相邻函数都有完全相同的 `local import_project="$project-save-import"`；补丁只用这条重复行作上下文，成功修改了前一个 empty-Compose fixture，而目标 Phase A fixture 未变。第三次本地候选随后在 legacy orphan 资源断言安全失败，未推送。正确做法是把函数名纳入 hunk 锚点，并在执行长门禁前用 `rg` 同时列出所有同名赋值确认各自值；`apply_patch` 成功只证明找到某个上下文，不证明命中了语义目标。
 - 最近复发/补充：2026-08-18 给响应式测试追加安装图标断言时，虽然刚由检索看到目标行，仍在补丁中手抄过长的三行正则上下文，`apply_patch verification failed` 且零修改。随后读取精确邻域，只用稳定的 `assert.match(installPageSource, /'下载与环境'/)` 单行作锚点成功插入；测试文件中的长正则也必须按最小稳定上下文补丁，不能把工具输出中的转义形态重新手抄一遍。
 - 最近复发/补充：2026-08-18 同步任务日志尾页长期文档时，六文件补丁把 `docs/06-integration.md` 当前首标题猜成较早的 SUPPORT-BUNDLE 章节，实际文件头已是 `NEXUS-MOD-ONECLICK-UPDATE-1`；`apply_patch verification failed` 且整批零修改，产品代码未受影响。随后读取实际文件头，按文件拆成独立补丁，并只用当前首标题作最小插入锚点。
 - 最近复发/补充：2026-08-17 把照片日期诊断脚本从邻近照片查询改为 schema 查询时，按上一版记忆构造了过长替换 hunk，遗漏文件末尾已有的 `con.close()`，导致 `apply_patch verification failed` 且零修改。重新读取 heredoc 的精确当前内容后，改成从真实起止行匹配的小范围替换成功；同一任务刚修改过的临时脚本也必须重读，不能从上一轮补丁文本反推现状。
@@ -1263,6 +1266,7 @@
 
 ## 2026-08-09：发布夹具把多层 Shell、JSON 和文本工具塞进单行命令
 
+- 最近复发/补充：2026-08-20 核验新编译的 Junimo TestClient 卷时，把 `test DLL && test manifest && find -printf || ls -l` 串成一条命令；manifest 尚未复制且 BusyBox `find` 不支持 `-printf`，末尾只读 `ls` 成功反而把整条命令退出码改成 0。构建产物未被误用于正式候选；随后先独立复制源码 manifest，再用单独 `test -s` 立即检查退出码，诊断 `ls` 也拆为下一条命令。文件存在性断言不得用 `||` 接成功诊断，精简容器的工具 flag 仍须先探测。
 - 最近复发/补充：2026-08-16 核验任务专属 Junimo 测试客户端编译卷时，未探测 Alpine BusyBox `find` 就使用 GNU `-printf`；DLL/manifest 的前置 `test -s` 已通过，但只读清单阶段报 usage 并退出 1，产品源码和运行实例未变化。立即改为 BusyBox 已验证的 `ls -l`；本任务余下精简容器探针禁止使用未探测的 GNU flag。
 - 最近复发/补充：2026-08-12 图形化 Compose DinD 诊断又在未探测 BusyBox `find` 能力时使用 GNU `-printf`，命令退出 1；没有产品写入。2026-08-13 `v0.4.12` Web 夹具证书失败诊断再次用了同一未探测的 `find -printf`，并且手工诊断调用漏传任务脚本必需的 `ANXI_E2E_PREFIX`，因此只得到包装器错误，没有解释原失败。两次均改为 BusyBox 已支持的 `find ... -type f -print`/`ls`，并从原调用复制完整非敏感环境变量。精简容器的文件枚举默认只用 POSIX/BusyBox 已探测动作；任务脚本诊断也必须保留与正式调用一致的必需环境，不能因切到 `sh -x` 就漏掉输入。
 - 最近复发/补充：2026-08-10 `v0.4.10` Web updater 夹具的初版把 Nginx exact location、registry 转发、TLS gateway 与访问日志选项一次性拼出；先后出现 `try_files` 路径导致 403、`access_log flush=1s` 缺少 buffer 令 Nginx 退出、默认绝对重定向丢失宿主映射端口，以及只把 DNS 映射加到 DinD/Panel 单侧导致真实 check/pull 绕过 fixture。正确恢复是每层先独立 `nginx -t`、TLS/SAN/JSON、registry push→删引用→pull 和 Panel/Dockerd 两条 DNS 路径探针，再启动产品事务；同域名 gateway 必须同时服务 dockerd 的 host 映射和 Panel 的 host-gateway/网络入口，反向代理 QA 入口显式 `absolute_redirect off`，不能只凭一次外层 curl 200 放行。
@@ -1294,6 +1298,7 @@
 
 ## 2026-08-09：正式镜像回拉与 manifest 查询未统一使用有界网络重试
 
+- 最近复发/补充：2026-08-20 `v0.5.10` 第二次本地候选预取固定 `registry:2` 时，配置的 Docker Hub 镜像代理首次 HEAD 返回 403；build/fresh 已完成，升级 DinD 尚未启动。包装器没有改变引用、TLS 或认证，按既有三次上限在第 2 次拉取同一引用成功并经 inspect 后继续；这属于已被门禁正确吸收的外部暂态，仍应记录实际 attempt，不能因为最终成功而隐藏首次失败。
 - 最近复发/补充：2026-08-20 `v0.5.6` 本地候选预演已完成 build 与 fresh/restart，首次预取精确上一正式版 `ghcr.io/...:0.5.5` 时，匿名 token 请求返回 `EOF`，包装器单次 pull 后退出 1；升级夹具尚未启动，动态 owner 容器/卷/临时目录已归零，只有精确任务镜像保留待复用。不能把此结果解释成镜像缺失或产品失败；Windows/Linux 候选包装器都应对每个固定 fixture 引用做最多三次独立、保留 TLS/认证的 pull，并在成功后 inspect，再进入 `docker save`。
 - 最近复发/补充：2026-08-13 v0.4.15 Web 升级夹具准备时，任务 DinD 首次 `pull nginx:alpine` 在 `registry-1.docker.io/v2/` 返回 EOF，1.7 秒退出 1；registry 镜像已完成、gateway/Panel 尚未创建。保持 TLS/摘要校验，对该精确引用按最多三次独立重试并在成功后 inspect，不能把准备期暂态 EOF 记为产品升级失败。
 - 最近复发/补充：2026-08-10 发布后已按 index digest 回拉 Docker Hub 镜像，却在 `docker run` 时改用未登记为本地引用的 amd64 manifest digest；Docker daemon 重新向配置的镜像代理发 HEAD 并收到 403，容器未创建，夹具按 owner 清理。正确做法是远端分别核对 index/amd64 manifest，实际 pull/run 使用已回拉的不可变 index 引用；Docker Desktop containerd image store 的 `.Id` 可能呈现 index，不得把它再描述成 config digest。修正后 Docker Hub、ACR、GHCR 三组 health/version/restart 冒烟均通过。

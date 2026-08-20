@@ -1,4 +1,11 @@
-# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 跨端契约（2026-08-20，completed，未发布）
+# SAVE-IMPORT-RELEASE-GATES-1 跨端候选契约（2026-08-20，completed，待 v0.5.10 发布）
+
+- 对外接口 shape 不变。本次把既有跨端契约固化到真实候选：升级 Panel 的 preview/commit 仍以服务端 canonical `saveName` 为唯一目标；Junimo 必须先通过 `saves info <exact-target>` 证明 staged save 可见，失败时 job 终态但正式 import FIFO 零尝试，前端后续管理员选档可触发现有严格恢复并继续请求。
+- exact target 可见但 import FIFO 零落盘时，任务返回既有失败语义，journal 只保存有界脱敏诊断和完整复合 no-effect 证据；不得把日志文字升级为成功。snapshot 恢复后，同一管理员选档请求只清理 exact owned transaction/token/staging，保留 preimport 与现有 save/pointer/hash，然后按原接口继续完成选档。
+- 真实 runtime 回归先把正常主档打成不带 world ID 的 ZIP，再由 preview 返回 canonical identity；commit 使用该 token/staging 完成 swap/finalizer。官方客户端必须在 `/farmhands` 中按名称找到并选择 `OriginalOwner`，证明“原主机可选”是用户可达结果，而不是仅靠 XML/解绑计数推断。
+- `v0.5.9` 已发布产品实现但候选漏跑上述两条 Phase A boundary；旧 tag/digest 不变，`v0.5.10` 必须从 `v0.5.9` 真实 Web unhealthy/healthy 升级并在新 Panel 上复验，才允许自动 Tag 和正式提升。
+
+# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 跨端契约（2026-08-20，released in v0.5.9）
 
 - `POST /api/instances/:id/saves/upload-preview` 的 JSON shape 不变，但成功响应中的 `saveName` 现在是后端按 Stardew 实际加载身份规范化后的名称，不保证逐字等于 ZIP 顶层目录。桌面和手机必须继续以响应 `saveName` 展示并提交既有 token，不得从本地文件名或 ZIP 目录重算 commit 目标。
 - 规范规则来自主存档身份：主文件名首个 `_` 前缀与非零 `uniqueIDForThisGame` 组合为 `<prefix>_<worldId>`；后端在 token 接管前对私有临时树的目录、主文件和 `_old` 同步 no-replace rename。之后 preview/token/journal/FIFO/Control saveId 使用同一值，Junimo pending finalizer 的 wrong-save guard 不再把同一世界的非规范上传目录当成另一档。
