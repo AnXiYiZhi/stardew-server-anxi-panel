@@ -1,3 +1,16 @@
+# BACKUP-SCHEDULER-ATOMIC-EVENT-FIXTURE-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
+
+## 改了什么、影响哪些文件
+
+- 第二次正式候选 `32378153924` 的 selected code gates 命中 `TestBackupMaintenanceSchedulerCapturesConsecutiveGameDaysWithoutListingAPI`：测试在 scheduler 运行时用 `os.WriteFile` 直写最终 `event-N.json`，调度器可能在写完前读取空白/截断 JSON 并按无效事件删除，之后当天备份永远不会出现。失败发生在候选 image build、registry 登录/push 与 proof artifact 前；Compatibility `32378153951` 独立成功。
+- 真实生产 writer 已由 `ModEntry.WriteSaveEvent → WriteJsonAtomic → ContractFile.WriteJsonAtomic` 保证完整写入隐藏临时文件后才原子 rename 到最终 `.json`，scheduler 的 `*.json` glob 不会看到临时文件。因此只把并发夹具改为已有 `atomicWriteValidatedJSON(eventPath, data, 0644)`，严格复用生产发布契约；没有改变 `RunBackupMaintenance` 的坏文件处理、轮询周期、保留策略或等待预算。
+- 影响 `backend/internal/games/stardew_junimo/saves_test.go`；生产 Go/C#、公开 API/DTO、SQLite、前端、Compose 与 runtime manifest 均不变。
+
+## 如何验证与下一步
+
+- 任务专属 Linux Go 1.25 容器中函数级核验后的精确用例 `count=100` 全绿（11.896s），证明高频调度下不会再制造生产不存在的半写事件窗口；随后整仓 test 全绿（Junimo `54.936s`、Web `50.676s`），vet/build 通过。仍须在新 commit 上跑完整本地/远端候选；不能通过增加 sleep、降低 count、保留失败重跑或跳过该测试收口。
+- 后续并发测试凡模拟 Control 文件协议，必须使用相同“临时名完整写入 → 原子移动到消费者 glob 后缀”的发布边界；如果要测试损坏最终事件，应单独命名并明确断言消费/保留策略，不能混入正常 producer 契约用例。
+
 # RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
 
 ## 改了什么、影响哪些接口/文件

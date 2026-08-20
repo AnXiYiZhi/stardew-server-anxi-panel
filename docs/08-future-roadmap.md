@@ -1,3 +1,10 @@
+# 2026-08-20 已完成、待发布：候选备份调度测试复用原子事件契约
+
+- [x] 第二次正式候选 `32378153924` 在 build/push/artifact 前命中连续游戏日备份用例；同 SHA Compatibility `32378153951` 成功，失败候选保持不可提升。
+- [x] 确认生产 Control 先写隐藏临时文件、完整后原子移动成 `.json`；只有测试用 `os.WriteFile` 直写消费者可见最终文件，产生生产不存在的半写竞态。
+- [x] 并发夹具改用已有原子 JSON writer，不增加 scheduler 间隔或放宽结果预算；函数级核验后的 Linux Go 1.25 精确用例 `count=100` 全绿（11.896s），整仓 test/vet/build 随后全绿。
+- [ ] 新 commit 完成整仓 test/vet/build、本地候选和正式候选后，继续自动 Tag、同 digest 三仓提升、正式 smoke 与证据回填。
+
 # 2026-08-20 已完成、待发布：runtime-update 成功终态原子包含 cleanup warning
 
 - [x] 正式候选 `32376230460` 在 selected code gates 命中 `TestRuntimeUpdateApplyImageCleanupFailureIsWarning`；失败发生在 build/GHCR/artifact 前，旧 run 不重跑、不提升。

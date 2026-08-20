@@ -2407,7 +2407,11 @@ func TestBackupMaintenanceSchedulerCapturesConsecutiveGameDaysWithoutListingAPI(
 			t.Fatal(err)
 		}
 		eventPath := filepath.Join(eventDir, fmt.Sprintf("event-%d.json", day))
-		if err := os.WriteFile(eventPath, data, 0o644); err != nil {
+		// Match the Control Mod contract: the final .json name only becomes
+		// visible after the complete event has been written and atomically moved.
+		// Publishing directly to eventPath races the 5 ms scheduler and can make
+		// the test expose a partial JSON file that production never publishes.
+		if err := atomicWriteValidatedJSON(eventPath, data, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		backupPath := filepath.Join(backupsDir(dir), fmt.Sprintf("auto_TestSave_%06d.zip", day))

@@ -1,3 +1,9 @@
+# BACKUP-SCHEDULER-ATOMIC-EVENT-FIXTURE-1：候选回归复用 Control 原子事件契约（2026-08-20，completed，待 v0.5.10 发布）
+
+- 第二次正式候选 `32378153924` 在 selected code gates 的 `TestBackupMaintenanceSchedulerCapturesConsecutiveGameDaysWithoutListingAPI` 安全失败，发生在 image build、GHCR push 和 proof artifact 前；同 SHA 的 Compatibility `32378153951` 成功。失败用例把事件直接写到最终 `*.json`，5 ms scheduler 可能在 `os.WriteFile` 完成前读取半截 JSON、按坏事件删除，继而永久等不到当天备份。
+- 生产 Control Mod 并不存在这个发布窗口：`WriteSaveEvent → WriteJson → ContractFile.WriteJsonAtomic` 先写隐藏临时文件，完整序列化后才原子移动成最终 `*.json`；调度器 glob 只消费最终文件。并发测试现改用已有 `atomicWriteValidatedJSON` 发布完整事件，与生产契约一致，没有增加 scheduler 周期或放宽 2 秒结果预算。
+- 任务专属 Linux Go 1.25 对函数级核验后的目标测试连续 `count=100` 全绿（11.896s）；随后整仓 test 全绿（Junimo `54.936s`、Web `50.676s`），vet/build 通过。影响仅 `saves_test.go` 的并发夹具；备份生产代码、API、持久结构、前端、Compose 和 runtime assets 均不变。新 commit 仍须跑完整不可变候选，失败 run 不重跑、不提升。
+
 # RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1：成功终态包含完整 cleanup warning（2026-08-20，completed，待 v0.5.10 发布）
 
 - 正式候选 `32376230460` 在 selected code gates 暴露既有竞态：runtime update 正常链先写 `phase=succeeded`，随后才执行认证 snapshot/旧镜像 best-effort cleanup、追加 warning 并第二次写状态。API 与测试可能在两次原子写之间读到“已成功但清理警告尚未出现”的不自洽终态；镜像尚未构建或推送，旧候选保持失败。
