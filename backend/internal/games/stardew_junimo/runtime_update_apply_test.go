@@ -38,6 +38,9 @@ type runtimeApplyFakeDocker struct {
 	upErrorService         string
 	restoreError           bool
 	removeImageError       bool
+	removeImageStarted     chan struct{}
+	removeImageRelease     <-chan struct{}
+	removeImageStartOnce   sync.Once
 	stopErrorsRemaining    int
 }
 
@@ -209,6 +212,12 @@ func (f *runtimeApplyFakeDocker) RuntimeRemoveSnapshotVolume(context.Context, st
 }
 func (f *runtimeApplyFakeDocker) RuntimeRemoveImage(_ context.Context, _ string, image, expectedID string) error {
 	f.applyCall("image rm " + image + " " + expectedID)
+	if f.removeImageStarted != nil {
+		f.removeImageStartOnce.Do(func() { close(f.removeImageStarted) })
+		if f.removeImageRelease != nil {
+			<-f.removeImageRelease
+		}
+	}
 	if f.removeImageError {
 		return errors.New("image still in use")
 	}
@@ -472,9 +481,27 @@ func TestRuntimeUpdateRepairMaterializesMissingJunimoFromLegacyControlOnlyTransa
 func TestRuntimeUpdateApplyImageCleanupFailureIsWarning(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
 	fake.removeImageError = true
+	fake.removeImageStarted = make(chan struct{})
+	releaseCleanup := make(chan struct{})
+	fake.removeImageRelease = releaseCleanup
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseCleanup) }) })
 	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
 		t.Fatal(err)
 	}
+	select {
+	case <-fake.removeImageStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runtime apply did not reach old-image cleanup")
+	}
+	inflight, err := driver.RuntimeUpdateApplyStatus(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtimeUpdateApplyTerminal(inflight.Phase) {
+		t.Fatalf("runtime apply published terminal status before cleanup warnings were complete: %#v", inflight)
+	}
+	releaseOnce.Do(func() { close(releaseCleanup) })
 	status := waitRuntimeApply(t, driver, instance)
 	if status.Phase != RuntimeUpdateApplySucceeded || !strings.Contains(strings.Join(status.Warnings, "\n"), "旧镜像") {
 		t.Fatalf("cleanup failure changed success semantics or omitted warning: %#v", status)

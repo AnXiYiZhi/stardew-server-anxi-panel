@@ -76,16 +76,15 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 		if (!runtimeUpdateAuthChanged(*recovery) || runtimeUpdateAuthMayHaveBeenRecreated(*recovery)) && runtimeUpdateServerMayHaveBeenRecreated(*recovery) && (status.Phase == RuntimeUpdateApplyVerifyingServer || status.Phase == RuntimeUpdateApplyRestoringState) {
 			if err := d.verifyRuntimeTarget(ctx, docker, instance, *recovery); err == nil {
 				if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, *recovery); err == nil {
-					if err := finish(RuntimeUpdateApplySucceeded, "", "Panel 重启后已继续完成验收，Junimo 运行组件成对升级成功。"); err != nil {
-						return err
-					}
 					if runtimeUpdateAuthSnapshotVolumeCreated(*recovery) {
 						if err := docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, recovery.Project, recovery.SnapshotVolume); err != nil {
 							status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；Panel 下次启动会继续按事务精确名称清理。")
 						}
 					}
 					cleanupOldRuntimeImages(ctx, docker, instance.DataDir, *recovery, &status)
-					_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+					if err := finish(RuntimeUpdateApplySucceeded, "", "Panel 重启后已继续完成验收，Junimo 运行组件成对升级成功。"); err != nil {
+						return err
+					}
 					_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, recovery.ApplyID))
 					return nil
 				}
@@ -376,16 +375,15 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := d.restoreRuntimeRunningState(ctx, job, docker, instance, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "restore_state_failed", "无法恢复升级前运行状态。")
 	}
-	if err := finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。"); err != nil {
-		return err
-	}
 	if runtimeUpdateAuthSnapshotVolumeCreated(manifest) {
 		if err := docker.RuntimeRemoveSnapshotVolume(ctx, instance.DataDir, manifest.Project, manifest.SnapshotVolume); err != nil {
 			status.Warnings = append(status.Warnings, "升级成功，但临时认证快照清理失败；Panel 下次启动会继续按事务精确名称清理。")
 		}
 	}
 	cleanupOldRuntimeImages(ctx, docker, instance.DataDir, manifest, &status)
-	_ = writeRuntimeUpdateApplyStatus(instance.DataDir, status)
+	if err := finish(RuntimeUpdateApplySucceeded, "", "Junimo server + steam-auth-cn 已作为一个版本对完成升级。"); err != nil {
+		return err
+	}
 	_ = os.RemoveAll(runtimeUpdateRecoveryDir(instance.DataDir, manifest.ApplyID))
 	return nil
 }

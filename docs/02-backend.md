@@ -1,3 +1,10 @@
+# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1：成功终态包含完整 cleanup warning（2026-08-20，completed，待 v0.5.10 发布）
+
+- 正式候选 `32376230460` 在 selected code gates 暴露既有竞态：runtime update 正常链先写 `phase=succeeded`，随后才执行认证 snapshot/旧镜像 best-effort cleanup、追加 warning 并第二次写状态。API 与测试可能在两次原子写之间读到“已成功但清理警告尚未出现”的不自洽终态；镜像尚未构建或推送，旧候选保持失败。
+- `runRuntimeUpdateApply` 的正常成功与 Panel 重启续作成功路径现在都先做 transaction-owned snapshot/旧镜像清理并把失败收集进 `Warnings/Logs`，最后只通过既有 `finish` 一次性写入 `succeeded`、时间、serverRunning、终态 log 与审计。清理仍是 best-effort：失败不回滚已经验收成功的运行栈，但 warning 在 terminal 首次可见时就完整存在。
+- 回归把 fake 旧镜像清理显式阻塞，确认阻塞期间 `RuntimeUpdateApplyStatus` 绝不是 terminal；释放并注入删除失败后，最终仍为 `succeeded` 且包含“旧镜像”warning。任务专属 Linux 定向 `count=20`、整仓 test（Junimo `59.446s`、Web `53.524s`）、vet/build 全绿；完整候选仍需从新 commit 重跑。
+- 影响 `runtime_update_apply_runner.go` 与 `runtime_update_apply_test.go`；JSON shape、错误码、SQLite、Compose、前端和 runtime manifest 不变，只收紧成功终态的可见时点和快照一致性。
+
 # SAVE-IMPORT-RELEASE-GATES-1：真实候选覆盖规范化、零效果恢复与原主机可选（2026-08-20，completed，待 v0.5.10 发布）
 
 - `v0.5.9@0657ff01f121` 已发布存档目录 canonicalization、exact-target readiness 和 terminal no-effect mutation recovery；发布后审计发现候选没有执行已经声明的 exact target invisible 与 FIFO sent/no disk effect 两条真实 Docker 场景。不可变 `v0.5.9` 不移动，本次只补测试/发布门禁并以 `v0.5.10` fix-forward。

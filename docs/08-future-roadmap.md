@@ -1,3 +1,10 @@
+# 2026-08-20 已完成、待发布：runtime-update 成功终态原子包含 cleanup warning
+
+- [x] 正式候选 `32376230460` 在 selected code gates 命中 `TestRuntimeUpdateApplyImageCleanupFailureIsWarning`；失败发生在 build/GHCR/artifact 前，旧 run 不重跑、不提升。
+- [x] 根因是正常/重启续作成功链先发布 `succeeded`，再做 snapshot/旧镜像 cleanup 并补 warning，reader 可读到不完整 terminal；两条路径现统一为先 cleanup 汇总，再由既有 finish 一次性发布终态与审计。
+- [x] 回归显式阻塞旧镜像清理，证明阻塞期间状态非 terminal；释放并注入删除失败后仍 `succeeded` 且 warning 完整。Linux 定向 `count=20`、整仓 test/vet/build 全绿。
+- [ ] 从新 commit 重跑本地完整候选和正式 `v0.5.9 → v0.5.10` 全链；只有新候选 proof 可自动 Tag/提升。
+
 # 2026-08-20 已完成、待发布：v0.5.10 存档导入真实候选门禁补齐
 
 - [x] 审计确认 `v0.5.9@0657ff01f121` 已自动正式发布，但候选没有执行已声明的 exact target invisible 与 FIFO submitted/no disk effect 两条真实 Docker 场景；旧 tag/digest 保持不可变，采用 `v0.5.10` fix-forward。

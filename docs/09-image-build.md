@@ -4,7 +4,7 @@
 
 - `v0.5.9` 已由自动链从 `0657ff01f1216ffaa9362a800cf228bb4307aa8a` 不可变发布：Compatibility `32363876627`、候选 `32363876626`、自动 Tag `32364681064`、正式提升 `32364702253` 全绿；annotated tag object=`715f68197bf3e2092bb27ec2382bfa222dfdf5c8`，peeled commit 为上述提交，候选 digest=`sha256:f4698348603a34c51f49dae1d69570ecb12899b555786bf57b0ba1f7351d1112`，GitHub Release 于 `2026-08-20T11:38:43Z` 发布且含 4 项部署资产。
 - 发布后审计确认 `v0.5.9` 候选跑过既有 maintenance/legacy jobs-cleared 升级专项，但没有执行本文件已经声明的两条真实场景：`saves info <exact-target>` 不可见时 pre-submit fail closed，以及 FIFO 已发送但磁盘零效果后的诊断、snapshot restore 和下一管理员 mutation 自动恢复。旧 tag、digest 与 Release 不移动、不重建；本次以 `v0.5.10` fix-forward 补齐门禁。
-- 当前补丁只修改候选升级脚本、真实 Junimo integration test 与对应长期文档/错题本；不再改动 `v0.5.9` 已发布的 backend 产品实现、前端 bundle、SQLite schema、Compose、Control/SMAPI/Junimo runtime manifest。候选仍必须从同步干净 `main` 构建完整新镜像，并从当前上一正式版 `v0.5.9` 走真实 Web unhealthy/healthy 升级，不能因运行代码相同而复用 `v0.5.9` 证明。
+- 初始补丁只修改候选升级脚本、真实 Junimo integration test 与对应长期文档/错题本；第一次正式远端候选又暴露既有 runtime-update 成功终态早于 best-effort cleanup warning 落盘的竞态，因此当前范围新增 backend runner/test 的终态原子化修复。公开 API shape、前端 bundle、SQLite schema、Compose、Control/SMAPI/Junimo runtime manifest 仍不变。候选必须从同步干净 `main` 构建完整新镜像，并从当前上一正式版 `v0.5.9` 走真实 Web unhealthy/healthy 升级，不能复用任何旧证明。
 
 ## 本版专项矩阵
 
@@ -14,6 +14,7 @@
 | FIFO 零效果 | target 可见，真实 FIFO 只接受一次 `saves import ... --swap-host-to`，但不改存档、pointer 或 pending intent | 只发送一次；复合证据重新分类 `command_failed_no_effect`；受控日志写入且原始平台 ID 不落 journal；snapshot 恢复 |
 | 幂等恢复 | 上述两类失败后分别执行下一次管理员 `select-save` | 只清理 exact journal/staged/source/owned token；preimport 永久保留；主文件 hash、活动 pointer 和非目标备份保持；mutation 正常继续 |
 | 真实世界链 | Junimo `.125` + Control + 官方 TestClient，用不带 world ID 的 ZIP 做 swap | preview 规范为 canonical runtime identity；finalizer 唯一一次、master=Server、farmhand 全解绑；durable save、重启、床位与 F9/F10 保持；客户端按名称选中 `OriginalOwner` 并睡到次日 |
+| runtime-update 终态 | 旧镜像清理被阻塞/失败，正常 apply 与 Panel 重启续作各一条 | cleanup 未完成时 API 不得出现 terminal；warning/log 收集后一次性发布 `succeeded`；清理失败仍成功且 warning 不丢，回滚语义不变 |
 | 升级回滚 | `v0.5.9 → v0.5.10` 对同一候选注入 unhealthy，再执行 healthy apply | unhealthy 终态 `failed_rolled_back/health_check_failed` 并恢复旧版；healthy 使用同一候选 digest，SQLite/初始化/非目标容器与 volume 保持；升级后重跑上述候选专项 |
 | 资源清理 | 本地真实 runtime、候选 DinD、fresh/restart、两次升级与正式 smoke | 按任务 owner 精确清零 container/network/volume/bind/temp；不使用生产数据、不 prune |
 
@@ -27,6 +28,7 @@
 - 第三次本地候选在新增 Phase A 用例前由既有资源门禁安全失败：两个函数都有相同 `local import_project` 行，前一补丁缺少函数级锚点，误把 empty-Compose fixture 改成 `stardew`，产生已完成 legacy repair 的 orphan container；候选未进入目标场景、未推送。现已按函数名精确恢复 empty-Compose 的任务唯一 project，并只把 Phase A fixture 设为真实 `stardew`；随后用 `rg` 同时核对两处赋值与 Compose `name` 位置，Bash/ShellCheck 再通过。没有放宽资源清零断言，完整候选必须从新 commit 第四次重跑。
 - 第四次本地完整候选 `0.5.10@c45f0e09afa591a553a6e36e9efc87971a0c8fc0` 全绿；build date=`2026-08-20T13:35:20Z`，本地 image ID=`sha256:96e6f0e6f7262395533d9ae3b1098d81d7ab285971ec3357f1cdcfd49ac0dcb5`，约 `7m04s`。fresh install/restart、固定上一正式版 `v0.5.9@sha256:f4698348603a34c51f49dae1d69570ecb12899b555786bf57b0ba1f7351d1112`、Web unhealthy rollback、同候选 healthy apply、SQLite/初始化/非目标 game container+volume、Mod update、legacy repair/jobs-cleared，以及升级后 exact-target invisible 和 FIFO no-effect + 下一 admin mutation 全部通过；最终输出明确确认 diagnostic redaction 和自动恢复。正式远端候选仍必须从 push 后的最新同步 `main` 重建，不能提升本地 image。
 - 本地收口已精确删除四个预演镜像、Go module/build cache、TestClient volume、外部 upstream source、candidate metadata 与中断候选残留 archive；owner container/network、上述 exact volume/image/temp 路径均为 0。首次外部源码删除在 3 个 Windows read-only Git pack 文件处部分停止，核对 exact 文件名/父目录/属性后只清除这些任务文件的 `ReadOnly` 并续作成功；未 prune 或扩大删除范围。
+- 第一次正式远端候选 `32376230460` 在 `Run selected code gates` 安全失败，Windows wrapper/build/GHCR push/artifact 均未开始；失败用例为 `TestRuntimeUpdateApplyImageCleanupFailureIsWarning`。根因是成功链先持久化 terminal `succeeded`，再清理旧镜像并补 warning，测试/API 可在两次写盘之间读到缺 warning 的终态。两个成功入口现都先完成精确 snapshot/旧镜像 best-effort cleanup、汇总 warning/log，再由既有 `finish` 一次性发布终态与审计；清理失败仍不改变成功语义。加强后的用例会阻塞 cleanup，显式断言期间状态非 terminal，释放后 warning 必须存在；任务专属 Linux 连续 `count=20`、整仓 test（Junimo `59.446s`、Web `53.524s`）、vet/build 全绿。必须从新 commit 完整重跑本地与远端候选，失败 run 不重跑、不提升。
 
 # v0.5.9 已发布：非规范上传目录与运行时 saveId 统一（2026-08-20；真实门禁补齐进入 v0.5.10）
 

@@ -1,3 +1,16 @@
+# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 正式候选 `32376230460` 在 selected code gates 的 `TestRuntimeUpdateApplyImageCleanupFailureIsWarning` 失败，发生在 build/push/artifact 前。`runRuntimeUpdateApply` 原先先调用 `finish(succeeded)` 写出 terminal，再删除认证 snapshot/旧镜像、追加 warning 并二次写状态；异步 reader 因而可能拿到缺 warning 的成功终态，远端 runner 恰好命中，之前本地全包则错过窗口。
+- 正常成功和 Panel restart 续作成功两条路径都改为：恢复运行状态 → best-effort 清理 exact snapshot/old image 并汇总 warning/log → `finish(succeeded)` 一次性持久化 terminal/时间/serverRunning/终态日志并审计 → 删除 recovery dir。cleanup failure 仍保持成功语义，不会为了补 warning 重新进入回滚；首次可见 terminal 已是最终一致快照。
+- fake Docker 新增 cleanup started/release 同步点；用例阻塞删除后先读 status，要求仍非 terminal，再释放并注入删除失败，要求最终 `succeeded` 且含旧镜像 warning。影响 `backend/internal/games/stardew_junimo/{runtime_update_apply_runner.go,runtime_update_apply_test.go}`；API JSON shape、SQLite、Compose、frontend/runtime assets 不变。
+
+## 如何验证与下一步
+
+- Linux Go 1.25 定向用例 `count=20` 用时 `20.185s`；整仓 test 全绿（Junimo `59.446s`、Web `53.524s`），vet/build 通过。失败候选不重跑；新 commit 必须重新完成本地候选与正式 `v0.5.9 → v0.5.10` 全链，Tag/提升只接受新 artifact。
+- 若以后新增其它 post-success cleanup，必须在 terminal 首次写盘前完成并把 best-effort 结果放入同一 status；不能恢复“先 succeeded、后补 warning”的双写窗口。terminal 后只允许不影响已发布状态内容的资源删除或明确可恢复操作。
+
 # SAVE-IMPORT-RELEASE-GATES-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
 
 ## 改了什么

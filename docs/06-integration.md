@@ -1,3 +1,9 @@
+# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 跨端终态契约（2026-08-20，completed，待 v0.5.10 发布）
+
+- runtime update API shape 不变，但 `phase=succeeded` 现在只会在认证 snapshot 与旧镜像 best-effort cleanup 已完成、所有 warning/log 已汇总后首次可见。前端一旦观察到 terminal，无需为同一 apply 再轮询等待“迟到的 warning”，终态视图与审计读取同一完整快照。
+- cleanup 被阻塞时状态继续保持最后一个非 terminal phase；cleanup 删除失败不把已经通过运行验收的更新改成回滚或失败，而是在同一 `succeeded` 响应的 `warnings` 中给出人工检查提示。失败/回滚 phase、错误码、进度接口和 restart recovery 的安全边界不变。
+- 正式候选 `32376230460` 因旧双写窗口在代码门禁失败，未构建/推送镜像。修复回归会在 cleanup 阻塞点读取 API backing file，证明 terminal 不早到；新候选必须完整重跑，不能把旧 run 重新提升。
+
 # SAVE-IMPORT-RELEASE-GATES-1 跨端候选契约（2026-08-20，completed，待 v0.5.10 发布）
 
 - 对外接口 shape 不变。本次把既有跨端契约固化到真实候选：升级 Panel 的 preview/commit 仍以服务端 canonical `saveName` 为唯一目标；Junimo 必须先通过 `saves info <exact-target>` 证明 staged save 可见，失败时 job 终态但正式 import FIFO 零尝试，前端后续管理员选档可触发现有严格恢复并继续请求。
