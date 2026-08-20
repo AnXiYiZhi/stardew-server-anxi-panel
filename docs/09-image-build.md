@@ -1,4 +1,4 @@
-# v0.5.7 发布后 Phase A no-effect 生产热修与代码修复（2026-08-20，unreleased）
+# v0.5.8 Phase A no-effect 生产热修与代码修复正式发布（2026-08-20，released）
 
 ## 变更清单、受影响链路与发布边界
 
@@ -7,7 +7,7 @@
 - 生产 v0.5.7 现场已经通过一次性离线恢复程序收敛，但没有替换 Panel 镜像。不可变修复前备份位于 `/root/.anxi-panel/manual-recovery/save-import-20260820`，manifest SHA-256=`72717504f0b4e6d3af80316cc7ef598f5fa7b9d060606db044313566f182d83e`；修复后 journal/owned token 清零、cleanup receipt 存在、preimport 保留、实例状态 `game_installed`、Panel healthy、游戏 Compose 为空。
 - 用户于 2026-08-20 明确要求“推送远端”，授权把本次修复直接提交到 `main` 并推送 `origin/main`。因为改动包含 `backend/**`，该推送会自动启动下一补丁版本候选；只有不可变候选完整通过本节矩阵、fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后复验，并且候选 commit 仍是最新 `origin/main`，才允许自动 Tag 和正式提升。不能把这次生产数据收敛当成镜像发布门禁或候选证明，也不得手工绕过失败门禁。
 
-## 本版专项矩阵（正式候选时执行）
+## 本版专项矩阵
 
 | 维度 | 必测场景 | 通过标准 |
 | --- | --- | --- |
@@ -19,11 +19,24 @@
 | 升级与回滚 | 当前正式 `v0.5.7 → 候选` 的 Web unhealthy/healthy；升级后复现 no-effect + jobs-cleared 现场 | unhealthy 恢复 v0.5.7；healthy 使用同一候选 digest；升级后的真实 Panel 自动恢复且保留非目标容器/volume/初始化状态 |
 | 资源清理 | 候选 DinD、fresh/restart、升级/回滚、no-effect 故障夹具 | 任务容器/网络/volume/bind/temp 按 owner 精确归零；不 prune、不使用生产数据或长期凭据 |
 
-## 当前代码门禁证据
+## 候选前代码门禁证据
 
 - Windows 精准 Phase A/restart/mtime 专项通过；Windows 包级尝试的唯一 Junimo 失败是已知 NTFS mode=`0666`/Linux `0640` 差异，Web 包通过。
 - 任务专属 Linux Go 1.25 中 Junimo 全包 96.726 秒、隔离 Web 全包 35.436 秒通过。首次整仓组合仅既有 `TestJobsAPIPermissionsAndLifecycle` 因 15 秒轮询超时失败；随后 `-p=1` 整仓尝试中 Web 全包 33.146 秒通过，但 Junimo 的既有 `TestReadRequiredRuntimeStatusResolvesHistoricalFailure` 在 20 秒异步等待内未结束。本次 no-effect 用例在各轮均无失败；`go vet ./...`、`go build ./...` 通过，两轮 owner 容器与缓存卷均清零。
-- 以上只证明代码级修复，不是不可变候选 artifact/digest 证明；正式发布仍缺本节矩阵中的真实 Docker no-effect、fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后复验，缺任一项都不得 tag 或提升镜像。
+- 上述本地证据只证明代码级修复，不作为不可变候选 artifact/digest 证明；正式身份以下述 GitHub 候选 proof、Tag、digest 提升和 Release 为准。
+
+## 正式候选、Tag、提升与 Release 结果
+
+- 正式 commit=`8d5fe360c04240d7ccb9f9ac61ffecaed128627c`。Compatibility `32338102593` 于 `2026-08-20T06:04:53Z..06:07:28Z` 成功；候选 `32338102590` 于 `06:04:53Z..06:14:31Z` 成功，用时 578 秒。artifact=`release-candidate-0.5.8-8d5fe360c042`（ID `9395558561`），previous=`0.5.7`，build date=`2026-08-20T06:05:17Z`，candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.8-8d5fe360c042`，唯一 digest=`sha256:f192d7840e564fe6c0bba6ab895e1533764c21e53257fcbde3cea01b75d59b66`。
+- 候选完成 selected code gates、Windows 包装器解析、fresh install/restart、v0.5.7 真实 Panel Web unhealthy rollback/healthy apply、SQLite/初始化/非目标容器保持、升级后 Mod 更新、legacy Junimo repair，以及既有 `jobs=[] + jobs_cleared + unfinished journal` 存档恢复；候选上传 proof 后按脚本 owner/trap 清理任务容器、网络、volume/bind/temp。前端、Control/SMAPI/Junimo runtime manifest、Compose 和 migration 未变，路径差异对应的非相关长链按既有选择器处理。
+- 自动 Tag `32338764800` 于 `06:14:32Z..06:14:51Z` 成功；`v0.5.8` 是 tagger date=`2026-08-20T06:14:45Z` 的 annotated tag，解引用精确指向上述 commit。正式提升 `32338783267` 于 `06:14:47Z..06:16:10Z` 成功，按 candidate proof preserve-digests 提升，没有重新 build。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.5.8` 与 `latest` 六引用经发布 workflow 和本地独立 `docker buildx imagetools inspect` 均命中同一 digest。GHCR OCI labels 独立核对为 `version=0.5.8`、`revision=8d5fe360c04240d7ccb9f9ac61ffecaed128627c`、`created=2026-08-20T06:05:17Z`；正式 workflow 的 health/version smoke 成功。
+- GitHub Release `Stardew Server Anxi Panel 0.5.8` 于 `2026-08-20T06:16:07Z` 发布，非 draft/prerelease；`migrate-fnos.sh`、`repair-junimo-0.3.5.sh`、`repair-junimo-upgrade.sh`、`run.sh` 四项资产齐全，Release 正文记录同一唯一 digest。本地 proof 下载首次遇到一次 TLS handshake timeout、Actions 汇总首次遇到一次 EOF；均只做固定 run/artifact 的有界只读重试，没有重放 push/候选/Tag/提升。本地 proof 临时目录和两轮 Go 门禁 owner 容器/缓存卷均清零。
+
+## 发布后门禁审计缺口
+
+- 发布后逐项对照本节专项矩阵时确认：候选升级脚本复验的是 maintenance Compose 在 FIFO 前失败的 legacy jobs-cleared 自动恢复；它没有制造 `phaseAFifoWriteAttempted/upstreamSubmitted + command_failed_no_effect`，因此没有在升级后的 v0.5.8 Panel 上覆盖本版新增的 post-FIFO 窄恢复路径。候选成功、生产一次性恢复和 Go driver/Web 回归都不能替代矩阵要求的这条真实 Docker E2E。
+- 自动 Tag 与提升已经按现有 workflow 在候选成功后完成；`v0.5.8` tag、Release 和六引用 digest 视为不可变审计事实，不移动、不删除、不重建，也不以 post-release 观察伪装成候选前门禁。下一次涉及该链路的发布前必须先把真实 no-effect + Panel restart + upgraded Web preview cleanup 场景固化到候选脚本并实际通过；在补齐前不得声称本版专项矩阵全部完成。
 
 # v0.5.7 存档导入失败自动恢复正式发布（2026-08-20，released）
 

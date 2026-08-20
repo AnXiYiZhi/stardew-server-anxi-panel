@@ -1,4 +1,4 @@
-# SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1：Phase A 无落盘效果后的严格恢复（2026-08-20，未发布）
+# SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1：Phase A 无落盘效果后的严格恢复（2026-08-20，released in v0.5.8）
 
 - 根因是 Phase A 已写 FIFO 后，即使最终前后证据严格分类为 `command_failed_no_effect`，旧逻辑仍因 `phaseAFifoWriteAttempted/upstreamSubmitted/stage=import_submitted` 禁止恢复 maintenance 实例快照和 cleanup，留下永久 unfinished journal；v0.5.7 的 legacy jobs-cleared 恢复还会在 exact job binding 已完整时重写 `token.json`，把绑定 mtime 刷新到 `jobs_cleared` 之后，使本来有效的旧审计证明失效。
 - `stardew_junimo` 新增复合 no-effect 证明：必须同时具有 `PhaseAOutcome=command_failed_no_effect`、完整 pre/after 磁盘证据、after 时间不早于 pre、主存档 hash 与活动 pointer 均未改变、没有 Junimo pending intent，且 `classifyImportPhaseA` 重新计算仍为 no-effect；单独修改 outcome 标签不能取得恢复权限。
@@ -6,7 +6,7 @@
 - strict cleanup/finalizer 只对上述复合 no-effect 开放历史 FIFO/submitted 标记的窄例外，仍要求 runtime 已严格停止、maintenance snapshot 已恢复、pointer 与 bootstrap/source/staged 全树 fingerprint 不变，并永久保留 preimport 备份。其它 submitted/unknown 路径仍禁止自动删除，也不会重放 `saves import`。
 - `pending_uploads.go` 的 job attach 现在真正幂等：type/job/idempotency 三项已完全一致时不再写 `token.json`，因此不会篡改 legacy `binding mtime < jobs_cleared audit` 的时间证据；需要补齐部分字段时才原子写并返回写后真实 mtime。
 - 影响 `internal/games/stardew_junimo/{save_import_phase_a.go,save_import_maintenance.go,save_import_transaction.go}`、`internal/web/pending_uploads.go` 及测试。公开 API/DTO、SQLite schema、前端和 Junimo runtime manifest 均未改变。定向测试覆盖当前进程恢复、Panel 重启恢复、snapshot-restore 中断续作、磁盘漂移、伪造标签拒绝、cleanup/finalizer 与 token mtime 幂等；Linux Junimo 全包、隔离 Web 全包、`go vet ./...`、`go build ./...` 已通过。
-- 生产 v0.5.7 现场已在 Panel 停止、游戏 Compose 空且 SQLite `integrity_check=ok` 后用一次性严格恢复程序收敛：实例精确恢复为 `game_installed`，unfinished journal 与 owned token 删除，cleanup receipt 落盘，preimport 备份保留，Panel 重启后健康。该操作没有替换生产镜像、创建 tag 或更新 `latest`；正式版本仍须按候选门禁另行发布。
+- 生产 v0.5.7 现场已在 Panel 停止、游戏 Compose 空且 SQLite `integrity_check=ok` 后用一次性严格恢复程序收敛：实例精确恢复为 `game_installed`，unfinished journal 与 owned token 删除，cleanup receipt 落盘，preimport 备份保留，Panel 重启后健康。代码随后随 `v0.5.8@8d5fe360c04240d7ccb9f9ac61ffecaed128627c` 正式发布，三仓版本与 `latest` 统一 digest=`sha256:f192d7840e564fe6c0bba6ab895e1533764c21e53257fcbde3cea01b75d59b66`。候选覆盖代码回归、fresh/restart、v0.5.7 Web unhealthy/healthy 和升级后 legacy jobs-cleared E2E，但未增加“FIFO 已写且严格 no-effect”在升级 Panel 上的真实 Docker 夹具；该门禁缺口已记录在 `docs/09-image-build.md`，后续相关发布前必须补齐，不能用本次 Go 回归或生产一次性恢复替代。
 
 # SAVE-IMPORT-AUTO-RECOVERY-1：失败且未提交的导入事务自动收敛（2026-08-19，released in v0.5.7）
 

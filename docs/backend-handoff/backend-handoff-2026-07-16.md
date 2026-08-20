@@ -1,4 +1,4 @@
-# SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1 后端接手记录（2026-08-20，未发布；生产已定向热修）
+# SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1 后端接手记录（2026-08-20，released in v0.5.8；生产已定向热修）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -13,7 +13,8 @@
 - 写操作前确认游戏 Compose 为空并停止 Panel；SQLite `integrity_check=ok`。不可变备份位于 `/root/.anxi-panel/manual-recovery/save-import-20260820`，含修复前数据库、journal、owned token、preimport ZIP 与 gameloader，manifest SHA-256=`72717504f0b4e6d3af80316cc7ef598f5fa7b9d060606db044313566f182d83e`。
 - 一次性 Linux 恢复程序先 dry-run，再按与新代码相同的严格 no-effect、当前磁盘、pointer、全树 fingerprint 和 stopped 门禁执行；完成精确实例 snapshot restore、bootstrap/staged/source cleanup、receipt、journal finalize 与 owned token 删除，preimport 备份保留。生产 Panel 继续运行原 v0.5.7 镜像，重启后 `healthy`、restart count 0、实例权威状态 `game_installed`、import job 0、Compose 仍为空；远端临时程序已删除，备份保留。
 - 自动化覆盖当前进程 no-effect 收尾、Panel 重启 stop-and-restore、`snapshot_restore_pending` 续作、恢复后 cleanup/finalizer、磁盘漂移和伪造 outcome 拒绝，以及两条 job attach 都不改变 exact binding mtime。Windows 精准专项通过；Linux Junimo 全包 96.726 秒、隔离 Web 全包 35.436 秒通过，`go vet ./...`、`go build ./...` 通过。两次整仓组合尝试分别命中既有 Web job 15 秒轮询和 Junimo runtime-update 20 秒异步等待超时；第二次 Web 全包仍通过、本次 no-effect 用例均未失败，不把这些组合结果冒充全绿。两轮任务容器和缓存卷最终均为 0。
-- 后续不得把 `PhaseAOutcome` 字符串单独当成恢复证明，不得移除恢复前的当前磁盘复核或 cleanup 的 pointer/fingerprint 门禁，也不得用 journal `UpdatedAt` 替代 owned token 初次 job binding mtime。用户已授权把修复推送 `origin/main`；推送后仍须由自动候选完成本版真实 Docker no-effect E2E、fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后复验，任一失败都不得创建 tag、推正式镜像或更新 `latest`。
+- 正式证据：Compatibility `32338102593`、候选 `32338102590`、自动 Tag `32338764800`、正式提升 `32338783267` 全部成功；annotated `v0.5.8` 精确指向 `8d5fe360c04240d7ccb9f9ac61ffecaed128627c`，artifact=`release-candidate-0.5.8-8d5fe360c042`（ID `9395558561`），build date=`2026-08-20T06:05:17Z`，三仓版本与 `latest` 统一 digest=`sha256:f192d7840e564fe6c0bba6ab895e1533764c21e53257fcbde3cea01b75d59b66`，GitHub Release 非 draft/prerelease且四项资产齐全。
+- 后续不得把 `PhaseAOutcome` 字符串单独当成恢复证明，不得移除恢复前的当前磁盘复核或 cleanup 的 pointer/fingerprint 门禁，也不得用 journal `UpdatedAt` 替代 owned token 初次 job binding mtime。本次候选完成 fresh/restart、v0.5.7 Web unhealthy/healthy 与升级后 legacy jobs-cleared E2E，但脚本没有新增“FIFO 已写且严格 no-effect”在升级 Panel 上的真实 Docker 场景；自动发布已完成，现有 tag/digest 不得移动或重建。下一次相关发布前必须把该场景加入候选并实际通过，不能把生产一次性恢复或 Go 回归降格替代正式 E2E。
 
 # SAVE-IMPORT-AUTO-RECOVERY-1 后端接手记录（2026-08-19，released in v0.5.7）
 

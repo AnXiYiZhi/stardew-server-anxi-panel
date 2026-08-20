@@ -1156,6 +1156,7 @@
 
 ## 2026-08-09：`apply_patch` 使用过长且手写的上下文
 
+- 最近复发/补充：2026-08-20 给 GitHub Actions EOF 条目追加本轮记录时，只凭 `rg` 摘要把 2026-08-14 行猜成标题后的第一条，遗漏实际存在的 2026-08-15 最终一致性记录，`apply_patch` 以 `verification failed` 安全零修改。随后读取该标题的当前精确范围，并只用标题、空行和真实第一条作为最小锚点插入；搜索输出中的命中顺序不能替代目标位置的完整邻接上下文。
 - 最近复发/补充：2026-08-15 统一前端模态框时，把 `ServerControlPage.tsx` 五个弹窗的结构凭相邻页面记忆写进同一个长补丁，其中密码弹窗实际卡片类与猜测不一致，整份补丁以 `verification failed` 安全零修改。确认该文件 diff 为空后，改为先逐段读取真实 wrapper、标题、关闭按钮和尾标签，再按单个弹窗的小 hunk 修改；同文件的多个相似 JSX 块也不能用首个块推断后续块。
 - 最近复发/补充：2026-08-13 调整隔离 E2E `.env` 的六个白名单键时，先把实际位于第 1、22–25、40 行的内容误写成一个连续 hunk，`apply_patch` 校验失败且零修改。随后先读取精确行号，再按三个真实邻接段拆 hunk 成功；检索结果按筛选顺序相邻不代表它们在源文件中相邻。
 - 最近复发/补充：2026-08-13 生产角色解绑成功后清理任务脚本时，直接发送 Delete File，未先核对共享工作区中该脚本已经不存在，`apply_patch` 因目标缺失安全零修改。随后以 `Test-Path -LiteralPath` 确认无需清理。共享工作区中的一次性文件即使刚被本轮成功读取执行，删除前也必须重新检查当前终态。
@@ -2074,6 +2075,8 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-20 v0.5.8 Release 已成功后，首次 `gh run download 32338102590 --name release-candidate-0.5.8-8d5fe360c042` 在列 artifact 的 GitHub API 请求阶段报 `TLS handshake timeout`；目标临时目录已创建但 `candidate.json` 尚未落盘，没有重复 push、候选、Tag 或正式提升。后续固定已核验的 run/artifact 名称做最多三次只读下载重试，成功后解析 proof，并独立清理精确临时目录；不能把制品下载网络故障当成候选证明缺失。
+- 最近复发/补充：2026-08-20 v0.5.8 候选 `32338102590` 已明确成功后，首次用 `gh run list --limit 30 --json ...` 汇总 Compatibility/自动 Tag/提升链时，GitHub Actions API 单次返回 `EOF` 并退出 1；没有重放 push、candidate 或 tag。后续对已知 Compatibility run ID 使用独立 `gh run view` 有界重试，自动 Tag/提升仅在前序成功后再按名称和时间窗口独立查询，任何只读 EOF 都不改变工作流真实状态。
 - 最近复发/补充：2026-08-15 候选成功后对自动 Tag workflow 做 90 秒有界列表轮询，结果暂时为空并抛出“未启动”；稍后直接读取未过滤的近期 runs 时，权威 run `31884612425` 已完成成功且创建时间只比候选结束晚 2 秒。没有手工 tag、dispatch 或重放候选。自动 `workflow_run` 的列表可见性存在最终一致窗口；轮询耗尽后必须先做一次不按手写时间条件裁剪的 recent-runs/headSha 只读审计，再判断未触发，绝不能把列表暂不可见升级成发布写操作。
 - 最近复发/补充：2026-08-14 自动发布工作流推送成功后，把 `gh workflow list` 与 `gh run list` 放在同一只读批次；第一项请求 Actions workflows 列表时直接返回 `EOF` 并退出 1，第二项尚未执行。没有重放 push、tag 或 workflow dispatch；后续改为 workflow 文件 API 与目标 commit run API 两个独立探针，各自使用最多三次有界只读重试。工作流注册查询失败不能解释成文件未生效，更不能触发重复发布。
 - 最近复发/补充：2026-08-10 官网 Pages workflow `31388822404` 已明确 completed/success 后，补查仓库 Pages `html_url` 的 `gh api repos/.../pages` 单次返回 `EOF`。没有重复 push 或重触发 workflow；正式地址改从仓库 README 与既有门户文档的同一权威 URL 取得，并直接完成线上 Browser 验收。工作流成功与附加元数据查询断流必须分开判断，发布写操作不能因只读 EOF 重放。
