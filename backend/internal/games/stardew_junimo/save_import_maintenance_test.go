@@ -276,7 +276,7 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 		record.mu.Lock()
 		if stdin != "" {
 			record.stdin = append(record.stdin, stdin)
-			if stdin == "saves\n" {
+			if stdin == "saves info Upload_1\n" {
 				record.savesCommands++
 			}
 		}
@@ -351,9 +351,9 @@ func newMaintenanceFake(cfg maintenanceFakeConfig) (*fakeConsoleDocker, *mainten
 			savesCommands := record.savesCommands
 			record.mu.Unlock()
 			if savesCommands <= cfg.savesProbeFailures {
-				return paneldocker.CommandResult{Stdout: "$>saves\n"}, nil
+				return paneldocker.CommandResult{Stdout: "$>saves info Upload_1\n"}, nil
 			}
-			return paneldocker.CommandResult{Stdout: "Available Saves:\n    Upload_1\n"}, nil
+			return paneldocker.CommandResult{Stdout: "Save: Upload_1\n  Farm Type: Standard\n"}, nil
 		}
 		return paneldocker.CommandResult{}, nil
 	}
@@ -509,7 +509,7 @@ func TestImportMaintenanceRejectsRunningComposeBeforeStartup(t *testing.T) {
 	}
 }
 
-func TestImportMaintenanceWaitsForSavesCommandRegistration(t *testing.T) {
+func TestImportMaintenanceWaitsUntilJunimoCanReadStagedTarget(t *testing.T) {
 	dataDir, op, instance, store := prepareMaintenanceFixture(t)
 	fake, record := newMaintenanceFake(maintenanceFakeConfig{savesProbeFailures: 2})
 	d := New(fake, nil, nil, store)
@@ -525,6 +525,21 @@ func TestImportMaintenanceWaitsForSavesCommandRegistration(t *testing.T) {
 	defer record.mu.Unlock()
 	if record.savesCommands != 3 {
 		t.Fatalf("saves probes=%d, want 3", record.savesCommands)
+	}
+}
+
+func TestSaveInfoReadinessOutputMustNameExactTarget(t *testing.T) {
+	if !isSaveInfoOutput("[JunimoServer] Save: Upload_1\n  Farm Type: Standard", "Upload_1") {
+		t.Fatal("exact target info response was not recognized")
+	}
+	for _, output := range []string{
+		"Available Saves:\n    Upload_1",
+		"Save 'Upload_1' not found.",
+		"Save: Other_1",
+	} {
+		if isSaveInfoOutput(output, "Upload_1") {
+			t.Fatalf("non-target response was accepted: %q", output)
+		}
 	}
 }
 
@@ -624,7 +639,7 @@ func TestImportMaintenanceRuntimeReadyBaselineAndSafety(t *testing.T) {
 		t.Fatalf("down=%v fifoCheckedBeforeUp=%v", record.down, record.fifoCheckedBeforeUp)
 	}
 	commands := strings.Join(record.stdin, "\n")
-	if !strings.Contains(commands, "saves\n") || strings.Contains(commands, "saves import") || strings.Contains(commands, "newgame") {
+	if !strings.Contains(commands, "saves info Upload_1\n") || strings.Contains(commands, "saves import") || strings.Contains(commands, "newgame") {
 		t.Fatalf("unexpected commands: %q", commands)
 	}
 	store.mu.Lock()

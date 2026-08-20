@@ -1316,6 +1316,57 @@ func TestPreviewSaveZip_AcceptsValidPath(t *testing.T) {
 	}
 }
 
+func TestPreviewSaveZip_NormalizesRuntimeSaveIdentity(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "noncanonical.zip")
+	zf, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(zf)
+	const sourceName = "旧存档"
+	const identity = "123456789"
+	info, err := w.Create(sourceName + "/SaveGameInfo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = info.Write([]byte(`<Farmer><name>F</name><farmName>Farm</farmName></Farmer>`))
+	main, err := w.Create(sourceName + "/" + sourceName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = main.Write([]byte(`<SaveGame><player><name>F</name><farmName>Farm</farmName></player><uniqueIDForThisGame>` + identity + `</uniqueIDForThisGame></SaveGame>`))
+	old, err := w.Create(sourceName + "/" + sourceName + "_old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = old.Write([]byte("old-save"))
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zf.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gotName, preview, tempDir, err := PreviewSaveZip(zipPath, "noncanonical.zip")
+	if err != nil {
+		t.Fatalf("PreviewSaveZip: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	wantName := sourceName + "_" + identity
+	if gotName != wantName || preview.Name != wantName {
+		t.Fatalf("normalized names = %q / %q, want %q", gotName, preview.Name, wantName)
+	}
+	for _, relative := range []string{wantName, wantName + "_old", "SaveGameInfo"} {
+		if _, err := os.Stat(filepath.Join(tempDir, wantName, relative)); err != nil {
+			t.Fatalf("normalized extracted file %q missing: %v", relative, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, sourceName)); !os.IsNotExist(err) {
+		t.Fatalf("non-canonical source directory still exists: %v", err)
+	}
+}
+
 func TestPreviewSaveZip_AcceptsDirectoryEntry(t *testing.T) {
 	// Common ZIP tools emit explicit directory entries like "FarmerName_12345/".
 	// The trailing "/" must not be rejected as an empty segment.

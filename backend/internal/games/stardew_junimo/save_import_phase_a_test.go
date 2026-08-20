@@ -348,6 +348,16 @@ func TestRecoverImportPhaseASubmittedAfterPanelRestart(t *testing.T) {
 
 func TestImportPhaseANoEffectRestoresSnapshotAndAllowsCleanup(t *testing.T) {
 	f := preparePhaseATestFixture(t, "swap_host_to")
+	baseExec := f.fake.execFunc
+	f.fake.execFunc = func(ctx context.Context, dir, service, stdin string, args ...string) (paneldocker.CommandResult, error) {
+		if f.teeCalls > 0 && len(args) >= 2 && args[0] == "wc" && args[1] == "-c" {
+			return paneldocker.CommandResult{Stdout: "256 /tmp/server-output.log\n"}, nil
+		}
+		if f.teeCalls > 0 && len(args) >= 2 && args[0] == "tail" && args[1] == "-c" {
+			return paneldocker.CommandResult{Stdout: "saves import: invalid platform " + phaseATestPlatformID}, nil
+		}
+		return baseExec(ctx, dir, service, stdin, args...)
+	}
 	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) {
 		return paneldocker.CommandResult{Stdout: "success text only"}, nil
 	})
@@ -360,7 +370,8 @@ func TestImportPhaseANoEffectRestoresSnapshotAndAllowsCleanup(t *testing.T) {
 	journal, err := LoadImportJournal(f.dataDir, f.op)
 	if err != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored ||
 		journal.RecoveryState != "safe_to_resume_or_cleanup" || !journal.PhaseAFIFOWriteAttempted || !journal.UpstreamSubmitted ||
-		journal.UpstreamConfirmed || !importJournalProvesPhaseANoEffect(journal) {
+		journal.UpstreamConfirmed || !importJournalProvesPhaseANoEffect(journal) ||
+		!strings.Contains(journal.PhaseALogDetail, "[redacted-platform-id]") || strings.Contains(journal.PhaseALogDetail, phaseATestPlatformID) {
 		t.Fatalf("journal=%+v err=%v", journal, err)
 	}
 	f.store.mu.Lock()

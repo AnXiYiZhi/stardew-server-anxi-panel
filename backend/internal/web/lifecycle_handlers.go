@@ -529,9 +529,10 @@ type unsubmittedImportCleaner interface {
 
 // autoRecoverSafeFailedSaveImport converges only a terminal failed/canceled
 // import whose journal, job, and durable upload record prove the same owner.
-// CleanupUnsubmittedSaveImport supplies the final offline, no-submission,
-// fingerprint, pointer, and maintenance-recovery gates. Ambiguous or submitted
-// transactions remain untouched and continue to fail closed.
+// CleanupUnsubmittedSaveImport supplies the final offline, fingerprint,
+// pointer, maintenance-recovery, and either pre-submit or strict Phase A
+// no-effect gates. Ambiguous or effect-bearing submissions remain untouched
+// and continue to fail closed.
 func (s *server) autoRecoverSafeFailedSaveImport(ctx context.Context, instance storage.Instance) (bool, error) {
 	s.saveImportCancelMu.Lock()
 	defer s.saveImportCancelMu.Unlock()

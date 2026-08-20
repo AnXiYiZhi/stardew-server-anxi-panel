@@ -2,6 +2,36 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-20：一次性生产恢复工具必须复用产品身份与 bootstrap 收尾契约
+
+- 环境：Go 一次性恢复程序，严格处理已证明 Phase A 零落盘的首次安装存档导入事务。
+- 错误模式：先凭命名猜 job idempotency key 为 operation ID 的简单前缀，没有读取 `SaveImportJobIdempotencyKey`；修正后又把“active pointer 清理前后必须相同”写成最终统一断言，忽略首次安装 bootstrap 指针本来就由产品 cleanup 删除。
+- 症状 / 退出码：第一轮在任何备份/修改前因 job binding 断言失败；第三轮已完成不可变备份、严格零效果复核和产品等价清理后，工具最后自检误报 `active pointer changed during cleanup`。生产事务目录/token/owned source 已按预期清理，preimport/receipt 保留，Panel 健康；没有重放 apply。
+- 根因：恢复工具重复实现了产品协议，却把内部身份格式和普通导入指针不变量凭记忆泛化到 bootstrap 分支。
+- 正确做法：idempotency key 必须直接调用或逐字复用生产 `SaveImportJobIdempotencyKey`；最终指针验收必须分支复用 `removePlannedImportBootstrap` / `verifyPointerAfterBootstrapCleanup` 契约。清理一旦实际完成，后置工具断言失败先做只读审计，禁止把 apply 当作可重试步骤。
+- 预防检查：生产恢复工具发送前逐项列出 journal/job/token/cleanup 的对应生产函数；所有“前后相同”断言检查是否存在 bootstrap/迁移/删除分支；apply 后任何异常先确认实际终态和幂等边界。
+- 适用范围：存档导入恢复、首次安装 bootstrap、一次性生产修复程序和不可重放清理。
+
+## 2026-08-20：Python 3.10 不能直接解析 Go 的 9 位 RFC3339Nano 小数秒
+
+- 环境：生产恢复前不可变备份脚本，容器 Python 3.10 与 Go journal/job 时间戳交叉校验。
+- 错误模式：把 Go `time.RFC3339Nano` 的 9 位小数秒字符串直接交给 Python 3.10 `datetime.fromisoformat()`。
+- 症状 / 退出码：脚本在创建备份目录和修改任何生产文件前 fail closed，报时间格式不可解析；Panel 仅被短暂 pause 并在 `finally` 中恢复。
+- 根因：Python 3.10 的 ISO parser 只接受到微秒精度，不能原样消费 Go 可输出的纳秒精度。
+- 正确做法：先用受限正则拆分 RFC3339 的时区和小数部分，把小数规范化为 6 位微秒后再 `fromisoformat()`，统一转 UTC 比较；不得截断整个字符串或改用字典序。
+- 预防检查：跨语言比较 ISO 8601 前先探测实际样本的小数位数和解析器版本；备份/恢复脚本的时间断言必须在任何写入前单测 0/3/6/9 位小数秒。
+- 适用范围：Go→Python journal、job、proof 和发布 artifact 时间校验。
+
+## 2026-08-20：`Set-SCPItem -Force` 会绕过已持久化的主机密钥校验
+
+- 环境：PowerShell 7、Posh-SSH 3.2.7，向已建立过可信主机记录的生产服务器上传一次性只读 SQLite 诊断脚本。
+- 错误模式：为了避免临时文件同名冲突，给 `Set-SCPItem` 传了 `-Force`，误以为它只控制目标覆盖。
+- 症状 / 退出码：上传和只读诊断成功，但 Posh-SSH 明确警告 `Host key is not being verified since Force switch is used.`；脚本随后从远端精确删除，生产数据库和业务文件未修改。
+- 根因：Posh-SSH 3.2.7 的 `Set-SCPItem -Force` 同时绕过主机密钥验证，不是普通的仅覆盖开关，违反了生产 SSH 的已知主机校验契约。
+- 正确做法：已持久化可信主机只使用默认校验，不传 `-Force` 或 `-AcceptKey`；一次性文件使用任务唯一远端名称避免覆盖。确需覆盖时先通过已校验 SSH 会话核对并精确处理旧临时文件，再用默认 SCP 校验上传。
+- 预防检查：所有 Posh-SSH/SCP 调用发送前检查参数中没有 `-Force`；`-AcceptKey` 只允许首次且已核对目标主机，后续连接必须依赖可信主机存储。
+- 适用范围：生产 SCP 上传、一次性诊断脚本、恢复二进制和其它 Posh-SSH 3.2.7 文件传输。
+
 ## 2026-08-20：生产终态复核不得凭记忆改写已确认的容器名
 
 - 最近复发/补充：记录本条后，下一次身份探针又把目标手写成 `anxipanel-panel`，再次在首个 inspect fail-fast、SSH 正常关闭且零生产修改。不能再依据记忆或在命令中手写变体；下一步必须先用独立 `docker ps --filter name=panel --format '{{.Names}}'` 取得实际名称，再把唯一返回值作为本轮 PowerShell 变量传给后续只读调用。
@@ -26,6 +56,7 @@
 
 ## 2026-08-20：生产实例数据路径必须从权威记录取得，不能把 Panel 数据根当作实例根
 
+- 最近复发/补充：同日复核失败导入的 owned source 时，先后把 `durablePendingUpload.StagedDir` 猜成 token 目录下的 `staged` 和 `payload`，两次都在本地白名单断言处 fail-fast，远端只完成 journal/token/hash 读取且零修改。源码真实契约是 token 从 `available/reserved` 转成 `owned` 时，`transferOwnership` 会把 payload 移到精确的 `save-import-transactions/<operation>/source` 并同步改写 `StagedDir`。必须先读状态迁移函数而不只读初始 `put`，再由 journal operation ID 构造并比较 exact source；不得从字段名或初始目录猜当前 owned 路径。
 - 环境：PowerShell 7 + Posh-SSH 3.2.7，只读诊断 Linux 生产容器中的存档导入恢复现场。
 - 错误模式：确认 Panel bind mount 目标为 `/root/.anxi-panel/data` 后，直接把该挂载点猜成 Stardew 实例 `dataDir`，在同一远端命令中继续读取其下 `.local-container/control`；命令前半列出的真实内容已经显示实例位于 `instances/` 子目录。
 - 症状 / 退出码：Panel 数据根和 SQLite 文件列表成功输出，后续两个 `ls` 报 `No such file or directory`，整条只读探针退出 1；生产文件、数据库、容器和服务状态均未修改。
@@ -653,6 +684,7 @@
 
 ## 2026-08-14：远程 Shell 变量被 PowerShell 双引号命令提前解析
 
+- 最近复发/补充：2026-08-20 为过滤生产 Panel 的 POST 请求，试图在 `Invoke-SSHCommand -Command` 的 PowerShell 单引号字符串里手拼 shell 的 `'"'"'"'` 引号序列；本地参数边界被提前截断，裸单引号被位置绑定到 `TimeOut`，在发送远端命令前报 `Cannot convert value "'" to System.Int32`。生产零修改。随后改为不需要内层引号的固定 `grep POST` 并成功。多层固定日志筛选优先选择无歧义字面量；必须精确匹配含引号 JSON 时改用任务专属/Base64 脚本，禁止在 `-Command` 实参中手拼 shell quote dance。
 - 环境：Windows PowerShell 7、Posh-SSH 3.2.7，对生产 Linux 主机做只读 VNC/日志诊断。
 - 错误模式：把含远程 `$DATA_ROOT`、Shell 引号和 `find` 条件的复合命令直接写进 PowerShell 双引号字符串。
 - 症状 / 退出码：PowerShell 在建立 SSH 会话前报 `ParserError: Unexpected token`；远程命令未发出，服务器和仓库当时均未变化。
@@ -718,7 +750,7 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
-- 最近复发/补充：2026-08-20 只读诊断生产存档导入证据时，把 `backend/internal/games/stardew_junimo/save_import*` 再次作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；命令没有修改本地源码、远端文件或运行状态。改为明确目录配合 `-g 'save_import*'`，本任务余下命令发送前机械检查每个含 `*`/`?` 的实参只能紧跟 `-g`。
+- 最近复发/补充：2026-08-20 只读诊断生产存档导入证据时，把 `backend/internal/games/stardew_junimo/save_import*` 再次作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；同日升级后的再次诊断又在已经读到精确 `save_import_phase_a.go` 后，把 `save_import*.go` 追加为末尾位置参数并复发同一错误。两条命令均只读，没有修改本地源码、远端文件或运行状态。改为明确目录配合 `-g 'save_import*'`，本任务余下命令发送前机械检查每个含 `*`/`?` 的实参只能紧跟 `-g`。
 - 最近复发/补充：2026-08-19 补齐存档导入恢复测试时，把 `backend/internal/web/*_test.go` 作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；命令只读且没有修改源码。改为 `rg -g '*_test.go' ... backend/internal/web` 后命中。该规则已在 `AGENTS.md` 固化，本轮仍复发；后续每条 `rg` 在发送前机械拒绝任何位置参数中的 `*`/`?`，通配只能紧跟 `-g`。
 - 最近复发/补充：2026-08-17 准备本机真实扩展 E2E 时，再次把 `frontend/vite.config.*` 混进后端配置的组合 `rg` 位置参数；其它明确目录先输出有效命中，但该参数仍产生 `os error 123`，只读命令未修改源码或测试环境。随后改为先读取精确的 `frontend/vite.config.ts`，后续检索只向明确目录传 `-g 'vite.config.*'`。这已是同日同一字面错误再次复发；`AGENTS.md` 现有硬规则继续作为门禁，余下命令在发送前必须逐项拒绝任何位置参数中的 `*`/`?`。
 - 最近复发/补充：2026-08-17 检索扩展 popup/options 状态时再次把 `popup.*`、`options.*` 作为 Windows `rg` 位置参数，立即得到 `os error 123`；扩展状态和源码未修改。随后改用已确认目录配合 `-g 'popup.*' -g 'options.*'`。位置参数含 `*` 的字面检查仍是发送命令前的硬门禁。
@@ -1573,6 +1605,7 @@
 
 ## 2026-07-28：Windows 下把 Shell glob 直接传给 `rg`
 
+- 最近复发/补充：2026-08-20 本次存档导入修复已在错题本摘要中明确提示后，仍把 `backend/internal/games/stardew_junimo/save_import_*.go` 作为 Windows `rg` 位置参数，得到 `os error 123`；随后又从上游临时 clone 的工作目录检索本项目 `backend/...` 路径，得到目录不存在。两次都只读、未修改产品。后续本任务检索固定从仓库根传明确目录并用 `-g 'save_import_*.go'`，发送前同时核对 cwd 与每个位置参数，不再只检查 glob 形式。
 - 最近复发/补充：2026-08-18 定位新建游戏弹窗接手记录时，又把 `docs/frontend-handoff/*.md` 作为 Windows `rg` 位置参数，得到 `文件名、目录名或卷标语法不正确 (os error 123)`；同一命令中的两个精确 Markdown 文件仍输出命中，产品文件未被该只读检索修改。随后先用 `Get-ChildItem -LiteralPath docs/frontend-handoff -File` 取得精确最新文件，再把该完整路径交给 `rg`。以后 handoff 检索同样禁止裸 glob，必须先生成精确文件清单或使用明确目录配合 `-g '*.md'`。
 - 最近复发/补充：2026-08-17 复核 Mod 更新测试时，又把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 位置参数，立即得到 `os error 123`；命令只读且没有输出可用测试命中。改为对精确目录使用 `-g '*_test.go'`。本条和 AGENTS 均已多次强调，后续检索参数发送前必须机械扫描裸 `*`。
 - 最近复发/补充：2026-08-17 排查 Panel 版本检查提示时，把 `docker-compose*.yml` 作为 Windows `rg` 位置参数，前面的源码与文档查询已有有效输出，但该位置参数仍触发 `os error 123` 并让只读组合命令提前退出；产品文件未修改。随后改为 `rg -g 'docker-compose*.yml' <pattern> .`，本任务后续检索继续机械检查所有含 `*` 的实参只能作为 `-g` 的值。
@@ -2500,6 +2533,7 @@
 
 ## 2026-08-06：未优先复用本地精确接口资料而命中 GitHub API 限流
 
+- 最近复发/补充：2026-08-20 核对锁定的 Junimo `.125` 源码时，已知共享出口可能限流，仍先调用匿名 recursive tree API，立即返回 rate limit exceeded；没有修改仓库或远端。随即固定已由 `git ls-remote` 核验的 tag commit，改读 `raw.githubusercontent.com/<commit>/<exact-path>`，并在任务专属浅 clone 中只读检索其余路径。精确 raw/tag 可用时不得先消耗匿名 API。
 - 最近复发/补充：2026-08-09 调查 Junimo `.125`→`.126` 时，匿名 compare API 首次成功后又批量请求 7 个 Pull Request，GitHub 返回 rate limit；脚本只投影预期字段，导致七条全为 `null`，没有立即暴露 `message`。外部 JSON 必须先断言成功字段或显式检查错误 schema，再做投影；匿名配额耗尽后改用 GitHub 官方 commit/PR HTML（必要时加 `?plain=1`）与精确 `raw.githubusercontent.com/<revision>/<path>`，不继续消耗 API。
 - 环境：PowerShell 7，只读核对 SMAPI 4.x `IMultiplayerPeer`/peer event 契约。
 - 错误模式：先对 GitHub unauthenticated tree API 执行 `Invoke-RestMethod`，没有先检查本机 game-data 自带的 `StardewModdingAPI.xml`。
@@ -2601,6 +2635,7 @@
 
 ## 2026-08-06：切到子目录后仍给 gofmt 传仓库根相对路径
 
+- 最近复发/补充：2026-08-20 本次同一存档导入修复中已在任务摘要和 `AGENTS.md` 明示该规则，仍三次在 `workdir=<repo>/backend` 给 `gofmt` 传入 `backend/internal/...`；每次均在格式化前以 `GetFileAttributesEx ... path not found` 退出，测试因 fail-fast 未启动，源码未被失败命令修改。随后使用模块根相对 `internal/...` 成功。由于规则已重复复发，余下所有格式化固定在仓库根、先 `Test-Path -LiteralPath backend/internal/...`、独立执行并检查退出码；不再把 gofmt 与测试放进同一调用。
 - 最近复发/补充：2026-08-18 实现 SMAPI 下载实时进度后，工具 `workdir` 已设为 `<repo>/backend`，首轮 `gofmt` 仍向四个目标传入 `backend/internal/...`；全部在格式化前报 `GetFileAttributesEx ... path not found` 并退出 2，后续测试因 fail-fast 未启动，源码未被该失败命令修改。随后固定为仓库根先用 `Test-Path -LiteralPath backend/internal/...` 验证并独立格式化，Go 测试再从 `backend` 模块根单独执行。
 - 最近复发/补充：2026-08-14 升级状态机修复首次格式化时，工具 `workdir` 已是 `<repo>/backend`，三个 `gofmt` 目标仍带 `backend/` 前缀，全部报 `GetFileAttributesEx ... path not found` 并退出 2，定向测试未启动。随后使用模块根相对的 `internal/...` 成功格式化并通过回归；本任务余下 Go 命令固定先以 `Test-Path` 校验首个目标，不再切换路径基准。
 - 最近复发/补充：2026-08-13 自动解绑实现首次格式化时，`workdir` 已设为 `<repo>/backend`，但目标数组仍全部写成 `backend/internal/...`；新增的 `Resolve-Path` fail-fast 正确在首个目标终止，`gofmt` 和测试均未运行、文件未被命令修改。后续本任务固定为仓库根格式化 `backend/internal/...`，再切到 `backend` 仅运行 Go 测试，禁止在同一调用中切换两套相对路径语义。
@@ -2742,6 +2777,8 @@
 
 ## 2026-08-06：短命 Go 容器网络失败后丢失模块下载进度
 
+- 最近复发/补充：2026-08-20 为运行 saveId 规范化修复的 Linux 整仓测试，已正确挂载任务专属 `GOMODCACHE/GOCACHE`，但冷缓存直接启动 `go test ./...` 时 `modernc.org/libc@v1.74.1` ZIP 返回 `unexpected EOF`，相关包只在 setup 阶段失败，产品测试未执行。保留同一两个 volume，先对该精确依赖做最多三次有界 `go mod download` 并在缓存中校验成功，再重启全量测试；不得把下载 EOF 归因于源码，也不得删除缓存后原样重跑。
+- 最近复发/补充：2026-08-20 构建一次性 Linux 恢复程序时，首次从 `proxy.golang.org/storage.googleapis.com` 下载 modernc sqlite ZIP 遇到 EOF；任务专属 `GOMODCACHE/GOCACHE` volume 保留且容器为 `--rm`。第二次只重跑同一精确 build、复用相同缓存即成功，并在上传前核对二进制 SHA-256。网络 EOF 不代表源码或模块不存在；任务结束再按精确 volume 名清理。
 - 最近复发/补充：2026-08-17 在 Docker Desktop 的冷 Go 1.25 Alpine cache 上直接启动全量 `go test`，五个 `proxy.golang.org` ZIP 同时发生 `TLS handshake timeout`，包 setup 退出 1，产品测试尚未真正执行；本次已保留带 `sap.task=player-auth-20260817` label 的 module/build cache volume，任务容器按 `--rm` 清除。修正为先在同一 cache 上独立执行最多两次有界 `go mod download` 预热，成功后再重新启动全量测试，不删除已下载进度也不原样重建空缓存。
 - 最近复发/补充：2026-08-14 v0.4.16 发布前 Linux 定向回归虽然挂了任务专属 `GOMODCACHE/GOCACHE`，包装器仍在首次 `proxy.golang.org` 多项 `unexpected EOF` 后立即删除两个 cache volume，导致没有保留已成功的下载进度；三个产品测试尚未进入，任务容器/卷已确认归零。后续改为先用唯一持久 volume 对 `go mod download` 做最多两次有界预热，失败轮保留同一 cache，预热成功后再运行原测试，最终才按 owner 精确清理。
 - 环境：Docker Desktop、`golang:1.25-alpine`、只读源码 bind，首次在 Linux 重跑 SMAPI 下载门禁。
@@ -2818,6 +2855,7 @@
 
 ## 2026-08-06：在复合 if 中直接用数组子表达式统计 null 属性
 
+- 最近复发/补充：2026-08-20 生产终态投影用 `@($gameResult.Output).Count` 统计 `grep -v` 后的非 Panel 容器；远端无命中时 Posh-SSH 仍给出空字符串元素，结果被误报为 1。该值没有用于生产修改，前后独立 `docker ps -a` 均只显示 Panel。随后先以 `Where-Object { -not [string]::IsNullOrWhiteSpace($_) }` 规范化输出，再得到总容器 1、非 Panel 0。任何命令文本行计数都必须先剔除 null/空白并结合退出码，不能直接包装 `Output`。
 - 最近复发/补充：2026-08-12 v0.4.11 升级夹具清理先用 `@($networkInspect.Containers.PSObject.Properties.Name).Count` 判断网络是否为空；空 `Containers` 经过属性链得到 `$null`，但 `@($null).Count` 为 1，安全 guard 两次错误拒绝删除实际空网络。随后又用 `@(docker volume inspect $_ 2>$null).Count` 验证已删卷，失败 inspect 的空输出同样被包装成 1，误报两卷仍存在；精确 `docker volume ls --filter name=...` 证明数量为 0。JSON 对象成员数量应使用 `@($object.Containers.PSObject.Properties).Count`；Docker 资源存在性使用权威 list 或紧邻的原生命令退出码，禁止用 `@(<可能为 null 的输出>).Count`。
 - 环境：PowerShell 7，验证玩家列表 `modRiskFlags` 的空值契约。
 - 错误模式：在同一 `if` 中写 `@($vanillaList[0].modRiskFlags).Count -ne 0`，把索引、属性访问、数组子表达式和逻辑短路压成一行。
@@ -3386,6 +3424,7 @@
 
 ## 2026-08-15：在仓库子目录把 Git 根相对文件名直接交给 gofmt
 
+- 最近复发/补充：2026-08-20 修复非规范存档目录导致导入 finalizer 误判时，`workdir` 已是 `<repo>/backend`，仍把 `backend/internal/games/stardew_junimo/{saves.go,saves_test.go}` 交给 `gofmt`，两项均以 `GetFileAttributesEx ... path not found` 退出，格式化和测试都未开始。随后固定回仓库根、先用 `Test-Path -LiteralPath` 核对首个仓库相对文件，再独立格式化；测试另在模块根运行。本轮余下 Go 门禁不再把格式化与测试置于同一命令或 cwd。
 - 最近复发/补充：2026-08-17 Mod 更新回滚测试格式化后，又在仓库根组合执行 `go test ./backend/internal/games/stardew_junimo`；Go 在测试加载前明确报告根目录没有 `go.mod` 并退出 1，格式化已经成功且产品测试未运行。随后把测试独立移到 `<repo>/backend` 并使用 `./internal/games/stardew_junimo`。仓库根格式化与模块根测试不得为了少一次工具调用再次合并。
 - 最近复发/补充：2026-08-17 新增人数上限真实 E2E 后，`workdir` 已是 `<repo>/backend`，组合命令仍把 `backend/internal/web/server_runtime_settings_real_integration_test.go` 交给 `gofmt`；格式化报路径不存在，但后续 `go test` 成功覆盖了退出码。随后在同一 cwd 用真实 `internal/web/...` 独立格式化并复验。该模式已多次固化为规则，余下格式化只从仓库根单独执行，且不得与测试组合以免退出码被覆盖。
 - 最近复发/补充：2026-08-16 主机床事务回滚收口时，`workdir` 已是 `<repo>/backend`，仍把 `backend/internal/...` 传给 `gofmt`，三个目标均以 `GetFileAttributesEx ... path not found` 退出 2，测试未启动、文件未修改。尽管本条已有多次记录，本次命令仍漏掉首目标 `Test-Path`；任务剩余格式化固定为仓库根并先验证第一条仓库相对路径，Go test 再使用独立的 backend cwd，不能再次合并。
@@ -3515,6 +3554,10 @@
 
 ## 2026-08-16：未先确认路径、空结果和 Git 对象就组合执行只读探针
 
+- 最近复发/补充：2026-08-20 诊断生产导入后的原主机角色时，把 `backend/internal/games/stardew_junimo/*.go` 直接作为 Windows `rg` 路径参数，并附带未经文件清单确认、实际不存在的 `paths.go`，得到 `os error 123/2`；命令只读，本地源码和生产均未变化。随后改为对已确认目录使用 `rg -g '*.go' ... backend/internal/games/stardew_junimo`。本轮余下定位只能使用真实命中路径，Windows 跨文件搜索一律用目录加 `-g`，不得传未展开的通配路径。
+- 最近复发/补充：2026-08-20 为确认 `PANEL_DATA_DIR` 配置键，检索已存在的 `backend` 与长期文档时又附加了凭常见 Go 布局猜出的仓库根 `cmd`，有效命中输出后仍报告 `cmd: 系统找不到指定的文件 (os error 2)`；命令只读，未改本地或生产。随后只沿用真实命中的 `backend/internal/config/config.go` 并从经过脱敏投影的容器 inspect 核对配置。跨根检索的每个位置参数都必须先来自 `rg --files`/当前目录列表，不能把惯例目录混入已确认路径。
+- 最近复发/补充：2026-08-20 检索旧支持包 `panel-logs.txt` 时，把五条可能合法无命中的 `rg -F` 直接串行执行且没有逐条分类退出码；全部无命中，末条以 `1` 结束，组合调用只呈现空输出，未改变文件。支持包关键词探针允许空集合时必须改用 `Select-String -SimpleMatch`，或逐条保存 `rg` 的 `0/1/>1`，不得让“无相关日志”伪装成不明命令失败。
+- 最近复发/补充：2026-08-20 诊断 `v0.5.7` 存档恢复入口时，虽然 `rg` 已返回真实文件 `instance_handlers.go` 与 `lifecycle_handlers.go`，同一轮后续检索仍凭职责猜测不存在的 `backend/internal/web/instance_actions.go`，并把不会由 Windows 展开的 `backend/internal/web/*handlers.go` 作为路径传给 `rg`，分别得到 `os error 2/123`；命令只读，工作区产品代码未变化。后续只沿用首轮真实命中路径，跨文件范围使用 `rg -g '*handlers.go' <pattern> backend/internal/web`，不得再从概念名猜文件或把通配路径直接传给 Windows `rg`。
 - 最近复发/补充：2026-08-20 查询 `v0.5.7` 官网证据提交的 workflow 时，只掌握 `c8a4eaa` 短 SHA 却手工补写了一个错误的 40 位值，再用它过滤 `gh run list`，因此得到误导性的空列表；该命令只读，未触发或修改 workflow。随后直接以 `git rev-parse HEAD` 取得真实 `c8a4eaa1cc9d28a7cf7f4518a0e2c268a612bf83`，再把该值原样传给 `gh run list --commit`，正确锁定 Pages 与 Compatibility。Git 对象 ID 不得根据前缀补齐或凭显示猜测；任何精确筛选必须使用 `git rev-parse`、API 或前一步真实输出。
 - 最近复发/补充：2026-08-17 排查扩展在 Nexus 慢速下载页停滞时，凭口头简称把目录写成不存在的 `browser-extension`，导致两次 `rg` 输入路径报 `os error 2`；工作区未变化。随后先用 `rg --files` 取得真实目录 `browser-extensions/nexus-slow-installer` 再检索。即使同一任务刚修改过扩展，也不得从简称反推目录单复数，后续读取只能沿用真实文件列表返回值。
 - 最近复发/补充：2026-08-17 为 `InstallNexusModWithTicket` 传递期望版本时，只看了截断 diff 便假定函数体直接获取下载链接，首个 `apply_patch` 因遗漏实际存在的 API key/ticket 校验块而验证失败、零修改；读取精确函数范围后才按最小锚点补丁成功。即使目标函数名已确认，也必须读取当前完整函数上下文后再写多处补丁，不能从 diff 省略段反推源码。

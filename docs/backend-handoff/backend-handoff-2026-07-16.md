@@ -1,3 +1,47 @@
+# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 后端接手记录（2026-08-20，completed，未发布）
+
+## 改了什么
+
+- 生产 v0.5.8 的真实上传目录只有 3 个字符且不带 world ID。Junimo Layer A 已把原主机移为 farmhand，但 SMAPI `Constants.SaveFolderName` 按主文件首个 `_` 前缀与 `uniqueIDForThisGame` 生成另一 runtime saveId；pending intent 仍保存旧目录，finalizer wrong-save guard 清 intent且 `finalizeCount=0`。Panel 的 runtime target 门禁正确把它分类为 partial finalizer 并完整回滚，所以当前“原主机不可选”是回滚后仍在主 `<player>`，不是人物被删除。
+- `saves.go` 在 `PreviewSaveZip` 解压与安全校验后、durable token 接管前调用 `normalizeExtractedSaveIdentity`。它只解析主 `<SaveGame>` 的非零 uint64 identity，以主文件名首段构造 canonical saveName，并用平台 no-replace rename 同步目录、主文件、可选 `_old`。主 XML 字节和 SaveGameInfo 内容不改；任一目标冲突或非法 canonical 名 fail closed。
+- malformed/缺 identity 仍保留既有 preview/后续解析语义，显式非法 identity 拒绝；规范名再次通过 `validateSaveName` 与 `safeImportCommandToken`。返回值随后自然进入 pending upload、journal、staging、Junimo command 和 activation exact match，不在 Web/API 层增加 Stardew 逻辑。
+
+## 影响文件与接口
+
+- 代码：`backend/internal/games/stardew_junimo/{saves.go,saves_test.go}`；长期文档：`docs/{02-backend,06-integration,08-future-roadmap,09-image-build}.md` 与本接手文档。
+- `upload-preview` JSON shape、commit 请求、错误码、SQLite schema、Control/Junimo DLL 与 runtime manifest 不变；仅成功响应的 `saveName` 可能从 ZIP 原目录变为 canonical runtime identity。前端必须继续使用服务端 token/saveName。
+
+## 如何验证与下一步
+
+- 单元专项用生产同形态的无后缀中文目录和真实 `uniqueIDForThisGame`，确认响应/预览名、目录、主文件、`_old` 一致规范化，旧目录消失；正常 path、显式目录 entry 与 legacy GBK preview 同组回归通过。任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。
+- 正式候选必须用真实 Junimo `.125` + Control 完成非规范 ZIP 的 swap finalizer、host bed、自动解绑、durable save、重启和真人客户端选原主机；不能只以 runtime saveId 数字后缀相同替代 finalizer 计数/intent 清空/Control 双证据。
+- 生产热更新必须先备份 Panel image/binary、SQLite、两份 rolled_back journal、当前非规范存档与 pointer，并保留原始存档直到 canonical 导入成功；没有用户重新提交的平台 ID时不得手工伪造绑定或直接改 XML。
+
+# SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1 后端接手记录（2026-08-20，completed，未发布）
+
+## 改了什么
+
+- 生产 `v0.5.8` 的失败导入已经严格证明 Phase A 零落盘且没有 active job，但通用 import mutex 先于 handler 级 recovery 返回 busy。生产现场已在不可变备份/dry-run 后按 driver cleanup 契约收敛；preimport 与 receipt 保留，Panel 未重启且恢复健康。首次安装 bootstrap 的 pointer 在 cleanup 后应不存在，不能套用普通导入的“指针保持”断言。
+- `internal/web/instance_handlers.go` 对受 mutex 保护的 mutation 先认证，管理员在 busy 检查前调用既有 `autoRecoverSafeFailedSaveImport`；未认证和非管理员请求不会借普通 start/select/mod mutation 取得 cleanup 权限。恢复仍由 `stardew_junimo` strict cleaner 决定，不在 Web 层删除存档或重放 FIFO。
+- `save_import_maintenance.go` 把 readiness probe 从“任意 saves 列表可响应”收紧为只读 `saves info <exact-target>`，精确目标不可见时停在 pre-submit；`save_import_phase_a.go` 在超时停容器前保存 offset 后最多 16 KiB 的日志尾部，经 platform ID/控制字符脱敏和 1024 字符上限写入 `phaseALogDetail`，日志仍不是成功证据。
+- `pending_uploads_test.go` 新增 terminal no-effect journal/job/token 的完整 Web fixture，固定未认证请求零 cleanup、管理员 mutation 自动收敛、preimport/pointer 保持和 staged/source/token 清零；既有 journal 二次收敛 helper 的预算从 2 秒与 job helper 对齐为 7 秒，消除 Windows Web 全包下的 I/O 抖动。
+
+## 影响文件与接口
+
+- 代码：`backend/internal/web/{instance_handlers.go,lifecycle_handlers.go,pending_uploads_test.go}`、`backend/internal/games/stardew_junimo/{save_import_maintenance.go,save_import_maintenance_test.go,save_import_phase_a.go,save_import_phase_a_test.go}`。
+- 语义：普通管理员 start/stop/restart/select/save/mod mutation 遇到“terminal + exact owner + strict no-effect”旧事务时会先安全收敛再继续；active、ambiguous、磁盘漂移或 effect-bearing 事务仍返回原 busy/recovery error。成功 JSON、错误 code 集合、数据库 schema、前端、Compose 和 Junimo `.125` runtime 均未改变。
+
+## 如何验证
+
+- 定向：管理员 mutation auto-recovery、精确 target info readiness、Phase A no-effect 日志保存/原始平台 ID 不落 journal、复合不完整矩阵全部通过。
+- 包级：Windows Web 全包 33.337 秒通过；Linux Go 1.25 Junimo 全包 60.493 秒通过。Windows Junimo 全包只命中既有 NTFS mode 差异。
+- 整仓：任务专属 Linux Go 1.25 `go test ./... -count=1` 全绿；宿主 `go vet ./...`、`go build ./...` 通过；测试容器和两个 task cache volume 已精确清零。
+
+## 下一步注意事项
+
+- 本提交尚未 push/发布。正式候选必须用真实 Docker 覆盖“目标对 Junimo 不可见时 pre-submit fail closed”“FIFO 已写但零效果时 capture log + snapshot restore + 下一管理员 mutation 自动清理”，并在升级后的 Panel 复验；日志文本不可升级为成功门禁。
+- 如果再出现正式 import 无磁盘效果，先读 `phaseALogDetail` 与 pre/after disk evidence；不要重发同一 operation。仅完整 no-effect proof 可自动收敛，其它情况保留 journal/token/preimport 做人工恢复。
+
 # SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1 后端接手记录（2026-08-20，released in v0.5.8；生产已定向热修）
 
 ## 改了什么、影响哪些接口/文件

@@ -1,3 +1,55 @@
+# 下一补丁补充：非规范上传目录与运行时 saveId 统一（2026-08-20，候选前）
+
+## 变更清单、受影响链路与当前边界
+
+- `SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1` 修复生产 `v0.5.8` 的真实 swap 导入：ZIP 顶层目录/主文件只有 3 个字符，Layer A 主机交换已确认，但 SMAPI runtime saveId 按 `<主文件首段>_<uniqueIDForThisGame>` 解析；Junimo pending intent 仍是旧目录，finalizer wrong-save guard 清 intent 且计数为 0，Panel 因而正确回滚。生产备份和当前主文件/指针一致，未发生角色丢失。
+- preview 现在只在上传私有临时树中读取非零十进制世界 ID并 no-replace 重命名目录、主文件和 `_old`；规范后的 `saveName` 贯穿 token、journal、staging、FIFO 和 runtime evidence。XML、平台 ID、角色内容、Control/Junimo runtime 与数据库 schema 不变。
+- 本变更影响 backend upload preview/driver tests 与跨端 `saveName` 值语义；前端 shape 不变并继续信任服务端响应。当前未创建 tag、未提升正式镜像；生产热更新必须保留原 Panel image/binary 和完整数据回滚点，不能替代候选门禁。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 通过标准 |
+| --- | --- | --- |
+| 正常路径 | 无 `_worldId` 的真实中文上传目录执行 swap_to_player | preview 返回 canonical 名；FIFO/intention/runtime saveId 完全一致；finalizer、解绑、durable save、completed 全部成立 |
+| 关键边界 | 已规范、含额外 `_`、GBK 目录、可选 `_old`、缺 identity | 已规范零改名；非规范安全收敛；目录/主文件/旧档同步；既有兼容错误不被吞掉 |
+| 权限安全 | canonical 名非法、identity 零/非数字/溢出、目标冲突 | token ownership 前拒绝；无覆盖、无路径逃逸、无 FIFO 提交 |
+| 幂等/恢复 | preview 重试、commit 重放、Layer A 后故障回滚 | 同 token/operation 唯一；canonical identity 不漂移；preimport 可恢复且不得重复 import |
+| 数据完整性 | 原主机、已有 farmhand、物品/关系/房屋与绑定 | 只改临时树路径；成功后原主机成为可选 farmhand，自动解绑为零，XML 内容门禁与重启一致 |
+| 资源清理 | preview cancel、失败 token、候选 Docker project | 私有临时树、容器、网络、bind/volume 按 owner 精确清零；生产备份保留到验收完成 |
+
+## 候选前本地证据
+
+- 生产同形态的无后缀中文目录专项通过：preview 返回 canonical runtime identity，目录、主文件、`_old` 同步 no-replace 规范化，旧目录消失；正常 path、显式目录 entry、legacy GBK preview 同组回归通过。
+- 任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全绿；精确 module prefetch 后 `go mod verify` 通过。生产热更新和重新导入仍属本版待验收项，不以单元测试代替。
+
+# 下一补丁：终态 no-effect 普通操作自动解锁（2026-08-20，候选前）
+
+## 变更清单、受影响链路与当前边界
+
+- `SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1` 修复生产 `v0.5.8` 的新现场：job 已 terminal failed、active jobs=0、Phase A 完整证据严格 no-effect 且 maintenance snapshot 已恢复，但 start/select 等普通 mutation 的通用 mutex 在 handler recovery 之前仍返回 `save_import_busy`。Web 现在先认证，仅管理员在通用 busy 检查前调用 existing exact-owner strict recovery；active/ambiguous/effect-bearing、身份冲突、非管理员和未认证请求继续 fail closed。
+- maintenance readiness 由通用 `saves` 响应收紧为只读 `saves info <exact-target>`，Junimo 看不到或读不到 staged target 时停在 pre-submit。Phase A 超时会在 Down 前按 offset 有界截取最后 16 KiB server output，经 platform ID/控制字符脱敏和 1024 字符限制写入 journal；日志只用于诊断，不改变 disk composite success proof。
+- 生产热修在 Panel pause 窗口内先完成不可变 SQLite/journal/token/存档/指针备份、integrity 和 dry-run，再只清理该 operation 的 transaction、owned token、staged target/source；preimport 与 receipt 保留。备份目录为 `/root/.anxi-panel/manual-recovery/save-import-20260820-98903e3c`，manifest SHA-256=`3930867885e251f4254b79734f6fa897b44cfd0c935d7a0b5c5d71b5e7ee6864`。首次安装 bootstrap cleanup 后 pointer 按产品契约不存在；Panel `/health=ok`、restart count=0、active jobs=0，未替换镜像。
+- 影响 backend Web/driver/tests 和长期文档；公开 API/DTO、SQLite migration、Compose、frontend、Control/SMAPI/Junimo runtime manifest 均未改变。当前尚未 push、未生成候选、未创建 tag、未提升镜像。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 通过标准 |
+| --- | --- | --- |
+| 正常路径 | 真实 Docker 构造 terminal failed + strict Phase A no-effect + exact owned token，随后管理员 select/start | mutation 先自动 finalize journal/token/owned artifacts，再进入原 handler；preimport 保留，不返回 false busy |
+| 关键边界 | Junimo 只响应 saves list 但看不到 exact target；target info 可读后 FIFO 零效果 | 前者 `upstreamSubmitted=false` 安全失败并恢复 maintenance；后者只发送一次 import，停机前留下脱敏 log detail 与完整 no-effect proof |
+| 权限安全 | 未认证、普通用户、admin；伪造/冲突 job-token-journal；日志含原始 platform ID | 只有 admin + exact owner 可收敛；其它零删除；raw ID 不进入 journal/support evidence |
+| 幂等恢复 | cleanup receipt/journal/token 各窗口中断；重复 admin mutation；Panel 在 no-effect/snapshot restore 后重启 | 可继续到唯一终态，不重发 FIFO、不跨 operation 删除；preimport 永久保留 |
+| 数据完整性 | 普通 active pointer 与首次安装 bootstrap pointer；主文件 hash/pending/fingerprint 漂移 | 普通 pointer 保持；bootstrap 按 cleanup contract 删除；任何漂移转 manual recovery |
+| 升级回滚 | 当前正式 v0.5.8 → 同一候选 unhealthy/healthy；升级后的新 Panel 跑上述正常路径 | unhealthy 回到 v0.5.8；healthy digest 固定；SQLite/初始化/非目标容器与 volume 保持，升级后专项通过 |
+| 资源清理 | E2E Compose project、容器、网络、volume、bind、临时日志/缓存 | 按 task owner 精确清零，不使用生产数据、不 prune |
+
+## 候选前本地证据
+
+- 定向管理员 mutation、未认证零 cleanup、exact target info readiness、Phase A no-effect log/platform ID 脱敏与不完整证据矩阵通过。
+- Windows Web 全包首轮仅既有 journal helper 2 秒预算在整包 I/O 下抖动；与 job helper 对齐为 7 秒后 33.337 秒通过。Windows Junimo 全包唯一失败是已记录 NTFS mode=`0666`/Linux `0640` 差异。
+- 任务专属 Linux Go 1.25 Junimo 全包 60.493 秒、Linux 整仓 `go test ./... -count=1` 全绿；宿主 `go vet ./...`、`go build ./...` 通过。测试容器、两个缓存 volume、一次性恢复制品与上游源码副本均已精确清零。
+- 这些只构成本地代码证据。正式发布前仍必须把本节两条真实 Docker import 专项接入不可变候选，并由同步干净 `main` 完成既有全部候选/升级门禁；不得用生产热修代替候选 proof。
+
 # v0.5.8 Phase A no-effect 生产热修与代码修复正式发布（2026-08-20，released）
 
 ## 变更清单、受影响链路与发布边界

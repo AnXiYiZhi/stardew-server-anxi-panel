@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/auth"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
@@ -90,8 +91,22 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 	}
 	instanceID := parts[0]
 	if importMutexEndpoint(r.Method, parts) {
+		session, authenticated := s.requireAuth(w, r)
+		if !authenticated {
+			return
+		}
 		instance, err := s.store.GetInstance(r.Context(), instanceID)
 		if err == nil {
+			// A terminal failed import can leave a durable journal until Web has
+			// reconciled its exact job/token owner. Admin mutations are a normal
+			// recovery entry point too; converge the strictly safe case before the
+			// generic mutex turns the durable marker into a false busy response.
+			if session.User.Role == auth.RoleAdmin {
+				if _, recoverErr := s.autoRecoverSafeFailedSaveImport(r.Context(), instance); recoverErr != nil {
+					writeSaveImportSubmitError(w, recoverErr)
+					return
+				}
+			}
 			busy, busyErr := sj.HasUnfinishedImportTransaction(instance.DataDir)
 			if busyErr != nil {
 				writeError(w, http.StatusInternalServerError, "import_recovery_check_failed", "failed to inspect import recovery state")

@@ -29,6 +29,8 @@ const (
 	phaseAOutcomeHalfRestoreFailed = "half_conversion_restore_failed"
 	phaseAOutcomeResultUnconfirmed = "result_unconfirmed"
 	phaseAOutcomeFIFOWriteFailed   = "fifo_write_failed"
+	phaseALogCaptureMaxBytes       = int64(16 * 1024)
+	phaseALogCaptureTimeout        = 5 * time.Second
 )
 
 type importPhaseAOptions struct {
@@ -113,7 +115,7 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 	if err := d.writeImportJournal(instance.DataDir, journal); err != nil {
 		// The command must never be re-sent. Stop it, then classify only from
 		// final disk state even if the first durable journal write failed.
-		return d.finalizeTimedOutImportPhaseA(instance.DataDir, operationID, lifecycle, pre, options, job, err)
+		return d.finalizeTimedOutImportPhaseA(instance.DataDir, operationID, lifecycle, pre, platformID, options, job, err)
 	}
 
 	deadline := time.NewTimer(options.ObservationTimeout)
@@ -130,9 +132,9 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 		}
 		select {
 		case <-ctx.Done():
-			return d.finalizeTimedOutImportPhaseA(instance.DataDir, operationID, lifecycle, pre, options, job, ctx.Err())
+			return d.finalizeTimedOutImportPhaseA(instance.DataDir, operationID, lifecycle, pre, platformID, options, job, ctx.Err())
 		case <-deadline.C:
-			return d.finalizeTimedOutImportPhaseA(instance.DataDir, operationID, lifecycle, pre, options, job, context.DeadlineExceeded)
+			return d.finalizeTimedOutImportPhaseA(instance.DataDir, operationID, lifecycle, pre, platformID, options, job, context.DeadlineExceeded)
 		case <-ticker.C:
 		}
 	}
@@ -312,7 +314,22 @@ func currentDiskMatchesPhaseANoEffect(dataDir string, journal ImportJournal) err
 	return nil
 }
 
-func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifecycle LifecycleDockerService, pre JunimoImportEvidenceSnapshot, options importPhaseAOptions, job *jobs.Context, observationErr error) error {
+func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifecycle LifecycleDockerService, pre JunimoImportEvidenceSnapshot, platformID string, options importPhaseAOptions, job *jobs.Context, observationErr error) error {
+	journal, journalErr := LoadImportJournal(dataDir, operationID)
+	if journalErr != nil {
+		observationErr = errors.Join(observationErr, fmt.Errorf("load Phase A journal for server-output capture: %w", journalErr))
+	} else {
+		logCtx, logCancel := context.WithTimeout(context.Background(), phaseALogCaptureTimeout)
+		logDetail, logErr := capturePhaseALogDetail(logCtx, lifecycle, dataDir, journal.PreSubmitLogOffset, platformID)
+		logCancel()
+		journal.PhaseALogDetail = logDetail
+		if writeErr := d.writeImportJournal(dataDir, journal); writeErr != nil {
+			observationErr = errors.Join(observationErr, logErr, fmt.Errorf("persist Phase A server-output detail: %w", writeErr))
+		} else if logErr != nil {
+			observationErr = errors.Join(observationErr, logErr)
+		}
+	}
+
 	stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
 	defer cancel()
 	if err := stopImportPhaseAServer(stopCtx, lifecycle, dataDir, options.PollInterval); err != nil {
@@ -368,6 +385,40 @@ func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifec
 	default:
 		return recordImportPhaseAFailure(dataDir, operationID, ImportErrorResultUnconfirmed, phaseAOutcomeResultUnconfirmed, "Phase A disk evidence is contradictory", &after, observationErr)
 	}
+}
+
+func capturePhaseALogDetail(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, offset *int64, platformID string) (string, error) {
+	if offset == nil || *offset < 0 {
+		return "server-output offset was unavailable after FIFO submission", errors.New("Phase A server-output offset is unavailable")
+	}
+	size, err := strictServerLogSize(ctx, lifecycle, dataDir)
+	if err != nil {
+		return "server-output could not be read after FIFO submission", err
+	}
+	if size <= *offset {
+		return "server-output contained no new bytes after FIFO submission", nil
+	}
+	start := *offset + 1
+	truncated := false
+	if size-*offset > phaseALogCaptureMaxBytes {
+		start = size - phaseALogCaptureMaxBytes + 1
+		truncated = true
+	}
+	result, err := lifecycle.ComposeExecPipe(ctx, dataDir, "server", "", "tail", "-c", fmt.Sprintf("+%d", start), serverOutputLog)
+	if err != nil || result.ExitCode != 0 {
+		if err == nil {
+			err = fmt.Errorf("server-output tail exited with code %d", result.ExitCode)
+		}
+		return "server-output could not be read after FIFO submission", err
+	}
+	detail := redactPhaseALog(result.Stdout+" "+result.Stderr, platformID)
+	if detail == "" {
+		detail = "server-output contained no readable response after FIFO submission"
+	}
+	if truncated {
+		detail = "[truncated to final 16 KiB] " + detail
+	}
+	return detail, nil
 }
 
 func stopImportPhaseAServer(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, interval time.Duration) error {

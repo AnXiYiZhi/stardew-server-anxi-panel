@@ -229,7 +229,7 @@ func (d *Driver) runImportMaintenance(ctx context.Context, instance registry.Ins
 	if err != nil {
 		return d.maintenanceReadinessFailure(dataDir, operationID, err)
 	}
-	if err := waitForImportSavesCommand(readyCtx, lifecycle, dataDir, options.PollInterval); err != nil {
+	if err := waitForImportSavesCommand(readyCtx, lifecycle, dataDir, journal.SaveName, options.PollInterval); err != nil {
 		return d.maintenanceReadinessFailure(dataDir, operationID, err)
 	}
 	if err := rejectConnectedFarmhands(readyCtx, lifecycle, dataDir); err != nil {
@@ -310,28 +310,33 @@ func waitForImportEvidenceBaseline(ctx context.Context, lifecycle LifecycleDocke
 
 // waitForImportSavesCommand tolerates the real .125 startup window where the
 // HTTP API is already listening but the game is still loading and Junimo's
-// console commands have not produced output yet. The probe is read-only; the
-// formal import command is never retried here.
-func waitForImportSavesCommand(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, interval time.Duration) error {
+// console commands have not produced output yet. The exact target info probe is
+// read-only and proves both command registration and container visibility of
+// the staged save; the formal import command is never retried here.
+func waitForImportSavesCommand(ctx context.Context, lifecycle LifecycleDockerService, dataDir, saveName string, interval time.Duration) error {
+	if err := validateSaveName(saveName); err != nil || !safeImportCommandToken(saveName) {
+		return &ImportTransactionError{Code: "invalid_save", Message: "staged save name cannot be represented safely in a Junimo command", Cause: err}
+	}
 	var lastErr error
+	command := "saves info " + saveName
 	for {
 		if err := rejectConnectedFarmhands(ctx, lifecycle, dataDir); err != nil {
 			return err
 		}
-		output, exitCode, _, err := sendServerCommand(ctx, lifecycle, dataDir, "saves")
-		if err == nil && exitCode == 0 && isSavesListOutput(output) {
+		output, exitCode, _, err := sendServerCommand(ctx, lifecycle, dataDir, command)
+		if err == nil && exitCode == 0 && isSaveInfoOutput(output, saveName) {
 			return nil
 		}
 		if err != nil {
 			lastErr = err
 		} else {
-			lastErr = errors.New("saves list probe produced no recognized response")
+			lastErr = errors.New("target save info probe produced no recognized response")
 		}
 		if err := waitImportPoll(ctx, interval); err != nil {
 			if errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
-			return &ImportTransactionError{Code: ImportErrorMaintenanceSaves, Message: "Junimo saves command is unavailable", Cause: lastErr}
+			return &ImportTransactionError{Code: ImportErrorMaintenanceSaves, Message: "Junimo cannot see the staged import target", Cause: lastErr}
 		}
 	}
 }
@@ -456,9 +461,8 @@ func strictServerLogSize(ctx context.Context, lifecycle LifecycleDockerService, 
 	return size, nil
 }
 
-func isSavesListOutput(output string) bool {
-	lower := strings.ToLower(output)
-	return strings.Contains(lower, "available saves:") || strings.Contains(lower, "no saves directory found")
+func isSaveInfoOutput(output, saveName string) bool {
+	return strings.Contains(output, "Save: "+saveName)
 }
 
 func waitImportPoll(ctx context.Context, interval time.Duration) error {

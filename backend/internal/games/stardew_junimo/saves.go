@@ -571,10 +571,79 @@ func PreviewSaveZip(zipPath string, originalName string) (saveName string, previ
 		_ = os.RemoveAll(td)
 		return "", registry.SaveInfo{}, "", err
 	}
+	detectedSaveName, saveDir, err = normalizeExtractedSaveIdentity(saveDir, detectedSaveName)
+	if err != nil {
+		_ = os.RemoveAll(td)
+		return "", registry.SaveInfo{}, "", err
+	}
 
 	si := readSaveInfo(saveDir)
 	si.Name = detectedSaveName
 	return detectedSaveName, si, td, nil
+}
+
+// normalizeExtractedSaveIdentity makes the extracted folder and primary file
+// match the runtime save ID Stardew/SMAPI derives while loading. SaveGame sets
+// its raw name from the primary filename segment before the first underscore,
+// then SMAPI resolves <raw>_<uniqueIDForThisGame>. A valid but non-canonical ZIP
+// such as Saves/<name>/<name> otherwise loads successfully while Junimo's
+// pending host-swap intent still names <name>; the finalizer rejects that as a
+// different world and clears the intent. The upload temp tree is private, so a
+// no-replace rename here is reversible by discarding the preview token.
+func normalizeExtractedSaveIdentity(saveDir, saveName string) (string, string, error) {
+	mainPath := filepath.Join(saveDir, saveName)
+	raw, err := os.ReadFile(mainPath)
+	if err != nil {
+		return "", "", fmt.Errorf("读取 ZIP 主存档以核对运行身份失败: %w", err)
+	}
+	var parsed struct {
+		XMLName             xml.Name `xml:"SaveGame"`
+		UniqueIDForThisGame string   `xml:"uniqueIDForThisGame"`
+	}
+	if err := xml.Unmarshal(raw, &parsed); err != nil || parsed.XMLName.Local != "SaveGame" {
+		// Preserve the existing preview behavior for malformed/partial files. The
+		// normal import preflight will report its established parse error without
+		// turning an upload-preview compatibility change into a new rejection.
+		return saveName, saveDir, nil
+	}
+	identity := strings.TrimSpace(parsed.UniqueIDForThisGame)
+	if identity == "" {
+		return saveName, saveDir, nil
+	}
+	if value, parseErr := strconv.ParseUint(identity, 10, 64); parseErr != nil || value == 0 {
+		return "", "", fmt.Errorf("ZIP 主存档的 uniqueIDForThisGame 无效")
+	}
+	rawName := strings.SplitN(saveName, "_", 2)[0]
+	if rawName == "" {
+		return "", "", fmt.Errorf("ZIP 主存档无法生成运行时存档身份")
+	}
+	canonicalName := rawName + "_" + identity
+	if err := validateSaveName(canonicalName); err != nil {
+		return "", "", fmt.Errorf("ZIP 运行时存档身份不合法: %w", err)
+	}
+	if !safeImportCommandToken(canonicalName) {
+		return "", "", fmt.Errorf("ZIP 运行时存档身份包含 Junimo 导入命令不支持的字符")
+	}
+	if canonicalName == saveName {
+		return saveName, saveDir, nil
+	}
+
+	canonicalDir := filepath.Join(filepath.Dir(saveDir), canonicalName)
+	if err := renameImportNoReplace(saveDir, canonicalDir); err != nil {
+		return "", "", fmt.Errorf("规范化 ZIP 存档目录失败: %w", err)
+	}
+	if err := renameImportNoReplace(filepath.Join(canonicalDir, saveName), filepath.Join(canonicalDir, canonicalName)); err != nil {
+		return "", "", fmt.Errorf("规范化 ZIP 主存档文件失败: %w", err)
+	}
+	oldSource := filepath.Join(canonicalDir, saveName+"_old")
+	if _, err := os.Lstat(oldSource); err == nil {
+		if err := renameImportNoReplace(oldSource, filepath.Join(canonicalDir, canonicalName+"_old")); err != nil {
+			return "", "", fmt.Errorf("规范化 ZIP 旧存档文件失败: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", "", fmt.Errorf("检查 ZIP 旧存档文件失败: %w", err)
+	}
+	return canonicalName, canonicalDir, nil
 }
 
 // normalizeSaveZipEntryNames decodes the legacy GBK/GB18030 names commonly

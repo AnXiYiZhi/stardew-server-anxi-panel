@@ -1,3 +1,10 @@
+# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 跨端契约（2026-08-20，completed，未发布）
+
+- `POST /api/instances/:id/saves/upload-preview` 的 JSON shape 不变，但成功响应中的 `saveName` 现在是后端按 Stardew 实际加载身份规范化后的名称，不保证逐字等于 ZIP 顶层目录。桌面和手机必须继续以响应 `saveName` 展示并提交既有 token，不得从本地文件名或 ZIP 目录重算 commit 目标。
+- 规范规则来自主存档身份：主文件名首个 `_` 前缀与非零 `uniqueIDForThisGame` 组合为 `<prefix>_<worldId>`；后端在 token 接管前对私有临时树的目录、主文件和 `_old` 同步 no-replace rename。之后 preview/token/journal/FIFO/Control saveId 使用同一值，Junimo pending finalizer 的 wrong-save guard 不再把同一世界的非规范上传目录当成另一档。
+- 没有新增前端选择、提示字段或错误码；既有 `save_exists` 必须对规范后的最终名称判断，因此一个非规范 ZIP 若与现有 canonical 世界同 ID 会在任何覆盖前拒绝。原始 XML、角色、平台 ID 和绑定不会由预览层修改。
+- 联调专项至少覆盖：无 `_worldId` 的中文顶层目录成功返回 canonical saveName；commit/journal/一次性 `saves import` 使用该值；runtime `status.saveId` 与 intent 精确一致并推进 finalizer；已规范 ZIP 值不变；canonical 冲突零覆盖；前端刷新/移动端切换后仍只使用服务端 token+saveName。
+
 # SAVE-IMPORT-AUTO-RECOVERY-1 跨端契约（2026-08-19，released in v0.5.7）
 
 - 管理员开始新存档上传时不需要理解或手动处理旧 operation/journal/token。`POST /api/instances/:id/saves/upload-preview` 在读取请求体前、`upload-commit-and-start` 在 reserve 新 operation 前，都会自动尝试收敛“job 已 failed/canceled 且可严格证明未提交 Junimo”的旧事务；成功后原请求直接继续，不新增恢复按钮、恢复 DTO 或前端 token 持久化。

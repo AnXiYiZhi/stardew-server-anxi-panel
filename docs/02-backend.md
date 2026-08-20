@@ -1,3 +1,19 @@
+# SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1：上传目录与 Stardew 运行时 saveId 统一（2026-08-20，completed，未发布）
+
+- 生产 `v0.5.8` 的真实 swap_to_player 导入证明：上传 ZIP 顶层目录/主文件名只有 3 个字符且不带世界 ID；Junimo Layer A 已完成主机交换，但 Stardew/SMAPI 加载后把世界标识解析为 `<主文件首个下划线前缀>_<uniqueIDForThisGame>`。Junimo pending intent 仍记录原 3 字符目录，finalizer 的 wrong-save guard 因精确名称不同清除 intent 且 `finalizeCount` 保持 0；Panel 检出 target runtime saveId 不一致后正确恢复完整 preimport，原主机因此回到不可由客户端选择的主 `<player>`，不是角色丢失。
+- `PreviewSaveZip` 现在只在私有上传临时树中解析主 `<SaveGame>` 的非零十进制 `uniqueIDForThisGame`，按 Stardew `getLoadEnumerator`/SMAPI `SaveFolderName` 规则构造运行身份；名称变化时以 no-replace 方式同步重命名顶层目录、主文件和可选 `_old` 文件。预览响应、durable token、journal、staging、Junimo command 和后续 runtime evidence 从一开始使用同一 canonical saveName，不修改 XML 字节，也不在 finalizer 后猜测同档别名。
+- 已经规范的 `<prefix>_<worldId>` 保持不变；缺失 identity 的历史/损坏夹具继续走既有 preview/后续解析错误语义，显式非数字、溢出或零 identity 会在接管前拒绝。规范名仍经过 UTF-8、长度、路径、保留字和 Junimo command token 全部门禁；重命名目标已存在时 fail closed，不覆盖临时树中的任何节点。
+- 影响 `internal/games/stardew_junimo/{saves.go,saves_test.go}` 及上传预览返回的 `saveName` 值，不新增字段、SQLite migration、Control/Junimo 修改或 XML rewrite。专项覆盖生产同形态的无后缀中文目录、主文件与 `_old` 同步规范化、旧目录消失和正常/显式目录/GBK preview 不回归；任务专属 Linux Go 1.25 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 均通过。
+
+# SAVE-IMPORT-TERMINAL-MUTATION-RECOVERY-1：终态零效果事务不再假 busy（2026-08-20，completed，未发布）
+
+- 生产 `v0.5.8` 再次出现 `stardew_import_save_and_start` 已终态失败、Phase A 前后主文件 hash/active pointer 均相同、无 pending intent、maintenance snapshot 已恢复，但普通启动/选档仍提示“已有存档导入任务正在运行或等待恢复”。根因不是仍有 active job，而是 `handleInstanceByID` 的通用 import mutex 在具体 handler 之前只检查 unfinished journal；安全自动恢复原本只接在 preview/commit/jobs-clear，普通管理员 mutation 永远到不了恢复入口。
+- 生产先在 Panel pause 窗口中完成 SQLite/journal/token/存档与指针不可变备份和 dry-run，再按 driver 的严格 Phase A no-effect cleanup 契约移除本 operation 的 transaction、owned token、staged target/source，保留 preimport ZIP 与 cleanup receipt。该现场属于首次安装 bootstrap，cleanup 后 gameloader pointer 按产品契约删除而不是保持；只读终态确认 Panel `/health=ok`、restart count 未变、active jobs=0、unfinished journal 已清零。备份留在生产私有恢复目录，没有写入仓库或日志凭据。
+- `handleInstanceByID` 现在对受 import mutex 保护的 mutation 先认证；仅管理员会在通用 busy 判定前调用 `autoRecoverSafeFailedSaveImport`。只有 terminal failed/canceled job、journal/job/owned token 精确同源、runtime 严格停止、maintenance snapshot 已恢复且完整复合证据重新证明 Phase A 零效果时才收敛；未认证请求不能触发 cleanup，普通用户、active/ambiguous/effect-bearing 事务继续 fail closed。
+- maintenance readiness 不再只用通用 `saves` 列表证明命令注册，而是发送只读 `saves info <exact-target>`，必须收到精确 `Save: <exact-target>` 才进入一次性正式 FIFO 提交，因此容器看不到 staged target、目标不可读或命令尚未就绪会在 `upstreamSubmitted=false` 时安全失败。saveName 继续经过命令 token 校验，不新增任意命令入口。
+- Phase A 超时/取消会在 `ComposeDown` 删除容器前，按 pre-submit 字节 offset 有界读取最多最后 16 KiB `server-output.log`，清理控制字符、替换原始 platform ID 并将最多 1024 字符写入 `phaseALogDetail`；读取失败只留下通用诊断并参与错误 cause，不改变最终磁盘复合分类，也绝不以日志文本替代成功证据或重发 import。
+- 影响 `internal/web/{instance_handlers.go,lifecycle_handlers.go,pending_uploads_test.go}` 与 `internal/games/stardew_junimo/{save_import_maintenance.go,save_import_phase_a.go}` 及测试；公开 API/DTO、SQLite schema、Compose、前端和 runtime manifest 不变。管理员 mutation 零效果恢复专项、精确目标 readiness、日志脱敏专项通过；Web 全包 33.337 秒、Linux Go 1.25 Junimo 全包 60.493 秒、Linux 整仓 `go test ./... -count=1`、`go vet ./...`、`go build ./...` 全部通过。Windows Junimo 全包唯一失败仍是已记录的 NTFS `0666`/Linux `0640` mode 差异；Web 首轮全包暴露既有 2 秒 journal 辅助等待抖动，改为与 job helper 相同的 7 秒预算后全包通过。
+
 # SAVE-IMPORT-PHASE-A-NO-EFFECT-RECOVERY-1：Phase A 无落盘效果后的严格恢复（2026-08-20，released in v0.5.8）
 
 - 根因是 Phase A 已写 FIFO 后，即使最终前后证据严格分类为 `command_failed_no_effect`，旧逻辑仍因 `phaseAFifoWriteAttempted/upstreamSubmitted/stage=import_submitted` 禁止恢复 maintenance 实例快照和 cleanup，留下永久 unfinished journal；v0.5.7 的 legacy jobs-cleared 恢复还会在 exact job binding 已完整时重写 `token.json`，把绑定 mtime 刷新到 `jobs_cleared` 之后，使本来有效的旧审计证明失效。

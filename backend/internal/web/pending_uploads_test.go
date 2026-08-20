@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -1303,9 +1305,208 @@ func TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction(t
 	}
 }
 
+func TestAdminMutationAutoRecoversTerminalPhaseANoEffectBeforeImportMutex(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store, err := storage.Open(ctx, config.Config{Addr: ":0", DataDir: root, DBPath: filepath.Join(root, "panel.db"), Secret: "test-secret", Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	instanceDir := filepath.Join(root, "instances", "stardew")
+	if err := os.MkdirAll(instanceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.EnsureDefaultInstance(ctx, storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: sj.DriverID, Name: "Stardew Valley", DataDir: instanceDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := fakeDockerService{}
+	manager := jobs.NewManager(store, slog.Default())
+	driver := sj.New(fake, slog.Default(), manager, store)
+	drivers := registry.New()
+	if err := drivers.Register(driver); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Deps{
+		Config: config.Config{DataDir: root, Secret: "test-secret", Version: "test"}, Store: store,
+		Registry: drivers, Docker: fake, Jobs: manager, Logger: slog.Default(),
+	})
+	setup, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
+		"username": "admin", "password": "admin-password", "confirmPassword": "admin-password",
+	}, nil)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup=%d: %s", setup.Code, setup.Body.String())
+	}
+	stored, err = store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+		ID: stored.ID, State: storage.InstanceStateGameInstalled, StateMessage: "game installed exactly",
+		DriverPhase: "game_installed", DriverPayload: `{"install":"complete"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeSave := func(name string) string {
+		t.Helper()
+		dir := filepath.Join(instanceDir, ".local-container", "saves", "Saves", name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		main := `<SaveGame><player><name>` + name + `</name></player></SaveGame>`
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(main), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SaveGameInfo"), []byte(`<Farmer><name>`+name+`</name></Farmer>`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	writeSave("Old_1")
+	loaderPath := filepath.Join(instanceDir, ".local-container", "saves", ".smapi", "mod-data", "junimohost.server", "junimohost.gameloader.json")
+	if err := os.MkdirAll(filepath.Dir(loaderPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(loaderPath, []byte(`{"SaveNameToLoad":"Old_1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	operationID := sj.NewImportOperationID()
+	request := registry.SaveImportRequest{
+		Instance: makeRegistryInstance(stored), OperationID: operationID, SaveName: "Upload_1", HostHandling: "server_owns_original",
+	}
+	journal, err := sj.CreateImportJournal(instanceDir, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceRoot := filepath.Join(instanceDir, ".local-container", "control", "save-import-transactions", operationID, "source")
+	writeSourceDir := filepath.Join(sourceRoot, "Upload_1")
+	if err := os.MkdirAll(writeSourceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(writeSourceDir, "Upload_1"), []byte(`<SaveGame><player><name>Upload</name></player></SaveGame>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(writeSourceDir, "SaveGameInfo"), []byte(`<Farmer><name>Upload</name></Farmer>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journal.SourceOwned = true
+	if err := sj.WriteImportJournal(instanceDir, journal); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := sj.StageImportedSaveNoReplace(instanceDir, sourceRoot, journal.SaveName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupPath, backupHash, err := sj.BackupPreImport(instanceDir, journal.SaveName, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainBytes, err := os.ReadFile(filepath.Join(instanceDir, ".local-container", "saves", "Saves", journal.SaveName, journal.SaveName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainDigest := sha256.Sum256(mainBytes)
+	mainHash := hex.EncodeToString(mainDigest[:])
+	preCapturedAt := time.Now().UTC().Add(-time.Second)
+	phaseCapturedAt := preCapturedAt.Add(time.Second)
+	submittedAt := preCapturedAt.Add(500 * time.Millisecond)
+	journal.StagedSaveCreated = true
+	journal.StagedSaveFingerprint = fingerprint
+	journal.PreimportBackupName = filepath.Base(backupPath)
+	journal.PreimportBackupSHA256 = backupHash
+	journal.Stage = sj.ImportStageSubmitted
+	journal.MaintenanceRecoveryState = "snapshot_restored"
+	journal.PreSubmitEvidence = &sj.JunimoImportEvidenceSnapshot{
+		MainSaveSHA256: mainHash, ActivePointer: "Old_1", CapturedAt: preCapturedAt,
+	}
+	journal.PhaseAFIFOWriteAttempted = true
+	journal.PhaseAEvidence = &sj.JunimoImportEvidenceSnapshot{
+		MainSaveSHA256: mainHash, ActivePointer: "Old_1", CapturedAt: phaseCapturedAt,
+	}
+	journal.PhaseAOutcome = "command_failed_no_effect"
+	journal.UpstreamSubmitted = true
+	journal.UpstreamSubmittedAt = &submittedAt
+	journal.LastErrorCode = sj.ImportErrorCommandFailed
+	journal.LastError = "Junimo import command produced no disk effect"
+	journal.RecoveryState = "safe_to_resume_or_cleanup"
+	if err := sj.WriteImportJournal(instanceDir, journal); err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := store.CreateIdempotentJob(ctx, storage.CreateJobParams{
+		Type: sj.SaveImportJobType, TargetType: "instance", TargetID: stored.ID,
+		Payload: `{"operationId":"` + operationID + `"}`, IdempotencyKey: sj.SaveImportJobIdempotencyKey(operationID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.StartJob(ctx, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FailJob(ctx, job.ID, "Junimo import command produced no disk effect"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sj.AttachImportJournalJobIdentity(instanceDir, operationID, stored.ID, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := sj.ConfirmImportJournalJobBinding(instanceDir, operationID, stored.ID, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	previewToken := "strict-no-effect-token"
+	if err := writeDurablePendingUpload(instanceDir, previewToken, &durablePendingUpload{
+		InstanceID: stored.ID, StagedDir: sourceRoot, SaveName: journal.SaveName, Status: "owned",
+		OperationID: operationID, JobType: sj.SaveImportJobType, JobID: job.ID,
+		JobIdempotencyKey: sj.SaveImportJobIdempotencyKey(operationID),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	unauthorized, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/select", map[string]string{"saveName": "missing"}, nil)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized mutation=%d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+	if _, err := sj.LoadImportJournal(instanceDir, operationID); err != nil {
+		t.Fatalf("unauthorized mutation changed journal: %v", err)
+	}
+
+	adminMutation, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/select", map[string]string{"saveName": "missing"}, adminCookie)
+	if adminMutation.Code == http.StatusConflict && strings.Contains(adminMutation.Body.String(), sj.ImportErrorBusy) {
+		t.Fatalf("admin mutation remained falsely busy=%d: %s", adminMutation.Code, adminMutation.Body.String())
+	}
+	if _, err := sj.LoadImportJournal(instanceDir, operationID); !os.IsNotExist(err) {
+		t.Fatalf("admin mutation did not finalize journal: %v response=%d %s", err, adminMutation.Code, adminMutation.Body.String())
+	}
+	if _, err := os.Stat(durableUploadDir(instanceDir, previewToken)); !os.IsNotExist(err) {
+		t.Fatalf("admin mutation did not remove token: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(instanceDir, ".local-container", "saves", "Saves", journal.SaveName)); !os.IsNotExist(err) {
+		t.Fatalf("admin mutation did not remove staged target: %v", err)
+	}
+	if _, err := os.Stat(sourceRoot); !os.IsNotExist(err) {
+		t.Fatalf("admin mutation did not remove owned source: %v", err)
+	}
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("admin mutation removed preimport backup: %v", err)
+	}
+	loaderBytes, err := os.ReadFile(loaderPath)
+	if err != nil || !strings.Contains(string(loaderBytes), `"Old_1"`) {
+		t.Fatalf("admin mutation changed original pointer=%q err=%v", loaderBytes, err)
+	}
+	if busy, err := sj.HasUnfinishedImportTransaction(instanceDir); err != nil || busy {
+		t.Fatalf("admin mutation left import busy=%v err=%v", busy, err)
+	}
+}
+
 func waitForImportJournal(t *testing.T, dataDir, operationID string, ready func(sj.ImportJournal) bool) sj.ImportJournal {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	// Match the HTTP job convergence budget instead of giving the secondary
+	// durable-file assertion a stricter arbitrary timeout under package load.
+	deadline := time.Now().Add(7 * time.Second)
 	var (
 		last    sj.ImportJournal
 		lastErr error
