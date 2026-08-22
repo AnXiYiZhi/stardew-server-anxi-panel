@@ -23,6 +23,7 @@
 - GitHub Release `Stardew Server Anxi Panel 0.5.11` 于 `2026-08-22T13:28:49Z` 发布，非 draft/prerelease；从 push 到 Release 约 `12m00s`。Docker Hub、阿里云 ACR、GHCR 的 `0.5.11/latest` 六引用由 promotion workflow 核对为同一 digest。四项资产与正式提交保持相同 size/SHA-256：`migrate-fnos.sh`=`34269/90510768...cbfd`、`repair-junimo-0.3.5.sh`=`14585/13a07708...31cd0e`、`repair-junimo-upgrade.sh`=`8521/4f3c6667...9b4c2`、`run.sh`=`33793/7263bfa3...e130787`。
 - 候选与 promotion 各有一条非阻断 GitHub Actions Node.js 20 deprecation annotation；hosted runner 已把受影响 action runtime 强制到 Node.js 24，所有步骤仍成功。它不改变候选内容、digest 或门禁结论；后续应在上游 action 提供对应版本时升级 action 引用，不能通过关闭安全检查压掉提示。
 - 正式 runner 的候选和 promotion 均成功完成 owner/trap 清理。此前 v0.5.10 本机中断候选的精确目录 `.agents/anxi-release-candidate-1787235914-13036`（`candidate.tar`、`fixtures.tar`，共 `163578880` bytes）已删除；同 owner 唯一遗留的 exited DinD 容器已按精确名称连同匿名卷删除，复核 container/volume/network 与目录均为 0。该中断链从未作为候选证明。
+- 发布后 docs-only `f545c169ded5edb11f8b2a1b1aad289bea77532b` 补齐官网 v0.5.8～v0.5.11 changelog、首页当前版本和 GitHub Release 用户摘要。Docs Portal `32576397782` 的 VitePress build `19s`、deploy `10s` 全绿，Compatibility `32576397780` 用时 `2m29s` 全绿；线上首页与 changelog 均为 200 且正文精确命中。本次 push 没有 Validate release candidate，不移动 `v0.5.11` tag，不重建或改变正式 digest。
 
 # v0.5.10 存档导入真实候选门禁补齐（2026-08-20，released）
 

@@ -12,6 +12,14 @@
 - 常驻入口必须保持 admin-only，不能显示或预填服务端保存的账号密码；“登录授权”与“更换账号”不能合并为同一含糊动作。后续若调整安装表单开放条件，必须继续让 `forceReauth` 覆盖普通诊断 guard，并保留运行中禁用门禁。
 - 正式候选 `32575311262`、Compatibility `32575311243`、自动 Tag `32575807110` 与提升 `32575818623` 全绿；`v0.5.11@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 已发布，三仓版本与 `latest` 统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`。官网首页/changelog 同步由后续 docs-only 提交完成，不得移动该 tag 或重建 digest。
 
+# DOCS-PORTAL-0.5.8-0.5.11 前端接手记录（2026-08-22，completed，已上线）
+
+## 改了什么、如何验证
+
+- `website/docs/changelog.md` 已补齐 v0.5.8～v0.5.11，`website/docs/index.md` 的 frontmatter、版本卡与 CURRENT RELEASE 已统一为 v0.5.11；GitHub Release 正文同步用户可见变化、四个正式 workflow、唯一 digest 与 compare，tag、四项资产和发布时间未变。
+- docs-only `f545c169ded5edb11f8b2a1b1aad289bea77532b` 的 Pages `32576397782` 成功（build `19s`、deploy `10s`），Compatibility `32576397780` 用时 `2m29s` 全绿。线上首页/changelog 均为 200，并精确包含 v0.5.11、Steam 密码错误摘要、v0.5.8～v0.5.10 历史节与常驻更换账号文案；该 push 没有新候选，不改变 v0.5.11 digest。
+- 后续发布要同时更新首页 `release`、版本卡、CURRENT RELEASE、changelog 首节和 GitHub Release 用户摘要；部署后仍需核对线上正文和无误触发候选，再做单独 evidence-only 回填。
+
 # DOCS-PORTAL-0.5.4-0.5.5 接手记录（2026-08-18，completed，已上线）
 
 ## 改了什么、影响哪些文件

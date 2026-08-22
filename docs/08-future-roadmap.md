@@ -7,6 +7,7 @@
 - [x] 正式候选 `32575311262@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 与 Compatibility `32575311243` 全绿；selected gates 完成 backend、frontend、真实 Junimo integration、website build，immutable image 完成 fresh/restart 和 `v0.5.10` Web unhealthy/healthy。真实 Steam 错误登录未使用生产/长期凭据注入，专项由确定性 driver 回归、状态/bundle 回归和发布前 Browser 交互覆盖。
 - [x] 自动 Tag `32575807110`、正式提升 `32575818623` 与 GitHub Release 成功；annotated tag object=`d8bf5075d57f7aaf1b834ad62e12418a2db67ab7`，三仓 `0.5.11/latest` 六引用统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`，GHCR health/version smoke 和四项资产通过。
 - [x] v0.5.10 本机中断候选的两个 tar、唯一 exited DinD 容器及其匿名卷已按精确 path/name/owner 清理；复核 artifact directory、container、volume、network 均为 0，未 prune 或触碰其它任务资源。
+- [x] 官网 docs-only `f545c169ded5edb11f8b2a1b1aad289bea77532b` 已补齐 v0.5.8～v0.5.11 changelog 与首页版本；Pages `32576397782`、Compatibility `32576397780` 全绿，线上首页/changelog 为 200 且正文命中，没有触发新候选或改变 v0.5.11 digest。
 
 # 2026-08-20 已发布于 v0.5.10：候选备份调度测试复用原子事件契约
 

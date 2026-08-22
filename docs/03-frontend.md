@@ -6,12 +6,12 @@
 - 验证：`npm run test:install-state`、`npm run test:responsive-layout`、`npm run build` 全部通过。应用内 Browser 在管理员、部分安装证据场景验证入口可见可用、点击后 3 个凭据输入项与强制提交按钮可见；1280px 与 390px 均无横向溢出，console warning/error 为 0。
 - 正式候选 `32575311262@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 的 frontend 全状态回归与 production build、immutable image fresh/restart 和 `v0.5.10` Web unhealthy/healthy 升级均通过；Compatibility `32575311243` 也完成独立 frontend tests/build。自动 Tag `32575807110` 与正式提升 `32575818623` 成功，能力已进入三仓同 digest 的 `v0.5.11/latest`。
 
-# DOCS-PORTAL-0.5.8-0.5.11：官网版本与缺失更新日志补齐（2026-08-22，completed，待上线）
+# DOCS-PORTAL-0.5.8-0.5.11：官网版本与缺失更新日志补齐（2026-08-22，completed，已上线）
 
 - `website/docs/changelog.md` 新增 `v0.5.8`、`v0.5.9`、`v0.5.10` 与 `v0.5.11` 用户可读摘要，补齐 Phase A 零效果恢复、运行时 saveId 规范化、普通操作自动解锁、候选安全门禁以及 Steam 密码错误恢复/常驻更换账号入口；`v0.5.7` 降为历史版本，不改旧版不可变身份。
 - `website/docs/index.md` 的 frontmatter release、版本更新卡与 CURRENT RELEASE 同步为 `v0.5.11`，首页只突出本版用户最需要知道的“密码错误会正确提示、可主动更换账号且存档/游戏文件保留”。
 - GitHub Release `v0.5.11` 正文已补齐用户可见变化、四个 workflow、唯一 digest 和 `v0.5.10...v0.5.11` compare；复核仍为非 draft/prerelease，发布时间与四项资产的 size/SHA-256 未变化。正文编辑没有移动 annotated tag、重推镜像或改变候选 proof。
-- 本次只修改长期文档与官网内容，不移动 `v0.5.11` annotated tag，不重建或重推正式镜像。推送后由 Docs Portal workflow 做 VitePress build/deploy，并由 Compatibility 做整仓回归；成功 run、线上 200/正文与“没有新候选 workflow”证据将在上线后回填本节。
+- docs-only 提交 `f545c169ded5edb11f8b2a1b1aad289bea77532b` 的 Docs Portal `32576397782` 成功（VitePress build `19s`、deploy `10s`），Compatibility `32576397780` 在 `2m29s` 内完成 backend、frontend 和隔离 Docker integration。线上首页与 `/changelog` 均返回 200：首页包含 `v0.5.11` 和 Steam 密码恢复摘要，changelog 精确包含 `v0.5.8`～`v0.5.11` 与“更换 Steam 账号 / 重新认证”。该 push 没有触发 Validate release candidate，不移动 `v0.5.11` annotated tag，也不改变正式 digest。
 
 # DOCS-PORTAL-0.5.7：官网最新版本与 Release 说明同步（2026-08-20，completed，已上线）
 
