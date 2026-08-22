@@ -1,3 +1,10 @@
+# FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，completed，未发布）
+
+- Stardew 安装页管理员操作区保留原“登录授权”（复用已保存凭据），并新增常驻“更换 Steam 账号 / 重新认证”。入口不依赖后端是否已经正确识别 `credentials_required`，所以历史 `steamcmd_failed`、文件缺失或诊断不完整时仍能主动更换账号；安装任务运行、启动中或表单已打开时禁用，避免重复提交。
+- 点击新入口强制展开完整 Steam 用户名、Steam 密码、VNC 密码和镜像版本表单，提交既有安装 API 时携带 `forceReauth: true`。成功后重置本地 force 状态；取消、普通安装/修复和接入已有任务也会清理该状态。前端不回填、不打印任何已保存密码。
+- `frontend/scripts/test-install-state.ts` 新增源码契约断言，固定常驻入口、force payload、诊断状态外仍可开表单、完整凭据字段和提交文案；同时锁定生产同形态 `steam_auth_failed/credentials_required + missing-files` 优先显示认证失败而不是误导为修复安装。
+- 验证：`npm run test:install-state`、`npm run test:responsive-layout`、`npm run build` 全部通过。应用内 Browser 在管理员、部分安装证据场景验证入口可见可用、点击后 3 个凭据输入项与强制提交按钮可见；1280px 与 390px 均无横向溢出，console warning/error 为 0。
+
 # DOCS-PORTAL-0.5.7：官网最新版本与 Release 说明同步（2026-08-20，completed，已上线）
 
 - `website/docs/changelog.md` 新增 `v0.5.7` 用户可见摘要：失败且明确未提交的存档导入会在下一次上传前自动收敛，兼容 `v0.5.5` 已清空任务中心但 exact journal/upload/audit 证据完整的现场；模糊或已提交事务继续 409 并保留证据。`website/docs/index.md` 的版本角标、更新卡和 CURRENT RELEASE 同步到 `v0.5.7`，`v0.5.5` 保留为历史版本，未发布的 `v0.5.6` 不冒充正式版。

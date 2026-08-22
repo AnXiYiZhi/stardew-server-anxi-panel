@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版仍为 `v0.5.2`（commit `51fd82459e4ac8afbf362f7ad12c0651937879a1`）；下一正式候选目标为 `v0.5.3`。本次聚合角色密码首次登录自助设置、Nexus 一键安装锁定最新版本、已安装单 Mod 一键安全更新、建档后联机人数上限、增强诊断 ZIP、Mod 删除后刷新纠正与全前端刷新数据流修复，并把 Control 升到 `0.3.6`、浏览器扩展升到 `0.1.8`；扩展批量安装改为前置提交成功后才打开下一页，避免不同 Nexus 文件捕获状态交叉。`v0.5.3` 只有在不可变候选、上一正式版 Web 健康升级/异常回滚、受影响真实 E2E 与正式提升全部通过后才会成为正式版；发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程。计划与最终证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.5.10`（commit `9b5a96233331b2050c930658d12eb6e49006f1f0`）。本版补齐存档导入 exact-target invisible、FIFO 已提交但磁盘零效果、下一管理员 mutation 自动恢复与真实 Junimo 原主机可选候选门禁，并修复 runtime-update 成功终态 warning 可见性竞态和备份 scheduler 测试夹具的非原子事件发布。候选、Compatibility、自动 annotated tag 与三仓同 digest 正式提升全部通过；发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程。矩阵、失败修复和最终证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

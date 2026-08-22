@@ -1,26 +1,35 @@
-# 2026-08-20 已完成、待发布：候选备份调度测试复用原子事件契约
+# 2026-08-22 已完成、未发布：Steam 密码错误恢复与常驻更换账号入口
+
+- [x] 生产 v0.5.10 只读诊断确认完整登录返回 `Logging in user ... Invalid Password` 和 exit 5；旧 switch 被通用进度 case 抢先命中，导致错误发布 `error/steamcmd_failed`。
+- [x] 后端把具体凭据失败标记置于通用登录进度之前，组合行稳定发布 `steam_auth_failed/credentials_required`；新增缓存回退和组合行回归，Windows 定向、Linux Junimo 全包（56.180s）、vet/build 全绿。
+- [x] 管理员安装页新增常驻“更换 Steam 账号 / 重新认证”，完整新凭据表单发送既有 `forceReauth=true`；历史错误状态、部分安装和诊断未知时也可进入，运行中保持禁用，游戏文件/存档保留。
+- [x] 前端状态、响应式和 production build 全绿；应用内 Browser 在部分安装证据场景完成桌面/390px 交互，常驻按钮、3 个输入项和强制提交按钮可见，无横向溢出、遮罩或 console warning/error。
+- [ ] 尚未发布或部署到生产；下一正式候选必须按 `docs/09-image-build.md` 门禁完成真实 Docker E2E，并在升级后的新 Panel 再验密码错误终态和强制更换账号链路。
+
+# 2026-08-20 已发布于 v0.5.10：候选备份调度测试复用原子事件契约
 
 - [x] 第二次正式候选 `32378153924` 在 build/push/artifact 前命中连续游戏日备份用例；同 SHA Compatibility `32378153951` 成功，失败候选保持不可提升。
 - [x] 确认生产 Control 先写隐藏临时文件、完整后原子移动成 `.json`；只有测试用 `os.WriteFile` 直写消费者可见最终文件，产生生产不存在的半写竞态。
 - [x] 并发夹具改用已有原子 JSON writer，不增加 scheduler 间隔或放宽结果预算；函数级核验后的 Linux Go 1.25 精确用例 `count=100` 全绿（11.896s），整仓 test/vet/build 随后全绿。
-- [ ] 新 commit 完成整仓 test/vet/build、本地候选和正式候选后，继续自动 Tag、同 digest 三仓提升、正式 smoke 与证据回填。
+- [x] 最终候选 `32380002010` 与 Compatibility `32380002025` 全绿；自动 Tag `32381115159`、正式提升 `32381136325` 成功，三仓 `0.5.10/latest` 六引用统一 digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`，正式 smoke、版本接口与 GitHub Release 已核对。
+- [ ] 2026-08-22 当前托管权限禁止写 `.git/.agents` 和 Docker Desktop 用户日志；发布后证据已回填工作树，但尚不能提交推送，且本地中断候选的两个精确 tar 仍待权限恢复后清理并复核 daemon owner 资源为 0。正式远端发布不受影响。
 
-# 2026-08-20 已完成、待发布：runtime-update 成功终态原子包含 cleanup warning
+# 2026-08-20 已发布于 v0.5.10：runtime-update 成功终态原子包含 cleanup warning
 
 - [x] 正式候选 `32376230460` 在 selected code gates 命中 `TestRuntimeUpdateApplyImageCleanupFailureIsWarning`；失败发生在 build/GHCR/artifact 前，旧 run 不重跑、不提升。
 - [x] 根因是正常/重启续作成功链先发布 `succeeded`，再做 snapshot/旧镜像 cleanup 并补 warning，reader 可读到不完整 terminal；两条路径现统一为先 cleanup 汇总，再由既有 finish 一次性发布终态与审计。
 - [x] 回归显式阻塞旧镜像清理，证明阻塞期间状态非 terminal；释放并注入删除失败后仍 `succeeded` 且 warning 完整。Linux 定向 `count=20`、整仓 test/vet/build 全绿。
 - [x] 修复后的本地 `0.5.10@96e5161255e6` 完整候选全绿，包含 fresh/restart、`v0.5.9` unhealthy/healthy、升级后 legacy 与存档 Phase A 专项。
-- [ ] 从新 commit 重跑正式 `v0.5.9 → v0.5.10` 全链；只有新候选 proof 可自动 Tag/提升。
+- [x] 修复后的最终 commit 已重跑正式 `v0.5.9 → v0.5.10` 全链，只从新候选 proof 自动 Tag/提升；失败候选没有构建、推送或复用。
 
-# 2026-08-20 已完成、待发布：v0.5.10 存档导入真实候选门禁补齐
+# 2026-08-20 已发布于 v0.5.10：存档导入真实候选门禁补齐
 
 - [x] 审计确认 `v0.5.9@0657ff01f121` 已自动正式发布，但候选没有执行已声明的 exact target invisible 与 FIFO submitted/no disk effect 两条真实 Docker 场景；旧 tag/digest 保持不可变，采用 `v0.5.10` fix-forward。
 - [x] 升级 E2E 已加入 exact `saves info` 不可见时 pre-submit fail closed，以及真实 FIFO 接受一次 import 但零落盘后的脱敏诊断、复合 no-effect、snapshot restore 和下一管理员 mutation strict cleanup；preimport/hash/pointer/备份均有保持断言。
 - [x] 真实 Junimo `.125` 测试改为导入无 world ID 的非规范 ZIP，preview 先 canonicalize，再完成 finalizer/解绑/durable restart；官方 TestClient 按名称选择 `OriginalOwner` 并睡到次日，直接证明原主机可选。真实链 `223.39s` 通过且 owner 资源为 0。
 - [x] Bash 语法、ShellCheck、定向 Go、integration 编译以及任务专属 Linux Go 1.25 整仓 test/vet/build 通过；变更范围只有候选脚本、真实 integration test、长期文档和错题本，没有运行代码、前端/schema/Compose/runtime 资产变化。
 - [x] 本地 `0.5.10@c45f0e09afa5` 完整候选全绿：fresh/restart、`v0.5.9` unhealthy rollback/healthy apply、升级后 exact-target invisible、FIFO no-effect、脱敏诊断、下一管理员 mutation 恢复与既有受影响链全部通过。
-- [ ] 推送后跟踪正式 `v0.5.9 → v0.5.10` unhealthy/healthy、升级后专项、自动 Tag/提升，并核对三仓 digest/`latest`、版本接口、GitHub Release 和资源清零后回填证据。
+- [x] 正式 `v0.5.9 → v0.5.10` unhealthy/healthy、升级后专项、自动 Tag/提升全绿；三仓 digest/`latest`、OCI 身份、版本接口、GitHub Release 与四项资产已核对，完整证据见 `docs/09-image-build.md`。
 
 # 2026-08-20 已发布于 v0.5.9：非规范上传目录统一为运行时 saveId
 

@@ -1,4 +1,24 @@
-# BACKUP-SCHEDULER-ATOMIC-EVENT-FIXTURE-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
+# STEAM-CREDENTIAL-RECOVERY-1 后端接手记录（2026-08-22，已完成、未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 生产 `v0.5.10` 的失败并非 Steam 下载源或磁盘问题：SteamCMD 在缓存授权未命中后用完整凭据登录，同一输出行同时含通用进度文本和 `Invalid Password`，退出码 5。`installer.go` 的 switch 原先把通用 `Logging in user` 放在凭据失败标记之前，第一条 case 截获组合行，因此 `credentialFailed` 保持 false，错误地发布 `error/steamcmd_failed`。
+- 现在把凭据失败 case 提到通用登录进度之前；组合行发布既有 `steam_auth_failed/credentials_required` 终态。网络、CDN、磁盘和普通 SteamCMD 非零退出仍保留 `steamcmd_failed`，不会统一要求重输密码。
+- 影响 `backend/internal/games/stardew_junimo/installer.go` 与 `driver_test.go`。没有新增接口、字段、错误码、数据库迁移、Compose/runtime asset，也没有绕过 `stardew_junimo` driver。
+
+## 如何验证、下一步注意事项
+
+- 新回归完整模拟“缓存授权失败 → 完整账号密码登录 → 单行 `Logging in user ... Invalid Password` → exit 5”，断言两次 SteamCMD 调用、没有误启 steam-auth、终态和提示均正确。Windows 定向新旧用例、Linux Go 1.25 Junimo 全包（56.180s）、整仓 vet/build 均通过。
+- 后续扩展 SteamCMD 行解析时，必须保持具体失败标记先于宽泛进度文本；尤其不能把同一行存在错误词的输出先归类为 progress。产品级 POSIX mode 测试继续只在 Linux 文件系统执行。
+- 本次生产只做了只读诊断，尚未部署此修复；需进入下一正式候选并完成项目发布门禁后，线上才会自动得到正确分类。
+
+# v0.5.10 正式发布接手证据（2026-08-20，released）
+
+- 最终候选 `32380002010@9b5a96233331b2050c930658d12eb6e49006f1f0`、Compatibility `32380002025`、自动 Tag `32381115159`、正式提升 `32381136325` 全绿。proof artifact=`release-candidate-0.5.10-9b5a96233331`（ID `9411011092`），OCI build date=`2026-08-20T14:25:36Z`，annotated tag object=`c305b3ef0cea220bb27a24f08af140cf45d789fa`。
+- Docker Hub、阿里云 ACR、GHCR 的 `0.5.10/latest` 六引用和 GHCR candidate ref 统一 digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`、config digest=`sha256:87c410cfaabe5a15a3ed6a030ee25f7f4295fbe983f0da770cf70a381dfb4034`。正式 GHCR smoke 的 `/health`、`/api/version=0.5.10@9b5a96233331...` 成功；latest GitHub Release 非 draft/prerelease，四项部署资产的 size/SHA-256 与 tag 源文件一致。
+- 最终候选完整执行 `v0.5.9` unhealthy rollback/healthy Web 升级和升级后两条 Phase A boundary/下一 mutation 恢复；前两个失败候选都停在 build/push/proof 前，没有被重跑或提升。完整矩阵、耗时、失败修复与当前本机只读残留见 `docs/09-image-build.md`。
+
+# BACKUP-SCHEDULER-ATOMIC-EVENT-FIXTURE-1 后端接手记录（2026-08-20，released in v0.5.10）
 
 ## 改了什么、影响哪些文件
 
@@ -8,10 +28,10 @@
 
 ## 如何验证与下一步
 
-- 任务专属 Linux Go 1.25 容器中函数级核验后的精确用例 `count=100` 全绿（11.896s），证明高频调度下不会再制造生产不存在的半写事件窗口；随后整仓 test 全绿（Junimo `54.936s`、Web `50.676s`），vet/build 通过。仍须在新 commit 上跑完整本地/远端候选；不能通过增加 sleep、降低 count、保留失败重跑或跳过该测试收口。
+- 任务专属 Linux Go 1.25 容器中函数级核验后的精确用例 `count=100` 全绿（11.896s），证明高频调度下不会再制造生产不存在的半写事件窗口；随后整仓 test 全绿（Junimo `54.936s`、Web `50.676s`），vet/build 通过。最终远端候选也完整通过；不能通过增加 sleep、降低 count、保留失败重跑或跳过该测试收口。
 - 后续并发测试凡模拟 Control 文件协议，必须使用相同“临时名完整写入 → 原子移动到消费者 glob 后缀”的发布边界；如果要测试损坏最终事件，应单独命名并明确断言消费/保留策略，不能混入正常 producer 契约用例。
 
-# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
+# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 后端接手记录（2026-08-20，released in v0.5.10）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -21,10 +41,10 @@
 
 ## 如何验证与下一步
 
-- Linux Go 1.25 定向用例 `count=20` 用时 `20.185s`；整仓 test 全绿（Junimo `59.446s`、Web `53.524s`），vet/build 通过。修复后的本地 `0.5.10@96e5161255e6` 完整候选也通过 fresh/restart、`v0.5.9` unhealthy/healthy 和升级后全部专项。失败候选不重跑；正式链仍必须从新 push 完整执行，Tag/提升只接受新 artifact。
+- Linux Go 1.25 定向用例 `count=20` 用时 `20.185s`；整仓 test 全绿（Junimo `59.446s`、Web `53.524s`），vet/build 通过。修复后的本地 `0.5.10@96e5161255e6` 完整候选也通过 fresh/restart、`v0.5.9` unhealthy/healthy 和升级后全部专项；最终正式链从更新后的 `9b5a962` 完整执行，Tag/提升只接受新 artifact，失败候选未复用。
 - 若以后新增其它 post-success cleanup，必须在 terminal 首次写盘前完成并把 best-effort 结果放入同一 status；不能恢复“先 succeeded、后补 warning”的双写窗口。terminal 后只允许不影响已发布状态内容的资源删除或明确可恢复操作。
 
-# SAVE-IMPORT-RELEASE-GATES-1 后端接手记录（2026-08-20，completed，待 v0.5.10 发布）
+# SAVE-IMPORT-RELEASE-GATES-1 后端接手记录（2026-08-20，released in v0.5.10）
 
 ## 改了什么
 

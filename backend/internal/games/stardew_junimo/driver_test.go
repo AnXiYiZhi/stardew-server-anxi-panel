@@ -1599,6 +1599,85 @@ func TestDriverInstallResumesSteamCMDAndFallsBackWhenCachedAuthorizationIsMissin
 	}
 }
 
+func TestDriverInstallClassifiesCombinedSteamCMDInvalidPasswordLineAsCredentialsRequired(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:           instance.ID,
+		State:        storage.InstanceStateError,
+		StateMessage: "SteamCMD fallback failed",
+		DriverPhase:  "steamcmd_failed",
+	}); err != nil {
+		t.Fatalf("set steamcmd failed phase: %v", err)
+	}
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatalf("mkdir instance: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(instanceDir, ".env"), []byte("STEAMCMD_AUTH_COMPLETED=true\n"), 0o600); err != nil {
+		t.Fatalf("seed cached SteamCMD flag: %v", err)
+	}
+
+	manager := jobs.NewManager(store, slog.Default())
+	fake := &fakeDocker{
+		steamAuthErr:   errors.New("steam-auth should not run"),
+		containerCodes: []int{1, 5},
+		containerRunLines: [][]string{
+			{"Logging in user steam-user", "Cached credentials not found."},
+			{"Logging in user steam-user [U:1:0] to Steam Public...ERROR (Invalid Password)"},
+		},
+	}
+	driver := New(fake, slog.Default(), manager, store)
+	job, err := driver.Install(context.Background(), registry.InstallRequest{
+		Instance:      registry.Instance{ID: instance.ID},
+		SteamUsername: "steam-user",
+		SteamPassword: "steam-pass",
+		VNCPassword:   "vnc-pass",
+		AutoDownload:  true,
+	})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	if fake.steamAuthRuns != 0 {
+		t.Fatalf("steam-auth should be skipped on SteamCMD retry, ran %d times", fake.steamAuthRuns)
+	}
+	if fake.containerRuns != 2 {
+		t.Fatalf("expected cached SteamCMD login then one full-login attempt, ran %d times", fake.containerRuns)
+	}
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("get instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateSteamAuthFailed || updated.DriverPhase != "credentials_required" {
+		t.Fatalf("combined login/password error must request fresh credentials, got state=%s phase=%s", updated.State, updated.DriverPhase)
+	}
+	if !strings.Contains(updated.StateMessage.String, "账号、密码或验证码不正确") {
+		t.Fatalf("credential failure message should explain re-entry, got %q", updated.StateMessage.String)
+	}
+}
+
 func TestDriverInstallSkipsSteamAuthOnceCompletedFlagIsSet(t *testing.T) {
 	dataDir := t.TempDir()
 	store, err := storage.Open(context.Background(), config.Config{

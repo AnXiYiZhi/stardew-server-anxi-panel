@@ -1,3 +1,17 @@
+# FE-STEAM-CREDENTIAL-RECOVERY-1 前端接手记录（2026-08-22，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `InstallPage.tsx` 的管理员操作区现在同时提供两种明确语义：原“登录授权”继续用后端保存的账号尝试授权；新增常驻“更换 Steam 账号 / 重新认证”总是要求重新输入完整凭据并发送 `forceReauth: true`。该按钮不再受“当前诊断是否允许普通安装表单”限制，因此后端旧终态、部分安装或未知诊断不会把用户困在复用错误密码的路径里。
+- force 表单会说明只清除 Steam/SteamCMD 授权缓存，游戏文件和存档保留；安装运行/启动、全局 busy 或表单已经展开时常驻按钮禁用。取消、普通修复/安装、提交成功和挂接活动 job 都会清除 force 状态，避免后续普通操作误带该标记。
+- 影响 `frontend/src/games/stardew/pages/InstallPage.tsx` 与 `frontend/scripts/test-install-state.ts`；后端请求 shape 沿用既有 `forceReauth`，没有新增 API、路由、持久浏览器状态或样式文件。
+
+## 如何验证、下一步注意事项
+
+- 状态回归、响应式布局回归和 production build 均通过。应用内 Browser 用 `steam_auth_failed + missing-files + admin` 夹具完成“进入安装页 → 常驻按钮 → 完整新凭据表单”交互；桌面与 390px 窄屏无横向溢出、无遮罩、无 console warning/error。
+- 常驻入口必须保持 admin-only，不能显示或预填服务端保存的账号密码；“登录授权”与“更换账号”不能合并为同一含糊动作。后续若调整安装表单开放条件，必须继续让 `forceReauth` 覆盖普通诊断 guard，并保留运行中禁用门禁。
+- 本次改动尚未进入正式镜像；生产仍使用 v0.5.10 旧界面，需下一次正式发布后才可在线使用。
+
 # DOCS-PORTAL-0.5.4-0.5.5 接手记录（2026-08-18，completed，已上线）
 
 ## 改了什么、影响哪些文件

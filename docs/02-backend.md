@@ -1,17 +1,29 @@
-# BACKUP-SCHEDULER-ATOMIC-EVENT-FIXTURE-1：候选回归复用 Control 原子事件契约（2026-08-20，completed，待 v0.5.10 发布）
+# STEAM-CREDENTIAL-RECOVERY-1：SteamCMD 密码错误稳定进入凭据恢复（2026-08-22，已完成、未发布）
+
+- 生产 `v0.5.10` 只读诊断确认：缓存授权未命中后，SteamCMD 用完整账号密码登录并在同一行输出 `Logging in user ... Invalid Password`，随后退出码为 5。旧解析器先命中通用“正在登录”进度分支，导致凭据失败标记未设置，终态错误地落为 `state=error/driver_phase=steamcmd_failed`。
+- `backend/internal/games/stardew_junimo/installer.go` 现在先识别 `Invalid Password` 等凭据失败标记，再匹配通用登录进度；上述组合行会稳定落为 `state=steam_auth_failed/driver_phase=credentials_required`，继续使用既有用户可读提示，不把网络或普通下载失败误判为密码错误。
+- 新增 `TestDriverInstallClassifiesCombinedSteamCMDInvalidPasswordLineAsCredentialsRequired`，覆盖缓存授权失败后回退到完整登录、组合错误行、退出码 5 和最终状态。公开 API/DTO、SQLite、Compose、Steam 凭据保存方式及 Junimo 通信边界均未改变。
+- 验证：Windows 定向新旧 SteamCMD 用例通过；任务专属 Linux Go 1.25 Junimo 全包通过（56.180s）；`go vet ./...`、`go build ./...` 通过。Windows Junimo 全包唯一失败仍是已记录的 NTFS `0666` 与 Linux `0640` 权限差异，不是本次产品回归。
+
+# v0.5.10 后端正式发布证据（2026-08-20，released）
+
+- 最终候选 `32380002010@9b5a96233331b2050c930658d12eb6e49006f1f0` 与 Compatibility `32380002025` 全绿；候选 proof artifact=`release-candidate-0.5.10-9b5a96233331`（ID `9411011092`），OCI build date=`2026-08-20T14:25:36Z`，digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`。候选完整执行 fresh/restart、`v0.5.9` Web unhealthy rollback/healthy apply 与升级后存档 Phase A 专项。
+- 自动 Tag `32381115159` 创建 annotated `v0.5.10`（tag object `c305b3ef0cea220bb27a24f08af140cf45d789fa`）并精确指向候选 commit；正式提升 `32381136325` 从 proof digest 原样提升，GHCR、Docker Hub、阿里云 ACR 的 `0.5.10/latest` 六引用完全一致。正式 GHCR smoke 的 `/health` 与 `/api/version=0.5.10@9b5a96233331...` 通过，latest GitHub Release 非 draft/prerelease且四项部署资产摘要与 tag 源文件一致。
+
+# BACKUP-SCHEDULER-ATOMIC-EVENT-FIXTURE-1：候选回归复用 Control 原子事件契约（2026-08-20，released in v0.5.10）
 
 - 第二次正式候选 `32378153924` 在 selected code gates 的 `TestBackupMaintenanceSchedulerCapturesConsecutiveGameDaysWithoutListingAPI` 安全失败，发生在 image build、GHCR push 和 proof artifact 前；同 SHA 的 Compatibility `32378153951` 成功。失败用例把事件直接写到最终 `*.json`，5 ms scheduler 可能在 `os.WriteFile` 完成前读取半截 JSON、按坏事件删除，继而永久等不到当天备份。
 - 生产 Control Mod 并不存在这个发布窗口：`WriteSaveEvent → WriteJson → ContractFile.WriteJsonAtomic` 先写隐藏临时文件，完整序列化后才原子移动成最终 `*.json`；调度器 glob 只消费最终文件。并发测试现改用已有 `atomicWriteValidatedJSON` 发布完整事件，与生产契约一致，没有增加 scheduler 周期或放宽 2 秒结果预算。
-- 任务专属 Linux Go 1.25 对函数级核验后的目标测试连续 `count=100` 全绿（11.896s）；随后整仓 test 全绿（Junimo `54.936s`、Web `50.676s`），vet/build 通过。影响仅 `saves_test.go` 的并发夹具；备份生产代码、API、持久结构、前端、Compose 和 runtime assets 均不变。新 commit 仍须跑完整不可变候选，失败 run 不重跑、不提升。
+- 任务专属 Linux Go 1.25 对函数级核验后的目标测试连续 `count=100` 全绿（11.896s）；随后整仓 test 全绿（Junimo `54.936s`、Web `50.676s`），vet/build 通过。影响仅 `saves_test.go` 的并发夹具；备份生产代码、API、持久结构、前端、Compose 和 runtime assets 均不变。最终不可变候选与正式提升证据见上节。
 
-# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1：成功终态包含完整 cleanup warning（2026-08-20，completed，待 v0.5.10 发布）
+# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1：成功终态包含完整 cleanup warning（2026-08-20，released in v0.5.10）
 
 - 正式候选 `32376230460` 在 selected code gates 暴露既有竞态：runtime update 正常链先写 `phase=succeeded`，随后才执行认证 snapshot/旧镜像 best-effort cleanup、追加 warning 并第二次写状态。API 与测试可能在两次原子写之间读到“已成功但清理警告尚未出现”的不自洽终态；镜像尚未构建或推送，旧候选保持失败。
 - `runRuntimeUpdateApply` 的正常成功与 Panel 重启续作成功路径现在都先做 transaction-owned snapshot/旧镜像清理并把失败收集进 `Warnings/Logs`，最后只通过既有 `finish` 一次性写入 `succeeded`、时间、serverRunning、终态 log 与审计。清理仍是 best-effort：失败不回滚已经验收成功的运行栈，但 warning 在 terminal 首次可见时就完整存在。
-- 回归把 fake 旧镜像清理显式阻塞，确认阻塞期间 `RuntimeUpdateApplyStatus` 绝不是 terminal；释放并注入删除失败后，最终仍为 `succeeded` 且包含“旧镜像”warning。任务专属 Linux 定向 `count=20`、整仓 test（Junimo `59.446s`、Web `53.524s`）、vet/build 全绿；完整候选仍需从新 commit 重跑。
+- 回归把 fake 旧镜像清理显式阻塞，确认阻塞期间 `RuntimeUpdateApplyStatus` 绝不是 terminal；释放并注入删除失败后，最终仍为 `succeeded` 且包含“旧镜像”warning。任务专属 Linux 定向 `count=20`、整仓 test（Junimo `59.446s`、Web `53.524s`）、vet/build 全绿；最终候选已从修复后的新 commit 完整重跑并发布。
 - 影响 `runtime_update_apply_runner.go` 与 `runtime_update_apply_test.go`；JSON shape、错误码、SQLite、Compose、前端和 runtime manifest 不变，只收紧成功终态的可见时点和快照一致性。
 
-# SAVE-IMPORT-RELEASE-GATES-1：真实候选覆盖规范化、零效果恢复与原主机可选（2026-08-20，completed，待 v0.5.10 发布）
+# SAVE-IMPORT-RELEASE-GATES-1：真实候选覆盖规范化、零效果恢复与原主机可选（2026-08-20，released in v0.5.10）
 
 - `v0.5.9@0657ff01f121` 已发布存档目录 canonicalization、exact-target readiness 和 terminal no-effect mutation recovery；发布后审计发现候选没有执行已经声明的 exact target invisible 与 FIFO sent/no disk effect 两条真实 Docker 场景。不可变 `v0.5.9` 不移动，本次只补测试/发布门禁并以 `v0.5.10` fix-forward。
 - `scripts/tests/test_release_candidate_upgrade.sh` 现在在健康升级得到的新 Panel 中创建真实 FIFO、server log、staged save 和受控 Junimo API：目标不可见必须停在 pre-submit；目标可见但 FIFO 零效果必须留下脱敏诊断、严格 no-effect 复合证据并恢复 snapshot。两条失败后再执行管理员选档，验证 exact journal/token/staged/source 自动清理、preimport/hash/pointer/备份保持，普通 mutation 不再被旧事务假锁死。

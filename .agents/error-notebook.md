@@ -118,6 +118,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-22 已确认 SteamCMD 实现位于 `installer.go` 后，仍凭职责追加了不存在的 `installer_helpers.go` 作为组合 `rg` 路径；真实文件命中已输出，但组合命令最终以路径不存在退出 1，源码未变化。后续只对 `rg --files` 或前序命中返回的精确文件检索，不能为了寻找 helper 再补一个未经确认的惯用文件名。
 - 最近复发/补充：2026-08-20 正式候选失败后定位 runtime-update 状态写入时，已拿到两个真实 `.go` 文件路径，仍把 Windows 不展开的 `backend/internal/games/stardew_junimo/runtime_update_apply*.go` 交给后续 `rg`；主体 `Get-Content` 成功但组合命令最终退出 1，源码未变化。正式故障诊断也必须逐条使用真实文件，多个同前缀文件用 `rg -g 'runtime_update_apply*.go' ... <directory>`，不能因前一段已输出足够信息就忽略末尾失败。
 - 最近复发/补充：2026-08-20 补存档导入候选门禁时，前一条检索已给出真实文件，后续仍猜成不存在的 `backend/internal/games/registry/driver.go`、`backend/internal/web/saves_handlers.go` 等路径，并把 Windows 不会展开的 `backend/internal/games/registry/*.go`/`stardew_junimo/*.go` 直接交给 `rg`，均只读失败且源码未变化。后续已严格使用 `rg` 的真实命中作为下一次输入，目录级文件筛选改用 `rg -g '<glob>' <pattern> <root>`；已有 `AGENTS.md` 规则继续作为发布前 fail-fast 检查，不能因“只是检索”忽略复发。
 - 最近复发/补充：2026-08-20 修复正式提升工具后查找 workflow YAML 校验入口时，又把不存在的仓库根 `package.json` 与已确认存在的 `.github`、`scripts` 一起传给 `rg`；命令输出路径不存在，文件与发布状态未变化。前端/网站 package 已知位于各自子目录，查 workflow 工具根本不需要附加猜测的 root package。相同模式已在本轮补记并提升到 `AGENTS.md`，后续验证只传 `rg --files` 已列出的路径。
@@ -757,6 +758,7 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-22 修复 SteamCMD 密码错误分类时，再次把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 位置参数；前一段 `rg --files` 已成功列出精确测试文件，后一段仍以 `os error 123` 失败，源码未被该只读命令修改。后续只允许使用已经列出的精确文件，或明确目录配合 `-g '*_test.go'`；发送检索命令前继续机械拒绝位置参数中的 `*`/`?`。
 - 最近复发/补充：2026-08-20 只读诊断生产存档导入证据时，把 `backend/internal/games/stardew_junimo/save_import*` 再次作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；同日升级后的再次诊断又在已经读到精确 `save_import_phase_a.go` 后，把 `save_import*.go` 追加为末尾位置参数并复发同一错误。两条命令均只读，没有修改本地源码、远端文件或运行状态。改为明确目录配合 `-g 'save_import*'`，本任务余下命令发送前机械检查每个含 `*`/`?` 的实参只能紧跟 `-g`。
 - 最近复发/补充：2026-08-19 补齐存档导入恢复测试时，把 `backend/internal/web/*_test.go` 作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；命令只读且没有修改源码。改为 `rg -g '*_test.go' ... backend/internal/web` 后命中。该规则已在 `AGENTS.md` 固化，本轮仍复发；后续每条 `rg` 在发送前机械拒绝任何位置参数中的 `*`/`?`，通配只能紧跟 `-g`。
 - 最近复发/补充：2026-08-17 准备本机真实扩展 E2E 时，再次把 `frontend/vite.config.*` 混进后端配置的组合 `rg` 位置参数；其它明确目录先输出有效命中，但该参数仍产生 `os error 123`，只读命令未修改源码或测试环境。随后改为先读取精确的 `frontend/vite.config.ts`，后续检索只向明确目录传 `-g 'vite.config.*'`。这已是同日同一字面错误再次复发；`AGENTS.md` 现有硬规则继续作为门禁，余下命令在发送前必须逐项拒绝任何位置参数中的 `*`/`?`。
@@ -1982,6 +1984,8 @@
 
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
+- 最近复发/补充：2026-08-22 最终取交付行号时，仍把多个带空格/引号的 `rg -F` 模式塞进同一 JavaScript → `pwsh -Command`，其中一个单引号边界缺失，PowerShell 在任何检索前报 `Unexpected token '}'`。源码未被该只读命令修改；后续行号改用不经过嵌套 PowerShell 的单条 `rg` 调用，现有 AGENTS“复杂检索拆分、引号模式不内联”硬规则继续作为发送前门禁。
+- 最近复发/补充：2026-08-22 审查刚修改的 SteamCMD 分支时，把包含字面双引号和右括号的两个 `rg -F` 模式继续内联到 JavaScript → `pwsh -Command`；PowerShell 在执行 `git diff` 前即报缺少收尾花括号，源码未被该命令修改。代码差异审查先单独运行 `git diff -- <file>`；需要含引号/括号的精确定位时直接读取已知行段或写任务脚本，不能把“固定字符串”误当成跨多层 Shell 天然安全。
 - 最近复发/补充：2026-08-17 追踪扩展提交失败路径时，把含 `fetch\(` 和带双引号的 `status: "failed"` 候选合成一个内联 `rg` 分组；PowerShell 传参后落成未闭合分组并报 `regex parse error`，源码未读取或修改。随后使用多个无引号的 `-e` 固定候选。即使模式主体简单，只要含字面引号或括号，也不得在 JavaScript → PowerShell → `rg` 中拼分组。
 - 最近复发/补充：2026-08-17 本任务排查移动弹窗输入值时，把同时包含单双引号字符类和转义问号的复合正则内联进 `exec_command` 的 PowerShell 命令；PowerShell 把模式后半段当成命令并在检索前失败，文件未修改。随后拆成三个独立 `rg -F`。即使只是前端只读定位，也必须遵守 AGENTS：多层命令中的复杂字符类不内联，改用固定字符串或任务脚本。
 - 最近复发/补充：2026-08-15 玩家最后在线时间修复收口时，为搜索字面错误文本 `'tsc' is not recognized`，在 JavaScript → PowerShell 的 `rg -F -e` 参数中错误叠加了多层单引号；`rg` 最终把该文本的一部分当作路径并报“系统找不到指定的文件”，随后剩余的宽泛 `node_modules` 模式又输出过多内容并被截断。命令只读、文件未变化；后续改用 `Select-String -SimpleMatch` 和不含嵌套引号的短固定模式。即使是固定字符串，含引号的完整错误句也不得继续内联到多层命令中。
@@ -2753,6 +2757,7 @@
 
 ## 2026-08-06：在 Windows 文件系统执行 Linux 权限位发布断言
 
+- 最近复发/补充：2026-08-22 SteamCMD 凭据分类两个精确专项已在 Windows 通过后，仍启动整个 `internal/games/stardew_junimo` 包；87.449 秒后唯一失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 mode=`0666`、want `0640`，本次新增真实日志回归没有失败。测试只使用临时目录，未修改产品数据；权威包级结果改到任务专属 Linux Go 容器。后续 Windows 只允许精确 `-run`，不得再以“顺便全包”绕过已固化的环境门禁。
 - 最近复发/补充：2026-08-20 存档导入 Phase A no-effect 恢复修复的精准专项已经通过后，仍在 Windows 宿主运行 `go test ./internal/games/stardew_junimo ./internal/web -count=1`；Web 全包通过，Junimo 全包唯一失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 mode=`0666`、want `0640`。本次产品专项无失败，权威全量门禁改到任务专属 Linux 容器；后续不得在 Windows 启动包含该 POSIX 权限断言的 Junimo 全包。
 - 最近复发/补充：2026-08-17 Mod 一键更新专项通过后，仍在 Windows 宿主运行 `go test ./internal/games/stardew_junimo ./internal/web -count=1`；Web 全包通过，Junimo 约 106 秒后唯一失败仍是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 mode=`0666`、want `0640`，本次新增替换、配置保留、禁用状态与错误 UniqueID 专项全部通过。测试未修改产品数据；权威 Junimo 全包改到任务专属 Linux 容器，Windows 余下仅跑精确专项。
 - 最近复发/补充：2026-08-17 Nexus 最新版本锁定专项与 Web 包均通过后，仍在 Windows 宿主启动 `go test ./... -count=1`；111 秒后唯一断言失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 mode=`0666`、want `0640`，Nexus 专项和 `internal/web` 全包通过。该规则已经提升到 `AGENTS.md` 且当天重复出现，不能再把 Windows 全包当作额外信心测试；本任务后续只保留精确 Nexus 专项，权威全包必须直接使用任务专属 Linux 容器。
@@ -2786,6 +2791,7 @@
 
 ## 2026-08-06：短命 Go 容器网络失败后丢失模块下载进度
 
+- 最近复发/补充：2026-08-22 SteamCMD 修复的 Linux 包级门禁已经挂载任务专属 module/build cache，但冷缓存仍直接启动 `go test`，`modernc.org/libc@v1.74.1` ZIP 首次下载以 `unexpected EOF` 结束，包只在 setup 阶段失败、产品测试尚未执行。同一缓存卷和已成功下载进度均保留；按既有规则先对该精确模块做最多三次有界 `go mod download`，成功后再启动测试，不能把网络 EOF 归因于本次源码。
 - 最近复发/补充：2026-08-20 为运行 saveId 规范化修复的 Linux 整仓测试，已正确挂载任务专属 `GOMODCACHE/GOCACHE`，但冷缓存直接启动 `go test ./...` 时 `modernc.org/libc@v1.74.1` ZIP 返回 `unexpected EOF`，相关包只在 setup 阶段失败，产品测试未执行。保留同一两个 volume，先对该精确依赖做最多三次有界 `go mod download` 并在缓存中校验成功，再重启全量测试；不得把下载 EOF 归因于源码，也不得删除缓存后原样重跑。
 - 最近复发/补充：2026-08-20 构建一次性 Linux 恢复程序时，首次从 `proxy.golang.org/storage.googleapis.com` 下载 modernc sqlite ZIP 遇到 EOF；任务专属 `GOMODCACHE/GOCACHE` volume 保留且容器为 `--rm`。第二次只重跑同一精确 build、复用相同缓存即成功，并在上传前核对二进制 SHA-256。网络 EOF 不代表源码或模块不存在；任务结束再按精确 volume 名清理。
 - 最近复发/补充：2026-08-17 在 Docker Desktop 的冷 Go 1.25 Alpine cache 上直接启动全量 `go test`，五个 `proxy.golang.org` ZIP 同时发生 `TLS handshake timeout`，包 setup 退出 1，产品测试尚未真正执行；本次已保留带 `sap.task=player-auth-20260817` label 的 module/build cache volume，任务容器按 `--rm` 清除。修正为先在同一 cache 上独立执行最多两次有界 `go mod download` 预热，成功后再重新启动全量测试，不删除已下载进度也不原样重建空缓存。
@@ -3604,6 +3610,8 @@
 
 ## 2026-08-16：Windows 长轮询超出 `exec_command` 等待上限
 
+- 最近复发/补充：2026-08-22 同一任务中在已经补记本条后，又把两个可能遍历历史的 `git log -S` 与 `git blame` 合并进 10 秒调用，并再次只投影 `output/exit_code`；调用返回部分提交后显示 `EXIT:undefined` 且 session ID 丢失。按精确 `git blame` 命令行核对短生命周期 PowerShell 后复查为零遗留，仓库未修改。Git 历史检索同样必须一项一调用或保留完整返回对象，不能因为是只读命令就继续沿用已知错误编排。
+- 最近复发/补充：2026-08-22 对新生产主机做 `Test-NetConnection` 时仍把 `yield_time_ms` 设为 10 秒，并在 JavaScript 编排中只投影 `output/exit_code`；探针略超 10 秒后返回 session，结果被误显示为 `EXIT:undefined` 且 session ID 丢失。随后按精确目标 IP 与 `Test-NetConnection` 命令行筛查两个短生命周期 `pwsh`，复查时均已退出，确认没有遗留诊断进程。网络探针也必须输出完整 `exec_command` 返回对象；会受 DNS/TCP 超时影响的探针不能假定 10 秒内完成。
 - 最近复发/补充：2026-08-20 正式提升轮询时又在单次命令里先 `Start-Sleep -Seconds 30`，同时把 `exec_command.yield_time_ms` 设为 Windows 上限 30000；命令在临界点返回空投影，没有得到预期 job JSON。随后的无 sleep 固定 job API 查询成功，远端 workflow 未被取消或重放。相同模式已多次复发，现把“内部等待必须明显短于 yield，状态轮询默认直接查询”提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-19 顺序执行 Web 全包、`go vet`、`go build` 时把三项放进一个可能超过 30 秒的统一命令，并在 JavaScript 编排中再次只输出 `r.output`；工具在 30 秒边界后没有可见终态，session 标识也未保留。随后通过精确 `go.exe/compile.exe/vet.exe/link.exe + 工作区命令行` 探针确认遗留进程为零，才把三项拆成独立调用；以后任何全包 Go 门禁即使通常较快，也必须一项一调用并输出完整工具结果。
 - 最近复发/补充：2026-08-18 为生产安装任务做 30 秒后复查时，命令内部先 `Start-Sleep -Seconds 30` 再建立 SSH，必然略超 `yield_time_ms=30000`；编排仍只投影 `output/exit_code`，再次显示伪造的 `EXIT_CODE=undefined` 并丢失可续接 session。随后以精确命令行核对没有遗留诊断进程。状态复查不得把 sleep 预算吃满工具 yield；应直接立即查询，或输出完整返回对象并在存在 `session_id` 时用 `write_stdin` 续接。

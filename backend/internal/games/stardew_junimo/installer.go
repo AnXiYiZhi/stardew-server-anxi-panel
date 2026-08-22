@@ -944,6 +944,20 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 				"steam-auth 国内网络下载失败，SteamCMD 需要重新授权；请输入 Steam App 或邮箱验证码。",
 				"steamcmd_guard_required", jobCtx.ID)
+		case containsAny(lower,
+			"invalid password",
+			"password check for user failed",
+			"login failure",
+			"invalid login auth code",
+			"cached credentials not found",
+			"no cached credentials",
+			"using cached credentials failed",
+		):
+			// SteamCMD can report login progress and the terminal credential error
+			// on the same line (for example, "Logging in user ... Invalid
+			// Password"). Keep this before the generic progress cases so the
+			// overlapping line cannot be misclassified as a download failure.
+			credentialFailed = true
 		case containsAny(lower, "waiting for user info...ok", "logged in ok"):
 			steamCMDLoggedIn = true
 		case containsAny(lower, "logging in user", "waiting for user info"):
@@ -969,16 +983,6 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		case strings.Contains(lower, "success! app '1007' fully installed"):
 			app1007Done = true
 			downloadCompleted = true
-		case containsAny(lower,
-			"invalid password",
-			"password check for user failed",
-			"login failure",
-			"invalid login auth code",
-			"cached credentials not found",
-			"no cached credentials",
-			"using cached credentials failed",
-		):
-			credentialFailed = true
 		}
 	}
 

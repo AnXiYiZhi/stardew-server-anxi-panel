@@ -1,15 +1,26 @@
-# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 跨端终态契约（2026-08-20，completed，待 v0.5.10 发布）
+# STEAM-CREDENTIAL-RECOVERY-1 跨端契约（2026-08-22，已完成、未发布）
+
+- SteamCMD 明确输出 `Invalid Password` 等凭据失败标记时，driver 必须发布既有 `state=steam_auth_failed` 与 `driverPhase=credentials_required`；即使同一行还包含 `Logging in user`，具体失败也优先于通用 progress。网络、下载、磁盘或其它 SteamCMD 非零退出继续使用 `steamcmd_failed`，前端不得把所有下载失败都解释为密码错误。
+- 安装页根据 `steam_auth_failed/credentials_required` 优先展示重新输入凭据路径，不得因同时存在 `installationDiagnostic.status=incomplete/requiredFiles=missing` 而误导用户先修复并继续复用错误凭据。为兼容历史错误终态和诊断不可用，管理员还始终拥有“更换 Steam 账号 / 重新认证”入口。
+- 强制入口沿用既有安装请求字段 `steamUsername`、`steamPassword`、`vncPassword`、`imageTag`、`forceReauth=true`。后端据此清除保存的 Steam session 与 SteamCMD 授权卷后重新认证，但保留已下载游戏文件和存档；普通“登录授权”仍复用保存凭据，两种动作的 UI 文案必须保持可区分。
+- 联调回归覆盖组合错误行终态、缓存授权回退、部分安装诊断与认证失败的显示优先级、常驻入口完整表单，以及桌面/390px 响应式交互。API/DTO shape、权限边界和凭据不回显契约不变。
+
+# v0.5.10 跨端契约正式发布证据（2026-08-20，released）
+
+- 最终候选 `32380002010@9b5a96233331b2050c930658d12eb6e49006f1f0` 从 `v0.5.9` 经真实 Web API 完成同一候选 unhealthy `failed_rolled_back/health_check_failed`、旧版恢复和 healthy apply，并在升级后的新 Panel 重验 exact-target invisible、FIFO no-effect、snapshot restore 与下一管理员 mutation 自动恢复。自动 Tag `32381115159`、正式提升 `32381136325` 全绿；三仓 `0.5.10/latest` 六引用统一 digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`，正式 smoke 的 `/health` 与 `/api/version` 精确匹配版本和 commit。
+
+# RUNTIME-UPDATE-TERMINAL-SNAPSHOT-1 跨端终态契约（2026-08-20，released in v0.5.10）
 
 - runtime update API shape 不变，但 `phase=succeeded` 现在只会在认证 snapshot 与旧镜像 best-effort cleanup 已完成、所有 warning/log 已汇总后首次可见。前端一旦观察到 terminal，无需为同一 apply 再轮询等待“迟到的 warning”，终态视图与审计读取同一完整快照。
 - cleanup 被阻塞时状态继续保持最后一个非 terminal phase；cleanup 删除失败不把已经通过运行验收的更新改成回滚或失败，而是在同一 `succeeded` 响应的 `warnings` 中给出人工检查提示。失败/回滚 phase、错误码、进度接口和 restart recovery 的安全边界不变。
-- 正式候选 `32376230460` 因旧双写窗口在代码门禁失败，未构建/推送镜像。修复回归会在 cleanup 阻塞点读取 API backing file，证明 terminal 不早到；新候选必须完整重跑，不能把旧 run 重新提升。
+- 正式候选 `32376230460` 因旧双写窗口在代码门禁失败，未构建/推送镜像；修复后的最终候选 `32380002010` 已完整重跑并发布。回归在 cleanup 阻塞点读取 API backing file，证明 terminal 不早到；失败 run 从未被重新提升。
 
-# SAVE-IMPORT-RELEASE-GATES-1 跨端候选契约（2026-08-20，completed，待 v0.5.10 发布）
+# SAVE-IMPORT-RELEASE-GATES-1 跨端候选契约（2026-08-20，released in v0.5.10）
 
 - 对外接口 shape 不变。本次把既有跨端契约固化到真实候选：升级 Panel 的 preview/commit 仍以服务端 canonical `saveName` 为唯一目标；Junimo 必须先通过 `saves info <exact-target>` 证明 staged save 可见，失败时 job 终态但正式 import FIFO 零尝试，前端后续管理员选档可触发现有严格恢复并继续请求。
 - exact target 可见但 import FIFO 零落盘时，任务返回既有失败语义，journal 只保存有界脱敏诊断和完整复合 no-effect 证据；不得把日志文字升级为成功。snapshot 恢复后，同一管理员选档请求只清理 exact owned transaction/token/staging，保留 preimport 与现有 save/pointer/hash，然后按原接口继续完成选档。
 - 真实 runtime 回归先把正常主档打成不带 world ID 的 ZIP，再由 preview 返回 canonical identity；commit 使用该 token/staging 完成 swap/finalizer。官方客户端必须在 `/farmhands` 中按名称找到并选择 `OriginalOwner`，证明“原主机可选”是用户可达结果，而不是仅靠 XML/解绑计数推断。
-- `v0.5.9` 已发布产品实现但候选漏跑上述两条 Phase A boundary；旧 tag/digest 不变，`v0.5.10` 必须从 `v0.5.9` 真实 Web unhealthy/healthy 升级并在新 Panel 上复验，才允许自动 Tag 和正式提升。
+- `v0.5.9` 已发布产品实现但候选漏跑上述两条 Phase A boundary；旧 tag/digest 保持不变。`v0.5.10` 最终候选已经从 `v0.5.9` 真实 Web unhealthy/healthy 升级并在新 Panel 上复验后才自动 Tag 和正式提升。
 
 # SAVE-IMPORT-RUNTIME-IDENTITY-NORMALIZATION-1 跨端契约（2026-08-20，released in v0.5.9）
 

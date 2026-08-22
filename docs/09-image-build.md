@@ -1,10 +1,19 @@
-# v0.5.10 存档导入真实候选门禁补齐（2026-08-20，候选前）
+# v0.5.10 存档导入真实候选门禁补齐（2026-08-20，released）
 
 ## 变更范围、上一版审计与发布边界
 
 - `v0.5.9` 已由自动链从 `0657ff01f1216ffaa9362a800cf228bb4307aa8a` 不可变发布：Compatibility `32363876627`、候选 `32363876626`、自动 Tag `32364681064`、正式提升 `32364702253` 全绿；annotated tag object=`715f68197bf3e2092bb27ec2382bfa222dfdf5c8`，peeled commit 为上述提交，候选 digest=`sha256:f4698348603a34c51f49dae1d69570ecb12899b555786bf57b0ba1f7351d1112`，GitHub Release 于 `2026-08-20T11:38:43Z` 发布且含 4 项部署资产。
 - 发布后审计确认 `v0.5.9` 候选跑过既有 maintenance/legacy jobs-cleared 升级专项，但没有执行本文件已经声明的两条真实场景：`saves info <exact-target>` 不可见时 pre-submit fail closed，以及 FIFO 已发送但磁盘零效果后的诊断、snapshot restore 和下一管理员 mutation 自动恢复。旧 tag、digest 与 Release 不移动、不重建；本次以 `v0.5.10` fix-forward 补齐门禁。
 - 初始补丁只修改候选升级脚本、真实 Junimo integration test 与对应长期文档/错题本；第一次正式远端候选又暴露既有 runtime-update 成功终态早于 best-effort cleanup warning 落盘的竞态，因此当前范围新增 backend runner/test 的终态原子化修复。公开 API shape、前端 bundle、SQLite schema、Compose、Control/SMAPI/Junimo runtime manifest 仍不变。候选必须从同步干净 `main` 构建完整新镜像，并从当前上一正式版 `v0.5.9` 走真实 Web unhealthy/healthy 升级，不能复用任何旧证明。
+
+## 正式候选、Tag 与提升证据
+
+- 最终候选 `32380002010` 从同步的 `main@9b5a96233331b2050c930658d12eb6e49006f1f0` 自动解析版本 `0.5.10`，约 `11m00s` 全绿：selected code gates `4m00s`、Windows wrapper `17s`、image build/fresh/restart/真实 Web 升级与升级后专项 `5m56s`，随后推送并封存 proof。Compatibility `32380002025` 约 `2m33s` 全绿。proof artifact=`release-candidate-0.5.10-9b5a96233331`、ID=`9411011092`、artifact archive digest=`sha256:2912443cd681d1fe1d65f658ce675faa17d6faa4ca1ef2ebe1239da6dc2268ae`；候选 OCI build date=`2026-08-20T14:25:36Z`，candidate ref 与 proof digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`。
+- 选择矩阵由 `v0.5.9...9b5a962` 路径差异自动决定：兼容清单、部署脚本/Bash/ShellCheck、后端 test/vet/build、updater/Docker integration、前端全状态回归与 production build 全跑；`backend/internal/games/stardew_junimo` 和 `docs` 有变化，因此 SMAPI 真实下载/Junimo runtime integration 与 website build 也执行；runtime manifest 及其校验器未变，remote artifact verification 按脚本规则跳过。候选镜像再完成 fresh install、未初始化状态、`/health`、`/api/version`、重启、`v0.5.9` unhealthy `failed_rolled_back/health_check_failed`、同候选 healthy apply，以及升级后 exact-target invisible、FIFO no-effect/脱敏诊断/snapshot restore/下一管理员 mutation 自动恢复和既有状态保持。
+- 自动 Tag `32381115159` 约 `11s` 全绿；GitHub REST 复核 `v0.5.10` 为 annotated tag object=`c305b3ef0cea220bb27a24f08af140cf45d789fa`，peeled commit 精确为候选 SHA，tag message 固定 candidate workflow 与上述 digest。正式提升 `32381136325` 约 `8m20s` 全绿，只从 proof candidate digest 以 `--preserve-digests` 提升，没有 rebuild；其 `Verify candidate digest and OCI identity`、三仓精确版本、GHCR 精确版 `/health`/`/api/version` smoke、三仓 `latest` 与 Release 创建步骤全部成功。
+- 2026-08-22 发布后再次对公开 manifests 逐一核对：Docker Hub、阿里云 ACR、GHCR 的 `0.5.10` 和 `latest` 六引用，以及 GHCR `candidate-0.5.10-9b5a96233331`，均为同一 manifest digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`、config digest=`sha256:87c410cfaabe5a15a3ed6a030ee25f7f4295fbe983f0da770cf70a381dfb4034`、`linux/amd64`。从公开 GHCR config blob 独立读取的 OCI labels 为 version=`0.5.10`、revision=`9b5a96233331b2050c930658d12eb6e49006f1f0`、created=`2026-08-20T14:25:36Z`；正式 smoke 工作流对同一 GHCR 精确版实际要求 `/health.status=ok` 且 `/api/version` 的 version/commit 精确相等，该步骤成功。
+- latest GitHub Release 于 `2026-08-20T14:44:40Z` 发布，非 draft/prerelease。四项资产与 tag 源文件的 size/SHA-256 逐项一致：`migrate-fnos.sh`=`34269/90510768...cbfd`、`repair-junimo-0.3.5.sh`=`14585/13a07708...31cd0e`、`repair-junimo-upgrade.sh`=`8521/4f3c6667...9b4c2`、`run.sh`=`33793/7263bfa3...e130787`。从 push 到 Release 约 `19m37s`；远端 `main` 发布后仍精确等于候选 commit。
+- 正式 runner 的候选和 promotion job 均以 owner label/trap 完成资源清理并成功退出。另一个同 SHA 本地复现候选在用户中断前已生成 image/fresh/restart 并进入 unhealthy Web 回滚，但没有取得终态，不能作为证明；当前托管权限又禁止启动 Docker Desktop、写 `.git/.agents`。可写临时 Docker config/Go cache/proof 目录已精确删除；只读 `.agents/anxi-release-candidate-1787235914-13036` 仍残留 `candidate.tar` 与 `fixtures.tar` 共 `163578880` bytes，且 daemon 侧 owner 资源暂时无法复核。权限恢复后必须先按 exact path/owner 清理并核对为 0，再提交推送本节发布后证据；不得旁路权限或把本地中断链记作全绿。
 
 ## 本版专项矩阵
 
@@ -18,7 +27,7 @@
 | 升级回滚 | `v0.5.9 → v0.5.10` 对同一候选注入 unhealthy，再执行 healthy apply | unhealthy 终态 `failed_rolled_back/health_check_failed` 并恢复旧版；healthy 使用同一候选 digest，SQLite/初始化/非目标容器与 volume 保持；升级后重跑上述候选专项 |
 | 资源清理 | 本地真实 runtime、候选 DinD、fresh/restart、两次升级与正式 smoke | 按任务 owner 精确清零 container/network/volume/bind/temp；不使用生产数据、不 prune |
 
-## 候选前本地证据
+## 候选、失败修复与本地证据
 
 - `TestRealSwapHostRepairsBedManualControlAndSleepsOptIn` 已在任务专属 Linux Go 1.25、真实 Stardew 1.6.15 数据、Junimo `1.5.0-preview.125` 和精确 upstream revision `89abe8e6a07b3aaee1c0b4fad080683b948645d9` 编译的官方 TestClient 上通过，用时 `223.39s`。原始 `HostBedGate_2510107853107169260` 被打成非规范 `HostBedGate` ZIP，preview 规范为独立 canonical `HostBedGate_2510107853108169243`；最终 `original_host_selectable=true`、床位 `(9,8)`、Spring 1 Year 1 推进到 Spring 2 Year 1，owner 标记的容器/网络/卷全部为 0。
 - 候选脚本新增升级 Panel 上的 exact-target invisible 与 FIFO no-effect 两条真实 Docker 夹具；Bash 5.2 `bash -n`、ShellCheck `v0.11.0` 和 backend integration 编译门禁通过。定向 preview 单元测试通过，新增真实测试完整运行通过。

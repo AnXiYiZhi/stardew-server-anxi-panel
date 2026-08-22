@@ -1,8 +1,21 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { calcSteamDownloadTaskProgress, extractSMAPIArchiveProgress } from '../src/games/stardew/install-helpers.ts'
 import { canonicalInstallJobs, logsDescribeActiveInstall, reconcileJobSnapshots } from '../src/games/stardew/install-state.ts'
 import { classifyInstallationState } from '../src/games/stardew/installation-state.ts'
 import type { InstallationDiagnostic, InstanceState, Job, JobLog, JobStatus } from '../src/types.ts'
+
+const installPageSource = readFileSync(
+  new URL('../src/games/stardew/pages/InstallPage.tsx', import.meta.url),
+  'utf8',
+).replace(/\r\n?/g, '\n')
+
+assert.match(installPageSource, /const \[forceReauth, setForceReauth\] = useState\(false\)/)
+assert.match(installPageSource, /onClick=\{\(\) => \{ setForceReauth\(true\); setShowForm\(true\); setInstallError\(''\) \}\}/)
+assert.match(installPageSource, /forceReauth\s*\? \{ steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true \}/)
+assert.match(installPageSource, /installation\.canOpenInstallForm \|\| forceReauth/)
+assert.match(installPageSource, /!canDirectRetry \|\| forceReauth/)
+assert.match(installPageSource, /确认更换账号并重新认证/)
 
 function job(id: string, status: JobStatus, updatedAt: string, createdAt = '2026-08-11T00:00:00.000Z'): Job {
   return {
@@ -120,6 +133,18 @@ const classificationCases = [
         status: 'incomplete',
         requiredFiles: 'unknown',
         image: 'missing',
+        recommendedAction: 'repair_install',
+      }),
+    }),
+    active: false,
+    expected: { kind: 'install_failed', action: 'install', isInstalled: false, showMissingInstallPrompt: false, canOpenInstallForm: true },
+  },
+  {
+    name: 'SteamCMD invalid password overrides partial-install repair evidence',
+    state: instanceState('steam_auth_failed', 'credentials_required', {
+      installationDiagnostic: installationDiagnostic({
+        status: 'incomplete',
+        requiredFiles: 'missing',
         recommendedAction: 'repair_install',
       }),
     }),
