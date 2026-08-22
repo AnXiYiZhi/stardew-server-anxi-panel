@@ -1,9 +1,17 @@
-# FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，completed，未发布）
+# FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，released in v0.5.11）
 
 - Stardew 安装页管理员操作区保留原“登录授权”（复用已保存凭据），并新增常驻“更换 Steam 账号 / 重新认证”。入口不依赖后端是否已经正确识别 `credentials_required`，所以历史 `steamcmd_failed`、文件缺失或诊断不完整时仍能主动更换账号；安装任务运行、启动中或表单已打开时禁用，避免重复提交。
 - 点击新入口强制展开完整 Steam 用户名、Steam 密码、VNC 密码和镜像版本表单，提交既有安装 API 时携带 `forceReauth: true`。成功后重置本地 force 状态；取消、普通安装/修复和接入已有任务也会清理该状态。前端不回填、不打印任何已保存密码。
 - `frontend/scripts/test-install-state.ts` 新增源码契约断言，固定常驻入口、force payload、诊断状态外仍可开表单、完整凭据字段和提交文案；同时锁定生产同形态 `steam_auth_failed/credentials_required + missing-files` 优先显示认证失败而不是误导为修复安装。
 - 验证：`npm run test:install-state`、`npm run test:responsive-layout`、`npm run build` 全部通过。应用内 Browser 在管理员、部分安装证据场景验证入口可见可用、点击后 3 个凭据输入项与强制提交按钮可见；1280px 与 390px 均无横向溢出，console warning/error 为 0。
+- 正式候选 `32575311262@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 的 frontend 全状态回归与 production build、immutable image fresh/restart 和 `v0.5.10` Web unhealthy/healthy 升级均通过；Compatibility `32575311243` 也完成独立 frontend tests/build。自动 Tag `32575807110` 与正式提升 `32575818623` 成功，能力已进入三仓同 digest 的 `v0.5.11/latest`。
+
+# DOCS-PORTAL-0.5.8-0.5.11：官网版本与缺失更新日志补齐（2026-08-22，completed，待上线）
+
+- `website/docs/changelog.md` 新增 `v0.5.8`、`v0.5.9`、`v0.5.10` 与 `v0.5.11` 用户可读摘要，补齐 Phase A 零效果恢复、运行时 saveId 规范化、普通操作自动解锁、候选安全门禁以及 Steam 密码错误恢复/常驻更换账号入口；`v0.5.7` 降为历史版本，不改旧版不可变身份。
+- `website/docs/index.md` 的 frontmatter release、版本更新卡与 CURRENT RELEASE 同步为 `v0.5.11`，首页只突出本版用户最需要知道的“密码错误会正确提示、可主动更换账号且存档/游戏文件保留”。
+- GitHub Release `v0.5.11` 正文已补齐用户可见变化、四个 workflow、唯一 digest 和 `v0.5.10...v0.5.11` compare；复核仍为非 draft/prerelease，发布时间与四项资产的 size/SHA-256 未变化。正文编辑没有移动 annotated tag、重推镜像或改变候选 proof。
+- 本次只修改长期文档与官网内容，不移动 `v0.5.11` annotated tag，不重建或重推正式镜像。推送后由 Docs Portal workflow 做 VitePress build/deploy，并由 Compatibility 做整仓回归；成功 run、线上 200/正文与“没有新候选 workflow”证据将在上线后回填本节。
 
 # DOCS-PORTAL-0.5.7：官网最新版本与 Release 说明同步（2026-08-20，completed，已上线）
 

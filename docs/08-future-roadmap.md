@@ -1,10 +1,12 @@
-# 2026-08-22 已完成、未发布：Steam 密码错误恢复与常驻更换账号入口
+# 2026-08-22 已发布于 v0.5.11：Steam 密码错误恢复与常驻更换账号入口
 
 - [x] 生产 v0.5.10 只读诊断确认完整登录返回 `Logging in user ... Invalid Password` 和 exit 5；旧 switch 被通用进度 case 抢先命中，导致错误发布 `error/steamcmd_failed`。
 - [x] 后端把具体凭据失败标记置于通用登录进度之前，组合行稳定发布 `steam_auth_failed/credentials_required`；新增缓存回退和组合行回归，Windows 定向、Linux Junimo 全包（56.180s）、vet/build 全绿。
 - [x] 管理员安装页新增常驻“更换 Steam 账号 / 重新认证”，完整新凭据表单发送既有 `forceReauth=true`；历史错误状态、部分安装和诊断未知时也可进入，运行中保持禁用，游戏文件/存档保留。
 - [x] 前端状态、响应式和 production build 全绿；应用内 Browser 在部分安装证据场景完成桌面/390px 交互，常驻按钮、3 个输入项和强制提交按钮可见，无横向溢出、遮罩或 console warning/error。
-- [ ] 尚未发布或部署到生产；下一正式候选必须按 `docs/09-image-build.md` 门禁完成真实 Docker E2E，并在升级后的新 Panel 再验密码错误终态和强制更换账号链路。
+- [x] 正式候选 `32575311262@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 与 Compatibility `32575311243` 全绿；selected gates 完成 backend、frontend、真实 Junimo integration、website build，immutable image 完成 fresh/restart 和 `v0.5.10` Web unhealthy/healthy。真实 Steam 错误登录未使用生产/长期凭据注入，专项由确定性 driver 回归、状态/bundle 回归和发布前 Browser 交互覆盖。
+- [x] 自动 Tag `32575807110`、正式提升 `32575818623` 与 GitHub Release 成功；annotated tag object=`d8bf5075d57f7aaf1b834ad62e12418a2db67ab7`，三仓 `0.5.11/latest` 六引用统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`，GHCR health/version smoke 和四项资产通过。
+- [x] v0.5.10 本机中断候选的两个 tar、唯一 exited DinD 容器及其匿名卷已按精确 path/name/owner 清理；复核 artifact directory、container、volume、network 均为 0，未 prune 或触碰其它任务资源。
 
 # 2026-08-20 已发布于 v0.5.10：候选备份调度测试复用原子事件契约
 
@@ -12,7 +14,7 @@
 - [x] 确认生产 Control 先写隐藏临时文件、完整后原子移动成 `.json`；只有测试用 `os.WriteFile` 直写消费者可见最终文件，产生生产不存在的半写竞态。
 - [x] 并发夹具改用已有原子 JSON writer，不增加 scheduler 间隔或放宽结果预算；函数级核验后的 Linux Go 1.25 精确用例 `count=100` 全绿（11.896s），整仓 test/vet/build 随后全绿。
 - [x] 最终候选 `32380002010` 与 Compatibility `32380002025` 全绿；自动 Tag `32381115159`、正式提升 `32381136325` 成功，三仓 `0.5.10/latest` 六引用统一 digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`，正式 smoke、版本接口与 GitHub Release 已核对。
-- [ ] 2026-08-22 当前托管权限禁止写 `.git/.agents` 和 Docker Desktop 用户日志；发布后证据已回填工作树，但尚不能提交推送，且本地中断候选的两个精确 tar 仍待权限恢复后清理并复核 daemon owner 资源为 0。正式远端发布不受影响。
+- [x] 2026-08-22 权限恢复后已删除本地中断候选的两个精确 tar，并移除同 owner 唯一 exited DinD 容器及匿名卷；复核 daemon container/volume/network 与 artifact directory 均为 0。该中断链没有被记作 v0.5.10 或 v0.5.11 候选证明。
 
 # 2026-08-20 已发布于 v0.5.10：runtime-update 成功终态原子包含 cleanup warning
 

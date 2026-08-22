@@ -118,6 +118,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-22 回填 v0.5.11 发布证据时，在读取已确认存在的 `release-candidate.yml` 与 `docs.yml` 后仍凭职责猜测 `.github/workflows/compatibility.yml`，实际文件名为 `compatibility-matrix.yml`，使组合只读命令末尾退出 1；前两份文件读取结果有效，仓库未被该命令修改。后续 workflow 名称必须先取 `rg --files .github/workflows` 的精确结果，再逐文件读取，不能从页面显示名反推文件名。
 - 最近复发/补充：2026-08-22 已确认 SteamCMD 实现位于 `installer.go` 后，仍凭职责追加了不存在的 `installer_helpers.go` 作为组合 `rg` 路径；真实文件命中已输出，但组合命令最终以路径不存在退出 1，源码未变化。后续只对 `rg --files` 或前序命中返回的精确文件检索，不能为了寻找 helper 再补一个未经确认的惯用文件名。
 - 最近复发/补充：2026-08-20 正式候选失败后定位 runtime-update 状态写入时，已拿到两个真实 `.go` 文件路径，仍把 Windows 不展开的 `backend/internal/games/stardew_junimo/runtime_update_apply*.go` 交给后续 `rg`；主体 `Get-Content` 成功但组合命令最终退出 1，源码未变化。正式故障诊断也必须逐条使用真实文件，多个同前缀文件用 `rg -g 'runtime_update_apply*.go' ... <directory>`，不能因前一段已输出足够信息就忽略末尾失败。
 - 最近复发/补充：2026-08-20 补存档导入候选门禁时，前一条检索已给出真实文件，后续仍猜成不存在的 `backend/internal/games/registry/driver.go`、`backend/internal/web/saves_handlers.go` 等路径，并把 Windows 不会展开的 `backend/internal/games/registry/*.go`/`stardew_junimo/*.go` 直接交给 `rg`，均只读失败且源码未变化。后续已严格使用 `rg` 的真实命中作为下一次输入，目录级文件筛选改用 `rg -g '<glob>' <pattern> <root>`；已有 `AGENTS.md` 规则继续作为发布前 fail-fast 检查，不能因“只是检索”忽略复发。

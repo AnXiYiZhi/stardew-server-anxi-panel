@@ -1,9 +1,11 @@
-# STEAM-CREDENTIAL-RECOVERY-1：SteamCMD 密码错误稳定进入凭据恢复（2026-08-22，已完成、未发布）
+# STEAM-CREDENTIAL-RECOVERY-1：SteamCMD 密码错误稳定进入凭据恢复（2026-08-22，released in v0.5.11）
 
 - 生产 `v0.5.10` 只读诊断确认：缓存授权未命中后，SteamCMD 用完整账号密码登录并在同一行输出 `Logging in user ... Invalid Password`，随后退出码为 5。旧解析器先命中通用“正在登录”进度分支，导致凭据失败标记未设置，终态错误地落为 `state=error/driver_phase=steamcmd_failed`。
 - `backend/internal/games/stardew_junimo/installer.go` 现在先识别 `Invalid Password` 等凭据失败标记，再匹配通用登录进度；上述组合行会稳定落为 `state=steam_auth_failed/driver_phase=credentials_required`，继续使用既有用户可读提示，不把网络或普通下载失败误判为密码错误。
 - 新增 `TestDriverInstallClassifiesCombinedSteamCMDInvalidPasswordLineAsCredentialsRequired`，覆盖缓存授权失败后回退到完整登录、组合错误行、退出码 5 和最终状态。公开 API/DTO、SQLite、Compose、Steam 凭据保存方式及 Junimo 通信边界均未改变。
 - 验证：Windows 定向新旧 SteamCMD 用例通过；任务专属 Linux Go 1.25 Junimo 全包通过（56.180s）；`go vet ./...`、`go build ./...` 通过。Windows Junimo 全包唯一失败仍是已记录的 NTFS `0666` 与 Linux `0640` 权限差异，不是本次产品回归。
+- 正式 `v0.5.11@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 候选 `32575311262` 与 Compatibility `32575311243` 全绿；候选 selected code gates 重新执行 backend test/vet/build、真实 Junimo network/runtime integration、frontend 回归/build 与 website build，immutable image 完成 fresh/restart 和 `v0.5.10` Web unhealthy/healthy 升级。
+- 自动 Tag `32575807110` 与正式提升 `32575818623` 成功，annotated tag object=`d8bf5075d57f7aaf1b834ad62e12418a2db67ab7`；三仓 `0.5.11/latest` 与 candidate ref 统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`。正式 GHCR smoke 与 GitHub Release/四项资产均通过，完整 proof 和清理证据见 `docs/09-image-build.md`。
 
 # v0.5.10 后端正式发布证据（2026-08-20，released）
 

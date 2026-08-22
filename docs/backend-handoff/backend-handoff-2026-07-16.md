@@ -1,4 +1,4 @@
-# STEAM-CREDENTIAL-RECOVERY-1 后端接手记录（2026-08-22，已完成、未发布）
+# STEAM-CREDENTIAL-RECOVERY-1 后端接手记录（2026-08-22，released in v0.5.11）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -10,7 +10,8 @@
 
 - 新回归完整模拟“缓存授权失败 → 完整账号密码登录 → 单行 `Logging in user ... Invalid Password` → exit 5”，断言两次 SteamCMD 调用、没有误启 steam-auth、终态和提示均正确。Windows 定向新旧用例、Linux Go 1.25 Junimo 全包（56.180s）、整仓 vet/build 均通过。
 - 后续扩展 SteamCMD 行解析时，必须保持具体失败标记先于宽泛进度文本；尤其不能把同一行存在错误词的输出先归类为 progress。产品级 POSIX mode 测试继续只在 Linux 文件系统执行。
-- 本次生产只做了只读诊断，尚未部署此修复；需进入下一正式候选并完成项目发布门禁后，线上才会自动得到正确分类。
+- 正式候选 `32575311262@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 与 Compatibility `32575311243` 全绿；proof artifact=`release-candidate-0.5.11-a9e186249a5c`（ID `9476506539`），build date=`2026-08-22T13:17:09Z`。自动 Tag `32575807110`、正式提升 `32575818623` 和 GitHub Release 全部成功，三仓 `0.5.11/latest` 统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`；修复已进入正式镜像。
+- 真实 Steam 错误登录没有使用生产或长期凭据做注入；功能专项以精确组合行 driver 回归和前端状态/bundle 回归为权威，immutable candidate 另外完成真实 Docker fresh/restart、`v0.5.10` Web unhealthy/healthy 与升级后长期状态复验。后续若能提供不含长期秘密的受控 Steam 测试账号，可再把真实错误登录加入候选专项，但不得在日志或 proof 中保存密码。
 
 # v0.5.10 正式发布接手证据（2026-08-20，released）
 

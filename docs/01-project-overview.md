@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.5.10`（commit `9b5a96233331b2050c930658d12eb6e49006f1f0`）。本版补齐存档导入 exact-target invisible、FIFO 已提交但磁盘零效果、下一管理员 mutation 自动恢复与真实 Junimo 原主机可选候选门禁，并修复 runtime-update 成功终态 warning 可见性竞态和备份 scheduler 测试夹具的非原子事件发布。候选、Compatibility、自动 annotated tag 与三仓同 digest 正式提升全部通过；发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程。矩阵、失败修复和最终证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.5.11`（commit `a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb`）。本版修复 SteamCMD 同一行同时包含登录进度和 `Invalid Password` 时被误归类为普通下载失败的问题，并为管理员增加常驻“更换 Steam 账号 / 重新认证”入口；新入口使用既有 `forceReauth` 清理授权缓存，但保留游戏文件和存档。候选 `32575311262`、Compatibility `32575311243`、自动 annotated tag `32575807110` 与正式提升 `32575818623` 全绿，三仓 `0.5.11/latest` 使用唯一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`。发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程；完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

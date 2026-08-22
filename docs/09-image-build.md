@@ -1,3 +1,29 @@
+# v0.5.11 Steam 凭据恢复与常驻更换账号入口（2026-08-22，released）
+
+## 变更清单、受影响链路与专项矩阵
+
+- 生产 `v0.5.10` 只读诊断确认 SteamCMD 在缓存未命中后的完整登录行同时输出 `Logging in user ... Invalid Password`，exit 5；旧 switch 先命中通用 progress，错误发布 `error/steamcmd_failed`。`v0.5.11` 把具体凭据失败标记置于通用登录进度前，组合行稳定发布既有 `steam_auth_failed/credentials_required`，网络、下载、磁盘等普通失败仍保持 `steamcmd_failed`。
+- 管理员安装页保留复用保存凭据的“登录授权”，并新增常驻“更换 Steam 账号 / 重新认证”。新入口不受历史错误终态、部分安装或普通表单诊断 guard 阻断，始终要求完整新凭据并发送既有 `forceReauth=true`；后端清除 Steam/SteamCMD 授权缓存，但保留游戏文件和存档。没有新增 API/DTO、SQLite migration、Compose、Control/SMAPI/Junimo runtime manifest 或明文凭据回显。
+- 本版专项由后端组合行/缓存回退回归、前端源码与状态机回归、production bundle、发布前应用内 Browser 桌面/390px 交互组成。正式候选另外完成不可变镜像 fresh/restart、`v0.5.10` 真实 Web unhealthy/healthy 升级和升级后长期状态/既有高风险链复验；为避免向 Steam 发送测试账号密码，没有使用生产或长期 Steam 凭据做真实错误登录注入。
+
+| 维度 | 实际执行 | 通过标准与结果 |
+| --- | --- | --- |
+| 凭据分类 | 缓存登录失败后回退完整登录；同一行含 progress 与 `Invalid Password`，exit 5 | 两次 SteamCMD、零 steam-auth 误启；终态精确为 `steam_auth_failed/credentials_required`，已通过 |
+| 前端恢复 | `steam_auth_failed/credentials_required` 与 `missing-files` 并存；管理员主动强制更换账号 | 认证失败优先；常驻入口可打开完整 3 项凭据表单并发送 `forceReauth=true`，已通过 |
+| 权限与安全 | 普通用户、运行/启动中、表单已打开、凭据显示 | 入口 admin-only；busy/运行态禁用；不预填或打印保存密码，已通过 |
+| 响应式 | 1280px 与 390px 安装页 | 无横向溢出、遮罩或 console warning/error，已通过 |
+| 不可变候选 | fresh/restart、`v0.5.10` Web unhealthy rollback/healthy apply、升级后状态保持 | 同一候选 digest；`failed_rolled_back/health_check_failed` 后旧版恢复，健康升级与既有受影响链全绿 |
+
+## 候选、Tag、正式提升与 Release 证据
+
+- `main@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 与 `origin/main` 同步后自动解析 `0.5.11`、previous=`0.5.10`、OCI build date=`2026-08-22T13:17:09Z`。Compatibility `32575311243` 用时约 `2m27s`，backend tests、frontend tests/build 与隔离 Docker integration 全绿。不可变候选 `32575311262` 用时 `10m23s`：selected code gates `3m55s`、Windows wrapper `5s`、image/fresh/restart/真实 Web 升级 `5m51s`，随后推送并封存 proof。
+- 路径选择实际执行 compatibility contracts、部署脚本、backend test/vet/build、真实 Junimo network/runtime integration、frontend 全状态回归与 production build、website build；runtime manifest 输入未变，因此 remote artifact verification 按选择器跳过。候选从 `v0.5.10` 通过公开 Web API完成 unhealthy rollback 与同 digest healthy apply，并复验 SQLite/初始化/非目标容器与 volume、Mod update、legacy Junimo repair、存档导入 exact-target/FIFO no-effect 与下一管理员 mutation 恢复；最终输出 `all candidate gates passed`。
+- proof artifact=`release-candidate-0.5.11-a9e186249a5c`，ID=`9476506539`，size=`483` bytes，archive digest=`sha256:d08adee5cae230f2f276eeedd055d74d4790409baa56fa272280c8ee5c7abd0c`。candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.11-a9e186249a5c`，唯一 manifest digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`，config digest=`sha256:8108c82fc84e229d00493bd0c52174db551ba815114a0f073527ec68da708426`。
+- 自动 Tag `32575807110` 成功；`v0.5.11` 为 annotated tag object=`d8bf5075d57f7aaf1b834ad62e12418a2db67ab7`，tagger date=`2026-08-22T13:27:30Z`，peeled commit 精确为候选 SHA，message 固定候选 workflow 与上述 digest。正式提升 `32575818623` 用时 `1m15s`，只提升 proof 中的精确 digest、没有 rebuild；候选身份、三仓精确版本、GHCR `/health`/`/api/version` smoke、三仓 `latest` 与 Release 创建步骤全部成功。
+- GitHub Release `Stardew Server Anxi Panel 0.5.11` 于 `2026-08-22T13:28:49Z` 发布，非 draft/prerelease；从 push 到 Release 约 `12m00s`。Docker Hub、阿里云 ACR、GHCR 的 `0.5.11/latest` 六引用由 promotion workflow 核对为同一 digest。四项资产与正式提交保持相同 size/SHA-256：`migrate-fnos.sh`=`34269/90510768...cbfd`、`repair-junimo-0.3.5.sh`=`14585/13a07708...31cd0e`、`repair-junimo-upgrade.sh`=`8521/4f3c6667...9b4c2`、`run.sh`=`33793/7263bfa3...e130787`。
+- 候选与 promotion 各有一条非阻断 GitHub Actions Node.js 20 deprecation annotation；hosted runner 已把受影响 action runtime 强制到 Node.js 24，所有步骤仍成功。它不改变候选内容、digest 或门禁结论；后续应在上游 action 提供对应版本时升级 action 引用，不能通过关闭安全检查压掉提示。
+- 正式 runner 的候选和 promotion 均成功完成 owner/trap 清理。此前 v0.5.10 本机中断候选的精确目录 `.agents/anxi-release-candidate-1787235914-13036`（`candidate.tar`、`fixtures.tar`，共 `163578880` bytes）已删除；同 owner 唯一遗留的 exited DinD 容器已按精确名称连同匿名卷删除，复核 container/volume/network 与目录均为 0。该中断链从未作为候选证明。
+
 # v0.5.10 存档导入真实候选门禁补齐（2026-08-20，released）
 
 ## 变更范围、上一版审计与发布边界
@@ -13,7 +39,7 @@
 - 自动 Tag `32381115159` 约 `11s` 全绿；GitHub REST 复核 `v0.5.10` 为 annotated tag object=`c305b3ef0cea220bb27a24f08af140cf45d789fa`，peeled commit 精确为候选 SHA，tag message 固定 candidate workflow 与上述 digest。正式提升 `32381136325` 约 `8m20s` 全绿，只从 proof candidate digest 以 `--preserve-digests` 提升，没有 rebuild；其 `Verify candidate digest and OCI identity`、三仓精确版本、GHCR 精确版 `/health`/`/api/version` smoke、三仓 `latest` 与 Release 创建步骤全部成功。
 - 2026-08-22 发布后再次对公开 manifests 逐一核对：Docker Hub、阿里云 ACR、GHCR 的 `0.5.10` 和 `latest` 六引用，以及 GHCR `candidate-0.5.10-9b5a96233331`，均为同一 manifest digest=`sha256:f0887c383d0043934b0023cc150e732f6d514e789df2d81c786297c122dc3bb4`、config digest=`sha256:87c410cfaabe5a15a3ed6a030ee25f7f4295fbe983f0da770cf70a381dfb4034`、`linux/amd64`。从公开 GHCR config blob 独立读取的 OCI labels 为 version=`0.5.10`、revision=`9b5a96233331b2050c930658d12eb6e49006f1f0`、created=`2026-08-20T14:25:36Z`；正式 smoke 工作流对同一 GHCR 精确版实际要求 `/health.status=ok` 且 `/api/version` 的 version/commit 精确相等，该步骤成功。
 - latest GitHub Release 于 `2026-08-20T14:44:40Z` 发布，非 draft/prerelease。四项资产与 tag 源文件的 size/SHA-256 逐项一致：`migrate-fnos.sh`=`34269/90510768...cbfd`、`repair-junimo-0.3.5.sh`=`14585/13a07708...31cd0e`、`repair-junimo-upgrade.sh`=`8521/4f3c6667...9b4c2`、`run.sh`=`33793/7263bfa3...e130787`。从 push 到 Release 约 `19m37s`；远端 `main` 发布后仍精确等于候选 commit。
-- 正式 runner 的候选和 promotion job 均以 owner label/trap 完成资源清理并成功退出。另一个同 SHA 本地复现候选在用户中断前已生成 image/fresh/restart 并进入 unhealthy Web 回滚，但没有取得终态，不能作为证明；当前托管权限又禁止启动 Docker Desktop、写 `.git/.agents`。可写临时 Docker config/Go cache/proof 目录已精确删除；只读 `.agents/anxi-release-candidate-1787235914-13036` 仍残留 `candidate.tar` 与 `fixtures.tar` 共 `163578880` bytes，且 daemon 侧 owner 资源暂时无法复核。权限恢复后必须先按 exact path/owner 清理并核对为 0，再提交推送本节发布后证据；不得旁路权限或把本地中断链记作全绿。
+- 正式 runner 的候选和 promotion job 均以 owner label/trap 完成资源清理并成功退出。另一个同 SHA 本地复现候选在用户中断前已生成 image/fresh/restart 并进入 unhealthy Web 回滚，但没有取得终态，不能作为证明。2026-08-22 权限恢复后已删除 `.agents/anxi-release-candidate-1787235914-13036` 中 `candidate.tar` 与 `fixtures.tar`（共 `163578880` bytes），并按 exact owner/name 删除唯一 exited DinD 容器及匿名卷；复核 artifact directory、daemon container/volume/network 均为 0。该本地中断链仍不得记作全绿。
 
 ## 本版专项矩阵
 

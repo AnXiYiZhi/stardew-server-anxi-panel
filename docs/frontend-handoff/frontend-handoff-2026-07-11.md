@@ -1,4 +1,4 @@
-# FE-STEAM-CREDENTIAL-RECOVERY-1 前端接手记录（2026-08-22，completed，未发布）
+# FE-STEAM-CREDENTIAL-RECOVERY-1 前端接手记录（2026-08-22，released in v0.5.11）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -10,7 +10,7 @@
 
 - 状态回归、响应式布局回归和 production build 均通过。应用内 Browser 用 `steam_auth_failed + missing-files + admin` 夹具完成“进入安装页 → 常驻按钮 → 完整新凭据表单”交互；桌面与 390px 窄屏无横向溢出、无遮罩、无 console warning/error。
 - 常驻入口必须保持 admin-only，不能显示或预填服务端保存的账号密码；“登录授权”与“更换账号”不能合并为同一含糊动作。后续若调整安装表单开放条件，必须继续让 `forceReauth` 覆盖普通诊断 guard，并保留运行中禁用门禁。
-- 本次改动尚未进入正式镜像；生产仍使用 v0.5.10 旧界面，需下一次正式发布后才可在线使用。
+- 正式候选 `32575311262`、Compatibility `32575311243`、自动 Tag `32575807110` 与提升 `32575818623` 全绿；`v0.5.11@a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb` 已发布，三仓版本与 `latest` 统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`。官网首页/changelog 同步由后续 docs-only 提交完成，不得移动该 tag 或重建 digest。
 
 # DOCS-PORTAL-0.5.4-0.5.5 接手记录（2026-08-18，completed，已上线）
 

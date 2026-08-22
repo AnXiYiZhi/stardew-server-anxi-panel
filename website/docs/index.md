@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.7
+release: v0.5.11
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.7。失败且未提交的存档导入可在下一次上传时安全自动恢复，兼容 v0.5.5 已清空任务中心后留下的严格可证明现场。
+    details: 当前最新 v0.5.11。Steam 密码错误会进入明确的凭据恢复路径，管理员也可随时更换账号并强制重新认证，不删除游戏文件或存档。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.7</strong>
-    <p>存档导入在提交前失败时，下一次上传会先安全收敛旧事务；旧版已清空任务中心的严格可证明现场也可自动恢复。</p>
+    <strong>v0.5.11</strong>
+    <p>Steam 密码错误会正确提示；管理员可主动更换 Steam 账号并重新认证，旧授权缓存会清除，游戏文件和存档继续保留。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

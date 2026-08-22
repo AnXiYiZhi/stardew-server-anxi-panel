@@ -1,9 +1,11 @@
-# STEAM-CREDENTIAL-RECOVERY-1 跨端契约（2026-08-22，已完成、未发布）
+# STEAM-CREDENTIAL-RECOVERY-1 跨端契约（2026-08-22，released in v0.5.11）
 
 - SteamCMD 明确输出 `Invalid Password` 等凭据失败标记时，driver 必须发布既有 `state=steam_auth_failed` 与 `driverPhase=credentials_required`；即使同一行还包含 `Logging in user`，具体失败也优先于通用 progress。网络、下载、磁盘或其它 SteamCMD 非零退出继续使用 `steamcmd_failed`，前端不得把所有下载失败都解释为密码错误。
 - 安装页根据 `steam_auth_failed/credentials_required` 优先展示重新输入凭据路径，不得因同时存在 `installationDiagnostic.status=incomplete/requiredFiles=missing` 而误导用户先修复并继续复用错误凭据。为兼容历史错误终态和诊断不可用，管理员还始终拥有“更换 Steam 账号 / 重新认证”入口。
 - 强制入口沿用既有安装请求字段 `steamUsername`、`steamPassword`、`vncPassword`、`imageTag`、`forceReauth=true`。后端据此清除保存的 Steam session 与 SteamCMD 授权卷后重新认证，但保留已下载游戏文件和存档；普通“登录授权”仍复用保存凭据，两种动作的 UI 文案必须保持可区分。
 - 联调回归覆盖组合错误行终态、缓存授权回退、部分安装诊断与认证失败的显示优先级、常驻入口完整表单，以及桌面/390px 响应式交互。API/DTO shape、权限边界和凭据不回显契约不变。
+- 正式候选 `32575311262` 与 Compatibility `32575311243` 完成后端、前端、真实 Junimo integration、production bundle、不可变 image fresh/restart 和 `v0.5.10` Web unhealthy/healthy；自动 Tag `32575807110` 与正式提升 `32575818623` 成功。`v0.5.11` 三仓版本/`latest` 统一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`，正式 GHCR health/version smoke 与 Release 均通过。
+- 候选没有向 Steam 发送生产或长期测试密码；“组合 progress + Invalid Password”由确定性 driver 回归验证，管理员 force 表单由状态回归、production bundle 和发布前应用内 Browser 验证。任何后续真实 Steam E2E 必须使用可撤销的受控测试账号，且密码/验证码不得进入 job log、artifact 或发布文档。
 
 # v0.5.10 跨端契约正式发布证据（2026-08-20，released）
 

@@ -1,5 +1,10 @@
 # 后期优化文档
 
+## GITHUB-ACTIONS-NODE20-DEPRECATION-1：升级 action runtime 引用（低优先级，2026-08-22）
+
+- v0.5.11 候选 `32575311262` 与正式提升 `32575818623` 都出现非阻断 annotation：部分当前 action 仍声明 Node.js 20 runtime，GitHub-hosted runner 已强制以 Node.js 24 执行。候选、digest 提升、smoke 与 Release 均成功，这不是产品或镜像失败。
+- 后续在 `actions/checkout`、`actions/setup-go`、`actions/setup-node`、`actions/upload-artifact`、`docker/login-action`、`softprops/action-gh-release` 提供并验证面向 Node 24 的稳定版本后，逐项固定新 major/SHA；必须继续通过候选、Tag、promotion 和 docs deploy，不能用 `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION` 或屏蔽 annotation 收口。
+
 ## DOCS-PORTAL-VITEPRESS-OUTLINE-RACE-1：官网快速历史切换竞态（暂缓，2026-08-10）
 
 - v0.4.10 发布后线上终验的普通路径已经通过：桌面/手机从首页进入 changelog，等待 Hero 入场与全局 smooth 回顶稳定后均位于日志顶部，无横向溢出、framework overlay、console/page/request 错误。
