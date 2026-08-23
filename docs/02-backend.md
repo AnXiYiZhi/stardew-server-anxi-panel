@@ -1,9 +1,10 @@
-# CONTROL-ONLY-AUTH-ADVISORY-1：未变化认证服务不再阻塞 Control-only 升级（2026-08-23，completed，未发布）
+# CONTROL-ONLY-AUTH-ADVISORY-1：未变化认证服务不再阻塞 Control-only 升级（2026-08-23，released in v0.5.13）
 
 - 生产 `v0.5.12` 只读时间线确认：Panel 已不调用 `/steam/ready`，但一次只更新 Control 的全栈升级仍在认证阶段等待约 400 秒；原因是未变化的 `steam-auth-cn` 后台自动登录连续重试 Steam，进程在重试结束前未及时响应 `/health`。随后真正的 server/Junimo/SMAPI/Control 验收约 24 秒完成，旧 UI 却把认证和 server 两个内部阶段都公开成 `verifying_runtime`，全程显示“正在验证 SMAPI 实际加载版本”。
 - apply runner 现在按不可变恢复清单判定边界：只在 `server`、`steam-auth-cn` 与宿主 JunimoServer Mod 均未变化的纯 Control-only 模式使用 advisory。该模式仍强制 auth 容器为 `running` 且实际 image ID 精确等于已选目标；随后只发起一次默认 2 秒的 `/health` 快照。Docker 层 Bash 探针对状态行、响应头和响应体分别使用容器内 1 秒读取上限，避免宿主取消后 Compose 子进程仍等待响应；成功记录 `ok`，超时、不可达、HTTP/JSON 契约失败记录显式 `warning` 并继续，不调用 `/steam/ready`，最终验收也不重复该探针。
 - 只要 server、auth 或 JunimoServer Mod 任一发生变化，现有最多 10 分钟的严格 `/health` 验收、失败原因、认证卷保护和成对回滚保持不变；Control-only 的容器未运行或 digest 不匹配也仍是硬失败。停止态实例可临时启动未变化 auth 完成精确身份验收，结束后仍恢复原停止态，且不创建或恢复 steam-session 快照。
 - 影响 `internal/docker/runtime_apply.go`、`runtime_update_apply_runner.go`、`driver.go`、apply 单元/真实 Docker integration 夹具，以及 Web full-stack 阶段映射；API 结构、SQLite、Compose、运行栈清单、Steam 登录后台策略与凭据均未改变。公开 `fullStack.phase` 在既有字符串字段中新增 `verifying_auth`，`verifying_runtime` 只再表示 Junimo/SMAPI/Control 验收。真实 Docker auth fixture、Linux Go 1.25 整仓 test（Junimo 96.341s、Web 87.857s）、Windows vet/build 已通过；Windows 全包唯一失败仍是已记录的 NTFS `0666`/Linux `0640` mode 差异。
+- 首轮候选/Compatibility 因后台 `sleep` watchdog 成功路径反杀真实探针而失败，未生成可提升制品；改为 Bash HTTP 读取自身的一秒上限后，`be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd` 的 Compatibility `32648758687` 与候选 `32648758732` 全绿。自动 annotated tag `32649334502` 和正式提升 `32649344923` 成功，能力已随三仓同 digest 的 `v0.5.13/latest` 发布；唯一 digest 为 `sha256:b983d444d82f3303dbe65aa130a6da4160beaa3c98bcffd5f3704724395071a9`。
 
 # STEAM-CREDENTIAL-RECOVERY-1：SteamCMD 密码错误稳定进入凭据恢复（2026-08-22，released in v0.5.11）
 

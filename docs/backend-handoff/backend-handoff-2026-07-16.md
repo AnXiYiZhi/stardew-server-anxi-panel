@@ -1,4 +1,4 @@
-# CONTROL-ONLY-AUTH-ADVISORY-1 后端接手记录（2026-08-23，completed，未发布）
+# CONTROL-ONLY-AUTH-ADVISORY-1 后端接手记录（2026-08-23，released in v0.5.13）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -8,7 +8,8 @@
 
 ## 如何验证、下一步注意事项
 
-- 真实 Docker auth probe integration 全包矩阵全绿（23.348s），覆盖成功、timeout、404/500、坏 JSON 与不可达；真实 Control-only/严格升级专项全绿（13.348s），并确认 `/steam/ready` 零调用。Linux Go 1.25 整仓 test 全绿（Junimo 96.341s、Web 87.857s），Windows vet/build 通过。Windows 整仓唯一失败仍是已知 NTFS `0666`/Linux `0640` mode 差异。正式发布仍必须按 `docs/09-image-build.md` 的本版矩阵在升级后的不可变候选上复验。
+- 真实 Docker auth probe integration 全包矩阵全绿（23.348s），覆盖成功、timeout、404/500、坏 JSON 与不可达；真实 Control-only/严格升级专项全绿（13.348s），并确认 `/steam/ready` 零调用。Linux Go 1.25 整仓 test 全绿（Junimo 96.341s、Web 87.857s），Windows vet/build 通过。Windows 整仓唯一失败仍是已知 NTFS `0666`/Linux `0640` mode 差异。
+- 首轮候选/Compatibility 因旧后台 `sleep` watchdog 成功路径反杀探针而失败，未生成可提升制品；修复后的候选 `32648758732@be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd` 与 Compatibility `32648758687` 完成上述矩阵、fresh/restart 和 `v0.5.12` Web unhealthy/healthy 升级。自动 tag `32649334502` 与正式提升 `32649344923` 成功，后端变更已随 `v0.5.13` 和唯一 digest `sha256:b983d444d82f3303dbe65aa130a6da4160beaa3c98bcffd5f3704724395071a9` 发布。
 - 后续不得把 advisory 扩展到 server/auth/Junimo Mod 变化，也不得把容器 running 或 image ID 降成 warning。若 auth `/health` 成功但 `logged_in=false`，仍只记录在线能力 warning；邀请码与 Steam 登录不属于升级硬门禁，但也不能替代精确容器身份。
 - Control-only 终验故意不重复 `/health`，避免同一后台重连被二次等待；任何新增健康调用都应有有界次数/预算测试。公开阶段字符串由 Web 映射函数集中维护，新增内部 apply phase 时需同步前端状态机和跨端文档。
 

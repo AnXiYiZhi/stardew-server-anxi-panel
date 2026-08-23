@@ -1,8 +1,9 @@
-# FE-CONTROL-ONLY-AUTH-PHASE-1：认证验收与 SMAPI 验收分阶段展示（2026-08-23，completed，未发布）
+# FE-CONTROL-ONLY-AUTH-PHASE-1：认证验收与 SMAPI 验收分阶段展示（2026-08-23，released in v0.5.13）
 
 - 全栈更新状态机新增消费既有字符串字段值 `fullStack.phase=verifying_auth`，并将其纳入 active phase；顶栏/总览显示“正在验证认证服务健康（不等待 Steam 登录）”。原 `verifying_runtime` 继续显示“正在验证 SMAPI 实际加载版本”，不再承载认证服务等待。
 - 更新详情时间线在 `updating_runtime` 与 `verifying_runtime` 之间新增认证验收节点。阶段标签继续由 `panelUpdatePhaseLabel` 纯 selector 从后端权威状态派生，没有增加本地 React 状态、effect 或独立计时器，因此顶栏、总览和详情不会各自猜测不同阶段。
 - 影响 `panel-update-machine.ts`、`UpdateDetailsDialog.tsx` 与状态机回归；API TypeScript shape、权限、升级按钮和 reconnect 策略不变。`test:panel-update`、`test:responsive-layout` 与 production build 已通过，覆盖新阶段保持 active/non-terminal，以及认证与 SMAPI 两条文案不再混用。
+- 正式候选 `32648758732@be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd` 的完整前端状态回归、production build、候选 fresh/restart 与 `v0.5.12 → v0.5.13` Web 升级后 bundle 验收通过；自动 annotated tag `32649334502`、正式提升 `32649344923` 与 GitHub Release 成功，前端阶段拆分已随 `v0.5.13` 发布。
 
 # FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，released in v0.5.11）
 

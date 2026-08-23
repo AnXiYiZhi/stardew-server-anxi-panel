@@ -6,7 +6,15 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.5.12（最新版本）
+## v0.5.13（最新版本）
+
+**只更新 Control 时不再等待 Steam 后台重新登录**：当服务器镜像、认证镜像和 JunimoServer Mod 都没有变化时，Panel 仍会严格核对认证容器正在运行且镜像身份完全一致，但 `/health` 只做一次有界检查。Steam 正在后台重连、健康接口暂时超时或返回异常时，页面会留下明确告警并继续验证 Control、Junimo 和 SMAPI，不再让一次 Control-only 升级额外卡住数分钟。
+
+**认证服务与 SMAPI 的验证进度分开显示**：更新页新增“正在验证认证服务健康（不等待 Steam 登录）”阶段；“正在验证 SMAPI 实际加载版本”只在真正进入服务器、Junimo、SMAPI 与 Control 验收时显示。这样即使 Steam 后台正在重试，页面也不会再误报成 SMAPI 验证卡住。
+
+安全边界没有放宽：只要服务器、认证镜像或 JunimoServer Mod 任一发生变化，认证 `/health` 仍是严格门禁，失败继续执行原有认证卷保护和成对回滚；Control-only 下认证容器停止或镜像身份偏离也仍会安全失败。本版从 `v0.5.12` 完成 fresh install、Panel 重启、异常目标自动回滚、健康 Web 升级及升级后真实 Docker 专项；Docker Hub、阿里云 ACR、GHCR 的 `0.5.13/latest` 与 GitHub Release 使用同一不可变镜像。
+
+## v0.5.12
 
 **新建存档时可以直接选择农场山洞**：在农场类型之后新增“农场山洞”选项。默认“保留原版”，继续等待德米特里厄斯来访后在游戏中决定；也可以在建档时直接选择“果蝠洞”或“蘑菇洞”，不必再等待原版事件。蘑菇洞会完整布置蘑菇箱和脱水机，果蝠洞会保持对应的原版产出方式。
 

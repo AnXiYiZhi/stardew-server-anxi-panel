@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.12
+release: v0.5.13
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.12。新建存档时可保留原版山洞事件，或直接选择果蝠洞、蘑菇洞；选择只作用于本次新建档。
+    details: 当前最新 v0.5.13。只更新 Control 时不再等待 Steam 后台重新登录，认证验收与 SMAPI 验收也会分开显示。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.12</strong>
-    <p>新建存档新增农场山洞选择：保留原版剧情，或直接启用果蝠洞、蘑菇洞；已有存档不会被改动。</p>
+    <strong>v0.5.13</strong>
+    <p>Control-only 升级不再被 Steam 后台重连拖住；认证服务与 SMAPI 的验证阶段现在各自显示真实进度。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

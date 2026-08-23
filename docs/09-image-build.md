@@ -1,10 +1,10 @@
-# 下一候选：Control-only 认证健康有界告警与独立阶段（2026-08-23，completed，未发布）
+# v0.5.13 Control-only 认证健康有界告警与独立阶段（2026-08-23，released）
 
 ## 变更清单、受影响链路与发布边界
 
 - 生产 `v0.5.12` 只读证据显示，Control-only 全栈更新在认证阶段约 400 秒等待未变化 `steam-auth-cn` 的 Steam 自动登录重试；真正的 server/Junimo/SMAPI/Control 验收约 24 秒。Panel 已经不调用 `/steam/ready`，但旧 UI 把认证与 server 验收共同映射为 `verifying_runtime`，因此误显示“正在验证 SMAPI 实际加载版本”。
 - 本版只对恢复清单明确证明 server/auth 镜像和宿主 JunimoServer Mod 均未变化的纯 Control-only 链调整验收：auth 容器 `running` 与精确 image ID 仍是硬门禁；`/health` 只做一次默认 2 秒 advisory，HTTP 状态行、响应头和响应体各有 1 秒容器内读取上限，保证 Docker Compose exec 自行退出；失败形成显式 check/warning 后继续，最终验收不重复探测。server/auth/Junimo Mod 任一变化时原严格 `/health`、认证卷快照、成对回滚与失败码全部保持。
-- Web 公开阶段新增 `verifying_auth`，前端状态机、顶栏/总览和详情时间线将其与 `verifying_runtime` 分开。变更影响 backend runtime apply/Web 映射、frontend 状态展示和对应测试；不改变 SQLite、Compose、runtime manifest、Control/SMAPI/Junimo 制品或 Steam 凭据。未创建 tag、未构建或提升正式镜像，下一候选必须从与 `origin/main` 同步且工作树干净的 `main` 完整执行。
+- Web 公开阶段新增 `verifying_auth`，前端状态机、顶栏/总览和详情时间线将其与 `verifying_runtime` 分开。变更影响 backend runtime apply/Web 映射、frontend 状态展示和对应测试；不改变 SQLite、Compose、runtime manifest、Control/SMAPI/Junimo 制品或 Steam 凭据。能力已从同步干净的 `main` 通过完整正式门禁发布为 `v0.5.13`。
 
 ## 本版专项矩阵
 
@@ -18,11 +18,14 @@
 | 真实 Web 升级 | 当前上一正式版到同一不可变候选，先 unhealthy 再 healthy apply | unhealthy 为 `failed_rolled_back/health_check_failed` 且旧版恢复；healthy 升级后的 Panel 再执行上述 Control-only 专项并保持 SQLite、实例状态、非目标容器/volume |
 | 资源清理 | 单元/真实 Docker/候选 DinD/fresh/restart/两次 Web 升级 | 仅按任务 owner 精确清零 container/network/volume/bind/temp；不使用生产数据，不 prune |
 
-## 当前验证与候选待办
+## 本地、候选、Tag、正式提升与 Release 证据
 
 - 后端针对性回归已覆盖运行态/停止态 advisory、单次探测、auth 容器/digest 硬失败、Junimo 修复继续严格、变化组件严格失败以及 Web phase 映射；真实 Docker auth probe integration 全包矩阵全绿（23.348s），覆盖成功、timeout、404/500、坏 JSON 与不可达；真实 Control-only/严格升级专项全绿（13.348s），并确认 `/steam/ready` 零调用。Linux Go 1.25 整仓 test 全绿（Junimo 96.341s、Web 87.857s），Windows vet/build 通过；Windows 整仓唯一失败为已知 NTFS `0666` 与 Linux `0640` mode 差异。前端 `test:panel-update`、`test:responsive-layout` 和 production build 全绿。
-- 首次自动候选 `32648051704` 与 Compatibility `32648051700` 都在 `TestRuntimeInspectAndAuthHealthProbeWithoutNode` 失败并停止，未构建候选镜像、proof、tag 或 Release。门禁证明旧后台 `sleep` watchdog 的成功路径会等待并反向终止探针；已改为 Bash HTTP 读取自身的 1 秒上限，并让 integration 先有界等待夹具服务就绪后再执行完整错误矩阵。下一候选必须使用包含该修复的新 commit，失败运行不得重用或提升。
-- 本地门禁使用只读仓库 bind 和两个任务专属 Go cache volume；容器自动删除，两个 volume 已按精确名称删除并复核为零。正式发布前仍必须完成不可变镜像 fresh/restart、上一正式版 Web unhealthy/healthy 和升级后真实 Control-only 复验。候选 workflow ID、proof artifact、唯一 digest、耗时、选择/跳过矩阵、正式 promotion 与资源清理结果在实际发布后回填；本节当前不能作为候选证明。
+- 首次自动候选 `32648051704@6ef75d57ba83c14292dd48ca229b4df4f55bb499` 与 Compatibility `32648051700` 都在 `TestRuntimeInspectAndAuthHealthProbeWithoutNode` 失败并停止，未构建候选镜像、proof、tag 或 Release。门禁证明旧后台 `sleep` watchdog 的成功路径会等待并反向终止探针；改为 Bash HTTP 读取自身的 1 秒上限，并让 integration 先有界等待夹具服务就绪后再执行完整错误矩阵。失败运行未重用、未提升，修复后从新 commit 重新生成候选。
+- 成功候选固定 `main@be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd`、version=`0.5.13`、previous=`0.5.12`、UTC build date=`2026-08-23T15:30:52Z`。Compatibility `32648758687` 约 2 分 38 秒全绿；候选 `32648758732` 约 10 分 53 秒全绿，其中 selected code gates 约 4 分 04 秒、Windows wrapper 4 秒、image/fresh/restart/真实 Web 升级 6 分钟。路径矩阵执行兼容契约、部署脚本、backend test/vet/build、updater/Docker integration、SMAPI 真实下载、Junimo 真实 network/runtime integration、frontend 全状态回归/production build 和 website build；runtime manifest 输入未变，remote artifact verification 由选择器跳过。
+- 同一候选完成 fresh install、`/health`、`/api/version`、未初始化态、Panel restart，并从真实 `v0.5.12` 通过 Web API 完成检查、dry-run、unhealthy apply/自动回滚/旧版恢复和同 digest healthy apply；升级后复验 SQLite integrity、初始化/长期 sentinel、非目标游戏容器与 volume、Mod 检查、legacy Control-only runtime repair、存档导入 exact-target/FIFO no-effect 和下一管理员 mutation 恢复。候选 ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.13-be25fb3a4d0d`，唯一 digest=`sha256:b983d444d82f3303dbe65aa130a6da4160beaa3c98bcffd5f3704724395071a9`，config/image ID=`sha256:2b4ece02c4c5fe48f2b55017eff8546f0f3c396b23b2887b37383a71d8e222db`。proof artifact=`release-candidate-0.5.13-be25fb3a4d0d`，ID=`9495732078`，size=`483` bytes，archive digest=`sha256:ed4be4077efcf0a359fb88343e6028270fe62a827db44742e3cd70208e483985`。
+- 自动 tag workflow `32649334502` 只在候选 commit 仍精确等于 `origin/main` 后创建 annotated `v0.5.13`：tag object=`376ce30e8a9ff715e419a7e117e4a79074f7c522`，peeled commit=`be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd`，tagger date=`2026-08-23T15:41:30Z`。正式提升 `32649344923` 约 1 分 25 秒完成且未重新 build；Docker Hub、阿里云 ACR、GHCR 的 `0.5.13` 与 `latest` 六个引用由 workflow 逐一断言等于 proof digest，回拉 GHCR 正式版本的 health/version 冒烟通过。GitHub Release `v0.5.13` 于 `2026-08-23T15:42:52Z` 发布，为非 draft、非 prerelease，`run.sh`、`migrate-fnos.sh`、`repair-junimo-0.3.5.sh`、`repair-junimo-upgrade.sh` 四项资产均为 uploaded。
+- 本地门禁使用完整仓库只读 bind 和两个任务专属 Go cache volume；容器自动删除，两个 volume 按精确名称删除并复核为零。候选/Compatibility 使用 GitHub-hosted 临时 runner 与脚本 EXIT trap 清理 fresh/DinD/升级夹具；下载核对的 proof 文件已按精确路径删除。没有使用生产数据或长期凭据，没有触碰生产容器，没有 prune、移动既有 tag 或在正式提升中重建镜像。
 
 # v0.5.11 Steam 凭据恢复与常驻更换账号入口（2026-08-22，released）
 

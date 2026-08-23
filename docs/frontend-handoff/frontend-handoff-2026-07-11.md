@@ -1,4 +1,4 @@
-# FE-CONTROL-ONLY-AUTH-PHASE-1 前端接手记录（2026-08-23，completed，未发布）
+# FE-CONTROL-ONLY-AUTH-PHASE-1 前端接手记录（2026-08-23，released in v0.5.13）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -7,7 +7,7 @@
 
 ## 如何验证、下一步注意事项
 
-- `npm run test:panel-update`、`npm run test:responsive-layout` 与 `npm run build` 已通过，覆盖新阶段 active/non-terminal、总览文案、认证/SMAPI 标签分离和 production bundle。正式候选还要在真实 Web 升级后的页面读取两个后端阶段。
+- `npm run test:panel-update`、`npm run test:responsive-layout` 与 `npm run build` 已通过，覆盖新阶段 active/non-terminal、总览文案、认证/SMAPI 标签分离和 production bundle。正式候选 `32648758732@be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd` 的完整前端回归、fresh/restart 与 `v0.5.12 → v0.5.13` Web 升级后 bundle 验收通过；自动 tag `32649334502`、正式提升 `32649344923` 和 GitHub Release 成功。
 - 后续不要在前端根据 warning 文本、进度百分比或持续时间猜 auth/SMAPI 阶段；阶段归属只认 `fullStack.phase`。`verifying_auth` 必须继续属于 active phase，否则 Panel 主更新已经 `succeeded` 后前端会过早把整个全栈任务判为 terminal。
 
 # FE-STEAM-CREDENTIAL-RECOVERY-1 前端接手记录（2026-08-22，released in v0.5.11）
