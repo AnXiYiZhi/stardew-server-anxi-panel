@@ -8,7 +8,8 @@
 
 - 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 从 v0.5.11 切换到 v0.5.12；更新日志置顶新增新建存档农场山洞三选一、仅作用于精确新建事务、已有/导入存档不改写和双重落盘复核说明，v0.5.11 保留为历史条目。
 - 用户可见文案来自已发布 `v0.5.12` GitHub Release、`docs/06-integration.md` 和 `docs/09-image-build.md`；只修改公开 Markdown、门户长期文档和本次执行错误记录，不改变主题、CSS、依赖、Panel API、镜像、tag、digest 或 Release 资产。
-- VitePress production build 3.58 秒通过；应用内 Browser 在本地 1280×720 与 390×844 从首页真实点击到 `/changelog.html`，首页/日志均命中 v0.5.12，日志顺序为 v0.5.12/v0.5.11，root/body 无横向溢出，framework overlay 与 console warn/error 为 0。推送后仍需等待 Pages 与 Compatibility workflow 成功，再对线上同一路径完成有界 HTTP 与 Browser 复核；纯 `website/docs` 提交不得触发候选重建或移动 `v0.5.12`。
+- VitePress production build 3.58 秒通过；应用内 Browser 在本地 1280×720 与 390×844 从首页真实点击到 `/changelog.html`，首页/日志均命中 v0.5.12，日志顺序为 v0.5.12/v0.5.11，root/body 无横向溢出，framework overlay 与 console warn/error 为 0。
+- 官网提交 `209123388196dd782d42ca2443046c5e90836185` 的 Pages `32625481060`（build 18 秒、deploy 10 秒）与 Compatibility `32625481058`（2 分 46 秒）全部成功，只触发这两条 workflow。线上首页和 changelog 有界 HTTP 均为 200；应用内 Browser 在 1280×720 与 390×844 再次从首页真实点击到 changelog，版本、顺序、山洞选择与作用域文案、横向溢出、framework overlay 和当前站点 console warn/error 全部通过。没有触发候选重建、移动 `v0.5.12` 或改变已发布镜像 digest。
 
 ## 2026-08-15：官网展示 v0.4.18
 
@@ -118,7 +119,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前展示目标为 `v0.5.12`）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.5.12` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |
