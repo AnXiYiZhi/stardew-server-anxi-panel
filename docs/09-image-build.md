@@ -3,7 +3,7 @@
 ## 变更清单、受影响链路与发布边界
 
 - 生产 `v0.5.12` 只读证据显示，Control-only 全栈更新在认证阶段约 400 秒等待未变化 `steam-auth-cn` 的 Steam 自动登录重试；真正的 server/Junimo/SMAPI/Control 验收约 24 秒。Panel 已经不调用 `/steam/ready`，但旧 UI 把认证与 server 验收共同映射为 `verifying_runtime`，因此误显示“正在验证 SMAPI 实际加载版本”。
-- 本版只对恢复清单明确证明 server/auth 镜像和宿主 JunimoServer Mod 均未变化的纯 Control-only 链调整验收：auth 容器 `running` 与精确 image ID 仍是硬门禁；`/health` 只做一次默认 2 秒 advisory，容器内 1 秒 watchdog 保证 Docker Compose exec 自行退出，失败形成显式 check/warning 后继续，最终验收不重复探测。server/auth/Junimo Mod 任一变化时原严格 `/health`、认证卷快照、成对回滚与失败码全部保持。
+- 本版只对恢复清单明确证明 server/auth 镜像和宿主 JunimoServer Mod 均未变化的纯 Control-only 链调整验收：auth 容器 `running` 与精确 image ID 仍是硬门禁；`/health` 只做一次默认 2 秒 advisory，HTTP 状态行、响应头和响应体各有 1 秒容器内读取上限，保证 Docker Compose exec 自行退出；失败形成显式 check/warning 后继续，最终验收不重复探测。server/auth/Junimo Mod 任一变化时原严格 `/health`、认证卷快照、成对回滚与失败码全部保持。
 - Web 公开阶段新增 `verifying_auth`，前端状态机、顶栏/总览和详情时间线将其与 `verifying_runtime` 分开。变更影响 backend runtime apply/Web 映射、frontend 状态展示和对应测试；不改变 SQLite、Compose、runtime manifest、Control/SMAPI/Junimo 制品或 Steam 凭据。未创建 tag、未构建或提升正式镜像，下一候选必须从与 `origin/main` 同步且工作树干净的 `main` 完整执行。
 
 ## 本版专项矩阵
@@ -20,7 +20,8 @@
 
 ## 当前验证与候选待办
 
-- 后端针对性回归已覆盖运行态/停止态 advisory、单次探测、auth 容器/digest 硬失败、Junimo 修复继续严格、变化组件严格失败以及 Web phase 映射；真实 Docker auth fixture 的 Control-only timeout 与严格 404/500/坏 JSON/timeout/unreachable 矩阵全绿（19.498s）。Linux Go 1.25 整仓 test 全绿（Junimo 77.266s、Web 68.945s），Windows vet/build 通过；Windows 整仓唯一失败为已知 NTFS `0666` 与 Linux `0640` mode 差异。前端 `test:panel-update`、`test:responsive-layout` 和 production build 全绿。
+- 后端针对性回归已覆盖运行态/停止态 advisory、单次探测、auth 容器/digest 硬失败、Junimo 修复继续严格、变化组件严格失败以及 Web phase 映射；真实 Docker auth probe integration 全包矩阵全绿（23.348s），覆盖成功、timeout、404/500、坏 JSON 与不可达；真实 Control-only/严格升级专项全绿（13.348s），并确认 `/steam/ready` 零调用。Linux Go 1.25 整仓 test 全绿（Junimo 96.341s、Web 87.857s），Windows vet/build 通过；Windows 整仓唯一失败为已知 NTFS `0666` 与 Linux `0640` mode 差异。前端 `test:panel-update`、`test:responsive-layout` 和 production build 全绿。
+- 首次自动候选 `32648051704` 与 Compatibility `32648051700` 都在 `TestRuntimeInspectAndAuthHealthProbeWithoutNode` 失败并停止，未构建候选镜像、proof、tag 或 Release。门禁证明旧后台 `sleep` watchdog 的成功路径会等待并反向终止探针；已改为 Bash HTTP 读取自身的 1 秒上限，并让 integration 先有界等待夹具服务就绪后再执行完整错误矩阵。下一候选必须使用包含该修复的新 commit，失败运行不得重用或提升。
 - 本地门禁使用只读仓库 bind 和两个任务专属 Go cache volume；容器自动删除，两个 volume 已按精确名称删除并复核为零。正式发布前仍必须完成不可变镜像 fresh/restart、上一正式版 Web unhealthy/healthy 和升级后真实 Control-only 复验。候选 workflow ID、proof artifact、唯一 digest、耗时、选择/跳过矩阵、正式 promotion 与资源清理结果在实际发布后回填；本节当前不能作为候选证明。
 
 # v0.5.11 Steam 凭据恢复与常驻更换账号入口（2026-08-22，released）

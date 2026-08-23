@@ -1,7 +1,7 @@
 # 2026-08-23 已完成、未发布：Control-only 认证健康改为有界告警并拆分 UI 阶段
 
 - [x] 生产 `v0.5.12` 只读确认约 400 秒停顿来自未变化 `steam-auth-cn` 的 Steam 自动登录重试；真正 server/SMAPI/Control 验收约 24 秒，旧 UI 因阶段合并误显示为 SMAPI 验证。
-- [x] Control-only 仅在 server/auth/JunimoServer Mod 均未变化时允许一次默认 2 秒 `/health` advisory；容器 running 与精确 image ID 保持硬门禁，容器内 1 秒 watchdog 保证探针有界，最终验证不重复探测，`/steam/ready` 始终禁用。
+- [x] Control-only 仅在 server/auth/JunimoServer Mod 均未变化时允许一次默认 2 秒 `/health` advisory；容器 running 与精确 image ID 保持硬门禁，HTTP 状态行/响应头/响应体各有 1 秒容器内读取上限，最终验证不重复探测，`/steam/ready` 始终禁用。
 - [x] server、auth 或 JunimoServer Mod 变化继续执行严格 `/health`、认证卷保护和回滚；Control-only 容器停止/digest 偏离也安全失败。运行态、停止态、单次告警探测、身份硬失败与真实 Docker timeout/严格错误矩阵均已通过。
 - [x] Web 新增公开 `verifying_auth` 阶段；前端顶栏、总览和详情时间线与 `verifying_runtime` 分开展示并由同一 selector 派生，状态机回归已覆盖。
 - [x] Linux Go 1.25 整仓 test、Windows vet/build、前端 panel-update/响应式回归和 production build 全绿；Windows 整仓唯一失败为既有 NTFS mode 差异，任务专属 Go cache/container 已清零。

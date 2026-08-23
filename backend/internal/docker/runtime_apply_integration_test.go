@@ -226,7 +226,14 @@ ThreadingHTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
 	if err != nil || service.State != "running" || service.ImageID != imageMetadata.ID {
 		t.Fatalf("service metadata=%+v err=%v compose=%s", service, err, run("compose", "--project-name", project, "--file", composePath, "ps", "-a"))
 	}
-	health, err := client.RuntimeSteamAuthHealth(ctx, workDir, project)
+	var health RuntimeAuthServiceHealth
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		health, err = client.RuntimeSteamAuthHealth(ctx, workDir, project)
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if err != nil || health.LoggedIn || health.AccountCount != 0 {
 		t.Fatalf("health=%+v err=%v", health, err)
 	}

@@ -1,7 +1,7 @@
 # CONTROL-ONLY-AUTH-ADVISORY-1 跨端契约（2026-08-23，completed，未发布）
 
 - `fullStack.phase` 的既有字符串字段新增 `verifying_auth`：后端仅在 runtime apply 内部阶段为 `verifying_auth` 时发布它；`verifying_server` 继续映射为 `verifying_runtime`。前端必须分别显示“认证服务健康（不等待 Steam 登录）”和“SMAPI 实际加载版本”，不得再把两个阶段合并。
-- Control-only 的严格定义是恢复清单中 `ServerImageChanged=false`、`AuthImageChanged=false` 且没有 JunimoServer Mod replace intent。此时 auth 验收仍要求容器 `running` 和实际 image ID 精确匹配，随后只允许一次默认 2 秒 `/health` advisory；Docker 探针自身用 1 秒容器内 watchdog 保证 Compose 子进程有界退出。失败写入 `checks[name=steam_auth_ready].status=warning` 与脱敏 warning，但 apply 继续。终态 server 验收只复核 auth 运行态/digest，不再次探测 `/health`，全链禁止 `/steam/ready`。
+- Control-only 的严格定义是恢复清单中 `ServerImageChanged=false`、`AuthImageChanged=false` 且没有 JunimoServer Mod replace intent。此时 auth 验收仍要求容器 `running` 和实际 image ID 精确匹配，随后只允许一次默认 2 秒 `/health` advisory；Docker 探针对 HTTP 状态行、响应头和响应体分别设置 1 秒容器内读取上限，保证 Compose 子进程有界退出。失败写入 `checks[name=steam_auth_ready].status=warning` 与脱敏 warning，但 apply 继续。终态 server 验收只复核 auth 运行态/digest，不再次探测 `/health`，全链禁止 `/steam/ready`。
 - server、auth 或 JunimoServer Mod 任一发生变化时，`/health` 仍是严格硬门禁，失败必须进入现有 rollback；Control-only 下的 auth 容器停止或 digest 不匹配同样是硬失败。是否登录 Steam、账号数和邀请码只属于在线能力，不能替代容器/digest，也不能把登录重试升级成 Control-only 阻塞条件。
 - 联调最低矩阵：运行态和停止态 Control-only 的 `/health` 成功/超时；每次最多一次 advisory；auth 容器停止与 digest 偏离硬失败；server/auth/Junimo Mod 变化时健康失败严格回滚；前端两个阶段均 active 且标签独立；真实 Docker fixture 的 `/steam/ready` 调用次数为零。
 

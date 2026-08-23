@@ -3784,3 +3784,13 @@
 - 正确做法：先读取当前 JSON 或其 Go schema，再投影 `controlMod`；同时独立检查 `stackVersion` 后缀、源码/嵌入 manifest 版本和实际文件 SHA-256。
 - 预防检查：结构化清单的一致性探针不得凭记忆写属性路径；首次核验先列出顶层属性名或读取对应 schema，null 字段必须作为探针自身错误排查而不是直接判产品不一致。
 - 适用范围：runtime stack、版本清单、候选证明和其它 JSON/YAML 构建元数据核验。
+
+# 2026-08-23：GitHub Actions 终态竞态下直接取消运行返回 HTTP 500
+
+- 环境：Windows 11、PowerShell 7、GitHub CLI，正式候选与兼容矩阵并行运行。
+- 错误模式：兼容矩阵失败后，根据上一轮仍为 `in_progress` 的候选快照直接执行 `gh run cancel <run-id>`，未先刷新候选终态。
+- 症状 / 退出码：GitHub API 返回 `HTTP 500: Failed to cancel workflow run`，命令退出 1；紧接着只读查询确认该候选已自行完成为 `failure`，因此没有可取消的运行，也没有 tag 或发布状态变更。
+- 根因：候选在状态快照与取消请求之间进入终态，取消 API 对这一竞态返回 500 而不是幂等成功或 409。
+- 正确做法：取消前立即用 `gh run view <run-id> --json status,conclusion` 刷新状态；仅当仍为 `queued`/`in_progress` 时发送一次取消。取消异常后先再次查询终态，不原样重试。
+- 预防检查：正式发布门禁失败后的控制动作固定为“刷新目标运行状态 → 条件取消 → 读取最终结论”；运行 ID 只来自已确认的本次 commit，不批量取消。
+- 适用范围：GitHub Actions 候选、兼容矩阵、正式提升及其它异步 workflow 的取消与清理。

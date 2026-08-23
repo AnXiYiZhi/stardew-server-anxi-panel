@@ -15,22 +15,18 @@ var runtimeSnapshotVolumePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*_anxi
 var runtimeHTTPStatusPattern = regexp.MustCompile(`^[0-9]{3}$`)
 
 const runtimeAuthHealthProbe = `set -eu
-probe_pid=$$
-(sleep 1; kill -TERM "$probe_pid" 2>/dev/null || true) &
-watchdog_pid=$!
-cleanup_probe_watchdog() {
-  kill "$watchdog_pid" 2>/dev/null || true
-  wait "$watchdog_pid" 2>/dev/null || true
-}
-trap cleanup_probe_watchdog EXIT
-trap 'exit 124' TERM
 exec 3<>/dev/tcp/127.0.0.1/3001
 printf 'GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
-IFS= read -r status <&3
+IFS= read -r -t 1 status <&3 || exit 124
 printf '%s\n' "$status"
-while IFS= read -r line <&3; do [ "$line" = $'\r' ] && break; done
+while true; do
+  IFS= read -r -t 1 line <&3 || exit 124
+  [ "$line" = $'\r' ] && break
+done
 body=''
-IFS= read -r -d '' body <&3 || true
+read_status=0
+IFS= read -r -t 1 -d '' body <&3 || read_status=$?
+[ "$read_status" -le 128 ] || exit 124
 printf '%s' "$body"`
 
 const runtimeServerHealthProbe = `set -eu
