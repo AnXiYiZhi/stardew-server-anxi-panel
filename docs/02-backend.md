@@ -2238,10 +2238,11 @@ Junimo/auth dry-run 在拉取后将 tag 解析出的 RepoDigest 与矩阵逐项�
 - 新增回归覆盖流式中间字节、最终完成、已校验缓存命中，以及“没有完成标记但迁移到旧授权缓存”的修复安装直接免验证登录；既有缓存失效后完整登录回退与已标记缓存修复回归继续通过。
 - 2026-08-18 Windows 宿主定向五项安装/下载回归通过。全包宿主测试仅命中既有 Linux 权限断言 `Compose mode=0666, want 0640`，不是本功能失败；正式候选仍必须在 Linux 文件系统完成全量 Go 门禁和真实 Docker 安装 E2E。本节代码尚未部署生产、未创建 tag/Release、未提升镜像。
 
-## 新建存档农场山洞选择（2026-08-23，未发布）
+## 新建存档农场山洞选择（2026-08-23，released in v0.5.12）
 
 - `POST /api/instances/{id}/saves/new` 的 `NewGameConfig` 新增 `farmCaveChoice`，只接受 `vanilla | bats | mushrooms`；字段缺失时后端补为 `vanilla`，未知值在创建任务前返回参数错误。该值随其它面板专属新建参数写入 `server-init.json`，没有修改 Junimo 上游代码或协议。
 - Control `0.3.7` 在既有 target marker、事务 ID、预期新建存档名和玩家身份全部吻合后执行一次精确转换：`vanilla` 写 `caveChoice=0`、移除事件 `65` 并清理蘑菇设施；`bats` 写 `1`、记录事件 `65` 并清理蘑菇设施；`mushrooms` 写 `2`、记录事件 `65`，并调用游戏公开的 `FarmCave.setUpMushroomHouse()`。这层转换兼容 Junimo 在 Control `SaveLoaded` 前已把新存档预置为蘑菇洞的实际行为，保护条件不满足时不会修改已有存档。
 - Control 回读 `caveChoice`、事件 `65`、蘑菇箱/脱水机数量并写入 runtime status；Panel verifier 同时校验 Control 事务证据和主存档 XML。成功需要 `farmCaveChoiceApplied=true`、`farmCaveChoiceVerified=true`、事务/存档/时间匹配以及磁盘状态一致；错误码区分无效选择、Control 应用失败、Control 状态不一致和磁盘不一致。
 - 主要文件：`registry/types.go`、`stardew_junimo/{saves.go,new_game_durability.go,new_game_real_integration_test.go}`、Control 源码/契约测试、嵌入 DLL 与 runtime stack manifest。最终嵌入 DLL SHA-256 为 `bf8ba2026e33f62007e3d1cfca59b055da94806cc17dc999d62a1c94b2e39423`。
 - 验证：三种选择的 Go/Control 契约、默认值与非法输入、XML 正反例、Control 标准真实游戏程序集编译均通过；Docker Desktop 真实双写者 E2E 先创建蝙蝠洞、再创建蘑菇洞，二者均通过 runtime status 与主存档 XML 双重校验，源游戏卷及旧存档哈希不变。完整 `stardew_junimo/...` Linux 包回归通过。
+- 正式候选 `32623320406` 完成路径选择的完整后端 test/vet/build、Junimo 真实网络/runtime integration、fresh/restart、`v0.5.11 → v0.5.12` Web 升级与 unhealthy 回滚；自动 tag `32623853636` 和正式提升 `32623863894` 成功。能力已随 `v0.5.12@5141cd54` 和唯一 digest `sha256:faf910075f4b25a3172fe4ee53341cf53b9c3c26c1065ce38b65c19fcc9af5a0` 发布。

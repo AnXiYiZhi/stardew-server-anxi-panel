@@ -2077,7 +2077,7 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 - 响应式判断必须继续基于 `.sd-saves-modal-card-wide` 提供的 `ngc-modal`，不能恢复 `sd-main-scroll`。1100px 是压缩三栏入口，不再是单列入口；若调整列宽，至少复验默认半屏、840×720、769×500 和小于 560px 的强制桌面夹具。
 - 本地源码、production build 与 Browser QA 已完成；候选 `32127766494`、Compatibility `32127766392`、自动 Tag `32128518008` 与正式提升 `32128533342` 均成功，能力已随 `v0.5.5@a77fbe6` 和 digest `sha256:584a460c90103966394e71c67fe5416822985c9b8246013b5d2cff80400174de` 发布。
 
-# FE-NEW-GAME-FARM-CAVE-CHOICE-1 接手记录（2026-08-23，未发布）
+# FE-NEW-GAME-FARM-CAVE-CHOICE-1 接手记录（2026-08-23，released in v0.5.12）
 
 ## 改了什么
 
@@ -2088,4 +2088,4 @@ Mock 数据必须跟着类型变化更新，否则 `tsc --noEmit` 会报类型�
 
 - 影响 `frontend/src/types.ts`、`games/stardew/NewGameCreator.tsx/.css` 和 `scripts/test-new-game-idempotency.ts`。idempotency 专项和 production build 通过；Browser 在 1280×720、390×844 验证默认/点击状态、单列布局、无横向溢出和零 console warning/error。
 - 不要把 UI 默认值改成 `bats` 或 `mushrooms`；后端缺省也必须保持 `vanilla`。响应式选择器依赖 `.sd-saves-modal-card-wide` 的 `container-name: ngc-modal`，独立夹具必须复现该祖先契约后才能判定移动端回归。
-- 当前只完成本地实现和实机 Docker 验证，未创建候选、tag、Release 或正式镜像。
+- 正式候选 `32623320406` 的完整前端回归、production build、候选镜像和升级后 bundle 验收通过；自动 tag `32623853636`、正式提升 `32623863894` 与 GitHub Release 成功，能力已随 `v0.5.12@5141cd54` 发布。

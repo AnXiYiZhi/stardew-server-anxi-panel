@@ -2353,7 +2353,7 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - 前序阶段按用户要求未创建/移动 `v*` tag、GitHub Release 或正式镜像；2026-08-17 用户确认人工矩阵通过并明确授权正式发布，后续仍只允许由不可变候选自动创建 annotated tag 和提升同一 digest。
 - 用户确认两个真实客户端已完成：各自首次设置不同角色密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate 与 Panel 重启后保持。该用户确认作为本次人工交互证据，自动夹具继续只证明代码/容器契约。
 
-# NEW-GAME-FARM-CAVE-CHOICE-1 本地构建与 Docker 证据（2026-08-23，未发布）
+# NEW-GAME-FARM-CAVE-CHOICE-1 构建、候选与发布证据（2026-08-23，released in v0.5.12）
 
 ## 变更范围与专项矩阵
 
@@ -2368,9 +2368,12 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 | 前端 | 默认态、切换、重复提交、桌面/移动布局 | 选中态唯一、字段保留、无横向溢出或 console error |
 | 资源清理 | 任务容器、网络、volume、临时构建/预览夹具 | 按任务 owner/精确路径清理，不触碰生产资源 |
 
-## 本地不可发布证据
+## 本地与正式证据
 
 - Control 纯契约测试通过；在 `.NET 6 SDK` 中使用本机真实 Stardew 1.6.15 游戏程序集执行标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`，结果 0 error、1 个既有 CS9057 analyzer/compiler warning。最终 DLL、源码/嵌入 manifest 和 runtime stack manifest 已同步为 `0.3.7`。
 - Docker Desktop 真实 `TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn` 运行约 153 秒并通过：从只读源游戏 volume 克隆到任务 volume，第一轮创建果蝠、第二轮创建蘑菇；两轮均验证 Control transaction/snapshot 与主存档 XML，源游戏卷及旧存档哈希不变，Compose 夹具终态清理成功。
 - `golang:1.25-alpine` 以完整仓库只读 bind 和任务专属 module/build cache 执行 `go test ./internal/games/stardew_junimo/... -count=1`，包测试 58.081 秒、config 0.026 秒通过。前端 `test:new-game-idempotency` 与 Vite production build 通过；应用内 Browser 在 1280×720 和 390×844 完成默认/切换、命名容器响应式、overflow 与 console QA。
-- 以上属于开发期本机验证，不是正式候选证明。本次未构建/推送候选镜像，未执行上一正式版 Web 升级和 unhealthy 回滚，未创建或移动 tag、GitHub Release，也未更新任何 `latest`；正式发布仍必须完整执行本文件顶部硬门禁。
+- 正式候选 workflow `32623320406`（attempt 1）固定版本 `0.5.12`、上一正式版 `0.5.11`、commit `5141cd54dca1752419a9d738f873623a4871f884` 与 UTC build date `2026-08-23T06:35:45Z`，约 12 分 15 秒完成。路径矩阵因 runtime manifest、Junimo runtime 与公开 docs 均变化，选择了远程运行栈制品核验、SMAPI 真实下载、Junimo 真实 network/runtime integration 和网站 production build；本次三个条件长门禁均未按路径跳过。常驻门禁同时完成兼容契约、部署脚本 Bash/ShellCheck、后端全量 test/vet/build、updater/Docker integration、全部前端状态回归与 production build。
+- 同一候选执行 fresh install、`/health`、`/api/version`、未初始化态、Panel restart，并从真实 `v0.5.11` 通过 Web API 完成检查、dry-run、apply、断线重连和 `v0.5.12` 终态；unhealthy 目标得到失败回滚和旧版恢复。SQLite integrity、初始化状态、长期 sentinel、非目标游戏容器/volume、Panel 重启、Mod 检查、legacy runtime repair 与存档导入边界均保持。候选封存为 `ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.5.12-5141cd54dca1@sha256:faf910075f4b25a3172fe4ee53341cf53b9c3c26c1065ce38b65c19fcc9af5a0`，不可变 proof artifact 为 `release-candidate-0.5.12-5141cd54dca1`；独立 Compatibility workflow `32623320473` 同样成功。
+- 自动 tag workflow `32623853636` 只在候选 commit 仍精确等于 `origin/main` 后创建 annotated `v0.5.12`；tag type 为 `tag`，peeled commit 为 `5141cd54dca1752419a9d738f873623a4871f884`。正式提升 `32623863894` 约 1 分 10 秒完成且未重新 build：Docker Hub、阿里云 ACR、GHCR 的 `0.5.12` 与 `latest` 六个引用经独立 `buildx imagetools inspect` 复核，全部等于候选唯一 digest。回拉一个正式 GHCR 版本的 health/version 冒烟通过，GitHub Release `v0.5.12` 为非 draft、非 prerelease 且成为 latest。
+- 本轮候选、Compatibility、自动 tag 与正式提升均一次成功，没有失败步骤或重跑。候选使用 GitHub-hosted 临时 runner 和脚本 EXIT trap 回收 fresh/DinD 容器、网络、volume 与临时文件；本机 Docker `sap-farm-cave` owner 的容器/网络/volume、4179 监听、Control 构建目录和失败夹具均为 0，下载的候选 proof 临时目录也已按精确路径删除。没有移动既有 tag，也没有在正式提升中重建镜像。

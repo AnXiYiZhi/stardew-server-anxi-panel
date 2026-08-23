@@ -39,7 +39,7 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.5.11`（commit `a9e186249a5c70c2e6fe45b7ed10a09db0b0c8bb`）。本版修复 SteamCMD 同一行同时包含登录进度和 `Invalid Password` 时被误归类为普通下载失败的问题，并为管理员增加常驻“更换 Steam 账号 / 重新认证”入口；新入口使用既有 `forceReauth` 清理授权缓存，但保留游戏文件和存档。候选 `32575311262`、Compatibility `32575311243`、自动 annotated tag `32575807110` 与正式提升 `32575818623` 全绿，三仓 `0.5.11/latest` 使用唯一 digest=`sha256:10c9813328370ae8ac92f11271fb76cd03787aab3b7f7fd523f20d66dfae8876`。发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程；完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.5.12`（commit `5141cd54dca1752419a9d738f873623a4871f884`）。本版在面板新建存档弹窗增加“保留原版 / 果蝠洞 / 蘑菇洞”选择；不修改 Junimo 上游，由 Control `0.3.7` 在严格事务保护内精确应用并通过运行时与主存档 XML 双重校验。候选 `32623320406`、自动 annotated tag `32623853636` 与正式提升 `32623863894` 全绿，三仓 `0.5.12/latest` 使用唯一 digest=`sha256:faf910075f4b25a3172fe4ee53341cf53b9c3c26c1065ce38b65c19fcc9af5a0`。发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程；完整证据见 `docs/09-image-build.md`。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

@@ -1308,7 +1308,7 @@
 - 后续不得把收到 `downloaded==total` 当成 SHA-256/ZIP 校验成功；不得仅凭迁移文件存在提前写 `STEAMCMD_AUTH_COMPLETED`。若 marker shape 变化，必须同步 `install-helpers.ts`、跨端文档和旧后端 fallback 回归。
 - 当前仅完成本地源码和定向验证，未部署用户飞牛服务器、未构建候选或发布镜像。
 
-# NEW-GAME-FARM-CAVE-CHOICE-1 接手记录（2026-08-23，未发布）
+# NEW-GAME-FARM-CAVE-CHOICE-1 接手记录（2026-08-23，released in v0.5.12）
 
 ## 改了什么
 
@@ -1324,4 +1324,4 @@
 ## 下一步注意事项
 
 - 不得去掉 target marker、事务、存档名或玩家身份任一保护条件，也不得把选择改成普通 `SaveLoaded` 全局迁移，否则会污染已有存档。`vanilla` 表示恢复原版未触发 Demetrius 事件的状态，不是接受 Junimo 的蘑菇预置。
-- 以后重编 Control 必须同步源码/嵌入 manifest 的版本、嵌入 DLL 与 runtime manifest 哈希，并重跑真实双写者 Docker E2E。当前未创建候选、tag、Release 或正式镜像。
+- 以后重编 Control 必须同步源码/嵌入 manifest 的版本、嵌入 DLL 与 runtime manifest 哈希，并重跑真实双写者 Docker E2E。候选 `32623320406`、自动 tag `32623853636` 和正式提升 `32623863894` 已成功，能力随 `v0.5.12@5141cd54` 与同 digest 正式镜像发布；完整证据见 `docs/09-image-build.md`。

@@ -1694,7 +1694,7 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 - 真实 Docker E2E 至少覆盖：SMAPI 慢速分块下载时 marker 单调推进且页面字节/百分比变化；候选切换归零并显示新序号；缓存命中直接显示校验通过；最后字节到达后进入校验/写入而不是提前完成。
 - 升级旧实例时准备仅有 legacy `config.vdf`、没有 `STEAMCMD_AUTH_COMPLETED` 的授权卷，点击修复后应先走免验证登录；再注入无效缓存，确认只自动回退一次完整登录并保留既有 Steam Guard 交互。正式候选、上一版 Web 升级和生产部署尚未执行。
 
-# NEW-GAME-FARM-CAVE-CHOICE-1 联调契约（2026-08-23，未发布）
+# NEW-GAME-FARM-CAVE-CHOICE-1 联调契约（2026-08-23，released in v0.5.12）
 
 ## 请求与默认值
 
@@ -1715,4 +1715,4 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 ## 联调验收
 
 - 前端 idempotency 必须证明重试时字段不丢失；后端覆盖缺省、三种合法值与非法值；Control 契约覆盖从 Junimo 蘑菇初态转到三种目标以及重复回读；真实 Docker E2E 至少连续创建两种固定选择并证明源游戏卷、旧存档及非目标资源不变。
-- 2026-08-23 Docker Desktop 已连续创建蝙蝠洞和蘑菇洞，Control status 与主存档 XML 双重校验通过，旧主存档/`SaveGameInfo` 哈希不变。正式候选与上一正式版 Web 升级尚未执行。
+- 2026-08-23 Docker Desktop 已连续创建蝙蝠洞和蘑菇洞，Control status 与主存档 XML 双重校验通过，旧主存档/`SaveGameInfo` 哈希不变。正式候选 `32623320406` 进一步完成 `v0.5.11 → v0.5.12` 真实 Web 升级、unhealthy 回滚、初始化/SQLite/非目标游戏资源保持和升级后 Panel 重启验收；能力已随自动 annotated `v0.5.12` 与同一候选 digest 发布。

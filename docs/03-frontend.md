@@ -2810,9 +2810,10 @@ npm.cmd run dev
 - 影响 `NewGameCreator.css` 与 `test-responsive-layout.ts`；没有改变 React 表单结构、新建存档字段、默认值、提交 API 或 Junimo 通信。无 container query 的回退媒体查询同步同一层级，不再使用 `transform:scale()` 假装适配。
 - 验证：`npm run test:responsive-layout` 与 `npm run build` 通过。应用内 Browser 在默认 948×805 下得到 `221 / 430 / 192px` 三栏，弹窗内容由修复前约 2048px 降为 772px；840×720 与 769×500 分别得到 `243 / 504px`、`220 / 456px` 两栏，农场选择均为四列。三个视口 document `scrollWidth == clientWidth`，滚动只发生在弹窗内部，console warn/error 为 0；候选 `32127766494` 与正式提升 `32128533342` 成功，能力已随 `v0.5.5@a77fbe6` 发布。
 
-# FE-NEW-GAME-FARM-CAVE-CHOICE-1（2026-08-23，未发布）
+# FE-NEW-GAME-FARM-CAVE-CHOICE-1（2026-08-23，released in v0.5.12）
 
 - 新建存档弹窗在“农场类型”之后、“模组农场目录”之前新增“农场山洞”单选卡，三个选项为“保留原版”“果蝠洞”“蘑菇洞”。默认值是 `vanilla`，提交字段为 `farmCaveChoice`；用户未主动选择时不会改变原版玩法语义。
 - 选项使用原生 button 交互和 `aria-pressed` 状态，说明文字明确区分“保留第 25,000g 后再选”“直接锁定果蝠”“直接锁定蘑菇”。字段写入既有受控表单状态，重复提交与重建请求保持同一值。
 - 新增卡片沿用当前像素风表单层级；在命名容器 `ngc-modal` 的窄屏断点改为单列。桌面 1280×720 与移动 390×844 Browser QA 均无页面横向溢出、console warning/error；点击蘑菇后只有该项为选中状态。`test:new-game-idempotency` 和 production build 通过。
 - 影响 `NewGameCreator.tsx/.css`、`types.ts` 与 `test-new-game-idempotency.ts`。后端/Control 的持久化与真实 Docker 证据见 `docs/02-backend.md`、`docs/06-integration.md` 和 `docs/09-image-build.md`。
+- 正式候选 `32623320406` 的完整前端状态回归、production build、候选镜像 fresh/restart 与升级后 production bundle 验收通过；自动 tag `32623853636`、正式提升 `32623863894` 和 GitHub Release 成功，能力已随 `v0.5.12@5141cd54` 发布。
