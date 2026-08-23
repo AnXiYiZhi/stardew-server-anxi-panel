@@ -3794,3 +3794,13 @@
 - 正确做法：取消前立即用 `gh run view <run-id> --json status,conclusion` 刷新状态；仅当仍为 `queued`/`in_progress` 时发送一次取消。取消异常后先再次查询终态，不原样重试。
 - 预防检查：正式发布门禁失败后的控制动作固定为“刷新目标运行状态 → 条件取消 → 读取最终结论”；运行 ID 只来自已确认的本次 commit，不批量取消。
 - 适用范围：GitHub Actions 候选、兼容矩阵、正式提升及其它异步 workflow 的取消与清理。
+
+# 2026-08-23：PowerShell 任务变量 `$home` 与只读 `$HOME` 大小写碰撞
+
+- 环境：Windows 11、PowerShell 7，官网 GitHub Pages 线上只读 HTTP 验证。
+- 错误模式：把首页响应赋给 `$home`；PowerShell 变量名大小写不敏感，因此实际尝试覆盖只读自动变量 `$HOME`。
+- 症状 / 退出码：`Invoke-WebRequest` 结果无法赋值，报 `Cannot overwrite variable HOME because it is read-only or constant` 并退出 1；官网与仓库零写入。
+- 根因：任务变量命名没有避开 PowerShell 自动变量，且误以为大小写可以区分 `$home` 与 `$HOME`。
+- 正确做法：使用语义明确的任务专属变量 `$homeResponse`、`$changelogResponse`；修正后两个页面均返回 HTTP 200，版本与更新文案断言通过。
+- 预防检查：PowerShell 脚本不得声明 `$home`、`$HOME`、`$CODEX_HOME` 或其它常见系统/自动变量的大小写变体；HTTP 响应变量统一使用 `<purpose>Response` 命名。
+- 适用范围：所有 PowerShell 任务脚本、线上探针和工具调用中的临时变量。

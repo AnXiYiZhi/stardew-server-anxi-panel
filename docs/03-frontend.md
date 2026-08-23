@@ -4,6 +4,7 @@
 - 更新详情时间线在 `updating_runtime` 与 `verifying_runtime` 之间新增认证验收节点。阶段标签继续由 `panelUpdatePhaseLabel` 纯 selector 从后端权威状态派生，没有增加本地 React 状态、effect 或独立计时器，因此顶栏、总览和详情不会各自猜测不同阶段。
 - 影响 `panel-update-machine.ts`、`UpdateDetailsDialog.tsx` 与状态机回归；API TypeScript shape、权限、升级按钮和 reconnect 策略不变。`test:panel-update`、`test:responsive-layout` 与 production build 已通过，覆盖新阶段保持 active/non-terminal，以及认证与 SMAPI 两条文案不再混用。
 - 正式候选 `32648758732@be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd` 的完整前端状态回归、production build、候选 fresh/restart 与 `v0.5.12 → v0.5.13` Web 升级后 bundle 验收通过；自动 annotated tag `32649334502`、正式提升 `32649344923` 与 GitHub Release 成功，前端阶段拆分已随 `v0.5.13` 发布。
+- 官网 docs-only 提交 `616de0bd56999089530f98e729273b116507b994` 的 Docs Portal `32649797827` 与 Compatibility `32649797822` 全绿，未触发新候选；线上首页和 changelog 均返回 200，并包含 `v0.5.13`、Control-only 摘要及认证/SMAPI 两条独立阶段文案。
 
 # FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，released in v0.5.11）
 

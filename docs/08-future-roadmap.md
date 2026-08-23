@@ -6,6 +6,7 @@
 - [x] Web 新增公开 `verifying_auth` 阶段；前端顶栏、总览和详情时间线与 `verifying_runtime` 分开展示并由同一 selector 派生，状态机回归已覆盖。
 - [x] Linux Go 1.25 整仓 test、Windows vet/build、前端 panel-update/响应式回归和 production build 全绿；Windows 整仓唯一失败为既有 NTFS mode 差异，任务专属 Go cache/container 已清零。
 - [x] 首轮候选/Compatibility 在真实 auth probe integration 暴露后台 watchdog 竞态后停止且未提升；修复后的候选 `32648758732`、Compatibility `32648758687`、自动 annotated tag `32649334502` 与正式提升 `32649344923` 全部成功。`v0.5.13@be25fb3a`、GitHub Release 和三仓 `0.5.13/latest` 使用同一已证明 digest。
+- [x] 官网首页/changelog 已回填并由 Docs Portal `32649797827` 发布，docs-only Compatibility `32649797822` 成功；线上两个页面均为 200 且包含 `v0.5.13` 与认证/SMAPI 独立阶段说明，没有触发新候选或移动 tag。
 
 # 2026-08-22 已发布于 v0.5.11：Steam 密码错误恢复与常驻更换账号入口
 
