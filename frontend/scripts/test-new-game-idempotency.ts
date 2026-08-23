@@ -8,6 +8,7 @@ import type { NewGameConfig } from '../src/types.ts'
 const config: NewGameConfig = {
   farmName: 'Idempotent Farm',
   farmType: '0',
+  farmCaveChoice: 'mushrooms',
   startingCabins: 1,
   maxPlayers: 4,
   cabinLayout: 'separate',

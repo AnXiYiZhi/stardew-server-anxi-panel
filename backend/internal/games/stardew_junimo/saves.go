@@ -1161,6 +1161,9 @@ func readServerRuntimeSettingsRoot(root map[string]any) (ServerRuntimeSettings, 
 
 // normalizeCfg applies defaults.
 func normalizeCfg(cfg *registry.NewGameConfig) {
+	if cfg.FarmCaveChoice == "" {
+		cfg.FarmCaveChoice = "vanilla"
+	}
 	if cfg.CabinLayout == "" {
 		cfg.CabinLayout = "nearby"
 	}
@@ -1245,6 +1248,9 @@ func validateCfg(cfg registry.NewGameConfig) error {
 	if cfg.CabinMode != "recommended" && cfg.CabinMode != "vanilla" {
 		return fmt.Errorf("cabinMode 必须是 recommended 或 vanilla")
 	}
+	if cfg.FarmCaveChoice != "" && cfg.FarmCaveChoice != "vanilla" && cfg.FarmCaveChoice != "bats" && cfg.FarmCaveChoice != "mushrooms" {
+		return fmt.Errorf("farmCaveChoice 必须是 vanilla、bats 或 mushrooms")
+	}
 	validProfit := map[string]bool{"100": true, "75": true, "50": true, "25": true}
 	if !validProfit[cfg.ProfitMargin] {
 		return fmt.Errorf("profitMargin 必须是 100/75/50/25 之一")
@@ -1318,6 +1324,7 @@ type initConfigJSON struct {
 	HairColor            *rgbJSON `json:"hairColor,omitempty"`
 	PantsColor           *rgbJSON `json:"pantsColor,omitempty"`
 	FarmType             string   `json:"farmType,omitempty"`
+	FarmCaveChoice       string   `json:"farmCaveChoice"`
 	CabinCount           int      `json:"cabinCount"`
 	CabinLayout          string   `json:"cabinLayout,omitempty"`
 	MoneyMode            string   `json:"moneyMode,omitempty"`
@@ -1391,6 +1398,7 @@ func newGameInitConfigJSONForTransaction(cfg registry.NewGameConfig, transaction
 		Pants:                cfg.Pants,
 		Accessory:            cfg.Accessory,
 		FarmType:             cfg.FarmType,
+		FarmCaveChoice:       cfg.FarmCaveChoice,
 		CabinCount:           cfg.StartingCabins,
 		CabinLayout:          smapicabinLayout,
 		MoneyMode:            cfg.MoneyMode,

@@ -641,6 +641,30 @@ if (NewGameControlContract.ValidateMarker(marker, init, now).ErrorCode != "marke
 if (NewGameControlContract.ShouldClearMarkerOnSaveLoaded)
     throw new InvalidOperationException("SaveLoaded must not clear an active backend transaction marker");
 
+var vanillaCave = NewGameControlContract.EvaluateFarmCaveChoice("", 0, false, false, false);
+if (!vanillaCave.Valid || !vanillaCave.Complete || vanillaCave.RequestedChoice != "vanilla")
+	throw new InvalidOperationException("default vanilla farm cave choice was not preserved");
+var batsCave = NewGameControlContract.EvaluateFarmCaveChoice("bats", 0, false, false, false);
+if (!batsCave.Valid || batsCave.Complete || !batsCave.NeedsChoiceWrite || !batsCave.NeedsEventSeen || batsCave.NeedsMushroomSetup || batsCave.ExpectedChoice != 1)
+	throw new InvalidOperationException("bat cave repair plan is incorrect");
+var completedBatsCave = NewGameControlContract.EvaluateFarmCaveChoice("bats", 1, true, false, false);
+if (!completedBatsCave.Valid || !completedBatsCave.Complete)
+	throw new InvalidOperationException("completed bat cave was not accepted idempotently");
+var mushroomCave = NewGameControlContract.EvaluateFarmCaveChoice("mushrooms", 0, false, false, false);
+if (!mushroomCave.Valid || mushroomCave.Complete || !mushroomCave.NeedsChoiceWrite || !mushroomCave.NeedsEventSeen || !mushroomCave.NeedsMushroomSetup || mushroomCave.ExpectedChoice != 2)
+	throw new InvalidOperationException("mushroom cave repair plan is incorrect");
+var completedMushroomCave = NewGameControlContract.EvaluateFarmCaveChoice("mushrooms", 2, true, true, true);
+if (!completedMushroomCave.Valid || !completedMushroomCave.Complete)
+	throw new InvalidOperationException("completed mushroom cave was not accepted idempotently");
+var junimoMushroomsToBats = NewGameControlContract.EvaluateFarmCaveChoice("bats", 2, true, true, true);
+if (!junimoMushroomsToBats.Valid || junimoMushroomsToBats.Complete || !junimoMushroomsToBats.NeedsChoiceWrite || !junimoMushroomsToBats.NeedsMushroomCleanup || junimoMushroomsToBats.NeedsEventSeen)
+	throw new InvalidOperationException("Junimo mushroom default was not converted safely to bats");
+var junimoMushroomsToVanilla = NewGameControlContract.EvaluateFarmCaveChoice("vanilla", 2, true, true, true);
+if (!junimoMushroomsToVanilla.Valid || junimoMushroomsToVanilla.Complete || !junimoMushroomsToVanilla.NeedsChoiceWrite || !junimoMushroomsToVanilla.NeedsEventRemoval || !junimoMushroomsToVanilla.NeedsMushroomCleanup)
+	throw new InvalidOperationException("Junimo mushroom default was not converted safely to vanilla");
+if (NewGameControlContract.EvaluateFarmCaveChoice("random", 0, false, false, false).ErrorCode != "farm_cave_choice_invalid")
+	throw new InvalidOperationException("unknown farm cave choice was accepted");
+
 var customizationConfig = new InitConfig
 {
     FarmerName = "Leah",

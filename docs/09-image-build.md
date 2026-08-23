@@ -2352,3 +2352,25 @@ curl -fsSL -o migrate-fnos.sh https://github.com/anxiyizhi/stardew-server-anxi-p
 - 本地 `sap-player-auth:test-20260817` dev 镜像完成 Dockerfile 全阶段构建；全新数据卷首次启动和 `docker restart` 后均得到 `/health.status=ok`，`/api/version.version=dev-player-auth-20260817` 且 commit 为当前工作树标识。该本地引用未推送，冒烟后与任务容器、6 个测试 volume、Control 临时副本、18092 监听均精确清理；`sap.task=player-auth-20260817` 的容器/volume/image 最终计数全部为 0。
 - 前序阶段按用户要求未创建/移动 `v*` tag、GitHub Release 或正式镜像；2026-08-17 用户确认人工矩阵通过并明确授权正式发布，后续仍只允许由不可变候选自动创建 annotated tag 和提升同一 digest。
 - 用户确认两个真实客户端已完成：各自首次设置不同角色密码、重复正确登录、交叉密码失败、管理员清除后重新认领、Panel 批准、server recreate 与 Panel 重启后保持。该用户确认作为本次人工交互证据，自动夹具继续只证明代码/容器契约。
+
+# NEW-GAME-FARM-CAVE-CHOICE-1 本地构建与 Docker 证据（2026-08-23，未发布）
+
+## 变更范围与专项矩阵
+
+- 本次变更只涉及新建存档 payload/事务耐久校验、Panel 自带 Control Mod 和新建弹窗；没有修改 Junimo 上游、基础镜像、Compose 运行格式、数据库迁移或 updater。Control/stack 版本由 `0.3.6` 升为 `0.3.7`，最终嵌入 DLL SHA-256 为 `bf8ba2026e33f62007e3d1cfca59b055da94806cc17dc999d62a1c94b2e39423`，与 runtime manifest 一致。
+
+| 范围 | 场景 | 结果 |
+| --- | --- | --- |
+| 正常路径 | 缺省原版、显式原版、果蝠、蘑菇 | 请求/配置/Control/落盘契约通过 |
+| 边界与安全 | 未知值、事务/存档/玩家不匹配、Control 或 XML 不一致 | 创建前拒绝或 fail closed；已有存档不写入 |
+| 幂等与恢复 | Junimo 已预置蘑菇、重复回读、两次连续创建 | 精确转换到目标；状态和磁盘证据一致 |
+| 数据完整性 | 源游戏卷、旧主存档与 `SaveGameInfo` | 真实 E2E 前后不变 |
+| 前端 | 默认态、切换、重复提交、桌面/移动布局 | 选中态唯一、字段保留、无横向溢出或 console error |
+| 资源清理 | 任务容器、网络、volume、临时构建/预览夹具 | 按任务 owner/精确路径清理，不触碰生产资源 |
+
+## 本地不可发布证据
+
+- Control 纯契约测试通过；在 `.NET 6 SDK` 中使用本机真实 Stardew 1.6.15 游戏程序集执行标准 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`，结果 0 error、1 个既有 CS9057 analyzer/compiler warning。最终 DLL、源码/嵌入 manifest 和 runtime stack manifest 已同步为 `0.3.7`。
+- Docker Desktop 真实 `TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn` 运行约 153 秒并通过：从只读源游戏 volume 克隆到任务 volume，第一轮创建果蝠、第二轮创建蘑菇；两轮均验证 Control transaction/snapshot 与主存档 XML，源游戏卷及旧存档哈希不变，Compose 夹具终态清理成功。
+- `golang:1.25-alpine` 以完整仓库只读 bind 和任务专属 module/build cache 执行 `go test ./internal/games/stardew_junimo/... -count=1`，包测试 58.081 秒、config 0.026 秒通过。前端 `test:new-game-idempotency` 与 Vite production build 通过；应用内 Browser 在 1280×720 和 390×844 完成默认/切换、命名容器响应式、overflow 与 console QA。
+- 以上属于开发期本机验证，不是正式候选证明。本次未构建/推送候选镜像，未执行上一正式版 Web 升级和 unhealthy 回滚，未创建或移动 tag、GitHub Release，也未更新任何 `latest`；正式发布仍必须完整执行本文件顶部硬门禁。

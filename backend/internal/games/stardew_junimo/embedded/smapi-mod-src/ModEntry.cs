@@ -41,6 +41,7 @@ public sealed class ModEntry : Mod
 	private PendingNewGameMarker? pendingNewGameMarker;
 	private bool newGameCreationObserved;
 	private VerifiedCharacterCustomization? verifiedPanelCustomization;
+	private VerifiedFarmCaveChoice? verifiedFarmCaveChoice;
 	private FarmCatalogRequest? farmCatalogRequest;
 	private FarmTypeResolution? farmTypeResolution;
 	private bool catalogGenerated;
@@ -50,6 +51,8 @@ public sealed class ModEntry : Mod
 	private string? lastStatusSaveId;
 	private string[] lastCustomizationMismatches = Array.Empty<string>();
 	private CharacterCustomizationSnapshot? lastCustomizationAttempt;
+	private string lastFarmCaveChoiceErrorCode = "";
+	private FarmCaveChoiceSnapshot? lastFarmCaveChoiceAttempt;
 	private const int MaxCatalogImageDataUriChars = 64 * 1024;
 
 	private sealed record VerifiedCharacterCustomization(
@@ -57,6 +60,12 @@ public sealed class ModEntry : Mod
 		string SaveId,
 		DateTimeOffset VerifiedAt,
 		CharacterCustomizationSnapshot Snapshot);
+
+	private sealed record VerifiedFarmCaveChoice(
+		string TransactionId,
+		string SaveId,
+		DateTimeOffset VerifiedAt,
+		FarmCaveChoiceSnapshot Snapshot);
 
     public override void Entry(IModHelper helper)
     {
@@ -468,6 +477,8 @@ public sealed class ModEntry : Mod
 		newGameCreationObserved = true;
 
 		var cfg = initConfig;
+		if (!ApplyPanelFarmCaveChoice(cfg, currentSaveId))
+			return true;
 		var before = CaptureCharacterCustomization(Game1.player);
 		if (verifiedPanelCustomization is not null
 			&& string.Equals(verifiedPanelCustomization.TransactionId, cfg.TransactionId, StringComparison.Ordinal)
@@ -533,6 +544,131 @@ public sealed class ModEntry : Mod
 			verified ? null : actual);
 		return true;
     }
+
+	private bool ApplyPanelFarmCaveChoice(InitConfig cfg, string currentSaveId)
+	{
+		var masterPlayer = Game1.MasterPlayer;
+		if (masterPlayer is null)
+		{
+			verifiedFarmCaveChoice = null;
+			lastFarmCaveChoiceErrorCode = "farm_cave_master_player_missing";
+			WriteStatus("save-cave-choice-invalid", "The master player is unavailable while applying the Panel farm cave choice.", currentSaveId);
+			return false;
+		}
+
+		var farmCave = Game1.getLocationFromName("FarmCave") as StardewValley.Locations.FarmCave;
+		var before = CaptureFarmCaveChoice(cfg.FarmCaveChoice, masterPlayer, farmCave);
+		lastFarmCaveChoiceAttempt = before;
+		var decision = NewGameControlContract.EvaluateFarmCaveChoice(
+			cfg.FarmCaveChoice,
+			before.ActualChoice,
+			before.ChoiceEventSeen,
+			before.MushroomHouseReady,
+			before.MushroomObjectsPresent);
+		if (!decision.Valid)
+		{
+			verifiedFarmCaveChoice = null;
+			lastFarmCaveChoiceErrorCode = decision.ErrorCode;
+			WriteStatus("save-cave-choice-invalid", $"The target save farm cave state conflicts with the requested choice ({decision.ErrorCode}).", currentSaveId);
+			return false;
+		}
+
+		try
+		{
+			if (decision.NeedsMushroomCleanup)
+			{
+				if (farmCave is null)
+					throw new InvalidOperationException("farm_cave_location_missing");
+				ClearFarmCaveMushroomObjects(farmCave);
+			}
+			if (decision.NeedsMushroomSetup)
+			{
+				if (farmCave is null)
+					throw new InvalidOperationException("farm_cave_location_missing");
+				farmCave.setUpMushroomHouse();
+			}
+			if (decision.NeedsChoiceWrite)
+				masterPlayer.caveChoice.Value = decision.ExpectedChoice;
+			if (decision.NeedsEventSeen)
+				masterPlayer.eventsSeen.Add(NewGameControlContract.FarmCaveChoiceEventId);
+			if (decision.NeedsEventRemoval)
+				masterPlayer.eventsSeen.Remove(NewGameControlContract.FarmCaveChoiceEventId);
+		}
+		catch (Exception ex)
+		{
+			verifiedFarmCaveChoice = null;
+			lastFarmCaveChoiceErrorCode = ex is InvalidOperationException && ex.Message == "farm_cave_location_missing"
+				? ex.Message
+				: "farm_cave_apply_failed";
+			Monitor.Log($"Failed to apply Panel farm cave choice: {ex}", LogLevel.Error);
+			WriteStatus("save-cave-choice-invalid", "The requested farm cave choice could not be applied.", currentSaveId);
+			return false;
+		}
+
+		var actual = CaptureFarmCaveChoice(cfg.FarmCaveChoice, masterPlayer, farmCave);
+		lastFarmCaveChoiceAttempt = actual;
+		var verified = NewGameControlContract.EvaluateFarmCaveChoice(
+			cfg.FarmCaveChoice,
+			actual.ActualChoice,
+			actual.ChoiceEventSeen,
+			actual.MushroomHouseReady,
+			actual.MushroomObjectsPresent);
+		if (!verified.Valid || !verified.Complete)
+		{
+			verifiedFarmCaveChoice = null;
+			lastFarmCaveChoiceErrorCode = verified.ErrorCode.Length > 0
+				? verified.ErrorCode
+				: "farm_cave_verification_failed";
+			WriteStatus("save-cave-choice-invalid", "The farm cave choice did not match after applying it.", currentSaveId);
+			return false;
+		}
+
+		verifiedFarmCaveChoice = new(cfg.TransactionId, currentSaveId, DateTimeOffset.UtcNow, actual);
+		lastFarmCaveChoiceErrorCode = "";
+		if (!decision.Complete)
+			Game1.saveOnNewDay = true;
+		return true;
+	}
+
+	private static FarmCaveChoiceSnapshot CaptureFarmCaveChoice(
+		string requestedChoice,
+		Farmer masterPlayer,
+		StardewValley.Locations.FarmCave? farmCave)
+	{
+		var mushroomBoxes = 0;
+		var dehydrators = 0;
+		if (farmCave is not null)
+		{
+			foreach (var item in farmCave.Objects.Values)
+			{
+				if (string.Equals(item?.QualifiedItemId, "(BC)128", StringComparison.Ordinal))
+					mushroomBoxes++;
+				else if (string.Equals(item?.QualifiedItemId, "(BC)Dehydrator", StringComparison.Ordinal))
+					dehydrators++;
+			}
+		}
+		return new FarmCaveChoiceSnapshot
+		{
+			RequestedChoice = string.IsNullOrWhiteSpace(requestedChoice) ? "vanilla" : requestedChoice.Trim().ToLowerInvariant(),
+			ActualChoice = masterPlayer.caveChoice.Value,
+			ChoiceEventSeen = masterPlayer.eventsSeen.Contains(NewGameControlContract.FarmCaveChoiceEventId),
+			MushroomHouseReady = mushroomBoxes >= 6 && dehydrators >= 1,
+			MushroomObjectsPresent = mushroomBoxes > 0 || dehydrators > 0,
+			MushroomBoxCount = mushroomBoxes,
+			DehydratorCount = dehydrators,
+		};
+	}
+
+	private static void ClearFarmCaveMushroomObjects(StardewValley.Locations.FarmCave farmCave)
+	{
+		var tiles = farmCave.Objects.Pairs
+			.Where(pair => string.Equals(pair.Value?.QualifiedItemId, "(BC)128", StringComparison.Ordinal)
+				|| string.Equals(pair.Value?.QualifiedItemId, "(BC)Dehydrator", StringComparison.Ordinal))
+			.Select(pair => pair.Key)
+			.ToArray();
+		foreach (var tile in tiles)
+			farmCave.Objects.Remove(tile);
+	}
 
 	private static CharacterCustomizationSnapshot CaptureCharacterCustomization(Farmer farmer)
 	{
@@ -932,6 +1068,7 @@ public sealed class ModEntry : Mod
 	private void WriteStatusSnapshot()
 	{
 		var customization = verifiedPanelCustomization;
+		var caveChoice = verifiedFarmCaveChoice;
         var status = new RuntimeStatus
         {
             State = lastStatusState,
@@ -969,6 +1106,14 @@ public sealed class ModEntry : Mod
 			Customization = customization?.Snapshot,
 			CustomizationAttempt = lastCustomizationAttempt,
 			CustomizationMismatches = lastCustomizationMismatches,
+			FarmCaveChoiceApplied = caveChoice is not null,
+			FarmCaveChoiceVerified = caveChoice is not null,
+			FarmCaveChoiceTransactionId = caveChoice?.TransactionId ?? "",
+			FarmCaveChoiceSaveId = caveChoice?.SaveId ?? "",
+			FarmCaveChoiceVerifiedAt = caveChoice?.VerifiedAt,
+			FarmCaveChoice = caveChoice?.Snapshot,
+			FarmCaveChoiceAttempt = lastFarmCaveChoiceAttempt,
+			FarmCaveChoiceErrorCode = lastFarmCaveChoiceErrorCode,
         };
         WriteJson(Path.Combine(controlDir, "status.json"), status);
     }

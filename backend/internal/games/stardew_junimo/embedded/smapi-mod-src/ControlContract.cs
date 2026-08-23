@@ -25,6 +25,7 @@ public sealed class InitConfig
     public RgbColor? HairColor { get; set; }
     public RgbColor? PantsColor { get; set; }
     public string FarmType { get; set; } = "standard";
+    public string FarmCaveChoice { get; set; } = "vanilla";
     public int CabinCount { get; set; }
     public string CabinLayout { get; set; } = "close";
     public string MoneyMode { get; set; } = "shared";
@@ -120,9 +121,75 @@ public sealed record FarmTypeResolution(
 
 public sealed record MarkerValidation(bool Valid, string ErrorCode, PendingNewGameMarker? Marker);
 
+public sealed record FarmCaveChoiceDecision(
+	bool Valid,
+	bool Complete,
+	string RequestedChoice,
+	int ExpectedChoice,
+	bool NeedsChoiceWrite,
+	bool NeedsEventSeen,
+	bool NeedsEventRemoval,
+	bool NeedsMushroomSetup,
+	bool NeedsMushroomCleanup,
+	string ErrorCode);
+
+public sealed class FarmCaveChoiceSnapshot
+{
+	public string RequestedChoice { get; set; } = "vanilla";
+	public int ActualChoice { get; set; }
+	public bool ChoiceEventSeen { get; set; }
+	public bool MushroomHouseReady { get; set; }
+	public bool MushroomObjectsPresent { get; set; }
+	public int MushroomBoxCount { get; set; }
+	public int DehydratorCount { get; set; }
+}
+
 public static class NewGameControlContract
 {
 	public static bool ShouldClearMarkerOnSaveLoaded => false;
+	public const string FarmCaveChoiceEventId = "65";
+	public const int FarmCaveNone = 0;
+	public const int FarmCaveBats = 1;
+	public const int FarmCaveMushrooms = 2;
+
+	public static FarmCaveChoiceDecision EvaluateFarmCaveChoice(
+		string? requestedChoice,
+		int actualChoice,
+		bool choiceEventSeen,
+		bool mushroomHouseReady,
+		bool mushroomObjectsPresent)
+	{
+		var requested = string.IsNullOrWhiteSpace(requestedChoice)
+			? "vanilla"
+			: requestedChoice.Trim().ToLowerInvariant();
+		if (requested is not ("vanilla" or "bats" or "mushrooms"))
+			return new(false, false, requested, FarmCaveNone, false, false, false, false, false, "farm_cave_choice_invalid");
+		if (actualChoice is < FarmCaveNone or > FarmCaveMushrooms)
+			return new(false, false, requested, FarmCaveNone, false, false, false, false, false, "farm_cave_state_invalid");
+
+		var expected = requested switch
+		{
+			"bats" => FarmCaveBats,
+			"mushrooms" => FarmCaveMushrooms,
+			_ => FarmCaveNone,
+		};
+		var needsSetup = expected == FarmCaveMushrooms && !mushroomHouseReady;
+		var needsChoice = actualChoice != expected;
+		var needsEvent = expected != FarmCaveNone && !choiceEventSeen;
+		var needsEventRemoval = expected == FarmCaveNone && choiceEventSeen;
+		var needsCleanup = expected != FarmCaveMushrooms && mushroomObjectsPresent;
+		return new(
+			true,
+			!needsChoice && !needsEvent && !needsEventRemoval && !needsSetup && !needsCleanup,
+			requested,
+			expected,
+			needsChoice,
+			needsEvent,
+			needsEventRemoval,
+			needsSetup,
+			needsCleanup,
+			"");
+	}
 
 	public static bool CatalogContainsRequestedFarm(IEnumerable<OptionItem> farms, string requestedFarmType)
 	{
@@ -292,6 +359,14 @@ public sealed class RuntimeStatus
 	public CharacterCustomizationSnapshot? Customization { get; set; }
 	public CharacterCustomizationSnapshot? CustomizationAttempt { get; set; }
 	public string[] CustomizationMismatches { get; set; } = Array.Empty<string>();
+	public bool FarmCaveChoiceApplied { get; set; }
+	public bool FarmCaveChoiceVerified { get; set; }
+	public string FarmCaveChoiceTransactionId { get; set; } = "";
+	public string FarmCaveChoiceSaveId { get; set; } = "";
+	public DateTimeOffset? FarmCaveChoiceVerifiedAt { get; set; }
+	public FarmCaveChoiceSnapshot? FarmCaveChoice { get; set; }
+	public FarmCaveChoiceSnapshot? FarmCaveChoiceAttempt { get; set; }
+	public string FarmCaveChoiceErrorCode { get; set; } = "";
 }
 
 public sealed class HostBedStatus

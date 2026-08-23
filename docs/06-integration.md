@@ -1693,3 +1693,26 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 
 - 真实 Docker E2E 至少覆盖：SMAPI 慢速分块下载时 marker 单调推进且页面字节/百分比变化；候选切换归零并显示新序号；缓存命中直接显示校验通过；最后字节到达后进入校验/写入而不是提前完成。
 - 升级旧实例时准备仅有 legacy `config.vdf`、没有 `STEAMCMD_AUTH_COMPLETED` 的授权卷，点击修复后应先走免验证登录；再注入无效缓存，确认只自动回退一次完整登录并保留既有 Steam Guard 交互。正式候选、上一版 Web 升级和生产部署尚未执行。
+
+# NEW-GAME-FARM-CAVE-CHOICE-1 联调契约（2026-08-23，未发布）
+
+## 请求与默认值
+
+- 新建存档 payload 新增 `farmCaveChoice: "vanilla" | "bats" | "mushrooms"`。新前端始终发送该字段；旧前端或其它客户端省略时，后端必须补 `vanilla`。未知值拒绝创建，不得静默降级成任一固定山洞。
+- 后端将该字段写入事务专属 `server-init.json`，Control 只在 target marker、事务 ID、预期存档名和玩家身份精确匹配时消费。Junimo 接口与上游源码保持不变。
+
+## 持久化终态
+
+| 请求值 | 主存档 `caveChoice` | 事件 `65` | 蘑菇设施 |
+| --- | ---: | --- | --- |
+| `vanilla` | `0` | 不存在 | 不存在 |
+| `bats` | `1` | 存在 | 不存在 |
+| `mushrooms` | `2` | 存在 | 六个蘑菇箱和脱水机已就绪 |
+
+- 真实 Junimo 创建链在 Control 首次处理前已预置蘑菇终态。Control 因此必须在受保护的新建事务内按上表精确转换，并在保存前回读；这不是允许普通已有存档在加载时被重写。
+- Panel 只在 Control runtime status 的 applied/verified、事务/存档/时间和 snapshot 全部吻合，且落盘 XML 再次满足上表时宣布新建成功。任何不一致均进入现有恢复/失败链路，不能只信 UI 请求或单侧状态。
+
+## 联调验收
+
+- 前端 idempotency 必须证明重试时字段不丢失；后端覆盖缺省、三种合法值与非法值；Control 契约覆盖从 Junimo 蘑菇初态转到三种目标以及重复回读；真实 Docker E2E 至少连续创建两种固定选择并证明源游戏卷、旧存档及非目标资源不变。
+- 2026-08-23 Docker Desktop 已连续创建蝙蝠洞和蘑菇洞，Control status 与主存档 XML 双重校验通过，旧主存档/`SaveGameInfo` 哈希不变。正式候选与上一正式版 Web 升级尚未执行。

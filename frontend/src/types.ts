@@ -679,9 +679,12 @@ export type RgbColor = {
   b: number
 }
 
+export type FarmCaveChoice = 'vanilla' | 'bats' | 'mushrooms'
+
 export type NewGameConfig = {
   farmName: string
   farmType: string
+  farmCaveChoice: FarmCaveChoice
   startingCabins: number
   maxPlayers: number
   cabinLayout: string

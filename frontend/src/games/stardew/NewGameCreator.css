@@ -32,6 +32,14 @@
 .ngc-selected-farm { min-width:170px; min-height:78px; border:4px solid #8b3d10; background:#ffe2a5; color:#451b0c; font:inherit; font-weight:900; cursor:pointer; overflow:hidden; position:relative; }
 .ngc-selected-farm img { width:100%; height:74px; object-fit:cover; image-rendering:pixelated; }
 .ngc-selected-farm span { position:absolute; inset:auto 0 2px; background:#5d260cc9; color:#fff1b7; padding:2px 4px; }
+.ngc-cave-choice { margin:0; padding:10px 12px 12px; border:3px solid #9c5620; background:#efd18f; }
+.ngc-cave-choice legend { padding:0 7px; font-size:17px; font-weight:900; }
+.ngc-cave-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.ngc-cave-options button { min-width:0; min-height:86px; display:grid; align-content:start; gap:5px; padding:8px; border:3px solid #a66326; background:#f7d999; color:#451b0c; font:inherit; text-align:left; cursor:pointer; box-shadow:inset 0 0 0 2px #ffe9b5; }
+.ngc-cave-options button:hover { filter:brightness(1.04); }
+.ngc-cave-options button.selected { border-color:#397623; background:#dce393; box-shadow:inset 0 0 0 3px #a7c65d; }
+.ngc-cave-options strong { font-size:14px; }
+.ngc-cave-options small { font-size:11px; line-height:1.35; font-weight:800; }
 .ngc-modded-catalog { margin-left:-160px; border-top:3px solid #cb762b; padding-top:12px; display:grid; gap:9px; }
 .ngc-modded-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .ngc-modded-heading strong { font-size:17px; }
@@ -114,6 +122,7 @@
   .ngc-fields label { grid-template-columns:78px minmax(120px,1fr) auto; gap:7px; font-size:16px; }
   .ngc-pet-line { grid-template-columns:78px 34px minmax(48px,1fr) 34px !important; }
   .ngc-selected-farm { min-width:0; width:100%; }
+  .ngc-cave-options { grid-template-columns:minmax(0,1fr); }
   .ngc-map-panel { padding:8px; gap:7px; grid-template-columns:repeat(2,minmax(0,1fr)); }
   .ngc-modded-catalog { margin-left:0; }
   .ngc-modded-grid { grid-template-columns:1fr; }
@@ -173,6 +182,7 @@
     .ngc-fields label { grid-template-columns:78px minmax(120px,1fr) auto; gap:7px; font-size:16px; }
     .ngc-pet-line { grid-template-columns:78px 34px minmax(48px,1fr) 34px !important; }
     .ngc-selected-farm { min-width:0; width:100%; }
+    .ngc-cave-options { grid-template-columns:minmax(0,1fr); }
     .ngc-map-panel { padding:8px; gap:7px; grid-template-columns:repeat(2,minmax(0,1fr)); }
     .ngc-modded-catalog { margin-left:0; }
     .ngc-modded-grid { grid-template-columns:1fr; }

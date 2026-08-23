@@ -87,6 +87,7 @@
 
 ## 2026-08-19：读取 jobs 实现前不得凭职责猜成 `store.go`
 
+- 最近复发/补充：2026-08-23 实现新建存档山洞选择时，`exec_command.workdir` 已设为 `<repo>/backend`，却仍向五个 `gofmt` 目标传入 `backend/internal/...`；全部在格式化前报 `GetFileAttributesEx ... path not found`，fail-fast 使 Go 测试未启动，源码未被该命令改写。后续本任务固定拆成“仓库根先 `Test-Path` 再独立 `gofmt backend/internal/...`”和“backend 模块根独立 `go test ./internal/...`”，不再把两者合入同一调用。
 - 最近复发/补充：同日补齐任务已清空后的存档导入恢复时，再次把 `exec_command.workdir` 设为 `backend`，却给四个 `gofmt` 参数保留 `backend/` 根前缀，四项均报 `GetFileAttributesEx ... The system cannot find the path specified`；命令在格式化和测试前停止，源码未被该命令改写。改为仓库根 workdir + 根相对路径后成功。此前同日已发生同一错误，现已把“workdir 与相对路径前缀必须成对核对”提升到 `AGENTS.md`，以后跨包格式化默认从仓库根执行。
 - 环境：PowerShell 7，本地只读诊断存档导入 busy 判定。
 - 错误模式：已确认 `save_import_transaction.go` 和 Web handler 路径后，把 jobs 存储实现按常见职责猜成不存在的 `backend/internal/jobs/store.go`，并在读取组合命令的前置路径断言中使用该路径。
@@ -118,6 +119,8 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-23 实现农场山洞选择前读取运行栈清单时，未先列出 `compatibility-matrices/` 就把当前矩阵猜成不存在的 `compatibility-matrices/current.json`；同一命令前半的真实 runtime manifest 已成功读取，后半只读失败，产品与 Docker 状态未变化。后续矩阵读取必须先用 `rg --files compatibility-matrices` 取得权威文件名，不能把“current”这一业务概念直接映射成文件名。
+- 最近复发/补充：2026-08-23 讨论新建存档农场山洞选择时，首轮广域检索把不存在的仓库根 `embedded` 加入 `rg`；随后又在 Control 源目录中凭类名猜出不存在的 `Contracts.cs`/`NewGameControlContract.cs`，并在 `.codex-test/reflect-game` 的真实文件清单只含 `bin/obj` 时继续读取不存在的 `Program.cs`/项目文件。三次均为只读失败，产品文件未变化。后续已先用 `rg --files` 取得精确路径，只读取真实的 `ModEntry.cs`/`ControlContract.cs`；测试残留目录的已编译输出不能反推出源码仍存在。
 - 最近复发/补充：2026-08-22 回填 v0.5.11 发布证据时，在读取已确认存在的 `release-candidate.yml` 与 `docs.yml` 后仍凭职责猜测 `.github/workflows/compatibility.yml`，实际文件名为 `compatibility-matrix.yml`，使组合只读命令末尾退出 1；前两份文件读取结果有效，仓库未被该命令修改。后续 workflow 名称必须先取 `rg --files .github/workflows` 的精确结果，再逐文件读取，不能从页面显示名反推文件名。
 - 最近复发/补充：2026-08-22 已确认 SteamCMD 实现位于 `installer.go` 后，仍凭职责追加了不存在的 `installer_helpers.go` 作为组合 `rg` 路径；真实文件命中已输出，但组合命令最终以路径不存在退出 1，源码未变化。后续只对 `rg --files` 或前序命中返回的精确文件检索，不能为了寻找 helper 再补一个未经确认的惯用文件名。
 - 最近复发/补充：2026-08-20 正式候选失败后定位 runtime-update 状态写入时，已拿到两个真实 `.go` 文件路径，仍把 Windows 不展开的 `backend/internal/games/stardew_junimo/runtime_update_apply*.go` 交给后续 `rg`；主体 `Get-Content` 成功但组合命令最终退出 1，源码未变化。正式故障诊断也必须逐条使用真实文件，多个同前缀文件用 `rg -g 'runtime_update_apply*.go' ... <directory>`，不能因前一段已输出足够信息就忽略末尾失败。
@@ -403,6 +406,7 @@
 
 ## 2026-08-16：工具编排对象的字符串引号未配对
 
+- 最近复发/补充：2026-08-23 正式发布预检时，把一段 PowerShell 直接作为 `functions.exec` 的 FREEFORM 顶层输入，没有用 JavaScript 调用 `tools.exec_command(...)`，编排层同样在任何命令执行前返回 `SyntaxError: Invalid or unexpected token`；本地与远端状态零变化。确认零执行后改回本节已验证的 JavaScript 对象骨架并成功取得文档行数。后续即使待执行文本本身是合法 PowerShell，也必须先放进 `exec_command.cmd` 字符串，不能把 shell 语言写到 raw JavaScript 层。
 - 环境：Codex Desktop `functions.exec` JavaScript 编排层，准备执行只读 Docker ILSpy 探针。
 - 错误模式：`exec_command` 参数对象中的 `yield_time_ms` 与 `max_output_tokens` 键前误混入 JSON 双引号，导致 JavaScript 字符串未闭合。
 - 症状 / 退出码：编排层在调用任何工具前返回 `SyntaxError: Invalid or unexpected token`；Docker 命令、容器与文件系统均未发生变化。
@@ -2520,6 +2524,7 @@
 
 ## 2026-08-06：宿主 dotnet 存在但没有 SDK
 
+- 最近复发/补充：2026-08-23 为只读反编译 Stardew 1.6.15 山洞选择逻辑检查 `ilspycmd` 后，又直接执行宿主 `dotnet tool list --global`；当前宿主仍只有 runtime，命令以 `No .NET SDKs were found` 退出，未安装工具、未修改游戏或产品文件。后续直接复用了 SMAPI 已安装的 `Mono.Cecil.dll` 读取本机精确游戏程序集，成功取得 `caveChoice` 常量与原版选择方法 IL；只读程序集分析也不得把已知无 SDK 的宿主 `dotnet tool` 当作工具发现入口。
 - 最近复发/补充：2026-08-16 主机缺床与 VNC 状态机契约首次验证又先执行宿主 `dotnet --version`，入口仍只有 runtime，立即以 `No .NET SDKs were found` 结束；契约项目未加载、源码和 Docker 资源未改变。后续本任务直接使用 `mcr.microsoft.com/dotnet/sdk:6.0` 容器，不再重复宿主 SDK 探针。
 - 最近复发/补充：2026-08-16 主机房屋等级兼容层编译前又直接执行宿主 `dotnet --version`；当前入口仍只有 runtime，以 `No .NET SDKs were found`（进程退出 `-2147450735`）结束，项目未加载、文件未修改。随后直接使用已验证的 `mcr.microsoft.com/dotnet/sdk:6.0` 与只读真实 `/game` 完成契约和标准 build。该仓库不得再用宿主 `dotnet --version` 作为编译前试探。
 - 最近复发/补充：2026-08-15 玩家加入保护 Control 契约首轮验证再次先用 `Get-Command dotnet` 并执行宿主 `dotnet --version`；入口仍只有 runtime，立即以 `No .NET SDKs were found` 退出，契约项目未加载、文件未修改。后续本任务直接使用已验证的 .NET 6 SDK 容器；该规则已在 `AGENTS.md`，不能再把宿主入口探针当成必要步骤。
@@ -3706,3 +3711,43 @@
 - 正确做法：分别有界等待 HTTP/DB readiness 和 Docker `healthy`；Docker 等待上限必须覆盖 `start-period + interval + timeout`，并在失败输出中记录最小脱敏 stage 后仍自动回滚。
 - 预防检查：替换容器的验收顺序固定为“HTTP 200 → DB status ok → version/commit → configured image → 有界 Docker healthy”，不允许在 `starting` 时立即判失败。
 - 适用范围：所有 Docker Compose 热更新、候选 fresh/restart smoke 和 updater healthy 验收。
+
+# 2026-08-23：递归选择首个文件时未限定星露谷主存档命名契约
+
+- 环境：Windows 11、PowerShell 7，本机 Stardew Valley 存档的只读 XML 结构探针。
+- 错误模式：在 `Saves` 根目录递归取第一个未以 `_old` 或 `SaveGameInfo` 结尾的文件，误以为剩余文件必然是主存档 XML。
+- 症状 / 退出码：筛选命中了 Steam 元数据文件，XML 转换退出 1，并把元数据中的账号关联数字带入工具输出；没有写入或修改任何文件。
+- 根因：只使用排除式文件名过滤，没有验证“主存档文件名必须与其直属目录名完全相同”的实际契约，也没有在解析前验证 XML 根节点。
+- 正确做法：只遍历 `Saves` 的直属子目录，拼出 `<目录>/<目录名>` 精确候选并用 `Test-Path -PathType Leaf` 验证；解析后再断言根节点为 `SaveGame`。探针输出只保留山洞字段标签、计数和布尔值，不输出路径、目录名或玩家关联标识。
+- 预防检查：读取用户数据前先把候选选择规则写成正向 allowlist，并单独验证格式；禁止用“排除几个已知后缀后取首项”的方式发现敏感目录中的结构化文件。
+- 适用范围：Stardew 存档、本机游戏数据以及任何可能混有元数据、缓存或账号文件的目录扫描。
+
+# 2026-08-23：组件预览夹具遗漏命名容器导致响应式假失败
+
+- 环境：Vite 本地预览、Codex 应用内 Browser、390×844 视口，`NewGameCreator` 临时渲染夹具。
+- 错误模式：夹具只设置 `container-type: inline-size`，没有复现产品弹窗父级的 `container-name: ngc-modal`，却直接用窄屏截图和 `scrollWidth` 判断组件响应式表现。
+- 症状：CSS 中全部 `@container ngc-modal (...)` 规则未命中，三栏桌面布局保持至少 960px，页面出现明显横向滚动；源码 production build 和桌面交互均正常。
+- 根因：把“启用容器查询”误等同于“满足命名容器查询”，遗漏了样式选择器中的容器名称契约。
+- 正确做法：临时夹具必须同时设置 `container-type: inline-size` 与 `container-name: ngc-modal`，再在普通视口截图之外断言 `root/body scrollWidth <= clientWidth`；夹具修正前的截图不得记为产品回归。
+- 预防检查：为使用 `@container <name>` 的组件搭预览入口前，先从真实父级读取 `container-type/container-name`；测试夹具需列出并复现影响布局的祖先级 CSS 契约。
+- 适用范围：命名容器查询、弹窗内响应式组件、Storybook/临时 Vite harness 与 Browser 视觉 QA。
+
+# 2026-08-23：Linux Go 整包门禁只挂载后端目录遗漏仓库根资源
+
+- 环境：Windows 11、Docker Desktop、`golang:1.25-alpine` Linux 容器，`stardew_junimo` 整包测试。
+- 错误模式：只把 `backend` 挂到容器并从副本运行 `go test`，没有复现测试所依赖的完整仓库布局。
+- 症状 / 退出码：Linux 权限相关测试已经通过，但浏览器扩展夹具与 Steam 探测脚本测试因找不到仓库根的 `browser-extensions/nexus-slow-installer`、`scripts/discover-steam-builds.ps1` 等资源而退出 1；没有产品代码或运行数据写入。
+- 根因：把 Go package 的源码边界误当成测试资源边界；该包有意校验仓库根资产和跨目录脚本契约。
+- 正确做法：将完整仓库只读挂载到稳定路径 `/repo`，从 `/repo/backend` 执行测试；Go module/build cache 使用任务专属 volume，测试临时目录留在容器 Linux 文件系统。
+- 预防检查：整包测试启动前先检索 `../`、`../../` 和仓库根资源定位逻辑；含跨目录契约时必须挂载完整仓库，不能只挂当前语言子项目。
+- 适用范围：Docker 中执行依赖 monorepo 根资源的 Go、Node、脚本和发布兼容测试。
+
+# 2026-08-23：运行栈清单哈希核验凭记忆猜错 JSON 字段层级
+
+- 环境：Windows 11、PowerShell 7，Control DLL 与 `runtime_stack_manifest.json` 最终一致性探针。
+- 错误模式：未先读取清单结构，直接投影不存在的 `.control.version` 与 `.control.sha256`。
+- 症状 / 退出码：`ConvertFrom-Json` 成功但两个字段为 null，比较结果为 false；DLL 实际哈希仍正确，零文件写入。
+- 根因：凭命名习惯猜测字段，而当前契约实际使用 `.controlMod.version` 与 `.controlMod.dllSha256`。
+- 正确做法：先读取当前 JSON 或其 Go schema，再投影 `controlMod`；同时独立检查 `stackVersion` 后缀、源码/嵌入 manifest 版本和实际文件 SHA-256。
+- 预防检查：结构化清单的一致性探针不得凭记忆写属性路径；首次核验先列出顶层属性名或读取对应 schema，null 字段必须作为探针自身错误排查而不是直接判产品不一致。
+- 适用范围：runtime stack、版本清单、候选证明和其它 JSON/YAML 构建元数据核验。

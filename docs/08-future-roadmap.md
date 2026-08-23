@@ -2245,3 +2245,11 @@ Multi Game Mode later
 - [x] 两栏模式把农场选择改为底部四列，单栏模式把联机设置内部改为紧凑双列；移除 `transform:scale()`，container query 与无容器查询回退保持一致。
 - [x] 响应式专项、production build、948×805、840×720、769×500 Browser QA 通过；页面级横向溢出和 console warn/error 均为 0。
 - [x] 候选 `32127766494`、自动 Tag `32128518008`、正式提升 `32128533342` 和 GitHub Release 成功，能力已随 `v0.5.5@a77fbe6` 发布。
+
+# NEW-GAME-FARM-CAVE-CHOICE-1（2026-08-23，已完成开发与本机验证，未发布）
+
+- [x] 新建存档弹窗在农场类型之后提供原版事件、果蝠、蘑菇三选一，默认原版事件；字段贯通前端类型、请求、后端校验与事务配置。
+- [x] 不修改 Junimo 上游；Panel Control `0.3.7` 在严格新建事务保护内把 Junimo 的蘑菇预置转换为精确目标，并回读山洞值、事件 `65` 和蘑菇设施。
+- [x] Panel durability verifier 增加 Control status 与主存档 XML 双重证据；三种选择、非法值、错误状态和幂等场景自动回归通过。
+- [x] Docker Desktop 真实双写者 E2E 连续创建蝙蝠洞与蘑菇洞并通过双验证，源游戏卷及旧存档哈希不变；Control 真实程序集编译、Linux Go 整包、前端 idempotency/build 与桌面/移动 Browser QA 通过。
+- [ ] 尚未构建不可变候选、执行上一正式版 Web 升级、创建 tag/Release 或提升正式镜像；进入发布时按 `docs/09-image-build.md` 正式门禁执行。

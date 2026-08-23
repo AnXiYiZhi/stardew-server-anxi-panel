@@ -22,6 +22,7 @@ func newGameDurabilityTestConfig() registry.NewGameConfig {
 	return registry.NewGameConfig{
 		FarmName:       "Blue Farm",
 		FarmType:       "forest",
+		FarmCaveChoice: "mushrooms",
 		FarmerName:     "Robin",
 		FavoriteThing:  "Wood",
 		Gender:         "female",
@@ -62,18 +63,56 @@ func TestExpectedNewGameCoreCustomizationClampsColorsLikeControl(t *testing.T) {
 func exactNewGameControlStatus(transactionID, saveID string, cfg registry.NewGameConfig, updatedAt time.Time) newGameControlDurabilityStatus {
 	verifiedAt := updatedAt.Add(-time.Millisecond)
 	customization := expectedNewGameCoreCustomization(cfg)
+	farmCaveChoice := expectedNewGameFarmCaveChoiceForTest(cfg.FarmCaveChoice)
 	return newGameControlDurabilityStatus{
-		State:                      "save-loaded",
-		SaveID:                     saveID,
-		UpdatedAt:                  updatedAt,
-		NewGameTransactionID:       transactionID,
-		NewGameCreationObserved:    true,
-		CustomizationApplied:       true,
-		CustomizationVerified:      true,
-		CustomizationTransactionID: transactionID,
-		CustomizationSaveID:        saveID,
-		CustomizationVerifiedAt:    &verifiedAt,
-		Customization:              &customization,
+		State:                       "save-loaded",
+		SaveID:                      saveID,
+		UpdatedAt:                   updatedAt,
+		NewGameTransactionID:        transactionID,
+		NewGameCreationObserved:     true,
+		CustomizationApplied:        true,
+		CustomizationVerified:       true,
+		CustomizationTransactionID:  transactionID,
+		CustomizationSaveID:         saveID,
+		CustomizationVerifiedAt:     &verifiedAt,
+		Customization:               &customization,
+		FarmCaveChoiceApplied:       true,
+		FarmCaveChoiceVerified:      true,
+		FarmCaveChoiceTransactionID: transactionID,
+		FarmCaveChoiceSaveID:        saveID,
+		FarmCaveChoiceVerifiedAt:    &verifiedAt,
+		FarmCaveChoice:              &farmCaveChoice,
+	}
+}
+
+func expectedNewGameFarmCaveChoiceForTest(requested string) newGameFarmCaveChoice {
+	if requested == "" {
+		requested = "vanilla"
+	}
+	choice := 0
+	eventSeen := false
+	mushroomReady := false
+	mushroomBoxCount := 0
+	dehydratorCount := 0
+	switch requested {
+	case "bats":
+		choice = 1
+		eventSeen = true
+	case "mushrooms":
+		choice = 2
+		eventSeen = true
+		mushroomReady = true
+		mushroomBoxCount = 6
+		dehydratorCount = 1
+	}
+	return newGameFarmCaveChoice{
+		RequestedChoice:        requested,
+		ActualChoice:           choice,
+		ChoiceEventSeen:        eventSeen,
+		MushroomHouseReady:     mushroomReady,
+		MushroomObjectsPresent: mushroomReady,
+		MushroomBoxCount:       mushroomBoxCount,
+		DehydratorCount:        dehydratorCount,
 	}
 }
 
@@ -236,6 +275,19 @@ func TestInspectNewGameControlDurabilityRejectsTerminalMismatches(t *testing.T) 
 			copy.IsCustomized = false
 			status.Customization = &copy
 		}},
+		{name: "farm cave frozen identity", code: "new_game_control_farm_cave_identity_mismatch", edit: func(status *newGameControlDurabilityStatus) {
+			status.FarmCaveChoiceSaveID = "OtherFarm_1"
+		}},
+		{name: "farm cave choice", code: "new_game_control_farm_cave_mismatch", edit: func(status *newGameControlDurabilityStatus) {
+			copy := *status.FarmCaveChoice
+			copy.ActualChoice = 1
+			status.FarmCaveChoice = &copy
+		}},
+		{name: "mushroom house", code: "new_game_control_farm_cave_mismatch", edit: func(status *newGameControlDurabilityStatus) {
+			copy := *status.FarmCaveChoice
+			copy.MushroomHouseReady = false
+			status.FarmCaveChoice = &copy
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,6 +323,28 @@ func TestInspectNewGameControlDurabilityPreservesExplicitCustomizationMismatchFi
 	assertNewGameDurabilityErrorCode(t, err, "new_game_control_customization_mismatch")
 	if !strings.Contains(err.Error(), "shirt, pants") {
 		t.Fatalf("customization mismatch diagnostics lost field names: %v", err)
+	}
+}
+
+func TestInspectNewGameControlDurabilityRejectsExplicitFarmCaveFailure(t *testing.T) {
+	txID := strings.Repeat("f", 32)
+	saveID := "BlueFarm_234567892"
+	cfg := newGameDurabilityTestConfig()
+	now := time.Now().UTC()
+	dataDir := t.TempDir()
+	status := exactNewGameControlStatus(txID, saveID, cfg, now)
+	status.State = "save-cave-choice-invalid"
+	status.FarmCaveChoiceApplied = false
+	status.FarmCaveChoiceVerified = false
+	status.FarmCaveChoiceErrorCode = "farm_cave_choice_conflict"
+	writeNewGameControlStatusForTest(t, dataDir, status)
+	_, ready, err := inspectNewGameControlDurability(dataDir, txID, saveID, cfg, now.Add(-time.Second))
+	if ready {
+		t.Fatal("explicit farm cave failure was accepted")
+	}
+	assertNewGameDurabilityErrorCode(t, err, "new_game_control_farm_cave_mismatch")
+	if !strings.Contains(err.Error(), "farm_cave_choice_conflict") {
+		t.Fatalf("farm cave diagnostics lost the error code: %v", err)
 	}
 }
 
@@ -538,6 +612,21 @@ func TestWaitForNewGameDiskDurabilityWaitsForTransientMalformedXML(t *testing.T)
 	}
 }
 
+func TestInspectNewGameDiskDurabilityAcceptsEveryFarmCaveChoice(t *testing.T) {
+	for _, choice := range []string{"vanilla", "bats", "mushrooms"} {
+		t.Run(choice, func(t *testing.T) {
+			dataDir := t.TempDir()
+			saveID := "BlueFarm_789012346"
+			cfg := newGameDurabilityTestConfig()
+			cfg.FarmCaveChoice = choice
+			writeNewGameDurabilityXML(t, dataDir, saveID, validNewGameMainXML(cfg, "2"), validNewGameInfoXML(cfg), false)
+			if _, ready, err := inspectNewGameDiskDurability(dataDir, saveID, cfg, ""); err != nil || !ready {
+				t.Fatalf("choice %q ready=%v err=%v", choice, ready, err)
+			}
+		})
+	}
+}
+
 func TestInspectNewGameDiskDurabilityRejectsExactFieldMismatches(t *testing.T) {
 	saveID := "BlueFarm_890123456"
 	cfg := newGameDurabilityTestConfig()
@@ -557,6 +646,8 @@ func TestInspectNewGameDiskDurabilityRejectsExactFieldMismatches(t *testing.T) {
 		{name: "hair color", main: strings.Replace(validNewGameMainXML(cfg, "2"), "<hairstyleColor><B>66</B><G>55</G><R>44</R></hairstyleColor>", "<hairstyleColor><B>66</B><G>56</G><R>44</R></hairstyleColor>", 1), info: validNewGameInfoXML(cfg), code: "new_game_disk_character_mismatch"},
 		{name: "pants color", main: strings.Replace(validNewGameMainXML(cfg, "2"), "<pantsColor><B>99</B><G>88</G><R>77</R></pantsColor>", "<pantsColor><B>100</B><G>88</G><R>77</R></pantsColor>", 1), info: validNewGameInfoXML(cfg), code: "new_game_disk_character_mismatch"},
 		{name: "is customized", main: strings.Replace(validNewGameMainXML(cfg, "2"), "<isCustomized>true</isCustomized>", "<isCustomized>false</isCustomized>", 1), info: validNewGameInfoXML(cfg), code: "new_game_disk_character_mismatch"},
+		{name: "farm cave choice", main: strings.Replace(validNewGameMainXML(cfg, "2"), "<caveChoice>2</caveChoice>", "<caveChoice>1</caveChoice>", 1), info: validNewGameInfoXML(cfg), code: "new_game_disk_farm_cave_mismatch"},
+		{name: "farm cave event", main: strings.Replace(validNewGameMainXML(cfg, "2"), "<eventsSeen><int>65</int></eventsSeen>", "<eventsSeen></eventsSeen>", 1), info: validNewGameInfoXML(cfg), code: "new_game_disk_farm_cave_mismatch"},
 		{name: "farm type", main: validNewGameMainXML(cfg, "0"), info: validNewGameInfoXML(cfg), code: "new_game_disk_farm_type_mismatch"},
 		{name: "save info", main: validNewGameMainXML(cfg, "2"), info: strings.Replace(validNewGameInfoXML(cfg), "<name>Robin</name>", "<name>Other</name>", 1), code: "new_game_disk_save_info_mismatch"},
 	}
@@ -638,13 +729,18 @@ func validNewGameMainXML(cfg registry.NewGameConfig, whichFarm string) string {
 		isMale = "false"
 	}
 	expected := expectedNewGameCoreCustomization(cfg)
-	return fmt.Sprintf("<SaveGame><player><name>%s</name><farmName>%s</farmName><favoriteThing>%s</favoriteThing><isMale>%s</isMale><whichPetType>%s</whichPetType><whichPetBreed>%s</whichPetBreed><skin>%d</skin><hair>%d</hair><shirt>%s</shirt><pants>%s</pants><accessory>%d</accessory><newEyeColor><B>%d</B><G>%d</G><R>%d</R></newEyeColor><hairstyleColor><B>%d</B><G>%d</G><R>%d</R></hairstyleColor><pantsColor><B>%d</B><G>%d</G><R>%d</R></pantsColor><isCustomized>true</isCustomized></player><whichFarm>%s</whichFarm></SaveGame>",
+	caveChoice := expectedNewGameFarmCaveChoiceForTest(cfg.FarmCaveChoice)
+	eventsSeen := ""
+	if caveChoice.ChoiceEventSeen {
+		eventsSeen = "<int>65</int>"
+	}
+	return fmt.Sprintf("<SaveGame><player><name>%s</name><farmName>%s</farmName><favoriteThing>%s</favoriteThing><isMale>%s</isMale><whichPetType>%s</whichPetType><whichPetBreed>%s</whichPetBreed><skin>%d</skin><hair>%d</hair><shirt>%s</shirt><pants>%s</pants><accessory>%d</accessory><newEyeColor><B>%d</B><G>%d</G><R>%d</R></newEyeColor><hairstyleColor><B>%d</B><G>%d</G><R>%d</R></hairstyleColor><pantsColor><B>%d</B><G>%d</G><R>%d</R></pantsColor><isCustomized>true</isCustomized><caveChoice>%d</caveChoice><eventsSeen>%s</eventsSeen></player><whichFarm>%s</whichFarm></SaveGame>",
 		expected.FarmerName, expected.FarmName, expected.FavoriteThing, isMale, expected.PetType, expected.PetBreed,
 		newGameDurabilityIntValue(expected.Skin), newGameDurabilityIntValue(expected.Hair), expected.Shirt, expected.Pants, newGameDurabilityIntValue(expected.Accessory),
 		newGameDurabilityColor(expected.EyeColor).B, newGameDurabilityColor(expected.EyeColor).G, newGameDurabilityColor(expected.EyeColor).R,
 		newGameDurabilityColor(expected.HairColor).B, newGameDurabilityColor(expected.HairColor).G, newGameDurabilityColor(expected.HairColor).R,
 		newGameDurabilityColor(expected.PantsColor).B, newGameDurabilityColor(expected.PantsColor).G, newGameDurabilityColor(expected.PantsColor).R,
-		whichFarm)
+		caveChoice.ActualChoice, eventsSeen, whichFarm)
 }
 
 func newGameDurabilityIntValue(value *int) int {

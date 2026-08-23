@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -56,18 +57,36 @@ type newGamePlayersDurability struct {
 // Control on SaveLoaded. It is deliberately separate from the lightweight
 // progress snapshot: success requires the complete transaction-bound payload.
 type newGameControlDurabilityStatus struct {
-	State                      string                    `json:"state"`
-	SaveID                     string                    `json:"saveId"`
-	UpdatedAt                  time.Time                 `json:"updatedAt"`
-	NewGameTransactionID       string                    `json:"newGameTransactionId"`
-	NewGameCreationObserved    bool                      `json:"newGameCreationObserved"`
-	CustomizationApplied       bool                      `json:"customizationApplied"`
-	CustomizationVerified      bool                      `json:"customizationVerified"`
-	CustomizationTransactionID string                    `json:"customizationTransactionId"`
-	CustomizationSaveID        string                    `json:"customizationSaveId"`
-	CustomizationVerifiedAt    *time.Time                `json:"customizationVerifiedAt"`
-	Customization              *newGameCoreCustomization `json:"customization"`
-	CustomizationMismatches    []string                  `json:"customizationMismatches"`
+	State                       string                    `json:"state"`
+	SaveID                      string                    `json:"saveId"`
+	UpdatedAt                   time.Time                 `json:"updatedAt"`
+	NewGameTransactionID        string                    `json:"newGameTransactionId"`
+	NewGameCreationObserved     bool                      `json:"newGameCreationObserved"`
+	CustomizationApplied        bool                      `json:"customizationApplied"`
+	CustomizationVerified       bool                      `json:"customizationVerified"`
+	CustomizationTransactionID  string                    `json:"customizationTransactionId"`
+	CustomizationSaveID         string                    `json:"customizationSaveId"`
+	CustomizationVerifiedAt     *time.Time                `json:"customizationVerifiedAt"`
+	Customization               *newGameCoreCustomization `json:"customization"`
+	CustomizationMismatches     []string                  `json:"customizationMismatches"`
+	FarmCaveChoiceApplied       bool                      `json:"farmCaveChoiceApplied"`
+	FarmCaveChoiceVerified      bool                      `json:"farmCaveChoiceVerified"`
+	FarmCaveChoiceTransactionID string                    `json:"farmCaveChoiceTransactionId"`
+	FarmCaveChoiceSaveID        string                    `json:"farmCaveChoiceSaveId"`
+	FarmCaveChoiceVerifiedAt    *time.Time                `json:"farmCaveChoiceVerifiedAt"`
+	FarmCaveChoice              *newGameFarmCaveChoice    `json:"farmCaveChoice"`
+	FarmCaveChoiceAttempt       *newGameFarmCaveChoice    `json:"farmCaveChoiceAttempt"`
+	FarmCaveChoiceErrorCode     string                    `json:"farmCaveChoiceErrorCode"`
+}
+
+type newGameFarmCaveChoice struct {
+	RequestedChoice        string `json:"requestedChoice"`
+	ActualChoice           int    `json:"actualChoice"`
+	ChoiceEventSeen        bool   `json:"choiceEventSeen"`
+	MushroomHouseReady     bool   `json:"mushroomHouseReady"`
+	MushroomObjectsPresent bool   `json:"mushroomObjectsPresent"`
+	MushroomBoxCount       int    `json:"mushroomBoxCount"`
+	DehydratorCount        int    `json:"dehydratorCount"`
 }
 
 type newGameControlDurabilityWaitOptions struct {
@@ -170,6 +189,22 @@ func inspectNewGameControlDurability(
 			Message: message,
 		}
 	}
+	if status.State == "save-cave-choice-invalid" && status.NewGameTransactionID == transactionID && status.SaveID == saveID {
+		message := "Control 已明确报告目标存档的农场山洞选择复核失败"
+		if status.FarmCaveChoiceErrorCode != "" {
+			message += "（" + status.FarmCaveChoiceErrorCode + "）"
+		}
+		if status.FarmCaveChoiceAttempt != nil {
+			message += fmt.Sprintf("；实际 caveChoice=%d，事件 65=%t，蘑菇设施=%t",
+				status.FarmCaveChoiceAttempt.ActualChoice,
+				status.FarmCaveChoiceAttempt.ChoiceEventSeen,
+				status.FarmCaveChoiceAttempt.MushroomHouseReady)
+		}
+		return status, false, &NewGameTransactionError{
+			Code:    "new_game_control_farm_cave_mismatch",
+			Message: message,
+		}
+	}
 	if status.State != "save-loaded" {
 		return status, false, nil
 	}
@@ -202,6 +237,27 @@ func inspectNewGameControlDurability(
 		return status, false, &NewGameTransactionError{
 			Code:    "new_game_control_customization_mismatch",
 			Message: "Control 内存中的角色身份或外观字段与新建存档配置不一致",
+		}
+	}
+	if !status.FarmCaveChoiceApplied || !status.FarmCaveChoiceVerified || status.FarmCaveChoiceVerifiedAt == nil {
+		return status, false, nil
+	}
+	if status.FarmCaveChoiceVerifiedAt.Before(freshAfter) || status.FarmCaveChoiceVerifiedAt.After(status.UpdatedAt) {
+		return status, false, &NewGameTransactionError{
+			Code:    "new_game_control_farm_cave_unconfirmed",
+			Message: "Control 的农场山洞选择复核时间不属于当前 SaveLoaded 状态",
+		}
+	}
+	if status.FarmCaveChoiceTransactionID != transactionID || status.FarmCaveChoiceSaveID != saveID {
+		return status, false, &NewGameTransactionError{
+			Code:    "new_game_control_farm_cave_identity_mismatch",
+			Message: "Control 的农场山洞选择快照未冻结到当前事务和目标存档",
+		}
+	}
+	if status.FarmCaveChoice == nil || !newGameFarmCaveChoiceMatches(cfg.FarmCaveChoice, *status.FarmCaveChoice) {
+		return status, false, &NewGameTransactionError{
+			Code:    "new_game_control_farm_cave_mismatch",
+			Message: "Control 内存中的农场山洞选择与新建存档配置不一致",
 		}
 	}
 	players, err := readNewGamePlayersDurability(dataDir)
@@ -594,6 +650,12 @@ func inspectNewGameDiskDurability(
 			Message: "主存档 XML 的角色身份、外观字段或 isCustomized 与冻结配置不一致（不匹配字段：" + strings.Join(mismatches, ", ") + "）",
 		}
 	}
+	if !newGameDiskFarmCaveChoiceMatches(cfg.FarmCaveChoice, main.Player.CaveChoice, main.Player.EventsSeen) {
+		return evidence, false, &NewGameTransactionError{
+			Code:    "new_game_disk_farm_cave_mismatch",
+			Message: "主存档 XML 的 caveChoice 或山洞选择事件状态与冻结配置不一致",
+		}
+	}
 	actualFarm := farmTypeLabelFromString(main.WhichFarm)
 	if actualFarm == "" || actualFarm != expectedFarm.ID {
 		return evidence, false, &NewGameTransactionError{
@@ -646,6 +708,45 @@ func expectedNewGameCoreCustomization(cfg registry.NewGameConfig) newGameCoreCus
 		HairColor:     expectedNewGameRGBColor(cfg.HairColor),
 		PantsColor:    expectedNewGameRGBColor(cfg.PantsColor),
 		IsCustomized:  true,
+	}
+}
+
+func newGameFarmCaveChoiceMatches(requested string, actual newGameFarmCaveChoice) bool {
+	if requested == "" {
+		requested = "vanilla"
+	}
+	if actual.RequestedChoice != requested {
+		return false
+	}
+	switch requested {
+	case "vanilla":
+		return actual.ActualChoice == 0 && !actual.ChoiceEventSeen && !actual.MushroomObjectsPresent
+	case "bats":
+		return actual.ActualChoice == 1 && actual.ChoiceEventSeen && !actual.MushroomObjectsPresent
+	case "mushrooms":
+		return actual.ActualChoice == 2 && actual.ChoiceEventSeen && actual.MushroomHouseReady
+	default:
+		return false
+	}
+}
+
+func newGameDiskFarmCaveChoiceMatches(requested string, actual *int, eventsSeen []string) bool {
+	if actual == nil {
+		return false
+	}
+	if requested == "" {
+		requested = "vanilla"
+	}
+	eventSeen := slices.Contains(eventsSeen, "65")
+	switch requested {
+	case "vanilla":
+		return *actual == 0 && !eventSeen
+	case "bats":
+		return *actual == 1 && eventSeen
+	case "mushrooms":
+		return *actual == 2 && eventSeen
+	default:
+		return false
 	}
 }
 
@@ -770,6 +871,8 @@ type newGameMainSaveXML struct {
 		HairstyleColor *newGameColorXML       `xml:"hairstyleColor"`
 		PantsColor     *newGameColorXML       `xml:"pantsColor"`
 		IsCustomized   *bool                  `xml:"isCustomized"`
+		CaveChoice     *int                   `xml:"caveChoice"`
+		EventsSeen     []string               `xml:"eventsSeen>int"`
 	} `xml:"player"`
 	WhichFarm string `xml:"whichFarm"`
 }

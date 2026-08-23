@@ -190,7 +190,7 @@ func TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn(t *testing.T) {
 
 	skin, hair, accessory := 3, 14, 7
 	config := registry.NewGameConfig{
-		FarmName: "Release Gate", FarmType: "standard", StartingCabins: 1, MaxPlayers: 4,
+		FarmName: "Release Gate", FarmType: "standard", FarmCaveChoice: "bats", StartingCabins: 1, MaxPlayers: 4,
 		CabinLayout: "nearby", CabinMode: "recommended", ProfitMargin: "100", MoneyMode: "shared",
 		FarmerName: "GateHost", FavoriteThing: "Reliable releases", Gender: "female", PetType: "Cat",
 		Skin: &skin, Hair: &hair, Shirt: "1001", Pants: "1", Accessory: &accessory,
@@ -258,6 +258,7 @@ func TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn(t *testing.T) {
 	if active := GetActiveSaveName(dataDir); active == "" || active != saves[0].Name {
 		t.Fatalf("active save=%q, created save=%q", active, saves[0].Name)
 	}
+	assertRealNewGameFarmCave(t, dataDir, saves[0].Name, config)
 	record, err := findNewGameTransactionByRequest(dataDir, requestID)
 	if err != nil || record == nil {
 		t.Fatalf("load persistent real new-game transaction: record=%#v err=%v", record, err)
@@ -302,6 +303,7 @@ func TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn(t *testing.T) {
 
 	secondSkin, secondHair, secondAccessory := 5, 19, 2
 	secondConfig := config
+	secondConfig.FarmCaveChoice = "mushrooms"
 	secondConfig.FarmName = "HTTP Release Gate"
 	secondConfig.FarmerName = "HTTPGateHost"
 	secondConfig.FavoriteThing = "Exactly once"
@@ -362,6 +364,7 @@ func TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn(t *testing.T) {
 	if !oldFound || newSaveName == "" {
 		t.Fatalf("HTTP writer did not preserve old save and activate exact new save: old=%s saves=%+v", oldSaveName, allSaves)
 	}
+	assertRealNewGameFarmCave(t, dataDir, newSaveName, secondConfig)
 	newOldMainHash, err := stableFileSHA256(oldMainPath)
 	if err != nil {
 		t.Fatal(err)
@@ -404,4 +407,25 @@ func TestRealNewGameMaterializesSMAPIModsBeforeFirstSaveOptIn(t *testing.T) {
 		t.Fatalf("real two-writer project left containers after Stop: %v %s", psErr, output)
 	}
 	t.Logf("real startup + HTTP saves created: project=%s startup=%s http=%s oldHashes=%s/%s materializedSequence=%d transactionSequence=%d", project, oldSaveName, newSaveName, oldMainHash, oldInfoHash, materializedSequence, transactionSequence)
+}
+
+func assertRealNewGameFarmCave(t *testing.T, dataDir, saveID string, cfg registry.NewGameConfig) {
+	t.Helper()
+	status, err := readNewGameControlDurabilityStatus(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.FarmCaveChoiceApplied || !status.FarmCaveChoiceVerified ||
+		status.FarmCaveChoiceSaveID != saveID || status.FarmCaveChoice == nil ||
+		!newGameFarmCaveChoiceMatches(cfg.FarmCaveChoice, *status.FarmCaveChoice) {
+		t.Fatalf("real farm cave runtime evidence mismatch: applied=%v verified=%v saveMatch=%v choice=%+v errorCode=%s",
+			status.FarmCaveChoiceApplied,
+			status.FarmCaveChoiceVerified,
+			status.FarmCaveChoiceSaveID == saveID,
+			status.FarmCaveChoice,
+			status.FarmCaveChoiceErrorCode)
+	}
+	if _, ready, err := inspectNewGameDiskDurability(dataDir, saveID, cfg, ""); err != nil || !ready {
+		t.Fatalf("real farm cave disk evidence mismatch: ready=%v err=%v", ready, err)
+	}
 }

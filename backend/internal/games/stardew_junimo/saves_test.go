@@ -458,10 +458,35 @@ func TestValidateNewGameConfig_PetPreference(t *testing.T) {
 	}
 }
 
+func TestNormalizeNewGameConfig_FarmCaveChoice(t *testing.T) {
+	base := registry.NewGameConfig{
+		FarmName: "Farm", FarmType: "standard", CabinLayout: "nearby", CabinMode: "recommended",
+		ProfitMargin: "100", MoneyMode: "shared",
+	}
+	normalized, err := NormalizeNewGameConfig(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.FarmCaveChoice != "vanilla" {
+		t.Fatalf("default farm cave choice = %q", normalized.FarmCaveChoice)
+	}
+	for _, choice := range []string{"vanilla", "bats", "mushrooms"} {
+		cfg := base
+		cfg.FarmCaveChoice = choice
+		if _, err := NormalizeNewGameConfig(cfg); err != nil {
+			t.Errorf("choice %q should be accepted: %v", choice, err)
+		}
+	}
+	base.FarmCaveChoice = "random"
+	if _, err := NormalizeNewGameConfig(base); err == nil {
+		t.Fatal("unknown farm cave choice should be rejected")
+	}
+}
+
 func TestWriteInitConfig_PreservesPetGenderAndCabinSelection(t *testing.T) {
 	dir := t.TempDir()
 	cfg := registry.NewGameConfig{
-		FarmName: "Meadow", FarmerName: "Robin", FarmType: "meadowlands",
+		FarmName: "Meadow", FarmerName: "Robin", FarmType: "meadowlands", FarmCaveChoice: "mushrooms",
 		Gender: "female", PetType: "Dog", PetBreed: 4, PetBreedID: "4",
 		StartingCabins: 2, CabinLayout: "separate", ProfitMargin: "75", MoneyMode: "shared",
 	}
@@ -476,7 +501,7 @@ func TestWriteInitConfig_PreservesPetGenderAndCabinSelection(t *testing.T) {
 	if err := json.Unmarshal(data, &init); err != nil {
 		t.Fatal(err)
 	}
-	if init.Mode != "panel-newgame" || init.Gender != "female" || init.PetType != "Dog" || init.PetBreed != "4" || init.CabinCount != 2 || init.CabinLayout != "separate" {
+	if init.Mode != "panel-newgame" || init.Gender != "female" || init.PetType != "Dog" || init.PetBreed != "4" || init.FarmCaveChoice != "mushrooms" || init.CabinCount != 2 || init.CabinLayout != "separate" {
 		t.Fatalf("init selection changed: %#v", init)
 	}
 	if !init.AutoPause {

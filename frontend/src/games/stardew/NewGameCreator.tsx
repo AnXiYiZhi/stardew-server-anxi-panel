@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { getFarmTypeCatalog, prepareFarmTypeMods } from '../../api'
-import type { FarmTypeCatalogItem, NewGameConfig } from '../../types'
+import type { FarmCaveChoice, FarmTypeCatalogItem, NewGameConfig } from '../../types'
 import { canSelectModFarm, farmCatalogIconSource, farmComponentsToEnable, farmDependencyStatusText, initialFarmCatalogViewState, isSafeManualFarmTypeId, modFarmPlaceholder, moddedCompatibilityShortcut, startFarmCatalogLoad } from './farm-catalog-state'
 import { builtinFarms, isBuiltinFarmType } from './new-game-farms'
 import './NewGameCreator.css'
@@ -14,6 +14,7 @@ type Props = {
 
 type Gender = { id: 'male' | 'female'; icon: string; preview: string }
 type PetPreference = { petType: 'Cat' | 'Dog'; breed: number; asset: string }
+type FarmCaveOption = { id: FarmCaveChoice; label: string; description: string }
 
 const genders: Gender[] = [
   { id: 'male', icon: '/assets/stardew/new-game/gender/male-icon.png', preview: '/assets/stardew/new-game/characters/male-preview.png' },
@@ -27,12 +28,19 @@ const petPreferences: PetPreference[] = [
   ...[0, 1, 2, 3, 4].map((breed) => ({ petType: 'Dog' as const, breed, asset: `/assets/stardew/new-game/pets/dog-${breed}.png` })),
 ]
 
+const farmCaveOptions: FarmCaveOption[] = [
+  { id: 'vanilla', label: '保留原版', description: '达到条件后由德米特里厄斯来访，再在游戏中选择。' },
+  { id: 'bats', label: '果蝠洞', description: '新存档直接启用果蝠洞，不再触发原版山洞选择事件。' },
+  { id: 'mushrooms', label: '蘑菇洞', description: '新存档直接布置蘑菇箱和脱水机，并跳过原版选择事件。' },
+]
+
 function defaultConfig(): NewGameConfig {
   return {
     farmName: '',
     farmerName: 'host',
     favoriteThing: '星露谷',
     farmType: 'standard',
+    farmCaveChoice: 'vanilla',
     gender: 'male',
     petType: 'Cat',
     petBreedId: '0',
@@ -262,6 +270,24 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
             <ArrowButton direction="right" label="下一种农场" onClick={() => updateFarm(1)} />
           </div>
         </section>
+
+        <fieldset className="ngc-cave-choice">
+          <legend>农场山洞</legend>
+          <div className="ngc-cave-options">
+            {farmCaveOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={cfg.farmCaveChoice === option.id ? 'selected' : ''}
+                aria-pressed={cfg.farmCaveChoice === option.id}
+                onClick={() => set('farmCaveChoice', option.id)}
+              >
+                <strong>{option.label}</strong>
+                <small>{option.description}</small>
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
         <section className="ngc-modded-catalog" aria-label="检测到的模组农场">
           <div className="ngc-modded-heading">

@@ -1307,3 +1307,21 @@
 - 定向测试覆盖流式中间进度、缓存命中、迁移旧授权立即复用、已有缓存复用和缓存失效回退，2026-08-18 Windows 宿主通过。宿主全包只因已知 POSIX mode 断言失败，正式门禁必须在任务专属 Linux 文件系统重跑全量。
 - 后续不得把收到 `downloaded==total` 当成 SHA-256/ZIP 校验成功；不得仅凭迁移文件存在提前写 `STEAMCMD_AUTH_COMPLETED`。若 marker shape 变化，必须同步 `install-helpers.ts`、跨端文档和旧后端 fallback 回归。
 - 当前仅完成本地源码和定向验证，未部署用户飞牛服务器、未构建候选或发布镜像。
+
+# NEW-GAME-FARM-CAVE-CHOICE-1 接手记录（2026-08-23，未发布）
+
+## 改了什么
+
+- 新建存档请求、`server-init.json` 和 Control 契约新增 `farmCaveChoice=vanilla|bats|mushrooms`，缺省保持 `vanilla`。后端在进入 Junimo 创建前做 allowlist 校验；没有修改 `stardew_junimo` 上游 driver。
+- Control `0.3.7` 只在新建事务、target marker、存档名与玩家身份精确匹配时应用山洞选择。实机确认 Junimo 会先预置蘑菇洞，因此转换必须能从实际 `2 + event 65 + 蘑菇设施` 原子落到原版未选或蝙蝠，而不能把该初态误判为旧存档冲突。
+- runtime status 新增 applied/verified、transaction/save/time 和回读 snapshot；Panel durability verifier 再校验主存档 XML 的 `<caveChoice>` 与 `<eventsSeen><int>65</int>`，蘑菇还要求设施就绪，原版/蝙蝠要求不存在蘑菇设施。
+
+## 影响文件与验证
+
+- 主要影响 `registry/types.go`、`saves.go`、`new_game_durability.go` 及其测试、真实集成测试、Control 源码/契约、两份 manifest、嵌入 DLL 和 `runtime_stack_manifest.json`。Control 版本为 `0.3.7`，最终 DLL SHA-256 为 `bf8ba2026e33f62007e3d1cfca59b055da94806cc17dc999d62a1c94b2e39423`。
+- 三种选择、非法输入、幂等回读和磁盘不一致回归通过；真实 Stardew 1.6.15 程序集标准编译 0 error（保留一个既有 analyzer/compiler 版本 warning）。Docker Desktop 真实新建蝙蝠洞与蘑菇洞均通过 Control/磁盘双验证，源游戏卷与旧存档不变；Linux `go test ./internal/games/stardew_junimo/... -count=1` 通过。
+
+## 下一步注意事项
+
+- 不得去掉 target marker、事务、存档名或玩家身份任一保护条件，也不得把选择改成普通 `SaveLoaded` 全局迁移，否则会污染已有存档。`vanilla` 表示恢复原版未触发 Demetrius 事件的状态，不是接受 Junimo 的蘑菇预置。
+- 以后重编 Control 必须同步源码/嵌入 manifest 的版本、嵌入 DLL 与 runtime manifest 哈希，并重跑真实双写者 Docker E2E。当前未创建候选、tag、Release 或正式镜像。

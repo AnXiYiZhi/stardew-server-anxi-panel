@@ -180,11 +180,13 @@ type RgbColor struct {
 
 // NewGameConfig holds parameters for creating a new game.
 // Junimo server-settings fields are always applied.
-// SMAPI character fields (Gender, PetType, PetBreedID, appearance) are written to
-// server-init.json and applied by the SMAPI mod on the SaveCreating event.
+// SMAPI-owned fields (farm cave, Gender, PetType, PetBreedID, appearance) are
+// written to server-init.json and applied by Control inside the guarded new-game
+// transaction when the target save is first loaded.
 type NewGameConfig struct {
 	FarmName       string `json:"farmName"`
 	FarmType       string `json:"farmType"`       // standard|riverland|forest|hilltop|wilderness|fourcorners|beach
+	FarmCaveChoice string `json:"farmCaveChoice"` // vanilla|bats|mushrooms
 	StartingCabins int    `json:"startingCabins"` // 0-7
 	MaxPlayers     int    `json:"maxPlayers"`     // 1-100, total concurrent players
 	CabinLayout    string `json:"cabinLayout"`    // nearby|separate
