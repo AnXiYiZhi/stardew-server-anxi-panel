@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
+	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updatecheck"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updater"
@@ -34,6 +36,29 @@ func TestFullStackInstanceStatusSkipsUninstalledInstance(t *testing.T) {
 			}
 			if status.InstanceID != "stardew" || status.Result == "" {
 				t.Fatalf("uninstalled full-stack details = %+v", status)
+			}
+		})
+	}
+}
+
+func TestApplyFullStackRuntimePhaseSeparatesAuthFromSMAPIVerification(t *testing.T) {
+	tests := []struct {
+		name       string
+		applyPhase string
+		wantPhase  string
+		wantResult string
+	}{
+		{name: "auth", applyPhase: sj.RuntimeUpdateApplyVerifyingAuth, wantPhase: "verifying_auth", wantResult: "不等待 Steam 登录"},
+		{name: "server", applyPhase: sj.RuntimeUpdateApplyVerifyingServer, wantPhase: "verifying_runtime", wantResult: "SMAPI 实际加载版本"},
+		{name: "restore", applyPhase: sj.RuntimeUpdateApplyRestoringState, wantPhase: "restoring_server", wantResult: "恢复升级前"},
+		{name: "rollback", applyPhase: sj.RuntimeUpdateApplyRollingBack, wantPhase: "rolling_back_runtime", wantResult: "自动恢复原版本"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			full := &updater.FullStackStatus{Phase: "updating_runtime", Result: "default"}
+			applyFullStackRuntimePhase(full, sj.RuntimeUpdateApplyStatus{Phase: test.applyPhase})
+			if full.Phase != test.wantPhase || !strings.Contains(full.Result, test.wantResult) {
+				t.Fatalf("phase=%q result=%q", full.Phase, full.Result)
 			}
 		})
 	}

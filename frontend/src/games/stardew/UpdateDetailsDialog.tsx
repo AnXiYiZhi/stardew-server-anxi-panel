@@ -47,7 +47,7 @@ export function UpdateDetailsDialog({ user, dashboardData }: UpdateDetailsDialog
 	const onlineHumans = dashboardData.players?.players.filter((player) => player.status === 'online' && !player.isHost).length
 	const updatePhases = [
 		'backing_up', 'pulling', 'recreating', 'waiting_health',
-		'checking_runtime', 'notifying_players', 'saving_game', 'backing_up_save', 'updating_runtime', 'verifying_runtime', 'restoring_server',
+		'checking_runtime', 'notifying_players', 'saving_game', 'backing_up_save', 'updating_runtime', 'verifying_auth', 'verifying_runtime', 'restoring_server',
 		...apply && ['rolling_back', 'failed_rolled_back', 'rollback_failed'].includes(apply.phase) ? ['rolling_back'] : [],
 	]
 	const effectivePhase = apply?.fullStack?.phase || apply?.phase || ''

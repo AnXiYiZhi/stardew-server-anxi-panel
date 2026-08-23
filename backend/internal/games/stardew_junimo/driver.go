@@ -123,20 +123,21 @@ type Driver struct {
 	mu         sync.Mutex
 	guardChans map[string]chan string
 
-	runtimeUpdateMu            sync.Mutex
-	inviteCodeMu               sync.Mutex
-	inviteCodeCache            map[string]inviteCodeCacheEntry
-	inviteCodeFlights          map[string]*inviteCodeFlight
-	saveImportRunMu            sync.Mutex
-	runtimeUpdatePollInterval  time.Duration
-	runtimeUpdateAuthTimeout   time.Duration
-	runtimeUpdateServerTimeout time.Duration
-	runtimeUpdateStopTimeout   time.Duration
-	backupMaintenanceInterval  time.Duration
-	requiredRuntimeMu          sync.Mutex
-	requiredRuntimeRunning     map[string]bool
-	installationEvidenceMu     sync.Mutex
-	installationEvidence       map[string]requiredFilesEvidence
+	runtimeUpdateMu                  sync.Mutex
+	inviteCodeMu                     sync.Mutex
+	inviteCodeCache                  map[string]inviteCodeCacheEntry
+	inviteCodeFlights                map[string]*inviteCodeFlight
+	saveImportRunMu                  sync.Mutex
+	runtimeUpdatePollInterval        time.Duration
+	runtimeUpdateAuthTimeout         time.Duration
+	runtimeUpdateAuthAdvisoryTimeout time.Duration
+	runtimeUpdateServerTimeout       time.Duration
+	runtimeUpdateStopTimeout         time.Duration
+	backupMaintenanceInterval        time.Duration
+	requiredRuntimeMu                sync.Mutex
+	requiredRuntimeRunning           map[string]bool
+	installationEvidenceMu           sync.Mutex
+	installationEvidence             map[string]requiredFilesEvidence
 }
 
 type DriverOptions struct {
@@ -166,23 +167,24 @@ func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.
 		panelVersion = strings.TrimSpace(options.PanelVersion)
 	}
 	return &Driver{
-		docker:                     docker,
-		logger:                     logger,
-		jobs:                       jobManager,
-		store:                      store,
-		panelVersion:               panelVersion,
-		containerDataDir:           strings.TrimSpace(options.ContainerDataDir),
-		hostDataDir:                strings.TrimSpace(options.HostDataDir),
-		guardChans:                 make(map[string]chan string),
-		inviteCodeCache:            make(map[string]inviteCodeCacheEntry),
-		inviteCodeFlights:          make(map[string]*inviteCodeFlight),
-		runtimeUpdatePollInterval:  2 * time.Second,
-		runtimeUpdateAuthTimeout:   10 * time.Minute,
-		runtimeUpdateServerTimeout: 20 * time.Minute,
-		runtimeUpdateStopTimeout:   10 * time.Minute,
-		backupMaintenanceInterval:  2 * time.Second,
-		requiredRuntimeRunning:     make(map[string]bool),
-		installationEvidence:       make(map[string]requiredFilesEvidence),
+		docker:                           docker,
+		logger:                           logger,
+		jobs:                             jobManager,
+		store:                            store,
+		panelVersion:                     panelVersion,
+		containerDataDir:                 strings.TrimSpace(options.ContainerDataDir),
+		hostDataDir:                      strings.TrimSpace(options.HostDataDir),
+		guardChans:                       make(map[string]chan string),
+		inviteCodeCache:                  make(map[string]inviteCodeCacheEntry),
+		inviteCodeFlights:                make(map[string]*inviteCodeFlight),
+		runtimeUpdatePollInterval:        2 * time.Second,
+		runtimeUpdateAuthTimeout:         10 * time.Minute,
+		runtimeUpdateAuthAdvisoryTimeout: 2 * time.Second,
+		runtimeUpdateServerTimeout:       20 * time.Minute,
+		runtimeUpdateStopTimeout:         10 * time.Minute,
+		backupMaintenanceInterval:        2 * time.Second,
+		requiredRuntimeRunning:           make(map[string]bool),
+		installationEvidence:             make(map[string]requiredFilesEvidence),
 	}
 }
 

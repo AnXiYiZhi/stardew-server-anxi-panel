@@ -1,3 +1,17 @@
+# CONTROL-ONLY-AUTH-ADVISORY-1 后端接手记录（2026-08-23，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `runtime_update_apply_runner.go` 新增基于恢复清单的 strict/advisory 分流。只有 `ServerImageChanged=false && AuthImageChanged=false` 且没有 Junimo Mod replace intent 时，未变化 auth 先严格等待容器 `running` 和精确 image ID，再只执行一次默认 2 秒 `/health`；探测失败规范化为显式 warning 后继续，最终 target verification 只复核容器/digest。server/auth/Junimo Mod 任一变化仍走原 `waitRuntimeAuth` 严格健康门禁和回滚。
+- `driver.go` 增加内部 `runtimeUpdateAuthAdvisoryTimeout` 默认值；没有环境变量或公开配置。`internal/docker/runtime_apply.go` 的 Bash HTTP 探针新增 1 秒容器内 watchdog，并把 exit 124 归一为 `auth_health_timeout`，避免 Windows/Docker Compose 子进程在宿主 context 取消后继续占满响应预算。`updater_handlers.go` 将内部 `verifying_auth` 映射为新的公开 `fullStack.phase=verifying_auth`，`verifying_server` 单独映射为 `verifying_runtime`。JSON 字段 shape、SQLite、Compose、runtime manifest 和凭据存储不变。
+- 测试夹具现在能在 mutation 后单独注入 auth 容器/digest 偏离，覆盖运行态/停止态 Control-only、一次 advisory、身份硬门禁和变化组件严格失败；真实 Docker fixture 用 running 但 Docker-health unhealthy 的 auth 服务模拟 `/health` timeout，并继续断言 `/steam/ready` 零调用。
+
+## 如何验证、下一步注意事项
+
+- 真实 Docker auth fixture 全绿（19.498s），覆盖 Control-only timeout 继续与变化组件 404/500/坏 JSON/timeout/unreachable 严格失败；Linux Go 1.25 整仓 test 全绿（Junimo 77.266s、Web 68.945s），Windows vet/build 通过。Windows 整仓唯一失败仍是已知 NTFS `0666`/Linux `0640` mode 差异。正式发布仍必须按 `docs/09-image-build.md` 的本版矩阵在升级后的不可变候选上复验。
+- 后续不得把 advisory 扩展到 server/auth/Junimo Mod 变化，也不得把容器 running 或 image ID 降成 warning。若 auth `/health` 成功但 `logged_in=false`，仍只记录在线能力 warning；邀请码与 Steam 登录不属于升级硬门禁，但也不能替代精确容器身份。
+- Control-only 终验故意不重复 `/health`，避免同一后台重连被二次等待；任何新增健康调用都应有有界次数/预算测试。公开阶段字符串由 Web 映射函数集中维护，新增内部 apply phase 时需同步前端状态机和跨端文档。
+
 # STEAM-CREDENTIAL-RECOVERY-1 后端接手记录（2026-08-22，released in v0.5.11）
 
 ## 改了什么、影响哪些接口/文件

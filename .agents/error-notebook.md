@@ -2,6 +2,26 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-23：生产 Docker 只读探针也必须先确认账号的 socket 权限
+
+- 环境：PowerShell 7、Posh-SSH 3.2.7，以生产账号 `cz` 只读诊断 Panel 全栈升级。
+- 错误模式：SSH 连接成功后直接用 `Invoke-SSHCommand` 执行 `docker ps`，没有先确认该账号是否属于 Docker 组或具备 daemon socket 读取权限。
+- 症状 / 退出码：远端返回 `/var/run/docker.sock: permission denied`；没有列出容器，也没有修改生产状态。
+- 根因：SSH 登录权限不等于 Docker daemon 权限；该生产账号需要受控 `sudo` 才能读取 Docker 现场。
+- 正确做法：连接后先用无副作用权限探针确认 Docker socket 可读性；需要 `sudo` 时按生产 SSH 契约使用 `New-SSHShellStream`，密码只写入会话流且不回显，后续只读命令使用同一受控 TTY 的 `sudo -n`，最终在 `finally` 关闭 stream/session。
+- 预防检查：生产 Docker 诊断开头明确区分 SSH、Docker socket 与 sudo 三层权限；首条失败后保存原错误并切换已验证的受控 sudo 形态，不重复普通账号 Docker 命令。
+- 适用范围：生产容器、镜像、Compose、日志、事件和 volume 的只读 SSH 诊断。
+
+## 2026-08-23：Posh-SSH 3.2.7 的 ShellStream 尺寸参数是 Columns/Rows
+
+- 环境：PowerShell 7、Posh-SSH 3.2.7，创建生产 `New-SSHShellStream` 以受控输入 sudo 密码。
+- 错误模式：凭其它终端 API 的命名传入不存在的 `-TerminalWidth` / `-TerminalHeight`。
+- 症状 / 退出码：cmdlet 在建立 shell stream 前报 `A parameter cannot be found that matches parameter name 'TerminalWidth'`；SSH session 保持连接，生产未执行任何命令。
+- 根因：Posh-SSH 3.2.7 的实际参数名为 `-Columns`、`-Rows`，像素尺寸才是可选 `-Width`、`-Height`。
+- 正确做法：首次使用或版本变化时先运行 `Get-Command New-SSHShellStream -Syntax`；本项目固定使用 `-TerminalName xterm -Columns <n> -Rows <n> -BufferSize <n>`。
+- 预防检查：不要从其它 SSH/PTY 库推断参数名；把版本探针和语法探针放在创建生产交互流之前。
+- 适用范围：Posh-SSH 交互 shell、sudo、需要 TTY 的生产只读诊断。
+
 ## 2026-08-20：一次性生产恢复工具必须复用产品身份与 bootstrap 收尾契约
 
 - 环境：Go 一次性恢复程序，严格处理已证明 Phase A 零落盘的首次安装存档导入事务。
@@ -34,6 +54,7 @@
 
 ## 2026-08-20：生产终态复核不得凭记忆改写已确认的容器名
 
+- 最近复发/补充：2026-08-23 本轮只读升级诊断已由 `docker ps` 再次确认目标为 `anxi-panel`，下一条日志命令仍手写成不存在的 `anxipanel`，远端只返回 `No such container` 且零生产修改。此模式已第三次复发；后续生产容器名必须在首次探针后立即保存为任务变量，所有命令只能由该变量拼接，禁止再出现任何容器名字面量。
 - 最近复发/补充：记录本条后，下一次身份探针又把目标手写成 `anxipanel-panel`，再次在首个 inspect fail-fast、SSH 正常关闭且零生产修改。不能再依据记忆或在命令中手写变体；下一步必须先用独立 `docker ps --filter name=panel --format '{{.Names}}'` 取得实际名称，再把唯一返回值作为本轮 PowerShell 变量传给后续只读调用。
 - 环境：PowerShell 7 + Posh-SSH 3.2.7，只读复核生产 Panel 容器。
 - 错误模式：前序已经确认容器名为 `anxi-panel`，最终探针却凭记忆写成不存在的 `anxipanel`。
@@ -56,6 +77,8 @@
 
 ## 2026-08-20：生产实例数据路径必须从权威记录取得，不能把 Panel 数据根当作实例根
 
+- 最近复发/补充：2026-08-23 诊断 `0.5.5 → 0.5.12` Web 升级时，已经从完整 mount 投影看到匿名 `/data` volume 与 `/root/.anxi-panel/data` bind 并存，仍先按默认配置读取 `/data/updater/{apply-status,status}.json`，两个只读 `cat` 均返回不存在；生产状态未修改。随后逐个对安全 mount destination 执行 `test -f <dest>/panel.db`，只把唯一命中的 `/root/.anxi-panel/data` 作为数据根，成功取得 Panel 与运行栈全部 `succeeded` 的权威状态。以后 updater 诊断也必须先定位唯一 `panel.db`，不能因源码默认值是 `/data` 就跳过现场挂载判定。
+- 最近复发/补充：2026-08-23 本轮先把 Panel 的匿名 `/data` volume mount 误当成业务数据根并尝试列出 `/data/instances`，只读 `ls` 返回不存在；完整 mount 投影随后显示真正的 Panel 数据是另一个精确 bind destination。挂载列表存在多个可写目标时，必须先按 `Type/Destination` 分类并以 Panel 启动日志或数据库配置确认业务根，不能按常见容器路径选第一个 `/data`。
 - 最近复发/补充：同日复核失败导入的 owned source 时，先后把 `durablePendingUpload.StagedDir` 猜成 token 目录下的 `staged` 和 `payload`，两次都在本地白名单断言处 fail-fast，远端只完成 journal/token/hash 读取且零修改。源码真实契约是 token 从 `available/reserved` 转成 `owned` 时，`transferOwnership` 会把 payload 移到精确的 `save-import-transactions/<operation>/source` 并同步改写 `StagedDir`。必须先读状态迁移函数而不只读初始 `put`，再由 journal operation ID 构造并比较 exact source；不得从字段名或初始目录猜当前 owned 路径。
 - 环境：PowerShell 7 + Posh-SSH 3.2.7，只读诊断 Linux 生产容器中的存档导入恢复现场。
 - 错误模式：确认 Panel bind mount 目标为 `/root/.anxi-panel/data` 后，直接把该挂载点猜成 Stardew 实例 `dataDir`，在同一远端命令中继续读取其下 `.local-container/control`；命令前半列出的真实内容已经显示实例位于 `instances/` 子目录。
@@ -119,6 +142,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-23 实现 Control-only 认证健康分流时，先在定位 Docker timeout 后凭职责读取不存在的 `backend/internal/docker/client.go`；随后 `rg` 已明确返回 fake 位于 `runtime_update_dry_run_test.go`，下一条组合命令仍改写成不存在的 `runtime_update_test.go`。两次均为只读失败，源码与 Docker 未变化；后续只读取真实 `types.go`、`runtime_apply.go` 和 `runtime_update_dry_run_test.go`。符号检索已经给出路径后，下一命令必须逐字复制该完整路径，不能再按类型名或测试主题重命名。
 - 最近复发/补充：2026-08-23 实现农场山洞选择前读取运行栈清单时，未先列出 `compatibility-matrices/` 就把当前矩阵猜成不存在的 `compatibility-matrices/current.json`；同一命令前半的真实 runtime manifest 已成功读取，后半只读失败，产品与 Docker 状态未变化。后续矩阵读取必须先用 `rg --files compatibility-matrices` 取得权威文件名，不能把“current”这一业务概念直接映射成文件名。
 - 最近复发/补充：2026-08-23 讨论新建存档农场山洞选择时，首轮广域检索把不存在的仓库根 `embedded` 加入 `rg`；随后又在 Control 源目录中凭类名猜出不存在的 `Contracts.cs`/`NewGameControlContract.cs`，并在 `.codex-test/reflect-game` 的真实文件清单只含 `bin/obj` 时继续读取不存在的 `Program.cs`/项目文件。三次均为只读失败，产品文件未变化。后续已先用 `rg --files` 取得精确路径，只读取真实的 `ModEntry.cs`/`ControlContract.cs`；测试残留目录的已编译输出不能反推出源码仍存在。
 - 最近复发/补充：2026-08-22 回填 v0.5.11 发布证据时，在读取已确认存在的 `release-candidate.yml` 与 `docs.yml` 后仍凭职责猜测 `.github/workflows/compatibility.yml`，实际文件名为 `compatibility-matrix.yml`，使组合只读命令末尾退出 1；前两份文件读取结果有效，仓库未被该命令修改。后续 workflow 名称必须先取 `rg --files .github/workflows` 的精确结果，再逐文件读取，不能从页面显示名反推文件名。
@@ -764,6 +788,8 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-23 检索 runtime apply 测试时，把 `backend/internal/games/stardew_junimo/*test.go` 直接作为 Windows `rg` 位置参数，得到 `文件名、目录名或卷标语法不正确 (os error 123)`；同一命令中的精确文件命中有效，源码未修改。随后改为已确认的精确测试文件与明确目录。位置参数发送前必须机械拒绝 `*`/`?`，跨文件过滤只能使用 `-g '*_test.go' <明确目录>`。
+- 最近复发/补充：2026-08-23 只读定位运行栈状态文件时，又把 `backend/internal/games/stardew_junimo/*.go` 作为 Windows `rg` 位置参数，得到 `os error 123`；随后检索 SQLite schema 时还把未经 `rg --files` 确认、实际不存在的 `backend/internal/storage/migrations` 混入有效目录，得到 `os error 2`。两条命令都只读，未修改源码或生产。余下诊断已改为只传真实命中的精确文件或明确目录，并用 `-g '*.go'` 过滤；任何路径加入组合检索前必须先由 `rg --files`/`Test-Path -LiteralPath` 证明存在。
 - 最近复发/补充：2026-08-22 修复 SteamCMD 密码错误分类时，再次把 `backend/internal/games/stardew_junimo/*_test.go` 作为 Windows `rg` 位置参数；前一段 `rg --files` 已成功列出精确测试文件，后一段仍以 `os error 123` 失败，源码未被该只读命令修改。后续只允许使用已经列出的精确文件，或明确目录配合 `-g '*_test.go'`；发送检索命令前继续机械拒绝位置参数中的 `*`/`?`。
 - 最近复发/补充：2026-08-20 只读诊断生产存档导入证据时，把 `backend/internal/games/stardew_junimo/save_import*` 再次作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；同日升级后的再次诊断又在已经读到精确 `save_import_phase_a.go` 后，把 `save_import*.go` 追加为末尾位置参数并复发同一错误。两条命令均只读，没有修改本地源码、远端文件或运行状态。改为明确目录配合 `-g 'save_import*'`，本任务余下命令发送前机械检查每个含 `*`/`?` 的实参只能紧跟 `-g`。
 - 最近复发/补充：2026-08-19 补齐存档导入恢复测试时，把 `backend/internal/web/*_test.go` 作为 Windows `rg` 位置参数，立即得到 `文件名、目录名或卷标语法不正确 (os error 123)`；命令只读且没有修改源码。改为 `rg -g '*_test.go' ... backend/internal/web` 后命中。该规则已在 `AGENTS.md` 固化，本轮仍复发；后续每条 `rg` 在发送前机械拒绝任何位置参数中的 `*`/`?`，通配只能紧跟 `-g`。
@@ -1349,6 +1375,7 @@
 
 ## 2026-08-09：切换工作目录后仍重复仓库路径前缀
 
+- 最近复发/补充：2026-08-23 修正 Control-only 测试夹具后，`exec_command.workdir` 已是 `<repo>/backend`，仍向 `gofmt` 传入 `backend/internal/...`；首个目标立即报 `GetFileAttributesEx ... path not found`，格式化和测试均未执行，源码未被该命令改写。随后拆为仓库根 `gofmt backend/internal/...` 与 backend 模块根 `go test ./internal/...` 两个独立调用并通过。即使上一轮同任务已用过正确命令，也必须在每次发送前重新核对 cwd 与首目标拼接结果。
 - 最近复发/补充：2026-08-20 编译生产存档导入一次性恢复工具前，`exec_command.workdir` 已设为 `<repo>/backend`，首个 `gofmt` 参数仍写成 `backend/internal/web/...`，立即报 `GetFileAttributesEx ... path not found` 并退出 1；格式化、编译和生产操作均未开始。改为仓库根先 `Test-Path -LiteralPath backend/internal/web/...` 后独立格式化，Go 编译再从 `backend` 模块根运行；余下命令不再合并两套路径基准。
 - 最近复发/补充：2026-08-18 修复任务日志尾页展示后的首轮格式化把工具 `workdir` 设为 `<repo>/backend`，仍向 `gofmt` 传入五个 `backend/internal/...` 路径；全部在格式化前报 `GetFileAttributesEx ... path not found`，fail-fast 使定向测试未启动，源码未被该失败命令修改。随后从仓库根先以 `Test-Path` 核对目标并独立格式化，Go 测试另从 `backend` 模块根执行。
 - 最近复发/补充：2026-08-17 实现 Mod 一键更新后的首轮格式化把工具 `workdir` 设为 `<repo>/backend`，仍向 `gofmt` 传入三个 `backend/internal/...` 路径；命令在格式化前全部报 `GetFileAttributesEx ... path not found` 并退出 1，后续测试因 fail-fast 未启动，源码未被该失败命令修改。随后按既有规则把格式化改回仓库根并先做 `Test-Path`，Go 测试再从模块根独立执行。
@@ -3691,6 +3718,7 @@
 - 适用范围：所有 PowerShell 生成 POSIX shell 单引号参数的 SSH/容器远程脚本。
 # 2026-08-20：生产 Docker mount 投影输出了匿名 volume 完整 hash
 
+- 最近复发/补充：2026-08-23 只读诊断先在内存解析了完整 Panel inspect JSON，却仍为定位数据目录直接投影目标 `/data` 的 mount Source；该目标实际是匿名 volume，工具输出再次暴露完整 hash 路径，生产零修改。首次 mount 投影固定只允许 `Type/Destination/RW`；只有确认 `Type=bind` 且业务判断确实需要时才能输出 Source，匿名 volume 的 Name/Source 永不输出。
 - 环境：Windows 11 + PowerShell 7 + Posh-SSH 3.2.7，生产 Panel 只读 `docker inspect` 投影。
 - 错误模式：虽然已排除 `Config.Env`，却直接输出了所有 mount 的 `Source`。
 - 症状：工具输出中出现 `/var/lib/docker/volumes/<完整匿名 hash>/_data`；未输出凭据或存档内容，但违反生产投影最小化规则。

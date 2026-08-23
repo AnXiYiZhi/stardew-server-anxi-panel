@@ -19,7 +19,7 @@ export const TERMINAL_PANEL_UPDATE_PHASES = new Set([
 
 const ACTIVE_FULL_STACK_PHASES = new Set([
   'waiting_panel', 'checking_runtime', 'notifying_players', 'saving_game',
-  'backing_up_save', 'updating_runtime', 'verifying_runtime', 'restoring_server', 'rolling_back_runtime',
+  'backing_up_save', 'updating_runtime', 'verifying_auth', 'verifying_runtime', 'restoring_server', 'rolling_back_runtime',
 ])
 
 const TERMINAL_FULL_STACK_PHASES = new Set(['succeeded', 'not_needed', 'failed_safe', 'manual_action'])
@@ -63,6 +63,7 @@ export function panelUpdatePhaseLabel(phase: string): string {
 		case 'saving_game': return '正在保存游戏进度'
 		case 'backing_up_save': return '正在创建整档保护备份'
 		case 'updating_runtime': return '正在更新 Control 与运行栈'
+		case 'verifying_auth': return '正在验证认证服务健康（不等待 Steam 登录）'
 		case 'verifying_runtime': return '正在验证 SMAPI 实际加载版本'
 		case 'restoring_server': return '正在恢复服务器状态'
 		case 'rolling_back_runtime': return '正在恢复原运行栈'

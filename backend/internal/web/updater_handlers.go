@@ -214,14 +214,7 @@ func (s *server) fullStackInstanceStatus(ctx context.Context, instance registry.
 		full.Phase, full.Progress, full.Result = "updating_runtime", 60, "正在更新、重启并验证游戏运行栈。"
 		if apply, applyErr := reader.RuntimeUpdateApplyStatus(instance); applyErr == nil {
 			full.Progress = 60 + max(0, min(apply.Progress, 100))*39/100
-			switch apply.Phase {
-			case sj.RuntimeUpdateApplyVerifyingAuth, sj.RuntimeUpdateApplyVerifyingServer:
-				full.Phase, full.Result = "verifying_runtime", "正在验证新版本容器、Junimo、SMAPI 与控制协议。"
-			case sj.RuntimeUpdateApplyRestoringState:
-				full.Phase, full.Result = "restoring_server", "正在恢复升级前的运行或停止状态。"
-			case sj.RuntimeUpdateApplyRollingBack:
-				full.Phase, full.Result = "rolling_back_runtime", "运行栈升级未通过，正在自动恢复原版本。"
-			}
+			applyFullStackRuntimePhase(full, apply)
 		}
 	case "succeeded":
 		full.Phase, full.Progress, full.Result = "succeeded", 100, "Panel、Control 与游戏运行栈已完成升级和验证。"
@@ -235,6 +228,19 @@ func (s *server) fullStackInstanceStatus(ctx context.Context, instance registry.
 		full.Phase, full.Progress, full.Result = "checking_runtime", 42, "新 Panel 正在接管全栈升级。"
 	}
 	return full
+}
+
+func applyFullStackRuntimePhase(full *updater.FullStackStatus, apply sj.RuntimeUpdateApplyStatus) {
+	switch apply.Phase {
+	case sj.RuntimeUpdateApplyVerifyingAuth:
+		full.Phase, full.Result = "verifying_auth", "正在验证认证服务容器、精确 digest 与服务健康；不等待 Steam 登录。"
+	case sj.RuntimeUpdateApplyVerifyingServer:
+		full.Phase, full.Result = "verifying_runtime", "正在验证 Junimo、SMAPI 实际加载版本与控制协议。"
+	case sj.RuntimeUpdateApplyRestoringState:
+		full.Phase, full.Result = "restoring_server", "正在恢复升级前的运行或停止状态。"
+	case sj.RuntimeUpdateApplyRollingBack:
+		full.Phase, full.Result = "rolling_back_runtime", "运行栈升级未通过，正在自动恢复原版本。"
+	}
 }
 
 func normalizeUpdateVersion(value string) string {

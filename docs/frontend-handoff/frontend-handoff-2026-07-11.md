@@ -1,3 +1,15 @@
+# FE-CONTROL-ONLY-AUTH-PHASE-1 前端接手记录（2026-08-23，completed，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `panel-update-machine.ts` 将后端新增的字符串阶段 `verifying_auth` 纳入 full-stack active 集合，标签为“正在验证认证服务健康（不等待 Steam 登录）”；`verifying_runtime` 保持“正在验证 SMAPI 实际加载版本”。`UpdateDetailsDialog.tsx` 在更新运行栈与 SMAPI 验收之间增加认证节点。
+- 顶栏、总览和详情继续从 `panelUpdateSurface/panelUpdatePhaseLabel` 读取同一后端权威状态，没有新增 component state、effect、计时器或请求。影响仅上述两个源码文件与 `test-panel-update-machine.ts`；API 类型仍允许字符串阶段，不新增 DTO 字段或浏览器持久状态。
+
+## 如何验证、下一步注意事项
+
+- `npm run test:panel-update`、`npm run test:responsive-layout` 与 `npm run build` 已通过，覆盖新阶段 active/non-terminal、总览文案、认证/SMAPI 标签分离和 production bundle。正式候选还要在真实 Web 升级后的页面读取两个后端阶段。
+- 后续不要在前端根据 warning 文本、进度百分比或持续时间猜 auth/SMAPI 阶段；阶段归属只认 `fullStack.phase`。`verifying_auth` 必须继续属于 active phase，否则 Panel 主更新已经 `succeeded` 后前端会过早把整个全栈任务判为 terminal。
+
 # FE-STEAM-CREDENTIAL-RECOVERY-1 前端接手记录（2026-08-22，released in v0.5.11）
 
 ## 改了什么、影响哪些接口/文件

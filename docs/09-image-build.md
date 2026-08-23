@@ -1,3 +1,28 @@
+# 下一候选：Control-only 认证健康有界告警与独立阶段（2026-08-23，completed，未发布）
+
+## 变更清单、受影响链路与发布边界
+
+- 生产 `v0.5.12` 只读证据显示，Control-only 全栈更新在认证阶段约 400 秒等待未变化 `steam-auth-cn` 的 Steam 自动登录重试；真正的 server/Junimo/SMAPI/Control 验收约 24 秒。Panel 已经不调用 `/steam/ready`，但旧 UI 把认证与 server 验收共同映射为 `verifying_runtime`，因此误显示“正在验证 SMAPI 实际加载版本”。
+- 本版只对恢复清单明确证明 server/auth 镜像和宿主 JunimoServer Mod 均未变化的纯 Control-only 链调整验收：auth 容器 `running` 与精确 image ID 仍是硬门禁；`/health` 只做一次默认 2 秒 advisory，容器内 1 秒 watchdog 保证 Docker Compose exec 自行退出，失败形成显式 check/warning 后继续，最终验收不重复探测。server/auth/Junimo Mod 任一变化时原严格 `/health`、认证卷快照、成对回滚与失败码全部保持。
+- Web 公开阶段新增 `verifying_auth`，前端状态机、顶栏/总览和详情时间线将其与 `verifying_runtime` 分开。变更影响 backend runtime apply/Web 映射、frontend 状态展示和对应测试；不改变 SQLite、Compose、runtime manifest、Control/SMAPI/Junimo 制品或 Steam 凭据。未创建 tag、未构建或提升正式镜像，下一候选必须从与 `origin/main` 同步且工作树干净的 `main` 完整执行。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 通过标准 |
+| --- | --- | --- |
+| 正常路径 | 运行态与停止态 Control-only，未变化 auth 的 `/health` 立即成功 | auth 容器/digest 精确；只探测一次；Control、Junimo、SMAPI 与控制契约通过；恢复原运行/停止态；不重建 auth 或触碰 session volume |
+| 后台重连 | 真实 auth fixture 保持 running/精确 digest，但 `/health` 超时或不可达，`/steam/ready` 悬挂 | 默认 advisory 预算内继续；`steam_auth_ready=warning` 且原因脱敏；全栈成功；`/steam/ready` 零调用，终验不重复 `/health` |
+| 身份安全 | Control-only auth 容器退出或实际 image ID 偏离 | 继续作为硬失败，进入既有安全回滚；不得以 warning 放行 |
+| 变化组件 | server、auth 镜像/版本或 JunimoServer Mod 变化，注入 `/health` 超时、HTTP/JSON 错误或不可达 | 继续使用严格健康门禁并保留具体 cause code；认证卷保护和旧栈恢复通过，不能套用 advisory |
+| 前端契约 | Web 依次发布 `verifying_auth`、`verifying_runtime` | 两阶段均保持 active/non-terminal；认证阶段明确“不等待 Steam 登录”，SMAPI 文案只出现在 runtime 验收阶段 |
+| 真实 Web 升级 | 当前上一正式版到同一不可变候选，先 unhealthy 再 healthy apply | unhealthy 为 `failed_rolled_back/health_check_failed` 且旧版恢复；healthy 升级后的 Panel 再执行上述 Control-only 专项并保持 SQLite、实例状态、非目标容器/volume |
+| 资源清理 | 单元/真实 Docker/候选 DinD/fresh/restart/两次 Web 升级 | 仅按任务 owner 精确清零 container/network/volume/bind/temp；不使用生产数据，不 prune |
+
+## 当前验证与候选待办
+
+- 后端针对性回归已覆盖运行态/停止态 advisory、单次探测、auth 容器/digest 硬失败、Junimo 修复继续严格、变化组件严格失败以及 Web phase 映射；真实 Docker auth fixture 的 Control-only timeout 与严格 404/500/坏 JSON/timeout/unreachable 矩阵全绿（19.498s）。Linux Go 1.25 整仓 test 全绿（Junimo 77.266s、Web 68.945s），Windows vet/build 通过；Windows 整仓唯一失败为已知 NTFS `0666` 与 Linux `0640` mode 差异。前端 `test:panel-update`、`test:responsive-layout` 和 production build 全绿。
+- 本地门禁使用只读仓库 bind 和两个任务专属 Go cache volume；容器自动删除，两个 volume 已按精确名称删除并复核为零。正式发布前仍必须完成不可变镜像 fresh/restart、上一正式版 Web unhealthy/healthy 和升级后真实 Control-only 复验。候选 workflow ID、proof artifact、唯一 digest、耗时、选择/跳过矩阵、正式 promotion 与资源清理结果在实际发布后回填；本节当前不能作为候选证明。
+
 # v0.5.11 Steam 凭据恢复与常驻更换账号入口（2026-08-22，released）
 
 ## 变更清单、受影响链路与专项矩阵

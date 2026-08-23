@@ -32,6 +32,8 @@ assert.equal(panelUpdatePhaseLabel('pulling'), '正在拉取镜像')
 assert.equal(panelUpdatePhaseLabel('recreating'), '正在重建面板')
 assert.equal(panelUpdatePhaseLabel('waiting_health'), '正在等待新版本健康')
 assert.equal(panelUpdatePhaseLabel('rolling_back'), '正在回滚')
+assert.equal(panelUpdatePhaseLabel('verifying_auth'), '正在验证认证服务健康（不等待 Steam 登录）')
+assert.equal(panelUpdatePhaseLabel('verifying_runtime'), '正在验证 SMAPI 实际加载版本')
 
 const pulling = panelUpdateSurface(update, apply('pulling', 65), { version: '0.1.14' })
 assert.equal(pulling.topbarText, '正在全栈升级 65%')
@@ -104,6 +106,10 @@ const runtimeActive = { ...apply('succeeded', 100), fullStack: { phase: 'updatin
 assert.equal(isPanelUpdateActive(runtimeActive), true)
 assert.equal(isPanelUpdateTerminal(runtimeActive), false)
 assert.equal(panelUpdateSurface(update, runtimeActive, null).topbarText, '正在全栈升级 72%')
+const authVerificationActive = { ...apply('succeeded', 100), fullStack: { phase: 'verifying_auth', progress: 68, runtimeRequired: true } }
+assert.equal(isPanelUpdateActive(authVerificationActive), true)
+assert.equal(isPanelUpdateTerminal(authVerificationActive), false)
+assert.equal(panelUpdateSurface(update, authVerificationActive, null).overviewText, '正在验证认证服务健康（不等待 Steam 登录）')
 const runtimeSafeFailure = { ...apply('succeeded', 100), fullStack: { phase: 'failed_safe', progress: 100, runtimeRequired: true } }
 assert.equal(isPanelUpdateActive(runtimeSafeFailure), false)
 assert.equal(isPanelUpdateTerminal(runtimeSafeFailure), true)

@@ -198,6 +198,39 @@ ThreadingHTTPServer(("0.0.0.0", 3001), Handler).serve_forever()
 		t.Fatal(err)
 	}
 	probeClient := paneldocker.NewClient(paneldocker.Options{DockerPath: "docker", Timeouts: paneldocker.Timeouts{Ps: 2 * time.Second}})
+	runDockerIntegrationCommand(t, ctx, "docker", "compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "sh", "-c", "printf '%s' timeout > /tmp/auth-fixture-mode")
+	controlDriver, _, controlInstance, controlFake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	for _, candidate := range manifest.SteamAuth.TrustedCandidates {
+		metadata := controlFake.metadata[candidate]
+		metadata.ID = imageMetadata.ID
+		controlFake.metadata[candidate] = metadata
+	}
+	controlBridge := &runtimeApplyDockerHealthBridge{runtimeApplyFakeDocker: controlFake, client: probeClient, workDir: workDir, project: project}
+	controlDriver.docker = controlBridge
+	configureControlOnlyRuntimeFixture(t, controlInstance)
+	controlStarted := time.Now()
+	if _, err := controlDriver.StartRuntimeUpdateApply(context.Background(), controlInstance, 0); err != nil {
+		t.Fatal(err)
+	}
+	controlStatus := waitRuntimeApply(t, controlDriver, controlInstance)
+	if controlStatus.Phase != RuntimeUpdateApplySucceeded {
+		t.Fatalf("Control-only update was blocked by unchanged auth reconnect: %#v calls=%v", controlStatus, controlFake.applyCalls)
+	}
+	if elapsed := time.Since(controlStarted); elapsed >= 2*time.Second {
+		t.Fatalf("Control-only auth advisory exceeded its bounded budget: %v", elapsed)
+	}
+	if got := strings.Count(strings.Join(controlFake.applyCalls, "\n"), "auth health target docker"); got != 1 {
+		t.Fatalf("Control-only update made %d auth health calls, want one advisory snapshot: %v", got, controlFake.applyCalls)
+	}
+	if !strings.Contains(strings.Join(controlStatus.Warnings, "\n"), "不会拖住本次 Control-only 升级") {
+		t.Fatalf("Control-only advisory warning missing: %#v", controlStatus.Warnings)
+	}
+	requests = runDockerIntegrationCommand(t, ctx, "docker", "compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "cat", "/tmp/auth-fixture-requests.log")
+	if strings.Contains(requests, "/steam/ready") {
+		t.Fatalf("Control-only update called forbidden Steam readiness endpoint: %q", requests)
+	}
+	runDockerIntegrationCommand(t, ctx, "docker", "compose", "--project-name", project, "--file", composePath, "exec", "-T", "steam-auth", "sh", "-c", "printf '%s' ok > /tmp/auth-fixture-mode")
+
 	for _, failure := range []struct {
 		mode string
 		code string

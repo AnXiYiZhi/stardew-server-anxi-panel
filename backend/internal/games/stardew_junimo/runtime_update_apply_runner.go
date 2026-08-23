@@ -334,15 +334,30 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, "recovery_manifest_failed", "steam-auth-cn 已启动但恢复清单写入失败。")
 	}
-	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, "正在验证 steam-auth-cn 容器、目标 digest 与纯服务健康接口；Steam 登录状态不属于升级硬门槛。"); err != nil {
+	strictAuthHealth := runtimeUpdateRequiresStrictAuthHealth(manifest)
+	authVerifyMessage := "正在验证 steam-auth-cn 容器、目标 digest 与纯服务健康接口；Steam 登录状态不属于升级硬门槛。"
+	if !strictAuthHealth {
+		authVerifyMessage = "正在验证未变化 steam-auth-cn 的容器与精确 digest；/health 仅作短时健康快照，后台 Steam 重连不阻塞 Control-only 升级。"
+	}
+	if err := setPhase(RuntimeUpdateApplyVerifyingAuth, 68, authVerifyMessage); err != nil {
 		return err
 	}
-	authState, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID)
+	authAcceptance, err := d.acceptRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID, strictAuthHealth)
 	if err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), runtimeUpdateErrorMessage(err, "steam-auth-cn 服务健康验收失败。"))
 	}
-	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: "steam-auth-cn 容器 running、镜像 digest 精确匹配，且 /health 返回受支持的 HTTP 200 严格 JSON 契约；Docker health 与 Steam 在线登录均不作为该服务健康验收的替代条件。"})
-	if !authState.LoggedIn {
+	if authAcceptance.HealthVerified {
+		message := "steam-auth-cn 容器 running、镜像 digest 精确匹配，且 /health 返回受支持的 HTTP 200 严格 JSON 契约；Docker health 与 Steam 在线登录均不作为该服务健康验收的替代条件。"
+		if !strictAuthHealth {
+			message = "未变化的 steam-auth-cn 容器 running、镜像 digest 精确匹配，且短时 /health 快照通过；Control-only 升级不会触发或等待 Steam 登录。"
+		}
+		status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "ok", Message: message})
+	} else {
+		reason := runtimeUpdateErrorMessage(authAcceptance.AdvisoryError, "steam-auth-cn /health 短时快照暂不可用。")
+		status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "steam_auth_ready", Status: "warning", Message: "未变化的 steam-auth-cn 容器 running 且镜像 digest 精确匹配；/health 短时快照未完成，已作为既有在线能力告警处理，不阻塞 Control-only 升级。"})
+		status.Warnings = append(status.Warnings, "steam-auth-cn 正在后台恢复 Steam 会话，/health 短时快照暂不可用；未变化的认证组件不会拖住本次 Control-only 升级。最后一次健康快照："+reason)
+	}
+	if authAcceptance.HealthVerified && !authAcceptance.Health.LoggedIn {
 		status.Warnings = append(status.Warnings, "steam-auth-cn 当前未建立完整 Steam 在线会话，服务会在后台继续尝试连接 Steam；这不影响局域网模式或本次升级验收，需要邀请码时可稍后登录 Steam。")
 	}
 
@@ -367,7 +382,11 @@ func (d *Driver) runRuntimeUpdateApply(ctx context.Context, job *jobs.Context, d
 	if err := d.verifyRuntimeTarget(ctx, docker, instance, manifest); err != nil {
 		return d.rollbackRuntimeUpdate(ctx, job, docker, instance, &status, manifest, runtimeUpdateErrorCode(err), runtimeUpdateErrorMessage(err, "新版 Junimo server 运行验证失败。"))
 	}
-	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "junimo_runtime", Status: "ok", Message: "server/auth digest、容器运行态、steam-auth /health、Junimo health/API 与控制契约均已验证；Steam 登录和邀请码不属于升级硬门槛。"})
+	junimoCheckMessage := "server/auth digest、容器运行态、steam-auth /health、Junimo health/API 与控制契约均已验证；Steam 登录和邀请码不属于升级硬门槛。"
+	if !strictAuthHealth {
+		junimoCheckMessage = "server/auth digest、容器运行态、Junimo health/API、SMAPI 与 Control 契约均已验证；未变化 auth 的在线会话恢复不会阻塞 Control-only 升级。"
+	}
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "junimo_runtime", Status: "ok", Message: junimoCheckMessage})
 
 	if err := setPhase(RuntimeUpdateApplyRestoringState, 95, "正在恢复升级前的运行/停止状态。"); err != nil {
 		return err
@@ -627,6 +646,68 @@ func writeRuntimeTargetEnvAtomic(dataDir string, target sjconfig.RuntimeStackRec
 	return replaceRuntimeUpdateStatusFile(tmpName, envPath)
 }
 
+type runtimeAuthAcceptance struct {
+	Health         paneldocker.RuntimeAuthServiceHealth
+	HealthVerified bool
+	AdvisoryError  error
+}
+
+func runtimeUpdateRequiresStrictAuthHealth(manifest runtimeUpdateRecoveryManifest) bool {
+	return runtimeUpdateServerChanged(manifest) || runtimeUpdateAuthChanged(manifest) || runtimeUpdateJunimoModMayHaveChanged(manifest)
+}
+
+func (d *Driver) waitRuntimeAuthContainer(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string) error {
+	timeout := d.runtimeUpdateAuthTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	interval := d.runtimeUpdatePollInterval
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	lastErr := runtimeAuthAcceptanceError("auth_container_not_running", "steam-auth-cn 容器未处于 running 状态。")
+	for time.Now().Before(deadline) {
+		metadata, err := docker.RuntimeServiceInspect(ctx, dataDir, project, "steam-auth")
+		if err == nil && metadata.ImageID != imageID {
+			return runtimeAuthAcceptanceError("auth_digest_mismatch", "steam-auth-cn 实际 image ID 与目标 digest 不匹配。")
+		}
+		if err == nil && strings.EqualFold(metadata.State, "running") {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+	return lastErr
+}
+
+func (d *Driver) acceptRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string, strictHealth bool) (runtimeAuthAcceptance, error) {
+	if strictHealth {
+		health, err := d.waitRuntimeAuth(ctx, docker, dataDir, project, imageID)
+		return runtimeAuthAcceptance{Health: health, HealthVerified: err == nil}, err
+	}
+	if err := d.waitRuntimeAuthContainer(ctx, docker, dataDir, project, imageID); err != nil {
+		return runtimeAuthAcceptance{}, err
+	}
+	timeout := d.runtimeUpdateAuthAdvisoryTimeout
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	health, err := docker.RuntimeSteamAuthHealth(probeCtx, dataDir, project)
+	if err == nil {
+		return runtimeAuthAcceptance{Health: health, HealthVerified: true}, nil
+	}
+	if ctx.Err() != nil {
+		return runtimeAuthAcceptance{}, ctx.Err()
+	}
+	return runtimeAuthAcceptance{AdvisoryError: normalizeRuntimeAuthHealthError(err)}, nil
+}
+
 func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyDockerService, dataDir, project, imageID string) (paneldocker.RuntimeAuthServiceHealth, error) {
 	deadline := time.Now().Add(d.runtimeUpdateAuthTimeout)
 	var last paneldocker.RuntimeAuthServiceHealth
@@ -655,7 +736,11 @@ func (d *Driver) waitRuntimeAuth(ctx context.Context, docker RuntimeUpdateApplyD
 }
 
 func (d *Driver) verifyRuntimeTarget(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {
-	if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+	if runtimeUpdateRequiresStrictAuthHealth(manifest) {
+		if _, err := d.waitRuntimeAuth(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
+			return err
+		}
+	} else if err := d.waitRuntimeAuthContainer(ctx, docker, instance.DataDir, manifest.Project, manifest.Target.SteamAuth.ImageID); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(d.runtimeUpdateServerTimeout)

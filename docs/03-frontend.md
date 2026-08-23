@@ -1,3 +1,9 @@
+# FE-CONTROL-ONLY-AUTH-PHASE-1：认证验收与 SMAPI 验收分阶段展示（2026-08-23，completed，未发布）
+
+- 全栈更新状态机新增消费既有字符串字段值 `fullStack.phase=verifying_auth`，并将其纳入 active phase；顶栏/总览显示“正在验证认证服务健康（不等待 Steam 登录）”。原 `verifying_runtime` 继续显示“正在验证 SMAPI 实际加载版本”，不再承载认证服务等待。
+- 更新详情时间线在 `updating_runtime` 与 `verifying_runtime` 之间新增认证验收节点。阶段标签继续由 `panelUpdatePhaseLabel` 纯 selector 从后端权威状态派生，没有增加本地 React 状态、effect 或独立计时器，因此顶栏、总览和详情不会各自猜测不同阶段。
+- 影响 `panel-update-machine.ts`、`UpdateDetailsDialog.tsx` 与状态机回归；API TypeScript shape、权限、升级按钮和 reconnect 策略不变。`test:panel-update`、`test:responsive-layout` 与 production build 已通过，覆盖新阶段保持 active/non-terminal，以及认证与 SMAPI 两条文案不再混用。
+
 # FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，released in v0.5.11）
 
 - Stardew 安装页管理员操作区保留原“登录授权”（复用已保存凭据），并新增常驻“更换 Steam 账号 / 重新认证”。入口不依赖后端是否已经正确识别 `credentials_required`，所以历史 `steamcmd_failed`、文件缺失或诊断不完整时仍能主动更换账号；安装任务运行、启动中或表单已打开时禁用，避免重复提交。

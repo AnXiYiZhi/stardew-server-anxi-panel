@@ -22,26 +22,29 @@ import (
 
 type runtimeApplyFakeDocker struct {
 	*runtimeUpdateFakeDocker
-	applyMu                sync.Mutex
-	applyCalls             []string
-	authLoggedIn           bool
-	authHealth             string
-	authContainerState     string
-	authUseTargetState     bool
-	authProbeErrorTarget   bool
-	authProbeErrorCode     string
-	inviteUnavailable      bool
-	serverHealthFailTarget bool
-	controlContractFail    bool
-	loadedVersionMismatch  bool
-	digestMismatchService  string
-	upErrorService         string
-	restoreError           bool
-	removeImageError       bool
-	removeImageStarted     chan struct{}
-	removeImageRelease     <-chan struct{}
-	removeImageStartOnce   sync.Once
-	stopErrorsRemaining    int
+	applyMu                      sync.Mutex
+	applyCalls                   []string
+	authLoggedIn                 bool
+	authHealth                   string
+	authContainerState           string
+	authContainerStateAfterUp    string
+	authUseTargetState           bool
+	authProbeErrorTarget         bool
+	authProbeErrorCode           string
+	inviteUnavailable            bool
+	serverHealthFailTarget       bool
+	controlContractFail          bool
+	loadedVersionMismatch        bool
+	digestMismatchService        string
+	digestMismatchAfterUpService string
+	runtimeServicesApplied       bool
+	upErrorService               string
+	restoreError                 bool
+	removeImageError             bool
+	removeImageStarted           chan struct{}
+	removeImageRelease           <-chan struct{}
+	removeImageStartOnce         sync.Once
+	stopErrorsRemaining          int
 }
 
 func newRuntimeApplyFakeDocker(dataDir string) *runtimeApplyFakeDocker {
@@ -114,6 +117,7 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeStopServices(_ context.Context, _
 }
 func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, dataDir string, _ string, service string) error {
 	f.applyCall("up " + service)
+	f.runtimeServicesApplied = true
 	if service == f.upErrorService {
 		return errors.New("injected up failure")
 	}
@@ -128,6 +132,7 @@ func (f *runtimeApplyFakeDocker) RuntimeComposeUpService(_ context.Context, data
 }
 func (f *runtimeApplyFakeDocker) RuntimeComposeUpServicePreserve(_ context.Context, dataDir string, _ string, service string) error {
 	f.applyCall("up preserve " + service)
+	f.runtimeServicesApplied = true
 	if service == f.upErrorService {
 		return errors.New("injected preserve up failure")
 	}
@@ -150,7 +155,7 @@ func (f *runtimeApplyFakeDocker) RuntimeServiceInspect(_ context.Context, dataDi
 			digest = "sha256:" + strings.Repeat("c", 64)
 		}
 	}
-	if f.targetConfigured(dataDir) && f.digestMismatchService == service {
+	if f.targetConfigured(dataDir) && (f.digestMismatchService == service || f.runtimeServicesApplied && f.digestMismatchAfterUpService == service) {
 		digest = "sha256:" + strings.Repeat("d", 64)
 	}
 	health := "healthy"
@@ -159,6 +164,9 @@ func (f *runtimeApplyFakeDocker) RuntimeServiceInspect(_ context.Context, dataDi
 		health = f.authHealth
 		if f.targetConfigured(dataDir) {
 			state = f.authContainerState
+			if f.runtimeServicesApplied && f.authContainerStateAfterUp != "" {
+				state = f.authContainerStateAfterUp
+			}
 		}
 	}
 	return paneldocker.RuntimeServiceMetadata{ContainerID: strings.Repeat("a", 12), ImageID: digest, State: state, Health: health}, nil
@@ -324,14 +332,8 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	}
 }
 
-func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
-	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
-	// The incident was triggered by Docker health waiting for a slow/offline
-	// Steam login. The service API is already reachable and must be enough for
-	// an unchanged auth container even while its online capability is degraded.
-	fake.authHealth = "unhealthy"
-	fake.authUseTargetState = true
-	fake.authLoggedIn = false
+func configureControlOnlyRuntimeFixture(t *testing.T, instance registry.Instance) sjconfig.RuntimeStackManifest {
+	t.Helper()
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil {
 		t.Fatal(err)
@@ -348,13 +350,28 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".local-container", "control", "options.json"), []byte(`{"controlModVersion":"0.2.2"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(junimoServerModDir(instance.DataDir)); err != nil {
+	junimoManifest := fmt.Sprintf(`{"Name":"JunimoServer","Version":%q,"UniqueID":"JunimoHost.Server"}`, manifest.Server.Tag)
+	if err := os.WriteFile(filepath.Join(junimoServerModDir(instance.DataDir), junimoServerManifestName), []byte(junimoManifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable || inspection.Code != "control_update_available" {
 		t.Fatalf("control-only fixture=%+v", inspection)
 	}
+	return manifest
+}
+
+func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	// The incident was triggered by a strict health probe waiting behind a slow
+	// Steam reconnect. An unchanged auth container remains an exact, running
+	// dependency, but its live health snapshot is advisory for Control-only work.
+	fake.authHealth = "unhealthy"
+	fake.authUseTargetState = true
+	fake.authLoggedIn = false
+	fake.authProbeErrorTarget = true
+	fake.authProbeErrorCode = "auth_health_timeout"
+	manifest := configureControlOnlyRuntimeFixture(t, instance)
 	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -374,18 +391,116 @@ func TestRuntimeUpdateControlOnlyPreservesRunningAuthContainer(t *testing.T) {
 	if !strings.Contains(calls, "cpu shares steam-auth 256") {
 		t.Fatalf("preserved auth did not receive in-place resource weight: %s", calls)
 	}
-	if !strings.Contains(strings.Join(status.Warnings, "\n"), "后台继续尝试连接 Steam") {
-		t.Fatalf("offline Steam retry warning missing: %#v", status.Warnings)
+	if !strings.Contains(strings.Join(status.Warnings, "\n"), "不会拖住本次 Control-only 升级") {
+		t.Fatalf("advisory auth health warning missing: %#v", status.Warnings)
+	}
+	var advisoryCheck *RuntimeUpdateDryRunCheck
+	for index := range status.Checks {
+		if status.Checks[index].Name == "steam_auth_ready" {
+			advisoryCheck = &status.Checks[index]
+			break
+		}
+	}
+	if advisoryCheck == nil || advisoryCheck.Status != "warning" || !strings.Contains(advisoryCheck.Message, "不阻塞 Control-only 升级") {
+		t.Fatalf("control-only auth check was not downgraded to an explicit warning: %#v", status.Checks)
+	}
+	if got := strings.Count(calls, "auth health target"); got != 1 {
+		t.Fatalf("control-only update retried advisory auth health %d times, want one bounded snapshot: %s", got, calls)
 	}
 	if status.Selected.SteamAuth.ImageID == "" || status.Selected.Server.ImageID == "" {
 		t.Fatalf("selected immutable image IDs missing: %+v", status.Selected)
 	}
 	version, err := readJunimoServerModVersion(junimoServerModDir(instance.DataDir))
 	if err != nil || version != manifest.Server.Tag {
-		t.Fatalf("control-only update did not materialize the required JunimoServer mod: version=%q err=%v", version, err)
+		t.Fatalf("control-only update did not preserve the required JunimoServer mod: version=%q err=%v", version, err)
 	}
-	if fake.fakeDocker.containerRuns != 1 {
-		t.Fatalf("control-only update extracted JunimoServer %d times, want 1", fake.fakeDocker.containerRuns)
+	if fake.fakeDocker.containerRuns != 0 {
+		t.Fatalf("control-only update extracted unchanged JunimoServer %d times, want 0", fake.fakeDocker.containerRuns)
+	}
+}
+
+func TestRuntimeUpdateControlOnlyStoppedAuthReconnectDoesNotBlock(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	driver.runtimeUpdateAuthAdvisoryTimeout = time.Millisecond
+	fake.authProbeErrorTarget = true
+	fake.authProbeErrorCode = "auth_health_timeout"
+	manifest := configureControlOnlyRuntimeFixture(t, instance)
+	fake.pulled[manifest.Server.TrustedCandidates[0]] = true
+	fake.pulled[manifest.SteamAuth.TrustedCandidates[0]] = true
+
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeApply(t, driver, instance)
+	if status.Phase != RuntimeUpdateApplySucceeded || status.ServerRunning {
+		t.Fatalf("stopped Control-only update did not finish and restore stopped state: %#v calls=%v", status, fake.applyCalls)
+	}
+	calls := strings.Join(fake.applyCalls, "\n")
+	for _, required := range []string{"up preserve steam-auth", "up server", "stop server,steam-auth", "cpu shares steam-auth 256"} {
+		if !strings.Contains(calls, required) {
+			t.Fatalf("stopped Control-only update missed %q: %s", required, calls)
+		}
+	}
+	for _, forbidden := range []string{"volume create snapshot", "volume clone snapshot", "volume restore snapshot"} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("stopped Control-only update mutated unchanged auth via %q: %s", forbidden, calls)
+		}
+	}
+	if got := strings.Count(calls, "auth health target"); got != 1 {
+		t.Fatalf("stopped Control-only update retried advisory auth health %d times, want one bounded snapshot: %s", got, calls)
+	}
+	if !strings.Contains(strings.Join(status.Warnings, "\n"), "不会拖住本次 Control-only 升级") {
+		t.Fatalf("stopped auth reconnect warning missing: %#v", status.Warnings)
+	}
+}
+
+func TestRuntimeUpdateControlOnlyKeepsAuthIdentityHardGates(t *testing.T) {
+	tests := []struct {
+		name      string
+		code      string
+		configure func(*runtimeApplyFakeDocker)
+	}{
+		{name: "container not running", code: "auth_container_not_running", configure: func(fake *runtimeApplyFakeDocker) {
+			fake.authContainerStateAfterUp = "exited"
+		}},
+		{name: "digest mismatch", code: "auth_digest_mismatch", configure: func(fake *runtimeApplyFakeDocker) {
+			fake.digestMismatchAfterUpService = "steam-auth"
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+			test.configure(fake)
+			configureControlOnlyRuntimeFixture(t, instance)
+
+			if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+				t.Fatal(err)
+			}
+			status := waitRuntimeApply(t, driver, instance)
+			if status.Phase != RuntimeUpdateApplyFailedRolledBack || status.ErrorCode != test.code || status.CauseCode != test.code {
+				t.Fatalf("Control-only auth identity failure was not a hard gate: %#v calls=%v", status, fake.applyCalls)
+			}
+		})
+	}
+}
+
+func TestRuntimeUpdateAuthHealthIsAdvisoryOnlyForControlOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		manifest runtimeUpdateRecoveryManifest
+		strict   bool
+	}{
+		{name: "Control only", manifest: runtimeUpdateRecoveryManifest{SchemaVersion: 3}, strict: false},
+		{name: "server image changed", manifest: runtimeUpdateRecoveryManifest{SchemaVersion: 3, ServerImageChanged: true}, strict: true},
+		{name: "auth image changed", manifest: runtimeUpdateRecoveryManifest{SchemaVersion: 3, AuthImageChanged: true}, strict: true},
+		{name: "Junimo host mod changed", manifest: runtimeUpdateRecoveryManifest{SchemaVersion: 3, JunimoModReplaceIntent: true}, strict: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := runtimeUpdateRequiresStrictAuthHealth(test.manifest); got != test.strict {
+				t.Fatalf("strict auth health=%v, want %v for %#v", got, test.strict, test.manifest)
+			}
+		})
 	}
 }
 
@@ -1326,6 +1441,9 @@ func TestRuntimeUpdateDefaultTimeoutsCoverSlowColdStart(t *testing.T) {
 	driver := New(nil, nil, nil, nil)
 	if driver.runtimeUpdateAuthTimeout < 10*time.Minute {
 		t.Fatalf("auth verification timeout=%v, want at least 10m", driver.runtimeUpdateAuthTimeout)
+	}
+	if driver.runtimeUpdateAuthAdvisoryTimeout <= 0 || driver.runtimeUpdateAuthAdvisoryTimeout > 5*time.Second {
+		t.Fatalf("Control-only auth advisory timeout=%v, want a positive budget no longer than 5s", driver.runtimeUpdateAuthAdvisoryTimeout)
 	}
 	if driver.runtimeUpdateServerTimeout < 20*time.Minute {
 		t.Fatalf("server verification timeout=%v, want at least 20m", driver.runtimeUpdateServerTimeout)

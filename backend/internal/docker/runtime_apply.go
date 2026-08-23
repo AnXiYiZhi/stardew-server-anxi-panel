@@ -15,12 +15,23 @@ var runtimeSnapshotVolumePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*_anxi
 var runtimeHTTPStatusPattern = regexp.MustCompile(`^[0-9]{3}$`)
 
 const runtimeAuthHealthProbe = `set -eu
+probe_pid=$$
+(sleep 1; kill -TERM "$probe_pid" 2>/dev/null || true) &
+watchdog_pid=$!
+cleanup_probe_watchdog() {
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+}
+trap cleanup_probe_watchdog EXIT
+trap 'exit 124' TERM
 exec 3<>/dev/tcp/127.0.0.1/3001
 printf 'GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n' >&3
 IFS= read -r status <&3
 printf '%s\n' "$status"
 while IFS= read -r line <&3; do [ "$line" = $'\r' ] && break; done
-cat <&3`
+body=''
+IFS= read -r -d '' body <&3 || true
+printf '%s' "$body"`
 
 const runtimeServerHealthProbe = `set -eu
 exec 3<>/dev/tcp/127.0.0.1/8080
@@ -200,12 +211,17 @@ func (c *Client) RuntimeSteamAuthHealth(ctx context.Context, dir, project string
 	result, err := c.run(ctx, "probe steam auth health", dir, c.timeouts.Ps,
 		"compose", "--project-name", project, "exec", "-T", "steam-auth", "bash", "-c", runtimeAuthHealthProbe)
 	if err != nil {
-		if errors.Is(err, ErrCommandTimeout) {
-			return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_timeout", "steam-auth-cn /health 探针超时，未在单次探针预算内返回。")
-		}
-		return RuntimeAuthServiceHealth{}, newRuntimeAuthHealthError("auth_health_unreachable", "steam-auth-cn /health 无法连接。")
+		return RuntimeAuthServiceHealth{}, runtimeAuthHealthCommandError(err)
 	}
 	return parseRuntimeAuthHealthHTTPResponse(result.Stdout)
+}
+
+func runtimeAuthHealthCommandError(err error) error {
+	var commandErr CommandError
+	if errors.Is(err, ErrCommandTimeout) || errors.As(err, &commandErr) && commandErr.Result.ExitCode == 124 {
+		return newRuntimeAuthHealthError("auth_health_timeout", "steam-auth-cn /health 探针超时，未在单次探针预算内返回。")
+	}
+	return newRuntimeAuthHealthError("auth_health_unreachable", "steam-auth-cn /health 无法连接。")
 }
 
 func parseRuntimeAuthHealthHTTPResponse(output string) (RuntimeAuthServiceHealth, error) {

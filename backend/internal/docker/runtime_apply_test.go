@@ -82,6 +82,27 @@ func TestParseRuntimeAuthHealthAcceptsStrictLoggedOutAndLoggedInContracts(t *tes
 	}
 }
 
+func TestRuntimeAuthHealthCommandErrorRecognizesContainerProbeDeadline(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "host command deadline", err: ErrCommandTimeout, code: "auth_health_timeout"},
+		{name: "container watchdog", err: CommandError{Result: CommandResult{ExitCode: 124}, Err: ErrCommandFailed}, code: "auth_health_timeout"},
+		{name: "unreachable", err: CommandError{Result: CommandResult{ExitCode: 1}, Err: ErrCommandFailed}, code: "auth_health_unreachable"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := runtimeAuthHealthCommandError(test.err)
+			var healthErr *RuntimeAuthHealthError
+			if !errors.As(err, &healthErr) || healthErr.Code != test.code {
+				t.Fatalf("error=%v typed=%+v, want %s", err, healthErr, test.code)
+			}
+		})
+	}
+}
+
 func TestParseRuntimeAuthHealthRejectsUnsupportedHTTPAndJSON(t *testing.T) {
 	for _, test := range []struct {
 		name     string
