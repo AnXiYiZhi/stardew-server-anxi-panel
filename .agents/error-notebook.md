@@ -548,6 +548,7 @@
 
 ## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
 
+- 最近复发/补充：2026-08-23 把官网 production build 耗时从 3.33 秒更新为 3.58 秒时，先因手抄整条长期文档上下文漏掉 `Browser` 后的空格而校验失败；随后又误以为 `apply_patch` 能匹配行内片段，只写半行后第二次安全失败，两次均为零修改。最终用 `rg -F` 读取完整真实行后完成替换。`apply_patch` 是逐行匹配，不能用不完整的行内片段作删除行；这项复发规则已提升到 `AGENTS.md`。
 - 最近复发/补充：2026-08-20 修正候选脚本的 Compose project 时，两个相邻函数都有完全相同的 `local import_project="$project-save-import"`；补丁只用这条重复行作上下文，成功修改了前一个 empty-Compose fixture，而目标 Phase A fixture 未变。第三次本地候选随后在 legacy orphan 资源断言安全失败，未推送。正确做法是把函数名纳入 hunk 锚点，并在执行长门禁前用 `rg` 同时列出所有同名赋值确认各自值；`apply_patch` 成功只证明找到某个上下文，不证明命中了语义目标。
 - 最近复发/补充：2026-08-20 修复连续游戏日备份候选回归时，同文件的同步 maintenance 测试与目标 scheduler 测试都含相同 `eventPath`/`os.WriteFile` 片段；首个补丁仍只锚定重复局部代码，成功改了前者而目标未变，精确用例 `count=100` 又因竞态低概率全绿，直到提交前 `git diff` 才发现。已用两个函数名分别锚定恢复/修改，并在重跑前逐处 `rg` 核对 writer。该模式再次复发后，预防规则已提升到项目 `AGENTS.md`：含重复片段的补丁必须以函数/测试/章节级上下文命中，并在任何长门禁前审查精确 diff，不能用测试偶然通过替代目标行确认。
 - 最近复发/补充：2026-08-18 给响应式测试追加安装图标断言时，虽然刚由检索看到目标行，仍在补丁中手抄过长的三行正则上下文，`apply_patch verification failed` 且零修改。随后读取精确邻域，只用稳定的 `assert.match(installPageSource, /'下载与环境'/)` 单行作锚点成功插入；测试文件中的长正则也必须按最小稳定上下文补丁，不能把工具输出中的转义形态重新手抄一遍。
@@ -940,6 +941,8 @@
 
 ## 2026-08-13：前端 QA 技能示例与当前 Browser 截图 API 不一致
 
+- 最近复发/补充：2026-08-23 验证 v0.5.12 官网时又把控制台日志类推为 `portalTab.console.logs()`，实际当前 runtime 的入口是 `portalTab.dev.logs()`；错误发生在只读页面度量之后、截图之前，页面与源码未改变。以后首次使用非 locator 能力时先核对当前对象原型，`tab.dev` 负责日志，`tab.screenshot` 负责截图，不从其它 Browser 版本或通用自动化库猜层级。
+- 最近复发/补充：2026-08-23 验证 v0.5.12 官网时再次照前端测试技能示例调用 `portalTab.playwright.screenshot(...)`，首页 DOM、版本和 overflow 数据已成功取得，但截图阶段返回 `is not a function`；页面与源码状态未受影响。立即停止该形态并恢复本节固定的 `portalTab.screenshot({ fullPage: false })`。该错误已多次复发，预防规则同步提升到项目 `AGENTS.md`，以后技能示例不得覆盖当前 runtime 的明确接口。
 - 最近复发/补充：2026-08-18 诊断新建游戏弹窗时，凭通用浏览器 API 记忆调用了不存在的 `browser.tabs.open(url)`，调用在创建标签前失败，用户标签和页面状态未改变。当前 Browser 的建页契约是先 `browser.tabs.new()`，再对返回的 `Tab` 调用 `goto(url)`；已有应用内标签则优先 `browser.user.openTabs()` 后把完整条目交给 `browser.user.claimTab()`。建页、认领和导航必须按已读取的当次 API Reference 分层调用，不把其它浏览器库的快捷方法类推过来。
 - 最近复发/补充：2026-08-17 本任务准备响应式 QA 时，凭名称猜测 `agent.documentation.get("browser.viewport")`，随后又猜测不存在的 `agent.documentation.search()`；两次都在页面交互前失败，Browser/tab 状态未改变。当前 runtime 没有独立 viewport 文档或 search helper；应以已完整读取的 `browser.documentation()` 和实际暴露的 tab/playwright 方法为准，不继续猜能力名。本轮最终使用默认视口、强制 mobile shell、DOM 度量、真实交互与普通截图组合验证，并由源码响应式门禁补充窄屏契约。
 - 环境：Codex 应用内 Browser，验证升级得到的 `v0.4.12` Panel 登录页。
@@ -1104,6 +1107,7 @@
 
 ## 2026-08-13：Web 工具拒绝直接打开精确 GitHub Pages URL
 
+- 最近复发/补充：2026-08-23 核对 `v0.5.12` 官网更新日志时，再次把已知 Pages 首页和 changelog 精确 URL 直接交给 Web `open`，两项都在网络读取前被 `URL is not safe to open` 拒绝；随后一次站内搜索为空，没有修改本地或线上状态。已按本节固定方案停止该工具形态：源码状态直接读取 `website/docs`，上线后的精确公开页面使用有界 PowerShell HTTP 探针，并以 Pages workflow 为部署权威证据。
 - 最近复发/补充：2026-08-16 发布 v0.5.1 官网更新后，再次把已知 GitHub Pages 首页与 changelog URL 直接交给 Web `open`，两项都在取页前被 `URL is not safe to open` 拒绝；Pages workflow 已成功，站点没有因此受影响。按既有正确做法停止该工具形态，改用 PowerShell 有界 HTTP 请求验证线上 200、版本号和发布标题。
 - 最近复发/补充：2026-08-13 拆分 Windows 部署专页时，把已知 Microsoft WSL 安装文档 URL 直接交给 Web `open`，Docker 两个官方地址正常返回，但 Microsoft 地址在取页前被同一安全门禁拒绝。没有重放直接打开；改为限定 `learn.microsoft.com` 的搜索查询取得官方结果，再从搜索结果读取主来源。对不同域名不能从同批其它 URL 成功推断精确 `open` 一定可用。
 - 环境：Codex Web 工具，v0.4.14 post-release GitHub Pages 线上 HTTP 验收。
@@ -1921,6 +1925,7 @@
 
 ## 2026-07-28：Browser 后端不支持 `networkidle` 等待状态
 
+- 最近复发/补充：2026-08-23 v0.5.12 官网从首页点击更新入口后，页面已成功进入 `/changelog.html`，但又用 `getByRole('heading', {name: '更新日志', exact: true})` 等待肉眼简称；实际 H1 是“版本更新日志”，accessible name 还包含 permalink，因此等待超时。随后直接读取当前 URL 与 DOM 证明导航成功，未重复点击。VitePress 标题等待必须先按 `main h1/h2` 的实际文本或 DOM snapshot 建立契约，不能凭导航标签或视觉简称猜 `exact:true`。
 - 最近复发/补充：2026-08-12 v0.4.11 本地官网点击 `<a href="./changelog">查看本次更新 →</a>` 时，先把预期 URL 硬编码为无扩展名 `/changelog`；点击实际完成并规范化到 `/changelog.html`，但 `expectNavigation` 等待错误目标 3 秒超时。读取 tab URL/H1/H2 证明页面已经正确进入日志，未重复点击。相对 Markdown href 在 VitePress router 下可能规范化；这类入口优先等待唯一目标 DOM，再读取实际 URL，不能只把源码 `getAttribute` 机械拼成等待值。
 - 最近复发/补充：2026-08-13 Windows 部署专页 QA 从当前页面点击侧栏“系统要求”，已从实际 `href` 解析出精确 `.html` URL 并成功完成 SPA 跳转，但 `expectNavigation` 仍等满 10 秒超时。立即读取 `tab.url()`、title 和 DOM 证明目标页已就绪，未重复点击；VitePress 内部路由可能不产生 Browser 包装器期望的传统 navigation 事件，点击后的权威证据应以目标唯一 DOM 与实际 URL 为准，不能把 `expectNavigation` 超时直接当成点击失败。
 - 最近复发/补充：2026-08-13 NAS 文档本地预览 readiness 直接请求 `/deploy/nas`，遗漏配置中的 Pages base `/stardew-server-anxi-panel/`，命中 VitePress 404。随后虽改为请求正确 base 首页，却又假定首页 SSR 必然包含 NAS 侧栏链接；首页只链接系统要求，因此探针再次安全失败。服务监听和构建均正常；最终从构建产物发现精确 HTML 路径，再读取目标页自身链接。VitePress 本地预览不能从源码相对路径假定站点根，HTTP 探针也不能假定其它路由的链接必然出现在首页。

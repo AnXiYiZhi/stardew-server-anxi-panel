@@ -2,7 +2,13 @@
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；官网版本展示目标已切换到最新 v0.4.18。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；官网版本展示目标已切换到最新 v0.5.12。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+
+## 2026-08-23：官网展示 v0.5.12
+
+- 首页 frontmatter、版本入口摘要和 `CURRENT RELEASE` 从 v0.5.11 切换到 v0.5.12；更新日志置顶新增新建存档农场山洞三选一、仅作用于精确新建事务、已有/导入存档不改写和双重落盘复核说明，v0.5.11 保留为历史条目。
+- 用户可见文案来自已发布 `v0.5.12` GitHub Release、`docs/06-integration.md` 和 `docs/09-image-build.md`；只修改公开 Markdown、门户长期文档和本次执行错误记录，不改变主题、CSS、依赖、Panel API、镜像、tag、digest 或 Release 资产。
+- VitePress production build 3.58 秒通过；应用内 Browser 在本地 1280×720 与 390×844 从首页真实点击到 `/changelog.html`，首页/日志均命中 v0.5.12，日志顺序为 v0.5.12/v0.5.11，root/body 无横向溢出，framework overlay 与 console warn/error 为 0。推送后仍需等待 Pages 与 Compatibility workflow 成功，再对线上同一路径完成有界 HTTP 与 Browser 复核；纯 `website/docs` 提交不得触发候选重建或移动 `v0.5.12`。
 
 ## 2026-08-15：官网展示 v0.4.18
 
@@ -112,7 +118,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.4.17` 文档）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前展示目标为 `v0.5.12`）
 
 | 决策项 | 结论 |
 | --- | --- |

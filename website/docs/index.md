@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.11
+release: v0.5.12
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.11。Steam 密码错误会进入明确的凭据恢复路径，管理员也可随时更换账号并强制重新认证，不删除游戏文件或存档。
+    details: 当前最新 v0.5.12。新建存档时可保留原版山洞事件，或直接选择果蝠洞、蘑菇洞；选择只作用于本次新建档。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.11</strong>
-    <p>Steam 密码错误会正确提示；管理员可主动更换 Steam 账号并重新认证，旧授权缓存会清除，游戏文件和存档继续保留。</p>
+    <strong>v0.5.12</strong>
+    <p>新建存档新增农场山洞选择：保留原版剧情，或直接启用果蝠洞、蘑菇洞；已有存档不会被改动。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>
