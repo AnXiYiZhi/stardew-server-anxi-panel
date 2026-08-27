@@ -12,14 +12,18 @@
 | --- | --- |
 | [界面总览](/handbook/ui) | 顶栏、导航、右侧信息栏怎么看 |
 | [账号与权限](/handbook/accounts) | 管理员初始化、登录、面板用户、审计日志 |
-| [安装游戏](/handbook/install) | Steam 账号安装全流程、Steam Guard、SteamCMD 兜底、修复重装 |
-| [服务器控制](/handbook/server-control) | 启动停止重启、计划重启、邀请码、控制台命令、全服喊话 |
+| [安装游戏](/handbook/install) | SteamCMD 主安装与修复、Steam 账号和 Guard、按需启用邀请码 |
+| [服务器控制](/handbook/server-control) | 启动停止重启、计划重启、局域网 / IP 直连、可选邀请码、控制台命令、全服喊话 |
 | [存档管理](/handbook/saves) | 新建存档、上传存档、切换、自动备份策略、备份恢复 |
 | [Mod 管理](/handbook/mods) | 下载模组、添加模组、配置模组三个工作台，Nexus 一键安装，玩家同步包 |
 | [玩家管理](/handbook/players) | 在线名册、活动事件、当前已实现和未实现的管理操作 |
 | [任务与日志](/handbook/jobs-logs) | 后台任务实时日志怎么看、怎么排查失败 |
 | [诊断与支持包](/handbook/diagnostics) | 健康检查、资源监控、导出支持包给人排障 |
 | [面板设置](/handbook/settings) | 端口信息、用户管理、审计日志、安全清单 |
+
+::: tip v0.6.0 的连接方式
+新实例安装完成后即可使用局域网 / IP 直连；Steam 邀请码默认关闭，是独立的可选能力。未启用时不会要求 SteamAuth，也不会影响存档、Mod、备份或游戏数据。
+:::
 
 ## 下一步
 

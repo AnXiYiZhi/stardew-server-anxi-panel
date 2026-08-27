@@ -6,7 +6,19 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.5.13（最新版本）
+## v0.6.0（最新版本）
+
+**全新实例默认走 SteamCMD 安装**：首次安装直接用你填写的 Steam 账号完成 Stardew Valley（App 413150）下载，再以匿名会话取得 Steamworks SDK（App 1007），随后安装 SMAPI、同步 Junimo/Control 支持文件并做最终校验。安装完成即可启动并使用局域网/IP 直连；默认流程不会拉取、创建、启动或探测 `steam-auth`，它的缺失也不会影响安装、存档、Mod、备份与日常启动。SteamCMD 只在安装或修复时使用，不会进入日常运行组件升级。
+
+**Steam 邀请码改为管理员按需启用**：安装完成后，如确实需要 Steam 邀请码，先停服，再在安装页点击“启用 Steam 邀请码（需要再次登录授权）”。Panel 此时才检查并拉取 Auth 镜像，以一次性容器完成登录；session 保存后授权容器停止，不会重复下载游戏。之后启动 enabled 实例时才会同时启动 Auth sidecar 并在后台获取邀请码。授权失败只影响邀请码能力，已经安装好的游戏和局域网/IP 直连继续可用。
+
+**共享凭据，但分别保留两套有效登录状态**：SteamCMD 与 Auth 共用管理员保存的 Steam 账号密码；修改账号密码不会主动删除仍有效的 SteamCMD cache 或 Auth session，也不会清空游戏数据。SteamCMD 无法继续使用缓存时才回退到当前保存的凭据，已经完成的邀请码授权则保持原 session，不会因为改密码被主动替换或重新登录。旧实例升级会保留明确关闭/开启状态；历史上已经完成 Auth 或具备邀请码能力的实例继续保持开启，disabled 实例不会在升级、诊断、支持包或运行组件维护时被强制验收 Auth。
+
+**联机与安装页面状态更清楚**：总览、服务器摘要和手机首页始终显示“局域网直连”，只在邀请码能力已启用时显示 Steam 邀请码卡；启动期间先显示等待/生成中，Auth 异常时也会明确说明直连仍可用。普通用户不再看到管理员授权入口，邀请码授权任务失败也不会把基础安装误报为失败。安装日志改为最新一条置顶并给出倒序提示；新建存档的小屋模式默认恢复原版，“推荐”选项更名为“堆叠”。
+
+本版候选完成 fresh install、Panel 重启、`v0.5.13 → v0.6.0` 异常目标自动回滚与健康 Web 升级，并因长期意图迁移增加 `v0.3.2 → v0.6.0` 代表升级。Docker Hub、阿里云 ACR、GHCR 的 `0.6.0/latest`、正式健康/版本冒烟与 GitHub Release 均绑定同一不可变 digest。
+
+## v0.5.13
 
 **只更新 Control 时不再等待 Steam 后台重新登录**：当服务器镜像、认证镜像和 JunimoServer Mod 都没有变化时，Panel 仍会严格核对认证容器正在运行且镜像身份完全一致，但 `/health` 只做一次有界检查。Steam 正在后台重连、健康接口暂时超时或返回异常时，页面会留下明确告警并继续验证 Control、Junimo 和 SMAPI，不再让一次 Control-only 升级额外卡住数分钟。
 

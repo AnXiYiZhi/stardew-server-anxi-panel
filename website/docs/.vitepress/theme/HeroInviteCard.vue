@@ -26,7 +26,7 @@ import { withBase } from 'vitepress'
     <div class="hero-invite__status">
       <span class="hero-invite__status-copy">
         <i aria-hidden="true" />
-        一键部署后即可联机
+        服务器启动即可 IP 直连
       </span>
       <small lang="en">READY</small>
     </div>
@@ -48,7 +48,7 @@ import { withBase } from 'vitepress'
     <dl class="hero-invite__capabilities">
       <div>
         <dt>联机</dt>
-        <dd>邀请码一键查看</dd>
+        <dd>直连常驻，邀请按需</dd>
       </div>
       <div>
         <dt>管理</dt>

@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.5.13
+release: v0.6.0
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.5.13。只更新 Control 时不再等待 Steam 后台重新登录，认证验收与 SMAPI 验收也会分开显示。
+    details: 当前最新 v0.6.0。全新实例默认使用 SteamCMD 安装，局域网/IP 可直接联机；Steam 邀请码改为管理员按需启用。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.5.13</strong>
-    <p>Control-only 升级不再被 Steam 后台重连拖住；认证服务与 SMAPI 的验证阶段现在各自显示真实进度。</p>
+    <strong>v0.6.0</strong>
+    <p>SteamCMD 成为默认安装主链；局域网/IP 直连始终可用，Steam 邀请码需要时再单独登录启用。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

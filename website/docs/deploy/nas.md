@@ -60,7 +60,11 @@ http://NAS局域网IP:8090
 
 例如 NAS IP 是 `192.168.1.200`，则访问 `http://192.168.1.200:8090`。
 
-7. 首次进入面板后创建管理员账号，再进入安装页安装 Stardew（详见 [首次进入面板](/guide/first-login)）。
+7. 首次进入面板后创建管理员账号，再进入安装页使用 SteamCMD 安装 Stardew（详见 [首次进入面板](/guide/first-login)）。SteamCMD 只在安装或修复时使用，不需要作为常驻服务运行。
+
+::: tip 邀请码是可选能力
+全新实例默认使用局域网 / IP 直连，不需要 SteamAuth。不要在上面的 Panel Compose 中手工添加 `steam-auth`：只有管理员在安装页主动启用 Steam 邀请码后，面板才会按需准备和维护 Auth；未启用时缺少 Auth 镜像或容器不会影响启动、存档、Mod、备份和直连。
+:::
 
 ## 为什么这份 compose 只绑定 8090
 
@@ -79,6 +83,7 @@ http://NAS局域网IP:8090
 - 如果 NAS 图形界面不允许挂载 `/var/run/docker.sock`，本项目无法正常控制游戏容器，需要换支持 Docker Socket 挂载的部署方式。
 - 如果打开面板正常，但启动游戏失败，先检查 NAS 是否允许容器继续创建其他容器，以及 Docker Socket 是否为读写挂载。
 - 如果外网好友无法加入，优先检查路由器 UDP 24642 / UDP 27015 是否转发到 NAS，而不是只开放 TCP。
+- 从旧版本升级到 v0.6.0 会保留存档、Mod 和游戏数据；历史上已经完成 SteamAuth 授权的实例也会保留邀请码能力与 session，不需要为了升级重新配置 NAS Compose。
 - NAS 上不建议长期开放 `TCP 8090` 到公网；更推荐局域网管理，外网管理使用 VPN、Tailscale、ZeroTier 或路由器自带 VPN。
 
 更多故障排查见 [常见问题](/faq/)。
