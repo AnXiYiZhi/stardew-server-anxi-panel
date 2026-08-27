@@ -1898,6 +1898,7 @@
 
 ## 2026-07-31：PowerShell 插值变量后直接连接连字符
 
+- 最近复发/补充：2026-08-27 本地镜像只读投影的异常文本再次写成 `"docker image inspect failed for $ref: $code"`，PowerShell 在执行任何 Docker inspect 前把 `$ref:` 解析为作用域变量并报 `ParserError`；零资源变化。改为 `"docker image inspect failed for ${ref}: $code"` 后执行；错误分支字符串也必须与正常命令参数一样接受插值边界审查。
 - 最近复发/补充：2026-08-18 生产 SteamCMD 只读诊断的 ShellStream 包装器在双引号中写了 `"$end:%s"`，PowerShell 在建立 SSH 会话前即因把冒号解释为变量作用域分隔符而报 `ParserError`，远端零执行。改为任务专属脚本并统一使用 `"${end}:%s"`；远端 marker、registry ref 和错误前缀等变量后接冒号时都必须显式包围变量名。
 - 最近复发/补充：2026-08-15 `v0.4.17` 发布后批量核验 registry digest 时，在错误文本中写成 `"digest mismatch for $ref: $digest"`；PowerShell 把变量后的冒号按作用域变量语法解析，在任何 registry 请求前报 `ParserError`。修正为 `"digest mismatch for ${ref}: $digest"` 后再执行核验；变量后接冒号同样必须显式使用 `${name}` 边界。
 - 环境：PowerShell 7，创建任务专属 Docker volume 名。
