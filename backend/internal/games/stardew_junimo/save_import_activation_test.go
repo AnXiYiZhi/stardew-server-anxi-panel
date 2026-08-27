@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 type activationTestRuntime struct {
@@ -26,6 +29,7 @@ type activationTestRuntime struct {
 	players           int
 	version           int64
 	restarts          int
+	restartServices   []string
 	importWrites      int
 	onRestart         func()
 }
@@ -77,8 +81,12 @@ func prepareActivationTestRuntime(t *testing.T, hostHandling string) *activation
 		}
 		return baseExec(ctx, dir, service, stdin, args...)
 	}
-	f.fake.recreateFunc = func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
+	f.fake.recreateFunc = func(_ context.Context, _ string, services ...string) (paneldocker.CommandResult, error) {
 		runtime.restarts++
+		runtime.restartServices = append([]string(nil), services...)
+		f.record.mu.Lock()
+		f.record.started = true
+		f.record.mu.Unlock()
 		if runtime.onRestart != nil {
 			runtime.onRestart()
 		}
@@ -142,6 +150,182 @@ func TestImportActivationReloadSkippedThenControlledRestartNewProcessCountOne(t 
 	j, _ := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
 	if !j.ActivationRestarted || r.restarts != 1 || j.Stage != ImportStageFinalizeConfirmed {
 		t.Fatalf("journal=%+v restarts=%d", j, r.restarts)
+	}
+}
+
+func TestImportActivationDisabledColdStartDoesNotMaterializeSteamAuth(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "swap_host_to")
+	r.fixture.writePending(t, "Upload_1", 99, phaseATestPlatformID)
+	if err := sjconfig.UpdateEnvFile(filepath.Join(r.fixture.dataDir, ".env"), map[string]string{"STEAM_INVITE_ENABLED": "true"}); err != nil {
+		t.Fatalf("change live invite intent after transaction freeze: %v", err)
+	}
+	r.fixture.record.mu.Lock()
+	r.fixture.record.started = false
+	r.fixture.record.mu.Unlock()
+	r.onRestart = func() {
+		r.identity = JunimoProcessIdentity{ContainerID: "container-b", ProcessStartTicks: "456"}
+		r.finalizeCount = 1
+		r.setRuntimeSave(t, "Upload_1")
+		r.clearPending(t)
+	}
+	driver := New(r.fixture.fake, nil, nil, r.fixture.store)
+	if err := driver.runImportActivation(context.Background(), r.fixture.instance, r.fixture.op, nil, activationTestOptions()); err != nil {
+		t.Fatalf("runImportActivation: %v", err)
+	}
+	if got := strings.Join(r.restartServices, ","); got != "server" {
+		t.Fatalf("cold activation services = %v, want frozen disabled server-only scope", r.restartServices)
+	}
+}
+
+func TestImportActivationEnabledColdStartUsesFrozenAuthScopeAfterEnvChanges(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "swap_host_to")
+	r.fixture.writePending(t, "Upload_1", 99, phaseATestPlatformID)
+	j, err := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	j.MaintenanceSteamInviteEnabled = &enabled
+	if err := WriteImportJournal(r.fixture.dataDir, j); err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(r.fixture.dataDir, ".env"), map[string]string{"STEAM_INVITE_ENABLED": "false"}); err != nil {
+		t.Fatalf("change live invite intent after transaction freeze: %v", err)
+	}
+	r.fixture.record.mu.Lock()
+	r.fixture.record.started = false
+	r.fixture.record.mu.Unlock()
+	r.onRestart = func() {
+		r.identity = JunimoProcessIdentity{ContainerID: "container-b", ProcessStartTicks: "456"}
+		r.finalizeCount = 1
+		r.setRuntimeSave(t, "Upload_1")
+		r.clearPending(t)
+	}
+	driver := New(r.fixture.fake, nil, nil, r.fixture.store)
+	if err := driver.runImportActivation(context.Background(), r.fixture.instance, r.fixture.op, nil, activationTestOptions()); err != nil {
+		t.Fatalf("runImportActivation: %v", err)
+	}
+	if got := strings.Join(r.restartServices, ","); got != "steam-auth,server" {
+		t.Fatalf("cold activation services = %v, want frozen enabled Auth+server scope", r.restartServices)
+	}
+}
+
+func TestConfirmedImportStepPanicsRollBackFrozenEnabledScope(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		activation func() error
+		durable    func() error
+	}{
+		{name: "activation", activation: func() error { panic("sensitive activation panic") }},
+		{name: "durable save", activation: func() error { return nil }, durable: func() error { panic("sensitive durable panic") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := prepareActivationTestRuntime(t, "swap_host_to")
+			r.fixture.writeMain(t, "transformed")
+			r.fixture.writePointer(t, "Upload_1")
+			journal, err := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			enabled := true
+			journal.MaintenanceSteamInviteEnabled = &enabled
+			if err := WriteImportJournal(r.fixture.dataDir, journal); err != nil {
+				t.Fatal(err)
+			}
+			var stoppedServices []string
+			r.fixture.fake.stopServicesFunc = func(_ context.Context, _, _ string, services ...string) error {
+				stoppedServices = append([]string(nil), services...)
+				r.fixture.record.mu.Lock()
+				r.fixture.record.down = true
+				r.fixture.record.started = false
+				r.fixture.record.mu.Unlock()
+				return nil
+			}
+			driver := New(r.fixture.fake, nil, nil, r.fixture.store)
+			err = driver.runConfirmedImportSteps(r.fixture.instance, r.fixture.op, nil, tc.activation, tc.durable)
+			typed, ok := AsImportTransactionError(err)
+			if !ok || typed.Code != ImportErrorRecoveryRequired || strings.Contains(err.Error(), "sensitive") {
+				t.Fatalf("panic recovery error=%T %v, want redacted recovery_required", err, err)
+			}
+			if got := strings.Join(stoppedServices, ","); got != "server,steam-auth" {
+				t.Fatalf("panic rollback stop services=%v, want frozen enabled server+Auth scope", stoppedServices)
+			}
+			journal, err = LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+			if err != nil || journal.Stage != ImportStageRolledBack || journal.RollbackState != importActivationRollbackCompleted || journal.MaintenanceStarted {
+				t.Fatalf("panic rollback journal=%+v err=%v", journal, err)
+			}
+		})
+	}
+}
+
+func TestConfirmedAsIsImportPanicStopsFrozenDisabledScopeAndStaysManual(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "server_owns_original")
+	var stoppedServices []string
+	r.fixture.fake.stopServicesFunc = func(_ context.Context, _, _ string, services ...string) error {
+		stoppedServices = append([]string(nil), services...)
+		r.fixture.record.mu.Lock()
+		r.fixture.record.down = true
+		r.fixture.record.started = false
+		r.fixture.record.mu.Unlock()
+		return nil
+	}
+	driver := New(r.fixture.fake, nil, nil, r.fixture.store)
+	err := driver.runConfirmedImportSteps(r.fixture.instance, r.fixture.op, nil, func() error {
+		panic("sensitive as-is panic")
+	}, nil)
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired || strings.Contains(err.Error(), "sensitive") {
+		t.Fatalf("panic recovery error=%T %v, want redacted recovery_required", err, err)
+	}
+	if got := strings.Join(stoppedServices, ","); got != "server" {
+		t.Fatalf("as-is panic stop services=%v, want frozen disabled server-only scope", stoppedServices)
+	}
+	journal, loadErr := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if loadErr != nil || journal.MaintenanceRecoveryState != importMaintenanceManualRecovery || journal.RecoveryState != "manual_required" || !journal.MaintenanceStarted {
+		t.Fatalf("as-is panic journal=%+v err=%v", journal, loadErr)
+	}
+}
+
+func TestConfirmedImportPanicAfterCompletedJournalPublishesRunningWithoutRollback(t *testing.T) {
+	r := prepareActivationTestRuntime(t, "swap_host_to")
+	r.fixture.store.mu.Lock()
+	r.fixture.store.instance.State = storage.InstanceStateStopped
+	r.fixture.store.instance.StateMessage = sql.NullString{String: "private maintenance", Valid: true}
+	r.fixture.store.instance.DriverPhase = importMaintenancePhase
+	r.fixture.store.instance.DriverPayload = `{"save_import_operation_id":"` + r.fixture.op + `"}`
+	r.fixture.store.mu.Unlock()
+	stopCalls := 0
+	r.fixture.fake.stopServicesFunc = func(context.Context, string, string, ...string) error {
+		stopCalls++
+		return nil
+	}
+	driver := New(r.fixture.fake, nil, nil, r.fixture.store)
+	err := driver.runConfirmedImportSteps(r.fixture.instance, r.fixture.op, nil, nil, func() error {
+		journal, loadErr := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+		if loadErr != nil {
+			return loadErr
+		}
+		journal.Stage = ImportStageCompleted
+		if writeErr := WriteImportJournal(r.fixture.dataDir, journal); writeErr != nil {
+			return writeErr
+		}
+		panic("sensitive post-completion panic")
+	})
+	if err != nil {
+		t.Fatalf("post-completion panic was not reconciled: %v", err)
+	}
+	if stopCalls != 0 {
+		t.Fatalf("post-completion panic triggered rollback stop %d time(s)", stopCalls)
+	}
+	journal, loadErr := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+	if loadErr != nil || journal.Stage != ImportStageCompleted || journal.RollbackState != "" {
+		t.Fatalf("completed journal was rolled back: %+v err=%v", journal, loadErr)
+	}
+	r.fixture.store.mu.Lock()
+	current := r.fixture.store.instance
+	r.fixture.store.mu.Unlock()
+	if current.State != storage.InstanceStateRunning || current.DriverPhase != "running" || strings.Contains(current.DriverPayload, saveImportOperationIDPayloadKey) {
+		t.Fatalf("completed journal did not publish running state: %+v", current)
 	}
 }
 
@@ -290,6 +474,41 @@ func TestConfirmedHostSwapDurableFailureUsesGenericRollback(t *testing.T) {
 	if loadErr != nil || j.Stage != ImportStageRolledBack || j.RollbackState != importActivationRollbackCompleted ||
 		j.RollbackCauseCode != ImportErrorResultUnconfirmed || j.LastErrorCode != ImportErrorResultUnconfirmed {
 		t.Fatalf("generic rollback journal=%+v err=%v", j, loadErr)
+	}
+}
+
+func TestPartialActivationRollbackNeverResumesActivation(t *testing.T) {
+	for _, rollbackState := range []string{
+		importActivationRollbackPending,
+		importActivationRollbackServerStopped,
+		importActivationRollbackSaveRestored,
+		importActivationRollbackPointerRestored,
+		importActivationRollbackInstanceRestored,
+		importActivationRollbackManualRecovery,
+	} {
+		t.Run(rollbackState, func(t *testing.T) {
+			r := prepareActivationTestRuntime(t, "swap_host_to")
+			journal, err := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			journal.RollbackState = rollbackState
+			if rollbackState == importActivationRollbackManualRecovery {
+				journal.RecoveryState = "manual_required"
+			}
+			if err := WriteImportJournal(r.fixture.dataDir, journal); err != nil {
+				t.Fatal(err)
+			}
+			recoveries, err := RecoverImportTransactions(r.fixture.dataDir)
+			if err != nil || len(recoveries) != 1 || recoveries[0].State != "manual_required" || recoveries[0].ErrorCode != ImportErrorRecoveryRequired {
+				t.Fatalf("partial rollback recovery=%+v err=%v, want manual recovery", recoveries, err)
+			}
+			persisted, err := LoadImportJournal(r.fixture.dataDir, r.fixture.op)
+			if err != nil || persisted.RollbackState != rollbackState ||
+				(rollbackState == importActivationRollbackManualRecovery && persisted.RecoveryState != "manual_required") {
+				t.Fatalf("partial rollback journal was reclassified: %+v err=%v", persisted, err)
+			}
+		})
 	}
 }
 

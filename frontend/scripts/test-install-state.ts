@@ -1,26 +1,111 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { calcSteamDownloadTaskProgress, extractSMAPIArchiveProgress } from '../src/games/stardew/install-helpers.ts'
-import { canonicalInstallJobs, logsDescribeActiveInstall, reconcileJobSnapshots } from '../src/games/stardew/install-state.ts'
+import { normalizeInstanceId } from '../src/instance-id.ts'
+import { calcSteamDownloadTaskProgress, extractSMAPIArchiveProgress, installFailureDisplayMessage } from '../src/games/stardew/install-helpers.ts'
+import { canonicalInstallJobs, canonicalInstallPageJobs, installJobForDisplay, latestInstallLogsFirst, logsDescribeActiveInstall, reconcileJobSnapshots } from '../src/games/stardew/install-state.ts'
 import { classifyInstallationState } from '../src/games/stardew/installation-state.ts'
+import { routeToPath } from '../src/games/stardew/stardew-routes.ts'
+import {
+  isCurrentSteamInviteProjection,
+  isCurrentSteamInviteRequest,
+  preserveSteamInviteProjection,
+  shouldPollSteamInvite,
+  shouldResumeSteamInviteAfterRuntimeReset,
+  shouldRestartSteamInvitePolling,
+  steamInvitePollBudgetExhausted,
+  steamInvitePresentation,
+} from '../src/games/stardew/steam-invite-state.ts'
 import type { InstallationDiagnostic, InstanceState, Job, JobLog, JobStatus } from '../src/types.ts'
 
 const installPageSource = readFileSync(
   new URL('../src/games/stardew/pages/InstallPage.tsx', import.meta.url),
   'utf8',
 ).replace(/\r\n?/g, '\n')
+const diagnosticsPageSource = readFileSync(
+  new URL('../src/games/stardew/pages/DiagnosticsPage.tsx', import.meta.url),
+  'utf8',
+).replace(/\r\n?/g, '\n')
+const steamAuthHookSource = readFileSync(
+  new URL('../src/games/stardew/useSteamAuthLogin.ts', import.meta.url),
+  'utf8',
+).replace(/\r\n?/g, '\n')
+const apiSource = readFileSync(
+  new URL('../src/api.ts', import.meta.url),
+  'utf8',
+).replace(/\r\n?/g, '\n')
 
-assert.match(installPageSource, /const \[forceReauth, setForceReauth\] = useState\(false\)/)
-assert.match(installPageSource, /onClick=\{\(\) => \{ setForceReauth\(true\); setShowForm\(true\); setInstallError\(''\) \}\}/)
-assert.match(installPageSource, /forceReauth\s*\? \{ steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true \}/)
-assert.match(installPageSource, /installation\.canOpenInstallForm \|\| forceReauth/)
-assert.match(installPageSource, /!canDirectRetry \|\| forceReauth/)
-assert.match(installPageSource, /确认更换账号并重新认证/)
+assert.match(installPageSource, /const \[editingSteamCredentials, setEditingSteamCredentials\] = useState\(false\)/)
+assert.match(installPageSource, /onClick=\{\(\) => \{ setEditingSteamCredentials\(true\); setShowForm\(true\); setInstallError\(''\) \}\}/)
+assert.match(installPageSource, /\{isInstalled \? \(\s*<button[\s\S]*?setEditingSteamCredentials\(true\)[\s\S]*?修改 Steam 账号密码\s*<\/button>\s*\) : null\}/)
+assert.match(installPageSource, /await updateSteamCredentials\(\{ steamUsername, steamPassword \}\)/)
+assert.match(installPageSource, /await dashboardData\.refreshInstanceState\(\)/)
+assert.match(installPageSource, /onSubmit=\{editingSteamCredentials \? handleSteamCredentialsSubmit : handleInstallSubmit\}/)
+assert.match(installPageSource, /!editingSteamCredentials && !optionsLoading/)
+assert.match(installPageSource, /\{!editingSteamCredentials \? \(\s*<div className="sd-install-field">\s*<label className="sd-install-field-label">VNC 密码<\/label>/)
+assert.match(apiSource, /\/steam-credentials`, \{\s*method: 'PUT',\s*body,/)
+assert.doesNotMatch(apiSource, /forceReauth/)
+assert.doesNotMatch(installPageSource, /forceReauth|setForceReauth/)
+assert.match(installPageSource, /启用 Steam 邀请码（需要再次登录授权）/)
+assert.match(installPageSource, /\{isAdmin \? \(\s*<>\s*<button[\s\S]*?启用 Steam 邀请码/)
+assert.doesNotMatch(installPageSource, /只会检查 Auth 镜像并启动一次性登录容器；session 保存后容器立即停止/)
+assert.match(installPageSource, /const steamInviteAuthorizationCleanupPending = instanceState\?\.steamInviteEnabled === true/)
+assert.match(installPageSource, /const steamInviteAuthorizationReady = instanceState\?\.steamInviteEnabled === true/)
+assert.match(installPageSource, /Steam 邀请码已启用/)
+assert.match(installPageSource, /Steam 邀请码授权收尾中…/)
+assert.match(installPageSource, /disabled=\{steamInviteAuthorizationReady \|\| steamInviteAuthorizationCleanupPending \|\| steamAuth\.busy/)
+assert.doesNotMatch(installPageSource, /现有 SteamCMD 授权缓存和 SteamAuth session 保持不变/)
+assert.doesNotMatch(installPageSource, /只有缓存或 session 被实际判定失效时，相关流程才会使用新凭据重新登录/)
+assert.doesNotMatch(installPageSource, /原 SteamAuth session 会失效/)
+assert.doesNotMatch(steamAuthHookSource, /session|只启动一次性 SteamAuth 授权容器/)
+assert.match(installPageSource, /修改 Steam 账号密码/)
+assert.match(installPageSource, /确认修改 Steam 账号密码/)
+assert.doesNotMatch(installPageSource, /SteamCMD 与 Steam 邀请码授权共用这里保存的 Steam 账号密码/)
+assert.doesNotMatch(installPageSource, /Steam 邀请码授权失败，可点击上方按钮重试/)
+assert.doesNotMatch(installPageSource, /Steam 邀请码已按需启用，正在等待登录授权/)
+assert.doesNotMatch(installPageSource, /Steam 邀请码二维码授权失败，可点击/)
+assert.doesNotMatch(installPageSource, /更换 SteamCMD/)
+assert.doesNotMatch(installPageSource, /steam-auth 国内网络波动导致下载失败/)
+assert.doesNotMatch(installPageSource, /SteamCMD 兜底/)
+assert.match(installPageSource, /latestInstallLogsFirst\(displayableLogs\)/)
+assert.match(installPageSource, /最新日志在最上方（倒序显示）/)
+assert.doesNotMatch(installPageSource, /scrollTo\(\{ top: 0/)
+assert.doesNotMatch(installPageSource, /scrollHeight/)
+assert.match(steamAuthHookSource, /const response = await steamAuthLogin\(\)/)
+assert.match(steamAuthHookSource, /onStarted\?\.\(response\.jobId\)/)
+assert.match(steamAuthHookSource, /onNavigate\('install', \{ installJobId: response\.jobId \}\)/)
+assert.match(installPageSource, /onStarted: \(jobId\) => \{\s*setInstallJobId\(jobId\)\s*setInstallJob\(null\)\s*setLogs\(\[\]\)/)
+assert.match(installPageSource, /if \(requestedInstallJobId\) return/)
+assert.match(installPageSource, /const latestSteamTaskJob = installJobId \? installPageJobs\.selected : installJobForDisplay\(installPageJobs\)/)
+assert.match(installPageSource, /const selectedSteamTaskLogs = latestSteamTaskJob\?\.id === installJobId \? logs : \[\]/)
+assert.match(installPageSource, /const selectedTaskFailurePhase = latestSteamTaskJob\?\.status === 'failed'/)
+assert.match(installPageSource, /installationWorkflowComplete && !hasActiveSteamAuthJob && !selectedTaskIsSteamAuth/)
+assert.match(
+  installPageSource,
+  /const res = await installInstance\(body\)\s*onNavigate\('install', \{ installJobId: res\.jobId \}\)\s*setInstallJobId\(res\.jobId\)/,
+)
+assert.match(
+  installPageSource,
+  /if \(jobId\) \{\s*onNavigate\('install', \{ installJobId: jobId \}\)\s*if \(jobId !== installJobId\)/,
+)
+assert.equal(routeToPath('install', { installJobId: 'job_auth_new' }), '/instances/stardew/install?jobId=job_auth_new')
+assert.equal(
+  installFailureDisplayMessage('credentials_required', 'credentials_required', '', undefined, null, []),
+  'Steam 账号或密码错误（SteamCMD 登录失败），请修改后再试。',
+)
+assert.match(diagnosticsPageSource, /const steamInviteEnabled = instanceState\?\.steamInviteEnabled === true/)
+assert.match(diagnosticsPageSource, /steamInviteEnabled \? 'Junimo 运行组件版本对' : 'JunimoServer 运行组件版本'/)
+assert.match(diagnosticsPageSource, /JunimoServer 版本完全匹配；可选 Auth 未启用/)
+assert.match(diagnosticsPageSource, /未物化或验收可选 Auth/)
 
-function job(id: string, status: JobStatus, updatedAt: string, createdAt = '2026-08-11T00:00:00.000Z'): Job {
+assert.equal(normalizeInstanceId('preview-instance_01'), 'preview-instance_01')
+for (const invalidInstanceId of ['', '   ', '../escape', 'has/slash', '含中文', 'x'.repeat(65), null]) {
+  assert.equal(normalizeInstanceId(invalidInstanceId), 'stardew')
+}
+
+function job(id: string, status: JobStatus, updatedAt: string, createdAt = '2026-08-11T00:00:00.000Z', type = 'stardew_install'): Job {
   return {
     id,
-    type: 'stardew_install',
+    type,
     status,
     targetType: 'instance',
     targetId: 'stardew',
@@ -55,6 +140,119 @@ const terminalWinsOverDashboard = canonicalInstallJobs([active], terminalDetail)
 assert.equal(terminalWinsOverDashboard.active, null)
 assert.equal(terminalWinsOverDashboard.selected?.status, 'failed')
 
+const activeSteamAuth = job(
+  'job_steam_auth',
+  'running',
+  '2026-08-11T00:02:05.000Z',
+  '2026-08-11T00:02:00.000Z',
+  'stardew_steam_auth',
+)
+assert.equal(canonicalInstallJobs([activeSteamAuth], null).active, null)
+assert.equal(canonicalInstallPageJobs([activeSteamAuth], null).active?.id, 'job_steam_auth')
+assert.equal(logsDescribeActiveInstall(canonicalInstallPageJobs([activeSteamAuth], null).active, 'job_steam_auth'), true)
+
+const competingActiveInstall = job(
+  'job_competing_install',
+  'running',
+  '2026-08-11T00:03:05.000Z',
+  '2026-08-11T00:03:00.000Z',
+)
+const explicitlySelectedAuthFailure = job(
+  'job_selected_auth_failure',
+  'failed',
+  '2026-08-11T00:02:55.000Z',
+  '2026-08-11T00:02:50.000Z',
+  'stardew_steam_auth',
+)
+const explicitlySelected = canonicalInstallPageJobs(
+  [competingActiveInstall, explicitlySelectedAuthFailure],
+  null,
+  explicitlySelectedAuthFailure.id,
+)
+assert.equal(explicitlySelected.active?.id, competingActiveInstall.id)
+assert.equal(explicitlySelected.selected?.id, explicitlySelectedAuthFailure.id)
+assert.equal(installJobForDisplay(explicitlySelected)?.id, explicitlySelectedAuthFailure.id)
+
+const disabledInviteState = instanceState('running', 'running', { steamInviteEnabled: false })
+assert.equal(shouldPollSteamInvite(disabledInviteState, true, null, 'generating'), false)
+assert.equal(shouldPollSteamInvite(
+  instanceState('running', 'running', { steamInviteEnabled: true }),
+  true,
+  null,
+  'generating',
+), true)
+assert.equal(shouldPollSteamInvite(
+  instanceState('stopped', 'stopped', { steamInviteEnabled: true }),
+  true,
+  null,
+  'generating',
+), false)
+assert.equal(shouldPollSteamInvite(
+  instanceState('starting', 'starting', { steamInviteEnabled: true }),
+  true,
+  null,
+  'auth_unavailable',
+), false)
+assert.equal(shouldPollSteamInvite(
+  instanceState('running', 'running', { steamInviteEnabled: true, steamInviteAuthState: 'ready' }),
+  true,
+  null,
+  'auth_unavailable',
+), false)
+assert.equal(shouldPollSteamInvite(
+  instanceState('running', 'running', { steamInviteEnabled: true, steamInviteAuthState: 'pending' }),
+  true,
+  null,
+  'auth_unavailable',
+), false)
+assert.equal(steamInvitePresentation(false, 'disabled', null, null).text, '')
+assert.deepEqual(
+  steamInvitePresentation(true, 'waiting_authorization', null, null),
+  { text: '等待 Steam 授权', copyable: false, retryAuthorization: true, tone: 'muted' },
+)
+assert.deepEqual(
+  steamInvitePresentation(true, 'authorization_failed', null, null, 'failed'),
+  { text: '授权失败，可重试', copyable: false, retryAuthorization: true, tone: 'error' },
+)
+assert.deepEqual(
+  steamInvitePresentation(true, 'auth_unavailable', null, 'holder cleanup failed', 'cleanup_pending'),
+  { text: '等待中…', copyable: false, retryAuthorization: false, tone: 'loading' },
+)
+assert.equal(steamInvitePresentation(true, 'server_stopped', null, null).text, '服务器未运行')
+assert.equal(steamInvitePresentation(true, 'generating', null, null).text, '等待中…')
+assert.equal(steamInvitePresentation(true, 'ready', 'ANXI-CODE', null).copyable, true)
+assert.equal(steamInvitePresentation(true, 'auth_unavailable', null, null).text, 'Auth 异常（直连仍可用）')
+assert.deepEqual(
+  steamInvitePresentation(true, 'auth_unavailable', null, 'container starting', 'ready', 'starting', true),
+  { text: 'Auth 异常（直连仍可用）', copyable: false, retryAuthorization: true, tone: 'error' },
+)
+assert.deepEqual(
+  steamInvitePresentation(true, 'auth_unavailable', null, 'container starting', 'ready', 'running', true),
+  { text: 'Auth 异常（直连仍可用）', copyable: false, retryAuthorization: true, tone: 'error' },
+)
+assert.deepEqual(
+  steamInvitePresentation(true, 'generating', null, 'temporary network error', 'ready', 'running', true),
+  { text: '等待中…', copyable: false, retryAuthorization: false, tone: 'loading' },
+)
+assert.equal(
+  steamInvitePresentation(true, 'auth_unavailable', null, 'runtime failure', 'ready', 'running').text,
+  'Auth 异常（直连仍可用）',
+)
+assert.equal(
+  steamInvitePresentation(true, 'auth_unavailable', null, 'probe failed', 'pending', 'running', true).text,
+  'Auth 异常（直连仍可用）',
+)
+assert.equal(shouldRestartSteamInvitePolling(null, 'running', null), true)
+assert.equal(shouldRestartSteamInvitePolling('stopped', 'starting', 'auth_unavailable'), true)
+assert.equal(shouldRestartSteamInvitePolling('starting', 'running', 'generating'), true)
+assert.equal(shouldRestartSteamInvitePolling('starting', 'running', 'auth_unavailable'), false)
+assert.equal(shouldRestartSteamInvitePolling('running', 'running', 'generating'), false)
+assert.equal(isCurrentSteamInviteRequest(4, 4, true), true)
+assert.equal(isCurrentSteamInviteRequest(3, 4, true), false)
+assert.equal(isCurrentSteamInviteRequest(4, 4, false), false)
+assert.equal(steamInvitePollBudgetExhausted(124, 125), false)
+assert.equal(steamInvitePollBudgetExhausted(125, 125), true)
+
 function instanceState(
   state: string,
   driverPhase = state,
@@ -68,9 +266,154 @@ function instanceState(
     stateMessage: null,
     driverPhase,
     updatedAt: '2026-08-13T00:00:00.000Z',
+    steamInviteEnabled: false,
     ...overrides,
   }
 }
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((accept) => {
+    resolve = accept
+  })
+  return { promise, resolve }
+}
+
+{
+  let projectionGeneration = 0
+  let projectedState = instanceState('stopped', 'stopped', {
+    steamInviteEnabled: true,
+    steamInviteAuthState: 'ready',
+  })
+  let projectedStatus: 'generating' | 'ready' = 'generating'
+  let pollRequested = true
+  const oldStateResponse = deferred<InstanceState>()
+  const oldStateProjectionGeneration = ++projectionGeneration
+  const oldStateCommit = oldStateResponse.promise.then((nextState) => {
+    projectedState = isCurrentSteamInviteProjection(oldStateProjectionGeneration, projectionGeneration)
+      ? nextState
+      : preserveSteamInviteProjection(nextState, projectedState)
+  })
+
+  const newInviteProjectionGeneration = ++projectionGeneration
+  assert.equal(isCurrentSteamInviteProjection(newInviteProjectionGeneration, projectionGeneration), true)
+  projectionGeneration += 1
+  projectedState = { ...projectedState, steamInviteEnabled: true, inviteCode: 'READY-CODE' }
+  projectedStatus = 'ready'
+  pollRequested = false
+  oldStateResponse.resolve(instanceState('starting', 'starting', {
+    steamInviteEnabled: true,
+    steamInviteAuthState: 'ready',
+    inviteCode: '',
+  }))
+  await oldStateCommit
+
+  assert.equal(projectedState.state, 'starting')
+  assert.equal(projectedState.inviteCode, 'READY-CODE')
+  assert.equal(projectedState.steamInviteEnabled, true)
+  assert.equal(projectedStatus, 'ready')
+  assert.equal(pollRequested, false)
+}
+
+{
+  let projectionGeneration = 0
+  let inviteRequestGeneration = 0
+  let projectedState = instanceState('starting', 'starting', {
+    steamInviteEnabled: true,
+    steamInviteAuthState: 'ready',
+  })
+  let projectedStatus: 'generating' | 'disabled' = 'generating'
+  let pollRequested = true
+  const oldInviteResponse = deferred<{ steamInviteEnabled: boolean; inviteCode: string }>()
+  const oldInviteRequestGeneration = ++inviteRequestGeneration
+  const oldInviteProjectionGeneration = ++projectionGeneration
+  const oldInviteCommit = oldInviteResponse.promise.then((response) => {
+    if (!isCurrentSteamInviteRequest(
+      oldInviteRequestGeneration,
+      inviteRequestGeneration,
+      projectedState.steamInviteEnabled,
+    ) || !isCurrentSteamInviteProjection(oldInviteProjectionGeneration, projectionGeneration)) return
+    projectedState = { ...projectedState, steamInviteEnabled: response.steamInviteEnabled, inviteCode: response.inviteCode }
+  })
+
+  const disabledStateProjectionGeneration = ++projectionGeneration
+  assert.equal(isCurrentSteamInviteProjection(disabledStateProjectionGeneration, projectionGeneration), true)
+  inviteRequestGeneration += 1
+  projectedState = { ...projectedState, state: 'stopped', steamInviteEnabled: false, inviteCode: '' }
+  projectedStatus = 'disabled'
+  pollRequested = false
+  oldInviteResponse.resolve({ steamInviteEnabled: true, inviteCode: 'STALE-CODE' })
+  await oldInviteCommit
+
+  assert.equal(projectedState.state, 'stopped')
+  assert.equal(projectedState.steamInviteEnabled, false)
+  assert.equal(projectedState.inviteCode, '')
+  assert.equal(projectedStatus, 'disabled')
+  assert.equal(pollRequested, false)
+  assert.equal(shouldPollSteamInvite(projectedState, true, null, 'generating'), false)
+}
+
+for (const stateResponseFirst of [true, false]) {
+  let projectionGeneration = 0
+  let runtimeState = 'starting'
+  let attempts = 125
+  let budgetExhausted = false
+  let lastRequestStatus: 'generating' | 'auth_unavailable' = 'generating'
+  let displayedStatus: 'generating' | 'auth_unavailable' = 'generating'
+  let pollRequested = true
+  const stateResponse = deferred<'running'>()
+  const inviteResponse = deferred<'generating'>()
+  const stateProjectionGeneration = ++projectionGeneration
+  const stateCommit = stateResponse.promise.then((nextRuntimeState) => {
+    const resetRuntimeGeneration = shouldRestartSteamInvitePolling(
+      runtimeState,
+      nextRuntimeState,
+      lastRequestStatus,
+    )
+    runtimeState = nextRuntimeState
+    if (!resetRuntimeGeneration) return
+    attempts = 0
+    budgetExhausted = false
+    if (!isCurrentSteamInviteProjection(stateProjectionGeneration, projectionGeneration)
+      && shouldResumeSteamInviteAfterRuntimeReset(true, null, lastRequestStatus)) {
+      displayedStatus = 'generating'
+      pollRequested = true
+    }
+  })
+  const inviteProjectionGeneration = ++projectionGeneration
+  const inviteCommit = inviteResponse.promise.then((status) => {
+    if (!isCurrentSteamInviteProjection(inviteProjectionGeneration, projectionGeneration)) return
+    projectionGeneration += 1
+    lastRequestStatus = status
+    if (attempts >= 125) {
+      budgetExhausted = true
+      displayedStatus = 'auth_unavailable'
+      pollRequested = false
+    }
+  })
+
+  if (stateResponseFirst) {
+    stateResponse.resolve('running')
+    await stateCommit
+    inviteResponse.resolve('generating')
+    await inviteCommit
+  } else {
+    inviteResponse.resolve('generating')
+    await inviteCommit
+    stateResponse.resolve('running')
+    await stateCommit
+  }
+
+  assert.equal(runtimeState, 'running')
+  assert.equal(attempts, 0)
+  assert.equal(budgetExhausted, false)
+  assert.equal(displayedStatus, 'generating')
+  assert.equal(pollRequested, true)
+}
+
+assert.equal(shouldResumeSteamInviteAfterRuntimeReset(true, null, 'auth_unavailable'), false)
+assert.equal(shouldResumeSteamInviteAfterRuntimeReset(true, 'READY-CODE', 'generating'), false)
+assert.equal(shouldResumeSteamInviteAfterRuntimeReset(false, null, 'generating'), false)
 
 function installationDiagnostic(
   overrides: Partial<InstallationDiagnostic> = {},
@@ -99,6 +442,34 @@ const classificationCases = [
     state: instanceState('stopped', 'container_stopped'),
     active: false,
     expected: { kind: 'installed', action: 'none', isInstalled: true, showMissingInstallPrompt: false, canOpenInstallForm: true },
+  },
+  {
+    name: 'Steam invite authorization failure does not become a base install failure',
+    state: instanceState('stopped', 'steam_auth_failed', {
+      steamInviteEnabled: true,
+      steamInviteAuthState: 'failed',
+      installationDiagnostic: installationDiagnostic(),
+    }),
+    active: false,
+    expected: { kind: 'installed', action: 'none', isInstalled: true, showMissingInstallPrompt: false, canOpenInstallForm: true },
+  },
+  {
+    name: 'active Steam invite authorization keeps an installed base state',
+    state: instanceState('game_installed', 'steam_auth_running', {
+      steamInviteEnabled: true,
+      steamInviteAuthState: 'authorizing',
+    }),
+    active: false,
+    expected: { kind: 'installed', action: 'none', isInstalled: true, showMissingInstallPrompt: false, canOpenInstallForm: true },
+  },
+  {
+    name: 'legacy Steam invite failure without diagnostic stays diagnostic-only',
+    state: instanceState('steam_auth_failed', 'steam_invite_auth_failed', {
+      steamInviteEnabled: true,
+      steamInviteAuthState: 'failed',
+    }),
+    active: false,
+    expected: { kind: 'unknown', action: 'diagnose', isInstalled: false, showMissingInstallPrompt: false, canOpenInstallForm: false },
   },
   {
     name: 'fresh instance is the only legacy missing-install prompt',
@@ -141,7 +512,7 @@ const classificationCases = [
   },
   {
     name: 'SteamCMD invalid password overrides partial-install repair evidence',
-    state: instanceState('steam_auth_failed', 'credentials_required', {
+    state: instanceState('credentials_required', 'credentials_required', {
       installationDiagnostic: installationDiagnostic({
         status: 'incomplete',
         requiredFiles: 'missing',
@@ -170,8 +541,8 @@ const classificationCases = [
     expected: { kind: 'runtime_error', action: 'diagnose', isInstalled: false, showMissingInstallPrompt: false, canOpenInstallForm: false },
   },
   {
-    name: 'known installer error offers a retry without a first-install prompt',
-    state: instanceState('error', 'steam_auth_failed'),
+    name: 'known SteamCMD installer error offers a retry without a first-install prompt',
+    state: instanceState('error', 'steamcmd_failed'),
     active: false,
     expected: { kind: 'install_failed', action: 'install', isInstalled: false, showMissingInstallPrompt: false, canOpenInstallForm: true },
   },
@@ -272,6 +643,21 @@ function jobLog(sequence: number, message: string): JobLog {
     createdAt: '2026-08-18T00:00:00.000Z',
   }
 }
+
+const installLogSelectionInput = Array.from(
+  { length: 60 },
+  (_, index) => jobLog(((index * 17) % 60) + 1, `line-${index + 1}`),
+)
+const installLogSelectionInputOrder = installLogSelectionInput.map((entry) => entry.sequence)
+const latestInstallLogs = latestInstallLogsFirst(installLogSelectionInput)
+assert.equal(latestInstallLogs.length, 50)
+assert.deepEqual(latestInstallLogs.map((entry) => entry.sequence), Array.from({ length: 50 }, (_, index) => 60 - index))
+assert.deepEqual(
+  installLogSelectionInput.map((entry) => entry.sequence),
+  installLogSelectionInputOrder,
+  'latest-first presentation must not mutate the chronological SSE state',
+)
+assert.deepEqual(latestInstallLogsFirst(installLogSelectionInput, 0), [])
 
 const smapiDownload = extractSMAPIArchiveProgress([
   jobLog(1, '[smapi:download:progress:0:1000:1:2:false]'),

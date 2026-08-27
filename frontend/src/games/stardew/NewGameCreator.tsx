@@ -48,7 +48,7 @@ function defaultConfig(): NewGameConfig {
     startingCabins: 0,
     maxPlayers: 10,
     cabinLayout: 'nearby',
-    cabinMode: 'recommended',
+    cabinMode: 'vanilla',
     profitMargin: '100',
     moneyMode: 'shared',
     remixedCommunityCenter: false,
@@ -203,13 +203,13 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
           <ArrowButton
             direction="left"
             label="切换小屋模式"
-            onClick={() => set('cabinMode', cfg.cabinMode === 'vanilla' ? 'recommended' : 'vanilla')}
+            onClick={() => set('cabinMode', cfg.cabinMode === 'recommended' ? 'vanilla' : 'recommended')}
           />
-          <strong>{cfg.cabinMode === 'vanilla' ? '原版' : '推荐'}</strong>
+          <strong>{cfg.cabinMode === 'recommended' ? '堆叠' : '原版'}</strong>
           <ArrowButton
             direction="right"
             label="切换小屋模式"
-            onClick={() => set('cabinMode', cfg.cabinMode === 'vanilla' ? 'recommended' : 'vanilla')}
+            onClick={() => set('cabinMode', cfg.cabinMode === 'recommended' ? 'vanilla' : 'recommended')}
           />
         </div>
 

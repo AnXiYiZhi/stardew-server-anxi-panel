@@ -1235,6 +1235,12 @@
   margin-top: -33px;
 }
 
+.sd-overview-connection-cards {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
 .sd-ov-metric-strip {
   align-items: stretch;
   padding: 0;

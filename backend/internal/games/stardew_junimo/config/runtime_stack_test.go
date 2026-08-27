@@ -298,6 +298,30 @@ func TestRuntimeStackRepairRejectsCustomPrimaryAndAmbiguousVersion(t *testing.T)
 	}
 }
 
+func TestRuntimeServerRepairIgnoresInvalidOptionalSteamAuth(t *testing.T) {
+	dir := t.TempDir()
+	content := strings.Join([]string{
+		"IMAGE_VERSION=1.5.0-preview.121",
+		"SERVER_IMAGE=sdvd/server:1.5.0-preview.121",
+		"SERVER_IMAGE_CANDIDATES=sdvd/server:1.5.0-preview.121,ghcr.io/sdvd/server:1.5.0-preview.121",
+		"STEAM_SERVICE_IMAGE=not a valid image reference",
+		"STEAM_SERVICE_IMAGE_CANDIDATES=also invalid",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := PlanRuntimeServerConfigRepair(dir, true)
+	if !plan.Repairable || plan.Updates["SERVER_IMAGE_CANDIDATES"] == "" {
+		t.Fatalf("server-only repair plan = %#v", plan)
+	}
+	if _, ok := plan.Updates["STEAM_SERVICE_IMAGE_CANDIDATES"]; ok {
+		t.Fatalf("server-only repair must not rewrite optional Auth: %#v", plan.Updates)
+	}
+	if full := PlanRuntimeStackConfigRepair(dir, true); full.Repairable || full.Code != "invalid_config/image_reference" {
+		t.Fatalf("enabled/full repair should still validate Auth: %#v", full)
+	}
+}
+
 func writeRuntimeEnv(t *testing.T, dir, serverTag, authTag string, custom bool) {
 	t.Helper()
 	serverRepo := "sdvd/server"

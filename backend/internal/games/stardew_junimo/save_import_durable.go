@@ -194,7 +194,7 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 		return err
 	}
 	if j.Stage == ImportStageCompleted {
-		return nil
+		return d.markCompletedImportRuntimeRunning(instance, operationID, saveImportSteamInviteEnabledFromJournal(j))
 	}
 	if options.SubmitCommand == nil {
 		targetSave := j.SaveName
@@ -209,8 +209,7 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 		if err := completeAsIsImportDurably(ctx, lifecycle, instance.DataDir, operationID, j); err != nil {
 			return err
 		}
-		d.markCompletedImportRuntimeRunning(instance)
-		return nil
+		return d.markCompletedImportRuntimeRunning(instance, operationID, saveImportSteamInviteEnabledFromJournal(j))
 	}
 	if j.ActivationOutcome != activationOutcomeSwapFinalized {
 		return recordImportDurableFailure(instance.DataDir, operationID, ImportErrorRecoveryRequired, "swap finalizer confirmation is missing", "", nil)
@@ -359,8 +358,7 @@ func (d *Driver) runImportDurableSave(ctx context.Context, instance registry.Ins
 		return err
 	}
 	maintenanceLog(job, fmt.Sprintf("GameLoop.Saved, %d farmhand role(s) unbound, dayTransitionComplete, stable XML, and target save disk change verified; import transaction completed.", j.FarmhandCount))
-	d.markCompletedImportRuntimeRunning(instance)
-	return nil
+	return d.markCompletedImportRuntimeRunning(instance, operationID, saveImportSteamInviteEnabledFromJournal(j))
 }
 
 func writeImportDurableSaveCommand(dataDir, commandID, saveName string) error {
@@ -429,9 +427,65 @@ func (d *Driver) importCommandOutcome(ctx context.Context, instanceID, dataDir, 
 // markCompletedImportRuntimeRunning is deliberately called only after the
 // completed journal boundary. The maintenance runtime must not be advertised as
 // joinable while Phase A, activation, finalization, or durable saving is active.
-func (d *Driver) markCompletedImportRuntimeRunning(instance registry.Instance) {
-	d.updatePhase(context.Background(), instance.ID, storage.InstanceStateRunning,
-		"服务器运行中（存档导入已完成）", "running", "")
+func (d *Driver) markCompletedImportRuntimeRunning(instance registry.Instance, operationID string, steamInviteEnabled bool) error {
+	const message = "completed save import instance state could not be published"
+	if !validImportOperationID(operationID) {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("maintenance operation identity is invalid")}
+	}
+	if d.store == nil {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("instance state store is unavailable")}
+	}
+	ctx := context.Background()
+	current, err := d.store.GetInstance(ctx, instance.ID)
+	if err != nil {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: err}
+	}
+	if filepath.Clean(current.DataDir) != filepath.Clean(instance.DataDir) {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("instance data directory changed")}
+	}
+	payload := map[string]any{}
+	if strings.TrimSpace(current.DriverPayload) != "" {
+		if err := json.Unmarshal([]byte(current.DriverPayload), &payload); err != nil {
+			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: err}
+		}
+		if payload == nil {
+			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("maintenance payload must be an object")}
+		}
+	}
+	rawOwner, ownerPresent := payload[saveImportOperationIDPayloadKey]
+	if ownerPresent {
+		owner, ok := rawOwner.(string)
+		if !ok || !validImportOperationID(owner) || owner != operationID {
+			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("maintenance operation identity changed")}
+		}
+		if current.DriverPhase != importMaintenancePhase {
+			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("maintenance operation no longer owns the instance phase")}
+		}
+	} else {
+		if current.State == storage.InstanceStateRunning && current.DriverPhase == "running" {
+			return nil
+		}
+		if current.DriverPhase != importMaintenancePhase {
+			return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: errors.New("maintenance operation identity is missing outside maintenance phase")}
+		}
+	}
+	delete(payload, saveImportOperationIDPayloadKey)
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: err}
+	}
+	driverPayload := string(encoded)
+	if steamInviteEnabled {
+		driverPayload = mergeSteamInviteWarmupStartedAt(driverPayload, time.Now().UTC())
+	}
+	_, err = d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateRunning, StateMessage: "服务器运行中（存档导入已完成）",
+		DriverPhase: "running", DriverPayload: driverPayload,
+	})
+	if err != nil {
+		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message, Cause: err}
+	}
+	return nil
 }
 
 func waitForDurableSaveOutcome(ctx context.Context, dataDir, commandID string, options importDurableSaveOptions) (CommandOutcome, error) {

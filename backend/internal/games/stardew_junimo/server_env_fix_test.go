@@ -22,6 +22,8 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
       - ./.local-container/control:/data/control
       - ./.local-container/mods:/data/Mods
 `
+	authStart, authEnd := composeServiceBounds(compose, "steam-auth")
+	authBefore := compose[authStart:authEnd]
 	if err := os.WriteFile(composePath, []byte(compose), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -57,10 +59,12 @@ func TestEnsureServerContEnvFixWritesScriptAndMigratesCompose(t *testing.T) {
 			t.Fatalf("compose missing headless audio environment %q:\n%s", line, updatedText)
 		}
 	}
-	for _, policy := range runtimeServiceCPUShares {
-		if !strings.Contains(updatedText, "  "+policy.service+":") || !strings.Contains(updatedText, "    cpu_shares: "+policy.value) {
-			t.Fatalf("compose missing %s cpu shares:\n%s", policy.service, updatedText)
-		}
+	if !strings.Contains(updatedText, "    cpu_shares: 768") {
+		t.Fatalf("compose missing server cpu shares:\n%s", updatedText)
+	}
+	updatedAuthStart, updatedAuthEnd := composeServiceBounds(updatedText, "steam-auth")
+	if authAfter := updatedText[updatedAuthStart:updatedAuthEnd]; authAfter != authBefore {
+		t.Fatalf("server-only compatibility migration changed disabled Auth section:\nbefore=%q\nafter=%q", authBefore, authAfter)
 	}
 	if !strings.Contains(updatedText, `      API_PORT: "8080"`) {
 		t.Fatalf("compose did not fix the internal API port:\n%s", updatedText)
@@ -82,7 +86,7 @@ func TestMigrateRuntimeServiceCPUSharesPreservesCRLF(t *testing.T) {
 	if err := os.WriteFile(path, []byte(compose), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := migrateRuntimeServiceCPUShares(path)
+	changed, err := migrateRuntimeServiceCPUShares(path, true)
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
@@ -96,6 +100,27 @@ func TestMigrateRuntimeServiceCPUSharesPreservesCRLF(t *testing.T) {
 	}
 	if !strings.Contains(got, "steam-auth:\r\n    image: auth\r\n    cpu_shares: 256\r\n") || !strings.Contains(got, "server:\r\n    image: server\r\n    cpu_shares: 768\r\n") {
 		t.Fatalf("CPU shares missing from CRLF compose: %q", got)
+	}
+}
+
+func TestEnsureRuntimeContEnvFixEnabledMigratesSteamAuthCPUShares(t *testing.T) {
+	dataDir := t.TempDir()
+	composePath := filepath.Join(dataDir, "docker-compose.yml")
+	compose := "services:\n  steam-auth:\n    image: auth:test\n  server:\n    image: server:test\n"
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := ensureRuntimeContEnvFix(dataDir, true)
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "steam-auth:\n    image: auth:test\n    cpu_shares: 256\n") || !strings.Contains(got, "server:\n    image: server:test\n    cpu_shares: 768\n") {
+		t.Fatalf("enabled compatibility migration did not maintain both runtime services:\n%s", got)
 	}
 }
 

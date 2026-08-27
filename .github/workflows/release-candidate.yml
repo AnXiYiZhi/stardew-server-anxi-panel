@@ -23,6 +23,11 @@ on:
         required: false
         default: ""
         type: string
+      oldest_version:
+        description: Affected oldest supported version; required for an explicit zero-patch release
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: release-candidate-main
@@ -36,7 +41,9 @@ permissions:
 jobs:
   candidate:
     name: Build and validate immutable candidate
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, '[manual-release-candidate]'))
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -68,15 +75,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_PREVIOUS_VERSION: ${{ inputs.previous_version }}
+          INPUT_OLDEST_VERSION: ${{ inputs.oldest_version }}
         run: |
           set -euo pipefail
+          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="${latest_release#v}"
+          if [[ ! "$latest_release" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "latest GitHub Release must be an exact stable semantic version" >&2
+            exit 1
+          fi
           previous="${INPUT_PREVIOUS_VERSION#v}"
           if [[ -z "$previous" ]]; then
-            previous="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
-            previous="${previous#v}"
+            previous="$latest_release"
           fi
           if [[ ! "$previous" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "previous_version must be an exact stable semantic version" >&2
+            exit 1
+          fi
+          if [[ "$previous" != "$latest_release" ]]; then
+            echo "previous_version must match the current latest GitHub Release: $latest_release" >&2
             exit 1
           fi
           version="${INPUT_VERSION#v}"
@@ -105,6 +122,18 @@ jobs:
             echo "candidate version must be newer than previous version" >&2
             exit 1
           fi
+          oldest="${INPUT_OLDEST_VERSION#v}"
+          if [[ -n "$oldest" ]]; then
+            if [[ ! "$oldest" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "oldest_version must be empty or an exact stable semantic version" >&2
+              exit 1
+            fi
+          fi
+          matrix_args=(--version "$version" --previous-version "$previous" --oldest-version "$oldest")
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && -n "$INPUT_VERSION" ]]; then
+            matrix_args+=(--require-oldest-for-zero-patch)
+          fi
+          bash scripts/validate-release-matrix.sh "${matrix_args[@]}"
           if git rev-parse --verify "refs/tags/v$version" >/dev/null 2>&1; then
             echo "candidate version tag already exists: v$version" >&2
             exit 1
@@ -117,6 +146,7 @@ jobs:
           {
             echo "version=$version"
             echo "previous=$previous"
+            echo "oldest=$oldest"
             echo "base_ref=v$previous"
             echo "short_sha=$short_sha"
             echo "build_date=$build_date"
@@ -149,6 +179,17 @@ jobs:
         run: |
           bash scripts/release-candidate.sh --version "${{ steps.meta.outputs.version }}" --previous-version "${{ steps.meta.outputs.previous }}" --commit "$GITHUB_SHA" --build-date "${{ steps.meta.outputs.build_date }}" --image "${{ steps.meta.outputs.local_image }}" --metadata-output "$RUNNER_TEMP/candidate-local.json"
 
+      - name: Validate affected oldest supported Web upgrade
+        if: steps.meta.outputs.oldest != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/release-candidate.sh --version "${{ steps.meta.outputs.version }}" --previous-version "${{ steps.meta.outputs.oldest }}" --commit "$GITHUB_SHA" --build-date "${{ steps.meta.outputs.build_date }}" --image "${{ steps.meta.outputs.local_image }}" --metadata-output "$RUNNER_TEMP/candidate-oldest.json"
+          if [[ "$(jq -r '.imageId' "$RUNNER_TEMP/candidate-oldest.json")" != "$(jq -r '.imageId' "$RUNNER_TEMP/candidate-local.json")" ]]; then
+            echo "oldest-version gate did not validate the same immutable candidate image" >&2
+            exit 1
+          fi
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -164,6 +205,7 @@ jobs:
           CANDIDATE_REF: ${{ steps.meta.outputs.candidate_ref }}
           VERSION: ${{ steps.meta.outputs.version }}
           PREVIOUS_VERSION: ${{ steps.meta.outputs.previous }}
+          OLDEST_VERSION: ${{ steps.meta.outputs.oldest }}
           BUILD_DATE: ${{ steps.meta.outputs.build_date }}
         run: |
           set -euo pipefail
@@ -176,7 +218,7 @@ jobs:
             exit 1
           fi
           digest="${digests[0]}"
-          jq --arg candidateRef "$CANDIDATE_REF" --arg digest "$digest" --arg workflowRunId "$GITHUB_RUN_ID" --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" '. + {candidateRef:$candidateRef,digest:$digest,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt}' "$RUNNER_TEMP/candidate-local.json" >"$RUNNER_TEMP/candidate.json"
+          jq --arg candidateRef "$CANDIDATE_REF" --arg digest "$digest" --arg workflowRunId "$GITHUB_RUN_ID" --arg workflowRunAttempt "$GITHUB_RUN_ATTEMPT" --arg oldestTestedVersion "$OLDEST_VERSION" '. + {candidateRef:$candidateRef,digest:$digest,workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,oldestTestedVersion:$oldestTestedVersion}' "$RUNNER_TEMP/candidate-local.json" >"$RUNNER_TEMP/candidate.json"
           echo "digest=$digest" >>"$GITHUB_OUTPUT"
 
       - name: Upload immutable candidate proof
@@ -195,6 +237,9 @@ jobs:
             echo
             echo "- Version: \`${{ steps.meta.outputs.version }}\`"
             echo "- Previous Web-upgrade source: \`${{ steps.meta.outputs.previous }}\`"
+            if [[ -n "${{ steps.meta.outputs.oldest }}" ]]; then
+              echo "- Affected oldest Web-upgrade source: \`${{ steps.meta.outputs.oldest }}\`"
+            fi
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Candidate: \`${{ steps.meta.outputs.candidate_ref }}@${{ steps.seal.outputs.digest }}\`"
             echo "- Covered: code regression, fresh install/restart, real Web upgrade, unhealthy rollback, SQLite/data/non-target-container preservation"

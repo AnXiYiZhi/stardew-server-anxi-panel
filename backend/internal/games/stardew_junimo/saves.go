@@ -938,12 +938,12 @@ func newGameServerSettingsJSON(cfg registry.NewGameConfig) ([]byte, error) {
 	if cfg.SpawnMonstersOnFarm {
 		spawnMonsters = "true"
 	}
-	// cabinMode "recommended" hides cabins off-map and stacks them (matches most
-	// servers' expectations); "vanilla" places cabins at real farm locations like
-	// unmodded multiplayer.
-	cabinStrategy := "CabinStack"
-	if cfg.CabinMode == "vanilla" {
-		cabinStrategy = "None"
+	// cabinMode "vanilla" keeps the original game behavior and is the fail-safe
+	// default; the legacy wire value "recommended" explicitly opts into hidden
+	// cabin stacking.
+	cabinStrategy := "None"
+	if cfg.CabinMode == "recommended" {
+		cabinStrategy = "CabinStack"
 	}
 
 	// Build server-settings.json matching JunimoServer's ServerSettings class structure.
@@ -1057,7 +1057,7 @@ func validateServerRuntimeSettings(settings ServerRuntimeSettings) error {
 
 // ReadServerRuntimeSettings reads the current CabinStrategy/ExistingCabinBehavior/
 // NetworkBroadcastPeriod from server-settings.json, defaulting missing fields to
-// the same values WriteServerSettings would have written for a recommended save.
+// the same values WriteServerSettings writes for a new original-mode save.
 func ReadServerRuntimeSettings(dataDir string) (ServerRuntimeSettings, error) {
 	settings, _ := readServerRuntimeSettingsRoot(nil)
 	data, err := os.ReadFile(serverSettingsPath(dataDir))
@@ -1135,7 +1135,7 @@ func readServerRuntimeSettingsRoot(root map[string]any) (ServerRuntimeSettings, 
 	defaultMaxPlayers := 10
 	settings := ServerRuntimeSettings{
 		MaxPlayers:             &defaultMaxPlayers,
-		CabinStrategy:          "CabinStack",
+		CabinStrategy:          "None",
 		ExistingCabinBehavior:  "KeepExisting",
 		NetworkBroadcastPeriod: 1,
 	}
@@ -1168,7 +1168,7 @@ func normalizeCfg(cfg *registry.NewGameConfig) {
 		cfg.CabinLayout = "nearby"
 	}
 	if cfg.CabinMode == "" {
-		cfg.CabinMode = "recommended"
+		cfg.CabinMode = "vanilla"
 	}
 	if cfg.ProfitMargin == "" {
 		cfg.ProfitMargin = "100"
@@ -2055,7 +2055,7 @@ func BackupPreFarmhandDelete(dataDir, saveName string) (string, error) {
 }
 
 // BackupPreRuntimeUpdate is a whole-save protection point created before a
-// required full-stack update is allowed to stop the running game services.
+// required runtime update is allowed to stop the enabled game services.
 func BackupPreRuntimeUpdate(dataDir, saveName string) (string, error) {
 	return backupSaveAsUnique(dataDir, saveName, "preruntimeupdate")
 }

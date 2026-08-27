@@ -26,6 +26,9 @@ func TestServerRuntimeSettingsAPIPlayerLimitLifecycleAndAudit(t *testing.T) {
 	if initial.MaxPlayers == nil || *initial.MaxPlayers != 10 {
 		t.Fatalf("default maxPlayers = %#v, want 10", initial.MaxPlayers)
 	}
+	if initial.CabinStrategy != "None" {
+		t.Fatalf("default cabinStrategy = %q, want None", initial.CabinStrategy)
+	}
 
 	for _, boundary := range []int{1, 100} {
 		response, _ := doJSON(t, handler, http.MethodPut, "/api/instances/stardew/config/server-runtime-settings", map[string]any{

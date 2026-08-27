@@ -40,7 +40,7 @@ func (d *Driver) RepairRuntimeStackConfig(ctx context.Context, instance registry
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
 		TargetType: "instance",
 		TargetID:   instance.ID,
-		Types:      []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType},
+		Types:      []string{"stardew_install", "stardew_steam_auth", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType},
 	})
 	if err != nil {
 		return RuntimeStackConfigRepairResult{}, fmt.Errorf("list conflicting jobs: %w", err)
@@ -57,7 +57,11 @@ func (d *Driver) RepairRuntimeStackConfig(ctx context.Context, instance registry
 // instance job and calls this helper after restoring the original stack.
 func (d *Driver) repairKnownRuntimeStackConfig(instance registry.Instance) (RuntimeStackConfigRepairResult, error) {
 	installed := instance.State != storage.InstanceStateUninitialized && instance.State != storage.InstanceStateAdminCreated
-	plan := sjconfig.PlanRuntimeStackConfigRepair(instance.DataDir, installed)
+	inviteEnabled := sjconfig.SteamInviteEnabled(instance.DataDir)
+	plan := sjconfig.PlanRuntimeServerConfigRepair(instance.DataDir, installed)
+	if inviteEnabled {
+		plan = sjconfig.PlanRuntimeStackConfigRepair(instance.DataDir, installed)
+	}
 	if !plan.Repairable {
 		return RuntimeStackConfigRepairResult{}, &RuntimeUpdateValidationError{Code: plan.Code, Message: plan.Reason}
 	}

@@ -1,3 +1,107 @@
+# V060-FINAL-SAFETY-PREFLIGHT-1 后端接手记录（2026-08-27，release preflight）
+
+## 改了什么、影响哪些接口/文件
+
+- `config/env.go` 新增 `SetSteamAuthCompletedState`，在同一次原子 `.env` 重写中保存 Auth completed、invite enabled 与 `ready|cleanup_pending`。`installer.go` 在语义登录成功但 one-shot holder 收尾失败时持久化 `cleanup_pending`，不再留下“完成态已经成功、收尾状态仍像 ready”的崩溃窗口。
+- `steam_invite_runtime_scope.go` / `steam_invite_recovery.go` 的 pending 收敛必须先证明 `STEAM_AUTH_COMPLETED=true`、server 已停止且所有 holder 都属于精确 Compose Auth 或 Panel one-shot；只删 holder、保留成功 session volume。未知 holder、缺完成证据或 Docker 不确定时返回 `ErrSteamInviteCleanupPending`，start、再次 Auth、`Prepare` 和启动恢复都不能越过该门禁。
+- `steam_credentials.go` 把账号密码修改线性化到 `runtimeUpdateMu`：锁内从 store 重新取实例，重验基础安装态、unfinished new-game owner、active lifecycle/install/Auth job，并用 `ComposePsStrict` 做无缓存停服证明后才原子改两个共享凭据键。新增 `ErrSteamCredentialsInstallationRequired` 映射 HTTP 409；并发启动或状态退化不能穿透旧快照写凭据。
+- `cmd/panel/runtime_bootstrap.go` 让每个 Stardew 实例在 required runtime coordinator 前逐一 `Prepare`；迁移失败或 runtime/SMAPI recovery 活跃时只跳过对应实例。`docker/runtime_apply.go` 的 `RuntimeServerHealth` 改用 wrapper 内部私有原始 stdout 解析健康 JSON，同时继续只暴露脱敏命令结果。
+- 邀请码冷启动不再借用通用 `instances.updated_at`：真实 start/restart、运行栈 apply/rollback、存档导入恢复和外部 server reconcile 仅在 enabled 时写入专用 `DriverPayload.steam_invite_warmup_started_at`；普通 running/payload 更新与邀请码写入不刷新。HTTP 在 starting 或 marker 起 10 分钟内将 Auth/exec 瞬时失败归为 `generating`，之后才归为 `auth_unavailable`；缺失、坏值和未来值均 fail closed。
+- `save_import_maintenance.go` 与 `save_import_phase_a.go` 将完整 scoped-stop 预算从与 Compose grace 相撞的 30 秒统一提高到 150 秒，严格覆盖 Docker Down 的 2 分钟命令上限。产品入口 `stopImportPhaseAForJournal` 按冻结 scope 调用 `stopImportPhaseARuntime`；stop 命令返回模糊结果、尤其父 context 刚好到期时，使用独立 30 秒严格探针读取 daemon 真值（覆盖 Ps 的 15 秒命令上限），只在当前 intent 选中的 server/可选 Auth 全部 absent/exited/dead 后继续 snapshot restore。maintenance 的普通错误和 panic 都先执行同一 stop/恢复 defer；Phase A 在 FIFO 提交边界前 panic 会恢复 snapshot，边界后或边界不确定则只停服并写 `manual_required`。`save_import_maintenance_test.go` / `save_import_phase_a_test.go` 覆盖模糊 stop、仍运行/未知/Enabled Auth 未停、默认预算和 panic 边界；`manager_test.go` 锁定 runner defer 完成前 job 不得发布 failed。
+- `config.SteamInviteEnabledStrict` 让 maintenance 在启动前拒绝缺失/非法意图并把 `maintenanceSteamInviteEnabled` 冻结进 operation journal。start、error/panic defer、Phase A、activation rollback 与 Panel restart recovery 均从 journal 取同一 scope，不会因 `.env` 后续改变把已启动的 Auth 漏掉；旧 journal 无字段时保守停 server+Auth，journal 缺失/损坏时同样尝试保守 stop 但禁止 snapshot restore。`snapshot_restore_pending` 也会重做冻结范围的 stop+strict proof。FIFO 成功后 journal reload 失败和 Phase A 首次 journal load 失败都进入 ambiguous recovery，不重发命令；panic 对外改为固定文案，原始 panic 值不进入 job log/error。
+- `Driver.Prepare` 在 journal 恢复前先拒绝同实例 active save-import runner，并从 store 重读权威 maintenance state。maintenance payload 持久化合法非空 `save_import_operation_id`：key 存在但为空、`null`、非字符串、非法或不匹配时一律 fail closed；只有 key 真正缺失才允许唯一且不早于 maintenance state 的旧 completed journal 兼容恢复。归属无法证明时保守停 server+Auth 且不恢复 snapshot；唯一 completed owner 已确认后，server 探针或 SQLite 提交失败保持零 stop、供下次重试。running/running 的二次发布真正 no-op，不刷新 enabled 暖机 marker，也不能覆盖其它 phase。Auth 仅影响邀请码暖机；任一 rollback substage 或缺少严格 no-effect 证据的 manual 状态不 resume，已有完整 Phase A no-effect 证据时只停服/恢复 snapshot。confirmed-step panic 的 swap/as-is/completed 三分支分别冻结范围回滚、停服并保持 manual、只重试状态发布而不回滚。
+- 主要文件：`backend/internal/games/stardew_junimo/config/env.go`、`installer.go`、`steam_invite_{runtime_scope,recovery}.go`、`steam_credentials.go`、`driver.go`、`save_import_{maintenance,transaction,durable,activation_rollback,phase_a}.go`，`backend/internal/docker/{types,runtime_apply}.go`、`backend/internal/jobs/manager.go`、`backend/cmd/panel/{main,runtime_bootstrap}.go` 及相应测试；公开凭据 DTO shape 不变，新增冲突只使用既有 409 类别。
+
+## 如何验证、下一步注意事项
+
+- Windows 定向 config、SteamInvite/Auth/credentials、Web DTO/权限与 Docker/cmd-panel 测试通过；新增 `/state` `cleanup_pending` DTO 后再次通过 Web 全包（`57.577s`）。最终 owner/恢复修复后的任务专属 Linux Go 1.25 owner=`anxi-v060-ownerfix-gates-20260827` 已通过 `go test ./... -count=1`（Junimo `208.566s`、Web `55.980s`）、`go vet ./...`、`go build -o /tmp/anxi-v060-panel ./cmd/panel`；退出后精确 owner container/两个 cache volume 均为 0。Windows 整包不要重跑 POSIX mode 夹具，权威结果以 Linux 文件系统为准。
+- 后续改 Auth 成功路径必须继续把 completed 与 cleanup state 作为一个原子事实发布；`cleanup_pending` 只能删除已证明 holder，不能删 session volume、清完成态或降级成普通 failed。后续改凭据接口必须保留锁内最终重读和无缓存停服证明，不能回到 handler 的先验快照。
+- 候选升级脚本已加入真实 unknown same-volume holder 两阶段夹具：healthy Web apply 先成功，但该实例的 runtime-scope 收敛必须保持 marker 缺失并原样保留全部 holder/session；脚本只在核验任务 owner、精确 volume 与 mount target 后移除测试 holder，重启 candidate 再要求官方 Auth holder 收敛且 server ID/StartedAt 不变。该夹具仍须随下面两条本地预演和远端候选实际执行，不能把静态脚本审查记成通过证据。
+- 候选 save-import fixture 已与本版 non-destructive scoped Stop 对齐：公开 Stop 先证明恰好一个 exited/dead server；maintenance 受控失败恢复只接受实例 snapshot=stopped、项目零运行容器、零 Auth/其它 orphan，以及零或一个 exited/dead server/默认 network。container/network 归零是下一场景前 fixture 自己执行精确 `down --remove-orphans` 的 teardown，不是产品恢复契约。`save_import_maintenance_test.go` 的 fake stop 后也保留 exited server，避免单元恢复只覆盖旧空集合。所有 Docker/inspect 计数管道显式处理失败并返回独立状态，调用方不能因 Bash 条件上下文抑制 `errexit` 而把探针失败计成零资源；候选脚本已通过 Git Bash `bash -n` 与 ShellCheck v0.10.0，仍须随最终新 SHA 全链重跑才算真实证据。
+- 第五轮本地 `v0.5.13` 预演已证明 job 终态不是读取竞态：runner 的失败 defer 完成后才发布 failed；真实 TERM-ignoring fixture 让旧 30 秒恢复 context 与 Compose 的 30 秒 grace 同时到期，daemon 后续已停服但 journal 留在 `compose_up_returned`。修复现使用 150 秒 stop budget 与独立 30 秒 fresh strict proof；候选脚本把提交前 API/diagnostics/log/FIFO 独立上限也纳入完整合法链路，将 Phase A job 等待统一为 780 秒，并会在每例前后逐字段比较 state、state-message NULL/字节、driver phase/payload，要求 `maintenanceStarted=false`、`snapshot_restored`。新增 panic 边界与预算回归仍须完成本轮定向/全量门禁；必须从新最终 SHA 重跑 Linux 全量和两条真实升级，不能复用第五轮镜像或先前通过的前半段。
+- 本轮新增严格 env/frozen scope、enabled→`.env` disabled 后仍停 Auth、legacy/missing journal 保守范围、FIFO 后 journal 丢失不重发、pre-submit journal 丢失、`snapshot_restore_pending` Auth 仍运行拒绝恢复、真实 `ErrCommandTimeout → running → exited` 轮询及 panic 脱敏定向回归并已通过；完整 Junimo save-import 分组、config 与 jobs 包也通过。最终 Linux 整仓已按上条重跑通过；真实双升级仍须使用提交后的同一不可变镜像，不能把单元门禁写成候选 E2E 证据。
+- 最新提交边界专项 `TestStopImportPhaseAServerKeepsFullIndependentProbeBudgetAfterStopDeadline`、`TestPrepareDoesNotRecoverCompletedJournalWhileImportRunnerIsActive`、`TestPrepareRecoversCompletedMaintenanceCommitWithFrozenRuntimeScope`、`TestCompletedMaintenanceStateUpdateFailureIsRetryable`、`TestPartialActivationRollbackNeverResumesActivation`、`TestConfirmedImportPanicAfterCompletedJournalPublishesRunningWithoutRollback`、`TestConfirmedImportStepPanicsRollBackFrozenEnabledScope`、`TestConfirmedAsIsImportPanicStopsFrozenDisabledScopeAndStaysManual` 均通过；owner parser/publication 另覆盖空字符串、顶层/字段 `null`、数字、非法字符串与错误合法 ID。Prepare 级回归覆盖 malformed/multiple owner 的保守 stop、completed server probe 矩阵零 stop、SQLite 失败重试、enabled 二次 no-op 和其它 phase 不覆盖。Linux 第一轮据此发现 manual/no-effect 排序回归，第二轮发现旧 durable 单测夹具未模拟真实 maintenance owner/phase；两处修正后第三轮整仓全绿。双升级仍待最终 commit。
+- 正式发布仍须让同一不可变镜像完成 `v0.5.13 → v0.6.0` unhealthy/healthy 与 `v0.3.2 → v0.6.0` Web 升级。两条本地预演、远端候选 proof、自动 annotated tag、同 digest promotion 和正式 smoke 未完成前，不得把本节改成 released。
+
+# V060-RELEASE-IDENTITY-HARDENING-1 接手记录（2026-08-27，release preflight）
+
+## 改了什么、影响哪些接口/文件
+
+- `.github/workflows/release-candidate.yml` 对 commit message 含精确 `[manual-release-candidate]` 的 push-origin run 跳过 candidate job；workflow_dispatch 不受影响。`.github/workflows/release-after-candidate.yml` 对同一 push-origin marker 直接跳过，避免“候选 job 被跳过但 workflow conclusion=success”后仍进入下载空 proof 的红链。
+- 新增 `scripts/validate-release-matrix.sh`，统一要求 candidate `version` 严格大于 `previousVersion`，任何 `oldestTestedVersion` 严格小于 previous；显式手动零 patch 候选必须提供 oldest。candidate resolve、Tag proof consumer 与 promotion proof consumer 三处都调用同一校验器，因此 `v0.6.0` 必须带完整 `0.3.2 < 0.5.13 < 0.6.0` 证据，不能靠遗漏 input 或手工 annotated tag 绕过。
+- `.github/workflows/release.yml` 的 promotion 改为全局串行，并从 annotated tag 严格解析唯一 `Candidate workflow` 与 `Digest`：只下载该 run 的唯一未过期 proof，要求 workflow/commit/path 与 tag digest 全部一致，不再从同 commit 的最近成功 runs 中任选候选。`release-after-candidate.yml` 遇到既有 tag 时也必须核对其 run/digest 与当前候选完全相同，杜绝第二候选复用同一 tag。
+- 精确 version tags 与 smoke 完成后、复制任何三仓 `latest` 前再次 fetch 并要求 `origin/main` 仍等于 proof commit，同时重新读取 GitHub latest Release。正常首次提升必须仍是 proof previous；只有上述 tag/run/digest 已绑定且同一精确 annotated tag 的 GitHub Release 已由前次尝试创建时，才允许 current latest 等于本次 version 的幂等修复重跑，其余变化一律停止移动 `latest`。
+- `scripts/tests/test_release_matrix.sh` 覆盖合法矩阵、patch 候选无 oldest、零 patch 缺 oldest、版本逆序、oldest 等于/晚于 previous、oldest 等于 candidate 和非法 semver；`scripts/run-release-gates.sh` 已把校验器和测试纳入 bash-n、ShellCheck 与功能门禁。`frontend/scripts/test-responsive-layout.ts` 同步约束三段 workflow 必须保留 marker、proof 字段和共享校验器调用，并检查 promotion 全局串行、annotated tag 的 run/digest 绑定及 main/latest 二次门禁先于首个 `latest` copy。
+
+## 如何验证、下一步注意事项
+
+- Git Bash 5.2.37 的校验器 bash-n/功能测试、三份 workflow PyYAML parse、`npm run test:responsive-layout` 与 ShellCheck v0.10.0 均通过；ShellCheck 使用任务专属容器且已精确清理。正式 commit message 必须保留精确 `[manual-release-candidate]`，推送后确认 push-origin candidate/tag jobs 为 skipped，再从 `main` 手动 dispatch version=`0.6.0`、previous_version=`0.5.13`、oldest_version=`0.3.2`；缺任一矩阵字段或顺序错误都不得绕过或临时改 workflow。
+- marker 只用于本次需要 minor override 的 final release commit；普通后续 patch 提交不得机械携带，否则会按设计抑制自动补丁候选。正式候选成功后仍须核对 proof 中两个升级源、同一 image ID/digest、annotated tag 与三仓 promotion，不能把本地校验器通过当成远端候选证据。
+
+# V060-UPGRADE-PREFLIGHT-1 后端接手记录（2026-08-26，release preflight）
+
+## 改了什么、影响哪些接口/文件
+
+- `config/env.go`、`driver.go` 的缺键迁移改为强证据模型：显式 `STEAM_INVITE_ENABLED` 优先；只有 `STEAM_AUTH_COMPLETED=true`、历史 `steam_auth_done` 状态/阶段或非空邀请码启用。普通已安装/可启动/启动中/运行/停止状态和 SteamCMD 完成/cache 都落显式 false。这样既保留真正用过邀请码的旧实例，也不会让仅使用 LAN/IP 的旧实例在升级后突然启动 Auth。
+- `docker/runtime_update.go` 新增 server-only config inspect/validate/ps；`runtime_apply.go`、`compose.go` 和 runtime apply runner 对 disabled 的 stop/up/inspect/health/rollback/recovery 全部只选 server，并用内部占位 Auth image 通过 Compose 变量解析，不拉取或验收该占位。schema 4 按快照意图精确恢复，schema 1～3 继续保守维护旧事务中的 Auth 资源。
+- `tty_run_unix_integration_test.go` 增加 Linux 真实 Docker PTY/取消/清理/敏感信息测试；`runtime_apply_integration_test.go` 增加“可选 Auth 配置无效但 server-only 全链成功、Auth/session 零物化”。候选 `scripts/tests/test_release_candidate_upgrade.sh` 增加 SteamCMD-only 旧实例迁移 disabled 与强 Auth 旧实例迁移 enabled/session sentinel 保留两轮 Web E2E。
+- 2026-08-27 final preflight 将 `_steam-session` 的破坏性清理统一到 `RemoveSteamInviteAuthSessionHolders`：migration、failed/pending 重试、账号不一致与启动恢复在删除前 inspect 同卷全部 holder，只接受权威 Compose project/service label 的 `steam-auth`，或同时带 Panel owner/project label、精确 volume target/TTY/OpenStdin/command 的一次性 Auth。任一未知或同名伪装 holder 都 fail closed，不删除任何 holder/volume，也不写迁移 marker；Linux/Windows 新建一次性 Auth 均主动加入上述证明标签。
+- Auth 日志一旦真正观察到登录成功，就以一次原子写入同时保存 completed、enabled 与 `ready|cleanup_pending`；one-shot 精确收尾成功为 `ready`，收尾失败为 `cleanup_pending`，后者仍可让 job 报错，但不得清空成功 session，账号不一致拒绝仍会走安全分类后清理。disabled 支持包改用 server-only Compose ps；若 driver 不提供该接口，只在 `compose-ps.json` 写错误，不能回退调用全量 Compose 强制解析 Auth。
+
+## 如何验证、下一步注意事项
+
+- config/driver migration、disabled runtime apply/rollback/required/recovery 定向 Go 测试和 Docker 包单测通过；真实 Windows Docker server-only integration 通过。Linux TTY integration 已在 Go 1.25 Alpine + Docker socket 的任务专属资源中通过并完成 owner 清理。
+- final preflight 定向通过 `TestRemoveSteamInviteAuthSessionHoldersRemovesOnlyValidatedHolders`、`TestLabelSteamInviteOneShotAddsAuthoritativeOwnerAndProject`、`TestDriverPrepareLegacyDisabledUnknownSessionHolderFailsClosed`、`TestDriverAuthLoginOnlySessionCleanupFailsClosed`、`TestDriverAuthLoginOnlyPreservesSuccessfulSessionAfterContainerCleanupError`、`TestRecoverInterruptedSteamInviteAuthorization` 与 `TestSupportBundleDisabledUsesServerOnlyComposePs`；`go test ./internal/docker -count=1`、`go test ./internal/web -count=1` 通过。Windows Junimo 整包仍只命中既有 POSIX mode 夹具差异，本次未启动新的 Docker E2E；正式候选必须在 Linux/隔离 DinD 重跑受影响矩阵。
+- 候选升级脚本已通过 Bash 语法与 ShellCheck；其两轮真实升级只能在候选隔离 DinD 中作为正式证据，仍须实际完成 `v0.5.13 → v0.6.0` 和受影响最老边界 `v0.3.2 → v0.6.0`。在这些链、unhealthy 回滚、fresh/restart、digest promotion 和正式 smoke 完成前，不得把 `v0.6.0` 写成 released。
+- 后续新增任何 Compose 操作必须从同一 intent/service-scope helper 获取服务；不能因为 compose 文件仍声明 `steam-auth` 就调用全栈 inspect/ps/health。不要把 SteamCMD 状态补进 Auth 强证据，也不要把 schema 1～3 的保守中断恢复误改成 schema 4 精确行为。
+
+# STEAM-INVITE-STARTUP-WAIT-1 后端接手记录（2026-08-26，local/unreleased）
+
+## 改了什么、影响哪些接口/文件
+
+- 根因是 `lifecycleRunner.fetchInviteCode` 直接 `cat /tmp/invite-code.txt`：服务器启动后、Junimo 尚未写文件时命令非零退出，Web 把所有错误翻成 `auth_unavailable`。现改为固定 `sh -c` 条件读取，文件不存在返回空成功；文件存在但读取失败、容器 exec 失败仍返回错误。影响 `backend/internal/games/stardew_junimo/lifecycle.go` 及单元/真实 Docker fixture。
+- `handleInstanceInviteCode` 对 `starting` 的剩余读取错误返回 `generating`；后续 release preflight 将 running 进一步按专用 10 分钟暖机 marker 分流，窗口内错误仍为 generating，窗口到期或 marker 不可信才为 `auth_unavailable`。空成功返回 generating，非空码返回 ready；没有改 DTO shape、持久 Auth 意图/session、Compose scope、安装 classifier 或 LAN/IP 直连。
+
+## 如何验证、下一步注意事项
+
+- `TestGetInviteCodeMissingFileReturnsEmptyWithoutAttachCLI`、并发 cache、后台重试、Web starting/running/empty/ready 状态表以及专用 marker 的 start/restart/受控恢复写入、普通 payload 保留、missing/bad/future/expired fail-closed 边界均通过。暖机补丁后 `go test ./internal/web -count=1` 通过（`36.324s`），Junimo 包除既有 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 NTFS `0666`/Linux `0640` 差异外全部通过（`100.944s`）；随后任务专属 Linux Go 1.25.11/DinD 整仓 `go test ./...`（Junimo `87.035s`、Web `56.122s`）、`go vet ./...` 与 Panel build 通过，owner 资源清零。真实 Docker integration fixture 已改为启动时完全不创建邀请码文件；正式真实行为仍由候选隔离矩阵复验。
+- 现有任务专属实例真实启动/重启均完成“缺文件等待 → 新码 ready”，说明保存的 Auth session 未失效。后续不得重新把缺文件、空文件或启动期 `steamAuthReady=false` 当授权失败；明确登录失败可直接进入授权失败，运行态 Auth/exec 错误则必须先服从专用 marker 的 10 分钟暖机边界，到期或 marker 不可信后才进入 Auth 异常。
+
+# CABIN-VANILLA-DEFAULT-1 后端接手记录（2026-08-26，local/unreleased）
+
+## 改了什么、影响哪些接口/文件
+
+- `registry.NewGameConfig.cabinMode` 的 wire 仍是 `recommended|vanilla`，但 `stardew_junimo.normalizeCfg` 空值现为 `vanilla`；`newGameServerSettingsJSON` fail-safe 为 `CabinStrategy=None`，仅显式 `recommended` 写 `CabinStack`。`ReadServerRuntimeSettings` 的缺文件/缺字段 fallback 同步为 `None`，因此 GET `/config/server-runtime-settings` 与 fresh 新档一致。
+- 显式 `CabinStack`、`FarmhouseStack`、`None` 均原样保留；`EnsureServerSettingsDefaults` 仍只补 IP 直连，不把本次默认变化扩成旧实例启动迁移。影响 `internal/games/registry/types.go`、`internal/games/stardew_junimo/saves.go`、Junimo tests 与 Web new-game/runtime-settings tests；API JSON shape、权限和数据库无变化。
+- 安装日志后端契约没有改：latest tail、存储与 SSE 仍按 sequence 升序。顶部最新是 `InstallPage` 的局部展示，任何后续改动都不能把后端响应反转或破坏 `lastSeq`。
+
+## 如何验证、下一步注意事项
+
+- 定向 Junimo `WriteServerSettings/Ensure/Read/Normalize` 与 Web `custom-new-game/server-runtime-settings` 测试已通过；还需以本次最终整包 test/vet/build 结果为交付证据。回归明确覆盖缺省 `None`、显式 `recommended→CabinStack`、三种历史策略原样读取以及 Ensure 不物化缺失策略。
+- 后续若要把旧实例缺失字段真正写成 `None`，必须另立迁移任务并用真实存档验证入口/位置；不得顺手塞进每次启动都会执行的 Ensure。`recommended` 名称虽不再对用户显示，仍是兼容协议值，不能未经迁移直接改成 `stacked`。
+
+# STEAM-INVITE-OPTIN-1 后端接手记录（2026-08-26，local/unreleased）
+
+## 改了什么、影响哪些接口/文件
+
+- 全新实例显式默认 `steamInviteEnabled=false`；旧实例缺键时只按历史 SteamAuth 完成态、`steam_auth_done` 状态/阶段或非空邀请码等强 Auth 证据兼容迁移，普通安装/运行状态与 SteamCMD 证据迁移为 false。SteamCMD 成为唯一游戏/SDK 下载主链，SteamAuth 只由管理员点击后按需检查/拉取镜像并执行一次性登录授权。二者共用 `.env` 的 Steam 账号密码，并不是两套账号；这份数据只是既有授权失效后的共享回退凭据，分开的 SteamCMD cache 与 SteamAuth session 都优先复用且独立持久化。修改账号密码不得清除或重建成功的 SteamCMD cache，也不得使成功的 Auth session 失效；只有运行时实际判定授权失效才使用新保存的凭据，失败/未完成的邀请码重试也绝不删除 SteamCMD cache 或 game-data。
+- Compose 删除 server 对 auth 的硬依赖。`installer.go`、`lifecycle.go`、runtime update、SMAPI update、save-import maintenance/activation、诊断/支持包全部按 enabled 选择服务；disabled 必须做到 Auth pull/create/run/inspect/health/invite poll 为零。Auth 使用独立 `stardew_steam_auth` job，运行期间始终保留基础实例 state，仅更新邀请码 phase/message/授权状态；完整快照恢复只作为完成与中断兜底。
+- Web `/state` 新增权威 `steamInviteEnabled/steamInviteAuthState`；`/invite-code` disabled 返回稳定 200 disabled DTO 且零 Docker；`/steam-auth/login` 仍 admin-only 并在 accepted DTO 回显 enabled。`/api/setup/status.defaultInstanceId` 同步部署配置，修复自定义 `DEFAULT_INSTANCE_ID` 时真实 UI 仍请求 `stardew` 的问题。
+- 影响后端 Junimo config/driver/installer/lifecycle/runtime/SMAPI/save-import、jobs recovery、Web handlers/support bundle 与定向测试。SteamCMD 没有加入 runtime manifest、compat digest、正式升级门禁或新版本 pin。
+
+## 如何验证、下一步注意事项
+
+- 早期基线已运行 env/installer/lifecycle/service-scope/legacy migration/jobs recovery/Web DTO 与权限定向测试，且真实 Docker `TestDockerSteamInviteServiceScope` 验证 disabled server-only、enabled pair 与自动清理。后续 `serve/login`、TTY 清理、Guard lease 与启动恢复补修按用户要求没有再创建容器：Windows 最新定向 Auth/Guard/恢复/docker runner 测试、`go vet ./...`、`go build ./...` 全部通过；Windows 整包唯一稳定失败是既有 NTFS `0666/0640` mode 差异，另一个无关异步夹具精确复跑通过。没有机械运行正式发布长门禁。
+- 后续现场修复定位到旧凭据授权误用 `setup`：Panel 只送出菜单 `1`，upstream 随后等待交互式 username/password，日志因此停在 `Choice [1]: 1`。`installer.go` 的 `steamAuthCommand` 现将 Auth-only 凭据模式路由到 `serve`，确认真实登录终态并保存 session 后精确取消、等待一次性容器停止；QR 改为会自行退出且不调用 `DownloadAll` 的 `login`，只预送 `2\n`。`buildSteamAuthOpts` 只挂 session 并使用 scratch game dir，不能恢复 persistent game-data bind。
+- Linux runner 改用精确随机容器名的 `docker run`，密码只通过子进程环境传入、不会出现在 argv；Windows Engine API 关闭 AutoRemove，在 create/start/正常退出/取消各路径按精确名称等待清理。只有没有其它 runner/cleanup 错误的纯 `context.Canceled` 才归一为预期终止，实质错误会合并保留；QR 认证出的账号必须与保存的共享用户名大小写不敏感匹配，错账号会再次精确清 session。
+- `installRunner.updatePhase` 和 `install_handlers.go` 的 Guard 主动 phase 更新对 `stardew_steam_auth` 保留 base state；Guard 另校验 job owner/type/status 与 active-job lease，迟到输入不能覆盖新终态。已经 `ready` 且登录完成的 Auth session 必须保护为幂等状态，重复启用/登录不创建 job、也不清 session；只有 `failed/pending` 重试才允许 Auth-only `ForceReauth` 精确清 `_steam-session` holder/volume。共享凭据修改已独立为管理员 `PUT /api/instances/:id/steam-credentials`：后端先要求完成安装态与 diagnostic `requiredFiles=ok`，未 Prepare/未安装时返回 `installation_required` 且不得创建/修改 `.env`；随后用 Docker 真值强制停服，安装/Auth job 活动中拒绝，只校验并更新 `STEAM_USERNAME/STEAM_PASSWORD`，不创建 job、不要求 VNC/镜像、不执行 SteamCMD/SMAPI/Auth，也不能触碰成功的 Auth session、SteamCMD cache、两条完成态、invite intent 或 game-data；公开基础安装 `forceReauth` 字段已移除，driver 也对非 AuthLoginOnly 的该内部标志 fail closed 且零 job/状态变化。SteamCMD 缓存失效转完整登录、以及 exit 139 重试前必须清零 attempt-scoped 登录/下载标志；客户端自更新 `Update state` 不能写回授权完成，只有明确登录或 app 成功标记可以。新增组合回归模拟“客户端更新 → 缓存缺失 → 完整登录密码失败”，断言缓存 flag 仍为空、第一次 username-only、第二次使用保存密码并落入 `credentials_required`；专项还应持续覆盖凭据/QR 命令、错账号、清理错误、镜像拉取失败、Guard、ready 重复请求、共享凭据改变和基础快照保持。
+- 隔离预览实际使用 `DEFAULT_INSTANCE_ID`/Compose project `steam-invite-optin-local-20260826`、任务专属实例端口、bind、container/network 与 owner label。fresh 容器的 `/health`、`/api/version`、setup、prepare、`/state` 和 disabled invite GET 已通过；按用户后续要求，最终 handoff 停止该唯一 Panel 容器，把完整数据复制到同任务 `data-local`，只在副本数据库中 guard 迁移实例 `data_dir`，由本机 `dev` 后端监听 `127.0.0.1:8090`、Vite HMR 监听 `127.0.0.1:18096`。启动脚本显式设置 Go `ZONEINFO`，Windows 下 `/restart-schedule` 与页面轮询复验无 panic；原 `data` 不变，Auth/Compose container/volume/network 均未物化。不得把该预览或后续维护改回现有 `stardew` project 或生产 `/data`。
+- 最终源码又收紧 SteamCMD cache 成功证据并补组合失败回归，随后重新构建本机 native `dev` 后端，版本元数据 commit=`3e2be688ab5326bea0e6caacf1b7689a7be01f8d`、build date=`2026-08-26T13:57:02Z`；后端继续监听 `127.0.0.1:8090`，Vite HMR 继续监听 `127.0.0.1:18096`，`/health` 为 `ok`。应用内 Browser 在 `2026-08-26T13:57:47Z` 后 fresh reload，确认失败的历史 Auth job 没有覆盖基础已安装状态，安装页仍显示一次性 Auth 容器说明、倒序日志提示以及“修改凭据保留有效 SteamCMD cache/Auth session”文案；桌面/移动均零横向溢出且 fresh console warning/error 为 0。没有输入真实 Steam 凭据、没有点击 Auth 授权，也没有创建新容器。当前数据的邀请意图已被此前失败测试置为 enabled，因此 disabled 零 fetch/poll 结论来自自动化与源码契约，不把这次最终 live snapshot 冒充 disabled 现场证据。
+- 随后用户在既有页面自行完成 Steam Guard；任务终态成功，日志确认 session 保存后一次性 Auth 容器停止。代理只以布尔投影检查 `.env`/volume：邀请意图、Auth 完成态、SteamCMD cache、refresh token、共享账号密码存在性与 `_steam-session` 均为真，没有输出秘密。旧实现遗留的任务专属 `server/steam-auth` 精确停止后，最新源码重新构建为 build date=`2026-08-26T14:15:48Z` 并恢复 `/health=ok`；运行中的任务游戏容器为 0，基础实例仍已安装。最终邀请码需服务器启动后再验收。
+- enabled 的 Auth 严格/advisory 健康、session 卷保护和回滚契约继续保留；disabled 才绕过 Auth。后续新增任何启动、维护、诊断或恢复路径时，必须从同一意图 helper 取得 service scope，不能重新无条件调用全项目 Compose。
+- Panel 启动恢复不会模糊扫描所有容器：只在实例 enabled、邀请状态为 `failed/authorizing` 且 server 未运行时，从已验证的绝对实例目录推导精确 Compose project 与 `_steam-session` volume，再清理 holder/session。disabled 实例零 probe，运行中的 server 永不打断；下一次管理员重新授权仍会先按同一精确 session volume 收敛 holder。不得把该行为扩成无实例意图、无绝对路径或无 volume 证明的全局容器清理。
+- 本次明确不处理“先直连再启用邀请码后原角色不可见”和角色迁移工具；若后续实现，必须单独设计数据迁移与真实双客户端门禁。
+
 # CONTROL-ONLY-AUTH-ADVISORY-1 后端接手记录（2026-08-23，released in v0.5.13）
 
 ## 改了什么、影响哪些接口/文件
@@ -382,7 +486,7 @@
 ## 如何验证、下一步注意事项
 
 - Linux `go test ./internal/docker ./internal/games/stardew_junimo -count=1` 通过；Docker 包明确覆盖四次无缓存 strict 调用：running 正常解析、坏 JSON 拒绝、空 stdout 返回 0 services、缺 state 拒绝。随后串行 `go test -p 1 ./... -count=1`、`go vet ./...`、`go build -o /tmp/anxi-panel ./cmd/panel` 全绿；宿主 Docker 全套 `go test -tags=integration ./internal/docker -count=1 -v` 同轮通过，新增 integration 实际启动并 down 任务 Compose，确认项目容器归零后 strict 返回空集合。任务容器、网络和 Go 缓存卷全部清理归零。
-- `scripts/tests/test_release_candidate_upgrade.sh` 已加入升级后专项：真实启动一次性实例 Compose，经公开 Panel Stop 后确认项目容器为 0 且 Panel 容器内 `compose ps --all` stdout 为空，再走 upload-preview/commit 并要求 `202/jobId/operationId`。受控 server 改为立即退出，使 maintenance job 快速失败并验证实例恢复 stopped、项目容器/网络归零。下一候选必须实际跑通该链；不要用 `docker compose create` 当作 E2E 前置条件。
+- `scripts/tests/test_release_candidate_upgrade.sh` 最初以 v0.4.18 的 ComposeDown 行为覆盖空集合；v0.6.0 当前夹具已改用实例真实 project 与 scoped Stop：公开 Stop 后是一个 exited/dead server，maintenance 失败恢复后允许 server absent 或 exited/dead 及默认 network，但项目运行容器、Auth 和其它 orphan 必须为 0。下一场景前再由 fixture 精确 down 清理，不能把测试 teardown 误当产品 Stop 契约。
 
 # v0.4.17 后端发布接手状态（2026-08-15，released）
 

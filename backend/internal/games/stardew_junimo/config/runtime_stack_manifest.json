@@ -87,7 +87,7 @@
     "Control 0.3.1 对新建档 save-now 持久化同一 commandId 的 pending journal；中断后只恢复该 ID，并严格校验 GameLoop.Saved、saveId 与 transactionId。",
     "Control 0.3.0 采集标准 IP 连接玩家的 SMAPI peer context，并为 Panel 提供只读玩家 Mod 比较数据；不执行踢出、封禁或拦截。",
     "Panel 0.3.2 修复宿主 Mods bind mount 保留旧 JunimoServer DLL、导致 .125 镜像实际加载 .121 Mod 的升级缺口；升级与启动现在校验实际 Mod 版本并支持事务回滚。",
-    "当前 Panel 强制使用 JunimoServer 1.5.0-preview.125；已安装的受支持旧实例会在新 Panel 启动后自动完成预检与成对升级，不再二次询问。",
+    "当前 Panel 强制使用 JunimoServer 1.5.0-preview.125；已安装的受支持旧实例会在新 Panel 启动后自动完成预检与升级，可选 SteamAuth 仅在已启用邀请码的实例中维护。",
     "steam-service 在 preview.121 到 preview.125 之间协议未变化，现有 steam-auth-cn 1.5.0-anxi.2 已验证与 server preview.125 配对兼容。",
     "preview.125 继续保留 23 个 /etc/cont-*.d init 兼容挂载，避免裸静态值被容器 init 当作命令执行。",
     "Panel 0.2.6 起升级预检与安装流程使用同一组镜像候选顺序；每个别名仍必须匹配同一 canonical digest。",

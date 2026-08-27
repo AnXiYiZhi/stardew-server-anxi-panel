@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
@@ -77,7 +78,6 @@ type installRequestBody struct {
 	VNCPassword      string `json:"vncPassword"`
 	ImageTag         string `json:"imageTag"`
 	ReuseCredentials bool   `json:"reuseCredentials"` // if true, read creds from existing .env
-	ForceReauth      bool   `json:"forceReauth"`      // if true, clear saved auth caches and re-run full auth
 }
 
 // handleInstanceInstall handles POST /api/instances/:id/install.
@@ -96,11 +96,6 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	instance, ok := s.loadInstance(w, r, instanceID)
 	if !ok {
 		return
-	}
-
-	// forceReauth always requires freshly entered credentials (account/password change).
-	if body.ForceReauth {
-		body.ReuseCredentials = false
 	}
 
 	// reuseCredentials: reload creds from .env so the user doesn't have to re-enter them.
@@ -172,7 +167,6 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		VNCPassword:   body.VNCPassword,
 		ImageTag:      body.ImageTag,
 		AutoDownload:  body.ReuseCredentials,
-		ForceReauth:   body.ForceReauth,
 	})
 	if err != nil {
 		if writeStardewMutationGuardConflict(w, err) {
@@ -194,13 +188,112 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
 }
 
+type steamCredentialsRequestBody struct {
+	SteamUsername string `json:"steamUsername"`
+	SteamPassword string `json:"steamPassword"`
+}
+
+type steamCredentialsResponse struct {
+	OK                   bool   `json:"ok"`
+	InstanceID           string `json:"instanceId"`
+	State                string `json:"state"`
+	DriverPhase          string `json:"driverPhase"`
+	SteamInviteEnabled   bool   `json:"steamInviteEnabled"`
+	SteamInviteAuthState string `json:"steamInviteAuthState"`
+	SteamAuthLoggedIn    bool   `json:"steamAuthLoggedIn"`
+}
+
+// handleInstanceSteamCredentials handles PUT /api/instances/:id/steam-credentials.
+// It only replaces the shared Steam account/password in .env. Existing SteamCMD
+// authorization caches, SteamAuth sessions, invite intent, game data, and all
+// other settings are deliberately left untouched.
+func (s *server) handleInstanceSteamCredentials(w http.ResponseWriter, r *http.Request, instanceID string) {
+	actor, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body steamCredentialsRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_body", "请求体解析失败")
+		return
+	}
+	body.SteamUsername = strings.TrimSpace(body.SteamUsername)
+	if body.SteamUsername == "" {
+		writeError(w, http.StatusBadRequest, "missing_field", "steamUsername 不能为空")
+		return
+	}
+	if body.SteamPassword == "" {
+		writeError(w, http.StatusBadRequest, "missing_field", "steamPassword 不能为空")
+		return
+	}
+
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
+		return
+	}
+	driver, ok := s.loadDriver(w, instance.DriverID)
+	if !ok {
+		return
+	}
+	if !steamCredentialsInstallationReady(r.Context(), driver, instance) {
+		writeError(w, http.StatusConflict, "installation_required", "请先完成 Stardew Valley 基础安装，再修改 Steam 账号密码。")
+		return
+	}
+	updater, ok := driver.(interface {
+		UpdateSteamCredentials(context.Context, registry.Instance, string, string) error
+	})
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "steam_credentials_update_unsupported", "当前游戏驱动不支持修改 Steam 凭据。")
+		return
+	}
+	if err := updater.UpdateSteamCredentials(r.Context(), makeRegistryInstance(instance), body.SteamUsername, body.SteamPassword); err != nil {
+		if errors.Is(err, stardew_junimo.ErrSteamCredentialsInstallationRequired) {
+			writeError(w, http.StatusConflict, "installation_required", "请先完成 Stardew Valley 基础安装，再修改 Steam 账号密码。")
+			return
+		}
+		if errors.Is(err, stardew_junimo.ErrSteamCredentialsInUse) {
+			writeError(w, http.StatusConflict, "steam_credentials_in_use", "安装或 Steam 授权任务正在使用当前凭据，请等待任务结束后再修改。")
+			return
+		}
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
+		s.logger.Error("update shared Steam credentials failed", "instance", instanceID, "error", err)
+		writeError(w, http.StatusInternalServerError, "steam_credentials_update_failed", sanitizeErrorMsg(err, "保存 Steam 账号密码失败"))
+		return
+	}
+
+	s.auditLog(r, &actor, "instance_steam_credentials_update", "instance", instanceID, "{}")
+	writeJSON(w, http.StatusOK, steamCredentialsResponse{
+		OK:                   true,
+		InstanceID:           instance.ID,
+		State:                instance.State,
+		DriverPhase:          instance.DriverPhase,
+		SteamInviteEnabled:   sjconfig.SteamInviteEnabled(instance.DataDir),
+		SteamInviteAuthState: sjconfig.SteamInviteAuthState(instance.DataDir),
+		SteamAuthLoggedIn:    sjconfig.SteamAuthLoggedIn(instance.DataDir),
+	})
+}
+
+func steamCredentialsInstallationReady(ctx context.Context, driver registry.GameDriver, instance storage.Instance) bool {
+	if !steamInviteAuthorizationInstalledState(instance.State) {
+		return false
+	}
+	provider, ok := driver.(interface {
+		InstallationDiagnostic(context.Context, registry.Instance) stardew_junimo.InstallationDiagnostic
+	})
+	if !ok {
+		return false
+	}
+	diagnostic := provider.InstallationDiagnostic(ctx, makeRegistryInstance(instance))
+	return diagnostic.RequiredFiles == "ok"
+}
+
 // handleInstanceSteamAuthLogin handles POST /api/instances/:id/steam-auth/login.
-// It re-runs steam-auth using the saved account/password (no re-entry) and STOPS as
-// soon as the login succeeds (no download / SteamCMD fallback / SMAPI), so the host
-// can log into Steam/Galaxy for invite codes. The game server must be stopped first:
-// steam-auth and the server share the compose project and would conflict. Steam Guard
-// prompts, if any, reuse the existing POST …/steam-guard/input flow; the frontend
-// navigates to the install page so the user can watch the logs and answer guard.
+// It records explicit invite-code opt-in, pulls steam-auth only on demand, and
+// runs login authorization without downloading the game or touching SteamCMD
+// caches. The game server must be stopped first. Steam Guard prompts reuse the
+// existing POST …/steam-guard/input flow.
 func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAdmin(w, r)
 	if !ok {
@@ -210,8 +303,18 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	if instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting {
-		writeError(w, http.StatusConflict, "server_running", "请先停止服务器，再登录 Steam 授权（steam-auth 与游戏服务器不能同时运行）。")
+	if !steamInviteAuthorizationInstalledState(instance.State) {
+		writeError(w, http.StatusConflict, "installation_required", "请先完成 Stardew Valley 基础安装，再启用 Steam 邀请码。")
+		return
+	}
+	if sjconfig.SteamInviteEnabled(instance.DataDir) &&
+		sjconfig.SteamInviteAuthState(instance.DataDir) == sjconfig.SteamInviteAuthStateReady &&
+		sjconfig.SteamAuthLoggedIn(instance.DataDir) {
+		writeError(w, http.StatusConflict, "steam_invite_already_ready", "Steam 邀请码授权仍然有效，无需重复登录。")
+		return
+	}
+	instance, ok = s.ensureInstanceNotRunning(w, r, instance)
+	if !ok {
 		return
 	}
 	envVals, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
@@ -223,7 +326,6 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "credentials_missing", "未找到已保存的 Steam 账号密码，请先在安装页面完成一次凭据填写。")
 		return
 	}
-
 	driver, ok := s.loadDriver(w, instance.DriverID)
 	if !ok {
 		return
@@ -236,8 +338,17 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 		VNCPassword:   envVals["VNC_PASSWORD"],
 		ImageTag:      stardew_junimo.TestedImageTag,
 		AuthLoginOnly: true,
+		ForceReauth:   true,
 	})
 	if err != nil {
+		if errors.Is(err, stardew_junimo.ErrSteamInviteAlreadyAuthorized) {
+			writeError(w, http.StatusConflict, "steam_invite_already_ready", "Steam 邀请码授权仍然有效，无需重复登录。")
+			return
+		}
+		if errors.Is(err, stardew_junimo.ErrSteamInviteCleanupPending) {
+			writeError(w, http.StatusConflict, "steam_invite_cleanup_pending", "上次授权已成功，但一次性授权容器尚未安全收敛；请检查 Docker 状态后重试。")
+			return
+		}
 		if writeStardewMutationGuardConflict(w, err) {
 			return
 		}
@@ -251,7 +362,21 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 	}
 	s.logger.Info("steam-auth login job started", "instance", instanceID, "job_id", job.ID, "actor", actor.User.ID)
 	s.auditLog(r, &actor, "instance_steam_auth_login", "instance", instanceID, auditMetadata("jobId", job.ID))
-	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID})
+	writeJSON(w, http.StatusAccepted, map[string]any{"jobId": job.ID, "steamInviteEnabled": true})
+}
+
+func steamInviteAuthorizationInstalledState(state string) bool {
+	switch state {
+	case storage.InstanceStateGameInstalled,
+		storage.InstanceStateSaveRequired,
+		storage.InstanceStateReadyToStart,
+		storage.InstanceStateStarting,
+		storage.InstanceStateRunning,
+		storage.InstanceStateStopped:
+		return true
+	default:
+		return false
+	}
 }
 
 func writeActiveInstallConflict(w http.ResponseWriter, err error, message string) (string, bool) {
@@ -291,6 +416,20 @@ func (s *server) handleInstanceSteamGuardInput(w http.ResponseWriter, r *http.Re
 
 	instance, ok := s.loadInstance(w, r, instanceID)
 	if !ok {
+		return
+	}
+	job, err := s.store.GetJob(r.Context(), body.JobID)
+	if err != nil {
+		writeError(w, http.StatusConflict, "guard_input_failed", sanitizeError(err, "认证任务不存在或已结束"))
+		return
+	}
+	if job.TargetType != "instance" || job.TargetID != instanceID ||
+		(job.Type != "stardew_install" && job.Type != "stardew_steam_auth") {
+		writeError(w, http.StatusConflict, "guard_input_failed", "认证任务不属于当前实例")
+		return
+	}
+	if job.Status != storage.JobStatusQueued && job.Status != storage.JobStatusRunning {
+		writeError(w, http.StatusConflict, "guard_input_failed", "认证任务已结束，不能再提交输入")
 		return
 	}
 	s.logger.Info("steam guard input received", "instance", instanceID, "job_id", body.JobID, "phase", instance.DriverPhase)
@@ -341,19 +480,33 @@ func (s *server) handleInstanceSteamGuardInput(w http.ResponseWriter, r *http.Re
 		nextMessage = "Steam Guard 验证码已请求，请在面板输入验证码。"
 	case instance.DriverPhase == "steamcmd_guard_choice_required" && body.Input == "1":
 		nextPhase = "steamcmd_guard_mobile_required"
-		nextMessage = "steam-auth 国内网络下载失败，正在等待 SteamCMD 手机 App 批准。"
+		nextMessage = "正在等待 SteamCMD 手机 App 批准。"
 	case instance.DriverPhase == "steamcmd_guard_choice_required" && body.Input == "2":
 		nextPhase = "steamcmd_guard_required"
-		nextMessage = "steam-auth 国内网络下载失败，SteamCMD 需要输入 App 或邮箱验证码。"
+		nextMessage = "SteamCMD 需要输入 App 或邮箱验证码。"
 	}
 	if nextPhase != "" {
-		if _, err := s.store.UpdateInstanceState(r.Context(), storage.UpdateInstanceStateParams{
-			ID:           instanceID,
-			State:        storage.InstanceStateSteamAuthRunning,
-			StateMessage: nextMessage,
-			DriverPhase:  nextPhase,
+		nextState := storage.InstanceStateSteamAuthRunning
+		if job.Type == "stardew_steam_auth" {
+			// Invite authorization is optional. Its method/Guard phase must never
+			// replace the durable base-install lifecycle state.
+			nextState = instance.State
+		}
+		if _, err := s.store.UpdateInstanceStateForActiveJob(r.Context(), storage.UpdateInstanceStateForActiveJobParams{
+			JobID: body.JobID,
+			UpdateInstanceStateParams: storage.UpdateInstanceStateParams{
+				ID:            instanceID,
+				State:         nextState,
+				StateMessage:  nextMessage,
+				DriverPhase:   nextPhase,
+				DriverPayload: instance.DriverPayload,
+			},
 		}); err != nil {
-			s.logger.Warn("proactive steam auth phase update failed", "instance", instanceID, "phase", nextPhase, "error", err)
+			if errors.Is(err, storage.ErrJobNotActive) {
+				s.logger.Info("skipped late steam auth phase update for terminal job", "instance", instanceID, "job_id", body.JobID, "phase", nextPhase)
+			} else {
+				s.logger.Warn("proactive steam auth phase update failed", "instance", instanceID, "job_id", body.JobID, "phase", nextPhase, "error", err)
+			}
 		}
 	}
 

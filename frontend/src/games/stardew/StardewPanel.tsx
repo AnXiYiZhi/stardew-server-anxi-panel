@@ -707,7 +707,18 @@ export function StardewPanel({
     setLocationSearch(new URL(nextPath, window.location.origin).search)
   }
 
-  const pageProps = { user, instanceState, dashboardData, onNavigate: navigate, saveActionRequest, onLogout }
+  const requestedInstallJobId = route === 'install'
+    ? new URLSearchParams(locationSearch).get('jobId') ?? undefined
+    : undefined
+  const pageProps = {
+    user,
+    instanceState,
+    dashboardData,
+    onNavigate: navigate,
+    saveActionRequest,
+    requestedInstallJobId,
+    onLogout,
+  }
 
   function renderPage() {
     switch (route) {

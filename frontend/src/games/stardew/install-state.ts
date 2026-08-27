@@ -1,10 +1,13 @@
-import type { Job } from '../../types'
+import type { Job, JobLog } from '../../types'
 
 export type CanonicalInstallJobs = {
   active: Job | null
   latest: Job | null
   selected: Job | null
 }
+
+const BASE_INSTALL_JOB_TYPES = new Set(['stardew_install'])
+const INSTALL_PAGE_JOB_TYPES = new Set(['stardew_install', 'stardew_steam_auth'])
 
 function terminal(status: Job['status']): boolean {
   return status === 'succeeded' || status === 'failed' || status === 'canceled'
@@ -30,14 +33,19 @@ export function reconcileJobSnapshots(a: Job, b: Job): Job {
   return newerJob(a, b)
 }
 
-export function canonicalInstallJobs(dashboardJobs: Job[], detailJob: Job | null): CanonicalInstallJobs {
+function canonicalJobs(
+  dashboardJobs: Job[],
+  detailJob: Job | null,
+  acceptedTypes: ReadonlySet<string>,
+  selectedJobId: string | null = detailJob?.id ?? null,
+): CanonicalInstallJobs {
   const byId = new Map<string, Job>()
   for (const job of dashboardJobs) {
-    if (job.type !== 'stardew_install') continue
+    if (!acceptedTypes.has(job.type)) continue
     const existing = byId.get(job.id)
     byId.set(job.id, existing ? reconcileJobSnapshots(existing, job) : job)
   }
-  if (detailJob?.type === 'stardew_install') {
+  if (detailJob && acceptedTypes.has(detailJob.type)) {
     const existing = byId.get(detailJob.id)
     byId.set(detailJob.id, existing ? reconcileJobSnapshots(existing, detailJob) : detailJob)
   }
@@ -49,10 +57,36 @@ export function canonicalInstallJobs(dashboardJobs: Job[], detailJob: Job | null
   return {
     active: jobs.find((job) => !terminal(job.status)) ?? null,
     latest: jobs[0] ?? null,
-    selected: detailJob ? byId.get(detailJob.id) ?? null : null,
+    selected: selectedJobId ? byId.get(selectedJobId) ?? null : null,
   }
+}
+
+export function canonicalInstallJobs(
+  dashboardJobs: Job[],
+  detailJob: Job | null,
+  selectedJobId?: string | null,
+): CanonicalInstallJobs {
+  return canonicalJobs(dashboardJobs, detailJob, BASE_INSTALL_JOB_TYPES, selectedJobId)
+}
+
+export function canonicalInstallPageJobs(
+  dashboardJobs: Job[],
+  detailJob: Job | null,
+  selectedJobId?: string | null,
+): CanonicalInstallJobs {
+  return canonicalJobs(dashboardJobs, detailJob, INSTALL_PAGE_JOB_TYPES, selectedJobId)
+}
+
+export function installJobForDisplay(jobs: CanonicalInstallJobs): Job | null {
+  return jobs.selected ?? jobs.active ?? jobs.latest
 }
 
 export function logsDescribeActiveInstall(activeJob: Job | null, selectedJobId: string | null): boolean {
   return activeJob !== null && selectedJobId === activeJob.id
+}
+
+export function latestInstallLogsFirst(logs: readonly JobLog[], limit = 50): JobLog[] {
+  return [...logs]
+    .sort((a, b) => b.sequence - a.sequence)
+    .slice(0, Math.max(0, limit))
 }

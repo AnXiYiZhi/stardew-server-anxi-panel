@@ -22,6 +22,20 @@ const (
 	DefaultSteamClientConnectRetries         = "5"
 	DefaultSteamAuthSessionRetries           = "3"
 	DefaultSteamAuthSessionRetryDelaySeconds = "5"
+
+	SteamInviteAuthStateDisabled       = "disabled"
+	SteamInviteAuthStatePending        = "pending"
+	SteamInviteAuthStateAuthorizing    = "authorizing"
+	SteamInviteAuthStateCleanupPending = "cleanup_pending"
+	SteamInviteAuthStateReady          = "ready"
+	SteamInviteAuthStateFailed         = "failed"
+
+	// SteamInviteRuntimeScopeVersion marks instances whose optional Auth
+	// runtime has been converged to the opt-in service scope. Fresh instances
+	// start at this version; legacy instances write it only after their exact
+	// steam-session runtime has either been preserved (enabled) or removed
+	// (disabled).
+	SteamInviteRuntimeScopeVersion = "1"
 )
 
 // ReadEnvFile reads key=value pairs from a .env file.
@@ -70,16 +84,189 @@ func SteamAuthLoggedIn(dataDir string) bool {
 	return strings.EqualFold(strings.TrimSpace(vals["STEAM_AUTH_COMPLETED"]), "true")
 }
 
+// SteamInviteEnabled is the durable user intent for running the optional
+// steam-auth sidecar and exposing Steam invite codes. Fresh instances write an
+// explicit false value. Instances created before this flag existed remain
+// enabled when they already completed steam-auth authorization.
+func SteamInviteEnabled(dataDir string) bool {
+	enabled, err := SteamInviteEnabledStrict(dataDir)
+	return err == nil && enabled
+}
+
+// SteamInviteEnabledStrict returns the same durable intent as
+// SteamInviteEnabled, but preserves read and malformed-value failures for
+// recovery paths which must not silently shrink an already-started service
+// scope.
+func SteamInviteEnabledStrict(dataDir string) (bool, error) {
+	envPath := filepath.Join(dataDir, ".env")
+	info, err := os.Stat(envPath)
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("Steam invite environment is not a regular file")
+	}
+	vals, err := ReadEnvFile(envPath)
+	if err != nil {
+		return false, err
+	}
+	if raw, exists := vals["STEAM_INVITE_ENABLED"]; exists {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "true", "1", "yes", "on":
+			return true, nil
+		case "false", "0", "no", "off":
+			return false, nil
+		default:
+			return false, fmt.Errorf("invalid STEAM_INVITE_ENABLED value")
+		}
+	}
+	return strings.EqualFold(strings.TrimSpace(vals["STEAM_AUTH_COMPLETED"]), "true"), nil
+}
+
+// EnsureSteamInviteIntent writes the explicit intent key for instances that
+// predate it. Existing explicit user intent always wins. Only durable
+// steam-auth authorization evidence keeps the optional capability enabled;
+// generic installed/running state and SteamCMD completion are not evidence.
+func EnsureSteamInviteIntent(dataDir string, historicalAuthorization bool) (bool, error) {
+	envPath := filepath.Join(dataDir, ".env")
+	vals, err := ReadEnvFile(envPath)
+	if err != nil {
+		return false, err
+	}
+	if _, exists := vals["STEAM_INVITE_ENABLED"]; exists {
+		return false, nil
+	}
+
+	authorized := strings.EqualFold(strings.TrimSpace(vals["STEAM_AUTH_COMPLETED"]), "true")
+	if historicalAuthorization {
+		authorized = true
+	}
+	enabled := authorized
+	state := SteamInviteAuthStateDisabled
+	if enabled {
+		state = SteamInviteAuthStatePending
+		if authorized {
+			state = SteamInviteAuthStateReady
+		}
+	}
+	updates := map[string]string{
+		"STEAM_INVITE_ENABLED":    fmt.Sprintf("%t", enabled),
+		"STEAM_INVITE_AUTH_STATE": state,
+	}
+	if authorized {
+		updates["STEAM_AUTH_COMPLETED"] = "true"
+	}
+	return true, UpdateEnvFile(envPath, updates)
+}
+
+// SteamInviteRuntimeScopeCurrent reports whether the one-time optional Auth
+// runtime convergence has completed. It reads only the instance .env and has
+// no Docker side effects.
+func SteamInviteRuntimeScopeCurrent(dataDir string) bool {
+	vals, err := ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(vals["STEAM_INVITE_RUNTIME_SCOPE_VERSION"]) == SteamInviteRuntimeScopeVersion
+}
+
+// MarkSteamInviteRuntimeScopeCurrent persists the convergence marker without
+// changing SteamCMD credentials/cache or the steam-auth authorization flags.
+func MarkSteamInviteRuntimeScopeCurrent(dataDir string) error {
+	return UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"STEAM_INVITE_RUNTIME_SCOPE_VERSION": SteamInviteRuntimeScopeVersion,
+	})
+}
+
+// SetSteamInviteEnabled records explicit opt-in/out independently from either
+// the SteamCMD authorization cache or the steam-auth login session.
+func SetSteamInviteEnabled(dataDir string, enabled bool) error {
+	state := SteamInviteAuthStateDisabled
+	value := "false"
+	if enabled {
+		value = "true"
+		state = SteamInviteAuthStatePending
+		if SteamAuthLoggedIn(dataDir) {
+			state = SteamInviteAuthStateReady
+		}
+	}
+	return UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"STEAM_INVITE_ENABLED":    value,
+		"STEAM_INVITE_AUTH_STATE": state,
+	})
+}
+
+// SteamInviteAuthState reports the optional capability state without changing
+// the instance's base installation/lifecycle state.
+func SteamInviteAuthState(dataDir string) string {
+	if !SteamInviteEnabled(dataDir) {
+		return SteamInviteAuthStateDisabled
+	}
+	vals, err := ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		return SteamInviteAuthStatePending
+	}
+	state := strings.ToLower(strings.TrimSpace(vals["STEAM_INVITE_AUTH_STATE"]))
+	if state == SteamInviteAuthStateCleanupPending {
+		return state
+	}
+	if SteamAuthLoggedIn(dataDir) {
+		return SteamInviteAuthStateReady
+	}
+	switch state {
+	case SteamInviteAuthStatePending, SteamInviteAuthStateAuthorizing, SteamInviteAuthStateFailed:
+		return state
+	default:
+		return SteamInviteAuthStatePending
+	}
+}
+
+// SetSteamInviteAuthState updates only the optional invite authorization
+// status. It never changes SteamCMD cache flags or game data.
+func SetSteamInviteAuthState(dataDir, state string) error {
+	switch state {
+	case SteamInviteAuthStatePending, SteamInviteAuthStateAuthorizing, SteamInviteAuthStateCleanupPending, SteamInviteAuthStateReady, SteamInviteAuthStateFailed:
+	default:
+		return fmt.Errorf("invalid Steam invite auth state %q", state)
+	}
+	return UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"STEAM_INVITE_AUTH_STATE": state,
+	})
+}
+
 // SetSteamAuthLoggedIn persists whether the steam-auth service has a usable
 // login. This flag is intentionally specific to steam-auth/Galaxy invite-code
 // authorization; SteamCMD fallback success must not set it.
 func SetSteamAuthLoggedIn(dataDir string, loggedIn bool) error {
-	value := ""
 	if loggedIn {
-		value = "true"
+		return SetSteamAuthCompletedState(dataDir, SteamInviteAuthStateReady)
+	}
+	enabled := SteamInviteEnabled(dataDir)
+	state := SteamInviteAuthStateDisabled
+	if enabled {
+		state = SteamInviteAuthStateFailed
 	}
 	return UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
-		"STEAM_AUTH_COMPLETED": value,
+		"STEAM_AUTH_COMPLETED":    "",
+		"STEAM_INVITE_ENABLED":    fmt.Sprintf("%t", enabled),
+		"STEAM_INVITE_AUTH_STATE": state,
+	})
+}
+
+// SetSteamAuthCompletedState records the successful Auth session and its
+// one-shot holder cleanup state in one atomic env-file rewrite. This removes a
+// crash window where STEAM_AUTH_COMPLETED could become true while the durable
+// state still looked ready even though the one-shot container was unresolved.
+func SetSteamAuthCompletedState(dataDir, state string) error {
+	switch state {
+	case SteamInviteAuthStateReady, SteamInviteAuthStateCleanupPending:
+	default:
+		return fmt.Errorf("invalid completed Steam invite auth state %q", state)
+	}
+	return UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"STEAM_AUTH_COMPLETED":    "true",
+		"STEAM_INVITE_ENABLED":    "true",
+		"STEAM_INVITE_AUTH_STATE": state,
 	})
 }
 
@@ -127,6 +314,9 @@ func writeEnvFile(path string, fields map[string]string) error {
 		"SMAPI_DOWNLOAD_URLS",
 		"STEAMCMD_AUTH_COMPLETED",
 		"STEAM_AUTH_COMPLETED",
+		"STEAM_INVITE_ENABLED",
+		"STEAM_INVITE_AUTH_STATE",
+		"STEAM_INVITE_RUNTIME_SCOPE_VERSION",
 		"STEAM_USERNAME",
 		"STEAM_PASSWORD",
 		"STEAM_REFRESH_TOKEN",
@@ -238,6 +428,9 @@ func EmptyEnvTemplate() map[string]string {
 		"SMAPI_DOWNLOAD_URLS":                    DefaultSMAPIDownloadURLs,
 		"STEAMCMD_AUTH_COMPLETED":                "",
 		"STEAM_AUTH_COMPLETED":                   "",
+		"STEAM_INVITE_ENABLED":                   "false",
+		"STEAM_INVITE_AUTH_STATE":                SteamInviteAuthStateDisabled,
+		"STEAM_INVITE_RUNTIME_SCOPE_VERSION":     SteamInviteRuntimeScopeVersion,
 		"STEAM_USERNAME":                         "",
 		"STEAM_PASSWORD":                         "",
 		"STEAM_REFRESH_TOKEN":                    "",

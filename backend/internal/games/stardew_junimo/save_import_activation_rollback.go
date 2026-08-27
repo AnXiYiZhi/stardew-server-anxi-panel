@@ -19,6 +19,7 @@ const (
 	importActivationRollbackInstanceRestored = "instance_restored"
 	importActivationRollbackCompleted        = "completed"
 	importActivationRollbackManualRecovery   = "manual_recovery"
+	importActivationRollbackStopTimeout      = saveImportRuntimeStopTimeout
 )
 
 func (d *Driver) rollbackConfirmedHostSwapFailure(
@@ -41,6 +42,9 @@ func (d *Driver) rollbackConfirmedHostSwapFailure(
 	if err != nil {
 		return maintenanceRollbackError("confirmed host swap failed and its journal cannot be loaded", errors.Join(primary, err))
 	}
+	if j.Stage == ImportStageCompleted || j.Stage == ImportStageCanceled || j.Stage == ImportStageRolledBack {
+		return primary
+	}
 	if j.HostHandling != "swap_host_to" {
 		return primary
 	}
@@ -61,9 +65,12 @@ func (d *Driver) rollbackConfirmedHostSwapFailure(
 		return maintenanceRollbackError("host swap rollback intent could not be persisted", errors.Join(primary, err))
 	}
 
-	rollbackCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	// Use the same full Docker stop budget as every other import-maintenance
+	// recovery path. The scoped stop may legitimately consume Docker's complete
+	// grace period before the independent strict proof can classify the runtime.
+	rollbackCtx, cancel := context.WithTimeout(context.Background(), importActivationRollbackStopTimeout)
 	defer cancel()
-	if err := stopImportPhaseAServer(rollbackCtx, lifecycle, dataDir, time.Second); err != nil {
+	if err := stopImportPhaseAForJournal(rollbackCtx, lifecycle, dataDir, operationID, time.Second); err != nil {
 		return d.recordImportActivationRollbackFailure(dataDir, operationID, primary, fmt.Errorf("stop activation runtime: %w", err))
 	}
 	if err := d.advanceImportActivationRollback(dataDir, operationID, importActivationRollbackServerStopped, "", ""); err != nil {

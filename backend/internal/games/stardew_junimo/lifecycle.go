@@ -38,9 +38,11 @@ const (
 
 	inviteCodeTimeout = 30 * time.Second
 
-	backgroundInviteAttempts = 20
-	backgroundInviteInterval = 15 * time.Second
-	inviteCodeCacheTTL       = 5 * time.Second
+	backgroundInviteAttempts             = 20
+	backgroundInviteInterval             = 15 * time.Second
+	inviteCodeCacheTTL                   = 5 * time.Second
+	inviteCodeReadScript                 = "if [ ! -e /tmp/invite-code.txt ]; then exit 0; fi\ncat /tmp/invite-code.txt"
+	steamInviteWarmupStartedAtPayloadKey = "steam_invite_warmup_started_at"
 )
 
 const (
@@ -59,6 +61,7 @@ type lifecycleJobPayload struct {
 var (
 	ErrLifecycleInProgress = errors.New("lifecycle operation already in progress")
 	ErrRestartInProgress   = errors.New("restart already in progress")
+	ErrSteamInviteDisabled = errors.New("Steam invite codes are not enabled")
 )
 
 type inviteCodeCacheEntry struct {
@@ -72,6 +75,40 @@ type inviteCodeFlight struct {
 	err  error
 }
 
+func runtimeServicesForSteamInvite(dataDir string) []string {
+	return runtimeServicesForSteamInviteEnabled(sjconfig.SteamInviteEnabled(dataDir))
+}
+
+func runtimeServicesForSteamInviteEnabled(enabled bool) []string {
+	if enabled {
+		return []string{"steam-auth", "server"}
+	}
+	return []string{"server"}
+}
+
+func runtimeStopServicesForSteamInvite(dataDir string) []string {
+	return runtimeStopServicesForSteamInviteEnabled(sjconfig.SteamInviteEnabled(dataDir))
+}
+
+func runtimeStopServicesForSteamInviteEnabled(enabled bool) []string {
+	if enabled {
+		return []string{"server", "steam-auth"}
+	}
+	return []string{"server"}
+}
+
+func stopRuntimeServices(ctx context.Context, lifecycle LifecycleDockerService, dataDir string) error {
+	return stopRuntimeServicesSelected(ctx, lifecycle, dataDir, runtimeStopServicesForSteamInvite(dataDir))
+}
+
+func stopRuntimeServicesSelected(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, services []string) error {
+	project := strings.ToLower(filepath.Base(filepath.Clean(dataDir)))
+	if !filepath.IsAbs(dataDir) || !runtimeComposeProjectPattern.MatchString(project) {
+		return errors.New("runtime Compose project cannot be derived safely")
+	}
+	return lifecycle.RuntimeComposeStopServices(ctx, dataDir, project, services...)
+}
+
 // LifecycleDockerService extends DockerService with lifecycle operations.
 type LifecycleDockerService interface {
 	DockerService
@@ -80,6 +117,7 @@ type LifecycleDockerService interface {
 	ComposeRestart(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	ComposeRestartServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	ComposeRecreateServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
+	RuntimeComposeStopServices(ctx context.Context, dir, project string, services ...string) error
 	ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	ComposeExecTTY(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.ComposeExecTTYResult, error)
 	ComposeLogs(ctx context.Context, dir string, opts paneldocker.LogsOptions) (paneldocker.CommandResult, error)
@@ -139,6 +177,12 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	if err := d.convergeSteamInviteCleanupPending(ctx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, DataDir: instance.DataDir}); err != nil {
+		return nil, err
+	}
+	if err := d.rejectActiveSteamInviteAuthorization(ctx, req.Instance.ID); err != nil {
+		return nil, err
 	}
 	resumeFromManualStart := false
 	rollbackRecovery := false
@@ -354,6 +398,21 @@ func (d *Driver) findActiveLifecycleJob(ctx context.Context, instanceID string) 
 	return job, lifecycleOperation(job), true, nil
 }
 
+func (d *Driver) rejectActiveSteamInviteAuthorization(ctx context.Context, instanceID string) error {
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   instanceID,
+		Types:      []string{"stardew_steam_auth"},
+	})
+	if err != nil {
+		return fmt.Errorf("list active Steam invite authorization jobs: %w", err)
+	}
+	if len(active) > 0 {
+		return lifecycleConflict("steam_invite_authorization", active[0].ID)
+	}
+	return nil
+}
+
 func lifecycleOperation(job storage.Job) string {
 	if !job.Payload.Valid || strings.TrimSpace(job.Payload.String) == "" {
 		return "unknown"
@@ -514,6 +573,9 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	if err := d.rejectActiveFarmhandDelete(ctx, instance.ID); err != nil {
 		return err
 	}
+	if err := d.rejectActiveSteamInviteAuthorization(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
 		return err
 	}
@@ -570,6 +632,9 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 		return err
 	}
 	if err := d.rejectActiveFarmhandDelete(ctx, instance.ID); err != nil {
+		return err
+	}
+	if err := d.rejectActiveSteamInviteAuthorization(ctx, instance.ID); err != nil {
 		return err
 	}
 	if err := d.rejectActiveRuntimeUpdate(ctx, instance.ID); err != nil {
@@ -761,6 +826,7 @@ func (r *lifecycleRunner) doResumeNewGameRollback(ctx context.Context, jobCtx *j
 	}
 	_, _ = jobCtx.Info(ctx, fmt.Sprintf("正在恢复新建存档回滚事务：%s", tx.record.TransactionID))
 
+	stopServices := runtimeStopServicesForSteamInvite(r.instance.DataDir)
 	compose, inspectErr := r.lifecycle.ComposePs(ctx, r.instance.DataDir)
 	if inspectErr != nil {
 		rollbackErr := tx.failRollback(fmt.Errorf("inspect Compose before rollback: %w", inspectErr))
@@ -768,22 +834,19 @@ func (r *lifecycleRunner) doResumeNewGameRollback(ctx context.Context, jobCtx *j
 			"无法确认游戏容器已停止；回滚现场已保留。", "new_game_rollback_failed", jobCtx.ID)
 		return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "无法确认游戏容器已停止", Cause: inspectErr, RollbackError: rollbackErr}
 	}
-	if !newGameComposeConfirmedStopped(compose) {
+	if !runtimeServicesConfirmedStopped(compose, stopServices) {
 		_, _ = jobCtx.Info(ctx, "检测到 Compose 服务仍在运行；仅执行停服后继续原回滚，不会启动游戏。")
-		result, downErr := r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
-		if downErr != nil || result.ExitCode != 0 {
-			if downErr == nil {
-				downErr = fmt.Errorf("ComposeDown exited with code %d", result.ExitCode)
-			}
+		downErr := stopRuntimeServices(ctx, r.lifecycle, r.instance.DataDir)
+		if downErr != nil {
 			rollbackErr := tx.failRollback(fmt.Errorf("stop Compose before rollback: %w", downErr))
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 				"游戏容器停止失败；未继续文件回滚，现场已保留。", "new_game_rollback_failed", jobCtx.ID)
 			return &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "游戏容器停止失败", Cause: downErr, RollbackError: rollbackErr}
 		}
 		compose, inspectErr = r.lifecycle.ComposePs(ctx, r.instance.DataDir)
-		if inspectErr != nil || !newGameComposeConfirmedStopped(compose) {
+		if inspectErr != nil || !runtimeServicesConfirmedStopped(compose, stopServices) {
 			if inspectErr == nil {
-				inspectErr = errors.New("Compose services are still active after ComposeDown")
+				inspectErr = errors.New("selected runtime services are still active after stop")
 			}
 			rollbackErr := tx.failRollback(fmt.Errorf("confirm Compose stopped after rollback stop: %w", inspectErr))
 			r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
@@ -821,8 +884,30 @@ func newGameComposeConfirmedStopped(result paneldocker.ComposePsResult) bool {
 	return true
 }
 
+func runtimeServicesConfirmedStopped(result paneldocker.ComposePsResult, services []string) bool {
+	selected := make(map[string]struct{}, len(services))
+	for _, service := range services {
+		selected[service] = struct{}{}
+	}
+	for _, service := range result.Services {
+		if _, ok := selected[service.Service]; !ok {
+			continue
+		}
+		state := strings.ToLower(strings.TrimSpace(service.State))
+		status := strings.ToLower(strings.TrimSpace(service.Status))
+		if state == "exited" || state == "dead" || state == "stopped" || strings.HasPrefix(status, "exited") {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (retErr error) {
 	_, _ = jobCtx.Info(ctx, "正在启动 Stardew 服务器...")
+	if r.driver != nil {
+		r.driver.clearDriverPayloadInviteCode(context.Background(), r.instance.ID)
+	}
 	// The production Start path has already made this reservation durable before
 	// returning the job to its caller. Arm a narrow early-failure settlement for
 	// verification/config errors that occur before the main transaction defer is
@@ -991,11 +1076,8 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 			}
 			if composeStarted {
 				stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				composeStopResult, composeStopErr := r.lifecycle.ComposeDown(stopCtx, r.instance.DataDir)
+				composeStopErr := stopRuntimeServices(stopCtx, r.lifecycle, r.instance.DataDir)
 				cancel()
-				if composeStopErr == nil && composeStopResult.ExitCode != 0 {
-					composeStopErr = fmt.Errorf("ComposeDown exited with code %d", composeStopResult.ExitCode)
-				}
 				if composeStopErr != nil {
 					rollbackErr := newGameTx.failRollback(fmt.Errorf("stop server before rollback: %w", composeStopErr))
 					retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "新建存档失败且无法确认服务器已停止；已保留 owner 和现场", Cause: retErr, RollbackError: rollbackErr}
@@ -1004,9 +1086,9 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 					return
 				}
 				composeState, composeInspectErr := r.lifecycle.ComposePs(context.Background(), r.instance.DataDir)
-				if composeInspectErr != nil || !newGameComposeConfirmedStopped(composeState) {
+				if composeInspectErr != nil || !runtimeServicesConfirmedStopped(composeState, runtimeStopServicesForSteamInvite(r.instance.DataDir)) {
 					if composeInspectErr == nil {
-						composeInspectErr = errors.New("Compose services remain active after ComposeDown")
+						composeInspectErr = errors.New("selected runtime services remain active after stop")
 					}
 					rollbackErr := newGameTx.failRollback(fmt.Errorf("confirm server stopped before rollback: %w", composeInspectErr))
 					retErr = &NewGameTransactionError{Code: "new_game_rollback_failed", Message: "停服后无法确认服务器终态；已保留 owner 和现场", Cause: retErr, RollbackError: rollbackErr}
@@ -1103,7 +1185,7 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		_, _ = jobCtx.Info(ctx, "恢复事务保留了同一 save-now commandId 的命令结果现场用于幂等观察。")
 	}
 
-	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
+	if changed, err := ensureRuntimeContEnvFix(r.instance.DataDir, sjconfig.SteamInviteEnabled(r.instance.DataDir)); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer static init compatibility mounts failed: %v", err))
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
@@ -1167,7 +1249,8 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 	if r.newGame {
 		composeStarted = true
 	}
-	result, err := r.lifecycle.ComposeUp(ctx, r.instance.DataDir)
+	services := runtimeServicesForSteamInvite(r.instance.DataDir)
+	result, err := r.lifecycle.ComposeRecreateServices(ctx, r.instance.DataDir, services...)
 	if err != nil {
 		if friendly, ok := r.vncPortUnavailableMessage(result); ok {
 			_, _ = jobCtx.Error(ctx, friendly)
@@ -1183,7 +1266,7 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		if r.newGame {
 			return &NewGameTransactionError{Code: "new_game_compose_start_failed", Message: "新建存档服务器启动失败", Cause: err}
 		}
-		return fmt.Errorf("docker compose up: %w", err)
+		return fmt.Errorf("docker compose up selected runtime services: %w", err)
 	}
 	composeStarted = true
 	if r.newGame {
@@ -1204,7 +1287,10 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		}
 		return err
 	}
-	r.clearStaleInviteCode(ctx, jobCtx)
+	steamInviteEnabled := sjconfig.SteamInviteEnabled(r.instance.DataDir)
+	if steamInviteEnabled {
+		r.clearStaleInviteCode(ctx, jobCtx)
+	}
 
 	// Container is running; poll for invite code and SMAPI status concurrently.
 	// JunimoServer writes the invite code as soon as the lobby is created (before save load),
@@ -1219,13 +1305,24 @@ func (r *lifecycleRunner) doStart(ctx context.Context, jobCtx *jobs.Context) (re
 		newGameCompleted = true
 	}
 
-	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-		"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
+	if steamInviteEnabled {
+		r.driver.updatePhaseWithSteamInviteWarmup(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
+	} else {
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器容器已启动，正在初始化游戏...", "server_initializing", jobCtx.ID)
+	}
 
-	_, _ = jobCtx.Info(ctx, fmt.Sprintf("服务器已启动；邀请码将后台尝试获取，最多 %d 次，不影响 IP 直连。", backgroundInviteAttempts))
-	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-		"服务器运行中（邀请码后台获取中）", "running", jobCtx.ID)
-	r.startInviteCodePolling()
+	if steamInviteEnabled {
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("服务器已启动；Steam 邀请码将后台尝试获取，最多 %d 次，不影响局域网/IP 直连。", backgroundInviteAttempts))
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器运行中（Steam 邀请码后台获取中，局域网直连可用）", "running", jobCtx.ID)
+		r.startInviteCodePolling()
+	} else {
+		_, _ = jobCtx.Info(ctx, "服务器已启动；当前未启用 Steam 邀请码，局域网/IP 直连可用。")
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器运行中（局域网/IP 直连）", "running", jobCtx.ID)
+	}
 
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
@@ -1278,11 +1375,14 @@ func (r *lifecycleRunner) doStop(ctx context.Context, jobCtx *jobs.Context) erro
 	_, _ = jobCtx.Info(ctx, "正在停止 Stardew 服务器...")
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "正在停止...", "stopping", jobCtx.ID)
 
-	_, err := r.lifecycle.ComposeDown(ctx, r.instance.DataDir)
+	err := stopRuntimeServices(ctx, r.lifecycle, r.instance.DataDir)
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"停止失败，请检查 Docker/Compose 状态。", "stop_failed", jobCtx.ID)
-		return fmt.Errorf("docker compose down: %w", err)
+		return fmt.Errorf("stop runtime services: %w", err)
+	}
+	if r.driver != nil {
+		r.driver.clearDriverPayloadInviteCode(context.Background(), r.instance.ID)
 	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStopped, "服务器已停止", "stopped", jobCtx.ID)
 	_ = ClearModsRestartRequired(r.instance.DataDir)
@@ -1322,6 +1422,9 @@ func (r *lifecycleRunner) doRestoreAndRestart(ctx context.Context, jobCtx *jobs.
 
 func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) error {
 	_, _ = jobCtx.Info(ctx, "正在重启 Stardew 服务器...")
+	if r.driver != nil {
+		r.driver.clearDriverPayloadInviteCode(context.Background(), r.instance.ID)
+	}
 	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateStarting, "正在重启...", "restarting", jobCtx.ID)
 	if changed, warning, err := ensureServerPlayerAuthEnvironmentForLifecycle(r.instance.DataDir); err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
@@ -1332,7 +1435,10 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	} else if warning != "" {
 		_, _ = jobCtx.Info(ctx, "warning: "+warning)
 	}
-	r.removeInviteCodeFile(ctx, jobCtx)
+	steamInviteEnabled := sjconfig.SteamInviteEnabled(r.instance.DataDir)
+	if steamInviteEnabled {
+		r.removeInviteCodeFile(ctx, jobCtx)
+	}
 	if err := r.clearRuntimeControlSnapshots(ctx, jobCtx); err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"无法清理上一轮 Control 运行快照，已阻止重启", "control_runtime_snapshot_cleanup_failed", jobCtx.ID)
@@ -1345,7 +1451,7 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 		return err
 	}
 
-	if changed, err := EnsureServerContEnvFix(r.instance.DataDir); err != nil {
+	if changed, err := ensureRuntimeContEnvFix(r.instance.DataDir, steamInviteEnabled); err != nil {
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("warning: ensure JunimoServer static init compatibility mounts failed: %v", err))
 	} else if changed {
 		_, _ = jobCtx.Info(ctx, "JunimoServer static init compatibility mounts have been applied.")
@@ -1358,7 +1464,7 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 		_, _ = jobCtx.Info(ctx, fmt.Sprintf("已隔离重复的 SMAPI 内置组件：%s。原文件保留在私有隔离目录。", strings.Join(quarantined, "、")))
 	}
 
-	result, err := r.lifecycle.ComposeRecreateServices(ctx, r.instance.DataDir, "server")
+	result, err := r.lifecycle.ComposeRecreateServices(ctx, r.instance.DataDir, runtimeServicesForSteamInvite(r.instance.DataDir)...)
 	if err != nil {
 		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateError,
 			"重启失败: "+result.Stderr, "restart_failed", jobCtx.ID)
@@ -1374,12 +1480,17 @@ func (r *lifecycleRunner) doRestart(ctx context.Context, jobCtx *jobs.Context) e
 	if _, err := r.waitForControlRuntime(ctx, jobCtx); err != nil {
 		return err
 	}
-	r.clearStaleInviteCode(ctx, jobCtx)
-
-	_, _ = jobCtx.Info(ctx, fmt.Sprintf("服务器已重启；邀请码将后台尝试获取，最多 %d 次，不影响 IP 直连。", backgroundInviteAttempts))
-	r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
-		"服务器运行中（邀请码后台获取中）", "running", jobCtx.ID)
-	r.startInviteCodePolling()
+	if steamInviteEnabled {
+		r.clearStaleInviteCode(ctx, jobCtx)
+		_, _ = jobCtx.Info(ctx, fmt.Sprintf("服务器已重启；Steam 邀请码将后台尝试获取，最多 %d 次，不影响局域网/IP 直连。", backgroundInviteAttempts))
+		r.driver.updatePhaseWithSteamInviteWarmup(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器运行中（Steam 邀请码后台获取中，局域网直连可用）", "running", jobCtx.ID)
+		r.startInviteCodePolling()
+	} else {
+		_, _ = jobCtx.Info(ctx, "服务器已重启；当前未启用 Steam 邀请码，局域网/IP 直连可用。")
+		r.driver.updatePhase(ctx, r.instance.ID, storage.InstanceStateRunning,
+			"服务器运行中（局域网/IP 直连）", "running", jobCtx.ID)
+	}
 
 	// Clear the "restart required" flag now that the server is running with latest mods.
 	_ = ClearModsRestartRequired(r.instance.DataDir)
@@ -1535,6 +1646,9 @@ func readSMAPIStatus(dataDir string) string {
 // lobby is created — which happens *before* any save is loaded.  So invite-code polling
 // must not be gated on SMAPI save-loaded; both are checked concurrently in the same loop.
 func (r *lifecycleRunner) waitForReadyState(ctx context.Context, jobCtx *jobs.Context) string {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return ""
+	}
 	deadline := time.Now().Add(readyStateTimeout)
 	lastSMAPIState := ""
 	lastInviteAttempt := time.Time{} // zero = try immediately on first iteration
@@ -1614,13 +1728,14 @@ func (r *lifecycleRunner) tailServerLogs(ctx context.Context, jobCtx *jobs.Conte
 	if err != nil || strings.TrimSpace(result.Stdout) == "" {
 		return
 	}
-	if serverLogShowsSteamAuthUnavailable(result.Stdout) {
-		if err := sjconfig.SetSteamAuthLoggedIn(r.instance.DataDir, false); err != nil {
-			_, _ = jobCtx.Warn(ctx, "检测到 steam-auth 授权不可用，但更新授权状态失败。")
-		} else {
-			_, _ = jobCtx.Warn(ctx, "检测到 steam-auth 容器当前没有可用授权账号，已标记为需要重新登录授权。")
-		}
-	} else if sjconfig.SteamAuthLoggedIn(r.instance.DataDir) && serverLogShowsSteamAuthServiceNotReady(result.Stdout) {
+	steamInviteEnabled := sjconfig.SteamInviteEnabled(r.instance.DataDir)
+	if steamInviteEnabled && serverLogShowsSteamAuthUnavailable(result.Stdout) {
+		// Junimo can emit this line while the optional Auth sidecar is still
+		// restoring its persisted session. A recent server log is not definitive
+		// evidence that the saved session is invalid, so keep the completed flag
+		// and let invite-code polling surface the transient waiting state.
+		_, _ = jobCtx.Info(ctx, "Steam 邀请服务仍在恢复授权会话，继续等待邀请码；局域网直连不受影响。")
+	} else if steamInviteEnabled && sjconfig.SteamAuthLoggedIn(r.instance.DataDir) && serverLogShowsSteamAuthServiceNotReady(result.Stdout) {
 		r.refreshSteamAuthService(ctx, jobCtx)
 	}
 	_, _ = jobCtx.Info(ctx, fmt.Sprintf("[server 容器日志 —最后 %d 行]\n%s", tail, result.Stdout))
@@ -1650,6 +1765,9 @@ func serverLogShowsSteamAuthServiceNotReady(output string) bool {
 }
 
 func (r *lifecycleRunner) refreshSteamAuthService(ctx context.Context, jobCtx *jobs.Context) {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return
+	}
 	if r.steamAuthRefreshAttempted {
 		return
 	}
@@ -1669,6 +1787,9 @@ func (r *lifecycleRunner) refreshSteamAuthService(ctx context.Context, jobCtx *j
 }
 
 func (r *lifecycleRunner) markSteamAuthUsableFromInviteCode(jobCtx *jobs.Context) {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return
+	}
 	if sjconfig.SteamAuthLoggedIn(r.instance.DataDir) {
 		return
 	}
@@ -1684,6 +1805,9 @@ func (r *lifecycleRunner) startInviteCodePolling() {
 	if driver == nil {
 		return
 	}
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return
+	}
 	runner := &lifecycleRunner{
 		driver:    driver,
 		lifecycle: r.lifecycle,
@@ -1697,6 +1821,9 @@ func (r *lifecycleRunner) startInviteCodePolling() {
 }
 
 func (r *lifecycleRunner) pollInviteCodeAttempts(ctx context.Context, attempts int, interval time.Duration) string {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return ""
+	}
 	if attempts <= 0 {
 		return ""
 	}
@@ -1833,12 +1960,9 @@ func (r *lifecycleRunner) stopAfterControlRuntimeFailure(
 ) (bool, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), controlCleanupTimeout)
 	defer cancel()
-	result, err := r.lifecycle.ComposeDown(cleanupCtx, r.instance.DataDir)
+	err := stopRuntimeServices(cleanupCtx, r.lifecycle, r.instance.DataDir)
 	if err != nil {
-		detail := strings.TrimSpace(result.Stderr)
-		if detail == "" {
-			detail = err.Error()
-		}
+		detail := err.Error()
 		r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateError,
 			"Control 启动验收失败，且未能确认服务器已停止，请立即检查 Docker 状态", "control_runtime_cleanup_failed", jobCtx.ID)
 		return false, fmt.Errorf("%w; stop server after Control gate failure: %s", cause, paneldocker.RedactString(detail))
@@ -1875,6 +1999,9 @@ func (r *lifecycleRunner) clearRuntimeControlSnapshots(ctx context.Context, jobC
 // docker compose restart/up from reusing a stale /tmp file while avoiding
 // deletion of a fresh code that Junimo may have already written.
 func (r *lifecycleRunner) clearStaleInviteCode(ctx context.Context, jobCtx *jobs.Context) {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return
+	}
 	oldCode := inviteCodeFromPayload(r.instance.DriverPayload)
 	if oldCode == "" {
 		return
@@ -1894,6 +2021,9 @@ func (r *lifecycleRunner) clearStaleInviteCode(ctx context.Context, jobCtx *jobs
 }
 
 func (r *lifecycleRunner) removeInviteCodeFile(ctx context.Context, jobCtx *jobs.Context) {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return
+	}
 	execCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	_, err := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
@@ -1912,11 +2042,14 @@ func (r *lifecycleRunner) removeInviteCodeFile(ctx context.Context, jobCtx *jobs
 // Never fall back to attach-cli here: it owns an interactive tmux client and
 // leaked processes when browser polling overlapped or disconnected.
 func (r *lifecycleRunner) fetchInviteCode(ctx context.Context) (string, error) {
+	if !sjconfig.SteamInviteEnabled(r.instance.DataDir) {
+		return "", ErrSteamInviteDisabled
+	}
 	execCtx, cancel := context.WithTimeout(ctx, inviteCodeTimeout)
 	defer cancel()
 
 	catResult, catErr := r.lifecycle.ComposeExecPipe(execCtx, r.instance.DataDir, "server",
-		"", "cat", "/tmp/invite-code.txt")
+		"", "sh", "-c", inviteCodeReadScript)
 	if catErr != nil {
 		return "", fmt.Errorf("read /tmp/invite-code.txt: %w", catErr)
 	}
@@ -1925,13 +2058,16 @@ func (r *lifecycleRunner) fetchInviteCode(ctx context.Context) (string, error) {
 
 // GetInviteCode fetches the invite code for a running instance (used by HTTP handler).
 func (d *Driver) GetInviteCode(ctx context.Context, instance registry.Instance) (string, error) {
-	ld, ok := d.docker.(LifecycleDockerService)
-	if !ok {
-		return "", fmt.Errorf("docker 服务不支持生命周期操作")
-	}
 	stored, err := d.store.GetInstance(ctx, instance.ID)
 	if err != nil {
 		return "", fmt.Errorf("load instance: %w", err)
+	}
+	if !sjconfig.SteamInviteEnabled(stored.DataDir) {
+		return "", ErrSteamInviteDisabled
+	}
+	ld, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return "", fmt.Errorf("docker 服务不支持生命周期操作")
 	}
 	if stored.DriverPhase == importMaintenancePhase {
 		return "", &ImportTransactionError{Code: ImportErrorBusy, Message: "invite codes are unavailable during save import maintenance"}
@@ -1944,9 +2080,6 @@ func (d *Driver) GetInviteCode(ctx context.Context, instance registry.Instance) 
 	code, err := d.getInviteCodeCached(ctx, runner)
 	if err == nil && code != "" {
 		_ = sjconfig.SetSteamAuthLoggedIn(stored.DataDir, true)
-	}
-	if err == nil && code == "" {
-		return "n/a", nil
 	}
 	return code, err
 }
@@ -2007,6 +2140,36 @@ func (d *Driver) updateDriverPayloadInviteCode(ctx context.Context, instanceID, 
 	})
 	if err != nil {
 		d.logger.Warn("update invite code: update state", "error", err)
+	}
+}
+
+func (d *Driver) clearDriverPayloadInviteCode(ctx context.Context, instanceID string) {
+	if d == nil {
+		return
+	}
+	d.inviteCodeMu.Lock()
+	delete(d.inviteCodeCache, instanceID)
+	d.inviteCodeMu.Unlock()
+	if d.store == nil {
+		return
+	}
+	inst, err := d.store.GetInstance(ctx, instanceID)
+	if err != nil {
+		d.logger.Warn("clear invite code: load instance", "error", err)
+		return
+	}
+	newPayload, changed := removeInviteCodeFromPayload(inst.DriverPayload)
+	if !changed {
+		return
+	}
+	if _, err := d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
+		ID:            instanceID,
+		State:         inst.State,
+		StateMessage:  inst.StateMessage.String,
+		DriverPhase:   inst.DriverPhase,
+		DriverPayload: newPayload,
+	}); err != nil {
+		d.logger.Warn("clear invite code: update state", "error", err)
 	}
 }
 
@@ -2266,6 +2429,43 @@ func mergeInviteCodeInPayload(existing, inviteCode string) string {
 	return strings.TrimSpace(string(b))
 }
 
+func mergeSteamInviteWarmupStartedAt(existing string, startedAt time.Time) string {
+	payload := map[string]any{}
+	if strings.TrimSpace(existing) != "" {
+		if err := jsonUnmarshal(existing, &payload); err != nil {
+			return existing
+		}
+	}
+	payload[steamInviteWarmupStartedAtPayloadKey] = startedAt.UTC().Format(time.RFC3339Nano)
+	b, err := marshalJSON(payload)
+	if err != nil {
+		return existing
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// SteamInviteWarmupStartedAt reads the dedicated persisted start time for the
+// current optional Auth runtime generation. It is intentionally independent of
+// instances.updated_at, which also changes for unrelated payload writes.
+func SteamInviteWarmupStartedAt(existing string) (time.Time, bool) {
+	if strings.TrimSpace(existing) == "" {
+		return time.Time{}, false
+	}
+	payload := map[string]any{}
+	if err := jsonUnmarshal(existing, &payload); err != nil {
+		return time.Time{}, false
+	}
+	raw, ok := payload[steamInviteWarmupStartedAtPayloadKey].(string)
+	if !ok {
+		return time.Time{}, false
+	}
+	startedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(raw))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return startedAt.UTC(), true
+}
+
 func inviteCodeFromPayload(existing string) string {
 	if strings.TrimSpace(existing) == "" {
 		return ""
@@ -2276,6 +2476,25 @@ func inviteCodeFromPayload(existing string) string {
 	}
 	code, _ := payload["invite_code"].(string)
 	return strings.TrimSpace(code)
+}
+
+func removeInviteCodeFromPayload(existing string) (string, bool) {
+	if strings.TrimSpace(existing) == "" {
+		return existing, false
+	}
+	payload := map[string]any{}
+	if err := jsonUnmarshal(existing, &payload); err != nil {
+		return existing, false
+	}
+	if _, ok := payload["invite_code"]; !ok {
+		return existing, false
+	}
+	delete(payload, "invite_code")
+	b, err := marshalJSON(payload)
+	if err != nil {
+		return existing, false
+	}
+	return strings.TrimSpace(string(b)), true
 }
 
 func jsonUnmarshal(s string, v any) error {

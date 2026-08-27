@@ -48,19 +48,12 @@ const PRE_INSTALL_STATES = new Set(['uninitialized', 'admin_created', 'junimo_sc
 
 const INCOMPLETE_INSTALL_STATES = new Set([
   'credentials_required',
-  'steam_auth_running',
-  'steam_auth_failed',
-  'steam_auth_done',
 ])
 
 const INSTALL_FAILURE_PHASES = new Set([
   'pull_failed',
   'install_timeout',
   'credentials_required',
-  'steam_auth_failed',
-  'qr_auth_failed',
-  'steam_auth_console_failed',
-  'steam_auth_connection_failed',
   'install_interrupted',
   'download_failed',
   'post_auth_failed',

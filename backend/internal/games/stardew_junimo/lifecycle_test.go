@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,6 +23,13 @@ import (
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
+func enableSteamInviteForLifecycleTest(t *testing.T, dataDir string) {
+	t.Helper()
+	if err := sjconfig.SetSteamInviteEnabled(dataDir, true); err != nil {
+		t.Fatalf("enable Steam invite fixture: %v", err)
+	}
+}
+
 func TestMergeInviteCodeInPayload(t *testing.T) {
 	result := mergeInviteCodeInPayload(`{"save_strategy":"new_game"}`, "ABCD-1234-WXYZ")
 	if !containsStr(result, `"invite_code"`) {
@@ -35,7 +43,36 @@ func TestMergeInviteCodeInPayload(t *testing.T) {
 	}
 }
 
-func TestGetInviteCodeEmptyFileReturnsNAWithoutAttachCLI(t *testing.T) {
+func TestSteamInviteWarmupUsesDedicatedPayloadAndSurvivesOrdinaryUpdates(t *testing.T) {
+	dataDir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, dataDir)
+	original := time.Date(2020, 8, 27, 8, 0, 0, 0, time.UTC)
+	payload := mergeSteamInviteWarmupStartedAt(`{"kept":true}`, original)
+	store := &fakeStore{instance: storage.Instance{
+		ID: "stardew", DataDir: dataDir, State: storage.InstanceStateRunning, DriverPayload: payload,
+	}}
+	driver := New(nil, slog.Default(), nil, store)
+
+	driver.updatePhase(context.Background(), "stardew", storage.InstanceStateRunning, "ordinary payload update", "running", "")
+	unchanged, ok := SteamInviteWarmupStartedAt(store.instance.DriverPayload)
+	if !ok || !unchanged.Equal(original) {
+		t.Fatalf("ordinary running update changed warmup marker to %v, ok=%v", unchanged, ok)
+	}
+
+	store.instance.DriverPayload = mergeInviteCodeInPayload(store.instance.DriverPayload, "LOCAL-CODE")
+	unchanged, ok = SteamInviteWarmupStartedAt(store.instance.DriverPayload)
+	if !ok || !unchanged.Equal(original) {
+		t.Fatalf("invite-code payload write changed warmup marker to %v, ok=%v", unchanged, ok)
+	}
+
+	driver.updatePhaseWithSteamInviteWarmup(context.Background(), "stardew", storage.InstanceStateRunning, "new runtime generation", "running", "")
+	refreshed, ok := SteamInviteWarmupStartedAt(store.instance.DriverPayload)
+	if !ok || !refreshed.After(original) {
+		t.Fatalf("explicit runtime generation did not refresh warmup marker: %v, ok=%v", refreshed, ok)
+	}
+}
+
+func TestGetInviteCodeMissingFileReturnsEmptyWithoutAttachCLI(t *testing.T) {
 	var callsMu sync.Mutex
 	var calls [][]string
 	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, args ...string) (paneldocker.CommandResult, error) {
@@ -45,31 +82,51 @@ func TestGetInviteCodeEmptyFileReturnsNAWithoutAttachCLI(t *testing.T) {
 		if stdin != "" {
 			t.Fatalf("invite code read sent stdin %q", stdin)
 		}
+		if !reflect.DeepEqual(args, []string{"sh", "-c", inviteCodeReadScript}) {
+			return paneldocker.CommandResult{ExitCode: 1}, errors.New("missing invite file was read with a failing command")
+		}
 		return paneldocker.CommandResult{ExitCode: 0}, nil
 	}}
-	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateRunning}}
+	instanceDir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, instanceDir)
+	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: instanceDir, State: storage.InstanceStateRunning}}
 	driver := New(fake, nil, nil, store)
 
 	code, err := driver.GetInviteCode(context.Background(), registry.Instance{ID: "stardew"})
-	if err != nil || code != "n/a" {
-		t.Fatalf("GetInviteCode() = %q, %v; want n/a", code, err)
+	if err != nil || code != "" {
+		t.Fatalf("GetInviteCode() = %q, %v; want empty", code, err)
 	}
-	if len(calls) != 1 || !reflect.DeepEqual(calls[0], []string{"cat", "/tmp/invite-code.txt"}) {
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0], []string{"sh", "-c", inviteCodeReadScript}) {
 		t.Fatalf("runtime calls = %#v; attach-cli must never run", calls)
+	}
+}
+
+func TestGetInviteCodeDisabledDoesNotUseDocker(t *testing.T) {
+	fake := &fakeConsoleDocker{execFunc: func(context.Context, string, string, string, ...string) (paneldocker.CommandResult, error) {
+		t.Fatal("disabled invite lookup must not call Docker")
+		return paneldocker.CommandResult{}, nil
+	}}
+	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateRunning}}
+	driver := New(fake, nil, nil, store)
+	code, err := driver.GetInviteCode(context.Background(), registry.Instance{ID: "stardew"})
+	if code != "" || !errors.Is(err, ErrSteamInviteDisabled) {
+		t.Fatalf("GetInviteCode disabled = %q, %v", code, err)
 	}
 }
 
 func TestGetInviteCodeConcurrentRequestsUseCacheAndSingleflight(t *testing.T) {
 	var catCalls atomic.Int32
 	fake := &fakeConsoleDocker{execFunc: func(_ context.Context, _, _, stdin string, args ...string) (paneldocker.CommandResult, error) {
-		if stdin != "" || !reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+		if stdin != "" || !reflect.DeepEqual(args, []string{"sh", "-c", inviteCodeReadScript}) {
 			t.Errorf("unexpected invite runtime call stdin=%q args=%#v", stdin, args)
 		}
 		catCalls.Add(1)
 		time.Sleep(25 * time.Millisecond)
 		return paneldocker.CommandResult{Stdout: "SGD7WVVL8CGJ\n", ExitCode: 0}, nil
 	}}
-	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateRunning}}
+	instanceDir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, instanceDir)
+	store := &fakeStore{instance: storage.Instance{ID: "stardew", DataDir: instanceDir, State: storage.InstanceStateRunning}}
 	driver := New(fake, nil, nil, store)
 
 	var wg sync.WaitGroup
@@ -111,6 +168,63 @@ func TestInviteCodeFromPayload(t *testing.T) {
 	}
 }
 
+func TestClearDriverPayloadInviteCodePreservesLifecycleStateAndOtherPayload(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), appconfig.Config{
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+	})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate store: %v", err)
+	}
+	instanceDir := filepath.Join(dataDir, "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  instanceDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:            instance.ID,
+		State:         storage.InstanceStateRunning,
+		StateMessage:  "running fixture",
+		DriverPhase:   "running",
+		DriverPayload: `{"invite_code":"OLD-CODE","kept":true,"steam_invite_warmup_started_at":"2026-08-27T08:00:00Z"}`,
+	})
+	if err != nil {
+		t.Fatalf("seed instance payload: %v", err)
+	}
+	driver := New(nil, slog.Default(), nil, store)
+	driver.inviteCodeCache[instance.ID] = inviteCodeCacheEntry{code: "OLD-CODE", expiresAt: time.Now().Add(time.Minute)}
+
+	driver.clearDriverPayloadInviteCode(context.Background(), instance.ID)
+
+	updated, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatalf("load cleared instance: %v", err)
+	}
+	if updated.State != storage.InstanceStateRunning || updated.DriverPhase != "running" || updated.StateMessage.String != "running fixture" {
+		t.Fatalf("clearing invite code changed lifecycle state: %#v", updated)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(updated.DriverPayload), &payload); err != nil {
+		t.Fatalf("parse cleared payload: %v", err)
+	}
+	if _, ok := payload["invite_code"]; ok || payload["kept"] != true || payload["steam_invite_warmup_started_at"] != "2026-08-27T08:00:00Z" {
+		t.Fatalf("cleared payload = %q, want invite removed and unrelated fields preserved", updated.DriverPayload)
+	}
+	if _, ok := driver.inviteCodeCache[instance.ID]; ok {
+		t.Fatal("invite code cache was not cleared")
+	}
+}
+
 func TestClearStaleInviteCodeRemovesOnlyStoredOldCode(t *testing.T) {
 	var calls [][]string
 	fake := &fakeConsoleDocker{
@@ -122,10 +236,12 @@ func TestClearStaleInviteCodeRemovesOnlyStoredOldCode(t *testing.T) {
 			return paneldocker.CommandResult{ExitCode: 0}, nil
 		},
 	}
+	instanceDir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, instanceDir)
 	runner := &lifecycleRunner{
 		lifecycle: fake,
 		instance: storage.Instance{
-			DataDir:       "custom-dir",
+			DataDir:       instanceDir,
 			DriverPayload: `{"invite_code":"OLD-CODE"}`,
 		},
 	}
@@ -148,10 +264,12 @@ func TestClearStaleInviteCodeKeepsFreshCode(t *testing.T) {
 			return paneldocker.CommandResult{Stdout: "NEW-CODE\n", ExitCode: 0}, nil
 		},
 	}
+	instanceDir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, instanceDir)
 	runner := &lifecycleRunner{
 		lifecycle: fake,
 		instance: storage.Instance{
-			DataDir:       "custom-dir",
+			DataDir:       instanceDir,
 			DriverPayload: `{"invite_code":"OLD-CODE"}`,
 		},
 	}
@@ -166,7 +284,7 @@ func TestClearStaleInviteCodeKeepsFreshCode(t *testing.T) {
 	}
 }
 
-func TestTailServerLogsClearsSteamAuthCompletedWhenServerReportsNoAccount(t *testing.T) {
+func TestTailServerLogsPreservesSteamAuthCompletedWhileSessionRestores(t *testing.T) {
 	dir := t.TempDir()
 	if err := sjconfig.SetSteamAuthLoggedIn(dir, true); err != nil {
 		t.Fatalf("seed steam auth flag: %v", err)
@@ -213,8 +331,8 @@ func TestTailServerLogsClearsSteamAuthCompletedWhenServerReportsNoAccount(t *tes
 	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 
-	if sjconfig.SteamAuthLoggedIn(dir) {
-		t.Fatal("expected steam auth flag to be cleared after no logged-in accounts log")
+	if !sjconfig.SteamAuthLoggedIn(dir) {
+		t.Fatal("transient no-account startup log must not invalidate the saved steam auth session")
 	}
 }
 
@@ -283,6 +401,7 @@ func TestTailServerLogsRefreshesSteamAuthServiceWhenCompletedFlagIsStale(t *test
 
 func TestWaitForReadyStateMarksSteamAuthCompletedWhenInviteCodeArrives(t *testing.T) {
 	dir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, dir)
 	if sjconfig.SteamAuthLoggedIn(dir) {
 		t.Fatal("expected fresh dir to start without steam auth flag")
 	}
@@ -302,7 +421,7 @@ func TestWaitForReadyStateMarksSteamAuthCompletedWhenInviteCodeArrives(t *testin
 
 	fake := &fakeConsoleDocker{
 		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
-			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+			if reflect.DeepEqual(args, []string{"sh", "-c", inviteCodeReadScript}) {
 				return paneldocker.CommandResult{Stdout: "SGD7WVVL8CGJ\n", ExitCode: 0}, nil
 			}
 			return paneldocker.CommandResult{ExitCode: 0}, nil
@@ -338,6 +457,7 @@ func TestWaitForReadyStateMarksSteamAuthCompletedWhenInviteCodeArrives(t *testin
 
 func TestPollInviteCodeAttemptsMarksAuthAndStoresPayload(t *testing.T) {
 	dir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, dir)
 	store := &fakeStore{
 		instance: storage.Instance{
 			ID:            "stardew",
@@ -350,7 +470,7 @@ func TestPollInviteCodeAttemptsMarksAuthAndStoresPayload(t *testing.T) {
 	catAttempts := 0
 	fake := &fakeConsoleDocker{
 		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
-			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+			if reflect.DeepEqual(args, []string{"sh", "-c", inviteCodeReadScript}) {
 				catAttempts++
 				if catAttempts == 3 {
 					return paneldocker.CommandResult{Stdout: "SGD7WVVL8CGJ\n", ExitCode: 0}, nil
@@ -383,6 +503,7 @@ func TestPollInviteCodeAttemptsMarksAuthAndStoresPayload(t *testing.T) {
 
 func TestPollInviteCodeAttemptsStopsAtLimitWithoutFailingServer(t *testing.T) {
 	dir := t.TempDir()
+	enableSteamInviteForLifecycleTest(t, dir)
 	store := &fakeStore{
 		instance: storage.Instance{
 			ID:          "stardew",
@@ -394,7 +515,7 @@ func TestPollInviteCodeAttemptsStopsAtLimitWithoutFailingServer(t *testing.T) {
 	catAttempts := 0
 	fake := &fakeConsoleDocker{
 		execFunc: func(_ context.Context, _, _, _ string, args ...string) (paneldocker.CommandResult, error) {
-			if reflect.DeepEqual(args, []string{"cat", "/tmp/invite-code.txt"}) {
+			if reflect.DeepEqual(args, []string{"sh", "-c", inviteCodeReadScript}) {
 				catAttempts++
 			}
 			return paneldocker.CommandResult{ExitCode: 0}, nil
@@ -670,10 +791,13 @@ func TestStartReusesActiveStartWithoutCancelOrSecondRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		close(release)
+	var releaseOnce sync.Once
+	releaseJob := func() {
+		releaseOnce.Do(func() { close(release) })
 		<-finished
-	})
+		waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	}
+	t.Cleanup(releaseJob)
 
 	driver := New(&fakeConsoleDocker{}, slog.Default(), manager, store)
 	reused, err := driver.Start(context.Background(), registry.StartRequest{Instance: makeRegistryInstanceForTest(instance)})
@@ -743,6 +867,64 @@ func TestStartRejectsDifferentActiveLifecycleWithoutCancel(t *testing.T) {
 	if listErr != nil || len(active) != 1 || active[0].ID != job.ID {
 		t.Fatalf("active lifecycle jobs = %#v, err=%v", active, listErr)
 	}
+}
+
+func TestLifecycleRejectsActiveSteamInviteAuthorizationWithoutCancel(t *testing.T) {
+	store := newLifecycleTestStore(t)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: "stardew_steam_auth", TargetType: "instance", TargetID: instance.ID, Exclusive: true,
+		Run: func(ctx context.Context, _ *jobs.Context) error {
+			defer close(finished)
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var releaseOnce sync.Once
+	releaseJob := func() {
+		releaseOnce.Do(func() { close(release) })
+		<-finished
+		waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	}
+	t.Cleanup(releaseJob)
+
+	driver := New(&fakeConsoleDocker{}, slog.Default(), manager, store)
+	if _, err := driver.Start(context.Background(), registry.StartRequest{Instance: makeRegistryInstanceForTest(instance)}); !errors.Is(err, ErrLifecycleInProgress) {
+		t.Fatalf("Start error = %v, want ErrLifecycleInProgress", err)
+	}
+	if err := driver.Stop(context.Background(), makeRegistryInstanceForTest(instance)); !errors.Is(err, ErrLifecycleInProgress) {
+		t.Fatalf("Stop error = %v, want ErrLifecycleInProgress", err)
+	}
+	if err := driver.Restart(context.Background(), makeRegistryInstanceForTest(instance)); !errors.Is(err, ErrLifecycleInProgress) {
+		t.Fatalf("Restart error = %v, want ErrLifecycleInProgress", err)
+	}
+	select {
+	case <-finished:
+		t.Fatal("lifecycle conflict canceled the active Steam invite authorization")
+	default:
+	}
+	active, listErr := manager.Active(context.Background(), storage.ListActiveJobsFilter{
+		TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_steam_auth"},
+	})
+	if listErr != nil || len(active) != 1 || active[0].ID != job.ID {
+		t.Fatalf("active authorization jobs = %#v, err=%v", active, listErr)
+	}
+	releaseJob()
 }
 
 func TestNewGameStartIdempotencySurvivesConcurrentActiveAndTerminalRetries(t *testing.T) {

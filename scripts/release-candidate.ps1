@@ -279,7 +279,7 @@ try {
         if (-not $dindToolsReady) {
             throw 'isolated candidate tools could not be installed after 3 attempts'
         }
-        & docker exec $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion
+        & docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 $dindContainer bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image $Image --version $Version --previous-version $PreviousVersion
         Assert-NativeSuccess 'candidate Web-upgrade E2E'
         & docker rm -f $dindContainer | Out-Null
         Assert-NativeSuccess 'isolated Docker daemon cleanup'

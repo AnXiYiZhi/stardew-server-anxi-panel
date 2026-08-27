@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -340,6 +341,110 @@ func TestIsMissingVolumeRemove(t *testing.T) {
 	if isMissingVolumeRemove(result, ErrCommandFailed) {
 		t.Fatal("expected in-use Docker volume error to remain fatal")
 	}
+}
+
+func TestRemoveSteamInviteAuthSessionHoldersRemovesOnlyValidatedHolders(t *testing.T) {
+	project := "legacy-disabled"
+	volume := project + "_steam-session"
+	officialID := strings.Repeat("a", 64)
+	oneShotID := strings.Repeat("b", 64)
+	customID := strings.Repeat("c", 64)
+	officialInspect := fmt.Sprintf(`{"Id":%q,"Name":"/%s-steam-auth-1","Config":{"Cmd":["serve"],"Labels":{"com.docker.compose.project":%q,"com.docker.compose.service":"steam-auth"},"OpenStdin":true,"Tty":true},"Mounts":[{"Type":"volume","Name":%q,"Destination":"/session"}]}`, officialID, project, project, volume)
+	oneShotInspect := fmt.Sprintf(`{"Id":%q,"Name":"/anxi-steam-auth-0123456789abcdef","Config":{"Cmd":["login"],"Labels":{%q:%q,%q:%q},"OpenStdin":true,"Tty":true},"Mounts":[{"Type":"volume","Name":%q,"Destination":"/data/steam-session"}]}`, oneShotID, steamInviteOneShotOwnerLabel, steamInviteOneShotOwnerValue, steamInviteOneShotProjectLabel, project, volume)
+	customInspect := fmt.Sprintf(`{"Id":%q,"Name":"/anxi-steam-auth-fedcba9876543210","Config":{"Cmd":["login"],"Labels":{},"OpenStdin":true,"Tty":true},"Mounts":[{"Type":"volume","Name":%q,"Destination":"/data/steam-session"}]}`, customID, volume)
+
+	tests := []struct {
+		name       string
+		ids        []string
+		inspect    string
+		wantRemove bool
+		wantUnsafe bool
+	}{
+		{
+			name:       "official Compose Auth and Panel one-shot",
+			ids:        []string{officialID, oneShotID},
+			inspect:    "[" + officialInspect + "," + oneShotInspect + "]",
+			wantRemove: true,
+		},
+		{
+			name:       "unknown custom holder mixed with official Auth",
+			ids:        []string{officialID, customID},
+			inspect:    "[" + officialInspect + "," + customInspect + "]",
+			wantUnsafe: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			callPath := filepath.Join(t.TempDir(), "remove-calls.txt")
+			dockerPath := fakeSteamInviteSessionCleanupDocker(t, strings.Join(tc.ids, "\n")+"\n", tc.inspect, callPath)
+			client := NewClient(Options{DockerPath: dockerPath})
+
+			result, err := client.RemoveSteamInviteAuthSessionHolders(context.Background(), workDir, project, volume)
+			if tc.wantUnsafe {
+				if !errors.Is(err, ErrUnsafeSteamInviteSessionHolder) {
+					t.Fatalf("cleanup error = %v, want ErrUnsafeSteamInviteSessionHolder", err)
+				}
+				if result.ExitCode != -1 {
+					t.Fatalf("unsafe cleanup result = %+v", result)
+				}
+			} else if err != nil || result.ExitCode != 0 {
+				t.Fatalf("cleanup result=%+v err=%v", result, err)
+			}
+
+			calls, readErr := os.ReadFile(callPath)
+			if tc.wantRemove {
+				if readErr != nil {
+					t.Fatalf("read remove calls: %v", readErr)
+				}
+				for _, id := range tc.ids {
+					if !strings.Contains(string(calls), id) {
+						t.Fatalf("validated holder %s was not in one remove call: %q", id, calls)
+					}
+				}
+			} else if readErr == nil || !os.IsNotExist(readErr) {
+				t.Fatalf("unknown holder must preserve every container; calls=%q err=%v", calls, readErr)
+			}
+		})
+	}
+}
+
+func fakeSteamInviteSessionCleanupDocker(t *testing.T, ids, inspect, callPath string) string {
+	t.Helper()
+	fixtureDir := t.TempDir()
+	idsPath := filepath.Join(fixtureDir, "ids.txt")
+	inspectPath := filepath.Join(fixtureDir, "inspect.json")
+	if err := os.WriteFile(idsPath, []byte(ids), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inspectPath, []byte(inspect), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		path := filepath.Join(fixtureDir, "docker.cmd")
+		content := fmt.Sprintf("@echo off\r\n"+
+			"if \"%%1 %%2\"==\"container ls\" (type \"%s\"& exit /b 0)\r\n"+
+			"if \"%%1 %%2\"==\"container inspect\" (type \"%s\"& exit /b 0)\r\n"+
+			"if \"%%1 %%2 %%3\"==\"container rm --force\" (echo %%*>>\"%s\"& exit /b 0)\r\n"+
+			"echo unexpected args: %%* 1>&2\r\nexit /b 7\r\n", idsPath, inspectPath, callPath)
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	path := filepath.Join(fixtureDir, "docker")
+	content := fmt.Sprintf(`#!/bin/sh
+case "$1 $2" in
+  "container ls") cat %q ;;
+  "container inspect") cat %q ;;
+  "container rm") printf '%%s\n' "$*" >> %q ;;
+  *) printf 'unexpected args: %%s\n' "$*" >&2; exit 7 ;;
+esac
+`, idsPath, inspectPath, callPath)
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func fakeDockerCountingPs(t *testing.T, countPath string) string {

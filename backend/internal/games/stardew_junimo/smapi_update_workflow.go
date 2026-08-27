@@ -137,9 +137,13 @@ func (d *Driver) RunSMAPIUpdateDryRun(ctx context.Context, instance registry.Ins
 	add("game_sdk", "ok", "Stardew 与 Steamworks SDK buildid 精确匹配推荐矩阵。")
 	stack := InspectRuntimeStack(instance.DataDir, instance.State)
 	if stack.Status != sjconfig.RuntimeStackStatusUpToDate {
-		return fail("incompatible_junimo", "Junimo server 或 steam-auth-cn 不匹配推荐前置矩阵。")
+		return fail("incompatible_junimo", "已启用的 Junimo 运行组件不匹配推荐前置矩阵。")
 	}
-	add("junimo_auth", "ok", "Junimo server 与 steam-auth-cn 精确匹配推荐版本对。")
+	if sjconfig.SteamInviteEnabled(instance.DataDir) {
+		add("junimo_auth", "ok", "JunimoServer 与可选 steam-auth 精确匹配推荐版本对。")
+	} else {
+		add("junimo_server", "ok", "JunimoServer 精确匹配推荐版本；Steam 邀请码未启用，不验收可选 Auth。")
+	}
 	if err := verifyEmbeddedControlManifest(manifest); err != nil {
 		return fail("control_incompatible", "内置 Control Mod 与推荐矩阵不一致。")
 	}
@@ -209,7 +213,7 @@ func (d *Driver) StartSMAPIUpdateApply(ctx context.Context, instance registry.In
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return SMAPIUpdateStatus{}, err
 	}
-	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_steam_auth", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
 	if err != nil {
 		return SMAPIUpdateStatus{}, err
 	}
@@ -285,7 +289,7 @@ func (d *Driver) RecoverSMAPIUpdateApply(ctx context.Context, instance registry.
 	recovery, err := readSMAPIRecoveryManifest(instance.DataDir, status.UpdateID)
 	if err != nil {
 		if status.Phase == SMAPIApplyChecking || status.Phase == SMAPIApplyDownloading || status.Phase == SMAPIApplyValidating {
-			if _, stopErr := workflow.ComposeDown(ctx, instance.DataDir); stopErr != nil {
+			if stopErr := stopRuntimeServices(ctx, workflow, instance.DataDir); stopErr != nil {
 				return d.markSMAPIRollbackFailed(instance.DataDir, &status, fmt.Errorf("keep game stopped after Panel restart: %w", stopErr))
 			}
 			status.Phase, status.Progress, status.ErrorCode, status.Error = SMAPIApplyFailedRolledBack, 100, "panel_restart_before_change", "Panel 重启发生在任何实例修改前；升级未继续，游戏保持关闭。"
@@ -464,7 +468,11 @@ func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, 
 	if err := lifecycle.doStart(ctx, jobCtx); err != nil {
 		return err
 	}
-	if err := set(SMAPIApplyVerifying, 90, "验证 SMAPI、Junimo、Control、状态文件与 auth 服务接口。"); err != nil {
+	verifyMessage := "验证 SMAPI、Junimo、Control 与状态文件。"
+	if sjconfig.SteamInviteEnabled(instance.DataDir) {
+		verifyMessage = "验证 SMAPI、Junimo、Control、状态文件与可选 Auth 服务接口。"
+	}
+	if err := set(SMAPIApplyVerifying, 90, verifyMessage); err != nil {
 		return err
 	}
 	if err := d.verifySMAPIUpdatedStack(ctx, dockerWorkflow, instance, stagingVolume, manifest); err != nil {
@@ -479,7 +487,7 @@ func (d *Driver) runSMAPIUpdateApply(ctx context.Context, jobCtx *jobs.Context, 
 		}
 	}
 	status.Phase, status.Progress, status.UpdatedAt, status.FinishedAt = SMAPIApplySucceeded, 100, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339)
-	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "full_stack", Status: "ok", Message: "SMAPI、JunimoServer、Control、commandResultVersion、status/players、health 与 auth 服务接口均通过；Steam 登录和邀请码不属于升级硬门槛。"})
+	status.Checks = append(status.Checks, RuntimeUpdateDryRunCheck{Name: "full_stack", Status: "ok", Message: "SMAPI、JunimoServer、Control、commandResultVersion、status/players 与 server health 均通过；可选 Auth 仅在已启用时维护。"})
 	if err := writeSMAPIUpdateStatus(instance.DataDir, "apply-status.json", status); err != nil {
 		return err
 	}
@@ -504,11 +512,15 @@ func (d *Driver) verifySMAPIStack(ctx context.Context, dockerWorkflow SMAPIUpdat
 	for time.Now().Before(deadline) {
 		meta, metaErr := dockerWorkflow.RuntimeReadSMAPIMetadata(ctx, instance.DataDir, volume, gameInstallImage(instance.DataDir))
 		healthErr := dockerWorkflow.RuntimeServerHealth(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
-		_, authErr := dockerWorkflow.RuntimeSteamAuthHealth(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
+		authReady := true
+		if sjconfig.SteamInviteEnabled(instance.DataDir) {
+			_, authErr := dockerWorkflow.RuntimeSteamAuthHealth(ctx, instance.DataDir, strings.ToLower(filepath.Base(instance.DataDir)))
+			authReady = authErr == nil
+		}
 		statusOK, playersOK := verifyControlRuntimeFiles(instance.DataDir, commandResultVersion)
 		logs, logsErr := dockerWorkflow.ComposeLogs(ctx, instance.DataDir, paneldocker.LogsOptions{Service: "server", Tail: 800})
 		junimoLoaded, controlLoaded := requiredSMAPIModsLoaded(logs.Stdout + "\n" + logs.Stderr)
-		if metaErr == nil && meta.RequiredFiles && normalizedSMAPIVersion(meta.Version) == normalizedSMAPIVersion(expectedVersion) && healthErr == nil && authErr == nil && logsErr == nil && junimoLoaded && controlLoaded && statusOK && playersOK {
+		if metaErr == nil && meta.RequiredFiles && normalizedSMAPIVersion(meta.Version) == normalizedSMAPIVersion(expectedVersion) && healthErr == nil && authReady && logsErr == nil && junimoLoaded && controlLoaded && statusOK && playersOK {
 			return nil
 		}
 		select {

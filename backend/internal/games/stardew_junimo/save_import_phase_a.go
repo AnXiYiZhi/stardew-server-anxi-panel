@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
@@ -43,7 +44,7 @@ func defaultImportPhaseAOptions() importPhaseAOptions {
 	return importPhaseAOptions{
 		ObservationTimeout: 30 * time.Second,
 		PollInterval:       250 * time.Millisecond,
-		StopTimeout:        30 * time.Second,
+		StopTimeout:        saveImportRuntimeStopTimeout,
 	}
 }
 
@@ -66,12 +67,29 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 		options.PollInterval = 250 * time.Millisecond
 	}
 	if options.StopTimeout <= 0 {
-		options.StopTimeout = 30 * time.Second
+		options.StopTimeout = saveImportRuntimeStopTimeout
 	}
 	lifecycle, ok := d.docker.(LifecycleDockerService)
 	if !ok {
 		return &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: "save import Phase A runtime is unavailable"}
 	}
+	defer func() {
+		panicValue := recover()
+		if panicValue == nil {
+			return
+		}
+		panicErr := errors.New("save import Phase A panicked")
+		journal, journalErr := LoadImportJournal(instance.DataDir, operationID)
+		var recoveryErr error
+		if journalErr == nil && !journal.PhaseAFIFOWriteAttempted && !journal.UpstreamSubmitted &&
+			!journal.UpstreamConfirmed && !importStageAtLeast(journal.Stage, ImportStageSubmitted) {
+			recoveryErr = d.failImportPhaseAPreSubmit(lifecycle, instance.DataDir, operationID, options, panicErr)
+		} else {
+			recoveryErr = d.failImportPhaseAAmbiguous(lifecycle, instance.DataDir, operationID, options,
+				"Phase A panicked after upstream submission may have started", errors.Join(panicErr, journalErr))
+		}
+		panic(recoveryErr)
+	}()
 
 	journal, pre, offset, command, err := prepareImportPhaseASubmission(ctx, lifecycle, instance.DataDir, operationID, platformID)
 	if err != nil {
@@ -105,7 +123,8 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 	// No log text or result inference is consulted before submission is durable.
 	journal, err = LoadImportJournal(instance.DataDir, operationID)
 	if err != nil {
-		return &ImportTransactionError{Code: ImportErrorResultUnconfirmed, Message: "FIFO write completed but submission journal could not be reloaded", Cause: err}
+		return d.failImportPhaseAAmbiguous(lifecycle, instance.DataDir, operationID, options,
+			"FIFO write completed but submission journal could not be reloaded", err)
 	}
 	now := time.Now().UTC()
 	journal.UpstreamSubmitted = true
@@ -127,7 +146,7 @@ func (d *Driver) runImportPhaseA(ctx context.Context, instance registry.Instance
 		if captureErr == nil {
 			classification := classifyImportPhaseA(journal, pre, evidence)
 			if classification == phaseAConfirmedSwap || classification == phaseAConfirmedAsIs {
-				return confirmImportPhaseA(instance.DataDir, operationID, evidence, classification, true, job)
+				return d.confirmImportPhaseA(lifecycle, instance.DataDir, operationID, evidence, classification, options, true, job)
 			}
 		}
 		select {
@@ -332,7 +351,7 @@ func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifec
 
 	stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
 	defer cancel()
-	if err := stopImportPhaseAServer(stopCtx, lifecycle, dataDir, options.PollInterval); err != nil {
+	if err := stopImportPhaseAForJournal(stopCtx, lifecycle, dataDir, operationID, options.PollInterval); err != nil {
 		return recordImportPhaseAFailure(dataDir, operationID, ImportErrorRecoveryRequired, phaseAOutcomeRecoveryRequired, "server could not be stopped after Phase A timeout", nil, err)
 	}
 	journal, err := LoadImportJournal(dataDir, operationID)
@@ -346,7 +365,7 @@ func (d *Driver) finalizeTimedOutImportPhaseA(dataDir, operationID string, lifec
 	classification := classifyImportPhaseA(journal, pre, after)
 	switch classification {
 	case phaseAConfirmedSwap, phaseAConfirmedAsIs:
-		return confirmImportPhaseA(dataDir, operationID, after, classification, false, job)
+		return d.confirmImportPhaseA(lifecycle, dataDir, operationID, after, classification, options, false, job)
 	case phaseANoEffect:
 		primary := recordImportPhaseAFailure(dataDir, operationID, ImportErrorCommandFailed, phaseAOutcomeNoEffect, "Junimo import command produced no disk effect", &after, observationErr)
 		journal, loadErr := LoadImportJournal(dataDir, operationID)
@@ -422,26 +441,72 @@ func capturePhaseALogDetail(ctx context.Context, lifecycle LifecycleDockerServic
 }
 
 func stopImportPhaseAServer(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, interval time.Duration) error {
-	result, err := lifecycle.ComposeDown(ctx, dataDir)
-	if err != nil || result.ExitCode != 0 {
-		if err == nil {
-			err = fmt.Errorf("compose down exited with code %d", result.ExitCode)
-		}
-		return err
+	return stopImportPhaseARuntime(ctx, lifecycle, dataDir, []string{"server"}, interval)
+}
+
+func stopImportPhaseAForJournal(ctx context.Context, lifecycle LifecycleDockerService, dataDir, operationID string, interval time.Duration) error {
+	journal, journalErr := LoadImportJournal(dataDir, operationID)
+	stopServices := []string{"server", "steam-auth"}
+	if journalErr == nil {
+		stopServices = saveImportRuntimeStopServicesFromJournal(journal)
 	}
+	stopErr := stopImportPhaseARuntime(ctx, lifecycle, dataDir, stopServices, interval)
+	if journalErr != nil {
+		return errors.Join(fmt.Errorf("load frozen save import runtime scope: %w", journalErr), stopErr)
+	}
+	return stopErr
+}
+
+func saveImportRuntimeStopServicesFromJournal(journal ImportJournal) []string {
+	return runtimeStopServicesForSteamInviteEnabled(saveImportSteamInviteEnabledFromJournal(journal))
+}
+
+func saveImportRuntimeServicesFromJournal(journal ImportJournal) []string {
+	return runtimeServicesForSteamInviteEnabled(saveImportSteamInviteEnabledFromJournal(journal))
+}
+
+func saveImportSteamInviteEnabledFromJournal(journal ImportJournal) bool {
+	if journal.MaintenanceSteamInviteEnabled == nil {
+		// Journals from before the frozen scope field existed are handled as the
+		// historical enabled runtime. This keeps activation and recovery on the
+		// same conservative server+Auth scope for the entire old transaction.
+		return true
+	}
+	return *journal.MaintenanceSteamInviteEnabled
+}
+
+func stopImportPhaseARuntime(ctx context.Context, lifecycle LifecycleDockerService, dataDir string, stopServices []string, interval time.Duration) error {
+	if interval <= 0 {
+		interval = saveImportRuntimeStopPollInterval
+	}
+	stopErr := stopRuntimeServicesSelected(ctx, lifecycle, dataDir, stopServices)
+	// Always use a new bounded context for the authoritative post-stop probe.
+	// The stop caller may expire while Docker is returning from its own grace
+	// period, and reusing it would turn an actually exited runtime into a false
+	// recovery failure. The independent probe still must classify every selected
+	// service as absent/exited/dead before any snapshot can be restored.
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), saveImportRuntimeFinalProbeTimeout)
+	defer probeCancel()
+	var lastProbeErr error
 	for {
-		ps, err := lifecycle.ComposePsStrict(ctx, dataDir)
-		if err == nil {
-			stopped, classifyErr := saveImportServerStoppedStrict(ps.Services)
+		ps, probeErr := lifecycle.ComposePsStrict(probeCtx, dataDir)
+		if probeErr == nil {
+			stopped, classifyErr := saveImportRuntimeServicesStoppedStrict(ps.Services, stopServices)
 			if classifyErr != nil {
-				return classifyErr
-			}
-			if stopped {
+				lastProbeErr = classifyErr
+			} else if stopped {
 				return nil
+			} else {
+				lastProbeErr = errors.New("selected save import runtime services remain active after scoped stop")
 			}
+		} else {
+			lastProbeErr = probeErr
 		}
-		if err := waitImportPoll(ctx, interval); err != nil {
-			return err
+		if stopErr != nil && !errors.Is(stopErr, paneldocker.ErrCommandTimeout) {
+			return errors.Join(stopErr, lastProbeErr)
+		}
+		if waitErr := waitImportPoll(probeCtx, interval); waitErr != nil {
+			return errors.Join(stopErr, lastProbeErr, waitErr)
 		}
 	}
 }
@@ -449,10 +514,12 @@ func stopImportPhaseAServer(ctx context.Context, lifecycle LifecycleDockerServic
 func (d *Driver) failImportPhaseAPreSubmit(lifecycle LifecycleDockerService, dataDir, operationID string, options importPhaseAOptions, cause error) error {
 	journal, err := LoadImportJournal(dataDir, operationID)
 	if err != nil {
-		return maintenanceRollbackError("Phase A pre-submit failed and the journal cannot prove that no command was submitted", errors.Join(cause, err))
+		return d.failImportPhaseAAmbiguous(lifecycle, dataDir, operationID, options,
+			"Phase A pre-submit failed and the journal cannot prove that no command was submitted", errors.Join(cause, err))
 	}
 	if journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted || journal.UpstreamConfirmed || importStageAtLeast(journal.Stage, ImportStageSubmitted) {
-		return maintenanceRollbackError("Phase A pre-submit failed after submission may have occurred", cause)
+		return d.failImportPhaseAAmbiguous(lifecycle, dataDir, operationID, options,
+			"Phase A pre-submit failed after submission may have occurred", cause)
 	}
 	code := ImportErrorMaintenanceReady
 	message := "Phase A pre-submit evidence could not be captured"
@@ -463,13 +530,13 @@ func (d *Driver) failImportPhaseAPreSubmit(lifecycle LifecycleDockerService, dat
 	journal.LastError = message
 	if err := d.writeImportJournal(dataDir, journal); err != nil {
 		stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
-		stopErr := stopImportPhaseAServer(stopCtx, lifecycle, dataDir, options.PollInterval)
+		stopErr := stopImportPhaseAForJournal(stopCtx, lifecycle, dataDir, operationID, options.PollInterval)
 		cancel()
 		return maintenanceRollbackError("Phase A pre-submit failure evidence could not be persisted", errors.Join(cause, err, stopErr))
 	}
 	stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
 	defer cancel()
-	if err := stopImportPhaseAServer(stopCtx, lifecycle, dataDir, options.PollInterval); err != nil {
+	if err := stopImportPhaseAForJournal(stopCtx, lifecycle, dataDir, operationID, options.PollInterval); err != nil {
 		return maintenanceRollbackError("Phase A pre-submit failed and the maintenance runtime could not be stopped", errors.Join(cause, err))
 	}
 	if _, err := originalInstanceSnapshotFromJournal(journal, dataDir); err != nil {
@@ -489,6 +556,7 @@ func (d *Driver) failImportPhaseAAmbiguous(lifecycle LifecycleDockerService, dat
 		recoveryErrs = append(recoveryErrs, fmt.Errorf("load Phase A journal: %w", err))
 	} else {
 		journal.MaintenanceRecoveryState = importMaintenanceManualRecovery
+		journal.RecoveryState = "manual_required"
 		journal.PhaseAOutcome = phaseAOutcomeRecoveryRequired
 		journal.LastErrorCode = ImportErrorRecoveryRequired
 		journal.LastError = message
@@ -497,17 +565,21 @@ func (d *Driver) failImportPhaseAAmbiguous(lifecycle LifecycleDockerService, dat
 		}
 	}
 	stopCtx, cancel := context.WithTimeout(context.Background(), options.StopTimeout)
-	if err := stopImportPhaseAServer(stopCtx, lifecycle, dataDir, options.PollInterval); err != nil {
+	if err := stopImportPhaseAForJournal(stopCtx, lifecycle, dataDir, operationID, options.PollInterval); err != nil {
 		recoveryErrs = append(recoveryErrs, fmt.Errorf("stop ambiguous Phase A runtime: %w", err))
 	}
 	cancel()
 	return maintenanceRollbackError(message, errors.Join(recoveryErrs...))
 }
 
-func confirmImportPhaseA(dataDir, operationID string, evidence JunimoImportEvidenceSnapshot, classification phaseAClassification, runtimeStillRunning bool, job *jobs.Context) error {
+func (d *Driver) confirmImportPhaseA(lifecycle LifecycleDockerService, dataDir, operationID string, evidence JunimoImportEvidenceSnapshot, classification phaseAClassification, options importPhaseAOptions, runtimeStillRunning bool, job *jobs.Context) error {
 	journal, err := LoadImportJournal(dataDir, operationID)
 	if err != nil {
-		return err
+		if runtimeStillRunning {
+			return d.failImportPhaseAAmbiguous(lifecycle, dataDir, operationID, options,
+				"Phase A confirmation journal could not be reloaded", err)
+		}
+		return maintenanceRollbackError("Phase A confirmation journal could not be reloaded after runtime stop", err)
 	}
 	journal.UpstreamSubmitted = true
 	if journal.UpstreamSubmittedAt == nil {
@@ -524,8 +596,12 @@ func confirmImportPhaseA(dataDir, operationID string, evidence JunimoImportEvide
 		journal.PhaseAOutcome = phaseAOutcomeConfirmedAsIs
 	}
 	journal.LastErrorCode, journal.LastError = "", ""
-	if err := WriteImportJournal(dataDir, journal); err != nil {
-		return err
+	if err := d.writeImportJournal(dataDir, journal); err != nil {
+		if runtimeStillRunning {
+			return d.failImportPhaseAAmbiguous(lifecycle, dataDir, operationID, options,
+				"Phase A confirmation could not be persisted", err)
+		}
+		return maintenanceRollbackError("Phase A confirmation could not be persisted after runtime stop", err)
 	}
 	maintenanceLog(job, "Phase A composite disk evidence confirmed. Final save activation and migration verification remain pending.")
 	return nil

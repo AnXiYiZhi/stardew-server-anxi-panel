@@ -8,6 +8,7 @@ import type {
   Instance,
   InstallJobResponse,
   InstallOptionsResponse,
+  SteamCredentialsResponse,
   InstanceVNCConfig,
   InstanceServerPasswordConfig,
   InstancePlayerAuthConfig,
@@ -62,8 +63,17 @@ import type {
   UploadPreviewResult,
   UsersResponse,
 } from './types'
+import { normalizeInstanceId } from './instance-id.ts'
 
-export const defaultInstanceId = 'stardew'
+// Live binding: every instance API reads the value at call time after App.boot
+// consumes the backend's setup status. Invalid values fail closed to the legacy
+// ID so a malformed response cannot alter request paths.
+export let defaultInstanceId = normalizeInstanceId(null)
+
+export function setDefaultInstanceId(value: unknown): string {
+  defaultInstanceId = normalizeInstanceId(value)
+  return defaultInstanceId
+}
 
 export class ApiError extends Error {
   code: string
@@ -266,7 +276,6 @@ export function installInstance(
     vncPassword?: string
     imageTag?: string
     reuseCredentials?: boolean
-    forceReauth?: boolean
   },
   instanceId = defaultInstanceId,
 ) {
@@ -276,9 +285,19 @@ export function installInstance(
   })
 }
 
-// steamAuthLogin re-runs steam-auth with the saved account/password and stops as soon
-// as login succeeds (for invite codes). The server must be stopped. Steam Guard
-// prompts, if any, appear on the install page (where the user is navigated to watch logs).
+export function updateSteamCredentials(
+  body: { steamUsername: string; steamPassword: string },
+  instanceId = defaultInstanceId,
+) {
+  return request<SteamCredentialsResponse>(`/api/instances/${encodeURIComponent(instanceId)}/steam-credentials`, {
+    method: 'PUT',
+    body,
+  })
+}
+
+// steamAuthLogin starts a one-shot authorization only when no valid SteamAuth
+// session is already ready. It stops after saving the invite-code session and
+// never downloads the game. The server must be stopped for a new authorization.
 export function steamAuthLogin(instanceId = defaultInstanceId) {
   return request<InstallJobResponse>(`/api/instances/${encodeURIComponent(instanceId)}/steam-auth/login`, {
     method: 'POST',

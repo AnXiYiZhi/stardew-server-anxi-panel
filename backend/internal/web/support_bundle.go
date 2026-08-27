@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -69,7 +71,9 @@ func (s *server) handleSupportBundle(w http.ResponseWriter, r *http.Request, ins
 
 	// 9. Bounded service and panel log tails (redacted)
 	s.addComposeServiceLogsBundle(ctx, zw, instance.DataDir, "server", "server-logs.txt", paneldocker.MaxLogTail)
-	s.addComposeServiceLogsBundle(ctx, zw, instance.DataDir, "steam-auth", "steam-auth-logs.txt", 500)
+	if sjconfig.SteamInviteEnabled(instance.DataDir) {
+		s.addComposeServiceLogsBundle(ctx, zw, instance.DataDir, "steam-auth", "steam-auth-logs.txt", 500)
+	}
 	s.addPanelLogsBundle(ctx, zw)
 
 	if err := zw.Close(); err != nil {
@@ -305,7 +309,20 @@ func (s *server) addAuditLogsBundle(ctx context.Context, zw *zip.Writer) {
 }
 
 func (s *server) addComposePsBundle(ctx context.Context, zw *zip.Writer, dataDir string) {
-	result, err := s.docker.ComposePs(ctx, dataDir)
+	var (
+		result paneldocker.ComposePsResult
+		err    error
+	)
+	if sjconfig.SteamInviteEnabled(dataDir) {
+		result, err = s.docker.ComposePs(ctx, dataDir)
+	} else if dockerClient, ok := s.docker.(interface {
+		RuntimeComposePsServer(context.Context, string, string) (paneldocker.ComposePsResult, error)
+	}); ok {
+		project := strings.ToLower(filepath.Base(filepath.Clean(dataDir)))
+		result, err = dockerClient.RuntimeComposePsServer(ctx, dataDir, project)
+	} else {
+		err = fmt.Errorf("Docker client does not support server-only Compose status")
+	}
 	if err != nil {
 		writeJSONToZip(zw, "compose-ps.json", map[string]string{"error": "Compose PS 执行失败"})
 		return

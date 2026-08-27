@@ -691,7 +691,9 @@ export function ServerControlPage({ user, instanceState, dashboardData, onNaviga
             <h3 id="server-lifecycle-confirm-title">{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
             <p>
               {confirmAction === 'stop'
-                ? '停止服务器将断开所有在线玩家的连接，邀请码将立即失效。此操作不可撤销，确认继续？'
+                ? instanceState?.steamInviteEnabled === true
+                  ? '停止服务器将断开所有在线玩家的连接，Steam 邀请码将立即失效。此操作不可撤销，确认继续？'
+                  : '停止服务器将断开所有在线玩家的连接。此操作不可撤销，确认继续？'
                 : '重启服务器将短暂中断所有玩家的连接。重启完成后服务器会自动恢复，确认继续？'}
             </p>
             <div className="sd-confirm-actions">

@@ -8,10 +8,17 @@ import {
 } from '../../../api'
 import type { InstancePasswordStatus, SaveInfo } from '../../../types'
 import { errorMessage, stateLabel } from '../../../core/helpers'
-import type { StardewDashboardData, StardewPageProps, StardewRoute } from '../stardew-routes'
+import { routeToPath } from '../stardew-routes'
+import type { StardewDashboardData, StardewNavigateOptions, StardewPageProps, StardewRoute } from '../stardew-routes'
 import { classifyInstallationState } from '../installation-state'
+import { shouldClearPendingStartupAction } from '../lifecycle-action-state'
+import type { PendingStartupAction } from '../lifecycle-action-state'
 import { panelUpdateSurface, } from '../panel-update-machine'
 import { hasPlayerCjbRisk } from '../player-mod-details'
+import { copyText } from '../copy-text'
+import { steamInviteIsEnabled, steamInvitePresentation } from '../steam-invite-state'
+import type { SteamInvitePresentation } from '../steam-invite-state'
+import { useSteamAuthLogin } from '../useSteamAuthLogin'
 import './MobileHomePage.css'
 
 type MobileHomePageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'> & {
@@ -24,34 +31,6 @@ type ConfirmState =
   | { kind: 'stop' }
   | { kind: 'restart' }
   | { kind: 'approve'; target: ApproveTarget }
-
-// navigator.clipboard 需要安全上下文（HTTPS 或 localhost）。面板常见通过局域网/公网 IP
-// 走 HTTP 访问，此时 navigator.clipboard 为 undefined，直接调用会同步抛错；回退到
-// execCommand 方案保证复制按钮在这些场景下仍可用。与 InviteCodeCard.tsx 的实现保持一致。
-async function copyText(text: string): Promise<boolean> {
-  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      // fall through to legacy fallback below
-    }
-  }
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
-  } catch {
-    return false
-  }
-}
 
 function serverStatusText(state: string | null, loading: boolean): string {
   if (!state) return loading ? '读取中' : '未知'
@@ -66,14 +45,19 @@ function serverStatusDotClass(state: string | null, loading: boolean): string {
   return 'sd-dot sd-dot-gray'
 }
 
-function inviteInfo(dashboardData: StardewDashboardData, instanceState: MobileHomePageProps['instanceState']): { text: string; copyable: boolean } {
-  if (dashboardData.inviteCode) return { text: dashboardData.inviteCode, copyable: true }
-  const state = instanceState?.state ?? null
-  const canRefreshInvite = state === 'running' || state === 'starting'
-  const needAuthLogin = instanceState?.steamAuthLoggedIn !== true
-  if (needAuthLogin) return { text: '需登录 Steam 授权', copyable: false }
-  if (canRefreshInvite) return { text: dashboardData.inviteCodeError ? '获取失败' : '获取中…', copyable: false }
-  return { text: '服务器未运行', copyable: false }
+function inviteInfo(
+  dashboardData: StardewDashboardData,
+  instanceState: MobileHomePageProps['instanceState'],
+): SteamInvitePresentation {
+  return steamInvitePresentation(
+    steamInviteIsEnabled(instanceState),
+    dashboardData.inviteCodeStatus,
+    dashboardData.inviteCode,
+    dashboardData.inviteCodeError,
+    instanceState?.steamInviteAuthState,
+    instanceState?.state,
+    dashboardData.inviteCodeRefreshing,
+  )
 }
 
 function hostInfo(dashboardData: StardewDashboardData): { text: string; copyable: boolean } {
@@ -101,10 +85,12 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
+  const steamInviteEnabled = steamInviteIsEnabled(instanceState)
 
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [pendingStartupAction, setPendingStartupAction] = useState<'start' | 'restart' | null>(null)
+  const [pendingStartupAction, setPendingStartupAction] = useState<PendingStartupAction>(null)
+  const [pendingStartupSawActiveJob, setPendingStartupSawActiveJob] = useState(false)
   const [pendingStopAction, setPendingStopAction] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
 
@@ -116,6 +102,19 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   const [approveBusy, setApproveBusy] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
   const [approveMessage, setApproveMessage] = useState<string | null>(null)
+  const steamAuth = useSteamAuthLogin({
+    instanceState,
+    onNavigate: onUseDesktop
+      ? (route: StardewRoute, options?: StardewNavigateOptions) => {
+          window.history.pushState({}, '', routeToPath(route, options))
+          onUseDesktop()
+        }
+      : undefined,
+    onStarted: () => {
+      void dashboardData.refreshInstanceState()
+      void dashboardData.refreshJobs()
+    },
+  })
 
   const hasActiveLifecycleJob = dashboardData.jobs.some(
     (j) => j.type === 'stardew_lifecycle' && (j.status === 'running' || j.status === 'queued'),
@@ -137,8 +136,22 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   const canStart = state === 'ready_to_start' || state === 'stopped' || state === 'game_installed'
 
   useEffect(() => {
-    if (!hasActiveLifecycleJob && state === 'running') setPendingStartupAction(null)
-  }, [hasActiveLifecycleJob, state])
+    if (pendingStartupAction && hasActiveLifecycleJob) {
+      setPendingStartupSawActiveJob(true)
+    }
+  }, [hasActiveLifecycleJob, pendingStartupAction])
+
+  useEffect(() => {
+    if (shouldClearPendingStartupAction({
+      action: pendingStartupAction,
+      hasActiveLifecycleJob,
+      isRunning,
+      sawActiveLifecycleJob: pendingStartupSawActiveJob,
+    })) {
+      setPendingStartupAction(null)
+      setPendingStartupSawActiveJob(false)
+    }
+  }, [hasActiveLifecycleJob, isRunning, pendingStartupAction, pendingStartupSawActiveJob])
 
   useEffect(() => {
     if (state === 'stopped' || state === 'ready_to_start' || state === 'game_installed' || state === 'save_required' || state === 'error') {
@@ -164,16 +177,18 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   async function handleStart() {
     setActionBusy(true)
     setPendingStartupAction('start')
+    setPendingStartupSawActiveJob(false)
     setPendingStopAction(false)
     setActionError(null)
     try {
       await startInstance()
-      dashboardData.requestInviteCodeRefresh()
+      if (steamInviteIsEnabled(instanceState)) dashboardData.requestInviteCodeRefresh()
       dashboardData.refreshInstanceState()
       dashboardData.refreshJobs()
     } catch (e) {
       setActionError(errorMessage(e))
       setPendingStartupAction(null)
+      setPendingStartupSawActiveJob(false)
     } finally {
       setActionBusy(false)
     }
@@ -183,6 +198,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
     setActionBusy(true)
     setPendingStopAction(true)
     setPendingStartupAction(null)
+    setPendingStartupSawActiveJob(false)
     setActionError(null)
     dashboardData.clearInviteCode()
     try {
@@ -199,14 +215,16 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   async function handleRestart() {
     setActionBusy(true)
     setPendingStartupAction('restart')
+    setPendingStartupSawActiveJob(false)
     setActionError(null)
     try {
       await restartInstance()
-      dashboardData.requestInviteCodeRefresh()
+      if (steamInviteIsEnabled(instanceState)) dashboardData.requestInviteCodeRefresh()
       dashboardData.refreshInstanceState()
     } catch (e) {
       setActionError(errorMessage(e))
       setPendingStartupAction(null)
+      setPendingStartupSawActiveJob(false)
     } finally {
       setActionBusy(false)
     }
@@ -278,6 +296,9 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
   const statusDotClass = serverStatusDotClass(state, dashboardData.loading)
 
   const invite = inviteInfo(dashboardData, instanceState)
+  const inviteText = invite.retryAuthorization && !isAdmin
+    ? '授权异常，请联系管理员'
+    : invite.text
   const host = hostInfo(dashboardData)
 
   const pendingAuthPlayers = (dashboardData.players?.players ?? []).filter(
@@ -450,25 +471,47 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
       <section className="sd-panel sd-mhome-card">
         <div className="sd-mhome-card-title">
           <img src="/assets/stardew/ui/icons/icon_nav_server_rack_image2.png" alt="" />
-          邀请信息
+          连接信息
         </div>
+        {steamInviteEnabled ? (
+          <>
+            <div className="sd-mhome-invite-row">
+              <span className="sd-mhome-invite-label">Steam 邀请码</span>
+              <div className={`sd-mhome-invite-box${invite.copyable ? '' : ' sd-mhome-invite-box--muted'}`}>
+                {inviteText}
+              </div>
+              {invite.retryAuthorization && isAdmin ? (
+                <button
+                  type="button"
+                  className="sd-btn-green sd-mhome-copy-btn"
+                  onClick={() => { void steamAuth.login() }}
+                  disabled={steamAuth.busy || steamAuth.requiresStop}
+                  title={steamAuth.title}
+                >
+                  {steamAuth.busy ? '发起中…' : '重新授权'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="sd-btn-tan sd-mhome-copy-btn"
+                  onClick={handleCopyInvite}
+                  disabled={!invite.copyable}
+                  title={invite.copyable ? '复制 Steam 邀请码' : '暂无可复制的 Steam 邀请码'}
+                >
+                  {inviteCopied ? '已复制' : '复制'}
+                </button>
+              )}
+            </div>
+            {invite.retryAuthorization && isAdmin && steamAuth.requiresStop ? (
+              <div className="sd-notice sd-notice--info sd-mhome-notice">请先停止服务器，再重新完成 Steam 邀请码授权。</div>
+            ) : null}
+            {steamAuth.message ? (
+              <div className="sd-notice sd-notice--error sd-mhome-notice">{steamAuth.message}</div>
+            ) : null}
+          </>
+        ) : null}
         <div className="sd-mhome-invite-row">
-          <span className="sd-mhome-invite-label">邀请码</span>
-          <div className={`sd-mhome-invite-box${invite.copyable ? '' : ' sd-mhome-invite-box--muted'}`}>
-            {invite.text}
-          </div>
-          <button
-            type="button"
-            className="sd-btn-tan sd-mhome-copy-btn"
-            onClick={handleCopyInvite}
-            disabled={!invite.copyable}
-            title={invite.copyable ? '复制邀请码' : '暂无可复制的邀请码'}
-          >
-            {inviteCopied ? '已复制' : '复制'}
-          </button>
-        </div>
-        <div className="sd-mhome-invite-row">
-          <span className="sd-mhome-invite-label">局域网邀请</span>
+          <span className="sd-mhome-invite-label">局域网直连</span>
           <div className={`sd-mhome-invite-box${host.copyable ? '' : ' sd-mhome-invite-box--muted'}`}>
             {host.text}
           </div>
@@ -477,7 +520,7 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
             className="sd-btn-green sd-mhome-copy-btn"
             onClick={handleCopyHost}
             disabled={!host.copyable}
-            title={host.copyable ? '复制当前面板访问地址' : '暂无可复制的地址'}
+            title={host.copyable ? '复制局域网/IP 直连地址' : '暂无可复制的地址'}
           >
             {hostCopied ? '已复制' : '复制'}
           </button>
@@ -565,7 +608,9 @@ export function MobileHomePage({ user, instanceState, dashboardData, onUseDeskto
             {confirm.kind === 'stop' ? (
               <>
                 <h3>确认停止服务器</h3>
-                <p>停止服务器将断开所有玩家连接，邀请码将失效。</p>
+                <p>{steamInviteEnabled
+                  ? '停止服务器将断开所有玩家连接，Steam 邀请码将失效。'
+                  : '停止服务器将断开所有玩家连接。'}</p>
                 <div className="sd-mhome-confirm-actions">
                   <button type="button" className="sd-btn-tan sd-mhome-confirm-btn" onClick={() => setConfirm(null)}>
                     取消

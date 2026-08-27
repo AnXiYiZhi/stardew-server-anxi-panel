@@ -82,7 +82,7 @@ func (f *runtimeUpdateFakeDocker) ComposePsStrict(ctx context.Context, dir strin
 	return f.fakeDocker.ComposePsStrict(ctx, dir)
 }
 func (f *runtimeUpdateFakeDocker) RuntimeImageInspect(_ context.Context, _ string, image string) (paneldocker.RuntimeImageMetadata, error) {
-	f.record("docker image inspect")
+	f.record("docker image inspect " + image)
 	metadata, ok := f.metadata[image]
 	if !ok {
 		return paneldocker.RuntimeImageMetadata{}, errors.New("not found")
@@ -96,7 +96,7 @@ func (f *runtimeUpdateFakeDocker) RuntimeImageInspect(_ context.Context, _ strin
 	return metadata, nil
 }
 func (f *runtimeUpdateFakeDocker) PullImageStreaming(_ context.Context, _ string, image string, lineHandler func(string)) (paneldocker.CommandResult, error) {
-	f.record("docker image pull")
+	f.record("docker image pull " + image)
 	if f.pullLogLine != "" {
 		lineHandler(f.pullLogLine)
 	}
@@ -110,9 +110,21 @@ func (f *runtimeUpdateFakeDocker) RuntimeComposeConfigInspect(context.Context, s
 	f.record("docker compose config inspect")
 	return f.composeConfig, f.composeConfigErr
 }
+func (f *runtimeUpdateFakeDocker) RuntimeComposeConfigInspectServer(context.Context, string, string) (paneldocker.RuntimeComposeConfig, error) {
+	f.record("docker compose config inspect server only")
+	return f.composeConfig, f.composeConfigErr
+}
 func (f *runtimeUpdateFakeDocker) RuntimeComposeConfigValidateImages(context.Context, string, string, string, string) error {
-	f.record("docker compose config --quiet")
+	f.record("docker compose config --quiet full stack")
 	return f.composeValidateErr
+}
+func (f *runtimeUpdateFakeDocker) RuntimeComposeConfigValidateServerImage(context.Context, string, string, string) error {
+	f.record("docker compose config --quiet server only")
+	return f.composeValidateErr
+}
+func (f *runtimeUpdateFakeDocker) RuntimeComposePsServer(ctx context.Context, dir, _ string) (paneldocker.ComposePsResult, error) {
+	f.record("docker compose ps server only")
+	return f.fakeDocker.ComposePs(ctx, dir)
 }
 func (f *runtimeUpdateFakeDocker) RuntimeVolumeInspect(context.Context, string, string) (paneldocker.RuntimeVolumeMetadata, error) {
 	f.record("docker volume inspect")
@@ -126,7 +138,7 @@ func setupRuntimeUpdateDriver(t *testing.T, state string) (*Driver, *storage.Sto
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := "IMAGE_VERSION=1.4.0-preview.1\nSERVER_IMAGE=sdvd/server:1.4.0-preview.1\nSERVER_IMAGE_CANDIDATES=sdvd/server:1.4.0-preview.1\nSTEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\n"
+	env := "IMAGE_VERSION=1.4.0-preview.1\nSERVER_IMAGE=sdvd/server:1.4.0-preview.1\nSERVER_IMAGE_CANDIDATES=sdvd/server:1.4.0-preview.1\nSTEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_INVITE_ENABLED=true\nSTEAM_INVITE_AUTH_STATE=pending\n"
 	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte(env), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -206,6 +218,56 @@ func TestRuntimeUpdateDryRunSucceedsWithoutDestructiveCommandsAndPersists(t *tes
 	restored, err := reconstructed.RuntimeUpdateDryRunStatus(instance)
 	if err != nil || restored.DryRunID != status.DryRunID || restored.Phase != RuntimeUpdatePhaseSucceeded {
 		t.Fatalf("status not restored: %#v, %v", restored, err)
+	}
+}
+
+func TestRuntimeUpdateDryRunDisabledIgnoresInvalidSteamAuthConfig(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeUpdateDriver(t, storage.InstanceStateGameInstalled)
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"STEAM_INVITE_ENABLED":           "false",
+		"STEAM_SERVICE_IMAGE":            "not a valid image",
+		"STEAM_SERVICE_IMAGE_CANDIDATES": "also invalid",
+		"STEAM_INVITE_AUTH_STATE":        sjconfig.SteamInviteAuthStateDisabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := driver.StartRuntimeUpdateDryRun(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeUpdateStatus(t, driver, instance)
+	if status.Phase != RuntimeUpdatePhaseSucceeded || status.Selected.Server.Image == "" || status.Selected.SteamAuth.Image != "" {
+		t.Fatalf("disabled dry-run status = %#v", status)
+	}
+	calls := strings.Join(fake.calls, "\n")
+	if !strings.Contains(calls, "server only") || strings.Contains(calls, "full stack") || strings.Contains(calls, "steam-service") || strings.Contains(calls, "volume inspect") {
+		t.Fatalf("disabled dry-run touched optional Auth: %s", calls)
+	}
+}
+
+func TestRuntimeConfigRepairDisabledRewritesOnlyServerCandidates(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeUpdateDriver(t, storage.InstanceStateGameInstalled)
+	const invalidAuth = "not a valid image"
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"STEAM_INVITE_ENABLED":           "false",
+		"SERVER_IMAGE_CANDIDATES":        "sdvd/server:1.4.0-preview.1,ghcr.io/sdvd/server:1.4.0-preview.1",
+		"STEAM_SERVICE_IMAGE":            invalidAuth,
+		"STEAM_SERVICE_IMAGE_CANDIDATES": "also invalid",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := driver.repairKnownRuntimeStackConfig(instance)
+	if err != nil || !result.Repaired {
+		t.Fatalf("server-only repair result=%#v err=%v", result, err)
+	}
+	fields, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fields["STEAM_SERVICE_IMAGE"] != invalidAuth || fields["STEAM_SERVICE_IMAGE_CANDIDATES"] != "also invalid" {
+		t.Fatalf("disabled repair rewrote optional Auth: %#v", fields)
+	}
+	if strings.Contains(fields["SERVER_IMAGE_CANDIDATES"], "ghcr.io") {
+		t.Fatalf("server candidates were not repaired: %s", fields["SERVER_IMAGE_CANDIDATES"])
 	}
 }
 
@@ -303,7 +365,7 @@ func TestRuntimeUpdateDryRunRejectsUnsupportedInstances(t *testing.T) {
 }
 
 func TestRuntimeUpdateDryRunRejectsConflictingJobs(t *testing.T) {
-	for _, jobType := range []string{"stardew_install", "stardew_lifecycle", "stardew_junimo_update_apply", RuntimeUpdateDryRunJobType} {
+	for _, jobType := range []string{"stardew_install", "stardew_steam_auth", "stardew_lifecycle", "stardew_junimo_update_apply", RuntimeUpdateDryRunJobType} {
 		t.Run(jobType, func(t *testing.T) {
 			driver, store, instance, _ := setupRuntimeUpdateDriver(t, storage.InstanceStateGameInstalled)
 			job, err := store.CreateJob(context.Background(), storage.CreateJobParams{Type: jobType, TargetType: "instance", TargetID: instance.ID})

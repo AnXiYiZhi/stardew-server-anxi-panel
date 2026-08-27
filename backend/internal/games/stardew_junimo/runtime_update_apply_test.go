@@ -147,6 +147,7 @@ func (f *runtimeApplyFakeDocker) targetConfigured(dataDir string) bool {
 	return strings.Contains(string(env), "IMAGE_VERSION=1.5.0-preview.125")
 }
 func (f *runtimeApplyFakeDocker) RuntimeServiceInspect(_ context.Context, dataDir, _ string, service string) (paneldocker.RuntimeServiceMetadata, error) {
+	f.applyCall("inspect " + service)
 	digest := "sha256:" + strings.Repeat("a", 64)
 	if !f.targetConfigured(dataDir) {
 		if service == "server" {
@@ -274,6 +275,61 @@ func setupRuntimeApplyDriver(t *testing.T, state string) (*Driver, *storage.Stor
 	return driver, store, instance, fake
 }
 
+func configureDisabledRuntimeApplyFixture(t *testing.T, instance registry.Instance, fake *runtimeApplyFakeDocker) {
+	t.Helper()
+	if err := sjconfig.SetSteamInviteEnabled(instance.DataDir, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
+		"STEAM_AUTH_COMPLETED":           "true",
+		"STEAM_SERVICE_IMAGE":            "invalid optional auth image",
+		"STEAM_SERVICE_IMAGE_CANDIDATES": "invalid optional auth candidates",
+		"STEAM_INVITE_AUTH_STATE":        sjconfig.SteamInviteAuthStateDisabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fake.composeConfig.Services = []string{"server"}
+	fake.composeConfig.SteamSessionVolume = ""
+	serverState := "running"
+	if instance.State == storage.InstanceStateStopped {
+		serverState = "exited"
+	}
+	fake.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: serverState}}}
+	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
+	status := RuntimeUpdateDryRunStatus{
+		DryRunID: "dryrun_disabled_test",
+		Phase:    RuntimeUpdatePhaseSucceeded,
+		Current:  inspection.Current,
+		Target:   inspection.Recommended,
+		Selected: RuntimeUpdateSelectedPair{Server: RuntimeUpdateSelectedImage{
+			Image:  inspection.Recommended.Server.TrustedCandidates[0],
+			Digest: "sha256:" + strings.Repeat("a", 64),
+		}},
+	}
+	if err := writeRuntimeUpdateDryRunStatus(instance.DataDir, status); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertNoOptionalAuthRuntimeCalls(t *testing.T, fake *runtimeApplyFakeDocker) {
+	t.Helper()
+	calls := strings.Join(append(append([]string{}, fake.calls...), fake.applyCalls...), "\n")
+	for _, forbidden := range []string{
+		"steam-auth",
+		"auth health",
+		"docker volume inspect",
+		"full stack",
+		"volume create",
+		"volume clone",
+		"volume restore",
+		"volume rm",
+	} {
+		if strings.Contains(calls, forbidden) {
+			t.Fatalf("disabled runtime update touched optional Auth via %q:\n%s", forbidden, calls)
+		}
+	}
+}
+
 func waitRuntimeApply(t *testing.T, driver *Driver, instance registry.Instance) RuntimeUpdateApplyStatus {
 	t.Helper()
 	time.Sleep(250 * time.Millisecond)
@@ -330,6 +386,61 @@ func TestRuntimeUpdateApplySuccessUpdatesPairAndPreservesSafetyBoundary(t *testi
 	if !strings.Contains(calls, "tee -a "+serverInputFIFO) || strings.Contains(calls, "attach-cli") {
 		t.Fatalf("runtime verification did not use the FIFO control contract: %s", calls)
 	}
+}
+
+func TestRuntimeUpdateApplyDisabledScopesSuccessToServerOnly(t *testing.T) {
+	for _, state := range []string{storage.InstanceStateRunning, storage.InstanceStateStopped} {
+		t.Run(state, func(t *testing.T) {
+			driver, _, instance, fake := setupRuntimeApplyDriver(t, state)
+			configureDisabledRuntimeApplyFixture(t, instance, fake)
+			if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+				t.Fatal(err)
+			}
+			status := waitRuntimeApply(t, driver, instance)
+			if status.Phase != RuntimeUpdateApplySucceeded || status.ServerRunning != (state == storage.InstanceStateRunning) {
+				t.Fatalf("disabled apply status=%#v calls=%v", status, fake.applyCalls)
+			}
+			if status.Selected.SteamAuth != (RuntimeUpdateSelectedImage{}) {
+				t.Fatalf("disabled apply selected Auth image: %#v", status.Selected.SteamAuth)
+			}
+			calls := strings.Join(fake.applyCalls, "\n")
+			if !strings.Contains(calls, "up server") || !strings.Contains(calls, "stop server") {
+				t.Fatalf("disabled apply did not maintain only server: %s", calls)
+			}
+			fields, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fields["STEAM_INVITE_ENABLED"] != "false" || fields["STEAM_AUTH_COMPLETED"] != "true" || fields["STEAM_SERVICE_IMAGE"] != "invalid optional auth image" {
+				t.Fatalf("disabled apply changed optional Auth intent/session/config: %#v", fields)
+			}
+			assertNoOptionalAuthRuntimeCalls(t, fake)
+		})
+	}
+}
+
+func TestRuntimeUpdateApplyDisabledRollbackNeverTouchesAuth(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	configureDisabledRuntimeApplyFixture(t, instance, fake)
+	fake.serverHealthFailTarget = true
+	if _, err := driver.StartRuntimeUpdateApply(context.Background(), instance, 0); err != nil {
+		t.Fatal(err)
+	}
+	status := waitRuntimeApply(t, driver, instance)
+	if status.Phase != RuntimeUpdateApplyFailedRolledBack || !status.ServerRunning {
+		t.Fatalf("disabled rollback status=%#v calls=%v", status, fake.applyCalls)
+	}
+	fields, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fields["STEAM_INVITE_ENABLED"] != "false" || fields["STEAM_SERVICE_IMAGE"] != "invalid optional auth image" {
+		t.Fatalf("disabled rollback did not restore original Auth fields: %#v", fields)
+	}
+	if calls := strings.Join(fake.applyCalls, "\n"); !strings.Contains(calls, "up server") || !strings.Contains(calls, "stop server") {
+		t.Fatalf("disabled rollback did not restore server: %s", calls)
+	}
+	assertNoOptionalAuthRuntimeCalls(t, fake)
 }
 
 func configureControlOnlyRuntimeFixture(t *testing.T, instance registry.Instance) sjconfig.RuntimeStackManifest {
@@ -793,6 +904,36 @@ func TestRequiredRuntimeUpdateAutomaticallyChainsDryRunAndApply(t *testing.T) {
 	if !strings.Contains(calls, "up steam-auth") || !strings.Contains(calls, "up server") {
 		t.Fatalf("required coordinator did not recreate the pair: %s", calls)
 	}
+}
+
+func TestRequiredRuntimeUpdateDisabledChainsServerOnlyWithoutAuth(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	configureDisabledRuntimeApplyFixture(t, instance, fake)
+	driver.panelVersion = "0.6.0"
+	if err := os.Remove(runtimeUpdateDryRunStatusPath(instance.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := driver.runRequiredRuntimeUpdate(ctx, instance, manifest); err != nil {
+		t.Fatalf("%v calls=%v applyCalls=%v", err, fake.calls, fake.applyCalls)
+	}
+	required, err := readRequiredRuntimeUpdateStatus(instance.DataDir)
+	if err != nil || required.Phase != requiredRuntimePhaseSucceeded || required.StackVersion != manifest.StackVersion {
+		t.Fatalf("required disabled status=%#v err=%v", required, err)
+	}
+	apply, err := driver.RuntimeUpdateApplyStatus(instance)
+	if err != nil || apply.Phase != RuntimeUpdateApplySucceeded || apply.Selected.SteamAuth != (RuntimeUpdateSelectedImage{}) {
+		t.Fatalf("disabled apply status=%#v err=%v", apply, err)
+	}
+	if inspection := InspectRuntimeStack(instance.DataDir, storage.InstanceStateRunning); inspection.Status != sjconfig.RuntimeStackStatusUpToDate {
+		t.Fatalf("disabled server stack was not applied: %#v", inspection)
+	}
+	assertNoOptionalAuthRuntimeCalls(t, fake)
 }
 
 func TestRequiredRuntimeUpdateFailureIsPersistedAndNotRetriedOnSamePanel(t *testing.T) {
@@ -1498,6 +1639,9 @@ func TestRuntimeUpdateApplyRestartRecoveryDoesNotGuess(t *testing.T) {
 
 func TestRuntimeUpdateApplyRestartBeforeManifestKeepsServerStopped(t *testing.T) {
 	driver, store, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateRunning)
+	if err := sjconfig.SetSteamInviteEnabled(instance.DataDir, true); err != nil {
+		t.Fatal(err)
+	}
 	status := RuntimeUpdateApplyStatus{
 		ApplyID: "apply_" + strings.Repeat("e", 24), Phase: RuntimeUpdateApplyBackingUp,
 		ServerWasRunning: true, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{},
@@ -1517,7 +1661,7 @@ func TestRuntimeUpdateApplyRestartBeforeManifestKeepsServerStopped(t *testing.T)
 		t.Fatalf("pre-mutation restart was not finalized safely: %#v", restored)
 	}
 	calls := strings.Join(fake.applyCalls[before:], "\n")
-	if !strings.Contains(calls, "stop server,steam-auth") {
+	if !strings.Contains(calls, "stop steam-auth,server") {
 		t.Fatalf("pre-mutation recovery did not ensure the runtime is stopped: %s", calls)
 	}
 	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
@@ -1568,6 +1712,9 @@ func TestRuntimeUpdateSnapshotCreateIntentOwnsPossibleCrashWindowVolume(t *testi
 func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T) {
 	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	if err := sjconfig.SetSteamInviteEnabled(instance.DataDir, false); err != nil {
+		t.Fatal(err)
+	}
 	applyID := "apply_" + strings.Repeat("d", 24)
 	target := RuntimeUpdateSelectedPair{
 		Server:    RuntimeUpdateSelectedImage{Image: inspection.Recommended.Server.TrustedCandidates[0], Digest: "sha256:" + strings.Repeat("a", 64), ImageID: "sha256:" + strings.Repeat("a", 64)},
@@ -1615,10 +1762,92 @@ func TestRuntimeUpdateApplyRestartRollsBackSchema3WriteAheadIntent(t *testing.T)
 	if strings.Contains(calls, "up server") || strings.Contains(calls, "up preserve server") || strings.Contains(calls, "compose up") {
 		t.Fatalf("write-ahead recovery started the game: %s", calls)
 	}
+	if !strings.Contains(calls, "stop server,steam-auth") {
+		t.Fatalf("legacy schema 3 recovery must conservatively retain Auth transaction scope: %s", calls)
+	}
 	gotControl, err := os.ReadFile(filepath.Join(smapiModDir(instance.DataDir), "StardewAnxiPanel.Control.dll"))
 	if err != nil || !bytes.Equal(gotControl, originalControl) {
 		t.Fatalf("Control was not restored after interrupted intent: equal=%v err=%v", bytes.Equal(gotControl, originalControl), err)
 	}
+}
+
+func TestRuntimeUpdateApplyRestartSchema4DisabledRecoversServerOnly(t *testing.T) {
+	driver, _, instance, fake := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	configureDisabledRuntimeApplyFixture(t, instance, fake)
+	inspection := InspectRuntimeStack(instance.DataDir, instance.State)
+	applyID := "apply_" + strings.Repeat("9", 24)
+	target := RuntimeUpdateSelectedPair{Server: RuntimeUpdateSelectedImage{
+		Image:   inspection.Recommended.Server.TrustedCandidates[0],
+		Digest:  "sha256:" + strings.Repeat("a", 64),
+		ImageID: "sha256:" + strings.Repeat("a", 64),
+	}}
+	project := strings.ToLower(filepath.Base(instance.DataDir))
+	manifest := runtimeUpdateRecoveryManifest{
+		SchemaVersion:      4,
+		SteamInviteEnabled: false,
+		ApplyID:            applyID,
+		Project:            project,
+		SnapshotVolume:     project + "_anxi-junimo-update-" + strings.Repeat("9", 24) + "-steam-session",
+		OriginalState:      storage.InstanceStateStopped,
+		OriginalServer: RuntimeUpdateSelectedImage{
+			Image:   inspection.Current.Server.Image,
+			Digest:  "sha256:" + strings.Repeat("b", 64),
+			ImageID: "sha256:" + strings.Repeat("b", 64),
+		},
+		Target:                   target,
+		OriginalServerVersion:    inspection.Current.Server.Tag,
+		TargetServerVersion:      inspection.Recommended.Server.Tag,
+		ServerImageChanged:       true,
+		AuthImageChanged:         true,
+		AuthSnapshotCreated:      true,
+		MutationStarted:          true,
+		StopIntent:               true,
+		ControlUpdateIntent:      true,
+		AuthSnapshotCreateIntent: true,
+		AuthSnapshotVolumeMade:   true,
+		AuthRecreateIntent:       true,
+		AuthServiceStartIntent:   true,
+		LastIntent:               "control_update",
+	}
+	if err := createRuntimeRecoveryFiles(instance.DataDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.ControlManifestPresent, manifest.ControlDLLPresent, _ = backupRuntimeControlMod(instance.DataDir, applyID)
+	manifest.OriginalEnvSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original.env"))
+	manifest.OriginalComposeSHA256, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-compose.yml"))
+	manifest.OriginalControlJSONSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-manifest.json"))
+	manifest.OriginalControlDLLSHA, _ = runtimeRecoveryFileSHA256(filepath.Join(runtimeUpdateRecoveryDir(instance.DataDir, applyID), "original-control-StardewAnxiPanel.Control.dll"))
+	if err := writeRuntimeUpdateRecoveryManifest(instance.DataDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	status := RuntimeUpdateApplyStatus{
+		ApplyID:  applyID,
+		Phase:    RuntimeUpdateApplyStopping,
+		Current:  inspection.Current,
+		Target:   inspection.Recommended,
+		Selected: target,
+		Checks:   []RuntimeUpdateDryRunCheck{},
+		Warnings: []string{},
+		Logs:     []RuntimeUpdateDryRunLog{},
+	}
+	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, status); err != nil {
+		t.Fatal(err)
+	}
+	beforeCalls := len(fake.calls)
+	beforeApplyCalls := len(fake.applyCalls)
+	if err := driver.RecoverRuntimeUpdateApply(context.Background(), instance); err != nil {
+		t.Fatal(err)
+	}
+	restored := waitRuntimeApply(t, driver, instance)
+	if restored.Phase != RuntimeUpdateApplyFailedRolledBack || restored.ErrorCode != "panel_restart_recovery" || restored.ServerRunning || restored.ManualAction == "" {
+		t.Fatalf("schema 4 disabled recovery status=%#v", restored)
+	}
+	fake.calls = fake.calls[beforeCalls:]
+	fake.applyCalls = fake.applyCalls[beforeApplyCalls:]
+	if calls := strings.Join(fake.applyCalls, "\n"); !strings.Contains(calls, "stop server") || strings.Contains(calls, "up server") {
+		t.Fatalf("schema 4 disabled recovery did not converge server-only and stopped: %s", calls)
+	}
+	assertNoOptionalAuthRuntimeCalls(t, fake)
 }
 
 func TestRuntimeUpdateApplyRestartRollsBackFinalVerificationAndKeepsStopped(t *testing.T) {
@@ -1658,24 +1887,28 @@ func TestRuntimeUpdateApplyRestartRollsBackFinalVerificationAndKeepsStopped(t *t
 	}
 }
 
-func TestRuntimeUpdateApplyRejectsConcurrentLifecycleJob(t *testing.T) {
-	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
-	release := make(chan struct{})
-	job, err := driver.jobs.Start(context.Background(), jobs.Spec{Type: "stardew_lifecycle", TargetType: "instance", TargetID: instance.ID, Run: func(context.Context, *jobs.Context) error { <-release; return nil }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		active, _ := driver.jobs.Active(context.Background(), storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_lifecycle"}})
-		if len(active) > 0 {
-			break
-		}
-		time.Sleep(time.Millisecond)
-	}
-	_, err = driver.StartRuntimeUpdateApply(context.Background(), instance, 0)
-	close(release)
-	if validation, ok := IsRuntimeUpdateValidationError(err); !ok || validation.Code != "runtime_update_busy" {
-		t.Fatalf("concurrent job not rejected (job %s): %v", job.ID, err)
+func TestRuntimeUpdateApplyRejectsConflictingJobs(t *testing.T) {
+	for _, jobType := range []string{"stardew_lifecycle", "stardew_steam_auth"} {
+		t.Run(jobType, func(t *testing.T) {
+			driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+			release := make(chan struct{})
+			job, err := driver.jobs.Start(context.Background(), jobs.Spec{Type: jobType, TargetType: "instance", TargetID: instance.ID, Run: func(context.Context, *jobs.Context) error { <-release; return nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(time.Second)
+			for time.Now().Before(deadline) {
+				active, _ := driver.jobs.Active(context.Background(), storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{jobType}})
+				if len(active) > 0 {
+					break
+				}
+				time.Sleep(time.Millisecond)
+			}
+			_, err = driver.StartRuntimeUpdateApply(context.Background(), instance, 0)
+			close(release)
+			if validation, ok := IsRuntimeUpdateValidationError(err); !ok || validation.Code != "runtime_update_busy" {
+				t.Fatalf("concurrent job not rejected (job %s): %v", job.ID, err)
+			}
+		})
 	}
 }

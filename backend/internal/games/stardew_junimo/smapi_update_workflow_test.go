@@ -99,6 +99,22 @@ func (f *smapiWorkflowFakeDocker) ComposeUp(ctx context.Context, dir string) (pa
 	return f.runtimeApplyFakeDocker.ComposeUp(ctx, dir)
 }
 
+func (f *smapiWorkflowFakeDocker) ComposeRecreateServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
+	f.composeUpCount++
+	f.call("compose recreate " + strings.Join(services, ","))
+	if f.failComposeUpAt > 0 && f.composeUpCount >= f.failComposeUpAt {
+		return paneldocker.CommandResult{}, errors.New("password=must-not-leak")
+	}
+	f.fakeDocker.psResult = paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running", Status: "Up"}, {Service: "steam-auth", State: "running", Status: "Up"}}}
+	if !f.controlFailure || !f.stagingActive() {
+		manifest, _ := sjconfig.BuiltInRuntimeStackManifest()
+		control := filepath.Join(f.dataDir, ".local-container", "control")
+		_ = os.MkdirAll(control, 0o700)
+		_ = os.WriteFile(filepath.Join(control, "options.json"), []byte(readyControlRuntimeOptions(manifest.Control.Version)), 0o600)
+	}
+	return f.runtimeApplyFakeDocker.ComposeRecreateServices(ctx, dir, services...)
+}
+
 func (f *smapiWorkflowFakeDocker) RuntimeServerHealth(context.Context, string, string) error {
 	if !f.controlFailure || !f.stagingActive() {
 		control := filepath.Join(f.dataDir, ".local-container", "control")
@@ -130,8 +146,36 @@ func TestSMAPIUpdateUsesRealDockerStateWhenDatabaseIsStopped(t *testing.T) {
 	if status.Phase != SMAPIApplySucceeded || !status.ServerWasRunning {
 		t.Fatalf("status=%#v", status)
 	}
-	if !strings.Contains(strings.Join(fake.applyCalls, "\n"), "compose down") {
+	if !strings.Contains(strings.Join(fake.applyCalls, "\n"), "stop server,steam-auth") {
 		t.Fatal("real running stack was not gracefully stopped")
+	}
+}
+
+func TestSMAPIUpdateApplyRejectsSteamInviteAuthorizationJob(t *testing.T) {
+	driver, instance, _ := setupSMAPIWorkflowDriver(t, storage.InstanceStateStopped)
+	withFakeSMAPIArchive(t, instance.DataDir)
+	if _, err := driver.RunSMAPIUpdateDryRun(context.Background(), instance); err != nil {
+		t.Fatalf("SMAPI dry-run: %v", err)
+	}
+	release := make(chan struct{})
+	_, err := driver.jobs.Start(context.Background(), jobs.Spec{
+		Type:       "stardew_steam_auth",
+		TargetType: "instance",
+		TargetID:   instance.ID,
+		Run: func(context.Context, *jobs.Context) error {
+			<-release
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("create Steam authorization job: %v", err)
+	}
+	t.Cleanup(func() { close(release) })
+
+	_, err = driver.StartSMAPIUpdateApply(context.Background(), instance, 0)
+	validation, ok := IsRuntimeUpdateValidationError(err)
+	if !ok || validation.Code != "runtime_update_busy" {
+		t.Fatalf("SMAPI apply error = %v, want runtime_update_busy", err)
 	}
 }
 
@@ -159,7 +203,7 @@ func TestSMAPIUpdateRestartBeforeSwitchKeepsPreviouslyRunningServerStopped(t *te
 	if fake.composeUpCount != beforeUp {
 		t.Fatalf("Panel bootstrap SMAPI recovery started the game: %v", fake.calls)
 	}
-	if !strings.Contains(strings.Join(fake.applyCalls[beforeCalls:], "\n"), "compose down") {
+	if !strings.Contains(strings.Join(fake.applyCalls[beforeCalls:], "\n"), "stop server,steam-auth") {
 		t.Fatalf("Panel bootstrap SMAPI recovery did not ensure the game is stopped: %v", fake.applyCalls[beforeCalls:])
 	}
 	stored, err := driver.store.GetInstance(context.Background(), instance.ID)
@@ -204,7 +248,7 @@ func TestSMAPIUpdateRestartAfterSwitchRollsBackWithoutStartingGame(t *testing.T)
 	if fake.composeUpCount != beforeUp {
 		t.Fatalf("Panel bootstrap SMAPI rollback started the game: %v", fake.calls)
 	}
-	if !strings.Contains(strings.Join(fake.applyCalls[beforeCalls:], "\n"), "compose down") {
+	if !strings.Contains(strings.Join(fake.applyCalls[beforeCalls:], "\n"), "stop server,steam-auth") {
 		t.Fatalf("Panel bootstrap SMAPI rollback did not stop the game: %v", fake.applyCalls[beforeCalls:])
 	}
 	env, err := os.ReadFile(filepath.Join(instance.DataDir, ".env"))
@@ -259,6 +303,8 @@ func setupSMAPIWorkflowDriver(t *testing.T, state string) (*Driver, registry.Ins
 		"GAME_DATA_VOLUME=" + project + "_game-data",
 		"SMAPI_VERSION=4.4.0",
 		"STEAMCMD_AUTH_COMPLETED=true",
+		"STEAM_INVITE_ENABLED=true",
+		"STEAM_INVITE_AUTH_STATE=pending",
 	}, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(instance.DataDir, ".env"), []byte(env), 0o600); err != nil {
 		t.Fatal(err)

@@ -5,6 +5,7 @@ import type { JunimoUpdateInfo, RuntimeComponentsInfo } from '../../../types'
 import { stateLabel, formatDate, jobDisplayName } from '../../../core/helpers'
 import { ModalPortal } from '../../../core/ModalPortal'
 import { InviteCodeCard } from '../InviteCodeCard'
+import { LanDirectConnectCard } from '../LanDirectConnectCard'
 import { ServerRuntimeSettingsDialog } from '../ServerRuntimeSettingsDialog'
 import { modIsSystemRuntime } from '../mod-visibility'
 import { panelUpdateSurface } from '../panel-update-machine'
@@ -302,12 +303,17 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
               </div>
             ) : null}
           </div>
-          <InviteCodeCard
-            instanceState={instanceState}
-            dashboardData={dashboardData}
-            className="sd-overview-invite-card"
-            onNavigate={onNavigate}
-          />
+          <div className="sd-overview-invite-card sd-overview-connection-cards">
+            <LanDirectConnectCard dashboardData={dashboardData} />
+            {instanceState?.steamInviteEnabled === true ? (
+              <InviteCodeCard
+                instanceState={instanceState}
+                dashboardData={dashboardData}
+                canManageSteamInvite={isAdmin}
+                onNavigate={onNavigate}
+              />
+            ) : null}
+          </div>
         </div>
         {actionError ? <div className="sd-ov-error">{actionError}</div> : null}
       </div>
@@ -556,7 +562,9 @@ export function OverviewPage({ user, instanceState, onNavigate, dashboardData }:
             <h3 id="overview-lifecycle-confirm-title">{confirmAction === 'stop' ? '确认停止服务器' : '确认重启服务器'}</h3>
             <p>
               {confirmAction === 'stop'
-                ? '停止服务器将断开所有玩家连接，邀请码将失效。'
+                ? instanceState?.steamInviteEnabled === true
+                  ? '停止服务器将断开所有玩家连接，Steam 邀请码将失效。'
+                  : '停止服务器将断开所有玩家连接。'
                 : '重启服务器将短暂断开所有玩家连接，请确认操作。'}
             </p>
             <div className="sd-confirm-actions">

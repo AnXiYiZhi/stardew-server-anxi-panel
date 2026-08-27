@@ -25,6 +25,7 @@ const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
 const INSTALL_DIAGNOSTIC = params.get('installDiagnostic') || ''
+const STEAM_INVITE_ENABLED = params.get('steamInvite') === 'enabled'
 if (JUNIMO_WORKFLOW === 'race-retry' || JUNIMO_WORKFLOW === 'rollback-failed' || JUNIMO_CONFIG === 'repairable') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
@@ -50,6 +51,8 @@ const instanceStateFixture = {
   stateMessage: INSTALL_DIAGNOSTIC === 'installed-error' ? 'Control 启动超时；游戏文件仍完整，可重试启动。' : null,
   driverPhase: INSTALL_DIAGNOSTIC === 'installed-error' ? 'control_runtime_start_timeout' : STATE,
   updatedAt: iso(2), installationDiagnostic,
+  steamInviteEnabled: STEAM_INVITE_ENABLED,
+  steamInviteAuthState: STEAM_INVITE_ENABLED ? 'ready' : 'disabled',
 }
 
 const players = [
@@ -298,7 +301,7 @@ const nexusSettings = { configured: true, hasApiKey: true, extensionConnected: t
 const vncConfig = { vncPort: '24643' }
 const rendering = { fps: 30 }
 const serverPassword = { serverPassword: '' }
-const serverRuntimeSettings = { maxPlayers: 16, cabinStrategy: 'CabinStack', existingCabinBehavior: 'KeepExisting', networkBroadcastPeriod: 1 }
+const serverRuntimeSettings = { maxPlayers: 16, cabinStrategy: 'None', existingCabinBehavior: 'KeepExisting', networkBroadcastPeriod: 1 }
 const panelUpdate = {
   currentVersion: '0.1.14', currentCommit: '3f7a9c2', currentBuildDate: '2026-07-13T12:00:00Z',
   latestVersion: UPDATE === 'available' ? 'v0.1.15' : 'v0.1.14',
@@ -470,7 +473,9 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/mods\/nexus\/install$/, { jobId: 'job_mobile_nexus_install' }],
   [/\/mods\/nexus\/extension\/download$/, {}],
   [/\/health\/diagnostics$/, health],
-  [/\/invite-code$/, { inviteCode: STATE === 'running' ? 'ANXI-FARM-2024' : '' }],
+  [/\/invite-code$/, STEAM_INVITE_ENABLED
+    ? { steamInviteEnabled: true, status: STATE === 'running' ? 'ready' : 'server_stopped', inviteCode: STATE === 'running' ? 'ANXI-FARM-2024' : '' }
+    : { steamInviteEnabled: false, status: 'disabled', inviteCode: '' }],
   [/\/restart-schedule$/, restartSchedule],
   [/\/config\/vnc-port$/, vncConfig],
   [/\/config\/player-auth$/, playerAuthConfig],
@@ -502,7 +507,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const path = url.split('?')[0]
   if (SURFACE === 'app' && path.endsWith('/api/setup/status')) {
     if (AUTH === 'error') return jsonRes({ code: 'qa_boot_failed', message: 'QA 启动状态读取失败' }, 503)
-    return jsonRes({ initialized: AUTH !== 'setup' })
+    return jsonRes({ initialized: AUTH !== 'setup', defaultInstanceId: 'stardew' })
   }
   if (SURFACE === 'app' && path.endsWith('/api/auth/me')) {
     if (AUTH === 'login' || AUTH === 'error') {

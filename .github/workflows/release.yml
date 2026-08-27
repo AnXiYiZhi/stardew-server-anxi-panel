@@ -12,7 +12,7 @@ on:
         type: string
 
 concurrency:
-  group: release-panel-${{ inputs.tag || github.ref_name }}
+  group: release-panel-promotion
   cancel-in-progress: false
 
 permissions:
@@ -57,7 +57,25 @@ jobs:
             exit 1
           fi
           commit="$(git rev-parse "$tag^{}")"
-          git fetch origin main
+          tag_contents="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
+          tag_candidate_run_id=""
+          tag_candidate_digest=""
+          tag_candidate_run_count=0
+          tag_candidate_digest_count=0
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^Candidate\ workflow:\ ([0-9]+)$ ]]; then
+              tag_candidate_run_id="${BASH_REMATCH[1]}"
+              tag_candidate_run_count=$((tag_candidate_run_count + 1))
+            elif [[ "$line" =~ ^Digest:\ (sha256:[0-9a-f]{64})$ ]]; then
+              tag_candidate_digest="${BASH_REMATCH[1]}"
+              tag_candidate_digest_count=$((tag_candidate_digest_count + 1))
+            fi
+          done <<<"$tag_contents"
+          if ((tag_candidate_run_count != 1 || tag_candidate_digest_count != 1)); then
+            echo "release tag must contain exactly one candidate workflow and digest binding" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main:refs/remotes/origin/main
           if [[ "$(git rev-parse origin/main)" != "$commit" ]]; then
             echo "release tag commit must exactly match origin/main" >&2
             exit 1
@@ -70,6 +88,8 @@ jobs:
             echo "commit=$commit"
             echo "short_sha=$short_sha"
             echo "artifact_name=$artifact_name"
+            echo "tag_candidate_run_id=$tag_candidate_run_id"
+            echo "tag_candidate_digest=$tag_candidate_digest"
           } >>"$GITHUB_OUTPUT"
 
       - name: Download successful candidate proof
@@ -81,43 +101,57 @@ jobs:
           EXPECTED_VERSION: ${{ steps.identity.outputs.version }}
           EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
           EXPECTED_SHORT_SHA: ${{ steps.identity.outputs.short_sha }}
+          TAG_CANDIDATE_RUN_ID: ${{ steps.identity.outputs.tag_candidate_run_id }}
+          TAG_CANDIDATE_DIGEST: ${{ steps.identity.outputs.tag_candidate_digest }}
         run: |
           set -euo pipefail
           proof_dir="$RUNNER_TEMP/candidate-proof"
           mkdir -p "$proof_dir"
-          runs_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/release-candidate.yml/runs" -f branch=main -f status=success -f per_page=50)"
-          mapfile -t run_ids < <(jq -r --arg sha "$EXPECTED_COMMIT" '.workflow_runs[] | select(.head_sha == $sha and .conclusion == "success") | .id' <<<"$runs_json")
-          selected_run=""
-          for run_id in "${run_ids[@]}"; do
-            artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts")"
-            if jq -e --arg name "$ARTIFACT_NAME" '.artifacts[] | select(.name == $name and (.expired | not))' <<<"$artifacts_json" >/dev/null; then
-              gh run download "$run_id" --name "$ARTIFACT_NAME" --dir "$proof_dir"
-              selected_run="$run_id"
-              break
-            fi
-          done
-          if [[ -z "$selected_run" || ! -s "$proof_dir/candidate.json" ]]; then
-            echo "no successful, unexpired candidate proof matches this exact tag commit and version" >&2
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TAG_CANDIDATE_RUN_ID")"
+          if ! jq -e --arg sha "$EXPECTED_COMMIT" '.conclusion == "success" and .head_sha == $sha and .head_branch == "main" and .path == ".github/workflows/release-candidate.yml"' <<<"$run_json" >/dev/null; then
+            echo "annotated tag candidate workflow is not a successful release-candidate run for this exact main commit" >&2
             exit 1
           fi
+          artifacts_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TAG_CANDIDATE_RUN_ID/artifacts")"
+          artifact_count="$(jq -r --arg name "$ARTIFACT_NAME" '[.artifacts[] | select(.name == $name and (.expired | not))] | length' <<<"$artifacts_json")"
+          if [[ "$artifact_count" != 1 ]]; then
+            echo "annotated tag candidate workflow must expose exactly one unexpired immutable proof artifact" >&2
+            exit 1
+          fi
+          gh run download "$TAG_CANDIDATE_RUN_ID" --name "$ARTIFACT_NAME" --dir "$proof_dir"
+          if [[ ! -s "$proof_dir/candidate.json" ]]; then
+            echo "annotated tag candidate proof is missing" >&2
+            exit 1
+          fi
+          selected_run="$TAG_CANDIDATE_RUN_ID"
           proof="$proof_dir/candidate.json"
           schema="$(jq -r '.schemaVersion // 0' "$proof")"
           version="$(jq -r '.version // empty' "$proof")"
+          previous="$(jq -r '.previousVersion // empty' "$proof")"
+          oldest="$(jq -r '.oldestTestedVersion // empty' "$proof")"
           commit="$(jq -r '.commit // empty' "$proof")"
           candidate_ref="$(jq -r '.candidateRef // empty' "$proof")"
           digest="$(jq -r '.digest // empty' "$proof")"
           proof_run_id="$(jq -r '.workflowRunId // empty' "$proof")"
           expected_ref="$GHCR_IMAGE:candidate-$EXPECTED_VERSION-$EXPECTED_SHORT_SHA"
-          if [[ "$schema" != 1 || "$version" != "$EXPECTED_VERSION" || "$commit" != "$EXPECTED_COMMIT" || "$proof_run_id" != "$selected_run" || "$candidate_ref" != "$expected_ref" || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          if [[ "$schema" != 1 || "$version" != "$EXPECTED_VERSION" || "$commit" != "$EXPECTED_COMMIT" || "$proof_run_id" != "$selected_run" || "$candidate_ref" != "$expected_ref" || "$digest" != "$TAG_CANDIDATE_DIGEST" || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "candidate proof identity does not match the immutable release tag" >&2
-            jq '{schemaVersion,version,commit,workflowRunId,candidateRef,digest}' "$proof" >&2
+            jq '{schemaVersion,version,previousVersion,oldestTestedVersion,commit,workflowRunId,candidateRef,digest}' "$proof" >&2
             exit 1
           fi
+          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="${latest_release#v}"
+          if [[ "$previous" != "$latest_release" && "$version" != "$latest_release" ]]; then
+            echo "candidate proof previous version does not match the current latest GitHub Release, and this is not an idempotent retry of the same release: $latest_release" >&2
+            exit 1
+          fi
+          bash scripts/validate-release-matrix.sh --version "$version" --previous-version "$previous" --oldest-version "$oldest" --require-oldest-for-zero-patch
           {
             echo "run_id=$selected_run"
             echo "candidate_ref=$candidate_ref"
             echo "digest=$digest"
             echo "build_date=$(jq -r '.buildDate' "$proof")"
+            echo "previous=$previous"
           } >>"$GITHUB_OUTPUT"
 
       - name: Verify registry promotion tool
@@ -225,11 +259,26 @@ jobs:
       - name: Promote and verify latest tags
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_REF: ${{ steps.proof.outputs.candidate_ref }}
           EXPECTED_DIGEST: ${{ steps.proof.outputs.digest }}
+          EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+          PREVIOUS_VERSION: ${{ steps.proof.outputs.previous }}
           VERSION: ${{ steps.identity.outputs.version }}
         run: |
           set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          current_main="$(git rev-parse origin/main)"
+          if [[ "$current_main" != "$EXPECTED_COMMIT" ]]; then
+            echo "origin/main changed after exact version promotion; refusing to move latest tags" >&2
+            exit 1
+          fi
+          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="${latest_release#v}"
+          if [[ "$latest_release" != "$PREVIOUS_VERSION" && "$latest_release" != "$VERSION" ]]; then
+            echo "latest GitHub Release changed after proof validation; refusing to move latest tags: $latest_release" >&2
+            exit 1
+          fi
           source_repository="${CANDIDATE_REF%:*}"
           source="docker://$source_repository@$EXPECTED_DIGEST"
           skopeo copy --all --preserve-digests "$source" "docker://$DOCKERHUB_IMAGE:latest"

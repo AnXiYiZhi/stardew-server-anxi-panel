@@ -2,6 +2,7 @@ package stardew_junimo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -53,6 +54,9 @@ const (
 	// container when the game-data volume is readable but incomplete.
 	installVerificationMissingExitCode = 42
 )
+
+var ErrSteamInviteAlreadyAuthorized = errors.New("Steam invite authorization is already ready")
+var ErrBaseInstallForceReauthUnsupported = errors.New("base install force reauthorization is no longer supported; update shared Steam credentials separately")
 
 // DockerService defines what the driver needs from the Docker layer.
 type DockerService interface {
@@ -236,11 +240,48 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return err
 	}
+	// A live import runner owns both its journal and the private maintenance
+	// runtime. Prepare must never race that runner's crash-window recovery or its
+	// completed-journal -> running-state commit.
+	if err := d.rejectActiveSaveImportRunner(ctx, instance.ID); err != nil {
+		return fmt.Errorf("defer save import recovery while its runner is active: %w", err)
+	}
 	recoveries, err := RecoverImportTransactions(instance.DataDir)
 	if err != nil {
+		authoritative, phaseErr := d.authoritativeImportRecoveryInstance(ctx, instance)
+		if phaseErr != nil {
+			return fmt.Errorf("recover save import transactions: %w", errors.Join(err, phaseErr))
+		}
+		if authoritative.DriverPhase == importMaintenancePhase {
+			recoveryInstance := instance
+			recoveryInstance.ID = authoritative.ID
+			recoveryInstance.DataDir = authoritative.DataDir
+			return fmt.Errorf("recover save import transactions: %w",
+				d.failClosedOrphanedImportMaintenance(recoveryInstance,
+					"save import maintenance journal is missing or unreadable", err))
+		}
 		return fmt.Errorf("recover save import transactions: %w", err)
 	} else if len(recoveries) > 0 {
 		d.logger.Warn("discovered unfinished save import transactions", "instance", instance.ID, "count", len(recoveries))
+	} else {
+		authoritative, phaseErr := d.authoritativeImportRecoveryInstance(ctx, instance)
+		if phaseErr != nil {
+			return fmt.Errorf("confirm save import maintenance owner: %w", phaseErr)
+		}
+		if authoritative.DriverPhase == importMaintenancePhase {
+			completed, completedErr := d.recoverCompletedImportMaintenance(authoritative)
+			if completedErr != nil {
+				return fmt.Errorf("recover completed save import maintenance: %w", completedErr)
+			}
+			if !completed {
+				recoveryInstance := instance
+				recoveryInstance.ID = authoritative.ID
+				recoveryInstance.DataDir = authoritative.DataDir
+				return fmt.Errorf("recover save import transactions: %w",
+					d.failClosedOrphanedImportMaintenance(recoveryInstance,
+						"save import maintenance has no recoverable journal", nil))
+			}
+		}
 	}
 	recoveries, err = d.recoverInterruptedImportMaintenance(ctx, instance, recoveries)
 	if err != nil {
@@ -293,8 +334,10 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	} else {
 		return fmt.Errorf("stat docker-compose.yml: %w", err)
 	}
-	if _, err := EnsureServerContEnvFix(instance.DataDir); err != nil {
-		return fmt.Errorf("ensure server static init compatibility fix: %w", err)
+	if migrated, err := EnsureServerSteamAuthDependencyRemoved(instance.DataDir); err != nil {
+		return fmt.Errorf("remove legacy server dependency on optional Steam Auth: %w", err)
+	} else if migrated {
+		d.logger.Info("removed legacy server dependency on optional Steam Auth", "instance", instance.ID)
 	}
 	if _, err := EnsureServerPlayerAuthEnvironment(instance.DataDir); err != nil {
 		if errors.Is(err, ErrPlayerAuthComposeUnsupported) {
@@ -304,6 +347,10 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		}
 	}
 
+	// Capture legacy evidence before creating a fresh template. Otherwise the
+	// template's explicit false key would hide an older instance's capability.
+	historicalInviteAuthorization := legacyInstanceHadAuthorizedSteamInvite(instance)
+
 	// Write .env only when not already present.
 	envPath := filepath.Join(instance.DataDir, ".env")
 	if _, err := os.Stat(envPath); err == nil {
@@ -311,6 +358,11 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	} else if os.IsNotExist(err) {
 		tpl := sjconfig.EmptyEnvTemplate()
 		tpl["IMAGE_VERSION"] = TestedImageTag
+		if historicalInviteAuthorization {
+			tpl["STEAM_INVITE_ENABLED"] = "true"
+			tpl["STEAM_AUTH_COMPLETED"] = "true"
+			tpl["STEAM_INVITE_AUTH_STATE"] = sjconfig.SteamInviteAuthStateReady
+		}
 		if err := sjconfig.UpdateEnvFile(envPath, tpl); err != nil {
 			return fmt.Errorf("write initial .env: %w", err)
 		}
@@ -320,6 +372,20 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 		d.logger.Info("wrote initial .env", "instance", instance.ID)
 	} else {
 		return fmt.Errorf("stat .env: %w", err)
+	}
+	if migrated, err := sjconfig.EnsureSteamInviteIntent(instance.DataDir, historicalInviteAuthorization); err != nil {
+		return fmt.Errorf("migrate Steam invite intent: %w", err)
+	} else if migrated {
+		d.logger.Info("migrated explicit Steam invite intent", "instance", instance.ID, "enabled", sjconfig.SteamInviteEnabled(instance.DataDir))
+	}
+	if err := d.ensureSteamInviteRuntimeScope(ctx, instance); err != nil {
+		return fmt.Errorf("converge optional Steam Auth runtime scope: %w", err)
+	}
+	if err := d.convergeSteamInviteCleanupPending(ctx, instance); err != nil {
+		return fmt.Errorf("converge successful Steam Auth holder cleanup: %w", err)
+	}
+	if _, err := ensureRuntimeContEnvFix(instance.DataDir, sjconfig.SteamInviteEnabled(instance.DataDir)); err != nil {
+		return fmt.Errorf("ensure runtime static init compatibility fix: %w", err)
 	}
 	if err := d.ensureInstanceDockerHostBindings(instance.DataDir); err != nil {
 		return fmt.Errorf("ensure instance Docker host bindings: %w", err)
@@ -334,8 +400,17 @@ func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error 
 	return nil
 }
 
+func legacyInstanceHadAuthorizedSteamInvite(instance registry.Instance) bool {
+	return strings.EqualFold(strings.TrimSpace(instance.State), storage.InstanceStateSteamAuthDone) ||
+		strings.EqualFold(strings.TrimSpace(instance.DriverPhase), storage.InstanceStateSteamAuthDone) ||
+		strings.TrimSpace(inviteCodeFromPayload(instance.DriverPayload)) != ""
+}
+
 // Install validates credentials, creates an async install job, and returns its ID.
 func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*registry.Job, error) {
+	if req.ForceReauth && !req.AuthLoginOnly {
+		return nil, ErrBaseInstallForceReauthUnsupported
+	}
 	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
 		return nil, err
 	}
@@ -355,7 +430,7 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	if req.SteamPassword == "" {
 		return nil, fmt.Errorf("Steam 密码不能为空")
 	}
-	if req.VNCPassword == "" {
+	if !req.AuthLoginOnly && req.VNCPassword == "" {
 		return nil, fmt.Errorf("VNC 密码不能为空")
 	}
 	d.runtimeUpdateMu.Lock()
@@ -369,11 +444,32 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
+	activeInstallJobs, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
+		TargetType: "instance",
+		TargetID:   req.Instance.ID,
+		Types:      []string{"stardew_install", "stardew_steam_auth"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list active install and Steam authorization jobs: %w", err)
+	}
+	if len(activeInstallJobs) > 0 {
+		return nil, &storage.ActiveJobExistsError{Job: activeInstallJobs[0]}
+	}
 
 	// Persist the instance so the runner has a stable snapshot.
 	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	if req.AuthLoginOnly &&
+		sjconfig.SteamInviteAuthState(instance.DataDir) == sjconfig.SteamInviteAuthStateCleanupPending {
+		return nil, ErrSteamInviteCleanupPending
+	}
+	if req.AuthLoginOnly &&
+		sjconfig.SteamInviteEnabled(instance.DataDir) &&
+		sjconfig.SteamInviteAuthState(instance.DataDir) == sjconfig.SteamInviteAuthStateReady &&
+		sjconfig.SteamAuthLoggedIn(instance.DataDir) {
+		return nil, ErrSteamInviteAlreadyAuthorized
 	}
 
 	imageTag := req.ImageTag
@@ -384,48 +480,69 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 		return nil, fmt.Errorf("只能安装当前 Panel 内置兼容矩阵中的精确 Junimo server 版本 %s", manifest.Server.Tag)
 	}
 
-	// reuse: reuse saved credentials without re-prompting the user for input.
-	reuse := req.AutoDownload || req.SteamCMDRetry || req.AuthLoginOnly
-	// steamAuthCompleted: durable ".env" flag set only after the steam-auth log
-	// confirms login success. It backstops the phase inference in
-	// authAlreadySucceeded so that even if the persisted phase was reset (e.g. an
-	// interrupted install marked install_interrupted) we still skip steam-auth.
-	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
-	steamAuthCompleted := strings.EqualFold(envVals["STEAM_AUTH_COMPLETED"], "true")
-	// steamCMDDirect: skip image pull + steam-auth and resume the SteamCMD path
-	// directly. Only when reusing credentials AND the instance has already passed
-	// Steam authentication (resuming a SteamCMD phase, a post-auth download/
-	// installed state, or the durable STEAM_AUTH_COMPLETED flag). Pre-auth failures
-	// (pull_failed, timeouts) must NOT take this shortcut — they re-pull images and
-	// run steam-auth again.
-	// AuthLoginOnly must run steam-auth (that is where the login for invite codes
-	// happens), so it must NOT take the SteamCMD shortcut even though the game is
-	// already installed.
-	steamCMDDirect := reuse && !req.ForceReauth && !req.AuthLoginOnly &&
-		(shouldResumeSteamCMD(instance.DriverPhase) ||
-			authAlreadySucceeded(instance.State, instance.DriverPhase) ||
-			steamAuthCompleted)
+	// SteamCMD is the primary and only game-download path. steam-auth is an
+	// optional invite-code authorization flow selected explicitly through
+	// AuthLoginOnly and must never be part of a normal install/repair.
+	// An invite-only authorization still needs an explicit method selection so
+	// the existing QR / account+Guard interaction remains reachable. The saved
+	// credentials are available on the runner regardless of this reuse flag.
+	reuse := req.AutoDownload || req.SteamCMDRetry
 
 	runner := &installRunner{
-		driver:         d,
-		instance:       instance,
-		username:       req.SteamUsername,
-		password:       req.SteamPassword,
-		vncPass:        req.VNCPassword,
-		imageTag:       imageTag,
-		reuse:          reuse,
-		steamCMDDirect: steamCMDDirect,
-		forceReauth:    req.ForceReauth,
-		authOnly:       req.AuthLoginOnly,
+		driver:      d,
+		instance:    instance,
+		username:    req.SteamUsername,
+		password:    req.SteamPassword,
+		vncPass:     req.VNCPassword,
+		imageTag:    imageTag,
+		reuse:       reuse,
+		forceReauth: req.ForceReauth,
+		authOnly:    req.AuthLoginOnly,
 	}
 
+	jobType := "stardew_install"
+	jobPayload := ""
+	var beforeRun jobs.BeforeRun
+	if req.AuthLoginOnly {
+		jobType = "stardew_steam_auth"
+		payload, err := json.Marshal(struct {
+			SchemaVersion     int    `json:"schemaVersion"`
+			State             string `json:"state"`
+			StateMessage      string `json:"stateMessage"`
+			StateMessageValid bool   `json:"stateMessageValid"`
+			DriverPhase       string `json:"driverPhase"`
+			DriverPayload     string `json:"driverPayload"`
+		}{
+			SchemaVersion:     1,
+			State:             instance.State,
+			StateMessage:      instance.StateMessage.String,
+			StateMessageValid: instance.StateMessage.Valid,
+			DriverPhase:       instance.DriverPhase,
+			DriverPayload:     instance.DriverPayload,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("encode Steam authorization recovery snapshot: %w", err)
+		}
+		jobPayload = string(payload)
+		// Persist opt-in only after the exclusive job row exists, but before its
+		// runner can pull or start steam-auth. A synchronous job creation failure
+		// therefore cannot leave an enabled/pending capability without a job.
+		beforeRun = func(context.Context, storage.Job) error {
+			if err := sjconfig.SetSteamInviteEnabled(instance.DataDir, true); err != nil {
+				return fmt.Errorf("persist Steam invite intent before authorization: %w", err)
+			}
+			return nil
+		}
+	}
 	job, err := d.jobs.Start(ctx, jobs.Spec{
-		Type:       "stardew_install",
+		Type:       jobType,
 		TargetType: "instance",
 		TargetID:   req.Instance.ID,
 		Exclusive:  true,
 		CreatedBy:  req.ActorID,
+		Payload:    jobPayload,
 		Timeout:    installJobTimeout,
+		BeforeRun:  beforeRun,
 		Run:        runner.run,
 	})
 	if err != nil {
@@ -542,6 +659,9 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 					payload := instance.DriverPayload
 					if payload == "" {
 						payload = "{}"
+					}
+					if sjconfig.SteamInviteEnabled(instance.DataDir) {
+						payload = mergeSteamInviteWarmupStartedAt(payload, time.Now().UTC())
 					}
 					return d.store.UpdateInstanceState(ctx, storage.UpdateInstanceStateParams{
 						ID:            instance.ID,
@@ -732,15 +852,12 @@ func (d *Driver) reconcileOrphanedStartingRuntime(ctx context.Context, instance 
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), controlCleanupTimeout)
 	defer cancel()
-	result, downErr := lifecycle.ComposeDown(cleanupCtx, instance.DataDir)
-	if downErr == nil && result.ExitCode != 0 {
-		downErr = fmt.Errorf("ComposeDown exited with code %d", result.ExitCode)
-	}
+	downErr := stopRuntimeServices(cleanupCtx, lifecycle, instance.DataDir)
 	if downErr == nil {
 		var ps paneldocker.ComposePsResult
 		ps, downErr = lifecycle.ComposePs(cleanupCtx, instance.DataDir)
 		if downErr == nil && serverServiceUp(ps.Services) {
-			downErr = errors.New("server service remains running after ComposeDown")
+			downErr = errors.New("server service remains running after scoped stop")
 		}
 	}
 	if downErr != nil {
@@ -951,6 +1068,17 @@ echo "INSTALL_REQUIRED_FILES_OK"
 // updatePhase attempts a best-effort instance state update; errors are only logged.
 // Preserves the existing DriverPayload to avoid wiping stored metadata.
 func (d *Driver) updatePhase(ctx context.Context, instanceID, state, message, phase, jobID string) {
+	d.updatePhaseWithPayload(ctx, instanceID, state, message, phase, jobID, false)
+}
+
+// updatePhaseWithSteamInviteWarmup records the exact runtime generation that
+// may legitimately need time to restore the optional Auth session. Ordinary
+// running-state or payload updates use updatePhase and cannot refresh this clock.
+func (d *Driver) updatePhaseWithSteamInviteWarmup(ctx context.Context, instanceID, state, message, phase, jobID string) {
+	d.updatePhaseWithPayload(ctx, instanceID, state, message, phase, jobID, true)
+}
+
+func (d *Driver) updatePhaseWithPayload(ctx context.Context, instanceID, state, message, phase, jobID string, markSteamInviteWarmup bool) {
 	if d.store == nil {
 		return
 	}
@@ -958,6 +1086,9 @@ func (d *Driver) updatePhase(ctx context.Context, instanceID, state, message, ph
 	if inst, err := d.store.GetInstance(ctx, instanceID); err == nil {
 		if inst.DriverPayload != "" {
 			existing = inst.DriverPayload
+		}
+		if markSteamInviteWarmup && state == storage.InstanceStateRunning && sjconfig.SteamInviteEnabled(inst.DataDir) {
+			existing = mergeSteamInviteWarmupStartedAt(existing, time.Now().UTC())
 		}
 	}
 	if jobID == "" {

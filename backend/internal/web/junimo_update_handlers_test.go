@@ -308,7 +308,7 @@ func TestJunimoUpdateDryRunAPI(t *testing.T) {
 	if err := os.MkdirAll(instanceDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	env := "IMAGE_VERSION=1.4.0-preview.1\nSERVER_IMAGE=sdvd/server:1.4.0-preview.1\nSERVER_IMAGE_CANDIDATES=sdvd/server:1.4.0-preview.1\nSTEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_PASSWORD=never-return-this\nSTEAM_REFRESH_TOKEN=never-return-token\n"
+	env := "IMAGE_VERSION=1.4.0-preview.1\nSERVER_IMAGE=sdvd/server:1.4.0-preview.1\nSERVER_IMAGE_CANDIDATES=sdvd/server:1.4.0-preview.1\nSTEAM_SERVICE_IMAGE=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_SERVICE_IMAGE_CANDIDATES=anxiyizhi/junimo-steam-service-cn:1.5.0-anxi.2\nSTEAM_INVITE_ENABLED=false\nSTEAM_INVITE_AUTH_STATE=disabled\nSTEAM_PASSWORD=never-return-this\nSTEAM_REFRESH_TOKEN=never-return-token\n"
 	if err := os.WriteFile(filepath.Join(instanceDir, ".env"), []byte(env), 0o600); err != nil {
 		t.Fatal(err)
 	}

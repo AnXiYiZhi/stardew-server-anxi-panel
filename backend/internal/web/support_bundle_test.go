@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -65,6 +67,9 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 		t.Fatal(err)
 	}
 	instanceDir := filepath.Join(dataRoot, "instances", "stardew")
+	if err := sjconfig.SetSteamInviteEnabled(instanceDir, true); err != nil {
+		t.Fatalf("enable Steam invite fixture: %v", err)
+	}
 	if err := os.MkdirAll(filepath.Join(instanceDir, ".local-container", "smapi-update", "recovery", "apply_secret"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -151,5 +156,35 @@ func TestSupportBundleStreamsValidZip(t *testing.T) {
 		if strings.Contains(serialized, secret) {
 			t.Fatalf("support bundle leaked %q", secret)
 		}
+	}
+}
+
+func TestSupportBundleDisabledUsesServerOnlyComposePs(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "disabled-support")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := sjconfig.SetSteamInviteEnabled(dataDir, false); err != nil {
+		t.Fatal(err)
+	}
+	var fullCalls atomic.Int32
+	var serverCalls atomic.Int32
+	s := &server{docker: fakeDockerService{
+		psResult: paneldocker.ComposePsResult{Services: []paneldocker.ComposeService{{Service: "server", State: "running"}}},
+		psCalls:  &fullCalls, serverPsCalls: &serverCalls,
+	}}
+	var output bytes.Buffer
+	zw := zip.NewWriter(&output)
+	s.addComposePsBundle(context.Background(), zw, dataDir)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if fullCalls.Load() != 0 || serverCalls.Load() != 1 {
+		t.Fatalf("disabled support Compose probes: full=%d serverOnly=%d", fullCalls.Load(), serverCalls.Load())
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(output.Bytes()), int64(output.Len()))
+	if err != nil || len(reader.File) != 1 || reader.File[0].Name != "compose-ps.json" {
+		t.Fatalf("compose status bundle invalid: entries=%v err=%v", reader.File, err)
 	}
 }

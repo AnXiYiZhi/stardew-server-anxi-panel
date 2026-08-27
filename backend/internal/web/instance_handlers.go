@@ -41,6 +41,8 @@ type instanceStateResponse struct {
 	StateMessage           *string                    `json:"stateMessage"`
 	DriverPhase            string                     `json:"driverPhase"`
 	UpdatedAt              string                     `json:"updatedAt"`
+	SteamInviteEnabled     bool                       `json:"steamInviteEnabled"`
+	SteamInviteAuthState   string                     `json:"steamInviteAuthState"`
 	SteamAuthLoggedIn      bool                       `json:"steamAuthLoggedIn"`
 	SteamAuthReady         bool                       `json:"steamAuthReady"`
 	InviteCode             string                     `json:"inviteCode,omitempty"`
@@ -326,6 +328,14 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleInstanceInstall(w, r, instanceID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "steam-credentials" {
+		if r.Method != http.MethodPut {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.handleInstanceSteamCredentials(w, r, instanceID)
 		return
 	}
 	if len(parts) == 3 && parts[1] == "steam-guard" && parts[2] == "input" {
@@ -916,6 +926,8 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 			runtimeDiagnostic.RuntimeControlMatches = diagnostic.Control.Runtime == "match"
 		}
 	}
+	steamInviteEnabled := sjconfig.SteamInviteEnabled(instance.DataDir)
+	inviteCode := visibleInviteCode(instance, steamInviteEnabled)
 	return instanceStateResponse{
 		InstanceID:             instance.ID,
 		DriverID:               instance.DriverID,
@@ -924,9 +936,11 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 		StateMessage:           nullableString(instance.StateMessage),
 		DriverPhase:            instance.DriverPhase,
 		UpdatedAt:              instance.UpdatedAt,
+		SteamInviteEnabled:     steamInviteEnabled,
+		SteamInviteAuthState:   sjconfig.SteamInviteAuthState(instance.DataDir),
 		SteamAuthLoggedIn:      sjconfig.SteamAuthLoggedIn(instance.DataDir),
 		SteamAuthReady:         s.probeSteamAuthReady(ctx, instance),
-		InviteCode:             inviteCodeFromDriverPayload(instance.DriverPayload),
+		InviteCode:             inviteCode,
 		UIStatus:               uiStatus,
 		UIStatusUpdatedAt:      uiStatusUpdatedAt,
 		StatusSource:           statusSource,
@@ -934,6 +948,13 @@ func (s *server) makeInstanceStateResponse(ctx context.Context, instance storage
 		RuntimeDiagnostic:      runtimeDiagnostic,
 		InstallationDiagnostic: installationDiagnostic,
 	}
+}
+
+func visibleInviteCode(instance storage.Instance, steamInviteEnabled bool) string {
+	if !steamInviteEnabled || instance.State != storage.InstanceStateRunning {
+		return ""
+	}
+	return inviteCodeFromDriverPayload(instance.DriverPayload)
 }
 
 func inviteCodeFromDriverPayload(payload string) string {
@@ -950,6 +971,9 @@ func inviteCodeFromDriverPayload(payload string) string {
 
 func (s *server) probeSteamAuthReady(ctx context.Context, instance storage.Instance) bool {
 	if instance.DriverID != "stardew_junimo" {
+		return false
+	}
+	if !sjconfig.SteamInviteEnabled(instance.DataDir) {
 		return false
 	}
 	execDocker, ok := s.docker.(composeExecPipeDocker)

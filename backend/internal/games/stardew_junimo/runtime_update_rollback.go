@@ -20,9 +20,13 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	status.Phase, status.Progress, status.ErrorCode, status.Error = RuntimeUpdateApplyRollingBack, 90, causeCode, paneldocker.RedactString(causeMessage)
 	status.CauseCode, status.CauseError = causeCode, paneldocker.RedactString(causeMessage)
 	status.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: status.UpdatedAt, Level: "warning", Message: "升级验收失败，正在成对回滚 server 与 steam-auth-cn。"})
+	rollbackMessage := "升级验收失败，正在回滚 JunimoServer；可选 Auth 未启用且不在事务范围内。"
+	if runtimeUpdateUsesSteamAuth(manifest) {
+		rollbackMessage = "升级验收失败，正在成对回滚 server 与 steam-auth-cn。"
+	}
+	status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: status.UpdatedAt, Level: "warning", Message: rollbackMessage})
 	_ = writeRuntimeUpdateApplyStatus(instance.DataDir, *status)
-	_, _ = job.Warn(ctx, "升级验收失败，正在成对回滚 server 与 steam-auth-cn。")
+	_, _ = job.Warn(ctx, rollbackMessage)
 
 	rollbackErr := d.performRuntimeUpdateRollback(ctx, job, docker, instance, manifest)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -44,11 +48,11 @@ func (d *Driver) rollbackRuntimeUpdate(ctx context.Context, job *jobs.Context, d
 	if manifest.KeepServerStopped {
 		status.ServerRunning = false
 		status.ManualAction = "恢复已安全收敛；请确认状态后在面板中手动启动游戏服务器。"
-		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，原 server/auth 静态配置与认证卷已恢复；游戏保持关闭，运行验收延后到手动启动。"})
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，原运行配置已恢复；游戏保持关闭，运行验收延后到手动启动。"})
 	} else {
 		status.ManualAction = ""
 		status.ServerRunning = manifest.ServerWasRunning
-		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，但原 server/auth 版本对、认证卷与运行状态已恢复。"})
+		status.Logs = append(status.Logs, RuntimeUpdateDryRunLog{At: now, Level: "warning", Message: "升级失败，但原运行组件配置与运行状态已恢复。"})
 	}
 	if err := writeRuntimeUpdateApplyStatus(instance.DataDir, *status); err != nil {
 		return fmt.Errorf("persist successful rollback status: %w", err)
@@ -129,7 +133,11 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 				return fmt.Errorf("restore steam session: %w", err)
 			}
 		}
-		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+		services := []string{"server"}
+		if runtimeUpdateUsesSteamAuth(manifest) {
+			services = append(services, "steam-auth")
+		}
+		if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, services...); err != nil {
 			return fmt.Errorf("restore stopped state: %w", err)
 		}
 		d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件恢复已收敛，请手动启动服务器", "stopped", job.ID)
@@ -174,10 +182,18 @@ func (d *Driver) performRuntimeUpdateRollback(ctx context.Context, job *jobs.Con
 		return err
 	}
 	if manifest.ServerWasRunning {
-		d.updatePhase(ctx, instance.ID, storage.InstanceStateRunning, "运行组件升级失败，已回滚并恢复运行", "running", job.ID)
+		if runtimeUpdateUsesSteamAuth(manifest) {
+			d.updatePhaseWithSteamInviteWarmup(ctx, instance.ID, storage.InstanceStateRunning, "运行组件升级失败，已回滚并恢复运行", "running", job.ID)
+		} else {
+			d.updatePhase(ctx, instance.ID, storage.InstanceStateRunning, "运行组件升级失败，已回滚并恢复运行", "running", job.ID)
+		}
 		return nil
 	}
-	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, "server", "steam-auth"); err != nil {
+	services := []string{"server"}
+	if runtimeUpdateUsesSteamAuth(manifest) {
+		services = append(services, "steam-auth")
+	}
+	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, manifest.Project, services...); err != nil {
 		return fmt.Errorf("restore stopped state: %w", err)
 	}
 	d.updatePhase(ctx, instance.ID, storage.InstanceStateStopped, "运行组件升级失败，已回滚并恢复停止", "stopped", job.ID)
@@ -248,13 +264,17 @@ func (d *Driver) stopRuntimeServicesWithRetry(ctx context.Context, docker Runtim
 
 func pinRuntimeRollbackImages(dataDir string, manifest runtimeUpdateRecoveryManifest) error {
 	envPath := filepath.Join(dataDir, ".env")
-	if !runtimeImageDigestPattern.MatchString(manifest.OriginalServer.ImageID) || !runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.ImageID) {
+	if !runtimeImageDigestPattern.MatchString(manifest.OriginalServer.ImageID) {
 		return errors.New("original runtime image IDs are invalid")
 	}
-	return sjconfig.UpdateEnvFile(envPath, map[string]string{
-		"SERVER_IMAGE":        manifest.OriginalServer.ImageID,
-		"STEAM_SERVICE_IMAGE": manifest.OriginalAuth.ImageID,
-	})
+	updates := map[string]string{"SERVER_IMAGE": manifest.OriginalServer.ImageID}
+	if runtimeUpdateUsesSteamAuth(manifest) {
+		if !runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.ImageID) {
+			return errors.New("original auth image ID is invalid")
+		}
+		updates["STEAM_SERVICE_IMAGE"] = manifest.OriginalAuth.ImageID
+	}
+	return sjconfig.UpdateEnvFile(envPath, updates)
 }
 
 func (d *Driver) verifyRuntimeOriginalServer(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, manifest runtimeUpdateRecoveryManifest) error {

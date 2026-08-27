@@ -15,6 +15,10 @@ var errStardewMutationResponseWritten = errors.New("stardew mutation response al
 // guard to one stable HTTP conflict without teaching Web how owner files work.
 // Stardew remains the sole authority for whether an owner is valid/unfinished.
 func writeStardewMutationGuardConflict(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, sj.ErrSteamInviteCleanupPending) {
+		writeError(w, http.StatusConflict, "steam_invite_cleanup_pending", "Steam 授权 holder 尚未安全收敛，请检查 Docker 状态后重试。")
+		return true
+	}
 	var ownerErr *sj.NewGameOwnerError
 	if !errors.As(err, &ownerErr) {
 		return false

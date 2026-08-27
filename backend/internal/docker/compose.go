@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -13,7 +14,13 @@ import (
 	"time"
 )
 
-var serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+var (
+	serviceNamePattern                     = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	steamInviteOneShotContainerNamePattern = regexp.MustCompile(`^anxi-steam-auth-[0-9a-f]{12,32}$`)
+	dockerContainerIDPattern               = regexp.MustCompile(`^[0-9a-f]{12,64}$`)
+)
+
+var ErrUnsafeSteamInviteSessionHolder = errors.New("Steam invite session volume has an unknown container holder")
 
 func (c *Client) DockerVersion(ctx context.Context, workDir string) (CommandResult, error) {
 	return c.run(ctx, "docker version", workDir, c.timeouts.Version, "version")
@@ -73,6 +80,118 @@ func (c *Client) RemoveContainersByVolume(ctx context.Context, workDir string, n
 		lastResult = CommandResult{WorkDir: workDir, ExitCode: 0}
 	}
 	return lastResult, nil
+}
+
+// RemoveSteamInviteAuthSessionHolders removes holders of one legacy optional
+// Steam Auth session volume only after every current holder has been proven to
+// be either the Compose steam-auth service for the exact project or an exact
+// Panel-created one-shot Auth container. Validation is completed for the full
+// holder set before the single remove command; an unknown holder therefore
+// leaves every container and the volume untouched.
+func (c *Client) RemoveSteamInviteAuthSessionHolders(ctx context.Context, workDir, project, volume string) (CommandResult, error) {
+	if !composeProjectPattern.MatchString(project) || !dockerVolumePattern.MatchString(volume) || volume != project+"_steam-session" {
+		return CommandResult{WorkDir: workDir, ExitCode: -1}, errors.New("invalid Steam invite session cleanup target")
+	}
+	listResult, rawIDs, err := c.runWithEnvironmentRaw(ctx, "list Steam invite session holders", workDir, c.timeouts.Ps, nil,
+		"container", "ls", "--all", "--quiet", "--no-trunc", "--filter", "volume="+volume)
+	if err != nil {
+		return listResult, err
+	}
+	ids := strings.Fields(rawIDs)
+	if len(ids) == 0 {
+		return listResult, nil
+	}
+	for _, id := range ids {
+		if !dockerContainerIDPattern.MatchString(id) {
+			return CommandResult{WorkDir: workDir, ExitCode: -1}, errors.New("invalid Docker container ID in Steam invite session holder list")
+		}
+	}
+	inspectArgs := append([]string{"container", "inspect"}, ids...)
+	inspectResult, rawInspect, err := c.runWithEnvironmentRaw(ctx, "inspect Steam invite session holders", workDir, c.timeouts.Ps, nil, inspectArgs...)
+	if err != nil {
+		return inspectResult, err
+	}
+	if err := validateSteamInviteAuthSessionHolders(rawInspect, project, volume, ids); err != nil {
+		// Do not return raw inspect output: Config.Env may contain Steam secrets.
+		return CommandResult{WorkDir: workDir, Args: inspectResult.Args, ExitCode: -1}, err
+	}
+	removeArgs := append([]string{"container", "rm", "--force"}, ids...)
+	return c.run(ctx, "remove Steam invite Auth session holders", workDir, c.timeouts.Version, removeArgs...)
+}
+
+type steamInviteSessionHolderInspect struct {
+	ID     string `json:"Id"`
+	Name   string `json:"Name"`
+	Config struct {
+		Cmd       []string          `json:"Cmd"`
+		Labels    map[string]string `json:"Labels"`
+		OpenStdin bool              `json:"OpenStdin"`
+		Tty       bool              `json:"Tty"`
+	} `json:"Config"`
+	Mounts []struct {
+		Type        string `json:"Type"`
+		Name        string `json:"Name"`
+		Destination string `json:"Destination"`
+	} `json:"Mounts"`
+}
+
+func validateSteamInviteAuthSessionHolders(raw, project, volume string, requestedIDs []string) error {
+	var holders []steamInviteSessionHolderInspect
+	if err := json.Unmarshal([]byte(raw), &holders); err != nil || len(holders) != len(requestedIDs) {
+		return errors.New("invalid Docker inspect response for Steam invite session holders")
+	}
+	requested := make(map[string]bool, len(requestedIDs))
+	for _, id := range requestedIDs {
+		requested[id] = false
+	}
+	for index, holder := range holders {
+		matchedID := ""
+		for id := range requested {
+			if strings.HasPrefix(holder.ID, id) {
+				if matchedID != "" {
+					return errors.New("ambiguous Docker inspect response for Steam invite session holders")
+				}
+				matchedID = id
+			}
+		}
+		if matchedID == "" || requested[matchedID] {
+			return errors.New("Docker inspect response did not match the Steam invite session holder list")
+		}
+		requested[matchedID] = true
+
+		hasExactVolume := false
+		hasOneShotDestination := false
+		for _, mount := range holder.Mounts {
+			if mount.Type == "volume" && mount.Name == volume {
+				hasExactVolume = true
+				if mount.Destination == "/data/steam-session" {
+					hasOneShotDestination = true
+				}
+			}
+		}
+		labels := holder.Config.Labels
+		composeAuth := hasExactVolume && labels["com.docker.compose.project"] == project && labels["com.docker.compose.service"] == "steam-auth"
+		name := strings.TrimPrefix(strings.TrimSpace(holder.Name), "/")
+		oneShotAuth := hasExactVolume && hasOneShotDestination && labels["com.docker.compose.project"] == "" && labels["com.docker.compose.service"] == "" &&
+			labels[steamInviteOneShotOwnerLabel] == steamInviteOneShotOwnerValue && labels[steamInviteOneShotProjectLabel] == project &&
+			steamInviteOneShotContainerNamePattern.MatchString(name) && holder.Config.OpenStdin && holder.Config.Tty && steamInviteOneShotCommand(holder.Config.Cmd)
+		if !composeAuth && !oneShotAuth {
+			return fmt.Errorf("%w at holder %d", ErrUnsafeSteamInviteSessionHolder, index+1)
+		}
+	}
+	return nil
+}
+
+func steamInviteOneShotCommand(command []string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(command[0])) {
+	case "download", "setup", "login", "serve":
+		return true
+	default:
+		return false
+	}
 }
 
 func isMissingVolumeRemove(result CommandResult, err error) bool {
@@ -211,7 +330,13 @@ func (c *Client) ComposeRestartServices(ctx context.Context, dir string, service
 		args = append(args, service)
 	}
 	c.invalidateComposePs(dir)
-	result, err := c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, args...)
+	var result CommandResult
+	var err error
+	if len(services) == 1 && services[0] == "server" {
+		result, err = c.runWithEnvironmentRedacted(ctx, "docker compose restart server", dir, c.timeouts.Restart, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	} else {
+		result, err = c.run(ctx, "docker compose restart", dir, c.timeouts.Restart, args...)
+	}
 	c.invalidateComposePs(dir)
 	return result, err
 }
@@ -233,7 +358,13 @@ func (c *Client) ComposeRecreateServices(ctx context.Context, dir string, servic
 		args = append(args, service)
 	}
 	c.invalidateComposePs(dir)
-	result, err := c.run(ctx, "docker compose up --force-recreate", dir, c.timeouts.Restart, args...)
+	var result CommandResult
+	var err error
+	if len(services) == 1 && services[0] == "server" {
+		result, err = c.runWithEnvironmentRedacted(ctx, "docker compose up --force-recreate server", dir, c.timeouts.Restart, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	} else {
+		result, err = c.run(ctx, "docker compose up --force-recreate", dir, c.timeouts.Restart, args...)
+	}
 	c.invalidateComposePs(dir)
 	return result, err
 }
@@ -258,6 +389,9 @@ func (c *Client) ComposeExecPipe(ctx context.Context, dir, service, stdinData st
 
 	cmd := exec.CommandContext(commandCtx, c.dockerPath, execArgs...)
 	cmd.Dir = dir
+	if service == "server" {
+		cmd.Env = append(os.Environ(), "STEAM_SERVICE_IMAGE="+disabledSteamAuthImage)
+	}
 	if stdinData != "" {
 		cmd.Stdin = strings.NewReader(stdinData)
 	}
@@ -307,6 +441,9 @@ func (c *Client) ComposeLogs(ctx context.Context, dir string, opts LogsOptions) 
 			return CommandResult{WorkDir: dir, ExitCode: -1}, ErrInvalidService
 		}
 		args = append(args, opts.Service)
+	}
+	if opts.Service == "server" {
+		return c.runWithEnvironmentRedacted(ctx, "docker compose logs server", dir, c.timeouts.Logs, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
 	}
 	return c.run(ctx, "docker compose logs", dir, c.timeouts.Logs, args...)
 }

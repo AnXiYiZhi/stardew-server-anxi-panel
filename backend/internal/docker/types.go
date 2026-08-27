@@ -14,6 +14,8 @@ const (
 	DefaultLogTail        = 100
 	MaxLogTail            = 1000
 	DefaultComposePsTTL   = 1500 * time.Millisecond
+	DefaultPsTimeout      = 15 * time.Second
+	DefaultDownTimeout    = 2 * time.Minute
 )
 
 var (
@@ -163,7 +165,7 @@ func withDefaultTimeouts(timeouts Timeouts) Timeouts {
 		timeouts.Version = 10 * time.Second
 	}
 	if timeouts.Ps <= 0 {
-		timeouts.Ps = 15 * time.Second
+		timeouts.Ps = DefaultPsTimeout
 	}
 	if timeouts.Logs <= 0 {
 		timeouts.Logs = 20 * time.Second
@@ -178,7 +180,7 @@ func withDefaultTimeouts(timeouts Timeouts) Timeouts {
 		timeouts.Up = 2 * time.Minute
 	}
 	if timeouts.Down <= 0 {
-		timeouts.Down = 2 * time.Minute
+		timeouts.Down = DefaultDownTimeout
 	}
 	if timeouts.Restart <= 0 {
 		timeouts.Restart = 2 * time.Minute

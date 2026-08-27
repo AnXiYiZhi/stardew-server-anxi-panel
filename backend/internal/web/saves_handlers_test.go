@@ -708,7 +708,7 @@ func TestNewGameHandlerPassesNormalizedJobPayload(t *testing.T) {
 		t.Fatal("normalized config not passed to lifecycle job")
 	}
 	cfg := *capture.request.NewGameConfig
-	if cfg.FarmType != "standard" || cfg.CabinLayout != "nearby" || cfg.CabinMode != "recommended" || cfg.MaxPlayers != 10 {
+	if cfg.FarmType != "standard" || cfg.CabinLayout != "nearby" || cfg.CabinMode != "vanilla" || cfg.MaxPlayers != 10 {
 		t.Fatalf("payload was not normalized: %#v", cfg)
 	}
 	if capture.request.RequestID != "new-game-normalized-payload" {

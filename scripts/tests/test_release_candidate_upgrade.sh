@@ -60,6 +60,18 @@ for command_name in docker curl grep jq openssl sha256sum sort sqlite3 zip; do
   fi
 done
 docker info >/dev/null
+if [[ "${ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER:-}" != 1 ]]; then
+  echo "candidate upgrade E2E: refusing to run outside the task-owned isolated Docker daemon" >&2
+  exit 1
+fi
+if [[ ! -f /.dockerenv ]] || ! tr '\0' ' ' </proc/1/cmdline | grep -Eq '(^|[ /])(dockerd|dockerd-entrypoint\.sh)( |$)'; then
+  echo "candidate upgrade E2E: isolated Docker runtime proof is missing" >&2
+  exit 1
+fi
+if [[ -n "$(docker ps --all --quiet)" || -n "$(docker image ls --quiet)" || -n "$(docker volume ls --quiet)" || -n "$(docker network ls --filter type=custom --quiet)" ]]; then
+  echo "candidate upgrade E2E: isolated Docker daemon is not empty before fixture loading" >&2
+  exit 1
+fi
 
 suffix="$(date +%s)-$$"
 owner="anxi-release-candidate-$suffix"
@@ -78,13 +90,46 @@ game_container="$project-game"
 network="$project-network"
 registry_container="$project-registry"
 release_container="$project-releases"
+session_seed_container="$project-steam-session-seed"
+unknown_session_holder_container="$project-unknown-steam-session-holder"
 target_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$version"
 previous_ref="ghcr.io/anxiyizhi/stardew-server-anxi-panel:$previous_version"
+previous_fixture_ref="$project/previous-fixture:$previous_version"
+steam_session_volume="stardew_steam-session"
+candidate_runtime_manifest="/workspace/backend/internal/games/stardew_junimo/config/runtime_stack_manifest.json"
+legacy_expected_migrated_compose="$root/legacy-disabled-migrated-compose.yml"
+legacy_auth_image_snapshot_before="$root/legacy-disabled-auth-images.before"
+legacy_server_container_id=""
+legacy_server_started_at=""
+legacy_dependency_container_id=""
+legacy_auth_container_id=""
+legacy_auth_image_ref=""
+legacy_auth_image_id=""
+legacy_disabled_session_hash=""
+unknown_session_holder_id=""
+authorized_session_hash=""
+authorized_auth_container_id=""
 panel_port=18080
 compose_ready=0
 
+remove_owned_session_volume() {
+  local labels=""
+
+  if ! docker volume inspect "$steam_session_volume" >/dev/null 2>&1; then
+    return 0
+  fi
+  labels="$(docker volume inspect "$steam_session_volume" | jq -c '.[0].Labels // {}')"
+  if [[ "$(jq -r --arg owner "$owner" '."com.anxi-panel.test-owner" == $owner' <<<"$labels")" != true ]]; then
+    echo "candidate upgrade E2E: refusing to remove unowned Steam session volume $steam_session_volume" >&2
+    return 1
+  fi
+  docker volume rm "$steam_session_volume" >/dev/null
+}
+
 cleanup() {
   local cleanup_status=$?
+  local cleanup_failed=0
+  local remaining=""
   set +e
   if [[ -f "$data_dir/instances/stardew/docker-compose.yml" ]]; then
     docker compose --project-name stardew --project-directory "$data_dir/instances/stardew" -f "$data_dir/instances/stardew/docker-compose.yml" down --volumes --remove-orphans >/dev/null 2>&1
@@ -92,10 +137,21 @@ cleanup() {
   if ((compose_ready == 1)); then
     docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" down --volumes --remove-orphans >/dev/null 2>&1
   fi
-  docker rm -f "$release_container" "$registry_container" >/dev/null 2>&1
+  docker rm -f "$unknown_session_holder_container" "$session_seed_container" "$release_container" "$registry_container" >/dev/null 2>&1
+  remove_owned_session_volume >/dev/null 2>&1 || cleanup_failed=1
   docker network rm "$network" >/dev/null 2>&1
   if [[ "$root" == /tmp/anxi-release-candidate-* && -d "$root" ]]; then
-    rm -rf -- "$root"
+    rm -rf -- "$root" || cleanup_failed=1
+  fi
+  remaining="$(docker ps --all --quiet --filter "label=com.anxi-panel.test-owner=$owner")$(docker ps --all --quiet --filter "label=com.docker.compose.project=$project")$(docker ps --all --quiet --filter 'label=com.docker.compose.project=stardew')"
+  remaining+="$(docker volume ls --quiet --filter "label=com.anxi-panel.test-owner=$owner")$(docker volume ls --quiet --filter "label=com.docker.compose.project=$project")$(docker volume ls --quiet --filter 'label=com.docker.compose.project=stardew')"
+  remaining+="$(docker network ls --quiet --filter "label=com.anxi-panel.test-owner=$owner")$(docker network ls --quiet --filter "label=com.docker.compose.project=$project")$(docker network ls --quiet --filter 'label=com.docker.compose.project=stardew')"
+  if [[ -n "$remaining" ]] || docker network inspect "$network" >/dev/null 2>&1; then
+    echo "candidate upgrade E2E: task-owned Docker resources remained after cleanup" >&2
+    cleanup_failed=1
+  fi
+  if ((cleanup_status == 0 && cleanup_failed == 1)); then
+    cleanup_status=1
   fi
   exit "$cleanup_status"
 }
@@ -109,6 +165,7 @@ docker load -i "$candidate_tar" >/dev/null
 docker load -i "$fixtures_tar" >/dev/null
 docker image inspect "$candidate_image" >/dev/null
 docker image inspect "$previous_ref" registry:2 nginx:alpine alpine:3.20 >/dev/null
+docker tag "$previous_ref" "$previous_fixture_ref"
 
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 -sha256 -subj "/CN=Anxi Release Candidate Test CA" -keyout "$tls_dir/ca.key" -out "$tls_dir/ca.crt" >/dev/null 2>&1
 
@@ -375,23 +432,69 @@ assert_upgraded_mod_update_check() {
   echo "candidate upgrade E2E: upgraded Mod update API returned and cached the controlled suggestion"
 }
 
-assert_upgraded_empty_compose_save_import_submission() {
+compose_project_is_strictly_stopped() {
+  local project="$1"
+  local project_container_count=""
+  local server_container_count=""
+  local running_container_count=""
+  local server_container_id=""
+  local server_state=""
+  local project_network_count=""
+  local project_network_name=""
+
+  project_container_count="$(docker ps -a --filter "label=com.docker.compose.project=$project" --format '{{.ID}}' | wc -l | tr -d '[:space:]')" || return 2
+  server_container_count="$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=server' --format '{{.ID}}' | wc -l | tr -d '[:space:]')" || return 2
+  running_container_count="$(docker ps --filter "label=com.docker.compose.project=$project" --format '{{.ID}}' | wc -l | tr -d '[:space:]')" || return 2
+  project_network_count="$(docker network ls --filter "label=com.docker.compose.project=$project" --format '{{.Name}}' | wc -l | tr -d '[:space:]')" || return 2
+
+  # Runtime Stop is intentionally scoped and non-destructive: it may leave one
+  # exited server container and the default project network in place. It must
+  # not leave any running service, materialize steam-auth, or retain an orphan.
+  if [[ "$running_container_count" != 0 || "$project_container_count" != "$server_container_count" ]] ||
+    ((server_container_count > 1 || project_network_count > 1)); then
+    return 1
+  fi
+  if [[ "$server_container_count" == 1 ]]; then
+    server_container_id="$(docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')" || return 2
+    server_state="$(docker inspect "$server_container_id" | jq -r '.[0].State.Status // empty' | tr '[:upper:]' '[:lower:]')" || return 2
+    if [[ "$server_state" != exited && "$server_state" != dead ]]; then
+      return 1
+    fi
+  fi
+  if [[ "$project_network_count" == 1 ]]; then
+    project_network_name="$(docker network ls --filter "label=com.docker.compose.project=$project" --format '{{.Name}}')" || return 2
+    if [[ "$project_network_name" != "${project}_default" ]]; then
+      return 1
+    fi
+  fi
+  return 0
+}
+
+assert_upgraded_stopped_compose_save_import_submission() {
   local instance_dir="$data_dir/instances/stardew"
   local instance_compose="$instance_dir/docker-compose.yml"
-  local import_project="$project-save-import"
+  # Product lifecycle operations derive the project from the instance data-dir
+  # basename, so this fixture must use the real project instead of a top-level
+  # Compose name that Panel intentionally ignores.
+  local import_project="stardew"
   local fixture_root="$root/save-import-fixture"
   local save_zip="$root/Imported_123.zip"
   local commit_body="$root/save-import-commit.json"
   local stop_code=""
   local instance_state=""
   local compose_ps_output=""
+  local server_container_count=""
+  local running_server_count=""
+  local compose_server_count=""
+  local compose_server_state=""
   local preview_code=""
   local upload_token=""
   local commit_code=""
   local import_job_id=""
   local import_operation_id=""
   local job_status=""
-  local cleaned=0
+  local stopped_restored=0
+  local stopped_probe_status=0
   local existing_save_sha=""
   local existing_info_sha=""
   local active_job_count=""
@@ -403,7 +506,16 @@ assert_upgraded_empty_compose_save_import_submission() {
   local retry_cancel_code=""
   local preimport_backup_count=""
 
-  echo "candidate upgrade E2E: testing Panel Stop empty Compose save-import submission"
+  echo "candidate upgrade E2E: testing Panel Stop with an exited server before save-import submission"
+  # The legacy-repair evidence is complete. Remove only this isolated DinD
+  # project before replacing its Compose definition with the save-import
+  # runtime; the separately named non-target game fixture remains untouched.
+  docker compose --project-name "$import_project" --project-directory "$instance_dir" -f "$instance_compose" down --remove-orphans >/dev/null
+  if [[ -n "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ||
+    -n "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+    echo "candidate upgrade E2E: legacy stardew fixture resources remained before stopped-server import tests" >&2
+    exit 1
+  fi
   mkdir -p "$instance_dir/.local-container/mods/JunimoServer"
   mkdir -p "$instance_dir/.local-container/saves/Saves/Existing_1"
   mkdir -p "$instance_dir/.local-container/saves/.smapi/mod-data/junimohost.server"
@@ -432,27 +544,31 @@ assert_upgraded_empty_compose_save_import_submission() {
   for _ in $(seq 1 60); do
     if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" >"$response_file" 2>/dev/null; then
       instance_state="$(jq -r '.state // empty' "$response_file")"
+      server_container_count="$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --filter 'label=com.docker.compose.service=server' --format '{{.ID}}' | wc -l | tr -d '[:space:]')"
+      running_server_count="$(docker ps --filter "label=com.docker.compose.project=$import_project" --filter 'label=com.docker.compose.service=server' --format '{{.ID}}' | wc -l | tr -d '[:space:]')"
       if [[ "$instance_state" == stopped ]] &&
-        [[ -z "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+        [[ "$server_container_count" == 1 && "$running_server_count" == 0 ]]; then
         break
       fi
     fi
     sleep 1
   done
   if [[ "$instance_state" != stopped ]] ||
-    [[ -n "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
-    echo "candidate upgrade E2E: Panel Stop did not reach stopped with zero project containers" >&2
+    [[ "$server_container_count" != 1 || "$running_server_count" != 0 ]]; then
+    echo "candidate upgrade E2E: Panel Stop did not leave exactly one exited server container" >&2
     exit 1
   fi
   compose_ps_output="$(docker exec --workdir /data/instances/stardew "$panel_container" docker compose ps --all --format json)"
-  if [[ -n "$(printf '%s' "$compose_ps_output" | tr -d '[:space:]')" ]]; then
-    echo "candidate upgrade E2E: compose ps after Panel Stop was not empty" >&2
+  compose_server_count="$(printf '%s' "$compose_ps_output" | jq -r 'if type == "array" then [.[] | select((.Service // "") == "server")] | length elif (.Service // "") == "server" then 1 else 0 end')"
+  compose_server_state="$(printf '%s' "$compose_ps_output" | jq -r 'if type == "array" then ([.[] | select((.Service // "") == "server")][0].State // "") elif (.Service // "") == "server" then (.State // "") else "" end' | tr '[:upper:]' '[:lower:]')"
+  if [[ "$compose_server_count" != 1 || ("$compose_server_state" != exited && "$compose_server_state" != dead) ]]; then
+    echo "candidate upgrade E2E: compose ps after Panel Stop did not prove one exited server" >&2
     printf '%s\n' "$compose_ps_output" >&2
     exit 1
   fi
 
   # Make the asynchronous maintenance ComposeUp fail immediately after the
-  # submission has crossed the empty strict-Compose gate. The source is
+  # submission has crossed the stopped-server strict-Compose gate. The source is
   # deliberately absent and Compose is forbidden from creating it, so this
   # exercises deterministic failure cleanup without shortening product health
   # budgets or waiting for a deliberately exited server to time out.
@@ -489,7 +605,7 @@ EOF
   import_job_id="$(jq -r '.jobId // empty' "$response_file")"
   import_operation_id="$(jq -r '.operationId // empty' "$response_file")"
   if [[ "$commit_code" != 202 || -z "$import_job_id" || -z "$import_operation_id" || "$(jq -r '.saveName // empty' "$response_file")" != Imported_123 ]]; then
-    echo "candidate upgrade E2E: empty Compose save import was not accepted with HTTP 202/jobId" >&2
+    echo "candidate upgrade E2E: stopped-server save import was not accepted with HTTP 202/jobId" >&2
     cat "$response_file" >&2
     exit 1
   fi
@@ -510,16 +626,24 @@ EOF
   fi
   for _ in $(seq 1 60); do
     instance_state="$(curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew" | jq -r '.state // empty')"
-    if [[ "$instance_state" == stopped ]] &&
-      [[ -z "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]] &&
-      [[ -z "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
-      cleaned=1
-      break
+    if [[ "$instance_state" == stopped ]]; then
+      if compose_project_is_strictly_stopped "$import_project"; then
+        stopped_restored=1
+        break
+      else
+        stopped_probe_status=$?
+        if ((stopped_probe_status > 1)); then
+          echo "candidate upgrade E2E: Docker probe failed while checking controlled save-import stopped state" >&2
+          exit 1
+        fi
+      fi
     fi
     sleep 1
   done
-  if ((cleaned != 1)); then
-    echo "candidate upgrade E2E: controlled save-import fixture did not restore stopped state and clean Docker resources" >&2
+  if ((stopped_restored != 1)); then
+    echo "candidate upgrade E2E: controlled save-import fixture did not restore stopped state with only an optional exited server/default network" >&2
+    docker ps -a --filter "label=com.docker.compose.project=$import_project" --format 'container={{.Names}} service={{.Label "com.docker.compose.service"}} state={{.State}}' >&2
+    docker network ls --filter "label=com.docker.compose.project=$import_project" --format 'network={{.Name}}' >&2
     exit 1
   fi
 
@@ -613,15 +737,16 @@ assert_upgraded_save_import_phase_a_boundaries() {
   local case_journal=""
   local case_status=""
   local case_code=""
+  local case_instance_snapshot=""
+  local case_current_snapshot=""
   local select_code=""
   local preimport_count=""
   local raw_platform_id="76561190000000456"
 
   echo "candidate upgrade E2E: testing exact target visibility and FIFO no-effect recovery"
-  # The preceding legacy-repair fixture intentionally leaves its exact stopped
-  # stardew containers in place long enough to prove preservation. Its evidence
-  # is complete now; clear only that isolated DinD project before replacing the
-  # instance Compose definition with the import runtime.
+  # The preceding controlled maintenance failure should already have stopped
+  # its runtime. Defensively remove only that isolated DinD project before
+  # replacing the instance Compose definition with the Phase A runtime.
   docker compose --project-name "$import_project" --project-directory "$instance_dir" -f "$instance_compose" down --remove-orphans >/dev/null
   if [[ -n "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ||
     -n "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
@@ -724,6 +849,10 @@ services:
 EOF
   }
 
+  read_phase_a_instance_snapshot() {
+    sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "SELECT hex(CAST(state AS BLOB)) || '|' || CASE WHEN state_message IS NULL THEN 'NULL' ELSE hex(CAST(state_message AS BLOB)) END || '|' || CASE WHEN driver_phase IS NULL THEN 'NULL' ELSE hex(CAST(driver_phase AS BLOB)) END || '|' || CASE WHEN driver_payload IS NULL THEN 'NULL' ELSE hex(CAST(driver_payload AS BLOB)) END FROM instances WHERE id='stardew';"
+  }
+
   submit_phase_a_case() {
     local name="$1"
     local zip_path="$2"
@@ -741,6 +870,11 @@ EOF
     else
       jq -n --arg token "$case_token" --arg platform "$raw_platform_id" '{token:$token,hostHandling:{mode:"swap_to_player",platformId:$platform}}' >"$root/save-import-phase-a-commit.json"
     fi
+    case_instance_snapshot="$(read_phase_a_instance_snapshot)"
+    if [[ -z "$case_instance_snapshot" ]]; then
+      echo "candidate upgrade E2E: $mode could not capture the exact pre-maintenance instance snapshot" >&2
+      exit 1
+    fi
     case_code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data-binary "@$root/save-import-phase-a-commit.json" "http://127.0.0.1:$panel_port/api/instances/stardew/saves/upload-commit-and-start")"
     case_job="$(jq -r '.jobId // empty' "$response_file")"
     case_operation="$(jq -r '.operationId // empty' "$response_file")"
@@ -753,14 +887,12 @@ EOF
 
   wait_phase_a_case_failed() {
     local mode="$1"
-    local terminal_wait_seconds=150
-    if [[ "$mode" == invisible ]]; then
-      # The product intentionally gives a newly starting Junimo runtime up to
-      # five minutes to make the exact staged target visible before failing
-      # closed. Observe that full contract plus rollback overhead; do not turn
-      # a still-running readiness probe into a false terminal success.
-      terminal_wait_seconds=420
-    fi
+    # Bound the full legal path, not just the expected fast fixture path:
+    # Compose Up 120s + readiness 300s + pre-submit/API/log probes and FIFO
+    # up to about 90s + observation/log capture 35s + scoped stop/final proof
+    # up to 180s, with scheduler and local staging margin.
+    local terminal_wait_seconds=780
+    local stopped_probe_status=0
     case_status=""
     for _ in $(seq 1 "$terminal_wait_seconds"); do
       if curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/jobs/$case_job" >"$response_file" 2>/dev/null; then
@@ -782,14 +914,28 @@ EOF
       exit 1
     fi
     for _ in $(seq 1 60); do
-      if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "SELECT state FROM instances WHERE id='stardew';")" == stopped ]] &&
-        [[ -z "$(docker ps -a --filter "label=com.docker.compose.project=$import_project" --quiet)" ]] &&
-        [[ -z "$(docker network ls --filter "label=com.docker.compose.project=$import_project" --quiet)" ]]; then
+      if compose_project_is_strictly_stopped "$import_project"; then
+        case_current_snapshot="$(read_phase_a_instance_snapshot)"
+        if [[ "$case_current_snapshot" != "$case_instance_snapshot" ||
+          "$(jq -r '.maintenanceStarted' "$case_journal")" != false ||
+          "$(jq -r '.maintenanceRecoveryState // empty' "$case_journal")" != snapshot_restored ]]; then
+          echo "candidate upgrade E2E: $mode reached a terminal job without exact instance and journal snapshot restoration" >&2
+          jq '{maintenanceStarted,maintenanceRecoveryState,lastErrorCode,lastError,phaseAFifoWriteAttempted,upstreamSubmitted,upstreamConfirmed}' "$case_journal" >&2
+          exit 1
+        fi
         return
+      else
+        stopped_probe_status=$?
+        if ((stopped_probe_status > 1)); then
+          echo "candidate upgrade E2E: Docker probe failed while checking $mode stopped state" >&2
+          exit 1
+        fi
       fi
       sleep 1
     done
-    echo "candidate upgrade E2E: $mode case did not restore stopped state and remove Compose resources" >&2
+    echo "candidate upgrade E2E: $mode case did not restore its exact instance snapshot with only an optional exited server/default network" >&2
+    docker ps -a --filter "label=com.docker.compose.project=$import_project" --format 'container={{.Names}} service={{.Label "com.docker.compose.service"}} state={{.State}}' >&2
+    docker network ls --filter "label=com.docker.compose.project=$import_project" --format 'network={{.Name}}' >&2
     exit 1
   }
 
@@ -900,6 +1046,7 @@ assert_upgraded_legacy_junimo_repair() {
   local original_compose_sha=""
   local original_control_manifest_sha=""
   local original_control_dll_sha=""
+  local server_container_id=""
   local auth_container_id=""
   local repair_code=""
   local repair_job_id=""
@@ -954,6 +1101,9 @@ SERVER_IMAGE=$server_ref
 SERVER_IMAGE_CANDIDATES=$server_candidates
 STEAM_SERVICE_IMAGE=$auth_ref
 STEAM_SERVICE_IMAGE_CANDIDATES=$auth_candidates
+STEAM_INVITE_ENABLED=true
+STEAM_INVITE_AUTH_STATE=ready
+STEAM_AUTH_COMPLETED=true
 INSTANCE_HOST_DATA_DIR=$instance_dir
 EOF
   chmod 600 "$instance_dir/.env"
@@ -988,9 +1138,10 @@ EOF
 
   docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" up -d server steam-auth >/dev/null
   docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" stop server steam-auth >/dev/null
+  server_container_id="$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --all --format json server | jq -r 'if type == "array" then .[0].ID else .ID end')"
   auth_container_id="$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --all --format json steam-auth | jq -r 'if type == "array" then .[0].ID else .ID end')"
-  if [[ -z "$auth_container_id" || "$auth_container_id" == null ]]; then
-    echo "candidate upgrade E2E: failed to create the preserved steam-auth fixture" >&2
+  if [[ -z "$server_container_id" || "$server_container_id" == null || -z "$auth_container_id" || "$auth_container_id" == null ]]; then
+    echo "candidate upgrade E2E: failed to create the stopped server + preserved steam-auth fixture" >&2
     exit 1
   fi
   if [[ "$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "UPDATE instances SET state='stopped', state_message='legacy runtime repair fixture', driver_phase='stopped', driver_payload='{}' WHERE id='stardew'; SELECT changes();")" != 1 ]]; then
@@ -1064,7 +1215,10 @@ EOF
     echo "candidate upgrade E2E: unchanged steam-auth container was recreated during legacy repair" >&2
     exit 1
   fi
-  if [[ -n "$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --status running --quiet)" ]]; then
+  server_container_id="$(docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" ps --all --format json server | jq -r 'if type == "array" then .[0].ID else .ID end')"
+  if [[ -z "$server_container_id" || "$server_container_id" == null ||
+    "$(docker inspect "$server_container_id" | jq -r '.[0].State.Running')" != false ||
+    "$(docker inspect "$auth_container_id" | jq -r '.[0].State.Running')" != false ]]; then
     echo "candidate upgrade E2E: legacy repair did not restore the original stopped runtime state" >&2
     exit 1
   fi
@@ -1180,6 +1334,450 @@ wait_apply_phase() {
   return 1
 }
 
+write_legacy_steam_invite_fixture() {
+  local mode="$1"
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_env="$instance_dir/.env"
+  local changed=""
+  local instance_state="running"
+  local instance_phase="running"
+
+  if [[ ! -f "$instance_env" ]]; then
+    echo "candidate upgrade E2E: legacy Steam invite fixture has no instance .env" >&2
+    return 1
+  fi
+  sed -i \
+    -e '/^STEAM_INVITE_ENABLED=/d' \
+    -e '/^STEAM_INVITE_AUTH_STATE=/d' \
+    -e '/^STEAM_INVITE_RUNTIME_SCOPE_VERSION=/d' \
+    -e '/^STEAM_AUTH_COMPLETED=/d' \
+    -e '/^STEAMCMD_AUTH_COMPLETED=/d' \
+    "$instance_env"
+  printf 'STEAMCMD_AUTH_COMPLETED=true\n' >>"$instance_env"
+  case "$mode" in
+    no-auth)
+      ;;
+    authorized)
+      printf 'STEAM_AUTH_COMPLETED=true\n' >>"$instance_env"
+      instance_state="game_installed"
+      instance_phase="game_installed"
+      ;;
+    *)
+      echo "candidate upgrade E2E: unknown legacy Steam invite fixture mode: $mode" >&2
+      return 1
+      ;;
+  esac
+  chmod 600 "$instance_env"
+
+  changed="$(sqlite3 -cmd '.timeout 5000' "$data_dir/panel.db" "UPDATE instances SET state='$instance_state', state_message='legacy Steam invite migration fixture', driver_phase='$instance_phase', driver_payload='{}' WHERE id='stardew'; SELECT changes();")"
+  if [[ "$changed" != 1 ]]; then
+    echo "candidate upgrade E2E: failed to prepare the legacy Steam invite instance row" >&2
+    return 1
+  fi
+}
+
+snapshot_candidate_auth_images() {
+  local output_file="$1"
+  local auth_image=""
+  local image_id=""
+
+  if [[ ! -f "$candidate_runtime_manifest" ]]; then
+    echo "candidate upgrade E2E: candidate runtime manifest is missing" >&2
+    return 1
+  fi
+  : >"$output_file"
+  while IFS= read -r auth_image; do
+    [[ -z "$auth_image" ]] && continue
+    image_id="absent"
+    if docker image inspect "$auth_image" >"$response_file" 2>/dev/null; then
+      image_id="$(jq -r '.[0].Id' "$response_file")"
+    fi
+    printf '%s\t%s\n' "$auth_image" "$image_id" >>"$output_file"
+  done < <(jq -r '.steamAuth.images[]' "$candidate_runtime_manifest" | sort -u)
+}
+
+assert_candidate_auth_images_unchanged() {
+  local current_snapshot="$root/legacy-disabled-auth-images.current"
+
+  snapshot_candidate_auth_images "$current_snapshot"
+  if [[ "$(sha256sum "$current_snapshot" | awk '{print $1}')" != "$(sha256sum "$legacy_auth_image_snapshot_before" | awk '{print $1}')" ]]; then
+    echo "candidate upgrade E2E: disabled migration pulled, removed, or retagged an optional Auth candidate image" >&2
+    echo "before:" >&2
+    cat "$legacy_auth_image_snapshot_before" >&2
+    echo "after:" >&2
+    cat "$current_snapshot" >&2
+    return 1
+  fi
+  if [[ "$(docker image inspect "$legacy_auth_image_ref" | jq -r '.[0].Id')" != "$legacy_auth_image_id" ]]; then
+    echo "candidate upgrade E2E: the pre-existing optional Auth image ID changed" >&2
+    return 1
+  fi
+}
+
+write_legacy_runtime_compose() {
+  local output_file="$1"
+  local include_auth_dependency="$2"
+  # shellcheck disable=SC2016 # Compose must receive this literal placeholder.
+  local auth_image_literal='${STEAM_SERVICE_IMAGE}'
+
+  {
+    cat <<EOF
+services:
+  fixture-ready:
+    image: alpine:3.20
+    command: ["sleep", "3600"]
+    labels:
+      com.anxi-panel.test-owner: "$owner"
+      com.anxi-panel.fixture-role: "legacy-harmless-dependency"
+  steam-auth:
+    image: $auth_image_literal
+    cpu_shares: 256
+    command: ["sleep", "3600"]
+    labels:
+      com.anxi-panel.test-owner: "$owner"
+      com.anxi-panel.fixture-role: "legacy-optional-auth"
+    volumes:
+      - steam-session:/session
+  server:
+    image: alpine:3.20
+    cpu_shares: 768
+    command: ["sleep", "3600"]
+    labels:
+      com.anxi-panel.test-owner: "$owner"
+      com.anxi-panel.fixture-role: "legacy-server"
+    depends_on:
+EOF
+    if [[ "$include_auth_dependency" == true ]]; then
+      cat <<'EOF'
+      steam-auth:
+        condition: service_started
+EOF
+    fi
+    cat <<'EOF'
+      fixture-ready:
+        condition: service_started
+    environment:
+      SAP_PLAYER_AUTH_MODE: ""
+      SAP_PLAYER_AUTH_REVISION: ""
+      SAP_ROLE_AUTH_KEY: ""
+      SAP_ROLE_PASSWORDS_B64: ""
+      ALSOFT_DRIVERS: "null"
+      SDL_AUDIODRIVER: "dummy"
+      FIXTURE_OTHER_DEPENDENCY: "preserved"
+volumes:
+  steam-session:
+    external: true
+    name: stardew_steam-session
+EOF
+  } >"$output_file"
+  chmod 600 "$output_file"
+}
+
+assert_no_steam_auth_artifacts() {
+  if [[ -n "$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --quiet)" ]]; then
+    echo "candidate upgrade E2E: disabled legacy fixture still has a steam-auth container" >&2
+    return 1
+  fi
+  if docker volume inspect "$steam_session_volume" >/dev/null 2>&1; then
+    echo "candidate upgrade E2E: disabled legacy fixture still has its exact Steam session volume" >&2
+    return 1
+  fi
+  assert_candidate_auth_images_unchanged
+}
+
+assert_disabled_legacy_runtime_converged() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_env="$instance_dir/.env"
+  local instance_compose="$instance_dir/docker-compose.yml"
+  local compose_config="$root/legacy-disabled-compose-config.json"
+  local current_server_id=""
+  local current_dependency_id=""
+
+  current_server_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')"
+  current_dependency_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')"
+  if [[ "$current_server_id" != "$legacy_server_container_id" || "$current_dependency_id" != "$legacy_dependency_container_id" ]]; then
+    echo "candidate upgrade E2E: disabled migration recreated the server or harmless dependency" >&2
+    return 1
+  fi
+  if [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')" != "$legacy_server_started_at" ]] ||
+    [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$legacy_dependency_container_id" | jq -r '.[0].State.Running')" != true ]]; then
+    echo "candidate upgrade E2E: disabled migration stopped or restarted a required server-side container" >&2
+    return 1
+  fi
+  if docker inspect "$legacy_auth_container_id" >/dev/null 2>&1; then
+    echo "candidate upgrade E2E: disabled migration retained the exact legacy steam-auth container" >&2
+    return 1
+  fi
+  if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" != "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+    echo "candidate upgrade E2E: Compose migration changed content beyond the server steam-auth dependency" >&2
+    diff -u "$legacy_expected_migrated_compose" "$instance_compose" >&2 || true
+    return 1
+  fi
+  if [[ "$(grep -c '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=1$' "$instance_env")" != 1 ]]; then
+    echo "candidate upgrade E2E: disabled migration did not persist the runtime-scope convergence marker exactly once" >&2
+    return 1
+  fi
+  docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" config --format json >"$compose_config"
+  if ! jq -e '.services.server.depends_on | (has("steam-auth") | not) and has("fixture-ready")' "$compose_config" >/dev/null ||
+    ! jq -e '.services | has("steam-auth") and has("fixture-ready")' "$compose_config" >/dev/null ||
+    ! jq -e '.services.server.environment.FIXTURE_OTHER_DEPENDENCY == "preserved"' "$compose_config" >/dev/null; then
+    echo "candidate upgrade E2E: migrated Compose lost its optional service or unrelated dependency" >&2
+    cat "$compose_config" >&2
+    return 1
+  fi
+  assert_no_steam_auth_artifacts
+}
+
+prepare_legacy_disabled_runtime_fixture() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_env="$instance_dir/.env"
+  local instance_compose="$instance_dir/docker-compose.yml"
+  local auth_candidates=""
+
+  docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" stop panel >/dev/null
+  if [[ -n "$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --quiet)" ]] || docker volume inspect "$steam_session_volume" >/dev/null 2>&1; then
+    echo "candidate upgrade E2E: refusing to overwrite unexpected stardew runtime resources before the legacy fixture" >&2
+    return 1
+  fi
+
+  legacy_auth_image_ref="$(jq -r '.steamAuth.images[0]' "$candidate_runtime_manifest")"
+  auth_candidates="$(jq -r '.steamAuth.images | join(",")' "$candidate_runtime_manifest")"
+  if [[ -z "$legacy_auth_image_ref" || "$legacy_auth_image_ref" == null || -z "$auth_candidates" ]]; then
+    echo "candidate upgrade E2E: candidate has no optional Auth image candidates" >&2
+    return 1
+  fi
+  docker tag alpine:3.20 "$legacy_auth_image_ref"
+  legacy_auth_image_id="$(docker image inspect "$legacy_auth_image_ref" | jq -r '.[0].Id')"
+
+  write_legacy_steam_invite_fixture no-auth
+  sed -i -e '/^STEAM_SERVICE_IMAGE=/d' -e '/^STEAM_SERVICE_IMAGE_CANDIDATES=/d' "$instance_env"
+  printf 'STEAM_SERVICE_IMAGE=%s\nSTEAM_SERVICE_IMAGE_CANDIDATES=%s\n' "$legacy_auth_image_ref" "$auth_candidates" >>"$instance_env"
+  chmod 600 "$instance_env"
+  write_legacy_runtime_compose "$instance_compose" true
+  write_legacy_runtime_compose "$legacy_expected_migrated_compose" false
+
+  legacy_disabled_session_hash="$(seed_legacy_steam_session disabled-legacy)"
+  if [[ -z "$legacy_disabled_session_hash" ]]; then
+    echo "candidate upgrade E2E: disabled legacy Steam session sentinel was not created" >&2
+    return 1
+  fi
+  snapshot_candidate_auth_images "$legacy_auth_image_snapshot_before"
+  docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" up -d fixture-ready server steam-auth >/dev/null
+
+  docker tag "$previous_fixture_ref" "$previous_ref"
+  sed -i "s|^PANEL_IMAGE=.*$|PANEL_IMAGE=$previous_ref|" "$env_file"
+  docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" up -d --no-deps --force-recreate panel >/dev/null
+  wait_version "$previous_version" 120
+  if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" == "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+    echo "candidate upgrade E2E: previous release unexpectedly removed the legacy steam-auth dependency" >&2
+    return 1
+  fi
+
+  legacy_server_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')"
+  legacy_dependency_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')"
+  legacy_auth_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --format '{{.ID}}')"
+  docker run -d --name "$unknown_session_holder_container" --label "com.anxi-panel.test-owner=$owner" --label "com.anxi-panel.fixture-role=unknown-steam-session-holder" --volume "$steam_session_volume:/untrusted-session" alpine:3.20 sleep 3600 >/dev/null
+  unknown_session_holder_id="$(docker inspect "$unknown_session_holder_container" | jq -r '.[0].Id')"
+  if [[ -z "$legacy_server_container_id" || -z "$legacy_dependency_container_id" || -z "$legacy_auth_container_id" ]] ||
+    [[ -z "$unknown_session_holder_id" ]] ||
+    [[ "$(docker inspect "$legacy_auth_container_id" | jq -r '.[0].Image')" != "$legacy_auth_image_id" ]] ||
+    ! docker inspect "$legacy_auth_container_id" | jq -e --arg volume "$steam_session_volume" '.[0].Mounts | any(.Name == $volume)' >/dev/null; then
+    echo "candidate upgrade E2E: failed to establish the running legacy server + steam-auth fixture" >&2
+    return 1
+  fi
+  legacy_server_started_at="$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')"
+  if [[ "$(read_steam_session_sentinel_hash)" != "$legacy_disabled_session_hash" ]]; then
+    echo "candidate upgrade E2E: previous release changed the disabled legacy session sentinel" >&2
+    return 1
+  fi
+  echo "candidate upgrade E2E: previous release is running the legacy server + steam-auth dependency with an unknown same-volume holder" >&2
+}
+
+assert_unknown_session_holder_fail_closed() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_env="$instance_dir/.env"
+  local instance_compose="$instance_dir/docker-compose.yml"
+  local current_server_id=""
+  local current_dependency_id=""
+
+  if [[ "$(grep -c '^STEAM_INVITE_ENABLED=false$' "$instance_env")" != 1 ]] ||
+    grep -q '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=' "$instance_env"; then
+    echo "candidate upgrade E2E: unknown holder did not preserve explicit disabled intent with the runtime-scope marker still absent" >&2
+    return 1
+  fi
+  current_server_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')"
+  current_dependency_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')"
+  if [[ "$current_server_id" != "$legacy_server_container_id" || "$current_dependency_id" != "$legacy_dependency_container_id" ]] ||
+    ! docker inspect "$legacy_auth_container_id" "$unknown_session_holder_id" >/dev/null 2>&1 ||
+    [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')" != "$legacy_server_started_at" ]] ||
+    [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$legacy_auth_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$unknown_session_holder_id" | jq -r '.[0].State.Running')" != true ]]; then
+    echo "candidate upgrade E2E: unknown holder caused a partial container deletion, stop, or recreation" >&2
+    return 1
+  fi
+  if ! docker volume inspect "$steam_session_volume" >/dev/null 2>&1 ||
+    [[ "$(read_steam_session_sentinel_hash)" != "$legacy_disabled_session_hash" ]]; then
+    echo "candidate upgrade E2E: unknown holder caused the Steam session volume or sentinel to change" >&2
+    return 1
+  fi
+  if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" != "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+    echo "candidate upgrade E2E: unknown-holder Prepare changed Compose beyond the safe dependency migration" >&2
+    diff -u "$legacy_expected_migrated_compose" "$instance_compose" >&2 || true
+    return 1
+  fi
+  assert_candidate_auth_images_unchanged
+
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/state" >"$response_file"
+  if [[ "$(jq -r '.steamInviteEnabled' "$response_file")" != false ||
+    "$(jq -r '.steamInviteAuthState' "$response_file")" != disabled ||
+    "$(jq -r '.steamAuthLoggedIn' "$response_file")" != false ]]; then
+    echo "candidate upgrade E2E: unknown-holder migration did not expose the explicit disabled state" >&2
+    cat "$response_file" >&2
+    return 1
+  fi
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/invite-code" >"$response_file"
+  if [[ "$(jq -r '.status' "$response_file")" != disabled || "$(jq -r '.steamInviteEnabled' "$response_file")" != false ]] ||
+    ! docker inspect "$legacy_auth_container_id" "$unknown_session_holder_id" >/dev/null 2>&1 ||
+    [[ "$(read_steam_session_sentinel_hash)" != "$legacy_disabled_session_hash" ]]; then
+    echo "candidate upgrade E2E: disabled invite GET changed the fail-closed holder/session evidence" >&2
+    cat "$response_file" >&2
+    return 1
+  fi
+  echo "candidate upgrade E2E: unknown same-volume holder kept all holders, session data, and runtime marker fail closed"
+}
+
+remove_owned_unknown_session_holder() {
+  if [[ -z "$unknown_session_holder_id" ]] ||
+    ! docker inspect "$unknown_session_holder_id" | jq -e --arg owner "$owner" --arg volume "$steam_session_volume" '.[0].Config.Labels["com.anxi-panel.test-owner"] == $owner and (.[0].Mounts | any(.Type == "volume" and .Name == $volume and .Destination == "/untrusted-session"))' >/dev/null; then
+    echo "candidate upgrade E2E: refusing to remove an unproven unknown Steam session holder" >&2
+    return 1
+  fi
+  docker rm -f "$unknown_session_holder_id" >/dev/null
+  if docker inspect "$unknown_session_holder_id" >/dev/null 2>&1; then
+    echo "candidate upgrade E2E: exact unknown Steam session holder remained after removal" >&2
+    return 1
+  fi
+  unknown_session_holder_id=""
+}
+
+read_steam_session_sentinel_hash() {
+  docker rm -f "$session_seed_container" >/dev/null 2>&1 || true
+  docker run --rm --name "$session_seed_container" --label "com.anxi-panel.test-owner=$owner" --volume "$steam_session_volume:/session" alpine:3.20 sha256sum /session/authorized-session.txt | awk '{print $1}'
+}
+
+seed_legacy_steam_session() {
+  local sentinel_prefix="${1:-authorized}"
+  if docker volume inspect "$steam_session_volume" >/dev/null 2>&1; then
+    echo "candidate upgrade E2E: refusing to overwrite an existing Steam session volume" >&2
+    return 1
+  fi
+  docker volume create --label "com.anxi-panel.test-owner=$owner" "$steam_session_volume" >/dev/null
+  docker rm -f "$session_seed_container" >/dev/null 2>&1 || true
+  docker run --rm --name "$session_seed_container" --label "com.anxi-panel.test-owner=$owner" --env "SESSION_SENTINEL=$sentinel_prefix-session-$suffix" --volume "$steam_session_volume:/session" alpine:3.20 sh -c 'umask 077; printf "%s\n" "$SESSION_SENTINEL" > /session/authorized-session.txt'
+  read_steam_session_sentinel_hash
+}
+
+assert_authorized_legacy_runtime_preserved() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_compose="$instance_dir/docker-compose.yml"
+
+  if [[ -z "$authorized_auth_container_id" ]] || ! docker inspect "$authorized_auth_container_id" >/dev/null 2>&1 ||
+    [[ "$(docker inspect "$authorized_auth_container_id" | jq -r '.[0].State.Running')" != true ]]; then
+    echo "candidate upgrade E2E: authorized legacy steam-auth container was removed or restarted into a stopped state" >&2
+    return 1
+  fi
+  if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" != "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+    echo "candidate upgrade E2E: authorized migration did not remove only the legacy server dependency" >&2
+    return 1
+  fi
+  assert_candidate_auth_images_unchanged
+}
+
+assert_legacy_steam_invite_migration() {
+  local expected="$1"
+  local expected_session_hash="${2:-}"
+  local instance_env="$data_dir/instances/stardew/.env"
+  local api_enabled=""
+  local api_auth_state=""
+  local api_logged_in=""
+  local invite_status=""
+
+  for _ in $(seq 1 60); do
+    if curl --silent --show-error --max-time 10 --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/state" >"$response_file" 2>/dev/null; then
+      api_enabled="$(jq -r '.steamInviteEnabled' "$response_file")"
+      api_auth_state="$(jq -r '.steamInviteAuthState // empty' "$response_file")"
+      api_logged_in="$(jq -r '.steamAuthLoggedIn' "$response_file")"
+      if [[ "$api_enabled" == "$expected" ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+  if [[ "$api_enabled" != "$expected" ]]; then
+    echo "candidate upgrade E2E: legacy Steam invite intent migrated to $api_enabled, want $expected" >&2
+    cat "$response_file" >&2
+    return 1
+  fi
+  if [[ "$(grep -c "^STEAM_INVITE_ENABLED=$expected$" "$instance_env")" != 1 ]]; then
+    echo "candidate upgrade E2E: legacy Steam invite intent was not persisted exactly once as $expected" >&2
+    return 1
+  fi
+
+  curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/invite-code" >"$response_file"
+  invite_status="$(jq -r '.status // empty' "$response_file")"
+  if [[ "$expected" == false ]]; then
+    if [[ "$api_auth_state" != disabled || "$api_logged_in" != false || "$invite_status" != disabled ||
+      "$(jq -r '.steamInviteEnabled' "$response_file")" != false ]]; then
+      echo "candidate upgrade E2E: no-Auth legacy fixture did not expose the disabled API contract" >&2
+      cat "$response_file" >&2
+      return 1
+    fi
+    assert_disabled_legacy_runtime_converged
+    # GET invite-code must remain side-effect free while disabled.
+    curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/api/instances/stardew/invite-code" >/dev/null
+    assert_disabled_legacy_runtime_converged
+    echo "candidate upgrade E2E: legacy running instance without Auth evidence migrated to explicit false without touching server or Auth images"
+    return 0
+  fi
+
+  if [[ "$api_auth_state" != ready || "$api_logged_in" != true || "$invite_status" != server_stopped ||
+    "$(jq -r '.steamInviteEnabled' "$response_file")" != true ]]; then
+    echo "candidate upgrade E2E: authorized legacy fixture did not retain its ready API contract" >&2
+    cat "$response_file" >&2
+    return 1
+  fi
+  if [[ -z "$expected_session_hash" || "$(read_steam_session_sentinel_hash)" != "$expected_session_hash" ]]; then
+    echo "candidate upgrade E2E: authorized legacy Steam session was not preserved" >&2
+    return 1
+  fi
+  assert_authorized_legacy_runtime_preserved
+  echo "candidate upgrade E2E: legacy STEAM_AUTH_COMPLETED intent stayed enabled and preserved its session"
+}
+
+restart_previous_release_with_authorized_legacy_fixture() {
+  local instance_dir="$data_dir/instances/stardew"
+  local instance_compose="$instance_dir/docker-compose.yml"
+
+  docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" stop panel >/dev/null
+  docker tag "$previous_fixture_ref" "$previous_ref"
+  sed -i "s|^PANEL_IMAGE=.*$|PANEL_IMAGE=$previous_ref|" "$env_file"
+  write_legacy_steam_invite_fixture authorized
+  write_legacy_runtime_compose "$instance_compose" true
+  write_legacy_runtime_compose "$legacy_expected_migrated_compose" false
+  authorized_session_hash="$(seed_legacy_steam_session authorized)"
+  docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" up -d --no-deps steam-auth >/dev/null
+  docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" up -d --no-deps --force-recreate panel >/dev/null
+  wait_version "$previous_version" 120
+  authorized_auth_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --format '{{.ID}}')"
+  if [[ -z "$authorized_auth_container_id" || "$(read_steam_session_sentinel_hash)" != "$authorized_session_hash" ]]; then
+    echo "candidate upgrade E2E: previous release changed the seeded Steam session before upgrade" >&2
+    return 1
+  fi
+  assert_candidate_auth_images_unchanged
+}
+
 echo "candidate upgrade E2E: testing unhealthy target rollback through public Web API"
 post_update_check
 run_dry_run
@@ -1192,6 +1790,9 @@ if [[ "$(jq -r '.errorCode // empty' "$response_file")" != health_check_failed ]
 fi
 wait_version "$previous_version" 120
 
+echo "candidate upgrade E2E: preparing a running legacy instance with SteamCMD evidence and the old Auth-coupled runtime"
+prepare_legacy_disabled_runtime_fixture
+
 echo "candidate upgrade E2E: replacing controlled target with the exact healthy candidate"
 push_healthy_candidate
 post_update_check
@@ -1200,6 +1801,12 @@ start_apply
 wait_version "$version" 300
 wait_apply_phase succeeded 120
 assert_upgraded_frontend_contract
+assert_unknown_session_holder_fail_closed
+remove_owned_unknown_session_holder
+docker restart "$panel_container" >/dev/null
+wait_version "$version" 120
+wait_apply_phase succeeded 60
+assert_legacy_steam_invite_migration false
 
 if [[ ! -s "$data_dir/panel.db" || ! -f "$data_dir/release-candidate-sentinel.txt" ]]; then
   echo "candidate upgrade E2E: Panel data was not preserved" >&2
@@ -1225,13 +1832,28 @@ fi
 docker restart "$panel_container" >/dev/null
 wait_version "$version" 120
 wait_apply_phase succeeded 60
+assert_legacy_steam_invite_migration false
 if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_before" ]]; then
   echo "candidate upgrade E2E: Panel restart changed the game container" >&2
   exit 1
 fi
+
+echo "candidate upgrade E2E: replaying the same previous release with durable SteamAuth evidence"
+restart_previous_release_with_authorized_legacy_fixture
+post_update_check
+run_dry_run
+start_apply
+wait_version "$version" 300
+wait_apply_phase succeeded 120
+assert_legacy_steam_invite_migration true "$authorized_session_hash"
+if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_before" ]] ||
+  [[ "$(docker exec "$game_container" sha256sum /game/sentinel.txt | awk '{print $1}')" != "$game_hash_before" ]]; then
+  echo "candidate upgrade E2E: legacy Steam invite replay changed the non-target game resource" >&2
+  exit 1
+fi
 assert_upgraded_mod_update_check
 assert_upgraded_legacy_junimo_repair
-assert_upgraded_empty_compose_save_import_submission
+assert_upgraded_stopped_compose_save_import_submission
 assert_upgraded_save_import_phase_a_boundaries
 
-echo "candidate upgrade E2E: previous release Web upgrade, rollback, persistence, restart, Mod checks, legacy runtime repair, and save-import safety boundaries passed"
+echo "candidate upgrade E2E: previous release Web upgrade, rollback, unknown-holder fail-closed recovery, Steam invite migration, persistence, restart, Mod checks, legacy runtime repair, and save-import safety boundaries passed"

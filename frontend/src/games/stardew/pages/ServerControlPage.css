@@ -1403,6 +1403,12 @@
   text-shadow: none;
 }
 
+.sd-server-summary-connections {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
 .sd-server-summary-invite .sd-players-invite-row {
   grid-template-columns: 132px minmax(0, 1fr) auto;
   min-height: 40px;

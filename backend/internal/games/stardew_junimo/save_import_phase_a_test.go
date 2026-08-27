@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -58,6 +59,8 @@ func preparePhaseATestFixture(t *testing.T, hostHandling string) *phaseATestFixt
 	journal.PreimportBackupSHA256 = backupSHA
 	journal.Stage = ImportStageRuntimeReady
 	journal.MaintenanceStarted = true
+	disabled := false
+	journal.MaintenanceSteamInviteEnabled = &disabled
 	store.mu.Lock()
 	original := store.instance
 	store.mu.Unlock()
@@ -112,6 +115,171 @@ func TestImportPhaseAPreSubmitEvidenceFailureStopsAndRestores(t *testing.T) {
 	f.store.mu.Unlock()
 	if restored.DriverPhase != "container_stopped" || restored.StateMessage.String != "stopped before import" {
 		t.Fatalf("original instance snapshot not restored: %+v", restored)
+	}
+}
+
+func TestImportPhaseAMissingJournalStopsConservativeScopeWithoutRestore(t *testing.T) {
+	f := preparePhaseATestFixture(t, "server_owns_original")
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"maintenance":true}`
+	f.store.mu.Unlock()
+	if err := os.Remove(importJournalPath(f.dataDir, f.op)); err != nil {
+		t.Fatal(err)
+	}
+	var stoppedServices []string
+	f.fake.stopServicesFunc = func(_ context.Context, _, _ string, services ...string) error {
+		stoppedServices = append([]string(nil), services...)
+		f.record.mu.Lock()
+		f.record.down = true
+		f.record.started = false
+		f.record.mu.Unlock()
+		return nil
+	}
+	driver := New(f.fake, nil, nil, f.store)
+	err := driver.runImportPhaseA(context.Background(), f.instance, f.op, "", nil, phaseATestOptions())
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("error=%T %v, want recovery_required", err, err)
+	}
+	if strings.Join(stoppedServices, ",") != "server,steam-auth" {
+		t.Fatalf("conservative stop services=%v, want server and Auth", stoppedServices)
+	}
+	if f.teeCalls != 0 {
+		t.Fatalf("FIFO writes=%d, want zero", f.teeCalls)
+	}
+	f.store.mu.Lock()
+	current := f.store.instance
+	f.store.mu.Unlock()
+	if current.DriverPhase != importMaintenancePhase {
+		t.Fatalf("missing journal incorrectly restored ordinary state: %+v", current)
+	}
+}
+
+func TestImportPhaseAPreSubmitPanicStopsAndRestores(t *testing.T) {
+	f := preparePhaseATestFixture(t, "server_owns_original")
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"maintenance":true}`
+	f.store.mu.Unlock()
+	f.fake.execFunc = func(context.Context, string, string, string, ...string) (paneldocker.CommandResult, error) {
+		panic("injected Phase A pre-submit panic")
+	}
+	driver := New(f.fake, nil, nil, f.store)
+	var panicValue any
+	func() {
+		defer func() { panicValue = recover() }()
+		_ = driver.runImportPhaseA(context.Background(), f.instance, f.op, "", nil, phaseATestOptions())
+	}()
+	if panicValue == nil {
+		t.Fatal("Phase A pre-submit panic was swallowed")
+	}
+	if strings.Contains(fmt.Sprint(panicValue), "injected Phase A pre-submit panic") {
+		t.Fatalf("Phase A pre-submit panic leaked its raw internal value: %v", panicValue)
+	}
+	f.record.mu.Lock()
+	down := f.record.down
+	f.record.mu.Unlock()
+	if !down {
+		t.Fatal("Phase A pre-submit panic did not stop maintenance runtime")
+	}
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil || journal.MaintenanceStarted || journal.MaintenanceRecoveryState != importMaintenanceSnapshotRestored || journal.PhaseAFIFOWriteAttempted {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	f.store.mu.Lock()
+	restored := f.store.instance
+	f.store.mu.Unlock()
+	if restored.DriverPhase != "container_stopped" || restored.StateMessage.String != "stopped before import" {
+		t.Fatalf("pre-submit panic did not restore original instance: %+v", restored)
+	}
+}
+
+func TestImportPhaseAPostFIFOIntentPanicStopsAndStaysManual(t *testing.T) {
+	f := preparePhaseATestFixture(t, "server_owns_original")
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"maintenance":true}`
+	f.store.mu.Unlock()
+	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) {
+		panic("injected Phase A FIFO panic")
+	})
+	driver := New(f.fake, nil, nil, f.store)
+	var panicValue any
+	func() {
+		defer func() { panicValue = recover() }()
+		_ = driver.runImportPhaseA(context.Background(), f.instance, f.op, "", nil, phaseATestOptions())
+	}()
+	if panicValue == nil {
+		t.Fatal("Phase A FIFO panic was swallowed")
+	}
+	if strings.Contains(fmt.Sprint(panicValue), "injected Phase A FIFO panic") {
+		t.Fatalf("Phase A FIFO panic leaked its raw internal value: %v", panicValue)
+	}
+	f.record.mu.Lock()
+	down := f.record.down
+	f.record.mu.Unlock()
+	if !down {
+		t.Fatal("ambiguous Phase A panic left maintenance runtime running")
+	}
+	journal, err := LoadImportJournal(f.dataDir, f.op)
+	if err != nil || !journal.MaintenanceStarted || !journal.PhaseAFIFOWriteAttempted || journal.UpstreamSubmitted ||
+		journal.MaintenanceRecoveryState != importMaintenanceManualRecovery || journal.RecoveryState != "manual_required" {
+		t.Fatalf("journal=%+v err=%v", journal, err)
+	}
+	f.store.mu.Lock()
+	current := f.store.instance
+	f.store.mu.Unlock()
+	if current.DriverPhase != importMaintenancePhase {
+		t.Fatalf("ambiguous Phase A panic incorrectly restored ordinary state: %+v", current)
+	}
+}
+
+func TestImportPhaseAFIFOSuccessJournalLossStopsWithoutResubmitting(t *testing.T) {
+	f := preparePhaseATestFixture(t, "server_owns_original")
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"maintenance":true}`
+	f.store.mu.Unlock()
+	var removeErr error
+	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) {
+		removeErr = os.Remove(importJournalPath(f.dataDir, f.op))
+		return paneldocker.CommandResult{}, nil
+	})
+	driver := New(f.fake, nil, nil, f.store)
+	err := driver.runImportPhaseA(context.Background(), f.instance, f.op, "", nil, phaseATestOptions())
+	if removeErr != nil {
+		t.Fatalf("remove post-FIFO journal fixture: %v", removeErr)
+	}
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("error=%v typed=%+v, want recovery_required", err, typed)
+	}
+	if f.teeCalls != 1 {
+		t.Fatalf("FIFO writes=%d, want exactly one", f.teeCalls)
+	}
+	f.record.mu.Lock()
+	down := f.record.down
+	f.record.mu.Unlock()
+	if !down {
+		t.Fatal("post-FIFO journal loss left maintenance runtime running")
+	}
+	if _, loadErr := LoadImportJournal(f.dataDir, f.op); !os.IsNotExist(loadErr) {
+		t.Fatalf("journal loss fixture unexpectedly recovered a journal: %v", loadErr)
+	}
+	f.store.mu.Lock()
+	current := f.store.instance
+	f.store.mu.Unlock()
+	if current.DriverPhase != importMaintenancePhase {
+		t.Fatalf("post-FIFO journal loss incorrectly restored ordinary state: %+v", current)
 	}
 }
 
@@ -177,6 +345,56 @@ func TestImportPhaseASwapCompleteCompositeEvidence(t *testing.T) {
 	rawJournal, err := os.ReadFile(importJournalPath(f.dataDir, f.op))
 	if err != nil || strings.Contains(string(rawJournal), phaseATestPlatformID) {
 		t.Fatalf("raw platform ID leaked into journal: err=%v", err)
+	}
+}
+
+func TestImportPhaseAConfirmWriteFailureStopsAndStaysManual(t *testing.T) {
+	f := preparePhaseATestFixture(t, "swap_host_to")
+	f.store.mu.Lock()
+	f.store.instance.State = storage.InstanceStateStopped
+	f.store.instance.StateMessage = sql.NullString{String: "maintenance", Valid: true}
+	f.store.instance.DriverPhase = importMaintenancePhase
+	f.store.instance.DriverPayload = `{"maintenance":true}`
+	f.store.mu.Unlock()
+	f.interceptFIFO(func(string) (paneldocker.CommandResult, error) {
+		f.writeMain(t, "transformed")
+		f.writePending(t, "Upload_1", 1234, phaseATestPlatformID)
+		f.writePointer(t, "Upload_1")
+		return paneldocker.CommandResult{Stdout: "Imported successfully"}, nil
+	})
+	driver := New(f.fake, nil, nil, f.store)
+	confirmationWriteFailed := false
+	driver.importJournalWrite = func(dataDir string, journal ImportJournal) error {
+		if journal.Stage == ImportStageConfirmed && !confirmationWriteFailed {
+			confirmationWriteFailed = true
+			return errors.New("injected confirmation journal failure")
+		}
+		return WriteImportJournal(dataDir, journal)
+	}
+	err := driver.runImportPhaseA(context.Background(), f.instance, f.op, phaseATestPlatformID, nil, phaseATestOptions())
+	typed, ok := AsImportTransactionError(err)
+	if !ok || typed.Code != ImportErrorRecoveryRequired {
+		t.Fatalf("error=%T %v, want recovery_required", err, err)
+	}
+	if !confirmationWriteFailed || f.teeCalls != 1 {
+		t.Fatalf("confirmationWriteFailed=%v FIFO writes=%d, want one failed confirmation write and one submission", confirmationWriteFailed, f.teeCalls)
+	}
+	f.record.mu.Lock()
+	down := f.record.down
+	f.record.mu.Unlock()
+	if !down {
+		t.Fatal("confirmation journal failure left maintenance runtime running")
+	}
+	journal, loadErr := LoadImportJournal(f.dataDir, f.op)
+	if loadErr != nil || journal.Stage != ImportStageSubmitted || !journal.PhaseAFIFOWriteAttempted || !journal.UpstreamSubmitted || journal.UpstreamConfirmed ||
+		journal.MaintenanceRecoveryState != importMaintenanceManualRecovery || journal.RecoveryState != "manual_required" {
+		t.Fatalf("journal=%+v err=%v", journal, loadErr)
+	}
+	f.store.mu.Lock()
+	current := f.store.instance
+	f.store.mu.Unlock()
+	if current.DriverPhase != importMaintenancePhase {
+		t.Fatalf("ambiguous confirmation failure incorrectly restored ordinary state: %+v", current)
 	}
 }
 

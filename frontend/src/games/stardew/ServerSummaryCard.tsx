@@ -1,6 +1,7 @@
 import { stateLabel } from '../../core/helpers'
 import type { SaveInfo } from '../../types'
 import { InviteCodeCard } from './InviteCodeCard'
+import { LanDirectConnectCard } from './LanDirectConnectCard'
 import type { StardewDashboardData } from './stardew-routes'
 import { shouldShowPlayerLimitAction } from './server-runtime-settings-state'
 
@@ -143,13 +144,16 @@ export function ServerSummaryCard({
         ))}
       </div>
 
-      <InviteCodeCard
-        instanceState={instanceState}
-        dashboardData={dashboardData}
-        className="sd-server-summary-invite"
-        label="邀请码"
-        description=""
-      />
+      <div className="sd-server-summary-invite sd-server-summary-connections">
+        <LanDirectConnectCard dashboardData={dashboardData} />
+        {instanceState?.steamInviteEnabled === true ? (
+          <InviteCodeCard
+            instanceState={instanceState}
+            dashboardData={dashboardData}
+            canManageSteamInvite={canEditPlayerLimit}
+          />
+        ) : null}
+      </div>
     </div>
   )
 }

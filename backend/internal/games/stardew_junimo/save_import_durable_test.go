@@ -48,6 +48,13 @@ func prepareDurableTestFixture(t *testing.T, hostHandling string) *durableTestFi
 	if hostHandling == "swap_host_to" {
 		r.finalizeCount = 1
 	}
+	maintenancePayload := `{"save_import_operation_id":"` + r.fixture.op + `"}`
+	r.fixture.store.mu.Lock()
+	r.fixture.store.instance.DriverPhase = importMaintenancePhase
+	r.fixture.store.instance.DriverPayload = maintenancePayload
+	r.fixture.store.mu.Unlock()
+	r.fixture.instance.DriverPhase = importMaintenancePhase
+	r.fixture.instance.DriverPayload = maintenancePayload
 	d := New(r.fixture.fake, nil, nil, r.fixture.store)
 	if err := d.runImportActivation(context.Background(), r.fixture.instance, r.fixture.op, nil, activationTestOptions()); err != nil {
 		t.Fatal(err)

@@ -339,7 +339,7 @@ func (d *Driver) runImportActivation(ctx context.Context, instance registry.Inst
 			}
 		}
 	} else {
-		result, upErr := lifecycle.ComposeUp(ctx, instance.DataDir)
+		result, upErr := lifecycle.ComposeRecreateServices(ctx, instance.DataDir, saveImportRuntimeServicesFromJournal(j)...)
 		if upErr != nil || result.ExitCode != 0 {
 			resultErr = upErr
 			if resultErr == nil {

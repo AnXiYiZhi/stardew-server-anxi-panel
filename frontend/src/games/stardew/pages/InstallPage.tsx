@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import * as QRCode from 'qrcode'
 import type { ImageTagOption, Job, JobLog } from '../../../types'
@@ -11,6 +11,7 @@ import {
   getLatestJobLogs,
   installInstance,
   submitSteamGuardInput,
+  updateSteamCredentials,
 } from '../../../api'
 import {
   appendUniqueLog,
@@ -24,7 +25,7 @@ import {
   extractSteamDownloadProgress,
   hasSteamSdkDownloadStarted,
 } from '../install-helpers'
-import { canonicalInstallJobs, logsDescribeActiveInstall } from '../install-state'
+import { canonicalInstallJobs, canonicalInstallPageJobs, installJobForDisplay, latestInstallLogsFirst } from '../install-state'
 import { classifyInstallationState } from '../installation-state'
 import { useSteamAuthLogin } from '../useSteamAuthLogin'
 
@@ -245,11 +246,15 @@ function logsShowSteamAuthSucceeded(logs: JobLog[]): boolean {
 
 type StepStatus = 'pending' | 'active' | 'done' | 'error'
 
-const AUTH_FAILED_PHASES = [
-  'steam_auth_failed', 'credentials_required', 'qr_auth_failed',
-  'steam_auth_console_failed', 'steam_auth_connection_failed', 'install_interrupted',
-  'steamcmd_failed', 'steamcmd_image_pull_failed',
+const BASE_AUTH_FAILED_PHASES = [
+  'credentials_required', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed',
 ]
+
+const STEAM_INVITE_AUTH_FAILED_PHASES = [
+  'steam_auth_failed', 'qr_auth_failed', 'steam_auth_console_failed', 'steam_auth_connection_failed',
+]
+
+const ALL_AUTH_FAILED_PHASES = [...BASE_AUTH_FAILED_PHASES, ...STEAM_INVITE_AUTH_FAILED_PHASES]
 
 function calcStepStatuses(
   installed: boolean,
@@ -297,23 +302,24 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
   if (phase === 'smapi_bundled_sync_failed') return 'SMAPI 内置支持 Mod 同步失败，请检查任务日志后重试'
   if (installed) return '安装完成'
   if (phase === 'download_failed') return '游戏文件下载失败，请检查网络/磁盘后重试'
-  if (phase === 'post_auth_failed') return 'Steam 认证已成功，后续安装步骤失败，请使用已保存凭据重试'
-  if (phase === 'steamcmd_failed') return 'SteamCMD 兜底下载失败，请查看任务日志后重试'
-  if (phase === 'steamcmd_image_pull_failed') return 'SteamCMD 兜底镜像拉取失败，请检查 Docker 网络'
-  if (phase === 'qr_auth_failed') return '二维码登录失败，请改用账号密码或 Steam Guard'
-  if (phase === 'credentials_required' && authFailed) return 'Steam 认证失败，账号或密码错误'
+  if (phase === 'post_auth_failed') return 'SteamCMD 已授权，后续安装步骤失败，请使用已保存凭据重试'
+  if (phase === 'steamcmd_failed') return 'SteamCMD 安装或修复失败，请查看任务日志后重试'
+  if (phase === 'steamcmd_image_pull_failed') return 'SteamCMD 工具镜像拉取失败，请检查 Docker 网络'
+  if (phase === 'qr_auth_failed') return 'Steam 邀请码二维码授权失败，可改用账号密码或 Steam Guard 重试'
+  if (phase === 'credentials_required' && authFailed) return 'SteamCMD 登录失败，账号或密码错误'
   if (phase === 'install_interrupted') return '安装任务已中断，请重新发起安装'
-  if (authFailed) return 'Steam 认证失败，请查看任务日志'
+  if (STEAM_INVITE_AUTH_FAILED_PHASES.includes(phase)) return 'Steam 邀请码授权失败，基础安装与局域网/IP 直连不受影响'
+  if (authFailed) return 'SteamCMD 授权失败，请查看任务日志'
   if (phase === 'pull_failed') return '镜像拉取失败，请检查网络后重试'
   if (phase === 'install_timeout') return '安装任务超时，请重试安装'
-  if (phase === 'steam_auth_connection_failed') return 'Steam 连接建立超时，请检查网络后重试'
-  if (phase === 'steam_auth_retrying') return 'Steam 连接较慢，正在自动重试认证...'
+  if (phase === 'steam_auth_connection_failed') return 'Steam 邀请码授权连接超时，可重试；局域网/IP 直连仍可使用'
+  if (phase === 'steam_auth_retrying') return 'Steam 邀请码授权连接较慢，正在自动重试...'
   if (!isInstalling) return ''
   const labels: Record<string, string> = {
     smapi_installing: '游戏文件和 Steam SDK 已完成，正在安装 SMAPI 运行环境...',
     junimo_scaffolded: '目录已准备，正在拉取镜像...',
     pull_running: '正在拉取 JunimoServer 镜像...',
-    steam_auth_running: '正在使用 Steam 凭据认证并下载游戏...',
+    steam_auth_running: '正在进行 Steam 邀请码授权（不会重新下载游戏）...',
     auth_method_required: '等待选择 Steam 登录方式...',
     steam_guard_choice_required: '等待选择 Steam Guard 验证方式...',
     steam_guard_required: '等待 Steam Guard 验证码...',
@@ -321,13 +327,13 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
     steam_qr_required: '请扫描 Steam 二维码...',
     game_downloading: '正在下载游戏文件（约 10–30 分钟）...',
     steam_sdk_downloading: '游戏文件已下载，正在下载 Steam SDK 运行文件...',
-    steamcmd_image_pulling: '正在拉取 SteamCMD 兜底镜像...',
+    steamcmd_image_pulling: '正在拉取 SteamCMD 安装工具镜像...',
     steamcmd_auth_running: 'SteamCMD 正在复用已保存授权登录...',
     steamcmd_guard_choice_required: 'SteamCMD 需要重新授权，请选择验证方式...',
     steamcmd_guard_required: 'SteamCMD 需要 App 或邮箱验证码...',
     steamcmd_guard_mobile_required: '请在 Steam 手机 App 批准 SteamCMD 登录...',
-    steamcmd_downloading: 'SteamCMD 正在兜底下载游戏文件...',
-    steam_auth_done: 'Steam 认证成功，即将完成...',
+    steamcmd_downloading: 'SteamCMD 正在下载并校验游戏本体与 Steamworks SDK...',
+    steam_auth_done: 'Steam 邀请码授权成功。',
   }
   return labels[phase] ?? '正在准备安装环境...'
 }
@@ -335,7 +341,7 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
 const STEP_ICON: Record<StepStatus, string> = {
   done: '✓', error: '✗', active: '↻', pending: '○',
 }
-const STEPS = ['准备环境', '拉取镜像', 'Steam 认证', '下载与环境', '完成'] as const
+const STEPS = ['准备环境', '拉取服务镜像', 'SteamCMD 授权', '下载与安装', '完成'] as const
 const STEP_ICON_SRC = [
   '/assets/stardew/ui/install/icon_install_step_seed_image2_regen.png',
   '/assets/stardew/ui/install/icon_install_step_box_image2.png',
@@ -347,7 +353,7 @@ const STEAM_STEP_ICON_SRC = STEP_ICON_SRC[2]
 
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 
-export function InstallPage({ user, instanceState, dashboardData, onNavigate }: StardewPageProps) {
+export function InstallPage({ user, instanceState, dashboardData, onNavigate, requestedInstallJobId }: StardewPageProps) {
   const phase = instanceState?.driverPhase ?? ''
   const stateMessage = instanceState?.stateMessage ?? ''
 
@@ -374,51 +380,74 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   }, [])
 
   // ── 安装 Job ──────────────────────────────────────────────────────────────────
-  const [installJobId, setInstallJobId] = useState<string | null>(null)
+  const [installJobId, setInstallJobId] = useState<string | null>(() => requestedInstallJobId ?? null)
   const [installJob, setInstallJob] = useState<Job | null>(null)
   const [logs, setLogs] = useState<JobLog[]>([])
   const [sseError, setSseError] = useState('')
-  const logWindowRef = useRef<HTMLDivElement>(null)
 
   // Phases that indicate an install is actively running, even before installJob loads from async effect
-  const INSTALLING_PHASES = [
-    'pull_running', 'steam_auth_running', 'auth_method_required',
-    'steam_guard_choice_required', 'steam_guard_required', 'steam_guard_mobile_required',
-    'steam_qr_required', 'steam_auth_retrying', 'steam_auth_done',
-    'game_downloading', 'steam_sdk_downloading', 'steamcmd_image_pulling',
+  const BASE_INSTALLING_PHASES = [
+    'pull_running', 'game_downloading', 'steam_sdk_downloading', 'steamcmd_image_pulling',
     'steamcmd_auth_running', 'steamcmd_guard_choice_required', 'steamcmd_guard_required',
     'steamcmd_guard_mobile_required', 'steamcmd_downloading', 'smapi_installing',
   ]
-  const installJobs = canonicalInstallJobs(dashboardData.jobs, installJob)
-  const activeInstallJob = installJobs.active
-  const latestInstallJob = activeInstallJob ?? installJobs.selected ?? installJobs.latest
-  const hasActiveInstallJob = activeInstallJob !== null
+  const installJobs = canonicalInstallJobs(dashboardData.jobs, installJob, installJobId)
+  const installPageJobs = canonicalInstallPageJobs(dashboardData.jobs, installJob, installJobId)
+  const activeSteamTaskJob = installPageJobs.active
+  const latestInstallJob = installJobId ? installJobs.selected : installJobForDisplay(installJobs)
+  const latestSteamTaskJob = installJobId ? installPageJobs.selected : installJobForDisplay(installPageJobs)
+  const displayedTaskIsActive = latestSteamTaskJob !== null && !isTerminalJobStatus(latestSteamTaskJob.status)
+  const hasActiveInstallJob = displayedTaskIsActive && latestSteamTaskJob.type === 'stardew_install'
+  const hasActiveSteamAuthJob = displayedTaskIsActive && latestSteamTaskJob.type === 'stardew_steam_auth'
+  const selectedTaskIsSteamAuth = latestSteamTaskJob?.type === 'stardew_steam_auth'
   const installation = classifyInstallationState(instanceState, hasActiveInstallJob)
   const isInstalled = installation.isInstalled
   const staleInstallingPhase = !isInstalled
-    && INSTALLING_PHASES.includes(phase)
+    && BASE_INSTALLING_PHASES.includes(phase)
     && !hasActiveInstallJob
     && (latestInstallJob === null || isTerminalJobStatus(latestInstallJob.status))
   const basePhase = staleInstallingPhase ? 'install_interrupted' : phase
-  const authSucceededInLogs = logsShowSteamAuthSucceeded(logs)
+  const authSucceededInLogs = !selectedTaskIsSteamAuth && logsShowSteamAuthSucceeded(logs)
   const canDirectRetry = installation.kind === 'installed'
     || installation.kind === 'repair_required'
     || staleInstallingPhase
     || authSucceededInLogs
-    || ['pull_failed', 'install_timeout', 'steam_auth_connection_failed', 'install_interrupted', 'download_failed', 'post_auth_failed', 'smapi_bundled_sync_failed'].includes(basePhase)
+    || ['pull_failed', 'install_timeout', 'install_interrupted', 'download_failed', 'post_auth_failed', 'smapi_bundled_sync_failed'].includes(basePhase)
   const isInstalling = hasActiveInstallJob
-    || (!staleInstallingPhase && !isInstalled && INSTALLING_PHASES.includes(phase))
+    || (!staleInstallingPhase && !isInstalled && BASE_INSTALLING_PHASES.includes(phase))
 
-  // 当 dashboardData.jobs 变化时，自动拾取活跃的安装任务
+  // A job ID returned by the authorization POST is authoritative. Keep it in
+  // the URL so cross-page retry buttons and stale dashboard snapshots cannot
+  // switch the log window back to an older task.
   useEffect(() => {
-    if (activeInstallJob && activeInstallJob.id !== installJobId) {
-      setInstallJobId(activeInstallJob.id)
+    if (!requestedInstallJobId || requestedInstallJobId === installJobId) return
+    setInstallJobId(requestedInstallJobId)
+    setInstallJob(null)
+    setLogs([])
+    setSseError('')
+  }, [installJobId, requestedInstallJobId])
+
+  // 当 dashboardData.jobs 变化时，自动拾取活跃的安装任务；显式 URL 任务优先。
+  useEffect(() => {
+    if (requestedInstallJobId) return
+    if (activeSteamTaskJob && activeSteamTaskJob.id !== installJobId) {
+      setInstallJobId(activeSteamTaskJob.id)
+      setInstallJob(null)
+      setLogs([])
+      setSseError('')
       return
     }
     if (installJobId) return
-    const latest = dashboardData.jobs.find((j) => j.type === 'stardew_install')
-    if (latest) setInstallJobId(latest.id)
-  }, [activeInstallJob, dashboardData.jobs, installJobId])
+    const latest = dashboardData.jobs.find(
+      (job) => job.type === 'stardew_install' || job.type === 'stardew_steam_auth',
+    )
+    if (latest) {
+      setInstallJobId(latest.id)
+      setInstallJob(null)
+      setLogs([])
+      setSseError('')
+    }
+  }, [activeSteamTaskJob, dashboardData.jobs, installJobId, requestedInstallJobId])
 
   // 当 installJobId 变化时加载详情 + 日志，并连接 SSE
   useEffect(() => {
@@ -474,16 +503,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     }
   }, [installJobId]) // dashboardData.refresh* 是稳定引用，intentionally omitted
 
-  // 日志自动滚动
-  useEffect(() => {
-    const logWindow = logWindowRef.current
-    if (!logWindow) return
-    logWindow.scrollTo({ top: logWindow.scrollHeight, behavior: 'smooth' })
-  }, [logs.length])
-
   // ── 表单 ──────────────────────────────────────────────────────────────────────
   const [showForm, setShowForm] = useState(false)
-  const [forceReauth, setForceReauth] = useState(false)
+  const [editingSteamCredentials, setEditingSteamCredentials] = useState(false)
   const [steamUsername, setSteamUsername] = useState('')
   const [steamPassword, setSteamPassword] = useState('')
   const [vncPassword, setVncPassword] = useState('')
@@ -491,7 +513,18 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const [showVncPwd, setShowVncPwd] = useState(false)
   const [installBusy, setInstallBusy] = useState(false)
   const [installError, setInstallError] = useState('')
-  const steamAuth = useSteamAuthLogin({ instanceState: dashboardData.instanceState, onNavigate })
+  const steamAuth = useSteamAuthLogin({
+    instanceState: dashboardData.instanceState,
+    onNavigate,
+    onStarted: (jobId) => {
+      setInstallJobId(jobId)
+      setInstallJob(null)
+      setLogs([])
+      setSseError('')
+      void dashboardData.refreshInstanceState()
+      void dashboardData.refreshJobs()
+    },
+  })
 
   const handleInstallSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -499,18 +532,17 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     setInstallError('')
     setInstallBusy(true)
     try {
-      const body = forceReauth
-        ? { steamUsername, steamPassword, vncPassword, imageTag, forceReauth: true }
-        : canDirectRetry
-          ? { reuseCredentials: true, imageTag }
-          : { steamUsername, steamPassword, vncPassword, imageTag }
+      const body = canDirectRetry
+        ? { reuseCredentials: true, imageTag }
+        : { steamUsername, steamPassword, vncPassword, imageTag }
       const res = await installInstance(body)
+      onNavigate('install', { installJobId: res.jobId })
       setInstallJobId(res.jobId)
       setLogs([])
       setInstallJob(null)
       setSseError('')
       setShowForm(false)
-      setForceReauth(false)
+      setEditingSteamCredentials(false)
       dashboardData.refreshJobs()
       dashboardData.refreshInstanceState()
     } catch (err) {
@@ -519,6 +551,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           ? String((err.details as { jobId?: unknown }).jobId ?? '')
           : ''
         if (jobId) {
+          onNavigate('install', { installJobId: jobId })
           if (jobId !== installJobId) {
             setInstallJobId(jobId)
             setInstallJob(null)
@@ -526,7 +559,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
             setSseError('')
           }
           setShowForm(false)
-          setForceReauth(false)
+          setEditingSteamCredentials(false)
           dashboardData.refreshJobs()
           dashboardData.refreshInstanceState()
           return
@@ -536,7 +569,26 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     } finally {
       setInstallBusy(false)
     }
-  }, [isAdmin, forceReauth, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData, installJobId])
+  }, [isAdmin, canDirectRetry, imageTag, steamUsername, steamPassword, vncPassword, dashboardData, installJobId, onNavigate])
+
+  const handleSteamCredentialsSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!isAdmin) return
+    setInstallError('')
+    setInstallBusy(true)
+    try {
+      await updateSteamCredentials({ steamUsername, steamPassword })
+      setSteamPassword('')
+      setShowSteamPwd(false)
+      setShowForm(false)
+      setEditingSteamCredentials(false)
+      await dashboardData.refreshInstanceState()
+    } catch (err) {
+      setInstallError(errorMessage(err))
+    } finally {
+      setInstallBusy(false)
+    }
+  }, [isAdmin, steamUsername, steamPassword, dashboardData])
 
   // ── Steam Guard ───────────────────────────────────────────────────────────────
   const [guardInput, setGuardInput] = useState('')
@@ -594,31 +646,38 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
   const [qrImageError, setQrImageError] = useState('')
 
   // ── 计算值 ───────────────────────────────────────────────────────────────────
-  const activeInstallLogs = logsDescribeActiveInstall(activeInstallJob, installJobId) ? logs : []
-  const pullProgress = extractPullProgress(activeInstallLogs)
-  const installJobType = latestInstallJob?.type ?? (installJobId ? 'stardew_install' : undefined)
-  const steamGameProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'game')
-  const steamSdkProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'sdk')
-  const steamCMDClientProgress = extractSteamDownloadProgress(activeInstallLogs, installJobType, 'steamcmd_update')
-  const smapiArchiveProgress = extractSMAPIArchiveProgress(activeInstallLogs, installJobType)
-  const logAuthPhase = inferLatestSteamAuthLogPhase(activeInstallLogs)
+  const selectedSteamTaskLogs = latestSteamTaskJob?.id === installJobId ? logs : []
+  const pullProgress = extractPullProgress(selectedSteamTaskLogs)
+  const installJobType = latestSteamTaskJob?.type ?? (installJobId ? 'stardew_install' : undefined)
+  const steamGameProgress = extractSteamDownloadProgress(selectedSteamTaskLogs, installJobType, 'game')
+  const steamSdkProgress = extractSteamDownloadProgress(selectedSteamTaskLogs, installJobType, 'sdk')
+  const steamCMDClientProgress = extractSteamDownloadProgress(selectedSteamTaskLogs, installJobType, 'steamcmd_update')
+  const smapiArchiveProgress = extractSMAPIArchiveProgress(selectedSteamTaskLogs, installJobType)
+  const logAuthPhase = inferLatestSteamAuthLogPhase(selectedSteamTaskLogs)
   const logDownloadPhase = logAuthPhase === 'smapi_installing'
     ? 'smapi_installing'
     : logAuthPhase === 'steamcmd_downloading'
       ? 'steamcmd_downloading'
     : logAuthPhase?.startsWith('steamcmd_guard')
       ? null
-        : hasSteamSdkDownloadStarted(activeInstallLogs, installJobType) || steamSdkProgress
+        : hasSteamSdkDownloadStarted(selectedSteamTaskLogs, installJobType) || steamSdkProgress
           ? 'steam_sdk_downloading'
-        : steamGameProgress || logsShowSteamGameDownloadStarted(activeInstallLogs)
+        : steamGameProgress || logsShowSteamGameDownloadStarted(selectedSteamTaskLogs)
           ? 'game_downloading'
           : null
-  const qrPayload = extractQrPayload(activeInstallLogs)
+  const qrPayload = extractQrPayload(selectedSteamTaskLogs)
   const qrUrl = qrPayload?.url ?? ''
   const qrText = qrPayload?.art ?? ''
-  const basePhaseIsFailure = AUTH_FAILED_PHASES.includes(basePhase)
+  const basePhaseIsFailure = (selectedTaskIsSteamAuth
+    ? STEAM_INVITE_AUTH_FAILED_PHASES
+    : BASE_AUTH_FAILED_PHASES).includes(basePhase)
     || basePhase === 'smapi_install_failed'
     || basePhase === 'smapi_bundled_sync_failed'
+  const selectedTaskFailurePhase = latestSteamTaskJob?.status === 'failed'
+    ? selectedTaskIsSteamAuth
+      ? STEAM_INVITE_AUTH_FAILED_PHASES.includes(basePhase) ? basePhase : 'steam_auth_failed'
+      : basePhaseIsFailure ? basePhase : 'install_interrupted'
+    : null
   const logQrPhaseIsCurrent = logAuthPhase === 'steam_qr_required' &&
     optimisticPhase !== 'steam_guard_required' &&
     optimisticPhase !== 'steam_guard_mobile_required' &&
@@ -632,6 +691,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     basePhase !== 'steamcmd_guard_choice_required'
   const effectivePhase = staleInstallingPhase
     ? 'install_interrupted'
+    : selectedTaskFailurePhase
+      ? selectedTaskFailurePhase
     : basePhaseIsFailure
       ? basePhase
       : logDownloadPhase
@@ -643,7 +704,9 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
             : logQrPhaseIsCurrent
               ? 'steam_qr_required'
               : basePhase
-  const authFailed = AUTH_FAILED_PHASES.includes(effectivePhase)
+  const authFailed = (selectedTaskIsSteamAuth
+    ? STEAM_INVITE_AUTH_FAILED_PHASES
+    : BASE_AUTH_FAILED_PHASES).includes(effectivePhase)
   const isQrAuthError = effectivePhase === 'qr_auth_failed'
   const postAuthRecoverable = canDirectRetry && (
     authSucceededInLogs ||
@@ -669,10 +732,20 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     || installWorkflowFailed
     || needsInstallRepair
   const installationWorkflowComplete = isInstalled && !isInstalling
+  const steamInviteAuthorizationCleanupPending = instanceState?.steamInviteEnabled === true
+    && instanceState.steamInviteAuthState === 'cleanup_pending'
+  const steamInviteAuthorizationReady = instanceState?.steamInviteEnabled === true
+    && instanceState.steamInviteAuthState === 'ready'
+    && instanceState.steamAuthLoggedIn === true
   const stepStatuses = calcStepStatuses(installationWorkflowComplete, effectivePhase, authFailed, isInstalling)
   const showProgress = isInstalling || isInstalled || authFailed
     || ['pull_failed', 'install_timeout', 'download_failed', 'post_auth_failed', 'install_interrupted', 'steamcmd_failed', 'steamcmd_image_pull_failed', 'smapi_install_failed', 'smapi_bundled_sync_failed'].includes(effectivePhase)
-  const progressLabel = phaseLabel(effectivePhase, isInstalling, authFailed, installationWorkflowComplete)
+  const progressLabel = phaseLabel(
+    effectivePhase,
+    isInstalling || hasActiveSteamAuthJob,
+    authFailed,
+    installationWorkflowComplete && !hasActiveSteamAuthJob && !selectedTaskIsSteamAuth,
+  )
   const selectedOption = imageTagOptions.find((o) => o.tag === imageTag)
   const steamDownloadProgress = effectivePhase === 'steam_sdk_downloading'
     ? steamSdkProgress
@@ -693,11 +766,15 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     smapiArchiveProgress,
   )
 
-  const visibleLogs = logs.filter((log) => !PULL_PROGRESS_RE.test(log.message) && !SMAPI_PROGRESS_RE.test(log.message)).slice(-50)
+  const displayableLogs = useMemo(
+    () => logs.filter((log) => !PULL_PROGRESS_RE.test(log.message) && !SMAPI_PROGRESS_RE.test(log.message)),
+    [logs],
+  )
+  const visibleLogs = useMemo(() => latestInstallLogsFirst(displayableLogs), [displayableLogs])
 
   useEffect(() => {
     if (!optimisticPhase) return
-    if (phase === optimisticPhase || AUTH_FAILED_PHASES.includes(phase)) {
+    if (phase === optimisticPhase || ALL_AUTH_FAILED_PHASES.includes(phase)) {
       setOptimisticPhase(null)
     }
   }, [phase, optimisticPhase])
@@ -760,14 +837,16 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
     : showProgress
       ? Math.min(96, (finishedStepCount * 20) + (hasActiveStep ? 8 : 0))
       : 0
-  const activityPanelTitle = effectivePhase === 'smapi_installing'
+  const activityPanelTitle = selectedTaskIsSteamAuth
+    ? 'Steam 邀请码授权'
+    : effectivePhase === 'smapi_installing'
     ? 'SMAPI 安装'
     : effectivePhase === 'pull_running' || effectivePhase === 'steamcmd_image_pulling'
       ? '镜像下载'
       : effectivePhase === 'game_downloading' || effectivePhase === 'steam_sdk_downloading' || effectivePhase === 'steamcmd_downloading'
         ? '下载任务'
-        : 'Steam 认证'
-  const activityPanelUsesDownloadIcon = activityPanelTitle !== 'Steam 认证'
+        : 'SteamCMD 授权'
+  const activityPanelUsesDownloadIcon = activityPanelTitle !== 'Steam 邀请码授权'
 
   return (
     <div className="sd-page sd-install-page">
@@ -798,7 +877,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               ) : installation.kind === 'installed' ? (
                 <><span className="sd-dot sd-dot-green" aria-hidden="true" /><span className="sd-state-value">已安装</span></>
               ) : effectivePhase === 'steamcmd_failed' || effectivePhase === 'steamcmd_image_pull_failed' ? (
-                <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">兜底失败</span></>
+                <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">SteamCMD 失败</span></>
               ) : postAuthRecoverable ? (
                 <><span className="sd-dot sd-dot-red" aria-hidden="true" /><span className="sd-state-value">下载失败</span></>
               ) : authFailed ? (
@@ -836,7 +915,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                         ? '上次安装流程未完成，请根据当前阶段继续或重试。'
                         : installation.kind === 'unknown'
                           ? '暂时无法确认安装完整性，请先查看诊断，避免重复安装。'
-                          : '配置 Steam 凭据并安装 Stardew Valley 服务器（含 SMAPI + JunimoServer）。')}
+                          : '配置 Steam 账号密码并安装 Stardew Valley、Steamworks SDK、SMAPI 与 JunimoServer。')}
               </span>
             </div>
           </div>
@@ -901,7 +980,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-tan"
                   type="button"
-                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
+                  onClick={() => { setEditingSteamCredentials(false); setShowForm(true); setInstallError('') }}
                 >
                   校验 / 修复安装
                 </button>
@@ -920,7 +999,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-green"
                   type="button"
-                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
+                  onClick={() => { setEditingSteamCredentials(false); setShowForm(true); setInstallError('') }}
                 >
                   检查并修复安装
                 </button>
@@ -951,29 +1030,47 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           ) : null}
 
           <div className="sd-install-actions">
-            <button
-              className="sd-btn-green"
-              type="button"
-              onClick={() => { void steamAuth.login() }}
-              disabled={steamAuth.busy || steamAuth.requiresStop}
-              title={steamAuth.title}
-            >
-              {steamAuth.label}
-            </button>
             {isAdmin ? (
-              <button
-                className="sd-btn-tan"
-                type="button"
-                onClick={() => { setForceReauth(true); setShowForm(true); setInstallError('') }}
-                disabled={isInstalling || installBusy || steamAuth.requiresStop || forceReauth}
-                title={steamAuth.requiresStop
-                  ? '请先停止服务器，再更换 Steam 账号或密码'
-                  : isInstalling
-                    ? '请等待当前安装任务结束后再更换 Steam 账号或密码'
-                    : '输入新的 Steam 账号密码，清除旧授权缓存并重新认证'}
-              >
-                更换 Steam 账号 / 重新认证
-              </button>
+              <>
+                <button
+                  className="sd-btn-green"
+                  type="button"
+                  onClick={() => { void steamAuth.login() }}
+                  disabled={steamInviteAuthorizationReady || steamInviteAuthorizationCleanupPending || steamAuth.busy || steamAuth.requiresStop || isInstalling || hasActiveSteamAuthJob || !isInstalled}
+                  title={steamInviteAuthorizationCleanupPending
+                    ? '授权已成功，正在安全收尾，请稍后刷新'
+                    : steamInviteAuthorizationReady
+                    ? undefined
+                    : !isInstalled
+                    ? '请先完成 SteamCMD 基础安装，再启用 Steam 邀请码'
+                    : hasActiveSteamAuthJob
+                      ? 'Steam 邀请码授权任务正在进行'
+                      : steamAuth.title}
+                >
+                  {steamInviteAuthorizationCleanupPending
+                    ? 'Steam 邀请码授权收尾中…'
+                    : steamInviteAuthorizationReady
+                    ? 'Steam 邀请码已启用'
+                    : steamAuth.busy || hasActiveSteamAuthJob
+                    ? '正在启用 Steam 邀请码…'
+                    : '启用 Steam 邀请码（需要再次登录授权）'}
+                </button>
+                {isInstalled ? (
+                  <button
+                    className="sd-btn-tan"
+                    type="button"
+                    onClick={() => { setEditingSteamCredentials(true); setShowForm(true); setInstallError('') }}
+                    disabled={isInstalling || hasActiveSteamAuthJob || installBusy || steamAuth.requiresStop || editingSteamCredentials}
+                    title={steamAuth.requiresStop
+                      ? '请先停止服务器，再修改 Steam 账号密码'
+                      : isInstalling || hasActiveSteamAuthJob
+                        ? '请等待当前任务结束后再修改 Steam 账号密码'
+                        : '输入新的 Steam 账号密码'}
+                  >
+                    修改 Steam 账号密码
+                  </button>
+                ) : null}
+              </>
             ) : null}
             {steamAuth.message ? (
               <div className="sd-srv-hint" style={{ color: '#b94040' }}>{steamAuth.message}</div>
@@ -983,14 +1080,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           {/* ── 非 admin 提示 ──────────────────────────────────────────────── */}
           {!isAdmin && installation.canOpenInstallForm ? (
             <div className="sd-install-info-bar">
-              仅管理员可以启动安装。请联系管理员完成 Steam 认证和游戏安装。
-            </div>
-          ) : null}
-
-          {/* ── QR 认证失败提示 ────────────────────────────────────────────── */}
-          {isQrAuthError ? (
-            <div className="sd-install-error-bar">
-              二维码登录失败：steam-auth 容器无法连接 SteamClient。请点击下方"改用账号密码重试"，后续如需验证码会再提示。
+              仅管理员可以启动安装。请联系管理员完成 SteamCMD 授权和游戏安装。
             </div>
           ) : null}
 
@@ -1001,12 +1091,12 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <button
                   className="sd-btn-green sd-btn--lg"
                   type="button"
-                  onClick={() => { setForceReauth(false); setShowForm(true); setInstallError('') }}
+                  onClick={() => { setEditingSteamCredentials(false); setShowForm(true); setInstallError('') }}
                 >
-                  {isQrAuthError
-                    ? '改用账号密码重试'
+                    {isQrAuthError
+                    ? '重试 Steam 邀请码授权'
                     : steamCMDRecoverable
-                      ? '重试 SteamCMD 授权/下载'
+                      ? '重试 SteamCMD 安装/修复'
                     : postAuthRecoverable
                       ? '重试下载（不重新输入账号）'
                     : authFailed
@@ -1028,13 +1118,13 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
           ) : null}
 
           {/* ── 安装配置表单 ───────────────────────────────────────────────── */}
-          {showForm && isAdmin && (installation.canOpenInstallForm || forceReauth) ? (
+          {showForm && isAdmin && (installation.canOpenInstallForm || editingSteamCredentials) ? (
             <div className="sd-install-form-card">
               <div className="sd-install-form-title">
-                {forceReauth
-                  ? '更换 Steam 账号 / 重新认证'
+                {editingSteamCredentials
+                  ? '修改 Steam 账号密码'
                   : steamCMDRecoverable
-                  ? '重试 SteamCMD 兜底下载'
+                  ? '重试 SteamCMD 安装 / 修复'
                   : postAuthRecoverable
                   ? '重试下载 / 继续安装'
                   : isQrAuthError || (authFailed && !isInstalled)
@@ -1047,24 +1137,24 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                       ? '确认重试安装'
                       : '安装配置'}
               </div>
-              <p className="sd-install-form-hint">
-                {forceReauth
-                  ? '将清除已保存的 Steam / SteamCMD 授权缓存，并使用新账号密码重新认证；已下载的游戏文件和存档会保留。'
-                  : steamCMDRecoverable
-                  ? '上次已进入 SteamCMD 兜底但授权或下载未完成；本次会直接复用已保存账号密码进入 SteamCMD 授权/下载，本地已有 SteamCMD 镜像时不会重新拉取。'
+              {!editingSteamCredentials ? (
+                <p className="sd-install-form-hint">
+                  {steamCMDRecoverable
+                  ? '上次 SteamCMD 授权、下载或校验未完成；本次会复用已保存账号密码继续安装/修复，本地已有工具镜像时不会重新拉取。'
                   : postAuthRecoverable
-                  ? 'Steam 认证已经成功，本次只会复用已保存凭据重试下载/后续安装步骤，不需要重新输入账号密码。'
+                  ? 'SteamCMD 授权已经成功，本次只会复用已保存凭据重试下载/后续安装步骤，不需要重新输入账号密码。'
                   : installation.kind === 'installed'
-                    ? '本次会跳过 steam-auth，复用已保存凭据和 SteamCMD 授权缓存直接下载/校验游戏文件，不需要重新输入账号密码。'
+                    ? '本次会复用已保存凭据和 SteamCMD 安装授权缓存校验/修复游戏文件；不会启动 SteamAuth。'
                     : needsInstallRepair
                       ? '将复用已保存凭据校验并补齐缺失文件，不会删除现有存档。'
                   : canDirectRetry
                     ? '将使用已保存的 Steam 凭据继续未完成的安装，只需确认镜像版本。'
-                  : '请输入 Steam 账号信息和 VNC 密码。密码不会出现在任何日志中。'}
-              </p>
+                    : '请输入 Steam 账号信息和 VNC 密码。密码不会出现在任何日志中。'}
+                </p>
+              ) : null}
 
-              <form onSubmit={(e) => void handleInstallSubmit(e)} autoComplete="off">
-                {!optionsLoading && imageTagOptions.length > 0 ? (
+              <form onSubmit={editingSteamCredentials ? handleSteamCredentialsSubmit : handleInstallSubmit} autoComplete="off">
+                {!editingSteamCredentials && !optionsLoading && imageTagOptions.length > 0 ? (
                   <div className="sd-install-field">
                     <label className="sd-install-field-label">JunimoServer 镜像版本</label>
                     <select
@@ -1084,7 +1174,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   </div>
                 ) : null}
 
-                {!canDirectRetry || forceReauth ? (
+                {!canDirectRetry || editingSteamCredentials ? (
                   <>
                     <div className="sd-install-field">
                       <label className="sd-install-field-label">Steam 用户名</label>
@@ -1117,26 +1207,28 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                         </button>
                       </div>
                     </div>
-                    <div className="sd-install-field">
-                      <label className="sd-install-field-label">VNC 密码</label>
-                      <div className="sd-install-pwd-row">
-                        <input
-                          className="sd-install-input"
-                          type={showVncPwd ? 'text' : 'password'}
-                          value={vncPassword}
-                          autoComplete="new-password"
-                          required
-                          onChange={(e) => setVncPassword(e.target.value)}
-                        />
-                        <button
-                          className="sd-btn-tan"
-                          type="button"
-                          onClick={() => setShowVncPwd((v) => !v)}
-                        >
-                          {showVncPwd ? '隐藏' : '显示'}
-                        </button>
+                    {!editingSteamCredentials ? (
+                      <div className="sd-install-field">
+                        <label className="sd-install-field-label">VNC 密码</label>
+                        <div className="sd-install-pwd-row">
+                          <input
+                            className="sd-install-input"
+                            type={showVncPwd ? 'text' : 'password'}
+                            value={vncPassword}
+                            autoComplete="new-password"
+                            required
+                            onChange={(e) => setVncPassword(e.target.value)}
+                          />
+                          <button
+                            className="sd-btn-tan"
+                            type="button"
+                            onClick={() => setShowVncPwd((v) => !v)}
+                          >
+                            {showVncPwd ? '隐藏' : '显示'}
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
                     <p className="sd-install-form-hint" style={{ marginTop: 2 }}>
                       密码不会打印到任何日志或浏览器控制台。
                     </p>
@@ -1150,11 +1242,11 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <div className="sd-install-form-actions">
                   <button className="sd-btn-green" type="submit" disabled={installBusy}>
                     {installBusy
-                      ? '正在启动安装…'
-                      : forceReauth
-                        ? '确认更换账号并重新认证'
+                      ? editingSteamCredentials ? '正在保存…' : '正在启动安装…'
+                      : editingSteamCredentials
+                        ? '确认修改 Steam 账号密码'
                         : steamCMDRecoverable
-                        ? '确认重试 SteamCMD'
+                        ? '确认重试 SteamCMD 安装'
                         : installation.kind === 'installed' || needsInstallRepair
                           ? '确认修复 / 更新'
                         : canDirectRetry
@@ -1165,7 +1257,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                     className="sd-btn-tan"
                     type="button"
                     disabled={installBusy}
-                    onClick={() => { setForceReauth(false); setShowForm(false); setInstallError('') }}
+                    onClick={() => { setEditingSteamCredentials(false); setShowForm(false); setInstallError('') }}
                   >
                     取消
                   </button>
@@ -1187,7 +1279,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 <span className="sd-install-pull-icon">↓</span>
                 <div>
                   <div className="sd-install-pull-title">
-                    {effectivePhase === 'steamcmd_image_pulling' ? '正在下载 SteamCMD 兜底镜像' : '正在下载 JunimoServer 镜像'}
+                    {effectivePhase === 'steamcmd_image_pulling' ? '正在下载 SteamCMD 安装工具镜像' : '正在下载 JunimoServer 镜像'}
                   </div>
                   <div className="sd-install-pull-sub">{stateMessage || '正在准备拉取镜像，请稍候...'}</div>
                 </div>
@@ -1214,7 +1306,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               )}
               <p className="sd-install-pull-hint">
                 {effectivePhase === 'steamcmd_image_pulling'
-                  ? '这是 steam-auth 下载失败后的兜底工具镜像，拉取完成后会自动继续。'
+                  ? 'SteamCMD 是一次性安装/修复下载工具，拉取完成后会继续安装，不会加入日常运行栈。'
                   : '首次下载约需 10–30 分钟，取决于网络速度。'}
               </p>
             </div>
@@ -1278,7 +1370,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 {isSteamCMDClientUpdating
                   ? 'SteamCMD 正在更新客户端中…'
                   : effectivePhase === 'steamcmd_downloading'
-                  ? 'SteamCMD 正在兜底下载游戏文件中…'
+                  ? 'SteamCMD 正在下载并校验游戏文件…'
                   : effectivePhase === 'steam_sdk_downloading'
                   ? '下载 Steam SDK 运行文件中…'
                   : '下载 Stardew Valley 游戏文件中…'}
@@ -1287,7 +1379,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 {isSteamCMDClientUpdating
                   ? 'Docker 镜像已经就绪；这里显示的是 SteamCMD 容器内客户端自更新进度，完成后会进入登录授权。'
                   : effectivePhase === 'steamcmd_downloading'
-                  ? 'SteamCMD 正在复用已保存凭据和授权缓存下载/校验游戏文件。'
+                  ? 'SteamCMD 正在复用已保存凭据和安装授权缓存，依次准备 Stardew Valley 与 Steamworks SDK。'
                   : '大文件下载中，请耐心等待（约 10–30 分钟）。下载完成后面板会自动继续。'}
               </div>
               {steamDownloadProgress ? (
@@ -1325,8 +1417,8 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               <div className="sd-install-guard-block">
                 <div className="sd-install-guard-desc">
                   {needsSteamCMDGuardChoice || needsSteamCMDGuard
-                    ? 'steam-auth 国内网络波动导致下载失败，SteamCMD 兜底需要管理员重新授权。'
-                    : 'Steam 认证正在进行中，请等待管理员完成验证。'}
+                    ? 'SteamCMD 基础安装正在等待管理员完成 Steam Guard 授权。'
+                    : 'Steam 邀请码授权正在进行中，请等待管理员完成验证。'}
                 </div>
               </div>
             </div>
@@ -1441,12 +1533,12 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 </div>
               ) : null}
 
-              {/* SteamCMD 兜底授权 */}
+              {/* SteamCMD 安装授权 */}
               {needsSteamCMDGuardChoice ? (
                 <div className="sd-install-guard-block">
                   <div className="sd-install-guard-title">SteamCMD 需要重新授权</div>
                   <p className="sd-install-guard-desc">
-                    steam-auth 国内网络波动导致游戏下载失败，面板已自动切换到 SteamCMD 并复用已保存账号密码登录。请选择 SteamCMD 的授权方式。
+                    SteamCMD 是基础安装主链，正在使用已保存账号密码登录。请选择与 Steam 提示一致的授权方式。
                   </p>
                   <div className="sd-install-guard-actions">
                     <button
@@ -1472,7 +1564,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
 
               {needsSteamCMDGuard ? (
                 <div className="sd-install-guard-block">
-                  <div className="sd-install-guard-title">授权 SteamCMD 兜底下载</div>
+                  <div className="sd-install-guard-title">授权 SteamCMD 安装下载</div>
                   {effectivePhase === 'steamcmd_guard_required' ? (
                     <>
                       {guardSubmittedKind === 'steamcmd' ? (
@@ -1517,7 +1609,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                   {effectivePhase === 'steamcmd_guard_mobile_required' ? (
                     <div className="sd-install-guard-mobile">
                       <span className="sd-dot sd-dot-yellow" aria-hidden="true" />
-                      <span>请打开 Steam 手机 App，批准 SteamCMD 登录请求；批准后兜底下载会自动继续。</span>
+                      <span>请打开 Steam 手机 App，批准 SteamCMD 登录请求；批准后安装下载会自动继续。</span>
                     </div>
                   ) : null}
                 </div>
@@ -1553,14 +1645,16 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
               <img className="sd-install-auth-orb" src={STEAM_STEP_ICON_SRC} alt="" aria-hidden="true" />
               <p>
                 {installation.kind === 'installed'
-                  ? 'Steam 认证已完成。后续修复安装会复用已保存凭据与 SteamCMD 授权缓存。'
+                  ? instanceState?.steamInviteEnabled === true
+                    ? '基础安装已完成。Steam 邀请码授权状态与交互会在这里显示；局域网/IP 直连不依赖它。'
+                    : 'SteamCMD 基础安装已完成。Steam 邀请码默认关闭，需要时可由管理员按需启用。'
                   : isInstalling
-                    ? '安装流程运行中，认证交互会在需要时显示在这里。'
+                    ? 'SteamCMD 安装流程运行中，需要 Guard 或验证码时会在这里显示。'
                     : needsInstallRepair
                       ? '修复安装会复用已保存凭据；现有存档不会被删除。'
                       : needsInstallationDiagnosis
                         ? '当前异常尚未证实由安装缺失导致，请先查看诊断，避免重复安装。'
-                    : '启动安装后，这里会显示扫码登录、Steam Guard 或验证码输入。'}
+                    : '启动安装后，这里会显示 SteamCMD Guard 或验证码输入。Steam 邀请码扫码授权需安装完成后按需启用。'}
               </p>
             </div>
           )}
@@ -1572,20 +1666,21 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
         </section>
 
         <section className="sd-install-column sd-install-log-panel">
-          {/* ── 安装日志预览 ───────────────────────────────────────────────── */}
+          {/* ── 安装 / 邀请码授权日志预览 ─────────────────────────────────── */}
           <div className="sd-install-log-section">
             <div className="sd-install-section-title">
-              安装日志
-              {isInstalling ? (
+              安装 / 邀请码授权日志
+              {displayedTaskIsActive ? (
                 <span className="sd-jobs-sse-dot" aria-label="实时接收中" />
               ) : null}
+              <span className="sd-install-log-order-note">最新日志在最上方（倒序显示）</span>
             </div>
             {!installJobId ? (
-              <div className="sd-install-log-empty">等待安装任务启动...</div>
+              <div className="sd-install-log-empty">等待安装或邀请码授权任务启动...</div>
             ) : logs.length === 0 ? (
               <div className="sd-install-log-empty">等待日志输出...</div>
             ) : (
-              <div ref={logWindowRef} className="sd-install-log-window">
+              <div className="sd-install-log-window">
                 {visibleLogs.map((log) => (
                   <div
                     key={`${log.jobId ?? ''}-${log.sequence}`}
@@ -1598,7 +1693,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate }: 
                 ))}
               </div>
             )}
-            {logs.length >= 50 ? (
+            {displayableLogs.length > visibleLogs.length ? (
               <p className="sd-install-log-hint">
                 仅显示最近 50 条。查看完整日志请前往{' '}
                 <button

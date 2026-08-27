@@ -110,6 +110,7 @@ type RuntimeUpdateApplyStatus struct {
 
 type runtimeUpdateRecoveryManifest struct {
 	SchemaVersion            int                        `json:"schemaVersion"`
+	SteamInviteEnabled       bool                       `json:"steamInviteEnabled,omitempty"`
 	ApplyID                  string                     `json:"applyId"`
 	ActorID                  int64                      `json:"actorId"`
 	Project                  string                     `json:"project"`
@@ -163,14 +164,21 @@ func runtimeUpdateServerChanged(manifest runtimeUpdateRecoveryManifest) bool {
 }
 
 func runtimeUpdateAuthChanged(manifest runtimeUpdateRecoveryManifest) bool {
-	return manifest.SchemaVersion < 2 || manifest.AuthImageChanged
+	return runtimeUpdateUsesSteamAuth(manifest) && (manifest.SchemaVersion < 2 || manifest.AuthImageChanged)
+}
+
+func runtimeUpdateUsesSteamAuth(manifest runtimeUpdateRecoveryManifest) bool {
+	return manifest.SchemaVersion < 4 || manifest.SteamInviteEnabled
 }
 
 func runtimeUpdateAuthSnapshotCreated(manifest runtimeUpdateRecoveryManifest) bool {
-	return manifest.SchemaVersion < 2 || manifest.AuthSnapshotCreated
+	return runtimeUpdateUsesSteamAuth(manifest) && (manifest.SchemaVersion < 2 || manifest.AuthSnapshotCreated)
 }
 
 func runtimeUpdateAuthSnapshotVolumeCreated(manifest runtimeUpdateRecoveryManifest) bool {
+	if !runtimeUpdateUsesSteamAuth(manifest) {
+		return false
+	}
 	if manifest.SchemaVersion < 3 {
 		return runtimeUpdateAuthSnapshotCreated(manifest)
 	}
@@ -196,11 +204,11 @@ func runtimeUpdateJunimoModMayHaveChanged(manifest runtimeUpdateRecoveryManifest
 }
 
 func runtimeUpdateAuthMayHaveBeenRecreated(manifest runtimeUpdateRecoveryManifest) bool {
-	return manifest.AuthRecreated || manifest.SchemaVersion >= 3 && manifest.AuthRecreateIntent
+	return runtimeUpdateUsesSteamAuth(manifest) && (manifest.AuthRecreated || manifest.SchemaVersion >= 3 && manifest.AuthRecreateIntent)
 }
 
 func runtimeUpdateAuthServiceMayHaveStarted(manifest runtimeUpdateRecoveryManifest) bool {
-	return runtimeUpdateAuthMayHaveBeenRecreated(manifest) || manifest.SchemaVersion >= 3 && manifest.AuthServiceStartIntent
+	return runtimeUpdateUsesSteamAuth(manifest) && (runtimeUpdateAuthMayHaveBeenRecreated(manifest) || manifest.SchemaVersion >= 3 && manifest.AuthServiceStartIntent)
 }
 
 func runtimeUpdateServerMayHaveBeenRecreated(manifest runtimeUpdateRecoveryManifest) bool {
@@ -222,18 +230,18 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 	}
 	inspection := InspectManagedRuntimeStack(instance.DataDir, instance.State)
 	if inspection.Status == sjconfig.RuntimeStackStatusUpToDate {
-		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "already_up_to_date", Message: "当前运行组件版本对已经是推荐版本。"}
+		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "already_up_to_date", Message: "当前已启用的运行组件已经是推荐版本。"}
 	}
 	if inspection.Status != sjconfig.RuntimeStackStatusUpdateAvailable {
 		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: inspection.Code, Message: inspection.Reason}
 	}
 	dryRun, err := readRuntimeUpdateDryRunStatus(instance.DataDir)
 	if err != nil || dryRun.Phase != RuntimeUpdatePhaseSucceeded || dryRun.Target.StackVersion != inspection.Recommended.StackVersion {
-		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "dry_run_required", Message: "请先完成当前推荐版本对的升级预检。"}
+		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "dry_run_required", Message: "请先完成当前推荐运行组件的升级预检。"}
 	}
 	runtimeDocker, ok := d.docker.(RuntimeUpdateApplyDockerService)
 	if !ok {
-		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "unsupported/docker_contract", Message: "当前 Docker driver 不支持 Junimo 成对升级。"}
+		return RuntimeUpdateApplyStatus{}, &RuntimeUpdateValidationError{Code: "unsupported/docker_contract", Message: "当前 Docker driver 不支持 Junimo 运行组件升级。"}
 	}
 
 	d.runtimeUpdateMu.Lock()
@@ -241,7 +249,7 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return RuntimeUpdateApplyStatus{}, err
 	}
-	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_steam_auth", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
 	if err != nil {
 		return RuntimeUpdateApplyStatus{}, fmt.Errorf("list conflicting jobs: %w", err)
 	}
@@ -253,7 +261,7 @@ func (d *Driver) StartRuntimeUpdateApply(ctx context.Context, instance registry.
 	status := RuntimeUpdateApplyStatus{CreatedBy: createdBy, ApplyID: newRuntimeApplyID(), Phase: RuntimeUpdateApplyChecking, Current: inspection.Current, Target: inspection.Recommended, Checks: []RuntimeUpdateDryRunCheck{}, Warnings: []string{}, Logs: []RuntimeUpdateDryRunLog{}, ServerWasRunning: instance.State == storage.InstanceStateRunning || instance.State == storage.InstanceStateStarting, StartedAt: now, UpdatedAt: now}
 	gate := make(chan struct{})
 	var initialWriteErr error
-	job, err := d.jobs.Start(ctx, jobs.Spec{Type: RuntimeUpdateApplyJobType, DisplayName: "Junimo 运行组件成对升级", TargetType: "instance", TargetID: instance.ID, CreatedBy: createdBy, Timeout: 2 * time.Hour, Run: func(runCtx context.Context, jobCtx *jobs.Context) error {
+	job, err := d.jobs.Start(ctx, jobs.Spec{Type: RuntimeUpdateApplyJobType, DisplayName: "Junimo 运行组件升级", TargetType: "instance", TargetID: instance.ID, CreatedBy: createdBy, Timeout: 2 * time.Hour, Run: func(runCtx context.Context, jobCtx *jobs.Context) error {
 		<-gate
 		if initialWriteErr != nil {
 			return errors.New("升级状态初始化失败")
@@ -363,20 +371,27 @@ func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registr
 }
 
 func validRuntimeUpdateRecoveryManifest(instance registry.Instance, status RuntimeUpdateApplyStatus, manifest runtimeUpdateRecoveryManifest) bool {
-	if manifest.SchemaVersion < 1 || manifest.SchemaVersion > 3 || !runtimeUpdateApplyIDPattern.MatchString(manifest.ApplyID) || manifest.ApplyID != status.ApplyID || manifest.Project != strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir))) {
+	if manifest.SchemaVersion < 1 || manifest.SchemaVersion > 4 || !runtimeUpdateApplyIDPattern.MatchString(manifest.ApplyID) || manifest.ApplyID != status.ApplyID || manifest.Project != strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir))) {
 		return false
 	}
 	expectedSnapshot := manifest.Project + "_anxi-junimo-update-" + strings.TrimPrefix(manifest.ApplyID, "apply_") + "-steam-session"
 	if manifest.SchemaVersion >= 3 && (manifest.OriginalServerVersion != status.Current.Server.Tag || manifest.TargetServerVersion != status.Target.Server.Tag) {
 		return false
 	}
-	return manifest.SnapshotVolume == expectedSnapshot && manifest.Target == status.Selected &&
+	serverValid := manifest.SnapshotVolume == expectedSnapshot && manifest.Target == status.Selected &&
 		containsString(status.Target.Server.TrustedCandidates, manifest.Target.Server.Image) &&
-		containsString(status.Target.SteamAuth.TrustedCandidates, manifest.Target.SteamAuth.Image) &&
-		runtimeImageDigestPattern.MatchString(manifest.Target.Server.Digest) && runtimeImageDigestPattern.MatchString(manifest.Target.SteamAuth.Digest) &&
-		runtimeImageDigestPattern.MatchString(manifest.Target.Server.ImageID) && runtimeImageDigestPattern.MatchString(manifest.Target.SteamAuth.ImageID) &&
-		runtimeImageDigestPattern.MatchString(manifest.OriginalServer.Digest) && runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.Digest) &&
-		runtimeImageDigestPattern.MatchString(manifest.OriginalServer.ImageID) && runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.ImageID)
+		runtimeImageDigestPattern.MatchString(manifest.Target.Server.Digest) &&
+		runtimeImageDigestPattern.MatchString(manifest.Target.Server.ImageID) &&
+		runtimeImageDigestPattern.MatchString(manifest.OriginalServer.Digest) &&
+		runtimeImageDigestPattern.MatchString(manifest.OriginalServer.ImageID)
+	if !serverValid || !runtimeUpdateUsesSteamAuth(manifest) {
+		return serverValid
+	}
+	return containsString(status.Target.SteamAuth.TrustedCandidates, manifest.Target.SteamAuth.Image) &&
+		runtimeImageDigestPattern.MatchString(manifest.Target.SteamAuth.Digest) &&
+		runtimeImageDigestPattern.MatchString(manifest.Target.SteamAuth.ImageID) &&
+		runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.Digest) &&
+		runtimeImageDigestPattern.MatchString(manifest.OriginalAuth.ImageID)
 }
 
 func runtimeUpdateApplyPreMutationPhase(phase string) bool {
@@ -385,7 +400,7 @@ func runtimeUpdateApplyPreMutationPhase(phase string) bool {
 
 func (d *Driver) finishRuntimeUpdateRecoveryBeforeChange(ctx context.Context, docker RuntimeUpdateApplyDockerService, instance registry.Instance, status RuntimeUpdateApplyStatus) error {
 	project := strings.ToLower(filepath.Base(filepath.Clean(instance.DataDir)))
-	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, project, "server", "steam-auth"); err != nil {
+	if err := d.stopRuntimeServicesWithRetry(ctx, docker, instance.DataDir, project, runtimeServicesForSteamInvite(instance.DataDir)...); err != nil {
 		return d.markRuntimeUpdateRecoveryUncertain(instance, status, "Panel 重启后的升级事务未修改实例，但无法确认游戏容器已停止。")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)

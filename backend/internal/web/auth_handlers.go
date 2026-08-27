@@ -16,7 +16,8 @@ import (
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,32}$`)
 
 type setupStatusResponse struct {
-	Initialized bool `json:"initialized"`
+	Initialized       bool   `json:"initialized"`
+	DefaultInstanceID string `json:"defaultInstanceId"`
 }
 
 type userResponse struct {
@@ -39,7 +40,10 @@ type loginRequest struct {
 }
 
 func (s *server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, setupStatusResponse{Initialized: s.initialized.Load()})
+	writeJSON(w, http.StatusOK, setupStatusResponse{
+		Initialized:       s.initialized.Load(),
+		DefaultInstanceID: s.config.DefaultInstanceID,
+	})
 }
 
 func (s *server) handleSetupAdmin(w http.ResponseWriter, r *http.Request) {

@@ -11,16 +11,38 @@ import (
 	"time"
 )
 
-func TestSteamAuthComposeRunArgsAssignsExactOneOffName(t *testing.T) {
-	opts := SteamAuthRunOpts{Command: []string{"setup", "--qr"}}
-	got := steamAuthComposeRunArgs("/instance/docker-compose.yml", "anxi-steam-auth-test", opts)
+func TestSteamAuthDockerRunArgsUsesExactOneOffScopeWithoutSecrets(t *testing.T) {
+	opts := SteamAuthRunOpts{
+		ImageRef: "example.test/steam-auth:fixed",
+		Command:  []string{"login"},
+		Env:      []string{"GAME_DIR=/tmp/auth-game", "STEAM_USERNAME=shared-user", "STEAM_PASSWORD=secret-value"},
+		Binds:    []string{"preview_steam-session:/data/steam-session"},
+	}
+	got := steamAuthDockerRunArgs("anxi-steam-auth-test", opts)
 	want := []string{
-		"compose", "-f", "/instance/docker-compose.yml", "run",
-		"--name", "anxi-steam-auth-test", "--rm", "--interactive", "--tty",
-		"steam-auth", "setup", "--qr",
+		"run", "--name", "anxi-steam-auth-test", "--rm", "--interactive", "--tty",
+		"--env", "GAME_DIR", "--env", "STEAM_USERNAME", "--env", "STEAM_PASSWORD",
+		"--volume", "preview_steam-session:/data/steam-session",
+		"example.test/steam-auth:fixed", "login",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %#v, want %#v", got, want)
+	}
+	for _, arg := range got {
+		if arg == "secret-value" || arg == "STEAM_PASSWORD=secret-value" {
+			t.Fatalf("Steam password leaked into docker argv: %#v", got)
+		}
+	}
+}
+
+func TestEnvironmentWithOverridesRemovesConflictingHostValues(t *testing.T) {
+	got := environmentWithOverrides(
+		[]string{"PATH=/usr/bin", "STEAM_PASSWORD=host-secret", "GAME_DIR=/host/game"},
+		[]string{"STEAM_PASSWORD=task-secret", "GAME_DIR=/tmp/auth-game"},
+	)
+	want := []string{"PATH=/usr/bin", "STEAM_PASSWORD=task-secret", "GAME_DIR=/tmp/auth-game"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("environment = %#v, want %#v", got, want)
 	}
 }
 

@@ -21,7 +21,8 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.event != 'push' || !contains(github.event.workflow_run.head_commit.message, '[manual-release-candidate]'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -64,6 +65,8 @@ jobs:
           proof="$RUNNER_TEMP/candidate-proof/candidate.json"
           schema="$(jq -r '.schemaVersion // 0' "$proof")"
           version="$(jq -r '.version // empty' "$proof")"
+          previous="$(jq -r '.previousVersion // empty' "$proof")"
+          oldest="$(jq -r '.oldestTestedVersion // empty' "$proof")"
           commit="$(jq -r '.commit // empty' "$proof")"
           workflow_run_id="$(jq -r '.workflowRunId // empty' "$proof")"
           candidate_ref="$(jq -r '.candidateRef // empty' "$proof")"
@@ -73,6 +76,13 @@ jobs:
             echo "candidate proof does not match the completed workflow run" >&2
             exit 1
           fi
+          latest_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          latest_release="${latest_release#v}"
+          if [[ "$previous" != "$latest_release" ]]; then
+            echo "candidate proof previous version does not match the current latest GitHub Release: $latest_release" >&2
+            exit 1
+          fi
+          bash scripts/validate-release-matrix.sh --version "$version" --previous-version "$previous" --oldest-version "$oldest" --require-oldest-for-zero-patch
 
           git fetch --no-tags origin main:refs/remotes/origin/main
           git fetch --tags origin
@@ -89,6 +99,25 @@ jobs:
           if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
             if [[ "$(git cat-file -t "refs/tags/$tag")" != tag || "$(git rev-parse "$tag^{}")" != "$commit" ]]; then
               echo "existing tag $tag does not match the validated commit" >&2
+              exit 1
+            fi
+            tag_contents="$(git for-each-ref --format='%(contents)' "refs/tags/$tag")"
+            tag_candidate_run_id=""
+            tag_candidate_digest=""
+            tag_candidate_run_count=0
+            tag_candidate_digest_count=0
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^Candidate\ workflow:\ ([0-9]+)$ ]]; then
+                tag_candidate_run_id="${BASH_REMATCH[1]}"
+                tag_candidate_run_count=$((tag_candidate_run_count + 1))
+              elif [[ "$line" =~ ^Digest:\ (sha256:[0-9a-f]{64})$ ]]; then
+                tag_candidate_digest="${BASH_REMATCH[1]}"
+                tag_candidate_digest_count=$((tag_candidate_digest_count + 1))
+              fi
+            done <<<"$tag_contents"
+            if ((tag_candidate_run_count != 1 || tag_candidate_digest_count != 1)) ||
+              [[ "$tag_candidate_run_id" != "$CANDIDATE_RUN_ID" || "$tag_candidate_digest" != "$digest" ]]; then
+              echo "existing tag $tag is bound to a different or malformed immutable candidate" >&2
               exit 1
             fi
           else

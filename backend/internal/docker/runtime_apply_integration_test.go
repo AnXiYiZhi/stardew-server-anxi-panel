@@ -53,6 +53,95 @@ func TestComposePsStrictAcceptsEmptyProjectAfterComposeDown(t *testing.T) {
 	}
 }
 
+func TestRuntimeServerOnlyComposeIgnoresInvalidOptionalAuthConfig(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if output, err := exec.CommandContext(ctx, "docker", "info").CombinedOutput(); err != nil {
+		t.Fatalf("docker info: %v: %s", err, output)
+	}
+	project := "anxiserveronly" + strings.ToLower(strings.ReplaceAll(time.Now().UTC().Format("150405.000000"), ".", ""))
+	workDir := t.TempDir()
+	compose := "name: " + project + `
+services:
+  server:
+    image: alpine:3.20
+    command: ["sh", "-c", "sleep 300"]
+    labels:
+      com.anxi-panel.test-owner: "` + project + `"
+  steam-auth:
+    image: "${STEAM_SERVICE_IMAGE}"
+    command: ["sh", "-c", "sleep 300"]
+    volumes:
+      - steam-session:/data/steam-session
+    labels:
+      com.anxi-panel.test-owner: "` + project + `"
+volumes:
+  steam-session:
+    labels:
+      com.anxi-panel.test-owner: "` + project + `"
+`
+	if err := os.WriteFile(filepath.Join(workDir, "docker-compose.yml"), []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, ".env"), []byte("STEAM_SERVICE_IMAGE=invalid optional auth image\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cleanup := func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		command := exec.CommandContext(cleanupCtx, "docker", "compose", "--project-name", project, "--project-directory", workDir, "down", "--volumes", "--remove-orphans")
+		command.Env = append(os.Environ(), "STEAM_SERVICE_IMAGE="+disabledSteamAuthImage)
+		_ = command.Run()
+	}
+	t.Cleanup(cleanup)
+	if output, err := exec.CommandContext(ctx, "docker", "pull", "alpine:3.20").CombinedOutput(); err != nil {
+		t.Fatalf("pull alpine fixture: %v: %s", err, output)
+	}
+	client := NewClient(Options{DockerPath: "docker"})
+	config, err := client.RuntimeComposeConfigInspectServer(ctx, workDir, project)
+	if err != nil || config.Project != project || !containsStringValue(config.Services, "server") {
+		t.Fatalf("server-only config=%+v err=%v", config, err)
+	}
+	if err := client.RuntimeComposeConfigValidateServerImage(ctx, workDir, project, "alpine:3.20"); err != nil {
+		t.Fatalf("server-only config validation: %v", err)
+	}
+	if err := client.RuntimeComposeUpService(ctx, workDir, project, "server"); err != nil {
+		t.Fatalf("server-only up: %v", err)
+	}
+	ps, err := client.RuntimeComposePsServer(ctx, workDir, project)
+	if err != nil || len(ps.Services) != 1 || ps.Services[0].Service != "server" || ps.Services[0].State != "running" {
+		t.Fatalf("server-only ps=%+v err=%v", ps, err)
+	}
+	metadata, err := client.RuntimeServiceInspect(ctx, workDir, project, "server")
+	if err != nil || metadata.State != "running" {
+		t.Fatalf("server-only inspect=%+v err=%v", metadata, err)
+	}
+	authContainers, err := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "label=com.docker.compose.project="+project, "--filter", "label=com.docker.compose.service=steam-auth").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(authContainers)) != "" {
+		t.Fatalf("server-only path materialized Auth: %v %s", err, authContainers)
+	}
+	if err := exec.CommandContext(ctx, "docker", "volume", "inspect", project+"_steam-session").Run(); err == nil {
+		t.Fatal("server-only path materialized steam-session volume")
+	}
+	if err := client.RuntimeComposeStopServices(ctx, workDir, project, "server"); err != nil {
+		t.Fatalf("server-only stop: %v", err)
+	}
+	cleanup()
+	remaining, err := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "label=com.anxi-panel.test-owner="+project).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(remaining)) != "" {
+		t.Fatalf("task-owned containers remain: %v %s", err, remaining)
+	}
+}
+
+func containsStringValue(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 // This test creates only uniquely prefixed disposable volumes and never uses a
 // Compose project or volume supplied by a real Panel instance.
 func TestRuntimeApplyIsolatedSteamSessionCloneRestore(t *testing.T) {

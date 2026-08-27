@@ -968,7 +968,12 @@ func TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction(t
 		t.Fatal(err)
 	}
 
-	fake := fakeDockerService{composeUp: paneldocker.CommandResult{ExitCode: 1}, composeUpErr: errors.New("injected maintenance startup failure")}
+	startupFailureGate := make(chan struct{})
+	fake := fakeDockerService{
+		composeUp:     paneldocker.CommandResult{ExitCode: 1},
+		composeUpErr:  errors.New("injected maintenance startup failure"),
+		composeUpGate: startupFailureGate,
+	}
 	manager := jobs.NewManager(store, slog.Default())
 	driver := sj.New(fake, slog.Default(), manager, store)
 	drivers := registry.New()
@@ -1038,6 +1043,7 @@ func TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction(t
 	commit, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/saves/upload-commit-and-start", map[string]any{
 		"token": previewToken, "hostHandling": map[string]any{"mode": hostModeVirtualHostTakeover, "acknowledged": true},
 	}, adminCookie)
+	close(startupFailureGate)
 	if commit.Code != http.StatusAccepted {
 		t.Fatalf("commit=%d: %s", commit.Code, commit.Body.String())
 	}

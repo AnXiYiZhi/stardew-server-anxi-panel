@@ -348,7 +348,7 @@ func (d *Driver) startKnownRuntimeRepairPlan(ctx context.Context, docker Runtime
 	}
 	slotDeadline := time.Now().Add(3 * time.Second)
 	for {
-		active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
+		active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instance.ID, Types: []string{"stardew_install", "stardew_steam_auth", "stardew_lifecycle", RuntimeUpdateDryRunJobType, RuntimeUpdateApplyJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType}})
 		if err != nil {
 			return RuntimeUpdateApplyStatus{}, fmt.Errorf("list conflicting jobs: %w", err)
 		}

@@ -39,7 +39,9 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.5.12`（commit `5141cd54dca1752419a9d738f873623a4871f884`）。本版在面板新建存档弹窗增加“保留原版 / 果蝠洞 / 蘑菇洞”选择；不修改 Junimo 上游，由 Control `0.3.7` 在严格事务保护内精确应用并通过运行时与主存档 XML 双重校验。候选 `32623320406`、自动 annotated tag `32623853636` 与正式提升 `32623863894` 全绿，三仓 `0.5.12/latest` 使用唯一 digest=`sha256:faf910075f4b25a3172fe4ee53341cf53b9c3c26c1065ce38b65c19fcc9af5a0`。发布继续采用“一次构建不可变候选、annotated tag 只提升同一 digest”的流程；完整证据见 `docs/09-image-build.md`。
+当前正式版为 `v0.5.13`（commit `be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd`）。该版把未变化 Auth 的 Control-only 健康检查收口为有界 advisory，同时把认证验收与 SMAPI 验收拆成独立前端阶段；候选 `32648758732`、自动 annotated tag `32649334502` 与正式提升 `32649344923` 全绿，三仓 `0.5.13/latest` 使用唯一 digest=`sha256:b983d444d82f3303dbe65aa130a6da4160beaa3c98bcffd5f3704724395071a9`。
+
+仓库当前正在准备 `v0.6.0`，尚未发布：全新实例改为 SteamCMD 默认安装、Steam 邀请码由管理员显式按需启用，disabled 生命周期和升级只维护 server；同时包含原版小屋默认、安装日志倒序提示及安装任务 URL 接管修正。`v0.6.0` 的不可变候选、两条真实 Web 升级（`v0.5.13 → v0.6.0`、`v0.3.2 → v0.6.0`）、annotated tag、三仓 digest、`latest` 和 Release 仍须按 `docs/09-image-build.md` 的发布矩阵完成后才能回填为正式证据。
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

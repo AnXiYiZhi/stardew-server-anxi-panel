@@ -27,7 +27,7 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 		wantUp       int32
 		wantRecreate int32
 	}{
-		{name: "ordinary start", operation: "start", wantUp: 1},
+		{name: "ordinary start", operation: "start", wantRecreate: 1},
 		{name: "restart", operation: "restart", wantRecreate: 1},
 	}
 
@@ -54,6 +54,7 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 			var composeUps atomic.Int32
 			var restarts atomic.Int32
 			var recreates atomic.Int32
+			var recreateSawServerOnly atomic.Bool
 			var recreateSawPlayerAuth atomic.Bool
 			launched := make(chan struct{})
 			var launchedOnce sync.Once
@@ -69,8 +70,9 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 					markLaunched()
 					return paneldocker.CommandResult{ExitCode: 0}, nil
 				},
-				recreateFunc: func(context.Context, string, ...string) (paneldocker.CommandResult, error) {
+				recreateFunc: func(_ context.Context, _ string, services ...string) (paneldocker.CommandResult, error) {
 					recreates.Add(1)
+					recreateSawServerOnly.Store(len(services) == 1 && services[0] == "server")
 					compose, _ := os.ReadFile(filepath.Join(dataDir, "docker-compose.yml"))
 					complete := true
 					for _, entry := range playerAuthComposeEnvironment {
@@ -134,12 +136,67 @@ func TestStartAndRestartWaitForFreshControlRuntime(t *testing.T) {
 			if got := recreates.Load(); got != tt.wantRecreate {
 				t.Fatalf("%s recreate calls = %d, want %d", tt.operation, got, tt.wantRecreate)
 			}
+			if !recreateSawServerOnly.Load() {
+				t.Fatalf("%s did not recreate only the disabled-instance server service", tt.operation)
+			}
 			if got := restarts.Load(); got != 0 {
 				t.Fatalf("%s reused frozen container environment through %d restart calls", tt.operation, got)
 			}
 			if tt.operation == "restart" && !recreateSawPlayerAuth.Load() {
 				t.Fatal("restart recreated server before migrating the legacy player-auth environment")
 			}
+		})
+	}
+}
+
+func TestStopUsesSteamInviteServiceScope(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		enabled  bool
+		services []string
+	}{
+		{name: "disabled", services: []string{"server"}},
+		{name: "enabled", enabled: true, services: []string{"server", "steam-auth"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newLifecycleTestStore(t)
+			dataDir := filepath.Join(t.TempDir(), "stardew")
+			if err := os.MkdirAll(dataDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := sjconfig.SetSteamInviteEnabled(dataDir, tc.enabled); err != nil {
+				t.Fatal(err)
+			}
+			instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+				ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: dataDir,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+				ID: instance.ID, State: storage.InstanceStateRunning, DriverPhase: "running", DriverPayload: "{}",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stopped := make(chan []string, 1)
+			fake := &fakeConsoleDocker{stopServicesFunc: func(_ context.Context, _, _ string, services ...string) error {
+				stopped <- append([]string{}, services...)
+				return nil
+			}}
+			driver := New(fake, slog.Default(), jobs.NewManager(store, slog.Default()), store)
+			if err := driver.Stop(context.Background(), registry.Instance{ID: instance.ID}); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case got := <-stopped:
+				if strings.Join(got, ",") != strings.Join(tc.services, ",") {
+					t.Fatalf("stop services = %v, want %v", got, tc.services)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("stop job did not reach service-scoped Docker stop")
+			}
+			waitForControlLifecyclePhase(t, store, instance.ID, "stopped")
 		})
 	}
 }
@@ -477,7 +534,11 @@ func runControlRuntimeGateFailureTest(t *testing.T, fixture controlRuntimeFailur
 	downCalls := 0
 	fake := &fakeConsoleDocker{composeDownFunc: func(context.Context, string) (paneldocker.CommandResult, error) {
 		downCalls++
-		return paneldocker.CommandResult{Stderr: errorText(fixture.downErr), ExitCode: 1}, fixture.downErr
+		exitCode := 0
+		if fixture.downErr != nil {
+			exitCode = 1
+		}
+		return paneldocker.CommandResult{Stderr: errorText(fixture.downErr), ExitCode: exitCode}, fixture.downErr
 	}}
 	manager := jobs.NewManager(store, slog.Default())
 	driver := New(fake, slog.Default(), manager, store)

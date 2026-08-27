@@ -1,5 +1,11 @@
 # 后期优化文档
 
+## STEAM-INVITE-ROLE-MIGRATION-1：直连角色与邀请码角色迁移工具（暂缓，2026-08-26）
+
+- `v0.6.0` 只把 Steam 邀请码改为显式按需启用，不处理“玩家先通过 LAN/IP 直连创建角色，之后启用 Steam 邀请码时原角色不可见”的身份映射差异，也不提供关闭/删除能力或角色迁移 UI。这不是本版升级迁移失败，不能通过清 SteamAuth session、SteamCMD cache 或重建存档规避。
+- 后续若实现，必须先定义直连身份、Steam 平台身份、存档 player/farmhand 绑定和主机角色之间的可验证映射；迁移前做整档备份与 dry-run，冲突/多候选 fail closed，应用后验证角色物品、关系、房屋、床位、权限、重启与回滚。不得仅按显示名或当前邀请码猜目标角色。
+- 发布门禁至少包含真实双客户端流程“直连建角 → 停服 → 启用邀请码 → Steam 登录 → dry-run → 迁移 → 邀请码重连”，并覆盖同名角色、重复提交、中断恢复、回滚和支持包脱敏。在该专项完成前，产品只承诺 LAN/IP 直连与 Steam 邀请码各自可用，不承诺两种身份自动合并。
+
 ## GITHUB-ACTIONS-NODE20-DEPRECATION-1：升级 action runtime 引用（低优先级，2026-08-22）
 
 - v0.5.11 候选 `32575311262` 与正式提升 `32575818623` 都出现非阻断 annotation：部分当前 action 仍声明 Node.js 20 runtime，GitHub-hosted runner 已强制以 Node.js 24 执行。候选、digest 提升、smoke 与 Release 均成功，这不是产品或镜像失败。

@@ -2,13 +2,16 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/config"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
@@ -49,6 +52,48 @@ func TestManagerMarksSuccessfulAndFailedJobs(t *testing.T) {
 	}
 }
 
+func TestManagerDoesNotPublishFailureBeforeRunnerDefersComplete(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	deferStarted := make(chan struct{})
+	releaseDefer := make(chan struct{})
+	deferFinished := make(chan struct{})
+	job, err := manager.Start(context.Background(), Spec{
+		Type: "deferred_failure", TargetType: "instance", TargetID: storage.DefaultInstanceID,
+		Timeout: 3 * time.Second,
+		Run: func(context.Context, *Context) error {
+			defer func() {
+				close(deferStarted)
+				<-releaseDefer
+				close(deferFinished)
+			}()
+			return errors.New("deferred boom")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-deferStarted
+	duringDefer, err := store.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duringDefer.Status == storage.JobStatusFailed {
+		t.Fatal("job became failed before the runner defer completed")
+	}
+	close(releaseDefer)
+	failed := waitForJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	if failed.ErrorMessage.String != "deferred boom" {
+		t.Fatalf("error=%q", failed.ErrorMessage.String)
+	}
+	select {
+	case <-deferFinished:
+	default:
+		t.Fatal("job became failed before the runner defer completion signal")
+	}
+}
+
 func TestManagerBeforeRunFailureNeverLaunchesRunner(t *testing.T) {
 	manager, store, closeStore := newJobsTestManager(t)
 	defer closeStore()
@@ -83,6 +128,7 @@ func TestManagerBeforeRunFailureNeverLaunchesRunner(t *testing.T) {
 func TestManagerRecoversPanicAsFailed(t *testing.T) {
 	manager, store, closeStore := newJobsTestManager(t)
 	defer closeStore()
+	const secretPanic = "STEAM_PASSWORD=do-not-persist platform=76561198000000001"
 
 	job, err := manager.Start(context.Background(), Spec{
 		Type:       "panic",
@@ -90,15 +136,24 @@ func TestManagerRecoversPanicAsFailed(t *testing.T) {
 		TargetID:   storage.DefaultInstanceID,
 		Timeout:    3 * time.Second,
 		Run: func(ctx context.Context, job *Context) error {
-			panic("bad runner")
+			panic(secretPanic)
 		},
 	})
 	if err != nil {
 		t.Fatalf("start panic job: %v", err)
 	}
 	failed := waitForJobStatus(t, store, job.ID, storage.JobStatusFailed)
-	if failed.ErrorMessage.String == "" {
-		t.Fatal("panic job should save error message")
+	if failed.ErrorMessage.String != "任务执行异常。" || strings.Contains(failed.ErrorMessage.String, secretPanic) {
+		t.Fatalf("panic job error=%q", failed.ErrorMessage.String)
+	}
+	logs, err := store.ListJobLogs(context.Background(), job.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range logs {
+		if strings.Contains(line.Message, secretPanic) {
+			t.Fatalf("panic secret persisted in job log: %q", line.Message)
+		}
 	}
 }
 
@@ -313,6 +368,170 @@ func TestManagerRecoverInterruptedInstallMarksInstanceError(t *testing.T) {
 	}
 	if instance.State != storage.InstanceStateError || instance.DriverPhase != "install_interrupted" {
 		t.Fatalf("instance state not marked interrupted: state=%s phase=%s", instance.State, instance.DriverPhase)
+	}
+}
+
+func TestManagerRecoverInterruptedSteamAuthPreservesCompletedSessionAfterCrash(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	dataDir := filepath.Join(t.TempDir(), "instances", storage.DefaultInstanceID)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  dataDir,
+	})
+	if err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	instance.State = storage.InstanceStateReadyToStart
+	instance.StateMessage.String = ""
+	instance.StateMessage.Valid = false
+	instance.DriverPhase = "control_ready"
+	instance.DriverPayload = `{"install":"complete","invite_code":"legacy"}`
+	original, err := store.RestoreInstanceStateSnapshot(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("set original base state: %v", err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{
+		"STEAMCMD_AUTH_COMPLETED": "true",
+		"STEAM_AUTH_COMPLETED":    "true",
+		"STEAM_INVITE_ENABLED":    "true",
+		"STEAM_INVITE_AUTH_STATE": sjconfig.SteamInviteAuthStateAuthorizing,
+	}); err != nil {
+		t.Fatalf("prepare authorization state: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:            storage.DefaultInstanceID,
+		State:         storage.InstanceStateSteamAuthRunning,
+		StateMessage:  "authorizing optional Steam invite",
+		DriverPhase:   "steam_invite_authorizing",
+		DriverPayload: original.DriverPayload,
+	}); err != nil {
+		t.Fatalf("set temporary authorization state: %v", err)
+	}
+	payloadBytes, err := json.Marshal(stardewSteamAuthRecoveryPayload{
+		SchemaVersion:     stardewSteamAuthPayloadSchemaVersion,
+		State:             original.State,
+		StateMessage:      original.StateMessage.String,
+		StateMessageValid: original.StateMessage.Valid,
+		DriverPhase:       original.DriverPhase,
+		DriverPayload:     original.DriverPayload,
+	})
+	if err != nil {
+		t.Fatalf("encode recovery payload: %v", err)
+	}
+	job, err := store.CreateJob(context.Background(), storage.CreateJobParams{
+		Type:       stardewSteamAuthJobType,
+		TargetType: "instance",
+		TargetID:   storage.DefaultInstanceID,
+		Payload:    string(payloadBytes),
+	})
+	if err != nil {
+		t.Fatalf("create Steam authorization job: %v", err)
+	}
+	if _, err := store.StartJob(context.Background(), job.ID); err != nil {
+		t.Fatalf("start Steam authorization job: %v", err)
+	}
+
+	if err := manager.RecoverInterruptedJobs(context.Background()); err != nil {
+		t.Fatalf("recover interrupted jobs: %v", err)
+	}
+
+	failed, err := store.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("get recovered job: %v", err)
+	}
+	if failed.Status != storage.JobStatusFailed {
+		t.Fatalf("job status = %s, want failed", failed.Status)
+	}
+	restored, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatalf("get restored instance: %v", err)
+	}
+	if restored.State != original.State || restored.StateMessage != original.StateMessage ||
+		restored.DriverPhase != original.DriverPhase || restored.DriverPayload != original.DriverPayload {
+		t.Fatalf("restored base state = %#v, want lifecycle fields from %#v", restored, original)
+	}
+	if !sjconfig.SteamInviteEnabled(dataDir) || sjconfig.SteamInviteAuthState(dataDir) != sjconfig.SteamInviteAuthStateReady {
+		t.Fatalf("invite capability = enabled:%t auth:%q, want enabled ready", sjconfig.SteamInviteEnabled(dataDir), sjconfig.SteamInviteAuthState(dataDir))
+	}
+	fields, err := sjconfig.ReadEnvFile(filepath.Join(dataDir, ".env"))
+	if err != nil {
+		t.Fatalf("read recovered environment: %v", err)
+	}
+	if fields["STEAMCMD_AUTH_COMPLETED"] != "true" {
+		t.Fatalf("SteamCMD cache flag changed to %q", fields["STEAMCMD_AUTH_COMPLETED"])
+	}
+	if fields["STEAM_AUTH_COMPLETED"] != "true" {
+		t.Fatalf("steam-auth session flag = %q, want preserved", fields["STEAM_AUTH_COMPLETED"])
+	}
+	if fields["STEAM_INVITE_AUTH_STATE"] != sjconfig.SteamInviteAuthStateReady {
+		t.Fatalf("steam invite auth state = %q, want ready", fields["STEAM_INVITE_AUTH_STATE"])
+	}
+	if err := sjconfig.SetSteamInviteAuthState(dataDir, sjconfig.SteamInviteAuthStateCleanupPending); err != nil {
+		t.Fatal(err)
+	}
+	manager.recoverInterruptedSteamAuthInstance(context.Background(), job)
+	if got := sjconfig.SteamInviteAuthState(dataDir); got != sjconfig.SteamInviteAuthStateCleanupPending {
+		t.Fatalf("restart recovery erased successful holder cleanup state: got %q", got)
+	}
+}
+
+func TestManagerRecoverInterruptedSteamAuthMalformedPayloadLeavesStableBaseState(t *testing.T) {
+	manager, store, closeStore := newJobsTestManager(t)
+	defer closeStore()
+
+	dataDir := filepath.Join(t.TempDir(), "instances", storage.DefaultInstanceID)
+	if _, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID:       storage.DefaultInstanceID,
+		DriverID: storage.DefaultDriverID,
+		Name:     "Stardew Valley",
+		DataDir:  dataDir,
+	}); err != nil {
+		t.Fatalf("ensure instance: %v", err)
+	}
+	if err := sjconfig.SetSteamInviteEnabled(dataDir, true); err != nil {
+		t.Fatalf("enable Steam invite: %v", err)
+	}
+	if _, err := store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID:            storage.DefaultInstanceID,
+		State:         storage.InstanceStateSteamAuthRunning,
+		StateMessage:  "authorizing optional Steam invite",
+		DriverPhase:   "steam_invite_authorizing",
+		DriverPayload: `{"install":"complete"}`,
+	}); err != nil {
+		t.Fatalf("set temporary authorization state: %v", err)
+	}
+	job, err := store.CreateJob(context.Background(), storage.CreateJobParams{
+		Type:       stardewSteamAuthJobType,
+		TargetType: "instance",
+		TargetID:   storage.DefaultInstanceID,
+		Payload:    `{}`,
+	})
+	if err != nil {
+		t.Fatalf("create Steam authorization job: %v", err)
+	}
+	if _, err := store.StartJob(context.Background(), job.ID); err != nil {
+		t.Fatalf("start Steam authorization job: %v", err)
+	}
+
+	if err := manager.RecoverInterruptedJobs(context.Background()); err != nil {
+		t.Fatalf("recover interrupted jobs: %v", err)
+	}
+	restored, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
+	if err != nil {
+		t.Fatalf("get restored instance: %v", err)
+	}
+	if restored.State != storage.InstanceStateStopped || restored.DriverPhase != "stopped" {
+		t.Fatalf("fallback state = %s/%s, want stopped/stopped", restored.State, restored.DriverPhase)
+	}
+	if restored.DriverPayload != `{"install":"complete"}` {
+		t.Fatalf("fallback changed driver payload to %q", restored.DriverPayload)
+	}
+	if sjconfig.SteamInviteAuthState(dataDir) != sjconfig.SteamInviteAuthStateFailed {
+		t.Fatalf("fallback invite auth state = %q, want failed", sjconfig.SteamInviteAuthState(dataDir))
 	}
 }
 

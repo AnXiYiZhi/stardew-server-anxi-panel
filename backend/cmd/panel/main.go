@@ -53,7 +53,7 @@ func main() {
 		logger.Error("failed to ensure default instance state", "error", err)
 		os.Exit(1)
 	}
-	defaultInstance, err := store.EnsureDefaultInstance(ctx, storage.EnsureDefaultInstanceParams{
+	_, err = store.EnsureDefaultInstance(ctx, storage.EnsureDefaultInstanceParams{
 		ID:       cfg.DefaultInstanceID,
 		DriverID: cfg.DefaultDriverID,
 		Name:     "Stardew Valley",
@@ -89,27 +89,18 @@ func main() {
 		if instance.DriverID != stardewDriver.ID() {
 			continue
 		}
-		if err := stardewDriver.RecoverRuntimeUpdateApply(ctx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}); err != nil {
+		registryInstance := registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}
+		if err := stardewDriver.RecoverInterruptedSteamInviteAuthorization(ctx, registryInstance); err != nil {
+			logger.Error("failed to recover interrupted Steam invite authorization", "instance", instance.ID, "error", err)
+		}
+		if err := stardewDriver.RecoverRuntimeUpdateApply(ctx, registryInstance); err != nil {
 			logger.Error("failed to recover Junimo runtime update", "instance", instance.ID, "error", err)
 		}
-		if err := stardewDriver.RecoverSMAPIUpdateApply(ctx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}); err != nil {
+		if err := stardewDriver.RecoverSMAPIUpdateApply(ctx, registryInstance); err != nil {
 			logger.Error("failed to recover SMAPI update", "instance", instance.ID, "error", err)
 		}
 	}
-	defaultRegistryInstance := registry.Instance{ID: defaultInstance.ID, DriverID: defaultInstance.DriverID, Name: defaultInstance.Name, DataDir: defaultInstance.DataDir, State: defaultInstance.State, StateMessage: defaultInstance.StateMessage.String, DriverPhase: defaultInstance.DriverPhase, DriverPayload: defaultInstance.DriverPayload, CreatedAt: defaultInstance.CreatedAt, UpdatedAt: defaultInstance.UpdatedAt}
-	if defaultInstance.DriverID == stardewDriver.ID() && !stardewDriver.RuntimeUpdateApplyInProgress(defaultRegistryInstance) && !stardewDriver.SMAPIUpdateApplyInProgress(defaultRegistryInstance) {
-		if err := stardewDriver.Prepare(ctx, defaultRegistryInstance); err != nil {
-			logger.Error("failed to prepare default instance", "instance", defaultInstance.ID, "error", err)
-		}
-	}
-	// Every managed instance participates in the required full-stack follow-up.
-	// The coordinator is durable per instance and serializes its own runtime jobs.
-	for _, instance := range instances {
-		if instance.DriverID != stardewDriver.ID() {
-			continue
-		}
-		stardewDriver.StartRequiredRuntimeUpdate(signalCtx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt})
-	}
+	startPreparedRequiredRuntimeUpdates(signalCtx, logger, stardewDriver, instances)
 	backupInstances := make([]registry.Instance, 0, len(instances))
 	for _, instance := range instances {
 		if instance.DriverID != stardewDriver.ID() {

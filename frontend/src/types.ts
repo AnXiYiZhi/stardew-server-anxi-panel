@@ -16,6 +16,7 @@ export type PanelUser = CurrentUser & {
 
 export type SetupStatus = {
   initialized: boolean
+  defaultInstanceId?: string
 }
 
 export type UserResponse = {
@@ -446,6 +447,14 @@ export type InstallationDiagnostic = {
   checkedAt: string
 }
 
+export type SteamInviteAuthState =
+  | 'disabled'
+  | 'pending'
+  | 'authorizing'
+  | 'cleanup_pending'
+  | 'ready'
+  | 'failed'
+
 export type InstanceState = {
   instanceId: string
   driverId: string
@@ -454,6 +463,10 @@ export type InstanceState = {
   stateMessage: string | null
   driverPhase: string
   updatedAt: string
+  // Authoritative persisted user intent. Invite UI and background fetches must
+  // use this flag instead of inferring opt-in from login state or a cached code.
+  steamInviteEnabled: boolean
+  steamInviteAuthState?: SteamInviteAuthState
   // Durable UI flag: true after steam-auth login succeeds; cleared when server logs prove steam-auth has no account.
   steamAuthLoggedIn?: boolean
   // Diagnostic runtime flag: true only when the running steam-auth service probes ready.
@@ -636,6 +649,17 @@ export type PlayerModDetailsResult = {
 
 export type InstallJobResponse = {
   jobId: string
+  steamInviteEnabled?: boolean
+}
+
+export type SteamCredentialsResponse = {
+  ok: boolean
+  instanceId: string
+  state: string
+  driverPhase: string
+  steamInviteEnabled: boolean
+  steamInviteAuthState: SteamInviteAuthState
+  steamAuthLoggedIn: boolean
 }
 
 export type PrepareResponse = {
@@ -688,7 +712,7 @@ export type NewGameConfig = {
   startingCabins: number
   maxPlayers: number
   cabinLayout: string
-  cabinMode?: string     // "recommended"|"vanilla": recommended=隐藏小屋堆叠, vanilla=小屋出现在真实农场位置
+  cabinMode?: string     // "recommended"|"vanilla": recommended=堆叠模式（兼容 wire 值）, vanilla=原版小屋位置（默认）
   profitMargin: string  // "100"|"75"|"50"|"25"
   petBreed: number      // 0-4 Stardew selectable breed index
   moneyMode: string     // "shared"|"separate"
@@ -886,7 +910,18 @@ export type SaveImportJobResponse = {
   saveName: string
 }
 
+export type SteamInviteStatus =
+  | 'disabled'
+  | 'ready'
+  | 'generating'
+  | 'server_stopped'
+  | 'waiting_authorization'
+  | 'authorization_failed'
+  | 'auth_unavailable'
+
 export type InviteCodeResult = {
+  steamInviteEnabled: boolean
+  status: SteamInviteStatus
   inviteCode: string
 }
 

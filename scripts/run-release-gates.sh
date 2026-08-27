@@ -68,6 +68,7 @@ bash scripts/tests/test_run_sh_update.sh
 bash scripts/tests/test_run_sh_swap.sh
 bash scripts/tests/test_migrate_fnos.sh
 bash scripts/tests/test_repair_junimo_upgrade.sh
+bash scripts/tests/test_release_matrix.sh
 
 release_shell_files=(
   deploy/run.sh
@@ -76,11 +77,13 @@ release_shell_files=(
   deploy/repair-junimo-upgrade.sh
   scripts/run-release-gates.sh
   scripts/release-candidate.sh
+  scripts/validate-release-matrix.sh
   scripts/tests/test_run_sh_update.sh
   scripts/tests/test_run_sh_swap.sh
   scripts/tests/test_migrate_fnos.sh
   scripts/tests/test_repair_junimo_upgrade.sh
   scripts/tests/test_release_candidate_upgrade.sh
+  scripts/tests/test_release_matrix.sh
 )
 for shell_file in "${release_shell_files[@]}"; do
   bash -n "$shell_file"

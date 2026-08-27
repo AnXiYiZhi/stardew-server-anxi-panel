@@ -15,6 +15,7 @@ import (
 )
 
 func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, docker RuntimeUpdateDockerService, instance registry.Instance, status RuntimeUpdateDryRunStatus) error {
+	steamInviteEnabled := sjconfig.SteamInviteEnabled(instance.DataDir)
 	setPhase := func(phase string, progress int, message string) error {
 		status.Phase = phase
 		status.Progress = progress
@@ -86,13 +87,13 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 		})
 	}
 
-	if err := setPhase(RuntimeUpdatePhaseChecking, 10, "正在检查实例与内置推荐版本对。"); err != nil {
+	if err := setPhase(RuntimeUpdatePhaseChecking, 10, "正在检查实例与内置推荐运行组件。"); err != nil {
 		return err
 	}
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil || !manifest.Installable() || !sjconfig.PanelVersionSatisfies(d.panelVersion, manifest.MinimumPanelVersion) {
-		_ = addCheck("manifest", "error", "内置推荐版本对清单无效或未测试。")
-		return fail("manifest_invalid", "内置推荐版本对清单无效。")
+		_ = addCheck("manifest", "error", "内置推荐运行组件清单无效或未测试。")
+		return fail("manifest_invalid", "内置推荐运行组件清单无效。")
 	}
 	if err := addCheck("manifest", "ok", "内置兼容矩阵合法且 status=recommended。"); err != nil {
 		return err
@@ -133,7 +134,12 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 		return err
 	}
 
-	composeConfig, err := docker.RuntimeComposeConfigInspect(ctx, instance.DataDir, project)
+	var composeConfig paneldocker.RuntimeComposeConfig
+	if steamInviteEnabled {
+		composeConfig, err = docker.RuntimeComposeConfigInspect(ctx, instance.DataDir, project)
+	} else {
+		composeConfig, err = docker.RuntimeComposeConfigInspectServer(ctx, instance.DataDir, project)
+	}
 	if err != nil {
 		_ = addCheck("compose_model", "error", "Compose 配置无法解析。")
 		return unsupported("compose_config_invalid", "Compose 配置无法安全解析。")
@@ -141,11 +147,15 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	if composeConfig.Project != "" && composeConfig.Project != project {
 		return unsupported("compose_project_mismatch", "Compose project 与实例目录不一致。")
 	}
-	if !containsRuntimeService(composeConfig.Services, "server") || !containsRuntimeService(composeConfig.Services, "steam-auth") {
-		_ = addCheck("compose_services", "error", "Compose 缺少 server 或 steam-auth 服务。")
-		return unsupported("compose_services_missing", "Compose 必须同时包含 server 与 steam-auth 服务。")
+	if !containsRuntimeService(composeConfig.Services, "server") || steamInviteEnabled && !containsRuntimeService(composeConfig.Services, "steam-auth") {
+		_ = addCheck("compose_services", "error", "Compose 缺少当前启用能力所需的服务。")
+		return unsupported("compose_services_missing", "Compose 缺少当前启用能力所需的服务。")
 	}
-	if err := addCheck("compose_services", "ok", "Compose 同时包含 server 与 steam-auth 服务。"); err != nil {
+	composeMessage := "Compose 包含必需的 server 服务；Steam 邀请码未启用，不验收可选 Auth。"
+	if steamInviteEnabled {
+		composeMessage = "Compose 同时包含 server 与已启用的 steam-auth 服务。"
+	}
+	if err := addCheck("compose_services", "ok", composeMessage); err != nil {
 		return err
 	}
 
@@ -157,16 +167,24 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 	if err := addCheck("current_server_image", "ok", "当前 server 镜像与 digest 已确认。"); err != nil {
 		return err
 	}
-	authMetadata, err := docker.RuntimeImageInspect(ctx, instance.DataDir, status.Current.SteamAuth.Image)
-	if err != nil || !runtimeImageDigestPattern.MatchString(authMetadata.Digest) {
-		_ = addCheck("current_auth_image", "error", "当前 steam-auth-cn 镜像或 digest 无法 inspect。")
-		return fail("current_auth_digest_unavailable", "当前 steam-auth-cn 镜像 digest 无法确认。")
-	}
-	if err := addCheck("current_auth_image", "ok", "当前 steam-auth-cn 镜像与 digest 已确认。"); err != nil {
-		return err
+	if steamInviteEnabled {
+		authMetadata, err := docker.RuntimeImageInspect(ctx, instance.DataDir, status.Current.SteamAuth.Image)
+		if err != nil || !runtimeImageDigestPattern.MatchString(authMetadata.Digest) {
+			_ = addCheck("current_auth_image", "error", "当前 steam-auth-cn 镜像或 digest 无法 inspect。")
+			return fail("current_auth_digest_unavailable", "当前 steam-auth-cn 镜像 digest 无法确认。")
+		}
+		if err := addCheck("current_auth_image", "ok", "当前 steam-auth-cn 镜像与 digest 已确认。"); err != nil {
+			return err
+		}
 	}
 
-	ps, psErr := docker.ComposePs(ctx, instance.DataDir)
+	var ps paneldocker.ComposePsResult
+	var psErr error
+	if steamInviteEnabled {
+		ps, psErr = docker.ComposePs(ctx, instance.DataDir)
+	} else {
+		ps, psErr = docker.RuntimeComposePsServer(ctx, instance.DataDir, project)
+	}
 	if psErr != nil {
 		if err := addWarning("无法读取当前 Compose 运行状态；预检继续，但 serverRunning 可能不是实时值。"); err != nil {
 			return err
@@ -182,36 +200,38 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 		}
 	}
 
-	if composeConfig.SteamSessionVolume == "" {
+	if steamInviteEnabled && composeConfig.SteamSessionVolume == "" {
 		_ = addCheck("steam_session_volume", "error", "无法从 Compose 安全识别 steam-session volume。")
 		return unsupported("steam_session_volume_unknown", "无法安全识别 steam-session 认证卷。")
 	}
-	volume, err := docker.RuntimeVolumeInspect(ctx, instance.DataDir, composeConfig.SteamSessionVolume)
-	if err != nil {
-		_ = addCheck("steam_session_volume", "error", "steam-session volume 不存在或无法 inspect。")
-		return unsupported("steam_session_volume_missing", "steam-session 认证卷不存在或无法验证。")
-	}
-	if err := addCheck("steam_session_volume", "ok", "steam-session 认证卷存在且名称已由 Compose/inspect 验证。"); err != nil {
-		return err
-	}
-	if volume.Mountpoint == "" {
-		if err := addWarning("Docker 未提供可验证的认证卷挂载路径，无法可靠判断宿主文件系统可读性；未读取任何 token 内容。"); err != nil {
+	if steamInviteEnabled {
+		volume, err := docker.RuntimeVolumeInspect(ctx, instance.DataDir, composeConfig.SteamSessionVolume)
+		if err != nil {
+			_ = addCheck("steam_session_volume", "error", "steam-session volume 不存在或无法 inspect。")
+			return unsupported("steam_session_volume_missing", "steam-session 认证卷不存在或无法验证。")
+		}
+		if err := addCheck("steam_session_volume", "ok", "steam-session 认证卷存在且名称已由 Compose/inspect 验证。"); err != nil {
 			return err
 		}
-		if err := addCheck("steam_session_readable", "warning", "认证卷存在，但可读性无法可靠判断。"); err != nil {
-			return err
-		}
-	} else if handle, openErr := os.Open(volume.Mountpoint); openErr != nil {
-		if err := addWarning("Panel 无法直接访问认证卷挂载路径，可读性检查降级为 warning；未读取任何 token 内容。"); err != nil {
-			return err
-		}
-		if err := addCheck("steam_session_readable", "warning", "认证卷存在，但 Panel 无法可靠验证目录可读性。"); err != nil {
-			return err
-		}
-	} else {
-		_ = handle.Close()
-		if err := addCheck("steam_session_readable", "ok", "认证卷目录可打开；未枚举文件且未读取 token 内容。"); err != nil {
-			return err
+		if volume.Mountpoint == "" {
+			if err := addWarning("Docker 未提供可验证的认证卷挂载路径，无法可靠判断宿主文件系统可读性；未读取任何 token 内容。"); err != nil {
+				return err
+			}
+			if err := addCheck("steam_session_readable", "warning", "认证卷存在，但可读性无法可靠判断。"); err != nil {
+				return err
+			}
+		} else if handle, openErr := os.Open(volume.Mountpoint); openErr != nil {
+			if err := addWarning("Panel 无法直接访问认证卷挂载路径，可读性检查降级为 warning；未读取任何 token 内容。"); err != nil {
+				return err
+			}
+			if err := addCheck("steam_session_readable", "warning", "认证卷存在，但 Panel 无法可靠验证目录可读性。"); err != nil {
+				return err
+			}
+		} else {
+			_ = handle.Close()
+			if err := addCheck("steam_session_readable", "ok", "认证卷目录可打开；未枚举文件且未读取 token 内容。"); err != nil {
+				return err
+			}
 		}
 	}
 	if err := addWarning("Docker 镜像层位于 daemon 主机，Panel 无法可靠获得其精确可用空间；请确认 Docker 数据盘有足够空间。"); err != nil {
@@ -235,28 +255,40 @@ func (d *Driver) runRuntimeUpdateDryRun(ctx context.Context, job *jobs.Context, 
 		return err
 	}
 
-	if err := setPhase(RuntimeUpdatePhasePullingAuth, 70, "正在按可信候选顺序检查或拉取推荐 steam-auth-cn 镜像。"); err != nil {
-		return err
-	}
-	selectedAuth, code := selectRuntimeUpdateImageWithProgress(ctx, docker, instance.DataDir, status.Target.SteamAuth.TrustedCandidates, status.Target.SteamAuth.Digests, pullProgress("steam-auth-cn", 70, 20))
-	if code != "" {
-		_ = addCheck("target_auth_image", "error", "所有推荐 steam-auth-cn 镜像候选均失败或无法取得 digest。")
-		return fail(code, "推荐 steam-auth-cn 镜像候选全部不可用。")
-	}
-	status.Selected.SteamAuth = selectedAuth
-	status.Download = &RuntimeUpdateDownloadProgress{Component: "steam-auth-cn", Image: selectedAuth.Image, DoneLayers: 1, TotalLayers: 1, Percent: 100}
-	if err := addCheck("target_auth_image", "ok", "已选择可信 steam-auth-cn 镜像并确认 digest。"); err != nil {
-		return err
+	if steamInviteEnabled {
+		if err := setPhase(RuntimeUpdatePhasePullingAuth, 70, "正在按可信候选顺序检查或拉取推荐 steam-auth-cn 镜像。"); err != nil {
+			return err
+		}
+		selectedAuth, code := selectRuntimeUpdateImageWithProgress(ctx, docker, instance.DataDir, status.Target.SteamAuth.TrustedCandidates, status.Target.SteamAuth.Digests, pullProgress("steam-auth-cn", 70, 20))
+		if code != "" {
+			_ = addCheck("target_auth_image", "error", "所有推荐 steam-auth-cn 镜像候选均失败或无法取得 digest。")
+			return fail(code, "推荐 steam-auth-cn 镜像候选全部不可用。")
+		}
+		status.Selected.SteamAuth = selectedAuth
+		status.Download = &RuntimeUpdateDownloadProgress{Component: "steam-auth-cn", Image: selectedAuth.Image, DoneLayers: 1, TotalLayers: 1, Percent: 100}
+		if err := addCheck("target_auth_image", "ok", "已选择可信 steam-auth-cn 镜像并确认 digest。"); err != nil {
+			return err
+		}
 	}
 
 	if err := setPhase(RuntimeUpdatePhaseValidatingCompose, 90, "正在用受控镜像覆盖验证 docker compose config --quiet。"); err != nil {
 		return err
 	}
-	if err := docker.RuntimeComposeConfigValidateImages(ctx, instance.DataDir, project, selectedServer.Image, selectedAuth.Image); err != nil {
-		_ = addCheck("compose_target_config", "error", "推荐版本对未通过 Compose 配置验证。")
-		return fail("compose_target_validation_failed", "推荐版本对的 Compose 配置验证失败。")
+	var validateErr error
+	if steamInviteEnabled {
+		validateErr = docker.RuntimeComposeConfigValidateImages(ctx, instance.DataDir, project, selectedServer.Image, status.Selected.SteamAuth.Image)
+	} else {
+		validateErr = docker.RuntimeComposeConfigValidateServerImage(ctx, instance.DataDir, project, selectedServer.Image)
 	}
-	if err := addCheck("compose_target_config", "ok", "推荐 server + steam-auth-cn 版本对通过 Compose 配置验证。"); err != nil {
+	if validateErr != nil {
+		_ = addCheck("compose_target_config", "error", "推荐运行组件未通过 Compose 配置验证。")
+		return fail("compose_target_validation_failed", "推荐运行组件的 Compose 配置验证失败。")
+	}
+	validationMessage := "推荐 server 通过 Compose 配置验证；未读取或覆盖可选 Auth。"
+	if steamInviteEnabled {
+		validationMessage = "推荐 server + steam-auth-cn 版本对通过 Compose 配置验证。"
+	}
+	if err := addCheck("compose_target_config", "ok", validationMessage); err != nil {
 		return err
 	}
 	return finish(RuntimeUpdatePhaseSucceeded, "", "Junimo 运行组件升级预检通过；未修改实例或容器。")

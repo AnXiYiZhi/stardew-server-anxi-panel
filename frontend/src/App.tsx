@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ApiError, getVersion, request } from './api'
+import { ApiError, getVersion, request, setDefaultInstanceId } from './api'
 import type { VersionInfo } from './api'
 import type { CurrentUser, OKResponse, SetupStatus, UserResponse } from './types'
 
@@ -49,6 +49,7 @@ function App() {
     setMessage('')
     try {
       const status = await request<SetupStatus>('/api/setup/status')
+      setDefaultInstanceId(status.defaultInstanceId)
       if (!status.initialized) {
         setView('setup')
         return

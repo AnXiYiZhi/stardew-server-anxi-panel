@@ -2,7 +2,7 @@ import type { ServerRuntimeSettings } from '../../types'
 
 export const DEFAULT_SERVER_RUNTIME_SETTINGS: ServerRuntimeSettings = {
   maxPlayers: 10,
-  cabinStrategy: 'CabinStack',
+  cabinStrategy: 'None',
   existingCabinBehavior: 'KeepExisting',
   networkBroadcastPeriod: 1,
 }
@@ -12,7 +12,7 @@ export function normalizeServerRuntimeSettings(
 ): ServerRuntimeSettings {
   return {
     maxPlayers: Number.isInteger(settings?.maxPlayers) ? Number(settings?.maxPlayers) : 10,
-    cabinStrategy: settings?.cabinStrategy || 'CabinStack',
+    cabinStrategy: settings?.cabinStrategy || 'None',
     existingCabinBehavior: settings?.existingCabinBehavior || 'KeepExisting',
     networkBroadcastPeriod: Number.isInteger(settings?.networkBroadcastPeriod)
       ? Number(settings?.networkBroadcastPeriod)

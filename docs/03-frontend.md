@@ -1,3 +1,49 @@
+# FE-V060-INVITE-COLD-START-WAIT-1：邀请码冷启动使用有界等待预算（2026-08-27，release preflight）
+
+- 实例已经完成 Steam 邀请授权且 server 处于 `starting` 或 `running` 时，后端专用 10 分钟运行代 marker 会把正常 Auth 冷启动响应归一为 `generating`；传输层请求错误在同一有界前端预算内也按过渡态处理。桌面总览、服务器摘要和移动首页统一显示不可重试的“等待中…”并继续请求邀请码。
+- 前端以 5 秒间隔最多轮询 125 次，并在 `starting → running` 时重置计数，使 running 获得完整暖机预算；页面在暖机途中刷新、首次请求拿到 `generating` 或短暂网络失败时也会自动恢复轮询。取得非空邀请码立即 ready；后端明确返回 `auth_unavailable`，或预算耗尽仍只得到 generating/请求错误时，才显示“Auth 异常（直连仍可用）”并停止自动轮询。
+- `/state` 与 invite GET 除各自单调 request generation 外，共享 invite projection epoch；旧 state 仍提交 runtime/诊断，但保留当前 enabled/code 并跳过邀请视图，权威 disabled DTO 同步隐藏卡片、清 loading/requested/code 并阻止后续 GET。poll、全量刷新和 job-finish 使用 state→invite 串行，shared epoch 继续保护外部定时器/手动刷新逆序；ready code 不会在 `starting → running` 被重置为永久 refreshing。隐藏标签页初次读到 active runtime 也会先建立 requested 状态，恢复可见后再继续计时；本地预算耗尽与后端权威 `auth_unavailable` 分开记录，因此只有前者可在同一轮 `starting → running` 时恢复一次完整 running 预算。
+- 权威 `auth_unavailable` 对普通 refresh/job-finish 保持粘性，只有手动刷新或新 runtime 会显式重开；任务完成的 1 秒补偿回查使用可清理 timer 与 mounted gate，组件卸载后不会继续发 `/state`/invite 请求。
+- 三处卡片必须复用同一状态选择器和预算终态，不能由各页面分别猜测冷启动是否完成。等待预算不改写 `steamInviteEnabled`、`steamInviteAuthState` 或既有 Auth session，不触发重新授权；LAN/IP 直连始终展示，disabled 仍保持 invite-code 零请求，`cleanup_pending` 仍是独立的不可重试安全收敛态。
+- 影响共享邀请码 presentation、dashboard 轮询状态及桌面/移动消费者；19 个既有前端状态脚本与 production build 已全部通过，shared epoch 后又以可控 deferred 顺序验证 ready 后旧 state、disabled 后旧 invite 及两种 running 预算逆序，并重跑 install-state、responsive 和 production build。当前仍不得把本节记为已发布证据。
+
+# FE-V060-MOBILE-TERMINAL-1：移动端生命周期终态与授权权限收口（2026-08-27，release preflight）
+
+- `MobileHomePage` 复用桌面 `shouldClearPendingStartupAction`：提交 start/restart 后先观察对应 active lifecycle job，任务消失即按成功、失败或取消终态清除本地 pending；start 仍允许以 `running` 投影覆盖未观察到的短任务，restart 不会被提交前残留的 running 状态提前解锁。
+- Steam 邀请授权失败时，管理员继续看到“重新授权”；普通用户只显示“授权异常，请联系管理员”，不再宣称其具备不可用的重试动作。LAN/IP 直连卡与 disabled 零请求规则不变。
+- `/state.steamInviteAuthState` 的联合类型新增 `cleanup_pending`：它表示授权已成功但一次性 holder 正在安全收尾，三处邀请码卡统一显示不可重试的“等待中…”，安装页按钮显示“授权收尾中”并禁用重复授权；该状态不进入基础安装失败分类。
+- `cleanup_pending`、promotion 二次门禁及 annotated tag 的 candidate run/digest 绑定补充后，`test:install-state`、`test:lifecycle-action-state`、`test:cabin-strategy-options`、`test:responsive-layout` 和 production build 已全部重跑通过；workflow YAML 与 4 个变更 Bash block 的语法检查也通过。正式候选仍须在升级后 production bundle 复验移动端受影响页面。
+
+# FE-V060-RELEASE-PREFLIGHT-1：安装任务接管与升级后统一显示（2026-08-26，release preflight）
+
+- `InstallPage` 在安装/授权 POST 成功或 `install_in_progress` 返回权威 `jobId` 时，先通过 `onNavigate("install", { installJobId })` 原子写入 URL，再选择本地任务；旧 URL 的 `jobId` 不再在后续 effect 中把刚启动的任务覆盖回历史日志。SteamAuth job 仍只属于授权日志，不进入基础安装完成/失败 classifier。
+- `steamInviteEnabled` 继续是桌面总览、服务器摘要和移动首页唯一的邀请码渲染/请求开关：disabled 不挂载卡片、不 fetch/poll invite；“局域网直连”始终独立展示。enabled 启动期显示“等待中…”，运行后的真实 Auth 错误才显示“Auth 异常（直连仍可用）”。
+- `v0.6.0` 前端同时固定 SteamCMD 主时间线、管理员专用启用入口、“修改 Steam 账号密码”、原版/堆叠小屋文案、安装日志最新置顶提示与响应式布局。正式候选仍须在 `v0.5.13` 和 `v0.3.2` Web 升级得到的新 Panel 上重跑状态回归、production bundle 契约和桌面/移动受影响页面验收；本节不代表已经发布。
+
+# FE-STEAM-INVITE-STARTUP-WAIT-1：启动期邀请码统一显示等待中（2026-08-26，local/unreleased）
+
+- 共享 `steamInvitePresentation` 将无邀请码的 `generating` 文案统一为“等待中…”；后续 release preflight 进一步规定：starting/running 暖机由后端 `generating` 与有界前端请求错误预算共同表达，后端明确返回 `auth_unavailable` 时立即进入“Auth 异常（直连仍可用）”。
+- `shouldPollSteamInvite` 与 dashboard hook 对 `generating`、starting 兼容响应和暖机期请求错误继续轮询，并在 `starting → running` 重置预算；预算耗尽后停止。桌面总览和服务器摘要共用 `InviteCodeCard`，移动首页传入同一 polling 状态，三处语义一致。
+- 新增有界预算与 request generation 语义后，19 个既有前端状态脚本全部通过，随后 `npm run build` 通过（Vite 8.0.16，149 modules）；纯状态回归覆盖 starting/running、权威 `auth_unavailable` 终态、页面刷新/隐藏恢复、预算边界和 latest-request 判定，源码契约固定 disabled 零网络入口与 stale callback 的 ref guard。真实本机热预览只证明启动与移动端重启能从“等待中…”进入邀请码 ready，不覆盖人为乱序响应或预算耗尽终态；这些边界仍须在候选 bundle 复验。
+
+# FE-CABIN-VANILLA-LOG-LATEST-1：原版小屋默认与安装日志最新置顶（2026-08-26，local/unreleased）
+
+- 新建存档的“小屋模式”初值改为“原版”（wire 值仍是 `vanilla`）；用户主动切换后的另一项从“推荐”改名“堆叠”，继续提交兼容值 `recommended`。前端运行时设置的缺省/空值同样归一到 `CabinStrategy=None`，高级设置把原版排在前面，并保留 hidden `FarmhouseStack` 兼容值与显式 `CabinStack`。
+- 安装页保留升序 `logs` state、API 尾页和 SSE `lastSeq`，只由 `latestInstallLogsFirst` 复制、按 sequence 降序并截取最新 50 条。标题栏明确显示“最新日志在最上方（倒序显示）”；新日志不会强制把正在阅读旧记录的用户拉回顶部，完整“任务与日志”页仍维持原有旧到新顺序。
+- 提示在桌面标题栏靠右、窄屏换到标题下一行，避免挤压实时状态点或产生横向溢出。影响 `NewGameCreator.tsx`、运行时设置 state/dialog、`InstallPage.tsx/.css`、QA fixture 与 cabin/install/responsive 回归；以下旧章节中“推荐/CabinStack 默认”和“安装页滚到底”已由本节取代。
+
+# FE-STEAM-INVITE-OPTIN-1：SteamCMD 安装主链与按需邀请码界面（2026-08-26，local/unreleased）
+
+- `InstanceState.steamInviteEnabled` 是唯一渲染/请求开关；`steamAuthLoggedIn`、缓存邀请码和错误文本只描述子状态。共享 dashboard hook 首次先取 state，disabled 时初始加载、任务完成刷新、可见性恢复、手动 refreshAll 与定时器均不调用或轮询 `/invite-code`。
+- 原 `InviteCodeCard` 中的地址被拆成始终可见的 `LanDirectConnectCard`，标题统一为“局域网直连”。Steam 邀请码卡只在 enabled 时挂载；桌面 Overview、ServerSummary 和 MobileHome 使用同一 selector，并覆盖等待授权、授权失败可重试、服务器未运行、正在生成、已就绪及 Auth 异常但直连仍可用。
+- 安装页时间线、进度和错误文案改为 SteamCMD 主链：Stardew app 413150 → SDK app 1007 → SMAPI/Junimo/Control → 校验。删除“SteamCMD 兜底”“steam-auth 国内失败后切换”等现行描述；SteamAuth 授权 job 类型为 `stardew_steam_auth`，安装页仍接入其 QR/Guard/SSE 日志，但基础 installation classifier 与移动首页只把 `stardew_install` 当安装任务。
+- 授权 POST 返回的 `jobId` 会立即写入安装页 URL `?jobId=...` 并切换日志，跨页邀请码卡与安装页入口使用同一规则；显式 ID 在 dashboard 旧快照刷新前保持优先，自动拾取其它任务时会原子清空旧 detail/log/SSE 错误，避免再次卡在上一条任务日志。Auth active/failed 只影响邀请授权提示；已安装 diagnostic/base state 仍显示安装完成，旧版 `steam_auth_failed` 且无安装证据时也只进入诊断态，不弹“游戏未安装”。
+- 管理员在基础安装完成且停服后看到“启用 Steam 邀请码（需要再次登录授权）”；普通用户不渲染入口，不再先看到按钮、点击才得到 403。常驻凭据入口统一为“修改 Steam 账号密码”，因为 SteamCMD 与 SteamAuth 共用同一份回退账号密码；表单只保留用户名/密码，不再展示 VNC、镜像或共享凭据/cache/session 长说明，提交独立 `PUT .../steam-credentials` 后关闭表单并刷新 `/state`，不导航任务日志也不创建安装/Auth job。安装主区不再重复展示一次性 Auth、等待或失败提示条，状态继续由按钮、授权交互与任务日志承载。现有有效 SteamCMD cache 与 SteamAuth session 仍优先复用且不会被清除；SteamAuth 已 `ready` 时入口显示已启用并禁用重复登录，failed/pending 仍可重试且不清 SteamCMD cache。
+- App boot 从公开 setup-status 读取 `defaultInstanceId`，通过受限 live binding 配置全部实例 API；非法/缺失值才回退 `stardew`。这保证可配置部署与隔离预览不会因前端硬编码请求错误实例。
+- 诊断页的 Junimo/SMAPI 矩阵同样按权威意图投影：disabled 只展示并验收 JunimoServer，明确标注可选 Auth 未启用；只有 enabled 才显示成对目标、Auth 镜像、认证卷和成对回滚文案。
+- 本规则取代 `FE-STEAM-AUTH-FLAG-1`、无条件邀请码轮询、合并地址/邀请码卡以及旧“登录授权/更换账号”现行说明；以下内容仅作为历史发布记录。主要影响 `App.tsx`、`api.ts`、types、dashboard hook、安装状态/页面、桌面/移动卡片与状态回归。最新已通过 `test:install-state`、`test:cabin-strategy-options`、`test:lifecycle-action-state`、`test:responsive-layout` 与 production build；真实 Steam 输入、Guard/QR 和最终取码仍由用户在本机热预览完成。
+- 用户随后在现有热预览自行完成 Steam Guard，页面在 1280px 桌面视口显示“已安装”与“Steam 邀请码已启用”；打开“修改 Steam 账号密码”后表单仍为空且可操作，截图指定的共享凭据说明、一次性 Auth、等待/失败提示条均不渲染。`clientWidth=scrollWidth=1280`、overlay=0、fresh console warning/error=0；最终取码仍需启动服务器。
+
 # FE-CONTROL-ONLY-AUTH-PHASE-1：认证验收与 SMAPI 验收分阶段展示（2026-08-23，released in v0.5.13）
 
 - 全栈更新状态机新增消费既有字符串字段值 `fullStack.phase=verifying_auth`，并将其纳入 active phase；顶栏/总览显示“正在验证认证服务健康（不等待 Steam 登录）”。原 `verifying_runtime` 继续显示“正在验证 SMAPI 实际加载版本”，不再承载认证服务等待。
@@ -7,6 +53,8 @@
 - 官网 docs-only 提交 `616de0bd56999089530f98e729273b116507b994` 的 Docs Portal `32649797827` 与 Compatibility `32649797822` 全绿，未触发新候选；线上首页和 changelog 均返回 200，并包含 `v0.5.13`、Control-only 摘要及认证/SMAPI 两条独立阶段文案。
 
 # FE-STEAM-CREDENTIAL-RECOVERY-1：常驻更换账号与强制重新认证入口（2026-08-22，released in v0.5.11）
+
+> 本节是 `v0.5.11` 的历史实现记录。`v0.6.0` 已用上文“只保存共享 Steam 账号密码”的独立 PUT 取代公开 `forceReauth` 安装分支，不再展示或提交 VNC/镜像，也不再启动安装任务。
 
 - Stardew 安装页管理员操作区保留原“登录授权”（复用已保存凭据），并新增常驻“更换 Steam 账号 / 重新认证”。入口不依赖后端是否已经正确识别 `credentials_required`，所以历史 `steamcmd_failed`、文件缺失或诊断不完整时仍能主动更换账号；安装任务运行、启动中或表单已打开时禁用，避免重复提交。
 - 点击新入口强制展开完整 Steam 用户名、Steam 密码、VNC 密码和镜像版本表单，提交既有安装 API 时携带 `forceReauth: true`。成功后重置本地 force 状态；取消、普通安装/修复和接入已有任务也会清理该状态。前端不回填、不打印任何已保存密码。
@@ -644,6 +692,8 @@
 - 验证：`cd frontend; npm.cmd run build`。
 
 # FE-INSTALL-CHANGE-ACCOUNT-1 更换 Steam 账号 / 强制重新认证入口
+
+> 历史契约，现行行为见本文件顶部 `FE-STEAM-INVITE-OPTIN-1`；公开 `forceReauth` 安装分支已移除。
 
 - 安装页新增 `forceReauth` 状态与「更换 Steam 账号 / 重新认证」按钮：出现在已安装卡片（与“重新安装 / 修复”并列），以及未安装但可复用凭据重试的操作区（`!isInstalled && canDirectRetry && !authFailed` 时）。已安装态只使用卡片内按钮，避免重复渲染。点击后 `setForceReauth(true)` 并打开表单。
 - 凭据输入显示条件由 `!canDirectRetry` 改为 `!canDirectRetry || forceReauth`，即更换账号时即便处于复用态也会显示账号/密码/VNC 输入框。表单标题/提示新增 forceReauth 文案（“将清除已保存的 Steam / SteamCMD 授权缓存并用新账号密码重新认证；已下载的游戏文件会保留。”），提交按钮显示“确认更换账号并重新认证”。

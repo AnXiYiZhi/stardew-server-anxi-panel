@@ -2,16 +2,32 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 const defaultJobTimeout = 30 * time.Minute
+
+const (
+	stardewSteamAuthJobType              = "stardew_steam_auth"
+	stardewSteamAuthPayloadSchemaVersion = 1
+)
+
+type stardewSteamAuthRecoveryPayload struct {
+	SchemaVersion     int    `json:"schemaVersion"`
+	State             string `json:"state"`
+	StateMessage      string `json:"stateMessage"`
+	StateMessageValid bool   `json:"stateMessageValid"`
+	DriverPhase       string `json:"driverPhase"`
+	DriverPayload     string `json:"driverPayload"`
+}
 
 type Manager struct {
 	store  *storage.Store
@@ -44,8 +60,14 @@ func (m *Manager) RecoverInterruptedJobs(ctx context.Context) error {
 	// the instance before terminalizing the jobs so the same owner check used by
 	// normal runners also protects recovery from stale historical jobs.
 	for _, job := range interrupted {
-		if job.Type == "stardew_install" && job.TargetType == "instance" && job.TargetID != "" {
+		if job.TargetType != "instance" || job.TargetID == "" {
+			continue
+		}
+		switch job.Type {
+		case "stardew_install":
 			m.markInterruptedInstallInstance(ctx, job, message)
+		case stardewSteamAuthJobType:
+			m.recoverInterruptedSteamAuthInstance(ctx, job)
 		}
 	}
 	count, err := m.store.FailInterruptedJobs(ctx, message)
@@ -61,6 +83,63 @@ func (m *Manager) RecoverInterruptedJobs(ctx context.Context) error {
 		m.logger.Warn("marked interrupted jobs as failed", "count", count)
 	}
 	return nil
+}
+
+func (m *Manager) recoverInterruptedSteamAuthInstance(ctx context.Context, job storage.Job) {
+	instance, err := m.store.GetInstance(ctx, job.TargetID)
+	if err != nil {
+		m.logger.Warn("failed to load interrupted Steam authorization instance", "instance", job.TargetID, "job_id", job.ID, "error", err)
+		return
+	}
+
+	snapshot, err := steamAuthRecoverySnapshot(instance, job.Payload.String)
+	if err != nil {
+		m.logger.Warn("invalid interrupted Steam authorization recovery snapshot; applying safe fallback", "instance", job.TargetID, "job_id", job.ID, "error", err)
+	}
+	if _, restoreErr := m.store.RestoreInstanceStateSnapshot(ctx, snapshot); restoreErr != nil {
+		m.logger.Warn("failed to restore interrupted Steam authorization base state", "instance", job.TargetID, "job_id", job.ID, "error", restoreErr)
+	}
+	if sjconfig.SteamAuthLoggedIn(instance.DataDir) {
+		if sjconfig.SteamInviteAuthState(instance.DataDir) == sjconfig.SteamInviteAuthStateCleanupPending {
+			return
+		}
+		if authErr := sjconfig.SetSteamInviteAuthState(instance.DataDir, sjconfig.SteamInviteAuthStateReady); authErr != nil {
+			m.logger.Warn("failed to preserve completed Steam authorization state", "instance", job.TargetID, "job_id", job.ID, "error", authErr)
+		}
+		return
+	}
+	if authErr := sjconfig.SetSteamAuthLoggedIn(instance.DataDir, false); authErr != nil {
+		m.logger.Warn("failed to mark incomplete Steam authorization state", "instance", job.TargetID, "job_id", job.ID, "error", authErr)
+	}
+}
+
+func steamAuthRecoverySnapshot(instance storage.Instance, rawPayload string) (storage.Instance, error) {
+	var payload stardewSteamAuthRecoveryPayload
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return steamAuthRecoveryFallback(instance), fmt.Errorf("decode snapshot: %w", err)
+	}
+	if payload.SchemaVersion != stardewSteamAuthPayloadSchemaVersion {
+		return steamAuthRecoveryFallback(instance), fmt.Errorf("unsupported snapshot schema version %d", payload.SchemaVersion)
+	}
+	if !storage.IsValidInstanceState(payload.State) {
+		return steamAuthRecoveryFallback(instance), fmt.Errorf("invalid snapshot state %q", payload.State)
+	}
+
+	snapshot := instance
+	snapshot.State = payload.State
+	snapshot.StateMessage.String = payload.StateMessage
+	snapshot.StateMessage.Valid = payload.StateMessageValid
+	snapshot.DriverPhase = payload.DriverPhase
+	snapshot.DriverPayload = payload.DriverPayload
+	return snapshot, nil
+}
+
+func steamAuthRecoveryFallback(instance storage.Instance) storage.Instance {
+	instance.State = storage.InstanceStateStopped
+	instance.StateMessage.String = "Steam 邀请码授权因面板重启中断；基础服务器保持停止，可重新授权或直接使用局域网直连。"
+	instance.StateMessage.Valid = true
+	instance.DriverPhase = "stopped"
+	return instance
 }
 
 func (m *Manager) markInterruptedInstallInstance(ctx context.Context, job storage.Job, message string) {
@@ -318,7 +397,7 @@ func (m *Manager) run(ctx context.Context, cancel context.CancelFunc, job storag
 
 	defer func() {
 		if value := recover(); value != nil {
-			message := fmt.Sprintf("任务执行异常：%v", value)
+			const message = "任务执行异常。"
 			_, _ = m.AppendLog(context.Background(), job.ID, storage.JobLogLevelError, message)
 			failed, err := m.store.FailJob(context.Background(), job.ID, message)
 			if err != nil {

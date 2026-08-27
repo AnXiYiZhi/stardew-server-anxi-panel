@@ -19,15 +19,17 @@ import (
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sj "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
 
 const (
-	uploadTokenTTL    = 10 * time.Minute
-	maxUploadFormSize = 110 * 1024 * 1024 // multipart memory: save ZIP limit is 100 MB
-	maxModFormSize    = 210 * 1024 * 1024 // multipart memory: mod ZIP limit is 200 MB
-	maxRequestBody    = 220 * 1024 * 1024 // hard cap on total request body (slightly above largest ZIP limit)
+	uploadTokenTTL                 = 10 * time.Minute
+	steamInviteRuntimeWarmupWindow = 10 * time.Minute
+	maxUploadFormSize              = 110 * 1024 * 1024 // multipart memory: save ZIP limit is 100 MB
+	maxModFormSize                 = 210 * 1024 * 1024 // multipart memory: mod ZIP limit is 200 MB
+	maxRequestBody                 = 220 * 1024 * 1024 // hard cap on total request body (slightly above largest ZIP limit)
 )
 
 // ── Pending upload token store ─────────────────────────────────────────────────
@@ -200,6 +202,9 @@ func (s *server) handleSavesCustomNewGame(w http.ResponseWriter, r *http.Request
 		RequestID:     requestID,
 	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		var ownerErr *sj.NewGameOwnerError
 		var txErr *sj.NewGameTransactionError
 		if errors.As(err, &ownerErr) {
@@ -895,6 +900,9 @@ func (s *server) handleSaveSelectAndStart(w http.ResponseWriter, r *http.Request
 		ActorID:  actor.User.ID,
 	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
@@ -1254,6 +1262,9 @@ func (s *server) handleInstanceStart(w http.ResponseWriter, r *http.Request, ins
 		ActorID:  actor.User.ID,
 	})
 	if err != nil {
+		if writeStardewMutationGuardConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "start_failed", sanitizeErrorMsg(err, "服务器启动失败"))
 		return
 	}
@@ -1318,6 +1329,38 @@ func (s *server) handleInstanceInviteCode(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	if !sjconfig.SteamInviteEnabled(instance.DataDir) {
+		writeJSON(w, http.StatusOK, registry.InviteCodeResult{
+			SteamInviteEnabled: false,
+			Status:             "disabled",
+			InviteCode:         "",
+		})
+		return
+	}
+	if !sjconfig.SteamAuthLoggedIn(instance.DataDir) {
+		if sjconfig.SteamInviteAuthState(instance.DataDir) == sjconfig.SteamInviteAuthStateFailed {
+			writeJSON(w, http.StatusOK, registry.InviteCodeResult{
+				SteamInviteEnabled: true,
+				Status:             "authorization_failed",
+				InviteCode:         "",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, registry.InviteCodeResult{
+			SteamInviteEnabled: true,
+			Status:             "waiting_authorization",
+			InviteCode:         "",
+		})
+		return
+	}
+	if instance.State != storage.InstanceStateRunning && instance.State != storage.InstanceStateStarting {
+		writeJSON(w, http.StatusOK, registry.InviteCodeResult{
+			SteamInviteEnabled: true,
+			Status:             "server_stopped",
+			InviteCode:         "",
+		})
+		return
+	}
 	driver, ok := s.loadDriver(w, instance.DriverID)
 	if !ok {
 		return
@@ -1334,10 +1377,41 @@ func (s *server) handleInstanceInviteCode(w http.ResponseWriter, r *http.Request
 
 	code, err := getter.GetInviteCode(r.Context(), makeRegistryInstance(instance))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "invite_code_failed", sanitizeErrorMsg(err, "获取邀请码失败"))
+		writeJSON(w, http.StatusOK, registry.InviteCodeResult{
+			SteamInviteEnabled: true,
+			Status:             steamInviteFailureStatus(instance, time.Now().UTC()),
+			InviteCode:         "",
+		})
 		return
 	}
-	writeJSON(w, http.StatusOK, registry.InviteCodeResult{InviteCode: code})
+	status := "generating"
+	if code != "" && code != "n/a" {
+		status = "ready"
+	}
+	writeJSON(w, http.StatusOK, registry.InviteCodeResult{
+		SteamInviteEnabled: true,
+		Status:             status,
+		InviteCode:         code,
+	})
+}
+
+// steamInviteFailureStatus keeps the normal Auth sidecar cold-start window in
+// the generating state while still surfacing a persistent runtime failure. The
+// dedicated runtime-generation timestamp survives Panel restarts and cannot be
+// extended by unrelated instance state or payload writes.
+func steamInviteFailureStatus(instance storage.Instance, now time.Time) string {
+	if instance.State == storage.InstanceStateStarting {
+		return "generating"
+	}
+	if instance.State != storage.InstanceStateRunning {
+		return "auth_unavailable"
+	}
+
+	startedAt, ok := sj.SteamInviteWarmupStartedAt(instance.DriverPayload)
+	if !ok || startedAt.After(now) || !now.Before(startedAt.Add(steamInviteRuntimeWarmupWindow)) {
+		return "auth_unavailable"
+	}
+	return "generating"
 }
 
 // ensureInstanceNotRunning reconciles instance state with real Docker state and

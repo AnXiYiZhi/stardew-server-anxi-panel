@@ -252,7 +252,7 @@ export function calcSteamDownloadTaskProgress(
       percent: sdkPercent != null ? roundPercent(50 + sdkPercent * 0.3) : roundPercent(gamePercent / 2),
       label: sdkPercent != null
         ? 'SteamCMD 已完成游戏文件，正在处理 Steam SDK 运行文件。'
-        : 'SteamCMD 正在兜底下载并校验 Stardew Valley 游戏文件。',
+        : 'SteamCMD 正在下载并校验 Stardew Valley 游戏文件。',
     }
   }
   return {
@@ -296,17 +296,13 @@ export function installFailureDisplayMessage(
   const errorPhase = [
     'pull_failed',
     'install_timeout',
-    'steam_auth_connection_failed',
-    'steam_auth_failed',
     'credentials_required',
-    'qr_auth_failed',
     'download_failed',
     'post_auth_failed',
-    'steam_auth_console_failed',
     'steamcmd_failed',
     'steamcmd_image_pull_failed',
   ].includes(phase)
-  const isFailureState = state === 'steam_auth_failed' || state === 'error' || errorPhase || !!failedJob
+  const isFailureState = state === 'error' || errorPhase || !!failedJob
   if (!isFailureState || state === 'game_installed') return ''
 
   const lastErrorLog = failedJob && selectedJob?.id === failedJob.id
@@ -316,34 +312,22 @@ export function installFailureDisplayMessage(
   const lower = rawText.toLowerCase()
 
   if (phase === 'install_timeout' || lower.includes('任务超时') || lower.includes('timed out')) {
-    return '安装任务超时：Steam 认证或下载没有在限定时间内完成，请重试安装。'
-  }
-  if (
-    phase === 'steam_auth_connection_failed' ||
-    lower.includes('tryanothercm') ||
-    lower.includes('steam client not connected') ||
-    lower.includes('steamclient') ||
-    lower.includes('cm')
-  ) {
-    return 'Steam CM 连接失败或超时：当前网络连接 Steam 会话不稳定，请稍后重试；如果一直失败，建议改用扫码登录或先在可用网络完成一次 refresh token。'
+    return '安装任务超时：SteamCMD 授权或下载没有在限定时间内完成，请重试安装。'
   }
   if (phase === 'credentials_required' || lower.includes('invalid password') || lower.includes('incorrect password')) {
-    return 'Steam 账号或密码认证失败，请重新输入凭据后再试。'
-  }
-  if (phase === 'qr_auth_failed') {
-    return 'Steam 二维码登录失败：当前 steam-auth 容器未能连接 SteamClient，请改用账号密码/验证码登录。'
+    return 'Steam 账号或密码错误（SteamCMD 登录失败），请修改后再试。'
   }
   if (phase === 'download_failed' || lower.includes('download failed')) {
-    return '游戏文件下载失败：Steam 认证可能已经成功，但下载阶段失败，请检查网络、磁盘空间后重试。'
+    return '游戏文件下载失败：SteamCMD 授权可能已经成功，但下载阶段失败，请检查网络、磁盘空间后重试。'
   }
   if (phase === 'steamcmd_failed') {
-    return 'steam-auth 下载失败后已自动切换 SteamCMD 兜底，但 SteamCMD 下载也失败了；请检查任务日志、网络和磁盘空间后重试。'
+    return 'SteamCMD 安装或修复失败；请检查任务日志、Steam 授权、网络和磁盘空间后重试。'
   }
   if (phase === 'steamcmd_image_pull_failed') {
-    return 'SteamCMD 兜底镜像拉取失败，请检查 Docker 网络或镜像源后重试。'
+    return 'SteamCMD 工具镜像拉取失败，请检查 Docker 网络或镜像源后重试。'
   }
   if (phase === 'post_auth_failed') {
-    return 'Steam 认证已经成功，但后续安装步骤失败；请使用已保存凭据重试，不需要重新输入账号密码。'
+    return 'SteamCMD 授权已经成功，但后续安装步骤失败；请使用已保存凭据重试，不需要重新输入账号密码。'
   }
   if (phase === 'pull_failed') {
     return 'Junimo 镜像拉取失败，请检查 Docker 网络或镜像地址后重试。'

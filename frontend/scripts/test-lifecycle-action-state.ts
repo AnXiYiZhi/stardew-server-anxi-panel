@@ -45,6 +45,17 @@ for (const action of ['start', 'restart'] as const) {
     false,
     `${action} must remain locked while a lifecycle job is active`,
   )
+
+  assert.equal(
+    shouldClearPendingStartupAction({
+      action,
+      hasActiveLifecycleJob: false,
+      isRunning: false,
+      sawActiveLifecycleJob: true,
+    }),
+    true,
+    `${action} must unlock when its observed lifecycle job terminates in a stopped or error state`,
+  )
 }
 
 assert.equal(

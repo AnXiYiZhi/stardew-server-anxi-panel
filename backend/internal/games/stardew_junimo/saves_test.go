@@ -84,8 +84,8 @@ func TestWriteServerSettings_ValidConfig(t *testing.T) {
 	if server["MaxPlayers"] != float64(16) {
 		t.Errorf("Server.MaxPlayers = %v, want 16", server["MaxPlayers"])
 	}
-	if server["CabinStrategy"] != "CabinStack" {
-		t.Errorf("Server.CabinStrategy = %v, want CabinStack", server["CabinStrategy"])
+	if server["CabinStrategy"] != "None" {
+		t.Errorf("Server.CabinStrategy = %v, want None", server["CabinStrategy"])
 	}
 	if server["AllowIpConnections"] != true {
 		t.Errorf("Server.AllowIpConnections = %v, want true (IP direct-connect on by default)", server["AllowIpConnections"])
@@ -104,6 +104,9 @@ func TestEnsureServerSettingsDefaults(t *testing.T) {
 	server := readServerSection(t, dir)
 	if server["AllowIpConnections"] != true {
 		t.Fatalf("AllowIpConnections = %v, want true", server["AllowIpConnections"])
+	}
+	if _, ok := server["CabinStrategy"]; ok {
+		t.Fatalf("EnsureServerSettingsDefaults must not migrate a missing CabinStrategy: %v", server["CabinStrategy"])
 	}
 
 	// Existing file without the key → adds it, preserving other keys.
@@ -124,6 +127,9 @@ func TestEnsureServerSettingsDefaults(t *testing.T) {
 	}
 	if server["MaxPlayers"] != float64(8) {
 		t.Errorf("MaxPlayers = %v, want 8 preserved", server["MaxPlayers"])
+	}
+	if _, ok := server["CabinStrategy"]; ok {
+		t.Errorf("missing CabinStrategy was unexpectedly materialized: %v", server["CabinStrategy"])
 	}
 
 	// Existing explicit false → respected, not overwritten.
@@ -220,14 +226,26 @@ func TestWriteServerSettings_MaxPlayersRange(t *testing.T) {
 	}
 }
 
-func TestWriteServerSettings_CabinModeRecommendedDefault(t *testing.T) {
+func TestWriteServerSettings_CabinModeVanillaDefault(t *testing.T) {
 	dir := t.TempDir()
 	if err := WriteServerSettings(dir, registry.NewGameConfig{FarmName: "Farm"}); err != nil {
 		t.Fatalf("WriteServerSettings: %v", err)
 	}
 	server := readServerSection(t, dir)
+	if server["CabinStrategy"] != "None" {
+		t.Errorf("Server.CabinStrategy = %v, want None (default cabinMode)", server["CabinStrategy"])
+	}
+}
+
+func TestWriteServerSettings_CabinModeRecommended(t *testing.T) {
+	dir := t.TempDir()
+	cfg := registry.NewGameConfig{FarmName: "Farm", CabinMode: "recommended"}
+	if err := WriteServerSettings(dir, cfg); err != nil {
+		t.Fatalf("WriteServerSettings: %v", err)
+	}
+	server := readServerSection(t, dir)
 	if server["CabinStrategy"] != "CabinStack" {
-		t.Errorf("Server.CabinStrategy = %v, want CabinStack (default cabinMode)", server["CabinStrategy"])
+		t.Errorf("Server.CabinStrategy = %v, want CabinStack (cabinMode=recommended)", server["CabinStrategy"])
 	}
 }
 
@@ -257,8 +275,31 @@ func TestServerRuntimeSettings_ReadDefaultsWhenMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadServerRuntimeSettings: %v", err)
 	}
-	if settings.MaxPlayers == nil || *settings.MaxPlayers != 10 || settings.CabinStrategy != "CabinStack" || settings.ExistingCabinBehavior != "KeepExisting" || settings.NetworkBroadcastPeriod != 1 {
+	if settings.MaxPlayers == nil || *settings.MaxPlayers != 10 || settings.CabinStrategy != "None" || settings.ExistingCabinBehavior != "KeepExisting" || settings.NetworkBroadcastPeriod != 1 {
 		t.Errorf("unexpected defaults: %+v", settings)
+	}
+}
+
+func TestServerRuntimeSettings_ReadPreservesExplicitCabinStrategies(t *testing.T) {
+	for _, strategy := range []string{"CabinStack", "FarmhouseStack", "None"} {
+		t.Run(strategy, func(t *testing.T) {
+			dir := t.TempDir()
+			path := serverSettingsPath(dir)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			data := []byte(fmt.Sprintf(`{"Server":{"CabinStrategy":%q}}`, strategy))
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			settings, err := ReadServerRuntimeSettings(dir)
+			if err != nil {
+				t.Fatalf("ReadServerRuntimeSettings: %v", err)
+			}
+			if settings.CabinStrategy != strategy {
+				t.Fatalf("CabinStrategy = %q, want preserved %q", settings.CabinStrategy, strategy)
+			}
+		})
 	}
 }
 

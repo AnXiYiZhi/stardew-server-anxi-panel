@@ -33,9 +33,6 @@ const junimoComposeTemplate = `services:
     cpu_shares: 768
     stdin_open: true
     tty: true
-    depends_on:
-      steam-auth:
-        condition: service_started
     ports:
       - "${GAME_PORT:-24642}:24642/udp"
       - "${QUERY_PORT:-27015}:27015/udp"

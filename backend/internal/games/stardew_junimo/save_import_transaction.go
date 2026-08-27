@@ -128,6 +128,7 @@ type ImportJournal struct {
 	PreimportBackupName               string                           `json:"preimportBackupName,omitempty"`
 	PreimportBackupSHA256             string                           `json:"preimportBackupSha256,omitempty"`
 	MaintenanceStarted                bool                             `json:"maintenanceStarted"`
+	MaintenanceSteamInviteEnabled     *bool                            `json:"maintenanceSteamInviteEnabled,omitempty"`
 	MaintenanceRecoveryState          string                           `json:"maintenanceRecoveryState,omitempty"`
 	OriginalInstanceSnapshot          *ImportInstanceStateSnapshot     `json:"originalInstanceSnapshot,omitempty"`
 	OriginalInstanceState             string                           `json:"originalInstanceState,omitempty"`
@@ -524,7 +525,22 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 		_, sourceErr := os.Stat(importTransactionSourceDir(dataDir, j.OperationID))
 		r := ImportRecovery{OperationID: j.OperationID, Stage: j.Stage, SourceAvailable: sourceErr == nil}
 		provenNoEffect := importJournalProvesPhaseANoEffect(j)
-		if j.DurableSaveSubmissionFailed {
+		if j.RollbackState != "" {
+			// A rollback substage is a write-ahead ownership boundary. Without an
+			// idempotent rollback resumer, no activation or durable-save path may
+			// run over partially restored files, pointers, or instance state.
+			r.State, r.ErrorCode = "manual_required", ImportErrorRecoveryRequired
+		} else if j.DurableSaveSubmissionFailed {
+			r.State, r.ErrorCode = "manual_required", ImportErrorRecoveryRequired
+		} else if provenNoEffect && j.MaintenanceStarted {
+			// A prior manual label does not override exact proof that Phase A had no
+			// effect. This path only stops the private runtime and restores the
+			// captured instance snapshot; it never resumes activation or saving.
+			r.State = importRecoveryMaintenanceStopAndRestore
+		} else if provenNoEffect && (j.MaintenanceRecoveryState == importMaintenanceSnapshotCaptured ||
+			j.MaintenanceRecoveryState == importMaintenanceSnapshotRestorePending) {
+			r.State = importRecoveryMaintenanceRestoreSnapshot
+		} else if j.RecoveryState == "manual_required" {
 			r.State, r.ErrorCode = "manual_required", ImportErrorRecoveryRequired
 		} else if j.Stage == ImportStageFinalizeConfirmed || j.Stage == ImportStageSavePersisting || j.Stage == ImportStageSaveVerified {
 			r.State = "resume_save_verification"
@@ -532,11 +548,6 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 			// Re-observe the already submitted transaction. This path never calls
 			// Phase A and therefore cannot publish another saves import command.
 			r.State = "resume_activation_verification"
-		} else if provenNoEffect && j.MaintenanceStarted {
-			r.State = importRecoveryMaintenanceStopAndRestore
-		} else if provenNoEffect && (j.MaintenanceRecoveryState == importMaintenanceSnapshotCaptured ||
-			j.MaintenanceRecoveryState == importMaintenanceSnapshotRestorePending) {
-			r.State = importRecoveryMaintenanceRestoreSnapshot
 		} else if provenNoEffect {
 			r.State = "safe_to_resume_or_cleanup"
 		} else if j.PhaseAFIFOWriteAttempted && !j.UpstreamSubmitted {
@@ -559,7 +570,8 @@ func RecoverImportTransactions(dataDir string) ([]ImportRecovery, error) {
 		// persistence failure from stranding a private server before ComposeDown.
 		driverRecovery := r.State == importRecoveryMaintenanceStopAndRestore ||
 			r.State == importRecoveryMaintenanceRestoreSnapshot ||
-			(r.State == "manual_required" && (j.MaintenanceStarted || j.PhaseAFIFOWriteAttempted || j.MaintenanceRecoveryState == importMaintenanceManualRecovery))
+			(r.State == "manual_required" && (j.MaintenanceStarted || j.PhaseAFIFOWriteAttempted ||
+				j.MaintenanceRecoveryState == importMaintenanceManualRecovery || j.RollbackState != "" || j.RecoveryState == "manual_required"))
 		if !driverRecovery {
 			j.RecoveryState, j.LastErrorCode = r.State, r.ErrorCode
 			if err := WriteImportJournal(dataDir, j); err != nil {
@@ -598,15 +610,15 @@ func (d *Driver) resumeRecoveredImportDurableSaves(ctx context.Context, instance
 			Run: func(runCtx context.Context, job *jobs.Context) error {
 				d.saveImportRunMu.Lock()
 				defer d.saveImportRunMu.Unlock()
+				var activate func() error
 				if recovery.State == "resume_activation_verification" {
-					if err := d.runImportActivation(runCtx, instance, operationID, job, defaultImportActivationOptions()); err != nil {
-						return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, err)
+					activate = func() error {
+						return d.runImportActivation(runCtx, instance, operationID, job, defaultImportActivationOptions())
 					}
 				}
-				if err := d.runImportDurableSave(runCtx, instance, operationID, job, defaultImportDurableSaveOptions()); err != nil {
-					return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, err)
-				}
-				return nil
+				return d.runConfirmedImportSteps(instance, operationID, job, activate, func() error {
+					return d.runImportDurableSave(runCtx, instance, operationID, job, defaultImportDurableSaveOptions())
+				})
 			},
 		})
 		if err != nil {
@@ -615,6 +627,67 @@ func (d *Driver) resumeRecoveredImportDurableSaves(ctx context.Context, instance
 		return nil // global import invariant permits at most one unfinished operation
 	}
 	return nil
+}
+
+func (d *Driver) runConfirmedImportSteps(instance registry.Instance, operationID string, job *jobs.Context, activate, durableSave func() error) (retErr error) {
+	if activate != nil {
+		err, panicked := runConfirmedImportStep(activate)
+		if panicked {
+			return d.recoverConfirmedImportPanic(instance, operationID, job)
+		}
+		if err != nil {
+			return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, err)
+		}
+	}
+	if durableSave != nil {
+		err, panicked := runConfirmedImportStep(durableSave)
+		if panicked {
+			return d.recoverConfirmedImportPanic(instance, operationID, job)
+		}
+		if err != nil {
+			return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, err)
+		}
+	}
+	return nil
+}
+
+func runConfirmedImportStep(step func() error) (retErr error, panicked bool) {
+	defer func() {
+		if recover() != nil {
+			retErr = &ImportTransactionError{
+				Code:    ImportErrorRecoveryRequired,
+				Message: "confirmed save import processing panicked; recovery is required",
+			}
+			panicked = true
+		}
+	}()
+	return step(), false
+}
+
+func (d *Driver) recoverConfirmedImportPanic(instance registry.Instance, operationID string, job *jobs.Context) error {
+	const message = "confirmed save import processing panicked; recovery is required"
+	primary := &ImportTransactionError{Code: ImportErrorRecoveryRequired, Message: message}
+	journal, err := LoadImportJournal(instance.DataDir, operationID)
+	if err != nil {
+		return d.failClosedOrphanedImportMaintenance(instance, message, err)
+	}
+	if journal.Stage == ImportStageCompleted {
+		// The durable journal is authoritative. A panic in the trailing log/state
+		// publication must never turn an already completed import into a rollback.
+		return d.markCompletedImportRuntimeRunning(instance, operationID, saveImportSteamInviteEnabledFromJournal(journal))
+	}
+	if journal.HostHandling == "swap_host_to" {
+		return d.rollbackConfirmedHostSwapFailure(instance.DataDir, operationID, job, primary)
+	}
+	lifecycle, ok := d.docker.(LifecycleDockerService)
+	if !ok {
+		return d.persistImportManualRecovery(instance.DataDir, journal, message,
+			errors.New("docker lifecycle operations are unsupported"))
+	}
+	stopCtx, cancel := context.WithTimeout(context.Background(), saveImportRuntimeStopTimeout)
+	stopErr := stopImportPhaseAForJournal(stopCtx, lifecycle, instance.DataDir, operationID, saveImportRuntimeStopPollInterval)
+	cancel()
+	return d.persistImportManualRecovery(instance.DataDir, journal, message, errors.Join(primary, stopErr))
 }
 
 func HasUnfinishedImportTransaction(dataDir string) (bool, error) {
@@ -1176,15 +1249,8 @@ func validateImportStaticCapability(dataDir string) error {
 }
 
 func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID, allowedOperationID string) error {
-	if d.jobs == nil {
-		return nil
-	}
-	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instanceID, Types: []string{SaveImportJobType, SaveImportRecoveryJobType}})
-	if err != nil {
+	if err := d.rejectActiveSaveImportRunner(ctx, instanceID); err != nil {
 		return err
-	}
-	if len(active) > 0 {
-		return &ImportTransactionError{Code: ImportErrorBusy, Message: "a save import transaction is active"}
 	}
 	if d.store != nil {
 		instance, loadErr := d.store.GetInstance(ctx, instanceID)
@@ -1197,6 +1263,20 @@ func (d *Driver) rejectActiveSaveImport(ctx context.Context, instanceID, allowed
 				return &ImportTransactionError{Code: ImportErrorBusy, Message: "an unfinished save import transaction requires recovery"}
 			}
 		}
+	}
+	return nil
+}
+
+func (d *Driver) rejectActiveSaveImportRunner(ctx context.Context, instanceID string) error {
+	if d.jobs == nil {
+		return nil
+	}
+	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{TargetType: "instance", TargetID: instanceID, Types: []string{SaveImportJobType, SaveImportRecoveryJobType}})
+	if err != nil {
+		return err
+	}
+	if len(active) > 0 {
+		return &ImportTransactionError{Code: ImportErrorBusy, Message: "a save import transaction is active"}
 	}
 	return nil
 }
@@ -1298,11 +1378,12 @@ func (d *Driver) ImportSaveAndStart(ctx context.Context, req registry.SaveImport
 			if err := d.runImportPhaseA(runCtx, req.Instance, req.OperationID, req.PlatformID, job, defaultImportPhaseAOptions()); err != nil {
 				return err
 			}
-			if err := d.runImportActivation(runCtx, req.Instance, req.OperationID, job, defaultImportActivationOptions()); err != nil {
-				return d.rollbackConfirmedHostSwapFailure(req.Instance.DataDir, req.OperationID, job, err)
-			}
-			if err := d.runImportDurableSave(runCtx, req.Instance, req.OperationID, job, defaultImportDurableSaveOptions()); err != nil {
-				return d.rollbackConfirmedHostSwapFailure(req.Instance.DataDir, req.OperationID, job, err)
+			if err := d.runConfirmedImportSteps(req.Instance, req.OperationID, job, func() error {
+				return d.runImportActivation(runCtx, req.Instance, req.OperationID, job, defaultImportActivationOptions())
+			}, func() error {
+				return d.runImportDurableSave(runCtx, req.Instance, req.OperationID, job, defaultImportDurableSaveOptions())
+			}); err != nil {
+				return err
 			}
 			if req.MarkUploadSucceeded != nil {
 				if err := req.MarkUploadSucceeded(); err != nil {

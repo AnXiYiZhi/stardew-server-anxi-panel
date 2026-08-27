@@ -1,5 +1,5 @@
 import type { HealthDiagnosticsResponse, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
-import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse } from '../../types'
+import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
 
 export type StardewRoute =
   | 'install'
@@ -18,6 +18,7 @@ export type StardewSaveAction = 'new' | 'upload'
 export type StardewNavigateOptions = {
   saveAction?: StardewSaveAction
   playerId?: string
+  installJobId?: string
 }
 
 export type StardewSaveActionRequest = {
@@ -40,6 +41,7 @@ export type StardewDashboardData = {
   updateDryRun: PanelUpdateDryRunStatus | null
   updateApply: PanelUpdateApplyStatus | null
   inviteCode: string | null
+  inviteCodeStatus: SteamInviteStatus | null
   publicIP: PublicIPResult | null
   // 降级错误摘要（不崩溃，只降级显示）
   savesError: string | null
@@ -86,6 +88,7 @@ export type StardewPageProps = {
   dashboardData: StardewDashboardData
   onNavigate: (route: StardewRoute, options?: StardewNavigateOptions) => void
   saveActionRequest?: StardewSaveActionRequest | null
+  requestedInstallJobId?: string
   onLogout: () => void
 }
 
@@ -113,7 +116,13 @@ export function parseRoute(pathname: string): StardewRoute {
 
 export function routeToPath(route: StardewRoute, options?: StardewNavigateOptions): string {
   const path = `${ROUTE_BASE}/${route}`
-  if (route !== 'player-mods' || !options?.playerId) return path
-  const query = new URLSearchParams({ playerId: options.playerId })
-  return `${path}?${query.toString()}`
+  if (route === 'player-mods' && options?.playerId) {
+    const query = new URLSearchParams({ playerId: options.playerId })
+    return `${path}?${query.toString()}`
+  }
+  if (route === 'install' && options?.installJobId) {
+    const query = new URLSearchParams({ jobId: options.installJobId })
+    return `${path}?${query.toString()}`
+  }
+  return path
 }

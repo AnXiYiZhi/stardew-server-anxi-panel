@@ -99,7 +99,12 @@ func (c *Client) RuntimeComposeStopServices(ctx context.Context, dir, project st
 	args := []string{"compose", "--project-name", project, "stop", "--timeout", "30"}
 	args = append(args, services...)
 	c.invalidateComposePs(dir)
-	_, err := c.run(ctx, "docker compose stop runtime services", dir, c.timeouts.Down, args...)
+	var err error
+	if containsRuntimeServiceName(services, "steam-auth") {
+		_, err = c.run(ctx, "docker compose stop runtime services", dir, c.timeouts.Down, args...)
+	} else {
+		_, err = c.runWithEnvironment(ctx, "docker compose stop server runtime", dir, c.timeouts.Down, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	}
 	c.invalidateComposePs(dir)
 	return err
 }
@@ -111,8 +116,13 @@ func (c *Client) RuntimeComposeUpService(ctx context.Context, dir, project, serv
 		return errors.New("invalid runtime compose up request")
 	}
 	c.invalidateComposePs(dir)
-	_, err := c.run(ctx, "docker compose up runtime service", dir, c.timeouts.Up,
-		"compose", "--project-name", project, "up", "-d", "--no-deps", "--force-recreate", "--pull", "never", service)
+	args := []string{"compose", "--project-name", project, "up", "-d", "--no-deps", "--force-recreate", "--pull", "never", service}
+	var err error
+	if service == "server" {
+		_, err = c.runWithEnvironment(ctx, "docker compose up server runtime", dir, c.timeouts.Up, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	} else {
+		_, err = c.run(ctx, "docker compose up runtime service", dir, c.timeouts.Up, args...)
+	}
 	c.invalidateComposePs(dir)
 	return err
 }
@@ -125,8 +135,13 @@ func (c *Client) RuntimeComposeUpServicePreserve(ctx context.Context, dir, proje
 		return errors.New("invalid runtime compose preserve request")
 	}
 	c.invalidateComposePs(dir)
-	_, err := c.run(ctx, "docker compose preserve runtime service", dir, c.timeouts.Up,
-		"compose", "--project-name", project, "up", "-d", "--no-deps", "--no-recreate", "--pull", "never", service)
+	args := []string{"compose", "--project-name", project, "up", "-d", "--no-deps", "--no-recreate", "--pull", "never", service}
+	var err error
+	if service == "server" {
+		_, err = c.runWithEnvironment(ctx, "docker compose preserve server runtime", dir, c.timeouts.Up, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	} else {
+		_, err = c.run(ctx, "docker compose preserve runtime service", dir, c.timeouts.Up, args...)
+	}
 	c.invalidateComposePs(dir)
 	return err
 }
@@ -145,8 +160,14 @@ func (c *Client) RuntimeUpdateServiceCPUShares(ctx context.Context, dir, project
 	if !composeProjectPattern.MatchString(project) || shares != want || want == 0 {
 		return errors.New("invalid runtime cpu shares update")
 	}
-	ps, err := c.run(ctx, "docker compose ps runtime service", dir, c.timeouts.Ps,
-		"compose", "--project-name", project, "ps", "-q", service)
+	args := []string{"compose", "--project-name", project, "ps", "-q", service}
+	var ps CommandResult
+	var err error
+	if service == "server" {
+		ps, err = c.runWithEnvironmentRedacted(ctx, "docker compose ps server runtime", dir, c.timeouts.Ps, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	} else {
+		ps, err = c.run(ctx, "docker compose ps runtime service", dir, c.timeouts.Ps, args...)
+	}
 	if err != nil {
 		return err
 	}
@@ -163,8 +184,14 @@ func (c *Client) RuntimeServiceInspect(ctx context.Context, dir, project, servic
 	if !composeProjectPattern.MatchString(project) || !validRuntimeServices([]string{service}) {
 		return RuntimeServiceMetadata{}, errors.New("invalid runtime service inspect request")
 	}
-	ps, err := c.run(ctx, "docker compose ps runtime service", dir, c.timeouts.Ps,
-		"compose", "--project-name", project, "ps", "-q", service)
+	args := []string{"compose", "--project-name", project, "ps", "-q", service}
+	var ps CommandResult
+	var err error
+	if service == "server" {
+		ps, err = c.runWithEnvironmentRedacted(ctx, "docker compose ps server runtime", dir, c.timeouts.Ps, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage}, args...)
+	} else {
+		ps, err = c.run(ctx, "docker compose ps runtime service", dir, c.timeouts.Ps, args...)
+	}
 	if err != nil {
 		return RuntimeServiceMetadata{}, err
 	}
@@ -282,7 +309,7 @@ func (c *Client) RuntimeServerHealth(ctx context.Context, dir, project string) e
 	if !composeProjectPattern.MatchString(project) {
 		return errors.New("invalid compose project")
 	}
-	result, err := c.run(ctx, "probe Junimo health", dir, c.timeouts.Ps,
+	_, raw, err := c.runWithEnvironmentRaw(ctx, "probe Junimo health", dir, c.timeouts.Ps, []string{"STEAM_SERVICE_IMAGE=" + disabledSteamAuthImage},
 		"compose", "--project-name", project, "exec", "-T", "server", "bash", "-c", runtimeServerHealthProbe)
 	if err != nil {
 		return err
@@ -290,7 +317,7 @@ func (c *Client) RuntimeServerHealth(ctx context.Context, dir, project string) e
 	var health struct {
 		Status string `json:"status"`
 	}
-	if json.Unmarshal([]byte(result.Stdout), &health) != nil || !strings.EqualFold(health.Status, "ok") {
+	if json.Unmarshal([]byte(raw), &health) != nil || !strings.EqualFold(health.Status, "ok") {
 		return errors.New("Junimo health response is not ok")
 	}
 	return nil
@@ -376,4 +403,13 @@ func validRuntimeServices(services []string) bool {
 		seen[service] = true
 	}
 	return true
+}
+
+func containsRuntimeServiceName(services []string, wanted string) bool {
+	for _, service := range services {
+		if service == wanted {
+			return true
+		}
+	}
+	return false
 }

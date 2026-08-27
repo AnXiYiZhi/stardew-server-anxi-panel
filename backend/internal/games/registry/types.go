@@ -48,8 +48,8 @@ type InstallRequest struct {
 	ImageTag      string // docker image tag, e.g. "latest" or a pinned version
 	AutoDownload  bool   // reuse saved credentials without re-prompting; routing is decided from the instance phase
 	SteamCMDRetry bool   // legacy: retained for compatibility; routing now derives from the instance phase
-	ForceReauth   bool   // clear saved auth caches and run the full auth flow again (change Steam account / password)
-	AuthLoginOnly bool   // reuse saved credentials to run ONLY steam-auth login (for invite codes); forces the steam-auth path and stops as soon as auth succeeds (no download/fallback/SMAPI)
+	ForceReauth   bool   // internal AuthLoginOnly retry resets only a failed/pending Auth session; base installs must reject this flag
+	AuthLoginOnly bool   // reuse the shared credentials to run ONLY optional SteamAuth invite authorization (no game download, SteamCMD fallback, or SMAPI)
 }
 
 // ImageTagOption describes one selectable image tag in the install UI.
@@ -190,7 +190,7 @@ type NewGameConfig struct {
 	StartingCabins int    `json:"startingCabins"` // 0-7
 	MaxPlayers     int    `json:"maxPlayers"`     // 1-100, total concurrent players
 	CabinLayout    string `json:"cabinLayout"`    // nearby|separate
-	CabinMode      string `json:"cabinMode"`      // recommended|vanilla: recommended=CabinStack+KeepExisting hidden cabins, vanilla=None visible cabins on the farm map
+	CabinMode      string `json:"cabinMode"`      // recommended|vanilla: recommended=CabinStack hidden cabins, vanilla=None visible cabins on the farm map (default)
 	ProfitMargin   string `json:"profitMargin"`   // "100"|"75"|"50"|"25"
 	PetBreed       int    `json:"petBreed"`       // 0-4 (Stardew selectable breed index)
 	MoneyMode      string `json:"moneyMode"`      // shared|separate
@@ -235,7 +235,9 @@ type UploadPreviewResult struct {
 
 // InviteCodeResult is returned by GET .../invite-code.
 type InviteCodeResult struct {
-	InviteCode string `json:"inviteCode"`
+	SteamInviteEnabled bool   `json:"steamInviteEnabled"`
+	Status             string `json:"status"`
+	InviteCode         string `json:"inviteCode"`
 }
 
 // SavesListResult is returned by GET .../saves.

@@ -1258,6 +1258,16 @@
   text-shadow: 1px 2px 0 rgba(0, 0, 0, 0.38);
 }
 
+.sd-install-log-order-note {
+  margin-left: auto;
+  color: #d9bd7b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
 @container sd-main-scroll (max-width: 1180px) {
   .sd-install-status-banner {
     grid-template-columns: 110px minmax(0, 1fr);
@@ -1327,6 +1337,16 @@
   .sd-install-column,
   .sd-install-progress-section {
     padding: 13px 11px;
+  }
+
+  .sd-install-log-panel .sd-install-section-title {
+    flex-wrap: wrap;
+  }
+
+  .sd-install-log-order-note {
+    flex-basis: 100%;
+    margin-left: 26px;
+    white-space: normal;
   }
 
   .sd-install-log-line {

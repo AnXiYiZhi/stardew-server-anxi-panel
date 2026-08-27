@@ -3,6 +3,9 @@ package docker
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,6 +33,24 @@ func TestRuntimeApplyDockerContractRejectsInjectedArguments(t *testing.T) {
 	}
 	if err := client.RuntimeRestoreVolume(ctx, t.TempDir(), "safe_project_anxi-junimo-update-0123456789abcdef01234567-steam-session", "safe_project_steam-session;rm", "sdvd/server:1.5.0-preview.121"); err == nil {
 		t.Fatal("injected target volume accepted")
+	}
+}
+
+func TestRuntimeServerHealthParsesPrivateRawCommandOutput(t *testing.T) {
+	fixtureDir := t.TempDir()
+	dockerPath := filepath.Join(fixtureDir, "docker")
+	content := "#!/bin/sh\nprintf '%s' '{\"status\":\"ok\"}'\n"
+	if runtime.GOOS == "windows" {
+		dockerPath += ".cmd"
+		content = "@echo off\r\necho {\"status\":\"ok\"}\r\n"
+	}
+	if err := os.WriteFile(dockerPath, []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	client := NewClient(Options{DockerPath: dockerPath})
+	if err := client.RuntimeServerHealth(context.Background(), fixtureDir, "safe_project"); err != nil {
+		t.Fatalf("RuntimeServerHealth discarded private command output: %v", err)
 	}
 }
 

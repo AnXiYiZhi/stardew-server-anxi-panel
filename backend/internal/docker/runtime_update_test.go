@@ -50,8 +50,10 @@ func TestRuntimeUpdateDockerContractContainsNoDestructiveMethods(t *testing.T) {
 	allowed := map[string]bool{
 		"DockerVersion": true, "ComposeVersion": true, "ComposePs": true,
 		"PullImageStreaming": true, "RuntimeImageInspect": true,
-		"RuntimeComposeConfigInspect": true, "RuntimeComposeConfigValidateImages": true,
-		"RuntimeVolumeInspect": true,
+		"RuntimeComposeConfigInspect": true, "RuntimeComposeConfigInspectServer": true,
+		"RuntimeComposeConfigValidateImages": true, "RuntimeComposeConfigValidateServerImage": true,
+		"RuntimeComposePsServer": true,
+		"RuntimeVolumeInspect":   true,
 	}
 	for _, forbidden := range []string{"ComposeUp", "ComposeDown", "ComposeRestart", "RemoveVolumes", "RemoveContainersByVolume"} {
 		if allowed[forbidden] {

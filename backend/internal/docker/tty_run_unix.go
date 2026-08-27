@@ -4,13 +4,11 @@ package docker
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,19 +22,20 @@ func runSteamAuthPlatform(
 	guardCh <-chan string,
 	lineHandler func(string),
 ) (exitCode int, runErr error) {
-	composePath := filepath.Join(dataDir, "docker-compose.yml")
 	containerName := newSteamAuthContainerName()
-	args := steamAuthComposeRunArgs(composePath, containerName, opts)
+	args := steamAuthDockerRunArgs(containerName, opts)
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Env = os.Environ()
+	cmd.Env = environmentWithOverrides(os.Environ(), opts.Env)
+	if strings.TrimSpace(dataDir) != "" {
+		cmd.Dir = dataDir
+	}
 	defer func() {
 		if ctx.Err() == nil {
 			return
 		}
-		if cleanupErr := removeNamedSteamAuthContainer("docker", containerName); cleanupErr != nil {
-			runErr = errors.Join(runErr, fmt.Errorf("remove canceled steam-auth container: %w", cleanupErr))
-			exitCode = -1
-		}
+		cleanupErr := removeNamedSteamAuthContainer("docker", containerName)
+		runErr = steamAuthCancellationError(runErr, ctx.Err(), cleanupErr)
+		exitCode = -1
 	}()
 
 	ptmx, err := pty.Start(cmd)
@@ -75,16 +74,33 @@ func runSteamAuthPlatform(
 	return 0, nil
 }
 
-func newSteamAuthContainerName() string {
-	var random [8]byte
-	if _, err := rand.Read(random[:]); err == nil {
-		return "anxi-steam-auth-" + hex.EncodeToString(random[:])
+func steamAuthDockerRunArgs(containerName string, opts SteamAuthRunOpts) []string {
+	args := []string{"run", "--name", containerName, "--rm", "--interactive", "--tty"}
+	labelKeys := make([]string, 0, len(opts.Labels))
+	for key := range opts.Labels {
+		labelKeys = append(labelKeys, key)
 	}
-	return fmt.Sprintf("anxi-steam-auth-%x", time.Now().UTC().UnixNano())
-}
-
-func steamAuthComposeRunArgs(composePath, containerName string, opts SteamAuthRunOpts) []string {
-	args := []string{"compose", "-f", composePath, "run", "--name", containerName, "--rm", "--interactive", "--tty", "steam-auth"}
+	sort.Strings(labelKeys)
+	for _, key := range labelKeys {
+		args = append(args, "--label", key+"="+opts.Labels[key])
+	}
+	if opts.User != "" {
+		args = append(args, "--user", opts.User)
+	}
+	if len(opts.Entrypoint) > 0 && opts.Entrypoint[0] != "" {
+		args = append(args, "--entrypoint", opts.Entrypoint[0])
+	}
+	for _, env := range opts.Env {
+		if key, _, ok := strings.Cut(env, "="); ok && strings.TrimSpace(key) != "" {
+			// Pass only the key in argv; the child environment below supplies the
+			// value so Steam passwords are not exposed in the process command line.
+			args = append(args, "--env", key)
+		}
+	}
+	for _, bind := range opts.Binds {
+		args = append(args, "--volume", bind)
+	}
+	args = append(args, opts.ImageRef)
 	return append(args, containerCommand(opts)...)
 }
 
@@ -171,7 +187,9 @@ func runContainerTTYPlatform(
 		args = append(args, "--entrypoint", opts.Entrypoint[0])
 	}
 	for _, env := range opts.Env {
-		args = append(args, "--env", env)
+		if key, _, ok := strings.Cut(env, "="); ok && strings.TrimSpace(key) != "" {
+			args = append(args, "--env", key)
+		}
 	}
 	for _, bind := range opts.Binds {
 		args = append(args, "--volume", bind)
@@ -180,7 +198,7 @@ func runContainerTTYPlatform(
 	args = append(args, containerCommand(opts)...)
 
 	cmd := exec.CommandContext(ctx, dockerPath, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = environmentWithOverrides(os.Environ(), opts.Env)
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -216,4 +234,24 @@ func runContainerTTYPlatform(
 		return -1, fmt.Errorf("container exited: %w", err)
 	}
 	return 0, nil
+}
+
+func environmentWithOverrides(base, overrides []string) []string {
+	overridden := make(map[string]struct{}, len(overrides))
+	for _, entry := range overrides {
+		if key, _, ok := strings.Cut(entry, "="); ok && key != "" {
+			overridden[key] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(base)+len(overrides))
+	for _, entry := range base {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, replace := overridden[key]; replace {
+				continue
+			}
+		}
+		result = append(result, entry)
+	}
+	return append(result, overrides...)
 }

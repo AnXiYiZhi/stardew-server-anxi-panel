@@ -162,6 +162,11 @@ func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 		"STEAM_SERVICE_IMAGE_CANDIDATES",
 		"STEAMCMD_IMAGE",
 		"STEAMCMD_IMAGE_CANDIDATES",
+		"STEAMCMD_AUTH_COMPLETED",
+		"STEAM_AUTH_COMPLETED",
+		"STEAM_INVITE_ENABLED",
+		"STEAM_INVITE_AUTH_STATE",
+		"STEAM_INVITE_RUNTIME_SCOPE_VERSION",
 		"STEAM_USERNAME",
 		"STEAM_PASSWORD",
 		"STEAM_REFRESH_TOKEN",
@@ -203,5 +208,208 @@ func TestEmptyEnvTemplate_UsesOfficialJunimoKeys(t *testing.T) {
 	}
 	if !strings.Contains(fields["STEAM_SERVICE_IMAGE_CANDIDATES"], "crpi-9z3bkb9g7fxeohrg.cn-hangzhou.personal.cr.aliyuncs.com/anxi-panel/junimo-steam-service-cn:1.5.0-anxi.2") {
 		t.Fatalf("STEAM_SERVICE_IMAGE_CANDIDATES should include Aliyun ACR fallback, got %q", fields["STEAM_SERVICE_IMAGE_CANDIDATES"])
+	}
+	if fields["STEAM_INVITE_ENABLED"] != "false" || fields["STEAM_INVITE_AUTH_STATE"] != config.SteamInviteAuthStateDisabled {
+		t.Fatalf("fresh instances must default Steam invite capability off, got enabled=%q state=%q", fields["STEAM_INVITE_ENABLED"], fields["STEAM_INVITE_AUTH_STATE"])
+	}
+	if fields["STEAM_INVITE_RUNTIME_SCOPE_VERSION"] != config.SteamInviteRuntimeScopeVersion {
+		t.Fatalf("fresh instance runtime scope version = %q, want %q", fields["STEAM_INVITE_RUNTIME_SCOPE_VERSION"], config.SteamInviteRuntimeScopeVersion)
+	}
+}
+
+func TestSteamInviteRuntimeScopeMarkerPreservesCredentialsAndAuthorizationCaches(t *testing.T) {
+	dataDir := t.TempDir()
+	envPath := filepath.Join(dataDir, ".env")
+	if err := config.UpdateEnvFile(envPath, map[string]string{
+		"STEAM_USERNAME":             "saved-user",
+		"STEAM_PASSWORD":             "saved-password",
+		"STEAMCMD_AUTH_COMPLETED":    "true",
+		"STEAM_AUTH_COMPLETED":       "true",
+		"STEAM_INVITE_ENABLED":       "true",
+		"STEAM_INVITE_AUTH_STATE":    config.SteamInviteAuthStateReady,
+		"GAME_DATA_VOLUME":           "preserved-game-data",
+		"UNRELATED_CUSTOM_ENV_VALUE": "preserved",
+	}); err != nil {
+		t.Fatalf("seed legacy env: %v", err)
+	}
+	if config.SteamInviteRuntimeScopeCurrent(dataDir) {
+		t.Fatal("legacy env without marker must require runtime scope convergence")
+	}
+	if err := config.MarkSteamInviteRuntimeScopeCurrent(dataDir); err != nil {
+		t.Fatalf("mark runtime scope: %v", err)
+	}
+	if !config.SteamInviteRuntimeScopeCurrent(dataDir) {
+		t.Fatal("runtime scope marker was not persisted")
+	}
+	fields, err := config.ReadEnvFile(envPath)
+	if err != nil {
+		t.Fatalf("read marked env: %v", err)
+	}
+	for key, want := range map[string]string{
+		"STEAM_USERNAME":             "saved-user",
+		"STEAM_PASSWORD":             "saved-password",
+		"STEAMCMD_AUTH_COMPLETED":    "true",
+		"STEAM_AUTH_COMPLETED":       "true",
+		"STEAM_INVITE_ENABLED":       "true",
+		"STEAM_INVITE_AUTH_STATE":    config.SteamInviteAuthStateReady,
+		"GAME_DATA_VOLUME":           "preserved-game-data",
+		"UNRELATED_CUSTOM_ENV_VALUE": "preserved",
+	} {
+		if fields[key] != want {
+			t.Fatalf("marker changed %s: got %q want %q", key, fields[key], want)
+		}
+	}
+}
+
+func TestSteamInviteEnabledLegacyCompatibilityAndExplicitIntent(t *testing.T) {
+	dataDir := t.TempDir()
+	envPath := filepath.Join(dataDir, ".env")
+	if err := config.UpdateEnvFile(envPath, map[string]string{
+		"STEAM_AUTH_COMPLETED":    "true",
+		"STEAMCMD_AUTH_COMPLETED": "true",
+	}); err != nil {
+		t.Fatalf("write legacy env: %v", err)
+	}
+	if !config.SteamInviteEnabled(dataDir) {
+		t.Fatal("legacy instance with completed steam-auth must remain enabled")
+	}
+	if got := config.SteamInviteAuthState(dataDir); got != config.SteamInviteAuthStateReady {
+		t.Fatalf("legacy authorized state = %q, want ready", got)
+	}
+
+	if err := config.SetSteamInviteEnabled(dataDir, false); err != nil {
+		t.Fatalf("disable invite: %v", err)
+	}
+	if config.SteamInviteEnabled(dataDir) {
+		t.Fatal("explicit disabled intent must win over legacy completed auth")
+	}
+	fields, err := config.ReadEnvFile(envPath)
+	if err != nil {
+		t.Fatalf("read disabled env: %v", err)
+	}
+	if fields["STEAMCMD_AUTH_COMPLETED"] != "true" {
+		t.Fatal("changing invite intent must preserve SteamCMD authorization cache")
+	}
+}
+
+func TestSteamInviteEnabledStrictRejectsMissingAndMalformedIntent(t *testing.T) {
+	dataDir := t.TempDir()
+	if _, err := config.SteamInviteEnabledStrict(dataDir); err == nil {
+		t.Fatal("strict Steam invite intent accepted a missing .env")
+	}
+	envPath := filepath.Join(dataDir, ".env")
+	if err := config.UpdateEnvFile(envPath, map[string]string{"STEAM_INVITE_ENABLED": "maybe"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.SteamInviteEnabledStrict(dataDir); err == nil {
+		t.Fatal("strict Steam invite intent accepted a malformed explicit value")
+	}
+	if config.SteamInviteEnabled(dataDir) {
+		t.Fatal("compatibility helper must fail closed on malformed intent")
+	}
+}
+
+func TestSteamAuthStateChangesPreserveSteamCMDCacheAndInviteIntent(t *testing.T) {
+	dataDir := t.TempDir()
+	envPath := filepath.Join(dataDir, ".env")
+	if err := config.UpdateEnvFile(envPath, map[string]string{
+		"STEAMCMD_AUTH_COMPLETED": "true",
+	}); err != nil {
+		t.Fatalf("seed SteamCMD cache: %v", err)
+	}
+	if err := config.SetSteamInviteEnabled(dataDir, true); err != nil {
+		t.Fatalf("enable invite: %v", err)
+	}
+	if got := config.SteamInviteAuthState(dataDir); got != config.SteamInviteAuthStatePending {
+		t.Fatalf("newly enabled state = %q, want pending", got)
+	}
+	if err := config.SetSteamInviteAuthState(dataDir, config.SteamInviteAuthStateAuthorizing); err != nil {
+		t.Fatalf("mark authorizing: %v", err)
+	}
+	if got := config.SteamInviteAuthState(dataDir); got != config.SteamInviteAuthStateAuthorizing {
+		t.Fatalf("authorizing state = %q", got)
+	}
+	if err := config.SetSteamAuthLoggedIn(dataDir, true); err != nil {
+		t.Fatalf("mark steam-auth logged in: %v", err)
+	}
+	if !config.SteamInviteEnabled(dataDir) || config.SteamInviteAuthState(dataDir) != config.SteamInviteAuthStateReady {
+		t.Fatal("successful steam-auth login must leave invite enabled and ready")
+	}
+	if err := config.SetSteamAuthCompletedState(dataDir, config.SteamInviteAuthStateCleanupPending); err != nil {
+		t.Fatalf("atomically mark successful session cleanup pending: %v", err)
+	}
+	if got := config.SteamInviteAuthState(dataDir); got != config.SteamInviteAuthStateCleanupPending {
+		t.Fatalf("successful session with an unresolved holder = %q, want cleanup_pending", got)
+	}
+	completedFields, err := config.ReadEnvFile(envPath)
+	if err != nil {
+		t.Fatalf("read completed cleanup-pending env: %v", err)
+	}
+	if completedFields["STEAM_AUTH_COMPLETED"] != "true" || completedFields["STEAM_INVITE_ENABLED"] != "true" || completedFields["STEAM_INVITE_AUTH_STATE"] != config.SteamInviteAuthStateCleanupPending {
+		t.Fatalf("successful session and holder state were not persisted together: %#v", completedFields)
+	}
+	if err := config.SetSteamAuthLoggedIn(dataDir, false); err != nil {
+		t.Fatalf("clear steam-auth session: %v", err)
+	}
+	if !config.SteamInviteEnabled(dataDir) || config.SteamInviteAuthState(dataDir) != config.SteamInviteAuthStateFailed {
+		t.Fatal("steam-auth session failure must preserve enabled intent and become failed")
+	}
+	fields, err := config.ReadEnvFile(envPath)
+	if err != nil {
+		t.Fatalf("read final env: %v", err)
+	}
+	if fields["STEAMCMD_AUTH_COMPLETED"] != "true" {
+		t.Fatal("steam-auth session changes must not clear SteamCMD authorization cache")
+	}
+}
+
+func TestEnsureSteamInviteIntentMigratesHistoricalEvidenceOnlyWhenKeyMissing(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		env            map[string]string
+		strongEvidence bool
+		wantEnabled    bool
+		wantAuthState  string
+		wantChanged    bool
+	}{
+		{name: "historical driver authorization", env: map[string]string{"STEAMCMD_AUTH_COMPLETED": "true", "STEAM_USERNAME": "legacy-user"}, strongEvidence: true, wantEnabled: true, wantAuthState: config.SteamInviteAuthStateReady, wantChanged: true},
+		{name: "legacy auth flag", env: map[string]string{"STEAM_AUTH_COMPLETED": "true"}, wantEnabled: true, wantAuthState: config.SteamInviteAuthStateReady, wantChanged: true},
+		{name: "SteamCMD completion is not invite evidence", env: map[string]string{"STEAMCMD_AUTH_COMPLETED": "true"}, wantEnabled: false, wantAuthState: config.SteamInviteAuthStateDisabled, wantChanged: true},
+		{name: "no evidence", env: map[string]string{}, wantEnabled: false, wantAuthState: config.SteamInviteAuthStateDisabled, wantChanged: true},
+		{name: "explicit false wins", env: map[string]string{"STEAM_INVITE_ENABLED": "false", "STEAM_AUTH_COMPLETED": "true"}, strongEvidence: true, wantEnabled: false, wantAuthState: config.SteamInviteAuthStateDisabled, wantChanged: false},
+		{name: "explicit true without authorization stays pending", env: map[string]string{"STEAM_INVITE_ENABLED": "true"}, wantEnabled: true, wantAuthState: config.SteamInviteAuthStatePending, wantChanged: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			if err := config.UpdateEnvFile(filepath.Join(dataDir, ".env"), tc.env); err != nil {
+				t.Fatalf("seed env: %v", err)
+			}
+			changed, err := config.EnsureSteamInviteIntent(dataDir, tc.strongEvidence)
+			if err != nil {
+				t.Fatalf("EnsureSteamInviteIntent: %v", err)
+			}
+			if changed != tc.wantChanged {
+				t.Fatalf("changed = %v, want %v", changed, tc.wantChanged)
+			}
+			if got := config.SteamInviteEnabled(dataDir); got != tc.wantEnabled {
+				t.Fatalf("enabled = %v, want %v", got, tc.wantEnabled)
+			}
+			if got := config.SteamInviteAuthState(dataDir); got != tc.wantAuthState {
+				t.Fatalf("auth state = %q, want %q", got, tc.wantAuthState)
+			}
+			fields, err := config.ReadEnvFile(filepath.Join(dataDir, ".env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.strongEvidence && !config.SteamAuthLoggedIn(dataDir) {
+				t.Fatal("strong historical evidence must restore ready authorization")
+			}
+			if tc.env["STEAMCMD_AUTH_COMPLETED"] != "" && fields["STEAMCMD_AUTH_COMPLETED"] != tc.env["STEAMCMD_AUTH_COMPLETED"] {
+				t.Fatal("migration changed the SteamCMD authorization cache")
+			}
+			if tc.env["STEAM_USERNAME"] != "" && fields["STEAM_USERNAME"] != tc.env["STEAM_USERNAME"] {
+				t.Fatal("migration changed the saved Steam account")
+			}
+		})
 	}
 }

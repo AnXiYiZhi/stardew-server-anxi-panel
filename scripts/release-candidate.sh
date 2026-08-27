@@ -278,7 +278,7 @@ if ((dind_tools_ready != 1)); then
   echo "release candidate: isolated DinD tools could not be installed after 3 attempts" >&2
   exit 1
 fi
-docker exec "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version"
+docker exec --env ANXI_RELEASE_CANDIDATE_ISOLATED_DOCKER=1 "$dind_container" bash /workspace/scripts/tests/test_release_candidate_upgrade.sh --candidate-tar /candidate/candidate.tar --fixtures-tar /candidate/fixtures.tar --candidate-image "$candidate_image" --version "$version" --previous-version "$previous_version"
 docker rm -f "$dind_container" >/dev/null
 
 mkdir -p "$(dirname "$metadata_output")"

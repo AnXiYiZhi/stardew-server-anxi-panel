@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -26,32 +27,58 @@ func runSteamAuthPlatform(
 	lineHandler func(string),
 ) (int, error) {
 	// 1. Create container with Tty:true.
-	containerID, err := winDockerCreate(ctx, opts)
+	containerName := newSteamAuthContainerName()
+	containerID, err := winDockerCreate(ctx, opts, containerName)
 	if err != nil {
 		return -1, err
+	}
+	removeAfterSetupFailure := func(cause error) (int, error) {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		if cleanupErr := winDockerRemove(cleanupCtx, containerID); cleanupErr != nil {
+			return -1, errors.Join(cause, fmt.Errorf("remove unstarted steam-auth container: %w", cleanupErr))
+		}
+		return -1, cause
 	}
 
 	// 2. Attach (HTTP hijack) BEFORE start so we don't miss early output.
 	conn, reader, err := winDockerAttach(ctx, containerID)
 	if err != nil {
-		return -1, err
+		return removeAfterSetupFailure(err)
 	}
 	defer conn.Close()
 	stopCancelWatch := make(chan struct{})
+	cancelCleanupCh := make(chan error, 1)
 	defer close(stopCancelWatch)
 	go func() {
 		select {
 		case <-ctx.Done():
-			// Stop the one-shot container before unblocking streamTTYOutput.
-			// Disconnecting attach alone leaves the process running forever at
-			// an interactive prompt, so AutoRemove would never take effect.
-			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = winDockerStop(stopCtx, containerID)
-			stopCancel()
+			// Stop and force-remove the exact one-shot before unblocking output.
+			// A successful intentional cancellation is reported only after this
+			// cleanup completes; stop/remove failures must reach the caller.
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			cleanupErr := winDockerStopAndRemove(cleanupCtx, containerID)
+			cleanupCancel()
 			_ = conn.Close()
+			cancelCleanupCh <- cleanupErr
 		case <-stopCancelWatch:
 		}
 	}()
+	waitForCanceledCleanup := func() error {
+		cleanupErr := <-cancelCleanupCh
+		if cleanupErr != nil {
+			return errors.Join(ctx.Err(), fmt.Errorf("cleanup canceled steam-auth container: %w", cleanupErr))
+		}
+		return ctx.Err()
+	}
+	removeFinishedContainer := func() error {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		if cleanupErr := winDockerRemove(cleanupCtx, containerID); cleanupErr != nil {
+			return fmt.Errorf("remove finished steam-auth container: %w", cleanupErr)
+		}
+		return nil
+	}
 
 	// 3. Wait goroutine BEFORE start so we don't miss the exit event.
 	exitCh := make(chan int, 1)
@@ -67,7 +94,7 @@ func runSteamAuthPlatform(
 
 	// 4. Start container.
 	if err := winDockerStart(ctx, containerID); err != nil {
-		return -1, err
+		return removeAfterSetupFailure(err)
 	}
 
 	// 5. Forward stdin from guardCh.
@@ -96,16 +123,42 @@ func runSteamAuthPlatform(
 	// 6. Read output until EOF (container exits and closes the attach stream).
 	// With Tty:true the stream is raw bytes, no Docker multiplexing header.
 	streamTTYOutput(reader, lineHandler)
+	if ctx.Err() != nil {
+		return -1, waitForCanceledCleanup()
+	}
 
 	// 7. Return exit code from the wait goroutine.
 	select {
 	case code := <-exitCh:
+		if ctx.Err() != nil {
+			return -1, waitForCanceledCleanup()
+		}
+		if cleanupErr := removeFinishedContainer(); cleanupErr != nil {
+			return -1, cleanupErr
+		}
 		return code, nil
 	case err := <-exitErrCh:
+		if ctx.Err() != nil {
+			return -1, waitForCanceledCleanup()
+		}
+		if cleanupErr := removeFinishedContainer(); cleanupErr != nil {
+			return -1, errors.Join(err, cleanupErr)
+		}
 		return -1, err
 	case <-ctx.Done():
-		return -1, ctx.Err()
+		return -1, waitForCanceledCleanup()
 	}
+}
+
+func winDockerStopAndRemove(ctx context.Context, containerID string) error {
+	stopErr := winDockerStop(ctx, containerID)
+	removeErr := winDockerRemove(ctx, containerID)
+	if removeErr != nil {
+		return errors.Join(stopErr, removeErr)
+	}
+	// A force-remove that succeeds (or reports already absent) proves cleanup,
+	// even if the preceding graceful stop endpoint returned an error.
+	return nil
 }
 
 func winDockerStop(ctx context.Context, containerID string) error {
@@ -134,17 +187,18 @@ func winDockerDial(ctx context.Context) (net.Conn, error) {
 }
 
 type winCreateBody struct {
-	Image        string        `json:"Image"`
-	Entrypoint   []string      `json:"Entrypoint,omitempty"`
-	Cmd          []string      `json:"Cmd"`
-	User         string        `json:"User,omitempty"`
-	Tty          bool          `json:"Tty"`
-	OpenStdin    bool          `json:"OpenStdin"`
-	AttachStdin  bool          `json:"AttachStdin"`
-	AttachStdout bool          `json:"AttachStdout"`
-	AttachStderr bool          `json:"AttachStderr"`
-	Env          []string      `json:"Env"`
-	HostConfig   winHostConfig `json:"HostConfig"`
+	Image        string            `json:"Image"`
+	Entrypoint   []string          `json:"Entrypoint,omitempty"`
+	Cmd          []string          `json:"Cmd"`
+	User         string            `json:"User,omitempty"`
+	Tty          bool              `json:"Tty"`
+	OpenStdin    bool              `json:"OpenStdin"`
+	AttachStdin  bool              `json:"AttachStdin"`
+	AttachStdout bool              `json:"AttachStdout"`
+	AttachStderr bool              `json:"AttachStderr"`
+	Env          []string          `json:"Env"`
+	Labels       map[string]string `json:"Labels,omitempty"`
+	HostConfig   winHostConfig     `json:"HostConfig"`
 }
 
 type winHostConfig struct {
@@ -152,7 +206,7 @@ type winHostConfig struct {
 	Binds      []string `json:"Binds"`
 }
 
-func winDockerCreate(ctx context.Context, opts SteamAuthRunOpts) (string, error) {
+func winDockerCreate(ctx context.Context, opts SteamAuthRunOpts, containerName string) (string, error) {
 	body := winCreateBody{
 		Image:        opts.ImageRef,
 		Entrypoint:   opts.Entrypoint,
@@ -164,11 +218,15 @@ func winDockerCreate(ctx context.Context, opts SteamAuthRunOpts) (string, error)
 		AttachStdout: true,
 		AttachStderr: true,
 		Env:          opts.Env,
-		HostConfig:   winHostConfig{AutoRemove: true, Binds: opts.Binds},
+		Labels:       opts.Labels,
+		// Keep removal under the Panel's control. Docker's asynchronous AutoRemove
+		// can race the explicit post-wait DELETE and turn a successful authorization
+		// into a false cleanup failure.
+		HostConfig: winHostConfig{AutoRemove: false, Binds: opts.Binds},
 	}
 	bodyBytes, _ := json.Marshal(body)
 
-	resp, conn, err := winDockerCall(ctx, "POST", "/v1.41/containers/create", string(bodyBytes))
+	resp, conn, err := winDockerCall(ctx, "POST", "/v1.41/containers/create?name="+containerName, string(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("create steam-auth: %w", err)
 	}
@@ -184,6 +242,20 @@ func winDockerCreate(ctx context.Context, opts SteamAuthRunOpts) (string, error)
 		return "", fmt.Errorf("create response decode: %w", err)
 	}
 	return result.Id, nil
+}
+
+func winDockerRemove(ctx context.Context, containerID string) error {
+	resp, conn, err := winDockerCall(ctx, "DELETE", "/v1.41/containers/"+containerID+"?force=1&v=1", "")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("remove steam-auth: HTTP %d: %s", resp.StatusCode, raw)
 }
 
 func runContainerTTYPlatform(

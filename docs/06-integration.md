@@ -1,3 +1,106 @@
+# V060-INVITE-COLD-START-WAIT-1 跨端契约（2026-08-27，release preflight）
+
+| 场景 | 后端权威状态/响应 | 前端行为 |
+| --- | --- | --- |
+| 已授权，server `starting`，Auth/邀请码尚未就绪 | `steamInviteEnabled=true,status=generating`；传输层仍可能请求失败 | 有界轮询预算内显示不可重试的“等待中…”并继续取码 |
+| 已授权，server 已 `running`，Auth sidecar 仍在冷启动 | 专用运行代 marker 起 10 分钟内，Auth/exec 暂时失败仍返回 `generating`；请求错误由前端预算兜住 | 同一有界预算内继续显示“等待中…”，不得因单次网络失败要求重新授权 |
+| 预算内取得非空邀请码 | invite 返回 ready/code | 立即结束等待并显示、允许复制邀请码 |
+| 后端暖机窗口到期或前端预算耗尽且仍无邀请码 | 后端返回 `auth_unavailable`，或前端最后仍只有 generating/请求错误 | 显示“Auth 异常（直连仍可用）”并停止自动轮询；LAN/IP 继续可用 |
+
+- 后端以 `DriverPayload.steam_invite_warmup_started_at` 持久化当前运行代的 10 分钟边界，普通 payload/state 更新不刷新；缺失、坏值、未来值和到期均 fail closed。前端以 5 秒 × 125 次的预算对齐，并在 `starting → running` 时重置；这些都不得改写 `steamInviteEnabled`、`steamInviteAuthState`、完成态或 session，也不得触发重新授权。
+- `/state` 与 invite GET 各自只接受最新 request generation，并共享 invite projection epoch；旧 state 只更新 runtime/诊断，保留当前 enabled/code 且不碰 status/requested/budget，poll/全量刷新/job-finish 同时按 state→invite 串行。权威 disabled DTO 会同步写回本地实例意图、隐藏卡片并失效旧响应，后续刷新 gate 因此保持零 invite GET。页面隐藏时不消费预算；本地 starting 预算耗尽只改变展示、不覆盖最后的 `generating`，所以 running 即使遇到两种逆序返回也会重开新预算，而后端权威 `auth_unavailable` 始终立即终止。
+- 桌面总览、服务器摘要和移动首页必须复用同一预算与终态。disabled 仍不得 fetch/poll invite，`cleanup_pending` 继续按独立安全收敛契约显示不可重试等待；后端明确 `auth_unavailable` 是终态，不再继续自动轮询。
+- 权威 `auth_unavailable` 对普通 refresh/job-finish 保持粘性，只有管理员手动刷新或进入新 runtime 才重新查询；组件卸载会清理 job-finish 延迟回查，await 后也由 mounted gate 阻止新的 invite GET。
+- 跨端状态、HTTP 瞬时错误、预算终态、disabled 零副作用、deferred 逆序、响应式和 production build 已通过本轮本地门禁；真实双升级、不可变候选与发布证据仍待完成。
+
+# V060-FINAL-SAFETY-PREFLIGHT-1 跨端/升级收口契约（2026-08-27，release preflight）
+
+| 边界 | 后端权威行为 | Web/发布可观察结果 |
+| --- | --- | --- |
+| Auth 已登录，one-shot 收尾失败 | completed、enabled、`cleanup_pending` 同一次原子落盘；保留 session volume | 基础安装不降级；启动/再次授权先收敛已证明 holder，不能把 cleanup failure 显示成重新输入凭据 |
+| cleanup pending 恢复 | 必须有完成证据、server 停止且全部 holder 通过分类；只删 holder，成功后改 ready | 未知 holder 或 Docker 不确定保持 pending/409，LAN 与磁盘数据不受破坏，不误删 session |
+| 修改共享 Steam 账号密码 | driver 锁内重读实例与 active job，严格无缓存停服证明后只写两个凭据键 | 旧页面快照不能穿透并发 start/install/Auth；409 后保留原凭据/cache/session/意图/game-data |
+| Panel 启动 required runtime | 每个 Stardew 实例先独立 Prepare；迁移失败或恢复活跃只跳过该实例 | 不能用半迁移意图进入 server-only 升级，其它实例不被单个坏实例拖住 |
+| server 健康验收 | 私有原始 stdout 解析 `{"status":"ok"}`，公开命令结果仍脱敏 | 正常健康不再被误判失败，秘密或完整 inspect/env 不进入日志/API |
+| 离线实例的存档导入 maintenance/Phase A 失败或 panic | 启动前严格读取并在 journal 冻结 Auth 意图；完整停服预算 150 秒，stop 结果模糊时使用独立 30 秒 fresh strict probe；disabled 证明 server、enabled 同时证明 server/Auth 均 absent/exited/dead；只有 FIFO 提交边界前才能逐字节恢复原 state/message/phase/payload 和 `snapshot_restored` | API/job 终态只在完整 defer 后可见；`.env` 后续变化不缩小 stop scope，旧/缺 journal 保守尝试停 server+Auth 且缺 journal 禁止恢复；FIFO 提交后或边界不确定只停服并写 `manual_required`；任何 running/unknown/Auth 未停都保持 recovery-required |
+| `Prepare` 与活动导入/已完成提交 | queued/running 的导入 runner 存在时先返回 busy，不扫描或恢复其 journal；maintenance payload 记录 operation owner，completed journal 的 SQLite 状态发布可幂等重试 | 只有严格证明 server running 后才对外发布基础 running 并清 owner；Auth 未运行仍是邀请码等待/异常的 advisory 状态，不能阻断 LAN/IP 或回滚 completed 存档；owner/payload 损坏、owner 不匹配或多个旧 completed 候选先保守停 server+Auth 且不恢复 snapshot；唯一 owner 已确认后的探针/发布失败则零 stop、保持 committed runtime 重试 |
+| 部分 rollback / confirmed-step panic | 任一 rollback substage 或缺少严格 no-effect 证据的 `manual_required` 永不自动 resume；已证明 Phase A 无效果时只允许停服/恢复 snapshot；swap 未完成时按冻结 scope 回滚，as-is 停冻结 scope 后保持 manual，completed 后只重试 running publication | 对外只返回固定 recovery-required 文案，不泄露 panic 原值；Panel 重启不能把半回滚事务重新送入 activation/durable，也不能撤销已经完成的存档提交；running/running 的重复发布为 no-op，不刷新邀请码暖机时间 |
+
+- 不新增 DTO 字段，但 `steamInviteAuthState` 枚举新增 `cleanup_pending`：它属于 enabled 且已有成功 session 的安全收敛态，前端显示不可重试的“等待中…”并禁用安装页重复授权，不把它并入基础 installation failure。第五轮预演证明旧 save-import 30 秒恢复预算会与 Compose 30 秒 grace 竞态；当前夹具除区分产品 scoped Stop 与 fixture teardown 外，还在 job 终态逐字段比较原实例 snapshot 与 journal。150 秒 stop budget 严格覆盖 Docker Down 的 2 分钟命令上限，独立 30 秒 final probe 严格覆盖 Ps 的 15 秒命令上限；错误和 panic 的恢复语义均有单元回归。最终 Linux test/vet/build 及正式同镜像 `v0.5.13`/`v0.3.2` 双升级仍是发布硬门禁，当前没有 tag、digest 或 Release 证据。
+- Save-import journal 的 `maintenanceSteamInviteEnabled` 是事务私有恢复字段，不进入 HTTP DTO。FIFO 成功后 journal 重载失败、首次 Phase A journal 读取失败、`snapshot_restore_pending` 中 Auth 仍运行，以及敏感 panic 文本均有回归：前两类只允许有界停服与 recovery-required、不重发 FIFO，Auth 未停禁止恢复，原始 panic 值不得持久化到 job API。
+- 权威实例仍处于 maintenance 但找不到可归属的 journal 时按 orphan 处理：先保守停 server+Auth，只保留 recovery-required，绝不依据调用参数或时间猜测恢复 snapshot。旧 payload 没有 operation owner 的兼容路径仅接受唯一且更新时间不早于 maintenance state 的 completed journal。
+
+# V060-MOBILE-LIFECYCLE-TERMINAL-1 跨端契约（2026-08-27，release preflight）
+
+| 场景 | 权威任务/权限状态 | 移动端行为 |
+| --- | --- | --- |
+| start/restart 已提交且 lifecycle job active | job 为 queued/running | 保持“启动中…”，禁止重复提交 |
+| 已观察的 lifecycle job 成功、失败或取消 | job 从 active 列表消失；实例可为 running、stopped 或 error | 清除本地 pending；成功进入运行操作，失败/取消恢复可重试或错误态操作 |
+| restart 刚提交但尚未观察到 job | 实例仍可能保留提交前 running 快照 | 不得把旧 running 当作 restart 完成，继续等待自己的 job |
+| Steam 邀请授权失败且当前用户非管理员 | 后端重试接口继续 admin-only | 显示“授权异常，请联系管理员”，不展示可执行重试；管理员仍可重新授权 |
+
+- 该收口只复用既有 lifecycle job 与角色信息，不改变 API、任务幂等或权限。桌面与移动必须共同使用 `shouldClearPendingStartupAction` 的“观察 active 后等待终态”语义。
+
+# V060-UPGRADE-PREFLIGHT-1 跨端升级契约（2026-08-26，release preflight）
+
+| 升级输入 | 后端权威终态 | 前端/副作用终态 |
+| --- | --- | --- |
+| 缺少新键，只有 SteamCMD 完成/cache 或普通 installed/running/stopped 状态 | 写入 `steamInviteEnabled=false` | LAN 常驻、Steam 卡不渲染；重复 invite GET 为 disabled 且 Auth image/container/session/probe/poll 为零 |
+| 缺少新键，存在 `STEAM_AUTH_COMPLETED=true`、`steam_auth_done` 或非空历史邀请码 | 写入 `steamInviteEnabled=true`，保留授权状态和现有 session | Steam 卡继续可见；升级不清 session sentinel，不要求重新输入凭据 |
+| 已显式 false，即使残留 Auth 完成态 | 保持 false，不被历史字段覆盖 | server-only 生命周期/升级；可选 Auth 不拉取、不验收、不恢复 |
+| schema 4 disabled 升级中断 | recovery 只恢复 server 与基础实例状态 | Auth snapshot/session/container 零触碰 |
+| schema 1～3 历史中断事务 | 继续按旧事务保守恢复 Auth | 防止新代码把旧版已经开始维护的 Auth 快照遗漏 |
+
+- disabled runtime update 的 config inspect、image validate、ps、stop/up、health、rollback 和 recovery 都必须选 `server`；Compose 中未设置、无效或不可拉取的 Auth image 不得阻塞 server-only 操作。内部占位变量只用于解析 Compose，不能进入 pull/inspect/manifest/digest 或状态 DTO。
+- `POST /steam-auth/login` 的一次性 Linux/Windows TTY 容器必须具备 PTY、仅挂 session，并携带权威 Panel owner/project label；密码不进入 argv/Panel 日志，敏感 `Config.Env` 不得进入诊断投影。登录成功后以一次原子写入同时保存 completed、enabled 与 `ready|cleanup_pending`；one-shot 精确收尾成功为 `ready`，收尾失败为 `cleanup_pending`，后者可令 job 报错但不得撤销成功 session。改变共享账号密码也不清已成功 session；安装/授权 POST 返回的新 `jobId` 必须立即同步到 URL 和选中日志，不能被旧 URL job 覆盖。
+- 正式 `v0.6.0` 升级证据必须实际执行两条完整 Web 链：上一正式版 `v0.5.13 → v0.6.0` 先注入同候选 unhealthy 并证明 `failed_rolled_back/health_check_failed` 与旧版恢复，再做 healthy apply；受影响最老支持边界 `v0.3.2 → v0.6.0` 走历史兼容 apply。两条链都要在升级后的新 Panel 重跑上表 disabled/enabled 迁移、前端条件渲染、SQLite/初始化/实例/存档/Mod/备份与非目标 Docker 资源保持。候选、tag、digest 和 Release 结果当前待完成。
+
+# STEAM-INVITE-STARTUP-WAIT-1 跨端契约（2026-08-26，local/unreleased）
+
+| 场景 | 后端权威行为 | 前端行为 |
+| --- | --- | --- |
+| 已授权，启动中且邀请码文件尚未生成 | 条件读取返回空成功；`/invite-code.status=generating` | 显示“等待中…”，保持轮询，不显示重新授权 |
+| 已授权，启动中但容器 exec 暂时不可用 | `starting` 的读取错误仍返回 `generating` | 同上；传输层请求错误也在有界预算内保持等待 |
+| 已运行，邀请码文件为空 | 返回 `generating` | 最多 125 次、每 5 秒继续等待并轮询；`starting → running` 重置预算 |
+| 已运行且 Auth/邀请码执行暂时不可用 | 专用运行代 marker 起 10 分钟内返回 `generating`，到期或 marker 不可信返回 `auth_unavailable` | generating/请求错误在预算内等待；权威 `auth_unavailable` 或预算耗尽后显示“Auth 异常（直连仍可用）”并停止 |
+| 后台取得非空邀请码 | 写入 driver payload，后续 state/invite GET 返回 ready | 桌面总览、服务器摘要、移动首页统一显示并允许复制 |
+
+- `/tmp/invite-code.txt` 不存在是正常生成阶段，不是 SteamAuth session 失效证据；`steamAuthReady=false` 在启动期也只是瞬态诊断。明确授权失败或后端暖机窗口到期可进入错误 UI；其它 generating/请求错误先使用有界预算。任何分支都不得阻塞 LAN/IP 直连、清 session 或把基础安装降级。
+
+# CABIN-VANILLA-LOG-ORDER-1 跨端契约（2026-08-26，local/unreleased）
+
+| 场景 | 后端权威行为 | 前端行为 |
+| --- | --- | --- |
+| 新建存档省略 `cabinMode` | 归一为 `vanilla`，写 `Server.CabinStrategy="None"` | 初次打开显示“原版” |
+| 用户选择堆叠 | 兼容值 `recommended` 映射 `CabinStack` | 显示“堆叠”，不再称“推荐” |
+| 运行时设置缺文件/缺字段 | GET 缺省返回 `None` | fallback 与高级设置初值均为原版 |
+| 旧实例显式策略 | `CabinStack|FarmhouseStack|None` 原样读取/保存，不迁移 | 保留显式值；`FarmhouseStack` 继续 hidden 兼容 |
+| 安装日志 | `/jobs/:id/logs?latest=true`、存储与 SSE 继续 sequence 升序 | 安装页复制后降序展示最近 50 条，顶部是最新；任务日志页不变 |
+
+- 这次不重命名 `recommended` wire 值，也不通过 `EnsureServerSettingsDefaults` 向旧实例物化 `None`；默认变化只作用于省略值的新请求和读取 fallback。这样既满足 fresh 原版默认，也不静默改变历史小屋入口/位置。
+- 安装页标题固定提示“最新日志在最上方（倒序显示）”。前端不得反转共享日志 state；进度解析、QR/Guard 阶段推导及 `lastSeq=logs[logs.length-1].sequence` 仍消费升序数据。
+- 本节取代历史 `CABIN-STRATEGY-1` 中“缺省 recommended/CabinStack”和安装页直接升序渲染的现行口径；三值 API、权限、幂等与 SSE 协议 shape 不变。
+
+# STEAM-INVITE-OPTIN-1 跨端契约（2026-08-26，local/unreleased）
+
+| 场景 | 后端权威行为 | 前端行为 |
+| --- | --- | --- |
+| 全新/显式 disabled | `/state.steamInviteEnabled=false`；安装只走 SteamCMD；Auth 零 pull/create/run/probe/poll | 不请求 `/invite-code`；不渲染 Steam 卡；始终展示“局域网直连” |
+| 管理员按需启用 | `POST /steam-auth/login` 持久化 enabled，按需检查/拉取 Auth 镜像并创建一次性 `stardew_steam_auth`；凭据=`serve`，QR=`login`，保存 session 后停止，均零 app 下载/零 game-data bind | 安装页显示精确按钮、QR/Guard/日志；运行中要求先停服；accepted `jobId` 立即成为日志选择 |
+| 管理员修改账号密码 | `PUT /steam-credentials` 先要求基础安装态且 `requiredFiles=ok`，再强制 Docker 真值停服并只更新 `.env` 两项；未安装、活动安装/Auth job、运行态均返回 409 | 入口只在已安装时渲染，表单只有用户名/密码；成功关闭并刷新 state，零 job/零日志导航/零 VNC/镜像字段；fresh 零 `.env` 物化 |
+| 普通用户 | endpoint 继续 403 | 入口完全不渲染 |
+| disabled invite GET | 200 `{steamInviteEnabled:false,status:"disabled",inviteCode:""}`，零 Docker | 稳定识别未启用，不重试/轮询 |
+| enabled 未授权/失败 | state 返回 pending/authorizing/failed；invite status 为 waiting/authorization_failed | 显示等待或失败可重试；不把 Auth job/失败分类为基础安装失败 |
+| enabled server stopped/running | 只在 enabled 启动 auth+server、探测和后台取码；stopped/generating/ready/auth_unavailable 明确 | Steam 卡覆盖未运行、生成、就绪、Auth 异常；异常时仍提示直连可用 |
+| 维护/恢复 | runtime、SMAPI、save import、诊断按 enabled 选择服务；disabled 支持包只读取 server-only Compose ps，接口不可用时记录条目错误而不回退全量 Compose；Auth 运行全程保持基础 state，中断快照只是兜底 | 不从 code/login 猜意图，任务完成后先刷新 state |
+
+- `/api/setup/status` 公开 `defaultInstanceId`，App 必须在挂载实例数据 hook 前设置 live API 默认 ID；这保证 `DEFAULT_INSTANCE_ID` 同时作用于 DB、数据目录、Compose project、volume 与浏览器请求。
+- 升级 bootstrap 在公开 API 可用前完成邀请码运行栈一次性收敛：旧 Compose 只移除 server 对 Auth 的依赖；`STEAM_INVITE_RUNTIME_SCOPE_VERSION=1` 缺失且意图为 false 时，在任何删除前完整 inspect 精确项目 `_steam-session` 同卷全部 holder，只允许权威 Compose `project/service=steam-auth` 或带 Panel owner/project label 且 volume target/TTY/OpenStdin/command 全部匹配的一次性 Auth。出现未知/伪装 holder 时 fail closed，保留全部 holder/volume 且不落 marker；全量分类通过后才一次删除 holder、volume 并写 marker。意图为 true 时 session 保留且零 Docker 访问。该收敛不调用 invite-code、Auth readiness、镜像 inspect/pull 或 Compose Auth service；完成后 disabled 请求/生命周期继续零 Auth 副作用。
+- SteamCMD 与 SteamAuth 共用 `.env` 中的 Steam 账号密码，前端统一使用“修改 Steam 账号密码”描述；这份数据只是已有授权失效后的共享回退凭据，SteamCMD 授权 cache 与 SteamAuth session 隔离持久化并始终优先复用。修改共用凭据只更新回退材料，不得清除、重建或主动验收成功的 SteamCMD cache，也不得使成功的 SteamAuth session 失效；只有运行时实际判定对应授权失效后，才使用当前保存的凭据重新登录。SteamCMD 客户端自更新的 `Downloading update` / `Update state` 不代表账号已经授权；缓存失效回退完整登录后，只有明确登录或 app 成功标记才可恢复 cache flag，完整登录失败必须保持 `STEAMCMD_AUTH_COMPLETED` 为空并进入凭据恢复。邀请码 failed/pending 重授权只清 SteamAuth session，不能清除 SteamCMD cache 或 game-data。SteamCMD 不进入 runtime manifest、digest、日常更新与正式升级门禁。
+- SteamAuth job 的 QR/Guard 输入继续复用原 endpoint/SSE；Guard POST 只接受属于当前实例、类型正确、仍在运行且持有 active-job lease 的任务，并始终保留当前基础 state，只推进授权 phase/message。完整时序为：POST 先持久化 exclusive job → job 的启动前握手写 enabled（同步创建失败则不改意图）→ 返回独立 jobId → 按需检查/拉取 Auth 镜像 → 前端选择登录方式 → 启动带 Panel 证明标签的一次性凭据 `serve` 或 QR `login` 容器 → 可选 Guard → 登录成功以一次原子写入同时保存 completed、enabled 与 `ready|cleanup_pending` 并保留 session → 凭据进程由 Panel 精确取消、QR one-shot 正常退出 → 等待容器停止；精确收尾成功为 `ready`，失败为 `cleanup_pending`，后者可使 job 报错但不得撤销已经持久化的成功 session，账号不一致拒绝除外；登录失败只写 invite auth failed → 刷新 `/state`。任一节点都不得下载游戏，也不得让 installation diagnostic 或基础 state 降级；Auth-only 不依赖 VNC 密码。
+- `/steam-auth/login` 对已经 `ready` 且登录完成的 session 提供幂等保护：重复启用/登录不创建 job、不删除 session；只有 `failed/pending` 重试才执行 Auth-session-only `ForceReauth`，并与账号不一致、启动恢复、disabled 迁移共用同一个全量 holder 安全分类器。分类失败时不得先删部分 holder，不得删 volume、session payload、既有完成态或迁移 marker；分类通过后才精确移除 `_steam-session` holder/volume，并始终保留 SteamCMD cache 与 game-data。公开基础安装请求不再接受 `forceReauth`；管理员停服后用 `PUT /api/instances/:id/steam-credentials` 提交 `{steamUsername,steamPassword}`，成功只更新共享回退凭据并返回 `ok/instanceId/state/driverPhase/steamInviteEnabled/steamInviteAuthState/steamAuthLoggedIn`，不要求 VNC/镜像、不创建 job、不导航日志，也不清 `STEAMCMD_AUTH_COMPLETED`、`STEAM_AUTH_COMPLETED`、invite intent、SteamCMD cache、Auth session 或 game-data。安装/Auth job 活动中和 server 运行/启动中均返回 409，普通用户返回 403。启动恢复仅收敛 enabled 且 `failed/authorizing`、服务器未运行的 Auth 遗留资源；disabled 零探针、运行 server 不受扰动。授权 POST 返回的 jobId 必须经安装页 URL/显式选择立即接管日志，不能等待可能仍含旧 active job 的 dashboard 快照。
+- 本契约取代历史 auth flag、默认 SteamAuth 安装顺序、routing split、SteamCMD fallback 与无条件 invite polling 条款；历史章节保留用于理解旧版本。角色可见性/迁移工具明确不在本次联调范围。
+
 # CONTROL-ONLY-AUTH-ADVISORY-1 跨端契约（2026-08-23，released in v0.5.13）
 
 - `fullStack.phase` 的既有字符串字段新增 `verifying_auth`：后端仅在 runtime apply 内部阶段为 `verifying_auth` 时发布它；`verifying_server` 继续映射为 `verifying_runtime`。前端必须分别显示“认证服务健康（不等待 Steam 登录）”和“SMAPI 实际加载版本”，不得再把两个阶段合并。
@@ -7,6 +110,8 @@
 - `v0.5.13` 候选 `32648758732` 在 selected code gates 中重跑真实 auth probe integration、SMAPI 真实下载和 Junimo runtime integration，并从真实 `v0.5.12` 经 Web API 完成 unhealthy 回滚与 healthy apply；独立 Compatibility `32648758687` 同样覆盖隔离 Docker integration。自动 tag `32649334502` 与正式提升 `32649344923` 成功，跨端契约已进入唯一 digest `sha256:b983d444d82f3303dbe65aa130a6da4160beaa3c98bcffd5f3704724395071a9`。
 
 # STEAM-CREDENTIAL-RECOVERY-1 跨端契约（2026-08-22，released in v0.5.11）
+
+> 本节记录 `v0.5.11` 的历史行为。`v0.6.0` 的现行凭据修改契约是上文独立 PUT；公开基础安装 `forceReauth` 已移除。
 
 - SteamCMD 明确输出 `Invalid Password` 等凭据失败标记时，driver 必须发布既有 `state=steam_auth_failed` 与 `driverPhase=credentials_required`；即使同一行还包含 `Logging in user`，具体失败也优先于通用 progress。网络、下载、磁盘或其它 SteamCMD 非零退出继续使用 `steamcmd_failed`，前端不得把所有下载失败都解释为密码错误。
 - 安装页根据 `steam_auth_failed/credentials_required` 优先展示重新输入凭据路径，不得因同时存在 `installationDiagnostic.status=incomplete/requiredFiles=missing` 而误导用户先修复并继续复用错误凭据。为兼容历史错误终态和诊断不可用，管理员还始终拥有“更换 Steam 账号 / 重新认证”入口。
@@ -713,6 +818,8 @@ GET /api/instances/:id/players/:uniqueMultiplayerId/mods
 - 验证码提交接口不变：`POST /api/instances/:id/steam-guard/input`。该阶段文案仍应明确是 SteamCMD 兜底授权，不要显示普通 steam-auth 下载或 Docker 镜像拉取状态。
 
 # INSTALL-ROUTING-SPLIT-1 联调契约（安装路由 + forceReauth）
+
+> 历史联调记录。`v0.6.0` 不再公开 `forceReauth` 安装分支；共享账号密码只通过独立 `PUT .../steam-credentials` 保存，且不会启动以下旧路由。
 
 - `POST /api/instances/:id/install` 请求体：`steamUsername/steamPassword/vncPassword/imageTag/reuseCredentials` 之外新增 `forceReauth`（布尔，选填）。三选一语义：
   - 全新安装 / 账密错误重输：发完整 `{ steamUsername, steamPassword, vncPassword, imageTag }`。

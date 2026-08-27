@@ -359,6 +359,7 @@ function ResourceTrendChart({ samples }: { samples: ResourceMetricSample[] }) {
 
 export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewPageProps) {
   const isAdmin = user.role === 'admin'
+  const steamInviteEnabled = instanceState?.steamInviteEnabled === true
 
   // 本地状态：允许重新检查时独立维护 loading/error，不污染公共层
   const [localData, setLocalData] = useState(dashboardData.health)
@@ -901,9 +902,9 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
 		{junimoUpdate?.recommended.withdrawal ? <div className="sd-diag-dry-run-error">撤回原因：{junimoUpdate.recommended.withdrawal.reason}；建议人工确认后回退到 {junimoUpdate.recommended.withdrawal.fallbackStackVersion}。不会远程静默回退。</div> : null}
         <div className="sd-diag-runtime-matrix-groups">
           <a href="#junimo-update" className="sd-diag-runtime-matrix-group">
-            <strong>Junimo server / auth</strong>
-            <span>当前 {junimoUpdate?.current.server.tag || '—'} / {junimoUpdate?.current.steamAuth.tag || '—'}</span>
-            <span>推荐 {junimoUpdate?.recommended.server.tag || '—'} / {junimoUpdate?.recommended.steamAuth.tag || '—'}</span>
+            <strong>{steamInviteEnabled ? 'Junimo server / Auth' : 'Junimo server'}</strong>
+            <span>当前 {junimoUpdate?.current.server.tag || '—'}{steamInviteEnabled ? ` / ${junimoUpdate?.current.steamAuth.tag || '—'}` : ''}</span>
+            <span>推荐 {junimoUpdate?.recommended.server.tag || '—'}{steamInviteEnabled ? ` / ${junimoUpdate?.recommended.steamAuth.tag || '—'}` : ''}</span>
           </a>
           <a href="#runtime-components-update" className="sd-diag-runtime-matrix-group">
             <strong>游戏 / Steamworks SDK</strong>
@@ -916,7 +917,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             <span>推荐 {smapiUpdate?.recommended.version || '—'} / {smapiUpdate?.recommended.compatibility.controlVersion || '—'}</span>
           </a>
         </div>
-        <p className="sd-diag-junimo-note">推荐顺序：先更新 Junimo server/auth，再更新游戏/SDK，最后更新 SMAPI/控制 Mod。每一阶段都独立预检、确认、停服验收和回滚；SMAPI 变化后玩家需要重新获取完整同步包。</p>
+        <p className="sd-diag-junimo-note">推荐顺序：先更新 {steamInviteEnabled ? 'Junimo server/Auth' : 'Junimo server'}，再更新游戏/SDK，最后更新 SMAPI/控制 Mod。每一阶段都独立预检、确认、停服验收和回滚；SMAPI 变化后玩家需要重新获取完整同步包。</p>
       </section>
 
       {isAdmin ? (
@@ -954,13 +955,13 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             <div className="sd-diag-check-row"><span className="sd-diag-check-name">版本来源</span><span className="sd-diag-check-msg sd-diag-image-ref">{smapiUpdate?.current.versionSource || 'SMAPI 程序集元数据与固定安装产物'}；不以 .env 为事实来源</span></div>
             <div className="sd-diag-check-row"><span className="sd-diag-check-name">可信安装器</span><span className="sd-diag-check-msg sd-diag-image-ref">SHA256 {smapiUpdate?.recommended.sha256 || '—'} · {formatBytes(smapiUpdate?.recommended.archiveBytes)}</span></div>
             <div className="sd-diag-check-row"><span className="sd-diag-check-name">Stardew / SDK</span><span className="sd-diag-check-msg">buildid {smapiUpdate?.recommended.compatibility.gameBuildId || '—'} / {smapiUpdate?.recommended.compatibility.sdkBuildId || '—'} <a href="#runtime-components-update">查看前置入口</a></span></div>
-            <div className="sd-diag-check-row"><span className="sd-diag-check-name">Junimo / auth</span><span className="sd-diag-check-msg">{smapiUpdate?.recommended.compatibility.junimoVersion || '—'} / {smapiUpdate?.recommended.compatibility.steamAuthVersion || '—'} <a href="#junimo-update">查看前置入口</a></span></div>
+            <div className="sd-diag-check-row"><span className="sd-diag-check-name">{steamInviteEnabled ? 'Junimo / Auth' : 'JunimoServer'}</span><span className="sd-diag-check-msg">{smapiUpdate?.recommended.compatibility.junimoVersion || '—'}{steamInviteEnabled ? ` / ${smapiUpdate?.recommended.compatibility.steamAuthVersion || '—'}` : ''} <a href="#junimo-update">查看前置入口</a></span></div>
             <div className="sd-diag-check-row"><span className="sd-diag-check-name">Control Mod</span><span className="sd-diag-check-msg">{smapiUpdate?.recommended.compatibility.controlVersion || '—'} · commandResultVersion {smapiUpdate?.recommended.compatibility.commandResultVersion ?? '—'}</span></div>
             {smapiError ? <div className="sd-diag-check-row sd-diag-check-warning"><span className="sd-diag-check-name">读取或执行错误</span><span className="sd-diag-check-msg">{smapiError}</span></div> : null}
           </div>
           <div className="sd-diag-dry-run" aria-label="SMAPI 升级执行状态">
             <div className="sd-diag-dry-run-actions"><span>用户操作入口位于上方“版本维护”卡片；这里仅保留原始检查、恢复信息和脱敏日志。</span></div>
-            {!smapiUpdate?.supported || !smapiUpdate?.available ? <div className="sd-diag-dry-run-warning">升级入口已禁用：{smapiUpdate?.reason || '尚未完成实际版本检测'}。请先从上方游戏运行文件或下方 Junimo 版本对入口修复前置组件；本流程不会顺便更新它们。</div> : null}
+            {!smapiUpdate?.supported || !smapiUpdate?.available ? <div className="sd-diag-dry-run-warning">升级入口已禁用：{smapiUpdate?.reason || '尚未完成实际版本检测'}。请先从上方游戏运行文件或下方 {steamInviteEnabled ? 'Junimo 版本对' : 'JunimoServer 版本'}入口修复前置组件；本流程不会顺便更新它们。</div> : null}
             <div className="sd-diag-dry-run-head"><strong>dry-run：{smapiPhaseLabel(smapiDryRun?.phase)}</strong><span>{smapiDryRun?.progress ?? 0}%</span></div>
             <progress className="sd-diag-dry-run-progress" max={100} value={smapiDryRun?.progress ?? 0} />
             {smapiDryRun?.target.version ? <div className="sd-diag-dry-run-meta">只读目标 SMAPI {smapiDryRun.target.version} · 不创建 volume、不下载、不停服</div> : null}
@@ -984,8 +985,8 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
         </section>
       ) : null}
 
-      <section id="junimo-update" className="sd-card sd-diag-source-panel sd-diag-junimo-panel" aria-label="Junimo 运行组件版本对">
-        <h3>Junimo 运行组件版本对</h3>
+      <section id="junimo-update" className="sd-card sd-diag-source-panel sd-diag-junimo-panel" aria-label="Junimo 运行组件版本">
+        <h3>{steamInviteEnabled ? 'Junimo 运行组件版本对' : 'JunimoServer 运行组件版本'}</h3>
         <div className="sd-diag-check-list">
           <div className="sd-diag-check-row">
             <span className="sd-diag-check-name">整体状态</span>
@@ -995,23 +996,25 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             <span className="sd-diag-check-name">当前 server 镜像 / tag</span>
             <span className="sd-diag-check-msg sd-diag-image-ref">{isAdmin ? (junimoUpdate?.current.server.image || '未配置') : '仓库信息仅管理员可见'} · tag {junimoUpdate?.current.server.tag || instanceState?.runtimeDiagnostic?.serverVersion || '—'}</span>
           </div>
+          {steamInviteEnabled ? (
+            <div className="sd-diag-check-row">
+              <span className="sd-diag-check-name">当前 steam-auth-cn 镜像 / tag</span>
+              <span className="sd-diag-check-msg sd-diag-image-ref">{isAdmin ? (junimoUpdate?.current.steamAuth.image || '未配置') : '仓库信息仅管理员可见'} · tag {junimoUpdate?.current.steamAuth.tag || instanceState?.runtimeDiagnostic?.steamAuthVersion || '—'}</span>
+            </div>
+          ) : null}
           <div className="sd-diag-check-row">
-            <span className="sd-diag-check-name">当前 steam-auth-cn 镜像 / tag</span>
-            <span className="sd-diag-check-msg sd-diag-image-ref">{isAdmin ? (junimoUpdate?.current.steamAuth.image || '未配置') : '仓库信息仅管理员可见'} · tag {junimoUpdate?.current.steamAuth.tag || instanceState?.runtimeDiagnostic?.steamAuthVersion || '—'}</span>
-          </div>
-          <div className="sd-diag-check-row">
-            <span className="sd-diag-check-name">推荐版本对</span>
-            <span className="sd-diag-check-msg">{junimoUpdate?.recommended.stackVersion || instanceState?.runtimeDiagnostic?.junimoStackVersion || '—'} · server {junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '—'} + steam-auth-cn {junimoUpdate?.recommended.steamAuth.tag || instanceState?.runtimeDiagnostic?.expectedSteamAuthVersion || '—'}</span>
+            <span className="sd-diag-check-name">{steamInviteEnabled ? '推荐版本对' : '推荐 server 版本'}</span>
+            <span className="sd-diag-check-msg">{junimoUpdate?.recommended.stackVersion || instanceState?.runtimeDiagnostic?.junimoStackVersion || '—'} · server {junimoUpdate?.recommended.server.tag || instanceState?.runtimeDiagnostic?.expectedServerVersion || '—'}{steamInviteEnabled ? ` + steam-auth-cn ${junimoUpdate?.recommended.steamAuth.tag || instanceState?.runtimeDiagnostic?.expectedSteamAuthVersion || '—'}` : ''}</span>
           </div>
           {isAdmin && junimoUpdate ? (
             <>
               <div className="sd-diag-check-row"><span className="sd-diag-check-name">推荐 server 镜像</span><span className="sd-diag-check-msg sd-diag-image-ref">{recommendedImage(junimoUpdate.recommended.server)} · tag {junimoUpdate.recommended.server.tag}</span></div>
-              <div className="sd-diag-check-row"><span className="sd-diag-check-name">推荐 steam-auth-cn 镜像</span><span className="sd-diag-check-msg sd-diag-image-ref">{recommendedImage(junimoUpdate.recommended.steamAuth)} · tag {junimoUpdate.recommended.steamAuth.tag}</span></div>
+              {steamInviteEnabled ? <div className="sd-diag-check-row"><span className="sd-diag-check-name">推荐 steam-auth-cn 镜像</span><span className="sd-diag-check-msg sd-diag-image-ref">{recommendedImage(junimoUpdate.recommended.steamAuth)} · tag {junimoUpdate.recommended.steamAuth.tag}</span></div> : null}
             </>
           ) : null}
           <div className="sd-diag-check-row">
             <span className="sd-diag-check-name">是否匹配</span>
-            <span className="sd-diag-check-msg">{junimoPairMatches(junimoUpdate?.status ?? instanceState?.runtimeDiagnostic?.junimoUpdateStatus) ? 'server 与 steam-auth-cn 版本对完全匹配' : '版本对不匹配或无法判断'}</span>
+            <span className="sd-diag-check-msg">{junimoPairMatches(junimoUpdate?.status ?? instanceState?.runtimeDiagnostic?.junimoUpdateStatus) ? (steamInviteEnabled ? 'server 与 steam-auth-cn 版本对完全匹配' : 'JunimoServer 版本完全匹配；可选 Auth 未启用') : (steamInviteEnabled ? '版本对不匹配或无法判断' : 'JunimoServer 版本不匹配或无法判断')}</span>
           </div>
           {!(junimoUpdate?.supported ?? instanceState?.runtimeDiagnostic?.junimoUpdateSupported ?? false) ? (
             <div className="sd-diag-check-row sd-diag-check-warning">
@@ -1031,7 +1034,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             </div>
             <progress className="sd-diag-dry-run-progress" max={100} value={junimoDryRun?.progress ?? 0} />
             {junimoDryRun?.dryRunId ? <div className="sd-diag-dry-run-meta">dryRunId {junimoDryRun.dryRunId} · jobId {junimoDryRun.jobId || '—'} · server {junimoDryRun.serverRunning ? '运行中（不会停服）' : '未运行'}</div> : null}
-            {junimoDryRun?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>目标版本对</strong><span>{junimoDryRun.target.stackVersion} · server {junimoDryRun.target.server.tag} + steam-auth-cn {junimoDryRun.target.steamAuth.tag}</span></div> : null}
+            {junimoDryRun?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>{steamInviteEnabled ? '目标版本对' : '目标 server'}</strong><span>{junimoDryRun.target.stackVersion} · server {junimoDryRun.target.server.tag}{steamInviteEnabled ? ` + steam-auth-cn ${junimoDryRun.target.steamAuth.tag}` : ''}</span></div> : null}
             {junimoDryRun?.selected.server.image ? <div className="sd-diag-dry-run-pair"><strong>选中 server</strong><span>{junimoDryRun.selected.server.image}<br />digest {junimoDryRun.selected.server.digest || '无法确认'}</span></div> : null}
             {junimoDryRun?.selected.steamAuth.image ? <div className="sd-diag-dry-run-pair"><strong>选中 steam-auth-cn</strong><span>{junimoDryRun.selected.steamAuth.image}<br />digest {junimoDryRun.selected.steamAuth.digest || '无法确认'}</span></div> : null}
             {(junimoDryRun?.checks ?? []).map((check, index) => (
@@ -1048,9 +1051,9 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
               <progress className="sd-diag-dry-run-progress" max={100} value={junimoApply?.progress ?? 0} />
               {junimoApplyWaitingNotice(junimoApply?.phase, junimoApply?.updatedAt) ? <div className="sd-diag-dry-run-waiting">{junimoApplyWaitingNotice(junimoApply?.phase, junimoApply?.updatedAt)}</div> : null}
               {junimoApply?.applyId ? <div className="sd-diag-dry-run-meta">applyId {junimoApply.applyId} · jobId {junimoApply.jobId || '—'} · 升级前 {junimoApply.serverWasRunning ? '运行' : '停止'}{junimoApply.repairSourceApplyId ? ` · 修复源 ${junimoApply.repairSourceApplyId}` : ''}</div> : null}
-              {junimoApply?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>成对目标</strong><span>{junimoApply.target.stackVersion} · server {junimoApply.target.server.tag} + steam-auth-cn {junimoApply.target.steamAuth.tag}</span></div> : null}
-              {junimoApply?.phase === 'succeeded' ? <div className="sd-diag-dry-run-check sd-diag-dry-run-check--ok"><span>完成</span><strong>成对升级成功</strong><p>Steam 认证与运行链路已验证，实例已恢复升级前运行状态。</p></div> : null}
-              {junimoApply?.phase === 'failed_rolled_back' ? <div className="sd-diag-dry-run-warning">升级未通过验收，但 server/auth、认证卷与运行状态已自动回滚。</div> : null}
+              {junimoApply?.target.stackVersion ? <div className="sd-diag-dry-run-pair"><strong>{steamInviteEnabled ? '成对目标' : '目标 server'}</strong><span>{junimoApply.target.stackVersion} · server {junimoApply.target.server.tag}{steamInviteEnabled ? ` + steam-auth-cn ${junimoApply.target.steamAuth.tag}` : ''}</span></div> : null}
+              {junimoApply?.phase === 'succeeded' ? <div className="sd-diag-dry-run-check sd-diag-dry-run-check--ok"><span>完成</span><strong>{steamInviteEnabled ? '成对升级成功' : 'JunimoServer 升级成功'}</strong><p>{steamInviteEnabled ? '可选 Auth 与运行链路已验证，实例已恢复升级前运行状态。' : 'server 运行链路已验证；未物化或验收可选 Auth，实例已恢复升级前运行状态。'}</p></div> : null}
+              {junimoApply?.phase === 'failed_rolled_back' ? <div className="sd-diag-dry-run-warning">升级未通过验收，但{steamInviteEnabled ? ' server/Auth、认证卷与' : ' server 与'}运行状态已自动回滚。</div> : null}
               {junimoApply?.phase === 'rollback_failed' ? <div className="sd-diag-dry-run-error">首次失败：{junimoApply.causeCode || '旧版本未记录'} · {junimoApply.causeError || '无法从旧状态还原具体原因'}<br />回滚失败：{junimoApply.rollbackCode || '旧版本未记录'} · {junimoApply.rollbackError || '无法从旧状态还原具体步骤'}<br />{junimoApply.manualAction || '恢复材料已保留，可执行一次经过校验的幂等安全恢复。'}{junimoApply.repairAttempts ? ` 已尝试 ${junimoApply.repairAttempts} 次。` : ''}</div> : null}
               {(junimoApply?.checks ?? []).map((check, index) => <div className={`sd-diag-dry-run-check sd-diag-dry-run-check--${check.status}`} key={`apply-${check.name}-${index}`}><span>{check.status === 'ok' ? '通过' : check.status === 'warning' ? '警告' : '失败'}</span><strong>{check.name}</strong><p>{check.message}</p></div>)}
               {(junimoApply?.warnings ?? []).map((warning, index) => <div className="sd-diag-dry-run-warning" key={`${warning}-${index}`}>警告：{warning}</div>)}
@@ -1060,7 +1063,7 @@ export function DiagnosticsPage({ user, dashboardData, instanceState }: StardewP
             </div>
           </div>
         ) : null}
-        <p className="sd-diag-junimo-note">执行升级只使用 Panel 内置且 tested=true 的版本对；不会接受自定义目标，不会执行 down -v，也不会删除 game-data 或 steam-session。</p>
+        <p className="sd-diag-junimo-note">执行升级只使用 Panel 内置且 tested=true 的{steamInviteEnabled ? '版本对' : ' server 版本'}；不会接受自定义目标，不会执行 down -v，也不会删除 game-data{steamInviteEnabled ? ' 或 steam-session' : '；可选 Auth 未启用时不进入升级事务'}。</p>
       </section>
       </details>
 

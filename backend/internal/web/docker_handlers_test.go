@@ -27,6 +27,8 @@ type fakeDockerService struct {
 	composeErr          error
 	psResult            paneldocker.ComposePsResult
 	psErr               error
+	psCalls             *atomic.Int32
+	serverPsCalls       *atomic.Int32
 	strictPsResult      paneldocker.ComposePsResult
 	strictPsErr         error
 	statsResult         paneldocker.ComposeStatsResult
@@ -39,6 +41,11 @@ type fakeDockerService struct {
 	containerLogsErr    error
 	composeUp           paneldocker.CommandResult
 	composeUpErr        error
+	composeUpGate       <-chan struct{}
+	steamAuthLines      []string
+	steamAuthGate       <-chan struct{}
+	removedByVolumes    chan<- []string
+	removedVolumes      chan<- []string
 	execFunc            func(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error)
 	instanceState       string
 }
@@ -52,6 +59,9 @@ func (f fakeDockerService) ComposeVersion(ctx context.Context, workDir string) (
 }
 
 func (f fakeDockerService) ComposePs(ctx context.Context, dir string) (paneldocker.ComposePsResult, error) {
+	if f.psCalls != nil {
+		f.psCalls.Add(1)
+	}
 	return f.psResult, f.psErr
 }
 
@@ -109,8 +119,23 @@ func (f fakeDockerService) RuntimeComposeConfigInspect(_ context.Context, dir, p
 	return paneldocker.RuntimeComposeConfig{Project: project, Services: []string{"server", "steam-auth"}, SteamSessionVolume: project + "_steam-session"}, nil
 }
 
+func (f fakeDockerService) RuntimeComposeConfigInspectServer(_ context.Context, dir, project string) (paneldocker.RuntimeComposeConfig, error) {
+	return paneldocker.RuntimeComposeConfig{Project: project, Services: []string{"server"}}, nil
+}
+
 func (f fakeDockerService) RuntimeComposeConfigValidateImages(context.Context, string, string, string, string) error {
 	return nil
+}
+
+func (f fakeDockerService) RuntimeComposeConfigValidateServerImage(context.Context, string, string, string) error {
+	return nil
+}
+
+func (f fakeDockerService) RuntimeComposePsServer(ctx context.Context, dir, project string) (paneldocker.ComposePsResult, error) {
+	if f.serverPsCalls != nil {
+		f.serverPsCalls.Add(1)
+	}
+	return f.psResult, f.psErr
 }
 
 func (f fakeDockerService) RuntimeVolumeInspect(_ context.Context, _ string, name string) (paneldocker.RuntimeVolumeMetadata, error) {
@@ -118,6 +143,16 @@ func (f fakeDockerService) RuntimeVolumeInspect(_ context.Context, _ string, nam
 }
 
 func (f fakeDockerService) RunSteamAuthTTY(ctx context.Context, dataDir string, opts paneldocker.SteamAuthRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
+	for _, line := range f.steamAuthLines {
+		lineHandler(line)
+	}
+	if f.steamAuthGate != nil {
+		select {
+		case <-ctx.Done():
+			return -1, ctx.Err()
+		case <-f.steamAuthGate:
+		}
+	}
 	return 0, nil
 }
 
@@ -126,14 +161,38 @@ func (f fakeDockerService) RunContainerTTY(ctx context.Context, opts paneldocker
 }
 
 func (f fakeDockerService) RemoveContainersByVolume(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error) {
+	if f.removedByVolumes != nil {
+		f.removedByVolumes <- append([]string(nil), names...)
+	}
+	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f fakeDockerService) RemoveSteamInviteAuthSessionHolders(ctx context.Context, workDir, project, volume string) (paneldocker.CommandResult, error) {
+	if f.removedByVolumes != nil {
+		f.removedByVolumes <- []string{volume}
+	}
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
 func (f fakeDockerService) RemoveVolumes(ctx context.Context, workDir string, names []string) (paneldocker.CommandResult, error) {
+	if f.removedVolumes != nil {
+		f.removedVolumes <- append([]string(nil), names...)
+	}
 	return paneldocker.CommandResult{ExitCode: 0}, nil
 }
 
 func (f fakeDockerService) ComposeUp(ctx context.Context, dir string) (paneldocker.CommandResult, error) {
+	return f.composeUpResult(ctx)
+}
+
+func (f fakeDockerService) composeUpResult(ctx context.Context) (paneldocker.CommandResult, error) {
+	if f.composeUpGate != nil {
+		select {
+		case <-ctx.Done():
+			return paneldocker.CommandResult{}, ctx.Err()
+		case <-f.composeUpGate:
+		}
+	}
 	return f.composeUp, f.composeUpErr
 }
 
@@ -150,7 +209,11 @@ func (f fakeDockerService) ComposeRestartServices(ctx context.Context, dir strin
 }
 
 func (f fakeDockerService) ComposeRecreateServices(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error) {
-	return paneldocker.CommandResult{ExitCode: 0}, nil
+	return f.composeUpResult(ctx)
+}
+
+func (f fakeDockerService) RuntimeComposeStopServices(context.Context, string, string, ...string) error {
+	return nil
 }
 
 func (f fakeDockerService) ComposeExecPipe(ctx context.Context, dir, service, stdinData string, args ...string) (paneldocker.CommandResult, error) {

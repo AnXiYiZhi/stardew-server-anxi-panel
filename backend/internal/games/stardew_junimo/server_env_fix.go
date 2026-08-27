@@ -64,6 +64,10 @@ var runtimeServiceCPUShares = []struct {
 // "DockerApp", "linux/amd64", or numeric IDs under /etc/cont-*.d; the init
 // loader executes those files as shell commands before loading their output.
 func EnsureServerContEnvFix(dataDir string) (bool, error) {
+	return ensureRuntimeContEnvFix(dataDir, false)
+}
+
+func ensureRuntimeContEnvFix(dataDir string, includeSteamAuth bool) (bool, error) {
 	if dataDir == "" {
 		return false, nil
 	}
@@ -103,7 +107,7 @@ func EnsureServerContEnvFix(dataDir string) (bool, error) {
 	if err != nil {
 		return changed || composeChanged || audioChanged, err
 	}
-	resourceChanged, err := migrateRuntimeServiceCPUShares(filepath.Join(dataDir, "docker-compose.yml"))
+	resourceChanged, err := migrateRuntimeServiceCPUShares(filepath.Join(dataDir, "docker-compose.yml"), includeSteamAuth)
 	if err != nil {
 		return changed || composeChanged || audioChanged || apiPortChanged, err
 	}
@@ -142,7 +146,7 @@ func migrateRuntimeInternalAPIPort(path string) (bool, error) {
 	return true, nil
 }
 
-func migrateRuntimeServiceCPUShares(path string) (bool, error) {
+func migrateRuntimeServiceCPUShares(path string, includeSteamAuth bool) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return false, nil
@@ -157,6 +161,9 @@ func migrateRuntimeServiceCPUShares(path string) (bool, error) {
 		newline = "\r\n"
 	}
 	for _, policy := range runtimeServiceCPUShares {
+		if policy.service == "steam-auth" && !includeSteamAuth {
+			continue
+		}
 		start, end := composeServiceBounds(updated, policy.service)
 		if start < 0 {
 			continue

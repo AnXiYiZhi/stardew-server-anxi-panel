@@ -22,6 +22,7 @@ func TestSetupLoginLogoutAndUserPermissions(t *testing.T) {
 		t.Fatalf("setup status returned %d", status.Code)
 	}
 	assertJSONField(t, status.Body.Bytes(), "initialized", false)
+	assertJSONField(t, status.Body.Bytes(), "defaultInstanceId", config.DefaultInstanceID)
 
 	blocked, _ := doJSON(t, handler, http.MethodGet, "/api/auth/me", nil, nil)
 	if blocked.Code != http.StatusServiceUnavailable {
@@ -84,6 +85,41 @@ func TestSetupLoginLogoutAndUserPermissions(t *testing.T) {
 	if forbidden.Code != http.StatusForbidden {
 		t.Fatalf("ordinary user list users returned %d", forbidden.Code)
 	}
+}
+
+func TestSetupStatusReturnsConfiguredDefaultInstanceID(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := storage.Open(context.Background(), config.Config{
+		Addr:    ":0",
+		DataDir: dataDir,
+		DBPath:  filepath.Join(dataDir, "panel.db"),
+		Secret:  "test-secret",
+		Version: "test",
+	})
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("close storage: %v", err)
+		}
+	}()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("migrate storage: %v", err)
+	}
+
+	handler := NewHandler(Deps{Config: config.Config{
+		DataDir:           dataDir,
+		Secret:            "test-secret",
+		Version:           "test",
+		DefaultInstanceID: "steam-invite-preview",
+	}, Store: store})
+	status, _ := doJSON(t, handler, http.MethodGet, "/api/setup/status", nil, nil)
+	if status.Code != http.StatusOK {
+		t.Fatalf("setup status returned %d: %s", status.Code, status.Body.String())
+	}
+	assertJSONField(t, status.Body.Bytes(), "initialized", false)
+	assertJSONField(t, status.Body.Bytes(), "defaultInstanceId", "steam-invite-preview")
 }
 
 func TestSetupStateIsCachedAndUnknownPathsBypassStorage(t *testing.T) {

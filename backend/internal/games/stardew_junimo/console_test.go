@@ -24,6 +24,7 @@ type fakeConsoleDocker struct {
 	restartFunc         func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	recreateFunc        func(ctx context.Context, dir string, services ...string) (paneldocker.CommandResult, error)
 	composeDownFunc     func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
+	stopServicesFunc    func(ctx context.Context, dir, project string, services ...string) error
 	composeUpFunc       func(ctx context.Context, dir string) (paneldocker.CommandResult, error)
 	composePsFunc       func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
 	composePsStrictFunc func(ctx context.Context, dir string) (paneldocker.ComposePsResult, error)
@@ -34,6 +35,22 @@ func (f *fakeConsoleDocker) ComposeDown(ctx context.Context, dir string) (paneld
 		return f.composeDownFunc(ctx, dir)
 	}
 	return paneldocker.CommandResult{ExitCode: 0}, nil
+}
+
+func (f *fakeConsoleDocker) RuntimeComposeStopServices(ctx context.Context, dir, project string, services ...string) error {
+	if f.stopServicesFunc != nil {
+		return f.stopServicesFunc(ctx, dir, project, services...)
+	}
+	if f.composeDownFunc != nil {
+		result, err := f.composeDownFunc(ctx, dir)
+		if err != nil {
+			return err
+		}
+		if result.ExitCode != 0 {
+			return fmt.Errorf("scoped stop exited with code %d", result.ExitCode)
+		}
+	}
+	return nil
 }
 
 func (f *fakeConsoleDocker) ComposeUp(ctx context.Context, dir string) (paneldocker.CommandResult, error) {

@@ -43,7 +43,10 @@ type RuntimeUpdateDockerService interface {
 	PullImageStreaming(context.Context, string, string, func(string)) (paneldocker.CommandResult, error)
 	RuntimeImageInspect(context.Context, string, string) (paneldocker.RuntimeImageMetadata, error)
 	RuntimeComposeConfigInspect(context.Context, string, string) (paneldocker.RuntimeComposeConfig, error)
+	RuntimeComposeConfigInspectServer(context.Context, string, string) (paneldocker.RuntimeComposeConfig, error)
 	RuntimeComposeConfigValidateImages(context.Context, string, string, string, string) error
+	RuntimeComposeConfigValidateServerImage(context.Context, string, string, string) error
+	RuntimeComposePsServer(context.Context, string, string) (paneldocker.ComposePsResult, error)
 	RuntimeVolumeInspect(context.Context, string, string) (paneldocker.RuntimeVolumeMetadata, error)
 }
 
@@ -119,7 +122,7 @@ func (d *Driver) rejectActiveRuntimeUpdate(ctx context.Context, instanceID strin
 		TargetID:   instanceID,
 		Types: []string{
 			RuntimeUpdateDryRunJobType, "stardew_junimo_update_apply", SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType,
-			"stardew_install", "mod_nexus_install", "mod_remote_install",
+			"stardew_install", "stardew_steam_auth", "mod_nexus_install", "mod_remote_install",
 		},
 	})
 	if err != nil {
@@ -163,7 +166,7 @@ func (d *Driver) StartRuntimeUpdateDryRun(ctx context.Context, instance registry
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
 		TargetType: "instance",
 		TargetID:   instance.ID,
-		Types:      []string{"stardew_install", "stardew_lifecycle", "stardew_junimo_update_apply", RuntimeUpdateDryRunJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType},
+		Types:      []string{"stardew_install", "stardew_steam_auth", "stardew_lifecycle", "stardew_junimo_update_apply", RuntimeUpdateDryRunJobType, SMAPIUpdateDryRunJobType, SMAPIUpdateApplyJobType},
 	})
 	if err != nil {
 		return RuntimeUpdateDryRunStatus{}, fmt.Errorf("list conflicting jobs: %w", err)
