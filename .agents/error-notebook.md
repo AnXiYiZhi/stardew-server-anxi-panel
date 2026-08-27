@@ -219,6 +219,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-27 回答官网更新文档是否同步时，虽然同一只读命令已由 `rg --files website` 列出真实 `website/docs/changelog.md`，后半仍把不存在的仓库根 `docs/changelog.md` 与已确认路径一起传给 `rg`，并用 stderr 重定向隐藏了路径错误，最终退出 2；仓库和官网运行态零修改。文件清单输出必须成为同一批次后续输入的唯一来源，已确认单文件检索不再追加“可能也有”的同名路径。
 - 最近复发/补充：2026-08-27 继续 `v0.6.0` 前端终审时，从旧记忆把真实的 `frontend/src/games/stardew/useStardewDashboardData.ts` 猜成不存在的 `frontend/src/games/stardew/hooks/useStardewDashboardData.ts`；同一组合命令的后续检索成功并使外层退出 0，首次路径错误只出现在输出中。调用只读、文件与运行态零修改。随后改为逐字使用 `git status`/`rg` 返回的真实路径并逐项检查 `$LASTEXITCODE`；即使接手摘要给出符号名，目录层级仍必须由当前文件清单确认，组合只读命令不得让后续成功掩盖前置失败。
 - 最近复发/补充：2026-08-27 v0.6.0 最终发布审计时，主流程再次把 Windows 不展开的 `backend/internal/web/*_test.go` 与 `stardew_junimo/*_test.go` 直接作为 `rg` 路径，得到 `os error 123`；只读发布子任务还把委派中的简称误当成真实 `scripts/release-candidate-upgrade.sh/.ps1`，而权威文件实际为 `scripts/release-candidate.sh/.ps1` 与 `scripts/tests/test_release_candidate_upgrade.sh`。命令均只读且零修改。后续检索已改为精确目录配合 `rg -g '*_test.go'`，发布脚本路径先从 `rg --files scripts` 复制；该模式已提升到 `AGENTS.md`，发送命令前仍须拒绝任何未经 Shell 展开的路径通配符或未经清单确认的文件名。
 - 最近复发/补充：2026-08-27 v0.6.0 旧邀请码审计时，又把 Windows 不展开的 `backend/internal/web/*` 直接作为 `rg` 路径并用 `2>$null` 隐藏了错误；几分钟后定位 Compose 迁移又把不存在的 `backend/internal/games/stardew_junimo/*migration*` 当路径参数，复现 `os error 123`。同轮后续还凭职责读取了不存在的 `backend/internal/web/router.go` 与 `backend/internal/games/stardew_junimo/installer_test.go`；旧实例邀请运行栈迁移子任务及 final blocker audit 又两次把 `backend/internal/games/stardew_junimo/*.go` 直接交给 Windows `rg`，再次得到 `os error 123`。这些调用均为只读失败，源码和 Docker 未变化。已停止该形态，后续只对真实目录使用 `rg -g '<glob>' ... <directory>`，并逐字复用真实命中路径；禁止通过重定向掩盖错误或让后续成功覆盖前置失败。
@@ -2295,6 +2296,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-27 核对官网 `v0.6.0` 内容时，GitHub Pages 元数据与 docs workflow 已成功证明线上来源仍停在 `v0.5.13` 文档提交；随后对首页、更新日志和安装手册做单批 `Invoke-WebRequest`，首个请求遇到 `Received an unexpected EOF or 0 bytes from the transport stream` 并在取得正文前停止，线上零修改。不得原样重放整批页面请求；本次改用已成功取得的 Pages source、最后一次 docs workflow SHA 与仓库同 SHA 源文档作权威判断。若正文内容本身成为必要证据，再按单 URL、最多三次的只读有界重试执行。
 - 最近复发/补充：2026-08-20 v0.5.8 Release 已成功后，首次 `gh run download 32338102590 --name release-candidate-0.5.8-8d5fe360c042` 在列 artifact 的 GitHub API 请求阶段报 `TLS handshake timeout`；目标临时目录已创建但 `candidate.json` 尚未落盘，没有重复 push、候选、Tag 或正式提升。后续固定已核验的 run/artifact 名称做最多三次只读下载重试，成功后解析 proof，并独立清理精确临时目录；不能把制品下载网络故障当成候选证明缺失。
 - 最近复发/补充：2026-08-20 v0.5.8 候选 `32338102590` 已明确成功后，首次用 `gh run list --limit 30 --json ...` 汇总 Compatibility/自动 Tag/提升链时，GitHub Actions API 单次返回 `EOF` 并退出 1；没有重放 push、candidate 或 tag。后续对已知 Compatibility run ID 使用独立 `gh run view` 有界重试，自动 Tag/提升仅在前序成功后再按名称和时间窗口独立查询，任何只读 EOF 都不改变工作流真实状态。
 - 最近复发/补充：2026-08-15 候选成功后对自动 Tag workflow 做 90 秒有界列表轮询，结果暂时为空并抛出“未启动”；稍后直接读取未过滤的近期 runs 时，权威 run `31884612425` 已完成成功且创建时间只比候选结束晚 2 秒。没有手工 tag、dispatch 或重放候选。自动 `workflow_run` 的列表可见性存在最终一致窗口；轮询耗尽后必须先做一次不按手写时间条件裁剪的 recent-runs/headSha 只读审计，再判断未触发，绝不能把列表暂不可见升级成发布写操作。
