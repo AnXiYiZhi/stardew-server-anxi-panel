@@ -1,4 +1,11 @@
-# 2026-08-27 v0.6.0 最终安全预检：授权收尾与升级启动线性化
+# 2026-08-27 已正式发布：v0.6.0 SteamCMD 默认安装与邀请码 opt-in
+
+- [x] 最终不可变身份为 `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba`；候选 `33073661356`、自动 annotated tag `33075599631`、正式提升 `33075622114` 全部成功。
+- [x] 候选完成 full code gates、fresh/restart、`v0.5.13 → v0.6.0` unhealthy/healthy Web 升级与 `v0.3.2 → v0.6.0` 代表直升；proof artifact=`release-candidate-0.6.0-9c6d9c7696c6`（ID `9647693527`）。
+- [x] annotated tag object=`c101344eaed4ff4f3d45d7b8949bdded8d6d69f1`，peeled commit 精确等于发布 commit；三仓 `0.6.0/latest` 六引用统一 digest=`sha256:e9c1613a7ffbd13d92d5a197d751cb5de6b08b65f74351e39a4ad0f9b4598d16`。
+- [x] 正式 GHCR health/version smoke、OCI identity、GitHub Release 与四项部署资产摘要通过；发布后 evidence-only 提交不得移动 tag、重建候选或改变正式 digest。
+
+# 2026-08-27 v0.6.0 最终安全预检：授权收尾与升级启动线性化（released in v0.6.0）
 
 - [x] Auth 成功证据、invite enabled 与 `ready|cleanup_pending` 改为一次 `.env` 原子发布；one-shot 收尾失败保留 session 和完成态，启动/再次授权/Prepare 必须先在停服与 holder 全量安全分类成立后收敛，只删 holder、不删成功 session volume。
 - [x] 修改 Steam 账号密码改为 driver 全局维护锁内最终重读：重新检查已安装状态、unfinished owner、active lifecycle/install/Auth job，并以无缓存 Compose 真值证明停服后才只写两个凭据键；并发 start 或旧状态快照不能穿透。
@@ -12,15 +19,15 @@
 - [x] 任一 save-import rollback substage 或缺少严格 no-effect 证据的 `manual_required` 优先级高于 activation resume；已证明 Phase A 无效果时只停服/恢复 snapshot，仍不 resume。swap/as-is/completed 三类 confirmed-step panic 分别执行冻结范围回滚、停服并保持 manual、只重试 running publication且不回滚。候选脚本对提交前后的 `state`、`state_message`（区分 NULL 与非 NULL 原始字节）、`driver_phase`、`driver_payload` 使用 SQLite BLOB hex 精确比较，不再用 JSON/string 近似等价代替数据完整性证明。
 - [x] 正式 promotion 全局串行，annotated tag 唯一绑定 candidate workflow ID 与 digest；promotion 只下载该 run 的 proof，existing-tag 链也必须匹配同一身份。精确 version smoke 后、首个 `latest` copy 前再次核对 `origin/main` 与 GitHub latest；仅该绑定不变且同一 version 已创建 Release 的失败重跑可幂等修复 `latest`，其它 tag/commit/proof/digest 均 fail closed。
 - [x] 最终 owner/恢复修复后的任务专属 Linux Go 1.25 已通过整仓 `go test ./... -count=1`（Junimo `208.566s`、Web `55.980s`）、`go vet ./...` 与 Panel build，精确 owner container/两个 cache volume 均为 0；Node 24 洁净卷已通过 `npm ci`、production audit（0 vulnerabilities）、19 项前端状态/响应式脚本和 `npm run build`（Vite 8.0.16，149 modules），容器与两个前端卷同样归零。
-- [ ] 第五轮旧候选已通过 fresh/restart 与 `v0.5.13` 前半矩阵，但因上述真实 recovery deadline 缺陷安全停止且作废；仍须从包含修复的最终同一不可变镜像重新完成 `v0.5.13 → v0.6.0` unhealthy/healthy Web 升级和 `v0.3.2 → v0.6.0` 代表直升，才可进入远端候选 proof、自动 annotated tag、三仓同 digest promotion 与 GitHub Release。
+- [x] 第五轮旧候选因真实 recovery deadline 缺陷安全停止且作废；修复后的最终同一不可变候选 `33073661356` 已重新完成 `v0.5.13 → v0.6.0` unhealthy/healthy Web 升级和 `v0.3.2 → v0.6.0` 代表直升，并进入自动 tag、同 digest promotion 与 GitHub Release。
 
-# 2026-08-27 v0.6.0 发布预演：移动端终态与普通用户授权文案收口
+# 2026-08-27 v0.6.0 移动端终态与普通用户授权文案收口（released in v0.6.0）
 
 - [x] 移动端 start/restart pending 改为复用桌面纯状态机：观察到 active lifecycle job 后，job 在成功、失败或取消终态消失都会解除“启动中…”，restart 不受提交前 running 快照误判。
 - [x] 普通用户遇到 Steam 邀请授权失败时改为“授权异常，请联系管理员”；管理员继续保留重新授权操作，后端 admin-only 权限不变。
-- [x] lifecycle 纯状态与 responsive 源码回归已覆盖上述边界；正式候选仍须执行完整前端回归、production build 和升级后移动页验收。
+- [x] lifecycle 纯状态与 responsive 源码回归已覆盖上述边界；候选 `33073661356` 已执行完整前端回归与 production build，同一镜像的升级夹具验证权威 DTO/迁移状态。移动端实际渲染来自发布前本机 Browser，不属于候选 proof。
 
-# 2026-08-26 v0.6.0 发布预演中：邀请码 opt-in 与升级兼容收口
+# 2026-08-26 v0.6.0 邀请码 opt-in 与升级兼容收口（released in v0.6.0）
 
 - [x] 缺少 `steamInviteEnabled` 的旧实例改用强 Auth 证据迁移：SteamAuth completed、`steam_auth_done` 或非空邀请码才保留 enabled；单纯安装/运行状态、SteamCMD 完成/cache 均落 explicit false，已有 explicit true/false 始终优先。
 - [x] disabled 的 runtime apply/dry-run/required/recovery 全部收口为 server-only Compose inspect/validate/ps/stop/up/health/rollback，schema 4 中断恢复零 Auth；schema 1～3 旧事务保留兼容恢复。
@@ -28,33 +35,33 @@
 - [x] 已补 server-only 无效 Auth 配置真实 Docker E2E、Linux Auth TTY/PTY/敏感信息/精确清理 E2E、disabled apply/rollback/recovery 测试，以及 SteamCMD-only/强 Auth 两类升级 fixture；候选 fixture 不得再在 apply 前预清理旧 Auth runtime。
 - [x] 前端安装任务在 202/409 返回新 `jobId` 时先更新 URL 再接管日志，避免旧查询参数覆盖；SteamCMD 主链、LAN/Invite 分卡、disabled 零轮询、原版小屋与倒序日志规则保持统一。
 - [x] v0.6.0 发布身份已 fail closed：带 `[manual-release-candidate]` 的 final commit 跳过 push 自动 `0.5.14` 候选和无 proof Tag 链，只接受同 SHA 的手动候选；候选/Tag/promotion 共用矩阵校验，强制 `0.3.2 < 0.5.13 < 0.6.0`，零 patch 漏 oldest 不得发布。
-- [ ] 从上一正式版 `v0.5.13` 对同一候选完成 unhealthy 回滚、健康 Web apply、running 旧 disabled Auth/session 自收敛和升级后专项；不得以直接 updater、预清理或 Compose 替代。
-- [ ] 从受影响最老支持边界 `v0.3.2` 完成真实 Web 直升，并在升级后分别验证 SteamCMD-only→disabled 和强 Auth→enabled/session 保留。
-- [ ] 同一不可变候选的 fresh/restart、代码门禁、真实 Docker、proof artifact 全绿后，才允许自动 annotated `v0.6.0` tag、三仓同 digest 提升、`latest`、正式 smoke 与 GitHub Release；完成后回填 workflow、digest、耗时和资源清理证据。
+- [x] 候选 `33073661356` 从上一正式版 `v0.5.13` 完成 unhealthy 回滚、健康 Web apply、running 旧 disabled Auth/session 自收敛和升级后专项；全程使用真实 Panel Web 更新链。
+- [x] 同一候选从受影响最老支持边界 `v0.3.2` 完成真实 Web 直升，并验证 SteamCMD-only→disabled 和强 Auth→enabled/session 保留。
+- [x] 同一不可变候选的 fresh/restart、代码门禁、真实 Docker 与 proof artifact 全绿；自动 annotated tag、三仓同 digest 提升、`latest`、正式 smoke 与 GitHub Release 已完成，精确耗时、矩阵与资源清理证据见 `docs/09-image-build.md`。
 
-# 2026-08-26 本地已完成、未发布：启动期邀请码等待态修正
+# 2026-08-26 启动期邀请码等待态修正（released in v0.6.0）
 
 - [x] 邀请码文件尚未生成时不再因 `cat` 非零退出误报 Auth 异常；缺文件与 starting 阶段执行瞬态统一为 `generating`。后续 release preflight 又为 running 增加专用 10 分钟暖机 marker，只有到期或 marker 不可信才返回 `auth_unavailable`。
 - [x] 桌面总览、服务器摘要和移动首页统一显示“等待中…”并在有界预算内轮询；页面在暖机途中刷新会恢复轮询，后端权威异常或预算耗尽后才显示“Auth 异常（直连仍可用）”，且不把它等同于 session 失效。
 - [x] Driver/HTTP DTO/前端状态与响应式测试通过；现有本机隔离实例真实启动和移动端重启均复现“等待中 → 新邀请码 ready”，LAN 直连持续展示，console 零异常且 390px 无溢出。
-- [x] 最新 native `dev` 后端与 Vite HMR 保持运行供继续测试；没有创建新预览容器、镜像、branch、tag、Release 或 push。
+- [x] 发布前该本地阶段的 native `dev` 后端与 Vite HMR 保持运行供继续测试；该阶段没有创建新预览容器、镜像、branch、tag、Release 或 push。
 
-# 2026-08-26 本地已完成、未发布：原版小屋默认与安装日志最新置顶
+# 2026-08-26 原版小屋默认与安装日志最新置顶（released in v0.6.0）
 
 - [x] 新建存档 UI、后端空值归一、server-settings 写入以及运行时设置前后端 fallback 全部改为原版 `vanilla/None`；只有用户明确选择“堆叠”才继续使用兼容 wire 值 `recommended/CabinStack`。
 - [x] 已有 `CabinStack`、`FarmhouseStack`、`None` 保持原样，不做启动迁移；hidden `FarmhouseStack` 和完整三值 API 兼容不变。
 - [x] 安装页只在渲染层把最近 50 条日志按 sequence 降序展示，标题提示“最新日志在最上方（倒序显示）”；不强制抢回正在阅读旧记录的滚动位置，API、SSE、阶段解析和完整任务日志页仍按旧到新处理。
-- [x] 已补 Junimo/Web 默认与兼容回归、前端 cabin/install/responsive 回归；本机 Go/Vite 热预览继续复用，不新建容器、不触碰正式镜像/tag/Release。
+- [x] 已补 Junimo/Web 默认与兼容回归、前端 cabin/install/responsive 回归；发布前该本地阶段继续复用 Go/Vite 热预览，不新建容器、不触碰正式镜像/tag/Release。
 
-# 2026-08-26 本地已完成、未发布：邀请码授权卡死与基础安装状态隔离
+# 2026-08-26 邀请码授权卡死与基础安装状态隔离（released in v0.6.0）
 
 - [x] 现场 `Choice [1]: 1` 卡死确认是凭据模式误进 SteamAuth `setup` 后等待隐藏的 username/password 输入，不是正常下载或 Steam 网络进度；授权现按需检查/拉取 Auth 镜像，再用共享回退凭据驱动无游戏下载的 `serve` 一次性容器，QR 使用只做授权且自行退出的 `login + 2\n`，两条路径保存 session 后都停止且不再进入 `DownloadAll`。
 - [x] Auth-only 只挂 `_steam-session`，使用 scratch `GAME_DIR`；已经 `ready` 且登录完成的 Auth session 受幂等保护，重复启用不创建 job、不清 session。failed/pending 重试、账号不一致与启动恢复统一使用全量 holder 安全分类器，未知 holder 时零部分删除；新 Linux/Windows one-shot 均带 Panel owner/project label。真实登录成功后以一次原子写入同时保存 completed、enabled 与 `ready|cleanup_pending`；精确收尾成功为 `ready`，失败为 `cleanup_pending`，后者可令 job 报错但不得撤销 session。SteamCMD cache、授权卷和 game-data 始终保留；disabled 零探针且不扰动运行 server。
 - [x] 邀请授权从镜像拉取到 Guard/成功/失败全程保留基础实例 state，快照恢复只作中断兜底；独立 Auth job 不进入基础安装 classifier，旧无诊断 Auth 失败只显示诊断态，因此不会再误弹“游戏没有安装”。
 - [x] accepted/active-conflict `jobId` 会立即进入安装页 URL 并接管日志，旧 dashboard 快照不能夺回选择；自动任务切换清空旧日志，倒序窗口不再在每条新日志到达时强制滚动。
-- [x] 最新 Windows 定向 Auth/Guard/pull-failure/Web 测试、`go vet ./...`、`go build ./...`、前端 install/cabin/responsive 回归与 production build 已通过。Windows 整仓复跑仍命中已知 NTFS `0666/0640` 权限差异；同次一个无关存档导入异步用例发生一次竞态，精确单测复跑通过。用户随后在现有本机热预览自行完成 Steam Guard：session 保存、一次性 Auth 停止、基础安装保持完成且 SteamCMD cache 不变；代理未代填或记录凭据，也未新建容器。最终邀请码留待用户启动服务器后验证。
+- [x] 最新 Windows 定向 Auth/Guard/pull-failure/Web 测试、`go vet ./...`、`go build ./...`、前端 install/cabin/responsive 回归与 production build 已通过。Windows 整仓复跑仍命中已知 NTFS `0666/0640` 权限差异；同次一个无关存档导入异步用例发生一次竞态，精确单测复跑通过。用户随后在现有本机热预览自行完成 Steam Guard：session 保存、一次性 Auth 停止、基础安装保持完成且 SteamCMD cache 不变；代理未代填或记录凭据，也未新建容器。该阶段尚未验证的最终邀请码，后续已由上方桌面启动/移动重启 Browser 证据补齐；仍不属于候选 Browser 证据。
 
-# 2026-08-26 本地已完成、未发布：SteamCMD 默认安装与 Steam 邀请码按需启用
+# 2026-08-26 SteamCMD 默认安装与 Steam 邀请码按需启用（released in v0.6.0）
 
 - [x] 全新实例显式 `steamInviteEnabled=false`；旧实例只有历史 SteamAuth 完成态、`steam_auth_done` 状态/阶段或非空邀请码等强 Auth 证据才兼容迁移为 enabled，普通安装/运行/SteamCMD 证据迁移为 false，显式 true/false 优先。
 - [x] SteamCMD 成为 Stardew 413150 + SDK 1007 + SMAPI/Junimo/Control 主安装/修复链；disabled 安装零 SteamAuth pull/create/run/probe，SteamCMD 仍为一次性工具且不进入 runtime 供应链或版本 pin。
@@ -63,7 +70,7 @@
 - [x] Compose 移除默认硬依赖；生命周期、runtime/SMAPI、save-import、诊断按 enabled 分流，disabled 为 server-only 且邀请码后台工作为零。disabled 支持包只调用 server-only Compose ps，接口不可用时写入条目错误，绝不回退全量 Compose 暗中解析/验收 Auth。
 - [x] 桌面总览、服务器摘要和移动首页统一以权威意图渲染；“局域网直连”独立常驻，Steam 卡只在 enabled 显示并覆盖等待、失败、停服、生成、就绪和 Auth 异常。
 - [x] 安装页与移动 installation-state 改为 SteamCMD 主链；`stardew_steam_auth` 不再污染基础安装失败。setup-status 同步运行时 `DEFAULT_INSTANCE_ID`，支持真实隔离部署。
-- [x] 本地 Go 定向/整包 test-vet-build、前端状态/响应式/build、真实 Docker service-scope E2E、fresh Panel health/version/setup 与应用内 Browser 桌面/移动验证均通过；隔离预览保持运行。未创建候选、tag、latest、Release 或正式镜像。
+- [x] 发布前本地 Go 定向/整包 test-vet-build、前端状态/响应式/build、真实 Docker service-scope E2E、fresh Panel health/version/setup 与应用内 Browser 桌面/移动验证均通过；隔离预览保持运行。该本地阶段没有创建候选、tag、latest、Release 或正式镜像，后续正式链证据见本文件顶部。
 - [ ] “直连后再启用邀请码导致原角色不可见”及角色迁移工具明确延期，不属于本次实现。
 
 # 2026-08-23 已发布于 v0.5.13：Control-only 认证健康改为有界告警并拆分 UI 阶段

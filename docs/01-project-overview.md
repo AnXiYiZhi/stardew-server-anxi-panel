@@ -39,9 +39,9 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.5.13`（commit `be25fb3a4d0dfda4a9240a70e9fdb1d3a01a64cd`）。该版把未变化 Auth 的 Control-only 健康检查收口为有界 advisory，同时把认证验收与 SMAPI 验收拆成独立前端阶段；候选 `32648758732`、自动 annotated tag `32649334502` 与正式提升 `32649344923` 全绿，三仓 `0.5.13/latest` 使用唯一 digest=`sha256:b983d444d82f3303dbe65aa130a6da4160beaa3c98bcffd5f3704724395071a9`。
+当前正式版为 `v0.6.0`（commit `9c6d9c7696c6aa46f58405f0c02f187aa47111ba`）。本版将全新实例改为 SteamCMD 默认安装，Steam 邀请码由管理员显式按需启用，disabled 生命周期和升级只维护 server；同时发布原版小屋默认、安装日志倒序提示、安装任务 URL 接管及邀请码冷启动等待态修正。
 
-仓库当前正在准备 `v0.6.0`，尚未发布：全新实例改为 SteamCMD 默认安装、Steam 邀请码由管理员显式按需启用，disabled 生命周期和升级只维护 server；同时包含原版小屋默认、安装日志倒序提示及安装任务 URL 接管修正。`v0.6.0` 的不可变候选、两条真实 Web 升级（`v0.5.13 → v0.6.0`、`v0.3.2 → v0.6.0`）、annotated tag、三仓 digest、`latest` 和 Release 仍须按 `docs/09-image-build.md` 的发布矩阵完成后才能回填为正式证据。
+不可变候选 `33073661356`、自动 annotated tag workflow `33075599631` 与正式提升 `33075622114` 均成功；tag `v0.6.0` 指向上述 commit，三仓 `0.6.0/latest` 使用唯一 digest=`sha256:e9c1613a7ffbd13d92d5a197d751cb5de6b08b65f74351e39a4ad0f9b4598d16`。[GitHub Release v0.6.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.0)
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

@@ -1949,6 +1949,7 @@
 
 ## 2026-07-28：`git diff --no-index` 的预期差异码污染整段校验
 
+- 最近复发/补充：2026-08-27 回填 v0.6.0 发布证据后做多项负向 `rg` 审计，脚本虽然逐项只把 `$LASTEXITCODE -gt 1` 当错误，却在最后一个零命中 `rg` 后没有显式执行成功命令或 `exit 0`，因此完整审计输出后 cell 仍以 1 结束；文件和外部资源未变化。仅“允许 1”还不够，批次末尾必须显式归零，并把零命中计数作为证据输出。
 - 最近复发/补充：2026-08-26 v0.6.0 跨版本夹具子任务把“精确 `CREATE TABLE` 文本可能不存在”的补充 `rg` 当成必命中探针，无匹配的正常退出 1 令只读批次终止；仓库未变化。随后停止扩展该非必要检索，保留已取得的资源级证据；结构探索类搜索必须预先把 1 定义为零命中，不能默认视为执行失败。
 - 最近复发/补充：2026-08-18 已精确读取 `migrateLegacySteamCMDAuthCache()` 后，把“该函数是否有专门测试”这一允许无命中的 `rg -g '*_test.go'` 放在 cell 末尾且未归一化退出码；源码证据完整输出，但 cell 仍以 1 结束，产品和远端均未修改。补充覆盖检索同样必须立即保存退出码，把 1 明确记录为“无专门命中”，并在已有主证据后显式成功结束。
 - 最近复发/补充：2026-08-15 回填 `v0.4.17` 联调证据时，把三个可能无命中的 `rg` 顺序放进同一 cell；中间查询已经定位真实状态契约，最后一个可选符号零命中仍让整个只读批次退出 1。改为读取已确认的精确行段；后续多项可选搜索必须逐项把退出码 1 归一为零命中，不能依赖最后一条命令代表整批结果。
@@ -2010,7 +2011,7 @@
 
 ## 2026-07-28：PowerShell `foreach` 语句直接接管道
 
-- 最近复发/补充：2026-08-27 v0.6.0 最终编码只读审计子任务又把语句式 `foreach` 直接接管道，PowerShell 在读取工作树前解析失败，仓库与 Docker 零变化。纠正为先用 `@(...)` 收集或直接使用 `ForEach-Object`；该规则已提升到 `AGENTS.md`，编码/敏感信息审计同样不得为了压缩命令省略中间集合。
+- 最近复发/补充：2026-08-27 v0.6.0 最终编码只读审计子任务又把语句式 `foreach` 直接接管道；同日发布后核对本机预览容器/监听进程时再次把生成对象的 `foreach` 直接接到 `Format-Table`。两次都在首个文件、Docker 或进程探针前解析失败，仓库与资源零变化。纠正为先用 `$rows = @(foreach (...) { ... })` 收集，再单独格式化；该规则已提升到 `AGENTS.md`，任何只读审计也必须在发送前机械检查 `} |`，不得为了压缩命令省略中间集合。
 - 最近复发/补充：2026-08-27 根代理预检 Linux 门禁基础镜像时，再次把生成对象的语句式 `foreach` 直接接到 `ConvertTo-Json`；PowerShell 在任何 `docker image inspect` 前报相同 ParserError，镜像与资源未变化。纠正为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json`；余下正式发布命令发送前必须机械检索单行中的 `} |`，不再临时手写此形态。
 - 最近复发/补充：2026-08-27 v0.6.0 文档同步子任务连续两次把语句式 `foreach { ... }` 直接接管道；同日主任务核对本地预览端口与进程归属时又把嵌套 `foreach` 直接接到 `ConvertTo-Json`。三次都在解析阶段报 `An empty pipe element is not allowed`，尚未读写文档、探测进程或修改资源。均已停止该形态并统一改为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json`；本规则早已提升到 `AGENTS.md`，主代理与子任务的只读审计也必须机械检查 `} |`，不得因“只是读取”而例外。
 - 最近复发/补充：2026-08-17 检索 Downloads 中已解压 Nexus 扩展版本时，再次把语句式 `foreach ($file in $manifestFiles) { ... }` 直接接到 `ConvertTo-Json`，PowerShell 在读取 manifest 前报 `An empty pipe element is not allowed`。修正为先收集 `$rows = @(foreach (...) { ... })` 再序列化；解析阶段没有修改下载文件或浏览器状态。
@@ -3109,6 +3110,7 @@
 
 ## 2026-08-06：ConvertFrom-Json 自动把 OCI ISO 时间转成 DateTime
 
+- 最近复发/补充：2026-08-27 `v0.6.0` 正式发布证据核验中，两处只读断言再次直接比较 `ConvertFrom-Json` 自动生成的 `System.DateTime` 与 ISO 8601 原始字符串：先按 `createdAt -ge '2026-08-27T...'` 过滤 Tag workflow，虚假得到 0 条；随后比较 OCI `created` label 时又虚假抛出 `Formal OCI image identity mismatch`。候选 `33073661356`、Tag `33075599631`、提升 `33075622114` 与远端发布状态均未被重放或修改；改为第一次解析即使用 `ConvertFrom-Json -DateKind String`，或对既有对象统一转 UTC 后以 invariant 格式规范化，复核全部通过。此错误已多次复发且规则已提升到 `AGENTS.md`；后续发布核验不得再内联比较 DateTime 与原始 ISO 文本。
 - 最近复发/补充：2026-08-20 `v0.5.7` 发布后独立 smoke 已通过 `/health` 与 `/api/version`，但同一包装器仍把 `docker image inspect | ConvertFrom-Json` 生成的 `System.DateTime` OCI created 与 ISO 原文直接比较，虚假抛出 label mismatch；`finally` 已按 owner 删除精确容器和 volume，复核两类资源均为 0。随后先确认值类型为 `System.DateTime`、`Kind=Utc`，再用 invariant UTC 格式规范化为 `2026-08-19T17:54:58Z`，版本、revision、created 全部通过。此项已多次复发且规则早已提升到 `AGENTS.md`；后续发布包装器必须在第一次 JSON 解析处固定 `ConvertFrom-Json -DateKind String` 或立即调用统一 UTC helper，禁止再写任何日期对象与原始文本的内联比较。
 - 最近复发/补充：2026-08-16 `v0.5.2` 正式 digest 独立 smoke 前，OCI version/revision/created 实际均精确，但包装器再次把 `docker image inspect | ConvertFrom-Json` 产生的 `System.DateTime` created 直接与 `2026-08-16T11:55:58Z` 字符串比较并虚假抛出 identity mismatch。断言发生在 volume/container 创建前，独立投影确认两者均不存在。重跑使用 `ConvertFrom-Json -DateKind String` 同时覆盖 OCI 与 `/api/version`，不得只规范化其中一处。
 - 最近复发/补充：2026-08-15 文档收口后的最终 GHCR digest smoke 已 healthy 且三个 API 实际返回正确，但包装器又用默认 `ConvertFrom-Json` 后把 `/api/version.buildDate` 直接与 ISO 字符串比较，虚假抛出 identity mismatch；`finally` 已删除精确容器和 volume，owner 资源复核为 0。重跑必须直接使用已经验证的 `ConvertFrom-Json -DateKind String`，不得因“刚在同版本早先 smoke 修过”就省略该参数。

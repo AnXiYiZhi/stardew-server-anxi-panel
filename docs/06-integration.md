@@ -1,4 +1,10 @@
-# V060-INVITE-COLD-START-WAIT-1 跨端契约（2026-08-27，release preflight）
+# v0.6.0 跨端正式发布证据（2026-08-27，released）
+
+- `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba` 已正式发布。不可变候选 `33073661356` 完成 fresh/restart、前后端契约回归、真实 Docker E2E、`v0.5.13 → v0.6.0` unhealthy/healthy Web 升级和 `v0.3.2 → v0.6.0` 历史兼容直升。
+- 自动 annotated tag workflow `33075599631` 与正式提升 `33075622114` 成功；三仓 `0.6.0/latest` 六引用统一 digest=`sha256:e9c1613a7ffbd13d92d5a197d751cb5de6b08b65f74351e39a4ad0f9b4598d16`，正式 health/version smoke、OCI 身份、Release 与资产摘要通过。
+- 下方 preflight/local 章节继续记录接口边界和实现演进；其发布状态已由本节取代，完整不可变 proof、耗时、矩阵与清理结果见 `docs/09-image-build.md`。
+
+# V060-INVITE-COLD-START-WAIT-1 跨端契约（2026-08-27，released in v0.6.0）
 
 | 场景 | 后端权威状态/响应 | 前端行为 |
 | --- | --- | --- |
@@ -11,9 +17,9 @@
 - `/state` 与 invite GET 各自只接受最新 request generation，并共享 invite projection epoch；旧 state 只更新 runtime/诊断，保留当前 enabled/code 且不碰 status/requested/budget，poll/全量刷新/job-finish 同时按 state→invite 串行。权威 disabled DTO 会同步写回本地实例意图、隐藏卡片并失效旧响应，后续刷新 gate 因此保持零 invite GET。页面隐藏时不消费预算；本地 starting 预算耗尽只改变展示、不覆盖最后的 `generating`，所以 running 即使遇到两种逆序返回也会重开新预算，而后端权威 `auth_unavailable` 始终立即终止。
 - 桌面总览、服务器摘要和移动首页必须复用同一预算与终态。disabled 仍不得 fetch/poll invite，`cleanup_pending` 继续按独立安全收敛契约显示不可重试等待；后端明确 `auth_unavailable` 是终态，不再继续自动轮询。
 - 权威 `auth_unavailable` 对普通 refresh/job-finish 保持粘性，只有管理员手动刷新或进入新 runtime 才重新查询；组件卸载会清理 job-finish 延迟回查，await 后也由 mounted gate 阻止新的 invite GET。
-- 跨端状态、HTTP 瞬时错误、预算终态、disabled 零副作用、deferred 逆序、响应式和 production build 已通过本轮本地门禁；真实双升级、不可变候选与发布证据仍待完成。
+- 跨端状态、HTTP 瞬时错误、预算终态、disabled 零副作用、deferred 逆序、响应式和 production build 已通过本轮本地门禁；真实双升级与不可变候选随后由 run `33073661356` 完成，正式发布证据见本文件顶部。
 
-# V060-FINAL-SAFETY-PREFLIGHT-1 跨端/升级收口契约（2026-08-27，release preflight）
+# V060-FINAL-SAFETY-PREFLIGHT-1 跨端/升级收口契约（2026-08-27，released in v0.6.0）
 
 | 边界 | 后端权威行为 | Web/发布可观察结果 |
 | --- | --- | --- |
@@ -26,11 +32,11 @@
 | `Prepare` 与活动导入/已完成提交 | queued/running 的导入 runner 存在时先返回 busy，不扫描或恢复其 journal；maintenance payload 记录 operation owner，completed journal 的 SQLite 状态发布可幂等重试 | 只有严格证明 server running 后才对外发布基础 running 并清 owner；Auth 未运行仍是邀请码等待/异常的 advisory 状态，不能阻断 LAN/IP 或回滚 completed 存档；owner/payload 损坏、owner 不匹配或多个旧 completed 候选先保守停 server+Auth 且不恢复 snapshot；唯一 owner 已确认后的探针/发布失败则零 stop、保持 committed runtime 重试 |
 | 部分 rollback / confirmed-step panic | 任一 rollback substage 或缺少严格 no-effect 证据的 `manual_required` 永不自动 resume；已证明 Phase A 无效果时只允许停服/恢复 snapshot；swap 未完成时按冻结 scope 回滚，as-is 停冻结 scope 后保持 manual，completed 后只重试 running publication | 对外只返回固定 recovery-required 文案，不泄露 panic 原值；Panel 重启不能把半回滚事务重新送入 activation/durable，也不能撤销已经完成的存档提交；running/running 的重复发布为 no-op，不刷新邀请码暖机时间 |
 
-- 不新增 DTO 字段，但 `steamInviteAuthState` 枚举新增 `cleanup_pending`：它属于 enabled 且已有成功 session 的安全收敛态，前端显示不可重试的“等待中…”并禁用安装页重复授权，不把它并入基础 installation failure。第五轮预演证明旧 save-import 30 秒恢复预算会与 Compose 30 秒 grace 竞态；当前夹具除区分产品 scoped Stop 与 fixture teardown 外，还在 job 终态逐字段比较原实例 snapshot 与 journal。150 秒 stop budget 严格覆盖 Docker Down 的 2 分钟命令上限，独立 30 秒 final probe 严格覆盖 Ps 的 15 秒命令上限；错误和 panic 的恢复语义均有单元回归。最终 Linux test/vet/build 及正式同镜像 `v0.5.13`/`v0.3.2` 双升级仍是发布硬门禁，当前没有 tag、digest 或 Release 证据。
+- 不新增 DTO 字段，但 `steamInviteAuthState` 枚举新增 `cleanup_pending`：它属于 enabled 且已有成功 session 的安全收敛态，前端显示不可重试的“等待中…”并禁用安装页重复授权，不把它并入基础 installation failure。第五轮预演证明旧 save-import 30 秒恢复预算会与 Compose 30 秒 grace 竞态；当前夹具除区分产品 scoped Stop 与 fixture teardown 外，还在 job 终态逐字段比较原实例 snapshot 与 journal。150 秒 stop budget 严格覆盖 Docker Down 的 2 分钟命令上限，独立 30 秒 final probe 严格覆盖 Ps 的 15 秒命令上限；错误和 panic 的恢复语义均有单元回归。最终 Linux test/vet/build 及同镜像 `v0.5.13`/`v0.3.2` 双升级已由候选 `33073661356` 完成，tag/digest/Release 证据见本文件顶部。
 - Save-import journal 的 `maintenanceSteamInviteEnabled` 是事务私有恢复字段，不进入 HTTP DTO。FIFO 成功后 journal 重载失败、首次 Phase A journal 读取失败、`snapshot_restore_pending` 中 Auth 仍运行，以及敏感 panic 文本均有回归：前两类只允许有界停服与 recovery-required、不重发 FIFO，Auth 未停禁止恢复，原始 panic 值不得持久化到 job API。
 - 权威实例仍处于 maintenance 但找不到可归属的 journal 时按 orphan 处理：先保守停 server+Auth，只保留 recovery-required，绝不依据调用参数或时间猜测恢复 snapshot。旧 payload 没有 operation owner 的兼容路径仅接受唯一且更新时间不早于 maintenance state 的 completed journal。
 
-# V060-MOBILE-LIFECYCLE-TERMINAL-1 跨端契约（2026-08-27，release preflight）
+# V060-MOBILE-LIFECYCLE-TERMINAL-1 跨端契约（2026-08-27，released in v0.6.0）
 
 | 场景 | 权威任务/权限状态 | 移动端行为 |
 | --- | --- | --- |
@@ -41,7 +47,7 @@
 
 - 该收口只复用既有 lifecycle job 与角色信息，不改变 API、任务幂等或权限。桌面与移动必须共同使用 `shouldClearPendingStartupAction` 的“观察 active 后等待终态”语义。
 
-# V060-UPGRADE-PREFLIGHT-1 跨端升级契约（2026-08-26，release preflight）
+# V060-UPGRADE-PREFLIGHT-1 跨端升级契约（2026-08-26，released in v0.6.0）
 
 | 升级输入 | 后端权威终态 | 前端/副作用终态 |
 | --- | --- | --- |
@@ -53,9 +59,9 @@
 
 - disabled runtime update 的 config inspect、image validate、ps、stop/up、health、rollback 和 recovery 都必须选 `server`；Compose 中未设置、无效或不可拉取的 Auth image 不得阻塞 server-only 操作。内部占位变量只用于解析 Compose，不能进入 pull/inspect/manifest/digest 或状态 DTO。
 - `POST /steam-auth/login` 的一次性 Linux/Windows TTY 容器必须具备 PTY、仅挂 session，并携带权威 Panel owner/project label；密码不进入 argv/Panel 日志，敏感 `Config.Env` 不得进入诊断投影。登录成功后以一次原子写入同时保存 completed、enabled 与 `ready|cleanup_pending`；one-shot 精确收尾成功为 `ready`，收尾失败为 `cleanup_pending`，后者可令 job 报错但不得撤销成功 session。改变共享账号密码也不清已成功 session；安装/授权 POST 返回的新 `jobId` 必须立即同步到 URL 和选中日志，不能被旧 URL job 覆盖。
-- 正式 `v0.6.0` 升级证据必须实际执行两条完整 Web 链：上一正式版 `v0.5.13 → v0.6.0` 先注入同候选 unhealthy 并证明 `failed_rolled_back/health_check_failed` 与旧版恢复，再做 healthy apply；受影响最老支持边界 `v0.3.2 → v0.6.0` 走历史兼容 apply。两条链都要在升级后的新 Panel 重跑上表 disabled/enabled 迁移、前端条件渲染、SQLite/初始化/实例/存档/Mod/备份与非目标 Docker 资源保持。候选、tag、digest 和 Release 结果当前待完成。
+- 正式 `v0.6.0` 升级证据已实际执行两条完整 Web 链：上一正式版 `v0.5.13 → v0.6.0` 先注入同候选 unhealthy 并证明 `failed_rolled_back/health_check_failed` 与旧版恢复，再做 healthy apply；受影响最老支持边界 `v0.3.2 → v0.6.0` 完成历史兼容 apply。两条链在升级后的新 Panel 复验 disabled/enabled 迁移、SQLite/初始化/实例/存档/Mod/备份与非目标 Docker 资源保持；候选、tag、digest 和 Release 结果见本文件顶部。
 
-# STEAM-INVITE-STARTUP-WAIT-1 跨端契约（2026-08-26，local/unreleased）
+# STEAM-INVITE-STARTUP-WAIT-1 跨端契约（2026-08-26，released in v0.6.0）
 
 | 场景 | 后端权威行为 | 前端行为 |
 | --- | --- | --- |
@@ -67,7 +73,7 @@
 
 - `/tmp/invite-code.txt` 不存在是正常生成阶段，不是 SteamAuth session 失效证据；`steamAuthReady=false` 在启动期也只是瞬态诊断。明确授权失败或后端暖机窗口到期可进入错误 UI；其它 generating/请求错误先使用有界预算。任何分支都不得阻塞 LAN/IP 直连、清 session 或把基础安装降级。
 
-# CABIN-VANILLA-LOG-ORDER-1 跨端契约（2026-08-26，local/unreleased）
+# CABIN-VANILLA-LOG-ORDER-1 跨端契约（2026-08-26，released in v0.6.0）
 
 | 场景 | 后端权威行为 | 前端行为 |
 | --- | --- | --- |
@@ -81,7 +87,7 @@
 - 安装页标题固定提示“最新日志在最上方（倒序显示）”。前端不得反转共享日志 state；进度解析、QR/Guard 阶段推导及 `lastSeq=logs[logs.length-1].sequence` 仍消费升序数据。
 - 本节取代历史 `CABIN-STRATEGY-1` 中“缺省 recommended/CabinStack”和安装页直接升序渲染的现行口径；三值 API、权限、幂等与 SSE 协议 shape 不变。
 
-# STEAM-INVITE-OPTIN-1 跨端契约（2026-08-26，local/unreleased）
+# STEAM-INVITE-OPTIN-1 跨端契约（2026-08-26，released in v0.6.0）
 
 | 场景 | 后端权威行为 | 前端行为 |
 | --- | --- | --- |

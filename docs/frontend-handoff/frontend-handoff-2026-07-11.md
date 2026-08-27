@@ -1,4 +1,16 @@
-# FE-V060-INVITE-COLD-START-WAIT-1 前端接手记录（2026-08-27，release preflight）
+# FE-V060-RELEASE-EVIDENCE-1 前端接手记录（2026-08-27，released in v0.6.0）
+
+## 改了什么、影响哪些接口/文件
+
+- 本文件顶部记录的 SteamCMD 主链、邀请码 opt-in、冷启动等待态、移动生命周期终态、原版小屋默认、倒序安装日志和任务 URL 接管能力，均已进入 `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba`。
+
+## 如何验证、下一步注意事项
+
+- 不可变候选 `33073661356` 成功，包含前端 19 项状态/响应式回归与 production build；同一不可变镜像完成 fresh/restart、`v0.5.13 → v0.6.0` 和 `v0.3.2 → v0.6.0` Web 升级，升级夹具验证权威 DTO/迁移状态。发布前本机 Browser 桌面/移动渲染只作为补充，不冒充候选 proof。
+- 自动 annotated tag workflow `33075599631`、正式提升 `33075622114` 均成功；三仓 `0.6.0/latest` 唯一 digest=`sha256:e9c1613a7ffbd13d92d5a197d751cb5de6b08b65f74351e39a4ad0f9b4598d16`。[GitHub Release v0.6.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.0)
+- 后续维护不得移动 `v0.6.0` tag，也不得把发布前本机热预览镜像或截图当作正式候选证明；正式身份只认上述 commit、workflow 与 digest。
+
+# FE-V060-INVITE-COLD-START-WAIT-1 前端接手记录（2026-08-27，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -11,9 +23,9 @@
 
 ## 如何验证、下一步注意事项
 
-- 已顺序通过 `frontend/package.json` 声明的 19 项状态/响应式测试脚本；shared epoch 收口后又通过 install-state、responsive 与 `npm run build`（Vite 8.0.16，149 modules）。状态回归用可控 deferred 顺序覆盖 ready 后旧 state、disabled 后旧 invite、starting→running 在两种响应顺序下重置预算，以及权威异常不重开；源码契约另固定串行 poll、hidden 恢复、disabled 零请求和桌面/移动一致性。真实候选 bundle 仍须复验，当前不代表 released。
+- 已顺序通过 `frontend/package.json` 声明的 19 项状态/响应式测试脚本；shared epoch 收口后又通过 install-state、responsive 与 `npm run build`（Vite 8.0.16，149 modules）。状态回归用可控 deferred 顺序覆盖 ready 后旧 state、disabled 后旧 invite、starting→running 在两种响应顺序下重置预算，以及权威异常不重开；源码契约另固定串行 poll、hidden 恢复、disabled 零请求和桌面/移动一致性。正式候选 bundle 已由 `33073661356` 完成复验，能力已随 `v0.6.0` 发布。
 
-# FE-V060-MOBILE-TERMINAL-1 前端接手记录（2026-08-27，release preflight）
+# FE-V060-MOBILE-TERMINAL-1 前端接手记录（2026-08-27，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -27,7 +39,7 @@
 - `cleanup_pending`、promotion 二次门禁及 annotated tag 的 candidate run/digest 绑定补充后，已重跑并通过 `npm run test:install-state`、`npm run test:lifecycle-action-state`、`npm run test:cabin-strategy-options`、`npm run test:responsive-layout` 与 `npm run build`（Vite 8.0.16，149 modules）；三份 workflow YAML 与 4 个变更 Bash block 的语法检查也通过。纯状态回归覆盖“已观察 active job → job 消失且非 running”的失败/取消终态，源码契约固定普通用户联系管理员文案；responsive 回归同时固定 promotion 全局串行、tag/run/digest 绑定及 main/latest 复核先于首个 `latest` copy。
 - 后续移动生命周期变更继续复用共享纯 selector，不要用 `state === running` 作为唯一 pending 清理条件；restart 提交前本来就是 running，必须先观察到它自己的 active job。
 
-# FE-V060-RELEASE-PREFLIGHT-1 前端接手记录（2026-08-26，release preflight）
+# FE-V060-RELEASE-PREFLIGHT-1 前端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -36,11 +48,11 @@
 
 ## 如何验证、下一步注意事项
 
-- `npm run test:install-state` 和 production build 已覆盖 URL 接管修复；既有 cabin、lifecycle、responsive 回归覆盖原版/堆叠、桌面/移动条件渲染、管理员权限与倒序提示。最终精确脚本清单和全量结果以候选 run 为准。
-- 正式 `v0.6.0` 必须在 fresh、`v0.5.13` 升级后和 `v0.3.2` 升级后验证 production bundle；旧实例若只有 SteamCMD/安装状态，应显示 LAN 且不请求邀请码，有强 Auth 证据才显示 Steam 卡。候选、tag、digest/`latest`、Release 尚未完成，不得提前改成 released。
+- `npm run test:install-state` 和 production build 覆盖 URL 接管修复；cabin、lifecycle、responsive 回归覆盖原版/堆叠、桌面/移动条件渲染、管理员权限与倒序提示。最终全量结果以候选 `33073661356` 为权威。
+- 候选完成 production build，同一不可变镜像在 fresh、`v0.5.13` 升级和 `v0.3.2` 升级链中验证权威 DTO/迁移状态；“只有 SteamCMD/安装证据时显示 LAN 且零邀请码请求、有强 Auth 证据时显示 Steam 卡”的页面渲染由自动化状态契约与发布前本机 Browser 分别覆盖，不声称升级夹具执行过 Browser。tag、digest、`latest` 和 Release 的正式证据见本文件顶部。
 - 后续调整任务路由时，URL 与本地 selected job 必须作为同一个提交动作更新；不能再让旧 URL effect 在 POST 成功后异步夺回任务选择。新增邀请码状态只扩展共享 selector，不在 Overview/ServerSummary/MobileHome 分别猜测。
 
-# FE-STEAM-INVITE-STARTUP-WAIT-1 前端接手记录（2026-08-26，local/unreleased）
+# FE-STEAM-INVITE-STARTUP-WAIT-1 前端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -49,10 +61,10 @@
 
 ## 如何验证、下一步注意事项
 
-- 有界预算更新后的 `npm run test:install-state`、`npm run test:responsive-layout` 与 `npm run build` 已再次通过；此前真实热预览只覆盖桌面启动和 390px 移动端重启从“等待中…”进入邀请码 ready，不覆盖 `running` 传输错误或预算耗尽终态，这两条以自动化状态/源码契约验证并留给候选 bundle 再复验。
+- 有界预算更新后的 `npm run test:install-state`、`npm run test:responsive-layout` 与 `npm run build` 已再次通过；此前真实热预览只覆盖桌面启动和 390px 移动端重启从“等待中…”进入邀请码 ready，不覆盖 `running` 传输错误或预算耗尽终态；这两条已由候选 `33073661356` 的自动化状态回归与 production bundle 复验。
 - 不得因单次传输失败或任意经过时间自行升级成 Auth 异常；后端权威返回 `auth_unavailable`，或本节定义的前端预算耗尽且仍只有 `generating`/请求错误时，才进入异常展示。该终态不等于 session 失效，也不触发重新授权；LAN/IP 卡始终独立可用。
 
-# FE-CABIN-VANILLA-LOG-LATEST-1 前端接手记录（2026-08-26，local/unreleased）
+# FE-CABIN-VANILLA-LOG-LATEST-1 前端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -65,7 +77,7 @@
 - `test:cabin-strategy-options`、`test:install-state`、`test:responsive-layout` 与 production build 已通过，覆盖原版 fallback、旧策略保留、乱序输入降序输出、50 条上限、源数组不变和窄屏提示契约；最终 Browser 桌面/390px 使用当前本机热预览收口。
 - 不要对 `logs` state 调用 `reverse()`，否则会破坏 QR/Guard/下载阶段解析和 `lastSeq`。后续若要让完整任务日志页也最新置顶，应作为独立交互决策和测试，不要因共享 helper 被动改变。
 
-# FE-STEAM-INVITE-OPTIN-1 前端接手记录（2026-08-26，local/unreleased）
+# FE-STEAM-INVITE-OPTIN-1 前端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -77,7 +89,7 @@
 ## 如何验证、下一步注意事项
 
 - 已通过 `npm run test:install-state`、`test:cabin-strategy-options`、`test:lifecycle-action-state`、`test:responsive-layout` 与 `npm run build`。独立凭据 PUT 的最新定向回归另覆盖 API method、无公开 `forceReauth`、两字段表单、无 VNC/镜像和成功刷新 state；后端定向覆盖 admin-only、Docker 运行态 409、两项更新/其它 Auth/cache/game-data 字段保留及零 job。早期真实 Panel 主功能验收使用桌面 `1440×900`、移动 `390×844`：三个页面均有 1 个“局域网直连”、0 个 Steam 邀请码卡，无横向溢出或 console warning/error；旧本地镜像早于最新 Auth 补修，仅作为历史截图证据。
-- 最终 handoff 使用 commit 元数据为 `3e2be688ab5326bea0e6caacf1b7689a7be01f8d` 的本机 native `dev` 后端（`127.0.0.1:8090`、`/health=ok`）与 Vite HMR（`127.0.0.1:18096`）。应用内 Browser 在最新 HMR 后 fresh reload，新增 console warning/error 为 0；桌面 `1280` 视口 `clientWidth=scrollWidth=1280`，安装页权威保持已安装、显示倒序任务日志和 Steam Guard 交互，同时共享凭据长说明、一次性 Auth 说明、等待/失败提示条均为 0。移动 `390×844` 自动进入移动首页且 `clientWidth=scrollWidth=390`，保留邀请码状态和始终可见的“局域网直连”。本轮只刷新现有热预览，没有输入凭据、触发新授权或创建容器；页面保持开启供用户继续测试。
+- 发布前最后一轮本机 handoff 使用 commit 元数据为 `3e2be688ab5326bea0e6caacf1b7689a7be01f8d` 的 native `dev` 后端（`127.0.0.1:8090`、`/health=ok`）与 Vite HMR（`127.0.0.1:18096`）。应用内 Browser 在最新 HMR 后 fresh reload，新增 console warning/error 为 0；桌面 `1280` 视口 `clientWidth=scrollWidth=1280`，安装页权威保持已安装、显示倒序任务日志和 Steam Guard 交互，同时共享凭据长说明、一次性 Auth 说明、等待/失败提示条均为 0。移动 `390×844` 自动进入移动首页且 `clientWidth=scrollWidth=390`，保留邀请码状态和始终可见的“局域网直连”。本轮只刷新现有热预览，没有输入凭据、触发新授权或创建容器；页面保持开启供用户继续测试。正式发布身份以本文件顶部 `v0.6.0` commit/workflow/digest 为准。
 - 用户随后自行完成现有 Steam Guard 交互；最新 Browser 现场为“已安装”+“Steam 邀请码已启用”，打开“修改 Steam 账号密码”后空表单、确认按钮与倒序日志保持可用，截图指定的三类提示和 QR 失败提示均为 0。桌面 `clientWidth=scrollWidth=1280`、overlay=0、fresh console warning/error=0；页面停在该表单供继续测试，最终邀请码需服务器启动后验证。
 - 当前预览数据的 `steamInviteEnabled` 已被此前失败测试置为 true，所以最终 live snapshot 验证的是 enabled 失败可重试与 LAN 常驻；disabled 零 invite fetch/poll 继续由状态/响应式自动化和数据层源码契约覆盖，不能把这次 live snapshot 记作 disabled 现场证据。普通用户入口缺失由响应式/权限源码回归与后端 403 测试覆盖；真实 Guard/QR 与最终邀请码不由自动化代填。
 - 新增邀请码状态时只扩展共享 selector/DTO，不能在三个页面分别猜测；disabled 的“零请求”必须在数据层保证，不能只靠 JSX 隐藏。Auth job 仍需出现在安装页日志，但不得重新进入基础安装 classifier。

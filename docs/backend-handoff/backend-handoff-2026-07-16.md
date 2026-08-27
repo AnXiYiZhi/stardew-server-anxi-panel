@@ -1,4 +1,16 @@
-# V060-FINAL-SAFETY-PREFLIGHT-1 后端接手记录（2026-08-27，release preflight）
+# V060-RELEASE-EVIDENCE-1 后端接手记录（2026-08-27，released in v0.6.0）
+
+## 改了什么、影响哪些接口/文件
+
+- 本文件顶部记录的 SteamCMD 主安装链、邀请码 opt-in、共享凭据与独立 cache/session、disabled server-only 生命周期、旧实例意图迁移、Auth holder 安全收敛、邀请码冷启动等待、save-import 恢复边界和运行栈升级门禁，均已进入 `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba`。
+
+## 如何验证、下一步注意事项
+
+- 不可变候选 `33073661356` 成功，包含 Linux test/vet/build、运行栈远程制品与 Junimo 真实 integration、fresh/restart、`v0.5.13 → v0.6.0` unhealthy/healthy Web 升级、unknown-holder/意图迁移/save-import 专项和 `v0.3.2 → v0.6.0` 最老边界直升。proof artifact=`release-candidate-0.6.0-9c6d9c7696c6`（ID `9647693527`）。
+- 自动 annotated tag workflow `33075599631`、正式提升 `33075622114` 均成功；tag object=`c101344eaed4ff4f3d45d7b8949bdded8d6d69f1`，三仓 `0.6.0/latest` 唯一 digest=`sha256:e9c1613a7ffbd13d92d5a197d751cb5de6b08b65f74351e39a4ad0f9b4598d16`。[GitHub Release v0.6.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.0)
+- 后续修改这些链路必须重新选择受影响矩阵；不得移动 `v0.6.0` tag，也不得把发布前本机 rehearsal 镜像、单元门禁或热预览状态当作正式候选 proof。
+
+# V060-FINAL-SAFETY-PREFLIGHT-1 后端接手记录（2026-08-27，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -16,14 +28,14 @@
 
 - Windows 定向 config、SteamInvite/Auth/credentials、Web DTO/权限与 Docker/cmd-panel 测试通过；新增 `/state` `cleanup_pending` DTO 后再次通过 Web 全包（`57.577s`）。最终 owner/恢复修复后的任务专属 Linux Go 1.25 owner=`anxi-v060-ownerfix-gates-20260827` 已通过 `go test ./... -count=1`（Junimo `208.566s`、Web `55.980s`）、`go vet ./...`、`go build -o /tmp/anxi-v060-panel ./cmd/panel`；退出后精确 owner container/两个 cache volume 均为 0。Windows 整包不要重跑 POSIX mode 夹具，权威结果以 Linux 文件系统为准。
 - 后续改 Auth 成功路径必须继续把 completed 与 cleanup state 作为一个原子事实发布；`cleanup_pending` 只能删除已证明 holder，不能删 session volume、清完成态或降级成普通 failed。后续改凭据接口必须保留锁内最终重读和无缓存停服证明，不能回到 handler 的先验快照。
-- 候选升级脚本已加入真实 unknown same-volume holder 两阶段夹具：healthy Web apply 先成功，但该实例的 runtime-scope 收敛必须保持 marker 缺失并原样保留全部 holder/session；脚本只在核验任务 owner、精确 volume 与 mount target 后移除测试 holder，重启 candidate 再要求官方 Auth holder 收敛且 server ID/StartedAt 不变。该夹具仍须随下面两条本地预演和远端候选实际执行，不能把静态脚本审查记成通过证据。
-- 候选 save-import fixture 已与本版 non-destructive scoped Stop 对齐：公开 Stop 先证明恰好一个 exited/dead server；maintenance 受控失败恢复只接受实例 snapshot=stopped、项目零运行容器、零 Auth/其它 orphan，以及零或一个 exited/dead server/默认 network。container/network 归零是下一场景前 fixture 自己执行精确 `down --remove-orphans` 的 teardown，不是产品恢复契约。`save_import_maintenance_test.go` 的 fake stop 后也保留 exited server，避免单元恢复只覆盖旧空集合。所有 Docker/inspect 计数管道显式处理失败并返回独立状态，调用方不能因 Bash 条件上下文抑制 `errexit` 而把探针失败计成零资源；候选脚本已通过 Git Bash `bash -n` 与 ShellCheck v0.10.0，仍须随最终新 SHA 全链重跑才算真实证据。
-- 第五轮本地 `v0.5.13` 预演已证明 job 终态不是读取竞态：runner 的失败 defer 完成后才发布 failed；真实 TERM-ignoring fixture 让旧 30 秒恢复 context 与 Compose 的 30 秒 grace 同时到期，daemon 后续已停服但 journal 留在 `compose_up_returned`。修复现使用 150 秒 stop budget 与独立 30 秒 fresh strict proof；候选脚本把提交前 API/diagnostics/log/FIFO 独立上限也纳入完整合法链路，将 Phase A job 等待统一为 780 秒，并会在每例前后逐字段比较 state、state-message NULL/字节、driver phase/payload，要求 `maintenanceStarted=false`、`snapshot_restored`。新增 panic 边界与预算回归仍须完成本轮定向/全量门禁；必须从新最终 SHA 重跑 Linux 全量和两条真实升级，不能复用第五轮镜像或先前通过的前半段。
-- 本轮新增严格 env/frozen scope、enabled→`.env` disabled 后仍停 Auth、legacy/missing journal 保守范围、FIFO 后 journal 丢失不重发、pre-submit journal 丢失、`snapshot_restore_pending` Auth 仍运行拒绝恢复、真实 `ErrCommandTimeout → running → exited` 轮询及 panic 脱敏定向回归并已通过；完整 Junimo save-import 分组、config 与 jobs 包也通过。最终 Linux 整仓已按上条重跑通过；真实双升级仍须使用提交后的同一不可变镜像，不能把单元门禁写成候选 E2E 证据。
-- 最新提交边界专项 `TestStopImportPhaseAServerKeepsFullIndependentProbeBudgetAfterStopDeadline`、`TestPrepareDoesNotRecoverCompletedJournalWhileImportRunnerIsActive`、`TestPrepareRecoversCompletedMaintenanceCommitWithFrozenRuntimeScope`、`TestCompletedMaintenanceStateUpdateFailureIsRetryable`、`TestPartialActivationRollbackNeverResumesActivation`、`TestConfirmedImportPanicAfterCompletedJournalPublishesRunningWithoutRollback`、`TestConfirmedImportStepPanicsRollBackFrozenEnabledScope`、`TestConfirmedAsIsImportPanicStopsFrozenDisabledScopeAndStaysManual` 均通过；owner parser/publication 另覆盖空字符串、顶层/字段 `null`、数字、非法字符串与错误合法 ID。Prepare 级回归覆盖 malformed/multiple owner 的保守 stop、completed server probe 矩阵零 stop、SQLite 失败重试、enabled 二次 no-op 和其它 phase 不覆盖。Linux 第一轮据此发现 manual/no-effect 排序回归，第二轮发现旧 durable 单测夹具未模拟真实 maintenance owner/phase；两处修正后第三轮整仓全绿。双升级仍待最终 commit。
-- 正式发布仍须让同一不可变镜像完成 `v0.5.13 → v0.6.0` unhealthy/healthy 与 `v0.3.2 → v0.6.0` Web 升级。两条本地预演、远端候选 proof、自动 annotated tag、同 digest promotion 和正式 smoke 未完成前，不得把本节改成 released。
+- 候选升级脚本已加入真实 unknown same-volume holder 两阶段夹具：healthy Web apply 先成功，但该实例的 runtime-scope 收敛必须保持 marker 缺失并原样保留全部 holder/session；脚本只在核验任务 owner、精确 volume 与 mount target 后移除测试 holder，重启 candidate 再要求官方 Auth holder 收敛且 server ID/StartedAt 不变。该夹具已由正式候选 `33073661356` 实际执行通过，不能把后续静态脚本审查单独记成同等证据。
+- 候选 save-import fixture 已与本版 non-destructive scoped Stop 对齐：公开 Stop 先证明恰好一个 exited/dead server；maintenance 受控失败恢复只接受实例 snapshot=stopped、项目零运行容器、零 Auth/其它 orphan，以及零或一个 exited/dead server/默认 network。container/network 归零是下一场景前 fixture 自己执行精确 `down --remove-orphans` 的 teardown，不是产品恢复契约。`save_import_maintenance_test.go` 的 fake stop 后也保留 exited server，避免单元恢复只覆盖旧空集合。所有 Docker/inspect 计数管道显式处理失败并返回独立状态，调用方不能因 Bash 条件上下文抑制 `errexit` 而把探针失败计成零资源；候选脚本通过 Git Bash `bash -n`、ShellCheck v0.10.0，并已随最终 SHA 在 run `33073661356` 全链通过。
+- 第五轮本地 `v0.5.13` 预演已证明 job 终态不是读取竞态：runner 的失败 defer 完成后才发布 failed；真实 TERM-ignoring fixture 让旧 30 秒恢复 context 与 Compose 的 30 秒 grace 同时到期，daemon 后续已停服但 journal 留在 `compose_up_returned`。修复现使用 150 秒 stop budget 与独立 30 秒 fresh strict proof；候选脚本把提交前 API/diagnostics/log/FIFO 独立上限也纳入完整合法链路，将 Phase A job 等待统一为 780 秒，并会在每例前后逐字段比较 state、state-message NULL/字节、driver phase/payload，要求 `maintenanceStarted=false`、`snapshot_restored`。新增 panic 边界、Linux 全量与两条真实升级随后均由最终 SHA 的候选 `33073661356` 重跑通过；第五轮镜像和先前前半段没有被复用为正式证据。
+- 本轮新增严格 env/frozen scope、enabled→`.env` disabled 后仍停 Auth、legacy/missing journal 保守范围、FIFO 后 journal 丢失不重发、pre-submit journal 丢失、`snapshot_restore_pending` Auth 仍运行拒绝恢复、真实 `ErrCommandTimeout → running → exited` 轮询及 panic 脱敏定向回归并已通过；完整 Junimo save-import 分组、config 与 jobs 包也通过。最终 Linux 整仓与同一不可变镜像的真实双升级均已完成；正式候选 E2E 证据为 run `33073661356`，不能以单元门禁替代。
+- 最新提交边界专项 `TestStopImportPhaseAServerKeepsFullIndependentProbeBudgetAfterStopDeadline`、`TestPrepareDoesNotRecoverCompletedJournalWhileImportRunnerIsActive`、`TestPrepareRecoversCompletedMaintenanceCommitWithFrozenRuntimeScope`、`TestCompletedMaintenanceStateUpdateFailureIsRetryable`、`TestPartialActivationRollbackNeverResumesActivation`、`TestConfirmedImportPanicAfterCompletedJournalPublishesRunningWithoutRollback`、`TestConfirmedImportStepPanicsRollBackFrozenEnabledScope`、`TestConfirmedAsIsImportPanicStopsFrozenDisabledScopeAndStaysManual` 均通过；owner parser/publication 另覆盖空字符串、顶层/字段 `null`、数字、非法字符串与错误合法 ID。Prepare 级回归覆盖 malformed/multiple owner 的保守 stop、completed server probe 矩阵零 stop、SQLite 失败重试、enabled 二次 no-op 和其它 phase 不覆盖。Linux 第一轮据此发现 manual/no-effect 排序回归，第二轮发现旧 durable 单测夹具未模拟真实 maintenance owner/phase；两处修正后第三轮整仓全绿。双升级随后由最终 commit 的正式候选完成。
+- 同一不可变镜像已完成 `v0.5.13 → v0.6.0` unhealthy/healthy 与 `v0.3.2 → v0.6.0` Web 升级；远端候选 proof、自动 annotated tag、同 digest promotion、正式 smoke 与 Release 的精确身份见本文件顶部。
 
-# V060-RELEASE-IDENTITY-HARDENING-1 接手记录（2026-08-27，release preflight）
+# V060-RELEASE-IDENTITY-HARDENING-1 接手记录（2026-08-27，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -35,10 +47,10 @@
 
 ## 如何验证、下一步注意事项
 
-- Git Bash 5.2.37 的校验器 bash-n/功能测试、三份 workflow PyYAML parse、`npm run test:responsive-layout` 与 ShellCheck v0.10.0 均通过；ShellCheck 使用任务专属容器且已精确清理。正式 commit message 必须保留精确 `[manual-release-candidate]`，推送后确认 push-origin candidate/tag jobs 为 skipped，再从 `main` 手动 dispatch version=`0.6.0`、previous_version=`0.5.13`、oldest_version=`0.3.2`；缺任一矩阵字段或顺序错误都不得绕过或临时改 workflow。
-- marker 只用于本次需要 minor override 的 final release commit；普通后续 patch 提交不得机械携带，否则会按设计抑制自动补丁候选。正式候选成功后仍须核对 proof 中两个升级源、同一 image ID/digest、annotated tag 与三仓 promotion，不能把本地校验器通过当成远端候选证据。
+- Git Bash 5.2.37 的校验器 bash-n/功能测试、三份 workflow PyYAML parse、`npm run test:responsive-layout` 与 ShellCheck v0.10.0 均通过；ShellCheck 使用任务专属容器且已精确清理。正式 commit message 保留了精确 `[manual-release-candidate]`，push-origin candidate/tag jobs 按设计 skipped；随后从同一 `main` SHA 手动 dispatch version=`0.6.0`、previous_version=`0.5.13`、oldest_version=`0.3.2` 并成功。
+- marker 只用于本次 minor override 的 final release commit；普通后续 patch/evidence 提交不得机械携带，否则会按设计抑制自动补丁候选。proof 中两个升级源、candidate run/digest、annotated tag 与三仓 promotion 已精确绑定，见顶部正式证据。
 
-# V060-UPGRADE-PREFLIGHT-1 后端接手记录（2026-08-26，release preflight）
+# V060-UPGRADE-PREFLIGHT-1 后端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -51,11 +63,11 @@
 ## 如何验证、下一步注意事项
 
 - config/driver migration、disabled runtime apply/rollback/required/recovery 定向 Go 测试和 Docker 包单测通过；真实 Windows Docker server-only integration 通过。Linux TTY integration 已在 Go 1.25 Alpine + Docker socket 的任务专属资源中通过并完成 owner 清理。
-- final preflight 定向通过 `TestRemoveSteamInviteAuthSessionHoldersRemovesOnlyValidatedHolders`、`TestLabelSteamInviteOneShotAddsAuthoritativeOwnerAndProject`、`TestDriverPrepareLegacyDisabledUnknownSessionHolderFailsClosed`、`TestDriverAuthLoginOnlySessionCleanupFailsClosed`、`TestDriverAuthLoginOnlyPreservesSuccessfulSessionAfterContainerCleanupError`、`TestRecoverInterruptedSteamInviteAuthorization` 与 `TestSupportBundleDisabledUsesServerOnlyComposePs`；`go test ./internal/docker -count=1`、`go test ./internal/web -count=1` 通过。Windows Junimo 整包仍只命中既有 POSIX mode 夹具差异，本次未启动新的 Docker E2E；正式候选必须在 Linux/隔离 DinD 重跑受影响矩阵。
-- 候选升级脚本已通过 Bash 语法与 ShellCheck；其两轮真实升级只能在候选隔离 DinD 中作为正式证据，仍须实际完成 `v0.5.13 → v0.6.0` 和受影响最老边界 `v0.3.2 → v0.6.0`。在这些链、unhealthy 回滚、fresh/restart、digest promotion 和正式 smoke 完成前，不得把 `v0.6.0` 写成 released。
+- final preflight 定向通过 `TestRemoveSteamInviteAuthSessionHoldersRemovesOnlyValidatedHolders`、`TestLabelSteamInviteOneShotAddsAuthoritativeOwnerAndProject`、`TestDriverPrepareLegacyDisabledUnknownSessionHolderFailsClosed`、`TestDriverAuthLoginOnlySessionCleanupFailsClosed`、`TestDriverAuthLoginOnlyPreservesSuccessfulSessionAfterContainerCleanupError`、`TestRecoverInterruptedSteamInviteAuthorization` 与 `TestSupportBundleDisabledUsesServerOnlyComposePs`；`go test ./internal/docker -count=1`、`go test ./internal/web -count=1` 通过。Windows Junimo 整包仍只命中既有 POSIX mode 夹具差异；正式候选随后在 Linux/隔离 DinD 重跑受影响矩阵通过。
+- 候选升级脚本通过 Bash 语法与 ShellCheck；两轮真实升级已在候选隔离 DinD 中完成 `v0.5.13 → v0.6.0` 和受影响最老边界 `v0.3.2 → v0.6.0`。unhealthy 回滚、fresh/restart、digest promotion 和正式 smoke 均已完成，`v0.6.0` 发布身份见顶部。
 - 后续新增任何 Compose 操作必须从同一 intent/service-scope helper 获取服务；不能因为 compose 文件仍声明 `steam-auth` 就调用全栈 inspect/ps/health。不要把 SteamCMD 状态补进 Auth 强证据，也不要把 schema 1～3 的保守中断恢复误改成 schema 4 精确行为。
 
-# STEAM-INVITE-STARTUP-WAIT-1 后端接手记录（2026-08-26，local/unreleased）
+# STEAM-INVITE-STARTUP-WAIT-1 后端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -64,10 +76,10 @@
 
 ## 如何验证、下一步注意事项
 
-- `TestGetInviteCodeMissingFileReturnsEmptyWithoutAttachCLI`、并发 cache、后台重试、Web starting/running/empty/ready 状态表以及专用 marker 的 start/restart/受控恢复写入、普通 payload 保留、missing/bad/future/expired fail-closed 边界均通过。暖机补丁后 `go test ./internal/web -count=1` 通过（`36.324s`），Junimo 包除既有 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 NTFS `0666`/Linux `0640` 差异外全部通过（`100.944s`）；随后任务专属 Linux Go 1.25.11/DinD 整仓 `go test ./...`（Junimo `87.035s`、Web `56.122s`）、`go vet ./...` 与 Panel build 通过，owner 资源清零。真实 Docker integration fixture 已改为启动时完全不创建邀请码文件；正式真实行为仍由候选隔离矩阵复验。
+- `TestGetInviteCodeMissingFileReturnsEmptyWithoutAttachCLI`、并发 cache、后台重试、Web starting/running/empty/ready 状态表以及专用 marker 的 start/restart/受控恢复写入、普通 payload 保留、missing/bad/future/expired fail-closed 边界均通过。暖机补丁后 `go test ./internal/web -count=1` 通过（`36.324s`），Junimo 包除既有 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 NTFS `0666`/Linux `0640` 差异外全部通过（`100.944s`）；随后任务专属 Linux Go 1.25.11/DinD 整仓 `go test ./...`（Junimo `87.035s`、Web `56.122s`）、`go vet ./...` 与 Panel build 通过，owner 资源清零。真实 Docker integration fixture 已改为启动时完全不创建邀请码文件；正式候选隔离矩阵随后复验通过。
 - 现有任务专属实例真实启动/重启均完成“缺文件等待 → 新码 ready”，说明保存的 Auth session 未失效。后续不得重新把缺文件、空文件或启动期 `steamAuthReady=false` 当授权失败；明确登录失败可直接进入授权失败，运行态 Auth/exec 错误则必须先服从专用 marker 的 10 分钟暖机边界，到期或 marker 不可信后才进入 Auth 异常。
 
-# CABIN-VANILLA-DEFAULT-1 后端接手记录（2026-08-26，local/unreleased）
+# CABIN-VANILLA-DEFAULT-1 后端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
@@ -77,10 +89,10 @@
 
 ## 如何验证、下一步注意事项
 
-- 定向 Junimo `WriteServerSettings/Ensure/Read/Normalize` 与 Web `custom-new-game/server-runtime-settings` 测试已通过；还需以本次最终整包 test/vet/build 结果为交付证据。回归明确覆盖缺省 `None`、显式 `recommended→CabinStack`、三种历史策略原样读取以及 Ensure 不物化缺失策略。
+- 定向 Junimo `WriteServerSettings/Ensure/Read/Normalize` 与 Web `custom-new-game/server-runtime-settings` 测试已通过；最终整包 test/vet/build 与 candidate production build 也已完成。回归明确覆盖缺省 `None`、显式 `recommended→CabinStack`、三种历史策略原样读取以及 Ensure 不物化缺失策略。
 - 后续若要把旧实例缺失字段真正写成 `None`，必须另立迁移任务并用真实存档验证入口/位置；不得顺手塞进每次启动都会执行的 Ensure。`recommended` 名称虽不再对用户显示，仍是兼容协议值，不能未经迁移直接改成 `stacked`。
 
-# STEAM-INVITE-OPTIN-1 后端接手记录（2026-08-26，local/unreleased）
+# STEAM-INVITE-OPTIN-1 后端接手记录（2026-08-26，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件
 
