@@ -44,6 +44,37 @@ if [[ -z "$candidate_tar" || -z "$fixtures_tar" || -z "$candidate_image" || ! "$
   usage
   exit 2
 fi
+
+semver_at_least() {
+  local actual="$1"
+  local minimum="$2"
+  local actual_major=""
+  local actual_minor=""
+  local actual_patch=""
+  local minimum_major=""
+  local minimum_minor=""
+  local minimum_patch=""
+
+  IFS=. read -r actual_major actual_minor actual_patch <<<"$actual"
+  IFS=. read -r minimum_major minimum_minor minimum_patch <<<"$minimum"
+  if ((actual_major > minimum_major)); then
+    return 0
+  fi
+  if ((actual_major < minimum_major)); then
+    return 1
+  fi
+  if ((actual_minor > minimum_minor)); then
+    return 0
+  fi
+  if ((actual_minor < minimum_minor)); then
+    return 1
+  fi
+  if ((actual_patch >= minimum_patch)); then
+    return 0
+  fi
+  return 1
+}
+
 if [[ ! -f "$candidate_tar" ]]; then
   echo "candidate upgrade E2E: candidate tar not found: $candidate_tar" >&2
   exit 1
@@ -1534,6 +1565,9 @@ prepare_legacy_disabled_runtime_fixture() {
   local instance_env="$instance_dir/.env"
   local instance_compose="$instance_dir/docker-compose.yml"
   local auth_candidates=""
+  local current_server_id=""
+  local current_dependency_id=""
+  local current_auth_id=""
 
   docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" stop panel >/dev/null
   if [[ -n "$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --quiet)" ]] || docker volume inspect "$steam_session_volume" >/dev/null 2>&1; then
@@ -1564,34 +1598,61 @@ prepare_legacy_disabled_runtime_fixture() {
   fi
   snapshot_candidate_auth_images "$legacy_auth_image_snapshot_before"
   docker compose --project-name stardew --project-directory "$instance_dir" -f "$instance_compose" up -d fixture-ready server steam-auth >/dev/null
+  docker run -d --name "$unknown_session_holder_container" --label "com.anxi-panel.test-owner=$owner" --label "com.anxi-panel.fixture-role=unknown-steam-session-holder" --volume "$steam_session_volume:/untrusted-session" alpine:3.20 sleep 3600 >/dev/null
+  unknown_session_holder_id="$(docker inspect "$unknown_session_holder_container" | jq -r '.[0].Id')"
+  if [[ -z "$unknown_session_holder_id" ]]; then
+    echo "candidate upgrade E2E: failed to establish the unknown same-volume holder before starting the previous release" >&2
+    return 1
+  fi
+  legacy_server_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')"
+  legacy_dependency_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')"
+  legacy_auth_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --format '{{.ID}}')"
+  if [[ -z "$legacy_server_container_id" || -z "$legacy_dependency_container_id" || -z "$legacy_auth_container_id" ]] ||
+    [[ "$(docker inspect "$legacy_auth_container_id" | jq -r '.[0].Image')" != "$legacy_auth_image_id" ]] ||
+    ! docker inspect "$legacy_auth_container_id" | jq -e --arg volume "$steam_session_volume" '.[0].Mounts | any(.Name == $volume)' >/dev/null; then
+    echo "candidate upgrade E2E: failed to establish the running legacy server + steam-auth fixture before starting the previous release" >&2
+    return 1
+  fi
+  legacy_server_started_at="$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')"
 
   docker tag "$previous_fixture_ref" "$previous_ref"
   sed -i "s|^PANEL_IMAGE=.*$|PANEL_IMAGE=$previous_ref|" "$env_file"
   docker compose --project-name "$project" --env-file "$env_file" -f "$compose_file" up -d --no-deps --force-recreate panel >/dev/null
   wait_version "$previous_version" 120
-  if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" == "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
-    echo "candidate upgrade E2E: previous release unexpectedly removed the legacy steam-auth dependency" >&2
+  if semver_at_least "$previous_version" 0.6.0; then
+    if [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" != "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+      echo "candidate upgrade E2E: previous release did not preserve the expected post-v0.6.0 dependency migration" >&2
+      diff -u "$legacy_expected_migrated_compose" "$instance_compose" >&2 || true
+      return 1
+    fi
+  elif [[ "$(sha256sum "$instance_compose" | awk '{print $1}')" == "$(sha256sum "$legacy_expected_migrated_compose" | awk '{print $1}')" ]]; then
+    echo "candidate upgrade E2E: pre-v0.6.0 previous release unexpectedly removed the legacy steam-auth dependency" >&2
     return 1
   fi
-
-  legacy_server_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')"
-  legacy_dependency_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')"
-  legacy_auth_container_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --format '{{.ID}}')"
-  docker run -d --name "$unknown_session_holder_container" --label "com.anxi-panel.test-owner=$owner" --label "com.anxi-panel.fixture-role=unknown-steam-session-holder" --volume "$steam_session_volume:/untrusted-session" alpine:3.20 sleep 3600 >/dev/null
-  unknown_session_holder_id="$(docker inspect "$unknown_session_holder_container" | jq -r '.[0].Id')"
-  if [[ -z "$legacy_server_container_id" || -z "$legacy_dependency_container_id" || -z "$legacy_auth_container_id" ]] ||
-    [[ -z "$unknown_session_holder_id" ]] ||
+  if grep -q '^STEAM_INVITE_RUNTIME_SCOPE_VERSION=' "$instance_env"; then
+    echo "candidate upgrade E2E: previous release crossed the fail-closed runtime-scope boundary despite the unknown holder" >&2
+    return 1
+  fi
+  current_server_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=server' --format '{{.ID}}')"
+  current_dependency_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=fixture-ready' --format '{{.ID}}')"
+  current_auth_id="$(docker ps -a --filter 'label=com.docker.compose.project=stardew' --filter 'label=com.docker.compose.service=steam-auth' --format '{{.ID}}')"
+  if [[ "$current_server_id" != "$legacy_server_container_id" || "$current_dependency_id" != "$legacy_dependency_container_id" || "$current_auth_id" != "$legacy_auth_container_id" ]] ||
+    ! docker inspect "$unknown_session_holder_id" >/dev/null 2>&1 ||
+    [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')" != "$legacy_server_started_at" ]] ||
+    [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$legacy_dependency_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$legacy_auth_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$unknown_session_holder_id" | jq -r '.[0].State.Running')" != true ]] ||
     [[ "$(docker inspect "$legacy_auth_container_id" | jq -r '.[0].Image')" != "$legacy_auth_image_id" ]] ||
     ! docker inspect "$legacy_auth_container_id" | jq -e --arg volume "$steam_session_volume" '.[0].Mounts | any(.Name == $volume)' >/dev/null; then
-    echo "candidate upgrade E2E: failed to establish the running legacy server + steam-auth fixture" >&2
+    echo "candidate upgrade E2E: previous release deleted, stopped, or recreated part of the fail-closed legacy fixture" >&2
     return 1
   fi
-  legacy_server_started_at="$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')"
   if [[ "$(read_steam_session_sentinel_hash)" != "$legacy_disabled_session_hash" ]]; then
     echo "candidate upgrade E2E: previous release changed the disabled legacy session sentinel" >&2
     return 1
   fi
-  echo "candidate upgrade E2E: previous release is running the legacy server + steam-auth dependency with an unknown same-volume holder" >&2
+  echo "candidate upgrade E2E: previous release preserved the expected fail-closed server, Auth, session, and Compose boundary" >&2
 }
 
 assert_unknown_session_holder_fail_closed() {
@@ -1612,6 +1673,7 @@ assert_unknown_session_holder_fail_closed() {
     ! docker inspect "$legacy_auth_container_id" "$unknown_session_holder_id" >/dev/null 2>&1 ||
     [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.StartedAt')" != "$legacy_server_started_at" ]] ||
     [[ "$(docker inspect "$legacy_server_container_id" | jq -r '.[0].State.Running')" != true ]] ||
+    [[ "$(docker inspect "$legacy_dependency_container_id" | jq -r '.[0].State.Running')" != true ]] ||
     [[ "$(docker inspect "$legacy_auth_container_id" | jq -r '.[0].State.Running')" != true ]] ||
     [[ "$(docker inspect "$unknown_session_holder_id" | jq -r '.[0].State.Running')" != true ]]; then
     echo "candidate upgrade E2E: unknown holder caused a partial container deletion, stop, or recreation" >&2

@@ -15,18 +15,25 @@
 | global / role | 正确、错误、最大失败次数、timeout；role 已配置、首次认领、串角色 | 认证结果与 verifier/attempt/warp 语义不变；旁观客户端均无密码原文 | **用户实机确认通过**：未安装客户端 Mod 的实际联机验证通过；细分认证边界由 C#/Go 自动契约锁定 |
 | 普通消息 | 普通聊天、其它 Junimo 命令、Panel 全服喊话 | 仍正常广播；非 chat 网络消息不受影响 | **自动分类通过**；候选 fresh/restart 再验运行态 |
 | 补丁失败 | 目标缺失、签名变化、Harmony 未登记、旧 options 缺字段、显式 false | available 不得为 true；Panel 生命周期停服且只清理一次 | **本地通过**：gate/lifecycle 回归 |
-| Control 制品 | 两份 manifest、DLL、runtime stack version/hash/release note | 版本 `0.3.8` 与 SHA-256 精确一致；真实游戏程序集 0 errors | **本机通过**；标准 Linux `/game` 重编待候选 |
+| Control 制品 | 两份 manifest、DLL、runtime stack version/hash/release note | 版本 `0.3.8` 与 SHA-256 精确一致；真实游戏程序集 0 errors | **本机通过**：Windows 精确程序集与 Linux `/game` 标准 build 均为 0 errors；fresh Linux 摘要只记录，不跨路径强等于 embedded |
 | fresh / restart | 全新实例、Panel 重启、server 重启 | Control 0.3.8 加载并报告 available=true；普通聊天与认证均正常 | **待候选** |
-| 上一正式版升级 | `v0.6.0 → 候选` unhealthy rollback 后 healthy Web apply | 旧版恢复；新版本精确 DLL/stack；SQLite、存档、认证 store、非目标资源保持；升级后复验隐私 | **待候选** |
-| 最老受影响边界 | `v0.3.2 → 候选` | required runtime 自动升级，旧 options 不能误判 ready，长期数据保持 | **待候选矩阵选择** |
+| 上一正式版升级 | `v0.6.0 → 候选` unhealthy rollback 后 healthy Web apply | 旧版恢复；新版本精确 DLL/stack；SQLite、存档、认证 store、非目标资源保持；升级后复验隐私 | **首轮夹具失败**；修复后待新候选 |
+| 最老受影响边界 | `v0.3.2 → 候选` | required runtime 自动升级，旧 options 不能误判 ready，长期数据保持 | **矩阵已固定为 `v0.3.2`**；待新候选 |
 | 日志与支持包 | 使用唯一测试密码后检查 Control/Panel/server 日志、API、支持包 | 新增实现不记录或返回密码，detail 只含固定诊断 | **源码/契约通过，待真实运行复核** |
 | 隔离与清理 | C#/Go/真实客户端/升级夹具 | 精确 owner/container/network/volume/temp 清零，不使用生产数据/长期凭据，不 prune | **本地 Go/Shell 资源已清零；其余待候选** |
 
 ## 当前本地证据与未完成门禁
 
-- 已通过 C# contract、Windows 上对精确 Stardew `1.6.15.24356`/build `16826371` 的标准 Control build（0 errors、一个既有分析器版本 warning）、Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归，以及升级脚本 `bash -n`/ShellCheck。任务 Go 容器和两个 cache volume 已按 owner 核对并删除。
-- 本机 MCR `.NET 6 SDK` Linux 镜像拉取在最后一层持续无进展，已中止且未创建测试容器；因此标准 Linux `/game` Control 编译没有被本地结果替代或标为通过，必须在正式候选环境重新执行。用户已于 2026-08-28 明确确认未安装客户端 Mod 的实际联机验证通过；fresh/restart、远程制品、Junimo 长 integration、两条 Web 升级与 unhealthy 回滚仍由候选执行。
+- 已通过 C# contract、Windows 上对精确 Stardew `1.6.15.24356`/build `16826371` 的标准 Control build，以及 Linux 下以真实只读 `/game` 执行 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`；两次均为 0 errors、一个既有分析器版本 warning。Linux fresh 产物为 222720 bytes、SHA-256=`cf0c0ee06555e122915cbc790ff3043552cc9db24d15d382c8ac0c7c7f4c9b46`，只作为源码实编译证据；跨路径摘要按既有契约不与 223232 bytes 的 embedded DLL 强等同，也没有覆盖已实机验证的正式嵌入制品。另已通过 Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归，以及升级脚本 `bash -n`/ShellCheck。任务 Go/Control 容器和缓存卷均按 owner 精确清零。
+- MCR `.NET 6 SDK` 镜像的大层两次持续无进展后受控中止；随后改从微软官方 .NET 6 release metadata 取得 `6.0.428 linux-musl-x64` SDK URL 与 SHA-512，在任务专属 Alpine 3.20 容器中校验并解压，使用本机两份哈希一致、appmanifest build ID 均为 `16826371` 的真实游戏安装之一只读挂载 `/game`，完成上述标准 Linux 实编译。三个任务卷与所有 owner 容器已核对为零。用户也于 2026-08-28 明确确认未安装客户端 Mod 的实际联机验证通过；候选仍负责 immutable embedded DLL/manifest hash、fresh/restart、远程制品、Junimo 长 integration、两条 Web 升级与 unhealthy 回滚，但不得宣称远端 runner 重新编译了受版权保护游戏依赖的 Control 源码。
 - 功能提交 `f1af13610ef764544aeff121967ade99a43b4f96` 已成功推送到 `origin/main`；兼容矩阵 `33168728633` 与官网部署 `33168728660` 成功。push-origin 候选 `33168728635` 因当时尚未取得人工联机确认而在 selected code gates 阶段主动取消，尚未进入 candidate image build/push；下游自动 Tag `33168807451` 按设计 skipped，latest Release 仍为 `v0.6.0`。用户确认后以新的干净同步 `main` commit 手动 dispatch，成功后再回填不可变 workflow、digest、选择/跳过矩阵、耗时、故障与资源清理证据。
+
+## `v0.6.1` 首次远端候选失败与升级夹具修复
+
+- 人工验证记录提交 `0e1211ba8c05f1de1b7e8f6d741f8d5a6ee56b42` 推送成功后，手动候选 [`33171764289`](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33171764289) 解析为 `v0.6.1`、previous=`v0.6.0`。selected code gates 与 Windows wrapper 通过，候选镜像本体完成构建；升级 E2E 在启动上一正式版后的 legacy Auth 夹具断言退出 1。该 run 在 GHCR 登录、candidate push 和 proof 上传之前停止，artifact 为零；下游 Tag `33172703212` skipped，远端无 `v0.6.1` tag，latest 仍为 `v0.6.0`。
+- 根因属于夹具版本边界，不是 Panel 或 Control 运行失败：原断言来自 `v0.5.13 → v0.6.0` 首次迁移，假定 previous 不会移除 `server -> steam-auth`；但 `v0.6.0` 的 `Prepare` 已按设计先完成这项安全迁移。旧夹具又在 previous 启动之后才创建 unknown same-volume holder，因而 previous 有机会继续删除 official Auth/session 并写 runtime-scope marker，无法再构造候选所需的 fail-closed 起点。
+- 修复把任务专属 unknown holder 提前到 previous Panel 启动前，并在启动前冻结 server、无害依赖、official Auth、unknown holder 的容器身份、server `StartedAt`、Auth image/mount 与 session sentinel。previous 为 pre-`v0.6.0` 时必须精确保留旧 Compose；previous=`v0.6.0+` 时必须精确等于仅移除 Auth dependency 的 Compose；两侧都要求所有 holder/session 原样、marker 缺失。候选首次启动后继续验证 unknown holder 下零部分删除，移除已证明的任务 holder并重启后再要求 official Auth/session 收敛、marker 恰好一次且 server 身份不变。
+- `scripts/validate-release-matrix.sh` 现把 `v0.6.1` 硬编码为 previous=`v0.6.0`、oldest=`v0.3.2`，并新增正确矩阵、缺 oldest、错 previous、错 oldest 的功能回归，防止手动 dispatch 或自动 Tag 链接受不完整 proof。修复已通过 Git Bash 5.2.37 `bash -n`、矩阵功能测试、ShellCheck 0.10.0 与 `git diff --check`。下一候选必须新建 run，不能 rerun 仍绑定旧 commit 的失败 run；显式使用 version=`0.6.1`、previous=`0.6.0`、oldest=`0.3.2`，使同一不可变候选分别执行 comparator 的 post-`v0.6.0` 与 pre-`v0.6.0` 两侧，以及本版要求的最老受影响 Web 直升。
 
 # v0.6.0 SteamCMD 默认安装与邀请码 opt-in（2026-08-27，正式发布完成）
 

@@ -77,7 +77,7 @@
 - Windows 发布夹具不得把 Python `-c`、内联 JSON、正则、`find -printf`、`cut` 或其它含多层引号的逻辑继续嵌入 `pwsh → docker exec → sh -c`。优先直接传递单个命令及独立参数；确需多步逻辑时使用 `apply_patch` 创建任务专属脚本后执行，并先探测 BusyBox/GNU/OpenSSL 等实际能力，禁止靠猜测 flag。
 - PowerShell 通过 `ConvertFrom-Json` 或 `Invoke-RestMethod` 读取 ISO 8601 时间时，不得直接与原始字符串比较；先确认值类型，统一转为 UTC 并以不变区域格式规范化，再做精确断言。
 - PowerShell 的语句形式 `foreach (...) { ... }`、`if (...) { ... }` 不能直接接管道；需要继续传给 `Format-Table`、`ConvertTo-Json` 等命令时，先用 `@(...)` 收集输出，或改用 `ForEach-Object`。工具调用中的单行批处理默认使用 `ForEach-Object`，不要写语句式 `foreach` 后再接管道。
-- Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
+- Bash 脚本必须在 Git Bash、WSL2 或 Linux 容器中执行；发布一致性测试优先 Linux 容器。Windows 当前 PATH 的裸 `bash`/`Get-Command bash` 可能命中没有发行版的 WSL relay，必须从 `Get-Command git` 的真实安装根反解并验证 `bin\bash.exe --version`，或使用已验证的 Linux 容器；不得先执行 PATH `bash` 试错。脚本保持 LF，并运行 `bash -n`、功能测试和 ShellCheck。不要把 Windows `cmd`/PowerShell 的转义规则混入 Bash 命令。
 - Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。CI 使用 workflow 明确配置的 Python。
 - Docker 操作前先运行 `docker info`；Docker Desktop 未启动时先启动并轮询就绪。临时资源必须使用任务专属前缀/label，创建前查重，清理前核对归属；禁止 `docker system prune`、`docker volume prune` 或模糊批量删除。`golang:*-alpine` 中执行 Go 命令使用 `sh -c`，不要用可能重置 PATH 的 `sh -lc`。
 - 正式候选预取上一正式版和固定 fixture 镜像时，每个精确引用必须使用最多三次的有界 `docker pull`，单次 GHCR/Docker Hub token、TLS 或 EOF 失败不得直接判成镜像缺失；成功后必须 `docker image inspect` 再打包进入隔离 DinD。重试不关闭 TLS/认证、不改变引用，也不得重放 push、tag 或 workflow dispatch。

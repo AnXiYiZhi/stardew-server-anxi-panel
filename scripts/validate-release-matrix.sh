@@ -66,6 +66,12 @@ case "$version" in
       exit 1
     fi
     ;;
+  0.6.1)
+    if [[ "$previous_version" != "0.6.0" || "$oldest_version" != "0.3.2" ]]; then
+      echo "release matrix: 0.6.1 requires previous 0.6.0 and affected oldest 0.3.2" >&2
+      exit 1
+    fi
+    ;;
 esac
 
 IFS=. read -r _ _ version_patch <<<"$version"

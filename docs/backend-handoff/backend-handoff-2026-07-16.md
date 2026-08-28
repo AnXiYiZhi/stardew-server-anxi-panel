@@ -13,13 +13,14 @@
 
 ## 如何验证
 
-- C# contract 覆盖敏感/普通边界、Unicode 密码、畸形 packet fail closed 和 Reader position 恢复；本机精确 Stardew `1.6.15.24356`/build `16826371` 完成 Control build，0 errors。
+- C# contract 覆盖敏感/普通边界、Unicode 密码、畸形 packet fail closed 和 Reader position 恢复；本机精确 Stardew `1.6.15.24356`/build `16826371` 完成 Windows Control build，并以微软官方 SDK 6.0.428、同一真实游戏 build 的只读 `/game` 完成标准 Linux build，两次均为 0 errors。fresh Linux 产物只记录源码可编译证据，不跨路径覆盖或强等于 embedded DLL。
 - Linux `go test ./internal/games/stardew_junimo/...`、`go vet ./...`、`go build ./...` 通过；新 gate 覆盖 missing/false，生命周期验证失败后只调用一次 Compose stop，manifest/version/DLL hash 有命名契约；升级脚本通过 `bash -n` 与 ShellCheck。
 
 ## 下一步注意事项
 
 - 用户已于 2026-08-28 明确确认两个未安装客户端 Mod 的实际联机测试通过，并授权恢复远端镜像构建。发送者本地聊天框可能显示自己的输入，这是原版客户端本地回显边界，不是服务端转发失败；自动契约继续负责正确/错误 global、role、首次认领、失败次数和普通消息等细分边界。
-- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；正式候选还需标准 Linux `/game` Control 编译、fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后复验。首次候选 `33168728635` 已在镜像构建/推送前主动取消，自动 Tag `33168807451` skipped，未生成正式制品；下一次手动 dispatch 必须从最终同步的 `main` 重新全链执行。
+- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；标准 Linux `/game` Control 编译已经按上述真实 build 完成，正式候选还需 fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后复验。候选 runner 没有授权游戏 fixture，只验证 immutable embedded DLL/manifest 与运行契约，不能把 contract/stub 写成远端源码重编。首次候选 `33168728635` 已在镜像构建/推送前主动取消，自动 Tag `33168807451` skipped，未生成正式制品；下一次手动 dispatch 必须从最终同步的 `main` 重新全链执行。
+- 手动候选 `33171764289` 的代码门禁与镜像构建通过，但 previous=`v0.6.0` 已合法移除 legacy Auth dependency，触发只适用于 pre-`v0.6.0` 的旧夹具断言；run 在 candidate push/proof 前失败，Tag `33172703212` skipped。升级夹具现把 unknown same-volume holder 放到 previous 启动前，冻结并复核四个容器、server `StartedAt`、Auth image/mount、session 与 marker，再按 pre-`v0.6.0`/`v0.6.0+` 精确分流 Compose 预期；矩阵 validator 也把 `v0.6.1` 固定为 previous=`v0.6.0`、oldest=`v0.3.2`，并覆盖正确、缺失与错版输入。必须以新 commit 使用这组三项显式 dispatch，不能 rerun 旧 SHA 或省略最老边界。
 
 # V060-RELEASE-EVIDENCE-1 后端接手记录（2026-08-27，released in v0.6.0）
 

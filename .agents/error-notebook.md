@@ -229,6 +229,7 @@
 
 ## 2026-08-18：组合 `rg` 检索前不得凭通用目录结构猜路径
 
+- 最近复发/补充：2026-08-28 两次只读候选审查分别凭职责猜测不存在的 `.github/workflows/deploy-docs.yml`，以及在真实 csproj 路径中额外插入同名子目录后读取 `embedded/smapi-mod-src/StardewAnxiPanel.Control/StardewAnxiPanel.Control.csproj`；后者报 `os error 3`，两次调用均未修改仓库或远端。修正为先运行 `rg --files`，逐字使用返回的真实 workflow 和 `embedded/smapi-mod-src/StardewAnxiPanel.Control.csproj` 路径，并在读取前用 `Test-Path -LiteralPath` 复核；不能从 Actions 显示名或项目名推断文件名与中间目录。
 - 最近复发/补充：2026-08-27 回答官网更新文档是否同步时，虽然同一只读命令已由 `rg --files website` 列出真实 `website/docs/changelog.md`，后半仍把不存在的仓库根 `docs/changelog.md` 与已确认路径一起传给 `rg`，并用 stderr 重定向隐藏了路径错误，最终退出 2；仓库和官网运行态零修改。文件清单输出必须成为同一批次后续输入的唯一来源，已确认单文件检索不再追加“可能也有”的同名路径。
 - 最近复发/补充：2026-08-27 继续 `v0.6.0` 前端终审时，从旧记忆把真实的 `frontend/src/games/stardew/useStardewDashboardData.ts` 猜成不存在的 `frontend/src/games/stardew/hooks/useStardewDashboardData.ts`；同一组合命令的后续检索成功并使外层退出 0，首次路径错误只出现在输出中。调用只读、文件与运行态零修改。随后改为逐字使用 `git status`/`rg` 返回的真实路径并逐项检查 `$LASTEXITCODE`；即使接手摘要给出符号名，目录层级仍必须由当前文件清单确认，组合只读命令不得让后续成功掩盖前置失败。
 - 最近复发/补充：2026-08-27 v0.6.0 最终发布审计时，主流程再次把 Windows 不展开的 `backend/internal/web/*_test.go` 与 `stardew_junimo/*_test.go` 直接作为 `rg` 路径，得到 `os error 123`；只读发布子任务还把委派中的简称误当成真实 `scripts/release-candidate-upgrade.sh/.ps1`，而权威文件实际为 `scripts/release-candidate.sh/.ps1` 与 `scripts/tests/test_release_candidate_upgrade.sh`。命令均只读且零修改。后续检索已改为精确目录配合 `rg -g '*_test.go'`，发布脚本路径先从 `rg --files scripts` 复制；该模式已提升到 `AGENTS.md`，发送命令前仍须拒绝任何未经 Shell 展开的路径通配符或未经清单确认的文件名。
@@ -259,6 +260,7 @@
 
 ## 2026-08-18：Windows 宿主没有全局 ShellCheck 时先拆开 Bash 语法门禁
 
+- 最近复发/补充：2026-08-28 在 Git Bash 语法与发布矩阵功能测试已经成功后，复核命令仍把宿主 `Get-Command shellcheck` 缺失写成主动 `throw`，导致组合调用退出 1；此前成功结果有效，脚本和产品文件均未修改。随后读取本节既有规则，投影本机已有 `koalaman/shellcheck-alpine:v0.10.0` 的 `Entrypoint` 为空、`Cmd=/bin/sh`，再显式以 `shellcheck` 作为容器命令完成三份变更脚本检查。已知宿主缺少 ShellCheck 时应直接走已 inspect 的固定镜像，不能再次把宿主探针当成预期成功路径。
 - 最近复发/补充：2026-08-20 对 shebang 为 Bash 的候选脚本先用 Alpine `sh -n`，在既有数组语法处报 `unexpected "("`；这不是脚本回归。随后 `Get-Command bash` 再次命中已知不可用的 WSL 转发器。正确续接是先按 shebang 选择解析器，并直接使用已检查过的 `bash:5.2` 容器跑 `bash -n`，ShellCheck 则用已 inspect Entrypoint/Cmd 的固定镜像独立执行；不得把 POSIX `sh` 当作 Bash 语法门禁。
 - 最近复发/补充：同轮拆开 `bash -n` 后只相信 `Get-Command bash` 的命令名解析，实际命中 WSL 转发器；当前 WSL 没有 `/bin/bash`，以 `CreateProcessCommon: execvpe(/bin/bash) failed` 停止，脚本未执行或修改。Windows 必须确认解析结果是 Git 安装目录内真实 `bash.exe`，或先验证 WSL 发行版的 `/bin/bash` 存在；命令名可解析不等于目标 Bash 环境可运行。
 - 环境：PowerShell 7，本地验证 `scripts/tests/test_release_candidate_upgrade.sh`。
@@ -802,6 +804,7 @@
 
 ## 2026-08-14：把 Windows 的 WSL relay 当成可用 Bash
 
+- 最近复发/补充：2026-08-28 修复 `v0.6.1` 候选升级夹具后，仍先用 `Get-Command bash` 的 PATH 结果执行 `-n`，再次命中没有 `/bin/bash` 的 WSL relay 并在解析脚本前退出 1；产品文件和 Docker 均未被该命令修改。随后从本轮 `Get-Command git` 返回的真实 `D:\Code\CodeTools\Git\cmd\git.exe` 反解、验证并使用 `D:\Code\CodeTools\Git\bin\bash.exe`，语法检查通过。该环境已经多次复发，后续 Windows Bash 门禁必须从已验证的 Git 可执行路径反解精确 Bash，禁止再把裸 `bash`/PATH 探针作为首选执行入口。
 - 环境：Windows PowerShell 7、未安装可用 WSL Linux 发行版，准备校验三个新 Bash 发布脚本。
 - 错误模式：只凭 `Get-Command bash` 返回路径就直接执行 `bash -n`。
 - 症状 / 退出码：WSL relay 报 `execvpe(/bin/bash) failed: No such file or directory` 并退出 1；第一个脚本尚未由 Bash 解析，仓库和 Docker 均未变化。
@@ -2168,6 +2171,7 @@
 
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
+- 最近复发/补充：2026-08-28 两次只读候选审查先后把 PowerShell `$version`、反斜杠以及 GitHub `${{ }}` 表达式继续内联进嵌套 `pwsh` 的 `rg` 命令，分别在到达 `rg` 前被提前展开并产生 `os error`、或直接在 PowerShell 解析阶段失败；两次均未执行有效检索，文件与远端状态零修改。版本与 workflow 脚本改用多个不含插值字符的 `rg -F` 或直接读取已确认文件；需要保留 `$`、反斜杠、`${{ }}` 或复杂分组时写任务专属脚本，不能依赖多层字符串转义。
 - 最近复发/补充：2026-08-27 收口文档陈旧语句审计时，在 JavaScript → `pwsh -Command '& { ... }'` 的 `foreach`/`if` 组合末尾手工多写一个 `}`，PowerShell 在任何检索前报 `ParserError: Unexpected token '}'`；命令只读，文件零修改。随后删除组合投影，改为四条简单 `rg -F` 并逐条分类退出码。即使模式本身没有复杂引号，多层脚本块也不得靠目测压缩花括号；少量检索优先展开为直线命令，复杂循环写任务脚本并先做语法检查。
 - 最近复发/补充：2026-08-27 v0.6.0 最终编码/敏感信息只读审计再次把含单双引号与复杂字符类的正则内联进 JavaScript → PowerShell，解析或参数边界在扫描开始前失败，仓库与 Docker 零变化。纠正为多个显式非空的固定字符串匹配；确需复杂规则时写任务专属脚本并先做语法检查。编码审计和安全扫描同样不豁免本条多层引号规则。
 - 最近复发/补充：2026-08-27 修复 disabled Auth session holder 边界时，把 `func winDockerCreate|ContainerCreateBody|\"Labels\"|labels` 与另一个检索合进 JavaScript → PowerShell → `rg`；双引号边界再次截断分组，`rg` 报 `regex parse error: unclosed group`。命令只读，前一段有效输出不改变失败事实；后续改为分别使用不含引号的短固定模式或直接读取已由真实命中确认的文件。即使没有显式 `(?:...)`，多候选 `|` 与字面引号也不得跨多层 Shell 内联。
@@ -2713,6 +2717,7 @@
 
 ## 2026-08-06：宿主 dotnet 存在但没有 SDK
 
+- 最近复发/补充：2026-08-28 为补齐 `v0.6.1` Control Linux `/game` 实编译，先凭 SDK 版本猜测不存在的 MCR tag `mcr.microsoft.com/dotnet/sdk:6.0.428`，拉取在下载层前返回 `not found`；从微软官方 Registry tag 列表确认真实 tag 为 `6.0.428-1-bookworm-slim` 后，同一官方镜像的大层两次持续无进展并受控中止，已完成层保留但没有可运行镜像。随后从微软官方 .NET 6 release metadata 取得 `linux-musl-x64` SDK URL 与 SHA-512，在任务专属 Alpine 容器中下载、校验并解压 6.0.428，最终以真实只读 build `16826371` GamePath 执行标准命令成功（0 errors），任务容器与三个卷精确清零。固定 SDK 补丁号时必须先查官方 tag/metadata；MCR 大层阻塞可改用同一官方 SDK tarball并验证官方 SHA-512，不能猜 tag、关闭 TLS 或用 stub 编译降级。
 - 最近复发/补充：2026-08-28 登录聊天隐私契约测试再次直接执行宿主 `dotnet run`，当前入口仍只有 runtime，以 `No .NET SDKs were found` 和进程退出 `-2147450735` 结束；项目未加载，源码与制品未被该命令修改。随后按既有规则启动 Docker Desktop，并改用任务专属 .NET 6 SDK Linux 容器。该环境已被多次证明，Control/C# 门禁不得再先试宿主 `dotnet run/build`。
 - 最近复发/补充：2026-08-23 为只读反编译 Stardew 1.6.15 山洞选择逻辑检查 `ilspycmd` 后，又直接执行宿主 `dotnet tool list --global`；当前宿主仍只有 runtime，命令以 `No .NET SDKs were found` 退出，未安装工具、未修改游戏或产品文件。后续直接复用了 SMAPI 已安装的 `Mono.Cecil.dll` 读取本机精确游戏程序集，成功取得 `caveChoice` 常量与原版选择方法 IL；只读程序集分析也不得把已知无 SDK 的宿主 `dotnet tool` 当作工具发现入口。
 - 最近复发/补充：2026-08-16 主机缺床与 VNC 状态机契约首次验证又先执行宿主 `dotnet --version`，入口仍只有 runtime，立即以 `No .NET SDKs were found` 结束；契约项目未加载、源码和 Docker 资源未改变。后续本任务直接使用 `mcr.microsoft.com/dotnet/sdk:6.0` 容器，不再重复宿主 SDK 探针。
@@ -2800,6 +2805,7 @@
 
 ## 2026-08-06：把不同构建路径下的 .NET DLL 当成字节可复现
 
+- 最近复发/补充：2026-08-28 `v0.6.1` Linux Control 真实编译已 0 errors 后，为补充确认新 DLL 包含登录隐私补丁，直接对托管程序集执行 BusyBox `grep -a` 搜索类型名与方法名；.NET metadata 字符串并不保证以该字节形态出现，诊断退出 1，但编译产物、源码和正式嵌入 DLL均未修改。真实源码是否参与编译以未定义 `SAP_CI_BUILD` 的标准项目构建、0 errors 和 csproj 输入为证；若还需程序集成员审计，应使用经验证的 metadata/reflection 工具，不能把二进制原始文本无命中解释成符号缺失。
 - 最近复发/补充：2026-08-14 同一 v0.4.15 全量门禁再次把干净 `/work/smapi-mod-src` 的成功 SDK 6 产物 `e19f61...` 强制等于 embedded/manifest `a62e52...`，导致 0 errors 编译后脚本主动退出 1。错题本和 AGENTS 已明确“标准编译成功，不做跨路径 SHA 等同”；后续只断言 fresh build 文件非空并记录摘要，权威哈希只比较 embedded 与 `controlMod.dllSha256`，真实行为沿用候选 E2E。
 - 最近复发/补充：2026-08-13 `v0.4.15` 发布门禁把 `/work` 新鲜构建的 Control 0.3.2 摘要 `67393f...` 与先前在另一项目路径构建并已真机验证的嵌入摘要 `a62e52...` 直接比较，误报源码/二进制漂移；第二次同路径构建仍稳定为 `67393f...`，说明本轮编译本身可重复，但不能跨路径外推。随后恢复既有三段权威：嵌入 DLL 与 runtime manifest 精确相等、新鲜源码以标准命令 0 error 编译、嵌入 DLL 的目标元数据与真实运行行为单独验证；未用不同路径产物覆盖已验证 DLL。正式全量门禁稍后又分别用 SDK 8/SDK 6 的 `/src` 构建摘要 `1019d6...`/`91d9fc...` 与 embedded 直接比较并再次虚假失败；源码两次均 0 error，SDK 6 仅既有 analyzer/compiler warning，embedded 与 manifest 仍精确为 `a62e52...`。后续本轮不再执行 fresh-DLL 对 embedded 的跨路径摘要断言，只运行上述三段权威。
 - 环境：同一 Control C# 源码、`mcr.microsoft.com/dotnet/sdk:6.0`、真实 game-data，分别以 `/src/smapi-mod-src` 与 `/src` 作为项目路径构建。
