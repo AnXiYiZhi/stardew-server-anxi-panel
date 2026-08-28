@@ -18,8 +18,8 @@
 
 ## 下一步注意事项
 
-- 必须用两个未安装客户端 Mod 的玩家做真实旁观验收：发送者正确/错误 global、正确/错误/首次认领 role 时，旁观者均看不到原文；普通聊天与其它命令仍能广播。发送者本地聊天框可能显示自己的输入，这是原版客户端本地回显边界，不是服务端转发失败。
-- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；正式候选还需标准 Linux `/game` Control 编译、fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后多人复验。当前没有发布或推送正式制品。
+- 用户已于 2026-08-28 明确确认两个未安装客户端 Mod 的实际联机测试通过，并授权恢复远端镜像构建。发送者本地聊天框可能显示自己的输入，这是原版客户端本地回显边界，不是服务端转发失败；自动契约继续负责正确/错误 global、role、首次认领、失败次数和普通消息等细分边界。
+- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；正式候选还需标准 Linux `/game` Control 编译、fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后复验。首次候选 `33168728635` 已在镜像构建/推送前主动取消，自动 Tag `33168807451` skipped，未生成正式制品；下一次手动 dispatch 必须从最终同步的 `main` 重新全链执行。
 
 # V060-RELEASE-EVIDENCE-1 后端接手记录（2026-08-27，released in v0.6.0）
 

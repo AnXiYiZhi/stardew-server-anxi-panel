@@ -9,7 +9,7 @@
 
 - 没有新增客户端 Mod、遮罩输入框或 HTTP API。玩家继续在游戏内输入 `!login 密码`；发送者自己的原版客户端可能在本地聊天框回显输入，客户端到服务器的数据也仍含密码。本契约只保证服务端不把登录凭据消息转发给其它玩家，不是端到端加密。
 - Control `0.3.8` 的 `options.json/status.json` 新增 `loginChatPrivacyPatchAvailable/detail`，Panel gate 只接受当前 Control 版本且 available 明确为 true；旧 Control 缺字段也会 fail closed。普通聊天、Panel 全服喊话和非登录命令的数据形态与行为不变。
-- 当前自动验证覆盖分类边界、packet parser/position、补丁状态门禁、生命周期停服、manifest/DLL hash、Linux Junimo 全包与脚本静态门禁；真实双原版客户端旁观、fresh/restart 和 Web 升级/回滚仍待候选执行。旧实例必须升级运行栈并重启到 Control `0.3.8` 后才具备此保护。
+- 当前自动验证覆盖分类边界、packet parser/position、补丁状态门禁、生命周期停服、manifest/DLL hash、Linux Junimo 全包与脚本静态门禁；用户已于 2026-08-28 确认未安装客户端 Mod 的实际联机验证通过。fresh/restart 和 Web 升级/回滚仍由正式候选执行；旧实例必须升级运行栈并重启到 Control `0.3.8` 后才具备此保护。
 
 # v0.6.0 跨端正式发布证据（2026-08-27，released）
 

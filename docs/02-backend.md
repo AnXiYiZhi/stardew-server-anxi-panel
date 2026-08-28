@@ -6,7 +6,7 @@
 - `PanelOptions` 与 `RuntimeStatus` 新增 `loginChatPrivacyPatchAvailable/detail`；Panel 的 required Control gate 使用 nullable bool 读取 options。字段缺失或 false 均返回 `control_runtime_login_chat_privacy_patch_unavailable`，生命周期停止服务器，旧 DLL 或反射/Harmony 失配不能静默冒充已启用保护。
 - 不要求玩家安装客户端 Mod，也没有新增输入框或 HTTP DTO。原版客户端仍发送 `!login 密码` 给服务器，发送者自己的聊天框可能保留本地回显；本功能只保证服务端不再把该认证消息转发给其它玩家，不应描述为输入遮罩或端到端加密。
 - 嵌入身份已同步为 stack `junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.8`，两份 Control manifest 均为 `0.3.8`，嵌入 DLL SHA-256=`dda16954bf3188222b4c8cdbf8d95f75dd2550748a40ec227a33706cf274d3cf`。主要文件为 `LoginChatPrivacyPatch.cs`、`LoginChatPrivacyPolicy.cs`、`ModEntry.cs`、`ControlContract.cs`、Control contract tests、`control_runtime_gate*.go`、运行栈清单和升级脚本夹具；SQLite、Compose、存档与角色 verifier 格式不变。
-- 本地验证已通过 C# 纯契约测试、精确本机游戏程序集 Control build（0 errors）、Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归以及升级脚本 `bash -n`/ShellCheck。两个未装 Mod 的真实客户端旁观验收、标准 Linux `/game` Control 重编、fresh/restart、旧版 Web 升级、unhealthy 回滚和正式候选仍待发布矩阵执行，当前未创建 tag、Release、latest 或正式镜像。
+- 本地验证已通过 C# 纯契约测试、精确本机游戏程序集 Control build（0 errors）、Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归以及升级脚本 `bash -n`/ShellCheck。用户已于 2026-08-28 明确确认未安装客户端 Mod 的实际联机测试通过，并授权恢复远端镜像构建；标准 Linux `/game` Control 重编、fresh/restart、旧版 Web 升级和 unhealthy 回滚仍由正式候选完成。首次 push-origin 候选 `33168728635` 在镜像构建/推送前因等待该人工确认而主动取消，未创建正式制品。
 
 # v0.6.0 后端正式发布证据（2026-08-27，released）
 

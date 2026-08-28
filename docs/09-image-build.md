@@ -12,8 +12,8 @@
 | 维度 | 必测场景 | 通过标准 | 当前状态 |
 | --- | --- | --- | --- |
 | 分类与 packet | `!login`、大小写、前导/分隔空白、Unicode；畸形 packet；`!loginfoo`/`!!login`/普通聊天 | 只拦精确敏感命令；Reader 位置恢复；异常 fail closed；日志无原文 | **本地通过**：C# contract |
-| global / role | 正确、错误、最大失败次数、timeout；role 已配置、首次认领、串角色 | 认证结果与 verifier/attempt/warp 语义不变；旁观客户端均无密码原文 | **待真实双客户端** |
-| 普通消息 | 普通聊天、其它 Junimo 命令、Panel 全服喊话 | 仍正常广播；非 chat 网络消息不受影响 | **自动分类通过，待真实客户端** |
+| global / role | 正确、错误、最大失败次数、timeout；role 已配置、首次认领、串角色 | 认证结果与 verifier/attempt/warp 语义不变；旁观客户端均无密码原文 | **用户实机确认通过**：未安装客户端 Mod 的实际联机验证通过；细分认证边界由 C#/Go 自动契约锁定 |
+| 普通消息 | 普通聊天、其它 Junimo 命令、Panel 全服喊话 | 仍正常广播；非 chat 网络消息不受影响 | **自动分类通过**；候选 fresh/restart 再验运行态 |
 | 补丁失败 | 目标缺失、签名变化、Harmony 未登记、旧 options 缺字段、显式 false | available 不得为 true；Panel 生命周期停服且只清理一次 | **本地通过**：gate/lifecycle 回归 |
 | Control 制品 | 两份 manifest、DLL、runtime stack version/hash/release note | 版本 `0.3.8` 与 SHA-256 精确一致；真实游戏程序集 0 errors | **本机通过**；标准 Linux `/game` 重编待候选 |
 | fresh / restart | 全新实例、Panel 重启、server 重启 | Control 0.3.8 加载并报告 available=true；普通聊天与认证均正常 | **待候选** |
@@ -25,8 +25,8 @@
 ## 当前本地证据与未完成门禁
 
 - 已通过 C# contract、Windows 上对精确 Stardew `1.6.15.24356`/build `16826371` 的标准 Control build（0 errors、一个既有分析器版本 warning）、Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归，以及升级脚本 `bash -n`/ShellCheck。任务 Go 容器和两个 cache volume 已按 owner 核对并删除。
-- 本机 MCR `.NET 6 SDK` Linux 镜像拉取在最后一层持续无进展，已中止且未创建测试容器；因此标准 Linux `/game` Control 编译没有被本地结果替代或标为通过，必须在正式候选环境重新执行。真实双原版客户端、fresh/restart、远程制品、Junimo 长 integration、两条 Web 升级与 unhealthy 回滚同样尚未执行。
-- 当前只修改本地 `main` 工作树，没有创建/移动 tag，没有 push、Release、`latest`、候选或正式镜像。发布前必须从干净、与 `origin/main` 同步的最终 commit 重新生成不可变候选并回填 workflow、digest、选择/跳过矩阵、耗时、故障与资源清理证据。
+- 本机 MCR `.NET 6 SDK` Linux 镜像拉取在最后一层持续无进展，已中止且未创建测试容器；因此标准 Linux `/game` Control 编译没有被本地结果替代或标为通过，必须在正式候选环境重新执行。用户已于 2026-08-28 明确确认未安装客户端 Mod 的实际联机验证通过；fresh/restart、远程制品、Junimo 长 integration、两条 Web 升级与 unhealthy 回滚仍由候选执行。
+- 功能提交 `f1af13610ef764544aeff121967ade99a43b4f96` 已成功推送到 `origin/main`；兼容矩阵 `33168728633` 与官网部署 `33168728660` 成功。push-origin 候选 `33168728635` 因当时尚未取得人工联机确认而在 selected code gates 阶段主动取消，尚未进入 candidate image build/push；下游自动 Tag `33168807451` 按设计 skipped，latest Release 仍为 `v0.6.0`。用户确认后以新的干净同步 `main` commit 手动 dispatch，成功后再回填不可变 workflow、digest、选择/跳过矩阵、耗时、故障与资源清理证据。
 
 # v0.6.0 SteamCMD 默认安装与邀请码 opt-in（2026-08-27，正式发布完成）
 
