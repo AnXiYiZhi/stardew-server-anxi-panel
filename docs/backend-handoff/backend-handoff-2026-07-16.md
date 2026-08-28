@@ -1,4 +1,4 @@
-# LOGIN-CHAT-PRIVACY-1 后端接手记录（2026-08-28，未发布）
+# LOGIN-CHAT-PRIVACY-1 后端接手记录（2026-08-28，released in v0.6.1）
 
 ## 改了什么
 
@@ -16,11 +16,14 @@
 - C# contract 覆盖敏感/普通边界、Unicode 密码、畸形 packet fail closed 和 Reader position 恢复；本机精确 Stardew `1.6.15.24356`/build `16826371` 完成 Windows Control build，并以微软官方 SDK 6.0.428、同一真实游戏 build 的只读 `/game` 完成标准 Linux build，两次均为 0 errors。fresh Linux 产物只记录源码可编译证据，不跨路径覆盖或强等于 embedded DLL。
 - Linux `go test ./internal/games/stardew_junimo/...`、`go vet ./...`、`go build ./...` 通过；新 gate 覆盖 missing/false，生命周期验证失败后只调用一次 Compose stop，manifest/version/DLL hash 有命名契约；升级脚本通过 `bash -n` 与 ShellCheck。
 
-## 下一步注意事项
+## 正式发布证据与后续注意事项
 
-- 用户已于 2026-08-28 明确确认两个未安装客户端 Mod 的实际联机测试通过，并授权恢复远端镜像构建。发送者本地聊天框可能显示自己的输入，这是原版客户端本地回显边界，不是服务端转发失败；自动契约继续负责正确/错误 global、role、首次认领、失败次数和普通消息等细分边界。
-- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；标准 Linux `/game` Control 编译已经按上述真实 build 完成，正式候选还需 fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后复验。候选 runner 没有授权游戏 fixture，只验证 immutable embedded DLL/manifest 与运行契约，不能把 contract/stub 写成远端源码重编。首次候选 `33168728635` 已在镜像构建/推送前主动取消，自动 Tag `33168807451` skipped，未生成正式制品；下一次手动 dispatch 必须从最终同步的 `main` 重新全链执行。
-- 手动候选 `33171764289` 的代码门禁与镜像构建通过，但 previous=`v0.6.0` 已合法移除 legacy Auth dependency，触发只适用于 pre-`v0.6.0` 的旧夹具断言；run 在 candidate push/proof 前失败，Tag `33172703212` skipped。升级夹具现把 unknown same-volume holder 放到 previous 启动前，冻结并复核四个容器、server `StartedAt`、Auth image/mount、session 与 marker，再按 pre-`v0.6.0`/`v0.6.0+` 精确分流 Compose 预期；矩阵 validator 也把 `v0.6.1` 固定为 previous=`v0.6.0`、oldest=`v0.3.2`，并覆盖正确、缺失与错版输入。必须以新 commit 使用这组三项显式 dispatch，不能 rerun 旧 SHA 或省略最老边界。
+- 用户已于 2026-08-28 明确确认两个未安装客户端 Mod 的实际联机测试通过。发送者本地聊天框可能显示自己的输入，这是原版客户端本地回显边界，不是服务端转发失败；自动契约继续负责正确/错误 global、role、首次认领、失败次数和普通消息等细分边界。
+- 最终 `v0.6.1@5c0135e6bdb5b8353d049030da3c3c06a6e243a0` 已正式发布。不可变候选 [`33177568325`](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33177568325)（`29m25s`）完成 full code gates、Panel fresh/restart、`v0.6.0` unhealthy/healthy Web 升级、`v0.3.2` 最老边界直升及 immutable DLL/manifest/hash 与 required gate 契约复验；真实聊天仍以用户实机为证。三项条件门禁全部 selected、conditional skipped=无；proof artifact=`release-candidate-0.6.1-5c0135e6bdb5`（ID `9689244375`）。自动 annotated tag workflow=`33179940424`（`19s`），正式提升=`33179959858`（`1m26s`），三仓 `0.6.1/latest` 六引用统一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`，promotion 未 rebuild。
+- 两条 upgrade fixture 的 owner/container/network/volume 强制清零门禁通过；外层 candidate/fresh/promotion smoke 只有精确名称的 best-effort EXIT trap，并由 hosted runner 终止回收，没有独立 post-count。整条发布链未使用生产数据、长期凭据或 prune。
+- 发布后证据审计无法证明用户双客户端实机是在 Web 升级得到的新 Panel 上执行；candidate 证明了同一 immutable Control 制品、required gate 和升级边界，但 fixture 没有发送真实聊天。不要把两段证据合并成“升级后真实隐私复验”；若用户不能确认本次实测上下文，后续版本须将升级后真实 `!login` fan-out 绑定到同一条可追溯验收。
+- 首次候选 `33168728635` 因等待人工确认在镜像构建/推送前主动取消；`33171764289` 则在 candidate push/proof 前被错误套用到 `v0.6.0` 的 legacy Auth 夹具安全拦截。修复后的正式候选把 unknown holder 放到 previous 启动前，并同时证明 post-`v0.6.0` 与 pre-`v0.6.0` 两侧边界；这两次失败 run 均没有成为正式制品。
+- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；候选 runner 没有授权游戏 fixture，只验证 immutable embedded DLL/manifest 与运行契约，不能把 contract/stub 写成远端源码重编。后续修改 Control/运行栈身份或该 required gate 时，仍须重选 fresh/restart、上一正式版 unhealthy/healthy 与受影响最老支持边界。
 
 # V060-RELEASE-EVIDENCE-1 后端接手记录（2026-08-27，released in v0.6.0）
 

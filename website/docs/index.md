@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.6.0
+release: v0.6.1
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.6.0。全新实例默认使用 SteamCMD 安装，局域网/IP 可直接联机；Steam 邀请码改为管理员按需启用。
+    details: 当前最新 v0.6.1。玩家无需安装客户端 Mod，服务端会阻止精确 !login 登录凭据向其他玩家广播。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.6.0</strong>
-    <p>SteamCMD 成为默认安装主链；局域网/IP 直连始终可用，Steam 邀请码需要时再单独登录启用。</p>
+    <strong>v0.6.1</strong>
+    <p>统一密码、角色独立密码与首次认领继续沿用原登录流程，服务端不再把对应 !login 消息转发给其他玩家。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

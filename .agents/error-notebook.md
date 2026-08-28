@@ -1919,6 +1919,7 @@
 
 ## 2026-07-31：PowerShell 插值变量后直接连接连字符
 
+- 最近复发/补充：2026-08-28 `v0.6.1` 正式提升成功后独立核对三仓六引用时，错误分支又写成 `"Digest mismatch for $ref: $digest"`，PowerShell 在任何 registry 请求前报 `ParserError`；发布、镜像和远端引用均未被该命令修改。修正为 `"Digest mismatch for ${ref}: $digest"` 后再执行只读核验。该错误已与 2026-08-15 的 registry digest 场景完全重复，今后 PowerShell 双引号中的插值变量一律使用 `${name}`，即使当前看似没有紧邻特殊字符也不省略边界。
 - 最近复发/补充：2026-08-27 本地镜像只读投影的异常文本再次写成 `"docker image inspect failed for $ref: $code"`，PowerShell 在执行任何 Docker inspect 前把 `$ref:` 解析为作用域变量并报 `ParserError`；零资源变化。改为 `"docker image inspect failed for ${ref}: $code"` 后执行；错误分支字符串也必须与正常命令参数一样接受插值边界审查。
 - 最近复发/补充：2026-08-18 生产 SteamCMD 只读诊断的 ShellStream 包装器在双引号中写了 `"$end:%s"`，PowerShell 在建立 SSH 会话前即因把冒号解释为变量作用域分隔符而报 `ParserError`，远端零执行。改为任务专属脚本并统一使用 `"${end}:%s"`；远端 marker、registry ref 和错误前缀等变量后接冒号时都必须显式包围变量名。
 - 最近复发/补充：2026-08-15 `v0.4.17` 发布后批量核验 registry digest 时，在错误文本中写成 `"digest mismatch for $ref: $digest"`；PowerShell 把变量后的冒号按作用域变量语法解析，在任何 registry 请求前报 `ParserError`。修正为 `"digest mismatch for ${ref}: $digest"` 后再执行核验；变量后接冒号同样必须显式使用 `${name}` 边界。
@@ -2033,6 +2034,7 @@
 
 ## 2026-07-28：PowerShell `foreach` 语句直接接管道
 
+- 最近复发/补充：2026-08-28 `v0.6.1` 发布后文档范围只读审查又把语句式 `foreach (...) { ... }` 直接接到 `Format-Table`；PowerShell 在任何 Git 或文件读取前报 ParserError，仓库与远端零变化。纠正为先用 `@(...)` 收集结果再单独格式化；该规则已在 `AGENTS.md`，子任务的只读审查同样必须在发送前机械检查 `} |`。
 - 最近复发/补充：2026-08-27 v0.6.0 最终编码只读审计子任务又把语句式 `foreach` 直接接管道；同日发布后核对本机预览容器/监听进程时再次把生成对象的 `foreach` 直接接到 `Format-Table`。两次都在首个文件、Docker 或进程探针前解析失败，仓库与资源零变化。纠正为先用 `$rows = @(foreach (...) { ... })` 收集，再单独格式化；该规则已提升到 `AGENTS.md`，任何只读审计也必须在发送前机械检查 `} |`，不得为了压缩命令省略中间集合。
 - 最近复发/补充：2026-08-27 根代理预检 Linux 门禁基础镜像时，再次把生成对象的语句式 `foreach` 直接接到 `ConvertTo-Json`；PowerShell 在任何 `docker image inspect` 前报相同 ParserError，镜像与资源未变化。纠正为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json`；余下正式发布命令发送前必须机械检索单行中的 `} |`，不再临时手写此形态。
 - 最近复发/补充：2026-08-27 v0.6.0 文档同步子任务连续两次把语句式 `foreach { ... }` 直接接管道；同日主任务核对本地预览端口与进程归属时又把嵌套 `foreach` 直接接到 `ConvertTo-Json`。三次都在解析阶段报 `An empty pipe element is not allowed`，尚未读写文档、探测进程或修改资源。均已停止该形态并统一改为 `$rows = @(foreach (...) { ... }); $rows | ConvertTo-Json`；本规则早已提升到 `AGENTS.md`，主代理与子任务的只读审计也必须机械检查 `} |`，不得因“只是读取”而例外。
@@ -2171,6 +2173,7 @@
 
 ## 2026-07-29：嵌套 PowerShell 脚本中的正则引号字符类破坏解析
 
+- 最近复发/补充：2026-08-28 发布证据只读审计在嵌套 PowerShell 的单引号边界内拼接 GitHub API endpoint 与 `${sha}`，`gh api` 最终收到两个位置参数并报 `accepts 1 arg(s), received 2`；该命令只读，远端与工作区零修改。纠正为先用不变格式运算符构造单一 `$endpoint` 字符串，再执行 `gh api $endpoint`。带 query string、变量或 `&` 的 API 路径必须先形成一个已检查的参数，不能在多层引号中边拼接边调用。
 - 最近复发/补充：2026-08-28 两次只读候选审查先后把 PowerShell `$version`、反斜杠以及 GitHub `${{ }}` 表达式继续内联进嵌套 `pwsh` 的 `rg` 命令，分别在到达 `rg` 前被提前展开并产生 `os error`、或直接在 PowerShell 解析阶段失败；两次均未执行有效检索，文件与远端状态零修改。版本与 workflow 脚本改用多个不含插值字符的 `rg -F` 或直接读取已确认文件；需要保留 `$`、反斜杠、`${{ }}` 或复杂分组时写任务专属脚本，不能依赖多层字符串转义。
 - 最近复发/补充：2026-08-27 收口文档陈旧语句审计时，在 JavaScript → `pwsh -Command '& { ... }'` 的 `foreach`/`if` 组合末尾手工多写一个 `}`，PowerShell 在任何检索前报 `ParserError: Unexpected token '}'`；命令只读，文件零修改。随后删除组合投影，改为四条简单 `rg -F` 并逐条分类退出码。即使模式本身没有复杂引号，多层脚本块也不得靠目测压缩花括号；少量检索优先展开为直线命令，复杂循环写任务脚本并先做语法检查。
 - 最近复发/补充：2026-08-27 v0.6.0 最终编码/敏感信息只读审计再次把含单双引号与复杂字符类的正则内联进 JavaScript → PowerShell，解析或参数边界在扫描开始前失败，仓库与 Docker 零变化。纠正为多个显式非空的固定字符串匹配；确需复杂规则时写任务专属脚本并先做语法检查。编码审计和安全扫描同样不豁免本条多层引号规则。

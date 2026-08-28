@@ -6,7 +6,15 @@ Anxi Panel 的正式版本号对应 Docker Hub 上发布的镜像 tag。以下�
 每个版本都对应一个 GitHub Release，可以在 [GitHub Releases](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases) 查看每版的完整变更说明。
 :::
 
-## v0.6.0（最新版本）
+## v0.6.1（最新版本）
+
+**玩家登录密码不再广播给全服**：玩家仍可在原版聊天框输入 `!login 密码`，不需要安装客户端 Mod。Junimo 完成统一密码、角色独立密码或首次角色认领校验后，Control 会在服务器转发阶段丢弃这条登录消息，其它在线玩家不会再看到命令和密码；普通聊天、其它命令及原有登录限制保持不变。
+
+**保护状态会主动自检**：Control 升级到 `0.3.8`，启动时检查补丁目标和安装状态。旧 Control、字段缺失或补丁加载失败时，Panel 会停止服务器并提示运行组件保护不可用，不会在未知状态下继续开放联机。发送者自己的原版客户端仍可能在本地聊天框显示刚输入的内容，因此本功能解决的是“服务端不再向其他玩家广播”，并不等同于密码输入框遮罩或端到端加密。
+
+本版候选完成全新 Panel 安装、Panel 重启、`v0.6.0 → v0.6.1` 异常目标自动回滚与健康 Web 升级，并执行 `v0.3.2 → v0.6.1` 最老受影响边界直升；真实 `!login` 不广播由未安装客户端 Mod 的实际联机验证确认。Docker Hub、阿里云 ACR、GHCR 的 `0.6.1/latest`、正式健康/版本冒烟与 [GitHub Release v0.6.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.1) 均绑定同一不可变镜像。
+
+## v0.6.0
 
 **全新实例默认走 SteamCMD 安装**：首次安装直接用你填写的 Steam 账号完成 Stardew Valley（App 413150）下载，再以匿名会话取得 Steamworks SDK（App 1007），随后安装 SMAPI、同步 Junimo/Control 支持文件并做最终校验。安装完成即可启动并使用局域网/IP 直连；默认流程不会拉取、创建、启动或探测 `steam-auth`，它的缺失也不会影响安装、存档、Mod、备份与日常启动。SteamCMD 只在安装或修复时使用，不会进入日常运行组件升级。
 

@@ -1,4 +1,4 @@
-# LOGIN-CHAT-PRIVACY-1 跨端契约（2026-08-28，未发布）
+# LOGIN-CHAT-PRIVACY-1 跨端契约（2026-08-28，released in v0.6.1）
 
 | 场景 | 客户端 → 服务器 | Junimo / Control | 其它客户端 |
 | --- | --- | --- | --- |
@@ -9,7 +9,8 @@
 
 - 没有新增客户端 Mod、遮罩输入框或 HTTP API。玩家继续在游戏内输入 `!login 密码`；发送者自己的原版客户端可能在本地聊天框回显输入，客户端到服务器的数据也仍含密码。本契约只保证服务端不把登录凭据消息转发给其它玩家，不是端到端加密。
 - Control `0.3.8` 的 `options.json/status.json` 新增 `loginChatPrivacyPatchAvailable/detail`，Panel gate 只接受当前 Control 版本且 available 明确为 true；旧 Control 缺字段也会 fail closed。普通聊天、Panel 全服喊话和非登录命令的数据形态与行为不变。
-- 当前自动验证覆盖分类边界、packet parser/position、补丁状态门禁、生命周期停服、manifest/DLL hash、Linux Junimo 全包与脚本静态门禁；用户已于 2026-08-28 确认未安装客户端 Mod 的实际联机验证通过。fresh/restart 和 Web 升级/回滚仍由正式候选执行；旧实例必须升级运行栈并重启到 Control `0.3.8` 后才具备此保护。
+- 自动验证覆盖分类边界、packet parser/position、补丁状态门禁、生命周期停服、manifest/DLL hash、Linux Junimo 全包与脚本静态门禁；用户已于 2026-08-28 确认未安装客户端 Mod 的实际联机验证通过。正式候选 `33177568325` 完成 Panel fresh/restart、`v0.6.0` unhealthy/healthy Web 升级、`v0.3.2` 最老边界直升，以及 immutable DLL/manifest/hash 与 required gate 契约复验；候选 fixture 没有发送真实 `!login`，不替代用户实机证据。旧实例必须升级运行栈并重启到 Control `0.3.8` 后才具备此保护。
+- 正式身份为 `v0.6.1@5c0135e6bdb5b8353d049030da3c3c06a6e243a0`；annotated tag workflow=`33179940424`、promotion=`33179959858`，三仓 `0.6.1/latest` 六引用统一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`。完整 proof、耗时、矩阵和清理证据见 `docs/09-image-build.md`。
 
 # v0.6.0 跨端正式发布证据（2026-08-27，released）
 

@@ -1,4 +1,4 @@
-# LOGIN-CHAT-PRIVACY-1 发布前清单与专项矩阵（2026-08-28，未发布）
+# v0.6.1 `!login` 凭据服务端转发抑制（2026-08-28，正式发布完成）
 
 ## 变更清单、受影响链路与发布边界
 
@@ -13,20 +13,30 @@
 | --- | --- | --- | --- |
 | 分类与 packet | `!login`、大小写、前导/分隔空白、Unicode；畸形 packet；`!loginfoo`/`!!login`/普通聊天 | 只拦精确敏感命令；Reader 位置恢复；异常 fail closed；日志无原文 | **本地通过**：C# contract |
 | global / role | 正确、错误、最大失败次数、timeout；role 已配置、首次认领、串角色 | 认证结果与 verifier/attempt/warp 语义不变；旁观客户端均无密码原文 | **用户实机确认通过**：未安装客户端 Mod 的实际联机验证通过；细分认证边界由 C#/Go 自动契约锁定 |
-| 普通消息 | 普通聊天、其它 Junimo 命令、Panel 全服喊话 | 仍正常广播；非 chat 网络消息不受影响 | **自动分类通过**；候选 fresh/restart 再验运行态 |
+| 普通消息 | 普通聊天、其它 Junimo 命令、Panel 全服喊话 | 仍正常广播；非 chat 网络消息不受影响 | **通过**：自动分类与用户实机验证；候选没有把 Panel fresh/restart 冒充真实聊天复验 |
 | 补丁失败 | 目标缺失、签名变化、Harmony 未登记、旧 options 缺字段、显式 false | available 不得为 true；Panel 生命周期停服且只清理一次 | **本地通过**：gate/lifecycle 回归 |
 | Control 制品 | 两份 manifest、DLL、runtime stack version/hash/release note | 版本 `0.3.8` 与 SHA-256 精确一致；真实游戏程序集 0 errors | **本机通过**：Windows 精确程序集与 Linux `/game` 标准 build 均为 0 errors；fresh Linux 摘要只记录，不跨路径强等于 embedded |
-| fresh / restart | 全新实例、Panel 重启、server 重启 | Control 0.3.8 加载并报告 available=true；普通聊天与认证均正常 | **待候选** |
-| 上一正式版升级 | `v0.6.0 → 候选` unhealthy rollback 后 healthy Web apply | 旧版恢复；新版本精确 DLL/stack；SQLite、存档、认证 store、非目标资源保持；升级后复验隐私 | **首轮夹具失败**；修复后待新候选 |
-| 最老受影响边界 | `v0.3.2 → 候选` | required runtime 自动升级，旧 options 不能误判 ready，长期数据保持 | **矩阵已固定为 `v0.3.2`**；待新候选 |
-| 日志与支持包 | 使用唯一测试密码后检查 Control/Panel/server 日志、API、支持包 | 新增实现不记录或返回密码，detail 只含固定诊断 | **源码/契约通过，待真实运行复核** |
-| 隔离与清理 | C#/Go/真实客户端/升级夹具 | 精确 owner/container/network/volume/temp 清零，不使用生产数据/长期凭据，不 prune | **本地 Go/Shell 资源已清零；其余待候选** |
+| fresh / restart | 全新 Panel、`/health`、`/api/version`、未初始化状态、Panel restart | 候选身份固定；健康、版本、setup=false 与重启恢复正常 | **通过**：正式候选 `33177568325`；真实 Control/聊天行为由用户实机另证 |
+| 上一正式版升级 | `v0.6.0 → 候选` unhealthy rollback 后 healthy Web apply | 旧版恢复；新版本精确 DLL/stack；SQLite、存档、认证 store、非目标资源保持 | **通过**：正式候选先证明 `failed_rolled_back/health_check_failed` 与旧版恢复，再完成 healthy apply、immutable DLL/manifest/hash 和 required gate 契约复验；未把 fixture 手写 options 冒充真实 `!login` 联机 |
+| 最老受影响边界 | `v0.3.2 → 候选` | required runtime 自动升级，旧 options 不能误判 ready，长期数据保持 | **通过**：同一不可变候选完成 `v0.3.2 → v0.6.1` Web 直升 |
+| 日志与支持包 | 使用唯一测试密码后检查 Control/Panel/server 日志、API、支持包 | 新增实现不记录或返回密码，detail 只含固定诊断 | **通过（证据边界）**：源码/契约、用户实机和候选完整 code/runtime 门禁通过；不宣称 runner 使用真实长期密码重新导出支持包 |
+| 隔离与清理 | C#/Go/真实客户端/升级夹具 | 精确 owner/container/network/volume/temp 清零，不使用生产数据/长期凭据，不 prune | **通过（证据边界）**：两条升级 fixture 强制精确清零；外层候选/fresh/正式 smoke 使用精确名称的 best-effort EXIT trap 并由 hosted runner 回收；未使用生产数据/长期凭据，未执行 prune |
 
-## 当前本地证据与未完成门禁
+## 候选、Tag、正式提升与 Release 证据（已完成）
+
+- 最终 clean commit=`5c0135e6bdb5b8353d049030da3c3c06a6e243a0`。正式候选 workflow [`33177568325`](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33177568325) 于 `2026-08-28T13:54:29Z–14:23:54Z` 成功（`29m25s`），显式输入 version=`0.6.1`、previous=`0.6.0`、oldest=`0.3.2`；OCI build date=`2026-08-28T13:54:58Z`。
+- 三项条件门禁（运行栈远程制品、Junimo 真实 network/runtime、website build）全部 selected，conditional skipped=无；常驻 full code gates、Windows wrapper、fresh/restart、`v0.6.0` unhealthy rollback + healthy Web apply、unknown-holder fail closed 恢复、Steam 意图/session 迁移、持久化、Mod、legacy repair、save-import 边界，以及 `v0.3.2` 最老边界直升全部通过。两条升级退出时的任务 owner/container/network/volume 清理断言通过，没有失败门禁或降级跳过；optional mirror unavailable 与 Actions Node20→24 deprecation 仅为非阻塞告警。
+- proof artifact=`release-candidate-0.6.1-5c0135e6bdb5`（ID `9689244375`），candidate ref=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.6.1-5c0135e6bdb5`，唯一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`。
+- 自动 Tag workflow [`33179940424`](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33179940424) 于 `2026-08-28T14:23:57Z–14:24:16Z` 成功（`19s`）。annotated tag `v0.6.1` object=`96f8fa28f1c454133bd7cb2b887e1e879485bdff`，peeled commit 精确等于候选 commit；tag message 绑定 candidate workflow `33177568325` 与上述 digest。
+- 正式提升 workflow [`33179959858`](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33179959858) 于 `2026-08-28T14:24:11Z–14:25:37Z` 成功（`1m26s`），只提升 proof 中的候选 digest，没有 rebuild。promotion 在复制前独立核对 candidate ref 的 OCI version/revision/created，随后用正式 GHCR 精确版本完成 `/health` 与 `/api/version` smoke；Docker Hub、阿里云 ACR、GHCR 的 `0.6.1/latest` 六引用经 workflow 与发布后独立 `imagetools inspect` 复核均为同一 digest。
+- [GitHub Release v0.6.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.1) 于 `2026-08-28T14:25:34Z` 发布，非 draft/prerelease 且为 latest；`run.sh`、`migrate-fnos.sh`、`repair-junimo-0.3.5.sh`、`repair-junimo-upgrade.sh` 四项资产均为 uploaded，发布后以内存字节复算的 size/SHA-256 与 tagged `deploy/` 源文件及 GitHub asset digest 精确一致。本节是发布后 evidence-only 回填；不得移动 `v0.6.1` tag、重建候选或改变正式 digest。
+- 发布后证据审计确认一项组合边界：用户双原版客户端实机已经验证正式嵌入 Control 的真实 `!login` fan-out，候选又证明同一 immutable DLL/manifest/hash、required gate 与两条 Web 升级，但现有记录不能证明该次实机聊天发生在“通过 Web 升级得到的新 Panel”上；升级 fixture 自身没有发送聊天。两段证据不得合并描述为候选升级后真实隐私复验。后续发布应把升级后真实聊天验收写入同一条可追溯证据；如果用户确认本次实测就是该上下文，可据实补齐时间与实例边界。
+
+## 本地与候选前置证据
 
 - 已通过 C# contract、Windows 上对精确 Stardew `1.6.15.24356`/build `16826371` 的标准 Control build，以及 Linux 下以真实只读 `/game` 执行 `dotnet build -c Release /p:GamePath=/game /p:EnableModDeploy=false`；两次均为 0 errors、一个既有分析器版本 warning。Linux fresh 产物为 222720 bytes、SHA-256=`cf0c0ee06555e122915cbc790ff3043552cc9db24d15d382c8ac0c7c7f4c9b46`，只作为源码实编译证据；跨路径摘要按既有契约不与 223232 bytes 的 embedded DLL 强等同，也没有覆盖已实机验证的正式嵌入制品。另已通过 Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归，以及升级脚本 `bash -n`/ShellCheck。任务 Go/Control 容器和缓存卷均按 owner 精确清零。
 - MCR `.NET 6 SDK` 镜像的大层两次持续无进展后受控中止；随后改从微软官方 .NET 6 release metadata 取得 `6.0.428 linux-musl-x64` SDK URL 与 SHA-512，在任务专属 Alpine 3.20 容器中校验并解压，使用本机两份哈希一致、appmanifest build ID 均为 `16826371` 的真实游戏安装之一只读挂载 `/game`，完成上述标准 Linux 实编译。三个任务卷与所有 owner 容器已核对为零。用户也于 2026-08-28 明确确认未安装客户端 Mod 的实际联机验证通过；候选仍负责 immutable embedded DLL/manifest hash、fresh/restart、远程制品、Junimo 长 integration、两条 Web 升级与 unhealthy 回滚，但不得宣称远端 runner 重新编译了受版权保护游戏依赖的 Control 源码。
-- 功能提交 `f1af13610ef764544aeff121967ade99a43b4f96` 已成功推送到 `origin/main`；兼容矩阵 `33168728633` 与官网部署 `33168728660` 成功。push-origin 候选 `33168728635` 因当时尚未取得人工联机确认而在 selected code gates 阶段主动取消，尚未进入 candidate image build/push；下游自动 Tag `33168807451` 按设计 skipped，latest Release 仍为 `v0.6.0`。用户确认后以新的干净同步 `main` commit 手动 dispatch，成功后再回填不可变 workflow、digest、选择/跳过矩阵、耗时、故障与资源清理证据。
+- 功能提交 `f1af13610ef764544aeff121967ade99a43b4f96` 已成功推送到 `origin/main`；兼容矩阵 `33168728633` 与官网部署 `33168728660` 成功。push-origin 候选 `33168728635` 因当时尚未取得人工联机确认而在 selected code gates 阶段主动取消，尚未进入 candidate image build/push；下游自动 Tag `33168807451` 按设计 skipped，当时 latest Release 仍为 `v0.6.0`。用户确认后最终从新的干净同步 `main` commit 完成正式候选、Tag 与提升，结果见本文件顶部证据。
 
 ## `v0.6.1` 首次远端候选失败与升级夹具修复
 

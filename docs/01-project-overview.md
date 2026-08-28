@@ -39,9 +39,9 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.6.0`（commit `9c6d9c7696c6aa46f58405f0c02f187aa47111ba`）。本版将全新实例改为 SteamCMD 默认安装，Steam 邀请码由管理员显式按需启用，disabled 生命周期和升级只维护 server；同时发布原版小屋默认、安装日志倒序提示、安装任务 URL 接管及邀请码冷启动等待态修正。
+当前正式版为 `v0.6.1`（commit `5c0135e6bdb5b8353d049030da3c3c06a6e243a0`）。本版将嵌入 Control 升至 `0.3.8`：Junimo 完成统一密码、角色独立密码或首次认领校验后，服务端会丢弃精确 `!login` 消息的全服重广播，不要求玩家安装客户端 Mod；发送者自己的原版客户端仍可能保留本地回显，这不是遮罩输入或端到端加密。
 
-不可变候选 `33073661356`、自动 annotated tag workflow `33075599631` 与正式提升 `33075622114` 均成功；tag `v0.6.0` 指向上述 commit，三仓 `0.6.0/latest` 使用唯一 digest=`sha256:e9c1613a7ffbd13d92d5a197d751cb5de6b08b65f74351e39a4ad0f9b4598d16`。[GitHub Release v0.6.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.0)
+不可变候选 `33177568325`、自动 annotated tag workflow `33179940424` 与正式提升 `33179959858` 均成功；tag `v0.6.1` 指向上述 commit，三仓 `0.6.1/latest` 使用唯一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`。[GitHub Release v0.6.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.1)
 
 当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
 

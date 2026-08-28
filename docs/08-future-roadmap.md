@@ -1,4 +1,4 @@
-# 2026-08-28 `!login` 凭据服务端转发抑制（未发布）
+# 2026-08-28 已正式发布：v0.6.1 `!login` 凭据服务端转发抑制
 
 - [x] Control `0.3.8` 在 Junimo 完成认证之后精确拦截 `!login` 重广播，global、role、首次认领、错误次数、超时和传送语义不变；不修改上游、不要求客户端 Mod。
 - [x] 分类覆盖大小写、前导/分隔空白与 Unicode 密码，并证明 `!loginfoo`、`!!login`、`/login`、正文命中和普通聊天不误伤；packet 读取或位置恢复异常时 fail closed，新增代码和日志不输出密码。
@@ -6,10 +6,12 @@
 - [x] C# 契约、本机精确游戏程序集 Control build、固定 SDK 6.0.428 + 真实 build `16826371` 的标准 Linux `/game` build、Linux Junimo 全包、Go vet/build、manifest/hash、生命周期和 ShellCheck 已通过；任务容器与缓存卷已精确清理。
 - [x] 用户于 2026-08-28 明确确认未安装客户端 Mod 的实际联机测试通过，并授权恢复远端镜像构建。发送者自己的聊天框可能保留本地回显，这是设计边界，不列为服务端缺陷。
 - [x] 标准 Linux `/game` Control 实编译已在本地任务容器完成，0 errors；远端 runner 无授权游戏 fixture，只负责 immutable embedded DLL/manifest 与运行契约，不把 contract/stub 冒充源码重编。
-- [ ] 正式候选完成 fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后复验。
+- [x] 正式候选 `33177568325`（`29m25s`）完成 Panel fresh/restart、`v0.6.0 → v0.6.1` unhealthy 回滚与 healthy Web apply、immutable DLL/manifest/hash 和 required gate 契约复验，以及 `v0.3.2 → v0.6.1` 最老受影响边界直升；真实 `!login` fan-out 只归用户实机证据。
 - [x] 首次 push-origin 候选 `33168728635` 因等待人工确认在镜像构建/推送前主动取消；人工确认后的手动候选 `33171764289` 通过代码门禁并构建镜像，但被只适用于 pre-`v0.6.0` 的 legacy Auth 夹具安全拦截，在 candidate push/proof 前退出且 Tag `33172703212` skipped。夹具已改为在 previous 前建立 unknown holder，并分别验证 pre-`v0.6.0` 与 `v0.6.0+` 的精确 Compose/fail-closed 边界。
 - [x] 发布矩阵已把 `v0.6.1` 硬锁为 previous=`v0.6.0`、oldest=`v0.3.2`，并覆盖正确、缺 oldest、错 previous、错 oldest 的输入，防止不完整 proof 进入自动 Tag 链。
-- [ ] 从修复后的新 commit 显式 dispatch `v0.6.1`、previous=`v0.6.0`、oldest=`v0.3.2`；成功后回填不可变 workflow、digest、耗时、正式提升和资源清理证据。
+- [x] 最终身份为 `v0.6.1@5c0135e6bdb5b8353d049030da3c3c06a6e243a0`；三项条件门禁全部 selected、conditional skipped=无；proof artifact=`release-candidate-0.6.1-5c0135e6bdb5`（ID `9689244375`），自动 annotated tag=`33179940424`（`19s`）、正式提升=`33179959858`（`1m26s`），三仓 `0.6.1/latest` 六引用统一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`。
+- [x] 两条升级 fixture 的任务 owner/container/network/volume 强制清零门禁通过；外层候选与正式 smoke 使用精确名称的 best-effort EXIT trap，并由 hosted runner 终止回收，没有使用生产数据、长期凭据或 prune。正式 promotion 只提升候选 proof 中的精确 digest，未重新构建镜像。
+- [ ] 发布后证据审计尚不能证明用户双客户端实机是在“通过 Web 升级得到的新 Panel”上执行；候选只证明同一 immutable Control 制品、required gate 与升级边界，fixture 没有发送真实聊天。若用户确认本次实测就是该上下文，则据实补齐；否则下一版门禁必须把升级后真实 `!login` fan-out 验收绑定到同一条证据。
 
 # 2026-08-27 已正式发布：v0.6.0 SteamCMD 默认安装与邀请码 opt-in
 
