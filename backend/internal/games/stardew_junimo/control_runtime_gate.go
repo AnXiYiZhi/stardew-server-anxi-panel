@@ -23,18 +23,19 @@ const (
 )
 
 const (
-	ControlRuntimeCodePending                         = "control_runtime_pending"
-	ControlRuntimeCodeReady                           = "control_runtime_ready"
-	ControlRuntimeCodeVersionMismatch                 = "control_runtime_version_mismatch"
-	ControlRuntimeCodeManifestInvalid                 = "control_runtime_manifest_invalid"
-	ControlRuntimeCodeDLLMissing                      = "control_runtime_dll_missing"
-	ControlRuntimeCodeDLLUnreadable                   = "control_runtime_dll_unreadable"
-	ControlRuntimeCodeDLLHashMismatch                 = "control_runtime_dll_hash_mismatch"
-	ControlRuntimeCodeOptionsInvalid                  = "control_runtime_options_invalid"
-	ControlRuntimeCodeOptionsUnreadable               = "control_runtime_options_unreadable"
-	ControlRuntimeCodeHostFarmhousePatchUnavailable   = "control_runtime_host_farmhouse_patch_unavailable"
-	ControlRuntimeCodeHostAutomationBridgeUnavailable = "control_runtime_host_automation_bridge_unavailable"
-	ControlRuntimeCodeHostSleepSafetyPatchUnavailable = "control_runtime_host_sleep_safety_patch_unavailable"
+	ControlRuntimeCodePending                          = "control_runtime_pending"
+	ControlRuntimeCodeReady                            = "control_runtime_ready"
+	ControlRuntimeCodeVersionMismatch                  = "control_runtime_version_mismatch"
+	ControlRuntimeCodeManifestInvalid                  = "control_runtime_manifest_invalid"
+	ControlRuntimeCodeDLLMissing                       = "control_runtime_dll_missing"
+	ControlRuntimeCodeDLLUnreadable                    = "control_runtime_dll_unreadable"
+	ControlRuntimeCodeDLLHashMismatch                  = "control_runtime_dll_hash_mismatch"
+	ControlRuntimeCodeOptionsInvalid                   = "control_runtime_options_invalid"
+	ControlRuntimeCodeOptionsUnreadable                = "control_runtime_options_unreadable"
+	ControlRuntimeCodeLoginChatPrivacyPatchUnavailable = "control_runtime_login_chat_privacy_patch_unavailable"
+	ControlRuntimeCodeHostFarmhousePatchUnavailable    = "control_runtime_host_farmhouse_patch_unavailable"
+	ControlRuntimeCodeHostAutomationBridgeUnavailable  = "control_runtime_host_automation_bridge_unavailable"
+	ControlRuntimeCodeHostSleepSafetyPatchUnavailable  = "control_runtime_host_sleep_safety_patch_unavailable"
 )
 
 // ControlRuntimeGateResult distinguishes a runtime snapshot that has not been
@@ -82,6 +83,7 @@ func InspectControlRuntimeGate(dataDir string) ControlRuntimeGateResult {
 	}
 	var options struct {
 		ControlModVersion                       string `json:"controlModVersion"`
+		LoginChatPrivacyPatchAvailable          *bool  `json:"loginChatPrivacyPatchAvailable"`
 		HostFarmhousePreservationPatchAvailable *bool  `json:"hostFarmhousePreservationPatchAvailable"`
 		HostAutomationBridgeAvailable           *bool  `json:"hostAutomationBridgeAvailable"`
 		HostSleepSafetyPatchAvailable           *bool  `json:"hostSleepSafetyPatchAvailable"`
@@ -97,6 +99,10 @@ func InspectControlRuntimeGate(dataDir string) ControlRuntimeGateResult {
 	}
 	if result.Actual != result.Expected {
 		result.State, result.Code = ControlRuntimeGateVersionMismatch, ControlRuntimeCodeVersionMismatch
+		return result
+	}
+	if options.LoginChatPrivacyPatchAvailable == nil || !*options.LoginChatPrivacyPatchAvailable {
+		result.State, result.Code = ControlRuntimeGateInvalid, ControlRuntimeCodeLoginChatPrivacyPatchUnavailable
 		return result
 	}
 	if options.HostFarmhousePreservationPatchAvailable == nil || !*options.HostFarmhousePreservationPatchAvailable {

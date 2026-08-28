@@ -24,6 +24,70 @@ foreach (var code in new[] { "warp_failed", "kick_failed", "already_authenticate
 
 Expect(PlayerCommandOutcomes.Succeeded(command, "test", "1", "Leah"), CommandStatuses.Succeeded, "ok");
 
+foreach (var sensitiveLoginMessage in new[]
+{
+    "!login",
+    "!login ",
+    "!LOGIN secret",
+    "  !login secret with spaces",
+    "!login\tsecret",
+    "!login\u00a0secret",
+    "!login\nsecret",
+    "!login 密码🔐",
+})
+{
+    if (!LoginChatPrivacyPolicy.ShouldSuppressRebroadcast(sensitiveLoginMessage))
+        throw new InvalidOperationException("a login credential chat message was not classified for rebroadcast suppression");
+}
+foreach (var ordinaryChatMessage in new[]
+{
+    "",
+    "hello",
+    "!!login secret",
+    "!loginfoo secret",
+    "prefix !login secret",
+    "/login secret",
+    "！login secret",
+})
+{
+    if (LoginChatPrivacyPolicy.ShouldSuppressRebroadcast(ordinaryChatMessage))
+        throw new InvalidOperationException("an ordinary chat message was classified as a login credential");
+}
+if (LoginChatPrivacyPolicy.ShouldSuppressRebroadcast(null))
+    throw new InvalidOperationException("a null chat message was classified as a login credential");
+
+using (var packet = new MemoryStream())
+{
+    using (var writer = new BinaryWriter(packet, System.Text.Encoding.UTF8, leaveOpen: true))
+    {
+        writer.Write(123L);
+        writer.Write((short)0);
+        writer.Write("!login 密码🔐");
+    }
+    packet.Position = packet.Length;
+    var originalPosition = packet.Position;
+    using var reader = new BinaryReader(packet, System.Text.Encoding.UTF8, leaveOpen: true);
+    if (!LoginChatPrivacyPolicy.TryReadChatText(reader, out var chatText)
+        || chatText != "!login 密码🔐"
+        || packet.Position != originalPosition)
+    {
+        throw new InvalidOperationException("login chat packet parsing did not preserve its reader position");
+    }
+}
+
+using (var malformedPacket = new MemoryStream(new byte[] { 1, 2, 3 }))
+{
+    malformedPacket.Position = 2;
+    var originalPosition = malformedPacket.Position;
+    using var reader = new BinaryReader(malformedPacket, System.Text.Encoding.UTF8, leaveOpen: true);
+    if (LoginChatPrivacyPolicy.TryReadChatText(reader, out var chatText)
+        || chatText != ""
+        || malformedPacket.Position != originalPosition)
+    {
+        throw new InvalidOperationException("malformed login chat packet parsing did not fail closed and restore its reader position");
+    }
+}
+
 string Base64Url(byte[] value) => Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 var roleKey = Enumerable.Range(1, 32).Select(value => (byte)value).ToArray();
 var internalGuard = RolePasswordPolicy.DeriveInternalGuard(roleKey);

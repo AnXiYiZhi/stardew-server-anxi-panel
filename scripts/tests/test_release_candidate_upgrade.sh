@@ -764,7 +764,7 @@ assert_upgraded_save_import_phase_a_boundaries() {
   printf 'release-candidate-fixture-dll\n' >"$instance_dir/.local-container/mods/JunimoServer/JunimoServer.dll"
   cp "$control_source/manifest.json" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/manifest.json"
   cp "$control_source/StardewAnxiPanel.Control.dll" "$instance_dir/.local-container/mods/StardewAnxiPanel.Control/StardewAnxiPanel.Control.dll"
-  printf '%s\n' '{"controlModVersion":"0.3.7","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}' >"$instance_dir/.local-container/control/options.json"
+  printf '%s\n' '{"controlModVersion":"0.3.8","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}' >"$instance_dir/.local-container/control/options.json"
   printf '%s\n' '<SaveGame><player><name>Existing</name></player><uniqueIDForThisGame>1</uniqueIDForThisGame></SaveGame>' >"$existing_main"
   printf '%s\n' '<Farmer><name>Existing</name></Farmer>' >"$existing_info"
   printf '%s\n' '{"SaveNameToLoad":"Existing_1"}' >"$active_pointer"

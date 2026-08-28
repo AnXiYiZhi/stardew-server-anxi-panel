@@ -1,3 +1,26 @@
+# LOGIN-CHAT-PRIVACY-1 后端接手记录（2026-08-28，未发布）
+
+## 改了什么
+
+- Control `0.3.8` 在 Junimo 已消费登录聊天之后、Stardew 向其它客户端重广播之前拦截精确 `!login` 命令包。统一密码、角色独立密码、首次认领、失败次数、超时、隔离与传送仍只由 Junimo 原流程负责；Control 不读取认证配置、不保存密码，也不调用 `TryAuthenticate`。
+- 分类支持大小写、前导空白和 whitespace 分隔，严格排除 `!loginfoo`、`!!login`、`/login` 与正文命中。chat reader 会保存位置、从 0 读取 recipient/language/text 并恢复；任何读取或恢复异常均丢弃该 chat packet，且运行期日志不会输出原文。
+- 补丁目标、签名和 Harmony owner/patch method 都在启动时自检。`options.json`/`status.json` 写入 `loginChatPrivacyPatchAvailable/detail`；Panel required runtime gate 对字段缺失或 false 返回 `control_runtime_login_chat_privacy_patch_unavailable` 并停服。
+
+## 影响哪些接口/文件
+
+- 主要实现：`embedded/smapi-mod-src/LoginChatPrivacy{Patch,Policy}.cs`、`ModEntry.cs`、`ControlContract.cs`、C# contract tests、`control_runtime_gate.go` 及其 gate/lifecycle tests。
+- Control 两份 manifest 升至 `0.3.8`，嵌入 DLL SHA-256=`dda16954bf3188222b4c8cdbf8d95f75dd2550748a40ec227a33706cf274d3cf`，`runtime_stack_manifest.json` 的 stack/version/hash/release note 与 release candidate 升级夹具同步。HTTP API、前端、SQLite、Compose、存档和角色凭据文件格式均未变化。
+
+## 如何验证
+
+- C# contract 覆盖敏感/普通边界、Unicode 密码、畸形 packet fail closed 和 Reader position 恢复；本机精确 Stardew `1.6.15.24356`/build `16826371` 完成 Control build，0 errors。
+- Linux `go test ./internal/games/stardew_junimo/...`、`go vet ./...`、`go build ./...` 通过；新 gate 覆盖 missing/false，生命周期验证失败后只调用一次 Compose stop，manifest/version/DLL hash 有命名契约；升级脚本通过 `bash -n` 与 ShellCheck。
+
+## 下一步注意事项
+
+- 必须用两个未安装客户端 Mod 的玩家做真实旁观验收：发送者正确/错误 global、正确/错误/首次认领 role 时，旁观者均看不到原文；普通聊天与其它命令仍能广播。发送者本地聊天框可能显示自己的输入，这是原版客户端本地回显边界，不是服务端转发失败。
+- 反射目标或 packet 协议变化时不得改为“补丁失败但继续启动”。保持 parser fail closed、availability gate 必须为 true；正式候选还需标准 Linux `/game` Control 编译、fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后多人复验。当前没有发布或推送正式制品。
+
 # V060-RELEASE-EVIDENCE-1 后端接手记录（2026-08-27，released in v0.6.0）
 
 ## 改了什么、影响哪些接口/文件

@@ -13,6 +13,7 @@
     <Compile Include="../smapi-mod-src/DeferredCommandOutcomes.cs" Link="DeferredCommandOutcomes.cs" />
     <Compile Include="../smapi-mod-src/PausePolicy.cs" Link="PausePolicy.cs" />
     <Compile Include="../smapi-mod-src/HostControlContract.cs" Link="HostControlContract.cs" />
+    <Compile Include="../smapi-mod-src/LoginChatPrivacyPolicy.cs" Link="LoginChatPrivacyPolicy.cs" />
     <Compile Include="../smapi-mod-src/RoleCredentialStore.cs" Link="RoleCredentialStore.cs" />
     <Compile Include="../smapi-mod-src/RolePasswordPolicy.cs" Link="RolePasswordPolicy.cs" />
     <Compile Include="Program.cs" />

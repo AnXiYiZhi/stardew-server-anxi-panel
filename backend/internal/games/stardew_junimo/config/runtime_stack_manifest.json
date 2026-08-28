@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.7",
+  "stackVersion": "junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.8",
   "channel": "preview",
   "minimumPanelVersion": "0.3.2",
   "runtimeUpdatePolicy": "required",
@@ -71,12 +71,13 @@
     "trustedHosts": ["gh.llkk.cc", "github.dpik.top", "ghfast.top", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
   },
   "controlMod": {
-    "version": "0.3.7",
-    "dllSha256": "bf8ba2026e33f62007e3d1cfca59b055da94806cc17dc999d62a1c94b2e39423",
+    "version": "0.3.8",
+    "dllSha256": "dda16954bf3188222b4c8cdbf8d95f75dd2550748a40ec227a33706cf274d3cf",
     "commandResultVersion": 1
   },
   "status": "recommended",
   "releaseNotes": [
+    "Control 0.3.8 在 Junimo 完成 !login 认证后、向其他客户端转发聊天前精确丢弃登录凭据消息；统一密码、角色独立密码、首次认领、失败次数、超时、隔离与传送继续复用原认证流程，补丁不可用时 Panel 启动门禁会停止服务器。",
     "Control 0.3.7 为面板新建存档增加事务绑定的农场山洞三态选择：可保留原版德米特里厄斯事件，或在首个存档内幂等启用果蝠洞/蘑菇洞；蘑菇设施、caveChoice 与事件 65 均由运行时和持久存档门禁复核。",
     "Control 0.3.6 为角色独立密码增加玩家首次 !login 自助设密：新旧角色共用同一原子认领流程，管理员仍可实时设置、重置或清除，并按存档隔离持久化 verifier；同时兼容旧存档中合法的负数 UniqueMultiplayerID。",
     "Control 0.3.5 在游戏线程按主 FarmHouse 当前地图的 DefaultBedPosition 与游戏默认床常量幂等修复缺失的合法床；swap-host-to 激活必须取得床健康证据，任一激活或持久化失败都会恢复完整预导入存档、活动指针和实例状态。缺床睡眠输出 host_bed_missing 且有明确动作上限。F9 手动控制解除 NoConnectedClients 暂停并受无人值守租约保护，F10 原子同步人物与影子可见性，hostBed/hostControl 进入结构化状态。",

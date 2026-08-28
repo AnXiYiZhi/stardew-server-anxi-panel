@@ -2,6 +2,16 @@
 
 本文件记录代理在本项目中实际遇到的命令、环境、Shell、路径和编码错误。每次工作开始先阅读；再次遇到同类问题时直接采用“正确做法”，不要重放错误命令。
 
+## 2026-08-28：上游版本审计前先枚举真实 Git ref
+
+- 环境：PowerShell 7、只读检查本机 Junimo 上游 clone 与运行栈版本。
+- 错误模式：凭运行镜像版本猜测上游存在 `refs/tags/preview-1.5.0.125`，直接把它传给 Git 查询。
+- 症状 / 退出码：Git 报未知 revision 并以 128 退出；上游 clone、当前仓库和运行资源均未修改。
+- 根因：把镜像 tag/运行版本命名规则外推成源码仓库 tag，没有先读取 `git tag --list` 或 `git for-each-ref` 的真实结果。
+- 正确做法：先在目标 clone 中枚举受控范围的 ref，再逐字使用返回的完整 ref；若没有对应 tag，改用运行栈记录的 source revision 或本机精确程序集证据，不自行拼接版本名。
+- 预防检查：任何 `git show`、`rev-parse`、`log <ref>` 的 ref 参数都必须来自本轮 Git 输出或受信任清单，不能从镜像版本、Release 名或记忆推导。
+- 适用范围：上游兼容审计、tag/source 对照、反编译基线与发布 ref 核验。
+
 ## 2026-08-27：现行文案负向扫描不能把历史接手记录当成产品残留
 
 - 环境：PowerShell 7、`rg -F`，`v0.6.0` 发布前检查 SteamCMD 旧文案。
@@ -662,6 +672,8 @@
 
 ## 2026-08-14：未读取真实文件头就猜测 `apply_patch` 插入上下文
 
+- 最近复发/补充：2026-08-28 为补记登录聊天隐私收口阶段的新执行错误，虽然已读取目标章节标题，却从更早的截断输出猜测 GitHub EOF 章节当前第一条仍是 8 月 26 日记录；实际第一条已经是 8 月 27 日官网记录，双 hunk `apply_patch` 验证失败并安全零修改。随后按标题动态定位并读取各章真实前四行，再把两个补记拆开应用。读过标题不等于读过可用 hunk，上下文必须来自本次调用返回的连续原文；多 hunk 补记也必须拆分，避免一个过期锚点阻断其它正确修改。
+- 最近复发/补充：2026-08-28 补记登录聊天隐私的 Windows POSIX 权限误跑时，凭语义猜测目标标题为“Windows 真实下载测试不能验证 Linux 0600”，实际章节标题是“在 Windows 文件系统执行 Linux 权限位发布断言”；补丁验证失败且安全零修改。随后读取精确行段并以真实标题重新补记。即使检索已命中章节正文，也必须读取标题与相邻首行，不能从正文主题反推 hunk 锚点。
 - 最近复发/补充：2026-08-27 修正官网安装指南的 SteamCMD Guard 文案时，按审查结论猜测原 bullet 已写成“App / 邮箱验证码”，实际当前行仍是“验证码输入”，导致首个多 hunk `apply_patch` 上下文不匹配并安全零修改。随后先读取目标段真实全文，再以当前完整行拆出最小补丁成功。即使语义审查已经给出目标改法，也不能把建议措辞误当成当前文件原文。
 - 最近复发/补充：2026-08-27 同步 `docs/03-frontend.md` 的邀请码并发语义与验证结果时，把文件头更新和历史段落更新合进两个远距 hunk，并按摘要猜测后一个长句的当前文本，首个 `apply_patch` 因上下文不匹配安全零修改。随后分别读取目标行的精确邻域，按位置拆成独立最小补丁后成功。即使同一文档的两处都属于一次收口，也不得从摘要重构历史段落；先读取每个目标邻域，再逐处更新并复核精确 diff。
 - 最近复发/补充：2026-08-27 给本节上方的 `rg` 连字符规则补记时，直接假定标题后的第一条仍是 8 月 26 日 linker flag 记录，遗漏了更早插入在其前的 `--rm` 复发项，导致 `apply_patch verification failed` 且安全零修改。随后读取目标章节精确邻域，并以真实第一条作为最小锚点完成更新；即使刚由全局检索看到目标行，也不得推断它在章节中的相对顺序。
@@ -868,6 +880,7 @@
 
 ## 2026-08-14：直接调用 `pwsh -File` 时重复了内层字符串引号
 
+- 最近复发/补充：2026-08-28 登录聊天隐私只读审查子任务把 Python 可执行路径和脚本路径写成相邻 PowerShell 字符串字面量，命令在解析阶段失败且未修改仓库；随后改为 `& '<python.exe>' '<script.py>' ...`。即使路径都已确认存在，字符串字面量也不会自动形成原生命令调用，必须把可执行文件放在命令位置或显式使用调用运算符。
 - 最近复发/补充：2026-08-27 v0.6.0 文档差异审查在 JavaScript 中为 PowerShell 生成原生命令时，把可执行名和每个参数写成相邻字符串字面量 `'rg' '-n' '-F' ...`，没有使用调用运算符；4 个只读迭代均在执行前报 `ParserError: Unexpected token ''-n'' in expression or statement.`，仓库与 Docker 零修改。修正为直接写 `rg -n -F ...`；可执行路径来自变量时使用 `& $rgExe @args`。同一编排内已重复 4 次，因此预防规则提升到 `AGENTS.md`：不得通过拼相邻字符串字面量生成 PowerShell 原生命令源码。
 - 环境：Codex Desktop `shell_command` 已直接进入 PowerShell，再启动 PowerShell 7 执行任务专属升级验收脚本。
 - 错误模式：把只适用于外层 `-Command '& { ... }'` 字符串的双写单引号继续用于直接命令，写成 `pwsh ... -File ''.agents/v0415-web-upgrade-e2e.ps1''`。
@@ -889,6 +902,7 @@
 
 ## 2026-08-14：前端最终门禁再次把 Windows 通配符作为 `rg` 路径
 
+- 最近复发/补充：2026-08-28 登录聊天隐私测试映射子任务把 `Dockerfile*` 作为 Windows `rg` 位置参数；主任务随后又把 `backend/internal/games/stardew_junimo/*_test.go` 作为位置参数，两次均以 `os error 123` 只读失败且未修改源码或 Docker。已改为只传一个已确认目录，并使用 `-g 'Dockerfile*'` / `-g '*_test.go'`。本轮余下每条 `rg` 发送前继续机械检查：任何含 `*` 或 `?` 的实参只能是紧跟 `-g` 的过滤值。
 - 最近复发/补充：2026-08-27 记录 lockfile 解析复发前检索字面 `-AsHashtable` 时，没有用 `-e` 或 `--` 结束选项，`rg` 把模式当成 `-A` 参数并报 `error parsing flag -A: value is not a valid number`；另外两条并行只读检索成功，仓库零修改。随后只使用已命中的明确标题读取。该边界已在 `AGENTS.md` 固化：任何以 `-` 开头的 pattern 必须写成 `rg -F -e '<pattern>' <root>`，引号本身不能阻止选项解析。
 - 最近复发/补充：2026-08-27 save-import 最终安全审查子任务仍把 `backend/internal/games/stardew_junimo/*.go` 作为 Windows `rg` 位置参数，得到 `os error 123`；只读调用未修改源码或 Docker，随后改为明确目录配合 `-g '*.go'`。本任务余下检索继续只允许一个已确认的无通配位置根，子任务同样不得豁免。
 - 最近复发/补充：2026-08-27 v0.6.0 第五轮候选预演失败诊断时，主任务再次把 `backend/internal/games/stardew_junimo/save_import*` 作为 Windows `rg` 位置参数，得到 `os error 123`；修正并补记后，后续组合命令末段仍误传 `backend/internal/games/stardew_junimo/*`，同一只读审计子任务也误传 `save_import_*.go`。三次都没有修改源码或 Docker 状态；随后所有相关检索只用一个明确目录加 `-g`。这已是在现有 `AGENTS.md` 硬规则下的同任务复发，余下任务一旦需要 `rg`，位置参数只允许一个已确认的无通配目录，不能再把其它路径追加到组合命令。
@@ -966,6 +980,7 @@
 
 ## 2026-08-13：手写 partial-index patch 的 hunk 计数多算一行
 
+- 最近复发/补充：2026-08-28 为从共享脏文档中只暂存登录聊天隐私段落，手写补丁的首个插入 hunk 只提供了新增位置之前的上下文、没有后续不变行；即使可见文本逐字符一致，`git apply --cached --check` 仍报 `patch does not apply`，索引与工作树未被该检查修改。随后把每个插入点改成从真实基线行号计算的零上下文 hunk，先以 `--unidiff-zero --check` 验证，再应用并审查 cached diff。部分暂存补丁必须提供前后稳定上下文；确需零上下文时必须使用精确基线行号、显式 `--unidiff-zero` 和应用后的逐文件审查。
 - 最近复发/补充：2026-08-16 为从共享脏错题本中只暂存 v0.5.1 官网验收的两条复发记录，手写补丁把每个实际 5 行旧侧上下文声明成 6 行，`git apply --cached --check` 在 line 11 报 `corrupt patch` 并保持 index 不变。逐行按前缀重算为 `-5/+6` 后，check 与实际 partial staging 均成功；即使只有两个短 hunk，也不能凭肉眼估计 header 计数。
 - 环境：PowerShell 7、Git，工作树同时包含官网文档与未完成的后端改动，需要只暂存文档 hunk。
 - 错误模式：手写 `git apply --cached` 补丁时沿用原始 diff 的 `@@ -1098,9 +1104,16 @@`，却遗漏 hunk 末尾作为第 9 条旧行的下一段代码围栏上下文。
@@ -1760,6 +1775,7 @@
 
 ## 2026-07-28：Docker Desktop CLI 存在但 daemon 未启动
 
+- 最近复发/补充：2026-08-28 登录聊天隐私门禁首次 `docker info` 明确报告 Linux engine named pipe 不存在；隐藏启动 Docker Desktop 后，把会阻塞的 `docker info` 放进自写 10 次轮询，单次调用没有超时且 `ForEach-Object` 内的 `return` 也不能终止外层枚举，导致工具会话超过预期上限，随后被中断且未创建容器。正确做法是先用 named-pipe/后台日志做短探针，确认 engine heartbeat ready 后再单次执行 `docker info`；若必须轮询，每次 daemon 探针本身也要可取消，不能只限制循环次数。
 - 最近复发/补充：同轮 ShellCheck 后准备恢复 Docker Desktop 启动前状态时，把 `docker image ls --format '{{json .}}'` 中每个镜像的 `Containers=0` 误读成宿主总容器数为零；真正的 `docker container ls -a` 发现多批既有容器，保护断言在调用 `DockerCli -Shutdown` 前停止，未关闭 daemon 或修改容器。镜像行的 Containers 字段只描述该镜像引用，任何 daemon 停止判断必须重新读取容器清单和运行状态；有既有资源时保持当前状态并停止恢复动作。
 - 最近复发/补充：2026-08-18 为缺失的宿主 ShellCheck 寻找容器兜底时先执行 `docker info`，Linux engine named pipe 不存在，命令 fail-fast，尚未 inspect/pull/run 任何 lint 镜像。随后按既有规则从验证路径启动 Docker Desktop 并有界轮询；ShellCheck 容器只有在 inspect Entrypoint/Cmd 后才可运行。
 - 环境：Windows Docker Desktop。
@@ -2297,6 +2313,7 @@
 
 ## 2026-08-01：GitHub Actions 状态轮询被临时 EOF 中断
 
+- 最近复发/补充：2026-08-28 为核对 partial staging 基线，把 `git show :<path>` 直接管道到 `Select-Object -First 8`；下游取得八行后提前关闭管道，Git 已输出目标内容但 `$LASTEXITCODE` 变为非零，包装器将其误报成查询失败，仓库零修改。修正为 `$lines = @(git show ...)` 完整收集输出并立即保存退出码，确认成功后再对内存数组切片。该规则不限于 `gh`：所有原生命令的权威输出都不能直接接提前终止型展示过滤器。
 - 最近复发/补充：2026-08-27 核对官网 `v0.6.0` 内容时，GitHub Pages 元数据与 docs workflow 已成功证明线上来源仍停在 `v0.5.13` 文档提交；随后对首页、更新日志和安装手册做单批 `Invoke-WebRequest`，首个请求遇到 `Received an unexpected EOF or 0 bytes from the transport stream` 并在取得正文前停止，线上零修改。不得原样重放整批页面请求；本次改用已成功取得的 Pages source、最后一次 docs workflow SHA 与仓库同 SHA 源文档作权威判断。若正文内容本身成为必要证据，再按单 URL、最多三次的只读有界重试执行。
 - 最近复发/补充：2026-08-20 v0.5.8 Release 已成功后，首次 `gh run download 32338102590 --name release-candidate-0.5.8-8d5fe360c042` 在列 artifact 的 GitHub API 请求阶段报 `TLS handshake timeout`；目标临时目录已创建但 `candidate.json` 尚未落盘，没有重复 push、候选、Tag 或正式提升。后续固定已核验的 run/artifact 名称做最多三次只读下载重试，成功后解析 proof，并独立清理精确临时目录；不能把制品下载网络故障当成候选证明缺失。
 - 最近复发/补充：2026-08-20 v0.5.8 候选 `32338102590` 已明确成功后，首次用 `gh run list --limit 30 --json ...` 汇总 Compatibility/自动 Tag/提升链时，GitHub Actions API 单次返回 `EOF` 并退出 1；没有重放 push、candidate 或 tag。后续对已知 Compatibility run ID 使用独立 `gh run view` 有界重试，自动 Tag/提升仅在前序成功后再按名称和时间窗口独立查询，任何只读 EOF 都不改变工作流真实状态。
@@ -2696,6 +2713,7 @@
 
 ## 2026-08-06：宿主 dotnet 存在但没有 SDK
 
+- 最近复发/补充：2026-08-28 登录聊天隐私契约测试再次直接执行宿主 `dotnet run`，当前入口仍只有 runtime，以 `No .NET SDKs were found` 和进程退出 `-2147450735` 结束；项目未加载，源码与制品未被该命令修改。随后按既有规则启动 Docker Desktop，并改用任务专属 .NET 6 SDK Linux 容器。该环境已被多次证明，Control/C# 门禁不得再先试宿主 `dotnet run/build`。
 - 最近复发/补充：2026-08-23 为只读反编译 Stardew 1.6.15 山洞选择逻辑检查 `ilspycmd` 后，又直接执行宿主 `dotnet tool list --global`；当前宿主仍只有 runtime，命令以 `No .NET SDKs were found` 退出，未安装工具、未修改游戏或产品文件。后续直接复用了 SMAPI 已安装的 `Mono.Cecil.dll` 读取本机精确游戏程序集，成功取得 `caveChoice` 常量与原版选择方法 IL；只读程序集分析也不得把已知无 SDK 的宿主 `dotnet tool` 当作工具发现入口。
 - 最近复发/补充：2026-08-16 主机缺床与 VNC 状态机契约首次验证又先执行宿主 `dotnet --version`，入口仍只有 runtime，立即以 `No .NET SDKs were found` 结束；契约项目未加载、源码和 Docker 资源未改变。后续本任务直接使用 `mcr.microsoft.com/dotnet/sdk:6.0` 容器，不再重复宿主 SDK 探针。
 - 最近复发/补充：2026-08-16 主机房屋等级兼容层编译前又直接执行宿主 `dotnet --version`；当前入口仍只有 runtime，以 `No .NET SDKs were found`（进程退出 `-2147450735`）结束，项目未加载、文件未修改。随后直接使用已验证的 `mcr.microsoft.com/dotnet/sdk:6.0` 与只读真实 `/game` 完成契约和标准 build。该仓库不得再用宿主 `dotnet --version` 作为编译前试探。
@@ -2942,6 +2960,7 @@
 
 ## 2026-08-06：在 Windows 文件系统执行 Linux 权限位发布断言
 
+- 最近复发/补充：2026-08-28 登录聊天隐私的精确 Go 专项已通过后，仍在 Windows 宿主启动 `go test ./internal/games/stardew_junimo/...`；约 226 秒后唯一失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 mode=`0666`、want `0640`，本次新增门禁、生命周期与 manifest/hash 测试均未失败。该规则已经写入 `AGENTS.md` 且多次复发；Windows 只能运行精确 `-run`，完整 Junimo 包门禁必须从第一遍就在 `golang:1.25-alpine` 的 Linux 文件系统中执行。
 - 最近复发/补充：2026-08-27 根代理接管 Auth 原子成功态与凭据锁修复后，精确专项已通过却仍在 Windows 宿主启动 Junimo 整包；约 109 秒后唯一失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 Compose mode=`0666`、want `0640`。测试仅使用临时目录，未修改产品数据或 Docker；余下完整 `go test/vet/build` 直接进入任务专属 Linux/DinD，不再在 Windows 重放整包。
 - 最近复发/补充：2026-08-27 disabled Auth holder 安全收口的精确 Docker/Driver/Web 专项已经通过后，仍在 Windows 宿主启动整个 `internal/games/stardew_junimo` 包；约 115 秒后唯一失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 Compose mode=`0666`、want `0640`。测试只使用临时目录，未修改产品数据或 Docker；本轮不再重跑该已知错误环境门禁，保留精确专项结果。此规则已提升到 `AGENTS.md` 且连续复发，Windows 宿主不得再启动 Junimo 整包，发布整包只能直接进入任务专属 Linux 环境。
 - 最近复发/补充：2026-08-26 邀请码启动等待态的精确 Driver/Web 专项与 Web 全包已经通过后，主流程仍在 Windows 宿主启动 `go test ./internal/games/stardew_junimo -skip '^TestSMAPIArchiveRealDownload$'`；约 127 秒后唯一失败再次是 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 Compose mode=`0666`、want `0640`。测试只使用临时目录，未修改产品数据或 Docker；且用户已明确本轮不新建容器，因此不为重复已知宿主语义另起 Linux 容器，收口证据保留精确 Driver/Web 回归、Web 全包、`go vet ./...` 与 `go build ./...`。Windows 禁止再用排除单个下载测试的 `-skip` 冒充可运行整包，必须从一开始只执行明确的 `-run` 专项。

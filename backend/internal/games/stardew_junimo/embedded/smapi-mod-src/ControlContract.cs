@@ -50,6 +50,8 @@ public sealed class PanelOptions
 	public string TransactionId { get; set; } = "";
 	public DateTimeOffset GeneratedAt { get; set; }
 	public string ControlModVersion { get; set; } = "";
+	public bool LoginChatPrivacyPatchAvailable { get; set; }
+	public string LoginChatPrivacyPatchDetail { get; set; } = "";
 	public bool HostFarmhousePreservationPatchAvailable { get; set; }
 	public string HostFarmhousePreservationPatchDetail { get; set; } = "";
 	public bool HostAutomationBridgeAvailable { get; set; }
@@ -334,6 +336,8 @@ public sealed class RuntimeStatus
     public string PlayerAuthConfigRevision { get; set; } = "";
     public bool RolePasswordPatchAvailable { get; set; }
     public string RolePasswordPatchDetail { get; set; } = "";
+    public bool LoginChatPrivacyPatchAvailable { get; set; }
+    public string LoginChatPrivacyPatchDetail { get; set; } = "";
     public bool HostFarmhousePreservationPatchAvailable { get; set; }
     public string HostFarmhousePreservationPatchDetail { get; set; } = "";
     public bool HostAutomationBridgeAvailable { get; set; }

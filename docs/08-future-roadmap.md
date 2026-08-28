@@ -1,3 +1,12 @@
+# 2026-08-28 `!login` 凭据服务端转发抑制（未发布）
+
+- [x] Control `0.3.8` 在 Junimo 完成认证之后精确拦截 `!login` 重广播，global、role、首次认领、错误次数、超时和传送语义不变；不修改上游、不要求客户端 Mod。
+- [x] 分类覆盖大小写、前导/分隔空白与 Unicode 密码，并证明 `!loginfoo`、`!!login`、`/login`、正文命中和普通聊天不误伤；packet 读取或位置恢复异常时 fail closed，新增代码和日志不输出密码。
+- [x] availability/detail 已进入 Control options/status，Panel 对缺失或 false 使用独立错误码停服；Control 两份 manifest、嵌入 DLL、stack identity、SHA-256 与升级夹具已同步。
+- [x] C# 契约、本机精确游戏程序集 Control build、Linux Junimo 全包、Go vet/build、manifest/hash、生命周期和 ShellCheck 已通过；任务容器与缓存卷已精确清理。
+- [ ] 正式候选前完成两个未装 Mod 的原版客户端旁观矩阵、标准 Linux `/game` Control 重编、fresh/restart、上一正式版与最老受影响支持版 Web 升级、unhealthy 回滚和升级后复验。发送者自己的聊天框可能保留本地回显，这是设计边界，不列为服务端缺陷。
+- [ ] 尚未创建或推送正式候选、tag、Release、`latest` 或正式镜像；发布后再回填不可变 workflow、digest、耗时和资源清理证据。
+
 # 2026-08-27 已正式发布：v0.6.0 SteamCMD 默认安装与邀请码 opt-in
 
 - [x] 最终不可变身份为 `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba`；候选 `33073661356`、自动 annotated tag `33075599631`、正式提升 `33075622114` 全部成功。

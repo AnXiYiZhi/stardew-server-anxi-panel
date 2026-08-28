@@ -1,3 +1,16 @@
+# LOGIN-CHAT-PRIVACY-1 跨端契约（2026-08-28，未发布）
+
+| 场景 | 客户端 → 服务器 | Junimo / Control | 其它客户端 |
+| --- | --- | --- | --- |
+| 精确 `!login`，密码正确或错误 | 原版客户端仍发送完整聊天消息 | Junimo 先完成 global/role/首次认领、attempt/timeout/隔离/传送语义；Control 随后取消原消息 fan-out | 不收到登录命令或密码原文 |
+| `!loginfoo`、`!!login`、`/login`、正文包含或普通聊天 | 原样发送 | 隐私策略不命中 | 仍按原版/Junimo 规则广播 |
+| chat packet 读取或 Reader 恢复异常 | 原样到达服务器 | 隐私补丁 fail closed；该 chat packet 不广播并只写无原文诊断 | 不收到不确定消息 |
+| 补丁目标/签名/Harmony 安装失败 | Control 报 availability=false | `control_runtime_login_chat_privacy_patch_unavailable` 阻断 required runtime ready 并停服 | 不能在未知保护状态下继续开放服务器 |
+
+- 没有新增客户端 Mod、遮罩输入框或 HTTP API。玩家继续在游戏内输入 `!login 密码`；发送者自己的原版客户端可能在本地聊天框回显输入，客户端到服务器的数据也仍含密码。本契约只保证服务端不把登录凭据消息转发给其它玩家，不是端到端加密。
+- Control `0.3.8` 的 `options.json/status.json` 新增 `loginChatPrivacyPatchAvailable/detail`，Panel gate 只接受当前 Control 版本且 available 明确为 true；旧 Control 缺字段也会 fail closed。普通聊天、Panel 全服喊话和非登录命令的数据形态与行为不变。
+- 当前自动验证覆盖分类边界、packet parser/position、补丁状态门禁、生命周期停服、manifest/DLL hash、Linux Junimo 全包与脚本静态门禁；真实双原版客户端旁观、fresh/restart 和 Web 升级/回滚仍待候选执行。旧实例必须升级运行栈并重启到 Control `0.3.8` 后才具备此保护。
+
 # v0.6.0 跨端正式发布证据（2026-08-27，released）
 
 - `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba` 已正式发布。不可变候选 `33073661356` 完成 fresh/restart、前后端契约回归、真实 Docker E2E、`v0.5.13 → v0.6.0` unhealthy/healthy Web 升级和 `v0.3.2 → v0.6.0` 历史兼容直升。

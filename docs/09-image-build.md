@@ -1,3 +1,33 @@
+# LOGIN-CHAT-PRIVACY-1 发布前清单与专项矩阵（2026-08-28，未发布）
+
+## 变更清单、受影响链路与发布边界
+
+- 嵌入 Control 从 `0.3.7` 升到 `0.3.8`，新增 `GameServer.rebroadcastClientMessage(IncomingMessage,long)` Harmony 前缀：Junimo 已处理 `!login` 后，Control 精确丢弃向其它客户端的登录凭据 fan-out。运行栈变更为 `junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.8`，DLL SHA-256=`dda16954bf3188222b4c8cdbf8d95f75dd2550748a40ec227a33706cf274d3cf`。
+- `options.json/status.json` 新增 `loginChatPrivacyPatchAvailable/detail`；required runtime gate 对缺失或 false 返回 `control_runtime_login_chat_privacy_patch_unavailable` 并停服。这个契约会使旧 Control 不能冒充 ready，因此正式候选必须选择 Control/运行栈、Junimo 真实 integration、updater/rollback、fresh/restart 和升级后专项，不能只跑字符串分类单测。
+- HTTP API、前端、SQLite、Compose、存档和角色 verifier 格式不变；客户端仍用原版聊天框输入登录命令。保护范围是“不向其它玩家转发”，发送者本地回显和客户端到服务器的明文链路仍存在，发布说明不得写成遮罩输入框或端到端加密。
+- 当前上一正式版为 `v0.6.0`，运行栈兼容边界仍是 `minimumPanelVersion=0.3.2`。由于 required runtime 身份与旧 Control options 兼容门禁改变，正式候选除 `v0.6.0 → 候选` 外，还应由发布矩阵选择 `v0.3.2 → 候选` 代表直升；具体选择/跳过仍以 `scripts/run-release-gates.sh` 的路径差异判定为准。
+
+## 本版专项矩阵
+
+| 维度 | 必测场景 | 通过标准 | 当前状态 |
+| --- | --- | --- | --- |
+| 分类与 packet | `!login`、大小写、前导/分隔空白、Unicode；畸形 packet；`!loginfoo`/`!!login`/普通聊天 | 只拦精确敏感命令；Reader 位置恢复；异常 fail closed；日志无原文 | **本地通过**：C# contract |
+| global / role | 正确、错误、最大失败次数、timeout；role 已配置、首次认领、串角色 | 认证结果与 verifier/attempt/warp 语义不变；旁观客户端均无密码原文 | **待真实双客户端** |
+| 普通消息 | 普通聊天、其它 Junimo 命令、Panel 全服喊话 | 仍正常广播；非 chat 网络消息不受影响 | **自动分类通过，待真实客户端** |
+| 补丁失败 | 目标缺失、签名变化、Harmony 未登记、旧 options 缺字段、显式 false | available 不得为 true；Panel 生命周期停服且只清理一次 | **本地通过**：gate/lifecycle 回归 |
+| Control 制品 | 两份 manifest、DLL、runtime stack version/hash/release note | 版本 `0.3.8` 与 SHA-256 精确一致；真实游戏程序集 0 errors | **本机通过**；标准 Linux `/game` 重编待候选 |
+| fresh / restart | 全新实例、Panel 重启、server 重启 | Control 0.3.8 加载并报告 available=true；普通聊天与认证均正常 | **待候选** |
+| 上一正式版升级 | `v0.6.0 → 候选` unhealthy rollback 后 healthy Web apply | 旧版恢复；新版本精确 DLL/stack；SQLite、存档、认证 store、非目标资源保持；升级后复验隐私 | **待候选** |
+| 最老受影响边界 | `v0.3.2 → 候选` | required runtime 自动升级，旧 options 不能误判 ready，长期数据保持 | **待候选矩阵选择** |
+| 日志与支持包 | 使用唯一测试密码后检查 Control/Panel/server 日志、API、支持包 | 新增实现不记录或返回密码，detail 只含固定诊断 | **源码/契约通过，待真实运行复核** |
+| 隔离与清理 | C#/Go/真实客户端/升级夹具 | 精确 owner/container/network/volume/temp 清零，不使用生产数据/长期凭据，不 prune | **本地 Go/Shell 资源已清零；其余待候选** |
+
+## 当前本地证据与未完成门禁
+
+- 已通过 C# contract、Windows 上对精确 Stardew `1.6.15.24356`/build `16826371` 的标准 Control build（0 errors、一个既有分析器版本 warning）、Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归，以及升级脚本 `bash -n`/ShellCheck。任务 Go 容器和两个 cache volume 已按 owner 核对并删除。
+- 本机 MCR `.NET 6 SDK` Linux 镜像拉取在最后一层持续无进展，已中止且未创建测试容器；因此标准 Linux `/game` Control 编译没有被本地结果替代或标为通过，必须在正式候选环境重新执行。真实双原版客户端、fresh/restart、远程制品、Junimo 长 integration、两条 Web 升级与 unhealthy 回滚同样尚未执行。
+- 当前只修改本地 `main` 工作树，没有创建/移动 tag，没有 push、Release、`latest`、候选或正式镜像。发布前必须从干净、与 `origin/main` 同步的最终 commit 重新生成不可变候选并回填 workflow、digest、选择/跳过矩阵、耗时、故障与资源清理证据。
+
 # v0.6.0 SteamCMD 默认安装与邀请码 opt-in（2026-08-27，正式发布完成）
 
 ## 2026-08-27 最终安全预检补充

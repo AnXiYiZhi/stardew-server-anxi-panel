@@ -19,6 +19,16 @@ type smapiDetectionFakeDocker struct {
 	sdk      []byte
 }
 
+func TestEmbeddedControlManifestMatchesRuntimeStack(t *testing.T) {
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyEmbeddedControlManifest(manifest); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (f *smapiDetectionFakeDocker) RuntimeReadSMAPIMetadata(context.Context, string, string, string) (paneldocker.RuntimeSMAPIMetadata, error) {
 	return f.metadata, nil
 }

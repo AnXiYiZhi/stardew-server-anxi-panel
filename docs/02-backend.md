@@ -1,3 +1,13 @@
+# LOGIN-CHAT-PRIVACY-1：服务端丢弃 `!login` 凭据广播（2026-08-28，未发布）
+
+- Control `0.3.8` 新增 `LoginChatPrivacyPatch`：精确 Harmony 前缀挂到 Stardew `private instance void GameServer.rebroadcastClientMessage(IncomingMessage,long)`。本机运行栈游戏程序集 `1.6.15.24356` 的 IL 顺序已经核对为“先由 `Multiplayer.processIncomingMessage`/Junimo ChatWatcher 完成认证，再调用 rebroadcast”；因此前缀返回 false 只取消向其它客户端 fan-out，不会重复或绕过 Junimo 的 global/role 校验、首次角色认领、错误次数、超时、隔离和成功传送。
+- `LoginChatPrivacyPolicy` 只把忽略大小写的独立命令词 `!login` 判为敏感：允许前导空白，命令词后必须是行尾或 Unicode whitespace。`!loginfoo`、`!!login`、`/login`、正文中的 `!login` 与普通聊天继续广播；前导空白虽然不会触发当前 Junimo 登录命令，也会被隐私层丢弃，避免误输密码泄露。
+- chat packet 按当前协议从位置 0 读取 `Int64 recipient + Int16 language + string text`，并在返回前恢复原 Reader 位置。Reader/stream/position/解析/恢复任一步异常都 fail closed，当前 chat packet 不再广播；运行期日志不记录聊天原文或密码，日志异常也不能改变丢弃决定。null chat 同样丢弃，非 chat 网络消息原样放行。
+- `PanelOptions` 与 `RuntimeStatus` 新增 `loginChatPrivacyPatchAvailable/detail`；Panel 的 required Control gate 使用 nullable bool 读取 options。字段缺失或 false 均返回 `control_runtime_login_chat_privacy_patch_unavailable`，生命周期停止服务器，旧 DLL 或反射/Harmony 失配不能静默冒充已启用保护。
+- 不要求玩家安装客户端 Mod，也没有新增输入框或 HTTP DTO。原版客户端仍发送 `!login 密码` 给服务器，发送者自己的聊天框可能保留本地回显；本功能只保证服务端不再把该认证消息转发给其它玩家，不应描述为输入遮罩或端到端加密。
+- 嵌入身份已同步为 stack `junimo-1.5.0-preview.125_auth-1.5.0-anxi.2_game-16826371_sdk-20939719_smapi-4.5.2_control-0.3.8`，两份 Control manifest 均为 `0.3.8`，嵌入 DLL SHA-256=`dda16954bf3188222b4c8cdbf8d95f75dd2550748a40ec227a33706cf274d3cf`。主要文件为 `LoginChatPrivacyPatch.cs`、`LoginChatPrivacyPolicy.cs`、`ModEntry.cs`、`ControlContract.cs`、Control contract tests、`control_runtime_gate*.go`、运行栈清单和升级脚本夹具；SQLite、Compose、存档与角色 verifier 格式不变。
+- 本地验证已通过 C# 纯契约测试、精确本机游戏程序集 Control build（0 errors）、Linux `go test ./internal/games/stardew_junimo/...`（核心包 `220.255s`）、`go vet ./...`、`go build ./...`、manifest/DLL hash 契约、生命周期停服回归以及升级脚本 `bash -n`/ShellCheck。两个未装 Mod 的真实客户端旁观验收、标准 Linux `/game` Control 重编、fresh/restart、旧版 Web 升级、unhealthy 回滚和正式候选仍待发布矩阵执行，当前未创建 tag、Release、latest 或正式镜像。
+
 # v0.6.0 后端正式发布证据（2026-08-27，released）
 
 - `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba` 已正式发布。不可变候选 `33073661356` 完成 Linux 后端 test/vet/build、受影响真实 Docker/远程制品矩阵、fresh/restart、`v0.5.13 → v0.6.0` unhealthy 回滚与 healthy apply，以及受影响最老边界 `v0.3.2 → v0.6.0` Web 直升。

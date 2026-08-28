@@ -35,7 +35,7 @@ func writeControlRuntimeOptions(t *testing.T, dataDir, body string) {
 }
 
 func readyControlRuntimeOptions(version string) string {
-	return `{"controlModVersion":"` + version + `","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}`
+	return `{"controlModVersion":"` + version + `","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}`
 }
 
 func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
@@ -60,9 +60,25 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 			wantCode:  ControlRuntimeCodeReady,
 		},
 		{
+			name: "missing login chat privacy patch evidence is invalid",
+			prepare: func(t *testing.T, dataDir, expected string) {
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}`)
+			},
+			wantState: ControlRuntimeGateInvalid,
+			wantCode:  ControlRuntimeCodeLoginChatPrivacyPatchUnavailable,
+		},
+		{
+			name: "failed login chat privacy patch is invalid",
+			prepare: func(t *testing.T, dataDir, expected string) {
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","loginChatPrivacyPatchAvailable":false,"hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true,"hostSleepSafetyPatchAvailable":true}`)
+			},
+			wantState: ControlRuntimeGateInvalid,
+			wantCode:  ControlRuntimeCodeLoginChatPrivacyPatchUnavailable,
+		},
+		{
 			name: "missing host automation bridge evidence is invalid",
 			prepare: func(t *testing.T, dataDir, expected string) {
-				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true,"hostSleepSafetyPatchAvailable":true}`)
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":true,"hostSleepSafetyPatchAvailable":true}`)
 			},
 			wantState: ControlRuntimeGateInvalid,
 			wantCode:  ControlRuntimeCodeHostAutomationBridgeUnavailable,
@@ -70,7 +86,7 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 		{
 			name: "missing host sleep safety patch evidence is invalid",
 			prepare: func(t *testing.T, dataDir, expected string) {
-				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true}`)
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":true,"hostAutomationBridgeAvailable":true}`)
 			},
 			wantState: ControlRuntimeGateInvalid,
 			wantCode:  ControlRuntimeCodeHostSleepSafetyPatchUnavailable,
@@ -78,7 +94,7 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 		{
 			name: "missing host farmhouse patch evidence is invalid",
 			prepare: func(t *testing.T, dataDir, expected string) {
-				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`"}`)
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","loginChatPrivacyPatchAvailable":true}`)
 			},
 			wantState: ControlRuntimeGateInvalid,
 			wantCode:  ControlRuntimeCodeHostFarmhousePatchUnavailable,
@@ -86,7 +102,7 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 		{
 			name: "failed host farmhouse patch is invalid",
 			prepare: func(t *testing.T, dataDir, expected string) {
-				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","hostFarmhousePreservationPatchAvailable":false}`)
+				writeControlRuntimeOptions(t, dataDir, `{"controlModVersion":"`+expected+`","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":false}`)
 			},
 			wantState: ControlRuntimeGateInvalid,
 			wantCode:  ControlRuntimeCodeHostFarmhousePatchUnavailable,
@@ -146,7 +162,8 @@ func TestInspectControlRuntimeGateClassifiesRuntimeEvidence(t *testing.T) {
 			}
 			got := InspectControlRuntimeGate(dataDir)
 			wantActual := tt.wantActual
-			if tt.wantState == ControlRuntimeGateReady || tt.wantCode == ControlRuntimeCodeHostFarmhousePatchUnavailable ||
+			if tt.wantState == ControlRuntimeGateReady || tt.wantCode == ControlRuntimeCodeLoginChatPrivacyPatchUnavailable ||
+				tt.wantCode == ControlRuntimeCodeHostFarmhousePatchUnavailable ||
 				tt.wantCode == ControlRuntimeCodeHostAutomationBridgeUnavailable || tt.wantCode == ControlRuntimeCodeHostSleepSafetyPatchUnavailable {
 				wantActual = expected
 			}

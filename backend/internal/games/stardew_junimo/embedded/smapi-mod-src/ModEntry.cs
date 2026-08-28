@@ -24,6 +24,7 @@ public sealed class ModEntry : Mod
     private InitConfig? initConfig;
     private bool isJunimoRuntime;
     private readonly PasswordProtectionBridge passwordBridge = new();
+    private readonly LoginChatPrivacyPatch loginChatPrivacyPatch = new();
     private readonly RolePasswordPatch rolePasswordPatch = new();
     private readonly HostFarmhousePreservationPatch hostFarmhousePreservationPatch = new();
     private HostAutomationBridge? hostAutomationBridge;
@@ -158,6 +159,7 @@ public sealed class ModEntry : Mod
             hostFarmhousePreservationPatch.Initialize(ModManifest.UniqueID, Monitor);
             hostAutomationBridge!.Initialize(ModManifest.UniqueID, Monitor);
             hostSleepSafetyPatch!.Initialize(ModManifest.UniqueID, Monitor);
+            loginChatPrivacyPatch.Initialize(ModManifest.UniqueID, Monitor);
             passwordBridge.Initialize(Monitor);
             playerAuthPolicy = RolePasswordPolicy.LoadFromEnvironment(controlDir);
             rolePasswordPatch.Initialize(
@@ -892,6 +894,8 @@ public sealed class ModEntry : Mod
 				TransactionId = farmCatalogRequest?.TransactionId ?? "",
 				GeneratedAt = generatedAt,
 				ControlModVersion = ModManifest.Version.ToString(),
+				LoginChatPrivacyPatchAvailable = loginChatPrivacyPatch.Available,
+				LoginChatPrivacyPatchDetail = loginChatPrivacyPatch.Detail,
 				HostFarmhousePreservationPatchAvailable = hostFarmhousePreservationPatch.Available,
 				HostFarmhousePreservationPatchDetail = hostFarmhousePreservationPatch.Detail,
 				HostAutomationBridgeAvailable = hostAutomationBridge?.Available == true,
@@ -1081,6 +1085,8 @@ public sealed class ModEntry : Mod
             PlayerAuthConfigRevision = playerAuthPolicy.Revision,
             RolePasswordPatchAvailable = rolePasswordPatch.Available,
             RolePasswordPatchDetail = rolePasswordPatch.Detail,
+            LoginChatPrivacyPatchAvailable = loginChatPrivacyPatch.Available,
+            LoginChatPrivacyPatchDetail = loginChatPrivacyPatch.Detail,
             HostFarmhousePreservationPatchAvailable = hostFarmhousePreservationPatch.Available,
             HostFarmhousePreservationPatchDetail = hostFarmhousePreservationPatch.Detail,
             HostAutomationBridgeAvailable = hostAutomationBridge?.Available == true,

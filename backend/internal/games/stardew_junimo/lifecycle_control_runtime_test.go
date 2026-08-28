@@ -412,7 +412,7 @@ func TestControlRuntimeExplicitOldVersionIsMismatch(t *testing.T) {
 
 func TestControlRuntimeHostFarmhousePatchFailureStopsServer(t *testing.T) {
 	result := runControlRuntimeGateFailureTest(t, controlRuntimeFailureFixture{
-		optionsBody: `{"controlModVersion":"{{expected}}","hostFarmhousePreservationPatchAvailable":false}`,
+		optionsBody: `{"controlModVersion":"{{expected}}","loginChatPrivacyPatchAvailable":true,"hostFarmhousePreservationPatchAvailable":false}`,
 	})
 	if result.instance.State != storage.InstanceStateError || result.instance.DriverPhase != ControlRuntimeCodeHostFarmhousePatchUnavailable {
 		t.Fatalf("host farmhouse patch failure state = %+v, want error/%s", result.instance, ControlRuntimeCodeHostFarmhousePatchUnavailable)
@@ -422,6 +422,21 @@ func TestControlRuntimeHostFarmhousePatchFailureStopsServer(t *testing.T) {
 	}
 	if !strings.Contains(result.job.ErrorMessage.String, ControlRuntimeCodeHostFarmhousePatchUnavailable) {
 		t.Fatalf("host farmhouse patch failure code missing from job: %+v", result.job)
+	}
+}
+
+func TestControlRuntimeLoginChatPrivacyPatchFailureStopsServer(t *testing.T) {
+	result := runControlRuntimeGateFailureTest(t, controlRuntimeFailureFixture{
+		optionsBody: `{"controlModVersion":"{{expected}}","loginChatPrivacyPatchAvailable":false}`,
+	})
+	if result.instance.State != storage.InstanceStateError || result.instance.DriverPhase != ControlRuntimeCodeLoginChatPrivacyPatchUnavailable {
+		t.Fatalf("login chat privacy patch failure state = %+v, want error/%s", result.instance, ControlRuntimeCodeLoginChatPrivacyPatchUnavailable)
+	}
+	if result.downCalls != 1 {
+		t.Fatalf("login chat privacy patch failure ComposeDown calls = %d, want 1", result.downCalls)
+	}
+	if !strings.Contains(result.job.ErrorMessage.String, ControlRuntimeCodeLoginChatPrivacyPatchUnavailable) {
+		t.Fatalf("login chat privacy patch failure code missing from job: %+v", result.job)
 	}
 }
 
