@@ -2,7 +2,7 @@
 
 - `website/docs/changelog.md` 置顶 v0.7.0，说明游戏库、多世界管理、安装授权和状态恢复，链接正式 Release；v0.6.1 保留为历史版本。
 - `website/docs/index.md` 的 release、版本入口和 CURRENT RELEASE 同步为 v0.7.0。现有主题与页面结构保持一致。
-- Node 24 Alpine、独立依赖/产物卷的 VitePress production build 通过（6.61s）；Pages 部署与线上正文回读将在推送后记录。
+- Node 24 Alpine、独立依赖/产物卷的 VitePress production build 通过（6.61s）；提交 `64b8443b43e0e58fd453972003e35464bcec52ad` 的 Pages `33965514760` 构建/部署成功。线上首页与 `/changelog.html` HTTP 200，正文确认 v0.7.0 为最新；本地构建 HTML 确认版本顺序 v0.7.0/v0.6.1。两个测试卷已按归属清理，本轮为正文与构建验证。
 
 # v0.7.0 正式发布完成（2026-09-05）
 

@@ -4,11 +4,11 @@
 
 - `website/docs/changelog.md` 置顶 v0.7.0，说明游戏库、多世界管理、安装授权和状态恢复，链接正式 Release；v0.6.1 保留为历史版本。
 - `website/docs/index.md` 的 release、版本入口和 CURRENT RELEASE 同步为 v0.7.0。现有主题与页面结构保持一致。
-- Node 24 Alpine、独立依赖/产物卷的 VitePress production build 通过（6.61s）；Pages 部署与线上正文回读将在推送后记录。
+- Node 24 Alpine、独立依赖/产物卷的 VitePress production build 通过（6.61s）；提交 `64b8443b43e0e58fd453972003e35464bcec52ad` 的 Pages `33965514760` 构建/部署成功。线上首页与 `/changelog.html` HTTP 200，正文确认 v0.7.0 为最新；本地构建 HTML 确认版本顺序 v0.7.0/v0.6.1。两个测试卷已按归属清理，本轮为正文与构建验证。
 
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
-状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；官网版本展示目标已切换到最新 v0.5.12。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：
+状态：**既有正式官网继续上线，使用原 Hero、联机邀请卡、六入口、QQ 群入口和导航；官网版本展示已更新为 v0.7.0。既有响应式布局与首屏留白保持一致**。
 
 ## 2026-08-23：官网展示 v0.5.12
 
@@ -125,7 +125,7 @@
 
 性能约定：首页禁止持续 blur/filter 动画、大面积 `backdrop-filter` 卡片或覆盖整个滚动区域的固定透明层。Hero 与卡片使用静态近实色合成和 `contain`；导航栏是唯一保留的共用轻量毛玻璃。视觉验收除溢出和 console 外，需复核首页计算样式中没有持续动画及额外大面积滤镜。
 
-线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.5.12` 文档）
+线上地址：https://anxiyizhi.github.io/stardew-server-anxi-panel/（当前已发布 `v0.7.0` 文档）
 
 | 决策项 | 结论 |
 | --- | --- |
