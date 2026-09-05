@@ -80,6 +80,26 @@
     inset 0 -1px 0 rgba(255, 224, 150, 0.1);
 }
 
+.sd-mshell-worlds {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 9px;
+  border: 2px solid rgba(116, 66, 24, 0.72);
+  border-radius: 6px;
+  color: #fff3d6;
+  background: rgba(70, 34, 11, 0.78);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sd-mshell-worlds:focus-visible {
+  outline: 3px solid #ffd86a;
+  outline-offset: 2px;
+}
+
 .sd-mshell-brand {
   position: relative;
   z-index: 1;
@@ -155,7 +175,7 @@
 .sd-mshell-update--restored { background: #d29a3d; }
 
 @media (max-width: 430px) {
-  .sd-mshell-brand { max-width: 42%; font-size: 13px; }
+  .sd-mshell-brand { display: none; }
   .sd-mshell-status { padding-inline: 7px; }
   .sd-mshell-status-text { font-size: 11px; }
 }

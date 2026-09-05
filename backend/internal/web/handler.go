@@ -61,23 +61,25 @@ type DockerService interface {
 }
 
 type server struct {
-	config             config.Config
-	store              *storage.Store
-	logger             *slog.Logger
-	docker             DockerService
-	jobs               *jobs.Manager
-	registry           *registry.Registry
-	pendingUploads     *durablePendingUploadStore
-	publicIPResolver   *publicIPResolver
-	updateChecker      UpdateChecker
-	updater            UpdaterService
-	farmCatalogScanner func(string) (sj.FarmCatalogResult, error)
-	farmPrepareMu      sync.Mutex
-	saveImportCancelMu sync.Mutex
-	metricsMu          sync.Mutex
-	metricsCache       map[string]resourceMetricsCacheEntry
-	metricsFlights     map[string]*resourceMetricsFlight
-	initialized        atomic.Bool
+	config                 config.Config
+	store                  *storage.Store
+	logger                 *slog.Logger
+	docker                 DockerService
+	jobs                   *jobs.Manager
+	registry               *registry.Registry
+	pendingUploads         *durablePendingUploadStore
+	publicIPResolver       *publicIPResolver
+	updateChecker          UpdateChecker
+	updater                UpdaterService
+	farmCatalogScanner     func(string) (sj.FarmCatalogResult, error)
+	farmPrepareMu          sync.Mutex
+	instanceCreateMu       sync.Mutex
+	instanceOperationLocks sync.Map
+	saveImportCancelMu     sync.Mutex
+	metricsMu              sync.Mutex
+	metricsCache           map[string]resourceMetricsCacheEntry
+	metricsFlights         map[string]*resourceMetricsFlight
+	initialized            atomic.Bool
 }
 
 // NewHandler returns the HTTP routes for the panel backend.
@@ -261,6 +263,8 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleTestJob(w, r, true)
 	case "/api/instances":
 		s.handleInstances(w, r)
+	case "/api/games/stardew/installation":
+		s.handleStardewGameInstallation(w, r)
 	case "/api/audit-logs":
 		s.handleAuditLogs(w, r)
 	case "/api/health/diagnostics":
@@ -316,21 +320,46 @@ func isKnownRequestPath(p string) bool {
 		return true
 	}
 	switch p {
-	case "/instances/stardew",
-		"/instances/stardew/install",
-		"/instances/stardew/overview",
-		"/instances/stardew/server",
-		"/instances/stardew/saves",
-		"/instances/stardew/jobs",
-		"/instances/stardew/players",
-		"/instances/stardew/player-mods",
-		"/instances/stardew/mods",
-		"/instances/stardew/diagnostics",
-		"/instances/stardew/settings":
+	case "/games", "/games/stardew", "/games/stardew/install", "/games/stardew/new":
+		return true
+	default:
+		return isKnownInstanceSPAPath(p)
+	}
+}
+
+func isKnownInstanceSPAPath(p string) bool {
+	if !strings.HasPrefix(p, "/instances/") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(p, "/instances/"), "/")
+	if len(parts) < 1 || len(parts) > 2 || !isSafeInstancePathSegment(parts[0]) {
+		return false
+	}
+	if len(parts) == 1 {
+		return true
+	}
+	switch parts[1] {
+	case "install", "overview", "server", "saves", "jobs", "players", "player-mods", "mods", "diagnostics", "settings":
 		return true
 	default:
 		return false
 	}
+}
+
+func isSafeInstancePathSegment(value string) bool {
+	if len(value) < 1 || len(value) > 64 {
+		return false
+	}
+	for index, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
+			continue
+		}
+		if index > 0 && (char == '.' || char == '_' || char == '-') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func isKnownAPIPath(p string) bool {
@@ -354,6 +383,7 @@ func isKnownAPIPath(p string) bool {
 		"/api/jobs/test",
 		"/api/jobs/test-fail",
 		"/api/instances",
+		"/api/games/stardew/installation",
 		"/api/audit-logs",
 		"/api/health/diagnostics",
 		"/api/docker/status",

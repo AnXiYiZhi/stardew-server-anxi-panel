@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
 )
 
 func TestPublicIPResolverFallsBackAndCaches(t *testing.T) {
@@ -61,8 +65,15 @@ func TestPublicIPEndpointRequiresAuthAndReturnsIP(t *testing.T) {
 		defaultPublicIPProviders = oldProviders
 	})
 
-	handler, closeStore := newTestHandler(t)
+	handler, _, dataDir, closeStore := newDockerTestHandlerWithStore(t, fakeDockerService{})
 	defer closeStore()
+	instanceDir := filepath.Join(dataDir, "instances", "stardew")
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatalf("create instance dir: %v", err)
+	}
+	if err := sjconfig.UpdateEnvFile(filepath.Join(instanceDir, ".env"), map[string]string{"GAME_PORT": "24643"}); err != nil {
+		t.Fatalf("write instance env: %v", err)
+	}
 
 	_, adminCookie := doJSON(t, handler, http.MethodPost, "/api/setup/admin", map[string]string{
 		"username":        "admin",
@@ -83,7 +94,7 @@ func TestPublicIPEndpointRequiresAuthAndReturnsIP(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if payload.IP != "1.1.1.1" || payload.CheckedAt == "" || payload.Source == "" {
+	if payload.IP != "1.1.1.1" || payload.CheckedAt == "" || payload.Source == "" || payload.GamePort != 24643 || payload.Protocol != "udp" {
 		t.Fatalf("unexpected public IP payload: %+v", payload)
 	}
 }

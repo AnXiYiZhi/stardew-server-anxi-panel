@@ -22,12 +22,33 @@ export type SMAPIArchiveProgress = {
   cached: boolean
 }
 
+export type PullProgress = {
+  done: number
+  total: number
+  percent: number
+}
+
 type DownloadProgressKind = 'game' | 'sdk' | 'steamcmd_update'
 
 const steamDownloadProgressRe = /\[steam\].*Progress:\s*(\d+)\/(\d+)\s+files\s+-\s+([^/()]+?)\/([^()]+?)\s+\((\d+(?:\.\d+)?)%\)/i
 const steamCMDDownloadProgressRe = /\[steamcmd\].*progress:\s*(\d+(?:\.\d+)?)\s*\(([^/()]+?)\s*\/\s*([^()]+?)\)/i
 const steamCMDBracketProgressRe = /\[steamcmd\]\s+\[\s*(\d+(?:\.\d+)?)%\]\s+downloading update\s+\(([\d,]+)\s+of\s+([\d,]+)\s+([^)]+?)\)/i
 const smapiArchiveProgressRe = /^\[smapi:download:progress:(\d+):(\d+):(\d+):(\d+):(true|false)\]$/i
+const pullProgressRe = /^\[pull:progress:(\d+):(\d+)\]$/
+
+export function extractPullProgress(logs: JobLog[]): PullProgress | null {
+  let latest: { done: number; total: number } | null = null
+  for (const log of logs) {
+    const match = log.message.match(pullProgressRe)
+    if (!match) continue
+    const done = Number(match[1])
+    const total = Number(match[2])
+    if (!Number.isSafeInteger(done) || !Number.isSafeInteger(total) || done < 0 || total <= 0 || done > total) continue
+    latest = { done, total }
+  }
+  if (!latest) return null
+  return { ...latest, percent: Math.round((latest.done / latest.total) * 100) }
+}
 
 export function extractSMAPIArchiveProgress(logs: JobLog[], jobType: string | undefined): SMAPIArchiveProgress | null {
   if (jobType !== 'stardew_install') return null

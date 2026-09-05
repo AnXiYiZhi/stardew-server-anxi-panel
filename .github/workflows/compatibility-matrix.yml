@@ -53,6 +53,9 @@ jobs:
           npm run test:runtime-components
           npm run test:smapi-update
           npm run test:install-state
+          npm run test:game-library
+          npm run test:session-expiry
+          npm run test:world-delete
           npm run test:lifecycle-action-state
           npm run test:new-game-idempotency
           npm run test:nexus-extension-idempotency

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
+	"strings"
 )
 
 const DefaultDriverPhase = "empty"
@@ -27,6 +29,17 @@ type EnsureDefaultInstanceParams struct {
 	DriverID string
 	Name     string
 	DataDir  string
+}
+
+type CreateInstanceParams struct {
+	ID            string
+	DriverID      string
+	Name          string
+	DataDir       string
+	State         string
+	StateMessage  string
+	DriverPhase   string
+	DriverPayload string
 }
 
 type UpdateInstanceStateParams struct {
@@ -93,6 +106,136 @@ func (s *Store) EnsureDefaultInstance(ctx context.Context, params EnsureDefaultI
 	return scanInstanceRow(row)
 }
 
+// AllocateInstanceOrdinal returns a monotonically increasing, per-game
+// ordinal for a backend-generated instance ID. Existing instances seed the
+// first value for upgraded databases, and allocated values are intentionally
+// never returned when provisioning fails or an instance is deleted.
+func (s *Store) AllocateInstanceOrdinal(ctx context.Context, gameID, driverID, idPrefix string) (int, error) {
+	gameID = strings.TrimSpace(gameID)
+	driverID = strings.TrimSpace(driverID)
+	idPrefix = strings.TrimSpace(idPrefix)
+	if gameID == "" || driverID == "" || idPrefix == "" {
+		return 0, ErrConflict
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer rollback(tx)
+
+	initialNext := 2
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM instances WHERE driver_id = ?`, driverID)
+	if err != nil {
+		return 0, err
+	}
+	instanceCount := 0
+	prefix := idPrefix + "-"
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		instanceCount++
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
+		value, err := strconv.Atoi(strings.TrimPrefix(id, prefix))
+		if err == nil && value >= initialNext {
+			initialNext = value + 1
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if countNext := instanceCount + 1; countNext > initialNext {
+		initialNext = countNext
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO instance_id_sequences (game_id, next_value)
+		VALUES (?, ?)
+		ON CONFLICT(game_id) DO NOTHING
+	`, gameID, initialNext); err != nil {
+		return 0, err
+	}
+	var ordinal int
+	if err := tx.QueryRowContext(ctx, `
+		UPDATE instance_id_sequences
+		SET next_value = next_value + 1,
+			updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		WHERE game_id = ?
+		RETURNING next_value - 1
+	`, gameID).Scan(&ordinal); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return ordinal, nil
+}
+
+// CreateInstance reserves a new instance ID and data directory in one SQLite
+// write transaction. data_dir is checked explicitly because older databases do
+// not have a UNIQUE constraint on that column.
+func (s *Store) CreateInstance(ctx context.Context, params CreateInstanceParams) (Instance, error) {
+	if params.ID == "" || params.DriverID == "" || params.Name == "" || params.DataDir == "" || !IsValidInstanceState(params.State) {
+		return Instance{}, ErrConflict
+	}
+	driverPhase := params.DriverPhase
+	if driverPhase == "" {
+		driverPhase = DefaultDriverPhase
+	}
+	driverPayload := params.DriverPayload
+	if driverPayload == "" {
+		driverPayload = "{}"
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Instance{}, err
+	}
+	defer rollback(tx)
+	var conflict int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM instances WHERE id = ? OR data_dir = ?
+	`, params.ID, params.DataDir).Scan(&conflict); err != nil {
+		return Instance{}, err
+	}
+	if conflict != 0 {
+		return Instance{}, ErrConflict
+	}
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO instances (id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at
+	`, params.ID, params.DriverID, params.Name, params.DataDir, params.State, nullString(params.StateMessage), driverPhase, driverPayload)
+	instance, err := scanInstanceRow(row)
+	if err != nil {
+		return Instance{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Instance{}, err
+	}
+	return instance, nil
+}
+
+// DeleteInstanceIfPhase removes only a still-owned provisioning reservation.
+// It cannot delete a completed or independently mutated instance.
+func (s *Store) DeleteInstanceIfPhase(ctx context.Context, id, driverPhase string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM instances WHERE id = ? AND driver_phase = ?`, id, driverPhase)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	return count == 1, err
+}
+
 func (s *Store) ListInstances(ctx context.Context) ([]Instance, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at
@@ -145,6 +288,12 @@ func (s *Store) UpdateInstanceState(ctx context.Context, params UpdateInstanceSt
 		WHERE id = ?
 		RETURNING id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at
 	`, params.State, nullString(params.StateMessage), driverPhase, driverPayload, params.ID)
+	return scanInstanceRow(row)
+}
+
+func (s *Store) RenameInstance(ctx context.Context, id, name string) (Instance, error) {
+	row := s.db.QueryRowContext(ctx, `UPDATE instances SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?
+		RETURNING id, driver_id, name, data_dir, state, state_message, driver_phase, driver_payload, created_at, updated_at`, name, id)
 	return scanInstanceRow(row)
 }
 

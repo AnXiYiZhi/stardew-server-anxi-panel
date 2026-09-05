@@ -1,0 +1,2163 @@
+:root {
+  --hub-ink: #eef5f6;
+  --hub-muted: #94a6ad;
+  --hub-bg: #071114;
+  --hub-surface: #0d1b1f;
+  --hub-surface-strong: #12262a;
+  --hub-line: #284047;
+  --hub-signal: #8bcf68;
+  --hub-focus: #73d8ff;
+  --hub-warm: #d9a441;
+}
+
+.game-hub {
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  color: var(--hub-ink);
+  background: url('/assets/game-hub/background_game_library_day_image2.png') center bottom / cover no-repeat fixed, var(--hub-bg);
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+.game-hub--background-night {
+  background: url('/assets/game-hub/background_game_library_image2.png') center bottom / cover no-repeat fixed, var(--hub-bg);
+}
+
+.game-hub--stardew {
+  --hub-signal: #9bcf55;
+  background:
+    linear-gradient(180deg, rgba(7, 17, 20, 0.78), rgba(7, 17, 20, 0.94)),
+    url('/assets/stardew/ui/backgrounds/background_login_farm_generated.png') center / cover fixed,
+    var(--hub-bg);
+}
+
+.game-hub button {
+  font: inherit;
+}
+
+.game-hub button:focus-visible,
+.game-hub [tabindex]:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 4px;
+}
+
+.game-hub-topbar {
+  box-sizing: border-box;
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 20px;
+  padding: 8px clamp(18px, 3vw, 44px);
+  border-bottom: 3px solid transparent;
+  background: rgba(5, 15, 18, 0.96);
+  box-shadow: 0 8px 24px rgba(3, 10, 12, 0.16);
+}
+
+.game-hub-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  color: var(--hub-ink);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.game-hub-brand strong {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.game-hub-logout {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  color: var(--hub-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.game-hub-logout:hover {
+  color: var(--hub-ink);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.game-hub-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.game-hub-account-name {
+  margin-right: 4px;
+  color: #f0f5f5;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.game-hub-theme-toggle {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(217, 164, 65, 0.48);
+  border-radius: 50%;
+  color: #efc55f;
+  background: rgba(8, 24, 27, 0.76);
+  cursor: pointer;
+  transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.game-hub-theme-toggle[aria-pressed="true"] {
+  border-color: rgba(115, 216, 255, 0.45);
+  color: #b7dcf1;
+}
+
+.game-hub-theme-toggle:hover {
+  border-color: currentColor;
+  background: rgba(22, 47, 51, 0.9);
+  transform: translateY(-1px);
+}
+
+.game-hub-theme-toggle svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.game-hub--library:not(.game-hub--background-night) .game-hub-topbar {
+  border-bottom-color: transparent;
+  color: #294326;
+  background: transparent;
+  box-shadow: none;
+}
+
+.game-hub--library:not(.game-hub--background-night) .game-hub-brand,
+.game-hub--library:not(.game-hub--background-night) .game-hub-account-name {
+  color: #294326;
+}
+
+.game-hub--library:not(.game-hub--background-night) .game-hub-logout {
+  color: #6d5135;
+}
+
+.game-hub--library:not(.game-hub--background-night) .game-hub-logout:hover {
+  color: #294326;
+  background: rgba(255, 250, 222, 0.58);
+}
+
+.game-hub--library:not(.game-hub--background-night) .game-hub-theme-toggle {
+  border-color: rgba(151, 101, 37, 0.56);
+  color: #a56b20;
+  background: rgba(255, 247, 207, 0.72);
+}
+
+.game-hub--library:not(.game-hub--background-night) .game-hub-theme-toggle:hover {
+  background: #fff7d5;
+}
+
+.game-hub--library.game-hub--background-night .game-hub-topbar {
+  border-bottom-color: transparent;
+  color: #f3e5a1;
+  background: transparent;
+  box-shadow: none;
+}
+
+.game-hub--library.game-hub--background-night .game-hub-brand {
+  color: #f3e5a1;
+}
+
+.game-hub--library.game-hub--background-night .game-hub-account-name {
+  color: #d9ebf4;
+}
+
+.game-hub--library.game-hub--background-night .game-hub-logout {
+  color: #9db8c9;
+}
+
+.game-hub--library.game-hub--background-night .game-hub-logout:hover {
+  color: #e8f4f7;
+  background: rgba(92, 147, 181, 0.13);
+}
+
+.game-hub--library.game-hub--background-night .game-hub-theme-toggle {
+  border-color: rgba(112, 180, 216, 0.54);
+  color: #b7dff0;
+  background: rgba(9, 28, 46, 0.82);
+}
+
+.game-hub--library.game-hub--background-night .game-hub-theme-toggle:hover {
+  background: #173550;
+}
+
+.game-hub-main {
+  width: min(1380px, calc(100% - 48px));
+  min-width: 0;
+  margin: 0 auto;
+  padding: clamp(42px, 6vw, 88px) 0 56px;
+}
+
+.game-hub-main--library {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(100vh - 66px);
+  min-height: calc(100dvh - 66px);
+  display: grid;
+  align-content: center;
+  padding: clamp(34px, 7vh, 72px) 0;
+}
+
+.game-hub-heading {
+  max-width: 740px;
+  margin-bottom: clamp(28px, 4vw, 52px);
+}
+
+.game-hub-heading p,
+.game-tile-kicker {
+  margin: 0 0 10px;
+  color: var(--hub-signal);
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.game-hub-heading h1 {
+  color: #f4f8f8;
+  font-size: clamp(32px, 4.4vw, 56px);
+  font-weight: 620;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.game-picker {
+  --game-card-width: clamp(230px, 23vw, 306px);
+  --game-card-gap: clamp(18px, 2.2vw, 30px);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 38px max(26px, calc((100vw - var(--game-card-width)) / 2)) 44px;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-inline: contain;
+  scroll-padding-inline: max(26px, calc((100vw - var(--game-card-width)) / 2));
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  list-style: none;
+}
+
+.game-picker::-webkit-scrollbar { display: none; }
+
+.game-picker.is-worlds-open {
+  scroll-snap-type: none;
+}
+
+.game-picker-item {
+  box-sizing: border-box;
+  flex: 0 0 var(--game-card-width);
+  min-width: 0;
+  padding: 9px;
+  margin-right: var(--game-card-gap);
+  scroll-snap-align: start;
+}
+
+.game-picker-item--primary {
+  position: relative;
+  z-index: 3;
+  transition: margin-right 360ms cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+.game-card-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.game-card-frame > .game-carousel-card {
+  height: 100%;
+}
+
+.game-card-progress-ring {
+  --game-install-ring-color: var(--hub-focus);
+  position: absolute;
+  z-index: 5;
+  inset: -4px;
+  padding: 4px;
+  border-radius: 7px;
+  background: conic-gradient(
+    from -90deg,
+    var(--game-install-ring-color) 0 var(--game-install-progress),
+    rgba(112, 139, 140, 0.28) var(--game-install-progress) 360deg
+  );
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.game-card-progress-ring.is-complete { --game-install-ring-color: var(--hub-signal); }
+.game-card-progress-ring.is-failed { --game-install-ring-color: #d16d5d; }
+
+.game-card-frame.has-install-panel .game-carousel-card.is-selected::after {
+  border-color: transparent;
+}
+
+.game-picker.is-install-open .game-carousel-card.is-selected {
+  transform: none;
+}
+
+.game-picker.is-install-open .game-world-rail-content {
+  padding-left: 0;
+}
+
+.game-picker.is-worlds-open:not(.is-worlds-closing) .game-picker-item--primary {
+  margin-right: 0;
+  transition: margin-right 360ms cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+.game-picker.is-worlds-open.is-worlds-closing .game-picker-item--primary {
+  margin-right: var(--game-card-gap);
+  transition: margin-right 360ms cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+.game-picker-item--soon {
+  flex-basis: clamp(210px, 19vw, 252px);
+  margin-left: clamp(18px, 2.2vw, 30px);
+  opacity: 0.88;
+}
+
+.game-carousel-card {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 1px solid var(--hub-line);
+  border-radius: 3px;
+  color: var(--hub-ink);
+  background: var(--hub-surface);
+  box-shadow: 0 13px 30px rgba(0, 0, 0, 0.24);
+  text-align: left;
+  cursor: pointer;
+  transform-origin: center;
+  transition: transform 220ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.game-carousel-card::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  inset: -3px;
+  border: 3px solid transparent;
+  border-radius: 6px;
+  pointer-events: none;
+  transition: border-color 200ms ease;
+}
+
+.game-carousel-card.is-selected {
+  border-color: rgba(115, 216, 255, 0.72);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.32);
+  transform: scale(1.045);
+}
+
+.game-carousel-card.is-selected::after {
+  border-color: var(--hub-focus);
+}
+
+.game-carousel-card:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: var(--hub-signal);
+}
+
+.game-carousel-card:focus-visible {
+  outline: 2px solid #f2f8f8;
+  outline-offset: 2px;
+}
+
+.game-carousel-card[aria-disabled="true"] {
+  cursor: progress;
+}
+
+.game-carousel-card:disabled {
+  color: #aeb9bc;
+  cursor: not-allowed;
+}
+
+.game-carousel-cover {
+  position: relative;
+  min-height: 0;
+  aspect-ratio: auto;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-bottom: 1px solid var(--hub-line);
+  background:
+    linear-gradient(180deg, rgba(3, 12, 12, 0.02), rgba(4, 12, 11, 0.28)),
+    url('/assets/game-hub/stardew-steam-store-header.jpg') center / contain no-repeat,
+    #4ab8df;
+  image-rendering: pixelated;
+  transition: filter 200ms ease;
+}
+
+.game-carousel-card--not_installed .game-carousel-cover,
+.game-carousel-card--install_failed .game-carousel-cover,
+.game-carousel-card--repair_required .game-carousel-cover,
+.game-carousel-card--diagnostic .game-carousel-cover {
+  filter: grayscale(1) saturate(0.28) brightness(0.72);
+}
+
+.game-carousel-card--installing .game-carousel-cover,
+.game-carousel-card--loading .game-carousel-cover,
+.game-carousel-card--unavailable .game-carousel-cover {
+  filter: saturate(0.42) brightness(0.78);
+}
+
+.game-card-signal {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(7, 17, 20, 0.86);
+  border-radius: 50%;
+  background: #738288;
+  box-shadow: 0 0 0 1px rgba(238, 245, 246, 0.28);
+}
+
+.game-card-signal--ready { background: var(--hub-signal); }
+.game-card-signal--idle { background: var(--hub-warm); }
+.game-card-signal--error { background: #d16d5d; }
+.game-card-signal--working { background: var(--hub-focus); animation: hub-pulse 1.2s ease-in-out infinite; }
+
+.game-carousel-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 13px 16px 14px;
+}
+
+.game-carousel-title {
+  overflow-wrap: anywhere;
+  color: #f4f8f8;
+  font-size: clamp(18px, 1.7vw, 22px);
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.game-carousel-status {
+  min-height: 18px;
+  color: #c7d1d3;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.game-carousel-status--ready { color: #c7e8b4; }
+.game-carousel-status--idle,
+.game-carousel-status--working { color: #f0d39a; }
+.game-carousel-status--error { color: #f1b8aa; }
+
+.game-carousel-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 166, 173, 0.2);
+  color: var(--hub-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.game-carousel-action svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.game-carousel-action svg {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.game-carousel-action.is-open svg {
+  transform: rotate(180deg);
+}
+
+.game-carousel-card--soon .game-carousel-cover {
+  color: rgba(174, 185, 188, 0.46);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 55%),
+    #0a171a;
+  filter: grayscale(1);
+  font: 800 clamp(48px, 6vw, 72px)/1 Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.game-hub-notice {
+  margin: 18px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid #8d553e;
+  color: #ffd3c1;
+  background: rgba(77, 31, 21, 0.75);
+}
+
+.game-hub-notice button,
+.worlds-toolbar button {
+  min-height: 40px;
+  border: 1px solid var(--hub-line);
+  color: var(--hub-ink);
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.game-hub-notice button { padding: 0 13px; }
+
+.worlds-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin: -22px 0 28px;
+  color: var(--hub-muted);
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.worlds-toolbar button {
+  padding: 0 15px;
+}
+
+.game-world-rail {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: clip;
+  opacity: 0;
+  scroll-snap-align: none;
+  transition: width 360ms cubic-bezier(0.33, 0, 0.67, 1), opacity 220ms ease-out;
+}
+
+.game-world-rail.is-open {
+  opacity: 1;
+}
+
+.game-world-rail.is-open.is-closing {
+  transition: width 360ms cubic-bezier(0.33, 0, 0.67, 1), opacity 240ms ease-in 70ms;
+}
+
+.game-world-rail-content {
+  position: relative;
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 30px 4px 30px 32px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-42px);
+  transition:
+    opacity 180ms ease,
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 280ms;
+}
+
+.game-world-rail.is-open .game-world-rail-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+  transition:
+    opacity 240ms ease-out 50ms,
+    transform 360ms cubic-bezier(0.33, 0, 0.67, 1),
+    visibility 0s linear 0s;
+}
+
+.game-world-rail.is-open.is-closing .game-world-rail-content {
+  opacity: 0;
+  visibility: visible;
+  transform: translateX(-42px);
+  transition:
+    opacity 240ms ease-in 70ms,
+    transform 360ms cubic-bezier(0.33, 0, 0.67, 1),
+    visibility 0s linear 360ms;
+}
+
+.world-choice-list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.world-choice-list li {
+  min-width: 0;
+  opacity: 0;
+  transform: translateX(-50px);
+  transition: opacity 190ms ease, transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.game-world-rail.is-open .world-choice-list li {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 220ms ease-out 50ms,
+    transform 360ms cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+.game-world-rail.is-open.is-closing .world-choice-list li {
+  opacity: 0;
+  transform: translateX(-50px);
+  transition:
+    opacity 220ms ease-in 90ms,
+    transform 360ms cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+.world-choice {
+  box-sizing: border-box;
+  position: relative;
+  width: clamp(224px, 18vw, 244px);
+  min-height: 350px;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: 0;
+  border: 1px solid rgba(210, 226, 218, 0.35);
+  border-radius: 8px;
+  color: var(--hub-ink);
+  background: rgba(7, 21, 24, 0.97);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.25);
+  text-align: left;
+  cursor: default;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.world-choice:hover {
+  border-color: var(--hub-signal);
+  background: #10272a;
+  transform: translateY(-3px);
+}
+
+.world-choice-open:focus-visible,
+.world-create-card:focus-visible {
+  outline: 3px solid var(--hub-focus);
+}
+
+.world-choice-open:focus-visible {
+  outline-offset: -5px;
+}
+
+.world-create-card:focus-visible {
+  outline-offset: 4px;
+}
+
+.world-choice-open {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.world-choice-scene {
+  display: block;
+  width: 100%;
+  object-fit: cover;
+  aspect-ratio: 1.28 / 1;
+  border-bottom: 1px solid rgba(210, 226, 218, 0.22);
+  background: url('/assets/stardew/new-game/farms/standard.png') center / cover;
+  image-rendering: pixelated;
+}
+
+.world-name-row { display: flex; align-items: flex-start; flex: 1; gap: 3px; min-width: 0; }
+.world-name-edit, .world-name-editor { position: relative; z-index: 2; pointer-events: auto; }
+.world-name-edit { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 28px; padding: 4px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.world-name-edit svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.world-name-edit:focus-visible { outline: 2px solid var(--hub-focus); }
+.world-name-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex: 1; gap: 5px; min-width: 0; }
+.world-name-editor input { box-sizing: border-box; grid-column: 1 / -1; width: 100%; min-width: 0; height: 32px; padding: 5px 7px; border: 1px solid #95895b; border-radius: 3px; background: #fff7da; color: #304530; font: inherit; }
+.world-name-editor button { min-width: 0; height: 27px; padding: 3px; border: 1px solid #95895b; border-radius: 3px; background: #f5e5b6; color: #304530; font-size: 12px; white-space: nowrap; cursor: pointer; }
+
+.world-choice-content {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 13px;
+  pointer-events: none;
+}
+
+.world-choice-heading {
+  min-width: 0;
+  /* Reserve the same title/editor space for every name and lifecycle state. */
+  min-height: 64px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.world-choice-name {
+  min-width: 0;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: #f3f6ee;
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+
+.world-status {
+  flex: 0 0 auto;
+  min-height: 28px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #b9c4c7;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.world-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #738288;
+}
+
+.world-status--running { color: #c4e8b1; }
+.world-status--running > span { background: var(--hub-signal); }
+.world-status--working { color: #f0d39a; }
+.world-status--working > span { background: var(--hub-warm); }
+.world-status--error { color: #f1b8aa; }
+.world-status--error > span { background: #d16d5d; }
+.world-status--planned { color: #aeb8bd; }
+
+.world-choice-details {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.world-choice-address {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 7px;
+  align-items: stretch;
+}
+
+.world-choice-address > span {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+}
+
+.world-choice-details small {
+  color: var(--hub-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.world-choice-details code,
+.world-choice-details strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #d9e3e5;
+  font: 700 11px/1.45 Consolas, "SFMono-Regular", monospace;
+}
+
+.world-copy-button,
+.world-lifecycle-button {
+  position: relative;
+  z-index: 2;
+  min-height: 44px;
+  border: 1px solid rgba(210, 226, 218, 0.32);
+  border-radius: 5px;
+  color: #d9e3e5;
+  background: rgba(6, 18, 21, 0.54);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.world-copy-button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.world-copy-button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.world-copy-button:hover:not(:disabled),
+.world-lifecycle-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.world-copy-button:focus-visible,
+.world-lifecycle-button:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+
+.world-copy-button:disabled,
+.world-lifecycle-button:disabled {
+  cursor: default;
+}
+
+.world-copy-button.is-copied {
+  color: var(--hub-signal);
+  border-color: currentColor;
+}
+
+.world-copy-button.is-failed {
+  color: #efae9d;
+  border-color: currentColor;
+}
+
+.world-lifecycle-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  font: 750 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.world-lifecycle-button > span {
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  box-shadow: 3px 3px 0 color-mix(in srgb, currentColor 32%, transparent);
+}
+
+.world-lifecycle-button--start { color: #b9e894; }
+.world-lifecycle-button--stop { color: #efb5a7; }
+.world-lifecycle-button--busy { color: #f0d39a; }
+.world-lifecycle-button--disabled { color: #94a2a6; }
+
+.world-choice-action-error {
+  position: relative;
+  z-index: 2;
+  color: #efae9d;
+  font-size: 10px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.world-create-card,
+.world-rail-message {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+.world-create-card {
+  width: clamp(190px, 15vw, 210px);
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  align-self: center;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 17px;
+  padding: 20px 12px;
+  border: 1px solid rgba(139, 207, 104, 0.44);
+  color: var(--hub-signal);
+  background: rgba(7, 21, 24, 0.96);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.world-create-card:hover {
+  border-color: var(--hub-signal);
+  background: #10272a;
+  transform: translateY(-3px);
+}
+
+.world-create-card svg {
+  width: 42px;
+  height: 42px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.world-create-card strong {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.world-rail-message {
+  width: 154px;
+  min-height: 350px;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid rgba(210, 226, 218, 0.3);
+  color: var(--hub-muted);
+  background: rgba(7, 21, 24, 0.96);
+  text-align: center;
+}
+
+.world-rail-message--error {
+  border-color: rgba(209, 109, 93, 0.58);
+  color: #f1b8aa;
+}
+
+.world-rail-message button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Moonlit cards use cool pixel-paper surfaces instead of flat black panels. */
+.game-hub--background-night .game-carousel-card {
+  border-color: rgba(118, 151, 190, 0.62);
+  color: #e7edf3;
+  background: #17243b;
+  box-shadow:
+    0 4px 0 rgba(9, 15, 31, 0.9),
+    0 16px 32px rgba(1, 7, 18, 0.38);
+}
+
+.game-hub--background-night .game-carousel-card.is-selected {
+  box-shadow:
+    0 4px 0 rgba(9, 15, 31, 0.9),
+    0 18px 36px rgba(1, 7, 18, 0.44);
+}
+
+.game-hub--background-night .game-carousel-cover {
+  border-bottom-color: rgba(135, 166, 202, 0.42);
+  background:
+    linear-gradient(180deg, rgba(44, 82, 129, 0.08), rgba(8, 17, 42, 0.42)),
+    url('/assets/game-hub/stardew-steam-store-header.jpg') center / contain no-repeat,
+    #266f91;
+}
+
+.game-hub--background-night .game-carousel-copy,
+.game-hub--background-night .world-choice-content {
+  background:
+    radial-gradient(circle at 6px 6px, rgba(236, 222, 158, 0.16) 0 1px, transparent 1.5px),
+    linear-gradient(rgba(137, 164, 197, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 164, 197, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, #243552, #17243b);
+  background-size: 24px 24px, 12px 12px, 12px 12px, auto;
+}
+
+.game-hub--background-night .game-carousel-title,
+.game-hub--background-night .world-choice-name {
+  color: #fae9ad;
+  text-shadow: 0 1px #081027;
+}
+
+.game-hub--background-night .game-carousel-status {
+  color: #b8c7d5;
+}
+
+.game-hub--background-night .game-carousel-status--ready,
+.game-hub--background-night .world-status--running {
+  color: #bfe590;
+}
+
+.game-hub--background-night .game-carousel-status--idle,
+.game-hub--background-night .game-carousel-status--working,
+.game-hub--background-night .world-status--working {
+  color: #f1cf78;
+}
+
+.game-hub--background-night .game-carousel-status--error,
+.game-hub--background-night .world-status--error,
+.game-hub--background-night .world-rail-message--error {
+  color: #f1a292;
+}
+
+.game-hub--background-night .game-carousel-action {
+  border-top-color: rgba(147, 173, 202, 0.2);
+  color: #aebed0;
+}
+
+.game-hub--background-night .game-carousel-card--soon {
+  border-color: rgba(104, 128, 157, 0.5);
+  color: #bdc8d3;
+  background: #162135;
+}
+
+.game-hub--background-night .game-carousel-card--soon .game-carousel-cover {
+  color: rgba(217, 228, 236, 0.36);
+  background:
+    linear-gradient(45deg, rgba(133, 160, 190, 0.1) 25%, transparent 25%, transparent 75%, rgba(133, 160, 190, 0.1) 75%),
+    linear-gradient(45deg, rgba(133, 160, 190, 0.1) 25%, #1d2b43 25%, #1d2b43 75%, rgba(133, 160, 190, 0.1) 75%);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.game-hub--background-night .world-choice {
+  border-color: rgba(116, 147, 183, 0.6);
+  color: #e1e8ef;
+  background: #17243b;
+  box-shadow:
+    0 4px 0 rgba(8, 14, 30, 0.88),
+    0 16px 30px rgba(1, 7, 18, 0.36);
+}
+
+.game-hub--background-night .world-choice:hover {
+  border-color: #8eb7da;
+  background: #223550;
+}
+
+.game-hub--background-night .world-choice-scene {
+  border-bottom-color: rgba(135, 166, 202, 0.4);
+  box-shadow: inset 0 0 0 999px rgba(20, 39, 77, 0.2);
+}
+
+.game-hub--background-night .world-status {
+  color: #adbdcb;
+}
+
+.game-hub--background-night .world-status--planned,
+.game-hub--background-night .world-choice-details small {
+  color: #9caec0;
+}
+
+.game-hub--background-night .world-choice-details code,
+.game-hub--background-night .world-choice-details strong {
+  color: #e1e9ed;
+}
+
+.game-hub--background-night .world-copy-button,
+.game-hub--background-night .world-lifecycle-button {
+  border-color: rgba(139, 175, 207, 0.52);
+  background: rgba(9, 29, 53, 0.82);
+  box-shadow: inset 0 -2px 0 rgba(4, 13, 28, 0.72);
+}
+
+.game-hub--background-night .world-copy-button {
+  color: #afd1e9;
+}
+
+.game-hub--background-night .world-copy-button:hover:not(:disabled),
+.game-hub--background-night .world-lifecycle-button:hover:not(:disabled) {
+  border-color: #9fc9e7;
+  background: rgba(19, 48, 79, 0.96);
+}
+
+.game-hub--background-night .world-lifecycle-button--start { color: #bde78d; }
+.game-hub--background-night .world-lifecycle-button--stop { color: #f0b2a7; }
+.game-hub--background-night .world-lifecycle-button--busy { color: #f0d08b; }
+.game-hub--background-night .world-lifecycle-button--disabled { color: #8194a4; }
+
+.game-hub--background-night .world-create-card {
+  border-color: rgba(143, 193, 105, 0.64);
+  color: #b9df86;
+  background:
+    radial-gradient(circle at 10px 10px, rgba(244, 221, 133, 0.14) 0 1px, transparent 1.5px),
+    linear-gradient(45deg, rgba(112, 145, 181, 0.1) 25%, transparent 25%, transparent 75%, rgba(112, 145, 181, 0.1) 75%),
+    linear-gradient(45deg, rgba(112, 145, 181, 0.1) 25%, #192842 25%, #192842 75%, rgba(112, 145, 181, 0.1) 75%);
+  background-position: 0 0, 0 0, 10px 10px;
+  background-size: 28px 28px, 20px 20px, 20px 20px;
+  box-shadow:
+    0 4px 0 rgba(8, 14, 30, 0.88),
+    0 15px 28px rgba(1, 7, 18, 0.34);
+}
+
+.game-hub--background-night .world-create-card:hover {
+  border-color: #b8e28b;
+  color: #d1ef9e;
+  background-color: #223550;
+}
+
+.game-hub--background-night .world-rail-message {
+  border-color: rgba(116, 147, 183, 0.52);
+  color: #aebdca;
+  background: #17243b;
+}
+
+/* Warm daylight cards keep the pixel-farm character of the scene without reducing text contrast. */
+.game-hub:not(.game-hub--background-night) .game-carousel-card {
+  border-color: rgba(103, 76, 37, 0.72);
+  color: #29402e;
+  background: #f7e9bd;
+  box-shadow:
+    0 4px 0 rgba(102, 72, 34, 0.82),
+    0 15px 28px rgba(71, 50, 25, 0.2);
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-card.is-selected {
+  box-shadow:
+    0 4px 0 rgba(102, 72, 34, 0.82),
+    0 18px 34px rgba(50, 45, 28, 0.24);
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-cover {
+  border-bottom-color: rgba(103, 76, 37, 0.55);
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-copy,
+.game-hub:not(.game-hub--background-night) .world-choice-content {
+  background:
+    linear-gradient(rgba(119, 91, 43, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(119, 91, 43, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, #fff7da, #efdda8);
+  background-size: 12px 12px, 12px 12px, auto;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-title,
+.game-hub:not(.game-hub--background-night) .world-choice-name {
+  color: #2d432c;
+  text-shadow: 0 1px rgba(255, 255, 255, 0.58);
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-status {
+  color: #5f6541;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-status--ready,
+.game-hub:not(.game-hub--background-night) .world-status--running {
+  color: #397020;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-status--idle,
+.game-hub:not(.game-hub--background-night) .game-carousel-status--working,
+.game-hub:not(.game-hub--background-night) .world-status--working {
+  color: #8a5e12;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-status--error,
+.game-hub:not(.game-hub--background-night) .world-status--error,
+.game-hub:not(.game-hub--background-night) .world-rail-message--error {
+  color: #a13f31;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-action {
+  border-top-color: rgba(103, 76, 37, 0.26);
+  color: #5e633f;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-card--soon {
+  border-color: rgba(101, 91, 67, 0.55);
+  color: #4d5946;
+  background: #e7ddba;
+}
+
+.game-hub:not(.game-hub--background-night) .game-carousel-card--soon .game-carousel-cover {
+  color: rgba(73, 91, 70, 0.42);
+  background:
+    linear-gradient(45deg, rgba(85, 110, 76, 0.12) 25%, transparent 25%, transparent 75%, rgba(85, 110, 76, 0.12) 75%),
+    linear-gradient(45deg, rgba(85, 110, 76, 0.12) 25%, #dfe8c5 25%, #dfe8c5 75%, rgba(85, 110, 76, 0.12) 75%);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.game-hub:not(.game-hub--background-night) .world-choice {
+  border-color: rgba(107, 77, 38, 0.68);
+  color: #304530;
+  background: #f5e5b6;
+  box-shadow:
+    0 4px 0 rgba(104, 74, 35, 0.8),
+    0 15px 26px rgba(72, 50, 24, 0.19);
+}
+
+.game-hub:not(.game-hub--background-night) .world-choice:hover {
+  border-color: #5f8f39;
+  background: #fff3cf;
+}
+
+.game-hub:not(.game-hub--background-night) .world-choice-scene {
+  border-bottom-color: rgba(107, 77, 38, 0.48);
+}
+
+.game-hub:not(.game-hub--background-night) .world-status {
+  color: #68705a;
+}
+
+.game-hub:not(.game-hub--background-night) .world-status--planned,
+.game-hub:not(.game-hub--background-night) .world-choice-details small {
+  color: #6f765f;
+}
+
+.game-hub:not(.game-hub--background-night) .world-choice-details code,
+.game-hub:not(.game-hub--background-night) .world-choice-details strong {
+  color: #34482f;
+}
+
+.game-hub:not(.game-hub--background-night) .world-copy-button,
+.game-hub:not(.game-hub--background-night) .world-lifecycle-button {
+  border-color: rgba(103, 76, 37, 0.44);
+  background: rgba(255, 247, 215, 0.78);
+  box-shadow: inset 0 -2px 0 rgba(129, 91, 40, 0.2);
+}
+
+.game-hub:not(.game-hub--background-night) .world-copy-button {
+  color: #496947;
+}
+
+.game-hub:not(.game-hub--background-night) .world-copy-button:hover:not(:disabled),
+.game-hub:not(.game-hub--background-night) .world-lifecycle-button:hover:not(:disabled) {
+  border-color: #628d42;
+  background: rgba(255, 252, 230, 0.96);
+}
+
+.game-hub:not(.game-hub--background-night) .world-lifecycle-button--start { color: #397020; }
+.game-hub:not(.game-hub--background-night) .world-lifecycle-button--stop { color: #a14536; }
+.game-hub:not(.game-hub--background-night) .world-lifecycle-button--busy { color: #8a5e12; }
+.game-hub:not(.game-hub--background-night) .world-lifecycle-button--disabled { color: #77735f; }
+
+.game-hub:not(.game-hub--background-night) .world-create-card {
+  border-color: rgba(84, 125, 48, 0.72);
+  color: #4f8b2f;
+  background:
+    linear-gradient(45deg, rgba(101, 139, 69, 0.08) 25%, transparent 25%, transparent 75%, rgba(101, 139, 69, 0.08) 75%),
+    linear-gradient(45deg, rgba(101, 139, 69, 0.08) 25%, #f8edc8 25%, #f8edc8 75%, rgba(101, 139, 69, 0.08) 75%);
+  background-position: 0 0, 10px 10px;
+  background-size: 20px 20px;
+  box-shadow:
+    0 4px 0 rgba(88, 112, 50, 0.72),
+    0 14px 24px rgba(72, 50, 24, 0.16);
+}
+
+.game-hub:not(.game-hub--background-night) .world-create-card:hover {
+  border-color: #4f8b2f;
+  color: #397020;
+  background-color: #fff5d8;
+}
+
+.game-hub:not(.game-hub--background-night) .world-rail-message {
+  border-color: rgba(107, 77, 38, 0.54);
+  color: #5f674f;
+  background: #f5e5b6;
+}
+
+.world-create-card--form {
+  width: clamp(238px, 18vw, 268px);
+  min-height: 210px;
+  aspect-ratio: auto;
+  align-content: center;
+  justify-items: stretch;
+  place-content: initial;
+  gap: 10px;
+  padding: 18px;
+  cursor: default;
+  transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1), border-color 180ms ease, background 180ms ease;
+}
+
+.world-create-card--form:hover {
+  transform: none;
+}
+
+.world-create-card--form > strong {
+  font-size: 15px;
+  text-align: left;
+}
+
+.world-create-field {
+  display: grid;
+}
+
+.world-create-field > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.world-create-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  outline: none;
+  font: 600 16px/1.2 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+.world-create-field input:focus-visible {
+  border-color: var(--hub-focus);
+  box-shadow: 0 0 0 3px rgba(115, 216, 255, 0.22);
+}
+
+.world-create-form-message {
+  color: var(--hub-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.world-create-form-message.is-error {
+  color: #d96855;
+}
+
+.world-create-form-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: 8px;
+}
+
+.world-create-form-actions button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.world-create-form-actions button:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.35);
+  opacity: 0.62;
+}
+
+.game-install-inline {
+  box-sizing: border-box;
+  position: relative;
+  width: clamp(350px, 29vw, 424px);
+  min-height: clamp(304px, 23vw, 330px);
+  align-self: center;
+  flex: 0 0 auto;
+  margin-left: -9px;
+  border: 1px solid rgba(84, 125, 48, 0.72);
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  box-shadow: 0 4px 0 rgba(88, 112, 50, 0.72), 0 14px 24px rgba(72, 50, 24, 0.16);
+  color: #29402e;
+  background:
+    linear-gradient(rgba(119, 91, 43, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(119, 91, 43, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, #fff7da, #efdda8);
+  background-size: 12px 12px, 12px 12px, auto;
+}
+
+.game-install-inline--form {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  padding: 18px 22px 18px 28px;
+}
+
+.game-install-inline--form > strong {
+  color: #2d432c;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.game-install-field {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: #3f5638;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.game-install-field input,
+.game-install-guard input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid #8c7448;
+  border-radius: 3px;
+  outline: none;
+  color: #29402e;
+  background: rgba(255, 249, 220, 0.92);
+  font: 600 16px/1.2 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+.game-install-secret-control {
+  position: relative;
+  min-width: 0;
+  display: block;
+}
+
+.game-install-secret-control input {
+  padding-right: 50px;
+}
+
+.game-install-password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid rgba(140, 116, 72, 0.48);
+  border-radius: 0 3px 3px 0;
+  color: #536c49;
+  background: rgba(240, 224, 175, 0.44);
+  cursor: pointer;
+}
+
+.game-install-password-toggle:hover:not(:disabled) {
+  color: #315d27;
+  background: rgba(220, 205, 151, 0.62);
+}
+
+.game-install-password-toggle:focus-visible {
+  z-index: 1;
+  outline: 3px solid var(--hub-focus);
+  outline-offset: -3px;
+}
+
+.game-install-password-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.game-install-password-eye {
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.game-install-password-eye circle {
+  fill: currentColor;
+  stroke: none;
+}
+
+.game-install-password-eye-slash {
+  stroke-width: 2.2;
+}
+
+.game-install-field input:focus-visible,
+.game-install-guard input:focus-visible {
+  border-color: var(--hub-focus);
+  box-shadow: 0 0 0 3px rgba(115, 216, 255, 0.22);
+}
+
+.game-install-message {
+  min-height: 14px;
+  color: #68674f;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.game-install-message.is-error {
+  color: #a13f31;
+}
+
+.game-install-actions,
+.game-install-inline-action {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 8px;
+}
+
+.game-install-auth-choice {
+  display: grid;
+  gap: 7px;
+}
+
+.game-install-auth-choice > strong {
+  color: #3f5638;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.game-install-actions button,
+.game-install-inline-action button,
+.game-install-guard button,
+.game-install-retry {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.game-install-actions button:first-child,
+.game-install-inline-action button:first-child {
+  color: #5c674d;
+  background: rgba(255, 249, 220, 0.64);
+}
+
+.game-install-actions button:last-child,
+.game-install-inline-action button:last-child,
+.game-install-guard button,
+.game-install-retry {
+  color: #f7f4dc;
+  background: #4f8b2f;
+}
+
+.game-install-actions button:disabled,
+.game-install-inline-action button:disabled,
+.game-install-guard button:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.35);
+  opacity: 0.62;
+}
+
+.game-install-auth-choice .game-install-inline-action button {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-color: rgba(94, 111, 61, 0.72);
+  color: #304b31;
+  background: rgba(255, 249, 220, 0.72);
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.game-install-auth-choice .game-install-inline-action button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #4f8b2f;
+  background: rgba(255, 253, 233, 0.96);
+}
+
+.game-install-auth-choice .game-install-inline-action button:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+
+.game-install-auth-choice .game-install-inline-action button > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.game-install-auth-choice .game-install-inline-action button strong {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-install-auth-choice .game-install-inline-action button small {
+  overflow: hidden;
+  color: #696b53;
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-install-choice-mark {
+  box-sizing: border-box;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  box-shadow: inset 0 0 0 2px rgba(79, 139, 47, 0.12);
+  font: 800 9px/1 Consolas, "SFMono-Regular", monospace;
+  letter-spacing: -0.04em;
+}
+
+.game-install-inline--progress {
+  display: grid;
+  align-content: center;
+  gap: 11px;
+  padding: 20px 24px 20px 28px;
+}
+
+.game-install-progress-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 14px;
+  align-items: end;
+}
+
+.game-install-progress-head > span {
+  grid-column: 1 / -1;
+  color: #6c674e;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.game-install-progress-head > strong {
+  min-width: 0;
+  color: #263f2b;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.game-install-progress-head > b {
+  color: #397020;
+  font: 800 18px/1 Consolas, "SFMono-Regular", monospace;
+}
+
+.game-install-progress-bar {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid #917842;
+  background: rgba(255, 250, 222, 0.62);
+}
+
+.game-install-progress-bar > span {
+  height: 100%;
+  display: block;
+  background: #4f8b2f;
+  transition: width 220ms ease;
+}
+
+.game-install-progress-bar.is-indeterminate > span {
+  background: repeating-linear-gradient(90deg, #4f8b2f 0 12px, #86b85a 12px 20px);
+  animation: game-install-bar-walk 820ms linear infinite;
+}
+
+.game-install-step-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.game-install-step-list li {
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(103, 76, 37, 0.18);
+  color: #77735f;
+  font-size: 12px;
+}
+
+.game-install-step-list li > span {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.game-install-step-list li.is-done { color: #397020; }
+.game-install-step-list li.is-done > span { background: currentColor; box-shadow: inset 0 0 0 2px #f5e8b8; }
+.game-install-step-list li.is-active { color: #8a5e12; }
+.game-install-step-list li.is-active > span { border-style: dashed; animation: game-install-step-spin 1s linear infinite; }
+.game-install-step-list li.is-error { color: #a13f31; }
+
+.game-install-progress-detail {
+  min-height: 30px;
+  margin: 0;
+  color: #5c6047;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.game-install-guard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.game-install-guard label {
+  display: grid;
+  gap: 4px;
+  color: #4e5e44;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.game-install-mobile-wait,
+.game-install-qr {
+  color: #5c6047;
+  font-size: 11px;
+}
+
+.game-install-qr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-install-qr img {
+  width: 104px;
+  height: 104px;
+  image-rendering: pixelated;
+}
+
+.game-install-qr a {
+  color: #397020;
+  font-weight: 750;
+}
+
+.game-install-retry {
+  justify-self: end;
+}
+
+.game-hub--background-night .game-install-inline {
+  border-color: rgba(143, 193, 105, 0.64);
+  color: #e1e8ef;
+  background:
+    radial-gradient(circle at 10px 10px, rgba(244, 221, 133, 0.14) 0 1px, transparent 1.5px),
+    linear-gradient(rgba(137, 164, 197, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(137, 164, 197, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, #243552, #17243b);
+  background-size: 28px 28px, 12px 12px, 12px 12px, auto;
+  box-shadow: 0 4px 0 rgba(8, 14, 30, 0.88), 0 16px 30px rgba(1, 7, 18, 0.36);
+}
+
+.game-hub--background-night .game-install-inline--form > strong,
+.game-hub--background-night .game-install-progress-head > strong,
+.game-hub--background-night .game-install-auth-choice > strong {
+  color: #fae9ad;
+}
+
+.game-hub--background-night .game-install-field,
+.game-hub--background-night .game-install-progress-head > span,
+.game-hub--background-night .game-install-progress-detail,
+.game-hub--background-night .game-install-mobile-wait,
+.game-hub--background-night .game-install-qr,
+.game-hub--background-night .game-install-message {
+  color: #aebed0;
+}
+
+.game-hub--background-night .game-install-field input,
+.game-hub--background-night .game-install-guard input {
+  border-color: #587998;
+  color: #edf4f5;
+  background: rgba(8, 26, 45, 0.9);
+}
+
+.game-hub--background-night .game-install-password-toggle {
+  border-left-color: rgba(88, 121, 152, 0.66);
+  color: #b8d0db;
+  background: rgba(20, 47, 70, 0.7);
+}
+
+.game-hub--background-night .game-install-password-toggle:hover:not(:disabled) {
+  color: #dff1dd;
+  background: rgba(35, 65, 87, 0.94);
+}
+
+.game-hub--background-night .game-install-actions button:first-child,
+.game-hub--background-night .game-install-inline-action button:first-child {
+  color: #b6c9d4;
+  background: rgba(8, 26, 45, 0.5);
+}
+
+.game-hub--background-night .game-install-actions button:last-child,
+.game-hub--background-night .game-install-guard button,
+.game-hub--background-night .game-install-retry {
+  color: #122315;
+  background: #b9df86;
+}
+
+.game-hub--background-night .game-install-auth-choice .game-install-inline-action button {
+  border-color: rgba(134, 174, 197, 0.68);
+  color: #e2edf1;
+  background: rgba(8, 26, 45, 0.68);
+}
+
+.game-hub--background-night .game-install-auth-choice .game-install-inline-action button:hover:not(:disabled) {
+  border-color: #b9df86;
+  background: rgba(25, 49, 72, 0.94);
+}
+
+.game-hub--background-night .game-install-auth-choice .game-install-inline-action button small {
+  color: #aebed0;
+}
+
+.game-hub--background-night .game-install-choice-mark {
+  box-shadow: inset 0 0 0 2px rgba(185, 223, 134, 0.1);
+}
+
+.game-hub--background-night .game-install-progress-head > b,
+.game-hub--background-night .game-install-qr a,
+.game-hub--background-night .game-install-step-list li.is-done {
+  color: #bfe590;
+}
+
+.game-hub--background-night .game-install-progress-bar {
+  border-color: #587998;
+  background: rgba(8, 26, 45, 0.6);
+}
+
+.game-hub--background-night .game-install-progress-bar > span { background: #b9df86; }
+.game-hub--background-night .game-install-step-list li { border-bottom-color: rgba(147, 173, 202, 0.2); color: #8194a4; }
+.game-hub--background-night .game-install-step-list li.is-done > span { box-shadow: inset 0 0 0 2px #1c2c46; }
+.game-hub--background-night .game-install-step-list li.is-active { color: #f1cf78; }
+.game-hub--background-night .game-install-step-list li.is-error,
+.game-hub--background-night .game-install-message.is-error { color: #f1a292; }
+
+@keyframes game-install-bar-walk {
+  from { background-position: 0 0; }
+  to { background-position: 20px 0; }
+}
+
+@keyframes game-install-step-spin {
+  to { transform: rotate(360deg); }
+}
+
+.game-hub--background-night .world-create-field input {
+  border-color: #587998;
+  color: #edf4f5;
+  background: rgba(8, 26, 45, 0.9);
+}
+
+.game-hub--background-night .world-create-field input::placeholder {
+  color: #8ea7b8;
+}
+
+.game-hub--background-night .world-create-form-actions button:first-child {
+  color: #b6c9d4;
+  background: rgba(8, 26, 45, 0.5);
+}
+
+.game-hub--background-night .world-create-form-actions button:last-child {
+  color: #122315;
+  background: #b9df86;
+}
+
+.game-hub:not(.game-hub--background-night) .world-create-field input {
+  border-color: #8c7448;
+  color: #29402e;
+  background: rgba(255, 249, 220, 0.92);
+}
+
+.game-hub:not(.game-hub--background-night) .world-create-field input::placeholder {
+  color: #7a745e;
+}
+
+.game-hub:not(.game-hub--background-night) .world-create-form-actions button:first-child {
+  color: #5c674d;
+  background: rgba(255, 249, 220, 0.64);
+}
+
+.game-hub:not(.game-hub--background-night) .world-create-form-actions button:last-child {
+  color: #f7f4dc;
+  background: #4f8b2f;
+}
+
+@keyframes hub-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.88); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 980px) {
+  .game-picker { --game-card-width: clamp(230px, 36vw, 292px); }
+  .game-picker-item--soon { flex-basis: clamp(205px, 30vw, 238px); }
+}
+
+@media (max-width: 700px) {
+  .game-hub { background-attachment: scroll; }
+
+  .game-hub-topbar {
+    min-height: 62px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .game-hub-brand { min-height: 44px; }
+  .game-hub-brand strong { font-size: 13px; letter-spacing: 0.04em; }
+  .game-hub-account { gap: 2px; }
+  .game-hub-account-name { margin-right: 2px; font-size: 12px; }
+  .game-hub-logout { padding-inline: 8px; }
+  .game-hub-main { width: min(100% - 28px, 620px); padding: 36px 0 30px; }
+  .game-hub-main--library {
+    width: 100%;
+    min-height: calc(100vh - 62px);
+    min-height: calc(100dvh - 62px);
+    padding: 26px 0 34px;
+  }
+  .game-hub-heading { margin-bottom: 26px; }
+  .game-hub-heading h1 { font-size: clamp(32px, 10vw, 42px); }
+  .game-picker {
+    --game-card-width: min(78vw, 320px);
+    --game-card-gap: 0px;
+    padding: 30px max(16px, calc((100vw - var(--game-card-width)) / 2)) 38px;
+    scroll-padding-inline: max(16px, calc((100vw - var(--game-card-width)) / 2));
+  }
+  .game-picker-item { padding: 8px; margin-right: 0; }
+  .game-picker-item--soon { flex-basis: min(68vw, 272px); margin-left: 0; }
+  .game-carousel-copy { padding: 12px 14px 13px; }
+  .game-world-rail-content { gap: 12px; padding: 26px 3px 26px 26px; }
+  .world-choice-list { gap: 12px; }
+  .world-choice-list li,
+  .world-create-card,
+  .world-rail-message {
+    scroll-margin-inline-start: clamp(28px, 10vw, 40px);
+    scroll-snap-align: start;
+  }
+  .world-choice { width: min(72vw, 278px); min-height: 350px; }
+  .world-create-card { width: min(60vw, 232px); }
+  .game-install-inline { width: min(82vw, 400px); }
+  .game-install-inline--form { padding-inline: 22px; }
+  .world-rail-message { min-height: 350px; }
+  .worlds-toolbar { margin-top: -12px; align-items: stretch; flex-direction: column; }
+  .worlds-toolbar button { min-height: 44px; align-self: flex-start; }
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .game-hub--library {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvh;
+    max-width: none;
+    height: 100dvw;
+    min-height: 100dvw;
+    overflow: hidden;
+    transform: rotate(90deg) translateY(-100%);
+    transform-origin: top left;
+  }
+
+  .game-hub--library .game-hub-topbar {
+    min-height: 58px;
+    padding-block: 5px;
+  }
+
+  .game-hub--library .game-hub-main--library {
+    min-height: calc(100dvw - 58px);
+    padding: 0;
+  }
+
+  .game-hub--library .game-picker {
+    --game-card-width: clamp(190px, 58dvw, 230px);
+    --game-card-gap: 14px;
+    padding: 14px max(20px, calc((100dvh - var(--game-card-width)) / 2)) 18px;
+    scroll-padding-inline: max(20px, calc((100dvh - var(--game-card-width)) / 2));
+  }
+
+  .game-hub--library .game-picker-item { padding: 6px; }
+  .game-hub--library .game-picker-item--soon { flex-basis: clamp(170px, 46dvw, 190px); margin-left: 12px; }
+  .game-hub--library .game-carousel-copy { gap: 3px; padding: 8px 12px 9px; }
+  .game-hub--library .game-carousel-title { font-size: 17px; }
+  .game-hub--library .game-carousel-status { min-height: 15px; font-size: 10px; }
+  .game-hub--library .game-carousel-action { padding-top: 5px; font-size: 10px; }
+  .game-hub--library .game-world-rail-content { gap: 10px; padding: 12px 2px 12px 20px; }
+  .game-hub--library .world-choice-list { gap: 10px; }
+  .game-hub--library .world-choice { width: clamp(190px, 52dvw, 212px); min-height: 276px; }
+  .game-hub--library .world-choice-scene { aspect-ratio: 1.72 / 1; }
+  .game-hub--library .world-choice-content { padding: 8px 10px 9px; }
+  .game-hub--library .world-choice-heading { gap: 7px; }
+  .game-hub--library .world-choice-name { font-size: 17px; }
+  .game-hub--library .world-status { gap: 4px; font-size: 9px; }
+  .game-hub--library .world-status > span { width: 5px; height: 5px; }
+  .game-hub--library .world-choice-details { gap: 4px; margin: 6px 0 0; }
+  .game-hub--library .world-choice-details small { font-size: 9px; }
+  .game-hub--library .world-choice-details code,
+  .game-hub--library .world-choice-details strong { font-size: 10px; }
+  .game-hub--library .world-lifecycle-button { font-size: 11px; }
+  .game-hub--library .world-create-card { width: clamp(150px, 42dvw, 170px); gap: 10px; padding: 14px 10px; }
+  .game-hub--library .world-create-card--form { width: clamp(214px, 58dvw, 236px); min-height: 190px; gap: 8px; padding: 14px; }
+  .game-hub--library .game-install-inline { width: clamp(300px, 45dvh, 340px); min-height: clamp(280px, 78dvw, 304px); }
+  .game-hub--library .game-install-inline--form,
+  .game-hub--library .game-install-inline--progress { gap: 7px; padding: 12px 16px 12px 20px; }
+  .game-hub--library .game-install-inline--progress.has-auth-choice { min-height: 286px; gap: 6px; padding-block: 10px; }
+  .game-hub--library .game-install-inline--progress.has-auth-choice .game-install-step-list li { min-height: 21px; }
+  .game-hub--library .game-install-inline--progress.has-auth-choice .game-install-inline-action button { min-height: 52px; }
+  .game-hub--library .game-install-field { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
+  .game-hub--library .game-install-progress-head > strong { font-size: 17px; }
+  .game-hub--library .game-install-step-list li { min-height: 24px; }
+  .game-hub--library .game-install-progress-detail { min-height: 24px; }
+  .game-hub--library .world-create-card svg { width: 34px; height: 34px; }
+  .game-hub--library .world-rail-message { width: 140px; min-height: 276px; padding: 18px; }
+}
+
+@media (max-width: 900px) and (max-height: 520px) and (orientation: landscape) {
+  .game-hub-topbar {
+    min-height: 58px;
+    padding-block: 5px;
+  }
+
+  .game-hub-main--library {
+    min-height: calc(100vh - 58px);
+    min-height: calc(100dvh - 58px);
+    padding: 0;
+  }
+
+  .game-picker {
+    --game-card-width: clamp(190px, 58dvh, 230px);
+    --game-card-gap: 14px;
+    padding: 14px max(20px, calc((100vw - var(--game-card-width)) / 2)) 18px;
+    scroll-padding-inline: max(20px, calc((100vw - var(--game-card-width)) / 2));
+  }
+
+  .game-picker-item { padding: 6px; }
+  .game-picker-item--soon { flex-basis: clamp(170px, 46dvh, 190px); margin-left: 12px; }
+  .game-carousel-copy { gap: 3px; padding: 8px 12px 9px; }
+  .game-carousel-title { font-size: 17px; }
+  .game-carousel-status { min-height: 15px; font-size: 10px; }
+  .game-carousel-action { padding-top: 5px; font-size: 10px; }
+  .game-world-rail-content { gap: 10px; padding: 12px 2px 12px 20px; }
+  .world-choice-list { gap: 10px; }
+  .world-choice { width: clamp(190px, 52dvh, 212px); min-height: 276px; }
+  .world-choice-scene { aspect-ratio: 1.72 / 1; }
+  .world-choice-content { padding: 8px 10px 9px; }
+  .world-choice-heading { gap: 7px; }
+  .world-choice-name { font-size: 17px; }
+  .world-status { gap: 4px; font-size: 9px; }
+  .world-status > span { width: 5px; height: 5px; }
+  .world-choice-details { gap: 4px; margin: 6px 0 0; }
+  .world-choice-details small { font-size: 9px; }
+  .world-choice-details code,
+  .world-choice-details strong { font-size: 10px; }
+  .world-lifecycle-button { font-size: 11px; }
+  .world-create-card { width: clamp(150px, 42dvh, 170px); gap: 10px; padding: 14px 10px; }
+  .world-create-card--form { width: clamp(214px, 58dvh, 236px); min-height: 190px; gap: 8px; padding: 14px; }
+  .game-install-inline { width: clamp(300px, 42vw, 340px); min-height: clamp(280px, 78vh, 304px); }
+  .game-install-inline--form,
+  .game-install-inline--progress { gap: 7px; padding: 12px 16px 12px 20px; }
+  .game-install-inline--progress.has-auth-choice { min-height: 286px; gap: 6px; padding-block: 10px; }
+  .game-install-inline--progress.has-auth-choice .game-install-step-list li { min-height: 21px; }
+  .game-install-inline--progress.has-auth-choice .game-install-inline-action button { min-height: 52px; }
+  .game-install-field { grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
+  .game-install-progress-head > strong { font-size: 17px; }
+  .game-install-step-list li { min-height: 24px; }
+  .game-install-progress-detail { min-height: 24px; }
+  .world-create-card svg { width: 34px; height: 34px; }
+  .world-rail-message { width: 140px; min-height: 276px; padding: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-hub *,
+  .game-hub *::before,
+  .game-hub *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .game-picker { scroll-behavior: auto; }
+  .game-carousel-card.is-selected { transform: none; }
+  .game-install-progress-bar.is-indeterminate > span,
+  .game-install-step-list li.is-active > span { animation: none; }
+  .game-card-signal--working { animation: none; }
+  .game-hub-theme-toggle:hover,
+  .world-choice:hover,
+  .world-create-card:hover { transform: none; }
+}
+
+@supports not (overflow: clip) {
+  .game-hub { overflow-x: hidden; }
+}
+.world-delete-hint {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 3;
+  pointer-events: none;
+  color: #fff;
+  text-shadow: 0 1px 4px #000;
+  font-size: 11px;
+  text-align: center;
+  opacity: 0;
+}
+.world-choice:hover .world-delete-hint,
+.world-choice:focus-within .world-delete-hint,
+.world-choice.is-delete-pressing .world-delete-hint { opacity: 1; }
+.world-choice-open { -webkit-touch-callout: none; user-select: none; touch-action: pan-x pan-y; }
+.world-delete-progress {
+  position: absolute;
+  inset: 0;
+  border: 4px solid #fbd7a5;
+  border-radius: inherit;
+  z-index: 4;
+  pointer-events: none;
+  clip-path: inset(0 100% 0 0);
+  animation: world-delete-hold 1200ms linear forwards;
+}
+@keyframes world-delete-hold { to { clip-path: inset(0); } }
+.world-delete-dialog {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid #e3d9cd;
+  border-radius: 18px;
+  background: #fffaf2;
+  color: #34271c;
+  box-shadow: 0 20px 80px #0005;
+}
+.world-delete-dialog::backdrop { background: #17120db3; }
+.world-delete-dialog h2 { margin: 0 0 18px; font-size: 21px; }
+.world-delete-name { overflow-wrap: anywhere; font-weight: 700; }
+.world-delete-dialog p { line-height: 1.6; }
+.world-delete-error { color: #a53029; }
+.world-delete-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.world-delete-actions button { min-height: 44px; padding: 10px 20px; border: 1px solid #cfbba5; border-radius: 9px; font: inherit; cursor: pointer; background: #fff; color: inherit; }
+.world-delete-actions .world-delete-confirm { background: #a8332c; color: #fff; border-color: #a8332c; }
+.world-delete-actions button:disabled { opacity: .6; cursor: wait; }
+@media (hover: none) { .world-delete-hint { opacity: 1; } }

@@ -1,3 +1,85 @@
+# v0.7.0 发布验收准备（2026-09-05，未发布）
+
+本轮范围为 v0.6.1 至本地 main 的全部有效工作区改动，包括未跟踪源码和素材。正式候选尚未生成。当前 latest 经 GitHub API 核对仍为 v0.6.1；提交使用 `[manual-release-candidate]` 阻止自动补丁候选，完成预检后通过 workflow_dispatch 固定 0.7.0。自动 tag 必须等待候选完成以下必测项目。
+
+变更链路：游戏库和动态实例路由、世界命名与自动编号（014）、彻底删除/tombstone（015）、创建 token/journal/恢复（016）、共享 SteamCMD 下载与凭据迁移、Guard/手机确认及授权重试、运行状态与历史文件恢复、必需运行栈恢复重试、会话过期、农场图标与安装进度。测试日志与 QA 临时文件须先审计再决定是否归档，不将 output 整目录直接提交。
+
+| 范围 | 必测正常、边界与恢复 | 本轮状态 |
+| --- | --- | --- |
+| 代码门禁 | Linux 后端全量 test/vet/build；全部前端 test:* 与 build；脚本测试/ShellCheck；兼容矩阵；updater/Docker integration | 待执行；已发现并补齐游戏库与 session-expiry 脚本遗漏 |
+| 条件门禁 | 由 v0.6.1 到候选 SHA 路径差异选择网站、真实制品、SMAPI 下载与 Junimo 长链 | 待固定 SHA 后自动选择 |
+| 初始化/身份 | 全新未初始化、管理员初始化、成员拒绝写操作、过期会话及延迟旧 401 | 待验收 |
+| 世界 | 创建/改名/长按删除、默认保护、运行/任务占用、ID 不复用、路由隔离 | 待真实隔离 Docker/API 验收 |
+| 创建归属与恢复 | 同名旧卷保持；模板与目标互斥；晚到任务拒绝；journal/token 中断恢复；成功世界保留 | 待本轮复验 |
+| Steam | 安装/修复、错误验证码重试、手机批准、已安装实例授权、失败只重试授权、非默认实例保持 | 用户已确认真实下载验证完成且无须配合；自动回归继续执行 |
+| 游戏功能 | 启停、存档创建/导入/切换/备份恢复、Mod/玩家/控制/诊断 | 待验收；Windows 首次导入重复测试已复现失败，正在定位 |
+| 迁移/升级 | 014/015/016 旧库迁移与数据保持；v0.6.1 Web check/dry-run/admin apply/断线重连/终态 | 待执行；用户本轮明确指定仅验收 v0.6.1，版本校验固化此范围 |
+| 回滚与完整性 | 同候选 unhealthy → failed_rolled_back/health_check_failed；SQLite/用户/存档/Mod/备份/非目标资源保持；Panel 重启 | 待执行 |
+| 正式发布 | 同一 proof/SHA/digest、annotated v0.7.0、三仓六引用 OCI 与 digest、正式冒烟和 Release | 未执行 |
+
+隔离范围：不使用原 8090/3000/18090/18091、stardew/stardew-2 或长期凭据做故障注入；夹具必须按任务名称/label 创建并精确清理。用户已确认真实下载人工验收完成，记录与候选自动验收分别保留，门禁未完成不得发布。
+
+## 提交前验证
+
+- Windows 首次导入 journal 并发错误已修复：原用例 30 次通过 27.889s，并发 journal 回读/发布 10 次通过 8.731s。
+- Linux 全包首轮两个异步观察器在并发负载下超时（建档回滚、任务中心）；没有降低断言。相同源码按包串行复验 Junimo 209.536s、Web 42.114s 全部通过，其它包已在首轮通过；随后全量 vet/build 成功。
+- Node 24 Alpine 独立 node_modules/dist 卷执行 package.json 全部 test:*、production audit 和 production build 通过（Vite 2.46s）。候选脚本和 Compatibility workflow 已补入 game-library、session-expiry、world-delete。
+- Windows 真实 Docker 创建归属 12.19s、Web 删除 E2E 32.74s 通过，包含同名旧卷保护、中断 copier 回收、运行/共享 holder 拒绝、幂等删除和非目标数据保持。
+- 20 项兼容矩阵单测、0.7.0 最低版本检查、workflow YAML、修改脚本 Bash 语法/矩阵功能测试/ShellCheck 通过。新增升级后多世界 Web/Docker 夹具仍须由固定候选执行。
+- output 日志和概念图保持本地保存，加入 Git/Docker context 忽略；可交付运行素材仍随 frontend/public 提交。上述均为提交前证据，正式候选 proof 另记。
+
+# 本轮 Review 五项修复验证（2026-09-05，未发布）
+
+- 变更：创建资源 token 归属清理、复制两端互斥/任务门禁、migration 016 与重启恢复；授权任务独立状态与非默认世界安装路由。修复均在本地 main 工作区，未创建提交、推送、替换原服务或发布镜像。
+- 后端：Linux `go test ./...` 中 Junimo 全包通过（244.557s）、storage（20.197s）、jobs（7.070s）、Docker/updater/其它包通过。Web 创建夹具最初使用未配置受管根的 skeleton driver，被新增路径校验正确拒绝；对齐生产 NewWithOptions 配置后，单独 Linux Web 全包通过（41.756s），随后 Linux `go vet ./...`、`go build ./...` 通过。Windows vet/build 也通过。
+- Docker 专项：`PANEL_PROVISION_DOCKER_TEST=1 go -C backend test ./internal/docker -run TestInstanceProvisionDockerOwnership -count=1 -v` 通过（10.51s）。创建任务专属合成源/旧目标卷，验证同名旧卷拒绝且哨兵不变、真实复制、Panel 中断后存活 copier 回收、重复清理与源数据完整；不 pull、不发布端口、不使用真实游戏/凭据。fixture 卷与临时容器已清理。
+- 前端：package.json 全部 test:* 状态回归与 production build 通过；最后快照合并变更后安装/响应式回归和 build 再次通过。Browser 合成第二世界验证 Guard 提交完成、手机等待、授权失败重试、无 jobId 自动续接、文件缺失后重装，以及 1600ms 慢响应下的终态推进。最终全新页截图与控制台验证通过，warning/error 为 0；开发期 HMR 旧页的 createRoot 提示不作为最终页面结论。
+- 环境记录：首次 Linux 容器下载 SQLite 遇 EOF；之后只读挂载宿主模块下载缓存为 file GOPROXY，独立 Linux 目录解压、测试和编译。Windows Web 辅助运行中，既有首次安装导入事务测试偶发 journal 读取失败或停留 staged；Linux Web 全包的同一测试通过。此平台差异尚未定位，不宣称 Windows Web 全包全绿，后续事项记在 `docs/07-later-optimizations.md`。日志：`output/review-fixes-{web,web-targeted,linux-web}.log`。
+- 两个隔离 Linux 测试容器均随 --rm 清理；本轮 Browser 临时页关闭，收尾复核 4623 无监听且原预览 PID 已退出。原 8090、3000、18090、18091 和 stardew/stardew-2 保持原状。后续加载新版后端会应用 migration 015/016；正式候选、真实 Web 升级与回滚门禁尚未执行。
+
+# WORLD-DELETE-1 本地验证与后续门禁（2026-09-05，未发布）
+
+- `scripts/run-release-gates.sh` 新增 `npm run test:world-delete`，脚本 `bash -n` 与 ShellCheck 通过；此任务没有构建/推送正式镜像、创建 tag、Release 或执行正式发布。
+- 真实 Docker 删除夹具位于 `backend/internal/web/instance_delete_handlers_test.go`，通过 `TEST_WORLD_DELETE_DOCKER=1` 显式启用，默认使用已存在的 `alpine:3.20`，不 pull、不登录 Steam、不发布端口；创建带任务 label 的唯一 `anxi-delete-*` 世界/容器/卷/网络，存档、备份、Mod 和授权文件全部为合成内容。覆盖真实 DELETE、运行中/共享 holder 拒绝、非目标运行世界保留、同名卷身份变化拒绝与幂等完成；所有 fixture 资源按精确名称和任务归属清理。
+- Linux Junimo 全包通过（216.691s），后续删除路径/符号链接与生命周期防护专项复验通过；storage/docker/Web 全包、Go vet/build、全量前端状态回归/build、1280×720 和 390×844 Browser 交互通过。记录见 `output/world-delete-*.log`，资源清理结果见本功能接手文档。
+- 原 `stardew` / `stardew-2` 世界不是删除目标；原 8090 后端、18090/18091 Panel 没有被本任务启停。原终端环境需保留后再正常重启新版后端，使 migration 015 与 `isDefault` 生效。未来正式发布仍按本文件完整候选/升级门禁进行。
+- 最终带真实存档 bind 的 Docker E2E 通过（35.02s）：补齐 Docker Desktop drive 路径与 `/run/desktop/mnt/host/<drive>` 的精确映射，并验证跨盘/穿越拒绝；容器/host working_dir 两种受管位置均有回归。所有 `anxi-delete-*` fixture 容器、网络和卷及两个独立 Go 缓存卷已清理。UI 另验证失败后的 Escape 只关闭确认框，不触发底层世界轨道收起。
+
+# 2026-09-05 本地安装流程测试镜像
+
+- 世界农场素材默认值修正已部署 18091：`stardew-server-anxi-panel:install-test-20260905-farm-icon`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-farm-icon`，build date=`2026-09-05T07:08:24Z`，本地 digest=`sha256:3e5fb0037c74e5965ef63c88df7dd37884192c5ca31a359ed2619ce01f86281b`。世界图标加载中/无存档/未知/读取失败默认标准农场，有存档继续按地图选择内置素材。游戏库回归、Docker production build 通过，实际 HTTP `index-Bx-CTmPh.js` 和八张农场 PNG 均可读取，health/database=ok。环境及挂载保留，旧测试容器不带 `-v` 删除，部署脚本清理；未正式发布。
+
+- WORLD-CARD-1 部署至 18091：镜像 `stardew-server-anxi-panel:install-test-20260905-world-card`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-world-card`，build date=`2026-09-05T07:04:48Z`，本地 digest=`sha256:63f1cd7bea3d8cc957813a628a74f0909a2247457c92540cf786de0e17fdbacd`。实际 HTTP `index-C8JYOjv9.js` 已核对行内编辑资源，health/database=ok；环境与挂载逐项一致，原 18090 healthy 且启动时间未变。改名 API 持久化/非法输入/未认证测试、前端游戏库回归、production build 与 Browser 森林图标及 Enter 保存夹具通过。旧容器不带 `-v` 精确删除，保留数据；未正式发布。
+
+- INSTALL-POLL-1 替换后的现场观察截至 `2026-09-05T06:53:00Z`，观察窗口 Docker 新建容器数为 0；修复前近三分钟为 14。旧测试容器已精确删除且不带 `-v`，部署脚本已删除，数据卷保留。用户刷新页面后加载终态停止轮询的新前端。
+
+- INSTALL-POLL-1 已部署至 18091：`stardew-server-anxi-panel:install-test-20260905-install-poll`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-install-poll`，build date=`2026-09-05T06:50:39Z`，本地 digest=`sha256:f8e2d21728fdbe06cf6f6d295660ddbddc5593201c1aa97dbb244891da8f836c`。授权超时中文、安装终态停止轮询、读状态复用十分钟文件检查证据；实际 HTTP `index-VsuYEINt.js` 中文已核对，health/database=ok。Go ReconcileState/InstallationDiagnostic/SteamCMD、前端安装状态回归及 production build 通过。逐项保留原环境与挂载；18090 原 Panel healthy、启动时间未变。此次仅本地部署，未正式发布。
+
+- 登录错误原因展示已部署到 18091：镜像 `stardew-server-anxi-panel:install-test-20260905-login-error`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-login-error`，build date=`2026-09-05T06:34:51Z`，VERSION=`dev`，本地 digest=`sha256:97f7643ea646a36bb74fed87ce5aea9593075ba70d1f59e54caa88e8e643b444`。实际失败日志只读核对为 Invalid Password / exit 5；前端安装状态回归、production build、Browser 错误/重试验收与 Docker 构建通过。真实 HTTP bundle `index-tVwGoLWI.js` 含明确中文错误提示，health=ok。原环境与挂载逐项一致；旧容器不带 `-v` 删除，诊断/部署脚本与 4621 预览已清理。此次为本地测试部署，未发布正式版。
+
+- 用户要求重新验证登录：已清空 18091 专属的 `anxi-install-test-20260905_steamcmd-login/home` 及 `install-test-20260905_steamcmd-login/root-local/user-local` 五个缓存卷内容（卷保留），共享凭据 `authorizationCompleted=false`，旧实例 `STEAMCMD_AUTH_COMPLETED` 同步置 false。处理前无缓存 holder，测试 Panel 停止后以隔离无网络 Node helper 清理，随后重启；账号密码、Panel 数据、游戏文件和其它环境保持原样。已验证五卷为空、标记为 false、health/database=ok、initialized=true；临时 helper 与脚本清理。
+
+- SteamCMD 确认成功/下载推进修复已部署到 18091：`stardew-server-anxi-panel:install-test-20260905-auth-progress`，VERSION=`dev`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-auth-progress`，build date=`2026-09-05T06:21:38Z`，本地 manifest list digest=`sha256:f023cbde1eb4780555eca091a837a02cd5c9431509ca70ce9cd47f8056059acd`。Go SteamCMD 回归（2.877s）与前端安装状态回归通过；标准 Dockerfile 构建约 80 秒。覆盖 `Waiting for confirmation...OK` 即退出手机等待、旧提示与下载/App 完成标记混合行优先处理、确认/下载后陈旧提示不回退，以及客户端自更新不能冒充授权成功。
+- 替换使用已核对的显式挂载与原环境值，配置/session secret/数据卷保留，原实例初始化状态仍为 true。实际端口回读新 revision、health/database=ok；原 18090 Panel 仍 healthy 且启动时间未变。旧测试容器已精确删除（不加 `-v`），任务替换脚本已清理。用户刷新页面后可继续测试；此次未代用户授权或宣称真实安装全链通过，未做正式发布。
+
+- Steam Guard 错误反馈已部署到 18091：镜像 `stardew-server-anxi-panel:install-test-20260905-guard-feedback`，VERSION=`dev`、revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-guard-feedback`、build date=`2026-09-05T05:49:52Z`，本地 manifest list digest=`sha256:b86000054a89da2a0fb46d339165215af405fdcf8255a810d911617fa438fc35`。标准 Dockerfile 前端 production build 与 Linux Go build 通过；构建约 7 分钟，主要耗时为基础包和 Go 依赖下载。真实端口 health/database=ok、initialized=true，HTTP `index-Bd__tfs8.js` 已核对提交提示；环境（含 session secret）和所有挂载逐项一致。
+- 替换过程修正了进程 PATH/可执行路径解析，以及改名后 `volumes-from` 自引用造成的启动前等待；问题与修正已写错题本。最终使用显式 volume/bind 挂载创建，旧等待验证码的 SteamCMD 只按精确任务 game-data 归属停止，全部游戏/授权/Panel 数据卷保留。用户需刷新并重新发起安装。18090 原 Panel 保持 healthy，启动时间仍为 `2026-09-05T04:55:02.628683187Z`；未执行正式发布或真实验证码验证。
+- 清理完成：已停止的旧测试容器以精确名称删除（不带 `-v`），替换脚本删除；新容器保持 healthy，任务无 staged/backup 容器残留。
+
+- 更新后真实 18091 原失败任务页面已确认显示“请重试”，主卡及详情动画均为 none；登录仍有效。验证完成后删除已停止的旧测试容器（不带 `-v`，数据卷保留）、删除任务替换脚本、停止精确归属的 18191 QA Vite 进程；原 18090 Panel 保持 healthy。
+- 界面更新已部署到原 18091：`stardew-server-anxi-panel:install-test-20260905-retry-ui`，VERSION=`dev`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty`，build date=`2026-09-05T05:29:49Z`，image ID=`sha256:fc3fd1953517271858a130f1c26fb33177331b4da8e529aa27ed0851f85f5635`。包含主卡阶段加权总体百分比、授权失败“请重试”与当前安装视图内存凭据回填；安装/游戏库/响应式回归、Docker frontend production build 与 Go 编译通过。Browser 夹具证明超时后无活动动画，三项预填可只修改账号再提交，干净页面 console warning/error 为 0；390×844 总进度卡 root/body 无横向溢出。
+- 替换前确认用户任务已因 `SteamCMD install authorization confirmation timed out` 终结。沿用 `anxi-install-test-20260905-data`、原配置与 session secret，精确比较全部原应用环境值及挂载通过；health=ok、version=dev、initialized=true。只替换测试 Panel，未操作原 18090 Panel、游戏卷或授权卷；此记录不代表真实 Steam 安装全链已通过或正式发布。
+- 已修复并部署：`stardew-server-anxi-panel:install-test-20260905-versionfix`，VERSION=`dev`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty`，build date=`2026-09-05T05:09:31Z`，image ID=`sha256:85a84ff4886be635ee5f5bfe0aa8a553701074940d0ae2b84a95c3150d998969`。`TestPanelVersionSatisfiesMatrixMinimum` 通过，运行接口回读 version=dev、health=ok、initialized=true；已逐项比较保留原测试配置、session secret 和 `anxi-install-test-20260905-data`。18091 地址不变，旧测试容器在新容器通过验证后删除（未删除任何数据卷），替换脚本清理。用户可继续提交安装；Steam 真实授权/下载仍由用户操作，本记录仅证明此次版本门禁修复。
+
+- 后续用户安装验证发现该镜像存在构建标记错误：`VERSION=dev-install-20260905-045612` 不被 `PanelVersionSatisfies` 接受，导致 `Driver.Install` 在创建任务前返回 `install_failed`。内置矩阵为 recommended，最低版本 0.3.2；实际失败是自定义 VERSION 无法解析。此前 health/首页检查结果仍成立，但该镜像不可用于完整安装。后续需以 `VERSION=dev` 重建并保留测试数据替换容器；本次诊断未执行替换。
+
+- 浏览器测试入口已启动：`http://localhost:18091/`，容器 `anxi-install-test-20260905`，仅监听环回地址，使用上述镜像和新数据卷 `anxi-install-test-20260905-data`。默认实例 ID 为 `install-test-20260905`，SteamCMD namespace 为 `anxi-install-test-20260905`；Docker Socket 可达，`PANEL_HOST_DATA_DIR` 从该新卷的真实 Mountpoint 取得。原 18090 Panel 和既有游戏/授权卷保持不变。交付时 health=ok、首页 HTTP 200、版本精确匹配、initialized=false，管理员初始化和真实 Steam 安装留给用户从首页操作。
+
+- 用户请求使用最新代码构建安装测试镜像。本地引用：`stardew-server-anxi-panel:install-test-20260905-045612`，版本 `dev-install-20260905-045612`，构建时间 `2026-09-05T04:56:12Z`，基于 `main@381e395d4df322d666b53e0a40cccc188fe7fae9` 及当时未提交的工作区源码，revision 明确带 `-dirty`。
+- Dockerfile 全阶段构建成功，包含 React/Vite production bundle、Go Panel/updater 和浏览器扩展；本地 image ID 为 `sha256:277143c402f300a79dca7ce2a37a239fdcaf219b91b6da79be6517780116498f`。
+- 使用无 Docker Socket、无外部网络、`/data` 为 tmpfs 的一次性容器验证：`/health.status=ok`、`/api/version` 精确匹配、`/api/setup/status.initialized=false`、首页返回嵌入 HTML、Docker CLI 与 Compose 可执行。首次初始化需访问 `/`；未初始化时直接访问 `/games/stardew` 返回 `503 setup_required`，符合现有门禁。
+- 冒烟容器 `codex-install-image-smoke-20260905-045612` 已按 owner 核对后停止并删除，未创建持久数据卷；本地镜像保留供用户部署。现有 `anxi-panel`、游戏卷和授权卷未操作。本次没有执行 Steam 登录或游戏下载，不代表完整安装 E2E 已通过，也不是正式发布候选证明。
+
 # v0.6.1 `!login` 凭据服务端转发抑制（2026-08-28，正式发布完成）
 
 ## 变更清单、受影响链路与发布边界

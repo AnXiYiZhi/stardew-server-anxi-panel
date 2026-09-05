@@ -1,4 +1,5 @@
 import type { HealthDiagnosticsResponse, PanelUpdateApplyStatus, PanelUpdateDryRunStatus, PanelUpdateStatus, VersionInfo } from '../../api'
+import { activeInstanceId, normalizeInstanceId } from '../../instance-id.ts'
 import type { CurrentUser, InstanceState, Job, JobLog, ModsListResult, PublicIPResult, SavesListResult, StardewPlayersResponse, SteamInviteStatus } from '../../types'
 
 export type StardewRoute =
@@ -84,6 +85,7 @@ export type StardewDashboardData = {
 
 export type StardewPageProps = {
   user: CurrentUser
+  instanceId: string
   instanceState: InstanceState | null  // 与 dashboardData.instanceState 相同，保留向后兼容
   dashboardData: StardewDashboardData
   onNavigate: (route: StardewRoute, options?: StardewNavigateOptions) => void
@@ -91,8 +93,6 @@ export type StardewPageProps = {
   requestedInstallJobId?: string
   onLogout: () => void
 }
-
-const ROUTE_BASE = '/instances/stardew'
 
 const VALID_ROUTES: StardewRoute[] = [
   'install',
@@ -108,20 +108,25 @@ const VALID_ROUTES: StardewRoute[] = [
 ]
 
 export function parseRoute(pathname: string): StardewRoute {
-  const suffix = pathname.startsWith(ROUTE_BASE + '/')
-    ? pathname.slice(ROUTE_BASE.length + 1).split('/')[0]
-    : ''
+  const match = /^\/instances\/[^/]+(?:\/([^/]+))?$/.exec(pathname)
+  const suffix = match?.[1] ?? ''
   return VALID_ROUTES.find((r) => r === suffix) ?? 'overview'
 }
 
-export function routeToPath(route: StardewRoute, options?: StardewNavigateOptions): string {
-  const path = `${ROUTE_BASE}/${route}`
+export function routeToPath(
+  route: StardewRoute,
+  options?: StardewNavigateOptions,
+  instanceId = activeInstanceId,
+): string {
+  if (route === 'install') {
+    const query = new URLSearchParams()
+    if (options?.installJobId) query.set('jobId', options.installJobId)
+    const search = query.toString()
+    return `/instances/${encodeURIComponent(normalizeInstanceId(instanceId))}/install${search ? `?${search}` : ''}`
+  }
+  const path = `/instances/${encodeURIComponent(normalizeInstanceId(instanceId))}/${route}`
   if (route === 'player-mods' && options?.playerId) {
     const query = new URLSearchParams({ playerId: options.playerId })
-    return `${path}?${query.toString()}`
-  }
-  if (route === 'install' && options?.installJobId) {
-    const query = new URLSearchParams({ jobId: options.installJobId })
     return `${path}?${query.toString()}`
   }
   return path

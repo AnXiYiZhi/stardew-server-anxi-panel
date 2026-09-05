@@ -20,3 +20,21 @@ const builtinFarmIDs = new Set(builtinFarms.map((farm) => farm.id))
 export function isBuiltinFarmType(value: string): boolean {
   return builtinFarmIDs.has(value)
 }
+
+export function farmSpawnsMonstersByDefault(farmType: string): boolean {
+  return farmType === 'wilderness'
+}
+
+export function applyFarmTypeSelection(
+  config: NewGameConfig,
+  farmType: string,
+  preserveExplicitMonsterChoice: boolean,
+): NewGameConfig {
+  return {
+    ...config,
+    farmType,
+    spawnMonstersOnFarm: preserveExplicitMonsterChoice
+      ? config.spawnMonstersOnFarm
+      : farmSpawnsMonstersByDefault(farmType),
+  }
+}

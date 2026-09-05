@@ -295,6 +295,9 @@ func (d *Driver) RuntimeUpdateApplyStatus(instance registry.Instance) (RuntimeUp
 func (d *Driver) RecoverRuntimeUpdateApply(ctx context.Context, instance registry.Instance) error {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return err
 	}

@@ -1,10 +1,14 @@
+import { currentSessionGeneration, markSessionAuthenticated, notifySessionExpired } from './auth-session-events.ts'
 import type {
   CommandRunResult,
   CommandsListResult,
   CommandOutcome,
   ControlCommandsResponse,
   ComposePsResponse,
+  CreateInstanceRequest,
+  CreateInstanceResponse,
   DockerStatusResponse,
+  GameInstallation,
   Instance,
   InstallJobResponse,
   InstallOptionsResponse,
@@ -63,16 +67,15 @@ import type {
   UploadPreviewResult,
   UsersResponse,
 } from './types'
-import { normalizeInstanceId } from './instance-id.ts'
+import { activeInstanceId as defaultInstanceId, setActiveInstanceId } from './instance-id.ts'
+
+export { activeInstanceId as defaultInstanceId } from './instance-id.ts'
 
 // Live binding: every instance API reads the value at call time after App.boot
 // consumes the backend's setup status. Invalid values fail closed to the legacy
 // ID so a malformed response cannot alter request paths.
-export let defaultInstanceId = normalizeInstanceId(null)
-
 export function setDefaultInstanceId(value: unknown): string {
-  defaultInstanceId = normalizeInstanceId(value)
-  return defaultInstanceId
+  return setActiveInstanceId(value)
 }
 
 export class ApiError extends Error {
@@ -94,6 +97,7 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const sessionGeneration = currentSessionGeneration()
   const { body, headers: optionHeaders, ...rest } = options
   const headers = new Headers(optionHeaders)
   const init: RequestInit = {
@@ -109,8 +113,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   const response = await fetch(path, init)
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/auth/') && !path.startsWith('/api/setup/')) {
+      notifySessionExpired(sessionGeneration)
+    }
     throw await toApiError(response)
   }
+
+  if (path === '/api/auth/login' || path === '/api/setup/admin') markSessionAuthenticated()
 
   if (response.status === 204) {
     return undefined as T
@@ -129,6 +138,22 @@ export function getComposePs(instanceId = defaultInstanceId) {
 
 export function getInstances() {
   return request<InstancesResponse>('/api/instances')
+}
+
+export function createInstance(body: CreateInstanceRequest) {
+  return request<CreateInstanceResponse>('/api/instances', { method: 'POST', body })
+}
+
+export function renameInstance(instanceId: string, name: string) {
+  return request<{ instance: Instance }>(`/api/instances/${encodeURIComponent(instanceId)}`, { method: 'PATCH', body: { name } })
+}
+
+export function deleteInstance(instanceId: string) {
+  return request<void>(`/api/instances/${encodeURIComponent(instanceId)}`, { method: 'DELETE' })
+}
+
+export function getStardewGameInstallation() {
+  return request<GameInstallation>('/api/games/stardew/installation')
 }
 
 export function getInstance(instanceId = defaultInstanceId) {
@@ -257,8 +282,8 @@ export function getLatestJobLogs(id: string, limit = 1000) {
   return request<JobLogsResponse>(`/api/jobs/${encodeURIComponent(id)}/logs?${params.toString()}`)
 }
 
-export function getStardewState() {
-  return getInstanceState(defaultInstanceId)
+export function getStardewState(instanceId = defaultInstanceId) {
+  return getInstanceState(instanceId)
 }
 
 export function prepareInstance(instanceId = defaultInstanceId) {

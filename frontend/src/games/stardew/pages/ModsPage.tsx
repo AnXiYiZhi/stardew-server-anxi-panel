@@ -25,7 +25,6 @@ const SMAPI_NEXUS_MOD_ID = 2400
 const SMAPI_NEXUS_URL = `https://www.nexusmods.com/stardewvalley/mods/${SMAPI_NEXUS_MOD_ID}`
 const NEXUS_EXTENSION_PANEL_SOURCE = 'ANXI_PANEL_NEXUS_INSTALL'
 const NEXUS_EXTENSION_SOURCE = 'ANXI_NEXUS_INSTALLER'
-const NEXUS_EXTENSION_INSTANCE_ID = 'stardew'
 const NEXUS_SEARCH_SESSION_KEY = 'stardew-anxi:nexus-search-state:v1'
 const NEXUS_EXTENSION_SESSION_KEY = 'stardew-anxi:nexus-extension-install:v1'
 const NEXUS_QUICK_TAGS = ['UI Info', 'Fishing Mod', 'Backpack Upgrades', 'Tractor']
@@ -610,7 +609,7 @@ function modBundleMembers(mods: ModInfo[], target: ModInfo) {
   return members.length > 0 ? members : [target]
 }
 
-export function ModsPage({ user, instanceState, dashboardData }: StardewPageProps) {
+export function ModsPage({ user, instanceId, instanceState, dashboardData }: StardewPageProps) {
   const restoredNexusSearchState = readNexusSearchSessionState()
   const restoredNexusExtensionState = readNexusExtensionSessionState()
   const [activeTab, setActiveTab] = useState<ModWorkbenchTab>('download')
@@ -1220,7 +1219,7 @@ export function ModsPage({ user, instanceState, dashboardData }: StardewPageProp
         config?: { panelBaseUrl?: string; instanceId?: string }
       }>('PING', {
         panelBaseUrl: currentPanelBaseUrl,
-        instanceId: NEXUS_EXTENSION_INSTANCE_ID,
+        instanceId,
       }, 5000)
       const panelBaseUrl = response.config?.panelBaseUrl || ''
       const syncedOrigin = panelBaseUrl ? new URL(panelBaseUrl).origin : ''

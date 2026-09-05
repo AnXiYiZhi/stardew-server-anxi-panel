@@ -10,7 +10,7 @@ import { PlayerModsDetail } from '../PlayerModsDetail'
 import { hasPlayerCjbRisk, playerModActionLabel } from '../player-mod-details'
 import './MobilePlayersPage.css'
 
-type MobilePlayersPageProps = Pick<StardewPageProps, 'user' | 'instanceState' | 'dashboardData'>
+type MobilePlayersPageProps = Pick<StardewPageProps, 'user' | 'instanceId' | 'instanceState' | 'dashboardData'>
 
 type PlayerTarget = { uniqueMultiplayerId: string; name: string }
 
@@ -41,7 +41,7 @@ function playerLocationText(player: StardewPlayerInfo): string {
   return formatStardewLocation(player)
 }
 
-export function MobilePlayersPage({ user, instanceState, dashboardData }: MobilePlayersPageProps) {
+export function MobilePlayersPage({ user, instanceId, instanceState, dashboardData }: MobilePlayersPageProps) {
   const isAdmin = user.role === 'admin'
   const state = instanceState?.state ?? null
   const isRunning = state === 'running'
@@ -243,12 +243,12 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     warpHomeBusyId === playerId || kickBusyId === playerId || approveBusyId === playerId || banBusyId === playerId || deleteBusyId === playerId
 
   function openPlayerMods(playerId: string) {
-    window.history.pushState(null, '', routeToPath('player-mods', { playerId }))
+    window.history.pushState(null, '', routeToPath('player-mods', { playerId }, instanceId))
     setSelectedPlayerId(playerId)
   }
 
   function closePlayerMods() {
-    window.history.replaceState(null, '', routeToPath('players'))
+    window.history.replaceState(null, '', routeToPath('players', undefined, instanceId))
     setSelectedPlayerId(null)
   }
 
@@ -256,7 +256,12 @@ export function MobilePlayersPage({ user, instanceState, dashboardData }: Mobile
     const selectedPlayer = playerRows.find((player) => player.uniqueMultiplayerId === selectedPlayerId)
     return (
       <div className="sd-mplay-wrap sd-mplay-detail-view">
-        <PlayerModsDetail playerId={selectedPlayerId} player={selectedPlayer} onBack={closePlayerMods} />
+        <PlayerModsDetail
+          playerId={selectedPlayerId}
+          instanceId={instanceId}
+          player={selectedPlayer}
+          onBack={closePlayerMods}
+        />
       </div>
     )
   }

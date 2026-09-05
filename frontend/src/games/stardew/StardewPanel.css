@@ -1300,6 +1300,35 @@
   z-index: 200;
 }
 
+.sd-nav-row-worlds {
+  padding-bottom: clamp(5px, 0.7vh, 9px);
+  box-shadow: inset 0 -2px 0 rgba(13, 6, 2, 0.62);
+}
+
+.sd-sidebar .sd-nav-item-worlds {
+  grid-template-columns: clamp(24px, 20cqi, 40px) minmax(0, 1fr);
+  color: #fff0b9;
+  background-image: none;
+  background-color: rgba(48, 24, 7, 0.58);
+  border: 1px solid rgba(223, 171, 84, 0.32);
+  aspect-ratio: auto;
+  min-height: clamp(38px, 5.2vh, 48px);
+}
+
+.sd-sidebar .sd-nav-item-worlds:hover,
+.sd-sidebar .sd-nav-item-worlds:not(.active):not([aria-current="page"]):hover {
+  background-image: none !important;
+  background-color: rgba(87, 48, 15, 0.72) !important;
+}
+
+.sd-nav-worlds-arrow {
+  width: clamp(24px, 19cqi, 36px);
+  color: #ffd86a;
+  font-size: clamp(20px, 16cqi, 30px);
+  line-height: 1;
+  text-align: center;
+}
+
 .sd-confirm-dialog {
   box-sizing: border-box;
   background: #f8f0d8;

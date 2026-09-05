@@ -42,6 +42,7 @@ type fakeDocker struct {
 	steamAuthLines              []string
 	steamAuthOpts               paneldocker.SteamAuthRunOpts
 	steamAuthInitialInput       []string
+	steamAuthInputs             []string
 	steamAuthWaitForCancel      bool
 	steamAuthSawCancel          bool
 	containerCode               int
@@ -52,6 +53,7 @@ type fakeDocker struct {
 	containerRunLines           [][]string
 	containerOpts               paneldocker.ContainerTTYRunOpts
 	containerRunOpts            []paneldocker.ContainerTTYRunOpts
+	containerInputs             []string
 	containerWaitForCancelOnRun int
 	containerSawCancel          bool
 	junimoExtractVersion        string
@@ -149,10 +151,20 @@ func (f *fakeDocker) RunSteamAuthTTY(ctx context.Context, _ string, opts paneldo
 	select {
 	case input := <-guardCh:
 		f.steamAuthInitialInput = append(f.steamAuthInitialInput, input)
+		f.steamAuthInputs = append(f.steamAuthInputs, input)
 	default:
 	}
 	for _, line := range f.steamAuthLines {
 		lineHandler(line)
+	steamAuthInputDrain:
+		for {
+			select {
+			case input := <-guardCh:
+				f.steamAuthInputs = append(f.steamAuthInputs, input)
+			default:
+				break steamAuthInputDrain
+			}
+		}
 	}
 	if f.steamAuthWaitForCancel {
 		select {
@@ -169,7 +181,7 @@ func (f *fakeDocker) RunSteamAuthTTY(ctx context.Context, _ string, opts paneldo
 	return f.steamAuthCode, f.steamAuthErr
 }
 
-func (f *fakeDocker) RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, _ <-chan string, lineHandler func(string)) (int, error) {
+func (f *fakeDocker) RunContainerTTY(ctx context.Context, opts paneldocker.ContainerTTYRunOpts, guardCh <-chan string, lineHandler func(string)) (int, error) {
 	command := strings.Join(opts.Command, " ")
 	if strings.Contains(command, junimoModExtractMarker) {
 		f.containerRuns++
@@ -274,6 +286,15 @@ func (f *fakeDocker) RunContainerTTY(ctx context.Context, opts paneldocker.Conta
 	}
 	for _, line := range lines {
 		lineHandler(line)
+	containerInputDrain:
+		for {
+			select {
+			case input := <-guardCh:
+				f.containerInputs = append(f.containerInputs, input)
+			default:
+				break containerInputDrain
+			}
+		}
 	}
 	if f.containerWaitForCancelOnRun == f.containerRuns {
 		select {
@@ -367,6 +388,47 @@ func TestDriverIdentity(t *testing.T) {
 	}
 	if driver.Name() != DriverName {
 		t.Fatalf("unexpected name %q", driver.Name())
+	}
+}
+
+func TestDriverDirectConnectConfigUsesInstanceGamePort(t *testing.T) {
+	driver := New(nil, nil, nil, nil)
+	dataDir := t.TempDir()
+	envPath := filepath.Join(dataDir, ".env")
+	if err := sjconfig.UpdateEnvFile(envPath, map[string]string{"GAME_PORT": "24643"}); err != nil {
+		t.Fatalf("write instance env: %v", err)
+	}
+
+	config, err := driver.DirectConnectConfig(context.Background(), registry.Instance{DataDir: dataDir})
+	if err != nil {
+		t.Fatalf("direct connect config: %v", err)
+	}
+	if config.GamePort != 24643 || config.Protocol != "udp" {
+		t.Fatalf("direct connect config = %+v, want UDP 24643", config)
+	}
+}
+
+func TestDriverDirectConnectConfigUsesComposeDefault(t *testing.T) {
+	driver := New(nil, nil, nil, nil)
+
+	config, err := driver.DirectConnectConfig(context.Background(), registry.Instance{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("direct connect config: %v", err)
+	}
+	if config.GamePort != 24642 || config.Protocol != "udp" {
+		t.Fatalf("direct connect config = %+v, want default UDP 24642", config)
+	}
+}
+
+func TestDriverDirectConnectConfigRejectsInvalidGamePort(t *testing.T) {
+	driver := New(nil, nil, nil, nil)
+	dataDir := t.TempDir()
+	if err := sjconfig.UpdateEnvFile(filepath.Join(dataDir, ".env"), map[string]string{"GAME_PORT": "70000"}); err != nil {
+		t.Fatalf("write instance env: %v", err)
+	}
+
+	if _, err := driver.DirectConnectConfig(context.Background(), registry.Instance{DataDir: dataDir}); err == nil {
+		t.Fatal("expected invalid GAME_PORT to fail")
 	}
 }
 
@@ -1066,6 +1128,59 @@ func TestDriverReconcileStateDoesNotOverrideActiveLifecycleOwner(t *testing.T) {
 	}
 }
 
+func TestDriverReconcileStateDoesNotDemoteActiveLifecycleOwnerBeforeServerExists(t *testing.T) {
+	dataDir := t.TempDir()
+	store := newLifecycleTestStore(t)
+	instance, err := store.EnsureDefaultInstance(context.Background(), storage.EnsureDefaultInstanceParams{
+		ID: storage.DefaultInstanceID, DriverID: DriverID, Name: "Stardew", DataDir: dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err = store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+		ID: instance.ID, State: storage.InstanceStateStarting, DriverPhase: "starting", DriverPayload: "{}",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := jobs.NewManager(store, slog.Default())
+	release := make(chan struct{})
+	job, err := manager.Start(context.Background(), jobs.Spec{
+		Type: lifecycleJobType, TargetType: "instance", TargetID: instance.ID,
+		Run: func(ctx context.Context, _ *jobs.Context) error {
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		close(release)
+		waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	})
+	driver := New(&fakeDocker{psResult: paneldocker.ComposePsResult{}}, slog.Default(), manager, store)
+
+	updated, err := driver.ReconcileState(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if updated.State != storage.InstanceStateStarting || updated.DriverPhase != "starting" {
+		t.Fatalf("pre-compose lifecycle owner was demoted: %+v", updated)
+	}
+	persisted, err := store.GetInstance(context.Background(), instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.State != storage.InstanceStateStarting || persisted.DriverPhase != "starting" {
+		t.Fatalf("pre-compose lifecycle state was mutated: %+v", persisted)
+	}
+}
+
 func TestDriverReconcileStateDoesNotPromoteWithoutServerService(t *testing.T) {
 	fake := &fakeDocker{
 		psResult: paneldocker.ComposePsResult{
@@ -1242,6 +1357,7 @@ func TestDriverInstallUsesSteamCMDPrimaryWithoutSteamAuth(t *testing.T) {
 		steamAuthErr: errors.New("steam-auth must not run during base install"),
 		containerLines: []string{
 			"Logging in user steam-user",
+			"Steam Guard: [1] Approve in Steam Mobile [2] Enter code from email",
 			"Success! App '413150' fully installed.",
 			"Success! App '1007' fully installed.",
 		},
@@ -1261,6 +1377,9 @@ func TestDriverInstallUsesSteamCMDPrimaryWithoutSteamAuth(t *testing.T) {
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 	if fake.steamAuthRuns != 0 {
 		t.Fatalf("default install must not run steam-auth, ran %d times", fake.steamAuthRuns)
+	}
+	if !reflect.DeepEqual(fake.containerInputs, []string{"1\n"}) {
+		t.Fatalf("SteamCMD Guard menu should auto-select mobile approval exactly once, inputs=%q", fake.containerInputs)
 	}
 	updated, err := store.GetInstance(context.Background(), instance.ID)
 	if err != nil {
@@ -1475,11 +1594,10 @@ func TestDriverAuthLoginOnlyDoesNotRequireVNCPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start authorization without VNC password: %v", err)
 	}
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "2"); err != nil {
-		t.Fatalf("select QR authorization: %v", err)
-	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
+	if !reflect.DeepEqual(fake.steamAuthOpts.Command, []string{"serve"}) || len(fake.steamAuthInputs) != 0 {
+		t.Fatalf("auth-only login must use credentials without a QR/menu input: command=%v inputs=%q", fake.steamAuthOpts.Command, fake.steamAuthInputs)
+	}
 	if !sjconfig.SteamInviteEnabled(instanceDir) || !sjconfig.SteamAuthLoggedIn(instanceDir) {
 		t.Fatal("authorization without VNC password did not persist ready invite capability")
 	}
@@ -1589,10 +1707,6 @@ func TestDriverAuthLoginOnlyUsesDedicatedJobAndPreservesInstallState(t *testing.
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "1"); err != nil {
-		t.Fatalf("select credential authorization: %v", err)
-	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 	storedJob, err := store.GetJob(context.Background(), job.ID)
 	if err != nil {
@@ -1663,10 +1777,6 @@ func TestDriverAuthLoginOnlyPreservesSuccessfulSessionAfterContainerCleanupError
 	}
 	driver := New(fake, slog.Default(), manager, store)
 	job := startAuthOnlyJob(t, driver, instance)
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "1"); err != nil {
-		t.Fatalf("select credentials: %v", err)
-	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
 
 	if !fake.steamAuthSawCancel {
@@ -1775,102 +1885,74 @@ func TestDriverAuthLoginOnlyPreservesReadySessionWithoutRevalidatingPrepareFiles
 	}
 }
 
-func TestDriverAuthLoginOnlyQRUsesOneShotLoginAndSharedAccount(t *testing.T) {
+func TestDriverAuthLoginOnlyAlwaysUsesCredentialServe(t *testing.T) {
 	store, instance, instanceDir := newInstalledAuthOnlyFixture(t)
 	manager := jobs.NewManager(store, slog.Default())
 	fake := &fakeDocker{steamAuthLines: []string{
-		"[SteamAuth:A0] Authenticated as steam-user",
 		"[SteamAuth:A0] Logged in as [U:1:1231122837]",
 	}}
 	driver := New(fake, slog.Default(), manager, store)
 	job := startAuthOnlyJob(t, driver, instance)
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "2"); err != nil {
-		t.Fatalf("select QR login: %v", err)
-	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 
 	if !sjconfig.SteamAuthLoggedIn(instanceDir) {
-		t.Fatal("matching QR account did not persist Steam Auth completion")
+		t.Fatal("credential login did not persist Steam Auth completion")
 	}
-	if !reflect.DeepEqual(fake.steamAuthOpts.Command, []string{"login"}) {
-		t.Fatalf("QR command=%v want one-shot login", fake.steamAuthOpts.Command)
+	if !reflect.DeepEqual(fake.steamAuthOpts.Command, []string{"serve"}) {
+		t.Fatalf("credential command=%v want serve", fake.steamAuthOpts.Command)
 	}
-	if !reflect.DeepEqual(fake.steamAuthInitialInput, []string{"2\n"}) {
-		t.Fatalf("QR initial input=%q want exact pre-buffered menu choice", fake.steamAuthInitialInput)
-	}
-	if fake.steamAuthSawCancel {
-		t.Fatal("successful one-shot QR login should exit normally")
+	if len(fake.steamAuthInputs) != 0 {
+		t.Fatalf("credential login unexpectedly sent a QR/menu choice: %q", fake.steamAuthInputs)
 	}
 	for _, bind := range fake.steamAuthOpts.Binds {
 		if strings.Contains(bind, "game-data") || strings.HasSuffix(bind, ":/data/game") {
-			t.Fatalf("QR authorization mounted persistent game data: %v", fake.steamAuthOpts.Binds)
+			t.Fatalf("credential authorization mounted persistent game data: %v", fake.steamAuthOpts.Binds)
 		}
 	}
 }
 
-func TestDriverAuthLoginOnlyQRTerminalFailureStopsOneShotContainer(t *testing.T) {
-	store, instance, instanceDir := newInstalledAuthOnlyFixture(t)
+func TestDriverAuthLoginOnlyAutoSelectsMobileGuardApproval(t *testing.T) {
+	store, instance, _ := newInstalledAuthOnlyFixture(t)
 	manager := jobs.NewManager(store, slog.Default())
 	fake := &fakeDocker{
 		steamAuthWaitForCancel: true,
-		steamAuthLines:         []string{"[SteamAuth:A0] QR authentication failed"},
+		steamAuthLines: []string{
+			"Steam Guard Authentication: [1] Approve in Steam Mobile App [2] Enter code from email",
+			"[SteamAuth:A0] Logged in as [U:1:1231122837]",
+		},
 	}
 	driver := New(fake, slog.Default(), manager, store)
 	job := startAuthOnlyJob(t, driver, instance)
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "2"); err != nil {
-		t.Fatalf("select QR login: %v", err)
-	}
-	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
+	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusSucceeded)
 
-	if !fake.steamAuthSawCancel {
-		t.Fatal("terminal QR failure did not stop the one-shot authorization container")
-	}
-	if sjconfig.SteamAuthLoggedIn(instanceDir) || sjconfig.SteamInviteAuthState(instanceDir) != sjconfig.SteamInviteAuthStateFailed {
-		t.Fatalf("failed QR authorization remained ready: loggedIn=%v state=%s", sjconfig.SteamAuthLoggedIn(instanceDir), sjconfig.SteamInviteAuthState(instanceDir))
-	}
-	updated, err := store.GetInstance(context.Background(), instance.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.State != instance.State || updated.DriverPhase != instance.DriverPhase || updated.DriverPayload != instance.DriverPayload {
-		t.Fatalf("QR failure changed base snapshot: got %#v want %#v", updated, instance)
+	if !reflect.DeepEqual(fake.steamAuthInputs, []string{"1\n"}) {
+		t.Fatalf("Steam Guard menu should auto-select mobile approval exactly once, inputs=%q", fake.steamAuthInputs)
 	}
 }
 
-func TestDriverAuthLoginOnlyQRRejectsDifferentSharedAccount(t *testing.T) {
+func TestDriverAuthLoginOnlyCredentialFailureStopsContainer(t *testing.T) {
 	store, instance, instanceDir := newInstalledAuthOnlyFixture(t)
 	manager := jobs.NewManager(store, slog.Default())
 	fake := &fakeDocker{
 		steamAuthWaitForCancel: true,
-		steamAuthLines:         []string{"[SteamAuth:A0] Authenticated as another-user"},
-		steamAuthErr:           errors.Join(context.Canceled, errors.New("injected one-off cleanup failure")),
+		steamAuthLines:         []string{"[SteamAuth:A0] Invalid password"},
 	}
 	driver := New(fake, slog.Default(), manager, store)
 	job := startAuthOnlyJob(t, driver, instance)
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "2"); err != nil {
-		t.Fatalf("select QR login: %v", err)
-	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
 
 	if !fake.steamAuthSawCancel {
-		t.Fatal("mismatched QR login was not canceled")
+		t.Fatal("terminal credential failure did not stop the authorization container")
 	}
 	if sjconfig.SteamAuthLoggedIn(instanceDir) || sjconfig.SteamInviteAuthState(instanceDir) != sjconfig.SteamInviteAuthStateFailed {
-		t.Fatalf("mismatched QR account remained ready: loggedIn=%v state=%s", sjconfig.SteamAuthLoggedIn(instanceDir), sjconfig.SteamInviteAuthState(instanceDir))
-	}
-	wantSession := storage.DefaultInstanceID + "_steam-session"
-	if !reflect.DeepEqual(fake.removedByVolumes, []string{wantSession, wantSession}) || !reflect.DeepEqual(fake.removedVolumes, []string{wantSession, wantSession}) {
-		t.Fatalf("mismatched QR session was not rejected exactly: holders=%v volumes=%v", fake.removedByVolumes, fake.removedVolumes)
+		t.Fatalf("failed credential authorization remained ready: loggedIn=%v state=%s", sjconfig.SteamAuthLoggedIn(instanceDir), sjconfig.SteamInviteAuthState(instanceDir))
 	}
 	updated, err := store.GetInstance(context.Background(), instance.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.State != instance.State || updated.DriverPhase != instance.DriverPhase || updated.DriverPayload != instance.DriverPayload {
-		t.Fatalf("QR mismatch changed base snapshot: got %#v want %#v", updated, instance)
+		t.Fatalf("credential failure changed base snapshot: got %#v want %#v", updated, instance)
 	}
 }
 
@@ -1916,10 +1998,6 @@ func TestDriverAuthLoginOnlyExit139PreservesBaseStateAndSteamCMDCache(t *testing
 	})
 	if err != nil {
 		t.Fatalf("Install: %v", err)
-	}
-	waitForDriverTestPhase(t, store, instance.ID, "auth_method_required")
-	if err := driver.SendSteamGuardInput(job.ID, "1"); err != nil {
-		t.Fatalf("select credential authorization: %v", err)
 	}
 	waitForDriverTestJobStatus(t, store, job.ID, storage.JobStatusFailed)
 
@@ -2016,6 +2094,26 @@ func TestDriverAuthLoginOnlyImagePullFailurePreservesInstalledSnapshot(t *testin
 	}
 	if fake.steamAuthRuns != 0 || fake.containerRuns != 0 || fake.smapiRuns != 0 {
 		t.Fatalf("Auth image pull failure must not run Auth or install steps: auth=%d container=%d smapi=%d", fake.steamAuthRuns, fake.containerRuns, fake.smapiRuns)
+	}
+}
+
+func TestDriverReconcileStateReusesFileEvidenceUntilExpiry(t *testing.T) {
+	instance := storage.Instance{ID: "stardew", DataDir: t.TempDir(), State: storage.InstanceStateGameInstalled}
+	fake := &fakeDocker{}
+	driver := New(fake, slog.Default(), nil, &fakeStore{instance: instance})
+	for i := 0; i < 5; i++ {
+		if _, err := driver.ReconcileState(context.Background(), instance); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if fake.verifyRuns != 1 {
+		t.Fatalf("repeated status reads created %d verifiers, want 1", fake.verifyRuns)
+	}
+	driver.installationEvidence[instance.ID] = requiredFilesEvidence{State: "ok", CheckedAt: time.Now().Add(-installationEvidenceTTL - time.Second)}
+	fake.verifyCode = installVerificationMissingExitCode
+	updated, err := driver.ReconcileState(context.Background(), instance)
+	if err != nil || updated.State != storage.InstanceStateError || fake.verifyRuns != 2 {
+		t.Fatalf("expired evidence must recheck missing files: state=%s runs=%d err=%v", updated.State, fake.verifyRuns, err)
 	}
 }
 
@@ -3108,7 +3206,10 @@ func stringSliceContains(values []string, want string) bool {
 }
 
 func TestBuildSteamCMDOptsGameFullLoginSDKAnonymous(t *testing.T) {
-	opts := (&installRunner{instance: storage.Instance{DataDir: "/data/instances/stardew"}}).buildSteamCMDOpts("img:latest")
+	opts, err := (&installRunner{instance: storage.Instance{DataDir: "/data/instances/stardew"}, username: "user", password: "pass"}).buildSteamCMDOpts("img:latest")
+	if err != nil {
+		t.Fatalf("build SteamCMD options: %v", err)
+	}
 	script := opts.Command[len(opts.Command)-1]
 
 	// Without a completed SteamCMD authorization flag, the first game login must
@@ -3127,10 +3228,15 @@ func TestBuildSteamCMDOptsGameFullLoginSDKAnonymous(t *testing.T) {
 }
 
 func TestBuildSteamCMDOptsCachedLoginUsesOneCrossImageAuthorizationVolume(t *testing.T) {
-	opts := (&installRunner{
+	opts, err := (&installRunner{
 		instance:         storage.Instance{DataDir: "/data/instances/stardew"},
+		username:         "user",
+		password:         "pass",
 		steamCMDUseCache: true,
 	}).buildSteamCMDOpts("img:latest")
+	if err != nil {
+		t.Fatalf("build cached SteamCMD options: %v", err)
+	}
 	script := opts.Command[len(opts.Command)-1]
 
 	if !strings.Contains(script, `+@NoPromptForPassword 1 +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150`) {

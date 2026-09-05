@@ -1,3 +1,121 @@
+# v0.7.0 首次导入 journal 并发修复（2026-09-05，未发布）
+
+- Windows 首次导入重复测试复现原子替换 journal 时 `Access is denied`，捕获到任务底层 rename 错误；此前 Linux 单次通过不能消除此问题。
+- `save_import_transaction.go` 为 journal 文件读取及发布使用进程内读写锁，避免 Windows 读句柄与 rename/chmod 重叠；不改变事务身份、恢复条件或磁盘格式。清理证据读取复用相同入口。此锁只协调本进程文件 I/O，不提供多进程事务支持。
+- 原失败用例修复后连续 30 次通过（27.889s）；新增 `TestImportJournalConcurrentReadAndPublish` 连续 10 次通过（8.731s），覆盖并发回读与完整发布。Web 用例保留失败任务原因诊断；Linux 全量回归正在执行，正式候选和升级验收尚未完成。
+- 下一步按 `docs/09-image-build.md` 的 v0.7.0 矩阵完成隔离功能、旧版 Web 升级与回滚，门禁成功前不发布。
+
+# REVIEW 修复联调契约（2026-09-05，未发布）
+
+- 世界创建新增 migration 016 的持久化 journal：复制期间两端/全局新任务被拒绝；未完成目标的实例子路由返回 409 `instance_provisioning`，管理员 DELETE 可以重试清理。创建错误若仍有未清理资源，返回 500 `instance_provision_cleanup_failed`，不能显示“已回收”。启动自动回收有 token 的中断创建；成功发布的世界不会因响应丢失被回收。
+- 当前世界的安装/授权入口固定 `/instances/:id/install?jobId=...`；全局安装入口继续使用配置默认 ID。GameInstallRail 只接管目标一致的安装或授权任务；`stardew_steam_auth` 完成依据 job，而非 `state=game_installed`。Guard POST 和授权重试 POST 保留当前 id，授权重试不会调用 install。
+- 联调证据：SQLite/driver/Web 创建与恢复专项、真实 Docker 旧卷保留/复制/中断清理、前端全部状态回归与 production build 通过。Browser mock 明确拒绝授权场景的 install 请求或错误目标；第二世界 Guard 完成、手机等待、重新授权与修复安装均通过。原 8090/3000/18090/18091 环境未在本轮替换。
+
+# WORLD-DELETE-1：长按彻底删除世界（2026-09-05，未发布）
+
+- 已完成 WORLD-DELETE-1：服务端实例 DTO `isDefault` → 管理员封面长按/Delete → 完整名称与永久删除警告 → `DELETE /api/instances/:id` → 204 后移除卡片。默认保护来自配置 ID；403/409/500 保留世界与错误，可显式重试。
+- 删除无独立 job：SQLite `instance_deletions` 清单负责中断恢复，清理成功后同时删除目标 jobs/logs 与关联状态；completed tombstone 保证重复 DELETE 幂等。详细资源归属、活动事务与共享数据边界见后端文档。
+- 验证：全量前端状态回归/build，storage/docker/Web 全包、Linux Junimo 全包，1280×720 与 390×844 Browser 合成完整交互，以及临时 Docker 的真实 Web DELETE 均通过。原 `stardew/stardew-2`、原 18090/18091 Panel 和原 8090 进程没有被启停或删除。联调前按原终端环境重启新版后端，使 migration 015 与 `isDefault` 生效；旧 DTO 不开放删除。
+
+# WORLD-FILES-RECOVERY-1 / SESSION-EXPIRY-1 联调（2026-09-05，未发布）
+
+- 实例读取沿用现有 driver ReconcileState，在停止、无活动 owner 且真实文件验证通过时，解除两类历史安装失败并返回 `stopped/game_files_restored`；没有新增写接口，也不篡改历史 job。前端现有生命周期映射在 stopped 显示可启动。
+- 受保护 API 401 统一通知 App 回到登录页并保留路由；认证/初始化错误仍交给表单。代次隔离防止旧响应覆盖新登录。
+- Go 状态/lifecycle/evidence 回归、后端构建及前端 session-expiry/game-library/lifecycle-action-state/build 通过，浏览器夹具验证过期提示。真实 3000→8090 后端重启后 health/database=ok，两世界卡已停止且启动按钮可用，SQLite 均为 `stopped/game_files_restored`；原游戏容器启停时间和游戏卷挂载不变。18090/18091、游戏卷和授权卷未改动。
+
+# INSTALL-LOGIN-ERROR-1：登录错误原因展示（2026-09-05，未发布）
+
+- 本机真实失败任务记录 `Invalid Password` 与退出码 5；`install-progress-presentation.ts` 现在只从当前失败安装 job 的日志识别 Invalid/Incorrect Password 或 password check failure，显示“Steam 账号或密码错误，请修改后重试。”。其它任务的历史错误不参与判断；`credentials_required` 时优先保留后端状态原因，不被笼统 job 退出码遮住，验证码错误也不强行归因为账号密码。
+- `test-install-state` 增加错误密码、跨 job 污染和验证码原因保留断言；回归、production build 通过。CUA Browser 的 `installQa=bad-password` 夹具证明提示可见、重试可进入编辑表单、控制台无 warning/error。未在浏览器代用户提交真实凭据。
+- 已部署 18091 的 `install-test-20260905-login-error`，实际 HTTP bundle `index-tVwGoLWI.js` 含明确提示，health=ok；配置与数据挂载保留。后续修改安装错误展示继续按当前 job 归属处理日志，部署详情见镜像文档。
+
+# STEAMCMD-AUTH-PROGRESS-1：确认成功与下载阶段推进（2026-09-05，未发布）
+
+- `installer.go` 优先识别 `Waiting for confirmation...OK`：进入 `steamcmd_auth_running`，消息为“Steam 手机确认已通过，正在完成 SteamCMD 登录。”，不再命中手机等待分支。确认通过后重复等待提示不会回退；进入下载后重复确认成功也不会回退。
+- 实际 SteamCMD 输出可将旧等待提示与 `Update state (...)`、App 完成标记拼在同一行；现在下载/完成证据先于交互提示解析。下载仍要求确认通过或登录成功证据，客户端自更新不能恢复失败的授权缓存。前端沿用 state/phase 与现有下载日志解析，API/DTO 不变。
+- `TestSteamCMDConfirmationAndPrefixedDownloadAdvancePhase` 回放实际日志形态，覆盖确认成功、登录初始化、混合行下载、陈旧提示与两 App 完成。Go SteamCMD 定向回归和前端 `test:install-state` 通过，标准 Dockerfile 构建通过。部署身份与清理见 `docs/09-image-build.md`；真实账号授权由用户完成，回归不替代真实下载全链。
+
+# STEAM-GUARD-FEEDBACK-1：错误验证码反馈（2026-09-05，未发布）
+
+- 本机安装容器实际返回 `That Steam Guard code was invalid.`，原 runner 未识别，实例仍保留初始输入提示。`installer.go` 现将该可重试拒绝写入 `steamcmd_guard_required` 的 `stateMessage`，后续重复 prompt 不覆盖错误；仍在同一任务等待新验证码，成功登录/下载正常推进，既有终态凭据错误分流保持不变。
+- `GameInstallRail.tsx` 将任务轮询错误与提交错误分开，成功轮询不再清除提交失败提示；提交成功显示等待验证说明，按钮提供正在提交状态。API 路径与 DTO 不变，继续使用 Guard input POST 与 job/state 轮询。
+- 验证：`TestSteamCMDRejectedGuardRemainsRetryableAndCanDownload`、既有验证码 prompt/手机超时定向 Go 测试通过；前端 `test:install-state`、`test:responsive-layout`、production build 通过。CUA Browser 在 127.0.0.1:4621 的 `installQa=guard-code` 隔离夹具提交错误码，确认错误提示跨轮询保留、重新输入后按钮可用、控制台 warning/error 为空。
+- 部署补充（2026-09-05）：18091 已替换为 `install-test-20260905-guard-feedback`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-guard-feedback`、build date=`2026-09-05T05:49:52Z`。原配置/session secret 与数据挂载逐项一致，health/database=ok、initialized=true，实际 HTTP bundle `index-Bd__tfs8.js` 含提交反馈。原等待任务因重启结束，用户需刷新页面后重试安装；未代用户提交真实验证码。18090 原 Panel 的 healthy 与启动时间保持不变。此为本地测试部署，不是正式发布。
+
+# INSTALL-OVERALL-PROGRESS-1 跨端呈现（2026-09-05，未发布）
+
+- failed/canceled job 压过陈旧安装 phase，前端显示“请重试”、停止动画并隐藏已结束的 Guard 输入/等待。当前组件在 job 创建后保留三项凭据以供修改重试，完成/卸载时清理；不增加密码读取接口或客户端持久存储，刷新后的凭据不从服务端明文回填。
+- API 不新增整体进度字段。前端 `overallPercent` 由权威安装 phase、job 终态及当前下载日志按阶段权重派生，主卡显示“总进度约 N%”并固定填充边框；详情 `percent` 仍表示当前步骤，缺遥测保持 null。
+- 授权等待固定约 20%，SteamCMD 自更新不能表示游戏已完成；游戏/SDK/SMAPI 分别占 25–85%/85–90%/90–99%，最终安装验证通过才显示 100%。缺文件机器字段仍优先，不能被历史成功状态覆盖。该值不是总字节比例或剩余时间预测。
+- 安装/游戏库/响应式测试、production build 与 Browser 夹具验证通过；不改变安装提交、登录验证和已有任务的执行流程。
+
+# STEAM-CREDENTIAL-AUTO-GUARD-1 跨端契约（2026-09-04，未发布）
+
+| 上游登录状态 | 后端行为 | 前端行为 |
+| --- | --- | --- |
+| 新安装或邀请码重新授权 | 使用当前 Steam 账号密码；Auth-only 固定运行 `serve` | 只显示账号密码相关表单，不展示登录方式选择 |
+| 直接要求验证码 | 保持 `steam_guard_required` / `steamcmd_guard_required` 并等待 Guard input | 原位显示验证码输入框 |
+| 直接要求手机批准 | 保持对应 `*_guard_mobile_required` | 显示 Steam 手机 App 批准等待 |
+| 上游返回 Guard 类型菜单 | SteamAuth/SteamCMD 各自只写入一次 `1\n`，选择手机批准 | 不显示选择按钮，等待 mobile phase/后续权威状态 |
+
+- HTTP 路径和 payload 未变化，仍复用 `POST /api/instances/:id/steam-guard/input`；变化是新任务不再让用户选择登录或验证类型。前端仍可接管旧后端返回的 choice phase，并以同样的一次性自动输入推进；旧二维码活动任务只允许取消后重新开始。
+- 无当前 install job 时，目录实例的 `driverPhase=install_verification_failed` 与 `GET /api/games/stardew/installation` 的 `installed=false,requiredFiles=missing` 都是修复权威值，必须压过目标实例 `/state` 中残留的已安装生命周期状态；有 job 后再由 job/state/logs 投影进度。这样其它世界仍完整或页面刷新都不会把修复流程误显示为 100%。
+- 后端和前端定向回归、production build 与真实本机页面 QA 通过。现场只把默认游戏运行文件中的一个必需 DLL 原子移到同卷备份目录以触发真实修复分类；未提交凭据、未启动安装，另一个世界未操作。
+
+# WORLD-LIFECYCLE-POLLING-1 跨端契约（2026-09-04，未发布）
+
+- 世界目录的初次/显式刷新仍读取 `GET /api/instances`、jobs，并渐进获取各实例 `/state` 与 `/public-ip`；生命周期按钮提交后改为只轮询目标实例 `/state` 和 jobs。已取得的加入地址在启停过渡中保持，不再因完整目录重建而反复显示“正在读取加入地址”。
+- 后端 read-side reconcile 必须尊重 active `stardew_lifecycle` job 对 `starting` 的所有权，包括 Compose 尚未创建 `server` 的准备窗口；无 owner 的陈旧 `starting/running` 继续按 Docker 事实收敛。前端同时以 pending action、active job 的安全 `operation` 和 driver/UI phase 压住旧快照，终态只由真实 state/job 收敛触发。
+- jobs 列表与详情 DTO 新增可选 `operation`，仅对 `stardew_lifecycle` 返回六个白名单操作名，绝不返回完整 job payload。前端据此在 state 仍为旧 `running/ready` 时把 queued/running stop 显示为“停止中”，而不是把所有 active lifecycle job 默认解释成启动；旧后端仍有窄兼容推断。
+- 定向 Go 回归、前端状态/布局门禁及 production build 通过；Browser 慢详情夹具证明 `stopped → 启动中 → running` 与 `running → 停止中 → stopped` 期间同一 `IP:port` 保持，停止过程没有出现“启动中”。
+
+# REQUIRED-RUNTIME-TRANSIENT-RETRY-1 跨端契约（2026-09-01，未发布）
+
+- `GET/POST /api/instances/:id/junimo-update*`、`required-status.json` 与 apply/dry-run 响应结构不变。变化只在 Panel 启动协调器：历史终态为 `current_server_digest_unavailable` 或 `current_auth_digest_unavailable` 时，可信当前镜像后来可解析后允许重放既有 required dry-run → apply；前端继续消费原有阶段、进度和错误码，不新增“强制忽略”操作。
+- 相同 Panel/stack 下的自定义镜像、不可信配置、回滚失败和其它确定性错误仍保持原终态，避免重启循环。重试仍经过 driver 的任务互斥、精确 digest、Auth/server/Control 验收、存档保护与运行状态恢复，不允许 API 层直接拉取任意镜像或改写实例配置。
+- 本地联调证明旧默认实例升级到内置 Control `0.3.8` 后 required/apply 均成功并恢复 stopped，原存档目录保留；另一个实例 server 全程 healthy。该证据来自本机测试数据，不代表生产升级或正式发布门禁。
+
+# MULTI-GAME-INSTALL-API-1 跨端契约（2026-09-01，未发布）
+
+| 页面/动作 | 接口 | 权威语义 |
+| --- | --- | --- |
+| 判断星露谷是否安装 | `GET /api/games/stardew/installation` | 登录成员/管理员可读；返回 `installationTargetId`、`installed`、`requiredFiles`、`credentialsConfigured`、`authorizationCached` 和兼容实例 DTO，不返回 Steam 用户名/密码 |
+| 全局安装/修复 | `/games/stardew/install[?jobId=...]` → 既有 `POST /api/instances/:installationTargetId/install` | 前端复用既有 InstallPage/job/SSE/Steam Guard/SMAPI 状态机；实例查询参数不能改写游戏安装目标 |
+| 创建世界 | `POST /api/instances` `{name,gameId:"stardew"}` | admin-only；后端事务化生成不可复用的 `stardew-N` 内部 ID，固定 driver 与内部安装模板，返回 `201 {instance,gameId,ports}`；公众不能指定 ID、source、volume、Compose 或端口 |
+| 进入创建后的世界 | `/instances/:id/*` | 实例初始为 `save_required`，在该实例现有存档页创建/导入存档；创建世界本身不创建存档、不再次下载游戏 |
+
+- Panel 公用下载状态只包含 Steam 下载账号、密码、SteamCMD login/home 设备缓存、短命容器构造和同进程下载互斥。App ID、安装目录、完整性诊断和安装模板属于游戏 driver；game-data、端口、Compose、存档、Mod、配置、运行容器与邀请码 session 属于实例。下载授权完成不能推导任何世界已经完成 Steam 邀请授权，邀请码授权也不能作为游戏已安装证据。
+- Stardew 创建契约当前把配置的默认实例视为游戏安装目标/运行文件模板。driver 先确认模板没有活动任务且必需文件完整，再离线复制到目标独立 game-data 卷并复验；不会共享可写 game-data 或 server container。模板不是单独不可变制品，后续若升级为版本化模板必须新增 driver 级迁移/回滚契约。
+- 模板兼容不仅复制 game-data：新实例还继承模板实际可用的服务器镜像/tag/候选与 SMAPI 安装元数据，因此旧版本默认实例使用镜像代理时，第二个世界不会因默认镜像别名本地不存在而被误判为要重新安装。账号密码、Steam 邀请授权/session、VNC 密码和实例设置不继承。启动期只对受管的 `save_required/instance_ready` 早期 provision 结果做同 tag、模板镜像可用、目标文件完整的窄修正；自定义版本和真实缺文件继续 fail closed。
+- migration `014_instance_id_sequences.sql` 保存每游戏下一内部编号。首次分配会用同 driver 的现有实例数量和既有 `stardew-N` 最大后缀建立兼容起点；之后每次请求在 SQLite 事务中前进，即使 provisioning 失败、reservation 被释放或世界后来删除也不回收编号。前端只使用响应里的 ID 导航，不能预测、提交或重用它。
+- 端口由 Stardew driver 基于所有现有 Stardew `.env` 分别维护 UDP/TCP 已用集合并分配首个可用值；`POST` 返回的端口仅是创建收据，世界列表仍从实例权威 `.env`/public-IP 接口展示加入地址。创建失败时只有精确清理成功才释放数据库 reservation；保留的 error reservation 表示需要诊断，后续自动编号会继续前进。
+- 旧 `/instances/:id/install` 浏览器深链兼容映射到默认 `installationTargetId` 的全局安装页；其它 `/instances/:id/*` 仍保留路由实例 ID。对应 Web/driver/storage/Docker 测试、前端路由/安装/响应式状态测试和 production build 已通过。应用内 Browser 的 818×1075/390×844 QA 验证卡片直达、两实例独立 `IP:port`、进入/返回、创建响应导航、未安装跳转、公用下载状态、零横向溢出和 console 无 warning/error；QA POST 使用仓库 mock，不代表真实 Docker 卷已经在本机创建。
+- 世界列表的首屏依赖只包含 `GET /api/instances`；每实例 `/state`、`/public-ip` 和 jobs 作为渐进增强独立更新，任何慢实例不再阻塞其它卡片。`save_required` 是“游戏运行环境已就绪但还没有存档”的权威语义，优先显示“需要存档”并导航到 `/instances/:id/saves`，不得被 installation diagnostic 改写成安装/修复入口。Browser 在两类详情接口各延迟 1.6 秒时约 147ms 显示两个卡片，并验证第二个世界的存档提示/导航；375px root/body 均无横向溢出。
+
+# MULTI-GAME-ENTRY-1 跨端契约（2026-08-31，未发布）
+
+| 页面/动作 | 权威接口或路由 | 当前契约 |
+| --- | --- | --- |
+| 登录后的游戏库 | `/games`、`GET /api/instances`、`GET /api/jobs` | 展示真实 Stardew 实例数量与基础安装状态；点击主卡直接导航，未开放内容不可操作 |
+| 进入星露谷 | `GET /api/instances/:id/state` | 每实例复用 installation classifier；任一实例已有安装证据时进入世界列表，否则把首选实例导向全局安装 |
+| 世界列表 | `/games/stardew`、`GET /api/instances/:id/public-ip` | 只展示真实 Stardew 实例；加入地址消费每实例公网 IP + driver-owned 端口，空态与接口错误诚实展示 |
+| 全局安装 | `/games/stardew/install?instance=:id[&jobId=:jobId]` | 复用既有 InstallPage、SteamCMD/SMAPI/组件进度与修复逻辑；下载授权和实例级联机授权是两条独立语义 |
+| 进入已有世界 | `/instances/:instanceId/:page` | 现有九个 Stardew 页面和深链保持；所有实例级请求使用路由中的 instance ID |
+| 新建世界 | `/games/stardew/new` | 本表记录 2026-08-31 当时的前端边界；现行创建契约已由上方 `MULTI-GAME-INSTALL-API-1` 的 admin-only `POST /api/instances` 取代 |
+
+- 后端静态 SPA fallback 允许 `/games`、`/games/stardew`、`/games/stardew/install`、`/games/stardew/new` 以及合法单段实例 ID 下的九个页面，同时拒绝未知页、空 ID 和额外嵌套路径；这与前端 `parseAppRoute` 的深链集合一致。
+- `/public-ip` 的 `gamePort/protocol` 是可选兼容字段：Stardew 当前返回已校验的 `.env GAME_PORT` 与 `udp`。前端只在 `ip + 1..65535 gamePort` 同时存在时拼接地址，IPv6 使用 `[ip]:port`；不得自行回退固定端口。QA 使用 `203.0.113.24` 文档地址，不代表生产探测结果。
+- `GET /api/instances` 是实例目录权威来源；前端不会把默认实例复制成多张卡。当前 `/api/health/diagnostics` 仍使用默认实例，是下一阶段多实例诊断需要后端契约化的已知边界，本阶段未把它伪装成按路由实例隔离。
+- 2026-08-31 本节记录的创建阻塞已在 2026-09-01 由 driver-owned 契约解决；Web handler 仍不得临时拼 Stardew 或 Docker 逻辑。世界创建不等于存档创建，已有 `/instances/:id/saves` 仍独立负责创建、导入和切换存档。
+- 联调验证：前端纯状态/路由、install、responsive、player-mods 和 production build 通过；后端 `TestKnownRequestPath*` 通过。应用内 Browser 已验证两实例中的 `river-farm` 能进入 `/instances/river-farm/overview`、返回世界列表，并以初始受保护深链启动 `/instances/river-farm/saves`；Vite fixture 证明前端保留深链，Go handler 测试证明正式 SPA fallback 接受该路径。
+
+# NEWGAME-WILDERNESS-MONSTERS-DEFAULT-1 跨端契约（2026-08-28，未发布）
+
+- 新建存档前端仍提交既有 `spawnMonstersOnFarm: boolean`，后端、API 与 Junimo 的数据形态不变。用户没有手动调整该选项时，官方 `farmType=wilderness` 默认提交 `true`，其它官方农场默认提交 `false`；本次只修正前端与原版创建界面的默认联动。
+- 用户手动勾选或取消后，该明确布尔值优先于后续农场选择并原样提交。后端继续把 `true/false` 写为 Junimo `Game.SpawnMonstersAtNight`，不得在 Web handler 再按 `FarmType` 二次推断或覆盖。
+- 当前 Mod 农场目录没有对外提供运行时 `SpawnMonstersByDefault`，因此本契约只保证八种官方农场。未来扩展必须以目录的权威布尔字段为输入，并保留用户明确选择优先级；未知 ID 不得凭名称猜测。
+- 前端纯状态、建档幂等、相邻设置、响应式与 production build 已通过；1280×720 Browser QA 实测荒野自动 `true`、显式 `false/true` 跨切换保持、console 零 warning/error 与零横向溢出。当前仍未新增“真实 Stardew 存档夜间刷怪”Docker E2E，本修复复用 Junimo 已有并已核对的布尔落地链。
+
 # LOGIN-CHAT-PRIVACY-1 跨端契约（2026-08-28，released in v0.6.1）
 
 | 场景 | 客户端 → 服务器 | Junimo / Control | 其它客户端 |
@@ -866,10 +984,10 @@ GET /api/instances/:id/players/:uniqueMultiplayerId/mods
 # PUBLIC-IP-LOOKUP-1 联调契约
 
 - 新增 `GET /api/instances/:id/public-ip`：任意已登录用户可调用，返回面板后端所在服务器检测到的公网出口 IP，而不是浏览器客户端 IP。
-- 响应结构为 `{ "ip": string, "checkedAt": string, "source"?: string, "cached": boolean }`。默认返回后端 `10min` 成功缓存；前端点击刷新时请求 `?refresh=1` 强制重新探测。
+- 响应结构为 `{ "ip": string, "checkedAt": string, "source"?: string, "cached": boolean, "gamePort"?: number, "protocol"?: string }`。默认返回后端 `10min` 公网 IP 成功缓存；前端点击刷新时请求 `?refresh=1` 强制重新探测。`gamePort/protocol` 不进入服务器级 IP 缓存，而是由当前实例 driver 每次投影。
 - 后端只接受合法公网地址；外部检测服务失败、返回内网/非法地址或超时时，接口返回 `502 public_ip_failed`。前端应显示“检测失败”，并允许用户手动刷新。
-- 该接口不依赖 JunimoServer、Docker Compose 或服务器运行状态；它检测的是面板容器/宿主当前出口公网 IP，主要用于用户配置端口转发、直连排查和确认服务器对外地址。
-- 验证：`cd backend; go test ./internal/web`，`cd frontend; npm.cmd run build`。
+- Stardew 的端口字段读取对应实例 `.env GAME_PORT`，缺键与 Compose 一致为 `24642`，非法值省略；前端只有在 IP 与有效端口同时存在时显示可复制的 `IP:port`，IPv6 加方括号。该字段不代表防火墙/NAT 已放行，运行状态仍由独立状态徽标表达。
+- 该接口不依赖 JunimoServer 运行状态；公网 IP 检测的是面板容器/宿主当前出口，端口来自 driver 的只读实例配置。验证：`cd backend; go test ./internal/games/stardew_junimo -run "TestDriverDirectConnectConfig" -count=1`、`go test ./internal/web -run "TestPublicIP" -count=1`，`cd frontend; npm run test:game-library; npm run build`。
 
 # DOCKER-POLL-PERF-1 Docker 状态与资源轮询契约
 
@@ -1851,3 +1969,13 @@ Control `0.3.1` 是该契约的最低内嵌实现。运行栈清单、两份 man
 
 - 前端 idempotency 必须证明重试时字段不丢失；后端覆盖缺省、三种合法值与非法值；Control 契约覆盖从 Junimo 蘑菇初态转到三种目标以及重复回读；真实 Docker E2E 至少连续创建两种固定选择并证明源游戏卷、旧存档及非目标资源不变。
 - 2026-08-23 Docker Desktop 已连续创建蝙蝠洞和蘑菇洞，Control status 与主存档 XML 双重校验通过，旧主存档/`SaveGameInfo` 哈希不变。正式候选 `32623320406` 进一步完成 `v0.5.11 → v0.5.12` 真实 Web 升级、unhealthy 回滚、初始化/SQLite/非目标游戏资源保持和升级后 Panel 重启验收；能力已随自动 annotated `v0.5.12` 与同一候选 digest 发布。
+# INSTALL-POLL-1：授权超时中文与检查容器频率（2026-09-05，未发布）
+
+- 授权超时在安装进度中显示“Steam 登录授权确认超时，请重新安装并及时完成 Steam 验证。”；保留原始任务错误供诊断。
+- `GameInstallRail.tsx` 终态只刷新一次游戏目录并结束轮询；`driver.go` 的读取状态校正复用 10 分钟内成功的游戏文件检查证据。安装、启动仍直接检查文件，缓存过期重新检查。
+- Docker 现场近 3 分钟观察到 14 次 server 镜像临时容器创建/销毁，与读状态重复 verifier 路径一致。新增缓存复用/过期后缺文件回归及中文超时断言；Go ReconcileState/InstallationDiagnostic/SteamCMD 与前端安装状态、production build 通过。接口不变，后续注意启动检查不可被读取缓存替代。
+# WORLD-CARD-1：存档地图与世界名称编辑（2026-09-05，未发布）
+
+- `GameLibrary.tsx` 世界卡片按当前启用存档的 farmType 选择八种内置农场素材；首次加载、无存档、未知地图及读取/图片失败时显示标准农场。管理员自定义地图可读取已有 farm catalog 图标；实例状态更新时重新读取存档。
+- 名称旁 13px 铅笔，管理员点击可行内修改，Enter/保存提交、Esc/取消退出，失败保留输入并显示错误。`PATCH /api/instances/:id` 只改名称和更新时间，复用管理员权限与审计，校验 1–40 字及控制字符；storage.RenameInstance 不改变目录、ID、存档与运行状态。
+- `TestInstanceRenamePersistsNameAndPreservesRuntime` 验证未登录、非法名称、持久化与运行状态保留；前端游戏库回归和 production build 通过。Browser 夹具森林地图来源、铅笔行内输入、Enter 保存已验收。后续注意自定义图标遵循已有目录权限，普通用户不显示改名入口。

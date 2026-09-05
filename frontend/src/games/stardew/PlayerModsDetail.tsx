@@ -18,6 +18,7 @@ const GROUP_INITIAL_LIMIT = 60
 
 type PlayerModsDetailProps = {
   playerId: string
+  instanceId: string
   player?: StardewPlayerInfo | null
   onBack?: () => void
 }
@@ -120,7 +121,7 @@ function noticeTitle(kind: PlayerModViewKind): string {
   return ''
 }
 
-export function PlayerModsDetail({ playerId, player, onBack }: PlayerModsDetailProps) {
+export function PlayerModsDetail({ playerId, instanceId, player, onBack }: PlayerModsDetailProps) {
   const [details, setDetails] = useState<PlayerModDetailsResult | null>(null)
   const [loading, setLoading] = useState(Boolean(playerId))
   const [requestError, setRequestError] = useState<string | null>(playerId ? null : '链接缺少 playerId，无法读取玩家 Mod。')
@@ -132,7 +133,7 @@ export function PlayerModsDetail({ playerId, player, onBack }: PlayerModsDetailP
     setLoading(true)
     setRequestError(null)
     setDetails(null)
-    getPlayerModDetails(playerId, 'stardew', controller.signal)
+    getPlayerModDetails(playerId, instanceId, controller.signal)
       .then(setDetails)
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
@@ -142,7 +143,7 @@ export function PlayerModsDetail({ playerId, player, onBack }: PlayerModsDetailP
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [playerId, retryNonce])
+  }, [instanceId, playerId, retryNonce])
 
   const viewState = resolvePlayerModViewState(details, requestError)
   const groups = useMemo(() => groupPlayerModItems(details?.comparison.items ?? []), [details])

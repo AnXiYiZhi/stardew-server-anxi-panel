@@ -10,6 +10,7 @@ import { PanelUpdateProvider } from './games/stardew/PanelUpdateProvider'
 import { COMPACT_SHELL_MEDIA_QUERY } from './games/stardew/responsive-layout'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import type { CurrentUser } from './types'
+import { installWorldDeletionQA } from './qa-world-delete'
 
 const params = new URLSearchParams(location.search)
 const SURFACE = params.get('surface') === 'app' ? 'app' : 'shell'
@@ -25,7 +26,14 @@ const ROLE = params.get('role') === 'user' ? 'user' : 'admin'
 const SAVE_IMPORT_QA = params.get('saveImport') === 'preview'
 const PLAYER_MOD_STATE = params.get('playerModState') || 'reported'
 const INSTALL_DIAGNOSTIC = params.get('installDiagnostic') || ''
+const INSTALL_QA = params.get('installQa') || ''
+const INVITE_QA = INSTALL_QA.startsWith('invite-')
+const INSTALL_TARGET = INVITE_QA ? 'river-farm' : 'stardew'
+const INSTANCE_CATALOG = params.get('instances') || 'multi'
+const CATALOG_DELAY_MS = params.get('catalogDelay') === 'slow' ? 1600 : 0
+const INITIAL_ROUTE = params.get('route')
 const STEAM_INVITE_ENABLED = params.get('steamInvite') === 'enabled'
+if (SURFACE === 'app' && INITIAL_ROUTE?.startsWith('/')) window.history.replaceState(null, '', INITIAL_ROUTE)
 if (JUNIMO_WORKFLOW === 'race-retry' || JUNIMO_WORKFLOW === 'rollback-failed' || JUNIMO_CONFIG === 'repairable') window.confirm = () => true
 
 const now = new Date('2025-05-21T14:28:36+08:00')
@@ -53,6 +61,45 @@ const instanceStateFixture = {
   updatedAt: iso(2), installationDiagnostic,
   steamInviteEnabled: STEAM_INVITE_ENABLED,
   steamInviteAuthState: STEAM_INVITE_ENABLED ? 'ready' : 'disabled',
+}
+
+const baseInstanceListFixture = [
+  {
+    isDefault: true,
+    id: 'stardew', driverId: 'stardew_junimo', driverName: 'Stardew Valley (Junimo)', name: '青禾农场',
+    state: STATE, stateMessage: null, driverPhase: STATE, createdAt: iso(90_000), updatedAt: iso(2),
+  },
+  {
+    id: 'river-farm', driverId: 'stardew_junimo', driverName: 'Stardew Valley (Junimo)', name: '河湾农场',
+    isDefault: false,
+    state: 'save_required', stateMessage: '请创建或导入存档', driverPhase: 'instance_ready', createdAt: iso(40_000), updatedAt: iso(1_440),
+  },
+]
+if (params.get('worldNames') === 'mixed') {
+  baseInstanceListFixture[0].name = 'Stardew Valley'
+  instanceStateFixture.name = baseInstanceListFixture[0].name
+  baseInstanceListFixture[1].name = '第二个世界名称很长也不应该撑高卡片'.repeat(2)
+}
+const instanceListFixture = {
+  instances: INSTANCE_CATALOG === 'many'
+    ? [
+        ...baseInstanceListFixture,
+        ...['森林农场', '海风农场', '山顶农场', '四角农场'].map((name, index) => ({
+          id: `qa-world-${index + 3}`,
+          isDefault: false,
+          driverId: 'stardew_junimo',
+          driverName: 'Stardew Valley (Junimo)',
+          name,
+          state: index % 2 === 0 ? 'running' : 'stopped',
+          stateMessage: null,
+          driverPhase: index % 2 === 0 ? 'running' : 'stopped',
+          createdAt: iso(30_000 - index * 1_000),
+          updatedAt: iso(60 + index * 120),
+        })),
+      ]
+    : INSTANCE_CATALOG === 'single'
+      ? [baseInstanceListFixture[0]]
+      : baseInstanceListFixture,
 }
 
 const players = [
@@ -110,6 +157,32 @@ const jobs = [
   { id: 'job_01JH3P3Q7K2S9M4T', type: 'server_restart', displayName: '服务器重启', status: 'succeeded', targetType: 'instance', targetId: 'stardew', createdBy: 1, createdAt: iso(160), startedAt: iso(160), finishedAt: iso(159), errorMessage: null, updatedAt: iso(159) },
   { id: 'job_01JH2L3B6F9Q1N8D', type: 'save_repair', displayName: '存档修复', status: 'failed', targetType: 'instance', targetId: 'stardew', createdBy: 1, createdAt: iso(247), startedAt: iso(247), finishedAt: iso(246), errorMessage: '存档损坏', updatedAt: iso(246) },
 ]
+
+let qaInstallJobId = 'job_qa_stardew_install'
+let qaGuardRejected = false
+let qaInstallPhase = INVITE_QA ? (INSTALL_QA === 'invite-mobile' ? 'steam_guard_mobile_required' : 'steam_guard_required') : INSTALL_QA === 'guard-code' ? 'steamcmd_guard_required' : INSTALL_QA === 'auth-method' ? 'auth_method_required' : 'game_downloading'
+let qaInstallJob = INVITE_QA || INSTALL_QA === 'progress' || INSTALL_QA === 'auth-method' || INSTALL_QA === 'guard-code' || INSTALL_QA === 'bad-password' ? {
+  id: qaInstallJobId,
+  type: INVITE_QA ? 'stardew_steam_auth' : 'stardew_install',
+  displayName: '安装星露谷物语',
+  status: INSTALL_QA === 'bad-password' || INSTALL_QA === 'invite-retry' ? 'failed' : 'running',
+  targetType: 'instance',
+  targetId: INSTALL_TARGET,
+  createdBy: 1,
+  createdAt: iso(4),
+  startedAt: iso(4),
+  finishedAt: null,
+  errorMessage: null,
+  updatedAt: iso(0),
+} : null
+let qaInstallLogs = INSTALL_QA === 'bad-password'
+  ? [{ id: 1, jobId: qaInstallJobId, sequence: 1, level: 'info', message: '[steamcmd] ERROR (Invalid Password)', createdAt: iso(0) }]
+  : INSTALL_QA === 'auth-method'
+  ? [{ id: 1, jobId: qaInstallJobId, sequence: 1, level: 'info', message: '[steam] Waiting for login method choice', createdAt: iso(0) }]
+  : [
+      { id: 1, jobId: qaInstallJobId, sequence: 1, level: 'info', message: '[steam] Downloading app 413150', createdAt: iso(3) },
+      { id: 2, jobId: qaInstallJobId, sequence: 2, level: 'info', message: '[steam] Progress: 42/100 files - 4.2 GB/10 GB (42%)', createdAt: iso(0) },
+    ]
 
 const saves = {
   activeSaveName: 'AnxiFarm',
@@ -456,6 +529,7 @@ const routes: Array<[RegExp, unknown]> = [
   [/\/api\/system\/update\/dry-run$/, dryRunStatus],
   [/\/api\/system\/update(?:\/check)?$/, panelUpdate],
   [/\/api\/version$/, { version: APPLY === 'succeeded' ? '0.1.15' : '0.1.14', commit: '3f7a9c2', buildDate: '2025-05-21 14:28:36' }],
+  [/\/api\/instances$/, instanceListFixture],
   [/\/state$/, instanceStateFixture],
   [/\/metrics$/, metrics],
   [/\/players\/[^/]+\/mods$/, playerModDetails],
@@ -500,11 +574,34 @@ const routes: Array<[RegExp, unknown]> = [
 ]
 
 const realFetch = window.fetch.bind(window)
+if (params.get('worldFarm')) saves.saves[0].farmType = params.get('worldFarm')!
 let applyFetchCount = 0
+let qaLibraryLifecycleState = STATE
+let qaLibraryLifecycleReadsRemaining = 0
+let qaLibraryLifecycleFinalState = STATE
+let qaLibraryLifecycleOperation: 'start' | 'stop' | null = null
+let qaWorldDeleteCalls = 0
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
   const path = url.split('?')[0]
+  if (SURFACE === 'app' && /\/api\/instances\/[^/]+$/.test(path) && method === 'DELETE') {
+    qaWorldDeleteCalls++
+    const index = instanceListFixture.instances.findIndex((entry) => path.endsWith('/' + entry.id))
+    if (index < 0) return new Response(null, { status: 204 })
+    if (instanceListFixture.instances[index].isDefault) return jsonRes({ error: { code: 'default_instance_protected', message: '默认世界不能删除。' } }, 403)
+    await new Promise(resolve => window.setTimeout(resolve, 700))
+    if (params.get('deleteQa') === 'failed') return jsonRes({ error: { code: 'instance_delete_failed', message: 'Docker 资源清理未完成，请检查资源占用或 Docker 状态后重试删除。' } }, 409)
+    instanceListFixture.instances.splice(index, 1)
+    return new Response(null, { status: 204 })
+  }
+  if (SURFACE === 'app' && /\/api\/instances\/[^/]+$/.test(path) && method === 'PATCH') {
+    const body = JSON.parse(String(init?.body ?? '{}')) as { name: string }
+    const instance = instanceListFixture.instances.find((entry) => path.endsWith('/' + entry.id))!
+    instance.name = body.name
+    instanceStateFixture.name = body.name
+    return jsonRes({ instance })
+  }
   if (SURFACE === 'app' && path.endsWith('/api/setup/status')) {
     if (AUTH === 'error') return jsonRes({ code: 'qa_boot_failed', message: 'QA 启动状态读取失败' }, 503)
     return jsonRes({ initialized: AUTH !== 'setup', defaultInstanceId: 'stardew' })
@@ -513,7 +610,202 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (AUTH === 'login' || AUTH === 'error') {
       return jsonRes({ code: 'unauthorized', message: '未登录' }, 401)
     }
-    return jsonRes({ user: { id: 1, username: '管理员', role: 'admin', isSuperAdmin: true } })
+    return jsonRes({
+      user: {
+        id: 1,
+        username: ROLE === 'admin' ? '管理员' : '普通玩家',
+        role: ROLE,
+        isSuperAdmin: ROLE === 'admin',
+      },
+    })
+  }
+  if (SURFACE === 'app' && path.endsWith('/api/games/stardew/installation')) {
+    const installed = INSTALL_DIAGNOSTIC !== 'not-installed' && INSTALL_DIAGNOSTIC !== 'missing-files'
+    return jsonRes({
+      gameId: 'stardew', driverId: 'stardew_junimo', installationTargetId: 'stardew',
+      installed, requiredFiles: installed ? 'ok' : 'missing',
+      credentialsConfigured: true, authorizationCached: true,
+      instance: instanceListFixture.instances[0],
+    })
+  }
+  if (SURFACE === 'app' && path.endsWith('/api/instances')) {
+    if (AUTH === 'expired') {
+      // Boot succeeds, then protected data reports that the session expired.
+      await new Promise((resolve) => window.setTimeout(resolve, 100))
+      return jsonRes({ code: 'unauthorized', message: '请先登录' }, 401)
+    }
+    if (INSTANCE_CATALOG === 'error') {
+      return jsonRes({ code: 'instance_catalog_unavailable', message: 'QA 模拟：实例目录暂时不可用' }, 503)
+    }
+    if (method === 'POST') {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { name: string; gameId: string }
+      const instance = {
+        id: 'stardew-3', driverId: 'stardew_junimo', driverName: 'Stardew Valley (Junimo)', name: body.name,
+        state: 'save_required', stateMessage: '世界实例已创建，请创建或导入存档。', driverPhase: 'instance_ready',
+        createdAt: iso(0), updatedAt: iso(0),
+      }
+      return jsonRes({
+        instance, gameId: body.gameId,
+        ports: { gamePort: 24644, queryPort: 27017, vncPort: 5802, apiPort: 8082, protocol: 'udp' },
+      }, 201)
+    }
+    if (INSTANCE_CATALOG === 'empty') return jsonRes({ instances: [] })
+    return jsonRes(instanceListFixture)
+  }
+  if (SURFACE === 'app' && /\/api\/instances\/[^/]+\/install$/.test(path) && method === 'POST') {
+    if (INVITE_QA) return jsonRes({ code: 'wrong_operation', message: 'QA: 授权重试不能重新安装游戏。' }, 409)
+    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+    if (!body.steamUsername || !body.steamPassword || !body.vncPassword) {
+      return jsonRes({ code: 'invalid_install_credentials', message: 'QA 安装需要完整凭据。' }, 400)
+    }
+    qaInstallJob = {
+      id: qaInstallJobId,
+      type: 'stardew_install',
+      displayName: '安装星露谷物语',
+      status: INSTALL_QA === 'retry' ? 'failed' : 'running',
+      targetType: 'instance',
+      targetId: path.split('/')[3],
+      createdBy: 1,
+      createdAt: iso(0),
+      startedAt: iso(0),
+      finishedAt: null,
+      errorMessage: null,
+      updatedAt: iso(0),
+    }
+    qaInstallPhase = 'game_downloading'
+    return jsonRes({ jobId: qaInstallJobId }, 202)
+  }
+  if (INVITE_QA && path.endsWith('/steam-auth/login') && method === 'POST') {
+    if (!path.includes(`/${INSTALL_TARGET}/`)) return jsonRes({ code: 'wrong_target', message: 'QA: 授权目标错误。' }, 409)
+    qaInstallJobId += '_retry'
+    if (qaInstallJob) qaInstallJob = { ...qaInstallJob, id: qaInstallJobId, status: 'running', updatedAt: new Date().toISOString() }
+    qaInstallPhase = 'steam_guard_required'
+    return jsonRes({ jobId: qaInstallJobId }, 202)
+  }
+  if (SURFACE === 'app' && path.endsWith('/api/jobs')) {
+    const lifecycleJobs = qaLibraryLifecycleOperation ? [{
+      id: 'qa-library-lifecycle',
+      type: 'stardew_lifecycle',
+      operation: qaLibraryLifecycleOperation,
+      status: 'running',
+      targetType: 'instance',
+      targetId: 'stardew',
+      createdBy: 1,
+      createdAt: iso(0),
+      startedAt: iso(0),
+      finishedAt: null,
+      errorMessage: null,
+      updatedAt: iso(0),
+    }] : []
+    return jsonRes({ jobs: qaInstallJob ? [qaInstallJob, ...lifecycleJobs, ...jobs] : [...lifecycleJobs, ...jobs] })
+  }
+  if (SURFACE === 'app' && path.endsWith(`/api/jobs/${qaInstallJobId}/logs`)) {
+    return jsonRes({ logs: qaInstallLogs })
+  }
+  if (SURFACE === 'app' && path.endsWith(`/api/jobs/${qaInstallJobId}`) && qaInstallJob) {
+    if (INSTALL_QA === 'bad-password') return jsonRes({ job: { ...qaInstallJob, errorMessage: 'SteamCMD install exited with code 5' } })
+    return jsonRes({ job: INSTALL_QA === 'retry'
+      ? { ...qaInstallJob, errorMessage: 'SteamCMD install authorization confirmation timed out', finishedAt: iso(0) }
+      : qaInstallJob })
+  }
+  if (SURFACE === 'app' && /\/api\/instances\/[^/]+\/steam-guard\/input$/.test(path) && method === 'POST') {
+    if (INVITE_QA) {
+      if (!path.includes(`/${INSTALL_TARGET}/`)) return jsonRes({ code: 'wrong_target', message: 'QA: Guard 目标错误。' }, 409)
+      if (qaInstallJob) qaInstallJob = { ...qaInstallJob, status: 'succeeded', updatedAt: new Date().toISOString() }
+      qaInstallPhase = 'steam_auth_done'
+      return jsonRes({ ok: true })
+    }
+    if (INSTALL_QA === 'guard-code') qaGuardRejected = true
+    if (qaInstallPhase === 'auth_method_required') {
+      qaInstallPhase = 'steam_guard_choice_required'
+      qaInstallLogs = [{ id: 2, jobId: qaInstallJobId, sequence: 2, level: 'info', message: '[steam] Steam Guard Authentication: [1] Approve in Steam Mobile App [2] Enter code', createdAt: iso(0) }]
+    } else if (qaInstallPhase === 'steam_guard_choice_required') {
+      qaInstallPhase = 'steam_guard_mobile_required'
+      qaInstallLogs = [{ id: 3, jobId: qaInstallJobId, sequence: 3, level: 'info', message: '[steam] Waiting for approval on your Steam Mobile App', createdAt: iso(0) }]
+    }
+    return jsonRes({ ok: true })
+  }
+  if (SURFACE === 'app' && /\/api\/instances\/[^/]+\/(start|stop)$/.test(path) && method === 'POST') {
+    const stopping = path.endsWith('/stop')
+    qaLibraryLifecycleOperation = stopping ? 'stop' : 'start'
+    qaLibraryLifecycleState = stopping ? 'stopping' : 'starting'
+    qaLibraryLifecycleFinalState = stopping ? 'stopped' : 'running'
+    qaLibraryLifecycleReadsRemaining = 2
+    return stopping ? jsonRes({ ok: true }) : jsonRes({ jobId: 'qa-library-lifecycle' })
+  }
+  if (SURFACE === 'app' && /\/api\/instances\/[^/]+\/state$/.test(path)) {
+    if (CATALOG_DELAY_MS > 0) await new Promise((resolve) => window.setTimeout(resolve, CATALOG_DELAY_MS))
+    if (path.includes('/river-farm/')) {
+      if (INVITE_QA) return jsonRes({
+        ...instanceStateFixture, instanceId: INSTALL_TARGET, name: baseInstanceListFixture[1].name,
+        state: 'game_installed', driverPhase: qaInstallPhase, installationDiagnostic: diagnosticBase,
+        stateMessage: null, steamInviteEnabled: true,
+        steamInviteAuthState: qaInstallJob?.status === 'succeeded' ? 'ready' : 'authorizing',
+      })
+      if (qaInstallJob?.targetId === 'river-farm' && qaInstallJob.status === 'running') return jsonRes({
+        ...instanceStateFixture, instanceId: 'river-farm', state: 'installing', driverPhase: qaInstallPhase,
+      })
+      return jsonRes({
+        ...instanceStateFixture,
+        instanceId: 'river-farm',
+        name: baseInstanceListFixture[1].name,
+        state: 'save_required',
+        stateMessage: '请创建或导入存档',
+        driverPhase: 'instance_ready',
+        updatedAt: iso(1_440),
+      })
+    }
+    const installInProgress = qaInstallJob?.status === 'running' || qaInstallJob?.status === 'queued'
+    const currentState = installInProgress ? 'installing' : qaLibraryLifecycleState
+    const lifecycleReachedFinal = qaLibraryLifecycleOperation !== null
+      && qaLibraryLifecycleReadsRemaining === 0
+      && currentState === qaLibraryLifecycleFinalState
+    if (qaLibraryLifecycleReadsRemaining > 0) {
+      qaLibraryLifecycleReadsRemaining -= 1
+      if (qaLibraryLifecycleReadsRemaining === 0) qaLibraryLifecycleState = qaLibraryLifecycleFinalState
+    }
+    const response = jsonRes({
+      ...instanceStateFixture,
+      state: currentState === 'stopping' ? 'stopped' : currentState,
+      stateMessage: installInProgress
+        ? qaInstallPhase === 'steamcmd_guard_required'
+          ? qaGuardRejected ? 'Steam Guard 验证码无效或已过期，请获取最新验证码后重新输入。' : '请输入 Steam App 或邮箱收到的验证码。'
+        : qaInstallPhase === 'auth_method_required'
+          ? '请选择 Steam 登录方式。'
+          : qaInstallPhase === 'steam_qr_required'
+            ? '请取消旧登录任务并使用 Steam 账号密码重新开始。'
+            : qaInstallPhase === 'steam_guard_choice_required'
+              ? '正在确认 Steam Guard 验证方式。'
+              : qaInstallPhase === 'steam_guard_mobile_required'
+                ? '请在 Steam 手机 App 中批准登录。'
+            : qaInstallPhase === 'steam_auth_running'
+              ? '正在连接 Steam 并验证下载权限。'
+              : '正在校验并下载 Stardew Valley 游戏文件。'
+        : instanceStateFixture.stateMessage,
+      driverPhase: INSTALL_QA === 'retry' && qaInstallJob ? 'steamcmd_guard_mobile_required' : installInProgress ? qaInstallPhase : currentState,
+      uiStatus: currentState === 'running'
+        ? 'ready'
+        : currentState === 'stopped'
+          ? 'stopped'
+          : currentState === 'stopping'
+            ? 'stopping'
+            : currentState === 'starting'
+              ? 'starting_container'
+              : undefined,
+    })
+    if (lifecycleReachedFinal) qaLibraryLifecycleOperation = null
+    return response
+  }
+  if (SURFACE === 'app' && path.endsWith('/public-ip')) {
+    if (CATALOG_DELAY_MS > 0) await new Promise((resolve) => window.setTimeout(resolve, CATALOG_DELAY_MS))
+    return jsonRes({
+      ip: '203.0.113.24',
+      checkedAt: iso(1),
+      source: 'qa-fixture',
+      cached: false,
+      gamePort: path.includes('/river-farm/') ? 24643 : 24642,
+      protocol: 'udp',
+    })
   }
   if (JUNIMO_WORKFLOW === 'race-retry' && path.endsWith('/junimo-update/dry-run')) {
     if (method === 'POST') {
@@ -644,12 +936,20 @@ function QALayout() {
   return (
     <PanelUpdateProvider user={mockUser}>
       {useCompactShell ? (
-        <StardewMobileShell user={mockUser} onLogout={() => {}} onUseDesktop={() => setDesktopShellRequested(true)} />
+        <StardewMobileShell
+          user={mockUser}
+          instanceId="stardew"
+          onLogout={() => {}}
+          onUseDesktop={() => setDesktopShellRequested(true)}
+          onBackToWorlds={() => {}}
+        />
       ) : (
         <StardewPanel
           user={mockUser}
+          instanceId="stardew"
           onLogout={() => {}}
           onUseCompact={automaticallyCompact && desktopShellRequested ? () => setDesktopShellRequested(false) : undefined}
+          onBackToWorlds={() => {}}
         />
       )}
     </PanelUpdateProvider>
@@ -661,3 +961,25 @@ createRoot(document.getElementById('root')!).render(
     {SURFACE === 'app' ? <App /> : <QALayout />}
   </StrictMode>,
 )
+
+if (params.get('deleteQa') === 'gestures') installWorldDeletionQA(() => qaWorldDeleteCalls)
+
+if (SURFACE === 'app') {
+  window.setTimeout(() => {
+    const ring = document.querySelector<HTMLElement>('.game-card-progress-ring')
+    const card = document.querySelector<HTMLElement>('.game-carousel-card--stardew')
+    const output = document.createElement('output')
+    output.id = 'qa-layout-metrics'
+    output.hidden = true
+    output.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      root: { clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth },
+      body: { clientWidth: document.body.clientWidth, scrollWidth: document.body.scrollWidth },
+      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      ringAnimation: ring ? getComputedStyle(ring).animationName : null,
+      cardTransitionDuration: card ? getComputedStyle(card).transitionDuration : null,
+      cardTransform: card ? getComputedStyle(card).transform : null,
+    })
+    document.body.appendChild(output)
+  }, 800)
+}

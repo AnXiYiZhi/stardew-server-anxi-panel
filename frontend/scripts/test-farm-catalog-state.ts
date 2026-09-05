@@ -10,8 +10,8 @@ import {
   isSafeManualFarmTypeId,
   moddedCompatibilityShortcut,
 } from '../src/games/stardew/farm-catalog-state.ts'
-import { builtinFarms, isBuiltinFarmType } from '../src/games/stardew/new-game-farms.ts'
-import type { FarmTypeCatalogItem, FarmTypeCatalogResponse } from '../src/types.ts'
+import { applyFarmTypeSelection, builtinFarms, farmSpawnsMonstersByDefault, isBuiltinFarmType } from '../src/games/stardew/new-game-farms.ts'
+import type { FarmTypeCatalogItem, FarmTypeCatalogResponse, NewGameConfig } from '../src/types.ts'
 
 function modFarm(overrides: Partial<FarmTypeCatalogItem> = {}): FarmTypeCatalogItem {
   return {
@@ -39,6 +39,17 @@ assert.equal(builtinFarms.length, 8)
 assert.deepEqual(builtinFarms.map((farm) => farm.id), ['standard', 'riverland', 'forest', 'hilltop', 'wilderness', 'fourcorners', 'beach', 'meadowlands'])
 assert.equal(isBuiltinFarmType('standard'), true)
 assert.equal(isBuiltinFarmType('FrontierFarm'), false)
+assert.equal(farmSpawnsMonstersByDefault('wilderness'), true)
+assert.equal(farmSpawnsMonstersByDefault('standard'), false)
+assert.equal(farmSpawnsMonstersByDefault('FrontierFarm'), false)
+
+const standardConfig = { farmType: 'standard', spawnMonstersOnFarm: false } as NewGameConfig
+const automaticWilderness = applyFarmTypeSelection(standardConfig, 'wilderness', false)
+assert.equal(automaticWilderness.farmType, 'wilderness')
+assert.equal(automaticWilderness.spawnMonstersOnFarm, true)
+assert.equal(applyFarmTypeSelection(automaticWilderness, 'forest', false).spawnMonstersOnFarm, false)
+assert.equal(applyFarmTypeSelection({ ...automaticWilderness, spawnMonstersOnFarm: false }, 'standard', true).spawnMonstersOnFarm, false)
+assert.equal(applyFarmTypeSelection({ ...standardConfig, spawnMonstersOnFarm: true }, 'riverland', true).spawnMonstersOnFarm, true)
 
 const frontier = modFarm()
 const disabled = modFarm({ id: 'DisabledFarm', label: '禁用农场', enabled: false, iconUrl: undefined })

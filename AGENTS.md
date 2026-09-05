@@ -68,11 +68,14 @@
 - 飞牛连接参数固定为主机 `121.40.29.22`、端口 `22000`、用户 `cz`。只使用用户在当前会话明确提供的密码构造内存中的 `SecureString`/`PSCredential`；密码不得写入本文件、脚本、PowerShell profile、环境持久化、日志或 Git。每次操作必须在 `finally` 中关闭 SSH session。
 - 默认采用用户名密码认证。除非用户在当次请求中明确要求，不得创建本机 SSH 密钥、上传公钥、修改服务器 `authorized_keys` 或切换为密钥认证。首次主机指纹只允许在已核对目标主机时用 `-AcceptKey` 接受，后续不得绕过主机密钥校验。
 - 普通只读或非交互命令使用 `Invoke-SSHCommand`；必须输入 `sudo` 密码时使用受控 `New-SSHShellStream`，密码只写入该会话流且不得回显或拼进远端命令行。传给 SSH 的 PowerShell 双引号字符串中禁止出现远端 `$变量`、`$()` 或反引号命令替换；简单探针改用不需要远端插值的独立命令，复杂远端诊断写任务专属脚本或使用 UTF-8 base64 载荷，避免 `pwsh → SSH → sh` 多层转义。
+- Posh-SSH 3.2.7 创建 ShellStream 的终端尺寸固定使用 `-Columns/-Rows`（或已验证的 `-Width/-Height`），禁止使用不存在的 `-TerminalWidth/-TerminalHeight`；模块版本变化或首次使用其它参数时先以 `Get-Command New-SSHShellStream -Syntax` 核对当前契约。
 
 - Windows 上所有 PowerShell 命令使用 PowerShell 7：`pwsh -NoLogo -NoProfile -Command '& { ... }'`，禁止调用 `powershell.exe`。外层使用单引号脚本块，避免父 PowerShell 提前展开 `$变量`；路径操作优先 `-LiteralPath`。调用 `git`、`go`、`npm`、`docker`、`python` 等原生命令后显式检查 `$LASTEXITCODE`。禁止为压缩单行而删除 PowerShell 关键字、cmdlet 与参数之间的空白；`throw 'message'`、`exit $LASTEXITCODE`、`Get-Content -LiteralPath` 必须保持明确分词，不能写成会被解析为新命令名的连写形式。关键清理包装器应设置 fail-fast 或把安全断言拆成可读语句，不能让非终止解析/命令错误被后续成功掩盖。
 - PowerShell 双引号中的变量插值一律写成 `${name}`，不得使用 `$name` 后再连接冒号、连字符、字母、路径片段或 tag；错误分支、日志文本与只读诊断字符串同样适用，防止 `$ref:` 等内容在命令执行前被解析为作用域变量。
+- 通过 `functions.exec` 的 JavaScript 模板字符串承载 PowerShell 或 Bash 时，载荷中禁止出现未转义的反引号或 `${`；它们会先被外层 JavaScript 解析。PowerShell 简单变量输出应让 `$name` 处于明确边界；确需 `${name}`、PowerShell 反引号、Bash 参数展开或字面量 `${` 时，改用普通 JavaScript 字符串、字符码或任务专属脚本，不得继续内联模板载荷。
+- `functions.exec` 编排层一旦出现 JavaScript `SyntaxError` 或 PowerShell parser error，视为零执行并停止在原载荷上局部续写；必须重新复制已验证的最小 `tools.exec_command({ cmd, shell, workdir, yield_time_ms, max_output_tokens })` 骨架，只填入完整命令，发送前逐字段检查不存在自然语言、未完成占位符或无效数组下标。
 - PowerShell 中原生命令的可执行名必须直接处于命令位置（如 `rg ...`），或通过调用运算符执行字符串/变量（如 `& $rgExe @args`）；禁止把可执行名和参数生成成相邻的独立字符串字面量（如 `'rg' '-n' ...`），该形态只会在解析阶段报错。批量生成命令时优先生成参数数组并调用一次，不拼 PowerShell 源码文本。
-- 嵌套 `pwsh -Command` 的文本检索默认拆成多次 `rg -F` 或使用 `Select-String -SimpleMatch`；含单双引号、反引号或复杂字符类的正则必须写入任务专属脚本，禁止继续内联到多层命令字符串中。
+- 嵌套 `pwsh -Command` 或 `functions.exec` JavaScript 字符串中的文本检索默认拆成多次 `rg -F` 或使用 `Select-String -SimpleMatch`；模式本身含单双引号、反引号、括号或复杂字符类时不得继续内联 `rg`，改用 `Select-String -SimpleMatch`、读取已知行段或任务专属脚本，避免外层解析把模式截断成路径参数。
 - 原生命令失败后若还要运行 `docker logs`、`inspect` 等诊断，必须先把原始 `$LASTEXITCODE` 保存到任务专属变量，诊断完成后退出该保存值；不得在其它原生命令之后再直接 `exit $LASTEXITCODE`。长运行服务先做有上限 readiness 轮询。
 - Docker `inspect` 需要读取嵌套 label、数组或多个字段时，必须输出完整 JSON 并由 PowerShell `ConvertFrom-Json` 投影；禁止在多层 PowerShell 命令中拼接带引号或反斜杠的 Go template。只有经过独立探针的单个无引号字段才可使用 `--format`。生产投影除 `Config.Env` 等凭据外，还必须默认剔除匿名 volume hash、容器/网络完整 ID、存档 GUID 和玩家关联标识；只输出完成判断所需的布尔值、类型、计数或脱敏短形态。
 - Windows 发布夹具不得把 Python `-c`、内联 JSON、正则、`find -printf`、`cut` 或其它含多层引号的逻辑继续嵌入 `pwsh → docker exec → sh -c`。优先直接传递单个命令及独立参数；确需多步逻辑时使用 `apply_patch` 创建任务专属脚本后执行，并先探测 BusyBox/GNU/OpenSSL 等实际能力，禁止靠猜测 flag。
@@ -82,7 +85,7 @@
 - Python 必须先确认解释器：Windows 上运行 `Get-Command python` 并执行版本探针；若不可用或返回 `9009`，立即改用工作区依赖提供的精确 Python 路径或已验证的 `py -3`，不要继续重试 Store alias。CI 使用 workflow 明确配置的 Python。
 - Docker 操作前先运行 `docker info`；Docker Desktop 未启动时先启动并轮询就绪。临时资源必须使用任务专属前缀/label，创建前查重，清理前核对归属；禁止 `docker system prune`、`docker volume prune` 或模糊批量删除。`golang:*-alpine` 中执行 Go 命令使用 `sh -c`，不要用可能重置 PATH 的 `sh -lc`。
 - 正式候选预取上一正式版和固定 fixture 镜像时，每个精确引用必须使用最多三次的有界 `docker pull`，单次 GHCR/Docker Hub token、TLS 或 EOF 失败不得直接判成镜像缺失；成功后必须 `docker image inspect` 再打包进入隔离 DinD。重试不关闭 TLS/认证、不改变引用，也不得重放 push、tag 或 workflow dispatch。
-- 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前和清理后都要用 `Get-NetTCPConnection -State Listen` 检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留；清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。
+- 本地 Vite、VitePress、Python HTTP 等长运行预览服务必须直接作为可等待的 `shell_command` cell 运行；Windows 当前策略会拒绝嵌套 `pwsh` 中用 `Start-Process` 派生后台预览，禁止再次使用该形态。工具超时或终止 cell 后不得假定子进程已退出。启动前同时检查 `Get-NetTCPConnection -State Listen` 和 `netsh interface ipv4 show excludedportrange protocol=tcp`，默认端口也必须不在排除范围内；清理后再次检查精确监听端口，不能把同号 outbound/Bound 连接误判为服务残留。清理时同时核对 PID、进程名、工作区命令行和端口，只停止本任务拥有的进程。
 - 正式发布门禁不得在同一个工具编排调用中以 `Promise.all` 等方式并发启动多个长运行 Shell；必须逐项使用可等待、可取得完整退出码与输出的独立调用。编排层异常、超时或提前返回后，先核对精确宿主进程、容器和 volume，再决定恢复或重跑，禁止在终态未知时重复启动同一门禁。
 - Windows `exec_command` 内部 `Start-Sleep`/轮询等待必须明显短于对应 `yield_time_ms`，禁止用 30 秒 sleep 吃满 30000 ms 工具上限；状态复查默认立即查询。长命令返回 session 时必须保留完整返回对象并用 `write_stdin(session_id)` 续接，不能只投影 output 或把缺失 exit code 当失败。
 - Windows 上 `npm ci` 若因现有 `node_modules` 文件锁报 `EPERM`，不得强删目录或反复重试；改用与发布版本一致的 Node Linux 容器和独立 `node_modules` volume 完成门禁，再按精确名称清理测试 volume。
@@ -91,7 +94,9 @@
 - `TestSMAPIArchiveRealDownload` 会断言 Linux `0600` 权限，正式发布门禁只能在任务专属 Linux 容器与独立 Go module/build cache 中运行；禁止先在 Windows 宿主试跑并把必然的 `0666` 当成产品失败。其它涉及 `Mode().Perm()`、UID/GID、symlink 或 Unix socket 的发布测试同样先选择目标 Linux 文件系统。
 - 应用内 Browser 验证本地 Vite/VitePress 时使用 `domcontentloaded` 后等待唯一可见 DOM，不使用当前后端不支持的 `networkidle`；导航断言只传文档支持的精确 URL，不能传正则/predicate。静态站的精确目标必须从当前 DOM `href` 与实际 SPA/普通文档路由模式解析，不得硬编码 `.html` 规范化假设；主测试与 A/B/补充脚本共用同一目标契约。VitePress 的复合链接可能含图标/箭头，标题 accessible name 可能附带 permalink；定位前先读 DOM snapshot，链接优先用唯一 role/href，标题顺序从 `main h1/h2` 可见文本或首文本节点断言，禁止把肉眼主文案直接传给 `exact:true` 重放已知超时。窄屏固定导航页面不得用 `fullPage` 拼接截图判断渲染，必须结合普通视口截图与 root/body `scrollWidth <= clientWidth` 度量。
 - 应用内 Browser 从移动壳恢复桌面验收时不得把 `viewport.reset()` 当成路由或断点恢复保证；必须显式设置已知桌面宽度、重新导航到精确目标 URL、读取当前 DOM snapshot 确认 shell/route，再等待桌面专属 heading。后端重启、HMR reload 或移动壳自动改写内部路由后同样执行此顺序，禁止直接复用上一视口的 locator 假设。
+- 应用内 Browser 的响应式视口覆盖固定先从当前 browser 读取 `browser.capabilities.get("viewport")`，再调用 capability 的 `set({ width, height })` / `reset()`；禁止猜测 `tab.viewport`、`tab.playwright.setViewportSize()` 或其它 Page 级接口。页面只读 `playwright.evaluate()` 不得用 DOM 构造器 `instanceof`、命令式 `.click()`、页面全局写入或未确认存在的 `performance` 做测试编排；交互使用 locator/CUA API，evaluate 只返回当前调用内可序列化的只读状态。
 - 应用内 Browser 当前截图接口固定使用 `tab.screenshot({ fullPage: false })` 并用 `nodeRepl.emitImage` 展示；`tab.playwright` 只用于 DOM/locator，禁止使用不存在的 `tab.playwright.screenshot()`，即使上层技能示例这么写也以 runtime API 为准。
+- 收到 Browser comments 或页面区域标注后，任何 locator 点击都必须立刻用 URL、ARIA 或 fresh DOM snapshot 核对效果；一次点击无变化时停止重放，先确认仍处于原状态，再对原生可访问按钮使用 `press("Enter")` 等已文档化的键盘等价路径。标注态下的指针无效不得直接归因为产品点击缺陷。
 - 应用内 Browser 的持久 tab 引用跨用户中断、turn 或自动清理后可能失效。关闭、读取或继续操作旧 tab 前，必须先用当前 browser 的 `tabs.list()` 按 id 核对仍存在；缺失时直接丢弃旧引用并按需要重新取得标签，不得对已知 stale 引用重放 `url()`、`close()` 或其它操作。
 - 精简容器运行项目门禁前必须核对子进程依赖：VitePress `lastUpdated` 构建使用 Node Alpine 时先安装 `git`；兼容矩阵需要 Docker CLI 与 buildx，updater/runtime Docker integration 需要 Docker CLI 与 Compose；挂载任务允许的 Docker Socket 后仍必须先通过相应 `docker version`、`docker buildx version`、`docker compose version` 探针。第三方 lint 镜像首次使用前先 inspect Entrypoint/Cmd，ShellCheck 命令必须显式调用 `shellcheck`。
 - GitHub-hosted runner 上的发布工具先以精确 runner image 官方 software readme 和 `command -v`/版本探针为准；已预装的 Skopeo、Docker、gh、jq 等不得在正式提升里再次即时 `apt-get update/install`。确需安装新工具时必须有版本固定、完整性校验和有界网络等待，不能让静默软件源占满整个发布 timeout。
@@ -107,7 +112,7 @@
 - 所有新建文本文件默认 UTF-8 无 BOM。修改前保留原文件编码和换行，不得为了改几行重编码整个文件。Go/TS/JS/JSON/YAML/Markdown 使用 UTF-8 无 BOM；`.env` 必须 UTF-8 无 BOM，否则 Docker Compose 会把 BOM 当作键名字符。
 - 换行遵循 `.gitattributes`：`.sh` 为 LF，`.ps1` 为 CRLF；只有明确兼容 Windows PowerShell 5.1 的既有脚本可以保留已验证的 BOM，例外必须写入错题本或对应文档。
 - 文件修改使用 `apply_patch`。完成后至少运行 `git diff --check`，查看 `git status --short` 和差异范围；Go 文件运行 `gofmt`，JSON/YAML/脚本运行对应解析或语法检查。U+FFFD 审计只检查 `git diff --unified=0` 中单个 `+` 开头且排除 `+++` 文件头的本次新增行，不得扫描整个历史文件后把合法示例误报为新乱码；BOM 仍检查完整变更文件。发现新增 Unicode replacement character（`U+FFFD`）、BOM、整文件异常换行变化或中文乱码时立即停止，先恢复正确编码再继续。
-- `gofmt`、`go test` 与其它按相对路径执行的命令在发送前必须同时核对 `exec_command.workdir`：从仓库根执行时使用 `backend/...`，从 `backend` 子目录执行时使用 `internal/...`，禁止把子目录 workdir 与仓库根前缀叠加。需要同时格式化跨包文件时默认从仓库根执行已确认的根相对路径。
+- `gofmt`、`go test` 与其它按相对路径执行的命令在发送前必须同时核对 `exec_command.workdir`：从仓库根执行时使用 `backend/...`，从 `backend` 子目录执行时使用 `internal/...`，禁止把子目录 workdir 与仓库根前缀叠加。需要同时格式化跨包文件时默认从仓库根执行已确认的根相对路径。跨前后端任务及同一 cell 含多子项目读文件时，统一仓库根 workdir，以 `go -C backend ...`、`npm --prefix frontend ...` 调用子项目工具，禁止在该 cell 中再切换子项目工作目录。
 - 发布说明与 Release 资产验收不得把外部更新、下载、校验和 `Remove-Item` 清理合在同一长 Shell cell；先独立完成并确认校验结果。工作区内任务专属的已知文本临时文件使用精确 `apply_patch` 删除，不用动态循环或递归 Shell 删除；空目录不进入 Git，可在不扩大删除权限的前提下保留。
 - Windows 上需要递归删除工作区任务目录时，不得把 `Remove-Item -Recurse` 直接内联到工具命令；从一开始就用 `apply_patch` 创建任务专属 `.ps1`，脚本内核对解析后的绝对路径精确等于预期目标且位于 `.agents` 等任务边界内，执行并验证清零后再用 `apply_patch` 删除脚本。策略拒绝视为零执行，不得原样重试。
 - `apply_patch` 的多文件或 update/delete 混合操作默认拆成独立补丁；确需多文件时必须先结束当前 hunk，再写下一个 `*** Update File`/`*** Delete File` 声明。出现 `Unexpected line found in update hunk` 时视为零修改，先检查实际 diff，再按文件拆分，禁止原样重放。

@@ -5,7 +5,7 @@ type PlayerModsPageProps = StardewPageProps & {
   playerId: string
 }
 
-export function PlayerModsPage({ playerId, dashboardData, onNavigate }: PlayerModsPageProps) {
+export function PlayerModsPage({ playerId, instanceId, dashboardData, onNavigate }: PlayerModsPageProps) {
   const player = dashboardData.players?.players.find(
     (entry) => entry.uniqueMultiplayerId === playerId,
   )
@@ -14,6 +14,7 @@ export function PlayerModsPage({ playerId, dashboardData, onNavigate }: PlayerMo
     <div className="sd-page sd-player-mods-page">
       <PlayerModsDetail
         playerId={playerId}
+        instanceId={instanceId}
         player={player}
         onBack={() => onNavigate('players')}
       />

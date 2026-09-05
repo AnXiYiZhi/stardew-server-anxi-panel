@@ -22,6 +22,7 @@ const (
 	DefaultSteamClientConnectRetries         = "5"
 	DefaultSteamAuthSessionRetries           = "3"
 	DefaultSteamAuthSessionRetryDelaySeconds = "5"
+	DefaultGamePort                          = "24642"
 
 	SteamInviteAuthStateDisabled       = "disabled"
 	SteamInviteAuthStatePending        = "pending"
@@ -440,7 +441,7 @@ func EmptyEnvTemplate() map[string]string {
 		"STEAM_AUTH_SESSION_RETRIES":             DefaultSteamAuthSessionRetries,
 		"STEAM_AUTH_SESSION_RETRY_DELAY_SECONDS": DefaultSteamAuthSessionRetryDelaySeconds,
 		"VNC_PASSWORD":                           "",
-		"GAME_PORT":                              "24642",
+		"GAME_PORT":                              DefaultGamePort,
 		"QUERY_PORT":                             "27015",
 		"VNC_PORT":                               "5800",
 		"API_PORT":                               "8080",

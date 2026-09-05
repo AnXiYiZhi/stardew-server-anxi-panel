@@ -26,6 +26,50 @@ type GameDriver interface {
 	DeleteMod(ctx context.Context, id string) error
 }
 
+// DirectConnectConfig describes the driver-owned network endpoint exposed by
+// one instance. The web layer combines this with its public-IP resolver rather
+// than guessing game-specific ports.
+type DirectConnectConfig struct {
+	GamePort int    `json:"gamePort"`
+	Protocol string `json:"protocol"`
+}
+
+// DirectConnectConfigProvider is an optional capability for games that expose
+// a player-facing direct-connect endpoint.
+type DirectConnectConfigProvider interface {
+	DirectConnectConfig(ctx context.Context, instance Instance) (DirectConnectConfig, error)
+}
+
+// InstanceProvisionRequest asks a driver to turn a newly reserved instance row
+// into an independently runnable server instance. Template is the driver-owned
+// game installation target selected by the Panel, never by an API caller. The
+// new instance keeps its own directory, Compose project, ports and data volume.
+type InstanceProvisionRequest struct {
+	Template Instance
+	Target   Instance
+	Existing []Instance
+	ActorID  int64
+}
+
+// InstanceProvisionResult describes driver-owned resources assigned during
+// provisioning. It is safe to return to an administrator and contains no
+// credentials, host paths or Docker identifiers.
+type InstanceProvisionResult struct {
+	GamePort  int    `json:"gamePort"`
+	QueryPort int    `json:"queryPort"`
+	VNCPort   int    `json:"vncPort"`
+	APIPort   int    `json:"apiPort"`
+	Protocol  string `json:"protocol"`
+}
+
+// InstanceProvisioner is an optional driver capability. The web layer owns
+// authentication, target path construction and the durable instance row;
+// game-specific runtime copying and resource allocation stay in the driver.
+type InstanceProvisioner interface {
+	ProvisionInstance(ctx context.Context, req InstanceProvisionRequest) (InstanceProvisionResult, error)
+	CleanupProvisionedInstance(ctx context.Context, instance Instance) error
+}
+
 type Instance struct {
 	ID            string
 	DriverID      string

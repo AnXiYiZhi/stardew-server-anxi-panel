@@ -1053,6 +1053,12 @@ func TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction(t
 	}
 	waitForHTTPJobStatus(t, handler, adminCookie, accepted.JobID, storage.JobStatusFailed)
 
+	failedJob, jobErr := store.GetJob(context.Background(), accepted.JobID)
+	if jobErr != nil {
+		t.Fatal(jobErr)
+	}
+	t.Logf("first-install failed job: %s", failedJob.ErrorMessage.String)
+
 	journal := waitForImportJournal(t, instanceDir, accepted.OperationID, func(current sj.ImportJournal) bool {
 		return current.Stage == sj.ImportStageBackupCreated && current.StagedSaveCreated && current.BootstrapSaveCreated
 	})

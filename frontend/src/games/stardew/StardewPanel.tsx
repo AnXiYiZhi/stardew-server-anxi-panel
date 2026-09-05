@@ -21,7 +21,6 @@ import { panelUpdateSurface } from './panel-update-machine'
 import { calculateShellViewport, shouldAutoCollapseOpsRail } from './responsive-layout'
 import './StardewPanel.css'
 
-const InstallPage = lazy(() => import('./pages/InstallPage').then((m) => ({ default: m.InstallPage })))
 const OverviewPage = lazy(() => import('./pages/OverviewPage').then((m) => ({ default: m.OverviewPage })))
 const ServerControlPage = lazy(() =>
   import('./pages/ServerControlPage').then((m) => ({ default: m.ServerControlPage })),
@@ -56,7 +55,6 @@ const NAV_ENTRIES: NavEntry[] = [
   { route: 'players', label: '玩家', icon: '/assets/stardew/ui/icons/icon_nav_players_avatar_image2.png' },
   { route: 'mods', label: '模组', icon: '/assets/stardew/ui/icons/icon_nav_mods_crystal_image2.png' },
   { route: 'diagnostics', label: '诊断', icon: '/assets/stardew/ui/icons/icon_nav_diagnostics_monitor_image2.png' },
-  { route: 'install', label: '安装', icon: '/assets/stardew/ui/icons/icon_nav_install_package_image2.png' },
   { route: 'settings', label: '设置', icon: '/assets/stardew/ui/icons/icon_nav_settings_gear_image2.png' },
 ]
 
@@ -373,10 +371,12 @@ function OpsRailActiveCard({
   jobs,
   jobLogsByJobId,
   instanceState,
+  instanceId,
 }: {
   jobs: Job[]
   jobLogsByJobId: Record<string, JobLog[]>
   instanceState: InstanceState | null
+  instanceId: string
 }) {
   const [schedule, setSchedule] = useState<RestartSchedule | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -392,7 +392,7 @@ function OpsRailActiveCard({
 
     async function loadConfig() {
       try {
-        const res = await getRestartSchedule()
+        const res = await getRestartSchedule(instanceId)
         if (alive) setSchedule(res.schedule)
       } catch {
         if (alive) setSchedule(null)
@@ -407,7 +407,7 @@ function OpsRailActiveCard({
       alive = false
       if (timer != null) window.clearTimeout(timer)
     }
-  }, [])
+  }, [instanceId])
 
   const { rows: restartRows, hiddenJobIds } = maintenanceRows(schedule, now, jobs, jobLogsByJobId, instanceState)
   const activeJobs = jobs.filter((j) => (j.status === 'running' || j.status === 'queued') && !hiddenJobIds.has(j.id))
@@ -519,12 +519,16 @@ function topbarStatusDotClassName(state: string | undefined, loading: boolean): 
 
 export function StardewPanel({
   user,
+  instanceId,
   onLogout,
   onUseCompact,
+  onBackToWorlds,
 }: {
   user: CurrentUser
+  instanceId: string
   onLogout: () => void
   onUseCompact?: () => void
+  onBackToWorlds: () => void
 }) {
   const [route, setRoute] = useState<StardewRoute>(() =>
     parseRoute(window.location.pathname),
@@ -540,7 +544,7 @@ export function StardewPanel({
   const shellViewportRef = useRef<HTMLDivElement | null>(null)
   const mainScrollRef = useRef<HTMLDivElement | null>(null)
 
-  const dashboardData = useStardewDashboardData()
+  const dashboardData = useStardewDashboardData(instanceId)
   const { instanceState, jobs, versionInfo, saves } = dashboardData
   const [installPromptPending, setInstallPromptPending] = useState(true)
   const [showMissingGameInstallPrompt, setShowMissingGameInstallPrompt] = useState(false)
@@ -665,7 +669,7 @@ export function StardewPanel({
     async function loadMetrics() {
 	  if (document.visibilityState !== 'visible') return
       try {
-        const res = await getInstanceMetrics()
+        const res = await getInstanceMetrics(instanceId)
         if (!alive) return
         setRailMetric(res.sample)
       } catch {
@@ -692,7 +696,7 @@ export function StardewPanel({
       clearTimer()
 	  document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [])
+  }, [instanceId])
 
   function navigate(next: StardewRoute, options?: StardewNavigateOptions) {
     if (options?.saveAction) {
@@ -700,30 +704,29 @@ export function StardewPanel({
     } else if (next !== 'saves') {
       setSaveActionRequest(null)
     }
-    const nextPath = routeToPath(next, options)
+    const nextPath = routeToPath(next, options, instanceId)
     if (`${window.location.pathname}${window.location.search}` === nextPath) return
     window.history.pushState(null, '', nextPath)
+	if (next === 'install') {
+	  window.dispatchEvent(new PopStateEvent('popstate'))
+	  return
+	}
     setRoute(next)
     setLocationSearch(new URL(nextPath, window.location.origin).search)
   }
 
-  const requestedInstallJobId = route === 'install'
-    ? new URLSearchParams(locationSearch).get('jobId') ?? undefined
-    : undefined
   const pageProps = {
     user,
+    instanceId,
     instanceState,
     dashboardData,
     onNavigate: navigate,
     saveActionRequest,
-    requestedInstallJobId,
     onLogout,
   }
 
   function renderPage() {
     switch (route) {
-      case 'install':
-        return <InstallPage {...pageProps} />
       case 'overview':
         return <OverviewPage {...pageProps} />
       case 'server':
@@ -925,6 +928,17 @@ export function StardewPanel({
       {/* ── 左侧导航 ────────────────────────────────────────── */}
       <nav className="sd-sidebar" aria-label="主导航">
         <div className="sd-nav-list">
+          <div className="sd-nav-row sd-nav-row-worlds">
+            <button
+              className="sd-nav-item sd-nav-item-worlds"
+              aria-label="返回世界列表"
+              title="返回世界列表"
+              onClick={onBackToWorlds}
+            >
+              <span className="sd-nav-worlds-arrow" aria-hidden="true">←</span>
+              <span className="sd-nav-label">世界列表</span>
+            </button>
+          </div>
           {NAV_ENTRIES.map((entry) => (
             <div className="sd-nav-row" key={entry.route}>
               <button
@@ -1020,6 +1034,7 @@ export function StardewPanel({
             jobs={jobs}
             jobLogsByJobId={dashboardData.jobLogsByJobId}
             instanceState={instanceState}
+            instanceId={instanceId}
           />
 
           {/* 近期任务 */}

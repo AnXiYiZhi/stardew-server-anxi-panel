@@ -98,23 +98,22 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	// reuseCredentials: reload creds from .env so the user doesn't have to re-enter them.
+	// reuseCredentials: Steam download credentials come from the Panel-wide
+	// store inside the driver. VNC remains an instance runtime setting.
 	if body.ReuseCredentials {
 		envVals, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "env_read_failed", sanitizeErrorMsg(err, "读取实例配置失败"))
 			return
 		}
-		body.SteamUsername = envVals["STEAM_USERNAME"]
-		body.SteamPassword = envVals["STEAM_PASSWORD"]
 		body.VNCPassword = envVals["VNC_PASSWORD"]
 	}
 
-	if body.SteamUsername == "" {
+	if !body.ReuseCredentials && body.SteamUsername == "" {
 		writeError(w, http.StatusBadRequest, "missing_field", "steamUsername 不能为空")
 		return
 	}
-	if body.SteamPassword == "" {
+	if !body.ReuseCredentials && body.SteamPassword == "" {
 		writeError(w, http.StatusBadRequest, "missing_field", "steamPassword 不能为空")
 		return
 	}
@@ -172,7 +171,7 @@ func (s *server) handleInstanceInstall(w http.ResponseWriter, r *http.Request, i
 		if writeStardewMutationGuardConflict(w, err) {
 			return
 		}
-		if activeJobID, handled := writeActiveInstallConflict(w, err, "该实例已有安装任务正在进行。"); handled {
+		if activeJobID, handled := writeActiveInstallConflict(w, err, "公用 Steam 下载任务正在进行。"); handled {
 			s.logger.Info("install request attached to active job", "instance", instanceID, "job_id", activeJobID)
 			return
 		}
@@ -204,9 +203,9 @@ type steamCredentialsResponse struct {
 }
 
 // handleInstanceSteamCredentials handles PUT /api/instances/:id/steam-credentials.
-// It only replaces the shared Steam account/password in .env. Existing SteamCMD
-// authorization caches, SteamAuth sessions, invite intent, game data, and all
-// other settings are deliberately left untouched.
+// It replaces the Panel-wide Steam download account/password and refreshes the
+// current instance compatibility shadow. Existing SteamCMD authorization
+// caches, instance invite sessions, game data and other settings are untouched.
 func (s *server) handleInstanceSteamCredentials(w http.ResponseWriter, r *http.Request, instanceID string) {
 	actor, ok := s.requireAdmin(w, r)
 	if !ok {
@@ -317,25 +316,29 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	envVals, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "env_read_failed", sanitizeErrorMsg(err, "读取实例配置失败"))
-		return
-	}
-	if envVals["STEAM_USERNAME"] == "" || envVals["STEAM_PASSWORD"] == "" {
-		writeError(w, http.StatusBadRequest, "credentials_missing", "未找到已保存的 Steam 账号密码，请先在安装页面完成一次凭据填写。")
-		return
-	}
 	driver, ok := s.loadDriver(w, instance.DriverID)
 	if !ok {
+		return
+	}
+	credentialProvider, ok := driver.(interface {
+		StoredSteamDownloadCredentials(registry.Instance) (string, string, bool, error)
+	})
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "steam_credentials_read_unsupported", "当前游戏驱动无法读取公用 Steam 下载凭据。")
+		return
+	}
+	_, _, credentialsFound, err := credentialProvider.StoredSteamDownloadCredentials(makeRegistryInstance(instance))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "steam_credentials_read_failed", sanitizeErrorMsg(err, "读取公用 Steam 下载凭据失败"))
+		return
+	}
+	if !credentialsFound {
+		writeError(w, http.StatusBadRequest, "credentials_missing", "未找到已保存的公用 Steam 账号密码，请先在游戏安装页面填写。")
 		return
 	}
 	job, err := driver.Install(r.Context(), registry.InstallRequest{
 		Instance:      makeRegistryInstance(instance),
 		ActorID:       actor.User.ID,
-		SteamUsername: envVals["STEAM_USERNAME"],
-		SteamPassword: envVals["STEAM_PASSWORD"],
-		VNCPassword:   envVals["VNC_PASSWORD"],
 		ImageTag:      stardew_junimo.TestedImageTag,
 		AuthLoginOnly: true,
 		ForceReauth:   true,
@@ -352,7 +355,7 @@ func (s *server) handleInstanceSteamAuthLogin(w http.ResponseWriter, r *http.Req
 		if writeStardewMutationGuardConflict(w, err) {
 			return
 		}
-		if activeJobID, handled := writeActiveInstallConflict(w, err, "该实例已有安装或 Steam 授权任务正在进行。"); handled {
+		if activeJobID, handled := writeActiveInstallConflict(w, err, "该世界已有 Steam 邀请授权任务正在进行。"); handled {
 			s.logger.Info("steam-auth login attached to active install job", "instance", instanceID, "job_id", activeJobID)
 			return
 		}

@@ -1,3 +1,182 @@
+# v0.7.0 候选前端门禁（2026-09-05，未发布）
+
+- Node 24 Alpine 使用独立依赖/产物卷，执行当前 package.json 全部 test:*、production audit、production build 成功；Vite build 2.46s。安装授权、游戏库、世界删除、session-expiry 均在本次完整回归中。
+- `scripts/run-release-gates.sh` 与 Compatibility workflow 同步列入 game-library、session-expiry、world-delete，保证新增测试进入后续正式候选。发布升级来源固定 v0.6.1，完整候选、升级后 Web 多世界与回滚结果见 `docs/09-image-build.md`。
+
+# INSTALL-TARGET-REVIEW：授权状态和当前世界路由（2026-09-05，未发布）
+
+- 修复 Review 的两项前端问题：`stardew_steam_auth` 单独按任务终态呈现，不再因游戏已安装而隐藏 Guard；授权失败使用当前世界 `/steam-auth/login` 重新授权。验证码、手机确认和授权结束各有明确状态，授权期间不展示基础安装步骤。
+- `/instances/:id/install?jobId=...` 保留世界 ID；App → GamesPage → GameInstallRail 显式传递目标，并按目标重新挂载。缺失文件修复、任务续接、Guard 和重试都使用该目标；全局 `/games/stardew/install` 仍进入配置默认世界。安装轨道读取目标实例诊断，不再用全局安装目标覆盖它；其它世界的冲突任务不被错误接管。
+- 轮询合并同一任务快照、拒绝异世界/异类型任务，采用单请求在途保护和失效标记，避免慢请求不断被下一轮废弃或旧请求覆盖新任务；普通用户不能提交授权输入。
+- 文件：`App.tsx`、`app-routes.ts`、`games/{GameLibrary,GameInstallRail}.tsx`、`stardew-routes.ts`、`install-progress-presentation.ts`；状态回归及 production build 通过。Browser 合成夹具验证第二世界 Guard 提交到完成、手机等待、授权失败重试与缺失文件修复，URL 和 mock 接口均校验当前世界。新增 `installQa=invite-guard/invite-mobile/invite-retry`，使用 `river-farm`；夹具不能连接真实 Steam。
+- 后续继续通过显式 instanceId 构造安装链接，避免从游戏级卡片状态推断某个世界的授权状态。原运行服务需要正常加载新版前后端后才获得本轮修复。
+
+# WORLD-DELETE-1：长按彻底删除世界（2026-09-05，未发布）
+
+- `/games/stardew` 的管理员非默认世界封面支持 1.2 秒长按，进度描边与提示同步展示；普通短点击仍进入世界，进入按压后的提前松手、移出、超过 10px 拖动、滚动、pointercancel、失焦/切后台取消并吞掉关联点击。事件仅绑定整卡入口按钮，改名/复制/启停子控件不参与。Delete 键为等价入口，旧后端缺少 `isDefault` 时隐藏删除能力。
+- 长按完成打开原生 modal dialog，完整显示世界名称与“将永久删除此世界及全部备份，无法恢复。”。默认焦点为取消，支持 Escape、焦点限制和取消后回到封面；确认后显示“删除中…”并通过 ref 防止同步双击重复提交。失败保留错误与确认重试；只有 DELETE 204 后移除卡片并同步世界计数。持久 `instance_deleting` 卡片提供重试并禁用改名/启停。
+- 保留既有 64px 名称/编辑区、两行省略、整卡全名 title 和手机横向画布。对话框使用顶层 portal，在 390×844 内完整换行、无页面横向溢出。
+- 文件：`GameLibrary.tsx/.css`、`WorldDeleteControl.tsx`、`world-delete-gesture.ts`、`api.ts`/`types.ts`；`test:world-delete` 已进入 release gates。全量 package.json `test:*` 与 production build 通过。Browser/CUA 在独立 4623 夹具以实际 React handler 运行按压、取消、子控件、确认、防重复提交与成功移除回归，1280×720 和 390×844 均 PASS，干净标签控制台无 warning/error。`deleteQa=failed` 验证错误保留和可重试；`worldNames=mixed` 验证全名。
+- 复验入口：`qa-layout.html?surface=app&route=/games/stardew&state=stopped&deleteQa=gestures`，点击“运行删除交互回归”；该页面只使用合成 fetch，刷新/HMR 后务必重新进入完整 harness URL。普通用户与默认实例没有入口。后端/API 契约和真实 Docker 验证见 `docs/02-backend.md`；原 8090 未重启，需同步后端才在真实 3000 页面生效。
+
+# WORLD-CARD-SIZING-1：名称长度不改变世界卡片尺寸（2026-09-05，未发布）
+
+- `GameLibrary.css` 为世界标题/改名表单预留统一 64px 区域，名称最多两行（固定行高、超长省略、允许连续英文断行），状态不换行。改名表单使用两列动作布局，输入/保存仍在同一预留空间；卡片原有断点宽度、图片比例和像素风保持不变。
+- `GameLibrary.tsx` 的整卡入口增加完整名称 title，原可访问名称继续保留全文。未截断实际数据、未增加 JS 文本测量或 resize 监听、未修改真实世界名称。影响仅为卡片展示，后端 API 无变更。
+- `qa-layout-main.tsx` 的 `worldNames=mixed` 夹具提供英文与长中文名称，并让实例 state 与目录返回一致；`test:responsive-layout` 固定两行、预留空间、编辑布局与全文提示契约。响应式、游戏库回归及 production build 通过。
+- Browser 验证：1280×800 下两张夹具卡均为 230.39×373.42px，单字、长中文、40 个连续英文字符与进入/保存改名表单后尺寸不变；地址/按钮偏移一致。390×844 保持既有横向手机画布，两卡布局尺寸均约 203×298px，root scrollWidth=clientWidth=390；暖昼/静夜截图正常。
+- 原 QA 标签在编辑夹具期间记录一次 createRoot 的 HMR 重执行告警；修改完成后用全新标签验收，页面身份、有效 DOM、无框架错误遮罩与控制台 warning/error 均通过。用户真实 3000 页面复核两卡同为 244×384.06px，地址/按钮偏移一致；改名交互只在 mock 夹具进行。
+- 下一步注意：新增标题操作时继续复用预留区域，不根据名称长度计算卡片尺寸；异常信息不应被名称截断规则遮住。本轮不构建/替换 Docker 镜像。
+
+# SESSION-EXPIRY-1：登录失效退出旧世界界面（2026-09-05，未发布）
+
+- `api.ts` 的受保护请求遇到 401 通知 `App.tsx` 清除当前用户并显示“登录已失效，请重新登录后继续。”，保留原路由以便重新登录后继续。登录/初始化接口的 401 保持表单内错误，不自动调用 logout。
+- 新增 `auth-session-events.ts` 使用单一订阅集合及会话代次：重复 401 只通知一次，已完成新登录后到达的旧请求不能注销新会话；卸载时取消订阅，不保存凭据。
+- `test:session-expiry` 覆盖通知、取消订阅、真实 request 的 401 分流及跨登录延迟响应；连同 `test:game-library`、`test:lifecycle-action-state`、production build 通过。Chrome/CUA 的 `qa-layout.html?surface=app&auth=expired&route=/games/stardew` 夹具确认由世界视图返回带提示的登录表单。
+- 真实验收：8090 后端重启后，3000 页面两个世界均显示“已停止”，两个启动按钮可用；数据库状态均为 `stopped/game_files_restored`，原游戏容器保持停止。此项解决过期会话的显示反馈，不宣称隔离不同 localhost 端口的同名 Cookie。
+
+# INSTALL-LOGIN-ERROR-1：登录错误原因展示（2026-09-05，未发布）
+
+- 本机真实失败任务记录 `Invalid Password` 与退出码 5；`install-progress-presentation.ts` 现在只从当前失败安装 job 的日志识别 Invalid/Incorrect Password 或 password check failure，显示“Steam 账号或密码错误，请修改后重试。”。其它任务的历史错误不参与判断；`credentials_required` 时优先保留后端状态原因，不被笼统 job 退出码遮住，验证码错误也不强行归因为账号密码。
+- `test-install-state` 增加错误密码、跨 job 污染和验证码原因保留断言；回归、production build 通过。CUA Browser 的 `installQa=bad-password` 夹具证明提示可见、重试可进入编辑表单、控制台无 warning/error。未在浏览器代用户提交真实凭据。
+- 已部署 18091 的 `install-test-20260905-login-error`，实际 HTTP bundle `index-tVwGoLWI.js` 含明确提示，health=ok；配置与数据挂载保留。后续修改安装错误展示继续按当前 job 归属处理日志，部署详情见镜像文档。
+
+# STEAM-GUARD-FEEDBACK-1：错误验证码反馈（2026-09-05，未发布）
+
+- 本机安装容器实际返回 `That Steam Guard code was invalid.`，原 runner 未识别，实例仍保留初始输入提示。`installer.go` 现将该可重试拒绝写入 `steamcmd_guard_required` 的 `stateMessage`，后续重复 prompt 不覆盖错误；仍在同一任务等待新验证码，成功登录/下载正常推进，既有终态凭据错误分流保持不变。
+- `GameInstallRail.tsx` 将任务轮询错误与提交错误分开，成功轮询不再清除提交失败提示；提交成功显示等待验证说明，按钮提供正在提交状态。API 路径与 DTO 不变，继续使用 Guard input POST 与 job/state 轮询。
+- 验证：`TestSteamCMDRejectedGuardRemainsRetryableAndCanDownload`、既有验证码 prompt/手机超时定向 Go 测试通过；前端 `test:install-state`、`test:responsive-layout`、production build 通过。CUA Browser 在 127.0.0.1:4621 的 `installQa=guard-code` 隔离夹具提交错误码，确认错误提示跨轮询保留、重新输入后按钮可用、控制台 warning/error 为空。
+- 部署补充（2026-09-05）：18091 已替换为 `install-test-20260905-guard-feedback`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-guard-feedback`、build date=`2026-09-05T05:49:52Z`。原配置/session secret 与数据挂载逐项一致，health/database=ok、initialized=true，实际 HTTP bundle `index-Bd__tfs8.js` 含提交反馈。原等待任务因重启结束，用户需刷新页面后重试安装；未代用户提交真实验证码。18090 原 Panel 的 healthy 与启动时间保持不变。此为本地测试部署，不是正式发布。
+
+# FE-INSTALL-OVERALL-PROGRESS-1：主卡总体安装百分比（2026-09-05，未发布）
+
+- 授权超时等失败终态优先显示“请重试”，详情进度条停止不定动画；终态不再显示或自动提交旧的 Steam Guard 等待/选择。`gameInstallStepProgressLabel` 统一可见和可访问的步骤状态。
+- 安装请求成功创建 job 后，在当前安装组件内存中保留 Steam 账号/密码与 VNC 密码；“重新填写并重试”直接恢复可编辑表单并重新掩码密码。安装完成清空，退出安装视图、刷新或关闭页面后丢弃，不写浏览器持久存储、不新增后端密码读取接口；此前旧页面已清掉的信息不能恢复。
+- `installQa=retry` 夹具覆盖提交→授权超时→“请重试”→预填表单→直接修改重试；失败时陈旧 mobile phase 不再呈现继续授权提示。
+- 主卡显示“总进度约 N%”，4px 贴边进度环按 `overallPercent × 3.6deg` 固定填充；`progressbar` 数值、可访问名称与可见百分比一致。整体进度由现有 job/state/logs 的纯函数派生，没有计时补涨。
+- `install-progress-presentation.ts` 将准备映射到 0%、服务镜像 5–15%、SteamCMD 工具 15–20%、授权 20%、游戏 25–85%、SDK 85–90%、SMAPI 90–99%；已验证安装完成才到 100%。这是阶段权重估算，不代表总字节或剩余时间；没有量化日志时停在阶段边界，SteamCMD 客户端自更新不算作游戏下载完成。
+- 详情继续独立展示当前步骤日志的 `percent`，不能把步骤 100% 当成整体完成。安装状态、权限、Steam Guard 和提交接口不变。
+- 安装状态、响应式和游戏库回归以及 production build 通过；Browser 夹具验证游戏下载 42% 时主卡约 50%、边框 animation=none、收起后再次展开恢复相同进度。
+
+# FE-STEAM-CREDENTIAL-AUTO-GUARD-1：账号密码登录与自动验证呈现（2026-09-04，未发布）
+
+- 全局安装卡只收集 Steam 账号、Steam 密码和 VNC 密码；安装与邀请码授权不再展示登录方式或 Steam Guard 类型选择。上游直接要求验证码时原位显示验证码输入，要求手机确认时只显示 Steam App 批准等待。
+- 为兼容已经运行的旧后端/旧任务，`auth_method_required` 会自动提交账号密码选项，两个 Guard choice phase 会各自只自动提交一次手机批准选项；活动中的旧二维码 phase 只提示取消并重新开始，不渲染二维码或扫码按钮。`qrcode` 运行依赖和静态导入已删除。
+- 内联进度展示在没有当前安装 job 时同时保留目录投影的 `install_verification_failed` 和游戏级 `requiredFiles=missing`；任一机器字段都明确压过实例残留的 `stopped/game_installed` 完成态，避免刷新或另一个完整世界让修复页跳成“安装完成 100%”。实际安装 job 启动后仍由 job/state/logs 驱动。
+- `GameInstallRail.tsx`、旧路由兼容用的 `InstallPage.tsx`、阶段文案、QA fixture 及安装/响应式回归同步更新。Browser 实测修复入口最终只显示三项凭据，未填写时“开始安装”禁用，页面无扫码文案且 console warning/error 为 0；未提交真实凭据、未开始安装。
+
+# FE-WORLD-LIFECYCLE-POLLING-1：世界卡启停轮询与加入地址解耦（2026-09-04，未发布）
+
+- 世界卡执行启动/停止后不再每 1.5 秒重载完整目录。`useStardewCatalog.refreshInstance` 只并行读取当前实例 `/state` 与 jobs，并按实例 ID 原位合并；同实例请求未完成时会去重，不会重置其它世界、安装投影或已取得的公网加入地址。
+- 卡片状态徽标复用生命周期控制的 pending/job/driver 投影，并读取 active lifecycle job 的可选 `operation`。按钮提交成功到任务终态之间持续显示“启动中”或“停止中”；排队 stop 即使仍搭配旧 `running/ready` 快照，也不会再被 active-job 默认分支误标成“启动中”。旧后端没有 `operation` 时，系统创建且仍处于 `running/ready` 的 stop 形态保留兼容推断；终态后再切换为“运行中/已停止”。
+- `test-game-library-state` 覆盖 active start、带 `operation:stop` 的 queued stop 和旧后端 stop 投影；`test-responsive-layout` 固定定向轮询不得调用 `/public-ip`。三组状态/布局门禁和 production build 通过；Browser 在 1.6 秒慢详情夹具中分别验证启动和停止期间地址持续为 `203.0.113.24:24642`，停止过程保持“停止中”而不出现“启动中”，终态切换正确。
+
+# FE-GAME-LIBRARY-INLINE-INSTALL-1：游戏卡内联安装与环绕进度（2026-09-04，未发布）
+
+- `/games/stardew/install` 不再渲染独立安装页面，而是继续渲染同一个 `GamesPage` 并在星露谷主卡右侧展开安装卡。未安装游戏卡点击、安装中/修复深链和带 `jobId` 的刷新恢复仍使用原 URL；再次点击主卡、取消或 Escape 以现有 360ms 对称轨道动画收回并返回 `/games`。
+- 首次安装卡只显示 Steam 账号、Steam 密码、VNC 密码与“开始安装”，提交仍调用既有 `installInstance`，目标取 `GET /api/games/stardew/installation` 的 `installationTargetId`。管理员权限、`install_in_progress` 409 接管、`canonicalInstallJobs`、`classifyInstallationState`、Steam Guard 输入和凭据清理沿用现有接口及状态语义，没有新增安装状态机或伪造任务。
+- 安装提交后，同一卡位切换为五步详情：准备环境、拉取服务镜像、SteamCMD 授权、下载与安装、完成。主卡外沿使用方形 360° 总进度环，按 FE-INSTALL-OVERALL-PROGRESS-1 的阶段估算固定填充；详情数值仍只来自 `[pull:progress:*]`、Steam/SteamCMD 与 SMAPI 下载日志，无法量化的当前步骤保留不定进度。选中框在安装态让位给进度环，完成态才显示整体 100%。
+- 新增 `GameInstallRail.tsx` 与 `install-progress-presentation.ts`，并复用 `install-helpers.ts` 中的日志解析。暖昼继续使用奶油纸/木边框，月夜使用深靛蓝像素纸；390×844 固定横向画布仍由轨道承载卡片与详情，root/body 不承担横向滚动，`prefers-reduced-motion` 会移除进度动画、缩放和平滑过渡。
+- QA harness 新增可提交的未安装安装夹具和 `installQa=progress` 直接进度态，凭据只校验字段存在且不回显。验证覆盖内联表单提交、42% 真实日志投影、步骤状态、桌面整体居中、手机固定横向画布、root/body 零横向溢出和 console warning/error 为 0；状态/响应式测试与 production build 作为最终门禁。
+- 进度环的 4px 内沿与游戏卡外边界精确相接，渐变角度只随总体百分比变化。授权阶段由上游提示自动进入验证码输入或手机批准等待；旧 choice phase 通过既有 `steam-guard/input` 自动提交默认路径，不向用户展示额外选择。QA 可用 `installQa=auth-method` 直达并验收两级自动推进。
+- 游戏卡通用青色选中框也从旧的 8px 外扩间距收紧为 3px 外扩配 3px 边框，使边框内沿直接接触卡面；收起态、未安装表单态与世界展开态使用同一贴边语义，安装进行中仍由真实进度环接管。
+- 未安装内联表单的 Steam 密码和 VNC 密码输入框各自提供 44×44px 的眼睛按钮；默认保持密码掩码，单独切换显示/隐藏并同步 `aria-label` 与 `aria-pressed`，不改变凭据提交和清理流程。
+
+# FE-GAME-LIBRARY-WORLD-CARD-CONTROLS-1：世界卡片快捷控制（2026-09-04，未发布）
+
+- `/games/stardew` 的每张世界卡同时提供三个清晰边界：整卡主入口继续经 `stardewInstanceDestination` 进入 overview、saves 或全局安装/修复流程；加入地址右侧是独立 44×44px 复制按钮；卡片底部是唯一的服务器生命周期按钮。三个操作使用同级按钮，不产生嵌套交互，也不复用实例面板控件外观。
+- 加入地址继续来自渐进回填的 `GET /api/instances/:id/public-ip` 与真实 `gamePort`。只有已安装、无需存档且得到合法 `IP:port` 时复制按钮才启用；加载、失败、需存档和未安装占位不会进入剪贴板。复制使用现有 LAN/localhost 兼容 helper，并在原按钮内给出成功或失败的可访问反馈。
+- 生命周期按钮直接调用既有 `POST /api/instances/:id/start|stop`，状态由实例 `state/uiStatus/driverPhase`、对应 active `stardew_lifecycle` job 的安全 `operation` 和现有安装分类共同投影：停止态显示“启动”，提交后显示“启动中…”，运行态显示“停止”，提交后显示“停止中…”。动作期间每 1.5 秒只刷新目标实例 state/jobs，不刷新目录或加入地址；最终只在后端权威状态到达后切换文案。存档缺失错误进入该世界 saves，其他错误就地展示。
+- 只有管理员可执行启动/停止；普通用户仍可复制有效加入地址和进入世界，但生命周期按钮保持真实 `disabled`，管理员专属新建入口规则不变。暖昼使用奶油纸/木色的低对比控件，月夜使用深靛蓝/冷蓝控件，焦点环与 44px 触摸区在两套主题和固定横向手机画布中一致。
+- 主要影响 `frontend/src/games/{GameLibrary.tsx,GameLibrary.css,game-library-state.ts}`、`frontend/src/{types.ts,qa-layout-main.tsx}`、jobs 响应的可选 `operation` 与游戏库/响应式测试；实例面板按钮、安装状态机和世界路由契约不变。`npm run test:game-library`、`npm run test:responsive-layout` 与 `npm run build` 通过；Browser 实测复制反馈、停止/启动完整过渡、普通用户禁用态、暖昼/月夜及 390×844/844×390 画布。
+
+# FE-GAME-LIBRARY-INLINE-CREATE-1：轨道内新建世界卡（2026-09-04，未发布）
+
+- 删除独立的新建世界页面表现。管理员点击世界轨道末尾的正方形“新建世界”卡后，同一卡位原地变为紧凑表单，只显示“请输入世界名称”、名称输入框、取消和创建操作；`/games/stardew/new` 继续作为可分享深链，但渲染的仍是 `/games/stardew` 同一游戏库、同一世界轨道和这张内联表单。
+- 创建仍调用既有 `POST /api/instances` 封装和 `stardewCreateInstanceRequest`，只提交名称与 `gameId`；提交前通过真实游戏安装接口确认已安装，成功后使用响应中的动态 instance ID 进入该实例 saves。没有增加前端安装状态机、假实例或后端契约。
+- 新建入口和深链均保持 admin-only：普通用户直达 `/games/stardew/new` 会 replace 回 `/games/stardew`，不渲染可执行入口。取消或 Escape 返回 `/games/stardew`，并把焦点归还重新出现的“新建世界”卡；输入与两个操作按钮均保持至少 44px 触摸高度。
+- 内联卡分别沿用暖昼奶油棋盘格和静夜星点棋盘格，编辑态只适度横向扩展。创建态使用该卡未旋转的轨道坐标计算可见终点，与 360ms 世界轨道展开同步滚动；390×844 侧转画布和 844×390 横持画布都会让完整表单进入轨道视区，且 root/body 横纵溢出均为 0。
+- 影响 `frontend/src/{App.tsx,app-routes.ts}`、`frontend/src/games/{GameLibrary.tsx,GameLibrary.css}`、响应式回归和 QA fixture；原 `StardewNewWorldPage` 已移除，实例面板、存档页、安装/修复分流和渐进世界数据加载保持不变。`npm run test:game-library`、`npm run test:responsive-layout` 与 `npm run build` 通过；Browser 已覆盖桌面昼夜、直接深链、输入启用、创建后 saves、Escape/焦点归还、普通用户权限和两种手机方向。
+
+# FE-GAME-LIBRARY-FIXED-LANDSCAPE-1：手机固定横向游戏画布与昼夜顶栏（2026-09-04，未发布）
+
+- `/games` 与 `/games/stardew` 在宽度不超过 700px 的竖持设备上使用固定横向画布：library 根节点交换 `100dvh/100dvw` 后整体旋转 90°，因此产品始终只提供同一套横向构图。页面不请求或锁定设备方向，也不显示旋转提示；玩家转动手机即可正向观看。横持设备直接使用同一套紧凑横向尺寸。进入 `/instances/:id/*` 后游戏库根节点卸载，现有 Stardew 移动壳继续按正常竖屏布局显示。
+- 固定画布只作用于 `.game-hub--library`。竖持 390×844 下旋转后的包围盒仍精确为 390×844，`html/body` 横向溢出为 0；卡片轨道继续独立横滚，世界展开、路由、安装/修复分流和实例面板契约不变。
+- 游戏库顶栏删除左侧柱状图标，只保留 `ANXI PANEL`、账号区域和 44×44px 昼夜按钮。顶栏在暖昼/月夜下都直接透明叠在当前背景上，不再使用独立底色、分隔边和投影；文字与图标分别采用适配天空明暗的深绿或月黄色。管理员“新建世界”卡保留原有昼夜像素纹理与正方形层次，只删除世界轨道贯穿卡片中部的横向连接线，hover/focus 和原新建路由不变。
+- 主要影响 `frontend/src/{App.css,app-routes.ts}`、`frontend/src/games/{GameLibrary.tsx,GameLibrary.css}` 与两份游戏库/响应式测试，没有新增方向 hook、权限请求、后端接口或安装状态。`npm run test:game-library`、`npm run test:responsive-layout` 与 `npm run build` 通过；应用内 Browser 验证 390×844 侧转画布、844×390 横持画布、世界卡进入 overview 后恢复 390×844 竖屏移动壳、昼夜顶栏、新建卡、root/body 零溢出与干净页面 console warning/error 为 0。
+
+# FE-GAME-LIBRARY-DAY-CARDS-1：Steam 官方封面与暖昼像素卡面（2026-09-04，未发布）
+
+- 星露谷主游戏卡使用 Steam 商城 App 413150 的官方 `header.jpg`，保存为本地静态资源 `frontend/public/assets/game-hub/stardew-steam-store-header.jpg`；封面以 `contain` 完整展示英文游戏标题、山谷和像素角色，天空蓝作为余量底色，不在运行时热链外部 CDN。
+- 暖昼主题下，主游戏卡、世界卡、新建世界卡和暂未接入卡使用奶油纸、暖木边框、低强度像素格纹与深绿/棕色文字。静夜主题对应使用深靛蓝像素纸面、冷蓝描边、微弱星点、月黄色标题和轻量月光封面色调，不再是无层次的黑底。运行、安装、错误和焦点语义继续使用原状态颜色与青色选中框，安装状态滤镜仍只作用于封面图片。
+- 游戏库默认跟随玩家设备本地时间：06:00–17:59 为暖昼，18:00–05:59 为月夜；页面在下一个 06:00/18:00 边界、从后台恢复可见或窗口重新获得焦点时自动校准，无需刷新。右上角图标仍可手动切换，手动结果保存到下一昼夜边界，到点后删除临时偏好并恢复时钟驱动；浏览器存储不可用时同样保持当前页覆盖至边界。
+- 主要影响 `frontend/src/games/{GameLibrary.tsx,GameLibrary.css,game-library-state.ts}`、两份游戏库/响应式测试和上述静态素材；游戏路由、安装分类、世界渐进加载与后端接口不变。`npm run test:game-library`、`npm run test:responsive-layout` 与 `npm run build` 通过；应用内 Browser 在 1360×900 与 390×844 验证暖昼/月夜卡面、官方封面完整裁切、展开/收起、焦点归还和 root/body 零横向溢出，console warning/error 为 0。
+
+# FE-GAME-LIBRARY-SQUARE-CENTER-1：主游戏卡精确居中与方形比例（2026-09-04，未发布）
+
+- `/games` 收起态不再用整组轨道宽度估算左边距，而是以共享 `--game-card-width` 计算两侧 scroll padding，使当前星露谷主卡的几何中心与视口中心对齐；桌面和窄屏使用各自卡宽变量。
+- 主游戏卡整体改为 `aspect-ratio: 1 / 1`，封面占据剩余空间，名称、真实安装状态和动作提示收敛在卡内底部信息条。选中青色外框、焦点环、hover、安装状态滤镜和 reduced-motion 契约保持独立；世界卡继续保留适合地址、时间和状态信息的纵向结构，但移除底部独立箭头操作条，由整张卡保持点击语义。管理员“新建世界”入口固定为 1:1 方形，桌面使用 190–210px、移动端最高 232px，并在轨道中垂直居中。
+- `/games/stardew` 展开时读取主卡、首张世界卡和 `ResizeObserver` 得到的完整世界轨道宽度：完整组合能放入视口时，把“主卡 + 全部世界卡 + 新建入口”作为一个整体同步左移并精确居中；组合过宽时先尝试居中主卡与首张世界卡，窄屏再回落到首张世界卡完整可用的对齐方式。进入动画不再混用 30ms 延迟与浏览器原生 smooth scroll，改为轨道扩宽、主卡左移和间距收紧同帧启动的 360ms smoothstep，世界内容延后 50ms 淡入；展开态临时取消 snap，避免自定义中心被吸回主卡起点。
+- 关闭改为单阶段 `closing`：点击或按 Escape 后，世界卡退回淡出、主卡向右回中、右侧占位卡随轨道缩宽向左归位以及主卡右间距恢复在同一帧启动，并复用展开的 360ms 对称 smoothstep。内容按展开时间线的反向节奏先移动、再渐隐，形成两侧卡片顺势挤合中间世界区域的连续动作；完成前布局已经是 `/games` 的最终间距，路由切换不会再触发右卡二次回弹。关闭期间世界项立即 inert/aria-hidden、主卡以 aria-busy 表达处理中，reduced-motion 下跳过动画并立即关闭。
+- 390px 收起态主卡仍精确居中，并露出约 35px 的下一张游戏卡作为横滑提示；横向滚动继续只发生在 `.game-picker`。`test-responsive-layout` 固定方形比例、无世界卡箭头残留、共享卡宽/间距、收起/展开居中算法、对称开合节拍和 snap 切换。应用内 Browser 实测新建卡在 1360×900 为 204×204、在 390×844 为 232×232，世界卡 disclosure 节点为 0；两个视口 root/body 零横向溢出，console warning/error 为 0。
+
+# FE-GAME-LIBRARY-INLINE-WORLDS-1：游戏库一体化世界轨道（2026-09-03，未发布）
+
+- `/games` 顶部收敛为 `ANXI PANEL` 与单一账号区域：移除游戏库导航、品牌副说明和页面“游戏库 / 选择要管理的游戏”标题块。昼夜选择改为右上角一个 44×44px 的原创太阳/月亮线框按钮，继续使用 `anxi.game-library-background.v1` 保持本浏览器偏好；暖昼仍为默认，白天背景直接显示原图，不再覆盖全页暗色遮罩。
+- `/games/stardew` 仍由路由驱动并与 `/games` 共用 `GamesPage`，但世界选择从居中 `ModalPortal` 改为主游戏卡右侧的内嵌横向轨道。点击星露谷卡展开，卡内文案同步变为“收起世界”，再次点击或按 Escape 返回 `/games`；Escape 后焦点回到主卡。直接访问 `/games/stardew` 仍会展开，实例面板“返回世界列表”契约不变。
+- 世界轨道沿用 `useStardewCatalog` 的 instances 首屏与 jobs/state/public-IP 分别回填，不复制安装状态机，也不改后端接口。世界卡保留名称、状态和加入地址，并继续通过 `stardewInstanceDestination` 分流 overview、saves 和全局安装/修复；当前地址复制和生命周期快捷控制以本文件顶部最新契约为准。管理员显示紧邻轨道的“新建世界”卡，普通用户不渲染可执行入口。
+- 展开使用 `ResizeObserver` 测量真实内容宽度和 280ms 原生宽度/位移动画；移动端展开后保留约 56px 主卡边缘、把第一张世界卡滚到可选位置并露出下一张。scroll-snap 和横向滚动只属于 `.game-picker`，滚动条视觉隐藏；`prefers-reduced-motion` 下即时展开、取消平滑滚动和缩放。选中、焦点和 hover 继续独立表达。
+- 主要影响 `frontend/src/games/{GameLibrary.tsx,GameLibrary.css}` 与 `frontend/scripts/test-responsive-layout.ts`；`App.tsx` 的 `/games`/`/games/stardew` 映射、安装/实例/新建/存档页面业务契约和现有 `ModalPortal` 其它消费者不变。`npm run test:game-library`、`npm run test:responsive-layout` 与 `npm run build` 通过；应用内 Browser 在 1440×900 和 390×844 验证点击/Enter 展开、再次点击/Escape 收回、焦点归还、日夜图标、世界分流、移动横滑、44px 控件、root/body 零横向溢出与 console warning/error 为 0。Browser 暂无 reduced-motion 模拟能力，该分支由 CSS/源码契约回归固定。
+
+# FE-GAME-LIBRARY-BACKGROUND-SWITCH-1：暖昼默认背景与玩家切换（2026-09-02，未发布）
+
+- 新增原创暖色白天像素农场背景 `frontend/public/assets/game-hub/background_game_library_day_image2.png`，沿用夜景的空间构图与低位农田/房屋关系，使用暖金、麦色、橄榄绿和浅蓝天空，为标题、卡片轨道及世界弹窗保留清晰留白。游戏库默认使用暖昼，原深青蓝夜景继续作为“静夜”选项。
+- `/games` 标题辅助区新增可访问的“暖昼 / 静夜”分段按钮，使用 `aria-pressed` 区分当前选择；偏好以版本化键 `anxi.game-library-background.v1` 保存在当前浏览器，首次访问、缺失值和无效值均回落到暖昼。浏览器存储不可用时仍可在当前页面切换，不增加后端 API、账号字段或安装状态。
+- 主题 class 只附加在 `GameHubShell` 的 library variant；`/games/stardew` 复用同一页面与当前选择，Stardew 专属 shell、实例页、安装页和登录背景保持原样。移动端按钮高度为 44px，两个主题均继续使用 `--hub-*` 变量和低强度可读性遮罩。
+- `test:game-library` 覆盖默认/合法/无效偏好归一，`test:responsive-layout` 固定两个素材、切换器和移动触摸尺寸，production build 通过。应用内 Browser 在 1280×900 与 390×844 验证主题即时切换、同源重新载入后保持、路由世界弹窗继承当前背景、按钮状态、root/body 零横向溢出和 console warning/error 为 0。
+
+# FE-GAME-LIBRARY-IMAGE2-BACKGROUND-1：游戏库原创夜景背景（2026-09-02，未发布）
+
+- 使用内置 ImageGen 基于项目既有农场视觉重绘一张原创深青蓝夜景 `frontend/public/assets/game-hub/background_game_library_image2.png`。画面把房屋、田地与暖色灯点压在底部和边缘，中央及上部保留低对比度留白；不含文字、UI、角色、Nintendo 元素或可识别的商业游戏素材。
+- `/games` 的 `.game-hub` 用两层低强度深色渐变叠加新背景，继续消费 `--hub-bg` 等变量；原 `game-hub--stardew` 登录/专属页面背景保持不变。因 `/games/stardew` 复用同一个游戏库页面，世界选择弹窗自然共享该背景，现有 `ModalPortal` 遮罩、卡片、路由和业务状态没有改动。
+- `test:responsive-layout` 固定新素材 URL；`test:game-library`、响应式回归与 production build 通过。应用内 Browser 在 1280×900 和 390×844 实测 `/games → /games/stardew`：新背景成功加载，标题/卡片/弹窗保持清晰，root/body 无横向溢出，console warning/error 为 0。
+
+# FE-GAME-LIBRARY-CARTRIDGE-TRACK-1：横向游戏轨道与路由世界弹窗（2026-09-02，未发布）
+
+- `/games` 保留既有 `GameHubShell`、顶部导航、账号/鉴权和中性 `--hub-*` 视觉，只把中央 `.game-picker` 改成原生横向卡片轨道。桌面同时展示多张近方形卡片，390px 下显示一张主卡并露出下一张；滚动限制在轨道内部，选中态使用 `1.055` 缩放和带间距的青绿色轮廓，hover、focus 与 selected 分开表达，减少动态效果偏好会取消平滑滚动和缩放。
+- 卡片交互使用 roving tabindex，支持左右键、Home/End、Enter/Space、鼠标和触摸；选中项通过 `scrollIntoView({inline:"nearest"})` 保持可见，触摸位移超过阈值会抑制随后的 click，避免横向滑动误开页面。暂未接入卡片使用原生 `disabled`，不提供安装入口或伪造游戏实例。
+- 星露谷状态继续统一消费 `useStardewCatalog`、`canonicalInstallJobs`、`classifyInstallationState`、`stardewInstallCardState` 和 `stardewGameDestination`。已安装显示真实世界数；未安装、安装中、安装失败和需要修复分别保留明确文字及既有全局安装/修复去向，不从字符串或前端数组长度推断安装完成，也不伪造安装百分比；灰度和低饱和只作用于封面，正文与焦点对比度不被整体 opacity 削弱。
+- `/games/stardew` 现在渲染同一个游戏库页面，并用 `ModalPortal` 在其上打开“选择星露谷世界”；关闭、Escape 或遮罩点击返回 `/games`，由 portal 恢复此前游戏卡焦点，直接深链仍有效。弹窗继续保持 instances 首屏、jobs/state/public-IP 逐卡增强；单个详情失败不阻塞其它世界。世界项保留名称、运行状态、加入地址、更新时间，并继续通过 `stardewInstanceDestination` 分流 saves、安装/修复和 overview。管理员可进入新建世界，普通用户只有权限说明。
+- 主要影响 `frontend/src/{App,qa-layout-main}.tsx`、`frontend/src/games/{GameLibrary.tsx,GameLibrary.css,game-library-state.ts}` 与 `frontend/scripts/test-{game-library-state,responsive-layout}.ts`；没有修改后端接口、实例面板、安装页、新建世界页或存档页业务契约，也没有新增轮播依赖。
+- 验证：`npm run test:game-library`、`npm run test:responsive-layout` 与 production build 通过。应用内 Browser 在 1280×900 验证键盘/点击开窗、Escape/遮罩关闭和焦点归还，在 390×844 验证卡片轨道局部横滚、下一卡露出、世界弹窗独立滚动、44px 关闭按钮及 root/body 零横向溢出；管理员/普通用户、`save_required`、未安装导航与灰度封面均实测，干净标签页 console 无 warning/error。当前 Browser 不提供 reduced-motion 媒体模拟，运行环境读数为 false；该分支由 CSS/源码契约回归固定。
+
+# FE-GAME-INSTALL-MIGRATION-1：全局安装状态与真实世界创建闭环（2026-09-01，未发布）
+
+- `/games` 的星露谷卡片继续是唯一主入口：点击卡片直接进入安装或世界列表，卡内安装按钮/轨道消费真实安装分类。其它内容统一为一张“其他游戏暂未开放”说明卡。
+- `/games/stardew/install` 现固定消费 `GET /api/games/stardew/installation` 返回的 `installationTargetId`，不接受查询参数选择任意实例。旧 `/instances/:id/install` 深链会落到同一个全局安装目标，`jobId` 继续留在全局 URL；页面仍复用既有 `InstallPage`、installation-state、Steam 下载、SMAPI、运行组件和修复状态机，没有复制第二套逻辑。
+- 全局安装页新增非秘密公用状态说明：Steam 下载账号是否已保存、SteamCMD 设备授权是否已有缓存，并明确这些是 Panel 内各游戏安装器可复用的下载能力；世界级联机/邀请码授权仍在实例内按需启用，不用相同的完成态或进度语义。
+- 管理员 `/games/stardew/new` 现只填写世界名称并提交 `{name,gameId:"stardew"}`；内部实例 ID、目录名和顺序编号由后端生成，创建表单与世界卡片均不暴露技术标识。成功后消费后端返回的真实实例/端口并导航到该实例面板；未安装、维护中、冲突或清理失败都展示服务端真实错误，不生成前端假实例。普通用户仍只看到权限边界，世界创建不创建存档、不重新下载游戏。
+- 世界列表继续读取真实实例和每实例公网加入地址；创建后的实例状态为 `save_required`，用户进入现有存档页创建/导入自己的存档。现有九页实例面板、返回世界列表、刷新和动态深链保持可用。
+- 世界列表不再等待所有 `/state`、`/public-ip` 和 job 请求的最慢一项：`GET /api/instances` 返回后立即用持久化状态渲染全部卡片，随后逐卡补充诊断和加入地址，刷新时保留旧卡片。`save_required` 优先于安装 diagnostic，固定显示红色“需要存档”、加入地址“创建或上传存档后提供”和“前往创建 / 上传”，直接进入该实例 `/saves`，不会误导用户重走全局安装。
+- 主要文件：`frontend/src/{App,app-routes,api,types,qa-layout-main}.tsx/ts`、`frontend/src/games/{GameLibrary,game-library-state}.*`、`games/stardew/stardew-routes.ts` 和前端状态脚本。`test:game-library`、`test:install-state`、`test:responsive-layout`、`test:farm-catalog` 与 production build 已通过。应用内 Browser 在新的右侧 QA 标签以 818×1075 验证游戏卡直达、两实例 `IP:port`、进入/返回完整实例面板、新建提交到动态存档深链、未安装进入全局安装页，以及普通用户、空态和错误重试；390×844 验证安装范围/公用状态与零横向溢出。console 只有 Vite/React 开发提示，无 warning/error；标签和 4177 服务保留给用户查看。
+
+# FE-MULTI-GAME-ENTRY-1：游戏库、星露谷世界选择与实例面板闭环（2026-08-31，未发布）
+
+- 登录后的产品入口改为 `/games`：全局 shell 使用中性的自托管游戏库视觉，星露谷被打开后才切入游戏专属背景与信号色。星露谷主卡本身直接按真实状态进入世界列表或全局安装；旁边使用单张“其他游戏暂未开放”占位，没有失效操作。
+- 星露谷主卡新增安装按钮与安装轨道，仍只复用 `classifyInstallationState` 和真实 `stardew_install` active job：未安装为 0%、已安装为 100%、运行中的安装是不定进度，修复/读取失败不伪造百分比。卡片运行态圆点与键盘焦点继续使用不同视觉语义。
+- 新增 `/games/stardew` 世界列表、`/games/stardew/install?instance=:id` 全局安装和 `/games/stardew/new` 创建边界页。世界列表读取真实 `GET /api/instances` 并按 `driverId=stardew_junimo` 过滤，立即渲染实例 DTO，再独立读取每实例 `/state` 与 `/public-ip`；“加入地址”由公网 IP 和后端返回的实例 `GAME_PORT` 组合，IPv6 使用 `[ip]:port`，缺失/非法契约显示不可读取。已有实例、空态、读取错误与重试均不使用硬编码业务数据。
+- 已安装世界进入 `/instances/:instanceId/{overview,server,saves,jobs,players,mods,diagnostics,install,settings}`，桌面侧栏和移动顶栏均提供“返回世界列表”。`stardew-routes.ts`、dashboard data、玩家 Mod 详情和 Nexus extension ping 已改为显式实例 ID，第二个实例不再落回默认 `stardew`；登录后访问受保护深链会保留当前 URL。
+- 全局安装页直接复用现有 `InstallPage`、dashboard hook 和 `installation-state` 分类器；安装/冲突任务返回 `jobId` 后继续停留在全局安装 URL。页首明确区分“SteamCMD 游戏下载授权”和实例启动后的“联机/邀请码授权”，没有复制第二套安装状态机。
+- 2026-08-31 本节最初只提供创建边界页；2026-09-01 已由本文顶部的 driver-owned `POST /api/instances` 契约接通。页面仍明确“世界=服务器实例、存档仍在实例内管理”，不生成假实例、不触发游戏下载，也不在 API 层绕过 driver。
+- 响应式 shell 在 700px 下改为单列，保留键盘焦点和 `prefers-reduced-motion` 降级。QA fixture 新增多实例独立端口、空目录、目录错误、普通用户和初始深链入口。`test:game-library`、`test:install-state`、`test:responsive-layout`、`test:player-mods` 与 production build 通过；应用内 Browser 追加实测 1280×900 和 390×844 的主卡直接导航、未安装跳转、安装轨道、两实例 `203.0.113.24:24642/24643` fixture、进入/返回、普通用户、空/错误态，root/body 无横向溢出且实例面板 console error 为 0。Browser 地址只是假数据 QA 夹具，生产页面消费真实 API。
+
+# FE-NEWGAME-WILDERNESS-MONSTERS-1：荒野农场怪物默认值与原版一致（2026-08-28，未发布）
+
+- `NewGameCreator` 的所有农场选择入口统一经过 `applyFarmTypeSelection`。用户尚未手动调整“在农场出现怪物”时，选择荒野农场会像原版创建界面一样自动勾选，选择其它官方农场会恢复关闭；不再以组件初始的固定 `false` 覆盖荒野农场默认行为。
+- 用户一旦手动勾选或取消，该明确选择会在后续农场切换中保持。该 transient 标记使用 `useRef`，只在点击事件中参与状态更新，不增加派生 state/effect，也不会改变既有 `spawnMonstersOnFarm: boolean` 请求字段、默认标准农场或后端 Junimo 写入语义。
+- 当前前端离线 Mod 农场目录没有 `SpawnMonstersByDefault` 字段，本次不猜测 Mod 数据；未知/Mod FarmType 在用户未明确选择时仍按关闭处理。若以后对齐 Mod 农场默认值，必须先扩展并验证目录契约。
+- 验证：`test:farm-catalog` 覆盖荒野开启、其它官方农场关闭及显式 true/false 跨切换保持；`test:new-game-idempotency`、`test:cabin-strategy-options`、`test:responsive-layout` 与 production build 通过。应用内 Browser 在 1280×720 QA fixture 中完成“荒野自动开启 → 手动关闭 → 标准/荒野保持关闭 → 手动开启 → 河边保持开启”，console warning/error 为 0，`scrollWidth=clientWidth=1280`。
+
 # FE-V060-RELEASE-EVIDENCE-1：v0.6.0 前端正式发布证据（2026-08-27，released in v0.6.0）
 
 - `v0.6.0@9c6d9c7696c6aa46f58405f0c02f187aa47111ba` 已正式发布。不可变候选 `33073661356` 完成前端 19 项状态/响应式回归与 production build；同一镜像完成 fresh/restart、`v0.5.13 → v0.6.0` 和 `v0.3.2 → v0.6.0` Web 升级，升级夹具验证权威 DTO 与迁移状态。桌面/移动实际渲染证据来自发布前本机 Browser，不属于候选 proof。
@@ -2880,3 +3059,13 @@ npm.cmd run dev
 - 新增卡片沿用当前像素风表单层级；在命名容器 `ngc-modal` 的窄屏断点改为单列。桌面 1280×720 与移动 390×844 Browser QA 均无页面横向溢出、console warning/error；点击蘑菇后只有该项为选中状态。`test:new-game-idempotency` 和 production build 通过。
 - 影响 `NewGameCreator.tsx/.css`、`types.ts` 与 `test-new-game-idempotency.ts`。后端/Control 的持久化与真实 Docker 证据见 `docs/02-backend.md`、`docs/06-integration.md` 和 `docs/09-image-build.md`。
 - 正式候选 `32623320406` 的完整前端状态回归、production build、候选镜像 fresh/restart 与升级后 production bundle 验收通过；自动 tag `32623853636`、正式提升 `32623863894` 和 GitHub Release 成功，能力已随 `v0.5.12@5141cd54` 发布。
+# INSTALL-POLL-1：授权超时中文与检查容器频率（2026-09-05，未发布）
+
+- 授权超时在安装进度中显示“Steam 登录授权确认超时，请重新安装并及时完成 Steam 验证。”；保留原始任务错误供诊断。
+- `GameInstallRail.tsx` 终态只刷新一次游戏目录并结束轮询；`driver.go` 的读取状态校正复用 10 分钟内成功的游戏文件检查证据。安装、启动仍直接检查文件，缓存过期重新检查。
+- Docker 现场近 3 分钟观察到 14 次 server 镜像临时容器创建/销毁，与读状态重复 verifier 路径一致。新增缓存复用/过期后缺文件回归及中文超时断言；Go ReconcileState/InstallationDiagnostic/SteamCMD 与前端安装状态、production build 通过。接口不变，后续注意启动检查不可被读取缓存替代。
+# WORLD-CARD-1：存档地图与世界名称编辑（2026-09-05，未发布）
+
+- `GameLibrary.tsx` 世界卡片按当前启用存档的 farmType 选择八种内置农场素材；首次加载、无存档、未知地图及读取/图片失败时显示标准农场。管理员自定义地图可读取已有 farm catalog 图标；实例状态更新时重新读取存档。
+- 名称旁 13px 铅笔，管理员点击可行内修改，Enter/保存提交、Esc/取消退出，失败保留输入并显示错误。`PATCH /api/instances/:id` 只改名称和更新时间，复用管理员权限与审计，校验 1–40 字及控制字符；storage.RenameInstance 不改变目录、ID、存档与运行状态。
+- `TestInstanceRenamePersistsNameAndPreservesRuntime` 验证未登录、非法名称、持久化与运行状态保留；前端游戏库回归和 production build 通过。Browser 夹具森林地图来源、铅笔行内输入、Enter 保存已验收。后续注意自定义图标遵循已有目录权限，普通用户不显示改名入口。

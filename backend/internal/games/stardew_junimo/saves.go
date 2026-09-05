@@ -2236,6 +2236,10 @@ func (d *Driver) RunBackupMaintenanceScheduler(ctx context.Context, instances []
 			// A pending new-game owner needs its save/command evidence preserved
 			// byte-for-byte until an administrator explicitly resumes it. Do not
 			// consume save events or create/prune backups during Panel bootstrap.
+			if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+				d.runtimeUpdateMu.Unlock()
+				continue
+			}
 			if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 				d.runtimeUpdateMu.Unlock()
 				continue

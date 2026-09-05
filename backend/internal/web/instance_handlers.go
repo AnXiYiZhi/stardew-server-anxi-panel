@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/auth"
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
@@ -22,6 +25,7 @@ type instancesResponse struct {
 }
 
 type instanceResponse struct {
+	IsDefault    bool    `json:"isDefault"`
 	ID           string  `json:"id"`
 	DriverID     string  `json:"driverId"`
 	DriverName   string  `json:"driverName,omitempty"`
@@ -63,7 +67,22 @@ type instanceStatusResponse struct {
 	Status   *registry.ServerStatus `json:"status"`
 }
 
+type createInstanceRequest struct {
+	Name   string `json:"name"`
+	GameID string `json:"gameId"`
+}
+
+type createInstanceResponse struct {
+	Instance instanceResponse                 `json:"instance"`
+	GameID   string                           `json:"gameId"`
+	Ports    registry.InstanceProvisionResult `json:"ports"`
+}
+
 func (s *server) handleInstances(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleInstanceCreate(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
@@ -84,6 +103,157 @@ func (s *server) handleInstances(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (s *server) handleInstanceCreate(w http.ResponseWriter, r *http.Request) {
+	session, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var request createInstanceRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	request.Name = strings.TrimSpace(request.Name)
+	request.GameID = strings.TrimSpace(request.GameID)
+	if request.Name == "" || len([]rune(request.Name)) > 40 || strings.IndexFunc(request.Name, unicode.IsControl) >= 0 {
+		writeError(w, http.StatusBadRequest, "invalid_instance_name", "世界名称需为 1–40 个字符且不能包含控制字符")
+		return
+	}
+	if request.GameID != "stardew" {
+		writeError(w, http.StatusBadRequest, "game_not_supported", "当前阶段只支持创建星露谷世界")
+		return
+	}
+	driverID := sj.DriverID
+
+	driver, err := s.registry.Get(driverID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "driver_not_registered", "请求的游戏 driver 未注册")
+		return
+	}
+	provisioner, ok := driver.(registry.InstanceProvisioner)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "instance_creation_unavailable", "该游戏尚未提供安全的实例创建能力")
+		return
+	}
+
+	s.instanceCreateMu.Lock()
+	defer s.instanceCreateMu.Unlock()
+	template, err := s.store.GetInstance(r.Context(), s.config.DefaultInstanceID)
+	if err != nil || template.DriverID != driverID {
+		writeError(w, http.StatusConflict, "game_installation_required", "请先完成该游戏的全局安装")
+		return
+	}
+	existing, err := s.store.ListInstances(r.Context())
+	if err != nil {
+		s.logger.Error("failed to list instances before provisioning", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
+	instancesRoot := filepath.Clean(filepath.Join(s.config.DataDir, "instances"))
+	var reserved storage.Instance
+	for attempt := 0; attempt < 32; attempt++ {
+		ordinal, err := s.store.AllocateInstanceOrdinal(r.Context(), request.GameID, driverID, request.GameID)
+		if err != nil {
+			s.logger.Error("failed to allocate instance ordinal", "game", request.GameID, "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+			return
+		}
+		instanceID := request.GameID + "-" + strconv.Itoa(ordinal)
+		dataDir := filepath.Clean(filepath.Join(instancesRoot, instanceID))
+		rel, err := filepath.Rel(instancesRoot, dataDir)
+		if err != nil || rel != instanceID || filepath.IsAbs(rel) || strings.Contains(rel, string(filepath.Separator)) {
+			s.logger.Error("generated instance ID could not map to a safe directory", "instance", instanceID, "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+			return
+		}
+		if _, err := os.Lstat(dataDir); err == nil {
+			s.logger.Warn("skipping generated instance ID with existing resources", "instance", instanceID)
+			continue
+		} else if !os.IsNotExist(err) {
+			s.logger.Error("failed to inspect generated instance directory", "instance", instanceID, "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+			return
+		}
+
+		reserved, err = s.store.CreateInstance(r.Context(), storage.CreateInstanceParams{
+			ID:            instanceID,
+			DriverID:      driverID,
+			Name:          request.Name,
+			DataDir:       dataDir,
+			State:         storage.InstanceStateAdminCreated,
+			StateMessage:  "正在创建独立世界实例。",
+			DriverPhase:   "instance_provisioning",
+			DriverPayload: "{}",
+		})
+		if err == nil {
+			break
+		}
+		if errors.Is(err, storage.ErrConflict) {
+			continue
+		}
+		s.logger.Error("failed to reserve generated instance", "instance", instanceID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务器内部错误")
+		return
+	}
+	if reserved.ID == "" {
+		s.logger.Error("failed to find an unused generated instance ID", "game", request.GameID)
+		writeError(w, http.StatusInternalServerError, "instance_id_allocation_failed", "暂时无法分配新的世界编号，请稍后重试")
+		return
+	}
+	target := makeRegistryInstance(reserved)
+	registryExisting := make([]registry.Instance, 0, len(existing)+1)
+	for _, instance := range existing {
+		registryExisting = append(registryExisting, makeRegistryInstance(instance))
+	}
+	registryExisting = append(registryExisting, target)
+	result, provisionErr := provisioner.ProvisionInstance(r.Context(), registry.InstanceProvisionRequest{
+		Template: makeRegistryInstance(template), Target: target, Existing: registryExisting, ActorID: session.User.ID,
+	})
+	if provisionErr != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		cleanupErr := provisioner.CleanupProvisionedInstance(cleanupCtx, target)
+		cancel()
+		if cleanupErr == nil {
+			_, deleteErr := s.store.DeleteInstanceIfPhase(context.Background(), target.ID, "instance_provisioning")
+			if deleteErr != nil {
+				s.logger.Error("failed to release instance reservation after provisioning failure", "instance", target.ID, "error", deleteErr)
+			}
+		} else {
+			s.logger.Error("failed to clean provisioned instance", "instance", target.ID, "error", cleanupErr)
+			_, _ = s.store.UpdateInstanceState(context.Background(), storage.UpdateInstanceStateParams{
+				ID: target.ID, State: storage.InstanceStateError,
+				StateMessage: "实例创建失败且资源清理未完成，请查看诊断后人工处理。",
+				DriverPhase:  "instance_provision_cleanup_failed", DriverPayload: "{}",
+			})
+		}
+		s.logger.Warn("instance provisioning failed", "instance", target.ID, "game", request.GameID, "error", provisionErr)
+		if cleanupErr != nil {
+			writeError(w, http.StatusInternalServerError, "instance_provision_cleanup_failed", "世界创建失败，部分资源尚未回收；请检查资源占用后在世界列表重试删除。")
+			return
+		}
+		switch {
+		case errors.Is(provisionErr, sj.ErrInstanceProvisionTemplateRequired):
+			writeError(w, http.StatusConflict, "game_installation_required", "请先完成该游戏的全局安装")
+		case errors.Is(provisionErr, sj.ErrInstanceProvisionTemplateBusy):
+			writeError(w, http.StatusConflict, "game_installation_busy", "游戏安装环境正在维护，请稍后再创建世界")
+		case errors.Is(provisionErr, sj.ErrInstanceProvisionDockerUnsupported):
+			writeError(w, http.StatusNotImplemented, "instance_creation_unavailable", "当前环境不支持安全复制游戏运行文件")
+		default:
+			writeError(w, http.StatusInternalServerError, "instance_provision_failed", "世界实例创建失败，已回收本次创建的资源")
+		}
+		return
+	}
+	created, err := s.store.GetInstance(r.Context(), target.ID)
+	if err != nil {
+		s.logger.Error("failed to load newly provisioned instance", "instance", target.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "实例已创建，但读取结果失败")
+		return
+	}
+	s.auditLog(r, &session, "instance.create", "instance", created.ID, auditMetadata("driverId", created.DriverID, "gameId", request.GameID))
+	writeJSON(w, http.StatusCreated, createInstanceResponse{
+		Instance: s.makeInstanceResponse(created), GameID: request.GameID, Ports: result,
+	})
+}
+
 func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/instances/")
 	parts := strings.Split(path, "/")
@@ -92,6 +262,37 @@ func (s *server) handleInstanceByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	instanceID := parts[0]
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		s.handleInstanceDelete(w, r, instanceID)
+		return
+	}
+	operationLock := s.instanceOperationLock(instanceID)
+	operationLock.RLock()
+	defer operationLock.RUnlock()
+	if _, err := s.store.GetInstanceProvision(r.Context(), instanceID); err == nil {
+		if _, ok := s.requireAuth(w, r); !ok {
+			return
+		}
+		writeError(w, http.StatusConflict, "instance_provisioning", "世界创建或恢复尚未完成，请等待或重试删除。")
+		return
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		writeError(w, 500, "internal_error", "无法读取创建状态")
+		return
+	}
+	if _, err := s.store.GetInstanceDeletion(r.Context(), instanceID); err == nil {
+		if _, ok := s.requireAuth(w, r); !ok {
+			return
+		}
+		writeError(w, http.StatusConflict, "instance_deleting", "世界删除尚未完成，请返回世界列表重试彻底删除。")
+		return
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		writeError(w, http.StatusInternalServerError, "internal_error", "无法读取世界删除状态")
+		return
+	}
+	if len(parts) == 1 && r.Method == http.MethodPatch {
+		s.handleInstanceRename(w, r, instanceID)
+		return
+	}
 	if importMutexEndpoint(r.Method, parts) {
 		session, authenticated := s.requireAuth(w, r)
 		if !authenticated {
@@ -872,6 +1073,34 @@ func (s *server) loadInstance(w http.ResponseWriter, r *http.Request, instanceID
 	return instance, true
 }
 
+func (s *server) handleInstanceRename(w http.ResponseWriter, r *http.Request, instanceID string) {
+	session, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := s.loadInstance(w, r, instanceID); !ok {
+		return
+	}
+	var request struct {
+		Name string `json:"name"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	name := strings.TrimSpace(request.Name)
+	if name == "" || len([]rune(name)) > 40 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		writeError(w, http.StatusBadRequest, "invalid_instance_name", "世界名称需为 1–40 个字符且不能包含控制字符")
+		return
+	}
+	instance, err := s.store.RenameInstance(r.Context(), instanceID, name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "rename_failed", "世界名称保存失败，请重试")
+		return
+	}
+	s.auditLog(r, &session, "instance.rename", "instance", instanceID, "{}")
+	writeJSON(w, http.StatusOK, map[string]any{"instance": s.makeInstanceResponse(instance)})
+}
+
 func (s *server) loadDriver(w http.ResponseWriter, driverID string) (registry.GameDriver, bool) {
 	driver, err := s.registry.Get(driverID)
 	if err != nil {
@@ -887,6 +1116,7 @@ func (s *server) loadDriver(w http.ResponseWriter, driverID string) (registry.Ga
 
 func (s *server) makeInstanceResponse(instance storage.Instance) instanceResponse {
 	response := instanceResponse{
+		IsDefault:    instance.ID == s.config.DefaultInstanceID,
 		ID:           instance.ID,
 		DriverID:     instance.DriverID,
 		Name:         instance.Name,

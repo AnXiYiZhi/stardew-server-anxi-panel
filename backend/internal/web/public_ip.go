@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/netdns"
 )
 
@@ -26,6 +27,8 @@ type publicIPResult struct {
 	CheckedAt string `json:"checkedAt"`
 	Source    string `json:"source,omitempty"`
 	Cached    bool   `json:"cached"`
+	GamePort  int    `json:"gamePort,omitempty"`
+	Protocol  string `json:"protocol,omitempty"`
 }
 
 type publicIPResolver struct {
@@ -118,7 +121,8 @@ func (s *server) handleInstancePublicIP(w http.ResponseWriter, r *http.Request, 
 	if _, ok := s.requireAuth(w, r); !ok {
 		return
 	}
-	if _, ok := s.loadInstance(w, r, instanceID); !ok {
+	instance, ok := s.loadInstance(w, r, instanceID)
+	if !ok {
 		return
 	}
 
@@ -128,6 +132,17 @@ func (s *server) handleInstancePublicIP(w http.ResponseWriter, r *http.Request, 
 		s.logger.Warn("public IP check failed", "instance", instanceID, "error", err)
 		writeError(w, http.StatusBadGateway, "public_ip_failed", "检测服务器公网 IP 失败，请稍后重试")
 		return
+	}
+	if driver, driverErr := s.registry.Get(instance.DriverID); driverErr == nil {
+		if provider, supported := driver.(registry.DirectConnectConfigProvider); supported {
+			config, configErr := provider.DirectConnectConfig(r.Context(), makeRegistryInstance(instance))
+			if configErr != nil {
+				s.logger.Warn("direct-connect config check failed", "instance", instanceID, "driver", instance.DriverID, "error", configErr)
+			} else {
+				result.GamePort = config.GamePort
+				result.Protocol = config.Protocol
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, result)
 }

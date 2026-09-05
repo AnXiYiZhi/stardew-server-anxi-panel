@@ -49,6 +49,9 @@ type RequiredRuntimeUpdateStatus struct {
 }
 
 func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance registry.Instance) {
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return
+	}
 	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
 	if err != nil || manifest.RuntimeUpdatePolicy != sjconfig.RuntimeUpdatePolicyRequired {
 		return
@@ -71,7 +74,7 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 		return
 	}
 	if previous, readErr := d.ReadRequiredRuntimeUpdateStatus(instance); readErr == nil && previous.PanelVersion == d.panelVersion && previous.StackVersion == manifest.StackVersion {
-		if previous.Phase == requiredRuntimePhaseManual || previous.Phase == requiredRuntimePhaseFailed && previous.ErrorCode != "context_cancelled" {
+		if previous.Phase == requiredRuntimePhaseManual || previous.Phase == requiredRuntimePhaseFailed && !requiredRuntimeFailureRetryable(previous.ErrorCode) {
 			d.requiredRuntimeMu.Unlock()
 			return
 		}
@@ -93,6 +96,15 @@ func (d *Driver) StartRequiredRuntimeUpdate(ctx context.Context, instance regist
 			d.logger.Error("required Junimo runtime update failed", "instance", instance.ID, "stack", manifest.StackVersion, "error", err)
 		}
 	}()
+}
+
+func requiredRuntimeFailureRetryable(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "context_cancelled", "current_server_digest_unavailable", "current_auth_digest_unavailable":
+		return true
+	default:
+		return false
+	}
 }
 
 func (d *Driver) requireCurrentRuntimeStack(instance registry.Instance) error {

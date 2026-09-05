@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
-import * as QRCode from 'qrcode'
 import type { ImageTagOption, Job, JobLog } from '../../../types'
 import type { StardewPageProps } from '../stardew-routes'
 import {
@@ -21,6 +20,7 @@ import {
 } from '../../../core/helpers'
 import {
   calcSteamDownloadTaskProgress,
+  extractPullProgress,
   extractSMAPIArchiveProgress,
   extractSteamDownloadProgress,
   hasSteamSdkDownloadStarted,
@@ -31,73 +31,8 @@ import { useSteamAuthLogin } from '../useSteamAuthLogin'
 
 // ── 进度工具 ──────────────────────────────────────────────────────────────────
 
-const PULL_PROGRESS_RE = /^\[pull:progress:(\d+):(\d+)\]$/
 const SMAPI_PROGRESS_RE = /^\[smapi:download:progress:/
-const STEAM_QR_URL_RE = /^or open:\s*(https?:\/\/s\.team\/q\/\S+)/i
 const STEAMCMD_BRACKET_PROGRESS_RE = /\[steamcmd\]\s+\[\s*\d+(?:\.\d+)?%\]\s+downloading update\s+\(/i
-
-function extractPullProgress(logs: JobLog[]): { done: number; total: number; percent: number } | null {
-  let latest: { done: number; total: number } | null = null
-  for (const log of logs) {
-    const m = log.message.match(PULL_PROGRESS_RE)
-    if (m) latest = { done: parseInt(m[1], 10), total: parseInt(m[2], 10) }
-  }
-  if (!latest || latest.total === 0) return null
-  return { ...latest, percent: Math.round((latest.done / latest.total) * 100) }
-}
-
-type SteamQrPayload = {
-  art: string
-  url: string
-}
-
-function isQrArtLine(line: string): boolean {
-  const trimmed = line.trim()
-  if (!trimmed) return false
-  const lower = trimmed.toLowerCase()
-  if (
-    lower.startsWith('or open:') ||
-    lower.startsWith('scan this qr') ||
-    lower.startsWith('choose authentication') ||
-    lower.startsWith('choice') ||
-    lower.startsWith('[steamauth') ||
-    lower.startsWith('[steamservice') ||
-    lower.startsWith('connecting') ||
-    lower.startsWith('disconnected') ||
-    lower.includes('steam connection attempt failed')
-  ) {
-    return false
-  }
-  return /[█▀▄▌▐■□▓▒░]/.test(line)
-}
-
-function extractQrPayload(logs: JobLog[]): SteamQrPayload | null {
-  const steamLines = logs
-    .filter((l) => l.message.startsWith('[steam] '))
-    .map((l) => l.message.slice('[steam] '.length))
-
-  for (let i = steamLines.length - 1; i >= 0; i -= 1) {
-    const match = steamLines[i].match(STEAM_QR_URL_RE)
-    if (!match) continue
-
-    const artLines: string[] = []
-    for (let j = i - 1; j >= 0 && isQrArtLine(steamLines[j]); j -= 1) {
-      artLines.unshift(steamLines[j].replace(/\s+$/g, ''))
-    }
-    return { art: artLines.join('\n'), url: match[1] }
-  }
-
-  return null
-}
-
-function qrCodeFontSize(text: string): number {
-  const lines = text.split('\n')
-  const longest = lines.reduce((max, line) => Math.max(max, line.length), 0)
-  if (lines.length > 42 || longest > 92) return 9
-  if (lines.length > 36 || longest > 82) return 10
-  if (lines.length > 30 || longest > 72) return 11
-  return 12
-}
 
 type SteamAuthLogPhase =
   | 'auth_method_required'
@@ -305,7 +240,7 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
   if (phase === 'post_auth_failed') return 'SteamCMD 已授权，后续安装步骤失败，请使用已保存凭据重试'
   if (phase === 'steamcmd_failed') return 'SteamCMD 安装或修复失败，请查看任务日志后重试'
   if (phase === 'steamcmd_image_pull_failed') return 'SteamCMD 工具镜像拉取失败，请检查 Docker 网络'
-  if (phase === 'qr_auth_failed') return 'Steam 邀请码二维码授权失败，可改用账号密码或 Steam Guard 重试'
+  if (phase === 'qr_auth_failed') return '旧版登录授权失败，请使用账号密码重新登录'
   if (phase === 'credentials_required' && authFailed) return 'SteamCMD 登录失败，账号或密码错误'
   if (phase === 'install_interrupted') return '安装任务已中断，请重新发起安装'
   if (STEAM_INVITE_AUTH_FAILED_PHASES.includes(phase)) return 'Steam 邀请码授权失败，基础安装与局域网/IP 直连不受影响'
@@ -320,16 +255,16 @@ function phaseLabel(phase: string, isInstalling: boolean, authFailed: boolean, i
     junimo_scaffolded: '目录已准备，正在拉取镜像...',
     pull_running: '正在拉取 JunimoServer 镜像...',
     steam_auth_running: '正在进行 Steam 邀请码授权（不会重新下载游戏）...',
-    auth_method_required: '等待选择 Steam 登录方式...',
-    steam_guard_choice_required: '等待选择 Steam Guard 验证方式...',
+    auth_method_required: '正在切换到账号密码登录...',
+    steam_guard_choice_required: '正在确认 Steam Guard 验证...',
     steam_guard_required: '等待 Steam Guard 验证码...',
     steam_guard_mobile_required: '请在手机 App 批准登录...',
-    steam_qr_required: '请扫描 Steam 二维码...',
+    steam_qr_required: '旧版登录任务需要重新开始...',
     game_downloading: '正在下载游戏文件（约 10–30 分钟）...',
     steam_sdk_downloading: '游戏文件已下载，正在下载 Steam SDK 运行文件...',
     steamcmd_image_pulling: '正在拉取 SteamCMD 安装工具镜像...',
     steamcmd_auth_running: 'SteamCMD 正在复用已保存授权登录...',
-    steamcmd_guard_choice_required: 'SteamCMD 需要重新授权，请选择验证方式...',
+    steamcmd_guard_choice_required: 'SteamCMD 正在确认验证方式...',
     steamcmd_guard_required: 'SteamCMD 需要 App 或邮箱验证码...',
     steamcmd_guard_mobile_required: '请在 Steam 手机 App 批准 SteamCMD 登录...',
     steamcmd_downloading: 'SteamCMD 正在下载并校验游戏本体与 Steamworks SDK...',
@@ -596,6 +531,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
   const [guardError, setGuardError] = useState('')
   const [guardSubmittedKind, setGuardSubmittedKind] = useState<'steam' | 'steamcmd' | null>(null)
   const [optimisticPhase, setOptimisticPhase] = useState<string | null>(null)
+  const automaticChoiceRef = useRef('')
 
   const handleGuardSubmit = useCallback(async (e: FormEvent<HTMLFormElement>, kind: 'steam' | 'steamcmd') => {
     e.preventDefault()
@@ -616,7 +552,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
   }, [installJobId, guardInput, dashboardData])
 
   const handleAuthMethodSelect = useCallback(async (choice: string) => {
-    if (!installJobId) return
+    if (!installJobId) return false
     let nextOptimisticPhase: string | null = null
     if (phase === 'auth_method_required') {
       nextOptimisticPhase = choice === '2' ? 'steam_qr_required' : 'steam_auth_running'
@@ -632,18 +568,15 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
       await submitSteamGuardInput(installJobId, choice)
       setGuardSubmittedKind(null)
       dashboardData.refreshInstanceState()
+      return true
     } catch (err) {
       setOptimisticPhase(null)
       setGuardError(errorMessage(err))
+      return false
     } finally {
       setGuardBusy(false)
     }
   }, [installJobId, phase, dashboardData])
-
-  // ── QR 弹窗 ───────────────────────────────────────────────────────────────────
-  const [showQrModal, setShowQrModal] = useState(false)
-  const [qrImageSrc, setQrImageSrc] = useState('')
-  const [qrImageError, setQrImageError] = useState('')
 
   // ── 计算值 ───────────────────────────────────────────────────────────────────
   const selectedSteamTaskLogs = latestSteamTaskJob?.id === installJobId ? logs : []
@@ -665,9 +598,6 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
         : steamGameProgress || logsShowSteamGameDownloadStarted(selectedSteamTaskLogs)
           ? 'game_downloading'
           : null
-  const qrPayload = extractQrPayload(selectedSteamTaskLogs)
-  const qrUrl = qrPayload?.url ?? ''
-  const qrText = qrPayload?.art ?? ''
   const basePhaseIsFailure = (selectedTaskIsSteamAuth
     ? STEAM_INVITE_AUTH_FAILED_PHASES
     : BASE_AUTH_FAILED_PHASES).includes(basePhase)
@@ -719,12 +649,12 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
     effectivePhase === 'steamcmd_failed' ||
     effectivePhase === 'steamcmd_image_pull_failed'
   )
-  const needsAuthMethodChoice = effectivePhase === 'auth_method_required'
-  const needsGuardChoice = effectivePhase === 'steam_guard_choice_required'
   const needsGuard = effectivePhase === 'steam_guard_required' || effectivePhase === 'steam_guard_mobile_required'
-  const needsSteamCMDGuardChoice = effectivePhase === 'steamcmd_guard_choice_required'
   const needsSteamCMDGuard = effectivePhase === 'steamcmd_guard_required' || effectivePhase === 'steamcmd_guard_mobile_required'
   const needsQrCode = effectivePhase === 'steam_qr_required'
+  const automaticChoice = effectivePhase === 'auth_method_required'
+    || effectivePhase === 'steam_guard_choice_required'
+    || effectivePhase === 'steamcmd_guard_choice_required'
   const needsInstallRepair = installation.kind === 'repair_required'
   const needsInstallationDiagnosis = installation.kind === 'runtime_error' || installation.kind === 'unknown'
   const installWorkflowFailed = installation.kind === 'install_failed'
@@ -767,7 +697,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
   )
 
   const displayableLogs = useMemo(
-    () => logs.filter((log) => !PULL_PROGRESS_RE.test(log.message) && !SMAPI_PROGRESS_RE.test(log.message)),
+    () => logs.filter((log) => !/^\[pull:progress:/.test(log.message) && !SMAPI_PROGRESS_RE.test(log.message)),
     [logs],
   )
   const visibleLogs = useMemo(() => latestInstallLogsFirst(displayableLogs), [displayableLogs])
@@ -791,32 +721,14 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
   }, [effectivePhase, guardSubmittedKind])
 
   useEffect(() => {
-    let canceled = false
-    setQrImageSrc('')
-    setQrImageError('')
-    if (!qrUrl) return undefined
-
-    void QRCode.toDataURL(qrUrl, {
-      errorCorrectionLevel: 'M',
-      margin: 4,
-      scale: 10,
-      width: 320,
-      color: {
-        dark: '#17110a',
-        light: '#fff7df',
-      },
+    if (!automaticChoice || !installJobId) return
+    const key = `${installJobId}:${effectivePhase}`
+    if (automaticChoiceRef.current === key) return
+    automaticChoiceRef.current = key
+    void handleAuthMethodSelect('1').then((submitted) => {
+      if (!submitted) automaticChoiceRef.current = ''
     })
-      .then((dataUrl) => {
-        if (!canceled) setQrImageSrc(dataUrl)
-      })
-      .catch(() => {
-        if (!canceled) setQrImageError('二维码图片生成失败，请使用下方链接在手机上打开。')
-      })
-
-    return () => {
-      canceled = true
-    }
-  }, [qrUrl])
+  }, [automaticChoice, effectivePhase, handleAuthMethodSelect, installJobId])
 
   const finishedStepCount = stepStatuses.filter((status) => status === 'done').length
   const hasActiveStep = stepStatuses.some((status) => status === 'active')
@@ -1412,75 +1324,18 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
           ) : null}
 
           {/* ── Steam 认证交互区 ───────────────────────────────────────────── */}
-          {(needsAuthMethodChoice || needsGuardChoice || needsGuard || needsQrCode || needsSteamCMDGuardChoice || needsSteamCMDGuard) && !isAdmin ? (
+          {(needsGuard || needsQrCode || needsSteamCMDGuard) && !isAdmin ? (
             <div className="sd-install-guard-section">
               <div className="sd-install-guard-block">
                 <div className="sd-install-guard-desc">
-                  {needsSteamCMDGuardChoice || needsSteamCMDGuard
+                  {needsSteamCMDGuard
                     ? 'SteamCMD 基础安装正在等待管理员完成 Steam Guard 授权。'
                     : 'Steam 邀请码授权正在进行中，请等待管理员完成验证。'}
                 </div>
               </div>
             </div>
-          ) : (needsAuthMethodChoice || needsGuardChoice || needsGuard || needsQrCode || needsSteamCMDGuardChoice || needsSteamCMDGuard) ? (
+          ) : (needsGuard || needsQrCode || needsSteamCMDGuard) ? (
             <div className="sd-install-guard-section">
-              {/* 选择登录方式 */}
-              {needsAuthMethodChoice ? (
-                <div className="sd-install-guard-block">
-                  <div className="sd-install-guard-title">选择 Steam 登录方式</div>
-                  <p className="sd-install-guard-desc">
-                    请选择扫码登录（Steam 手机 App），或使用已填写的账号密码继续。
-                    账号密码方式如触发二次验证，会再提示选择 Steam Guard 方式。
-                  </p>
-                  <div className="sd-install-guard-actions">
-                    <button
-                      className="sd-btn-green"
-                      type="button"
-                      disabled={guardBusy}
-                      onClick={() => void handleAuthMethodSelect('2')}
-                    >
-                      {guardBusy ? '提交中…' : '扫码登录'}
-                    </button>
-                    <button
-                      className="sd-btn-tan"
-                      type="button"
-                      disabled={guardBusy}
-                      onClick={() => void handleAuthMethodSelect('1')}
-                    >
-                      {guardBusy ? '提交中…' : '账号密码 / 验证码登录'}
-                    </button>
-                  </div>
-                  {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
-                </div>
-              ) : null}
-
-              {/* 选择 Guard 方式 */}
-              {needsGuardChoice ? (
-                <div className="sd-install-guard-block">
-                  <div className="sd-install-guard-title">选择 Steam Guard 验证方式</div>
-                  <p className="sd-install-guard-desc">Steam 要求二步验证，请选择与任务日志菜单一致的方式。</p>
-                  <div className="sd-install-guard-actions">
-                    <button
-                      className="sd-btn-green"
-                      type="button"
-                      disabled={guardBusy}
-                      onClick={() => void handleAuthMethodSelect('1')}
-                    >
-                      {guardBusy ? '提交中…' : '手机 App 批准'}
-                    </button>
-                    <button
-                      className="sd-btn-tan"
-                      type="button"
-                      disabled={guardBusy}
-                      onClick={() => void handleAuthMethodSelect('2')}
-                    >
-                      {guardBusy ? '提交中…' : '输入验证码'}
-                    </button>
-                  </div>
-                  {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
-                </div>
-              ) : null}
-
               {/* Guard 验证码输入 / 手机批准 */}
               {needsGuard ? (
                 <div className="sd-install-guard-block">
@@ -1534,34 +1389,6 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
               ) : null}
 
               {/* SteamCMD 安装授权 */}
-              {needsSteamCMDGuardChoice ? (
-                <div className="sd-install-guard-block">
-                  <div className="sd-install-guard-title">SteamCMD 需要重新授权</div>
-                  <p className="sd-install-guard-desc">
-                    SteamCMD 是基础安装主链，正在使用已保存账号密码登录。请选择与 Steam 提示一致的授权方式。
-                  </p>
-                  <div className="sd-install-guard-actions">
-                    <button
-                      className="sd-btn-green"
-                      type="button"
-                      disabled={guardBusy}
-                      onClick={() => void handleAuthMethodSelect('1')}
-                    >
-                      {guardBusy ? '提交中…' : '手机 App 批准'}
-                    </button>
-                    <button
-                      className="sd-btn-tan"
-                      type="button"
-                      disabled={guardBusy}
-                      onClick={() => void handleAuthMethodSelect('2')}
-                    >
-                      {guardBusy ? '提交中…' : 'App / 邮箱验证码'}
-                    </button>
-                  </div>
-                  {guardError ? <div className="sd-install-guard-error">{guardError}</div> : null}
-                </div>
-              ) : null}
-
               {needsSteamCMDGuard ? (
                 <div className="sd-install-guard-block">
                   <div className="sd-install-guard-title">授权 SteamCMD 安装下载</div>
@@ -1615,28 +1442,13 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
                 </div>
               ) : null}
 
-              {/* QR 扫码 */}
+              {/* 旧版登录任务兼容提示 */}
               {needsQrCode ? (
                 <div className="sd-install-guard-block">
-                  <div className="sd-install-guard-title">Steam 手机扫码</div>
+                  <div className="sd-install-guard-title">请重新开始 Steam 登录</div>
                   <p className="sd-install-guard-desc">
-                    请使用 Steam 手机 App 扫描日志中输出的二维码。如二维码还未出现，请稍等几秒。
+                    当前旧登录任务无法继续。请取消后重新使用 Steam 账号密码登录。
                   </p>
-                  <div className="sd-install-guard-actions">
-                    <button
-                      className="sd-btn-green"
-                      type="button"
-                      disabled={!qrUrl}
-                      onClick={() => setShowQrModal(true)}
-                    >
-                      打开扫码窗口
-                    </button>
-                  </div>
-                  {!qrUrl ? (
-                    <p className="sd-install-guard-desc" style={{ marginTop: 4 }}>
-                      正在等待容器输出二维码...
-                    </p>
-                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1654,7 +1466,7 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
                       ? '修复安装会复用已保存凭据；现有存档不会被删除。'
                       : needsInstallationDiagnosis
                         ? '当前异常尚未证实由安装缺失导致，请先查看诊断，避免重复安装。'
-                    : '启动安装后，这里会显示 SteamCMD Guard 或验证码输入。Steam 邀请码扫码授权需安装完成后按需启用。'}
+                    : '启动安装后，这里会按 SteamCMD 的实际要求显示手机批准状态或验证码输入。'}
               </p>
             </div>
           )}
@@ -1709,43 +1521,6 @@ export function InstallPage({ user, instanceState, dashboardData, onNavigate, re
           </div>
         </section>
       </div>
-
-      {/* ── QR 弹窗 ──────────────────────────────────────────────────────── */}
-      {showQrModal ? (
-        <div className="sd-install-qr-overlay" role="dialog" aria-modal="true">
-          <div className="sd-install-qr-card">
-            <div className="sd-install-qr-header">
-              <span className="sd-install-qr-title">Steam 手机扫码</span>
-              <button className="sd-btn-tan" type="button" onClick={() => setShowQrModal(false)}>
-                关闭
-              </button>
-            </div>
-            {qrUrl ? (
-              <>
-                {qrImageSrc ? (
-                  <div className="sd-install-qr-image-wrap">
-                    <img className="sd-install-qr-image" src={qrImageSrc} alt="Steam 登录二维码" />
-                  </div>
-                ) : qrImageError && qrText ? (
-                  <pre className="sd-install-qr-pre" style={{ fontSize: `${qrCodeFontSize(qrText)}px` }}>
-                    {qrText}
-                  </pre>
-                ) : (
-                  <p className="sd-install-guard-desc">正在生成二维码图片...</p>
-                )}
-                {qrImageError ? (
-                  <p className="sd-install-guard-error">{qrImageError}</p>
-                ) : null}
-                <p className="sd-install-qr-link">
-                  扫不了时可在手机上打开：<span>{qrUrl}</span>
-                </p>
-              </>
-            ) : (
-              <p className="sd-install-guard-desc">正在等待容器输出二维码...</p>
-            )}
-          </div>
-        </div>
-      ) : null}
 
     </div>
   )

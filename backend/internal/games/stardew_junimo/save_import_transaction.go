@@ -292,7 +292,20 @@ func CreateImportJournal(dataDir string, req registry.SaveImportRequest) (Import
 	return j, nil
 }
 
+// Windows readers do not share delete access with Rename. Keep journal file
+// handles closed while publishing a replacement, including its final chmod.
+// This guards file I/O only; transaction ownership still guards state changes.
+var importJournalFileMu sync.RWMutex
+
+func readImportJournalFile(dataDir, operationID string) ([]byte, error) {
+	importJournalFileMu.RLock()
+	defer importJournalFileMu.RUnlock()
+	return os.ReadFile(importJournalPath(dataDir, operationID))
+}
+
 func WriteImportJournal(dataDir string, j ImportJournal) error {
+	importJournalFileMu.Lock()
+	defer importJournalFileMu.Unlock()
 	if !validImportOperationID(j.OperationID) {
 		return fmt.Errorf("invalid operation id")
 	}
@@ -321,7 +334,7 @@ func LoadImportJournal(dataDir, operationID string) (ImportJournal, error) {
 	if !validImportOperationID(operationID) {
 		return ImportJournal{}, fmt.Errorf("invalid operation id")
 	}
-	data, err := os.ReadFile(importJournalPath(dataDir, operationID))
+	data, err := readImportJournalFile(dataDir, operationID)
 	if err != nil {
 		return ImportJournal{}, err
 	}
@@ -847,7 +860,7 @@ func loadImportJournalCleanupEvidence(dataDir, operationID string) (ImportJourna
 	if err != nil {
 		return ImportJournal{}, err
 	}
-	raw, err := os.ReadFile(importJournalPath(dataDir, operationID))
+	raw, err := readImportJournalFile(dataDir, operationID)
 	if err != nil {
 		return ImportJournal{}, err
 	}

@@ -15,6 +15,7 @@ import (
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	sharedsteamcmd "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/steamcmd"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -188,7 +189,11 @@ func (r *installRunner) runPrepared(ctx context.Context, jobCtx *jobs.Context) e
 	// a full login automatically if Steam reports that the cache has expired or is
 	// missing, so a stale flag cannot leave the install flow stuck. Saving a new
 	// fallback username/password never invalidates a still-usable machine cache.
-	r.steamCMDUseCache = strings.EqualFold(strings.TrimSpace(envVals["STEAMCMD_AUTH_COMPLETED"]), "true")
+	sharedCredentials, sharedCredentialsFound, sharedCredentialsErr := r.driver.sharedSteamCredentials(makeRegistryInstanceFromStorage(r.instance))
+	if sharedCredentialsErr != nil {
+		return fmt.Errorf("read shared SteamCMD authorization state: %w", sharedCredentialsErr)
+	}
+	r.steamCMDUseCache = sharedCredentialsFound && sharedCredentials.AuthorizationCompleted
 	updates := map[string]string{
 		"IMAGE_VERSION":  r.imageTag,
 		"STEAM_USERNAME": r.username,
@@ -552,18 +557,19 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 	cancelAuthOnFailure := r.authOnly
 
 	var (
-		outputMu         sync.Mutex
-		authSucceeded    bool
-		authFailed       bool
-		accountMismatch  bool
-		connectionFailed bool
-		credentialFailed bool
-		qrAuthFailed     bool
-		mobileApproval   bool
-		downloadFailed   bool
-		guardChoiceShown bool
-		currentApp       string
-		sdkDownloaded    bool
+		outputMu                 sync.Mutex
+		authSucceeded            bool
+		authFailed               bool
+		accountMismatch          bool
+		connectionFailed         bool
+		credentialFailed         bool
+		qrAuthFailed             bool
+		mobileApproval           bool
+		downloadFailed           bool
+		guardChoiceShown         bool
+		guardChoiceAutoSubmitted bool
+		currentApp               string
+		sdkDownloaded            bool
 	)
 
 	lineHandler := func(line string) {
@@ -629,9 +635,14 @@ func (r *installRunner) runSteamAuthAttempt(ctx context.Context, jobCtx *jobs.Co
 
 		case isSteamGuardChoiceMenu(lower):
 			guardChoiceShown = true
+			if !guardChoiceAutoSubmitted {
+				guardChoiceAutoSubmitted = true
+				guardCh <- "1\n"
+				_, _ = jobCtx.Info(context.Background(), "[steam] 已自动选择 Steam 手机 App 批准。")
+			}
 			r.updatePhase(ctx, storage.InstanceStateSteamAuthRunning,
-				"Steam 需要二步验证，请在面板选择 Steam Guard 方式。",
-				"steam_guard_choice_required", jobCtx.ID)
+				"Steam 需要二步验证；已自动选择手机 App 批准。",
+				"steam_guard_mobile_required", jobCtx.ID)
 
 		case mode != steamAuthModeQR && isSteamMobileApprovalPrompt(lower):
 			// After option 1 is selected (by user or auto), Steam waits for mobile approval.
@@ -952,9 +963,10 @@ func (r *installRunner) clearSteamAuthSessionVolumes(ctx context.Context, jobCtx
 
 func (r *installRunner) clearSteamCMDAuthorizationVolumes(ctx context.Context, jobCtx *jobs.Context) {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	loginVolume, homeVolume := r.driver.sharedSteamAuthorizationVolumes(makeRegistryInstanceFromStorage(r.instance))
 	names := []string{
-		projectName + "_steamcmd-login",
-		projectName + "_steamcmd-home",
+		loginVolume,
+		homeVolume,
 		projectName + "_steamcmd-user-local",
 		projectName + "_steamcmd-root-local",
 	}
@@ -1121,7 +1133,12 @@ func (r *installRunner) markInstallSucceeded(jobCtx *jobs.Context) {
 	_, _ = jobCtx.Info(context.Background(), "安装流程全部完成。")
 }
 
-func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Context, guardCh <-chan string) error {
+func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Context, guardCh chan string) error {
+	releaseDownload, err := r.driver.acquireSharedSteamDownload(ctx)
+	if err != nil {
+		return fmt.Errorf("wait for shared SteamCMD download executor: %w", err)
+	}
+	defer releaseDownload()
 	envVals, _ := sjconfig.ReadEnvFile(filepath.Join(r.instance.DataDir, ".env"))
 	imageRef, err := r.ensureSteamCMDImage(ctx, jobCtx, steamCMDImageRefs(envVals))
 	if err != nil {
@@ -1148,17 +1165,20 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	}
 
 	var (
-		outputMu             sync.Mutex
-		app413150Done        bool
-		app1007Done          bool
-		credentialFailed     bool
-		guardPrompted        bool
-		mobileApproval       bool
-		authTimedOut         bool
-		steamCMDLoggedIn     bool
-		downloadStarted      bool
-		downloadCompleted    bool
-		cachedPromptCanceled bool
+		outputMu                 sync.Mutex
+		app413150Done            bool
+		app1007Done              bool
+		credentialFailed         bool
+		guardPrompted            bool
+		guardCodeRejected        bool
+		confirmationCompleted    bool
+		guardChoiceAutoSubmitted bool
+		mobileApproval           bool
+		authTimedOut             bool
+		steamCMDLoggedIn         bool
+		downloadStarted          bool
+		downloadCompleted        bool
+		cachedPromptCanceled     bool
 	)
 	resetAttemptState := func() {
 		outputMu.Lock()
@@ -1167,6 +1187,9 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		app1007Done = false
 		credentialFailed = false
 		guardPrompted = false
+		guardCodeRejected = false
+		confirmationCompleted = false
+		guardChoiceAutoSubmitted = false
 		mobileApproval = false
 		authTimedOut = false
 		steamCMDLoggedIn = false
@@ -1199,17 +1222,59 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 			}
 
 			switch {
+			// SteamCMD can prefix subsequent output with a stale confirmation
+			// prompt. Match authoritative app progress before interactive prompts;
+			// client self-update output alone is not evidence of authorization.
+			case strings.Contains(lower, "update state ("):
+				if !steamCMDLoggedIn && !confirmationCompleted {
+					return
+				}
+				steamCMDLoggedIn = true
+				downloadStarted = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"SteamCMD 已授权，正在下载并校验游戏文件...", "steamcmd_downloading", jobCtx.ID)
+			case strings.Contains(lower, "success! app '413150' fully installed"):
+				steamCMDLoggedIn = true
+				app413150Done = true
+				downloadCompleted = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"SteamCMD 已完成 Stardew Valley 游戏文件下载，正在处理 Steam SDK 运行文件...", "steamcmd_downloading", jobCtx.ID)
+			case strings.Contains(lower, "success! app '1007' fully installed"):
+				app1007Done = true
+				downloadCompleted = true
+			case containsAny(lower, "waiting for user info...ok", "waiting for user info... ok", "logged in ok"):
+				steamCMDLoggedIn = true
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"SteamCMD 登录成功，正在准备下载并校验游戏文件。", "steamcmd_downloading", jobCtx.ID)
+			case containsAny(lower, "waiting for confirmation...ok", "waiting for confirmation... ok"):
+				if steamCMDLoggedIn {
+					return
+				}
+				confirmationCompleted = true
+				guardPrompted = false
+				mobileApproval = false
+				guardCodeRejected = false
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"Steam 手机确认已通过，正在完成 SteamCMD 登录。", "steamcmd_auth_running", jobCtx.ID)
 			case isSteamCMDGuardChoiceMenu(lower):
 				guardPrompted = true
 				if cancelCachedAttempt() {
 					return
 				}
+				if !guardChoiceAutoSubmitted {
+					guardChoiceAutoSubmitted = true
+					guardCh <- "1\n"
+					_, _ = jobCtx.Info(context.Background(), "[steamcmd] 已自动选择 Steam 手机 App 批准。")
+				}
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-					"SteamCMD 需要登录授权；请选择手机 App 批准或输入 App/邮箱验证码。",
-					"steamcmd_guard_choice_required", jobCtx.ID)
+					"SteamCMD 需要登录授权；已自动选择手机 App 批准。",
+					"steamcmd_guard_mobile_required", jobCtx.ID)
 			case containsAny(lower, "timed out waiting for confirmation", "wait for confirmation timed out", "error (timeout)"):
 				authTimedOut = true
 			case isSteamCMDMobileApprovalPrompt(lower):
+				if steamCMDLoggedIn || confirmationCompleted {
+					return
+				}
 				guardPrompted = true
 				mobileApproval = true
 				if cancelCachedAttempt() {
@@ -1218,9 +1283,22 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 					"SteamCMD 需要登录授权；请打开 Steam 手机 App 批准本次登录。",
 					"steamcmd_guard_mobile_required", jobCtx.ID)
+			case containsAny(lower, "that steam guard code was invalid"):
+				guardPrompted = true
+				guardCodeRejected = true
+				if cancelCachedAttempt() {
+					return
+				}
+				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
+					"Steam Guard 验证码无效或已过期，请获取最新验证码后重新输入。",
+					"steamcmd_guard_required", jobCtx.ID)
 			case isSteamCMDGuardCodePrompt(lower):
 				guardPrompted = true
 				if cancelCachedAttempt() {
+					return
+				}
+				if guardCodeRejected {
+					// The repeated prompt must not erase the actionable rejection.
 					return
 				}
 				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
@@ -1240,8 +1318,6 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 				// Password"). Keep this before the generic progress cases so the
 				// overlapping line cannot be misclassified as a download failure.
 				credentialFailed = true
-			case containsAny(lower, "waiting for user info...ok", "logged in ok"):
-				steamCMDLoggedIn = true
 			case containsAny(lower, "logging in user", "waiting for user info"):
 				if !guardPrompted && !mobileApproval {
 					message := "正在使用已保存账号密码登录 SteamCMD..."
@@ -1260,14 +1336,6 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 					r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
 						"SteamCMD 已授权，正在下载并校验游戏文件...", "steamcmd_downloading", jobCtx.ID)
 				}
-			case strings.Contains(lower, "success! app '413150' fully installed"):
-				app413150Done = true
-				downloadCompleted = true
-				r.driver.updatePhase(context.Background(), r.instance.ID, storage.InstanceStateSteamAuthRunning,
-					"SteamCMD 已完成 Stardew Valley 游戏文件下载，正在处理 Steam SDK 运行文件...", "steamcmd_downloading", jobCtx.ID)
-			case strings.Contains(lower, "success! app '1007' fully installed"):
-				app1007Done = true
-				downloadCompleted = true
 			}
 		}
 	}
@@ -1275,11 +1343,15 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	runSteamCMD := func() (int, error) {
 		resetAttemptState()
 		useCachedAuth := r.steamCMDUseCache
+		containerOptions, buildErr := r.buildSteamCMDOpts(imageRef)
+		if buildErr != nil {
+			return -1, buildErr
+		}
 		attemptCtx, cancelAttempt := context.WithCancel(ctx)
 		defer cancelAttempt()
 		exitCode, err := r.driver.docker.RunContainerTTY(
 			attemptCtx,
-			r.buildSteamCMDOpts(imageRef),
+			containerOptions,
 			guardCh,
 			lineHandler(useCachedAuth, cancelAttempt),
 		)
@@ -1305,9 +1377,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 	}
 	if r.steamCMDUseCache && credentialFailed {
 		_, _ = jobCtx.Warn(context.Background(), "[steamcmd] 已保存的 SteamCMD 授权缓存不可用，正在自动切换为账号密码完整登录。")
-		if updateErr := sjconfig.UpdateEnvFile(filepath.Join(r.instance.DataDir, ".env"), map[string]string{
-			"STEAMCMD_AUTH_COMPLETED": "",
-		}); updateErr != nil {
+		if updateErr := r.driver.setSharedSteamAuthorizationCompleted(makeRegistryInstanceFromStorage(r.instance), false); updateErr != nil {
 			_, _ = jobCtx.Warn(context.Background(), "清除失效的 SteamCMD 授权状态失败；本次仍会尝试重新认证。")
 		}
 		r.steamCMDUseCache = false
@@ -1352,9 +1422,7 @@ func (r *installRunner) runSteamCMDFallback(ctx context.Context, jobCtx *jobs.Co
 		// imply steam-auth succeeded — that is tracked separately by
 		// STEAM_AUTH_COMPLETED. Recorded even if the download later failed, because
 		// the authorization is valid.
-		if err := sjconfig.UpdateEnvFile(filepath.Join(r.instance.DataDir, ".env"), map[string]string{
-			"STEAMCMD_AUTH_COMPLETED": "true",
-		}); err != nil {
+		if err := r.driver.setSharedSteamAuthorizationCompleted(makeRegistryInstanceFromStorage(r.instance), true); err != nil {
 			_, _ = jobCtx.Warn(context.Background(), "记录 SteamCMD 授权状态失败，后续可能需要再次授权。")
 		}
 	}
@@ -1514,68 +1582,36 @@ func makeImagePullLineHandler(jobCtx *jobs.Context, prefix string, onProgress fu
 	}
 }
 
-func (r *installRunner) buildSteamCMDOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
-	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
-	gameCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game +login "$STEAM_USERNAME" "$STEAM_PASSWORD" +app_update 413150 validate +quit`
-	if r.steamCMDUseCache {
-		// NoPromptForPassword makes a missing/expired cache fail promptly instead of
-		// hanging at an interactive password prompt. The caller detects that failure
-		// and automatically reruns this command with the full credentials.
-		gameCommand = `"$STEAMCMD_BIN" +@NoPromptForPassword 1 +force_install_dir /data/game +login "$STEAM_USERNAME" +app_update 413150 validate +quit`
+func (r *installRunner) buildSteamCMDOpts(imageRef string) (paneldocker.ContainerTTYRunOpts, error) {
+	project := strings.ToLower(filepath.Base(r.instance.DataDir))
+	loginVolume, homeVolume := project+"_steamcmd-login", project+"_steamcmd-home"
+	if r.driver != nil {
+		loginVolume, homeVolume = r.driver.sharedSteamAuthorizationVolumes(makeRegistryInstanceFromStorage(r.instance))
 	}
-	// The Steamworks SDK redistributable (app 1007) is public and downloads with an
-	// anonymous login — no account credentials and no Steam Guard. Only the game
-	// login needs the real account, so a whole install needs at most one guard
-	// approval, and the SDK step can never stall waiting for credentials.
-	sdkCommand := `"$STEAMCMD_BIN" +force_install_dir /data/game/.steam-sdk +login anonymous +app_update 1007 validate +quit`
-	steamHomePrefix := `HOME=/home/steam USER=steam LOGNAME=steam `
-	suGameCommand := strings.ReplaceAll(steamHomePrefix+gameCommand, `'`, `'"'"'`)
-	suSDKCommand := strings.ReplaceAll(steamHomePrefix+sdkCommand, `'`, `'"'"'`)
-	script := strings.Join([]string{
-		"set -e",
-		"mkdir -p /data/game /data/game/.steam-sdk /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam",
-		"if id steam >/dev/null 2>&1; then chown -R steam:steam /data/game /home/steam/Steam /home/steam/.steam /home/steam/.local/share/Steam /root/Steam /root/.steam /root/.local/share/Steam; fi",
-		`if [ -x /home/steam/steamcmd/steamcmd.sh ]; then steamcmd_bin=/home/steam/steamcmd/steamcmd.sh; elif command -v steamcmd >/dev/null 2>&1; then steamcmd_bin=$(command -v steamcmd); elif [ -x /usr/games/steamcmd ]; then steamcmd_bin=/usr/games/steamcmd; elif [ -x /steamcmd/steamcmd.sh ]; then steamcmd_bin=/steamcmd/steamcmd.sh; else echo "SteamCMD executable not found in container" >&2; exit 127; fi`,
-		`export STEAMCMD_BIN="$steamcmd_bin"`,
-		`echo "Running SteamCMD app_update 413150..."`,
-		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '` + suGameCommand + `'; else ` + gameCommand + `; fi`,
-		`echo "Running SteamCMD app_update 1007..."`,
-		`if id steam >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then su -m steam -c '` + suSDKCommand + `'; else ` + sdkCommand + `; fi`,
-	}, "; ")
-	return paneldocker.ContainerTTYRunOpts{
-		ImageRef:   imageRef,
-		Entrypoint: []string{"/bin/sh"},
-		User:       "root",
-		Command:    []string{"-lc", script},
-		Env: []string{
-			"STEAM_USERNAME=" + r.username,
-			"STEAM_PASSWORD=" + r.password,
+	return sharedsteamcmd.BuildContainerOptions(sharedsteamcmd.ContainerRequest{
+		ImageRef: imageRef, TargetVolume: resolvedGameDataVolumeName(r.instance.DataDir),
+		LoginVolume: loginVolume, HomeVolume: homeVolume,
+		Username: r.username, Password: r.password, UseCachedAuth: r.steamCMDUseCache,
+		Applications: []sharedsteamcmd.AppDownload{
+			{AppID: 413150, InstallDir: "/data/game"},
+			{AppID: 1007, InstallDir: "/data/game/.steam-sdk", Anonymous: true},
 		},
-		Binds: []string{
-			// SteamCMD images do not agree on HOME or the canonical Steam data
-			// directory. Use one authorization volume for every observed config
-			// root so a session created by the root-based official image remains
-			// visible to the steam-user CM2 image and vice versa.
-			projectName + "_steamcmd-login:/home/steam/Steam",
-			projectName + "_steamcmd-login:/home/steam/.local/share/Steam",
-			projectName + "_steamcmd-home:/home/steam/.steam",
-			projectName + "_steamcmd-login:/root/Steam",
-			projectName + "_steamcmd-login:/root/.local/share/Steam",
-			projectName + "_steamcmd-home:/root/.steam",
-			resolvedGameDataVolumeName(r.instance.DataDir) + ":/data/game",
-		},
-	}
+	})
 }
 
 func (r *installRunner) buildSteamCMDAuthMigrationOpts(imageRef string) paneldocker.ContainerTTYRunOpts {
 	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	loginVolume := projectName + "_steamcmd-login"
+	if r.driver != nil {
+		loginVolume, _ = r.driver.sharedSteamAuthorizationVolumes(makeRegistryInstanceFromStorage(r.instance))
+	}
 	script := `set -eu
 echo "anxi-steamcmd-auth-migrate: checking legacy authorization cache"
 if [ -s /auth/config/config.vdf ]; then
   echo "anxi-steamcmd-auth-migrate: canonical cache already present"
   exit 0
 fi
-for legacy in /legacy/root /legacy/user; do
+for legacy in /legacy/canonical /legacy/root /legacy/user; do
   if [ -s "${legacy}/config/config.vdf" ]; then
     mkdir -p /auth/config
     cp -a "${legacy}/config/." /auth/config/
@@ -1592,7 +1628,8 @@ echo "anxi-steamcmd-auth-migrate: no legacy cache found"
 		User:       "root",
 		Command:    []string{"-lc", script},
 		Binds: []string{
-			projectName + "_steamcmd-login:/auth",
+			loginVolume + ":/auth",
+			projectName + "_steamcmd-login:/legacy/canonical:ro",
 			projectName + "_steamcmd-root-local:/legacy/root:ro",
 			projectName + "_steamcmd-user-local:/legacy/user:ro",
 		},
@@ -1622,10 +1659,10 @@ func (r *installRunner) migrateLegacySteamCMDAuthCache(ctx context.Context, jobC
 }
 
 func (r *installRunner) clearSteamCMDRuntimeCache(ctx context.Context, jobCtx *jobs.Context) {
-	projectName := strings.ToLower(filepath.Base(r.instance.DataDir))
+	loginVolume, homeVolume := r.driver.sharedSteamAuthorizationVolumes(makeRegistryInstanceFromStorage(r.instance))
 	names := []string{
-		projectName + "_steamcmd-login",
-		projectName + "_steamcmd-home",
+		loginVolume,
+		homeVolume,
 	}
 	if result, err := r.driver.docker.RemoveContainersByVolume(ctx, r.instance.DataDir, names); err != nil {
 		detail := dockerResultDetail(result)

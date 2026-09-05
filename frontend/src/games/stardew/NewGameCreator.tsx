@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getFarmTypeCatalog, prepareFarmTypeMods } from '../../api'
 import type { FarmCaveChoice, FarmTypeCatalogItem, NewGameConfig } from '../../types'
 import { canSelectModFarm, farmCatalogIconSource, farmComponentsToEnable, farmDependencyStatusText, initialFarmCatalogViewState, isSafeManualFarmTypeId, modFarmPlaceholder, moddedCompatibilityShortcut, startFarmCatalogLoad } from './farm-catalog-state'
-import { builtinFarms, isBuiltinFarmType } from './new-game-farms'
+import { applyFarmTypeSelection, builtinFarms, isBuiltinFarmType } from './new-game-farms'
 import './NewGameCreator.css'
 
 type Props = {
@@ -83,6 +83,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
   const [prepareMessage, setPrepareMessage] = useState('')
   const [manualFarmTypeId, setManualFarmTypeId] = useState('')
   const prepareController = useRef<AbortController | null>(null)
+  const spawnMonstersCustomized = useRef(false)
 
   useEffect(() => {
     setFarmCatalog(initialFarmCatalogViewState)
@@ -130,6 +131,15 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
     setCfg((previous) => ({ ...previous, [key]: value }))
   }
 
+  function selectFarm(farmType: string) {
+    setCfg((previous) => applyFarmTypeSelection(previous, farmType, spawnMonstersCustomized.current))
+  }
+
+  function setSpawnMonstersOnFarm(value: boolean) {
+    spawnMonstersCustomized.current = true
+    set('spawnMonstersOnFarm', value)
+  }
+
   function updateCabins(direction: -1 | 1) {
     setCfg((previous) => {
       const nextCabins = Math.max(0, Math.min(7, previous.startingCabins + direction))
@@ -149,7 +159,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
   }
 
   function updateFarm(direction: -1 | 1) {
-    set('farmType', cycle(cfg.farmType, builtinFarms.map((farm) => farm.id), direction))
+    selectFarm(cycle(cfg.farmType, builtinFarms.map((farm) => farm.id), direction))
   }
 
   function updatePet(direction: -1 | 1) {
@@ -332,7 +342,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
                         <button className="ngc-prepare-button" type="button" onClick={() => openPrepare(farm)}>一键准备</button>
                       ) : null}
                       {canSelectModFarm(farm, farmCatalog.moddedCreationEnabled) ? (
-                        <button className="ngc-select-modded-button" type="button" onClick={() => set('farmType', farm.id)}>选择该农场</button>
+                        <button className="ngc-select-modded-button" type="button" onClick={() => selectFarm(farm.id)}>选择该农场</button>
                       ) : null}
                       <p className="ngc-modded-lock">{farmCatalog.moddedCreationEnabled ? '创建时会启动服务器，并用本次运行时目录再次验证该 FarmType。' : '已检测到该模组农场；当前功能开关未启用。'}</p>
                     </div>
@@ -356,7 +366,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
             <div className="ngc-advanced-options">
               <label className="ngc-check-row"><input type="checkbox" checked={cfg.remixedCommunityCenter} onChange={(event) => set('remixedCommunityCenter', event.target.checked)} />社区中心收集包</label>
               <label className="ngc-check-row"><input type="checkbox" checked={cfg.remixedMineRewards} onChange={(event) => set('remixedMineRewards', event.target.checked)} />矿洞掉落</label>
-              <label className="ngc-check-row"><input type="checkbox" checked={cfg.spawnMonstersOnFarm} onChange={(event) => set('spawnMonstersOnFarm', event.target.checked)} />在农场出现怪物</label>
+              <label className="ngc-check-row"><input type="checkbox" checked={cfg.spawnMonstersOnFarm} onChange={(event) => setSpawnMonstersOnFarm(event.target.checked)} />在农场出现怪物</label>
               {farmCatalog.moddedCreationEnabled ? (
                 <div className="ngc-manual-farm">
                   <label>手动 FarmType Id
@@ -368,7 +378,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
                     />
                   </label>
                   <p>必须填写 `Data/AdditionalFarms` 中的 Id；未知 Id 不会回落标准农场，创建时仍会进行运行时验证。</p>
-                  <button type="button" disabled={!isSafeManualFarmTypeId(manualFarmTypeId)} onClick={() => set('farmType', manualFarmTypeId.trim())}>使用该 Id</button>
+                  <button type="button" disabled={!isSafeManualFarmTypeId(manualFarmTypeId)} onClick={() => selectFarm(manualFarmTypeId.trim())}>使用该 Id</button>
                   {compatibilityShortcut ? <small>兼容值 `modded` 当前只对应一个可创建农场：{compatibilityShortcut.label}；仍推荐使用明确 Id。</small> : null}
                   {farmCatalog.modded.filter((farm) => canSelectModFarm(farm, true)).length > 1 ? <small>检测到多个可用模组农场，加载顺序不稳定，必须显式选择 Id。</small> : null}
                 </div>
@@ -385,7 +395,7 @@ export function NewGameCreator({ instanceId, onSubmit, submitting, submitError }
 
       <aside className="ngc-map-panel" aria-label="选择农场">
         {builtinFarms.map((farm) => (
-          <button key={farm.id} type="button" className={cfg.farmType === farm.id ? 'selected' : ''} onClick={() => set('farmType', farm.id)}>
+          <button key={farm.id} type="button" className={cfg.farmType === farm.id ? 'selected' : ''} onClick={() => selectFarm(farm.id)}>
             <img src={farm.asset} alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} />
             <span>{farm.label}</span>
           </button>

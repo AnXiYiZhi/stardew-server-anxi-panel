@@ -40,7 +40,7 @@ function resolvePanelAccessHost(): PublicIPResult | null {
   }
 }
 
-export function useStardewDashboardData(): StardewDashboardData {
+export function useStardewDashboardData(instanceId: string): StardewDashboardData {
   const panelUpdate = usePanelUpdate()
   const [instanceState, setInstanceState] = useState<InstanceState | null>(null)
   const [saves, setSaves] = useState<SavesListResult | null>(null)
@@ -93,7 +93,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     const stateRequestGeneration = ++instanceStateRequestGenerationRef.current
     const inviteProjectionGeneration = ++inviteProjectionGenerationRef.current
     try {
-      const s = await getStardewState()
+      const s = await getStardewState(instanceId)
       if (stateRequestGeneration !== instanceStateRequestGenerationRef.current) return
 
       const previousRuntimeState = invitePollRuntimeStateRef.current
@@ -247,49 +247,49 @@ export function useStardewDashboardData(): StardewDashboardData {
     } catch {
       // 保留上次已知状态，不向用户暴露错误
     }
-  }, [updateInviteCode])
+  }, [instanceId, updateInviteCode])
 
   const refreshSaves = useCallback(async () => {
     setSavesError(null)
     try {
-      const res = await getSaves()
+      const res = await getSaves(instanceId)
       setSaves(res)
     } catch (e) {
       setSavesError(errorMessage(e))
     }
-  }, [])
+  }, [instanceId])
 
   const refreshMods = useCallback(async () => {
     setModsError(null)
     try {
-      const res = await getMods()
+      const res = await getMods(instanceId)
       setMods(res)
     } catch (e) {
       setModsError(errorMessage(e))
     }
-  }, [])
+  }, [instanceId])
 
   const refreshPlayers = useCallback(async () => {
     setPlayersLoading(true)
     setPlayersError(null)
     try {
-      const res = await getInstancePlayers()
+      const res = await getInstancePlayers(instanceId)
       setPlayers(res)
     } catch (e) {
       setPlayersError(errorMessage(e))
     } finally {
       setPlayersLoading(false)
     }
-  }, [])
+  }, [instanceId])
 
   const refreshJobs = useCallback(async () => {
     try {
       const res = await getJobs()
-      setJobs(res.jobs)
+      setJobs(res.jobs.filter((job) => job.targetType !== 'instance' || job.targetId === instanceId))
     } catch {
       // 保留上次已知任务列表
     }
-  }, [])
+  }, [instanceId])
 
   const appendJobLogs = useCallback((jobId: string, entries: JobLog[]) => {
     if (entries.length === 0) return
@@ -345,7 +345,7 @@ export function useStardewDashboardData(): StardewDashboardData {
     setInviteCodeLoading(true)
     setInviteCodeError(null)
     try {
-      const res = await getInviteCode()
+      const res = await getInviteCode(instanceId)
       if (!isCurrentSteamInviteRequest(
         inviteRequestGeneration,
         inviteRequestGenerationRef.current,
@@ -453,7 +453,7 @@ export function useStardewDashboardData(): StardewDashboardData {
         setInviteCodeLoading(false)
       }
     }
-  }, [updateInviteCode])
+  }, [instanceId, updateInviteCode])
 
   const refreshPublicIP = useCallback(async (_force = false) => {
     setPublicIPRefreshing(true)

@@ -419,6 +419,97 @@ assert_upgraded_frontend_contract() {
   fi
 }
 
+assert_upgraded_world_management() (
+  set -Eeuo pipefail
+  local template_env="$data_dir/instances/stardew/.env"
+  local template_volume="$project-world-template"
+  local env_backup="$root/world-template.env"
+  local world_id=""
+  local code=""
+  local source_hash=""
+  local world_dir=""
+  local created_ids=()
+  cp "$template_env" "$env_backup"
+  # shellcheck disable=SC2317 # Invoked by this subshell's EXIT trap.
+  cleanup_world_fixture() {
+    local status=$?
+    local id=""
+    set +e
+    cp "$env_backup" "$template_env" || status=1
+    for id in "${created_ids[@]}"; do
+      if docker volume inspect "${id}_game-data" >"$root/world-volume.json" 2>/dev/null; then
+        if jq -e --arg id "$id" '.[0].Labels["com.anxi-panel.compose-project"] == $id and .[0].Labels["com.anxi-panel.instance-provision"] == "true"' "$root/world-volume.json" >/dev/null; then
+          docker volume rm "${id}_game-data" >/dev/null || status=1
+        else
+          status=1
+        fi
+      fi
+    done
+    if docker volume inspect "$template_volume" >"$root/world-volume.json" 2>/dev/null; then
+      if jq -e --arg owner "$owner" '.[0].Labels["com.anxi-panel.test-owner"] == $owner' "$root/world-volume.json" >/dev/null; then
+        docker volume rm "$template_volume" >/dev/null || status=1
+      else
+        status=1
+      fi
+    fi
+    exit "$status"
+  }
+  trap cleanup_world_fixture EXIT
+  if docker volume inspect "$template_volume" >/dev/null 2>&1; then
+    echo "candidate world E2E: template collision" >&2
+    return 1
+  fi
+  docker volume create --label "com.anxi-panel.test-owner=$owner" "$template_volume" >/dev/null
+  docker run --rm --network none --pull never --volume "$template_volume:/game" alpine:3.20 sh -ec '
+    mkdir -p /game/steamapps /game/Mods/ConsoleCommands /game/Mods/SaveBackup /game/.steam-sdk/steamapps
+    for file in StardewValley "Stardew Valley.dll" StardewModdingAPI StardewModdingAPI.dll steamapps/appmanifest_413150.acf Mods/ConsoleCommands/manifest.json Mods/SaveBackup/manifest.json .steam-sdk/steamapps/appmanifest_1007.acf .steam-sdk/steamclient.so; do
+      printf "synthetic runtime fixture\n" > "/game/$file"
+    done
+    chmod 755 /game/StardewValley /game/StardewModdingAPI
+  '
+  source_hash="$(docker run --rm --network none --volume "$template_volume:/game:ro" alpine:3.20 sha256sum /game/StardewValley)"
+  sed -i -e '/^SERVER_IMAGE=/d' -e '/^SERVER_IMAGE_CANDIDATES=/d' -e '/^IMAGE_VERSION=/d' -e '/^GAME_DATA_VOLUME=/d' "$template_env"
+  printf 'SERVER_IMAGE=alpine:3.20\nSERVER_IMAGE_CANDIDATES=alpine:3.20\nIMAGE_VERSION=3.20\nGAME_DATA_VOLUME=%s\n' "$template_volume" >>"$template_env"
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" -X DELETE "http://127.0.0.1:$panel_port/api/instances/stardew")"
+  [[ "$code" == 403 ]]
+  code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --header 'Content-Type: application/json' --data '{"name":"Candidate world","gameId":"stardew"}' "http://127.0.0.1:$panel_port/api/instances")"
+  [[ "$code" == 401 ]]
+  for round in 1 2; do
+    code="$(curl --silent --show-error --max-time 120 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' --data '{"name":"Candidate world","gameId":"stardew"}' "http://127.0.0.1:$panel_port/api/instances")"
+    if [[ "$code" != 201 ]]; then
+      cat "$response_file" >&2
+      return 1
+    fi
+    world_id="$(jq -r '.instance.id' "$response_file")"
+    [[ "$world_id" =~ ^stardew-[0-9]+$ ]]
+    if ((round == 2)); then [[ "$world_id" != "${created_ids[0]}" ]]; fi
+    created_ids+=("$world_id")
+    jq -e '.instance.isDefault == false and .instance.state == "save_required"' "$response_file" >/dev/null
+    world_dir="$data_dir/instances/$world_id"
+    [[ "$(sqlite3 "$data_dir/panel.db" 'SELECT count(*) FROM instance_provisions;')" == 0 ]]
+    code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" --header 'Content-Type: application/json' -X PATCH --data '{"name":"Renamed candidate world"}' "http://127.0.0.1:$panel_port/api/instances/$world_id")"
+    [[ "$code" == 200 ]]
+    jq -e '.instance.name == "Renamed candidate world"' "$response_file" >/dev/null
+    curl --silent --show-error --fail --cookie "$cookie_file" "http://127.0.0.1:$panel_port/instances/$world_id/overview" >/dev/null
+    mkdir -p "$world_dir/.local-container/backups/saves" "$world_dir/.local-container/mods/Synthetic" "$world_dir/.local-container/saves/Saves/Synthetic_1"
+    printf 'synthetic backup\n' >"$world_dir/.local-container/backups/saves/sentinel.zip"
+    printf '{}\n' >"$world_dir/.local-container/mods/Synthetic/manifest.json"
+    printf 'synthetic save\n' >"$world_dir/.local-container/saves/Saves/Synthetic_1/SaveGameInfo"
+    code="$(curl --silent --show-error --max-time 120 --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" -X DELETE "http://127.0.0.1:$panel_port/api/instances/$world_id")"
+    if [[ "$code" != 204 ]]; then cat "$response_file" >&2; return 1; fi
+    [[ ! -e "$world_dir" ]]
+    if docker volume inspect "${world_id}_game-data" >/dev/null 2>&1; then
+      echo "candidate world E2E: deleted world volume survived" >&2
+      return 1
+    fi
+    code="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' --cookie "$cookie_file" -X DELETE "http://127.0.0.1:$panel_port/api/instances/$world_id")"
+    [[ "$code" == 204 ]]
+    [[ "$(sqlite3 "$data_dir/panel.db" "SELECT completed FROM instance_deletions WHERE instance_id='$world_id';")" == 1 ]]
+  done
+  [[ "$(docker run --rm --network none --volume "$template_volume:/game:ro" alpine:3.20 sha256sum /game/StardewValley)" == "$source_hash" ]]
+  echo "candidate world E2E: migrated creation, rename, routing, deletion, idempotency, ID monotonicity and template preservation passed"
+)
+
 assert_upgraded_mod_update_check() {
   local instance_dir="$data_dir/instances/stardew"
   local mod_dir="$instance_dir/.local-container/mods/ContentPatcher"
@@ -1913,6 +2004,7 @@ if [[ "$(docker inspect "$game_container" | jq -r '.[0].Id')" != "$game_id_befor
   echo "candidate upgrade E2E: legacy Steam invite replay changed the non-target game resource" >&2
   exit 1
 fi
+assert_upgraded_world_management
 assert_upgraded_mod_update_check
 assert_upgraded_legacy_junimo_repair
 assert_upgraded_stopped_compose_save_import_submission

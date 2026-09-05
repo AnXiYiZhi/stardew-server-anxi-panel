@@ -15,6 +15,7 @@ import (
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo"
+	sharedsteamcmd "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/steamcmd"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/updatecheck"
@@ -67,10 +68,12 @@ func main() {
 	dockerClient := paneldocker.NewClient(paneldocker.Options{Logger: logger})
 	jobManager := jobs.NewManager(store, logger)
 	driverRegistry := registry.New()
+	steamDownloads := sharedsteamcmd.NewManager(cfg.DataDir, cfg.ComposeProject)
 	stardewDriver := stardew_junimo.NewWithOptions(dockerClient, logger, jobManager, store, stardew_junimo.DriverOptions{
 		PanelVersion:     cfg.Version,
 		ContainerDataDir: cfg.DataDir,
 		HostDataDir:      cfg.HostDataDir,
+		SteamDownloads:   steamDownloads,
 	})
 	if err := driverRegistry.Register(stardewDriver); err != nil {
 		logger.Error("failed to register stardew driver", "error", err)
@@ -85,11 +88,41 @@ func main() {
 		logger.Error("failed to list instances for runtime update recovery", "error", err)
 		os.Exit(1)
 	}
+	var installationTemplate registry.Instance
+	// Recover owned creation resources before bootstrap can prepare, start or
+	// upgrade either side of an interrupted copy.
+	for _, instance := range instances {
+		if instance.DriverID != stardewDriver.ID() {
+			continue
+		}
+		_, err := stardewDriver.RecoverInstanceProvision(ctx, registry.Instance{ID: instance.ID, DriverID: instance.DriverID, DataDir: instance.DataDir, State: instance.State, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload})
+		if err != nil {
+			logger.Error("failed to recover instance creation", "instance", instance.ID, "error", err)
+		}
+	}
+	instances, err = store.ListInstances(ctx)
+	if err != nil {
+		logger.Error("failed to reload instances after creation recovery", "error", err)
+		os.Exit(1)
+	}
+	for _, instance := range instances {
+		if instance.ID == cfg.DefaultInstanceID && instance.DriverID == stardewDriver.ID() {
+			installationTemplate = registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}
+			break
+		}
+	}
 	for _, instance := range instances {
 		if instance.DriverID != stardewDriver.ID() {
 			continue
 		}
 		registryInstance := registry.Instance{ID: instance.ID, DriverID: instance.DriverID, Name: instance.Name, DataDir: instance.DataDir, State: instance.State, StateMessage: instance.StateMessage.String, DriverPhase: instance.DriverPhase, DriverPayload: instance.DriverPayload, CreatedAt: instance.CreatedAt, UpdatedAt: instance.UpdatedAt}
+		if installationTemplate.ID != "" && registryInstance.ID != installationTemplate.ID {
+			if changed, err := stardewDriver.ConvergeProvisionedInstanceTemplate(ctx, installationTemplate, registryInstance); err != nil {
+				logger.Warn("failed to converge provisioned instance installation template", "instance", instance.ID, "error", err)
+			} else if changed {
+				logger.Info("converged provisioned instance installation template", "instance", instance.ID, "template", installationTemplate.ID)
+			}
+		}
 		if err := stardewDriver.RecoverInterruptedSteamInviteAuthorization(ctx, registryInstance); err != nil {
 			logger.Error("failed to recover interrupted Steam invite authorization", "instance", instance.ID, "error", err)
 		}

@@ -62,6 +62,45 @@ func TestImportJournalIdempotentAndSensitiveIDNotPersisted(t *testing.T) {
 	}
 }
 
+func TestImportJournalConcurrentReadAndPublish(t *testing.T) {
+	dir := t.TempDir()
+	op := "00112233445566778899aabbccddeeff"
+	journal, err := CreateImportJournal(dir, testImportRequest(dir, op, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan error, 5)
+	start := make(chan struct{})
+	for worker := 0; worker < 5; worker++ {
+		go func(writer bool) {
+			<-start
+			for n := 0; n < 100; n++ {
+				var err error
+				if writer {
+					err = WriteImportJournal(dir, journal)
+				} else {
+					var current ImportJournal
+					current, err = LoadImportJournal(dir, op)
+					if err == nil && (current.OperationID != op || current.SaveName != journal.SaveName) {
+						err = errors.New("concurrent reader observed a different journal")
+					}
+				}
+				if err != nil {
+					results <- err
+					return
+				}
+			}
+			results <- nil
+		}(worker == 0)
+	}
+	close(start)
+	for worker := 0; worker < 5; worker++ {
+		if err := <-results; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 func TestImportJobBindingFailurePreventsRunnerStart(t *testing.T) {
 	dataDir := t.TempDir()
 	op := "06112233445566778899aabbccddeeff"

@@ -4,16 +4,16 @@
 
 ## 项目目标
 
-当前目标是基于 JunimoServer 构建 Stardew Valley 专用服务器 Web 管理面板，让用户通过浏览器完成安装、Steam 认证、启动停止、邀请码查看、存档管理、Mod 管理、玩家信息、诊断和面板用户管理。
+当前目标是在已经完整工作的 Stardew Valley 专用服务器面板外建立可扩展的游戏入口：用户通过浏览器选择游戏与服务器实例，再进入安装、Steam 认证、启动停止、邀请码、存档、Mod、玩家、诊断和面板用户管理。
 
-长期目标是通用游戏开服面板，但当前产品形态必须保持单游戏直达：
+通用游戏开服面板已经进入前端第一阶段，当前产品形态为“多游戏入口、Stardew 单 driver 完整可用”：
 
 ```text
-当前：Single Game Mode
-打开面板 -> 初始化/登录 -> 直接进入 Stardew 面板
+当前：Multi Game Entry / Stardew Worlds
+打开面板 -> 初始化/登录 -> 游戏库 -> Stardew 世界（服务器实例）列表 -> 实例专属面板
 
-未来：Multi Game Mode
-打开面板 -> 总面板实例列表 -> 进入某个游戏专属面板
+后续：Multi Driver Management
+接入新的 GameDriver -> 为对应游戏提供真实安装、实例目录与实例创建契约
 ```
 
 内部代码仍按 `instances + driver_id + GameDriver` 设计，避免后续接入 Minecraft、DST、Terraria、Palworld 时返工。
@@ -43,7 +43,7 @@
 
 不可变候选 `33177568325`、自动 annotated tag workflow `33179940424` 与正式提升 `33179959858` 均成功；tag `v0.6.1` 指向上述 commit，三仓 `0.6.1/latest` 使用唯一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`。[GitHub Release v0.6.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.1)
 
-当前仓库已经围绕单实例 Stardew 面板形成完整闭环：
+当前仓库已经围绕 Stardew driver 与动态实例路由形成完整闭环：
 
 - 管理员初始化、登录、session、用户权限。
 - SQLite 迁移、jobs、job logs、instance state、审计日志。
@@ -54,7 +54,7 @@
 - 控制台 allowlist 命令与服务器喊话入口。
 - 健康检查、支持包导出、版本信息。
 - 面板正式版本检测，以及基于 Docker/Compose 自容器识别的独立 updater；管理员可全程在 Web 面板触发一键全栈升级，页面负责阶段展示、预期断线重连和结果恢复。Panel 重建包含 SQLite 一致性备份、三项健康验收和自动回滚；新 Panel 启动后会逐实例校验 Control 版本与 DLL hash，并以“通告、保存、整档备份、停服、更新、启动、SMAPI 实载验证”的受控事务完成运行栈同步。
-- Stardew 像素风前端 Shell、9 个路由和 UI 素材体系。
+- 中性游戏库 `/games`、Stardew 世界列表/全局安装入口，以及每个实例内保留的像素风 Shell、9 个路由和 UI 素材体系；DST、Minecraft 当前只做不可操作的未来入口。
 - 玩家信息读取、位置中文映射、邀请码刷新和单人菜单暂停相关修复。
 
 ## 文档入口

@@ -60,6 +60,12 @@ fi
 # They prevent a syntactically valid but incomplete proof from weakening a
 # matrix that was declared mandatory for a compatibility-changing release.
 case "$version" in
+  0.7.0)
+    if [[ "$previous_version" != "0.6.1" || -n "$oldest_version" ]]; then
+      echo "release matrix: 0.7.0 requires the approved 0.6.1 upgrade source" >&2
+      exit 1
+    fi
+    ;;
   0.6.0)
     if [[ "$previous_version" != "0.5.13" || "$oldest_version" != "0.3.2" ]]; then
       echo "release matrix: 0.6.0 requires previous 0.5.13 and affected oldest 0.3.2" >&2
@@ -75,7 +81,7 @@ case "$version" in
 esac
 
 IFS=. read -r _ _ version_patch <<<"$version"
-if ((require_oldest_for_zero_patch == 1)) && [[ "$version_patch" == 0 && -z "$oldest_version" ]]; then
+if ((require_oldest_for_zero_patch == 1)) && [[ "$version_patch" == 0 && -z "$oldest_version" && "$version" != 0.7.0 ]]; then
   echo "release matrix: an affected oldest version is required for an explicit zero-patch release" >&2
   exit 1
 fi

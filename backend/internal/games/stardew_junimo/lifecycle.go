@@ -170,6 +170,9 @@ func (d *Driver) Start(ctx context.Context, req registry.StartRequest) (*registr
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, req.Instance.ID); err != nil {
+		return nil, err
+	}
 	ld, ok := d.docker.(LifecycleDockerService)
 	if !ok {
 		return nil, fmt.Errorf("docker 服务不支持生命周期操作")
@@ -567,6 +570,9 @@ func (d *Driver) Stop(ctx context.Context, instance registry.Instance) error {
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := d.rejectActiveSaveImport(ctx, instance.ID, ""); err != nil {
 		return err
 	}
@@ -628,6 +634,9 @@ func (d *Driver) Restart(ctx context.Context, instance registry.Instance) error 
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := d.rejectActiveSaveImport(ctx, instance.ID, ""); err != nil {
 		return err
 	}
@@ -695,6 +704,9 @@ func (d *Driver) RestoreBackupWithRestart(ctx context.Context, instance registry
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return nil, err
+	}
 	if err := d.rejectActiveSaveImport(ctx, instance.ID, ""); err != nil {
 		return nil, err
 	}

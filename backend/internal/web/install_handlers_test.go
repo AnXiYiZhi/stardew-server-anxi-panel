@@ -472,6 +472,7 @@ func TestSteamAuthGuardInputPreservesInstalledLifecycleState(t *testing.T) {
 		}
 	}()
 	handler, store, dataDir, cleanup := newDockerTestHandlerWithStore(t, fakeDockerService{
+		steamAuthLines:   []string{"Enter Steam Guard code sent to example.com:"},
 		steamAuthGate:    releaseAuth,
 		removedByVolumes: removedByVolumes,
 		removedVolumes:   removedVolumes,
@@ -514,14 +515,14 @@ func TestSteamAuthGuardInputPreservesInstalledLifecycleState(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if instance.DriverPhase == "auth_method_required" {
+		if instance.DriverPhase == "steam_guard_required" {
 			if instance.State != storage.InstanceStateGameInstalled {
 				t.Fatalf("active invite authorization changed base state to %q", instance.State)
 			}
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for auth method phase; state=%s phase=%s", instance.State, instance.DriverPhase)
+			t.Fatalf("timed out waiting for guard code phase; state=%s phase=%s", instance.State, instance.DriverPhase)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -549,17 +550,17 @@ func TestSteamAuthGuardInputPreservesInstalledLifecycleState(t *testing.T) {
 
 	selected, _ := doJSON(t, handler, http.MethodPost, "/api/instances/stardew/steam-guard/input", map[string]string{
 		"jobId": startedPayload.JobID,
-		"input": "1",
+		"input": "ABCDE",
 	}, adminCookie)
 	if selected.Code != http.StatusOK {
-		t.Fatalf("select credential auth returned %d: %s", selected.Code, selected.Body.String())
+		t.Fatalf("submit guard code returned %d: %s", selected.Code, selected.Body.String())
 	}
 	instance, err := store.GetInstance(context.Background(), storage.DefaultInstanceID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if instance.State != storage.InstanceStateGameInstalled || instance.DriverPhase != "steam_auth_running" {
-		t.Fatalf("invite auth method update = state:%s phase:%s, want game_installed/steam_auth_running", instance.State, instance.DriverPhase)
+	if instance.State != storage.InstanceStateGameInstalled || instance.DriverPhase != "steam_guard_required" {
+		t.Fatalf("invite guard submission = state:%s phase:%s, want game_installed/steam_guard_required", instance.State, instance.DriverPhase)
 	}
 	releaseAuth <- struct{}{}
 	deadline = time.Now().Add(2 * time.Second)

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	paneldocker "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/docker"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/registry"
 	sjconfig "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/stardew_junimo/config"
+	sharedsteamcmd "github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/games/steamcmd"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/jobs"
 	"github.com/anxi-panel/stardew-server-anxi-panel/backend/internal/storage"
 )
@@ -122,6 +124,7 @@ type Driver struct {
 	panelVersion       string
 	containerDataDir   string
 	hostDataDir        string
+	steamDownloads     *sharedsteamcmd.Manager
 
 	// guardChans maps running install job ID → channel for Steam Guard input.
 	mu         sync.Mutex
@@ -148,6 +151,7 @@ type DriverOptions struct {
 	PanelVersion     string
 	ContainerDataDir string
 	HostDataDir      string
+	SteamDownloads   *sharedsteamcmd.Manager
 }
 
 // New creates a Driver.  jobs and store may be nil for tests that only use
@@ -170,6 +174,10 @@ func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.
 	if strings.TrimSpace(options.PanelVersion) != "" {
 		panelVersion = strings.TrimSpace(options.PanelVersion)
 	}
+	steamDownloads := options.SteamDownloads
+	if steamDownloads == nil && strings.TrimSpace(options.ContainerDataDir) != "" {
+		steamDownloads = sharedsteamcmd.NewManager(options.ContainerDataDir, "anxi-panel")
+	}
 	return &Driver{
 		docker:                           docker,
 		logger:                           logger,
@@ -178,6 +186,7 @@ func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.
 		panelVersion:                     panelVersion,
 		containerDataDir:                 strings.TrimSpace(options.ContainerDataDir),
 		hostDataDir:                      strings.TrimSpace(options.HostDataDir),
+		steamDownloads:                   steamDownloads,
 		guardChans:                       make(map[string]chan string),
 		inviteCodeCache:                  make(map[string]inviteCodeCacheEntry),
 		inviteCodeFlights:                make(map[string]*inviteCodeFlight),
@@ -197,11 +206,33 @@ func NewWithOptions(docker DockerService, logger *slog.Logger, jobManager *jobs.
 func (d *Driver) ID() string   { return DriverID }
 func (d *Driver) Name() string { return DriverName }
 
+// DirectConnectConfig returns the player-facing UDP port owned by this
+// instance. It intentionally reads the same .env field used by Compose so
+// multi-instance callers never need to guess or hard-code a shared port.
+func (d *Driver) DirectConnectConfig(_ context.Context, instance registry.Instance) (registry.DirectConnectConfig, error) {
+	fields, err := sjconfig.ReadEnvFile(filepath.Join(instance.DataDir, ".env"))
+	if err != nil {
+		return registry.DirectConnectConfig{}, err
+	}
+	value := strings.TrimSpace(fields["GAME_PORT"])
+	if value == "" {
+		value = sjconfig.DefaultGamePort
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return registry.DirectConnectConfig{}, fmt.Errorf("invalid GAME_PORT %q", value)
+	}
+	return registry.DirectConnectConfig{GamePort: port, Protocol: "udp"}, nil
+}
+
 // PrepareFarmMods serializes the transient new-game Mod preparation with
 // lifecycle/runtime update operations. It never creates a save or starts one.
 func (d *Driver) PrepareFarmMods(ctx context.Context, instance registry.Instance, farmTypeID string) (NewGameModSelection, error) {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return NewGameModSelection{}, err
+	}
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return NewGameModSelection{}, err
 	}
@@ -231,6 +262,13 @@ func (d *Driver) CommandOutcome(ctx context.Context, instance registry.Instance,
 func (d *Driver) Prepare(ctx context.Context, instance registry.Instance) error {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	return d.prepareLocked(ctx, instance)
+}
+
+func (d *Driver) prepareLocked(ctx context.Context, instance registry.Instance) error {
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 	if instance.DataDir == "" {
 		return errors.New("instance data dir is empty")
 	}
@@ -424,17 +462,14 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	if d.store == nil {
 		return nil, fmt.Errorf("driver: state store not configured")
 	}
-	if req.SteamUsername == "" {
-		return nil, fmt.Errorf("Steam 用户名不能为空")
-	}
-	if req.SteamPassword == "" {
-		return nil, fmt.Errorf("Steam 密码不能为空")
-	}
 	if !req.AuthLoginOnly && req.VNCPassword == "" {
 		return nil, fmt.Errorf("VNC 密码不能为空")
 	}
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, req.Instance.ID); err != nil {
+		return nil, err
+	}
 	if err := rejectUnfinishedNewGameOwner(req.Instance.DataDir); err != nil {
 		return nil, err
 	}
@@ -444,11 +479,12 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	if err := d.rejectActiveRuntimeUpdate(ctx, req.Instance.ID); err != nil {
 		return nil, err
 	}
-	activeInstallJobs, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
-		TargetType: "instance",
-		TargetID:   req.Instance.ID,
-		Types:      []string{"stardew_install", "stardew_steam_auth"},
-	})
+	activeFilter := storage.ListActiveJobsFilter{TargetType: "instance", Types: []string{"stardew_install"}}
+	if req.AuthLoginOnly {
+		activeFilter.TargetID = req.Instance.ID
+		activeFilter.Types = []string{"stardew_steam_auth"}
+	}
+	activeInstallJobs, err := d.jobs.Active(ctx, activeFilter)
 	if err != nil {
 		return nil, fmt.Errorf("list active install and Steam authorization jobs: %w", err)
 	}
@@ -460,6 +496,26 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	instance, err := d.store.GetInstance(ctx, req.Instance.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	username := strings.TrimSpace(req.SteamUsername)
+	password := req.SteamPassword
+	if username == "" && password == "" {
+		storedCredentials, found, credentialErr := d.sharedSteamCredentials(makeRegistryInstanceFromStorage(instance))
+		if credentialErr != nil {
+			return nil, fmt.Errorf("load shared Steam credentials: %w", credentialErr)
+		}
+		if found {
+			username, password = storedCredentials.Username, storedCredentials.Password
+		}
+	}
+	if username == "" {
+		return nil, fmt.Errorf("Steam 用户名不能为空")
+	}
+	if password == "" {
+		return nil, fmt.Errorf("Steam 密码不能为空")
+	}
+	if err := d.saveSharedSteamCredentials(makeRegistryInstanceFromStorage(instance), username, password); err != nil {
+		return nil, fmt.Errorf("save shared Steam credentials: %w", err)
 	}
 	if req.AuthLoginOnly &&
 		sjconfig.SteamInviteAuthState(instance.DataDir) == sjconfig.SteamInviteAuthStateCleanupPending {
@@ -483,16 +539,16 @@ func (d *Driver) Install(ctx context.Context, req registry.InstallRequest) (*reg
 	// SteamCMD is the primary and only game-download path. steam-auth is an
 	// optional invite-code authorization flow selected explicitly through
 	// AuthLoginOnly and must never be part of a normal install/repair.
-	// An invite-only authorization still needs an explicit method selection so
-	// the existing QR / account+Guard interaction remains reachable. The saved
-	// credentials are available on the runner regardless of this reuse flag.
-	reuse := req.AutoDownload || req.SteamCMDRetry
+	// Invite-only authorization always uses the saved account/password path.
+	// Reuse here skips the obsolete account-vs-QR menu; ForceReauth still clears
+	// the old invite session before starting a fresh credential login.
+	reuse := req.AutoDownload || req.SteamCMDRetry || req.AuthLoginOnly
 
 	runner := &installRunner{
 		driver:      d,
 		instance:    instance,
-		username:    req.SteamUsername,
-		password:    req.SteamPassword,
+		username:    username,
+		password:    password,
 		vncPass:     req.VNCPassword,
 		imageTag:    imageTag,
 		reuse:       reuse,
@@ -617,14 +673,26 @@ func (d *Driver) SendSteamGuardInput(jobID string, input string) error {
 //   - "running"/"starting" when the Docker container is no longer actually up → "stopped"
 //   - installed states when the expected local install directory is still empty → "error"
 func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) (storage.Instance, error) {
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return instance, err
+	}
 	if d.store == nil {
 		return instance, nil
+	}
+	if recoverableInstalledFilesError(instance) {
+		return d.reconcileRestoredGameFiles(ctx, instance)
 	}
 
 	// Reconcile the persisted state against Docker's runtime truth whenever we can.
 	if d.docker != nil {
 		ps, err := d.docker.ComposePs(ctx, instance.DataDir)
 		if err == nil {
+			// A lifecycle runner owns the entire starting transition, including
+			// the preparation window before Compose has created the server. Do
+			// not let a read-side reconcile turn that owned state into stopped.
+			if instance.State == storage.InstanceStateStarting && d.activeLifecycleOwner(ctx, instance.ID) {
+				return instance, nil
+			}
 			if serverServiceUp(ps.Services) {
 				// A save-import maintenance runtime is intentionally kept in the
 				// persisted stopped state. It must never be promoted to normal
@@ -696,6 +764,10 @@ func (d *Driver) ReconcileState(ctx context.Context, instance storage.Instance) 
 
 	// The game files live in a named Docker volume, not the instance directory.
 	// Never turn a transient Docker problem into a false "files missing" error.
+	// Read-side polling reuses recent evidence; Start and Install still verify directly.
+	if evidence, cached := d.cachedInstallationEvidence(instance.ID); cached && evidence.State == "ok" {
+		return instance, nil
+	}
 	imageRef := gameInstallImage(instance.DataDir)
 	if _, err := d.docker.ImageInspect(ctx, instance.DataDir, imageRef); err != nil {
 		d.logger.Warn("skip installed-file reconciliation because server image is unavailable", "instance", instance.ID, "error", err)
@@ -745,6 +817,9 @@ func (d *Driver) EnsureMutationOwnershipAvailable(ctx context.Context, instance 
 func (d *Driver) WithMutationOwnership(ctx context.Context, instance registry.Instance, mutate func() error) error {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return err
 	}
@@ -766,6 +841,9 @@ func (d *Driver) WithMutationOwnership(ctx context.Context, instance registry.In
 func (d *Driver) WithOfflineMutation(ctx context.Context, instance registry.Instance, mutate func() error) error {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return err
 	}
@@ -798,10 +876,13 @@ func (d *Driver) WithOfflineMutation(ctx context.Context, instance registry.Inst
 // lifecycle/new-game ownership. A Web-side check followed by a direct file
 // write would leave a TOCTOU window in which Start could reserve and snapshot
 // the old file between those two operations.
-func (d *Driver) UpdateServerRuntimeSettings(_ context.Context, instance registry.Instance, settings ServerRuntimeSettings) (ServerRuntimeSettingsUpdateResult, error) {
+func (d *Driver) UpdateServerRuntimeSettings(ctx context.Context, instance registry.Instance, settings ServerRuntimeSettings) (ServerRuntimeSettingsUpdateResult, error) {
 	var result ServerRuntimeSettingsUpdateResult
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return result, err
+	}
 	if err := rejectUnfinishedNewGameOwner(instance.DataDir); err != nil {
 		return result, err
 	}

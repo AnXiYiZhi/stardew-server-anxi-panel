@@ -40,6 +40,7 @@ type jobResponse struct {
 	ID           string  `json:"id"`
 	Type         string  `json:"type"`
 	DisplayName  *string `json:"displayName,omitempty"`
+	Operation    *string `json:"operation,omitempty"`
 	Status       string  `json:"status"`
 	TargetType   string  `json:"targetType"`
 	TargetID     string  `json:"targetId"`
@@ -483,6 +484,7 @@ func makeJobResponse(job storage.Job) jobResponse {
 		ID:           job.ID,
 		Type:         job.Type,
 		DisplayName:  nullableString(job.DisplayName),
+		Operation:    safeLifecycleJobOperation(job),
 		Status:       job.Status,
 		TargetType:   job.TargetType,
 		TargetID:     job.TargetID,
@@ -492,6 +494,25 @@ func makeJobResponse(job storage.Job) jobResponse {
 		FinishedAt:   nullableString(job.FinishedAt),
 		ErrorMessage: nullableString(job.ErrorMessage),
 		UpdatedAt:    job.UpdatedAt,
+	}
+}
+
+func safeLifecycleJobOperation(job storage.Job) *string {
+	if job.Type != "stardew_lifecycle" || !job.Payload.Valid {
+		return nil
+	}
+	var payload struct {
+		Operation string `json:"operation"`
+	}
+	if json.Unmarshal([]byte(job.Payload.String), &payload) != nil {
+		return nil
+	}
+	switch payload.Operation {
+	case "start", "stop", "restart", "restore_restart", "new_game", "new_game_rollback":
+		operation := payload.Operation
+		return &operation
+	default:
+		return nil
 	}
 }
 

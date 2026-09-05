@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -118,6 +119,40 @@ func TestJobsAPIIncludesDisplayName(t *testing.T) {
 	}
 	if payload.Jobs[0].DisplayName == nil || *payload.Jobs[0].DisplayName != "Farm Type Manager (FTM) · mod_remote_install" {
 		t.Fatalf("displayName = %#v, want mod name", payload.Jobs[0].DisplayName)
+	}
+}
+
+func TestJobResponseExposesOnlySafeLifecycleOperation(t *testing.T) {
+	response := makeJobResponse(storage.Job{
+		Type:    "stardew_lifecycle",
+		Payload: sql.NullString{String: `{"operation":"stop","secret":"must-not-leak"}`, Valid: true},
+	})
+	if response.Operation == nil || *response.Operation != "stop" {
+		t.Fatalf("operation = %#v, want stop", response.Operation)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var public map[string]any
+	if err := json.Unmarshal(encoded, &public); err != nil {
+		t.Fatal(err)
+	}
+	if _, exposed := public["payload"]; exposed {
+		t.Fatalf("job payload leaked in response: %s", encoded)
+	}
+	if operation, ok := public["operation"].(string); !ok || operation != "stop" {
+		t.Fatalf("public operation = %#v, want stop", public["operation"])
+	}
+
+	for _, job := range []storage.Job{
+		{Type: "stardew_lifecycle", Payload: sql.NullString{String: `{"operation":"unknown"}`, Valid: true}},
+		{Type: "stardew_lifecycle", Payload: sql.NullString{String: `{`, Valid: true}},
+		{Type: "mod_remote_install", Payload: sql.NullString{String: `{"operation":"stop"}`, Valid: true}},
+	} {
+		if operation := makeJobResponse(job).Operation; operation != nil {
+			t.Fatalf("unsafe operation was exposed for %+v: %q", job, *operation)
+		}
 	}
 }
 

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { normalizeInstanceId } from '../src/instance-id.ts'
-import { calcSteamDownloadTaskProgress, extractSMAPIArchiveProgress, installFailureDisplayMessage } from '../src/games/stardew/install-helpers.ts'
+import { calcSteamDownloadTaskProgress, extractPullProgress, extractSMAPIArchiveProgress, installFailureDisplayMessage } from '../src/games/stardew/install-helpers.ts'
 import { canonicalInstallJobs, canonicalInstallPageJobs, installJobForDisplay, latestInstallLogsFirst, logsDescribeActiveInstall, reconcileJobSnapshots } from '../src/games/stardew/install-state.ts'
+import { gameInstallProgressPresentation, gameInstallStepProgressLabel } from '../src/games/stardew/install-progress-presentation.ts'
 import { classifyInstallationState } from '../src/games/stardew/installation-state.ts'
 import { routeToPath } from '../src/games/stardew/stardew-routes.ts'
 import {
@@ -19,6 +20,10 @@ import type { InstallationDiagnostic, InstanceState, Job, JobLog, JobStatus } fr
 
 const installPageSource = readFileSync(
   new URL('../src/games/stardew/pages/InstallPage.tsx', import.meta.url),
+  'utf8',
+).replace(/\r\n?/g, '\n')
+const gameInstallRailSource = readFileSync(
+  new URL('../src/games/GameInstallRail.tsx', import.meta.url),
   'utf8',
 ).replace(/\r\n?/g, '\n')
 const diagnosticsPageSource = readFileSync(
@@ -45,6 +50,13 @@ assert.match(installPageSource, /\{!editingSteamCredentials \? \(\s*<div classNa
 assert.match(apiSource, /\/steam-credentials`, \{\s*method: 'PUT',\s*body,/)
 assert.doesNotMatch(apiSource, /forceReauth/)
 assert.doesNotMatch(installPageSource, /forceReauth|setForceReauth/)
+assert.doesNotMatch(installPageSource, /from 'qrcode'|打开扫码窗口|>扫码登录</)
+assert.match(installPageSource, /const automaticChoice = effectivePhase === 'auth_method_required'/)
+assert.match(installPageSource, /handleAuthMethodSelect\('1'\)/)
+assert.doesNotMatch(installPageSource, /选择 Steam 登录方式|选择 Steam Guard 验证方式|SteamCMD 需要重新授权<\/div>/)
+assert.match(gameInstallRailSource, /sourceInstallation\.reason === 'required_files_missing'/)
+assert.match(gameInstallRailSource, /sourceState\?\.driverPhase === 'install_verification_failed'/)
+assert.match(gameInstallRailSource, /liveState\?\.installationDiagnostic\?\.requiredFiles === 'missing'/)
 assert.match(installPageSource, /启用 Steam 邀请码（需要再次登录授权）/)
 assert.match(installPageSource, /\{isAdmin \? \(\s*<>\s*<button[\s\S]*?启用 Steam 邀请码/)
 assert.doesNotMatch(installPageSource, /只会检查 Auth 镜像并启动一次性登录容器；session 保存后容器立即停止/)
@@ -692,3 +704,124 @@ assert.equal(extractSMAPIArchiveProgress([
 assert.equal(extractSMAPIArchiveProgress([
   jobLog(5, '[smapi:download:progress:500:1000:1:1:false]'),
 ], 'stardew_start'), null)
+
+assert.deepEqual(extractPullProgress([
+  jobLog(6, '[pull:progress:1:4]'),
+  jobLog(7, '[pull:progress:3:4]'),
+]), { done: 3, total: 4, percent: 75 })
+assert.equal(extractPullProgress([jobLog(8, '[pull:progress:5:4]')]), null)
+
+const idleInlineInstall = gameInstallProgressPresentation(instanceState('uninitialized'), null, [])
+assert.equal(idleInlineInstall.mode, 'idle')
+assert.equal(idleInlineInstall.percent, null)
+
+const activeInlineInstallJob = job('job_inline_install', 'running', '2026-08-18T00:00:00.000Z')
+const authorizationInlineInstall = gameInstallProgressPresentation(
+  instanceState('installing', 'steam_guard_required'),
+  activeInlineInstallJob,
+  [],
+)
+assert.equal(authorizationInlineInstall.mode, 'active')
+assert.equal(authorizationInlineInstall.stepIndex, 2)
+assert.equal(authorizationInlineInstall.percent, null, 'indeterminate phases must not invent a percentage')
+
+const downloadingInlineInstall = gameInstallProgressPresentation(
+  instanceState('installing', 'game_downloading'),
+  activeInlineInstallJob,
+  [
+    jobLog(9, '[steam] Downloading app 413150'),
+    jobLog(10, '[steam] Progress: 42/100 files - 4.2 GB/10 GB (42%)'),
+  ],
+)
+assert.equal(downloadingInlineInstall.mode, 'active')
+assert.equal(downloadingInlineInstall.stepIndex, 3)
+assert.equal(downloadingInlineInstall.percent, 42)
+assert.equal(downloadingInlineInstall.approximate, false)
+assert.equal(downloadingInlineInstall.overallPercent, 50, '42% of the game download is not 42% of the full installation')
+assert.equal(idleInlineInstall.overallPercent, 0)
+assert.equal(authorizationInlineInstall.overallPercent, 20, 'waiting for Guard stays at a fixed overall milestone')
+
+const overallFor = (phase: string, logs: JobLog[] = []) => gameInstallProgressPresentation(
+  instanceState('installing', phase), activeInlineInstallJob, logs,
+).overallPercent
+assert.equal(overallFor('pull_running', [jobLog(11, '[pull:progress:1:1]')]), 15)
+assert.equal(overallFor('steamcmd_image_pulling', [jobLog(12, '[pull:progress:1:1]')]), 20)
+assert.equal(overallFor('steamcmd_downloading', [
+  jobLog(13, '[steamcmd] [100%] Downloading update (100 of 100 KB)...'),
+]), 20, 'SteamCMD self-update must not be counted as game download completion')
+assert.equal(overallFor('steamcmd_downloading'), 20, 'pre-login phase stays at the authorization milestone')
+assert.equal(overallFor('steamcmd_guard_mobile_required'), 20)
+assert.equal(overallFor('steamcmd_downloading', [
+  jobLog(14, "[steamcmd] Success! App '413150' fully installed."),
+]), 85, 'game completion reserves progress for SDK and SMAPI')
+assert.equal(overallFor('steamcmd_downloading', [
+  jobLog(14, "[steamcmd] Success! App '413150' fully installed."),
+  jobLog(15, "[steamcmd] Success! App '1007' fully installed."),
+]), 90)
+assert.equal(overallFor('smapi_installing', [jobLog(16, '[smapi:download:progress:100:100:1:1:true]')]), 99,
+  'even a complete SMAPI archive must leave room for installation verification')
+assert.equal(overallFor('preparing'), 0, 'a new job resets overall progress')
+assert.equal(overallFor('game_installed'), 99, 'an active job must not show overall completion')
+
+const completeInlineInstall = gameInstallProgressPresentation(instanceState('game_installed'), null, [])
+assert.equal(completeInlineInstall.mode, 'complete')
+assert.equal(completeInlineInstall.percent, 100)
+assert.equal(completeInlineInstall.overallPercent, 100)
+
+const missingRuntimeInlineInstall = gameInstallProgressPresentation(instanceState('stopped'), null, [], true)
+assert.equal(missingRuntimeInlineInstall.mode, 'failed')
+assert.equal(missingRuntimeInlineInstall.stepIndex, 3)
+assert.equal(missingRuntimeInlineInstall.steps[3], 'error')
+assert.equal(missingRuntimeInlineInstall.detail, '游戏运行文件不完整，请重新安装或修复。')
+assert.equal(missingRuntimeInlineInstall.overallPercent, 0, 'a missing runtime must not inherit a stale 100%')
+
+const failedInlineJob = { ...job('job_inline_failed', 'failed', '2026-08-18T00:01:00.000Z'), errorMessage: '下载校验失败' }
+const failedInlineInstall = gameInstallProgressPresentation(
+  instanceState('error', 'download_failed'),
+  failedInlineJob,
+  [],
+)
+assert.equal(failedInlineInstall.mode, 'failed')
+assert.equal(failedInlineInstall.steps[3], 'error')
+assert.equal(failedInlineInstall.detail, '下载校验失败')
+const badPasswordJob = { ...failedInlineJob, errorMessage: 'SteamCMD install exited with code 5' }
+const badPasswordLog = { ...jobLog(21, '[steamcmd] Logging in user [REDACTED]...ERROR (Invalid Password)'), jobId: badPasswordJob.id }
+assert.equal(gameInstallProgressPresentation(instanceState('error', 'credentials_required'), badPasswordJob, [badPasswordLog]).detail,
+  'Steam 账号或密码错误，请修改后重试。')
+assert.equal(gameInstallProgressPresentation(instanceState('error', 'steamcmd_failed'), badPasswordJob, [{ ...badPasswordLog, jobId: 'older-job' }]).detail,
+  'SteamCMD install exited with code 5', 'another job must not supply the password diagnosis')
+assert.equal(gameInstallProgressPresentation({ ...instanceState('error', 'credentials_required'), stateMessage: 'Steam 验证码不正确，请重新验证。' }, badPasswordJob, []).detail,
+  'Steam 验证码不正确，请重新验证。', 'preserve the credential diagnosis instead of generic exit code')
+assert.equal(gameInstallStepProgressLabel(failedInlineInstall), '请重试')
+assert.equal(gameInstallStepProgressLabel(authorizationInlineInstall), '进行中')
+assert.equal(gameInstallStepProgressLabel(completeInlineInstall), '100%')
+assert.equal(gameInstallStepProgressLabel(idleInlineInstall), '等待安装')
+const timedOutInstall = gameInstallProgressPresentation(
+  instanceState('installing', 'steamcmd_guard_mobile_required'),
+  { ...failedInlineJob, errorMessage: 'SteamCMD install authorization confirmation timed out' },
+  [],
+)
+assert.equal(timedOutInstall.mode, 'failed', 'terminal job must override stale authorization state')
+assert.equal(timedOutInstall.detail, 'Steam 登录授权确认超时，请重新安装并及时完成 Steam 验证。')
+assert.equal(gameInstallStepProgressLabel(timedOutInstall), '请重试')
+assert.equal(timedOutInstall.steps[2], 'error')
+assert.equal(gameInstallStepProgressLabel({ ...failedInlineInstall, percent: 42 }), '请重试')
+assert.equal(gameInstallProgressPresentation(
+  instanceState('game_installed'), { ...failedInlineJob, status: 'canceled' }, [],
+).mode, 'failed', 'canceled jobs must not be mistaken for completion')
+
+// Invite authorization keeps the installed game state throughout Guard. Only
+// the authorization job can prove completion, including after a page reload.
+for (const state of ['game_installed', 'stopped', 'ready_to_start']) {
+  for (const phase of ['steam_guard_required', 'steam_guard_mobile_required', 'auth_method_required']) {
+    const authJob = { ...job('auth_second_world', 'running', '2026-09-05T00:00:00Z'), type: 'stardew_steam_auth', targetId: 'farm-02' }
+    const active = gameInstallProgressPresentation(instanceState(state, phase), authJob, [])
+    assert.equal(active.mode, 'active', `${state}/${phase} must keep authorization visible`)
+    assert.equal(active.percent, null)
+    assert.notEqual(active.overallPercent, 100)
+    assert.equal(gameInstallProgressPresentation(instanceState(state, phase), { ...authJob, status: 'succeeded' }, []).mode, 'complete')
+    for (const status of ['failed', 'canceled'] as const) {
+      assert.equal(gameInstallProgressPresentation(instanceState(state, phase), { ...authJob, status }, []).mode, 'failed')
+    }
+  }
+}

@@ -18,11 +18,15 @@ var (
 )
 
 // UpdateSteamCredentials linearizes the final stopped/busy checks and the env
-// write with lifecycle and install reservations. It deliberately changes only
-// the shared account fields, preserving SteamCMD cache and SteamAuth session.
+// write with lifecycle and install reservations. The Panel-wide credential
+// store is authoritative; the current instance .env is kept as a compatibility
+// shadow for the optional instance-level Steam invite service.
 func (d *Driver) UpdateSteamCredentials(ctx context.Context, instance registry.Instance, username, password string) error {
 	d.runtimeUpdateMu.Lock()
 	defer d.runtimeUpdateMu.Unlock()
+	if err := d.RejectInstanceDeletion(ctx, instance.ID); err != nil {
+		return err
+	}
 
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
@@ -53,7 +57,6 @@ func (d *Driver) UpdateSteamCredentials(ctx context.Context, instance registry.I
 	}
 	active, err := d.jobs.Active(ctx, storage.ListActiveJobsFilter{
 		TargetType: "instance",
-		TargetID:   instance.ID,
 		Types:      []string{"stardew_install", "stardew_steam_auth"},
 	})
 	if err != nil {
@@ -71,6 +74,9 @@ func (d *Driver) UpdateSteamCredentials(ctx context.Context, instance registry.I
 	}
 	if serverServiceUp(ps.Services) {
 		return &NewGameOwnerError{Code: "server_running", Message: "服务器容器仍在运行，请先停止服务器再修改 Steam 凭据"}
+	}
+	if err := d.saveSharedSteamCredentials(instance, username, password); err != nil {
+		return err
 	}
 	return sjconfig.UpdateEnvFile(filepath.Join(instance.DataDir, ".env"), map[string]string{
 		"STEAM_USERNAME": username,

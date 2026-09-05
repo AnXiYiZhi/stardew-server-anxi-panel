@@ -86,6 +86,7 @@ export type Job = {
   id: string
   type: string
   displayName?: string | null
+  operation?: string | null
   status: JobStatus
   targetType: string
   targetId: string
@@ -146,6 +147,8 @@ export type JobLogsResponse = {
 }
 
 export type Instance = {
+	/** Server-configured identity; omitted by older servers means protected. */
+	isDefault?: boolean
   id: string
   driverId: string
   driverName?: string
@@ -159,6 +162,34 @@ export type Instance = {
 
 export type InstancesResponse = {
   instances: Instance[]
+}
+
+export type CreateInstanceRequest = {
+  name: string
+  gameId: 'stardew'
+}
+
+export type CreateInstanceResponse = {
+  instance: Instance
+  gameId: 'stardew'
+  ports: {
+    gamePort: number
+    queryPort: number
+    vncPort: number
+    apiPort: number
+    protocol: string
+  }
+}
+
+export type GameInstallation = {
+  gameId: 'stardew'
+  driverId: string
+  installationTargetId: string
+  installed: boolean
+  requiredFiles: string
+  credentialsConfigured: boolean
+  authorizationCached: boolean
+  instance: Instance
 }
 
 export type JunimoUpdateStatus =
@@ -930,6 +961,8 @@ export type PublicIPResult = {
   checkedAt: string
   source?: string
   cached: boolean
+  gamePort?: number
+  protocol?: string
 }
 
 export type LifecycleJobResponse = {

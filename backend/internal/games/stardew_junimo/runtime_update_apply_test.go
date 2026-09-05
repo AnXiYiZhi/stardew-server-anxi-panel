@@ -1043,6 +1043,36 @@ func TestReadRequiredRuntimeStatusResolvesHistoricalFailure(t *testing.T) {
 	}
 }
 
+func TestRequiredRuntimeUpdateResumesAfterCurrentAuthImageBecomesAvailable(t *testing.T) {
+	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
+	driver.panelVersion = "0.3.5"
+	manifest, err := sjconfig.BuiltInRuntimeStackManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(runtimeUpdateDryRunStatusPath(instance.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRequiredRuntimeUpdateStatus(instance.DataDir, RequiredRuntimeUpdateStatus{
+		SchemaVersion: 1, PanelVersion: driver.panelVersion, StackVersion: manifest.StackVersion,
+		Phase: requiredRuntimePhaseFailed, ErrorCode: "current_auth_digest_unavailable",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	driver.StartRequiredRuntimeUpdate(context.Background(), instance)
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		status, readErr := readRequiredRuntimeUpdateStatus(instance.DataDir)
+		if readErr == nil && status.Phase == requiredRuntimePhaseSucceeded {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	status, _ := readRequiredRuntimeUpdateStatus(instance.DataDir)
+	t.Fatalf("current-auth digest failure did not resume after image recovery: %#v", status)
+}
+
 func TestRequiredRuntimeUpdateResumesAfterPanelContextCancellation(t *testing.T) {
 	driver, _, instance, _ := setupRuntimeApplyDriver(t, storage.InstanceStateStopped)
 	driver.panelVersion = "0.3.5"

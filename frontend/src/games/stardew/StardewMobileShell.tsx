@@ -31,8 +31,10 @@ type MobileTabKey = 'overview' | 'server' | 'players' | 'mods' | 'saves' | 'more
 
 type StardewMobileShellProps = {
   user: CurrentUser
+  instanceId: string
   onLogout?: () => void
   onUseDesktop?: () => void
+  onBackToWorlds: () => void
 }
 
 const MOBILE_TABS: { key: MobileTabKey; label: string; icon: string }[] = [
@@ -60,8 +62,8 @@ function mobileStatusDotClass(state: string | undefined, loading: boolean): stri
   return 'sd-dot sd-dot-yellow'
 }
 
-export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobileShellProps) {
-  const dashboardData = useStardewDashboardData()
+export function StardewMobileShell({ user, instanceId, onLogout, onUseDesktop, onBackToWorlds }: StardewMobileShellProps) {
+  const dashboardData = useStardewDashboardData(instanceId)
   const lifecycleActions = useStardewLifecycleActions({
     instanceState: dashboardData.instanceState,
     dashboardData,
@@ -101,13 +103,24 @@ export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobi
   const updateSurface = panelUpdateSurface(dashboardData.updateStatus, dashboardData.updateApply, dashboardData.versionInfo)
 
   const useDesktopRoute = (route?: StardewRoute) => {
-    if (route) window.history.pushState({}, '', routeToPath(route))
+	if (route) {
+	  window.history.pushState({}, '', routeToPath(route, undefined, instanceId))
+	  if (route === 'install') window.dispatchEvent(new PopStateEvent('popstate'))
+	}
     onUseDesktop?.()
   }
 
   return (
     <div className="sd-mshell">
       <header className="sd-mshell-topbar">
+        <button
+          type="button"
+          className="sd-mshell-worlds"
+          onClick={onBackToWorlds}
+          aria-label="返回世界列表"
+        >
+          ← 世界
+        </button>
         <span className="sd-mshell-brand">Stardew Anxi Panel</span>
         <button
           type="button"
@@ -142,7 +155,12 @@ export function StardewMobileShell({ user, onLogout, onUseDesktop }: StardewMobi
             onPlayerAuthRestart={lifecycleActions.handleRestart}
           />
         ) : activeTab === 'players' ? (
-          <MobilePlayersPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
+          <MobilePlayersPage
+            user={user}
+            instanceId={instanceId}
+            instanceState={dashboardData.instanceState}
+            dashboardData={dashboardData}
+          />
         ) : activeTab === 'mods' ? (
           <MobileModsPage user={user} instanceState={dashboardData.instanceState} dashboardData={dashboardData} />
         ) : activeTab === 'saves' ? (

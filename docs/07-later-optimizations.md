@@ -1,5 +1,10 @@
 # 后期优化文档
 
+## Windows 存档导入事务回归稳定性（已修复，待正式发布，2026-09-05）
+
+- Review 修复的辅助 Windows Web 全包测试中，既有 `TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction` 出现一次 journal 读取验证失败；五次定向复验中一次停在 staged、未形成预期 bootstrap/backup。没有改动此导入实现或放宽断言。日志在 `output/review-fixes-web.log` 和 `output/review-fixes-web-targeted.log`。
+- v0.7.0 排查在 Windows 20 次重复中再次复现；失败任务记录直接定位为 journal 原子 rename 与并发读句柄重叠导致 `Access is denied`。journal 读写现通过进程内读写锁协调，清理证据读取复用入口。修复后原用例 30 次通过（27.889s），新增并发读写测试 10 次通过（8.731s）。日志为 `output/v070-import-{repro,diagnostic,fixed}.log`；Linux 全量及正式升级继续按发布矩阵验证。
+
 ## STEAM-INVITE-ROLE-MIGRATION-1：直连角色与邀请码角色迁移工具（暂缓，2026-08-26）
 
 - `v0.6.0` 只把 Steam 邀请码改为显式按需启用，不处理“玩家先通过 LAN/IP 直连创建角色，之后启用 Steam 邀请码时原角色不可见”的身份映射差异，也不提供关闭/删除能力或角色迁移 UI。这不是本版升级迁移失败，不能通过清 SteamAuth session、SteamCMD cache 或重建存档规避。
@@ -388,11 +393,13 @@ backend/internal/web/restart_schedule_handlers.go
 
 ## 多游戏模式
 
-未来进入 Multi Game Mode 后：
+2026-09-01 第一阶段已经落地 Panel 级 Steam 下载管理器、星露谷游戏安装投影和 driver-owned 世界创建。后续继续扩展时：
 
 - 显示总面板实例列表。
 - 每个游戏有自己的后端 driver 和前端 game module。
-- 通用能力只包括用户、权限、任务、日志、诊断、备份入口。
+- 通用能力包括用户、权限、任务、日志、诊断、备份入口，以及确实跨游戏一致的 Steam 下载账号/设备缓存/短命执行器/下载互斥；每个 driver 仍必须提供自己的 App manifest、完整性检查、安装模板和实例运行契约。
+- 当前默认星露谷实例的已验证 game-data 卷兼任安装模板。只有出现明确的多版本、升级回滚或多游戏并发需求后，才设计独立不可变模板卷和版本/垃圾回收契约；不要把现有实例运行卷改成多个世界共享写入。
+- 当前 Steam 下载 gate 只协调一个 Panel 进程；多进程共享数据目录需要另行设计跨进程 lease、崩溃过期和凭据文件锁。
 - Stardew 专属 Steam Guard、邀请码、农场设置不能泄漏到其他游戏页面。
 
 ## UI 精修

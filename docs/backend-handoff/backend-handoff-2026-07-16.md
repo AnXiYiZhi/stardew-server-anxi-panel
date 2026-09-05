@@ -1,3 +1,158 @@
+# v0.7.0 首次导入 journal 并发修复（2026-09-05，未发布）
+
+- Windows 首次导入重复测试复现原子替换 journal 时 `Access is denied`，捕获到任务底层 rename 错误；此前 Linux 单次通过不能消除此问题。
+- `save_import_transaction.go` 为 journal 文件读取及发布使用进程内读写锁，避免 Windows 读句柄与 rename/chmod 重叠；不改变事务身份、恢复条件或磁盘格式。清理证据读取复用相同入口。此锁只协调本进程文件 I/O，不提供多进程事务支持。
+- 原失败用例修复后连续 30 次通过（27.889s）；新增 `TestImportJournalConcurrentReadAndPublish` 连续 10 次通过（8.731s），覆盖并发回读与完整发布。Web 用例保留失败任务原因诊断；Linux 全量回归正在执行，正式候选和升级验收尚未完成。
+- 下一步按 `docs/09-image-build.md` 的 v0.7.0 矩阵完成隔离功能、旧版 Web 升级与回滚，门禁成功前不发布。
+
+# Review 后端修复接手（2026-09-05，未发布）
+
+- 创建失败改为 token 归属清理；不会按世界名称删除同名旧卷。migration 016 记录创建两端和 token，driver 锁持有到复制/验证/发布结束，数据库挡住晚到的两端和全局任务。成功与 journal 删除原子提交；启动先恢复创建再进行其它维护。失败保留可重试状态，DELETE 继续同一归属清理。
+- 影响 `cmd/panel/main.go`、`internal/storage/instance_provisions*`、`internal/docker/instance_provision*`、`stardew_junimo/instance_provision*`、Prepare/删除/凭据入口与 `web/instance_handlers.go`；细节见 `docs/02-backend.md`。
+- 已验证事务门禁、源/目标占用、journal 各中断窗口、清理失败后重试、异主目录保护、成功世界不回滚；真实 Docker `PANEL_PROVISION_DOCKER_TEST=1 go test ./internal/docker -run TestInstanceProvisionDockerOwnership -count=1 -v` 通过（10.51s），源/旧卷哨兵保持完整，任务资源清理。
+- 后续不能用无 journal 的推断替代 token；不要在 journal 未结束时启动两端维护。原服务没有重启，部署时需要加载 migration 015/016；发布完整门禁和回归汇总见 `docs/09-image-build.md`。
+
+# WORLD-DELETE-1：长按彻底删除世界（2026-09-05，未发布）
+
+- 新增管理员 `DELETE /api/instances/:id`。默认实例按 `config.DefaultInstanceID` 强制拒绝；实例 DTO 新增 `isDefault`，与名称和排序无关。成功与已完成的重复请求返回 204，未认证 401、普通用户/默认实例 403，运行、任务/事务 owner、资源不确定或清理未完成返回 409；未知实例 404、未实现 driver 501。
+- Web 使用实例级读写锁与创建互斥，driver 通过 `runtimeUpdateMu` 串行化实际清理。migration `015_instance_deletions.sql` 保存不可变 Docker 清单与完成 tombstone；事务检查目标/全局活动 jobs 后才保留 `error/instance_deleting`。触发器阻止晚到的目标 job、全局维护 job、实例更新和 ID 复用。断线继续执行有界请求；部分失败/Panel 重启后保留卡片，由管理员明确重试原清单，不重新推断已消失资源。
+- Stardew driver 核对受管目录、宿主/容器路径映射、其它实例引用、运行/建档/导入/运行栈/SMAPI owner。Docker 层逐项 inspect 精确 Compose project、working_dir、service、停止状态、卷标签/创建身份、实际跨容器挂载与网络 holder；仅移除已证明独占的资源，禁用 force/down -v。目录递归删除前拒绝符号链接、目录别名和 Linux 内嵌挂载。共享下载目录/授权卷、默认运行文件、镜像及其它世界均保留；自定义外部挂载或归属不明资源安全拒绝。
+- Docker 清理成功后才删除世界目录（含全部存档、备份、配置、Mod）；最后事务删除实例、legacy state、jobs/job_logs、相关 audit_logs，级联清理重启计划、存档身份、玩家名单/事件与控制命令。完成 tombstone 仅保留实例 ID/完成事实，资源清单清空。Prepare、状态校正、自动升级恢复、自动备份及生命周期/离线修改入口识别 tombstone，不复活目录。
+- 主要文件：`internal/{docker,storage,web}/instance_delete*`、`storage/instance_deletions*`、`stardew_junimo/instance_delete*`，以及 handler、driver、lifecycle、saves 和升级恢复入口。Web 全包、storage/docker 全包、Linux Junimo 全包（216.691s）、Go vet/build 通过；后续窄改按删除/生命周期专项复验。全量回归中将已有 Steam Guard 夹具对齐当前直接验证码提示，保留基础安装状态断言，未改授权业务。
+- 真实 Docker E2E `TEST_WORLD_DELETE_DOCKER=1 go test ./internal/web -run '^TestWorldDeleteDockerE2E$' -count=1 -v` 仅创建 `anxi-delete-*` 合成世界：验证运行阻止、共享 holder 阻止、真实 Web 删除/重复请求、存档/备份/Mod/数据库清零、另一运行世界和共享授权资源保留、同名卷重建拒绝旧清单；最后按精确任务归属清理。证据在 `output/world-delete-docker-e2e.log`、`output/world-delete-core-regression.log`、`output/world-delete-linux-regression.log`。
+- 下一步：当前原 8090 后端进程没有重启，3000 需与含 migration 015 的后端同步后才能显示入口；旧后端缺少 `isDefault` 时前端保持保护。保留原启动终端配置后正常重启即可，不猜测环境、不修改用户世界或原 18090/18091 Panel，不推送/发布。
+
+# WORLD-FILES-RECOVERY-1：恢复文件后的历史安装错误（2026-09-05，未发布）
+
+- `ReconcileState` 对 `error + install_verification_failed/steamcmd_failed` 增加受保护恢复：取得 mutation lock、重读快照、确认没有活动实例任务或未完成建档 owner、严格确认服务器未运行，并对现有游戏卷做一次真实必需文件校验后，才转为 `stopped/game_files_restored`。保留 driver payload 与历史失败 job，不重装、不授权、不启动世界；其它错误与不确定状态不被抹除。
+- 文件缺失沿用负缓存限制重复探测；成功恢复后普通读侧复用成功证据，Start 仍独立校验。影响 `driver.go`、`installed_files_recovery.go` 及对应回归测试，接口 DTO 不变。
+- 验证：恢复两种历史 phase、重复读取幂等、缺文件、Docker/镜像/探测失败、运行中服务、无关错误、活动 job、mutation lock、不可读建档 owner 均有 Go 定向回归；状态/lifecycle/evidence 回归与 `go build ./cmd/panel` 通过。
+- 真实验收：8090 原终端后端重启后 health/database=ok；3000 浏览器两个世界均显示“已停止”和可用启动按钮。SQLite readOnly 复查两实例均为 `stopped/game_files_restored`；Docker 复查原两个服务器仍为 exited、启停时间未变，仍挂载原 `stardew_game-data` / `stardew-2_game-data`。未自动启动、重装或移动游戏与授权数据。
+
+# STEAMCMD-AUTH-PROGRESS-1：确认成功与下载阶段推进（2026-09-05，未发布）
+
+- `installer.go` 优先识别 `Waiting for confirmation...OK`：进入 `steamcmd_auth_running`，消息为“Steam 手机确认已通过，正在完成 SteamCMD 登录。”，不再命中手机等待分支。确认通过后重复等待提示不会回退；进入下载后重复确认成功也不会回退。
+- 实际 SteamCMD 输出可将旧等待提示与 `Update state (...)`、App 完成标记拼在同一行；现在下载/完成证据先于交互提示解析。下载仍要求确认通过或登录成功证据，客户端自更新不能恢复失败的授权缓存。前端沿用 state/phase 与现有下载日志解析，API/DTO 不变。
+- `TestSteamCMDConfirmationAndPrefixedDownloadAdvancePhase` 回放实际日志形态，覆盖确认成功、登录初始化、混合行下载、陈旧提示与两 App 完成。Go SteamCMD 定向回归和前端 `test:install-state` 通过，标准 Dockerfile 构建通过。部署身份与清理见 `docs/09-image-build.md`；真实账号授权由用户完成，回归不替代真实下载全链。
+
+# STEAM-GUARD-FEEDBACK-1：错误验证码反馈（2026-09-05，未发布）
+
+- 本机安装容器实际返回 `That Steam Guard code was invalid.`，原 runner 未识别，实例仍保留初始输入提示。`installer.go` 现将该可重试拒绝写入 `steamcmd_guard_required` 的 `stateMessage`，后续重复 prompt 不覆盖错误；仍在同一任务等待新验证码，成功登录/下载正常推进，既有终态凭据错误分流保持不变。
+- `GameInstallRail.tsx` 将任务轮询错误与提交错误分开，成功轮询不再清除提交失败提示；提交成功显示等待验证说明，按钮提供正在提交状态。API 路径与 DTO 不变，继续使用 Guard input POST 与 job/state 轮询。
+- 验证：`TestSteamCMDRejectedGuardRemainsRetryableAndCanDownload`、既有验证码 prompt/手机超时定向 Go 测试通过；前端 `test:install-state`、`test:responsive-layout`、production build 通过。CUA Browser 在 127.0.0.1:4621 的 `installQa=guard-code` 隔离夹具提交错误码，确认错误提示跨轮询保留、重新输入后按钮可用、控制台 warning/error 为空。
+- 部署补充（2026-09-05）：18091 已替换为 `install-test-20260905-guard-feedback`，revision=`381e395d4df322d666b53e0a40cccc188fe7fae9-dirty-guard-feedback`、build date=`2026-09-05T05:49:52Z`。原配置/session secret 与数据挂载逐项一致，health/database=ok、initialized=true，实际 HTTP bundle `index-Bd__tfs8.js` 含提交反馈。原等待任务因重启结束，用户需刷新页面后重试安装；未代用户提交真实验证码。18090 原 Panel 的 healthy 与启动时间保持不变。此为本地测试部署，不是正式发布。
+
+# STEAM-CREDENTIAL-AUTO-GUARD-1 后端接手记录（2026-09-04，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `driver.go` 让所有新的 `AuthLoginOnly` 任务固定复用已保存的 Steam 账号密码，调用无游戏下载的 SteamAuth `serve`；`ForceReauth` 清旧 session 后仍保持同一路径。基础安装继续以 SteamCMD 为主，不增加 Web API 或持久字段。
+- `installer.go` 在 SteamAuth 和 SteamCMD 的 Guard 类型菜单出现时，各自只自动写入一次 `1\n` 并进入手机 App 批准阶段；上游直接提示验证码时继续进入 code phase，直接提示手机确认时继续进入 mobile phase。未识别提示不会被推导成授权成功。
+- 主要影响 `backend/internal/games/stardew_junimo/{driver.go,installer.go,driver_test.go}`。前端兼容旧 choice phase 的自动输入仍走现有 `POST /api/instances/:id/steam-guard/input`，接口形状不变。
+
+## 如何验证、下一步注意事项
+
+- 定向测试覆盖 Auth-only 始终使用 `serve`、SteamAuth 菜单自动手机批准、凭据失败清理、SteamCMD 主安装菜单自动手机批准及必需文件缺失。未运行真实 Steam 登录或游戏下载。
+- 如果上游菜单编号或提示文案变化，必须先加入真实脱敏日志夹具并扩展 parser 测试；不要通过宽泛的 `steam guard` 文本推断具体挑战类型。
+
+# LIFECYCLE-RECONCILE-OWNER-1 后端接手记录（2026-09-04，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `backend/internal/games/stardew_junimo/driver.go` 在 Docker reconcile 的最前面保护活跃生命周期任务拥有的 `starting`：启动 runner 写入状态后、Compose 创建 `server` 前的准备阶段，`GET /api/instances/:id/state` 不再把实例误改成 `stopped/container_stopped`。
+- 保护条件同时要求持久状态为 `starting` 且存在该实例的 active `stardew_lifecycle` job。没有 owner 的陈旧启动态仍会按容器事实降级；SQLite、Compose 和 Control ready 判定没有变化。
+- `backend/internal/web/jobs_handlers.go` 的 job DTO 为 `stardew_lifecycle` 增加可选 `operation`。只允许六个已知生命周期操作名，未知、畸形及其它 job 均省略该字段；完整 SQLite payload 不进入响应，使世界卡可以区分排队中的 stop/start 而不扩大敏感数据表面。
+
+## 如何验证、下一步注意事项
+
+- `TestDriverReconcileStateDoesNotDemoteActiveLifecycleOwnerBeforeServerExists` 验证空 Compose 结果下返回值与数据库都保持 `starting`；与既有 `TestDriverReconcileStateDoesNotOverrideActiveLifecycleOwner` 定向运行通过。`TestJobResponseExposesOnlySafeLifecycleOperation` 与 display-name API 回归也通过。
+- 后续新增生命周期前置阶段时，应继续由 lifecycle job 拥有过渡状态，并让 read-side reconcile 尊重该 owner；不要在 Web handler 中用额外状态写入补偿前端轮询。
+
+# REQUIRED-RUNTIME-TRANSIENT-RETRY-1 后端接手记录（2026-09-01，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `required_runtime_update.go` 新增集中重试分类：`context_cancelled`、`current_server_digest_unavailable`、`current_auth_digest_unavailable` 是外部条件恢复后可安全重放的启动协调失败；相同 Panel/stack 下其它失败和 `manual_action` 仍不会在每次启动无限重试。HTTP DTO、状态文件 schema、dry-run/apply 锁、恢复目录和生命周期门禁均未改变。
+- 本地旧实例通过内置可信候选补齐 Auth canonical digest 后，Panel 重启复用了现有 required dry-run/apply/验收/恢复链，Control 从 `0.2.0` 更新到 `0.3.8`，事务终态成功并恢复为 stopped；旧存档目录仍为 1 个，另一个实例的 server 全程保持 healthy。没有直接改 `.env`、Compose、存档或生产数据。
+
+## 如何验证、下一步注意事项
+
+- 新增 `TestRequiredRuntimeUpdateResumesAfterCurrentAuthImageBecomesAvailable`；三个重试/不重试定向用例通过。Windows 排除既有 POSIX mode 专项后的 Junimo 全包通过（251.997s），`go vet ./...` 和 `go build ./cmd/panel` 通过；Windows 原始全包仍只命中 `TestEnsureInstanceDockerHostBindingsMigratesLegacyCompose` 的 NTFS mode 差异。
+- 后续新增可重试错误码必须同时证明：失败只来自可恢复外部前置条件、重放仍走同一幂等 driver 状态机、不会覆盖自定义配置或恢复材料。不要把任意 pull/网络错误都放入白名单，也不要在 Web handler 中直接拼 Docker 修复。
+
+# PROVISIONED-TEMPLATE-COMPAT-1 后端接手记录（2026-09-01，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `stardew_junimo/instance_provision.go` 在复制已安装 game-data 的同时，只继承模板的 `IMAGE_VERSION`、`SERVER_IMAGE`、`SERVER_IMAGE_CANDIDATES`、`SMAPI_VERSION` 和 `SMAPI_DOWNLOAD_URLS`。这修复旧默认实例使用 `dockerproxy.net/...` 等本地可用镜像时，新实例却写回 `sdvd/server:...` 默认别名并被 diagnostic 误判为缺安装的问题。
+- Steam 账号/密码、Steam 邀请完成态/session、VNC 密码和实例设置都不从模板复制；目标自己已有的秘密字段也由 env merge 保留。Panel 启动新增窄兼容收敛：只处理非默认的 `save_required/instance_ready`、受管目录和标准 `<id>_game-data`，仅当目标镜像明确不存在、模板镜像存在、tag 相同且目标卷用模板镜像复验完整时改写上述运行身份。不同 tag、自定义卷、已可用镜像、真实缺文件或 Docker 暂时不可读都不会被自动覆盖。
+- 主要影响 `backend/internal/games/stardew_junimo/instance_provision{,_test}.go` 与 `backend/cmd/panel/main.go`。不新增 HTTP 字段，不下载游戏、不创建/删除现有卷，也不改 SQLite 实例状态；现有本地 `go run` 必须重启进程后才执行启动期收敛。
+
+## 如何验证、下一步注意事项
+
+- 定向回归覆盖旧代理镜像/tag 继承、SMAPI 元数据、秘密不复制、目标秘密保留、同 tag 缺失别名收敛，以及不同版本/自定义运行身份不覆盖；Go vet/build 通过。Windows 全量只命中既有 POSIX mode 假失败；Linux Junimo 包越过该项后命中一条既有异步 `TempDir` 清理竞态，原失败用例精确重跑通过，任务容器与缓存卷已清零。
+- 后续若引入真正的版本化安装模板，应把这一运行身份迁移到 driver 的模板 manifest，并为多版本、回滚和垃圾回收设计显式契约；不能把账号、邀请码 session 或世界设置升级成“公用安装数据”。
+
+# INSTANCE-ID-AUTO-1 后端接手记录（2026-09-01，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `POST /api/instances` 从 `{id,name,gameId}` 收口为 `{name,gameId}`，仍是 admin-only；未知 `id` 字段由严格 JSON decoder 拒绝，客户端不再控制数据库主键、目录、Compose project 或 volume 前缀。
+- 新 migration `014_instance_id_sequences.sql` 和 `storage.AllocateInstanceOrdinal` 按游戏事务化分配只增不减的编号。升级数据库第一次分配会同时参考同 driver 的实例数量与既有 `stardew-N` 最大后缀，之后生成 `stardew-2`、`stardew-3`；失败清理或删除实例不回收编号。
+- Web handler 对每个后端生成的候选继续验证精确实例根；数据库冲突或已存在残留目录会消耗该编号并尝试下一个，最多有界尝试 32 次。主要影响 migration、`internal/storage/instances.go`、`internal/web/instance_handlers.go` 和对应测试；driver 的模板、端口、卷复制与失败清理契约不变。
+
+## 如何验证、下一步注意事项
+
+- storage 回归覆盖旧 ID/数量种子、删除后不复用和八路并发无重复；Web 回归覆盖客户端指定 ID 被拒绝、默认世界后的第一个新实例为 `stardew-2`、管理员权限和真实 provisioning 收据。
+- 其它游戏接入时复用同一 ordinal allocator，但仍由对应创建 handler/driver 提供经过约束的 `gameId`、driver ID 和安全 ID 前缀。不要把显示名称当主键，也不要根据当前列表长度在前端预测下一个 ID。
+
+# DIRECT-CONNECT-ENDPOINT-1 后端接手记录（2026-08-31，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `registry.DirectConnectConfigProvider` 新增为可选 driver capability；Stardew 实现读取对应实例 `.env` 的 `GAME_PORT`，缺键采用 Compose 同源默认值 `24642`，端口范围严格为 `1..65535`，返回 `protocol=udp`。Web 层没有内联 Stardew 或 Docker 逻辑。
+- `GET /api/instances/:id/public-ip` 在原 `{ip,checkedAt,source?,cached}` 上追加可选 `gamePort/protocol`。公网 IP 仍按服务器缓存，实例端口在响应时按已加载实例和 driver 单独计算，避免多实例共享错误端口；driver 不支持或配置非法时旧 IP 响应仍兼容，连接字段省略并记录 warning。
+- 主要文件：`backend/internal/games/registry/types.go`、`backend/internal/games/stardew_junimo/{driver.go,driver_test.go,config/env.go}`、`backend/internal/web/public_ip{,_test}.go`。没有新增实例创建 API，也没有改变 Compose 映射、运行栈、生产数据或邀请码授权。
+
+## 如何验证、下一步注意事项
+
+- 定向 `TestDriverDirectConnectConfig*` 与 `TestPublicIP*` 已通过；前端 QA fixture 用同 IP 的 `24642/24643` 两实例证明页面消费实例字段，不把 fixture 地址当作真实生产探测。
+- 后续其它游戏要显示直连地址，只实现同一可选 driver capability；不要在 Web handler 或 React 中硬编码端口。若未来允许修改端口，应先设计端口冲突、权限、停服、原子写入和回滚契约，本阶段接口只读。
+
+# WEB-MULTI-GAME-SPA-PATHS-1 后端接手记录（2026-08-31，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- `backend/internal/web/handler.go` 允许 `/games` 系列 SPA 页面和 `/instances/:safe-id/:known-page` 动态实例深链，替代旧的 `stardew` 固定段；`handler_paths_test.go` 固定合法 `river-farm` 与非法 ID/页/嵌套路径边界。
+- 仅影响浏览器刷新时的静态 shell fallback。`GET /api/instances`、各实例 API、driver、SQLite 和 Docker 行为未改变，也没有创建实例 API。
+
+## 如何验证、下一步注意事项
+
+- `go test ./internal/web -run 'TestKnownRequestPath' -count=1` 通过；前端 Browser 同时验证动态实例进入与初始深链。后续若新增游戏页面，先扩展显式 allowlist 和测试，不能把任意未知路径都回退到 SPA。
+- 新建世界仍需在 Stardew driver 层明确 ID/端口/目录/容器隔离、幂等和失败清理后再设计 Web 契约；当前全局 health diagnostics 仍隐式使用默认实例，也应在多实例后续阶段消除该边界。
+
+# NEWGAME-OWNER-9P-FALLBACK-1 后端接手记录（2026-08-29，未发布）
+
+## 改了什么
+
+- Windows Docker Desktop 把 Panel 的 `/data` 暴露为 9p/DrvFS；该文件系统会对 Linux `renameat2(..., RENAME_NOREPLACE)` 返回 `EINVAL`，导致新建存档在创建游戏容器前直接报 `invalid argument`。
+- Linux owner 发布仍优先使用原生 `RENAME_NOREPLACE`。仅在文件系统明确不支持该操作时，才用独占 `mkdir` 建立单写入者边界，再移入已经校验并同步的 `owner.json`；已有目标绝不覆盖，竞争者继续 fail closed。
+
+## 影响哪些接口/文件
+
+- 实现位于 `backend/internal/games/stardew_junimo/new_game_owner_rename_linux.go`；Linux 回归位于同目录的 `new_game_owner_rename_linux_test.go`。
+- HTTP API、SQLite、Compose、Control、游戏本体卷、存档格式和正常 Linux 文件系统上的原子发布路径均未变化。
+
+## 如何验证
+
+- 在 Linux Go 容器中把测试临时目录放到与正式 `/data` 相同类型的 Windows→Docker 9p 挂载上，owner 发布、兼容回退、已有目标不覆盖和非法 owner 拒绝回归通过。
+- Linux `go test ./internal/games/stardew_junimo/...`、`go vet ./internal/games/stardew_junimo` 与 `go build ./cmd/panel` 通过；Junimo 全包用时约 205 秒。
+- 本机补丁镜像 `anxi-panel:local-0.6.1-9p-owner-fix-20260829` 从正式 `v0.6.1` 提交只叠加本修复后构建并部署；Panel `/health` 为 `ok`、`/api/version` 为 `0.6.1-local.9p-owner-fix`，既有 `stardew_game-data` 卷仍存在，未启动额外游戏容器。
+
+## 下一步注意事项
+
+- 本次仅部署本机补丁镜像，不创建正式 tag、不推送 `latest`。正式候选仍需纳入 Windows Docker Desktop 的真实新建存档 E2E，并保持“不替换已有 owner、未知状态 fail closed”的门槛。
+
 # LOGIN-CHAT-PRIVACY-1 后端接手记录（2026-08-28，released in v0.6.1）
 
 ## 改了什么
@@ -1483,3 +1638,27 @@
 
 - 不得去掉 target marker、事务、存档名或玩家身份任一保护条件，也不得把选择改成普通 `SaveLoaded` 全局迁移，否则会污染已有存档。`vanilla` 表示恢复原版未触发 Demetrius 事件的状态，不是接受 Junimo 的蘑菇预置。
 - 以后重编 Control 必须同步源码/嵌入 manifest 的版本、嵌入 DLL 与 runtime manifest 哈希，并重跑真实双写者 Docker E2E。候选 `32623320406`、自动 tag `32623853636` 和正式提升 `32623863894` 已成功，能力随 `v0.5.12@5141cd54` 与同 digest 正式镜像发布；完整证据见 `docs/09-image-build.md`。
+# MULTI-GAME-INSTALL-BACKEND-1 后端接手记录（2026-09-01，未发布）
+
+## 改了什么、影响哪些接口/文件
+
+- 新增 `internal/games/steamcmd` Panel 公用下载层：`Manager` 管理 `<data>/shared/steam-download/credentials.json`、Panel 命名空间的 SteamCMD login/home 卷和进程内下载 gate；`BuildContainerOptions` 统一一次性 SteamCMD 容器、HOME 与跨镜像缓存挂载。公用凭据文件为 schema 1、目录/文件 `0700/0600`、临时写入后原子替换；响应 DTO 永不返回账号或密码。
+- Stardew driver 注入同一个 manager。基础安装可在请求不携带凭据时使用已保存公用账号，旧实例 `.env` 只在公用存储为空时迁移；SteamCMD 成功/失效更新公用 authorization 状态和卷。全局基础下载 job 与 download gate 跨实例互斥，`stardew_steam_auth` 仍是实例级邀请码授权，session/意图/运行范围不公用。
+- 新增 `GET /api/games/stardew/installation` 非秘密状态投影，以及 admin-only `POST /api/instances {name,gameId}`。创建 API 固定 driver 和内部默认安装目标，Web 不接收客户端 ID/source/volume/port；内部 ID 由后续 `INSTANCE-ID-AUTO-1` 只增编号契约生成。storage 提供 reservation 与按 phase 删除；Stardew provisioner 验证模板、分配端口、Prepare 目标、调用 Docker helper 离线只读复制独立 game-data 卷、复验并发布 `save_required`，失败时按精确归属清理或保留诊断 error reservation。
+- 主要文件：`cmd/panel/main.go`、`internal/games/{steamcmd,registry,stardew_junimo}`、`internal/docker/instance_provision.go`、`internal/storage/instances.go`、`internal/web/{game_installation,instance,install}_handlers.go` 及测试。
+
+## 如何验证、下一步注意事项
+
+- 已通过 `go test` 的 steamcmd/stardew 定向用例、storage/docker 包回归、Web 创建/权限/路径定向用例、`go vet ./...`、`go build ./cmd/panel`；Stardew Windows 全包只有既有 NTFS mode 用例失败，同一用例已在 Go 1.25 Alpine + 只读宿主模块缓存中通过。最终 Web 全包有一轮既有 save-import journal 收敛用例超过 7 秒观察窗，失败用例隔离重跑通过，因此不得把本轮记录为 Web 全包稳定全绿。未执行真实 Steam 登录/下载、未触碰生产实例、未发布。
+- 默认实例 game-data 当前是经 driver 验证的内部安装模板，不是专用不可变制品；新世界获得独立可写卷，存档/Mod/配置/邀请码 session 不复制。不要在 handler 添加共享容器或公开 source 参数。若以后引入版本化模板，必须先设计 driver 迁移、回滚、并发和清理。
+- 下载 gate 当前只保证单 Panel 进程；同一数据目录多进程部署需补跨进程锁。第二个 Steam 游戏应复用 manager/executor，但必须自行提供 App 清单、诊断、模板和 provisioner，不能继承 Stardew/SMAPI/Junimo 逻辑。
+# INSTALL-POLL-1：授权超时中文与检查容器频率（2026-09-05，未发布）
+
+- 授权超时在安装进度中显示“Steam 登录授权确认超时，请重新安装并及时完成 Steam 验证。”；保留原始任务错误供诊断。
+- `GameInstallRail.tsx` 终态只刷新一次游戏目录并结束轮询；`driver.go` 的读取状态校正复用 10 分钟内成功的游戏文件检查证据。安装、启动仍直接检查文件，缓存过期重新检查。
+- Docker 现场近 3 分钟观察到 14 次 server 镜像临时容器创建/销毁，与读状态重复 verifier 路径一致。新增缓存复用/过期后缺文件回归及中文超时断言；Go ReconcileState/InstallationDiagnostic/SteamCMD 与前端安装状态、production build 通过。接口不变，后续注意启动检查不可被读取缓存替代。
+# WORLD-CARD-1：存档地图与世界名称编辑（2026-09-05，未发布）
+
+- `GameLibrary.tsx` 世界卡片按当前启用存档的 farmType 选择八种内置农场素材；首次加载、无存档、未知地图及读取/图片失败时显示标准农场。管理员自定义地图可读取已有 farm catalog 图标；实例状态更新时重新读取存档。
+- 名称旁 13px 铅笔，管理员点击可行内修改，Enter/保存提交、Esc/取消退出，失败保留输入并显示错误。`PATCH /api/instances/:id` 只改名称和更新时间，复用管理员权限与审计，校验 1–40 字及控制字符；storage.RenameInstance 不改变目录、ID、存档与运行状态。
+- `TestInstanceRenamePersistsNameAndPreservesRuntime` 验证未登录、非法名称、持久化与运行状态保留；前端游戏库回归和 production build 通过。Browser 夹具森林地图来源、铅笔行内输入、Enter 保存已验收。后续注意自定义图标遵循已有目录权限，普通用户不显示改名入口。
