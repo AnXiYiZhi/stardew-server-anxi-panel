@@ -1,3 +1,10 @@
+## 2026-09-05：世界加入地址跟随面板访问地址（已修复，未发布）
+
+- `GameLibrary.tsx` 将 `window.location.hostname` 同时传给加入地址显示与复制；`game-library-state.ts` 使用该主机名和当前世界连接信息中的 `gamePort` 生成地址，与详情页直连地址来源一致。IPv6 已有方括号时不重复包裹。
+- `GET /api/instances/:id/public-ip` 的响应契约保持原样，卡片仅使用其中的游戏端口；浏览器的面板 HTTP 端口不用于游戏连接。端口无效、连接读取失败/加载中、未安装或待建档时保持原有不可复制状态。
+- 验证：`test:game-library` 覆盖探测 IP 与访问地址不同、IPv4/域名/内网/IPv6、世界端口、空主机与非法端口；`test:responsive-layout` 和 `npm --prefix frontend run build` 均通过。
+- 本次修改同步到 main，尚未进入正式镜像；下一次发布需将加入地址纳入该候选的专项验收。
+
 # v0.7.0 正式发布完成（2026-09-05）
 
 - 已发布游戏库、多世界创建/改名/删除、迁移 014–016、创建 token/journal 互斥与恢复、共享 Steam 下载、世界安装授权路由、过期会话与首次导入 journal 修复。完整提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。

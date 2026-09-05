@@ -421,8 +421,9 @@ function WorldChoiceCard({
     : destination === 'saves'
       ? '前往创建或上传存档'
       : `进入${worldName}`
-  const joinAddress = stardewJoinAddress(item)
-  const copyValue = stardewJoinAddressValue(item)
+  const panelAccessHost = window.location.hostname
+  const joinAddress = stardewJoinAddress(item, panelAccessHost)
+  const copyValue = stardewJoinAddressValue(item, panelAccessHost)
   const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>('idle')
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')

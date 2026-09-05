@@ -222,22 +222,22 @@ export function stardewGameCardAriaLabel(state: StardewInstallCardState): string
   return `星露谷物语，${state.label}`
 }
 
-export function stardewJoinAddressValue(item: StardewCatalogItem): string | null {
+export function stardewJoinAddressValue(item: StardewCatalogItem, panelAccessHost: string): string | null {
   if (stardewRequiresSave(item)) return null
   if (!classifyInstallationState(item.state, item.hasActiveInstallJob).isInstalled) return null
   if (item.connectionLoading) return null
-  const ip = item.connection?.ip.trim() ?? ''
+  const ip = panelAccessHost.trim()
   const port = item.connection?.gamePort ?? 0
   if (!ip || !Number.isInteger(port) || port < 1 || port > 65535) return null
-  const host = ip.includes(':') ? `[${ip}]` : ip
+  const host = ip.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip
   return `${host}:${port}`
 }
 
-export function stardewJoinAddress(item: StardewCatalogItem): string {
+export function stardewJoinAddress(item: StardewCatalogItem, panelAccessHost: string): string {
   if (stardewRequiresSave(item)) return '创建或上传存档后提供'
   if (!classifyInstallationState(item.state, item.hasActiveInstallJob).isInstalled) return '安装完成后提供'
   if (item.connectionLoading) return '正在读取加入地址…'
-  return stardewJoinAddressValue(item) ?? '暂时无法读取'
+  return stardewJoinAddressValue(item, panelAccessHost) ?? '暂时无法读取'
 }
 
 export function stardewWorldLifecycleControl(

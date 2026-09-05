@@ -138,7 +138,7 @@ const saveRequiredItem = item(saveRequiredInstance, 'save_required', 'instance_r
 assert.equal(stardewRequiresSave(saveRequiredItem), true)
 assert.equal(stardewInstanceDestination(saveRequiredItem), 'saves')
 assert.equal(stardewShouldLoadConnection(saveRequiredItem), false)
-assert.equal(stardewJoinAddress(saveRequiredItem), '创建或上传存档后提供')
+assert.equal(stardewJoinAddress(saveRequiredItem, 'panel.example.com'), '创建或上传存档后提供')
 const initialSaveRequired = initialStardewCatalogItem(saveRequiredInstance)
 assert.equal(initialSaveRequired.stateLoading, true)
 assert.equal(initialSaveRequired.connectionLoading, false)
@@ -188,24 +188,36 @@ assert.equal(gameCardNavigationIndex(1, [true, true, false], 'previous'), 0)
 assert.equal(gameCardNavigationIndex(1, [true, false, true], 'last'), 2)
 assert.equal(gameCardNavigationIndex(2, [true, false, true], 'first'), 0)
 assert.equal(gameCardNavigationIndex(0, [false, false], 'next'), 0)
-assert.equal(stardewJoinAddress(item(secondInstance, 'running')), '203.0.113.24:24642')
-assert.equal(stardewJoinAddressValue(item(secondInstance, 'running')), '203.0.113.24:24642')
+for (const panelURL of ['http://121.40.29.22:8090', 'https://panel.example.com', 'http://192.168.1.20:3000']) {
+  const panelAccessHost = new URL(panelURL).hostname
+  const expected = `${panelAccessHost}:24642`
+  assert.equal(stardewJoinAddress(item(secondInstance, 'running'), panelAccessHost), expected)
+  assert.equal(stardewJoinAddressValue(item(secondInstance, 'running'), panelAccessHost), expected)
+}
 const ipv6Item = item(secondInstance, 'running')
-ipv6Item.connection = { ...ipv6Item.connection!, ip: '2001:4860:4860::8888', gamePort: 24643 }
-assert.equal(stardewJoinAddress(ipv6Item), '[2001:4860:4860::8888]:24643')
-assert.equal(stardewJoinAddressValue(ipv6Item), '[2001:4860:4860::8888]:24643')
+ipv6Item.connection = { ...ipv6Item.connection!, gamePort: 24643 }
+for (const panelAccessHost of [new URL('http://[2001:db8::1]:8090').hostname, '2001:db8::1']) {
+  assert.equal(stardewJoinAddress(ipv6Item, panelAccessHost), '[2001:db8::1]:24643')
+  assert.equal(stardewJoinAddressValue(ipv6Item, panelAccessHost), '[2001:db8::1]:24643')
+}
+assert.equal(stardewJoinAddressValue(ipv6Item, ''), null)
+for (const gamePort of [0, -1, 65536, 24642.5]) {
+  const invalidPortItem = item(secondInstance, 'running')
+  invalidPortItem.connection = { ...invalidPortItem.connection!, gamePort }
+  assert.equal(stardewJoinAddressValue(invalidPortItem, 'panel.example.com'), null)
+}
 const missingConnection = item(secondInstance, 'running')
 missingConnection.connection = null
 missingConnection.connectionError = 'network unavailable'
-assert.equal(stardewJoinAddress(missingConnection), '暂时无法读取')
-assert.equal(stardewJoinAddressValue(missingConnection), null)
+assert.equal(stardewJoinAddress(missingConnection, 'panel.example.com'), '暂时无法读取')
+assert.equal(stardewJoinAddressValue(missingConnection, 'panel.example.com'), null)
 const loadingConnection = item(secondInstance, 'running')
 loadingConnection.connection = null
 loadingConnection.connectionLoading = true
-assert.equal(stardewJoinAddress(loadingConnection), '正在读取加入地址…')
-assert.equal(stardewJoinAddressValue(loadingConnection), null)
-assert.equal(stardewJoinAddress(item(defaultInstance, 'uninitialized')), '安装完成后提供')
-assert.equal(stardewJoinAddressValue(item(defaultInstance, 'uninitialized')), null)
+assert.equal(stardewJoinAddress(loadingConnection, 'panel.example.com'), '正在读取加入地址…')
+assert.equal(stardewJoinAddressValue(loadingConnection, 'panel.example.com'), null)
+assert.equal(stardewJoinAddress(item(defaultInstance, 'uninitialized'), 'panel.example.com'), '安装完成后提供')
+assert.equal(stardewJoinAddressValue(item(defaultInstance, 'uninitialized'), 'panel.example.com'), null)
 
 const runningWorld = item(secondInstance, 'running')
 assert.deepEqual(stardewWorldLifecycleControl(runningWorld, null, 'admin'), {
