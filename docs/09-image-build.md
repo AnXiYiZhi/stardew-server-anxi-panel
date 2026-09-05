@@ -1,5 +1,7 @@
 # v0.7.0 正式发布验收（2026-09-05，released）
 
+官网发布收尾：每版正式 Release 完成后同步 `website/docs/changelog.md` 与首页 release/版本摘要，执行 docs:build、等待 Pages 成功并回读线上正文。本次补齐 v0.7.0，VitePress 构建 6.61s 通过；Pages 结果记录于门户文档。此类网站文案提交不会触发候选镜像重建。
+
 本轮范围为 v0.6.1 至 main 的全部有效源码、素材和文档改动，发布提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。干净且与 origin/main 精确同步后使用 workflow_dispatch 固定 0.7.0，升级来源为用户指定的 v0.6.1。候选、自动 annotated tag 和正式提升均一次成功，GitHub latest 已为 v0.7.0。
 
 变更链路：游戏库和动态实例路由、世界命名与自动编号（014）、彻底删除/tombstone（015）、创建 token/journal/恢复（016）、共享 SteamCMD 下载与凭据迁移、Guard/手机确认及授权重试、运行状态与历史文件恢复、必需运行栈恢复重试、会话过期、农场图标与安装进度。测试日志与 QA 临时文件须先审计再决定是否归档，不将 output 整目录直接提交。

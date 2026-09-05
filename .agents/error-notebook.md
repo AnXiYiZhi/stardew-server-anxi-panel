@@ -4479,6 +4479,10 @@
 
 # 2026-09-05：GitHub 只读监控 EOF 使用同一目标有界重读
 
+## 同日官网文档补丁格式补充
+
+- PowerShell 7 / functions.exec 编排中生成 Markdown 插入补丁时，只有第一行带加号，后续新增行未逐行添加 `+`，apply_patch 校验报 invalid hunk 并零修改。随后独立 git diff 确认仅原官网两项改动；将文本 split 为完整行后逐行添加补丁前缀，再按文件顺序应用成功。补丁生成前必须检查每条新增行前缀，禁止将原始多行 Markdown 直接插入 hunk。
+
 - 环境：Windows PowerShell 7、GitHub CLI，v0.7.0 发布候选监控及 artifact 下载。
 - 错误模式/症状：`gh run view 33962015399` 与随后 `gh run download` 的 artifact 列表 GET 各发生一次 EOF，原生命令退出 1；工作流没有因此失败或取消。
 - 根因：GitHub API 读取链路短暂中断，不是候选执行终态，也不是缺失 artifact 的证明。

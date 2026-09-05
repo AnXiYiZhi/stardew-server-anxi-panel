@@ -1,6 +1,6 @@
 ---
 layout: home
-release: v0.6.1
+release: v0.7.0
 heroInviteCard: true
 heroCommunityCard: true
 
@@ -33,7 +33,7 @@ features:
     link: /handbook/
     linkText: 查看深度文档
   - title: 版本更新日志
-    details: 当前最新 v0.6.1。玩家无需安装客户端 Mod，服务端会阻止精确 !login 登录凭据向其他玩家广播。
+    details: 当前最新 v0.7.0。游戏库与独立世界管理，支持世界创建、改名、安全删除及更清楚的安装授权体验。
     link: /changelog
     linkText: 查看更新日志
   - title: 常见问题
@@ -45,8 +45,8 @@ features:
 <section class="home-note">
   <div>
     <span class="home-note-kicker">CURRENT RELEASE</span>
-    <strong>v0.6.1</strong>
-    <p>统一密码、角色独立密码与首次认领继续沿用原登录流程，服务端不再把对应 !login 消息转发给其他玩家。</p>
+    <strong>v0.7.0</strong>
+    <p>集中管理多个独立世界，创建、改名与安全删除一处完成，安装进度、Steam 授权和中断恢复更清楚。</p>
   </div>
   <a href="./changelog">查看本次更新 <span aria-hidden="true">→</span></a>
 </section>

@@ -1,5 +1,11 @@
 # 文档门户网站建设方案
 
+## 2026-09-05：官网展示 v0.7.0
+
+- `website/docs/changelog.md` 置顶 v0.7.0，说明游戏库、多世界管理、安装授权和状态恢复，链接正式 Release；v0.6.1 保留为历史版本。
+- `website/docs/index.md` 的 release、版本入口和 CURRENT RELEASE 同步为 v0.7.0。现有主题与页面结构保持一致。
+- Node 24 Alpine、独立依赖/产物卷的 VitePress production build 通过（6.61s）；Pages 部署与线上正文回读将在推送后记录。
+
 本文档规划 `stardew-server-anxi-panel` 的公开文档门户网站：面向普通终端用户（部署/使用面板的人），风格对标 [Miracle SDV 文档站](https://docs.miraclesses.top/quick-start/install.html) 和 [JunimoServer 文档站](https://stardew-valley-dedicated-server.github.io/server/admins/quick-start/installation.html)（两者均为 VitePress 构建）。
 
 状态：**步骤 1-8 的既有正式官网继续上线；2026-07-29 的任务型隔离改版未经发布授权，2026-08-07 误合并后已撤回。当前官网保留原 Hero、联机邀请卡、六入口和原导航；官网版本展示目标已切换到最新 v0.5.12。2026-08-10 首页 QQ 群沟通入口、顶栏/首屏响应式修正及桌面首屏两段纵向留白的二次收紧继续保留**。以下决策已和用户对齐：

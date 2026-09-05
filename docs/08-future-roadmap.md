@@ -1,3 +1,9 @@
+## 2026-09-05：官网展示 v0.7.0
+
+- `website/docs/changelog.md` 置顶 v0.7.0，说明游戏库、多世界管理、安装授权和状态恢复，链接正式 Release；v0.6.1 保留为历史版本。
+- `website/docs/index.md` 的 release、版本入口和 CURRENT RELEASE 同步为 v0.7.0。现有主题与页面结构保持一致。
+- Node 24 Alpine、独立依赖/产物卷的 VitePress production build 通过（6.61s）；Pages 部署与线上正文回读将在推送后记录。
+
 # v0.7.0 正式发布完成（2026-09-05）
 
 - 已发布游戏库、多世界创建/改名/删除、迁移 014–016、创建 token/journal 互斥与恢复、共享 Steam 下载、世界安装授权路由、过期会话与首次导入 journal 修复。完整提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。
