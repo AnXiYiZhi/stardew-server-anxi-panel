@@ -1,23 +1,34 @@
-# v0.7.0 发布验收准备（2026-09-05，未发布）
+# v0.7.0 正式发布验收（2026-09-05，released）
 
-本轮范围为 v0.6.1 至本地 main 的全部有效工作区改动，包括未跟踪源码和素材。正式候选尚未生成。当前 latest 经 GitHub API 核对仍为 v0.6.1；提交使用 `[manual-release-candidate]` 阻止自动补丁候选，完成预检后通过 workflow_dispatch 固定 0.7.0。自动 tag 必须等待候选完成以下必测项目。
+本轮范围为 v0.6.1 至 main 的全部有效源码、素材和文档改动，发布提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。干净且与 origin/main 精确同步后使用 workflow_dispatch 固定 0.7.0，升级来源为用户指定的 v0.6.1。候选、自动 annotated tag 和正式提升均一次成功，GitHub latest 已为 v0.7.0。
 
 变更链路：游戏库和动态实例路由、世界命名与自动编号（014）、彻底删除/tombstone（015）、创建 token/journal/恢复（016）、共享 SteamCMD 下载与凭据迁移、Guard/手机确认及授权重试、运行状态与历史文件恢复、必需运行栈恢复重试、会话过期、农场图标与安装进度。测试日志与 QA 临时文件须先审计再决定是否归档，不将 output 整目录直接提交。
 
 | 范围 | 必测正常、边界与恢复 | 本轮状态 |
 | --- | --- | --- |
-| 代码门禁 | Linux 后端全量 test/vet/build；全部前端 test:* 与 build；脚本测试/ShellCheck；兼容矩阵；updater/Docker integration | 待执行；已发现并补齐游戏库与 session-expiry 脚本遗漏 |
-| 条件门禁 | 由 v0.6.1 到候选 SHA 路径差异选择网站、真实制品、SMAPI 下载与 Junimo 长链 | 待固定 SHA 后自动选择 |
-| 初始化/身份 | 全新未初始化、管理员初始化、成员拒绝写操作、过期会话及延迟旧 401 | 待验收 |
-| 世界 | 创建/改名/长按删除、默认保护、运行/任务占用、ID 不复用、路由隔离 | 待真实隔离 Docker/API 验收 |
-| 创建归属与恢复 | 同名旧卷保持；模板与目标互斥；晚到任务拒绝；journal/token 中断恢复；成功世界保留 | 待本轮复验 |
-| Steam | 安装/修复、错误验证码重试、手机批准、已安装实例授权、失败只重试授权、非默认实例保持 | 用户已确认真实下载验证完成且无须配合；自动回归继续执行 |
-| 游戏功能 | 启停、存档创建/导入/切换/备份恢复、Mod/玩家/控制/诊断 | 待验收；Windows 首次导入重复测试已复现失败，正在定位 |
-| 迁移/升级 | 014/015/016 旧库迁移与数据保持；v0.6.1 Web check/dry-run/admin apply/断线重连/终态 | 待执行；用户本轮明确指定仅验收 v0.6.1，版本校验固化此范围 |
-| 回滚与完整性 | 同候选 unhealthy → failed_rolled_back/health_check_failed；SQLite/用户/存档/Mod/备份/非目标资源保持；Panel 重启 | 待执行 |
-| 正式发布 | 同一 proof/SHA/digest、annotated v0.7.0、三仓六引用 OCI 与 digest、正式冒烟和 Release | 未执行 |
+| 代码门禁 | Linux 后端全量 test/vet/build；全部前端 test:* 与 build；脚本测试/ShellCheck；兼容矩阵；updater/Docker integration | 候选全部通过，新增前端脚本均已接入 |
+| 条件门禁 | 由 v0.6.1 到候选 SHA 路径差异选择网站、真实制品、SMAPI 下载与 Junimo 长链 | 网站、真实 SMAPI 下载与 Junimo integration 执行通过；manifest 未变，自动跳过远程制品核验 |
+| 初始化/身份 | 全新未初始化、管理员初始化、成员拒绝写操作、过期会话及延迟旧 401 | 自动回归和全新安装/重启冒烟通过 |
+| 世界 | 创建/改名/长按删除、默认保护、运行/任务占用、ID 不复用、路由隔离 | 真实 Docker/API、升级后多世界及前端 gesture 回归通过 |
+| 创建归属与恢复 | 同名旧卷保持；模板与目标互斥；晚到任务拒绝；journal/token 中断恢复；成功世界保留 | storage/driver/Web 全回归和 Docker ownership 通过 |
+| Steam | 安装/修复、错误验证码重试、手机批准、已安装实例授权、失败只重试授权、非默认实例保持 | 用户确认真实下载人工验收完成；安装授权自动回归及升级授权状态保持通过 |
+| 游戏功能 | 启停、存档创建/导入/切换/备份恢复、Mod/玩家/控制/诊断 | 全量自动回归通过；升级后 Mod/导入安全边界通过；Windows journal 修复重复测试通过 |
+| 迁移/升级 | 014/015/016 旧库迁移与数据保持；v0.6.1 Web check/dry-run/admin apply/断线重连/终态 | 同候选真实 Web 升级通过，升级后创建/删除实际使用新表 |
+| 回滚与完整性 | 同候选 unhealthy → failed_rolled_back/health_check_failed；SQLite/用户/存档/Mod/备份/非目标资源保持；Panel 重启 | 候选真实升级脚本全部通过 |
+| 正式发布 | 同一 proof/SHA/digest、annotated v0.7.0、三仓六引用 OCI 与 digest、正式冒烟和 Release | 全部通过并完成独立六引用复核 |
 
-隔离范围：不使用原 8090/3000/18090/18091、stardew/stardew-2 或长期凭据做故障注入；夹具必须按任务名称/label 创建并精确清理。用户已确认真实下载人工验收完成，记录与候选自动验收分别保留，门禁未完成不得发布。
+隔离范围：原 8090/3000/18090/18091、stardew/stardew-2 和长期凭据未用于本轮故障注入。Docker 功能夹具使用合成运行文件/存档，真实 Steam 下载由用户确认人工验收完成；两类证据分别记录。
+
+## 不可变候选与正式结果
+
+- 候选 workflow [33962015399](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33962015399)，attempt 1，约 16m24s（含排队及收尾）；固定 UTC build date=`2026-09-05T10:57:44Z`。artifact=`release-candidate-0.7.0-baaee1b2a0c3`，完整 commit=`baaee1b2a0c36609553d420b8f30dc909f23c069`，previousVersion=`0.6.1`。
+- 唯一 digest=`sha256:ad529ad0615b3349a7e6e62e9c8167ef5eab4139a5442c1d6cd398a1f48f17db`；候选引用=`ghcr.io/anxiyizhi/stardew-server-anxi-panel:candidate-0.7.0-baaee1b2a0c3`。本地 image ID=`sha256:cfd9d17db428d878786a93123e5c307a28b07508f9981a8406ff4ad6b9edfbf8`。
+- 候选代码门禁完成于 11:05:27Z；Docker ownership 2.46s、Web delete 12.29s、真实 SMAPI 下载 1.12s。升级后多世界验收于 11:10:00Z 成功；完整 Web 升级、unhealthy 回滚、未知 holder fail-closed、授权迁移、持久数据/重启、Mod、legacy repair 与导入边界于 11:13:15Z 全部成功；候选清理于 11:13:25Z 完成。
+- 自动 tag workflow [33962764623](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33962764623) 成功；annotated `v0.7.0` 的 peeled commit 与当时 origin/main 精确一致，tag 内容绑定上述 workflow/digest，未移动任何已有 tag。
+- 正式提升 [33962772040](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/actions/runs/33962772040) 成功，job 约 1m14s。直接提升精确候选 digest，OCI 身份、一个正式镜像的 health/version 冒烟、三仓 `0.7.0/latest` 六引用均通过；本机 buildx 再逐项核对六引用 digest 一致。
+- [GitHub Release v0.7.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.0) 非 draft/prerelease 且为 latest，四项部署/修复脚本资产完整。独立 Compatibility workflow `33962015302` 同样成功。
+- 正式候选和提升没有失败步骤或重跑。本地预检曾发现并修复 Windows journal 文件句柄冲突；两个高负载异步观察器超时经相同代码完整包复验和干净 CI 通过。GitHub 只读查询两次 EOF 经同一目标有界重读恢复，未重放外部写入。
+- 本机四个任务缓存卷、任务测试容器均已按 label/holder 核对后清零；候选 EXIT trap 清理 fresh/DinD 和升级夹具，外层 DinD 容器删除。日志/proof/发布说明保留在忽略的 output/v070-*，本段为发布后证据，不改变镜像或 tag。
 
 ## 提交前验证
 

@@ -1,6 +1,6 @@
 # 后期优化文档
 
-## Windows 存档导入事务回归稳定性（已修复，待正式发布，2026-09-05）
+## Windows 存档导入事务回归稳定性（已随 v0.7.0 发布，2026-09-05）
 
 - Review 修复的辅助 Windows Web 全包测试中，既有 `TestFailedFirstInstallImportCanSafelyCancelAndAutoRecoverOwnedTransaction` 出现一次 journal 读取验证失败；五次定向复验中一次停在 staged、未形成预期 bootstrap/backup。没有改动此导入实现或放宽断言。日志在 `output/review-fixes-web.log` 和 `output/review-fixes-web-targeted.log`。
 - v0.7.0 排查在 Windows 20 次重复中再次复现；失败任务记录直接定位为 journal 原子 rename 与并发读句柄重叠导致 `Access is denied`。journal 读写现通过进程内读写锁协调，清理证据读取复用入口。修复后原用例 30 次通过（27.889s），新增并发读写测试 10 次通过（8.731s）。日志为 `output/v070-import-{repro,diagnostic,fixed}.log`；Linux 全量及正式升级继续按发布矩阵验证。

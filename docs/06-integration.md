@@ -1,3 +1,12 @@
+# v0.7.0 正式发布完成（2026-09-05）
+
+- 已发布游戏库、多世界创建/改名/删除、迁移 014–016、创建 token/journal 互斥与恢复、共享 Steam 下载、世界安装授权路由、过期会话与首次导入 journal 修复。完整提交 `baaee1b2a0c36609553d420b8f30dc909f23c069`。
+- 候选 `33962015399`（约 16m24s）、自动 annotated tag `33962764623`、正式提升 `33962772040`（job 1m14s）全部一次成功；独立 Compatibility `33962015302` 成功。用户指定 v0.6.1 Web 升级链，真实下载人工验收由用户确认。
+- 全量代码门禁、fresh/restart、同候选 unhealthy 回滚、SQLite/长期数据/非目标资源保持和升级后真实 Web 多世界创建/改名/删除通过。前端全部状态脚本、production build、网站及真实 SMAPI/Junimo 条件门禁通过；运行栈 manifest 未变，由路径门禁自动跳过远程制品校验。
+- 三仓 0.7.0/latest 唯一 digest=`sha256:ad529ad0615b3349a7e6e62e9c8167ef5eab4139a5442c1d6cd398a1f48f17db`，OCI 与正式 health/version 冒烟通过；GitHub Release/四项脚本资产完整。本机任务容器和四个缓存卷清零，候选 DinD/夹具按脚本回收。
+- 本轮修复的 Windows journal 原用例连续 30 次通过，并发读写 10 次通过。预检两项负载超时经完整包复验及干净 CI 通过；正式门禁没有失败重跑。只读 GitHub EOF 已有界恢复并记入错题本。
+- 下面的实现记录保留当时阶段状态；以上发布结果为当前权威状态。后续不得移动 v0.7.0 tag，发布后文档提交不重建镜像；完整验证矩阵、日志和资源清理证据见 `docs/09-image-build.md`。
+
 # v0.7.0 首次导入 journal 并发修复（2026-09-05，未发布）
 
 - Windows 首次导入重复测试复现原子替换 journal 时 `Access is denied`，捕获到任务底层 rename 错误；此前 Linux 单次通过不能消除此问题。

@@ -39,9 +39,9 @@
 
 ## 当前产品范围
 
-当前正式版为 `v0.6.1`（commit `5c0135e6bdb5b8353d049030da3c3c06a6e243a0`）。本版将嵌入 Control 升至 `0.3.8`：Junimo 完成统一密码、角色独立密码或首次认领校验后，服务端会丢弃精确 `!login` 消息的全服重广播，不要求玩家安装客户端 Mod；发送者自己的原版客户端仍可能保留本地回显，这不是遮罩输入或端到端加密。
+当前正式版为 `v0.7.0`（commit `baaee1b2a0c36609553d420b8f30dc909f23c069`）。本版提供游戏库、独立世界创建/改名/彻底删除、共享 Steam 下载管理与世界级安装授权路由，并修复创建中断恢复、会话过期反馈及 Windows 首次导入 journal 并发问题。升级来源为 `v0.6.1`，数据库应用迁移 014–016；嵌入 Control 保持 `0.3.8`。
 
-不可变候选 `33177568325`、自动 annotated tag workflow `33179940424` 与正式提升 `33179959858` 均成功；tag `v0.6.1` 指向上述 commit，三仓 `0.6.1/latest` 使用唯一 digest=`sha256:9b7746caeb9c3c9091e7e6c07b1cc3cdf18dce82ebcfb5a70bc4c5a5835961bd`。[GitHub Release v0.6.1](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.6.1)
+不可变候选 `33962015399`、自动 annotated tag workflow `33962764623` 与正式提升 `33962772040` 均成功；tag `v0.7.0` 指向上述 commit，三仓 `0.7.0/latest` 使用唯一 digest=`sha256:ad529ad0615b3349a7e6e62e9c8167ef5eab4139a5442c1d6cd398a1f48f17db`。真实 Web 升级、unhealthy 回滚及升级后多世界验证通过，完整矩阵见镜像构建文档。[GitHub Release v0.7.0](https://github.com/AnXiYiZhi/stardew-server-anxi-panel/releases/tag/v0.7.0)
 
 当前仓库已经围绕 Stardew driver 与动态实例路由形成完整闭环：
 

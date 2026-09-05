@@ -4477,6 +4477,15 @@
 - 预防检查：文件搬移、备份和恢复脚本完成后分别统计普通根项与 `find ... -type l`；不能只凭脚本退出 0 或目录大小判断清空/恢复完成。
 - 适用范围：SteamCMD/Steam home、Docker named volume、缓存迁移和所有可能含悬空链接的 Shell 文件操作。
 
+# 2026-09-05：GitHub 只读监控 EOF 使用同一目标有界重读
+
+- 环境：Windows PowerShell 7、GitHub CLI，v0.7.0 发布候选监控及 artifact 下载。
+- 错误模式/症状：`gh run view 33962015399` 与随后 `gh run download` 的 artifact 列表 GET 各发生一次 EOF，原生命令退出 1；工作流没有因此失败或取消。
+- 根因：GitHub API 读取链路短暂中断，不是候选执行终态，也不是缺失 artifact 的证明。
+- 正确做法：保持 run ID/精确 artifact 名不变，最多三次重试只读查询或下载；成功后以实际 conclusion/proof 继续。两次均在下一次重读成功，候选和正式提升仍为 attempt 1。
+- 预防检查：规则已加入 AGENTS.md；监控/下载失败不得触发新的 dispatch、取消、tag、push、Release edit 或镜像提升。写操作响应不确定时先查询实际状态，禁止套用只读重试。
+- 适用范围：gh API GET、run view、artifact/release 下载与发布监控；禁止用于非幂等外部写入。
+
 # 2026-09-05：本地 Panel 进程终态以监听和进程链为权威
 
 - 环境：Windows 11、PowerShell 7、`go run ./cmd/panel`、统一终端会话和本地 8090 端口。
